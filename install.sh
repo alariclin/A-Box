@@ -3118,6 +3118,10 @@ save_firewall_rules() {
     local backup4='' backup6='' restore_failed=0
     backend=$(firewall_backend) || return 1
     case "$backend" in
+        nftables-unsupported)
+            msg "${RED}Native nftables rules detected; A-Box cannot safely persist or roll them back. No firewall rules were changed.${NC}"
+            return 1
+            ;;
         ufw|firewalld)
             remove_abox_firewall_persistence || return 1
             return 0
@@ -3212,8 +3216,34 @@ ufw_is_active() {
     LC_ALL=C ufw status 2>/dev/null | awk 'tolower($0) ~ /^status:[[:space:]]*active/ { found=1 } END { exit !found }'
 }
 
+nftables_native_rules_present() {
+    command -v nft >/dev/null 2>&1 || return 1
+    nft -nn list ruleset 2>/dev/null | awk '
+        /^[[:space:]]*table[[:space:]]+/ {
+            family=$2
+            name=$3
+            gsub(/[{}]/, "", name)
+            if (family == "inet" || family == "bridge" || family == "netdev" || family == "arp")
+                native=1
+            else if ((family == "ip" || family == "ip6") &&
+                     name !~ /^(filter|nat|mangle|raw|security)$/)
+                native=1
+        }
+        /^[[:space:]]*chain[[:space:]]+(input|forward|output)[[:space:]]*\{/ { native=1 }
+        END { exit !native }
+    '
+}
+
 firewall_backend() {
-    if ufw_is_active; then printf 'ufw\n'; elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then printf 'firewalld\n'; else printf 'iptables\n'; fi
+    if ufw_is_active; then
+        printf 'ufw\n'
+    elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+        printf 'firewalld\n'
+    elif nftables_native_rules_present; then
+        printf 'nftables-unsupported\n'
+    else
+        printf 'iptables\n'
+    fi
 }
 
 native_firewall_record_valid() {
@@ -3547,6 +3577,7 @@ remove_abox_native_firewall_rule() {
 apply_native_firewall_rules_from_state() {
     [[ ! -e "$ABOX_FW_STATE" && ! -L "$ABOX_FW_STATE" ]] && return 0
     validate_native_firewall_state_file "$ABOX_FW_STATE" || return 1
+    [[ "$(firewall_backend 2>/dev/null)" != 'nftables-unsupported' ]] || return 1
     local backend spec proto scope zone extra fw_spec failed=0
     while IFS='|' read -r backend spec proto scope zone extra; do
         [[ -n "$backend" ]] || continue
@@ -3617,6 +3648,10 @@ allowPort() {
     spec=$(normalize_port_spec "$raw_port") || die "端口或端口范围非法: $raw_port"
     [[ "$type" == tcp || "$type" == udp ]] || die "协议非法: $type"
     backend=$(firewall_backend)
+    case "$backend" in
+        iptables|ufw|firewalld) ;;
+        *) die "检测到原生 nftables 或未知防火墙后端（$backend）；A-Box 暂不支持安全地修改该后端，已拒绝放行端口。" ;;
+    esac
     case "$backend" in
         ufw)
             if ufw_owned_rule_exists "$spec" "$type"; then
@@ -3932,6 +3967,10 @@ enforce_ss_whitelist_order() {
 }
 
 clean_nat_rules() {
+    [[ "$(firewall_backend 2>/dev/null)" != 'nftables-unsupported' ]] || {
+        msg "${RED}Native nftables rules detected; refusing to mutate a parallel iptables ruleset.${NC}"
+        return 1
+    }
     local output rule failed=0 owned_re
     local -a argv=()
     owned_re='--comment "?A-Box-HY2-HOP"?([[:space:]]|$)'
@@ -3963,6 +4002,10 @@ clean_nat_rules() {
 }
 
 clean_input_rules() {
+    [[ "$(firewall_backend 2>/dev/null)" != 'nftables-unsupported' ]] || {
+        msg "${RED}Native nftables rules detected; refusing to mutate a parallel iptables ruleset.${NC}"
+        return 1
+    }
     local output rule failed=0 owned_re
     local -a argv=()
     owned_re='--comment "?A-Box-[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?"?([[:space:]]|$)'

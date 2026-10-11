@@ -12987,12 +12987,20 @@ wallos_wait_healthy() {
 }
 
 wallos_create_backup() {
-    local stamp="$1" backup="$WALLOS_DIR/backups/wallos-$1.tar.gz"
+    local stamp="$1" backup="$WALLOS_DIR/backups/wallos-$1.tar.gz" staged
     mkdir -p "$WALLOS_DIR/backups" || return 1
     chmod 700 "$WALLOS_DIR/backups" || return 1
-    [[ -d "$WALLOS_DIR/db" && -d "$WALLOS_DIR/logos" ]] || return 1
-    tar -czf "$backup" -C "$WALLOS_DIR" db logos .abox-state || return 1
-    chmod 600 "$backup" || return 1
+    [[ -d "$WALLOS_DIR/db" && -d "$WALLOS_DIR/logos" && -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]] || return 1
+    staged=$(umask 077; mktemp "$WALLOS_DIR/backups/.wallos-$stamp.XXXXXX") || return 1
+    if ! tar -czf "$staged" -C "$WALLOS_DIR" db logos .abox-state ||
+       ! gzip -t "$staged" ||
+       ! tar -tzf "$staged" | grep -Fxq '.abox-state' ||
+       ! tar -tzf "$staged" | grep -Eq '^db/?$' ||
+       ! tar -tzf "$staged" | grep -Eq '^logos/?$'; then
+        rm -f -- "$staged"; return 1
+    fi
+    chmod 600 "$staged" || { rm -f -- "$staged"; return 1; }
+    mv -f -- "$staged" "$backup" || { rm -f -- "$staged"; return 1; }
     find "$WALLOS_DIR/backups" -maxdepth 1 -type f -name 'wallos-*.tar.gz' -printf '%T@ %p\n' 2>/dev/null |
         sort -nr | awk 'NR>5 {$1=""; sub(/^ /, ""); print}' |
         while IFS= read -r old; do [[ "$old" == "$backup" ]] || rm -f -- "$old"; done
@@ -13000,27 +13008,52 @@ wallos_create_backup() {
 }
 
 wallos_public_urls() {
-    local port="$1" ipv4 ipv6
-    ipv4=$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null || true)
-    ipv6=$(curl -6fsS --connect-timeout 3 --max-time 5 https://api64.ipify.org 2>/dev/null || true)
+    local port="$1"
     case "${ABOX_LANG:-zh}" in
-        en)
-            [[ -z "$ipv4" ]] || msg "${GREEN}Wallos URL: http://$ipv4:$port/${NC}"
-            [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 URL: http://[$ipv6]:$port/${NC}"
-            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}Could not detect a public address. Use your VPS public IP or domain on TCP $port.${NC}" ;;
-        ru)
-            [[ -z "$ipv4" ]] || msg "${GREEN}Адрес Wallos: http://$ipv4:$port/${NC}"
-            [[ -z "$ipv6" ]] || msg "${GREEN}Адрес IPv6: http://[$ipv6]:$port/${NC}"
-            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}Публичный IP не определён; используйте IP или домен VPS и порт $port.${NC}" ;;
-        fa)
-            [[ -z "$ipv4" ]] || msg "${GREEN}نشانی Wallos: http://$ipv4:$port/${NC}"
-            [[ -z "$ipv6" ]] || msg "${GREEN}نشانی IPv6: http://[$ipv6]:$port/${NC}"
-            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}IP عمومی شناسایی نشد؛ از IP یا دامنه VPS با درگاه $port استفاده کنید.${NC}" ;;
-        *)
-            [[ -z "$ipv4" ]] || msg "${GREEN}Wallos 网址：http://$ipv4:$port/${NC}"
-            [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 网址：http://[$ipv6]:$port/${NC}"
-            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}无法检测公网 IP，请使用 VPS 公网地址或域名访问 TCP $port。${NC}" ;;
+        en) msg "${GREEN}Wallos listens on http://127.0.0.1:$port/ only. Use an HTTPS reverse proxy or an SSH tunnel for remote access.${NC}" ;;
+        ru) msg "${GREEN}Wallos доступен только на http://127.0.0.1:$port/. Для удалённого доступа используйте HTTPS reverse proxy или SSH-туннель.${NC}" ;;
+        fa) msg "${GREEN}Wallos فقط روی http://127.0.0.1:$port/ گوش می‌دهد. برای دسترسی از راه دور از HTTPS reverse proxy یا تونل SSH استفاده کنید.${NC}" ;;
+        *) msg "${GREEN}Wallos 仅监听本机 http://127.0.0.1:$port/。远程访问请配置 HTTPS 反向代理或 SSH 隧道。${NC}" ;;
     esac
+}
+
+wallos_restore_backup_atomically() {
+    local backup="$1" stage listing p live_db live_logos live_state
+    [[ -f "$backup" && ! -L "$backup" ]] || return 1
+    stage=$(umask 077; mktemp -d "$WALLOS_DIR/.restore.XXXXXX") || return 1
+    listing=$(tar -tzf "$backup" 2>/dev/null) || { rm -rf -- "$stage"; return 1; }
+    while IFS= read -r p; do
+        case "$p" in /*|..|../*|*/../*|*/..) rm -rf -- "$stage"; return 1 ;; esac
+    done <<< "$listing"
+    if ! grep -Eq '^db/?$' <<< "$listing" ||
+       ! grep -Eq '^logos/?$' <<< "$listing" ||
+       ! grep -Fxq '.abox-state' <<< "$listing" ||
+       ! tar -xzf "$backup" -C "$stage" --no-same-owner --no-same-permissions ||
+       [[ ! -d "$stage/db" || -L "$stage/db" || ! -d "$stage/logos" || -L "$stage/logos" || ! -f "$stage/.abox-state" || -L "$stage/.abox-state" ]]; then
+        rm -rf -- "$stage"; return 1
+    fi
+    live_db="$WALLOS_DIR/.restore-old-db.$$"; live_logos="$WALLOS_DIR/.restore-old-logos.$$"; live_state="$WALLOS_DIR/.restore-old-state.$$"
+    [[ ! -e "$live_db" && ! -e "$live_logos" && ! -e "$live_state" ]] || { rm -rf -- "$stage"; return 1; }
+    mv "$WALLOS_DIR/db" "$live_db" || { rm -rf -- "$stage"; return 1; }
+    mv "$WALLOS_DIR/logos" "$live_logos" || { mv "$live_db" "$WALLOS_DIR/db" 2>/dev/null || true; rm -rf -- "$stage"; return 1; }
+    if [[ -e "$WALLOS_DIR/.abox-state" ]]; then
+        mv "$WALLOS_DIR/.abox-state" "$live_state" || {
+            mv "$live_db" "$WALLOS_DIR/db" 2>/dev/null || true
+            mv "$live_logos" "$WALLOS_DIR/logos" 2>/dev/null || true
+            rm -rf -- "$stage"; return 1
+        }
+    fi
+    if ! mv "$stage/db" "$WALLOS_DIR/db" ||
+       ! mv "$stage/logos" "$WALLOS_DIR/logos" ||
+       ! mv "$stage/.abox-state" "$WALLOS_DIR/.abox-state"; then
+        rm -rf -- "$WALLOS_DIR/db" "$WALLOS_DIR/logos" "$WALLOS_DIR/.abox-state"
+        mv "$live_db" "$WALLOS_DIR/db" 2>/dev/null || true
+        mv "$live_logos" "$WALLOS_DIR/logos" 2>/dev/null || true
+        [[ ! -e "$live_state" ]] || mv "$live_state" "$WALLOS_DIR/.abox-state" 2>/dev/null || true
+        rm -rf -- "$stage"; return 1
+    fi
+    rm -rf -- "$live_db" "$live_logos" "$live_state" "$stage"
+    return 0
 }
 
 wallos_write_state() {
@@ -13036,7 +13069,7 @@ wallos_write_state() {
 }
 
 wallos_install_or_update() {
-    local arch image port tz old_image='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
+    local arch image port tz old_image='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0
     (( EUID == 0 )) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Для установки Wallos требуются права root.${NC}" ;; fa) msg "${RED}برای نصب Wallos دسترسی root لازم است.${NC}" ;; zh) msg "${RED}安装 Wallos 需要 root 权限。${NC}" ;; *) msg "${RED}Run Wallos setup as root.${NC}" ;; esac; return 1; }
     command -v jq >/dev/null 2>&1 || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Требуется jq; сначала установите зависимости A-Box.${NC}" ;; fa) msg "${RED}به jq نیاز است؛ ابتدا وابستگی‌های A-Box را نصب کنید.${NC}" ;; zh) msg "${RED}需要 jq，请先安装 A-Box 依赖。${NC}" ;; *) msg "${RED}jq is required; install the A-Box dependencies first.${NC}" ;; esac; return 1; }
     wallos_print_host_info
@@ -13075,15 +13108,25 @@ wallos_install_or_update() {
     fi
     local confirm_prompt
     case "${ABOX_LANG:-zh}" in
-        en) confirm_prompt='Wallos stores personal subscription/financial data. The default access URL is public HTTP without TLS. Continue with this port mapping? [Y/N]: ' ;;
-        ru) confirm_prompt='Wallos хранит личные финансовые данные. Начальный URL использует HTTP без TLS. Продолжить с этим портом? [Y/N]: ' ;;
-        fa) confirm_prompt='Wallos داده‌های مالی شخصی را نگه می‌دارد. نشانی اولیه HTTP بدون TLS است. با این پورت ادامه داده شود؟ [Y/N]: ' ;;
-        *) confirm_prompt='Wallos 保存个人订阅和财务数据。默认访问网址是没有 TLS 的公网 HTTP。是否继续使用此端口？[Y/N]: ' ;;
+        en) confirm_prompt='Wallos stores personal subscription/financial data. Docker will bind to loopback only; use an HTTPS reverse proxy or SSH tunnel for remote access. Continue? [Y/N]: ' ;;
+        ru) confirm_prompt='Wallos хранит личные финансовые данные. Docker будет слушать только loopback; для удалённого доступа настройте HTTPS reverse proxy или SSH-туннель. Продолжить? [Y/N]: ' ;;
+        fa) confirm_prompt='Wallos داده‌های مالی شخصی را نگه می‌دارد. Docker فقط روی loopback گوش می‌دهد؛ برای دسترسی راه دور HTTPS reverse proxy یا تونل SSH تنظیم کنید. ادامه؟ [Y/N]: ' ;;
+        *) confirm_prompt='Wallos 保存个人订阅和财务数据。Docker 将只绑定本机回环地址；远程访问请配置 HTTPS 反向代理或 SSH 隧道。是否继续？[Y/N]: ' ;;
     esac
     if ! confirm_yes_no "$confirm_prompt"; then return 0; fi
 
     wallos_pull_or_restore_image "$arch" || { msg "${RED}Official Wallos source and the A-Box recovery image are both unavailable.${NC}"; return 1; }
     image="$WALLOS_IMAGE_RESULT"
+    if (( running == 1 )); then
+        local candidate_version="${image##*:}" installed_version="${old_image##*:}" oldest_version
+        if [[ "$candidate_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$installed_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$candidate_version" != "$installed_version" ]]; then
+            oldest_version=$(printf '%s\n%s\n' "$candidate_version" "$installed_version" | sort -V | head -n 1)
+            if [[ "$oldest_version" == "$candidate_version" ]]; then
+                msg "${RED}Refusing Wallos downgrade from $installed_version to $candidate_version via fallback mirror. Review database-schema compatibility before any manual downgrade.${NC}"
+                return 1
+            fi
+        fi
+    fi
     mkdir -p "$WALLOS_DIR/db" "$WALLOS_DIR/logos" "$WALLOS_DIR/backups" || return 1
     chmod 750 "$WALLOS_DIR" "$WALLOS_DIR/db" "$WALLOS_DIR/logos" || return 1
     if [[ ! -f "$WALLOS_DIR/.A-Box-managed" ]]; then
@@ -13100,7 +13143,7 @@ wallos_install_or_update() {
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-        -e TZ="$tz" -p "$port:80/tcp" --restart unless-stopped "$image" >/dev/null
+        -e TZ="$tz" -p "127.0.0.1:$port:80/tcp" --restart unless-stopped "$image" >/dev/null
     code=$?
     if (( code != 0 )) || ! wallos_wait_healthy "$port"; then
         docker rm -f wallos >/dev/null 2>&1 || true
@@ -13108,13 +13151,7 @@ wallos_install_or_update() {
             # Validate the pre-upgrade archive and required top-level entries
             # before deleting the live data directories. Never start an old
             # container against partially restored or empty databases/logos.
-            backup_listing=$(tar -tzf "$backup" 2>/dev/null) || backup_listing=''
-            if [[ -n "$backup_listing" ]] &&
-               grep -Eq '^db/?$' <<< "$backup_listing" &&
-               grep -Eq '^logos/?$' <<< "$backup_listing" &&
-               grep -Fxq '.abox-state' <<< "$backup_listing" &&
-               rm -rf -- "$WALLOS_DIR/db" "$WALLOS_DIR/logos" &&
-               tar -xzf "$backup" -C "$WALLOS_DIR"; then
+            if wallos_restore_backup_atomically "$backup"; then
                 restore_ok=1
             else
                 msg "${RED}Rollback data restore failed or the backup is invalid. The old container will not be started against incomplete data. Preserve and inspect backup: ${backup:-unavailable}${NC}"
@@ -13124,13 +13161,13 @@ wallos_install_or_update() {
                     docker run -d --name wallos --label com.alariclin.abox.managed=true \
                         -v "$WALLOS_DIR/db:/var/www/html/db" \
                         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-                        -e TZ="$old_tz" -p "$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
+                        -e TZ="$old_tz" -p "127.0.0.1:$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
                     wallos_wait_healthy "$old_port" || msg "${RED}Rollback container did not pass health check; inspect docker logs wallos.${NC}"
                 else
                     docker create --name wallos --label com.alariclin.abox.managed=true \
                         -v "$WALLOS_DIR/db:/var/www/html/db" \
                         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-                        -e TZ="$old_tz" -p "$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
+                        -e TZ="$old_tz" -p "127.0.0.1:$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
                 fi
             fi
         fi

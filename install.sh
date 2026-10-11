@@ -5602,27 +5602,38 @@ if [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] && [[ "$(sta
 elif [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]]; then
     IFS= read -r desired < "$DESIRED" || true
 fi
-[[ "$desired" == RUNNING ]] || exit 0
-if is_systemd; then systemctl is-active --quiet xray || exit 0; else rc-service xray status >/dev/null 2>&1 || exit 0; fi
+geo_txn_pending=0
+[[ -d /var/lib/A-Box/geo-transaction && ! -L /var/lib/A-Box/geo-transaction ]] && geo_txn_pending=1
+if [[ "$desired" != RUNNING && "$geo_txn_pending" != 1 ]]; then exit 0; fi
+if [[ "$geo_txn_pending" != 1 ]]; then
+    if is_systemd; then systemctl is-active --quiet xray || exit 0
+    else rc-service xray status >/dev/null 2>&1 || exit 0; fi
+fi
 recover_geo_transaction() {
-    local d=/var/lib/A-Box/geo-transaction mode f
+    local d=/var/lib/A-Box/geo-transaction mode f state_value
     [[ ! -e "$d" && ! -L "$d" ]] && return 0
     [[ -d "$d" && ! -L "$d" && "$(stat -c %u:%g "$d" 2>/dev/null || true)" == 0:0 ]] || return 1
     mode=$(stat -c %a "$d" 2>/dev/null) || return 1
     [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || return 1
     if [[ ! -f "$d/state" && ! -L "$d/state" ]]; then rm -rf -- "$d"; return $?; fi
-    [[ "$(stat -c %u:%g "$d/state" 2>/dev/null || true)" == 0:0 && "$(cat "$d/state" 2>/dev/null)" == prepared ]] || return 1
+    [[ "$(stat -c %u:%g "$d/state" 2>/dev/null || true)" == 0:0 ]] || return 1
+    state_value=$(cat "$d/state" 2>/dev/null) || return 1
+    if [[ "$state_value" == committed ]]; then rm -rf -- "$d"; return $?; fi
+    [[ "$state_value" == prepared ]] || return 1
     for f in geoip.old geosite.old; do [[ -f "$d/$f" && ! -L "$d/$f" && "$(stat -c %u:%g "$d/$f" 2>/dev/null || true)" == 0:0 ]] || return 1; done
     install -m 644 "$d/geoip.old" /usr/local/share/xray/.geoip.A-Box-recover || return 1
     install -m 644 "$d/geosite.old" /usr/local/share/xray/.geosite.A-Box-recover || { rm -f /usr/local/share/xray/.geoip.A-Box-recover; return 1; }
     mv -f /usr/local/share/xray/.geoip.A-Box-recover /usr/local/share/xray/geoip.dat || return 1
     mv -f /usr/local/share/xray/.geosite.A-Box-recover /usr/local/share/xray/geosite.dat || return 1
-    if is_systemd; then systemctl restart xray >/dev/null 2>&1 && systemctl is-active --quiet xray || return 1
-    else rc-service xray restart >/dev/null 2>&1 && rc-service xray status >/dev/null 2>&1 || return 1; fi
+    if [[ "$desired" == RUNNING ]]; then
+        if is_systemd; then systemctl restart xray >/dev/null 2>&1 && systemctl is-active --quiet xray || return 1
+        else rc-service xray restart >/dev/null 2>&1 && rc-service xray status >/dev/null 2>&1 || return 1; fi
+    fi
     update_geo_ownership || return 1
     rm -rf -- "$d"
 }
 recover_geo_transaction || exit 1
+[[ "$desired" == RUNNING ]] || exit 0
 geo_release_json=$(curl -fLsS --connect-timeout 10 -m 60 -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' "https://api.github.com/repos/${GEO_REPO}/releases/latest") || exit 1
 geo_release_tag=$(jq -er '.tag_name | select(type=="string" and length>0)' <<< "$geo_release_json") || exit 1
 [[ "$geo_release_tag" =~ ^[A-Za-z0-9._-]+$ ]] || exit 1
@@ -5638,8 +5649,7 @@ old_ip="$geo_txn_dir/geoip.old"; old_site="$geo_txn_dir/geosite.old"
 [[ -f /usr/local/share/xray/geosite.dat && ! -L /usr/local/share/xray/geosite.dat ]] || exit 1
 cp -a /usr/local/share/xray/geoip.dat "$old_ip" || exit 1
 cp -a /usr/local/share/xray/geosite.dat "$old_site" || exit 1
-printf '%s
-' prepared > "$geo_txn_dir/state.tmp" || exit 1
+printf '%s\n' prepared > "$geo_txn_dir/state.tmp" || exit 1
 chmod 600 "$geo_txn_dir/state.tmp" || exit 1
 mv -f "$geo_txn_dir/state.tmp" "$geo_txn_dir/state" || exit 1
 stage_ip=$(mktemp /usr/local/share/xray/.geoip.A-Box-new.XXXXXX) || exit 1
@@ -5669,6 +5679,9 @@ if ! update_geo_ownership; then
     if is_systemd; then systemctl restart xray >/dev/null 2>&1 || true; else rc-service xray restart >/dev/null 2>&1 || true; fi
     exit 1
 fi
+printf '%s\n' committed > "$geo_txn_dir/state.tmp" || exit 1
+chmod 600 "$geo_txn_dir/state.tmp" || exit 1
+mv -f "$geo_txn_dir/state.tmp" "$geo_txn_dir/state" || exit 1
 rm -rf -- "$geo_txn_dir" || exit 1
 EOF_GEO
     if [[ "${INIT_SYS:-}" == systemd ]]; then
@@ -13184,17 +13197,14 @@ wallos_install_or_update() {
     fi
     case "${ABOX_LANG:-zh}" in
         ru) msg "${GREEN}Wallos запущен: $image${NC}"; security_note="При удалённом доступе откройте TCP $port в firewall VPS/облака. Перед вводом личных данных настройте HTTPS reverse proxy: HTTP не шифруется." ;;
-        fa) msg "${GREEN}Wallos اجرا شد: $image${NC}"; security_note="برای دسترسی از راه دور، TCP $port را در فایروال VPS/ابر باز کنید. پیش از واردکردن داده شخصی HTTPS reverse proxy تنظیم کنید؛ HTTP رمزگذاری ندارد." ;;
-        zh) msg "${GREEN}Wallos 已启动：$image${NC}"; security_note="如需远程访问，请在 VPS 防火墙与云安全组放行 TCP $port。录入个人数据前配置 HTTPS 反向代理；HTTP 不加密。" ;;
-        *) msg "${GREEN}Wallos is running: $image${NC}"; security_note="Open TCP $port in the VPS firewall and cloud security group if remote access is required. Use an HTTPS reverse proxy before entering personal data; HTTP is not encrypted." ;;
+        fa) msg "${GREEN}Wallos اجرا شد: $image${NC}"; security_note="دسترسی به‌طور پیش‌فرض فقط محلی است؛ برای دسترسی از راه دور HTTPS reverse proxy یا تونل SSH تنظیم کنید." ;;
+        zh) msg "${GREEN}Wallos 已启动：$image${NC}"; security_note="默认仅本机访问；如需远程访问，请配置 HTTPS 反向代理或 SSH 隧道。" ;;
+        *) msg "${GREEN}Wallos is running: $image${NC}"; security_note="Loopback-only by default. Use an HTTPS reverse proxy or SSH tunnel for remote access." ;;
     esac
     wallos_public_urls "$port"
     msg "${YELLOW}${security_note}${NC}"
-    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
-        if confirm_yes_no "Allow TCP $port through UFW? [Y/N]: "; then ufw allow "$port/tcp" || msg "${YELLOW}Could not update UFW; add the rule manually.${NC}"; fi
-    elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-        if confirm_yes_no "Allow TCP $port through firewalld? [Y/N]: "; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}Could not update firewalld; add the rule manually.${NC}"; fi
-    fi
+    # This service is bound to loopback, so do not open its application port in host firewalls.
+    msg "${YELLOW}Wallos TCP $port remains loopback-only; firewall ports are not opened automatically.${NC}"
     [[ -z "$backup" ]] || msg "Pre-upgrade backup: $backup"
 }
 

@@ -29,6 +29,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned to a resolved commit
 
       - name: Prepare Wallos source and multi-architecture Docker archives
+        id: wallos_assets
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -98,6 +99,7 @@ jobs:
           sha256sum -c SHA256SUMS
 
       - name: Prepare benchmark and IP-quality tool mirror
+        id: test_tool_assets
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -132,7 +134,8 @@ jobs:
 
           validate_shell_script bench.sh
           validate_shell_script Check.Place.sh
-          test "$(wc -c < YABS-LICENSE)" -gt 1000
+          test "$(wc -c < YABS-LICENSE)" -gt 100
+          grep -Fq 'DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE' YABS-LICENSE
           test "$(wc -c < IPQuality-LICENSE)" -gt 1000
 
           retrieved_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
@@ -148,6 +151,7 @@ jobs:
           sha256sum -c SHA256SUMS
 
       - name: Publish Wallos stable recovery Release
+        if: always() && steps.wallos_assets.outcome == 'success'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -184,6 +188,7 @@ jobs:
           publish_release wallos-mirror "Wallos Recovery Mirror" "$notes" "$GITHUB_WORKSPACE/dist/wallos"
 
       - name: Publish test-tool stable recovery Release
+        if: always() && steps.test_tool_assets.outcome == 'success'
         shell: bash
         run: |
           set -Eeuo pipefail

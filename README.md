@@ -25,16 +25,22 @@ The project is provided “as is”, without warranty. Review the script and the
 ### Official GitHub source
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/main/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/main/install.sh -o A-Box.sh
+bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
+# After reviewing the downloaded script, execute it separately:
+sudo bash A-Box.sh
 ```
 
 ### Third-party fallback mirror
 
 ```bash
-curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/alariclin/a-box/main/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/alariclin/a-box/main/install.sh -o A-Box.sh
+bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
+# After reviewing the downloaded script, execute it separately:
+sudo bash A-Box.sh
 ```
 
-Use the official GitHub source by default. The mirror is a third-party service, not an official A-Box endpoint. The `main` branch is mutable; for production, prefer a reviewed, version-tagged release and verify its integrity before execution. After installation, enter `sb` to open the menu.
+Use the official GitHub source by default. The mirror is a third-party service, not an official A-Box endpoint. Both examples download mutable `main` content; syntax checking and SHA-256 alone do not prove publisher authenticity. Review the downloaded file before running it. For production, use a reviewed immutable commit or release and verify its checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.
 
 ## Main Features
 
@@ -82,7 +88,7 @@ The toolbox keeps all existing benchmark, IP quality, SNI, WARP, Swap, backup/re
 
 The benchmark and IP-quality options try the upstream script first, validate the downloaded content, display its SHA-256 and ask for confirmation. If the upstream endpoint fails or returns invalid content, they use the A-Box recovery Release (`test-tools-mirror`) only when the asset matches its `SHA256SUMS` entry. If both sources fail, no script is executed.
 
-Wallos is an optional self-hosted subscription tracker. The installer detects the OS and architecture (amd64, arm64 and ARMv7), selects an available port, fetches the latest non-prerelease Wallos release and its matching Docker image, and falls back to A-Box's stable-named `wallos-mirror` Release when the upstream source is unavailable. Database and uploaded logos are persisted separately; upgrades back up data and attempt rollback on a failed health check. The mirror releases are populated by the repository workflow after it is added to GitHub and run successfully. Wallos's HTTP access URL is not encrypted; use HTTPS before entering personal data and configure the VPS/cloud firewall as required.
+Wallos is an optional self-hosted subscription tracker. The installer detects OS and architecture, fetches a stable Wallos release and matching Docker image, and uses the fixed `wallos-mirror` release only if upstream retrieval fails. Backups are staged and validated before publication, and upgrades attempt rollback on a failed health check. Wallos binds to `127.0.0.1` by default; use an HTTPS reverse proxy or SSH tunnel for remote access. Publishing plain HTTP on all IPv4 interfaces requires the explicit `WALLOS_BIND_ADDRESS=0.0.0.0` override and confirmation. Refreshing mutable third-party benchmark scripts requires a manual workflow dispatch approval.
 
 BBR/FQ changes are never silently applied. DNS measurement ranks resolvers using successful live test queries from the current VPS; the result is local to that test window, not a universal ranking. DoT is enabled only when the active backend supports it; enter the upstream TLS authentication hostname so systemd-resolved can validate the DNS server certificate (for example, `1.1.1.1#cloudflare-dns.com` or `8.8.8.8#dns.google`). DoH uses `dnscrypt-proxy` and is restricted to supported package/systemd-resolved setups. DNS and timezone settings include a rollback path.
 

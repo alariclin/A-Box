@@ -12931,6 +12931,42 @@ wallos_install_runtime() {
     command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1
 }
 
+wallos_version_is_older() {
+    local older="${1#v}" newer="${2#v}" i a b
+    local -a old_parts=() new_parts=()
+    [[ "$older" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$newer" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 2
+    IFS=. read -r -a old_parts <<< "$older"
+    IFS=. read -r -a new_parts <<< "$newer"
+    for i in 0 1 2; do
+        a=$((10#${old_parts[$i]}))
+        b=$((10#${new_parts[$i]}))
+        (( a < b )) && return 0
+        (( a > b )) && return 1
+    done
+    return 1
+}
+
+wallos_candidate_version_allowed() {
+    local candidate="${1#v}" installed_image installed_version rc
+    [[ "$candidate" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    [[ "${ABOX_WALLOS_ALLOW_DOWNGRADE:-0}" == 1 ]] && return 0
+    docker container inspect wallos >/dev/null 2>&1 || return 0
+    installed_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+    installed_version="${installed_image##*:}"
+    [[ "$installed_version" == "$candidate" ]] && return 0
+    if [[ "$installed_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        wallos_version_is_older "$candidate" "$installed_version"
+        rc=$?
+        if (( rc == 0 )); then
+            msg "${RED}Refusing Wallos downgrade: candidate ${candidate}, installed ${installed_version}. Set ABOX_WALLOS_ALLOW_DOWNGRADE=1 only after reviewing schema compatibility.${NC}"
+            return 1
+        fi
+        (( rc == 1 )) && return 0
+    fi
+    msg "${RED}Cannot compare candidate Wallos ${candidate} with installed image ${installed_image}; refusing automatic fallback.${NC}"
+    return 1
+}
+
 wallos_latest_stable_tag() {
     local response tag
     response=$(curl -fLsS --retry 1 --connect-timeout 8 --max-time 20 https://api.github.com/repos/ellite/Wallos/releases/latest 2>/dev/null) || return 1
@@ -12943,7 +12979,7 @@ wallos_pull_or_restore_image() {
     local arch="$1" tag='' asset='' expected actual work manifest_url sum_url
     WALLOS_IMAGE_RESULT=''
     tag=$(wallos_latest_stable_tag 2>/dev/null || true)
-    if [[ -n "$tag" ]]; then
+    if [[ -n "$tag" ]] && wallos_candidate_version_allowed "$tag"; then
         local image_tag="${tag#v}"
         if docker pull "bellamy/wallos:$image_tag"; then
             WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
@@ -12966,6 +13002,7 @@ wallos_pull_or_restore_image() {
     fi
     tag=$(awk -F= '$1=="tag" {print $2; exit}' "$work/wallos-manifest.txt")
     [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { rm -rf -- "$work"; return 1; }
+    wallos_candidate_version_allowed "$tag" || { rm -rf -- "$work"; return 1; }
     case "$arch" in amd64|arm64|armv7) asset="wallos-linux-$arch.tar.gz" ;; *) rm -rf -- "$work"; return 1 ;; esac
     if ! curl -fLsS --connect-timeout 8 --max-time 600 \
         "https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then

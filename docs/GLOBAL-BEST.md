@@ -65,8 +65,8 @@ A-Box 应成为：**跨发行版、可审计、可回滚、客户端互通优先
 ## 4. 安全模型
 
 1. **最小权限运行用户**（`abox-xray` 等），能力边界清晰。
-2. **防火墙规则归属记账**（UFW / firewalld / nft / iptables），卸载只删自己的规则。
-3. **GitHub Release digest 为信任根**；第三方加速镜像仅作传输，digest 失败即拒绝。
+2. **防火墙规则归属记账**（UFW / firewalld / iptables）；检测到独立原生 nftables 规则集时必须 fail-closed，直到实现原生规则持久化与回滚，不能假装它是 iptables。
+3. **区分上游 digest 与灾备校验和**：上游 GitHub Release 的 `digest` 用于核验上游资产；同仓灾备的 `SHA256SUMS` 可检测传输损坏，但和资产托管于同一 GitHub 信任域，并非独立数字签名；第三方加速镜像必须按上游 digest 校验。
 4. **SNI 候选不是信任根**：本地探测 + ASN/CDN 惩罚 + 颜色分层；黑名单排除消费巨头与制裁敏感域名。
 5. **备份 HMAC**、原子写、禁止不安全 `.env` 权限。
 6. **Fail2Ban / logrotate** 可选加固，默认安全基线不依赖它们。

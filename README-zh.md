@@ -25,16 +25,22 @@ A-Box 是一个独立 Bash 脚本，用于部署和维护 Linux 网络网关服�
 ### GitHub 官方源
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/main/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/main/install.sh -o A-Box.sh
+bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
+# 审阅下载的脚本后，再单独执行：
+sudo bash A-Box.sh
 ```
 
 ### 第三方备用镜像
 
 ```bash
-curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/alariclin/a-box/main/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/alariclin/a-box/main/install.sh -o A-Box.sh
+bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
+# 审阅下载的脚本后，再单独执行：
+sudo bash A-Box.sh
 ```
 
-默认优先使用 GitHub 官方源。备用镜像属于第三方服务，并非 A-Box 官方端点。`main` 分支内容可能变化；生产环境应优先选择经过审阅、固定版本标签的发布版本，并在执行前验证完整性。安装后输入 `sb` 打开菜单。
+默认优先使用 GitHub 官方源。备用镜像属于第三方服务，并非 A-Box 官方端点。两个命令下载的都是可变的 `main` 分支；语法检查与 SHA-256 摘要本身不能证明发布者身份，执行前应审阅下载文件。生产环境应使用经过审阅的不可变提交或发布版本，并通过独立可信渠道核对摘要。全新 Alpine 系统运行前先执行 `apk add --no-cache bash curl`。安装后输入 `sb` 打开菜单。
 
 ## 主要功能
 
@@ -82,7 +88,7 @@ curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/alariclin/a-box
 
 测速和 IP 质量选项先访问上游脚本，检查内容格式和 Bash 语法，显示 SHA-256 并要求确认。上游不可用或内容无效时，才回退到 A-Box Release `test-tools-mirror`；只有 `SHA256SUMS` 校验通过才会执行。双源都失败时不会运行脚本。
 
-Wallos 是可选的自托管订阅管理工具。安装器检测系统、架构（amd64、arm64、ARMv7）、可用端口和公网地址，优先读取 Wallos 最新非预发布稳定版并获取匹配的 Docker 镜像；上游不可用时回退至 A-Box 的固定名称 Release `wallos-mirror`。数据库和上传图片独立持久化，升级前创建数据备份，健康检查失败时尝试回滚。灾备 Release 要等把仓库工作流上传 GitHub 并成功运行后才会生成。Wallos 初始访问网址使用 HTTP，不具备 TLS 加密；录入个人数据前应配置 HTTPS 反向代理，并检查 VPS 与云安全组规则。
+Wallos 是可选的自托管订阅管理工具。安装器优先读取 Wallos 稳定版与匹配的 Docker 镜像；上游不可用时回退到 `wallos-mirror`。数据备份先写入临时文件并验证，再原子提交；升级失败时会尝试通过暂存恢复流程回滚。Wallos 默认只绑定 `127.0.0.1`；远程访问应使用 HTTPS 反向代理或 SSH 隧道。只有明确设置 `WALLOS_BIND_ADDRESS=0.0.0.0` 并再次确认后，才会将未加密 HTTP 端口发布到所有 IPv4 网卡。第三方测速脚本镜像需要手动触发工作流并确认刷新。
 
 BBR/FQ 不会静默修改系统。DNS 优选根据当前 VPS 对候选解析器发起多轮真实查询，延迟和可用率只代表本次测量，不是全球通用排名。DoT 仅在当前 DNS 后端支持时启用，并要求输入上游 TLS 认证主机名，让 systemd-resolved 校验解析器证书（例如 `1.1.1.1#cloudflare-dns.com` 或 `8.8.8.8#dns.google`）；DoH 使用 `dnscrypt-proxy`，且限制在支持的软件包和 systemd-resolved 环境。DNS 与时区设置均提供回滚路径。
 

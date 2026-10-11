@@ -13120,7 +13120,17 @@ wallos_restore_backup() {
 }
 
 wallos_public_urls() {
-    local port="$1" ipv4 ipv6
+    local port="$1" ipv4 ipv6 host_ip
+    host_ip=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
+    if [[ "$host_ip" == 127.0.0.1 ]]; then
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${GREEN}Wallos local URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Use an HTTPS reverse proxy or SSH tunnel for remote access; do not expose this HTTP endpoint directly.${NC}" ;;
+            ru) msg "${GREEN}Локальный адрес Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Для доступа извне используйте HTTPS reverse proxy или SSH-туннель.${NC}" ;;
+            fa) msg "${GREEN}نشانی محلی Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.${NC}" ;;
+            *) msg "${GREEN}Wallos 本机地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}远程访问请使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端点。${NC}" ;;
+        esac
+        return 0
+    fi
     ipv4=$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null || true)
     ipv6=$(curl -6fsS --connect-timeout 3 --max-time 5 https://api64.ipify.org 2>/dev/null || true)
     case "${ABOX_LANG:-zh}" in
@@ -13156,7 +13166,7 @@ wallos_write_state() {
 }
 
 wallos_install_or_update() {
-    local arch image port tz old_image='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
+    local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
     (( EUID == 0 )) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Для установки Wallos требуются права root.${NC}" ;; fa) msg "${RED}برای نصب Wallos دسترسی root لازم است.${NC}" ;; zh) msg "${RED}安装 Wallos 需要 root 权限。${NC}" ;; *) msg "${RED}Run Wallos setup as root.${NC}" ;; esac; return 1; }
     command -v jq >/dev/null 2>&1 || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Требуется jq; сначала установите зависимости A-Box.${NC}" ;; fa) msg "${RED}به jq نیاز است؛ ابتدا وابستگی‌های A-Box را نصب کنید.${NC}" ;; zh) msg "${RED}需要 jq，请先安装 A-Box 依赖。${NC}" ;; *) msg "${RED}jq is required; install the A-Box dependencies first.${NC}" ;; esac; return 1; }
     wallos_print_host_info
@@ -13172,6 +13182,9 @@ wallos_install_or_update() {
         running=1
         [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)" == true ]] && was_running=1
         old_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+        old_bind=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
+        [[ -n "$old_bind" ]] || old_bind='0.0.0.0'
+        case "$old_bind" in 0.0.0.0|127.0.0.1) ;; *) old_bind='0.0.0.0' ;; esac
         old_port=$(wallos_state_value PORT 2>/dev/null || true)
         old_tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
         [[ -n "$old_tz" ]] || old_tz='UTC'
@@ -13193,12 +13206,24 @@ wallos_install_or_update() {
         tz=$(current_timezone_name 2>/dev/null || printf 'UTC')
         valid_timezone_name "$tz" || tz='UTC'
     fi
+    case "$bind_address" in
+        127.0.0.1|0.0.0.0) ;;
+        *) msg "${RED}WALLOS_BIND_ADDRESS must be 127.0.0.1 (safe default) or 0.0.0.0 (explicit public HTTP exposure).${NC}"; return 1 ;;
+    esac
     local confirm_prompt
     case "${ABOX_LANG:-zh}" in
-        en) confirm_prompt='Wallos stores personal subscription/financial data. The default access URL is public HTTP without TLS. Continue with this port mapping? [Y/N]: ' ;;
-        ru) confirm_prompt='Wallos хранит личные финансовые данные. Начальный URL использует HTTP без TLS. Продолжить с этим портом? [Y/N]: ' ;;
-        fa) confirm_prompt='Wallos داده‌های مالی شخصی را نگه می‌دارد. نشانی اولیه HTTP بدون TLS است. با این پورت ادامه داده شود؟ [Y/N]: ' ;;
-        *) confirm_prompt='Wallos 保存个人订阅和财务数据。默认访问网址是没有 TLS 的公网 HTTP。是否继续使用此端口？[Y/N]: ' ;;
+        en)
+            if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='WARNING: Wallos will be published on every IPv4 interface over plain HTTP. Continue only behind a trusted firewall/HTTPS reverse proxy. [Y/N]: '
+            else confirm_prompt='Wallos stores personal financial data and binds only to 127.0.0.1 by default. Use an HTTPS reverse proxy or SSH tunnel for remote access. Continue? [Y/N]: '; fi ;;
+        ru)
+            if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='ВНИМАНИЕ: Wallos будет доступен на всех IPv4-интерфейсах без TLS. Продолжайте только при наличии firewall/HTTPS reverse proxy. [Y/N]: '
+            else confirm_prompt='Wallos хранит личные данные и по умолчанию привязан только к 127.0.0.1; используйте HTTPS reverse proxy или SSH-туннель. Продолжить? [Y/N]: '; fi ;;
+        fa)
+            if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='هشدار: Wallos روی همه رابط‌های IPv4 با HTTP بدون TLS منتشر می‌شود؛ فقط با فایروال/پروکسی HTTPS مطمئن ادامه دهید. [Y/N]: '
+            else confirm_prompt='Wallos به‌طور پیش‌فرض فقط به 127.0.0.1 متصل است؛ برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید. ادامه؟ [Y/N]: '; fi ;;
+        *)
+            if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='警告：Wallos 将以明文 HTTP 绑定所有 IPv4 网卡。只有已配置防火墙/HTTPS 反向代理时才继续。[Y/N]: '
+            else confirm_prompt='Wallos 存储个人财务数据，默认仅绑定 127.0.0.1；远程访问请配置 HTTPS 反向代理或 SSH 隧道。是否继续？[Y/N]: '; fi ;;
     esac
     if ! confirm_yes_no "$confirm_prompt"; then return 0; fi
 
@@ -13220,7 +13245,7 @@ wallos_install_or_update() {
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-        -e TZ="$tz" -p "$port:80/tcp" --restart unless-stopped "$image" >/dev/null
+        -e TZ="$tz" -p "$bind_address:$port:80/tcp" --restart unless-stopped "$image" >/dev/null
     code=$?
     if (( code != 0 )) || ! wallos_wait_healthy "$port"; then
         docker rm -f wallos >/dev/null 2>&1 || true
@@ -13244,13 +13269,13 @@ wallos_install_or_update() {
                     docker run -d --name wallos --label com.alariclin.abox.managed=true \
                         -v "$WALLOS_DIR/db:/var/www/html/db" \
                         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-                        -e TZ="$old_tz" -p "$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
+                        -e TZ="$old_tz" -p "$old_bind:$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
                     wallos_wait_healthy "$old_port" || msg "${RED}Rollback container did not pass health check; inspect docker logs wallos.${NC}"
                 else
                     docker create --name wallos --label com.alariclin.abox.managed=true \
                         -v "$WALLOS_DIR/db:/var/www/html/db" \
                         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-                        -e TZ="$old_tz" -p "$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
+                        -e TZ="$old_tz" -p "$old_bind:$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
                 fi
             fi
         fi

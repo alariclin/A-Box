@@ -31,7 +31,7 @@ jobs:
           grep -Fq "ABOX_XRAY_DEFAULT_VERSION='v26.7.28'" install.sh
           grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" install.sh
           grep -Fq 'v2.13.0' install.sh
-          ! grep -Fq 'EOF_SNI_CANDIDATES' install.sh
+          if grep -Fq 'EOF_SNI_CANDIDATES' install.sh; then echo 'legacy embedded SNI candidate block found' >&2; exit 1; fi
           grep -Fq 'ABOX_SNI_CANDIDATE_URL_DEFAULT=' install.sh
           test -s data/sni-candidates.txt
           awk '

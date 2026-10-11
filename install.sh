@@ -9465,7 +9465,14 @@ EOF_DNS
             } > /etc/resolv.conf || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 写入失败。'; }
             ;;
     esac
-    write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< "backend=${backend};mode=${mode};v4=${v4};v6=${v6}" || true
+    if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< "backend=\${backend};mode=\${mode};v4=\${v4};v6=\${v6}"; then
+        if restore_dns_snapshot "$DNS_BACKUP_DIR"; then
+            msg "\${RED}DNS state metadata could not be committed; the previous DNS configuration was restored.\${NC}"
+        else
+            msg "\${RED}DNS state metadata could not be committed and automatic rollback failed. Use the DNS menu's restore option and inspect $DNS_BACKUP_DIR.\${NC}"
+        fi
+        return 1
+    fi
     case "${ABOX_LANG:-zh}" in
         en) msg "${GREEN}Host DNS was updated. Use the DNS menu to roll back.${NC}" ;;
         ru) msg "${GREEN}Системный DNS обновлён. Для отката используйте меню DNS.${NC}" ;;
@@ -9671,8 +9678,16 @@ DNSOverTLS=no
 EOF_DOH
     systemctl restart systemd-resolved >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
     if resolvectl query example.com >/dev/null 2>&1; then
-        write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< 'backend=resolved;mode=doh;proxy=dnscrypt-proxy' || true
-        msg "${GREEN}DoH proxy is running and the system resolver passed its health check.${NC}"
+        if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< 'backend=resolved;mode=doh;proxy=dnscrypt-proxy'; then
+            if restore_dns_snapshot "$DNS_BACKUP_DIR"; then
+                systemctl restart systemd-resolved >/dev/null 2>&1 || true
+                msg "\${RED}DoH state metadata could not be committed; the previous DNS configuration was restored.\${NC}"
+            else
+                msg "\${RED}DoH state metadata could not be committed and rollback failed. Restore the DNS snapshot from $DNS_BACKUP_DIR.\${NC}"
+            fi
+            return 1
+        fi
+        msg "\${GREEN}DoH proxy is running and the system resolver passed its health check.\${NC}"
         msg "${YELLOW}DoH encrypts DNS queries to the selected upstream; it does not encrypt all VPS traffic.${NC}"
     else
         restore_dns_snapshot "$DNS_BACKUP_DIR" || true

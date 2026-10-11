@@ -13392,27 +13392,7 @@ wallos_install_or_update() {
     if (( code != 0 )) || ! wallos_wait_healthy "$port"; then
         docker rm -f wallos >/dev/null 2>&1 || true
         if (( running == 1 )); then
-            # Extract and validate into a staging directory; preserve live data
-            # until every expected entry has been extracted and checked.
-            if wallos_restore_backup "$backup"; then
-                restore_ok=1
-            else
-                msg "${RED}Rollback data restore failed or the backup is invalid. The old container will not be started against incomplete data. Preserve and inspect backup: ${backup:-unavailable}${NC}"
-            fi
-            if (( restore_ok == 1 )); then
-                if (( was_running == 1 )); then
-                    docker run -d --name wallos --label com.alariclin.abox.managed=true \
-                        -v "$WALLOS_DIR/db:/var/www/html/db" \
-                        -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-                        -e TZ="$old_tz" -p "$old_bind:$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
-                    wallos_wait_healthy "$old_port" || msg "${RED}Rollback container did not pass health check; inspect docker logs wallos.${NC}"
-                else
-                    docker create --name wallos --label com.alariclin.abox.managed=true \
-                        -v "$WALLOS_DIR/db:/var/www/html/db" \
-                        -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-                        -e TZ="$old_tz" -p "$old_bind:$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
-                fi
-            fi
+            wallos_recover_interrupted_upgrade || msg "\${RED}Automatic Wallos rollback did not complete. Preserve the transaction journal at \${WALLOS_DIR}/.upgrade-transaction and backup \${backup:-unavailable}.\${NC}"
         fi
         msg "${RED}Wallos did not pass health check. Rollback was attempted.${NC}"
         return 1

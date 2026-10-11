@@ -5575,14 +5575,15 @@ except Exception:
 PY_GEO_OWNER
 }
 fetch_one() {
-    local asset="$1" out="$2" api release_json asset_json url digest expected actual size
-    api="https://api.github.com/repos/${GEO_REPO}/releases/latest"
-    release_json=$(curl -fLsS --connect-timeout 10 -m 60 -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' "$api") || return 1
+    local asset="$1" out="$2" release_json="${3:-}" release_tag asset_json url digest expected actual size
+    [[ -n "$release_json" ]] || return 1
+    release_tag=$(jq -er '.tag_name | select(type=="string" and length>0)' <<< "$release_json") || return 1
+    [[ "$release_tag" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
     asset_json=$(jq -c --arg name "$asset" 'first(.assets[]? | select(.name == $name) | {name:.name,url:.browser_download_url,digest:(.digest // "")}) // empty' <<< "$release_json")
     [[ -n "$asset_json" && "$asset_json" != null ]] || return 1
     url=$(jq -r '.url' <<< "$asset_json")
     digest=$(jq -r '.digest // ""' <<< "$asset_json")
-    [[ "$url" == "https://github.com/${GEO_REPO}/releases/download/"* && "$digest" == sha256:* ]] || return 1
+    [[ "$url" == "https://github.com/${GEO_REPO}/releases/download/${release_tag}/"* && "$digest" == sha256:* ]] || return 1
     expected="${digest#sha256:}"
     [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ ]] || return 1
     curl -fLsS --connect-timeout 10 -m 90 "$url" -o "$out" || return 1
@@ -5603,14 +5604,44 @@ elif [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]]; then
 fi
 [[ "$desired" == RUNNING ]] || exit 0
 if is_systemd; then systemctl is-active --quiet xray || exit 0; else rc-service xray status >/dev/null 2>&1 || exit 0; fi
+recover_geo_transaction() {
+    local d=/var/lib/A-Box/geo-transaction mode f
+    [[ ! -e "$d" && ! -L "$d" ]] && return 0
+    [[ -d "$d" && ! -L "$d" && "$(stat -c %u:%g "$d" 2>/dev/null || true)" == 0:0 ]] || return 1
+    mode=$(stat -c %a "$d" 2>/dev/null) || return 1
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || return 1
+    if [[ ! -f "$d/state" && ! -L "$d/state" ]]; then rm -rf -- "$d"; return $?; fi
+    [[ "$(stat -c %u:%g "$d/state" 2>/dev/null || true)" == 0:0 && "$(cat "$d/state" 2>/dev/null)" == prepared ]] || return 1
+    for f in geoip.old geosite.old; do [[ -f "$d/$f" && ! -L "$d/$f" && "$(stat -c %u:%g "$d/$f" 2>/dev/null || true)" == 0:0 ]] || return 1; done
+    install -m 644 "$d/geoip.old" /usr/local/share/xray/.geoip.A-Box-recover || return 1
+    install -m 644 "$d/geosite.old" /usr/local/share/xray/.geosite.A-Box-recover || { rm -f /usr/local/share/xray/.geoip.A-Box-recover; return 1; }
+    mv -f /usr/local/share/xray/.geoip.A-Box-recover /usr/local/share/xray/geoip.dat || return 1
+    mv -f /usr/local/share/xray/.geosite.A-Box-recover /usr/local/share/xray/geosite.dat || return 1
+    if is_systemd; then systemctl restart xray >/dev/null 2>&1 && systemctl is-active --quiet xray || return 1
+    else rc-service xray restart >/dev/null 2>&1 && rc-service xray status >/dev/null 2>&1 || return 1; fi
+    update_geo_ownership || return 1
+    rm -rf -- "$d"
+}
+recover_geo_transaction || exit 1
+geo_release_json=$(curl -fLsS --connect-timeout 10 -m 60 -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' "https://api.github.com/repos/${GEO_REPO}/releases/latest") || exit 1
+geo_release_tag=$(jq -er '.tag_name | select(type=="string" and length>0)' <<< "$geo_release_json") || exit 1
+[[ "$geo_release_tag" =~ ^[A-Za-z0-9._-]+$ ]] || exit 1
 tmpdir=$(umask 077; mktemp -d /tmp/A-Box-geo.XXXXXX) || exit 1
 trap 'rm -rf -- "$tmpdir"' EXIT
-fetch_one geoip.dat "$tmpdir/geoip.dat" || exit 1
-fetch_one geosite.dat "$tmpdir/geosite.dat" || exit 1
-old_ip="$tmpdir/geoip.old"
-old_site="$tmpdir/geosite.old"
-[[ -f /usr/local/share/xray/geoip.dat ]] && cp -a /usr/local/share/xray/geoip.dat "$old_ip"
-[[ -f /usr/local/share/xray/geosite.dat ]] && cp -a /usr/local/share/xray/geosite.dat "$old_site"
+fetch_one geoip.dat "$tmpdir/geoip.dat" "$geo_release_json" || exit 1
+fetch_one geosite.dat "$tmpdir/geosite.dat" "$geo_release_json" || exit 1
+geo_txn_dir=/var/lib/A-Box/geo-transaction
+install -d -m 700 /var/lib/A-Box || exit 1
+mkdir -m 700 "$geo_txn_dir" || exit 1
+old_ip="$geo_txn_dir/geoip.old"; old_site="$geo_txn_dir/geosite.old"
+[[ -f /usr/local/share/xray/geoip.dat && ! -L /usr/local/share/xray/geoip.dat ]] || exit 1
+[[ -f /usr/local/share/xray/geosite.dat && ! -L /usr/local/share/xray/geosite.dat ]] || exit 1
+cp -a /usr/local/share/xray/geoip.dat "$old_ip" || exit 1
+cp -a /usr/local/share/xray/geosite.dat "$old_site" || exit 1
+printf '%s
+' prepared > "$geo_txn_dir/state.tmp" || exit 1
+chmod 600 "$geo_txn_dir/state.tmp" || exit 1
+mv -f "$geo_txn_dir/state.tmp" "$geo_txn_dir/state" || exit 1
 stage_ip=$(mktemp /usr/local/share/xray/.geoip.A-Box-new.XXXXXX) || exit 1
 stage_site=$(mktemp /usr/local/share/xray/.geosite.A-Box-new.XXXXXX) || { rm -f "$stage_ip"; exit 1; }
 install -m 644 "$tmpdir/geoip.dat" "$stage_ip" || exit 1
@@ -5638,6 +5669,7 @@ if ! update_geo_ownership; then
     if is_systemd; then systemctl restart xray >/dev/null 2>&1 || true; else rc-service xray restart >/dev/null 2>&1 || true; fi
     exit 1
 fi
+rm -rf -- "$geo_txn_dir" || exit 1
 EOF_GEO
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='systemd'|" "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本运行环境标记写入失败。'

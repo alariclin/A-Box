@@ -5486,6 +5486,8 @@ DESIRED=/etc/ddr/.desired_state
 PAIR_STATE=/etc/ddr/.traffic-pair-state
 INIT_SYS_EXPECTED='unknown'
 ABOX_CORE_OWNERSHIP=/etc/ddr/.managed-core-files.tsv
+GEO_DIR=/usr/local/share/xray
+GEO_TXN="$GEO_DIR/.A-Box-geo-transaction"
 exec 9>>/run/A-Box-geo-update.lock || exit 1
 flock -n 9 || exit 0
 RUNTIME_LOCK=/run/A-Box.lock
@@ -5563,15 +5565,36 @@ except Exception:
     raise
 PY_GEO_OWNER
 }
+restore_geo_transaction() {
+    local base="$GEO_DIR" txn="$GEO_TXN" name had stage
+    [[ -d "$txn" && ! -L "$txn" && "$(stat -c %u:%g "$txn" 2>/dev/null)" == 0:0 ]] || return 1
+    for name in geoip geosite; do
+        had=$(cat "$txn/had_$name" 2>/dev/null) || return 1
+        case "$had" in
+            1)
+                [[ -f "$txn/$name.old" && ! -L "$txn/$name.old" ]] || return 1
+                stage=$(mktemp "$base/.$name.A-Box-restore.XXXXXX") || return 1
+                if ! cp -p "$txn/$name.old" "$stage" || ! mv -f "$stage" "$base/$name.dat"; then
+                    rm -f -- "$stage"
+                    return 1
+                fi
+                ;;
+            0) rm -f -- "$base/$name.dat" || return 1 ;;
+            *) return 1 ;;
+        esac
+    done
+    update_geo_ownership || return 1
+    rm -rf -- "$txn" || return 1
+}
 fetch_one() {
-    local asset="$1" out="$2" api release_json asset_json url digest expected actual size
-    api="https://api.github.com/repos/${GEO_REPO}/releases/latest"
-    release_json=$(curl -fLsS --connect-timeout 10 -m 60 -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' "$api") || return 1
+    local asset="$1" out="$2" release_file="$3" release_json asset_json url digest expected actual size
+    [[ -r "$release_file" && -f "$release_file" && ! -L "$release_file" ]] || return 1
+    release_json=$(cat -- "$release_file") || return 1
     asset_json=$(jq -c --arg name "$asset" 'first(.assets[]? | select(.name == $name) | {name:.name,url:.browser_download_url,digest:(.digest // "")}) // empty' <<< "$release_json")
     [[ -n "$asset_json" && "$asset_json" != null ]] || return 1
     url=$(jq -r '.url' <<< "$asset_json")
     digest=$(jq -r '.digest // ""' <<< "$asset_json")
-    [[ "$url" == "https://github.com/${GEO_REPO}/releases/download/"* && "$digest" == sha256:* ]] || return 1
+    [[ -n "$GEO_RELEASE_TAG" && "$url" == "https://github.com/${GEO_REPO}/releases/download/${GEO_RELEASE_TAG}/"* && "$digest" == sha256:* ]] || return 1
     expected="${digest#sha256:}"
     [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ ]] || return 1
     curl -fLsS --connect-timeout 10 -m 90 "$url" -o "$out" || return 1
@@ -5581,8 +5604,13 @@ fetch_one() {
     [[ "$size" =~ ^[0-9]+$ && "$size" -gt 500000 ]] || return 1
     ! head -c 256 "$out" 2>/dev/null | grep -Eiq '<(html|!doctype)'
 }
-[[ -d /usr/local/share/xray ]] || exit 0
+[[ -d "$GEO_DIR" && ! -L "$GEO_DIR" ]] || exit 0
 xray_owned || exit 0
+# Recover if the previous process died between GeoDB renames or during restart.
+if [[ -e "$GEO_TXN" || -L "$GEO_TXN" ]]; then
+    [[ -d "$GEO_TXN" && ! -L "$GEO_TXN" && "$(stat -c %u:%g "$GEO_TXN" 2>/dev/null)" == 0:0 ]] || exit 1
+    restore_geo_transaction || exit 1
+fi
 desired=RUNNING
 if [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] && [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]]; then
     IFS= read -r _pair < "$PAIR_STATE" || true
@@ -5594,21 +5622,35 @@ fi
 if is_systemd; then systemctl is-active --quiet xray || exit 0; else rc-service xray status >/dev/null 2>&1 || exit 0; fi
 tmpdir=$(umask 077; mktemp -d /tmp/A-Box-geo.XXXXXX) || exit 1
 trap 'rm -rf -- "$tmpdir"' EXIT
-fetch_one geoip.dat "$tmpdir/geoip.dat" || exit 1
-fetch_one geosite.dat "$tmpdir/geosite.dat" || exit 1
-old_ip="$tmpdir/geoip.old"
-old_site="$tmpdir/geosite.old"
-[[ -f /usr/local/share/xray/geoip.dat ]] && cp -a /usr/local/share/xray/geoip.dat "$old_ip"
-[[ -f /usr/local/share/xray/geosite.dat ]] && cp -a /usr/local/share/xray/geosite.dat "$old_site"
-stage_ip=$(mktemp /usr/local/share/xray/.geoip.A-Box-new.XXXXXX) || exit 1
-stage_site=$(mktemp /usr/local/share/xray/.geosite.A-Box-new.XXXXXX) || { rm -f "$stage_ip"; exit 1; }
-install -m 644 "$tmpdir/geoip.dat" "$stage_ip" || exit 1
-install -m 644 "$tmpdir/geosite.dat" "$stage_site" || exit 1
-mv -f "$stage_ip" /usr/local/share/xray/geoip.dat || exit 1
-if ! mv -f "$stage_site" /usr/local/share/xray/geosite.dat; then
-    [[ -f "$old_ip" ]] && cp -a "$old_ip" /usr/local/share/xray/geoip.dat || rm -f /usr/local/share/xray/geoip.dat
-    exit 1
+release_file="$tmpdir/release.json"
+api="https://api.github.com/repos/${GEO_REPO}/releases/latest"
+curl -fLsS --connect-timeout 10 -m 60 -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' "$api" -o "$release_file" || exit 1
+GEO_RELEASE_TAG=$(jq -er 'select(.draft == false and .prerelease == false) | .tag_name | select(type=="string" and test("^[A-Za-z0-9._-]+$"))' "$release_file" 2>/dev/null) || exit 1
+fetch_one geoip.dat "$tmpdir/geoip.dat" "$release_file" || exit 1
+fetch_one geosite.dat "$tmpdir/geosite.dat" "$release_file" || exit 1
+txn_stage=$(umask 077; mktemp -d "$GEO_DIR/.A-Box-geo-txn-new.XXXXXX") || exit 1
+chmod 700 "$txn_stage" || { rm -rf -- "$txn_stage"; exit 1; }
+if [[ -f "$GEO_DIR/geoip.dat" && ! -L "$GEO_DIR/geoip.dat" ]]; then
+    cp -p "$GEO_DIR/geoip.dat" "$txn_stage/geoip.old" || { rm -rf -- "$txn_stage"; exit 1; }
+    printf '1\n' > "$txn_stage/had_geoip"
+else
+    printf '0\n' > "$txn_stage/had_geoip"
 fi
+if [[ -f "$GEO_DIR/geosite.dat" && ! -L "$GEO_DIR/geosite.dat" ]]; then
+    cp -p "$GEO_DIR/geosite.dat" "$txn_stage/geosite.old" || { rm -rf -- "$txn_stage"; exit 1; }
+    printf '1\n' > "$txn_stage/had_geosite"
+else
+    printf '0\n' > "$txn_stage/had_geosite"
+fi
+chmod 600 "$txn_stage"/had_* "$txn_stage"/*.old 2>/dev/null || true
+chown -R root:root "$txn_stage" || { rm -rf -- "$txn_stage"; exit 1; }
+mv "$txn_stage" "$GEO_TXN" || { rm -rf -- "$txn_stage"; exit 1; }
+stage_ip=$(mktemp "$GEO_DIR/.geoip.A-Box-new.XXXXXX") || { restore_geo_transaction || true; exit 1; }
+stage_site=$(mktemp "$GEO_DIR/.geosite.A-Box-new.XXXXXX") || { rm -f "$stage_ip"; restore_geo_transaction || true; exit 1; }
+install -m 644 "$tmpdir/geoip.dat" "$stage_ip" || { rm -f "$stage_ip" "$stage_site"; restore_geo_transaction || true; exit 1; }
+install -m 644 "$tmpdir/geosite.dat" "$stage_site" || { rm -f "$stage_ip" "$stage_site"; restore_geo_transaction || true; exit 1; }
+mv -f "$stage_ip" "$GEO_DIR/geoip.dat" || { rm -f "$stage_ip" "$stage_site"; restore_geo_transaction || true; exit 1; }
+mv -f "$stage_site" "$GEO_DIR/geosite.dat" || { rm -f "$stage_site"; restore_geo_transaction || true; exit 1; }
 restart_ok=0
 if is_systemd; then
     systemctl restart xray >/dev/null 2>&1 && systemctl is-active --quiet xray && restart_ok=1
@@ -5616,17 +5658,16 @@ else
     rc-service xray restart >/dev/null 2>&1 && rc-service xray status >/dev/null 2>&1 && restart_ok=1
 fi
 if [[ "$restart_ok" != 1 ]]; then
-    [[ -f "$old_ip" ]] && cp -a "$old_ip" /usr/local/share/xray/geoip.dat || rm -f /usr/local/share/xray/geoip.dat
-    [[ -f "$old_site" ]] && cp -a "$old_site" /usr/local/share/xray/geosite.dat || rm -f /usr/local/share/xray/geosite.dat
+    restore_geo_transaction || exit 1
     if is_systemd; then systemctl restart xray >/dev/null 2>&1 || true; else rc-service xray restart >/dev/null 2>&1 || true; fi
     exit 1
 fi
 if ! update_geo_ownership; then
-    [[ -f "$old_ip" ]] && cp -a "$old_ip" /usr/local/share/xray/geoip.dat || rm -f /usr/local/share/xray/geoip.dat
-    [[ -f "$old_site" ]] && cp -a "$old_site" /usr/local/share/xray/geosite.dat || rm -f /usr/local/share/xray/geosite.dat
+    restore_geo_transaction || exit 1
     if is_systemd; then systemctl restart xray >/dev/null 2>&1 || true; else rc-service xray restart >/dev/null 2>&1 || true; fi
     exit 1
 fi
+rm -rf -- "$GEO_TXN" || exit 1
 EOF_GEO
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='systemd'|" "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本运行环境标记写入失败。'

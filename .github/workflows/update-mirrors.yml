@@ -157,7 +157,6 @@ jobs:
           set -Eeuo pipefail
           publish_release() {
             local tag="$1" title="$2" notes_file="$3" asset_dir="$4"
-            local release_id
             mapfile -t assets < <(find "$asset_dir" -maxdepth 1 -type f -print | sort)
             if (("${#assets[@]}" == 0)); then
               echo "::error::No assets found for ${tag}"
@@ -172,9 +171,7 @@ jobs:
             gh release edit "$tag" --title "$title" --notes-file "$notes_file"
             gh release upload "$tag" "${assets[@]}" --clobber
 
-            release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${tag}" --jq '.id')"
-            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
-              -F draft=false -f make_latest=false >/dev/null
+            gh release edit "$tag" --draft=false --latest=false
             echo "Published ${title}: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"
           }
 
@@ -215,7 +212,5 @@ jobs:
           gh release edit "$tag" --title "$title" --notes-file "$notes"
           gh release upload "$tag" "${assets[@]}" --clobber
 
-          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${tag}" --jq '.id')"
-          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
-            -F draft=false -f make_latest=false >/dev/null
+          gh release edit "$tag" --draft=false --latest=false
           echo "Published ${title}: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"

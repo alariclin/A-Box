@@ -16457,6 +16457,36 @@ EOF_SVC_TEST_RCUPDATE
     else
         unset -f read 2>/dev/null || true
     fi
+    # Wallos anti-downgrade comparator and backup/restore transaction tests.
+    if ! wallos_version_is_older v1.9.0 v1.10.0; then
+        echo 'FAIL: Wallos semver comparison must compare numeric components'
+        failures=$((failures + 1))
+    fi
+    if wallos_version_is_older v2.0.0 v1.99.0; then
+        echo 'FAIL: Wallos semver comparison accepted a downgrade as older'
+        failures=$((failures + 1))
+    fi
+    if ! (
+        WALLOS_DIR="$tmp/wallos-fixture"
+        mkdir -p "$WALLOS_DIR/db" "$WALLOS_DIR/logos" "$WALLOS_DIR/backups" || exit 31
+        printf 'before-upgrade\n' > "$WALLOS_DIR/db/state.txt" || exit 32
+        printf 'old-logo\n' > "$WALLOS_DIR/logos/logo.txt" || exit 33
+        printf 'image=bellamy/wallos:1.2.3\nport=8282\ntz=UTC\n' > "$WALLOS_DIR/.abox-state" || exit 34
+        backup=$(wallos_create_backup selftest) || exit 35
+        printf 'partially-migrated\n' > "$WALLOS_DIR/db/state.txt" || exit 36
+        printf 'new-logo\n' > "$WALLOS_DIR/logos/logo.txt" || exit 37
+        printf 'image=bellamy/wallos:1.2.4\nport=8282\ntz=UTC\n' > "$WALLOS_DIR/.abox-state" || exit 38
+        wallos_restore_backup "$backup" || exit 39
+        grep -Fxq 'before-upgrade' "$WALLOS_DIR/db/state.txt" || exit 40
+        grep -Fxq 'old-logo' "$WALLOS_DIR/logos/logo.txt" || exit 41
+        grep -Fxq 'image=bellamy/wallos:1.2.3' "$WALLOS_DIR/.abox-state" || exit 42
+        printf 'not-a-valid-gzip\n' > "$WALLOS_DIR/backups/wallos-corrupt.tar.gz" || exit 43
+        if wallos_restore_backup "$WALLOS_DIR/backups/wallos-corrupt.tar.gz"; then exit 44; fi
+        grep -Fxq 'before-upgrade' "$WALLOS_DIR/db/state.txt" || exit 45
+    ); then
+        echo 'FAIL: Wallos backup/restore transaction failed or damaged data on invalid archive'
+        failures=$((failures + 1))
+    fi
     if (( failures > 0 )); then
         echo "SELF_TEST_FAILED=$failures"
         selftest_cleanup

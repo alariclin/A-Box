@@ -5612,6 +5612,13 @@ xray_owned || exit 0
 if [[ -e "$GEO_TXN" || -L "$GEO_TXN" ]]; then
     [[ -d "$GEO_TXN" && ! -L "$GEO_TXN" && "$(stat -c %u:%g "$GEO_TXN" 2>/dev/null)" == 0:0 ]] || exit 1
     restore_geo_transaction || exit 1
+    # Recovery also restarts the service: if the interrupted run had already
+    # restarted Xray before dying, it may still hold the now-rolled-back data in memory.
+    if is_systemd; then
+        systemctl restart xray >/dev/null 2>&1 || exit 1
+    else
+        rc-service xray restart >/dev/null 2>&1 || exit 1
+    fi
 fi
 desired=RUNNING
 if [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] && [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]]; then

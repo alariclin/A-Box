@@ -12,11 +12,18 @@ jobs:
   shell-regression:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned to resolved commit
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
       - name: Bash syntax
         run: bash -n install.sh
-      - name: Built-in self-test
-        run: bash install.sh --self-test
+      - name: ShellCheck installation critical errors
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck --severity=error install.sh
+      - name: Lint GitHub Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/*.yml
+      - name: Built-in self-test (root-only fixtures enabled)
+        run: sudo bash install.sh --self-test
       - name: Release metadata regression
         run: |
           grep -Eq "^ABOX_BUILD='[^']+'$" install.sh
@@ -24,7 +31,7 @@ jobs:
           grep -Fq "ABOX_XRAY_DEFAULT_VERSION='v26.7.28'" install.sh
           grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" install.sh
           grep -Fq 'v2.13.0' install.sh
-          ! grep -Fq 'EOF_SNI_CANDIDATES' install.sh
+          if grep -Fq 'EOF_SNI_CANDIDATES' install.sh; then echo 'legacy embedded SNI candidate block found' >&2; exit 1; fi
           grep -Fq 'ABOX_SNI_CANDIDATE_URL_DEFAULT=' install.sh
           test -s data/sni-candidates.txt
           awk '
@@ -36,3 +43,10 @@ jobs:
           ' data/sni-candidates.txt
           duplicates=$(awk 'NF && $0 !~ /^[[:space:]]*#/ {print tolower($0)}' data/sni-candidates.txt | sort | uniq -d | wc -l)
           test "$duplicates" -eq 0
+
+      - name: Alpine clean-shell bootstrap syntax
+        run: |
+          docker run --rm -v "$PWD:/src:ro" alpine:3.22 sh -ec '
+            apk add --no-cache bash
+            bash -n /src/install.sh
+          '

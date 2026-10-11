@@ -65,8 +65,8 @@ A-Box 应成为：**跨发行版、可审计、可回滚、客户端互通优先
 ## 4. 安全模型
 
 1. **最小权限运行用户**（`abox-xray` 等），能力边界清晰。
-2. **防火墙规则归属记账**（UFW / firewalld / nft / iptables），卸载只删自己的规则。
-3. **GitHub Release digest 为信任根**；第三方加速镜像仅作传输，digest 失败即拒绝。
+2. **防火墙规则归属记账**（UFW / firewalld / iptables）；检测到独立原生 nftables 规则集时必须 fail-closed，直到实现原生规则持久化与回滚，不能假装它是 iptables。
+3. **区分上游 digest 与灾备校验和**：上游 GitHub Release 的 `digest` 用于核验上游资产；同仓灾备的 `SHA256SUMS` 可检测传输损坏，但和资产托管于同一 GitHub 信任域，并非独立数字签名；第三方加速镜像必须按上游 digest 校验。
 4. **SNI 候选不是信任根**：本地探测 + ASN/CDN 惩罚 + 颜色分层；黑名单排除消费巨头与制裁敏感域名。
 5. **备份 HMAC**、原子写、禁止不安全 `.env` 权限。
 6. **Fail2Ban / logrotate** 可选加固，默认安全基线不依赖它们。
@@ -105,8 +105,8 @@ A-Box 应成为：**跨发行版、可审计、可回滚、客户端互通优先
 
 ## 8. 核心灾备
 
-- 核心灾备的固定入口是 `core-binaries`（Release 标题 `A-Box Core Binary Mirrors`）；旧版安装脚本使用的旧入口暂时保留兼容。Wallos 和测试脚本继续使用固定名称 `wallos-mirror`、`test-tools-mirror`。
-- 下载顺序：上游 → 同仓灾备 → **保留 last-good**；镜像必须通过 `SHA256SUMS` 校验。
+- 核心灾备的固定入口是 `core-binaries`（Release 标题 `A-Box Core Binary Mirrors`）；旧版入口 `core-mirrors-v171` 已删除，仍硬编码旧 tag 的历史安装脚本无法再从该入口下载。Wallos 和测试工具分别使用 `wallos-mirror`、`test-tools-mirror`。
+- 下载顺序：上游 → 同仓灾备 → **保留 last-good**；核心灾备同时校验 `SHA256SUMS` 并拒绝与发布清单 pin 不一致的版本。该灾备仍托管在 GitHub，不能抵御整个 GitHub 域名/API/Release 同时不可用；要满足该级别的灾备目标，必须额外配置独立域名/存储和独立信任根。
 - 文档写明体积，禁止把大二进制提交进 git 树
 
 ## 9. 路线图（无承诺排序）

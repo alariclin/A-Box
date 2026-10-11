@@ -59,6 +59,10 @@ ABOX_XRAY_DEFAULT_VERSION='v26.7.28'
 # Current sing-box stable release. XHTTP is intentionally Xray-only in A-Box because
 # the official sing-box V2Ray transport list does not expose an XHTTP transport.
 ABOX_SINGBOX_DEFAULT_VERSION='v1.14.2'
+# Versions actually contained in the stable core-binaries Release. Recovery is refused for other pins.
+ABOX_XRAY_MIRROR_VERSION='v26.7.28'
+ABOX_SINGBOX_MIRROR_VERSION='v1.14.2'
+ABOX_HYSTERIA_MIRROR_VERSION='app/v2.13.0'
 # Candidate library sizing. 0 uses the hard ceiling instead of the historical
 # 4096 seed-only boundary; default 8192 keeps generated variants reachable.
 ABOX_SNI_DEFAULT_MAX=8192
@@ -3114,6 +3118,10 @@ save_firewall_rules() {
     local backup4='' backup6='' restore_failed=0
     backend=$(firewall_backend) || return 1
     case "$backend" in
+        nftables-unsupported)
+            msg "${RED}Native nftables rules detected; A-Box cannot safely persist or roll them back. No firewall rules were changed.${NC}"
+            return 1
+            ;;
         ufw|firewalld)
             remove_abox_firewall_persistence || return 1
             return 0
@@ -3208,8 +3216,34 @@ ufw_is_active() {
     LC_ALL=C ufw status 2>/dev/null | awk 'tolower($0) ~ /^status:[[:space:]]*active/ { found=1 } END { exit !found }'
 }
 
+nftables_native_rules_present() {
+    command -v nft >/dev/null 2>&1 || return 1
+    nft -nn list ruleset 2>/dev/null | awk '
+        /^[[:space:]]*table[[:space:]]+/ {
+            family=$2
+            name=$3
+            gsub(/[{}]/, "", name)
+            if (family == "inet" || family == "bridge" || family == "netdev" || family == "arp")
+                native=1
+            else if ((family == "ip" || family == "ip6") &&
+                     name !~ /^(filter|nat|mangle|raw|security)$/)
+                native=1
+        }
+        /^[[:space:]]*chain[[:space:]]+(input|forward|output)[[:space:]]*\{/ { native=1 }
+        END { exit !native }
+    '
+}
+
 firewall_backend() {
-    if ufw_is_active; then printf 'ufw\n'; elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then printf 'firewalld\n'; else printf 'iptables\n'; fi
+    if ufw_is_active; then
+        printf 'ufw\n'
+    elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+        printf 'firewalld\n'
+    elif nftables_native_rules_present; then
+        printf 'nftables-unsupported\n'
+    else
+        printf 'iptables\n'
+    fi
 }
 
 native_firewall_record_valid() {
@@ -3543,6 +3577,7 @@ remove_abox_native_firewall_rule() {
 apply_native_firewall_rules_from_state() {
     [[ ! -e "$ABOX_FW_STATE" && ! -L "$ABOX_FW_STATE" ]] && return 0
     validate_native_firewall_state_file "$ABOX_FW_STATE" || return 1
+    [[ "$(firewall_backend 2>/dev/null)" != 'nftables-unsupported' ]] || return 1
     local backend spec proto scope zone extra fw_spec failed=0
     while IFS='|' read -r backend spec proto scope zone extra; do
         [[ -n "$backend" ]] || continue
@@ -3613,6 +3648,10 @@ allowPort() {
     spec=$(normalize_port_spec "$raw_port") || die "端口或端口范围非法: $raw_port"
     [[ "$type" == tcp || "$type" == udp ]] || die "协议非法: $type"
     backend=$(firewall_backend)
+    case "$backend" in
+        iptables|ufw|firewalld) ;;
+        *) die "检测到原生 nftables 或未知防火墙后端（$backend）；A-Box 暂不支持安全地修改该后端，已拒绝放行端口。" ;;
+    esac
     case "$backend" in
         ufw)
             if ufw_owned_rule_exists "$spec" "$type"; then
@@ -3928,6 +3967,10 @@ enforce_ss_whitelist_order() {
 }
 
 clean_nat_rules() {
+    [[ "$(firewall_backend 2>/dev/null)" != 'nftables-unsupported' ]] || {
+        msg "${RED}Native nftables rules detected; refusing to mutate a parallel iptables ruleset.${NC}"
+        return 1
+    }
     local output rule failed=0 owned_re
     local -a argv=()
     owned_re='--comment "?A-Box-HY2-HOP"?([[:space:]]|$)'
@@ -3959,6 +4002,10 @@ clean_nat_rules() {
 }
 
 clean_input_rules() {
+    [[ "$(firewall_backend 2>/dev/null)" != 'nftables-unsupported' ]] || {
+        msg "${RED}Native nftables rules detected; refusing to mutate a parallel iptables ruleset.${NC}"
+        return 1
+    }
     local output rule failed=0 owned_re
     local -a argv=()
     owned_re='--comment "?A-Box-[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?"?([[:space:]]|$)'
@@ -4311,8 +4358,8 @@ PY_TAR_EXTRACT
 }
 
 github_api_get() {
-    local url="$1" attempt=1 max_attempts=3 delay=1 rc http_code tmp
-    local -a args=(-sS -L --connect-timeout 10 -m 60 -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' -o)
+    local url="$1" attempt=1 max_attempts=3 delay=1 rc http_code tmp headers retry_after remaining reset_epoch now
+    local -a args=()
     [[ -n "$url" ]] || return 1
     if [[ "${GITHUB_API_RETRY_DELAY:-1}" =~ ^[0-9]+$ ]]; then
         delay="${GITHUB_API_RETRY_DELAY:-1}"
@@ -4320,42 +4367,57 @@ github_api_get() {
         return 1
     fi
     tmp=$(umask 077; mktemp /tmp/A-Box-github-api.XXXXXX) || return 1
+    headers=$(umask 077; mktemp /tmp/A-Box-github-api-headers.XXXXXX) || { rm -f -- "$tmp"; return 1; }
+    args=(-sS -L --connect-timeout 10 -m 60 -D "$headers"
+        -H 'Accept: application/vnd.github+json'
+        -H 'X-GitHub-Api-Version: 2026-03-10' -o "$tmp")
     while (( attempt <= max_attempts )); do
+        : > "$headers" || { rm -f -- "$tmp" "$headers"; return 1; }
         if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-            [[ "${GITHUB_TOKEN}" != *[$'\r\n"\\']* ]] || { rm -f -- "$tmp"; return 1; }
-            http_code=$(printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" | curl "${args[@]}" "$tmp" -w '%{http_code}' --config - "$url" 2>/dev/null)
+            [[ "${GITHUB_TOKEN}" != *[$'\r\n"\\']* ]] || { rm -f -- "$tmp" "$headers"; return 1; }
+            http_code=$(printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" | curl "${args[@]}" -w '%{http_code}' --config - "$url" 2>/dev/null)
             rc=$?
         else
-            http_code=$(curl "${args[@]}" "$tmp" -w '%{http_code}' "$url" 2>/dev/null)
+            http_code=$(curl "${args[@]}" -w '%{http_code}' "$url" 2>/dev/null)
             rc=$?
         fi
         if (( rc == 0 )) && [[ "$http_code" =~ ^2[0-9][0-9]$ ]]; then
             cat -- "$tmp"
             rc=$?
-            rm -f -- "$tmp"
+            rm -f -- "$tmp" "$headers"
             return "$rc"
         fi
+        retry_after=$(awk 'tolower($1)=="retry-after:" {gsub("\r","",$2); value=$2} END {print value}' "$headers" 2>/dev/null)
+        remaining=$(awk 'tolower($1)=="x-ratelimit-remaining:" {gsub("\r","",$2); value=$2} END {print value}' "$headers" 2>/dev/null)
+        reset_epoch=$(awk 'tolower($1)=="x-ratelimit-reset:" {gsub("\r","",$2); value=$2} END {print value}' "$headers" 2>/dev/null)
         if (( rc == 0 )) && [[ "$http_code" =~ ^5[0-9][0-9]$ ]]; then
             :
+        elif (( rc == 0 )) && { [[ "$http_code" == 429 ]] || { [[ "$http_code" == 403 ]] && { [[ "$remaining" == 0 ]] || [[ -n "$retry_after" ]]; }; }; }; then
+            if [[ "$retry_after" =~ ^[0-9]+$ ]]; then
+                delay=$retry_after
+            elif [[ "$reset_epoch" =~ ^[0-9]+$ ]]; then
+                now=$(date +%s 2>/dev/null || printf '0')
+                if [[ "$now" =~ ^[0-9]+$ ]] && (( reset_epoch > now )); then
+                    delay=$((reset_epoch - now))
+                fi
+            fi
+            [[ -n "${GITHUB_TOKEN:-}" ]] || printf '%s\n' 'GitHub API rate limit detected; set GITHUB_TOKEN for a higher authenticated limit.' >&2
         elif (( rc == 5 || rc == 6 || rc == 7 || rc == 18 || rc == 28 || rc == 35 || rc == 52 || rc == 56 )); then
             :
         else
             if [[ "$http_code" == 403 && -z "${GITHUB_TOKEN:-}" ]]; then
-                printf '%s\n' 'GitHub API 返回 403；共享出口可能触发匿名限流，请设置 GITHUB_TOKEN 后重试。' >&2
+                printf '%s\n' 'GitHub API returned 403; shared anonymous API rate limits may be exhausted.' >&2
             fi
-            rm -f -- "$tmp"
+            rm -f -- "$tmp" "$headers"
             return 1
         fi
-        if (( attempt == max_attempts )); then
-            break
-        fi
+        if (( attempt == max_attempts )); then break; fi
+        if (( delay > 30 )); then delay=30; fi
         if (( delay > 0 )); then sleep "$delay"; fi
-        if (( delay < 30 )); then
-            delay=$(( delay * 2 ))
-        fi
+        if (( delay < 30 )); then delay=$((delay * 2)); fi
         attempt=$((attempt + 1))
     done
-    rm -f -- "$tmp"
+    rm -f -- "$tmp" "$headers"
     return 1
 }
 
@@ -4529,8 +4591,17 @@ fetch_github_release() {
     fi
 
     release_json=$(github_api_get "$api_url" 2>/dev/null) || release_json=''
-    [[ -n "$release_json" ]] || die 'GitHub Release API 请求失败；为保证 digest 信任根，不使用第三方镜像 API。'
+    if [[ -z "$dest_file" ]]; then
+        tmp_dir=$(mktemp -d /tmp/A-Box-asset.XXXXXX) || die '核心资产临时目录创建失败。'
+        dest_file="$tmp_dir/$output_file"
+    else
+        mkdir -p "$(dirname "$dest_file")" || die '核心资产目标目录创建失败。'
+    fi
+    if [[ -z "$release_json" ]]; then
+        msg "${YELLOW}[!] GitHub Release API unavailable or rate-limited; trying the version-checked A-Box mirror.${NC}"
+    fi
 
+    if [[ -n "$release_json" ]]; then
     if [[ "$repo:$output_file" == 'SagerNet/sing-box:singbox_core.tar.gz' ]]; then
         asset_json=$(singbox_asset_json_from_release "$release_json") || die '未能解析 sing-box 核心资产下载地址。'
     else
@@ -4575,43 +4646,14 @@ fetch_github_release() {
         fi
         rm -f "$tmp_file"
     done
-    # Disaster fallback: stable same-repo GitHub Release assets (core-binaries), verified against SHA256SUMS.
-    local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf
-    mirror_base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
-    case "$repo:$output_file" in
-        XTLS/Xray-core:xray_core.zip) asset_leaf="Xray-linux-${XRAY_ARCH}.zip" ;;
-        SagerNet/sing-box:singbox_core.tar.gz)
-            _sb_ver="${ABOX_SINGBOX_VERSION:-$ABOX_SINGBOX_DEFAULT_VERSION}"
-            _sb_ver="${_sb_ver#v}"
-            if [[ "${release:-}" == 'alpine' ]]; then
-                asset_leaf="sing-box-${_sb_ver}-linux-${SB_ARCH}-musl.tar.gz"
-            else
-                asset_leaf="sing-box-${_sb_ver}-linux-${SB_ARCH}-glibc.tar.gz"
-            fi
-            ;;
-        HyNetworks/hysteria:hysteria_core) asset_leaf="hysteria-linux-${HY2_ARCH}" ;;
-        *) asset_leaf='' ;;
-    esac
-    if [[ -n "$asset_leaf" && -n "$mirror_base" ]]; then
-        msg "${YELLOW}[!] 上游 Release 通道失败；尝试 A-Box 灾备镜像 ${mirror_base}/${asset_leaf}${NC}"
-        mirror_url="${mirror_base%/}/${asset_leaf}"
-        mirror_sum="${mirror_base%/}/SHA256SUMS"
-        tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || die '灾备下载临时文件创建失败。'
-        if curl -fLsS --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then
-            if validate_downloaded_asset "$output_file" "$tmp_file"; then
-                expect_sum=$(curl -fsS --connect-timeout 8 -m 30 "$mirror_sum" 2>/dev/null | awk -v f="$asset_leaf" '$2==f || $2==("./" f) || $2~(f"$") {print $1; exit}')
-                got_sum=$(sha256sum "$tmp_file" | awk '{print $1}')
-                if [[ -n "$expect_sum" && "$expect_sum" =~ ^[A-Fa-f0-9]{64}$ && "${got_sum,,}" == "${expect_sum,,}" ]]; then
-                    mv -f "$tmp_file" "$dest_file" || { rm -f "$tmp_file"; die '灾备资产原子提交失败。'; }
-                    msg "${GREEN}   已从 A-Box 灾备 Release 取得核心资产（SHA256 已校验）。${NC}"
-                    return 0
-                fi
-                msg "${YELLOW}[!] 灾备 SHA256 校验失败或缺少 SHA256SUMS。${NC}"
-            fi
-        fi
-        rm -f "$tmp_file"
+    else
+        msg "${YELLOW}[!] No upstream release metadata; skipping upstream downloads and trying only the trusted A-Box mirror.${NC}"
     fi
-    # Last resort: keep last-good installed binary in place (caller rollback paths).
+
+    # Share the same exact-version validator between mirror-first and disaster fallback.
+    if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file"; then
+        return 0
+    fi
     die '所有通道（上游 + A-Box 灾备）均无法下载核心资产。请检查网络；已安装的二进制不会被半截覆盖。'
 }
 
@@ -4945,10 +4987,15 @@ validate_fail2ban_config_or_die() {
 2026-07-25T10:00:01Z authentication failed from [2001:db8::7]:443
 2026-07-25T10:00:02Z proxy/vless/inbound: invalid request from 198.51.100.9:44321 > proxy/vless/encoding
 2026-07-25T10:00:03Z client=198.51.100.8 rejected
+2026-07-25T10:00:04Z health check succeeded without authentication failure
 EOF_F2B_SAMPLE
         out=$(fail2ban-regex "$sample" /etc/fail2ban/filter.d/A-Box.conf 2>&1) || { rm -f "$sample"; printf '%s\n' "$out" >&2; die 'Fail2Ban 正则测试执行失败。'; }
         rm -f "$sample"
-        grep -Eq '^[[:space:]]*[2-9][0-9]*[[:space:]]+total|Failregex:[[:space:]]*[2-9]' <<< "$out" || { printf '%s\n' "$out" >&2; die 'Fail2Ban 过滤器未匹配代表性认证失败日志。'; }
+        local summary matched_count missed_count
+        summary=$(grep -E '^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, [0-9]+ missed' <<< "$out" | tail -n 1)
+        matched_count=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, ([0-9]+) matched, [0-9]+ missed.*/\\1/p' <<< "$summary")
+        missed_count=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, ([0-9]+) missed.*/\\1/p' <<< "$summary")
+        [[ "$matched_count" =~ ^[0-9]+$ && "$missed_count" =~ ^[0-9]+$ ]] && (( matched_count >= 1 && missed_count >= 1 )) || { printf '%s\n' "$out" >&2; die 'Fail2Ban must match a representative failure log and leave a benign log unmatched.'; }
     fi
 }
 
@@ -5484,6 +5531,8 @@ DESIRED=/etc/ddr/.desired_state
 PAIR_STATE=/etc/ddr/.traffic-pair-state
 INIT_SYS_EXPECTED='unknown'
 ABOX_CORE_OWNERSHIP=/etc/ddr/.managed-core-files.tsv
+GEO_DIR=/usr/local/share/xray
+GEO_TXN="$GEO_DIR/.A-Box-geo-transaction"
 exec 9>>/run/A-Box-geo-update.lock || exit 1
 flock -n 9 || exit 0
 RUNTIME_LOCK=/run/A-Box.lock
@@ -5561,15 +5610,36 @@ except Exception:
     raise
 PY_GEO_OWNER
 }
+restore_geo_transaction() {
+    local base="$GEO_DIR" txn="$GEO_TXN" name had stage
+    [[ -d "$txn" && ! -L "$txn" && "$(stat -c %u:%g "$txn" 2>/dev/null)" == 0:0 ]] || return 1
+    for name in geoip geosite; do
+        had=$(cat "$txn/had_$name" 2>/dev/null) || return 1
+        case "$had" in
+            1)
+                [[ -f "$txn/$name.old" && ! -L "$txn/$name.old" ]] || return 1
+                stage=$(mktemp "$base/.$name.A-Box-restore.XXXXXX") || return 1
+                if ! cp -p "$txn/$name.old" "$stage" || ! mv -f "$stage" "$base/$name.dat"; then
+                    rm -f -- "$stage"
+                    return 1
+                fi
+                ;;
+            0) rm -f -- "$base/$name.dat" || return 1 ;;
+            *) return 1 ;;
+        esac
+    done
+    update_geo_ownership || return 1
+    rm -rf -- "$txn" || return 1
+}
 fetch_one() {
-    local asset="$1" out="$2" api release_json asset_json url digest expected actual size
-    api="https://api.github.com/repos/${GEO_REPO}/releases/latest"
-    release_json=$(curl -fLsS --connect-timeout 10 -m 60 -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' "$api") || return 1
+    local asset="$1" out="$2" release_file="$3" release_json asset_json url digest expected actual size
+    [[ -r "$release_file" && -f "$release_file" && ! -L "$release_file" ]] || return 1
+    release_json=$(cat -- "$release_file") || return 1
     asset_json=$(jq -c --arg name "$asset" 'first(.assets[]? | select(.name == $name) | {name:.name,url:.browser_download_url,digest:(.digest // "")}) // empty' <<< "$release_json")
     [[ -n "$asset_json" && "$asset_json" != null ]] || return 1
     url=$(jq -r '.url' <<< "$asset_json")
     digest=$(jq -r '.digest // ""' <<< "$asset_json")
-    [[ "$url" == "https://github.com/${GEO_REPO}/releases/download/"* && "$digest" == sha256:* ]] || return 1
+    [[ -n "$GEO_RELEASE_TAG" && "$url" == "https://github.com/${GEO_REPO}/releases/download/${GEO_RELEASE_TAG}/"* && "$digest" == sha256:* ]] || return 1
     expected="${digest#sha256:}"
     [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ ]] || return 1
     curl -fLsS --connect-timeout 10 -m 90 "$url" -o "$out" || return 1
@@ -5579,8 +5649,20 @@ fetch_one() {
     [[ "$size" =~ ^[0-9]+$ && "$size" -gt 500000 ]] || return 1
     ! head -c 256 "$out" 2>/dev/null | grep -Eiq '<(html|!doctype)'
 }
-[[ -d /usr/local/share/xray ]] || exit 0
+[[ -d "$GEO_DIR" && ! -L "$GEO_DIR" ]] || exit 0
 xray_owned || exit 0
+# Recover if the previous process died between GeoDB renames or during restart.
+if [[ -e "$GEO_TXN" || -L "$GEO_TXN" ]]; then
+    [[ -d "$GEO_TXN" && ! -L "$GEO_TXN" && "$(stat -c %u:%g "$GEO_TXN" 2>/dev/null)" == 0:0 ]] || exit 1
+    restore_geo_transaction || exit 1
+    # Recovery also restarts the service: if the interrupted run had already
+    # restarted Xray before dying, it may still hold the now-rolled-back data in memory.
+    if is_systemd; then
+        systemctl restart xray >/dev/null 2>&1 || exit 1
+    else
+        rc-service xray restart >/dev/null 2>&1 || exit 1
+    fi
+fi
 desired=RUNNING
 if [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] && [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]]; then
     IFS= read -r _pair < "$PAIR_STATE" || true
@@ -5592,21 +5674,35 @@ fi
 if is_systemd; then systemctl is-active --quiet xray || exit 0; else rc-service xray status >/dev/null 2>&1 || exit 0; fi
 tmpdir=$(umask 077; mktemp -d /tmp/A-Box-geo.XXXXXX) || exit 1
 trap 'rm -rf -- "$tmpdir"' EXIT
-fetch_one geoip.dat "$tmpdir/geoip.dat" || exit 1
-fetch_one geosite.dat "$tmpdir/geosite.dat" || exit 1
-old_ip="$tmpdir/geoip.old"
-old_site="$tmpdir/geosite.old"
-[[ -f /usr/local/share/xray/geoip.dat ]] && cp -a /usr/local/share/xray/geoip.dat "$old_ip"
-[[ -f /usr/local/share/xray/geosite.dat ]] && cp -a /usr/local/share/xray/geosite.dat "$old_site"
-stage_ip=$(mktemp /usr/local/share/xray/.geoip.A-Box-new.XXXXXX) || exit 1
-stage_site=$(mktemp /usr/local/share/xray/.geosite.A-Box-new.XXXXXX) || { rm -f "$stage_ip"; exit 1; }
-install -m 644 "$tmpdir/geoip.dat" "$stage_ip" || exit 1
-install -m 644 "$tmpdir/geosite.dat" "$stage_site" || exit 1
-mv -f "$stage_ip" /usr/local/share/xray/geoip.dat || exit 1
-if ! mv -f "$stage_site" /usr/local/share/xray/geosite.dat; then
-    [[ -f "$old_ip" ]] && cp -a "$old_ip" /usr/local/share/xray/geoip.dat || rm -f /usr/local/share/xray/geoip.dat
-    exit 1
+release_file="$tmpdir/release.json"
+api="https://api.github.com/repos/${GEO_REPO}/releases/latest"
+curl -fLsS --connect-timeout 10 -m 60 -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' "$api" -o "$release_file" || exit 1
+GEO_RELEASE_TAG=$(jq -er 'select(.draft == false and .prerelease == false) | .tag_name | select(type=="string" and test("^[A-Za-z0-9._-]+$"))' "$release_file" 2>/dev/null) || exit 1
+fetch_one geoip.dat "$tmpdir/geoip.dat" "$release_file" || exit 1
+fetch_one geosite.dat "$tmpdir/geosite.dat" "$release_file" || exit 1
+txn_stage=$(umask 077; mktemp -d "$GEO_DIR/.A-Box-geo-txn-new.XXXXXX") || exit 1
+chmod 700 "$txn_stage" || { rm -rf -- "$txn_stage"; exit 1; }
+if [[ -f "$GEO_DIR/geoip.dat" && ! -L "$GEO_DIR/geoip.dat" ]]; then
+    cp -p "$GEO_DIR/geoip.dat" "$txn_stage/geoip.old" || { rm -rf -- "$txn_stage"; exit 1; }
+    printf '1\n' > "$txn_stage/had_geoip"
+else
+    printf '0\n' > "$txn_stage/had_geoip"
 fi
+if [[ -f "$GEO_DIR/geosite.dat" && ! -L "$GEO_DIR/geosite.dat" ]]; then
+    cp -p "$GEO_DIR/geosite.dat" "$txn_stage/geosite.old" || { rm -rf -- "$txn_stage"; exit 1; }
+    printf '1\n' > "$txn_stage/had_geosite"
+else
+    printf '0\n' > "$txn_stage/had_geosite"
+fi
+chmod 600 "$txn_stage"/had_* "$txn_stage"/*.old 2>/dev/null || true
+chown -R root:root "$txn_stage" || { rm -rf -- "$txn_stage"; exit 1; }
+mv "$txn_stage" "$GEO_TXN" || { rm -rf -- "$txn_stage"; exit 1; }
+stage_ip=$(mktemp "$GEO_DIR/.geoip.A-Box-new.XXXXXX") || { restore_geo_transaction || true; exit 1; }
+stage_site=$(mktemp "$GEO_DIR/.geosite.A-Box-new.XXXXXX") || { rm -f "$stage_ip"; restore_geo_transaction || true; exit 1; }
+install -m 644 "$tmpdir/geoip.dat" "$stage_ip" || { rm -f "$stage_ip" "$stage_site"; restore_geo_transaction || true; exit 1; }
+install -m 644 "$tmpdir/geosite.dat" "$stage_site" || { rm -f "$stage_ip" "$stage_site"; restore_geo_transaction || true; exit 1; }
+mv -f "$stage_ip" "$GEO_DIR/geoip.dat" || { rm -f "$stage_ip" "$stage_site"; restore_geo_transaction || true; exit 1; }
+mv -f "$stage_site" "$GEO_DIR/geosite.dat" || { rm -f "$stage_site"; restore_geo_transaction || true; exit 1; }
 restart_ok=0
 if is_systemd; then
     systemctl restart xray >/dev/null 2>&1 && systemctl is-active --quiet xray && restart_ok=1
@@ -5614,17 +5710,16 @@ else
     rc-service xray restart >/dev/null 2>&1 && rc-service xray status >/dev/null 2>&1 && restart_ok=1
 fi
 if [[ "$restart_ok" != 1 ]]; then
-    [[ -f "$old_ip" ]] && cp -a "$old_ip" /usr/local/share/xray/geoip.dat || rm -f /usr/local/share/xray/geoip.dat
-    [[ -f "$old_site" ]] && cp -a "$old_site" /usr/local/share/xray/geosite.dat || rm -f /usr/local/share/xray/geosite.dat
+    restore_geo_transaction || exit 1
     if is_systemd; then systemctl restart xray >/dev/null 2>&1 || true; else rc-service xray restart >/dev/null 2>&1 || true; fi
     exit 1
 fi
 if ! update_geo_ownership; then
-    [[ -f "$old_ip" ]] && cp -a "$old_ip" /usr/local/share/xray/geoip.dat || rm -f /usr/local/share/xray/geoip.dat
-    [[ -f "$old_site" ]] && cp -a "$old_site" /usr/local/share/xray/geosite.dat || rm -f /usr/local/share/xray/geosite.dat
+    restore_geo_transaction || exit 1
     if is_systemd; then systemctl restart xray >/dev/null 2>&1 || true; else rc-service xray restart >/dev/null 2>&1 || true; fi
     exit 1
 fi
+rm -rf -- "$GEO_TXN" || exit 1
 EOF_GEO
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='systemd'|" "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本运行环境标记写入失败。'
@@ -8294,22 +8389,41 @@ probe_core_sources_banner() {
 }
 
 fetch_abox_mirror_asset() {
-    # Try disaster mirror for current repo:output_file; verify SHA256SUMS. Used by prefer-mirror and fallback.
+    # Same-repository Release only. Asset checksums do not prove version identity.
     local repo=$1 output_file=$2 dest_file=$3
-    local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf tmp_file _sb_ver
+    local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf tmp_file _sb_ver requested_version
     mirror_base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     [[ -n "$mirror_base" ]] || return 1
     case "$repo:$output_file" in
-        XTLS/Xray-core:xray_core.zip) asset_leaf="Xray-linux-${XRAY_ARCH}.zip" ;;
+        XTLS/Xray-core:xray_core.zip)
+            requested_version="${ABOX_XRAY_VERSION:-$ABOX_XRAY_DEFAULT_VERSION}"
+            [[ "$requested_version" == "$ABOX_XRAY_MIRROR_VERSION" ]] || {
+                msg "${YELLOW}[!] Mirror contains Xray ${ABOX_XRAY_MIRROR_VERSION}, not requested ${requested_version}; refusing mismatch.${NC}"
+                return 1
+            }
+            asset_leaf="Xray-linux-${XRAY_ARCH}.zip"
+            ;;
         SagerNet/sing-box:singbox_core.tar.gz)
-            _sb_ver="${ABOX_SINGBOX_VERSION:-$ABOX_SINGBOX_DEFAULT_VERSION}"; _sb_ver="${_sb_ver#v}"
+            requested_version="${ABOX_SINGBOX_VERSION:-$ABOX_SINGBOX_DEFAULT_VERSION}"
+            [[ "$requested_version" == "$ABOX_SINGBOX_MIRROR_VERSION" ]] || {
+                msg "${YELLOW}[!] Mirror contains sing-box ${ABOX_SINGBOX_MIRROR_VERSION}, not requested ${requested_version}.${NC}"
+                return 1
+            }
+            _sb_ver="${requested_version#v}"
             if [[ "${release:-}" == 'alpine' ]]; then
                 asset_leaf="sing-box-${_sb_ver}-linux-${SB_ARCH}-musl.tar.gz"
             else
                 asset_leaf="sing-box-${_sb_ver}-linux-${SB_ARCH}-glibc.tar.gz"
             fi
             ;;
-        HyNetworks/hysteria:hysteria_core) asset_leaf="hysteria-linux-${HY2_ARCH}" ;;
+        HyNetworks/hysteria:hysteria_core)
+            requested_version="${ABOX_HYSTERIA_APP_VERSION:-app/v2.13.0}"
+            [[ "$requested_version" == "$ABOX_HYSTERIA_MIRROR_VERSION" ]] || {
+                msg "${YELLOW}[!] Mirror contains Hysteria ${ABOX_HYSTERIA_MIRROR_VERSION}, not requested ${requested_version}.${NC}"
+                return 1
+            }
+            asset_leaf="hysteria-linux-${HY2_ARCH}"
+            ;;
         *) return 1 ;;
     esac
     mirror_url="${mirror_base%/}/${asset_leaf}"
@@ -8329,10 +8443,9 @@ fetch_abox_mirror_asset() {
         rm -f "$tmp_file"; return 1
     fi
     mv -f "$tmp_file" "$dest_file" || { rm -f "$tmp_file"; return 1; }
-    msg "${GREEN}   mirror asset OK (SHA256 verified).${NC}"
+    msg "${GREEN}   mirror asset OK (SHA256 verified; release version matches).${NC}"
     return 0
 }
-
 one_click_reality_deploy() {
     local choice answer prompt
     clear
@@ -9395,7 +9508,14 @@ EOF_DNS
             } > /etc/resolv.conf || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 写入失败。'; }
             ;;
     esac
-    write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< "backend=${backend};mode=${mode};v4=${v4};v6=${v6}" || true
+    if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< "backend=\${backend};mode=\${mode};v4=\${v4};v6=\${v6}"; then
+        if restore_dns_snapshot "$DNS_BACKUP_DIR"; then
+            msg "\${RED}DNS state metadata could not be committed; the previous DNS configuration was restored.\${NC}"
+        else
+            msg "\${RED}DNS state metadata could not be committed and automatic rollback failed. Use the DNS menu's restore option and inspect $DNS_BACKUP_DIR.\${NC}"
+        fi
+        return 1
+    fi
     case "${ABOX_LANG:-zh}" in
         en) msg "${GREEN}Host DNS was updated. Use the DNS menu to roll back.${NC}" ;;
         ru) msg "${GREEN}Системный DNS обновлён. Для отката используйте меню DNS.${NC}" ;;
@@ -9601,8 +9721,16 @@ DNSOverTLS=no
 EOF_DOH
     systemctl restart systemd-resolved >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
     if resolvectl query example.com >/dev/null 2>&1; then
-        write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< 'backend=resolved;mode=doh;proxy=dnscrypt-proxy' || true
-        msg "${GREEN}DoH proxy is running and the system resolver passed its health check.${NC}"
+        if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< 'backend=resolved;mode=doh;proxy=dnscrypt-proxy'; then
+            if restore_dns_snapshot "$DNS_BACKUP_DIR"; then
+                systemctl restart systemd-resolved >/dev/null 2>&1 || true
+                msg "\${RED}DoH state metadata could not be committed; the previous DNS configuration was restored.\${NC}"
+            else
+                msg "\${RED}DoH state metadata could not be committed and rollback failed. Restore the DNS snapshot from $DNS_BACKUP_DIR.\${NC}"
+            fi
+            return 1
+        fi
+        msg "\${GREEN}DoH proxy is running and the system resolver passed its health check.\${NC}"
         msg "${YELLOW}DoH encrypts DNS queries to the selected upstream; it does not encrypt all VPS traffic.${NC}"
     else
         restore_dns_snapshot "$DNS_BACKUP_DIR" || true
@@ -12159,6 +12287,7 @@ backup_current_config() {
     collect_abox_cron > "$work/meta/cron.abox.txt" 2>/dev/null || backup_failed=1
     capture_managed_service_state "$work/meta/services.state" || backup_failed=1
     backend=$(firewall_backend); printf '%s\n' "$backend" > "$work/meta/firewall.backend"
+    [[ "$backend" != 'nftables-unsupported' ]] || backup_failed=1
     capture_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 || backup_failed=1
     capture_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 || backup_failed=1
     (( backup_failed == 0 )) || { rm -rf "$work"; die 'Backup aborted because an existing A-Box path could not be copied.'; }
@@ -12870,6 +12999,42 @@ wallos_install_runtime() {
     command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1
 }
 
+wallos_version_is_older() {
+    local older="${1#v}" newer="${2#v}" i a b
+    local -a old_parts=() new_parts=()
+    [[ "$older" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$newer" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 2
+    IFS=. read -r -a old_parts <<< "$older"
+    IFS=. read -r -a new_parts <<< "$newer"
+    for i in 0 1 2; do
+        a=$((10#${old_parts[$i]}))
+        b=$((10#${new_parts[$i]}))
+        (( a < b )) && return 0
+        (( a > b )) && return 1
+    done
+    return 1
+}
+
+wallos_candidate_version_allowed() {
+    local candidate="${1#v}" installed_image installed_version rc
+    [[ "$candidate" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    [[ "${ABOX_WALLOS_ALLOW_DOWNGRADE:-0}" == 1 ]] && return 0
+    docker container inspect wallos >/dev/null 2>&1 || return 0
+    installed_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+    installed_version="${installed_image##*:}"
+    [[ "$installed_version" == "$candidate" ]] && return 0
+    if [[ "$installed_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        wallos_version_is_older "$candidate" "$installed_version"
+        rc=$?
+        if (( rc == 0 )); then
+            msg "${RED}Refusing Wallos downgrade: candidate ${candidate}, installed ${installed_version}. Set ABOX_WALLOS_ALLOW_DOWNGRADE=1 only after reviewing schema compatibility.${NC}"
+            return 1
+        fi
+        (( rc == 1 )) && return 0
+    fi
+    msg "${RED}Cannot compare candidate Wallos ${candidate} with installed image ${installed_image}; refusing automatic fallback.${NC}"
+    return 1
+}
+
 wallos_latest_stable_tag() {
     local response tag
     response=$(curl -fLsS --retry 1 --connect-timeout 8 --max-time 20 https://api.github.com/repos/ellite/Wallos/releases/latest 2>/dev/null) || return 1
@@ -12882,7 +13047,7 @@ wallos_pull_or_restore_image() {
     local arch="$1" tag='' asset='' expected actual work manifest_url sum_url
     WALLOS_IMAGE_RESULT=''
     tag=$(wallos_latest_stable_tag 2>/dev/null || true)
-    if [[ -n "$tag" ]]; then
+    if [[ -n "$tag" ]] && wallos_candidate_version_allowed "$tag"; then
         local image_tag="${tag#v}"
         if docker pull "bellamy/wallos:$image_tag"; then
             WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
@@ -12905,6 +13070,7 @@ wallos_pull_or_restore_image() {
     fi
     tag=$(awk -F= '$1=="tag" {print $2; exit}' "$work/wallos-manifest.txt")
     [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { rm -rf -- "$work"; return 1; }
+    wallos_candidate_version_allowed "$tag" || { rm -rf -- "$work"; return 1; }
     case "$arch" in amd64|arm64|armv7) asset="wallos-linux-$arch.tar.gz" ;; *) rm -rf -- "$work"; return 1 ;; esac
     if ! curl -fLsS --connect-timeout 8 --max-time 600 \
         "https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then
@@ -12942,20 +13108,203 @@ wallos_wait_healthy() {
 }
 
 wallos_create_backup() {
-    local stamp="$1" backup="$WALLOS_DIR/backups/wallos-$1.tar.gz"
+    local stamp="$1" backup="$WALLOS_DIR/backups/wallos-$1.tar.gz" temp list old
     mkdir -p "$WALLOS_DIR/backups" || return 1
     chmod 700 "$WALLOS_DIR/backups" || return 1
-    [[ -d "$WALLOS_DIR/db" && -d "$WALLOS_DIR/logos" ]] || return 1
-    tar -czf "$backup" -C "$WALLOS_DIR" db logos .abox-state || return 1
-    chmod 600 "$backup" || return 1
+    [[ -d "$WALLOS_DIR/db" && ! -L "$WALLOS_DIR/db" &&
+       -d "$WALLOS_DIR/logos" && ! -L "$WALLOS_DIR/logos" &&
+       -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]] || return 1
+    temp=$(umask 077; mktemp "$backup.tmp.XXXXXX") || return 1
+    if ! tar -czf "$temp" -C "$WALLOS_DIR" db logos .abox-state ||
+       ! gzip -t "$temp" ||
+       ! tar -tzf "$temp" > "$temp.list"; then
+        rm -f -- "$temp" "$temp.list"
+        return 1
+    fi
+    list=$(cat "$temp.list") || { rm -f -- "$temp" "$temp.list"; return 1; }
+    [[ "$list" == *"db/"* && "$list" == *"logos/"* && "$list" == *".abox-state"* ]] || {
+        rm -f -- "$temp" "$temp.list"; return 1;
+    }
+    rm -f -- "$temp.list"
+    chmod 600 "$temp" || { rm -f -- "$temp"; return 1; }
+    sync -f "$temp" 2>/dev/null || true
+    mv -f "$temp" "$backup" || { rm -f -- "$temp"; return 1; }
+    sync -f "$WALLOS_DIR/backups" 2>/dev/null || true
     find "$WALLOS_DIR/backups" -maxdepth 1 -type f -name 'wallos-*.tar.gz' -printf '%T@ %p\n' 2>/dev/null |
         sort -nr | awk 'NR>5 {$1=""; sub(/^ /, ""); print}' |
         while IFS= read -r old; do [[ "$old" == "$backup" ]] || rm -f -- "$old"; done
     printf '%s\n' "$backup"
 }
 
+wallos_restore_backup() {
+    local backup="$1" stamp stage listing rescue name restore_name
+    [[ -f "$backup" && ! -L "$backup" ]] || return 1
+    gzip -t "$backup" || return 1
+    listing=$(tar -tzf "$backup" 2>/dev/null) || return 1
+    grep -Eq '^db/?$' <<< "$listing" && grep -Eq '^logos/?$' <<< "$listing" &&
+        grep -Fxq '.abox-state' <<< "$listing" || return 1
+    if grep -Eq '(^/|(^|/)\.\.(/|$))' <<< "$listing" ||
+       grep -Ev '^(db(/.*)?|logos(/.*)?|\.abox-state)$' <<< "$listing" >/dev/null; then
+        return 1
+    fi
+    stage=$(umask 077; mktemp -d "$WALLOS_DIR/.restore-stage.XXXXXX") || return 1
+    if ! tar -xzf "$backup" -C "$stage" ||
+       [[ ! -d "$stage/db" || -L "$stage/db" ||
+          ! -d "$stage/logos" || -L "$stage/logos" ||
+          ! -f "$stage/.abox-state" || -L "$stage/.abox-state" ]]; then
+        rm -rf -- "$stage"
+        return 1
+    fi
+    stamp=$(date -u '+%Y%m%dT%H%M%SZ')
+    rescue="$WALLOS_DIR/.restore-preserve-$stamp-$$"
+    mkdir -m 700 "$rescue" || { rm -rf -- "$stage"; return 1; }
+    for name in db logos .abox-state; do
+        if [[ -e "$WALLOS_DIR/$name" || -L "$WALLOS_DIR/$name" ]]; then
+            mv -- "$WALLOS_DIR/$name" "$rescue/$name" || {
+                for restore_name in db logos .abox-state; do
+                    [[ -e "$rescue/$restore_name" && ! -e "$WALLOS_DIR/$restore_name" ]] &&
+                        mv -- "$rescue/$restore_name" "$WALLOS_DIR/$restore_name" || true
+                done
+                rm -rf -- "$stage"
+                return 1
+            }
+        fi
+    done
+    for name in db logos .abox-state; do
+        if ! mv -- "$stage/$name" "$WALLOS_DIR/$name"; then
+            for restore_name in db logos .abox-state; do
+                [[ -e "$WALLOS_DIR/$restore_name" ]] && mv -- "$WALLOS_DIR/$restore_name" "$stage/$restore_name" || true
+            done
+            for restore_name in db logos .abox-state; do
+                [[ -e "$rescue/$restore_name" && ! -e "$WALLOS_DIR/$restore_name" ]] &&
+                    mv -- "$rescue/$restore_name" "$WALLOS_DIR/$restore_name" || true
+            done
+            rm -rf -- "$stage"
+            return 1
+        fi
+    done
+    rm -rf -- "$stage" "$rescue"
+    return 0
+}
+
+wallos_upgrade_journal_write() {
+    local phase="$1" old_image="$2" old_port="$3" old_tz="$4" old_bind="$5" backup="$6" was_running="$7"
+    local journal="$WALLOS_DIR/.upgrade-transaction"
+    [[ "$phase" == active || "$phase" == committed ]] || return 1
+    [[ "$old_image" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ ]] || return 1
+    valid_canonical_port "$old_port" || return 1
+    valid_timezone_name "$old_tz" || return 1
+    [[ "$old_bind" == 127.0.0.1 || "$old_bind" == 0.0.0.0 ]] || return 1
+    [[ "$was_running" == 0 || "$was_running" == 1 ]] || return 1
+    [[ "$backup" == "$WALLOS_DIR/backups/wallos-"*.tar.gz && -f "$backup" && ! -L "$backup" ]] || return 1
+    write_file_atomically_from_stdin "$journal" 600 <<EOF_WALLOS_TXN
+phase=$phase
+old_image=$old_image
+old_port=$old_port
+old_tz=$old_tz
+old_bind=$old_bind
+backup=$backup
+was_running=$was_running
+EOF_WALLOS_TXN
+}
+
+wallos_txn_value() {
+    local file="$1" key="$2"
+    awk -F= -v key="$key" '
+        $1 == key {
+            count++
+            value = substr($0, index($0, "=") + 1)
+        }
+        END {
+            if (count != 1) exit 1
+            print value
+        }
+    ' "$file"
+}
+
+wallos_recover_interrupted_upgrade() {
+    local journal="$WALLOS_DIR/.upgrade-transaction"
+    local owner mode phase old_image old_port old_tz old_bind backup was_running
+    [[ -e "$journal" || -L "$journal" ]] || return 0
+    [[ -f "$journal" && ! -L "$journal" ]] || {
+        msg "${RED}Wallos upgrade journal is not a regular file; refusing automatic recovery.${NC}"
+        return 1
+    }
+    owner=$(stat -c %u:%g "$journal" 2>/dev/null) || return 1
+    mode=$(stat -c %a "$journal" 2>/dev/null) || return 1
+    [[ "$owner" == 0:0 && "$mode" == 600 ]] || {
+        msg "${RED}Wallos upgrade journal ownership/permissions are unsafe; refusing automatic recovery.${NC}"
+        return 1
+    }
+    [[ "$(wc -l < "$journal" | tr -d '[:space:]')" == 7 ]] || {
+        msg "${RED}Wallos upgrade journal is incomplete; preserve $journal and the latest backup for manual recovery.${NC}"
+        return 1
+    }
+    phase=$(wallos_txn_value "$journal" phase) || return 1
+    [[ "$phase" == active || "$phase" == committed ]] || return 1
+    old_image=$(wallos_txn_value "$journal" old_image) || return 1
+    old_port=$(wallos_txn_value "$journal" old_port) || return 1
+    old_tz=$(wallos_txn_value "$journal" old_tz) || return 1
+    old_bind=$(wallos_txn_value "$journal" old_bind) || return 1
+    backup=$(wallos_txn_value "$journal" backup) || return 1
+    was_running=$(wallos_txn_value "$journal" was_running) || return 1
+    if [[ "$phase" == committed ]]; then
+        rm -f -- "$journal" || return 1
+        msg "${YELLOW}Completed Wallos upgrade journal cleanup.${NC}"
+        return 0
+    fi
+    [[ "$old_image" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ ]] || return 1
+    valid_canonical_port "$old_port" || return 1
+    valid_timezone_name "$old_tz" || return 1
+    [[ "$old_bind" == 127.0.0.1 || "$old_bind" == 0.0.0.0 ]] || return 1
+    [[ "$was_running" == 0 || "$was_running" == 1 ]] || return 1
+    [[ "$backup" == "$WALLOS_DIR/backups/wallos-"*.tar.gz && -f "$backup" && ! -L "$backup" ]] || return 1
+    if docker container inspect wallos >/dev/null 2>&1; then
+        docker stop wallos >/dev/null 2>&1 || true
+        docker rm -f wallos >/dev/null 2>&1 || {
+            msg "${RED}Could not remove the interrupted Wallos container; journal retained.${NC}"
+            return 1
+        }
+    fi
+    docker image inspect "$old_image" >/dev/null 2>&1 || {
+        msg "${RED}Previous Wallos image $old_image is not present locally. Refusing to pull a mutable tag for recovery; journal and backup retained.${NC}"
+        return 1
+    }
+    wallos_restore_backup "$backup" || {
+        msg "${RED}Interrupted Wallos upgrade backup restore failed. Journal and backup retained at $journal and $backup.${NC}"
+        return 1
+    }
+    if (( was_running == 1 )); then
+        docker run -d --name wallos --label com.alariclin.abox.managed=true \
+            -v "$WALLOS_DIR/db:/var/www/html/db" \
+            -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
+            -e TZ="$old_tz" -p "$old_bind:$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null || return 1
+        wallos_wait_healthy "$old_port" || {
+            msg "${RED}Restored previous Wallos container did not become healthy; transaction journal retained.${NC}"
+            return 1
+        }
+    else
+        docker create --name wallos --label com.alariclin.abox.managed=true \
+            -v "$WALLOS_DIR/db:/var/www/html/db" \
+            -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
+            -e TZ="$old_tz" -p "$old_bind:$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null || return 1
+    fi
+    rm -f -- "$journal" || return 1
+    msg "${YELLOW}Recovered an interrupted Wallos upgrade by restoring the previous image and validated data backup. Review logs before retrying the upgrade.${NC}"
+}
+
 wallos_public_urls() {
-    local port="$1" ipv4 ipv6
+    local port="$1" ipv4 ipv6 host_ip
+    host_ip=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
+    if [[ "$host_ip" == 127.0.0.1 ]]; then
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${GREEN}Wallos local URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Use an HTTPS reverse proxy or SSH tunnel for remote access; do not expose this HTTP endpoint directly.${NC}" ;;
+            ru) msg "${GREEN}Локальный адрес Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Для доступа извне используйте HTTPS reverse proxy или SSH-туннель.${NC}" ;;
+            fa) msg "${GREEN}نشانی محلی Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.${NC}" ;;
+            *) msg "${GREEN}Wallos 本机地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}远程访问请使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端点。${NC}" ;;
+        esac
+        return 0
+    fi
     ipv4=$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null || true)
     ipv6=$(curl -6fsS --connect-timeout 3 --max-time 5 https://api64.ipify.org 2>/dev/null || true)
     case "${ABOX_LANG:-zh}" in
@@ -12991,13 +13340,17 @@ wallos_write_state() {
 }
 
 wallos_install_or_update() {
-    local arch image port tz old_image='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
+    local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
     (( EUID == 0 )) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Для установки Wallos требуются права root.${NC}" ;; fa) msg "${RED}برای نصب Wallos دسترسی root لازم است.${NC}" ;; zh) msg "${RED}安装 Wallos 需要 root 权限。${NC}" ;; *) msg "${RED}Run Wallos setup as root.${NC}" ;; esac; return 1; }
     command -v jq >/dev/null 2>&1 || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Требуется jq; сначала установите зависимости A-Box.${NC}" ;; fa) msg "${RED}به jq نیاز است؛ ابتدا وابستگی‌های A-Box را نصب کنید.${NC}" ;; zh) msg "${RED}需要 jq，请先安装 A-Box 依赖。${NC}" ;; *) msg "${RED}jq is required; install the A-Box dependencies first.${NC}" ;; esac; return 1; }
     wallos_print_host_info
     arch=$(wallos_detect_arch) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Поддерживаются архитектуры amd64, arm64 и ARMv7.${NC}" ;; fa) msg "${RED}معماری‌های پشتیبانی‌شده amd64، arm64 و ARMv7 هستند.${NC}" ;; zh) msg "${RED}Wallos 支持 amd64、arm64 和 ARMv7 架构。${NC}" ;; *) msg "${RED}Supported Wallos image architectures are amd64, arm64 and ARMv7.${NC}" ;; esac; return 1; }
     wallos_install_runtime || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Не удалось установить или запустить Docker; контейнер Wallos не изменён.${NC}" ;; fa) msg "${RED}نصب یا اجرای Docker شکست خورد؛ کانتینر Wallos تغییر نکرد.${NC}" ;; zh) msg "${RED}Docker 安装或启动失败，未修改 Wallos 容器。${NC}" ;; *) msg "${RED}Docker could not be installed or started; no Wallos container was changed.${NC}" ;; esac; return 1; }
     docker info >/dev/null 2>&1 || return 1
+    if [[ -e "$WALLOS_DIR/.upgrade-transaction" || -L "$WALLOS_DIR/.upgrade-transaction" ]]; then
+        wallos_recover_interrupted_upgrade || return 1
+        return 0
+    fi
 
     if docker container inspect wallos >/dev/null 2>&1; then
         [[ -f "$WALLOS_DIR/.A-Box-managed" && ! -L "$WALLOS_DIR/.A-Box-managed" ]] || {
@@ -13007,6 +13360,9 @@ wallos_install_or_update() {
         running=1
         [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)" == true ]] && was_running=1
         old_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+        old_bind=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
+        [[ -n "$old_bind" ]] || old_bind='0.0.0.0'
+        case "$old_bind" in 0.0.0.0|127.0.0.1) ;; *) old_bind='0.0.0.0' ;; esac
         old_port=$(wallos_state_value PORT 2>/dev/null || true)
         old_tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
         [[ -n "$old_tz" ]] || old_tz='UTC'
@@ -13028,12 +13384,24 @@ wallos_install_or_update() {
         tz=$(current_timezone_name 2>/dev/null || printf 'UTC')
         valid_timezone_name "$tz" || tz='UTC'
     fi
+    case "$bind_address" in
+        127.0.0.1|0.0.0.0) ;;
+        *) msg "${RED}WALLOS_BIND_ADDRESS must be 127.0.0.1 (safe default) or 0.0.0.0 (explicit public HTTP exposure).${NC}"; return 1 ;;
+    esac
     local confirm_prompt
     case "${ABOX_LANG:-zh}" in
-        en) confirm_prompt='Wallos stores personal subscription/financial data. The default access URL is public HTTP without TLS. Continue with this port mapping? [Y/N]: ' ;;
-        ru) confirm_prompt='Wallos хранит личные финансовые данные. Начальный URL использует HTTP без TLS. Продолжить с этим портом? [Y/N]: ' ;;
-        fa) confirm_prompt='Wallos داده‌های مالی شخصی را نگه می‌دارد. نشانی اولیه HTTP بدون TLS است. با این پورت ادامه داده شود؟ [Y/N]: ' ;;
-        *) confirm_prompt='Wallos 保存个人订阅和财务数据。默认访问网址是没有 TLS 的公网 HTTP。是否继续使用此端口？[Y/N]: ' ;;
+        en)
+            if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='WARNING: Wallos will be published on every IPv4 interface over plain HTTP. Continue only behind a trusted firewall/HTTPS reverse proxy. [Y/N]: '
+            else confirm_prompt='Wallos stores personal financial data and binds only to 127.0.0.1 by default. Use an HTTPS reverse proxy or SSH tunnel for remote access. Continue? [Y/N]: '; fi ;;
+        ru)
+            if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='ВНИМАНИЕ: Wallos будет доступен на всех IPv4-интерфейсах без TLS. Продолжайте только при наличии firewall/HTTPS reverse proxy. [Y/N]: '
+            else confirm_prompt='Wallos хранит личные данные и по умолчанию привязан только к 127.0.0.1; используйте HTTPS reverse proxy или SSH-туннель. Продолжить? [Y/N]: '; fi ;;
+        fa)
+            if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='هشدار: Wallos روی همه رابط‌های IPv4 با HTTP بدون TLS منتشر می‌شود؛ فقط با فایروال/پروکسی HTTPS مطمئن ادامه دهید. [Y/N]: '
+            else confirm_prompt='Wallos به‌طور پیش‌فرض فقط به 127.0.0.1 متصل است؛ برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید. ادامه؟ [Y/N]: '; fi ;;
+        *)
+            if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='警告：Wallos 将以明文 HTTP 绑定所有 IPv4 网卡。只有已配置防火墙/HTTPS 反向代理时才继续。[Y/N]: '
+            else confirm_prompt='Wallos 存储个人财务数据，默认仅绑定 127.0.0.1；远程访问请配置 HTTPS 反向代理或 SSH 隧道。是否继续？[Y/N]: '; fi ;;
     esac
     if ! confirm_yes_no "$confirm_prompt"; then return 0; fi
 
@@ -13049,45 +13417,26 @@ wallos_install_or_update() {
         if (( was_running == 1 )); then docker stop wallos >/dev/null 2>&1 || return 1; fi
         stamp=$(date -u '+%Y%m%dT%H%M%SZ')
         backup=$(wallos_create_backup "$stamp") || { (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true; msg "${RED}Pre-upgrade backup failed; old container was retained.${NC}"; return 1; }
-        docker rm wallos >/dev/null 2>&1 || { (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true; return 1; }
+        wallos_upgrade_journal_write active "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" || {
+            (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true
+            msg "${RED}Could not commit the Wallos upgrade journal; the old container was retained.${NC}"
+            return 1
+        }
+        docker rm wallos >/dev/null 2>&1 || {
+            wallos_recover_interrupted_upgrade || msg "${RED}Wallos upgrade could not start; preserve the transaction journal and backup.${NC}"
+            return 1
+        }
     fi
 
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-        -e TZ="$tz" -p "$port:80/tcp" --restart unless-stopped "$image" >/dev/null
+        -e TZ="$tz" -p "$bind_address:$port:80/tcp" --restart unless-stopped "$image" >/dev/null
     code=$?
     if (( code != 0 )) || ! wallos_wait_healthy "$port"; then
         docker rm -f wallos >/dev/null 2>&1 || true
         if (( running == 1 )); then
-            # Validate the pre-upgrade archive and required top-level entries
-            # before deleting the live data directories. Never start an old
-            # container against partially restored or empty databases/logos.
-            backup_listing=$(tar -tzf "$backup" 2>/dev/null) || backup_listing=''
-            if [[ -n "$backup_listing" ]] &&
-               grep -Eq '^db/?$' <<< "$backup_listing" &&
-               grep -Eq '^logos/?$' <<< "$backup_listing" &&
-               grep -Fxq '.abox-state' <<< "$backup_listing" &&
-               rm -rf -- "$WALLOS_DIR/db" "$WALLOS_DIR/logos" &&
-               tar -xzf "$backup" -C "$WALLOS_DIR"; then
-                restore_ok=1
-            else
-                msg "${RED}Rollback data restore failed or the backup is invalid. The old container will not be started against incomplete data. Preserve and inspect backup: ${backup:-unavailable}${NC}"
-            fi
-            if (( restore_ok == 1 )); then
-                if (( was_running == 1 )); then
-                    docker run -d --name wallos --label com.alariclin.abox.managed=true \
-                        -v "$WALLOS_DIR/db:/var/www/html/db" \
-                        -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-                        -e TZ="$old_tz" -p "$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
-                    wallos_wait_healthy "$old_port" || msg "${RED}Rollback container did not pass health check; inspect docker logs wallos.${NC}"
-                else
-                    docker create --name wallos --label com.alariclin.abox.managed=true \
-                        -v "$WALLOS_DIR/db:/var/www/html/db" \
-                        -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-                        -e TZ="$old_tz" -p "$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
-                fi
-            fi
+            wallos_recover_interrupted_upgrade || msg "\${RED}Automatic Wallos rollback did not complete. Preserve the transaction journal at \${WALLOS_DIR}/.upgrade-transaction and backup \${backup:-unavailable}.\${NC}"
         fi
         msg "${RED}Wallos did not pass health check. Rollback was attempted.${NC}"
         return 1
@@ -13097,20 +13446,50 @@ wallos_install_or_update() {
     # the container. Commit the mutable image/port/timezone state atomically;
     # do not silently report a complete update if metadata cannot be saved.
     if ! wallos_write_state "$image" "$port" "$tz"; then
-        msg "${RED}Wallos is responding, but its state file could not be committed atomically. The service was left running and the pre-upgrade backup was retained; repair $WALLOS_DIR/.abox-state before the next upgrade.${NC}"
+        msg "\${RED}Wallos state metadata failed to commit. Rolling back the incomplete upgrade where possible.\${NC}"
+        if (( running == 1 )); then
+            docker rm -f wallos >/dev/null 2>&1 || true
+            wallos_recover_interrupted_upgrade || msg "\${RED}Rollback failed; preserve $WALLOS_DIR/.upgrade-transaction and $backup.\${NC}"
+        else
+            docker rm -f wallos >/dev/null 2>&1 || true
+        fi
         return 1
     fi
-    case "${ABOX_LANG:-zh}" in
-        ru) msg "${GREEN}Wallos запущен: $image${NC}"; security_note="При удалённом доступе откройте TCP $port в firewall VPS/облака. Перед вводом личных данных настройте HTTPS reverse proxy: HTTP не шифруется." ;;
-        fa) msg "${GREEN}Wallos اجرا شد: $image${NC}"; security_note="برای دسترسی از راه دور، TCP $port را در فایروال VPS/ابر باز کنید. پیش از واردکردن داده شخصی HTTPS reverse proxy تنظیم کنید؛ HTTP رمزگذاری ندارد." ;;
-        zh) msg "${GREEN}Wallos 已启动：$image${NC}"; security_note="如需远程访问，请在 VPS 防火墙与云安全组放行 TCP $port。录入个人数据前配置 HTTPS 反向代理；HTTP 不加密。" ;;
-        *) msg "${GREEN}Wallos is running: $image${NC}"; security_note="Open TCP $port in the VPS firewall and cloud security group if remote access is required. Use an HTTPS reverse proxy before entering personal data; HTTP is not encrypted." ;;
+    if (( running == 1 )); then
+        if ! wallos_upgrade_journal_write committed "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running"; then
+            msg "\${RED}Wallos health check passed but transaction commit metadata failed; restoring the previous version.\${NC}"
+            docker rm -f wallos >/dev/null 2>&1 || true
+            wallos_recover_interrupted_upgrade || msg "\${RED}Rollback failed; preserve $WALLOS_DIR/.upgrade-transaction and $backup.\${NC}"
+            return 1
+        fi
+        rm -f -- "$WALLOS_DIR/.upgrade-transaction" || {
+            msg "\${YELLOW}Wallos is updated; committed journal cleanup will finish on the next run.\${NC}"
+            return 1
+        }
+    fi
+    case "\${ABOX_LANG:-zh}" in
+        ru)
+            msg "\${GREEN}Wallos запущен: $image\${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='По умолчанию доступ разрешён только с этого хоста. Для удалённого доступа используйте HTTPS reverse proxy или SSH-туннель.'
+            else security_note="HTTP без TLS опубликован на всех IPv4-интерфейсах и требует внешней защиты HTTPS reverse proxy/firewall на TCP $port."; fi ;;
+        fa)
+            msg "\${GREEN}Wallos اجرا شد: $image\${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='دسترسی به‌طور پیش‌فرض فقط از همین میزبان است؛ برای راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.'
+            else security_note="HTTP بدون TLS روی همه رابط‌های IPv4 منتشر شده است؛ روی TCP $port به HTTPS reverse proxy و firewall نیاز دارید."; fi ;;
+        zh)
+            msg "\${GREEN}Wallos 已启动：$image\${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='默认仅允许本机访问；远程访问请使用 HTTPS 反向代理或 SSH 隧道，不需要为该本机端口开放公网入站规则。'
+            else security_note="明文 HTTP 已绑定所有 IPv4 网卡；TCP $port 必须由 HTTPS 反向代理与防火墙保护。"; fi ;;
+        *)
+            msg "\${GREEN}Wallos is running: $image\${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='Access is local-only by default. Use an HTTPS reverse proxy or SSH tunnel for remote access.'
+            else security_note="Plain HTTP is published on all IPv4 interfaces; protect TCP $port with an HTTPS reverse proxy and firewall."; fi ;;
     esac
     wallos_public_urls "$port"
     msg "${YELLOW}${security_note}${NC}"
-    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
+    if [[ "$bind_address" == 0.0.0.0 ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
         if confirm_yes_no "Allow TCP $port through UFW? [Y/N]: "; then ufw allow "$port/tcp" || msg "${YELLOW}Could not update UFW; add the rule manually.${NC}"; fi
-    elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    elif [[ "$bind_address" == 0.0.0.0 ]] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
         if confirm_yes_no "Allow TCP $port through firewalld? [Y/N]: "; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}Could not update firewalld; add the rule manually.${NC}"; fi
     fi
     [[ -z "$backup" ]] || msg "Pre-upgrade backup: $backup"
@@ -16121,6 +16500,52 @@ EOF_SVC_TEST_RCUPDATE
         eval "$read__orig"
     else
         unset -f read 2>/dev/null || true
+    fi
+    # Native nftables-only firewalls must be recognized rather than silently
+    # treated as an iptables backend. A mocked ruleset keeps this deterministic.
+    _selftest_nft_orig=$(declare -f nft 2>/dev/null || true)
+    nft() { printf '%s\n' 'table inet filter {' ' chain input {' ' }' '}'; }
+    if ! nftables_native_rules_present; then
+        echo 'FAIL: native nftables inet table was not detected'
+        failures=$((failures + 1))
+    fi
+    if [[ -n "$_selftest_nft_orig" ]]; then
+        eval "$_selftest_nft_orig"
+    else
+        unset -f nft 2>/dev/null || true
+    fi
+    # Wallos anti-downgrade comparator and backup/restore transaction tests.
+    if ! wallos_version_is_older v1.9.0 v1.10.0; then
+        echo 'FAIL: Wallos semver comparison must compare numeric components'
+        failures=$((failures + 1))
+    fi
+    if wallos_version_is_older v2.0.0 v1.99.0; then
+        echo 'FAIL: Wallos semver comparison accepted a downgrade as older'
+        failures=$((failures + 1))
+    fi
+    if ! (
+        WALLOS_DIR="$tmp/wallos-fixture"
+        mkdir -p "$WALLOS_DIR/db" "$WALLOS_DIR/logos" "$WALLOS_DIR/backups" || exit 31
+        printf 'before-upgrade\n' > "$WALLOS_DIR/db/state.txt" || exit 32
+        printf 'old-logo\n' > "$WALLOS_DIR/logos/logo.txt" || exit 33
+        printf 'image=bellamy/wallos:1.2.3\nport=8282\ntz=UTC\n' > "$WALLOS_DIR/.abox-state" || exit 34
+        backup=$(wallos_create_backup selftest) || exit 35
+        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$backup" 1 || exit 46
+        [[ "$(stat -c %a "$WALLOS_DIR/.upgrade-transaction")" == 600 ]] || exit 47
+        [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" phase)" == active ]] || exit 48
+        printf 'partially-migrated\n' > "$WALLOS_DIR/db/state.txt" || exit 36
+        printf 'new-logo\n' > "$WALLOS_DIR/logos/logo.txt" || exit 37
+        printf 'image=bellamy/wallos:1.2.4\nport=8282\ntz=UTC\n' > "$WALLOS_DIR/.abox-state" || exit 38
+        wallos_restore_backup "$backup" || exit 39
+        grep -Fxq 'before-upgrade' "$WALLOS_DIR/db/state.txt" || exit 40
+        grep -Fxq 'old-logo' "$WALLOS_DIR/logos/logo.txt" || exit 41
+        grep -Fxq 'image=bellamy/wallos:1.2.3' "$WALLOS_DIR/.abox-state" || exit 42
+        printf 'not-a-valid-gzip\n' > "$WALLOS_DIR/backups/wallos-corrupt.tar.gz" || exit 43
+        if wallos_restore_backup "$WALLOS_DIR/backups/wallos-corrupt.tar.gz"; then exit 44; fi
+        grep -Fxq 'before-upgrade' "$WALLOS_DIR/db/state.txt" || exit 45
+    ); then
+        echo 'FAIL: Wallos backup/restore transaction failed or damaged data on invalid archive'
+        failures=$((failures + 1))
     fi
     if (( failures > 0 )); then
         echo "SELF_TEST_FAILED=$failures"

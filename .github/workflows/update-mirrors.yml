@@ -2,6 +2,12 @@ name: Update stable recovery mirrors
 
 on:
   workflow_dispatch:
+    inputs:
+      refresh_test_tool_mirror:
+        description: "Refresh mutable third-party shell tools after reviewing upstream changes"
+        type: boolean
+        required: false
+        default: false
   schedule:
     - cron: '17 5 * * 1'
   push:
@@ -26,7 +32,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned to a resolved commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
 
       - name: Prepare Wallos source and multi-architecture Docker archives
         id: wallos_assets
@@ -100,6 +106,7 @@ jobs:
 
       - name: Prepare benchmark and IP-quality tool mirror
         id: test_tool_assets
+        if: github.event_name == 'workflow_dispatch' && inputs.refresh_test_tool_mirror
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -157,7 +164,11 @@ jobs:
           set -Eeuo pipefail
           publish_release() {
             local tag="$1" title="$2" notes_file="$3" asset_dir="$4"
-            mapfile -t assets < <(find "$asset_dir" -maxdepth 1 -type f -print | sort)
+            mapfile -t all_assets < <(find "$asset_dir" -maxdepth 1 -type f -print | sort)
+            assets=()
+            for asset in "${all_assets[@]}"; do
+              [[ "$(basename "$asset")" == SHA256SUMS ]] || assets+=("$asset")
+            done
             if (("${#assets[@]}" == 0)); then
               echo "::error::No assets found for ${tag}"
               return 1
@@ -169,7 +180,10 @@ jobs:
             fi
 
             gh release edit "$tag" --title "$title" --notes-file "$notes_file"
+            # Upload payload first and SHA256SUMS last. A partial update then fails closed
+            # against the previous manifest instead of publishing a new manifest early.
             gh release upload "$tag" "${assets[@]}" --clobber
+            gh release upload "$tag" "$asset_dir/SHA256SUMS" --clobber
 
             gh release edit "$tag" --draft=false --latest=false
             echo "Published ${title}: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"
@@ -185,7 +199,7 @@ jobs:
           publish_release wallos-mirror "Wallos Recovery Mirror" "$notes" "$GITHUB_WORKSPACE/dist/wallos"
 
       - name: Publish test-tool stable recovery Release
-        if: always() && steps.test_tool_assets.outcome == 'success'
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.refresh_test_tool_mirror && steps.test_tool_assets.outcome == 'success'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -199,7 +213,11 @@ jobs:
           EOF
 
           asset_dir="$GITHUB_WORKSPACE/dist/test-tools"
-          mapfile -t assets < <(find "$asset_dir" -maxdepth 1 -type f -print | sort)
+          mapfile -t all_assets < <(find "$asset_dir" -maxdepth 1 -type f -print | sort)
+          assets=()
+          for asset in "${all_assets[@]}"; do
+            [[ "$(basename "$asset")" == SHA256SUMS ]] || assets+=("$asset")
+          done
           if (("${#assets[@]}" == 0)); then
             echo "::error::No test-tool assets found"
             exit 1
@@ -210,7 +228,9 @@ jobs:
               --title "$title" --notes-file "$notes"
           fi
           gh release edit "$tag" --title "$title" --notes-file "$notes"
+          # As above, publish payload first and checksum manifest last.
           gh release upload "$tag" "${assets[@]}" --clobber
+          gh release upload "$tag" "$asset_dir/SHA256SUMS" --clobber
 
           gh release edit "$tag" --draft=false --latest=false
           echo "Published ${title}: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"

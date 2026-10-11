@@ -8,7 +8,7 @@ One-click Linux network gateway toolkit.
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
-A-Box is a standalone Bash script for deploying and maintaining Linux network gateway services. The script build documented here is `2026-10-10-release-candidate-v172`; its configured default core versions are Xray `v26.7.28` and sing-box `v1.14.2`.
+A-Box is a standalone Bash script for deploying and maintaining Linux network gateway services. Its configured default core versions are Xray `v26.7.28` and sing-box `v1.14.2`.
 
 It supports Xray-core, sing-box, the official Hysteria 2 server, VLESS Vision REALITY, VLESS XHTTP REALITY, Shadowsocks-2022, client configuration export, local SNI candidate testing, backup and restore, firewall management, diagnostics, traffic limits, health checks, and core software upgrades.
 
@@ -41,8 +41,8 @@ Use the official GitHub source by default. The mirror is a third-party service, 
 - **Protocol deployment:** Xray VLESS Vision REALITY; Xray VLESS XHTTP REALITY; Xray Shadowsocks-2022; official Hysteria 2; corresponding sing-box Vision, Shadowsocks-2022, and Hysteria 2 options.
 - **Combined deployments:** Xray + Hysteria 2 bundle, and a sing-box Vision + Hysteria 2 + Shadowsocks-2022 bundle. The sing-box bundle intentionally does not include XHTTP.
 - **Client configuration export:** share links/URIs, QR codes, Clash/Mihomo YAML, sing-box outbound templates, and v2rayN/v2rayNG XHTTP JSON.
-- **Operations and diagnostics:** health checks, system/download benchmark, IP quality and route tests, VPS system tools (tuning / IP preference / host DNS / timezone), Fail2Ban/logrotate setup, traffic limits with month-to-date usage banner, backup and restore, redacted diagnostic bundles, and preflight checks.
-- **v172 UX:** one-click Reality; fast/strict mode (`ABOX_FAST`); pin docs + try-latest with rollback; lightweight multi-UUID/subscription export; download source probe (upstream → mirrors → custom).
+- **Operations and diagnostics:** health checks, system/download benchmark, IP quality and route tests, BBR/FQ tuning with rollback, IP preference, measured host DNS, supported DoT/DoH, numbered timezone selection, locale/NTP settings, Wallos installation/backup, Fail2Ban/logrotate, traffic limits, backup/restore, redacted diagnostics, and preflight checks.
+- **Operations:** one-click Reality, fast/strict mode (`ABOX_FAST`), stable core pins and rollback-capable upgrades, multi-UUID server-side add/revoke plus URI/Base64/Clash export, and real download-source availability checks.
 - **Core disaster mirrors:** pinned Xray / sing-box / Hysteria assets on Release [`core-mirrors-v171`](https://github.com/alariclin/a-box/releases/tag/core-mirrors-v171); install falls back there if upstream Releases fail (see [`mirrors/README.md`](mirrors/README.md)).
 - **SNI candidate workflow:** local full and mini-host candidate tests, saved-result viewer, input validation, bounded file size/row count, duplicate removal, and fallback to a valid local cache or adjacent data file when available.
 - **Maintenance:** controlled script OTA with displayed SHA-256 and explicit confirmation, Xray Geo data updates, and core-only upgrades that preserve node parameters.
@@ -58,27 +58,33 @@ The repository ships a curated seed list at [`data/sni-candidates.txt`](data/sni
 | `2` | Xray VLESS XHTTP REALITY |
 | `3` | Xray Shadowsocks-2022 |
 | `4` | Official Hysteria 2 server |
-| `5` | Xray + official Hysteria 2 bundle: Vision TCP 443, XHTTP TCP 8443, Hysteria 2 UDP 443, SS-2022 TCP/UDP 2053 |
+| `5` | Xray + Hysteria 2 bundle: Vision TCP 443, XHTTP TCP 8443, Hysteria 2 UDP 443, SS-2022 TCP/UDP 2053 |
 | `6` | sing-box VLESS Vision REALITY |
 | `7` | sing-box Shadowsocks-2022 |
 | `8` | sing-box VLESS + Shadowsocks-2022 |
 | `9` | sing-box Hysteria 2 |
 | `10` | sing-box Vision + Hysteria 2 + Shadowsocks-2022 (no XHTTP) |
-| `11` | Toolbox |
-| `12` | VPS system tools: BBR/FQ tuning (rollback), **IP preference** (IPv4 / IPv6 / dual), **host DNS** (plain / DoT via systemd-resolved where available, rollback), **timezone** (geo heuristic + custom, rollback) |
-| `13` | Display node parameters and client configurations |
-| `14` | Manual |
-| `15` | Script OTA, Xray Geo data, and core-only upgrade |
-| `16` | Full/partial uninstall |
-| `17` | Remove nodes and reset the environment |
-| `18` | Monthly traffic limit (vnStat-based). Opening the menu shows **usage up to now** for the current period, then quota controls |
-| `19` | SS-2022 IP/CIDR allowlist manager |
-| `20` | Switch between Chinese and English script UI |
+| `11` | Toolbox: benchmarks, diagnostics, Wallos and host settings |
+| `12` | Display node parameters and client configurations |
+| `13` | Manual |
+| `14` | Script OTA, Xray Geo data, and core-only upgrade |
+| `15` | Full/partial uninstall |
+| `16` | Delete nodes and reinitialize the environment |
+| `17` | Monthly traffic limit (vnStat) with usage-to-now display |
+| `18` | SS-2022 IP/CIDR allowlist manager |
+| `19` | UI language: Chinese, English, Russian or Persian |
+| `20` | **One-click Reality**; `r` is an alias |
 | `0` | Exit |
 
 ### Toolbox
 
-The toolbox includes system and download benchmarks; IP quality, streaming availability, and route tests; full and mini-host local SNI candidate tests; saved SNI results; a Cloudflare WARP manager (which, after confirmation, invokes a third-party script); 2 GB Swap setup; backup and restore; redacted diagnostic export; and a full read-only dry-run preflight check.
+The toolbox keeps all existing benchmark, IP quality, SNI, WARP, Swap, backup/restore, redacted diagnostics, preflight and subscription-export functions. It also includes a BBR/FQ tuning submenu (apply and rollback only), host settings (IP preference, plain DNS, supported DoT, measured DNS selection, supported DoH, timezone/locale/NTP and download-source preference), and Wallos installation/update/status/backup. BBR is opt-in and does not run automatically after protocol installation.
+
+The benchmark and IP-quality options try the upstream script first, validate the downloaded content, display its SHA-256 and ask for confirmation. If the upstream endpoint fails or returns invalid content, they use the A-Box recovery Release (`test-tools-mirror`) only when the asset matches its `SHA256SUMS` entry. If both sources fail, no script is executed.
+
+Wallos is an optional self-hosted subscription tracker. The installer detects the OS and architecture (amd64, arm64 and ARMv7), selects an available port, fetches the latest non-prerelease Wallos release and its matching Docker image, and falls back to A-Box's stable-named `wallos-mirror` Release when the upstream source is unavailable. Database and uploaded logos are persisted separately; upgrades back up data and attempt rollback on a failed health check. The mirror releases are populated by the repository workflow after it is added to GitHub and run successfully. Wallos's HTTP access URL is not encrypted; use HTTPS before entering personal data and configure the VPS/cloud firewall as required.
+
+BBR/FQ changes are never silently applied. DNS measurement ranks resolvers using successful live test queries from the current VPS; the result is local to that test window, not a universal ranking. DoT is enabled only when the active backend supports it; enter the upstream TLS authentication hostname so systemd-resolved can validate the DNS server certificate (for example, `1.1.1.1#cloudflare-dns.com` or `8.8.8.8#dns.google`). DoH uses `dnscrypt-proxy` and is restricted to supported package/systemd-resolved setups. DNS and timezone settings include a rollback path.
 
 ## Command-line Usage
 
@@ -89,7 +95,7 @@ Run commands from the directory containing the script:
 | Command | Purpose |
 |---|---|
 | `sudo bash install.sh --help` | Show command-line help |
-| `sudo bash install.sh --lang zh` / `--lang en` | Set the UI language and start the menu |
+| `sudo bash install.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | Set the UI language and start the menu |
 | `sudo bash install.sh --self-test` | Run built-in regression/self-tests |
 | `sudo bash install.sh --preflight` or `--dry-run` | Run the preflight check without deploying a new node |
 | `sudo bash install.sh --status` | Show managed configuration and service status |
@@ -111,9 +117,9 @@ The script contains compatibility paths for the following environments; actual c
 | CPU architecture | amd64/x86_64 or arm64/aarch64 |
 | Privileges | root or sudo |
 | Network | Access to system package repositories and required upstream/GitHub release endpoints |
-| Script UI | English or Simplified Chinese |
+| Script UI | Chinese, English, Russian and Persian menu selection; see note above for legacy prompts |
 
-The four README translations do not mean that the interactive script itself supports all four languages; the script UI currently supports English and Simplified Chinese.
+The interactive language selector supports Chinese, English, Russian and Persian for the main menu and updated operations menus. Some older protocol-specific prompts remain bilingual and may still contain legacy Chinese/English wording.
 
 ## Recommended Production Checklist
 

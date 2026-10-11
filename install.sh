@@ -46,6 +46,9 @@ LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
 ABOX_BUILD='2026-10-10-release-candidate-v172'
 ABOX_BUILD_EPOCH=20261010172
+WALLOS_DIR='/opt/wallos'
+WALLOS_MIRROR_RELEASE='wallos-mirror'
+ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
 # Cross-client compatibility pin for Shadowrocket + Mihomo/Clash Verge + sing-box
 # with VLESS/REALITY and XHTTP as of 2026-10-08.
 # Xray 26.9.8/26.9.9 introduces the newer REALITY ML-KEM ClientHello gate;
@@ -140,7 +143,7 @@ abox_dir_has_legacy_fingerprint() {
         return 0
     fi
     if (( count == 1 )) && [[ "$only" == '.lang' && -f "$dir/.lang" && ! -L "$dir/.lang" ]]; then
-        grep -Eq '^(zh|en)[[:space:]]*$' "$dir/.lang"
+        grep -Eq '^(zh|en|ru|fa)[[:space:]]*$' "$dir/.lang"
         return
     fi
     return 1
@@ -338,6 +341,8 @@ ensure_abox_dir_owned() {
 normalize_lang() {
     case "${1:-}" in
         en|en_US|en-US|english|English) printf 'en' ;;
+        ru|ru_RU|ru-RU|russian|Русский) printf 'ru' ;;
+        fa|fa_IR|fa-IR|persian|فارسی) printf 'fa' ;;
         zh|zh_CN|zh-CN|cn|CN|中文|'') printf 'zh' ;;
         *) printf 'zh' ;;
     esac
@@ -348,48 +353,92 @@ tr_msg() {
     case "${ABOX_LANG:-zh}:$key" in
         zh:press_return) echo '按回车返回...' ;;
         en:press_return) echo 'Press Enter to return...' ;;
+        ru:press_return) echo 'Нажмите Enter, чтобы вернуться...' ;;
+        fa:press_return) echo 'برای بازگشت Enter را فشار دهید...' ;;
         zh:select_prompt) echo '请选择 / Select' ;;
         en:select_prompt) echo 'Select' ;;
+        ru:select_prompt) echo 'Выберите' ;;
+        fa:select_prompt) echo 'انتخاب کنید' ;;
         zh:main_command) echo '请求下发执行代号: ' ;;
         en:main_command) echo 'Input command: ' ;;
+        ru:main_command) echo 'Введите команду: ' ;;
+        fa:main_command) echo 'فرمان را وارد کنید: ' ;;
         zh:lang_title) echo '语言设置 / Language' ;;
-        en:lang_title) echo 'Language Settings / 语言设置' ;;
+        en:lang_title) echo 'Language settings' ;;
+        ru:lang_title) echo 'Настройки языка' ;;
+        fa:lang_title) echo 'تنظیمات زبان' ;;
         zh:lang_saved) echo '语言已保存。' ;;
         en:lang_saved) echo 'Language saved.' ;;
+        ru:lang_saved) echo 'Язык сохранён.' ;;
+        fa:lang_saved) echo 'زبان ذخیره شد.' ;;
         zh:yes_no_default_no) echo '[Y/N]' ;;
         en:yes_no_default_no) echo '[Y/N]' ;;
+        ru:yes_no_default_no) echo '[Y/N]' ;;
+        fa:yes_no_default_no) echo '[Y/N]' ;;
         zh:yes_no_default_yes) echo '[Y/N]' ;;
         en:yes_no_default_yes) echo '[Y/N]' ;;
+        ru:yes_no_default_yes) echo '[Y/N]' ;;
+        fa:yes_no_default_yes) echo '[Y/N]' ;;
         zh:reality_sni_prompt) echo '   %s 请输入伪装 SNI (端口 %s，回车默认: %s): ' ;;
         en:reality_sni_prompt) echo '   %s Enter camouflage SNI (port %s, default: %s): ' ;;
+        ru:reality_sni_prompt) echo '   %s Введите маскирующий SNI (порт %s, по умолчанию: %s): ' ;;
+        fa:reality_sni_prompt) echo '   %s نام SNI پوششی را وارد کنید (درگاه %s، پیش‌فرض: %s): ' ;;
         zh:bad_sni) echo 'SNI 格式非法: %s' ;;
         en:bad_sni) echo 'Invalid SNI format: %s' ;;
+        ru:bad_sni) echo 'Недопустимый формат SNI: %s' ;;
+        fa:bad_sni) echo 'قالب SNI نامعتبر است: %s' ;;
         zh:apple_non443_warn) echo '检测到非 443 端口使用 Apple/iCloud 类 SNI：%s。Xray-core 对 apple/icloud target 与非443端口有风险警告，此组合可能提高 IP 封禁概率。' ;;
         en:apple_non443_warn) echo 'Apple/iCloud-like SNI on non-443 port detected: %s. Xray-core warns about apple/icloud targets and non-443 listening ports; this combination may increase IP blocking risk.' ;;
+        ru:apple_non443_warn) echo 'На порту, отличном от 443, обнаружен SNI Apple/iCloud: %s. Xray предупреждает о сочетании таких целей и нестандартного порта; риск блокировки IP может возрасти.' ;;
+        fa:apple_non443_warn) echo 'SNI شبیه Apple/iCloud روی درگاهی غیر از 443 شناسایی شد: %s. Xray درباره این ترکیب هشدار می‌دهد و احتمال مسدودشدن IP ممکن است افزایش یابد.' ;;
         zh:reality_non443_warn) echo '[!] REALITY/XHTTP 使用非 443 监听端口 (%s)。Xray 上游将其作为独立风险条件提示；请确认该端口符合你的网络环境。' ;;
         en:reality_non443_warn) echo '[!] REALITY/XHTTP is using a non-443 listen port (%s). Xray treats this as a separate risk condition; confirm that the port is suitable for your network environment.' ;;
+        ru:reality_non443_warn) echo '[!] REALITY/XHTTP использует порт %s вместо 443. Xray отмечает это как отдельный фактор риска; убедитесь, что порт подходит для вашей сети.' ;;
+        fa:reality_non443_warn) echo '[!] REALITY/XHTTP از درگاه %s به‌جای 443 استفاده می‌کند. Xray این مورد را عامل خطر جداگانه می‌داند؛ سازگاری درگاه با شبکه را بررسی کنید.' ;;
         zh:apple_sni_warn) echo '[!] Apple/iCloud 类 target (%s) 被 Xray 上游作为独立风险条件提示；建议改用经过实测的非 Apple/iCloud 目标。' ;;
         en:apple_sni_warn) echo '[!] Apple/iCloud-like target (%s) is flagged by Xray as a separate risk condition; a tested non-Apple/iCloud target is recommended.' ;;
+        ru:apple_sni_warn) echo '[!] Цель Apple/iCloud (%s) отмечена Xray как отдельный фактор риска; рекомендуется проверенная цель, не связанная с Apple/iCloud.' ;;
+        fa:apple_sni_warn) echo '[!] مقصد شبیه Apple/iCloud (%s) از دید Xray عامل خطر جداگانه است؛ مقصد آزمایش‌شده‌ای غیرمرتبط با Apple/iCloud پیشنهاد می‌شود.' ;;
         zh:continue_or_reset) echo '继续使用此 SNI？输入 y 继续，其他任意键重新输入 %s: ' ;;
         en:continue_or_reset) echo 'Continue with this SNI? Type y to continue, anything else to re-enter %s: ' ;;
+        ru:continue_or_reset) echo 'Оставить этот SNI? Введите y для продолжения; любой другой ввод повторно задаст %s: ' ;;
+        fa:continue_or_reset) echo 'این SNI حفظ شود؟ برای ادامه y و برای ورود دوباره %s کلید دیگری وارد کنید: ' ;;
         zh:port_prompt) echo '   %s 请输入监听端口 (回车默认: %s): ' ;;
         en:port_prompt) echo '   %s Enter listen port (default: %s): ' ;;
+        ru:port_prompt) echo '   %s Введите порт прослушивания (по умолчанию: %s): ' ;;
+        fa:port_prompt) echo '   %s درگاه شنود را وارد کنید (پیش‌فرض: %s): ' ;;
         zh:ss_port_prompt) echo '   %s 请输入回程监听端口(TCP/UDP) (回车默认: %s): ' ;;
         en:ss_port_prompt) echo '   %s Enter relay listen port (TCP/UDP, default: %s): ' ;;
+        ru:ss_port_prompt) echo '   %s Введите порт ретрансляции (TCP/UDP, по умолчанию: %s): ' ;;
+        fa:ss_port_prompt) echo '   %s درگاه رله (TCP/UDP، پیش‌فرض: %s) را وارد کنید: ' ;;
         zh:bad_port) echo '端口非法: %s' ;;
         en:bad_port) echo 'Invalid port: %s' ;;
+        ru:bad_port) echo 'Недопустимый порт: %s' ;;
+        fa:bad_port) echo 'درگاه نامعتبر است: %s' ;;
         zh:toolbox_title) echo '综合工具箱 / Toolbox' ;;
-        en:toolbox_title) echo 'Toolbox / 综合工具箱' ;;
+        en:toolbox_title) echo 'Toolbox' ;;
+        ru:toolbox_title) echo 'Инструменты' ;;
+        fa:toolbox_title) echo 'جعبه ابزار' ;;
         zh:confirm_remote) echo '即将下载第三方远程脚本：%s。下载后会显示 SHA256 并要求强确认。继续下载？[Y/N]: ' ;;
         en:confirm_remote) echo 'About to download a third-party remote script: %s. SHA256 will be shown and a strong confirmation will be required. Continue download? [Y/N]: ' ;;
+        ru:confirm_remote) echo 'Будет загружен сторонний скрипт: %s. SHA256 будет показан, перед запуском потребуется подтверждение. Продолжить? [Y/N]: ' ;;
+        fa:confirm_remote) echo 'اسکریپت شخص ثالث دریافت می‌شود: %s. مقدار SHA256 نمایش داده و پیش از اجرا تأیید خواسته می‌شود. ادامه؟ [Y/N]: ' ;;
         zh:confirm_local_sni_full) echo '即将运行本地内置全量 SNI 优选库（不执行远程脚本）。确认执行？[Y/N]: ' ;;
         en:confirm_local_sni_full) echo 'About to run the local built-in full SNI preference library (no remote script execution). Continue? [Y/N]: ' ;;
+        ru:confirm_local_sni_full) echo 'Будет запущен встроенный полный подбор SNI; удалённый скрипт не выполняется. Продолжить? [Y/N]: ' ;;
+        fa:confirm_local_sni_full) echo 'گزینش کامل SNI داخلی اجرا می‌شود و هیچ اسکریپت راه‌دور اجرا نمی‌شود. ادامه؟ [Y/N]: ' ;;
         zh:confirm_local_sni_mini) echo '即将运行本地内置微型主机 SNI 优选库（候选库与全量相同，不执行远程脚本）。确认执行？[Y/N]: ' ;;
         en:confirm_local_sni_mini) echo 'About to run the local built-in mini-host SNI preference library (same candidate library as full, no remote script execution). Continue? [Y/N]: ' ;;
+        ru:confirm_local_sni_mini) echo 'Будет запущен облегчённый локальный подбор SNI с той же базой кандидатов; удалённый скрипт не выполняется. Продолжить? [Y/N]: ' ;;
+        fa:confirm_local_sni_mini) echo 'گزینش سبک SNI داخلی با همان فهرست نامزدها اجرا می‌شود؛ هیچ اسکریپت راه‌دور اجرا نمی‌شود. ادامه؟ [Y/N]: ' ;;
         zh:swap_exists) echo '检测到 /swapfile 已存在，跳过创建。' ;;
         en:swap_exists) echo '/swapfile already exists; creation skipped.' ;;
+        ru:swap_exists) echo '/swapfile уже существует; создание пропущено.' ;;
+        fa:swap_exists) echo '/swapfile از قبل وجود دارد؛ ساخت آن رد شد.' ;;
         zh:swap_done) echo 'Swap 处理完成。' ;;
         en:swap_done) echo 'Swap operation completed.' ;;
+        ru:swap_done) echo 'Операция Swap завершена.' ;;
+        fa:swap_done) echo 'عملیات Swap پایان یافت.' ;;
         *) echo "$key" ;;
     esac
 }
@@ -466,14 +515,20 @@ save_lang() {
 initial_language_select() {
     [[ -f "$LANG_FILE" || -n "${ABOX_LANG_OVERRIDE:-}" ]] && return 0
     local c
-    echo 'Language / 语言'
+    echo 'Language / 语言 / Язык / زبان'
     echo '1. 中文'
     echo '2. English'
-    read -r -p 'Select [1-2, default 1]: ' c || true
-    case "$c" in 2) ABOX_LANG='en' ;; *) ABOX_LANG='zh' ;; esac
+    echo '3. Русский'
+    echo '4. فارسی'
+    read -r -p 'Select [1-4, default 1]: ' c || true
+    case "$c" in
+        2) ABOX_LANG='en' ;;
+        3) ABOX_LANG='ru' ;;
+        4) ABOX_LANG='fa' ;;
+        *) ABOX_LANG='zh' ;;
+    esac
     save_lang
 }
-
 language_menu() {
     clear
     msg "${CYAN}======================================================================${NC}"
@@ -481,16 +536,19 @@ language_menu() {
     msg "${CYAN}======================================================================${NC}"
     msg "${YELLOW}1. 中文${NC}"
     msg "${YELLOW}2. English${NC}"
+    msg "${YELLOW}3. Русский${NC}"
+    msg "${YELLOW}4. فارسی${NC}"
     msg "${GREEN}0. 返回 / Back${NC}"
     local c
-    read -r -p 'Select [0-2]: ' c
+    read -r -p 'Select [0-4]: ' c
     case "$c" in
         1) ABOX_LANG='zh'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
         2) ABOX_LANG='en'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
+        3) ABOX_LANG='ru'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
+        4) ABOX_LANG='fa'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
         *) return 0 ;;
     esac
 }
-
 need_interactive_tty() {
     if [[ ! -t 0 ]]; then
         if [[ -r /dev/tty ]]; then
@@ -8166,7 +8224,7 @@ EOF_BBR
 
 
 
-# --- v172 UX helpers (U1–U5) ---
+# Operations helpers
 abox_is_fast() {
     [[ "${ABOX_FAST:-}" =~ ^(1|true|yes|YES|True)$ ]] && return 0
     [[ -r "$FAST_MODE_FILE" && -f "$FAST_MODE_FILE" && ! -L "$FAST_MODE_FILE" ]] || return 1
@@ -8225,9 +8283,14 @@ show_core_pin_docs() {
 }
 
 probe_core_sources_banner() {
-    local pref='upstream-first'
+    local pref='upstream-first' api_code mirror_code base
     abox_prefer_mirror && pref='mirror-first'
-    msg "${CYAN}[download sources] order=${pref}: 1) upstream GitHub Release  2) A-Box ${ABOX_CORE_MIRROR_RELEASE}  3) custom ABOX_CORE_MIRROR_BASE=${ABOX_CORE_MIRROR_BASE:-<unset>}${NC}"
+    base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
+    api_code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 'https://api.github.com/repos/XTLS/Xray-core/releases/latest' 2>/dev/null || printf '000')
+    mirror_code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "${base%/}/SHA256SUMS" 2>/dev/null || printf '000')
+    case "$api_code" in 200) api_code='available (HTTP 200)' ;; *) api_code="unavailable (HTTP ${api_code:-000})" ;; esac
+    case "$mirror_code" in 200) mirror_code='available (HTTP 200)' ;; *) mirror_code="unavailable (HTTP ${mirror_code:-000})" ;; esac
+    msg "${CYAN}[download sources] order=${pref}; upstream release API: ${api_code}; A-Box mirror manifest: ${mirror_code}; custom base=${ABOX_CORE_MIRROR_BASE:-<unset>}${NC}"
 }
 
 fetch_abox_mirror_asset() {
@@ -8271,66 +8334,109 @@ fetch_abox_mirror_asset() {
 }
 
 one_click_reality_deploy() {
-    local eng='1' answer
+    local choice answer prompt
     clear
     msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}一键 Reality / One-click Vision REALITY${NC}"
-    msg "${CYAN}======================================================================${NC}"
-    msg "Defaults: port ${YELLOW}443${NC}, SNI ${YELLOW}www.microsoft.com${NC}, KeepAlive off"
-    msg "Reuses existing deploy stack; menu 1/6 still available for full wizard."
-    if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-        msg "${YELLOW}1.${NC} Xray Vision REALITY (recommended)"
-        msg "${YELLOW}2.${NC} sing-box Vision REALITY"
-        msg "${GREEN}0.${NC} Cancel"
-        read -r -p 'Select [0-2]: ' eng || return 0
-    else
-        msg "${YELLOW}1.${NC} Xray Vision REALITY（推荐）"
-        msg "${YELLOW}2.${NC} sing-box Vision REALITY"
-        msg "${GREEN}0.${NC} 取消"
-        read -r -p '请选择 [0-2]: ' eng || return 0
-    fi
-    case "$eng" in
-        1|2) ;;
-        *) return 0 ;;
+    case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${RED}${BOLD}One-click Vision REALITY${NC}"
+            msg "Defaults: port 443, SNI www.microsoft.com, KeepAlive off. The full wizard remains under options 1 and 6."
+            msg "${YELLOW}1. Xray Vision REALITY${NC}"
+            msg "${YELLOW}2. sing-box Vision REALITY${NC}"
+            prompt='Deploy one-click Vision REALITY now? [Y/N]: ' ;;
+        ru)
+            msg "${RED}${BOLD}Vision REALITY в один клик${NC}"
+            msg "По умолчанию: порт 443, SNI www.microsoft.com, KeepAlive выключен. Полные мастера доступны в пунктах 1 и 6."
+            msg "${YELLOW}1. Xray Vision REALITY${NC}"
+            msg "${YELLOW}2. sing-box Vision REALITY${NC}"
+            prompt='Запустить установку Vision REALITY в один клик? [Y/N]: ' ;;
+        fa)
+            msg "${RED}${BOLD}نصب یک‌کلیکی Vision REALITY${NC}"
+            msg "پیش‌فرض: پورت 443،‏ SNI برابر www.microsoft.com و KeepAlive خاموش است. راهنمای کامل در گزینه‌های 1 و 6 قرار دارد."
+            msg "${YELLOW}1. Xray Vision REALITY${NC}"
+            msg "${YELLOW}2. sing-box Vision REALITY${NC}"
+            prompt='نصب یک‌کلیکی Vision REALITY آغاز شود؟ [Y/N]: ' ;;
+        *)
+            msg "${RED}${BOLD}一键 Vision REALITY${NC}"
+            msg "默认端口 443、SNI 为 www.microsoft.com、KeepAlive 关闭；完整向导仍在选项 1 和 6。"
+            msg "${YELLOW}1. Xray Vision REALITY${NC}"
+            msg "${YELLOW}2. sing-box Vision REALITY${NC}"
+            prompt='现在开始一键部署 Vision REALITY？[Y/N]: ' ;;
     esac
-    if ! confirm_soft 'Deploy one-click Vision REALITY now? [Y/N]: '; then
-        msg "${YELLOW}Canceled.${NC}"; pause_return; return 0
+    msg "${GREEN}0. Cancel / 返回${NC}"
+    read -r -p 'Select [0-2]: ' choice || return 0
+    case "$choice" in 1|2) ;; *) return 0 ;; esac
+    if ! confirm_soft "$prompt"; then
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${YELLOW}Cancelled.${NC}" ;;
+            ru) msg "${YELLOW}Отменено.${NC}" ;;
+            fa) msg "${YELLOW}لغو شد.${NC}" ;;
+            *) msg "${YELLOW}已取消。${NC}" ;;
+        esac
+        pause_return; return 0
     fi
     export ABOX_QUICK_DEPLOY=1
-    case "$eng" in
-        1) deploy_xray VISION ;;
-        2) deploy_singbox VISION ;;
-    esac
+    case "$choice" in 1) deploy_xray VISION ;; 2) deploy_singbox VISION ;; esac
     unset ABOX_QUICK_DEPLOY
 }
-
 ux_mode_menu() {
     clear
     local c
-    msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}体验模式与下载源 / UX mode & download source${NC}"
-    msg "Current mode: ${YELLOW}$(read_fast_mode_label)${NC}"
-    msg "Prefer mirror: ${YELLOW}$(abox_prefer_mirror && echo on || echo off)${NC}"
-    msg "${YELLOW}1. Strict mode (default; all soft confirms)${NC}"
-    msg "${YELLOW}2. Fast mode (skip non-critical confirms; NEVER skip digest / uninstall)${NC}"
-    msg "${YELLOW}3. Prefer A-Box core-mirrors first${NC}"
-    msg "${YELLOW}4. Prefer upstream GitHub first (default)${NC}"
-    msg "${YELLOW}5. Show pin / download order docs${NC}"
-    msg "${GREEN}0. Back${NC}"
+    case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${BOLD}${GREEN}Runtime mode and download source${NC}"
+            msg "Current mode: ${YELLOW}$(read_fast_mode_label)${NC} | Prefer mirror: $(abox_prefer_mirror && echo on || echo off)"
+            msg "${YELLOW}1. Strict mode (default; all non-critical confirmations remain)${NC}"
+            msg "${YELLOW}2. Fast mode (skips non-critical confirmations only)${NC}"
+            msg "${YELLOW}3. Prefer A-Box core mirror first${NC}"
+            msg "${YELLOW}4. Prefer upstream GitHub first (default)${NC}"
+            msg "${YELLOW}5. Show pinned core versions and download order${NC}"
+            msg "${GREEN}0. Back${NC}" ;;
+        ru)
+            msg "${BOLD}${GREEN}Режим работы и источник загрузки${NC}"
+            msg "Текущий режим: ${YELLOW}$(read_fast_mode_label)${NC} | Сначала зеркало: $(abox_prefer_mirror && echo да || echo нет)"
+            msg "${YELLOW}1. Строгий режим (по умолчанию)${NC}"
+            msg "${YELLOW}2. Быстрый режим (пропускаются только некритичные подтверждения)${NC}"
+            msg "${YELLOW}3. Сначала зеркало A-Box${NC}"
+            msg "${YELLOW}4. Сначала upstream GitHub (по умолчанию)${NC}"
+            msg "${YELLOW}5. Закреплённые версии ядер и порядок загрузки${NC}"
+            msg "${GREEN}0. Назад${NC}" ;;
+        fa)
+            msg "${BOLD}${GREEN}حالت اجرا و منبع دانلود${NC}"
+            msg "حالت فعلی: ${YELLOW}$(read_fast_mode_label)${NC} | اولویت آینه: $(abox_prefer_mirror && echo بله || echo خیر)"
+            msg "${YELLOW}1. حالت سخت‌گیرانه (پیش‌فرض)${NC}"
+            msg "${YELLOW}2. حالت سریع (فقط تأییدهای غیرحیاتی رد می‌شوند)${NC}"
+            msg "${YELLOW}3. ابتدا آینه A-Box${NC}"
+            msg "${YELLOW}4. ابتدا GitHub upstream (پیش‌فرض)${NC}"
+            msg "${YELLOW}5. نسخه‌های ثابت هسته و ترتیب دانلود${NC}"
+            msg "${GREEN}0. بازگشت${NC}" ;;
+        *)
+            msg "${BOLD}${GREEN}运行模式与下载源${NC}"
+            msg "当前模式: ${YELLOW}$(read_fast_mode_label)${NC} | 镜像优先: $(abox_prefer_mirror && echo 开启 || echo 关闭)"
+            msg "${YELLOW}1. 严格模式（默认，保留所有非关键确认）${NC}"
+            msg "${YELLOW}2. 快速模式（只跳过非关键确认，不跳过摘要/卸载确认）${NC}"
+            msg "${YELLOW}3. 优先 A-Box 核心镜像${NC}"
+            msg "${YELLOW}4. 优先上游 GitHub（默认）${NC}"
+            msg "${YELLOW}5. 查看固定核心版本与下载顺序${NC}"
+            msg "${GREEN}0. 返回${NC}" ;;
+    esac
     read -r -p 'Select [0-5]: ' c
     case "$c" in
-        1) save_fast_mode 0; msg "${GREEN}Strict mode saved.${NC}"; pause_return ;;
-        2) save_fast_mode 1; msg "${GREEN}Fast mode saved (ABOX_FAST=1 also works).${NC}"; pause_return ;;
-        3) save_mirror_prefer 1; msg "${GREEN}Mirror-first saved.${NC}"; pause_return ;;
-        4) save_mirror_prefer 0; msg "${GREEN}Upstream-first saved.${NC}"; pause_return ;;
+        1) save_fast_mode 0; pause_return ;;
+        2) save_fast_mode 1; pause_return ;;
+        3) save_mirror_prefer 1; pause_return ;;
+        4) save_mirror_prefer 0; pause_return ;;
         5) show_core_pin_docs ;;
         *) return 0 ;;
     esac
 }
-
 list_extra_uuids() {
     [[ -r "$EXTRA_UUID_FILE" && -f "$EXTRA_UUID_FILE" && ! -L "$EXTRA_UUID_FILE" ]] || return 0
-    grep -E '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$' "$EXTRA_UUID_FILE" 2>/dev/null || true
+    awk -v primary="${UUID:-}" '
+        /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/ {
+            if (tolower($0) != tolower(primary) && !seen[tolower($0)]++) print $0
+        }
+    ' "$EXTRA_UUID_FILE" 2>/dev/null || true
 }
 
 sync_uuids_into_xray_config() {
@@ -8364,7 +8470,7 @@ sync_uuids_into_xray_config() {
 }
 
 export_lightweight_subscription() {
-    local CALLER=${1:-manual} F_IP VISION_SNI_E PUBLIC_KEY_E SHORT_ID_E uri_file b64_file clash_file u url
+    local CALLER=${1:-manual} F_IP VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E uri_file b64_file clash_file u url client_uuid proxy_name
     ensure_abox_dir_owned "$ABOX_DIR" || die 'subscribe dir prepare failed'
     mkdir -p "$SUBSCRIBE_DIR" || die 'subscribe dir create failed'
     chmod 700 "$SUBSCRIBE_DIR" || true
@@ -8373,20 +8479,29 @@ export_lightweight_subscription() {
     F_IP="${LINK_IP:-}"
     [[ "$F_IP" =~ : ]] && F_IP="[$F_IP]"
     VISION_SNI=${VISION_SNI:-${VLESS_SNI:-}}
+    XHTTP_SNI=${XHTTP_SNI:-${VLESS_SNI:-}}
     VISION_SNI_E=$(urlencode "$VISION_SNI")
+    XHTTP_SNI_E=$(urlencode "$XHTTP_SNI")
     PUBLIC_KEY_E=$(urlencode "$PUBLIC_KEY")
     SHORT_ID_E=$(urlencode "$SHORT_ID")
     uri_file="$SUBSCRIBE_DIR/uri-list.txt"
     b64_file="$SUBSCRIBE_DIR/subscription.base64"
-    : > "$uri_file"
+    : > "$uri_file" || return 1
     if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
-        url="vless://$UUID@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#A-Box-primary"
-        printf '%s\n' "$url" >> "$uri_file"
-        while IFS= read -r u; do
-            [[ -n "$u" ]] || continue
-            url="vless://$u@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#A-Box-$u"
-            printf '%s\n' "$url" >> "$uri_file"
-        done < <(list_extra_uuids)
+        while IFS= read -r client_uuid; do
+            [[ -n "$client_uuid" ]] || continue
+            if [[ "$client_uuid" == "$UUID" ]]; then proxy_name='A-Box-VLESS-Vision'; else proxy_name="A-Box-VLESS-Vision-${client_uuid:0:8}"; fi
+            url="vless://$client_uuid@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#$proxy_name"
+            printf '%s\n' "$url" >> "$uri_file" || return 1
+        done < <(printf '%s\n' "$UUID"; list_extra_uuids)
+    fi
+    if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
+        while IFS= read -r client_uuid; do
+            [[ -n "$client_uuid" ]] || continue
+            if [[ "$client_uuid" == "$UUID" ]]; then proxy_name='A-Box-VLESS-XHTTP'; else proxy_name="A-Box-VLESS-XHTTP-${client_uuid:0:8}"; fi
+            url="vless://$client_uuid@$F_IP:$XHTTP_PORT?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#$proxy_name"
+            printf '%s\n' "$url" >> "$uri_file" || return 1
+        done < <(printf '%s\n' "$UUID"; list_extra_uuids)
     fi
     if command -v base64 >/dev/null 2>&1; then
         base64 -w0 < "$uri_file" > "$b64_file" 2>/dev/null || base64 < "$uri_file" | tr -d '\n' > "$b64_file"
@@ -8403,43 +8518,97 @@ export_lightweight_subscription() {
 
 multi_uuid_menu() {
     clear
-    local c nu answer
+    local c nu answer selected tx cfg='/usr/local/etc/xray/config.json' list_tmp old_state='absent' tx_ok=0
+    [[ -f "$ABOX_ENV" && ! -L "$ABOX_ENV" ]] && load_abox_env "$ABOX_ENV" 2>/dev/null || true
     msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}轻量多 UUID / 订阅导出 (U4)${NC}"
+    msg "${BOLD}${GREEN}Multi-UUID / Subscription export${NC}"
     msg "Primary UUID: ${YELLOW}${UUID:-load env first}${NC}"
-    msg "Extra UUIDs:"
-    list_extra_uuids | sed 's/^/  /' || msg '  (none)'
-    msg "${YELLOW}1. Add extra UUID (patch Xray clients if Vision present)${NC}"
-    msg "${YELLOW}2. Export URI list + base64 + Clash path${NC}"
-    msg "${YELLOW}3. Clear extra UUIDs file (does not rewrite server until next sync/export add)${NC}"
+    msg 'Extra UUIDs:'
+    list_extra_uuids | sed 's/^/  /' || true
+    msg "${YELLOW}1. Add and apply an extra UUID (Xray only)${NC}"
+    msg "${YELLOW}2. Export Vision/XHTTP URI list, Base64 and Clash YAML${NC}"
+    msg "${YELLOW}3. Revoke one extra UUID from the Xray server${NC}"
+    msg "${YELLOW}4. Clear only the local extra-UUID file (does not revoke server access)${NC}"
     msg "${GREEN}0. Back${NC}"
-    [[ -f "$ABOX_ENV" ]] && load_abox_env "$ABOX_ENV" 2>/dev/null || true
-    read -r -p 'Select [0-3]: ' c
+    read -r -p 'Select [0-4]: ' c
     case "$c" in
         1)
-            nu=$(generate_robust_uuid)
-            ensure_abox_dir_owned "$ABOX_DIR"
-            touch "$EXTRA_UUID_FILE"
-            chmod 600 "$EXTRA_UUID_FILE"
-            printf '%s\n' "$nu" >> "$EXTRA_UUID_FILE"
-            msg "${GREEN}Added: $nu${NC}"
-            if [[ "${CORE:-}" == 'xray' ]] && [[ -f /usr/local/etc/xray/config.json ]]; then
-                if sync_uuids_into_xray_config; then
-                    service_manager restart xray 2>/dev/null || service_manager start xray 2>/dev/null || true
-                    msg "${GREEN}Xray clients updated.${NC}"
-                else
-                    msg "${YELLOW}[!] Could not patch Xray config; URI export still lists the UUID for manual merge.${NC}"
-                fi
+            [[ "${CORE:-}" == xray && -f "$cfg" && ! -L "$cfg" ]] || {
+                msg "${RED}Server-side multi-UUID management is supported only for an installed Xray deployment. Nothing was changed.${NC}"
+                pause_return; return 1;
+            }
+            abox_owns_service xray || { msg "${RED}Xray is not registered as an A-Box-managed service. Nothing was changed.${NC}"; pause_return; return 1; }
+            [[ -n "${UUID:-}" ]] || { msg "${RED}Primary UUID is unavailable; reload deployment state first.${NC}"; pause_return; return 1; }
+            ensure_abox_dir_owned "$ABOX_DIR" || return 1
+            tx=$(umask 077; mktemp -d "$ABOX_DIR/.uuid-transaction.XXXXXX") || return 1
+            cp -a "$cfg" "$tx/config.json" || { rm -rf -- "$tx"; return 1; }
+            if [[ -f "$EXTRA_UUID_FILE" && ! -L "$EXTRA_UUID_FILE" ]]; then
+                cp -a "$EXTRA_UUID_FILE" "$tx/extra-uuids" || { rm -rf -- "$tx"; return 1; }
+                old_state='present'
             fi
-            export_lightweight_subscription quiet
+            chmod 700 "$tx"
+            nu=$(generate_robust_uuid) || { rm -rf -- "$tx"; return 1; }
+            list_tmp=$(mktemp "${EXTRA_UUID_FILE}.new.XXXXXX") || { rm -rf -- "$tx"; return 1; }
+            { list_extra_uuids; printf '%s\n' "$nu"; } | awk 'NF && !seen[tolower($0)]++' > "$list_tmp" || { rm -f -- "$list_tmp"; rm -rf -- "$tx"; return 1; }
+            chmod 600 "$list_tmp" && mv -f -- "$list_tmp" "$EXTRA_UUID_FILE" || { rm -f -- "$list_tmp"; rm -rf -- "$tx"; return 1; }
+            if sync_uuids_into_xray_config && restart_service_soft xray; then
+                tx_ok=1
+            fi
+            if (( tx_ok == 0 )); then
+                install_file_atomically "$tx/config.json" "$cfg" 600 || msg "${RED}Could not restore the previous Xray configuration automatically.${NC}"
+                if [[ "$old_state" == present ]]; then install_file_atomically "$tx/extra-uuids" "$EXTRA_UUID_FILE" 600 || true; else rm -f -- "$EXTRA_UUID_FILE"; fi
+                restart_service_soft xray || msg "${RED}Xray did not return to its previous healthy state; inspect the service immediately.${NC}"
+                rm -rf -- "$tx"
+                msg "${RED}UUID addition failed. The previous configuration and local list were restored where possible; success was not reported.${NC}"
+                pause_return; return 1
+            fi
+            rm -rf -- "$tx"
+            msg "${GREEN}UUID added, Xray config validated and service health confirmed: $nu${NC}"
+            export_lightweight_subscription quiet || { msg "${YELLOW}UUID is active; subscription export failed and can be retried from option 2.${NC}"; }
             pause_return
             ;;
         2) export_lightweight_subscription manual ;;
         3)
-            read -r -p 'Clear extra UUID file? [Y/N]: ' answer
-            is_yes "$answer" || { pause_return; return 0; }
-            rm -f -- "$EXTRA_UUID_FILE"
-            msg "${GREEN}Cleared.${NC}"; pause_return
+            [[ "${CORE:-}" == xray && -f "$cfg" && ! -L "$cfg" ]] || { msg "${RED}Server-side revocation requires an installed Xray deployment. No change made.${NC}"; pause_return; return 1; }
+            abox_owns_service xray || { msg "${RED}Xray is not registered as an A-Box-managed service. No change made.${NC}"; pause_return; return 1; }
+            local -a uuids=()
+            mapfile -t uuids < <(list_extra_uuids)
+            ((${#uuids[@]} > 0)) || { msg 'No extra UUIDs to revoke.'; pause_return; return 0; }
+            local idx
+            for idx in "${!uuids[@]}"; do printf '%3d. %s\n' "$((idx+1))" "${uuids[$idx]}"; done
+            read -r -p 'Select the extra UUID number to revoke: ' selected
+            [[ "$selected" =~ ^[0-9]+$ ]] && (( selected >= 1 && selected <= ${#uuids[@]} )) || { msg "${YELLOW}Invalid selection.${NC}"; pause_return; return 1; }
+            nu="${uuids[$((selected-1))]}"
+            read -r -p "This revokes $nu from Xray and regenerates every managed VLESS client list. Type REVOKE to continue: " answer
+            [[ "$answer" == REVOKE ]] || { msg 'Cancelled; no change made.'; pause_return; return 0; }
+            tx=$(umask 077; mktemp -d "$ABOX_DIR/.uuid-transaction.XXXXXX") || return 1
+            cp -a "$cfg" "$tx/config.json" || { rm -rf -- "$tx"; return 1; }
+            [[ ! -f "$EXTRA_UUID_FILE" ]] || cp -a "$EXTRA_UUID_FILE" "$tx/extra-uuids" || { rm -rf -- "$tx"; return 1; }
+            list_tmp=$(mktemp "${EXTRA_UUID_FILE}.new.XXXXXX") || { rm -rf -- "$tx"; return 1; }
+            list_extra_uuids | awk -v remove="$nu" 'tolower($0)!=tolower(remove)' > "$list_tmp" || { rm -f -- "$list_tmp"; rm -rf -- "$tx"; return 1; }
+            chmod 600 "$list_tmp" || { rm -f -- "$list_tmp"; rm -rf -- "$tx"; return 1; }
+            if [[ -s "$list_tmp" ]]; then mv -f -- "$list_tmp" "$EXTRA_UUID_FILE" || { rm -f -- "$list_tmp"; rm -rf -- "$tx"; return 1; }
+            else rm -f -- "$list_tmp" "$EXTRA_UUID_FILE"; fi
+            tx_ok=0
+            if sync_uuids_into_xray_config && restart_service_soft xray; then tx_ok=1; fi
+            if (( tx_ok == 0 )); then
+                install_file_atomically "$tx/config.json" "$cfg" 600 || msg "${RED}Could not restore the previous Xray configuration automatically.${NC}"
+                if [[ -f "$tx/extra-uuids" ]]; then install_file_atomically "$tx/extra-uuids" "$EXTRA_UUID_FILE" 600 || true; else rm -f -- "$EXTRA_UUID_FILE"; fi
+                restart_service_soft xray || msg "${RED}Xray did not return to its previous healthy state; inspect the service immediately.${NC}"
+                rm -rf -- "$tx"; msg "${RED}Revocation failed; rollback was attempted.${NC}"; pause_return; return 1
+            fi
+            rm -rf -- "$tx"
+            msg "${GREEN}UUID revoked on Xray and health check passed: $nu${NC}"
+            export_lightweight_subscription quiet || true
+            pause_return
+            ;;
+        4)
+            msg "${YELLOW}This only clears A-Box's local list. It does not revoke UUIDs still present in the Xray server config; those may remain usable until server-side revocation is performed.${NC}"
+            read -r -p 'Type CLEAR to remove only the local list: ' answer
+            [[ "$answer" == CLEAR ]] || { msg 'Cancelled; no change made.'; pause_return; return 0; }
+            rm -f -- "$EXTRA_UUID_FILE" || { msg "${RED}Could not remove the local UUID list.${NC}"; pause_return; return 1; }
+            msg "${GREEN}Local UUID list cleared. Server-side UUIDs were not revoked.${NC}"
+            pause_return
             ;;
         *) return 0 ;;
     esac
@@ -8448,8 +8617,8 @@ multi_uuid_menu() {
 try_latest_cores_danger() {
     local answer targets=() t latest json
     clear
-    msg "${RED}${BOLD}DANGER: 试用上游 latest 核心 / Try upstream latest${NC}"
-    msg "Default pins remain ${ABOX_XRAY_DEFAULT_VERSION} / ${ABOX_SINGBOX_DEFAULT_VERSION}."
+    msg "${RED}${BOLD}DANGER: 尝试上游最新正式稳定版 / Try latest upstream stable release${NC}"
+    msg "This checks GitHub Releases latest stable (not prerelease). Default pins remain ${ABOX_XRAY_DEFAULT_VERSION} / ${ABOX_SINGBOX_DEFAULT_VERSION}."
     msg "This path may break Shadowrocket/Mihomo (e.g. Xray ML-KEM). Failure triggers automatic rollback."
     read -r -p 'Type YES to continue: ' answer
     [[ "$answer" == 'YES' ]] || { msg "${YELLOW}Canceled.${NC}"; pause_return; return 0; }
@@ -8515,26 +8684,93 @@ save_ip_pref() {
 
 ip_preference_menu() {
     clear
-    local cur c
+    local cur c title ipv4 ipv6 dual back
     cur=$(read_ip_pref)
+    case "${ABOX_LANG:-zh}" in
+        en) title='IP protocol preference'; ipv4='IPv4 only (0.0.0.0 listener; prefer IPv4 share links)'; ipv6='IPv6 only (:: listener; requires working global IPv6)'; dual='Dual stack (prefer IPv6 when available, otherwise IPv4)'; back='Back' ;;
+        ru) title='Предпочтение IP-протокола'; ipv4='Только IPv4 (слушатель 0.0.0.0)'; ipv6='Только IPv6 (требуется глобальный IPv6)'; dual='Два стека (IPv6 при доступности, иначе IPv4)'; back='Назад' ;;
+        fa) title='ترجیح پروتکل IP'; ipv4='فقط IPv4 (نشانی شنونده 0.0.0.0)'; ipv6='فقط IPv6 (نیازمند IPv6 عمومی فعال)'; dual='دوپشته (در صورت دسترسی IPv6، وگرنه IPv4)'; back='بازگشت' ;;
+        *) title='IP 协议偏好'; ipv4='仅 IPv4（监听 0.0.0.0，分享链接优先 IPv4）'; ipv6='仅 IPv6（需要可用的全局 IPv6）'; dual='双栈（优先可用 IPv6，否则 IPv4）'; back='返回' ;;
+    esac
     msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}IP 协议偏好 / IP protocol preference${NC}"
-    msg "${CYAN}======================================================================${NC}"
-    msg "当前 / Current: ${YELLOW}${cur}${NC}"
-    msg "${YELLOW}1. 仅 IPv4 (listen 0.0.0.0, prefer IPv4 share links)${NC}"
-    msg "${YELLOW}2. 仅 IPv6 (listen ::, prefer IPv6 share links)${NC}"
-    msg "${YELLOW}3. 双栈 dual (auto :: when available, else IPv4)${NC}"
-    msg "${GREEN}0. 返回${NC}"
+    msg "${BOLD}${GREEN}$title${NC}"
+    msg "Current: ${YELLOW}$cur${NC}"
+    msg "${YELLOW}1. $ipv4${NC}"
+    msg "${YELLOW}2. $ipv6${NC}"
+    msg "${YELLOW}3. $dual${NC}"
+    msg "${GREEN}0. $back${NC}"
     read -r -p 'Select [0-3]: ' c
     case "$c" in
-        1) save_ip_pref ipv4; msg "${GREEN}已保存: ipv4${NC}"; pause_return ;;
+        1) save_ip_pref ipv4 ;;
         2)
-            has_ipv6 || { msg "${RED}[!] 系统当前无可用全局 IPv6，拒绝保存仅 IPv6。${NC}"; pause_return; return 1; }
-            save_ip_pref ipv6; msg "${GREEN}已保存: ipv6${NC}"; pause_return ;;
-        3) save_ip_pref dual; msg "${GREEN}已保存: dual${NC}"; pause_return ;;
+            if ! has_ipv6; then
+                case "${ABOX_LANG:-zh}" in
+                    en) msg "${RED}No usable global IPv6 was detected; IPv6-only mode was not saved.${NC}" ;;
+                    ru) msg "${RED}Рабочий глобальный IPv6 не обнаружен; режим IPv6-only не сохранён.${NC}" ;;
+                    fa) msg "${RED}IPv6 عمومی قابل استفاده یافت نشد؛ حالت فقط IPv6 ذخیره نشد.${NC}" ;;
+                    *) msg "${RED}系统当前无可用全局 IPv6，未保存仅 IPv6 模式。${NC}" ;;
+                esac
+                pause_return; return 1
+            fi
+            save_ip_pref ipv6 ;;
+        3) save_ip_pref dual ;;
         *) return 0 ;;
     esac
-    msg "${YELLOW}[*] 新监听偏好对后续部署生效；已运行节点需重新部署或重启核心以应用 listen 地址。${NC}"
+    case "${ABOX_LANG:-zh}" in
+        en) msg "${GREEN}Saved: $(read_ip_pref). New listener preference applies to future deployments; running nodes require redeployment or an applicable restart.${NC}" ;;
+        ru) msg "${GREEN}Сохранено: $(read_ip_pref). Настройка слушателя применяется к новым узлам; существующие узлы нужно переустановить или перезапустить.${NC}" ;;
+        fa) msg "${GREEN}ذخیره شد: $(read_ip_pref). این تنظیم برای استقرارهای بعدی اعمال می‌شود؛ نودهای فعال به استقرار مجدد یا راه‌اندازی مجدد نیاز دارند.${NC}" ;;
+        *) msg "${GREEN}已保存：$(read_ip_pref)。新监听偏好对后续部署生效；已运行节点需重新部署或适当重启。${NC}" ;;
+    esac
+    pause_return
+}
+host_network_menu() {
+    clear
+    local prompt
+    case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${BOLD}${GREEN}Network and regional settings${NC}"
+            msg "${YELLOW}1. IP protocol preference${NC}"
+            msg "${YELLOW}2. Host DNS, DNS benchmark, DoT and DoH${NC}"
+            msg "${YELLOW}3. Timezone, locale and NTP${NC}"
+            msg "${YELLOW}4. Fast/strict mode and download source${NC}"
+            msg "${GREEN}0. Back${NC}"
+            ;;
+        ru)
+            msg "${BOLD}${GREEN}Сеть и региональные настройки${NC}"
+            msg "${YELLOW}1. Предпочтение IP${NC}"
+            msg "${YELLOW}2. DNS, тест задержки, DoT и DoH${NC}"
+            msg "${YELLOW}3. Часовой пояс, локаль и NTP${NC}"
+            msg "${YELLOW}4. Режим и источник загрузки${NC}"
+            msg "${GREEN}0. Назад${NC}"
+            ;;
+        fa)
+            msg "${BOLD}${GREEN}تنظیمات شبکه و منطقه‌ای${NC}"
+            msg "${YELLOW}1. ترجیح IP${NC}"
+            msg "${YELLOW}2. DNS، آزمون تأخیر، DoT و DoH${NC}"
+            msg "${YELLOW}3. منطقه زمانی، locale و NTP${NC}"
+            msg "${YELLOW}4. حالت و منبع دانلود${NC}"
+            msg "${GREEN}0. بازگشت${NC}"
+            ;;
+        *)
+            msg "${BOLD}${GREEN}网络与地区设置${NC}"
+            msg "${YELLOW}1. IP 协议偏好（IPv4 / IPv6 / 双栈）${NC}"
+            msg "${YELLOW}2. 本机 DNS（自动测速 / DoT / DoH / 回滚）${NC}"
+            msg "${YELLOW}3. 时区、Locale 与 NTP${NC}"
+            msg "${YELLOW}4. 快速/严格模式与下载源${NC}"
+            msg "${GREEN}0. 返回${NC}"
+            ;;
+    esac
+    local c
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-4]: ' ;; ru) prompt='Выберите [0–4]: ' ;; fa) prompt='انتخاب [۰ تا ۴]: ' ;; *) prompt='请选择 [0-4]：' ;; esac
+    read -r -p "$prompt" c
+    case "$c" in
+        1) ip_preference_menu ;;
+        2) dns_menu ;;
+        3) timezone_menu ;;
+        4) ux_mode_menu ;;
+        *) return 0 ;;
+    esac
 }
 
 timezone_for_country() {
@@ -8668,74 +8904,231 @@ detect_country_for_timezone() {
     printf '%s\n' "${body^^}"
 }
 
-timezone_menu() {
-    clear
-    local cur suggested country answer custom snap c
-    cur=$(current_timezone_name)
-    msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}时区设置 / Timezone${NC}"
-    msg "${CYAN}======================================================================${NC}"
-    msg "当前时区 / Current: ${YELLOW}${cur}${NC}"
-    country=$(detect_country_for_timezone 2>/dev/null || true)
-    if [[ -n "$country" ]]; then
-        suggested=$(timezone_for_country "$country")
-        msg "公网 IP 国家启发式 / Geo heuristic: ${YELLOW}${country}${NC} → ${YELLOW}${suggested:-unknown}${NC}"
-    else
-        suggested=''
-        msg "${YELLOW}[!] 无法从公网 IP 推断国家；可手动输入 IANA 时区。${NC}"
+timezone_list_entries() {
+    local zones=''
+    if command -v timedatectl >/dev/null 2>&1; then
+        zones=$(timedatectl list-timezones 2>/dev/null || true)
+        if [[ -n "$zones" ]]; then printf '%s\n' "$zones"; return 0; fi
     fi
-    msg "${YELLOW}1. 应用启发式推荐时区（需确认）${NC}"
-    msg "${YELLOW}2. 自定义 IANA 时区（如 Asia/Shanghai）${NC}"
-    msg "${YELLOW}3. 回滚到上次 A-Box 时区变更前快照${NC}"
+    if [[ -d /usr/share/zoneinfo ]]; then
+        find /usr/share/zoneinfo \( -type f -o -type l \) 2>/dev/null |
+            sed 's#^/usr/share/zoneinfo/##' |
+            grep -E '^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+.-]+)*$' |
+            grep -Ev '^(posix|right|SystemV)/|^(zone|iso3166|tzdata|leap|localtime|posixrules|Factory)$'
+    fi
+    printf '%s\n' UTC
+}
+
+timezone_apply_with_rollback() {
+    local target="$1" snap stage
+    valid_timezone_name "$target" || {
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${RED}Invalid timezone: $target${NC}" ;;
+            ru) msg "${RED}Недопустимый часовой пояс: $target${NC}" ;;
+            fa) msg "${RED}منطقه زمانی نامعتبر است: $target${NC}" ;;
+            *) msg "${RED}非法或不存在的时区: $target${NC}" ;;
+        esac
+        return 1
+    }
+    snap=$(mktemp -d /etc/ddr/.tz-snap.XXXXXX) || return 1
+    chmod 700 "$snap" && snapshot_timezone_state "$snap" || {
+        rm -rf -- "$snap"
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${RED}Could not save the timezone snapshot; no change was applied.${NC}" ;;
+            ru) msg "${RED}Не удалось сохранить снимок часового пояса; изменения не применены.${NC}" ;;
+            fa) msg "${RED}ذخیره snapshot منطقه زمانی شکست خورد؛ تغییری اعمال نشد.${NC}" ;;
+            *) msg "${RED}时区快照失败，未修改设置。${NC}" ;;
+        esac
+        return 1
+    }
+    if ! apply_timezone_name "$target"; then
+        restore_timezone_snapshot "$snap" || true
+        rm -rf -- "$snap"
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${RED}Timezone update failed; rollback was attempted.${NC}" ;;
+            ru) msg "${RED}Не удалось изменить часовой пояс; выполнена попытка отката.${NC}" ;;
+            fa) msg "${RED}تغییر منطقه زمانی شکست خورد؛ تلاش برای بازگردانی انجام شد.${NC}" ;;
+            *) msg "${RED}时区应用失败；已尝试回滚。${NC}" ;;
+        esac
+        return 1
+    fi
+    stage=$(mktemp -d /etc/ddr/.tz-rollback-new.XXXXXX) || { restore_timezone_snapshot "$snap" || true; rm -rf -- "$snap"; return 1; }
+    cp -a "$snap"/. "$stage"/ || { restore_timezone_snapshot "$snap" || true; rm -rf -- "$snap" "$stage"; return 1; }
+    rm -rf -- /etc/ddr/.tz-rollback
+    mv -- "$stage" /etc/ddr/.tz-rollback || { restore_timezone_snapshot "$snap" || true; rm -rf -- "$snap" "$stage"; return 1; }
+    write_file_atomically_from_stdin "$TZ_STATE_FILE" 600 <<< "applied=$target" || true
+    rm -rf -- "$snap"
+    case "${ABOX_LANG:-zh}" in
+        en) msg "${GREEN}Timezone set to $target; the previous state is available for rollback.${NC}" ;;
+        ru) msg "${GREEN}Часовой пояс установлен: $target; предыдущее состояние можно восстановить.${NC}" ;;
+        fa) msg "${GREEN}منطقه زمانی روی $target تنظیم شد؛ امکان بازگردانی وضعیت قبلی وجود دارد.${NC}" ;;
+        *) msg "${GREEN}时区已设置为 $target；修改前的状态可通过回滚菜单恢复。${NC}" ;;
+    esac
+}
+timezone_choose_from_list() {
+    local query="${1:-}" page=0 page_size=25 input tz confirm idx first last title page_label number_prompt search_prompt invalid_prompt range_prompt confirm_prompt
+    local -a all=() filtered=()
+    case "${ABOX_LANG:-zh}" in
+        en)
+            title='IANA time zones'; page_label='Current: %s | Search: %s | Total: %s'; number_prompt='Select number; n/p next/previous; s search; 0 back: '; search_prompt='Search timezone: '; invalid_prompt='Enter a number or n/p/s/0.'; range_prompt='Number out of range.'; confirm_prompt='Set timezone to %s? [Y/N]: ' ;;
+        ru)
+            title='Часовые пояса IANA'; page_label='Текущий: %s | Поиск: %s | Всего: %s'; number_prompt='Номер; n/p страницы; s поиск; 0 назад: '; search_prompt='Поиск часового пояса: '; invalid_prompt='Введите номер или n/p/s/0.'; range_prompt='Номер вне диапазона.'; confirm_prompt='Установить часовой пояс %s? [Y/N]: ' ;;
+        fa)
+            title='منطقه‌های زمانی IANA'; page_label='فعلی: %s | جست‌وجو: %s | تعداد: %s'; number_prompt='شماره؛ n/p صفحه؛ s جست‌وجو؛ 0 بازگشت: '; search_prompt='جست‌وجوی منطقه زمانی: '; invalid_prompt='شماره یا n/p/s/0 را وارد کنید.'; range_prompt='شماره خارج از محدوده است.'; confirm_prompt='منطقه زمانی روی %s تنظیم شود؟ [Y/N]: ' ;;
+        *)
+            title='IANA 时区列表'; page_label='当前: %s | 搜索: %s | 共 %s 项'; number_prompt='输入编号；n/p 翻页；s 搜索；0 返回: '; search_prompt='时区关键词: '; invalid_prompt='请输入编号或 n/p/s/0。'; range_prompt='编号超出范围。'; confirm_prompt='确认将时区改为 %s？[Y/N]: ' ;;
+    esac
+    mapfile -t all < <(timezone_list_entries | awk 'NF && !seen[$0]++' | LC_ALL=C sort -u)
+    for tz in "${all[@]}"; do
+        [[ -z "$query" || "${tz,,}" == *"${query,,}"* ]] && filtered+=("$tz")
+    done
+    (( ${#filtered[@]} > 0 )) || { msg "${YELLOW}No matching time zones / 没有匹配的时区。${NC}"; return 1; }
+    while true; do
+        clear
+        msg "${CYAN}================ $title ================${NC}"
+        printf "$page_label\n" "$(current_timezone_name)" "${query:-ALL}" "${#filtered[@]}"
+        first=$((page*page_size)); last=$((first+page_size)); ((last>${#filtered[@]})) && last=${#filtered[@]}
+        for ((idx=first; idx<last; idx++)); do printf '%4d. %s\n' "$((idx+1))" "${filtered[$idx]}"; done
+        read -r -p "$number_prompt" input || return 0
+        case "${input,,}" in
+            n|next) ((last<${#filtered[@]})) && page=$((page+1)) ;;
+            p|prev) ((page>0)) && page=$((page-1)) ;;
+            s|search)
+                read -r -p "$search_prompt" query || return 0
+                page=0; filtered=()
+                for tz in "${all[@]}"; do [[ -z "$query" || "${tz,,}" == *"${query,,}"* ]] && filtered+=("$tz"); done
+                (( ${#filtered[@]} > 0 )) || msg "${YELLOW}No matching time zones / 没有匹配的时区。${NC}"
+                ;;
+            0|'') return 0 ;;
+            *[!0-9]*) msg "${YELLOW}$invalid_prompt${NC}"; sleep 1 ;;
+            *)
+                ((input>=1 && input<=${#filtered[@]})) || { msg "${YELLOW}$range_prompt${NC}"; sleep 1; continue; }
+                tz="${filtered[$((input-1))]}"
+                printf -v confirm_prompt "$confirm_prompt" "$tz"
+                read -r -p "$confirm_prompt" confirm
+                is_yes "$confirm" || continue
+                timezone_apply_with_rollback "$tz"
+                pause_return
+                return 0
+                ;;
+        esac
+    done
+}
+timezone_choose_locale() {
+    local page=0 page_size=25 first last i value answer title prompt invalid_prompt range_prompt confirm_prompt
+    local -a locales=()
+    case "${ABOX_LANG:-zh}" in
+        en) title='Available system locales'; prompt='Enter number; n/p next/previous; 0 back: '; invalid_prompt='Enter a number, n, p or 0.'; range_prompt='Number out of range.'; confirm_prompt='Set system LANG to %s? [Y/N]: ' ;;
+        ru) title='Доступные системные локали'; prompt='Номер; n/p страницы; 0 назад: '; invalid_prompt='Введите номер, n, p или 0.'; range_prompt='Номер вне диапазона.'; confirm_prompt='Установить системную локаль LANG=%s? [Y/N]: ' ;;
+        fa) title='زبان‌های محلی نصب‌شده'; prompt='شماره؛ n/p صفحه؛ 0 بازگشت: '; invalid_prompt='شماره، n، p یا 0 را وارد کنید.'; range_prompt='شماره خارج از محدوده است.'; confirm_prompt='مقدار LANG سیستم روی %s تنظیم شود؟ [Y/N]: ' ;;
+        *) title='可用系统 Locale'; prompt='输入编号；n/p 翻页；0 返回: '; invalid_prompt='请输入编号、n、p 或 0。'; range_prompt='编号超出范围。'; confirm_prompt='将系统 LANG 设置为 %s？[Y/N]: ' ;;
+    esac
+    if command -v localectl >/dev/null 2>&1; then
+        mapfile -t locales < <(localectl list-locales 2>/dev/null | awk 'NF && !seen[$0]++' | LC_ALL=C sort -u)
+    fi
+    if (( ${#locales[@]} == 0 )); then
+        mapfile -t locales < <(locale -a 2>/dev/null | awk 'NF && !seen[$0]++' | LC_ALL=C sort -u)
+    fi
+    (( ${#locales[@]} > 0 )) || { msg "${YELLOW}No installed locales were found; install or generate a locale first.${NC}"; pause_return; return 1; }
+    while true; do
+        clear
+        msg "${CYAN}================ $title ================${NC}"
+        first=$((page*page_size)); last=$((first+page_size)); ((last>${#locales[@]})) && last=${#locales[@]}
+        for ((i=first; i<last; i++)); do printf '%4d. %s\n' "$((i+1))" "${locales[$i]}"; done
+        read -r -p "$prompt" value || return 0
+        case "${value,,}" in
+            n|next) ((last<${#locales[@]})) && page=$((page+1)) ;;
+            p|prev) ((page>0)) && page=$((page-1)) ;;
+            0|'') return 0 ;;
+            *[!0-9]*) msg "${YELLOW}$invalid_prompt${NC}"; sleep 1 ;;
+            *)
+                ((value>=1 && value<=${#locales[@]})) || { msg "${YELLOW}$range_prompt${NC}"; sleep 1; continue; }
+                value="${locales[$((value-1))]}"
+                printf -v confirm_prompt "$confirm_prompt" "$value"
+                read -r -p "$confirm_prompt" answer
+                is_yes "$answer" || continue
+                if command -v localectl >/dev/null 2>&1; then
+                    localectl set-locale "LANG=$value" || { msg "${RED}Locale update failed.${NC}"; pause_return; return 1; }
+                elif command -v update-locale >/dev/null 2>&1; then
+                    update-locale "LANG=$value" || { msg "${RED}Locale update failed.${NC}"; pause_return; return 1; }
+                else
+                    msg "${RED}Neither localectl nor update-locale is available; no locale was changed.${NC}"
+                    pause_return; return 1
+                fi
+                msg "${GREEN}Locale updated. Some running services may need a restart.${NC}"
+                pause_return
+                return 0
+                ;;
+        esac
+    done
+}
+timezone_locale_ntp_menu() {
+    clear
+    local c ntp synced now
+    now=$(date '+%Y-%m-%d %H:%M:%S %Z (%z)' 2>/dev/null || date)
+    ntp='unknown'; synced='unknown'
+    if command -v timedatectl >/dev/null 2>&1; then
+        ntp=$(timedatectl show -p NTP --value 2>/dev/null || printf unknown)
+        synced=$(timedatectl show -p NTPSynchronized --value 2>/dev/null || printf unknown)
+    fi
+    case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${BOLD}${GREEN}Time, timezone and locale${NC}"
+            msg "Current time: $now | timezone: $(current_timezone_name) | NTP: $ntp | synced: $synced"
+            msg "${YELLOW}1. Browse all time zones by number${NC}"
+            msg "${YELLOW}2. Search a time zone and select by number${NC}"
+            msg "${YELLOW}3. Select an installed system locale${NC}"
+            msg "${YELLOW}4. Enable NTP time synchronization${NC}"
+            msg "${YELLOW}5. Restore the previous timezone${NC}"
+            ;;
+        ru)
+            msg "${BOLD}${GREEN}Время, часовой пояс и локаль${NC}"
+            msg "Сейчас: $now | часовой пояс: $(current_timezone_name) | NTP: $ntp | синхронизация: $synced"
+            msg "${YELLOW}1. Все часовые пояса по номерам${NC}"
+            msg "${YELLOW}2. Поиск часового пояса${NC}"
+            msg "${YELLOW}3. Выбрать установленную локаль${NC}"
+            msg "${YELLOW}4. Включить синхронизацию времени NTP${NC}"
+            msg "${YELLOW}5. Восстановить предыдущий часовой пояс${NC}"
+            ;;
+        fa)
+            msg "${BOLD}${GREEN}زمان، منطقه زمانی و locale${NC}"
+            msg "اکنون: $now | منطقه زمانی: $(current_timezone_name) | NTP: $ntp | همگام‌سازی: $synced"
+            msg "${YELLOW}1. نمایش همه مناطق زمانی با شماره${NC}"
+            msg "${YELLOW}2. جست‌وجو و انتخاب منطقه زمانی${NC}"
+            msg "${YELLOW}3. انتخاب locale نصب‌شده${NC}"
+            msg "${YELLOW}4. فعال‌کردن همگام‌سازی زمان NTP${NC}"
+            msg "${YELLOW}5. بازگردانی منطقه زمانی قبلی${NC}"
+            ;;
+        *)
+            msg "${BOLD}${GREEN}时间、时区与地区${NC}"
+            msg "当前时间: $now | 时区: $(current_timezone_name) | NTP: $ntp | 已同步: $synced"
+            msg "${YELLOW}1. 查看全部时区并按编号选择${NC}"
+            msg "${YELLOW}2. 搜索时区后按编号选择${NC}"
+            msg "${YELLOW}3. 选择已安装的系统 Locale${NC}"
+            msg "${YELLOW}4. 启用 NTP 自动时间同步${NC}"
+            msg "${YELLOW}5. 回滚到时区修改前快照${NC}"
+            ;;
+    esac
     msg "${GREEN}0. 返回${NC}"
-    read -r -p 'Select [0-3]: ' c
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; *) prompt='请选择 [0-5]：' ;; esac
+    read -r -p "$prompt" c
     case "$c" in
-        1)
-            [[ -n "$suggested" ]] || { msg "${RED}[!] 无可用启发式推荐。${NC}"; pause_return; return 1; }
-            msg "将设置时区为: ${YELLOW}${suggested}${NC}"
-            read -r -p '确认应用? [Y/N]: ' answer
-            is_yes "$answer" || { msg "${YELLOW}已取消。${NC}"; pause_return; return 0; }
-            snap=$(mktemp -d /etc/ddr/.tz-snap.XXXXXX) || die '时区快照目录创建失败。'
-            chmod 700 "$snap" || die '时区快照权限失败。'
-            snapshot_timezone_state "$snap" || die '时区快照失败。'
-            if apply_timezone_name "$suggested"; then
-                ensure_abox_dir_owned "$ABOX_DIR"
-                write_file_atomically_from_stdin "$TZ_STATE_FILE" 600 <<< "applied=${suggested};snapshot=${snap}" || true
-                # Keep only one rollback snapshot pointer
-                rm -rf -- "$DNS_BACKUP_DIR/../.tz-rollback" 2>/dev/null || true
-                mkdir -p /etc/ddr/.tz-rollback && rm -rf /etc/ddr/.tz-rollback/* && cp -a "$snap"/. /etc/ddr/.tz-rollback/ && rm -rf -- "$snap"
-                msg "${GREEN}时区已设置为 ${suggested}${NC}"
+        1) timezone_choose_from_list '' ;;
+        2) local query; read -r -p 'Timezone search: ' query || return 0; timezone_choose_from_list "$query" ;;
+        3) timezone_choose_locale ;;
+        4)
+            if command -v timedatectl >/dev/null 2>&1; then
+                timedatectl set-ntp true && msg "${GREEN}已请求启用 NTP；请检查同步状态。${NC}" || msg "${RED}启用 NTP 失败，请检查时间同步服务。${NC}"
             else
-                restore_timezone_snapshot "$snap" || true
-                rm -rf -- "$snap"
-                die '时区应用失败，已尝试回滚。'
+                msg "${YELLOW}当前系统没有 timedatectl；请使用发行版对应的 chrony/openntpd 管理方式。${NC}"
             fi
             pause_return
             ;;
-        2)
-            read -r -p 'IANA timezone (e.g. Asia/Shanghai): ' custom
-            valid_timezone_name "$custom" || { msg "${RED}[!] 非法或不存在的时区: $custom${NC}"; pause_return; return 1; }
-            read -r -p "确认设置为 ${custom}? [Y/N]: " answer
-            is_yes "$answer" || { pause_return; return 0; }
-            snap=$(mktemp -d /etc/ddr/.tz-snap.XXXXXX) || die '时区快照目录创建失败。'
-            chmod 700 "$snap"
-            snapshot_timezone_state "$snap" || die '时区快照失败。'
-            if apply_timezone_name "$custom"; then
-                mkdir -p /etc/ddr/.tz-rollback && rm -rf /etc/ddr/.tz-rollback/* && cp -a "$snap"/. /etc/ddr/.tz-rollback/ && rm -rf -- "$snap"
-                write_file_atomically_from_stdin "$TZ_STATE_FILE" 600 <<< "applied=${custom}" || true
-                msg "${GREEN}时区已设置为 ${custom}${NC}"
-            else
-                restore_timezone_snapshot "$snap" || true
-                rm -rf -- "$snap"
-                die '时区应用失败，已尝试回滚。'
-            fi
-            pause_return
-            ;;
-        3)
+        5)
             if [[ -d /etc/ddr/.tz-rollback ]]; then
-                restore_timezone_snapshot /etc/ddr/.tz-rollback && msg "${GREEN}已回滚时区快照。${NC}" || msg "${RED}回滚失败。${NC}"
+                restore_timezone_snapshot /etc/ddr/.tz-rollback && msg "${GREEN}已恢复修改前时区。${NC}" || msg "${RED}时区回滚失败。${NC}"
             else
-                msg "${YELLOW}[!] 无可用时区回滚快照。${NC}"
+                msg "${YELLOW}没有可用的时区回滚快照。${NC}"
             fi
             pause_return
             ;;
@@ -8743,6 +9136,7 @@ timezone_menu() {
     esac
 }
 
+timezone_menu() { timezone_locale_ntp_menu; }
 dns_backend_detect() {
     if command -v resolvectl >/dev/null 2>&1 && systemctl is-active --quiet systemd-resolved 2>/dev/null; then
         printf 'resolved\n'
@@ -8753,65 +9147,150 @@ dns_backend_detect() {
     fi
 }
 
+systemd_major_version() {
+    local version
+    version=$(systemctl --version 2>/dev/null | awk 'NR==1 {print $2}')
+    [[ "$version" =~ ^[0-9]+$ ]] || return 1
+    printf '%s\n' "$version"
+}
+
 snapshot_dns_state() {
-    local dir="$1"
+    local dir="$1" backend iface connection key value
     mkdir -p "$dir" || return 1
     chmod 700 "$dir" || return 1
-    dns_backend_detect > "$dir/backend" || return 1
-    [[ -f /etc/resolv.conf || -L /etc/resolv.conf ]] && cp -a /etc/resolv.conf "$dir/resolv.conf" 2>/dev/null || true
-    if [[ -d /etc/systemd/resolved.conf.d ]]; then
-        mkdir -p "$dir/resolved.conf.d"
-        cp -a /etc/systemd/resolved.conf.d/. "$dir/resolved.conf.d/" 2>/dev/null || true
+    backend=$(dns_backend_detect) || return 1
+    printf '%s\n' "$backend" > "$dir/backend" || return 1
+    if command -v lsattr >/dev/null 2>&1 && lsattr /etc/resolv.conf 2>/dev/null | grep -q 'i'; then printf '1\n' > "$dir/resolv-immutable"; else printf '0\n' > "$dir/resolv-immutable"; fi
+    if [[ -f /etc/resolv.conf || -L /etc/resolv.conf ]]; then cp -a /etc/resolv.conf "$dir/resolv.conf" || return 1; else printf absent > "$dir/resolv.conf.absent"; fi
+    if [[ -f /etc/systemd/resolved.conf ]]; then cp -a /etc/systemd/resolved.conf "$dir/resolved.conf" || return 1; else printf absent > "$dir/resolved.conf.absent"; fi
+    if [[ -f /etc/systemd/resolved.conf.d/99-abox-dns.conf ]]; then
+        mkdir -p "$dir/resolved.conf.d" || return 1
+        cp -a /etc/systemd/resolved.conf.d/99-abox-dns.conf "$dir/resolved.conf.d/99-abox-dns.conf" || return 1
     fi
-    if [[ -f /etc/systemd/resolved.conf ]]; then
-        cp -a /etc/systemd/resolved.conf "$dir/resolved.conf" 2>/dev/null || true
+    if [[ -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml ]]; then
+        mkdir -p "$dir/dnscrypt-proxy" || return 1
+        cp -a /etc/dnscrypt-proxy/dnscrypt-proxy.toml "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" || return 1
+        printf present > "$dir/dnscrypt-config-state"
+    else printf absent > "$dir/dnscrypt-config-state"; fi
+    if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then printf active > "$dir/dnscrypt-service-state"; else printf inactive > "$dir/dnscrypt-service-state"; fi
+    if command -v systemctl >/dev/null 2>&1 && systemctl is-enabled --quiet dnscrypt-proxy 2>/dev/null; then printf enabled > "$dir/dnscrypt-service-enabled"; else printf disabled > "$dir/dnscrypt-service-enabled"; fi
+    if [[ -f "$DNS_STATE_FILE" && ! -L "$DNS_STATE_FILE" ]]; then cp -a "$DNS_STATE_FILE" "$dir/dns-state" || return 1; else printf absent > "$dir/dns-state.absent"; fi
+    if [[ "$backend" == networkmanager ]] && command -v nmcli >/dev/null 2>&1; then
+        iface=$(nmcli -t -f DEVICE,STATE device 2>/dev/null | awk -F: '$2=="connected" {print $1; exit}')
+        connection=$(nmcli -g GENERAL.CONNECTION device show "$iface" 2>/dev/null || true)
+        if [[ -n "$iface" && -n "$connection" ]]; then
+            printf '%s\n' "$connection" > "$dir/nm-connection"
+            for key in ipv4.ignore-auto-dns ipv4.dns ipv6.ignore-auto-dns ipv6.dns; do
+                value=$(nmcli -g "$key" connection show "$connection" 2>/dev/null | head -1 || true)
+                printf '%s\n' "$value" > "$dir/nm-${key//./-}"
+            done
+        fi
     fi
-    printf '%s\n' 'ok' > "$dir/COMPLETE" || return 1
+    printf ok > "$dir/COMPLETE" || return 1
 }
-
 restore_dns_snapshot() {
-    local dir="$1" backend
+    local dir="$1" backend state key value connection iface dnscrypt_state immutable_state
     [[ -f "$dir/COMPLETE" ]] || return 1
     backend=$(tr -d '[:space:]' < "$dir/backend" 2>/dev/null || true)
-    if [[ -e "$dir/resolv.conf" ]]; then
-        cp -a "$dir/resolv.conf" /etc/resolv.conf || return 1
-    fi
-    if [[ -f "$dir/resolved.conf" ]]; then
-        cp -a "$dir/resolved.conf" /etc/systemd/resolved.conf || return 1
-    fi
-    if [[ -d "$dir/resolved.conf.d" ]]; then
-        mkdir -p /etc/systemd/resolved.conf.d
+    immutable_state=$(tr -d '[:space:]' < "$dir/resolv-immutable" 2>/dev/null || printf '0')
+    if command -v lsattr >/dev/null 2>&1 && lsattr /etc/resolv.conf 2>/dev/null | grep -q 'i'; then chattr -i /etc/resolv.conf 2>/dev/null || return 1; fi
+    if [[ -e "$dir/resolv.conf" || -L "$dir/resolv.conf" ]]; then cp -a "$dir/resolv.conf" /etc/resolv.conf || return 1
+    elif [[ -f "$dir/resolv.conf.absent" ]]; then rm -f /etc/resolv.conf || return 1; fi
+    if [[ -f "$dir/resolved.conf" ]]; then cp -a "$dir/resolved.conf" /etc/systemd/resolved.conf || return 1
+    elif [[ -f "$dir/resolved.conf.absent" ]]; then rm -f /etc/systemd/resolved.conf || return 1; fi
+    if [[ -f "$dir/resolved.conf.d/99-abox-dns.conf" ]]; then
+        install -d -m 755 /etc/systemd/resolved.conf.d || return 1
+        cp -a "$dir/resolved.conf.d/99-abox-dns.conf" /etc/systemd/resolved.conf.d/99-abox-dns.conf || return 1
+    else
         rm -f /etc/systemd/resolved.conf.d/99-abox-dns.conf 2>/dev/null || true
-        # restore only our drop-in removal; leave other operator files
     fi
-    rm -f /etc/systemd/resolved.conf.d/99-abox-dns.conf 2>/dev/null || true
-    if [[ "$backend" == 'resolved' ]] && command -v systemctl >/dev/null 2>&1; then
-        systemctl restart systemd-resolved >/dev/null 2>&1 || true
+    dnscrypt_state=$(tr -d '[:space:]' < "$dir/dnscrypt-config-state" 2>/dev/null || true)
+    if [[ "$dnscrypt_state" == present && -f "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" ]]; then
+        install -d -m 755 /etc/dnscrypt-proxy || return 1
+        cp -a "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
+    elif [[ "$dnscrypt_state" == absent ]]; then
+        rm -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
     fi
-    if [[ "$backend" == 'networkmanager' ]] && command -v systemctl >/dev/null 2>&1; then
-        systemctl reload NetworkManager >/dev/null 2>&1 || true
+    if [[ "$backend" == networkmanager && -f "$dir/nm-connection" ]] && command -v nmcli >/dev/null 2>&1; then
+        connection=$(cat "$dir/nm-connection")
+        for key in ipv4.ignore-auto-dns ipv4.dns ipv6.ignore-auto-dns ipv6.dns; do
+            value=$(cat "$dir/nm-${key//./-}" 2>/dev/null || true)
+            [[ "$value" == '--' ]] && value=''
+            nmcli connection modify "$connection" "$key" "$value" || return 1
+        done
+        iface=$(nmcli -t -f DEVICE,STATE device 2>/dev/null | awk -F: '$2=="connected" {print $1; exit}')
+        [[ -z "$iface" ]] || nmcli device reapply "$iface" >/dev/null 2>&1 || true
     fi
+    if [[ -f "$dir/dns-state" ]]; then cp -a "$dir/dns-state" "$DNS_STATE_FILE" || return 1
+    elif [[ -f "$dir/dns-state.absent" ]]; then rm -f "$DNS_STATE_FILE" || return 1; fi
+    if [[ "$backend" == resolved ]] && command -v systemctl >/dev/null 2>&1; then systemctl restart systemd-resolved >/dev/null 2>&1 || return 1; fi
+    if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files dnscrypt-proxy.service >/dev/null 2>&1; then
+        state=$(tr -d '[:space:]' < "$dir/dnscrypt-service-state" 2>/dev/null || printf inactive)
+        local enabled_state
+        enabled_state=$(tr -d '[:space:]' < "$dir/dnscrypt-service-enabled" 2>/dev/null || printf disabled)
+        if [[ "$enabled_state" == enabled ]]; then systemctl enable dnscrypt-proxy >/dev/null 2>&1 || return 1
+        else systemctl disable dnscrypt-proxy >/dev/null 2>&1 || true; fi
+        if [[ "$state" == active ]]; then systemctl restart dnscrypt-proxy >/dev/null 2>&1 || return 1; else systemctl stop dnscrypt-proxy >/dev/null 2>&1 || true; fi
+    fi
+    if [[ "$immutable_state" == 1 ]] && command -v chattr >/dev/null 2>&1; then chattr +i /etc/resolv.conf 2>/dev/null || return 1; fi
     return 0
 }
-
 apply_host_dns() {
-    local mode="$1" v4="$2" v6="$3" backend dropin answer
-    # mode: plain | dot
+    local mode="$1" v4="$2" v6="$3" tls_name="${4:-}" backend dropin answer confirm_prompt immutable_prompt dot_error dns_servers immutable_before=0 resolved_major=''
+    case "${ABOX_LANG:-zh}" in
+        en) confirm_prompt='Apply this host DNS change? A rollback snapshot is kept. [Y/N]: '; immutable_prompt='/etc/resolv.conf has the immutable flag. Remove it and continue? [Y/N]: '; dot_error='The active DNS backend does not support DoT; DNS was not changed.' ;;
+        ru) confirm_prompt='Применить DNS для системы? Снимок для отката будет сохранён. [Y/N]: '; immutable_prompt='/etc/resolv.conf имеет immutable-флаг. Снять флаг и продолжить? [Y/N]: '; dot_error='Текущий DNS backend не поддерживает DoT; DNS не изменён.' ;;
+        fa) confirm_prompt='تنظیم DNS سیستم اعمال شود؟ نسخه بازگشت ذخیره می‌شود. [Y/N]: '; immutable_prompt='پرچم immutable روی /etc/resolv.conf وجود دارد. حذف و ادامه داده شود؟ [Y/N]: '; dot_error='بک‌اند DNS فعلی از DoT پشتیبانی نمی‌کند؛ DNS تغییر نکرد.' ;;
+        *) confirm_prompt='确认修改本机 DNS？可回滚。[Y/N]: '; immutable_prompt='/etc/resolv.conf 带 immutable 属性；是否移除后继续？[Y/N]: '; dot_error='当前 DNS 后端不支持 DoT；未修改 DNS。' ;;
+    esac
+    # DoT requires systemd-resolved; unsupported backends fail closed.
     backend=$(dns_backend_detect)
-    msg "检测到 DNS 后端 / backend: ${YELLOW}${backend}${NC}"
-    msg "将应用 IPv4 DNS: ${YELLOW}${v4}${NC}  IPv6 DNS: ${YELLOW}${v6:-none}${NC}  模式: ${YELLOW}${mode}${NC}"
-    read -r -p '确认修改本机 DNS？可回滚。Confirm host DNS change? [Y/N]: ' answer
+    if [[ "$mode" == dot && "$backend" != resolved ]]; then
+        msg "${RED}$dot_error${NC}"
+        return 1
+    fi
+    if [[ "$mode" == dot ]]; then
+        resolved_major=$(systemd_major_version 2>/dev/null || true)
+        if [[ ! "$resolved_major" =~ ^[0-9]+$ ]] || (( resolved_major < 245 )); then
+            case "${ABOX_LANG:-zh}" in
+                en) msg "${YELLOW}DoT with authenticated server names requires systemd-resolved 245 or later; DNS was not changed.${NC}" ;;
+                ru) msg "${YELLOW}Для DoT с проверкой имени сервера требуется systemd-resolved версии 245 или новее; DNS не изменён.${NC}" ;;
+                fa) msg "${YELLOW}برای DoT با احراز هویت نام سرور، systemd-resolved نسخه 245 یا جدیدتر لازم است؛ DNS تغییر نکرد.${NC}" ;;
+                *) msg "${YELLOW}带服务器名称校验的 DoT 需要 systemd-resolved 245 或更高版本；未修改 DNS。${NC}" ;;
+            esac
+            return 1
+        fi
+        if ! valid_domain "$tls_name"; then
+            case "${ABOX_LANG:-zh}" in
+                en) msg "${RED}DoT requires a valid TLS authentication hostname, such as dns.google or cloudflare-dns.com.${NC}" ;;
+                ru) msg "${RED}Для DoT требуется корректное имя TLS-аутентификации, например dns.google или cloudflare-dns.com.${NC}" ;;
+                fa) msg "${RED}برای DoT نام معتبر احراز هویت TLS لازم است؛ مانند dns.google یا cloudflare-dns.com.${NC}" ;;
+                *) msg "${RED}DoT 需要有效的 TLS 认证主机名，例如 dns.google 或 cloudflare-dns.com。${NC}" ;;
+            esac
+            return 1
+        fi
+        dns_servers="${v4}#${tls_name}"
+        [[ -z "$v6" ]] || dns_servers+=" ${v6}#${tls_name}"
+    else
+        dns_servers="$v4${v6:+ $v6}"
+    fi
+    msg "${CYAN}DNS backend: ${backend} | IPv4: ${v4} | IPv6: ${v6:-none} | mode: ${mode}${tls_name:+ | TLS name: ${tls_name}}${NC}"
+    read -r -p "$confirm_prompt" answer
     is_yes "$answer" || { msg "${YELLOW}已取消。${NC}"; return 0; }
-    # Refuse silent immutable bit games
+    # Preserve the original immutable flag so rollback can restore it, too.
     if command -v lsattr >/dev/null 2>&1 && lsattr /etc/resolv.conf 2>/dev/null | grep -q 'i'; then
-        read -r -p '/etc/resolv.conf 带 immutable(i)。仍要继续并尝试 chattr -i？[Y/N]: ' answer
+        immutable_before=1
+        read -r -p "$immutable_prompt" answer
         is_yes "$answer" || return 0
-        chattr -i /etc/resolv.conf 2>/dev/null || die '无法清除 immutable 属性。'
     fi
     rm -rf -- "$DNS_BACKUP_DIR"
-    mkdir -p "$DNS_BACKUP_DIR" || die 'DNS 备份目录创建失败。'
+    mkdir -p "$DNS_BACKUP_DIR" || die "Failed to create DNS rollback directory."
     chmod 700 "$DNS_BACKUP_DIR"
-    snapshot_dns_state "$DNS_BACKUP_DIR" || die 'DNS 状态快照失败。'
+    snapshot_dns_state "$DNS_BACKUP_DIR" || die "Failed to snapshot DNS state."
+    printf '%s\n' "$immutable_before" > "$DNS_BACKUP_DIR/resolv-immutable" || die "Failed to save DNS immutable-flag state."
+    if (( immutable_before == 1 )); then
+        chattr -i /etc/resolv.conf 2>/dev/null || die "Failed to clear immutable flag on /etc/resolv.conf."
+    fi
     case "$backend" in
         resolved)
             mkdir -p /etc/systemd/resolved.conf.d || die '无法创建 resolved.conf.d'
@@ -8819,7 +9298,7 @@ apply_host_dns() {
             if [[ "$mode" == 'dot' ]]; then
                 write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'DoT drop-in 写入失败。'; }
 [Resolve]
-DNS=${v4}${v6:+ $v6}
+DNS=${dns_servers}
 FallbackDNS=
 DNSOverTLS=yes
 EOF_DNS
@@ -8831,18 +9310,17 @@ FallbackDNS=
 DNSOverTLS=no
 EOF_DNS
             fi
-            systemctl restart systemd-resolved >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'systemd-resolved 重启失败，已回滚。'; }
+            systemctl restart systemd-resolved >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "systemd-resolved restart failed; rollback was attempted."; }
             ;;
         networkmanager)
-            # Apply to active device via nmcli (plaintext DNS; NM DoT varies by version)
-            local iface
-            iface=$(nmcli -t -f DEVICE,STATE d 2>/dev/null | awk -F: '$2=="connected"{print $1; exit}')
+            local iface connection
+            iface=$(nmcli -t -f DEVICE,STATE device 2>/dev/null | awk -F: '$2=="connected"{print $1; exit}')
             [[ -n "$iface" ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die '未找到 NetworkManager 活动接口。'; }
-            nmcli d modify "$iface" ipv4.ignore-auto-dns yes ipv4.dns "$v4" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'nmcli IPv4 DNS 失败。'; }
-            if [[ -n "$v6" ]]; then
-                nmcli d modify "$iface" ipv6.ignore-auto-dns yes ipv6.dns "$v6" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'nmcli IPv6 DNS 失败。'; }
-            fi
-            nmcli d reapply "$iface" >/dev/null 2>&1 || nmcli n off && nmcli n on || true
+            connection=$(nmcli -g GENERAL.CONNECTION device show "$iface" 2>/dev/null || true)
+            [[ -n "$connection" && "$connection" != '--' ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die '未找到活动 NetworkManager 连接配置。'; }
+            nmcli connection modify "$connection" ipv4.ignore-auto-dns yes ipv4.dns "$v4" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'NetworkManager IPv4 DNS 写入失败。'; }
+            nmcli connection modify "$connection" ipv6.ignore-auto-dns yes ipv6.dns "${v6:-}" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'NetworkManager IPv6 DNS 写入失败。'; }
+            nmcli device reapply "$iface" >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'NetworkManager DNS 应用失败，已回滚。'; }
             ;;
         *)
             # Plain resolv.conf for Alpine / generic
@@ -8852,89 +9330,340 @@ EOF_DNS
                 [[ -n "$v6" ]] && printf 'nameserver %s\n' "$v6"
                 printf 'options timeout:2 attempts:3\n'
             } > /etc/resolv.conf || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 写入失败。'; }
-            if [[ "$mode" == 'dot' ]]; then
-                msg "${YELLOW}[!] 当前后端不支持 systemd-resolved DoT；已写入明文 nameserver。请改用 stubby/unbound 或切换到 systemd-resolved。${NC}"
-            fi
             ;;
     esac
     write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< "backend=${backend};mode=${mode};v4=${v4};v6=${v6}" || true
-    msg "${GREEN}本机 DNS 已更新。可用菜单回滚。${NC}"
+    case "${ABOX_LANG:-zh}" in
+        en) msg "${GREEN}Host DNS was updated. Use the DNS menu to roll back.${NC}" ;;
+        ru) msg "${GREEN}Системный DNS обновлён. Для отката используйте меню DNS.${NC}" ;;
+        fa) msg "${GREEN}DNS سیستم به‌روزرسانی شد؛ برای بازگشت از منوی DNS استفاده کنید.${NC}" ;;
+        *) msg "${GREEN}本机 DNS 已更新。可用菜单回滚。${NC}" ;;
+    esac
+}
+
+dns_probe_once() {
+    local server="$1" port="${2:-53}" name="${3:-example.com}"
+    command -v python3 >/dev/null 2>&1 || return 1
+    python3 - "$server" "$port" "$name" <<'PY_DNS_PROBE'
+import ipaddress, os, socket, struct, sys, time
+server, port, name = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+try:
+    addr = ipaddress.ip_address(server)
+    family = socket.AF_INET6 if addr.version == 6 else socket.AF_INET
+    ident = int.from_bytes(os.urandom(2), 'big')
+    qname = b''.join(bytes([len(x)]) + x for x in name.rstrip('.').encode('ascii').split(b'.')) + b'\0'
+    packet = struct.pack('!HHHHHH', ident, 0x0100, 1, 0, 0, 0) + qname + struct.pack('!HH', 1, 1)
+    sock = socket.socket(family, socket.SOCK_DGRAM); sock.settimeout(1.8)
+    start = time.monotonic(); sock.sendto(packet, (server, port)); response, _ = sock.recvfrom(4096)
+    elapsed = (time.monotonic() - start) * 1000; sock.close()
+    if len(response) < 12: raise RuntimeError('short response')
+    rid, flags, qd, an, ns, ar = struct.unpack('!HHHHHH', response[:12])
+    if rid != ident or not (flags & 0x8000) or (flags & 15) != 0 or an < 1: raise RuntimeError('query failed')
+    print(f'{elapsed:.1f}')
+except Exception:
+    raise SystemExit(1)
+PY_DNS_PROBE
+}
+
+dns_auto_prefer() {
+    local server result successes median best='' best_ms=999999 best_success=0 round v6 prompt canceled
+    local -a candidates=('1.1.1.1' '8.8.8.8' '9.9.9.9' '208.67.222.222') timings=()
+    command -v python3 >/dev/null 2>&1 || { msg "${RED}DNS benchmark requires Python 3.${NC}"; pause_return; return 1; }
+    clear
+    case "${ABOX_LANG:-zh}" in
+        en) msg "${CYAN}DNS preference test: three real example.com queries per candidate${NC}" ;;
+        ru) msg "${CYAN}Проверка DNS: три реальных запроса example.com к каждому серверу${NC}" ;;
+        fa) msg "${CYAN}آزمون DNS: سه پرس‌وجوی واقعی example.com برای هر سرور${NC}" ;;
+        *) msg "${CYAN}DNS 自动测速：每个候选对 example.com 发起 3 次真实查询${NC}" ;;
+    esac
+    for server in "${candidates[@]}"; do
+        timings=(); successes=0
+        for round in 1 2 3; do
+            result=$(dns_probe_once "$server" 53 example.com 2>/dev/null || true)
+            if [[ "$result" =~ ^[0-9]+([.][0-9]+)?$ ]]; then timings+=("$result"); successes=$((successes+1)); fi
+        done
+        if (( successes > 0 )); then
+            median=$(printf '%s\n' "${timings[@]}" | LC_ALL=C sort -n | awk '{v[NR]=$1} END {if (NR%2) print v[(NR+1)/2]; else printf "%.1f", (v[NR/2]+v[NR/2+1])/2}')
+            case "${ABOX_LANG:-zh}" in
+                en) msg "${YELLOW}$server${NC}: $successes/3 successful, median ${median} ms" ;;
+                ru) msg "${YELLOW}$server${NC}: успешно $successes/3, медиана ${median} мс" ;;
+                fa) msg "${YELLOW}$server${NC}: موفق $successes/3، میانه ${median} میلی‌ثانیه" ;;
+                *) msg "${YELLOW}$server${NC}: 成功 $successes/3，中位数 ${median} ms" ;;
+            esac
+            if (( successes > best_success )) || { (( successes == best_success )) && awk -v a="$median" -v b="$best_ms" 'BEGIN{exit !(a+0 < b+0)}'; }; then best="$server"; best_ms="$median"; best_success=$successes; fi
+        else
+            case "${ABOX_LANG:-zh}" in
+                en) msg "${YELLOW}$server${NC}: 0/3 successful" ;;
+                ru) msg "${YELLOW}$server${NC}: успешно 0/3" ;;
+                fa) msg "${YELLOW}$server${NC}: موفق 0/3" ;;
+                *) msg "${YELLOW}$server${NC}: 成功 0/3" ;;
+            esac
+        fi
+    done
+    [[ -n "$best" && $best_success -ge 2 ]] || {
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${RED}No resolver passed the availability threshold; DNS was not changed.${NC}" ;;
+            ru) msg "${RED}Ни один DNS не прошёл проверку доступности; DNS не изменён.${NC}" ;;
+            fa) msg "${RED}هیچ DNS از آستانه دسترس‌پذیری عبور نکرد؛ تنظیمات تغییر نکرد.${NC}" ;;
+            *) msg "${RED}没有候选通过可用性门槛；未修改 DNS。${NC}" ;;
+        esac
+        pause_return; return 1;
+    }
+    # Only the measured IPv4 resolver is applied; IPv6 resolvers require their own measurement.
+    v6=''
+    case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${GREEN}Best measured candidate now: $best, ${best_success}/3 successful, median ${best_ms} ms.${NC}"
+            msg 'This result describes this VPS and this test window; it is not a universal DNS ranking. Only the measured IPv4 resolver is applied.'
+            prompt='Apply this resolver as host DNS? [Y/N]: '
+            canceled='Canceled; host DNS was not changed.' ;;
+        ru)
+            msg "${GREEN}Лучший результат сейчас: $best; успешно ${best_success}/3, медиана ${best_ms} мс.${NC}"
+            msg 'Результат относится к этому VPS и времени проверки; это не универсальный рейтинг DNS. Применяется только измеренный IPv4-резолвер.'
+            prompt='Применить этот DNS для системы? [Y/N]: '
+            canceled='Отменено; системный DNS не изменён.' ;;
+        fa)
+            msg "${GREEN}بهترین نتیجه فعلی: $best؛ موفق ${best_success}/3، میانه ${best_ms} میلی‌ثانیه.${NC}"
+            msg 'این نتیجه مربوط به همین VPS و همین زمان آزمون است و رتبه‌بندی جهانی DNS نیست؛ فقط DNS IPv4 اندازه‌گیری‌شده اعمال می‌شود.'
+            prompt='این DNS برای سیستم اعمال شود؟ [Y/N]: '
+            canceled='لغو شد؛ DNS سیستم تغییر نکرد.' ;;
+        *)
+            msg "${GREEN}本次测试最佳候选：$best，成功 ${best_success}/3，中位数 ${best_ms} ms。${NC}"
+            msg '结果仅适用于当前 VPS 和当前测试时段，不代表全球通用最佳 DNS。只应用已实测的 IPv4 解析器。'
+            prompt='将该解析器应用为本机 DNS？[Y/N]: '
+            canceled='已取消，未修改本机 DNS。' ;;
+    esac
+    read -r -p "$prompt" result
+    is_yes "$result" || { msg "$canceled"; pause_return; return 0; }
+    apply_host_dns plain "$best" "$v6"
+    pause_return
+}
+
+dns_install_dnscrypt_proxy() {
+    command -v dnscrypt-proxy >/dev/null 2>&1 && return 0
+    case "${ABOX_LANG:-zh}" in
+        en) prompt='Install dnscrypt-proxy from the configured OS package repository to provide DoH? [Y/N]: ' ;;
+        ru) prompt='Установить dnscrypt-proxy из системного репозитория для DoH? [Y/N]: ' ;;
+        fa) prompt='برای DoH، dnscrypt-proxy از مخزن سیستم نصب شود؟ [Y/N]: ' ;;
+        *) prompt='是否从当前系统软件源安装 dnscrypt-proxy 以提供 DoH？[Y/N]: ' ;;
+    esac
+    read -r -p "$prompt" answer
+    is_yes "$answer" || return 1
+    if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y dnscrypt-proxy || return 1
+    elif command -v apk >/dev/null 2>&1; then apk add dnscrypt-proxy || return 1
+    else msg "${YELLOW}Automatic DoH setup is not enabled for this package manager; DNS was not changed.${NC}"; return 1; fi
+    command -v dnscrypt-proxy >/dev/null 2>&1
+}
+
+dns_enable_doh() {
+    local backend config answer temp rc prompt resolved_major
+    backend=$(dns_backend_detect)
+    [[ "$backend" == resolved ]] && command -v systemctl >/dev/null 2>&1 || {
+        msg "${YELLOW}DoH setup requires an active systemd-resolved backend. Current backend: $backend. DNS was not changed.${NC}"
+        return 1
+    }
+    resolved_major=$(systemd_major_version 2>/dev/null || true)
+    if [[ ! "$resolved_major" =~ ^[0-9]+$ ]] || (( resolved_major < 247 )); then
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${YELLOW}DoH via DNS=127.0.0.1:5353 requires systemd-resolved 247 or later; DNS was not changed.${NC}" ;;
+            ru) msg "${YELLOW}Для DoH через DNS=127.0.0.1:5353 требуется systemd-resolved версии 247 или новее; DNS не изменён.${NC}" ;;
+            fa) msg "${YELLOW}برای DoH از طریق DNS=127.0.0.1:5353، systemd-resolved نسخه 247 یا جدیدتر لازم است؛ DNS تغییر نکرد.${NC}" ;;
+            *) msg "${YELLOW}通过 DNS=127.0.0.1:5353 使用 DoH 需要 systemd-resolved 247 或更高版本；未修改 DNS。${NC}" ;;
+        esac
+        return 1
+    fi
+    dns_install_dnscrypt_proxy || { msg "${YELLOW}dnscrypt-proxy is unavailable; DNS was not changed.${NC}"; return 1; }
+    config='/etc/dnscrypt-proxy/dnscrypt-proxy.toml'
+    [[ -f "$config" && ! -L "$config" ]] || { msg "${RED}dnscrypt-proxy configuration file was not found; DNS was not changed.${NC}"; return 1; }
+    case "${ABOX_LANG:-zh}" in
+        en) prompt='Configure Cloudflare DoH through the local proxy at 127.0.0.1:5353? [Y/N]: ' ;;
+        ru) prompt='Настроить Cloudflare DoH через локальный прокси 127.0.0.1:5353? [Y/N]: ' ;;
+        fa) prompt='Cloudflare DoH از طریق پراکسی محلی 127.0.0.1:5353 تنظیم شود؟ [Y/N]: ' ;;
+        *) prompt='是否配置 Cloudflare DoH，通过本地代理 127.0.0.1:5353 转发？[Y/N]: ' ;;
+    esac
+    read -r -p "$prompt" answer
+    is_yes "$answer" || return 0
+    rm -rf -- "$DNS_BACKUP_DIR"
+    mkdir -p "$DNS_BACKUP_DIR" && chmod 700 "$DNS_BACKUP_DIR" || return 1
+    snapshot_dns_state "$DNS_BACKUP_DIR" || { msg "${RED}DNS rollback snapshot failed; no resolver changes were made.${NC}"; return 1; }
+    temp=$(umask 077; mktemp /tmp/A-Box-doh.XXXXXX) || return 1
+    python3 - "$config" "$temp" <<'PY_DOH_CONFIG'
+import re, sys
+source, target = sys.argv[1:3]
+with open(source, encoding='utf-8') as handle: text = handle.read()
+def set_option(name, value):
+    global text
+    pattern = re.compile(r'(?m)^\s*(?:#\s*)?' + re.escape(name) + r'\s*=.*$')
+    found = list(pattern.finditer(text))
+    line = name + ' = ' + value
+    if found:
+        first = found[0]
+        text = text[:first.start()] + line + text[first.end():]
+        offset = first.start() + len(line)
+        remaining = pattern.sub('', text[offset:])
+        text = text[:offset] + remaining
+    else:
+        text += '\n' + line + '\n'
+set_option('server_names', "['cloudflare']")
+set_option('listen_addresses', "['127.0.0.1:5353']")
+set_option('dnscrypt_servers', 'false')
+set_option('doh_servers', 'true')
+set_option('ipv4_servers', 'true')
+set_option('ipv6_servers', 'false')
+set_option('bootstrap_resolvers', "['9.9.9.9:53', '1.1.1.1:53']")
+set_option('ignore_system_dns', 'true')
+with open(target, 'w', encoding='utf-8') as handle: handle.write(text)
+PY_DOH_CONFIG
+    rc=$?
+    if (( rc != 0 )); then rm -f -- "$temp"; restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; fi
+    install -m 644 "$temp" "$config" || { rm -f -- "$temp"; restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
+    rm -f -- "$temp"
+    if ! dnscrypt-proxy -config "$config" -check >/dev/null 2>&1; then
+        restore_dns_snapshot "$DNS_BACKUP_DIR" || true
+        msg "${RED}dnscrypt-proxy configuration check failed; rolled back where possible.${NC}"
+        return 1
+    fi
+    systemctl enable --now dnscrypt-proxy >/dev/null 2>&1 || systemctl restart dnscrypt-proxy >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
+    if ! dns_probe_once 127.0.0.1 5353 example.com >/dev/null 2>&1; then
+        restore_dns_snapshot "$DNS_BACKUP_DIR" || true
+        msg "${RED}Local DoH proxy did not resolve a test query; DNS rollback was attempted.${NC}"
+        return 1
+    fi
+    write_file_atomically_from_stdin /etc/systemd/resolved.conf.d/99-abox-dns.conf 644 <<'EOF_DOH' || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
+[Resolve]
+DNS=127.0.0.1:5353
+FallbackDNS=
+Domains=~.
+DNSOverTLS=no
+EOF_DOH
+    systemctl restart systemd-resolved >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
+    if resolvectl query example.com >/dev/null 2>&1; then
+        write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< 'backend=resolved;mode=doh;proxy=dnscrypt-proxy' || true
+        msg "${GREEN}DoH proxy is running and the system resolver passed its health check.${NC}"
+        msg "${YELLOW}DoH encrypts DNS queries to the selected upstream; it does not encrypt all VPS traffic.${NC}"
+    else
+        restore_dns_snapshot "$DNS_BACKUP_DIR" || true
+        msg "${RED}systemd-resolved health check failed; rollback was attempted.${NC}"
+        return 1
+    fi
 }
 
 dns_menu() {
     clear
-    local c mode v4 v6 answer
+    local c v4 v6 prompt
     msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}VPS 本机 DNS / Host DNS${NC}"
-    msg "${CYAN}======================================================================${NC}"
-    msg "后端: ${YELLOW}$(dns_backend_detect)${NC}"
-    if [[ -r /etc/resolv.conf ]]; then
-        msg "${YELLOW}当前 /etc/resolv.conf 摘要:${NC}"
-        grep -E '^(nameserver|search|options)' /etc/resolv.conf 2>/dev/null | head -8 || true
-    fi
-    msg "${YELLOW}1. 明文 DNS（IPv4+可选 IPv6 nameserver）${NC}"
-    msg "${YELLOW}2. 隐私 DNS DoT（systemd-resolved DNSOverTLS=yes）${NC}"
-    msg "${YELLOW}3. 使用 Cloudflare 1.1.1.1 / 2606:4700:4700::1111${NC}"
-    msg "${YELLOW}4. 使用 Quad9 9.9.9.9 / 2620:fe::fe${NC}"
-    msg "${YELLOW}5. 回滚到上次 A-Box DNS 变更前${NC}"
-    msg "${GREEN}0. 返回${NC}"
-    read -r -p 'Select [0-5]: ' c
+    msg "${BOLD}${GREEN}VPS host DNS${NC}"
+    msg "Backend: ${YELLOW}$(dns_backend_detect)${NC}"
+    if [[ -r /etc/resolv.conf ]]; then grep -E '^(nameserver|search|options)' /etc/resolv.conf 2>/dev/null | head -8 || true; fi
+    case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${YELLOW}1. Custom plain DNS${NC}"
+            msg "${YELLOW}2. DNS over TLS (systemd-resolved only)${NC}"
+            msg "${YELLOW}3. Cloudflare DNS${NC}"
+            msg "${YELLOW}4. Quad9 DNS${NC}"
+            msg "${YELLOW}5. Automatically benchmark resolvers${NC}"
+            msg "${YELLOW}6. DNS over HTTPS via dnscrypt-proxy${NC}"
+            msg "${YELLOW}7. Restore the previous DNS snapshot${NC}"
+            ;;
+        ru)
+            msg "${YELLOW}1. Пользовательский открытый DNS${NC}"
+            msg "${YELLOW}2. DNS over TLS (только systemd-resolved)${NC}"
+            msg "${YELLOW}3. Cloudflare DNS${NC}"
+            msg "${YELLOW}4. Quad9 DNS${NC}"
+            msg "${YELLOW}5. Автоматический тест DNS${NC}"
+            msg "${YELLOW}6. DNS over HTTPS через dnscrypt-proxy${NC}"
+            msg "${YELLOW}7. Восстановить предыдущую конфигурацию${NC}"
+            ;;
+        fa)
+            msg "${YELLOW}1. DNS ساده سفارشی${NC}"
+            msg "${YELLOW}2. DNS روی TLS (فقط systemd-resolved)${NC}"
+            msg "${YELLOW}3. Cloudflare DNS${NC}"
+            msg "${YELLOW}4. Quad9 DNS${NC}"
+            msg "${YELLOW}5. آزمون خودکار DNS${NC}"
+            msg "${YELLOW}6. DNS روی HTTPS با dnscrypt-proxy${NC}"
+            msg "${YELLOW}7. بازگردانی تنظیمات قبلی DNS${NC}"
+            ;;
+        *)
+            msg "${YELLOW}1. 自定义明文 DNS（可选 IPv6）${NC}"
+            msg "${YELLOW}2. 隐私 DNS DoT（仅 systemd-resolved 支持）${NC}"
+            msg "${YELLOW}3. Cloudflare DNS${NC}"
+            msg "${YELLOW}4. Quad9 DNS${NC}"
+            msg "${YELLOW}5. 自动实测优选 DNS（多轮延迟/可用性）${NC}"
+            msg "${YELLOW}6. 隐私 DNS DoH（dnscrypt-proxy 本地转发）${NC}"
+            msg "${YELLOW}7. 回滚到上次 DNS 修改前快照${NC}"
+            ;;
+    esac
+    msg "${GREEN}0. Back / 返回${NC}"
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-7]: ' ;; ru) prompt='Выберите [0–7]: ' ;; fa) prompt='انتخاب [۰ تا ۷]: ' ;; *) prompt='请选择 [0-7]：' ;; esac
+    read -r -p "$prompt" c
     case "$c" in
         1)
-            read -r -p 'IPv4 DNS (e.g. 1.1.1.1): ' v4
-            valid_ipv4_cidr "$v4" && [[ "$v4" != */* ]] || { msg "${RED}非法 IPv4 DNS${NC}"; pause_return; return 1; }
-            read -r -p 'IPv6 DNS (可空, e.g. 2606:4700:4700::1111): ' v6
-            [[ -z "$v6" ]] || valid_ipv6_cidr "$v6" || { msg "${RED}非法 IPv6 DNS${NC}"; pause_return; return 1; }
-            [[ -z "$v6" || "$v6" != */* ]] || { msg "${RED}请填写地址而非 CIDR${NC}"; pause_return; return 1; }
-            apply_host_dns plain "$v4" "$v6"
-            pause_return
-            ;;
+            read -r -p 'IPv4 DNS: ' v4
+            valid_ipv4_cidr "$v4" && [[ "$v4" != */* ]] || { msg "${RED}Invalid IPv4 DNS${NC}"; pause_return; return 1; }
+            read -r -p 'IPv6 DNS (optional): ' v6
+            [[ -z "$v6" ]] || { valid_ipv6_cidr "$v6" && [[ "$v6" != */* ]]; } || { msg "${RED}Invalid IPv6 DNS${NC}"; pause_return; return 1; }
+            apply_host_dns plain "$v4" "$v6"; pause_return ;;
         2)
-            read -r -p 'DoT resolver IPv4 (e.g. 1.1.1.1): ' v4
-            valid_ipv4_cidr "$v4" && [[ "$v4" != */* ]] || { msg "${RED}非法 IPv4${NC}"; pause_return; return 1; }
-            read -r -p 'DoT resolver IPv6 (可空): ' v6
-            [[ -z "$v6" ]] || { valid_ipv6_cidr "$v6" && [[ "$v6" != */* ]]; } || { msg "${RED}非法 IPv6${NC}"; pause_return; return 1; }
-            apply_host_dns dot "$v4" "$v6"
-            pause_return
-            ;;
+            local dot_name dot_ipv4_prompt dot_ipv6_prompt dot_host_prompt dot_host_error
+            case "${ABOX_LANG:-zh}" in
+                en) dot_ipv4_prompt='DoT resolver IPv4: '; dot_ipv6_prompt='DoT resolver IPv6 (optional): '; dot_host_prompt='TLS authentication hostname (e.g. dns.google): '; dot_host_error='Invalid DoT TLS hostname.' ;;
+                ru) dot_ipv4_prompt='IPv4-адрес DNS для DoT: '; dot_ipv6_prompt='IPv6-адрес DNS для DoT (необязательно): '; dot_host_prompt='Имя TLS-аутентификации (например, dns.google): '; dot_host_error='Недопустимое имя TLS для DoT.' ;;
+                fa) dot_ipv4_prompt='نشانی IPv4 برای DNS روی TLS: '; dot_ipv6_prompt='نشانی IPv6 (اختیاری): '; dot_host_prompt='نام TLS (مثلاً dns.google): '; dot_host_error='نام TLS برای DoT نامعتبر است.' ;;
+                *) dot_ipv4_prompt='DoT 解析器 IPv4 地址：'; dot_ipv6_prompt='DoT 解析器 IPv6 地址（可选）：'; dot_host_prompt='TLS 认证主机名（例如 dns.google）：'; dot_host_error='DoT TLS 主机名无效。' ;;
+            esac
+            read -r -p "$dot_ipv4_prompt" v4
+            valid_ipv4_cidr "$v4" && [[ "$v4" != */* ]] || { msg "${RED}Invalid IPv4 DNS${NC}"; pause_return; return 1; }
+            read -r -p "$dot_ipv6_prompt" v6
+            [[ -z "$v6" ]] || { valid_ipv6_cidr "$v6" && [[ "$v6" != */* ]]; } || { msg "${RED}Invalid IPv6 DNS${NC}"; pause_return; return 1; }
+            read -r -p "$dot_host_prompt" dot_name
+            valid_domain "$dot_name" || { msg "${RED}$dot_host_error${NC}"; pause_return; return 1; }
+            apply_host_dns dot "$v4" "$v6" "$dot_name"; pause_return ;;
         3) apply_host_dns plain '1.1.1.1' '2606:4700:4700::1111'; pause_return ;;
         4) apply_host_dns plain '9.9.9.9' '2620:fe::fe'; pause_return ;;
-        5)
-            if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then
-                restore_dns_snapshot "$DNS_BACKUP_DIR" && msg "${GREEN}DNS 已回滚。${NC}" || msg "${RED}DNS 回滚失败。${NC}"
-            else
-                msg "${YELLOW}[!] 无 DNS 回滚快照。${NC}"
-            fi
-            pause_return
-            ;;
+        5) dns_auto_prefer ;;
+        6) dns_enable_doh; pause_return ;;
+        7) if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then restore_dns_snapshot "$DNS_BACKUP_DIR" && msg "${GREEN}DNS restored.${NC}" || msg "${RED}DNS rollback failed.${NC}"; else msg "${YELLOW}No DNS snapshot exists.${NC}"; fi; pause_return ;;
         *) return 0 ;;
     esac
 }
-
-
 tune_vps() {
     clear
-    msg "${CYAN}VPS 系统工具 / VPS system tools${NC}"
-    msg "${YELLOW}1. 应用可回滚调优 (BBR/FQ/limits)${NC}"
-    msg "${YELLOW}2. 恢复调优前状态${NC}"
-    msg "${YELLOW}3. IP 协议偏好 (IPv4 / IPv6 / dual)${NC}"
-    msg "${YELLOW}4. 本机 DNS (明文 / DoT，可回滚)${NC}"
-    msg "${YELLOW}5. 时区 (启发式推荐 / 自定义，可回滚)${NC}"
-    msg "${YELLOW}6. 体验模式 / 下载源 (fast·strict·mirror) [U2/U5]${NC}"
-    msg "${GREEN}0. 返回${NC}"
+    local prompt
+    case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${BOLD}${GREEN}VPS one-click optimization${NC}"
+            msg "${YELLOW}1. Apply supported BBR/FQ and system tuning${NC}"
+            msg "${YELLOW}2. Restore the previous tuning snapshot${NC}"
+            msg "${GREEN}0. Back${NC}"
+            ;;
+        ru)
+            msg "${BOLD}${GREEN}Оптимизация VPS${NC}"
+            msg "${YELLOW}1. Применить поддерживаемые BBR/FQ и системные настройки${NC}"
+            msg "${YELLOW}2. Восстановить предыдущий снимок настроек${NC}"
+            msg "${GREEN}0. Назад${NC}"
+            ;;
+        fa)
+            msg "${BOLD}${GREEN}بهینه‌سازی VPS${NC}"
+            msg "${YELLOW}1. اعمال تنظیمات پشتیبانی‌شده BBR/FQ${NC}"
+            msg "${YELLOW}2. بازگردانی وضعیت قبلی${NC}"
+            msg "${GREEN}0. بازگشت${NC}"
+            ;;
+        *)
+            msg "${BOLD}${GREEN}VPS 一键优化${NC}"
+            msg "${YELLOW}1. 应用当前内核支持的 BBR/FQ 与系统调优（可回滚）${NC}"
+            msg "${YELLOW}2. 恢复调优前快照${NC}"
+            msg "${GREEN}0. 返回${NC}"
+            ;;
+    esac
     local c
-    read -r -p 'Select [0-6]: ' c
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; *) prompt='请选择 [0-2]：' ;; esac
+    read -r -p "$prompt" c
     case "$c" in
         1) apply_vps_tune; pause_return ;;
         2) restore_vps_tune; pause_return ;;
-        3) ip_preference_menu ;;
-        4) dns_menu ;;
-        5) timezone_menu ;;
-        6) ux_mode_menu ;;
         *) return 0 ;;
     esac
 }
-
 sha256_in_allowlist() {
     local sha="${1,,}" allowlist="${2:-}"
     [[ "$sha" =~ ^[a-f0-9]{64}$ && -n "$allowlist" ]] || return 1
@@ -11872,49 +12601,597 @@ preflight_check() {
 }
 
 
+validate_test_script() {
+    local file="$1" size first
+    [[ -f "$file" && ! -L "$file" ]] || return 1
+    size=$(wc -c < "$file" 2>/dev/null | tr -d ' ') || return 1
+    [[ "$size" =~ ^[0-9]+$ ]] && (( size >= 1000 && size <= 15728640 )) || return 1
+    IFS= read -r first < "$file" || return 1
+    [[ "$first" =~ ^#!.*(bash|env[[:space:]]+bash) ]] || return 1
+    if head -n 25 "$file" | grep -Eiq '<!doctype[[:space:]]+html|<html'; then return 1; fi
+    bash -n "$file" >/dev/null 2>&1 || return 1
+}
+
+run_mirrored_test_script() {
+    local label="$1" upstream_url="$2" asset="$3" selected='' source='' expected='' sha='' answer work run_prompt
+    shift 3
+    work=$(umask 077; mktemp -d /tmp/A-Box-test-tool.XXXXXX) || return 1
+    chmod 700 "$work" || { rm -rf -- "$work"; return 1; }
+    local upstream="$work/upstream.sh" mirror="$work/mirror.sh" sums="$work/SHA256SUMS" manifest="$work/manifest.txt"
+    if curl -fLsS --retry 1 --connect-timeout 10 --max-time 180 "$upstream_url" -o "$upstream" && validate_test_script "$upstream"; then
+        selected="$upstream"
+        source="$upstream_url"
+    else
+        rm -f -- "$upstream"
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${YELLOW}[!] Upstream download or content validation failed; trying the A-Box recovery asset.${NC}" ;;
+            ru) msg "${YELLOW}[!] Не удалось загрузить или проверить источник; пробуем резервный файл A-Box.${NC}" ;;
+            fa) msg "${YELLOW}[!] دریافت یا اعتبارسنجی منبع اصلی شکست خورد؛ نسخه پشتیبان A-Box بررسی می‌شود.${NC}" ;;
+            *) msg "${YELLOW}[!] 上游脚本下载失败或内容校验不通过，尝试 A-Box 灾备附件。${NC}" ;;
+        esac
+        if ! curl -fLsS --connect-timeout 10 --max-time 45 \
+            "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums" ||
+           ! curl -fLsS --connect-timeout 10 --max-time 45 \
+            "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" ||
+           ! curl -fLsS --connect-timeout 10 --max-time 180 \
+            "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then
+            rm -rf -- "$work"
+            case "${ABOX_LANG:-zh}" in
+                en) msg "${RED}Upstream and A-Box recovery sources are unavailable; the script was not run.${NC}" ;;
+                ru) msg "${RED}Основной и резервный источники недоступны; скрипт не запускался.${NC}" ;;
+                fa) msg "${RED}منبع اصلی و پشتیبان در دسترس نیستند؛ اسکریپت اجرا نشد.${NC}" ;;
+                *) msg "${RED}上游与 A-Box 灾备源均不可用；未执行脚本。${NC}" ;;
+            esac
+            return 1
+        fi
+        expected=$(awk -v f="$asset" '$2==f || $2==("*" f) {print $1; exit}' "$sums")
+        sha=$(sha256sum "$mirror" | awk '{print $1}')
+        if [[ ! "$expected" =~ ^[A-Fa-f0-9]{64}$ || "${sha,,}" != "${expected,,}" ]] || ! validate_test_script "$mirror"; then
+            rm -rf -- "$work"
+            case "${ABOX_LANG:-zh}" in
+                en) msg "${RED}Recovery checksum or script validation failed; execution refused.${NC}" ;;
+                ru) msg "${RED}Проверка контрольной суммы или скрипта не пройдена; запуск запрещён.${NC}" ;;
+                fa) msg "${RED}بررسی checksum یا اعتبارسنجی اسکریپت شکست خورد؛ اجرا ممنوع است.${NC}" ;;
+                *) msg "${RED}灾备附件摘要或脚本校验失败，拒绝执行。${NC}" ;;
+            esac
+            return 1
+        fi
+        selected="$mirror"
+        source="A-Box Release $ABOX_TEST_MIRROR_RELEASE"
+    fi
+    sha=$(sha256sum "$selected" | awk '{print $1}')
+    case "${ABOX_LANG:-zh}" in
+        en) msg "${CYAN}Test tool: $label${NC}"; msg "${CYAN}Source: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='Execute this third-party test script? It may contact external endpoints and generate network traffic. [Y/N]: ' ;;
+        ru) msg "${CYAN}Тест: $label${NC}"; msg "${CYAN}Источник: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='Запустить сторонний тестовый скрипт? Он может обращаться к внешним узлам и создавать сетевой трафик. [Y/N]: ' ;;
+        fa) msg "${CYAN}ابزار آزمون: $label${NC}"; msg "${CYAN}منبع: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='اسکریپت آزمون شخص ثالث اجرا شود؟ ممکن است به مقصدهای بیرونی متصل شود و ترافیک ایجاد کند. [Y/N]: ' ;;
+        *) msg "${CYAN}测试工具: $label${NC}"; msg "${CYAN}来源: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='即将执行第三方测试脚本。它可能访问外部检测端点并产生网络流量；确认执行？[Y/N]: ' ;;
+    esac
+    if [[ "$selected" == "$mirror" ]]; then cat "$manifest" 2>/dev/null | head -12; fi
+    if ! confirm_yes_no "$run_prompt"; then
+        rm -rf -- "$work"
+        return 130
+    fi
+    chmod 600 "$selected"
+    env -i PATH="$PATH" HOME="${HOME:-/root}" LANG="${LANG:-C.UTF-8}" TERM="${TERM:-dumb}" bash "$selected" "$@"
+    local rc=$?
+    rm -rf -- "$work"
+    return "$rc"
+}
+
+wallos_state_value() {
+    local key="$1"
+    [[ -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]] || return 1
+    awk -F= -v k="$key" '$1==k {sub(/^[^=]*=/, ""); print; exit}' "$WALLOS_DIR/.abox-state"
+}
+
+wallos_detect_arch() {
+    case "$(uname -m)" in
+        x86_64|amd64) printf 'amd64\n' ;;
+        aarch64|arm64) printf 'arm64\n' ;;
+        armv7l|armv7) printf 'armv7\n' ;;
+        *) return 1 ;;
+    esac
+}
+
+wallos_port_free() {
+    local port="$1"
+    if command -v ss >/dev/null 2>&1 && ss -H -ltn "sport = :$port" 2>/dev/null | grep -q .; then return 1; fi
+    return 0
+}
+
+wallos_print_host_info() {
+    local os_name='unknown' os_version='unknown' arch mem_gb disk_gb cores ipv4 ipv6
+    if [[ -r /etc/os-release ]]; then
+        os_name=$(awk -F= '$1=="PRETTY_NAME" {gsub(/^"|"$/, "", $2); print $2; exit}' /etc/os-release)
+        [[ -n "$os_name" ]] || os_name=$(awk -F= '$1=="ID" {print $2; exit}' /etc/os-release)
+        os_version=$(awk -F= '$1=="VERSION_ID" {gsub(/^"|"$/, "", $2); print $2; exit}' /etc/os-release)
+    fi
+    arch=$(uname -m)
+    mem_gb=$(awk '/MemTotal:/ {printf "%.1f", $2/1048576}' /proc/meminfo 2>/dev/null || printf 'unknown')
+    disk_gb=$(df -Pk "$WALLOS_DIR" 2>/dev/null | awk 'NR==2 {printf "%.1f", $4/1048576}')
+    [[ -n "$disk_gb" ]] || disk_gb=$(df -Pk /opt 2>/dev/null | awk 'NR==2 {printf "%.1f", $4/1048576}')
+    [[ -n "$disk_gb" ]] || disk_gb='unknown'
+    cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf 'unknown')
+    ipv4=$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null || true)
+    ipv6=$(curl -6fsS --connect-timeout 3 --max-time 5 https://api64.ipify.org 2>/dev/null || true)
+    case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${CYAN}Wallos host check${NC}"
+            msg "OS: $os_name ($os_version) | architecture: $arch | CPU cores: $cores | RAM: ${mem_gb} GiB | free disk: ${disk_gb} GiB"
+            msg "IPv4: ${ipv4:-unavailable} | IPv6: ${ipv6:-unavailable}" ;;
+        ru)
+            msg "${CYAN}Проверка VPS для Wallos${NC}"
+            msg "ОС: $os_name ($os_version) | архитектура: $arch | ядер CPU: $cores | ОЗУ: ${mem_gb} ГиБ | свободно на диске: ${disk_gb} ГиБ"
+            msg "IPv4: ${ipv4:-недоступен} | IPv6: ${ipv6:-недоступен}" ;;
+        fa)
+            msg "${CYAN}بررسی VPS برای Wallos${NC}"
+            msg "سیستم‌عامل: $os_name ($os_version) | معماری: $arch | هسته CPU: $cores | RAM: ${mem_gb} GiB | فضای آزاد دیسک: ${disk_gb} GiB"
+            msg "IPv4: ${ipv4:-ناموجود} | IPv6: ${ipv6:-ناموجود}" ;;
+        *)
+            msg "${CYAN}Wallos 主机检测${NC}"
+            msg "系统：$os_name ($os_version) | 架构：$arch | CPU 核心：$cores | 内存：${mem_gb} GiB | 可用磁盘：${disk_gb} GiB"
+            msg "IPv4：${ipv4:-不可用} | IPv6：${ipv6:-不可用}" ;;
+    esac
+}
+
+wallos_install_runtime() {
+    local os_id='' answer prompt runtime_error
+    [[ -r /etc/os-release ]] || return 1
+    os_id=$(awk -F= '$1=="ID" {gsub(/^"|"$/, "", $2); print $2; exit}' /etc/os-release)
+    if command -v docker >/dev/null 2>&1; then
+        # If the CLI is already installed, only try to start the existing daemon.
+        # Do not install a second Docker package/engine over an unknown installation.
+        if docker info >/dev/null 2>&1; then return 0; fi
+        case "$os_id" in
+            alpine)
+                command -v rc-service >/dev/null 2>&1 && rc-service docker start >/dev/null 2>&1 || true
+                ;;
+            *)
+                if command -v systemctl >/dev/null 2>&1 && systemctl cat docker.service >/dev/null 2>&1; then
+                    systemctl enable --now docker >/dev/null 2>&1 || true
+                fi
+                if command -v service >/dev/null 2>&1; then service docker start >/dev/null 2>&1 || true; fi
+                ;;
+        esac
+        if docker info >/dev/null 2>&1; then return 0; fi
+        case "${ABOX_LANG:-zh}" in
+            en) runtime_error='Docker CLI exists, but its daemon is unavailable. A-Box did not install another Docker package to avoid conflicts; fix the existing Docker service and retry.' ;;
+            ru) runtime_error='Docker CLI установлен, но демон недоступен. A-Box не устанавливал другой пакет Docker во избежание конфликтов; исправьте существующую службу и повторите.' ;;
+            fa) runtime_error='Docker CLI موجود است اما daemon در دسترس نیست. برای جلوگیری از تداخل، A-Box بسته Docker دیگری نصب نکرد؛ سرویس موجود را اصلاح و دوباره تلاش کنید.' ;;
+            *) runtime_error='已检测到 Docker 命令，但守护进程不可用。为避免覆盖/冲突，A-Box 未安装第二套 Docker；请先修复现有 Docker 服务后重试。' ;;
+        esac
+        msg "${RED}${runtime_error}${NC}"
+        return 1
+    fi
+    case "${ABOX_LANG:-zh}" in
+        en) prompt='Docker is required. Install and start it using the OS package source? [Y/N]: ' ;;
+        ru) prompt='Для Wallos требуется Docker. Установить и запустить его из репозитория ОС? [Y/N]: ' ;;
+        fa) prompt='Wallos به Docker نیاز دارد. Docker از مخزن سیستم نصب و اجرا شود؟ [Y/N]: ' ;;
+        *) prompt='Wallos 需要 Docker。是否通过当前系统软件源安装并启动 Docker？[Y/N]: ' ;;
+    esac
+    read -r -p "$prompt" answer
+    is_yes "$answer" || return 1
+    case "$os_id" in
+        debian|ubuntu|linuxmint|kali)
+            apt-get update && apt-get install -y docker.io ca-certificates curl jq || return 1
+            if command -v systemctl >/dev/null 2>&1; then systemctl enable --now docker || return 1
+            elif command -v service >/dev/null 2>&1; then service docker start || return 1
+            else return 1; fi
+            ;;
+        alpine)
+            apk add --no-cache docker curl jq ca-certificates || return 1
+            rc-update add docker default >/dev/null 2>&1 || true
+            rc-service docker start || return 1
+            ;;
+        centos|rhel|rocky|almalinux|fedora)
+            command -v dnf >/dev/null 2>&1 || return 1
+            dnf -y install dnf-plugins-core ca-certificates curl jq || return 1
+            if [[ "$os_id" == fedora ]]; then
+                dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo || return 1
+            else
+                dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo || return 1
+            fi
+            dnf -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin || return 1
+            systemctl enable --now docker || return 1
+            ;;
+        *)
+            case "${ABOX_LANG:-zh}" in
+                ru) msg "${RED}ОС $os_id не поддерживается автоматической установкой Docker; системные изменения не выполнены.${NC}" ;;
+                fa) msg "${RED}سیستم‌عامل $os_id برای نصب خودکار Docker پشتیبانی نمی‌شود؛ تغییری اعمال نشد.${NC}" ;;
+                zh) msg "${RED}当前系统 $os_id 暂不支持自动安装 Docker，未修改系统。${NC}" ;;
+                *) msg "${RED}Unsupported OS for automatic Docker setup: $os_id. No system changes were made.${NC}" ;;
+            esac
+            return 1
+            ;;
+    esac
+    command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1
+}
+
+wallos_latest_stable_tag() {
+    local response tag
+    response=$(curl -fLsS --retry 1 --connect-timeout 8 --max-time 20 https://api.github.com/repos/ellite/Wallos/releases/latest 2>/dev/null) || return 1
+    tag=$(jq -er 'select(.draft == false and .prerelease == false) | .tag_name' <<< "$response" 2>/dev/null) || return 1
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    printf '%s\n' "$tag"
+}
+
+wallos_pull_or_restore_image() {
+    local arch="$1" tag='' asset='' expected actual work manifest_url sum_url
+    WALLOS_IMAGE_RESULT=''
+    tag=$(wallos_latest_stable_tag 2>/dev/null || true)
+    if [[ -n "$tag" ]]; then
+        local image_tag="${tag#v}"
+        if docker pull "bellamy/wallos:$image_tag"; then
+            WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+            return 0
+        fi
+    fi
+    case "${ABOX_LANG:-zh}" in
+        ru) msg "${YELLOW}[!] Не удалось получить стабильную версию или образ; пробуем резервный Release Wallos от A-Box.${NC}" ;;
+        fa) msg "${YELLOW}[!] دریافت نسخه پایدار یا تصویر ناموفق بود؛ نسخه بازیابی Wallos از A-Box بررسی می‌شود.${NC}" ;;
+        zh) msg "${YELLOW}[!] 官方稳定版信息或镜像拉取失败，正在尝试 A-Box Wallos 灾备 Release。${NC}" ;;
+        *) msg "${YELLOW}[!] Official stable metadata or image pull failed; trying the A-Box Wallos recovery Release.${NC}" ;;
+    esac
+    work=$(umask 077; mktemp -d /tmp/A-Box-Wallos.XXXXXX) || return 1
+    manifest_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
+    sum_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
+    if ! curl -fLsS --connect-timeout 8 --max-time 30 "$manifest_url" -o "$work/wallos-manifest.txt" ||
+       ! curl -fLsS --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
+        rm -rf -- "$work"
+        return 1
+    fi
+    tag=$(awk -F= '$1=="tag" {print $2; exit}' "$work/wallos-manifest.txt")
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { rm -rf -- "$work"; return 1; }
+    case "$arch" in amd64|arm64|armv7) asset="wallos-linux-$arch.tar.gz" ;; *) rm -rf -- "$work"; return 1 ;; esac
+    if ! curl -fLsS --connect-timeout 8 --max-time 600 \
+        "https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then
+        rm -rf -- "$work"
+        return 1
+    fi
+    expected=$(awk -v f="$asset" '$2==f || $2==("*" f) {print $1; exit}' "$work/SHA256SUMS")
+    actual=$(sha256sum "$work/$asset" | awk '{print $1}')
+    if [[ ! "$expected" =~ ^[A-Fa-f0-9]{64}$ || "${expected,,}" != "${actual,,}" ]]; then
+        rm -rf -- "$work"
+        msg "${RED}Wallos mirror checksum mismatch; refusing to load it.${NC}"
+        return 1
+    fi
+    if ! gzip -dc "$work/$asset" | docker load; then
+        rm -rf -- "$work"
+        return 1
+    fi
+    rm -rf -- "$work"
+    local image_tag="${tag#v}"
+    docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1 || return 1
+    WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+    return 0
+}
+wallos_wait_healthy() {
+    local port="$1" i code state
+    for i in $(seq 1 60); do
+        state=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' wallos 2>/dev/null || true)
+        [[ "$state" == healthy ]] && return 0
+        [[ "$state" == unhealthy ]] && return 1
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 "http://127.0.0.1:$port/" 2>/dev/null || true)
+        case "$code" in 200|301|302|303|307|308) return 0 ;; esac
+        sleep 1
+    done
+    return 1
+}
+
+wallos_create_backup() {
+    local stamp="$1" backup="$WALLOS_DIR/backups/wallos-$1.tar.gz"
+    mkdir -p "$WALLOS_DIR/backups" || return 1
+    chmod 700 "$WALLOS_DIR/backups" || return 1
+    [[ -d "$WALLOS_DIR/db" && -d "$WALLOS_DIR/logos" ]] || return 1
+    tar -czf "$backup" -C "$WALLOS_DIR" db logos .abox-state || return 1
+    chmod 600 "$backup" || return 1
+    find "$WALLOS_DIR/backups" -maxdepth 1 -type f -name 'wallos-*.tar.gz' -printf '%T@ %p\n' 2>/dev/null |
+        sort -nr | awk 'NR>5 {$1=""; sub(/^ /, ""); print}' |
+        while IFS= read -r old; do [[ "$old" == "$backup" ]] || rm -f -- "$old"; done
+    printf '%s\n' "$backup"
+}
+
+wallos_public_urls() {
+    local port="$1" ipv4 ipv6
+    ipv4=$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null || true)
+    ipv6=$(curl -6fsS --connect-timeout 3 --max-time 5 https://api64.ipify.org 2>/dev/null || true)
+    case "${ABOX_LANG:-zh}" in
+        en)
+            [[ -z "$ipv4" ]] || msg "${GREEN}Wallos URL: http://$ipv4:$port/${NC}"
+            [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 URL: http://[$ipv6]:$port/${NC}"
+            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}Could not detect a public address. Use your VPS public IP or domain on TCP $port.${NC}" ;;
+        ru)
+            [[ -z "$ipv4" ]] || msg "${GREEN}Адрес Wallos: http://$ipv4:$port/${NC}"
+            [[ -z "$ipv6" ]] || msg "${GREEN}Адрес IPv6: http://[$ipv6]:$port/${NC}"
+            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}Публичный IP не определён; используйте IP или домен VPS и порт $port.${NC}" ;;
+        fa)
+            [[ -z "$ipv4" ]] || msg "${GREEN}نشانی Wallos: http://$ipv4:$port/${NC}"
+            [[ -z "$ipv6" ]] || msg "${GREEN}نشانی IPv6: http://[$ipv6]:$port/${NC}"
+            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}IP عمومی شناسایی نشد؛ از IP یا دامنه VPS با درگاه $port استفاده کنید.${NC}" ;;
+        *)
+            [[ -z "$ipv4" ]] || msg "${GREEN}Wallos 网址：http://$ipv4:$port/${NC}"
+            [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 网址：http://[$ipv6]:$port/${NC}"
+            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}无法检测公网 IP，请使用 VPS 公网地址或域名访问 TCP $port。${NC}" ;;
+    esac
+}
+
+wallos_install_or_update() {
+    local arch image port tz old_image='' old_port='' old_tz='UTC' backup='' stamp code running=0 marker security_note
+    (( EUID == 0 )) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Для установки Wallos требуются права root.${NC}" ;; fa) msg "${RED}برای نصب Wallos دسترسی root لازم است.${NC}" ;; zh) msg "${RED}安装 Wallos 需要 root 权限。${NC}" ;; *) msg "${RED}Run Wallos setup as root.${NC}" ;; esac; return 1; }
+    command -v jq >/dev/null 2>&1 || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Требуется jq; сначала установите зависимости A-Box.${NC}" ;; fa) msg "${RED}به jq نیاز است؛ ابتدا وابستگی‌های A-Box را نصب کنید.${NC}" ;; zh) msg "${RED}需要 jq，请先安装 A-Box 依赖。${NC}" ;; *) msg "${RED}jq is required; install the A-Box dependencies first.${NC}" ;; esac; return 1; }
+    wallos_print_host_info
+    arch=$(wallos_detect_arch) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Поддерживаются архитектуры amd64, arm64 и ARMv7.${NC}" ;; fa) msg "${RED}معماری‌های پشتیبانی‌شده amd64، arm64 و ARMv7 هستند.${NC}" ;; zh) msg "${RED}Wallos 支持 amd64、arm64 和 ARMv7 架构。${NC}" ;; *) msg "${RED}Supported Wallos image architectures are amd64, arm64 and ARMv7.${NC}" ;; esac; return 1; }
+    wallos_install_runtime || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Не удалось установить или запустить Docker; контейнер Wallos не изменён.${NC}" ;; fa) msg "${RED}نصب یا اجرای Docker شکست خورد؛ کانتینر Wallos تغییر نکرد.${NC}" ;; zh) msg "${RED}Docker 安装或启动失败，未修改 Wallos 容器。${NC}" ;; *) msg "${RED}Docker could not be installed or started; no Wallos container was changed.${NC}" ;; esac; return 1; }
+    docker info >/dev/null 2>&1 || return 1
+
+    if docker container inspect wallos >/dev/null 2>&1; then
+        [[ -f "$WALLOS_DIR/.A-Box-managed" && ! -L "$WALLOS_DIR/.A-Box-managed" ]] || {
+            msg "${RED}An unmanaged container named wallos already exists. Rename it or manage it outside A-Box; no takeover was attempted.${NC}"
+            return 1
+        }
+        running=1
+        old_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+        old_port=$(wallos_state_value PORT 2>/dev/null || true)
+        old_tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
+        [[ -n "$old_tz" ]] || old_tz='UTC'
+        valid_timezone_name "$old_tz" || old_tz='UTC'
+        tz="$old_tz"
+        [[ -n "$old_image" && "$old_image" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ && "$old_port" =~ ^[0-9]+$ ]] || {
+            msg "${RED}Wallos state is incomplete; refusing to upgrade it.${NC}"; return 1;
+        }
+        port="$old_port"
+    else
+        [[ ! -e "$WALLOS_DIR" || -f "$WALLOS_DIR/.A-Box-managed" ]] || {
+            msg "${RED}$WALLOS_DIR exists without an A-Box ownership marker; refusing to overwrite it.${NC}"; return 1;
+        }
+        port=8282
+        while ! wallos_port_free "$port"; do
+            port=$((port + 1))
+            (( port <= 8299 )) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Порты 8282–8299 заняты; освободите один и повторите попытку.${NC}" ;; fa) msg "${RED}درگاه‌های 8282 تا 8299 اشغال‌اند؛ یک درگاه آزاد کنید و دوباره تلاش کنید.${NC}" ;; zh) msg "${RED}8282–8299 端口均被占用，请释放端口后重试。${NC}" ;; *) msg "${RED}Ports 8282-8299 are occupied; free one and retry.${NC}" ;; esac; return 1; }
+        done
+        tz=$(current_timezone_name 2>/dev/null || printf 'UTC')
+        valid_timezone_name "$tz" || tz='UTC'
+    fi
+    local confirm_prompt
+    case "${ABOX_LANG:-zh}" in
+        en) confirm_prompt='Wallos stores personal subscription/financial data. The default access URL is public HTTP without TLS. Continue with this port mapping? [Y/N]: ' ;;
+        ru) confirm_prompt='Wallos хранит личные финансовые данные. Начальный URL использует HTTP без TLS. Продолжить с этим портом? [Y/N]: ' ;;
+        fa) confirm_prompt='Wallos داده‌های مالی شخصی را نگه می‌دارد. نشانی اولیه HTTP بدون TLS است. با این پورت ادامه داده شود؟ [Y/N]: ' ;;
+        *) confirm_prompt='Wallos 保存个人订阅和财务数据。默认访问网址是没有 TLS 的公网 HTTP。是否继续使用此端口？[Y/N]: ' ;;
+    esac
+    if ! confirm_yes_no "$confirm_prompt"; then return 0; fi
+
+    wallos_pull_or_restore_image "$arch" || { msg "${RED}Official Wallos source and the A-Box recovery image are both unavailable.${NC}"; return 1; }
+    image="$WALLOS_IMAGE_RESULT"
+    mkdir -p "$WALLOS_DIR/db" "$WALLOS_DIR/logos" "$WALLOS_DIR/backups" || return 1
+    chmod 750 "$WALLOS_DIR" "$WALLOS_DIR/db" "$WALLOS_DIR/logos" || return 1
+    if [[ ! -f "$WALLOS_DIR/.A-Box-managed" ]]; then
+        printf '%s\n' 'A-Box managed Wallos' > "$WALLOS_DIR/.A-Box-managed" || return 1
+        chmod 600 "$WALLOS_DIR/.A-Box-managed" || return 1
+    fi
+    if (( running == 1 )); then
+        docker stop wallos >/dev/null 2>&1 || return 1
+        stamp=$(date -u '+%Y%m%dT%H%M%SZ')
+        backup=$(wallos_create_backup "$stamp") || { docker start wallos >/dev/null 2>&1 || true; msg "${RED}Pre-upgrade backup failed; old container was retained.${NC}"; return 1; }
+        docker rm wallos >/dev/null 2>&1 || { docker start wallos >/dev/null 2>&1 || true; return 1; }
+    fi
+
+    docker run -d --name wallos --label com.alariclin.abox.managed=true \
+        -v "$WALLOS_DIR/db:/var/www/html/db" \
+        -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
+        -e TZ="$tz" -p "$port:80/tcp" --restart unless-stopped "$image" >/dev/null
+    code=$?
+    if (( code != 0 )) || ! wallos_wait_healthy "$port"; then
+        docker rm -f wallos >/dev/null 2>&1 || true
+        if (( running == 1 )); then
+            rm -rf -- "$WALLOS_DIR/db" "$WALLOS_DIR/logos"
+            tar -xzf "$backup" -C "$WALLOS_DIR" || msg "${RED}Could not restore Wallos data from pre-upgrade backup: $backup${NC}"
+            docker run -d --name wallos --label com.alariclin.abox.managed=true \
+                -v "$WALLOS_DIR/db:/var/www/html/db" \
+                -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
+                -e TZ="$old_tz" -p "$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
+            wallos_wait_healthy "$old_port" || msg "${RED}Rollback container did not pass health check; inspect docker logs wallos.${NC}"
+        fi
+        msg "${RED}Wallos did not pass health check. Rollback was attempted.${NC}"
+        return 1
+    fi
+
+    printf '%s\n' 'A-Box managed Wallos' > "$WALLOS_DIR/.A-Box-managed"
+    printf 'IMAGE=%s\nPORT=%s\nTZ=%s\n' "$image" "$port" "$tz" > "$WALLOS_DIR/.abox-state"
+    chmod 600 "$WALLOS_DIR/.A-Box-managed" "$WALLOS_DIR/.abox-state"
+    case "${ABOX_LANG:-zh}" in
+        ru) msg "${GREEN}Wallos запущен: $image${NC}"; security_note="При удалённом доступе откройте TCP $port в firewall VPS/облака. Перед вводом личных данных настройте HTTPS reverse proxy: HTTP не шифруется." ;;
+        fa) msg "${GREEN}Wallos اجرا شد: $image${NC}"; security_note="برای دسترسی از راه دور، TCP $port را در فایروال VPS/ابر باز کنید. پیش از واردکردن داده شخصی HTTPS reverse proxy تنظیم کنید؛ HTTP رمزگذاری ندارد." ;;
+        zh) msg "${GREEN}Wallos 已启动：$image${NC}"; security_note="如需远程访问，请在 VPS 防火墙与云安全组放行 TCP $port。录入个人数据前配置 HTTPS 反向代理；HTTP 不加密。" ;;
+        *) msg "${GREEN}Wallos is running: $image${NC}"; security_note="Open TCP $port in the VPS firewall and cloud security group if remote access is required. Use an HTTPS reverse proxy before entering personal data; HTTP is not encrypted." ;;
+    esac
+    wallos_public_urls "$port"
+    msg "${YELLOW}${security_note}${NC}"
+    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
+        if confirm_yes_no "Allow TCP $port through UFW? [Y/N]: "; then ufw allow "$port/tcp" || msg "${YELLOW}Could not update UFW; add the rule manually.${NC}"; fi
+    elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+        if confirm_yes_no "Allow TCP $port through firewalld? [Y/N]: "; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}Could not update firewalld; add the rule manually.${NC}"; fi
+    fi
+    [[ -z "$backup" ]] || msg "Pre-upgrade backup: $backup"
+}
+
+wallos_status() {
+    local port
+    if ! docker container inspect wallos >/dev/null 2>&1; then
+        case "${ABOX_LANG:-zh}" in ru) msg "Wallos не установлен." ;; fa) msg "Wallos نصب نشده است." ;; zh) msg "Wallos 尚未安装。" ;; *) msg "Wallos is not installed." ;; esac
+        return 0
+    fi
+    docker ps -a --filter name='^/wallos$' --format 'Container: {{.Names}} | Status: {{.Status}} | Image: {{.Image}}'
+    port=$(wallos_state_value PORT 2>/dev/null || true)
+    if [[ "$port" =~ ^[0-9]+$ ]]; then wallos_public_urls "$port"; else
+        case "${ABOX_LANG:-zh}" in ru) msg "Файл состояния Wallos отсутствует; проверьте публикацию портов контейнера." ;; fa) msg "فایل وضعیت Wallos وجود ندارد؛ نگاشت درگاه کانتینر را بررسی کنید." ;; zh) msg "Wallos 状态文件缺失，请检查容器端口映射。" ;; *) msg "Wallos state file is missing; inspect the container port mapping." ;; esac
+    fi
+}
+
+wallos_backup_now() {
+    local stamp backup was_running=0
+    [[ -f "$WALLOS_DIR/.A-Box-managed" ]] || { msg "No A-Box-managed Wallos was found."; return 1; }
+    if docker container inspect wallos >/dev/null 2>&1 && [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null)" == true ]]; then
+        docker stop wallos >/dev/null 2>&1 || return 1
+        was_running=1
+    fi
+    stamp=$(date -u '+%Y%m%dT%H%M%SZ')
+    backup=$(wallos_create_backup "$stamp") || { (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true; return 1; }
+    (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true
+    case "${ABOX_LANG:-zh}" in
+        ru) msg "${GREEN}Резервная копия данных Wallos сохранена: $backup${NC}" ;;
+        fa) msg "${GREEN}نسخه پشتیبان داده‌های Wallos ذخیره شد: $backup${NC}" ;;
+        zh) msg "${GREEN}Wallos 数据备份已保存：$backup${NC}" ;;
+        *) msg "${GREEN}Wallos data backup saved: $backup${NC}" ;;
+    esac
+}
+
+wallos_menu() {
+    clear
+    case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${BOLD}${GREEN}Wallos subscription manager${NC}"
+            msg "${YELLOW}1. Install / update (upstream first, A-Box recovery fallback)${NC}"
+            msg "${YELLOW}2. Status and access URL${NC}"
+            msg "${YELLOW}3. Back up database and uploaded logos${NC}"
+            msg "${YELLOW}4. Remove container but keep data${NC}"
+            msg "${GREEN}0. Back${NC}"
+            ;;
+        ru)
+            msg "${BOLD}${GREEN}Управление подписками Wallos${NC}"
+            msg "${YELLOW}1. Установить / обновить (upstream, затем резервная копия A-Box)${NC}"
+            msg "${YELLOW}2. Состояние и адрес доступа${NC}"
+            msg "${YELLOW}3. Резервная копия базы и загруженных логотипов${NC}"
+            msg "${YELLOW}4. Удалить контейнер, сохранив данные${NC}"
+            msg "${GREEN}0. Назад${NC}"
+            ;;
+        fa)
+            msg "${BOLD}${GREEN}مدیریت اشتراک‌های Wallos${NC}"
+            msg "${YELLOW}1. نصب / ارتقا (ابتدا upstream و سپس پشتیبان A-Box)${NC}"
+            msg "${YELLOW}2. وضعیت و نشانی دسترسی${NC}"
+            msg "${YELLOW}3. پشتیبان‌گیری از پایگاه داده و تصاویر بارگذاری‌شده${NC}"
+            msg "${YELLOW}4. حذف کانتینر با حفظ داده‌ها${NC}"
+            msg "${GREEN}0. بازگشت${NC}"
+            ;;
+        *)
+            msg "${BOLD}${GREEN}Wallos 订阅管理${NC}"
+            msg "${YELLOW}1. 一键安装 / 升级（上游优先，A-Box 灾备回退）${NC}"
+            msg "${YELLOW}2. 查看状态和访问网址${NC}"
+            msg "${YELLOW}3. 备份数据库和上传图片${NC}"
+            msg "${YELLOW}4. 删除容器但保留数据${NC}"
+            msg "${GREEN}0. 返回${NC}"
+            ;;
+    esac
+    local c prompt_confirm prompt_remove menu_prompt
+    case "${ABOX_LANG:-zh}" in en) menu_prompt='Select [0-4]: ' ;; ru) menu_prompt='Выберите [0–4]: ' ;; fa) menu_prompt='انتخاب [۰ تا ۴]: ' ;; *) menu_prompt='请选择 [0-4]：' ;; esac
+    read -r -p "$menu_prompt" c
+    case "${ABOX_LANG:-zh}" in
+        en) prompt_confirm='Wallos stores personal subscription/financial data. HTTP has no TLS. Continue? [Y/N]: '; prompt_remove="Remove the Wallos container and keep data in $WALLOS_DIR? [Y/N]: " ;;
+        ru) prompt_confirm='Wallos хранит личные данные; HTTP не защищён TLS. Продолжить? [Y/N]: '; prompt_remove="Удалить контейнер Wallos, сохранив данные в $WALLOS_DIR? [Y/N]: " ;;
+        fa) prompt_confirm='Wallos داده‌های شخصی را نگه می‌دارد؛ HTTP فاقد TLS است. ادامه؟ [Y/N]: '; prompt_remove="کانتینر Wallos حذف شود و داده‌ها در $WALLOS_DIR بمانند؟ [Y/N]: " ;;
+        *) prompt_confirm='Wallos 保存个人订阅/财务数据，HTTP 无 TLS 加密。继续？[Y/N]: '; prompt_remove="确认删除 Wallos 容器并保留 $WALLOS_DIR 下的数据？[Y/N]: " ;;
+    esac
+    case "$c" in
+        1) wallos_install_or_update; pause_return ;;
+        2) wallos_status; pause_return ;;
+        3) wallos_backup_now; pause_return ;;
+        4)
+            if [[ -f "$WALLOS_DIR/.A-Box-managed" ]] && confirm_yes_no "$prompt_remove"; then
+                docker rm -f wallos >/dev/null 2>&1 || true
+                case "${ABOX_LANG:-zh}" in
+                    en) msg "${GREEN}Container removed. Data and backups retained.${NC}" ;;
+                    ru) msg "${GREEN}Контейнер удалён. Данные и резервные копии сохранены.${NC}" ;;
+                    fa) msg "${GREEN}کانتینر حذف شد؛ داده‌ها و پشتیبان‌ها حفظ شدند.${NC}" ;;
+                    *) msg "${GREEN}容器已删除，数据和备份已保留。${NC}" ;;
+                esac
+            fi
+            pause_return ;;
+        *) return 0 ;;
+    esac
+}
 vps_benchmark_menu() {
     clear
     msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}$(tr_msg toolbox_title)${NC}"
-    msg "${CYAN}======================================================================${NC}"
-    if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-        msg "${YELLOW}1. System benchmark and download speed${NC}"
-        msg "${YELLOW}2. IP quality, streaming unlock and route test${NC}"
-        msg "${YELLOW}3. Local SNI preference${NC}"
-        msg "${YELLOW}4. Mini host local SNI preference${NC}"
-        msg "${YELLOW}5. Cloudflare WARP manager (egress IP masking / streaming unlock)${NC}"
-        msg "${YELLOW}6. Allocate 2G Swap (prevent OOM crashes)${NC}"
-        msg "${YELLOW}7. Backup / Restore A-Box configuration${NC}"
-        msg "${YELLOW}8. Export redacted diagnostic bundle${NC}"
-        msg "${YELLOW}9. Full dry-run preflight check${NC}"
-        msg "${YELLOW}10. SNI preference records${NC}"
-        msg "${YELLOW}11. Multi-UUID / lightweight subscription export [U4]${NC}"
-        msg "${GREEN}0. Back${NC}"
-    else
-        msg "${YELLOW}1. 本机配置和下载测速${NC}"
-        msg "${YELLOW}2. IP纯净度、流媒体解锁与回程测试${NC}"
-        msg "${YELLOW}3. 本地 SNI 优选${NC}"
-        msg "${YELLOW}4. 微型主机本地 SNI 优选${NC}"
-        msg "${YELLOW}5. Cloudflare WARP 一键接管 (出站 IP 伪装/流媒体解锁)${NC}"
-        msg "${YELLOW}6. Swap 虚拟内存一键划拨 2G (防 OOM 宕机)${NC}"
-        msg "${YELLOW}7. 配置备份 / 恢复${NC}"
-        msg "${YELLOW}8. 导出脱敏诊断包${NC}"
-        msg "${YELLOW}9. 完整 Dry-run 预检查${NC}"
-        msg "${YELLOW}10. SNI 优选记录${NC}"
-        msg "${YELLOW}11. 轻量多 UUID / 订阅导出 [U4]${NC}"
-        msg "${GREEN}0. 返回主菜单${NC}"
-    fi
-    local bench_choice
-    read -r -p 'Select [0-11]: ' bench_choice
+    case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${BOLD}${GREEN}Toolbox${NC}"
+            msg "${YELLOW}1. System benchmark and download speed${NC}"
+            msg "${YELLOW}2. IP quality, streaming unlock and route test${NC}"
+            msg "${YELLOW}3. Local SNI preference${NC}"
+            msg "${YELLOW}4. Mini-host local SNI preference${NC}"
+            msg "${YELLOW}5. Cloudflare WARP manager${NC}"
+            msg "${YELLOW}6. Allocate 2 GB Swap${NC}"
+            msg "${YELLOW}7. Backup / restore configuration${NC}"
+            msg "${YELLOW}8. Export redacted diagnostics${NC}"
+            msg "${YELLOW}9. Read-only preflight${NC}"
+            msg "${YELLOW}10. SNI preference records${NC}"
+            msg "${YELLOW}11. Multi-UUID / subscription export${NC}"
+            msg "${YELLOW}12. VPS one-click optimization${NC}"
+            msg "${YELLOW}13. IP / DNS / timezone / locale / download-source settings${NC}"
+            msg "${YELLOW}14. Wallos install / update / backup${NC}"
+            msg "${GREEN}0. Back${NC}"
+            ;;
+        ru)
+            msg "${BOLD}${GREEN}Инструменты${NC}"
+            msg "${YELLOW}1. Тест системы и скорости загрузки${NC}"
+            msg "${YELLOW}2. Качество IP, потоковые сервисы и маршрут${NC}"
+            msg "${YELLOW}3. Подбор SNI${NC}"
+            msg "${YELLOW}4. Облегчённый подбор SNI${NC}"
+            msg "${YELLOW}5. Управление Cloudflare WARP${NC}"
+            msg "${YELLOW}6. Создать Swap 2 ГБ${NC}"
+            msg "${YELLOW}7. Резервная копия / восстановление${NC}"
+            msg "${YELLOW}8. Диагностический архив без секретов${NC}"
+            msg "${YELLOW}9. Предварительная проверка${NC}"
+            msg "${YELLOW}10. Записи результатов SNI${NC}"
+            msg "${YELLOW}11. Несколько UUID / экспорт подписки${NC}"
+            msg "${YELLOW}12. Оптимизация VPS${NC}"
+            msg "${YELLOW}13. IP / DNS / часовой пояс / локаль / источники загрузки${NC}"
+            msg "${YELLOW}14. Установка и обслуживание Wallos${NC}"
+            msg "${GREEN}0. Назад${NC}"
+            ;;
+        fa)
+            msg "${BOLD}${GREEN}جعبه ابزار${NC}"
+            msg "${YELLOW}1. آزمون سیستم و سرعت دانلود${NC}"
+            msg "${YELLOW}2. کیفیت IP، رسانه و مسیر${NC}"
+            msg "${YELLOW}3. انتخاب SNI${NC}"
+            msg "${YELLOW}4. انتخاب سبک SNI${NC}"
+            msg "${YELLOW}5. مدیریت Cloudflare WARP${NC}"
+            msg "${YELLOW}6. ایجاد Swap دو گیگابایتی${NC}"
+            msg "${YELLOW}7. پشتیبان‌گیری / بازیابی${NC}"
+            msg "${YELLOW}8. گزارش عیب‌یابی بدون اسرار${NC}"
+            msg "${YELLOW}9. بررسی پیش از اجرا${NC}"
+            msg "${YELLOW}10. سوابق SNI${NC}"
+            msg "${YELLOW}11. چند UUID / خروجی اشتراک${NC}"
+            msg "${YELLOW}12. بهینه‌سازی VPS${NC}"
+            msg "${YELLOW}13. IP / DNS / منطقه زمانی / locale / منبع دانلود${NC}"
+            msg "${YELLOW}14. نصب و نگهداری Wallos${NC}"
+            msg "${GREEN}0. بازگشت${NC}"
+            ;;
+        *)
+            msg "${BOLD}${GREEN}综合工具箱${NC}"
+            msg "${YELLOW}1. 本机配置和下载测速${NC}"
+            msg "${YELLOW}2. IP 质量、流媒体解锁与回程测试${NC}"
+            msg "${YELLOW}3. 本地 SNI 优选${NC}"
+            msg "${YELLOW}4. 微型主机本地 SNI 优选${NC}"
+            msg "${YELLOW}5. Cloudflare WARP 管理${NC}"
+            msg "${YELLOW}6. 创建 2 GB Swap${NC}"
+            msg "${YELLOW}7. 配置备份 / 恢复${NC}"
+            msg "${YELLOW}8. 导出脱敏诊断包${NC}"
+            msg "${YELLOW}9. 只读预检查${NC}"
+            msg "${YELLOW}10. SNI 优选记录${NC}"
+            msg "${YELLOW}11. 多 UUID / 订阅导出${NC}"
+            msg "${YELLOW}12. VPS 一键优化（仅手动启用 BBR/FQ，可回滚；不会在协议安装后自动运行）${NC}"
+            msg "${YELLOW}13. IP / DNS / 时区 / Locale / 下载源设置${NC}"
+            msg "${YELLOW}14. Wallos 安装 / 升级 / 备份${NC}"
+            msg "${GREEN}0. 返回主菜单${NC}"
+            ;;
+    esac
+    local bench_choice select_prompt
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-14]: ' ;; ru) select_prompt='Выберите [0–14]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۴]: ' ;; *) select_prompt='请选择 [0-14]：' ;; esac
+    read -r -p "$select_prompt" bench_choice
     case "$bench_choice" in
-        1)
-            confirm_yes_no "$(tprintf confirm_remote 'System benchmark and download speed')" && run_remote_bash_script 'System benchmark and download speed' 'https://bench.sh'
-            pause_return
-            ;;
-        2)
-            confirm_yes_no "$(tprintf confirm_remote 'IP quality, streaming unlock and route test')" && run_remote_bash_script 'IP quality, streaming unlock and route test' 'https://Check.Place' -I
-            pause_return
-            ;;
+        1) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
+        2) run_mirrored_test_script 'IP quality, streaming unlock and route test' 'https://Check.Place' 'Check.Place.sh' -I; pause_return ;;
         3) run_local_sni_benchmark ;;
         4) run_local_sni_mini_benchmark ;;
         5) run_warp_manager ;;
@@ -11924,10 +13201,12 @@ vps_benchmark_menu() {
         9) preflight_check ;;
         10) show_sni_preference_records ;;
         11) multi_uuid_menu ;;
+        12) tune_vps ;;
+        13) host_network_menu ;;
+        14) wallos_menu ;;
         *) return 0 ;;
     esac
 }
-
 clean_uninstall_menu() {
     clear
     msg "${CYAN}======================================================================${NC}"
@@ -11996,7 +13275,7 @@ EOF_TLS
 }
 
 write_clash_yaml() {
-    local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="$LINK_IP" hy2_name="A-Box-Hy2-Self" tmp_out out_real base_real clash_hop_port
+    local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="$LINK_IP" hy2_name="A-Box-Hy2-Self" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
     local hy2_pass_yaml hy2_obfs_yaml ss_pass_yaml clash_mlkem=false clash_mlkem_rc
     if clash_reality_mlkem_enabled; then
         clash_mlkem=true
@@ -12056,12 +13335,15 @@ dns:
 proxies:
 EOF_CLASH
         if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
-            cat <<EOF_CLASH
-  - name: "A-Box-VLESS-Vision"
+            while IFS= read -r client_uuid; do
+                [[ -n "$client_uuid" ]] || continue
+                if [[ "$client_uuid" == "$UUID" ]]; then proxy_name='A-Box-VLESS-Vision'; else proxy_name="A-Box-VLESS-Vision-${client_uuid:0:8}"; fi
+                cat <<EOF_CLASH
+  - name: "$proxy_name"
     type: vless
     server: "$LINK_IP"
     port: $VLESS_PORT
-    uuid: "$UUID"
+    uuid: "$client_uuid"
     udp: true
     tls: true
     servername: "$VISION_SNI"
@@ -12077,14 +13359,18 @@ EOF_CLASH
     smux:
       enabled: false
 EOF_CLASH
+            done < <(printf '%s\n' "$UUID"; list_extra_uuids)
         fi
         if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
-            cat <<EOF_CLASH
-  - name: "A-Box-VLESS-XHTTP"
+            while IFS= read -r client_uuid; do
+                [[ -n "$client_uuid" ]] || continue
+                if [[ "$client_uuid" == "$UUID" ]]; then proxy_name='A-Box-VLESS-XHTTP'; else proxy_name="A-Box-VLESS-XHTTP-${client_uuid:0:8}"; fi
+                cat <<EOF_CLASH
+  - name: "$proxy_name"
     type: vless
     server: "$LINK_IP"
     port: $XHTTP_PORT
-    uuid: "$UUID"
+    uuid: "$client_uuid"
     udp: true
     tls: true
     servername: "$XHTTP_SNI"
@@ -12104,6 +13390,7 @@ EOF_CLASH
     smux:
       enabled: false
 EOF_CLASH
+            done < <(printf '%s\n' "$UUID"; list_extra_uuids)
         fi
         if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
             if [[ -n "${HY2_DOMAIN:-}" && "$CORE" != 'singbox' ]]; then
@@ -12192,6 +13479,11 @@ proxy-groups:
 EOF_CLASH
         [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo '      - A-Box-VLESS-Vision'
         [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo '      - A-Box-VLESS-XHTTP'
+        while IFS= read -r client_uuid; do
+            [[ -n "$client_uuid" && "$client_uuid" != "$UUID" ]] || continue
+            [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo "      - A-Box-VLESS-Vision-${client_uuid:0:8}"
+            [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo "      - A-Box-VLESS-XHTTP-${client_uuid:0:8}"
+        done < <(list_extra_uuids)
         [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]] && echo "      - $hy2_name"
         [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo '      - A-Box-SS'
         cat <<EOF_CLASH
@@ -12392,106 +13684,145 @@ EOF_V2N
 show_usage() {
     clear
     msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}A-Box 脚本全功能说明书 / Full Manual${NC}"
+    msg "${BOLD}${GREEN}A-Box / Full Manual / Полное руководство / راهنمای کامل${NC}"
     msg "${CYAN}======================================================================${NC}"
-    if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-        cat <<'EOF_USAGE'
+    case "${ABOX_LANG:-zh}" in
+        en)
+            cat <<'EOF_USAGE'
 [Deployment]
-1  Xray VLESS-Vision-Reality
-   TCP REALITY + Vision. Best default for long-term stealth. Default REALITY SNI is www.microsoft.com. Use local SNI preference for production; avoid Apple/iCloud-like SNI on non-443 ports.
-2  Xray VLESS-XHTTP-Reality
-   XHTTP over REALITY. Best high-throughput desktop path with Mihomo v1.19.24+. Recommended: stream-one + h2 + smux disabled. Non-443 SNI should be selected by local SNI preference and manually verified for TLS1.3/H2/SAN; avoid Apple/iCloud on non-443.
+1  Xray VLESS Vision REALITY
+2  Xray VLESS XHTTP REALITY
 3  Xray Shadowsocks-2022
-   SS-2022 relay/landing inbound. Default port 2053 TCP/UDP. Best used behind frontend proxies with whitelist.
-4  Native Hysteria 2
-   UDP/QUIC/H3 acceleration. Use ACME domain cert when available; otherwise self-signed cert with pinSHA256.
-5  Xray + Native Hysteria 2 All-in-one
-   Vision TCP 443 + XHTTP TCP 8443 + HY2 UDP 443 + SS-2022 TCP/UDP 2053. Balanced speed/fallback deployment.
-6  Sing-box VLESS-Vision-Reality
-   Low-memory single-core Vision deployment.
-7  Sing-box Shadowsocks-2022
-   Low-memory SS-2022 relay deployment, default 2053 TCP/UDP.
-8  Sing-box VLESS + SS-2022
-   Vision main path plus SS-2022 relay path in one sing-box process.
-9  Sing-box Hysteria 2
-   HY2 in sing-box, best for UDP/QUIC mobile paths.
-10 Sing-box All-in-one
-   Sing-box Vision + HY2 + SS-2022. No XHTTP by design.
+4  Official Hysteria 2
+5  Xray + Hysteria 2 combined deployment
+6  sing-box VLESS Vision REALITY
+7  sing-box Shadowsocks-2022
+8  sing-box VLESS + Shadowsocks-2022
+9  sing-box Hysteria 2
+10 sing-box Vision + Hysteria 2 + Shadowsocks-2022 (no XHTTP)
 
 [Operations]
-11 Toolbox
-   System benchmark/download speed; IP quality/streaming unlock/route test; built-in full SNI preference library; built-in mini-host SNI preference library; SNI preference record viewer; Cloudflare WARP manager; 2G Swap allocation; Backup/Restore; redacted diagnostic bundle export; full dry-run preflight check. Lightweight preflight runs automatically before protocol deployment; backups are offered or created before destructive maintenance/core upgrade actions.
-12 VPS One-click Optimization
-   BBR/FQ, file descriptor limits, KeepAlive injection, health probe, logrotate/fail2ban defense.
-13 Display Node Parameters
-   Print URIs, QR codes, Clash/Mihomo YAML, sing-box outbounds, v2rayN/v2rayNG XHTTP JSON.
-14 Manual
-   This page.
-15 OTA, Geo and Core-only Upgrade
-   Update A-Box script with Y/N confirmation after SHA256 display, update Xray Loyalsoldier geoip/geosite data, or upgrade installed proxy core binaries without resetting node parameters.
-16 Full/Partial Uninstall
-   Remove proxy stack, firewall rules, services and optional sb shortcut.
-17 Environment Reset
-   Kill orphan processes, clean stale firewall rules, remove broken configs and services.
-18 Monthly Traffic Limit
-   vnStat-based monthly traffic cap; stop services after reaching quota.
-19 SS-2022 Whitelist Manager
-   Add/remove frontend IP/CIDR whitelist entries. Non-whitelisted sources are dropped when whitelist mode is enabled; switching from open mode removes stale global ACCEPT rules first.
-20 Language
-   Switch Chinese/English UI and save to /etc/ddr/.lang.
+11 Toolbox: benchmarks, IP/route tests, SNI workflows, WARP, Swap, backup/restore, redacted diagnostics, preflight, multi-UUID export, BBR/FQ apply/rollback, host settings and Wallos.
+12 Display node parameters and client exports.
+13 This manual.
+14 Script OTA, Xray Geo data and core-only upgrade.
+15 Full/partial uninstall.
+16 Remove nodes and reinitialize the environment.
+17 Monthly vnStat traffic limits; opening the menu shows usage up to now.
+18 SS-2022 IP/CIDR allowlist.
+19 Language selection: Chinese, English, Russian, Persian.
+20 One-click Reality; shortcut `r` is also accepted.
+
+BBR/FQ does not run automatically after protocol deployment. Host DNS includes resolver benchmarking, supported DoT/DoH, and rollback. Timezone selection is based on the installed zone database and supports numbered paging/search; Locale and NTP are separate controls.
+
+Wallos is optional. Installation uses the latest non-prerelease upstream release and matching Docker image first, then the `wallos-mirror` recovery release. Data is persisted and backed up before upgrades. Use HTTPS before entering personal information; the initial HTTP URL is not encrypted.
+
+Toolbox test scripts use upstream-first download and explicit execution confirmation. When upstream is unavailable, a fixed-name A-Box Release snapshot is accepted only after SHA256 verification. If both sources fail, the script is not executed.
 EOF_USAGE
-    else
-        cat <<'EOF_USAGE'
-【部署类】
-1  Xray VLESS-Vision-Reality
-   TCP REALITY + Vision。长期隐蔽主力。443/TCP 为主力端口；SNI 应使用工具箱本地优选结果并人工确认 TLS1.3/H2/SAN。Apple/iCloud 仅作 443 备用，不建议非443使用。
-2  Xray VLESS-XHTTP-Reality
-   XHTTP over REALITY。桌面高速优先，需 Mihomo v1.19.24+。推荐 stream-one + h2 + 关闭 smux。非443默认 www.microsoft.com。
+            ;;
+        ru)
+            cat <<'EOF_USAGE'
+[Развёртывание]
+1  Xray VLESS Vision REALITY
+2  Xray VLESS XHTTP REALITY
 3  Xray Shadowsocks-2022
-   SS-2022 回程/落地入站。默认 2053 TCP/UDP。最适合公共前置/机场前置后接入，并建议白名单。
+4  Официальный Hysteria 2
+5  Комбинированная установка Xray + Hysteria 2
+6  sing-box VLESS Vision REALITY
+7  sing-box Shadowsocks-2022
+8  sing-box VLESS + Shadowsocks-2022
+9  sing-box Hysteria 2
+10 sing-box Vision + Hysteria 2 + Shadowsocks-2022 (без XHTTP)
+
+[Обслуживание]
+11 Инструменты: тесты, качество IP/маршрута, SNI, WARP, Swap, резервное копирование/восстановление, диагностика без секретов, предварительная проверка, экспорт нескольких UUID, BBR/FQ и откат, настройки хоста и Wallos.
+12 Параметры узлов и экспорт клиентских конфигураций.
+13 Это руководство.
+14 OTA скрипта, Geo-данные Xray и отдельное обновление ядер.
+15 Полное/частичное удаление.
+16 Удаление узлов и повторная инициализация окружения.
+17 Месячный лимит трафика vnStat; меню показывает расход на текущий момент.
+18 Список IP/CIDR для SS-2022.
+19 Выбор языка: китайский, английский, русский, персидский.
+20 Reality в один клик; также доступен псевдоним `r`.
+
+BBR/FQ не запускается автоматически после установки протокола. Настройки DNS включают проверку задержки, поддерживаемые DoT/DoH и откат. Часовой пояс выбирается по установленной базе часовых поясов с нумерацией, страницами и поиском; Locale и NTP — отдельные настройки.
+
+Wallos необязателен. Сначала используется последняя стабильная непредварительная версия upstream и соответствующий Docker-образ, затем резервный Release `wallos-mirror`. Данные сохраняются, перед обновлением создаётся резервная копия. До ввода личных данных настройте HTTPS: начальный HTTP URL не шифруется.
+
+Тестовые скрипты загружаются из upstream и требуют явного подтверждения. При недоступности upstream резервная копия A-Box принимается только после проверки SHA256. Если оба источника недоступны, скрипт не запускается.
+EOF_USAGE
+            ;;
+        fa)
+            cat <<'EOF_USAGE'
+[نصب]
+1  Xray VLESS Vision REALITY
+2  Xray VLESS XHTTP REALITY
+3  Xray Shadowsocks-2022
+4  Hysteria 2 رسمی
+5  نصب ترکیبی Xray + Hysteria 2
+6  sing-box VLESS Vision REALITY
+7  sing-box Shadowsocks-2022
+8  sing-box VLESS + Shadowsocks-2022
+9  sing-box Hysteria 2
+10 ترکیب sing-box Vision + Hysteria 2 + Shadowsocks-2022 (بدون XHTTP)
+
+[عملیات]
+11 جعبه ابزار: آزمون سرعت، کیفیت IP/مسیر، SNI، WARP، Swap، پشتیبان‌گیری/بازیابی، گزارش عیب‌یابی بدون اسرار، پیش‌آزمایی، خروجی چند UUID، اعمال/بازگردانی BBR/FQ، تنظیمات میزبان و Wallos.
+12 نمایش پارامترهای نود و خروجی کلاینت.
+13 همین راهنما.
+14 OTA اسکریپت، داده Geo برای Xray و ارتقای مستقل هسته.
+15 حذف کامل/جزئی.
+16 حذف نودها و راه‌اندازی مجدد محیط.
+17 محدودیت ماهانه ترافیک vnStat؛ منو مصرف تا همین لحظه را نشان می‌دهد.
+18 فهرست مجاز IP/CIDR برای SS-2022.
+19 انتخاب زبان: چینی، انگلیسی، روسی، فارسی.
+20 Reality با یک کلیک؛ میان‌بر `r` نیز پذیرفته می‌شود.
+
+BBR/FQ پس از نصب پروتکل به‌صورت خودکار اجرا نمی‌شود. تنظیم DNS شامل سنجش واقعی، DoT/DoH در backend پشتیبانی‌شده و بازگردانی است. منطقه زمانی از پایگاه نصب‌شده با انتخاب شماره‌ای، صفحه‌بندی و جست‌وجو انتخاب می‌شود؛ Locale و NTP گزینه‌های مستقل هستند.
+
+Wallos اختیاری است. ابتدا آخرین نسخه پایدار و غیرپیش‌انتشار upstream و تصویر Docker متناظر استفاده می‌شود؛ در صورت خرابی، Release بازیابی `wallos-mirror` جایگزین می‌شود. داده‌ها پایدار می‌مانند و پیش از ارتقا پشتیبان تهیه می‌شود. URL اولیه HTTP رمزگذاری ندارد؛ پیش از ورود اطلاعات شخصی HTTPS را تنظیم کنید.
+
+اسکریپت‌های آزمون ابتدا از upstream دریافت و اجرای آن‌ها با تأیید صریح انجام می‌شود. در صورت خرابی upstream، نسخه پشتیبان A-Box فقط پس از تطبیق SHA256 اجرا می‌شود. اگر هر دو منبع در دسترس نباشند، هیچ اسکریپتی اجرا نمی‌شود.
+EOF_USAGE
+            ;;
+        *)
+            cat <<'EOF_USAGE'
+【部署类】
+1  Xray VLESS Vision REALITY
+2  Xray VLESS XHTTP REALITY
+3  Xray Shadowsocks-2022
 4  官方 Hysteria 2
-   UDP/QUIC/H3 加速。优先自有域名 ACME 证书；无域名使用自签证书 + pinSHA256。
-5  Xray + 官方 Hysteria 2 全协议四合一
-   Vision TCP 443 + XHTTP TCP 8443 + HY2 UDP 443 + SS-2022 TCP/UDP 2053。兼顾隐蔽、速度、移动网络与链式回程。
-6  Sing-box VLESS-Vision-Reality
-   低内存单进程 Vision 部署。
-7  Sing-box Shadowsocks-2022
-   低内存 SS-2022 回程部署，默认 2053 TCP/UDP。
-8  Sing-box VLESS + SS-2022
-   Vision 主力 + SS-2022 回程双协议。
-9  Sing-box Hysteria 2
-   Sing-box 承载 HY2，适合 UDP/QUIC 移动链路。
-10 Sing-box 全协议三合一
-   Sing-box Vision + HY2 + SS-2022。按设计不包含 XHTTP。
+5  Xray + 官方 Hysteria 2 组合部署
+6  sing-box VLESS Vision REALITY
+7  sing-box Shadowsocks-2022
+8  sing-box VLESS + Shadowsocks-2022
+9  sing-box Hysteria 2
+10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP）
 
 【运维类】
-11 综合工具箱
-   本机配置/下载测速；IP纯净度/流媒体解锁/回程测试；内置全量SNI优选库；内置微型主机SNI优选库；SNI 优选记录查看；Cloudflare WARP接管；2G Swap划拨；配置备份/恢复；脱敏诊断包导出；完整 Dry-run 预检查。
-12 VPS 系统工具 (含 fast/mirror)
-21 一键 Reality
-   BBR/FQ、文件句柄、KeepAlive、健康探针、logrotate/fail2ban防御。
-13 全部节点参数显示
-   输出 URI、二维码、Clash/Mihomo YAML、sing-box出站、v2rayN/v2rayNG XHTTP JSON。
-14 脚本说明书
-   当前页面。
-15 脚本 OTA、Xray Geo 与核心无损升级
-   更新 A-Box 主脚本（显示 SHA256 后使用 Y/N 确认）、Xray Loyalsoldier geoip/geosite 数据，或仅升级当前已安装协议核心且不重置节点参数。
-16 一键全部清空卸载
-   删除代理栈、服务、防火墙规则，可选择是否保留 sb 快捷入口。
-17 删除全部节点与环境初始化
-   杀残留进程、清理陈旧规则、删除破损配置和服务。
-18 每月流量管控限制
-   基于 vnStat 设置月流量阈值，达到后自动停止服务。
-19 SS-2022 白名单 IP 管理
-   添加/删除前置机 IP/CIDR，对非白名单来源执行 DROP；从全网开放切回白名单时会先移除旧的全局 ACCEPT 规则。
-20 语言设置
-   中英文切换，持久化保存至 /etc/ddr/.lang。
+11 综合工具箱：测速、IP/回程测试、SNI、WARP、Swap、备份恢复、脱敏诊断、预检查、多 UUID 导出、BBR/FQ 应用与回滚、主机设置和 Wallos。
+12 显示节点参数与客户端配置。
+13 当前说明书。
+14 脚本 OTA、Xray Geo 数据与核心单独升级。
+15 全部/部分卸载。
+16 删除节点并重新初始化环境。
+17 vnStat 月流量限制；打开后显示截至当前用量。
+18 SS-2022 IP/CIDR 白名单。
+19 语言设置：中文、English、Русский、فارسی。
+20 一键 Reality；也可输入快捷键 `r`。
+
+协议安装后不会自动应用 BBR/FQ。主机设置包含 DNS 真实测速、受支持后端的 DoT/DoH 和回滚。时区列表来自本机已安装时区数据库，支持编号、分页和搜索；Locale 与 NTP 分开设置。
+
+Wallos 为可选应用。正常情况下优先获取上游最新正式稳定版及匹配 Docker 镜像；上游失败时才使用 A-Box `wallos-mirror` 灾备 Release。数据独立持久化，升级前备份，健康检查失败时尝试回滚。初始 HTTP URL 没有 TLS 加密，录入个人数据前请配置 HTTPS。
+
+测速脚本优先从上游下载，显示 SHA256 并要求确认；上游不可用时，仅在 SHA256 校验通过后使用 A-Box `test-tools-mirror`。两处来源都失败则不执行。
 EOF_USAGE
-    fi
+            ;;
+    esac
     msg "${CYAN}======================================================================${NC}"
     pause_return
 }
-
 extract_abox_build_metadata() {
     local file="$1" build epoch
     build=$(awk -F"'" '/^ABOX_BUILD=/{print $2; exit}' "$file")
@@ -13342,8 +14673,7 @@ show_cli_help() {
 A-Box
 Usage:
   bash install.sh                    启动交互菜单 / Start interactive menu
-  bash install.sh --lang zh          设置中文并启动 / Use Chinese UI
-  bash install.sh --lang en          Use English UI / 设置英文并启动
+  bash install.sh --lang zh|en|ru|fa 设置脚本界面语言并启动 / Select UI language
   bash install.sh --self-test        运行无副作用静态自测 / Run static self-test
   bash install.sh --status           显示当前配置和服务状态 / Show current status
   bash install.sh --stop             停止托管服务并保持手动停止状态 / Stop managed services
@@ -13682,6 +15012,11 @@ PY_SELFTEST_TAR
     grep -Fq 'IP_PREF_FILE=' "$0" || { echo 'FAIL: IP preference state file missing'; failures=$((failures + 1)); }
     grep -Fq 'ip_preference_menu()' "$0" || { echo 'FAIL: IP preference menu missing'; failures=$((failures + 1)); }
     grep -Fq 'dns_menu()' "$0" || { echo 'FAIL: DNS menu missing'; failures=$((failures + 1)); }
+    grep -Fq 'dns_auto_prefer()' "$0" || { echo 'FAIL: DNS auto benchmark missing'; failures=$((failures + 1)); }
+    grep -Fq 'dns_enable_doh()' "$0" || { echo 'FAIL: DoH implementation missing'; failures=$((failures + 1)); }
+    grep -Fq 'timezone_choose_from_list()' "$0" || { echo 'FAIL: numbered timezone selector missing'; failures=$((failures + 1)); }
+    grep -Fq 'run_mirrored_test_script()' "$0" || { echo 'FAIL: test-script disaster fallback missing'; failures=$((failures + 1)); }
+    grep -Fq 'wallos_install_or_update()' "$0" || { echo 'FAIL: Wallos installer missing'; failures=$((failures + 1)); }
     grep -Fq 'timezone_menu()' "$0" || { echo 'FAIL: timezone menu missing'; failures=$((failures + 1)); }
     grep -Fq 'ABOX_CORE_MIRROR_BASE_DEFAULT=' "$0" || { echo 'FAIL: core disaster mirror base missing'; failures=$((failures + 1)); }
     grep -Fq '截至当前 / Usage up to now' "$0" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
@@ -13689,6 +15024,9 @@ PY_SELFTEST_TAR
     grep -Fq 'abox_is_fast()' "$0" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }
     grep -Fq 'try_latest_cores_danger()' "$0" || { echo 'FAIL: try-latest cores missing'; failures=$((failures + 1)); }
     grep -Fq 'export_lightweight_subscription()' "$0" || { echo 'FAIL: lightweight subscription missing'; failures=$((failures + 1)); }
+    grep -Fq 'revoke one extra UUID from the Xray server' "$0" || grep -Fq 'Revoke one extra UUID from the Xray server' "$0" || { echo 'FAIL: server-side UUID revocation option missing'; failures=$((failures + 1)); }
+    grep -Fq 'type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one' "$0" || { echo 'FAIL: lightweight XHTTP subscription URI missing'; failures=$((failures + 1)); }
+    grep -Fq 'A-Box-VLESS-XHTTP-${client_uuid:0:8}' "$0" || { echo 'FAIL: Clash extra UUID XHTTP entries missing'; failures=$((failures + 1)); }
     grep -Fq 'probe_core_sources_banner()' "$0" || { echo 'FAIL: download source probe missing'; failures=$((failures + 1)); }
     grep -Fq 'fetch_abox_mirror_asset()' "$0" || { echo 'FAIL: mirror asset helper missing'; failures=$((failures + 1)); }
 
@@ -14726,73 +16064,120 @@ main_loop() {
         msg "${BLUE}======================================================================${NC}"
         msg "${BOLD}${YELLOW}==================================A-Box===============================${NC}"
         msg "${BLUE}======================================================================${NC}"
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-            msg "Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | Core: $STATUS_STR $CUR_MODE | Mode: ${YELLOW}$(read_fast_mode_label)${NC}"
-            msg "${GREEN}21.${NC} ${BOLD}One-click Vision REALITY${NC} (minimal prompts)  ${YELLOW}[r]${NC}=same"
-            msg "${BLUE}----------------------------------------------------------------------${NC}"
-            msg "${YELLOW}[ Xray-core Deployment ]${NC}              ${YELLOW}[ Sing-box Deployment ]${NC}"
-            msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
-            msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
-            msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
-            msg "${GREEN}4.${NC} Hysteria 2 (Official)        ${GREEN}9.${NC} Hysteria 2 (Sing-box)"
-            msg "${GREEN}5.${NC} All-in-one (Xray+Hy2)             ${GREEN}10.${NC} All-in-one (Sing-box)"
-            msg "${BLUE}----------------------------------------------------------------------${NC}"
-            msg "${GREEN}11.${NC} Toolbox"
-            msg "${GREEN}12.${NC} VPS One-click Optimization"
-            msg "${GREEN}13.${NC} Display All Node Parameters"
-            msg "${GREEN}14.${NC} Manual"
-            msg "${GREEN}15.${NC} OTA, Geo & Core Upgrade"
-            msg "${GREEN}16.${NC} Clean Uninstall"
-            msg "${GREEN}17.${NC} Delete Nodes & Reinitialize Environment"
-            msg "${GREEN}18.${NC} Monthly Traffic Limit"
-            msg "${GREEN}19.${NC} SS-2022 Whitelist Manager"
-            msg "${GREEN}20.${NC} Language"
-            msg "${GREEN}21.${NC} One-click Vision REALITY"
-            msg "${GREEN} 0.${NC} Exit"
-            msg "${BLUE}======================================================================${NC}"
-            _menu_lock_released=0
-            if [[ "${ABOX_RUNTIME_LOCK_MODE:-}" == flock ]] && [[ -e /proc/$$/fd/9 ]]; then
-                flock -u 9 2>/dev/null && _menu_lock_released=1 || true
-            fi
-            read -r -p "$(tr_msg main_command)" choice || exit 0
-            if [[ "${_menu_lock_released:-0}" == 1 ]]; then
-                flock -n 9 || die '重新获取 A-Box 运行锁失败；可能另有实例已启动。'
-            fi
-            unset _menu_lock_released
-        else
-            msg "网关/Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | 核心/Core: $STATUS_STR $CUR_MODE | 模式: ${YELLOW}$(read_fast_mode_label)${NC}"
-            msg "${GREEN}21.${NC} ${BOLD}一键 Reality${NC}（Vision 默认 SNI，最少提问）  ${YELLOW}[r]${NC}=同"
-            msg "${BLUE}----------------------------------------------------------------------${NC}"
-            msg "${YELLOW}[ Xray-core 部署 ]${NC}                    ${YELLOW}[ Sing-box 部署 ]${NC}"
-            msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
-            msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
-            msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
-            msg "${GREEN}4.${NC} Hysteria 2 (官方)          ${GREEN}9.${NC} Hysteria 2 (Sing-box)"
-            msg "${GREEN}5.${NC} 全协议四合一 (Xray+Hy2)           ${GREEN}10.${NC} 全协议三合一 (Sing-box)"
-            msg "${BLUE}----------------------------------------------------------------------${NC}"
-            msg "${GREEN}11.${NC} 综合工具箱"
-            msg "${GREEN}12.${NC} VPS 一键优化"
-            msg "${GREEN}13.${NC} 全部节点参数显示"
-            msg "${GREEN}14.${NC} 脚本说明书"
-            msg "${GREEN}15.${NC} 脚本 OTA、Xray Geo 与核心无损升级"
-            msg "${GREEN}16.${NC} 一键全部清空卸载"
-            msg "${GREEN}17.${NC} 删除全部节点与环境初始化"
-            msg "${GREEN}18.${NC} 每月流量管控限制"
-            msg "${GREEN}19.${NC} SS-2022 白名单 IP 管理"
-            msg "${GREEN}20.${NC} 语言设置 / Language"
-            msg "${GREEN}21.${NC} 一键 Reality"
-            msg "${GREEN} 0.${NC} 退出脚本"
-            msg "${BLUE}======================================================================${NC}"
-            _menu_lock_released=0
-            if [[ "${ABOX_RUNTIME_LOCK_MODE:-}" == flock ]] && [[ -e /proc/$$/fd/9 ]]; then
-                flock -u 9 2>/dev/null && _menu_lock_released=1 || true
-            fi
-            read -r -p "$(tr_msg main_command)" choice || exit 0
-            if [[ "${_menu_lock_released:-0}" == 1 ]]; then
-                flock -n 9 || die '重新获取 A-Box 运行锁失败；可能另有实例已启动。'
-            fi
-            unset _menu_lock_released
+        case "${ABOX_LANG:-zh}" in
+            en)
+                msg "Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | Core: $STATUS_STR $CUR_MODE | Mode: ${YELLOW}$(read_fast_mode_label)${NC}"
+                msg "${RED}======================================================================${NC}"
+                msg "${RED}${BOLD}                    >>> 20  ONE-CLICK REALITY <<<                    ${NC}"
+                msg "${RED}======================================================================${NC}"
+                msg "${YELLOW}                 Vision REALITY, minimal prompts [r]                 ${NC}"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${YELLOW}[ Xray-core Deployment ]${NC}              ${YELLOW}[ Sing-box Deployment ]${NC}"
+                msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
+                msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
+                msg "${GREEN}4.${NC} Hysteria 2 (Official)               ${GREEN}9.${NC} Hysteria 2 (Sing-box)"
+                msg "${GREEN}5.${NC} All-in-one (Xray+Hy2)              ${GREEN}10.${NC} All-in-one (Sing-box)"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${GREEN}11.${NC} Toolbox"
+                msg "${GREEN}12.${NC} Display All Node Parameters"
+                msg "${GREEN}13.${NC} Manual"
+                msg "${GREEN}14.${NC} OTA, Geo & Core Upgrade"
+                msg "${GREEN}15.${NC} Clean Uninstall"
+                msg "${GREEN}16.${NC} Delete Nodes & Reinitialize Environment"
+                msg "${GREEN}17.${NC} Monthly Traffic Limit"
+                msg "${GREEN}18.${NC} SS-2022 Whitelist Manager"
+                msg "${GREEN}19.${NC} Language"
+                msg "${RED}${BOLD}20. One-click Reality [r]${NC}"
+                msg "${GREEN} 0.${NC} Exit"
+                ;;
+            ru)
+                msg "Шлюз: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | Ядро: $STATUS_STR $CUR_MODE | Режим: ${YELLOW}$(read_fast_mode_label)${NC}"
+                msg "${RED}======================================================================${NC}"
+                msg "${RED}${BOLD}                    >>> 20  REALITY В ОДИН КЛИК <<<                  ${NC}"
+                msg "${RED}======================================================================${NC}"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${YELLOW}[ Развёртывание Xray ]${NC}              ${YELLOW}[ Развёртывание sing-box ]${NC}"
+                msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
+                msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
+                msg "${GREEN}4.${NC} Hysteria 2 (официальный)            ${GREEN}9.${NC} Hysteria 2 (sing-box)"
+                msg "${GREEN}5.${NC} Комплексная установка               ${GREEN}10.${NC} Комплексная установка"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${GREEN}11.${NC} Инструменты"
+                msg "${GREEN}12.${NC} Параметры узлов"
+                msg "${GREEN}13.${NC} Руководство"
+                msg "${GREEN}14.${NC} OTA, Geo и обновление ядер"
+                msg "${GREEN}15.${NC} Удаление"
+                msg "${GREEN}16.${NC} Сброс узлов и среды"
+                msg "${GREEN}17.${NC} Месячный лимит трафика"
+                msg "${GREEN}18.${NC} Белый список SS-2022"
+                msg "${GREEN}19.${NC} Язык"
+                msg "${RED}${BOLD}20. Reality в один клик [r]${NC}"
+                msg "${GREEN} 0.${NC} Выход"
+                ;;
+            fa)
+                msg "درگاه: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | هسته: $STATUS_STR $CUR_MODE | حالت: ${YELLOW}$(read_fast_mode_label)${NC}"
+                msg "${RED}======================================================================${NC}"
+                msg "${RED}${BOLD}                    >>> 20  REALITY با یک کلیک <<<                  ${NC}"
+                msg "${RED}======================================================================${NC}"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${YELLOW}[ نصب Xray ]${NC}                         ${YELLOW}[ نصب sing-box ]${NC}"
+                msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
+                msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
+                msg "${GREEN}4.${NC} Hysteria 2 (رسمی)                  ${GREEN}9.${NC} Hysteria 2 (sing-box)"
+                msg "${GREEN}5.${NC} نصب ترکیبی                          ${GREEN}10.${NC} نصب ترکیبی"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${GREEN}11.${NC} جعبه ابزار"
+                msg "${GREEN}12.${NC} پارامترهای نود"
+                msg "${GREEN}13.${NC} راهنما"
+                msg "${GREEN}14.${NC} OTA، Geo و به‌روزرسانی هسته"
+                msg "${GREEN}15.${NC} حذف کامل"
+                msg "${GREEN}16.${NC} بازنشانی نودها و محیط"
+                msg "${GREEN}17.${NC} محدودیت ماهانه ترافیک"
+                msg "${GREEN}18.${NC} فهرست مجاز SS-2022"
+                msg "${GREEN}19.${NC} زبان"
+                msg "${RED}${BOLD}20. Reality با یک کلیک [r]${NC}"
+                msg "${GREEN} 0.${NC} خروج"
+                ;;
+            *)
+                msg "网关/Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | 核心/Core: $STATUS_STR $CUR_MODE | 模式: ${YELLOW}$(read_fast_mode_label)${NC}"
+                msg "${RED}======================================================================${NC}"
+                msg "${RED}${BOLD}                    >>> 20  一 键 REALITY <<<                       ${NC}"
+                msg "${RED}======================================================================${NC}"
+                msg "${YELLOW}                 Vision 默认 SNI · 最少提问 · 输入 r 同效             ${NC}"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${YELLOW}[ Xray-core 部署 ]${NC}                    ${YELLOW}[ Sing-box 部署 ]${NC}"
+                msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
+                msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
+                msg "${GREEN}4.${NC} Hysteria 2 (官方)                  ${GREEN}9.${NC} Hysteria 2 (Sing-box)"
+                msg "${GREEN}5.${NC} 全协议四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全协议三合一 (Sing-box)"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${GREEN}11.${NC} 综合工具箱"
+                msg "${GREEN}12.${NC} 全部节点参数显示"
+                msg "${GREEN}13.${NC} 脚本说明书"
+                msg "${GREEN}14.${NC} 脚本 OTA、Xray Geo 与核心无损升级"
+                msg "${GREEN}15.${NC} 一键全部清空卸载"
+                msg "${GREEN}16.${NC} 删除全部节点与环境初始化"
+                msg "${GREEN}17.${NC} 每月流量管控限制"
+                msg "${GREEN}18.${NC} SS-2022 白名单 IP 管理"
+                msg "${GREEN}19.${NC} 语言设置 / Language"
+                msg "${RED}${BOLD}20. 一键 Reality [r]${NC}"
+                msg "${GREEN} 0.${NC} 退出脚本"
+                ;;
+        esac
+        msg "${BLUE}======================================================================${NC}"
+        _menu_lock_released=0
+        if [[ "${ABOX_RUNTIME_LOCK_MODE:-}" == flock ]] && [[ -e /proc/$$/fd/9 ]]; then
+            flock -u 9 2>/dev/null && _menu_lock_released=1 || true
         fi
+        read -r -p "$(tr_msg main_command)" choice || exit 0
+        if [[ "${_menu_lock_released:-0}" == 1 ]]; then
+            flock -n 9 || die '重新获取 A-Box 运行锁失败；可能另有实例已启动。'
+        fi
+        unset _menu_lock_released
         case "$choice" in
             1) deploy_xray VISION ;;
             2) deploy_xray XHTTP ;;
@@ -14805,16 +16190,15 @@ main_loop() {
             9) deploy_singbox HY2 ;;
             10) deploy_singbox ALL ;;
             11) vps_benchmark_menu ;;
-            12) tune_vps ;;
-            13) view_config manual ;;
-            14) show_usage ;;
-            15) ota_and_geo_menu ;;
-            16) clean_uninstall_menu ;;
-            17) check_virgin_state ;;
-            18) traffic_management_menu ;;
-            19) manage_ss_whitelist ;;
-            20) language_menu ;;
-            21|r|R) one_click_reality_deploy ;;
+            12) view_config manual ;;
+            13) show_usage ;;
+            14) ota_and_geo_menu ;;
+            15) clean_uninstall_menu ;;
+            16) check_virgin_state ;;
+            17) traffic_management_menu ;;
+            18) manage_ss_whitelist ;;
+            19) language_menu ;;
+            20|r|R) one_click_reality_deploy ;;
             0) clear; exit 0 ;;
             *) sleep 1 ;;
         esac

@@ -16530,6 +16530,9 @@ EOF_SVC_TEST_RCUPDATE
         printf 'old-logo\n' > "$WALLOS_DIR/logos/logo.txt" || exit 33
         printf 'image=bellamy/wallos:1.2.3\nport=8282\ntz=UTC\n' > "$WALLOS_DIR/.abox-state" || exit 34
         backup=$(wallos_create_backup selftest) || exit 35
+        wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$backup" 1 || exit 46
+        [[ "$(stat -c %a "$WALLOS_DIR/.upgrade-transaction")" == 600 ]] || exit 47
+        [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" phase)" == active ]] || exit 48
         printf 'partially-migrated\n' > "$WALLOS_DIR/db/state.txt" || exit 36
         printf 'new-logo\n' > "$WALLOS_DIR/logos/logo.txt" || exit 37
         printf 'image=bellamy/wallos:1.2.4\nport=8282\ntz=UTC\n' > "$WALLOS_DIR/.abox-state" || exit 38

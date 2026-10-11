@@ -4,7 +4,7 @@ Large binary archives belong in GitHub Releases rather than the Git tree.
 
 ## Core binaries
 
-The stable core recovery endpoint is the Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/a-box/releases/tag/core-binaries), with the fixed tag `core-binaries`. The installer checks upstream first and verifies downloaded mirror assets against the same Release's `SHA256SUMS` before installation. Keep this tag stable across routine script releases; update it only when deliberately rotating the mirrored binaries and their checksum manifest. The former versioned Release `core-mirrors-v171` has been removed. The stable core binary mirror endpoint is `core-binaries`. Do not use the retired versioned endpoint for new deployments. Older installer copies that hard-code the former tag will no longer be able to download assets from that Release.
+The stable core recovery endpoint is the Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/a-box/releases/tag/core-binaries), with the fixed tag `core-binaries`. The installer checks upstream first and verifies downloaded mirror assets against the same Release's `SHA256SUMS` before installation. Keep this tag stable across routine script releases; update it only when deliberately rotating the mirrored binaries and their checksum manifest. The former versioned Release `core-mirrors-v171` has been removed; older installer copies that hard-code that tag can no longer download assets from it. New deployments must use `core-binaries`.
 
 The current core pins configured in `install.sh` are Xray `v26.7.28`, sing-box `v1.14.2`, and Hysteria `app/v2.13.0`. These are software versions, not per-edit filenames.
 
@@ -31,4 +31,4 @@ The toolbox tries the upstream script first, checks size, shebang, HTML error-pa
 
 ## Updating mirrors
 
-`.github/workflows/update-mirrors.yml` refreshes the stable Wallos and test-tool Releases on a schedule or manually. The workflow must be uploaded to GitHub and run successfully before its Release assets exist. Routine script edits should not create version-suffixed filenames or one-off Release names.
+`.github/workflows/update-mirrors.yml` refreshes the stable Wallos and test-tool Releases manually or on a weekly schedule. Each mirror is published only after its assets pass the workflow's content checks and SHA-256 verification. Routine script edits should not create version-suffixed filenames or one-off Release names.

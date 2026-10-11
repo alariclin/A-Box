@@ -12287,6 +12287,7 @@ backup_current_config() {
     collect_abox_cron > "$work/meta/cron.abox.txt" 2>/dev/null || backup_failed=1
     capture_managed_service_state "$work/meta/services.state" || backup_failed=1
     backend=$(firewall_backend); printf '%s\n' "$backend" > "$work/meta/firewall.backend"
+    [[ "$backend" != 'nftables-unsupported' ]] || backup_failed=1
     capture_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 || backup_failed=1
     capture_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 || backup_failed=1
     (( backup_failed == 0 )) || { rm -rf "$work"; die 'Backup aborted because an existing A-Box path could not be copied.'; }
@@ -16499,6 +16500,19 @@ EOF_SVC_TEST_RCUPDATE
         eval "$read__orig"
     else
         unset -f read 2>/dev/null || true
+    fi
+    # Native nftables-only firewalls must be recognized rather than silently
+    # treated as an iptables backend. A mocked ruleset keeps this deterministic.
+    _selftest_nft_orig=$(declare -f nft 2>/dev/null || true)
+    nft() { printf '%s\n' 'table inet filter {' ' chain input {' ' }' '}'; }
+    if ! nftables_native_rules_present; then
+        echo 'FAIL: native nftables inet table was not detected'
+        failures=$((failures + 1))
+    fi
+    if [[ -n "$_selftest_nft_orig" ]]; then
+        eval "$_selftest_nft_orig"
+    else
+        unset -f nft 2>/dev/null || true
     fi
     # Wallos anti-downgrade comparator and backup/restore transaction tests.
     if ! wallos_version_is_older v1.9.0 v1.10.0; then

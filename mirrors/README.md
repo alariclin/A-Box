@@ -4,7 +4,7 @@ Large binary archives belong in GitHub Releases rather than the Git tree.
 
 ## Core binaries
 
-The stable core recovery endpoint is the Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/a-box/releases/tag/core-binaries), with the fixed tag `core-binaries`. The installer checks upstream first and verifies downloaded mirror assets against the same Release's `SHA256SUMS` before installation. Keep this tag stable across routine script releases; update it only when deliberately rotating the mirrored binaries and their checksum manifest. The prior versioned endpoint is retained temporarily for older installer copies and should not be used for new deployments.
+The stable core recovery endpoint is the Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/a-box/releases/tag/core-binaries), with the fixed tag `core-binaries`. The installer checks upstream first and verifies downloaded mirror assets against the same Release's `SHA256SUMS` before installation. Keep this tag stable across routine script releases; update it only when deliberately rotating the mirrored binaries and their checksum manifest. The former versioned Release `core-mirrors-v171` has been removed. The stable core binary mirror endpoint is `core-binaries`. Do not use the retired versioned endpoint for new deployments. Older installer copies that hard-code the former tag will no longer be able to download assets from that Release.
 
 The current core pins configured in `install.sh` are Xray `v26.7.28`, sing-box `v1.14.2`, and Hysteria `app/v2.13.0`. These are software versions, not per-edit filenames.
 

@@ -4376,7 +4376,9 @@ github_api_get() {
     done
     rm -f -- "$tmp" "$headers"
     return 1
-}verify_github_asset_digest() {
+}
+
+verify_github_asset_digest() {
     local file="$1" digest="${2:-}" expected actual
     if [[ -z "$digest" || "$digest" == 'null' ]]; then
         printf '%s\n' 'GitHub Release asset 缺少官方 SHA256 digest，拒绝安装。' >&2
@@ -13250,16 +13252,9 @@ wallos_install_or_update() {
     if (( code != 0 )) || ! wallos_wait_healthy "$port"; then
         docker rm -f wallos >/dev/null 2>&1 || true
         if (( running == 1 )); then
-            # Validate the pre-upgrade archive and required top-level entries
-            # before deleting the live data directories. Never start an old
-            # container against partially restored or empty databases/logos.
-            backup_listing=$(tar -tzf "$backup" 2>/dev/null) || backup_listing=''
-            if [[ -n "$backup_listing" ]] &&
-               grep -Eq '^db/?$' <<< "$backup_listing" &&
-               grep -Eq '^logos/?$' <<< "$backup_listing" &&
-               grep -Fxq '.abox-state' <<< "$backup_listing" &&
-               rm -rf -- "$WALLOS_DIR/db" "$WALLOS_DIR/logos" &&
-               tar -xzf "$backup" -C "$WALLOS_DIR"; then
+            # Extract and validate into a staging directory; preserve live data
+            # until every expected entry has been extracted and checked.
+            if wallos_restore_backup "$backup"; then
                 restore_ok=1
             else
                 msg "${RED}Rollback data restore failed or the backup is invalid. The old container will not be started against incomplete data. Preserve and inspect backup: ${backup:-unavailable}${NC}"

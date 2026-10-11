@@ -4942,10 +4942,15 @@ validate_fail2ban_config_or_die() {
 2026-07-25T10:00:01Z authentication failed from [2001:db8::7]:443
 2026-07-25T10:00:02Z proxy/vless/inbound: invalid request from 198.51.100.9:44321 > proxy/vless/encoding
 2026-07-25T10:00:03Z client=198.51.100.8 rejected
+2026-07-25T10:00:04Z health check succeeded without authentication failure
 EOF_F2B_SAMPLE
         out=$(fail2ban-regex "$sample" /etc/fail2ban/filter.d/A-Box.conf 2>&1) || { rm -f "$sample"; printf '%s\n' "$out" >&2; die 'Fail2Ban 正则测试执行失败。'; }
         rm -f "$sample"
-        grep -Eq '^[[:space:]]*[2-9][0-9]*[[:space:]]+total|Failregex:[[:space:]]*[2-9]' <<< "$out" || { printf '%s\n' "$out" >&2; die 'Fail2Ban 过滤器未匹配代表性认证失败日志。'; }
+        local summary matched_count missed_count
+        summary=$(grep -E '^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, [0-9]+ missed' <<< "$out" | tail -n 1)
+        matched_count=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, ([0-9]+) matched, [0-9]+ missed.*/\\1/p' <<< "$summary")
+        missed_count=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, ([0-9]+) missed.*/\\1/p' <<< "$summary")
+        [[ "$matched_count" =~ ^[0-9]+$ && "$missed_count" =~ ^[0-9]+$ ]] && (( matched_count >= 1 && missed_count >= 1 )) || { printf '%s\n' "$out" >&2; die 'Fail2Ban must match a representative failure log and leave a benign log unmatched.'; }
     fi
 }
 

@@ -13143,6 +13143,112 @@ wallos_restore_backup() {
     return 0
 }
 
+wallos_upgrade_journal_write() {
+    local phase="$1" old_image="$2" old_port="$3" old_tz="$4" old_bind="$5" backup="$6" was_running="$7"
+    local journal="$WALLOS_DIR/.upgrade-transaction"
+    [[ "$phase" == active || "$phase" == committed ]] || return 1
+    [[ "$old_image" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ ]] || return 1
+    valid_canonical_port "$old_port" || return 1
+    valid_timezone_name "$old_tz" || return 1
+    [[ "$old_bind" == 127.0.0.1 || "$old_bind" == 0.0.0.0 ]] || return 1
+    [[ "$was_running" == 0 || "$was_running" == 1 ]] || return 1
+    [[ "$backup" == "$WALLOS_DIR/backups/wallos-"*.tar.gz && -f "$backup" && ! -L "$backup" ]] || return 1
+    write_file_atomically_from_stdin "$journal" 600 <<EOF_WALLOS_TXN
+phase=$phase
+old_image=$old_image
+old_port=$old_port
+old_tz=$old_tz
+old_bind=$old_bind
+backup=$backup
+was_running=$was_running
+EOF_WALLOS_TXN
+}
+
+wallos_txn_value() {
+    local file="$1" key="$2"
+    awk -F= -v key="$key" '
+        $1 == key {
+            count++
+            value = substr($0, index($0, "=") + 1)
+        }
+        END {
+            if (count != 1) exit 1
+            print value
+        }
+    ' "$file"
+}
+
+wallos_recover_interrupted_upgrade() {
+    local journal="$WALLOS_DIR/.upgrade-transaction"
+    local owner mode phase old_image old_port old_tz old_bind backup was_running
+    [[ -e "$journal" || -L "$journal" ]] || return 0
+    [[ -f "$journal" && ! -L "$journal" ]] || {
+        msg "${RED}Wallos upgrade journal is not a regular file; refusing automatic recovery.${NC}"
+        return 1
+    }
+    owner=$(stat -c %u:%g "$journal" 2>/dev/null) || return 1
+    mode=$(stat -c %a "$journal" 2>/dev/null) || return 1
+    [[ "$owner" == 0:0 && "$mode" == 600 ]] || {
+        msg "${RED}Wallos upgrade journal ownership/permissions are unsafe; refusing automatic recovery.${NC}"
+        return 1
+    }
+    [[ "$(wc -l < "$journal" | tr -d '[:space:]')" == 7 ]] || {
+        msg "${RED}Wallos upgrade journal is incomplete; preserve $journal and the latest backup for manual recovery.${NC}"
+        return 1
+    }
+    phase=$(wallos_txn_value "$journal" phase) || return 1
+    [[ "$phase" == active || "$phase" == committed ]] || return 1
+    old_image=$(wallos_txn_value "$journal" old_image) || return 1
+    old_port=$(wallos_txn_value "$journal" old_port) || return 1
+    old_tz=$(wallos_txn_value "$journal" old_tz) || return 1
+    old_bind=$(wallos_txn_value "$journal" old_bind) || return 1
+    backup=$(wallos_txn_value "$journal" backup) || return 1
+    was_running=$(wallos_txn_value "$journal" was_running) || return 1
+    if [[ "$phase" == committed ]]; then
+        rm -f -- "$journal" || return 1
+        msg "${YELLOW}Completed Wallos upgrade journal cleanup.${NC}"
+        return 0
+    fi
+    [[ "$old_image" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ ]] || return 1
+    valid_canonical_port "$old_port" || return 1
+    valid_timezone_name "$old_tz" || return 1
+    [[ "$old_bind" == 127.0.0.1 || "$old_bind" == 0.0.0.0 ]] || return 1
+    [[ "$was_running" == 0 || "$was_running" == 1 ]] || return 1
+    [[ "$backup" == "$WALLOS_DIR/backups/wallos-"*.tar.gz && -f "$backup" && ! -L "$backup" ]] || return 1
+    if docker container inspect wallos >/dev/null 2>&1; then
+        docker stop wallos >/dev/null 2>&1 || true
+        docker rm -f wallos >/dev/null 2>&1 || {
+            msg "${RED}Could not remove the interrupted Wallos container; journal retained.${NC}"
+            return 1
+        }
+    fi
+    docker image inspect "$old_image" >/dev/null 2>&1 || {
+        msg "${RED}Previous Wallos image $old_image is not present locally. Refusing to pull a mutable tag for recovery; journal and backup retained.${NC}"
+        return 1
+    }
+    wallos_restore_backup "$backup" || {
+        msg "${RED}Interrupted Wallos upgrade backup restore failed. Journal and backup retained at $journal and $backup.${NC}"
+        return 1
+    }
+    if (( was_running == 1 )); then
+        docker run -d --name wallos --label com.alariclin.abox.managed=true \
+            -v "$WALLOS_DIR/db:/var/www/html/db" \
+            -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
+            -e TZ="$old_tz" -p "$old_bind:$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null || return 1
+        wallos_wait_healthy "$old_port" || {
+            msg "${RED}Restored previous Wallos container did not become healthy; transaction journal retained.${NC}"
+            return 1
+        }
+    else
+        docker create --name wallos --label com.alariclin.abox.managed=true \
+            -v "$WALLOS_DIR/db:/var/www/html/db" \
+            -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
+            -e TZ="$old_tz" -p "$old_bind:$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null || return 1
+    fi
+    rm -f -- "$journal" || return 1
+    msg "${YELLOW}Recovered an interrupted Wallos upgrade by restoring the previous image and validated data backup. Review logs before retrying the upgrade.${NC}"
+}
+
 wallos_public_urls() {
     local port="$1" ipv4 ipv6 host_ip
     host_ip=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
@@ -13197,6 +13303,10 @@ wallos_install_or_update() {
     arch=$(wallos_detect_arch) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Поддерживаются архитектуры amd64, arm64 и ARMv7.${NC}" ;; fa) msg "${RED}معماری‌های پشتیبانی‌شده amd64، arm64 و ARMv7 هستند.${NC}" ;; zh) msg "${RED}Wallos 支持 amd64、arm64 和 ARMv7 架构。${NC}" ;; *) msg "${RED}Supported Wallos image architectures are amd64, arm64 and ARMv7.${NC}" ;; esac; return 1; }
     wallos_install_runtime || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Не удалось установить или запустить Docker; контейнер Wallos не изменён.${NC}" ;; fa) msg "${RED}نصب یا اجرای Docker شکست خورد؛ کانتینر Wallos تغییر نکرد.${NC}" ;; zh) msg "${RED}Docker 安装或启动失败，未修改 Wallos 容器。${NC}" ;; *) msg "${RED}Docker could not be installed or started; no Wallos container was changed.${NC}" ;; esac; return 1; }
     docker info >/dev/null 2>&1 || return 1
+    if [[ -e "$WALLOS_DIR/.upgrade-transaction" || -L "$WALLOS_DIR/.upgrade-transaction" ]]; then
+        wallos_recover_interrupted_upgrade || return 1
+        return 0
+    fi
 
     if docker container inspect wallos >/dev/null 2>&1; then
         [[ -f "$WALLOS_DIR/.A-Box-managed" && ! -L "$WALLOS_DIR/.A-Box-managed" ]] || {
@@ -13263,7 +13373,15 @@ wallos_install_or_update() {
         if (( was_running == 1 )); then docker stop wallos >/dev/null 2>&1 || return 1; fi
         stamp=$(date -u '+%Y%m%dT%H%M%SZ')
         backup=$(wallos_create_backup "$stamp") || { (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true; msg "${RED}Pre-upgrade backup failed; old container was retained.${NC}"; return 1; }
-        docker rm wallos >/dev/null 2>&1 || { (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true; return 1; }
+        wallos_upgrade_journal_write active "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" || {
+            (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true
+            msg "${RED}Could not commit the Wallos upgrade journal; the old container was retained.${NC}"
+            return 1
+        }
+        docker rm wallos >/dev/null 2>&1 || {
+            wallos_recover_interrupted_upgrade || msg "${RED}Wallos upgrade could not start; preserve the transaction journal and backup.${NC}"
+            return 1
+        }
     fi
 
     docker run -d --name wallos --label com.alariclin.abox.managed=true \

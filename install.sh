@@ -13402,20 +13402,50 @@ wallos_install_or_update() {
     # the container. Commit the mutable image/port/timezone state atomically;
     # do not silently report a complete update if metadata cannot be saved.
     if ! wallos_write_state "$image" "$port" "$tz"; then
-        msg "${RED}Wallos is responding, but its state file could not be committed atomically. The service was left running and the pre-upgrade backup was retained; repair $WALLOS_DIR/.abox-state before the next upgrade.${NC}"
+        msg "\${RED}Wallos state metadata failed to commit. Rolling back the incomplete upgrade where possible.\${NC}"
+        if (( running == 1 )); then
+            docker rm -f wallos >/dev/null 2>&1 || true
+            wallos_recover_interrupted_upgrade || msg "\${RED}Rollback failed; preserve $WALLOS_DIR/.upgrade-transaction and $backup.\${NC}"
+        else
+            docker rm -f wallos >/dev/null 2>&1 || true
+        fi
         return 1
     fi
-    case "${ABOX_LANG:-zh}" in
-        ru) msg "${GREEN}Wallos запущен: $image${NC}"; security_note="При удалённом доступе откройте TCP $port в firewall VPS/облака. Перед вводом личных данных настройте HTTPS reverse proxy: HTTP не шифруется." ;;
-        fa) msg "${GREEN}Wallos اجرا شد: $image${NC}"; security_note="برای دسترسی از راه دور، TCP $port را در فایروال VPS/ابر باز کنید. پیش از واردکردن داده شخصی HTTPS reverse proxy تنظیم کنید؛ HTTP رمزگذاری ندارد." ;;
-        zh) msg "${GREEN}Wallos 已启动：$image${NC}"; security_note="如需远程访问，请在 VPS 防火墙与云安全组放行 TCP $port。录入个人数据前配置 HTTPS 反向代理；HTTP 不加密。" ;;
-        *) msg "${GREEN}Wallos is running: $image${NC}"; security_note="Open TCP $port in the VPS firewall and cloud security group if remote access is required. Use an HTTPS reverse proxy before entering personal data; HTTP is not encrypted." ;;
+    if (( running == 1 )); then
+        if ! wallos_upgrade_journal_write committed "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running"; then
+            msg "\${RED}Wallos health check passed but transaction commit metadata failed; restoring the previous version.\${NC}"
+            docker rm -f wallos >/dev/null 2>&1 || true
+            wallos_recover_interrupted_upgrade || msg "\${RED}Rollback failed; preserve $WALLOS_DIR/.upgrade-transaction and $backup.\${NC}"
+            return 1
+        fi
+        rm -f -- "$WALLOS_DIR/.upgrade-transaction" || {
+            msg "\${YELLOW}Wallos is updated; committed journal cleanup will finish on the next run.\${NC}"
+            return 1
+        }
+    fi
+    case "\${ABOX_LANG:-zh}" in
+        ru)
+            msg "\${GREEN}Wallos запущен: $image\${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='По умолчанию доступ разрешён только с этого хоста. Для удалённого доступа используйте HTTPS reverse proxy или SSH-туннель.'
+            else security_note="HTTP без TLS опубликован на всех IPv4-интерфейсах и требует внешней защиты HTTPS reverse proxy/firewall на TCP $port."; fi ;;
+        fa)
+            msg "\${GREEN}Wallos اجرا شد: $image\${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='دسترسی به‌طور پیش‌فرض فقط از همین میزبان است؛ برای راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.'
+            else security_note="HTTP بدون TLS روی همه رابط‌های IPv4 منتشر شده است؛ روی TCP $port به HTTPS reverse proxy و firewall نیاز دارید."; fi ;;
+        zh)
+            msg "\${GREEN}Wallos 已启动：$image\${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='默认仅允许本机访问；远程访问请使用 HTTPS 反向代理或 SSH 隧道，不需要为该本机端口开放公网入站规则。'
+            else security_note="明文 HTTP 已绑定所有 IPv4 网卡；TCP $port 必须由 HTTPS 反向代理与防火墙保护。"; fi ;;
+        *)
+            msg "\${GREEN}Wallos is running: $image\${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='Access is local-only by default. Use an HTTPS reverse proxy or SSH tunnel for remote access.'
+            else security_note="Plain HTTP is published on all IPv4 interfaces; protect TCP $port with an HTTPS reverse proxy and firewall."; fi ;;
     esac
     wallos_public_urls "$port"
     msg "${YELLOW}${security_note}${NC}"
-    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
+    if [[ "$bind_address" == 0.0.0.0 ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
         if confirm_yes_no "Allow TCP $port through UFW? [Y/N]: "; then ufw allow "$port/tcp" || msg "${YELLOW}Could not update UFW; add the rule manually.${NC}"; fi
-    elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    elif [[ "$bind_address" == 0.0.0.0 ]] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
         if confirm_yes_no "Allow TCP $port through firewalld? [Y/N]: "; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}Could not update firewalld; add the rule manually.${NC}"; fi
     fi
     [[ -z "$backup" ]] || msg "Pre-upgrade backup: $backup"

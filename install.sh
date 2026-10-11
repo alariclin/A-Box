@@ -4314,9 +4314,9 @@ github_api_get() {
     local url="$1" attempt=1 max_attempts=3 delay=1 rc http_code tmp headers retry_after remaining reset_epoch now
     local -a args=()
     [[ -n "$url" ]] || return 1
-    if [[ "\${GITHUB_API_RETRY_DELAY:-1}" =~ ^[0-9]+$ ]]; then
-        delay="\${GITHUB_API_RETRY_DELAY:-1}"
-    elif [[ -n "\${GITHUB_API_RETRY_DELAY:-}" ]]; then
+    if [[ "${GITHUB_API_RETRY_DELAY:-1}" =~ ^[0-9]+$ ]]; then
+        delay="${GITHUB_API_RETRY_DELAY:-1}"
+    elif [[ -n "${GITHUB_API_RETRY_DELAY:-}" ]]; then
         return 1
     fi
     tmp=$(umask 077; mktemp /tmp/A-Box-github-api.XXXXXX) || return 1
@@ -4326,12 +4326,12 @@ github_api_get() {
         -H 'X-GitHub-Api-Version: 2026-03-10' -o "$tmp")
     while (( attempt <= max_attempts )); do
         : > "$headers" || { rm -f -- "$tmp" "$headers"; return 1; }
-        if [[ -n "\${GITHUB_TOKEN:-}" ]]; then
-            [[ "\${GITHUB_TOKEN}" != *[$'\r\n"\\']* ]] || { rm -f -- "$tmp" "$headers"; return 1; }
-            http_code=$(printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" | curl "\${args[@]}" -w '%{http_code}' --config - "$url" 2>/dev/null)
+        if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+            [[ "${GITHUB_TOKEN}" != *[$'\r\n"\\']* ]] || { rm -f -- "$tmp" "$headers"; return 1; }
+            http_code=$(printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" | curl "${args[@]}" -w '%{http_code}' --config - "$url" 2>/dev/null)
             rc=$?
         else
-            http_code=$(curl "\${args[@]}" -w '%{http_code}' "$url" 2>/dev/null)
+            http_code=$(curl "${args[@]}" -w '%{http_code}' "$url" 2>/dev/null)
             rc=$?
         fi
         if (( rc == 0 )) && [[ "$http_code" =~ ^2[0-9][0-9]$ ]]; then
@@ -4354,11 +4354,11 @@ github_api_get() {
                     delay=$((reset_epoch - now))
                 fi
             fi
-            [[ -n "\${GITHUB_TOKEN:-}" ]] || printf '%s\n' 'GitHub API rate limit detected; set GITHUB_TOKEN for a higher authenticated limit.' >&2
+            [[ -n "${GITHUB_TOKEN:-}" ]] || printf '%s\n' 'GitHub API rate limit detected; set GITHUB_TOKEN for a higher authenticated limit.' >&2
         elif (( rc == 5 || rc == 6 || rc == 7 || rc == 18 || rc == 28 || rc == 35 || rc == 52 || rc == 56 )); then
             :
         else
-            if [[ "$http_code" == 403 && -z "\${GITHUB_TOKEN:-}" ]]; then
+            if [[ "$http_code" == 403 && -z "${GITHUB_TOKEN:-}" ]]; then
                 printf '%s\n' 'GitHub API returned 403; shared anonymous API rate limits may be exhausted.' >&2
             fi
             rm -f -- "$tmp" "$headers"
@@ -4372,8 +4372,7 @@ github_api_get() {
     done
     rm -f -- "$tmp" "$headers"
     return 1
-}
-verify_github_asset_digest() {
+}verify_github_asset_digest() {
     local file="$1" digest="${2:-}" expected actual
     if [[ -z "$digest" || "$digest" == 'null' ]]; then
         printf '%s\n' 'GitHub Release asset 缺少官方 SHA256 digest，拒绝安装。' >&2

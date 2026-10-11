@@ -16,7 +16,7 @@ The stable Release name is `wallos-mirror`; asset names are fixed and contain no
 - `wallos-linux-amd64.tar.gz`, `wallos-linux-arm64.tar.gz` and `wallos-linux-armv7.tar.gz` — Docker archives tagged with the exact version recorded in the manifest.
 - `wallos-manifest.txt` and `SHA256SUMS` — upstream tag, image tag, retrieval time, architecture, and checksums.
 
-The Wallos workflow updates this Release with `--clobber`. The installer still tries the official release metadata and Docker Hub image first; it uses this recovery copy only after upstream retrieval fails.
+The Wallos workflow updates this Release with `--clobber`. The installer still tries the official release metadata and Docker Hub image first; it uses this recovery copy only after upstream retrieval fails. Wallos data backups are staged and validated before publication; Wallos binds to loopback by default.
 
 ## Benchmark and IP-quality tools
 
@@ -31,4 +31,4 @@ The toolbox tries the upstream script first, checks size, shebang, HTML error-pa
 
 ## Updating mirrors
 
-`.github/workflows/update-mirrors.yml` refreshes the stable Wallos and test-tool Releases manually or on a weekly schedule. Each mirror is published only after its assets pass the workflow's content checks and SHA-256 verification. Routine script edits should not create version-suffixed filenames or one-off Release names.
+`.github/workflows/update-mirrors.yml` refreshes the stable Wallos Release on its weekly schedule. The benchmark/IP-quality scripts come from mutable third-party URLs and are refreshed only by manually dispatching the workflow with `refresh_test_tool_mirror=true` after reviewing the upstream changes. Assets are uploaded before `SHA256SUMS`, so the manifest is published last. Content/size/syntax checks and hashes detect corruption but do not prove third-party code is benign. Routine script edits should not create version-suffixed filenames or one-off Release names.

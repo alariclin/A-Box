@@ -4311,54 +4311,68 @@ PY_TAR_EXTRACT
 }
 
 github_api_get() {
-    local url="$1" attempt=1 max_attempts=3 delay=1 rc http_code tmp
-    local -a args=(-sS -L --connect-timeout 10 -m 60 -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' -o)
+    local url="$1" attempt=1 max_attempts=3 delay=1 rc http_code tmp headers retry_after remaining reset_epoch now
+    local -a args=()
     [[ -n "$url" ]] || return 1
-    if [[ "${GITHUB_API_RETRY_DELAY:-1}" =~ ^[0-9]+$ ]]; then
-        delay="${GITHUB_API_RETRY_DELAY:-1}"
-    elif [[ -n "${GITHUB_API_RETRY_DELAY:-}" ]]; then
+    if [[ "\${GITHUB_API_RETRY_DELAY:-1}" =~ ^[0-9]+$ ]]; then
+        delay="\${GITHUB_API_RETRY_DELAY:-1}"
+    elif [[ -n "\${GITHUB_API_RETRY_DELAY:-}" ]]; then
         return 1
     fi
     tmp=$(umask 077; mktemp /tmp/A-Box-github-api.XXXXXX) || return 1
+    headers=$(umask 077; mktemp /tmp/A-Box-github-api-headers.XXXXXX) || { rm -f -- "$tmp"; return 1; }
+    args=(-sS -L --connect-timeout 10 -m 60 -D "$headers"
+        -H 'Accept: application/vnd.github+json'
+        -H 'X-GitHub-Api-Version: 2026-03-10' -o "$tmp")
     while (( attempt <= max_attempts )); do
-        if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-            [[ "${GITHUB_TOKEN}" != *[$'\r\n"\\']* ]] || { rm -f -- "$tmp"; return 1; }
-            http_code=$(printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" | curl "${args[@]}" "$tmp" -w '%{http_code}' --config - "$url" 2>/dev/null)
+        : > "$headers" || { rm -f -- "$tmp" "$headers"; return 1; }
+        if [[ -n "\${GITHUB_TOKEN:-}" ]]; then
+            [[ "\${GITHUB_TOKEN}" != *[$'\r\n"\\']* ]] || { rm -f -- "$tmp" "$headers"; return 1; }
+            http_code=$(printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" | curl "\${args[@]}" -w '%{http_code}' --config - "$url" 2>/dev/null)
             rc=$?
         else
-            http_code=$(curl "${args[@]}" "$tmp" -w '%{http_code}' "$url" 2>/dev/null)
+            http_code=$(curl "\${args[@]}" -w '%{http_code}' "$url" 2>/dev/null)
             rc=$?
         fi
         if (( rc == 0 )) && [[ "$http_code" =~ ^2[0-9][0-9]$ ]]; then
             cat -- "$tmp"
             rc=$?
-            rm -f -- "$tmp"
+            rm -f -- "$tmp" "$headers"
             return "$rc"
         fi
+        retry_after=$(awk 'tolower($1)=="retry-after:" {gsub("\r","",$2); value=$2} END {print value}' "$headers" 2>/dev/null)
+        remaining=$(awk 'tolower($1)=="x-ratelimit-remaining:" {gsub("\r","",$2); value=$2} END {print value}' "$headers" 2>/dev/null)
+        reset_epoch=$(awk 'tolower($1)=="x-ratelimit-reset:" {gsub("\r","",$2); value=$2} END {print value}' "$headers" 2>/dev/null)
         if (( rc == 0 )) && [[ "$http_code" =~ ^5[0-9][0-9]$ ]]; then
             :
+        elif (( rc == 0 )) && { [[ "$http_code" == 429 ]] || { [[ "$http_code" == 403 ]] && { [[ "$remaining" == 0 ]] || [[ -n "$retry_after" ]]; }; }; }; then
+            if [[ "$retry_after" =~ ^[0-9]+$ ]]; then
+                delay=$retry_after
+            elif [[ "$reset_epoch" =~ ^[0-9]+$ ]]; then
+                now=$(date +%s 2>/dev/null || printf '0')
+                if [[ "$now" =~ ^[0-9]+$ ]] && (( reset_epoch > now )); then
+                    delay=$((reset_epoch - now))
+                fi
+            fi
+            [[ -n "\${GITHUB_TOKEN:-}" ]] || printf '%s\n' 'GitHub API rate limit detected; set GITHUB_TOKEN for a higher authenticated limit.' >&2
         elif (( rc == 5 || rc == 6 || rc == 7 || rc == 18 || rc == 28 || rc == 35 || rc == 52 || rc == 56 )); then
             :
         else
-            if [[ "$http_code" == 403 && -z "${GITHUB_TOKEN:-}" ]]; then
-                printf '%s\n' 'GitHub API 返回 403；共享出口可能触发匿名限流，请设置 GITHUB_TOKEN 后重试。' >&2
+            if [[ "$http_code" == 403 && -z "\${GITHUB_TOKEN:-}" ]]; then
+                printf '%s\n' 'GitHub API returned 403; shared anonymous API rate limits may be exhausted.' >&2
             fi
-            rm -f -- "$tmp"
+            rm -f -- "$tmp" "$headers"
             return 1
         fi
-        if (( attempt == max_attempts )); then
-            break
-        fi
+        if (( attempt == max_attempts )); then break; fi
+        if (( delay > 30 )); then delay=30; fi
         if (( delay > 0 )); then sleep "$delay"; fi
-        if (( delay < 30 )); then
-            delay=$(( delay * 2 ))
-        fi
+        if (( delay < 30 )); then delay=$((delay * 2)); fi
         attempt=$((attempt + 1))
     done
-    rm -f -- "$tmp"
+    rm -f -- "$tmp" "$headers"
     return 1
 }
-
 verify_github_asset_digest() {
     local file="$1" digest="${2:-}" expected actual
     if [[ -z "$digest" || "$digest" == 'null' ]]; then

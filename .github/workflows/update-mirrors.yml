@@ -45,10 +45,11 @@ jobs:
           curl -fL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 300 \
             "$source_url" -o wallos-source.tar.gz
           gzip -t wallos-source.tar.gz
-          tar -tzf wallos-source.tar.gz | grep -Eq '/LICENSE\.md$' || {
+          tar -tzf wallos-source.tar.gz > "$RUNNER_TEMP/wallos-source-list.txt"
+          grep -Eq '/LICENSE\\.md$' "$RUNNER_TEMP/wallos-source-list.txt" || {
             echo "::error::Wallos source archive does not contain LICENSE.md"
             exit 1
-          }
+          }          }
 
           pull_save_image() {
             local arch="$1" platform="$2" image="bellamy/wallos:${image_tag}"

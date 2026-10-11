@@ -13040,16 +13040,83 @@ wallos_wait_healthy() {
 }
 
 wallos_create_backup() {
-    local stamp="$1" backup="$WALLOS_DIR/backups/wallos-$1.tar.gz"
+    local stamp="$1" backup="$WALLOS_DIR/backups/wallos-$1.tar.gz" temp list old
     mkdir -p "$WALLOS_DIR/backups" || return 1
     chmod 700 "$WALLOS_DIR/backups" || return 1
-    [[ -d "$WALLOS_DIR/db" && -d "$WALLOS_DIR/logos" ]] || return 1
-    tar -czf "$backup" -C "$WALLOS_DIR" db logos .abox-state || return 1
-    chmod 600 "$backup" || return 1
+    [[ -d "$WALLOS_DIR/db" && ! -L "$WALLOS_DIR/db" &&
+       -d "$WALLOS_DIR/logos" && ! -L "$WALLOS_DIR/logos" &&
+       -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]] || return 1
+    temp=$(umask 077; mktemp "$backup.tmp.XXXXXX") || return 1
+    if ! tar -czf "$temp" -C "$WALLOS_DIR" db logos .abox-state ||
+       ! gzip -t "$temp" ||
+       ! tar -tzf "$temp" > "$temp.list"; then
+        rm -f -- "$temp" "$temp.list"
+        return 1
+    fi
+    list=$(cat "$temp.list") || { rm -f -- "$temp" "$temp.list"; return 1; }
+    [[ "$list" == *"db/"* && "$list" == *"logos/"* && "$list" == *".abox-state"* ]] || {
+        rm -f -- "$temp" "$temp.list"; return 1;
+    }
+    rm -f -- "$temp.list"
+    chmod 600 "$temp" || { rm -f -- "$temp"; return 1; }
+    sync -f "$temp" 2>/dev/null || true
+    mv -f "$temp" "$backup" || { rm -f -- "$temp"; return 1; }
+    sync -f "$WALLOS_DIR/backups" 2>/dev/null || true
     find "$WALLOS_DIR/backups" -maxdepth 1 -type f -name 'wallos-*.tar.gz' -printf '%T@ %p\n' 2>/dev/null |
         sort -nr | awk 'NR>5 {$1=""; sub(/^ /, ""); print}' |
         while IFS= read -r old; do [[ "$old" == "$backup" ]] || rm -f -- "$old"; done
     printf '%s\n' "$backup"
+}
+
+wallos_restore_backup() {
+    local backup="$1" stamp stage listing rescue name restore_name
+    [[ -f "$backup" && ! -L "$backup" ]] || return 1
+    gzip -t "$backup" || return 1
+    listing=$(tar -tzf "$backup" 2>/dev/null) || return 1
+    grep -Eq '^db/?$' <<< "$listing" && grep -Eq '^logos/?$' <<< "$listing" &&
+        grep -Fxq '.abox-state' <<< "$listing" || return 1
+    if grep -Eq '(^/|(^|/)\.\.(/|$))' <<< "$listing" ||
+       grep -Ev '^(db(/.*)?|logos(/.*)?|\.abox-state)$' <<< "$listing" >/dev/null; then
+        return 1
+    fi
+    stage=$(umask 077; mktemp -d "$WALLOS_DIR/.restore-stage.XXXXXX") || return 1
+    if ! tar -xzf "$backup" -C "$stage" ||
+       [[ ! -d "$stage/db" || -L "$stage/db" ||
+          ! -d "$stage/logos" || -L "$stage/logos" ||
+          ! -f "$stage/.abox-state" || -L "$stage/.abox-state" ]]; then
+        rm -rf -- "$stage"
+        return 1
+    fi
+    stamp=$(date -u '+%Y%m%dT%H%M%SZ')
+    rescue="$WALLOS_DIR/.restore-preserve-$stamp-$$"
+    mkdir -m 700 "$rescue" || { rm -rf -- "$stage"; return 1; }
+    for name in db logos .abox-state; do
+        if [[ -e "$WALLOS_DIR/$name" || -L "$WALLOS_DIR/$name" ]]; then
+            mv -- "$WALLOS_DIR/$name" "$rescue/$name" || {
+                for restore_name in db logos .abox-state; do
+                    [[ -e "$rescue/$restore_name" && ! -e "$WALLOS_DIR/$restore_name" ]] &&
+                        mv -- "$rescue/$restore_name" "$WALLOS_DIR/$restore_name" || true
+                done
+                rm -rf -- "$stage"
+                return 1
+            }
+        fi
+    done
+    for name in db logos .abox-state; do
+        if ! mv -- "$stage/$name" "$WALLOS_DIR/$name"; then
+            for restore_name in db logos .abox-state; do
+                [[ -e "$WALLOS_DIR/$restore_name" ]] && mv -- "$WALLOS_DIR/$restore_name" "$stage/$restore_name" || true
+            done
+            for restore_name in db logos .abox-state; do
+                [[ -e "$rescue/$restore_name" && ! -e "$WALLOS_DIR/$restore_name" ]] &&
+                    mv -- "$rescue/$restore_name" "$WALLOS_DIR/$restore_name" || true
+            done
+            rm -rf -- "$stage"
+            return 1
+        fi
+    done
+    rm -rf -- "$stage" "$rescue"
+    return 0
 }
 
 wallos_public_urls() {

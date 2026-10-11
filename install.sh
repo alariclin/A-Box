@@ -4311,55 +4311,52 @@ PY_TAR_EXTRACT
 }
 
 github_api_get() {
-    local url="$1" attempt=1 max_attempts=3 delay=1 rc http_code tmp
-    local -a args=(-sS -L --connect-timeout 10 -m 60 -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' -o)
+    local url="$1" attempt=1 max_attempts=4 delay=1 rc http_code tmp headers
+    local retry_after remaining reset_at now wait_s rate_limited
+    local -a args=(-sS -L --connect-timeout 10 -m 60 -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' -D)
     [[ -n "$url" ]] || return 1
-    if [[ "${GITHUB_API_RETRY_DELAY:-1}" =~ ^[0-9]+$ ]]; then
-        delay="${GITHUB_API_RETRY_DELAY:-1}"
-    elif [[ -n "${GITHUB_API_RETRY_DELAY:-}" ]]; then
-        return 1
-    fi
+    if [[ "${GITHUB_API_RETRY_DELAY:-1}" =~ ^[0-9]+$ ]]; then delay="${GITHUB_API_RETRY_DELAY:-1}"
+    elif [[ -n "${GITHUB_API_RETRY_DELAY:-}" ]]; then return 1; fi
     tmp=$(umask 077; mktemp /tmp/A-Box-github-api.XXXXXX) || return 1
+    headers=$(umask 077; mktemp /tmp/A-Box-github-api-headers.XXXXXX) || { rm -f -- "$tmp"; return 1; }
     while (( attempt <= max_attempts )); do
+        : > "$headers" || { rm -f -- "$tmp" "$headers"; return 1; }
         if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-            [[ "${GITHUB_TOKEN}" != *[$'\r\n"\\']* ]] || { rm -f -- "$tmp"; return 1; }
-            http_code=$(printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" | curl "${args[@]}" "$tmp" -w '%{http_code}' --config - "$url" 2>/dev/null)
+            [[ "${GITHUB_TOKEN}" != *[$'\r\n"\\']* ]] || { rm -f -- "$tmp" "$headers"; return 1; }
+            http_code=$(printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" | curl "${args[@]}" "$headers" -o "$tmp" -w '%{http_code}' --config - "$url" 2>/dev/null)
             rc=$?
         else
-            http_code=$(curl "${args[@]}" "$tmp" -w '%{http_code}' "$url" 2>/dev/null)
-            rc=$?
+            http_code=$(curl "${args[@]}" "$headers" -o "$tmp" -w '%{http_code}' "$url" 2>/dev/null); rc=$?
         fi
         if (( rc == 0 )) && [[ "$http_code" =~ ^2[0-9][0-9]$ ]]; then
-            cat -- "$tmp"
-            rc=$?
-            rm -f -- "$tmp"
-            return "$rc"
+            cat -- "$tmp"; rc=$?; rm -f -- "$tmp" "$headers"; return "$rc"
         fi
-        if (( rc == 0 )) && [[ "$http_code" =~ ^5[0-9][0-9]$ ]]; then
-            :
-        elif (( rc == 5 || rc == 6 || rc == 7 || rc == 18 || rc == 28 || rc == 35 || rc == 52 || rc == 56 )); then
-            :
+        retry_after=$(awk 'tolower($1)=="retry-after:" {gsub("\r","",$2); value=$2} END {print value}' "$headers")
+        remaining=$(awk 'tolower($1)=="x-ratelimit-remaining:" {gsub("\r","",$2); value=$2} END {print value}' "$headers")
+        reset_at=$(awk 'tolower($1)=="x-ratelimit-reset:" {gsub("\r","",$2); value=$2} END {print value}' "$headers")
+        rate_limited=0
+        if [[ "$http_code" == 429 ]] || { [[ "$http_code" == 403 ]] && { [[ "$remaining" == 0 ]] || grep -Eiq 'rate limit|secondary rate' "$tmp"; }; }; then rate_limited=1; fi
+        if (( rc == 0 )) && [[ "$http_code" =~ ^5[0-9][0-9]$ ]]; then :
+        elif (( rate_limited == 1 )); then :
+        elif (( rc == 5 || rc == 6 || rc == 7 || rc == 18 || rc == 28 || rc == 35 || rc == 52 || rc == 56 )); then :
         else
-            if [[ "$http_code" == 403 && -z "${GITHUB_TOKEN:-}" ]]; then
-                printf '%s\n' 'GitHub API 返回 403；共享出口可能触发匿名限流，请设置 GITHUB_TOKEN 后重试。' >&2
-            fi
-            rm -f -- "$tmp"
-            return 1
+            if [[ "$http_code" == 403 && -z "${GITHUB_TOKEN:-}" ]]; then printf '%s\n' 'GitHub API 返回 403；共享出口可能触发匿名限流，请设置 GITHUB_TOKEN 后重试。' >&2; fi
+            rm -f -- "$tmp" "$headers"; return 1
         fi
-        if (( attempt == max_attempts )); then
-            break
+        (( attempt == max_attempts )) && break
+        wait_s="$delay"
+        if (( rate_limited == 1 )); then
+            if [[ "$retry_after" =~ ^[0-9]+$ ]]; then wait_s="$retry_after"
+            elif [[ "$reset_at" =~ ^[0-9]+$ ]]; then now=$(date +%s); (( reset_at > now )) && wait_s=$((reset_at - now)); fi
         fi
-        if (( delay > 0 )); then sleep "$delay"; fi
-        if (( delay < 30 )); then
-            delay=$(( delay * 2 ))
-        fi
+        (( wait_s > 60 )) && wait_s=60; (( wait_s < 0 )) && wait_s=0
+        (( wait_s > 0 )) && sleep "$wait_s"
+        if (( delay < 30 )); then delay=$((delay * 2)); fi
         attempt=$((attempt + 1))
     done
-    rm -f -- "$tmp"
-    return 1
-}
-
-verify_github_asset_digest() {
+    if [[ "$http_code" == 403 || "$http_code" == 429 ]]; then printf '%s\n' 'GitHub API 持续限流/拒绝请求；已按响应头有限重试，请稍后重试或配置 GITHUB_TOKEN。' >&2; fi
+    rm -f -- "$tmp" "$headers"; return 1
+}verify_github_asset_digest() {
     local file="$1" digest="${2:-}" expected actual
     if [[ -z "$digest" || "$digest" == 'null' ]]; then
         printf '%s\n' 'GitHub Release asset 缺少官方 SHA256 digest，拒绝安装。' >&2
@@ -4529,7 +4526,17 @@ fetch_github_release() {
     fi
 
     release_json=$(github_api_get "$api_url" 2>/dev/null) || release_json=''
-    [[ -n "$release_json" ]] || die 'GitHub Release API 请求失败；为保证 digest 信任根，不使用第三方镜像 API。'
+    if [[ -z "$release_json" ]]; then
+        if [[ -z "$dest_file" ]]; then
+            tmp_dir=$(mktemp -d /tmp/A-Box-asset.XXXXXX) || die '核心灾备临时目录创建失败。'
+            dest_file="$tmp_dir/$output_file"
+        else mkdir -p "$(dirname "$dest_file")" || die '核心灾备目标目录创建失败。'; fi
+        if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file"; then
+            msg "${YELLOW}[!] GitHub Release API 不可用；已通过 A-Box 固定版本镜像和 SHA256SUMS 回退。此路径信任 A-Box Release 发布者，不代表取得了上游官方 digest。 ${NC}"
+            return 0
+        fi
+        die 'GitHub Release API 不可用，且 A-Box 灾备镜像未通过版本/结构/SHA256 校验。'
+    fi
 
     if [[ "$repo:$output_file" == 'SagerNet/sing-box:singbox_core.tar.gz' ]]; then
         asset_json=$(singbox_asset_json_from_release "$release_json") || die '未能解析 sing-box 核心资产下载地址。'
@@ -4579,7 +4586,10 @@ fetch_github_release() {
     local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf
     mirror_base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     case "$repo:$output_file" in
-        XTLS/Xray-core:xray_core.zip) asset_leaf="Xray-linux-${XRAY_ARCH}.zip" ;;
+        XTLS/Xray-core:xray_core.zip)
+            [[ "${release_ref:-${ABOX_XRAY_VERSION:-$ABOX_XRAY_DEFAULT_VERSION}}" == 'v26.7.28' ]] || return 1
+            asset_leaf="Xray-linux-${XRAY_ARCH}.zip"
+            ;;
         SagerNet/sing-box:singbox_core.tar.gz)
             _sb_ver="${ABOX_SINGBOX_VERSION:-$ABOX_SINGBOX_DEFAULT_VERSION}"
             _sb_ver="${_sb_ver#v}"
@@ -4589,7 +4599,10 @@ fetch_github_release() {
                 asset_leaf="sing-box-${_sb_ver}-linux-${SB_ARCH}-glibc.tar.gz"
             fi
             ;;
-        HyNetworks/hysteria:hysteria_core) asset_leaf="hysteria-linux-${HY2_ARCH}" ;;
+        HyNetworks/hysteria:hysteria_core)
+            [[ "${release_ref:-${ABOX_HYSTERIA_APP_VERSION:-app/v2.13.0}}" == 'app/v2.13.0' ]] || return 1
+            asset_leaf="hysteria-linux-${HY2_ARCH}"
+            ;;
         *) asset_leaf='' ;;
     esac
     if [[ -n "$asset_leaf" && -n "$mirror_base" ]]; then
@@ -4948,7 +4961,7 @@ validate_fail2ban_config_or_die() {
 EOF_F2B_SAMPLE
         out=$(fail2ban-regex "$sample" /etc/fail2ban/filter.d/A-Box.conf 2>&1) || { rm -f "$sample"; printf '%s\n' "$out" >&2; die 'Fail2Ban 正则测试执行失败。'; }
         rm -f "$sample"
-        grep -Eq '^[[:space:]]*[2-9][0-9]*[[:space:]]+total|Failregex:[[:space:]]*[2-9]' <<< "$out" || { printf '%s\n' "$out" >&2; die 'Fail2Ban 过滤器未匹配代表性认证失败日志。'; }
+        grep -Eiq 'Lines:.*[1-9][0-9]* matched' <<< "$out" || { printf '%s\n' "$out" >&2; die 'Fail2Ban 过滤器没有匹配任何代表性认证失败日志。'; }
     fi
 }
 
@@ -9395,7 +9408,7 @@ EOF_DNS
             } > /etc/resolv.conf || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 写入失败。'; }
             ;;
     esac
-    write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< "backend=${backend};mode=${mode};v4=${v4};v6=${v6}" || true
+    write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< "backend=${backend};mode=${mode};v4=${v4};v6=${v6}" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'DNS 配置已应用但状态文件提交失败，已尝试回滚。'; }
     case "${ABOX_LANG:-zh}" in
         en) msg "${GREEN}Host DNS was updated. Use the DNS menu to roll back.${NC}" ;;
         ru) msg "${GREEN}Системный DNS обновлён. Для отката используйте меню DNS.${NC}" ;;
@@ -9601,7 +9614,7 @@ DNSOverTLS=no
 EOF_DOH
     systemctl restart systemd-resolved >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
     if resolvectl query example.com >/dev/null 2>&1; then
-        write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< 'backend=resolved;mode=doh;proxy=dnscrypt-proxy' || true
+        write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< 'backend=resolved;mode=doh;proxy=dnscrypt-proxy' || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; msg "${RED}DNS state commit failed; rollback was attempted.${NC}"; return 1; }
         msg "${GREEN}DoH proxy is running and the system resolver passed its health check.${NC}"
         msg "${YELLOW}DoH encrypts DNS queries to the selected upstream; it does not encrypt all VPS traffic.${NC}"
     else

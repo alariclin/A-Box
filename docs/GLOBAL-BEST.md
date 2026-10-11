@@ -105,7 +105,7 @@ A-Box 应成为：**跨发行版、可审计、可回滚、客户端互通优先
 
 ## 8. 核心灾备
 
-- 现有核心灾备资产保留在 `core-mirrors-v171`；新增 Wallos 和测试脚本使用固定名称 `wallos-mirror`、`test-tools-mirror`，资产名不带版本后缀。
+- 核心灾备的固定入口是 `core-binaries`（Release 标题 `A-Box Core Binary Mirrors`）；旧版安装脚本使用的旧入口暂时保留兼容。Wallos 和测试脚本继续使用固定名称 `wallos-mirror`、`test-tools-mirror`。
 - 下载顺序：上游 → 同仓灾备 → **保留 last-good**；镜像必须通过 `SHA256SUMS` 校验。
 - 文档写明体积，禁止把大二进制提交进 git 树
 

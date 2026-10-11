@@ -26,7 +26,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned to a resolved commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6 pinned to a resolved commit (Node 24)
 
       - name: Prepare Wallos source and multi-architecture Docker archives
         id: wallos_assets
@@ -99,6 +99,7 @@ jobs:
           sha256sum -c SHA256SUMS
 
       - name: Prepare benchmark and IP-quality tool mirror
+        if: github.event_name == 'workflow_dispatch'
         id: test_tool_assets
         shell: bash
         run: |
@@ -157,11 +158,10 @@ jobs:
           set -Eeuo pipefail
           publish_release() {
             local tag="$1" title="$2" notes_file="$3" asset_dir="$4"
-            mapfile -t assets < <(find "$asset_dir" -maxdepth 1 -type f -print | sort)
-            if (("${#assets[@]}" == 0)); then
-              echo "::error::No assets found for ${tag}"
-              return 1
-            fi
+            mapfile -t payloads < <(find "$asset_dir" -maxdepth 1 -type f ! -name 'SHA256SUMS' ! -name '*manifest.txt' -print | sort)
+            mapfile -t manifests < <(find "$asset_dir" -maxdepth 1 -type f -name '*manifest.txt' -print | sort)
+            [[ -s "$asset_dir/SHA256SUMS" ]] || { echo "::error::Missing SHA256SUMS for ${tag}"; return 1; }
+            (("${#payloads[@]}" > 0)) || { echo "::error::No payload assets found for ${tag}"; return 1; }
 
             if ! gh release view "$tag" >/dev/null 2>&1; then
               gh release create "$tag" --draft --target "$GITHUB_SHA" \
@@ -169,7 +169,11 @@ jobs:
             fi
 
             gh release edit "$tag" --title "$title" --notes-file "$notes_file"
-            gh release upload "$tag" "${assets[@]}" --clobber
+            # Upload data first and the checksum manifest last. During the update window,
+            # installers reject mixed generations rather than accepting unverified payloads.
+            gh release upload "$tag" "${payloads[@]}" --clobber
+            if (("${#manifests[@]}" > 0)); then gh release upload "$tag" "${manifests[@]}" --clobber; fi
+            gh release upload "$tag" "$asset_dir/SHA256SUMS" --clobber
 
             gh release edit "$tag" --draft=false --latest=false
             echo "Published ${title}: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"
@@ -185,7 +189,7 @@ jobs:
           publish_release wallos-mirror "Wallos Recovery Mirror" "$notes" "$GITHUB_WORKSPACE/dist/wallos"
 
       - name: Publish test-tool stable recovery Release
-        if: always() && steps.test_tool_assets.outcome == 'success'
+        if: github.event_name == 'workflow_dispatch' && steps.test_tool_assets.outcome == 'success'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -199,18 +203,20 @@ jobs:
           EOF
 
           asset_dir="$GITHUB_WORKSPACE/dist/test-tools"
-          mapfile -t assets < <(find "$asset_dir" -maxdepth 1 -type f -print | sort)
-          if (("${#assets[@]}" == 0)); then
-            echo "::error::No test-tool assets found"
-            exit 1
-          fi
+          mapfile -t payloads < <(find "$asset_dir" -maxdepth 1 -type f ! -name 'SHA256SUMS' ! -name '*manifest.txt' -print | sort)
+          mapfile -t manifests < <(find "$asset_dir" -maxdepth 1 -type f -name '*manifest.txt' -print | sort)
+          [[ -s "$asset_dir/SHA256SUMS" ]] || { echo "::error::Missing SHA256SUMS"; exit 1; }
+          (("${#payloads[@]}" > 0)) || { echo "::error::No test-tool payloads found"; exit 1; }
 
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" --draft --target "$GITHUB_SHA" \
               --title "$title" --notes-file "$notes"
           fi
           gh release edit "$tag" --title "$title" --notes-file "$notes"
-          gh release upload "$tag" "${assets[@]}" --clobber
+          gh release upload "$tag" "${payloads[@]}" --clobber
+          if (("${#manifests[@]}" > 0)); then gh release upload "$tag" "${manifests[@]}" --clobber; fi
+          # Upload the checksum manifest last; clients fail closed on transitional mismatches.
+          gh release upload "$tag" "$asset_dir/SHA256SUMS" --clobber
 
           gh release edit "$tag" --draft=false --latest=false
           echo "Published ${title}: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"

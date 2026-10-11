@@ -31,4 +31,4 @@ The toolbox tries the upstream script first, checks size, shebang, HTML error-pa
 
 ## Updating mirrors
 
-`.github/workflows/update-mirrors.yml` refreshes the stable Wallos and test-tool Releases manually or on a weekly schedule. Each mirror is published only after its assets pass the workflow's content checks and SHA-256 verification. Routine script edits should not create version-suffixed filenames or one-off Release names.
+`.github/workflows/update-mirrors.yml` refreshes the Wallos recovery Release weekly. The third-party benchmark/IP-quality scripts are refreshed only by a manual `workflow_dispatch` run because their source URLs are mutable and content changes require deliberate review. Payloads and manifests are uploaded before `SHA256SUMS`; the checksum file is uploaded last so clients fail closed during an in-place Release refresh. These checks prove transfer integrity relative to the published manifest, not upstream code safety. Routine script edits should not create version-suffixed filenames or one-off Release names.

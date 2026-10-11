@@ -12,11 +12,18 @@ jobs:
   shell-regression:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned to resolved commit
-      - name: Bash syntax
-        run: bash -n install.sh
-      - name: Built-in self-test
-        run: bash install.sh --self-test
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6 pinned to a resolved commit (Node 24)
+      - name: Install static-analysis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes shellcheck
+      - name: Bash and workflow static analysis
+        run: |
+          bash -n install.sh
+          shellcheck --severity=error --shell=bash install.sh
+          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/*.yml
+      - name: Built-in self-test (including root-only fixtures)
+        run: sudo bash install.sh --self-test
       - name: Release metadata regression
         run: |
           grep -Eq "^ABOX_BUILD='[^']+'$" install.sh
@@ -26,6 +33,12 @@ jobs:
           grep -Fq 'v2.13.0' install.sh
           ! grep -Fq 'EOF_SNI_CANDIDATES' install.sh
           grep -Fq 'ABOX_SNI_CANDIDATE_URL_DEFAULT=' install.sh
+          grep -Fq 'x-ratelimit-reset' install.sh
+          grep -Fq '此路径信任 A-Box Release 发布者' install.sh
+          grep -Fq 'Lines:.*[1-9][0-9]* matched' install.sh
+          grep -Fq '/var/lib/A-Box/geo-transaction' install.sh
+          grep -Fq '127.0.0.1:$port:80/tcp' install.sh
+          grep -Fq 'wallos_restore_backup_atomically' install.sh
           test -s data/sni-candidates.txt
           awk '
             NF && $0 !~ /^[[:space:]]*#/ {

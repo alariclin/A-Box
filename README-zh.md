@@ -10,7 +10,7 @@ Linux 网络网关一键工具箱。
 
 A-Box 是一个独立 Bash 脚本，用于部署和维护 Linux 网络网关服务。当前脚本配置的默认核心版本为 Xray `v26.7.28`、sing-box `v1.14.2`。
 
-支持 Xray-core、sing-box、官方 Hysteria 2 服务端、VLESS Vision REALITY、VLESS XHTTP REALITY、Shadowsocks-2022、客户端配置导出、本地 SNI 候选测试、备份恢复、防火墙管理、诊断、流量限制、健康检查和核心软件升级；上游失败时回退到仓库 Release `core-mirrors-v171` 灾备资产。
+支持 Xray-core、sing-box、官方 Hysteria 2 服务端、VLESS Vision REALITY、VLESS XHTTP REALITY、Shadowsocks-2022、客户端配置导出、本地 SNI 候选测试、备份恢复、防火墙管理、诊断、流量限制、健康检查和核心软件升级；上游失败时回退到固定入口 `core-binaries`（A-Box Core Binary Mirrors）灾备资产。
 
 > 仅限在合法、授权、合规的环境中使用。用户自行承担所有法律、运维和安全后果。
 
@@ -42,7 +42,7 @@ curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/alariclin/a-box
 - **组合部署：** Xray + Hysteria 2 组合；sing-box Vision + Hysteria 2 + Shadowsocks-2022 组合。sing-box 组合按设计不包含 XHTTP。
 - **客户端配置导出：** 分享链接/URI、二维码、Clash/Mihomo YAML、sing-box 出站模板、v2rayN/v2rayNG XHTTP JSON。
 - **运维和诊断：** 健康检查、系统/下载测速、IP 质量与路由测试、BBR/FQ 调优和回滚、IP 偏好、DNS 实测优选与受支持后端的 DoT/DoH、时区编号选择、Locale/NTP、Wallos 安装与数据备份、Fail2Ban/logrotate、流量限制、备份恢复、脱敏诊断包和预检查。
-- **核心灾备镜像：** 固定版本 Xray / sing-box / Hysteria 资产发布于 Release [`core-mirrors-v171`](https://github.com/alariclin/a-box/releases/tag/core-mirrors-v171)；上游失败时脚本自动回退（见 [`mirrors/README.md`](mirrors/README.md)）。
+- **核心二进制镜像：** 固定入口 Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/a-box/releases/tag/core-binaries)，Tag 为 `core-binaries`；上游失败时脚本回退到镜像并校验 `SHA256SUMS`（见 [`mirrors/README.md`](mirrors/README.md)）。
 - **SNI 候选工作流：** 本地完整和微型主机候选测试、已保存结果查看器、输入校验、文件大小/行数上限、重复项清理，以及可用时回退到有效本地缓存或同目录数据文件。
 - **维护：** 显示 SHA-256 并要求明确确认的脚本 OTA、Xray Geo 数据更新，以及不重置节点参数的核心程序单独升级。
 - **运维增强：** 一键 Reality、快速/严格模式（`ABOX_FAST`）、核心固定版本与失败回滚、多 UUID 服务端添加/撤销、URI/Base64/Clash 导出，以及真实下载源可用性探测。

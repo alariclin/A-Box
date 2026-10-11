@@ -59,6 +59,10 @@ ABOX_XRAY_DEFAULT_VERSION='v26.7.28'
 # Current sing-box stable release. XHTTP is intentionally Xray-only in A-Box because
 # the official sing-box V2Ray transport list does not expose an XHTTP transport.
 ABOX_SINGBOX_DEFAULT_VERSION='v1.14.2'
+# Versions actually contained in the stable core-binaries Release. Recovery is refused for other pins.
+ABOX_XRAY_MIRROR_VERSION='v26.7.28'
+ABOX_SINGBOX_MIRROR_VERSION='v1.14.2'
+ABOX_HYSTERIA_MIRROR_VERSION='app/v2.13.0'
 # Candidate library sizing. 0 uses the hard ceiling instead of the historical
 # 4096 seed-only boundary; default 8192 keeps generated variants reachable.
 ABOX_SNI_DEFAULT_MAX=8192
@@ -4542,8 +4546,17 @@ fetch_github_release() {
     fi
 
     release_json=$(github_api_get "$api_url" 2>/dev/null) || release_json=''
-    [[ -n "$release_json" ]] || die 'GitHub Release API 请求失败；为保证 digest 信任根，不使用第三方镜像 API。'
+    if [[ -z "$dest_file" ]]; then
+        tmp_dir=$(mktemp -d /tmp/A-Box-asset.XXXXXX) || die '核心资产临时目录创建失败。'
+        dest_file="$tmp_dir/$output_file"
+    else
+        mkdir -p "$(dirname "$dest_file")" || die '核心资产目标目录创建失败。'
+    fi
+    if [[ -z "$release_json" ]]; then
+        msg "${YELLOW}[!] GitHub Release API unavailable or rate-limited; trying the version-checked A-Box mirror.${NC}"
+    fi
 
+    if [[ -n "$release_json" ]]; then
     if [[ "$repo:$output_file" == 'SagerNet/sing-box:singbox_core.tar.gz' ]]; then
         asset_json=$(singbox_asset_json_from_release "$release_json") || die '未能解析 sing-box 核心资产下载地址。'
     else
@@ -4588,43 +4601,14 @@ fetch_github_release() {
         fi
         rm -f "$tmp_file"
     done
-    # Disaster fallback: stable same-repo GitHub Release assets (core-binaries), verified against SHA256SUMS.
-    local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf
-    mirror_base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
-    case "$repo:$output_file" in
-        XTLS/Xray-core:xray_core.zip) asset_leaf="Xray-linux-${XRAY_ARCH}.zip" ;;
-        SagerNet/sing-box:singbox_core.tar.gz)
-            _sb_ver="${ABOX_SINGBOX_VERSION:-$ABOX_SINGBOX_DEFAULT_VERSION}"
-            _sb_ver="${_sb_ver#v}"
-            if [[ "${release:-}" == 'alpine' ]]; then
-                asset_leaf="sing-box-${_sb_ver}-linux-${SB_ARCH}-musl.tar.gz"
-            else
-                asset_leaf="sing-box-${_sb_ver}-linux-${SB_ARCH}-glibc.tar.gz"
-            fi
-            ;;
-        HyNetworks/hysteria:hysteria_core) asset_leaf="hysteria-linux-${HY2_ARCH}" ;;
-        *) asset_leaf='' ;;
-    esac
-    if [[ -n "$asset_leaf" && -n "$mirror_base" ]]; then
-        msg "${YELLOW}[!] 上游 Release 通道失败；尝试 A-Box 灾备镜像 ${mirror_base}/${asset_leaf}${NC}"
-        mirror_url="${mirror_base%/}/${asset_leaf}"
-        mirror_sum="${mirror_base%/}/SHA256SUMS"
-        tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || die '灾备下载临时文件创建失败。'
-        if curl -fLsS --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then
-            if validate_downloaded_asset "$output_file" "$tmp_file"; then
-                expect_sum=$(curl -fsS --connect-timeout 8 -m 30 "$mirror_sum" 2>/dev/null | awk -v f="$asset_leaf" '$2==f || $2==("./" f) || $2~(f"$") {print $1; exit}')
-                got_sum=$(sha256sum "$tmp_file" | awk '{print $1}')
-                if [[ -n "$expect_sum" && "$expect_sum" =~ ^[A-Fa-f0-9]{64}$ && "${got_sum,,}" == "${expect_sum,,}" ]]; then
-                    mv -f "$tmp_file" "$dest_file" || { rm -f "$tmp_file"; die '灾备资产原子提交失败。'; }
-                    msg "${GREEN}   已从 A-Box 灾备 Release 取得核心资产（SHA256 已校验）。${NC}"
-                    return 0
-                fi
-                msg "${YELLOW}[!] 灾备 SHA256 校验失败或缺少 SHA256SUMS。${NC}"
-            fi
-        fi
-        rm -f "$tmp_file"
+    else
+        msg "${YELLOW}[!] No upstream release metadata; skipping upstream downloads and trying only the trusted A-Box mirror.${NC}"
     fi
-    # Last resort: keep last-good installed binary in place (caller rollback paths).
+
+    # Share the same exact-version validator between mirror-first and disaster fallback.
+    if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file"; then
+        return 0
+    fi
     die '所有通道（上游 + A-Box 灾备）均无法下载核心资产。请检查网络；已安装的二进制不会被半截覆盖。'
 }
 
@@ -8307,22 +8291,41 @@ probe_core_sources_banner() {
 }
 
 fetch_abox_mirror_asset() {
-    # Try disaster mirror for current repo:output_file; verify SHA256SUMS. Used by prefer-mirror and fallback.
+    # Same-repository Release only. Asset checksums do not prove version identity.
     local repo=$1 output_file=$2 dest_file=$3
-    local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf tmp_file _sb_ver
+    local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf tmp_file _sb_ver requested_version
     mirror_base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     [[ -n "$mirror_base" ]] || return 1
     case "$repo:$output_file" in
-        XTLS/Xray-core:xray_core.zip) asset_leaf="Xray-linux-${XRAY_ARCH}.zip" ;;
+        XTLS/Xray-core:xray_core.zip)
+            requested_version="${ABOX_XRAY_VERSION:-$ABOX_XRAY_DEFAULT_VERSION}"
+            [[ "$requested_version" == "$ABOX_XRAY_MIRROR_VERSION" ]] || {
+                msg "${YELLOW}[!] Mirror contains Xray ${ABOX_XRAY_MIRROR_VERSION}, not requested ${requested_version}; refusing mismatch.${NC}"
+                return 1
+            }
+            asset_leaf="Xray-linux-${XRAY_ARCH}.zip"
+            ;;
         SagerNet/sing-box:singbox_core.tar.gz)
-            _sb_ver="${ABOX_SINGBOX_VERSION:-$ABOX_SINGBOX_DEFAULT_VERSION}"; _sb_ver="${_sb_ver#v}"
+            requested_version="${ABOX_SINGBOX_VERSION:-$ABOX_SINGBOX_DEFAULT_VERSION}"
+            [[ "$requested_version" == "$ABOX_SINGBOX_MIRROR_VERSION" ]] || {
+                msg "${YELLOW}[!] Mirror contains sing-box ${ABOX_SINGBOX_MIRROR_VERSION}, not requested ${requested_version}.${NC}"
+                return 1
+            }
+            _sb_ver="${requested_version#v}"
             if [[ "${release:-}" == 'alpine' ]]; then
                 asset_leaf="sing-box-${_sb_ver}-linux-${SB_ARCH}-musl.tar.gz"
             else
                 asset_leaf="sing-box-${_sb_ver}-linux-${SB_ARCH}-glibc.tar.gz"
             fi
             ;;
-        HyNetworks/hysteria:hysteria_core) asset_leaf="hysteria-linux-${HY2_ARCH}" ;;
+        HyNetworks/hysteria:hysteria_core)
+            requested_version="${ABOX_HYSTERIA_APP_VERSION:-app/v2.13.0}"
+            [[ "$requested_version" == "$ABOX_HYSTERIA_MIRROR_VERSION" ]] || {
+                msg "${YELLOW}[!] Mirror contains Hysteria ${ABOX_HYSTERIA_MIRROR_VERSION}, not requested ${requested_version}.${NC}"
+                return 1
+            }
+            asset_leaf="hysteria-linux-${HY2_ARCH}"
+            ;;
         *) return 1 ;;
     esac
     mirror_url="${mirror_base%/}/${asset_leaf}"
@@ -8342,10 +8345,9 @@ fetch_abox_mirror_asset() {
         rm -f "$tmp_file"; return 1
     fi
     mv -f "$tmp_file" "$dest_file" || { rm -f "$tmp_file"; return 1; }
-    msg "${GREEN}   mirror asset OK (SHA256 verified).${NC}"
+    msg "${GREEN}   mirror asset OK (SHA256 verified; release version matches).${NC}"
     return 0
 }
-
 one_click_reality_deploy() {
     local choice answer prompt
     clear

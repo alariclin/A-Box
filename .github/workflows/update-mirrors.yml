@@ -165,8 +165,7 @@ jobs:
           publish_release() {
             local tag="$1" title="$2" notes_file="$3" asset_dir="$4"
             mapfile -t all_assets < <(find "$asset_dir" -maxdepth 1 -type f -print | sort)
-            local -a assets=()
-            local asset
+            assets=()
             for asset in "${all_assets[@]}"; do
               [[ "$(basename "$asset")" == SHA256SUMS ]] || assets+=("$asset")
             done

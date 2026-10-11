@@ -8,7 +8,7 @@ Linux 网络网关一键工具箱。
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
-A-Box 是一个独立 Bash 脚本，用于部署和维护 Linux 网络网关服务。本文档对应的脚本构建版本为 `2026-10-10-release-candidate-v172`，当前脚本配置的默认核心版本为 Xray `v26.7.28`、sing-box `v1.14.2`。
+A-Box 是一个独立 Bash 脚本，用于部署和维护 Linux 网络网关服务。当前脚本配置的默认核心版本为 Xray `v26.7.28`、sing-box `v1.14.2`。
 
 支持 Xray-core、sing-box、官方 Hysteria 2 服务端、VLESS Vision REALITY、VLESS XHTTP REALITY、Shadowsocks-2022、客户端配置导出、本地 SNI 候选测试、备份恢复、防火墙管理、诊断、流量限制、健康检查和核心软件升级；上游失败时回退到仓库 Release `core-mirrors-v171` 灾备资产。
 
@@ -41,11 +41,11 @@ curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/alariclin/a-box
 - **协议部署：** Xray VLESS Vision REALITY、Xray VLESS XHTTP REALITY、Xray Shadowsocks-2022、官方 Hysteria 2，以及对应的 sing-box Vision、Shadowsocks-2022 和 Hysteria 2 选项。
 - **组合部署：** Xray + Hysteria 2 组合；sing-box Vision + Hysteria 2 + Shadowsocks-2022 组合。sing-box 组合按设计不包含 XHTTP。
 - **客户端配置导出：** 分享链接/URI、二维码、Clash/Mihomo YAML、sing-box 出站模板、v2rayN/v2rayNG XHTTP JSON。
-- **运维和诊断：** 健康检查、系统/下载测速、IP 质量和路由测试、VPS 系统工具（调优 / IP 偏好 / 本机 DNS / 时区）、Fail2Ban/logrotate、流量限制（含截至当前用量）、备份恢复、脱敏诊断包和预检查。
+- **运维和诊断：** 健康检查、系统/下载测速、IP 质量与路由测试、BBR/FQ 调优和回滚、IP 偏好、DNS 实测优选与受支持后端的 DoT/DoH、时区编号选择、Locale/NTP、Wallos 安装与数据备份、Fail2Ban/logrotate、流量限制、备份恢复、脱敏诊断包和预检查。
 - **核心灾备镜像：** 固定版本 Xray / sing-box / Hysteria 资产发布于 Release [`core-mirrors-v171`](https://github.com/alariclin/a-box/releases/tag/core-mirrors-v171)；上游失败时脚本自动回退（见 [`mirrors/README.md`](mirrors/README.md)）。
 - **SNI 候选工作流：** 本地完整和微型主机候选测试、已保存结果查看器、输入校验、文件大小/行数上限、重复项清理，以及可用时回退到有效本地缓存或同目录数据文件。
 - **维护：** 显示 SHA-256 并要求明确确认的脚本 OTA、Xray Geo 数据更新，以及不重置节点参数的核心程序单独升级。
-- **体验增强 (v172)：** 一键 Reality；快速/严格模式（`ABOX_FAST`）；钉扎说明与试用 latest（失败回滚）；轻量多 UUID/订阅导出；下载源探测（上游→灾备→自定义）。
+- **运维增强：** 一键 Reality、快速/严格模式（`ABOX_FAST`）、核心固定版本与失败回滚、多 UUID 服务端添加/撤销、URI/Base64/Clash 导出，以及真实下载源可用性探测。
 - **安全控制：** 部署前检查、受控服务归属/状态变更、防火墙处理，以及受支持操作的回滚路径。
 
 仓库内置候选种子文件见 [`data/sni-candidates.txt`](data/sni-candidates.txt)。SNI 列表仅是候选项。域名出现在列表中，**不代表它从特定 VPS 当前可用，也不保证符合目标 REALITY 部署所需的 TLS/ALPN/SAN 条件**。使用前必须在目标网络实际验证。无法取得有效列表或有效备用副本时，SNI 工作流会拒绝继续，而不是使用未经验证的数据。
@@ -58,28 +58,35 @@ curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/alariclin/a-box
 | `2` | Xray VLESS XHTTP REALITY |
 | `3` | Xray Shadowsocks-2022 |
 | `4` | 官方 Hysteria 2 服务端 |
-| `5` | Xray + 官方 Hysteria 2 组合：Vision TCP 443、XHTTP TCP 8443、Hysteria 2 UDP 443、SS-2022 TCP/UDP 2053 |
+| `5` | Xray + Hysteria 2 组合：Vision TCP 443、XHTTP TCP 8443、Hysteria 2 UDP 443、SS-2022 TCP/UDP 2053 |
 | `6` | sing-box VLESS Vision REALITY |
 | `7` | sing-box Shadowsocks-2022 |
 | `8` | sing-box VLESS + Shadowsocks-2022 |
 | `9` | sing-box Hysteria 2 |
 | `10` | sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP） |
-| `11` | 综合工具箱 |
-| `12` | VPS 系统工具：BBR/FQ 调优（可回滚）、**IP 协议偏好**（仅 IPv4 / 仅 IPv6 / 双栈）、**本机 DNS**（明文 / DoT，可回滚）、**时区**（启发式 + 自定义，可回滚） |
-| `13` | 显示节点参数和客户端配置 |
-| `14` | 脚本说明书 |
-| `15` | 脚本 OTA、Xray Geo 数据和核心单独升级 |
-| `16` | 全部/部分卸载 |
-| `17` | 删除节点并重置环境 |
-| `18` | 每月流量限制（基于 vnStat）。打开菜单先展示**截至当前**本月累计用量，再进入配额管理 |
-| `19` | SS-2022 IP/CIDR 白名单管理 |
-| `20` | 切换脚本界面的中文/English |
-| `21` | **一键 Reality**（Vision 默认 SNI，最少提问；`r` 同） |
+| `11` | 综合工具箱：测速、诊断、Wallos 与系统设置 |
+| `12` | 显示节点参数和客户端配置 |
+| `13` | 脚本说明书 |
+| `14` | 脚本 OTA、Xray Geo 数据和核心单独升级 |
+| `15` | 全部/部分卸载 |
+| `16` | 删除节点并重新初始化环境 |
+| `17` | 每月流量限制（vnStat），显示截至当前的累计用量 |
+| `18` | SS-2022 IP/CIDR 白名单管理 |
+| `19` | 界面语言：中文、English、Русский、فارسی |
+| `20` | **一键 Reality**；`r` 为快捷别名 |
 | `0` | 退出 |
 
-### 工具箱
+### 综合工具箱
 
-工具箱包含系统性能/下载测速、IP 质量/流媒体可用性/路由测试、完整与微型主机本地 SNI 候选测试、已保存 SNI 结果、Cloudflare WARP 管理器（确认后会调用第三方脚本）、2 GB Swap 创建、备份恢复、脱敏诊断包导出，以及完整的只读 dry-run 预检查。
+原有系统/下载测速、IP 质量、SNI 全量与微型主机优选、WARP、2 GB Swap、备份/恢复、脱敏诊断、预检查和订阅导出功能均保留。新增/归并的入口包括：BBR/FQ 调优子菜单（仅应用与回滚）；主机设置（IP 偏好、明文 DNS、后端支持时的 DoT、实测 DNS 优选、受支持环境的 DoH、时区/Locale/NTP 与下载源偏好）；以及 Wallos 安装、升级、状态、备份和保留数据卸载容器功能。BBR 为手动选择，不会在协议安装后自动执行。
+
+测速和 IP 质量选项先访问上游脚本，检查内容格式和 Bash 语法，显示 SHA-256 并要求确认。上游不可用或内容无效时，才回退到 A-Box Release `test-tools-mirror`；只有 `SHA256SUMS` 校验通过才会执行。双源都失败时不会运行脚本。
+
+Wallos 是可选的自托管订阅管理工具。安装器检测系统、架构（amd64、arm64、ARMv7）、可用端口和公网地址，优先读取 Wallos 最新非预发布稳定版并获取匹配的 Docker 镜像；上游不可用时回退至 A-Box 的固定名称 Release `wallos-mirror`。数据库和上传图片独立持久化，升级前创建数据备份，健康检查失败时尝试回滚。灾备 Release 要等把仓库工作流上传 GitHub 并成功运行后才会生成。Wallos 初始访问网址使用 HTTP，不具备 TLS 加密；录入个人数据前应配置 HTTPS 反向代理，并检查 VPS 与云安全组规则。
+
+BBR/FQ 不会静默修改系统。DNS 优选根据当前 VPS 对候选解析器发起多轮真实查询，延迟和可用率只代表本次测量，不是全球通用排名。DoT 仅在当前 DNS 后端支持时启用，并要求输入上游 TLS 认证主机名，让 systemd-resolved 校验解析器证书（例如 `1.1.1.1#cloudflare-dns.com` 或 `8.8.8.8#dns.google`）；DoH 使用 `dnscrypt-proxy`，且限制在支持的软件包和 systemd-resolved 环境。DNS 与时区设置均提供回滚路径。
+
+四种语言覆盖主菜单、运维菜单及本次新增/调整的工具流程；少数旧协议向导和旧错误消息仍可能混有中英文，不能据此宣称所有历史提示已完成百分之百的四语翻译。
 
 ## 命令行用法
 
@@ -90,7 +97,7 @@ curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/alariclin/a-box
 | 命令 | 作用 |
 |---|---|
 | `sudo bash install.sh --help` | 显示命令行帮助 |
-| `sudo bash install.sh --lang zh` / `--lang en` | 设置界面语言并启动菜单 |
+| `sudo bash install.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | 设置界面语言并启动菜单 |
 | `sudo bash install.sh --self-test` | 运行内置回归/自测 |
 | `sudo bash install.sh --preflight` 或 `--dry-run` | 运行预检查，不部署新节点 |
 | `sudo bash install.sh --status` | 查看托管配置和服务状态 |
@@ -112,9 +119,9 @@ curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/alariclin/a-box
 | CPU 架构 | amd64/x86_64 或 arm64/aarch64 |
 | 权限 | root 或 sudo |
 | 网络 | 可访问系统软件源和所需上游/GitHub 发布端点 |
-| 脚本界面 | English 或简体中文 |
+| 脚本界面 | 中文、English、Русский、فارسی（部分旧协议向导仍含双语提示） |
 
-四种语言的 README 不代表脚本交互界面也支持四种语言；脚本界面目前支持 English 和简体中文。
+脚本语言菜单支持中文、English、Русский、فارسی 的选择；主菜单与本次整理的运维菜单已翻译。部分较早的协议向导提示仍保留中英双语文本。
 
 ## 生产环境检查清单
 

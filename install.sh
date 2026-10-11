@@ -33,8 +33,8 @@ IP_PREF_FILE='/etc/ddr/.ip-pref'
 DNS_STATE_FILE='/etc/ddr/.dns-state'
 DNS_BACKUP_DIR='/etc/ddr/.dns-backup'
 TZ_STATE_FILE='/etc/ddr/.timezone-state'
-ABOX_CORE_MIRROR_RELEASE='core-mirrors-v171'
-ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/a-box/releases/download/core-mirrors-v171'
+ABOX_CORE_MIRROR_RELEASE='core-binaries'
+ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/a-box/releases/download/core-binaries'
 FAST_MODE_FILE='/etc/ddr/.fast-mode'
 MIRROR_PREFER_FILE='/etc/ddr/.mirror-prefer'
 EXTRA_UUID_FILE='/etc/ddr/.extra-uuids'
@@ -4575,7 +4575,7 @@ fetch_github_release() {
         fi
         rm -f "$tmp_file"
     done
-    # Disaster fallback: same-repo GitHub Release assets (core-mirrors-v171) with checksum file.
+    # Disaster fallback: stable same-repo GitHub Release assets (core-binaries), verified against SHA256SUMS.
     local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf
     mirror_base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     case "$repo:$output_file" in
@@ -8276,7 +8276,7 @@ show_core_pin_docs() {
     msg "Hysteria default: ${YELLOW}${ABOX_HYSTERIA_APP_VERSION:-app/v2.13.0}${NC}"
     msg "Override: ABOX_XRAY_VERSION / ABOX_SINGBOX_VERSION / ABOX_HYSTERIA_APP_VERSION"
     msg "Disaster mirror Release: ${YELLOW}${ABOX_CORE_MIRROR_RELEASE}${NC}"
-    msg "Download order: upstream GitHub → A-Box core-mirrors → custom ABOX_CORE_MIRROR_BASE"
+    msg "Download order: upstream GitHub → A-Box Core Binary Mirrors → custom ABOX_CORE_MIRROR_BASE"
     msg "Prefer mirror file: ${MIRROR_PREFER_FILE} (or ABOX_CORE_MIRROR_PREFER=1)"
     msg "Mode: ${YELLOW}$(read_fast_mode_label)${NC} (ABOX_FAST=1 or ${FAST_MODE_FILE})"
     pause_return
@@ -8432,8 +8432,14 @@ ux_mode_menu() {
 }
 list_extra_uuids() {
     [[ -r "$EXTRA_UUID_FILE" && -f "$EXTRA_UUID_FILE" && ! -L "$EXTRA_UUID_FILE" ]] || return 0
+    # Validate UUID shape without interval-regex operators such as {8}. Older
+    # mawk versions shipped by supported legacy distributions do not implement
+    # interval expressions, which would otherwise silently hide every UUID.
     awk -v primary="${UUID:-}" '
-        /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/ {
+        {
+            if (split($0, part, "-") != 5) next
+            if (length(part[1]) != 8 || length(part[2]) != 4 || length(part[3]) != 4 || length(part[4]) != 4 || length(part[5]) != 12) next
+            if ($0 !~ /^[0-9A-Fa-f-]+$/) next
             if (tolower($0) != tolower(primary) && !seen[tolower($0)]++) print $0
         }
     ' "$EXTRA_UUID_FILE" 2>/dev/null || true
@@ -8848,33 +8854,67 @@ current_timezone_name() {
 }
 
 snapshot_timezone_state() {
-    local dir="$1" cur
+    local dir="$1" cur='' candidate resolved
     mkdir -p "$dir" || return 1
     chmod 700 "$dir" || return 1
-    cur=$(current_timezone_name)
+    # Only store a symbolic IANA name when it is actually discoverable. Returning
+    # a guessed UTC value for an unlabelled localtime file would make rollback
+    # overwrite the original zone with UTC instead of restoring the saved file.
+    if command -v timedatectl >/dev/null 2>&1; then
+        candidate=$(timedatectl show -p Timezone --value 2>/dev/null || true)
+        valid_timezone_name "$candidate" && cur="$candidate"
+    fi
+    if [[ -z "$cur" && -r /etc/timezone ]]; then
+        candidate=$(tr -d '[:space:]' < /etc/timezone 2>/dev/null || true)
+        valid_timezone_name "$candidate" && cur="$candidate"
+    fi
+    if [[ -z "$cur" && -L /etc/localtime ]]; then
+        resolved=$(readlink -f /etc/localtime 2>/dev/null || true)
+        case "$resolved" in
+            /usr/share/zoneinfo/*)
+                candidate=${resolved#/usr/share/zoneinfo/}
+                valid_timezone_name "$candidate" && cur="$candidate"
+                ;;
+        esac
+    fi
     printf '%s\n' "$cur" > "$dir/timezone" || return 1
-    if [[ -e /etc/localtime ]]; then
-        cp -a /etc/localtime "$dir/localtime" 2>/dev/null || true
+    if [[ -e /etc/localtime || -L /etc/localtime ]]; then
+        cp -a /etc/localtime "$dir/localtime" || return 1
+    else
+        : > "$dir/localtime.absent" || return 1
     fi
     if [[ -f /etc/timezone ]]; then
-        cp -a /etc/timezone "$dir/etc-timezone" 2>/dev/null || true
+        cp -a /etc/timezone "$dir/etc-timezone" || return 1
+    else
+        : > "$dir/etc-timezone.absent" || return 1
     fi
     return 0
 }
 
 restore_timezone_snapshot() {
     local dir="$1" tz
-    [[ -d "$dir" ]] || return 1
+    [[ -d "$dir" && -f "$dir/timezone" ]] || return 1
     tz=$(tr -d '[:space:]' < "$dir/timezone" 2>/dev/null || true)
     if [[ -n "$tz" ]] && valid_timezone_name "$tz"; then
         apply_timezone_name "$tz" || return 1
-        return 0
     fi
-    if [[ -e "$dir/localtime" ]]; then
+    # Restore the original filesystem representation as well as the logical
+    # zone name. This also covers systems without timedatectl and localtime files
+    # that have no discoverable IANA name.
+    if [[ -e "$dir/localtime" || -L "$dir/localtime" ]]; then
+        rm -f /etc/localtime || return 1
         cp -a "$dir/localtime" /etc/localtime || return 1
+    elif [[ -f "$dir/localtime.absent" ]]; then
+        rm -f /etc/localtime || return 1
+    else
+        return 1
     fi
     if [[ -f "$dir/etc-timezone" ]]; then
         cp -a "$dir/etc-timezone" /etc/timezone || return 1
+    elif [[ -f "$dir/etc-timezone.absent" ]]; then
+        rm -f /etc/timezone || return 1
+    else
+        return 1
     fi
     return 0
 }
@@ -9188,12 +9228,10 @@ snapshot_dns_state() {
     fi
     printf ok > "$dir/COMPLETE" || return 1
 }
-restore_dns_snapshot() {
-    local dir="$1" backend state key value connection iface dnscrypt_state immutable_state
+restore_dns_snapshot_body() {
+    local dir="$1" backend state key value connection iface dnscrypt_state
     [[ -f "$dir/COMPLETE" ]] || return 1
     backend=$(tr -d '[:space:]' < "$dir/backend" 2>/dev/null || true)
-    immutable_state=$(tr -d '[:space:]' < "$dir/resolv-immutable" 2>/dev/null || printf '0')
-    if command -v lsattr >/dev/null 2>&1 && lsattr /etc/resolv.conf 2>/dev/null | grep -q 'i'; then chattr -i /etc/resolv.conf 2>/dev/null || return 1; fi
     if [[ -e "$dir/resolv.conf" || -L "$dir/resolv.conf" ]]; then cp -a "$dir/resolv.conf" /etc/resolv.conf || return 1
     elif [[ -f "$dir/resolv.conf.absent" ]]; then rm -f /etc/resolv.conf || return 1; fi
     if [[ -f "$dir/resolved.conf" ]]; then cp -a "$dir/resolved.conf" /etc/systemd/resolved.conf || return 1
@@ -9232,8 +9270,33 @@ restore_dns_snapshot() {
         else systemctl disable dnscrypt-proxy >/dev/null 2>&1 || true; fi
         if [[ "$state" == active ]]; then systemctl restart dnscrypt-proxy >/dev/null 2>&1 || return 1; else systemctl stop dnscrypt-proxy >/dev/null 2>&1 || true; fi
     fi
-    if [[ "$immutable_state" == 1 ]] && command -v chattr >/dev/null 2>&1; then chattr +i /etc/resolv.conf 2>/dev/null || return 1; fi
     return 0
+}
+restore_dns_snapshot() {
+    local dir="$1" immutable_state='0' rc=0
+    [[ -f "$dir/COMPLETE" ]] || return 1
+    immutable_state=$(tr -d '[:space:]' < "$dir/resolv-immutable" 2>/dev/null || printf '0')
+    # Always remove the current immutable bit before replacing resolv.conf. If
+    # any later restore step fails, still attempt to put the original bit back.
+    if command -v chattr >/dev/null 2>&1; then
+        if { command -v lsattr >/dev/null 2>&1 && lsattr /etc/resolv.conf 2>/dev/null | grep -q 'i'; } || [[ "$immutable_state" == 1 ]]; then
+            chattr -i /etc/resolv.conf 2>/dev/null || {
+                [[ "$immutable_state" == 1 ]] && chattr +i /etc/resolv.conf 2>/dev/null || true
+                return 1
+            }
+        fi
+    elif [[ "$immutable_state" == 1 ]]; then
+        return 1
+    fi
+    restore_dns_snapshot_body "$dir" || rc=$?
+    if [[ "$immutable_state" == 1 ]]; then
+        if [[ -e /etc/resolv.conf || -L /etc/resolv.conf ]]; then
+            command -v chattr >/dev/null 2>&1 && chattr +i /etc/resolv.conf 2>/dev/null || rc=1
+        else
+            rc=1
+        fi
+    fi
+    return "$rc"
 }
 apply_host_dns() {
     local mode="$1" v4="$2" v6="$3" tls_name="${4:-}" backend dropin answer confirm_prompt immutable_prompt dot_error dns_servers immutable_before=0 resolved_major=''
@@ -12915,8 +12978,20 @@ wallos_public_urls() {
     esac
 }
 
+wallos_write_state() {
+    local image="$1" port="$2" tz="$3" tmp
+    tmp=$(umask 077; mktemp "$WALLOS_DIR/.abox-state.new.XXXXXX") || return 1
+    if ! printf 'IMAGE=%s\nPORT=%s\nTZ=%s\n' "$image" "$port" "$tz" > "$tmp" ||
+       ! chmod 600 "$tmp" ||
+       ! mv -f -- "$tmp" "$WALLOS_DIR/.abox-state"; then
+        rm -f -- "$tmp"
+        return 1
+    fi
+    return 0
+}
+
 wallos_install_or_update() {
-    local arch image port tz old_image='' old_port='' old_tz='UTC' backup='' stamp code running=0 marker security_note
+    local arch image port tz old_image='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
     (( EUID == 0 )) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Для установки Wallos требуются права root.${NC}" ;; fa) msg "${RED}برای نصب Wallos دسترسی root لازم است.${NC}" ;; zh) msg "${RED}安装 Wallos 需要 root 权限。${NC}" ;; *) msg "${RED}Run Wallos setup as root.${NC}" ;; esac; return 1; }
     command -v jq >/dev/null 2>&1 || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Требуется jq; сначала установите зависимости A-Box.${NC}" ;; fa) msg "${RED}به jq نیاز است؛ ابتدا وابستگی‌های A-Box را نصب کنید.${NC}" ;; zh) msg "${RED}需要 jq，请先安装 A-Box 依赖。${NC}" ;; *) msg "${RED}jq is required; install the A-Box dependencies first.${NC}" ;; esac; return 1; }
     wallos_print_host_info
@@ -12930,6 +13005,7 @@ wallos_install_or_update() {
             return 1
         }
         running=1
+        [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)" == true ]] && was_running=1
         old_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
         old_port=$(wallos_state_value PORT 2>/dev/null || true)
         old_tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
@@ -12970,10 +13046,10 @@ wallos_install_or_update() {
         chmod 600 "$WALLOS_DIR/.A-Box-managed" || return 1
     fi
     if (( running == 1 )); then
-        docker stop wallos >/dev/null 2>&1 || return 1
+        if (( was_running == 1 )); then docker stop wallos >/dev/null 2>&1 || return 1; fi
         stamp=$(date -u '+%Y%m%dT%H%M%SZ')
-        backup=$(wallos_create_backup "$stamp") || { docker start wallos >/dev/null 2>&1 || true; msg "${RED}Pre-upgrade backup failed; old container was retained.${NC}"; return 1; }
-        docker rm wallos >/dev/null 2>&1 || { docker start wallos >/dev/null 2>&1 || true; return 1; }
+        backup=$(wallos_create_backup "$stamp") || { (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true; msg "${RED}Pre-upgrade backup failed; old container was retained.${NC}"; return 1; }
+        docker rm wallos >/dev/null 2>&1 || { (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true; return 1; }
     fi
 
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
@@ -12984,21 +13060,46 @@ wallos_install_or_update() {
     if (( code != 0 )) || ! wallos_wait_healthy "$port"; then
         docker rm -f wallos >/dev/null 2>&1 || true
         if (( running == 1 )); then
-            rm -rf -- "$WALLOS_DIR/db" "$WALLOS_DIR/logos"
-            tar -xzf "$backup" -C "$WALLOS_DIR" || msg "${RED}Could not restore Wallos data from pre-upgrade backup: $backup${NC}"
-            docker run -d --name wallos --label com.alariclin.abox.managed=true \
-                -v "$WALLOS_DIR/db:/var/www/html/db" \
-                -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-                -e TZ="$old_tz" -p "$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
-            wallos_wait_healthy "$old_port" || msg "${RED}Rollback container did not pass health check; inspect docker logs wallos.${NC}"
+            # Validate the pre-upgrade archive and required top-level entries
+            # before deleting the live data directories. Never start an old
+            # container against partially restored or empty databases/logos.
+            backup_listing=$(tar -tzf "$backup" 2>/dev/null) || backup_listing=''
+            if [[ -n "$backup_listing" ]] &&
+               grep -Eq '^db/?$' <<< "$backup_listing" &&
+               grep -Eq '^logos/?$' <<< "$backup_listing" &&
+               grep -Fxq '.abox-state' <<< "$backup_listing" &&
+               rm -rf -- "$WALLOS_DIR/db" "$WALLOS_DIR/logos" &&
+               tar -xzf "$backup" -C "$WALLOS_DIR"; then
+                restore_ok=1
+            else
+                msg "${RED}Rollback data restore failed or the backup is invalid. The old container will not be started against incomplete data. Preserve and inspect backup: ${backup:-unavailable}${NC}"
+            fi
+            if (( restore_ok == 1 )); then
+                if (( was_running == 1 )); then
+                    docker run -d --name wallos --label com.alariclin.abox.managed=true \
+                        -v "$WALLOS_DIR/db:/var/www/html/db" \
+                        -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
+                        -e TZ="$old_tz" -p "$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
+                    wallos_wait_healthy "$old_port" || msg "${RED}Rollback container did not pass health check; inspect docker logs wallos.${NC}"
+                else
+                    docker create --name wallos --label com.alariclin.abox.managed=true \
+                        -v "$WALLOS_DIR/db:/var/www/html/db" \
+                        -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
+                        -e TZ="$old_tz" -p "$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null 2>&1 || true
+                fi
+            fi
         fi
         msg "${RED}Wallos did not pass health check. Rollback was attempted.${NC}"
         return 1
     fi
 
-    printf '%s\n' 'A-Box managed Wallos' > "$WALLOS_DIR/.A-Box-managed"
-    printf 'IMAGE=%s\nPORT=%s\nTZ=%s\n' "$image" "$port" "$tz" > "$WALLOS_DIR/.abox-state"
-    chmod 600 "$WALLOS_DIR/.A-Box-managed" "$WALLOS_DIR/.abox-state"
+    # The ownership marker was created and permission-checked before starting
+    # the container. Commit the mutable image/port/timezone state atomically;
+    # do not silently report a complete update if metadata cannot be saved.
+    if ! wallos_write_state "$image" "$port" "$tz"; then
+        msg "${RED}Wallos is responding, but its state file could not be committed atomically. The service was left running and the pre-upgrade backup was retained; repair $WALLOS_DIR/.abox-state before the next upgrade.${NC}"
+        return 1
+    fi
     case "${ABOX_LANG:-zh}" in
         ru) msg "${GREEN}Wallos запущен: $image${NC}"; security_note="При удалённом доступе откройте TCP $port в firewall VPS/облака. Перед вводом личных данных настройте HTTPS reverse proxy: HTTP не шифруется." ;;
         fa) msg "${GREEN}Wallos اجرا شد: $image${NC}"; security_note="برای دسترسی از راه دور، TCP $port را در فایروال VPS/ابر باز کنید. پیش از واردکردن داده شخصی HTTPS reverse proxy تنظیم کنید؛ HTTP رمزگذاری ندارد." ;;
@@ -15019,12 +15120,33 @@ PY_SELFTEST_TAR
     grep -Fq 'wallos_install_or_update()' "$0" || { echo 'FAIL: Wallos installer missing'; failures=$((failures + 1)); }
     grep -Fq 'timezone_menu()' "$0" || { echo 'FAIL: timezone menu missing'; failures=$((failures + 1)); }
     grep -Fq 'ABOX_CORE_MIRROR_BASE_DEFAULT=' "$0" || { echo 'FAIL: core disaster mirror base missing'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_CORE_MIRROR_RELEASE='core-binaries'" "$0" || { echo 'FAIL: stable core mirror tag missing'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/a-box/releases/download/core-binaries'" "$0" || { echo 'FAIL: stable core mirror URL missing'; failures=$((failures + 1)); }
     grep -Fq '截至当前 / Usage up to now' "$0" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
     grep -Fq 'one_click_reality_deploy()' "$0" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
     grep -Fq 'abox_is_fast()' "$0" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }
     grep -Fq 'try_latest_cores_danger()' "$0" || { echo 'FAIL: try-latest cores missing'; failures=$((failures + 1)); }
     grep -Fq 'export_lightweight_subscription()' "$0" || { echo 'FAIL: lightweight subscription missing'; failures=$((failures + 1)); }
     grep -Fq 'revoke one extra UUID from the Xray server' "$0" || grep -Fq 'Revoke one extra UUID from the Xray server' "$0" || { echo 'FAIL: server-side UUID revocation option missing'; failures=$((failures + 1)); }
+    # Exercise multi-UUID validation/deduplication on a temporary fixture; never touch /etc/ddr.
+    _saved_extra_uuid_file="$EXTRA_UUID_FILE"
+    _saved_uuid_set="${UUID+x}"
+    _saved_uuid_value="${UUID:-}"
+    EXTRA_UUID_FILE="$tmp/extra-uuids-fixture"
+    UUID='11111111-1111-1111-1111-111111111111'
+    printf '%s\n' \
+        '11111111-1111-1111-1111-111111111111' \
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' \
+        'AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA' \
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' \
+        'aaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' \
+        'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz' > "$EXTRA_UUID_FILE"
+    _extra_uuid_actual=$(list_extra_uuids)
+    _extra_uuid_expected=$'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\nbbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+    [[ "$_extra_uuid_actual" == "$_extra_uuid_expected" ]] || { echo 'FAIL: multi-UUID format validation, primary exclusion, or case-insensitive deduplication'; failures=$((failures + 1)); }
+    EXTRA_UUID_FILE="$_saved_extra_uuid_file"
+    if [[ "$_saved_uuid_set" == x ]]; then UUID="$_saved_uuid_value"; else unset UUID; fi
+    unset _saved_extra_uuid_file _saved_uuid_set _saved_uuid_value _extra_uuid_actual _extra_uuid_expected
     grep -Fq 'type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one' "$0" || { echo 'FAIL: lightweight XHTTP subscription URI missing'; failures=$((failures + 1)); }
     grep -Fq 'A-Box-VLESS-XHTTP-${client_uuid:0:8}' "$0" || { echo 'FAIL: Clash extra UUID XHTTP entries missing'; failures=$((failures + 1)); }
     grep -Fq 'probe_core_sources_banner()' "$0" || { echo 'FAIL: download source probe missing'; failures=$((failures + 1)); }

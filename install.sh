@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-10-release-candidate-v172'
-ABOX_BUILD_EPOCH=20261010172
+ABOX_BUILD='2026-10-12-audit-fix-v173'
+ABOX_BUILD_EPOCH=20261012173
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -169,7 +169,7 @@ path_mode_has_no_group_other_write() {
 }
 
 path_is_mountpoint() {
-    local path="$1"
+    local path="$1" rc
     [[ -e "$path" || -L "$path" ]] || return 1
     if python3 - "$path" <<'PY_EXACT_MOUNT' >/dev/null 2>&1
 import os, re, sys
@@ -214,7 +214,9 @@ path_tree_has_nested_mountpoint() {
     [[ -n "$path" && ( -d "$path" || -f "$path" ) && ! -L "$path" ]] || return 1
     command -v python3 >/dev/null 2>&1 || return 0
     python3 - "$path" <<'PY_TREE_NESTED_MOUNT'
-import os, sys
+import os, re, sys
+def decode_mountinfo_path(value):
+    return re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), value)
 try:
     target=os.path.realpath(sys.argv[1]).rstrip('/') or '/'
     prefix=target + '/'
@@ -223,7 +225,7 @@ try:
             parts=raw.split()
             if len(parts) < 5:
                 raise RuntimeError('malformed mountinfo')
-            mountpoint=parts[4].replace('\\040',' ').replace('\\011','\\t').replace('\\012','\\n').replace('\\134','\\\\')
+            mountpoint=decode_mountinfo_path(parts[4])
             mountpoint=os.path.realpath(mountpoint).rstrip('/') or '/'
             if mountpoint.startswith(prefix):
                 raise SystemExit(0)
@@ -242,7 +244,7 @@ PY_TREE_NESTED_MOUNT
 }
 
 path_tree_has_mountpoint() {
-    local path="$1"
+    local path="$1" rc
     [[ -e "$path" || -L "$path" ]] || return 1
     if python3 - "$path" <<'PY_TREE_MOUNT' >/dev/null 2>&1
 import os, sys
@@ -666,6 +668,20 @@ port_spec_for_firewalld() {
     printf '%s\n' "${spec/:/-}"
 }
 
+port_list_for_firewalld() {
+    local input="${1:-}" item normalized result=''
+    local -a items=()
+    [[ -n "$input" ]] || return 1
+    local IFS=,
+    read -r -a items <<< "$input"
+    (("${#items[@]}" > 0)) || return 1
+    for item in "${items[@]}"; do
+        normalized=$(port_spec_for_firewalld "$item") || return 1
+        result+="${result:+,}${normalized}"
+    done
+    printf '%s\n' "$result"
+}
+
 valid_positive_int() {
     # Keep decimal integers within a range safe for Bash arithmetic on
     # standard 64-bit Linux; callers may still impose a tighter domain limit.
@@ -1014,10 +1030,13 @@ with open(sys.argv[1], "r", encoding="utf-8", errors="strict") as handle:
         key, raw_value = line.split("=", 1)
         if key not in allowed or key in seen:
             raise SystemExit(f"invalid or duplicate state key at line {number}")
-        parts = shlex.split(raw_value, posix=True)
-        if len(parts) != 1:
-            raise SystemExit(f"invalid state value at line {number}")
-        value = parts[0]
+        if not raw_value.strip():
+            value = ""
+        else:
+            parts = shlex.split(raw_value, posix=True)
+            if len(parts) != 1:
+                raise SystemExit(f"invalid state value at line {number}")
+            value = parts[0]
         if len(value.encode("utf-8")) > 4096:
             raise SystemExit(f"state value too long at line {number}")
         if "\x00" in value or "\n" in value or "\r" in value:
@@ -1251,10 +1270,22 @@ get_active_interface() {
     printf '%s\n' "$iface"
 }
 
+resolve_domain_addresses() {
+    local domain="${1:-}" resolved=''
+    valid_domain "$domain" || return 1
+    if command -v getent >/dev/null 2>&1; then
+        resolved=$(getent ahosts "$domain" 2>/dev/null | awk 'NF {print $1}' | sort -u) || resolved=''
+        if [[ -z "$resolved" ]]; then
+            resolved=$(getent hosts "$domain" 2>/dev/null | awk 'NF {print $1}' | sort -u) || resolved=''
+        fi
+    fi
+    [[ -n "$resolved" ]] || return 1
+    printf '%s\n' "$resolved"
+}
+
 verify_domain_points_to_self() {
     local domain="$1" pub_ip="$2" resolved continue_domain
-    resolved=$(getent ahosts "$domain" 2>/dev/null | awk '{print $1}' | sort -u)
-    [[ -z "$resolved" ]] && die "域名无法解析: $domain"
+    resolved=$(resolve_domain_addresses "$domain") || die "域名无法解析: $domain"
     if [[ "$pub_ip" != 'N/A' ]] && ! grep -Fxq "$pub_ip" <<< "$resolved"; then
         msg "${YELLOW}[!] 域名已解析，但未发现解析到当前公网 IP: $pub_ip${NC}"
         printf '%s\n\n%s\n' "${YELLOW}解析结果:${NC}" "$resolved"
@@ -2667,6 +2698,18 @@ write_abox_firewall_restore_script() {
 # Managed by A-Box
 set -o pipefail
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+read_ip_pref() {
+    local pref='dual' mode
+    local pref_file='/etc/ddr/.ip-pref'
+    if [[ -r "$pref_file" && -f "$pref_file" && ! -L "$pref_file" && "$(stat -c %u:%g "$pref_file" 2>/dev/null || true)" == '0:0' ]]; then
+        mode=$(stat -c %a "$pref_file" 2>/dev/null) || mode='777'
+        if [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#022) == 0 )); then
+            pref=$(tr -d '[:space:]' < "$pref_file" 2>/dev/null || true)
+        fi
+    fi
+    [[ "$pref" =~ ^(ipv4|ipv6|dual)$ ]] || pref='dual'
+    printf '%s\n' "$pref"
+}
 has_ipv6() {
     local _pref
     _pref=$(read_ip_pref 2>/dev/null || printf 'dual')
@@ -3971,7 +4014,7 @@ clean_nat_rules() {
         msg "${RED}Native nftables rules detected; refusing to mutate a parallel iptables ruleset.${NC}"
         return 1
     }
-    local output rule failed=0 owned_re
+    local output rule failed=0 owned_re ipv6_nat_error
     local -a argv=()
     owned_re='--comment "?A-Box-HY2-HOP"?([[:space:]]|$)'
     while :; do
@@ -3992,10 +4035,14 @@ clean_nat_rules() {
                 read -r -a argv <<< "$rule"
                 $IPT6 -w -t nat "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
             done
-        elif has_ipv6; then
-            failed=1
+        else
+            ipv6_nat_error=$($IPT6 -w -t nat -S PREROUTING 2>&1 >/dev/null || true)
+            if ! grep -Eiq "table ['\"]?nat['\"]? does not exist|table does not exist|table nat is not supported|protocol not supported|can't initialize ip6tables table ['\"]nat['\"]|cannot initialize ip6tables table ['\"]nat['\"]|table ['\"]nat['\"] is incompatible, use ['\"]nft['\"] tool" <<< "$ipv6_nat_error"; then
+                failed=1
+            fi
         fi
     elif has_ipv6; then
+        # Without the binary, previously managed IPv6 rules cannot be inspected.
         failed=1
     fi
     (( failed == 0 ))
@@ -4208,8 +4255,19 @@ setup_shortcut() {
         if [[ ! -f "$ABOX_DIR/A-Box.sh" ]] || ! cmp -s "$0" "$ABOX_DIR/A-Box.sh"; then
             install_binary_atomically "$0" "$ABOX_DIR/A-Box.sh" || die '持久化当前脚本失败。'
         fi
-    elif [[ ! -f "$ABOX_DIR/A-Box.sh" ]]; then
-        install_remote_abox_script_guarded "$SCRIPT_URL" "$ABOX_DIR/A-Box.sh"
+    else
+        # A piped invocation has no readable $0 file to persist.
+        if [[ -f "$ABOX_DIR/A-Box.sh" && ! -L "$ABOX_DIR/A-Box.sh" ]]; then
+            local installed_epoch=''
+            installed_epoch=$(awk -F= '/^ABOX_BUILD_EPOCH=/{gsub(/[^0-9]/,"",$2); print $2; exit}' "$ABOX_DIR/A-Box.sh" 2>/dev/null || true)
+            if [[ "$installed_epoch" =~ ^[0-9]+$ ]] && (( 10#$installed_epoch > 10#$ABOX_BUILD_EPOCH )); then
+                msg "${YELLOW}[!] 保留磁盘中较新的 A-Box 脚本版本 (${installed_epoch})；拒绝从管道运行的旧版本覆盖。${NC}"
+            else
+                install_remote_abox_script_guarded "$SCRIPT_URL" "$ABOX_DIR/A-Box.sh"
+            fi
+        else
+            install_remote_abox_script_guarded "$SCRIPT_URL" "$ABOX_DIR/A-Box.sh"
+        fi
     fi
     [[ -f "$ABOX_DIR/A-Box.sh" ]] || die '持久化 A-Box 脚本不存在。'
     validate_abox_script_file "$ABOX_DIR/A-Box.sh" '持久化 A-Box 脚本' || die '持久化 A-Box 脚本校验失败。'
@@ -5213,7 +5271,11 @@ EOF_F2B_FILTER
         if [[ -n "$tcp_ports" || -n "$udp_ports" ]]; then
             f2b_backend=$(firewall_backend) || { rm -f -- "$jail_tmp"; die '无法确定 Fail2Ban 防火墙后端。'; }
             case "$f2b_backend" in
-                firewalld) f2b_action='firewallcmd-multiport' ;;
+                firewalld)
+                    f2b_action='firewallcmd-multiport'
+                    [[ -z "$tcp_ports" ]] || tcp_ports=$(port_list_for_firewalld "$tcp_ports") || { rm -f -- "$jail_tmp"; die '无法规范化 firewalld TCP 端口规格。'; }
+                    [[ -z "$udp_ports" ]] || udp_ports=$(port_list_for_firewalld "$udp_ports") || { rm -f -- "$jail_tmp"; die '无法规范化 firewalld UDP 端口规格。'; }
+                    ;;
                 ufw) f2b_action='ufw' ;;
                 iptables) f2b_action='iptables-multiport' ;;
                 *) rm -f -- "$jail_tmp"; die "不支持的 Fail2Ban 防火墙后端: $f2b_backend" ;;
@@ -5310,6 +5372,18 @@ setup_health_monitor() {
 set -o pipefail
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 ENV=/etc/ddr/.env
+read_ip_pref() {
+    local pref='dual' mode
+    local pref_file='/etc/ddr/.ip-pref'
+    if [[ -r "$pref_file" && -f "$pref_file" && ! -L "$pref_file" && "$(stat -c %u:%g "$pref_file" 2>/dev/null || true)" == '0:0' ]]; then
+        mode=$(stat -c %a "$pref_file" 2>/dev/null) || mode='777'
+        if [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#022) == 0 )); then
+            pref=$(tr -d '[:space:]' < "$pref_file" 2>/dev/null || true)
+        fi
+    fi
+    [[ "$pref" =~ ^(ipv4|ipv6|dual)$ ]] || pref='dual'
+    printf '%s\n' "$pref"
+}
 LOCK=/run/A-Box-socket-probe.lock
 STATE=/run/A-Box-socket-probe.fail
 DESIRED=/etc/ddr/.desired_state
@@ -5360,7 +5434,7 @@ load_state() {
     parsed=$(umask 077; mktemp /tmp/A-Box-helper-env.XXXXXX) || return 1
     if ! python3 - "$ENV" > "$parsed" <<'PY_HELPER_ENV'; then
 import shlex,sys
-allowed={"CORE","MODE","VLESS_PORT","XHTTP_PORT","HY2_MONITOR_PORT","HY2_HOP","HY2_HOP_IMPL","HY2_RANGE_START","HY2_RANGE_END","INGRESS_IF","SS_PORT","TRAFFIC_LIMIT_GB","TRAFFIC_LIMIT_MODE"}
+allowed={"CORE","MODE","VLESS_PORT","XHTTP_PORT","HY2_BASE_PORT","HY2_MONITOR_PORT","HY2_HOP","HY2_HOP_IMPL","HY2_RANGE_START","HY2_RANGE_END","INGRESS_IF","SS_PORT","TRAFFIC_LIMIT_GB","TRAFFIC_LIMIT_MODE"}
 seen=set()
 with open(sys.argv[1],encoding="utf-8",errors="strict") as h:
     for raw in h:
@@ -5370,10 +5444,15 @@ with open(sys.argv[1],encoding="utf-8",errors="strict") as h:
         key,val=line.split("=",1)
         if key not in allowed: continue
         if key in seen or val.startswith("$'"): raise SystemExit(1)
-        parts=shlex.split(val,posix=True)
-        if len(parts)!=1 or any(c in parts[0] for c in "\x00\r\n"): raise SystemExit(1)
+        if not val.strip():
+            value=""
+        else:
+            parts=shlex.split(val,posix=True)
+            if len(parts)!=1: raise SystemExit(1)
+            value=parts[0]
+        if any(c in value for c in "\x00\r\n"): raise SystemExit(1)
         seen.add(key)
-        sys.stdout.buffer.write(key.encode("ascii")+b"\0"+parts[0].encode("utf-8")+b"\0")
+        sys.stdout.buffer.write(key.encode("ascii")+b"\0"+value.encode("utf-8")+b"\0")
 PY_HELPER_ENV
         rm -f "$parsed"
         return 1
@@ -5479,7 +5558,7 @@ if [[ -z "$failed_srv" && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == offic
     hysteria_official_hop_firewall_ok || failed_srv="$HY2_SRV"
 fi
 if [[ -z "$failed_srv" && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == manual && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" && -n "${INGRESS_IF:-}" ]]; then
-    redirect_port="${HY2_MONITOR_PORT:-${HY2_RANGE_START}}"
+    redirect_port="${HY2_MONITOR_PORT:-${HY2_BASE_PORT:-${HY2_RANGE_START}}}"
     $IPT -w -t nat -C PREROUTING -i "$INGRESS_IF" -p udp --dport "${HY2_RANGE_START}:${HY2_RANGE_END}" -m comment --comment A-Box-HY2-HOP -j REDIRECT --to-ports "$redirect_port" 2>/dev/null || failed_srv="$HY2_SRV"
     if has_ipv6 && ipv6_nat_redirect_usable; then
         $IPT6 -w -t nat -C PREROUTING -i "$INGRESS_IF" -p udp --dport "${HY2_RANGE_START}:${HY2_RANGE_END}" -m comment --comment A-Box-HY2-HOP -j REDIRECT --to-ports "$redirect_port" 2>/dev/null || failed_srv="$HY2_SRV"
@@ -6986,10 +7065,15 @@ with open(sys.argv[1], encoding="utf-8", errors="strict") as handle:
         key, raw_value = line.split("=", 1)
         if key not in allowed: continue
         if key in seen or raw_value.startswith("$'"): raise SystemExit(1)
-        parts = shlex.split(raw_value, posix=True)
-        if len(parts) != 1 or any(c in parts[0] for c in "\x00\r\n"): raise SystemExit(1)
+        if not raw_value.strip():
+            value = ""
+        else:
+            parts = shlex.split(raw_value, posix=True)
+            if len(parts) != 1: raise SystemExit(1)
+            value = parts[0]
+        if any(c in value for c in "\x00\r\n"): raise SystemExit(1)
         seen.add(key)
-        sys.stdout.buffer.write(key.encode("ascii") + b"\0" + parts[0].encode("utf-8") + b"\0")
+        sys.stdout.buffer.write(key.encode("ascii") + b"\0" + value.encode("utf-8") + b"\0")
 PY_HELPER_ENV
         rm -f "$parsed"
         return 1
@@ -7312,6 +7396,12 @@ if [[ "$desired" == TRAFFIC_BLOCKED && "$blocked_period" != "$current_period" ]]
     traffic_error "monthly quota period rolled over from ${blocked_period} to ${current_period}; managed services resumed"
 fi
 [[ "$desired" == MANUAL_STOPPED || "$desired" == MAINTENANCE ]] && exit 0
+if [[ -z "${TRAFFIC_LIMIT_GB:-}" ]]; then
+    if [[ "$desired" == TRAFFIC_BLOCKED ]]; then
+        for_expected_services stop_owned || { traffic_error 'traffic remains blocked but service stop could not be verified'; exit 1; }
+    fi
+    exit 0
+fi
 iface="${INGRESS_IF:-}"
 if [[ -z "$iface" ]]; then
     traffic_fail_closed 'INGRESS_IF missing; refusing to switch traffic accounting to a newly inferred interface' || traffic_error 'missing ingress interface could not be fail-closed enforced'
@@ -7688,7 +7778,7 @@ start_services_for_traffic_unblock() {
 
 traffic_management_menu() {
     clear
-    local INTERFACE limit_gb mode_choice
+    local INTERFACE limit_gb mode_choice previous_state
     load_optional_abox_env_or_die
     INTERFACE="${INGRESS_IF:-$(get_active_interface)}"
     msg "${CYAN}======================================================================${NC}"
@@ -9499,13 +9589,12 @@ EOF_DNS
             nmcli device reapply "$iface" >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'NetworkManager DNS 应用失败，已回滚。'; }
             ;;
         *)
-            # Plain resolv.conf for Alpine / generic
-            {
-                printf '# Managed by A-Box host DNS helper\n'
-                printf 'nameserver %s\n' "$v4"
-                [[ -n "$v6" ]] && printf 'nameserver %s\n' "$v6"
-                printf 'options timeout:2 attempts:3\n'
-            } > /etc/resolv.conf || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 写入失败。'; }
+            [[ ! -L /etc/resolv.conf ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die '/etc/resolv.conf 是符号链接；当前 generic DNS 后端拒绝覆盖受其他服务管理的路径。'; }
+            write_file_atomically_from_stdin /etc/resolv.conf 644 <<EOF_RESOLV || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 原子写入失败。'; }
+# Managed by A-Box host DNS helper
+nameserver ${v4}
+$( [[ -n "$v6" ]] && printf 'nameserver %s\n' "$v6" )options timeout:2 attempts:3
+EOF_RESOLV
             ;;
     esac
     if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< "backend=\${backend};mode=\${mode};v4=\${v4};v6=\${v6}"; then
@@ -10135,7 +10224,8 @@ restore_sni_candidate_cache_snapshot() {
 sni_resolve_public_ip() {
     local domain="${1:-}" ip any=0 chosen='' resolved=''
     valid_domain "$domain" || return 1
-    resolved=$(getent ahosts "$domain" 2>/dev/null | awk '{print $1}' | awk '!seen[$0]++') || return 1
+    resolved=$(resolve_domain_addresses "$domain") || return 1
+    resolved=$(awk '!seen[$0]++' <<< "$resolved")
     [[ -n "$resolved" ]] || return 1
     while IFS= read -r ip; do
         [[ -n "$ip" ]] || continue
@@ -11594,7 +11684,7 @@ def allowed(n):
  if n.startswith(prefix):
   rel=n[len(prefix):]
   if '/' in rel or not rel: return False
-  exact={'.env','.firewall-native.rules','.lang','.desired_state','.traffic-block-state','.A-Box-owner','.public_ip.cache','.backup-hmac.key','.runtime.lock','.managed-core-files.tsv','A-Box.sh','socket_probe.sh','geo_update.sh','traffic_monitor.sh','firewall_restore.sh','iptables.v4','iptables.v6','A-Box-sni-full.tsv','A-Box-sni-mini.tsv'}
+  exact={'.env','.firewall-native.rules','.lang','.desired_state','.traffic-block-state','.A-Box-owner','.public_ip.cache','.backup-hmac.key','.runtime.lock','.managed-core-files.tsv','.ip-pref','.dns-state','.timezone-state','.fast-mode','.mirror-prefer','.extra-uuids','A-Box.sh','socket_probe.sh','geo_update.sh','traffic_monitor.sh','firewall_restore.sh','iptables.v4','iptables.v6','A-Box-sni-full.tsv','A-Box-sni-mini.tsv'}
   return rel in exact or rel.startswith('.deps.v')
  return any(n==x or n.startswith(x+'/') for x in allowed_prefixes if x!='root/etc/ddr')
 try: tf=tarfile.open(fn,'r:gz')
@@ -12799,7 +12889,7 @@ validate_test_script() {
     size=$(wc -c < "$file" 2>/dev/null | tr -d ' ') || return 1
     [[ "$size" =~ ^[0-9]+$ ]] && (( size >= 1000 && size <= 15728640 )) || return 1
     IFS= read -r first < "$file" || return 1
-    [[ "$first" =~ ^#!.*(bash|env[[:space:]]+bash) ]] || return 1
+    [[ "$first" =~ ^#!.*(bash|env[[:space:]]+bash)([[:space:]]|$) ]] || return 1
     if head -n 25 "$file" | grep -Eiq '<!doctype[[:space:]]+html|<html'; then return 1; fi
     bash -n "$file" >/dev/null 2>&1 || return 1
 }
@@ -12976,14 +13066,35 @@ wallos_install_runtime() {
             rc-service docker start || return 1
             ;;
         centos|rhel|rocky|almalinux|fedora)
+            local -a docker_conflicts=()
+            local pkg conflict_prompt
             command -v dnf >/dev/null 2>&1 || return 1
+            command -v rpm >/dev/null 2>&1 || return 1
             dnf -y install dnf-plugins-core ca-certificates curl jq || return 1
-            if [[ "$os_id" == fedora ]]; then
-                dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo || return 1
-            else
-                dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo || return 1
+            case "$os_id" in
+                fedora) dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo || return 1 ;;
+                rhel) dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo || return 1 ;;
+                centos|rocky|almalinux) dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo || return 1 ;;
+            esac
+            for pkg in docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine docker.io containerd podman podman-docker runc; do
+                rpm -q "$pkg" >/dev/null 2>&1 && docker_conflicts+=("$pkg")
+            done
+            if (("${#docker_conflicts[@]}" > 0)); then
+                msg "${YELLOW}[!] 检测到可能冲突的已安装包：${docker_conflicts[*]}。移除这些包可能影响现有 Podman/Docker 容器。${NC}"
+                case "${ABOX_LANG:-zh}" in
+                    en) conflict_prompt="Remove the listed conflicting runtime packages before installing Docker CE? Existing containers may be affected. [Y/N]: " ;;
+                    ru) conflict_prompt="Удалить перечисленные конфликтующие пакеты runtime перед установкой Docker CE? Это может повлиять на существующие контейнеры. [Y/N]: " ;;
+                    fa) conflict_prompt="بسته‌های متعارض ذکرشده پیش از نصب Docker CE حذف شوند؟ ممکن است بر کانتینرهای فعلی اثر بگذارد. [Y/N]: " ;;
+                    *) conflict_prompt="是否先移除上述冲突运行时包再安装 Docker CE？这可能影响现有容器。[Y/N]: " ;;
+                esac
+                read -r -p "$conflict_prompt" answer || return 1
+                is_yes "$answer" || { msg "${YELLOW}[!] 用户未授权删除冲突包；未继续安装 Docker CE。${NC}"; return 1; }
+                dnf -y remove "${docker_conflicts[@]}" || return 1
             fi
-            dnf -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin || return 1
+            dnf -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin || {
+                msg "${RED}[!] Docker CE 依赖事务失败；没有使用 --allowerasing 自动删除其他包。${NC}"
+                return 1
+            }
             systemctl enable --now docker || return 1
             ;;
         *)
@@ -13764,6 +13875,10 @@ write_clash_yaml() {
         (( clash_mlkem_rc == 1 )) || return 1
     fi
     [[ -n "$out" && "$out" == /* ]] || return 1
+    if [[ "${HY2_HOP:-}" == true && ( "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ) ]]; then
+        valid_hy2_clash_ports "${HY2_CLASH_PORTS:-}" || { msg "${YELLOW}[!] Hysteria 2 端口跳跃状态无效：HY2_CLASH_PORTS 缺失或非法，拒绝生成 Clash/Mihomo 配置。${NC}"; return 1; }
+        valid_canonical_port "${HY2_BASE_PORT:-}" || { msg "${YELLOW}[!] Hysteria 2 基础端口无效，拒绝生成 Clash/Mihomo 配置。${NC}"; return 1; }
+    fi
     [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="$HY2_DOMAIN"
     clash_hop_port="${HY2_BASE_PORT:-443}"
     if [[ "${CORE:-}" != singbox && "${HY2_HOP:-}" == true ]]; then
@@ -14094,7 +14209,8 @@ view_config() {
         S_IP="$LINK_IP"
         [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="$HY2_DOMAIN"
         if [[ "${HY2_HOP:-}" == 'true' ]]; then
-            cat <<EOF_SB
+            if valid_hy2_sb_ports "${HY2_SB_PORTS:-}"; then
+                cat <<EOF_SB
     {
       "type": "hysteria2",
       "server": "$S_IP",
@@ -14108,12 +14224,15 @@ $(singbox_hy2_tls_json),
       }
     }
 EOF_SB
+            else
+                msg "${YELLOW}[!] Hysteria 2 端口跳跃状态缺失或非法；已省略无效的 Sing-box 出站示例。${NC}"
+            fi
         else
             cat <<EOF_SB
     {
       "type": "hysteria2",
       "server": "$S_IP",
-      "server_port": $HY2_BASE_PORT,
+      "server_port": ${HY2_BASE_PORT:-443},
       "password": "$HY2_PASS",
 $(singbox_hy2_tls_json),
       "obfs": {
@@ -15380,6 +15499,14 @@ PY_SELFTEST_TAR
         assert_ok sni_domain_public_dns example.com
         getent() { printf '%s\n' '10.0.0.1 STREAM example.com'; }
         assert_bad sni_domain_public_dns example.com
+        getent() {
+            case "${1:-}" in
+                ahosts) return 2 ;;
+                hosts) printf '%s\n' '1.1.1.1 example.com' ;;
+                *) return 1 ;;
+            esac
+        }
+        [[ "$(resolve_domain_addresses example.com)" == '1.1.1.1' ]] || { echo 'FAIL: DNS resolver must fall back from getent ahosts to getent hosts'; failures=$((failures + 1)); }
         unset -f getent
         assert_ok valid_public_ip 1.1.1.1
         assert_bad valid_public_ip 224.0.0.1
@@ -15487,8 +15614,8 @@ PY_SELFTEST_TAR
     grep -Fq 'ABOX_HYSTERIA_APP_VERSION:-app/v2.13.0' "$0" || { echo 'FAIL: Hysteria v2.13.0 compatibility pin missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_XRAY_DEFAULT_VERSION='v26.7.28'" "$0" || { echo 'FAIL: Xray iOS/XHTTP compatibility pin missing'; failures=$((failures + 1)); }
 
-    grep -Fq "ABOX_BUILD='2026-10-10-release-candidate-v172'" "$0" || { echo 'FAIL: build string missing'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_BUILD_EPOCH=20261010172' "$0" || { echo 'FAIL: build epoch missing'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_BUILD='2026-10-12-audit-fix-v173'" "$0" || { echo 'FAIL: build string missing'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_BUILD_EPOCH=20261012173' "$0" || { echo 'FAIL: build epoch missing'; failures=$((failures + 1)); }
     grep -Fq 'IP_PREF_FILE=' "$0" || { echo 'FAIL: IP preference state file missing'; failures=$((failures + 1)); }
     grep -Fq 'ip_preference_menu()' "$0" || { echo 'FAIL: IP preference menu missing'; failures=$((failures + 1)); }
     grep -Fq 'dns_menu()' "$0" || { echo 'FAIL: DNS menu missing'; failures=$((failures + 1)); }
@@ -15669,6 +15796,27 @@ PY_SELFTEST_TAR
     _devfd_pattern='/dev/''fd/3'; ! grep -q "python3 ${_devfd_pattern}" "$0" || { echo 'FAIL: /dev/fd/3 portability dependency remains'; failures=$((failures + 1)); }
     unset _devfd_pattern
     [[ "$(port_spec_for_firewalld 20000:25000)" == '20000-25000' ]] || { echo 'FAIL: firewalld range conversion'; failures=$((failures + 1)); }
+    [[ "$(port_list_for_firewalld '443,2053:2500')" == '443,2053-2500' ]] || { echo 'FAIL: firewalld comma-separated port/range conversion'; failures=$((failures + 1)); }
+    if ! (
+        firewall_backend() { printf '%s\n' iptables; }
+        mock_iptables() { return 0; }
+        ip6tables() { printf '%s\n' 'ip6tables: Table does not exist (do you need to insmod?)' >&2; return 1; }
+        IPT=mock_iptables; IPT6=ip6tables
+        has_ipv6() { return 1; }
+        clean_nat_rules
+    ); then
+        echo 'FAIL: clean_nat_rules must tolerate an unavailable IPv6 NAT table'; failures=$((failures + 1))
+    fi
+    if ! (
+        firewall_backend() { printf '%s\n' iptables; }
+        mock_iptables() { return 0; }
+        ip6tables() { printf '%s\n' 'ip6tables: Permission denied' >&2; return 1; }
+        IPT=mock_iptables; IPT6=ip6tables
+        has_ipv6() { return 1; }
+        ! clean_nat_rules
+    ); then
+        echo 'FAIL: clean_nat_rules must remain fail-closed on IPv6 firewall permission errors'; failures=$((failures + 1))
+    fi
     mkdir -p "$tmp/atomic-dest-dir"
     printf '%s\n' 'payload' > "$tmp/atomic.src2"
     assert_bad install_file_atomically "$tmp/atomic.src2" "$tmp/atomic-dest-dir" 600
@@ -15994,6 +16142,33 @@ PY_TAMPER_ACME
         selftest_note 'malicious backup archive rejection skipped (no python3/GNU tar)'
     fi
 
+    if selftest_has python3; then
+        python3 - "$tmp" <<'PY_SELFTEST_LEGACY_STATE' >/dev/null 2>&1 || { echo 'FAIL: legacy-state backup fixture creation'; failures=$((failures + 1)); }
+import io, os, sys, tarfile
+base=sys.argv[1]
+names=['.ip-pref','.dns-state','.timezone-state','.fast-mode','.mirror-prefer','.extra-uuids']
+def add_dir(tf,name,mode=0o755):
+    item=tarfile.TarInfo(name); item.type=tarfile.DIRTYPE; item.mode=mode; item.uid=0; item.gid=0; tf.addfile(item)
+def add_file(tf,name,data,mode=0o600):
+    b=data.encode(); item=tarfile.TarInfo(name); item.size=len(b); item.mode=mode; item.uid=0; item.gid=0; tf.addfile(item,io.BytesIO(b))
+for state in names:
+    path=os.path.join(base,'legacy-'+state.replace('.','')+'.tar.gz')
+    with tarfile.open(path,'w:gz') as tf:
+        for d in ('root','root/etc','root/etc/ddr','meta'):
+            add_dir(tf,d)
+        add_file(tf,'root/etc/ddr/.env','CORE=xray\n')
+        add_file(tf,'root/etc/ddr/'+state,'dual\n')
+        add_file(tf,'meta/metadata.txt','legacy fixture\n')
+PY_SELFTEST_LEGACY_STATE
+        for _legacy_state in .ip-pref .dns-state .timezone-state .fast-mode .mirror-prefer .extra-uuids; do
+            _legacy_path="$tmp/legacy-${_legacy_state#.}.tar.gz"
+            validate_legacy_backup_archive "$_legacy_path" || { echo "FAIL: legacy backup containing $_legacy_state was rejected"; failures=$((failures + 1)); }
+        done
+        unset _legacy_state _legacy_path
+    else
+        selftest_note 'legacy state backup regression skipped (python3 missing)'
+    fi
+
     cat > "$tmp/iptables.snapshot" <<'EOF_SELFTEST_IPT'
 *filter
 -A INPUT -p tcp --dport 443 -m comment --comment A-Box-443-tcp -j ACCEPT
@@ -16013,6 +16188,9 @@ EOF_SELFTEST_IPT
         unset CORE MODE HY2_MASQ_URL
         assert_ok load_abox_env "$ABOX_ENV"
         [[ "${CORE:-}|${MODE:-}|${HY2_MASQ_URL:-}" == 'xray|ALL|https://www.example.com/' ]] || { echo 'FAIL: strict state load'; failures=$((failures + 1)); }
+        printf '%s\n' 'HY2_DOMAIN=' >> "$ABOX_ENV"
+        assert_ok load_abox_env "$ABOX_ENV"
+        [[ "${HY2_DOMAIN+x}:${HY2_DOMAIN:-}" == 'x:' ]] || { echo 'FAIL: blank optional state value must round-trip'; failures=$((failures + 1)); }
         local selftest_sentinel="$tmp/state-file-command-sentinel"
         printf 'BAD=$(touch %q)\n' "$selftest_sentinel" >> "$ABOX_ENV"
         assert_bad load_abox_env "$ABOX_ENV"
@@ -16124,6 +16302,10 @@ EOF_SELFTEST_IPT
         ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=HY2 PUBLIC_KEY=publickey LINK_IP=203.0.113.10 HY2_DOMAIN=hy2.example.com HY2_HOP=true HY2_BASE_PORT=443 HY2_RANGE_START=20000 HY2_RANGE_END=25000 HY2_CLASH_PORTS=20000-25000 HY2_CERT_SHA256_FP=abcdef CLASH_YAML_PATH="$clash_dir/A-Box-clash-hop.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash Hysteria2 hop YAML generation'; failures=$((failures + 1)); }
         grep -q '^    port: 20000$' "$clash_dir/A-Box-clash-hop.yaml" || { echo 'FAIL: official Clash Hysteria2 hop YAML primary port must be first range port'; failures=$((failures + 1)); }
         grep -q '^    ports: 20000-25000$' "$clash_dir/A-Box-clash-hop.yaml" || { echo 'FAIL: Clash Hysteria2 hop YAML ports missing'; failures=$((failures + 1)); }
+        if ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=HY2 PUBLIC_KEY=publickey LINK_IP=203.0.113.10 HY2_DOMAIN=hy2.example.com HY2_HOP=true HY2_BASE_PORT=443 HY2_RANGE_START=20000 HY2_RANGE_END=25000 HY2_URI_PORTS= HY2_CLASH_PORTS= HY2_SB_PORTS= CLASH_YAML_PATH="$clash_dir/A-Box-clash-invalid-hop.yaml" write_clash_yaml >/dev/null 2>&1; then
+            echo 'FAIL: client export accepted incomplete port-hop state'; failures=$((failures + 1))
+        fi
+        [[ ! -e "$clash_dir/A-Box-clash-invalid-hop.yaml" ]] || { echo 'FAIL: invalid port-hop state produced a client config file'; failures=$((failures + 1)); }
         grep -q '^proxy-groups:' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash YAML proxy-groups'; failures=$((failures + 1)); }
         grep -q '^dns:' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash YAML dns'; failures=$((failures + 1)); }
         grep -q '^  listen: 127.0.0.1:1053$' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash DNS listener must stay loopback-only'; failures=$((failures + 1)); }
@@ -16288,6 +16470,22 @@ PY_SELFTEST_YAML
     fi
     path_tree_has_mountpoint /proc || { echo 'FAIL: mountpoint guard does not detect /proc'; failures=$((failures + 1)); }
     ! path_tree_has_mountpoint "$tmp" || { echo 'FAIL: mountpoint guard falsely reports self-test temp directory'; failures=$((failures + 1)); }
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - <<'PY_MOUNTINFO_DECODE_TEST' || { echo 'FAIL: mountinfo path decoder must decode octal escapes in one pass'; failures=$((failures + 1)); }
+import re
+def decode(value):
+    return re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), value)
+checks = {
+    r'/mnt/a\040b': '/mnt/a b',
+    r'/mnt/a\011b': '/mnt/a\tb',
+    r'/mnt/a\012b': '/mnt/a\nb',
+    r'/mnt/a\134011b': r'/mnt/a\011b',
+}
+for raw, expected in checks.items():
+    if decode(raw) != expected:
+        raise SystemExit(1)
+PY_MOUNTINFO_DECODE_TEST
+    fi
     if command -v python3 >/dev/null 2>&1; then
         _guard_fail_bin="$tmp/.A-Box-failing-python"
         _guard_fail_fixture="$tmp/.guard-target"

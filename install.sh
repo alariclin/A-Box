@@ -16106,7 +16106,7 @@ PY_SELFTEST_TAR
         ABOX_RESOLVED_XRAY_VERSION=''; ABOX_RESOLVED_XRAY_SOURCE=''
         core_latest_stable_release_ref() { printf '%s\n' 'should-not-be-called' >&2; return 1; }
         resolve_core_release_target XTLS/Xray-core || exit 1
-        [[ "\${ABOX_RESOLVED_XRAY_VERSION}|\${ABOX_RESOLVED_XRAY_SOURCE}" == "\${ABOX_XRAY_DEFAULT_VERSION}|pinned" ]]
+        [[ "$ABOX_RESOLVED_XRAY_VERSION|$ABOX_RESOLVED_XRAY_SOURCE" == "$ABOX_XRAY_DEFAULT_VERSION|pinned" ]]
     ) || { echo 'FAIL: routine core resolver must preserve the Xray compatibility pin'; failures=$((failures + 1)); }
     (
         unset ABOX_SINGBOX_VERSION
@@ -16114,7 +16114,7 @@ PY_SELFTEST_TAR
         ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE=''
         core_latest_stable_release_ref() { printf '%s\n' 'v1.14.3'; }
         resolve_core_release_target SagerNet/sing-box || exit 1
-        [[ "\${ABOX_RESOLVED_SINGBOX_VERSION}|\${ABOX_RESOLVED_SINGBOX_SOURCE}" == 'v1.14.3|upstream' ]]
+        [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.3|upstream' ]]
     ) || { echo 'FAIL: explicit latest action must select stable upstream candidate'; failures=$((failures + 1)); }
     local mock_release_json=''
     mock_release_json='[{"tag_name":"v1.15.0-alpha.12","draft":false,"prerelease":true,"published_at":"2026-10-11T06:13:25Z"},{"tag_name":"v1.14.2","draft":false,"prerelease":false,"published_at":"2026-09-24T11:47:08Z"},{"tag_name":"v1.14.3","draft":false,"prerelease":false,"published_at":"2026-10-09T05:35:00Z"},{"tag_name":"v1.16.0","draft":true,"prerelease":false,"published_at":"2026-10-12T00:00:00Z"}]'

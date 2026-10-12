@@ -56,8 +56,8 @@ ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
 # Keep 26.7.28 as the compatibility baseline; explicit ABOX_XRAY_VERSION overrides
 # remain available for operators who intentionally test a newer build.
 ABOX_XRAY_DEFAULT_VERSION='v26.7.28'
-# Current sing-box stable release. XHTTP is intentionally Xray-only in A-Box because
-# the official sing-box V2Ray transport list does not expose an XHTTP transport.
+# Stable sing-box compatibility pin included in the core-binaries mirror; refresh and
+# validate client/config compatibility before changing the pinned mirror version.
 ABOX_SINGBOX_DEFAULT_VERSION='v1.14.2'
 # Versions actually contained in the stable core-binaries Release. Recovery is refused for other pins.
 ABOX_XRAY_MIRROR_VERSION='v26.7.28'
@@ -4568,6 +4568,16 @@ xray_version_compare() {
     cmp=$(decimal_component_compare "$am" "$bm") || return 2; (( cmp != 0 )) && { printf '%s\n' "$cmp"; return 0; }
     cmp=$(decimal_component_compare "$aj" "$bj") || return 2; (( cmp != 0 )) && { printf '%s\n' "$cmp"; return 0; }
     decimal_component_compare "$ap" "$bp"
+}
+
+# Allow a downgrade only when the operator explicitly opts in. This guard is
+# also used by the "latest stable" probe, whose upstream tag may be older than
+# A-Box's compatibility pin when newer upstream releases are marked prerelease.
+xray_core_downgrade_allowed() {
+    local current="${1:-}" target="${2:-}" allow="${3:-0}" cmp
+    [[ "$allow" == 0 || "$allow" == 1 ]] || return 2
+    cmp=$(xray_version_compare "$current" "$target") || return 2
+    (( cmp <= 0 )) || [[ "$allow" == 1 ]]
 }
 
 xray_latest_stable_version() {
@@ -14721,15 +14731,18 @@ upgrade_xray_core_only() {
     [[ -x /usr/local/bin/xray ]] && old_ver=$(/usr/local/bin/xray version 2>/dev/null | head -n 1 || true)
     local target_ref current_tag='' cmp=0
     target_ref="$(effective_xray_version)"
-    if [[ -z "${ABOX_XRAY_VERSION:-}" && -n "$old_ver" ]]; then
+    if [[ -n "${old_ver:-}" ]]; then
         current_tag=$(grep -oE 'Xray [0-9]+\.[0-9]+\.[0-9]+' <<< "${old_ver:-}" | awk '{print "v"$2}' | head -n 1 || true)
         if [[ -n "$current_tag" ]]; then
             cmp=$(xray_version_compare "$current_tag" "$target_ref") || die '当前 Xray 版本格式无法比较。'
             if (( cmp > 0 )); then
-                msg "${YELLOW}[!] 当前 Xray ${current_tag} 高于默认兼容版本 ${target_ref}；为避免自动降级，本次跳过。请显式设置 ABOX_XRAY_VERSION 后再升级。${NC}"
-                return 0
-            fi
-            if (( cmp == 0 )); then
+                if [[ -z "${ABOX_XRAY_VERSION:-}" ]]; then
+                    msg "${YELLOW}[!] 当前 Xray ${current_tag} 高于默认兼容版本 ${target_ref}；为避免自动降级，本次跳过。请显式设置 ABOX_XRAY_VERSION 后再升级。${NC}"
+                    return 0
+                fi
+                xray_core_downgrade_allowed "$current_tag" "$target_ref" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die "拒绝将 Xray 从 ${current_tag} 降级到 ${target_ref}。如确需降级，请明确设置 ABOX_ALLOW_CORE_DOWNGRADE=1 并确认客户端兼容性。"
+                msg "${YELLOW}[!] 已显式允许 Xray 降级：${current_tag} -> ${target_ref}。${NC}"
+            elif (( cmp == 0 )) && [[ -z "${ABOX_XRAY_VERSION:-}" ]]; then
                 msg "${GREEN}[OK] 当前 Xray ${current_tag} 已是默认兼容版本，无需替换。${NC}"
                 return 0
             fi
@@ -15671,6 +15684,11 @@ PY_SELFTEST_TAR
     [[ "$(xray_version_compare v26.7.28 v26.7.28)" == '0' ]] || { echo 'FAIL: Xray compatibility pin comparison'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v26.3.27 v26.3.27)" == '0' ]] || { echo 'FAIL: Xray equal version comparison'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v26.3.27 v26.7.28)" == '-1' ]] || { echo 'FAIL: Xray reverse version comparison'; failures=$((failures + 1)); }
+    assert_ok xray_core_downgrade_allowed v26.3.27 v26.7.28 0
+    assert_ok xray_core_downgrade_allowed v26.7.28 v26.7.28 0
+    assert_bad xray_core_downgrade_allowed v26.7.28 v26.3.27 0
+    assert_ok xray_core_downgrade_allowed v26.7.28 v26.3.27 1
+    assert_bad xray_core_downgrade_allowed v26.7.28 v26.3.27 invalid
     [[ "$(xray_version_compare v9223372036854775808.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray huge-version comparison overflow regression'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v18446744073709551616.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray extra-large version comparison regression'; failures=$((failures + 1)); }
     grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" "$0" || { echo 'FAIL: Xray REALITY ML-KEM threshold constant missing'; failures=$((failures + 1)); }

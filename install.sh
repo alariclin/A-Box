@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-13-auto-sni-v179'
-ABOX_BUILD_EPOCH=20261013179
+ABOX_BUILD='2026-10-13-auto-sni-v180'
+ABOX_BUILD_EPOCH=20261013180
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -732,11 +732,12 @@ is_apple_like_sni() {
 }
 
 default_sni_for_port() {
-    local selected="${ABOX_AUTO_SNI_SELECTED:-www.amazon.com}"
+    local selected="${ABOX_AUTO_SNI_SELECTED:-}"
     if valid_sni "$selected"; then
         printf '%s\n' "$selected"
     else
-        printf 'www.amazon.com\n'
+        # An unverified fallback is not a default; interactive setup must ask.
+        printf '\n'
     fi
 }
 
@@ -779,6 +780,25 @@ sni_probe_candidate_tier() {
     tier=$(sni_report_fit_tier "$tls13" "$alpn" "$san" "$asnmatch" "$samecountry" "$cdnpenalty")
     rm -rf -- "$workdir"
     printf '%s\n' "$tier"
+}
+
+sni_verified_amazon_fallback() {
+    local fallback='www.amazon.com' tier=''
+    tier=$(sni_probe_candidate_tier "$fallback" 2>/dev/null) || tier='N'
+    case "$tier" in
+        A|B|C)
+            printf '[SNI auto] Amazon fallback passed TLS 1.3, h2, and certificate SAN checks.\n' >&2
+            printf '%s\n' "$fallback"
+            ;;
+        R)
+            printf '[SNI auto] Amazon fallback passed TLS 1.3, h2, and certificate SAN checks, but its CDN/shared-edge risk is elevated; using it only as a fallback.\n' >&2
+            printf '%s\n' "$fallback"
+            ;;
+        *)
+            printf '[SNI auto] Amazon fallback failed or could not complete TLS 1.3/h2/SAN verification; no automatic SNI will be selected.\n' >&2
+            return 1
+            ;;
+    esac
 }
 
 prompt_reality_sni() {
@@ -6194,19 +6214,26 @@ pre_install_setup() {
     [[ -z "$INGRESS_IF" ]] && die '无法识别公网入接口。'
     GLOBAL_PUBLIC_IP=$(refresh_public_ip)
 
-    # Resolve one SNI per REALITY deployment. Other protocols that do not use
-    # REALITY SNI (for example Shadowsocks-2022) do not run this probe.
-    ABOX_AUTO_SNI_SELECTED='www.amazon.com'
+    # Resolve one SNI per REALITY deployment. Amazon is used only after a live
+    # TLS 1.3, HTTP/2 ALPN, and certificate-SAN check. If neither a preferred
+    # candidate nor the fallback can be verified, interactive setup asks for a
+    # manually entered SNI; the one-click path fails closed.
+    ABOX_AUTO_SNI_SELECTED=''
     if [[ "$HAS_VISION" == 'true' || "$HAS_XHTTP" == 'true' ]]; then
-        ABOX_AUTO_SNI_SELECTED=$(sni_auto_select_default) || ABOX_AUTO_SNI_SELECTED='www.amazon.com'
-        valid_sni "$ABOX_AUTO_SNI_SELECTED" || ABOX_AUTO_SNI_SELECTED='www.amazon.com'
-        msg "[SNI auto] 当前 VPS 的默认 REALITY SNI：$ABOX_AUTO_SNI_SELECTED（没有通过验证的候选时回退 www.amazon.com）。"
+        ABOX_AUTO_SNI_SELECTED=$(sni_auto_select_default) || ABOX_AUTO_SNI_SELECTED=''
+        if valid_sni "$ABOX_AUTO_SNI_SELECTED"; then
+            msg "[SNI auto] 当前 VPS 的默认 REALITY SNI：$ABOX_AUTO_SNI_SELECTED。"
+        else
+            ABOX_AUTO_SNI_SELECTED=''
+            msg "${YELLOW}[SNI auto] 没有候选或 Amazon 回退通过实时 TLS 1.3/h2/SAN 验证；请手动输入并确认可用的 SNI。${NC}"
+        fi
     fi
 
     # U1 one-click / quick path: Vision-only defaults, reuse remaining setup (ports/firewall).
     if [[ "${ABOX_QUICK_DEPLOY:-0}" == '1' && "$HAS_VISION" == 'true' && "$HAS_XHTTP" != 'true' && "$HAS_HY2" != 'true' && "$HAS_SS" != 'true' ]]; then
         VLESS_PORT="$DEF_V_PORT"
-        VISION_SNI="${ABOX_AUTO_SNI_SELECTED:-www.amazon.com}"
+        valid_sni "$ABOX_AUTO_SNI_SELECTED" || die 'SNI 自动优选及 Amazon 回退均未通过实时验证；为避免部署不可用节点，已停止一键安装。请使用交互式安装并输入可验证的 SNI。'
+        VISION_SNI="$ABOX_AUTO_SNI_SELECTED"
         VLESS_SNI="$VISION_SNI"
         ENABLE_KEEPALIVE='false'
         msg "${GREEN}[one-click] Vision REALITY defaults: port=${VLESS_PORT} SNI=${VISION_SNI}${NC}"
@@ -6232,7 +6259,7 @@ pre_install_setup() {
         XHTTP_PORT=$(prompt_port_input "$L_XHTTP" "$DEF_X_PORT") || die 'XHTTP 端口输入已结束 / XHTTP port input closed.'
         XHTTP_SNI=$(prompt_reality_sni "$L_XHTTP" "$XHTTP_PORT") || die 'XHTTP SNI 输入已结束 / XHTTP SNI input closed.'
     fi
-    VLESS_SNI=${VISION_SNI:-${XHTTP_SNI:-www.amazon.com}}
+    VLESS_SNI=${VISION_SNI:-${XHTTP_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}
 
     if [[ "$HAS_HY2" == 'true' ]]; then
         HY2_BASE_PORT=$(prompt_port_input "$L_HY2" "$DEF_H_PORT") || die 'HY2 端口输入已结束 / HY2 port input closed.'
@@ -6466,8 +6493,8 @@ build_xray_config() {
         --arg mode "$mode" \
         --arg listen_addr "$listen_addr" \
         --arg uuid "$UUID" \
-        --arg v_sni "${VISION_SNI:-${VLESS_SNI:-www.amazon.com}}" \
-        --arg x_sni "${XHTTP_SNI:-${VLESS_SNI:-www.amazon.com}}" \
+        --arg v_sni "${VISION_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
+        --arg x_sni "${XHTTP_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
         --arg pk "$PK" \
         --arg sid "$SHORT_ID" \
         --argjson vport "${VLESS_PORT:-443}" \
@@ -6529,8 +6556,8 @@ build_singbox_config() {
     # values intentionally map to up_mbps=HY2_DOWN and down_mbps=HY2_UP.
     inbounds_json=$(jq -n \
         --arg mode "$mode" --arg uuid "$UUID" --arg listen_addr "$listen_addr" \
-        --arg v_sni "${VISION_SNI:-${VLESS_SNI:-www.amazon.com}}" \
-        --arg x_sni "${XHTTP_SNI:-${VLESS_SNI:-www.amazon.com}}" \
+        --arg v_sni "${VISION_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
+        --arg x_sni "${XHTTP_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
         --arg pk "$PK" --arg sid "$SHORT_ID" \
         --argjson vport "${VLESS_PORT:-443}" --argjson hy2port "${HY2_BASE_PORT:-443}" --argjson ssport "${SS_PORT:-2053}" \
         --argjson hy2up "${HY2_DOWN:-1000}" --argjson hy2down "${HY2_UP:-100}" \
@@ -10906,10 +10933,10 @@ sni_auto_select_default() {
     # A target is selected from this VPS's real outbound path, not from a global
     # brand preference. VPS ASN/country, TLS 1.3, HTTP/2 ALPN, SAN and measured
     # handshake latency affect ranking. Hardware model is not a reliable SNI predictor.
-    command -v curl >/dev/null 2>&1 || { printf '%s\n' "$fallback"; return 0; }
-    command -v openssl >/dev/null 2>&1 || { printf '%s\n' "$fallback"; return 0; }
-    workdir=$(mktemp -d /tmp/A-Box-sni-auto.XXXXXX) || { printf '%s\n' "$fallback"; return 0; }
-    chmod 700 "$workdir" 2>/dev/null || { rm -rf -- "$workdir"; printf '%s\n' "$fallback"; return 0; }
+    command -v curl >/dev/null 2>&1 || { sni_verified_amazon_fallback; return $?; }
+    command -v openssl >/dev/null 2>&1 || { sni_verified_amazon_fallback; return $?; }
+    workdir=$(mktemp -d /tmp/A-Box-sni-auto.XXXXXX) || { sni_verified_amazon_fallback; return $?; }
+    chmod 700 "$workdir" 2>/dev/null || { rm -rf -- "$workdir"; sni_verified_amazon_fallback; return $?; }
 
     seed="$workdir/seed.txt"
     pool="$workdir/pool.txt"
@@ -10920,37 +10947,37 @@ sni_auto_select_default() {
     : > "$seed"
     if ! sni_load_candidate_seed "$seed" >&2; then
         rm -rf -- "$workdir"
-        printf '%s\n' "$fallback"
-        return 0
+        sni_verified_amazon_fallback
+        return $?
     fi
 
     # Use a registrable-domain-aware pool; unrelated multi-label country domains
     # must not collapse to a shared suffix such as "co.uk" or "com.au".
     sni_build_diverse_candidate_pool "$seed" "$pool" || {
         rm -rf -- "$workdir"
-        printf '%s\n' "$fallback"
-        return 0
+        sni_verified_amazon_fallback
+        return $?
     }
     [[ -s "$pool" ]] || {
         rm -rf -- "$workdir"
-        printf '%s\n' "$fallback"
-        return 0
+        sni_verified_amazon_fallback
+        return $?
     }
 
     total=$(wc -l < "$pool" | tr -d ' ')
     [[ "$total" =~ ^[0-9]+$ ]] || total=0
     (( total > 0 )) || {
         rm -rf -- "$workdir"
-        printf '%s\n' "$fallback"
-        return 0
+        sni_verified_amazon_fallback
+        return $?
     }
     step=$(( (total + candidate_limit - 1) / candidate_limit ))
     (( step >= 1 )) || step=1
     awk -v step="$step" 'NR == 1 || (NR - 1) % step == 0 { print; picked++; if (picked >= 16) exit }' "$pool" > "$candidates"
     [[ -s "$candidates" ]] || {
         rm -rf -- "$workdir"
-        printf '%s\n' "$fallback"
-        return 0
+        sni_verified_amazon_fallback
+        return $?
     }
 
     ABOX_CURL_TLS13_SUPPORTED=0
@@ -10969,20 +10996,20 @@ sni_auto_select_default() {
     wait || true
     if [[ ! -s "$raw" ]]; then
         rm -rf -- "$workdir"
-        printf '%s\n' "$fallback"
-        return 0
+        sni_verified_amazon_fallback
+        return $?
     fi
 
     LC_ALL=C sort -t $'\t' -k1,1n -k2,2 "$raw" > "$raw_sorted" || {
         rm -rf -- "$workdir"
-        printf '%s\n' "$fallback"
-        return 0
+        sni_verified_amazon_fallback
+        return $?
     }
     # Deep verification is intentionally bounded to keep the install wizard usable.
     if ! sni_verify_raw_report "$raw_sorted" "$verified" "$verify_limit" 3 >&2; then
         rm -rf -- "$workdir"
-        printf '%s\n' "$fallback"
-        return 0
+        sni_verified_amazon_fallback
+        return $?
     fi
 
     while IFS=$'\t' read -r score domain app ttfb total_time http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty; do
@@ -11001,8 +11028,8 @@ sni_auto_select_default() {
         printf '[SNI auto] 已按本机 TLS/SAN/ALPN 实测和 VPS ASN/地区评分选择 %s。\n' "$selected" >&2
         printf '%s\n' "$selected"
     else
-        printf '[SNI auto] 未找到通过深度验证的候选，回退到 %s。\n' "$fallback" >&2
-        printf '%s\n' "$fallback"
+        printf '[SNI auto] 未找到通过深度验证的候选；正在单独验证 Amazon 回退。\n' >&2
+        sni_verified_amazon_fallback
     fi
 }
 
@@ -16347,6 +16374,18 @@ PY_SELFTEST_TAR
     HY2_ACME_TYPE=dns
     [[ "$(selected_port_pairs | grep -Fx 'tcp/80')" != 'tcp/80' ]] || { echo 'FAIL: DNS-01 must not reserve TCP/80'; failures=$((failures + 1)); }
     unset HY2_DOMAIN HY2_ACME_TYPE CORE_IN MODE_IN VLESS_PORT XHTTP_PORT SS_PORT HY2_BASE_PORT HY2_HOP HY2_HOP_IMPL
+    (
+        sni_probe_candidate_tier() { printf 'A\n'; }
+        [[ "$(sni_verified_amazon_fallback)" == 'www.amazon.com' ]] || exit 1
+        sni_probe_candidate_tier() { printf 'R\n'; }
+        [[ "$(sni_verified_amazon_fallback 2>/dev/null)" == 'www.amazon.com' ]] || exit 2
+        sni_probe_candidate_tier() { printf 'D\n'; }
+        [[ -z "$(sni_verified_amazon_fallback 2>/dev/null)" ]] || exit 3
+        sni_probe_candidate_tier() { printf 'N\n'; }
+        [[ -z "$(sni_verified_amazon_fallback 2>/dev/null)" ]] || exit 4
+        ABOX_AUTO_SNI_SELECTED=''
+        [[ -z "$(default_sni_for_port 443)" ]] || exit 5
+    ) || { echo 'FAIL: Amazon fallback must pass TLS/h2/SAN checks before use'; failures=$((failures + 1)); }
     [[ "$(sni_domain_penalty www.apple.com)" == '1800' ]] || { echo 'FAIL: Apple www SNI penalty'; failures=$((failures + 1)); }
     [[ "$(sni_domain_penalty maps.apple.com)" == '2400' ]] || { echo 'FAIL: Apple subdomain SNI penalty'; failures=$((failures + 1)); }
     [[ "$(sni_domain_penalty apple.com)" == '2400' ]] || { echo 'FAIL: Apple apex SNI penalty'; failures=$((failures + 1)); }
@@ -16909,11 +16948,12 @@ EOF_SELFTEST_IPT
     rm -f "$tmp/xray/config.json.tmp.$$"
     jq empty "$tmp/xray/config.json" >/dev/null 2>&1 || { echo 'FAIL: build_xray_config JSON'; failures=$((failures + 1)); }
     [[ "$(stat -c %a "$tmp/xray/config.json" 2>/dev/null)" == '600' ]] || { echo 'FAIL: Xray config permissions must be 0600'; failures=$((failures + 1)); }
-    local saved_vision_sni="$VISION_SNI" saved_vless_sni="$VLESS_SNI"
+    local saved_vision_sni="$VISION_SNI" saved_vless_sni="$VLESS_SNI" saved_auto_sni="${ABOX_AUTO_SNI_SELECTED:-}"
     unset VISION_SNI VLESS_SNI
+    ABOX_AUTO_SNI_SELECTED='www.amazon.com'
     build_xray_config VISION "$tmp/xray/default-sni.json"
-    jq -e '.inbounds[] | select(.protocol=="vless" and .streamSettings.realitySettings.serverNames[0]=="www.amazon.com")' "$tmp/xray/default-sni.json" >/dev/null 2>&1 || { echo 'FAIL: fallback REALITY SNI must be www.amazon.com'; failures=$((failures + 1)); }
-    VISION_SNI="$saved_vision_sni" VLESS_SNI="$saved_vless_sni"
+    jq -e '.inbounds[] | select(.protocol=="vless" and .streamSettings.realitySettings.serverNames[0]=="www.amazon.com")' "$tmp/xray/default-sni.json" >/dev/null 2>&1 || { echo 'FAIL: explicitly selected fallback REALITY SNI must be preserved'; failures=$((failures + 1)); }
+    VISION_SNI="$saved_vision_sni" VLESS_SNI="$saved_vless_sni" ABOX_AUTO_SNI_SELECTED="$saved_auto_sni"
     jq -e '.inbounds[] | select(.protocol=="shadowsocks" and .port==2053 and .settings.network=="tcp,udp")' "$tmp/xray/config.json" >/dev/null 2>&1 || { echo 'FAIL: Xray SS-2022 2053 tcp,udp'; failures=$((failures + 1)); }
     jq -e '.inbounds[] | select(.protocol=="vless" and .port==8443 and .streamSettings.realitySettings.serverNames[0]=="www.microsoft.com")' "$tmp/xray/config.json" >/dev/null 2>&1 || { echo 'FAIL: Xray Vision SNI split'; failures=$((failures + 1)); }
     jq -e '.inbounds[] | select(.protocol=="vless" and .port==9443 and .streamSettings.realitySettings.serverNames[0]=="www.microsoft.com")' "$tmp/xray/config.json" >/dev/null 2>&1 || { echo 'FAIL: Xray XHTTP SNI split'; failures=$((failures + 1)); }

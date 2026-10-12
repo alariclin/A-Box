@@ -9090,36 +9090,36 @@ multi_uuid_menu() {
 try_latest_cores_danger() {
     local answer targets=() t latest
     clear
-    msg "\${RED}\${BOLD}DANGER: 尝试上游最新正式稳定版 / Try latest upstream stable release\${NC}"
-    msg "Routine deployment and normal core upgrades retain tested compatibility pins: \${ABOX_XRAY_DEFAULT_VERSION} / \${ABOX_SINGBOX_DEFAULT_VERSION} / \${ABOX_HYSTERIA_DEFAULT_VERSION}."
+    msg "${RED}${BOLD}DANGER: 尝试上游最新正式稳定版 / Try latest upstream stable release${NC}"
+    msg "Routine deployment and normal core upgrades retain tested compatibility pins: ${ABOX_XRAY_DEFAULT_VERSION} / ${ABOX_SINGBOX_DEFAULT_VERSION} / ${ABOX_HYSTERIA_DEFAULT_VERSION}."
     msg "This opt-in path may break Shadowrocket/Mihomo (e.g. Xray ML-KEM). Failure triggers the existing core-upgrade transaction rollback."
     read -r -p 'Type YES to continue: ' answer
-    [[ "$answer" == 'YES' ]] || { msg "\${YELLOW}Canceled.\${NC}"; pause_return; return 0; }
+    [[ "$answer" == 'YES' ]] || { msg "${YELLOW}Canceled.${NC}"; pause_return; return 0; }
     init_system_environment
     load_optional_abox_env_or_die
     if abox_owns_service xray && [[ -x /usr/local/bin/xray ]]; then targets+=(xray); fi
     if abox_owns_service sing-box && [[ -x /usr/local/bin/sing-box ]]; then targets+=(singbox); fi
     if abox_owns_service hysteria && [[ -x /usr/local/bin/hysteria ]]; then targets+=(hysteria); fi
-    (( \${#targets[@]} > 0 )) || { msg "\${YELLOW}No owned cores.\${NC}"; pause_return; return 0; }
-    begin_core_upgrade_transaction "\${targets[@]}"
-    for t in "\${targets[@]}"; do
+    (( ${#targets[@]} > 0 )) || { msg "${YELLOW}No owned cores.${NC}"; pause_return; return 0; }
+    begin_core_upgrade_transaction "${targets[@]}"
+    for t in "${targets[@]}"; do
         case "$t" in
             xray)
                 latest=$(core_latest_stable_release_ref XTLS/Xray-core 2>/dev/null || core_release_mirror_version XTLS/Xray-core) || die '无法解析 Xray 正式稳定候选或容灾版本。'
-                msg "\${YELLOW}Trying Xray stable/recovery candidate \${latest}\${NC}"
+                msg "${YELLOW}Trying Xray stable/recovery candidate ${latest}${NC}"
                 ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_xray_core_only ;;
             singbox)
                 latest=$(core_latest_stable_release_ref SagerNet/sing-box 2>/dev/null || core_release_mirror_version SagerNet/sing-box) || die '无法解析 sing-box 正式稳定候选或容灾版本。'
-                msg "\${YELLOW}Trying sing-box stable/recovery candidate \${latest}\${NC}"
+                msg "${YELLOW}Trying sing-box stable/recovery candidate ${latest}${NC}"
                 ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_singbox_core_only ;;
             hysteria)
                 latest=$(core_latest_stable_release_ref HyNetworks/hysteria 2>/dev/null || core_release_mirror_version HyNetworks/hysteria) || die '无法解析 Hysteria 正式稳定候选或容灾版本。'
-                msg "\${YELLOW}Trying Hysteria stable/recovery candidate \${latest}\${NC}"
+                msg "${YELLOW}Trying Hysteria stable/recovery candidate ${latest}${NC}"
                 ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_hysteria_core_only ;;
         esac
     done
     commit_core_upgrade_transaction
-    msg "\${GREEN}Latest-core attempt finished (transaction committed). Re-test clients.\${NC}"
+    msg "${GREEN}Latest-core attempt finished (transaction committed). Re-test clients.${NC}"
     pause_return
 }
 

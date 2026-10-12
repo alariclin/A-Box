@@ -6620,6 +6620,7 @@ deploy_official_hy2() {
     hy2_tmp=$(mktemp -d /tmp/A-Box-hysteria.XXXXXX) || die 'Hysteria 临时目录创建失败。'
     ABOX_DEPLOY_TX_TMP="$hy2_tmp"
     hy2_bin="$hy2_tmp/hysteria_core"
+    clear_core_release_resolution HyNetworks/hysteria
     fetch_github_release HyNetworks/hysteria hysteria_core "$hy2_bin"
     chmod 755 "$hy2_bin" || die 'Hysteria staged binary chmod failed.'
     "$hy2_bin" version >/dev/null 2>&1 || die 'Hysteria staged binary execution check failed.'
@@ -7002,6 +7003,7 @@ deploy_xray() {
     xray_zip="$xray_tmp/xray_core.zip"
     xray_ext="$xray_tmp/xray_ext"
     mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
+    clear_core_release_resolution XTLS/Xray-core
     fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
     extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die 'Xray 压缩包安全提取失败。'
     [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die '安全提取后未找到 xray 主程序。'
@@ -7118,6 +7120,7 @@ deploy_singbox() {
     sb_tar="$sb_tmp/singbox_core.tar.gz"
     sb_ext="$sb_tmp/extract"
     mkdir -p "$sb_ext" || die 'Sing-box 临时提取目录创建失败。'
+    clear_core_release_resolution SagerNet/sing-box
     fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
     SB_PATH="$sb_ext/sing-box"
     extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
@@ -9108,26 +9111,20 @@ try_latest_cores_danger() {
     for t in "${targets[@]}"; do
         case "$t" in
             xray)
-                json=$(github_api_get 'https://api.github.com/repos/XTLS/Xray-core/releases/latest' 2>/dev/null) || json=''
-                latest=$(jq -r '.tag_name // empty' <<< "$json")
-                [[ -n "$latest" ]] || die '无法解析 Xray latest tag。'
+                latest=$(core_latest_stable_release_ref XTLS/Xray-core) || die '无法解析 Xray 最新正式稳定版。'
                 msg "${YELLOW}Trying Xray ${latest}${NC}"
-                ABOX_XRAY_VERSION="$latest" upgrade_xray_core_only
+                upgrade_xray_core_only
                 ;;
             singbox)
-                json=$(github_api_get 'https://api.github.com/repos/SagerNet/sing-box/releases/latest' 2>/dev/null) || json=''
-                latest=$(jq -r '.tag_name // empty' <<< "$json")
-                [[ -n "$latest" ]] || die '无法解析 sing-box latest tag。'
+                latest=$(core_latest_stable_release_ref SagerNet/sing-box) || die '无法解析 sing-box 最新正式稳定版。'
                 msg "${YELLOW}Trying sing-box ${latest}${NC}"
-                ABOX_SINGBOX_VERSION="$latest" upgrade_singbox_core_only
+                upgrade_singbox_core_only
                 ;;
             hysteria)
                 # Hysteria uses app/vX tags; keep pin channel unless API gives tag
-                json=$(github_api_get 'https://api.github.com/repos/HyNetworks/hysteria/releases/latest' 2>/dev/null) || json=''
-                latest=$(jq -r '.tag_name // empty' <<< "$json")
-                [[ -n "$latest" ]] || die '无法解析 Hysteria latest tag。'
+                latest=$(core_latest_stable_release_ref HyNetworks/hysteria) || die '无法解析 Hysteria 最新正式稳定版。'
                 msg "${YELLOW}Trying Hysteria ${latest}${NC}"
-                ABOX_HYSTERIA_APP_VERSION="$latest" upgrade_hysteria_core_only
+                upgrade_hysteria_core_only
                 ;;
         esac
     done
@@ -15129,7 +15126,9 @@ upgrade_xray_core_only() {
     [[ -x /usr/local/bin/xray ]] && old_ver=$(/usr/local/bin/xray version 2>/dev/null | head -n 1 || true)
     core_version_probe_safe /usr/local/bin/xray "${old_ver:-}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die '无法读取现有 Xray 版本；默认拒绝覆盖未知版本核心。'
     local target_ref current_tag='' decision=0
-    target_ref="$(effective_xray_version)"
+    clear_core_release_resolution XTLS/Xray-core
+    resolve_core_release_target XTLS/Xray-core || die '无法解析 Xray 最新正式稳定候选或固定容灾版本。'
+    target_ref="$ABOX_RESOLVED_XRAY_VERSION"
     if [[ -n "${old_ver:-}" ]]; then
         current_tag=$(core_version_from_output "$old_ver" || true)
         if [[ -z "$current_tag" ]]; then
@@ -15151,12 +15150,27 @@ upgrade_xray_core_only() {
     tmp=$(mktemp -d /tmp/A-Box-core-xray.XXXXXX) || die 'Xray core upgrade temp directory failed.'
     ABOX_CORE_UPGRADE_TMP="$tmp"
     xray_zip="$tmp/xray_core.zip"; xray_ext="$tmp/xray_ext"; mkdir -p "$xray_ext"
-    ABOX_XRAY_VERSION="$target_ref" fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
+    fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
     extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || { rm -rf "$tmp"; die 'Xray core archive safe extraction failed.'; }
     [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || { rm -rf "$tmp"; die 'Xray binary not found after safe extraction.'; }
     chmod 755 "$xray_ext/xray" || { rm -rf "$tmp"; die 'Xray staged binary chmod failed.'; }
     new_ver=$("$xray_ext/xray" version 2>/dev/null | head -n 1 || true)
     [[ -n "$new_ver" ]] || { rm -rf "$tmp"; die 'Xray staged binary execution check failed.'; }
+    core_binary_matches_release_ref "$ABOX_LAST_CORE_RELEASE_REF" "$new_ver" || { rm -rf "$tmp"; die "最终核心二进制版本与所选标签 ${ABOX_LAST_CORE_RELEASE_REF} 不一致。"; }
+    if [[ -n "$current_tag" ]]; then
+        local final_tag='' final_decision=0
+        final_tag=$(core_version_from_output "$new_ver" 2>/dev/null) || { rm -rf "$tmp"; die '无法解析最终候选二进制版本。'; }
+        core_version_upgrade_decision "$current_tag" "$final_tag" "${ABOX_XRAY_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
+        final_decision=$?
+        case "$final_decision" in
+            0) ;;
+            1) rm -rf "$tmp"; die "拒绝将 ${coreName} 从 ${current_tag} 降级到最终候选版本 ${final_tag}。" ;;
+            2) rm -rf "$tmp"; die '最终核心候选版本格式无法比较。' ;;
+            3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] 最终候选版本 ${final_tag} 低于当前版本 ${current_tag}；已跳过以避免自动降级。${NC}"; return 0 ;;
+            4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] 最终候选版本 ${final_tag} 与当前版本相同，无需替换。${NC}"; return 0 ;;
+            *) rm -rf "$tmp"; die '最终核心版本方向检查返回异常状态。' ;;
+        esac
+    fi
     if [[ -f /usr/local/etc/xray/config.json ]] && ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$xray_ext/xray" run -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1; then
         rm -rf "$tmp"; die 'New Xray is incompatible with the current config; installed binary was not changed.'
     fi
@@ -15184,7 +15198,10 @@ upgrade_singbox_core_only() {
     case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die 'sing-box 服务状态响应无效；拒绝继续升级。' ;; esac
     [[ -x /usr/local/bin/sing-box ]] && old_ver=$(/usr/local/bin/sing-box version 2>/dev/null | head -n 1 || true)
     core_version_probe_safe /usr/local/bin/sing-box "${old_ver:-}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die '无法读取现有 sing-box 版本；默认拒绝覆盖未知版本核心。'
-    local target_ref="${ABOX_SINGBOX_VERSION:-$ABOX_SINGBOX_DEFAULT_VERSION}" current_tag='' decision=0
+    local target_ref='' current_tag='' decision=0
+    clear_core_release_resolution SagerNet/sing-box
+    resolve_core_release_target SagerNet/sing-box || die '无法解析 sing-box 最新正式稳定候选或固定容灾版本。'
+    target_ref="$ABOX_RESOLVED_SINGBOX_VERSION"
     if [[ -n "${old_ver:-}" ]]; then
         current_tag=$(core_version_from_output "$old_ver" || true)
         if [[ -z "$current_tag" ]]; then
@@ -15213,6 +15230,21 @@ upgrade_singbox_core_only() {
     chmod 755 "$sb_path" || { rm -rf "$tmp"; die 'sing-box staged binary chmod failed.'; }
     new_ver=$("$sb_path" version 2>/dev/null | head -n 1 || true)
     [[ -n "$new_ver" ]] || { rm -rf "$tmp"; die 'sing-box staged binary execution check failed.'; }
+    core_binary_matches_release_ref "$ABOX_LAST_CORE_RELEASE_REF" "$new_ver" || { rm -rf "$tmp"; die "最终核心二进制版本与所选标签 ${ABOX_LAST_CORE_RELEASE_REF} 不一致。"; }
+    if [[ -n "$current_tag" ]]; then
+        local final_tag='' final_decision=0
+        final_tag=$(core_version_from_output "$new_ver" 2>/dev/null) || { rm -rf "$tmp"; die '无法解析最终候选二进制版本。'; }
+        core_version_upgrade_decision "$current_tag" "$final_tag" "${ABOX_SINGBOX_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
+        final_decision=$?
+        case "$final_decision" in
+            0) ;;
+            1) rm -rf "$tmp"; die "拒绝将 ${coreName} 从 ${current_tag} 降级到最终候选版本 ${final_tag}。" ;;
+            2) rm -rf "$tmp"; die '最终核心候选版本格式无法比较。' ;;
+            3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] 最终候选版本 ${final_tag} 低于当前版本 ${current_tag}；已跳过以避免自动降级。${NC}"; return 0 ;;
+            4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] 最终候选版本 ${final_tag} 与当前版本相同，无需替换。${NC}"; return 0 ;;
+            *) rm -rf "$tmp"; die '最终核心版本方向检查返回异常状态。' ;;
+        esac
+    fi
     if [[ -f /etc/sing-box/config.json ]] && ! "$sb_path" check -c /etc/sing-box/config.json >/dev/null 2>&1; then
         rm -rf "$tmp"; die 'New sing-box is incompatible with the current config; installed binary was not changed.'
     fi
@@ -15240,7 +15272,10 @@ upgrade_hysteria_core_only() {
     case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die 'Hysteria 服务状态响应无效；拒绝继续升级。' ;; esac
     [[ -x /usr/local/bin/hysteria ]] && old_ver=$(/usr/local/bin/hysteria version 2>/dev/null | head -n 1 || true)
     core_version_probe_safe /usr/local/bin/hysteria "${old_ver:-}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die '无法读取现有 Hysteria 版本；默认拒绝覆盖未知版本核心。'
-    local target_ref="${ABOX_HYSTERIA_APP_VERSION:-app/v2.13.0}" current_tag='' decision=0
+    local target_ref='' current_tag='' decision=0
+    clear_core_release_resolution HyNetworks/hysteria
+    resolve_core_release_target HyNetworks/hysteria || die '无法解析 Hysteria 最新正式稳定候选或固定容灾版本。'
+    target_ref="$ABOX_RESOLVED_HYSTERIA_VERSION"
     if [[ -n "${old_ver:-}" ]]; then
         current_tag=$(core_version_from_output "$old_ver" || true)
         if [[ -z "$current_tag" ]]; then
@@ -15266,6 +15301,21 @@ upgrade_hysteria_core_only() {
     chmod 755 "$hy2_bin" || { rm -rf "$tmp"; die 'Hysteria staged binary chmod failed.'; }
     new_ver=$("$hy2_bin" version 2>/dev/null | head -n 1 || true)
     [[ -n "$new_ver" ]] || { rm -rf "$tmp"; die 'Hysteria staged binary execution check failed.'; }
+    core_binary_matches_release_ref "$ABOX_LAST_CORE_RELEASE_REF" "$new_ver" || { rm -rf "$tmp"; die "最终核心二进制版本与所选标签 ${ABOX_LAST_CORE_RELEASE_REF} 不一致。"; }
+    if [[ -n "$current_tag" ]]; then
+        local final_tag='' final_decision=0
+        final_tag=$(core_version_from_output "$new_ver" 2>/dev/null) || { rm -rf "$tmp"; die '无法解析最终候选二进制版本。'; }
+        core_version_upgrade_decision "$current_tag" "$final_tag" "${ABOX_HYSTERIA_APP_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
+        final_decision=$?
+        case "$final_decision" in
+            0) ;;
+            1) rm -rf "$tmp"; die "拒绝将 ${coreName} 从 ${current_tag} 降级到最终候选版本 ${final_tag}。" ;;
+            2) rm -rf "$tmp"; die '最终核心候选版本格式无法比较。' ;;
+            3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] 最终候选版本 ${final_tag} 低于当前版本 ${current_tag}；已跳过以避免自动降级。${NC}"; return 0 ;;
+            4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] 最终候选版本 ${final_tag} 与当前版本相同，无需替换。${NC}"; return 0 ;;
+            *) rm -rf "$tmp"; die '最终核心版本方向检查返回异常状态。' ;;
+        esac
+    fi
     [[ -f /usr/local/bin/hysteria ]] && { backup="$tmp/hysteria.backup"; cp -a /usr/local/bin/hysteria "$backup" || { rm -rf "$tmp"; die 'Hysteria binary backup failed.'; }; }
     install_binary_atomically "$hy2_bin" /usr/local/bin/hysteria || { rm -rf "$tmp"; die 'Hysteria binary atomic install failed.'; }
     if [[ "$was_active" == '1' ]]; then

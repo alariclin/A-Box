@@ -4795,6 +4795,9 @@ core_latest_stable_tag_from_json() {
         *) return 1 ;;
     esac
     [[ -n "$release_json" ]] || return 1
+    # GitHub's release feed is ordered by publication time, not semantic version.
+    # Sort the validated stable tags numerically so a late-published older release
+    # cannot shadow a newer version. Prereleases and drafts are filtered above.
     tag=$(jq -er --arg pattern "$pattern" '
         if type != "array" then empty
         else
@@ -4803,7 +4806,11 @@ core_latest_stable_tag_from_json() {
             | select(((.tag_name // "") | type) == "string")
             | select((.tag_name // "") | test($pattern))
           ]
-          | sort_by(.published_at // .created_at // "")
+          | sort_by(
+              .tag_name
+              | capture("^(?:app/)?v(?<major>[0-9]+)\\.(?<minor>[0-9]+)\\.(?<patch>[0-9]+)$")
+              | [(.major | tonumber), (.minor | tonumber), (.patch | tonumber)]
+            )
           | last
           | .tag_name // empty
         end
@@ -16200,8 +16207,8 @@ PY_SELFTEST_TAR
         [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.3|upstream' ]]
     ) || { echo 'FAIL: explicit latest action must select stable upstream candidate'; failures=$((failures + 1)); }
     local mock_release_json=''
-    mock_release_json='[{"tag_name":"v1.15.0-alpha.12","draft":false,"prerelease":true,"published_at":"2026-10-11T06:13:25Z"},{"tag_name":"v1.14.2","draft":false,"prerelease":false,"published_at":"2026-09-24T11:47:08Z"},{"tag_name":"v1.14.3","draft":false,"prerelease":false,"published_at":"2026-10-09T05:35:00Z"},{"tag_name":"v1.16.0","draft":true,"prerelease":false,"published_at":"2026-10-12T00:00:00Z"}]'
-    [[ "$(core_latest_stable_tag_from_json SagerNet/sing-box "$mock_release_json")" == 'v1.14.3' ]] || { echo 'FAIL: stable resolver must exclude prerelease and draft'; failures=$((failures + 1)); }
+    mock_release_json='[{"tag_name":"v1.17.0-rc.1","draft":false,"prerelease":true,"published_at":"2026-10-12T06:13:25Z"},{"tag_name":"v1.14.2","draft":false,"prerelease":false,"published_at":"2026-10-10T11:47:08Z"},{"tag_name":"v1.14.3","draft":false,"prerelease":false,"published_at":"2026-10-09T05:35:00Z"},{"tag_name":"v1.15.0","draft":false,"prerelease":false,"published_at":"2026-09-01T00:00:00Z"},{"tag_name":"v1.16.0","draft":true,"prerelease":false,"published_at":"2026-10-13T00:00:00Z"}]'
+    [[ "$(core_latest_stable_tag_from_json SagerNet/sing-box "$mock_release_json")" == 'v1.15.0' ]] || { echo 'FAIL: stable resolver must use semantic version order and exclude prerelease/draft'; failures=$((failures + 1)); }
     mock_release_json='[{"tag_name":"app/v2.14.0-rc.1","draft":false,"prerelease":true,"published_at":"2026-10-12T00:00:00Z"},{"tag_name":"app/v2.13.0","draft":false,"prerelease":false,"published_at":"2026-10-05T00:00:00Z"}]'
     [[ "$(core_latest_stable_tag_from_json HyNetworks/hysteria "$mock_release_json")" == 'app/v2.13.0' ]] || { echo 'FAIL: Hysteria stable resolver'; failures=$((failures + 1)); }
     core_binary_matches_release_ref 'v26.7.28' 'Xray 26.7.28 (Xray, Penetrates Everything.)' || { echo 'FAIL: Xray binary/tag identity'; failures=$((failures + 1)); }

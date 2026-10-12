@@ -4330,6 +4330,38 @@ validate_downloaded_asset() {
 }
 
 
+validate_core_asset_binary_version() {
+    local asset_name="${1:-}" f="${2:-}" expected_ref="${3:-}" workdir='' binary='' output=''
+    [[ -s "$f" && -n "$expected_ref" ]] || return 1
+    workdir=$(mktemp -d /tmp/A-Box-core-version.XXXXXX) || return 1
+    case "$asset_name" in
+        xray_core.zip)
+            binary="$workdir/xray"
+            if ! extract_zip_member_safely "$f" xray "$binary"; then rm -rf -- "$workdir"; return 1; fi
+            chmod 700 "$binary" || { rm -rf -- "$workdir"; return 1; }
+            output=$("$binary" version 2>&1) || { rm -rf -- "$workdir"; return 1; }
+            ;;
+        singbox_core.tar.gz)
+            binary="$workdir/sing-box"
+            if ! extract_tar_regular_basename_safely "$f" sing-box "$binary"; then rm -rf -- "$workdir"; return 1; fi
+            chmod 700 "$binary" || { rm -rf -- "$workdir"; return 1; }
+            output=$("$binary" version 2>&1) || { rm -rf -- "$workdir"; return 1; }
+            ;;
+        hysteria_core)
+            chmod 700 "$f" 2>/dev/null || { rm -rf -- "$workdir"; return 1; }
+            output=$("$f" version 2>&1) || { rm -rf -- "$workdir"; return 1; }
+            ;;
+        *) rm -rf -- "$workdir"; return 1 ;;
+    esac
+    if ! core_binary_matches_release_ref "$expected_ref" "$output"; then
+        printf 'Core binary version does not match selected Release tag %s: %s\n' "$expected_ref" "$output" >&2
+        rm -rf -- "$workdir"
+        return 1
+    fi
+    rm -rf -- "$workdir"
+    return 0
+}
+
 extract_zip_member_safely() {
     local archive="$1" member="$2" dest="$3"
     [[ -s "$archive" && -n "$member" && -n "$dest" ]] || return 1
@@ -4687,8 +4719,8 @@ core_version_probe_safe() {
 core_release_ref_valid() {
     local repo="${1:-}" ref="${2:-}"
     case "$repo" in
-        XTLS/Xray-core|SagerNet/sing-box) [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] ;;
-        HyNetworks/hysteria) [[ "$ref" =~ ^app/v[0-9]+\.[0-9]+\.[0-9]+$ ]] ;;
+        XTLS/Xray-core|SagerNet/sing-box) [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]] ;;
+        HyNetworks/hysteria) [[ "$ref" =~ ^app/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]] ;;
         *) return 1 ;;
     esac
 }
@@ -4835,115 +4867,106 @@ singbox_asset_json_from_release() {
     printf '%s\n' "$asset_json"
 }
 
-fetch_github_release() {
-    local repo=$1 output_file=$2 dest_file="${3:-}" api_url asset_re release_json asset_json asset_name download_url digest mirror tmp_file tmp_dir release_ref
-    case "$repo:$output_file" in
-        # Keep new installs on the current iOS/XHTTP compatibility pin.
-        # The pin is intentionally not the latest prerelease; explicit overrides remain supported
-        # but are treated as compatibility-sensitive.
-        XTLS/Xray-core:xray_core.zip) release_ref="${ABOX_XRAY_VERSION:-$ABOX_XRAY_DEFAULT_VERSION}" ;;
-        SagerNet/sing-box:singbox_core.tar.gz) release_ref="${ABOX_SINGBOX_VERSION:-$ABOX_SINGBOX_DEFAULT_VERSION}" ;;
-        HyNetworks/hysteria:hysteria_core) release_ref="${ABOX_HYSTERIA_APP_VERSION:-app/v2.13.0}" ;;
-        *) release_ref='' ;;
-    esac
-    [[ "$release_ref" =~ ^[A-Za-z0-9._/-]+$ ]] || die '核心版本号非法。'
+core_fetch_upstream_release_asset() {
+    local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" release_ref="${4:-}" asset_re="${5:-}" source="${6:-upstream}"
+    local api_url release_json asset_array count asset_json asset_name download_url digest mirror tmp_file require_stable=1
     api_url="https://api.github.com/repos/${repo}/releases/tags/${release_ref//\//%2F}"
-    case "${repo}:${output_file}" in
-        XTLS/Xray-core:xray_core.zip) asset_re="^Xray-linux-${XRAY_ARCH//+/\\+}\\.zip$" ;;
-        SagerNet/sing-box:singbox_core.tar.gz) asset_re="$(singbox_asset_regex)" ;;
-        HyNetworks/hysteria:hysteria_core) asset_re="^hysteria-linux-${HY2_ARCH}$" ;;
-        *) die "未定义的资产匹配规则: ${repo}:${output_file}" ;;
-    esac
-    if [[ "$repo:$output_file" == 'XTLS/Xray-core:xray_core.zip' ]]; then
-        if xray_reality_requires_mlkem; then
-            msg "${YELLOW}[!] Xray ${release_ref} 使用较新的 REALITY ML-KEM ClientHello 门槛；部分 Shadowrocket / sing-box / Mihomo 旧版本可能无法连接。${NC}"
-        else
-            rc=$?
-            (( rc == 1 )) || die 'Xray 版本号无法解析。'
-        fi
+    release_json=$(github_api_get "$api_url" 2>/dev/null) || { msg "${YELLOW}[!] 上游 Release API 不可用: ${repo}:${release_ref}${NC}" >&2; return 1; }
+    [[ "$source" == 'explicit' ]] && require_stable=0
+    if ! jq -e --arg tag "$release_ref" --argjson stable "$require_stable" '
+        type == "object"
+        and .tag_name == $tag
+        and .draft == false
+        and (if $stable == 1 then .prerelease == false else true end)
+    ' <<< "$release_json" >/dev/null 2>&1; then
+        msg "${YELLOW}[!] 上游 Release 元数据与目标版本/稳定性不一致: ${repo}:${release_ref}${NC}" >&2
+        return 1
     fi
-    msg "${YELLOW} -> 正在从 GitHub 获取指定架构/版本资产 [${repo}:${release_ref}]...${NC}"
-    probe_core_sources_banner
-
-    # U5: optional mirror-first (still SHA256 verified; never skips digest).
-    if abox_prefer_mirror; then
-        if [[ -z "$dest_file" ]]; then
-            tmp_dir=$(mktemp -d /tmp/A-Box-asset.XXXXXX) || die '核心资产临时目录创建失败。'
-            dest_file="$tmp_dir/$output_file"
-        else
-            mkdir -p "$(dirname "$dest_file")" || die '核心资产目标目录创建失败。'
-        fi
-        if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file"; then
-            return 0
-        fi
-        msg "${YELLOW}[!] mirror-first miss; falling back to upstream GitHub...${NC}"
-    fi
-
-    release_json=$(github_api_get "$api_url" 2>/dev/null) || release_json=''
-    if [[ -z "$dest_file" ]]; then
-        tmp_dir=$(mktemp -d /tmp/A-Box-asset.XXXXXX) || die '核心资产临时目录创建失败。'
-        dest_file="$tmp_dir/$output_file"
-    else
-        mkdir -p "$(dirname "$dest_file")" || die '核心资产目标目录创建失败。'
-    fi
-    if [[ -z "$release_json" ]]; then
-        msg "${YELLOW}[!] GitHub Release API unavailable or rate-limited; trying the version-checked A-Box mirror.${NC}"
-    fi
-
-    if [[ -n "$release_json" ]]; then
-    if [[ "$repo:$output_file" == 'SagerNet/sing-box:singbox_core.tar.gz' ]]; then
-        asset_json=$(singbox_asset_json_from_release "$release_json") || die '未能解析 sing-box 核心资产下载地址。'
-    else
-        asset_json=$(jq -c --arg re "$asset_re" 'first(.assets[]? | select(.name | test($re)) | {name:.name,url:.browser_download_url,digest:(.digest // "")}) // empty' <<< "$release_json")
-        [[ -n "$asset_json" && "$asset_json" != 'null' ]] || die '未能解析核心资产下载地址。'
-    fi
+    [[ "$repo:$output_file" == 'SagerNet/sing-box:singbox_core.tar.gz' ]] && asset_re=$(singbox_asset_regex)
+    asset_array=$(jq -c --arg re "$asset_re" '
+        [ .assets[]?
+          | select(((.name // "") | type) == "string")
+          | select((.name // "") | test($re))
+          | {name:.name,url:(.browser_download_url // ""),digest:(.digest // "")}
+        ]
+    ' <<< "$release_json" 2>/dev/null) || return 1
+    count=$(jq -r 'length' <<< "$asset_array" 2>/dev/null) || return 1
+    [[ "$count" == '1' ]] || { msg "${YELLOW}[!] 目标架构资产匹配数不是 1（匹配 ${count:-0} 个）: ${repo}:${release_ref}${NC}" >&2; return 1; }
+    asset_json=$(jq -c '.[0]' <<< "$asset_array") || return 1
     asset_name=$(jq -r '.name // ""' <<< "$asset_json")
-    download_url=$(jq -r '.url' <<< "$asset_json")
+    download_url=$(jq -r '.url // ""' <<< "$asset_json")
     digest=$(jq -r '.digest // ""' <<< "$asset_json")
-    [[ -n "$asset_name" ]] || die 'GitHub Release asset name missing.'
-    valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || die 'GitHub Release 下载地址仓库或版本标签不匹配。'
-    [[ "$digest" == sha256:* ]] || die 'GitHub Release asset 缺少官方 SHA256 digest，拒绝安装。'
-    [[ "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]] || die 'GitHub Release digest 格式异常。'
-
-    if [[ -z "$dest_file" ]]; then
-        tmp_dir=$(mktemp -d /tmp/A-Box-asset.XXXXXX) || die '核心资产临时目录创建失败。'
-        dest_file="$tmp_dir/$output_file"
-    else
-        mkdir -p "$(dirname "$dest_file")" || die '核心资产目标目录创建失败。'
-        # Preserve any existing destination until a fully validated asset is ready.
-    fi
+    [[ -n "$asset_name" ]] || return 1
+    valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { msg "${YELLOW}[!] 下载 URL 与官方仓库/tag/资产不匹配，拒绝该候选。${NC}" >&2; return 1; }
+    [[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]] || { msg "${YELLOW}[!] 官方 Release 缺少有效 SHA-256 digest。${NC}" >&2; return 1; }
 
     for mirror in '' 'https://ghp.ci/' 'https://mirror.ghproxy.com/'; do
-        tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || die '核心资产临时文件创建失败。'
+        tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
         if curl -fLsS --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
             if ! validate_downloaded_asset "$output_file" "$tmp_file"; then
-                rm -f "$tmp_file"
-                if [[ -z "$mirror" ]]; then
-                    msg "${YELLOW}[!] GitHub 官方直连下载内容结构校验未通过，正在自动回退尝试备用加速镜像...${NC}"
-                    continue
-                fi
-                msg "${YELLOW}[!] 第三方镜像下载内容结构校验未通过，继续尝试下一通道。${NC}"
-                continue
+                rm -f -- "$tmp_file"; msg "${YELLOW}[!] 下载归档格式校验失败，继续尝试下一个下载通道。${NC}" >&2; continue
             fi
             if ! verify_github_asset_digest "$tmp_file" "$digest"; then
-                rm -f "$tmp_file"
-                die 'GitHub Release 核心资产 digest 校验失败；拒绝继续使用任何镜像。'
+                rm -f -- "$tmp_file"; msg "${YELLOW}[!] 资产 SHA-256 不匹配，继续尝试下一个下载通道。${NC}" >&2; continue
             fi
-            mv -f "$tmp_file" "$dest_file" || { rm -f "$tmp_file"; die '核心资产原子提交失败。'; }
-            msg "${GREEN}   核心资产提取成功。${NC}"
+            # Never execute a downloaded binary until the official digest matches.
+            if ! validate_core_asset_binary_version "$output_file" "$tmp_file" "$release_ref"; then
+                rm -f -- "$tmp_file"; msg "${YELLOW}[!] 二进制实际版本与上游 tag 不一致，拒绝该候选。${NC}" >&2; continue
+            fi
+            mv -f -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
+            ABOX_LAST_CORE_RELEASE_REF="$release_ref"
+            ABOX_LAST_CORE_SOURCE="$source"
+            core_set_resolved_target "$repo" "$release_ref" "$source" || return 1
+            msg "${GREEN}   上游候选通过架构、摘要与实际二进制版本校验：${repo}:${release_ref}${NC}"
             return 0
         fi
-        rm -f "$tmp_file"
+        rm -f -- "$tmp_file"
     done
-    else
-        msg "${YELLOW}[!] No upstream release metadata; skipping upstream downloads and trying only the trusted A-Box mirror.${NC}"
+    msg "${YELLOW}[!] 上游资产的全部下载/验证通道失败。${NC}" >&2
+    return 1
+}
+
+fetch_github_release() {
+    local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" asset_re='' target_ref='' target_source='' mirror_ref=''
+    case "$repo:$output_file" in
+        XTLS/Xray-core:xray_core.zip) asset_re="^Xray-linux-${XRAY_ARCH}[.]zip$" ;;
+        SagerNet/sing-box:singbox_core.tar.gz) asset_re="$(singbox_asset_regex)" ;;
+        HyNetworks/hysteria:hysteria_core) asset_re="^hysteria-linux-${HY2_ARCH}$" ;;
+        *) die "未定义的核心资产匹配规则: ${repo}:${output_file}" ;;
+    esac
+    resolve_core_release_target "$repo" || die "无法解析核心目标版本: ${repo}"
+    target_ref=$(core_resolved_version "$repo") || die "无法读取核心目标版本: ${repo}"
+    target_source=$(core_resolved_source "$repo") || die "无法读取核心目标来源: ${repo}"
+    core_release_ref_valid "$repo" "$target_ref" || die "核心目标版本格式非法: ${repo}:${target_ref}"
+
+    [[ -n "$dest_file" ]] || { local tmp_dir; tmp_dir=$(mktemp -d /tmp/A-Box-asset.XXXXXX) || die '核心资产临时目录创建失败。'; dest_file="$tmp_dir/$output_file"; }
+    mkdir -p "$(dirname "$dest_file")" || die '核心资产输出目录创建失败。'
+
+    if [[ "$repo:$output_file" == 'XTLS/Xray-core:xray_core.zip' ]]; then
+        if xray_reality_requires_mlkem; then
+            msg "${YELLOW}[!] Xray ${target_ref} 使用较新的 REALITY ML-KEM ClientHello 门槛；部分旧版客户端可能无法连接。${NC}"
+        else
+            local mlkem_rc=$?
+            (( mlkem_rc == 1 )) || die 'Xray 版本号无法解析。'
+        fi
+    fi
+    msg "${YELLOW} -> 核心目标 [${repo}:${target_ref}，source=${target_source}]...${NC}"
+    probe_core_sources_banner
+    if [[ "$target_source" == 'upstream' || "$target_source" == 'explicit' ]]; then
+        if core_fetch_upstream_release_asset "$repo" "$output_file" "$dest_file" "$target_ref" "$asset_re" "$target_source"; then return 0; fi
+        if [[ "$target_source" == 'explicit' ]]; then die "显式指定的核心版本 ${target_ref} 下载或校验失败；为避免静默替换版本，不会自动回退到其他版本。"; fi
     fi
 
-    # Share the same exact-version validator between mirror-first and disaster fallback.
+    mirror_ref=$(core_release_mirror_version "$repo") || die "缺少 ${repo} 的固定容灾版本 pin。"
+    msg "${YELLOW}[!] 使用固定 A-Box 容灾版本 ${mirror_ref}，独立于失败的上游目标 ${target_ref}。${NC}"
     if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file"; then
+        core_set_resolved_target "$repo" "$mirror_ref" mirror || die '无法记录已验证的容灾版本。'
+        ABOX_LAST_CORE_RELEASE_REF="$mirror_ref"
+        ABOX_LAST_CORE_SOURCE='mirror'
+        msg "${GREEN}   固定容灾候选通过 SHA-256 与实际二进制版本校验：${mirror_ref}${NC}"
         return 0
     fi
-    die '所有通道（上游 + A-Box 灾备）均无法下载核心资产。请检查网络；已安装的二进制不会被半截覆盖。'
+    die '上游正式稳定候选与固定 A-Box 容灾候选均未通过验证；已拒绝安装版本不匹配的资产。'
 }
 
 fetch_geo_data() {
@@ -8668,17 +8691,15 @@ save_fast_mode() {
 }
 
 abox_prefer_mirror() {
-    [[ "${ABOX_CORE_MIRROR_PREFER:-}" =~ ^(1|true|yes)$ ]] && return 0
-    [[ -r "$MIRROR_PREFER_FILE" && -f "$MIRROR_PREFER_FILE" && ! -L "$MIRROR_PREFER_FILE" ]] || return 1
-    [[ "$(tr -d '[:space:]' < "$MIRROR_PREFER_FILE" 2>/dev/null || true)" == '1' ]]
+    # Compatibility shim: normal installs always prefer official stable Releases first.
+    return 1
 }
 
 save_mirror_prefer() {
-    local v="${1:-0}"
-    [[ "$v" =~ ^(0|1)$ ]] || die '非法镜像优先开关。'
-    ensure_abox_dir_owned "$ABOX_DIR" || die '无法准备 A-Box 状态目录。'
-    write_file_atomically_from_stdin "$MIRROR_PREFER_FILE" 600 <<< "$v" || die '镜像优先写入失败。'
+    msg "${YELLOW}核心下载顺序固定为：上游正式稳定版 → 固定 A-Box 容灾版本。${NC}"
+    return 1
 }
+
 
 confirm_soft() {
     # Non-critical confirm: auto-yes in fast mode. Never use for uninstall/digest/destructive wipe.
@@ -8719,61 +8740,39 @@ probe_core_sources_banner() {
 }
 
 fetch_abox_mirror_asset() {
-    # Same-repository Release only. Asset checksums do not prove version identity.
-    local repo=$1 output_file=$2 dest_file=$3
-    local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf tmp_file _sb_ver requested_version
+    local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}"
+    local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf tmp_file requested_version _sb_ver
     mirror_base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     [[ -n "$mirror_base" ]] || return 1
     case "$repo:$output_file" in
-        XTLS/Xray-core:xray_core.zip)
-            requested_version="${ABOX_XRAY_VERSION:-$ABOX_XRAY_DEFAULT_VERSION}"
-            [[ "$requested_version" == "$ABOX_XRAY_MIRROR_VERSION" ]] || {
-                msg "${YELLOW}[!] Mirror contains Xray ${ABOX_XRAY_MIRROR_VERSION}, not requested ${requested_version}; refusing mismatch.${NC}"
-                return 1
-            }
-            asset_leaf="Xray-linux-${XRAY_ARCH}.zip"
-            ;;
+        XTLS/Xray-core:xray_core.zip) requested_version="$ABOX_XRAY_MIRROR_VERSION"; asset_leaf="Xray-linux-${XRAY_ARCH}.zip" ;;
         SagerNet/sing-box:singbox_core.tar.gz)
-            requested_version="${ABOX_SINGBOX_VERSION:-$ABOX_SINGBOX_DEFAULT_VERSION}"
-            [[ "$requested_version" == "$ABOX_SINGBOX_MIRROR_VERSION" ]] || {
-                msg "${YELLOW}[!] Mirror contains sing-box ${ABOX_SINGBOX_MIRROR_VERSION}, not requested ${requested_version}.${NC}"
-                return 1
-            }
+            requested_version="$ABOX_SINGBOX_MIRROR_VERSION"
             _sb_ver="${requested_version#v}"
-            if [[ "${release:-}" == 'alpine' ]]; then
-                asset_leaf="sing-box-${_sb_ver}-linux-${SB_ARCH}-musl.tar.gz"
-            else
-                asset_leaf="sing-box-${_sb_ver}-linux-${SB_ARCH}-glibc.tar.gz"
-            fi
+            if [[ "${release:-}" == 'alpine' ]]; then asset_leaf="sing-box-${_sb_ver}-linux-${SB_ARCH}-musl.tar.gz"; else asset_leaf="sing-box-${_sb_ver}-linux-${SB_ARCH}-glibc.tar.gz"; fi
             ;;
-        HyNetworks/hysteria:hysteria_core)
-            requested_version="${ABOX_HYSTERIA_APP_VERSION:-app/v2.13.0}"
-            [[ "$requested_version" == "$ABOX_HYSTERIA_MIRROR_VERSION" ]] || {
-                msg "${YELLOW}[!] Mirror contains Hysteria ${ABOX_HYSTERIA_MIRROR_VERSION}, not requested ${requested_version}.${NC}"
-                return 1
-            }
-            asset_leaf="hysteria-linux-${HY2_ARCH}"
-            ;;
+        HyNetworks/hysteria:hysteria_core) requested_version="$ABOX_HYSTERIA_MIRROR_VERSION"; asset_leaf="hysteria-linux-${HY2_ARCH}" ;;
         *) return 1 ;;
     esac
+    core_release_ref_valid "$repo" "$requested_version" || return 1
     mirror_url="${mirror_base%/}/${asset_leaf}"
     mirror_sum="${mirror_base%/}/SHA256SUMS"
-    msg "${YELLOW} -> A-Box mirror try: ${mirror_url}${NC}"
+    msg "${YELLOW} -> A-Box fixed recovery mirror: ${mirror_url} [${requested_version}]${NC}"
     tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
-    if ! curl -fLsS --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then
-        rm -f "$tmp_file"; return 1
-    fi
-    if ! validate_downloaded_asset "$output_file" "$tmp_file"; then
-        rm -f "$tmp_file"; return 1
-    fi
+    if ! curl -fLsS --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
+    if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
     expect_sum=$(curl -fsS --connect-timeout 8 -m 30 "$mirror_sum" 2>/dev/null | awk -v f="$asset_leaf" '$2==f || $2==("./" f) || $2~(f"$") {print $1; exit}')
-    got_sum=$(sha256sum "$tmp_file" | awk '{print $1}')
+    got_sum=$(sha256sum "$tmp_file" 2>/dev/null | awk '{print $1}') || got_sum=''
     if [[ -z "$expect_sum" || ! "$expect_sum" =~ ^[A-Fa-f0-9]{64}$ || "${got_sum,,}" != "${expect_sum,,}" ]]; then
-        msg "${YELLOW}[!] mirror SHA256 mismatch or missing SHA256SUMS${NC}"
-        rm -f "$tmp_file"; return 1
+        msg "${YELLOW}[!] recovery mirror SHA-256 mismatch or missing SHA256SUMS${NC}" >&2
+        rm -f -- "$tmp_file"; return 1
     fi
-    mv -f "$tmp_file" "$dest_file" || { rm -f "$tmp_file"; return 1; }
-    msg "${GREEN}   mirror asset OK (SHA256 verified; release version matches).${NC}"
+    if ! validate_core_asset_binary_version "$output_file" "$tmp_file" "$requested_version"; then
+        msg "${YELLOW}[!] recovery binary version does not match pin ${requested_version}${NC}" >&2
+        rm -f -- "$tmp_file"; return 1
+    fi
+    mv -f -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
+    msg "${GREEN}   recovery SHA-256 and actual binary version verified: ${requested_version}${NC}"
     return 0
 }
 one_click_reality_deploy() {

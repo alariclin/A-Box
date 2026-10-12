@@ -63,6 +63,14 @@ ABOX_SINGBOX_DEFAULT_VERSION='v1.14.2'
 ABOX_XRAY_MIRROR_VERSION='v26.7.28'
 ABOX_SINGBOX_MIRROR_VERSION='v1.14.2'
 ABOX_HYSTERIA_MIRROR_VERSION='app/v2.13.0'
+ABOX_RESOLVED_XRAY_VERSION=''
+ABOX_RESOLVED_SINGBOX_VERSION=''
+ABOX_RESOLVED_HYSTERIA_VERSION=''
+ABOX_RESOLVED_XRAY_SOURCE=''
+ABOX_RESOLVED_SINGBOX_SOURCE=''
+ABOX_RESOLVED_HYSTERIA_SOURCE=''
+ABOX_LAST_CORE_RELEASE_REF=''
+ABOX_LAST_CORE_SOURCE=''
 # Candidate library sizing. 0 uses the hard ceiling instead of the historical
 # 4096 seed-only boundary; default 8192 keeps generated variants reachable.
 ABOX_SNI_DEFAULT_MAX=8192
@@ -4635,6 +4643,17 @@ core_version_compare() {
 
 # Return codes: 0=proceed, 1=explicit downgrade needs opt-in, 2=invalid versions,
 # 3=installed version is newer than the default pin (safe no-op), 4=already pinned.
+core_binary_matches_release_ref() {
+    local expected_ref="${1:-}" output="${2:-}" expected actual cmp
+    [[ -n "$expected_ref" && -n "$output" ]] || return 1
+    expected="${expected_ref##*/}"
+    expected="${expected#v}"
+    actual=$(core_version_from_output "$output" 2>/dev/null) || return 1
+    actual="${actual#v}"
+    cmp=$(core_version_compare "$actual" "$expected" 2>/dev/null) || return 1
+    [[ "$cmp" == '0' ]]
+}
+
 core_version_upgrade_decision() {
     local current="${1:-}" target="${2:-}" explicit="${3:-0}" allow="${4:-0}" cmp
     [[ "$explicit" == 0 || "$explicit" == 1 ]] || return 2
@@ -4665,12 +4684,129 @@ core_version_probe_safe() {
     fi
 }
 
-xray_latest_stable_version() {
-    local json tag
-    json=$(github_api_get 'https://api.github.com/repos/XTLS/Xray-core/releases?per_page=50') || return 1
-    tag=$(jq -r 'first(.[]? | select(.draft == false and .prerelease == false) | .tag_name) // empty' <<< "$json")
-    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+core_release_ref_valid() {
+    local repo="${1:-}" ref="${2:-}"
+    case "$repo" in
+        XTLS/Xray-core|SagerNet/sing-box) [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] ;;
+        HyNetworks/hysteria) [[ "$ref" =~ ^app/v[0-9]+\.[0-9]+\.[0-9]+$ ]] ;;
+        *) return 1 ;;
+    esac
+}
+
+core_latest_stable_tag_from_json() {
+    local repo="${1:-}" release_json="${2:-}" pattern tag
+    case "$repo" in
+        XTLS/Xray-core|SagerNet/sing-box) pattern='^v[0-9]+\.[0-9]+\.[0-9]+$' ;;
+        HyNetworks/hysteria) pattern='^app/v[0-9]+\.[0-9]+\.[0-9]+$' ;;
+        *) return 1 ;;
+    esac
+    [[ -n "$release_json" ]] || return 1
+    tag=$(jq -er --arg pattern "$pattern" '
+        if type != "array" then empty
+        else
+          [ .[]?
+            | select(.draft == false and .prerelease == false)
+            | select(((.tag_name // "") | type) == "string")
+            | select((.tag_name // "") | test($pattern))
+          ]
+          | sort_by(.published_at // .created_at // "")
+          | last
+          | .tag_name // empty
+        end
+    ' <<< "$release_json" 2>/dev/null) || return 1
+    core_release_ref_valid "$repo" "$tag" || return 1
     printf '%s\n' "$tag"
+}
+
+core_latest_stable_release_ref() {
+    local repo="${1:-}" json
+    case "$repo" in
+        XTLS/Xray-core|SagerNet/sing-box|HyNetworks/hysteria) ;;
+        *) return 1 ;;
+    esac
+    json=$(github_api_get "https://api.github.com/repos/$repo/releases?per_page=100") || return 1
+    core_latest_stable_tag_from_json "$repo" "$json"
+}
+
+core_release_mirror_version() {
+    case "${1:-}" in
+        XTLS/Xray-core) printf '%s\n' "$ABOX_XRAY_MIRROR_VERSION" ;;
+        SagerNet/sing-box) printf '%s\n' "$ABOX_SINGBOX_MIRROR_VERSION" ;;
+        HyNetworks/hysteria) printf '%s\n' "$ABOX_HYSTERIA_MIRROR_VERSION" ;;
+        *) return 1 ;;
+    esac
+}
+
+core_resolved_version() {
+    case "${1:-}" in
+        XTLS/Xray-core) printf '%s\n' "${ABOX_RESOLVED_XRAY_VERSION:-}" ;;
+        SagerNet/sing-box) printf '%s\n' "${ABOX_RESOLVED_SINGBOX_VERSION:-}" ;;
+        HyNetworks/hysteria) printf '%s\n' "${ABOX_RESOLVED_HYSTERIA_VERSION:-}" ;;
+        *) return 1 ;;
+    esac
+}
+
+core_resolved_source() {
+    case "${1:-}" in
+        XTLS/Xray-core) printf '%s\n' "${ABOX_RESOLVED_XRAY_SOURCE:-}" ;;
+        SagerNet/sing-box) printf '%s\n' "${ABOX_RESOLVED_SINGBOX_SOURCE:-}" ;;
+        HyNetworks/hysteria) printf '%s\n' "${ABOX_RESOLVED_HYSTERIA_SOURCE:-}" ;;
+        *) return 1 ;;
+    esac
+}
+
+core_set_resolved_target() {
+    local repo="${1:-}" ref="${2:-}" source="${3:-}"
+    core_release_ref_valid "$repo" "$ref" || return 1
+    case "$source" in upstream|mirror|explicit) ;; *) return 1 ;; esac
+    case "$repo" in
+        XTLS/Xray-core) ABOX_RESOLVED_XRAY_VERSION="$ref"; ABOX_RESOLVED_XRAY_SOURCE="$source" ;;
+        SagerNet/sing-box) ABOX_RESOLVED_SINGBOX_VERSION="$ref"; ABOX_RESOLVED_SINGBOX_SOURCE="$source" ;;
+        HyNetworks/hysteria) ABOX_RESOLVED_HYSTERIA_VERSION="$ref"; ABOX_RESOLVED_HYSTERIA_SOURCE="$source" ;;
+        *) return 1 ;;
+    esac
+}
+
+clear_core_release_resolution() {
+    case "${1:-}" in
+        XTLS/Xray-core) ABOX_RESOLVED_XRAY_VERSION=''; ABOX_RESOLVED_XRAY_SOURCE='' ;;
+        SagerNet/sing-box) ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE='' ;;
+        HyNetworks/hysteria) ABOX_RESOLVED_HYSTERIA_VERSION=''; ABOX_RESOLVED_HYSTERIA_SOURCE='' ;;
+        *) return 1 ;;
+    esac
+}
+
+resolve_core_release_target() {
+    local repo="${1:-}" override='' latest='' target='' source=''
+    case "$repo" in
+        XTLS/Xray-core) override="${ABOX_XRAY_VERSION:-}" ;;
+        SagerNet/sing-box) override="${ABOX_SINGBOX_VERSION:-}" ;;
+        HyNetworks/hysteria) override="${ABOX_HYSTERIA_APP_VERSION:-}" ;;
+        *) return 1 ;;
+    esac
+    if [[ -n "$override" ]]; then
+        core_release_ref_valid "$repo" "$override" || {
+            msg "${RED}[!] 显式指定的核心版本号非法: $repo:$override${NC}" >&2
+            return 1
+        }
+        target="$override"
+        source='explicit'
+    else
+        latest=$(core_latest_stable_release_ref "$repo" 2>/dev/null || true)
+        if core_release_ref_valid "$repo" "$latest"; then
+            target="$latest"
+            source='upstream'
+        else
+            target=$(core_release_mirror_version "$repo") || return 1
+            source='mirror'
+            msg "${YELLOW}[!] 无法解析上游正式稳定版；先尝试固定 A-Box 容灾版本 $target。${NC}" >&2
+        fi
+    fi
+    core_set_resolved_target "$repo" "$target" "$source"
+}
+
+xray_latest_stable_version() {
+    core_latest_stable_release_ref XTLS/Xray-core
 }
 
 effective_xray_version() {

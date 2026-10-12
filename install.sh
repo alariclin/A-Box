@@ -740,25 +740,86 @@ default_sni_for_port() {
     fi
 }
 
+sni_probe_candidate_tier() {
+    local domain="${1:-}" workdir='' raw='' raw_sorted='' verified='' timeout_s=2
+    local score actual_domain app ttfb total_time http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty tier
+    [[ -n "$domain" ]] || { printf 'N\n'; return 0; }
+    command -v curl >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1 || { printf 'N\n'; return 0; }
+    workdir=$(mktemp -d /tmp/A-Box-sni-custom.XXXXXX) || { printf 'N\n'; return 0; }
+    chmod 700 "$workdir" 2>/dev/null || { rm -rf -- "$workdir"; printf 'N\n'; return 0; }
+    raw="$workdir/raw.tsv"
+    raw_sorted="$workdir/raw.sorted.tsv"
+    verified="$workdir/verified.tsv"
+    : > "$raw"
+    ABOX_CURL_TLS13_SUPPORTED=0
+    ABOX_CURL_HTTP2_SUPPORTED=0
+    curl --help all 2>/dev/null | grep -F -- '--tlsv1.3' >/dev/null && ABOX_CURL_TLS13_SUPPORTED=1
+    curl --help all 2>/dev/null | grep -F -- '--http2' >/dev/null && ABOX_CURL_HTTP2_SUPPORTED=1
+    sni_probe_domain "$domain" "$raw" "$timeout_s" >&2 || true
+    if [[ ! -s "$raw" ]]; then
+        rm -rf -- "$workdir"
+        printf 'D\n'
+        return 0
+    fi
+    if ! LC_ALL=C sort -t $'\t' -k1,1n -k2,2 "$raw" > "$raw_sorted"; then
+        rm -rf -- "$workdir"
+        printf 'N\n'
+        return 0
+    fi
+    if ! sni_verify_raw_report "$raw_sorted" "$verified" 1 3 >&2 || [[ ! -s "$verified" ]]; then
+        rm -rf -- "$workdir"
+        printf 'N\n'
+        return 0
+    fi
+    IFS=$'\t' read -r score actual_domain app ttfb total_time http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty < "$verified" || {
+        rm -rf -- "$workdir"
+        printf 'N\n'
+        return 0
+    }
+    tier=$(sni_report_fit_tier "$tls13" "$alpn" "$san" "$asnmatch" "$samecountry" "$cdnpenalty")
+    rm -rf -- "$workdir"
+    printf '%s\n' "$tier"
+}
+
 prompt_reality_sni() {
-    local label="$1" port="$2" default_sni input answer prompt warned
+    local label="$1" port="$2" default_sni input answer prompt warned custom_tier
     default_sni=$(default_sni_for_port "$port")
     while true; do
         prompt=$(tprintf reality_sni_prompt "$label" "$port" "$default_sni")
         read -r -p "$prompt" input || return 1
         input=${input:-$default_sni}
         if ! valid_sni "$input"; then
-            printf '%s\n' "${RED}[!] $(tprintf bad_sni "$input")${NC}" >&2
+            printf '%s\n' "$RED[!] $(tprintf bad_sni "$input")$NC" >&2
             continue
         fi
         warned=0
         if [[ "$port" != '443' ]]; then
-            printf '%s\n' "${YELLOW}$(tprintf reality_non443_warn "$port")${NC}" >&2
+            printf '%s\n' "$YELLOW$(tprintf reality_non443_warn "$port")$NC" >&2
             warned=1
         fi
         if is_apple_like_sni "$input"; then
-            printf '%s\n' "${YELLOW}$(tprintf apple_sni_warn "$input")${NC}" >&2
+            printf '%s\n' "$YELLOW$(tprintf apple_sni_warn "$input")$NC" >&2
             warned=1
+        fi
+        if [[ "$input" != "$default_sni" ]]; then
+            custom_tier=$(sni_probe_candidate_tier "$input" 2>/dev/null || printf 'N')
+            case "$custom_tier" in
+                A|B|C)
+                    printf '%s\n' "$GREEN[SNI custom] 当前 VPS 实测通过 TLS 1.3、h2 和证书 SAN 检查；兼容档位 $custom_tier。$NC" >&2
+                    ;;
+                R)
+                    printf '%s\n' "$YELLOW[SNI custom] TLS 检查通过，但目标存在较高 CDN/共享边缘风险，不属于推荐档位。$NC" >&2
+                    warned=1
+                    ;;
+                D)
+                    printf '%s\n' "$YELLOW[SNI custom] 该域名未通过 TLS 1.3、h2 或证书 SAN 检查，可能造成连接失败。$NC" >&2
+                    warned=1
+                    ;;
+                *)
+                    printf '%s\n' "$YELLOW[SNI custom] 当前 VPS 无法完成可靠性检测；请确认该域名支持 TLS 1.3、h2 且证书 SAN 匹配。$NC" >&2
+                    warned=1
+                    ;;
+            esac
         fi
         if [[ "$warned" == 1 ]]; then
             prompt=$(tprintf continue_or_reset "$label")
@@ -16117,6 +16178,8 @@ PY_SELFTEST_TAR
     grep -Fq 'command_user="abox-hysteria:abox-hysteria"' "$0" || { echo 'FAIL: Hysteria OpenRC service must drop root UID'; failures=$((failures + 1)); }
     grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'" "$0" || { echo 'FAIL: Hysteria compatibility pin missing'; failures=$((failures + 1)); }
     grep -Fq 'ABOX_TRY_LATEST_CORE_STABLE:-0' "$0" || { echo 'FAIL: latest core upgrade must remain opt-in'; failures=$((failures + 1)); }
+    grep -Fq 'sni_probe_candidate_tier() {' "$0" || { echo 'FAIL: custom REALITY SNI probe helper missing'; failures=$((failures + 1)); }
+    grep -Fq 'custom_tier=$(sni_probe_candidate_tier "$input"' "$0" || { echo 'FAIL: custom REALITY SNI must be re-probed before acceptance'; failures=$((failures + 1)); }
     grep -Fq 'core_latest_stable_release_ref() {' "$0" || { echo 'FAIL: dynamic stable Release resolver missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.2'" "$0" || { echo 'FAIL: sing-box stable pin missing'; failures=$((failures + 1)); }
     grep -Fq 'core_fetch_upstream_release_asset() {' "$0" || { echo 'FAIL: upstream-first fetch state machine missing'; failures=$((failures + 1)); }

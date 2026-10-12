@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-12-audit-fix-v173'
-ABOX_BUILD_EPOCH=20261012173
+ABOX_BUILD='2026-10-12-audit-fix-v174'
+ABOX_BUILD_EPOCH=20261012174
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -4636,8 +4636,8 @@ core_version_upgrade_decision() {
     local current="${1:-}" target="${2:-}" explicit="${3:-0}" allow="${4:-0}" cmp
     [[ "$explicit" == 0 || "$explicit" == 1 ]] || return 2
     [[ "$allow" == 0 || "$allow" == 1 ]] || return 2
-    [[ "$allow" == 1 ]] && return 0
     cmp=$(core_version_compare "$current" "$target") || return 2
+    [[ "$allow" == 1 ]] && return 0
     if (( cmp > 0 )); then
         [[ "$explicit" == 1 ]] && return 1
         return 3
@@ -4648,6 +4648,18 @@ core_version_upgrade_decision() {
 
 core_version_downgrade_allowed() {
     core_version_upgrade_decision "${1:-}" "${2:-}" 1 "${3:-0}"
+}
+
+# A present binary whose version command failed is not safe to replace silently:
+# it may be a newer/custom build that the version guard cannot order.
+core_version_probe_safe() {
+    local binary_path="${1:-}" output="${2:-}" allow="${3:-0}"
+    [[ "$allow" == 0 || "$allow" == 1 ]] || return 2
+    if [[ -e "$binary_path" || -L "$binary_path" ]]; then
+        [[ -n "$output" || "$allow" == 1 ]]
+    else
+        return 0
+    fi
 }
 
 xray_latest_stable_version() {
@@ -13699,16 +13711,31 @@ wallos_status() {
     fi
 }
 
+wallos_resume_after_backup() {
+    local was_running="${1:-0}" backup_path="${2:-}"
+    [[ "$was_running" == 0 || "$was_running" == 1 ]] || return 2
+    [[ "$was_running" == 1 ]] || return 0
+    if docker start wallos >/dev/null 2>&1; then return 0; fi
+    msg "${RED}Wallos could not be restarted after the backup attempt. Backup path: ${backup_path:-not-created}. Check 'docker logs wallos' and start the container manually.${NC}" >&2
+    return 1
+}
+
 wallos_backup_now() {
     local stamp backup was_running=0
-    [[ -f "$WALLOS_DIR/.A-Box-managed" ]] || { msg "No A-Box-managed Wallos was found."; return 1; }
+    [[ -f "$WALLOS_DIR/.A-Box-managed" && ! -L "$WALLOS_DIR/.A-Box-managed" ]] || { msg "No A-Box-managed Wallos was found."; return 1; }
     if docker container inspect wallos >/dev/null 2>&1 && [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null)" == true ]]; then
         docker stop wallos >/dev/null 2>&1 || return 1
         was_running=1
     fi
     stamp=$(date -u '+%Y%m%dT%H%M%SZ')
-    backup=$(wallos_create_backup "$stamp") || { (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true; return 1; }
-    (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true
+    if ! backup=$(wallos_create_backup "$stamp"); then
+        wallos_resume_after_backup "$was_running" '' || true
+        msg "${RED}Wallos backup creation failed; the previous container state was restored where possible.${NC}"
+        return 1
+    fi
+    if ! wallos_resume_after_backup "$was_running" "$backup"; then
+        return 1
+    fi
     case "${ABOX_LANG:-zh}" in
         ru) msg "${GREEN}Резервная копия данных Wallos сохранена: $backup${NC}" ;;
         fa) msg "${GREEN}نسخه پشتیبان داده‌های Wallos ذخیره شد: $backup${NC}" ;;
@@ -14799,6 +14826,7 @@ upgrade_xray_core_only() {
     active_state=$(service_active_state_value xray 2>/dev/null) || die '无法可靠查询 Xray 服务状态；拒绝在状态未知时升级核心。'
     case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die 'Xray 服务状态响应无效；拒绝继续升级。' ;; esac
     [[ -x /usr/local/bin/xray ]] && old_ver=$(/usr/local/bin/xray version 2>/dev/null | head -n 1 || true)
+    core_version_probe_safe /usr/local/bin/xray "${old_ver:-}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die '无法读取现有 Xray 版本；默认拒绝覆盖未知版本核心。'
     local target_ref current_tag='' decision=0
     target_ref="$(effective_xray_version)"
     if [[ -n "${old_ver:-}" ]]; then
@@ -14854,6 +14882,7 @@ upgrade_singbox_core_only() {
     active_state=$(service_active_state_value sing-box 2>/dev/null) || die '无法可靠查询 sing-box 服务状态；拒绝在状态未知时升级核心。'
     case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die 'sing-box 服务状态响应无效；拒绝继续升级。' ;; esac
     [[ -x /usr/local/bin/sing-box ]] && old_ver=$(/usr/local/bin/sing-box version 2>/dev/null | head -n 1 || true)
+    core_version_probe_safe /usr/local/bin/sing-box "${old_ver:-}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die '无法读取现有 sing-box 版本；默认拒绝覆盖未知版本核心。'
     local target_ref="${ABOX_SINGBOX_VERSION:-$ABOX_SINGBOX_DEFAULT_VERSION}" current_tag='' decision=0
     if [[ -n "${old_ver:-}" ]]; then
         current_tag=$(core_version_from_output "$old_ver" || true)
@@ -14909,6 +14938,7 @@ upgrade_hysteria_core_only() {
     active_state=$(service_active_state_value hysteria 2>/dev/null) || die '无法可靠查询 Hysteria 服务状态；拒绝在状态未知时升级核心。'
     case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die 'Hysteria 服务状态响应无效；拒绝继续升级。' ;; esac
     [[ -x /usr/local/bin/hysteria ]] && old_ver=$(/usr/local/bin/hysteria version 2>/dev/null | head -n 1 || true)
+    core_version_probe_safe /usr/local/bin/hysteria "${old_ver:-}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die '无法读取现有 Hysteria 版本；默认拒绝覆盖未知版本核心。'
     local target_ref="${ABOX_HYSTERIA_APP_VERSION:-app/v2.13.0}" current_tag='' decision=0
     if [[ -n "${old_ver:-}" ]]; then
         current_tag=$(core_version_from_output "$old_ver" || true)
@@ -15806,7 +15836,24 @@ PY_SELFTEST_TAR
     assert_ok core_version_upgrade_decision v1.14.2 v1.14.3 0 0
     assert_bad core_version_upgrade_decision v1.14.3 v1.14.2 1 0
     assert_ok core_version_upgrade_decision v1.14.3 v1.14.2 1 1
-    assert_bad core_version_compare v1.15 v1.14.3
+    assert_bad core_version_upgrade_decision v1.14.3 invalid 1 1
+    assert_bad core_version_compare v1.15
+    assert_ok core_version_probe_safe "$tmp/absent-version-probe" '' 0
+    : > "$tmp/present-version-probe"
+    assert_bad core_version_probe_safe "$tmp/present-version-probe" '' 0
+    assert_ok core_version_probe_safe "$tmp/present-version-probe" '' 1
+    assert_ok core_version_probe_safe "$tmp/present-version-probe" 'sing-box version 1.14.3' 0
+    assert_bad core_version_probe_safe "$tmp/present-version-probe" '' invalid
+    if ! ( docker() { return 0; }; wallos_resume_after_backup 1 "$tmp/wallos-test-backup.tar.gz" >/dev/null 2>&1 ); then
+        echo 'FAIL: Wallos backup restart success path'; failures=$((failures + 1))
+    fi
+    if ( docker() { return 1; }; wallos_resume_after_backup 1 "$tmp/wallos-test-backup.tar.gz" >/dev/null 2>&1 ); then
+        echo 'FAIL: Wallos backup must report a container restart failure'; failures=$((failures + 1))
+    fi
+    if ! ( docker() { return 1; }; wallos_resume_after_backup 0 '' >/dev/null 2>&1 ); then
+        echo 'FAIL: Wallos backup should not start a container that was originally stopped'; failures=$((failures + 1))
+    fi
+    assert_bad wallos_resume_after_backup invalid ''
     [[ "$(xray_version_compare v9223372036854775808.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray huge-version comparison overflow regression'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v18446744073709551616.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray extra-large version comparison regression'; failures=$((failures + 1)); }
     grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" "$0" || { echo 'FAIL: Xray REALITY ML-KEM threshold constant missing'; failures=$((failures + 1)); }

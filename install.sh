@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-13-auto-sni-v180'
-ABOX_BUILD_EPOCH=20261013180
+ABOX_BUILD='2026-10-13-auto-sni-v181'
+ABOX_BUILD_EPOCH=20261013181
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -8912,25 +8912,25 @@ one_click_reality_deploy() {
     case "${ABOX_LANG:-zh}" in
         en)
             msg "${RED}${BOLD}One-click Vision REALITY${NC}"
-            msg "Defaults: port 443, SNI auto-selected from this VPS; www.amazon.com is the fallback. KeepAlive off."
+            msg "Defaults: port 443, SNI auto-selected from this VPS; www.amazon.com is used only after TLS 1.3/h2/SAN verification. If no target verifies, one-click setup stops. KeepAlive off."
             msg "${YELLOW}1. Xray Vision REALITY${NC}"
             msg "${YELLOW}2. sing-box Vision REALITY${NC}"
             prompt='Deploy one-click Vision REALITY now? [Y/N]: ' ;;
         ru)
             msg "${RED}${BOLD}Vision REALITY в один клик${NC}"
-            msg "По умолчанию: SNI выбирается по тестам этого VPS; резервный вариант — www.amazon.com. KeepAlive выключен."
+            msg "По умолчанию SNI выбирается по тестам этого VPS; www.amazon.com используется только после проверки TLS 1.3/h2/SAN. Если цель не подтверждена, установка в один клик остановится. KeepAlive выключен."
             msg "${YELLOW}1. Xray Vision REALITY${NC}"
             msg "${YELLOW}2. sing-box Vision REALITY${NC}"
             prompt='Запустить установку Vision REALITY в один клик? [Y/N]: ' ;;
         fa)
             msg "${RED}${BOLD}نصب یک‌کلیکی Vision REALITY${NC}"
-            msg "پیش‌فرض: SNI بر اساس آزمون‌های همین VPS انتخاب می‌شود؛ گزینه جایگزین www.amazon.com است. KeepAlive خاموش است."
+            msg "پیش‌فرض SNI بر اساس آزمون‌های همین VPS انتخاب می‌شود؛ www.amazon.com فقط پس از بررسی TLS 1.3/h2/SAN استفاده می‌شود. اگر هیچ مقصدی تأیید نشود، نصب یک‌کلیکی متوقف می‌شود. KeepAlive خاموش است."
             msg "${YELLOW}1. Xray Vision REALITY${NC}"
             msg "${YELLOW}2. sing-box Vision REALITY${NC}"
             prompt='نصب یک‌کلیکی Vision REALITY آغاز شود؟ [Y/N]: ' ;;
         *)
             msg "${RED}${BOLD}一键 Vision REALITY${NC}"
-            msg "默认 SNI 根据当前 VPS 的 TLS/ASN/地区实测自动选择；无合格候选时回退 www.amazon.com，KeepAlive 关闭。"
+            msg "默认 SNI 根据当前 VPS 的 TLS/ASN/地区实测自动选择；仅在 www.amazon.com 通过 TLS 1.3/h2/证书 SAN 验证后才用作回退。无可验证目标时一键安装会停止。KeepAlive 关闭。"
             msg "${YELLOW}1. Xray Vision REALITY${NC}"
             msg "${YELLOW}2. sing-box Vision REALITY${NC}"
             prompt='现在开始一键部署 Vision REALITY？[Y/N]: ' ;;

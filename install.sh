@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================A-Box===============================
-# SNI profile: built-in deduplicated maximum REALITY target candidate library; no legacy remote SNI script dependency.
+# SNI profile: built-in candidate library plus per-VPS automatic REALITY target selection; no remote script execution.
 # Hardened build: stricter GitHub digest trust, guarded shortcut persistence, Fail2Ban validation, and Sing-box HY2 ACME semantics.
 set -o pipefail
 set -u
@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-12-audit-fix-v175'
-ABOX_BUILD_EPOCH=20261012175
+ABOX_BUILD='2026-10-13-auto-sni-v176'
+ABOX_BUILD_EPOCH=20261013176
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -723,9 +723,12 @@ is_apple_like_sni() {
 }
 
 default_sni_for_port() {
-    # The current default target is intentionally port-independent. Avoid Apple/iCloud
-    # targets; use the SNI radar for a separately verified production target.
-    printf 'www.microsoft.com'
+    local selected="${ABOX_AUTO_SNI_SELECTED:-www.amazon.com}"
+    if valid_sni "$selected"; then
+        printf '%s\n' "$selected"
+    else
+        printf 'www.amazon.com\n'
+    fi
 }
 
 prompt_reality_sni() {
@@ -5927,10 +5930,19 @@ pre_install_setup() {
     [[ -z "$INGRESS_IF" ]] && die '无法识别公网入接口。'
     GLOBAL_PUBLIC_IP=$(refresh_public_ip)
 
+    # Resolve one SNI per REALITY deployment. Other protocols that do not use
+    # REALITY SNI (for example Shadowsocks-2022) do not run this probe.
+    ABOX_AUTO_SNI_SELECTED='www.amazon.com'
+    if [[ "$HAS_VISION" == 'true' || "$HAS_XHTTP" == 'true' ]]; then
+        ABOX_AUTO_SNI_SELECTED=$(sni_auto_select_default) || ABOX_AUTO_SNI_SELECTED='www.amazon.com'
+        valid_sni "$ABOX_AUTO_SNI_SELECTED" || ABOX_AUTO_SNI_SELECTED='www.amazon.com'
+        msg "[SNI auto] 当前 VPS 的默认 REALITY SNI：$ABOX_AUTO_SNI_SELECTED（没有通过验证的候选时回退 www.amazon.com）。"
+    fi
+
     # U1 one-click / quick path: Vision-only defaults, reuse remaining setup (ports/firewall).
     if [[ "${ABOX_QUICK_DEPLOY:-0}" == '1' && "$HAS_VISION" == 'true' && "$HAS_XHTTP" != 'true' && "$HAS_HY2" != 'true' && "$HAS_SS" != 'true' ]]; then
         VLESS_PORT="$DEF_V_PORT"
-        VISION_SNI='www.microsoft.com'
+        VISION_SNI="${ABOX_AUTO_SNI_SELECTED:-www.amazon.com}"
         VLESS_SNI="$VISION_SNI"
         ENABLE_KEEPALIVE='false'
         msg "${GREEN}[one-click] Vision REALITY defaults: port=${VLESS_PORT} SNI=${VISION_SNI}${NC}"
@@ -5956,7 +5968,7 @@ pre_install_setup() {
         XHTTP_PORT=$(prompt_port_input "$L_XHTTP" "$DEF_X_PORT") || die 'XHTTP 端口输入已结束 / XHTTP port input closed.'
         XHTTP_SNI=$(prompt_reality_sni "$L_XHTTP" "$XHTTP_PORT") || die 'XHTTP SNI 输入已结束 / XHTTP SNI input closed.'
     fi
-    VLESS_SNI=${VISION_SNI:-${XHTTP_SNI:-www.microsoft.com}}
+    VLESS_SNI=${VISION_SNI:-${XHTTP_SNI:-www.amazon.com}}
 
     if [[ "$HAS_HY2" == 'true' ]]; then
         HY2_BASE_PORT=$(prompt_port_input "$L_HY2" "$DEF_H_PORT") || die 'HY2 端口输入已结束 / HY2 port input closed.'
@@ -6190,8 +6202,8 @@ build_xray_config() {
         --arg mode "$mode" \
         --arg listen_addr "$listen_addr" \
         --arg uuid "$UUID" \
-        --arg v_sni "${VISION_SNI:-${VLESS_SNI:-www.microsoft.com}}" \
-        --arg x_sni "${XHTTP_SNI:-${VLESS_SNI:-www.microsoft.com}}" \
+        --arg v_sni "${VISION_SNI:-${VLESS_SNI:-www.amazon.com}}" \
+        --arg x_sni "${XHTTP_SNI:-${VLESS_SNI:-www.amazon.com}}" \
         --arg pk "$PK" \
         --arg sid "$SHORT_ID" \
         --argjson vport "${VLESS_PORT:-443}" \
@@ -6253,8 +6265,8 @@ build_singbox_config() {
     # values intentionally map to up_mbps=HY2_DOWN and down_mbps=HY2_UP.
     inbounds_json=$(jq -n \
         --arg mode "$mode" --arg uuid "$UUID" --arg listen_addr "$listen_addr" \
-        --arg v_sni "${VISION_SNI:-${VLESS_SNI:-www.microsoft.com}}" \
-        --arg x_sni "${XHTTP_SNI:-${VLESS_SNI:-www.microsoft.com}}" \
+        --arg v_sni "${VISION_SNI:-${VLESS_SNI:-www.amazon.com}}" \
+        --arg x_sni "${XHTTP_SNI:-${VLESS_SNI:-www.amazon.com}}" \
         --arg pk "$PK" --arg sid "$SHORT_ID" \
         --argjson vport "${VLESS_PORT:-443}" --argjson hy2port "${HY2_BASE_PORT:-443}" --argjson ssport "${SS_PORT:-2053}" \
         --argjson hy2up "${HY2_DOWN:-1000}" --argjson hy2down "${HY2_UP:-100}" \
@@ -8635,25 +8647,25 @@ one_click_reality_deploy() {
     case "${ABOX_LANG:-zh}" in
         en)
             msg "${RED}${BOLD}One-click Vision REALITY${NC}"
-            msg "Defaults: port 443, SNI www.microsoft.com, KeepAlive off. The full wizard remains under options 1 and 6."
+            msg "Defaults: port 443, SNI auto-selected from this VPS; www.amazon.com is the fallback. KeepAlive off."
             msg "${YELLOW}1. Xray Vision REALITY${NC}"
             msg "${YELLOW}2. sing-box Vision REALITY${NC}"
             prompt='Deploy one-click Vision REALITY now? [Y/N]: ' ;;
         ru)
             msg "${RED}${BOLD}Vision REALITY в один клик${NC}"
-            msg "По умолчанию: порт 443, SNI www.microsoft.com, KeepAlive выключен. Полные мастера доступны в пунктах 1 и 6."
+            msg "По умолчанию: SNI выбирается по тестам этого VPS; резервный вариант — www.amazon.com. KeepAlive выключен."
             msg "${YELLOW}1. Xray Vision REALITY${NC}"
             msg "${YELLOW}2. sing-box Vision REALITY${NC}"
             prompt='Запустить установку Vision REALITY в один клик? [Y/N]: ' ;;
         fa)
             msg "${RED}${BOLD}نصب یک‌کلیکی Vision REALITY${NC}"
-            msg "پیش‌فرض: پورت 443،‏ SNI برابر www.microsoft.com و KeepAlive خاموش است. راهنمای کامل در گزینه‌های 1 و 6 قرار دارد."
+            msg "پیش‌فرض: SNI بر اساس آزمون‌های همین VPS انتخاب می‌شود؛ گزینه جایگزین www.amazon.com است. KeepAlive خاموش است."
             msg "${YELLOW}1. Xray Vision REALITY${NC}"
             msg "${YELLOW}2. sing-box Vision REALITY${NC}"
             prompt='نصب یک‌کلیکی Vision REALITY آغاز شود؟ [Y/N]: ' ;;
         *)
             msg "${RED}${BOLD}一键 Vision REALITY${NC}"
-            msg "默认端口 443、SNI 为 www.microsoft.com、KeepAlive 关闭；完整向导仍在选项 1 和 6。"
+            msg "默认 SNI 根据当前 VPS 的 TLS/ASN/地区实测自动选择；无合格候选时回退 www.amazon.com，KeepAlive 关闭。"
             msg "${YELLOW}1. Xray Vision REALITY${NC}"
             msg "${YELLOW}2. sing-box Vision REALITY${NC}"
             prompt='现在开始一键部署 Vision REALITY？[Y/N]: ' ;;
@@ -10627,6 +10639,132 @@ sni_report_fit_tier() {
         printf 'B\n'
     else
         printf 'C\n'
+    fi
+}
+
+sni_auto_select_default() {
+    local fallback='www.amazon.com' workdir seed pool candidates raw raw_sorted verified
+    local total step running=0 domain score app ttfb total_time http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty tier selected=''
+    local timeout_s=2 candidate_limit=16 verify_limit=6
+
+    # A target is selected from this VPS's real outbound path, not from a global
+    # brand preference. VPS ASN/country, TLS 1.3, HTTP/2 ALPN, SAN and measured
+    # handshake latency affect ranking. Hardware model is not a reliable SNI predictor.
+    command -v curl >/dev/null 2>&1 || { printf '%s\n' "$fallback"; return 0; }
+    command -v openssl >/dev/null 2>&1 || { printf '%s\n' "$fallback"; return 0; }
+    workdir=$(mktemp -d /tmp/A-Box-sni-auto.XXXXXX) || { printf '%s\n' "$fallback"; return 0; }
+    chmod 700 "$workdir" 2>/dev/null || { rm -rf -- "$workdir"; printf '%s\n' "$fallback"; return 0; }
+
+    seed="$workdir/seed.txt"
+    pool="$workdir/pool.txt"
+    candidates="$workdir/candidates.txt"
+    raw="$workdir/results.raw.tsv"
+    raw_sorted="$workdir/results.sorted.tsv"
+    verified="$workdir/results.verified.tsv"
+    : > "$seed"
+    if ! sni_load_candidate_seed "$seed" >&2; then
+        rm -rf -- "$workdir"
+        printf '%s\n' "$fallback"
+        return 0
+    fi
+
+    # Probe a small, diverse pool; never let Microsoft's score bonus make it a
+    # permanent default. Amazon is reserved as the final fallback, not a candidate.
+    awk '
+        function root_domain(host, labels, n) {
+            n = split(host, labels, /\./)
+            if (n < 2) return host
+            return labels[n-1] "." labels[n]
+        }
+        {
+            line = tolower($0)
+            gsub(/^[[:space:]]+/, "", line)
+            gsub(/[[:space:]]+$/, "", line)
+            if (line == "" || line ~ /^#/) next
+            if (line !~ /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/) next
+            if (line ~ /(^|\.)microsoft\.com$/ || line ~ /(^|\.)bing\.com$/ || line ~ /(^|\.)amazon\.com$/) next
+            if (line ~ /^(api|status|cdn|assets|static|img|images|auth|login|mail|smtp|metrics|telemetry|edge|mobile|support|help|download|downloads|registry|acme-v02)\./) next
+            if (split(line, labels, /\./) > 3) next
+            key = root_domain(line)
+            if (!seen[key]++) print line
+        }
+    ' "$seed" > "$pool" || {
+        rm -rf -- "$workdir"
+        printf '%s\n' "$fallback"
+        return 0
+    }
+    [[ -s "$pool" ]] || {
+        rm -rf -- "$workdir"
+        printf '%s\n' "$fallback"
+        return 0
+    }
+
+    total=$(wc -l < "$pool" | tr -d ' ')
+    [[ "$total" =~ ^[0-9]+$ ]] || total=0
+    (( total > 0 )) || {
+        rm -rf -- "$workdir"
+        printf '%s\n' "$fallback"
+        return 0
+    }
+    step=$(( (total + candidate_limit - 1) / candidate_limit ))
+    (( step >= 1 )) || step=1
+    awk -v step="$step" 'NR == 1 || (NR - 1) % step == 0 { print; picked++; if (picked >= 16) exit }' "$pool" > "$candidates"
+    [[ -s "$candidates" ]] || {
+        rm -rf -- "$workdir"
+        printf '%s\n' "$fallback"
+        return 0
+    }
+
+    ABOX_CURL_TLS13_SUPPORTED=0
+    ABOX_CURL_HTTP2_SUPPORTED=0
+    curl --help all 2>/dev/null | grep -F -- '--tlsv1.3' >/dev/null && ABOX_CURL_TLS13_SUPPORTED=1
+    curl --help all 2>/dev/null | grep -F -- '--http2' >/dev/null && ABOX_CURL_HTTP2_SUPPORTED=1
+    : > "$raw"
+    while IFS= read -r domain; do
+        sni_probe_domain "$domain" "$raw" "$timeout_s" &
+        running=$((running + 1))
+        if (( running >= 8 )); then
+            wait || true
+            running=0
+        fi
+    done < "$candidates"
+    wait || true
+    if [[ ! -s "$raw" ]]; then
+        rm -rf -- "$workdir"
+        printf '%s\n' "$fallback"
+        return 0
+    fi
+
+    LC_ALL=C sort -t $'\t' -k1,1n -k2,2 "$raw" > "$raw_sorted" || {
+        rm -rf -- "$workdir"
+        printf '%s\n' "$fallback"
+        return 0
+    }
+    # Deep verification is intentionally bounded to keep the install wizard usable.
+    if ! sni_verify_raw_report "$raw_sorted" "$verified" "$verify_limit" 3 >&2; then
+        rm -rf -- "$workdir"
+        printf '%s\n' "$fallback"
+        return 0
+    fi
+
+    while IFS=$'\t' read -r score domain app ttfb total_time http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty; do
+        [[ -n "$domain" ]] || continue
+        tier=$(sni_report_fit_tier "$tls13" "$alpn" "$san" "$asnmatch" "$samecountry" "$cdnpenalty")
+        case "$tier" in
+            A|B|C)
+                selected="$domain"
+                break
+                ;;
+        esac
+    done < "$verified"
+
+    rm -rf -- "$workdir"
+    if valid_sni "$selected"; then
+        printf '[SNI auto] 已按本机 TLS/SAN/ALPN 实测和 VPS ASN/地区评分选择 %s。\n' "$selected" >&2
+        printf '%s\n' "$selected"
+    else
+        printf '[SNI auto] 未找到通过深度验证的候选，回退到 %s。\n' "$fallback" >&2
+        printf '%s\n' "$fallback"
     fi
 }
 
@@ -16442,7 +16580,7 @@ EOF_SELFTEST_IPT
     local saved_vision_sni="$VISION_SNI" saved_vless_sni="$VLESS_SNI"
     unset VISION_SNI VLESS_SNI
     build_xray_config VISION "$tmp/xray/default-sni.json"
-    jq -e '.inbounds[] | select(.protocol=="vless" and .streamSettings.realitySettings.serverNames[0]=="www.microsoft.com")' "$tmp/xray/default-sni.json" >/dev/null 2>&1 || { echo 'FAIL: default REALITY SNI must be www.microsoft.com'; failures=$((failures + 1)); }
+    jq -e '.inbounds[] | select(.protocol=="vless" and .streamSettings.realitySettings.serverNames[0]=="www.amazon.com")' "$tmp/xray/default-sni.json" >/dev/null 2>&1 || { echo 'FAIL: fallback REALITY SNI must be www.amazon.com'; failures=$((failures + 1)); }
     VISION_SNI="$saved_vision_sni" VLESS_SNI="$saved_vless_sni"
     jq -e '.inbounds[] | select(.protocol=="shadowsocks" and .port==2053 and .settings.network=="tcp,udp")' "$tmp/xray/config.json" >/dev/null 2>&1 || { echo 'FAIL: Xray SS-2022 2053 tcp,udp'; failures=$((failures + 1)); }
     jq -e '.inbounds[] | select(.protocol=="vless" and .port==8443 and .streamSettings.realitySettings.serverNames[0]=="www.microsoft.com")' "$tmp/xray/config.json" >/dev/null 2>&1 || { echo 'FAIL: Xray Vision SNI split'; failures=$((failures + 1)); }

@@ -10792,6 +10792,44 @@ sni_report_fit_tier() {
     fi
 }
 
+sni_build_diverse_candidate_pool() {
+    local input="${1:-}" output="${2:-}"
+    [[ -f "$input" && ! -L "$input" && -n "$output" ]] || return 1
+    awk '
+        function root_domain(host, labels, n, suffix) {
+            n = split(host, labels, /[.]/)
+            if (n < 2) return host
+            suffix = labels[n-1] "." labels[n]
+            if (multi_suffix[suffix]) {
+                if (n < 3) return host
+                return labels[n-2] "." suffix
+            }
+            return suffix
+        }
+        BEGIN {
+            # Compact Public Suffix List subset for common multi-label country suffixes.
+            # Unknown suffixes use the conventional final-two-label heuristic.
+            n = split("ac.uk co.uk gov.uk ltd.uk me.uk net.uk nhs.uk org.uk plc.uk police.uk sch.uk com.au edu.au gov.au id.au net.au org.au asn.au co.nz net.nz org.nz govt.nz ac.nz school.nz ac.jp co.jp go.jp ne.jp or.jp co.kr go.kr ne.kr or.kr re.kr com.cn edu.cn gov.cn net.cn org.cn com.hk edu.hk gov.hk idv.hk net.hk org.hk com.sg edu.sg gov.sg net.sg org.sg com.tw edu.tw gov.tw idv.tw net.tw org.tw com.br edu.br gov.br net.br org.br com.mx edu.mx gob.mx net.mx org.mx com.tr edu.tr gov.tr net.tr org.tr com.ar edu.ar gov.ar net.ar org.ar com.co net.co org.co com.pe net.pe org.pe com.ve net.ve org.ve com.ec net.ec org.ec com.pl com.ua gov.ua net.ua org.ua co.za gov.za net.za org.za com.my edu.my gov.my net.my org.my com.ph edu.ph gov.ph net.ph org.ph com.vn edu.vn gov.vn net.vn org.vn ac.id co.id go.id or.id sch.id web.id ac.th co.th go.th net.th or.th com.pk edu.pk gov.pk net.pk org.pk com.bd edu.bd gov.bd net.bd org.bd com.ng edu.ng gov.ng net.ng org.ng com.eg edu.eg gov.eg net.eg org.eg com.sa edu.sa gov.sa net.sa org.sa ac.il co.il gov.il net.il org.il co.ke go.ke or.ke com.ps net.ps org.ps com.do net.do org.do com.pr net.pr org.pr com.py net.py org.py com.uy net.uy org.uy com.bo net.bo org.bo com.gt net.gt org.gt com.pa net.pa org.pa com.cy net.cy org.cy com.ro net.ro org.ro com.gr net.gr org.gr com.pt net.pt org.pt com.es org.es", suffixes, /[ ]+/)
+            for (i = 1; i <= n; i++) multi_suffix[suffixes[i]] = 1
+        }
+        {
+            line = tolower($0)
+            gsub(/^[[:space:]]+/, "", line)
+            gsub(/[[:space:]]+$/, "", line)
+            if (line == "" || line ~ /^#/) next
+            if (line !~ /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?[.])+[a-z]{2,63}$/) next
+            if (line ~ /(^|[.])microsoft[.]com$/ || line ~ /(^|[.])bing[.]com$/ || line ~ /(^|[.])amazon[.]com$/) next
+            if (line ~ /^(api|status|cdn|assets|static|img|images|auth|login|mail|smtp|metrics|telemetry|edge|mobile|support|help|download|downloads|registry|acme-v02)[.]/) next
+            count = split(line, labels, /[.]/)
+            suffix = labels[count-1] "." labels[count]
+            # Permit www.example.co.uk while still rejecting deeper, less predictable hosts.
+            if (count > 3 && !(count == 4 && multi_suffix[suffix])) next
+            key = root_domain(line)
+            if (!seen[key]++) print line
+        }
+    ' "$input" > "$output"
+}
+
 sni_auto_select_default() {
     local fallback='www.amazon.com' workdir seed pool candidates raw raw_sorted verified
     local total step running=0 domain score app ttfb total_time http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty tier selected=''
@@ -10818,27 +10856,9 @@ sni_auto_select_default() {
         return 0
     fi
 
-    # Probe a small, diverse pool; never let Microsoft's score bonus make it a
-    # permanent default. Amazon is reserved as the final fallback, not a candidate.
-    awk '
-        function root_domain(host, labels, n) {
-            n = split(host, labels, /\./)
-            if (n < 2) return host
-            return labels[n-1] "." labels[n]
-        }
-        {
-            line = tolower($0)
-            gsub(/^[[:space:]]+/, "", line)
-            gsub(/[[:space:]]+$/, "", line)
-            if (line == "" || line ~ /^#/) next
-            if (line !~ /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/) next
-            if (line ~ /(^|\.)microsoft\.com$/ || line ~ /(^|\.)bing\.com$/ || line ~ /(^|\.)amazon\.com$/) next
-            if (line ~ /^(api|status|cdn|assets|static|img|images|auth|login|mail|smtp|metrics|telemetry|edge|mobile|support|help|download|downloads|registry|acme-v02)\./) next
-            if (split(line, labels, /\./) > 3) next
-            key = root_domain(line)
-            if (!seen[key]++) print line
-        }
-    ' "$seed" > "$pool" || {
+    # Use a registrable-domain-aware pool; unrelated multi-label country domains
+    # must not collapse to a shared suffix such as "co.uk" or "com.au".
+    sni_build_diverse_candidate_pool "$seed" "$pool" || {
         rm -rf -- "$workdir"
         printf '%s\n' "$fallback"
         return 0
@@ -16263,6 +16283,18 @@ PY_SELFTEST_TAR
     [[ "$(sni_domain_penalty github.com)" == '2400' ]] || { echo 'FAIL: GitHub apex SNI penalty'; failures=$((failures + 1)); }
     [[ "$(sni_raw_score 0.1 0.1 0.1 -220)" == '-92' ]] || { echo 'FAIL: SNI raw score must preserve negative ranking values'; failures=$((failures + 1)); }
     [[ "$(sni_adjust_score -92 -1500)" == '-1592' ]] || { echo 'FAIL: SNI ASN bonus must preserve negative ranking values'; failures=$((failures + 1)); }
+    local sni_diverse_in="$tmp/sni-diverse.in" sni_diverse_out="$tmp/sni-diverse.out"
+    printf '%s\n' \
+        'www.example.co.uk' 'example.co.uk' 'another.co.uk' \
+        'www.example.com' 'example.com' 'www.other.com' \
+        'www.amazon.com' 'a.b.c.example.com' 'api.example.co.uk' \
+        > "$sni_diverse_in"
+    sni_build_diverse_candidate_pool "$sni_diverse_in" "$sni_diverse_out" || { echo 'FAIL: SNI diverse candidate pool builder'; failures=$((failures + 1)); }
+    [[ "$(wc -l < "$sni_diverse_out" | tr -d ' ')" == '4' ]] || { echo 'FAIL: SNI root-domain deduplication collapsed unrelated country domains'; failures=$((failures + 1)); }
+    grep -Fxq 'www.example.co.uk' "$sni_diverse_out" || { echo 'FAIL: SNI multi-label suffix candidate omitted'; failures=$((failures + 1)); }
+    grep -Fxq 'another.co.uk' "$sni_diverse_out" || { echo 'FAIL: distinct .co.uk registrable domain must survive deduplication'; failures=$((failures + 1)); }
+    ! grep -Fxq 'example.co.uk' "$sni_diverse_out" || { echo 'FAIL: same registrable domain must be deduplicated'; failures=$((failures + 1)); }
+    ! grep -Fxq 'www.amazon.com' "$sni_diverse_out" || { echo 'FAIL: Amazon must remain fallback-only'; failures=$((failures + 1)); }
     [[ "$(sni_report_fit_tier tls13=1 alpn=h2 san=1 asnmatch=1 samecountry=1 cdnpenalty=0)" == 'A' ]] || { echo 'FAIL: SNI same-ASN compatible tier'; failures=$((failures + 1)); }
     [[ "$(sni_report_fit_tier tls13=1 alpn=h2 san=1 asnmatch=1 samecountry=1 cdnpenalty=500)" == 'R' ]] || { echo 'FAIL: SNI CDN-risk tier must override green recommendation'; failures=$((failures + 1)); }
     [[ "$(sni_report_fit_tier tls13=1 alpn=h2 san=1 asnmatch=0 samecountry=1 cdnpenalty=0)" == 'B' ]] || { echo 'FAIL: SNI same-country compatible tier'; failures=$((failures + 1)); }

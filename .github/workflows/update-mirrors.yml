@@ -132,7 +132,7 @@ jobs:
               echo "::error::Unexpected size for ${file}: ${bytes} bytes"
               return 1
             fi
-            if [[ ! "$first_line" =~ ^#!.*(bash|sh) ]] || grep -Eiq '<!doctype[[:space:]]+html|<html([[:space:]>])' "$file"; then
+            if [[ ! "$first_line" =~ ^#!.*bash([[:space:]]|$) ]] || grep -Eiq '<!doctype[[:space:]]+html|<html([[:space:]>])' "$file"; then
               echo "::error::Refusing unexpected/non-shell content in ${file}"
               return 1
             fi

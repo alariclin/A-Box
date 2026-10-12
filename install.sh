@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-13-core-stable-v177'
-ABOX_BUILD_EPOCH=20261013177
+ABOX_BUILD='2026-10-13-auto-sni-v178'
+ABOX_BUILD_EPOCH=20261013178
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -789,7 +789,7 @@ prompt_reality_sni() {
         read -r -p "$prompt" input || return 1
         input=${input:-$default_sni}
         if ! valid_sni "$input"; then
-            printf '%s\n' "$RED[!] $(tprintf bad_sni "$input")$NC" >&2
+            printf '%s\n' "${RED}[!] $(tprintf bad_sni "$input")$NC" >&2
             continue
         fi
         warned=0
@@ -805,18 +805,18 @@ prompt_reality_sni() {
             custom_tier=$(sni_probe_candidate_tier "$input" 2>/dev/null || printf 'N')
             case "$custom_tier" in
                 A|B|C)
-                    printf '%s\n' "$GREEN[SNI custom] 当前 VPS 实测通过 TLS 1.3、h2 和证书 SAN 检查；兼容档位 $custom_tier。$NC" >&2
+                    printf '%s\n' "${GREEN}[SNI custom] 当前 VPS 实测通过 TLS 1.3、h2 和证书 SAN 检查；兼容档位 $custom_tier。$NC" >&2
                     ;;
                 R)
-                    printf '%s\n' "$YELLOW[SNI custom] TLS 检查通过，但目标存在较高 CDN/共享边缘风险，不属于推荐档位。$NC" >&2
+                    printf '%s\n' "${YELLOW}[SNI custom] TLS 检查通过，但目标存在较高 CDN/共享边缘风险，不属于推荐档位。$NC" >&2
                     warned=1
                     ;;
                 D)
-                    printf '%s\n' "$YELLOW[SNI custom] 该域名未通过 TLS 1.3、h2 或证书 SAN 检查，可能造成连接失败。$NC" >&2
+                    printf '%s\n' "${YELLOW}[SNI custom] 该域名未通过 TLS 1.3、h2 或证书 SAN 检查，可能造成连接失败。$NC" >&2
                     warned=1
                     ;;
                 *)
-                    printf '%s\n' "$YELLOW[SNI custom] 当前 VPS 无法完成可靠性检测；请确认该域名支持 TLS 1.3、h2 且证书 SAN 匹配。$NC" >&2
+                    printf '%s\n' "${YELLOW}[SNI custom] 当前 VPS 无法完成可靠性检测；请确认该域名支持 TLS 1.3、h2 且证书 SAN 匹配。$NC" >&2
                     warned=1
                     ;;
             esac

@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-13-auto-sni-v178'
-ABOX_BUILD_EPOCH=20261013178
+ABOX_BUILD='2026-10-13-auto-sni-v179'
+ABOX_BUILD_EPOCH=20261013179
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -16209,8 +16209,8 @@ PY_SELFTEST_TAR
     local mock_release_json=''
     mock_release_json='[{"tag_name":"v1.17.0-rc.1","draft":false,"prerelease":true,"published_at":"2026-10-12T06:13:25Z"},{"tag_name":"v1.14.2","draft":false,"prerelease":false,"published_at":"2026-10-10T11:47:08Z"},{"tag_name":"v1.14.3","draft":false,"prerelease":false,"published_at":"2026-10-09T05:35:00Z"},{"tag_name":"v1.15.0","draft":false,"prerelease":false,"published_at":"2026-09-01T00:00:00Z"},{"tag_name":"v1.16.0","draft":true,"prerelease":false,"published_at":"2026-10-13T00:00:00Z"}]'
     [[ "$(core_latest_stable_tag_from_json SagerNet/sing-box "$mock_release_json")" == 'v1.15.0' ]] || { echo 'FAIL: stable resolver must use semantic version order and exclude prerelease/draft'; failures=$((failures + 1)); }
-    mock_release_json='[{"tag_name":"app/v2.14.0-rc.1","draft":false,"prerelease":true,"published_at":"2026-10-12T00:00:00Z"},{"tag_name":"app/v2.13.0","draft":false,"prerelease":false,"published_at":"2026-10-05T00:00:00Z"}]'
-    [[ "$(core_latest_stable_tag_from_json HyNetworks/hysteria "$mock_release_json")" == 'app/v2.13.0' ]] || { echo 'FAIL: Hysteria stable resolver'; failures=$((failures + 1)); }
+    mock_release_json='[{"tag_name":"app/v2.14.0-rc.1","draft":false,"prerelease":true,"published_at":"2026-10-12T00:00:00Z"},{"tag_name":"app/v2.13.0","draft":false,"prerelease":false,"published_at":"2026-10-05T00:00:00Z"},{"tag_name":"app/v2.12.5","draft":false,"prerelease":false,"published_at":"2026-10-11T00:00:00Z"}]'
+    [[ "$(core_latest_stable_tag_from_json HyNetworks/hysteria "$mock_release_json")" == 'app/v2.13.0' ]] || { echo 'FAIL: Hysteria stable resolver must use semantic version order'; failures=$((failures + 1)); }
     core_binary_matches_release_ref 'v26.7.28' 'Xray 26.7.28 (Xray, Penetrates Everything.)' || { echo 'FAIL: Xray binary/tag identity'; failures=$((failures + 1)); }
     core_binary_matches_release_ref 'v1.14.3' 'sing-box version 1.14.3' || { echo 'FAIL: sing-box binary/tag identity'; failures=$((failures + 1)); }
     core_binary_matches_release_ref 'app/v2.13.0' 'Hysteria version v2.13.0' || { echo 'FAIL: Hysteria binary/tag identity'; failures=$((failures + 1)); }

@@ -4570,14 +4570,84 @@ xray_version_compare() {
     decimal_component_compare "$ap" "$bp"
 }
 
-# Allow a downgrade only when the operator explicitly opts in. This guard is
-# also used by the "latest stable" probe, whose upstream tag may be older than
-# A-Box's compatibility pin when newer upstream releases are marked prerelease.
-xray_core_downgrade_allowed() {
-    local current="${1:-}" target="${2:-}" allow="${3:-0}" cmp
+# Extract a semantic version from the first-line output of a core binary.
+core_version_from_output() {
+    local output="${1:-}"
+    if [[ "$output" =~ (^|[^[:alnum:]])(v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?) ]]; then
+        printf '%s\n' "${BASH_REMATCH[2]}"
+    else
+        return 1
+    fi
+}
+
+# Compare SemVer tags, including prerelease tags and release refs such as app/v2.13.0.
+# Prints -1/0/1 for target ordering and 2 on malformed input.
+core_version_compare() {
+    local a="${1:-}" b="${2:-}" a_pre='' b_pre='' cmp i id_a id_b norm_a norm_b
+    local LC_ALL=C
+    local -a a_ids=() b_ids=()
+    a="${a##*/}"; b="${b##*/}"; a="${a#v}"; b="${b#v}"
+    [[ "$a" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$ ]] || return 2
+    local am="${BASH_REMATCH[1]}" aj="${BASH_REMATCH[2]}" ap="${BASH_REMATCH[3]}"
+    a_pre="${BASH_REMATCH[5]:-}"
+    [[ "$b" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$ ]] || return 2
+    local bm="${BASH_REMATCH[1]}" bj="${BASH_REMATCH[2]}" bp="${BASH_REMATCH[3]}"
+    b_pre="${BASH_REMATCH[5]:-}"
+    cmp=$(xray_version_compare "$am.$aj.$ap" "$bm.$bj.$bp") || return 2
+    if (( cmp != 0 )); then printf '%s\n' "$cmp"; return 0; fi
+    if [[ -z "$a_pre" && -n "$b_pre" ]]; then printf '%s\n' 1; return 0; fi
+    if [[ -n "$a_pre" && -z "$b_pre" ]]; then printf '%s\n' -1; return 0; fi
+    if [[ -z "$a_pre" && -z "$b_pre" ]]; then printf '%s\n' 0; return 0; fi
+    IFS='.' read -r -a a_ids <<< "$a_pre"
+    IFS='.' read -r -a b_ids <<< "$b_pre"
+    for ((i=0; i<${#a_ids[@]} && i<${#b_ids[@]}; i++)); do
+        id_a="${a_ids[i]}"; id_b="${b_ids[i]}"
+        [[ "$id_a" == "$id_b" ]] && continue
+        if [[ "$id_a" =~ ^[0-9]+$ && "$id_b" =~ ^[0-9]+$ ]]; then
+            norm_a="$id_a"; norm_b="$id_b"
+            while [[ "${#norm_a}" -gt 1 && "$norm_a" == 0* ]]; do norm_a="${norm_a#0}"; done
+            while [[ "${#norm_b}" -gt 1 && "$norm_b" == 0* ]]; do norm_b="${norm_b#0}"; done
+            if (( ${#norm_a} < ${#norm_b} )); then cmp=-1
+            elif (( ${#norm_a} > ${#norm_b} )); then cmp=1
+            elif [[ "$norm_a" < "$norm_b" ]]; then cmp=-1
+            else cmp=1
+            fi
+        elif [[ "$id_a" =~ ^[0-9]+$ ]]; then
+            cmp=-1
+        elif [[ "$id_b" =~ ^[0-9]+$ ]]; then
+            cmp=1
+        elif [[ "$id_a" < "$id_b" ]]; then
+            cmp=-1
+        else
+            cmp=1
+        fi
+        printf '%s\n' "$cmp"
+        return 0
+    done
+    if (( ${#a_ids[@]} < ${#b_ids[@]} )); then printf '%s\n' -1
+    elif (( ${#a_ids[@]} > ${#b_ids[@]} )); then printf '%s\n' 1
+    else printf '%s\n' 0
+    fi
+}
+
+# Return codes: 0=proceed, 1=explicit downgrade needs opt-in, 2=invalid versions,
+# 3=installed version is newer than the default pin (safe no-op), 4=already pinned.
+core_version_upgrade_decision() {
+    local current="${1:-}" target="${2:-}" explicit="${3:-0}" allow="${4:-0}" cmp
+    [[ "$explicit" == 0 || "$explicit" == 1 ]] || return 2
     [[ "$allow" == 0 || "$allow" == 1 ]] || return 2
-    cmp=$(xray_version_compare "$current" "$target") || return 2
-    (( cmp <= 0 )) || [[ "$allow" == 1 ]]
+    [[ "$allow" == 1 ]] && return 0
+    cmp=$(core_version_compare "$current" "$target") || return 2
+    if (( cmp > 0 )); then
+        [[ "$explicit" == 1 ]] && return 1
+        return 3
+    fi
+    if (( cmp == 0 )) && [[ "$explicit" == 0 ]]; then return 4; fi
+    return 0
+}
+
+core_version_downgrade_allowed() {
+    core_version_upgrade_decision "${1:-}" "${2:-}" 1 "${3:-0}"
 }
 
 xray_latest_stable_version() {
@@ -14729,24 +14799,25 @@ upgrade_xray_core_only() {
     active_state=$(service_active_state_value xray 2>/dev/null) || die '无法可靠查询 Xray 服务状态；拒绝在状态未知时升级核心。'
     case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die 'Xray 服务状态响应无效；拒绝继续升级。' ;; esac
     [[ -x /usr/local/bin/xray ]] && old_ver=$(/usr/local/bin/xray version 2>/dev/null | head -n 1 || true)
-    local target_ref current_tag='' cmp=0
+    local target_ref current_tag='' decision=0
     target_ref="$(effective_xray_version)"
     if [[ -n "${old_ver:-}" ]]; then
-        current_tag=$(grep -oE 'Xray [0-9]+\.[0-9]+\.[0-9]+' <<< "${old_ver:-}" | awk '{print "v"$2}' | head -n 1 || true)
-        if [[ -n "$current_tag" ]]; then
-            cmp=$(xray_version_compare "$current_tag" "$target_ref") || die '当前 Xray 版本格式无法比较。'
-            if (( cmp > 0 )); then
-                if [[ -z "${ABOX_XRAY_VERSION:-}" ]]; then
-                    msg "${YELLOW}[!] 当前 Xray ${current_tag} 高于默认兼容版本 ${target_ref}；为避免自动降级，本次跳过。请显式设置 ABOX_XRAY_VERSION 后再升级。${NC}"
-                    return 0
-                fi
-                xray_core_downgrade_allowed "$current_tag" "$target_ref" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die "拒绝将 Xray 从 ${current_tag} 降级到 ${target_ref}。如确需降级，请明确设置 ABOX_ALLOW_CORE_DOWNGRADE=1 并确认客户端兼容性。"
-                msg "${YELLOW}[!] 已显式允许 Xray 降级：${current_tag} -> ${target_ref}。${NC}"
-            elif (( cmp == 0 )) && [[ -z "${ABOX_XRAY_VERSION:-}" ]]; then
-                msg "${GREEN}[OK] 当前 Xray ${current_tag} 已是默认兼容版本，无需替换。${NC}"
-                return 0
-            fi
+        current_tag=$(core_version_from_output "$old_ver" || true)
+        if [[ -z "$current_tag" ]]; then
+            [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] || die '无法解析当前 Xray 版本；为避免意外降级，拒绝升级。'
+        else
+            core_version_upgrade_decision "$current_tag" "$target_ref" "${ABOX_XRAY_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
+            decision=$?
+            case "$decision" in
+                0) ;;
+                1) die "拒绝将 Xray 从 ${current_tag} 降级到 ${target_ref}。如确需降级，请明确设置 ABOX_ALLOW_CORE_DOWNGRADE=1 并确认客户端兼容性。" ;;
+                2) die '当前或目标 Xray 版本格式无法比较。' ;;
+                3) msg "${YELLOW}[!] 当前 Xray ${current_tag} 高于默认兼容版本 ${target_ref}；为避免自动降级，本次跳过。${NC}"; return 0 ;;
+                4) msg "${GREEN}[OK] 当前 Xray ${current_tag} 已是默认兼容版本，无需替换。${NC}"; return 0 ;;
+                *) die 'Xray version-direction guard returned an unexpected status.' ;;
+            esac
         fi
+        [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] && msg "${YELLOW}[!] ABOX_ALLOW_CORE_DOWNGRADE=1: Xray version-direction guard explicitly bypassed.${NC}"
     fi
     tmp=$(mktemp -d /tmp/A-Box-core-xray.XXXXXX) || die 'Xray core upgrade temp directory failed.'
     ABOX_CORE_UPGRADE_TMP="$tmp"
@@ -14783,6 +14854,25 @@ upgrade_singbox_core_only() {
     active_state=$(service_active_state_value sing-box 2>/dev/null) || die '无法可靠查询 sing-box 服务状态；拒绝在状态未知时升级核心。'
     case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die 'sing-box 服务状态响应无效；拒绝继续升级。' ;; esac
     [[ -x /usr/local/bin/sing-box ]] && old_ver=$(/usr/local/bin/sing-box version 2>/dev/null | head -n 1 || true)
+    local target_ref="${ABOX_SINGBOX_VERSION:-$ABOX_SINGBOX_DEFAULT_VERSION}" current_tag='' decision=0
+    if [[ -n "${old_ver:-}" ]]; then
+        current_tag=$(core_version_from_output "$old_ver" || true)
+        if [[ -z "$current_tag" ]]; then
+            [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] || die '无法解析当前 sing-box 版本；为避免意外降级，拒绝升级。'
+        else
+            core_version_upgrade_decision "$current_tag" "$target_ref" "${ABOX_SINGBOX_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
+            decision=$?
+            case "$decision" in
+                0) ;;
+                1) die "拒绝将 sing-box 从 ${current_tag} 降级到 ${target_ref}。如确需降级，请明确设置 ABOX_ALLOW_CORE_DOWNGRADE=1 并确认配置兼容性。" ;;
+                2) die '当前或目标 sing-box 版本格式无法比较。' ;;
+                3) msg "${YELLOW}[!] 当前 sing-box ${current_tag} 高于固定兼容版本 ${target_ref}；为避免自动降级，本次跳过。${NC}"; return 0 ;;
+                4) msg "${GREEN}[OK] 当前 sing-box ${current_tag} 已是固定兼容版本，无需替换。${NC}"; return 0 ;;
+                *) die 'sing-box version-direction guard returned an unexpected status.' ;;
+            esac
+        fi
+        [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] && msg "${YELLOW}[!] ABOX_ALLOW_CORE_DOWNGRADE=1: sing-box version-direction guard explicitly bypassed.${NC}"
+    fi
     tmp=$(mktemp -d /tmp/A-Box-core-singbox.XXXXXX) || die 'sing-box core upgrade temp directory failed.'
     ABOX_CORE_UPGRADE_TMP="$tmp"
     sb_tar="$tmp/singbox_core.tar.gz"; sb_ext="$tmp/extract"; mkdir -p "$sb_ext"
@@ -14819,6 +14909,25 @@ upgrade_hysteria_core_only() {
     active_state=$(service_active_state_value hysteria 2>/dev/null) || die '无法可靠查询 Hysteria 服务状态；拒绝在状态未知时升级核心。'
     case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die 'Hysteria 服务状态响应无效；拒绝继续升级。' ;; esac
     [[ -x /usr/local/bin/hysteria ]] && old_ver=$(/usr/local/bin/hysteria version 2>/dev/null | head -n 1 || true)
+    local target_ref="${ABOX_HYSTERIA_APP_VERSION:-app/v2.13.0}" current_tag='' decision=0
+    if [[ -n "${old_ver:-}" ]]; then
+        current_tag=$(core_version_from_output "$old_ver" || true)
+        if [[ -z "$current_tag" ]]; then
+            [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] || die '无法解析当前 Hysteria 版本；为避免意外降级，拒绝升级。'
+        else
+            core_version_upgrade_decision "$current_tag" "$target_ref" "${ABOX_HYSTERIA_APP_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
+            decision=$?
+            case "$decision" in
+                0) ;;
+                1) die "拒绝将 Hysteria 从 ${current_tag} 降级到 ${target_ref#*/}。如确需降级，请明确设置 ABOX_ALLOW_CORE_DOWNGRADE=1 并确认客户端兼容性。" ;;
+                2) die '当前或目标 Hysteria 版本格式无法比较。' ;;
+                3) msg "${YELLOW}[!] 当前 Hysteria ${current_tag} 高于固定兼容版本 ${target_ref#*/}；为避免自动降级，本次跳过。${NC}"; return 0 ;;
+                4) msg "${GREEN}[OK] 当前 Hysteria ${current_tag} 已是固定兼容版本，无需替换。${NC}"; return 0 ;;
+                *) die 'Hysteria version-direction guard returned an unexpected status.' ;;
+            esac
+        fi
+        [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] && msg "${YELLOW}[!] ABOX_ALLOW_CORE_DOWNGRADE=1: Hysteria version-direction guard explicitly bypassed.${NC}"
+    fi
     tmp=$(mktemp -d /tmp/A-Box-core-hysteria.XXXXXX) || die 'Hysteria core upgrade temp directory failed.'
     ABOX_CORE_UPGRADE_TMP="$tmp"
     hy2_bin="$tmp/hysteria_core"
@@ -15684,11 +15793,20 @@ PY_SELFTEST_TAR
     [[ "$(xray_version_compare v26.7.28 v26.7.28)" == '0' ]] || { echo 'FAIL: Xray compatibility pin comparison'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v26.3.27 v26.3.27)" == '0' ]] || { echo 'FAIL: Xray equal version comparison'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v26.3.27 v26.7.28)" == '-1' ]] || { echo 'FAIL: Xray reverse version comparison'; failures=$((failures + 1)); }
-    assert_ok xray_core_downgrade_allowed v26.3.27 v26.7.28 0
-    assert_ok xray_core_downgrade_allowed v26.7.28 v26.7.28 0
-    assert_bad xray_core_downgrade_allowed v26.7.28 v26.3.27 0
-    assert_ok xray_core_downgrade_allowed v26.7.28 v26.3.27 1
-    assert_bad xray_core_downgrade_allowed v26.7.28 v26.3.27 invalid
+    [[ "$(core_version_compare v26.7.28 v26.3.27)" == '1' ]] || { echo 'FAIL: Xray prerelease-tag target should not downgrade a newer core'; failures=$((failures + 1)); }
+    [[ "$(core_version_compare app/v2.13.0 v2.12.3)" == '1' ]] || { echo 'FAIL: Hysteria app/ release tag comparison'; failures=$((failures + 1)); }
+    [[ "$(core_version_compare v1.15.0-alpha.12 v1.15.0)" == '-1' ]] || { echo 'FAIL: SemVer prerelease must sort below final release'; failures=$((failures + 1)); }
+    [[ "$(core_version_compare v1.15.0-alpha.12 v1.14.3)" == '1' ]] || { echo 'FAIL: newer SemVer prerelease major/minor/patch ordering'; failures=$((failures + 1)); }
+    [[ "$(core_version_compare v1.15.0-alpha.12 v1.15.0-alpha.2)" == '1' ]] || { echo 'FAIL: numeric SemVer prerelease identifier ordering'; failures=$((failures + 1)); }
+    assert_ok core_version_from_output 'sing-box version 1.14.3 (go1.25.2 linux/amd64)'
+    [[ "$(core_version_from_output 'sing-box version 1.14.3 (go1.25.2 linux/amd64)')" == '1.14.3' ]] || { echo 'FAIL: sing-box version parser'; failures=$((failures + 1)); }
+    assert_ok core_version_downgrade_allowed v1.14.2 v1.14.3 0
+    assert_bad core_version_downgrade_allowed v1.14.3 v1.14.2 0
+    assert_ok core_version_downgrade_allowed v1.14.3 v1.14.2 1
+    assert_ok core_version_upgrade_decision v1.14.2 v1.14.3 0 0
+    assert_bad core_version_upgrade_decision v1.14.3 v1.14.2 1 0
+    assert_ok core_version_upgrade_decision v1.14.3 v1.14.2 1 1
+    assert_bad core_version_compare v1.15 v1.14.3
     [[ "$(xray_version_compare v9223372036854775808.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray huge-version comparison overflow regression'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v18446744073709551616.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray extra-large version comparison regression'; failures=$((failures + 1)); }
     grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" "$0" || { echo 'FAIL: Xray REALITY ML-KEM threshold constant missing'; failures=$((failures + 1)); }

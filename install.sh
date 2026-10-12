@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-12-audit-fix-v174'
-ABOX_BUILD_EPOCH=20261012174
+ABOX_BUILD='2026-10-12-audit-fix-v175'
+ABOX_BUILD_EPOCH=20261012175
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -15766,8 +15766,17 @@ PY_SELFTEST_TAR
     grep -Fq 'ABOX_HYSTERIA_APP_VERSION:-app/v2.13.0' "$0" || { echo 'FAIL: Hysteria v2.13.0 compatibility pin missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_XRAY_DEFAULT_VERSION='v26.7.28'" "$0" || { echo 'FAIL: Xray iOS/XHTTP compatibility pin missing'; failures=$((failures + 1)); }
 
-    grep -Fq "ABOX_BUILD='2026-10-12-audit-fix-v173'" "$0" || { echo 'FAIL: build string missing'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_BUILD_EPOCH=20261012173' "$0" || { echo 'FAIL: build epoch missing'; failures=$((failures + 1)); }
+    (
+        [[ "$ABOX_BUILD" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[A-Za-z0-9][A-Za-z0-9-]*-v[0-9]+$ ]] || exit 1
+        _build_date="${ABOX_BUILD:0:10}"
+        _build_date="${_build_date//-/}"
+        _build_revision="${ABOX_BUILD##*-v}"
+        [[ "$ABOX_BUILD_EPOCH" =~ ^[0-9]+$ ]] || exit 1
+        [[ "$ABOX_BUILD_EPOCH" == "${_build_date}${_build_revision}" ]]
+    ) || {
+        echo 'FAIL: build metadata format or epoch mismatch'
+        failures=$((failures + 1))
+    }
     grep -Fq 'IP_PREF_FILE=' "$0" || { echo 'FAIL: IP preference state file missing'; failures=$((failures + 1)); }
     grep -Fq 'ip_preference_menu()' "$0" || { echo 'FAIL: IP preference menu missing'; failures=$((failures + 1)); }
     grep -Fq 'dns_menu()' "$0" || { echo 'FAIL: DNS menu missing'; failures=$((failures + 1)); }

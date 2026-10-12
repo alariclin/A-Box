@@ -15164,7 +15164,7 @@ upgrade_xray_core_only() {
         final_decision=$?
         case "$final_decision" in
             0) ;;
-            1) rm -rf "$tmp"; die "拒绝将 ${coreName} 从 ${current_tag} 降级到最终候选版本 ${final_tag}。" ;;
+            1) rm -rf "$tmp"; die "拒绝将 Xray 从 ${current_tag} 降级到最终候选版本 ${final_tag}。" ;;
             2) rm -rf "$tmp"; die '最终核心候选版本格式无法比较。' ;;
             3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] 最终候选版本 ${final_tag} 低于当前版本 ${current_tag}；已跳过以避免自动降级。${NC}"; return 0 ;;
             4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] 最终候选版本 ${final_tag} 与当前版本相同，无需替换。${NC}"; return 0 ;;
@@ -15238,7 +15238,7 @@ upgrade_singbox_core_only() {
         final_decision=$?
         case "$final_decision" in
             0) ;;
-            1) rm -rf "$tmp"; die "拒绝将 ${coreName} 从 ${current_tag} 降级到最终候选版本 ${final_tag}。" ;;
+            1) rm -rf "$tmp"; die "拒绝将 sing-box 从 ${current_tag} 降级到最终候选版本 ${final_tag}。" ;;
             2) rm -rf "$tmp"; die '最终核心候选版本格式无法比较。' ;;
             3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] 最终候选版本 ${final_tag} 低于当前版本 ${current_tag}；已跳过以避免自动降级。${NC}"; return 0 ;;
             4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] 最终候选版本 ${final_tag} 与当前版本相同，无需替换。${NC}"; return 0 ;;
@@ -15309,7 +15309,7 @@ upgrade_hysteria_core_only() {
         final_decision=$?
         case "$final_decision" in
             0) ;;
-            1) rm -rf "$tmp"; die "拒绝将 ${coreName} 从 ${current_tag} 降级到最终候选版本 ${final_tag}。" ;;
+            1) rm -rf "$tmp"; die "拒绝将 Hysteria 从 ${current_tag} 降级到最终候选版本 ${final_tag}。" ;;
             2) rm -rf "$tmp"; die '最终核心候选版本格式无法比较。' ;;
             3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] 最终候选版本 ${final_tag} 低于当前版本 ${current_tag}；已跳过以避免自动降级。${NC}"; return 0 ;;
             4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] 最终候选版本 ${final_tag} 与当前版本相同，无需替换。${NC}"; return 0 ;;
@@ -16235,7 +16235,7 @@ PY_SELFTEST_TAR
     grep -Fq 'rc-update del "$srv" default' "$0" || { echo 'FAIL: traffic quota stop path must remove OpenRC autostart'; failures=$((failures + 1)); }
     grep -Fq 'start-stop-daemon --stop --pidfile "$pidfile" --exec "$exe" --retry TERM/5/KILL/1' "$0" || { echo 'FAIL: OpenRC stop fallback must bind PID to expected executable'; failures=$((failures + 1)); }
     ( verify_github_asset_digest /dev/null '' ) >/dev/null 2>&1 && { echo 'FAIL: missing GitHub digest must be rejected'; failures=$((failures + 1)); }
-    grep -q '\[\[ "\${digest#sha256:}" =~ \^\[A-Fa-f0-9\]{64}\$ \]\]' "$0" || { echo 'FAIL: fetch helper must prevalidate GitHub digest before mirror retry'; failures=$((failures + 1)); }
+    grep -Fq '[[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]]' "$0" || { echo 'FAIL: fetch helper must prevalidate GitHub digest before mirror retry'; failures=$((failures + 1)); }
     ( ABOX_ASSUME_YES_OTA=1 confirm_ota_script_hash 0000000000000000000000000000000000000000000000000000000000000000 https://example.com/script.sh ) >/dev/null 2>&1 && { echo 'FAIL: ABOX_ASSUME_YES_OTA must be rejected without allowlist'; failures=$((failures + 1)); }
     grep -Fq 'env \\
         -u GITHUB_TOKEN' "$0" || { echo 'FAIL: remote third-party scripts must not inherit GITHUB_TOKEN'; failures=$((failures + 1)); }

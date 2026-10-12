@@ -9111,18 +9111,18 @@ try_latest_cores_danger() {
     for t in "${targets[@]}"; do
         case "$t" in
             xray)
-                latest=$(core_latest_stable_release_ref XTLS/Xray-core) || die '无法解析 Xray 最新正式稳定版。'
+                latest=$(core_latest_stable_release_ref XTLS/Xray-core 2>/dev/null || core_release_mirror_version XTLS/Xray-core) || die '无法解析 Xray 正式稳定候选或容灾版本。'
                 msg "${YELLOW}Trying Xray ${latest}${NC}"
                 upgrade_xray_core_only
                 ;;
             singbox)
-                latest=$(core_latest_stable_release_ref SagerNet/sing-box) || die '无法解析 sing-box 最新正式稳定版。'
+                latest=$(core_latest_stable_release_ref SagerNet/sing-box 2>/dev/null || core_release_mirror_version SagerNet/sing-box) || die '无法解析 sing-box 正式稳定候选或容灾版本。'
                 msg "${YELLOW}Trying sing-box ${latest}${NC}"
                 upgrade_singbox_core_only
                 ;;
             hysteria)
-                # Hysteria uses app/vX tags; keep pin channel unless API gives tag
-                latest=$(core_latest_stable_release_ref HyNetworks/hysteria) || die '无法解析 Hysteria 最新正式稳定版。'
+                # Hysteria tags are app/vX; use official stable Releases or the fixed recovery pin.
+                latest=$(core_latest_stable_release_ref HyNetworks/hysteria 2>/dev/null || core_release_mirror_version HyNetworks/hysteria) || die '无法解析 Hysteria 正式稳定候选或容灾版本。'
                 msg "${YELLOW}Trying Hysteria ${latest}${NC}"
                 upgrade_hysteria_core_only
                 ;;

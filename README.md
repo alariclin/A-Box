@@ -8,7 +8,7 @@ One-click Linux network gateway toolkit.
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
-A-Box is a standalone Bash script for deploying and maintaining Linux network gateway services. Its configured default core versions are Xray `v26.7.28` and sing-box `v1.14.2`.
+A-Box is a standalone Bash script for deploying and maintaining Linux network gateway services. Its compatibility pins are Xray `v26.7.28` (an upstream prerelease intentionally retained for compatibility) and sing-box `v1.14.2`; latest-stable selection never silently downgrades an already installed newer core.
 
 It supports Xray-core, sing-box, the official Hysteria 2 server, VLESS Vision REALITY, VLESS XHTTP REALITY, Shadowsocks-2022, client configuration export, local SNI candidate testing, backup and restore, firewall management, diagnostics, traffic limits, health checks, and core software upgrades.
 
@@ -25,7 +25,7 @@ The project is provided “as is”, without warranty. Review the script and the
 ### Official GitHub source
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/2df8e6b11e24d11cd06ede6ac83ccd5ea9676368/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/de013f9baeb7871a14734a1db10cad04c28b38f5/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh
@@ -34,13 +34,13 @@ sudo bash A-Box.sh
 ### Third-party fallback mirror
 
 ```bash
-curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/alariclin/a-box/2df8e6b11e24d11cd06ede6ac83ccd5ea9676368/install.sh -o A-Box.sh
+curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/alariclin/a-box/de013f9baeb7871a14734a1db10cad04c28b38f5/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh
 ```
 
-Both commands pin the installer to immutable commit `2df8e6b11e24d11cd06ede6ac83ccd5ea9676368`; the proxy URL remains a third-party transport, not an official A-Box endpoint. Syntax checking and SHA-256 alone do not prove publisher authenticity. Review the downloaded file before running it, and for production verify the commit and checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.
+Both commands pin the installer to immutable commit `de013f9baeb7871a14734a1db10cad04c28b38f5`; the proxy URL remains a third-party transport, not an official A-Box endpoint. Syntax checking and SHA-256 alone do not prove publisher authenticity. Review the downloaded file before running it, and for production verify the commit and checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.
 
 ## Main Features
 
@@ -49,7 +49,7 @@ Both commands pin the installer to immutable commit `2df8e6b11e24d11cd06ede6ac83
 - **Client configuration export:** share links/URIs, QR codes, Clash/Mihomo YAML, sing-box outbound templates, and v2rayN/v2rayNG XHTTP JSON.
 - **Operations and diagnostics:** health checks, system/download benchmark, IP quality and route tests, BBR/FQ tuning with rollback, IP preference, measured host DNS, supported DoT/DoH, numbered timezone selection, locale/NTP settings, Wallos installation/backup, Fail2Ban/logrotate, traffic limits, backup/restore, redacted diagnostics, and preflight checks.
 - **Operations:** one-click Reality, fast/strict mode (`ABOX_FAST`), stable core pins and rollback-capable upgrades, multi-UUID server-side add/revoke plus URI/Base64/Clash export, and real download-source availability checks.
-- **Core binary mirrors:** recovery copies of pinned Xray / sing-box / Hysteria assets live on the stable Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/a-box/releases/tag/core-binaries); downloads are checked against `SHA256SUMS` (see [`mirrors/README.md`](mirrors/README.md)).
+- **Core binary mirrors:** the stable Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/a-box/releases/tag/core-binaries) keeps fixed compatibility-pin assets and versioned copies of the latest official stable Xray, sing-box, and Hysteria builds. The weekly publisher rejects draft/prerelease tags, verifies official SHA-256 digests and asset architecture, probes versions where the runner can execute the binary, and retains older versioned assets for rollback; the installer checks the actual binary version on the target before installation. Latest-stable recovery tries the exact-tag mirror first, then the fixed compatibility pins. `SHA256SUMS` is a same-Release integrity manifest, not an independent signature; see [`mirrors/README.md`](mirrors/README.md).
 - **SNI candidate workflow:** local full and mini-host candidate tests, saved-result viewer, input validation, bounded file size/row count, duplicate removal, and fallback to a valid local cache or adjacent data file when available.
 - **Maintenance:** controlled script OTA with displayed SHA-256 and explicit confirmation, Xray Geo data updates, and core-only upgrades that preserve node parameters.
 - **Safety controls:** deployment preflight checks, guarded service ownership/state changes, firewall handling, and rollback paths for supported operations.

@@ -210,7 +210,11 @@ sort -k2,2 "$out/SHA256SUMS" -o "$out/SHA256SUMS"
 if [[ "${CORE_MIRROR_DRY_RUN:-0}" == '1' ]]; then
   echo "Dry-run complete; no Release assets were changed."
   printf 'Verified latest tags: Xray=%s sing-box=%s Hysteria=%s\n' "$xray_tag" "$singbox_tag" "$hysteria_tag"
-  printf 'Would upload new versioned asset: %s\n' "${upload_paths[@]}"
+  if (( ${#upload_paths[@]} )); then
+    printf 'Would upload new versioned asset: %s\n' "${upload_paths[@]}"
+  else
+    echo "No new versioned binary assets need uploading."
+  fi
   echo "Would update CORE-VERSIONS and publish SHA256SUMS last."
   exit 0
 fi

@@ -32,6 +32,9 @@ jobs:
       contents: read
     env:
       CORE_MIRROR_DRY_RUN: '1'
+      # P1-01 fix 2026-10-14: gh CLI needs token even for read-only API calls.
+      # contents: read permission above ensures this token cannot write.
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
@@ -47,13 +50,16 @@ jobs:
   # pre-verified artifacts and NEVER executes them.
   verify-publish:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
-    name: Verify upstream binaries (isolated, no write token)
+    name: Verify upstream binaries (isolated, read-only token)
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
       contents: read
     env:
       CORE_MIRROR_DRY_RUN: '1'
+      # P1-01 fix 2026-10-14: read-only token for gh API calls.
+      # This job executes upstream binaries but token has no write permission.
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
@@ -61,8 +67,8 @@ jobs:
           persist-credentials: false
       - name: Download and verify latest official stable assets
         shell: bash
-        # NOTE: no GH_TOKEN in env; upstream binaries are executed here but
-        # cannot access any write credential.
+        # NOTE: GH_TOKEN is read-only (contents: read); upstream binaries
+        # are executed here but cannot use it to write.
         run: bash scripts/update-core-mirror.sh
       - name: Upload verified artifacts
         uses: actions/upload-artifact@b4b15b8c7c6ac21af51f82d3829fee7b13161676 # v4.4.3
@@ -95,10 +101,37 @@ jobs:
         # files that were verified in the isolated verify-publish job.
         run: |
           set -euo pipefail
+          # P1-02 fix 2026-10-14: independently re-verify artifact integrity
+          # before uploading anything.
+          if [[ ! -f verified/SHA256SUMS ]]; then
+            echo "ERROR: verified/SHA256SUMS missing; aborting"
+            exit 1
+          fi
+          echo "Verifying artifact checksums..."
+          (cd verified && sha256sum -c SHA256SUMS) || {
+            echo "ERROR: artifact checksum verification failed; aborting"
+            exit 1
+          }
+          echo "Checksum verification passed."
+          # P1-03 fix 2026-10-14: upload order is binaries -> CORE-VERSIONS -> SHA256SUMS last.
           for f in verified/*; do
             [[ -f "$f" ]] || continue
             name=$(basename "$f")
-            echo "Uploading $name"
+            case "$name" in
+              SHA256SUMS|CORE-VERSIONS) continue ;;
+            esac
+            # Improvement 2026-10-14: whitelist known binary patterns.
+            case "$name" in
+              Xray-*.zip|sing-box-*.tar.gz|hysteria-*) ;;
+              *) echo "ERROR: unknown file in artifact: $name; aborting"; exit 1 ;;
+            esac
+            echo "Uploading binary: $name"
             gh release upload core-binaries "$f#$name" --clobber
           done
+          if [[ -f verified/CORE-VERSIONS ]]; then
+            echo "Uploading CORE-VERSIONS"
+            gh release upload core-binaries "verified/CORE-VERSIONS#CORE-VERSIONS" --clobber
+          fi
+          echo "Uploading SHA256SUMS (last)"
+          gh release upload core-binaries "verified/SHA256SUMS#SHA256SUMS" --clobber
           echo "Publish complete. Verified assets uploaded without execution."

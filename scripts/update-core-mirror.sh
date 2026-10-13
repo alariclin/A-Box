@@ -33,6 +33,7 @@ hysteria_tag="$(validate_release_tag "$root/hysteria.json" '^app/v[0-9]+\.[0-9]+
 declare -a mirror_names=()
 declare -a mirror_paths=()
 declare -a mirror_digests=()
+declare -a upload_paths=()
 
 download_verified_asset() {
   local repo="$1" release_file="$2" upstream_name="$3" mirror_name="$4" kind="$5"
@@ -185,7 +186,7 @@ for i in "${!mirror_names[@]}"; do
       exit 1
     }
   else
-    gh release upload core-binaries "${mirror_paths[$i]}"
+    upload_paths+=("${mirror_paths[$i]}")
   fi
 
   manifest_sum="$(awk -v name="$name" '$2 == name {print $1}' "$out/SHA256SUMS")"
@@ -203,11 +204,24 @@ versions_digest="$(sha256sum "$out/CORE-VERSIONS" | awk '{print $1}')"
 printf '%s  CORE-VERSIONS\n' "$versions_digest" >> "$out/SHA256SUMS"
 sort -k2,2 "$out/SHA256SUMS" -o "$out/SHA256SUMS"
 
+# A manual dispatch defaults to dry-run. All upstream downloads, digests,
+# binary probes, existing asset digests and the merged manifest are validated
+# before any Release mutation.
+if [[ "${CORE_MIRROR_DRY_RUN:-0}" == '1' ]]; then
+  echo "Dry-run complete; no Release assets were changed."
+  printf 'Verified latest tags: Xray=%s sing-box=%s Hysteria=%s\n' "$xray_tag" "$singbox_tag" "$hysteria_tag"
+  printf 'Would upload new versioned asset: %s\n' "${upload_paths[@]}"
+  echo "Would update CORE-VERSIONS and publish SHA256SUMS last."
+  exit 0
+fi
+
+for path in "${upload_paths[@]}"; do
+  gh release upload core-binaries "$path"
+done
 # Publish metadata first and the manifest last. Until the new manifest is
 # visible, clients reject the new metadata and continue to fail closed.
 gh release upload core-binaries "$out/CORE-VERSIONS" --clobber
 gh release upload core-binaries "$out/SHA256SUMS" --clobber
-gh release edit core-binaries --draft=false --latest=false
 
 echo "Published latest official stable mirror versions:"
 printf '  Xray: %s\n  sing-box: %s\n  Hysteria: %s\n' "$xray_tag" "$singbox_tag" "$hysteria_tag"

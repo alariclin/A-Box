@@ -18,6 +18,10 @@ echo "$existing"
 
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 
+# F-03 fix: Verify staging checksums BEFORE any upload.
+echo "[*] Verifying staged files against SHA256SUMS.staging..."
+(cd "$STAGE" && sha256sum -c SHA256SUMS.staging) || { echo "staging verification failed; aborting (nothing uploaded)"; exit 1; }
+
 # 1. Upload binaries (skip if already present)
 for f in "$STAGE"/Xray-v26.6.27-linux-*.zip \
          "$STAGE"/sing-box-1.14.1-linux-*.tar.gz \
@@ -33,8 +37,6 @@ done
 
 # 2. Merge SHA256SUMS
 # NOTE: not safe for concurrent runs; run once at a time.
-echo "[*] Verifying staged files against SHA256SUMS.staging..."
-(cd "$STAGE" && sha256sum -c SHA256SUMS.staging) || { echo "staging verification failed; aborting"; exit 1; }
 echo "[*] Merging SHA256SUMS..."
 gh release download "$TAG" --repo "$REPO" -p "SHA256SUMS" -D "$tmp" 2>/dev/null \
     || { echo "SHA256SUMS not found in release; aborting (refusing to create from scratch)"; exit 1; }

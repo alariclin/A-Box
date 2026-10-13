@@ -5042,7 +5042,7 @@ resolve_core_release_target() {
                     latest_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
                     # Validate cooldown is numeric to avoid set -u crash on bad input
                     local cooldown_days="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
-                    [[ "$cooldown_days" =~ ^[0-9]+$ ]] || cooldown_days=7
+                    [[ "$cooldown_days" =~ ^[0-9]{1,4}$ ]] && (( 10#$cooldown_days <= 3650 )) || cooldown_days=7
                     if [[ "$latest_age" =~ ^[0-9]+$ ]] && (( latest_age >= cooldown_days )); then
                         target="$latest"; source='upstream'
                     else
@@ -5064,7 +5064,7 @@ resolve_core_release_target() {
                     else
                         latest_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
                         local cooldown_days="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
-                        [[ "$cooldown_days" =~ ^[0-9]+$ ]] || cooldown_days=7
+                        [[ "$cooldown_days" =~ ^[0-9]{1,4}$ ]] && (( 10#$cooldown_days <= 3650 )) || cooldown_days=7
                         if [[ "$latest_age" =~ ^[0-9]+$ ]] && (( latest_age >= cooldown_days )); then
                             target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；将尝试校验过的最新稳定容灾资产 $target。${NC}" >&2
                         else
@@ -5120,7 +5120,7 @@ core_fetch_upstream_release_asset() {
     local api_url release_json asset_array count asset_json asset_name download_url digest mirror tmp_file require_stable=1
     api_url="https://api.github.com/repos/${repo}/releases/tags/${release_ref//\//%2F}"
     release_json=$(github_api_get "$api_url" 2>/dev/null) || { msg "${YELLOW}[!] 上游 Release API 不可用: ${repo}:${release_ref}${NC}" >&2; return 1; }
-    [[ "$source" == 'explicit' ]] && require_stable=0
+    [[ "$source" == 'explicit' || "$source" == 'pinned' ]] && require_stable=0
     if ! jq -e --arg tag "$release_ref" --argjson stable "$require_stable" '
         type == "object" and .tag_name == $tag and .draft == false
         and (if $stable == 1 then .prerelease == false else true end)
@@ -5291,25 +5291,37 @@ read_traffic_pair_fields() {
 }
 
 commit_traffic_pair_state() {
-    local desired="$1" period="${2:-}"
+    local desired="$1" period="${2:-}" pair_backup=""
     desired_state_valid "$desired" || return 1
     if [[ -n "$period" ]]; then
         traffic_period_valid "$period" || return 1
     fi
     ensure_abox_dir_owned "$ABOX_DIR" >/dev/null 2>&1 || return 1
+    # F-06 fix: backup pair state for transactional rollback if legacy writes fail.
+    if [[ -f "$ABOX_TRAFFIC_PAIR_STATE" ]]; then
+        pair_backup=$(mktemp) || return 1
+        cp -p -- "$ABOX_TRAFFIC_PAIR_STATE" "$pair_backup" || { rm -f -- "$pair_backup"; return 1; }
+    fi
     # 1) Atomic pair publish (sole authority for modern readers).
-    write_file_atomically_from_stdin "$ABOX_TRAFFIC_PAIR_STATE" 600 <<< "${desired}|${period}" || return 1
-    # 2) Derive legacy files only after pair is durable (helpers may still read them).
-    write_file_atomically_from_stdin "$ABOX_DESIRED_STATE" 600 <<< "$desired" || return 1
+    write_file_atomically_from_stdin "$ABOX_TRAFFIC_PAIR_STATE" 600 <<< "${desired}|${period}" || { rm -f -- "$pair_backup"; return 1; }
+    # 2) Derive legacy files only after pair is durable. On failure, restore pair state.
+    if ! write_file_atomically_from_stdin "$ABOX_DESIRED_STATE" 600 <<< "$desired"; then
+        if [[ -n "$pair_backup" ]]; then cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || true; else rm -f -- "$ABOX_TRAFFIC_PAIR_STATE"; fi
+        rm -f -- "$pair_backup"; return 1
+    fi
     if [[ -n "$period" ]]; then
-        write_file_atomically_from_stdin "$ABOX_TRAFFIC_BLOCK_STATE" 600 <<< "$period" || return 1
+        if ! write_file_atomically_from_stdin "$ABOX_TRAFFIC_BLOCK_STATE" 600 <<< "$period"; then
+            if [[ -n "$pair_backup" ]]; then cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || true; else rm -f -- "$ABOX_TRAFFIC_PAIR_STATE"; fi
+            rm -f -- "$pair_backup"; return 1
+        fi
     else
         if [[ -e "$ABOX_TRAFFIC_BLOCK_STATE" || -L "$ABOX_TRAFFIC_BLOCK_STATE" ]]; then
-            path_tree_has_mountpoint "$ABOX_TRAFFIC_BLOCK_STATE" && return 1
-            rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" || return 1
-            [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]] || return 1
+            path_tree_has_mountpoint "$ABOX_TRAFFIC_BLOCK_STATE" && { rm -f -- "$pair_backup"; return 1; }
+            rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" || { if [[ -n "$pair_backup" ]]; then cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || true; fi; rm -f -- "$pair_backup"; return 1; }
+            [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]] || { if [[ -n "$pair_backup" ]]; then cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || true; fi; rm -f -- "$pair_backup"; return 1; }
         fi
     fi
+    rm -f -- "$pair_backup"
 }
 
 get_desired_state() {
@@ -9013,7 +9025,24 @@ fetch_abox_mirror_asset() {
     mirror_url="${mirror_base%/}/${asset_leaf}"; mirror_sum="${mirror_base%/}/SHA256SUMS"
     msg "${YELLOW} -> A-Box recovery mirror: ${mirror_url} [${requested_version}]${NC}"
     tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
-    if ! curl -fLsS --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
+    # F-02 fix: if fixed-name asset 404s, fall back to versioned filename.
+    if ! curl -fLsS --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then
+        rm -f -- "$tmp_file"
+        if [[ "$prefer_versioned" != '1' ]]; then
+            versioned_leaf=$(core_mirror_asset_leaf "$repo" "$output_file" "$requested_version" 1) || return 1
+            if [[ "$versioned_leaf" != "$asset_leaf" ]]; then
+                msg "${YELLOW} -> Fixed-name asset not found, trying versioned: ${versioned_leaf}${NC}" >&2
+                asset_leaf="$versioned_leaf"
+                mirror_url="${mirror_base%/}/${asset_leaf}"
+                tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
+                if ! curl -fLsS --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
+            else
+                return 1
+            fi
+        else
+            return 1
+        fi
+    fi
     if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
     expect_sum=$(curl -fLsS --connect-timeout 8 -m 30 "$mirror_sum" 2>/dev/null | awk -v f="$asset_leaf" '$2==f || $2==("./" f) || $2~(f"$") {print $1; exit}')
     got_sum=$(sha256sum "$tmp_file" 2>/dev/null | awk '{print $1}') || got_sum=''

@@ -9786,7 +9786,14 @@ timezone_apply_with_rollback() {
     cp -a "$snap"/. "$stage"/ || { restore_timezone_snapshot "$snap" || true; rm -rf -- "$snap" "$stage"; return 1; }
     rm -rf -- /etc/ddr/.tz-rollback
     mv -- "$stage" /etc/ddr/.tz-rollback || { restore_timezone_snapshot "$snap" || true; rm -rf -- "$snap" "$stage"; return 1; }
-    write_file_atomically_from_stdin "$TZ_STATE_FILE" 600 <<< "applied=$target" || true
+    # B-05 fix: timezone state metadata write failure is no longer ignored.
+    # The system timezone was already changed at this point, so we warn
+    # loudly instead of claiming rollback state is available.
+    if ! write_file_atomically_from_stdin "$TZ_STATE_FILE" 600 <<< "applied=$target"; then
+        rm -rf -- "$snap"
+        msg "${RED}[!] 时区已切换为 $target，但状态元数据写入失败；回滚信息可能不完整。${NC}" >&2
+        return 1
+    fi
     rm -rf -- "$snap"
     case "${ABOX_LANG:-zh}" in
         en) msg "${GREEN}Timezone set to $target; the previous state is available for rollback.${NC}" ;;
@@ -10136,11 +10143,18 @@ apply_host_dns() {
         read -r -p "$immutable_prompt" answer
         is_yes "$answer" || return 0
     fi
+    # B-04 fix: snapshot to a temp dir first, then atomically swap. The old
+    # snapshot is only removed after the new one is fully written.
+    local dns_snap_tmp=""
+    dns_snap_tmp=$(mktemp -d "${DNS_BACKUP_DIR}.new.XXXXXX") || die "Failed to create DNS snapshot staging directory."
+    chmod 700 "$dns_snap_tmp"
+    if ! snapshot_dns_state "$dns_snap_tmp"; then
+        rm -rf -- "$dns_snap_tmp"
+        die "Failed to snapshot DNS state; previous rollback snapshot preserved."
+    fi
+    printf '%s\n' "$immutable_before" > "$dns_snap_tmp/resolv-immutable" || { rm -rf -- "$dns_snap_tmp"; die "Failed to save DNS immutable-flag state."; }
     rm -rf -- "$DNS_BACKUP_DIR"
-    mkdir -p "$DNS_BACKUP_DIR" || die "Failed to create DNS rollback directory."
-    chmod 700 "$DNS_BACKUP_DIR"
-    snapshot_dns_state "$DNS_BACKUP_DIR" || die "Failed to snapshot DNS state."
-    printf '%s\n' "$immutable_before" > "$DNS_BACKUP_DIR/resolv-immutable" || die "Failed to save DNS immutable-flag state."
+    mv -- "$dns_snap_tmp" "$DNS_BACKUP_DIR" || { rm -rf -- "$dns_snap_tmp"; die "Failed to install new DNS rollback snapshot."; }
     if (( immutable_before == 1 )); then
         chattr -i /etc/resolv.conf 2>/dev/null || die "Failed to clear immutable flag on /etc/resolv.conf."
     fi
@@ -10177,11 +10191,17 @@ EOF_DNS
             ;;
         *)
             [[ ! -L /etc/resolv.conf ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die '/etc/resolv.conf 是符号链接；当前 generic DNS 后端拒绝覆盖受其他服务管理的路径。'; }
-            write_file_atomically_from_stdin /etc/resolv.conf 644 <<EOF_RESOLV || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 原子写入失败。'; }
-# Managed by A-Box host DNS helper
-nameserver ${v4}
-$( [[ -n "$v6" ]] && printf 'nameserver %s\n' "$v6" )options timeout:2 attempts:3
-EOF_RESOLV
+            # A-01 fix: build resolv.conf lines explicitly to avoid the
+            # command-substitution newline-stripping bug that used to produce
+            # "nameserver 2001:db8::53options timeout:2 attempts:3".
+            {
+                printf '# Managed by A-Box host DNS helper\n'
+                printf 'nameserver %s\n' "$v4"
+                [[ -n "$v6" ]] && printf 'nameserver %s\n' "$v6"
+                printf 'options timeout:2 attempts:3\n'
+            } > "$DNS_BACKUP_DIR/resolv.conf.new" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 内容生成失败。'; }
+            write_file_atomically_from_stdin /etc/resolv.conf 644 < "$DNS_BACKUP_DIR/resolv.conf.new" || { rm -f "$DNS_BACKUP_DIR/resolv.conf.new"; restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 原子写入失败。'; }
+            rm -f "$DNS_BACKUP_DIR/resolv.conf.new"
             ;;
     esac
     if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< "backend=${backend};mode=${mode};v4=${v4};v6=${v6}"; then

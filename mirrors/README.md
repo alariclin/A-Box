@@ -15,7 +15,7 @@ The compatibility pins configured in `install.sh` remain Xray `v26.7.28`, sing-b
 
 ### Rollback assets
 
-The Release also retains versioned assets for the previous-version rollback candidates — currently Xray `v26.6.27`, sing-box `v1.14.1`, Hysteria `app/v2.12.3` — so a failed upgrade can roll back without depending on upstream availability. These are candidates, not validated rollback versions: they must pass A-Box config and client regression tests before being treated as approved. Versioned filenames are immutable; never overwrite an existing asset.
+The Release will also retain versioned assets for the previous-version rollback candidates — currently Xray `v26.6.27`, sing-box `v1.14.1`, Hysteria `app/v2.12.3` (staged locally, pending upload via `scripts/upload-rollback-binaries.sh`) — so a failed upgrade can roll back without depending on upstream availability. These are candidates, not validated rollback versions: they must pass A-Box config and client regression tests before being treated as approved. Versioned filenames are immutable; never overwrite an existing asset.
 
 ## Wallos recovery
 

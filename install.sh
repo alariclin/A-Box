@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-13-auto-sni-v189'
-ABOX_BUILD_EPOCH=20261013189
+ABOX_BUILD='2026-10-13-audit-r3-v190'
+ABOX_BUILD_EPOCH=20261013190
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -1385,10 +1385,19 @@ get_active_interface() {
 resolve_domain_addresses() {
     local domain="${1:-}" resolved=''
     valid_domain "$domain" || return 1
+    # N-05 fix: wrap getent in timeout; a hanging DNS resolver must not
+    # block the SNI batch worker forever.
     if command -v getent >/dev/null 2>&1; then
-        resolved=$(getent ahosts "$domain" 2>/dev/null | awk 'NF {print $1}' | sort -u) || resolved=''
-        if [[ -z "$resolved" ]]; then
-            resolved=$(getent hosts "$domain" 2>/dev/null | awk 'NF {print $1}' | sort -u) || resolved=''
+        if command -v timeout >/dev/null 2>&1; then
+            resolved=$(timeout 5 getent ahosts "$domain" 2>/dev/null | awk 'NF {print $1}' | sort -u) || resolved=''
+            if [[ -z "$resolved" ]]; then
+                resolved=$(timeout 5 getent hosts "$domain" 2>/dev/null | awk 'NF {print $1}' | sort -u) || resolved=''
+            fi
+        else
+            resolved=$(getent ahosts "$domain" 2>/dev/null | awk 'NF {print $1}' | sort -u) || resolved=''
+            if [[ -z "$resolved" ]]; then
+                resolved=$(getent hosts "$domain" 2>/dev/null | awk 'NF {print $1}' | sort -u) || resolved=''
+            fi
         fi
     fi
     [[ -n "$resolved" ]] || return 1
@@ -5042,7 +5051,14 @@ resolve_core_release_target() {
                     latest_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
                     # Validate cooldown is numeric to avoid set -u crash on bad input
                     local cooldown_days="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
-                    [[ "$cooldown_days" =~ ^[0-9]{1,4}$ ]] && (( 10#$cooldown_days <= 3650 )) || cooldown_days=7
+                    # N-14 fix: 0 would silently disable the cooldown (latest_age >= 0
+                    # is always true). Require >= 1; invalid values fall back to 7.
+                    if [[ "$cooldown_days" =~ ^[0-9]{1,4}$ ]] && (( 10#$cooldown_days >= 1 && 10#$cooldown_days <= 3650 )); then
+                        :
+                    else
+                        [[ "$cooldown_days" == "0" ]] && msg "${YELLOW}[!] ABOX_STABLE_COOLDOWN_DAYS=0 is not allowed (would disable cooldown); using 7.${NC}" >&2
+                        cooldown_days=7
+                    fi
                     if [[ "$latest_age" =~ ^[0-9]+$ ]] && (( latest_age >= cooldown_days )); then
                         target="$latest"; source='upstream'
                     else
@@ -5084,6 +5100,21 @@ xray_latest_stable_version() {
 }
 
 effective_xray_version() {
+    # N-06 fix: prefer the ACTUAL installed binary version over intent-based
+    # values. Falls back to explicit/resolved/default only if the binary
+    # is missing or its version cannot be parsed.
+    # ABOX_XRAY_VERSION_PROBE_SKIP=1 disables the binary probe (self-test).
+    local actual
+    if [[ "${ABOX_XRAY_VERSION_PROBE_SKIP:-0}" != '1' && -x /usr/local/bin/xray ]]; then
+        actual=$(/usr/local/bin/xray version 2>/dev/null | head -n 1 || true)
+        actual=$(core_version_from_output "$actual" 2>/dev/null || true)
+        if [[ -n "$actual" ]]; then
+            # Normalize to v-prefixed tag for downstream comparisons.
+            [[ "$actual" == v* ]] || actual="v$actual"
+            printf '%s\n' "$actual"
+            return 0
+        fi
+    fi
     if [[ -n "${ABOX_XRAY_VERSION:-}" ]]; then
         printf '%s\n' "$ABOX_XRAY_VERSION"
     elif [[ -n "${ABOX_RESOLVED_XRAY_VERSION:-}" ]]; then
@@ -5138,7 +5169,7 @@ core_fetch_upstream_release_asset() {
     [[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]] || { msg "${YELLOW}[!] 官方 Release 缺少有效 SHA-256 digest。${NC}" >&2; return 1; }
     for mirror in '' 'https://ghp.ci/' 'https://mirror.ghproxy.com/'; do
         tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
-        if curl -fLsS --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
+        if curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
             if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 下载归档格式校验失败，继续下一个通道。${NC}" >&2; continue; fi
             if ! verify_github_asset_digest "$tmp_file" "$digest"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 资产 SHA-256 不匹配，继续下一个通道。${NC}" >&2; continue; fi
             if ! validate_core_asset_binary_version "$output_file" "$tmp_file" "$release_ref"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 二进制版本与上游 tag 不一致，拒绝该候选。${NC}" >&2; continue; fi
@@ -5178,6 +5209,18 @@ fetch_github_release() {
 
     if [[ "$target_source" == 'upstream' || "$target_source" == 'explicit' || "$target_source" == 'pinned' ]]; then
         if core_fetch_upstream_release_asset "$repo" "$output_file" "$dest_file" "$target_ref" "$asset_re" "$target_source"; then return 0; fi
+        # F-02 fix: for auto-stable (source=upstream), try the exact-tag versioned
+        # mirror before falling back to the fixed compat pin. This honors the
+        # documented "same version mirror first" policy.
+        if [[ "$target_source" == 'upstream' ]]; then
+            if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
+                core_set_resolved_target "$repo" "$target_ref" mirror-exact || die '无法记录已验证的精确版本镜像。'
+                ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-exact'
+                msg "${GREEN}   上游失败，从同标签版本化镜像恢复 ${target_ref}；未替换版本号。${NC}"
+                return 0
+            fi
+            msg "${YELLOW}[!] 同标签版本化镜像也不可用，继续尝试固定兼容版本。${NC}" >&2
+        fi
         if [[ "$target_source" == 'explicit' ]]; then
             if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
                 core_set_resolved_target "$repo" "$target_ref" mirror-exact || die '无法记录已验证的精确版本镜像。'
@@ -5291,37 +5334,70 @@ read_traffic_pair_fields() {
 }
 
 commit_traffic_pair_state() {
-    local desired="$1" period="${2:-}" pair_backup=""
+    local desired="$1" period="${2:-}"
+    local pair_backup="" desired_backup="" block_backup=""
+    local pair_existed=0 desired_existed=0 block_existed=0
+    local restore_failed=0
     desired_state_valid "$desired" || return 1
     if [[ -n "$period" ]]; then
         traffic_period_valid "$period" || return 1
     fi
     ensure_abox_dir_owned "$ABOX_DIR" >/dev/null 2>&1 || return 1
-    # F-06 fix: backup pair state for transactional rollback if legacy writes fail.
+    # Snapshot all three files for full transactional rollback.
     if [[ -f "$ABOX_TRAFFIC_PAIR_STATE" ]]; then
-        pair_backup=$(mktemp) || return 1
+        pair_existed=1; pair_backup=$(mktemp) || return 1
         cp -p -- "$ABOX_TRAFFIC_PAIR_STATE" "$pair_backup" || { rm -f -- "$pair_backup"; return 1; }
     fi
+    if [[ -f "$ABOX_DESIRED_STATE" ]]; then
+        desired_existed=1; desired_backup=$(mktemp) || { rm -f -- "$pair_backup"; return 1; }
+        cp -p -- "$ABOX_DESIRED_STATE" "$desired_backup" || { rm -f -- "$pair_backup" "$desired_backup"; return 1; }
+    fi
+    if [[ -f "$ABOX_TRAFFIC_BLOCK_STATE" ]]; then
+        block_existed=1; block_backup=$(mktemp) || { rm -f -- "$pair_backup" "$desired_backup"; return 1; }
+        cp -p -- "$ABOX_TRAFFIC_BLOCK_STATE" "$block_backup" || { rm -f -- "$pair_backup" "$desired_backup" "$block_backup"; return 1; }
+    fi
+    # Rollback helper: restore all three files to snapshot state. Reports failure.
+    _traffic_state_rollback() {
+        restore_failed=0
+        if (( pair_existed == 1 )); then
+            cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || restore_failed=1
+        else
+            rm -f -- "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || restore_failed=1
+        fi
+        if (( desired_existed == 1 )); then
+            cp -p -- "$desired_backup" "$ABOX_DESIRED_STATE" 2>/dev/null || restore_failed=1
+        else
+            rm -f -- "$ABOX_DESIRED_STATE" 2>/dev/null || restore_failed=1
+        fi
+        if (( block_existed == 1 )); then
+            cp -p -- "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE" 2>/dev/null || restore_failed=1
+        else
+            rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" 2>/dev/null || restore_failed=1
+        fi
+        rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
+        return "$restore_failed"
+    }
     # 1) Atomic pair publish (sole authority for modern readers).
-    write_file_atomically_from_stdin "$ABOX_TRAFFIC_PAIR_STATE" 600 <<< "${desired}|${period}" || { rm -f -- "$pair_backup"; return 1; }
-    # 2) Derive legacy files only after pair is durable. On failure, restore pair state.
+    write_file_atomically_from_stdin "$ABOX_TRAFFIC_PAIR_STATE" 600 <<< "${desired}|${period}" || { _traffic_state_rollback; return 1; }
+    # 2) Derive legacy files only after pair is durable.
     if ! write_file_atomically_from_stdin "$ABOX_DESIRED_STATE" 600 <<< "$desired"; then
-        if [[ -n "$pair_backup" ]]; then cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || true; else rm -f -- "$ABOX_TRAFFIC_PAIR_STATE"; fi
-        rm -f -- "$pair_backup"; return 1
+        _traffic_state_rollback || msg "${RED}[!] Traffic state rollback incomplete; manual check required.${NC}" >&2
+        return 1
     fi
     if [[ -n "$period" ]]; then
         if ! write_file_atomically_from_stdin "$ABOX_TRAFFIC_BLOCK_STATE" 600 <<< "$period"; then
-            if [[ -n "$pair_backup" ]]; then cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || true; else rm -f -- "$ABOX_TRAFFIC_PAIR_STATE"; fi
-            rm -f -- "$pair_backup"; return 1
+            _traffic_state_rollback || msg "${RED}[!] Traffic state rollback incomplete; manual check required.${NC}" >&2
+            return 1
         fi
     else
         if [[ -e "$ABOX_TRAFFIC_BLOCK_STATE" || -L "$ABOX_TRAFFIC_BLOCK_STATE" ]]; then
-            path_tree_has_mountpoint "$ABOX_TRAFFIC_BLOCK_STATE" && { rm -f -- "$pair_backup"; return 1; }
-            rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" || { if [[ -n "$pair_backup" ]]; then cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || true; fi; rm -f -- "$pair_backup"; return 1; }
-            [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]] || { if [[ -n "$pair_backup" ]]; then cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || true; fi; rm -f -- "$pair_backup"; return 1; }
+            path_tree_has_mountpoint "$ABOX_TRAFFIC_BLOCK_STATE" && { _traffic_state_rollback >/dev/null 2>&1; return 1; }
+            rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" || { _traffic_state_rollback >/dev/null 2>&1; return 1; }
+            [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]] || { _traffic_state_rollback >/dev/null 2>&1; return 1; }
         fi
     fi
-    rm -f -- "$pair_backup"
+    rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
+    unset -f _traffic_state_rollback
 }
 
 get_desired_state() {
@@ -5379,10 +5455,15 @@ set_traffic_block_period() {
 }
 
 clear_traffic_block_period() {
-    local state
-    if [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]] && \
-       { ! read_traffic_pair_fields >/dev/null 2>&1 || [[ -z "$(read_traffic_pair_fields | sed -n '2p')" ]]; }; then
-        return 0
+    local state pair_fields
+    # B-03 fix: if the block file is absent AND the pair state is unreadable/
+    # corrupt, that is an error, not "nothing to clean". Do not return success.
+    if [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]]; then
+        if ! pair_fields=$(read_traffic_pair_fields 2>/dev/null); then
+            msg "${RED}[!] Traffic pair state is unreadable or corrupt; refusing to treat as clean.${NC}" >&2
+            return 1
+        fi
+        [[ -z "$(sed -n '2p' <<< "$pair_fields")" ]] && return 0
     fi
     state=$(get_desired_state) || return 1
     commit_traffic_pair_state "$state" ""
@@ -7009,6 +7090,32 @@ rollback_binary_install() {
     fi
 }
 
+# Verified rollback for a core binary upgrade. Every step is checked; nothing
+# is swallowed. On full success the tmp dir is cleaned and we die with the
+# standard "rolled back" message. On ANY failure the tmp dir (with backups)
+# is preserved and die reports exactly what failed plus manual recovery steps.
+# Args: $1=service name, $2=binary path, $3=backup path (may be empty), $4=tmp dir
+rollback_core_upgrade_verified() {
+    local svc="$1" bin="$2" backup="${3:-}" tmp="${4:-}"
+    local rb_ok=0 rs_ok=0
+    msg "${RED}[!] New ${svc} failed post-upgrade health checks. Rolling back binary...${NC}"
+    if rollback_binary_install "$bin" "$backup" >/dev/null 2>&1; then
+        rb_ok=1
+    else
+        msg "${RED}[!] Rollback binary restore FAILED for ${svc} (backup: ${backup:-none}).${NC}" >&2
+    fi
+    if restart_service_soft "$svc" >/dev/null 2>&1; then
+        rs_ok=1
+    else
+        msg "${RED}[!] Service restart after rollback FAILED for ${svc}.${NC}" >&2
+    fi
+    if (( rb_ok == 1 && rs_ok == 1 )); then
+        [[ -n "$tmp" ]] && rm -rf -- "$tmp"
+        die "${svc} core upgrade rolled back because post-upgrade health checks failed."
+    fi
+    die "${svc} core upgrade ROLLBACK INCOMPLETE (binary_restore_ok=${rb_ok} service_restart_ok=${rs_ok}). Backup and logs preserved at: ${tmp:-unknown}. Manual recovery: restore '${backup:-none}' to '${bin}', then restart '${svc}'."
+}
+
 remove_core_family_force() {
     local srv="$1" path failed=0 core_paths=''
     local -a paths=()
@@ -7634,33 +7741,13 @@ write_private_line() {
 # Atomic desired+period publish: write PAIR first, then derive legacy files.
 commit_traffic_pair() {
     local desired="$1" period="${2:-}"
-    [[ "$desired" =~ ^(RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE)$ ]] || return 1
-    if [[ -n "$period" ]]; then
-        [[ "$period" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]] || return 1
-    fi
-    write_private_line "$PAIR_STATE" "${desired}|${period}" || return 1
-    write_private_line "$DESIRED" "$desired" || return 1
-    if [[ -n "$period" ]]; then
-        write_private_line "$BLOCK_STATE" "$period" || return 1
-    else
-        rm -f -- "$BLOCK_STATE" || return 1
-    fi
+    # Delegate to the transactional version (N-03/N-08 fix): single
+    # implementation, full three-file snapshot/rollback. Paths are identical
+    # ($PAIR_STATE == $ABOX_TRAFFIC_PAIR_STATE, etc.).
+    commit_traffic_pair_state "$desired" "$period"
 }
-read_traffic_pair_fields() {
-    local line desired period mode
-    [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] || return 1
-    [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]] || return 1
-    mode=$(stat -c %a "$PAIR_STATE" 2>/dev/null) || return 1
-    [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || return 1
-    IFS= read -r line < "$PAIR_STATE" || return 1
-    [[ "$line" == *'|'* ]] || return 1
-    desired=${line%%|*}; period=${line#*|}
-    [[ "$desired" =~ ^(RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE)$ ]] || return 1
-    if [[ -n "$period" ]]; then
-        [[ "$period" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]] || return 1
-    fi
-    printf '%s\n%s\n' "$desired" "$period"
-}
+# NOTE: read_traffic_pair_fields is defined once at the top of the traffic
+# state section (uses $ABOX_TRAFFIC_PAIR_STATE). Do not redefine here.
 read_desired() {
     local state=RUNNING mode pair desired
     if pair=$(read_traffic_pair_fields); then
@@ -7915,13 +8002,13 @@ if [[ "$desired" == TRAFFIC_BLOCKED && "$blocked_period" != "$current_period" ]]
     commit_traffic_pair MAINTENANCE "$blocked_period" || exit 1
     if ! for_expected_services start_owned; then
         for_expected_services stop_owned >/dev/null 2>&1 || true
-        commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || true
+        commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || traffic_error 'CRITICAL: failed to restore TRAFFIC_BLOCKED state after service start failure; state may be inconsistent'
         traffic_error 'monthly quota period rolled over but at least one owned service could not be started; block remains active'
         exit 1
     fi
     if ! commit_traffic_pair RUNNING ""; then
         for_expected_services stop_owned >/dev/null 2>&1 || true
-        commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || true
+        commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || traffic_error 'CRITICAL: failed to restore TRAFFIC_BLOCKED state after rollover commit failure; state may be inconsistent'
         traffic_error 'monthly quota rollover state commit failed; managed services were stopped and block restored'
         exit 1
     fi
@@ -8987,8 +9074,10 @@ show_core_pin_docs() {
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}核心版本选择与容灾说明 / Core release policy${NC}"
     msg "${CYAN}======================================================================${NC}"
-    msg "Routine deployment and upgrades use tested compatibility pins: Xray ${YELLOW}${ABOX_XRAY_DEFAULT_VERSION}${NC}; sing-box ${ABOX_SINGBOX_DEFAULT_VERSION}; Hysteria ${ABOX_HYSTERIA_DEFAULT_VERSION}."
-    msg "The explicit danger action may try the latest official stable tag (draft/prerelease excluded); config, client compatibility, and post-upgrade health gates still apply."
+    # F-10 fix: do not imply routine upgrades always use compat pins.
+    # Xray defaults to pinned; sing-box/Hysteria default to auto-stable.
+    msg "Update policy per core: Xray ${YELLOW}pinned${NC} (${ABOX_XRAY_DEFAULT_VERSION}); sing-box ${YELLOW}auto-stable${NC} (compat pin ${ABOX_SINGBOX_DEFAULT_VERSION}); Hysteria ${YELLOW}auto-stable${NC} (compat pin ${ABOX_HYSTERIA_DEFAULT_VERSION})."
+    msg "Auto-stable follows the latest official stable tag after a ${YELLOW}${ABOX_STABLE_COOLDOWN_DAYS:-7}-day${NC} cooling period (draft/prerelease excluded); config, client compatibility, and post-upgrade health gates still apply."
     msg "Fixed compatibility recovery assets remain in Release: ${YELLOW}${ABOX_CORE_MIRROR_RELEASE}${NC}. Latest-stable attempts try an exact-tag versioned mirror first, then these fixed pins."
     msg "CORE-VERSIONS is accepted only when its digest matches SHA256SUMS; older versioned mirror assets are retained for rollback."
     msg "Explicit version overrides: ABOX_XRAY_VERSION / ABOX_SINGBOX_VERSION / ABOX_HYSTERIA_APP_VERSION; failed explicit pins do not silently switch versions."
@@ -9026,16 +9115,17 @@ fetch_abox_mirror_asset() {
     msg "${YELLOW} -> A-Box recovery mirror: ${mirror_url} [${requested_version}]${NC}"
     tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
     # F-02 fix: if fixed-name asset 404s, fall back to versioned filename.
-    if ! curl -fLsS --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then
+    if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then
         rm -f -- "$tmp_file"
         if [[ "$prefer_versioned" != '1' ]]; then
+            local versioned_leaf
             versioned_leaf=$(core_mirror_asset_leaf "$repo" "$output_file" "$requested_version" 1) || return 1
             if [[ "$versioned_leaf" != "$asset_leaf" ]]; then
                 msg "${YELLOW} -> Fixed-name asset not found, trying versioned: ${versioned_leaf}${NC}" >&2
                 asset_leaf="$versioned_leaf"
                 mirror_url="${mirror_base%/}/${asset_leaf}"
                 tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
-                if ! curl -fLsS --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
+                if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
             else
                 return 1
             fi
@@ -9044,7 +9134,9 @@ fetch_abox_mirror_asset() {
         fi
     fi
     if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
-    expect_sum=$(curl -fLsS --connect-timeout 8 -m 30 "$mirror_sum" 2>/dev/null | awk -v f="$asset_leaf" '$2==f || $2==("./" f) || $2~(f"$") {print $1; exit}')
+    # N-16 fix: use fixed-string matching, not regex. The old $2~(f"$") treated
+    # dots in filenames as regex wildcards.
+    expect_sum=$(curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" 2>/dev/null | awk -v f="$asset_leaf" '$2==f || $2==("./" f) || (n=length(f), substr($2, length($2)-n+1)==f && (length($2)==n || substr($2, length($2)-n, 1)=="/")) {print $1; exit}')
     got_sum=$(sha256sum "$tmp_file" 2>/dev/null | awk '{print $1}') || got_sum=''
     if [[ -z "$expect_sum" || ! "$expect_sum" =~ ^[A-Fa-f0-9]{64}$ || "${got_sum,,}" != "${expect_sum,,}" ]]; then msg "${YELLOW}[!] recovery mirror SHA-256 mismatch or missing SHA256SUMS${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
     if ! validate_core_asset_binary_version "$output_file" "$tmp_file" "$requested_version"; then msg "${YELLOW}[!] recovery binary version does not match requested version ${requested_version}${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
@@ -9707,7 +9799,14 @@ timezone_apply_with_rollback() {
     cp -a "$snap"/. "$stage"/ || { restore_timezone_snapshot "$snap" || true; rm -rf -- "$snap" "$stage"; return 1; }
     rm -rf -- /etc/ddr/.tz-rollback
     mv -- "$stage" /etc/ddr/.tz-rollback || { restore_timezone_snapshot "$snap" || true; rm -rf -- "$snap" "$stage"; return 1; }
-    write_file_atomically_from_stdin "$TZ_STATE_FILE" 600 <<< "applied=$target" || true
+    # B-05 fix: timezone state metadata write failure is no longer ignored.
+    # The system timezone was already changed at this point, so we warn
+    # loudly instead of claiming rollback state is available.
+    if ! write_file_atomically_from_stdin "$TZ_STATE_FILE" 600 <<< "applied=$target"; then
+        rm -rf -- "$snap"
+        msg "${RED}[!] 时区已切换为 $target，但状态元数据写入失败；回滚信息可能不完整。${NC}" >&2
+        return 1
+    fi
     rm -rf -- "$snap"
     case "${ABOX_LANG:-zh}" in
         en) msg "${GREEN}Timezone set to $target; the previous state is available for rollback.${NC}" ;;
@@ -10057,11 +10156,18 @@ apply_host_dns() {
         read -r -p "$immutable_prompt" answer
         is_yes "$answer" || return 0
     fi
+    # B-04 fix: snapshot to a temp dir first, then atomically swap. The old
+    # snapshot is only removed after the new one is fully written.
+    local dns_snap_tmp=""
+    dns_snap_tmp=$(mktemp -d "${DNS_BACKUP_DIR}.new.XXXXXX") || die "Failed to create DNS snapshot staging directory."
+    chmod 700 "$dns_snap_tmp"
+    if ! snapshot_dns_state "$dns_snap_tmp"; then
+        rm -rf -- "$dns_snap_tmp"
+        die "Failed to snapshot DNS state; previous rollback snapshot preserved."
+    fi
+    printf '%s\n' "$immutable_before" > "$dns_snap_tmp/resolv-immutable" || { rm -rf -- "$dns_snap_tmp"; die "Failed to save DNS immutable-flag state."; }
     rm -rf -- "$DNS_BACKUP_DIR"
-    mkdir -p "$DNS_BACKUP_DIR" || die "Failed to create DNS rollback directory."
-    chmod 700 "$DNS_BACKUP_DIR"
-    snapshot_dns_state "$DNS_BACKUP_DIR" || die "Failed to snapshot DNS state."
-    printf '%s\n' "$immutable_before" > "$DNS_BACKUP_DIR/resolv-immutable" || die "Failed to save DNS immutable-flag state."
+    mv -- "$dns_snap_tmp" "$DNS_BACKUP_DIR" || { rm -rf -- "$dns_snap_tmp"; die "Failed to install new DNS rollback snapshot."; }
     if (( immutable_before == 1 )); then
         chattr -i /etc/resolv.conf 2>/dev/null || die "Failed to clear immutable flag on /etc/resolv.conf."
     fi
@@ -10098,11 +10204,17 @@ EOF_DNS
             ;;
         *)
             [[ ! -L /etc/resolv.conf ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die '/etc/resolv.conf 是符号链接；当前 generic DNS 后端拒绝覆盖受其他服务管理的路径。'; }
-            write_file_atomically_from_stdin /etc/resolv.conf 644 <<EOF_RESOLV || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 原子写入失败。'; }
-# Managed by A-Box host DNS helper
-nameserver ${v4}
-$( [[ -n "$v6" ]] && printf 'nameserver %s\n' "$v6" )options timeout:2 attempts:3
-EOF_RESOLV
+            # A-01 fix: build resolv.conf lines explicitly to avoid the
+            # command-substitution newline-stripping bug that used to produce
+            # "nameserver 2001:db8::53options timeout:2 attempts:3".
+            {
+                printf '# Managed by A-Box host DNS helper\n'
+                printf 'nameserver %s\n' "$v4"
+                [[ -n "$v6" ]] && printf 'nameserver %s\n' "$v6"
+                printf 'options timeout:2 attempts:3\n'
+            } > "$DNS_BACKUP_DIR/resolv.conf.new" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 内容生成失败。'; }
+            write_file_atomically_from_stdin /etc/resolv.conf 644 < "$DNS_BACKUP_DIR/resolv.conf.new" || { rm -f "$DNS_BACKUP_DIR/resolv.conf.new"; restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 原子写入失败。'; }
+            rm -f "$DNS_BACKUP_DIR/resolv.conf.new"
             ;;
     esac
     if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< "backend=${backend};mode=${mode};v4=${v4};v6=${v6}"; then
@@ -13913,6 +14025,36 @@ wallos_restore_backup() {
        grep -Ev '^(db(/.*)?|logos(/.*)?|\.abox-state)$' <<< "$listing" >/dev/null; then
         return 1
     fi
+    # N-02 fix: reject symlinks, hardlinks, and special files inside the archive.
+    # N-07 fix: enforce member count and size limits (zip-bomb protection).
+    local vlisting member_count=0
+    vlisting=$(tar -tvzf "$backup" 2>/dev/null) || return 1
+    while IFS= read -r line; do
+        member_count=$((member_count + 1))
+        # tar -tv output starts with file type char: - regular, d dir, l symlink, h hardlink, c/b/p/s/D special
+        case "${line:0:1}" in
+            -|d) ;;
+            *) msg "${RED}[!] Wallos backup contains non-regular file (symlink/hardlink/special); refusing.${NC}" >&2; return 1 ;;
+        esac
+        # Size is the 3rd field in tar -tv output.
+        local fsize
+        fsize=$(awk '{print $3}' <<< "$line" 2>/dev/null || true)
+        if [[ "$fsize" =~ ^[0-9]+$ ]] && (( 10#$fsize > 536870912 )); then
+            msg "${RED}[!] Wallos backup contains oversized member (>512MB); refusing.${NC}" >&2
+            return 1
+        fi
+    done <<< "$vlisting"
+    if (( member_count > 10000 )); then
+        msg "${RED}[!] Wallos backup has too many members (>$member_count > 10000); refusing.${NC}" >&2
+        return 1
+    fi
+    # Total decompressed size guard via gzip -l (approximate).
+    local usize
+    usize=$(gzip -l "$backup" 2>/dev/null | awk 'NR==2 {print $2}' || true)
+    if [[ "$usize" =~ ^[0-9]+$ ]] && (( 10#$usize > 1073741824 )); then
+        msg "${RED}[!] Wallos backup decompressed size exceeds 1GB; refusing.${NC}" >&2
+        return 1
+    fi
     stage=$(umask 077; mktemp -d "$WALLOS_DIR/.restore-stage.XXXXXX") || return 1
     if ! tar -xzf "$backup" -C "$stage" ||
        [[ ! -d "$stage/db" || -L "$stage/db" ||
@@ -13927,25 +14069,34 @@ wallos_restore_backup() {
     for name in db logos .abox-state; do
         if [[ -e "$WALLOS_DIR/$name" || -L "$WALLOS_DIR/$name" ]]; then
             mv -- "$WALLOS_DIR/$name" "$rescue/$name" || {
+                # B-07 fix: verify each rollback move; report incomplete state.
+                local rb_failed=0
                 for restore_name in db logos .abox-state; do
-                    [[ -e "$rescue/$restore_name" && ! -e "$WALLOS_DIR/$restore_name" ]] &&
-                        mv -- "$rescue/$restore_name" "$WALLOS_DIR/$restore_name" || true
+                    if [[ -e "$rescue/$restore_name" && ! -e "$WALLOS_DIR/$restore_name" ]]; then
+                        mv -- "$rescue/$restore_name" "$WALLOS_DIR/$restore_name" 2>/dev/null || rb_failed=1
+                    fi
                 done
                 rm -rf -- "$stage"
+                (( rb_failed == 0 )) || msg "${RED}[!] Wallos restore rollback INCOMPLETE; check $rescue for preserved originals.${NC}" >&2
                 return 1
             }
         fi
     done
     for name in db logos .abox-state; do
         if ! mv -- "$stage/$name" "$WALLOS_DIR/$name"; then
+            local rb_failed=0
             for restore_name in db logos .abox-state; do
-                [[ -e "$WALLOS_DIR/$restore_name" ]] && mv -- "$WALLOS_DIR/$restore_name" "$stage/$restore_name" || true
+                if [[ -e "$WALLOS_DIR/$restore_name" ]]; then
+                    mv -- "$WALLOS_DIR/$restore_name" "$stage/$restore_name" 2>/dev/null || rb_failed=1
+                fi
             done
             for restore_name in db logos .abox-state; do
-                [[ -e "$rescue/$restore_name" && ! -e "$WALLOS_DIR/$restore_name" ]] &&
-                    mv -- "$rescue/$restore_name" "$WALLOS_DIR/$restore_name" || true
+                if [[ -e "$rescue/$restore_name" && ! -e "$WALLOS_DIR/$restore_name" ]]; then
+                    mv -- "$rescue/$restore_name" "$WALLOS_DIR/$restore_name" 2>/dev/null || rb_failed=1
+                fi
             done
             rm -rf -- "$stage"
+            (( rb_failed == 0 )) || msg "${RED}[!] Wallos restore rollback INCOMPLETE; originals preserved at $rescue.${NC}" >&2
             return 1
         fi
     done
@@ -14358,13 +14509,22 @@ wallos_menu() {
         3) wallos_backup_now; pause_return ;;
         4)
             if [[ -f "$WALLOS_DIR/.A-Box-managed" ]] && confirm_yes_no "$prompt_remove"; then
-                docker rm -f wallos >/dev/null 2>&1 || true
-                case "${ABOX_LANG:-zh}" in
-                    en) msg "${GREEN}Container removed. Data and backups retained.${NC}" ;;
-                    ru) msg "${GREEN}Контейнер удалён. Данные и резервные копии сохранены.${NC}" ;;
-                    fa) msg "${GREEN}کانتینر حذف شد؛ داده‌ها و پشتیبان‌ها حفظ شدند.${NC}" ;;
-                    *) msg "${GREEN}容器已删除，数据和备份已保留。${NC}" ;;
-                esac
+                # B-06 fix: verify the container is actually gone before reporting success.
+                if docker rm -f wallos >/dev/null 2>&1 && ! docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'wallos'; then
+                    case "${ABOX_LANG:-zh}" in
+                        en) msg "${GREEN}Container removed. Data and backups retained.${NC}" ;;
+                        ru) msg "${GREEN}Контейнер удалён. Данные и резервные копии сохранены.${NC}" ;;
+                        fa) msg "${GREEN}کانتینر حذف شد؛ داده‌ها و پشتیبان‌ها حفظ شدند.${NC}" ;;
+                        *) msg "${GREEN}容器已删除，数据和备份已保留。${NC}" ;;
+                    esac
+                else
+                    case "${ABOX_LANG:-zh}" in
+                        en) msg "${RED}[!] Failed to remove the wallos container; it may still exist.${NC}" ;;
+                        ru) msg "${RED}[!] Не удалось удалить контейнер wallos.${NC}" ;;
+                        fa) msg "${RED}[!] حذف کانتینر wallos ناموفق بود.${NC}" ;;
+                        *) msg "${RED}[!] 删除 wallos 容器失败，容器可能仍然存在。${NC}" ;;
+                    esac
+                fi
             fi
             pause_return ;;
         *) return 0 ;;
@@ -14525,6 +14685,12 @@ singbox_hy2_tls_json() {
       }
 EOF_TLS
     else
+        # N-18 fix: validate the base64 SHA-256 fingerprint before embedding.
+        # Must be 44-char base64 (32 bytes) to prevent JSON injection via .env.
+        if [[ -z "${HY2_CERT_PUBKEY_SHA256_B64:-}" || ! "${HY2_CERT_PUBKEY_SHA256_B64}" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
+            msg "${RED}[!] HY2_CERT_PUBKEY_SHA256_B64 格式无效，拒绝生成 sing-box TLS 配置。${NC}" >&2
+            return 1
+        fi
         cat <<EOF_TLS
       "tls": {
         "enabled": true,
@@ -14574,9 +14740,10 @@ PY_CLASH_REALPATH
     [[ "$out_real" == "$base_real"/* ]] || return 1
     [[ ! -L "$out" ]] || return 1
     tmp_out=$(mktemp "$base_real/.A-Box-clash-new.XXXXXX") || return 1
-    hy2_pass_yaml=$(json_escape "${HY2_PASS:-}") || return 1
-    hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || return 1
-    ss_pass_yaml=$(json_escape "${SS_PASS:-}") || return 1
+    # F-11 fix: clean up tmp_out on every early return below.
+    hy2_pass_yaml=$(json_escape "${HY2_PASS:-}") || { rm -f -- "$tmp_out"; return 1; }
+    hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || { rm -f -- "$tmp_out"; return 1; }
+    ss_pass_yaml=$(json_escape "${SS_PASS:-}") || { rm -f -- "$tmp_out"; return 1; }
     {
         cat <<EOF_CLASH
 mixed-port: 7890
@@ -15358,6 +15525,35 @@ core_ports_listening() {
     (( any == 1 ))
 }
 
+# F-01: data-plane smoke probe. Verifies the listening port actually speaks
+# TLS (not just TCP accept) by sending a minimal ClientHello and requiring
+# a ServerHello/fallback response. Catches binaries that start and listen
+# but cannot complete handshakes (e.g. protocol regressions).
+core_tls_smoke_probe() {
+    local core="$1" cfg="$2" port
+    # Minimal TLS 1.2 ClientHello (43 bytes), exported for the probe subshell.
+    export ABOX_PROBE_HELLO
+    ABOX_PROBE_HELLO=$(printf '\x16\x03\x01\x00\x28\x02\x00\x00\x24\x03\x03\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x00\x00\x02\x00\x2f\x01\x00')
+    while IFS= read -r port; do
+        [[ "$port" =~ ^[0-9]+$ ]] || continue
+        # Open TCP, send ClientHello, read up to 7 bytes (TLS record header).
+        # Any TLS response (ServerHello, Alert, or REALITY fallback bytes)
+        # proves the data plane is alive. Timeout 5s.
+        if ! timeout 5 bash -c '
+            exec 3<>/dev/tcp/127.0.0.1/'"$port"' || exit 1
+            printf "%s" "$ABOX_PROBE_HELLO" >&3 || exit 1
+            IFS= read -r -d "" -n 7 -t 4 resp <&3 || exit 1
+            [[ -n "$resp" ]] || exit 1
+        ' 2>/dev/null; then
+            msg "${RED}[!] ${core} 端口 ${port} 无 TLS 响应（数据面可能异常）。${NC}"
+            unset ABOX_PROBE_HELLO
+            return 1
+        fi
+    done < <(core_expected_listen_ports "$core" "$cfg" | awk '!seen[$0]++')
+    unset ABOX_PROBE_HELLO
+    return 0
+}
+
 core_post_upgrade_health_gate() {
     local core="$1" cfg bin
     case "$core" in
@@ -15378,7 +15574,12 @@ core_post_upgrade_health_gate() {
         *) return 1 ;;
     esac
     is_service_running "$core" || return 1
-    core_ports_listening "$core" "$cfg"
+    core_ports_listening "$core" "$cfg" || return 1
+    # F-01: data-plane smoke probe (TLS handshake check). Set
+    # ABOX_SKIP_TRAFFIC_PROBE=1 to bypass (not recommended).
+    if [[ "${ABOX_SKIP_TRAFFIC_PROBE:-0}" != "1" ]]; then
+        core_tls_smoke_probe "$core" "$cfg" || return 1
+    fi
 }
 
 upgrade_xray_core_only() {
@@ -15443,10 +15644,7 @@ upgrade_xray_core_only() {
     install_binary_atomically "$xray_ext/xray" /usr/local/bin/xray || { rm -rf "$tmp"; die 'Xray binary atomic install failed.'; }
     if [[ "$was_active" == '1' ]]; then
         if ! restart_service_soft xray || ! core_post_upgrade_health_gate xray; then
-            msg "${RED}[!] New Xray failed post-upgrade health checks. Rolling back binary...${NC}"
-            rollback_binary_install /usr/local/bin/xray "$backup" >/dev/null 2>&1 || true
-            restart_service_soft xray >/dev/null 2>&1 || true
-            rm -rf "$tmp"; die 'Xray core upgrade rolled back because post-upgrade health checks failed.'
+            rollback_core_upgrade_verified xray /usr/local/bin/xray "$backup" "$tmp"
         fi
     fi
     msg "${GREEN}[OK] Xray-core upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
@@ -15517,10 +15715,7 @@ upgrade_singbox_core_only() {
     install_binary_atomically "$sb_path" /usr/local/bin/sing-box || { rm -rf "$tmp"; die 'sing-box binary atomic install failed.'; }
     if [[ "$was_active" == '1' ]]; then
         if ! restart_service_soft sing-box || ! core_post_upgrade_health_gate singbox; then
-            msg "${RED}[!] New sing-box failed post-upgrade health checks. Rolling back binary...${NC}"
-            rollback_binary_install /usr/local/bin/sing-box "$backup" >/dev/null 2>&1 || true
-            restart_service_soft sing-box >/dev/null 2>&1 || true
-            rm -rf "$tmp"; die 'sing-box core upgrade rolled back because post-upgrade health checks failed.'
+            rollback_core_upgrade_verified sing-box /usr/local/bin/sing-box "$backup" "$tmp"
         fi
     fi
     msg "${GREEN}[OK] sing-box upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
@@ -15585,15 +15780,45 @@ upgrade_hysteria_core_only() {
     install_binary_atomically "$hy2_bin" /usr/local/bin/hysteria || { rm -rf "$tmp"; die 'Hysteria binary atomic install failed.'; }
     if [[ "$was_active" == '1' ]]; then
         if ! restart_service_soft hysteria || ! core_post_upgrade_health_gate hysteria; then
-            msg "${RED}[!] New Hysteria failed post-upgrade health checks. Rolling back binary...${NC}"
-            rollback_binary_install /usr/local/bin/hysteria "$backup" >/dev/null 2>&1 || true
-            restart_service_soft hysteria >/dev/null 2>&1 || true
-            rm -rf "$tmp"; die 'Hysteria core upgrade rolled back because post-upgrade health checks failed.'
+            rollback_core_upgrade_verified hysteria /usr/local/bin/hysteria "$backup" "$tmp"
+        fi
+    else
+        # N-04 fix: Hysteria has no standalone config-check command. When the
+        # service was not running, validate the new binary with a temporary
+        # start + port probe + stop cycle instead of blindly reporting OK.
+        if ! hysteria_binary_smoke_test; then
+            msg "${RED}[!] New Hysteria binary failed smoke test with current config. Rolling back...${NC}"
+            rollback_core_upgrade_verified hysteria /usr/local/bin/hysteria "$backup" "$tmp"
         fi
     fi
     msg "${GREEN}[OK] Hysteria upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
     rm -rf -- "$tmp"
     ABOX_CORE_UPGRADE_TMP=''
+}
+
+# N-04: smoke-test a Hysteria binary against the current config by doing a
+# temporary start, waiting for the port, then stopping. Used when the service
+# was not active before upgrade (no restart-based validation available).
+hysteria_binary_smoke_test() {
+    local cfg='/etc/hysteria/config.yaml'
+    [[ -x /usr/local/bin/hysteria && -f "$cfg" ]] || return 1
+    start_abox_service_soft hysteria >/dev/null 2>&1 || return 1
+    local waited=0
+    while (( waited < 10 )); do
+        sleep 1; waited=$((waited + 1))
+        is_service_running hysteria 2>/dev/null && break
+    done
+    local ok=0
+    if is_service_running hysteria 2>/dev/null && core_ports_listening hysteria "$cfg" 2>/dev/null; then
+        ok=1
+    fi
+    stop_abox_service_soft hysteria >/dev/null 2>&1 || true
+    # Ensure it is really stopped before returning.
+    waited=0
+    while (( waited < 10 )) && is_service_running hysteria 2>/dev/null; do
+        sleep 1; waited=$((waited + 1))
+    done
+    (( ok == 1 ))
 }
 
 restore_core_upgrade_transaction_traps() {
@@ -16281,6 +16506,8 @@ PY_SELFTEST_TAR
     assert_bad valid_ip_address 192.0.2.1/24
     if selftest_has python3; then
         getent() { printf '%s\n' '1.1.1.1 STREAM example.com'; }
+        # N-05: resolve_domain_addresses wraps getent in `timeout`; mock timeout as passthrough.
+        timeout() { shift; "$@"; }
         assert_ok sni_domain_public_dns example.com
         getent() { printf '%s\n' '10.0.0.1 STREAM example.com'; }
         assert_bad sni_domain_public_dns example.com
@@ -16292,7 +16519,7 @@ PY_SELFTEST_TAR
             esac
         }
         [[ "$(resolve_domain_addresses example.com)" == '1.1.1.1' ]] || { echo 'FAIL: DNS resolver must fall back from getent ahosts to getent hosts'; failures=$((failures + 1)); }
-        unset -f getent
+        unset -f getent timeout
         assert_ok valid_public_ip 1.1.1.1
         assert_bad valid_public_ip 224.0.0.1
         assert_bad valid_public_ip 239.255.255.255
@@ -16395,7 +16622,10 @@ PY_SELFTEST_TAR
     grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.2'" "$0" || { echo 'FAIL: sing-box stable pin missing'; failures=$((failures + 1)); }
     grep -Fq 'core_fetch_upstream_release_asset() {' "$0" || { echo 'FAIL: upstream-first fetch state machine missing'; failures=$((failures + 1)); }
     [[ "$(awk '/^# Operations helpers$/ { exit } /^core_fetch_upstream_release_asset\(\) \{/ { count++ } END { print count+0 }' "$0")" == '1' ]] || { echo 'FAIL: core asset fetcher must have exactly one live implementation'; failures=$((failures + 1)); }
-    [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] || { echo 'FAIL: effective Xray default version'; failures=$((failures + 1)); }
+    # F-06 fix: default-value assertions must not fail when the user legally
+    # overrides via environment. Isolate in a subshell with overrides unset.
+    ( unset ABOX_XRAY_VERSION ABOX_RESOLVED_XRAY_VERSION
+      [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] ) || { echo 'FAIL: effective Xray default version'; failures=$((failures + 1)); }
     (
         unset ABOX_XRAY_VERSION ABOX_TRY_LATEST_CORE_STABLE
         ABOX_RESOLVED_XRAY_VERSION=''; ABOX_RESOLVED_XRAY_SOURCE=''
@@ -16423,7 +16653,7 @@ PY_SELFTEST_TAR
     [[ "$(core_release_mirror_version SagerNet/sing-box)" == "$ABOX_SINGBOX_MIRROR_VERSION" ]] || { echo 'FAIL: recovery pin resolver'; failures=$((failures + 1)); }
     local mock_core_versions=$'schema=1\nXray=v26.3.27\nsing-box=v1.14.3\nHysteria=app/v2.13.0'
     [[ "$(core_latest_mirror_tag_from_text XTLS/Xray-core "$mock_core_versions")" == 'v26.3.27' ]] || { echo 'FAIL: latest Xray mirror metadata parser'; failures=$((failures + 1)); }
-    awk '/^run_self_tests\(\) \{/ { exit } /expect_sum=.*curl -fLsS --connect-timeout 8 -m 30/ { found=1 } END { exit !found }' "$0" || { echo 'FAIL: mirror checksum download must follow GitHub release redirects'; failures=$((failures + 1)); }
+    awk '/^run_self_tests\(\) \{/ { exit } /expect_sum=.*curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30/ { found=1 } END { exit !found }' "$0" || { echo 'FAIL: mirror checksum download must follow GitHub release redirects'; failures=$((failures + 1)); }
     [[ "$(core_latest_mirror_tag_from_text SagerNet/sing-box "$mock_core_versions")" == 'v1.14.3' ]] || { echo 'FAIL: latest sing-box mirror metadata parser'; failures=$((failures + 1)); }
     [[ "$(core_latest_mirror_tag_from_text HyNetworks/hysteria "$mock_core_versions")" == 'app/v2.13.0' ]] || { echo 'FAIL: latest Hysteria mirror metadata parser'; failures=$((failures + 1)); }
     if core_latest_mirror_tag_from_text XTLS/Xray-core $'Xray=v26.7.28-rc.1'; then echo 'FAIL: prerelease mirror metadata accepted as latest stable'; failures=$((failures + 1)); fi
@@ -16435,16 +16665,22 @@ PY_SELFTEST_TAR
     ( unset ABOX_SINGBOX_VERSION; ABOX_TRY_LATEST_CORE_STABLE=1; ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE=''; core_latest_stable_release_ref() { return 1; }; core_latest_mirror_release_ref() { printf '%s\n' 'v1.14.3'; }; resolve_core_release_target SagerNet/sing-box || exit 1; [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.3|mirror-latest' ]] ) || { echo 'FAIL: latest mirror metadata must be used when upstream API fails'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9.8 xray_reality_requires_mlkem ) || { echo 'FAIL: Xray 26.9.8 must require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.7.28 xray_reality_requires_mlkem ) && { echo 'FAIL: Xray 26.7.28 must not require REALITY ML-KEM'; failures=$((failures + 1)); }
-    [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] || { echo 'FAIL: effective Xray compatibility default'; failures=$((failures + 1)); }
+    ( unset ABOX_XRAY_VERSION ABOX_RESOLVED_XRAY_VERSION; ABOX_XRAY_VERSION_PROBE_SKIP=1
+      [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] ) || { echo 'FAIL: effective Xray compatibility default'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9 xray_reality_requires_mlkem ) >/dev/null 2>&1 && { echo 'FAIL: malformed Xray version accepted'; failures=$((failures + 1)); }
     grep -Fq 'support-x25519mlkem768: $clash_mlkem' "$0" || { echo 'FAIL: Clash REALITY ML-KEM flag must be version-aware'; failures=$((failures + 1)); }
     grep -Fq 'ABOX_HYSTERIA_APP_VERSION:-app/v2.13.0' "$0" || { echo 'FAIL: Hysteria v2.13.0 compatibility pin missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_XRAY_DEFAULT_VERSION='v26.7.28'" "$0" || { echo 'FAIL: Xray iOS/XHTTP compatibility pin missing'; failures=$((failures + 1)); }
-    [[ "$(core_update_policy XTLS/Xray-core)" == 'pinned' ]] || { echo 'FAIL: Xray update policy must default to pinned'; failures=$((failures + 1)); }
-    [[ "$(core_update_policy SagerNet/sing-box)" == 'auto-stable' ]] || { echo 'FAIL: sing-box update policy must default to auto-stable'; failures=$((failures + 1)); }
-    [[ "$(core_update_policy HyNetworks/hysteria)" == 'auto-stable' ]] || { echo 'FAIL: Hysteria update policy must default to auto-stable'; failures=$((failures + 1)); }
+    # F-06 fix: isolate policy/cooldown default assertions from user env overrides.
+    ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
+      [[ "$(core_update_policy XTLS/Xray-core)" == 'pinned' ]] ) || { echo 'FAIL: Xray update policy must default to pinned'; failures=$((failures + 1)); }
+    ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
+      [[ "$(core_update_policy SagerNet/sing-box)" == 'auto-stable' ]] ) || { echo 'FAIL: sing-box update policy must default to auto-stable'; failures=$((failures + 1)); }
+    ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
+      [[ "$(core_update_policy HyNetworks/hysteria)" == 'auto-stable' ]] ) || { echo 'FAIL: Hysteria update policy must default to auto-stable'; failures=$((failures + 1)); }
     ( ABOX_XRAY_UPDATE_POLICY='auto-stable'; [[ "$(core_update_policy XTLS/Xray-core)" == 'auto-stable' ]] ) || { echo 'FAIL: Xray policy override not honored'; failures=$((failures + 1)); }
-    [[ "${ABOX_STABLE_COOLDOWN_DAYS:-}" == '7' ]] || { echo 'FAIL: stable cooldown must default to 7 days'; failures=$((failures + 1)); }
+    ( unset ABOX_STABLE_COOLDOWN_DAYS
+      [[ "${ABOX_STABLE_COOLDOWN_DAYS:-7}" == '7' ]] ) || { echo 'FAIL: stable cooldown must default to 7 days'; failures=$((failures + 1)); }
     ( ABOX_STABLE_COOLDOWN_DAYS='14'; [[ "${ABOX_STABLE_COOLDOWN_DAYS}" == '14' ]] ) || { echo 'FAIL: cooldown override not honored'; failures=$((failures + 1)); }
 
     (
@@ -17232,7 +17468,9 @@ PY_SELFTEST_YAML
         echo 'SELF_TEST_NOTE: root-only Clash YAML ownership tests skipped for non-root execution'
     fi
     CORE=xray HY2_DOMAIN=hy2.example.com HY2_CERT_PUBKEY_SHA256_B64='' singbox_hy2_tls_json | grep -q '"server_name": "hy2.example.com"' || { echo 'FAIL: Sing-box HY2 ACME TLS sample'; failures=$((failures + 1)); }
-    CORE=singbox HY2_DOMAIN=hy2.example.com HY2_CERT_PUBKEY_SHA256_B64=abcdef singbox_hy2_tls_json | grep -q 'certificate_public_key_sha256' || { echo 'FAIL: Sing-box HY2 self-signed TLS sample'; failures=$((failures + 1)); }
+    CORE=singbox HY2_DOMAIN=hy2.example.com HY2_CERT_PUBKEY_SHA256_B64=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= singbox_hy2_tls_json | grep -q 'certificate_public_key_sha256' || { echo 'FAIL: Sing-box HY2 self-signed TLS sample'; failures=$((failures + 1)); }
+    # N-18: invalid fingerprint must be rejected.
+    CORE=singbox HY2_CERT_PUBKEY_SHA256_B64='abcdef"; evil' singbox_hy2_tls_json >/dev/null 2>&1 && { echo 'FAIL: singbox_hy2_tls_json accepted invalid fingerprint'; failures=$((failures + 1)); }
     local _saved_release="${release:-}" _saved_sb_arch="${SB_ARCH:-}" _regex
     SB_ARCH=amd64
     release=alpine

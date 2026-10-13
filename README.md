@@ -100,15 +100,15 @@ Run commands from the directory containing the script:
 
 | Command | Purpose |
 |---|---|
-| `sudo bash install.sh --help` | Show command-line help |
-| `sudo bash install.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | Set the UI language and start the menu |
-| `sudo bash install.sh --self-test` | Run built-in regression/self-tests |
-| `sudo bash install.sh --preflight` or `--dry-run` | Run the preflight check without deploying a new node |
-| `sudo bash install.sh --status` | Show managed configuration and service status |
-| `sudo bash install.sh --start` / `--stop` | Start or stop managed services |
-| `sudo bash install.sh --version` | Show script build metadata |
-| `sudo bash install.sh --export-backup-key /secure/path/A-Box-recovery.key` | Export the recovery key to a protected path |
-| `sudo bash install.sh --convert-legacy-backup OLD.tar.gz [OUTPUT_DIR]` | Convert a legacy backup to manifest v3 format |
+| `sudo bash A-Box.sh --help` | Show command-line help |
+| `sudo bash A-Box.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | Set the UI language and start the menu |
+| `sudo bash A-Box.sh --self-test` | Run built-in regression/self-tests |
+| `sudo bash A-Box.sh --preflight` or `--dry-run` | Run the preflight check without deploying a new node |
+| `sudo bash A-Box.sh --status` | Show managed configuration and service status |
+| `sudo bash A-Box.sh --start` / `--stop` | Start or stop managed services |
+| `sudo bash A-Box.sh --version` | Show script build metadata |
+| `sudo bash A-Box.sh --export-backup-key /secure/path/A-Box-recovery.key` | Export the recovery key to a protected path |
+| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [OUTPUT_DIR]` | Convert a legacy backup to manifest v3 format |
 
 Protect exported recovery keys and backups. A `--self-test` pass does not replace a target-host preflight, live installation, or client interoperability test.
 

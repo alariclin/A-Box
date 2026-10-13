@@ -101,15 +101,15 @@ BBR/FQ بدون تأیید اعمال نمی‌شود. انتخاب DNS بر ا�
 
 | فرمان | کاربرد |
 |---|---|
-| `sudo bash install.sh --help` | نمایش راهنمای خط فرمان |
-| `sudo bash install.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | انتخاب زبان رابط و باز کردن منو |
-| `sudo bash install.sh --self-test` | اجرای آزمون‌های داخلی رگرسیون |
-| `sudo bash install.sh --preflight` یا `--dry-run` | بررسی پیش از اجرا، بدون راه‌اندازی نود جدید |
-| `sudo bash install.sh --status` | نمایش پیکربندی و وضعیت سرویس‌های مدیریت‌شده |
-| `sudo bash install.sh --start` / `--stop` | شروع/توقف سرویس‌های مدیریت‌شده |
-| `sudo bash install.sh --version` | نمایش فراداده ساخت اسکریپت |
-| `sudo bash install.sh --export-backup-key /secure/path/A-Box-recovery.key` | خروجی گرفتن از کلید بازیابی در مسیر محافظت‌شده |
-| `sudo bash install.sh --convert-legacy-backup OLD.tar.gz [OUTPUT_DIR]` | تبدیل نسخه پشتیبان قدیمی به قالب manifest v3 |
+| `sudo bash A-Box.sh --help` | نمایش راهنمای خط فرمان |
+| `sudo bash A-Box.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | انتخاب زبان رابط و باز کردن منو |
+| `sudo bash A-Box.sh --self-test` | اجرای آزمون‌های داخلی رگرسیون |
+| `sudo bash A-Box.sh --preflight` یا `--dry-run` | بررسی پیش از اجرا، بدون راه‌اندازی نود جدید |
+| `sudo bash A-Box.sh --status` | نمایش پیکربندی و وضعیت سرویس‌های مدیریت‌شده |
+| `sudo bash A-Box.sh --start` / `--stop` | شروع/توقف سرویس‌های مدیریت‌شده |
+| `sudo bash A-Box.sh --version` | نمایش فراداده ساخت اسکریپت |
+| `sudo bash A-Box.sh --export-backup-key /secure/path/A-Box-recovery.key` | خروجی گرفتن از کلید بازیابی در مسیر محافظت‌شده |
+| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [OUTPUT_DIR]` | تبدیل نسخه پشتیبان قدیمی به قالب manifest v3 |
 
 کلید بازیابی و نسخه‌های پشتیبان را در محل امن نگه دارید. موفقیت `--self-test` جایگزین بررسی پیش از اجرا روی سرور مقصد، نصب واقعی یا آزمون سازگاری کلاینت‌ها نیست.
 

@@ -101,15 +101,15 @@ Wallos — необязательное приложение для учёта �
 
 | Команда | Назначение |
 |---|---|
-| `sudo bash install.sh --help` | Показать справку командной строки |
-| `sudo bash install.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | Выбрать язык интерфейса и открыть меню |
-| `sudo bash install.sh --self-test` | Запустить встроенные регрессионные тесты |
-| `sudo bash install.sh --preflight` или `--dry-run` | Предварительная проверка без развёртывания нового узла |
-| `sudo bash install.sh --status` | Показать управляемую конфигурацию и состояние служб |
-| `sudo bash install.sh --start` / `--stop` | Запустить/остановить управляемые службы |
-| `sudo bash install.sh --version` | Показать метаданные сборки скрипта |
-| `sudo bash install.sh --export-backup-key /secure/path/A-Box-recovery.key` | Экспортировать ключ восстановления в защищённый каталог |
-| `sudo bash install.sh --convert-legacy-backup OLD.tar.gz [OUTPUT_DIR]` | Преобразовать старую резервную копию в формат manifest v3 |
+| `sudo bash A-Box.sh --help` | Показать справку командной строки |
+| `sudo bash A-Box.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | Выбрать язык интерфейса и открыть меню |
+| `sudo bash A-Box.sh --self-test` | Запустить встроенные регрессионные тесты |
+| `sudo bash A-Box.sh --preflight` или `--dry-run` | Предварительная проверка без развёртывания нового узла |
+| `sudo bash A-Box.sh --status` | Показать управляемую конфигурацию и состояние служб |
+| `sudo bash A-Box.sh --start` / `--stop` | Запустить/остановить управляемые службы |
+| `sudo bash A-Box.sh --version` | Показать метаданные сборки скрипта |
+| `sudo bash A-Box.sh --export-backup-key /secure/path/A-Box-recovery.key` | Экспортировать ключ восстановления в защищённый каталог |
+| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [OUTPUT_DIR]` | Преобразовать старую резервную копию в формат manifest v3 |
 
 Храните ключ восстановления и резервные копии в защищённом месте. Успешный `--self-test` не заменяет предварительную проверку целевого сервера, реальную установку и тест совместимости клиентов.
 

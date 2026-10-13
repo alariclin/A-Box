@@ -110,7 +110,7 @@ jobs:
                 ;;
               sing-box)
                 tar -tzf "$path" >/dev/null
-                member="$(tar -tzf "$path" | awk '(^|/)sing-box$ {print; n++} END {if (n != 1) exit 1}')"
+                member="$(tar -tzf "$path" | awk '/(^|\/)sing-box$/ {print; n++} END {if (n != 1) exit 1}')"
                 bin="$root/sing-box-check"
                 tar -xOzf "$path" "$member" > "$bin"
                 chmod 700 "$bin"

@@ -14677,12 +14677,6 @@ build_ss2022_uri() {
 }
 
 singbox_hy2_tls_json() {
-    # N-18 fix: validate the base64 SHA-256 fingerprint before embedding.
-    # Must be 44-char base64 (32 bytes) to prevent JSON injection via .env.
-    if [[ -z "${HY2_CERT_PUBKEY_SHA256_B64:-}" || ! "${HY2_CERT_PUBKEY_SHA256_B64}" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
-        msg "${RED}[!] HY2_CERT_PUBKEY_SHA256_B64 格式无效，拒绝生成 sing-box TLS 配置。${NC}" >&2
-        return 1
-    fi
     if [[ -n "${HY2_DOMAIN:-}" && "${CORE:-}" != 'singbox' ]]; then
         cat <<EOF_TLS
       "tls": {
@@ -14691,6 +14685,12 @@ singbox_hy2_tls_json() {
       }
 EOF_TLS
     else
+        # N-18 fix: validate the base64 SHA-256 fingerprint before embedding.
+        # Must be 44-char base64 (32 bytes) to prevent JSON injection via .env.
+        if [[ -z "${HY2_CERT_PUBKEY_SHA256_B64:-}" || ! "${HY2_CERT_PUBKEY_SHA256_B64}" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
+            msg "${RED}[!] HY2_CERT_PUBKEY_SHA256_B64 格式无效，拒绝生成 sing-box TLS 配置。${NC}" >&2
+            return 1
+        fi
         cat <<EOF_TLS
       "tls": {
         "enabled": true,
@@ -14740,11 +14740,10 @@ PY_CLASH_REALPATH
     [[ "$out_real" == "$base_real"/* ]] || return 1
     [[ ! -L "$out" ]] || return 1
     tmp_out=$(mktemp "$base_real/.A-Box-clash-new.XXXXXX") || return 1
-    # F-11 fix: ensure tmp_out is cleaned up on any early return below.
-    trap 'rm -f -- "$tmp_out"' RETURN
-    hy2_pass_yaml=$(json_escape "${HY2_PASS:-}") || return 1
-    hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || return 1
-    ss_pass_yaml=$(json_escape "${SS_PASS:-}") || return 1
+    # F-11 fix: clean up tmp_out on every early return below.
+    hy2_pass_yaml=$(json_escape "${HY2_PASS:-}") || { rm -f -- "$tmp_out"; return 1; }
+    hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || { rm -f -- "$tmp_out"; return 1; }
+    ss_pass_yaml=$(json_escape "${SS_PASS:-}") || { rm -f -- "$tmp_out"; return 1; }
     {
         cat <<EOF_CLASH
 mixed-port: 7890
@@ -16507,6 +16506,8 @@ PY_SELFTEST_TAR
     assert_bad valid_ip_address 192.0.2.1/24
     if selftest_has python3; then
         getent() { printf '%s\n' '1.1.1.1 STREAM example.com'; }
+        # N-05: resolve_domain_addresses wraps getent in `timeout`; mock timeout as passthrough.
+        timeout() { shift; "$@"; }
         assert_ok sni_domain_public_dns example.com
         getent() { printf '%s\n' '10.0.0.1 STREAM example.com'; }
         assert_bad sni_domain_public_dns example.com
@@ -16518,7 +16519,7 @@ PY_SELFTEST_TAR
             esac
         }
         [[ "$(resolve_domain_addresses example.com)" == '1.1.1.1' ]] || { echo 'FAIL: DNS resolver must fall back from getent ahosts to getent hosts'; failures=$((failures + 1)); }
-        unset -f getent
+        unset -f getent timeout
         assert_ok valid_public_ip 1.1.1.1
         assert_bad valid_public_ip 224.0.0.1
         assert_bad valid_public_ip 239.255.255.255

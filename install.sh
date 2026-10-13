@@ -5042,7 +5042,14 @@ resolve_core_release_target() {
                     latest_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
                     # Validate cooldown is numeric to avoid set -u crash on bad input
                     local cooldown_days="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
-                    [[ "$cooldown_days" =~ ^[0-9]{1,4}$ ]] && (( 10#$cooldown_days <= 3650 )) || cooldown_days=7
+                    # N-14 fix: 0 would silently disable the cooldown (latest_age >= 0
+                    # is always true). Require >= 1; invalid values fall back to 7.
+                    if [[ "$cooldown_days" =~ ^[0-9]{1,4}$ ]] && (( 10#$cooldown_days >= 1 && 10#$cooldown_days <= 3650 )); then
+                        :
+                    else
+                        [[ "$cooldown_days" == "0" ]] && msg "${YELLOW}[!] ABOX_STABLE_COOLDOWN_DAYS=0 is not allowed (would disable cooldown); using 7.${NC}" >&2
+                        cooldown_days=7
+                    fi
                     if [[ "$latest_age" =~ ^[0-9]+$ ]] && (( latest_age >= cooldown_days )); then
                         target="$latest"; source='upstream'
                     else
@@ -5138,7 +5145,7 @@ core_fetch_upstream_release_asset() {
     [[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]] || { msg "${YELLOW}[!] 官方 Release 缺少有效 SHA-256 digest。${NC}" >&2; return 1; }
     for mirror in '' 'https://ghp.ci/' 'https://mirror.ghproxy.com/'; do
         tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
-        if curl -fLsS --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
+        if curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
             if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 下载归档格式校验失败，继续下一个通道。${NC}" >&2; continue; fi
             if ! verify_github_asset_digest "$tmp_file" "$digest"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 资产 SHA-256 不匹配，继续下一个通道。${NC}" >&2; continue; fi
             if ! validate_core_asset_binary_version "$output_file" "$tmp_file" "$release_ref"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 二进制版本与上游 tag 不一致，拒绝该候选。${NC}" >&2; continue; fi
@@ -5178,6 +5185,18 @@ fetch_github_release() {
 
     if [[ "$target_source" == 'upstream' || "$target_source" == 'explicit' || "$target_source" == 'pinned' ]]; then
         if core_fetch_upstream_release_asset "$repo" "$output_file" "$dest_file" "$target_ref" "$asset_re" "$target_source"; then return 0; fi
+        # F-02 fix: for auto-stable (source=upstream), try the exact-tag versioned
+        # mirror before falling back to the fixed compat pin. This honors the
+        # documented "same version mirror first" policy.
+        if [[ "$target_source" == 'upstream' ]]; then
+            if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
+                core_set_resolved_target "$repo" "$target_ref" mirror-exact || die '无法记录已验证的精确版本镜像。'
+                ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-exact'
+                msg "${GREEN}   上游失败，从同标签版本化镜像恢复 ${target_ref}；未替换版本号。${NC}"
+                return 0
+            fi
+            msg "${YELLOW}[!] 同标签版本化镜像也不可用，继续尝试固定兼容版本。${NC}" >&2
+        fi
         if [[ "$target_source" == 'explicit' ]]; then
             if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
                 core_set_resolved_target "$repo" "$target_ref" mirror-exact || die '无法记录已验证的精确版本镜像。'
@@ -9070,7 +9089,7 @@ fetch_abox_mirror_asset() {
     msg "${YELLOW} -> A-Box recovery mirror: ${mirror_url} [${requested_version}]${NC}"
     tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
     # F-02 fix: if fixed-name asset 404s, fall back to versioned filename.
-    if ! curl -fLsS --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then
+    if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then
         rm -f -- "$tmp_file"
         if [[ "$prefer_versioned" != '1' ]]; then
             versioned_leaf=$(core_mirror_asset_leaf "$repo" "$output_file" "$requested_version" 1) || return 1
@@ -9079,7 +9098,7 @@ fetch_abox_mirror_asset() {
                 asset_leaf="$versioned_leaf"
                 mirror_url="${mirror_base%/}/${asset_leaf}"
                 tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
-                if ! curl -fLsS --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
+                if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
             else
                 return 1
             fi
@@ -9088,7 +9107,9 @@ fetch_abox_mirror_asset() {
         fi
     fi
     if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
-    expect_sum=$(curl -fLsS --connect-timeout 8 -m 30 "$mirror_sum" 2>/dev/null | awk -v f="$asset_leaf" '$2==f || $2==("./" f) || $2~(f"$") {print $1; exit}')
+    # N-16 fix: use fixed-string matching, not regex. The old $2~(f"$") treated
+    # dots in filenames as regex wildcards.
+    expect_sum=$(curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" 2>/dev/null | awk -v f="$asset_leaf" '$2==f || $2==("./" f) || (n=length(f), substr($2, length($2)-n+1)==f && (length($2)==n || substr($2, length($2)-n, 1)=="/")) {print $1; exit}')
     got_sum=$(sha256sum "$tmp_file" 2>/dev/null | awk '{print $1}') || got_sum=''
     if [[ -z "$expect_sum" || ! "$expect_sum" =~ ^[A-Fa-f0-9]{64}$ || "${got_sum,,}" != "${expect_sum,,}" ]]; then msg "${YELLOW}[!] recovery mirror SHA-256 mismatch or missing SHA256SUMS${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
     if ! validate_core_asset_binary_version "$output_file" "$tmp_file" "$requested_version"; then msg "${YELLOW}[!] recovery binary version does not match requested version ${requested_version}${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi

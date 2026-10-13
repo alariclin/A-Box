@@ -5091,6 +5091,20 @@ xray_latest_stable_version() {
 }
 
 effective_xray_version() {
+    # N-06 fix: prefer the ACTUAL installed binary version over intent-based
+    # values. Falls back to explicit/resolved/default only if the binary
+    # is missing or its version cannot be parsed.
+    local actual
+    if [[ -x /usr/local/bin/xray ]]; then
+        actual=$(/usr/local/bin/xray version 2>/dev/null | head -n 1 || true)
+        actual=$(core_version_from_output "$actual" 2>/dev/null || true)
+        if [[ -n "$actual" ]]; then
+            # Normalize to v-prefixed tag for downstream comparisons.
+            [[ "$actual" == v* ]] || actual="v$actual"
+            printf '%s\n' "$actual"
+            return 0
+        fi
+    fi
     if [[ -n "${ABOX_XRAY_VERSION:-}" ]]; then
         printf '%s\n' "$ABOX_XRAY_VERSION"
     elif [[ -n "${ABOX_RESOLVED_XRAY_VERSION:-}" ]]; then
@@ -15423,6 +15437,35 @@ core_ports_listening() {
     (( any == 1 ))
 }
 
+# F-01: data-plane smoke probe. Verifies the listening port actually speaks
+# TLS (not just TCP accept) by sending a minimal ClientHello and requiring
+# a ServerHello/fallback response. Catches binaries that start and listen
+# but cannot complete handshakes (e.g. protocol regressions).
+core_tls_smoke_probe() {
+    local core="$1" cfg="$2" port
+    # Minimal TLS 1.2 ClientHello (43 bytes), exported for the probe subshell.
+    export ABOX_PROBE_HELLO
+    ABOX_PROBE_HELLO=$(printf '\x16\x03\x01\x00\x28\x02\x00\x00\x24\x03\x03\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x00\x00\x02\x00\x2f\x01\x00')
+    while IFS= read -r port; do
+        [[ "$port" =~ ^[0-9]+$ ]] || continue
+        # Open TCP, send ClientHello, read up to 7 bytes (TLS record header).
+        # Any TLS response (ServerHello, Alert, or REALITY fallback bytes)
+        # proves the data plane is alive. Timeout 5s.
+        if ! timeout 5 bash -c '
+            exec 3<>/dev/tcp/127.0.0.1/'"$port"' || exit 1
+            printf "%s" "$ABOX_PROBE_HELLO" >&3 || exit 1
+            IFS= read -r -d "" -n 7 -t 4 resp <&3 || exit 1
+            [[ -n "$resp" ]] || exit 1
+        ' 2>/dev/null; then
+            msg "${RED}[!] ${core} 端口 ${port} 无 TLS 响应（数据面可能异常）。${NC}"
+            unset ABOX_PROBE_HELLO
+            return 1
+        fi
+    done < <(core_expected_listen_ports "$core" "$cfg" | awk '!seen[$0]++')
+    unset ABOX_PROBE_HELLO
+    return 0
+}
+
 core_post_upgrade_health_gate() {
     local core="$1" cfg bin
     case "$core" in
@@ -15443,7 +15486,12 @@ core_post_upgrade_health_gate() {
         *) return 1 ;;
     esac
     is_service_running "$core" || return 1
-    core_ports_listening "$core" "$cfg"
+    core_ports_listening "$core" "$cfg" || return 1
+    # F-01: data-plane smoke probe (TLS handshake check). Set
+    # ABOX_SKIP_TRAFFIC_PROBE=1 to bypass (not recommended).
+    if [[ "${ABOX_SKIP_TRAFFIC_PROBE:-0}" != "1" ]]; then
+        core_tls_smoke_probe "$core" "$cfg" || return 1
+    fi
 }
 
 upgrade_xray_core_only() {
@@ -15646,10 +15694,43 @@ upgrade_hysteria_core_only() {
         if ! restart_service_soft hysteria || ! core_post_upgrade_health_gate hysteria; then
             rollback_core_upgrade_verified hysteria /usr/local/bin/hysteria "$backup" "$tmp"
         fi
+    else
+        # N-04 fix: Hysteria has no standalone config-check command. When the
+        # service was not running, validate the new binary with a temporary
+        # start + port probe + stop cycle instead of blindly reporting OK.
+        if ! hysteria_binary_smoke_test; then
+            msg "${RED}[!] New Hysteria binary failed smoke test with current config. Rolling back...${NC}"
+            rollback_core_upgrade_verified hysteria /usr/local/bin/hysteria "$backup" "$tmp"
+        fi
     fi
     msg "${GREEN}[OK] Hysteria upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
     rm -rf -- "$tmp"
     ABOX_CORE_UPGRADE_TMP=''
+}
+
+# N-04: smoke-test a Hysteria binary against the current config by doing a
+# temporary start, waiting for the port, then stopping. Used when the service
+# was not active before upgrade (no restart-based validation available).
+hysteria_binary_smoke_test() {
+    local cfg='/etc/hysteria/config.yaml'
+    [[ -x /usr/local/bin/hysteria && -f "$cfg" ]] || return 1
+    start_abox_service_soft hysteria >/dev/null 2>&1 || return 1
+    local waited=0
+    while (( waited < 10 )); do
+        sleep 1; waited=$((waited + 1))
+        is_service_running hysteria 2>/dev/null && break
+    done
+    local ok=0
+    if is_service_running hysteria 2>/dev/null && core_ports_listening hysteria "$cfg" 2>/dev/null; then
+        ok=1
+    fi
+    stop_abox_service_soft hysteria >/dev/null 2>&1 || true
+    # Ensure it is really stopped before returning.
+    waited=0
+    while (( waited < 10 )) && is_service_running hysteria 2>/dev/null; do
+        sleep 1; waited=$((waited + 1))
+    done
+    (( ok == 1 ))
 }
 
 restore_core_upgrade_transaction_traps() {

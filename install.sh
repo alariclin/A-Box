@@ -4892,6 +4892,10 @@ core_latest_mirror_release_ref() {
     case "$repo" in XTLS/Xray-core|SagerNet/sing-box|HyNetworks/hysteria) ;; *) return 1 ;; esac
     base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     [[ -n "$base" ]] || return 1
+    case "$base" in
+        https://*) ;;
+        *) msg "${RED}[!] ABOX_CORE_MIRROR_BASE must use https://; refusing plaintext mirror (integrity bypass).${NC}" >&2; return 1 ;;
+    esac
     workdir=$(mktemp -d /tmp/A-Box-core-mirror-meta.XXXXXX) || return 1
     if ! curl -fLsS --connect-timeout 5 -m 15 "${base%/}/CORE-VERSIONS" -o "$workdir/CORE-VERSIONS" || ! curl -fLsS --connect-timeout 5 -m 15 "${base%/}/SHA256SUMS" -o "$workdir/SHA256SUMS"; then
         rm -rf -- "$workdir"; return 1
@@ -8976,6 +8980,12 @@ fetch_abox_mirror_asset() {
     local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf tmp_file
     mirror_base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     [[ -n "$mirror_base" ]] || return 1
+    # Integrity depends on TLS: a plaintext HTTP mirror lets a network attacker
+    # serve a backdoored binary with a matching forged SHA256SUMS. Refuse.
+    case "$mirror_base" in
+        https://*) ;;
+        *) msg "${RED}[!] ABOX_CORE_MIRROR_BASE must use https://; refusing plaintext mirror (integrity bypass).${NC}" >&2; return 1 ;;
+    esac
     if [[ -z "$requested_version" ]]; then requested_version=$(core_release_mirror_version "$repo") || return 1; fi
     core_release_ref_valid "$repo" "$requested_version" || return 1
     asset_leaf=$(core_mirror_asset_leaf "$repo" "$output_file" "$requested_version" "$prefer_versioned") || return 1

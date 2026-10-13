@@ -32,13 +32,18 @@ for f in "$STAGE"/Xray-v26.6.27-linux-*.zip \
 done
 
 # 2. Merge SHA256SUMS
+# NOTE: not safe for concurrent runs; run once at a time.
+echo "[*] Verifying staged files against SHA256SUMS.staging..."
+(cd "$STAGE" && sha256sum -c SHA256SUMS.staging) || { echo "staging verification failed; aborting"; exit 1; }
 echo "[*] Merging SHA256SUMS..."
 gh release download "$TAG" --repo "$REPO" -p "SHA256SUMS" -D "$tmp" 2>/dev/null \
     || { echo "SHA256SUMS not found in release; aborting (refusing to create from scratch)"; exit 1; }
 cp "$tmp/SHA256SUMS" "$tmp/SHA256SUMS.new"
 while read -r sum name _; do
     [[ -n "${sum:-}" && -n "${name:-}" ]] || continue
-    grep -qF "  $name" "$tmp/SHA256SUMS.new" || echo "$sum  $name" >> "$tmp/SHA256SUMS.new"
+    [[ "$sum" =~ ^[A-Fa-f0-9]{64}$ ]] || { echo "invalid hash for $name; aborting"; exit 1; }
+    awk -v n="$name" '$2 == n { found=1 } END { exit !found }' "$tmp/SHA256SUMS.new" \
+        || echo "$sum  $name" >> "$tmp/SHA256SUMS.new"
 done < "$STAGE/SHA256SUMS.staging"
 
 if cmp -s "$tmp/SHA256SUMS" "$tmp/SHA256SUMS.new"; then

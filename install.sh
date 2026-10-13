@@ -1493,7 +1493,10 @@ init_system_environment() {
                 # Do not force the full 'curl' RPM when curl-minimal already provides
                 # /usr/bin/curl (Rocky/Alma/RHEL 8+/9). Forcing curl conflicts with curl-minimal.
                 # diffutils provides cmp(1), required by atomic install / OTA / traffic helpers.
-                deps=(jq openssl bc unzip iptables tar psmisc lsof ca-certificates coreutils cronie logrotate util-linux bind-utils iproute epel-release python3 diffutils)
+                # Fix 2026-10-14: epel-release removed from required deps (EPEL does not exist
+                # on Fedora; the opportunistic install above already tries it with || true
+                # for RHEL derivatives that need it).
+                deps=(jq openssl bc unzip iptables tar psmisc lsof ca-certificates coreutils cronie logrotate util-linux bind-utils iproute python3 diffutils)
                 command -v curl >/dev/null 2>&1 || deps+=(curl)
                 ;;
             alpine)
@@ -5080,7 +5083,14 @@ resolve_core_release_target() {
                     else
                         latest_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
                         local cooldown_days="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
-                        [[ "$cooldown_days" =~ ^[0-9]{1,4}$ ]] && (( 10#$cooldown_days <= 3650 )) || cooldown_days=7
+                        # Fix 2026-10-14: mirror path must also require >= 1 (same as upstream path);
+                        # 0 would silently disable cooldown since latest_age >= 0 is always true.
+                        if [[ "$cooldown_days" =~ ^[0-9]{1,4}$ ]] && (( 10#$cooldown_days >= 1 && 10#$cooldown_days <= 3650 )); then
+                            :
+                        else
+                            [[ "$cooldown_days" == "0" ]] && msg "${YELLOW}[!] ABOX_STABLE_COOLDOWN_DAYS=0 is not allowed (would disable cooldown); using 7.${NC}" >&2
+                            cooldown_days=7
+                        fi
                         if [[ "$latest_age" =~ ^[0-9]+$ ]] && (( latest_age >= cooldown_days )); then
                             target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；将尝试校验过的最新稳定容灾资产 $target。${NC}" >&2
                         else
@@ -14027,7 +14037,7 @@ wallos_restore_backup() {
     fi
     # N-02 fix: reject symlinks, hardlinks, and special files inside the archive.
     # N-07 fix: enforce member count and size limits (zip-bomb protection).
-    local vlisting member_count=0
+    local vlisting member_count=0 total_usize=0
     vlisting=$(tar -tvzf "$backup" 2>/dev/null) || return 1
     while IFS= read -r line; do
         member_count=$((member_count + 1))
@@ -14043,16 +14053,20 @@ wallos_restore_backup() {
             msg "${RED}[!] Wallos backup contains oversized member (>512MB); refusing.${NC}" >&2
             return 1
         fi
+        # Fix 2026-10-14: accumulate total decompressed size from tar listing.
+        # gzip -l underreports multi-member gzip streams (only shows last member).
+        if [[ "$fsize" =~ ^[0-9]+$ ]]; then
+            total_usize=$((total_usize + 10#$fsize))
+        fi
     done <<< "$vlisting"
     if (( member_count > 10000 )); then
         msg "${RED}[!] Wallos backup has too many members (>$member_count > 10000); refusing.${NC}" >&2
         return 1
     fi
-    # Total decompressed size guard via gzip -l (approximate).
-    local usize
-    usize=$(gzip -l "$backup" 2>/dev/null | awk 'NR==2 {print $2}' || true)
-    if [[ "$usize" =~ ^[0-9]+$ ]] && (( 10#$usize > 1073741824 )); then
-        msg "${RED}[!] Wallos backup decompressed size exceeds 1GB; refusing.${NC}" >&2
+    # Fix 2026-10-14: total decompressed size guard uses summed tar member sizes.
+    # (gzip -l is unreliable for multi-member streams; it reports only the last member.)
+    if (( total_usize > 1073741824 )); then
+        msg "${RED}[!] Wallos backup total decompressed size exceeds 1GB (${total_usize} bytes); refusing.${NC}" >&2
         return 1
     fi
     stage=$(umask 077; mktemp -d "$WALLOS_DIR/.restore-stage.XXXXXX") || return 1

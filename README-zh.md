@@ -8,7 +8,7 @@ Linux 网络网关一键工具箱。
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
-A-Box 是一个独立 Bash 脚本，用于部署和维护 Linux 网络网关服务。当前兼容性 pin 为 Xray `v26.7.28`（上游预发布版，因兼容性需要而保留）和 sing-box `v1.14.2`；选择最新稳定版时不会静默降级已安装的较新核心。
+A-Box 是一个独立 Bash 脚本，用于部署和维护 Linux 网络网关服务。当前兼容性 pin 为 Xray `v26.7.28`（上游预发布版，因兼容性需要而保留）、sing-box `v1.14.2` 和 Hysteria `app/v2.13.0`；选择最新稳定版时不会静默降级已安装的较新核心。
 
 支持 Xray-core、sing-box、官方 Hysteria 2 服务端、VLESS Vision REALITY、VLESS XHTTP REALITY、Shadowsocks-2022、客户端配置导出、本地 SNI 候选测试、备份恢复、防火墙管理、诊断、流量限制、健康检查和核心软件升级；最新稳定版下载失败时先尝试同版本的校验镜像，再回退到固定兼容性 pin。
 

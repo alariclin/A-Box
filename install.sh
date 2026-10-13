@@ -5103,8 +5103,9 @@ effective_xray_version() {
     # N-06 fix: prefer the ACTUAL installed binary version over intent-based
     # values. Falls back to explicit/resolved/default only if the binary
     # is missing or its version cannot be parsed.
+    # ABOX_XRAY_VERSION_PROBE_SKIP=1 disables the binary probe (self-test).
     local actual
-    if [[ -x /usr/local/bin/xray ]]; then
+    if [[ "${ABOX_XRAY_VERSION_PROBE_SKIP:-0}" != '1' && -x /usr/local/bin/xray ]]; then
         actual=$(/usr/local/bin/xray version 2>/dev/null | head -n 1 || true)
         actual=$(core_version_from_output "$actual" 2>/dev/null || true)
         if [[ -n "$actual" ]]; then
@@ -9073,8 +9074,10 @@ show_core_pin_docs() {
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}核心版本选择与容灾说明 / Core release policy${NC}"
     msg "${CYAN}======================================================================${NC}"
-    msg "Routine deployment and upgrades use tested compatibility pins: Xray ${YELLOW}${ABOX_XRAY_DEFAULT_VERSION}${NC}; sing-box ${ABOX_SINGBOX_DEFAULT_VERSION}; Hysteria ${ABOX_HYSTERIA_DEFAULT_VERSION}."
-    msg "The explicit danger action may try the latest official stable tag (draft/prerelease excluded); config, client compatibility, and post-upgrade health gates still apply."
+    # F-10 fix: do not imply routine upgrades always use compat pins.
+    # Xray defaults to pinned; sing-box/Hysteria default to auto-stable.
+    msg "Update policy per core: Xray ${YELLOW}pinned${NC} (${ABOX_XRAY_DEFAULT_VERSION}); sing-box ${YELLOW}auto-stable${NC} (compat pin ${ABOX_SINGBOX_DEFAULT_VERSION}); Hysteria ${YELLOW}auto-stable${NC} (compat pin ${ABOX_HYSTERIA_DEFAULT_VERSION})."
+    msg "Auto-stable follows the latest official stable tag after a ${YELLOW}${ABOX_STABLE_COOLDOWN_DAYS:-7}-day${NC} cooling period (draft/prerelease excluded); config, client compatibility, and post-upgrade health gates still apply."
     msg "Fixed compatibility recovery assets remain in Release: ${YELLOW}${ABOX_CORE_MIRROR_RELEASE}${NC}. Latest-stable attempts try an exact-tag versioned mirror first, then these fixed pins."
     msg "CORE-VERSIONS is accepted only when its digest matches SHA256SUMS; older versioned mirror assets are retained for rollback."
     msg "Explicit version overrides: ABOX_XRAY_VERSION / ABOX_SINGBOX_VERSION / ABOX_HYSTERIA_APP_VERSION; failed explicit pins do not silently switch versions."
@@ -9115,6 +9118,7 @@ fetch_abox_mirror_asset() {
     if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then
         rm -f -- "$tmp_file"
         if [[ "$prefer_versioned" != '1' ]]; then
+            local versioned_leaf
             versioned_leaf=$(core_mirror_asset_leaf "$repo" "$output_file" "$requested_version" 1) || return 1
             if [[ "$versioned_leaf" != "$asset_leaf" ]]; then
                 msg "${YELLOW} -> Fixed-name asset not found, trying versioned: ${versioned_leaf}${NC}" >&2
@@ -14673,6 +14677,12 @@ build_ss2022_uri() {
 }
 
 singbox_hy2_tls_json() {
+    # N-18 fix: validate the base64 SHA-256 fingerprint before embedding.
+    # Must be 44-char base64 (32 bytes) to prevent JSON injection via .env.
+    if [[ -z "${HY2_CERT_PUBKEY_SHA256_B64:-}" || ! "${HY2_CERT_PUBKEY_SHA256_B64}" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
+        msg "${RED}[!] HY2_CERT_PUBKEY_SHA256_B64 格式无效，拒绝生成 sing-box TLS 配置。${NC}" >&2
+        return 1
+    fi
     if [[ -n "${HY2_DOMAIN:-}" && "${CORE:-}" != 'singbox' ]]; then
         cat <<EOF_TLS
       "tls": {
@@ -14730,6 +14740,8 @@ PY_CLASH_REALPATH
     [[ "$out_real" == "$base_real"/* ]] || return 1
     [[ ! -L "$out" ]] || return 1
     tmp_out=$(mktemp "$base_real/.A-Box-clash-new.XXXXXX") || return 1
+    # F-11 fix: ensure tmp_out is cleaned up on any early return below.
+    trap 'rm -f -- "$tmp_out"' RETURN
     hy2_pass_yaml=$(json_escape "${HY2_PASS:-}") || return 1
     hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || return 1
     ss_pass_yaml=$(json_escape "${SS_PASS:-}") || return 1
@@ -16609,7 +16621,10 @@ PY_SELFTEST_TAR
     grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.2'" "$0" || { echo 'FAIL: sing-box stable pin missing'; failures=$((failures + 1)); }
     grep -Fq 'core_fetch_upstream_release_asset() {' "$0" || { echo 'FAIL: upstream-first fetch state machine missing'; failures=$((failures + 1)); }
     [[ "$(awk '/^# Operations helpers$/ { exit } /^core_fetch_upstream_release_asset\(\) \{/ { count++ } END { print count+0 }' "$0")" == '1' ]] || { echo 'FAIL: core asset fetcher must have exactly one live implementation'; failures=$((failures + 1)); }
-    [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] || { echo 'FAIL: effective Xray default version'; failures=$((failures + 1)); }
+    # F-06 fix: default-value assertions must not fail when the user legally
+    # overrides via environment. Isolate in a subshell with overrides unset.
+    ( unset ABOX_XRAY_VERSION ABOX_RESOLVED_XRAY_VERSION
+      [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] ) || { echo 'FAIL: effective Xray default version'; failures=$((failures + 1)); }
     (
         unset ABOX_XRAY_VERSION ABOX_TRY_LATEST_CORE_STABLE
         ABOX_RESOLVED_XRAY_VERSION=''; ABOX_RESOLVED_XRAY_SOURCE=''
@@ -16637,7 +16652,7 @@ PY_SELFTEST_TAR
     [[ "$(core_release_mirror_version SagerNet/sing-box)" == "$ABOX_SINGBOX_MIRROR_VERSION" ]] || { echo 'FAIL: recovery pin resolver'; failures=$((failures + 1)); }
     local mock_core_versions=$'schema=1\nXray=v26.3.27\nsing-box=v1.14.3\nHysteria=app/v2.13.0'
     [[ "$(core_latest_mirror_tag_from_text XTLS/Xray-core "$mock_core_versions")" == 'v26.3.27' ]] || { echo 'FAIL: latest Xray mirror metadata parser'; failures=$((failures + 1)); }
-    awk '/^run_self_tests\(\) \{/ { exit } /expect_sum=.*curl -fLsS --connect-timeout 8 -m 30/ { found=1 } END { exit !found }' "$0" || { echo 'FAIL: mirror checksum download must follow GitHub release redirects'; failures=$((failures + 1)); }
+    awk '/^run_self_tests\(\) \{/ { exit } /expect_sum=.*curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30/ { found=1 } END { exit !found }' "$0" || { echo 'FAIL: mirror checksum download must follow GitHub release redirects'; failures=$((failures + 1)); }
     [[ "$(core_latest_mirror_tag_from_text SagerNet/sing-box "$mock_core_versions")" == 'v1.14.3' ]] || { echo 'FAIL: latest sing-box mirror metadata parser'; failures=$((failures + 1)); }
     [[ "$(core_latest_mirror_tag_from_text HyNetworks/hysteria "$mock_core_versions")" == 'app/v2.13.0' ]] || { echo 'FAIL: latest Hysteria mirror metadata parser'; failures=$((failures + 1)); }
     if core_latest_mirror_tag_from_text XTLS/Xray-core $'Xray=v26.7.28-rc.1'; then echo 'FAIL: prerelease mirror metadata accepted as latest stable'; failures=$((failures + 1)); fi
@@ -16649,16 +16664,22 @@ PY_SELFTEST_TAR
     ( unset ABOX_SINGBOX_VERSION; ABOX_TRY_LATEST_CORE_STABLE=1; ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE=''; core_latest_stable_release_ref() { return 1; }; core_latest_mirror_release_ref() { printf '%s\n' 'v1.14.3'; }; resolve_core_release_target SagerNet/sing-box || exit 1; [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.3|mirror-latest' ]] ) || { echo 'FAIL: latest mirror metadata must be used when upstream API fails'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9.8 xray_reality_requires_mlkem ) || { echo 'FAIL: Xray 26.9.8 must require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.7.28 xray_reality_requires_mlkem ) && { echo 'FAIL: Xray 26.7.28 must not require REALITY ML-KEM'; failures=$((failures + 1)); }
-    [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] || { echo 'FAIL: effective Xray compatibility default'; failures=$((failures + 1)); }
+    ( unset ABOX_XRAY_VERSION ABOX_RESOLVED_XRAY_VERSION; ABOX_XRAY_VERSION_PROBE_SKIP=1
+      [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] ) || { echo 'FAIL: effective Xray compatibility default'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9 xray_reality_requires_mlkem ) >/dev/null 2>&1 && { echo 'FAIL: malformed Xray version accepted'; failures=$((failures + 1)); }
     grep -Fq 'support-x25519mlkem768: $clash_mlkem' "$0" || { echo 'FAIL: Clash REALITY ML-KEM flag must be version-aware'; failures=$((failures + 1)); }
     grep -Fq 'ABOX_HYSTERIA_APP_VERSION:-app/v2.13.0' "$0" || { echo 'FAIL: Hysteria v2.13.0 compatibility pin missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_XRAY_DEFAULT_VERSION='v26.7.28'" "$0" || { echo 'FAIL: Xray iOS/XHTTP compatibility pin missing'; failures=$((failures + 1)); }
-    [[ "$(core_update_policy XTLS/Xray-core)" == 'pinned' ]] || { echo 'FAIL: Xray update policy must default to pinned'; failures=$((failures + 1)); }
-    [[ "$(core_update_policy SagerNet/sing-box)" == 'auto-stable' ]] || { echo 'FAIL: sing-box update policy must default to auto-stable'; failures=$((failures + 1)); }
-    [[ "$(core_update_policy HyNetworks/hysteria)" == 'auto-stable' ]] || { echo 'FAIL: Hysteria update policy must default to auto-stable'; failures=$((failures + 1)); }
+    # F-06 fix: isolate policy/cooldown default assertions from user env overrides.
+    ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
+      [[ "$(core_update_policy XTLS/Xray-core)" == 'pinned' ]] ) || { echo 'FAIL: Xray update policy must default to pinned'; failures=$((failures + 1)); }
+    ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
+      [[ "$(core_update_policy SagerNet/sing-box)" == 'auto-stable' ]] ) || { echo 'FAIL: sing-box update policy must default to auto-stable'; failures=$((failures + 1)); }
+    ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
+      [[ "$(core_update_policy HyNetworks/hysteria)" == 'auto-stable' ]] ) || { echo 'FAIL: Hysteria update policy must default to auto-stable'; failures=$((failures + 1)); }
     ( ABOX_XRAY_UPDATE_POLICY='auto-stable'; [[ "$(core_update_policy XTLS/Xray-core)" == 'auto-stable' ]] ) || { echo 'FAIL: Xray policy override not honored'; failures=$((failures + 1)); }
-    [[ "${ABOX_STABLE_COOLDOWN_DAYS:-}" == '7' ]] || { echo 'FAIL: stable cooldown must default to 7 days'; failures=$((failures + 1)); }
+    ( unset ABOX_STABLE_COOLDOWN_DAYS
+      [[ "${ABOX_STABLE_COOLDOWN_DAYS:-7}" == '7' ]] ) || { echo 'FAIL: stable cooldown must default to 7 days'; failures=$((failures + 1)); }
     ( ABOX_STABLE_COOLDOWN_DAYS='14'; [[ "${ABOX_STABLE_COOLDOWN_DAYS}" == '14' ]] ) || { echo 'FAIL: cooldown override not honored'; failures=$((failures + 1)); }
 
     (
@@ -17446,7 +17467,9 @@ PY_SELFTEST_YAML
         echo 'SELF_TEST_NOTE: root-only Clash YAML ownership tests skipped for non-root execution'
     fi
     CORE=xray HY2_DOMAIN=hy2.example.com HY2_CERT_PUBKEY_SHA256_B64='' singbox_hy2_tls_json | grep -q '"server_name": "hy2.example.com"' || { echo 'FAIL: Sing-box HY2 ACME TLS sample'; failures=$((failures + 1)); }
-    CORE=singbox HY2_DOMAIN=hy2.example.com HY2_CERT_PUBKEY_SHA256_B64=abcdef singbox_hy2_tls_json | grep -q 'certificate_public_key_sha256' || { echo 'FAIL: Sing-box HY2 self-signed TLS sample'; failures=$((failures + 1)); }
+    CORE=singbox HY2_DOMAIN=hy2.example.com HY2_CERT_PUBKEY_SHA256_B64=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= singbox_hy2_tls_json | grep -q 'certificate_public_key_sha256' || { echo 'FAIL: Sing-box HY2 self-signed TLS sample'; failures=$((failures + 1)); }
+    # N-18: invalid fingerprint must be rejected.
+    CORE=singbox HY2_CERT_PUBKEY_SHA256_B64='abcdef"; evil' singbox_hy2_tls_json >/dev/null 2>&1 && { echo 'FAIL: singbox_hy2_tls_json accepted invalid fingerprint'; failures=$((failures + 1)); }
     local _saved_release="${release:-}" _saved_sb_arch="${SB_ARCH:-}" _regex
     SB_ARCH=amd64
     release=alpine

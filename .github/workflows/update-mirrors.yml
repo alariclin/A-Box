@@ -17,7 +17,7 @@ on:
       - '.github/workflows/update-mirrors.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: stable-recovery-mirrors
@@ -26,6 +26,9 @@ concurrency:
 jobs:
   update-mirrors:
     name: Build, verify, and publish recovery assets
+    # N-13 fix: write permission scoped to this job only, not the whole workflow.
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:

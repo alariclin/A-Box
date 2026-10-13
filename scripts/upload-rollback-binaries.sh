@@ -27,9 +27,16 @@ expected=(
 )
 
 echo "[*] Checking staging file set..."
+# P1-05 fix 2026-10-14: reject symlinks to prevent staging-escape upload.
 for name in "${expected[@]}"; do
-    [[ -f "$STAGE/$name" ]] || { echo "missing expected file: $name; aborting"; exit 1; }
+    [[ -f "$STAGE/$name" && ! -L "$STAGE/$name" ]] || { echo "missing or symlink: $name; aborting"; exit 1; }
 done
+# P1-05: reject any symlink in staging directory
+if [[ -n "$(find "$STAGE" -maxdepth 1 -type l)" ]]; then
+    echo "symlinks found in staging; aborting"
+    find "$STAGE" -maxdepth 1 -type l -printf '  %f -> %l\n'
+    exit 1
+fi
 # A-03 fix: refuse any staged file not in the expected set / manifest.
 staged_count=$(find "$STAGE" -maxdepth 1 -type f ! -name 'SHA256SUMS.staging' | wc -l)
 if (( staged_count != ${#expected[@]} )); then
@@ -47,6 +54,36 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 # Verify staging checksums BEFORE any upload.
 echo "[*] Verifying staged files against SHA256SUMS.staging..."
 (cd "$STAGE" && sha256sum -c SHA256SUMS.staging) || { echo "staging verification failed; aborting (nothing uploaded)"; exit 1; }
+# P1-04 fix 2026-10-14: manifest must list exactly the expected files, no more, no less.
+echo "[*] Verifying manifest covers exactly the expected file set..."
+manifest_files=$(awk '{print $2}' "$STAGE/SHA256SUMS.staging" | sort)
+expected_files=$(printf '%s\n' "${expected[@]}" | sort)
+if [[ "$manifest_files" != "$expected_files" ]]; then
+    echo "manifest file set does not match expected set; aborting"
+    echo "--- manifest ---"
+    echo "$manifest_files"
+    echo "--- expected ---"
+    echo "$expected_files"
+    exit 1
+fi
+echo "[*] Manifest coverage verified." 
+
+# P2-01 fix 2026-10-14: check remote SHA256SUMS for conflicts BEFORE uploading.
+# This prevents uploading a binary when the manifest already has a different hash.
+echo "[*] Pre-checking remote SHA256SUMS for conflicts..."
+tmp2="$(mktemp -d)"; trap 'rm -rf "$tmp" "$tmp2"' EXIT
+gh release download "$TAG" --repo "$REPO" -p "SHA256SUMS" -D "$tmp2" 2>/dev/null     || { echo "SHA256SUMS not found in release; aborting (refusing to create from scratch)"; exit 1; }
+while read -r sum name _; do
+    [[ -n "${sum:-}" && -n "${name:-}" ]] || continue
+    staging_sum=$(awk -v n="$name" '$2 == n { print $1; exit }' "$STAGE/SHA256SUMS.staging" || true)
+    if [[ -n "$staging_sum" && "$staging_sum" != "$sum" ]]; then
+        echo "[CONFLICT] Remote SHA256SUMS has $name with different hash:"
+        echo "  remote:  $sum"
+        echo "  staging: $staging_sum"
+        echo "Aborting before any upload."
+        exit 1
+    fi
+done < "$tmp2/SHA256SUMS"
 
 # 1. Upload binaries (skip if already present WITH MATCHING DIGEST).
 # F-03 fix: compare GitHub asset digest with staging SHA-256; conflict aborts.

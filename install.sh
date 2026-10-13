@@ -1678,6 +1678,33 @@ systemd_available() {
     [[ "$(cat /proc/1/comm 2>/dev/null || true)" == 'systemd' ]] || return 1
 }
 
+# Perf 2026-10-14: batch version to avoid 3x systemctl per menu refresh.
+# Usage: service_active_states_batch xray sing-box hysteria
+# Output: lines of "srv:1" or "srv:0" or "srv:?" 
+service_active_states_batch() {
+    local srv state out
+    if [[ "${INIT_SYS:-}" == systemd ]] && systemd_available; then
+        # Single systemctl call for all services
+        out=$(systemctl show -p Id -p ActiveState --value "$@" 2>/dev/null) || return 1
+        # Parse: output is pairs of Id, ActiveState lines
+        local id=""
+        while IFS= read -r line; do
+            if [[ -z "$id" ]]; then
+                id="$line"
+            else
+                case "$line" in
+                    active) printf '%s:1\n' "$id" ;;
+                    inactive|failed|dead|exited) printf '%s:0\n' "$id" ;;
+                    *) printf '%s:?\n' "$id" ;;
+                esac
+                id=""
+            fi
+        done <<< "$out"
+        return 0
+    fi
+    return 1
+}
+
 service_active_state_value() {
     local srv="$1" state rc
     if [[ "${INIT_SYS:-}" == systemd ]] && systemd_available; then
@@ -2625,20 +2652,28 @@ is_service_running() {
 }
 
 build_status_str() {
-    local status_str='' srv state unknown=0
+    local status_str='' srv state unknown=0 batch_out
+    # Perf 2026-10-14: single systemctl call instead of 3x per refresh
+    batch_out=$(service_active_states_batch xray sing-box hysteria 2>/dev/null) || batch_out=""
     for srv in xray sing-box hysteria; do
         abox_owns_service "$srv" || continue
-        if state=$(service_active_state_value "$srv" 2>/dev/null); then
-            case "$state" in
-                1)
-                    case "$srv" in xray) status_str+="${GREEN}Xray-Core${NC} ";; sing-box) status_str+="${CYAN}Sing-Box${NC} ";; hysteria) status_str+="${GREEN}Hy2(Native)${NC} ";; esac
-                    ;;
-                0) ;;
-                *) unknown=1 ;;
-            esac
-        else
-            unknown=1
+        # Try batch result first, fall back to single query
+        state=$(grep "^${srv}:" <<< "$batch_out" | cut -d: -f2)
+        if [[ -z "$state" ]]; then
+            if state=$(service_active_state_value "$srv" 2>/dev/null); then
+                : # got it
+            else
+                unknown=1
+                continue
+            fi
         fi
+        case "$state" in
+            1)
+                case "$srv" in xray) status_str+="${GREEN}Xray-Core${NC} ";; sing-box) status_str+="${CYAN}Sing-Box${NC} ";; hysteria) status_str+="${GREEN}Hy2(Native)${NC} ";; esac
+                ;;
+            0) ;;
+            *) unknown=1 ;;
+        esac
     done
     if [[ -n "$status_str" ]]; then
         (( unknown == 1 )) && status_str+="${YELLOW}State Unknown${NC} "
@@ -3396,7 +3431,14 @@ nftables_native_rules_present() {
                      name !~ /^(filter|nat|mangle|raw|security)$/)
                 native=1
         }
-        /^[[:space:]]*chain[[:space:]]+(input|forward|output)[[:space:]]*\{/ { native=1 }
+        # P3-01 fix 2026-10-14: match chain names case-insensitively.
+        # nftables chains are typically UPPERCASE (INPUT/FORWARD/OUTPUT).
+        /^[[:space:]]*chain[[:space:]]+/ {
+            cname=$2
+            gsub(/\{/, "", cname)
+            if (tolower(cname) == "input" || tolower(cname) == "forward" || tolower(cname) == "output")
+                native=1
+        }
         END { exit !native }
     '
 }
@@ -5105,9 +5147,6 @@ resolve_core_release_target() {
     core_set_resolved_target "$repo" "$target" "$source"
 }
 
-xray_latest_stable_version() {
-    core_latest_stable_release_ref XTLS/Xray-core
-}
 
 effective_xray_version() {
     # N-06 fix: prefer the ACTUAL installed binary version over intent-based
@@ -6193,7 +6232,7 @@ EOF_PROBE
     else
         sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='openrc'|" "$ABOX_DIR/socket_probe.sh" || die '健康探针运行环境标记写入失败。'
     fi
-    grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/socket_probe.sh" || die '健康探针运行环境标记后置校验失败。' 
+    grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/socket_probe.sh" || die '健康探针运行环境标记后置校验失败。'
     chmod 700 "$ABOX_DIR/socket_probe.sh" || die '健康探针权限设置失败。'
     install_abox_cron_block PROBE '* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1'
 }
@@ -6410,7 +6449,7 @@ EOF_GEO
     else
         sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='openrc'|" "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本运行环境标记写入失败。'
     fi
-    grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本运行环境标记后置校验失败。' 
+    grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本运行环境标记后置校验失败。'
     chmod 700 "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本权限设置失败。'
     install_abox_cron_block GEO '0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1'
 }
@@ -7587,37 +7626,7 @@ EOF_SVC
     view_config deploy
 }
 
-get_month_total_bytes() {
-    local iface="$1" mode="${2:-total}" json rx tx line month_count
-    if command -v jq >/dev/null 2>&1 && json=$(vnstat -i "$iface" --json m 1 2>/dev/null); then
-        month_count=$(jq -r '(.interfaces[0].traffic.month // .interfaces[0].traffic.months // []) | length' <<< "$json" 2>/dev/null || printf 'x')
-        if [[ "$month_count" == '0' ]]; then
-            case "$mode" in rx|tx|total) printf '0
-'; return 0 ;; *) return 1 ;; esac
-        fi
-        rx=$(jq -r '([.interfaces[0].traffic.month[]?, .interfaces[0].traffic.months[]?] | last | .rx) // empty' <<< "$json" 2>/dev/null)
-        tx=$(jq -r '([.interfaces[0].traffic.month[]?, .interfaces[0].traffic.months[]?] | last | .tx) // empty' <<< "$json" 2>/dev/null)
-        if [[ "$rx" =~ ^[0-9]+$ && "$tx" =~ ^[0-9]+$ ]]; then
-            case "$mode" in
-                rx) printf '%s
-' "$rx" ;;
-                tx) printf '%s
-' "$tx" ;;
-                total) python3 - "$rx" "$tx" <<'PY_VNSTAT_TOTAL_MAIN'
-import sys
-print(int(sys.argv[1]) + int(sys.argv[2]))
-PY_VNSTAT_TOTAL_MAIN
-                    ;;
-                *) return 1 ;;
-            esac
-            return 0
-        fi
-    fi
-    line=$(vnstat -i "$iface" --oneline b 2>/dev/null) || return 1
-    case "$mode" in rx) awk -F';' '{print $9}' <<< "$line" ;; tx) awk -F';' '{print $10}' <<< "$line" ;; total) awk -F';' '{print $11}' <<< "$line" ;; *) return 1 ;; esac
-}
 
-bytes_to_gb() { awk -v b="$1" 'BEGIN { printf "%.2f", b / 1024 / 1024 / 1024 }'; }
 
 ensure_vnstat_runtime() {
     if ! command -v vnstat >/dev/null 2>&1; then
@@ -8067,7 +8076,7 @@ EOF_TRAFFIC
     else
         sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='openrc'|" "$ABOX_DIR/traffic_monitor.sh" || die '流量监控脚本运行环境标记写入失败。'
     fi
-    grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/traffic_monitor.sh" || die '流量监控脚本运行环境标记后置校验失败。' 
+    grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/traffic_monitor.sh" || die '流量监控脚本运行环境标记后置校验失败。'
     chmod 700 "$ABOX_DIR/traffic_monitor.sh" || die '流量监控脚本权限设置失败。'
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || die '流量限制监控脚本事务快照失败。'
     install_abox_cron_block TRAFFIC '* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1'
@@ -10176,7 +10185,10 @@ apply_host_dns() {
         die "Failed to snapshot DNS state; previous rollback snapshot preserved."
     fi
     printf '%s\n' "$immutable_before" > "$dns_snap_tmp/resolv-immutable" || { rm -rf -- "$dns_snap_tmp"; die "Failed to save DNS immutable-flag state."; }
-    rm -rf -- "$DNS_BACKUP_DIR"
+    # P2-02 fix 2026-10-14: check rm result; use atomic rename via backup.
+    if [[ -e "$DNS_BACKUP_DIR" ]]; then
+        rm -rf -- "$DNS_BACKUP_DIR" || { rm -rf -- "$dns_snap_tmp"; die "Failed to remove old DNS snapshot; aborting to preserve rollback data."; }
+    fi
     mv -- "$dns_snap_tmp" "$DNS_BACKUP_DIR" || { rm -rf -- "$dns_snap_tmp"; die "Failed to install new DNS rollback snapshot."; }
     if (( immutable_before == 1 )); then
         chattr -i /etc/resolv.conf 2>/dev/null || die "Failed to clear immutable flag on /etc/resolv.conf."

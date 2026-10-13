@@ -58,10 +58,10 @@ ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
 ABOX_XRAY_DEFAULT_VERSION='v26.7.28'
 # Stable sing-box compatibility pin included in the core-binaries mirror; refresh and
 # validate client/config compatibility before changing the pinned mirror version.
-ABOX_SINGBOX_DEFAULT_VERSION='v1.14.2'
+ABOX_SINGBOX_DEFAULT_VERSION='v1.14.3'
 # Versions actually contained in the stable core-binaries Release. Recovery is refused for other pins.
 ABOX_XRAY_MIRROR_VERSION='v26.7.28'
-ABOX_SINGBOX_MIRROR_VERSION='v1.14.2'
+ABOX_SINGBOX_MIRROR_VERSION='v1.14.3'
 ABOX_HYSTERIA_MIRROR_VERSION='app/v2.13.0'
 ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'
 # Per-core update policy (2026-10-13):
@@ -16619,7 +16619,7 @@ PY_SELFTEST_TAR
     grep -Fq 'sni_probe_candidate_tier() {' "$0" || { echo 'FAIL: custom REALITY SNI probe helper missing'; failures=$((failures + 1)); }
     grep -Fq 'custom_tier=$(sni_probe_candidate_tier "$input"' "$0" || { echo 'FAIL: custom REALITY SNI must be re-probed before acceptance'; failures=$((failures + 1)); }
     grep -Fq 'core_latest_stable_release_ref() {' "$0" || { echo 'FAIL: dynamic stable Release resolver missing'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.2'" "$0" || { echo 'FAIL: sing-box stable pin missing'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.3'" "$0" || { echo 'FAIL: sing-box stable pin missing'; failures=$((failures + 1)); }
     grep -Fq 'core_fetch_upstream_release_asset() {' "$0" || { echo 'FAIL: upstream-first fetch state machine missing'; failures=$((failures + 1)); }
     [[ "$(awk '/^# Operations helpers$/ { exit } /^core_fetch_upstream_release_asset\(\) \{/ { count++ } END { print count+0 }' "$0")" == '1' ]] || { echo 'FAIL: core asset fetcher must have exactly one live implementation'; failures=$((failures + 1)); }
     # F-06 fix: default-value assertions must not fail when the user legally

@@ -5291,37 +5291,70 @@ read_traffic_pair_fields() {
 }
 
 commit_traffic_pair_state() {
-    local desired="$1" period="${2:-}" pair_backup=""
+    local desired="$1" period="${2:-}"
+    local pair_backup="" desired_backup="" block_backup=""
+    local pair_existed=0 desired_existed=0 block_existed=0
+    local restore_failed=0
     desired_state_valid "$desired" || return 1
     if [[ -n "$period" ]]; then
         traffic_period_valid "$period" || return 1
     fi
     ensure_abox_dir_owned "$ABOX_DIR" >/dev/null 2>&1 || return 1
-    # F-06 fix: backup pair state for transactional rollback if legacy writes fail.
+    # Snapshot all three files for full transactional rollback.
     if [[ -f "$ABOX_TRAFFIC_PAIR_STATE" ]]; then
-        pair_backup=$(mktemp) || return 1
+        pair_existed=1; pair_backup=$(mktemp) || return 1
         cp -p -- "$ABOX_TRAFFIC_PAIR_STATE" "$pair_backup" || { rm -f -- "$pair_backup"; return 1; }
     fi
+    if [[ -f "$ABOX_DESIRED_STATE" ]]; then
+        desired_existed=1; desired_backup=$(mktemp) || { rm -f -- "$pair_backup"; return 1; }
+        cp -p -- "$ABOX_DESIRED_STATE" "$desired_backup" || { rm -f -- "$pair_backup" "$desired_backup"; return 1; }
+    fi
+    if [[ -f "$ABOX_TRAFFIC_BLOCK_STATE" ]]; then
+        block_existed=1; block_backup=$(mktemp) || { rm -f -- "$pair_backup" "$desired_backup"; return 1; }
+        cp -p -- "$ABOX_TRAFFIC_BLOCK_STATE" "$block_backup" || { rm -f -- "$pair_backup" "$desired_backup" "$block_backup"; return 1; }
+    fi
+    # Rollback helper: restore all three files to snapshot state. Reports failure.
+    _traffic_state_rollback() {
+        restore_failed=0
+        if (( pair_existed == 1 )); then
+            cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || restore_failed=1
+        else
+            rm -f -- "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || restore_failed=1
+        fi
+        if (( desired_existed == 1 )); then
+            cp -p -- "$desired_backup" "$ABOX_DESIRED_STATE" 2>/dev/null || restore_failed=1
+        else
+            rm -f -- "$ABOX_DESIRED_STATE" 2>/dev/null || restore_failed=1
+        fi
+        if (( block_existed == 1 )); then
+            cp -p -- "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE" 2>/dev/null || restore_failed=1
+        else
+            rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" 2>/dev/null || restore_failed=1
+        fi
+        rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
+        return "$restore_failed"
+    }
     # 1) Atomic pair publish (sole authority for modern readers).
-    write_file_atomically_from_stdin "$ABOX_TRAFFIC_PAIR_STATE" 600 <<< "${desired}|${period}" || { rm -f -- "$pair_backup"; return 1; }
-    # 2) Derive legacy files only after pair is durable. On failure, restore pair state.
+    write_file_atomically_from_stdin "$ABOX_TRAFFIC_PAIR_STATE" 600 <<< "${desired}|${period}" || { _traffic_state_rollback; return 1; }
+    # 2) Derive legacy files only after pair is durable.
     if ! write_file_atomically_from_stdin "$ABOX_DESIRED_STATE" 600 <<< "$desired"; then
-        if [[ -n "$pair_backup" ]]; then cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || true; else rm -f -- "$ABOX_TRAFFIC_PAIR_STATE"; fi
-        rm -f -- "$pair_backup"; return 1
+        _traffic_state_rollback || msg "${RED}[!] Traffic state rollback incomplete; manual check required.${NC}" >&2
+        return 1
     fi
     if [[ -n "$period" ]]; then
         if ! write_file_atomically_from_stdin "$ABOX_TRAFFIC_BLOCK_STATE" 600 <<< "$period"; then
-            if [[ -n "$pair_backup" ]]; then cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || true; else rm -f -- "$ABOX_TRAFFIC_PAIR_STATE"; fi
-            rm -f -- "$pair_backup"; return 1
+            _traffic_state_rollback || msg "${RED}[!] Traffic state rollback incomplete; manual check required.${NC}" >&2
+            return 1
         fi
     else
         if [[ -e "$ABOX_TRAFFIC_BLOCK_STATE" || -L "$ABOX_TRAFFIC_BLOCK_STATE" ]]; then
-            path_tree_has_mountpoint "$ABOX_TRAFFIC_BLOCK_STATE" && { rm -f -- "$pair_backup"; return 1; }
-            rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" || { if [[ -n "$pair_backup" ]]; then cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || true; fi; rm -f -- "$pair_backup"; return 1; }
-            [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]] || { if [[ -n "$pair_backup" ]]; then cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || true; fi; rm -f -- "$pair_backup"; return 1; }
+            path_tree_has_mountpoint "$ABOX_TRAFFIC_BLOCK_STATE" && { _traffic_state_rollback >/dev/null 2>&1; return 1; }
+            rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" || { _traffic_state_rollback >/dev/null 2>&1; return 1; }
+            [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]] || { _traffic_state_rollback >/dev/null 2>&1; return 1; }
         fi
     fi
-    rm -f -- "$pair_backup"
+    rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
+    unset -f _traffic_state_rollback
 }
 
 get_desired_state() {
@@ -5379,10 +5412,15 @@ set_traffic_block_period() {
 }
 
 clear_traffic_block_period() {
-    local state
-    if [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]] && \
-       { ! read_traffic_pair_fields >/dev/null 2>&1 || [[ -z "$(read_traffic_pair_fields | sed -n '2p')" ]]; }; then
-        return 0
+    local state pair_fields
+    # B-03 fix: if the block file is absent AND the pair state is unreadable/
+    # corrupt, that is an error, not "nothing to clean". Do not return success.
+    if [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]]; then
+        if ! pair_fields=$(read_traffic_pair_fields 2>/dev/null); then
+            msg "${RED}[!] Traffic pair state is unreadable or corrupt; refusing to treat as clean.${NC}" >&2
+            return 1
+        fi
+        [[ -z "$(sed -n '2p' <<< "$pair_fields")" ]] && return 0
     fi
     state=$(get_desired_state) || return 1
     commit_traffic_pair_state "$state" ""
@@ -7009,6 +7047,32 @@ rollback_binary_install() {
     fi
 }
 
+# Verified rollback for a core binary upgrade. Every step is checked; nothing
+# is swallowed. On full success the tmp dir is cleaned and we die with the
+# standard "rolled back" message. On ANY failure the tmp dir (with backups)
+# is preserved and die reports exactly what failed plus manual recovery steps.
+# Args: $1=service name, $2=binary path, $3=backup path (may be empty), $4=tmp dir
+rollback_core_upgrade_verified() {
+    local svc="$1" bin="$2" backup="${3:-}" tmp="${4:-}"
+    local rb_ok=0 rs_ok=0
+    msg "${RED}[!] New ${svc} failed post-upgrade health checks. Rolling back binary...${NC}"
+    if rollback_binary_install "$bin" "$backup" >/dev/null 2>&1; then
+        rb_ok=1
+    else
+        msg "${RED}[!] Rollback binary restore FAILED for ${svc} (backup: ${backup:-none}).${NC}" >&2
+    fi
+    if restart_service_soft "$svc" >/dev/null 2>&1; then
+        rs_ok=1
+    else
+        msg "${RED}[!] Service restart after rollback FAILED for ${svc}.${NC}" >&2
+    fi
+    if (( rb_ok == 1 && rs_ok == 1 )); then
+        [[ -n "$tmp" ]] && rm -rf -- "$tmp"
+        die "${svc} core upgrade rolled back because post-upgrade health checks failed."
+    fi
+    die "${svc} core upgrade ROLLBACK INCOMPLETE (binary_restore_ok=${rb_ok} service_restart_ok=${rs_ok}). Backup and logs preserved at: ${tmp:-unknown}. Manual recovery: restore '${backup:-none}' to '${bin}', then restart '${svc}'."
+}
+
 remove_core_family_force() {
     local srv="$1" path failed=0 core_paths=''
     local -a paths=()
@@ -7634,33 +7698,13 @@ write_private_line() {
 # Atomic desired+period publish: write PAIR first, then derive legacy files.
 commit_traffic_pair() {
     local desired="$1" period="${2:-}"
-    [[ "$desired" =~ ^(RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE)$ ]] || return 1
-    if [[ -n "$period" ]]; then
-        [[ "$period" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]] || return 1
-    fi
-    write_private_line "$PAIR_STATE" "${desired}|${period}" || return 1
-    write_private_line "$DESIRED" "$desired" || return 1
-    if [[ -n "$period" ]]; then
-        write_private_line "$BLOCK_STATE" "$period" || return 1
-    else
-        rm -f -- "$BLOCK_STATE" || return 1
-    fi
+    # Delegate to the transactional version (N-03/N-08 fix): single
+    # implementation, full three-file snapshot/rollback. Paths are identical
+    # ($PAIR_STATE == $ABOX_TRAFFIC_PAIR_STATE, etc.).
+    commit_traffic_pair_state "$desired" "$period"
 }
-read_traffic_pair_fields() {
-    local line desired period mode
-    [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] || return 1
-    [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]] || return 1
-    mode=$(stat -c %a "$PAIR_STATE" 2>/dev/null) || return 1
-    [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || return 1
-    IFS= read -r line < "$PAIR_STATE" || return 1
-    [[ "$line" == *'|'* ]] || return 1
-    desired=${line%%|*}; period=${line#*|}
-    [[ "$desired" =~ ^(RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE)$ ]] || return 1
-    if [[ -n "$period" ]]; then
-        [[ "$period" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]] || return 1
-    fi
-    printf '%s\n%s\n' "$desired" "$period"
-}
+# NOTE: read_traffic_pair_fields is defined once at the top of the traffic
+# state section (uses $ABOX_TRAFFIC_PAIR_STATE). Do not redefine here.
 read_desired() {
     local state=RUNNING mode pair desired
     if pair=$(read_traffic_pair_fields); then
@@ -7915,13 +7959,13 @@ if [[ "$desired" == TRAFFIC_BLOCKED && "$blocked_period" != "$current_period" ]]
     commit_traffic_pair MAINTENANCE "$blocked_period" || exit 1
     if ! for_expected_services start_owned; then
         for_expected_services stop_owned >/dev/null 2>&1 || true
-        commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || true
+        commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || traffic_error 'CRITICAL: failed to restore TRAFFIC_BLOCKED state after service start failure; state may be inconsistent'
         traffic_error 'monthly quota period rolled over but at least one owned service could not be started; block remains active'
         exit 1
     fi
     if ! commit_traffic_pair RUNNING ""; then
         for_expected_services stop_owned >/dev/null 2>&1 || true
-        commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || true
+        commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || traffic_error 'CRITICAL: failed to restore TRAFFIC_BLOCKED state after rollover commit failure; state may be inconsistent'
         traffic_error 'monthly quota rollover state commit failed; managed services were stopped and block restored'
         exit 1
     fi
@@ -15443,10 +15487,7 @@ upgrade_xray_core_only() {
     install_binary_atomically "$xray_ext/xray" /usr/local/bin/xray || { rm -rf "$tmp"; die 'Xray binary atomic install failed.'; }
     if [[ "$was_active" == '1' ]]; then
         if ! restart_service_soft xray || ! core_post_upgrade_health_gate xray; then
-            msg "${RED}[!] New Xray failed post-upgrade health checks. Rolling back binary...${NC}"
-            rollback_binary_install /usr/local/bin/xray "$backup" >/dev/null 2>&1 || true
-            restart_service_soft xray >/dev/null 2>&1 || true
-            rm -rf "$tmp"; die 'Xray core upgrade rolled back because post-upgrade health checks failed.'
+            rollback_core_upgrade_verified xray /usr/local/bin/xray "$backup" "$tmp"
         fi
     fi
     msg "${GREEN}[OK] Xray-core upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
@@ -15517,10 +15558,7 @@ upgrade_singbox_core_only() {
     install_binary_atomically "$sb_path" /usr/local/bin/sing-box || { rm -rf "$tmp"; die 'sing-box binary atomic install failed.'; }
     if [[ "$was_active" == '1' ]]; then
         if ! restart_service_soft sing-box || ! core_post_upgrade_health_gate singbox; then
-            msg "${RED}[!] New sing-box failed post-upgrade health checks. Rolling back binary...${NC}"
-            rollback_binary_install /usr/local/bin/sing-box "$backup" >/dev/null 2>&1 || true
-            restart_service_soft sing-box >/dev/null 2>&1 || true
-            rm -rf "$tmp"; die 'sing-box core upgrade rolled back because post-upgrade health checks failed.'
+            rollback_core_upgrade_verified sing-box /usr/local/bin/sing-box "$backup" "$tmp"
         fi
     fi
     msg "${GREEN}[OK] sing-box upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
@@ -15585,10 +15623,7 @@ upgrade_hysteria_core_only() {
     install_binary_atomically "$hy2_bin" /usr/local/bin/hysteria || { rm -rf "$tmp"; die 'Hysteria binary atomic install failed.'; }
     if [[ "$was_active" == '1' ]]; then
         if ! restart_service_soft hysteria || ! core_post_upgrade_health_gate hysteria; then
-            msg "${RED}[!] New Hysteria failed post-upgrade health checks. Rolling back binary...${NC}"
-            rollback_binary_install /usr/local/bin/hysteria "$backup" >/dev/null 2>&1 || true
-            restart_service_soft hysteria >/dev/null 2>&1 || true
-            rm -rf "$tmp"; die 'Hysteria core upgrade rolled back because post-upgrade health checks failed.'
+            rollback_core_upgrade_verified hysteria /usr/local/bin/hysteria "$backup" "$tmp"
         fi
     fi
     msg "${GREEN}[OK] Hysteria upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"

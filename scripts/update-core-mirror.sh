@@ -37,7 +37,7 @@ declare -a upload_paths=()
 
 download_verified_asset() {
   local repo="$1" release_file="$2" upstream_name="$3" mirror_name="$4" kind="$5"
-  local tag asset_json url digest expected actual path bin member version_output
+  local tag asset_json url digest expected actual path bin member version_output arch_kind file_description expected_version libc_kind
   tag="$(jq -er '.tag_name' "$release_file")"
   asset_json="$(jq -cer --arg name "$upstream_name" '
     [.assets[]? | select(.name == $name)]
@@ -55,6 +55,8 @@ download_verified_asset() {
   }
   expected="${digest#sha256:}"
   path="$out/$mirror_name"
+  if [[ "$upstream_name" == *arm64* || "$mirror_name" == *arm64* ]]; then arch_kind="arm64"; else arch_kind="amd64"; fi
+  if [[ "$mirror_name" == *-musl.tar.gz ]]; then libc_kind="musl"; else libc_kind="glibc"; fi
   curl -fL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 300 "$url" -o "$path"
   actual="$(sha256sum "$path" | awk '{print $1}')"
   [[ "${actual,,}" == "${expected,,}" ]] || {
@@ -69,14 +71,26 @@ download_verified_asset() {
       bin="$root/xray-check"
       unzip -p "$path" "$member" > "$bin"
       chmod 700 "$bin"
-      version_output="$("$bin" version 2>&1)" || {
-        echo "::error::Xray binary failed its version probe: $mirror_name"
-        return 1
-      }
-      grep -Fq "${tag#v}" <<< "$version_output" || {
-        echo "::error::Xray binary version does not match $tag"
-        return 1
-      }
+      file_description="$(file -b "$bin")"
+      if [[ "$arch_kind" == "arm64" ]]; then
+        grep -Eqi 'ARM aarch64|ARM64' <<< "$file_description" || {
+          echo "::error::Xray archive does not contain an AArch64 binary: $mirror_name"
+          return 1
+        }
+      else
+        grep -Eqi 'x86-64' <<< "$file_description" || {
+          echo "::error::Xray archive does not contain an x86-64 binary: $mirror_name"
+          return 1
+        }
+        version_output="$("$bin" version 2>&1)" || {
+          echo "::error::Xray binary failed its version probe: $mirror_name"
+          return 1
+        }
+        grep -Fq "${tag#v}" <<< "$version_output" || {
+          echo "::error::Xray binary version does not match $tag"
+          return 1
+        }
+      fi
       ;;
     sing-box)
       tar -tzf "$path" >/dev/null
@@ -84,31 +98,56 @@ download_verified_asset() {
       bin="$root/sing-box-check"
       tar -xOzf "$path" "$member" > "$bin"
       chmod 700 "$bin"
-      version_output="$("$bin" version 2>&1)" || {
-        echo "::error::sing-box binary failed its version probe: $mirror_name"
-        return 1
-      }
-      expected_version="${tag#v}"
-                grep -Fq "$expected_version" <<< "$version_output" || {
-        echo "::error::sing-box binary version does not match $tag"
-        return 1
-      }
+      file_description="$(file -b "$bin")"
+      if [[ "$arch_kind" == "arm64" ]]; then
+        grep -Eqi 'ARM aarch64|ARM64' <<< "$file_description" || {
+          echo "::error::sing-box archive does not contain an AArch64 binary: $mirror_name"
+          return 1
+        }
+      else
+        grep -Eqi 'x86-64' <<< "$file_description" || {
+          echo "::error::sing-box archive does not contain an x86-64 binary: $mirror_name"
+          return 1
+        }
+        if [[ "$libc_kind" == "glibc" ]]; then
+          version_output="$("$bin" version 2>&1)" || {
+            echo "::error::sing-box binary failed its version probe: $mirror_name"
+            return 1
+          }
+          expected_version="${tag#v}"
+          grep -Fq "$expected_version" <<< "$version_output" || {
+            echo "::error::sing-box binary version does not match $tag"
+            return 1
+          }
+        fi
+      fi
       ;;
     hysteria)
       chmod 700 "$path"
-      version_output="$("$path" version 2>&1)" || {
-        echo "::error::Hysteria binary failed its version probe: $mirror_name"
-        return 1
-      }
-      expected_version="${tag#app/}"
-                grep -Fq "$expected_version" <<< "$version_output" || {
-        echo "::error::Hysteria binary version does not match $tag"
-        return 1
-      }
+      file_description="$(file -b "$path")"
+      if [[ "$arch_kind" == "arm64" ]]; then
+        grep -Eqi 'ARM aarch64|ARM64' <<< "$file_description" || {
+          echo "::error::Hysteria asset is not an AArch64 binary: $mirror_name"
+          return 1
+        }
+      else
+        grep -Eqi 'x86-64' <<< "$file_description" || {
+          echo "::error::Hysteria asset is not an x86-64 binary: $mirror_name"
+          return 1
+        }
+        version_output="$("$path" version 2>&1)" || {
+          echo "::error::Hysteria binary failed its version probe: $mirror_name"
+          return 1
+        }
+        expected_version="${tag#app/}"
+        grep -Fq "$expected_version" <<< "$version_output" || {
+          echo "::error::Hysteria binary version does not match $tag"
+          return 1
+        }
+      fi
       ;;
     *) echo "::error::Unknown asset validation type: $kind"; return 1 ;;
   esac
-
   mirror_names+=("$mirror_name")
   mirror_paths+=("$path")
   mirror_digests+=("$actual")

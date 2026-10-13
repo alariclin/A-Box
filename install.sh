@@ -61,7 +61,7 @@ ABOX_XRAY_DEFAULT_VERSION='v26.7.28'
 ABOX_SINGBOX_DEFAULT_VERSION='v1.14.3'
 # Versions actually contained in the stable core-binaries Release. Recovery is refused for other pins.
 ABOX_XRAY_MIRROR_VERSION='v26.7.28'
-ABOX_SINGBOX_MIRROR_VERSION='v1.14.2'
+ABOX_SINGBOX_MIRROR_VERSION='v1.14.3'
 ABOX_HYSTERIA_MIRROR_VERSION='app/v2.13.0'
 ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'
 # Per-core update policy (2026-10-13):
@@ -77,7 +77,7 @@ ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'
 # Override via environment: ABOX_XRAY_UPDATE_POLICY / ABOX_SINGBOX_UPDATE_POLICY /
 # ABOX_HYSTERIA_UPDATE_POLICY. Explicit ABOX_*_VERSION always wins over policy.
 ABOX_XRAY_UPDATE_POLICY="${ABOX_XRAY_UPDATE_POLICY:-pinned}"
-ABOX_SINGBOX_UPDATE_POLICY="${ABOX_SINGBOX_UPDATE_POLICY:-pinned}"
+ABOX_SINGBOX_UPDATE_POLICY="${ABOX_SINGBOX_UPDATE_POLICY:-auto-stable}"
 ABOX_HYSTERIA_UPDATE_POLICY="${ABOX_HYSTERIA_UPDATE_POLICY:-auto-stable}"
 # Minimum age (days) before an auto-stable policy accepts a newly published
 # stable release. Cooling is necessary but not sufficient: a cooled release
@@ -4994,7 +4994,7 @@ core_update_policy() {
     # to auto-stable. Explicit ABOX_*_VERSION overrides always win.
     case "${1:-}" in
         XTLS/Xray-core) printf '%s\n' "${ABOX_XRAY_UPDATE_POLICY:-pinned}" ;;
-        SagerNet/sing-box) printf '%s\n' "${ABOX_SINGBOX_UPDATE_POLICY:-pinned}" ;;
+        SagerNet/sing-box) printf '%s\n' "${ABOX_SINGBOX_UPDATE_POLICY:-auto-stable}" ;;
         HyNetworks/hysteria) printf '%s\n' "${ABOX_HYSTERIA_UPDATE_POLICY:-auto-stable}" ;;
         *) return 1 ;;
     esac

@@ -17,11 +17,12 @@ jobs:
         run: |
           bash -n install.sh
           bash -n scripts/update-core-mirror.sh
+          bash -n scripts/upload-rollback-binaries.sh
       - name: ShellCheck installation critical errors
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
-          shellcheck --severity=error install.sh scripts/update-core-mirror.sh
+          shellcheck --severity=error install.sh scripts/update-core-mirror.sh scripts/upload-rollback-binaries.sh
       - name: Lint GitHub Actions workflows
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/*.yml
       - name: Built-in self-test (root-only fixtures enabled)
@@ -48,7 +49,7 @@ jobs:
 
       - name: Alpine clean-shell bootstrap syntax
         run: |
-          docker run --rm -v "$PWD:/src:ro" alpine:3.22 sh -ec '
+          docker run --rm -v "$PWD:/src:ro" alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 sh -ec '
             apk add --no-cache bash
             bash -n /src/install.sh
           '

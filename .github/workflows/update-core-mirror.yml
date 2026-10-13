@@ -31,29 +31,74 @@ jobs:
     permissions:
       contents: read
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CORE_MIRROR_DRY_RUN: '1'
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
+        with:
+          persist-credentials: false
       - name: Verify latest stable assets without publishing
         shell: bash
         run: bash scripts/update-core-mirror.sh
 
-  refresh:
+  # P1 fix 2026-10-14: split verification from publishing.
+  # The verify-publish job downloads and EXECUTES upstream binaries, so it must
+  # NOT have write permission or GH_TOKEN. The publish job only uploads
+  # pre-verified artifacts and NEVER executes them.
+  verify-publish:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
-    name: Verify and publish versioned stable core assets
+    name: Verify upstream binaries (isolated, no write token)
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
-      contents: write
+      contents: read
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      CORE_MIRROR_DRY_RUN: '0'
+      CORE_MIRROR_DRY_RUN: '1'
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
-
+        with:
+          persist-credentials: false
       - name: Download and verify latest official stable assets
         shell: bash
+        # NOTE: no GH_TOKEN in env; upstream binaries are executed here but
+        # cannot access any write credential.
         run: bash scripts/update-core-mirror.sh
+      - name: Upload verified artifacts
+        uses: actions/upload-artifact@b4b15b8c7c6ac21af51f82d3829fee7b13161676 # v4.4.3
+        with:
+          name: verified-core-mirror
+          path: ${{ runner.temp }}/core-mirror/new/
+          retention-days: 1
+
+  publish:
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
+    name: Publish verified assets to Release (no binary execution)
+    needs: verify-publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+GH_TOKEN: <redacted>
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
+      - name: Download verified artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e2e4e9360f0d2f0f1c6d5 # v4.1.8
+        with:
+          name: verified-core-mirror
+          path: verified/
+      - name: Upload to core-binaries Release (no execution)
+        shell: bash
+        # This job NEVER executes the downloaded binaries; it only uploads
+        # files that were verified in the isolated verify-publish job.
+        run: |
+          set -euo pipefail
+          for f in verified/*; do
+            [[ -f "$f" ]] || continue
+            name=$(basename "$f")
+            echo "Uploading $name"
+            gh release upload core-binaries "$f#$name" --clobber
+          done
+          echo "Publish complete. Verified assets uploaded without execution."

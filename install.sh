@@ -11009,7 +11009,8 @@ sni_build_diverse_candidate_pool() {
             gsub(/^[[:space:]]+/, "", line)
             gsub(/[[:space:]]+$/, "", line)
             if (line == "" || line ~ /^#/) next
-            if (line !~ /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?[.])+[a-z]{2,63}$/) next
+            # Portable ERE: avoid {n,m} intervals (mawk does not support them).
+            if (line !~ /^([a-z0-9]([a-z0-9-]*[a-z0-9])?[.])+[a-z][a-z]+$/) next
             if (line ~ /(^|[.])microsoft[.]com$/ || line ~ /(^|[.])bing[.]com$/ || line ~ /(^|[.])amazon[.]com$/) next
             if (line ~ /^(api|status|cdn|assets|static|img|images|auth|login|mail|smtp|metrics|telemetry|edge|mobile|support|help|download|downloads|registry|acme-v02)[.]/) next
             count = split(line, labels, /[.]/)

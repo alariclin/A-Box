@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-13-auto-sni-v181'
-ABOX_BUILD_EPOCH=20261013181
+ABOX_BUILD='2026-10-13-auto-sni-v182'
+ABOX_BUILD_EPOCH=20261013182
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -4963,55 +4963,6 @@ singbox_asset_json_from_release() {
     asset_json=$(jq -c --arg re "$preferred" 'first(.assets[]? | select(.name | test($re)) | {name:.name,url:.browser_download_url,digest:(.digest // "")}) // empty' <<< "$release_json")
     [[ -n "$asset_json" && "$asset_json" != 'null' ]] || return 1
     printf '%s\n' "$asset_json"
-}
-
-core_fetch_upstream_release_asset() {
-    local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" release_ref="${4:-}" asset_re="${5:-}" source="${6:-upstream}"
-    local api_url release_json asset_array count asset_json asset_name download_url digest mirror tmp_file require_stable=1
-    api_url="https://api.github.com/repos/${repo}/releases/tags/${release_ref//\//%2F}"
-    release_json=$(github_api_get "$api_url" 2>/dev/null) || { msg "${YELLOW}[!] 上游 Release API 不可用: ${repo}:${release_ref}${NC}" >&2; return 1; }
-    [[ "$source" == 'explicit' || "$source" == 'pinned' ]] && require_stable=0
-    if ! jq -e --arg tag "$release_ref" --argjson stable "$require_stable" '
-        type == "object"
-        and .tag_name == $tag
-        and .draft == false
-        and (if $stable == 1 then .prerelease == false else true end)
-    ' <<< "$release_json" >/dev/null 2>&1; then
-        msg "${YELLOW}[!] 上游 Release 元数据与目标版本/稳定性不一致: ${repo}:${release_ref}${NC}" >&2; return 1
-    fi
-    if [[ "$repo:$output_file" == 'SagerNet/sing-box:singbox_core.tar.gz' ]]; then asset_re="$(singbox_asset_regex)"; fi
-    asset_array=$(jq -c --arg re "$asset_re" '
-        [ .assets[]?
-          | select(((.name // "") | type) == "string")
-          | select((.name // "") | test($re))
-          | {name:.name,url:(.browser_download_url // ""),digest:(.digest // "")}
-        ]
-    ' <<< "$release_json" 2>/dev/null) || return 1
-    count=$(jq -r 'length' <<< "$asset_array" 2>/dev/null) || return 1
-    [[ "$count" == '1' ]] || { msg "${YELLOW}[!] 目标架构资产匹配数不是 1（匹配 ${count:-0} 个）: ${repo}:${release_ref}${NC}" >&2; return 1; }
-    asset_json=$(jq -c '.[0]' <<< "$asset_array") || return 1
-    asset_name=$(jq -r '.name // ""' <<< "$asset_json")
-    download_url=$(jq -r '.url // ""' <<< "$asset_json")
-    digest=$(jq -r '.digest // ""' <<< "$asset_json")
-    [[ -n "$asset_name" ]] || return 1
-    valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { msg "${YELLOW}[!] 下载 URL 与官方仓库/tag/资产不匹配，拒绝该候选。${NC}" >&2; return 1; }
-    [[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]] || { msg "${YELLOW}[!] 官方 Release 缺少有效 SHA-256 digest。${NC}" >&2; return 1; }
-    for mirror in '' 'https://ghp.ci/' 'https://mirror.ghproxy.com/'; do
-        tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
-        if curl -fLsS --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
-            if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 下载归档格式校验失败，继续尝试下一个下载通道。${NC}" >&2; continue; fi
-            if ! verify_github_asset_digest "$tmp_file" "$digest"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 资产 SHA-256 不匹配，继续尝试下一个下载通道。${NC}" >&2; continue; fi
-            if ! validate_core_asset_binary_version "$output_file" "$tmp_file" "$release_ref"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 二进制实际版本与上游 tag 不一致，拒绝该候选。${NC}" >&2; continue; fi
-            mv -f -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
-            ABOX_LAST_CORE_RELEASE_REF="$release_ref"; ABOX_LAST_CORE_SOURCE="$source"
-            core_set_resolved_target "$repo" "$release_ref" "$source" || return 1
-            msg "${GREEN}   上游候选通过架构、摘要与实际二进制版本校验：${repo}:${release_ref}${NC}"
-            return 0
-        fi
-        rm -f -- "$tmp_file"
-    done
-    msg "${YELLOW}[!] 上游资产的全部下载/验证通道失败。${NC}" >&2
-    return 1
 }
 
 core_fetch_upstream_release_asset() {
@@ -16217,6 +16168,7 @@ PY_SELFTEST_TAR
     grep -Fq 'core_latest_stable_release_ref() {' "$0" || { echo 'FAIL: dynamic stable Release resolver missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.2'" "$0" || { echo 'FAIL: sing-box stable pin missing'; failures=$((failures + 1)); }
     grep -Fq 'core_fetch_upstream_release_asset() {' "$0" || { echo 'FAIL: upstream-first fetch state machine missing'; failures=$((failures + 1)); }
+    [[ "$(awk '/^core_fetch_upstream_release_asset\(\) \{/ { count++ } END { print count+0 }' "$0")" == '1' ]] || { echo 'FAIL: upstream core asset fetcher must have exactly one implementation'; failures=$((failures + 1)); }
     [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] || { echo 'FAIL: effective Xray default version'; failures=$((failures + 1)); }
     (
         unset ABOX_XRAY_VERSION ABOX_TRY_LATEST_CORE_STABLE

@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-13-auto-sni-v184'
-ABOX_BUILD_EPOCH=20261013184
+ABOX_BUILD='2026-10-13-auto-sni-v185'
+ABOX_BUILD_EPOCH=20261013185
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -8859,7 +8859,8 @@ show_core_pin_docs() {
     msg "\${CYAN}======================================================================\${NC}"
     msg "Routine deployment and upgrades use tested compatibility pins: Xray \${YELLOW}\${ABOX_XRAY_DEFAULT_VERSION}\${NC}; sing-box \${ABOX_SINGBOX_DEFAULT_VERSION}; Hysteria \${ABOX_HYSTERIA_DEFAULT_VERSION}."
     msg "The explicit danger action may try the latest official stable tag (draft/prerelease excluded); config, client compatibility, and post-upgrade health gates still apply."
-    msg "Fixed recovery Release: \${YELLOW}\${ABOX_CORE_MIRROR_RELEASE}\${NC}. Failed automatic latest candidates may fall back to these verified recovery pins."
+    msg "Fixed compatibility recovery assets remain in Release: \${YELLOW}\${ABOX_CORE_MIRROR_RELEASE}\${NC}. Latest-stable attempts try an exact-tag versioned mirror first, then these fixed pins."
+    msg "CORE-VERSIONS is accepted only when its digest matches SHA256SUMS; older versioned mirror assets are retained for rollback."
     msg "Explicit version overrides: ABOX_XRAY_VERSION / ABOX_SINGBOX_VERSION / ABOX_HYSTERIA_APP_VERSION; failed explicit pins do not silently switch versions."
     msg "Every candidate must pass tag/URL, SHA-256, archive structure and actual binary-version checks."
     msg "Mode: \${YELLOW}$(read_fast_mode_label)\${NC} (ABOX_FAST=1 or \${FAST_MODE_FILE})"

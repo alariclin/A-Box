@@ -1385,10 +1385,19 @@ get_active_interface() {
 resolve_domain_addresses() {
     local domain="${1:-}" resolved=''
     valid_domain "$domain" || return 1
+    # N-05 fix: wrap getent in timeout; a hanging DNS resolver must not
+    # block the SNI batch worker forever.
     if command -v getent >/dev/null 2>&1; then
-        resolved=$(getent ahosts "$domain" 2>/dev/null | awk 'NF {print $1}' | sort -u) || resolved=''
-        if [[ -z "$resolved" ]]; then
-            resolved=$(getent hosts "$domain" 2>/dev/null | awk 'NF {print $1}' | sort -u) || resolved=''
+        if command -v timeout >/dev/null 2>&1; then
+            resolved=$(timeout 5 getent ahosts "$domain" 2>/dev/null | awk 'NF {print $1}' | sort -u) || resolved=''
+            if [[ -z "$resolved" ]]; then
+                resolved=$(timeout 5 getent hosts "$domain" 2>/dev/null | awk 'NF {print $1}' | sort -u) || resolved=''
+            fi
+        else
+            resolved=$(getent ahosts "$domain" 2>/dev/null | awk 'NF {print $1}' | sort -u) || resolved=''
+            if [[ -z "$resolved" ]]; then
+                resolved=$(getent hosts "$domain" 2>/dev/null | awk 'NF {print $1}' | sort -u) || resolved=''
+            fi
         fi
     fi
     [[ -n "$resolved" ]] || return 1

@@ -102,15 +102,15 @@ BBR/FQ 不会静默修改系统。DNS 优选根据当前 VPS 对候选解析器�
 
 | 命令 | 作用 |
 |---|---|
-| `sudo bash install.sh --help` | 显示命令行帮助 |
-| `sudo bash install.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | 设置界面语言并启动菜单 |
-| `sudo bash install.sh --self-test` | 运行内置回归/自测 |
-| `sudo bash install.sh --preflight` 或 `--dry-run` | 运行预检查，不部署新节点 |
-| `sudo bash install.sh --status` | 查看托管配置和服务状态 |
-| `sudo bash install.sh --start` / `--stop` | 启动/停止托管服务 |
-| `sudo bash install.sh --version` | 显示脚本构建元数据 |
-| `sudo bash install.sh --export-backup-key /secure/path/A-Box-recovery.key` | 将恢复密钥导出到受保护路径 |
-| `sudo bash install.sh --convert-legacy-backup OLD.tar.gz [OUTPUT_DIR]` | 将旧版备份转换为 manifest v3 格式 |
+| `sudo bash A-Box.sh --help` | 显示命令行帮助 |
+| `sudo bash A-Box.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | 设置界面语言并启动菜单 |
+| `sudo bash A-Box.sh --self-test` | 运行内置回归/自测 |
+| `sudo bash A-Box.sh --preflight` 或 `--dry-run` | 运行预检查，不部署新节点 |
+| `sudo bash A-Box.sh --status` | 查看托管配置和服务状态 |
+| `sudo bash A-Box.sh --start` / `--stop` | 启动/停止托管服务 |
+| `sudo bash A-Box.sh --version` | 显示脚本构建元数据 |
+| `sudo bash A-Box.sh --export-backup-key /secure/path/A-Box-recovery.key` | 将恢复密钥导出到受保护路径 |
+| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [OUTPUT_DIR]` | 将旧版备份转换为 manifest v3 格式 |
 
 请妥善保护导出的恢复密钥和备份。`--self-test` 通过不能替代目标主机预检查、真实安装或客户端互通测试。
 

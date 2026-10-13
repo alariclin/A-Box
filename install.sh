@@ -5040,16 +5040,31 @@ resolve_core_release_target() {
                     target="$latest"; source='upstream'
                 else
                     latest_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
-                    if [[ "$latest_age" =~ ^[0-9]+$ ]] && (( latest_age >= ${ABOX_STABLE_COOLDOWN_DAYS:-7} )); then
+                    # Validate cooldown is numeric to avoid set -u crash on bad input
+                    local cooldown_days="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
+                    [[ "$cooldown_days" =~ ^[0-9]+$ ]] || cooldown_days=7
+                    if [[ "$latest_age" =~ ^[0-9]+$ ]] && (( latest_age >= cooldown_days )); then
                         target="$latest"; source='upstream'
                     else
-                        msg "${YELLOW}[!] $repo latest stable $latest is still in cooldown (${latest_age:-unknown} days < ${ABOX_STABLE_COOLDOWN_DAYS:-7}); keeping pin $default_ref.${NC}" >&2
+                        msg "${YELLOW}[!] $repo latest stable $latest is still in cooldown (${latest_age:-unknown} days < ${cooldown_days}); keeping pin $default_ref.${NC}" >&2
                         target="$default_ref"; source='pinned'
                     fi
                 fi
             else
+                # Upstream API unavailable: try mirror-latest, but enforce cooldown.
+                # CORE-VERSIONS has no published_at, so we attempt a targeted API
+                # query for this specific tag's date. If age cannot be determined,
+                # fall back to pin (fail-closed per version policy).
                 latest=$(core_latest_mirror_release_ref "$repo" 2>/dev/null || true)
-                if core_release_ref_valid "$repo" "$latest" && [[ "$latest" != *-* ]]; then target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；将尝试校验过的最新稳定容灾资产 $target。${NC}" >&2
+                if core_release_ref_valid "$repo" "$latest" && [[ "$latest" != *-* ]]; then
+                    latest_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
+                    local cooldown_days="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
+                    [[ "$cooldown_days" =~ ^[0-9]+$ ]] || cooldown_days=7
+                    if [[ "$latest_age" =~ ^[0-9]+$ ]] && (( latest_age >= cooldown_days )); then
+                        target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；将尝试校验过的最新稳定容灾资产 $target。${NC}" >&2
+                    else
+                        target=$(core_release_mirror_version "$repo") || return 1; source='mirror'; msg "${YELLOW}[!] 镜像最新版 $latest 未满足冷却期 (${latest_age:-unknown} 天 < ${cooldown_days} 天)；回退到固定兼容版本 $target。${NC}" >&2
+                    fi
                 else target=$(core_release_mirror_version "$repo") || return 1; source='mirror'; msg "${YELLOW}[!] 上游与最新镜像元数据均不可用；本次尝试固定 A-Box 兼容性容灾版本 $target。${NC}" >&2; fi
             fi
         else core_release_ref_valid "$repo" "$default_ref" || return 1; target="$default_ref"; source='pinned'
@@ -8951,28 +8966,28 @@ confirm_soft() {
 
 show_core_pin_docs() {
     clear
-    msg "\${CYAN}======================================================================\${NC}"
-    msg "\${BOLD}\${GREEN}核心版本选择与容灾说明 / Core release policy\${NC}"
-    msg "\${CYAN}======================================================================\${NC}"
-    msg "Routine deployment and upgrades use tested compatibility pins: Xray \${YELLOW}\${ABOX_XRAY_DEFAULT_VERSION}\${NC}; sing-box \${ABOX_SINGBOX_DEFAULT_VERSION}; Hysteria \${ABOX_HYSTERIA_DEFAULT_VERSION}."
+    msg "${CYAN}======================================================================${NC}"
+    msg "${BOLD}${GREEN}核心版本选择与容灾说明 / Core release policy${NC}"
+    msg "${CYAN}======================================================================${NC}"
+    msg "Routine deployment and upgrades use tested compatibility pins: Xray ${YELLOW}${ABOX_XRAY_DEFAULT_VERSION}${NC}; sing-box ${ABOX_SINGBOX_DEFAULT_VERSION}; Hysteria ${ABOX_HYSTERIA_DEFAULT_VERSION}."
     msg "The explicit danger action may try the latest official stable tag (draft/prerelease excluded); config, client compatibility, and post-upgrade health gates still apply."
-    msg "Fixed compatibility recovery assets remain in Release: \${YELLOW}\${ABOX_CORE_MIRROR_RELEASE}\${NC}. Latest-stable attempts try an exact-tag versioned mirror first, then these fixed pins."
+    msg "Fixed compatibility recovery assets remain in Release: ${YELLOW}${ABOX_CORE_MIRROR_RELEASE}${NC}. Latest-stable attempts try an exact-tag versioned mirror first, then these fixed pins."
     msg "CORE-VERSIONS is accepted only when its digest matches SHA256SUMS; older versioned mirror assets are retained for rollback."
     msg "Explicit version overrides: ABOX_XRAY_VERSION / ABOX_SINGBOX_VERSION / ABOX_HYSTERIA_APP_VERSION; failed explicit pins do not silently switch versions."
     msg "Every candidate must pass tag/URL, SHA-256, archive structure and actual binary-version checks."
-    msg "Mode: \${YELLOW}$(read_fast_mode_label)\${NC} (ABOX_FAST=1 or \${FAST_MODE_FILE})"
+    msg "Mode: ${YELLOW}$(read_fast_mode_label)${NC} (ABOX_FAST=1 or ${FAST_MODE_FILE})"
     pause_return
 }
 
 probe_core_sources_banner() {
     local pref='compatibility-pin-first' api_code mirror_code base
-    [[ "\${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]] && pref='latest-official-stable-first'
-    base="\${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
+    [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]] && pref='latest-official-stable-first'
+    base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     api_code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 'https://api.github.com/repos/XTLS/Xray-core/releases?per_page=100' 2>/dev/null || printf '000')
-    mirror_code=$(curl -sSL -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "\${base%/}/SHA256SUMS" 2>/dev/null || printf '000')
-    case "$api_code" in 200) api_code='available (HTTP 200)' ;; *) api_code="unavailable (HTTP \${api_code:-000})" ;; esac
-    case "$mirror_code" in 200) mirror_code='available (HTTP 200)' ;; *) mirror_code="unavailable (HTTP \${mirror_code:-000})" ;; esac
-    msg "\${CYAN}[download sources] order=\${pref} → fixed recovery mirror; release API: \${api_code}; recovery SHA256SUMS: \${mirror_code}; custom base=\${ABOX_CORE_MIRROR_BASE:-<unset>}\${NC}"
+    mirror_code=$(curl -sSL -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "${base%/}/SHA256SUMS" 2>/dev/null || printf '000')
+    case "$api_code" in 200) api_code='available (HTTP 200)' ;; *) api_code="unavailable (HTTP ${api_code:-000})" ;; esac
+    case "$mirror_code" in 200) mirror_code='available (HTTP 200)' ;; *) mirror_code="unavailable (HTTP ${mirror_code:-000})" ;; esac
+    msg "${CYAN}[download sources] order=${pref} → fixed recovery mirror; release API: ${api_code}; recovery SHA256SUMS: ${mirror_code}; custom base=${ABOX_CORE_MIRROR_BASE:-<unset>}${NC}"
 }
 
 fetch_abox_mirror_asset() {
@@ -9293,25 +9308,37 @@ try_latest_cores_danger() {
     if abox_owns_service sing-box && [[ -x /usr/local/bin/sing-box ]]; then targets+=(singbox); fi
     if abox_owns_service hysteria && [[ -x /usr/local/bin/hysteria ]]; then targets+=(hysteria); fi
     (( ${#targets[@]} > 0 )) || { msg "${YELLOW}No owned cores.${NC}"; pause_return; return 0; }
-    begin_core_upgrade_transaction "${targets[@]}"
+    # Each core gets an independent transaction in a subshell.
+    local failed_cores=()
     for t in "${targets[@]}"; do
-        case "$t" in
-            xray)
-                latest=$(core_latest_stable_release_ref XTLS/Xray-core 2>/dev/null || core_release_mirror_version XTLS/Xray-core) || die '无法解析 Xray 正式稳定候选或容灾版本。'
-                msg "${YELLOW}Trying Xray stable/recovery candidate ${latest}${NC}"
-                ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_xray_core_only ;;
-            singbox)
-                latest=$(core_latest_stable_release_ref SagerNet/sing-box 2>/dev/null || core_release_mirror_version SagerNet/sing-box) || die '无法解析 sing-box 正式稳定候选或容灾版本。'
-                msg "${YELLOW}Trying sing-box stable/recovery candidate ${latest}${NC}"
-                ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_singbox_core_only ;;
-            hysteria)
-                latest=$(core_latest_stable_release_ref HyNetworks/hysteria 2>/dev/null || core_release_mirror_version HyNetworks/hysteria) || die '无法解析 Hysteria 正式稳定候选或容灾版本。'
-                msg "${YELLOW}Trying Hysteria stable/recovery candidate ${latest}${NC}"
-                ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_hysteria_core_only ;;
-        esac
+        msg "${CYAN}--- Trying latest $t (independent transaction) ---${NC}"
+        if ( begin_core_upgrade_transaction "$t"
+             case "$t" in
+                 xray)
+                     latest=$(core_latest_stable_release_ref XTLS/Xray-core 2>/dev/null || core_release_mirror_version XTLS/Xray-core) || die '无法解析 Xray 正式稳定候选或容灾版本。'
+                     msg "${YELLOW}Trying Xray stable/recovery candidate ${latest} (resolved at install time)${NC}"
+                     ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_xray_core_only ;;
+                 singbox)
+                     latest=$(core_latest_stable_release_ref SagerNet/sing-box 2>/dev/null || core_release_mirror_version SagerNet/sing-box) || die '无法解析 sing-box 正式稳定候选或容灾版本。'
+                     msg "${YELLOW}Trying sing-box stable/recovery candidate ${latest} (resolved at install time)${NC}"
+                     ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_singbox_core_only ;;
+                 hysteria)
+                     latest=$(core_latest_stable_release_ref HyNetworks/hysteria 2>/dev/null || core_release_mirror_version HyNetworks/hysteria) || die '无法解析 Hysteria 正式稳定候选或容灾版本。'
+                     msg "${YELLOW}Trying Hysteria stable/recovery candidate ${latest} (resolved at install time)${NC}"
+                     ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_hysteria_core_only ;;
+             esac
+             commit_core_upgrade_transaction ); then
+            msg "${GREEN}[$t] latest attempt completed.${NC}"
+        else
+            msg "${YELLOW}[!] [$t] latest attempt failed and was rolled back independently; continuing.${NC}"
+            failed_cores+=("$t")
+        fi
     done
-    commit_core_upgrade_transaction
-    msg "${GREEN}Latest-core attempt finished (transaction committed). Re-test clients.${NC}"
+    if (( ${#failed_cores[@]} > 0 )); then
+        msg "${YELLOW}[!] Finished with failures (rolled back): ${failed_cores[*]}. Re-test clients.${NC}"
+    else
+        msg "${GREEN}Latest-core attempt finished. Re-test clients.${NC}"
+    fi
     pause_return
 }
 
@@ -10043,11 +10070,11 @@ $( [[ -n "$v6" ]] && printf 'nameserver %s\n' "$v6" )options timeout:2 attempts:
 EOF_RESOLV
             ;;
     esac
-    if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< "backend=\${backend};mode=\${mode};v4=\${v4};v6=\${v6}"; then
+    if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< "backend=${backend};mode=${mode};v4=${v4};v6=${v6}"; then
         if restore_dns_snapshot "$DNS_BACKUP_DIR"; then
-            msg "\${RED}DNS state metadata could not be committed; the previous DNS configuration was restored.\${NC}"
+            msg "${RED}DNS state metadata could not be committed; the previous DNS configuration was restored.${NC}"
         else
-            msg "\${RED}DNS state metadata could not be committed and automatic rollback failed. Use the DNS menu's restore option and inspect $DNS_BACKUP_DIR.\${NC}"
+            msg "${RED}DNS state metadata could not be committed and automatic rollback failed. Use the DNS menu's restore option and inspect $DNS_BACKUP_DIR.${NC}"
         fi
         return 1
     fi
@@ -10259,13 +10286,13 @@ EOF_DOH
         if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< 'backend=resolved;mode=doh;proxy=dnscrypt-proxy'; then
             if restore_dns_snapshot "$DNS_BACKUP_DIR"; then
                 systemctl restart systemd-resolved >/dev/null 2>&1 || true
-                msg "\${RED}DoH state metadata could not be committed; the previous DNS configuration was restored.\${NC}"
+                msg "${RED}DoH state metadata could not be committed; the previous DNS configuration was restored.${NC}"
             else
-                msg "\${RED}DoH state metadata could not be committed and rollback failed. Restore the DNS snapshot from $DNS_BACKUP_DIR.\${NC}"
+                msg "${RED}DoH state metadata could not be committed and rollback failed. Restore the DNS snapshot from $DNS_BACKUP_DIR.${NC}"
             fi
             return 1
         fi
-        msg "\${GREEN}DoH proxy is running and the system resolver passed its health check.\${NC}"
+        msg "${GREEN}DoH proxy is running and the system resolver passed its health check.${NC}"
         msg "${YELLOW}DoH encrypts DNS queries to the selected upstream; it does not encrypt all VPS traffic.${NC}"
     else
         restore_dns_snapshot "$DNS_BACKUP_DIR" || true
@@ -14140,7 +14167,7 @@ wallos_install_or_update() {
     if (( code != 0 )) || ! wallos_wait_healthy "$port"; then
         docker rm -f wallos >/dev/null 2>&1 || true
         if (( running == 1 )); then
-            wallos_recover_interrupted_upgrade || msg "\${RED}Automatic Wallos rollback did not complete. Preserve the transaction journal at \${WALLOS_DIR}/.upgrade-transaction and backup \${backup:-unavailable}.\${NC}"
+            wallos_recover_interrupted_upgrade || msg "${RED}Automatic Wallos rollback did not complete. Preserve the transaction journal at ${WALLOS_DIR}/.upgrade-transaction and backup ${backup:-unavailable}.${NC}"
         fi
         msg "${RED}Wallos did not pass health check. Rollback was attempted.${NC}"
         return 1
@@ -14150,10 +14177,10 @@ wallos_install_or_update() {
     # the container. Commit the mutable image/port/timezone state atomically;
     # do not silently report a complete update if metadata cannot be saved.
     if ! wallos_write_state "$image" "$port" "$tz"; then
-        msg "\${RED}Wallos state metadata failed to commit. Rolling back the incomplete upgrade where possible.\${NC}"
+        msg "${RED}Wallos state metadata failed to commit. Rolling back the incomplete upgrade where possible.${NC}"
         if (( running == 1 )); then
             docker rm -f wallos >/dev/null 2>&1 || true
-            wallos_recover_interrupted_upgrade || msg "\${RED}Rollback failed; preserve $WALLOS_DIR/.upgrade-transaction and $backup.\${NC}"
+            wallos_recover_interrupted_upgrade || msg "${RED}Rollback failed; preserve $WALLOS_DIR/.upgrade-transaction and $backup.${NC}"
         else
             docker rm -f wallos >/dev/null 2>&1 || true
         fi
@@ -14161,31 +14188,31 @@ wallos_install_or_update() {
     fi
     if (( running == 1 )); then
         if ! wallos_upgrade_journal_write committed "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running"; then
-            msg "\${RED}Wallos health check passed but transaction commit metadata failed; restoring the previous version.\${NC}"
+            msg "${RED}Wallos health check passed but transaction commit metadata failed; restoring the previous version.${NC}"
             docker rm -f wallos >/dev/null 2>&1 || true
-            wallos_recover_interrupted_upgrade || msg "\${RED}Rollback failed; preserve $WALLOS_DIR/.upgrade-transaction and $backup.\${NC}"
+            wallos_recover_interrupted_upgrade || msg "${RED}Rollback failed; preserve $WALLOS_DIR/.upgrade-transaction and $backup.${NC}"
             return 1
         fi
         rm -f -- "$WALLOS_DIR/.upgrade-transaction" || {
-            msg "\${YELLOW}Wallos is updated; committed journal cleanup will finish on the next run.\${NC}"
+            msg "${YELLOW}Wallos is updated; committed journal cleanup will finish on the next run.${NC}"
             return 1
         }
     fi
-    case "\${ABOX_LANG:-zh}" in
+    case "${ABOX_LANG:-zh}" in
         ru)
-            msg "\${GREEN}Wallos запущен: $image\${NC}"
+            msg "${GREEN}Wallos запущен: $image${NC}"
             if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='По умолчанию доступ разрешён только с этого хоста. Для удалённого доступа используйте HTTPS reverse proxy или SSH-туннель.'
             else security_note="HTTP без TLS опубликован на всех IPv4-интерфейсах и требует внешней защиты HTTPS reverse proxy/firewall на TCP $port."; fi ;;
         fa)
-            msg "\${GREEN}Wallos اجرا شد: $image\${NC}"
+            msg "${GREEN}Wallos اجرا شد: $image${NC}"
             if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='دسترسی به‌طور پیش‌فرض فقط از همین میزبان است؛ برای راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.'
             else security_note="HTTP بدون TLS روی همه رابط‌های IPv4 منتشر شده است؛ روی TCP $port به HTTPS reverse proxy و firewall نیاز دارید."; fi ;;
         zh)
-            msg "\${GREEN}Wallos 已启动：$image\${NC}"
+            msg "${GREEN}Wallos 已启动：$image${NC}"
             if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='默认仅允许本机访问；远程访问请使用 HTTPS 反向代理或 SSH 隧道，不需要为该本机端口开放公网入站规则。'
             else security_note="明文 HTTP 已绑定所有 IPv4 网卡；TCP $port 必须由 HTTPS 反向代理与防火墙保护。"; fi ;;
         *)
-            msg "\${GREEN}Wallos is running: $image\${NC}"
+            msg "${GREEN}Wallos is running: $image${NC}"
             if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='Access is local-only by default. Use an HTTPS reverse proxy or SSH tunnel for remote access.'
             else security_note="Plain HTTP is published on all IPv4 interfaces; protect TCP $port with an HTTPS reverse proxy and firewall."; fi ;;
     esac
@@ -15639,12 +15666,29 @@ upgrade_current_cores_only() {
     msg 'Each staged binary is executed and checked against the current config where supported before atomic replacement.'
     read -r -p 'Continue core-only upgrade? [Y/N]: ' answer
     is_yes "$answer" || { msg "${YELLOW}Canceled.${NC}"; pause_return; return 0; }
-    begin_core_upgrade_transaction "${targets[@]}"
+    # Each core gets an independent transaction (begin → upgrade → commit)
+    # inside a subshell, so a failure rolls back only that core.
+    local failed_cores=()
     for t in "${targets[@]}"; do
-        case "$t" in xray) upgrade_xray_core_only ;; singbox) upgrade_singbox_core_only ;; hysteria) upgrade_hysteria_core_only ;; esac
+        msg "${CYAN}--- Upgrading $t (independent transaction) ---${NC}"
+        # Each core runs in a subshell with its own transaction.
+        # If die() fires, only the subshell exits; the parent continues
+        # to the next core. The transaction rollback hook restores just
+        # this core's pre-upgrade snapshot.
+        if ( begin_core_upgrade_transaction "$t"
+             case "$t" in xray) upgrade_xray_core_only ;; singbox) upgrade_singbox_core_only ;; hysteria) upgrade_hysteria_core_only ;; esac
+             commit_core_upgrade_transaction ); then
+            msg "${GREEN}[$t] upgrade completed.${NC}"
+        else
+            msg "${YELLOW}[!] [$t] upgrade failed and was rolled back independently; continuing.${NC}"
+            failed_cores+=("$t")
+        fi
     done
-    commit_core_upgrade_transaction
-    msg "${GREEN}All detected core-only upgrades completed atomically. Node parameters were preserved.${NC}"
+    if (( ${#failed_cores[@]} > 0 )); then
+        msg "${YELLOW}[!] Completed with failures (rolled back): ${failed_cores[*]}${NC}"
+    else
+        msg "${GREEN}All detected core-only upgrades completed. Node parameters were preserved.${NC}"
+    fi
     pause_return
 }
 

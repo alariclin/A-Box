@@ -14012,6 +14012,36 @@ wallos_restore_backup() {
        grep -Ev '^(db(/.*)?|logos(/.*)?|\.abox-state)$' <<< "$listing" >/dev/null; then
         return 1
     fi
+    # N-02 fix: reject symlinks, hardlinks, and special files inside the archive.
+    # N-07 fix: enforce member count and size limits (zip-bomb protection).
+    local vlisting member_count=0
+    vlisting=$(tar -tvzf "$backup" 2>/dev/null) || return 1
+    while IFS= read -r line; do
+        member_count=$((member_count + 1))
+        # tar -tv output starts with file type char: - regular, d dir, l symlink, h hardlink, c/b/p/s/D special
+        case "${line:0:1}" in
+            -|d) ;;
+            *) msg "${RED}[!] Wallos backup contains non-regular file (symlink/hardlink/special); refusing.${NC}" >&2; return 1 ;;
+        esac
+        # Size is the 3rd field in tar -tv output.
+        local fsize
+        fsize=$(awk '{print $3}' <<< "$line" 2>/dev/null || true)
+        if [[ "$fsize" =~ ^[0-9]+$ ]] && (( 10#$fsize > 536870912 )); then
+            msg "${RED}[!] Wallos backup contains oversized member (>512MB); refusing.${NC}" >&2
+            return 1
+        fi
+    done <<< "$vlisting"
+    if (( member_count > 10000 )); then
+        msg "${RED}[!] Wallos backup has too many members (>$member_count > 10000); refusing.${NC}" >&2
+        return 1
+    fi
+    # Total decompressed size guard via gzip -l (approximate).
+    local usize
+    usize=$(gzip -l "$backup" 2>/dev/null | awk 'NR==2 {print $2}' || true)
+    if [[ "$usize" =~ ^[0-9]+$ ]] && (( 10#$usize > 1073741824 )); then
+        msg "${RED}[!] Wallos backup decompressed size exceeds 1GB; refusing.${NC}" >&2
+        return 1
+    fi
     stage=$(umask 077; mktemp -d "$WALLOS_DIR/.restore-stage.XXXXXX") || return 1
     if ! tar -xzf "$backup" -C "$stage" ||
        [[ ! -d "$stage/db" || -L "$stage/db" ||
@@ -14026,25 +14056,34 @@ wallos_restore_backup() {
     for name in db logos .abox-state; do
         if [[ -e "$WALLOS_DIR/$name" || -L "$WALLOS_DIR/$name" ]]; then
             mv -- "$WALLOS_DIR/$name" "$rescue/$name" || {
+                # B-07 fix: verify each rollback move; report incomplete state.
+                local rb_failed=0
                 for restore_name in db logos .abox-state; do
-                    [[ -e "$rescue/$restore_name" && ! -e "$WALLOS_DIR/$restore_name" ]] &&
-                        mv -- "$rescue/$restore_name" "$WALLOS_DIR/$restore_name" || true
+                    if [[ -e "$rescue/$restore_name" && ! -e "$WALLOS_DIR/$restore_name" ]]; then
+                        mv -- "$rescue/$restore_name" "$WALLOS_DIR/$restore_name" 2>/dev/null || rb_failed=1
+                    fi
                 done
                 rm -rf -- "$stage"
+                (( rb_failed == 0 )) || msg "${RED}[!] Wallos restore rollback INCOMPLETE; check $rescue for preserved originals.${NC}" >&2
                 return 1
             }
         fi
     done
     for name in db logos .abox-state; do
         if ! mv -- "$stage/$name" "$WALLOS_DIR/$name"; then
+            local rb_failed=0
             for restore_name in db logos .abox-state; do
-                [[ -e "$WALLOS_DIR/$restore_name" ]] && mv -- "$WALLOS_DIR/$restore_name" "$stage/$restore_name" || true
+                if [[ -e "$WALLOS_DIR/$restore_name" ]]; then
+                    mv -- "$WALLOS_DIR/$restore_name" "$stage/$restore_name" 2>/dev/null || rb_failed=1
+                fi
             done
             for restore_name in db logos .abox-state; do
-                [[ -e "$rescue/$restore_name" && ! -e "$WALLOS_DIR/$restore_name" ]] &&
-                    mv -- "$rescue/$restore_name" "$WALLOS_DIR/$restore_name" || true
+                if [[ -e "$rescue/$restore_name" && ! -e "$WALLOS_DIR/$restore_name" ]]; then
+                    mv -- "$rescue/$restore_name" "$WALLOS_DIR/$restore_name" 2>/dev/null || rb_failed=1
+                fi
             done
             rm -rf -- "$stage"
+            (( rb_failed == 0 )) || msg "${RED}[!] Wallos restore rollback INCOMPLETE; originals preserved at $rescue.${NC}" >&2
             return 1
         fi
     done
@@ -14457,13 +14496,22 @@ wallos_menu() {
         3) wallos_backup_now; pause_return ;;
         4)
             if [[ -f "$WALLOS_DIR/.A-Box-managed" ]] && confirm_yes_no "$prompt_remove"; then
-                docker rm -f wallos >/dev/null 2>&1 || true
-                case "${ABOX_LANG:-zh}" in
-                    en) msg "${GREEN}Container removed. Data and backups retained.${NC}" ;;
-                    ru) msg "${GREEN}Контейнер удалён. Данные и резервные копии сохранены.${NC}" ;;
-                    fa) msg "${GREEN}کانتینر حذف شد؛ داده‌ها و پشتیبان‌ها حفظ شدند.${NC}" ;;
-                    *) msg "${GREEN}容器已删除，数据和备份已保留。${NC}" ;;
-                esac
+                # B-06 fix: verify the container is actually gone before reporting success.
+                if docker rm -f wallos >/dev/null 2>&1 && ! docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'wallos'; then
+                    case "${ABOX_LANG:-zh}" in
+                        en) msg "${GREEN}Container removed. Data and backups retained.${NC}" ;;
+                        ru) msg "${GREEN}Контейнер удалён. Данные и резервные копии сохранены.${NC}" ;;
+                        fa) msg "${GREEN}کانتینر حذف شد؛ داده‌ها و پشتیبان‌ها حفظ شدند.${NC}" ;;
+                        *) msg "${GREEN}容器已删除，数据和备份已保留。${NC}" ;;
+                    esac
+                else
+                    case "${ABOX_LANG:-zh}" in
+                        en) msg "${RED}[!] Failed to remove the wallos container; it may still exist.${NC}" ;;
+                        ru) msg "${RED}[!] Не удалось удалить контейнер wallos.${NC}" ;;
+                        fa) msg "${RED}[!] حذف کانتینر wallos ناموفق بود.${NC}" ;;
+                        *) msg "${RED}[!] 删除 wallos 容器失败，容器可能仍然存在。${NC}" ;;
+                    esac
+                fi
             fi
             pause_return ;;
         *) return 0 ;;

@@ -79,6 +79,10 @@ ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'
 ABOX_XRAY_UPDATE_POLICY="${ABOX_XRAY_UPDATE_POLICY:-pinned}"
 ABOX_SINGBOX_UPDATE_POLICY="${ABOX_SINGBOX_UPDATE_POLICY:-auto-stable}"
 ABOX_HYSTERIA_UPDATE_POLICY="${ABOX_HYSTERIA_UPDATE_POLICY:-auto-stable}"
+# Minimum age (days) before an auto-stable policy accepts a newly published
+# stable release. Cooling is necessary but not sufficient: a cooled release
+# still goes through binary verification, config check, and health gate.
+ABOX_STABLE_COOLDOWN_DAYS="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
 ABOX_RESOLVED_XRAY_VERSION=''
 ABOX_RESOLVED_SINGBOX_VERSION=''
 ABOX_RESOLVED_HYSTERIA_VERSION=''
@@ -4983,8 +4987,27 @@ core_update_policy() {
     esac
 }
 
+core_stable_release_age_days() {
+    # Prints the age in whole days of a stable release tag, or fails when the
+    # published date cannot be determined. Used to enforce the cooldown before
+    # an auto-stable policy accepts a newly published release.
+    local repo="${1:-}" tag="${2:-}" json published now_ts pub_ts
+    case "$repo" in XTLS/Xray-core|SagerNet/sing-box|HyNetworks/hysteria) ;; *) return 1 ;; esac
+    [[ -n "$tag" ]] || return 1
+    json=$(github_api_get "https://api.github.com/repos/$repo/releases?per_page=100") || return 1
+    published=$(jq -er --arg tag "$tag" '
+        [ .[]? | select(.draft == false and .prerelease == false and .tag_name == $tag)
+        | .published_at ] | first // empty
+    ' <<< "$json") || return 1
+    [[ -n "$published" ]] || return 1
+    now_ts=$(date +%s) || return 1
+    pub_ts=$(date -d "$published" +%s 2>/dev/null) || return 1
+    [[ "$pub_ts" -le "$now_ts" ]] || return 1
+    printf '%s\n' $(( (now_ts - pub_ts) / 86400 ))
+}
+
 resolve_core_release_target() {
-    local repo="${1:-}" override='' latest='' target='' source='' resolved='' resolved_source='' default_ref=''
+    local repo="${1:-}" override='' latest='' latest_age='' target='' source='' resolved='' resolved_source='' default_ref=''
     case "$repo" in
         XTLS/Xray-core) override="${ABOX_XRAY_VERSION:-}"; default_ref="$ABOX_XRAY_DEFAULT_VERSION" ;;
         SagerNet/sing-box) override="${ABOX_SINGBOX_VERSION:-}"; default_ref="$ABOX_SINGBOX_DEFAULT_VERSION" ;;
@@ -5001,7 +5024,18 @@ resolve_core_release_target() {
             target="$resolved"; source="$resolved_source"
         elif [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]] || [[ "$(core_update_policy "$repo" 2>/dev/null || true)" == 'auto-stable' ]]; then
             latest=$(core_latest_stable_release_ref "$repo" 2>/dev/null || true)
-            if core_release_ref_valid "$repo" "$latest" && [[ "$latest" != *-* ]]; then target="$latest"; source='upstream'
+            if core_release_ref_valid "$repo" "$latest" && [[ "$latest" != *-* ]]; then
+                # Cooldown: a stable release must be published for at least
+                # ABOX_STABLE_COOLDOWN_DAYS before auto-stable accepts it.
+                # Cooling is necessary, not sufficient. When the age cannot be
+                # determined, refuse to auto-adopt and fall back to the pin.
+                latest_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
+                if [[ "$latest_age" =~ ^[0-9]+$ ]] && (( latest_age >= ${ABOX_STABLE_COOLDOWN_DAYS:-7} )); then
+                    target="$latest"; source='upstream'
+                else
+                    msg "${YELLOW}[!] $repo latest stable $latest is still in cooldown (${latest_age:-unknown} days < ${ABOX_STABLE_COOLDOWN_DAYS:-7}); keeping pin $default_ref.${NC}" >&2
+                    target="$default_ref"; source='pinned'
+                fi
             else
                 latest=$(core_latest_mirror_release_ref "$repo" 2>/dev/null || true)
                 if core_release_ref_valid "$repo" "$latest" && [[ "$latest" != *-* ]]; then target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；将尝试校验过的最新稳定容灾资产 $target。${NC}" >&2
@@ -16313,6 +16347,8 @@ PY_SELFTEST_TAR
     [[ "$(core_update_policy SagerNet/sing-box)" == 'auto-stable' ]] || { echo 'FAIL: sing-box update policy must default to auto-stable'; failures=$((failures + 1)); }
     [[ "$(core_update_policy HyNetworks/hysteria)" == 'auto-stable' ]] || { echo 'FAIL: Hysteria update policy must default to auto-stable'; failures=$((failures + 1)); }
     ( ABOX_XRAY_UPDATE_POLICY='auto-stable'; [[ "$(core_update_policy XTLS/Xray-core)" == 'auto-stable' ]] ) || { echo 'FAIL: Xray policy override not honored'; failures=$((failures + 1)); }
+    [[ "${ABOX_STABLE_COOLDOWN_DAYS:-}" == '7' ]] || { echo 'FAIL: stable cooldown must default to 7 days'; failures=$((failures + 1)); }
+    ( ABOX_STABLE_COOLDOWN_DAYS='14'; [[ "${ABOX_STABLE_COOLDOWN_DAYS}" == '14' ]] ) || { echo 'FAIL: cooldown override not honored'; failures=$((failures + 1)); }
 
     (
         [[ "$ABOX_BUILD" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[A-Za-z0-9][A-Za-z0-9-]*-v[0-9]+$ ]] || exit 1

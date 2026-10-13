@@ -11,11 +11,11 @@ The compatibility pins configured in `install.sh` remain Xray `v26.7.28`, sing-b
 ### Per-core update policy (2026-10-13)
 
 - **Xray: `pinned`.** Manual updates only. Xray ≥`v26.9.8` requires an ML-KEM key share in the REALITY ClientHello and breaks sing-box, default mihomo configs, and Karing clients (see sing-box#4520, mihomo#3193). The installer never auto-tracks Xray latest; set `ABOX_XRAY_VERSION` for an explicit override.
-- **sing-box / Hysteria: `auto-stable`.** The installer resolves the latest official stable release first (upstream API, then `CORE-VERSIONS` mirror metadata), falling back to the compatibility pin when unreachable. Override with `ABOX_SINGBOX_UPDATE_POLICY=pinned` / `ABOX_HYSTERIA_UPDATE_POLICY=pinned`, or pin an exact version via `ABOX_SINGBOX_VERSION` / `ABOX_HYSTERIA_APP_VERSION`.
+- **sing-box / Hysteria: `auto-stable`.** The installer resolves the latest official stable release first (upstream API, then `CORE-VERSIONS` mirror metadata), falling back to the compatibility pin when unreachable. A stable release is only accepted after a 7-day cooldown (`ABOX_STABLE_COOLDOWN_DAYS`); cooling is necessary but not sufficient — the candidate still goes through binary verification, config check, and health gate. Override with `ABOX_SINGBOX_UPDATE_POLICY=pinned` / `ABOX_HYSTERIA_UPDATE_POLICY=pinned`, or pin an exact version via `ABOX_SINGBOX_VERSION` / `ABOX_HYSTERIA_APP_VERSION`.
 
 ### Rollback assets
 
-The Release also retains versioned assets for the previous approved versions — currently Xray `v26.6.27`, sing-box `v1.14.1`, Hysteria `app/v2.12.3` — so a failed upgrade can roll back without depending on upstream availability. Versioned filenames are immutable; never overwrite an existing asset.
+The Release also retains versioned assets for the previous-version rollback candidates — currently Xray `v26.6.27`, sing-box `v1.14.1`, Hysteria `app/v2.12.3` — so a failed upgrade can roll back without depending on upstream availability. These are candidates, not validated rollback versions: they must pass A-Box config and client regression tests before being treated as approved. Versioned filenames are immutable; never overwrite an existing asset.
 
 ## Wallos recovery
 

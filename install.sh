@@ -5029,12 +5029,19 @@ resolve_core_release_target() {
                 # ABOX_STABLE_COOLDOWN_DAYS before auto-stable accepts it.
                 # Cooling is necessary, not sufficient. When the age cannot be
                 # determined, refuse to auto-adopt and fall back to the pin.
-                latest_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
-                if [[ "$latest_age" =~ ^[0-9]+$ ]] && (( latest_age >= ${ABOX_STABLE_COOLDOWN_DAYS:-7} )); then
+                # Explicit ABOX_TRY_LATEST_CORE_STABLE=1 (DANGER menu) bypasses
+                # the cooldown: the operator asked for latest, knowing the risk.
+                if [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]]; then
+                    msg "${YELLOW}[!] ABOX_TRY_LATEST_CORE_STABLE=1: cooldown bypassed by explicit operator request; $latest will be tried.${NC}" >&2
                     target="$latest"; source='upstream'
                 else
-                    msg "${YELLOW}[!] $repo latest stable $latest is still in cooldown (${latest_age:-unknown} days < ${ABOX_STABLE_COOLDOWN_DAYS:-7}); keeping pin $default_ref.${NC}" >&2
-                    target="$default_ref"; source='pinned'
+                    latest_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
+                    if [[ "$latest_age" =~ ^[0-9]+$ ]] && (( latest_age >= ${ABOX_STABLE_COOLDOWN_DAYS:-7} )); then
+                        target="$latest"; source='upstream'
+                    else
+                        msg "${YELLOW}[!] $repo latest stable $latest is still in cooldown (${latest_age:-unknown} days < ${ABOX_STABLE_COOLDOWN_DAYS:-7}); keeping pin $default_ref.${NC}" >&2
+                        target="$default_ref"; source='pinned'
+                    fi
                 fi
             else
                 latest=$(core_latest_mirror_release_ref "$repo" 2>/dev/null || true)

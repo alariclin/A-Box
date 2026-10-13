@@ -8,6 +8,15 @@ The stable core recovery endpoint is the Release [`A-Box Core Binary Mirrors`](h
 
 The compatibility pins configured in `install.sh` remain Xray `v26.7.28`, sing-box `v1.14.2`, and Hysteria `app/v2.13.0`. The official Xray Release metadata marks `v26.7.28` as a prerelease; it is intentionally retained as the compatibility pin and is not the latest stable tag. As verified on 2026-10-13, the official latest stable tags were Xray `v26.3.27`, sing-box `v1.14.3`, and Hysteria `app/v2.13.0`; the `CORE-VERSIONS` Release asset is the workflow-maintained latest-stable pointer. A newer installed core is never silently downgraded merely to match an older stable tag.
 
+### Per-core update policy (2026-10-13)
+
+- **Xray: `pinned`.** Manual updates only. Xray ≥`v26.9.8` requires an ML-KEM key share in the REALITY ClientHello and breaks sing-box, default mihomo configs, and Karing clients (see sing-box#4520, mihomo#3193). The installer never auto-tracks Xray latest; set `ABOX_XRAY_VERSION` for an explicit override.
+- **sing-box / Hysteria: `auto-stable`.** The installer resolves the latest official stable release first (upstream API, then `CORE-VERSIONS` mirror metadata), falling back to the compatibility pin when unreachable. Override with `ABOX_SINGBOX_UPDATE_POLICY=pinned` / `ABOX_HYSTERIA_UPDATE_POLICY=pinned`, or pin an exact version via `ABOX_SINGBOX_VERSION` / `ABOX_HYSTERIA_APP_VERSION`.
+
+### Rollback assets
+
+The Release also retains versioned assets for the previous approved versions — currently Xray `v26.6.27`, sing-box `v1.14.1`, Hysteria `app/v2.12.3` — so a failed upgrade can roll back without depending on upstream availability. Versioned filenames are immutable; never overwrite an existing asset.
+
 ## Wallos recovery
 
 The stable Release name is `wallos-mirror`; asset names are fixed and contain no version suffix:

@@ -64,6 +64,21 @@ ABOX_XRAY_MIRROR_VERSION='v26.7.28'
 ABOX_SINGBOX_MIRROR_VERSION='v1.14.2'
 ABOX_HYSTERIA_MIRROR_VERSION='app/v2.13.0'
 ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'
+# Per-core update policy (2026-10-13):
+#   xray:     pinned      - manual updates only; Xray >=v26.9.8 requires
+#                           ML-KEM key share and breaks sing-box/mihomo/Karing
+#                           clients (see sing-box#4520, mihomo#3193). Do NOT
+#                           auto-track latest.
+#   sing-box: auto-stable - track latest official stable release; verify
+#                           generated config with the new binary before switch;
+#                           rollback to mirror pin on any failure.
+#   hysteria: auto-stable - track latest official stable release; Hy2 protocol
+#                           guarantees old/new client interop; rollback on failure.
+# Override via environment: ABOX_XRAY_UPDATE_POLICY / ABOX_SINGBOX_UPDATE_POLICY /
+# ABOX_HYSTERIA_UPDATE_POLICY. Explicit ABOX_*_VERSION always wins over policy.
+ABOX_XRAY_UPDATE_POLICY="${ABOX_XRAY_UPDATE_POLICY:-pinned}"
+ABOX_SINGBOX_UPDATE_POLICY="${ABOX_SINGBOX_UPDATE_POLICY:-auto-stable}"
+ABOX_HYSTERIA_UPDATE_POLICY="${ABOX_HYSTERIA_UPDATE_POLICY:-auto-stable}"
 ABOX_RESOLVED_XRAY_VERSION=''
 ABOX_RESOLVED_SINGBOX_VERSION=''
 ABOX_RESOLVED_HYSTERIA_VERSION=''
@@ -4956,6 +4971,18 @@ clear_core_release_resolution() {
     esac
 }
 
+core_update_policy() {
+    # Returns the update policy for a core repo: 'pinned' or 'auto-stable'.
+    # Xray defaults to pinned (ML-KEM compat risk); sing-box/Hysteria default
+    # to auto-stable. Explicit ABOX_*_VERSION overrides always win.
+    case "${1:-}" in
+        XTLS/Xray-core) printf '%s\n' "${ABOX_XRAY_UPDATE_POLICY:-pinned}" ;;
+        SagerNet/sing-box) printf '%s\n' "${ABOX_SINGBOX_UPDATE_POLICY:-auto-stable}" ;;
+        HyNetworks/hysteria) printf '%s\n' "${ABOX_HYSTERIA_UPDATE_POLICY:-auto-stable}" ;;
+        *) return 1 ;;
+    esac
+}
+
 resolve_core_release_target() {
     local repo="${1:-}" override='' latest='' target='' source='' resolved='' resolved_source='' default_ref=''
     case "$repo" in
@@ -4972,7 +4999,7 @@ resolve_core_release_target() {
         resolved_source=$(core_resolved_source "$repo" 2>/dev/null || true)
         if core_release_ref_valid "$repo" "$resolved" && [[ "$resolved_source" == 'upstream' || "$resolved_source" == 'mirror' || "$resolved_source" == 'mirror-latest' || "$resolved_source" == 'mirror-exact' || "$resolved_source" == 'pinned' ]]; then
             target="$resolved"; source="$resolved_source"
-        elif [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]]; then
+        elif [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]] || [[ "$(core_update_policy "$repo" 2>/dev/null || true)" == 'auto-stable' ]]; then
             latest=$(core_latest_stable_release_ref "$repo" 2>/dev/null || true)
             if core_release_ref_valid "$repo" "$latest" && [[ "$latest" != *-* ]]; then target="$latest"; source='upstream'
             else
@@ -16282,6 +16309,10 @@ PY_SELFTEST_TAR
     grep -Fq 'support-x25519mlkem768: $clash_mlkem' "$0" || { echo 'FAIL: Clash REALITY ML-KEM flag must be version-aware'; failures=$((failures + 1)); }
     grep -Fq 'ABOX_HYSTERIA_APP_VERSION:-app/v2.13.0' "$0" || { echo 'FAIL: Hysteria v2.13.0 compatibility pin missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_XRAY_DEFAULT_VERSION='v26.7.28'" "$0" || { echo 'FAIL: Xray iOS/XHTTP compatibility pin missing'; failures=$((failures + 1)); }
+    [[ "$(core_update_policy XTLS/Xray-core)" == 'pinned' ]] || { echo 'FAIL: Xray update policy must default to pinned'; failures=$((failures + 1)); }
+    [[ "$(core_update_policy SagerNet/sing-box)" == 'auto-stable' ]] || { echo 'FAIL: sing-box update policy must default to auto-stable'; failures=$((failures + 1)); }
+    [[ "$(core_update_policy HyNetworks/hysteria)" == 'auto-stable' ]] || { echo 'FAIL: Hysteria update policy must default to auto-stable'; failures=$((failures + 1)); }
+    ( ABOX_XRAY_UPDATE_POLICY='auto-stable'; [[ "$(core_update_policy XTLS/Xray-core)" == 'auto-stable' ]] ) || { echo 'FAIL: Xray policy override not honored'; failures=$((failures + 1)); }
 
     (
         [[ "$ABOX_BUILD" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[A-Za-z0-9][A-Za-z0-9-]*-v[0-9]+$ ]] || exit 1

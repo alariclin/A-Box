@@ -87,7 +87,8 @@ download_verified_asset() {
         echo "::error::sing-box binary failed its version probe: $mirror_name"
         return 1
       }
-      grep -Fq "$(sed 's/^v//' <<< "$tag")" <<< "$version_output" || {
+      expected_version="${tag#v}"
+                grep -Fq "$expected_version" <<< "$version_output" || {
         echo "::error::sing-box binary version does not match $tag"
         return 1
       }
@@ -98,7 +99,8 @@ download_verified_asset() {
         echo "::error::Hysteria binary failed its version probe: $mirror_name"
         return 1
       }
-      grep -Fq "$(sed 's#^app/##' <<< "$tag")" <<< "$version_output" || {
+      expected_version="${tag#app/}"
+                grep -Fq "$expected_version" <<< "$version_output" || {
         echo "::error::Hysteria binary version does not match $tag"
         return 1
       }
@@ -114,7 +116,7 @@ download_verified_asset() {
 
 xray_amd64_name="Xray-$xray_tag-linux-64.zip"
 xray_arm64_name="Xray-$xray_tag-linux-arm64-v8a.zip"
-singbox_version="$(sed 's/^v//' <<< "$singbox_tag")"
+singbox_version="${singbox_tag#v}"
 hysteria_leaf="$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')"
 
 download_verified_asset XTLS/Xray-core "$root/xray.json" Xray-linux-64.zip "$xray_amd64_name" xray

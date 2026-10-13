@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-13-auto-sni-v185'
-ABOX_BUILD_EPOCH=20261013185
+ABOX_BUILD='2026-10-13-auto-sni-v186'
+ABOX_BUILD_EPOCH=20261013186
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -16958,6 +16958,9 @@ EOF_SELFTEST_IPT
     ABOX_AUTO_SNI_SELECTED='www.amazon.com'
     build_xray_config VISION "$tmp/xray/default-sni.json"
     jq -e '.inbounds[] | select(.protocol=="vless" and .streamSettings.realitySettings.serverNames[0]=="www.amazon.com")' "$tmp/xray/default-sni.json" >/dev/null 2>&1 || { echo 'FAIL: explicitly selected fallback REALITY SNI must be preserved'; failures=$((failures + 1)); }
+    ( ABOX_AUTO_SNI_SELECTED='www.recommended.example'; sni_probe_candidate_tier() { printf 'A\n'; }; result=$(printf '\n' | prompt_reality_sni 'Vision test' 443); [[ "$result" == 'www.recommended.example' ]] ) || { echo 'FAIL: pressing Enter must accept the recommended SNI'; failures=$((failures + 1)); }
+    ( ABOX_AUTO_SNI_SELECTED='www.recommended.example'; sni_probe_candidate_tier() { printf 'A\n'; }; result=$(printf 'www.custom.example\n' | prompt_reality_sni 'Vision test' 443); [[ "$result" == 'www.custom.example' ]] ) || { echo 'FAIL: a valid custom SNI must override the recommendation'; failures=$((failures + 1)); }
+    ( ABOX_AUTO_SNI_SELECTED=''; sni_probe_candidate_tier() { printf 'A\n'; }; result=$(printf 'www.custom.example\n' | prompt_reality_sni 'Vision test' 443); [[ "$result" == 'www.custom.example' ]] ) || { echo 'FAIL: a valid custom SNI must remain available when no recommendation exists'; failures=$((failures + 1)); }
     VISION_SNI="$saved_vision_sni" VLESS_SNI="$saved_vless_sni" ABOX_AUTO_SNI_SELECTED="$saved_auto_sni"
     jq -e '.inbounds[] | select(.protocol=="shadowsocks" and .port==2053 and .settings.network=="tcp,udp")' "$tmp/xray/config.json" >/dev/null 2>&1 || { echo 'FAIL: Xray SS-2022 2053 tcp,udp'; failures=$((failures + 1)); }
     jq -e '.inbounds[] | select(.protocol=="vless" and .port==8443 and .streamSettings.realitySettings.serverNames[0]=="www.microsoft.com")' "$tmp/xray/config.json" >/dev/null 2>&1 || { echo 'FAIL: Xray Vision SNI split'; failures=$((failures + 1)); }

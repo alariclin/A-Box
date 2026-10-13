@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-13-auto-sni-v183'
-ABOX_BUILD_EPOCH=20261013183
+ABOX_BUILD='2026-10-13-auto-sni-v184'
+ABOX_BUILD_EPOCH=20261013184
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -4886,13 +4886,33 @@ core_latest_mirror_release_ref() {
 }
 
 core_mirror_asset_leaf() {
-    local repo="${1:-}" output_file="${2:-}" version="${3:-}" pin='' sb_ver='' hysteria_leaf=''
+    local repo="${1:-}" output_file="${2:-}" version="${3:-}" prefer_versioned="${4:-0}" pin='' sb_ver='' hysteria_leaf=''
     pin=$(core_release_mirror_version "$repo") || return 1
     core_release_ref_valid "$repo" "$version" || return 1
     case "$repo:$output_file" in
-        XTLS/Xray-core:xray_core.zip) if [[ "$version" == "$pin" ]]; then printf 'Xray-linux-%s.zip\n' "$XRAY_ARCH"; else printf 'Xray-%s-linux-%s.zip\n' "$version" "$XRAY_ARCH"; fi ;;
-        SagerNet/sing-box:singbox_core.tar.gz) sb_ver="${version#v}"; if [[ "${release:-}" == 'alpine' ]]; then printf 'sing-box-%s-linux-%s-musl.tar.gz\n' "$sb_ver" "$SB_ARCH"; else printf 'sing-box-%s-linux-%s-glibc.tar.gz\n' "$sb_ver" "$SB_ARCH"; fi ;;
-        HyNetworks/hysteria:hysteria_core) if [[ "$version" == "$pin" ]]; then printf 'hysteria-linux-%s\n' "$HY2_ARCH"; else hysteria_leaf=$(tr '/' '-' <<< "$version" | tr -d '\n'); printf 'hysteria-%s-linux-%s\n' "$hysteria_leaf" "$HY2_ARCH"; fi ;;
+        XTLS/Xray-core:xray_core.zip)
+            if [[ "$version" == "$pin" && "$prefer_versioned" != '1' ]]; then
+                printf 'Xray-linux-%s.zip\n' "$XRAY_ARCH"
+            else
+                printf 'Xray-%s-linux-%s.zip\n' "$version" "$XRAY_ARCH"
+            fi
+            ;;
+        SagerNet/sing-box:singbox_core.tar.gz)
+            sb_ver="${version#v}"
+            if [[ "${release:-}" == 'alpine' ]]; then
+                printf 'sing-box-%s-linux-%s-musl.tar.gz\n' "$sb_ver" "$SB_ARCH"
+            else
+                printf 'sing-box-%s-linux-%s-glibc.tar.gz\n' "$sb_ver" "$SB_ARCH"
+            fi
+            ;;
+        HyNetworks/hysteria:hysteria_core)
+            if [[ "$version" == "$pin" && "$prefer_versioned" != '1' ]]; then
+                printf 'hysteria-linux-%s\n' "$HY2_ARCH"
+            else
+                hysteria_leaf=$(tr '/' '-' <<< "$version" | tr -d '\n')
+                printf 'hysteria-%s-linux-%s\n' "$hysteria_leaf" "$HY2_ARCH"
+            fi
+            ;;
         *) return 1 ;;
     esac
 }
@@ -5060,7 +5080,7 @@ fetch_github_release() {
         if [[ "$target_source" == 'explicit' ]]; then die "显式指定的核心版本 ${target_ref} 下载或校验失败；为避免静默替换版本，不会自动回退到其他版本。"; fi
     fi
     if [[ "$target_source" == 'mirror-latest' || ( "$target_source" == 'upstream' && "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ) ]]; then
-        if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref"; then
+        if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
             core_set_resolved_target "$repo" "$target_ref" mirror-latest || die '无法记录已验证的最新镜像版本。'
             ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-latest'
             msg "${GREEN}   最新稳定镜像候选通过 SHA-256 与实际二进制版本校验：${target_ref}${NC}"
@@ -8858,13 +8878,13 @@ probe_core_sources_banner() {
 }
 
 fetch_abox_mirror_asset() {
-    local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" requested_version="${4:-}"
+    local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" requested_version="${4:-}" prefer_versioned="${5:-0}"
     local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf tmp_file
     mirror_base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     [[ -n "$mirror_base" ]] || return 1
     if [[ -z "$requested_version" ]]; then requested_version=$(core_release_mirror_version "$repo") || return 1; fi
     core_release_ref_valid "$repo" "$requested_version" || return 1
-    asset_leaf=$(core_mirror_asset_leaf "$repo" "$output_file" "$requested_version") || return 1
+    asset_leaf=$(core_mirror_asset_leaf "$repo" "$output_file" "$requested_version" "$prefer_versioned") || return 1
     mirror_url="${mirror_base%/}/${asset_leaf}"; mirror_sum="${mirror_base%/}/SHA256SUMS"
     msg "${YELLOW} -> A-Box recovery mirror: ${mirror_url} [${requested_version}]${NC}"
     tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
@@ -16217,6 +16237,16 @@ PY_SELFTEST_TAR
     core_binary_matches_release_ref 'app/v2.13.0' 'Hysteria version v2.13.0' || { echo 'FAIL: Hysteria binary/tag identity'; failures=$((failures + 1)); }
     core_binary_matches_release_ref 'v1.14.3' 'sing-box version 1.14.2' && { echo 'FAIL: mismatched binary/tag identity accepted'; failures=$((failures + 1)); }
     [[ "$(core_release_mirror_version SagerNet/sing-box)" == "$ABOX_SINGBOX_MIRROR_VERSION" ]] || { echo 'FAIL: recovery pin resolver'; failures=$((failures + 1)); }
+    local mock_core_versions=$'schema=1\nXray=v26.3.27\nsing-box=v1.14.3\nHysteria=app/v2.13.0'
+    [[ "$(core_latest_mirror_tag_from_text XTLS/Xray-core "$mock_core_versions")" == 'v26.3.27' ]] || { echo 'FAIL: latest Xray mirror metadata parser'; failures=$((failures + 1)); }
+    [[ "$(core_latest_mirror_tag_from_text SagerNet/sing-box "$mock_core_versions")" == 'v1.14.3' ]] || { echo 'FAIL: latest sing-box mirror metadata parser'; failures=$((failures + 1)); }
+    [[ "$(core_latest_mirror_tag_from_text HyNetworks/hysteria "$mock_core_versions")" == 'app/v2.13.0' ]] || { echo 'FAIL: latest Hysteria mirror metadata parser'; failures=$((failures + 1)); }
+    if core_latest_mirror_tag_from_text XTLS/Xray-core $'Xray=v26.7.28-rc.1'; then echo 'FAIL: prerelease mirror metadata accepted as latest stable'; failures=$((failures + 1)); fi
+    ( XRAY_ARCH=64; [[ "$(core_mirror_asset_leaf XTLS/Xray-core xray_core.zip v26.3.27)" == 'Xray-v26.3.27-linux-64.zip' ]] ) || { echo 'FAIL: versioned Xray mirror asset naming'; failures=$((failures + 1)); }
+    ( XRAY_ARCH=64; [[ "$(core_mirror_asset_leaf XTLS/Xray-core xray_core.zip v26.7.28 1)" == 'Xray-v26.7.28-linux-64.zip' ]] ) || { echo 'FAIL: latest Xray mirror should prefer versioned asset even when tag matches pin'; failures=$((failures + 1)); }
+    ( release=alpine; SB_ARCH=amd64; [[ "$(core_mirror_asset_leaf SagerNet/sing-box singbox_core.tar.gz v1.14.3)" == 'sing-box-1.14.3-linux-amd64-musl.tar.gz' ]] ) || { echo 'FAIL: versioned sing-box musl mirror asset naming'; failures=$((failures + 1)); }
+    ( HY2_ARCH=arm64; [[ "$(core_mirror_asset_leaf HyNetworks/hysteria hysteria_core app/v2.13.0 1)" == 'hysteria-app-v2.13.0-linux-arm64' ]] ) || { echo 'FAIL: versioned Hysteria mirror asset naming'; failures=$((failures + 1)); }
+    ( unset ABOX_SINGBOX_VERSION; ABOX_TRY_LATEST_CORE_STABLE=1; ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE=''; core_latest_stable_release_ref() { return 1; }; core_latest_mirror_release_ref() { printf '%s\n' 'v1.14.3'; }; resolve_core_release_target SagerNet/sing-box || exit 1; [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.3|mirror-latest' ]] ) || { echo 'FAIL: latest mirror metadata must be used when upstream API fails'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9.8 xray_reality_requires_mlkem ) || { echo 'FAIL: Xray 26.9.8 must require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.7.28 xray_reality_requires_mlkem ) && { echo 'FAIL: Xray 26.7.28 must not require REALITY ML-KEM'; failures=$((failures + 1)); }
     [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] || { echo 'FAIL: effective Xray compatibility default'; failures=$((failures + 1)); }

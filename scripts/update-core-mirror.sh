@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+command -v file >/dev/null 2>&1 || { echo "::error::The file utility is required for architecture validation."; exit 1; }
 root="$RUNNER_TEMP/core-mirror"
 out="$root/new"
 existing="$root/existing"

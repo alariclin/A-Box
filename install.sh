@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-13-auto-sni-v188'
-ABOX_BUILD_EPOCH=20261013188
+ABOX_BUILD='2026-10-13-auto-sni-v189'
+ABOX_BUILD_EPOCH=20261013189
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -8897,7 +8897,7 @@ probe_core_sources_banner() {
     [[ "\${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]] && pref='latest-official-stable-first'
     base="\${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     api_code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 'https://api.github.com/repos/XTLS/Xray-core/releases?per_page=100' 2>/dev/null || printf '000')
-    mirror_code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "\${base%/}/SHA256SUMS" 2>/dev/null || printf '000')
+    mirror_code=$(curl -sSL -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "\${base%/}/SHA256SUMS" 2>/dev/null || printf '000')
     case "$api_code" in 200) api_code='available (HTTP 200)' ;; *) api_code="unavailable (HTTP \${api_code:-000})" ;; esac
     case "$mirror_code" in 200) mirror_code='available (HTTP 200)' ;; *) mirror_code="unavailable (HTTP \${mirror_code:-000})" ;; esac
     msg "\${CYAN}[download sources] order=\${pref} → fixed recovery mirror; release API: \${api_code}; recovery SHA256SUMS: \${mirror_code}; custom base=\${ABOX_CORE_MIRROR_BASE:-<unset>}\${NC}"

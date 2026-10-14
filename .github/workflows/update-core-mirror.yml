@@ -106,11 +106,11 @@ jobs:
           (cd "$work/verified" && sha256sum -c SHA256SUMS.incoming) || { echo "FAIL: fixture checksum verification"; exit 1; }
           # Set equality: actual files must equal manifest-listed + control files.
           expected="$(printf 'CORE-VERSIONS\nSHA256SUMS.incoming\nXray-test.zip\n' | sort)"
-          actual="$(cd "$work/verified" && find . -maxdepth 1 -type f -printf '%f\n' | sort)"
+          actual="$(cd "$work/verified" && find . -maxdepth 1 -mindepth 1 -printf '%f\n' | sort)"
           [[ "$actual" == "$expected" ]] || { echo "FAIL: set mismatch"; echo "actual: $actual"; echo "expected: $expected"; exit 1; }
           # Negative test: extra file must be rejected.
           printf 'evil' > "$work/verified/evil-injected.bin"
-          actual2="$(cd "$work/verified" && find . -maxdepth 1 -type f -printf '%f\n' | sort)"
+          actual2="$(cd "$work/verified" && find . -maxdepth 1 -mindepth 1 -printf '%f\n' | sort)"
           if [[ "$actual2" == "$expected" ]]; then echo "FAIL: extra file not detected"; exit 1; fi
           echo "OK: publish verification simulation passed (positive + negative)"
 
@@ -163,7 +163,7 @@ jobs:
           # SHA256SUMS.incoming is verification-only and is NOT uploaded.
           # Reject any extra or missing file.
           set_diff="$(comm -3 \
-            <(cd verified && find . -maxdepth 1 -type f -printf '%f\n' | sort) \
+            <(cd verified && find . -maxdepth 1 -mindepth 1 -printf '%f\n' | sort) \
             <( { awk '{print $2}' verified/SHA256SUMS.incoming; printf '%s\n' SHA256SUMS SHA256SUMS.incoming CORE-VERSIONS; } | sort -u ))"
           if [[ -n "$set_diff" ]]; then
             echo "ERROR: verified/ file set does not exactly match expected set:"

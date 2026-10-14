@@ -156,11 +156,11 @@ download_verified_asset() {
           return 1
         }
         expected_version="${tag#app/}"
-        version_line="$(grep -m1 -E '^Version: ' <<< "$version_output" || true)"
         # F-05 fix: exact version-field parse, not substring matching.
-        # Hysteria prints "Version: v2.13.0" (or "Version: 2.13.0"); accept
-        # either form and compare the normalized "v<digits>" token exactly.
-        if [[ "$version_line" =~ ^Version:\ v?([0-9]+\.[0-9]+\.[0-9]+)([[:space:]]|$) ]]; then
+        # Hysteria prints "Version:<TAB>v2.13.0" (tab, not space); accept
+        # any whitespace after the label and compare the normalized
+        # "v<digits>" token exactly.
+        if [[ "$version_output" =~ Version:[[:space:]]+v?([0-9]+\.[0-9]+\.[0-9]+)([[:space:]]|$) ]]; then
           [[ "v${BASH_REMATCH[1]}" == "$expected_version" ]] || {
             echo "::error::Hysteria binary version does not match $tag (got v${BASH_REMATCH[1]})"
             return 1

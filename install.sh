@@ -3220,6 +3220,57 @@ EOF_ABOX_FW_RESTORE
     mv -f "$tmp" "$ABOX_DIR/firewall_restore.sh" || { rm -f "$tmp"; return 1; }
 }
 
+# BUG-28: hoisted from install_abox_firewall_persistence_service().
+# $1=old_restore $2=tx_dir $3=old_unit $4=old_unit_path $5=old_unit_enabled
+__abox_firewall_persistence_rollback() {
+    local old_restore="$1" tx_dir="$2" old_unit="$3" old_unit_path="$4" old_unit_enabled="$5"
+    local fail=0
+    if [[ "$old_restore" == 1 ]]; then
+        cp -a -- "$tx_dir/firewall_restore.sh" "$ABOX_DIR/firewall_restore.sh" || fail=1
+    else
+        rm -f -- "$ABOX_DIR/firewall_restore.sh" || fail=1
+    fi
+    case "${INIT_SYS:-}" in
+        systemd)
+            if [[ "$old_unit" == 1 ]]; then
+                cp -a -- "$tx_dir/A-Box-firewall.service" "$old_unit_path" || fail=1
+            else
+                systemctl disable A-Box-firewall.service >/dev/null 2>&1 || true
+                rm -f -- "$old_unit_path" || fail=1
+            fi
+            systemctl daemon-reload >/dev/null 2>&1 || fail=1
+            if [[ "$old_unit" == 1 ]]; then
+                case "$old_unit_enabled" in
+                    enabled|enabled-runtime|indirect) systemctl enable A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
+                    *) systemctl disable A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
+                esac
+            fi
+            ;;
+        openrc)
+            if [[ "$old_unit" == 1 ]]; then
+                cp -a -- "$tx_dir/A-Box-firewall" "$old_unit_path" || fail=1
+            else
+                if command -v rc-update >/dev/null 2>&1 && rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])A-Box-firewall([[:space:]]|$)'; then
+                    rc-update del A-Box-firewall default >/dev/null 2>&1 || true
+                fi
+                rm -f -- "$old_unit_path" || fail=1
+            fi
+            if command -v rc-update >/dev/null 2>&1; then
+                if [[ "$old_unit_enabled" == 1 ]]; then
+                    rc-update add A-Box-firewall default >/dev/null 2>&1 || true
+                elif rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])A-Box-firewall([[:space:]]|$)'; then
+                    rc-update del A-Box-firewall default >/dev/null 2>&1 || true
+                fi
+                if [[ "$(service_enabled_state_value A-Box-firewall 2>/dev/null || printf '%s' unknown)" != "$old_unit_enabled" ]]; then
+                    fail=1
+                fi
+            else
+                fail=1
+            fi
+            ;;
+    esac
+    return "$fail"
+}
 install_abox_firewall_persistence_service() {
     local tx_dir old_restore=0 old_unit=0 old_unit_path='' old_unit_enabled='' rollback_rc=0
     tx_dir=$(mktemp -d "$ABOX_DIR/.firewall-persist-tx.XXXXXX") || return 1
@@ -3258,58 +3309,9 @@ install_abox_firewall_persistence_service() {
             ;;
     esac
 
-    firewall_persistence_rollback() {
-        local fail=0
-        if [[ "$old_restore" == 1 ]]; then
-            cp -a -- "$tx_dir/firewall_restore.sh" "$ABOX_DIR/firewall_restore.sh" || fail=1
-        else
-            rm -f -- "$ABOX_DIR/firewall_restore.sh" || fail=1
-        fi
-        case "${INIT_SYS:-}" in
-            systemd)
-                if [[ "$old_unit" == 1 ]]; then
-                    cp -a -- "$tx_dir/A-Box-firewall.service" "$old_unit_path" || fail=1
-                else
-                    systemctl disable A-Box-firewall.service >/dev/null 2>&1 || true
-                    rm -f -- "$old_unit_path" || fail=1
-                fi
-                systemctl daemon-reload >/dev/null 2>&1 || fail=1
-                if [[ "$old_unit" == 1 ]]; then
-                    case "$old_unit_enabled" in
-                        enabled|enabled-runtime|indirect) systemctl enable A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
-                        *) systemctl disable A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
-                    esac
-                fi
-                ;;
-            openrc)
-                if [[ "$old_unit" == 1 ]]; then
-                    cp -a -- "$tx_dir/A-Box-firewall" "$old_unit_path" || fail=1
-                else
-                    if command -v rc-update >/dev/null 2>&1 && rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])A-Box-firewall([[:space:]]|$)'; then
-                        rc-update del A-Box-firewall default >/dev/null 2>&1 || true
-                    fi
-                    rm -f -- "$old_unit_path" || fail=1
-                fi
-                if command -v rc-update >/dev/null 2>&1; then
-                    if [[ "$old_unit_enabled" == 1 ]]; then
-                        rc-update add A-Box-firewall default >/dev/null 2>&1 || true
-                    elif rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])A-Box-firewall([[:space:]]|$)'; then
-                        rc-update del A-Box-firewall default >/dev/null 2>&1 || true
-                    fi
-                    if [[ "$(service_enabled_state_value A-Box-firewall 2>/dev/null || printf '%s' unknown)" != "$old_unit_enabled" ]]; then
-                        fail=1
-                    fi
-                else
-                    fail=1
-                fi
-                ;;
-        esac
-        return "$fail"
-    }
 
     if ! write_abox_firewall_restore_script; then
-        firewall_persistence_rollback || rollback_rc=1
-        unset -f firewall_persistence_rollback
+        __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
         rm -rf -- "$tx_dir"
         (( rollback_rc == 0 )) && return 1
         return 1
@@ -3333,14 +3335,12 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF_ABOX_FW_UNIT
         then
-            firewall_persistence_rollback || rollback_rc=1
-            unset -f firewall_persistence_rollback
+            __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
             rm -rf -- "$tx_dir"
             return 1
         fi
         if ! systemctl daemon-reload >/dev/null 2>&1 || ! systemctl enable A-Box-firewall.service >/dev/null 2>&1; then
-            firewall_persistence_rollback || rollback_rc=1
-            unset -f firewall_persistence_rollback
+            __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
             rm -rf -- "$tx_dir"
             return 1
         fi
@@ -3354,20 +3354,17 @@ command_background="no"
 depend() { need net; after iptables ip6tables nftables ufw firewalld; before xray sing-box hysteria; }
 EOF_ABOX_FW_OPENRC
         then
-            firewall_persistence_rollback || rollback_rc=1
-            unset -f firewall_persistence_rollback
+            __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
             rm -rf -- "$tx_dir"
             return 1
         fi
         if ! chmod 755 /etc/init.d/A-Box-firewall || ! rc-update add A-Box-firewall default >/dev/null 2>&1; then
-            firewall_persistence_rollback || rollback_rc=1
-            unset -f firewall_persistence_rollback
+            __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
             rm -rf -- "$tx_dir"
             return 1
         fi
     fi
 
-    unset -f firewall_persistence_rollback
     rm -rf -- "$tx_dir"
     return 0
 }

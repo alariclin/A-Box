@@ -168,15 +168,7 @@ jobs:
           # See docs/SIGNING.md.
           if [[ -n "${ABOX_SIGNING_PRIVKEY_B64:-}" ]]; then
             umask 077
-            python3 - "$ABOX_SIGNING_PRIVKEY_B64" <<'PY_WALLOS_SIGN' > /tmp/abox-sign-priv.pem
-            import base64, sys
-            raw = base64.b64decode(sys.argv[1], validate=True)
-            assert len(raw) == 32, "private seed must be 32 bytes"
-            der = bytes.fromhex('302e020100300506032b657004220402') + raw
-            sys.stdout.write('-----BEGIN PRIVATE KEY-----\n')
-            sys.stdout.write(base64.encodebytes(der).decode().strip() + '\n')
-            sys.stdout.write('-----END PRIVATE KEY-----\n')
-            PY_WALLOS_SIGN
+            python3 -c 'import base64,sys;raw=base64.b64decode(sys.argv[1],validate=True);assert len(raw)==32;der=bytes.fromhex("302e020100300506032b657004220402")+raw;sys.stdout.write("-----BEGIN PRIVATE KEY-----\n"+base64.encodebytes(der).decode().strip()+"\n-----END PRIVATE KEY-----\n")' "$ABOX_SIGNING_PRIVKEY_B64" > /tmp/abox-sign-priv.pem
             openssl pkeyutl -sign -inkey /tmp/abox-sign-priv.pem -rawin \
               -in wallos-manifest.txt | base64 > wallos-manifest.txt.sig
             openssl pkeyutl -verify -pubin \

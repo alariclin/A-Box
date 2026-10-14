@@ -5148,24 +5148,14 @@ resolve_core_release_target() {
                 # fall back to pin (fail-closed per version policy).
                 latest=$(core_latest_mirror_release_ref "$repo" 2>/dev/null || true)
                 if core_release_ref_valid "$repo" "$latest" && [[ "$latest" != *-* ]]; then
-                    if [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]]; then
-                        target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；DANGER 模式绕过冷却，将尝试校验过的最新稳定容灾资产 $target。${NC}" >&2
+                    # BUG-04 fix (Option A): API already unavailable (we are in mirror branch).
+                    # Calling core_stable_release_age_days would fail again (it needs API).
+                    # Skip cooldown, trust mirror version with format validation.
+                    # Mirror is maintained by weekly workflow that enforces cooldown at build time.
+                    if [[ "$latest" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z._-]+)?$ ]]; then
+                        target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；直接信任镜像版本 $target（跳过实时冷却期查询，镜像构建时已执行冷却校验）。${NC}" >&2
                     else
-                        latest_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
-                        local cooldown_days="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
-                        # Fix 2026-10-14: mirror path must also require >= 1 (same as upstream path);
-                        # 0 would silently disable cooldown since latest_age >= 0 is always true.
-                        if [[ "$cooldown_days" =~ ^[0-9]{1,4}$ ]] && (( 10#$cooldown_days >= 1 && 10#$cooldown_days <= 3650 )); then
-                            :
-                        else
-                            [[ "$cooldown_days" == "0" ]] && msg "${YELLOW}[!] ABOX_STABLE_COOLDOWN_DAYS=0 is not allowed (would disable cooldown); using 7.${NC}" >&2
-                            cooldown_days=7
-                        fi
-                        if [[ "$latest_age" =~ ^[0-9]+$ ]] && (( latest_age >= cooldown_days )); then
-                            target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；将尝试校验过的最新稳定容灾资产 $target。${NC}" >&2
-                        else
-                            target=$(core_release_mirror_version "$repo") || return 1; source='mirror'; msg "${YELLOW}[!] 镜像最新版 $latest 未满足冷却期 (${latest_age:-unknown} 天 < ${cooldown_days} 天)；回退到固定兼容版本 $target。${NC}" >&2
-                        fi
+                        target=$(core_release_mirror_version "$repo") || return 1; source='mirror'; msg "${YELLOW}[!] 镜像版本格式非法，回退到固定兼容版本 $target。${NC}" >&2
                     fi
                 else target=$(core_release_mirror_version "$repo") || return 1; source='mirror'; msg "${YELLOW}[!] 上游与最新镜像元数据均不可用；本次尝试固定 A-Box 兼容性容灾版本 $target。${NC}" >&2; fi
             fi

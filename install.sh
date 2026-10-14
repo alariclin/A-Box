@@ -6458,6 +6458,25 @@ fetch_one geosite.dat "$tmpdir/geosite.dat" "$release_file" || exit 1
 # (txn_stage creation, geo file replacement, xray restart, ownership update).
 # Downloads above ran under geo-update.lock only.
 acquire_abox_runtime_guard
+# A-07-FIX: Revalidate state AFTER downloads (admin may have uninstalled/stopped
+# Xray during the download window). If state changed, exit safely without writing.
+[[ -d "$GEO_DIR" && ! -L "$GEO_DIR" ]] || exit 0
+xray_owned || exit 0
+desired=RUNNING
+if [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] && [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]]; then
+    mode=$(stat -c %a "$PAIR_STATE" 2>/dev/null) || exit 0
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || exit 0
+    IFS= read -r _pair < "$PAIR_STATE" || exit 0
+    desired=${_pair%%|*}
+elif [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
+    [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] || exit 0
+    [[ "$(stat -c %u:%g "$DESIRED" 2>/dev/null)" == 0:0 ]] || exit 0
+    mode=$(stat -c %a "$DESIRED" 2>/dev/null) || exit 0
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || exit 0
+    IFS= read -r desired < "$DESIRED" || exit 0
+fi
+[[ "$desired" == RUNNING ]] || exit 0
+if is_systemd; then systemctl is-active --quiet xray || exit 0; else rc-service xray status >/dev/null 2>&1 || exit 0; fi
 txn_stage=$(umask 077; mktemp -d "$GEO_DIR/.A-Box-geo-txn-new.XXXXXX") || exit 1
 chmod 700 "$txn_stage" || { rm -rf -- "$txn_stage"; exit 1; }
 if [[ -f "$GEO_DIR/geoip.dat" && ! -L "$GEO_DIR/geoip.dat" ]]; then
@@ -9450,7 +9469,7 @@ export_lightweight_subscription() {
     ensure_abox_dir_owned "$ABOX_DIR" || die 'subscribe dir prepare failed'
     mkdir -p "$SUBSCRIBE_DIR" || die 'subscribe dir create failed'
     # A-05c-FIX: Directory chmod failure is fatal (was || true, fail-open).
-    chmod 700 "$SUBSCRIBE_DIR" || die 'subscribe dir chmod failed' 
+    chmod 700 "$SUBSCRIBE_DIR" || return 1
     [[ -f "$ABOX_ENV" ]] || { msg "${RED}No deployment env.${NC}"; pause_return; return 1; }
     load_abox_env "$ABOX_ENV" || die 'env invalid'
     F_IP="${LINK_IP:-}"
@@ -11941,7 +11960,7 @@ import sys
 
 text = os.fdopen(3, "r", encoding="utf-8", errors="replace").read()
 secret = re.compile(
-    r"(uuid|private.?key|public.?key|short.?id|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)",
+    r"(?:^|[_-])(uuid|private.?key|public.?key|short.?id|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)(?:$|[_-])",
     re.I,
 )
 link = re.compile(r"(?i)\b(?:vless|hysteria2|hy2|ss)://\S+")
@@ -12585,7 +12604,9 @@ prepare_backup_auth_for_manual_restore() {
     # the archive-adjacent sidecar only if the separated key is absent.
     # (Sidecar-first defeated the separation trust model.)
     local hmac="${archive}.hmac" recovery="/root/A-Box-backup-keys/$(basename "$archive").key"
-    if [[ ! -f "$recovery" || -L "$recovery" ]]; then
+    # A-05a: Only fall back to sidecar if separated key is entirely absent
+    # (not merely unreadable). A present-but-broken separated key must fail closed.
+    if [[ ! -e "$recovery" && ! -L "$recovery" ]]; then
         recovery="${archive}.key"
     fi
     if backup_auth_verify "$archive" "$hmac"; then return 0; else rc=$?; fi
@@ -12790,9 +12811,11 @@ MAX_TOTAL=1024*1024*1024
 SB_DIR='root/etc/sing-box'
 HY_DIR='root/etc/hysteria'
 HY_ACME=HY_DIR + '/acme'
+XRAY_CFG='root/usr/local/etc/xray/config.json'
 sb_gid=None
 hy_uid=None
 hy_gid=None
+xray_gid=None
 try: tf=tarfile.open(fn,'r:gz')
 except Exception: raise SystemExit(1)
 seen=set(); total=0
@@ -12816,7 +12839,18 @@ for m in members:
     in_sb = n == SB_DIR or n.startswith(SB_DIR + '/')
     in_hy = n == HY_DIR or n.startswith(HY_DIR + '/')
     in_hy_acme = n == HY_ACME or n.startswith(HY_ACME + '/')
-    if in_sb:
+    in_xray_cfg = (n == XRAY_CFG)
+    if in_xray_cfg:
+        # Boundary 1: Xray config.json is root:abox-xray 0640 (gid != 0).
+        # Allow non-root group with consistent gid, mode must not be group/other-writable.
+        if m.uid != 0 or not m.isfile(): raise SystemExit(1)
+        if m.gid == 0:
+            if mode & 0o077: raise SystemExit(1)
+        else:
+            if mode & 0o027: raise SystemExit(1)
+            if xray_gid is None: xray_gid=m.gid
+            elif m.gid != xray_gid: raise SystemExit(1)
+    elif in_sb:
         # Sing-box config data may be group-readable by its dedicated runtime
         # service account. Preserve root:root compatibility, but when a non-root
         # group is present it must be internally consistent within this archive.
@@ -12933,6 +12967,8 @@ validate_backup_core_init_compatibility() {
             1) continue ;;
             *) return 1 ;;
         esac
+        # A-04: Config-only backups have no unit; skip init compatibility check.
+        backup_root_service_is_config_only "$root" "$srv" && continue
         backup_root_service_is_managed "$root" "$srv" || return 1
         backup_init=$(backup_root_service_init "$root" "$srv") || return 1
         [[ "$backup_init" == "$current_init" ]] || {
@@ -12951,9 +12987,24 @@ backup_root_service_is_managed() {
         grep -Fxq '# Managed by A-Box' "$unit" 2>/dev/null || return 1
         found=$((found + 1))
     done
-    # A-04/Fix7: Allow found==0 (config-only backup, units stripped by converter).
-    # Reject found==2 (both systemd + init.d present = ambiguous).
-    (( found <= 1 ))
+    (( found == 1 ))
+}
+
+# A-04: A backup is "config-only" if it has NO unit file AND NO binary for the
+# service (A-04 converter strips both). Config-only backups import config files
+# only; they must NOT pass the managed-unit check (no unit to check) and must
+# NOT declare the service as running in services.state.
+backup_root_service_is_config_only() {
+    local root="$1" srv="$2" bin
+    case "$srv" in
+        xray) bin="$root/usr/local/bin/xray" ;;
+        sing-box) bin="$root/usr/local/bin/sing-box" ;;
+        hysteria) bin="$root/usr/local/bin/hysteria" ;;
+        *) return 1 ;;
+    esac
+    [[ ! -e "$root/etc/systemd/system/${srv}.service" && ! -L "$root/etc/systemd/system/${srv}.service" ]] || return 1
+    [[ ! -e "$root/etc/init.d/${srv}" && ! -L "$root/etc/init.d/${srv}" ]] || return 1
+    [[ ! -e "$bin" && ! -L "$bin" ]]
 }
 
 validate_backup_manifest_tree() {
@@ -13035,12 +13086,23 @@ validate_extracted_backup_content() {
     grep -Fxq 'A-Box managed directory v1' "$root$ABOX_DIR/.A-Box-owner" 2>/dev/null || return 1
     for srv in xray sing-box hysteria; do
         backup_root_contains_service "$root" "$srv" || continue
-        backup_root_service_is_managed "$root" "$srv" || return 1
-        case "$srv" in
-            xray) [[ -f "$root/usr/local/bin/xray" && -f "$root/usr/local/etc/xray/config.json" ]] || return 1 ;;
-            sing-box) [[ -f "$root/usr/local/bin/sing-box" && -f "$root/etc/sing-box/config.json" ]] || return 1 ;;
-            hysteria) [[ -f "$root/usr/local/bin/hysteria" && -f "$root/etc/hysteria/config.yaml" ]] || return 1 ;;
-        esac
+        if backup_root_service_is_config_only "$root" "$srv"; then
+            # A-04: Config-only backup must NOT declare service as running,
+            # and must contain the config file.
+            ! grep -Eq "^${srv}\|" "$work/meta/services.state" 2>/dev/null || return 1
+            case "$srv" in
+                xray) [[ -f "$root/usr/local/etc/xray/config.json" ]] || return 1 ;;
+                sing-box) [[ -f "$root/etc/sing-box/config.json" ]] || return 1 ;;
+                hysteria) [[ -f "$root/etc/hysteria/config.yaml" ]] || return 1 ;;
+            esac
+        else
+            backup_root_service_is_managed "$root" "$srv" || return 1
+            case "$srv" in
+                xray) [[ -f "$root/usr/local/bin/xray" && -f "$root/usr/local/etc/xray/config.json" ]] || return 1 ;;
+                sing-box) [[ -f "$root/usr/local/bin/sing-box" && -f "$root/etc/sing-box/config.json" ]] || return 1 ;;
+                hysteria) [[ -f "$root/usr/local/bin/hysteria" && -f "$root/etc/hysteria/config.yaml" ]] || return 1 ;;
+            esac
+        fi
     done
     local aux_paths=''
     aux_paths=$(managed_auxiliary_paths) || return 1
@@ -13078,7 +13140,7 @@ assert_restore_shortcut_safe() {
 
 abox_restore_preserved_name() {
     case "$1" in
-        backups|diagnostics|preflight|A-Box.sh|.backup-hmac.key|.runtime.lock|.runtime.lock.d|socket_probe.sh|geo_update.sh|traffic_monitor.sh|firewall_restore.sh|iptables.v4|iptables.v6) return 0 ;;
+        backups|diagnostics|preflight|.tz-rollback|.dns-backup|A-Box.sh|.backup-hmac.key|.runtime.lock|.runtime.lock.d|socket_probe.sh|geo_update.sh|traffic_monitor.sh|firewall_restore.sh|iptables.v4|iptables.v6) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -13239,13 +13301,16 @@ restore_core_family_from_backup() {
         1) return 0 ;;
         *) return 1 ;;
     esac
-    backup_root_service_is_managed "$root" "$srv" || return 1
-    backup_init=$(backup_root_service_init "$root" "$srv") || return 1
-    current_init=$(effective_init_system) || return 1
-    [[ "$backup_init" == "$current_init" ]] || {
-        msg "${RED}[!] Backup for ${srv} uses ${backup_init}, but this VPS uses ${current_init}; refusing cross-init restore.${NC}"
-        return 1
-    }
+    # A-04: Config-only backups have no unit; skip init checks.
+    if ! backup_root_service_is_config_only "$root" "$srv"; then
+        backup_root_service_is_managed "$root" "$srv" || return 1
+        backup_init=$(backup_root_service_init "$root" "$srv") || return 1
+        current_init=$(effective_init_system) || return 1
+        [[ "$backup_init" == "$current_init" ]] || {
+            msg "${RED}[!] Backup for ${srv} uses ${backup_init}, but this VPS uses ${current_init}; refusing cross-init restore.${NC}"
+            return 1
+        }
+    fi
     core_paths=$(core_family_paths "$srv") || return 1
     [[ -n "$core_paths" ]] || return 1
     while IFS= read -r path; do
@@ -14117,6 +14182,21 @@ wallos_pull_or_restore_image() {
     tag=$(wallos_latest_stable_tag 2>/dev/null || true)
     if [[ -n "$tag" ]] && wallos_candidate_version_allowed "$tag"; then
         local image_tag="${tag#v}"
+        # N-2: If the A-Box mirror manifest has the same tag, pull by immutable
+        # digest (not mutable tag). Digest comes from the verified mirror manifest.
+        local _mirror_digest=""
+        _mirror_digest=$(curl -fLsS --connect-timeout 8 --max-time 30 "https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt" 2>/dev/null | awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' || true)
+        if [[ "$_mirror_digest" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]]; then
+            local _manifest_tag
+            _manifest_tag=$(curl -fLsS --connect-timeout 8 --max-time 30 "https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt" 2>/dev/null | awk -F= '$1=="tag" {print $2; exit}' || true)
+            if [[ "$_manifest_tag" == "$tag" ]]; then
+                if docker pull "$_mirror_digest"; then
+                    WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+                    return 0
+                fi
+                msg "${YELLOW}[!] Digest-pinned pull failed; falling back to tag pull.${NC}"
+            fi
+        fi
         if docker pull "bellamy/wallos:$image_tag"; then
             # P2-1: record RepoDigest for auditability (mutable tag alone is not identity).
             local _pulled_digest
@@ -14164,8 +14244,14 @@ wallos_pull_or_restore_image() {
         msg "${RED}Wallos mirror checksum mismatch; refusing to load it.${NC}"
         return 1
     fi
-    if ! gzip -dc "$work/$asset" | docker load; then
+    # N-3: Verify docker load loaded exactly the single expected image.
+    # Do NOT docker rmi beforehand (would destroy rollback image on load failure).
+    local load_out
+    load_out=$(gzip -dc "$work/$asset" | docker load 2>&1) || { rm -rf -- "$work"; return 1; }
+    if [[ "$(grep -c '^Loaded image:' <<< "$load_out")" -ne 1 ]] ||
+       ! grep -Fqx "Loaded image: bellamy/wallos:${tag#v}" <<< "$load_out"; then
         rm -rf -- "$work"
+        msg "${RED}Wallos archive did not load the single expected image bellamy/wallos:${tag#v}.${NC}"
         return 1
     fi
     # D-2-FIX: Fail-closed digest check. Manifest is now hash-verified above.
@@ -14175,7 +14261,8 @@ wallos_pull_or_restore_image() {
     local expected_digest
     expected_digest=$(awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' "$work/wallos-manifest.txt")
     # Require digest present and format-valid (fail-closed if missing/malformed).
-    if [[ ! "$expected_digest" =~ ^bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]]; then
+    # Allow optional docker.io/ prefix (containerd image store).
+    if [[ ! "$expected_digest" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]]; then
         rm -rf -- "$work"
         msg "${RED}Wallos manifest is missing a valid image_digest.$arch; refusing to load.${NC}"
         return 1
@@ -14553,9 +14640,10 @@ wallos_install_or_update() {
         tz=$(current_timezone_name 2>/dev/null || printf 'UTC')
         valid_timezone_name "$tz" || tz='UTC'
     fi
-    # C-03: F-09 preserved bind (any valid IP, e.g. LAN/Tailscale) is allowed.
+    # C-03: Wallos container listens on IPv4 only. Require IPv4 (no CIDR suffix).
+    # F-09 preserved bind (any valid IPv4, e.g. LAN/Tailscale) is allowed.
     # Only an explicit WALLOS_BIND_ADDRESS override is restricted to loopback/all.
-    valid_ip_address "$bind_address" || { msg "${RED}WALLOS_BIND_ADDRESS is not a valid IP address: $bind_address${NC}"; return 1; }
+    valid_ipv4_cidr "$bind_address" && [[ "$bind_address" != */* ]] || { msg "${RED}WALLOS_BIND_ADDRESS is not a valid IPv4 address: $bind_address${NC}"; return 1; }
     if [[ -n "${WALLOS_BIND_ADDRESS:-}" && "$bind_address" != 127.0.0.1 && "$bind_address" != 0.0.0.0 ]]; then
         msg "${RED}WALLOS_BIND_ADDRESS override must be 127.0.0.1 or 0.0.0.0.${NC}"; return 1
     fi

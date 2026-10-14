@@ -12002,11 +12002,20 @@ validate_abox_cron_file() {
 import sys
 from pathlib import Path
 lines=Path(sys.argv[1]).read_text(encoding='utf-8',errors='strict').splitlines()
+# A-06-FIX: Accept BOTH formats (writes only produce new format).
+# Old format must still validate for backward compat (existing hosts + v3 backups).
 allowed={
- # A-06-FIX: No outer flock (internal flock -n 9 under umask 077).
- 'PROBE':'* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1',
- 'GEO':'0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1',
- 'TRAFFIC':'* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1',
+ 'PROBE':{
+  '* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1',
+  '* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1',
+ },
+ 'GEO':{
+  '0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1',
+  '0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1',
+ },
+ 'TRAFFIC':{
+  '* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1',
+ },
 }
 i=0; seen=set()
 while i < len(lines):
@@ -12014,7 +12023,7 @@ while i < len(lines):
     if not (lines[i].startswith('# A-Box ') and lines[i].endswith(' BEGIN')): raise SystemExit(1)
     name=lines[i][8:-6]
     if name not in allowed or name in seen or i+2 >= len(lines): raise SystemExit(1)
-    if lines[i+1] != allowed[name] or lines[i+2] != f'# A-Box {name} END': raise SystemExit(1)
+    if lines[i+1] not in allowed[name] or lines[i+2] != f'# A-Box {name} END': raise SystemExit(1)
     seen.add(name); i+=3
 PY_ABOX_CRON
 }

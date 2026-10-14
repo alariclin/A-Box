@@ -1099,14 +1099,16 @@ validate_abox_env_semantics() {
     # F-04: validate persisted fields that were previously unchecked on load.
     if [[ -n "${SS_WHITELIST_IP:-}" ]]; then
         local _wl_ip
-        for _wl_ip in ${SS_WHITELIST_IP:-}; do
+        local -a _wl_ips=()
+        read -r -a _wl_ips <<< "${SS_WHITELIST_IP:-}"
+        for _wl_ip in "${_wl_ips[@]}"; do
             valid_ipv4_cidr "$_wl_ip" || valid_ipv6_cidr "$_wl_ip" || return 1
         done
     fi
     [[ -z "${HY2_ACME_DNS_PROVIDER:-}" || "${HY2_ACME_DNS_PROVIDER:-}" == cloudflare ]] || return 1
     [[ -z "${HY2_ACME_DNS_CF_API_TOKEN:-}" ]] || valid_single_line_secret "$HY2_ACME_DNS_CF_API_TOKEN" 512 || return 1
-    # P3-1: PUBLIC_KEY (X25519) must be 44-char base64 ending in =.
-    [[ -z "${PUBLIC_KEY:-}" || "${PUBLIC_KEY:-}" =~ ^[A-Za-z0-9+/]{43}=$ ]] || return 1
+    # P3-1: PUBLIC_KEY (X25519) accepts 43-char RawURLEncoding (Xray/sing-box native, no padding) or 44-char padded base64.
+    [[ -z "${PUBLIC_KEY:-}" || "${PUBLIC_KEY:-}" =~ ^[A-Za-z0-9+/_-]{43}=?$ ]] || return 1
     # P3-3: HY2_CERT_PUBKEY_SHA256_B64 validated here on load, not only at use-site.
     [[ -z "${HY2_CERT_PUBKEY_SHA256_B64:-}" || "${HY2_CERT_PUBKEY_SHA256_B64:-}" =~ ^[A-Za-z0-9+/]{43}=$ ]] || return 1
     # P3-2: passwords must be single-line secrets (prevents JSON injection via .env).
@@ -5154,7 +5156,7 @@ resolve_core_release_target() {
                     # Calling core_stable_release_age_days would fail again (it needs API).
                     # Skip cooldown, trust mirror version with format validation.
                     # Mirror is maintained by weekly workflow that enforces cooldown at build time.
-                    if [[ "$latest" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z._-]+)?$ ]]; then
+                    if [[ "$latest" =~ ^(app/)?v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z._-]+)?$ ]]; then
                         target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；直接信任镜像版本 $target（跳过实时冷却期查询，镜像构建时已执行冷却校验）。${NC}" >&2
                     else
                         target=$(core_release_mirror_version "$repo") || return 1; source='mirror'; msg "${YELLOW}[!] 镜像版本格式非法，回退到固定兼容版本 $target。${NC}" >&2
@@ -6792,7 +6794,7 @@ build_xray_config() {
     inbounds_json=$(jq -n \
         --arg mode "$mode" \
         --arg listen_addr "$listen_addr" \
-        --arg uuid "$UUID" \
+        --arg uuid "${UUID:-}" \
         --arg v_sni "${VISION_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
         --arg x_sni "${XHTTP_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
         --arg pk "${PK:-}" \
@@ -6800,7 +6802,7 @@ build_xray_config() {
         --argjson vport "${VLESS_PORT:-443}" \
         --argjson xport "${XHTTP_PORT:-8443}" \
         --argjson ssport "${SS_PORT:-2053}" \
-        --arg ss_pass "$SS_PASS" \
+        --arg ss_pass "${SS_PASS:-}" \
         --argjson sock "$sockopt_json" '
         def maybe_sock: if $sock == null then {} else {sockopt:$sock} end;
         def vision:
@@ -6855,7 +6857,7 @@ build_singbox_config() {
     # server up == client download and server down == client upload, so the
     # values intentionally map to up_mbps=HY2_DOWN and down_mbps=HY2_UP.
     inbounds_json=$(jq -n \
-        --arg mode "$mode" --arg uuid "$UUID" --arg listen_addr "$listen_addr" \
+        --arg mode "$mode" --arg uuid "${UUID:-}" --arg listen_addr "$listen_addr" \
         --arg v_sni "${VISION_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
         --arg x_sni "${XHTTP_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
         --arg pk "${PK:-}" --arg sid "${SHORT_ID:-}" \

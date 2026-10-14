@@ -82,10 +82,12 @@ jobs:
             echo "::error::Wallos source URL does not resolve to commit $tag_commit_sha (got $effective_url)"
             exit 1
           }
+          # N-11: versioned source filename (immutable).
+          local source_asset="wallos-source-${tag}.tar.gz"
           curl -fL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 300 \
-            "$source_url" -o wallos-source.tar.gz
-          gzip -t wallos-source.tar.gz
-          tar -tzf wallos-source.tar.gz > "$RUNNER_TEMP/wallos-source-list.txt"
+            "$source_url" -o "$source_asset"
+          gzip -t "$source_asset"
+          tar -tzf "$source_asset" > "$RUNNER_TEMP/wallos-source-list.txt"
           grep -Eq '(^|/)LICENSE\.md$' "$RUNNER_TEMP/wallos-source-list.txt" || {
             echo "::error::Wallos source archive does not contain LICENSE.md"
             exit 1
@@ -93,7 +95,8 @@ jobs:
 
           pull_save_image() {
             local arch="$1" platform="$2" image="bellamy/wallos:${image_tag}"
-            local asset="wallos-linux-${arch}.tar.gz" actual
+            # N-11: immutable versioned filenames (required for 3-version retention).
+            local asset="wallos-linux-${arch}-${tag}.tar.gz" actual
             echo "Pulling ${image} for ${platform}"
             docker pull --platform "$platform" "$image"
             actual="$(docker image inspect --format '{{.Os}}/{{.Architecture}}{{if .Variant}}/{{.Variant}}{{end}}' "$image")"
@@ -120,7 +123,9 @@ jobs:
           pull_save_image armv7 linux/arm/v7
 
           retrieved_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          cat > wallos-manifest.txt <<EOF
+          # N-11: per-version manifest (immutable, versioned filename).
+          local manifest_asset="wallos-manifest-${tag}.txt"
+          cat > "$manifest_asset" <<EOF
           tag=${tag}
           image=bellamy/wallos
           image_tag=${image_tag}
@@ -134,31 +139,70 @@ jobs:
           platform.armv7=linux/arm/v7
           EOF
 
-          # D-2: Include wallos-manifest.txt in SHA256SUMS so consumers can
-          # verify the manifest itself (previously only 4 tar.gz files were listed).
-          # FIX: Hash ONLY the 4 tarballs first (NOT the manifest), because the
-          # manifest is mutated below (SHA lines appended). Hashing the manifest
-          # before mutation would record a stale hash and break the line count.
-          sha256sum wallos-source.tar.gz \
-            wallos-linux-amd64.tar.gz \
-            wallos-linux-arm64.tar.gz \
-            wallos-linux-armv7.tar.gz > SHA256SUMS
+          # N-11: Hash the 4 versioned tarballs (NOT the manifest yet, as it
+          # is mutated below with SHA lines appended).
+          sha256sum "$source_asset" \
+            "wallos-linux-amd64-${tag}.tar.gz" \
+            "wallos-linux-arm64-${tag}.tar.gz" \
+            "wallos-linux-armv7-${tag}.tar.gz" > SHA256SUMS.new
 
           {
-            echo "source_sha256=$(awk '$2=="wallos-source.tar.gz" {print $1}' SHA256SUMS)"
-            echo "amd64_sha256=$(awk '$2=="wallos-linux-amd64.tar.gz" {print $1}' SHA256SUMS)"
-            echo "arm64_sha256=$(awk '$2=="wallos-linux-arm64.tar.gz" {print $1}' SHA256SUMS)"
-            echo "armv7_sha256=$(awk '$2=="wallos-linux-armv7.tar.gz" {print $1}' SHA256SUMS)"
-          } >> wallos-manifest.txt
+            echo "source_sha256=$(awk -v f="$source_asset" '$2==f {print $1}' SHA256SUMS.new)"
+            echo "amd64_sha256=$(awk -v f="wallos-linux-amd64-${tag}.tar.gz" '$2==f {print $1}' SHA256SUMS.new)"
+            echo "arm64_sha256=$(awk -v f="wallos-linux-arm64-${tag}.tar.gz" '$2==f {print $1}' SHA256SUMS.new)"
+            echo "armv7_sha256=$(awk -v f="wallos-linux-armv7-${tag}.tar.gz" '$2==f {print $1}' SHA256SUMS.new)"
+          } >> "$manifest_asset"
 
+          # D-2: Include the versioned manifest in SHA256SUMS (final content).
+          sha256sum "$manifest_asset" >> SHA256SUMS.new
+          test "$(grep -cE '^[A-Fa-f0-9]{64}  ' SHA256SUMS.new)" -eq 5
+          sha256sum -c SHA256SUMS.new
 
-          # Boundary 2: Add final manifest (after SHA appends) to SHA256SUMS.
-          # Client verifies manifest hash against SHA256SUMS (D-2 fail-closed).
-          # The manifest hash recorded here is the FINAL content (post-append).
-          # Total: 4 tarballs + final manifest = 5 lines.
-          sha256sum wallos-manifest.txt >> SHA256SUMS
-          test "$(grep -cE '^[A-Fa-f0-9]{64}  ' SHA256SUMS)" -eq 5
-          sha256sum -c SHA256SUMS
+          # N-11: Merge with existing SHA256SUMS (cumulative, 3-version retention).
+          # Download existing SHA256SUMS from the wallos-mirror release (if any),
+          # verify no hash conflicts, append new entries, sort, prune old versions.
+          : > SHA256SUMS
+          if gh release view wallos-mirror --json assets -q '.assets[].name' 2>/dev/null | grep -qx 'SHA256SUMS'; then
+            gh release download wallos-mirror -p 'SHA256SUMS' -O SHA256SUMS.existing 2>/dev/null || true
+            if [[ -s SHA256SUMS.existing ]]; then
+              # Conflict check: same filename must not appear with a different hash.
+              while read -r old_hash _old_name; do
+                [[ "$old_hash" =~ ^[A-Fa-f0-9]{64}$ ]] || continue
+                new_hash=$(awk -v f="$_old_name" '$2==f {print $1; exit}' SHA256SUMS.new 2>/dev/null || true)
+                if [[ -n "$new_hash" && "${new_hash,,}" != "${old_hash,,}" ]]; then
+                  echo "::error::SHA256SUMS conflict for $_old_name (existing hash differs from new)"
+                  exit 1
+                fi
+              done < <(awk '{print $1, $2}' SHA256SUMS.existing)
+              # Keep existing entries that are NOT being replaced by this version.
+              # (New entries for the same filenames in SHA256SUMS.new take precedence.)
+              while read -r e_hash e_name; do
+                [[ "$e_hash" =~ ^[A-Fa-f0-9]{64}$ ]] || continue
+                if ! awk -v f="$e_name" '$2==f {found=1; exit} END{exit !found}' SHA256SUMS.new; then
+                  printf '%s  %s\n' "$e_hash" "$e_name" >> SHA256SUMS
+                fi
+              done < <(awk '{print $1, $2}' SHA256SUMS.existing)
+            fi
+          fi
+          cat SHA256SUMS.new >> SHA256SUMS
+          sort -k2,2 -u SHA256SUMS -o SHA256SUMS
+
+          # N-11: Prune to newest 3 versions. Parse versions from filenames.
+          mapfile -t all_versions < <(awk '{print $2}' SHA256SUMS | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -uV)
+          prune_versions=()
+          if ((${#all_versions[@]} > 3)); then
+            prune_versions=("${all_versions[@]:0:$((${#all_versions[@]} - 3))}")
+            for pv in "${prune_versions[@]}"; do
+              grep -vF -- "$pv" SHA256SUMS > SHA256SUMS.tmp || true
+              mv -f SHA256SUMS.tmp SHA256SUMS
+            done
+          fi
+          # N-11: Write version index (newest first) for clients.
+          printf '%s\n' "${all_versions[@]}" | sort -rV > wallos-versions.txt
+          # N-11: 1.5 GB cap on total release payload (excluding SHA256SUMS/versions/manifests is fine;
+          # we check the tarballs we built plus a proportional estimate — here we check our new tarballs;
+          # the publish step enforces the cap against actual release assets).
+          sha256sum -c SHA256SUMS.new
 
       - name: Prepare benchmark and IP-quality tool mirror
         id: test_tool_assets
@@ -300,12 +344,45 @@ jobs:
 
           notes="$RUNNER_TEMP/wallos-notes.md"
           cat > "$notes" <<'EOF'
-          Stable, fixed-name recovery assets for the Wallos installer.
+          N-11: Versioned recovery assets for the Wallos installer (newest 3 stable versions retained).
           The installer uses this Release only when upstream stable-release metadata or Docker Hub retrieval fails.
-          Assets include Docker image archives for amd64, arm64, and armv7, the upstream source archive, a manifest, and SHA256SUMS.
+          Assets include per-version Docker image archives for amd64, arm64, and armv7, the upstream source archive,
+          a per-version manifest, a version index (wallos-versions.txt), and cumulative SHA256SUMS.
           The publishing workflow verifies archive integrity, platform identity, and SHA-256 before upload.
           EOF
-          publish_release wallos-mirror "Wallos Recovery Mirror" "$notes" "$GITHUB_WORKSPACE/dist/wallos"
+          # N-11: Delete pruned old-version assets from the release.
+          # Recompute prune list from the merged SHA256SUMS (same logic as build step).
+          _dist="$GITHUB_WORKSPACE/dist/wallos"
+          if [[ -f "$_dist/wallos-versions.txt" ]]; then
+            mapfile -t _kept < "$_dist/wallos-versions.txt"
+            # List release assets matching old versioned wallos filenames, delete those not in kept versions.
+            while read -r _asset; do
+              [[ -n "$_asset" ]] || continue
+              _keep=0
+              for _kv in "${_kept[@]}"; do
+                if [[ "$_asset" == *"$_kv"* ]]; then _keep=1; break; fi
+              done
+              # Always keep SHA256SUMS and wallos-versions.txt themselves.
+              if [[ "$_asset" == SHA256SUMS || "$_asset" == wallos-versions.txt ]]; then _keep=1; fi
+              if (( _keep == 0 )); then
+                echo "N-11: deleting pruned asset $_asset from wallos-mirror"
+                gh release delete-asset wallos-mirror "$_asset" -y 2>/dev/null || true
+              fi
+            done < <(gh release view wallos-mirror --json assets -q '.assets[].name' 2>/dev/null || true)
+          fi
+          # N-11: 1.5 GB cap — check total release asset size after pruning, before upload.
+          _total=0
+          while read -r _sz; do _total=$(( _total + ${_sz:-0} )); done < <(gh release view wallos-mirror --json assets -q '.assets[].size' 2>/dev/null || true)
+          _new_total=0
+          while read -r _f; do
+            [[ -f "$_f" ]] || continue
+            _new_total=$(( _new_total + $(stat -c%s "$_f" 2>/dev/null || echo 0) ))
+          done < <(find "$_dist" -maxdepth 1 -type f ! -name 'SHA256SUMS.existing' ! -name 'SHA256SUMS.new' -print)
+          if (( _total + _new_total > 1610612736 )); then
+            echo "::error::N-11: wallos-mirror would exceed 1.5GB cap (existing ${_total} + new ${_new_total})"
+            exit 1
+          fi
+          publish_release wallos-mirror "Wallos Recovery Mirror" "$notes" "$_dist"
 
       - name: Publish test-tool stable recovery Release
         if: always() && github.event_name == 'workflow_dispatch' && inputs.refresh_test_tool_mirror && steps.test_tool_assets.outcome == 'success'

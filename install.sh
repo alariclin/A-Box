@@ -1610,6 +1610,18 @@ remove_optional_package() {
     esac
 }
 
+# BUG-28: hoisted from ensure_commands(). Redesigned as a query function:
+# prints the package name to install when $2 is missing, prints nothing when present.
+# $1=release (debian|ubuntu|centos|alpine); unknown release prints nothing (no-op).
+__abox_missing_pkg_for() {
+    local release="$1" cmd="$2" deb="$3" rpm="$4" apk="$5"
+    command -v "$cmd" >/dev/null 2>&1 && return 0
+    case "$release" in
+        debian|ubuntu) printf '%s\n' "$deb" ;;
+        centos) printf '%s\n' "$rpm" ;;
+        alpine) printf '%s\n' "$apk" ;;
+    esac
+}
 ensure_commands() {
     local missing_pkgs=()
     local -a _ens_install_cmd=()
@@ -1618,32 +1630,41 @@ ensure_commands() {
         alpine) _ens_install_cmd=(apk add) ;;
         centos) if command -v dnf >/dev/null 2>&1; then _ens_install_cmd=(dnf -y install --allowerasing); else _ens_install_cmd=(yum -y install); fi ;;
     esac
-    need_cmd_pkg() {
-        local cmd="$1" deb="$2" rpm="$3" apk="$4"
-        command -v "$cmd" >/dev/null 2>&1 && return 0
-        case "$release" in
-            debian|ubuntu) missing_pkgs+=("$deb") ;;
-            centos) missing_pkgs+=("$rpm") ;;
-            alpine) missing_pkgs+=("$apk") ;;
-        esac
-    }
-    need_cmd_pkg curl curl curl curl
-    need_cmd_pkg jq jq jq jq
-    need_cmd_pkg openssl openssl openssl openssl
-    need_cmd_pkg bc bc bc bc
-    need_cmd_pkg unzip unzip unzip unzip
-    need_cmd_pkg tar tar tar tar
-    need_cmd_pkg iptables iptables iptables iptables
-    need_cmd_pkg ss iproute2 iproute iproute2
-    need_cmd_pkg lsof lsof lsof lsof
-    need_cmd_pkg getent libc-bin glibc-common libc-utils
-    need_cmd_pkg flock util-linux util-linux util-linux
-    need_cmd_pkg cmp diffutils diffutils diffutils
-    need_cmd_pkg crontab cron cronie cronie
-    need_cmd_pkg logrotate logrotate logrotate logrotate
-    need_cmd_pkg python3 python3 python3 python3
-    need_cmd_pkg groupadd passwd shadow-utils shadow
-    need_cmd_pkg useradd passwd shadow-utils shadow
+    local _pkg
+    _pkg=$(__abox_missing_pkg_for "$release" curl curl curl curl)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" jq jq jq jq)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" openssl openssl openssl openssl)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" bc bc bc bc)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" unzip unzip unzip unzip)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" tar tar tar tar)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" iptables iptables iptables iptables)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" ss iproute2 iproute iproute2)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" lsof lsof lsof lsof)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" getent libc-bin glibc-common libc-utils)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" flock util-linux util-linux util-linux)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" cmp diffutils diffutils diffutils)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" crontab cron cronie cronie)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" logrotate logrotate logrotate logrotate)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" python3 python3 python3 python3)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" groupadd passwd shadow-utils shadow)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     if (( ${#missing_pkgs[@]} > 0 )); then
         local -a unique_pkgs=()
         mapfile -t unique_pkgs < <(printf '%s\n' "${missing_pkgs[@]}" | awk 'NF && !seen[$0]++')
@@ -17440,8 +17461,8 @@ PY_SELFTEST_TAR
     grep -Fq 'en:reality_non443_warn)' "$0" || { echo 'FAIL: English non-443 SNI warning translation missing'; failures=$((failures + 1)); }
     grep -Fq 'en:apple_sni_warn)' "$0" || { echo 'FAIL: English Apple/iCloud SNI warning translation missing'; failures=$((failures + 1)); }
     declare -F sni_domain_public_dns >/dev/null 2>&1 || { echo 'FAIL: SNI public-DNS guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'need_cmd_pkg groupadd passwd shadow-utils shadow' "$0" || { echo 'FAIL: group management dependency mapping missing'; failures=$((failures + 1)); }
-    grep -Fq 'need_cmd_pkg useradd passwd shadow-utils shadow' "$0" || { echo 'FAIL: user management dependency mapping missing'; failures=$((failures + 1)); }
+    grep -Fq '__abox_missing_pkg_for "$release" groupadd passwd shadow-utils shadow' "$0" || { echo 'FAIL: group management dependency mapping missing'; failures=$((failures + 1)); }
+    grep -Fq '__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow' "$0" || { echo 'FAIL: user management dependency mapping missing'; failures=$((failures + 1)); }
     grep -Fq 'addgroup -S "$group"' "$0" || { echo 'FAIL: Alpine BusyBox addgroup fallback missing'; failures=$((failures + 1)); }
     grep -Fq 'adduser -S -D -H -s /sbin/nologin -G "$group" "$user"' "$0" || { echo 'FAIL: Alpine BusyBox adduser fallback missing'; failures=$((failures + 1)); }
     assert_ok valid_ipv4_cidr 192.0.2.1/24

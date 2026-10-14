@@ -3029,12 +3029,6 @@ reorder_one() {
     chown root:root "$lock_file" 2>/dev/null || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; rm -f -- "$lock_file"; return 1; }
     chmod 600 "$lock_file" 2>/dev/null || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; rm -f -- "$lock_file"; return 1; }
 
-    normalize_managed_rule_line() {
-        local line="$1"
-        line=${line//\"/}
-        line=$(printf '%s\n' "$line" | sed -E 's/^(-A[[:space:]]+INPUT([[:space:]]+[^[:space:]]+)*[[:space:]]+-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\4/')
-        printf '%s\n' "$line"
-    }
     capture_firewall_views() {
         local item normalized
         current_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || return 1
@@ -3043,7 +3037,7 @@ reorder_one() {
         while IFS= read -r item; do
             [[ "$item" =~ ^-A[[:space:]]+INPUT[[:space:]] ]] || continue
             if [[ "$item" =~ $wl_re || "$item" =~ $drop_re ]]; then
-                normalized=$(normalize_managed_rule_line "$item") || return 1
+                normalized=$(__abox_normalize_managed_rule_line "$item") || return 1
                 current_target_lines+=("$normalized")
             else
                 current_foreign_lines+=("$item")

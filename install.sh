@@ -2231,7 +2231,8 @@ prepare_hysteria_acme_dir_ownership() {
             return 1
         fi
         chown "root:$group" "$dir" || return 1
-        chmod 770 "$dir" || return 1
+        # A-03: Sticky bit (1770) prevents group members from deleting/replacing others' files (TOCTOU).
+        chmod 1770 "$dir" || return 1
         hysteria_acme_dir_runtime_permissions_valid "$dir" || return 1
         mark_hysteria_acme_dir_managed "$dir" "$marker" || return 1
         return 0
@@ -2863,6 +2864,8 @@ write_abox_firewall_restore_script() {
     cat > "$tmp" <<'EOF_ABOX_FW_RESTORE'
 #!/usr/bin/env bash
 # Managed by A-Box
+# A-06: umask 077 ensures lock/temp files are 0600 (not world-readable 0644).
+umask 077
 set -o pipefail
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 read_ip_pref() {
@@ -6040,6 +6043,8 @@ setup_health_monitor() {
     write_file_atomically_from_stdin "$ABOX_DIR/socket_probe.sh" 700 <<'EOF_PROBE' || die '健康探针原子写入失败。'
 #!/usr/bin/env bash
 # Managed by A-Box
+# A-06: umask 077 ensures lock/temp files are 0600 (not world-readable 0644).
+umask 077
 set -o pipefail
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 ENV=/etc/ddr/.env
@@ -6276,6 +6281,8 @@ setup_geo_cron() {
     write_file_atomically_from_stdin "$ABOX_DIR/geo_update.sh" 700 <<'EOF_GEO' || die 'Geo 更新脚本原子写入失败。'
 #!/usr/bin/env bash
 # Managed by A-Box
+# A-06: umask 077 ensures lock/temp files are 0600 (not world-readable 0644).
+umask 077
 set -o pipefail
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 GEO_REPO='Loyalsoldier/v2ray-rules-dat'
@@ -6514,6 +6521,8 @@ pre_install_setup() {
 
     INGRESS_IF=$(get_active_interface)
     [[ -z "$INGRESS_IF" ]] && die '无法识别公网入接口。'
+    # A-02: Validate interface name before interpolating into ExecStartPre (command injection).
+    valid_interface_name "$INGRESS_IF" || die '网卡名称非法。'
     GLOBAL_PUBLIC_IP=$(refresh_public_ip)
 
     # Resolve one SNI per REALITY deployment. Amazon is used only after a live
@@ -7063,7 +7072,8 @@ deploy_official_hy2() {
 
     if [[ "${HY2_HOP:-}" == 'true' ]]; then
         HY2_LISTEN=":${HY2_RANGE_START}-${HY2_RANGE_END}"
-        HY2_CAPS='CAP_NET_ADMIN CAP_NET_BIND_SERVICE'
+        # A-02: CAP_NET_ADMIN removed (firewall runs as root via ExecStartPre+; service does not need it).
+        HY2_CAPS='CAP_NET_BIND_SERVICE'
     else
         HY2_LISTEN=":${HY2_BASE_PORT}"
     fi
@@ -7575,7 +7585,8 @@ deploy_singbox() {
     /usr/local/bin/sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1 || die 'Sing-box 配置校验失败。'
 
     if [[ "$MODE_IN" == *'HY2'* || "$MODE_IN" == *'ALL'* ]] && [[ "${HY2_HOP:-}" == 'true' ]]; then
-        SB_CAPS='CAP_NET_ADMIN CAP_NET_BIND_SERVICE'
+        # A-02: CAP_NET_ADMIN removed (see HY2_CAPS).
+        SB_CAPS='CAP_NET_BIND_SERVICE'
         SB_PRE_START="ExecStartPre=-+/bin/sh -c '$IPT -w -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true'
 ExecStartPre=+/bin/sh -c '$IPT -w -t nat -A PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT'"
         SB_POST_STOP="ExecStopPost=-+/bin/sh -c '$IPT -w -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true'"
@@ -7702,6 +7713,8 @@ setup_traffic_monitor() {
     write_file_atomically_from_stdin "$ABOX_DIR/traffic_monitor.sh" 700 <<'EOF_TRAFFIC' || die '流量监控脚本原子写入失败。'
 #!/usr/bin/env bash
 # Managed by A-Box
+# A-06: umask 077 ensures lock/temp files are 0600 (not world-readable 0644).
+umask 077
 set -o pipefail
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 ENV=/etc/ddr/.env
@@ -8412,8 +8425,11 @@ traffic_quota_transaction_rollback() {
             (( rc == 0 )) && mv -f -- "$envtmp" "$ABOX_ENV" || rm -f -- "$envtmp"
         fi
     fi
-    if [[ -s "$tx_dir/pre.desired" ]]; then IFS= read -r current_state < "$tx_dir/pre.desired" && write_private_line "$ABOX_DESIRED_STATE" "$current_state" || rc=1; else rm -f -- "$ABOX_DESIRED_STATE" 2>/dev/null || true; fi
-    if [[ -s "$tx_dir/pre.block" ]]; then IFS= read -r current_state < "$tx_dir/pre.block" && write_private_line "$ABOX_TRAFFIC_BLOCK_STATE" "$current_state" || rc=1; else rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" 2>/dev/null || true; fi
+    # C-06: write_private_line undefined in main script (only in generated traffic_monitor.sh).
+    if [[ -s "$tx_dir/pre.desired" ]]; then IFS= read -r current_state < "$tx_dir/pre.desired" && printf '%s\n' "$current_state" | write_file_atomically_from_stdin "$ABOX_DESIRED_STATE" 600 || rc=1; else rm -f -- "$ABOX_DESIRED_STATE" 2>/dev/null || true; fi
+    if [[ -s "$tx_dir/pre.block" ]]; then IFS= read -r current_state < "$tx_dir/pre.block" && printf '%s\n' "$current_state" | write_file_atomically_from_stdin "$ABOX_TRAFFIC_BLOCK_STATE" 600 || rc=1; else rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" 2>/dev/null || true; fi
+    # C-06: Restore authoritative pair-state.
+    if [[ -s "$tx_dir/pre.pair" ]]; then cp -a -- "$tx_dir/pre.pair" "$ABOX_TRAFFIC_PAIR_STATE" || rc=1; else rm -f -- "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || true; fi
 
     if [[ -f "$tx_dir/pre.cron.traffic" ]]; then
         if traffic_restore_cron_block "$tx_dir/pre.cron.traffic" "$expected_block"; then :; else cron_rc=$?; rc=1; fi
@@ -8450,6 +8466,8 @@ prepare_traffic_quota_transaction() {
     grep -E '^TRAFFIC_LIMIT_(GB|MODE)=' "$ABOX_ENV" > "$traffic_env_tmp" || :
     [[ -f "$ABOX_DESIRED_STATE" ]] && { cp -a -- "$ABOX_DESIRED_STATE" "$tx_dir/pre.desired" || return 1; } || :
     [[ -f "$ABOX_TRAFFIC_BLOCK_STATE" ]] && { cp -a -- "$ABOX_TRAFFIC_BLOCK_STATE" "$tx_dir/pre.block" || return 1; } || :
+    # C-06: Backup authoritative pair-state (was missing).
+    [[ -f "$ABOX_TRAFFIC_PAIR_STATE" ]] && { cp -a -- "$ABOX_TRAFFIC_PAIR_STATE" "$tx_dir/pre.pair" || return 1; } || :
     current=$(umask 077; mktemp /tmp/A-Box-traffic-precron.XXXXXX) || return 1
     read_crontab_to_file "$current" || { rm -f -- "$current"; return 1; }
     awk 'BEGIN{p=0} $0=="# A-Box TRAFFIC BEGIN"{p=1} p{print} $0=="# A-Box TRAFFIC END"{exit}' "$current" > "$tx_dir/pre.cron.traffic" || { rm -f -- "$current"; return 1; }
@@ -9393,6 +9411,8 @@ sync_uuids_into_xray_config() {
         XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
     fi
     install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
+    # C-02: Restore abox-xray read permission (install_file_atomically creates root:root 600).
+    prepare_abox_runtime_permissions xray || { rm -f "$tmp"; return 1; }
     rm -f "$tmp"
     return 0
 }
@@ -9415,6 +9435,8 @@ export_lightweight_subscription() {
     uri_file="$SUBSCRIBE_DIR/uri-list.txt"
     b64_file="$SUBSCRIBE_DIR/subscription.base64"
     : > "$uri_file" || return 1
+    # A-05c: Subscription files contain UUIDs/keys; restrict to owner-only.
+    chmod 600 "$uri_file" || return 1
     if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" ]] || continue
@@ -9433,6 +9455,7 @@ export_lightweight_subscription() {
     fi
     if command -v base64 >/dev/null 2>&1; then
         base64 -w0 < "$uri_file" > "$b64_file" 2>/dev/null || base64 < "$uri_file" | tr -d '\n' > "$b64_file"
+    chmod 600 "$b64_file" 2>/dev/null || true
     fi
     clash_file=$(write_clash_yaml 2>/dev/null || true)
     msg "${GREEN}URI list: ${uri_file}${NC}"
@@ -11064,7 +11087,8 @@ asn_lookup_ip() {
     uid=$(stat -c %u "$cache_dir" 2>/dev/null) || return 1
     gid=$(stat -c %g "$cache_dir" 2>/dev/null) || return 1
     mode=$(stat -c %a "$cache_dir" 2>/dev/null) || return 1
-    [[ "$uid" == 0 && "$gid" == 0 && "$mode" =~ ^0700$ ]] || return 1
+    # C-05: stat -c %a outputs "700" (no leading 0), not "0700".
+    [[ "$uid" == 0 && "$gid" == 0 && "$mode" =~ ^0?700$ ]] || return 1
     # Global short-circuit after ipinfo.io rate-limit (429) for this SNI run.
     if [[ -f "$cache_dir/.rate_limited" ]]; then
         printf 'asn=unknown\tcountry=unknown\torg=unknown'
@@ -11878,7 +11902,7 @@ import os
 import re
 import sys
 
-text = os.fdopen(3, "r", encoding="utf-8", errors="strict").read()
+text = os.fdopen(3, "r", encoding="utf-8", errors="replace").read()
 secret = re.compile(
     r"(uuid|private.?key|public.?key|short.?id|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)",
     re.I,
@@ -11933,7 +11957,7 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)([\"']?(?:private.?key|public.?key|short.?id|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie)[\"']?\s*[:=]\s*)([\"']?)[^,}\s\"']+\2",
+        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?id|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie)[\"']?\s*[:=]\s*)([\"']?)[^,}\s\"']+\2",
         r'\1"***REDACTED***"',
         text,
     )
@@ -12644,7 +12668,8 @@ PY_LEGACY_EXTRACT
             [[ -e "$unit" ]] || continue
             [[ -f "$unit" && ! -L "$unit" ]] || { rm -rf "$work"; die "Legacy service member is not a regular file: $unit"; }
             case "$srv" in
-                xray) grep -Fq '/usr/local/bin/xray' "$unit" && grep -Fq '/usr/local/etc/xray/config.json' "$unit" || { rm -rf "$work"; die 'Legacy Xray unit fingerprint rejected.'; } ;;
+                # A-04: Reject ExecStartPre/ExecStartPost (could be malicious) in legacy units.
+                xray) ! grep -Eq '^[[:space:]]*Exec(StartPre|StartPost|Reload|StopPost)=' "$unit" && grep -Fq '/usr/local/bin/xray' "$unit" && grep -Fq '/usr/local/etc/xray/config.json' "$unit" || { rm -rf "$work"; die 'Legacy Xray unit fingerprint rejected.'; } ;;
                 sing-box) grep -Fq '/usr/local/bin/sing-box' "$unit" && grep -Fq '/etc/sing-box/config.json' "$unit" || { rm -rf "$work"; die 'Legacy sing-box unit fingerprint rejected.'; } ;;
                 hysteria) grep -Fq '/usr/local/bin/hysteria' "$unit" && grep -Fq '/etc/hysteria/config.yaml' "$unit" || { rm -rf "$work"; die 'Legacy Hysteria unit fingerprint rejected.'; } ;;
             esac
@@ -13209,7 +13234,8 @@ backup_current_config() {
         # a nested mount must never be traversed by tar during backup. This also
         # catches same-device bind mounts that --one-file-system cannot detect.
         path_tree_has_nested_mountpoint "$ABOX_DIR" && backup_failed=1
-        _abox_links=$(find "$ABOX_DIR" -path "$ABOX_DIR/backups" -prune -o -path "$ABOX_DIR/diagnostics" -prune -o -path "$ABOX_DIR/preflight" -prune -o -type l -print 2>/dev/null) || backup_failed=1
+        # C-04: Exclude .tz-rollback/.dns-backup (contain symlinks from cp -a of /etc/localtime, /etc/resolv.conf).
+        _abox_links=$(find "$ABOX_DIR" -path "$ABOX_DIR/backups" -prune -o -path "$ABOX_DIR/diagnostics" -prune -o -path "$ABOX_DIR/preflight" -prune -o -path "$ABOX_DIR/.tz-rollback" -prune -o -path "$ABOX_DIR/.dns-backup" -prune -o -type l -print 2>/dev/null) || backup_failed=1
         if [[ -n "${_abox_links:-}" ]]; then
             backup_failed=1
         else
@@ -13260,19 +13286,17 @@ backup_current_config() {
         # External destinations leave ABOX_DIR (and .backup-hmac.key) behind.
         # Write the recovery key primarily under /root/A-Box-backup-keys/ (mode 700)
         # and also place a discoverable ${tarball}.key sidecar for restore helpers.
-        local recovery_key="${tarball}.key" key_value keys_dir='/root/A-Box-backup-keys' separated_key
+        local key_value keys_dir='/root/A-Box-backup-keys' separated_key
         separated_key="$keys_dir/$(basename "$tarball").key"
         IFS= read -r key_value < "$ABOX_BACKUP_KEY" || { rm -rf "$work"; rm -f "$tarball" "${tarball}.sha256" "${tarball}.hmac"; die 'External backup recovery key read failed.'; }
         install -d -m 700 -o root -g root -- "$keys_dir" || { rm -rf "$work"; rm -f "$tarball" "${tarball}.sha256" "${tarball}.hmac"; die 'Backup keys directory creation failed.'; }
         if [[ ! -e "$separated_key" && ! -L "$separated_key" ]]; then
             write_private_sidecar "$separated_key" "$key_value" || { rm -rf "$work"; rm -f "$tarball" "${tarball}.sha256" "${tarball}.hmac" "$separated_key"; die 'Separated recovery key write failed.'; }
         fi
-        if [[ ! -e "$recovery_key" && ! -L "$recovery_key" ]]; then
-            write_private_sidecar "$recovery_key" "$key_value" || { rm -rf "$work"; rm -f "$tarball" "${tarball}.sha256" "${tarball}.hmac" "$recovery_key"; die 'External backup recovery key sidecar write failed.'; }
-        fi
+        # A-05a: Do NOT write ${tarball}.key next to archive (co-location defeats HMAC trust model).
+        # Key lives ONLY in /root/A-Box-backup-keys/ (mode 700, root-only).
         msg "${GREEN}[*] Recovery key (separated):${NC} $separated_key"
-        msg "${GREEN}[*] Recovery key (sidecar for restore discovery):${NC} $recovery_key"
-        msg "${YELLOW}[!] Prefer keeping the separated key offline via --export-backup-key; anyone with archive+HMAC+key can authenticate modified archives.${NC}"
+        msg "${YELLOW}[!] Keep the separated key offline; anyone with archive+HMAC+key can authenticate modified archives.${NC}"
     fi
     rm -rf "$work"
     ABOX_LAST_BACKUP="$tarball"
@@ -13752,7 +13776,8 @@ validate_test_script() {
     local file="$1" size first
     [[ -f "$file" && ! -L "$file" ]] || return 1
     size=$(wc -c < "$file" 2>/dev/null | tr -d ' ') || return 1
-    [[ "$size" =~ ^[0-9]+$ ]] && (( size >= 1000 && size <= 15728640 )) || return 1
+    [[ "$size" =~ ^[0-9]+$ ]] && # D-3: Align with update-mirrors.yml (2MB max).
+    (( size >= 1000 && size <= 2000000 )) || return 1
     IFS= read -r first < "$file" || return 1
     [[ "$first" =~ ^#!.*(bash|env[[:space:]]+bash)([[:space:]]|$) ]] || return 1
     if head -n 25 "$file" | grep -Eiq '<!doctype[[:space:]]+html|<html'; then return 1; fi
@@ -14066,6 +14091,18 @@ wallos_pull_or_restore_image() {
     if ! gzip -dc "$work/$asset" | docker load; then
         rm -rf -- "$work"
         return 1
+    fi
+    # D-2: Verify loaded image digest matches manifest (prevents tampered mirror asset).
+    local expected_digest loaded_digest
+    expected_digest=$(awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' "$work/wallos-manifest.txt")
+    loaded_digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "bellamy/wallos:${tag#v}" 2>/dev/null || true)
+    if [[ -n "$expected_digest" && -n "$loaded_digest" ]]; then
+        # RepoDigest format: repo@sha256:hash; manifest stores sha256:hash or full digest.
+        if [[ "$loaded_digest" != *"$expected_digest"* && "$expected_digest" != *"${loaded_digest##*@}"* ]]; then
+            rm -rf -- "$work"
+            msg "${RED}Wallos mirror image digest mismatch; refusing to use it.${NC}"
+            return 1
+        fi
     fi
     rm -rf -- "$work"
     local image_tag="${tag#v}"
@@ -14401,6 +14438,8 @@ wallos_install_or_update() {
         if [[ -n "$old_bind" ]]; then
             valid_ip_address "$old_bind" || { msg "${RED}Wallos existing bind address is invalid: $old_bind; refusing to upgrade.${NC}"; return 1; }
         fi
+        # C-03: Read old_port from state (was never assigned, causing 100% upgrade failure).
+        old_port=$(wallos_state_value PORT 2>/dev/null || true)
         old_tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
         [[ -n "$old_tz" ]] || old_tz='UTC'
         # P3-7: refuse on invalid persisted TZ (was silent fallback to UTC).
@@ -15641,7 +15680,10 @@ core_expected_listen_ports() {
             awk '
                 $1 == "listen:" {
                     v=$0; sub(/^[[:space:]]*listen:[[:space:]]*/, "", v)
-                    sub(/^.*:/, "", v); gsub(/[^0-9]/, "", v)
+                    sub(/^.*:/, "", v)
+                    # C-01: Port ranges like :20000-25000 must use FIRST port, not concat to 2000025000.
+                    sub(/-.*$/, "", v)
+                    gsub(/[^0-9]/, "", v)
                     if (v != "") print v
                 }
             ' "$cfg" 2>/dev/null
@@ -15688,9 +15730,8 @@ core_tls_listen_ports() {
 
 core_tls_smoke_probe() {
     local core="$1" cfg="$2" port
-    # Minimal TLS 1.2 ClientHello (43 bytes), exported for the probe subshell.
-    export ABOX_PROBE_HELLO
-    ABOX_PROBE_HELLO=$(printf '\x16\x03\x01\x00\x28\x02\x00\x00\x24\x03\x03\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x00\x00\x02\x00\x2f\x01\x00')
+    # C-01 NUL: Do NOT store ClientHello in Bash var (Bash strips \x00). Send via printf in subshell.
+    # Minimal TLS 1.2 ClientHello (43 bytes).
     while IFS= read -r port; do
         [[ "$port" =~ ^[0-9]+$ ]] || continue
         # Open TCP, send ClientHello, read up to 7 bytes (TLS record header).
@@ -15698,16 +15739,14 @@ core_tls_smoke_probe() {
         # proves the data plane is alive. Timeout 5s.
         if ! timeout 5 bash -c '
             exec 3<>/dev/tcp/127.0.0.1/'"$port"' || exit 1
-            printf "%s" "$ABOX_PROBE_HELLO" >&3 || exit 1
+            printf "\x16\x03\x01\x00\x28\x02\x00\x00\x24\x03\x03\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x00\x00\x02\x00\x2f\x01\x00" >&3 || exit 1
             IFS= read -r -d "" -n 7 -t 4 resp <&3 || exit 1
             [[ -n "$resp" ]] || exit 1
         ' 2>/dev/null; then
             msg "${RED}[!] ${core} 端口 ${port} 无 TLS 响应（数据面可能异常）。${NC}"
-            unset ABOX_PROBE_HELLO
             return 1
         fi
     done < <(core_tls_listen_ports "$core" "$cfg" | awk '!seen[$0]++')
-    unset ABOX_PROBE_HELLO
     return 0
 }
 
@@ -16786,7 +16825,8 @@ PY_SELFTEST_TAR
     [[ "$(awk '/^# Operations helpers$/ { exit } /^core_fetch_upstream_release_asset\(\) \{/ { count++ } END { print count+0 }' "$0")" == '1' ]] || { echo 'FAIL: core asset fetcher must have exactly one live implementation'; failures=$((failures + 1)); }
     # F-06 fix: default-value assertions must not fail when the user legally
     # overrides via environment. Isolate in a subshell with overrides unset.
-    ( unset ABOX_XRAY_VERSION ABOX_RESOLVED_XRAY_VERSION
+    # E-2: PROBE_SKIP=1 prevents failure when host has newer Xray installed.
+    ( unset ABOX_XRAY_VERSION ABOX_RESOLVED_XRAY_VERSION; ABOX_XRAY_VERSION_PROBE_SKIP=1
       [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] ) || { echo 'FAIL: effective Xray default version'; failures=$((failures + 1)); }
     (
         unset ABOX_XRAY_VERSION ABOX_TRY_LATEST_CORE_STABLE
@@ -18227,7 +18267,8 @@ main_loop() {
         fi
         read -r -p "$(tr_msg main_command)" choice || exit 0
         if [[ "${_menu_lock_released:-0}" == 1 ]]; then
-            flock -n 9 || die '重新获取 A-Box 运行锁失败；可能另有实例已启动。'
+            # A-07: Wait up to 15s for lock (cron helpers hold it briefly); -n caused spurious menu exits.
+            flock -w 15 9 || die '重新获取 A-Box 运行锁失败；可能另有实例已启动。'
         fi
         unset _menu_lock_released
         case "$choice" in

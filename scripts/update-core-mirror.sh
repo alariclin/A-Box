@@ -9,11 +9,17 @@ mkdir -p "$out" "$existing"
 gh release view core-binaries >/dev/null
 gh release download core-binaries --pattern SHA256SUMS --dir "$existing"
 test -s "$existing/SHA256SUMS"
+# D-1: download existing CORE-VERSIONS for cooldown fallback (previous
+# mirror version when the latest release is < 7 days old).
+gh release download core-binaries --pattern CORE-VERSIONS --dir "$existing"
+test -s "$existing/CORE-VERSIONS"
 
-gh api repos/XTLS/Xray-core/releases/latest > "$root/xray.json"
-gh api repos/SagerNet/sing-box/releases/latest > "$root/sing-box.json"
-gh api repos/HyNetworks/hysteria/releases/latest > "$root/hysteria.json"
+# D-1: 7-day cooldown. A release published < 7 days ago is not yet
+# trusted for the mirror. Fall back to the previous mirror version.
+COOLDOWN_SECONDS=604800
 
+# NOTE: validate_release_tag must be defined BEFORE enforce_cooldown,
+# because enforce_cooldown calls it on the fallback path.
 validate_release_tag() {
   local file="$1" regex="$2" tag
   jq -e --arg regex "$regex" '
@@ -26,6 +32,47 @@ validate_release_tag() {
   tag="$(jq -er '.tag_name' "$file")"
   printf '%s\n' "$tag"
 }
+
+# Enforce cooldown for a release JSON. If the release is < 7 days old,
+# replace the JSON file with the previous mirror version's release JSON.
+# Args: repo, json_file, core_key (CORE-VERSIONS key), tag_regex
+enforce_cooldown() {
+  local repo="$1" json_file="$2" core_key="$3" tag_regex="$4"
+  local published_at published_epoch now_epoch age latest_tag prev_tag
+  published_at="$(jq -er '.published_at' "$json_file")"
+  published_epoch="$(date -d "$published_at" +%s 2>/dev/null)" || {
+    echo "::error::Cannot parse published_at for $core_key: $published_at"
+    return 1
+  }
+  now_epoch="$(date +%s)"
+  age=$((now_epoch - published_epoch))
+  if (( age >= COOLDOWN_SECONDS )); then
+    return 0
+  fi
+  latest_tag="$(jq -er '.tag_name' "$json_file")"
+  prev_tag="$(grep "^${core_key}=" "$existing/CORE-VERSIONS" | cut -d= -f2)"
+  if [[ -z "$prev_tag" ]]; then
+    echo "::error::$core_key release $latest_tag is only $((age / 86400)) days old (cooldown 7 days) and no previous mirror version exists; aborting"
+    return 1
+  fi
+  if [[ "$prev_tag" == "$latest_tag" ]]; then
+    # Mirror already has this version (e.g. added before cooldown was enforced).
+    # Nothing new to add; proceed without aborting.
+    echo "::notice::$core_key release $latest_tag is only $((age / 86400)) days old but already in mirror; proceeding"
+    return 0
+  fi
+  echo "::warning::$core_key release $latest_tag is only $((age / 86400)) days old (cooldown 7 days); using previous mirror version $prev_tag"
+  gh api "repos/$repo/releases/tags/$prev_tag" > "$json_file"
+  # Validate the fallback release JSON (must also pass tag regex).
+  validate_release_tag "$json_file" "$tag_regex" >/dev/null
+}
+
+gh api repos/XTLS/Xray-core/releases/latest > "$root/xray.json"
+enforce_cooldown "XTLS/Xray-core" "$root/xray.json" "Xray" '^v[0-9]+\.[0-9]+\.[0-9]+$'
+gh api repos/SagerNet/sing-box/releases/latest > "$root/sing-box.json"
+enforce_cooldown "SagerNet/sing-box" "$root/sing-box.json" "sing-box" '^v[0-9]+\.[0-9]+\.[0-9]+$'
+gh api repos/HyNetworks/hysteria/releases/latest > "$root/hysteria.json"
+enforce_cooldown "HyNetworks/hysteria" "$root/hysteria.json" "Hysteria" '^app/v[0-9]+\.[0-9]+\.[0-9]+$'
 
 xray_tag="$(validate_release_tag "$root/xray.json" '^v[0-9]+\.[0-9]+\.[0-9]+$')"
 singbox_tag="$(validate_release_tag "$root/sing-box.json" '^v[0-9]+\.[0-9]+\.[0-9]+$')"

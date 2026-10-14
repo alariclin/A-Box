@@ -2215,7 +2215,8 @@ hysteria_acme_dir_runtime_permissions_valid() {
     [[ "$(stat -c %u:%g "$dir" 2>/dev/null || true)" == "0:$gid" ]] || return 1
     mode=$(stat -c %a "$dir" 2>/dev/null) || return 1
     nlink=$(stat -c %h "$dir" 2>/dev/null) || return 1
-    [[ "$nlink" =~ ^[2-9][0-9]*$ && "$mode" =~ ^0?770$ ]] || return 1
+    # R-01: Accept 1770 (sticky bit) as well as 770.
+    [[ "$nlink" =~ ^[2-9][0-9]*$ && "$mode" =~ ^0?1?770$ ]] || return 1
     return 0
 }
 
@@ -6268,6 +6269,8 @@ EOF_PROBE
     fi
     grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/socket_probe.sh" || die '健康探针运行环境标记后置校验失败。'
     chmod 700 "$ABOX_DIR/socket_probe.sh" || die '健康探针权限设置失败。'
+    # A-06: Pre-create cron lock file with 0600 (flock would create it 0644 with cron's umask 022).
+    ( umask 077; : > /run/A-Box-probe-cron.lock ) 2>/dev/null || true
     install_abox_cron_block PROBE '* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1'
 }
 
@@ -6495,6 +6498,8 @@ EOF_GEO
     fi
     grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本运行环境标记后置校验失败。'
     chmod 700 "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本权限设置失败。'
+    # A-06: Pre-create cron lock file with 0600 (see PROBE above).
+    ( umask 077; : > /run/A-Box-geo-cron.lock ) 2>/dev/null || true
     install_abox_cron_block GEO '0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1'
 }
 
@@ -7072,8 +7077,10 @@ deploy_official_hy2() {
 
     if [[ "${HY2_HOP:-}" == 'true' ]]; then
         HY2_LISTEN=":${HY2_RANGE_START}-${HY2_RANGE_END}"
-        # A-02: CAP_NET_ADMIN removed (firewall runs as root via ExecStartPre+; service does not need it).
-        HY2_CAPS='CAP_NET_BIND_SERVICE'
+        # R-02: Hysteria NEEDS CAP_NET_ADMIN (sets up its own iptables REDIRECT for port hopping;
+        # unlike sing-box, hysteria.service has NO ExecStartPre+ running as root).
+        # A-02 removal was wrong for Hysteria; restored.
+        HY2_CAPS='CAP_NET_ADMIN CAP_NET_BIND_SERVICE'
     else
         HY2_LISTEN=":${HY2_BASE_PORT}"
     fi
@@ -12609,7 +12616,8 @@ for m in members:
  if m.issym() or m.islnk() or m.ischr() or m.isblk() or m.isfifo() or m.isdev(): raise SystemExit(1)
  if not (m.isfile() or m.isdir()) or m.uid!=0 or m.gid!=0: raise SystemExit(1)
  mode=m.mode & 0o7777
- if mode & 0o7000 or mode & 0o022: raise SystemExit(1)
+ # R-01: Allow sticky (0o1000) for acme dir 1770; reject only setuid/setgid (0o6000).
+ if mode & 0o6000 or mode & 0o022: raise SystemExit(1)
  if m.isfile():
   if m.size<0 or m.size>max_file: raise SystemExit(1)
   total+=m.size
@@ -12781,7 +12789,8 @@ for m in members:
                 if hy_gid is None: hy_gid=m.gid
                 elif m.gid != hy_gid: raise SystemExit(1)
                 if hy_uid is None: hy_uid=0
-            if not ((m.gid != 0 and mode == 0o770) or
+            # R-01: Allow 1770 (sticky) for acme dir as well as 770.
+            if not ((m.gid != 0 and mode in (0o770, 0o1770)) or
                     (m.gid == 0 and (mode & 0o077) == 0)): raise SystemExit(1)
         else:
             if m.gid != 0:
@@ -13284,8 +13293,8 @@ backup_current_config() {
     abox_dir_real=$(canonical_path "$ABOX_DIR") || { rm -rf "$work"; die 'A-Box directory canonicalization failed.'; }
     if [[ "$backup_dir_real" != "$abox_dir_real" && "$backup_dir_real" != "$abox_dir_real/"* ]]; then
         # External destinations leave ABOX_DIR (and .backup-hmac.key) behind.
-        # Write the recovery key primarily under /root/A-Box-backup-keys/ (mode 700)
-        # and also place a discoverable ${tarball}.key sidecar for restore helpers.
+        # Write the recovery key ONLY under /root/A-Box-backup-keys/ (mode 700).
+        # A-05a: Do NOT place ${tarball}.key next to archive (co-location defeats HMAC trust model).
         local key_value keys_dir='/root/A-Box-backup-keys' separated_key
         separated_key="$keys_dir/$(basename "$tarball").key"
         IFS= read -r key_value < "$ABOX_BACKUP_KEY" || { rm -rf "$work"; rm -f "$tarball" "${tarball}.sha256" "${tarball}.hmac"; die 'External backup recovery key read failed.'; }

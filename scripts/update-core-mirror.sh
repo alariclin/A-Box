@@ -13,6 +13,12 @@ test -s "$existing/SHA256SUMS"
 # mirror version when the latest release is < 7 days old).
 gh release download core-binaries --pattern CORE-VERSIONS --dir "$existing"
 test -s "$existing/CORE-VERSIONS"
+# D-1-FIX: Verify CORE-VERSIONS against SHA256SUMS before trusting it for fallback.
+# Without this, a tampered mirror could inject a malicious prev_tag.
+( cd "$existing" && sha256sum -c --status --ignore-missing <(grep "CORE-VERSIONS" SHA256SUMS) ) || {
+  echo "::error::CORE-VERSIONS hash mismatch against SHA256SUMS; aborting"
+  exit 1
+}
 
 # D-1: 7-day cooldown. A release published < 7 days ago is not yet
 # trusted for the mirror. Fall back to the previous mirror version.
@@ -51,6 +57,11 @@ enforce_cooldown() {
   fi
   latest_tag="$(jq -er '.tag_name' "$json_file")"
   prev_tag="$(grep "^${core_key}=" "$existing/CORE-VERSIONS" | cut -d= -f2)"
+  # D-1-FIX: Validate prev_tag format BEFORE using it in gh api URL (path traversal).
+  if ! [[ "$prev_tag" =~ $tag_regex ]]; then
+    echo "::error::Invalid prev_tag format for $core_key: $prev_tag; aborting"
+    return 1
+  fi
   if [[ -z "$prev_tag" ]]; then
     echo "::error::$core_key release $latest_tag is only $((age / 86400)) days old (cooldown 7 days) and no previous mirror version exists; aborting"
     return 1
@@ -63,8 +74,18 @@ enforce_cooldown() {
   fi
   echo "::warning::$core_key release $latest_tag is only $((age / 86400)) days old (cooldown 7 days); using previous mirror version $prev_tag"
   gh api "repos/$repo/releases/tags/$prev_tag" > "$json_file"
-  # Validate the fallback release JSON (must also pass tag regex).
-  validate_release_tag "$json_file" "$tag_regex" >/dev/null
+  # Validate the fallback release JSON (must pass tag regex).
+  # D-1-FIX: Allow prerelease for fallback (Xray pin v26.7.28 is a prerelease but already in mirror).
+  # The tag format was validated above; prerelease check is relaxed for trusted mirror versions.
+  if ! jq -e --arg regex "$tag_regex" '
+    type == "object"
+    and .draft == false
+    and ((.tag_name // "") | type == "string")
+    and ((.tag_name // "") | test($regex))
+  ' "$json_file" >/dev/null; then
+    echo "::error::Fallback release $prev_tag failed validation; aborting"
+    return 1
+  fi
 }
 
 gh api repos/XTLS/Xray-core/releases/latest > "$root/xray.json"

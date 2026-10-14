@@ -1806,22 +1806,6 @@ service_unit_path() {
     esac
 }
 
-abox_env_claims_service() {
-    local srv="$1"
-    [[ -r "$ABOX_ENV" ]] || return 1
-    [[ "$(stat -c %U "$ABOX_ENV" 2>/dev/null || true)" == 'root' ]] || return 1
-    [[ "$(stat -c %a "$ABOX_ENV" 2>/dev/null || true)" =~ ^[0-6]00$ ]] || return 1
-    (
-        unset CORE MODE
-        load_abox_env "$ABOX_ENV" 2>/dev/null || exit 1
-        case "$srv" in
-            xray) [[ "${CORE:-}" == 'xray' ]] ;;
-            sing-box) [[ "${CORE:-}" == 'singbox' ]] ;;
-            hysteria) [[ "${CORE:-}" == 'hysteria' || ( "${CORE:-}" == 'xray' && "${MODE:-}" == *'ALL'* ) ]] ;;
-            *) return 1 ;;
-        esac
-    )
-}
 
 service_file_is_abox_managed() {
     local srv="$1" unit=''
@@ -4026,7 +4010,7 @@ reorder_ss_whitelist_rules_one() {
     normalize_managed_rule_line() {
         local line="$1"
         line=${line//\"/}
-        line=$(printf '%s\n' "$line" | sed -E 's/^(-A[[:space:]]+INPUT[[:space:]]+-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\2([[:space:]]|$)/\1\3/')
+        line=$(printf '%s\n' "$line" | sed -E 's/^(-A[[:space:]]+INPUT([[:space:]]+[^[:space:]]+)*[[:space:]]+-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\4/')
         printf '%s\n' "$line"
     }
     capture_firewall_views() {
@@ -9843,14 +9827,6 @@ apply_timezone_name() {
     return 1
 }
 
-detect_country_for_timezone() {
-    local ip body country
-    ip=$(get_public_ip 2>/dev/null || true)
-    [[ -n "$ip" && "$ip" != 'N/A' ]] || return 1
-    body=$(curl -fsS --connect-timeout 3 -m 6 "https://ipinfo.io/${ip}/country" 2>/dev/null | tr -d '[:space:]' || true)
-    [[ "$body" =~ ^[A-Za-z]{2}$ ]] || return 1
-    printf '%s\n' "${body^^}"
-}
 
 timezone_list_entries() {
     local zones=''
@@ -13156,24 +13132,6 @@ restore_core_family_from_backup() {
 }
 
 
-restore_cron_from_file() {
-    local f="$1" tmp current err
-    [[ -r "$f" && -f "$f" && ! -L "$f" ]] || return 0
-    validate_abox_cron_file "$f" || return 1
-    tmp=$(umask 077; mktemp /tmp/A-Box-cron-restore.XXXXXX) || return 1
-    current=$(umask 077; mktemp /tmp/A-Box-cron-current.XXXXXX) || { rm -f "$tmp"; return 1; }
-    err=$(umask 077; mktemp /tmp/A-Box-cron-error.XXXXXX) || { rm -f "$tmp" "$current"; return 1; }
-    if LC_ALL=C crontab -l > "$current" 2> "$err"; then :
-    elif grep -Eqi 'no crontab|no crontab for' "$err"; then : > "$current"
-    else rm -f "$tmp" "$current" "$err"; return 1
-    fi
-    strip_abox_cron_blocks_from_file "$current" "$tmp" || { rm -f "$tmp" "$current" "$err"; return 1; }
-    cat "$f" >> "$tmp" || { rm -f "$tmp" "$current" "$err"; return 1; }
-    local rc=0
-    commit_crontab_if_unchanged "$current" "$tmp" || rc=$?
-    rm -f "$tmp" "$current" "$err"
-    return "$rc"
-}
 
 backup_current_config() {
     local ts unique backup_dir work root tarball backup_failed=0 backend srv path _abox_links _old_backups

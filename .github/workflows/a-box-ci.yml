@@ -42,23 +42,23 @@ jobs:
           grep -Fq 'ABOX_SNI_CANDIDATE_URL_DEFAULT=' install.sh
           test -s data/sni-candidates.txt
           python3 -c "
-import re, sys
-pat = re.compile(r'^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$')
-n = 0
-seen = set()
-for line in open('data/sni-candidates.txt'):
-    s = line.strip()
-    if not s or s.startswith('#'):
-        continue
-    if not pat.match(s):
-        sys.exit(1)
-    if s.lower() in seen:
-        sys.exit(1)
-    seen.add(s.lower())
-    n += 1
-if not (100 <= n <= 12000):
-    sys.exit(1)
-"
+          import re, sys
+          pat = re.compile(r'^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$')
+          n = 0
+          seen = set()
+          for line in open('data/sni-candidates.txt'):
+              s = line.strip()
+              if not s or s.startswith('#'):
+                  continue
+              if not pat.match(s):
+                  sys.exit(1)
+              if s.lower() in seen:
+                  sys.exit(1)
+              seen.add(s.lower())
+              n += 1
+          if not (100 <= n <= 12000):
+              sys.exit(1)
+          "
           duplicates=$(awk 'NF && $0 !~ /^[[:space:]]*#/ {print tolower($0)}' data/sni-candidates.txt | sort | uniq -d | wc -l)
           test "$duplicates" -eq 0
 

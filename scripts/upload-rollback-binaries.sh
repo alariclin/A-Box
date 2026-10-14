@@ -70,14 +70,17 @@ echo "[*] Manifest coverage verified."
 
 # P3-11: verify staged binaries against UPSTREAM official digests (not just self-referential staging manifest).
 # Staged filenames are A-Box-renamed; map to upstream asset names for verification.
+# D-4 fix: musl entries map to the real upstream musl assets (previously
+# both glibc and musl pointed at the same glibc tarball, and musl files
+# skipped digest verification entirely).
 echo "[*] Verifying staged binaries against upstream official Release digests..."
 declare -A upstream_map=(
     ["Xray-v26.6.27-linux-64.zip"]="XTLS/Xray-core|v26.6.27|Xray-linux-64.zip"
     ["Xray-v26.6.27-linux-arm64-v8a.zip"]="XTLS/Xray-core|v26.6.27|Xray-linux-arm64-v8a.zip"
     ["sing-box-1.14.1-linux-amd64-glibc.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-amd64.tar.gz"
-    ["sing-box-1.14.1-linux-amd64-musl.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-amd64.tar.gz"
+    ["sing-box-1.14.1-linux-amd64-musl.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-amd64-musl.tar.gz"
     ["sing-box-1.14.1-linux-arm64-glibc.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-arm64.tar.gz"
-    ["sing-box-1.14.1-linux-arm64-musl.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-arm64.tar.gz"
+    ["sing-box-1.14.1-linux-arm64-musl.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-arm64-musl.tar.gz"
     ["hysteria-app-v2.12.3-linux-amd64"]="HyNetworks/hysteria|app/v2.12.3|hysteria-linux-amd64"
     ["hysteria-app-v2.12.3-linux-arm64"]="HyNetworks/hysteria|app/v2.12.3|hysteria-linux-arm64"
 )
@@ -85,20 +88,10 @@ for name in "${expected[@]}"; do
     map_entry="${upstream_map[$name]:-}"
     [[ -n "$map_entry" ]] || { echo "no upstream mapping for $name; aborting"; exit 1; }
     IFS='|' read -r up_repo up_tag up_asset <<< "$map_entry"
-    # NOTE: sing-box glibc/musl variants are both extracted from the same upstream tarball;
-    # the staged files are expected to be byte-identical to the upstream asset for glibc,
-    # and musl variants are built from the same upstream release. If upstream changes
-    # packaging, this check must be updated. For now, verify content hash matches upstream.
     upstream_digest=$(gh api "repos/$up_repo/releases/tags/$up_tag" --jq ".assets[] | select(.name == \"$up_asset\") | .digest // empty" 2>/dev/null || true)
     [[ -n "$upstream_digest" ]] || { echo "upstream digest not found for $up_repo $up_tag $up_asset; aborting"; exit 1; }
     upstream_hex="${upstream_digest#sha256:}"
     staging_sum=$(sha256sum "$STAGE/$name" | cut -d' ' -f1)
-    # For sing-box musl variants, the staged file is a repackaged subset; skip strict check
-    # and warn. (Upstream tarball contains both glibc and musl builds; A-Box splits them.)
-    if [[ "$name" == *"-musl.tar.gz" ]]; then
-        echo "[warn] $name is a musl repack; skipping strict upstream digest check (see comment)"
-        continue
-    fi
     if [[ "$upstream_hex" != "$staging_sum" ]]; then
         echo "[CONFLICT] $name does not match upstream official digest:"
         echo "  upstream ($up_repo $up_tag $up_asset): $upstream_hex"

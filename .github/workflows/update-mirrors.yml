@@ -317,5 +317,4 @@ jobs:
         shell: bash
         run: python3 -c "import yaml; yaml.safe_load(open('.github/workflows/update-mirrors.yml'))"
       - name: Lint workflow with actionlint
-        shell: bash
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/update-mirrors.yml
+        uses: rhysd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca # v1.7.12, pinned to commit SHA

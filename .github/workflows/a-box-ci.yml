@@ -27,7 +27,7 @@ jobs:
           sudo apt-get install -y shellcheck
           shellcheck --severity=error install.sh scripts/update-core-mirror.sh scripts/upload-rollback-binaries.sh
       - name: Lint GitHub Actions workflows
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/*.yml
+        uses: rhysd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca # v1.7.12, pinned to commit SHA
       - name: Built-in self-test (root-only fixtures enabled)
         run: sudo bash install.sh --self-test
       - name: Release metadata regression

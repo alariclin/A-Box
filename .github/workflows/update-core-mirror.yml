@@ -179,6 +179,21 @@ jobs:
             echo "ERROR: CORE-VERSIONS missing core tags; aborting"
             exit 1
           }
+          # A-01 fix: validate tag formats before interpolating into gh api
+          # URLs. A malicious tag (e.g. containing ../) would enable path
+          # traversal against the GitHub API.
+          [[ "$xray_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "ERROR: invalid Xray tag format: $xray_tag; aborting"
+            exit 1
+          }
+          [[ "$singbox_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "ERROR: invalid sing-box tag format: $singbox_tag; aborting"
+            exit 1
+          }
+          [[ "$hysteria_tag" =~ ^app/v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "ERROR: invalid Hysteria tag format: $hysteria_tag; aborting"
+            exit 1
+          }
           hysteria_leaf="$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')"
           verify_upstream_digest() {
             local name="$1" repo="$2" tag="$3" upstream="$4"

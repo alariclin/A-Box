@@ -12471,8 +12471,8 @@ EOF_SWAP_MARK
 }
 
 # BUG-28: hoisted from remove_abox_swap(). $1 = fstab backup path.
-    local backup="$1"
 __abox_restore_fstab_from_swap_backup() {
+    local backup="$1"
     if cp -a "$backup" /etc/fstab; then
         return 0
     fi

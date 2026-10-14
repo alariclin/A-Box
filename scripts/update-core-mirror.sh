@@ -87,10 +87,18 @@ download_verified_asset() {
           echo "::error::Xray binary failed its version probe: $mirror_name"
           return 1
         }
-        grep -Fq "${tag#v}" <<< "$version_output" || {
-          echo "::error::Xray binary version does not match $tag"
+        version_line="$(grep -m1 -E '^Xray ' <<< "$version_output" || true)"
+        # F-05 fix: parse the version field exactly; substring matching
+        # would accept e.g. "26.7.280" for expected "26.7.28".
+        if [[ "$version_line" =~ ^Xray\ ([0-9]+\.[0-9]+\.[0-9]+)([[:space:]]|$) ]]; then
+          [[ "${BASH_REMATCH[1]}" == "${tag#v}" ]] || {
+            echo "::error::Xray binary version does not match $tag (got ${BASH_REMATCH[1]})"
+            return 1
+          }
+        else
+          echo "::error::Could not parse Xray version from probe output"
           return 1
-        }
+        fi
       fi
       ;;
     sing-box)
@@ -116,10 +124,17 @@ download_verified_asset() {
             return 1
           }
           expected_version="${tag#v}"
-          grep -Fq "$expected_version" <<< "$version_output" || {
-            echo "::error::sing-box binary version does not match $tag"
+          version_line="$(grep -m1 -E '^sing-box version ' <<< "$version_output" || true)"
+          # F-05 fix: exact version-field parse, not substring matching.
+          if [[ "$version_line" =~ ^sing-box\ version\ ([0-9]+\.[0-9]+\.[0-9]+)([[:space:]]|$) ]]; then
+            [[ "${BASH_REMATCH[1]}" == "$expected_version" ]] || {
+              echo "::error::sing-box binary version does not match $tag (got ${BASH_REMATCH[1]})"
+              return 1
+            }
+          else
+            echo "::error::Could not parse sing-box version from probe output"
             return 1
-          }
+          fi
         fi
       fi
       ;;
@@ -141,10 +156,19 @@ download_verified_asset() {
           return 1
         }
         expected_version="${tag#app/}"
-        grep -Fq "$expected_version" <<< "$version_output" || {
-          echo "::error::Hysteria binary version does not match $tag"
+        version_line="$(grep -m1 -E '^Version: ' <<< "$version_output" || true)"
+        # F-05 fix: exact version-field parse, not substring matching.
+        # Hysteria prints "Version: v2.13.0" (or "Version: 2.13.0"); accept
+        # either form and compare the normalized "v<digits>" token exactly.
+        if [[ "$version_line" =~ ^Version:\ v?([0-9]+\.[0-9]+\.[0-9]+)([[:space:]]|$) ]]; then
+          [[ "v${BASH_REMATCH[1]}" == "$expected_version" ]] || {
+            echo "::error::Hysteria binary version does not match $tag (got v${BASH_REMATCH[1]})"
+            return 1
+          }
+        else
+          echo "::error::Could not parse Hysteria version from probe output"
           return 1
-        }
+        fi
       fi
       ;;
     *) echo "::error::Unknown asset validation type: $kind"; return 1 ;;
@@ -243,6 +267,21 @@ done
 versions_digest="$(sha256sum "$out/CORE-VERSIONS" | awk '{print $1}')"
 printf '%s  CORE-VERSIONS\n' "$versions_digest" >> "$out/SHA256SUMS"
 sort -k2,2 "$out/SHA256SUMS" -o "$out/SHA256SUMS"
+
+# F-01 fix: the full SHA256SUMS above lists historical assets that are NOT
+# present in out/. Generate a separate incoming manifest listing ONLY the
+# files actually present in out/ (new binaries + CORE-VERSIONS), so the
+# publish job can verify exactly the artifact contents.
+: > "$out/SHA256SUMS.incoming"
+for name in "${mirror_names[@]}" CORE-VERSIONS; do
+  incoming_sum="$(awk -v name="$name" '$2 == name {print $1}' "$out/SHA256SUMS")"
+  [[ -n "$incoming_sum" ]] || {
+    echo "::error::Missing manifest entry for incoming file: $name"
+    exit 1
+  }
+  printf '%s  %s\n' "$incoming_sum" "$name" >> "$out/SHA256SUMS.incoming"
+done
+sort -k2,2 "$out/SHA256SUMS.incoming" -o "$out/SHA256SUMS.incoming"
 
 # A manual dispatch defaults to dry-run. All upstream downloads, digests,
 # binary probes, existing asset digests and the merged manifest are validated

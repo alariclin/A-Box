@@ -1096,6 +1096,23 @@ validate_abox_env_semantics() {
     if [[ -n "${HY2_SB_PORTS:-}" ]]; then
         valid_hy2_sb_ports "$HY2_SB_PORTS" || return 1
     fi
+    # F-04: validate persisted fields that were previously unchecked on load.
+    if [[ -n "${SS_WHITELIST_IP:-}" ]]; then
+        local _wl_ip
+        for _wl_ip in ${SS_WHITELIST_IP:-}; do
+            valid_ipv4_cidr "$_wl_ip" || valid_ipv6_cidr "$_wl_ip" || return 1
+        done
+    fi
+    [[ -z "${HY2_ACME_DNS_PROVIDER:-}" || "${HY2_ACME_DNS_PROVIDER:-}" == cloudflare ]] || return 1
+    [[ -z "${HY2_ACME_DNS_CF_API_TOKEN:-}" ]] || valid_single_line_secret "$HY2_ACME_DNS_CF_API_TOKEN" 512 || return 1
+    # P3-1: PUBLIC_KEY (X25519) must be 44-char base64 ending in =.
+    [[ -z "${PUBLIC_KEY:-}" || "${PUBLIC_KEY:-}" =~ ^[A-Za-z0-9+/]{43}=$ ]] || return 1
+    # P3-3: HY2_CERT_PUBKEY_SHA256_B64 validated here on load, not only at use-site.
+    [[ -z "${HY2_CERT_PUBKEY_SHA256_B64:-}" || "${HY2_CERT_PUBKEY_SHA256_B64:-}" =~ ^[A-Za-z0-9+/]{43}=$ ]] || return 1
+    # P3-2: passwords must be single-line secrets (prevents JSON injection via .env).
+    [[ -z "${HY2_PASS:-}" ]] || valid_single_line_secret "$HY2_PASS" 512 || return 1
+    [[ -z "${HY2_OBFS:-}" ]] || valid_single_line_secret "$HY2_OBFS" 512 || return 1
+    [[ -z "${SS_PASS:-}" ]] || valid_single_line_secret "$SS_PASS" 512 || return 1
 }
 
 load_abox_env() {
@@ -8745,12 +8762,24 @@ manage_ss_whitelist() {
                 valid_ipv6_cidr "$add_ip" || { msg "${RED}[!] IPv6 白名单地址非法: $add_ip${NC}"; pause_return; return; }
                 has_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1 || die '系统无可用 IPv6 防火墙。'
                 for proto in tcp udp; do
-                    $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则写入失败: $add_ip/$proto"
+                    # F-06: check existence first (idempotent) — do not insert duplicates.
+                    if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
+                    case "$check_rc" in
+                        0) ;;
+                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则写入失败: $add_ip/$proto" ;;
+                        *) die "无法检查防火墙规则。" ;;
+                    esac
                 done
             else
                 valid_ipv4_cidr "$add_ip" || { msg "${RED}[!] IPv4 白名单地址非法: $add_ip${NC}"; pause_return; return; }
                 for proto in tcp udp; do
-                    $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则写入失败: $add_ip/$proto"
+                    # F-06: check existence first (idempotent) — do not insert duplicates.
+                    if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
+                    case "$check_rc" in
+                        0) ;;
+                        1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则写入失败: $add_ip/$proto" ;;
+                        *) die "无法检查防火墙规则。" ;;
+                    esac
                 done
             fi
             save_firewall_rules || die 'A-Box 防火墙持久化失败。'
@@ -13811,7 +13840,9 @@ wallos_detect_arch() {
 
 wallos_port_free() {
     local port="$1"
-    if command -v ss >/dev/null 2>&1 && ss -H -ltn "sport = :$port" 2>/dev/null | grep -q .; then return 1; fi
+    # P3-9: fail closed when ss is missing (was fail-open returning "free").
+    command -v ss >/dev/null 2>&1 || return 1
+    if ss -H -ltn "sport = :$port" 2>/dev/null | grep -q .; then return 1; fi
     return 0
 }
 
@@ -13995,6 +14026,10 @@ wallos_pull_or_restore_image() {
     if [[ -n "$tag" ]] && wallos_candidate_version_allowed "$tag"; then
         local image_tag="${tag#v}"
         if docker pull "bellamy/wallos:$image_tag"; then
+            # P2-1: record RepoDigest for auditability (mutable tag alone is not identity).
+            local _pulled_digest
+            _pulled_digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
+            [[ -n "$_pulled_digest" ]] && msg "${CYAN}Wallos image digest: $_pulled_digest${NC}"
             WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
             return 0
         fi
@@ -14182,7 +14217,8 @@ wallos_upgrade_journal_write() {
     [[ "$old_image" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ ]] || return 1
     valid_canonical_port "$old_port" || return 1
     valid_timezone_name "$old_tz" || return 1
-    [[ "$old_bind" == 127.0.0.1 || "$old_bind" == 0.0.0.0 ]] || return 1
+    # F-08: accept any valid IP for rollback (was loopback/wildcard only, forcing coercion).
+    { [[ -z "$old_bind" ]] || valid_ip_address "$old_bind"; } || return 1
     [[ "$was_running" == 0 || "$was_running" == 1 ]] || return 1
     [[ "$backup" == "$WALLOS_DIR/backups/wallos-"*.tar.gz && -f "$backup" && ! -L "$backup" ]] || return 1
     write_file_atomically_from_stdin "$journal" 600 <<EOF_WALLOS_TXN
@@ -14244,7 +14280,8 @@ wallos_recover_interrupted_upgrade() {
     [[ "$old_image" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ ]] || return 1
     valid_canonical_port "$old_port" || return 1
     valid_timezone_name "$old_tz" || return 1
-    [[ "$old_bind" == 127.0.0.1 || "$old_bind" == 0.0.0.0 ]] || return 1
+    # F-08: accept any valid IP for rollback (was loopback/wildcard only).
+    { [[ -z "$old_bind" ]] || valid_ip_address "$old_bind"; } || return 1
     [[ "$was_running" == 0 || "$was_running" == 1 ]] || return 1
     [[ "$backup" == "$WALLOS_DIR/backups/wallos-"*.tar.gz && -f "$backup" && ! -L "$backup" ]] || return 1
     if docker container inspect wallos >/dev/null 2>&1; then
@@ -14284,6 +14321,15 @@ wallos_recover_interrupted_upgrade() {
 wallos_public_urls() {
     local port="$1" ipv4 ipv6 host_ip
     host_ip=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
+    # P3-8: handle empty binding and LAN-specific IPs explicitly (was: fell through to public-IP URL).
+    if [[ -z "$host_ip" ]]; then
+        msg "${YELLOW}Wallos container has no 80/tcp port binding; inspect with: docker inspect wallos${NC}"
+        return 0
+    fi
+    if [[ "$host_ip" != 127.0.0.1 && "$host_ip" != 0.0.0.0 ]]; then
+        msg "${GREEN}Wallos URL: http://$host_ip:$port/ (bound to $host_ip; public-IP URL does not apply)${NC}"
+        return 0
+    fi
     if [[ "$host_ip" == 127.0.0.1 ]]; then
         case "${ABOX_LANG:-zh}" in
             en) msg "${GREEN}Wallos local URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Use an HTTPS reverse proxy or SSH tunnel for remote access; do not expose this HTTP endpoint directly.${NC}" ;;
@@ -14316,9 +14362,10 @@ wallos_public_urls() {
 }
 
 wallos_write_state() {
-    local image="$1" port="$2" tz="$3" tmp
+    # P3-6: persist BIND so backup/restore and rebuild-from-state preserve network exposure.
+    local image="$1" port="$2" tz="$3" bind="${4:-127.0.0.1}" tmp
     tmp=$(umask 077; mktemp "$WALLOS_DIR/.abox-state.new.XXXXXX") || return 1
-    if ! printf 'IMAGE=%s\nPORT=%s\nTZ=%s\n' "$image" "$port" "$tz" > "$tmp" ||
+    if ! printf 'IMAGE=%s\nPORT=%s\nTZ=%s\nBIND=%s\n' "$image" "$port" "$tz" "$bind" > "$tmp" ||
        ! chmod 600 "$tmp" ||
        ! mv -f -- "$tmp" "$WALLOS_DIR/.abox-state"; then
         rm -f -- "$tmp"
@@ -14349,13 +14396,21 @@ wallos_install_or_update() {
         [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)" == true ]] && was_running=1
         old_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
         old_bind=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
-        [[ -n "$old_bind" ]] || old_bind='0.0.0.0'
-        case "$old_bind" in 0.0.0.0|127.0.0.1) ;; *) old_bind='0.0.0.0' ;; esac
-        old_port=$(wallos_state_value PORT 2>/dev/null || true)
+        # F-08: preserve legitimate HostIp verbatim; do NOT coerce unknown IPs to 0.0.0.0.
+        # Empty means no port binding — preserve empty (do not invent a publication).
+        # Invalid values refuse the upgrade rather than silently expanding exposure.
+        if [[ -n "$old_bind" ]]; then
+            valid_ip_address "$old_bind" || { msg "${RED}Wallos existing bind address is invalid: $old_bind; refusing to upgrade.${NC}"; return 1; }
+        fi
         old_tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
         [[ -n "$old_tz" ]] || old_tz='UTC'
-        valid_timezone_name "$old_tz" || old_tz='UTC'
+        # P3-7: refuse on invalid persisted TZ (was silent fallback to UTC).
+        valid_timezone_name "$old_tz" || { msg "${RED}Wallos persisted timezone is invalid: $old_tz; refusing to upgrade.${NC}"; return 1; }
         tz="$old_tz"
+        # F-09: preserve old bind address for the new container when WALLOS_BIND_ADDRESS is unset.
+        if [[ -z "${WALLOS_BIND_ADDRESS:-}" && -n "$old_bind" ]]; then
+            bind_address="$old_bind"
+        fi
         [[ -n "$old_image" && "$old_image" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ && "$old_port" =~ ^[0-9]+$ ]] || {
             msg "${RED}Wallos state is incomplete; refusing to upgrade it.${NC}"; return 1;
         }
@@ -14433,7 +14488,7 @@ wallos_install_or_update() {
     # The ownership marker was created and permission-checked before starting
     # the container. Commit the mutable image/port/timezone state atomically;
     # do not silently report a complete update if metadata cannot be saved.
-    if ! wallos_write_state "$image" "$port" "$tz"; then
+    if ! wallos_write_state "$image" "$port" "$tz" "$bind_address"; then
         msg "${RED}Wallos state metadata failed to commit. Rolling back the incomplete upgrade where possible.${NC}"
         if (( running == 1 )); then
             docker rm -f wallos >/dev/null 2>&1 || true

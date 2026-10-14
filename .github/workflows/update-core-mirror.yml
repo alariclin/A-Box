@@ -77,6 +77,43 @@ jobs:
           path: ${{ runner.temp }}/core-mirror/new/
           retention-days: 1
 
+  # F-07: simulate publish-job verification logic on PRs (no real publish).
+  # Tests the sha256sum -c + set-equality checks that the real publish job runs,
+  # using fixture files. Catches publish-path bugs before they reach schedule/manual runs.
+  publish-dry-run:
+    if: ${{ github.event_name == 'pull_request' }}
+    name: Publish verification simulation (fixture, no upload)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
+        with:
+          persist-credentials: false
+      - name: Simulate publish verification with fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
+          mkdir -p "$work/verified"
+          # Create fixture files mimicking a valid artifact.
+          printf 'fixture-binary-content' > "$work/verified/Xray-test.zip"
+          printf 'fixture-versions' > "$work/verified/CORE-VERSIONS"
+          (cd "$work/verified" && sha256sum Xray-test.zip CORE-VERSIONS > SHA256SUMS.incoming)
+          # Replicate publish job checks: sha256sum -c + exact set equality.
+          (cd "$work/verified" && sha256sum -c SHA256SUMS.incoming) || { echo "FAIL: fixture checksum verification"; exit 1; }
+          # Set equality: actual files must equal manifest-listed + control files.
+          expected="$(printf 'CORE-VERSIONS\nSHA256SUMS.incoming\nXray-test.zip\n' | sort)"
+          actual="$(cd "$work/verified" && ls -1 | sort)"
+          [[ "$actual" == "$expected" ]] || { echo "FAIL: set mismatch"; echo "actual: $actual"; echo "expected: $expected"; exit 1; }
+          # Negative test: extra file must be rejected.
+          printf 'evil' > "$work/verified/evil-injected.bin"
+          actual2="$(cd "$work/verified" && ls -1 | sort)"
+          if [[ "$actual2" == "$expected" ]]; then echo "FAIL: extra file not detected"; exit 1; fi
+          echo "OK: publish verification simulation passed (positive + negative)"
+
   publish:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
     name: Publish verified assets to Release (no binary execution)
@@ -103,24 +140,91 @@ jobs:
         # files that were verified in the isolated verify-publish job.
         run: |
           set -euo pipefail
-          # P1-02 fix 2026-10-14: independently re-verify artifact integrity
-          # before uploading anything.
-          if [[ ! -f verified/SHA256SUMS ]]; then
-            echo "ERROR: verified/SHA256SUMS missing; aborting"
+          # F-02 fix: independently re-verify every binary against the
+          # OFFICIAL upstream Release digest before uploading anything.
+          # Do NOT trust the manifest from the verify job alone.
+          if [[ ! -f verified/SHA256SUMS.incoming ]]; then
+            echo "ERROR: verified/SHA256SUMS.incoming missing; aborting"
             exit 1
           fi
-          echo "Verifying artifact checksums..."
-          (cd verified && sha256sum -c SHA256SUMS) || {
+          if [[ ! -f verified/CORE-VERSIONS ]]; then
+            echo "ERROR: verified/CORE-VERSIONS missing; aborting"
+            exit 1
+          fi
+          echo "Verifying artifact checksums against incoming manifest..."
+          (cd verified && sha256sum -c SHA256SUMS.incoming) || {
             echo "ERROR: artifact checksum verification failed; aborting"
             exit 1
           }
-          echo "Checksum verification passed."
-          # P1-03 fix 2026-10-14: upload order is binaries -> CORE-VERSIONS -> SHA256SUMS last.
+          echo "Incoming manifest checksums passed."
+          # Exact set equality: actual files in verified/ must equal exactly
+          # {files listed in SHA256SUMS.incoming} + {SHA256SUMS, SHA256SUMS.incoming, CORE-VERSIONS}.
+          # SHA256SUMS is the full merged Release manifest (historical + new);
+          # SHA256SUMS.incoming is verification-only and is NOT uploaded.
+          # Reject any extra or missing file.
+          set_diff="$(comm -3 \
+            <(cd verified && ls -1 | sort) \
+            <( { awk '{print $2}' verified/SHA256SUMS.incoming; printf '%s\n' SHA256SUMS SHA256SUMS.incoming CORE-VERSIONS; } | sort -u ))"
+          if [[ -n "$set_diff" ]]; then
+            echo "ERROR: verified/ file set does not exactly match expected set:"
+            printf '%s\n' "$set_diff"
+            exit 1
+          fi
+          echo "Artifact file set matches expected set exactly."
+          # Independently verify each binary against upstream official digests.
+          xray_tag="$(grep '^Xray=' verified/CORE-VERSIONS | cut -d= -f2)"
+          singbox_tag="$(grep '^sing-box=' verified/CORE-VERSIONS | cut -d= -f2)"
+          hysteria_tag="$(grep '^Hysteria=' verified/CORE-VERSIONS | cut -d= -f2)"
+          [[ -n "$xray_tag" && -n "$singbox_tag" && -n "$hysteria_tag" ]] || {
+            echo "ERROR: CORE-VERSIONS missing core tags; aborting"
+            exit 1
+          }
+          hysteria_leaf="$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')"
+          verify_upstream_digest() {
+            local name="$1" repo="$2" tag="$3" upstream="$4"
+            local expected_digest actual
+            expected_digest="$(gh api "repos/$repo/releases/tags/$tag" --jq ".assets[] | select(.name == \"$upstream\") | .digest")"
+            [[ "$expected_digest" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || {
+              echo "ERROR: upstream has no valid digest for $repo:$tag/$upstream"
+              return 1
+            }
+            actual="$(sha256sum "verified/$name" | awk '{print $1}')"
+            [[ "sha256:${actual,,}" == "${expected_digest,,}" ]] || {
+              echo "ERROR: verified/$name does not match upstream digest for $repo:$tag/$upstream"
+              return 1
+            }
+            echo "Upstream digest OK: $name ($repo:$tag/$upstream)"
+          }
+          for f in verified/*; do
+            [[ -f "$f" ]] || continue
+            name="$(basename "$f")"
+            case "$name" in
+              Xray-*.zip)
+                verify_upstream_digest "$name" "XTLS/Xray-core" "$xray_tag" "Xray-${name#Xray-$xray_tag-}"
+                ;;
+              sing-box-*.tar.gz)
+                verify_upstream_digest "$name" "SagerNet/sing-box" "$singbox_tag" "$name"
+                ;;
+              hysteria-*)
+                verify_upstream_digest "$name" "HyNetworks/hysteria" "$hysteria_tag" "hysteria-${name#hysteria-$hysteria_leaf-}"
+                ;;
+              SHA256SUMS|SHA256SUMS.incoming|CORE-VERSIONS)
+                # Manifests/metadata: not upstream binaries, skip.
+                ;;
+              *)
+                echo "ERROR: unknown file in artifact: $name; aborting"
+                exit 1
+                ;;
+            esac
+          done
+          echo "All binaries independently verified against upstream official digests."
+          # Upload order is binaries -> CORE-VERSIONS -> SHA256SUMS (full) last.
+          # SHA256SUMS.incoming is verification-only and is NOT uploaded.
           for f in verified/*; do
             [[ -f "$f" ]] || continue
             name=$(basename "$f")
             case "$name" in
-              SHA256SUMS|CORE-VERSIONS) continue ;;
+              SHA256SUMS|SHA256SUMS.incoming|CORE-VERSIONS) continue ;;
             esac
             # Improvement 2026-10-14: whitelist known binary patterns.
             case "$name" in

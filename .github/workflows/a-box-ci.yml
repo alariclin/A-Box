@@ -36,8 +36,8 @@ jobs:
           grep -Eq '^ABOX_BUILD_EPOCH=[0-9]+$' install.sh
           grep -Fq "ABOX_XRAY_DEFAULT_VERSION='v26.7.28'" install.sh
           grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" install.sh
-          grep -Fq 'v2.13.0' install.sh
-          grep -Fq 'v1.14.3' install.sh
+          grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'" install.sh
+          grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.3'" install.sh
           if grep -Fq 'EOF_SNI_CANDIDATES' install.sh; then echo 'legacy embedded SNI candidate block found' >&2; exit 1; fi
           grep -Fq 'ABOX_SNI_CANDIDATE_URL_DEFAULT=' install.sh
           test -s data/sni-candidates.txt
@@ -101,7 +101,10 @@ jobs:
               sys.exit(f"ERROR: Dual copies drifted!\n--- Copy 1 ---\n{norm[0]}\n--- Copy 2 ---\n{norm[1]}")
           print("OK: Dual copies isomorphic")
           PY
-      - name: Alpine clean-shell bootstrap syntax
+      # P3-13 fix: renamed from "Alpine clean-shell bootstrap syntax".
+      # NOTE: This only checks syntax. Alpine runtime (BusyBox/musl/apk)
+      # is NOT tested here.
+      - name: Alpine syntax only
         run: |
           docker run --rm -v "$PWD:/src:ro" alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 sh -ec '
             apk add --no-cache bash

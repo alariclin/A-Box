@@ -199,7 +199,8 @@ jobs:
             local name="$1" repo="$2" tag="$3" upstream="$4"
             local expected_digest actual
             # N-1-FIX: Use --arg to avoid jq program injection via $upstream (filename).
-            # shellcheck disable=SC2016 -- $name is a jq variable (via --arg), not shell.
+            # $name below is a jq variable (via --arg), not shell expansion.
+            # shellcheck disable=SC2016
             expected_digest="$(gh api "repos/$repo/releases/tags/$tag" --jq '.assets[] | select(.name == $name) | .digest' --arg name "$upstream")"
             [[ "$expected_digest" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || {
               echo "ERROR: upstream has no valid digest for $repo:$tag/$upstream"

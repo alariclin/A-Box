@@ -25,7 +25,7 @@ A-Box 是一个独立 Bash 脚本，用于部署和维护 Linux 网络网关服�
 ### GitHub 官方源
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/a517e5ea6b9f4e8ad76ec94bc400738a51d1b507/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/fa89740778512187810dcb8ea6ec4c34a3a33c61/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 审阅下载的脚本后，再单独执行：
 sudo bash A-Box.sh
@@ -34,7 +34,7 @@ sudo bash A-Box.sh
 ### 第三方备用镜像
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/a-box/a517e5ea6b9f4e8ad76ec94bc400738a51d1b507/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/a-box/fa89740778512187810dcb8ea6ec4c34a3a33c61/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 审阅下载的脚本后，再单独执行：
 sudo bash A-Box.sh

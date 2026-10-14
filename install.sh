@@ -1293,39 +1293,41 @@ raise SystemExit(0)
 PY_PUBLIC_IP
 }
 
-get_public_ip_fresh() {
-    local ip api pref
-    pref=$(read_ip_pref 2>/dev/null || printf 'dual')
-    _abox_try_v4() {
-        local api ip
-        for api in 'https://api.ipify.org' 'https://ifconfig.me/ip' 'https://icanhazip.com'; do
-            ip=$(curl -fsS4 --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" "$api" 2>/dev/null | tr -d '[:space:]')
-            if valid_public_ip "$ip"; then
-                printf '%s\n' "$ip"
-                return 0
-            fi
-        done
-        return 1
-    }
-    _abox_try_v6() {
-        local ip
-        ip=$(curl -fsS6 --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" 'https://api64.ipify.org' 2>/dev/null | tr -d '[:space:]')
+# BUG-28: hoisted from get_public_ip_fresh().
+__abox_try_v4() {
+    local api ip
+    for api in 'https://api.ipify.org' 'https://ifconfig.me/ip' 'https://icanhazip.com'; do
+        ip=$(curl -fsS4 --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" "$api" 2>/dev/null | tr -d '[:space:]')
         if valid_public_ip "$ip"; then
             printf '%s\n' "$ip"
             return 0
         fi
-        return 1
-    }
+    done
+    return 1
+}
+# BUG-28: hoisted from get_public_ip_fresh().
+__abox_try_v6() {
+    local ip
+    ip=$(curl -fsS6 --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" 'https://api64.ipify.org' 2>/dev/null | tr -d '[:space:]')
+    if valid_public_ip "$ip"; then
+        printf '%s\n' "$ip"
+        return 0
+    fi
+    return 1
+}
+get_public_ip_fresh() {
+    local ip api pref
+    pref=$(read_ip_pref 2>/dev/null || printf 'dual')
     case "$pref" in
         ipv4)
-            _abox_try_v4 && return 0
+            __abox_try_v4 && return 0
             ;;
         ipv6)
-            _abox_try_v6 && return 0
+            __abox_try_v6 && return 0
             ;;
         *)
-            _abox_try_v4 && return 0
-            _abox_try_v6 && return 0
+            __abox_try_v4 && return 0
+            __abox_try_v6 && return 0
             ;;
     esac
     printf 'N/A\n'
@@ -1454,6 +1456,21 @@ openrc_cron_service_name() {
     esac
 }
 
+# BUG-28: hoisted from init_system_environment().
+__abox_reconcile_systemd_unit() {
+    local unit="$1"
+    systemctl list-unit-files --type=service --no-legend "${unit}.service" 2>/dev/null | awk -v wanted="${unit}.service" '$1 == wanted { found=1 } END { exit !found }' || return 0
+    systemctl enable --now "$unit" >/dev/null 2>&1 || die "系统服务 ${unit} 无法启用或启动。"
+    systemctl is-active --quiet "$unit" || die "系统服务 ${unit} 未处于 active 状态。"
+}
+# BUG-28: hoisted from init_system_environment().
+__abox_reconcile_openrc_service() {
+    local unit="$1"
+    [[ -x "/etc/init.d/${unit}" ]] || return 0
+    rc-update add "$unit" default >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 无法加入 default runlevel。"
+    rc-service "$unit" status >/dev/null 2>&1 || rc-service "$unit" start >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 无法启动。"
+    rc-service "$unit" status >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 未处于运行状态。"
+}
 init_system_environment() {
     release=''
     local -a install_cmd=()
@@ -1540,23 +1557,10 @@ init_system_environment() {
 
     ensure_commands
 
-    reconcile_systemd_unit() {
-        local unit="$1"
-        systemctl list-unit-files --type=service --no-legend "${unit}.service" 2>/dev/null | awk -v wanted="${unit}.service" '$1 == wanted { found=1 } END { exit !found }' || return 0
-        systemctl enable --now "$unit" >/dev/null 2>&1 || die "系统服务 ${unit} 无法启用或启动。"
-        systemctl is-active --quiet "$unit" || die "系统服务 ${unit} 未处于 active 状态。"
-    }
-    reconcile_openrc_service() {
-        local unit="$1"
-        [[ -x "/etc/init.d/${unit}" ]] || return 0
-        rc-update add "$unit" default >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 无法加入 default runlevel。"
-        rc-service "$unit" status >/dev/null 2>&1 || rc-service "$unit" start >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 无法启动。"
-        rc-service "$unit" status >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 未处于运行状态。"
-    }
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         case "$release" in
-            debian|ubuntu) reconcile_systemd_unit cron ;;
-            centos) reconcile_systemd_unit crond ;;
+            debian|ubuntu) __abox_reconcile_systemd_unit cron ;;
+            centos) __abox___abox_reconcile_systemd_unit crond ;;
         esac
         if [[ "$release" == 'centos' ]]; then
             if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
@@ -1575,7 +1579,7 @@ init_system_environment() {
                 rc-update del crond default >/dev/null 2>&1 || true
             fi
         fi
-        reconcile_openrc_service "$cron_unit"
+        __abox_reconcile_openrc_service "$cron_unit"
     fi
 
     IPT=$(command -v iptables || echo '/sbin/iptables')

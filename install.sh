@@ -122,7 +122,7 @@ ABOX_REVOKED_PUBKEY_FPS=(
 # Minimum trusted metadata timestamp (UTC, YYYYMMDDHHMMSS). Metadata carrying
 # an older updated_at_utc/retrieved_at_utc is rejected (anti-replay /
 # anti-downgrade). Bump when rotating keys or after a revocation event.
-ABOX_SIGNING_MIN_TIMESTAMP_UTC='20261015000000'
+ABOX_SIGNING_MIN_TIMESTAMP_UTC='20261014000000'
 # Enforcement: 0 = verify-if-sig-present, warn-only on failure (default until
 # the real production pubkey is installed); 1 = STRICT fail-closed —
 # missing/invalid signature rejects the asset source (falls back to next
@@ -4933,9 +4933,8 @@ verify_ed25519_detached() {
         fi
         (( revoked == 0 )) || continue
         # Convert base64 raw 32-byte pubkey -> PEM (SubjectPublicKeyInfo).
-        if ! python3 - "$pubkey_b64" "$keypem" <<'PY_ED25519_PEM' 2>/dev/null; then
-            continue
-        fi
+        # Uses python3 -c (not heredoc) to avoid multi-level escaping fragility.
+        if ! python3 -c "
 import base64, sys
 try:
     raw = base64.b64decode(sys.argv[1], validate=True)
@@ -4944,9 +4943,9 @@ except Exception:
 if len(raw) != 32:
     sys.exit(1)
 der = bytes.fromhex('302a300506032b6570032100') + raw
-pem = '-----BEGIN PUBLIC KEY-----\n' + base64.encodebytes(der).decode().strip() + '\n-----END PUBLIC KEY-----\n'
+pem = '-----BEGIN PUBLIC KEY-----' + chr(10) + base64.encodebytes(der).decode().strip() + chr(10) + '-----END PUBLIC KEY-----' + chr(10)
 open(sys.argv[2], 'w').write(pem)
-PY_ED25519_PEM
+" "$pubkey_b64" "$keypem" 2>/dev/null; then
             continue
         fi
         if openssl pkeyutl -verify -pubin -inkey "$keypem" -rawin -in "$file" -sigfile "$sigbin" >/dev/null 2>&1; then
@@ -5246,7 +5245,7 @@ core_latest_mirror_tag_from_text() {
 }
 
 core_latest_mirror_release_ref() {
-    local repo="${1:-}" base='' workdir='' expected='' actual='' versions=''
+    local repo="${1:-}" base='' workdir='' expected='' actual='' versions='' _f05_ts=''
     case "$repo" in XTLS/Xray-core|SagerNet/sing-box|HyNetworks/hysteria) ;; *) return 1 ;; esac
     base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     [[ -n "$base" ]] || return 1
@@ -14899,7 +14898,7 @@ wallos_pull_or_restore_image() {
         # Release as the manifest, so this check detects inconsistency and
         # corruption but is NOT an independent authenticity proof. A signature
         # trust root is still deferred (F-05).
-        local _n2_work="" _mirror_digest="" _manifest_tag=""
+        local _n2_work="" _mirror_digest="" _manifest_tag="" _n2_ts=""
         local _n2_manifest_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
         local _n2_sum_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
         _n2_work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-n2.XXXXXX 2>/dev/null) || true
@@ -14919,8 +14918,22 @@ wallos_pull_or_restore_image() {
                 _n2_expected=$(awk -v f="wallos-manifest.txt" '$2==f || $2==("*" f) {print $1; exit}' "$_n2_work/SHA256SUMS" 2>/dev/null || true)
                 _n2_actual=$(sha256sum "$_n2_work/wallos-manifest.txt" 2>/dev/null | awk '{print $1}' || true)
                 if [[ "$_n2_expected" =~ ^[A-Fa-f0-9]{64}$ && "${_n2_expected,,}" == "${_n2_actual,,}" ]]; then
-                    _mirror_digest=$(awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
-                    _manifest_tag=$(awk -F= '$1=="tag" {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
+                    # F-05: verify detached Ed25519 signature of the manifest.
+                    curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_sum_url.sig" -o "$_n2_work/SHA256SUMS.sig" 2>/dev/null || true
+                    curl -fLsS --connect-timeout 8 --max-time 30 "${_n2_manifest_url}.sig" -o "$_n2_work/wallos-manifest.txt.sig" 2>/dev/null || true
+                    if ! abox_verify_sig_gate "$_n2_work/wallos-manifest.txt" "$_n2_work/wallos-manifest.txt.sig" "Wallos manifest (N-2 fast path)"; then
+                        msg "${YELLOW}[!] N-2 manifest signature rejected; falling back to tag pull.${NC}"
+                    else
+                        # F-05 anti-replay on manifest timestamp.
+                        _n2_ts=$(awk -F= '$1=="retrieved_at_utc" {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
+                        if [[ -n "$_n2_ts" ]] && ! abox_signing_timestamp_ok "$_n2_ts"; then
+                            printf '[A-Box][F-05] FATAL: Wallos manifest timestamp %s predates trust floor\n' "$_n2_ts" >&2
+                            msg "${YELLOW}[!] N-2 manifest timestamp rejected; falling back to tag pull.${NC}"
+                        else
+                            _mirror_digest=$(awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
+                            _manifest_tag=$(awk -F= '$1=="tag" {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
+                        fi
+                    fi
                 else
                     msg "${YELLOW}[!] N-2 fast-path manifest checksum mismatch; falling back to tag pull.${NC}"
                 fi
@@ -19272,6 +19285,87 @@ EOF_SVC_TEST_RCUPDATE
     ); then
         echo 'FAIL: Wallos backup/restore transaction failed or damaged data on invalid archive'
         failures=$((failures + 1))
+    fi
+    # F-05: Ed25519 detached-signature round-trip with a throwaway keypair.
+    # Generates a fresh key, signs data, verifies OK; tampered data/sig must FAIL.
+    # Also exercises the enforcement gate and anti-replay timestamp check.
+    if selftest_has openssl && selftest_has python3; then
+        _f05_tdir=$(umask 077; mktemp -d "$tmp/f05.XXXXXX") || { echo 'FAIL: F-05 mktemp'; failures=$((failures + 1)); }
+        if [[ -n "${_f05_tdir:-}" && -d "$_f05_tdir" ]]; then
+            # Throwaway keypair (never the production key).
+            if openssl genpkey -algorithm ed25519 -out "$_f05_tdir/priv.pem" 2>/dev/null && \
+               openssl pkey -in "$_f05_tdir/priv.pem" -pubout -out "$_f05_tdir/pub.pem" 2>/dev/null; then
+                _f05_pub_b64=$(python3 - "$_f05_tdir/pub.pem" <<'PY_F05_TPUB' 2>/dev/null
+import base64, sys
+pem = open(sys.argv[1]).read()
+der = base64.b64decode(''.join(l for l in pem.splitlines() if '---' not in l))
+print(base64.b64encode(der[-32:]).decode())
+PY_F05_TPUB
+) || _f05_pub_b64=''
+                if [[ -n "$_f05_pub_b64" ]]; then
+                    printf 'F-05 test fixture data\n' > "$_f05_tdir/data.txt"
+                    openssl pkeyutl -sign -inkey "$_f05_tdir/priv.pem" -rawin \
+                        -in "$_f05_tdir/data.txt" 2>/dev/null | base64 > "$_f05_tdir/data.txt.sig" || \
+                        { echo 'FAIL: F-05 signing'; failures=$((failures + 1)); }
+                    # Swap in the throwaway pubkey (save/restore the real array).
+                    _f05_saved_pubkeys=("${ABOX_SIGNING_PUBKEYS[@]}")
+                    ABOX_SIGNING_PUBKEYS=("f05-selftest:$_f05_pub_b64")
+                    if ! verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/data.txt.sig"; then
+                        echo 'FAIL: F-05 valid signature rejected'; failures=$((failures + 1))
+                    fi
+                    # Tampered data must FAIL.
+                    printf 'F-05 TAMPERED\n' > "$_f05_tdir/data-tampered.txt"
+                    if verify_ed25519_detached "$_f05_tdir/data-tampered.txt" "$_f05_tdir/data.txt.sig"; then
+                        echo 'FAIL: F-05 tampered data accepted'; failures=$((failures + 1))
+                    fi
+                    # Tampered signature must FAIL.
+                    printf 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\n' > "$_f05_tdir/bad.sig"
+                    if verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/bad.sig"; then
+                        echo 'FAIL: F-05 bad signature accepted'; failures=$((failures + 1))
+                    fi
+                    # Missing sig file must FAIL verify (gate decides enforcement).
+                    if verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig"; then
+                        echo 'FAIL: F-05 missing sig accepted'; failures=$((failures + 1))
+                    fi
+                    # Enforcement gate: with ENFORCE=1, missing sig must return 1.
+                    if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then
+                        : # expected: gate returns 1
+                    else
+                        echo 'FAIL: F-05 gate did not fail-closed on missing sig'; failures=$((failures + 1))
+                    fi
+                    # Enforcement gate: with ENFORCE=0, missing sig warns but returns 0.
+                    if ! ABOX_SIGNING_ENFORCE=0 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then
+                        echo 'FAIL: F-05 gate should warn-only when enforcement off'; failures=$((failures + 1))
+                    fi
+                    # Anti-replay: old timestamp rejected, current accepted.
+                    if abox_signing_timestamp_ok "20200101000000"; then
+                        echo 'FAIL: F-05 stale timestamp accepted'; failures=$((failures + 1))
+                    fi
+                    if ! abox_signing_timestamp_ok "$(date -u +%Y%m%d%H%M%S)"; then
+                        echo 'FAIL: F-05 current timestamp rejected'; failures=$((failures + 1))
+                    fi
+                    if abox_signing_timestamp_ok "not-a-timestamp"; then
+                        echo 'FAIL: F-05 malformed timestamp accepted'; failures=$((failures + 1))
+                    fi
+                    # Revocation: revoked key must not verify.
+                    _f05_fp=$(printf '%s' "$_f05_pub_b64" | base64 -d 2>/dev/null | sha256sum | awk '{print $1}')
+                    _f05_saved_revoked=("${ABOX_REVOKED_PUBKEY_FPS[@]}")
+                    ABOX_REVOKED_PUBKEY_FPS=("$_f05_fp")
+                    if verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/data.txt.sig"; then
+                        echo 'FAIL: F-05 revoked key still verifies'; failures=$((failures + 1))
+                    fi
+                    ABOX_REVOKED_PUBKEY_FPS=("${_f05_saved_revoked[@]}")
+                    ABOX_SIGNING_PUBKEYS=("${_f05_saved_pubkeys[@]}")
+                else
+                    echo 'FAIL: F-05 pubkey extraction'; failures=$((failures + 1))
+                fi
+            else
+                selftest_note 'F-05 Ed25519 keygen unavailable; skipped'
+            fi
+            rm -rf -- "$_f05_tdir"
+        fi
+    else
+        selftest_note 'F-05 Ed25519 tests skipped (openssl/python3 missing)'
     fi
     if (( failures > 0 )); then
         echo "SELF_TEST_FAILED=$failures"

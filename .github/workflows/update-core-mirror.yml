@@ -134,6 +134,44 @@ jobs:
         with:
           name: verified-core-mirror
           path: verified/
+      # F-05: Detached Ed25519 signatures for mirror metadata.
+      # Signs CORE-VERSIONS and SHA256SUMS with the maintainer private key
+      # (GitHub Secret ABOX_SIGNING_PRIVKEY_B64 = base64 of raw 32-byte seed).
+      # Skips gracefully when the secret is absent (forks / key-less CI).
+      # See docs/SIGNING.md for key generation and rotation.
+      - name: Sign mirror metadata (F-05)
+        env:
+          ABOX_SIGNING_PRIVKEY_B64: ${{ secrets.ABOX_SIGNING_PRIVKEY_B64 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ABOX_SIGNING_PRIVKEY_B64:-}" ]]; then
+            echo "::notice::ABOX_SIGNING_PRIVKEY_B64 not set; skipping F-05 signing."
+            exit 0
+          fi
+          umask 077
+          # Reconstruct PKCS#8 PEM from raw 32-byte seed (no new deps).
+          python3 - "$ABOX_SIGNING_PRIVKEY_B64" <<'PY_SIGNKEY' > /tmp/abox-sign-priv.pem
+          import base64, sys
+          raw = base64.b64decode(sys.argv[1], validate=True)
+          assert len(raw) == 32, "private seed must be 32 bytes"
+          der = bytes.fromhex('302e020100300506032b657004220402') + raw
+          sys.stdout.write('-----BEGIN PRIVATE KEY-----\n')
+          sys.stdout.write(base64.encodebytes(der).decode().strip() + '\n')
+          sys.stdout.write('-----END PRIVATE KEY-----\n')
+          PY_SIGNKEY
+          for meta in verified/CORE-VERSIONS verified/SHA256SUMS; do
+            [[ -f "$meta" ]] || continue
+            openssl pkeyutl -sign -inkey /tmp/abox-sign-priv.pem -rawin \
+              -in "$meta" | base64 > "$meta.sig"
+            # Self-check before upload: verify with the matching public key.
+            openssl pkeyutl -verify -pubin \
+              -inkey <(openssl pkey -in /tmp/abox-sign-priv.pem -pubout) \
+              -rawin -in "$meta" \
+              -sigfile <(base64 -d "$meta.sig") \
+              || { echo "::error::F-05 self-check failed for $meta"; exit 1; }
+            echo "Signed: $meta.sig"
+          done
+          shred -u /tmp/abox-sign-priv.pem 2>/dev/null || rm -f /tmp/abox-sign-priv.pem
       - name: Upload to core-binaries Release (no execution)
         shell: bash
         # This job NEVER executes the downloaded binaries; it only uploads
@@ -298,7 +336,14 @@ jobs:
           if [[ -f verified/CORE-VERSIONS ]]; then
             echo "Uploading CORE-VERSIONS"
             gh release upload core-binaries "verified/CORE-VERSIONS#CORE-VERSIONS" --clobber
+            # F-05: upload detached signature if the signing step produced one.
+            if [[ -f verified/CORE-VERSIONS.sig ]]; then
+              gh release upload core-binaries "verified/CORE-VERSIONS.sig#CORE-VERSIONS.sig" --clobber
+            fi
           fi
           echo "Uploading SHA256SUMS (last)"
           gh release upload core-binaries "verified/SHA256SUMS#SHA256SUMS" --clobber
+          if [[ -f verified/SHA256SUMS.sig ]]; then
+            gh release upload core-binaries "verified/SHA256SUMS.sig#SHA256SUMS.sig" --clobber
+          fi
           echo "Publish complete. Verified assets uploaded without execution."

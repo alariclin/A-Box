@@ -48,10 +48,10 @@ sudo bash A-Box.sh
 - **组合部署：** Xray + Hysteria 2 组合；sing-box Vision + Hysteria 2 + Shadowsocks-2022 组合。sing-box 组合按设计不包含 XHTTP。
 - **客户端配置导出：** 分享链接/URI、二维码、Clash/Mihomo YAML、sing-box 出站模板、v2rayN/v2rayNG XHTTP JSON。
 - **运维和诊断：** 健康检查、系统/下载测速、IP 质量与路由测试、BBR/FQ 调优和回滚、IP 偏好、DNS 实测优选与受支持后端的 DoT/DoH、时区编号选择、Locale/NTP、Wallos 安装与数据备份、Fail2Ban/logrotate、流量限制、备份恢复、脱敏诊断包和预检查。
+- **运维增强：** 一键 Reality、快速/严格模式（`ABOX_FAST`）、核心固定版本与失败回滚、多 UUID 服务端添加/撤销、URI/Base64/Clash 导出，以及真实下载源可用性探测。
 - **核心二进制镜像：** 固定入口 Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/a-box/releases/tag/core-binaries) 同时保留固定兼容性版本资产和带版本号的最新正式稳定版资产。每周工作流会排除 draft/prerelease，校验官方 SHA-256 与资产架构；仅对 CI 运行器可执行的二进制进行版本探测，并保留旧版本资产供回滚。安装器还会在目标环境校验实际二进制版本。最新稳定版回退先尝试完全匹配的版本化镜像，再回退到固定兼容性 pin。`SHA256SUMS` 是同一 Release 内的完整性清单，不是独立签名；详见 [`mirrors/README.md`](mirrors/README.md)。
 - **SNI 候选工作流：** 本地完整和微型主机候选测试、已保存结果查看器、输入校验、文件大小/行数上限、重复项清理，以及可用时回退到有效本地缓存或同目录数据文件。
 - **维护：** 显示 SHA-256 并要求明确确认的脚本 OTA、Xray Geo 数据更新，以及不重置节点参数的核心程序单独升级。
-- **运维增强：** 一键 Reality、快速/严格模式（`ABOX_FAST`）、核心固定版本与失败回滚、多 UUID 服务端添加/撤销、URI/Base64/Clash 导出，以及真实下载源可用性探测。
 - **安全控制：** 部署前检查、受控服务归属/状态变更、防火墙处理，以及受支持操作的回滚路径。
 
 仓库内置候选种子文件见 [`data/sni-candidates.txt`](data/sni-candidates.txt)。SNI 列表仅是候选项。域名出现在列表中，**不代表它从特定 VPS 当前可用，也不保证符合目标 REALITY 部署所需的 TLS/ALPN/SAN 条件**。使用前必须在目标网络实际验证。无法取得有效列表或有效备用副本时，SNI 工作流会拒绝继续，而不是使用未经验证的数据。

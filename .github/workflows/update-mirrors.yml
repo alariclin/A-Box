@@ -136,8 +136,10 @@ jobs:
 
           # D-2: Include wallos-manifest.txt in SHA256SUMS so consumers can
           # verify the manifest itself (previously only 4 tar.gz files were listed).
-          sha256sum wallos-manifest.txt \
-            wallos-source.tar.gz \
+          # FIX: Hash ONLY the 4 tarballs first (NOT the manifest), because the
+          # manifest is mutated below (SHA lines appended). Hashing the manifest
+          # before mutation would record a stale hash and break the line count.
+          sha256sum wallos-source.tar.gz \
             wallos-linux-amd64.tar.gz \
             wallos-linux-arm64.tar.gz \
             wallos-linux-armv7.tar.gz > SHA256SUMS
@@ -152,6 +154,8 @@ jobs:
 
           # Boundary 2: Add final manifest (after SHA appends) to SHA256SUMS.
           # Client verifies manifest hash against SHA256SUMS (D-2 fail-closed).
+          # The manifest hash recorded here is the FINAL content (post-append).
+          # Total: 4 tarballs + final manifest = 5 lines.
           sha256sum wallos-manifest.txt >> SHA256SUMS
           test "$(grep -cE '^[A-Fa-f0-9]{64}  ' SHA256SUMS)" -eq 5
           sha256sum -c SHA256SUMS

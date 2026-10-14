@@ -3467,12 +3467,16 @@ nftables_native_rules_present() {
                      name !~ /^(filter|nat|mangle|raw|security)$/)
                 native=1
         }
-        # P3-01 fix 2026-10-14: match chain names case-insensitively.
-        # nftables chains are typically UPPERCASE (INPUT/FORWARD/OUTPUT).
+        # FIX (P3-01 regression revert 2026-10-15): match chain names
+        # case-SENSITIVELY (lowercase only). Native nftables convention uses
+        # lowercase chain names (input/forward/output). iptables-nft compat
+        # tables use UPPERCASE (INPUT/FORWARD/OUTPUT). The case-insensitive
+        # match misidentified iptables-nft rulesets as native nftables on
+        # Debian/Ubuntu, breaking firewall_backend().
         /^[[:space:]]*chain[[:space:]]+/ {
             cname=$2
             gsub(/\{/, "", cname)
-            if (tolower(cname) == "input" || tolower(cname) == "forward" || tolower(cname) == "output")
+            if (cname == "input" || cname == "forward" || cname == "output")
                 native=1
         }
         END { exit !native }
@@ -4418,7 +4422,14 @@ check_selected_ports_free() {
         holder=''
         if [[ -n "$ss_udp_output" ]]; then
             while IFS= read -r line; do
-                p=$(awk '{print $4}' <<< "$line" | sed -nE 's/.*[:.]([0-9]+)$/\1/p')
+                # FIX: ss UDP columns are Netid/State/Recv-Q/Send-Q/Local/Peer/Process,
+                # so $5 is the Local address and $4 is Send-Q (a bare number like "0").
+                # Using $4 always yields empty p (dead check). Use $5, falling back
+                # to $4 for ss variants with different column layouts.
+                p=$(awk '{print $5}' <<< "$line" | sed -nE 's/.*[:.]([0-9]+)$/\1/p')
+                if [[ -z "$p" ]]; then
+                    p=$(awk '{print $4}' <<< "$line" | sed -nE 's/.*[:.]([0-9]+)$/\1/p')
+                fi
                 [[ "$p" =~ ^[0-9]+$ ]] || continue
                 if (( 10#$p >= 10#$HY2_RANGE_START && 10#$p <= 10#$HY2_RANGE_END )); then
                     holder+="$line"$'\n'
@@ -5592,7 +5603,16 @@ get_traffic_block_period() {
     local period uid gid mode pair desired
     if pair=$(read_traffic_pair_fields); then
         desired=${pair%%$'\n'*}
-        period=${pair#*$'\n'}
+        # FIX: When the period is empty, command substitution strips the
+        # trailing newline, so pair="RUNNING" with no newline at all. The
+        # naive ${pair#*$'\n'} then returns "RUNNING" unchanged (no match),
+        # which passes -n and later fails commit validation. Detect the
+        # missing newline explicitly and treat the period as empty.
+        if [[ "$pair" == *$'\n'* ]]; then
+            period=${pair#*$'\n'}
+        else
+            period=""
+        fi
         [[ -n "$period" ]] || return 1
         printf '%s\n' "$period"
         return 0
@@ -8013,7 +8033,14 @@ read_desired() {
 read_block_period() {
     local period mode pair
     if pair=$(read_traffic_pair_fields); then
-        period=${pair#*$'\n'}
+        # FIX: Same empty-period bug as get_traffic_block_period — command
+        # substitution strips the trailing newline, so a missing newline
+        # means the period field is empty (not "RUNNING").
+        if [[ "$pair" == *$'\n'* ]]; then
+            period=${pair#*$'\n'}
+        else
+            period=""
+        fi
         [[ -n "$period" ]] || return 1
         printf '%s\n' "$period"
         return 0
@@ -9679,6 +9706,14 @@ export_lightweight_subscription() {
         done < "$_uuid_list_tmp"
     fi
     rm -f -- "$_uuid_list_tmp"
+    # FIX: If neither VISION nor XHTTP branch ran (e.g. HY2-only or SS-only
+    # deployment), no URIs were written. Do NOT install an empty subscription
+    # file and claim success — report clearly instead.
+    if [[ ! -s "$uri_tmp" ]]; then
+        rm -f -- "$uri_tmp"
+        msg "${YELLOW}[!] No subscription URIs generated: current MODE ($MODE) has no VLESS/VISION/XHTTP inbound. Subscription files were not written.${NC}" >&2
+        return 1
+    fi
     # A-05c-FIX: Atomic install of URI list (600). Temp file cleaned up.
     install_file_atomically "$uri_tmp" "$uri_file" 600 || { rm -f -- "$uri_tmp"; return 1; }
     rm -f -- "$uri_tmp"
@@ -10443,7 +10478,13 @@ restore_dns_snapshot_body() {
     local dir="$1" backend state key value connection iface dnscrypt_state
     [[ -f "$dir/COMPLETE" ]] || return 1
     backend=$(tr -d '[:space:]' < "$dir/backend" 2>/dev/null || true)
-    if [[ -e "$dir/resolv.conf" || -L "$dir/resolv.conf" ]]; then cp -a "$dir/resolv.conf" /etc/resolv.conf || return 1
+    if [[ -e "$dir/resolv.conf" || -L "$dir/resolv.conf" ]]; then
+        # FIX: cp -a follows a symlink at the destination and would overwrite
+        # its TARGET (e.g. systemd-resolved stub target), reporting success
+        # while the snapshot is never applied. Remove a destination symlink
+        # first (mirrors restore_timezone_snapshot's rm -f /etc/localtime).
+        [[ -L /etc/resolv.conf ]] && rm -f /etc/resolv.conf
+        cp -a "$dir/resolv.conf" /etc/resolv.conf || return 1
     elif [[ -f "$dir/resolv.conf.absent" ]]; then rm -f /etc/resolv.conf || return 1; fi
     if [[ -f "$dir/resolved.conf" ]]; then cp -a "$dir/resolved.conf" /etc/systemd/resolved.conf || return 1
     elif [[ -f "$dir/resolved.conf.absent" ]]; then rm -f /etc/systemd/resolved.conf || return 1; fi
@@ -14498,6 +14539,11 @@ wallos_pull_or_restore_image() {
         if [[ -n "$_n2_work" && -d "$_n2_work" ]]; then
             # TRAP-3: EXIT trap ensures temp dir cleanup even on abnormal exit.
             # Expand $_n2_work now (double quotes); the local is gone when EXIT fires.
+            # FIX: Save any pre-existing EXIT trap (e.g. runtime lock cleanup)
+            # and restore it afterward, instead of discarding it with bare
+            # "trap - EXIT" (follows the restore_saved_trap pattern).
+            local _n2_prev_trap_exit
+            _n2_prev_trap_exit=$(trap -p EXIT 2>/dev/null || true)
             trap "rm -rf -- '$_n2_work' 2>/dev/null" EXIT
             if curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_manifest_url" -o "$_n2_work/wallos-manifest.txt" 2>/dev/null &&
                curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_sum_url" -o "$_n2_work/SHA256SUMS" 2>/dev/null; then
@@ -14513,6 +14559,7 @@ wallos_pull_or_restore_image() {
                 fi
             fi
             trap - EXIT
+            restore_saved_trap EXIT "$_n2_prev_trap_exit"
             rm -rf -- "$_n2_work"
         fi
         if [[ "$_mirror_digest" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]]; then
@@ -14835,11 +14882,18 @@ wallos_recover_interrupted_upgrade() {
         msg "${RED}Interrupted Wallos upgrade backup restore failed. Journal and backup retained at $journal and $backup.${NC}"
         return 1
     }
+    # FIX: When old_bind is empty (legacy containers had no IP binding),
+    # "-p :<port>:80/tcp" makes Docker publish on 0.0.0.0 (fail-open,
+    # exposing plaintext HTTP on all interfaces). Omit -p entirely instead.
+    local -a wallos_pub_args=()
+    if [[ -n "$old_bind" ]]; then
+        wallos_pub_args=(-p "$old_bind:$old_port:80/tcp")
+    fi
     if (( was_running == 1 )); then
         docker run -d --name wallos --label com.alariclin.abox.managed=true \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-            -e TZ="$old_tz" -p "$old_bind:$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null || return 1
+            -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$old_image" >/dev/null || return 1
         wallos_wait_healthy "$old_port" || {
             msg "${RED}Restored previous Wallos container did not become healthy; transaction journal retained.${NC}"
             return 1
@@ -14848,7 +14902,7 @@ wallos_recover_interrupted_upgrade() {
         docker create --name wallos --label com.alariclin.abox.managed=true \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-            -e TZ="$old_tz" -p "$old_bind:$old_port:80/tcp" --restart unless-stopped "$old_image" >/dev/null || return 1
+            -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$old_image" >/dev/null || return 1
     fi
     rm -f -- "$journal" || return 1
     msg "${YELLOW}Recovered an interrupted Wallos upgrade by restoring the previous image and validated data backup. Review logs before retrying the upgrade.${NC}"

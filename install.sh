@@ -44,8 +44,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-13-audit-r3-v190'
-ABOX_BUILD_EPOCH=20261013190
+ABOX_BUILD='2026-10-14-audit-r4-v191'
+ABOX_BUILD_EPOCH=20261014191
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -516,7 +516,7 @@ pause_return() {
         fi
         read -r -p "$(tr_msg press_return)" _ || true
         if (( released == 1 )); then
-            flock -n 9 || die '重新获取 A-Box 运行锁失败；可能另有实例已启动。请退出后重试。'
+            flock -w 15 9 || die '重新获取 A-Box 运行锁失败；可能另有实例已启动。请退出后重试。'
         fi
     fi
 }
@@ -585,7 +585,7 @@ language_menu() {
 }
 need_interactive_tty() {
     if [[ ! -t 0 ]]; then
-        if [[ -r /dev/tty ]]; then
+        if [[ -r /dev/tty ]] && ( : < /dev/tty ) 2>/dev/null; then
             exec < /dev/tty || die '当前环境无可交互 TTY，无法打开控制终端。'
         else
             die '当前环境无可交互 TTY，无法运行交互式菜单。'
@@ -773,8 +773,8 @@ sni_probe_candidate_tier() {
     : > "$raw"
     ABOX_CURL_TLS13_SUPPORTED=0
     ABOX_CURL_HTTP2_SUPPORTED=0
-    curl --help all 2>/dev/null | grep -F -- '--tlsv1.3' >/dev/null && ABOX_CURL_TLS13_SUPPORTED=1
-    curl --help all 2>/dev/null | grep -F -- '--http2' >/dev/null && ABOX_CURL_HTTP2_SUPPORTED=1
+    { curl --help all 2>/dev/null || curl --help 2>/dev/null; } | grep -F -- '--tlsv1.3' >/dev/null && ABOX_CURL_TLS13_SUPPORTED=1
+    { curl --help all 2>/dev/null || curl --help 2>/dev/null; } | grep -F -- '--http2' >/dev/null && ABOX_CURL_HTTP2_SUPPORTED=1
     sni_probe_domain "$domain" "$raw" "$timeout_s" >&2 || true
     if [[ ! -s "$raw" ]]; then
         rm -rf -- "$workdir"
@@ -1128,6 +1128,7 @@ allowed = {
     "HY2_ACME_DNS_CF_API_TOKEN", "HY2_URI_PORTS", "HY2_CLASH_PORTS",
     "HY2_SB_PORTS", "HY2_RANGE_START", "HY2_RANGE_END", "INGRESS_IF",
     "ENABLE_KEEPALIVE", "TRAFFIC_LIMIT_GB", "TRAFFIC_LIMIT_MODE",
+    "SS_WHITELIST_IP",
 }
 seen = set()
 with open(sys.argv[1], "r", encoding="utf-8", errors="strict") as handle:
@@ -1575,6 +1576,12 @@ install_optional_package() {
 
 ensure_commands() {
     local missing_pkgs=()
+    local -a _ens_install_cmd=()
+    case "${release:-}" in
+        debian|ubuntu) _ens_install_cmd=(apt-get -y install) ;;
+        alpine) _ens_install_cmd=(apk add) ;;
+        centos) if command -v dnf >/dev/null 2>&1; then _ens_install_cmd=(dnf -y install --allowerasing); else _ens_install_cmd=(yum -y install); fi ;;
+    esac
     need_cmd_pkg() {
         local cmd="$1" deb="$2" rpm="$3" apk="$4"
         command -v "$cmd" >/dev/null 2>&1 && return 0
@@ -1605,11 +1612,7 @@ ensure_commands() {
         local -a unique_pkgs=()
         mapfile -t unique_pkgs < <(printf '%s\n' "${missing_pkgs[@]}" | awk 'NF && !seen[$0]++')
         msg "${YELLOW}[*] 检测到缺失依赖包，正在补装...${NC}"
-        if [[ "$release" == 'centos' ]] && command -v dnf >/dev/null 2>&1; then
-            dnf -y install --allowerasing "${unique_pkgs[@]}" >/dev/null 2>&1 || die '依赖补装失败。'
-        else
-            "${install_cmd[@]}" "${unique_pkgs[@]}" >/dev/null 2>&1 || die '依赖补装失败。'
-        fi
+        "${_ens_install_cmd[@]}" "${unique_pkgs[@]}" >/dev/null 2>&1 || die '依赖补装失败。'
     fi
     local required=(curl jq openssl bc unzip tar iptables ss lsof crontab logrotate python3 flock cmp)
     local c
@@ -1689,8 +1692,9 @@ service_active_states_batch() {
         # Parse: output is pairs of Id, ActiveState lines
         local id=""
         while IFS= read -r line; do
+            [[ -z "$line" ]] && continue
             if [[ -z "$id" ]]; then
-                id="$line"
+                id="${line%.service}"
             else
                 case "$line" in
                     active) printf '%s:1\n' "$id" ;;
@@ -2226,6 +2230,7 @@ prepare_hysteria_acme_dir_ownership() {
         chown "root:$group" "$dir" || return 1
         chmod 770 "$dir" || return 1
         hysteria_acme_dir_runtime_permissions_valid "$dir" || return 1
+        mark_hysteria_acme_dir_managed "$dir" "$marker" || return 1
         return 0
     fi
     install -d -o root -g "$group" -m 770 /etc/hysteria "$dir" || return 1
@@ -2886,7 +2891,16 @@ clean_chain() {
         return 1
     fi
     while :; do
-        output=$("$cmd" -w -t "$table" -S "$chain" 2>/dev/null) || return 1
+        if ! output=$("$cmd" -w -t "$table" -S "$chain" 2>/dev/null); then
+            if [[ "$table" == nat ]]; then
+                local _nat_err
+                _nat_err=$("$cmd" -w -t "$table" -S "$chain" 2>&1 >/dev/null || true)
+                if printf '%s\n' "$_nat_err" | grep -qiE "table .* does not exist|table does not exist|table nat is not supported|protocol not supported|can't initialize|cannot initialize"; then
+                    return 0
+                fi
+            fi
+            return 1
+        fi
         rule=$(awk -v re="$owned_re" '$0 ~ re { sub(/^-A /,"-D "); print; exit }' <<< "$output")
         [[ -n "$rule" ]] || break
         rule=${rule//\"/}
@@ -2969,7 +2983,7 @@ reorder_one() {
     normalize_managed_rule_line() {
         local line="$1"
         line=${line//\"/}
-        line=$(printf '%s\n' "$line" | sed -E 's/^(-A[[:space:]]+INPUT[[:space:]]+-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\2([[:space:]]|$)/\1\3/')
+        line=$(printf '%s\n' "$line" | sed -E 's/^(-A[[:space:]]+INPUT([[:space:]]+[^[:space:]]+)*[[:space:]]+-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\4/')
         printf '%s\n' "$line"
     }
     capture_firewall_views() {
@@ -3410,7 +3424,7 @@ warn_ss_whitelist_native_firewall_reload() {
     local backend
     backend=$(firewall_backend)
     [[ "$backend" == 'iptables' ]] && return 0
-    msg "${YELLOW}[!] SS-2022 whitelist/DROP rules use iptables/ip6tables. If ${backend} is externally reloaded, reapply whitelist mode from Menu 19.${NC}"
+    msg "${YELLOW}[!] SS-2022 whitelist/DROP rules use iptables/ip6tables. If ${backend} is externally reloaded, reapply whitelist mode from Menu 18.${NC}"
 }
 
 ufw_is_active() {
@@ -3587,7 +3601,13 @@ ufw_delete_owned_rules() {
     # UFW can match the original comment and removes the generic v4/v6 rule pair
     # as one logical rule; a concurrent insertion cannot redirect deletion to a
     # different numbered rule.
-    ufw --force delete allow proto "$proto" from any to any port "$spec" comment "A-Box-${spec}-${proto}" >/dev/null 2>&1 || return 1
+    if ! ufw --force delete allow proto "$proto" from any to any port "$spec" comment "A-Box-${spec}-${proto}" >/dev/null 2>&1 || ufw_owned_rule_exists "$spec" "$proto"; then
+        local _num
+        while IFS= read -r _num; do
+            [[ "$_num" =~ ^[0-9]+$ ]] || continue
+            ufw --force delete "$_num" >/dev/null 2>&1 || return 1
+        done < <(printf '%s\n' "$numbers" | LC_ALL=C sort -rn)
+    fi
     ! ufw_owned_rule_exists "$spec" "$proto"
 }
 
@@ -4353,9 +4373,7 @@ release_ports() {
         fi
         holder=$(grep -E "[:.]${p}([[:space:]]|$)" <<< "$holder" || true)
         [[ -z "$holder" ]] && continue
-        msg "${RED}[!] 端口 ${p}/${proto} 仍被进程占用：${NC}"
-        printf '%s\n' "$holder"
-        die "请先手动释放端口 ${p}/${proto}。脚本不会自动 kill 非托管进程。"
+        msg "${YELLOW}[!] 旧配置端口 ${p}/${proto} 当前被非 A-Box 进程占用；若向导中继续选择该端口需先手动释放，改选其它新端口则不受影响。${NC}"
     done
 }
 
@@ -4395,7 +4413,7 @@ install_remote_abox_script_guarded() {
     fi
     tmp=$(umask 077; mktemp /tmp/A-Box-script.XXXXXX.sh) || die '远端脚本临时文件创建失败。'
     curl -fLs --connect-timeout 10 -m 60 "$url" -o "$tmp" || { rm -f -- "$tmp"; die '远端脚本下载失败。'; }
-    if ! ( validate_abox_script_file "$tmp" '远端 A-Box 脚本'; validate_ota_version_direction "$tmp" ); then
+    if ! ( validate_abox_script_file "$tmp" '远端 A-Box 脚本' && validate_ota_version_direction "$tmp" ); then
         rm -f -- "$tmp"
         die '远端 A-Box 脚本校验或版本方向检查失败。'
     fi
@@ -5059,7 +5077,17 @@ core_stable_release_age_days() {
     ' <<< "$json") || return 1
     [[ -n "$published" ]] || return 1
     now_ts=$(date +%s) || return 1
-    pub_ts=$(date -d "$published" +%s 2>/dev/null) || return 1
+    pub_ts=$(date -d "$published" +%s 2>/dev/null || python3 - "$published" <<'PY_ISO_TS' 2>/dev/null
+import datetime, sys
+s = sys.argv[1].strip()
+if s.endswith('Z'):
+    s = s[:-1] + '+00:00'
+dt = datetime.datetime.fromisoformat(s)
+if dt.tzinfo is None:
+    dt = dt.replace(tzinfo=datetime.timezone.utc)
+print(int(dt.timestamp()))
+PY_ISO_TS
+    ) || return 1
     [[ "$pub_ts" -le "$now_ts" ]] || return 1
     printf '%s\n' $(( (now_ts - pub_ts) / 86400 ))
 }
@@ -5639,6 +5667,7 @@ write_env() {
         printf 'HY2_DOWN=%s\n' "$(shell_quote "${HY2_DOWN:-}")"
         printf 'HY2_MASQ_URL=%s\n' "$(shell_quote "${HY2_MASQ_URL:-}")"
         printf 'SS_PORT=%s\n' "$(shell_quote "${SS_PORT:-}")"
+        printf 'SS_WHITELIST_IP=%s\n' "$(shell_quote "${SS_WHITELIST_IP:-}")"
         printf 'PUBLIC_KEY=%s\n' "$(shell_quote "${PUBLIC_KEY:-${PBK:-}}")"
         printf 'SHORT_ID=%s\n' "$(shell_quote "${SHORT_ID:-}")"
         printf 'HY2_PASS=%s\n' "$(shell_quote "${HY2_PASS:-}")"
@@ -5695,8 +5724,8 @@ EOF_F2B_SAMPLE
         rm -f "$sample"
         local summary matched_count missed_count
         summary=$(grep -E '^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, [0-9]+ missed' <<< "$out" | tail -n 1)
-        matched_count=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, ([0-9]+) matched, [0-9]+ missed.*/\\1/p' <<< "$summary")
-        missed_count=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, ([0-9]+) missed.*/\\1/p' <<< "$summary")
+        matched_count=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, ([0-9]+) matched, [0-9]+ missed.*/\1/p' <<< "$summary")
+        missed_count=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, ([0-9]+) missed.*/\1/p' <<< "$summary")
         [[ "$matched_count" =~ ^[0-9]+$ && "$missed_count" =~ ^[0-9]+$ ]] && (( matched_count >= 1 && missed_count >= 1 )) || { printf '%s\n' "$out" >&2; die 'Fail2Ban must match a representative failure log and leave a benign log unmatched.'; }
     fi
 }
@@ -5822,7 +5851,7 @@ prepare_abox_runtime_permissions() {
 }
 
 assert_abox_log_file_safe() {
-    local path="$1" uid gid mode nlink
+    local path="$1" uid gid mode nlink _group _gid _svc_uid
     [[ "$path" == /var/log/A-Box-*.log ]] || return 1
     [[ -d /var/log && ! -L /var/log ]] || return 1
     path_parent_chain_safe "$path" || return 1
@@ -5832,11 +5861,15 @@ assert_abox_log_file_safe() {
     gid=$(stat -c %g "$path" 2>/dev/null) || return 1
     mode=$(stat -c %a "$path" 2>/dev/null) || return 1
     nlink=$(stat -c %h "$path" 2>/dev/null) || return 1
-    [[ "$uid" == 0 && "$nlink" == 1 ]] || return 1
-    if [[ "$gid" == 0 && "$mode" =~ ^0?600$ ]]; then return 0; fi
+    [[ "$nlink" == 1 ]] || return 1
+    if [[ "$uid" == 0 && "$gid" == 0 && "$mode" =~ ^0?600$ ]]; then return 0; fi
     for _group in "$ABOX_RUNTIME_XRAY_GROUP" "$ABOX_RUNTIME_SINGBOX_GROUP" "$ABOX_RUNTIME_HYSTERIA_GROUP"; do
+        [[ -n "${_group:-}" ]] || continue
         _gid=$(getent group "$_group" 2>/dev/null | awk -F: '{print $3}')
-        [[ -n "$_gid" && "$gid" == "$_gid" && "$mode" =~ ^0?660$ ]] && return 0
+        _svc_uid=$(id -u "$_group" 2>/dev/null || true)
+        if [[ -n "$_gid" && "$gid" == "$_gid" ]] && [[ "$uid" == 0 || ( -n "$_svc_uid" && "$uid" == "$_svc_uid" ) ]] && [[ "$mode" =~ ^0?6[046]0$ ]]; then
+            return 0
+        fi
     done
     return 1
 }
@@ -5994,7 +6027,7 @@ hysteria_official_hop_firewall_ok() {
     first_other=$((10#$start + 1))
     if command -v iptables >/dev/null 2>&1; then
         if iptables -w -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
-            if ip -6 addr show scope global 2>/dev/null | grep -q 'inet6 '; then
+            if has_ipv6; then
                 command -v ip6tables >/dev/null 2>&1 && ip6tables -w -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
             fi
             return 0
@@ -6119,7 +6152,9 @@ service_active_owned() {
         pid=$(systemctl show -p MainPID --value "$srv" 2>/dev/null || true)
     else
         rc-service "$srv" status >/dev/null 2>&1 || return 1
-        [[ -r "/run/${srv}.pid" ]] && pid=$(cat "/run/${srv}.pid" 2>/dev/null || true)
+        if [[ -f "/run/${srv}.pid" && ! -L "/run/${srv}.pid" && "$(stat -c %u:%h "/run/${srv}.pid" 2>/dev/null || true)" == "0:1" ]]; then
+            pid=$(tr -d '[:space:]' < "/run/${srv}.pid" 2>/dev/null || true)
+        fi
     fi
     [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || return 1
     exe=$(expected_exe "$srv") || return 1
@@ -6351,7 +6386,9 @@ restore_geo_transaction() {
             *) return 1 ;;
         esac
     done
-    update_geo_ownership || return 1
+    if [[ -f "$base/geoip.dat" && -f "$base/geosite.dat" && -f "$ABOX_CORE_OWNERSHIP" ]]; then
+        update_geo_ownership || return 1
+    fi
     rm -rf -- "$txn" || return 1
 }
 fetch_one() {
@@ -6362,7 +6399,7 @@ fetch_one() {
     [[ -n "$asset_json" && "$asset_json" != null ]] || return 1
     url=$(jq -r '.url' <<< "$asset_json")
     digest=$(jq -r '.digest // ""' <<< "$asset_json")
-    [[ -n "$GEO_RELEASE_TAG" && "$url" == "https://github.com/${GEO_REPO}/releases/download/${GEO_RELEASE_TAG}/"* && "$digest" == sha256:* ]] || return 1
+    [[ -n "$GEO_RELEASE_TAG" && "$url" == "https://github.com/${GEO_REPO}/releases/download/${GEO_RELEASE_TAG}/${asset}" && "$digest" == sha256:* ]] || return 1
     expected="${digest#sha256:}"
     [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ ]] || return 1
     curl -fLsS --connect-timeout 10 -m 90 "$url" -o "$out" || return 1
@@ -6388,10 +6425,16 @@ if [[ -e "$GEO_TXN" || -L "$GEO_TXN" ]]; then
 fi
 desired=RUNNING
 if [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] && [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]]; then
-    IFS= read -r _pair < "$PAIR_STATE" || true
+    mode=$(stat -c %a "$PAIR_STATE" 2>/dev/null) || exit 0
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || exit 0
+    IFS= read -r _pair < "$PAIR_STATE" || exit 0
     desired=${_pair%%|*}
-elif [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]]; then
-    IFS= read -r desired < "$DESIRED" || true
+elif [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
+    [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] || exit 0
+    [[ "$(stat -c %u:%g "$DESIRED" 2>/dev/null)" == 0:0 ]] || exit 0
+    mode=$(stat -c %a "$DESIRED" 2>/dev/null) || exit 0
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || exit 0
+    IFS= read -r desired < "$DESIRED" || exit 0
 fi
 [[ "$desired" == RUNNING ]] || exit 0
 if is_systemd; then systemctl is-active --quiet xray || exit 0; else rc-service xray status >/dev/null 2>&1 || exit 0; fi
@@ -6593,7 +6636,7 @@ pre_install_setup() {
                 HY2_HOP_IMPL='manual'
                 HY2_URI_PORTS="${HY2_BASE_PORT}"
                 HY2_MONITOR_PORT="$HY2_BASE_PORT"
-                if ip -6 addr show scope global 2>/dev/null | grep -q 'inet6 '; then
+                if has_ipv6; then
                     command -v ip6tables >/dev/null 2>&1 || die '检测到全局 IPv6，但系统没有 ip6tables；拒绝启用手动 HY2 跳跃。'
                     ip6tables -w -t nat -L PREROUTING >/dev/null 2>&1 || die '检测到全局 IPv6，但 ip6tables nat/PREROUTING 不可用；拒绝启用手动 HY2 跳跃。'
                 fi
@@ -6760,8 +6803,8 @@ build_xray_config() {
         --arg uuid "$UUID" \
         --arg v_sni "${VISION_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
         --arg x_sni "${XHTTP_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
-        --arg pk "$PK" \
-        --arg sid "$SHORT_ID" \
+        --arg pk "${PK:-}" \
+        --arg sid "${SHORT_ID:-}" \
         --argjson vport "${VLESS_PORT:-443}" \
         --argjson xport "${XHTTP_PORT:-8443}" \
         --argjson ssport "${SS_PORT:-2053}" \
@@ -6823,7 +6866,7 @@ build_singbox_config() {
         --arg mode "$mode" --arg uuid "$UUID" --arg listen_addr "$listen_addr" \
         --arg v_sni "${VISION_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
         --arg x_sni "${XHTTP_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
-        --arg pk "$PK" --arg sid "$SHORT_ID" \
+        --arg pk "${PK:-}" --arg sid "${SHORT_ID:-}" \
         --argjson vport "${VLESS_PORT:-443}" --argjson hy2port "${HY2_BASE_PORT:-443}" --argjson ssport "${SS_PORT:-2053}" \
         --argjson hy2up "${HY2_DOWN:-1000}" --argjson hy2down "${HY2_UP:-100}" \
         --arg hy2pass "${HY2_PASS:-}" --arg hy2obfs "${HY2_OBFS:-}" --arg cert_cn "$cert_cn" \
@@ -7425,6 +7468,7 @@ Wants=network-online.target
 [Service]
 User=abox-xray
 Group=abox-xray
+UMask=0077
 Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
@@ -7456,6 +7500,7 @@ command_args="run -config /usr/local/etc/xray/config.json"
 command_background="yes"
 command_user="abox-xray:abox-xray"
 capabilities="cap_net_bind_service"
+umask=077
 pidfile="/run/xray.pid"
 depend() { need net; }
 EOF_SVC
@@ -7512,9 +7557,9 @@ deploy_singbox() {
     /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
 
     prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
-    KEYPAIR=$(/usr/local/bin/sing-box generate reality-keypair)
-    PK=$(awk '/Private/{print $NF; found=1; exit} /Password/{fallback=$NF} END{if (!found && fallback != "") print fallback}' <<< "$KEYPAIR")
-    PBK=$(awk '/Public/{print $NF; exit}' <<< "$KEYPAIR")
+    KEYPAIR=$(/usr/local/bin/sing-box generate reality-keypair) || die 'Sing-box REALITY 密钥对生成失败。'
+    IFS=$'\t' read -r PK PBK < <(parse_x25519_keypair_output "$KEYPAIR") || die 'Sing-box REALITY 密钥解析失败。'
+    [[ -n "${PK:-}" && -n "${PBK:-}" ]] || die 'Sing-box REALITY 密钥解析失败：密钥为空。'
     [[ -n "$PK" && -n "$PBK" ]] || die 'Sing-box REALITY 密钥生成失败。'
     UUID=$(generate_robust_uuid)
     SHORT_ID=$(openssl rand -hex 4 | tr -d '\n\r')
@@ -7576,6 +7621,7 @@ Wants=network-online.target
 [Service]
 User=abox-singbox
 Group=abox-singbox
+UMask=0077
 CapabilityBoundingSet=$SB_CAPS
 AmbientCapabilities=$SB_CAPS
 $SB_PRE_START
@@ -7607,6 +7653,7 @@ command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
 capabilities="cap_net_bind_service"
+umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
 $SB_RC_PRE
@@ -7757,16 +7804,66 @@ write_private_line() {
     tmp=$(umask 077; mktemp "${dest}.A-Box-new.XXXXXX") || return 1
     printf '%s\n' "$value" > "$tmp" && chown root:root "$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
 }
+read_traffic_pair_fields() {
+    local line desired period uid gid mode
+    [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] || return 1
+    uid=$(stat -c %u "$PAIR_STATE" 2>/dev/null) || return 1
+    gid=$(stat -c %g "$PAIR_STATE" 2>/dev/null) || return 1
+    mode=$(stat -c %a "$PAIR_STATE" 2>/dev/null) || return 1
+    [[ "$uid" == 0 && "$gid" == 0 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+    (( (8#$mode & 8#077) == 0 )) || return 1
+    IFS= read -r line < "$PAIR_STATE" || return 1
+    [[ "$line" == *'|'* ]] || return 1
+    desired=${line%%|*}
+    period=${line#*|}
+    [[ "$desired" =~ ^(RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE)$ ]] || return 1
+    if [[ -n "$period" ]]; then
+        [[ "$period" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]] || return 1
+    fi
+    printf '%s\n%s\n' "$desired" "$period"
+}
 # Atomic desired+period publish: write PAIR first, then derive legacy files.
+# Self-contained: does NOT delegate to commit_traffic_pair_state (not in generated script).
 commit_traffic_pair() {
     local desired="$1" period="${2:-}"
-    # Delegate to the transactional version (N-03/N-08 fix): single
-    # implementation, full three-file snapshot/rollback. Paths are identical
-    # ($PAIR_STATE == $ABOX_TRAFFIC_PAIR_STATE, etc.).
-    commit_traffic_pair_state "$desired" "$period"
+    local pair_backup="" desired_backup="" block_backup=""
+    local pair_existed=0 desired_existed=0 block_existed=0 restore_failed=0
+    [[ "$desired" =~ ^(RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE)$ ]] || return 1
+    if [[ -n "$period" ]]; then
+        [[ "$period" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]] || return 1
+    fi
+    if [[ -f "$PAIR_STATE" ]]; then
+        pair_existed=1; pair_backup=$(umask 077; mktemp) || return 1
+        cp -p -- "$PAIR_STATE" "$pair_backup" || { rm -f -- "$pair_backup"; return 1; }
+    fi
+    if [[ -f "$DESIRED" ]]; then
+        desired_existed=1; desired_backup=$(umask 077; mktemp) || { rm -f -- "$pair_backup"; return 1; }
+        cp -p -- "$DESIRED" "$desired_backup" || { rm -f -- "$pair_backup" "$desired_backup"; return 1; }
+    fi
+    if [[ -f "$BLOCK_STATE" ]]; then
+        block_existed=1; block_backup=$(umask 077; mktemp) || { rm -f -- "$pair_backup" "$desired_backup"; return 1; }
+        cp -p -- "$BLOCK_STATE" "$block_backup" || { rm -f -- "$pair_backup" "$desired_backup" "$block_backup"; return 1; }
+    fi
+    _tm_state_rollback() {
+        restore_failed=0
+        if (( pair_existed == 1 )); then cp -p -- "$pair_backup" "$PAIR_STATE" 2>/dev/null || restore_failed=1; else rm -f -- "$PAIR_STATE" 2>/dev/null || restore_failed=1; fi
+        if (( desired_existed == 1 )); then cp -p -- "$desired_backup" "$DESIRED" 2>/dev/null || restore_failed=1; else rm -f -- "$DESIRED" 2>/dev/null || restore_failed=1; fi
+        if (( block_existed == 1 )); then cp -p -- "$block_backup" "$BLOCK_STATE" 2>/dev/null || restore_failed=1; else rm -f -- "$BLOCK_STATE" 2>/dev/null || restore_failed=1; fi
+        rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
+        return "$restore_failed"
+    }
+    write_private_line "$PAIR_STATE" "${desired}|${period}" || { _tm_state_rollback; return 1; }
+    write_private_line "$DESIRED" "$desired" || { _tm_state_rollback; return 1; }
+    if [[ -n "$period" ]]; then
+        write_private_line "$BLOCK_STATE" "$period" || { _tm_state_rollback; return 1; }
+    else
+        if [[ -e "$BLOCK_STATE" || -L "$BLOCK_STATE" ]]; then
+            rm -f -- "$BLOCK_STATE" || { _tm_state_rollback; return 1; }
+        fi
+    fi
+    rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
+    unset -f _tm_state_rollback
 }
-# NOTE: read_traffic_pair_fields is defined once at the top of the traffic
-# state section (uses $ABOX_TRAFFIC_PAIR_STATE). Do not redefine here.
 read_desired() {
     local state=RUNNING mode pair desired
     if pair=$(read_traffic_pair_fields); then
@@ -7808,8 +7905,7 @@ month_bytes() {
         # A failed interface/database query still falls through and remains fail-closed.
         month_count=$(jq -r '(.interfaces[0].traffic.month // .interfaces[0].traffic.months // []) | length' <<< "$json" 2>/dev/null || printf 'x')
         if [[ "$month_count" == '0' ]]; then
-            case "$mode" in rx|tx|total) printf '0
-'; return 0 ;; *) return 1 ;; esac
+            case "$mode" in rx|tx|total) printf '0\n'; return 0 ;; *) return 1 ;; esac
         fi
         rx=$(jq -r '([.interfaces[0].traffic.month[]?, .interfaces[0].traffic.months[]?] | last | .rx) // empty' <<< "$json" 2>/dev/null)
         tx=$(jq -r '([.interfaces[0].traffic.month[]?, .interfaces[0].traffic.months[]?] | last | .tx) // empty' <<< "$json" 2>/dev/null)

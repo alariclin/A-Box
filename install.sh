@@ -14580,7 +14580,7 @@ wallos_latest_stable_tag() {
 }
 
 wallos_pull_or_restore_image() {
-    local arch="$1" tag='' asset='' expected actual work manifest_url sum_url
+    local arch="$1" tag='' asset='' expected actual work manifest_url sum_url _w_ts=''
     WALLOS_IMAGE_RESULT=''
     tag=$(wallos_latest_stable_tag 2>/dev/null || true)
     if [[ -n "$tag" ]] && wallos_candidate_version_allowed "$tag"; then
@@ -14666,6 +14666,19 @@ wallos_pull_or_restore_image() {
     if [[ ! "$manifest_expected" =~ ^[A-Fa-f0-9]{64}$ || "${manifest_expected,,}" != "${manifest_actual,,}" ]]; then
         rm -rf -- "$work"
         msg "${RED}Wallos manifest checksum mismatch; refusing to load it.${NC}"
+        return 1
+    fi
+    # F-05: verify detached Ed25519 signature of the manifest.
+    curl -fLsS --connect-timeout 8 --max-time 30 "${manifest_url}.sig" -o "$work/wallos-manifest.txt.sig" 2>/dev/null || true
+    if ! abox_verify_sig_gate "$work/wallos-manifest.txt" "$work/wallos-manifest.txt.sig" "Wallos manifest (fallback path)"; then
+        rm -rf -- "$work"
+        return 1
+    fi
+    # F-05 anti-replay on manifest timestamp.
+    _w_ts=$(awk -F= '$1=="retrieved_at_utc" {print $2; exit}' "$work/wallos-manifest.txt" 2>/dev/null || true)
+    if [[ -n "$_w_ts" ]] && ! abox_signing_timestamp_ok "$_w_ts"; then
+        printf '[A-Box][F-05] FATAL: Wallos manifest timestamp %s predates trust floor\n' "$_w_ts" >&2
+        rm -rf -- "$work"
         return 1
     fi
     tag=$(awk -F= '$1=="tag" {print $2; exit}' "$work/wallos-manifest.txt")
@@ -17704,6 +17717,7 @@ PY_SELFTEST_TAR
     [[ "$(core_version_compare v1.15.0-alpha.12 v1.14.3)" == '1' ]] || { echo 'FAIL: newer SemVer prerelease major/minor/patch ordering'; failures=$((failures + 1)); }
     [[ "$(core_version_compare v1.15.0-alpha.12 v1.15.0-alpha.2)" == '1' ]] || { echo 'FAIL: numeric SemVer prerelease identifier ordering'; failures=$((failures + 1)); }
     assert_ok core_version_from_output 'sing-box version 1.14.3 (go1.25.2 linux/amd64)'
+    assert_bad core_version_from_output 'no version string here at all'
     [[ "$(core_version_from_output 'sing-box version 1.14.3 (go1.25.2 linux/amd64)')" == '1.14.3' ]] || { echo 'FAIL: sing-box version parser'; failures=$((failures + 1)); }
     assert_ok core_version_downgrade_allowed v1.14.2 v1.14.3 0
     assert_bad core_version_downgrade_allowed v1.14.3 v1.14.2 0
@@ -17729,6 +17743,7 @@ PY_SELFTEST_TAR
         echo 'FAIL: Wallos backup should not start a container that was originally stopped'; failures=$((failures + 1))
     fi
     assert_bad wallos_resume_after_backup invalid ''
+    assert_ok wallos_resume_after_backup 0 ''
     [[ "$(xray_version_compare v9223372036854775808.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray huge-version comparison overflow regression'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v18446744073709551616.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray extra-large version comparison regression'; failures=$((failures + 1)); }
     grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" "$0" || { echo 'FAIL: Xray REALITY ML-KEM threshold constant missing'; failures=$((failures + 1)); }
@@ -18136,6 +18151,17 @@ PY_SELFTEST_ARCHIVE_CREATE
     printf '%s\n' 'preserve-me' > "$tmp/extract-preexisting"
     assert_bad extract_tar_regular_basename_safely "$tmp/extract-regress.tar" target.txt "$tmp/extract-preexisting"
     [[ -f "$tmp/extract-preexisting" && "$(cat "$tmp/extract-preexisting")" == 'preserve-me' ]] || { echo 'FAIL: TAR rejection removed pre-existing destination'; failures=$((failures + 1)); }
+    python3 - "$tmp" <<'PY_SELFTEST_TAR_GZ_CREATE' >/dev/null 2>&1 || { echo 'FAIL: tar.gz fixture creation'; failures=$((failures + 1)); }
+import io, os, sys, tarfile
+base=sys.argv[1]
+with tarfile.open(os.path.join(base, 'extract-regress.tar.gz'), 'w:gz') as t:
+    data=b'new-content'
+    ti=tarfile.TarInfo('target.txt'); ti.size=len(data)
+    t.addfile(ti, io.BytesIO(data))
+PY_SELFTEST_TAR_GZ_CREATE
+    rm -f "$tmp/extract-new-tar"
+    assert_ok extract_tar_regular_basename_safely "$tmp/extract-regress.tar.gz" target.txt "$tmp/extract-new-tar"
+    [[ "$(cat "$tmp/extract-new-tar")" == 'new-content' ]] || { echo 'FAIL: TAR successful extraction content'; failures=$((failures + 1)); }
     if command -v cmp >/dev/null 2>&1; then
         cmp -s "$tmp/atomic.src" "$tmp/atomic.dest" || { echo 'FAIL: atomic file install content'; failures=$((failures + 1)); }
     else
@@ -18167,6 +18193,7 @@ PY_SELFTEST_ARCHIVE_CREATE
     rm -f "$tmp/archive-good/meta/manifest.sha256.tmp"
     if selftest_has python3; then
         assert_ok create_backup_manifest "$tmp/archive-good" "$tmp/archive-good/meta/manifest.sha256"
+        assert_bad create_backup_manifest "$tmp/nonexistent-dir" "$tmp/out.sha256"
         selftest_pack_tar_gz "$tmp/archive-good" "$tmp/good.tar.gz" 1 || { echo 'FAIL: good backup fixture tar creation'; failures=$((failures + 1)); }
         assert_ok validate_backup_archive "$tmp/good.tar.gz"
     else

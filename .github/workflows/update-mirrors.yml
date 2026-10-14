@@ -10,6 +10,7 @@ on:
         default: false
   schedule:
     - cron: '17 5 * * 1'
+  pull_request:
   push:
     branches:
       - main
@@ -26,6 +27,9 @@ concurrency:
 jobs:
   update-mirrors:
     name: Build, verify, and publish recovery assets
+    # P3-12 fix: never run the publishing job on pull requests; only the
+    # read-only dry-run-validate job runs on PRs.
+    if: ${{ github.event_name != 'pull_request' }}
     # N-13 fix: write permission scoped to this job only, not the whole workflow.
     permissions:
       contents: write
@@ -36,6 +40,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
+        with:
+          persist-credentials: false
 
       - name: Prepare Wallos source and multi-architecture Docker archives
         id: wallos_assets
@@ -49,14 +55,33 @@ jobs:
           release_json="$(gh api repos/ellite/Wallos/releases/latest)"
           tag="$(jq -er '.tag_name | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))' <<<"$release_json")"
           image_tag="${tag#v}"
-          source_url="https://github.com/ellite/Wallos/archive/refs/tags/${tag}.tar.gz"
 
           echo "Wallos stable release: $tag"
+          # P3-10 fix: verify provenance of the source tarball. Resolve the
+          # tag to its commit SHA via the GitHub API, then download from the
+          # SHA-based archive URL (not the tag-based URL). GitHub redirects
+          # tag URLs to codeload .../tar.gz/refs/tags/<tag> (tag, never SHA),
+          # so a redirect check against the SHA always fails on tag URLs.
+          # The SHA URL redirects to .../tar.gz/<sha>, and the check below
+          # confirms the redirect target contains the expected SHA. This
+          # proves the tarball came from the tagged commit; it is NOT a
+          # content-hash check against an expected value.
+          tag_commit_sha="$(gh api "repos/ellite/Wallos/commits/${tag}" --jq '.sha')"
+          [[ "$tag_commit_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::Could not resolve Wallos tag $tag to a commit SHA"
+            exit 1
+          }
+          source_url="https://github.com/ellite/Wallos/archive/${tag_commit_sha}.tar.gz"
+          effective_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' "$source_url")"
+          [[ "$effective_url" == *"$tag_commit_sha"* ]] || {
+            echo "::error::Wallos source URL does not resolve to commit $tag_commit_sha (got $effective_url)"
+            exit 1
+          }
           curl -fL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 300 \
             "$source_url" -o wallos-source.tar.gz
           gzip -t wallos-source.tar.gz
           tar -tzf wallos-source.tar.gz > "$RUNNER_TEMP/wallos-source-list.txt"
-          grep -Fq '/LICENSE.md' "$RUNNER_TEMP/wallos-source-list.txt" || {
+          grep -Eq '(^|/)LICENSE\.md$' "$RUNNER_TEMP/wallos-source-list.txt" || {
             echo "::error::Wallos source archive does not contain LICENSE.md"
             exit 1
           }
@@ -71,6 +96,15 @@ jobs:
               echo "::error::Expected ${platform}, but Docker inspected ${actual}"
               exit 1
             fi
+            # P2-1 fix: record the image digest for consumer-side verification.
+            # Tags are mutable; the digest pins the exact image pulled here.
+            local digest
+            digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$image" 2>/dev/null || true)"
+            [[ -n "$digest" && "$digest" != '<no value>' ]] || {
+              echo "::error::Could not determine RepoDigest for $image"
+              exit 1
+            }
+            printf -v "digest_${arch}" '%s' "$digest"
             docker save "$image" | gzip -1 > "$asset"
             gzip -t "$asset"
             test -s "$asset"
@@ -85,6 +119,9 @@ jobs:
           tag=${tag}
           image=bellamy/wallos
           image_tag=${image_tag}
+          image_digest.amd64=${digest_amd64}
+          image_digest.arm64=${digest_arm64}
+          image_digest.armv7=${digest_armv7}
           source_url=${source_url}
           retrieved_at_utc=${retrieved_at}
           platform.amd64=linux/amd64
@@ -113,6 +150,14 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          # SECURITY: These scripts are downloaded from mutable upstream URLs.
+          # The SHA256SUMS generated below is self-attestation, NOT independent
+          # verification. Before first use of a new upstream version, a human
+          # MUST manually review the diff. Do not auto-approve.
+          # KNOWN_GOOD_SHA256 (optional, empty by default): space-separated
+          # "file=sha256" entries. If set, each downloaded file is checked
+          # against it and the build fails on mismatch. This enables future
+          # pinning without breaking the current flow.
           out="$GITHUB_WORKSPACE/dist/test-tools"
           mkdir -p "$out"
           cd "$out"
@@ -147,6 +192,22 @@ jobs:
           test "$(wc -c < YABS-LICENSE)" -gt 100
           grep -Fq 'DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE' YABS-LICENSE
           test "$(wc -c < IPQuality-LICENSE)" -gt 1000
+
+          # P2-2 fix: optional pin check. Empty by default (current flow);
+          # if KNOWN_GOOD_SHA256 is set, verify each downloaded file.
+          if [[ -n "${KNOWN_GOOD_SHA256:-}" ]]; then
+            read -ra pinned_entries <<< "$KNOWN_GOOD_SHA256"
+            for entry in "${pinned_entries[@]}"; do
+              pinned_file="${entry%%=*}"
+              pinned_sha="${entry#*=}"
+              actual_sha="$(sha256sum "$pinned_file" | awk '{print $1}')"
+              [[ "$actual_sha" == "$pinned_sha" ]] || {
+                echo "::error::KNOWN_GOOD_SHA256 mismatch for $pinned_file"
+                exit 1
+              }
+            done
+            echo "KNOWN_GOOD_SHA256 pin check passed."
+          fi
 
           retrieved_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           cat > test-tools-manifest.txt <<EOF
@@ -237,3 +298,24 @@ jobs:
 
           gh release edit "$tag" --draft=false --latest=false
           echo "Published ${title}: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"
+
+  # P3-12 fix: give this workflow CI coverage on pull requests without
+  # granting publish permissions or executing downloaded content.
+  dry-run-validate:
+    if: ${{ github.event_name == 'pull_request' }}
+    name: Validate update-mirrors workflow (dry-run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
+        with:
+          persist-credentials: false
+      - name: Validate workflow YAML parses
+        shell: bash
+        run: python3 -c "import yaml; yaml.safe_load(open('.github/workflows/update-mirrors.yml'))"
+      - name: Lint workflow with actionlint
+        shell: bash
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/update-mirrors.yml

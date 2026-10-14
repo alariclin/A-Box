@@ -13765,23 +13765,34 @@ run_mirrored_test_script() {
     work=$(umask 077; mktemp -d /tmp/A-Box-test-tool.XXXXXX) || return 1
     chmod 700 "$work" || { rm -rf -- "$work"; return 1; }
     local upstream="$work/upstream.sh" mirror="$work/mirror.sh" sums="$work/SHA256SUMS" manifest="$work/manifest.txt"
-    if curl -fLsS --retry 1 --connect-timeout 10 --max-time 180 "$upstream_url" -o "$upstream" && validate_test_script "$upstream"; then
-        selected="$upstream"
-        source="$upstream_url"
-    else
-        rm -f -- "$upstream"
+    # P2: Mirror-first (SHA-256 verified). Upstream has NO SHA pin — a
+    # syntactically-valid malicious script passes validate_test_script.
+    # Mirror is updated weekly; at most 1-week staleness for diagnostics.
+    if curl -fLsS --connect-timeout 10 --max-time 45 \
+        "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums" &&
+       curl -fLsS --connect-timeout 10 --max-time 45 \
+        "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" &&
+       curl -fLsS --connect-timeout 10 --max-time 180 \
+        "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then
+        expected=$(awk -v f="$asset" '$2==f || $2==("*" f) {print $1; exit}' "$sums")
+        sha=$(sha256sum "$mirror" | awk '{print $1}')
+        if [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ && "${sha,,}" == "${expected,,}" ]] && validate_test_script "$mirror"; then
+            selected="$mirror"
+            source="A-Box Release $ABOX_TEST_MIRROR_RELEASE"
+        fi
+    fi
+    if [[ -z "$selected" ]]; then
+        rm -f -- "$mirror" "$sums" "$manifest"
         case "${ABOX_LANG:-zh}" in
-            en) msg "${YELLOW}[!] Upstream download or content validation failed; trying the A-Box recovery asset.${NC}" ;;
-            ru) msg "${YELLOW}[!] Не удалось загрузить или проверить источник; пробуем резервный файл A-Box.${NC}" ;;
-            fa) msg "${YELLOW}[!] دریافت یا اعتبارسنجی منبع اصلی شکست خورد؛ نسخه پشتیبان A-Box بررسی می‌شود.${NC}" ;;
-            *) msg "${YELLOW}[!] 上游脚本下载失败或内容校验不通过，尝试 A-Box 灾备附件。${NC}" ;;
+            en) msg "${YELLOW}[!] A-Box verified mirror unavailable or checksum mismatch; falling back to upstream (UNVERIFIED - no SHA pin).${NC}" ;;
+            ru) msg "${YELLOW}[!] Проверенный зеркальный файл A-Box недоступен; переходим к upstream (БЕЗ ПРОВЕРКИ).${NC}" ;;
+            fa) msg "${YELLOW}[!] نسخه تأییدشده A-Box در دسترس نیست؛ بازگشت به upstream (بدون تأیید).${NC}" ;;
+            *) msg "${YELLOW}[!] A-Box 校验镜像不可用或校验失败，回退到上游（未校验，无 SHA 钉扎）。${NC}" ;;
         esac
-        if ! curl -fLsS --connect-timeout 10 --max-time 45 \
-            "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums" ||
-           ! curl -fLsS --connect-timeout 10 --max-time 45 \
-            "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" ||
-           ! curl -fLsS --connect-timeout 10 --max-time 180 \
-            "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then
+        if curl -fLsS --retry 1 --connect-timeout 10 --max-time 180 "$upstream_url" -o "$upstream" && validate_test_script "$upstream"; then
+            selected="$upstream"
+            source="$upstream_url (UNVERIFIED)"
+        else
             rm -rf -- "$work"
             case "${ABOX_LANG:-zh}" in
                 en) msg "${RED}Upstream and A-Box recovery sources are unavailable; the script was not run.${NC}" ;;
@@ -13791,20 +13802,6 @@ run_mirrored_test_script() {
             esac
             return 1
         fi
-        expected=$(awk -v f="$asset" '$2==f || $2==("*" f) {print $1; exit}' "$sums")
-        sha=$(sha256sum "$mirror" | awk '{print $1}')
-        if [[ ! "$expected" =~ ^[A-Fa-f0-9]{64}$ || "${sha,,}" != "${expected,,}" ]] || ! validate_test_script "$mirror"; then
-            rm -rf -- "$work"
-            case "${ABOX_LANG:-zh}" in
-                en) msg "${RED}Recovery checksum or script validation failed; execution refused.${NC}" ;;
-                ru) msg "${RED}Проверка контрольной суммы или скрипта не пройдена; запуск запрещён.${NC}" ;;
-                fa) msg "${RED}بررسی checksum یا اعتبارسنجی اسکریپت شکست خورد؛ اجرا ممنوع است.${NC}" ;;
-                *) msg "${RED}灾备附件摘要或脚本校验失败，拒绝执行。${NC}" ;;
-            esac
-            return 1
-        fi
-        selected="$mirror"
-        source="A-Box Release $ABOX_TEST_MIRROR_RELEASE"
     fi
     sha=$(sha256sum "$selected" | awk '{print $1}')
     case "${ABOX_LANG:-zh}" in
@@ -15617,6 +15614,19 @@ start_abox_service_soft() {
     fi
 }
 
+# P2: Soft-stop a managed service (stop only, do NOT disable).
+# Previously called at hysteria smoke test but never defined (command not
+# found was swallowed by || true, leaving a stopped service running).
+stop_abox_service_soft() {
+    local srv="$1"
+    abox_owns_service "$srv" || return 1
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        systemctl stop "$srv" >/dev/null 2>&1 || return 1
+    else
+        rc-service "$srv" stop >/dev/null 2>&1 || return 1
+    fi
+}
+
 core_expected_listen_ports() {
     local core="$1" cfg="$2"
     case "$core" in
@@ -15657,6 +15667,25 @@ core_ports_listening() {
 # TLS (not just TCP accept) by sending a minimal ClientHello and requiring
 # a ServerHello/fallback response. Catches binaries that start and listen
 # but cannot complete handshakes (e.g. protocol regressions).
+# P1-2: Return only TLS-capable inbound ports (for TLS smoke probe).
+# SS inbounds drop non-SS data silently; HY2 is UDP-only. Probing them
+# with TLS ClientHello always fails, causing false upgrade rollbacks.
+core_tls_listen_ports() {
+    local core="$1" cfg="$2"
+    case "$core" in
+        xray)
+            jq -r '.inbounds[]? | select(.protocol != "shadowsocks") | .port // empty | if type == "number" then tostring else empty end' "$cfg" 2>/dev/null
+            ;;
+        singbox)
+            jq -r '.inbounds[]? | select(.type != "shadowsocks" and .type != "hysteria2") | .listen_port // empty | if type == "number" then tostring else empty end' "$cfg" 2>/dev/null
+            ;;
+        hysteria)
+            return 0
+            ;;
+        *) return 1 ;;
+    esac
+}
+
 core_tls_smoke_probe() {
     local core="$1" cfg="$2" port
     # Minimal TLS 1.2 ClientHello (43 bytes), exported for the probe subshell.
@@ -15677,7 +15706,7 @@ core_tls_smoke_probe() {
             unset ABOX_PROBE_HELLO
             return 1
         fi
-    done < <(core_expected_listen_ports "$core" "$cfg" | awk '!seen[$0]++')
+    done < <(core_tls_listen_ports "$core" "$cfg" | awk '!seen[$0]++')
     unset ABOX_PROBE_HELLO
     return 0
 }
@@ -15701,7 +15730,10 @@ core_post_upgrade_health_gate() {
             ;;
         *) return 1 ;;
     esac
-    is_service_running "$core" || return 1
+    # P1-1: systemd unit is 'sing-box' (with hyphen), not internal name 'singbox'.
+    local svc="$core"
+    [[ "$core" == 'singbox' ]] && svc='sing-box'
+    is_service_running "$svc" || return 1
     core_ports_listening "$core" "$cfg" || return 1
     # F-01: data-plane smoke probe (TLS handshake check). Set
     # ABOX_SKIP_TRAFFIC_PROBE=1 to bypass (not recommended).
@@ -16081,6 +16113,8 @@ upgrade_current_cores_only() {
 }
 
 ota_and_geo_menu() {
+    # P3: Clear stale choice so EOF (Ctrl-D) does not re-execute previous selection.
+    ota_choice=''
     clear
     msg "${CYAN}======================================================================${NC}"
     if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
@@ -17695,6 +17729,12 @@ PY_SELFTEST_YAML
     grep -q '^core_post_upgrade_health_gate() {' "$0" || { echo 'FAIL: core post-upgrade health gate missing'; failures=$((failures + 1)); }
     grep -Fq 'core_post_upgrade_health_gate xray' "$0" || { echo 'FAIL: Xray post-upgrade health gate not enforced'; failures=$((failures + 1)); }
     grep -Fq 'core_post_upgrade_health_gate singbox' "$0" || { echo 'FAIL: sing-box post-upgrade health gate not enforced'; failures=$((failures + 1)); }
+    # Audit 2026-10-14: regression guards for P1-1/P1-2/P2/P3 fixes.
+    declare -F stop_abox_service_soft >/dev/null || { echo 'FAIL: stop_abox_service_soft must be defined'; failures=$((failures + 1)); }
+    declare -F core_tls_listen_ports >/dev/null || { echo 'FAIL: core_tls_listen_ports must be defined'; failures=$((failures + 1)); }
+    grep -Fq "svc='sing-box'" "$0" || { echo 'FAIL: health gate must map singbox to sing-box systemd unit'; failures=$((failures + 1)); }
+    grep -Fq "ota_choice=''" "$0" || { echo 'FAIL: ota_choice must be cleared before read'; failures=$((failures + 1)); }
+    grep -Fq "Mirror-first" "$0" || { echo 'FAIL: test-script must prefer verified mirror'; failures=$((failures + 1)); }
     _traffic_menu=$(sed -n '/^traffic_management_menu() {$/,/^manage_ss_whitelist()/p' "$0") || _traffic_menu=''
     _setup_line=$(grep -n -m1 'setup_traffic_monitor' <<< "$_traffic_menu" | cut -d: -f1 || true)
     _update_line=$(grep -n -m1 'update_traffic_state_atomically "$limit_gb" "$mode_choice"' <<< "$_traffic_menu" | cut -d: -f1 || true)

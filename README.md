@@ -25,7 +25,7 @@ The project is provided “as is”, without warranty. Review the script and the
 ### Official GitHub source
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/2550a08ff732ba226828bd46fa520fc1482d6578/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/f468171212a040e3d2aaf8c6837b0f09616895f0/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh
@@ -34,7 +34,7 @@ sudo bash A-Box.sh
 ### Third-party fallback mirror
 
 ```bash
-curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/alariclin/a-box/2550a08ff732ba226828bd46fa520fc1482d6578/install.sh -o A-Box.sh
+curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/alariclin/a-box/f468171212a040e3d2aaf8c6837b0f09616895f0/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh

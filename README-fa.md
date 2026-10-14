@@ -25,7 +25,7 @@ A-Box یک اسکریپت مستقل Bash برای راه‌اندازی و نگ
 ### منبع رسمی GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/af56512fccd3a34b04e951cf909e94f80fda0854/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/c3d3ea706755ebafe5b0040e73d930ba3ded0340/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
 sudo bash A-Box.sh
@@ -34,7 +34,7 @@ sudo bash A-Box.sh
 ### آینه جایگزین شخص ثالث
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/a-box/af56512fccd3a34b04e951cf909e94f80fda0854/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/a-box/c3d3ea706755ebafe5b0040e73d930ba3ded0340/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
 sudo bash A-Box.sh
@@ -47,11 +47,11 @@ sudo bash A-Box.sh
 - **راه‌اندازی پروتکل‌ها:** Xray VLESS Vision REALITY، Xray VLESS XHTTP REALITY، Xray Shadowsocks-2022، سرور رسمی Hysteria 2 و گزینه‌های sing-box برای Vision، Shadowsocks-2022 و Hysteria 2.
 - **پیکربندی‌های ترکیبی:** بسته Xray + Hysteria 2 و بسته sing-box Vision + Hysteria 2 + Shadowsocks-2022. بسته sing-box عمداً شامل XHTTP نیست.
 - **خروجی تنظیمات کلاینت:** پیوند/URI، کد QR، فایل YAML برای Clash/Mihomo، قالب خروجی sing-box و JSON مربوط به XHTTP برای v2rayN/v2rayNG.
-- **عملیات:** Reality با یک کلیک، حالت سریع/سخت‌گیرانه (`ABOX_FAST`)، نسخه‌های ثابت هسته با قابلیت بازگشت، افزودن/لغو چند UUID در سمت سرور، خروجی URI/Base64/Clash و بررسی واقعی دسترس‌پذیری منابع دانلود.
 - **عملیات و عیب‌یابی:** سنجش سیستم و دانلود، کیفیت IP و مسیر، BBR/FQ با امکان بازگردانی، ترجیح IP، آزمون DNS و DoT/DoH در backend پشتیبانی‌شده، انتخاب شماره‌ای منطقه زمانی، Locale/NTP، نصب و پشتیبان‌گیری Wallos، Fail2Ban/logrotate، محدودیت ترافیک، پشتیبان‌گیری و عیب‌یابی.
+- **عملیات:** Reality با یک کلیک، حالت سریع/سخت‌گیرانه (`ABOX_FAST`)، نسخه‌های ثابت هسته با قابلیت بازگشت، افزودن/لغو چند UUID در سمت سرور، خروجی URI/Base64/Clash و بررسی واقعی دسترس‌پذیری منابع دانلود.
+- **آینه‌های هسته:** Release ثابت [`A-Box Core Binary Mirrors`](https://github.com/alariclin/a-box/releases/tag/core-binaries) هم دارایی‌های نسخه سازگار ثابت و هم نسخه‌های شماره‌گذاری‌شده از آخرین انتشار پایدار رسمی Xray، sing-box و Hysteria را نگه می‌دارد. گردش‌کار هفتگی draft/prerelease را رد می‌کند، SHA-256 رسمی و معماری دارایی‌ها را بررسی می‌کند و نسخه اجرایی را فقط برای باینری‌هایی می‌سنجد که روی runner قابل اجرا هستند؛ نسخه‌های قدیمی برای بازگشت حفظ می‌شوند. نصب‌کننده پیش از نصب، نسخه واقعی باینری را در سیستم مقصد نیز بررسی می‌کند. هنگام شکست upstream، ابتدا آینه همان نسخه و سپس نسخه سازگار ثابت امتحان می‌شود. `SHA256SUMS` مانیفست یکپارچگی در همان Release است، نه امضای مستقل؛ جزئیات در [`mirrors/README.md`](mirrors/README.md).
 - **گردش کار نامزدهای SNI:** آزمون محلی کامل و سبک، مشاهده نتایج ذخیره‌شده، اعتبارسنجی ورودی، محدودیت اندازه فایل و تعداد سطرها، حذف موارد تکراری و استفاده از حافظه نهان محلی معتبر یا فایل داده مجاور در صورت وجود.
 - **نگه‌داری:** به‌روزرسانی کنترل‌شده اسکریپت با نمایش SHA-256 و تأیید صریح، به‌روزرسانی داده‌های Geo برای Xray و ارتقای مستقل هسته بدون بازنشانی پارامترهای نود.
-- **آینه‌های هسته:** Release ثابت [`A-Box Core Binary Mirrors`](https://github.com/alariclin/a-box/releases/tag/core-binaries) هم دارایی‌های نسخه سازگار ثابت و هم نسخه‌های شماره‌گذاری‌شده از آخرین انتشار پایدار رسمی Xray، sing-box و Hysteria را نگه می‌دارد. گردش‌کار هفتگی draft/prerelease را رد می‌کند، SHA-256 رسمی و معماری دارایی‌ها را بررسی می‌کند و نسخه اجرایی را فقط برای باینری‌هایی می‌سنجد که روی runner قابل اجرا هستند؛ نسخه‌های قدیمی برای بازگشت حفظ می‌شوند. نصب‌کننده پیش از نصب، نسخه واقعی باینری را در سیستم مقصد نیز بررسی می‌کند. هنگام شکست upstream، ابتدا آینه همان نسخه و سپس نسخه سازگار ثابت امتحان می‌شود. `SHA256SUMS` مانیفست یکپارچگی در همان Release است، نه امضای مستقل؛ جزئیات در [`mirrors/README.md`](mirrors/README.md).
 - **کنترل‌های ایمنی:** بررسی پیش از راه‌اندازی، تغییر کنترل‌شده وضعیت سرویس‌ها، مدیریت قوانین دیوار آتش و مسیرهای بازگشت برای عملیات پشتیبانی‌شده.
 
 فهرست بذر نامزدها در مخزن: [`data/sni-candidates.txt`](data/sni-candidates.txt). موارد فهرست SNI صرفاً نامزد هستند. وجود یک نام میزبان در فهرست **تضمین نمی‌کند که در حال حاضر از یک VPS مشخص قابل دسترسی باشد یا شرایط TLS/ALPN/SAN موردنیاز برای پیکربندی REALITY را داشته باشد**. پیش از استفاده، نامزدها را از شبکه مقصد بررسی کنید. اگر فهرست معتبر یا نسخه پشتیبان معتبر در دسترس نباشد، فرایند SNI متوقف می‌شود و از داده بررسی‌نشده استفاده نمی‌کند.

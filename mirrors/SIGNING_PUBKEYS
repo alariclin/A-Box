@@ -1,0 +1,19 @@
+# A-Box mirror metadata signing keys (F-05)
+# ========================================
+# Ed25519 public keys used to verify detached signatures (.sig files) on
+# mirror metadata: CORE-VERSIONS, SHA256SUMS, wallos-manifest.txt.
+#
+# Format per line:  label:base64(raw 32-byte Ed25519 public key)
+# Lines starting with '#' are comments. Blank lines ignored.
+#
+# THESE MUST MATCH ABOX_SIGNING_PUBKEYS in install.sh (hardcoded trust root).
+# This file exists for external audit only — install.sh NEVER reads it at
+# runtime (a key fetched from the Release being verified proves nothing).
+#
+# Rotation: keep primary + next/backup during the dual-key window.
+# Revocation: fingerprints (sha256 hex of raw key) go in
+# ABOX_REVOKED_PUBKEY_FPS in install.sh; CI re-signs with the backup key.
+
+# TEST-ONLY placeholder. Replace with the real production public key before
+# setting ABOX_SIGNING_ENFORCE=1. (Throwaway key; NOT trusted for production.)
+test-only:JQy/k33N/BisN+NXn0LaeCXqXm7a6q856U3mk6fwroo=

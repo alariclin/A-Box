@@ -11960,7 +11960,7 @@ import sys
 
 text = os.fdopen(3, "r", encoding="utf-8", errors="replace").read()
 secret = re.compile(
-    r"(?:^|[_-])(uuid|private.?key|public.?key|short.?id|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)(?:$|[_-])",
+    r"(?:^|[_-])(uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)(?:$|[_-])",
     re.I,
 )
 link = re.compile(r"(?i)\b(?:vless|hysteria2|hy2|ss)://\S+")
@@ -11969,7 +11969,7 @@ inline_authorization = re.compile(
 )
 inline_cookie = re.compile(r"(?i)(\b(?:cookie|set-cookie)\s*[:=]\s*)[^\r\n]+")
 inline_secret_assignment = re.compile(
-    r"(?i)([\"']?\b(?:uuid|private.?key|public.?key|short.?id|fingerprint|password|passwd|token|secret|api.?key|ss_pass|hy2_pass|hy2_obfs)\b[\"']?\s*[:=]\s*)([\"']?)[^,;\s}\"']+\2"
+    r"(?i)([\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|ss_pass|hy2_pass|hy2_obfs)\b[\"']?\s*[:=]\s*)([\"']?)[^,;\s}\"']+\2"
 )
 
 
@@ -12017,7 +12017,7 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?id|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie)[\"']?\s*[:=]\s*)([\"']?)[^,}\s\"']+\2",
+        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie)[\"']?\s*[:=]\s*)([\"']?)[^,}\s\"']+\2",
         r'\1"***REDACTED***"',
         text,
     )
@@ -14190,7 +14190,9 @@ wallos_pull_or_restore_image() {
             local _manifest_tag
             _manifest_tag=$(curl -fLsS --connect-timeout 8 --max-time 30 "https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt" 2>/dev/null | awk -F= '$1=="tag" {print $2; exit}' || true)
             if [[ "$_manifest_tag" == "$tag" ]]; then
-                if docker pull "$_mirror_digest"; then
+                # N-2: docker pull by digest creates NO tag. Must docker tag
+                # for downstream checks (require ^bellamy/wallos:[A-Za-z0-9._-]+$).
+                if docker pull "$_mirror_digest" && docker tag "$_mirror_digest" "bellamy/wallos:$image_tag"; then
                     WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
                     return 0
                 fi

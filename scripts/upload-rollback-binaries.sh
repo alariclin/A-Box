@@ -77,9 +77,10 @@ echo "[*] Verifying staged binaries against upstream official Release digests...
 declare -A upstream_map=(
     ["Xray-v26.6.27-linux-64.zip"]="XTLS/Xray-core|v26.6.27|Xray-linux-64.zip"
     ["Xray-v26.6.27-linux-arm64-v8a.zip"]="XTLS/Xray-core|v26.6.27|Xray-linux-arm64-v8a.zip"
-    ["sing-box-1.14.1-linux-amd64-glibc.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-amd64.tar.gz"
+    # R-03: glibc maps to real -glibc.tar.gz asset (not suffix-less .tar.gz).
+    ["sing-box-1.14.1-linux-amd64-glibc.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-amd64-glibc.tar.gz"
     ["sing-box-1.14.1-linux-amd64-musl.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-amd64-musl.tar.gz"
-    ["sing-box-1.14.1-linux-arm64-glibc.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-arm64.tar.gz"
+    ["sing-box-1.14.1-linux-arm64-glibc.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-arm64-glibc.tar.gz"
     ["sing-box-1.14.1-linux-arm64-musl.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-arm64-musl.tar.gz"
     ["hysteria-app-v2.12.3-linux-amd64"]="HyNetworks/hysteria|app/v2.12.3|hysteria-linux-amd64"
     ["hysteria-app-v2.12.3-linux-arm64"]="HyNetworks/hysteria|app/v2.12.3|hysteria-linux-arm64"

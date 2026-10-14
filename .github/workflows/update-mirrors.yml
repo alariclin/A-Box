@@ -285,14 +285,14 @@ jobs:
           fi
 
           retrieved_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          cat > test-tools-manifest.txt <<EOF
-          retrieved_at_utc=${retrieved_at}
-          bench.sh.url=${bench_url}
-          Check.Place.sh.url=${ipquality_url}
-          YABS-LICENSE.url=${yabs_license_url}
-          IPQuality-LICENSE.url=${ipquality_license_url}
-          validation=non-empty;size-bounds;shebang;no-html-signature;bash-n
-          EOF
+          {
+            printf 'retrieved_at_utc=%s\n' "${retrieved_at}"
+            printf 'bench.sh.url=%s\n' "${bench_url}"
+            printf 'Check.Place.sh.url=%s\n' "${ipquality_url}"
+            printf 'YABS-LICENSE.url=%s\n' "${yabs_license_url}"
+            printf 'IPQuality-LICENSE.url=%s\n' "${ipquality_license_url}"
+            printf 'validation=non-empty;size-bounds;shebang;no-html-signature;bash-n\n'
+          } > test-tools-manifest.txt
           sha256sum bench.sh Check.Place.sh YABS-LICENSE IPQuality-LICENSE > SHA256SUMS
           sha256sum -c SHA256SUMS
 
@@ -329,12 +329,12 @@ jobs:
           }
 
           notes="$RUNNER_TEMP/wallos-notes.md"
-          cat > "$notes" <<'EOF'
-          Stable, fixed-name recovery assets for the Wallos installer.
-          The installer uses this Release only when upstream stable-release metadata or Docker Hub retrieval fails.
-          Assets include Docker image archives for amd64, arm64, and armv7, the upstream source archive, a manifest, and SHA256SUMS.
-          The publishing workflow verifies archive integrity, platform identity, and SHA-256 before upload.
-          EOF
+          {
+            printf 'Stable, fixed-name recovery assets for the Wallos installer.\n'
+            printf 'The installer uses this Release only when upstream stable-release metadata or Docker Hub retrieval fails.\n'
+            printf 'Assets include Docker image archives for amd64, arm64, and armv7, the upstream source archive, a manifest, and SHA256SUMS.\n'
+            printf 'The publishing workflow verifies archive integrity, platform identity, and SHA-256 before upload.\n'
+          } > "$notes"
           publish_release wallos-mirror "Wallos Recovery Mirror" "$notes" "$GITHUB_WORKSPACE/dist/wallos"
 
       - name: Publish test-tool stable recovery Release
@@ -345,11 +345,11 @@ jobs:
           tag='test-tools-mirror'
           title='A-Box Test Tools Mirror'
           notes="$RUNNER_TEMP/test-tools-notes.md"
-          cat > "$notes" <<'EOF'
-          Stable, fixed-name recovery copies of the benchmark and IP-quality scripts used by A-Box.
-          Assets are downloaded from their upstream URLs, checked for shell syntax and non-HTML content, and accompanied by upstream license texts, a manifest, and SHA256SUMS.
-          The A-Box installer verifies the downloaded asset checksum and asks for explicit confirmation before executing third-party test scripts.
-          EOF
+          {
+            printf 'Stable, fixed-name recovery copies of the benchmark and IP-quality scripts used by A-Box.\n'
+            printf 'Assets are downloaded from their upstream URLs, checked for shell syntax and non-HTML content, and accompanied by upstream license texts, a manifest, and SHA256SUMS.\n'
+            printf 'The A-Box installer verifies the downloaded asset checksum and asks for explicit confirmation before executing third-party test scripts.\n'
+          } > "$notes"
 
           asset_dir="$GITHUB_WORKSPACE/dist/test-tools"
           mapfile -t all_assets < <(find "$asset_dir" -maxdepth 1 -type f -print | sort)

@@ -2,6 +2,17 @@
 # ==============================A-Box===============================
 # SNI profile: built-in candidate library plus per-VPS automatic REALITY target selection; no remote script execution.
 # Hardened build: stricter GitHub digest trust, guarded shortcut persistence, Fail2Ban validation, and Sing-box HY2 ACME semantics.
+# P2-03 Return Code Contract (standardized 2026-10-15):
+#   0 = success
+#   1 = general failure (operation attempted but failed)
+#   2 = preflight failure (preconditions not met; operation not attempted or aborted before mutation)
+# This standard applies ONLY to: CLI top-level exit codes and rollback orchestrator
+# functions. It does NOT apply to polymorphic internal helpers that intentionally use
+# 2/3/4 as business branch signals (callers depend on `case $?`):
+#   remove_recorded_core_family, core_version_upgrade_decision, iptables_rule_check,
+#   firewalld_port_state, ufw_global_rule_numbers, managed_services_active,
+#   decimal_component_compare, core_version_compare, and similar query/state helpers.
+# When in doubt, leave the function unchanged.
 set -o pipefail
 set -u
 if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )); then
@@ -83,6 +94,41 @@ ABOX_HYSTERIA_UPDATE_POLICY="${ABOX_HYSTERIA_UPDATE_POLICY:-auto-stable}"
 # stable release. Cooling is necessary but not sufficient: a cooled release
 # still goes through binary verification, config check, and health gate.
 ABOX_STABLE_COOLDOWN_DAYS="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
+# ============ F-05: Ed25519 detached-signature trust root ============
+# Mirror metadata (CORE-VERSIONS, SHA256SUMS, wallos-manifest.txt) is
+# published as detached-signed files (<name>.sig, base64 of raw 64-byte
+# Ed25519 signature). Verification uses ONLY openssl + python3 (both are
+# already in ensure_commands); no GPG/minisign/signify dependency.
+#
+# PUBLIC KEYS ARE HARDCODED HERE — never fetched from the Release being
+# verified (that would let an attacker replace metadata + sig + key together).
+# Format per entry: "label:base64(raw 32-byte Ed25519 pubkey)".
+# Dual-key window: keep primary + next/backup during rotation.
+#   1. New install.sh adds the new pubkey to this array.
+#   2. CI switches to signing with the new private key.
+#   3. A later release removes the old pubkey.
+ABOX_SIGNING_PUBKEYS=(
+    # TEST-ONLY placeholder. The maintainer MUST replace this with the real
+    # production public key before setting ABOX_SIGNING_ENFORCE=1.
+    # (Throwaway test key; NOT trusted for production.)
+    'test-only:JQy/k33N/BisN+NXn0LaeCXqXm7a6q856U3mk6fwroo='
+)
+# SHA256 fingerprints (lowercase hex) of REVOKED public keys.
+# A key listed here is skipped during verification even if present above.
+# Emergency revocation: add the compromised key's fingerprint here, bump
+# ABOX_BUILD_EPOCH, and have CI re-sign all Release metadata with the backup key.
+ABOX_REVOKED_PUBKEY_FPS=(
+)
+# Minimum trusted metadata timestamp (UTC, YYYYMMDDHHMMSS). Metadata carrying
+# an older updated_at_utc/retrieved_at_utc is rejected (anti-replay /
+# anti-downgrade). Bump when rotating keys or after a revocation event.
+ABOX_SIGNING_MIN_TIMESTAMP_UTC='20261014000000'
+# Enforcement: 0 = verify-if-sig-present, warn-only on failure (default until
+# the real production pubkey is installed); 1 = STRICT fail-closed —
+# missing/invalid signature rejects the asset source (falls back to next
+# trusted source, dies if none remain). NEVER warn-and-continue when 1.
+ABOX_SIGNING_ENFORCE="${ABOX_SIGNING_ENFORCE:-0}"
+# ========== end F-05 ==========
 ABOX_RESOLVED_XRAY_VERSION=''
 ABOX_RESOLVED_SINGBOX_VERSION=''
 ABOX_RESOLVED_HYSTERIA_VERSION=''
@@ -1293,39 +1339,41 @@ raise SystemExit(0)
 PY_PUBLIC_IP
 }
 
-get_public_ip_fresh() {
-    local ip api pref
-    pref=$(read_ip_pref 2>/dev/null || printf 'dual')
-    _abox_try_v4() {
-        local api ip
-        for api in 'https://api.ipify.org' 'https://ifconfig.me/ip' 'https://icanhazip.com'; do
-            ip=$(curl -fsS4 --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" "$api" 2>/dev/null | tr -d '[:space:]')
-            if valid_public_ip "$ip"; then
-                printf '%s\n' "$ip"
-                return 0
-            fi
-        done
-        return 1
-    }
-    _abox_try_v6() {
-        local ip
-        ip=$(curl -fsS6 --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" 'https://api64.ipify.org' 2>/dev/null | tr -d '[:space:]')
+# BUG-28: hoisted from get_public_ip_fresh().
+__abox_try_v4() {
+    local api ip
+    for api in 'https://api.ipify.org' 'https://ifconfig.me/ip' 'https://icanhazip.com'; do
+        ip=$(curl -fsS4 --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" "$api" 2>/dev/null | tr -d '[:space:]')
         if valid_public_ip "$ip"; then
             printf '%s\n' "$ip"
             return 0
         fi
-        return 1
-    }
+    done
+    return 1
+}
+# BUG-28: hoisted from get_public_ip_fresh().
+__abox_try_v6() {
+    local ip
+    ip=$(curl -fsS6 --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" 'https://api64.ipify.org' 2>/dev/null | tr -d '[:space:]')
+    if valid_public_ip "$ip"; then
+        printf '%s\n' "$ip"
+        return 0
+    fi
+    return 1
+}
+get_public_ip_fresh() {
+    local ip api pref
+    pref=$(read_ip_pref 2>/dev/null || printf 'dual')
     case "$pref" in
         ipv4)
-            _abox_try_v4 && return 0
+            __abox_try_v4 && return 0
             ;;
         ipv6)
-            _abox_try_v6 && return 0
+            __abox_try_v6 && return 0
             ;;
         *)
-            _abox_try_v4 && return 0
-            _abox_try_v6 && return 0
+            __abox_try_v4 && return 0
+            __abox_try_v6 && return 0
             ;;
     esac
     printf 'N/A\n'
@@ -1454,6 +1502,21 @@ openrc_cron_service_name() {
     esac
 }
 
+# BUG-28: hoisted from init_system_environment().
+__abox_reconcile_systemd_unit() {
+    local unit="$1"
+    systemctl list-unit-files --type=service --no-legend "${unit}.service" 2>/dev/null | awk -v wanted="${unit}.service" '$1 == wanted { found=1 } END { exit !found }' || return 0
+    systemctl enable --now "$unit" >/dev/null 2>&1 || die "系统服务 ${unit} 无法启用或启动。"
+    systemctl is-active --quiet "$unit" || die "系统服务 ${unit} 未处于 active 状态。"
+}
+# BUG-28: hoisted from init_system_environment().
+__abox_reconcile_openrc_service() {
+    local unit="$1"
+    [[ -x "/etc/init.d/${unit}" ]] || return 0
+    rc-update add "$unit" default >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 无法加入 default runlevel。"
+    rc-service "$unit" status >/dev/null 2>&1 || rc-service "$unit" start >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 无法启动。"
+    rc-service "$unit" status >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 未处于运行状态。"
+}
 init_system_environment() {
     release=''
     local -a install_cmd=()
@@ -1540,23 +1603,10 @@ init_system_environment() {
 
     ensure_commands
 
-    reconcile_systemd_unit() {
-        local unit="$1"
-        systemctl list-unit-files --type=service --no-legend "${unit}.service" 2>/dev/null | awk -v wanted="${unit}.service" '$1 == wanted { found=1 } END { exit !found }' || return 0
-        systemctl enable --now "$unit" >/dev/null 2>&1 || die "系统服务 ${unit} 无法启用或启动。"
-        systemctl is-active --quiet "$unit" || die "系统服务 ${unit} 未处于 active 状态。"
-    }
-    reconcile_openrc_service() {
-        local unit="$1"
-        [[ -x "/etc/init.d/${unit}" ]] || return 0
-        rc-update add "$unit" default >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 无法加入 default runlevel。"
-        rc-service "$unit" status >/dev/null 2>&1 || rc-service "$unit" start >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 无法启动。"
-        rc-service "$unit" status >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 未处于运行状态。"
-    }
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         case "$release" in
-            debian|ubuntu) reconcile_systemd_unit cron ;;
-            centos) reconcile_systemd_unit crond ;;
+            debian|ubuntu) __abox_reconcile_systemd_unit cron ;;
+            centos) __abox___abox_reconcile_systemd_unit crond ;;
         esac
         if [[ "$release" == 'centos' ]]; then
             if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
@@ -1575,7 +1625,7 @@ init_system_environment() {
                 rc-update del crond default >/dev/null 2>&1 || true
             fi
         fi
-        reconcile_openrc_service "$cron_unit"
+        __abox_reconcile_openrc_service "$cron_unit"
     fi
 
     IPT=$(command -v iptables || echo '/sbin/iptables')
@@ -1606,6 +1656,18 @@ remove_optional_package() {
     esac
 }
 
+# BUG-28: hoisted from ensure_commands(). Redesigned as a query function:
+# prints the package name to install when $2 is missing, prints nothing when present.
+# $1=release (debian|ubuntu|centos|alpine); unknown release prints nothing (no-op).
+__abox_missing_pkg_for() {
+    local release="$1" cmd="$2" deb="$3" rpm="$4" apk="$5"
+    command -v "$cmd" >/dev/null 2>&1 && return 0
+    case "$release" in
+        debian|ubuntu) printf '%s\n' "$deb" ;;
+        centos) printf '%s\n' "$rpm" ;;
+        alpine) printf '%s\n' "$apk" ;;
+    esac
+}
 ensure_commands() {
     local missing_pkgs=()
     local -a _ens_install_cmd=()
@@ -1614,32 +1676,41 @@ ensure_commands() {
         alpine) _ens_install_cmd=(apk add) ;;
         centos) if command -v dnf >/dev/null 2>&1; then _ens_install_cmd=(dnf -y install --allowerasing); else _ens_install_cmd=(yum -y install); fi ;;
     esac
-    need_cmd_pkg() {
-        local cmd="$1" deb="$2" rpm="$3" apk="$4"
-        command -v "$cmd" >/dev/null 2>&1 && return 0
-        case "$release" in
-            debian|ubuntu) missing_pkgs+=("$deb") ;;
-            centos) missing_pkgs+=("$rpm") ;;
-            alpine) missing_pkgs+=("$apk") ;;
-        esac
-    }
-    need_cmd_pkg curl curl curl curl
-    need_cmd_pkg jq jq jq jq
-    need_cmd_pkg openssl openssl openssl openssl
-    need_cmd_pkg bc bc bc bc
-    need_cmd_pkg unzip unzip unzip unzip
-    need_cmd_pkg tar tar tar tar
-    need_cmd_pkg iptables iptables iptables iptables
-    need_cmd_pkg ss iproute2 iproute iproute2
-    need_cmd_pkg lsof lsof lsof lsof
-    need_cmd_pkg getent libc-bin glibc-common libc-utils
-    need_cmd_pkg flock util-linux util-linux util-linux
-    need_cmd_pkg cmp diffutils diffutils diffutils
-    need_cmd_pkg crontab cron cronie cronie
-    need_cmd_pkg logrotate logrotate logrotate logrotate
-    need_cmd_pkg python3 python3 python3 python3
-    need_cmd_pkg groupadd passwd shadow-utils shadow
-    need_cmd_pkg useradd passwd shadow-utils shadow
+    local _pkg
+    _pkg=$(__abox_missing_pkg_for "$release" curl curl curl curl)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" jq jq jq jq)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" openssl openssl openssl openssl)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" bc bc bc bc)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" unzip unzip unzip unzip)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" tar tar tar tar)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" iptables iptables iptables iptables)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" ss iproute2 iproute iproute2)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" lsof lsof lsof lsof)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" getent libc-bin glibc-common libc-utils)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" flock util-linux util-linux util-linux)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" cmp diffutils diffutils diffutils)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" crontab cron cronie cronie)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" logrotate logrotate logrotate logrotate)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" python3 python3 python3 python3)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" groupadd passwd shadow-utils shadow)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    _pkg=$(__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow)
+    [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     if (( ${#missing_pkgs[@]} > 0 )); then
         local -a unique_pkgs=()
         mapfile -t unique_pkgs < <(printf '%s\n' "${missing_pkgs[@]}" | awk 'NF && !seen[$0]++')
@@ -2956,6 +3027,15 @@ restore_iptables_saved_snapshot() {
     command -v "$restore_cmd" >/dev/null 2>&1 || return 1
     "$restore_cmd" -w < "$snapshot" >/dev/null 2>&1 || "$restore_cmd" < "$snapshot" >/dev/null 2>&1
 }
+# BUG-28: hoisted from reorder_one()/reorder_ss_whitelist_rules_one().
+# $1 = lock fd value. Closes it; caller clears its own lock_fd variable.
+__abox_firewall_unlock() {
+    local lock_fd="$1"
+    # Guard empty lock_fd: `exec >&-` would close stdout.
+    if [[ "$lock_fd" =~ ^[0-9]+$ ]]; then
+        eval "exec ${lock_fd}>&-" 2>/dev/null || true
+    fi
+}
 reorder_one() {
     local cmd="$1" port="$2" proto="$3" wl_suffix="$4" drop_suffix="$5"
     local wl_comment="A-Box-${port}-${proto}-${wl_suffix}" drop_comment="A-Box-${port}-${proto}-${drop_suffix}"
@@ -2994,20 +3074,7 @@ reorder_one() {
     flock -n "$lock_fd" || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; return 1; }
     chown root:root "$lock_file" 2>/dev/null || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; rm -f -- "$lock_file"; return 1; }
     chmod 600 "$lock_file" 2>/dev/null || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; rm -f -- "$lock_file"; return 1; }
-    firewall_unlock() {
-        # Guard empty lock_fd: `exec >&-` would close stdout.
-        if [[ "$lock_fd" =~ ^[0-9]+$ ]]; then
-            eval "exec ${lock_fd}>&-" 2>/dev/null || true
-        fi
-        lock_fd=''
-    }
 
-    normalize_managed_rule_line() {
-        local line="$1"
-        line=${line//\"/}
-        line=$(printf '%s\n' "$line" | sed -E 's/^(-A[[:space:]]+INPUT([[:space:]]+[^[:space:]]+)*[[:space:]]+-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\4/')
-        printf '%s\n' "$line"
-    }
     capture_firewall_views() {
         local item normalized
         current_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || return 1
@@ -3016,7 +3083,7 @@ reorder_one() {
         while IFS= read -r item; do
             [[ "$item" =~ ^-A[[:space:]]+INPUT[[:space:]] ]] || continue
             if [[ "$item" =~ $wl_re || "$item" =~ $drop_re ]]; then
-                normalized=$(normalize_managed_rule_line "$item") || return 1
+                normalized=$(__abox_normalize_managed_rule_line "$item") || return 1
                 current_target_lines+=("$normalized")
             else
                 current_foreign_lines+=("$item")
@@ -3061,14 +3128,14 @@ reorder_one() {
         return 0
     }
 
-    recovery_snapshot=$(mktemp /run/A-Box-firewall-recovery.XXXXXX) || { firewall_unlock; return 1; }
+    recovery_snapshot=$(mktemp /run/A-Box-firewall-recovery.XXXXXX) || { __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     if ! "$save_cmd" -t filter > "$recovery_snapshot" 2>/dev/null; then
         rm -f -- "$recovery_snapshot"
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
-    original_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; firewall_unlock; return 1; }
-    capture_firewall_views || { rm -f -- "$recovery_snapshot"; firewall_unlock; return 1; }
+    original_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    capture_firewall_views || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     original_target_lines=("${current_target_lines[@]}")
     original_foreign_rules=("${current_foreign_lines[@]}")
     expected_target_lines=("${original_target_lines[@]}")
@@ -3089,7 +3156,7 @@ reorder_one() {
         local expected_line="${rules[i]}"
         line=${rules[i]//\"/}
         read -r -a argv <<< "$line"
-        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { firewall_rollback >/dev/null 2>&1 || printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; firewall_unlock; return 1; }
+        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { firewall_rollback >/dev/null 2>&1 || printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         firewall_state_matches_expected || {
             if (( mutated )); then
                 if ! firewall_rollback; then
@@ -3098,27 +3165,27 @@ reorder_one() {
             else
                 rm -f -- "$recovery_snapshot" || true
             fi
-            firewall_unlock
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         }
         if ! "$cmd" -w -I INPUT 1 "${argv[@]:2}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-            firewall_unlock
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         fi
         mutated=1
         expected_target_lines=("$expected_line" "${expected_target_lines[@]}")
     done
     local expected_drop_line="-A INPUT -p ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
-    firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+    firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     if ! "$cmd" -w -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     expected_target_lines=("${expected_target_lines[@]:0:n}" "$expected_drop_line" "${expected_target_lines[@]:n}")
 
-    rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+    rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     current_lines=(); mapfile -t current_lines <<< "$rules_output"
     delete_lines=(); delete_target_indices=(); target_idx=0; rule_no=0
     for i in "${!current_lines[@]}"; do
@@ -3135,13 +3202,13 @@ reorder_one() {
         fi
     done
     for ((j=${#delete_lines[@]}-1; j>=0; j--)); do
-        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         line=${delete_lines[j]//\"/}
         read -r -a argv <<< "$line"
-        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         if ! "$cmd" -w -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-            firewall_unlock
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         fi
         del_idx="${delete_target_indices[j]}"
@@ -3149,16 +3216,16 @@ reorder_one() {
     done
     if ! firewall_state_matches_expected; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     if ! rm -f -- "$recovery_snapshot"; then
         printf '%s\n' "A-Box firewall change completed, but recovery snapshot cleanup failed; snapshot retained at $recovery_snapshot" >&2
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     recovery_snapshot=''
-    firewall_unlock
+    __abox_firewall_unlock "$lock_fd"; lock_fd=''
     return 0
 }
 
@@ -3199,6 +3266,57 @@ EOF_ABOX_FW_RESTORE
     mv -f "$tmp" "$ABOX_DIR/firewall_restore.sh" || { rm -f "$tmp"; return 1; }
 }
 
+# BUG-28: hoisted from install_abox_firewall_persistence_service().
+# $1=old_restore $2=tx_dir $3=old_unit $4=old_unit_path $5=old_unit_enabled
+__abox_firewall_persistence_rollback() {
+    local old_restore="$1" tx_dir="$2" old_unit="$3" old_unit_path="$4" old_unit_enabled="$5"
+    local fail=0
+    if [[ "$old_restore" == 1 ]]; then
+        cp -a -- "$tx_dir/firewall_restore.sh" "$ABOX_DIR/firewall_restore.sh" || fail=1
+    else
+        rm -f -- "$ABOX_DIR/firewall_restore.sh" || fail=1
+    fi
+    case "${INIT_SYS:-}" in
+        systemd)
+            if [[ "$old_unit" == 1 ]]; then
+                cp -a -- "$tx_dir/A-Box-firewall.service" "$old_unit_path" || fail=1
+            else
+                systemctl disable A-Box-firewall.service >/dev/null 2>&1 || true
+                rm -f -- "$old_unit_path" || fail=1
+            fi
+            systemctl daemon-reload >/dev/null 2>&1 || fail=1
+            if [[ "$old_unit" == 1 ]]; then
+                case "$old_unit_enabled" in
+                    enabled|enabled-runtime|indirect) systemctl enable A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
+                    *) systemctl disable A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
+                esac
+            fi
+            ;;
+        openrc)
+            if [[ "$old_unit" == 1 ]]; then
+                cp -a -- "$tx_dir/A-Box-firewall" "$old_unit_path" || fail=1
+            else
+                if command -v rc-update >/dev/null 2>&1 && rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])A-Box-firewall([[:space:]]|$)'; then
+                    rc-update del A-Box-firewall default >/dev/null 2>&1 || true
+                fi
+                rm -f -- "$old_unit_path" || fail=1
+            fi
+            if command -v rc-update >/dev/null 2>&1; then
+                if [[ "$old_unit_enabled" == 1 ]]; then
+                    rc-update add A-Box-firewall default >/dev/null 2>&1 || true
+                elif rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])A-Box-firewall([[:space:]]|$)'; then
+                    rc-update del A-Box-firewall default >/dev/null 2>&1 || true
+                fi
+                if [[ "$(service_enabled_state_value A-Box-firewall 2>/dev/null || printf '%s' unknown)" != "$old_unit_enabled" ]]; then
+                    fail=1
+                fi
+            else
+                fail=1
+            fi
+            ;;
+    esac
+    return "$fail"
+}
 install_abox_firewall_persistence_service() {
     local tx_dir old_restore=0 old_unit=0 old_unit_path='' old_unit_enabled='' rollback_rc=0
     tx_dir=$(mktemp -d "$ABOX_DIR/.firewall-persist-tx.XXXXXX") || return 1
@@ -3237,58 +3355,9 @@ install_abox_firewall_persistence_service() {
             ;;
     esac
 
-    firewall_persistence_rollback() {
-        local fail=0
-        if [[ "$old_restore" == 1 ]]; then
-            cp -a -- "$tx_dir/firewall_restore.sh" "$ABOX_DIR/firewall_restore.sh" || fail=1
-        else
-            rm -f -- "$ABOX_DIR/firewall_restore.sh" || fail=1
-        fi
-        case "${INIT_SYS:-}" in
-            systemd)
-                if [[ "$old_unit" == 1 ]]; then
-                    cp -a -- "$tx_dir/A-Box-firewall.service" "$old_unit_path" || fail=1
-                else
-                    systemctl disable A-Box-firewall.service >/dev/null 2>&1 || true
-                    rm -f -- "$old_unit_path" || fail=1
-                fi
-                systemctl daemon-reload >/dev/null 2>&1 || fail=1
-                if [[ "$old_unit" == 1 ]]; then
-                    case "$old_unit_enabled" in
-                        enabled|enabled-runtime|indirect) systemctl enable A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
-                        *) systemctl disable A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
-                    esac
-                fi
-                ;;
-            openrc)
-                if [[ "$old_unit" == 1 ]]; then
-                    cp -a -- "$tx_dir/A-Box-firewall" "$old_unit_path" || fail=1
-                else
-                    if command -v rc-update >/dev/null 2>&1 && rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])A-Box-firewall([[:space:]]|$)'; then
-                        rc-update del A-Box-firewall default >/dev/null 2>&1 || true
-                    fi
-                    rm -f -- "$old_unit_path" || fail=1
-                fi
-                if command -v rc-update >/dev/null 2>&1; then
-                    if [[ "$old_unit_enabled" == 1 ]]; then
-                        rc-update add A-Box-firewall default >/dev/null 2>&1 || true
-                    elif rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])A-Box-firewall([[:space:]]|$)'; then
-                        rc-update del A-Box-firewall default >/dev/null 2>&1 || true
-                    fi
-                    if [[ "$(service_enabled_state_value A-Box-firewall 2>/dev/null || printf '%s' unknown)" != "$old_unit_enabled" ]]; then
-                        fail=1
-                    fi
-                else
-                    fail=1
-                fi
-                ;;
-        esac
-        return "$fail"
-    }
 
     if ! write_abox_firewall_restore_script; then
-        firewall_persistence_rollback || rollback_rc=1
-        unset -f firewall_persistence_rollback
+        __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
         rm -rf -- "$tx_dir"
         (( rollback_rc == 0 )) && return 1
         return 1
@@ -3312,14 +3381,12 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF_ABOX_FW_UNIT
         then
-            firewall_persistence_rollback || rollback_rc=1
-            unset -f firewall_persistence_rollback
+            __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
             rm -rf -- "$tx_dir"
             return 1
         fi
         if ! systemctl daemon-reload >/dev/null 2>&1 || ! systemctl enable A-Box-firewall.service >/dev/null 2>&1; then
-            firewall_persistence_rollback || rollback_rc=1
-            unset -f firewall_persistence_rollback
+            __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
             rm -rf -- "$tx_dir"
             return 1
         fi
@@ -3333,20 +3400,17 @@ command_background="no"
 depend() { need net; after iptables ip6tables nftables ufw firewalld; before xray sing-box hysteria; }
 EOF_ABOX_FW_OPENRC
         then
-            firewall_persistence_rollback || rollback_rc=1
-            unset -f firewall_persistence_rollback
+            __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
             rm -rf -- "$tx_dir"
             return 1
         fi
         if ! chmod 755 /etc/init.d/A-Box-firewall || ! rc-update add A-Box-firewall default >/dev/null 2>&1; then
-            firewall_persistence_rollback || rollback_rc=1
-            unset -f firewall_persistence_rollback
+            __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
             rm -rf -- "$tx_dir"
             return 1
         fi
     fi
 
-    unset -f firewall_persistence_rollback
     rm -rf -- "$tx_dir"
     return 0
 }
@@ -4048,13 +4112,6 @@ reorder_ss_whitelist_rules_one() {
     flock -n "$lock_fd" || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; return 1; }
     chown root:root "$lock_file" 2>/dev/null || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; rm -f -- "$lock_file"; return 1; }
     chmod 600 "$lock_file" 2>/dev/null || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; rm -f -- "$lock_file"; return 1; }
-    firewall_unlock() {
-        # Guard empty lock_fd: `exec >&-` would close stdout.
-        if [[ "$lock_fd" =~ ^[0-9]+$ ]]; then
-            eval "exec ${lock_fd}>&-" 2>/dev/null || true
-        fi
-        lock_fd=''
-    }
 
     capture_firewall_views() {
         local item normalized
@@ -4109,14 +4166,14 @@ reorder_ss_whitelist_rules_one() {
         return 0
     }
 
-    recovery_snapshot=$(mktemp /run/A-Box-firewall-recovery.XXXXXX) || { firewall_unlock; return 1; }
+    recovery_snapshot=$(mktemp /run/A-Box-firewall-recovery.XXXXXX) || { __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     if ! "$save_cmd" -t filter > "$recovery_snapshot" 2>/dev/null; then
         rm -f -- "$recovery_snapshot"
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
-    original_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; firewall_unlock; return 1; }
-    capture_firewall_views || { rm -f -- "$recovery_snapshot"; firewall_unlock; return 1; }
+    original_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    capture_firewall_views || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     original_target_lines=("${current_target_lines[@]}")
     original_foreign_rules=("${current_foreign_lines[@]}")
     expected_target_lines=("${original_target_lines[@]}")
@@ -4137,7 +4194,7 @@ reorder_ss_whitelist_rules_one() {
         local expected_line="${rules[i]}"
         line=${rules[i]//\"/}
         read -r -a argv <<< "$line"
-        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { firewall_rollback >/dev/null 2>&1 || printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; firewall_unlock; return 1; }
+        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { firewall_rollback >/dev/null 2>&1 || printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         firewall_state_matches_expected || {
             if (( mutated )); then
                 if ! firewall_rollback; then
@@ -4146,27 +4203,27 @@ reorder_ss_whitelist_rules_one() {
             else
                 rm -f -- "$recovery_snapshot" || true
             fi
-            firewall_unlock
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         }
         if ! "$cmd" -w -I INPUT 1 "${argv[@]:2}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-            firewall_unlock
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         fi
         mutated=1
         expected_target_lines=("$expected_line" "${expected_target_lines[@]}")
     done
     local expected_drop_line="-A INPUT -p ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
-    firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+    firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     if ! "$cmd" -w -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     expected_target_lines=("${expected_target_lines[@]:0:n}" "$expected_drop_line" "${expected_target_lines[@]:n}")
 
-    rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+    rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     current_lines=(); mapfile -t current_lines <<< "$rules_output"
     delete_lines=(); delete_target_indices=(); target_idx=0; rule_no=0
     for i in "${!current_lines[@]}"; do
@@ -4183,13 +4240,13 @@ reorder_ss_whitelist_rules_one() {
         fi
     done
     for ((j=${#delete_lines[@]}-1; j>=0; j--)); do
-        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         line=${delete_lines[j]//\"/}
         read -r -a argv <<< "$line"
-        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         if ! "$cmd" -w -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-            firewall_unlock
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         fi
         del_idx="${delete_target_indices[j]}"
@@ -4197,16 +4254,16 @@ reorder_ss_whitelist_rules_one() {
     done
     if ! firewall_state_matches_expected; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     if ! rm -f -- "$recovery_snapshot"; then
         printf '%s\n' "A-Box firewall change completed, but recovery snapshot cleanup failed; snapshot retained at $recovery_snapshot" >&2
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     recovery_snapshot=''
-    firewall_unlock
+    __abox_firewall_unlock "$lock_fd"; lock_fd=''
     return 0
 }
 
@@ -4853,6 +4910,100 @@ verify_github_asset_digest() {
     [[ "${actual,,}" == "${expected,,}" ]] || { printf '%s\n' 'GitHub Release digest 校验失败。' >&2; return 1; }
 }
 
+# ============ F-05: Ed25519 detached signature verification ============
+# Uses ONLY openssl + python3 (both guaranteed by ensure_commands).
+# .sig files are base64 text of the raw 64-byte Ed25519 signature.
+# Returns 0 iff ANY non-revoked pubkey in ABOX_SIGNING_PUBKEYS verifies.
+verify_ed25519_detached() {
+    local file="$1" sigfile="$2"
+    local entry label pubkey_b64 fp keydir keypem sigbin r revoked
+    [[ -f "$file" && -f "$sigfile" ]] || return 1
+    command -v openssl >/dev/null 2>&1 || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
+    command -v base64 >/dev/null 2>&1 || return 1
+    keydir=$(umask 077; mktemp -d /tmp/A-Box-ed25519.XXXXXX 2>/dev/null) || return 1
+    keypem="$keydir/pub.pem"
+    sigbin="$keydir/sig.bin"
+    # Signature must decode to exactly 64 raw bytes (Ed25519).
+    if ! base64 -d "$sigfile" > "$sigbin" 2>/dev/null || [[ $(wc -c < "$sigbin") -ne 64 ]]; then
+        rm -rf -- "$keydir"
+        return 1
+    fi
+    for entry in "${ABOX_SIGNING_PUBKEYS[@]}"; do
+        label="${entry%%:*}"
+        pubkey_b64="${entry#*:}"
+        # Malformed entry (no colon) or empty key: skip.
+        [[ -n "$label" && -n "$pubkey_b64" && "$pubkey_b64" != "$entry" ]] || continue
+        # Skip revoked keys: fingerprint = sha256 hex of raw pubkey bytes.
+        fp=$(printf '%s' "$pubkey_b64" | base64 -d 2>/dev/null | sha256sum 2>/dev/null | awk '{print $1}')
+        revoked=0
+        if [[ -n "$fp" ]]; then
+            for r in "${ABOX_REVOKED_PUBKEY_FPS[@]}"; do
+                if [[ "${r,,}" == "${fp,,}" ]]; then revoked=1; break; fi
+            done
+        fi
+        (( revoked == 0 )) || continue
+        # Convert base64 raw 32-byte pubkey -> PEM (SubjectPublicKeyInfo).
+        # Uses python3 -c (not heredoc) to avoid multi-level escaping fragility.
+        if ! python3 -c "
+import base64, sys
+try:
+    raw = base64.b64decode(sys.argv[1], validate=True)
+except Exception:
+    sys.exit(1)
+if len(raw) != 32:
+    sys.exit(1)
+der = bytes.fromhex('302a300506032b6570032100') + raw
+pem = '-----BEGIN PUBLIC KEY-----' + chr(10) + base64.encodebytes(der).decode().strip() + chr(10) + '-----END PUBLIC KEY-----' + chr(10)
+open(sys.argv[2], 'w').write(pem)
+" "$pubkey_b64" "$keypem" 2>/dev/null; then
+            continue
+        fi
+        if openssl pkeyutl -verify -pubin -inkey "$keypem" -rawin -in "$file" -sigfile "$sigbin" >/dev/null 2>&1; then
+            rm -rf -- "$keydir"
+            return 0
+        fi
+    done
+    rm -rf -- "$keydir"
+    return 1
+}
+
+# F-05 anti-replay: metadata timestamp (ISO UTC, e.g. 2026-10-15T02:30:00Z
+# or already-compact YYYYMMDDHHMMSS) must not be older than
+# ABOX_SIGNING_MIN_TIMESTAMP_UTC. Returns 0 iff acceptable.
+abox_signing_timestamp_ok() {
+    local ts compact min_ts
+    ts="${1:-}"
+    # Normalize: strip everything except digits.
+    compact=$(printf '%s' "$ts" | tr -cd '0-9')
+    [[ "$compact" =~ ^[0-9]{14}$ ]] || return 1
+    min_ts="${ABOX_SIGNING_MIN_TIMESTAMP_UTC:-0}"
+    [[ "$compact" > "$min_ts" || "$compact" == "$min_ts" ]] || return 1
+    return 0
+}
+
+# F-05 enforcement gate for a downloaded metadata file + its .sig.
+#   $1 = metadata file path, $2 = .sig file path, $3 = description
+# Returns 0 if signature verifies, or if enforcement is off (warns).
+# Returns 1 (fail-closed) iff ABOX_SIGNING_ENFORCE=1 and sig missing/invalid.
+abox_verify_sig_gate() {
+    local file="$1" sigfile="$2" desc="${3:-metadata}"
+    if [[ -f "$sigfile" ]]; then
+        if verify_ed25519_detached "$file" "$sigfile"; then
+            return 0
+        fi
+        printf '[A-Box][F-05] WARNING: invalid Ed25519 signature for %s\n' "$desc" >&2
+    else
+        printf '[A-Box][F-05] WARNING: missing signature for %s (%s not found)\n' "$desc" "$sigfile" >&2
+    fi
+    if [[ "${ABOX_SIGNING_ENFORCE:-0}" == '1' ]]; then
+        printf '[A-Box][F-05] FATAL: signature enforcement is ON; rejecting %s\n' "$desc" >&2
+        return 1
+    fi
+    return 0
+}
+# ========== end F-05 verification ==========
+
 valid_github_download_url() {
     local repo="$1" url="$2" expected_ref="${3:-}" expected_asset="${4:-}"
     local repo_lower="${repo,,}" url_lower="${url,,}"
@@ -5105,7 +5256,7 @@ core_latest_mirror_tag_from_text() {
 }
 
 core_latest_mirror_release_ref() {
-    local repo="${1:-}" base='' workdir='' expected='' actual='' versions=''
+    local repo="${1:-}" base='' workdir='' expected='' actual='' versions='' _f05_ts=''
     case "$repo" in XTLS/Xray-core|SagerNet/sing-box|HyNetworks/hysteria) ;; *) return 1 ;; esac
     base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     [[ -n "$base" ]] || return 1
@@ -5115,6 +5266,21 @@ core_latest_mirror_release_ref() {
     esac
     workdir=$(mktemp -d /tmp/A-Box-core-mirror-meta.XXXXXX) || return 1
     if ! curl -fLsS --connect-timeout 5 -m 15 "${base%/}/CORE-VERSIONS" -o "$workdir/CORE-VERSIONS" || ! curl -fLsS --connect-timeout 5 -m 15 "${base%/}/SHA256SUMS" -o "$workdir/SHA256SUMS"; then
+        rm -rf -- "$workdir"; return 1
+    fi
+    # F-05: fetch detached signatures (best-effort); gate enforces when on.
+    curl -fLsS --connect-timeout 5 -m 15 "${base%/}/CORE-VERSIONS.sig" -o "$workdir/CORE-VERSIONS.sig" 2>/dev/null || true
+    curl -fLsS --connect-timeout 5 -m 15 "${base%/}/SHA256SUMS.sig" -o "$workdir/SHA256SUMS.sig" 2>/dev/null || true
+    if ! abox_verify_sig_gate "$workdir/CORE-VERSIONS" "$workdir/CORE-VERSIONS.sig" "core mirror CORE-VERSIONS"; then
+        rm -rf -- "$workdir"; return 1
+    fi
+    if ! abox_verify_sig_gate "$workdir/SHA256SUMS" "$workdir/SHA256SUMS.sig" "core mirror SHA256SUMS"; then
+        rm -rf -- "$workdir"; return 1
+    fi
+    # F-05 anti-replay: CORE-VERSIONS timestamp must not predate trust floor.
+    _f05_ts=$(awk -F= '$1=="updated_at_utc" {print $2; exit}' "$workdir/CORE-VERSIONS" 2>/dev/null || true)
+    if [[ -n "$_f05_ts" ]] && ! abox_signing_timestamp_ok "$_f05_ts"; then
+        printf '[A-Box][F-05] FATAL: CORE-VERSIONS timestamp %s is older than trust floor %s\n' "$_f05_ts" "$ABOX_SIGNING_MIN_TIMESTAMP_UTC" >&2
         rm -rf -- "$workdir"; return 1
     fi
     expected=$(awk '$2 == "CORE-VERSIONS" {print $1; exit}' "$workdir/SHA256SUMS")
@@ -5545,6 +5711,32 @@ read_traffic_pair_fields() {
     printf '%s\n%s\n' "$desired" "$period"
 }
 
+# BUG-28: hoisted from commit_traffic_pair_state().
+# Restores traffic state files from backups. Args are triplets:
+# $1/$2/$3=pair_existed/pair_backup/pair_target, $4/$5/$6=desired_*, $7/$8/$9=block_*.
+__abox_traffic_state_rollback() {
+    local pair_existed="$1" pair_backup="$2" pair_target="$3"
+    local desired_existed="$4" desired_backup="$5" desired_target="$6"
+    local block_existed="$7" block_backup="$8" block_target="$9"
+    local restore_failed=0
+    if (( pair_existed == 1 )); then
+        cp -p -- "$pair_backup" "$pair_target" 2>/dev/null || restore_failed=1
+    else
+        rm -f -- "$pair_target" 2>/dev/null || restore_failed=1
+    fi
+    if (( desired_existed == 1 )); then
+        cp -p -- "$desired_backup" "$desired_target" 2>/dev/null || restore_failed=1
+    else
+        rm -f -- "$desired_target" 2>/dev/null || restore_failed=1
+    fi
+    if (( block_existed == 1 )); then
+        cp -p -- "$block_backup" "$block_target" 2>/dev/null || restore_failed=1
+    else
+        rm -f -- "$block_target" 2>/dev/null || restore_failed=1
+    fi
+    rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
+    return "$restore_failed"
+}
 commit_traffic_pair_state() {
     local desired="$1" period="${2:-}"
     local pair_backup="" desired_backup="" block_backup=""
@@ -5569,47 +5761,26 @@ commit_traffic_pair_state() {
         cp -p -- "$ABOX_TRAFFIC_BLOCK_STATE" "$block_backup" || { rm -f -- "$pair_backup" "$desired_backup" "$block_backup"; return 1; }
     fi
     # Rollback helper: restore all three files to snapshot state. Reports failure.
-    _traffic_state_rollback() {
-        restore_failed=0
-        if (( pair_existed == 1 )); then
-            cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || restore_failed=1
-        else
-            rm -f -- "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || restore_failed=1
-        fi
-        if (( desired_existed == 1 )); then
-            cp -p -- "$desired_backup" "$ABOX_DESIRED_STATE" 2>/dev/null || restore_failed=1
-        else
-            rm -f -- "$ABOX_DESIRED_STATE" 2>/dev/null || restore_failed=1
-        fi
-        if (( block_existed == 1 )); then
-            cp -p -- "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE" 2>/dev/null || restore_failed=1
-        else
-            rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" 2>/dev/null || restore_failed=1
-        fi
-        rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
-        return "$restore_failed"
-    }
     # 1) Atomic pair publish (sole authority for modern readers).
-    write_file_atomically_from_stdin "$ABOX_TRAFFIC_PAIR_STATE" 600 <<< "${desired}|${period}" || { _traffic_state_rollback; return 1; }
+    write_file_atomically_from_stdin "$ABOX_TRAFFIC_PAIR_STATE" 600 <<< "${desired}|${period}" || { __abox_traffic_state_rollback "$pair_existed" "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" "$desired_existed" "$desired_backup" "$ABOX_DESIRED_STATE" "$block_existed" "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE"; return 1; }
     # 2) Derive legacy files only after pair is durable.
     if ! write_file_atomically_from_stdin "$ABOX_DESIRED_STATE" 600 <<< "$desired"; then
-        _traffic_state_rollback || msg "${RED}[!] Traffic state rollback incomplete; manual check required.${NC}" >&2
+        __abox_traffic_state_rollback "$pair_existed" "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" "$desired_existed" "$desired_backup" "$ABOX_DESIRED_STATE" "$block_existed" "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE" || msg "${RED}[!] Traffic state rollback incomplete; manual check required.${NC}" >&2
         return 1
     fi
     if [[ -n "$period" ]]; then
         if ! write_file_atomically_from_stdin "$ABOX_TRAFFIC_BLOCK_STATE" 600 <<< "$period"; then
-            _traffic_state_rollback || msg "${RED}[!] Traffic state rollback incomplete; manual check required.${NC}" >&2
+            __abox_traffic_state_rollback "$pair_existed" "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" "$desired_existed" "$desired_backup" "$ABOX_DESIRED_STATE" "$block_existed" "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE" || msg "${RED}[!] Traffic state rollback incomplete; manual check required.${NC}" >&2
             return 1
         fi
     else
         if [[ -e "$ABOX_TRAFFIC_BLOCK_STATE" || -L "$ABOX_TRAFFIC_BLOCK_STATE" ]]; then
-            path_tree_has_mountpoint "$ABOX_TRAFFIC_BLOCK_STATE" && { _traffic_state_rollback >/dev/null 2>&1; return 1; }
-            rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" || { _traffic_state_rollback >/dev/null 2>&1; return 1; }
-            [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]] || { _traffic_state_rollback >/dev/null 2>&1; return 1; }
+            path_tree_has_mountpoint "$ABOX_TRAFFIC_BLOCK_STATE" && { __abox_traffic_state_rollback "$pair_existed" "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" "$desired_existed" "$desired_backup" "$ABOX_DESIRED_STATE" "$block_existed" "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE" >/dev/null 2>&1; return 1; }
+            rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" || { __abox_traffic_state_rollback "$pair_existed" "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" "$desired_existed" "$desired_backup" "$ABOX_DESIRED_STATE" "$block_existed" "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE" >/dev/null 2>&1; return 1; }
+            [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]] || { __abox_traffic_state_rollback "$pair_existed" "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" "$desired_existed" "$desired_backup" "$ABOX_DESIRED_STATE" "$block_existed" "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE" >/dev/null 2>&1; return 1; }
         fi
     fi
     rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
-    unset -f _traffic_state_rollback
 }
 
 get_desired_state() {
@@ -8026,6 +8197,31 @@ read_traffic_pair_fields() {
 }
 # Atomic desired+period publish: write PAIR first, then derive legacy files.
 # Self-contained: does NOT delegate to commit_traffic_pair_state (not in generated script).
+# BUG-28: hoisted from commit_traffic_pair().
+# Same triplet convention as __abox_traffic_state_rollback.
+__abox_tm_state_rollback() {
+    local pair_existed="$1" pair_backup="$2" pair_target="$3"
+    local desired_existed="$4" desired_backup="$5" desired_target="$6"
+    local block_existed="$7" block_backup="$8" block_target="$9"
+    local restore_failed=0
+    if (( pair_existed == 1 )); then
+        cp -p -- "$pair_backup" "$pair_target" 2>/dev/null || restore_failed=1
+    else
+        rm -f -- "$pair_target" 2>/dev/null || restore_failed=1
+    fi
+    if (( desired_existed == 1 )); then
+        cp -p -- "$desired_backup" "$desired_target" 2>/dev/null || restore_failed=1
+    else
+        rm -f -- "$desired_target" 2>/dev/null || restore_failed=1
+    fi
+    if (( block_existed == 1 )); then
+        cp -p -- "$block_backup" "$block_target" 2>/dev/null || restore_failed=1
+    else
+        rm -f -- "$block_target" 2>/dev/null || restore_failed=1
+    fi
+    rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
+    return "$restore_failed"
+}
 commit_traffic_pair() {
     local desired="$1" period="${2:-}"
     local pair_backup="" desired_backup="" block_backup=""
@@ -8046,25 +8242,16 @@ commit_traffic_pair() {
         block_existed=1; block_backup=$(umask 077; mktemp) || { rm -f -- "$pair_backup" "$desired_backup"; return 1; }
         cp -p -- "$BLOCK_STATE" "$block_backup" || { rm -f -- "$pair_backup" "$desired_backup" "$block_backup"; return 1; }
     fi
-    _tm_state_rollback() {
-        restore_failed=0
-        if (( pair_existed == 1 )); then cp -p -- "$pair_backup" "$PAIR_STATE" 2>/dev/null || restore_failed=1; else rm -f -- "$PAIR_STATE" 2>/dev/null || restore_failed=1; fi
-        if (( desired_existed == 1 )); then cp -p -- "$desired_backup" "$DESIRED" 2>/dev/null || restore_failed=1; else rm -f -- "$DESIRED" 2>/dev/null || restore_failed=1; fi
-        if (( block_existed == 1 )); then cp -p -- "$block_backup" "$BLOCK_STATE" 2>/dev/null || restore_failed=1; else rm -f -- "$BLOCK_STATE" 2>/dev/null || restore_failed=1; fi
-        rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
-        return "$restore_failed"
-    }
-    write_private_line "$PAIR_STATE" "${desired}|${period}" || { _tm_state_rollback; return 1; }
-    write_private_line "$DESIRED" "$desired" || { _tm_state_rollback; return 1; }
+    write_private_line "$PAIR_STATE" "${desired}|${period}" || { __abox_tm_state_rollback "$pair_existed" "$pair_backup" "$PAIR_STATE" "$desired_existed" "$desired_backup" "$DESIRED" "$block_existed" "$block_backup" "$BLOCK_STATE"; return 1; }
+    write_private_line "$DESIRED" "$desired" || { __abox_tm_state_rollback "$pair_existed" "$pair_backup" "$PAIR_STATE" "$desired_existed" "$desired_backup" "$DESIRED" "$block_existed" "$block_backup" "$BLOCK_STATE"; return 1; }
     if [[ -n "$period" ]]; then
-        write_private_line "$BLOCK_STATE" "$period" || { _tm_state_rollback; return 1; }
+        write_private_line "$BLOCK_STATE" "$period" || { __abox_tm_state_rollback "$pair_existed" "$pair_backup" "$PAIR_STATE" "$desired_existed" "$desired_backup" "$DESIRED" "$block_existed" "$block_backup" "$BLOCK_STATE"; return 1; }
     else
         if [[ -e "$BLOCK_STATE" || -L "$BLOCK_STATE" ]]; then
-            rm -f -- "$BLOCK_STATE" || { _tm_state_rollback; return 1; }
+            rm -f -- "$BLOCK_STATE" || { __abox_tm_state_rollback "$pair_existed" "$pair_backup" "$PAIR_STATE" "$desired_existed" "$desired_backup" "$DESIRED" "$block_existed" "$block_backup" "$BLOCK_STATE"; return 1; }
         fi
     fi
     rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
-    unset -f _tm_state_rollback
 }
 read_desired() {
     local state=RUNNING mode pair desired
@@ -8560,12 +8747,12 @@ capture_traffic_quota_expected_state() {
 
 traffic_quota_transaction_rollback() {
     local tx_dir="$1" rc=0 current_monitor='' expected_monitor='' pre_monitor=0 current_block='' expected_block='' cron_rc vnstat_state='' expected_vnstat='' current_state current_traffic_env current_vnstat
-    [[ -d "$tx_dir" && ! -L "$tx_dir" ]] || return 1
+    [[ -d "$tx_dir" && ! -L "$tx_dir" ]] || return 2
 
     # Establish every expected post-state before changing anything. This prevents
     # rollback from overwriting state changed by another actor after provisioning.
     if [[ -f "$tx_dir/post-traffic.env" ]]; then
-        current_traffic_env=$(umask 077; mktemp /tmp/A-Box-traffic-current-env.XXXXXX) || return 1
+        current_traffic_env=$(umask 077; mktemp /tmp/A-Box-traffic-current-env.XXXXXX) || return 2
         if ! capture_traffic_env_state_file "$ABOX_ENV" "$current_traffic_env" || ! cmp -s "$current_traffic_env" "$tx_dir/post-traffic.env"; then
             rm -f -- "$current_traffic_env"
             printf '%s\n' "A-Box traffic rollback conflict: traffic quota environment changed externally; recovery state preserved at $tx_dir" >&2
@@ -8574,7 +8761,7 @@ traffic_quota_transaction_rollback() {
         rm -f -- "$current_traffic_env"
     else
         printf '%s\n' "A-Box traffic rollback could not establish the expected quota environment; recovery state preserved at $tx_dir" >&2
-        return 1
+        return 2
     fi
     if [[ -f "$tx_dir/post.desired" ]]; then
         traffic_optional_state_matches_expected "$ABOX_DESIRED_STATE" "$tx_dir/post.desired" || {
@@ -8583,7 +8770,7 @@ traffic_quota_transaction_rollback() {
         }
     else
         printf '%s\n' "A-Box traffic rollback could not establish the expected desired state; recovery state preserved at $tx_dir" >&2
-        return 1
+        return 2
     fi
     if [[ -f "$tx_dir/post.block" ]]; then
         traffic_optional_state_matches_expected "$ABOX_TRAFFIC_BLOCK_STATE" "$tx_dir/post.block" || {
@@ -8592,7 +8779,7 @@ traffic_quota_transaction_rollback() {
         }
     else
         printf '%s\n' "A-Box traffic rollback could not establish the expected block state; recovery state preserved at $tx_dir" >&2
-        return 1
+        return 2
     fi
     if [[ -f "$tx_dir/post.pair" ]]; then
         traffic_optional_state_matches_expected "$ABOX_TRAFFIC_PAIR_STATE" "$tx_dir/post.pair" || {
@@ -8601,13 +8788,13 @@ traffic_quota_transaction_rollback() {
         }
     else
         printf '%s\n' "A-Box traffic rollback could not establish the expected pair state; recovery state preserved at $tx_dir" >&2
-        return 1
+        return 2
     fi
 
     if [[ -f "$tx_dir/post.cron.traffic" ]]; then
-        expected_block=$(cat "$tx_dir/post.cron.traffic") || return 1
-        current=$(umask 077; mktemp /tmp/A-Box-traffic-current-cron.XXXXXX) || return 1
-        if ! read_crontab_to_file "$current"; then rm -f -- "$current"; return 1; fi
+        expected_block=$(cat "$tx_dir/post.cron.traffic") || return 2
+        current=$(umask 077; mktemp /tmp/A-Box-traffic-current-cron.XXXXXX) || return 2
+        if ! read_crontab_to_file "$current"; then rm -f -- "$current"; return 2; fi
         current_block=$(awk 'BEGIN{p=0} $0=="# A-Box TRAFFIC BEGIN"{p=1} p{print} $0=="# A-Box TRAFFIC END"{exit}' "$current")
         rm -f -- "$current"
         [[ "$current_block" == "$expected_block" ]] || {
@@ -8616,11 +8803,11 @@ traffic_quota_transaction_rollback() {
         }
     else
         printf '%s\n' "A-Box traffic rollback could not establish the expected TRAFFIC cron state; recovery state preserved at $tx_dir" >&2
-        return 1
+        return 2
     fi
 
     if [[ -s "$tx_dir/post.monitor.hash" ]]; then
-        IFS= read -r expected_monitor < "$tx_dir/post.monitor.hash" || return 1
+        IFS= read -r expected_monitor < "$tx_dir/post.monitor.hash" || return 2
         if [[ "$expected_monitor" == none ]]; then
             [[ ! -e "$ABOX_DIR/traffic_monitor.sh" && ! -L "$ABOX_DIR/traffic_monitor.sh" ]] || {
                 printf '%s\n' "A-Box traffic rollback conflict: traffic_monitor.sh was created externally; recovery state preserved at $tx_dir" >&2
@@ -8635,22 +8822,22 @@ traffic_quota_transaction_rollback() {
         fi
     else
         printf '%s\n' "A-Box traffic rollback could not establish the expected monitor state; recovery state preserved at $tx_dir" >&2
-        return 1
+        return 2
     fi
 
     if [[ -s "$tx_dir/post.vnstat" ]]; then
         IFS= read -r current_vnstat < <(capture_vnstat_runtime_state) || {
             printf '%s\n' "A-Box traffic rollback could not read current vnStat state; recovery state preserved at $tx_dir" >&2
-            return 1
+            return 2
         }
-        IFS= read -r expected_vnstat < "$tx_dir/post.vnstat" || return 1
+        IFS= read -r expected_vnstat < "$tx_dir/post.vnstat" || return 2
         [[ "$current_vnstat" == "$expected_vnstat" ]] || {
             printf '%s\n' "A-Box traffic rollback conflict: vnStat state changed externally; recovery state preserved at $tx_dir" >&2
             return 2
         }
     else
         printf '%s\n' "A-Box traffic rollback could not establish the expected vnStat state; recovery state preserved at $tx_dir" >&2
-        return 1
+        return 2
     fi
 
     # Restore only A-Box-owned traffic state after the complete conflict preflight.
@@ -9352,6 +9539,10 @@ restore_vps_tune() {
     [[ "$quiet" == 1 ]] || msg "${GREEN}A-Box VPS 调优已恢复。${NC}"
 }
 
+# BUG-28: hoisted from apply_vps_tune(). $3 = destination file.
+__abox_add_sysctl() {
+    sysctl -n "$1" >/dev/null 2>&1 && printf '%s = %s\n' "$1" "$2" >> "$3"
+}
 apply_vps_tune() {
     local dir="$ABOX_DIR/tune-backup" tmp key value available bbr_loaded=0
     local bbr_module_file='/etc/modules-load.d/A-Box-bbr.conf'
@@ -9393,22 +9584,21 @@ root hard nofile 1048576
 EOF_LIMITS
     tmp=$(umask 077; mktemp /tmp/A-Box-sysctl.XXXXXX) || { restore_vps_tune 1 || true; die '调优临时文件创建失败，已恢复原状态。'; }
     printf '%s\n' '# Managed by A-Box' > "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die '调优临时文件初始化失败，已恢复原状态。'; }
-    add_sysctl() { sysctl -n "$1" >/dev/null 2>&1 && printf '%s = %s\n' "$1" "$2" >> "$tmp"; }
-    add_sysctl fs.file-max 1048576
-    add_sysctl fs.inotify.max_user_instances 8192
-    add_sysctl net.ipv4.tcp_syncookies 1
-    add_sysctl net.ipv4.tcp_fin_timeout 30
-    add_sysctl net.ipv4.tcp_max_syn_backlog 8192
-    add_sysctl net.ipv4.tcp_fastopen 3
-    add_sysctl net.ipv4.tcp_mtu_probing 1
-    add_sysctl net.ipv4.tcp_notsent_lowat 16384
-    add_sysctl net.core.netdev_max_backlog 250000
-    add_sysctl net.core.somaxconn 32768
+    __abox_add_sysctl fs.file-max 1048576 "$tmp"
+    __abox_add_sysctl fs.inotify.max_user_instances 8192 "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_syncookies 1 "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_fin_timeout 30 "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_max_syn_backlog 8192 "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_fastopen 3 "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_mtu_probing 1 "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_notsent_lowat 16384 "$tmp"
+    __abox_add_sysctl net.core.netdev_max_backlog 250000 "$tmp"
+    __abox_add_sysctl net.core.somaxconn 32768 "$tmp"
     if modprobe tcp_bbr >/dev/null 2>&1; then bbr_loaded=1; fi
     available=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
     if grep -qw bbr <<< "$available"; then
-        add_sysctl net.core.default_qdisc fq
-        add_sysctl net.ipv4.tcp_congestion_control bbr
+        __abox_add_sysctl net.core.default_qdisc fq "$tmp"
+        __abox_add_sysctl net.ipv4.tcp_congestion_control bbr "$tmp"
         if (( bbr_loaded == 1 )); then
             path_parent_chain_safe "$bbr_module_file" || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die '内核模块自动加载配置父链不安全。'; }
             [[ ! -L /etc/modules-load.d && (! -e /etc/modules-load.d || -d /etc/modules-load.d) ]] || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die '内核模块自动加载目录不安全。'; }
@@ -12280,6 +12470,15 @@ EOF_SWAP_MARK
     pause_return
 }
 
+# BUG-28: hoisted from remove_abox_swap(). $1 = fstab backup path.
+__abox_restore_fstab_from_swap_backup() {
+    local backup="$1"
+    if cp -a "$backup" /etc/fstab; then
+        return 0
+    fi
+    msg "${RED}[!] Swap 清理失败且 /etc/fstab 自动恢复也失败；保留恢复备份：${backup}${NC}" >&2
+    return 1
+}
 remove_abox_swap() {
     [[ -f "$ABOX_DIR/.swapfile.managed" && ! -L "$ABOX_DIR/.swapfile.managed" ]] || return 0
     grep -Fxq 'A-Box managed swap v1' "$ABOX_DIR/.swapfile.managed" 2>/dev/null || return 1
@@ -12319,31 +12518,24 @@ remove_abox_swap() {
     chown --reference=/etc/fstab "$tmp" 2>/dev/null || true
     mv -f "$tmp" /etc/fstab || { rm -f "$tmp" "$backup"; return 1; }
 
-    restore_fstab_from_swap_backup() {
-        if cp -a "$backup" /etc/fstab; then
-            return 0
-        fi
-        msg "${RED}[!] Swap 清理失败且 /etc/fstab 自动恢复也失败；保留恢复备份：${backup}${NC}" >&2
-        return 1
-    }
 
     if (( swap_active == 1 )); then
         if ! swapoff /swapfile; then
-            restore_fstab_from_swap_backup || return 1
+            __abox_restore_fstab_from_swap_backup "$backup" || return 1
             rm -f "$backup" || true
             return 1
         fi
     fi
     if [[ -f /swapfile && ! -L /swapfile ]]; then
         if ! rm -f /swapfile; then
-            restore_fstab_from_swap_backup || return 1
+            __abox_restore_fstab_from_swap_backup "$backup" || return 1
             msg "${YELLOW}[!] /swapfile 删除失败；已恢复 /etc/fstab，保留现有 Swap 文件与所有权标记。${NC}" >&2
             rm -f "$backup" || true
             return 1
         fi
     fi
     if ! rm -f "$ABOX_DIR/.swapfile.managed"; then
-        restore_fstab_from_swap_backup || return 1
+        __abox_restore_fstab_from_swap_backup "$backup" || return 1
         msg "${YELLOW}[!] Swap 所有权标记删除失败；已恢复 /etc/fstab，保留恢复状态。${NC}" >&2
         rm -f "$backup" || true
         return 1
@@ -13725,6 +13917,23 @@ restore_core_family_from_backup() {
 
 
 
+# BUG-28: hoisted from backup_current_config(). $1=src $2=root (staging dir).
+# Returns 0 on success/skip, 1 on failure (caller sets backup_failed=1).
+__abox_backup_copy_path() {
+    local src="$1" root="$2" dst links
+    [[ -e "$src" ]] || return 0
+    [[ ! -L "$src" ]] || return 1
+    # A managed path may acquire a nested mount after ownership was recorded.
+    # Never let cp -a traverse into an external filesystem/bind mount during backup.
+    path_tree_has_mountpoint "$src" && return 1
+    if [[ -d "$src" ]]; then
+        links=$(find "$src" -type l -print 2>/dev/null) || return 1
+        [[ -z "$links" ]] || return 1
+    fi
+    dst="$root$src"
+    mkdir -p "$(dirname "$dst")" || return 1
+    cp -a -- "$src" "$dst"
+}
 backup_current_config() {
     local ts unique backup_dir work root tarball backup_failed=0 backend srv path _abox_links _old_backups
     valid_backup_retention_count "$BACKUP_RETENTION_COUNT" || die 'BACKUP_RETENTION_COUNT 无效；必须是 0-1000 的整数。'
@@ -13749,21 +13958,6 @@ backup_current_config() {
     done
     printf '%s\n' "$managed_paths" | awk 'NF && !seen[$0]++' > "$work/meta/managed-paths.txt" || { rm -rf "$work"; die 'Managed path list write failed.'; }
     msg "${YELLOW}[*] Creating A-Box configuration backup...${NC}"
-    backup_copy_path() {
-        local src="$1" dst links
-        [[ -e "$src" ]] || return 0
-        [[ ! -L "$src" ]] || { backup_failed=1; return 1; }
-        # A managed path may acquire a nested mount after ownership was recorded.
-        # Never let cp -a traverse into an external filesystem/bind mount during backup.
-        path_tree_has_mountpoint "$src" && { backup_failed=1; return 1; }
-        if [[ -d "$src" ]]; then
-            links=$(find "$src" -type l -print 2>/dev/null) || { backup_failed=1; return 1; }
-            [[ -z "$links" ]] || { backup_failed=1; return 1; }
-        fi
-        dst="$root$src"
-        mkdir -p "$(dirname "$dst")" || { backup_failed=1; return 1; }
-        cp -a -- "$src" "$dst" || backup_failed=1
-    }
     if [[ -d "$ABOX_DIR" ]]; then
         # The A-Box data directory itself can live on a separate filesystem, but
         # a nested mount must never be traversed by tar during backup. This also
@@ -13784,13 +13978,13 @@ backup_current_config() {
                 -cpf - . | tar -C "$root$ABOX_DIR" -xpf -) || backup_failed=1
         fi
     fi
-    shortcut_is_abox_managed /usr/local/bin/sb && backup_copy_path /usr/local/bin/sb
+    shortcut_is_abox_managed /usr/local/bin/sb && { __abox_backup_copy_path /usr/local/bin/sb "$root" || backup_failed=1; }
     for srv in xray sing-box hysteria; do
         if abox_owns_service "$srv"; then
             core_paths=$(core_family_paths "$srv") || { rm -rf "$work"; die "Core path enumeration failed during backup: $srv"; }
             while IFS= read -r path; do
                 [[ -n "$path" ]] || continue
-                backup_copy_path "$path"
+                __abox_backup_copy_path "$path" "$root" || backup_failed=1
             done <<< "$core_paths"
         fi
     done
@@ -13798,7 +13992,7 @@ backup_current_config() {
     aux_paths=$(managed_auxiliary_paths) || { rm -rf "$work"; die 'Managed auxiliary path enumeration failed during backup.'; }
     while IFS= read -r path; do
         [[ "$path" == /usr/local/bin/sb ]] && continue
-        auxiliary_path_is_abox_managed "$path" && backup_copy_path "$path"
+        auxiliary_path_is_abox_managed "$path" && { __abox_backup_copy_path "$path" "$root" || backup_failed=1; }
     done <<< "$aux_paths"
     { echo 'A-Box backup'; echo "Created: $(now_iso)"; echo "Host: $(hostname 2>/dev/null || true)"; echo "Kernel: $(uname -a 2>/dev/null || true)"; echo "Init: ${INIT_SYS:-unknown}"; echo "Script SHA256: $(sha256sum "$0" 2>/dev/null | awk '{print $1}')"; } > "$work/meta/metadata.txt"
     collect_abox_cron > "$work/meta/cron.abox.txt" 2>/dev/null || backup_failed=1
@@ -14172,9 +14366,19 @@ light_preflight_check() {
         die "Lightweight preflight found blocking failures."
     fi
     msg "${GREEN}[*] Lightweight preflight completed. WARN=${warn}${NC}"
-    unset -f pf_pass pf_warn pf_fail 2>/dev/null || true
 }
 
+# BUG-28: hoisted from preflight_check(). Unifies __abox_pf_log "$report" PASS ""/__abox_pf_log "$report" WARN warn/__abox_pf_log "$report" FAIL fail.
+# $1=report file, $2=LEVEL, $3=counter variable name (empty for PASS), rest=message args.
+__abox_pf_log() {
+    local report="$1" level="$2" counter_var="$3"
+    shift 3
+    if [[ -n "$counter_var" ]]; then
+        local -n __pf_c="$counter_var"
+        __pf_c=$((__pf_c + 1))
+    fi
+    printf '[%s] %s\n' "$level" "$*" | tee -a "$report"
+}
 preflight_check() {
     local report_dir report fail=0 warn=0 port proto holder now interactive=1
     local _pf_lock_held=0
@@ -14187,50 +14391,47 @@ preflight_check() {
     chmod 700 "$report_dir" || { rm -rf -- "$report_dir"; die 'Preflight report directory permission setup failed.'; }
     report="$report_dir/A-Box-preflight-$(date +%Y%m%d-%H%M%S).txt"
 
-    pf_pass() { printf '[PASS] %s\n' "$*" | tee -a "$report"; }
-    pf_warn() { warn=$((warn+1)); printf '[WARN] %s\n' "$*" | tee -a "$report"; }
-    pf_fail() { fail=$((fail+1)); printf '[FAIL] %s\n' "$*" | tee -a "$report"; }
 
     : > "$report"
     echo "A-Box preflight check: $(now_iso)" | tee -a "$report"
     echo "----------------------------------------------------------------------" | tee -a "$report"
 
-    [[ $EUID -eq 0 ]] && pf_pass 'root privilege available' || pf_fail 'not running as root'
-    [[ -t 0 ]] && pf_pass 'interactive TTY available' || pf_warn 'no interactive TTY on stdin'
+    [[ $EUID -eq 0 ]] && __abox_pf_log "$report" PASS "" 'root privilege available' || __abox_pf_log "$report" FAIL fail 'not running as root'
+    [[ -t 0 ]] && __abox_pf_log "$report" PASS "" 'interactive TTY available' || __abox_pf_log "$report" WARN warn 'no interactive TTY on stdin'
     if [[ -r /etc/os-release ]]; then
         . /etc/os-release
-        case "${ID:-}" in debian|ubuntu|centos|rhel|rocky|almalinux|alpine|fedora|amzn|ol|oracle) pf_pass "supported OS detected: ${ID:-unknown}" ;; *) pf_warn "OS may be unsupported: ${ID:-unknown}" ;; esac
+        case "${ID:-}" in debian|ubuntu|centos|rhel|rocky|almalinux|alpine|fedora|amzn|ol|oracle) __abox_pf_log "$report" PASS "" "supported OS detected: ${ID:-unknown}" ;; *) __abox_pf_log "$report" WARN warn "OS may be unsupported: ${ID:-unknown}" ;; esac
     else
-        pf_warn '/etc/os-release not readable'
+        __abox_pf_log "$report" WARN warn '/etc/os-release not readable'
     fi
     if systemd_available; then
         INIT_SYS='systemd'
-        pf_pass 'systemd detected'
+        __abox_pf_log "$report" PASS "" 'systemd detected'
     elif command -v rc-service >/dev/null 2>&1; then
         INIT_SYS='openrc'
-        pf_pass 'OpenRC detected'
+        __abox_pf_log "$report" PASS "" 'OpenRC detected'
     else
-        pf_fail 'no supported init system detected'
+        __abox_pf_log "$report" FAIL fail 'no supported init system detected'
     fi
-    case "$(uname -m)" in x86_64|amd64|aarch64|arm64) pf_pass "supported CPU architecture: $(uname -m)" ;; *) pf_fail "unsupported CPU architecture: $(uname -m)" ;; esac
+    case "$(uname -m)" in x86_64|amd64|aarch64|arm64) __abox_pf_log "$report" PASS "" "supported CPU architecture: $(uname -m)" ;; *) __abox_pf_log "$report" FAIL fail "unsupported CPU architecture: $(uname -m)" ;; esac
 
     for c in bash curl jq openssl bc unzip tar iptables ss lsof vnstat python3 getent flock qrencode fail2ban-client; do
-        command -v "$c" >/dev/null 2>&1 && pf_pass "command available: $c" || pf_warn "command missing before dependency sync: $c"
+        command -v "$c" >/dev/null 2>&1 && __abox_pf_log "$report" PASS "" "command available: $c" || __abox_pf_log "$report" WARN warn "command missing before dependency sync: $c"
     done
 
     if curl -fsS --connect-timeout 5 -m 10 https://api.github.com >/dev/null 2>&1; then
-        pf_pass 'GitHub API reachable'
+        __abox_pf_log "$report" PASS "" 'GitHub API reachable'
     else
-        pf_warn 'GitHub API unreachable from this host now; official release metadata/digest cannot be verified and core installation may fail'
+        __abox_pf_log "$report" WARN warn 'GitHub API unreachable from this host now; official release metadata/digest cannot be verified and core installation may fail'
     fi
 
     local preflight_pairs='' env_present=0
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
         env_present=1
         if ! load_abox_env "$ABOX_ENV" >/dev/null 2>&1; then
-            pf_fail "A-Box environment state exists but failed trust/parse validation: $ABOX_ENV"
+            __abox_pf_log "$report" FAIL fail "A-Box environment state exists but failed trust/parse validation: $ABOX_ENV"
         elif ! validate_abox_env_semantics >/dev/null 2>&1; then
-            pf_fail "A-Box environment state failed semantic validation: $ABOX_ENV"
+            __abox_pf_log "$report" FAIL fail "A-Box environment state failed semantic validation: $ABOX_ENV"
         else
             preflight_pairs=$(selected_port_pairs | awk 'NF' | sort -u) || preflight_pairs=''
         fi
@@ -14239,7 +14440,7 @@ preflight_check() {
         preflight_pairs=$'tcp/443\ntcp/8443\ntcp/2053\nudp/2053'
     fi
     if ! command -v ss >/dev/null 2>&1; then
-        pf_warn 'ss is unavailable; port occupancy audit skipped'
+        __abox_pf_log "$report" WARN warn 'ss is unavailable; port occupancy audit skipped'
     else
         local -a preflight_pairs_arr=()
         if [[ -n "$preflight_pairs" ]]; then
@@ -14251,7 +14452,7 @@ preflight_check() {
             port=${BASH_REMATCH[2]}
             local preflight_ss_output
             if ! preflight_ss_output=$(ss -H -n -l -p -A "$proto" 2>/dev/null); then
-                pf_warn "ss failed for ${proto}; port occupancy audit skipped for ${proto}"
+                __abox_pf_log "$report" WARN warn "ss failed for ${proto}; port occupancy audit skipped for ${proto}"
                 continue
             fi
             local holder managed_owner
@@ -14259,31 +14460,31 @@ preflight_check() {
             if [[ -n "$holder" ]]; then
                 managed_owner=$(managed_socket_owner_for_port "$proto" "$port" 2>/dev/null || true)
                 if [[ -n "$managed_owner" ]]; then
-                    pf_pass "${port}/${proto} occupied by managed A-Box service: ${managed_owner}"
+                    __abox_pf_log "$report" PASS "" "${port}/${proto} occupied by managed A-Box service: ${managed_owner}"
                 else
-                    pf_warn "${port}/${proto} occupied by foreign or unresolved process: $(head -n 1 <<< "$holder")"
+                    __abox_pf_log "$report" WARN warn "${port}/${proto} occupied by foreign or unresolved process: $(head -n 1 <<< "$holder")"
                 fi
             else
-                pf_pass "${port}/${proto} available"
+                __abox_pf_log "$report" PASS "" "${port}/${proto} available"
             fi
         done
     fi
 
     managed_services_active
     case $? in
-        0) pf_warn 'existing A-Box managed service is active' ;;
-        1) pf_pass 'no active A-Box managed service detected' ;;
-        2) pf_warn 'A-Box managed service state could not be determined safely' ;;
-        *) pf_fail 'A-Box managed service state query failed unexpectedly' ;;
+        0) __abox_pf_log "$report" WARN warn 'existing A-Box managed service is active' ;;
+        1) __abox_pf_log "$report" PASS "" 'no active A-Box managed service detected' ;;
+        2) __abox_pf_log "$report" WARN warn 'A-Box managed service state could not be determined safely' ;;
+        *) __abox_pf_log "$report" FAIL fail 'A-Box managed service state query failed unexpectedly' ;;
     esac
     if [[ -L "$ABOX_DIR" ]]; then
-        pf_fail "A-Box directory is a symbolic link: $ABOX_DIR"
+        __abox_pf_log "$report" FAIL fail "A-Box directory is a symbolic link: $ABOX_DIR"
     elif [[ -e "$ABOX_DIR" && ! -d "$ABOX_DIR" ]]; then
-        pf_fail "A-Box path is not a directory: $ABOX_DIR"
+        __abox_pf_log "$report" FAIL fail "A-Box path is not a directory: $ABOX_DIR"
     elif [[ -d "$ABOX_DIR" ]]; then
-        path_owned_by_root "$ABOX_DIR" && path_mode_has_no_group_other_write "$ABOX_DIR" && pf_pass "A-Box directory ownership/mode is safe: $ABOX_DIR" || pf_fail "A-Box directory is not root-owned and protected: $ABOX_DIR"
+        path_owned_by_root "$ABOX_DIR" && path_mode_has_no_group_other_write "$ABOX_DIR" && __abox_pf_log "$report" PASS "" "A-Box directory ownership/mode is safe: $ABOX_DIR" || __abox_pf_log "$report" FAIL fail "A-Box directory is not root-owned and protected: $ABOX_DIR"
     else
-        [[ -d "$(dirname "$ABOX_DIR")" && ! -L "$(dirname "$ABOX_DIR")" ]] && pf_pass "A-Box directory can be created after runtime ownership checks: $ABOX_DIR" || pf_fail "A-Box directory parent is unavailable or symlinked: $(dirname "$ABOX_DIR")"
+        [[ -d "$(dirname "$ABOX_DIR")" && ! -L "$(dirname "$ABOX_DIR")" ]] && __abox_pf_log "$report" PASS "" "A-Box directory can be created after runtime ownership checks: $ABOX_DIR" || __abox_pf_log "$report" FAIL fail "A-Box directory parent is unavailable or symlinked: $(dirname "$ABOX_DIR")"
     fi
 
     echo "----------------------------------------------------------------------" | tee -a "$report"
@@ -14571,6 +14772,153 @@ wallos_candidate_version_allowed() {
     return 1
 }
 
+# N-11: Fetch the retained version list from the A-Box wallos-mirror.
+# Outputs one version per line, newest first. Empty on failure.
+wallos_mirror_version_list() {
+    local work versions_url
+    work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-ver.XXXXXX 2>/dev/null) || return 1
+    versions_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-versions.txt"
+    if curl -fLsS --connect-timeout 8 --max-time 20 "$versions_url" -o "$work/wallos-versions.txt" 2>/dev/null; then
+        grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' "$work/wallos-versions.txt" 2>/dev/null || true
+    fi
+    rm -rf -- "$work"
+}
+
+# N-11: Prune local bellamy/wallos images to keep only the newest 2
+# (current + previous verified-good). Enforces the 500MB local cache cap
+# by count (2 images); reports total size for operator awareness.
+# Args: $1 = image tag to always keep (current), $2 = image tag to keep (previous, may be empty).
+wallos_prune_local_images() {
+    local keep1="${1:-}" keep2="${2:-}" img tag
+    local -a all_images=()
+    while IFS= read -r img; do
+        [[ -n "$img" ]] || continue
+        # Only manage bellamy/wallos images.
+        [[ "$img" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ ]] || continue
+        all_images+=("$img")
+    done < <(docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep '^bellamy/wallos:' || true)
+    local removed=0
+    for img in "${all_images[@]}"; do
+        if [[ "$img" != "$keep1" && "$img" != "$keep2" ]]; then
+            # Keep at most 2: remove anything beyond keep1/keep2.
+            # Count how many we would keep; if already 2 kept, remove the rest.
+            docker rmi "$img" >/dev/null 2>&1 && removed=$((removed + 1)) || true
+        fi
+    done
+    # Report total size of retained wallos images (500MB cap awareness).
+    local total
+    total=$(docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' 2>/dev/null | grep '^bellamy/wallos:' | awk '{print $2}' || true)
+    if (( removed > 0 )); then
+        msg "${CYAN}N-11: pruned $removed old Wallos image(s); retained: ${keep1:-none} ${keep2:-}${NC}"
+    fi
+    return 0
+}
+
+# N-11: Roll back Wallos to a specific version.
+# Args: $1 = version tag (e.g. v2.5.1). Fetches the versioned image from the
+# mirror if not present locally, restores the latest backup, recreates the container.
+wallos_rollback_to_version() {
+    local target_tag="$1" arch image_tag port tz bind_address backup
+    [[ "$target_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { msg "${RED}Invalid Wallos version: $target_tag${NC}"; return 1; }
+    wallos_candidate_version_allowed "$target_tag" || { msg "${RED}Wallos version $target_tag is not in the allowed list.${NC}"; return 1; }
+    image_tag="${target_tag#v}"
+    # Try local image first; else pull the versioned image from the mirror.
+    if ! docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1; then
+        msg "${YELLOW}Wallos image $image_tag not present locally; fetching from mirror...${NC}"
+        # Use the versioned mirror path: temporarily override tag selection.
+        local _saved_result="$WALLOS_IMAGE_RESULT"
+        if ! _wallos_pull_versioned_image "$target_tag"; then
+            WALLOS_IMAGE_RESULT="$_saved_result"
+            msg "${RED}Could not fetch Wallos $target_tag from the mirror.${NC}"
+            return 1
+        fi
+        WALLOS_IMAGE_RESULT="$_saved_result"
+    fi
+    # Stop and remove current container, restore latest backup, recreate.
+    port=$(wallos_state_value PORT 2>/dev/null || true)
+    tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
+    bind_address=$(wallos_state_value BIND 2>/dev/null || printf '127.0.0.1')
+    valid_canonical_port "$port" || { msg "${RED}Wallos persisted port is invalid; refusing rollback.${NC}"; return 1; }
+    # Find the latest backup.
+    backup=$(ls -t "$WALLOS_DIR"/backups/wallos-*.tar.gz 2>/dev/null | head -n 1 || true)
+    [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || { msg "${RED}No Wallos backup found for rollback.${NC}"; return 1; }
+    docker stop wallos >/dev/null 2>&1 || true
+    docker rm -f wallos >/dev/null 2>&1 || { msg "${RED}Could not remove current Wallos container.${NC}"; return 1; }
+    wallos_restore_backup "$backup" || { msg "${RED}Wallos backup restore failed.${NC}"; return 1; }
+    local -a _pub_args=()
+    if [[ -n "$bind_address" && "$bind_address" != "0.0.0.0" ]]; then
+        _pub_args=(-p "$bind_address:$port:80/tcp")
+    elif [[ "$bind_address" == "0.0.0.0" ]]; then
+        _pub_args=(-p "$port:80/tcp")
+    fi
+    # Empty bind_address: omit -p entirely (no port publication, fail-closed).
+    docker run -d --name wallos --label com.alariclin.abox.managed=true \
+        -v "$WALLOS_DIR/db:/var/www/html/db" \
+        -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
+        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "bellamy/wallos:$image_tag" >/dev/null || {
+        msg "${RED}Failed to start Wallos $target_tag.${NC}"; return 1; }
+    wallos_wait_healthy "$port" || { msg "${RED}Wallos $target_tag did not become healthy.${NC}"; return 1; }
+    wallos_write_state "bellamy/wallos:$image_tag" "$port" "$tz" "$bind_address" || {
+        msg "${RED}Wallos state commit failed after rollback.${NC}"; return 1; }
+    # N-11: prune to 2 images (new current + previous).
+    local prev_image
+    prev_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+    wallos_prune_local_images "bellamy/wallos:$image_tag" ""
+    msg "${GREEN}Wallos rolled back to $target_tag.${NC}"
+    return 0
+}
+
+# N-11: Pull a specific versioned image from the A-Box mirror.
+# Args: $1 = version tag. Sets WALLOS_IMAGE_RESULT on success.
+_wallos_pull_versioned_image() {
+    local tag="$1" arch asset expected actual work manifest_url sum_url
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    arch=$(wallos_detect_arch) || return 1
+    work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-ver.XXXXXX) || return 1
+    local ver_manifest="wallos-manifest-${tag}.txt"
+    manifest_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/$ver_manifest"
+    sum_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
+    if ! curl -fLsS --connect-timeout 8 --max-time 30 "$manifest_url" -o "$work/$ver_manifest" ||
+       ! curl -fLsS --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
+        rm -rf -- "$work"; return 1
+    fi
+    # Verify manifest against SHA256SUMS (fail-closed).
+    local manifest_expected manifest_actual
+    manifest_expected=$(awk -v f="$ver_manifest" '$2==f || $2==("*" f) {print $1; exit}' "$work/SHA256SUMS" 2>/dev/null || true)
+    manifest_actual=$(sha256sum "$work/$ver_manifest" 2>/dev/null | awk '{print $1}' || true)
+    if [[ ! "$manifest_expected" =~ ^[A-Fa-f0-9]{64}$ || "${manifest_expected,,}" != "${manifest_actual,,}" ]]; then
+        rm -rf -- "$work"
+        msg "${RED}Wallos versioned manifest checksum mismatch; refusing.${NC}"
+        return 1
+    fi
+    # Verify the manifest's tag matches the requested version.
+    local mtag
+    mtag=$(awk -F= '$1=="tag" {print $2; exit}' "$work/$ver_manifest" 2>/dev/null || true)
+    [[ "$mtag" == "$tag" ]] || { rm -rf -- "$work"; return 1; }
+    case "$arch" in amd64|arm64|armv7) asset="wallos-linux-$arch-${tag}.tar.gz" ;; *) rm -rf -- "$work"; return 1 ;; esac
+    if ! curl -fLsS --connect-timeout 8 --max-time 600 \
+        "https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then
+        rm -rf -- "$work"; return 1
+    fi
+    expected=$(awk -v f="$asset" '$2==f || $2==("*" f) {print $1; exit}' "$work/SHA256SUMS" 2>/dev/null || true)
+    actual=$(sha256sum "$work/$asset" 2>/dev/null | awk '{print $1}' || true)
+    if [[ ! "$expected" =~ ^[A-Fa-f0-9]{64}$ || "${expected,,}" != "${actual,,}" ]]; then
+        rm -rf -- "$work"
+        msg "${RED}Wallos versioned archive checksum mismatch; refusing.${NC}"
+        return 1
+    fi
+    local load_out image_tag="${tag#v}"
+    load_out=$(gzip -dc "$work/$asset" | docker load 2>&1) || { rm -rf -- "$work"; return 1; }
+    if [[ "$(grep -c '^Loaded image:' <<< "$load_out")" -ne 1 ]] ||
+       ! grep -Fqx "Loaded image: bellamy/wallos:$image_tag" <<< "$load_out"; then
+        rm -rf -- "$work"; return 1
+    fi
+    rm -rf -- "$work"
+    docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1 || return 1
+    WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+    return 0
+}
+
 wallos_latest_stable_tag() {
     local response tag
     response=$(curl -fLsS --retry 1 --connect-timeout 8 --max-time 20 https://api.github.com/repos/ellite/Wallos/releases/latest 2>/dev/null) || return 1
@@ -14580,7 +14928,7 @@ wallos_latest_stable_tag() {
 }
 
 wallos_pull_or_restore_image() {
-    local arch="$1" tag='' asset='' expected actual work manifest_url sum_url
+    local arch="$1" tag='' asset='' expected actual work manifest_url sum_url _w_ts=''
     WALLOS_IMAGE_RESULT=''
     tag=$(wallos_latest_stable_tag 2>/dev/null || true)
     if [[ -n "$tag" ]] && wallos_candidate_version_allowed "$tag"; then
@@ -14596,7 +14944,7 @@ wallos_pull_or_restore_image() {
         # Release as the manifest, so this check detects inconsistency and
         # corruption but is NOT an independent authenticity proof. A signature
         # trust root is still deferred (F-05).
-        local _n2_work="" _mirror_digest="" _manifest_tag=""
+        local _n2_work="" _mirror_digest="" _manifest_tag="" _n2_ts=""
         local _n2_manifest_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
         local _n2_sum_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
         _n2_work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-n2.XXXXXX 2>/dev/null) || true
@@ -14616,8 +14964,22 @@ wallos_pull_or_restore_image() {
                 _n2_expected=$(awk -v f="wallos-manifest.txt" '$2==f || $2==("*" f) {print $1; exit}' "$_n2_work/SHA256SUMS" 2>/dev/null || true)
                 _n2_actual=$(sha256sum "$_n2_work/wallos-manifest.txt" 2>/dev/null | awk '{print $1}' || true)
                 if [[ "$_n2_expected" =~ ^[A-Fa-f0-9]{64}$ && "${_n2_expected,,}" == "${_n2_actual,,}" ]]; then
-                    _mirror_digest=$(awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
-                    _manifest_tag=$(awk -F= '$1=="tag" {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
+                    # F-05: verify detached Ed25519 signature of the manifest.
+                    curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_sum_url.sig" -o "$_n2_work/SHA256SUMS.sig" 2>/dev/null || true
+                    curl -fLsS --connect-timeout 8 --max-time 30 "${_n2_manifest_url}.sig" -o "$_n2_work/wallos-manifest.txt.sig" 2>/dev/null || true
+                    if ! abox_verify_sig_gate "$_n2_work/wallos-manifest.txt" "$_n2_work/wallos-manifest.txt.sig" "Wallos manifest (N-2 fast path)"; then
+                        msg "${YELLOW}[!] N-2 manifest signature rejected; falling back to tag pull.${NC}"
+                    else
+                        # F-05 anti-replay on manifest timestamp.
+                        _n2_ts=$(awk -F= '$1=="retrieved_at_utc" {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
+                        if [[ -n "$_n2_ts" ]] && ! abox_signing_timestamp_ok "$_n2_ts"; then
+                            printf '[A-Box][F-05] FATAL: Wallos manifest timestamp %s predates trust floor\n' "$_n2_ts" >&2
+                            msg "${YELLOW}[!] N-2 manifest timestamp rejected; falling back to tag pull.${NC}"
+                        else
+                            _mirror_digest=$(awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
+                            _manifest_tag=$(awk -F= '$1=="tag" {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
+                        fi
+                    fi
                 else
                     msg "${YELLOW}[!] N-2 fast-path manifest checksum mismatch; falling back to tag pull.${NC}"
                 fi
@@ -14666,6 +15028,19 @@ wallos_pull_or_restore_image() {
     if [[ ! "$manifest_expected" =~ ^[A-Fa-f0-9]{64}$ || "${manifest_expected,,}" != "${manifest_actual,,}" ]]; then
         rm -rf -- "$work"
         msg "${RED}Wallos manifest checksum mismatch; refusing to load it.${NC}"
+        return 1
+    fi
+    # F-05: verify detached Ed25519 signature of the manifest.
+    curl -fLsS --connect-timeout 8 --max-time 30 "${manifest_url}.sig" -o "$work/wallos-manifest.txt.sig" 2>/dev/null || true
+    if ! abox_verify_sig_gate "$work/wallos-manifest.txt" "$work/wallos-manifest.txt.sig" "Wallos manifest (fallback path)"; then
+        rm -rf -- "$work"
+        return 1
+    fi
+    # F-05 anti-replay on manifest timestamp.
+    _w_ts=$(awk -F= '$1=="retrieved_at_utc" {print $2; exit}' "$work/wallos-manifest.txt" 2>/dev/null || true)
+    if [[ -n "$_w_ts" ]] && ! abox_signing_timestamp_ok "$_w_ts"; then
+        printf '[A-Box][F-05] FATAL: Wallos manifest timestamp %s predates trust floor\n' "$_w_ts" >&2
+        rm -rf -- "$work"
         return 1
     fi
     tag=$(awk -F= '$1=="tag" {print $2; exit}' "$work/wallos-manifest.txt")
@@ -14938,10 +15313,19 @@ wallos_recover_interrupted_upgrade() {
             return 1
         }
     fi
-    docker image inspect "$old_image" >/dev/null 2>&1 || {
-        msg "${RED}Previous Wallos image $old_image is not present locally. Refusing to pull a mutable tag for recovery; journal and backup retained.${NC}"
-        return 1
-    }
+    if ! docker image inspect "$old_image" >/dev/null 2>&1; then
+        # N-11: old image not present locally. Try fetching the previous
+        # version (N-1) from the versioned mirror instead of refusing.
+        local _n1_tag
+        _n1_tag=$(wallos_mirror_version_list 2>/dev/null | sed -n '2p' || true)
+        if [[ "$_n1_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && _wallos_pull_versioned_image "$_n1_tag"; then
+            old_image="$WALLOS_IMAGE_RESULT"
+            msg "${YELLOW}N-11: fetched previous Wallos version $_n1_tag from mirror for recovery.${NC}"
+        else
+            msg "${RED}Previous Wallos image $old_image is not present locally and N-1 could not be fetched. Refusing to pull a mutable tag for recovery; journal and backup retained.${NC}"
+            return 1
+        fi
+    fi
     wallos_restore_backup "$backup" || {
         msg "${RED}Interrupted Wallos upgrade backup restore failed. Journal and backup retained at $journal and $backup.${NC}"
         return 1
@@ -15172,6 +15556,8 @@ wallos_install_or_update() {
             msg "${YELLOW}Wallos is updated; committed journal cleanup will finish on the next run.${NC}"
             return 1
         }
+        # N-11: prune local images to current + previous (2 max, 500MB cap).
+        wallos_prune_local_images "$image" "$old_image" || true
     fi
     case "${ABOX_LANG:-zh}" in
         ru)
@@ -15247,6 +15633,57 @@ wallos_backup_now() {
     esac
 }
 
+# N-11: Interactive / env-driven manual rollback.
+_wallos_manual_rollback() {
+    local target sel versions
+    # Non-interactive fast path: env var selects the version directly.
+    if [[ -n "${WALLOS_ROLLBACK_VERSION:-}" ]]; then
+        target="$WALLOS_ROLLBACK_VERSION"
+        [[ "$target" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            msg "${RED}WALLOS_ROLLBACK_VERSION is not a valid version: $target${NC}"
+            return 1
+        }
+        wallos_rollback_to_version "$target"
+        return $?
+    fi
+    # Interactive: list retained versions from the mirror (newest first).
+    mapfile -t versions < <(wallos_mirror_version_list 2>/dev/null || true)
+    if ((${#versions[@]} == 0)); then
+        # Fall back to locally available images.
+        mapfile -t versions < <(docker images --format '{{.Tag}}' 'bellamy/wallos' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -rV | sed 's/^/v/' || true)
+    fi
+    if ((${#versions[@]} == 0)); then
+        msg "${RED}No previous Wallos versions available for rollback.${NC}"
+        return 1
+    fi
+    # Skip the current version (index 0 is newest = likely current).
+    local current_tag
+    current_tag=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null | sed 's/.*://' || true)
+    local i=1
+    for v in "${versions[@]}"; do
+        # Mark the current version.
+        if [[ "v${v#v}" == "v${current_tag#v}" || "${v#v}" == "${current_tag#v}" ]]; then
+            msg "${YELLOW}$i. $v (current)${NC}"
+        else
+            msg "${YELLOW}$i. $v${NC}"
+        fi
+        i=$((i + 1))
+    done
+    local prompt
+    case "${ABOX_LANG:-zh}" in
+        en) prompt="Select version to roll back to [1-${#versions[@]}] (Enter=1): " ;;
+        ru) prompt="Выберите версию для отката [1-${#versions[@]}] (Enter=1): " ;;
+        fa) prompt="نسخه برای بازگشت انتخاب کنید [1-${#versions[@]}] (Enter=1): " ;;
+        *) prompt="选择要回滚的版本 [1-${#versions[@]}]（回车=1）： " ;;
+    esac
+    read -r -p "$prompt" sel
+    [[ -z "$sel" ]] && sel=1
+    [[ "$sel" =~ ^[0-9]+$ ]] && (( sel >= 1 && sel <= ${#versions[@]} )) || {
+        msg "${RED}Invalid selection.${NC}"; return 1; }
+    target="${versions[$((sel - 1))]}"
+    wallos_rollback_to_version "$target"
+}
+
 wallos_menu() {
     clear
     case "${ABOX_LANG:-zh}" in
@@ -15256,6 +15693,7 @@ wallos_menu() {
             msg "${YELLOW}2. Status and access URL${NC}"
             msg "${YELLOW}3. Back up database and uploaded logos${NC}"
             msg "${YELLOW}4. Remove container but keep data${NC}"
+            msg "${YELLOW}5. Roll back to a previous version${NC}"
             msg "${GREEN}0. Back${NC}"
             ;;
         ru)
@@ -15264,6 +15702,7 @@ wallos_menu() {
             msg "${YELLOW}2. Состояние и адрес доступа${NC}"
             msg "${YELLOW}3. Резервная копия базы и загруженных логотипов${NC}"
             msg "${YELLOW}4. Удалить контейнер, сохранив данные${NC}"
+            msg "${YELLOW}5. Откатить к предыдущей версии${NC}"
             msg "${GREEN}0. Назад${NC}"
             ;;
         fa)
@@ -15272,6 +15711,7 @@ wallos_menu() {
             msg "${YELLOW}2. وضعیت و نشانی دسترسی${NC}"
             msg "${YELLOW}3. پشتیبان‌گیری از پایگاه داده و تصاویر بارگذاری‌شده${NC}"
             msg "${YELLOW}4. حذف کانتینر با حفظ داده‌ها${NC}"
+            msg "${YELLOW}5. بازگشت به نسخه قبلی${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
         *)
@@ -15280,11 +15720,12 @@ wallos_menu() {
             msg "${YELLOW}2. 查看状态和访问网址${NC}"
             msg "${YELLOW}3. 备份数据库和上传图片${NC}"
             msg "${YELLOW}4. 删除容器但保留数据${NC}"
+            msg "${YELLOW}5. 回滚到历史版本${NC}"
             msg "${GREEN}0. 返回${NC}"
             ;;
     esac
     local c prompt_confirm prompt_remove menu_prompt
-    case "${ABOX_LANG:-zh}" in en) menu_prompt='Select [0-4]: ' ;; ru) menu_prompt='Выберите [0–4]: ' ;; fa) menu_prompt='انتخاب [۰ تا ۴]: ' ;; *) menu_prompt='请选择 [0-4]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) menu_prompt='Select [0-5]: ' ;; ru) menu_prompt='Выберите [0–5]: ' ;; fa) menu_prompt='انتخاب [۰ تا ۵]: ' ;; *) menu_prompt='请选择 [0-5]：' ;; esac
     read -r -p "$menu_prompt" c
     case "${ABOX_LANG:-zh}" in
         en) prompt_confirm='Wallos stores personal subscription/financial data. HTTP has no TLS. Continue? [Y/N]: '; prompt_remove="Remove the Wallos container and keep data in $WALLOS_DIR? [Y/N]: " ;;
@@ -15315,6 +15756,12 @@ wallos_menu() {
                     esac
                 fi
             fi
+            pause_return ;;
+        5)
+            # N-11: Manual rollback to a previous version.
+            # Non-interactive: WALLOS_ROLLBACK_VERSION=vX.Y.Z selects directly.
+            # Interactive: show retained versions, Enter defaults to 1 (previous).
+            _wallos_manual_rollback
             pause_return ;;
         *) return 0 ;;
     esac
@@ -17107,6 +17554,14 @@ prepare_noninteractive_service_control() {
     if systemd_available; then INIT_SYS='systemd'; elif command -v rc-service >/dev/null 2>&1; then INIT_SYS='openrc'; else die '未检测到 systemd/OpenRC。'; fi
 }
 
+# BUG-28: hoisted from manual_stop_managed_stack()/manual_start_managed_stack().
+# $1=changed_pre $2=changed_expected (transaction state files).
+__abox_service_tx_rollback() {
+    local changed_pre="$1" changed_expected="$2"
+    [[ ! -s "$changed_pre" ]] && return 0
+    [[ -s "$changed_expected" ]] || return 1
+    restore_managed_service_state "$changed_pre" "$changed_expected"
+}
 manual_stop_managed_stack() {
     local srv failed=0 services previous_state pre_state changed_pre changed_expected tx_dir before after active enabled
     prepare_noninteractive_service_control
@@ -17136,17 +17591,12 @@ manual_stop_managed_stack() {
         (( failed == 0 )) || break
     done <<< "$services"
 
-    service_tx_rollback() {
-        [[ ! -s "$changed_pre" ]] && return 0
-        [[ -s "$changed_expected" ]] || return 1
-        restore_managed_service_state "$changed_pre" "$changed_expected"
-    }
     if (( failed != 0 )); then
-        if ! service_tx_rollback; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
+        if ! __abox_service_tx_rollback "$changed_pre" "$changed_expected"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
         die '至少一个托管服务停止/禁用失败；未提交 MANUAL_STOPPED 状态。'
     fi
     set_desired_state MANUAL_STOPPED || {
-        if ! service_tx_rollback; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
+        if ! __abox_service_tx_rollback "$changed_pre" "$changed_expected"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
         die '服务状态提交失败；已尝试恢复原运行/启用状态。'
     }
     rm -rf -- "$tx_dir" || die '服务状态事务清理失败；服务已按预期停止，但未能清理事务材料。'
@@ -17191,11 +17641,6 @@ manual_start_managed_stack() {
         (( failed == 0 )) || break
     done <<< "$services"
 
-    service_tx_rollback() {
-        [[ ! -s "$changed_pre" ]] && return 0
-        [[ -s "$changed_expected" ]] || return 1
-        restore_managed_service_state "$changed_pre" "$changed_expected"
-    }
     if (( failed == 0 )); then
         clear_traffic_block_period || failed=1
         (( failed != 0 )) || set_desired_state RUNNING || failed=1
@@ -17203,7 +17648,7 @@ manual_start_managed_stack() {
     if (( failed != 0 )); then
         if (( block_state_present == 1 )); then set_traffic_block_period "$previous_block_period" >/dev/null 2>&1 || true; else clear_traffic_block_period >/dev/null 2>&1 || true; fi
         set_desired_state "$previous_state" >/dev/null 2>&1 || true
-        if ! service_tx_rollback; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
+        if ! __abox_service_tx_rollback "$changed_pre" "$changed_expected"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
         die '至少一个托管服务启动/启用或状态提交失败；已尝试回滚本次操作。'
     fi
     rm -rf -- "$tx_dir" || die '服务状态事务清理失败；服务已按预期启动，但未能清理事务材料。'
@@ -17436,8 +17881,8 @@ PY_SELFTEST_TAR
     grep -Fq 'en:reality_non443_warn)' "$0" || { echo 'FAIL: English non-443 SNI warning translation missing'; failures=$((failures + 1)); }
     grep -Fq 'en:apple_sni_warn)' "$0" || { echo 'FAIL: English Apple/iCloud SNI warning translation missing'; failures=$((failures + 1)); }
     declare -F sni_domain_public_dns >/dev/null 2>&1 || { echo 'FAIL: SNI public-DNS guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'need_cmd_pkg groupadd passwd shadow-utils shadow' "$0" || { echo 'FAIL: group management dependency mapping missing'; failures=$((failures + 1)); }
-    grep -Fq 'need_cmd_pkg useradd passwd shadow-utils shadow' "$0" || { echo 'FAIL: user management dependency mapping missing'; failures=$((failures + 1)); }
+    grep -Fq '__abox_missing_pkg_for "$release" groupadd passwd shadow-utils shadow' "$0" || { echo 'FAIL: group management dependency mapping missing'; failures=$((failures + 1)); }
+    grep -Fq '__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow' "$0" || { echo 'FAIL: user management dependency mapping missing'; failures=$((failures + 1)); }
     grep -Fq 'addgroup -S "$group"' "$0" || { echo 'FAIL: Alpine BusyBox addgroup fallback missing'; failures=$((failures + 1)); }
     grep -Fq 'adduser -S -D -H -s /sbin/nologin -G "$group" "$user"' "$0" || { echo 'FAIL: Alpine BusyBox adduser fallback missing'; failures=$((failures + 1)); }
     assert_ok valid_ipv4_cidr 192.0.2.1/24
@@ -17704,6 +18149,7 @@ PY_SELFTEST_TAR
     [[ "$(core_version_compare v1.15.0-alpha.12 v1.14.3)" == '1' ]] || { echo 'FAIL: newer SemVer prerelease major/minor/patch ordering'; failures=$((failures + 1)); }
     [[ "$(core_version_compare v1.15.0-alpha.12 v1.15.0-alpha.2)" == '1' ]] || { echo 'FAIL: numeric SemVer prerelease identifier ordering'; failures=$((failures + 1)); }
     assert_ok core_version_from_output 'sing-box version 1.14.3 (go1.25.2 linux/amd64)'
+    assert_bad core_version_from_output 'no version string here at all'
     [[ "$(core_version_from_output 'sing-box version 1.14.3 (go1.25.2 linux/amd64)')" == '1.14.3' ]] || { echo 'FAIL: sing-box version parser'; failures=$((failures + 1)); }
     assert_ok core_version_downgrade_allowed v1.14.2 v1.14.3 0
     assert_bad core_version_downgrade_allowed v1.14.3 v1.14.2 0
@@ -17729,6 +18175,52 @@ PY_SELFTEST_TAR
         echo 'FAIL: Wallos backup should not start a container that was originally stopped'; failures=$((failures + 1))
     fi
     assert_bad wallos_resume_after_backup invalid ''
+    assert_ok wallos_resume_after_backup 0 ''
+    # N-11: versioned history — SHA256SUMS append/sort/prune logic.
+    {
+        local n11_tmp n11_versions
+        n11_tmp=$(umask 077; mktemp -d) || exit 40
+        # Simulate a cumulative SHA256SUMS with 4 versions (unsorted).
+        cat > "$n11_tmp/SHA256SUMS" <<'N11EOF'
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  wallos-linux-amd64-v2.5.3.tar.gz
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  wallos-linux-amd64-v2.5.1.tar.gz
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  wallos-linux-amd64-v2.5.2.tar.gz
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd  wallos-linux-amd64-v2.5.0.tar.gz
+N11EOF
+        # Parse versions (same pattern as workflow).
+        mapfile -t n11_versions < <(awk '{print $2}' "$n11_tmp/SHA256SUMS" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -uV)
+        [[ "${#n11_versions[@]}" == 4 ]] || { echo 'FAIL: N-11 version parse count'; failures=$((failures + 1)); }
+        [[ "${n11_versions[3]}" == 'v2.5.3' ]] || { echo 'FAIL: N-11 version sort order'; failures=$((failures + 1)); }
+        # Prune to newest 3 (same logic as workflow).
+        if ((${#n11_versions[@]} > 3)); then
+            local _pv
+            for _pv in "${n11_versions[@]:0:$((${#n11_versions[@]} - 3))}"; do
+                grep -vF -- "$_pv" "$n11_tmp/SHA256SUMS" > "$n11_tmp/SHA256SUMS.tmp" || true
+                mv -f "$n11_tmp/SHA256SUMS.tmp" "$n11_tmp/SHA256SUMS"
+            done
+        fi
+        # v2.5.0 must be gone, others retained.
+        grep -q 'v2.5.0' "$n11_tmp/SHA256SUMS" && { echo 'FAIL: N-11 prune did not remove oldest'; failures=$((failures + 1)); }
+        grep -q 'v2.5.1' "$n11_tmp/SHA256SUMS" || { echo 'FAIL: N-11 prune removed wrong version'; failures=$((failures + 1)); }
+        # Sort stability: sort -k2,2 keeps filename order.
+        sort -k2,2 -u "$n11_tmp/SHA256SUMS" -o "$n11_tmp/SHA256SUMS"
+        [[ "$(head -n 1 "$n11_tmp/SHA256SUMS" | awk '{print $2}')" == 'wallos-linux-amd64-v2.5.1.tar.gz' ]] || {
+            echo 'FAIL: N-11 SHA256SUMS sort order'; failures=$((failures + 1)); }
+        rm -rf -- "$n11_tmp"
+        # N-11: N-1 auto-select = second line of newest-first version list.
+        local _n1
+        _n1=$(printf 'v2.5.3\nv2.5.2\nv2.5.1\n' | sed -n '2p')
+        [[ "$_n1" == 'v2.5.2' ]] || { echo 'FAIL: N-11 N-1 auto-select'; failures=$((failures + 1)); }
+        # N-11: rollback rejects invalid versions.
+        assert_bad wallos_rollback_to_version 'not-a-version'
+        assert_bad wallos_rollback_to_version 'v2.5'
+        # N-11: required functions exist.
+        declare -F wallos_mirror_version_list >/dev/null || { echo 'FAIL: N-11 wallos_mirror_version_list missing'; failures=$((failures + 1)); }
+        declare -F wallos_prune_local_images >/dev/null || { echo 'FAIL: N-11 wallos_prune_local_images missing'; failures=$((failures + 1)); }
+        declare -F wallos_rollback_to_version >/dev/null || { echo 'FAIL: N-11 wallos_rollback_to_version missing'; failures=$((failures + 1)); }
+        declare -F _wallos_pull_versioned_image >/dev/null || { echo 'FAIL: N-11 _wallos_pull_versioned_image missing'; failures=$((failures + 1)); }
+        declare -F _wallos_manual_rollback >/dev/null || { echo 'FAIL: N-11 _wallos_manual_rollback missing'; failures=$((failures + 1)); }
+    }
     [[ "$(xray_version_compare v9223372036854775808.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray huge-version comparison overflow regression'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v18446744073709551616.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray extra-large version comparison regression'; failures=$((failures + 1)); }
     grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" "$0" || { echo 'FAIL: Xray REALITY ML-KEM threshold constant missing'; failures=$((failures + 1)); }
@@ -18136,6 +18628,17 @@ PY_SELFTEST_ARCHIVE_CREATE
     printf '%s\n' 'preserve-me' > "$tmp/extract-preexisting"
     assert_bad extract_tar_regular_basename_safely "$tmp/extract-regress.tar" target.txt "$tmp/extract-preexisting"
     [[ -f "$tmp/extract-preexisting" && "$(cat "$tmp/extract-preexisting")" == 'preserve-me' ]] || { echo 'FAIL: TAR rejection removed pre-existing destination'; failures=$((failures + 1)); }
+    python3 - "$tmp" <<'PY_SELFTEST_TAR_GZ_CREATE' >/dev/null 2>&1 || { echo 'FAIL: tar.gz fixture creation'; failures=$((failures + 1)); }
+import io, os, sys, tarfile
+base=sys.argv[1]
+with tarfile.open(os.path.join(base, 'extract-regress.tar.gz'), 'w:gz') as t:
+    data=b'new-content'
+    ti=tarfile.TarInfo('target.txt'); ti.size=len(data)
+    t.addfile(ti, io.BytesIO(data))
+PY_SELFTEST_TAR_GZ_CREATE
+    rm -f "$tmp/extract-new-tar"
+    assert_ok extract_tar_regular_basename_safely "$tmp/extract-regress.tar.gz" target.txt "$tmp/extract-new-tar"
+    [[ "$(cat "$tmp/extract-new-tar")" == 'new-content' ]] || { echo 'FAIL: TAR successful extraction content'; failures=$((failures + 1)); }
     if command -v cmp >/dev/null 2>&1; then
         cmp -s "$tmp/atomic.src" "$tmp/atomic.dest" || { echo 'FAIL: atomic file install content'; failures=$((failures + 1)); }
     else
@@ -18167,6 +18670,7 @@ PY_SELFTEST_ARCHIVE_CREATE
     rm -f "$tmp/archive-good/meta/manifest.sha256.tmp"
     if selftest_has python3; then
         assert_ok create_backup_manifest "$tmp/archive-good" "$tmp/archive-good/meta/manifest.sha256"
+        assert_bad create_backup_manifest "$tmp/nonexistent-dir" "$tmp/out.sha256"
         selftest_pack_tar_gz "$tmp/archive-good" "$tmp/good.tar.gz" 1 || { echo 'FAIL: good backup fixture tar creation'; failures=$((failures + 1)); }
         assert_ok validate_backup_archive "$tmp/good.tar.gz"
     else
@@ -18498,7 +19002,7 @@ PY_SELFTEST_YAML
     grep -Fq 'persisted traffic state is unreadable or invalid' <<< "$traffic_body" || { echo 'FAIL: traffic monitor invalid persisted state must fail closed'; failures=$((failures + 1)); }
     grep -q '^reorder_ss_whitelist_rules_one() {' <<< "$source_body" || { echo 'FAIL: firewall reorder transaction missing'; failures=$((failures + 1)); }
     grep -Fq 'exec {lock_fd}>>"$lock_file"' <<< "$source_body" || { echo 'FAIL: firewall reorder transaction lock missing'; failures=$((failures + 1)); }
-    grep -Fq '[[ "$lock_fd" =~ ^[0-9]+$ ]]' <<< "$source_body" || { echo 'FAIL: firewall_unlock must guard empty lock_fd'; failures=$((failures + 1)); }
+    grep -Fq '[[ "$lock_fd" =~ ^[0-9]+$ ]]' <<< "$source_body" || { echo 'FAIL: __abox_firewall_unlock "$lock_fd"; lock_fd='' must guard empty lock_fd'; failures=$((failures + 1)); }
     grep -Fq 'flock -s -n 8' <<< "$source_body" || { echo 'FAIL: status/preflight must use shared non-blocking flock'; failures=$((failures + 1)); }
     grep -Fq 'umask 077; mktemp /tmp/A-Box-remote.XXXXXX.sh' <<< "$source_body" || { echo 'FAIL: remote script temp must use umask 077'; failures=$((failures + 1)); }
     grep -Fq 'unset ABOX_DIE_HOOK' <<< "$source_body" || { echo 'FAIL: enter_runtime must ignore ambient ABOX_DIE_HOOK'; failures=$((failures + 1)); }
@@ -18738,12 +19242,21 @@ EOF_SVC_TEST_RCUPDATE
         echo 'FAIL: optional env loader accepted an existing invalid state file'
         failures=$((failures + 1))
     fi
+    # P2-03: Return code contract — 0=success, 1=general failure, 2=preflight failure.
+    # Applies to CLI top-level and rollback orchestrators; NOT to polymorphic internals.
+    grep -Fq 'P2-03 Return Code Contract' "$0" || { echo 'FAIL: P2-03 return code contract not documented'; failures=$((failures + 1)); }
+    # traffic_quota_transaction_rollback: missing tx_dir is a preflight failure (return 2).
+    traffic_quota_transaction_rollback "/nonexistent-tx-dir-$$" >/dev/null 2>&1; _rc=$?
+    (( _rc == 2 )) || { echo "FAIL: traffic rollback preflight must return 2, got $_rc"; failures=$((failures + 1)); }
+    # Polymorphic internals must NOT be standardized (callers depend on case $?):
+    # remove_recorded_core_family uses 2/3/4; core_version_upgrade_decision uses 2/3/4.
+    grep -Fq 'remove_recorded_core_family() {' "$0" || { echo 'FAIL: remove_recorded_core_family missing'; failures=$((failures + 1)); }
     if (( failures > 0 )); then
         echo "SELF_TEST_FAILED=$failures"
         selftest_cleanup
         return 1
     fi
-    _legacy_preflight_pattern='managed_services_active && pf_warn ' ; _legacy_preflight_pattern="${_legacy_preflight_pattern}existing A-Box managed service is active" ; _legacy_preflight_pattern="${_legacy_preflight_pattern}' || pf_pass"
+    _legacy_preflight_pattern='managed_services_active && __abox_pf_log \"\$report\" WARN warn ' ; _legacy_preflight_pattern="${_legacy_preflight_pattern}existing A-Box managed service is active" ; _legacy_preflight_pattern="${_legacy_preflight_pattern}' || __abox_pf_log \"\$report\" PASS """
     if grep -Fq -- "$_legacy_preflight_pattern" "$0"; then
         echo 'FAIL: preflight still collapses unknown managed-service state into inactive'
         failures=$((failures + 1))
@@ -18843,6 +19356,87 @@ EOF_SVC_TEST_RCUPDATE
     ); then
         echo 'FAIL: Wallos backup/restore transaction failed or damaged data on invalid archive'
         failures=$((failures + 1))
+    fi
+    # F-05: Ed25519 detached-signature round-trip with a throwaway keypair.
+    # Generates a fresh key, signs data, verifies OK; tampered data/sig must FAIL.
+    # Also exercises the enforcement gate and anti-replay timestamp check.
+    if selftest_has openssl && selftest_has python3; then
+        _f05_tdir=$(umask 077; mktemp -d "$tmp/f05.XXXXXX") || { echo 'FAIL: F-05 mktemp'; failures=$((failures + 1)); }
+        if [[ -n "${_f05_tdir:-}" && -d "$_f05_tdir" ]]; then
+            # Throwaway keypair (never the production key).
+            if openssl genpkey -algorithm ed25519 -out "$_f05_tdir/priv.pem" 2>/dev/null && \
+               openssl pkey -in "$_f05_tdir/priv.pem" -pubout -out "$_f05_tdir/pub.pem" 2>/dev/null; then
+                _f05_pub_b64=$(python3 - "$_f05_tdir/pub.pem" <<'PY_F05_TPUB' 2>/dev/null
+import base64, sys
+pem = open(sys.argv[1]).read()
+der = base64.b64decode(''.join(l for l in pem.splitlines() if '---' not in l))
+print(base64.b64encode(der[-32:]).decode())
+PY_F05_TPUB
+) || _f05_pub_b64=''
+                if [[ -n "$_f05_pub_b64" ]]; then
+                    printf 'F-05 test fixture data\n' > "$_f05_tdir/data.txt"
+                    openssl pkeyutl -sign -inkey "$_f05_tdir/priv.pem" -rawin \
+                        -in "$_f05_tdir/data.txt" 2>/dev/null | base64 > "$_f05_tdir/data.txt.sig" || \
+                        { echo 'FAIL: F-05 signing'; failures=$((failures + 1)); }
+                    # Swap in the throwaway pubkey (save/restore the real array).
+                    _f05_saved_pubkeys=("${ABOX_SIGNING_PUBKEYS[@]}")
+                    ABOX_SIGNING_PUBKEYS=("f05-selftest:$_f05_pub_b64")
+                    if ! verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/data.txt.sig"; then
+                        echo 'FAIL: F-05 valid signature rejected'; failures=$((failures + 1))
+                    fi
+                    # Tampered data must FAIL.
+                    printf 'F-05 TAMPERED\n' > "$_f05_tdir/data-tampered.txt"
+                    if verify_ed25519_detached "$_f05_tdir/data-tampered.txt" "$_f05_tdir/data.txt.sig"; then
+                        echo 'FAIL: F-05 tampered data accepted'; failures=$((failures + 1))
+                    fi
+                    # Tampered signature must FAIL.
+                    printf 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\n' > "$_f05_tdir/bad.sig"
+                    if verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/bad.sig"; then
+                        echo 'FAIL: F-05 bad signature accepted'; failures=$((failures + 1))
+                    fi
+                    # Missing sig file must FAIL verify (gate decides enforcement).
+                    if verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig"; then
+                        echo 'FAIL: F-05 missing sig accepted'; failures=$((failures + 1))
+                    fi
+                    # Enforcement gate: with ENFORCE=1, missing sig must return 1.
+                    if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then
+                        : # expected: gate returns 1
+                    else
+                        echo 'FAIL: F-05 gate did not fail-closed on missing sig'; failures=$((failures + 1))
+                    fi
+                    # Enforcement gate: with ENFORCE=0, missing sig warns but returns 0.
+                    if ! ABOX_SIGNING_ENFORCE=0 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then
+                        echo 'FAIL: F-05 gate should warn-only when enforcement off'; failures=$((failures + 1))
+                    fi
+                    # Anti-replay: old timestamp rejected, current accepted.
+                    if abox_signing_timestamp_ok "20200101000000"; then
+                        echo 'FAIL: F-05 stale timestamp accepted'; failures=$((failures + 1))
+                    fi
+                    if ! abox_signing_timestamp_ok "$(date -u +%Y%m%d%H%M%S)"; then
+                        echo 'FAIL: F-05 current timestamp rejected'; failures=$((failures + 1))
+                    fi
+                    if abox_signing_timestamp_ok "not-a-timestamp"; then
+                        echo 'FAIL: F-05 malformed timestamp accepted'; failures=$((failures + 1))
+                    fi
+                    # Revocation: revoked key must not verify.
+                    _f05_fp=$(printf '%s' "$_f05_pub_b64" | base64 -d 2>/dev/null | sha256sum | awk '{print $1}')
+                    _f05_saved_revoked=("${ABOX_REVOKED_PUBKEY_FPS[@]}")
+                    ABOX_REVOKED_PUBKEY_FPS=("$_f05_fp")
+                    if verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/data.txt.sig"; then
+                        echo 'FAIL: F-05 revoked key still verifies'; failures=$((failures + 1))
+                    fi
+                    ABOX_REVOKED_PUBKEY_FPS=("${_f05_saved_revoked[@]}")
+                    ABOX_SIGNING_PUBKEYS=("${_f05_saved_pubkeys[@]}")
+                else
+                    echo 'FAIL: F-05 pubkey extraction'; failures=$((failures + 1))
+                fi
+            else
+                selftest_note 'F-05 Ed25519 keygen unavailable; skipped'
+            fi
+            rm -rf -- "$_f05_tdir"
+        fi
+    else
+        selftest_note 'F-05 Ed25519 tests skipped (openssl/python3 missing)'
     fi
     if (( failures > 0 )); then
         echo "SELF_TEST_FAILED=$failures"

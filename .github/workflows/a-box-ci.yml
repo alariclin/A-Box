@@ -87,19 +87,16 @@ jobs:
                       sys.exit(1)
           print(f"OK: All {len(readme_files)} README files correctly pin install.sh commit {expected_sha}")
           PY
-      - name: Verify normalize_managed_rule_line dual-copy isomorphism
+      - name: Verify normalize_managed_rule_line single definition (BUG-28)
         run: |
           python3 - <<'PY'
-          import pathlib, re, subprocess, sys
+          import pathlib, re, sys
           text = pathlib.Path("install.sh").read_text(encoding="utf-8")
-          pattern = re.compile(r"(?:__abox_)?normalize_managed_rule_line\s*\(\)\s*\{\n(.*?)\n\s*\}", re.DOTALL)
+          pattern = re.compile(r"(?:__abox_)?normalize_managed_rule_line\s*\(\)\s*\{", re.DOTALL)
           matches = pattern.findall(text)
-          if len(matches) != 2:
-              sys.exit(f"ERROR: Expected exactly 2 definitions, found {len(matches)}")
-          norm = ["\n".join(l.strip() for l in b.strip().splitlines()) for b in matches]
-          if norm[0] != norm[1]:
-              sys.exit(f"ERROR: Dual copies drifted!\n--- Copy 1 ---\n{norm[0]}\n--- Copy 2 ---\n{norm[1]}")
-          print("OK: Dual copies isomorphic")
+          if len(matches) != 1:
+              sys.exit(f"ERROR: Expected exactly 1 definition (BUG-28 dedup), found {len(matches)}")
+          print("OK: Single normalize_managed_rule_line definition")
           PY
       # P3-13 fix: renamed from "Alpine clean-shell bootstrap syntax".
       # NOTE: This only checks syntax. Alpine runtime (BusyBox/musl/apk)

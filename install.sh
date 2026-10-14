@@ -2,6 +2,17 @@
 # ==============================A-Box===============================
 # SNI profile: built-in candidate library plus per-VPS automatic REALITY target selection; no remote script execution.
 # Hardened build: stricter GitHub digest trust, guarded shortcut persistence, Fail2Ban validation, and Sing-box HY2 ACME semantics.
+# P2-03 Return Code Contract (standardized 2026-10-15):
+#   0 = success
+#   1 = general failure (operation attempted but failed)
+#   2 = preflight failure (preconditions not met; operation not attempted or aborted before mutation)
+# This standard applies ONLY to: CLI top-level exit codes and rollback orchestrator
+# functions. It does NOT apply to polymorphic internal helpers that intentionally use
+# 2/3/4 as business branch signals (callers depend on `case $?`):
+#   remove_recorded_core_family, core_version_upgrade_decision, iptables_rule_check,
+#   firewalld_port_state, ufw_global_rule_numbers, managed_services_active,
+#   decimal_component_compare, core_version_compare, and similar query/state helpers.
+# When in doubt, leave the function unchanged.
 set -o pipefail
 set -u
 if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )); then
@@ -8560,12 +8571,12 @@ capture_traffic_quota_expected_state() {
 
 traffic_quota_transaction_rollback() {
     local tx_dir="$1" rc=0 current_monitor='' expected_monitor='' pre_monitor=0 current_block='' expected_block='' cron_rc vnstat_state='' expected_vnstat='' current_state current_traffic_env current_vnstat
-    [[ -d "$tx_dir" && ! -L "$tx_dir" ]] || return 1
+    [[ -d "$tx_dir" && ! -L "$tx_dir" ]] || return 2
 
     # Establish every expected post-state before changing anything. This prevents
     # rollback from overwriting state changed by another actor after provisioning.
     if [[ -f "$tx_dir/post-traffic.env" ]]; then
-        current_traffic_env=$(umask 077; mktemp /tmp/A-Box-traffic-current-env.XXXXXX) || return 1
+        current_traffic_env=$(umask 077; mktemp /tmp/A-Box-traffic-current-env.XXXXXX) || return 2
         if ! capture_traffic_env_state_file "$ABOX_ENV" "$current_traffic_env" || ! cmp -s "$current_traffic_env" "$tx_dir/post-traffic.env"; then
             rm -f -- "$current_traffic_env"
             printf '%s\n' "A-Box traffic rollback conflict: traffic quota environment changed externally; recovery state preserved at $tx_dir" >&2
@@ -8574,7 +8585,7 @@ traffic_quota_transaction_rollback() {
         rm -f -- "$current_traffic_env"
     else
         printf '%s\n' "A-Box traffic rollback could not establish the expected quota environment; recovery state preserved at $tx_dir" >&2
-        return 1
+        return 2
     fi
     if [[ -f "$tx_dir/post.desired" ]]; then
         traffic_optional_state_matches_expected "$ABOX_DESIRED_STATE" "$tx_dir/post.desired" || {
@@ -8583,7 +8594,7 @@ traffic_quota_transaction_rollback() {
         }
     else
         printf '%s\n' "A-Box traffic rollback could not establish the expected desired state; recovery state preserved at $tx_dir" >&2
-        return 1
+        return 2
     fi
     if [[ -f "$tx_dir/post.block" ]]; then
         traffic_optional_state_matches_expected "$ABOX_TRAFFIC_BLOCK_STATE" "$tx_dir/post.block" || {
@@ -8592,7 +8603,7 @@ traffic_quota_transaction_rollback() {
         }
     else
         printf '%s\n' "A-Box traffic rollback could not establish the expected block state; recovery state preserved at $tx_dir" >&2
-        return 1
+        return 2
     fi
     if [[ -f "$tx_dir/post.pair" ]]; then
         traffic_optional_state_matches_expected "$ABOX_TRAFFIC_PAIR_STATE" "$tx_dir/post.pair" || {
@@ -8601,13 +8612,13 @@ traffic_quota_transaction_rollback() {
         }
     else
         printf '%s\n' "A-Box traffic rollback could not establish the expected pair state; recovery state preserved at $tx_dir" >&2
-        return 1
+        return 2
     fi
 
     if [[ -f "$tx_dir/post.cron.traffic" ]]; then
-        expected_block=$(cat "$tx_dir/post.cron.traffic") || return 1
-        current=$(umask 077; mktemp /tmp/A-Box-traffic-current-cron.XXXXXX) || return 1
-        if ! read_crontab_to_file "$current"; then rm -f -- "$current"; return 1; fi
+        expected_block=$(cat "$tx_dir/post.cron.traffic") || return 2
+        current=$(umask 077; mktemp /tmp/A-Box-traffic-current-cron.XXXXXX) || return 2
+        if ! read_crontab_to_file "$current"; then rm -f -- "$current"; return 2; fi
         current_block=$(awk 'BEGIN{p=0} $0=="# A-Box TRAFFIC BEGIN"{p=1} p{print} $0=="# A-Box TRAFFIC END"{exit}' "$current")
         rm -f -- "$current"
         [[ "$current_block" == "$expected_block" ]] || {
@@ -8616,11 +8627,11 @@ traffic_quota_transaction_rollback() {
         }
     else
         printf '%s\n' "A-Box traffic rollback could not establish the expected TRAFFIC cron state; recovery state preserved at $tx_dir" >&2
-        return 1
+        return 2
     fi
 
     if [[ -s "$tx_dir/post.monitor.hash" ]]; then
-        IFS= read -r expected_monitor < "$tx_dir/post.monitor.hash" || return 1
+        IFS= read -r expected_monitor < "$tx_dir/post.monitor.hash" || return 2
         if [[ "$expected_monitor" == none ]]; then
             [[ ! -e "$ABOX_DIR/traffic_monitor.sh" && ! -L "$ABOX_DIR/traffic_monitor.sh" ]] || {
                 printf '%s\n' "A-Box traffic rollback conflict: traffic_monitor.sh was created externally; recovery state preserved at $tx_dir" >&2
@@ -8635,22 +8646,22 @@ traffic_quota_transaction_rollback() {
         fi
     else
         printf '%s\n' "A-Box traffic rollback could not establish the expected monitor state; recovery state preserved at $tx_dir" >&2
-        return 1
+        return 2
     fi
 
     if [[ -s "$tx_dir/post.vnstat" ]]; then
         IFS= read -r current_vnstat < <(capture_vnstat_runtime_state) || {
             printf '%s\n' "A-Box traffic rollback could not read current vnStat state; recovery state preserved at $tx_dir" >&2
-            return 1
+            return 2
         }
-        IFS= read -r expected_vnstat < "$tx_dir/post.vnstat" || return 1
+        IFS= read -r expected_vnstat < "$tx_dir/post.vnstat" || return 2
         [[ "$current_vnstat" == "$expected_vnstat" ]] || {
             printf '%s\n' "A-Box traffic rollback conflict: vnStat state changed externally; recovery state preserved at $tx_dir" >&2
             return 2
         }
     else
         printf '%s\n' "A-Box traffic rollback could not establish the expected vnStat state; recovery state preserved at $tx_dir" >&2
-        return 1
+        return 2
     fi
 
     # Restore only A-Box-owned traffic state after the complete conflict preflight.
@@ -14571,6 +14582,153 @@ wallos_candidate_version_allowed() {
     return 1
 }
 
+# N-11: Fetch the retained version list from the A-Box wallos-mirror.
+# Outputs one version per line, newest first. Empty on failure.
+wallos_mirror_version_list() {
+    local work versions_url
+    work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-ver.XXXXXX 2>/dev/null) || return 1
+    versions_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-versions.txt"
+    if curl -fLsS --connect-timeout 8 --max-time 20 "$versions_url" -o "$work/wallos-versions.txt" 2>/dev/null; then
+        grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' "$work/wallos-versions.txt" 2>/dev/null || true
+    fi
+    rm -rf -- "$work"
+}
+
+# N-11: Prune local bellamy/wallos images to keep only the newest 2
+# (current + previous verified-good). Enforces the 500MB local cache cap
+# by count (2 images); reports total size for operator awareness.
+# Args: $1 = image tag to always keep (current), $2 = image tag to keep (previous, may be empty).
+wallos_prune_local_images() {
+    local keep1="${1:-}" keep2="${2:-}" img tag
+    local -a all_images=()
+    while IFS= read -r img; do
+        [[ -n "$img" ]] || continue
+        # Only manage bellamy/wallos images.
+        [[ "$img" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ ]] || continue
+        all_images+=("$img")
+    done < <(docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep '^bellamy/wallos:' || true)
+    local removed=0
+    for img in "${all_images[@]}"; do
+        if [[ "$img" != "$keep1" && "$img" != "$keep2" ]]; then
+            # Keep at most 2: remove anything beyond keep1/keep2.
+            # Count how many we would keep; if already 2 kept, remove the rest.
+            docker rmi "$img" >/dev/null 2>&1 && removed=$((removed + 1)) || true
+        fi
+    done
+    # Report total size of retained wallos images (500MB cap awareness).
+    local total
+    total=$(docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' 2>/dev/null | grep '^bellamy/wallos:' | awk '{print $2}' || true)
+    if (( removed > 0 )); then
+        msg "${CYAN}N-11: pruned $removed old Wallos image(s); retained: ${keep1:-none} ${keep2:-}${NC}"
+    fi
+    return 0
+}
+
+# N-11: Roll back Wallos to a specific version.
+# Args: $1 = version tag (e.g. v2.5.1). Fetches the versioned image from the
+# mirror if not present locally, restores the latest backup, recreates the container.
+wallos_rollback_to_version() {
+    local target_tag="$1" arch image_tag port tz bind_address backup
+    [[ "$target_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { msg "${RED}Invalid Wallos version: $target_tag${NC}"; return 1; }
+    wallos_candidate_version_allowed "$target_tag" || { msg "${RED}Wallos version $target_tag is not in the allowed list.${NC}"; return 1; }
+    image_tag="${target_tag#v}"
+    # Try local image first; else pull the versioned image from the mirror.
+    if ! docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1; then
+        msg "${YELLOW}Wallos image $image_tag not present locally; fetching from mirror...${NC}"
+        # Use the versioned mirror path: temporarily override tag selection.
+        local _saved_result="$WALLOS_IMAGE_RESULT"
+        if ! _wallos_pull_versioned_image "$target_tag"; then
+            WALLOS_IMAGE_RESULT="$_saved_result"
+            msg "${RED}Could not fetch Wallos $target_tag from the mirror.${NC}"
+            return 1
+        fi
+        WALLOS_IMAGE_RESULT="$_saved_result"
+    fi
+    # Stop and remove current container, restore latest backup, recreate.
+    port=$(wallos_state_value PORT 2>/dev/null || true)
+    tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
+    bind_address=$(wallos_state_value BIND 2>/dev/null || printf '127.0.0.1')
+    valid_canonical_port "$port" || { msg "${RED}Wallos persisted port is invalid; refusing rollback.${NC}"; return 1; }
+    # Find the latest backup.
+    backup=$(ls -t "$WALLOS_DIR"/backups/wallos-*.tar.gz 2>/dev/null | head -n 1 || true)
+    [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || { msg "${RED}No Wallos backup found for rollback.${NC}"; return 1; }
+    docker stop wallos >/dev/null 2>&1 || true
+    docker rm -f wallos >/dev/null 2>&1 || { msg "${RED}Could not remove current Wallos container.${NC}"; return 1; }
+    wallos_restore_backup "$backup" || { msg "${RED}Wallos backup restore failed.${NC}"; return 1; }
+    local -a _pub_args=()
+    if [[ -n "$bind_address" && "$bind_address" != "0.0.0.0" ]]; then
+        _pub_args=(-p "$bind_address:$port:80/tcp")
+    elif [[ "$bind_address" == "0.0.0.0" ]]; then
+        _pub_args=(-p "$port:80/tcp")
+    fi
+    # Empty bind_address: omit -p entirely (no port publication, fail-closed).
+    docker run -d --name wallos --label com.alariclin.abox.managed=true \
+        -v "$WALLOS_DIR/db:/var/www/html/db" \
+        -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
+        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "bellamy/wallos:$image_tag" >/dev/null || {
+        msg "${RED}Failed to start Wallos $target_tag.${NC}"; return 1; }
+    wallos_wait_healthy "$port" || { msg "${RED}Wallos $target_tag did not become healthy.${NC}"; return 1; }
+    wallos_write_state "bellamy/wallos:$image_tag" "$port" "$tz" "$bind_address" || {
+        msg "${RED}Wallos state commit failed after rollback.${NC}"; return 1; }
+    # N-11: prune to 2 images (new current + previous).
+    local prev_image
+    prev_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+    wallos_prune_local_images "bellamy/wallos:$image_tag" ""
+    msg "${GREEN}Wallos rolled back to $target_tag.${NC}"
+    return 0
+}
+
+# N-11: Pull a specific versioned image from the A-Box mirror.
+# Args: $1 = version tag. Sets WALLOS_IMAGE_RESULT on success.
+_wallos_pull_versioned_image() {
+    local tag="$1" arch asset expected actual work manifest_url sum_url
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    arch=$(wallos_detect_arch) || return 1
+    work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-ver.XXXXXX) || return 1
+    local ver_manifest="wallos-manifest-${tag}.txt"
+    manifest_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/$ver_manifest"
+    sum_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
+    if ! curl -fLsS --connect-timeout 8 --max-time 30 "$manifest_url" -o "$work/$ver_manifest" ||
+       ! curl -fLsS --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
+        rm -rf -- "$work"; return 1
+    fi
+    # Verify manifest against SHA256SUMS (fail-closed).
+    local manifest_expected manifest_actual
+    manifest_expected=$(awk -v f="$ver_manifest" '$2==f || $2==("*" f) {print $1; exit}' "$work/SHA256SUMS" 2>/dev/null || true)
+    manifest_actual=$(sha256sum "$work/$ver_manifest" 2>/dev/null | awk '{print $1}' || true)
+    if [[ ! "$manifest_expected" =~ ^[A-Fa-f0-9]{64}$ || "${manifest_expected,,}" != "${manifest_actual,,}" ]]; then
+        rm -rf -- "$work"
+        msg "${RED}Wallos versioned manifest checksum mismatch; refusing.${NC}"
+        return 1
+    fi
+    # Verify the manifest's tag matches the requested version.
+    local mtag
+    mtag=$(awk -F= '$1=="tag" {print $2; exit}' "$work/$ver_manifest" 2>/dev/null || true)
+    [[ "$mtag" == "$tag" ]] || { rm -rf -- "$work"; return 1; }
+    case "$arch" in amd64|arm64|armv7) asset="wallos-linux-$arch-${tag}.tar.gz" ;; *) rm -rf -- "$work"; return 1 ;; esac
+    if ! curl -fLsS --connect-timeout 8 --max-time 600 \
+        "https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then
+        rm -rf -- "$work"; return 1
+    fi
+    expected=$(awk -v f="$asset" '$2==f || $2==("*" f) {print $1; exit}' "$work/SHA256SUMS" 2>/dev/null || true)
+    actual=$(sha256sum "$work/$asset" 2>/dev/null | awk '{print $1}' || true)
+    if [[ ! "$expected" =~ ^[A-Fa-f0-9]{64}$ || "${expected,,}" != "${actual,,}" ]]; then
+        rm -rf -- "$work"
+        msg "${RED}Wallos versioned archive checksum mismatch; refusing.${NC}"
+        return 1
+    fi
+    local load_out image_tag="${tag#v}"
+    load_out=$(gzip -dc "$work/$asset" | docker load 2>&1) || { rm -rf -- "$work"; return 1; }
+    if [[ "$(grep -c '^Loaded image:' <<< "$load_out")" -ne 1 ]] ||
+       ! grep -Fqx "Loaded image: bellamy/wallos:$image_tag" <<< "$load_out"; then
+        rm -rf -- "$work"; return 1
+    fi
+    rm -rf -- "$work"
+    docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1 || return 1
+    WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+    return 0
+}
+
 wallos_latest_stable_tag() {
     local response tag
     response=$(curl -fLsS --retry 1 --connect-timeout 8 --max-time 20 https://api.github.com/repos/ellite/Wallos/releases/latest 2>/dev/null) || return 1
@@ -14938,10 +15096,19 @@ wallos_recover_interrupted_upgrade() {
             return 1
         }
     fi
-    docker image inspect "$old_image" >/dev/null 2>&1 || {
-        msg "${RED}Previous Wallos image $old_image is not present locally. Refusing to pull a mutable tag for recovery; journal and backup retained.${NC}"
-        return 1
-    }
+    if ! docker image inspect "$old_image" >/dev/null 2>&1; then
+        # N-11: old image not present locally. Try fetching the previous
+        # version (N-1) from the versioned mirror instead of refusing.
+        local _n1_tag
+        _n1_tag=$(wallos_mirror_version_list 2>/dev/null | sed -n '2p' || true)
+        if [[ "$_n1_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && _wallos_pull_versioned_image "$_n1_tag"; then
+            old_image="$WALLOS_IMAGE_RESULT"
+            msg "${YELLOW}N-11: fetched previous Wallos version $_n1_tag from mirror for recovery.${NC}"
+        else
+            msg "${RED}Previous Wallos image $old_image is not present locally and N-1 could not be fetched. Refusing to pull a mutable tag for recovery; journal and backup retained.${NC}"
+            return 1
+        fi
+    fi
     wallos_restore_backup "$backup" || {
         msg "${RED}Interrupted Wallos upgrade backup restore failed. Journal and backup retained at $journal and $backup.${NC}"
         return 1
@@ -15172,6 +15339,8 @@ wallos_install_or_update() {
             msg "${YELLOW}Wallos is updated; committed journal cleanup will finish on the next run.${NC}"
             return 1
         }
+        # N-11: prune local images to current + previous (2 max, 500MB cap).
+        wallos_prune_local_images "$image" "$old_image" || true
     fi
     case "${ABOX_LANG:-zh}" in
         ru)
@@ -15247,6 +15416,57 @@ wallos_backup_now() {
     esac
 }
 
+# N-11: Interactive / env-driven manual rollback.
+_wallos_manual_rollback() {
+    local target sel versions
+    # Non-interactive fast path: env var selects the version directly.
+    if [[ -n "${WALLOS_ROLLBACK_VERSION:-}" ]]; then
+        target="$WALLOS_ROLLBACK_VERSION"
+        [[ "$target" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            msg "${RED}WALLOS_ROLLBACK_VERSION is not a valid version: $target${NC}"
+            return 1
+        }
+        wallos_rollback_to_version "$target"
+        return $?
+    fi
+    # Interactive: list retained versions from the mirror (newest first).
+    mapfile -t versions < <(wallos_mirror_version_list 2>/dev/null || true)
+    if ((${#versions[@]} == 0)); then
+        # Fall back to locally available images.
+        mapfile -t versions < <(docker images --format '{{.Tag}}' 'bellamy/wallos' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -rV | sed 's/^/v/' || true)
+    fi
+    if ((${#versions[@]} == 0)); then
+        msg "${RED}No previous Wallos versions available for rollback.${NC}"
+        return 1
+    fi
+    # Skip the current version (index 0 is newest = likely current).
+    local current_tag
+    current_tag=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null | sed 's/.*://' || true)
+    local i=1
+    for v in "${versions[@]}"; do
+        # Mark the current version.
+        if [[ "v${v#v}" == "v${current_tag#v}" || "${v#v}" == "${current_tag#v}" ]]; then
+            msg "${YELLOW}$i. $v (current)${NC}"
+        else
+            msg "${YELLOW}$i. $v${NC}"
+        fi
+        i=$((i + 1))
+    done
+    local prompt
+    case "${ABOX_LANG:-zh}" in
+        en) prompt="Select version to roll back to [1-${#versions[@]}] (Enter=1): " ;;
+        ru) prompt="Выберите версию для отката [1-${#versions[@]}] (Enter=1): " ;;
+        fa) prompt="نسخه برای بازگشت انتخاب کنید [1-${#versions[@]}] (Enter=1): " ;;
+        *) prompt="选择要回滚的版本 [1-${#versions[@]}]（回车=1）： " ;;
+    esac
+    read -r -p "$prompt" sel
+    [[ -z "$sel" ]] && sel=1
+    [[ "$sel" =~ ^[0-9]+$ ]] && (( sel >= 1 && sel <= ${#versions[@]} )) || {
+        msg "${RED}Invalid selection.${NC}"; return 1; }
+    target="${versions[$((sel - 1))]}"
+    wallos_rollback_to_version "$target"
+}
+
 wallos_menu() {
     clear
     case "${ABOX_LANG:-zh}" in
@@ -15256,6 +15476,7 @@ wallos_menu() {
             msg "${YELLOW}2. Status and access URL${NC}"
             msg "${YELLOW}3. Back up database and uploaded logos${NC}"
             msg "${YELLOW}4. Remove container but keep data${NC}"
+            msg "${YELLOW}5. Roll back to a previous version${NC}"
             msg "${GREEN}0. Back${NC}"
             ;;
         ru)
@@ -15264,6 +15485,7 @@ wallos_menu() {
             msg "${YELLOW}2. Состояние и адрес доступа${NC}"
             msg "${YELLOW}3. Резервная копия базы и загруженных логотипов${NC}"
             msg "${YELLOW}4. Удалить контейнер, сохранив данные${NC}"
+            msg "${YELLOW}5. Откатить к предыдущей версии${NC}"
             msg "${GREEN}0. Назад${NC}"
             ;;
         fa)
@@ -15272,6 +15494,7 @@ wallos_menu() {
             msg "${YELLOW}2. وضعیت و نشانی دسترسی${NC}"
             msg "${YELLOW}3. پشتیبان‌گیری از پایگاه داده و تصاویر بارگذاری‌شده${NC}"
             msg "${YELLOW}4. حذف کانتینر با حفظ داده‌ها${NC}"
+            msg "${YELLOW}5. بازگشت به نسخه قبلی${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
         *)
@@ -15280,11 +15503,12 @@ wallos_menu() {
             msg "${YELLOW}2. 查看状态和访问网址${NC}"
             msg "${YELLOW}3. 备份数据库和上传图片${NC}"
             msg "${YELLOW}4. 删除容器但保留数据${NC}"
+            msg "${YELLOW}5. 回滚到历史版本${NC}"
             msg "${GREEN}0. 返回${NC}"
             ;;
     esac
     local c prompt_confirm prompt_remove menu_prompt
-    case "${ABOX_LANG:-zh}" in en) menu_prompt='Select [0-4]: ' ;; ru) menu_prompt='Выберите [0–4]: ' ;; fa) menu_prompt='انتخاب [۰ تا ۴]: ' ;; *) menu_prompt='请选择 [0-4]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) menu_prompt='Select [0-5]: ' ;; ru) menu_prompt='Выберите [0–5]: ' ;; fa) menu_prompt='انتخاب [۰ تا ۵]: ' ;; *) menu_prompt='请选择 [0-5]：' ;; esac
     read -r -p "$menu_prompt" c
     case "${ABOX_LANG:-zh}" in
         en) prompt_confirm='Wallos stores personal subscription/financial data. HTTP has no TLS. Continue? [Y/N]: '; prompt_remove="Remove the Wallos container and keep data in $WALLOS_DIR? [Y/N]: " ;;
@@ -15315,6 +15539,12 @@ wallos_menu() {
                     esac
                 fi
             fi
+            pause_return ;;
+        5)
+            # N-11: Manual rollback to a previous version.
+            # Non-interactive: WALLOS_ROLLBACK_VERSION=vX.Y.Z selects directly.
+            # Interactive: show retained versions, Enter defaults to 1 (previous).
+            _wallos_manual_rollback
             pause_return ;;
         *) return 0 ;;
     esac
@@ -18738,6 +18968,15 @@ EOF_SVC_TEST_RCUPDATE
         echo 'FAIL: optional env loader accepted an existing invalid state file'
         failures=$((failures + 1))
     fi
+    # P2-03: Return code contract — 0=success, 1=general failure, 2=preflight failure.
+    # Applies to CLI top-level and rollback orchestrators; NOT to polymorphic internals.
+    grep -Fq 'P2-03 Return Code Contract' "$0" || { echo 'FAIL: P2-03 return code contract not documented'; failures=$((failures + 1)); }
+    # traffic_quota_transaction_rollback: missing tx_dir is a preflight failure (return 2).
+    traffic_quota_transaction_rollback "/nonexistent-tx-dir-$$" >/dev/null 2>&1; _rc=$?
+    (( _rc == 2 )) || { echo "FAIL: traffic rollback preflight must return 2, got $_rc"; failures=$((failures + 1)); }
+    # Polymorphic internals must NOT be standardized (callers depend on case $?):
+    # remove_recorded_core_family uses 2/3/4; core_version_upgrade_decision uses 2/3/4.
+    grep -Fq 'remove_recorded_core_family() {' "$0" || { echo 'FAIL: remove_recorded_core_family missing'; failures=$((failures + 1)); }
     if (( failures > 0 )); then
         echo "SELF_TEST_FAILED=$failures"
         selftest_cleanup

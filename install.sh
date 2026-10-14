@@ -4242,15 +4242,67 @@ ip6tables_usable() {
     "$IPT6" -w -S INPUT >/dev/null 2>&1
 }
 
-# Rollback helper: remove IPv4 SS DROP rules written in this invocation.
+# Snapshot all A-Box SS rules for $SS_PORT before whitelist modification,
+# enabling exact restoration if a later step fails mid-setup.
+# Must be called before remove_ss_open_accept_rules in each whitelist flow.
+# Stores newline-separated rule specs (without the leading "-A INPUT").
+_ss_wl_snapshot_rules() {
+    local port="${1:-${SS_PORT:-}}"
+    [[ -n "$port" ]] || return 1
+    _SS_WL_SNAP_PORT="$port"
+    _SS_WL_SNAP_V4="$("$IPT" -w -S INPUT 2>/dev/null | grep -F "A-Box-${port}-" | sed 's/^-A INPUT //' || true)"
+    _SS_WL_SNAP_V6=""
+    _SS_WL_SNAP_V6_TAKEN=0
+    if host_has_usable_ipv6 && ip6tables_usable; then
+        _SS_WL_SNAP_V6="$("$IPT6" -w -S INPUT 2>/dev/null | grep -F "A-Box-${port}-" | sed 's/^-A INPUT //' || true)"
+        _SS_WL_SNAP_V6_TAKEN=1
+    fi
+    _SS_WL_SNAP_TAKEN=1
+    return 0
+}
+
+# Restore the exact pre-operation SS rule set from the snapshot.
+# Deletes ONLY rules inserted by this invocation (present now, absent in snapshot);
+# re-adds rules deleted by this invocation (present in snapshot, absent now).
 # Called when a subsequent IPv6 rule operation fails, to avoid a dangerous
-# half-configured state (IPv4 locked down by DROP, IPv6 wide open). The die
-# that follows aborts the whitelist setup entirely.
-_ss_rollback_ipv4_drop_rules() {
-    local proto
-    for proto in tcp udp; do
-        "$IPT" -w -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || true
+# half-configured state. The die that follows aborts the whitelist setup entirely.
+# Unlike the old _ss_rollback_ipv4_drop_rules, this never deletes pre-existing
+# rules and restores open ACCEPTs that remove_ss_open_accept_rules deleted.
+_ss_wl_rollback_to_snapshot() {
+    local ipt snap cur line
+    [[ "${_SS_WL_SNAP_TAKEN:-0}" == 1 ]] || return 1
+    [[ -n "${_SS_WL_SNAP_PORT:-}" ]] || return 1
+    for ipt in "$IPT" "$IPT6"; do
+        if [[ "$ipt" == "$IPT" ]]; then
+            snap="$_SS_WL_SNAP_V4"
+        else
+            # Skip IPv6 if it was not snapshotted (unusable at snapshot time).
+            [[ "${_SS_WL_SNAP_V6_TAKEN:-0}" == 1 ]] || continue
+            snap="$_SS_WL_SNAP_V6"
+            ip6tables_usable || continue
+        fi
+        cur="$("$ipt" -w -S INPUT 2>/dev/null | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //' || true)"
+        # Delete insertions: in cur but not in snapshot.
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            if ! grep -Fxq -- "$line" <<< "$snap"; then
+                # Rule comments contain no spaces; word-splitting here is intentional.
+                # shellcheck disable=SC2086
+                "$ipt" -w -D INPUT $line >/dev/null 2>&1 || true
+            fi
+        done <<< "$cur"
+        # Re-add deletions: in snapshot but not in cur.
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            if ! grep -Fxq -- "$line" <<< "$cur"; then
+                # See above: word-splitting intentional.
+                # shellcheck disable=SC2086
+                "$ipt" -w -A INPUT $line >/dev/null 2>&1 || true
+            fi
+        done <<< "$snap"
     done
+    _SS_WL_SNAP_TAKEN=0
+    return 0
 }
 
 ss_whitelist_ipv6_precheck() {
@@ -6877,6 +6929,7 @@ pre_install_setup() {
         fi
         if [[ -n "${SS_WHITELIST_IP:-}" ]]; then
             ss_whitelist_ipv6_precheck || die '主机启用了 IPv6，但 IPv6 防火墙不可用；拒绝启用白名单模式以避免 IPv6 侧被静默放行。'
+            _ss_wl_snapshot_rules || die '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。'
             remove_ss_open_accept_rules || die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'
             read -r -a ss_whitelist_ips <<< "$SS_WHITELIST_IP"
             for ip in "${ss_whitelist_ips[@]}"; do
@@ -6914,7 +6967,7 @@ pre_install_setup() {
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_rollback_ipv4_drop_rules; die "IPv6 SS DROP 规则写入失败，已回滚 IPv4 DROP 规则以避免半配置白名单: $proto"; } ;;
+                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; } ;;
                         *) die "无法检查防火墙规则。" ;;
                     esac
                 fi
@@ -9056,6 +9109,7 @@ manage_ss_whitelist() {
             ;;
         3)
             ss_whitelist_ipv6_precheck || die '主机启用了 IPv6，但 IPv6 防火墙不可用；拒绝启用白名单模式以避免 IPv6 侧被静默放行。'
+            _ss_wl_snapshot_rules || die '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。'
             remove_ss_open_accept_rules || die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'
             for proto in tcp udp; do
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
@@ -9068,7 +9122,7 @@ manage_ss_whitelist() {
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_rollback_ipv4_drop_rules; die "IPv6 SS DROP 规则写入失败，已回滚 IPv4 DROP 规则以避免半配置白名单: $proto"; } ;;
+                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; } ;;
                         *) die "无法检查防火墙规则。" ;;
                     esac
                 fi
@@ -10550,6 +10604,14 @@ dns_snapshot_recover_pending_swap() {
         # Old renamed aside, new never moved: complete the swap.
         mv -T -- "$new_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
         [[ -n "$old_path" ]] && rm -rf -- "$old_path" 2>/dev/null || true
+    else
+        # Total loss: none of target/old/new has COMPLETE. The pre-existing
+        # snapshot is unrecoverable (e.g. kill -9 during staging write, old
+        # renamed aside, staging cleaned externally). Preserve the pending
+        # record for forensics and report loudly; do NOT silently discard it.
+        # Callers use `|| true`, so stderr is the visible signal.
+        printf '%s\n' "[A-Box][FATAL] DNS snapshot total loss: no COMPLETE snapshot in $DNS_BACKUP_DIR, $old_path, or $new_path. Pre-existing DNS rollback data is unrecoverable. Pending record preserved at $pending for forensics." >&2
+        return 1
     fi
     rm -f -- "$pending"
     return 0
@@ -13174,7 +13236,9 @@ for m in members:
     if m.issym() or m.islnk() or m.ischr() or m.isblk() or m.isfifo() or m.isdev(): raise SystemExit(1)
     if not (m.isfile() or m.isdir()): raise SystemExit(1)
     mode=m.mode & 0o7777
-    if mode & 0o7000 or mode & 0o002: raise SystemExit(1)
+    # R-01: Allow sticky (0o1000) for acme dir 1770; reject only setuid/setgid (0o6000).
+    # The sticky bit is validated per-branch (ACME dir allows 0o770/0o1770).
+    if mode & 0o6000 or mode & 0o002: raise SystemExit(1)
     in_sb = n == SB_DIR or n.startswith(SB_DIR + '/')
     in_hy = n == HY_DIR or n.startswith(HY_DIR + '/')
     in_hy_acme = n == HY_ACME or n.startswith(HY_ACME + '/')
@@ -18133,6 +18197,11 @@ PY_SELFTEST_ARCHIVE_CREATE
             create_backup_manifest "$acme_runtime_fixture" "$acme_runtime_fixture/meta/manifest.sha256" || { echo 'FAIL: ACME runtime fixture manifest creation'; failures=$((failures + 1)); }
             selftest_pack_tar_gz "$acme_runtime_fixture" "$tmp/acme-runtime-good.tar.gz" || { echo 'FAIL: ACME runtime fixture tar creation'; failures=$((failures + 1)); }
             assert_ok validate_backup_archive "$tmp/acme-runtime-good.tar.gz" || { echo 'FAIL: legal Hysteria ACME runtime-owned backup rejected'; failures=$((failures + 1)); }
+            # R-01 regression: 1770 (sticky) ACME dir must also validate.
+            chmod 1770 "$acme_runtime_fixture/root/etc/hysteria/acme"
+            create_backup_manifest "$acme_runtime_fixture" "$acme_runtime_fixture/meta/manifest.sha256" || { echo 'FAIL: ACME 1770 fixture manifest creation'; failures=$((failures + 1)); }
+            selftest_pack_tar_gz "$acme_runtime_fixture" "$tmp/acme-1770-good.tar.gz" || { echo 'FAIL: ACME 1770 fixture tar creation'; failures=$((failures + 1)); }
+            assert_ok validate_backup_archive "$tmp/acme-1770-good.tar.gz" || { echo 'FAIL: Hysteria ACME 1770 backup rejected (R-01 regression)'; failures=$((failures + 1)); }
             python3 - "$tmp/acme-runtime-good.tar.gz" <<'PY_TAMPER_ACME' >/dev/null 2>&1
 import os,sys,tarfile
 arc=sys.argv[1]; out=arc+'.bad'

@@ -9377,6 +9377,10 @@ restore_vps_tune() {
     [[ "$quiet" == 1 ]] || msg "${GREEN}A-Box VPS 调优已恢复。${NC}"
 }
 
+# BUG-28: hoisted from apply_vps_tune(). $3 = destination file.
+__abox_add_sysctl() {
+    sysctl -n "$1" >/dev/null 2>&1 && printf '%s = %s\n' "$1" "$2" >> "$3"
+}
 apply_vps_tune() {
     local dir="$ABOX_DIR/tune-backup" tmp key value available bbr_loaded=0
     local bbr_module_file='/etc/modules-load.d/A-Box-bbr.conf'
@@ -9418,22 +9422,21 @@ root hard nofile 1048576
 EOF_LIMITS
     tmp=$(umask 077; mktemp /tmp/A-Box-sysctl.XXXXXX) || { restore_vps_tune 1 || true; die '调优临时文件创建失败，已恢复原状态。'; }
     printf '%s\n' '# Managed by A-Box' > "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die '调优临时文件初始化失败，已恢复原状态。'; }
-    add_sysctl() { sysctl -n "$1" >/dev/null 2>&1 && printf '%s = %s\n' "$1" "$2" >> "$tmp"; }
-    add_sysctl fs.file-max 1048576
-    add_sysctl fs.inotify.max_user_instances 8192
-    add_sysctl net.ipv4.tcp_syncookies 1
-    add_sysctl net.ipv4.tcp_fin_timeout 30
-    add_sysctl net.ipv4.tcp_max_syn_backlog 8192
-    add_sysctl net.ipv4.tcp_fastopen 3
-    add_sysctl net.ipv4.tcp_mtu_probing 1
-    add_sysctl net.ipv4.tcp_notsent_lowat 16384
-    add_sysctl net.core.netdev_max_backlog 250000
-    add_sysctl net.core.somaxconn 32768
+    __abox_add_sysctl fs.file-max 1048576 "$tmp"
+    __abox_add_sysctl fs.inotify.max_user_instances 8192 "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_syncookies 1 "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_fin_timeout 30 "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_max_syn_backlog 8192 "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_fastopen 3 "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_mtu_probing 1 "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_notsent_lowat 16384 "$tmp"
+    __abox_add_sysctl net.core.netdev_max_backlog 250000 "$tmp"
+    __abox_add_sysctl net.core.somaxconn 32768 "$tmp"
     if modprobe tcp_bbr >/dev/null 2>&1; then bbr_loaded=1; fi
     available=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
     if grep -qw bbr <<< "$available"; then
-        add_sysctl net.core.default_qdisc fq
-        add_sysctl net.ipv4.tcp_congestion_control bbr
+        __abox_add_sysctl net.core.default_qdisc fq "$tmp"
+        __abox_add_sysctl net.ipv4.tcp_congestion_control bbr "$tmp"
         if (( bbr_loaded == 1 )); then
             path_parent_chain_safe "$bbr_module_file" || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die '内核模块自动加载配置父链不安全。'; }
             [[ ! -L /etc/modules-load.d && (! -e /etc/modules-load.d || -d /etc/modules-load.d) ]] || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die '内核模块自动加载目录不安全。'; }
@@ -12305,6 +12308,15 @@ EOF_SWAP_MARK
     pause_return
 }
 
+# BUG-28: hoisted from remove_abox_swap(). $1 = fstab backup path.
+    local backup="$1"
+__abox_restore_fstab_from_swap_backup() {
+    if cp -a "$backup" /etc/fstab; then
+        return 0
+    fi
+    msg "${RED}[!] Swap 清理失败且 /etc/fstab 自动恢复也失败；保留恢复备份：${backup}${NC}" >&2
+    return 1
+}
 remove_abox_swap() {
     [[ -f "$ABOX_DIR/.swapfile.managed" && ! -L "$ABOX_DIR/.swapfile.managed" ]] || return 0
     grep -Fxq 'A-Box managed swap v1' "$ABOX_DIR/.swapfile.managed" 2>/dev/null || return 1
@@ -12344,31 +12356,24 @@ remove_abox_swap() {
     chown --reference=/etc/fstab "$tmp" 2>/dev/null || true
     mv -f "$tmp" /etc/fstab || { rm -f "$tmp" "$backup"; return 1; }
 
-    restore_fstab_from_swap_backup() {
-        if cp -a "$backup" /etc/fstab; then
-            return 0
-        fi
-        msg "${RED}[!] Swap 清理失败且 /etc/fstab 自动恢复也失败；保留恢复备份：${backup}${NC}" >&2
-        return 1
-    }
 
     if (( swap_active == 1 )); then
         if ! swapoff /swapfile; then
-            restore_fstab_from_swap_backup || return 1
+            __abox_restore_fstab_from_swap_backup "$backup" || return 1
             rm -f "$backup" || true
             return 1
         fi
     fi
     if [[ -f /swapfile && ! -L /swapfile ]]; then
         if ! rm -f /swapfile; then
-            restore_fstab_from_swap_backup || return 1
+            __abox_restore_fstab_from_swap_backup "$backup" || return 1
             msg "${YELLOW}[!] /swapfile 删除失败；已恢复 /etc/fstab，保留现有 Swap 文件与所有权标记。${NC}" >&2
             rm -f "$backup" || true
             return 1
         fi
     fi
     if ! rm -f "$ABOX_DIR/.swapfile.managed"; then
-        restore_fstab_from_swap_backup || return 1
+        __abox_restore_fstab_from_swap_backup "$backup" || return 1
         msg "${YELLOW}[!] Swap 所有权标记删除失败；已恢复 /etc/fstab，保留恢复状态。${NC}" >&2
         rm -f "$backup" || true
         return 1
@@ -14197,9 +14202,19 @@ light_preflight_check() {
         die "Lightweight preflight found blocking failures."
     fi
     msg "${GREEN}[*] Lightweight preflight completed. WARN=${warn}${NC}"
-    unset -f pf_pass pf_warn pf_fail 2>/dev/null || true
 }
 
+# BUG-28: hoisted from preflight_check(). Unifies __abox_pf_log "$report" PASS ""/__abox_pf_log "$report" WARN warn/__abox_pf_log "$report" FAIL fail.
+# $1=report file, $2=LEVEL, $3=counter variable name (empty for PASS), rest=message args.
+__abox_pf_log() {
+    local report="$1" level="$2" counter_var="$3"
+    shift 3
+    if [[ -n "$counter_var" ]]; then
+        local -n __pf_c="$counter_var"
+        __pf_c=$((__pf_c + 1))
+    fi
+    printf '[%s] %s\n' "$level" "$*" | tee -a "$report"
+}
 preflight_check() {
     local report_dir report fail=0 warn=0 port proto holder now interactive=1
     local _pf_lock_held=0
@@ -14212,50 +14227,47 @@ preflight_check() {
     chmod 700 "$report_dir" || { rm -rf -- "$report_dir"; die 'Preflight report directory permission setup failed.'; }
     report="$report_dir/A-Box-preflight-$(date +%Y%m%d-%H%M%S).txt"
 
-    pf_pass() { printf '[PASS] %s\n' "$*" | tee -a "$report"; }
-    pf_warn() { warn=$((warn+1)); printf '[WARN] %s\n' "$*" | tee -a "$report"; }
-    pf_fail() { fail=$((fail+1)); printf '[FAIL] %s\n' "$*" | tee -a "$report"; }
 
     : > "$report"
     echo "A-Box preflight check: $(now_iso)" | tee -a "$report"
     echo "----------------------------------------------------------------------" | tee -a "$report"
 
-    [[ $EUID -eq 0 ]] && pf_pass 'root privilege available' || pf_fail 'not running as root'
-    [[ -t 0 ]] && pf_pass 'interactive TTY available' || pf_warn 'no interactive TTY on stdin'
+    [[ $EUID -eq 0 ]] && __abox_pf_log "$report" PASS "" 'root privilege available' || __abox_pf_log "$report" FAIL fail 'not running as root'
+    [[ -t 0 ]] && __abox_pf_log "$report" PASS "" 'interactive TTY available' || __abox_pf_log "$report" WARN warn 'no interactive TTY on stdin'
     if [[ -r /etc/os-release ]]; then
         . /etc/os-release
-        case "${ID:-}" in debian|ubuntu|centos|rhel|rocky|almalinux|alpine|fedora|amzn|ol|oracle) pf_pass "supported OS detected: ${ID:-unknown}" ;; *) pf_warn "OS may be unsupported: ${ID:-unknown}" ;; esac
+        case "${ID:-}" in debian|ubuntu|centos|rhel|rocky|almalinux|alpine|fedora|amzn|ol|oracle) __abox_pf_log "$report" PASS "" "supported OS detected: ${ID:-unknown}" ;; *) __abox_pf_log "$report" WARN warn "OS may be unsupported: ${ID:-unknown}" ;; esac
     else
-        pf_warn '/etc/os-release not readable'
+        __abox_pf_log "$report" WARN warn '/etc/os-release not readable'
     fi
     if systemd_available; then
         INIT_SYS='systemd'
-        pf_pass 'systemd detected'
+        __abox_pf_log "$report" PASS "" 'systemd detected'
     elif command -v rc-service >/dev/null 2>&1; then
         INIT_SYS='openrc'
-        pf_pass 'OpenRC detected'
+        __abox_pf_log "$report" PASS "" 'OpenRC detected'
     else
-        pf_fail 'no supported init system detected'
+        __abox_pf_log "$report" FAIL fail 'no supported init system detected'
     fi
-    case "$(uname -m)" in x86_64|amd64|aarch64|arm64) pf_pass "supported CPU architecture: $(uname -m)" ;; *) pf_fail "unsupported CPU architecture: $(uname -m)" ;; esac
+    case "$(uname -m)" in x86_64|amd64|aarch64|arm64) __abox_pf_log "$report" PASS "" "supported CPU architecture: $(uname -m)" ;; *) __abox_pf_log "$report" FAIL fail "unsupported CPU architecture: $(uname -m)" ;; esac
 
     for c in bash curl jq openssl bc unzip tar iptables ss lsof vnstat python3 getent flock qrencode fail2ban-client; do
-        command -v "$c" >/dev/null 2>&1 && pf_pass "command available: $c" || pf_warn "command missing before dependency sync: $c"
+        command -v "$c" >/dev/null 2>&1 && __abox_pf_log "$report" PASS "" "command available: $c" || __abox_pf_log "$report" WARN warn "command missing before dependency sync: $c"
     done
 
     if curl -fsS --connect-timeout 5 -m 10 https://api.github.com >/dev/null 2>&1; then
-        pf_pass 'GitHub API reachable'
+        __abox_pf_log "$report" PASS "" 'GitHub API reachable'
     else
-        pf_warn 'GitHub API unreachable from this host now; official release metadata/digest cannot be verified and core installation may fail'
+        __abox_pf_log "$report" WARN warn 'GitHub API unreachable from this host now; official release metadata/digest cannot be verified and core installation may fail'
     fi
 
     local preflight_pairs='' env_present=0
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
         env_present=1
         if ! load_abox_env "$ABOX_ENV" >/dev/null 2>&1; then
-            pf_fail "A-Box environment state exists but failed trust/parse validation: $ABOX_ENV"
+            __abox_pf_log "$report" FAIL fail "A-Box environment state exists but failed trust/parse validation: $ABOX_ENV"
         elif ! validate_abox_env_semantics >/dev/null 2>&1; then
-            pf_fail "A-Box environment state failed semantic validation: $ABOX_ENV"
+            __abox_pf_log "$report" FAIL fail "A-Box environment state failed semantic validation: $ABOX_ENV"
         else
             preflight_pairs=$(selected_port_pairs | awk 'NF' | sort -u) || preflight_pairs=''
         fi
@@ -14264,7 +14276,7 @@ preflight_check() {
         preflight_pairs=$'tcp/443\ntcp/8443\ntcp/2053\nudp/2053'
     fi
     if ! command -v ss >/dev/null 2>&1; then
-        pf_warn 'ss is unavailable; port occupancy audit skipped'
+        __abox_pf_log "$report" WARN warn 'ss is unavailable; port occupancy audit skipped'
     else
         local -a preflight_pairs_arr=()
         if [[ -n "$preflight_pairs" ]]; then
@@ -14276,7 +14288,7 @@ preflight_check() {
             port=${BASH_REMATCH[2]}
             local preflight_ss_output
             if ! preflight_ss_output=$(ss -H -n -l -p -A "$proto" 2>/dev/null); then
-                pf_warn "ss failed for ${proto}; port occupancy audit skipped for ${proto}"
+                __abox_pf_log "$report" WARN warn "ss failed for ${proto}; port occupancy audit skipped for ${proto}"
                 continue
             fi
             local holder managed_owner
@@ -14284,31 +14296,31 @@ preflight_check() {
             if [[ -n "$holder" ]]; then
                 managed_owner=$(managed_socket_owner_for_port "$proto" "$port" 2>/dev/null || true)
                 if [[ -n "$managed_owner" ]]; then
-                    pf_pass "${port}/${proto} occupied by managed A-Box service: ${managed_owner}"
+                    __abox_pf_log "$report" PASS "" "${port}/${proto} occupied by managed A-Box service: ${managed_owner}"
                 else
-                    pf_warn "${port}/${proto} occupied by foreign or unresolved process: $(head -n 1 <<< "$holder")"
+                    __abox_pf_log "$report" WARN warn "${port}/${proto} occupied by foreign or unresolved process: $(head -n 1 <<< "$holder")"
                 fi
             else
-                pf_pass "${port}/${proto} available"
+                __abox_pf_log "$report" PASS "" "${port}/${proto} available"
             fi
         done
     fi
 
     managed_services_active
     case $? in
-        0) pf_warn 'existing A-Box managed service is active' ;;
-        1) pf_pass 'no active A-Box managed service detected' ;;
-        2) pf_warn 'A-Box managed service state could not be determined safely' ;;
-        *) pf_fail 'A-Box managed service state query failed unexpectedly' ;;
+        0) __abox_pf_log "$report" WARN warn 'existing A-Box managed service is active' ;;
+        1) __abox_pf_log "$report" PASS "" 'no active A-Box managed service detected' ;;
+        2) __abox_pf_log "$report" WARN warn 'A-Box managed service state could not be determined safely' ;;
+        *) __abox_pf_log "$report" FAIL fail 'A-Box managed service state query failed unexpectedly' ;;
     esac
     if [[ -L "$ABOX_DIR" ]]; then
-        pf_fail "A-Box directory is a symbolic link: $ABOX_DIR"
+        __abox_pf_log "$report" FAIL fail "A-Box directory is a symbolic link: $ABOX_DIR"
     elif [[ -e "$ABOX_DIR" && ! -d "$ABOX_DIR" ]]; then
-        pf_fail "A-Box path is not a directory: $ABOX_DIR"
+        __abox_pf_log "$report" FAIL fail "A-Box path is not a directory: $ABOX_DIR"
     elif [[ -d "$ABOX_DIR" ]]; then
-        path_owned_by_root "$ABOX_DIR" && path_mode_has_no_group_other_write "$ABOX_DIR" && pf_pass "A-Box directory ownership/mode is safe: $ABOX_DIR" || pf_fail "A-Box directory is not root-owned and protected: $ABOX_DIR"
+        path_owned_by_root "$ABOX_DIR" && path_mode_has_no_group_other_write "$ABOX_DIR" && __abox_pf_log "$report" PASS "" "A-Box directory ownership/mode is safe: $ABOX_DIR" || __abox_pf_log "$report" FAIL fail "A-Box directory is not root-owned and protected: $ABOX_DIR"
     else
-        [[ -d "$(dirname "$ABOX_DIR")" && ! -L "$(dirname "$ABOX_DIR")" ]] && pf_pass "A-Box directory can be created after runtime ownership checks: $ABOX_DIR" || pf_fail "A-Box directory parent is unavailable or symlinked: $(dirname "$ABOX_DIR")"
+        [[ -d "$(dirname "$ABOX_DIR")" && ! -L "$(dirname "$ABOX_DIR")" ]] && __abox_pf_log "$report" PASS "" "A-Box directory can be created after runtime ownership checks: $ABOX_DIR" || __abox_pf_log "$report" FAIL fail "A-Box directory parent is unavailable or symlinked: $(dirname "$ABOX_DIR")"
     fi
 
     echo "----------------------------------------------------------------------" | tee -a "$report"
@@ -17132,6 +17144,14 @@ prepare_noninteractive_service_control() {
     if systemd_available; then INIT_SYS='systemd'; elif command -v rc-service >/dev/null 2>&1; then INIT_SYS='openrc'; else die '未检测到 systemd/OpenRC。'; fi
 }
 
+# BUG-28: hoisted from manual_stop_managed_stack()/manual_start_managed_stack().
+# $1=changed_pre $2=changed_expected (transaction state files).
+__abox_service_tx_rollback() {
+    local changed_pre="$1" changed_expected="$2"
+    [[ ! -s "$changed_pre" ]] && return 0
+    [[ -s "$changed_expected" ]] || return 1
+    restore_managed_service_state "$changed_pre" "$changed_expected"
+}
 manual_stop_managed_stack() {
     local srv failed=0 services previous_state pre_state changed_pre changed_expected tx_dir before after active enabled
     prepare_noninteractive_service_control
@@ -17161,17 +17181,12 @@ manual_stop_managed_stack() {
         (( failed == 0 )) || break
     done <<< "$services"
 
-    service_tx_rollback() {
-        [[ ! -s "$changed_pre" ]] && return 0
-        [[ -s "$changed_expected" ]] || return 1
-        restore_managed_service_state "$changed_pre" "$changed_expected"
-    }
     if (( failed != 0 )); then
-        if ! service_tx_rollback; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
+        if ! __abox_service_tx_rollback "$changed_pre" "$changed_expected"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
         die '至少一个托管服务停止/禁用失败；未提交 MANUAL_STOPPED 状态。'
     fi
     set_desired_state MANUAL_STOPPED || {
-        if ! service_tx_rollback; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
+        if ! __abox_service_tx_rollback "$changed_pre" "$changed_expected"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
         die '服务状态提交失败；已尝试恢复原运行/启用状态。'
     }
     rm -rf -- "$tx_dir" || die '服务状态事务清理失败；服务已按预期停止，但未能清理事务材料。'
@@ -17216,11 +17231,6 @@ manual_start_managed_stack() {
         (( failed == 0 )) || break
     done <<< "$services"
 
-    service_tx_rollback() {
-        [[ ! -s "$changed_pre" ]] && return 0
-        [[ -s "$changed_expected" ]] || return 1
-        restore_managed_service_state "$changed_pre" "$changed_expected"
-    }
     if (( failed == 0 )); then
         clear_traffic_block_period || failed=1
         (( failed != 0 )) || set_desired_state RUNNING || failed=1
@@ -17228,7 +17238,7 @@ manual_start_managed_stack() {
     if (( failed != 0 )); then
         if (( block_state_present == 1 )); then set_traffic_block_period "$previous_block_period" >/dev/null 2>&1 || true; else clear_traffic_block_period >/dev/null 2>&1 || true; fi
         set_desired_state "$previous_state" >/dev/null 2>&1 || true
-        if ! service_tx_rollback; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
+        if ! __abox_service_tx_rollback "$changed_pre" "$changed_expected"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
         die '至少一个托管服务启动/启用或状态提交失败；已尝试回滚本次操作。'
     fi
     rm -rf -- "$tx_dir" || die '服务状态事务清理失败；服务已按预期启动，但未能清理事务材料。'
@@ -18768,7 +18778,7 @@ EOF_SVC_TEST_RCUPDATE
         selftest_cleanup
         return 1
     fi
-    _legacy_preflight_pattern='managed_services_active && pf_warn ' ; _legacy_preflight_pattern="${_legacy_preflight_pattern}existing A-Box managed service is active" ; _legacy_preflight_pattern="${_legacy_preflight_pattern}' || pf_pass"
+    _legacy_preflight_pattern='managed_services_active && __abox_pf_log "$report" WARN warn ' ; _legacy_preflight_pattern="${_legacy_preflight_pattern}existing A-Box managed service is active" ; _legacy_preflight_pattern="${_legacy_preflight_pattern}' || __abox_pf_log "$report" PASS """
     if grep -Fq -- "$_legacy_preflight_pattern" "$0"; then
         echo 'FAIL: preflight still collapses unknown managed-service state into inactive'
         failures=$((failures + 1))

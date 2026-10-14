@@ -23,6 +23,9 @@ test -s "$existing/CORE-VERSIONS"
 # D-1: 7-day cooldown. A release published < 7 days ago is not yet
 # trusted for the mirror. Fall back to the previous mirror version.
 COOLDOWN_SECONDS=604800
+# D-1-FIX: Per-core skip list. enforce_cooldown appends core_key here on failure
+# instead of return 1 (which aborted whole script under set -e, blocking other cores).
+SKIP_CORES=""
 
 # NOTE: validate_release_tag must be defined BEFORE enforce_cooldown,
 # because enforce_cooldown calls it on the fallback path.
@@ -47,8 +50,9 @@ enforce_cooldown() {
   local published_at published_epoch now_epoch age latest_tag prev_tag
   published_at="$(jq -er '.published_at' "$json_file")"
   published_epoch="$(date -d "$published_at" +%s 2>/dev/null)" || {
-    echo "::error::Cannot parse published_at for $core_key: $published_at"
-    return 1
+    echo "::warning::Cannot parse published_at for $core_key: $published_at; skipping this core"
+    SKIP_CORES="$SKIP_CORES $core_key"
+    return 0
   }
   now_epoch="$(date +%s)"
   age=$((now_epoch - published_epoch))
@@ -59,12 +63,14 @@ enforce_cooldown() {
   prev_tag="$(grep "^${core_key}=" "$existing/CORE-VERSIONS" | cut -d= -f2)"
   # D-1-FIX: Validate prev_tag format BEFORE using it in gh api URL (path traversal).
   if ! [[ "$prev_tag" =~ $tag_regex ]]; then
-    echo "::error::Invalid prev_tag format for $core_key: $prev_tag; aborting"
-    return 1
+    echo "::warning::$core_key: invalid prev_tag format: $prev_tag; skipping this core (other cores continue)"
+    SKIP_CORES="$SKIP_CORES $core_key"
+    return 0
   fi
   if [[ -z "$prev_tag" ]]; then
-    echo "::error::$core_key release $latest_tag is only $((age / 86400)) days old (cooldown 7 days) and no previous mirror version exists; aborting"
-    return 1
+    echo "::warning::$core_key release $latest_tag is only $((age / 86400)) days old (cooldown 7 days) and no previous mirror version exists; skipping this core (other cores continue)"
+    SKIP_CORES="$SKIP_CORES $core_key"
+    return 0
   fi
   if [[ "$prev_tag" == "$latest_tag" ]]; then
     # Mirror already has this version (e.g. added before cooldown was enforced).
@@ -83,8 +89,9 @@ enforce_cooldown() {
     and ((.tag_name // "") | type == "string")
     and ((.tag_name // "") | test($regex))
   ' "$json_file" >/dev/null; then
-    echo "::error::Fallback release $prev_tag failed validation; aborting"
-    return 1
+    echo "::warning::Fallback release $prev_tag failed validation; skipping $core_key (other cores continue)"
+    SKIP_CORES="$SKIP_CORES $core_key"
+    return 0
   fi
 }
 
@@ -95,9 +102,25 @@ enforce_cooldown "SagerNet/sing-box" "$root/sing-box.json" "sing-box" '^v[0-9]+\
 gh api repos/HyNetworks/hysteria/releases/latest > "$root/hysteria.json"
 enforce_cooldown "HyNetworks/hysteria" "$root/hysteria.json" "Hysteria" '^app/v[0-9]+\.[0-9]+\.[0-9]+$'
 
-xray_tag="$(validate_release_tag "$root/xray.json" '^v[0-9]+\.[0-9]+\.[0-9]+$')"
-singbox_tag="$(validate_release_tag "$root/sing-box.json" '^v[0-9]+\.[0-9]+\.[0-9]+$')"
-hysteria_tag="$(validate_release_tag "$root/hysteria.json" '^app/v[0-9]+\.[0-9]+\.[0-9]+$')"
+# D-1-FIX: For skipped cores, use existing mirror tag (not the too-new release).
+if [[ " $SKIP_CORES " == *" Xray "* ]]; then
+  xray_tag="$(grep '^Xray=' "$existing/CORE-VERSIONS" | cut -d= -f2)"
+  echo "::notice::Using existing mirror Xray tag: $xray_tag (latest skipped)"
+else
+  xray_tag="$(validate_release_tag "$root/xray.json" '^v[0-9]+\.[0-9]+\.[0-9]+$')"
+fi
+if [[ " $SKIP_CORES " == *" sing-box "* ]]; then
+  singbox_tag="$(grep '^sing-box=' "$existing/CORE-VERSIONS" | cut -d= -f2)"
+  echo "::notice::Using existing mirror sing-box tag: $singbox_tag (latest skipped)"
+else
+  singbox_tag="$(validate_release_tag "$root/sing-box.json" '^v[0-9]+\.[0-9]+\.[0-9]+$')"
+fi
+if [[ " $SKIP_CORES " == *" Hysteria "* ]]; then
+  hysteria_tag="$(grep '^Hysteria=' "$existing/CORE-VERSIONS" | cut -d= -f2)"
+  echo "::notice::Using existing mirror Hysteria tag: $hysteria_tag (latest skipped)"
+else
+  hysteria_tag="$(validate_release_tag "$root/hysteria.json" '^app/v[0-9]+\.[0-9]+\.[0-9]+$')"
+fi
 
 declare -a mirror_names=()
 declare -a mirror_paths=()
@@ -252,16 +275,29 @@ xray_arm64_name="Xray-$xray_tag-linux-arm64-v8a.zip"
 singbox_version="${singbox_tag#v}"
 hysteria_leaf="$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')"
 
-download_verified_asset XTLS/Xray-core "$root/xray.json" Xray-linux-64.zip "$xray_amd64_name" xray
-download_verified_asset XTLS/Xray-core "$root/xray.json" Xray-linux-arm64-v8a.zip "$xray_arm64_name" xray
+# D-1-FIX: Skip downloads for skipped cores (assets already in mirror).
+if [[ " $SKIP_CORES " != *" Xray "* ]]; then
+  download_verified_asset XTLS/Xray-core "$root/xray.json" Xray-linux-64.zip "$xray_amd64_name" xray
+  download_verified_asset XTLS/Xray-core "$root/xray.json" Xray-linux-arm64-v8a.zip "$xray_arm64_name" xray
+else
+  echo "::notice::Skipping Xray downloads (using existing mirror version)"
+fi
 
-download_verified_asset SagerNet/sing-box "$root/sing-box.json" "sing-box-$singbox_version-linux-amd64-glibc.tar.gz" "sing-box-$singbox_version-linux-amd64-glibc.tar.gz" sing-box
-download_verified_asset SagerNet/sing-box "$root/sing-box.json" "sing-box-$singbox_version-linux-amd64-musl.tar.gz" "sing-box-$singbox_version-linux-amd64-musl.tar.gz" sing-box
-download_verified_asset SagerNet/sing-box "$root/sing-box.json" "sing-box-$singbox_version-linux-arm64-glibc.tar.gz" "sing-box-$singbox_version-linux-arm64-glibc.tar.gz" sing-box
-download_verified_asset SagerNet/sing-box "$root/sing-box.json" "sing-box-$singbox_version-linux-arm64-musl.tar.gz" "sing-box-$singbox_version-linux-arm64-musl.tar.gz" sing-box
+if [[ " $SKIP_CORES " != *" sing-box "* ]]; then
+  download_verified_asset SagerNet/sing-box "$root/sing-box.json" "sing-box-$singbox_version-linux-amd64-glibc.tar.gz" "sing-box-$singbox_version-linux-amd64-glibc.tar.gz" sing-box
+  download_verified_asset SagerNet/sing-box "$root/sing-box.json" "sing-box-$singbox_version-linux-amd64-musl.tar.gz" "sing-box-$singbox_version-linux-amd64-musl.tar.gz" sing-box
+  download_verified_asset SagerNet/sing-box "$root/sing-box.json" "sing-box-$singbox_version-linux-arm64-glibc.tar.gz" "sing-box-$singbox_version-linux-arm64-glibc.tar.gz" sing-box
+  download_verified_asset SagerNet/sing-box "$root/sing-box.json" "sing-box-$singbox_version-linux-arm64-musl.tar.gz" "sing-box-$singbox_version-linux-arm64-musl.tar.gz" sing-box
+else
+  echo "::notice::Skipping sing-box downloads (using existing mirror version)"
+fi
 
-download_verified_asset HyNetworks/hysteria "$root/hysteria.json" hysteria-linux-amd64 "hysteria-$hysteria_leaf-linux-amd64" hysteria
-download_verified_asset HyNetworks/hysteria "$root/hysteria.json" hysteria-linux-arm64 "hysteria-$hysteria_leaf-linux-arm64" hysteria
+if [[ " $SKIP_CORES " != *" Hysteria "* ]]; then
+  download_verified_asset HyNetworks/hysteria "$root/hysteria.json" hysteria-linux-amd64 "hysteria-$hysteria_leaf-linux-amd64" hysteria
+  download_verified_asset HyNetworks/hysteria "$root/hysteria.json" hysteria-linux-arm64 "hysteria-$hysteria_leaf-linux-arm64" hysteria
+else
+  echo "::notice::Skipping Hysteria downloads (using existing mirror version)"
+fi
 
 cat > "$out/CORE-VERSIONS" <<EOF
 schema=1

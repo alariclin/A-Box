@@ -8,6 +8,11 @@ on:
         type: boolean
         required: false
         default: false
+      known_good_sha256:
+        description: "Space-separated 'bench.sh=<sha256> Check.Place.sh=<sha256>' after manual review"
+        type: string
+        required: false
+        default: ""
   schedule:
     - cron: '17 5 * * 1'
   pull_request:
@@ -154,10 +159,20 @@ jobs:
           # The SHA256SUMS generated below is self-attestation, NOT independent
           # verification. Before first use of a new upstream version, a human
           # MUST manually review the diff. Do not auto-approve.
-          # KNOWN_GOOD_SHA256 (optional, empty by default): space-separated
-          # "file=sha256" entries. If set, each downloaded file is checked
-          # against it and the build fails on mismatch. This enables future
-          # pinning without breaking the current flow.
+          # Test-tools FIX: KNOWN_GOOD_SHA256 is now REQUIRED (was optional).
+          # Mutable upstream scripts must be pinned to human-reviewed hashes
+          # before publishing. Empty value aborts the build.
+          KNOWN_GOOD_SHA256="${KNOWN_GOOD_SHA256:-${{ inputs.known_good_sha256 }}}"
+          [[ -n "$KNOWN_GOOD_SHA256" ]] || {
+            echo "::error::Refusing to publish mutable upstream test scripts without KNOWN_GOOD_SHA256='bench.sh=<sha256> Check.Place.sh=<sha256>'"
+            exit 1
+          }
+          for req_file in bench.sh Check.Place.sh; do
+            [[ " $KNOWN_GOOD_SHA256 " == *" ${req_file}="* ]] || {
+              echo "::error::KNOWN_GOOD_SHA256 must pin ${req_file}"
+              exit 1
+            }
+          done
           out="$GITHUB_WORKSPACE/dist/test-tools"
           mkdir -p "$out"
           cd "$out"
@@ -193,8 +208,8 @@ jobs:
           grep -Fq 'DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE' YABS-LICENSE
           test "$(wc -c < IPQuality-LICENSE)" -gt 1000
 
-          # P2-2 fix: optional pin check. Empty by default (current flow);
-          # if KNOWN_GOOD_SHA256 is set, verify each downloaded file.
+          # P2-2 fix: REQUIRED pin check (KNOWN_GOOD_SHA256 validated above).
+          # Verify each downloaded file against the pinned hashes.
           if [[ -n "${KNOWN_GOOD_SHA256:-}" ]]; then
             read -ra pinned_entries <<< "$KNOWN_GOOD_SHA256"
             for entry in "${pinned_entries[@]}"; do

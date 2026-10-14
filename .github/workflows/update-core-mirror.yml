@@ -198,7 +198,8 @@ jobs:
           verify_upstream_digest() {
             local name="$1" repo="$2" tag="$3" upstream="$4"
             local expected_digest actual
-            expected_digest="$(gh api "repos/$repo/releases/tags/$tag" --jq ".assets[] | select(.name == \"$upstream\") | .digest")"
+            # N-1-FIX: Use --arg to avoid jq program injection via $upstream (filename).
+            expected_digest="$(gh api "repos/$repo/releases/tags/$tag" --jq '.assets[] | select(.name == $name) | .digest' --arg name "$upstream")"
             [[ "$expected_digest" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || {
               echo "ERROR: upstream has no valid digest for $repo:$tag/$upstream"
               return 1
@@ -233,6 +234,43 @@ jobs:
             esac
           done
           echo "All binaries independently verified against upstream official digests."
+          # F-12 fix: Verify verified/SHA256SUMS (full merged manifest) entries.
+          # For CORE-VERSIONS: digest must match sha256sum(verified/CORE-VERSIONS).
+          # For files in verified/: digest must match sha256sum of the file.
+          # For historical entries (not in verified/): digest must match GitHub
+          # Release asset metadata. Prevents tampered manifest from being published.
+          if [[ ! -f verified/SHA256SUMS ]]; then
+            echo "ERROR: verified/SHA256SUMS missing; aborting"
+            exit 1
+          fi
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/core-binaries")"
+          cv_actual="$(sha256sum verified/CORE-VERSIONS | awk '{print $1}')"
+          while read -r sum name extra; do
+            [[ -n "${sum:-}" ]] || continue
+            [[ -z "${extra:-}" && "$sum" =~ ^[A-Fa-f0-9]{64}$ && "$name" =~ ^[A-Za-z0-9._-]+$ ]] || {
+              echo "ERROR: malformed SHA256SUMS line: $sum $name $extra"
+              exit 1
+            }
+            if [[ "$name" == "CORE-VERSIONS" ]]; then
+              [[ "${sum,,}" == "${cv_actual,,}" ]] || {
+                echo "ERROR: CORE-VERSIONS digest mismatch in SHA256SUMS"
+                exit 1
+              }
+            elif [[ -f "verified/$name" ]]; then
+              f_actual="$(sha256sum "verified/$name" | awk '{print $1}')"
+              [[ "${sum,,}" == "${f_actual,,}" ]] || {
+                echo "ERROR: incoming digest mismatch for $name"
+                exit 1
+              }
+            else
+              gh_digest="$(jq -er --arg n "$name" '[.assets[]? | select(.name == $n)] | if length == 1 then .[0].digest // empty else empty end' <<< "$release_json")"
+              [[ "${gh_digest#sha256:}" == "$sum" ]] || {
+                echo "ERROR: historical SHA256SUMS entry tampered: $name"
+                exit 1
+              }
+            fi
+          done < verified/SHA256SUMS
+          echo "SHA256SUMS manifest verified (CORE-VERSIONS + incoming + historical)."
           # Upload order is binaries -> CORE-VERSIONS -> SHA256SUMS (full) last.
           # SHA256SUMS.incoming is verification-only and is NOT uploaded.
           for f in verified/*; do

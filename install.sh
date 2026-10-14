@@ -2238,7 +2238,9 @@ prepare_hysteria_acme_dir_ownership() {
         mark_hysteria_acme_dir_managed "$dir" "$marker" || return 1
         return 0
     fi
-    install -d -o root -g "$group" -m 770 /etc/hysteria "$dir" || return 1
+    # R-01-FIX: Parent 750, acme dir 1770 (sticky). Fresh-dir was still 770.
+    install -d -o root -g "$group" -m 750 /etc/hysteria || return 1
+    install -d -o root -g "$group" -m 1770 "$dir" || return 1
     hysteria_acme_dir_runtime_permissions_valid "$dir" || return 1
     mark_hysteria_acme_dir_managed "$dir" "$marker" || return 1
     return 0
@@ -6269,9 +6271,9 @@ EOF_PROBE
     fi
     grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/socket_probe.sh" || die '健康探针运行环境标记后置校验失败。'
     chmod 700 "$ABOX_DIR/socket_probe.sh" || die '健康探针权限设置失败。'
-    # A-06: Pre-create cron lock file with 0600 (flock would create it 0644 with cron's umask 022).
-    ( umask 077; : > /run/A-Box-probe-cron.lock ) 2>/dev/null || true
-    install_abox_cron_block PROBE '* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1'
+    # A-06-FIX: No outer flock (script has internal flock -n 9 under umask 077).
+    # Outer flock created 0644 lock in /run (tmpfs, cleared on reboot) - removed.
+    install_abox_cron_block PROBE '* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1'
 }
 
 setup_geo_cron() {
@@ -6498,9 +6500,8 @@ EOF_GEO
     fi
     grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本运行环境标记后置校验失败。'
     chmod 700 "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本权限设置失败。'
-    # A-06: Pre-create cron lock file with 0600 (see PROBE above).
-    ( umask 077; : > /run/A-Box-geo-cron.lock ) 2>/dev/null || true
-    install_abox_cron_block GEO '0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1'
+    # A-06-FIX: No outer flock (see PROBE above).
+    install_abox_cron_block GEO '0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1'
 }
 
 pre_install_setup() {
@@ -12002,8 +12003,9 @@ import sys
 from pathlib import Path
 lines=Path(sys.argv[1]).read_text(encoding='utf-8',errors='strict').splitlines()
 allowed={
- 'PROBE':'* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1',
- 'GEO':'0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1',
+ # A-06-FIX: No outer flock (internal flock -n 9 under umask 077).
+ 'PROBE':'* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1',
+ 'GEO':'0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1',
  'TRAFFIC':'* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1',
 }
 i=0; seen=set()

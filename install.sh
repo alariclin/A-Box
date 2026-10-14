@@ -4286,7 +4286,8 @@ _ss_wl_rollback_to_snapshot() {
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
             if ! grep -Fxq -- "$line" <<< "$snap"; then
-                # shellcheck disable=SC2086 -- spec word-splitting intentional; comments contain no spaces.
+                # Rule comments contain no spaces; word-splitting here is intentional.
+                # shellcheck disable=SC2086
                 "$ipt" -w -D INPUT $line >/dev/null 2>&1 || true
             fi
         done <<< "$cur"
@@ -4294,7 +4295,8 @@ _ss_wl_rollback_to_snapshot() {
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
             if ! grep -Fxq -- "$line" <<< "$cur"; then
-                # shellcheck disable=SC2086 -- see above.
+                # See above: word-splitting intentional.
+                # shellcheck disable=SC2086
                 "$ipt" -w -A INPUT $line >/dev/null 2>&1 || true
             fi
         done <<< "$snap"

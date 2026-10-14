@@ -3961,6 +3961,13 @@ remove_ss_open_accept_rules() {
     (( failed == 0 ))
 }
 
+__abox_normalize_managed_rule_line() {
+    local line="$1"
+    line=${line//\"/}
+    line=$(printf '%s\n' "$line" | sed -E 's/^(-A[[:space:]]+INPUT([[:space:]]+[^[:space:]]+)*[[:space:]]+-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\4/')
+    printf '%s\n' "$line"
+}
+
 reorder_ss_whitelist_rules_one() {
     local cmd="$1" port="$2" proto="$3" wl_suffix="$4" drop_suffix="$5"
     local wl_comment="A-Box-${port}-${proto}-${wl_suffix}" drop_comment="A-Box-${port}-${proto}-${drop_suffix}"
@@ -4007,12 +4014,6 @@ reorder_ss_whitelist_rules_one() {
         lock_fd=''
     }
 
-    normalize_managed_rule_line() {
-        local line="$1"
-        line=${line//\"/}
-        line=$(printf '%s\n' "$line" | sed -E 's/^(-A[[:space:]]+INPUT([[:space:]]+[^[:space:]]+)*[[:space:]]+-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\4/')
-        printf '%s\n' "$line"
-    }
     capture_firewall_views() {
         local item normalized
         current_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || return 1
@@ -4021,7 +4022,7 @@ reorder_ss_whitelist_rules_one() {
         while IFS= read -r item; do
             [[ "$item" =~ ^-A[[:space:]]+INPUT[[:space:]] ]] || continue
             if [[ "$item" =~ $wl_re || "$item" =~ $drop_re ]]; then
-                normalized=$(normalize_managed_rule_line "$item") || return 1
+                normalized=$(__abox_normalize_managed_rule_line "$item") || return 1
                 current_target_lines+=("$normalized")
             else
                 current_foreign_lines+=("$item")

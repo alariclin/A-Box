@@ -87,6 +87,20 @@ if not (100 <= n <= 12000):
                       sys.exit(1)
           print(f"OK: All {len(readme_files)} README files correctly pin install.sh commit {expected_sha}")
           PY
+      - name: Verify normalize_managed_rule_line dual-copy isomorphism
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, subprocess, sys
+          text = pathlib.Path("install.sh").read_text(encoding="utf-8")
+          pattern = re.compile(r"(?:__abox_)?normalize_managed_rule_line\s*\(\)\s*\{\n(.*?)\n\s*\}", re.DOTALL)
+          matches = pattern.findall(text)
+          if len(matches) != 2:
+              sys.exit(f"ERROR: Expected exactly 2 definitions, found {len(matches)}")
+          norm = ["\n".join(l.strip() for l in b.strip().splitlines()) for b in matches]
+          if norm[0] != norm[1]:
+              sys.exit(f"ERROR: Dual copies drifted!\n--- Copy 1 ---\n{norm[0]}\n--- Copy 2 ---\n{norm[1]}")
+          print("OK: Dual copies isomorphic")
+          PY
       - name: Alpine clean-shell bootstrap syntax
         run: |
           docker run --rm -v "$PWD:/src:ro" alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 sh -ec '

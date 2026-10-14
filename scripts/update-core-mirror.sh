@@ -77,7 +77,7 @@ enforce_cooldown() {
   fi
   echo "::warning::$core_key release $latest_tag is only $((age / 86400))d old (<7d); falling back to $prev_tag"
   if ! gh api "repos/$repo/releases/tags/$prev_tag" > "$json_file" 2>/dev/null ||
-     ! jq -e --arg regex "$tag_regex" 'type == "object" and .draft == false and ((.tag_name // "") | test($regex))' "$json_file" >/dev/null 2>&1; then
+     ! jq -e --arg regex "$tag_regex" 'type == "object" and .draft == false and .prerelease == false and ((.tag_name // "") | test($regex))' "$json_file" >/dev/null 2>&1; then
     echo "::warning::$core_key fallback release $prev_tag failed validation; skipping $core_key"
     SKIP_CORES["$core_key"]=1
     return 0

@@ -1593,6 +1593,19 @@ install_optional_package() {
     esac
 }
 
+# FINAL-AUDIT: counterpart of install_optional_package, used only by rollback
+# to undo a package installation performed by the current transaction.
+remove_optional_package() {
+    local pkg="$1"
+    [[ -n "$pkg" ]] || return 1
+    case "${release:-}" in
+        debian|ubuntu) command -v apt-get >/dev/null 2>&1 && apt-get -y remove "$pkg" >/dev/null 2>&1 ;;
+        centos) if command -v dnf >/dev/null 2>&1; then dnf -y remove "$pkg" >/dev/null 2>&1; elif command -v yum >/dev/null 2>&1; then yum -y remove "$pkg" >/dev/null 2>&1; else return 1; fi ;;
+        alpine) command -v apk >/dev/null 2>&1 && apk del "$pkg" >/dev/null 2>&1 ;;
+        *) return 1 ;;
+    esac
+}
+
 ensure_commands() {
     local missing_pkgs=()
     local -a _ens_install_cmd=()
@@ -4193,12 +4206,71 @@ reorder_ss_whitelist_rules_one() {
     return 0
 }
 
+# FINAL-AUDIT fix: fail-closed IPv6 firewall pre-check for SS whitelist mode.
+# If the host has IPv6 but ip6tables is missing or unusable, the IPv6 DROP
+# rules would be silently skipped while IPv4 gets WL ACCEPT + DROP, leaving
+# SS reachable from any IPv6 address under a default-ACCEPT INPUT policy.
+# Refuse BEFORE any rule is touched. Returns 1 (callers die/return).
+# Objective IPv6 availability check: ignores the user's IP-preference
+# setting (read_ip_pref). has_ipv6() returns false in IPv4-preferred mode
+# even when the host actually has working IPv6, which would let an
+# IPv6-reachable service slip through a whitelist that only filtered IPv4.
+# A host with IPv6 enabled in the kernel can be reached via link-local
+# (fe80::/10) even with no global address, so we check broadly. Returns 0
+# if IPv6 traffic can plausibly reach the host.
+host_has_usable_ipv6() {
+    # (1) Kernel has IPv6 addresses (any scope, incl. link-local).
+    [[ -s /proc/net/if_inet6 ]] && return 0
+    # (2) IPv6 not disabled at the kernel level.
+    local _d6
+    _d6=$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null || printf '1')
+    [[ "$_d6" != '1' ]] && return 0
+    # (3) Global or link-local address visible via iproute2.
+    ip -6 addr show scope global 2>/dev/null | grep -q 'inet6 ' && return 0
+    ip -6 addr show scope link 2>/dev/null | grep -q 'inet6 ' && return 0
+    return 1
+}
+
+# Actual ip6tables functionality probe (not just binary presence): the
+# binary may exist without the kernel modules loaded.
+ip6tables_usable() {
+    command -v ip6tables >/dev/null 2>&1 || return 1
+    "$IPT6" -w -S INPUT >/dev/null 2>&1
+}
+
+# Rollback helper: remove IPv4 SS DROP rules written in this invocation.
+# Called when a subsequent IPv6 rule operation fails, to avoid a dangerous
+# half-configured state (IPv4 locked down by DROP, IPv6 wide open). The die
+# that follows aborts the whitelist setup entirely.
+_ss_rollback_ipv4_drop_rules() {
+    local proto
+    for proto in tcp udp; do
+        "$IPT" -w -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || true
+    done
+}
+
+ss_whitelist_ipv6_precheck() {
+    # Use the objective check, not has_ipv6(): a host in IPv4-preferred mode
+    # may still be reachable over IPv6, and the whitelist must cover it.
+    # The ip6tables_usable() probe is a real functionality test, not just
+    # a binary-presence check.
+    if host_has_usable_ipv6; then
+        ip6tables_usable || return 1
+    fi
+    return 0
+}
+
 enforce_ss_whitelist_order() {
     local port="${1:-${SS_PORT:-}}" failed=0 proto
     valid_port "$port" || return 0
+    # FINAL-AUDIT: fail closed here too (defense in depth for restore paths).
+    ss_whitelist_ipv6_precheck || return 1
     for proto in tcp udp; do
         reorder_ss_whitelist_rules_one "$IPT" "$port" "$proto" WL DROP || failed=1
-        if command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+        # Objective check (not has_ipv6()): never silently skip the IPv6 path
+        # when the host is actually IPv6-reachable. The precheck above already
+        # guaranteed ip6tables works in that case, so a failure here is real.
+        if host_has_usable_ipv6; then
             reorder_ss_whitelist_rules_one "$IPT6" "$port" "$proto" WL6 DROP6 || failed=1
         fi
     done
@@ -5497,9 +5569,21 @@ get_desired_state() {
     printf '%s\n' "$state"
 }
 
+# FINAL-AUDIT fix: distinguish "pair file does not exist" (safe to create
+# with defaults) from "pair file exists but is unreadable/corrupt" (must
+# refuse to overwrite, or a quota block could be silently cleared / a
+# MANUAL_STOPPED state silently flipped by committing defaults).
+traffic_pair_file_exists() {
+    [[ -e "$ABOX_TRAFFIC_PAIR_STATE" || -L "$ABOX_TRAFFIC_PAIR_STATE" ]]
+}
+
 set_desired_state() {
     local state="$1" period=''
     desired_state_valid "$state" || return 1
+    if traffic_pair_file_exists && ! read_traffic_pair_fields >/dev/null 2>&1; then
+        msg "${RED}[!] Traffic pair state exists but is unreadable or corrupt; refusing to overwrite. Manual repair required.${NC}" >&2
+        return 1
+    fi
     period=$(get_traffic_block_period 2>/dev/null || true)
     commit_traffic_pair_state "$state" "$period"
 }
@@ -5527,6 +5611,10 @@ get_traffic_block_period() {
 set_traffic_block_period() {
     local period="$1" state
     traffic_period_valid "$period" || return 1
+    if traffic_pair_file_exists && ! read_traffic_pair_fields >/dev/null 2>&1; then
+        msg "${RED}[!] Traffic pair state exists but is unreadable or corrupt; refusing to overwrite. Manual repair required.${NC}" >&2
+        return 1
+    fi
     state=$(get_desired_state) || return 1
     commit_traffic_pair_state "$state" "$period"
 }
@@ -6768,15 +6856,16 @@ pre_install_setup() {
             die '当前防火墙后端不是原生 iptables；SS-2022 源地址白名单仅在 iptables/ip6tables 后端启用，拒绝静默写入不可持久化的白名单规则。'
         fi
         if [[ -n "${SS_WHITELIST_IP:-}" ]]; then
+            ss_whitelist_ipv6_precheck || die '主机启用了 IPv6，但 IPv6 防火墙不可用；拒绝启用白名单模式以避免 IPv6 侧被静默放行。'
             remove_ss_open_accept_rules || die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'
             read -r -a ss_whitelist_ips <<< "$SS_WHITELIST_IP"
             for ip in "${ss_whitelist_ips[@]}"; do
                 for proto in tcp udp; do
                     if [[ "$ip" == *:* ]]; then
-                        if ! has_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! $IPT6 -w -S INPUT >/dev/null 2>&1; then
+                        if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! $IPT6 -w -S INPUT >/dev/null 2>&1; then
                             die "IPv6 白名单已配置，但系统没有可用 IPv6 防火墙；拒绝继续以避免白名单被静默丢弃: $ip/$proto"
                         fi
-                        if has_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+                        if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
                             if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                             case "$check_rc" in
                                 0) ;;
@@ -6801,11 +6890,11 @@ pre_install_setup() {
                     1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则写入失败: $proto" ;;
                     *) die "无法检查防火墙规则。" ;;
                 esac
-                if has_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+                if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || die "IPv6 SS DROP 规则写入失败: $proto" ;;
+                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_rollback_ipv4_drop_rules; die "IPv6 SS DROP 规则写入失败，已回滚 IPv4 DROP 规则以避免半配置白名单: $proto"; } ;;
                         *) die "无法检查防火墙规则。" ;;
                     esac
                 fi
@@ -8287,29 +8376,55 @@ capture_vnstat_runtime_state() {
     fi
 }
 
+# FINAL-AUDIT fix: the old hard requirement that the CURRENT state be 1|1
+# caused false rollback failures (e.g. pre-state 0|1 restored correctly, but
+# the gate demanded 1|1). Conflict detection (current vs recorded post-state)
+# is done by the caller in preflight; this function only restores the given
+# pre-state.
 restore_vnstat_runtime_state() {
-    local state="$1" kind name active enabled cur_active cur_enabled
+    local state="$1" kind name active enabled
     IFS='|' read -r kind name active enabled <<< "$state"
     case "$kind" in
         absent) return 0 ;;
         systemd)
-            cur_active=0; cur_enabled=0
-            systemctl is-active --quiet "$name" && cur_active=1 || cur_active=0
-            systemctl is-enabled --quiet "$name" && cur_enabled=1 || cur_enabled=0
-            [[ "$cur_active|$cur_enabled" == '1|1' ]] || return 2
             if [[ "$enabled" == 1 ]]; then systemctl enable "$name" >/dev/null 2>&1 || return 1; else systemctl disable "$name" >/dev/null 2>&1 || return 1; fi
             if [[ "$active" == 1 ]]; then systemctl start "$name" >/dev/null 2>&1 || systemctl restart "$name" >/dev/null 2>&1 || return 1; else systemctl stop "$name" >/dev/null 2>&1 || return 1; fi
             ;;
         openrc)
-            cur_active=0; cur_enabled=0
-            rc-service "$name" status >/dev/null 2>&1 && cur_active=1 || cur_active=0
-            rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])vnstatd([[:space:]]|$)' && cur_enabled=1 || cur_enabled=0
-            [[ "$cur_active|$cur_enabled" == '1|1' ]] || return 2
             if [[ "$enabled" == 1 ]]; then rc-update add "$name" default >/dev/null 2>&1 || return 1; elif rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${name}([[:space:]]|$)"; then rc-update del "$name" default >/dev/null 2>&1 || return 1; fi
             if [[ "$active" == 1 ]]; then rc-service "$name" start >/dev/null 2>&1 || rc-service "$name" restart >/dev/null 2>&1 || return 1; else rc-service "$name" stop >/dev/null 2>&1 || return 1; fi
             ;;
         *) return 1 ;;
     esac
+    return 0
+}
+
+# FINAL-AUDIT fix: undo a vnstat installation performed by the current
+# transaction. Stops and disables the service; removes the package ONLY if
+# the transaction installed it (pre.vnstat.binary == 0). Never removes a
+# package that pre-existed, as other tools may depend on it.
+rollback_newly_installed_vnstat() {
+    local tx_dir="$1" svc_name=""
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        if systemctl list-unit-files vnstat.service >/dev/null 2>&1; then svc_name=vnstat
+        elif systemctl list-unit-files vnstatd.service >/dev/null 2>&1; then svc_name=vnstatd
+        fi
+        [[ -n "$svc_name" ]] || return 0
+        systemctl stop "$svc_name" >/dev/null 2>&1 || true
+        systemctl disable "$svc_name" >/dev/null 2>&1 || true
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
+        [[ -x /etc/init.d/vnstatd ]] || return 0
+        rc-service vnstatd stop >/dev/null 2>&1 || true
+        rc-update del vnstatd default >/dev/null 2>&1 || true
+    else
+        return 0
+    fi
+    # Only uninstall the package if this transaction installed it.
+    local pre_binary=1
+    [[ -f "$tx_dir/pre.vnstat.binary" ]] && IFS= read -r pre_binary < "$tx_dir/pre.vnstat.binary" 2>/dev/null || pre_binary=1
+    if [[ "$pre_binary" == 0 ]]; then
+        remove_optional_package vnstat 2>/dev/null || true
+    fi
     return 0
 }
 
@@ -8495,6 +8610,16 @@ traffic_quota_transaction_rollback() {
         IFS= read -r vnstat_state < "$tx_dir/pre.vnstat" || rc=1
         if [[ -n "$vnstat_state" && "$vnstat_state" != absent ]]; then
             restore_vnstat_runtime_state "$vnstat_state" || { printf '%s\n' "A-Box traffic rollback incomplete: vnStat state restore failed; recovery state preserved at $tx_dir" >&2; rc=1; }
+        elif [[ "$vnstat_state" == absent ]]; then
+            # FINAL-AUDIT: pre-state was absent. If the transaction installed
+            # vnstat (post.vnstat shows it present), undo the installation:
+            # stop/disable the service, and uninstall the package only if
+            # this transaction installed it (pre.vnstat.binary == 0).
+            local _post_vnstat=""
+            [[ -s "$tx_dir/post.vnstat" ]] && IFS= read -r _post_vnstat < "$tx_dir/post.vnstat" 2>/dev/null || true
+            if [[ -n "$_post_vnstat" && "$_post_vnstat" != absent ]]; then
+                rollback_newly_installed_vnstat "$tx_dir" || { printf '%s\n' "A-Box traffic rollback incomplete: newly-installed vnStat cleanup failed; recovery state preserved at $tx_dir" >&2; rc=1; }
+            fi
         fi
     else
         rc=1
@@ -8528,6 +8653,13 @@ prepare_traffic_quota_transaction() {
         printf '%s\n' '0|none' > "$tx_dir/pre.monitor.meta"
     fi
     capture_vnstat_runtime_state > "$tx_dir/pre.vnstat" || return 1
+    # FINAL-AUDIT: record whether the vnstat binary/package pre-existed, so
+    # rollback only uninstalls it if THIS transaction installed it.
+    if command -v vnstat >/dev/null 2>&1; then
+        printf '1\n' > "$tx_dir/pre.vnstat.binary" || return 1
+    else
+        printf '0\n' > "$tx_dir/pre.vnstat.binary" || return 1
+    fi
 }
 
 finalize_traffic_quota_transaction() {
@@ -8859,7 +8991,7 @@ manage_ss_whitelist() {
             found=0
             if [[ "$del_ip" == *:* ]]; then
                 valid_ipv6_cidr "$del_ip" || { msg "${RED}[!] IPv6 白名单地址非法: $del_ip${NC}"; pause_return; return; }
-                if ! has_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! "$IPT6" -w -S INPUT >/dev/null 2>&1; then
+                if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! "$IPT6" -w -S INPUT >/dev/null 2>&1; then
                     msg "${YELLOW}[!] 当前系统没有可用的 IPv6 防火墙，无法移除 IPv6 白名单；IPv4 规则未受影响。${NC}"
                     pause_return
                     return
@@ -8896,6 +9028,7 @@ manage_ss_whitelist() {
             pause_return
             ;;
         3)
+            ss_whitelist_ipv6_precheck || die '主机启用了 IPv6，但 IPv6 防火墙不可用；拒绝启用白名单模式以避免 IPv6 侧被静默放行。'
             remove_ss_open_accept_rules || die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'
             for proto in tcp udp; do
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
@@ -8904,11 +9037,11 @@ manage_ss_whitelist() {
                     1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则写入失败: $proto" ;;
                     *) die "无法检查防火墙规则。" ;;
                 esac
-                if has_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+                if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || die "IPv6 SS DROP 规则写入失败: $proto" ;;
+                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_rollback_ipv4_drop_rules; die "IPv6 SS DROP 规则写入失败，已回滚 IPv4 DROP 规则以避免半配置白名单: $proto"; } ;;
                         *) die "无法检查防火墙规则。" ;;
                     esac
                 fi
@@ -9418,7 +9551,14 @@ ux_mode_menu() {
     esac
 }
 list_extra_uuids() {
-    [[ -r "$EXTRA_UUID_FILE" && -f "$EXTRA_UUID_FILE" && ! -L "$EXTRA_UUID_FILE" ]] || return 0
+    # FINAL-AUDIT fix: only a TRULY ABSENT file is an empty list. A file that
+    # exists but is a symlink, unreadable, or not a regular file is a hard
+    # failure; otherwise callers silently overwrite it and revoke all stored
+    # extra UUIDs.
+    if [[ ! -e "$EXTRA_UUID_FILE" && ! -L "$EXTRA_UUID_FILE" ]]; then
+        return 0
+    fi
+    [[ -r "$EXTRA_UUID_FILE" && -f "$EXTRA_UUID_FILE" && ! -L "$EXTRA_UUID_FILE" ]] || return 1
     # Validate UUID shape without interval-regex operators such as {8}. Older
     # mawk versions shipped by supported legacy distributions do not implement
     # interval expressions, which would otherwise silently hide every UUID.
@@ -9432,12 +9572,39 @@ list_extra_uuids() {
     ' "$EXTRA_UUID_FILE" 2>/dev/null || true
 }
 
+# Write the full UUID list (primary UUID first, then extras) to $1.
+# Returns 1 if the extra-UUID list is unreadable/untrusted. Callers MUST
+# abort on failure; never treat a failed read as an empty list.
+# (TRAP-7: do NOT use `done < <(list_extra_uuids)` -- process substitution
+# swallows the exit status. Use this helper with an explicit status check.)
+write_full_uuid_list_to_file() {
+    local out="$1"
+    # TRAP-7(c): declare first, assign separately -- `local x=$(cmd)` masks
+    # the exit code (local always returns 0).
+    local _rc
+    {
+        printf '%s\n' "${UUID:-}"
+        list_extra_uuids
+    } > "$out"
+    _rc=$?
+    return "$_rc"
+}
+
 sync_uuids_into_xray_config() {
     local cfg='/usr/local/etc/xray/config.json' tmp primary extras_json
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     primary="${UUID:-}"
     [[ -n "$primary" ]] || return 1
+    # FINAL-AUDIT: PIPESTATUS[0] catches a list_extra_uuids failure that the
+    # pipeline would otherwise mask (jq's exit code wins). Never sync a
+    # config built from an untrusted/empty UUID list.
+    local _uuid_list_rc=0
     extras_json=$(list_extra_uuids | jq -R . | jq -s -c 'map(select(length>0))')
+    _uuid_list_rc=${PIPESTATUS[0]:-0}
+    if (( _uuid_list_rc != 0 )); then
+        msg "${RED}Extra UUID list is unreadable or untrusted; refusing to sync Xray config.${NC}" >&2
+        return 1
+    fi
     [[ -n "$extras_json" ]] || extras_json='[]'
     tmp=$(mktemp /tmp/A-Box-uuid.XXXXXX) || return 1
     if ! jq --arg p "$primary" --argjson extras "$extras_json" '
@@ -9486,22 +9653,32 @@ export_lightweight_subscription() {
     # Previously: ": > uri_file" created 0644 under umask 022, then chmod 600 (window).
     local uri_tmp
     uri_tmp=$(umask 077; mktemp "$SUBSCRIBE_DIR/.uri-list.XXXXXX") || return 1
+    # TRAP-7: capture UUID list to temp file with explicit status check.
+    # Process substitution would swallow a list_extra_uuids failure.
+    local _uuid_list_tmp
+    _uuid_list_tmp=$(umask 077; mktemp /tmp/A-Box-uuid-list.XXXXXX) || { rm -f -- "$uri_tmp"; return 1; }
+    if ! write_full_uuid_list_to_file "$_uuid_list_tmp"; then
+        rm -f -- "$uri_tmp" "$_uuid_list_tmp"
+        msg "${RED}UUID list unreadable or untrusted; refusing to generate incomplete subscription.${NC}" >&2
+        return 1
+    fi
     if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" ]] || continue
             if [[ "$client_uuid" == "$UUID" ]]; then proxy_name='A-Box-VLESS-Vision'; else proxy_name="A-Box-VLESS-Vision-${client_uuid:0:8}"; fi
             url="vless://$client_uuid@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#$proxy_name"
-            printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp"; return 1; }
-        done < <(printf '%s\n' "$UUID"; list_extra_uuids)
+            printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp" "$_uuid_list_tmp"; return 1; }
+        done < "$_uuid_list_tmp"
     fi
     if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" ]] || continue
             if [[ "$client_uuid" == "$UUID" ]]; then proxy_name='A-Box-VLESS-XHTTP'; else proxy_name="A-Box-VLESS-XHTTP-${client_uuid:0:8}"; fi
             url="vless://$client_uuid@$F_IP:$XHTTP_PORT?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#$proxy_name"
-            printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp"; return 1; }
-        done < <(printf '%s\n' "$UUID"; list_extra_uuids)
+            printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp" "$_uuid_list_tmp"; return 1; }
+        done < "$_uuid_list_tmp"
     fi
+    rm -f -- "$_uuid_list_tmp"
     # A-05c-FIX: Atomic install of URI list (600). Temp file cleaned up.
     install_file_atomically "$uri_tmp" "$uri_file" 600 || { rm -f -- "$uri_tmp"; return 1; }
     rm -f -- "$uri_tmp"
@@ -9529,7 +9706,13 @@ multi_uuid_menu() {
     msg "${BOLD}${GREEN}Multi-UUID / Subscription export${NC}"
     msg "Primary UUID: ${YELLOW}${UUID:-load env first}${NC}"
     msg 'Extra UUIDs:'
-    list_extra_uuids | sed 's/^/  /' || true
+    # TRAP-7: surface failure instead of silently showing an empty list.
+    local _uuid_display=""
+    if _uuid_display=$(list_extra_uuids); then
+        printf '%s\n' "$_uuid_display" | sed 's/^/  /'
+    else
+        msg "${RED}  [!] Extra UUID list unreadable or untrusted${NC}"
+    fi
     msg "${YELLOW}1. Add and apply an extra UUID (Xray only)${NC}"
     msg "${YELLOW}2. Export Vision/XHTTP URI list, Base64 and Clash YAML${NC}"
     msg "${YELLOW}3. Revoke one extra UUID from the Xray server${NC}"
@@ -9554,7 +9737,16 @@ multi_uuid_menu() {
             chmod 700 "$tx"
             nu=$(generate_robust_uuid) || { rm -rf -- "$tx"; return 1; }
             list_tmp=$(mktemp "${EXTRA_UUID_FILE}.new.XXXXXX") || { rm -rf -- "$tx"; return 1; }
-            { list_extra_uuids; printf '%s\n' "$nu"; } | awk 'NF && !seen[tolower($0)]++' > "$list_tmp" || { rm -f -- "$list_tmp"; rm -rf -- "$tx"; return 1; }
+            # FINAL-AUDIT: capture the existing list BEFORE writing. A
+            # list_extra_uuids failure must abort, not silently proceed with
+            # only the new UUID (which would revoke all existing extras).
+            local _existing_uuids=""
+            if ! _existing_uuids=$(list_extra_uuids); then
+                rm -f -- "$list_tmp"; rm -rf -- "$tx"
+                msg "${RED}Extra UUID list is unreadable or untrusted; refusing to modify.${NC}" >&2
+                return 1
+            fi
+            { printf '%s\n' "$_existing_uuids"; printf '%s\n' "$nu"; } | awk 'NF && !seen[tolower($0)]++' > "$list_tmp" || { rm -f -- "$list_tmp"; rm -rf -- "$tx"; return 1; }
             chmod 600 "$list_tmp" && mv -f -- "$list_tmp" "$EXTRA_UUID_FILE" || { rm -f -- "$list_tmp"; rm -rf -- "$tx"; return 1; }
             if sync_uuids_into_xray_config && restart_service_soft xray; then
                 tx_ok=1
@@ -9577,8 +9769,17 @@ multi_uuid_menu() {
         3)
             [[ "${CORE:-}" == xray && -f "$cfg" && ! -L "$cfg" ]] || { msg "${RED}Server-side revocation requires an installed Xray deployment. No change made.${NC}"; pause_return; return 1; }
             abox_owns_service xray || { msg "${RED}Xray is not registered as an A-Box-managed service. No change made.${NC}"; pause_return; return 1; }
-            local -a uuids=()
-            mapfile -t uuids < <(list_extra_uuids)
+            local -a uuids=() _uuid_list_raw=""
+            # FINAL-AUDIT: surface an untrusted list instead of silently
+            # showing "no UUIDs".
+            if ! _uuid_list_raw=$(list_extra_uuids); then
+                msg "${RED}Extra UUID list is unreadable or untrusted; refusing to list.${NC}"
+                pause_return
+                return 1
+            fi
+            if [[ -n "$_uuid_list_raw" ]]; then
+                mapfile -t uuids <<< "$_uuid_list_raw"
+            fi
             ((${#uuids[@]} > 0)) || { msg 'No extra UUIDs to revoke.'; pause_return; return 0; }
             local idx
             for idx in "${!uuids[@]}"; do printf '%3d. %s\n' "$((idx+1))" "${uuids[$idx]}"; done
@@ -9591,7 +9792,15 @@ multi_uuid_menu() {
             cp -a "$cfg" "$tx/config.json" || { rm -rf -- "$tx"; return 1; }
             [[ ! -f "$EXTRA_UUID_FILE" ]] || cp -a "$EXTRA_UUID_FILE" "$tx/extra-uuids" || { rm -rf -- "$tx"; return 1; }
             list_tmp=$(mktemp "${EXTRA_UUID_FILE}.new.XXXXXX") || { rm -rf -- "$tx"; return 1; }
-            list_extra_uuids | awk -v remove="$nu" 'tolower($0)!=tolower(remove)' > "$list_tmp" || { rm -f -- "$list_tmp"; rm -rf -- "$tx"; return 1; }
+            # FINAL-AUDIT: a list_extra_uuids failure must abort, not
+            # produce an empty list that deletes every stored UUID.
+            local _existing_uuids=""
+            if ! _existing_uuids=$(list_extra_uuids); then
+                rm -f -- "$list_tmp"; rm -rf -- "$tx"
+                msg "${RED}Extra UUID list is unreadable or untrusted; refusing to modify.${NC}" >&2
+                return 1
+            fi
+            printf '%s\n' "$_existing_uuids" | awk -v remove="$nu" 'tolower($0)!=tolower(remove)' > "$list_tmp" || { rm -f -- "$list_tmp"; rm -rf -- "$tx"; return 1; }
             chmod 600 "$list_tmp" || { rm -f -- "$list_tmp"; rm -rf -- "$tx"; return 1; }
             if [[ -s "$list_tmp" ]]; then mv -f -- "$list_tmp" "$EXTRA_UUID_FILE" || { rm -f -- "$list_tmp"; rm -rf -- "$tx"; return 1; }
             else rm -f -- "$list_tmp" "$EXTRA_UUID_FILE"; fi
@@ -10274,7 +10483,81 @@ restore_dns_snapshot_body() {
     fi
     return 0
 }
+# Crash-recovery for interrupted DNS snapshot swaps. Called on entry to
+# restore_dns_snapshot() and dns_menu(). Completes or rolls back based on
+# actual disk state (not assumptions).
+dns_snapshot_recover_pending_swap() {
+    local pending="${DNS_BACKUP_DIR}.pending-swap"
+    local old_path='' new_path=''
+    [[ -f "$pending" && ! -L "$pending" ]] || return 0
+    old_path=$(sed -n 's/^old=//p' "$pending" 2>/dev/null | head -1 || true)
+    new_path=$(sed -n 's/^new=//p' "$pending" 2>/dev/null | head -1 || true)
+    # Validate paths are in the expected namespace (avoid path injection).
+    case "$old_path" in "${DNS_BACKUP_DIR}.old."*) ;; *) old_path='' ;; esac
+    case "$new_path" in "${DNS_BACKUP_DIR}.new."*) ;; *) new_path='' ;; esac
+    # Recovery matrix based on actual disk state:
+    if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then
+        # Target complete: swap finished. Clean up leftovers.
+        [[ -n "$old_path" ]] && rm -rf -- "$old_path" 2>/dev/null || true
+        [[ -n "$new_path" ]] && rm -rf -- "$new_path" 2>/dev/null || true
+    elif [[ -n "$old_path" && -f "$old_path/COMPLETE" ]]; then
+        # Interrupted after rename, before new moved in: restore old FIRST
+        # so a subsequent restore always finds a complete snapshot.
+        mv -T -- "$old_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
+        [[ -n "$new_path" ]] && rm -rf -- "$new_path" 2>/dev/null || true
+    elif [[ -n "$new_path" && -f "$new_path/COMPLETE" ]]; then
+        # Old renamed aside, new never moved: complete the swap.
+        mv -T -- "$new_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
+        [[ -n "$old_path" ]] && rm -rf -- "$old_path" 2>/dev/null || true
+    fi
+    rm -f -- "$pending"
+    return 0
+}
+
+# Unified DNS snapshot replacement primitive (used by apply_host_dns and
+# dns_enable_doh). Installs $1 (a COMPLETE staging dir) as $DNS_BACKUP_DIR.
+# - Uses `mv -T`: a pre-existing target is REPLACED, never moved-into.
+#   (Plain `mv staging target` when target exists moves staging INSIDE it.)
+# - Idempotency: if a COMPLETE baseline already exists, it is PRESERVED and
+#   the new staging dir is discarded. The snapshot's purpose is rollback to
+#   the pre-change state; overwriting it on re-run would destroy that.
+# - Crash safety: pending-swap record written before rename; recovery via
+#   dns_snapshot_recover_pending_swap().
+dns_snapshot_install_new() {
+    local staging="$1"
+    local pending="${DNS_BACKUP_DIR}.pending-swap"
+    local old_backup=""
+    [[ -d "$staging" && -f "$staging/COMPLETE" ]] || return 1
+    # Recover any interrupted previous swap first.
+    dns_snapshot_recover_pending_swap
+    # Idempotency: baseline already exists, preserve it.
+    if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then
+        rm -rf -- "$staging"
+        return 0
+    fi
+    if [[ -e "$DNS_BACKUP_DIR" || -L "$DNS_BACKUP_DIR" ]]; then
+        old_backup="${DNS_BACKUP_DIR}.old.$$"
+        rm -rf -- "$old_backup" 2>/dev/null || true
+        printf 'old=%s\nnew=%s\n' "$old_backup" "$staging" > "$pending" || return 1
+        chmod 600 "$pending" 2>/dev/null || true
+        mv -- "$DNS_BACKUP_DIR" "$old_backup" || { rm -f -- "$pending"; rm -rf -- "$staging"; return 1; }
+        # mv -T: replace target, never move staging inside it.
+        if ! mv -T -- "$staging" "$DNS_BACKUP_DIR"; then
+            mv -T -- "$old_backup" "$DNS_BACKUP_DIR" 2>/dev/null || true
+            rm -f -- "$pending"
+            return 1
+        fi
+        rm -rf -- "$old_backup"
+        rm -f -- "$pending"
+    else
+        mv -T -- "$staging" "$DNS_BACKUP_DIR" || { rm -rf -- "$staging"; return 1; }
+    fi
+    return 0
+}
+
 restore_dns_snapshot() {
+    # Recover from any interrupted swap before attempting restore.
+    dns_snapshot_recover_pending_swap 2>/dev/null || true
     local dir="$1" immutable_state='0' rc=0
     [[ -f "$dir/COMPLETE" ]] || return 1
     immutable_state=$(tr -d '[:space:]' < "$dir/resolv-immutable" 2>/dev/null || printf '0')
@@ -10358,11 +10641,9 @@ apply_host_dns() {
         die "Failed to snapshot DNS state; previous rollback snapshot preserved."
     fi
     printf '%s\n' "$immutable_before" > "$dns_snap_tmp/resolv-immutable" || { rm -rf -- "$dns_snap_tmp"; die "Failed to save DNS immutable-flag state."; }
-    # P2-02 fix 2026-10-14: check rm result; use atomic rename via backup.
-    if [[ -e "$DNS_BACKUP_DIR" ]]; then
-        rm -rf -- "$DNS_BACKUP_DIR" || { rm -rf -- "$dns_snap_tmp"; die "Failed to remove old DNS snapshot; aborting to preserve rollback data."; }
-    fi
-    mv -- "$dns_snap_tmp" "$DNS_BACKUP_DIR" || { rm -rf -- "$dns_snap_tmp"; die "Failed to install new DNS rollback snapshot."; }
+    # TRAP-5: use the unified snapshot primitive (mv -T, idempotency,
+    # crash-safe pending-swap). Preserves an existing COMPLETE baseline.
+    dns_snapshot_install_new "$dns_snap_tmp" || die "Failed to install new DNS rollback snapshot."
     if (( immutable_before == 1 )); then
         chattr -i /etc/resolv.conf 2>/dev/null || die "Failed to clear immutable flag on /etc/resolv.conf."
     fi
@@ -10570,9 +10851,24 @@ dns_enable_doh() {
     esac
     read -r -p "$prompt" answer
     is_yes "$answer" || return 0
-    rm -rf -- "$DNS_BACKUP_DIR"
-    mkdir -p "$DNS_BACKUP_DIR" && chmod 700 "$DNS_BACKUP_DIR" || return 1
-    snapshot_dns_state "$DNS_BACKUP_DIR" || { msg "${RED}DNS rollback snapshot failed; no resolver changes were made.${NC}"; return 1; }
+    # FINAL-AUDIT fix: stage the new snapshot in a temp dir and verify it
+    # is COMPLETE before replacing the old one. The old code ran
+    # `rm -rf $DNS_BACKUP_DIR` first, so a mkdir/snapshot failure destroyed
+    # the previous rollback snapshot with no way to recover it.
+    local _doh_snap_new=""
+    _doh_snap_new=$(mktemp -d "${DNS_BACKUP_DIR}.new.XXXXXX") || { msg "${RED}DNS snapshot staging failed; no resolver changes were made.${NC}"; return 1; }
+    chmod 700 "$_doh_snap_new" || { rm -rf -- "$_doh_snap_new"; msg "${RED}DNS snapshot staging failed; no resolver changes were made.${NC}"; return 1; }
+    if ! snapshot_dns_state "$_doh_snap_new" || [[ ! -f "$_doh_snap_new/COMPLETE" ]]; then
+        rm -rf -- "$_doh_snap_new"
+        msg "${RED}DNS rollback snapshot failed or incomplete; previous snapshot preserved; no resolver changes were made.${NC}"
+        return 1
+    fi
+    # TRAP-5: use the unified snapshot primitive (mv -T, idempotency,
+    # crash-safe pending-swap). Preserves an existing COMPLETE baseline.
+    if ! dns_snapshot_install_new "$_doh_snap_new"; then
+        msg "${RED}DNS snapshot install failed; previous snapshot preserved; no resolver changes were made.${NC}"
+        return 1
+    fi
     temp=$(umask 077; mktemp /tmp/A-Box-doh.XXXXXX) || return 1
     python3 - "$config" "$temp" <<'PY_DOH_CONFIG'
 import re, sys
@@ -10644,6 +10940,8 @@ EOF_DOH
 }
 
 dns_menu() {
+    # Recover from any interrupted DNS snapshot swap on menu entry.
+    dns_snapshot_recover_pending_swap 2>/dev/null || true
     clear
     local c v4 v6 prompt
     msg "${CYAN}======================================================================${NC}"
@@ -14183,12 +14481,41 @@ wallos_pull_or_restore_image() {
     if [[ -n "$tag" ]] && wallos_candidate_version_allowed "$tag"; then
         local image_tag="${tag#v}"
         # N-2: If the A-Box mirror manifest has the same tag, pull by immutable
-        # digest (not mutable tag). Digest comes from the verified mirror manifest.
-        local _mirror_digest=""
-        _mirror_digest=$(curl -fLsS --connect-timeout 8 --max-time 30 "https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt" 2>/dev/null | awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' || true)
+        # digest (not mutable tag).
+        # FINAL-AUDIT fix: download the manifest ONCE to a protected temp file,
+        # verify it against SHA256SUMS (same check as the fallback path below),
+        # then derive BOTH digest and tag from that single verified copy. The
+        # old code used two separate curl fetches with no verification, so the
+        # digest and tag could come from different manifest versions.
+        # TRUST BOUNDARY NOTE: SHA256SUMS is fetched from the same mutable
+        # Release as the manifest, so this check detects inconsistency and
+        # corruption but is NOT an independent authenticity proof. A signature
+        # trust root is still deferred (F-05).
+        local _n2_work="" _mirror_digest="" _manifest_tag=""
+        local _n2_manifest_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
+        local _n2_sum_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
+        _n2_work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-n2.XXXXXX 2>/dev/null) || true
+        if [[ -n "$_n2_work" && -d "$_n2_work" ]]; then
+            # TRAP-3: EXIT trap ensures temp dir cleanup even on abnormal exit.
+            # Expand $_n2_work now (double quotes); the local is gone when EXIT fires.
+            trap "rm -rf -- '$_n2_work' 2>/dev/null" EXIT
+            if curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_manifest_url" -o "$_n2_work/wallos-manifest.txt" 2>/dev/null &&
+               curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_sum_url" -o "$_n2_work/SHA256SUMS" 2>/dev/null; then
+                local _n2_expected _n2_actual
+                # TRAP-3: filename anchored exactly via awk -v (not unanchored grep).
+                _n2_expected=$(awk -v f="wallos-manifest.txt" '$2==f || $2==("*" f) {print $1; exit}' "$_n2_work/SHA256SUMS" 2>/dev/null || true)
+                _n2_actual=$(sha256sum "$_n2_work/wallos-manifest.txt" 2>/dev/null | awk '{print $1}' || true)
+                if [[ "$_n2_expected" =~ ^[A-Fa-f0-9]{64}$ && "${_n2_expected,,}" == "${_n2_actual,,}" ]]; then
+                    _mirror_digest=$(awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
+                    _manifest_tag=$(awk -F= '$1=="tag" {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
+                else
+                    msg "${YELLOW}[!] N-2 fast-path manifest checksum mismatch; falling back to tag pull.${NC}"
+                fi
+            fi
+            trap - EXIT
+            rm -rf -- "$_n2_work"
+        fi
         if [[ "$_mirror_digest" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]]; then
-            local _manifest_tag
-            _manifest_tag=$(curl -fLsS --connect-timeout 8 --max-time 30 "https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt" 2>/dev/null | awk -F= '$1=="tag" {print $2; exit}' || true)
             if [[ "$_manifest_tag" == "$tag" ]]; then
                 # N-2: docker pull by digest creates NO tag. Must docker tag
                 # for downstream checks (require ^bellamy/wallos:[A-Za-z0-9._-]+$).
@@ -15084,6 +15411,14 @@ PY_CLASH_REALPATH
     [[ "$out_real" == "$base_real"/* ]] || return 1
     [[ ! -L "$out" ]] || return 1
     tmp_out=$(mktemp "$base_real/.A-Box-clash-new.XXXXXX") || return 1
+    # TRAP-7: UUID list temp file with explicit status check (no process substitution).
+    local _clash_uuid_list_tmp
+    _clash_uuid_list_tmp=$(umask 077; mktemp /tmp/A-Box-clash-uuid.XXXXXX) || { rm -f -- "$tmp_out"; return 1; }
+    if ! write_full_uuid_list_to_file "$_clash_uuid_list_tmp"; then
+        rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"
+        msg "${RED}UUID list unreadable or untrusted; refusing to generate incomplete Clash config.${NC}" >&2
+        return 1
+    fi
     # F-11 fix: clean up tmp_out on every early return below.
     hy2_pass_yaml=$(json_escape "${HY2_PASS:-}") || { rm -f -- "$tmp_out"; return 1; }
     hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || { rm -f -- "$tmp_out"; return 1; }
@@ -15135,7 +15470,7 @@ EOF_CLASH
     smux:
       enabled: false
 EOF_CLASH
-            done < <(printf '%s\n' "$UUID"; list_extra_uuids)
+            done < "$_clash_uuid_list_tmp"
         fi
         if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
             while IFS= read -r client_uuid; do
@@ -15166,7 +15501,7 @@ EOF_CLASH
     smux:
       enabled: false
 EOF_CLASH
-            done < <(printf '%s\n' "$UUID"; list_extra_uuids)
+            done < "$_clash_uuid_list_tmp"
         fi
         if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
             if [[ -n "${HY2_DOMAIN:-}" && "$CORE" != 'singbox' ]]; then
@@ -15259,7 +15594,7 @@ EOF_CLASH
             [[ -n "$client_uuid" && "$client_uuid" != "$UUID" ]] || continue
             [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo "      - A-Box-VLESS-Vision-${client_uuid:0:8}"
             [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo "      - A-Box-VLESS-XHTTP-${client_uuid:0:8}"
-        done < <(list_extra_uuids)
+        done < "$_clash_uuid_list_tmp"
         [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]] && echo "      - $hy2_name"
         [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo '      - A-Box-SS'
         cat <<EOF_CLASH
@@ -15268,7 +15603,8 @@ EOF_CLASH
 rules:
   - MATCH,PROXY
 EOF_CLASH
-    } > "$tmp_out" || { rm -f -- "$tmp_out"; return 1; }
+    } > "$tmp_out" || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
+    rm -f -- "$_clash_uuid_list_tmp"
     chmod 600 "$tmp_out" || { rm -f -- "$tmp_out"; return 1; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
     mv -f -- "$tmp_out" "$out" || { rm -f -- "$tmp_out"; return 1; }
@@ -16198,26 +16534,105 @@ upgrade_hysteria_core_only() {
 # N-04: smoke-test a Hysteria binary against the current config by doing a
 # temporary start, waiting for the port, then stopping. Used when the service
 # was not active before upgrade (no restart-based validation available).
+# FINAL-AUDIT fix: the temporary start must NOT change the service's
+# enablement state. start_abox_service_soft() runs `systemctl enable` /
+# `rc-update add`, which would silently flip a deliberately disabled/stopped
+# service to enabled. Snapshot active+enabled before, start without enable,
+# and restore the original enablement afterwards; a failed restore is an
+# error, not a silent pass.
 hysteria_binary_smoke_test() {
     local cfg='/etc/hysteria/config.yaml'
+    local was_enabled_state='' ok=0 waited=0 rc=1 restore_failed=0 cur_state=''
     [[ -x /usr/local/bin/hysteria && -f "$cfg" ]] || return 1
-    start_abox_service_soft hysteria >/dev/null 2>&1 || return 1
-    local waited=0
-    while (( waited < 10 )); do
-        sleep 1; waited=$((waited + 1))
-        is_service_running hysteria 2>/dev/null && break
-    done
-    local ok=0
-    if is_service_running hysteria 2>/dev/null && core_ports_listening hysteria "$cfg" 2>/dev/null; then
-        ok=1
+    abox_owns_service hysteria || return 1
+    # Snapshot enablement state with full granularity. systemctl is-enabled
+    # can return: enabled, disabled, masked, enabled-runtime, static,
+    # indirect, generated, transient, etc. We must restore exactly.
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        was_enabled_state=$(systemctl is-enabled hysteria 2>/dev/null || printf 'unknown')
+        # A masked service cannot be started; skip rather than unmasking it.
+        if [[ "$was_enabled_state" == 'masked' ]]; then
+            msg "${YELLOW}[!] Hysteria service is masked; skipping smoke test.${NC}" >&2
+            return 1
+        fi
+        [[ "$was_enabled_state" != 'unknown' ]] || return 1
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
+        if rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])hysteria([[:space:]]|$)'; then
+            was_enabled_state='enabled'
+        else
+            was_enabled_state='disabled'
+        fi
+    else
+        return 1
     fi
+    # --- Test body: start WITHOUT changing enablement, then probe. ---
+    # (`systemctl start` / `rc-service start` never touch enablement.)
+    # Every path below falls through to the unified cleanup; there are no
+    # early returns after this point.
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        if systemctl daemon-reload >/dev/null 2>&1; then
+            if systemctl start hysteria >/dev/null 2>&1 || systemctl restart hysteria >/dev/null 2>&1; then
+                while (( waited < 10 )); do
+                    sleep 1; waited=$((waited + 1))
+                    is_service_running hysteria 2>/dev/null && break
+                done
+                if is_service_running hysteria 2>/dev/null && core_ports_listening hysteria "$cfg" 2>/dev/null; then
+                    ok=1
+                fi
+            fi
+        fi
+    else
+        if rc-service hysteria restart >/dev/null 2>&1; then
+            while (( waited < 10 )); do
+                sleep 1; waited=$((waited + 1))
+                is_service_running hysteria 2>/dev/null && break
+            done
+            if is_service_running hysteria 2>/dev/null && core_ports_listening hysteria "$cfg" 2>/dev/null; then
+                ok=1
+            fi
+        fi
+    fi
+    (( ok == 1 )) && rc=0
+    # --- Unified cleanup: ALWAYS runs (success, start failure, probe timeout).
+    # Stop the service first.
     stop_abox_service_soft hysteria >/dev/null 2>&1 || true
-    # Ensure it is really stopped before returning.
     waited=0
     while (( waited < 10 )) && is_service_running hysteria 2>/dev/null; do
         sleep 1; waited=$((waited + 1))
     done
-    (( ok == 1 ))
+    # Restore the exact original enablement state. A changed state here would
+    # mean the temporary start leaked a state change; report loudly.
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        cur_state=$(systemctl is-enabled hysteria 2>/dev/null || printf 'unknown')
+        if [[ "$cur_state" != "$was_enabled_state" ]]; then
+            case "$was_enabled_state" in
+                enabled)
+                    systemctl enable hysteria >/dev/null 2>&1 || restore_failed=1 ;;
+                enabled-runtime)
+                    systemctl enable --runtime hysteria >/dev/null 2>&1 || restore_failed=1 ;;
+                masked)
+                    systemctl mask hysteria >/dev/null 2>&1 || restore_failed=1 ;;
+                disabled)
+                    case "$cur_state" in
+                        enabled|enabled-runtime)
+                            systemctl disable hysteria >/dev/null 2>&1 || restore_failed=1 ;;
+                    esac ;;
+                # static, indirect, generated, etc.: informational states tied
+                # to the unit file; `start` cannot change them. Do not touch.
+            esac
+        fi
+    else
+        if [[ "$was_enabled_state" == 'enabled' ]]; then
+            rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])hysteria([[:space:]]|$)' || { rc-update add hysteria default >/dev/null 2>&1 || restore_failed=1; }
+        else
+            rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])hysteria([[:space:]]|$)' && { rc-update del hysteria default >/dev/null 2>&1 || restore_failed=1; } || true
+        fi
+    fi
+    if (( restore_failed == 1 )); then
+        msg "${RED}[!] Hysteria smoke test could not restore the original service enablement state; manual check required.${NC}" >&2
+        return 1
+    fi
+    return "$rc"
 }
 
 restore_core_upgrade_transaction_traps() {
@@ -16705,7 +17120,7 @@ run_self_tests() {
     # which made ML-KEM tests environment-dependent (fail on hosts with Xray installed).
     local saved_probe_skip="${ABOX_XRAY_VERSION_PROBE_SKIP:-}"
     export ABOX_XRAY_VERSION_PROBE_SKIP=1
-    local tmp failures=0 real_abox_sig='' real_abox_exists=0 selftest_prev_exit_trap selftest_prev_umask selftest_sni_seed='' selftest_script_dir='' ''
+    local tmp failures=0 real_abox_sig='' real_abox_exists=0 selftest_prev_exit_trap selftest_prev_umask selftest_sni_seed='' selftest_script_dir=''
     selftest_prev_umask=$(umask)
     umask 077
     tmp=$(mktemp -d /tmp/A-Box-selftest.XXXXXX) || { umask "$selftest_prev_umask"; exit 1; }
@@ -17138,7 +17553,10 @@ PY_SELFTEST_TAR
         'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' \
         'aaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' \
         'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz' > "$EXTRA_UUID_FILE"
-    _extra_uuid_actual=$(list_extra_uuids)
+    # TRAP-7: explicit failure check (fail-closed in self-test).
+    if ! _extra_uuid_actual=$(list_extra_uuids); then
+        echo 'FAIL: list_extra_uuids failed on a readable file'; failures=$((failures + 1))
+    fi
     _extra_uuid_expected=$'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\nbbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
     [[ "$_extra_uuid_actual" == "$_extra_uuid_expected" ]] || { echo 'FAIL: multi-UUID format validation, primary exclusion, or case-insensitive deduplication'; failures=$((failures + 1)); }
     EXTRA_UUID_FILE="$_saved_extra_uuid_file"

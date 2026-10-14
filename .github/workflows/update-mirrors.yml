@@ -160,6 +160,12 @@ jobs:
         id: test_tool_assets
         if: github.event_name == 'workflow_dispatch' && inputs.refresh_test_tool_mirror
         shell: bash
+        # FINAL-AUDIT fix: pass the workflow_dispatch input via env: so the
+        # value is never interpolated into the run: script text. Direct
+        # ${{ inputs... }} interpolation inside double quotes lets a malicious
+        # input's $(...) / backticks execute before format validation runs.
+        env:
+          KNOWN_GOOD_SHA256_INPUT: ${{ inputs.known_good_sha256 }}
         run: |
           set -Eeuo pipefail
           # SECURITY: These scripts are downloaded from mutable upstream URLs.
@@ -169,7 +175,7 @@ jobs:
           # Test-tools FIX: KNOWN_GOOD_SHA256 is now REQUIRED (was optional).
           # Mutable upstream scripts must be pinned to human-reviewed hashes
           # before publishing. Empty value aborts the build.
-          KNOWN_GOOD_SHA256="${KNOWN_GOOD_SHA256:-${{ inputs.known_good_sha256 }}}"
+          KNOWN_GOOD_SHA256="${KNOWN_GOOD_SHA256:-${KNOWN_GOOD_SHA256_INPUT:-}}"
           [[ -n "$KNOWN_GOOD_SHA256" ]] || {
             echo "::error::KNOWN_GOOD_SHA256 is required (bench.sh=<sha256> Check.Place.sh=<sha256>)"
             exit 1

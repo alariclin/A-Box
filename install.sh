@@ -2981,6 +2981,15 @@ restore_iptables_saved_snapshot() {
     command -v "$restore_cmd" >/dev/null 2>&1 || return 1
     "$restore_cmd" -w < "$snapshot" >/dev/null 2>&1 || "$restore_cmd" < "$snapshot" >/dev/null 2>&1
 }
+# BUG-28: hoisted from reorder_one()/reorder_ss_whitelist_rules_one().
+# $1 = lock fd value. Closes it; caller clears its own lock_fd variable.
+__abox_firewall_unlock() {
+    local lock_fd="$1"
+    # Guard empty lock_fd: `exec >&-` would close stdout.
+    if [[ "$lock_fd" =~ ^[0-9]+$ ]]; then
+        eval "exec ${lock_fd}>&-" 2>/dev/null || true
+    fi
+}
 reorder_one() {
     local cmd="$1" port="$2" proto="$3" wl_suffix="$4" drop_suffix="$5"
     local wl_comment="A-Box-${port}-${proto}-${wl_suffix}" drop_comment="A-Box-${port}-${proto}-${drop_suffix}"
@@ -3019,13 +3028,6 @@ reorder_one() {
     flock -n "$lock_fd" || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; return 1; }
     chown root:root "$lock_file" 2>/dev/null || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; rm -f -- "$lock_file"; return 1; }
     chmod 600 "$lock_file" 2>/dev/null || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; rm -f -- "$lock_file"; return 1; }
-    firewall_unlock() {
-        # Guard empty lock_fd: `exec >&-` would close stdout.
-        if [[ "$lock_fd" =~ ^[0-9]+$ ]]; then
-            eval "exec ${lock_fd}>&-" 2>/dev/null || true
-        fi
-        lock_fd=''
-    }
 
     normalize_managed_rule_line() {
         local line="$1"
@@ -3086,14 +3088,14 @@ reorder_one() {
         return 0
     }
 
-    recovery_snapshot=$(mktemp /run/A-Box-firewall-recovery.XXXXXX) || { firewall_unlock; return 1; }
+    recovery_snapshot=$(mktemp /run/A-Box-firewall-recovery.XXXXXX) || { __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     if ! "$save_cmd" -t filter > "$recovery_snapshot" 2>/dev/null; then
         rm -f -- "$recovery_snapshot"
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
-    original_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; firewall_unlock; return 1; }
-    capture_firewall_views || { rm -f -- "$recovery_snapshot"; firewall_unlock; return 1; }
+    original_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    capture_firewall_views || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     original_target_lines=("${current_target_lines[@]}")
     original_foreign_rules=("${current_foreign_lines[@]}")
     expected_target_lines=("${original_target_lines[@]}")
@@ -3114,7 +3116,7 @@ reorder_one() {
         local expected_line="${rules[i]}"
         line=${rules[i]//\"/}
         read -r -a argv <<< "$line"
-        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { firewall_rollback >/dev/null 2>&1 || printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; firewall_unlock; return 1; }
+        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { firewall_rollback >/dev/null 2>&1 || printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         firewall_state_matches_expected || {
             if (( mutated )); then
                 if ! firewall_rollback; then
@@ -3123,27 +3125,27 @@ reorder_one() {
             else
                 rm -f -- "$recovery_snapshot" || true
             fi
-            firewall_unlock
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         }
         if ! "$cmd" -w -I INPUT 1 "${argv[@]:2}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-            firewall_unlock
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         fi
         mutated=1
         expected_target_lines=("$expected_line" "${expected_target_lines[@]}")
     done
     local expected_drop_line="-A INPUT -p ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
-    firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+    firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     if ! "$cmd" -w -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     expected_target_lines=("${expected_target_lines[@]:0:n}" "$expected_drop_line" "${expected_target_lines[@]:n}")
 
-    rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+    rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     current_lines=(); mapfile -t current_lines <<< "$rules_output"
     delete_lines=(); delete_target_indices=(); target_idx=0; rule_no=0
     for i in "${!current_lines[@]}"; do
@@ -3160,13 +3162,13 @@ reorder_one() {
         fi
     done
     for ((j=${#delete_lines[@]}-1; j>=0; j--)); do
-        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         line=${delete_lines[j]//\"/}
         read -r -a argv <<< "$line"
-        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         if ! "$cmd" -w -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-            firewall_unlock
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         fi
         del_idx="${delete_target_indices[j]}"
@@ -3174,16 +3176,16 @@ reorder_one() {
     done
     if ! firewall_state_matches_expected; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     if ! rm -f -- "$recovery_snapshot"; then
         printf '%s\n' "A-Box firewall change completed, but recovery snapshot cleanup failed; snapshot retained at $recovery_snapshot" >&2
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     recovery_snapshot=''
-    firewall_unlock
+    __abox_firewall_unlock "$lock_fd"; lock_fd=''
     return 0
 }
 
@@ -4073,13 +4075,6 @@ reorder_ss_whitelist_rules_one() {
     flock -n "$lock_fd" || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; return 1; }
     chown root:root "$lock_file" 2>/dev/null || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; rm -f -- "$lock_file"; return 1; }
     chmod 600 "$lock_file" 2>/dev/null || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; rm -f -- "$lock_file"; return 1; }
-    firewall_unlock() {
-        # Guard empty lock_fd: `exec >&-` would close stdout.
-        if [[ "$lock_fd" =~ ^[0-9]+$ ]]; then
-            eval "exec ${lock_fd}>&-" 2>/dev/null || true
-        fi
-        lock_fd=''
-    }
 
     capture_firewall_views() {
         local item normalized
@@ -4134,14 +4129,14 @@ reorder_ss_whitelist_rules_one() {
         return 0
     }
 
-    recovery_snapshot=$(mktemp /run/A-Box-firewall-recovery.XXXXXX) || { firewall_unlock; return 1; }
+    recovery_snapshot=$(mktemp /run/A-Box-firewall-recovery.XXXXXX) || { __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     if ! "$save_cmd" -t filter > "$recovery_snapshot" 2>/dev/null; then
         rm -f -- "$recovery_snapshot"
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
-    original_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; firewall_unlock; return 1; }
-    capture_firewall_views || { rm -f -- "$recovery_snapshot"; firewall_unlock; return 1; }
+    original_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    capture_firewall_views || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     original_target_lines=("${current_target_lines[@]}")
     original_foreign_rules=("${current_foreign_lines[@]}")
     expected_target_lines=("${original_target_lines[@]}")
@@ -4162,7 +4157,7 @@ reorder_ss_whitelist_rules_one() {
         local expected_line="${rules[i]}"
         line=${rules[i]//\"/}
         read -r -a argv <<< "$line"
-        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { firewall_rollback >/dev/null 2>&1 || printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; firewall_unlock; return 1; }
+        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { firewall_rollback >/dev/null 2>&1 || printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         firewall_state_matches_expected || {
             if (( mutated )); then
                 if ! firewall_rollback; then
@@ -4171,27 +4166,27 @@ reorder_ss_whitelist_rules_one() {
             else
                 rm -f -- "$recovery_snapshot" || true
             fi
-            firewall_unlock
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         }
         if ! "$cmd" -w -I INPUT 1 "${argv[@]:2}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-            firewall_unlock
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         fi
         mutated=1
         expected_target_lines=("$expected_line" "${expected_target_lines[@]}")
     done
     local expected_drop_line="-A INPUT -p ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
-    firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+    firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     if ! "$cmd" -w -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     expected_target_lines=("${expected_target_lines[@]:0:n}" "$expected_drop_line" "${expected_target_lines[@]:n}")
 
-    rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+    rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     current_lines=(); mapfile -t current_lines <<< "$rules_output"
     delete_lines=(); delete_target_indices=(); target_idx=0; rule_no=0
     for i in "${!current_lines[@]}"; do
@@ -4208,13 +4203,13 @@ reorder_ss_whitelist_rules_one() {
         fi
     done
     for ((j=${#delete_lines[@]}-1; j>=0; j--)); do
-        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         line=${delete_lines[j]//\"/}
         read -r -a argv <<< "$line"
-        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; firewall_unlock; return 1; }
+        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         if ! "$cmd" -w -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-            firewall_unlock
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         fi
         del_idx="${delete_target_indices[j]}"
@@ -4222,16 +4217,16 @@ reorder_ss_whitelist_rules_one() {
     done
     if ! firewall_state_matches_expected; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     if ! rm -f -- "$recovery_snapshot"; then
         printf '%s\n' "A-Box firewall change completed, but recovery snapshot cleanup failed; snapshot retained at $recovery_snapshot" >&2
-        firewall_unlock
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     recovery_snapshot=''
-    firewall_unlock
+    __abox_firewall_unlock "$lock_fd"; lock_fd=''
     return 0
 }
 
@@ -13755,6 +13750,23 @@ restore_core_family_from_backup() {
 
 
 
+# BUG-28: hoisted from backup_current_config(). $1=src $2=root (staging dir).
+# Returns 0 on success/skip, 1 on failure (caller sets backup_failed=1).
+__abox_backup_copy_path() {
+    local src="$1" root="$2" dst links
+    [[ -e "$src" ]] || return 0
+    [[ ! -L "$src" ]] || return 1
+    # A managed path may acquire a nested mount after ownership was recorded.
+    # Never let cp -a traverse into an external filesystem/bind mount during backup.
+    path_tree_has_mountpoint "$src" && return 1
+    if [[ -d "$src" ]]; then
+        links=$(find "$src" -type l -print 2>/dev/null) || return 1
+        [[ -z "$links" ]] || return 1
+    fi
+    dst="$root$src"
+    mkdir -p "$(dirname "$dst")" || return 1
+    cp -a -- "$src" "$dst"
+}
 backup_current_config() {
     local ts unique backup_dir work root tarball backup_failed=0 backend srv path _abox_links _old_backups
     valid_backup_retention_count "$BACKUP_RETENTION_COUNT" || die 'BACKUP_RETENTION_COUNT 无效；必须是 0-1000 的整数。'
@@ -13779,21 +13791,6 @@ backup_current_config() {
     done
     printf '%s\n' "$managed_paths" | awk 'NF && !seen[$0]++' > "$work/meta/managed-paths.txt" || { rm -rf "$work"; die 'Managed path list write failed.'; }
     msg "${YELLOW}[*] Creating A-Box configuration backup...${NC}"
-    backup_copy_path() {
-        local src="$1" dst links
-        [[ -e "$src" ]] || return 0
-        [[ ! -L "$src" ]] || { backup_failed=1; return 1; }
-        # A managed path may acquire a nested mount after ownership was recorded.
-        # Never let cp -a traverse into an external filesystem/bind mount during backup.
-        path_tree_has_mountpoint "$src" && { backup_failed=1; return 1; }
-        if [[ -d "$src" ]]; then
-            links=$(find "$src" -type l -print 2>/dev/null) || { backup_failed=1; return 1; }
-            [[ -z "$links" ]] || { backup_failed=1; return 1; }
-        fi
-        dst="$root$src"
-        mkdir -p "$(dirname "$dst")" || { backup_failed=1; return 1; }
-        cp -a -- "$src" "$dst" || backup_failed=1
-    }
     if [[ -d "$ABOX_DIR" ]]; then
         # The A-Box data directory itself can live on a separate filesystem, but
         # a nested mount must never be traversed by tar during backup. This also
@@ -13814,13 +13811,13 @@ backup_current_config() {
                 -cpf - . | tar -C "$root$ABOX_DIR" -xpf -) || backup_failed=1
         fi
     fi
-    shortcut_is_abox_managed /usr/local/bin/sb && backup_copy_path /usr/local/bin/sb
+    shortcut_is_abox_managed /usr/local/bin/sb && { __abox_backup_copy_path /usr/local/bin/sb "$root" || backup_failed=1; }
     for srv in xray sing-box hysteria; do
         if abox_owns_service "$srv"; then
             core_paths=$(core_family_paths "$srv") || { rm -rf "$work"; die "Core path enumeration failed during backup: $srv"; }
             while IFS= read -r path; do
                 [[ -n "$path" ]] || continue
-                backup_copy_path "$path"
+                __abox_backup_copy_path "$path" "$root" || backup_failed=1
             done <<< "$core_paths"
         fi
     done
@@ -13828,7 +13825,7 @@ backup_current_config() {
     aux_paths=$(managed_auxiliary_paths) || { rm -rf "$work"; die 'Managed auxiliary path enumeration failed during backup.'; }
     while IFS= read -r path; do
         [[ "$path" == /usr/local/bin/sb ]] && continue
-        auxiliary_path_is_abox_managed "$path" && backup_copy_path "$path"
+        auxiliary_path_is_abox_managed "$path" && { __abox_backup_copy_path "$path" "$root" || backup_failed=1; }
     done <<< "$aux_paths"
     { echo 'A-Box backup'; echo "Created: $(now_iso)"; echo "Host: $(hostname 2>/dev/null || true)"; echo "Kernel: $(uname -a 2>/dev/null || true)"; echo "Init: ${INIT_SYS:-unknown}"; echo "Script SHA256: $(sha256sum "$0" 2>/dev/null | awk '{print $1}')"; } > "$work/meta/metadata.txt"
     collect_abox_cron > "$work/meta/cron.abox.txt" 2>/dev/null || backup_failed=1
@@ -18533,7 +18530,7 @@ PY_SELFTEST_YAML
     grep -Fq 'persisted traffic state is unreadable or invalid' <<< "$traffic_body" || { echo 'FAIL: traffic monitor invalid persisted state must fail closed'; failures=$((failures + 1)); }
     grep -q '^reorder_ss_whitelist_rules_one() {' <<< "$source_body" || { echo 'FAIL: firewall reorder transaction missing'; failures=$((failures + 1)); }
     grep -Fq 'exec {lock_fd}>>"$lock_file"' <<< "$source_body" || { echo 'FAIL: firewall reorder transaction lock missing'; failures=$((failures + 1)); }
-    grep -Fq '[[ "$lock_fd" =~ ^[0-9]+$ ]]' <<< "$source_body" || { echo 'FAIL: firewall_unlock must guard empty lock_fd'; failures=$((failures + 1)); }
+    grep -Fq '[[ "$lock_fd" =~ ^[0-9]+$ ]]' <<< "$source_body" || { echo 'FAIL: __abox_firewall_unlock "$lock_fd"; lock_fd='' must guard empty lock_fd'; failures=$((failures + 1)); }
     grep -Fq 'flock -s -n 8' <<< "$source_body" || { echo 'FAIL: status/preflight must use shared non-blocking flock'; failures=$((failures + 1)); }
     grep -Fq 'umask 077; mktemp /tmp/A-Box-remote.XXXXXX.sh' <<< "$source_body" || { echo 'FAIL: remote script temp must use umask 077'; failures=$((failures + 1)); }
     grep -Fq 'unset ABOX_DIE_HOOK' <<< "$source_body" || { echo 'FAIL: enter_runtime must ignore ambient ABOX_DIE_HOOK'; failures=$((failures + 1)); }

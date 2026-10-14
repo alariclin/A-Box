@@ -94,6 +94,41 @@ ABOX_HYSTERIA_UPDATE_POLICY="${ABOX_HYSTERIA_UPDATE_POLICY:-auto-stable}"
 # stable release. Cooling is necessary but not sufficient: a cooled release
 # still goes through binary verification, config check, and health gate.
 ABOX_STABLE_COOLDOWN_DAYS="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
+# ============ F-05: Ed25519 detached-signature trust root ============
+# Mirror metadata (CORE-VERSIONS, SHA256SUMS, wallos-manifest.txt) is
+# published as detached-signed files (<name>.sig, base64 of raw 64-byte
+# Ed25519 signature). Verification uses ONLY openssl + python3 (both are
+# already in ensure_commands); no GPG/minisign/signify dependency.
+#
+# PUBLIC KEYS ARE HARDCODED HERE — never fetched from the Release being
+# verified (that would let an attacker replace metadata + sig + key together).
+# Format per entry: "label:base64(raw 32-byte Ed25519 pubkey)".
+# Dual-key window: keep primary + next/backup during rotation.
+#   1. New install.sh adds the new pubkey to this array.
+#   2. CI switches to signing with the new private key.
+#   3. A later release removes the old pubkey.
+ABOX_SIGNING_PUBKEYS=(
+    # TEST-ONLY placeholder. The maintainer MUST replace this with the real
+    # production public key before setting ABOX_SIGNING_ENFORCE=1.
+    # (Throwaway test key; NOT trusted for production.)
+    'test-only:JQy/k33N/BisN+NXn0LaeCXqXm7a6q856U3mk6fwroo='
+)
+# SHA256 fingerprints (lowercase hex) of REVOKED public keys.
+# A key listed here is skipped during verification even if present above.
+# Emergency revocation: add the compromised key's fingerprint here, bump
+# ABOX_BUILD_EPOCH, and have CI re-sign all Release metadata with the backup key.
+ABOX_REVOKED_PUBKEY_FPS=(
+)
+# Minimum trusted metadata timestamp (UTC, YYYYMMDDHHMMSS). Metadata carrying
+# an older updated_at_utc/retrieved_at_utc is rejected (anti-replay /
+# anti-downgrade). Bump when rotating keys or after a revocation event.
+ABOX_SIGNING_MIN_TIMESTAMP_UTC='20261015000000'
+# Enforcement: 0 = verify-if-sig-present, warn-only on failure (default until
+# the real production pubkey is installed); 1 = STRICT fail-closed —
+# missing/invalid signature rejects the asset source (falls back to next
+# trusted source, dies if none remain). NEVER warn-and-continue when 1.
+ABOX_SIGNING_ENFORCE="${ABOX_SIGNING_ENFORCE:-0}"
+# ========== end F-05 ==========
 ABOX_RESOLVED_XRAY_VERSION=''
 ABOX_RESOLVED_SINGBOX_VERSION=''
 ABOX_RESOLVED_HYSTERIA_VERSION=''
@@ -4864,6 +4899,101 @@ verify_github_asset_digest() {
     [[ "${actual,,}" == "${expected,,}" ]] || { printf '%s\n' 'GitHub Release digest 校验失败。' >&2; return 1; }
 }
 
+# ============ F-05: Ed25519 detached signature verification ============
+# Uses ONLY openssl + python3 (both guaranteed by ensure_commands).
+# .sig files are base64 text of the raw 64-byte Ed25519 signature.
+# Returns 0 iff ANY non-revoked pubkey in ABOX_SIGNING_PUBKEYS verifies.
+verify_ed25519_detached() {
+    local file="$1" sigfile="$2"
+    local entry label pubkey_b64 fp keydir keypem sigbin r revoked
+    [[ -f "$file" && -f "$sigfile" ]] || return 1
+    command -v openssl >/dev/null 2>&1 || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
+    command -v base64 >/dev/null 2>&1 || return 1
+    keydir=$(umask 077; mktemp -d /tmp/A-Box-ed25519.XXXXXX 2>/dev/null) || return 1
+    keypem="$keydir/pub.pem"
+    sigbin="$keydir/sig.bin"
+    # Signature must decode to exactly 64 raw bytes (Ed25519).
+    if ! base64 -d "$sigfile" > "$sigbin" 2>/dev/null || [[ $(wc -c < "$sigbin") -ne 64 ]]; then
+        rm -rf -- "$keydir"
+        return 1
+    fi
+    for entry in "${ABOX_SIGNING_PUBKEYS[@]}"; do
+        label="${entry%%:*}"
+        pubkey_b64="${entry#*:}"
+        # Malformed entry (no colon) or empty key: skip.
+        [[ -n "$label" && -n "$pubkey_b64" && "$pubkey_b64" != "$entry" ]] || continue
+        # Skip revoked keys: fingerprint = sha256 hex of raw pubkey bytes.
+        fp=$(printf '%s' "$pubkey_b64" | base64 -d 2>/dev/null | sha256sum 2>/dev/null | awk '{print $1}')
+        revoked=0
+        if [[ -n "$fp" ]]; then
+            for r in "${ABOX_REVOKED_PUBKEY_FPS[@]}"; do
+                if [[ "${r,,}" == "${fp,,}" ]]; then revoked=1; break; fi
+            done
+        fi
+        (( revoked == 0 )) || continue
+        # Convert base64 raw 32-byte pubkey -> PEM (SubjectPublicKeyInfo).
+        if ! python3 - "$pubkey_b64" "$keypem" <<'PY_ED25519_PEM' 2>/dev/null; then
+            continue
+        fi
+import base64, sys
+try:
+    raw = base64.b64decode(sys.argv[1], validate=True)
+except Exception:
+    sys.exit(1)
+if len(raw) != 32:
+    sys.exit(1)
+der = bytes.fromhex('302a300506032b6570032100') + raw
+pem = '-----BEGIN PUBLIC KEY-----\n' + base64.encodebytes(der).decode().strip() + '\n-----END PUBLIC KEY-----\n'
+open(sys.argv[2], 'w').write(pem)
+PY_ED25519_PEM
+            continue
+        fi
+        if openssl pkeyutl -verify -pubin -inkey "$keypem" -rawin -in "$file" -sigfile "$sigbin" >/dev/null 2>&1; then
+            rm -rf -- "$keydir"
+            return 0
+        fi
+    done
+    rm -rf -- "$keydir"
+    return 1
+}
+
+# F-05 anti-replay: metadata timestamp (ISO UTC, e.g. 2026-10-15T02:30:00Z
+# or already-compact YYYYMMDDHHMMSS) must not be older than
+# ABOX_SIGNING_MIN_TIMESTAMP_UTC. Returns 0 iff acceptable.
+abox_signing_timestamp_ok() {
+    local ts compact min_ts
+    ts="${1:-}"
+    # Normalize: strip everything except digits.
+    compact=$(printf '%s' "$ts" | tr -cd '0-9')
+    [[ "$compact" =~ ^[0-9]{14}$ ]] || return 1
+    min_ts="${ABOX_SIGNING_MIN_TIMESTAMP_UTC:-0}"
+    [[ "$compact" > "$min_ts" || "$compact" == "$min_ts" ]] || return 1
+    return 0
+}
+
+# F-05 enforcement gate for a downloaded metadata file + its .sig.
+#   $1 = metadata file path, $2 = .sig file path, $3 = description
+# Returns 0 if signature verifies, or if enforcement is off (warns).
+# Returns 1 (fail-closed) iff ABOX_SIGNING_ENFORCE=1 and sig missing/invalid.
+abox_verify_sig_gate() {
+    local file="$1" sigfile="$2" desc="${3:-metadata}"
+    if [[ -f "$sigfile" ]]; then
+        if verify_ed25519_detached "$file" "$sigfile"; then
+            return 0
+        fi
+        printf '[A-Box][F-05] WARNING: invalid Ed25519 signature for %s\n' "$desc" >&2
+    else
+        printf '[A-Box][F-05] WARNING: missing signature for %s (%s not found)\n' "$desc" "$sigfile" >&2
+    fi
+    if [[ "${ABOX_SIGNING_ENFORCE:-0}" == '1' ]]; then
+        printf '[A-Box][F-05] FATAL: signature enforcement is ON; rejecting %s\n' "$desc" >&2
+        return 1
+    fi
+    return 0
+}
+# ========== end F-05 verification ==========
+
 valid_github_download_url() {
     local repo="$1" url="$2" expected_ref="${3:-}" expected_asset="${4:-}"
     local repo_lower="${repo,,}" url_lower="${url,,}"
@@ -5126,6 +5256,21 @@ core_latest_mirror_release_ref() {
     esac
     workdir=$(mktemp -d /tmp/A-Box-core-mirror-meta.XXXXXX) || return 1
     if ! curl -fLsS --connect-timeout 5 -m 15 "${base%/}/CORE-VERSIONS" -o "$workdir/CORE-VERSIONS" || ! curl -fLsS --connect-timeout 5 -m 15 "${base%/}/SHA256SUMS" -o "$workdir/SHA256SUMS"; then
+        rm -rf -- "$workdir"; return 1
+    fi
+    # F-05: fetch detached signatures (best-effort); gate enforces when on.
+    curl -fLsS --connect-timeout 5 -m 15 "${base%/}/CORE-VERSIONS.sig" -o "$workdir/CORE-VERSIONS.sig" 2>/dev/null || true
+    curl -fLsS --connect-timeout 5 -m 15 "${base%/}/SHA256SUMS.sig" -o "$workdir/SHA256SUMS.sig" 2>/dev/null || true
+    if ! abox_verify_sig_gate "$workdir/CORE-VERSIONS" "$workdir/CORE-VERSIONS.sig" "core mirror CORE-VERSIONS"; then
+        rm -rf -- "$workdir"; return 1
+    fi
+    if ! abox_verify_sig_gate "$workdir/SHA256SUMS" "$workdir/SHA256SUMS.sig" "core mirror SHA256SUMS"; then
+        rm -rf -- "$workdir"; return 1
+    fi
+    # F-05 anti-replay: CORE-VERSIONS timestamp must not predate trust floor.
+    _f05_ts=$(awk -F= '$1=="updated_at_utc" {print $2; exit}' "$workdir/CORE-VERSIONS" 2>/dev/null || true)
+    if [[ -n "$_f05_ts" ]] && ! abox_signing_timestamp_ok "$_f05_ts"; then
+        printf '[A-Box][F-05] FATAL: CORE-VERSIONS timestamp %s is older than trust floor %s\n' "$_f05_ts" "$ABOX_SIGNING_MIN_TIMESTAMP_UTC" >&2
         rm -rf -- "$workdir"; return 1
     fi
     expected=$(awk '$2 == "CORE-VERSIONS" {print $1; exit}' "$workdir/SHA256SUMS")
@@ -17959,6 +18104,51 @@ PY_SELFTEST_TAR
         echo 'FAIL: Wallos backup should not start a container that was originally stopped'; failures=$((failures + 1))
     fi
     assert_bad wallos_resume_after_backup invalid ''
+    # N-11: versioned history — SHA256SUMS append/sort/prune logic.
+    {
+        local n11_tmp n11_versions
+        n11_tmp=$(umask 077; mktemp -d) || exit 40
+        # Simulate a cumulative SHA256SUMS with 4 versions (unsorted).
+        cat > "$n11_tmp/SHA256SUMS" <<'N11EOF'
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  wallos-linux-amd64-v2.5.3.tar.gz
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  wallos-linux-amd64-v2.5.1.tar.gz
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  wallos-linux-amd64-v2.5.2.tar.gz
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd  wallos-linux-amd64-v2.5.0.tar.gz
+N11EOF
+        # Parse versions (same pattern as workflow).
+        mapfile -t n11_versions < <(awk '{print $2}' "$n11_tmp/SHA256SUMS" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -uV)
+        [[ "${#n11_versions[@]}" == 4 ]] || { echo 'FAIL: N-11 version parse count'; failures=$((failures + 1)); }
+        [[ "${n11_versions[3]}" == 'v2.5.3' ]] || { echo 'FAIL: N-11 version sort order'; failures=$((failures + 1)); }
+        # Prune to newest 3 (same logic as workflow).
+        if ((${#n11_versions[@]} > 3)); then
+            local _pv
+            for _pv in "${n11_versions[@]:0:$((${#n11_versions[@]} - 3))}"; do
+                grep -vF -- "$_pv" "$n11_tmp/SHA256SUMS" > "$n11_tmp/SHA256SUMS.tmp" || true
+                mv -f "$n11_tmp/SHA256SUMS.tmp" "$n11_tmp/SHA256SUMS"
+            done
+        fi
+        # v2.5.0 must be gone, others retained.
+        grep -q 'v2.5.0' "$n11_tmp/SHA256SUMS" && { echo 'FAIL: N-11 prune did not remove oldest'; failures=$((failures + 1)); }
+        grep -q 'v2.5.1' "$n11_tmp/SHA256SUMS" || { echo 'FAIL: N-11 prune removed wrong version'; failures=$((failures + 1)); }
+        # Sort stability: sort -k2,2 keeps filename order.
+        sort -k2,2 -u "$n11_tmp/SHA256SUMS" -o "$n11_tmp/SHA256SUMS"
+        [[ "$(head -n 1 "$n11_tmp/SHA256SUMS" | awk '{print $2}')" == 'wallos-linux-amd64-v2.5.1.tar.gz' ]] || {
+            echo 'FAIL: N-11 SHA256SUMS sort order'; failures=$((failures + 1)); }
+        rm -rf -- "$n11_tmp"
+        # N-11: N-1 auto-select = second line of newest-first version list.
+        local _n1
+        _n1=$(printf 'v2.5.3\nv2.5.2\nv2.5.1\n' | sed -n '2p')
+        [[ "$_n1" == 'v2.5.2' ]] || { echo 'FAIL: N-11 N-1 auto-select'; failures=$((failures + 1)); }
+        # N-11: rollback rejects invalid versions.
+        assert_bad wallos_rollback_to_version 'not-a-version'
+        assert_bad wallos_rollback_to_version 'v2.5'
+        # N-11: required functions exist.
+        declare -F wallos_mirror_version_list >/dev/null || { echo 'FAIL: N-11 wallos_mirror_version_list missing'; failures=$((failures + 1)); }
+        declare -F wallos_prune_local_images >/dev/null || { echo 'FAIL: N-11 wallos_prune_local_images missing'; failures=$((failures + 1)); }
+        declare -F wallos_rollback_to_version >/dev/null || { echo 'FAIL: N-11 wallos_rollback_to_version missing'; failures=$((failures + 1)); }
+        declare -F _wallos_pull_versioned_image >/dev/null || { echo 'FAIL: N-11 _wallos_pull_versioned_image missing'; failures=$((failures + 1)); }
+        declare -F _wallos_manual_rollback >/dev/null || { echo 'FAIL: N-11 _wallos_manual_rollback missing'; failures=$((failures + 1)); }
+    }
     [[ "$(xray_version_compare v9223372036854775808.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray huge-version comparison overflow regression'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v18446744073709551616.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray extra-large version comparison regression'; failures=$((failures + 1)); }
     grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" "$0" || { echo 'FAIL: Xray REALITY ML-KEM threshold constant missing'; failures=$((failures + 1)); }

@@ -5559,6 +5559,32 @@ read_traffic_pair_fields() {
     printf '%s\n%s\n' "$desired" "$period"
 }
 
+# BUG-28: hoisted from commit_traffic_pair_state().
+# Restores traffic state files from backups. Args are triplets:
+# $1/$2/$3=pair_existed/pair_backup/pair_target, $4/$5/$6=desired_*, $7/$8/$9=block_*.
+__abox_traffic_state_rollback() {
+    local pair_existed="$1" pair_backup="$2" pair_target="$3"
+    local desired_existed="$4" desired_backup="$5" desired_target="$6"
+    local block_existed="$7" block_backup="$8" block_target="$9"
+    local restore_failed=0
+    if (( pair_existed == 1 )); then
+        cp -p -- "$pair_backup" "$pair_target" 2>/dev/null || restore_failed=1
+    else
+        rm -f -- "$pair_target" 2>/dev/null || restore_failed=1
+    fi
+    if (( desired_existed == 1 )); then
+        cp -p -- "$desired_backup" "$desired_target" 2>/dev/null || restore_failed=1
+    else
+        rm -f -- "$desired_target" 2>/dev/null || restore_failed=1
+    fi
+    if (( block_existed == 1 )); then
+        cp -p -- "$block_backup" "$block_target" 2>/dev/null || restore_failed=1
+    else
+        rm -f -- "$block_target" 2>/dev/null || restore_failed=1
+    fi
+    rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
+    return "$restore_failed"
+}
 commit_traffic_pair_state() {
     local desired="$1" period="${2:-}"
     local pair_backup="" desired_backup="" block_backup=""
@@ -5583,47 +5609,26 @@ commit_traffic_pair_state() {
         cp -p -- "$ABOX_TRAFFIC_BLOCK_STATE" "$block_backup" || { rm -f -- "$pair_backup" "$desired_backup" "$block_backup"; return 1; }
     fi
     # Rollback helper: restore all three files to snapshot state. Reports failure.
-    _traffic_state_rollback() {
-        restore_failed=0
-        if (( pair_existed == 1 )); then
-            cp -p -- "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || restore_failed=1
-        else
-            rm -f -- "$ABOX_TRAFFIC_PAIR_STATE" 2>/dev/null || restore_failed=1
-        fi
-        if (( desired_existed == 1 )); then
-            cp -p -- "$desired_backup" "$ABOX_DESIRED_STATE" 2>/dev/null || restore_failed=1
-        else
-            rm -f -- "$ABOX_DESIRED_STATE" 2>/dev/null || restore_failed=1
-        fi
-        if (( block_existed == 1 )); then
-            cp -p -- "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE" 2>/dev/null || restore_failed=1
-        else
-            rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" 2>/dev/null || restore_failed=1
-        fi
-        rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
-        return "$restore_failed"
-    }
     # 1) Atomic pair publish (sole authority for modern readers).
-    write_file_atomically_from_stdin "$ABOX_TRAFFIC_PAIR_STATE" 600 <<< "${desired}|${period}" || { _traffic_state_rollback; return 1; }
+    write_file_atomically_from_stdin "$ABOX_TRAFFIC_PAIR_STATE" 600 <<< "${desired}|${period}" || { __abox_traffic_state_rollback "$pair_existed" "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" "$desired_existed" "$desired_backup" "$ABOX_DESIRED_STATE" "$block_existed" "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE"; return 1; }
     # 2) Derive legacy files only after pair is durable.
     if ! write_file_atomically_from_stdin "$ABOX_DESIRED_STATE" 600 <<< "$desired"; then
-        _traffic_state_rollback || msg "${RED}[!] Traffic state rollback incomplete; manual check required.${NC}" >&2
+        __abox_traffic_state_rollback "$pair_existed" "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" "$desired_existed" "$desired_backup" "$ABOX_DESIRED_STATE" "$block_existed" "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE" || msg "${RED}[!] Traffic state rollback incomplete; manual check required.${NC}" >&2
         return 1
     fi
     if [[ -n "$period" ]]; then
         if ! write_file_atomically_from_stdin "$ABOX_TRAFFIC_BLOCK_STATE" 600 <<< "$period"; then
-            _traffic_state_rollback || msg "${RED}[!] Traffic state rollback incomplete; manual check required.${NC}" >&2
+            __abox_traffic_state_rollback "$pair_existed" "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" "$desired_existed" "$desired_backup" "$ABOX_DESIRED_STATE" "$block_existed" "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE" || msg "${RED}[!] Traffic state rollback incomplete; manual check required.${NC}" >&2
             return 1
         fi
     else
         if [[ -e "$ABOX_TRAFFIC_BLOCK_STATE" || -L "$ABOX_TRAFFIC_BLOCK_STATE" ]]; then
-            path_tree_has_mountpoint "$ABOX_TRAFFIC_BLOCK_STATE" && { _traffic_state_rollback >/dev/null 2>&1; return 1; }
-            rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" || { _traffic_state_rollback >/dev/null 2>&1; return 1; }
-            [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]] || { _traffic_state_rollback >/dev/null 2>&1; return 1; }
+            path_tree_has_mountpoint "$ABOX_TRAFFIC_BLOCK_STATE" && { __abox_traffic_state_rollback "$pair_existed" "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" "$desired_existed" "$desired_backup" "$ABOX_DESIRED_STATE" "$block_existed" "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE" >/dev/null 2>&1; return 1; }
+            rm -f -- "$ABOX_TRAFFIC_BLOCK_STATE" || { __abox_traffic_state_rollback "$pair_existed" "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" "$desired_existed" "$desired_backup" "$ABOX_DESIRED_STATE" "$block_existed" "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE" >/dev/null 2>&1; return 1; }
+            [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]] || { __abox_traffic_state_rollback "$pair_existed" "$pair_backup" "$ABOX_TRAFFIC_PAIR_STATE" "$desired_existed" "$desired_backup" "$ABOX_DESIRED_STATE" "$block_existed" "$block_backup" "$ABOX_TRAFFIC_BLOCK_STATE" >/dev/null 2>&1; return 1; }
         fi
     fi
     rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
-    unset -f _traffic_state_rollback
 }
 
 get_desired_state() {
@@ -8040,6 +8045,31 @@ read_traffic_pair_fields() {
 }
 # Atomic desired+period publish: write PAIR first, then derive legacy files.
 # Self-contained: does NOT delegate to commit_traffic_pair_state (not in generated script).
+# BUG-28: hoisted from commit_traffic_pair().
+# Same triplet convention as __abox_traffic_state_rollback.
+__abox_tm_state_rollback() {
+    local pair_existed="$1" pair_backup="$2" pair_target="$3"
+    local desired_existed="$4" desired_backup="$5" desired_target="$6"
+    local block_existed="$7" block_backup="$8" block_target="$9"
+    local restore_failed=0
+    if (( pair_existed == 1 )); then
+        cp -p -- "$pair_backup" "$pair_target" 2>/dev/null || restore_failed=1
+    else
+        rm -f -- "$pair_target" 2>/dev/null || restore_failed=1
+    fi
+    if (( desired_existed == 1 )); then
+        cp -p -- "$desired_backup" "$desired_target" 2>/dev/null || restore_failed=1
+    else
+        rm -f -- "$desired_target" 2>/dev/null || restore_failed=1
+    fi
+    if (( block_existed == 1 )); then
+        cp -p -- "$block_backup" "$block_target" 2>/dev/null || restore_failed=1
+    else
+        rm -f -- "$block_target" 2>/dev/null || restore_failed=1
+    fi
+    rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
+    return "$restore_failed"
+}
 commit_traffic_pair() {
     local desired="$1" period="${2:-}"
     local pair_backup="" desired_backup="" block_backup=""
@@ -8060,25 +8090,16 @@ commit_traffic_pair() {
         block_existed=1; block_backup=$(umask 077; mktemp) || { rm -f -- "$pair_backup" "$desired_backup"; return 1; }
         cp -p -- "$BLOCK_STATE" "$block_backup" || { rm -f -- "$pair_backup" "$desired_backup" "$block_backup"; return 1; }
     fi
-    _tm_state_rollback() {
-        restore_failed=0
-        if (( pair_existed == 1 )); then cp -p -- "$pair_backup" "$PAIR_STATE" 2>/dev/null || restore_failed=1; else rm -f -- "$PAIR_STATE" 2>/dev/null || restore_failed=1; fi
-        if (( desired_existed == 1 )); then cp -p -- "$desired_backup" "$DESIRED" 2>/dev/null || restore_failed=1; else rm -f -- "$DESIRED" 2>/dev/null || restore_failed=1; fi
-        if (( block_existed == 1 )); then cp -p -- "$block_backup" "$BLOCK_STATE" 2>/dev/null || restore_failed=1; else rm -f -- "$BLOCK_STATE" 2>/dev/null || restore_failed=1; fi
-        rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
-        return "$restore_failed"
-    }
-    write_private_line "$PAIR_STATE" "${desired}|${period}" || { _tm_state_rollback; return 1; }
-    write_private_line "$DESIRED" "$desired" || { _tm_state_rollback; return 1; }
+    write_private_line "$PAIR_STATE" "${desired}|${period}" || { __abox_tm_state_rollback "$pair_existed" "$pair_backup" "$PAIR_STATE" "$desired_existed" "$desired_backup" "$DESIRED" "$block_existed" "$block_backup" "$BLOCK_STATE"; return 1; }
+    write_private_line "$DESIRED" "$desired" || { __abox_tm_state_rollback "$pair_existed" "$pair_backup" "$PAIR_STATE" "$desired_existed" "$desired_backup" "$DESIRED" "$block_existed" "$block_backup" "$BLOCK_STATE"; return 1; }
     if [[ -n "$period" ]]; then
-        write_private_line "$BLOCK_STATE" "$period" || { _tm_state_rollback; return 1; }
+        write_private_line "$BLOCK_STATE" "$period" || { __abox_tm_state_rollback "$pair_existed" "$pair_backup" "$PAIR_STATE" "$desired_existed" "$desired_backup" "$DESIRED" "$block_existed" "$block_backup" "$BLOCK_STATE"; return 1; }
     else
         if [[ -e "$BLOCK_STATE" || -L "$BLOCK_STATE" ]]; then
-            rm -f -- "$BLOCK_STATE" || { _tm_state_rollback; return 1; }
+            rm -f -- "$BLOCK_STATE" || { __abox_tm_state_rollback "$pair_existed" "$pair_backup" "$PAIR_STATE" "$desired_existed" "$desired_backup" "$DESIRED" "$block_existed" "$block_backup" "$BLOCK_STATE"; return 1; }
         fi
     fi
     rm -f -- "$pair_backup" "$desired_backup" "$block_backup"
-    unset -f _tm_state_rollback
 }
 read_desired() {
     local state=RUNNING mode pair desired

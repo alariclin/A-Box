@@ -13,6 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - name: Bash syntax
         run: |
           bash -n install.sh
@@ -34,19 +37,70 @@ jobs:
           grep -Fq "ABOX_XRAY_DEFAULT_VERSION='v26.7.28'" install.sh
           grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" install.sh
           grep -Fq 'v2.13.0' install.sh
+          grep -Fq 'v1.14.3' install.sh
           if grep -Fq 'EOF_SNI_CANDIDATES' install.sh; then echo 'legacy embedded SNI candidate block found' >&2; exit 1; fi
           grep -Fq 'ABOX_SNI_CANDIDATE_URL_DEFAULT=' install.sh
           test -s data/sni-candidates.txt
-          awk '
-            NF && $0 !~ /^[[:space:]]*#/ {
-              if ($0 !~ /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/) exit 1
-              n++
-            }
-            END { if (n < 100 || n > 12000) exit 1 }
-          ' data/sni-candidates.txt
+          python3 -c "
+          import re, sys
+          pat = re.compile(r'^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$')
+          n = 0
+          seen = set()
+          for line in open('data/sni-candidates.txt'):
+              s = line.strip()
+              if not s or s.startswith('#'):
+                  continue
+              if not pat.match(s):
+                  sys.exit(1)
+              if s.lower() in seen:
+                  sys.exit(1)
+              seen.add(s.lower())
+              n += 1
+          if not (100 <= n <= 12000):
+              sys.exit(1)
+          "
           duplicates=$(awk 'NF && $0 !~ /^[[:space:]]*#/ {print tolower($0)}' data/sni-candidates.txt | sort | uniq -d | wc -l)
           test "$duplicates" -eq 0
 
+      - name: Verify README pinned SHA matches latest install.sh commit
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, subprocess, sys
+          expected_sha = subprocess.check_output(
+              ["git", "log", "-n", "1", "--format=%H", "--", "install.sh"],
+              text=True
+          ).strip()
+          pattern = re.compile(r"raw\.githubusercontent\.com/alariclin/a-box/([0-9a-f]{40})/install\.sh")
+          readme_files = sorted(pathlib.Path(".").glob("README*.md"))
+          if not readme_files:
+              print("ERROR: No README*.md files found", file=sys.stderr)
+              sys.exit(1)
+          for path in readme_files:
+              content = path.read_text(encoding="utf-8")
+              matches = pattern.findall(content)
+              if not matches:
+                  print(f"ERROR: No pinned install.sh URL found in {path}", file=sys.stderr)
+                  sys.exit(1)
+              for sha in matches:
+                  if sha != expected_sha:
+                      print(f"ERROR: {path} pins {sha}, expected {expected_sha} (last install.sh commit)", file=sys.stderr)
+                      sys.exit(1)
+          print(f"OK: All {len(readme_files)} README files correctly pin install.sh commit {expected_sha}")
+          PY
+      - name: Verify normalize_managed_rule_line dual-copy isomorphism
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, subprocess, sys
+          text = pathlib.Path("install.sh").read_text(encoding="utf-8")
+          pattern = re.compile(r"(?:__abox_)?normalize_managed_rule_line\s*\(\)\s*\{\n(.*?)\n\s*\}", re.DOTALL)
+          matches = pattern.findall(text)
+          if len(matches) != 2:
+              sys.exit(f"ERROR: Expected exactly 2 definitions, found {len(matches)}")
+          norm = ["\n".join(l.strip() for l in b.strip().splitlines()) for b in matches]
+          if norm[0] != norm[1]:
+              sys.exit(f"ERROR: Dual copies drifted!\n--- Copy 1 ---\n{norm[0]}\n--- Copy 2 ---\n{norm[1]}")
+          print("OK: Dual copies isomorphic")
+          PY
       - name: Alpine clean-shell bootstrap syntax
         run: |
           docker run --rm -v "$PWD:/src:ro" alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 sh -ec '

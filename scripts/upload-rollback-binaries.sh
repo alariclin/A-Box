@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Upload previous-version rollback binaries to the core-binaries Release.
 # Run this on a machine with `gh` authenticated (gh auth login).
-# It uploads the 8 staged files and appends their SHA256 lines to the
+# It uploads the 4 staged files and appends their SHA256 lines to the
 # Release's SHA256SUMS asset. Idempotent: skips files already present
 # with matching digest; aborts on any digest conflict.
 set -euo pipefail

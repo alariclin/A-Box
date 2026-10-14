@@ -18787,7 +18787,7 @@ EOF_SVC_TEST_RCUPDATE
         selftest_cleanup
         return 1
     fi
-    _legacy_preflight_pattern='managed_services_active && __abox_pf_log "$report" WARN warn ' ; _legacy_preflight_pattern="${_legacy_preflight_pattern}existing A-Box managed service is active" ; _legacy_preflight_pattern="${_legacy_preflight_pattern}' || __abox_pf_log "$report" PASS """
+    _legacy_preflight_pattern='managed_services_active && __abox_pf_log \"\$report\" WARN warn ' ; _legacy_preflight_pattern="${_legacy_preflight_pattern}existing A-Box managed service is active" ; _legacy_preflight_pattern="${_legacy_preflight_pattern}' || __abox_pf_log \"\$report\" PASS """
     if grep -Fq -- "$_legacy_preflight_pattern" "$0"; then
         echo 'FAIL: preflight still collapses unknown managed-service state into inactive'
         failures=$((failures + 1))

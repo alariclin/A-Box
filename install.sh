@@ -19494,7 +19494,7 @@ EOF_SVC_TEST_RCUPDATE
         wallos_restore_backup "$backup" || exit 39
         grep -Fxq 'before-upgrade' "$WALLOS_DIR/db/state.txt" || exit 40
         grep -Fxq 'old-logo' "$WALLOS_DIR/logos/logo.txt" || exit 41
-        grep -Fxq 'image=bellamy/wallos:1.2.3' "$WALLOS_DIR/.abox-state" || exit 42
+        grep -Fxq 'IMAGE=bellamy/wallos:1.2.3' "$WALLOS_DIR/.abox-state" || exit 42
         printf 'not-a-valid-gzip\n' > "$WALLOS_DIR/backups/wallos-corrupt.tar.gz" || exit 43
         if wallos_restore_backup "$WALLOS_DIR/backups/wallos-corrupt.tar.gz"; then exit 44; fi
         grep -Fxq 'before-upgrade' "$WALLOS_DIR/db/state.txt" || exit 45

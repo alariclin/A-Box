@@ -25,7 +25,7 @@ A-Box — автономный Bash-скрипт для развёртывани
 ### Официальный источник GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/c6e5df2a03dc611c66b8a3e0e1a4fe62eb597260/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/7dd420282504b3cb1161230081b5e7ea1dba0c3e/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # После проверки загруженного скрипта выполните отдельно:
 sudo bash A-Box.sh
@@ -34,13 +34,13 @@ sudo bash A-Box.sh
 ### Резервное зеркало третьей стороны
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/a-box/c6e5df2a03dc611c66b8a3e0e1a4fe62eb597260/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/a-box/7dd420282504b3cb1161230081b5e7ea1dba0c3e/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # После проверки загруженного скрипта выполните отдельно:
 sudo bash A-Box.sh
 ```
 
-Обе команды привязывают установщик к неизменяемому commit `c6e5df2a03dc611c66b8a3e0e1a4fe62eb597260`; proxy URL остаётся сторонним транспортом, а не официальным endpoint A-Box. Проверка синтаксиса и SHA-256 сама по себе не подтверждает издателя. Просмотрите файл до запуска, а для production проверьте commit и checksum через независимый доверенный канал. На чистой Alpine сначала выполните `apk add --no-cache bash curl`. После установки введите `sb`.
+Обе команды привязывают установщик к неизменяемому commit `7dd420282504b3cb1161230081b5e7ea1dba0c3e`; proxy URL остаётся сторонним транспортом, а не официальным endpoint A-Box. Проверка синтаксиса и SHA-256 сама по себе не подтверждает издателя. Просмотрите файл до запуска, а для production проверьте commit и checksum через независимый доверенный канал. На чистой Alpine сначала выполните `apk add --no-cache bash curl`. После установки введите `sb`.
 
 ## Основные функции
 

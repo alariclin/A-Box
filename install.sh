@@ -225,7 +225,7 @@ abox_dir_has_legacy_fingerprint() {
         return 0
     fi
     if (( count == 1 )) && [[ "$only" == '.lang' && -f "$dir/.lang" && ! -L "$dir/.lang" ]]; then
-        grep -Eq '^(zh|en|ru|fa)[[:space:]]*$' "$dir/.lang"
+        grep -Eq '^(zh|zh-tw|en|ja|ru|fa)[[:space:]]*$' "$dir/.lang"
         return
     fi
     return 1

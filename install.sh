@@ -55,8 +55,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-14-audit-r4-v191'
-ABOX_BUILD_EPOCH=20261014191
+ABOX_BUILD='2026-10-15-arbitrated-fix-v192'
+ABOX_BUILD_EPOCH=20261015192
 WALLOS_DIR='/opt/wallos'
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
@@ -1606,7 +1606,7 @@ init_system_environment() {
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         case "$release" in
             debian|ubuntu) __abox_reconcile_systemd_unit cron ;;
-            centos) __abox___abox_reconcile_systemd_unit crond ;;
+            centos) __abox_reconcile_systemd_unit crond ;;
         esac
         if [[ "$release" == 'centos' ]]; then
             if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
@@ -3036,6 +3036,12 @@ __abox_firewall_unlock() {
         eval "exec ${lock_fd}>&-" 2>/dev/null || true
     fi
 }
+__abox_normalize_managed_rule_line() {
+    local line="$1"
+    line=${line//\"/}
+    line=$(printf '%s\n' "$line" | sed -E 's/^(-A[[:space:]]+INPUT([[:space:]]+[^[:space:]]+)*[[:space:]]+-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\4/')
+    printf '%s\n' "$line"
+}
 reorder_one() {
     local cmd="$1" port="$2" proto="$3" wl_suffix="$4" drop_suffix="$5"
     local wl_comment="A-Box-${port}-${proto}-${wl_suffix}" drop_comment="A-Box-${port}-${proto}-${drop_suffix}"
@@ -3416,7 +3422,7 @@ EOF_ABOX_FW_OPENRC
 }
 
 save_firewall_rules() {
-    local tmp4 tmp6 backend target4="$ABOX_DIR/iptables.v4" target6="$ABOX_DIR/iptables.v6"
+    local tmp4 tmp6 backend target target4="$ABOX_DIR/iptables.v4" target6="$ABOX_DIR/iptables.v6"
     local backup4='' backup6='' restore_failed=0
     backend=$(firewall_backend) || return 1
     case "$backend" in
@@ -5280,8 +5286,11 @@ core_latest_mirror_release_ref() {
     # F-05 anti-replay: CORE-VERSIONS timestamp must not predate trust floor.
     _f05_ts=$(awk -F= '$1=="updated_at_utc" {print $2; exit}' "$workdir/CORE-VERSIONS" 2>/dev/null || true)
     if [[ -n "$_f05_ts" ]] && ! abox_signing_timestamp_ok "$_f05_ts"; then
-        printf '[A-Box][F-05] FATAL: CORE-VERSIONS timestamp %s is older than trust floor %s\n' "$_f05_ts" "$ABOX_SIGNING_MIN_TIMESTAMP_UTC" >&2
-        rm -rf -- "$workdir"; return 1
+        if [[ "${ABOX_SIGNING_ENFORCE:-0}" == '1' ]]; then
+            printf '[A-Box][F-05] FATAL: CORE-VERSIONS timestamp %s is older than trust floor %s\n' "$_f05_ts" "$ABOX_SIGNING_MIN_TIMESTAMP_UTC" >&2
+            rm -rf -- "$workdir"; return 1
+        fi
+        printf '[A-Box][F-05] WARNING: CORE-VERSIONS timestamp %s is older than trust floor %s (enforcement off)\n' "$_f05_ts" "$ABOX_SIGNING_MIN_TIMESTAMP_UTC" >&2
     fi
     expected=$(awk '$2 == "CORE-VERSIONS" {print $1; exit}' "$workdir/SHA256SUMS")
     actual=$(sha256sum "$workdir/CORE-VERSIONS" 2>/dev/null | awk '{print $1}') || actual=''
@@ -5478,11 +5487,14 @@ resolve_core_release_target() {
 
 
 effective_xray_version() {
-    # N-06 fix: prefer the ACTUAL installed binary version over intent-based
-    # values. Falls back to explicit/resolved/default only if the binary
-    # is missing or its version cannot be parsed.
+    # Explicit operator override (ABOX_XRAY_VERSION) always wins first;
+    # otherwise prefer the actual installed binary version over intent-based values.
     # ABOX_XRAY_VERSION_PROBE_SKIP=1 disables the binary probe (self-test).
     local actual
+    if [[ -n "${ABOX_XRAY_VERSION:-}" ]]; then
+        printf '%s\n' "$ABOX_XRAY_VERSION"
+        return 0
+    fi
     if [[ "${ABOX_XRAY_VERSION_PROBE_SKIP:-0}" != '1' && -x /usr/local/bin/xray ]]; then
         actual=$(/usr/local/bin/xray version 2>/dev/null | head -n 1 || true)
         actual=$(core_version_from_output "$actual" 2>/dev/null || true)
@@ -5493,9 +5505,7 @@ effective_xray_version() {
             return 0
         fi
     fi
-    if [[ -n "${ABOX_XRAY_VERSION:-}" ]]; then
-        printf '%s\n' "$ABOX_XRAY_VERSION"
-    elif [[ -n "${ABOX_RESOLVED_XRAY_VERSION:-}" ]]; then
+    if [[ -n "${ABOX_RESOLVED_XRAY_VERSION:-}" ]]; then
         printf '%s\n' "$ABOX_RESOLVED_XRAY_VERSION"
     else
         printf '%s\n' "$ABOX_XRAY_DEFAULT_VERSION"
@@ -5573,7 +5583,7 @@ fetch_github_release() {
     [[ -n "$dest_file" ]] || { local tmp_dir; tmp_dir=$(mktemp -d /tmp/A-Box-asset.XXXXXX) || die '核心资产临时目录创建失败。'; dest_file="$tmp_dir/$output_file"; }
     mkdir -p "$(dirname "$dest_file")" || die '核心资产输出目录创建失败。'
     if [[ "$repo:$output_file" == 'XTLS/Xray-core:xray_core.zip' ]]; then
-        if xray_reality_requires_mlkem; then msg "${YELLOW}[!] Xray ${target_ref} 使用较新的 REALITY ML-KEM ClientHello 门槛；部分旧版客户端可能无法连接。${NC}"; else local mlkem_rc=$?; (( mlkem_rc == 1 )) || die 'Xray 版本号无法解析。'; fi
+        if ABOX_XRAY_VERSION="$target_ref" xray_reality_requires_mlkem; then msg "${YELLOW}[!] Xray ${target_ref} 使用较新的 REALITY ML-KEM ClientHello 门槛；部分旧版客户端可能无法连接。${NC}"; else local mlkem_rc=$?; (( mlkem_rc == 1 )) || die 'Xray 版本号无法解析。'; fi
     fi
     msg "${YELLOW} -> 核心候选 [${repo}:${target_ref}，source=${target_source}]... ${NC}"
     probe_core_sources_banner
@@ -6194,10 +6204,12 @@ assert_abox_log_file_safe() {
     nlink=$(stat -c %h "$path" 2>/dev/null) || return 1
     [[ "$nlink" == 1 ]] || return 1
     if [[ "$uid" == 0 && "$gid" == 0 && "$mode" =~ ^0?600$ ]]; then return 0; fi
-    for _group in "$ABOX_RUNTIME_XRAY_GROUP" "$ABOX_RUNTIME_SINGBOX_GROUP" "$ABOX_RUNTIME_HYSTERIA_GROUP"; do
+    local _family _user
+    for _family in xray sing-box hysteria; do
+        IFS=$'\t' read -r _user _group < <(abox_runtime_identity "$_family") || continue
         [[ -n "${_group:-}" ]] || continue
         _gid=$(getent group "$_group" 2>/dev/null | awk -F: '{print $3}')
-        _svc_uid=$(id -u "$_group" 2>/dev/null || true)
+        _svc_uid=$(id -u "$_user" 2>/dev/null || true)
         if [[ -n "$_gid" && "$gid" == "$_gid" ]] && [[ "$uid" == 0 || ( -n "$_svc_uid" && "$uid" == "$_svc_uid" ) ]] && [[ "$mode" =~ ^0?6[046]0$ ]]; then
             return 0
         fi
@@ -6280,9 +6292,8 @@ EOF_F2B_FILTER
             f2b_backend=$(firewall_backend) || { rm -f -- "$jail_tmp"; die '无法确定 Fail2Ban 防火墙后端。'; }
             case "$f2b_backend" in
                 firewalld)
+                    # firewallcmd-multiport invokes iptables -m multiport --dports (requires colon port ranges).
                     f2b_action='firewallcmd-multiport'
-                    [[ -z "$tcp_ports" ]] || tcp_ports=$(port_list_for_firewalld "$tcp_ports") || { rm -f -- "$jail_tmp"; die '无法规范化 firewalld TCP 端口规格。'; }
-                    [[ -z "$udp_ports" ]] || udp_ports=$(port_list_for_firewalld "$udp_ports") || { rm -f -- "$jail_tmp"; die '无法规范化 firewalld UDP 端口规格。'; }
                     ;;
                 ufw) f2b_action='ufw' ;;
                 iptables) f2b_action='iptables-multiport' ;;
@@ -9190,6 +9201,18 @@ remove_ss_source_whitelist_rules() {
     (( failed == 0 ))
 }
 
+# B-12: Rebuild SS_WHITELIST_IP from live iptables rules and persist to .env,
+# so menu edits (add/remove) don't leave .env stale for redeploy wizards.
+sync_ss_whitelist_ip_to_env() {
+    local ips='' v6ips=''
+    ips=$($IPT -nL INPUT 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '0.0.0.0/0' | sort -u | tr '\n' ' ' || true)
+    if command -v ip6tables >/dev/null 2>&1 && $IPT6 -nL INPUT >/dev/null 2>&1; then
+        v6ips=$($IPT6 -nL INPUT 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '::/0' | sort -u | tr '\n' ' ' || true)
+        ips+="$v6ips"
+    fi
+    SS_WHITELIST_IP=$(printf '%s' "$ips" | tr -s ' ' | sed 's/^ *//;s/ *$//')
+    write_env || return 1
+}
 manage_ss_whitelist() {
     local check_rc=0
     clear
@@ -9249,6 +9272,7 @@ manage_ss_whitelist() {
                 done
             fi
             save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+            sync_ss_whitelist_ip_to_env || die 'A-Box 白名单 .env 同步失败。'
             msg "${GREEN}已添加白名单: $add_ip (TCP+UDP)${NC}"
             pause_return
             ;;
@@ -9291,6 +9315,7 @@ manage_ss_whitelist() {
                 done
             fi
             save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+            sync_ss_whitelist_ip_to_env || die 'A-Box 白名单 .env 同步失败。'
             [[ "$found" == 1 ]] && msg "${GREEN}已移除白名单: $del_ip${NC}" || msg "${YELLOW}未找到该白名单规则。${NC}"
             pause_return
             ;;
@@ -11720,7 +11745,9 @@ sni_domain_penalty() {
         *.google.com|*.gstatic.com|*.googleapis.com|*.youtube.com|*.facebook.com|*.instagram.com|*.twitter.com|*.x.com|*.tiktok.com|*.telegram.org|*.whatsapp.com|*.wikipedia.org|*.wikimedia.org|*.openai.com|*.anthropic.com|*.huggingface.co|*.torproject.org|*.nist.gov|*.cisa.gov|*.github.com|*.apple.com|*.icloud.com|apple.com|icloud.com|github.com|*.doubleclick.net|*.googlesyndication.com|*.googleadservices.com) penalty=$((penalty + 2400)) ;;
     esac
     case "$domain" in
-        *.microsoft.com|*.bing.com|*.apache.org|*.ietf.org|*.rfc-editor.org|*.w3.org|*.unicode.org|*.icann.org|*.iana.org|*.iso.org|*.itu.int|*.nginx.org|*.openssl.org|*.curl.se|*.kernel.org|*.debian.org|*.ubuntu.com|*.linuxfoundation.org|*.cncf.io|*.cloudflare.com|*.akamai.com|*.fastly.com) penalty=$((penalty - 220)) ;;
+        *.microsoft.com|*.bing.com|*.apache.org|*.ietf.org|*.rfc-editor.org|*.w3.org|*.unicode.org|*.icann.org|*.iana.org|*.iso.org|*.itu.int|*.nginx.org|*.openssl.org|*.curl.se|*.kernel.org|*.debian.org|*.ubuntu.com|*.linuxfoundation.org|*.cncf.io) penalty=$((penalty - 220)) ;;
+        # B-09: Pure CDN hostnames must not be rewarded in stage 1 (stage 2 assigns +500 -> R tier).
+        *.cloudflare.com|*.akamai.com|*.fastly.com) penalty=$((penalty + 400)) ;;
         docs.*|developer.*|developers.*|learn.*|support.*|download.*|downloads.*|packages.*|repo.*|registry.*|resources.*|community.*|help.*|security.*|*.mozilla.org|*.confluent.io|*.python.org|*.rust-lang.org|*.nodejs.org|*.postgresql.org|*.sqlite.org|*.eclipse.org|*.gnu.org|*.git-scm.com|*.cmake.org|*.llvm.org|*.mariadb.org|*.mysql.com) penalty=$((penalty - 120)) ;;
         *.samsung.com|*.lenovo.com|*.dell.com|*.intel.com|*.amd.com|*.nvidia.com|*.cisco.com|*.huawei.com|*.ericsson.com|*.nokia.com|*.siemens.com|*.un.org|*.who.int|*.unesco.org|*.cern.ch|*.esa.int|*.mit.edu|*.stanford.edu|*.berkeley.edu|*.cam.ac.uk|*.ox.ac.uk|*.ethz.ch|*.epfl.ch|*.crossref.org|*.orcid.org|*.openstreetmap.org) penalty=$((penalty - 60)) ;;
     esac

@@ -3,12 +3,10 @@
 # A hostname enters a recommendation only after probing from the current VPS.
 # These are inherited candidates, not individually proven reachable in every client country.
 acme-v02.api.letsencrypt.org
-akamai.com
 almalinux.org
 alpinelinux.org
 amd.com
 apache.org
-api.akamai.com
 api.almalinux.org
 api.alpinelinux.org
 api.amd.com
@@ -26,7 +24,6 @@ api.cdn77.com
 api.centos.org
 api.cern.ch
 api.cisco.com
-api.cloudflare.com
 api.cmake.org
 api.cncf.io
 api.confluent.io
@@ -38,7 +35,6 @@ api.eclipse.org
 api.elastic.co
 api.ericsson.com
 api.esa.int
-api.fastly.com
 api.fedoraproject.org
 api.freebsd.org
 api.fsf.org
@@ -116,12 +112,10 @@ api.who.int
 api.windows.com
 api.worldbank.org
 api.wto.org
-api.zte.com
 archlinux.org
 arm.com
 arxiv.org
 askubuntu.com
-assets.akamai.com
 assets.almalinux.org
 assets.alpinelinux.org
 assets.amd.com
@@ -139,7 +133,6 @@ assets.cdn77.com
 assets.centos.org
 assets.cern.ch
 assets.cisco.com
-assets.cloudflare.com
 assets.cmake.org
 assets.cncf.io
 assets.confluent.io
@@ -151,7 +144,6 @@ assets.eclipse.org
 assets.elastic.co
 assets.ericsson.com
 assets.esa.int
-assets.fastly.com
 assets.fedoraproject.org
 assets.freebsd.org
 assets.fsf.org
@@ -229,11 +221,9 @@ assets.who.int
 assets.windows.com
 assets.worldbank.org
 assets.wto.org
-assets.zte.com
 atlas.ripe.net
 azure.com
 bing.com
-blog.akamai.com
 blog.almalinux.org
 blog.alpinelinux.org
 blog.amd.com
@@ -251,7 +241,6 @@ blog.cdn77.com
 blog.centos.org
 blog.cern.ch
 blog.cisco.com
-blog.cloudflare.com
 blog.cmake.org
 blog.cncf.io
 blog.confluent.io
@@ -263,7 +252,6 @@ blog.eclipse.org
 blog.elastic.co
 blog.ericsson.com
 blog.esa.int
-blog.fastly.com
 blog.fedoraproject.org
 blog.freebsd.org
 blog.fsf.org
@@ -342,13 +330,11 @@ blog.who.int
 blog.windows.com
 blog.worldbank.org
 blog.wto.org
-blog.zte.com
 boost.org
 bosch.com
 broadcom.com
 bunny.net
 canon.com
-cdn.akamai.com
 cdn.almalinux.org
 cdn.alpinelinux.org
 cdn.amd.com
@@ -366,7 +352,6 @@ cdn.cdn77.com
 cdn.centos.org
 cdn.cern.ch
 cdn.cisco.com
-cdn.cloudflare.com
 cdn.cmake.org
 cdn.cncf.io
 cdn.confluent.io
@@ -378,7 +363,6 @@ cdn.eclipse.org
 cdn.elastic.co
 cdn.ericsson.com
 cdn.esa.int
-cdn.fastly.com
 cdn.fedoraproject.org
 cdn.freebsd.org
 cdn.fsf.org
@@ -457,15 +441,12 @@ cdn.who.int
 cdn.windows.com
 cdn.worldbank.org
 cdn.wto.org
-cdn.zte.com
 cdn77.com
 centos.org
 cern.ch
 cisco.com
-cloudflare.com
 cmake.org
 cncf.io
-community.akamai.com
 community.almalinux.org
 community.alpinelinux.org
 community.amd.com
@@ -483,7 +464,6 @@ community.cdn77.com
 community.centos.org
 community.cern.ch
 community.cisco.com
-community.cloudflare.com
 community.cmake.org
 community.cncf.io
 community.confluent.io
@@ -495,7 +475,6 @@ community.eclipse.org
 community.elastic.co
 community.ericsson.com
 community.esa.int
-community.fastly.com
 community.fedoraproject.org
 community.freebsd.org
 community.fsf.org
@@ -573,7 +552,6 @@ community.who.int
 community.windows.com
 community.worldbank.org
 community.wto.org
-community.zte.com
 confluent.io
 cppreference.com
 crates.io
@@ -581,7 +559,6 @@ curl.se
 datatracker.ietf.org
 debian.org
 dell.com
-developer.akamai.com
 developer.almalinux.org
 developer.alpinelinux.org
 developer.amd.com
@@ -600,7 +577,6 @@ developer.cdn77.com
 developer.centos.org
 developer.cern.ch
 developer.cisco.com
-developer.cloudflare.com
 developer.cmake.org
 developer.cncf.io
 developer.confluent.io
@@ -612,7 +588,6 @@ developer.eclipse.org
 developer.elastic.co
 developer.ericsson.com
 developer.esa.int
-developer.fastly.com
 developer.fedoraproject.org
 developer.freebsd.org
 developer.fsf.org
@@ -691,8 +666,6 @@ developer.who.int
 developer.windows.com
 developer.worldbank.org
 developer.wto.org
-developer.zte.com
-developers.akamai.com
 developers.almalinux.org
 developers.alpinelinux.org
 developers.amd.com
@@ -710,7 +683,6 @@ developers.cdn77.com
 developers.centos.org
 developers.cern.ch
 developers.cisco.com
-developers.cloudflare.com
 developers.cmake.org
 developers.cncf.io
 developers.confluent.io
@@ -722,7 +694,6 @@ developers.eclipse.org
 developers.elastic.co
 developers.ericsson.com
 developers.esa.int
-developers.fastly.com
 developers.fedoraproject.org
 developers.freebsd.org
 developers.fsf.org
@@ -800,8 +771,6 @@ developers.who.int
 developers.windows.com
 developers.worldbank.org
 developers.wto.org
-developers.zte.com
-doc.akamai.com
 doc.almalinux.org
 doc.alpinelinux.org
 doc.amd.com
@@ -819,7 +788,6 @@ doc.cdn77.com
 doc.centos.org
 doc.cern.ch
 doc.cisco.com
-doc.cloudflare.com
 doc.cmake.org
 doc.cncf.io
 doc.confluent.io
@@ -831,7 +799,6 @@ doc.eclipse.org
 doc.elastic.co
 doc.ericsson.com
 doc.esa.int
-doc.fastly.com
 doc.fedoraproject.org
 doc.freebsd.org
 doc.fsf.org
@@ -909,8 +876,6 @@ doc.who.int
 doc.windows.com
 doc.worldbank.org
 doc.wto.org
-doc.zte.com
-docs.akamai.com
 docs.almalinux.org
 docs.alpinelinux.org
 docs.amd.com
@@ -928,7 +893,6 @@ docs.cdn77.com
 docs.centos.org
 docs.cern.ch
 docs.cisco.com
-docs.cloudflare.com
 docs.cmake.org
 docs.cncf.io
 docs.confluent.io
@@ -941,7 +905,6 @@ docs.eclipse.org
 docs.elastic.co
 docs.ericsson.com
 docs.esa.int
-docs.fastly.com
 docs.fedoraproject.org
 docs.freebsd.org
 docs.fsf.org
@@ -1020,9 +983,7 @@ docs.who.int
 docs.windows.com
 docs.worldbank.org
 docs.wto.org
-docs.zte.com
 doi.org
-download.akamai.com
 download.almalinux.org
 download.alpinelinux.org
 download.amd.com
@@ -1040,7 +1001,6 @@ download.cdn77.com
 download.centos.org
 download.cern.ch
 download.cisco.com
-download.cloudflare.com
 download.cmake.org
 download.cncf.io
 download.confluent.io
@@ -1052,7 +1012,6 @@ download.eclipse.org
 download.elastic.co
 download.ericsson.com
 download.esa.int
-download.fastly.com
 download.fedoraproject.org
 download.freebsd.org
 download.fsf.org
@@ -1130,8 +1089,6 @@ download.who.int
 download.windows.com
 download.worldbank.org
 download.wto.org
-download.zte.com
-downloads.akamai.com
 downloads.almalinux.org
 downloads.alpinelinux.org
 downloads.amd.com
@@ -1149,7 +1106,6 @@ downloads.cdn77.com
 downloads.centos.org
 downloads.cern.ch
 downloads.cisco.com
-downloads.cloudflare.com
 downloads.cmake.org
 downloads.cncf.io
 downloads.confluent.io
@@ -1161,7 +1117,6 @@ downloads.eclipse.org
 downloads.elastic.co
 downloads.ericsson.com
 downloads.esa.int
-downloads.fastly.com
 downloads.fedoraproject.org
 downloads.freebsd.org
 downloads.fsf.org
@@ -1239,7 +1194,6 @@ downloads.who.int
 downloads.windows.com
 downloads.worldbank.org
 downloads.wto.org
-downloads.zte.com
 eclipse.org
 eel.is
 elastic.co
@@ -1247,7 +1201,6 @@ en.cppreference.com
 ericsson.com
 esa.int
 ethz.ch
-events.akamai.com
 events.almalinux.org
 events.alpinelinux.org
 events.amd.com
@@ -1264,7 +1217,6 @@ events.cdn77.com
 events.centos.org
 events.cern.ch
 events.cisco.com
-events.cloudflare.com
 events.cmake.org
 events.cncf.io
 events.confluent.io
@@ -1276,7 +1228,6 @@ events.eclipse.org
 events.elastic.co
 events.ericsson.com
 events.esa.int
-events.fastly.com
 events.fedoraproject.org
 events.freebsd.org
 events.fsf.org
@@ -1354,10 +1305,7 @@ events.who.int
 events.windows.com
 events.worldbank.org
 events.wto.org
-events.zte.com
-fastly.com
 fedoraproject.org
-files.akamai.com
 files.almalinux.org
 files.alpinelinux.org
 files.amd.com
@@ -1375,7 +1323,6 @@ files.cdn77.com
 files.centos.org
 files.cern.ch
 files.cisco.com
-files.cloudflare.com
 files.cmake.org
 files.cncf.io
 files.confluent.io
@@ -1387,7 +1334,6 @@ files.eclipse.org
 files.elastic.co
 files.ericsson.com
 files.esa.int
-files.fastly.com
 files.fedoraproject.org
 files.freebsd.org
 files.fsf.org
@@ -1465,8 +1411,6 @@ files.who.int
 files.windows.com
 files.worldbank.org
 files.wto.org
-files.zte.com
-forum.akamai.com
 forum.almalinux.org
 forum.alpinelinux.org
 forum.amd.com
@@ -1484,7 +1428,6 @@ forum.cdn77.com
 forum.centos.org
 forum.cern.ch
 forum.cisco.com
-forum.cloudflare.com
 forum.cmake.org
 forum.cncf.io
 forum.confluent.io
@@ -1496,7 +1439,6 @@ forum.eclipse.org
 forum.elastic.co
 forum.ericsson.com
 forum.esa.int
-forum.fastly.com
 forum.fedoraproject.org
 forum.freebsd.org
 forum.fsf.org
@@ -1574,8 +1516,6 @@ forum.who.int
 forum.windows.com
 forum.worldbank.org
 forum.wto.org
-forum.zte.com
-forums.akamai.com
 forums.almalinux.org
 forums.alpinelinux.org
 forums.amd.com
@@ -1593,7 +1533,6 @@ forums.cdn77.com
 forums.centos.org
 forums.cern.ch
 forums.cisco.com
-forums.cloudflare.com
 forums.cmake.org
 forums.cncf.io
 forums.confluent.io
@@ -1605,7 +1544,6 @@ forums.eclipse.org
 forums.elastic.co
 forums.ericsson.com
 forums.esa.int
-forums.fastly.com
 forums.fedoraproject.org
 forums.freebsd.org
 forums.fsf.org
@@ -1683,7 +1621,6 @@ forums.who.int
 forums.windows.com
 forums.worldbank.org
 forums.wto.org
-forums.zte.com
 freebsd.org
 fsf.org
 ftp.ripe.net
@@ -1694,7 +1631,6 @@ gnu.org
 go.dev
 gradle.org
 grafana.com
-help.akamai.com
 help.almalinux.org
 help.alpinelinux.org
 help.amd.com
@@ -1712,7 +1648,6 @@ help.cdn77.com
 help.centos.org
 help.cern.ch
 help.cisco.com
-help.cloudflare.com
 help.cmake.org
 help.cncf.io
 help.confluent.io
@@ -1724,7 +1659,6 @@ help.eclipse.org
 help.elastic.co
 help.ericsson.com
 help.esa.int
-help.fastly.com
 help.fedoraproject.org
 help.freebsd.org
 help.fsf.org
@@ -1802,7 +1736,6 @@ help.who.int
 help.windows.com
 help.worldbank.org
 help.wto.org
-help.zte.com
 hp.com
 httpwg.org
 huawei.com
@@ -1816,7 +1749,6 @@ itu.int
 juniper.net
 kde.org
 kernel.org
-learn.akamai.com
 learn.almalinux.org
 learn.alpinelinux.org
 learn.amd.com
@@ -1834,7 +1766,6 @@ learn.cdn77.com
 learn.centos.org
 learn.cern.ch
 learn.cisco.com
-learn.cloudflare.com
 learn.cmake.org
 learn.cncf.io
 learn.confluent.io
@@ -1846,7 +1777,6 @@ learn.eclipse.org
 learn.elastic.co
 learn.ericsson.com
 learn.esa.int
-learn.fastly.com
 learn.fedoraproject.org
 learn.freebsd.org
 learn.fsf.org
@@ -1924,14 +1854,12 @@ learn.who.int
 learn.windows.com
 learn.worldbank.org
 learn.wto.org
-learn.zte.com
 lenovo.com
 letsencrypt.org
 linuxfoundation.org
 llvm.org
 lookup.icann.org
 lua.org
-manual.akamai.com
 manual.almalinux.org
 manual.alpinelinux.org
 manual.amd.com
@@ -1949,7 +1877,6 @@ manual.cdn77.com
 manual.centos.org
 manual.cern.ch
 manual.cisco.com
-manual.cloudflare.com
 manual.cmake.org
 manual.cncf.io
 manual.confluent.io
@@ -1961,7 +1888,6 @@ manual.eclipse.org
 manual.elastic.co
 manual.ericsson.com
 manual.esa.int
-manual.fastly.com
 manual.fedoraproject.org
 manual.freebsd.org
 manual.fsf.org
@@ -2039,10 +1965,8 @@ manual.who.int
 manual.windows.com
 manual.worldbank.org
 manual.wto.org
-manual.zte.com
 mariadb.org
 microsoft.com
-mirror.akamai.com
 mirror.almalinux.org
 mirror.alpinelinux.org
 mirror.amd.com
@@ -2060,7 +1984,6 @@ mirror.cdn77.com
 mirror.centos.org
 mirror.cern.ch
 mirror.cisco.com
-mirror.cloudflare.com
 mirror.cmake.org
 mirror.cncf.io
 mirror.confluent.io
@@ -2072,7 +1995,6 @@ mirror.eclipse.org
 mirror.elastic.co
 mirror.ericsson.com
 mirror.esa.int
-mirror.fastly.com
 mirror.fedoraproject.org
 mirror.freebsd.org
 mirror.fsf.org
@@ -2150,8 +2072,6 @@ mirror.who.int
 mirror.windows.com
 mirror.worldbank.org
 mirror.wto.org
-mirror.zte.com
-mirrors.akamai.com
 mirrors.almalinux.org
 mirrors.alpinelinux.org
 mirrors.amd.com
@@ -2169,7 +2089,6 @@ mirrors.cdn77.com
 mirrors.centos.org
 mirrors.cern.ch
 mirrors.cisco.com
-mirrors.cloudflare.com
 mirrors.cmake.org
 mirrors.cncf.io
 mirrors.confluent.io
@@ -2181,7 +2100,6 @@ mirrors.eclipse.org
 mirrors.elastic.co
 mirrors.ericsson.com
 mirrors.esa.int
-mirrors.fastly.com
 mirrors.fedoraproject.org
 mirrors.freebsd.org
 mirrors.fsf.org
@@ -2259,11 +2177,9 @@ mirrors.who.int
 mirrors.windows.com
 mirrors.worldbank.org
 mirrors.wto.org
-mirrors.zte.com
 mongodb.com
 mysql.com
 netbsd.org
-news.akamai.com
 news.almalinux.org
 news.alpinelinux.org
 news.amd.com
@@ -2280,7 +2196,6 @@ news.cdn77.com
 news.centos.org
 news.cern.ch
 news.cisco.com
-news.cloudflare.com
 news.cmake.org
 news.cncf.io
 news.confluent.io
@@ -2292,7 +2207,6 @@ news.eclipse.org
 news.elastic.co
 news.ericsson.com
 news.esa.int
-news.fastly.com
 news.fedoraproject.org
 news.freebsd.org
 news.fsf.org
@@ -2370,7 +2284,6 @@ news.who.int
 news.windows.com
 news.worldbank.org
 news.wto.org
-news.zte.com
 nginx.org
 nodejs.org
 nokia.com
@@ -2385,7 +2298,6 @@ openssl.org
 opentelemetry.io
 orcid.org
 owasp.org
-packages.akamai.com
 packages.almalinux.org
 packages.alpinelinux.org
 packages.amd.com
@@ -2403,7 +2315,6 @@ packages.cdn77.com
 packages.centos.org
 packages.cern.ch
 packages.cisco.com
-packages.cloudflare.com
 packages.cmake.org
 packages.cncf.io
 packages.confluent.io
@@ -2415,7 +2326,6 @@ packages.eclipse.org
 packages.elastic.co
 packages.ericsson.com
 packages.esa.int
-packages.fastly.com
 packages.fedoraproject.org
 packages.freebsd.org
 packages.fsf.org
@@ -2493,11 +2403,9 @@ packages.who.int
 packages.windows.com
 packages.worldbank.org
 packages.wto.org
-packages.zte.com
 panasonic.com
 perl.org
 php.net
-pkg.akamai.com
 pkg.almalinux.org
 pkg.alpinelinux.org
 pkg.amd.com
@@ -2515,7 +2423,6 @@ pkg.cdn77.com
 pkg.centos.org
 pkg.cern.ch
 pkg.cisco.com
-pkg.cloudflare.com
 pkg.cmake.org
 pkg.cncf.io
 pkg.confluent.io
@@ -2527,7 +2434,6 @@ pkg.eclipse.org
 pkg.elastic.co
 pkg.ericsson.com
 pkg.esa.int
-pkg.fastly.com
 pkg.fedoraproject.org
 pkg.freebsd.org
 pkg.fsf.org
@@ -2606,8 +2512,6 @@ pkg.who.int
 pkg.windows.com
 pkg.worldbank.org
 pkg.wto.org
-pkg.zte.com
-portal.akamai.com
 portal.almalinux.org
 portal.alpinelinux.org
 portal.amd.com
@@ -2624,7 +2528,6 @@ portal.cdn77.com
 portal.centos.org
 portal.cern.ch
 portal.cisco.com
-portal.cloudflare.com
 portal.cmake.org
 portal.cncf.io
 portal.confluent.io
@@ -2636,7 +2539,6 @@ portal.eclipse.org
 portal.elastic.co
 portal.ericsson.com
 portal.esa.int
-portal.fastly.com
 portal.fedoraproject.org
 portal.freebsd.org
 portal.fsf.org
@@ -2714,7 +2616,6 @@ portal.who.int
 portal.windows.com
 portal.worldbank.org
 portal.wto.org
-portal.zte.com
 postgresql.org
 prometheus.io
 proxy.golang.org
@@ -2724,7 +2625,6 @@ qt.io
 qualcomm.com
 redis.com
 redis.io
-registry.akamai.com
 registry.almalinux.org
 registry.alpinelinux.org
 registry.amd.com
@@ -2742,7 +2642,6 @@ registry.cdn77.com
 registry.centos.org
 registry.cern.ch
 registry.cisco.com
-registry.cloudflare.com
 registry.cmake.org
 registry.cncf.io
 registry.confluent.io
@@ -2754,7 +2653,6 @@ registry.eclipse.org
 registry.elastic.co
 registry.ericsson.com
 registry.esa.int
-registry.fastly.com
 registry.fedoraproject.org
 registry.freebsd.org
 registry.fsf.org
@@ -2832,8 +2730,6 @@ registry.who.int
 registry.windows.com
 registry.worldbank.org
 registry.wto.org
-registry.zte.com
-repo.akamai.com
 repo.almalinux.org
 repo.alpinelinux.org
 repo.amd.com
@@ -2851,7 +2747,6 @@ repo.cdn77.com
 repo.centos.org
 repo.cern.ch
 repo.cisco.com
-repo.cloudflare.com
 repo.cmake.org
 repo.cncf.io
 repo.confluent.io
@@ -2863,7 +2758,6 @@ repo.eclipse.org
 repo.elastic.co
 repo.ericsson.com
 repo.esa.int
-repo.fastly.com
 repo.fedoraproject.org
 repo.freebsd.org
 repo.fsf.org
@@ -2941,8 +2835,6 @@ repo.who.int
 repo.windows.com
 repo.worldbank.org
 repo.wto.org
-repo.zte.com
-resources.akamai.com
 resources.almalinux.org
 resources.alpinelinux.org
 resources.amd.com
@@ -2960,7 +2852,6 @@ resources.cdn77.com
 resources.centos.org
 resources.cern.ch
 resources.cisco.com
-resources.cloudflare.com
 resources.cmake.org
 resources.cncf.io
 resources.confluent.io
@@ -2972,7 +2863,6 @@ resources.eclipse.org
 resources.elastic.co
 resources.ericsson.com
 resources.esa.int
-resources.fastly.com
 resources.fedoraproject.org
 resources.freebsd.org
 resources.fsf.org
@@ -3050,7 +2940,6 @@ resources.who.int
 resources.windows.com
 resources.worldbank.org
 resources.wto.org
-resources.zte.com
 rfc-editor.org
 rockylinux.org
 ruby-lang.org
@@ -3058,7 +2947,6 @@ rubygems.org
 rust-lang.org
 samsung.com
 scala-lang.org
-security.akamai.com
 security.almalinux.org
 security.alpinelinux.org
 security.amd.com
@@ -3076,7 +2964,6 @@ security.cdn77.com
 security.centos.org
 security.cern.ch
 security.cisco.com
-security.cloudflare.com
 security.cmake.org
 security.cncf.io
 security.confluent.io
@@ -3088,7 +2975,6 @@ security.eclipse.org
 security.elastic.co
 security.ericsson.com
 security.esa.int
-security.fastly.com
 security.fedoraproject.org
 security.freebsd.org
 security.fsf.org
@@ -3166,9 +3052,7 @@ security.who.int
 security.windows.com
 security.worldbank.org
 security.wto.org
-security.zte.com
 serverfault.com
-service.akamai.com
 service.almalinux.org
 service.alpinelinux.org
 service.amd.com
@@ -3185,7 +3069,6 @@ service.cdn77.com
 service.centos.org
 service.cern.ch
 service.cisco.com
-service.cloudflare.com
 service.cmake.org
 service.cncf.io
 service.confluent.io
@@ -3197,7 +3080,6 @@ service.eclipse.org
 service.elastic.co
 service.ericsson.com
 service.esa.int
-service.fastly.com
 service.fedoraproject.org
 service.freebsd.org
 service.fsf.org
@@ -3275,8 +3157,6 @@ service.who.int
 service.windows.com
 service.worldbank.org
 service.wto.org
-service.zte.com
-services.akamai.com
 services.almalinux.org
 services.alpinelinux.org
 services.amd.com
@@ -3293,7 +3173,6 @@ services.cdn77.com
 services.centos.org
 services.cern.ch
 services.cisco.com
-services.cloudflare.com
 services.cmake.org
 services.cncf.io
 services.confluent.io
@@ -3305,7 +3184,6 @@ services.eclipse.org
 services.elastic.co
 services.ericsson.com
 services.esa.int
-services.fastly.com
 services.fedoraproject.org
 services.freebsd.org
 services.fsf.org
@@ -3383,14 +3261,12 @@ services.who.int
 services.windows.com
 services.worldbank.org
 services.wto.org
-services.zte.com
 siemens.com
 sony.com
 source.android.com
 spring.io
 sqlite.org
 stat.ripe.net
-static.akamai.com
 static.almalinux.org
 static.alpinelinux.org
 static.amd.com
@@ -3408,7 +3284,6 @@ static.cdn77.com
 static.centos.org
 static.cern.ch
 static.cisco.com
-static.cloudflare.com
 static.cmake.org
 static.cncf.io
 static.confluent.io
@@ -3420,7 +3295,6 @@ static.eclipse.org
 static.elastic.co
 static.ericsson.com
 static.esa.int
-static.fastly.com
 static.fedoraproject.org
 static.freebsd.org
 static.fsf.org
@@ -3498,8 +3372,6 @@ static.who.int
 static.windows.com
 static.worldbank.org
 static.wto.org
-static.zte.com
-status.akamai.com
 status.almalinux.org
 status.alpinelinux.org
 status.amd.com
@@ -3517,7 +3389,6 @@ status.cdn77.com
 status.centos.org
 status.cern.ch
 status.cisco.com
-status.cloudflare.com
 status.cmake.org
 status.cncf.io
 status.confluent.io
@@ -3529,7 +3400,6 @@ status.eclipse.org
 status.elastic.co
 status.ericsson.com
 status.esa.int
-status.fastly.com
 status.fedoraproject.org
 status.freebsd.org
 status.fsf.org
@@ -3607,11 +3477,9 @@ status.who.int
 status.windows.com
 status.worldbank.org
 status.wto.org
-status.zte.com
 statuspage.io
 sum.golang.org
 superuser.com
-support.akamai.com
 support.almalinux.org
 support.alpinelinux.org
 support.amd.com
@@ -3629,7 +3497,6 @@ support.cdn77.com
 support.centos.org
 support.cern.ch
 support.cisco.com
-support.cloudflare.com
 support.cmake.org
 support.cncf.io
 support.confluent.io
@@ -3641,7 +3508,6 @@ support.eclipse.org
 support.elastic.co
 support.ericsson.com
 support.esa.int
-support.fastly.com
 support.fedoraproject.org
 support.freebsd.org
 support.fsf.org
@@ -3720,9 +3586,6 @@ support.who.int
 support.windows.com
 support.worldbank.org
 support.wto.org
-support.zte.com
-time.cloudflare.com
-training.akamai.com
 training.almalinux.org
 training.alpinelinux.org
 training.amd.com
@@ -3740,7 +3603,6 @@ training.cdn77.com
 training.centos.org
 training.cern.ch
 training.cisco.com
-training.cloudflare.com
 training.cmake.org
 training.cncf.io
 training.confluent.io
@@ -3752,7 +3614,6 @@ training.eclipse.org
 training.elastic.co
 training.ericsson.com
 training.esa.int
-training.fastly.com
 training.fedoraproject.org
 training.freebsd.org
 training.fsf.org
@@ -3830,14 +3691,12 @@ training.who.int
 training.windows.com
 training.worldbank.org
 training.wto.org
-training.zte.com
 typescriptlang.org
 ubuntu.com
 un.org
 unesco.org
 unicode.org
 unpkg.com
-updates.akamai.com
 updates.almalinux.org
 updates.alpinelinux.org
 updates.amd.com
@@ -3855,7 +3714,6 @@ updates.cdn77.com
 updates.centos.org
 updates.cern.ch
 updates.cisco.com
-updates.cloudflare.com
 updates.cmake.org
 updates.cncf.io
 updates.confluent.io
@@ -3867,7 +3725,6 @@ updates.eclipse.org
 updates.elastic.co
 updates.ericsson.com
 updates.esa.int
-updates.fastly.com
 updates.fedoraproject.org
 updates.freebsd.org
 updates.fsf.org
@@ -3945,7 +3802,6 @@ updates.who.int
 updates.windows.com
 updates.worldbank.org
 updates.wto.org
-updates.zte.com
 visualstudio.com
 w3.org
 web.archive.org
@@ -3959,7 +3815,6 @@ www.acm.org
 www.admin.ch
 www.adobe.com
 www.afrinic.net
-www.akamai.com
 www.almalinux.org
 www.alpinelinux.org
 www.amd.com
@@ -3990,7 +3845,6 @@ www.centos.org
 www.cern.ch
 www.cisco.com
 www.clojure.org
-www.cloudflare.com
 www.cloudflarestatus.com
 www.cmake.org
 www.cncf.io
@@ -4015,13 +3869,11 @@ www.erlang.org
 www.esa.int
 www.ethz.ch
 www.etsi.org
-www.fastly.com
 www.fedoraproject.org
 www.ffmpeg.org
 www.freebsd.org
 www.freedesktop.org
 www.fsf.org
-www.fudan.edu.cn
 www.fujitsu.com
 www.gentoo.org
 www.git-scm.com
@@ -4128,7 +3980,6 @@ www.perfsonar.net
 www.perl.org
 www.philips.com
 www.php.net
-www.pku.edu.cn
 www.pool.ntp.org
 www.postgresql.org
 www.princeton.edu
@@ -4158,7 +4009,6 @@ www.scaleway.com
 www.schneider-electric.com
 www.siemens.com
 www.singapore.gov.sg
-www.sjtu.edu.cn
 www.snu.ac.kr
 www.sony.com
 www.sorbonne-universite.fr
@@ -4175,7 +4025,6 @@ www.swift.org
 www.tcpdump.org
 www.toshiba.com
 www.traefik.io
-www.tsinghua.edu.cn
 www.tum.de
 www.typescriptlang.org
 www.u-tokyo.ac.jp
@@ -4203,8 +4052,6 @@ www.wireshark.org
 www.worldbank.org
 www.wto.org
 www.xiph.org
-www.zte.com
-www2.akamai.com
 www2.almalinux.org
 www2.alpinelinux.org
 www2.amd.com
@@ -4221,7 +4068,6 @@ www2.cdn77.com
 www2.centos.org
 www2.cern.ch
 www2.cisco.com
-www2.cloudflare.com
 www2.cmake.org
 www2.cncf.io
 www2.confluent.io
@@ -4233,7 +4079,6 @@ www2.eclipse.org
 www2.elastic.co
 www2.ericsson.com
 www2.esa.int
-www2.fastly.com
 www2.fedoraproject.org
 www2.freebsd.org
 www2.fsf.org
@@ -4311,5 +4156,3 @@ www2.who.int
 www2.windows.com
 www2.worldbank.org
 www2.wto.org
-www2.zte.com
-zte.com

@@ -890,7 +890,7 @@ prompt_reality_sni() {
             custom_tier=$(sni_probe_candidate_tier "$input" 2>/dev/null || printf 'N')
             case "$custom_tier" in
                 A|B|C)
-                    printf '%s\n' "${GREEN}[SNI custom] 当前 VPS 实测通过 TLS 1.3、h2 和证书 SAN 检查；兼容档位 $custom_tier。$NC" >&2
+                    printf '%s\n' "${GREEN}[SNI custom] 当前 VPS 实测通过 TLS 1.3、h2 和证书 SAN 检查；兼容档位 ${custom_tier}。$NC" >&2
                     ;;
                 R)
                     printf '%s\n' "${YELLOW}[SNI custom] TLS 检查通过，但目标存在较高 CDN/共享边缘风险，不属于推荐档位。$NC" >&2
@@ -3975,7 +3975,7 @@ allowPort() {
     backend=$(firewall_backend)
     case "$backend" in
         iptables|ufw|firewalld) ;;
-        *) die "检测到原生 nftables 或未知防火墙后端（$backend）；A-Box 暂不支持安全地修改该后端，已拒绝放行端口。" ;;
+        *) die "检测到原生 nftables 或未知防火墙后端（${backend}）；A-Box 暂不支持安全地修改该后端，已拒绝放行端口。" ;;
     esac
     case "$backend" in
         ufw)
@@ -5473,11 +5473,11 @@ resolve_core_release_target() {
                     # Skip cooldown, trust mirror version with format validation.
                     # Mirror is maintained by weekly workflow that enforces cooldown at build time.
                     if [[ "$latest" =~ ^(app/)?v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z._-]+)?$ ]]; then
-                        target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；直接信任镜像版本 $target（跳过实时冷却期查询，镜像构建时已执行冷却校验）。${NC}" >&2
+                        target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；直接信任镜像版本 ${target}（跳过实时冷却期查询，镜像构建时已执行冷却校验）。${NC}" >&2
                     else
-                        target=$(core_release_mirror_version "$repo") || return 1; source='mirror'; msg "${YELLOW}[!] 镜像版本格式非法，回退到固定兼容版本 $target。${NC}" >&2
+                        target=$(core_release_mirror_version "$repo") || return 1; source='mirror'; msg "${YELLOW}[!] 镜像版本格式非法，回退到固定兼容版本 ${target}。${NC}" >&2
                     fi
-                else target=$(core_release_mirror_version "$repo") || return 1; source='mirror'; msg "${YELLOW}[!] 上游与最新镜像元数据均不可用；本次尝试固定 A-Box 兼容性容灾版本 $target。${NC}" >&2; fi
+                else target=$(core_release_mirror_version "$repo") || return 1; source='mirror'; msg "${YELLOW}[!] 上游与最新镜像元数据均不可用；本次尝试固定 A-Box 兼容性容灾版本 ${target}。${NC}" >&2; fi
             fi
         else core_release_ref_valid "$repo" "$default_ref" || return 1; target="$default_ref"; source='pinned'
         fi
@@ -6906,7 +6906,7 @@ pre_install_setup() {
     if [[ "$HAS_VISION" == 'true' || "$HAS_XHTTP" == 'true' ]]; then
         ABOX_AUTO_SNI_SELECTED=$(sni_auto_select_default) || ABOX_AUTO_SNI_SELECTED=''
         if valid_sni "$ABOX_AUTO_SNI_SELECTED"; then
-            msg "[SNI auto] 当前 VPS 的默认 REALITY SNI：$ABOX_AUTO_SNI_SELECTED。"
+            msg "[SNI auto] 当前 VPS 的默认 REALITY SNI：${ABOX_AUTO_SNI_SELECTED}。"
         else
             ABOX_AUTO_SNI_SELECTED=''
             msg "${YELLOW}[SNI auto] 没有候选或 Amazon 回退通过实时 TLS 1.3/h2/SAN 验证；请手动输入并确认可用的 SNI。${NC}"
@@ -10509,7 +10509,7 @@ timezone_apply_with_rollback() {
     # loudly instead of claiming rollback state is available.
     if ! write_file_atomically_from_stdin "$TZ_STATE_FILE" 600 <<< "applied=$target"; then
         rm -rf -- "$snap"
-        msg "${RED}[!] 时区已切换为 $target，但状态元数据写入失败；回滚信息可能不完整。${NC}" >&2
+        msg "${RED}[!] 时区已切换为 ${target}，但状态元数据写入失败；回滚信息可能不完整。${NC}" >&2
         return 1
     fi
     rm -rf -- "$snap"
@@ -10517,7 +10517,7 @@ timezone_apply_with_rollback() {
         en) msg "${GREEN}Timezone set to $target; the previous state is available for rollback.${NC}" ;;
         ru) msg "${GREEN}Часовой пояс установлен: $target; предыдущее состояние можно восстановить.${NC}" ;;
         fa) msg "${GREEN}منطقه زمانی روی $target تنظیم شد؛ امکان بازگردانی وضعیت قبلی وجود دارد.${NC}" ;;
-        *) msg "${GREEN}时区已设置为 $target；修改前的状态可通过回滚菜单恢复。${NC}" ;;
+        *) msg "${GREEN}时区已设置为 ${target}；修改前的状态可通过回滚菜单恢复。${NC}" ;;
     esac
 }
 timezone_choose_from_list() {
@@ -11109,12 +11109,12 @@ dns_auto_prefer() {
             prompt='Применить этот DNS для системы? [Y/N]: '
             canceled='Отменено; системный DNS не изменён.' ;;
         fa)
-            msg "${GREEN}بهترین نتیجه فعلی: $best؛ موفق ${best_success}/3، میانه ${best_ms} میلی‌ثانیه.${NC}"
+            msg "${GREEN}بهترین نتیجه فعلی: ${best}؛ موفق ${best_success}/3، میانه ${best_ms} میلی‌ثانیه.${NC}"
             msg 'این نتیجه مربوط به همین VPS و همین زمان آزمون است و رتبه‌بندی جهانی DNS نیست؛ فقط DNS IPv4 اندازه‌گیری‌شده اعمال می‌شود.'
             prompt='این DNS برای سیستم اعمال شود؟ [Y/N]: '
             canceled='لغو شد؛ DNS سیستم تغییر نکرد.' ;;
         *)
-            msg "${GREEN}本次测试最佳候选：$best，成功 ${best_success}/3，中位数 ${best_ms} ms。${NC}"
+            msg "${GREEN}本次测试最佳候选：${best}，成功 ${best_success}/3，中位数 ${best_ms} ms。${NC}"
             msg '结果仅适用于当前 VPS 和当前测试时段，不代表全球通用最佳 DNS。只应用已实测的 IPv4 解析器。'
             prompt='将该解析器应用为本机 DNS？[Y/N]: '
             canceled='已取消，未修改本机 DNS。' ;;
@@ -14364,7 +14364,7 @@ light_preflight_check() {
     local route_dev warp_confirm=''
     route_dev=$(ip -o route get 8.8.8.8 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}' || true)
     if default_route_uses_warp; then
-        msg "${YELLOW}[WARN] 默认公网路由经由 $route_dev；REALITY dest、HY2 伪装和公网 IP 探测可能使用该出口。${NC}"
+        msg "${YELLOW}[WARN] 默认公网路由经由 ${route_dev}；REALITY dest、HY2 伪装和公网 IP 探测可能使用该出口。${NC}"
         if [[ -t 0 ]]; then
             read -r -p '仍要使用当前默认公网路由继续部署吗？[Y/N]: ' warp_confirm || warp_confirm='N'
             is_yes "$warp_confirm" || { msg "${RED}[FAIL] 未确认使用 wg/warp/tun 默认出口。${NC}"; fail=$((fail+1)); }
@@ -14870,6 +14870,10 @@ wallos_rollback_to_version() {
     backup=$(ls -t "$WALLOS_DIR"/backups/wallos-*.tar.gz 2>/dev/null | head -n 1 || true)
     [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || { msg "${RED}No Wallos backup found for rollback.${NC}"; return 1; }
     docker stop wallos >/dev/null 2>&1 || true
+    # N-11: capture the pre-rollback image BEFORE removing the container,
+    # so the prune step can retain 2 images (new current + previous). (NEW-1)
+    local prev_image
+    prev_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
     docker rm -f wallos >/dev/null 2>&1 || { msg "${RED}Could not remove current Wallos container.${NC}"; return 1; }
     wallos_restore_backup "$backup" || { msg "${RED}Wallos backup restore failed.${NC}"; return 1; }
     local -a _pub_args=()
@@ -14888,9 +14892,7 @@ wallos_rollback_to_version() {
     wallos_write_state "bellamy/wallos:$image_tag" "$port" "$tz" "$bind_address" || {
         msg "${RED}Wallos state commit failed after rollback.${NC}"; return 1; }
     # N-11: prune to 2 images (new current + previous).
-    local prev_image
-    prev_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
-    wallos_prune_local_images "bellamy/wallos:$image_tag" ""
+    wallos_prune_local_images "bellamy/wallos:$image_tag" "$prev_image"
     msg "${GREEN}Wallos rolled back to $target_tag.${NC}"
     return 0
 }
@@ -15422,7 +15424,7 @@ wallos_public_urls() {
         *)
             [[ -z "$ipv4" ]] || msg "${GREEN}Wallos 网址：http://$ipv4:$port/${NC}"
             [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 网址：http://[$ipv6]:$port/${NC}"
-            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}无法检测公网 IP，请使用 VPS 公网地址或域名访问 TCP $port。${NC}" ;;
+            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}无法检测公网 IP，请使用 VPS 公网地址或域名访问 TCP ${port}。${NC}" ;;
     esac
 }
 
@@ -16265,7 +16267,7 @@ view_config() {
         VLESS_URL="vless://$UUID@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#A-Box-VLESS-Vision"
         msg "${GREEN}${VLESS_URL}${NC}"
         if [[ "$CORE" == 'xray' ]] && xray_reality_requires_mlkem; then
-            msg "${YELLOW}当前 Xray $(effective_xray_version) 的 REALITY 服务端涉及较新的兼容门槛；Mihomo 请使用下方完整 YAML。部分 Shadowrocket / sing-box 版本可能无法建立连接。A-Box 默认使用经过当前 iOS + XHTTP/REALITY 兼容性权衡的版本 Xray $ABOX_XRAY_DEFAULT_VERSION（兼容性固定版，非 26.9.x ML-KEM prerelease）；更高 prerelease 版本请显式设置 ABOX_XRAY_VERSION。${NC}"
+            msg "${YELLOW}当前 Xray $(effective_xray_version) 的 REALITY 服务端涉及较新的兼容门槛；Mihomo 请使用下方完整 YAML。部分 Shadowrocket / sing-box 版本可能无法建立连接。A-Box 默认使用经过当前 iOS + XHTTP/REALITY 兼容性权衡的版本 Xray ${ABOX_XRAY_DEFAULT_VERSION}（兼容性固定版，非 26.9.x ML-KEM prerelease）；更高 prerelease 版本请显式设置 ABOX_XRAY_VERSION。${NC}"
         fi
         generate_qr "$VLESS_URL"
     fi

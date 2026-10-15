@@ -25,7 +25,7 @@ A-Box 是一个独立 Bash 脚本，用于部署和维护 Linux 网络网关服�
 ### GitHub 官方源
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/d0de93ef90039705ccb91f121384f81fdc3c2650/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/151b8d829ed65d3f46765aae8e011056729bcd40/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 审阅下载的脚本后，再单独执行：
 sudo bash A-Box.sh
@@ -34,13 +34,13 @@ sudo bash A-Box.sh
 ### 第三方备用镜像
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/a-box/d0de93ef90039705ccb91f121384f81fdc3c2650/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/a-box/151b8d829ed65d3f46765aae8e011056729bcd40/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 审阅下载的脚本后，再单独执行：
 sudo bash A-Box.sh
 ```
 
-两个命令均将安装脚本固定到不可变提交 `d0de93ef90039705ccb91f121384f81fdc3c2650`；代理网址仍属于第三方传输服务，不是 A-Box 官方端点。语法检查与 SHA-256 摘要本身不能证明发布者身份，执行前应审阅下载文件；生产环境还应通过独立可信渠道核对提交与摘要。全新 Alpine 系统运行前先执行 `apk add --no-cache bash curl`。安装后输入 `sb` 打开菜单。
+两个命令均将安装脚本固定到不可变提交 `151b8d829ed65d3f46765aae8e011056729bcd40`；代理网址仍属于第三方传输服务，不是 A-Box 官方端点。语法检查与 SHA-256 摘要本身不能证明发布者身份，执行前应审阅下载文件；生产环境还应通过独立可信渠道核对提交与摘要。全新 Alpine 系统运行前先执行 `apk add --no-cache bash curl`。安装后输入 `sb` 打开菜单。
 
 ## 主要功能
 

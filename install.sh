@@ -1353,12 +1353,14 @@ __abox_try_v4() {
 }
 # BUG-28: hoisted from get_public_ip_fresh().
 __abox_try_v6() {
-    local ip
-    ip=$(curl -fsS6 --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" 'https://api64.ipify.org' 2>/dev/null | tr -d '[:space:]')
-    if valid_public_ip "$ip"; then
-        printf '%s\n' "$ip"
-        return 0
-    fi
+    local api ip
+    for api in 'https://api64.ipify.org' 'https://ifconfig.me/ip' 'https://icanhazip.com'; do
+        ip=$(curl -fsS6 --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" "$api" 2>/dev/null | tr -d '[:space:]')
+        if valid_public_ip "$ip"; then
+            printf '%s\n' "$ip"
+            return 0
+        fi
+    done
     return 1
 }
 get_public_ip_fresh() {
@@ -3827,7 +3829,7 @@ forget_native_firewall_rule() {
 }
 
 remove_abox_native_firewall_rule() {
-    local raw_spec="$1" proto="$2" spec backend fw_spec failed=0 record
+    local raw_spec="$1" proto="$2" spec backend fw_spec failed=0 record _backend _spec _proto _scope _zone _extra
     spec=$(normalize_port_spec "$raw_spec") || return 1
     [[ "$proto" == tcp || "$proto" == udp ]] || return 1
     backend=$(firewall_backend) || return 1
@@ -4349,6 +4351,7 @@ _ss_wl_rollback_to_snapshot() {
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
             if ! grep -Fxq -- "$line" <<< "$snap"; then
+                line=${line//\"/}
                 # Rule comments contain no spaces; word-splitting here is intentional.
                 # shellcheck disable=SC2086
                 "$ipt" -w -D INPUT $line >/dev/null 2>&1 || true
@@ -4358,6 +4361,7 @@ _ss_wl_rollback_to_snapshot() {
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
             if ! grep -Fxq -- "$line" <<< "$cur"; then
+                line=${line//\"/}
                 # See above: word-splitting intentional.
                 # shellcheck disable=SC2086
                 "$ipt" -w -A INPUT $line >/dev/null 2>&1 || true
@@ -4502,7 +4506,7 @@ selected_port_pairs() {
 
 check_selected_ports_free() {
     msg "${YELLOW}[*] 正在检查新选择端口是否仍被任何进程占用...${NC}"
-    local pairs pair proto p holder dup
+    local pairs pair proto p holder dup line
     pairs=$(selected_port_pairs | awk 'NF')
     dup=$(printf '%s\n' "$pairs" | awk 'NF { seen[$0]++ } END { for (k in seen) if (seen[k] > 1) { print k; break } }')
     [[ -n "$dup" ]] && die "端口冲突：当前配置中存在重复监听组合 ($dup)。"
@@ -6246,6 +6250,7 @@ remove_abox_log_files() {
 }
 
 setup_active_defense() {
+    local log_file
     msg "${YELLOW}[*] 正在挂载私有日志与 Fail2Ban 主动防御矩阵...${NC}"
     while IFS= read -r log_file; do
         [[ -n "$log_file" ]] || continue
@@ -6875,7 +6880,7 @@ pre_install_setup() {
     local CORE_IN=$1 MODE_IN=$2
     reset_protocol_vars
     local DEF_V_PORT=443 DEF_X_PORT=8443 DEF_H_PORT=443 DEF_S_PORT=2053
-    local INPUT_H_DOMAIN INPUT_H_HOP INPUT_SS_WL INPUT_KA ip prompt
+    local INPUT_H_DOMAIN INPUT_H_HOP INPUT_SS_WL INPUT_KA ip prompt proto holder check_rc
     local -a ss_whitelist_ips=()
     local HAS_VISION=false HAS_XHTTP=false HAS_HY2=false HAS_SS=false
     local L_VISION L_XHTTP L_HY2 L_SS L_GLOBAL
@@ -7112,28 +7117,28 @@ pre_install_setup() {
         if [[ -n "${SS_WHITELIST_IP:-}" ]]; then
             ss_whitelist_ipv6_precheck || die '主机启用了 IPv6，但 IPv6 防火墙不可用；拒绝启用白名单模式以避免 IPv6 侧被静默放行。'
             _ss_wl_snapshot_rules || die '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。'
-            remove_ss_open_accept_rules || die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'
+            remove_ss_open_accept_rules || { _ss_wl_rollback_to_snapshot; die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'; }
             read -r -a ss_whitelist_ips <<< "$SS_WHITELIST_IP"
             for ip in "${ss_whitelist_ips[@]}"; do
                 for proto in tcp udp; do
                     if [[ "$ip" == *:* ]]; then
                         if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! $IPT6 -w -S INPUT >/dev/null 2>&1; then
-                            die "IPv6 白名单已配置，但系统没有可用 IPv6 防火墙；拒绝继续以避免白名单被静默丢弃: $ip/$proto"
+                            _ss_wl_rollback_to_snapshot; die "IPv6 白名单已配置，但系统没有可用 IPv6 防火墙；拒绝继续以避免白名单被静默丢弃: $ip/$proto"
                         fi
                         if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
                             if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                             case "$check_rc" in
                                 0) ;;
-                                1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则写入失败: $ip/$proto" ;;
-                                *) die "无法检查防火墙规则。" ;;
+                                1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 白名单规则写入失败: $ip/$proto"; } ;;
+                                *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                             esac
                         fi
                     else
                         if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                         case "$check_rc" in
                             0) ;;
-                            1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则写入失败: $ip/$proto" ;;
-                            *) die "无法检查防火墙规则。" ;;
+                            1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 白名单规则写入失败: $ip/$proto"; } ;;
+                            *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                         esac
                     fi
                 done
@@ -7142,19 +7147,19 @@ pre_install_setup() {
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in
                     0) ;;
-                    1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则写入失败: $proto" ;;
-                    *) die "无法检查防火墙规则。" ;;
+                    1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 SS DROP 规则写入失败: $proto"; } ;;
+                    *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                 esac
                 if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
                         1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; } ;;
-                        *) die "无法检查防火墙规则。" ;;
+                        *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                     esac
                 fi
             done
-            enforce_ss_whitelist_order "$SS_PORT" || die 'SS 白名单规则顺序校正失败。'
+            enforce_ss_whitelist_order "$SS_PORT" || { _ss_wl_rollback_to_snapshot; die 'SS 白名单规则顺序校正失败。'; }
         else
             allowPort "$SS_PORT" tcp
             allowPort "$SS_PORT" udp
@@ -9322,24 +9327,24 @@ manage_ss_whitelist() {
         3)
             ss_whitelist_ipv6_precheck || die '主机启用了 IPv6，但 IPv6 防火墙不可用；拒绝启用白名单模式以避免 IPv6 侧被静默放行。'
             _ss_wl_snapshot_rules || die '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。'
-            remove_ss_open_accept_rules || die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'
+            remove_ss_open_accept_rules || { _ss_wl_rollback_to_snapshot; die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'; }
             for proto in tcp udp; do
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in
                     0) ;;
-                    1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则写入失败: $proto" ;;
-                    *) die "无法检查防火墙规则。" ;;
+                    1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 SS DROP 规则写入失败: $proto"; } ;;
+                    *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                 esac
                 if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
                         1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; } ;;
-                        *) die "无法检查防火墙规则。" ;;
+                        *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                     esac
                 fi
             done
-            enforce_ss_whitelist_order "$SS_PORT" || die 'SS 白名单规则顺序校正失败。'
+            enforce_ss_whitelist_order "$SS_PORT" || { _ss_wl_rollback_to_snapshot; die 'SS 白名单规则顺序校正失败。'; }
             save_firewall_rules || die 'A-Box 防火墙持久化失败。'
             msg "${GREEN}已开启白名单保护模式 (TCP+UDP)。${NC}"
             pause_return
@@ -15159,9 +15164,32 @@ wallos_create_backup() {
     sync -f "$temp" 2>/dev/null || true
     mv -f "$temp" "$backup" || { rm -f -- "$temp"; return 1; }
     sync -f "$WALLOS_DIR/backups" 2>/dev/null || true
-    find "$WALLOS_DIR/backups" -maxdepth 1 -type f -name 'wallos-*.tar.gz' -printf '%T@ %p\n' 2>/dev/null |
-        sort -nr | awk 'NR>5 {$1=""; sub(/^ /, ""); print}' |
-        while IFS= read -r old; do [[ "$old" == "$backup" ]] || rm -f -- "$old"; done
+    # P2-4: BusyBox find (Alpine) lacks -printf; python3 is already a hard
+    # dependency, so rotate by mtime in python. Keeps the newest 5 backups.
+    # Rotation is best-effort: the backup itself already succeeded above.
+    python3 - "$WALLOS_DIR/backups" "$backup" <<'PY_WALLOS_ROTATE' 2>/dev/null || true
+import os, sys
+_d, _keep = sys.argv[1], sys.argv[2]
+_ents = []
+try:
+    _names = os.listdir(_d)
+except OSError:
+    _names = []
+for _n in _names:
+    _p = os.path.join(_d, _n)
+    if _n.startswith('wallos-') and _n.endswith('.tar.gz') and os.path.isfile(_p) and not os.path.islink(_p):
+        try:
+            _ents.append((os.stat(_p).st_mtime, _p))
+        except OSError:
+            continue
+_ents.sort(key=lambda e: e[0], reverse=True)
+for _, _p in _ents[5:]:
+    if _p != _keep:
+        try:
+            os.unlink(_p)
+        except OSError:
+            pass
+PY_WALLOS_ROTATE
     printf '%s\n' "$backup"
 }
 
@@ -16973,6 +17001,11 @@ upgrade_xray_core_only() {
         if ! restart_service_soft xray || ! core_post_upgrade_health_gate xray; then
             rollback_core_upgrade_verified xray /usr/local/bin/xray "$backup" "$tmp"
         fi
+    else
+        # P1-A: service was stopped, so restart_service_soft (which refreshes
+        # the ownership manifest) was skipped. Record the new binary now to
+        # keep /etc/ddr/.managed-core-files.tsv in sync.
+        record_core_family_ownership xray || { rm -rf "$tmp"; die 'Xray 核心已替换，但归属清单更新失败。'; }
     fi
     msg "${GREEN}[OK] Xray-core upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
     rm -rf -- "$tmp"
@@ -17044,6 +17077,11 @@ upgrade_singbox_core_only() {
         if ! restart_service_soft sing-box || ! core_post_upgrade_health_gate singbox; then
             rollback_core_upgrade_verified sing-box /usr/local/bin/sing-box "$backup" "$tmp"
         fi
+    else
+        # P1-A: service was stopped, so restart_service_soft (which refreshes
+        # the ownership manifest) was skipped. Record the new binary now to
+        # keep /etc/ddr/.managed-core-files.tsv in sync.
+        record_core_family_ownership sing-box || { rm -rf "$tmp"; die 'sing-box 核心已替换，但归属清单更新失败。'; }
     fi
     msg "${GREEN}[OK] sing-box upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
     rm -rf -- "$tmp"
@@ -17117,6 +17155,10 @@ upgrade_hysteria_core_only() {
             msg "${RED}[!] New Hysteria binary failed smoke test with current config. Rolling back...${NC}"
             rollback_core_upgrade_verified hysteria /usr/local/bin/hysteria "$backup" "$tmp"
         fi
+        # P1-A: service was stopped, so restart_service_soft (which refreshes
+        # the ownership manifest) was skipped. Record the new binary now to
+        # keep /etc/ddr/.managed-core-files.tsv in sync.
+        record_core_family_ownership hysteria || { rm -rf "$tmp"; die 'Hysteria 核心已替换，但归属清单更新失败。'; }
     fi
     msg "${GREEN}[OK] Hysteria upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
     rm -rf -- "$tmp"
@@ -17742,7 +17784,37 @@ run_self_tests() {
             return 0
         fi
         [[ -d /etc/ddr && ! -L /etc/ddr ]] || return 1
-        find /etc/ddr -mindepth 1 -maxdepth 1 -xdev -printf '%f\0%y\0%u\0%g\0%m\0%s\0%T@\0' | sort -z | sha256sum | awk '{print $1}'
+        # P2-4: BusyBox find (Alpine) lacks -printf; python3 is already a hard
+        # dependency. Emits the same NUL-separated sorted field stream as the
+        # find pipeline did (basename, type, uid, gid, mode, size, mtime).
+        python3 - <<'PY_ABOX_SIG' 2>/dev/null || return 1
+import os, stat, sys, hashlib
+def _ftype(m):
+    if stat.S_ISREG(m): return 'f'
+    if stat.S_ISDIR(m): return 'd'
+    if stat.S_ISLNK(m): return 'l'
+    if stat.S_ISFIFO(m): return 'p'
+    if stat.S_ISSOCK(m): return 's'
+    if stat.S_ISCHR(m): return 'c'
+    if stat.S_ISBLK(m): return 'b'
+    return '?'
+try:
+    _names = os.listdir('/etc/ddr')
+except OSError:
+    sys.exit(1)
+_fields = []
+for _n in _names:
+    _p = os.path.join('/etc/ddr', _n)
+    try:
+        _st = os.lstat(_p)
+    except OSError:
+        continue
+    _fields += [_n, _ftype(_st.st_mode), str(_st.st_uid), str(_st.st_gid),
+                oct(stat.S_IMODE(_st.st_mode))[2:], str(_st.st_size), repr(_st.st_mtime)]
+_fields.sort()
+_blob = ('\0'.join(_fields) + '\0') if _fields else ''
+sys.stdout.write(hashlib.sha256(_blob.encode()).hexdigest() + '\n')
+PY_ABOX_SIG
     }
     if (( EUID == 0 )); then
         if [[ -e /etc/ddr || -L /etc/ddr ]]; then real_abox_exists=1; fi

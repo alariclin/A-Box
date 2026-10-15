@@ -421,10 +421,10 @@ ensure_abox_dir_owned() {
 normalize_lang() {
     case "${1:-}" in
         en|en_US|en-US|english|English) printf 'en' ;;
-        ja|ja_JP|ja-JP|japanese|Japanese|日本語|日语|日文) printf 'ja' ;;
+        ja|JA|ja_JP|ja-JP|japanese|Japanese|日本語|日语|日文) printf 'ja' ;;
         ru|ru_RU|ru-RU|russian|Русский) printf 'ru' ;;
         fa|fa_IR|fa-IR|persian|فارسی) printf 'fa' ;;
-        zh_tw|zh_TW|zh-TW|zhTW|tw|TW|hant|繁體中文|繁体中文) printf 'zh-tw' ;;
+        zh_tw|zh_TW|zh-tw|zh-TW|zhTW|tw|TW|hant|繁體中文|繁体中文) printf 'zh-tw' ;;
         zh|zh_CN|zh-CN|cn|CN|hans|中文|简体中文|简体|'') printf 'zh' ;;
         *) printf 'zh' ;;
     esac
@@ -10642,9 +10642,9 @@ timezone_apply_with_rollback() {
         ru) msg "${GREEN}Часовой пояс установлен: $target; предыдущее состояние можно восстановить.${NC}" ;;
         fa) msg "${GREEN}منطقه زمانی روی $target تنظیم شد؛ امکان بازگردانی وضعیت قبلی وجود دارد.${NC}" ;;
         zh-tw)
-            msg "${GREEN}時區已設為 $target；修改前的狀態可透過回滾選單還原。${NC}" ;;
+            msg "${GREEN}時區已設為 ${target}；修改前的狀態可透過回滾選單還原。${NC}" ;;
         ja)
-            msg "${GREEN}タイムゾーンを $target に設定しました。変更前の状態はロールバックメニューから復元できます。${NC}" ;;
+            msg "${GREEN}タイムゾーンを ${target} に設定しました。変更前の状態はロールバックメニューから復元できます。${NC}" ;;
         *) msg "${GREEN}时区已设置为 ${target}；修改前的状态可通过回滚菜单恢复。${NC}" ;;
     esac
 }
@@ -11320,13 +11320,13 @@ dns_auto_prefer() {
             prompt='این DNS برای سیستم اعمال شود؟ [Y/N]: '
             canceled='لغو شد؛ DNS سیستم تغییر نکرد.' ;;
         zh-tw)
-            msg "${GREEN}本次測試最佳候選：$best，成功 ${best_success}/3，中位數 ${best_ms} ms。${NC}"
+            msg "${GREEN}本次測試最佳候選：${best}，成功 ${best_success}/3，中位數 ${best_ms} ms。${NC}"
             msg '結果僅適用於目前 VPS 和目前測試時段，不代表全球通用最佳 DNS。只套用已實測的 IPv4 解析器。'
             prompt='將該解析器套用為本機 DNS？[Y/N]: '
             canceled='已取消，未修改本機 DNS。'
             ;;
         ja)
-            msg "${GREEN}今回のテストの最良候補：$best、成功 ${best_success}/3、中央値 ${best_ms} ms。${NC}"
+            msg "${GREEN}今回のテストの最良候補：${best}、成功 ${best_success}/3、中央値 ${best_ms} ms。${NC}"
             msg 'この結果は現在の VPS と現在のテスト期間にのみ適用され、世界共通の最良 DNS ではありません。実測済みの IPv4 リゾルバーのみを適用します。'
             prompt='このリゾルバーをホストの DNS として適用しますか？[Y/N]: '
             canceled='キャンセルしました。ホストの DNS は変更されませんでした。'

@@ -16925,7 +16925,7 @@ EOF_USAGE
         Wallos 為可選應用。正常情況下優先取得上游最新正式穩定版及相符 Docker 映像；上游失敗時才使用 A-Box `wallos-mirror` 災備 Release。資料獨立持久化，升級前備份，健康檢查失敗時嘗試回滾。初始 HTTP URL 沒有 TLS 加密，登錄個人資料前請設定 HTTPS。
 
         測速腳本優先從上游下載，顯示 SHA256 並要求確認；上游不可用時，僅在 SHA256 校驗通過後使用 A-Box `test-tools-mirror`。兩處來源都失敗則不執行。
-        EOF_USAGE
+EOF_USAGE
             ;;
         ja)
             cat <<'EOF_USAGE'
@@ -16958,7 +16958,7 @@ EOF_USAGE
         Wallos はオプションです。通常はアップストリームの最新正式安定版と対応する Docker イメージを優先的に取得します。アップストリームが利用できない場合のみ A-Box `wallos-mirror` の災害復旧 Release を使用します。データは独立して永続化され、アップグレード前にバックアップを取得し、ヘルスチェック失敗時はロールバックを試みます。初期 HTTP URL には TLS 暗号化がありません。個人情報を入力する前に HTTPS を設定してください。
 
         速度測定スクリプトはアップストリームからのダウンロードを優先し、SHA256 を表示して確認を求めます。アップストリームが利用できない場合は、SHA256 検証通過後に限り A-Box `test-tools-mirror` を使用します。両方のソースが失敗した場合は実行しません。
-        EOF_USAGE
+EOF_USAGE
             ;;
         *)
             cat <<'EOF_USAGE'

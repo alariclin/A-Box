@@ -4,7 +4,7 @@
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
-[🇺🇸 English](README.md) | [🇹🇼 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇷🇺 Русский](README-ru.md) | [🇮🇷 فارسی](README-fa.md)
+[🇺🇸 English](README.md) | [🇭🇰 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇷🇺 Русский](README-ru.md) | [🇮🇷 فارسی](README-fa.md)
 
 Linux 网络网关一键工具箱。
 
@@ -25,7 +25,7 @@ A-Box 是一个独立 Bash 脚本，用于部署和维护 Linux 网络网关服�
 ### GitHub 官方源
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/888f2d9227d8f3aa4211d1bc036155747e83d390/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/7caf458d13b34ce00d3e63899f623e26568ee1ec/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 审阅下载的脚本后，再单独执行：
 sudo bash A-Box.sh
@@ -34,7 +34,7 @@ sudo bash A-Box.sh
 ### 第三方备用镜像
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/888f2d9227d8f3aa4211d1bc036155747e83d390/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/7caf458d13b34ce00d3e63899f623e26568ee1ec/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 审阅下载的脚本后，再单独执行：
 sudo bash A-Box.sh

@@ -4,7 +4,7 @@
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
-[🇺🇸 English](README.md) | [🇨🇳 简体中文](README-zh.md) | [🇹🇼 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇮🇷 فارسی](README-fa.md)
+[🇺🇸 English](README.md) | [🇨🇳 简体中文](README-zh.md) | [🇭🇰 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇮🇷 فارسی](README-fa.md)
 
 Набор инструментов для развёртывания сетевого шлюза Linux одной командой.
 
@@ -25,7 +25,7 @@ A-Box — автономный Bash-скрипт для развёртывани
 ### Официальный источник GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/888f2d9227d8f3aa4211d1bc036155747e83d390/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/7caf458d13b34ce00d3e63899f623e26568ee1ec/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # После проверки загруженного скрипта выполните отдельно:
 sudo bash A-Box.sh
@@ -34,13 +34,13 @@ sudo bash A-Box.sh
 ### Резервное зеркало третьей стороны
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/888f2d9227d8f3aa4211d1bc036155747e83d390/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/7caf458d13b34ce00d3e63899f623e26568ee1ec/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # После проверки загруженного скрипта выполните отдельно:
 sudo bash A-Box.sh
 ```
 
-Обе команды привязывают установщик к неизменяемому commit `888f2d9227d8f3aa4211d1bc036155747e83d390`; proxy URL остаётся сторонним транспортом, а не официальным endpoint A-Box. Проверка синтаксиса и SHA-256 сама по себе не подтверждает издателя. Просмотрите файл до запуска, а для production проверьте commit и checksum через независимый доверенный канал. На чистой Alpine сначала выполните `apk add --no-cache bash curl`. После установки введите `sb`.
+Обе команды привязывают установщик к неизменяемому commit `7caf458d13b34ce00d3e63899f623e26568ee1ec`; proxy URL остаётся сторонним транспортом, а не официальным endpoint A-Box. Проверка синтаксиса и SHA-256 сама по себе не подтверждает издателя. Просмотрите файл до запуска, а для production проверьте commit и checksum через независимый доверенный канал. На чистой Alpine сначала выполните `apk add --no-cache bash curl`. После установки введите `sb`.
 
 ## Основные функции
 

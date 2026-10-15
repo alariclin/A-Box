@@ -4,7 +4,7 @@
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
-[🇨🇳 简体中文](README-zh.md) | [🇹🇼 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇷🇺 Русский](README-ru.md) | [🇮🇷 فارسی](README-fa.md)
+[🇨🇳 简体中文](README-zh.md) | [🇭🇰 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇷🇺 Русский](README-ru.md) | [🇮🇷 فارسی](README-fa.md)
 
 One-click Linux network gateway toolkit.
 
@@ -25,7 +25,7 @@ The project is provided “as is”, without warranty. Review the script and the
 ### Official GitHub source
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/888f2d9227d8f3aa4211d1bc036155747e83d390/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/7caf458d13b34ce00d3e63899f623e26568ee1ec/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh
@@ -34,13 +34,13 @@ sudo bash A-Box.sh
 ### Third-party fallback mirror
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/888f2d9227d8f3aa4211d1bc036155747e83d390/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/7caf458d13b34ce00d3e63899f623e26568ee1ec/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh
 ```
 
-Both commands pin the installer to immutable commit `888f2d9227d8f3aa4211d1bc036155747e83d390`; the proxy URL remains a third-party transport, not an official A-Box endpoint. Syntax checking and SHA-256 alone do not prove publisher authenticity. Review the downloaded file before running it, and for production verify the commit and checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.
+Both commands pin the installer to immutable commit `7caf458d13b34ce00d3e63899f623e26568ee1ec`; the proxy URL remains a third-party transport, not an official A-Box endpoint. Syntax checking and SHA-256 alone do not prove publisher authenticity. Review the downloaded file before running it, and for production verify the commit and checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.
 
 ## Main Features
 

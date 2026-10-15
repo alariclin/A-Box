@@ -1357,12 +1357,14 @@ __abox_try_v4() {
 }
 # BUG-28: hoisted from get_public_ip_fresh().
 __abox_try_v6() {
-    local ip
-    ip=$(curl -fsS6 --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" 'https://api64.ipify.org' 2>/dev/null | tr -d '[:space:]')
-    if valid_public_ip "$ip"; then
-        printf '%s\n' "$ip"
-        return 0
-    fi
+    local api ip
+    for api in 'https://api64.ipify.org' 'https://ifconfig.me/ip' 'https://icanhazip.com'; do
+        ip=$(curl -fsS6 --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" "$api" 2>/dev/null | tr -d '[:space:]')
+        if valid_public_ip "$ip"; then
+            printf '%s\n' "$ip"
+            return 0
+        fi
+    done
     return 1
 }
 get_public_ip_fresh() {
@@ -3831,7 +3833,7 @@ forget_native_firewall_rule() {
 }
 
 remove_abox_native_firewall_rule() {
-    local raw_spec="$1" proto="$2" spec backend fw_spec failed=0 record
+    local raw_spec="$1" proto="$2" spec backend fw_spec failed=0 record _backend _spec _proto _scope _zone _extra
     spec=$(normalize_port_spec "$raw_spec") || return 1
     [[ "$proto" == tcp || "$proto" == udp ]] || return 1
     backend=$(firewall_backend) || return 1
@@ -4522,7 +4524,7 @@ selected_port_pairs() {
 
 check_selected_ports_free() {
     msg "${YELLOW}[*] 正在检查新选择端口是否仍被任何进程占用...${NC}"
-    local pairs pair proto p holder dup
+    local pairs pair proto p holder dup line
     pairs=$(selected_port_pairs | awk 'NF')
     dup=$(printf '%s\n' "$pairs" | awk 'NF { seen[$0]++ } END { for (k in seen) if (seen[k] > 1) { print k; break } }')
     [[ -n "$dup" ]] && die "端口冲突：当前配置中存在重复监听组合 ($dup)。"
@@ -6266,6 +6268,7 @@ remove_abox_log_files() {
 }
 
 setup_active_defense() {
+    local log_file
     msg "${YELLOW}[*] 正在挂载私有日志与 Fail2Ban 主动防御矩阵...${NC}"
     while IFS= read -r log_file; do
         [[ -n "$log_file" ]] || continue
@@ -6895,7 +6898,7 @@ pre_install_setup() {
     local CORE_IN=$1 MODE_IN=$2
     reset_protocol_vars
     local DEF_V_PORT=443 DEF_X_PORT=8443 DEF_H_PORT=443 DEF_S_PORT=2053
-    local INPUT_H_DOMAIN INPUT_H_HOP INPUT_SS_WL INPUT_KA ip prompt
+    local INPUT_H_DOMAIN INPUT_H_HOP INPUT_SS_WL INPUT_KA ip prompt proto holder check_rc
     local -a ss_whitelist_ips=()
     local HAS_VISION=false HAS_XHTTP=false HAS_HY2=false HAS_SS=false
     local L_VISION L_XHTTP L_HY2 L_SS L_GLOBAL
@@ -7132,7 +7135,7 @@ pre_install_setup() {
         if [[ -n "${SS_WHITELIST_IP:-}" ]]; then
             ss_whitelist_ipv6_precheck || die '主机启用了 IPv6，但 IPv6 防火墙不可用；拒绝启用白名单模式以避免 IPv6 侧被静默放行。'
             _ss_wl_snapshot_rules || die '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。'
-            remove_ss_open_accept_rules || die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'
+            remove_ss_open_accept_rules || { _ss_wl_rollback_to_snapshot; die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'; }
             read -r -a ss_whitelist_ips <<< "$SS_WHITELIST_IP"
             for ip in "${ss_whitelist_ips[@]}"; do
                 for proto in tcp udp; do

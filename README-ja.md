@@ -25,7 +25,7 @@ Xray-core、sing-box、公式 Hysteria 2 サーバー、VLESS Vision REALITY、V
 ### GitHub 公式ソース
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/21073dd758002948ac6b08def2504ac56b069bf0/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/d3cc55548e7c7cb4fcbb197741fab5379069876a/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # ダウンロードしたスクリプトを確認後、別途実行してください：
 sudo bash A-Box.sh
@@ -34,7 +34,7 @@ sudo bash A-Box.sh
 ### サードパーティ・フォールバックミラー
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/21073dd758002948ac6b08def2504ac56b069bf0/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/d3cc55548e7c7cb4fcbb197741fab5379069876a/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # ダウンロードしたスクリプトを確認後、別途実行してください：
 sudo bash A-Box.sh

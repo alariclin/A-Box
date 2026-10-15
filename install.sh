@@ -543,6 +543,24 @@ tr_msg() {
         en:confirm_remote) echo 'About to download a third-party remote script: %s. SHA256 will be shown and a strong confirmation will be required. Continue download? [Y/N]: ' ;;
         ru:confirm_remote) echo 'Будет загружен сторонний скрипт: %s. SHA256 будет показан, перед запуском потребуется подтверждение. Продолжить? [Y/N]: ' ;;
         fa:confirm_remote) echo 'اسکریپت شخص ثالث دریافت می‌شود: %s. مقدار SHA256 نمایش داده و پیش از اجرا تأیید خواسته می‌شود. ادامه؟ [Y/N]: ' ;;
+        zh:remote_untrusted_warn) echo '[!] 即使摘要已钉扎，仍是 A-Box 无法控制的第三方代码。' ;;
+        zh-tw:remote_untrusted_warn) echo '[!] 即使摘要已釘扎，仍是 A-Box 無法控制的第三方代碼。' ;;
+        en:remote_untrusted_warn) echo '[!] This is third-party code outside A-Box control even after digest pin.' ;;
+        ja:remote_untrusted_warn) echo '[!] ダイジェストがピン留めされていても、A-Box の管理外のサードパーティコードです。' ;;
+        ru:remote_untrusted_warn) echo '[!] Это сторонний код вне контроля A-Box, даже после фиксации дайджеста.' ;;
+        fa:remote_untrusted_warn) echo '[!] این کد شخص ثالث خارج از کنترل A-Box است، حتی پس از پین شدن دایجست.' ;;
+        zh:remote_source) echo '[!] 来源：%s' ;;
+        zh-tw:remote_source) echo '[!] 來源：%s' ;;
+        en:remote_source) echo '[!] Source: %s' ;;
+        ja:remote_source) echo '[!] ソース: %s' ;;
+        ru:remote_source) echo '[!] Источник: %s' ;;
+        fa:remote_source) echo '[!] منبع: %s' ;;
+        zh:remote_execute_confirm) echo '确认执行此已钉扎摘要的第三方脚本？[Y/N]: ' ;;
+        zh-tw:remote_execute_confirm) echo '確認執行此已釘扎摘要的第三方腳本？[Y/N]: ' ;;
+        en:remote_execute_confirm) echo 'Execute this digest-pinned third-party script? [Y/N]: ' ;;
+        ja:remote_execute_confirm) echo 'このダイジェストピン留めされたサードパーティスクリプトを実行しますか？[Y/N]: ' ;;
+        ru:remote_execute_confirm) echo 'Выполнить этот сторонний скрипт с зафиксированным дайджестом? [Y/N]: ' ;;
+        fa:remote_execute_confirm) echo 'این اسکریپت شخص ثالث با دایجست پین‌شده اجرا شود؟ [Y/N]: ' ;;
         zh-tw:confirm_remote) echo '即將下載第三方遠程腳本：%s。下載後會顯示 SHA256 並要求強確認。繼續下載？[Y/N]: ' ;;
         ja:confirm_remote) echo 'サードパーティのリモートスクリプトをダウンロードします：%s。ダウンロード後に SHA256 を表示し、強い確認を求めます。続行しますか？[Y/N]: ' ;;
         zh:confirm_local_sni_full) echo '即将运行本地内置全量 SNI 优选库（不执行远程脚本）。确认执行？[Y/N]: ' ;;
@@ -11592,15 +11610,9 @@ confirm_remote_script_hash() {
         die "Remote script SHA256 is not in ABOX_REMOTE_SHA256_ALLOWLIST: ${label}"
     fi
     msg "${GREEN}[*] Remote script SHA256 matched ABOX_REMOTE_SHA256_ALLOWLIST.${NC}"
-    if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-        msg "${YELLOW}[!] This is third-party code outside A-Box control even after digest pin.${NC}"
-        msg "${YELLOW}[!] Source: ${url}${NC}"
-        confirm_yes_no 'Execute this digest-pinned third-party script? [Y/N]: '
-    else
-        msg "${YELLOW}[!] 即使摘要已钉扎，仍是 A-Box 无法控制的第三方代码。${NC}"
-        msg "${YELLOW}[!] 来源：${url}${NC}"
-        confirm_yes_no '确认执行此已钉扎摘要的第三方脚本？[Y/N]: '
-    fi
+    msg "${YELLOW}$(tr_msg remote_untrusted_warn)${NC}"
+    msg "${YELLOW}$(printf "$(tr_msg remote_source)" "$url")${NC}"
+    confirm_yes_no "$(tr_msg remote_execute_confirm)"
 }
 
 run_remote_bash_script() {

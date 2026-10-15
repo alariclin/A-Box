@@ -1,12 +1,12 @@
 # A-Box
 
-One-click Linux network gateway toolkit.
-
-[English](README.md) | [简体中文](README-zh.md) | [Русский](README-ru.md) | [فارسی](README-fa.md)
-
 <p align="center">
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
+
+[🇨🇳 简体中文](README-zh.md) | [🇹🇼 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇷🇺 Русский](README-ru.md) | [🇮🇷 فارسی](README-fa.md)
+
+One-click Linux network gateway toolkit.
 
 A-Box is a standalone Bash script for deploying and maintaining Linux network gateway services. Its compatibility pins are Xray `v26.7.28` (an upstream prerelease intentionally retained for compatibility), sing-box `v1.14.3`, and Hysteria `app/v2.13.0`; latest-stable selection never silently downgrades an already installed newer core.
 
@@ -25,7 +25,7 @@ The project is provided “as is”, without warranty. Review the script and the
 ### Official GitHub source
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/151b8d829ed65d3f46765aae8e011056729bcd40/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/a3704b2e2350f1117fee107217d908d563c8326f/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh
@@ -34,13 +34,13 @@ sudo bash A-Box.sh
 ### Third-party fallback mirror
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/a-box/151b8d829ed65d3f46765aae8e011056729bcd40/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/a3704b2e2350f1117fee107217d908d563c8326f/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh
 ```
 
-Both commands pin the installer to immutable commit `151b8d829ed65d3f46765aae8e011056729bcd40`; the proxy URL remains a third-party transport, not an official A-Box endpoint. Syntax checking and SHA-256 alone do not prove publisher authenticity. Review the downloaded file before running it, and for production verify the commit and checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.
+Both commands pin the installer to immutable commit `a3704b2e2350f1117fee107217d908d563c8326f`; the proxy URL remains a third-party transport, not an official A-Box endpoint. Syntax checking and SHA-256 alone do not prove publisher authenticity. Review the downloaded file before running it, and for production verify the commit and checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.
 
 ## Main Features
 
@@ -49,7 +49,7 @@ Both commands pin the installer to immutable commit `151b8d829ed65d3f46765aae8e0
 - **Client configuration export:** share links/URIs, QR codes, Clash/Mihomo YAML, sing-box outbound templates, and v2rayN/v2rayNG XHTTP JSON.
 - **Operations and diagnostics:** health checks, system/download benchmark, IP quality and route tests, BBR/FQ tuning with rollback, IP preference, measured host DNS, supported DoT/DoH, numbered timezone selection, locale/NTP settings, Wallos installation/backup, Fail2Ban/logrotate, traffic limits, backup/restore, redacted diagnostics, and preflight checks.
 - **Operations:** one-click Reality, fast/strict mode (`ABOX_FAST`), stable core pins and rollback-capable upgrades, multi-UUID server-side add/revoke plus URI/Base64/Clash export, and real download-source availability checks.
-- **Core binary mirrors:** the stable Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/a-box/releases/tag/core-binaries) keeps fixed compatibility-pin assets and versioned copies of the latest official stable Xray, sing-box, and Hysteria builds. The weekly publisher rejects draft/prerelease tags, verifies official SHA-256 digests and asset architecture, probes versions where the runner can execute the binary, and retains older versioned assets for rollback; the installer checks the actual binary version on the target before installation. Latest-stable recovery tries the exact-tag mirror first, then the fixed compatibility pins. `SHA256SUMS` is a same-Release integrity manifest, not an independent signature; see [`mirrors/README.md`](mirrors/README.md).
+- **Core binary mirrors:** the stable Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/A-Box/releases/tag/core-binaries) keeps fixed compatibility-pin assets and versioned copies of the latest official stable Xray, sing-box, and Hysteria builds. The weekly publisher rejects draft/prerelease tags, verifies official SHA-256 digests and asset architecture, probes versions where the runner can execute the binary, and retains older versioned assets for rollback; the installer checks the actual binary version on the target before installation. Latest-stable recovery tries the exact-tag mirror first, then the fixed compatibility pins. `SHA256SUMS` is a same-Release integrity manifest, not an independent signature; see [`mirrors/README.md`](mirrors/README.md).
 - **SNI candidate workflow:** local full and mini-host candidate tests, saved-result viewer, input validation, bounded file size/row count, duplicate removal, and fallback to a valid local cache or adjacent data file when available.
 - **Maintenance:** controlled script OTA with displayed SHA-256 and explicit confirmation, Xray Geo data updates, and core-only upgrades that preserve node parameters.
 - **Safety controls:** deployment preflight checks, guarded service ownership/state changes, firewall handling, and rollback paths for supported operations.
@@ -137,6 +137,6 @@ The interactive language selector supports Chinese, English, Russian and Persian
 
 ## Feedback and License
 
-- [GitHub Issues](https://github.com/alariclin/a-box/issues)
+- [GitHub Issues](https://github.com/alariclin/A-Box/issues)
 - Pull requests are welcome.
 - Released under the [Apache License 2.0](LICENSE).

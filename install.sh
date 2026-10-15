@@ -15,8 +15,10 @@
 # When in doubt, leave the function unchanged.
 set -o pipefail
 set -u
-if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )); then
-    printf 'A-Box requires Bash 4.3 or newer. Current: %s\n' "$BASH_VERSION" >&2
+# D-14: requires 4.4+ (4.4 fixed the empty-array + set -u unbound-variable bug;
+# the "${arr[@]:-}" workaround would pass a spurious empty argument to docker).
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) )); then
+    printf 'A-Box requires Bash 4.4 or newer. Current: %s\n' "$BASH_VERSION" >&2
     exit 1
 fi
 export DEBIAN_FRONTEND=noninteractive
@@ -32,7 +34,7 @@ NC=$'\033[0m'
 BOLD=$'\033[1m'
 
 DEPS_MARKER='/etc/ddr/.deps.v20260725'
-SCRIPT_URL='https://raw.githubusercontent.com/alariclin/a-box/main/install.sh'
+SCRIPT_URL='https://raw.githubusercontent.com/alariclin/A-Box/main/install.sh'
 ABOX_DIR='/etc/ddr'
 ABOX_ENV='/etc/ddr/.env'
 ABOX_FW_STATE='/etc/ddr/.firewall-native.rules'
@@ -45,7 +47,7 @@ DNS_STATE_FILE='/etc/ddr/.dns-state'
 DNS_BACKUP_DIR='/etc/ddr/.dns-backup'
 TZ_STATE_FILE='/etc/ddr/.timezone-state'
 ABOX_CORE_MIRROR_RELEASE='core-binaries'
-ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/a-box/releases/download/core-binaries'
+ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/A-Box/releases/download/core-binaries'
 FAST_MODE_FILE='/etc/ddr/.fast-mode'
 MIRROR_PREFER_FILE='/etc/ddr/.mirror-prefer'
 EXTRA_UUID_FILE='/etc/ddr/.extra-uuids'
@@ -58,6 +60,8 @@ ABOX_LANG='zh'
 ABOX_BUILD='2026-10-15-arbitrated-fix-v192'
 ABOX_BUILD_EPOCH=20261015192
 WALLOS_DIR='/opt/wallos'
+# D-04: top-level init (set -u is active; rollback reads this before any writer runs).
+WALLOS_IMAGE_RESULT=''
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
 # Cross-client compatibility pin for Shadowrocket + Mihomo/Clash Verge + sing-box
@@ -141,7 +145,7 @@ ABOX_LAST_CORE_SOURCE=''
 # 4096 seed-only boundary; default 8192 keeps generated variants reachable.
 ABOX_SNI_DEFAULT_MAX=8192
 ABOX_SNI_HARD_MAX=16384
-ABOX_SNI_CANDIDATE_URL_DEFAULT='https://raw.githubusercontent.com/alariclin/a-box/main/data/sni-candidates.txt'
+ABOX_SNI_CANDIDATE_URL_DEFAULT='https://raw.githubusercontent.com/alariclin/A-Box/main/data/sni-candidates.txt'
 ABOX_SNI_CANDIDATE_MAX_BYTES=1048576
 ABOX_SNI_CANDIDATE_MAX_ROWS=12000
 ABOX_SNI_CANDIDATE_MIN_ROWS=100
@@ -2496,7 +2500,9 @@ assert_abox_auxiliary_safe() {
     local path="$1"
     [[ ! -e "$path" && ! -L "$path" ]] && return 0
     auxiliary_path_is_abox_managed "$path" && return 0
-    die "拒绝覆盖非 A-Box 辅助文件: $path"
+    # B2-01: return 1 (not die) so callers with cleanup handlers
+    # (e.g. tx_dir removal) actually run; bare callers must add || die.
+    return 1
 }
 
 remove_owned_auxiliary_path() {
@@ -2980,7 +2986,9 @@ clean_chain() {
     local owned_re='--comment "?A-Box-(HY2-HOP|[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?)"?([[:space:]]|$)'
     local -a argv=()
     if ! command -v "$cmd" >/dev/null 2>&1; then
-        [[ "${cmd##*/}" == ip6tables ]] && ! has_ipv6 && return 0
+        # N-04: use objective host_has_usable_ipv6 (not preference-aware has_ipv6)
+        # to match enforce_ss_whitelist_order's "never silently skip IPv6" intent.
+        [[ "${cmd##*/}" == ip6tables ]] && ! host_has_usable_ipv6 && return 0
         return 1
     fi
     while :; do
@@ -3121,7 +3129,10 @@ reorder_one() {
             [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
             "${cmd}" -w -D INPUT "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
         done
-        for ((i=${#original_target_lines[@]}-1; i>=0; i--)); do
+        # X-01/X-02: insert in FORWARD order at original 1-based positions.
+        # Reverse insertion shifts indices: each -I at an absolute position
+        # displaces later rules, so reverse order scrambles the chain.
+        for ((i=0; i<${#original_target_lines[@]}; i++)); do
             rollback_line=${original_target_lines[i]//\"/}
             read -r -a rollback_argv_arr <<< "$rollback_line"
             [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
@@ -3510,13 +3521,6 @@ save_firewall_rules() {
     fi
     rm -f -- "$backup4" "$backup6"
     return 0
-}
-
-warn_ss_whitelist_native_firewall_reload() {
-    local backend
-    backend=$(firewall_backend)
-    [[ "$backend" == 'iptables' ]] && return 0
-    msg "${YELLOW}[!] SS-2022 whitelist/DROP rules use iptables/ip6tables. If ${backend} is externally reloaded, reapply whitelist mode from Menu 18.${NC}"
 }
 
 ufw_is_active() {
@@ -4080,6 +4084,17 @@ __abox_normalize_managed_rule_line() {
     printf '%s\n' "$line"
 }
 
+# D-01: main-script copy of __abox_firewall_unlock (heredoc copy at L3032 is
+# written to firewall_restore.sh and never executed by the main shell).
+# $1 = lock fd value. Closes it; caller clears its own lock_fd variable.
+__abox_firewall_unlock() {
+    local lock_fd="$1"
+    # Guard empty lock_fd: `exec >&-` would close stdout.
+    if [[ "$lock_fd" =~ ^[0-9]+$ ]]; then
+        eval "exec ${lock_fd}>&-" 2>/dev/null || true
+    fi
+}
+
 reorder_ss_whitelist_rules_one() {
     local cmd="$1" port="$2" proto="$3" wl_suffix="$4" drop_suffix="$5"
     local wl_comment="A-Box-${port}-${proto}-${wl_suffix}" drop_comment="A-Box-${port}-${proto}-${drop_suffix}"
@@ -4159,7 +4174,10 @@ reorder_ss_whitelist_rules_one() {
             [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
             "${cmd}" -w -D INPUT "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
         done
-        for ((i=${#original_target_lines[@]}-1; i>=0; i--)); do
+        # X-01/X-02: insert in FORWARD order at original 1-based positions.
+        # Reverse insertion shifts indices: each -I at an absolute position
+        # displaces later rules, so reverse order scrambles the chain.
+        for ((i=0; i<${#original_target_lines[@]}; i++)); do
             rollback_line=${original_target_lines[i]//\"/}
             read -r -a rollback_argv_arr <<< "$rollback_line"
             [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
@@ -4606,16 +4624,16 @@ validate_abox_script_file() {
 
 
 resolve_abox_main_commit_url() {
-    local api='https://api.github.com/repos/alariclin/a-box/commits/main' json sha
+    local api='https://api.github.com/repos/alariclin/A-Box/commits/main' json sha
     json=$(github_api_get "$api") || return 1
     sha=$(jq -r '.sha // empty' <<< "$json" 2>/dev/null)
     [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 1
-    printf 'https://raw.githubusercontent.com/alariclin/a-box/%s/install.sh\n' "$sha"
+    printf 'https://raw.githubusercontent.com/alariclin/A-Box/%s/install.sh\n' "$sha"
 }
 
 install_remote_abox_script_guarded() {
     local url="$1" dest="$2" tmp sha resolved_url
-    if [[ "$url" == 'https://raw.githubusercontent.com/alariclin/a-box/main/install.sh' ]]; then
+    if [[ "$url" == 'https://raw.githubusercontent.com/alariclin/A-Box/main/install.sh' ]]; then
         resolved_url=$(resolve_abox_main_commit_url) || die '无法将 A-Box main 分支解析为不可变 commit；已拒绝下载可变源码。'
         url="$resolved_url"
     fi
@@ -6251,7 +6269,7 @@ setup_active_defense() {
         [[ -n "$log_file" ]] || continue
         ensure_abox_log_file "$log_file"
     done < <(abox_log_files)
-    assert_abox_auxiliary_safe /etc/logrotate.d/A-Box
+    assert_abox_auxiliary_safe /etc/logrotate.d/A-Box || die "拒绝覆盖非 A-Box 辅助文件: /etc/logrotate.d/A-Box"
     write_file_atomically_from_stdin /etc/logrotate.d/A-Box 644 <<'EOF_LOGROTATE' || die 'logrotate 配置原子写入失败。'
 # Managed by A-Box
 /var/log/A-Box-*.log {
@@ -6272,8 +6290,8 @@ EOF_LOGROTATE
         path_parent_chain_safe /etc/fail2ban/filter.d/A-Box.conf || die 'Fail2Ban filter 父目录链不安全，拒绝创建或写入。'
         path_parent_chain_safe /etc/fail2ban/jail.d/A-Box.local || die 'Fail2Ban jail 父目录链不安全，拒绝创建或写入。'
         mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d || die 'Fail2Ban 目录创建失败。'
-        assert_abox_auxiliary_safe /etc/fail2ban/filter.d/A-Box.conf
-        assert_abox_auxiliary_safe /etc/fail2ban/jail.d/A-Box.local
+        assert_abox_auxiliary_safe /etc/fail2ban/filter.d/A-Box.conf || die "拒绝覆盖非 A-Box 辅助文件: /etc/fail2ban/filter.d/A-Box.conf"
+        assert_abox_auxiliary_safe /etc/fail2ban/jail.d/A-Box.local || die "拒绝覆盖非 A-Box 辅助文件: /etc/fail2ban/jail.d/A-Box.local"
         jail_tmp=$(mktemp /etc/fail2ban/jail.d/.A-Box.local.A-Box-new.XXXXXX) || die 'Fail2Ban jail 临时文件创建失败。'
         write_file_atomically_from_stdin /etc/fail2ban/filter.d/A-Box.conf 644 <<'EOF_F2B_FILTER' || { rm -f -- "$jail_tmp"; die 'Fail2Ban filter 原子写入失败。'; }
 # Managed by A-Box
@@ -7567,9 +7585,10 @@ rollback_binary_install() {
 # is swallowed. On full success the tmp dir is cleaned and we die with the
 # standard "rolled back" message. On ANY failure the tmp dir (with backups)
 # is preserved and die reports exactly what failed plus manual recovery steps.
-# Args: $1=service name, $2=binary path, $3=backup path (may be empty), $4=tmp dir
+# Args: $1=service name, $2=binary path, $3=backup path (may be empty), $4=tmp dir,
+#   $5=was_active (1/0, default 1). When was_active=0 the service is left stopped.
 rollback_core_upgrade_verified() {
-    local svc="$1" bin="$2" backup="${3:-}" tmp="${4:-}"
+    local svc="$1" bin="$2" backup="${3:-}" tmp="${4:-}" was_active="${5:-1}"
     local rb_ok=0 rs_ok=0
     msg "${RED}[!] New ${svc} failed post-upgrade health checks. Rolling back binary...${NC}"
     if rollback_binary_install "$bin" "$backup" >/dev/null 2>&1; then
@@ -7577,7 +7596,11 @@ rollback_core_upgrade_verified() {
     else
         msg "${RED}[!] Rollback binary restore FAILED for ${svc} (backup: ${backup:-none}).${NC}" >&2
     fi
-    if restart_service_soft "$svc" >/dev/null 2>&1; then
+    # X-06: do not start a service that was intentionally stopped (e.g.
+    # MANUAL_STOPPED or TRAFFIC_BLOCKED); just restore the binary + ownership.
+    if [[ "$was_active" == '0' ]]; then
+        record_core_family_ownership "$svc" >/dev/null 2>&1 && rs_ok=1 || rs_ok=0
+    elif restart_service_soft "$svc" >/dev/null 2>&1; then
         rs_ok=1
     else
         msg "${RED}[!] Service restart after rollback FAILED for ${svc}.${NC}" >&2
@@ -7814,7 +7837,9 @@ deploy_xray() {
     "$xray_ext/xray" version >/dev/null 2>&1 || die 'Xray staged binary execution check failed.'
     install_binary_atomically "$xray_ext/xray" /usr/local/bin/xray || die 'Xray binary atomic install failed.'
     /usr/local/bin/xray version >/dev/null 2>&1 || die 'Xray 执行校验失败。'
-    install -d -m 755 /usr/local/share/xray /usr/local/etc/xray || die 'Xray data/config directory creation failed.'
+    install -d -m 755 /usr/local/share/xray || die 'Xray data directory creation failed.'
+    # B9-03: config dir 750 root:abox-xray like sing-box/hysteria (was 755).
+    install -d -o root -g abox-xray -m 750 -- /usr/local/etc/xray || die 'Xray config directory creation failed.'
 
     geo_tmp="$xray_tmp/geo"
     mkdir -p "$geo_tmp" || die 'Xray Geo 临时目录创建失败。'
@@ -9205,9 +9230,11 @@ remove_ss_source_whitelist_rules() {
 # so menu edits (add/remove) don't leave .env stale for redeploy wizards.
 sync_ss_whitelist_ip_to_env() {
     local ips='' v6ips=''
-    ips=$($IPT -nL INPUT 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '0.0.0.0/0' | sort -u | tr '\n' ' ' || true)
+    # X-03: --line-numbers is required; without it awk '{print $5}' reads the
+    # DESTINATION column (0.0.0.0/0) instead of SOURCE, wiping the whitelist.
+    ips=$($IPT -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '0.0.0.0/0' | sort -u | tr '\n' ' ' || true)
     if command -v ip6tables >/dev/null 2>&1 && $IPT6 -nL INPUT >/dev/null 2>&1; then
-        v6ips=$($IPT6 -nL INPUT 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '::/0' | sort -u | tr '\n' ' ' || true)
+        v6ips=$($IPT6 -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '::/0' | sort -u | tr '\n' ' ' || true)
         ips+="$v6ips"
     fi
     SS_WHITELIST_IP=$(printf '%s' "$ips" | tr -s ' ' | sed 's/^ *//;s/ *$//')
@@ -9571,9 +9598,9 @@ __abox_add_sysctl() {
 apply_vps_tune() {
     local dir="$ABOX_DIR/tune-backup" tmp key value available bbr_loaded=0
     local bbr_module_file='/etc/modules-load.d/A-Box-bbr.conf'
-    assert_abox_auxiliary_safe /etc/security/limits.d/A-Box.conf
-    assert_abox_auxiliary_safe /etc/sysctl.d/99-A-Box-tune.conf
-    assert_abox_auxiliary_safe "$bbr_module_file"
+    assert_abox_auxiliary_safe /etc/security/limits.d/A-Box.conf || die "拒绝覆盖非 A-Box 辅助文件: /etc/security/limits.d/A-Box.conf"
+    assert_abox_auxiliary_safe /etc/sysctl.d/99-A-Box-tune.conf || die "拒绝覆盖非 A-Box 辅助文件: /etc/sysctl.d/99-A-Box-tune.conf"
+    assert_abox_auxiliary_safe "$bbr_module_file" || die "拒绝覆盖非 A-Box 辅助文件: $bbr_module_file"
     if [[ -f "$dir/.captured" ]]; then die '检测到尚未恢复的调优快照；请先执行恢复，再重新应用。'; fi
     if [[ -e "$dir" || -L "$dir" ]]; then
         [[ -d "$dir" && ! -L "$dir" ]] || die '调优备份路径不是安全目录。'
@@ -11158,9 +11185,6 @@ dns_enable_doh() {
         esac
         return 1
     fi
-    dns_install_dnscrypt_proxy || { msg "${YELLOW}dnscrypt-proxy is unavailable; DNS was not changed.${NC}"; return 1; }
-    config='/etc/dnscrypt-proxy/dnscrypt-proxy.toml'
-    [[ -f "$config" && ! -L "$config" ]] || { msg "${RED}dnscrypt-proxy configuration file was not found; DNS was not changed.${NC}"; return 1; }
     case "${ABOX_LANG:-zh}" in
         en) prompt='Configure Cloudflare DoH through the local proxy at 127.0.0.1:5353? [Y/N]: ' ;;
         ru) prompt='Настроить Cloudflare DoH через локальный прокси 127.0.0.1:5353? [Y/N]: ' ;;
@@ -11169,6 +11193,11 @@ dns_enable_doh() {
     esac
     read -r -p "$prompt" answer
     is_yes "$answer" || return 0
+    # X-04: install only after user confirmation; the pre-confirm install left
+    # dnscrypt-proxy present even on "N", skewing the rollback snapshot.
+    dns_install_dnscrypt_proxy || { msg "${YELLOW}dnscrypt-proxy is unavailable; DNS was not changed.${NC}"; return 1; }
+    config='/etc/dnscrypt-proxy/dnscrypt-proxy.toml'
+    [[ -f "$config" && ! -L "$config" ]] || { msg "${RED}dnscrypt-proxy configuration file was not found; DNS was not changed.${NC}"; return 1; }
     # FINAL-AUDIT fix: stage the new snapshot in a temp dir and verify it
     # is COMPLETE before replacing the old one. The old code ran
     # `rm -rf $DNS_BACKUP_DIR` first, so a mkdir/snapshot failure destroyed
@@ -12327,7 +12356,15 @@ swapfile_active_state() {
     # A query failure must never be interpreted as inactivity before a
     # destructive swapfile operation.
     local output='' line
-    if ! output=$(swapon --show=NAME --noheadings 2>/dev/null); then
+    # N-08: use swapon when available (util-linux syntax); fall back to
+    # /proc/swaps when swapon is missing (BusyBox swapon lacks --show).
+    if command -v swapon >/dev/null 2>&1; then
+        if ! output=$(swapon --show=NAME --noheadings 2>/dev/null); then
+            return 2
+        fi
+    elif [[ -r /proc/swaps ]]; then
+        output=$(awk 'NR>1 {print $1}' /proc/swaps 2>/dev/null || true)
+    else
         return 2
     fi
     while IFS= read -r line; do
@@ -14133,8 +14170,14 @@ restore_latest_backup_silent() {
     backend=$(cat "$work/meta/firewall.backend" 2>/dev/null || echo iptables); [[ "$backend" == iptables ]] || mode=special
     restore_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 "$mode" || { rm -rf "$work"; return 1; }
     restore_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 "$mode" || { rm -rf "$work"; return 1; }
-    load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
-    enforce_ss_whitelist_order "${SS_PORT:-}" || { rm -rf "$work"; return 1; }
+    # X-08: a pre-deployment backup on a fresh host legitimately has no .env;
+    # guard like regenerate_runtime_assets_after_restore does (L13851).
+    if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
+        load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
+        enforce_ss_whitelist_order "${SS_PORT:-}" || { rm -rf "$work"; return 1; }
+    else
+        clear_abox_env_vars
+    fi
     save_firewall_rules >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
     if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || { rm -rf "$work"; return 1; }; fi
     restore_managed_service_state "$work/meta/services.state" || { rm -rf "$work"; return 1; }
@@ -14212,15 +14255,22 @@ restore_from_backup() {
         restore_auxiliary_path_from_backup "$root" "$path" || die "Restore failed: $path"
     done <<< "$aux_paths"
     chmod 700 "$ABOX_DIR" 2>/dev/null || die '恢复后的 A-Box 目录权限加固失败。'
-    chmod 600 "$ABOX_ENV" 2>/dev/null || die '恢复后的 .env 权限加固失败。'
+    # X-08: restoring an initial backup (no .env) must not die here.
+    if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
+        chmod 600 "$ABOX_ENV" 2>/dev/null || die '恢复后的 .env 权限加固失败。'
+    fi
     regenerate_runtime_assets_after_restore || die 'Regenerate trusted A-Box runtime helpers and cron blocks failed.'
     apply_native_firewall_rules_from_state || die 'Restore native firewall rules failed.'
     backend=$(cat "$work/meta/firewall.backend" 2>/dev/null || echo iptables)
     [[ "$backend" == iptables ]] || mode=special
     restore_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 "$mode" || die 'IPv4 A-Box firewall restore failed.'
     restore_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 "$mode" || die 'IPv6 A-Box firewall restore failed.'
-    load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || die '恢复后的 A-Box 环境文件校验失败。'
-    enforce_ss_whitelist_order "${SS_PORT:-}" || die 'Restored SS whitelist order validation failed.'
+    if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
+        load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || die '恢复后的 A-Box 环境文件校验失败。'
+        enforce_ss_whitelist_order "${SS_PORT:-}" || die 'Restored SS whitelist order validation failed.'
+    else
+        clear_abox_env_vars
+    fi
     save_firewall_rules || die 'Restored A-Box firewall persistence failed.'
     if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || die 'systemd daemon-reload after restore failed.'; fi
     restore_managed_service_state "$work/meta/services.state" || die 'Restored service state failed validation/startup.'
@@ -14558,11 +14608,11 @@ run_mirrored_test_script() {
     # syntactically-valid malicious script passes validate_test_script.
     # Mirror is updated weekly; at most 1-week staleness for diagnostics.
     if curl -fLsS --connect-timeout 10 --max-time 45 \
-        "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums" &&
+        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums" &&
        curl -fLsS --connect-timeout 10 --max-time 45 \
-        "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" &&
+        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" &&
        curl -fLsS --connect-timeout 10 --max-time 180 \
-        "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then
+        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then
         expected=$(awk -v f="$asset" '$2==f || $2==("*" f) {print $1; exit}' "$sums")
         sha=$(sha256sum "$mirror" | awk '{print $1}')
         if [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ && "${sha,,}" == "${expected,,}" ]] && validate_test_script "$mirror"; then
@@ -14612,9 +14662,13 @@ run_mirrored_test_script() {
 }
 
 wallos_state_value() {
-    local key="$1"
+    local key="$1" val
     [[ -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]] || return 1
-    awk -F= -v k="$key" '$1==k {sub(/^[^=]*=/, ""); print; exit}' "$WALLOS_DIR/.abox-state"
+    val=$(awk -F= -v k="$key" '$1==k {sub(/^[^=]*=/, ""); print; exit}' "$WALLOS_DIR/.abox-state")
+    # D-06: awk exits 0 even when the key is missing (empty output), which
+    # defeated every `|| printf fallback` caller. Return 1 on empty instead.
+    [[ -n "$val" ]] || return 1
+    printf '%s\n' "$val"
 }
 
 wallos_detect_arch() {
@@ -14804,7 +14858,7 @@ wallos_candidate_version_allowed() {
 wallos_mirror_version_list() {
     local work versions_url
     work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-ver.XXXXXX 2>/dev/null) || return 1
-    versions_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-versions.txt"
+    versions_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-versions.txt"
     if curl -fLsS --connect-timeout 8 --max-time 20 "$versions_url" -o "$work/wallos-versions.txt" 2>/dev/null; then
         grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' "$work/wallos-versions.txt" 2>/dev/null || true
     fi
@@ -14813,10 +14867,14 @@ wallos_mirror_version_list() {
 
 # N-11: Prune local bellamy/wallos images to keep only the newest 2
 # (current + previous verified-good). Enforces the 500MB local cache cap
-# by count (2 images); reports total size for operator awareness.
+# by count (2 images). (N-06: removed stale "reports total size" claim.)
 # Args: $1 = image tag to always keep (current), $2 = image tag to keep (previous, may be empty).
 wallos_prune_local_images() {
     local keep1="${1:-}" keep2="${2:-}" img tag
+    # D-05: normalize docker.io/ prefix (docker inspect .Config.Image may include
+    # it, while `docker images --format` never does) so keep-list comparison works.
+    keep1="${keep1#docker.io/}"
+    keep2="${keep2#docker.io/}"
     local -a all_images=()
     while IFS= read -r img; do
         [[ -n "$img" ]] || continue
@@ -14829,12 +14887,16 @@ wallos_prune_local_images() {
         if [[ "$img" != "$keep1" && "$img" != "$keep2" ]]; then
             # Keep at most 2: remove anything beyond keep1/keep2.
             # Count how many we would keep; if already 2 kept, remove the rest.
-            docker rmi "$img" >/dev/null 2>&1 && removed=$((removed + 1)) || true
+            if docker rmi "$img" >/dev/null 2>&1; then
+                removed=$((removed + 1))
+            else
+                # D-09: was silently swallowed by `|| true`.
+                msg "${YELLOW}[!] Could not remove old Wallos image $img; it may still be in use.${NC}"
+            fi
         fi
     done
-    # Report total size of retained wallos images (500MB cap awareness).
-    local total
-    total=$(docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' 2>/dev/null | grep '^bellamy/wallos:' | awk '{print $2}' || true)
+    # D-08: removed dead 500MB-cap computation (total was calculated but never
+    # used for enforcement or warning). Pruning is count-based (keep 2).
     if (( removed > 0 )); then
         msg "${CYAN}N-11: pruned $removed old Wallos image(s); retained: ${keep1:-none} ${keep2:-}${NC}"
     fi
@@ -14844,16 +14906,46 @@ wallos_prune_local_images() {
 # N-11: Roll back Wallos to a specific version.
 # Args: $1 = version tag (e.g. v2.5.1). Fetches the versioned image from the
 # mirror if not present locally, restores the latest backup, recreates the container.
+# D-02: best-effort recovery if rollback fails after the old container was removed.
+# Tries to bring Wallos back up with the previous image so the service is not
+# left completely down. Data on disk is already the restored backup.
+_wallos_rollback_recover() {
+    local prev_image="$1" port="$2" tz="$3" bind_address="$4"
+    local -a _pub_args=()
+    # X-03: use explicit bind:port form like the install path (L15630).
+    # The old 0.0.0.0 -> "-p port:80" special case also published IPv6 [::]:port.
+    [[ -n "$bind_address" ]] && _pub_args=(-p "${bind_address}:${port}:80/tcp")
+    [[ -n "$prev_image" ]] || return 1
+    # X-01: remove any existing 'wallos' container first. Callers may invoke
+    # this after a failed docker run or unhealthy new container is still present;
+    # without this, the second 'docker run --name wallos' always hits a name conflict.
+    docker rm -f wallos >/dev/null 2>&1 || true
+    docker run -d --name wallos --label com.alariclin.abox.managed=true \
+        -v "$WALLOS_DIR/db:/var/www/html/db" \
+        -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
+        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$prev_image" >/dev/null 2>&1
+}
+
 wallos_rollback_to_version() {
     local target_tag="$1" arch image_tag port tz bind_address backup
     [[ "$target_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { msg "${RED}Invalid Wallos version: $target_tag${NC}"; return 1; }
-    wallos_candidate_version_allowed "$target_tag" || { msg "${RED}Wallos version $target_tag is not in the allowed list.${NC}"; return 1; }
+    # X-04: rollback's purpose IS downgrade; do not reuse the install-path
+    # anti-downgrade gate (wallos_candidate_version_allowed) here. Instead
+    # require the target to be strictly older than the installed version.
+    local _installed_img _installed_ver
+    _installed_img=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+    _installed_img="${_installed_img#docker.io/}"
+    _installed_ver="${_installed_img##*:}"
+    if [[ "$_installed_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        wallos_version_is_older "${target_tag#v}" "$_installed_ver" || {
+            msg "${RED}Rollback target ${target_tag} is not older than installed ${_installed_ver}; refusing.${NC}"; return 1; }
+    fi
     image_tag="${target_tag#v}"
     # Try local image first; else pull the versioned image from the mirror.
     if ! docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1; then
         msg "${YELLOW}Wallos image $image_tag not present locally; fetching from mirror...${NC}"
         # Use the versioned mirror path: temporarily override tag selection.
-        local _saved_result="$WALLOS_IMAGE_RESULT"
+        local _saved_result="${WALLOS_IMAGE_RESULT:-}"
         if ! _wallos_pull_versioned_image "$target_tag"; then
             WALLOS_IMAGE_RESULT="$_saved_result"
             msg "${RED}Could not fetch Wallos $target_tag from the mirror.${NC}"
@@ -14874,21 +14966,34 @@ wallos_rollback_to_version() {
     # so the prune step can retain 2 images (new current + previous). (NEW-1)
     local prev_image
     prev_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
-    docker rm -f wallos >/dev/null 2>&1 || { msg "${RED}Could not remove current Wallos container.${NC}"; return 1; }
-    wallos_restore_backup "$backup" || { msg "${RED}Wallos backup restore failed.${NC}"; return 1; }
+    docker rm -f wallos >/dev/null 2>&1 || {
+        # A-04: rm failed after stop succeeded; try to restart the original
+        # container instead of leaving it in Exited state.
+        docker start wallos >/dev/null 2>&1 || true
+        msg "${RED}Could not remove current Wallos container; restarted existing container.${NC}"
+        return 1
+    }
+    wallos_restore_backup "$backup" || { msg "${RED}Wallos backup restore failed.${NC}"
+        _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
+            msg "${YELLOW}Recovered by restarting previous Wallos image.${NC}"
+        return 1; }
     local -a _pub_args=()
-    if [[ -n "$bind_address" && "$bind_address" != "0.0.0.0" ]]; then
-        _pub_args=(-p "$bind_address:$port:80/tcp")
-    elif [[ "$bind_address" == "0.0.0.0" ]]; then
-        _pub_args=(-p "$port:80/tcp")
-    fi
+    # X-03: explicit bind:port form (matches install path); bare "-p port:80"
+    # would also publish IPv6 [::]:port when bind is 0.0.0.0.
+    [[ -n "$bind_address" ]] && _pub_args=(-p "${bind_address}:${port}:80/tcp")
     # Empty bind_address: omit -p entirely (no port publication, fail-closed).
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
         -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "bellamy/wallos:$image_tag" >/dev/null || {
-        msg "${RED}Failed to start Wallos $target_tag.${NC}"; return 1; }
-    wallos_wait_healthy "$port" || { msg "${RED}Wallos $target_tag did not become healthy.${NC}"; return 1; }
+        msg "${RED}Failed to start Wallos $target_tag.${NC}"
+        _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
+            msg "${YELLOW}Recovered by restarting previous Wallos image.${NC}"
+        return 1; }
+    wallos_wait_healthy "$port" || { msg "${RED}Wallos $target_tag did not become healthy.${NC}"
+        _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
+            msg "${YELLOW}Recovered by restarting previous Wallos image.${NC}"
+        return 1; }
     wallos_write_state "bellamy/wallos:$image_tag" "$port" "$tz" "$bind_address" || {
         msg "${RED}Wallos state commit failed after rollback.${NC}"; return 1; }
     # N-11: prune to 2 images (new current + previous).
@@ -14905,8 +15010,8 @@ _wallos_pull_versioned_image() {
     arch=$(wallos_detect_arch) || return 1
     work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-ver.XXXXXX) || return 1
     local ver_manifest="wallos-manifest-${tag}.txt"
-    manifest_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/$ver_manifest"
-    sum_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
+    manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/$ver_manifest"
+    sum_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
     if ! curl -fLsS --connect-timeout 8 --max-time 30 "$manifest_url" -o "$work/$ver_manifest" ||
        ! curl -fLsS --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
         rm -rf -- "$work"; return 1
@@ -14926,7 +15031,7 @@ _wallos_pull_versioned_image() {
     [[ "$mtag" == "$tag" ]] || { rm -rf -- "$work"; return 1; }
     case "$arch" in amd64|arm64|armv7) asset="wallos-linux-$arch-${tag}.tar.gz" ;; *) rm -rf -- "$work"; return 1 ;; esac
     if ! curl -fLsS --connect-timeout 8 --max-time 600 \
-        "https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then
+        "https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then
         rm -rf -- "$work"; return 1
     fi
     expected=$(awk -v f="$asset" '$2==f || $2==("*" f) {print $1; exit}' "$work/SHA256SUMS" 2>/dev/null || true)
@@ -14974,8 +15079,8 @@ wallos_pull_or_restore_image() {
         # corruption but is NOT an independent authenticity proof. A signature
         # trust root is still deferred (F-05).
         local _n2_work="" _mirror_digest="" _manifest_tag="" _n2_ts=""
-        local _n2_manifest_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
-        local _n2_sum_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
+        local _n2_manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
+        local _n2_sum_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
         _n2_work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-n2.XXXXXX 2>/dev/null) || true
         if [[ -n "$_n2_work" && -d "$_n2_work" ]]; then
             # TRAP-3: EXIT trap ensures temp dir cleanup even on abnormal exit.
@@ -14997,12 +15102,29 @@ wallos_pull_or_restore_image() {
                     curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_sum_url.sig" -o "$_n2_work/SHA256SUMS.sig" 2>/dev/null || true
                     curl -fLsS --connect-timeout 8 --max-time 30 "${_n2_manifest_url}.sig" -o "$_n2_work/wallos-manifest.txt.sig" 2>/dev/null || true
                     if ! abox_verify_sig_gate "$_n2_work/wallos-manifest.txt" "$_n2_work/wallos-manifest.txt.sig" "Wallos manifest (N-2 fast path)"; then
-                        msg "${YELLOW}[!] N-2 manifest signature rejected; falling back to tag pull.${NC}"
+                        # D-10: abox_verify_sig_gate only returns 1 when ABOX_SIGNING_ENFORCE=1.
+                        # In that mode, falling back to an unsigned tag pull would defeat
+                        # enforcement, so fail hard instead of silently downgrading.
+                        msg "${RED}[!] N-2 manifest signature rejected and signing enforcement is ON; refusing to fall back to unsigned tag pull.${NC}"
+                        trap - EXIT
+                        restore_saved_trap EXIT "$_n2_prev_trap_exit"
+                        rm -rf -- "$_n2_work"
+                        return 1
                     else
                         # F-05 anti-replay on manifest timestamp.
                         _n2_ts=$(awk -F= '$1=="retrieved_at_utc" {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
                         if [[ -n "$_n2_ts" ]] && ! abox_signing_timestamp_ok "$_n2_ts"; then
                             printf '[A-Box][F-05] FATAL: Wallos manifest timestamp %s predates trust floor\n' "$_n2_ts" >&2
+                            # X-02: under ENFORCE=1, a stale timestamp must fail hard
+                            # like a bad signature (D-10); falling back to an
+                            # unsigned tag pull would defeat enforcement.
+                            if [[ "${ABOX_SIGNING_ENFORCE:-0}" == '1' ]]; then
+                                msg "${RED}[!] N-2 manifest timestamp rejected and signing enforcement is ON; refusing to fall back to unsigned tag pull.${NC}"
+                                trap - EXIT
+                                restore_saved_trap EXIT "$_n2_prev_trap_exit"
+                                rm -rf -- "$_n2_work"
+                                return 1
+                            fi
                             msg "${YELLOW}[!] N-2 manifest timestamp rejected; falling back to tag pull.${NC}"
                         else
                             _mirror_digest=$(awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
@@ -15044,8 +15166,8 @@ wallos_pull_or_restore_image() {
         *) msg "${YELLOW}[!] Official stable metadata or image pull failed; trying the A-Box Wallos recovery Release.${NC}" ;;
     esac
     work=$(umask 077; mktemp -d /tmp/A-Box-Wallos.XXXXXX) || return 1
-    manifest_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
-    sum_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
+    manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
+    sum_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
     if ! curl -fLsS --connect-timeout 8 --max-time 30 "$manifest_url" -o "$work/wallos-manifest.txt" ||
        ! curl -fLsS --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
         rm -rf -- "$work"
@@ -15068,16 +15190,21 @@ wallos_pull_or_restore_image() {
     # F-05 anti-replay on manifest timestamp.
     _w_ts=$(awk -F= '$1=="retrieved_at_utc" {print $2; exit}' "$work/wallos-manifest.txt" 2>/dev/null || true)
     if [[ -n "$_w_ts" ]] && ! abox_signing_timestamp_ok "$_w_ts"; then
-        printf '[A-Box][F-05] FATAL: Wallos manifest timestamp %s predates trust floor\n' "$_w_ts" >&2
-        rm -rf -- "$work"
-        return 1
+        # X-10: gate on ENFORCE like the core path (L5297); unconditional
+        # reject breaks the default ENFORCE=0 flow on a stale mirror.
+        if [[ "${ABOX_SIGNING_ENFORCE:-0}" == '1' ]]; then
+            printf '[A-Box][F-05] FATAL: Wallos manifest timestamp %s predates trust floor\n' "$_w_ts" >&2
+            rm -rf -- "$work"
+            return 1
+        fi
+        printf '[A-Box][F-05] WARNING: Wallos manifest timestamp %s predates trust floor (enforcement off)\n' "$_w_ts" >&2
     fi
     tag=$(awk -F= '$1=="tag" {print $2; exit}' "$work/wallos-manifest.txt")
     [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { rm -rf -- "$work"; return 1; }
     wallos_candidate_version_allowed "$tag" || { rm -rf -- "$work"; return 1; }
     case "$arch" in amd64|arm64|armv7) asset="wallos-linux-$arch.tar.gz" ;; *) rm -rf -- "$work"; return 1 ;; esac
     if ! curl -fLsS --connect-timeout 8 --max-time 600 \
-        "https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then
+        "https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then
         rm -rf -- "$work"
         return 1
     fi
@@ -15161,9 +15288,32 @@ wallos_create_backup() {
     sync -f "$temp" 2>/dev/null || true
     mv -f "$temp" "$backup" || { rm -f -- "$temp"; return 1; }
     sync -f "$WALLOS_DIR/backups" 2>/dev/null || true
-    find "$WALLOS_DIR/backups" -maxdepth 1 -type f -name 'wallos-*.tar.gz' -printf '%T@ %p\n' 2>/dev/null |
-        sort -nr | awk 'NR>5 {$1=""; sub(/^ /, ""); print}' |
-        while IFS= read -r old; do [[ "$old" == "$backup" ]] || rm -f -- "$old"; done
+    # D-07: BusyBox find (Alpine) lacks -printf; python3 is already a hard
+    # dependency, so rotate by mtime in python. Keeps the newest 5 backups.
+    # Rotation is best-effort: the backup itself already succeeded above.
+    python3 - "$WALLOS_DIR/backups" "$backup" <<'PY_WALLOS_ROTATE' 2>/dev/null || true
+import os, sys
+_d, _keep = sys.argv[1], sys.argv[2]
+_ents = []
+try:
+    _names = os.listdir(_d)
+except OSError:
+    _names = []
+for _n in _names:
+    _p = os.path.join(_d, _n)
+    if _n.startswith('wallos-') and _n.endswith('.tar.gz') and os.path.isfile(_p) and not os.path.islink(_p):
+        try:
+            _ents.append((os.stat(_p).st_mtime, _p))
+        except OSError:
+            continue
+_ents.sort(key=lambda e: e[0], reverse=True)
+for _, _p in _ents[5:]:
+    if _p != _keep:
+        try:
+            os.unlink(_p)
+        except OSError:
+            pass
+PY_WALLOS_ROTATE
     printf '%s\n' "$backup"
 }
 
@@ -15338,18 +15488,35 @@ wallos_recover_interrupted_upgrade() {
     if docker container inspect wallos >/dev/null 2>&1; then
         docker stop wallos >/dev/null 2>&1 || true
         docker rm -f wallos >/dev/null 2>&1 || {
-            msg "${RED}Could not remove the interrupted Wallos container; journal retained.${NC}"
+            # A-04: rm failed after stop; restart original instead of leaving Exited.
+            docker start wallos >/dev/null 2>&1 || true
+            msg "${RED}Could not remove the interrupted Wallos container; restarted existing container, journal retained.${NC}"
             return 1
         }
     fi
     if ! docker image inspect "$old_image" >/dev/null 2>&1; then
-        # N-11: old image not present locally. Try fetching the previous
-        # version (N-1) from the versioned mirror instead of refusing.
-        local _n1_tag
-        _n1_tag=$(wallos_mirror_version_list 2>/dev/null | sed -n '2p' || true)
+        # N-11: old image not present locally. Try fetching the exact previous
+        # version from the versioned mirror instead of refusing.
+        # N-03: look up the journal's old_image tag in the version list;
+        # blind N-1 (2nd line) is wrong if the user had rolled back before.
+        local _n1_tag _old_tag
+        _old_tag="${old_image##*:}"
+        _n1_tag=''
+        if [[ "$_old_tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && \
+           wallos_mirror_version_list 2>/dev/null | grep -qx "v${_old_tag}"; then
+            _n1_tag="v${_old_tag}"
+        else
+            _n1_tag=$(wallos_mirror_version_list 2>/dev/null | sed -n '2p' || true)
+        fi
         if [[ "$_n1_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && _wallos_pull_versioned_image "$_n1_tag"; then
-            old_image="$WALLOS_IMAGE_RESULT"
-            msg "${YELLOW}N-11: fetched previous Wallos version $_n1_tag from mirror for recovery.${NC}"
+            # N-03: verify the fetched image matches the journal's old_image.
+            if [[ "$WALLOS_IMAGE_RESULT" == "$old_image" || "$WALLOS_IMAGE_RESULT" == "bellamy/wallos:${_n1_tag#v}" ]]; then
+                old_image="$WALLOS_IMAGE_RESULT"
+                msg "${YELLOW}N-11: fetched previous Wallos version $_n1_tag from mirror for recovery.${NC}"
+            else
+                msg "${RED}Fetched Wallos image $WALLOS_IMAGE_RESULT does not match journal old_image $old_image; journal and backup retained.${NC}"
+                return 1
+            fi
         else
             msg "${RED}Previous Wallos image $old_image is not present locally and N-1 could not be fetched. Refusing to pull a mutable tag for recovery; journal and backup retained.${NC}"
             return 1
@@ -15462,6 +15629,9 @@ wallos_install_or_update() {
         running=1
         [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)" == true ]] && was_running=1
         old_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+        # X-09: normalize docker.io/ prefix (containerd image store / Podman
+        # return docker.io/bellamy/wallos:tag); D-05 fixed the prune path only.
+        old_image="${old_image#docker.io/}"
         old_bind=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
         # F-08: preserve legitimate HostIp verbatim; do NOT coerce unknown IPs to 0.0.0.0.
         # Empty means no port binding — preserve empty (do not invent a publication).
@@ -15679,23 +15849,33 @@ _wallos_manual_rollback() {
     mapfile -t versions < <(wallos_mirror_version_list 2>/dev/null || true)
     if ((${#versions[@]} == 0)); then
         # Fall back to locally available images.
-        mapfile -t versions < <(docker images --format '{{.Tag}}' 'bellamy/wallos' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -rV | sed 's/^/v/' || true)
+        # X-12: POSIX field-numeric sort instead of GNU sort -V (BusyBox may lack -V).
+        mapfile -t versions < <(docker images --format '{{.Tag}}' 'bellamy/wallos' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | LC_ALL=C sort -t. -k1,1nr -k2,2nr -k3,3nr | uniq | sed 's/^/v/' || true)
     fi
     if ((${#versions[@]} == 0)); then
         msg "${RED}No previous Wallos versions available for rollback.${NC}"
         return 1
     fi
-    # Skip the current version (index 0 is newest = likely current).
+    # D-03: actually skip the current version so Enter never selects it.
+    # (The old code only marked it "(current)" but still listed it as item 1.)
     local current_tag
     current_tag=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null | sed 's/.*://' || true)
+    local -a _rb_versions=()
+    local v
+    for v in "${versions[@]}"; do
+        if [[ "v${v#v}" == "v${current_tag#v}" || "${v#v}" == "${current_tag#v}" ]]; then
+            continue
+        fi
+        _rb_versions+=("$v")
+    done
+    if (( ${#_rb_versions[@]} == 0 )); then
+        msg "${YELLOW}No other Wallos versions available for rollback.${NC}"
+        return 1
+    fi
+    versions=("${_rb_versions[@]}")
     local i=1
     for v in "${versions[@]}"; do
-        # Mark the current version.
-        if [[ "v${v#v}" == "v${current_tag#v}" || "${v#v}" == "${current_tag#v}" ]]; then
-            msg "${YELLOW}$i. $v (current)${NC}"
-        else
-            msg "${YELLOW}$i. $v${NC}"
-        fi
+        msg "${YELLOW}$i. $v${NC}"
         i=$((i + 1))
     done
     local prompt
@@ -16584,7 +16764,7 @@ update_script() {
     local OTA_URL OTA_SNI_URL tmp_update tmp_sni_download tmp_sni_normalized tmp_old_script='' tmp_old_sni_cache=''
     local sni_cache old_cache_exists=0 sha script_restore_ok=1 cache_restore_ok=1
     OTA_URL=$(resolve_abox_main_commit_url) || die '无法将 A-Box main 分支解析为不可变 commit；已拒绝 OTA。'
-    [[ "$OTA_URL" =~ ^https://raw\.githubusercontent\.com/alariclin/a-box/[0-9a-f]{40}/install\.sh$ ]] || die 'OTA URL 未指向不可变的 A-Box commit；已拒绝更新。'
+    [[ "$OTA_URL" =~ ^https://raw\.githubusercontent\.com/alariclin/A-Box/[0-9a-f]{40}/install\.sh$ ]] || die 'OTA URL 未指向不可变的 A-Box commit；已拒绝更新。'
     OTA_SNI_URL="${OTA_URL%/install.sh}/data/sni-candidates.txt"
     tmp_update=$(umask 077; mktemp /tmp/A-Box-update.XXXXXX.sh) || die '更新脚本临时文件创建失败。'
     tmp_sni_download=$(umask 077; mktemp /tmp/A-Box-update-sni.XXXXXX) || { rm -f -- "$tmp_update"; die 'SNI 数据更新临时文件创建失败。'; }
@@ -16825,23 +17005,8 @@ core_ports_listening() {
 # a ServerHello/fallback response. Catches binaries that start and listen
 # but cannot complete handshakes (e.g. protocol regressions).
 # P1-2: Return only TLS-capable inbound ports (for TLS smoke probe).
-# SS inbounds drop non-SS data silently; HY2 is UDP-only. Probing them
-# with TLS ClientHello always fails, causing false upgrade rollbacks.
-core_tls_listen_ports() {
-    local core="$1" cfg="$2"
-    case "$core" in
-        xray)
-            jq -r '.inbounds[]? | select(.protocol != "shadowsocks") | .port // empty | if type == "number" then tostring else empty end' "$cfg" 2>/dev/null
-            ;;
-        singbox)
-            jq -r '.inbounds[]? | select(.type != "shadowsocks" and .type != "hysteria2") | .listen_port // empty | if type == "number" then tostring else empty end' "$cfg" 2>/dev/null
-            ;;
-        hysteria)
-            return 0
-            ;;
-        *) return 1 ;;
-    esac
-}
+# B9-02: core_tls_listen_ports removed (dead code; production uses
+# core_expected_tls_tcp_ports). 2026-10-16.
 
 # C-01: Only TLS/REALITY TCP ports may receive a TLS ClientHello probe.
 # Probing plain-TCP inbounds (SS, non-TLS vless) or UDP ports causes false failures.
@@ -17117,7 +17282,7 @@ upgrade_hysteria_core_only() {
         # start + port probe + stop cycle instead of blindly reporting OK.
         if ! hysteria_binary_smoke_test; then
             msg "${RED}[!] New Hysteria binary failed smoke test with current config. Rolling back...${NC}"
-            rollback_core_upgrade_verified hysteria /usr/local/bin/hysteria "$backup" "$tmp"
+            rollback_core_upgrade_verified hysteria /usr/local/bin/hysteria "$backup" "$tmp" "$was_active"
         fi
     fi
     msg "${GREEN}[OK] Hysteria upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
@@ -17480,7 +17645,10 @@ acquire_fallback_runtime_lock() {
             # Rename-away stale dir as one visible step, then mkdir the canonical name.
             # Avoids the prior rmdir+mkdir TOCTOU window where two reclaimers could both win.
             stale_away="${LOCK_FALLBACK_DIR}.stale.$$.$RANDOM"
-            mv -T -- "$LOCK_FALLBACK_DIR" "$stale_away" 2>/dev/null || return 1
+            # X-07: plain POSIX mv (no GNU -T); $stale_away embeds $$.$RANDOM
+            # so a pre-check guarantees it does not exist as a directory.
+            [[ ! -e "$stale_away" && ! -L "$stale_away" ]] || return 1
+            mv -- "$LOCK_FALLBACK_DIR" "$stale_away" 2>/dev/null || return 1
             rm -rf -- "$stale_away" 2>/dev/null || true
             mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null || return 1
             lock_dir_created=1
@@ -17744,7 +17912,37 @@ run_self_tests() {
             return 0
         fi
         [[ -d /etc/ddr && ! -L /etc/ddr ]] || return 1
-        find /etc/ddr -mindepth 1 -maxdepth 1 -xdev -printf '%f\0%y\0%u\0%g\0%m\0%s\0%T@\0' | sort -z | sha256sum | awk '{print $1}'
+        # D-07: BusyBox find (Alpine) lacks -printf; python3 is already a hard
+        # dependency. Emits the same NUL-separated sorted field stream as the
+        # find pipeline did (basename, type, uid, gid, mode, size, mtime).
+        python3 - <<'PY_ABOX_SIG' 2>/dev/null || return 1
+import os, stat, sys, hashlib
+def _ftype(m):
+    if stat.S_ISREG(m): return 'f'
+    if stat.S_ISDIR(m): return 'd'
+    if stat.S_ISLNK(m): return 'l'
+    if stat.S_ISFIFO(m): return 'p'
+    if stat.S_ISSOCK(m): return 's'
+    if stat.S_ISCHR(m): return 'c'
+    if stat.S_ISBLK(m): return 'b'
+    return '?'
+try:
+    _names = os.listdir('/etc/ddr')
+except OSError:
+    sys.exit(1)
+_fields = []
+for _n in _names:
+    _p = os.path.join('/etc/ddr', _n)
+    try:
+        _st = os.lstat(_p)
+    except OSError:
+        continue
+    _fields += [_n, _ftype(_st.st_mode), str(_st.st_uid), str(_st.st_gid),
+                oct(stat.S_IMODE(_st.st_mode))[2:], str(_st.st_size), repr(_st.st_mtime)]
+_fields.sort()
+_blob = ('\0'.join(_fields) + '\0') if _fields else ''
+sys.stdout.write(hashlib.sha256(_blob.encode()).hexdigest() + '\n')
+PY_ABOX_SIG
     }
     if (( EUID == 0 )); then
         if [[ -e /etc/ddr || -L /etc/ddr ]]; then real_abox_exists=1; fi
@@ -18125,7 +18323,7 @@ PY_SELFTEST_TAR
     grep -Fq 'timezone_menu()' "$0" || { echo 'FAIL: timezone menu missing'; failures=$((failures + 1)); }
     grep -Fq 'ABOX_CORE_MIRROR_BASE_DEFAULT=' "$0" || { echo 'FAIL: core disaster mirror base missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_CORE_MIRROR_RELEASE='core-binaries'" "$0" || { echo 'FAIL: stable core mirror tag missing'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/a-box/releases/download/core-binaries'" "$0" || { echo 'FAIL: stable core mirror URL missing'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/A-Box/releases/download/core-binaries'" "$0" || { echo 'FAIL: stable core mirror URL missing'; failures=$((failures + 1)); }
     grep -Fq '截至当前 / Usage up to now' "$0" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
     grep -Fq 'one_click_reality_deploy()' "$0" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
     grep -Fq 'abox_is_fast()' "$0" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }
@@ -18217,7 +18415,8 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  wallos-linux-a
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd  wallos-linux-amd64-v2.5.0.tar.gz
 N11EOF
         # Parse versions (same pattern as workflow).
-        mapfile -t n11_versions < <(awk '{print $2}' "$n11_tmp/SHA256SUMS" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -uV)
+        # X-12: POSIX field-numeric sort instead of GNU sort -V.
+        mapfile -t n11_versions < <(awk '{print $2}' "$n11_tmp/SHA256SUMS" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sed 's/^v//' | LC_ALL=C sort -t. -k1,1n -k2,2n -k3,3n -u | sed 's/^/v/')
         [[ "${#n11_versions[@]}" == 4 ]] || { echo 'FAIL: N-11 version parse count'; failures=$((failures + 1)); }
         [[ "${n11_versions[3]}" == 'v2.5.3' ]] || { echo 'FAIL: N-11 version sort order'; failures=$((failures + 1)); }
         # Prune to newest 3 (same logic as workflow).
@@ -18263,8 +18462,8 @@ N11EOF
     ( verify_github_asset_digest /dev/null '' ) >/dev/null 2>&1 && { echo 'FAIL: missing GitHub digest must be rejected'; failures=$((failures + 1)); }
     grep -Fq '[[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]]' "$0" || { echo 'FAIL: fetch helper must prevalidate GitHub digest before mirror retry'; failures=$((failures + 1)); }
     ( ABOX_ASSUME_YES_OTA=1 confirm_ota_script_hash 0000000000000000000000000000000000000000000000000000000000000000 https://example.com/script.sh ) >/dev/null 2>&1 && { echo 'FAIL: ABOX_ASSUME_YES_OTA must be rejected without allowlist'; failures=$((failures + 1)); }
-    grep -Fq 'env \\
-        -u GITHUB_TOKEN' "$0" || { echo 'FAIL: remote third-party scripts must not inherit GITHUB_TOKEN'; failures=$((failures + 1)); }
+    # N-05: assert the REAL env -i call site (not a self-matching pattern).
+    grep -Fq "env -i \\" "$0" || { echo 'FAIL: remote third-party scripts must not inherit GITHUB_TOKEN'; failures=$((failures + 1)); }
 
     [[ "$(normalize_port_spec 020000-025000)" == '20000:25000' ]] || { echo 'FAIL: normalize port range'; failures=$((failures + 1)); }
     HY2_DOMAIN=example.com HY2_ACME_TYPE=http CORE_IN=hysteria MODE_IN=HY2 VLESS_PORT=8443 XHTTP_PORT=9443 SS_PORT=2053 HY2_BASE_PORT=443 HY2_HOP=false HY2_HOP_IMPL=none
@@ -19056,7 +19255,7 @@ PY_SELFTEST_YAML
     grep -Fq 'core_post_upgrade_health_gate singbox' "$0" || { echo 'FAIL: sing-box post-upgrade health gate not enforced'; failures=$((failures + 1)); }
     # Audit 2026-10-14: regression guards for P1-1/P1-2/P2/P3 fixes.
     declare -F stop_abox_service_soft >/dev/null || { echo 'FAIL: stop_abox_service_soft must be defined'; failures=$((failures + 1)); }
-    declare -F core_tls_listen_ports >/dev/null || { echo 'FAIL: core_tls_listen_ports must be defined'; failures=$((failures + 1)); }
+    # B9-02: core_tls_listen_ports removed (was dead code).
     grep -Fq "svc='sing-box'" "$0" || { echo 'FAIL: health gate must map singbox to sing-box systemd unit'; failures=$((failures + 1)); }
     grep -Fq "ota_choice=''" "$0" || { echo 'FAIL: ota_choice must be cleared before read'; failures=$((failures + 1)); }
     grep -Fq "Mirror-first" "$0" || { echo 'FAIL: test-script must prefer verified mirror'; failures=$((failures + 1)); }
@@ -19367,18 +19566,18 @@ EOF_SVC_TEST_RCUPDATE
         mkdir -p "$WALLOS_DIR/db" "$WALLOS_DIR/logos" "$WALLOS_DIR/backups" || exit 31
         printf 'before-upgrade\n' > "$WALLOS_DIR/db/state.txt" || exit 32
         printf 'old-logo\n' > "$WALLOS_DIR/logos/logo.txt" || exit 33
-        printf 'image=bellamy/wallos:1.2.3\nport=8282\ntz=UTC\n' > "$WALLOS_DIR/.abox-state" || exit 34
+        printf 'IMAGE=bellamy/wallos:1.2.3\nPORT=8282\nTZ=UTC\n' > "$WALLOS_DIR/.abox-state" || exit 34
         backup=$(wallos_create_backup selftest) || exit 35
         wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$backup" 1 || exit 46
         [[ "$(stat -c %a "$WALLOS_DIR/.upgrade-transaction")" == 600 ]] || exit 47
         [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" phase)" == active ]] || exit 48
         printf 'partially-migrated\n' > "$WALLOS_DIR/db/state.txt" || exit 36
         printf 'new-logo\n' > "$WALLOS_DIR/logos/logo.txt" || exit 37
-        printf 'image=bellamy/wallos:1.2.4\nport=8282\ntz=UTC\n' > "$WALLOS_DIR/.abox-state" || exit 38
+        printf 'IMAGE=bellamy/wallos:1.2.4\nPORT=8282\nTZ=UTC\n' > "$WALLOS_DIR/.abox-state" || exit 38
         wallos_restore_backup "$backup" || exit 39
         grep -Fxq 'before-upgrade' "$WALLOS_DIR/db/state.txt" || exit 40
         grep -Fxq 'old-logo' "$WALLOS_DIR/logos/logo.txt" || exit 41
-        grep -Fxq 'image=bellamy/wallos:1.2.3' "$WALLOS_DIR/.abox-state" || exit 42
+        grep -Fxq 'IMAGE=bellamy/wallos:1.2.3' "$WALLOS_DIR/.abox-state" || exit 42
         printf 'not-a-valid-gzip\n' > "$WALLOS_DIR/backups/wallos-corrupt.tar.gz" || exit 43
         if wallos_restore_backup "$WALLOS_DIR/backups/wallos-corrupt.tar.gz"; then exit 44; fi
         grep -Fxq 'before-upgrade' "$WALLOS_DIR/db/state.txt" || exit 45

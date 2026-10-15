@@ -25,7 +25,7 @@ The project is provided “as is”, without warranty. Review the script and the
 ### Official GitHub source
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/151b8d829ed65d3f46765aae8e011056729bcd40/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/c6e5df2a03dc611c66b8a3e0e1a4fe62eb597260/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh
@@ -34,13 +34,13 @@ sudo bash A-Box.sh
 ### Third-party fallback mirror
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/a-box/151b8d829ed65d3f46765aae8e011056729bcd40/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/a-box/c6e5df2a03dc611c66b8a3e0e1a4fe62eb597260/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh
 ```
 
-Both commands pin the installer to immutable commit `151b8d829ed65d3f46765aae8e011056729bcd40`; the proxy URL remains a third-party transport, not an official A-Box endpoint. Syntax checking and SHA-256 alone do not prove publisher authenticity. Review the downloaded file before running it, and for production verify the commit and checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.
+Both commands pin the installer to immutable commit `c6e5df2a03dc611c66b8a3e0e1a4fe62eb597260`; the proxy URL remains a third-party transport, not an official A-Box endpoint. Syntax checking and SHA-256 alone do not prove publisher authenticity. Review the downloaded file before running it, and for production verify the commit and checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.
 
 ## Main Features
 

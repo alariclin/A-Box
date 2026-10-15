@@ -4,11 +4,11 @@
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
-[🇨🇳 简体中文](README-zh.md) | [🇹🇼 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇷🇺 Русский](README-ru.md) | [🇮🇷 فارسی](README-fa.md)
+[简体中文](README-zh.md) | [繁體中文](README-zh-tw.md) | [日本語](README-ja.md) | [Русский](README-ru.md) | [فارسی](README-fa.md)
 
 One-click Linux network gateway toolkit.
 
-A-Box is a standalone Bash script for deploying and maintaining Linux network gateway services. Its compatibility pins are Xray `v26.7.28` (an upstream prerelease intentionally retained for compatibility), sing-box `v1.14.3`, and Hysteria `app/v2.13.0`; latest-stable selection never silently downgrades an already installed newer core.
+A standalone Bash script for deploying and maintaining Linux network gateway services. Its compatibility pins are Xray `v26.7.28` (an upstream prerelease intentionally retained for compatibility), sing-box `v1.14.3`, and Hysteria `app/v2.13.0`; latest-stable selection never silently downgrades an already installed newer core.
 
 It supports Xray-core, sing-box, the official Hysteria 2 server, VLESS Vision REALITY, VLESS XHTTP REALITY, Shadowsocks-2022, client configuration export, local SNI candidate testing, backup and restore, firewall management, diagnostics, traffic limits, health checks, and core software upgrades.
 
@@ -25,7 +25,7 @@ The project is provided “as is”, without warranty. Review the script and the
 ### Official GitHub source
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/0bc5586486c337deb01cca1d053701dc79bc816d/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/21073dd758002948ac6b08def2504ac56b069bf0/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh
@@ -34,7 +34,7 @@ sudo bash A-Box.sh
 ### Third-party fallback mirror
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/0bc5586486c337deb01cca1d053701dc79bc816d/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/21073dd758002948ac6b08def2504ac56b069bf0/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh

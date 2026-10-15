@@ -4,11 +4,11 @@
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
-[🇺🇸 English](README.md) | [🇹🇼 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇷🇺 Русский](README-ru.md) | [🇮🇷 فارسی](README-fa.md)
+[English](README.md) | [繁體中文](README-zh-tw.md) | [日本語](README-ja.md) | [Русский](README-ru.md) | [فارسی](README-fa.md)
 
 Linux 网络网关一键工具箱。
 
-A-Box 是一个独立 Bash 脚本，用于部署和维护 Linux 网络网关服务。当前兼容性 pin 为 Xray `v26.7.28`（上游预发布版，因兼容性需要而保留）、sing-box `v1.14.3` 和 Hysteria `app/v2.13.0`；选择最新稳定版时不会静默降级已安装的较新核心。
+独立 Bash 脚本，用于部署和维护 Linux 网络网关服务。当前兼容性 pin 为 Xray `v26.7.28`（上游预发布版，因兼容性需要而保留）、sing-box `v1.14.3` 和 Hysteria `app/v2.13.0`；选择最新稳定版时不会静默降级已安装的较新核心。
 
 支持 Xray-core、sing-box、官方 Hysteria 2 服务端、VLESS Vision REALITY、VLESS XHTTP REALITY、Shadowsocks-2022、客户端配置导出、本地 SNI 候选测试、备份恢复、防火墙管理、诊断、流量限制、健康检查和核心软件升级；最新稳定版下载失败时先尝试同版本的校验镜像，再回退到固定兼容性 pin。
 
@@ -25,7 +25,7 @@ A-Box 是一个独立 Bash 脚本，用于部署和维护 Linux 网络网关服�
 ### GitHub 官方源
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/0bc5586486c337deb01cca1d053701dc79bc816d/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/21073dd758002948ac6b08def2504ac56b069bf0/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 审阅下载的脚本后，再单独执行：
 sudo bash A-Box.sh
@@ -34,7 +34,7 @@ sudo bash A-Box.sh
 ### 第三方备用镜像
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/0bc5586486c337deb01cca1d053701dc79bc816d/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/21073dd758002948ac6b08def2504ac56b069bf0/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 审阅下载的脚本后，再单独执行：
 sudo bash A-Box.sh

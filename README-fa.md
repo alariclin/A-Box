@@ -4,11 +4,11 @@
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
-[🇺🇸 English](README.md) | [🇨🇳 简体中文](README-zh.md) | [🇹🇼 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇷🇺 Русский](README-ru.md)
+[English](README.md) | [简体中文](README-zh.md) | [繁體中文](README-zh-tw.md) | [日本語](README-ja.md) | [Русский](README-ru.md)
 
 مجموعه‌ابزار راه‌اندازی دروازه شبکه لینوکس با یک فرمان.
 
-A-Box یک اسکریپت مستقل Bash برای راه‌اندازی و نگه‌داری دروازه‌های شبکه در لینوکس است. نسخه‌های سازگاری پیش‌فرض عبارت‌اند از Xray `v26.7.28` (نسخه پیش‌انتشار upstream که عمداً برای سازگاری نگه داشته شده)، sing-box `v1.14.3` و Hysteria `app/v2.13.0`؛ انتخاب آخرین نسخه پایدار نباید هسته جدیدتر نصب‌شده را بی‌صدا به نسخه پایین‌تر برگرداند.
+یک اسکریپت مستقل Bash برای راه‌اندازی و نگه‌داری دروازه‌های شبکه در لینوکس است. نسخه‌های سازگاری پیش‌فرض عبارت‌اند از Xray `v26.7.28` (نسخه پیش‌انتشار upstream که عمداً برای سازگاری نگه داشته شده)، sing-box `v1.14.3` و Hysteria `app/v2.13.0`؛ انتخاب آخرین نسخه پایدار نباید هسته جدیدتر نصب‌شده را بی‌صدا به نسخه پایین‌تر برگرداند.
 
 این ابزار از Xray-core، sing-box، سرور رسمی Hysteria 2، VLESS Vision REALITY، VLESS XHTTP REALITY، Shadowsocks-2022، خروجی پیکربندی کلاینت، آزمون محلی نامزدهای SNI، پشتیبان‌گیری و بازیابی، مدیریت دیوار آتش، عیب‌یابی، محدودیت ترافیک، بررسی سلامت و به‌روزرسانی هسته‌ها پشتیبانی می‌کند.
 
@@ -25,7 +25,7 @@ A-Box یک اسکریپت مستقل Bash برای راه‌اندازی و نگ
 ### منبع رسمی GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/0bc5586486c337deb01cca1d053701dc79bc816d/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/21073dd758002948ac6b08def2504ac56b069bf0/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
 sudo bash A-Box.sh
@@ -34,7 +34,7 @@ sudo bash A-Box.sh
 ### آینه جایگزین شخص ثالث
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/0bc5586486c337deb01cca1d053701dc79bc816d/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/21073dd758002948ac6b08def2504ac56b069bf0/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
 sudo bash A-Box.sh

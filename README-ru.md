@@ -4,11 +4,11 @@
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
-[🇺🇸 English](README.md) | [🇨🇳 简体中文](README-zh.md) | [🇹🇼 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇮🇷 فارسی](README-fa.md)
+[English](README.md) | [简体中文](README-zh.md) | [繁體中文](README-zh-tw.md) | [日本語](README-ja.md) | [فارسی](README-fa.md)
 
 Набор инструментов для развёртывания сетевого шлюза Linux одной командой.
 
-A-Box — автономный Bash-скрипт для развёртывания и обслуживания сетевых шлюзов Linux. Совместимые версии по умолчанию: Xray `v26.7.28` (upstream prerelease, намеренно сохранённый как compatibility pin), sing-box `v1.14.3` и Hysteria `app/v2.13.0`; выбор последней стабильной версии не должен незаметно понижать уже установленное более новое ядро.
+Автономный Bash-скрипт для развёртывания и обслуживания сетевых шлюзов Linux. Совместимые версии по умолчанию: Xray `v26.7.28` (upstream prerelease, намеренно сохранённый как compatibility pin), sing-box `v1.14.3` и Hysteria `app/v2.13.0`; выбор последней стабильной версии не должен незаметно понижать уже установленное более новое ядро.
 
 Поддерживаются Xray-core, sing-box, официальный сервер Hysteria 2, VLESS Vision REALITY, VLESS XHTTP REALITY, Shadowsocks-2022, экспорт клиентских конфигураций, локальная проверка кандидатов SNI, резервное копирование и восстановление, управление брандмауэром, диагностика, лимиты трафика, проверки состояния и обновление основных компонентов.
 
@@ -25,7 +25,7 @@ A-Box — автономный Bash-скрипт для развёртывани
 ### Официальный источник GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/0bc5586486c337deb01cca1d053701dc79bc816d/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/21073dd758002948ac6b08def2504ac56b069bf0/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # После проверки загруженного скрипта выполните отдельно:
 sudo bash A-Box.sh
@@ -34,7 +34,7 @@ sudo bash A-Box.sh
 ### Резервное зеркало третьей стороны
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/0bc5586486c337deb01cca1d053701dc79bc816d/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/21073dd758002948ac6b08def2504ac56b069bf0/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # После проверки загруженного скрипта выполните отдельно:
 sudo bash A-Box.sh

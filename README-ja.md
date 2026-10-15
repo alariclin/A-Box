@@ -25,7 +25,7 @@ Xray-core、sing-box、公式 Hysteria 2 サーバー、VLESS Vision REALITY、V
 ### GitHub 公式ソース
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/a3704b2e2350f1117fee107217d908d563c8326f/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/888f2d9227d8f3aa4211d1bc036155747e83d390/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # ダウンロードしたスクリプトを確認後、別途実行してください：
 sudo bash A-Box.sh
@@ -34,13 +34,13 @@ sudo bash A-Box.sh
 ### サードパーティ・フォールバックミラー
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/a3704b2e2350f1117fee107217d908d563c8326f/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/888f2d9227d8f3aa4211d1bc036155747e83d390/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # ダウンロードしたスクリプトを確認後、別途実行してください：
 sudo bash A-Box.sh
 ```
 
-どちらのコマンドも、インストーラーを不変のコミット `a3704b2e2350f1117fee107217d908d563c8326f` にピン留めします。プロキシ URL はサードパーティの転送サービスであり、A-Box 公式エンドポイントではありません。構文チェックと SHA-256 のみでは発行者の真正性は証明されません。実行前にダウンロードしたファイルを確認し、本番環境では独立した信頼できる経路でコミットとチェックサムを検証してください。新規 Alpine インストールでは、まず `apk add --no-cache bash curl` を実行してください。インストール後は `sb` と入力してメニューを開きます。
+どちらのコマンドも、インストーラーを不変のコミット `888f2d9227d8f3aa4211d1bc036155747e83d390` にピン留めします。プロキシ URL はサードパーティの転送サービスであり、A-Box 公式エンドポイントではありません。構文チェックと SHA-256 のみでは発行者の真正性は証明されません。実行前にダウンロードしたファイルを確認し、本番環境では独立した信頼できる経路でコミットとチェックサムを検証してください。新規 Alpine インストールでは、まず `apk add --no-cache bash curl` を実行してください。インストール後は `sb` と入力してメニューを開きます。
 
 ## 主な機能
 

@@ -2986,7 +2986,9 @@ clean_chain() {
     local owned_re='--comment "?A-Box-(HY2-HOP|[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?)"?([[:space:]]|$)'
     local -a argv=()
     if ! command -v "$cmd" >/dev/null 2>&1; then
-        [[ "${cmd##*/}" == ip6tables ]] && ! has_ipv6 && return 0
+        # N-04: use objective host_has_usable_ipv6 (not preference-aware has_ipv6)
+        # to match enforce_ss_whitelist_order's "never silently skip IPv6" intent.
+        [[ "${cmd##*/}" == ip6tables ]] && ! host_has_usable_ipv6 && return 0
         return 1
     fi
     while :; do
@@ -12354,7 +12356,15 @@ swapfile_active_state() {
     # A query failure must never be interpreted as inactivity before a
     # destructive swapfile operation.
     local output='' line
-    if ! output=$(swapon --show=NAME --noheadings 2>/dev/null); then
+    # N-08: use swapon when available (util-linux syntax); fall back to
+    # /proc/swaps when swapon is missing (BusyBox swapon lacks --show).
+    if command -v swapon >/dev/null 2>&1; then
+        if ! output=$(swapon --show=NAME --noheadings 2>/dev/null); then
+            return 2
+        fi
+    elif [[ -r /proc/swaps ]]; then
+        output=$(awk 'NR>1 {print $1}' /proc/swaps 2>/dev/null || true)
+    else
         return 2
     fi
     while IFS= read -r line; do
@@ -14857,7 +14867,7 @@ wallos_mirror_version_list() {
 
 # N-11: Prune local bellamy/wallos images to keep only the newest 2
 # (current + previous verified-good). Enforces the 500MB local cache cap
-# by count (2 images); reports total size for operator awareness.
+# by count (2 images). (N-06: removed stale "reports total size" claim.)
 # Args: $1 = image tag to always keep (current), $2 = image tag to keep (previous, may be empty).
 wallos_prune_local_images() {
     local keep1="${1:-}" keep2="${2:-}" img tag
@@ -15485,13 +15495,28 @@ wallos_recover_interrupted_upgrade() {
         }
     fi
     if ! docker image inspect "$old_image" >/dev/null 2>&1; then
-        # N-11: old image not present locally. Try fetching the previous
-        # version (N-1) from the versioned mirror instead of refusing.
-        local _n1_tag
-        _n1_tag=$(wallos_mirror_version_list 2>/dev/null | sed -n '2p' || true)
+        # N-11: old image not present locally. Try fetching the exact previous
+        # version from the versioned mirror instead of refusing.
+        # N-03: look up the journal's old_image tag in the version list;
+        # blind N-1 (2nd line) is wrong if the user had rolled back before.
+        local _n1_tag _old_tag
+        _old_tag="${old_image##*:}"
+        _n1_tag=''
+        if [[ "$_old_tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && \
+           wallos_mirror_version_list 2>/dev/null | grep -qx "v${_old_tag}"; then
+            _n1_tag="v${_old_tag}"
+        else
+            _n1_tag=$(wallos_mirror_version_list 2>/dev/null | sed -n '2p' || true)
+        fi
         if [[ "$_n1_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && _wallos_pull_versioned_image "$_n1_tag"; then
-            old_image="$WALLOS_IMAGE_RESULT"
-            msg "${YELLOW}N-11: fetched previous Wallos version $_n1_tag from mirror for recovery.${NC}"
+            # N-03: verify the fetched image matches the journal's old_image.
+            if [[ "$WALLOS_IMAGE_RESULT" == "$old_image" || "$WALLOS_IMAGE_RESULT" == "bellamy/wallos:${_n1_tag#v}" ]]; then
+                old_image="$WALLOS_IMAGE_RESULT"
+                msg "${YELLOW}N-11: fetched previous Wallos version $_n1_tag from mirror for recovery.${NC}"
+            else
+                msg "${RED}Fetched Wallos image $WALLOS_IMAGE_RESULT does not match journal old_image $old_image; journal and backup retained.${NC}"
+                return 1
+            fi
         else
             msg "${RED}Previous Wallos image $old_image is not present locally and N-1 could not be fetched. Refusing to pull a mutable tag for recovery; journal and backup retained.${NC}"
             return 1
@@ -18437,8 +18462,8 @@ N11EOF
     ( verify_github_asset_digest /dev/null '' ) >/dev/null 2>&1 && { echo 'FAIL: missing GitHub digest must be rejected'; failures=$((failures + 1)); }
     grep -Fq '[[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]]' "$0" || { echo 'FAIL: fetch helper must prevalidate GitHub digest before mirror retry'; failures=$((failures + 1)); }
     ( ABOX_ASSUME_YES_OTA=1 confirm_ota_script_hash 0000000000000000000000000000000000000000000000000000000000000000 https://example.com/script.sh ) >/dev/null 2>&1 && { echo 'FAIL: ABOX_ASSUME_YES_OTA must be rejected without allowlist'; failures=$((failures + 1)); }
-    grep -Fq 'env \\
-        -u GITHUB_TOKEN' "$0" || { echo 'FAIL: remote third-party scripts must not inherit GITHUB_TOKEN'; failures=$((failures + 1)); }
+    # N-05: assert the REAL env -i call site (not a self-matching pattern).
+    grep -Fq "env -i \\" "$0" || { echo 'FAIL: remote third-party scripts must not inherit GITHUB_TOKEN'; failures=$((failures + 1)); }
 
     [[ "$(normalize_port_spec 020000-025000)" == '20000:25000' ]] || { echo 'FAIL: normalize port range'; failures=$((failures + 1)); }
     HY2_DOMAIN=example.com HY2_ACME_TYPE=http CORE_IN=hysteria MODE_IN=HY2 VLESS_PORT=8443 XHTTP_PORT=9443 SS_PORT=2053 HY2_BASE_PORT=443 HY2_HOP=false HY2_HOP_IMPL=none

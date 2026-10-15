@@ -188,13 +188,14 @@ jobs:
           }
           echo "Incoming manifest checksums passed."
           # Exact set equality: actual files in verified/ must equal exactly
-          # {files listed in SHA256SUMS.incoming} + {SHA256SUMS, SHA256SUMS.incoming, CORE-VERSIONS}.
+          # {files listed in SHA256SUMS.incoming} + {SHA256SUMS, SHA256SUMS.incoming, CORE-VERSIONS}
+          # + {CORE-VERSIONS.sig, SHA256SUMS.sig} when F-05 signing is enabled.
           # SHA256SUMS is the full merged Release manifest (historical + new);
           # SHA256SUMS.incoming is verification-only and is NOT uploaded.
           # Reject any extra or missing file.
           set_diff="$(comm -3 \
             <(cd verified && find . -maxdepth 1 -mindepth 1 -printf '%f\n' | sort) \
-            <( { awk '{print $2}' verified/SHA256SUMS.incoming; printf '%s\n' SHA256SUMS SHA256SUMS.incoming CORE-VERSIONS; } | sort -u ))"
+            <( { awk '{print $2}' verified/SHA256SUMS.incoming; printf '%s\n' SHA256SUMS SHA256SUMS.incoming CORE-VERSIONS; for s in CORE-VERSIONS.sig SHA256SUMS.sig; do [[ -f "verified/$s" ]] && printf '%s\n' "$s"; done; } | sort -u ))"
           if [[ -n "$set_diff" ]]; then
             echo "ERROR: verified/ file set does not exactly match expected set:"
             printf '%s\n' "$set_diff"

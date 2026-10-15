@@ -1,12 +1,12 @@
 # A-Box
 
-ワンクリック Linux ネットワークゲートウェイ・ツールキット。
-
-[🇺🇸 English](README.md) | [🇨🇳 简体中文](README-zh.md) | [🇹🇼 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇷🇺 Русский](README-ru.md) | [🇮🇷 فارسی](README-fa.md)
-
 <p align="center">
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
+
+[🇺🇸 English](README.md) | [🇨🇳 简体中文](README-zh.md) | [🇹🇼 繁體中文](README-zh-tw.md) | [🇷🇺 Русский](README-ru.md) | [🇮🇷 فارسی](README-fa.md)
+
+ワンクリック Linux ネットワークゲートウェイ・ツールキット。
 
 A-Box は、Linux ネットワークゲートウェイサービスのデプロイと保守のためのスタンドアロン Bash スクリプトです。互換性ピンは Xray `v26.7.28`（互換性維持のため意図的に残された上流プレリリース）、sing-box `v1.14.3`、Hysteria `app/v2.13.0` です。最新安定版の選択時に、既にインストール済みの新しいコアを黙ってダウングレードすることはありません。
 
@@ -25,7 +25,7 @@ Xray-core、sing-box、公式 Hysteria 2 サーバー、VLESS Vision REALITY、V
 ### GitHub 公式ソース
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/6bfbc79ecc71179187984d6d9bb7a9197b5ee6a4/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/6bfbc79ecc71179187984d6d9bb7a9197b5ee6a4/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # ダウンロードしたスクリプトを確認後、別途実行してください：
 sudo bash A-Box.sh
@@ -34,7 +34,7 @@ sudo bash A-Box.sh
 ### サードパーティ・フォールバックミラー
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/a-box/6bfbc79ecc71179187984d6d9bb7a9197b5ee6a4/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/6bfbc79ecc71179187984d6d9bb7a9197b5ee6a4/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # ダウンロードしたスクリプトを確認後、別途実行してください：
 sudo bash A-Box.sh
@@ -49,7 +49,7 @@ sudo bash A-Box.sh
 - **クライアント設定エクスポート：** 共有リンク/URI、QR コード、Clash/Mihomo YAML、sing-box アウトバウンドテンプレート、v2rayN/v2rayNG XHTTP JSON。
 - **運用と診断：** ヘルスチェック、システム/ダウンロードベンチマーク、IP 品質・ルートテスト、BBR/FQ チューニングとロールバック、IP プリファレンス、実測 DNS、対応 DoT/DoH、番号指定タイムゾーン選択、ロケール/NTP 設定、Wallos インストール/バックアップ、Fail2Ban/logrotate、トラフィック制限、バックアップ/復元、編集済み診断、プリフライトチェック。
 - **運用機能：** ワンクリック Reality、高速/厳格モード（`ABOX_FAST`）、安定コアピンとロールバック可能なアップグレード、マルチ UUID サーバー側の追加/取消、URI/Base64/Clash エクスポート、実際のダウンロードソース可用性チェック。
-- **コアバイナリミラー：** 安定版 Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/a-box/releases/tag/core-binaries) には、固定互換性ピン資産とバージョン付きの最新公式安定版 Xray・sing-box・Hysteria ビルドが保持されます。週次パブリッシャーは draft/prerelease タグを除外し、公式 SHA-256 ダイジェストとアセットのアーキテクチャを検証、ランナーで実行可能なバイナリのバージョンをプローブし、ロールバック用に古いバージョン資産を保持します。インストーラーはインストール前に対象環境で実際のバイナリバージョンを確認します。最新安定版の復旧は、まず完全一致のバージョン化ミラーを試し、次に固定互換性ピンにフォールバックします。`SHA256SUMS` は同一 Release 内の整合性マニフェストであり、独立した署名ではありません。詳細は [`mirrors/README.md`](mirrors/README.md) を参照。
+- **コアバイナリミラー：** 安定版 Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/A-Box/releases/tag/core-binaries) には、固定互換性ピン資産とバージョン付きの最新公式安定版 Xray・sing-box・Hysteria ビルドが保持されます。週次パブリッシャーは draft/prerelease タグを除外し、公式 SHA-256 ダイジェストとアセットのアーキテクチャを検証、ランナーで実行可能なバイナリのバージョンをプローブし、ロールバック用に古いバージョン資産を保持します。インストーラーはインストール前に対象環境で実際のバイナリバージョンを確認します。最新安定版の復旧は、まず完全一致のバージョン化ミラーを試し、次に固定互換性ピンにフォールバックします。`SHA256SUMS` は同一 Release 内の整合性マニフェストであり、独立した署名ではありません。詳細は [`mirrors/README.md`](mirrors/README.md) を参照。
 - **SNI 候補ワークフロー：** ローカルのフル・ミニホスト候補テスト、保存済み結果ビューア、入力検証、ファイルサイズ/行数上限、重複除去、利用可能な場合は有効なローカルキャッシュまたは隣接データファイルへのフォールバック。
 - **メンテナンス：** SHA-256 を表示し明示的な確認を求めるスクリプト OTA、Xray Geo データ更新、ノードパラメータを保持したコア単体アップグレード。
 - **安全制御：** デプロイ前プリフライトチェック、保護されたサービス所有権/状態変更、ファイアウォール処理、対応操作のロールバックパス。
@@ -137,6 +137,6 @@ BBR/FQ の変更が黙って適用されることはありません。DNS 測定
 
 ## フィードバックとライセンス
 
-- [GitHub Issues](https://github.com/alariclin/a-box/issues)
+- [GitHub Issues](https://github.com/alariclin/A-Box/issues)
 - プルリクエスト歓迎。
 - [Apache License 2.0](LICENSE) の下でリリース。

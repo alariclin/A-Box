@@ -34,7 +34,7 @@ NC=$'\033[0m'
 BOLD=$'\033[1m'
 
 DEPS_MARKER='/etc/ddr/.deps.v20260725'
-SCRIPT_URL='https://raw.githubusercontent.com/alariclin/a-box/main/install.sh'
+SCRIPT_URL='https://raw.githubusercontent.com/alariclin/A-Box/main/install.sh'
 ABOX_DIR='/etc/ddr'
 ABOX_ENV='/etc/ddr/.env'
 ABOX_FW_STATE='/etc/ddr/.firewall-native.rules'
@@ -47,7 +47,7 @@ DNS_STATE_FILE='/etc/ddr/.dns-state'
 DNS_BACKUP_DIR='/etc/ddr/.dns-backup'
 TZ_STATE_FILE='/etc/ddr/.timezone-state'
 ABOX_CORE_MIRROR_RELEASE='core-binaries'
-ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/a-box/releases/download/core-binaries'
+ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/A-Box/releases/download/core-binaries'
 FAST_MODE_FILE='/etc/ddr/.fast-mode'
 MIRROR_PREFER_FILE='/etc/ddr/.mirror-prefer'
 EXTRA_UUID_FILE='/etc/ddr/.extra-uuids'
@@ -145,7 +145,7 @@ ABOX_LAST_CORE_SOURCE=''
 # 4096 seed-only boundary; default 8192 keeps generated variants reachable.
 ABOX_SNI_DEFAULT_MAX=8192
 ABOX_SNI_HARD_MAX=16384
-ABOX_SNI_CANDIDATE_URL_DEFAULT='https://raw.githubusercontent.com/alariclin/a-box/main/data/sni-candidates.txt'
+ABOX_SNI_CANDIDATE_URL_DEFAULT='https://raw.githubusercontent.com/alariclin/A-Box/main/data/sni-candidates.txt'
 ABOX_SNI_CANDIDATE_MAX_BYTES=1048576
 ABOX_SNI_CANDIDATE_MAX_ROWS=12000
 ABOX_SNI_CANDIDATE_MIN_ROWS=100
@@ -4624,16 +4624,16 @@ validate_abox_script_file() {
 
 
 resolve_abox_main_commit_url() {
-    local api='https://api.github.com/repos/alariclin/a-box/commits/main' json sha
+    local api='https://api.github.com/repos/alariclin/A-Box/commits/main' json sha
     json=$(github_api_get "$api") || return 1
     sha=$(jq -r '.sha // empty' <<< "$json" 2>/dev/null)
     [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 1
-    printf 'https://raw.githubusercontent.com/alariclin/a-box/%s/install.sh\n' "$sha"
+    printf 'https://raw.githubusercontent.com/alariclin/A-Box/%s/install.sh\n' "$sha"
 }
 
 install_remote_abox_script_guarded() {
     local url="$1" dest="$2" tmp sha resolved_url
-    if [[ "$url" == 'https://raw.githubusercontent.com/alariclin/a-box/main/install.sh' ]]; then
+    if [[ "$url" == 'https://raw.githubusercontent.com/alariclin/A-Box/main/install.sh' ]]; then
         resolved_url=$(resolve_abox_main_commit_url) || die '无法将 A-Box main 分支解析为不可变 commit；已拒绝下载可变源码。'
         url="$resolved_url"
     fi
@@ -14608,11 +14608,11 @@ run_mirrored_test_script() {
     # syntactically-valid malicious script passes validate_test_script.
     # Mirror is updated weekly; at most 1-week staleness for diagnostics.
     if curl -fLsS --connect-timeout 10 --max-time 45 \
-        "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums" &&
+        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums" &&
        curl -fLsS --connect-timeout 10 --max-time 45 \
-        "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" &&
+        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" &&
        curl -fLsS --connect-timeout 10 --max-time 180 \
-        "https://github.com/alariclin/a-box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then
+        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then
         expected=$(awk -v f="$asset" '$2==f || $2==("*" f) {print $1; exit}' "$sums")
         sha=$(sha256sum "$mirror" | awk '{print $1}')
         if [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ && "${sha,,}" == "${expected,,}" ]] && validate_test_script "$mirror"; then
@@ -14858,7 +14858,7 @@ wallos_candidate_version_allowed() {
 wallos_mirror_version_list() {
     local work versions_url
     work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-ver.XXXXXX 2>/dev/null) || return 1
-    versions_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-versions.txt"
+    versions_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-versions.txt"
     if curl -fLsS --connect-timeout 8 --max-time 20 "$versions_url" -o "$work/wallos-versions.txt" 2>/dev/null; then
         grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' "$work/wallos-versions.txt" 2>/dev/null || true
     fi
@@ -15010,8 +15010,8 @@ _wallos_pull_versioned_image() {
     arch=$(wallos_detect_arch) || return 1
     work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-ver.XXXXXX) || return 1
     local ver_manifest="wallos-manifest-${tag}.txt"
-    manifest_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/$ver_manifest"
-    sum_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
+    manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/$ver_manifest"
+    sum_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
     if ! curl -fLsS --connect-timeout 8 --max-time 30 "$manifest_url" -o "$work/$ver_manifest" ||
        ! curl -fLsS --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
         rm -rf -- "$work"; return 1
@@ -15031,7 +15031,7 @@ _wallos_pull_versioned_image() {
     [[ "$mtag" == "$tag" ]] || { rm -rf -- "$work"; return 1; }
     case "$arch" in amd64|arm64|armv7) asset="wallos-linux-$arch-${tag}.tar.gz" ;; *) rm -rf -- "$work"; return 1 ;; esac
     if ! curl -fLsS --connect-timeout 8 --max-time 600 \
-        "https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then
+        "https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then
         rm -rf -- "$work"; return 1
     fi
     expected=$(awk -v f="$asset" '$2==f || $2==("*" f) {print $1; exit}' "$work/SHA256SUMS" 2>/dev/null || true)
@@ -15079,8 +15079,8 @@ wallos_pull_or_restore_image() {
         # corruption but is NOT an independent authenticity proof. A signature
         # trust root is still deferred (F-05).
         local _n2_work="" _mirror_digest="" _manifest_tag="" _n2_ts=""
-        local _n2_manifest_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
-        local _n2_sum_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
+        local _n2_manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
+        local _n2_sum_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
         _n2_work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-n2.XXXXXX 2>/dev/null) || true
         if [[ -n "$_n2_work" && -d "$_n2_work" ]]; then
             # TRAP-3: EXIT trap ensures temp dir cleanup even on abnormal exit.
@@ -15166,8 +15166,8 @@ wallos_pull_or_restore_image() {
         *) msg "${YELLOW}[!] Official stable metadata or image pull failed; trying the A-Box Wallos recovery Release.${NC}" ;;
     esac
     work=$(umask 077; mktemp -d /tmp/A-Box-Wallos.XXXXXX) || return 1
-    manifest_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
-    sum_url="https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
+    manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
+    sum_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
     if ! curl -fLsS --connect-timeout 8 --max-time 30 "$manifest_url" -o "$work/wallos-manifest.txt" ||
        ! curl -fLsS --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
         rm -rf -- "$work"
@@ -15204,7 +15204,7 @@ wallos_pull_or_restore_image() {
     wallos_candidate_version_allowed "$tag" || { rm -rf -- "$work"; return 1; }
     case "$arch" in amd64|arm64|armv7) asset="wallos-linux-$arch.tar.gz" ;; *) rm -rf -- "$work"; return 1 ;; esac
     if ! curl -fLsS --connect-timeout 8 --max-time 600 \
-        "https://github.com/alariclin/a-box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then
+        "https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/$asset" -o "$work/$asset"; then
         rm -rf -- "$work"
         return 1
     fi
@@ -16764,7 +16764,7 @@ update_script() {
     local OTA_URL OTA_SNI_URL tmp_update tmp_sni_download tmp_sni_normalized tmp_old_script='' tmp_old_sni_cache=''
     local sni_cache old_cache_exists=0 sha script_restore_ok=1 cache_restore_ok=1
     OTA_URL=$(resolve_abox_main_commit_url) || die '无法将 A-Box main 分支解析为不可变 commit；已拒绝 OTA。'
-    [[ "$OTA_URL" =~ ^https://raw\.githubusercontent\.com/alariclin/a-box/[0-9a-f]{40}/install\.sh$ ]] || die 'OTA URL 未指向不可变的 A-Box commit；已拒绝更新。'
+    [[ "$OTA_URL" =~ ^https://raw\.githubusercontent\.com/alariclin/A-Box/[0-9a-f]{40}/install\.sh$ ]] || die 'OTA URL 未指向不可变的 A-Box commit；已拒绝更新。'
     OTA_SNI_URL="${OTA_URL%/install.sh}/data/sni-candidates.txt"
     tmp_update=$(umask 077; mktemp /tmp/A-Box-update.XXXXXX.sh) || die '更新脚本临时文件创建失败。'
     tmp_sni_download=$(umask 077; mktemp /tmp/A-Box-update-sni.XXXXXX) || { rm -f -- "$tmp_update"; die 'SNI 数据更新临时文件创建失败。'; }
@@ -18323,7 +18323,7 @@ PY_SELFTEST_TAR
     grep -Fq 'timezone_menu()' "$0" || { echo 'FAIL: timezone menu missing'; failures=$((failures + 1)); }
     grep -Fq 'ABOX_CORE_MIRROR_BASE_DEFAULT=' "$0" || { echo 'FAIL: core disaster mirror base missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_CORE_MIRROR_RELEASE='core-binaries'" "$0" || { echo 'FAIL: stable core mirror tag missing'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/a-box/releases/download/core-binaries'" "$0" || { echo 'FAIL: stable core mirror URL missing'; failures=$((failures + 1)); }
+    grep -Fq "ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/A-Box/releases/download/core-binaries'" "$0" || { echo 'FAIL: stable core mirror URL missing'; failures=$((failures + 1)); }
     grep -Fq '截至当前 / Usage up to now' "$0" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
     grep -Fq 'one_click_reality_deploy()' "$0" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
     grep -Fq 'abox_is_fast()' "$0" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }

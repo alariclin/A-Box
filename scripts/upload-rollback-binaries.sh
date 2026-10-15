@@ -7,7 +7,7 @@
 set -euo pipefail
 shopt -s nullglob
 
-REPO="alariclin/a-box"
+REPO="alariclin/A-Box"
 TAG="core-binaries"
 STAGE="${1:-./mirror-staging}"
 

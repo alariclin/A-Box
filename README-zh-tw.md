@@ -1,12 +1,12 @@
 # A-Box
 
-Linux 網路閘道一鍵工具箱。
-
-[🇺🇸 English](README.md) | [🇨🇳 简体中文](README-zh.md) | [🇹🇼 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇷🇺 Русский](README-ru.md) | [🇮🇷 فارسی](README-fa.md)
-
 <p align="center">
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
+
+[🇺🇸 English](README.md) | [🇨🇳 简体中文](README-zh.md) | [🇯🇵 日本語](README-ja.md) | [🇷🇺 Русский](README-ru.md) | [🇮🇷 فارسی](README-fa.md)
+
+Linux 網路閘道一鍵工具箱。
 
 A-Box 是一個獨立 Bash 腳本，用於部署和維護 Linux 網路閘道服務。當前相容性 pin 為 Xray `v26.7.28`（上游預發布版，因相容性需要而保留）、sing-box `v1.14.3` 和 Hysteria `app/v2.13.0`；選擇最新穩定版時不會靜默降級已安裝的較新核心。
 
@@ -25,7 +25,7 @@ A-Box 是一個獨立 Bash 腳本，用於部署和維護 Linux 網路閘道服�
 ### GitHub 官方源
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/6bfbc79ecc71179187984d6d9bb7a9197b5ee6a4/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/6bfbc79ecc71179187984d6d9bb7a9197b5ee6a4/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 審閱下載的腳本後，再單獨執行：
 sudo bash A-Box.sh
@@ -34,7 +34,7 @@ sudo bash A-Box.sh
 ### 第三方備用映象
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/a-box/6bfbc79ecc71179187984d6d9bb7a9197b5ee6a4/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/6bfbc79ecc71179187984d6d9bb7a9197b5ee6a4/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 審閱下載的腳本後，再單獨執行：
 sudo bash A-Box.sh
@@ -49,7 +49,7 @@ sudo bash A-Box.sh
 - **客戶端配置匯出：** 分享連結/URI、二維碼、Clash/Mihomo YAML、sing-box 出站模板、v2rayN/v2rayNG XHTTP JSON。
 - **運維和診斷：** 健康檢查、系統/下載測速、IP 品質與路由測試、BBR/FQ 調優和回滾、IP 偏好、DNS 實測優選與受支援後端的 DoT/DoH、時區編號選擇、Locale/NTP、Wallos 安裝與資料備份、Fail2Ban/logrotate、流量限制、備份恢復、脫敏診斷包和預檢查。
 - **運維增強：** 一鍵 Reality、快速/嚴格模式（`ABOX_FAST`）、核心固定版本與失敗回滾、多 UUID 服務端新增/撤銷、URI/Base64/Clash 匯出，以及真實下載源可用性探測。
-- **核心二進位映象：** 固定入口 Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/a-box/releases/tag/core-binaries) 同時保留固定相容性版本資產和帶版本號的最新正式穩定版資產。每週工作流會排除 draft/prerelease，校驗官方 SHA-256 與資產架構；僅對 CI 執行器可執行的二進位進行版本探測，並保留舊版本資產供回滾。安裝器還會在目標環境校驗實際二進位版本。最新穩定版回退先嘗試完全匹配的版本化映象，再回退到固定相容性 pin。`SHA256SUMS` 是同一 Release 內的完整性清單，不是獨立簽名；詳見 [`mirrors/README.md`](mirrors/README.md)。
+- **核心二進位映象：** 固定入口 Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/A-Box/releases/tag/core-binaries) 同時保留固定相容性版本資產和帶版本號的最新正式穩定版資產。每週工作流會排除 draft/prerelease，校驗官方 SHA-256 與資產架構；僅對 CI 執行器可執行的二進位進行版本探測，並保留舊版本資產供回滾。安裝器還會在目標環境校驗實際二進位版本。最新穩定版回退先嘗試完全匹配的版本化映象，再回退到固定相容性 pin。`SHA256SUMS` 是同一 Release 內的完整性清單，不是獨立簽名；詳見 [`mirrors/README.md`](mirrors/README.md)。
 - **SNI 候選工作流：** 本地完整和微型主機候選測試、已儲存結果檢視器、輸入校驗、檔案大小/行數上限、重複項清理，以及可用時回退到有效本地快取或同目錄資料檔案。
 - **維護：** 顯示 SHA-256 並要求明確確認的腳本 OTA、Xray Geo 資料更新，以及不重置節點參數的核心程式單獨升級。
 - **安全控制：** 部署前檢查、受控服務歸屬/狀態變更、防火牆處理，以及受支援操作的回滚路徑。
@@ -139,6 +139,6 @@ BBR/FQ 不會靜默修改系統。DNS 優選根據當前 VPS 對候選解析器�
 
 ## 回饋與授權
 
-- [GitHub Issues](https://github.com/alariclin/a-box/issues)
+- [GitHub Issues](https://github.com/alariclin/A-Box/issues)
 - 歡迎提交 Pull Request。
 - 本專案使用 [Apache License 2.0](LICENSE)。

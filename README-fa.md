@@ -1,12 +1,12 @@
 # A-Box
 
-مجموعه‌ابزار راه‌اندازی دروازه شبکه لینوکس با یک فرمان.
-
-[🇺🇸 English](README.md) | [🇨🇳 简体中文](README-zh.md) | [🇹🇼 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇷🇺 Русский](README-ru.md) | [🇮🇷 فارسی](README-fa.md)
-
 <p align="center">
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
+
+[🇺🇸 English](README.md) | [🇨🇳 简体中文](README-zh.md) | [🇹🇼 繁體中文](README-zh-tw.md) | [🇯🇵 日本語](README-ja.md) | [🇷🇺 Русский](README-ru.md)
+
+مجموعه‌ابزار راه‌اندازی دروازه شبکه لینوکس با یک فرمان.
 
 A-Box یک اسکریپت مستقل Bash برای راه‌اندازی و نگه‌داری دروازه‌های شبکه در لینوکس است. نسخه‌های سازگاری پیش‌فرض عبارت‌اند از Xray `v26.7.28` (نسخه پیش‌انتشار upstream که عمداً برای سازگاری نگه داشته شده)، sing-box `v1.14.3` و Hysteria `app/v2.13.0`؛ انتخاب آخرین نسخه پایدار نباید هسته جدیدتر نصب‌شده را بی‌صدا به نسخه پایین‌تر برگرداند.
 
@@ -25,7 +25,7 @@ A-Box یک اسکریپت مستقل Bash برای راه‌اندازی و نگ
 ### منبع رسمی GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/a-box/6bfbc79/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/6bfbc79ecc71179187984d6d9bb7a9197b5ee6a4/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
 sudo bash A-Box.sh
@@ -34,7 +34,7 @@ sudo bash A-Box.sh
 ### آینه جایگزین شخص ثالث
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/a-box/6bfbc79/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/6bfbc79ecc71179187984d6d9bb7a9197b5ee6a4/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
 sudo bash A-Box.sh
@@ -49,7 +49,7 @@ sudo bash A-Box.sh
 - **خروجی تنظیمات کلاینت:** پیوند/URI، کد QR، فایل YAML برای Clash/Mihomo، قالب خروجی sing-box و JSON مربوط به XHTTP برای v2rayN/v2rayNG.
 - **عملیات و عیب‌یابی:** سنجش سیستم و دانلود، کیفیت IP و مسیر، BBR/FQ با امکان بازگردانی، ترجیح IP، آزمون DNS و DoT/DoH در backend پشتیبانی‌شده، انتخاب شماره‌ای منطقه زمانی، Locale/NTP، نصب و پشتیبان‌گیری Wallos، Fail2Ban/logrotate، محدودیت ترافیک، پشتیبان‌گیری و عیب‌یابی.
 - **عملیات:** Reality با یک کلیک، حالت سریع/سخت‌گیرانه (`ABOX_FAST`)، نسخه‌های ثابت هسته با قابلیت بازگشت، افزودن/لغو چند UUID در سمت سرور، خروجی URI/Base64/Clash و بررسی واقعی دسترس‌پذیری منابع دانلود.
-- **آینه‌های هسته:** Release ثابت [`A-Box Core Binary Mirrors`](https://github.com/alariclin/a-box/releases/tag/core-binaries) هم دارایی‌های نسخه سازگار ثابت و هم نسخه‌های شماره‌گذاری‌شده از آخرین انتشار پایدار رسمی Xray، sing-box و Hysteria را نگه می‌دارد. گردش‌کار هفتگی draft/prerelease را رد می‌کند، SHA-256 رسمی و معماری دارایی‌ها را بررسی می‌کند و نسخه اجرایی را فقط برای باینری‌هایی می‌سنجد که روی runner قابل اجرا هستند؛ نسخه‌های قدیمی برای بازگشت حفظ می‌شوند. نصب‌کننده پیش از نصب، نسخه واقعی باینری را در سیستم مقصد نیز بررسی می‌کند. هنگام شکست upstream، ابتدا آینه همان نسخه و سپس نسخه سازگار ثابت امتحان می‌شود. `SHA256SUMS` مانیفست یکپارچگی در همان Release است، نه امضای مستقل؛ جزئیات در [`mirrors/README.md`](mirrors/README.md).
+- **آینه‌های هسته:** Release ثابت [`A-Box Core Binary Mirrors`](https://github.com/alariclin/A-Box/releases/tag/core-binaries) هم دارایی‌های نسخه سازگار ثابت و هم نسخه‌های شماره‌گذاری‌شده از آخرین انتشار پایدار رسمی Xray، sing-box و Hysteria را نگه می‌دارد. گردش‌کار هفتگی draft/prerelease را رد می‌کند، SHA-256 رسمی و معماری دارایی‌ها را بررسی می‌کند و نسخه اجرایی را فقط برای باینری‌هایی می‌سنجد که روی runner قابل اجرا هستند؛ نسخه‌های قدیمی برای بازگشت حفظ می‌شوند. نصب‌کننده پیش از نصب، نسخه واقعی باینری را در سیستم مقصد نیز بررسی می‌کند. هنگام شکست upstream، ابتدا آینه همان نسخه و سپس نسخه سازگار ثابت امتحان می‌شود. `SHA256SUMS` مانیفست یکپارچگی در همان Release است، نه امضای مستقل؛ جزئیات در [`mirrors/README.md`](mirrors/README.md).
 - **گردش کار نامزدهای SNI:** آزمون محلی کامل و سبک، مشاهده نتایج ذخیره‌شده، اعتبارسنجی ورودی، محدودیت اندازه فایل و تعداد سطرها، حذف موارد تکراری و استفاده از حافظه نهان محلی معتبر یا فایل داده مجاور در صورت وجود.
 - **نگه‌داری:** به‌روزرسانی کنترل‌شده اسکریپت با نمایش SHA-256 و تأیید صریح، به‌روزرسانی داده‌های Geo برای Xray و ارتقای مستقل هسته بدون بازنشانی پارامترهای نود.
 - **کنترل‌های ایمنی:** بررسی پیش از راه‌اندازی، تغییر کنترل‌شده وضعیت سرویس‌ها، مدیریت قوانین دیوار آتش و مسیرهای بازگشت برای عملیات پشتیبانی‌شده.
@@ -139,6 +139,6 @@ BBR/FQ بدون تأیید اعمال نمی‌شود. انتخاب DNS بر ا�
 
 ## بازخورد و مجوز
 
-- [GitHub Issues](https://github.com/alariclin/a-box/issues)
+- [GitHub Issues](https://github.com/alariclin/A-Box/issues)
 - از Pull Requestها استقبال می‌شود.
 - این پروژه تحت مجوز [Apache License 2.0](LICENSE) منتشر شده است.

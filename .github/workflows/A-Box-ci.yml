@@ -70,7 +70,7 @@ jobs:
               ["git", "log", "-n", "1", "--format=%H", "--", "install.sh"],
               text=True
           ).strip()
-          pattern = re.compile(r"raw\.githubusercontent\.com/alariclin/a-box/([0-9a-f]{40})/install\.sh")
+          pattern = re.compile(r"raw\.githubusercontent\.com/alariclin/A-Box/([0-9a-f]{40})/install\.sh")
           readme_files = sorted(pathlib.Path(".").glob("README*.md"))
           if not readme_files:
               print("ERROR: No README*.md files found", file=sys.stderr)

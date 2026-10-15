@@ -58,6 +58,8 @@ ABOX_LANG='zh'
 ABOX_BUILD='2026-10-15-arbitrated-fix-v192'
 ABOX_BUILD_EPOCH=20261015192
 WALLOS_DIR='/opt/wallos'
+# D-04: top-level init (set -u is active; rollback reads this before any writer runs).
+WALLOS_IMAGE_RESULT=''
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
 # Cross-client compatibility pin for Shadowrocket + Mihomo/Clash Verge + sing-box
@@ -4078,6 +4080,17 @@ __abox_normalize_managed_rule_line() {
     line=${line//\"/}
     line=$(printf '%s\n' "$line" | sed -E 's/^(-A[[:space:]]+INPUT([[:space:]]+[^[:space:]]+)*[[:space:]]+-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\4/')
     printf '%s\n' "$line"
+}
+
+# D-01: main-script copy of __abox_firewall_unlock (heredoc copy at L3032 is
+# written to firewall_restore.sh and never executed by the main shell).
+# $1 = lock fd value. Closes it; caller clears its own lock_fd variable.
+__abox_firewall_unlock() {
+    local lock_fd="$1"
+    # Guard empty lock_fd: `exec >&-` would close stdout.
+    if [[ "$lock_fd" =~ ^[0-9]+$ ]]; then
+        eval "exec ${lock_fd}>&-" 2>/dev/null || true
+    fi
 }
 
 reorder_ss_whitelist_rules_one() {
@@ -14612,9 +14625,13 @@ run_mirrored_test_script() {
 }
 
 wallos_state_value() {
-    local key="$1"
+    local key="$1" val
     [[ -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]] || return 1
-    awk -F= -v k="$key" '$1==k {sub(/^[^=]*=/, ""); print; exit}' "$WALLOS_DIR/.abox-state"
+    val=$(awk -F= -v k="$key" '$1==k {sub(/^[^=]*=/, ""); print; exit}' "$WALLOS_DIR/.abox-state")
+    # D-06: awk exits 0 even when the key is missing (empty output), which
+    # defeated every `|| printf fallback` caller. Return 1 on empty instead.
+    [[ -n "$val" ]] || return 1
+    printf '%s\n' "$val"
 }
 
 wallos_detect_arch() {
@@ -14817,6 +14834,10 @@ wallos_mirror_version_list() {
 # Args: $1 = image tag to always keep (current), $2 = image tag to keep (previous, may be empty).
 wallos_prune_local_images() {
     local keep1="${1:-}" keep2="${2:-}" img tag
+    # D-05: normalize docker.io/ prefix (docker inspect .Config.Image may include
+    # it, while `docker images --format` never does) so keep-list comparison works.
+    keep1="${keep1#docker.io/}"
+    keep2="${keep2#docker.io/}"
     local -a all_images=()
     while IFS= read -r img; do
         [[ -n "$img" ]] || continue
@@ -14844,6 +14865,24 @@ wallos_prune_local_images() {
 # N-11: Roll back Wallos to a specific version.
 # Args: $1 = version tag (e.g. v2.5.1). Fetches the versioned image from the
 # mirror if not present locally, restores the latest backup, recreates the container.
+# D-02: best-effort recovery if rollback fails after the old container was removed.
+# Tries to bring Wallos back up with the previous image so the service is not
+# left completely down. Data on disk is already the restored backup.
+_wallos_rollback_recover() {
+    local prev_image="$1" port="$2" tz="$3" bind_address="$4"
+    local -a _pub_args=()
+    if [[ -n "$bind_address" && "$bind_address" != "0.0.0.0" ]]; then
+        _pub_args=(-p "$bind_address:$port:80/tcp")
+    elif [[ "$bind_address" == "0.0.0.0" ]]; then
+        _pub_args=(-p "$port:80/tcp")
+    fi
+    [[ -n "$prev_image" ]] || return 1
+    docker run -d --name wallos --label com.alariclin.abox.managed=true \
+        -v "$WALLOS_DIR/db:/var/www/html/db" \
+        -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
+        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$prev_image" >/dev/null 2>&1
+}
+
 wallos_rollback_to_version() {
     local target_tag="$1" arch image_tag port tz bind_address backup
     [[ "$target_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { msg "${RED}Invalid Wallos version: $target_tag${NC}"; return 1; }
@@ -14853,7 +14892,7 @@ wallos_rollback_to_version() {
     if ! docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1; then
         msg "${YELLOW}Wallos image $image_tag not present locally; fetching from mirror...${NC}"
         # Use the versioned mirror path: temporarily override tag selection.
-        local _saved_result="$WALLOS_IMAGE_RESULT"
+        local _saved_result="${WALLOS_IMAGE_RESULT:-}"
         if ! _wallos_pull_versioned_image "$target_tag"; then
             WALLOS_IMAGE_RESULT="$_saved_result"
             msg "${RED}Could not fetch Wallos $target_tag from the mirror.${NC}"
@@ -14875,7 +14914,10 @@ wallos_rollback_to_version() {
     local prev_image
     prev_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
     docker rm -f wallos >/dev/null 2>&1 || { msg "${RED}Could not remove current Wallos container.${NC}"; return 1; }
-    wallos_restore_backup "$backup" || { msg "${RED}Wallos backup restore failed.${NC}"; return 1; }
+    wallos_restore_backup "$backup" || { msg "${RED}Wallos backup restore failed.${NC}"
+        _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
+            msg "${YELLOW}Recovered by restarting previous Wallos image.${NC}"
+        return 1; }
     local -a _pub_args=()
     if [[ -n "$bind_address" && "$bind_address" != "0.0.0.0" ]]; then
         _pub_args=(-p "$bind_address:$port:80/tcp")
@@ -14887,8 +14929,14 @@ wallos_rollback_to_version() {
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
         -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "bellamy/wallos:$image_tag" >/dev/null || {
-        msg "${RED}Failed to start Wallos $target_tag.${NC}"; return 1; }
-    wallos_wait_healthy "$port" || { msg "${RED}Wallos $target_tag did not become healthy.${NC}"; return 1; }
+        msg "${RED}Failed to start Wallos $target_tag.${NC}"
+        _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
+            msg "${YELLOW}Recovered by restarting previous Wallos image.${NC}"
+        return 1; }
+    wallos_wait_healthy "$port" || { msg "${RED}Wallos $target_tag did not become healthy.${NC}"
+        _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
+            msg "${YELLOW}Recovered by restarting previous Wallos image.${NC}"
+        return 1; }
     wallos_write_state "bellamy/wallos:$image_tag" "$port" "$tz" "$bind_address" || {
         msg "${RED}Wallos state commit failed after rollback.${NC}"; return 1; }
     # N-11: prune to 2 images (new current + previous).
@@ -15161,9 +15209,32 @@ wallos_create_backup() {
     sync -f "$temp" 2>/dev/null || true
     mv -f "$temp" "$backup" || { rm -f -- "$temp"; return 1; }
     sync -f "$WALLOS_DIR/backups" 2>/dev/null || true
-    find "$WALLOS_DIR/backups" -maxdepth 1 -type f -name 'wallos-*.tar.gz' -printf '%T@ %p\n' 2>/dev/null |
-        sort -nr | awk 'NR>5 {$1=""; sub(/^ /, ""); print}' |
-        while IFS= read -r old; do [[ "$old" == "$backup" ]] || rm -f -- "$old"; done
+    # D-07: BusyBox find (Alpine) lacks -printf; python3 is already a hard
+    # dependency, so rotate by mtime in python. Keeps the newest 5 backups.
+    # Rotation is best-effort: the backup itself already succeeded above.
+    python3 - "$WALLOS_DIR/backups" "$backup" <<'PY_WALLOS_ROTATE' 2>/dev/null || true
+import os, sys
+_d, _keep = sys.argv[1], sys.argv[2]
+_ents = []
+try:
+    _names = os.listdir(_d)
+except OSError:
+    _names = []
+for _n in _names:
+    _p = os.path.join(_d, _n)
+    if _n.startswith('wallos-') and _n.endswith('.tar.gz') and os.path.isfile(_p) and not os.path.islink(_p):
+        try:
+            _ents.append((os.stat(_p).st_mtime, _p))
+        except OSError:
+            continue
+_ents.sort(key=lambda e: e[0], reverse=True)
+for _, _p in _ents[5:]:
+    if _p != _keep:
+        try:
+            os.unlink(_p)
+        except OSError:
+            pass
+PY_WALLOS_ROTATE
     printf '%s\n' "$backup"
 }
 
@@ -15685,17 +15756,26 @@ _wallos_manual_rollback() {
         msg "${RED}No previous Wallos versions available for rollback.${NC}"
         return 1
     fi
-    # Skip the current version (index 0 is newest = likely current).
+    # D-03: actually skip the current version so Enter never selects it.
+    # (The old code only marked it "(current)" but still listed it as item 1.)
     local current_tag
     current_tag=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null | sed 's/.*://' || true)
+    local -a _rb_versions=()
+    local v
+    for v in "${versions[@]}"; do
+        if [[ "v${v#v}" == "v${current_tag#v}" || "${v#v}" == "${current_tag#v}" ]]; then
+            continue
+        fi
+        _rb_versions+=("$v")
+    done
+    if (( ${#_rb_versions[@]} == 0 )); then
+        msg "${YELLOW}No other Wallos versions available for rollback.${NC}"
+        return 1
+    fi
+    versions=("${_rb_versions[@]}")
     local i=1
     for v in "${versions[@]}"; do
-        # Mark the current version.
-        if [[ "v${v#v}" == "v${current_tag#v}" || "${v#v}" == "${current_tag#v}" ]]; then
-            msg "${YELLOW}$i. $v (current)${NC}"
-        else
-            msg "${YELLOW}$i. $v${NC}"
-        fi
+        msg "${YELLOW}$i. $v${NC}"
         i=$((i + 1))
     done
     local prompt
@@ -17744,7 +17824,37 @@ run_self_tests() {
             return 0
         fi
         [[ -d /etc/ddr && ! -L /etc/ddr ]] || return 1
-        find /etc/ddr -mindepth 1 -maxdepth 1 -xdev -printf '%f\0%y\0%u\0%g\0%m\0%s\0%T@\0' | sort -z | sha256sum | awk '{print $1}'
+        # D-07: BusyBox find (Alpine) lacks -printf; python3 is already a hard
+        # dependency. Emits the same NUL-separated sorted field stream as the
+        # find pipeline did (basename, type, uid, gid, mode, size, mtime).
+        python3 - <<'PY_ABOX_SIG' 2>/dev/null || return 1
+import os, stat, sys, hashlib
+def _ftype(m):
+    if stat.S_ISREG(m): return 'f'
+    if stat.S_ISDIR(m): return 'd'
+    if stat.S_ISLNK(m): return 'l'
+    if stat.S_ISFIFO(m): return 'p'
+    if stat.S_ISSOCK(m): return 's'
+    if stat.S_ISCHR(m): return 'c'
+    if stat.S_ISBLK(m): return 'b'
+    return '?'
+try:
+    _names = os.listdir('/etc/ddr')
+except OSError:
+    sys.exit(1)
+_fields = []
+for _n in _names:
+    _p = os.path.join('/etc/ddr', _n)
+    try:
+        _st = os.lstat(_p)
+    except OSError:
+        continue
+    _fields += [_n, _ftype(_st.st_mode), str(_st.st_uid), str(_st.st_gid),
+                oct(stat.S_IMODE(_st.st_mode))[2:], str(_st.st_size), repr(_st.st_mtime)]
+_fields.sort()
+_blob = ('\0'.join(_fields) + '\0') if _fields else ''
+sys.stdout.write(hashlib.sha256(_blob.encode()).hexdigest() + '\n')
+PY_ABOX_SIG
     }
     if (( EUID == 0 )); then
         if [[ -e /etc/ddr || -L /etc/ddr ]]; then real_abox_exists=1; fi

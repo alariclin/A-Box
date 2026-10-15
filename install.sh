@@ -15,8 +15,10 @@
 # When in doubt, leave the function unchanged.
 set -o pipefail
 set -u
-if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )); then
-    printf 'A-Box requires Bash 4.3 or newer. Current: %s\n' "$BASH_VERSION" >&2
+# D-14: requires 4.4+ (4.4 fixed the empty-array + set -u unbound-variable bug;
+# the "${arr[@]:-}" workaround would pass a spurious empty argument to docker).
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) )); then
+    printf 'A-Box requires Bash 4.4 or newer. Current: %s\n' "$BASH_VERSION" >&2
     exit 1
 fi
 export DEBIAN_FRONTEND=noninteractive
@@ -3512,13 +3514,6 @@ save_firewall_rules() {
     fi
     rm -f -- "$backup4" "$backup6"
     return 0
-}
-
-warn_ss_whitelist_native_firewall_reload() {
-    local backend
-    backend=$(firewall_backend)
-    [[ "$backend" == 'iptables' ]] && return 0
-    msg "${YELLOW}[!] SS-2022 whitelist/DROP rules use iptables/ip6tables. If ${backend} is externally reloaded, reapply whitelist mode from Menu 18.${NC}"
 }
 
 ufw_is_active() {

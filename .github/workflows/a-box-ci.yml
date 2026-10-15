@@ -87,16 +87,20 @@ jobs:
                       sys.exit(1)
           print(f"OK: All {len(readme_files)} README files correctly pin install.sh commit {expected_sha}")
           PY
-      - name: Verify normalize_managed_rule_line single definition (BUG-28)
+      - name: Verify normalize_managed_rule_line definitions (BUG-28 + B-02)
         run: |
           python3 - <<'PY'
           import pathlib, re, sys
           text = pathlib.Path("install.sh").read_text(encoding="utf-8")
-          pattern = re.compile(r"(?:__abox_)?normalize_managed_rule_line\s*\(\)\s*\{", re.DOTALL)
-          matches = pattern.findall(text)
-          if len(matches) != 1:
-              sys.exit(f"ERROR: Expected exactly 1 definition (BUG-28 dedup), found {len(matches)}")
-          print("OK: Single normalize_managed_rule_line definition")
+          # Split out the firewall_restore.sh heredoc (standalone script needs its own closure).
+          h_start = text.index("<<'EOF_ABOX_FW_RESTORE'")
+          h_end = text.index("\nEOF_ABOX_FW_RESTORE", h_start)
+          heredoc, main = text[h_start:h_end], text[:h_start] + text[h_end:]
+          pattern = re.compile(r"(?:__abox_)?normalize_managed_rule_line\s*\(\)\s*\{")
+          m_main, m_hero = pattern.findall(main), pattern.findall(heredoc)
+          if len(m_main) != 1 or len(m_hero) != 1:
+              sys.exit(f"ERROR: Expected 1 in main + 1 in heredoc, found {len(m_main)}+{len(m_hero)}")
+          print("OK: normalize_managed_rule_line defined once in main and once in heredoc closure")
           PY
       # P3-13 fix: renamed from "Alpine clean-shell bootstrap syntax".
       # NOTE: This only checks syntax. Alpine runtime (BusyBox/musl/apk)

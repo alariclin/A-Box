@@ -7141,22 +7141,22 @@ pre_install_setup() {
                 for proto in tcp udp; do
                     if [[ "$ip" == *:* ]]; then
                         if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! $IPT6 -w -S INPUT >/dev/null 2>&1; then
-                            die "IPv6 白名单已配置，但系统没有可用 IPv6 防火墙；拒绝继续以避免白名单被静默丢弃: $ip/$proto"
+                            _ss_wl_rollback_to_snapshot; die "IPv6 白名单已配置，但系统没有可用 IPv6 防火墙；拒绝继续以避免白名单被静默丢弃: $ip/$proto"
                         fi
                         if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
                             if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                             case "$check_rc" in
                                 0) ;;
-                                1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则写入失败: $ip/$proto" ;;
-                                *) die "无法检查防火墙规则。" ;;
+                                1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 白名单规则写入失败: $ip/$proto"; } ;;
+                                *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                             esac
                         fi
                     else
                         if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                         case "$check_rc" in
                             0) ;;
-                            1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则写入失败: $ip/$proto" ;;
-                            *) die "无法检查防火墙规则。" ;;
+                            1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 白名单规则写入失败: $ip/$proto"; } ;;
+                            *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                         esac
                     fi
                 done
@@ -9354,24 +9354,24 @@ manage_ss_whitelist() {
         3)
             ss_whitelist_ipv6_precheck || die '主机启用了 IPv6，但 IPv6 防火墙不可用；拒绝启用白名单模式以避免 IPv6 侧被静默放行。'
             _ss_wl_snapshot_rules || die '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。'
-            remove_ss_open_accept_rules || die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'
+            remove_ss_open_accept_rules || { _ss_wl_rollback_to_snapshot; die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'; }
             for proto in tcp udp; do
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in
                     0) ;;
-                    1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则写入失败: $proto" ;;
-                    *) die "无法检查防火墙规则。" ;;
+                    1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 SS DROP 规则写入失败: $proto"; } ;;
+                    *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                 esac
                 if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
                         1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; } ;;
-                        *) die "无法检查防火墙规则。" ;;
+                        *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                     esac
                 fi
             done
-            enforce_ss_whitelist_order "$SS_PORT" || die 'SS 白名单规则顺序校正失败。'
+            enforce_ss_whitelist_order "$SS_PORT" || { _ss_wl_rollback_to_snapshot; die 'SS 白名单规则顺序校正失败。'; }
             save_firewall_rules || die 'A-Box 防火墙持久化失败。'
             msg "${GREEN}已开启白名单保护模式 (TCP+UDP)。${NC}"
             pause_return

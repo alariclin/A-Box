@@ -4367,6 +4367,7 @@ _ss_wl_rollback_to_snapshot() {
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
             if ! grep -Fxq -- "$line" <<< "$snap"; then
+                line=${line//\"/}
                 # Rule comments contain no spaces; word-splitting here is intentional.
                 # shellcheck disable=SC2086
                 "$ipt" -w -D INPUT $line >/dev/null 2>&1 || true
@@ -4376,6 +4377,7 @@ _ss_wl_rollback_to_snapshot() {
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
             if ! grep -Fxq -- "$line" <<< "$cur"; then
+                line=${line//\"/}
                 # See above: word-splitting intentional.
                 # shellcheck disable=SC2086
                 "$ipt" -w -A INPUT $line >/dev/null 2>&1 || true
@@ -17140,6 +17142,11 @@ upgrade_xray_core_only() {
         if ! restart_service_soft xray || ! core_post_upgrade_health_gate xray; then
             rollback_core_upgrade_verified xray /usr/local/bin/xray "$backup" "$tmp"
         fi
+    else
+        # P1-A: service was stopped, so restart_service_soft (which refreshes
+        # the ownership manifest) was skipped. Record the new binary now to
+        # keep /etc/ddr/.managed-core-files.tsv in sync.
+        record_core_family_ownership xray || { rm -rf "$tmp"; die 'Xray 核心已替换，但归属清单更新失败。'; }
     fi
     msg "${GREEN}[OK] Xray-core upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
     rm -rf -- "$tmp"
@@ -17211,6 +17218,11 @@ upgrade_singbox_core_only() {
         if ! restart_service_soft sing-box || ! core_post_upgrade_health_gate singbox; then
             rollback_core_upgrade_verified sing-box /usr/local/bin/sing-box "$backup" "$tmp"
         fi
+    else
+        # P1-A: service was stopped, so restart_service_soft (which refreshes
+        # the ownership manifest) was skipped. Record the new binary now to
+        # keep /etc/ddr/.managed-core-files.tsv in sync.
+        record_core_family_ownership sing-box || { rm -rf "$tmp"; die 'sing-box 核心已替换，但归属清单更新失败。'; }
     fi
     msg "${GREEN}[OK] sing-box upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
     rm -rf -- "$tmp"
@@ -17284,6 +17296,10 @@ upgrade_hysteria_core_only() {
             msg "${RED}[!] New Hysteria binary failed smoke test with current config. Rolling back...${NC}"
             rollback_core_upgrade_verified hysteria /usr/local/bin/hysteria "$backup" "$tmp" "$was_active"
         fi
+        # P1-A: service was stopped, so restart_service_soft (which refreshes
+        # the ownership manifest) was skipped. Record the new binary now to
+        # keep /etc/ddr/.managed-core-files.tsv in sync.
+        record_core_family_ownership hysteria || { rm -rf "$tmp"; die 'Hysteria 核心已替换，但归属清单更新失败。'; }
     fi
     msg "${GREEN}[OK] Hysteria upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
     rm -rf -- "$tmp"

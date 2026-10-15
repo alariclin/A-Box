@@ -421,9 +421,11 @@ ensure_abox_dir_owned() {
 normalize_lang() {
     case "${1:-}" in
         en|en_US|en-US|english|English) printf 'en' ;;
+        ja|ja_JP|ja-JP|japanese|Japanese|日本語|日语|日文) printf 'ja' ;;
         ru|ru_RU|ru-RU|russian|Русский) printf 'ru' ;;
         fa|fa_IR|fa-IR|persian|فارسی) printf 'fa' ;;
-        zh|zh_CN|zh-CN|cn|CN|中文|'') printf 'zh' ;;
+        zh_tw|zh-TW|zhTW|tw|TW|hant|繁體中文|繁体中文) printf 'zh-tw' ;;
+        zh|zh_CN|zh-CN|cn|CN|hans|中文|简体中文|简体|'') printf 'zh' ;;
         *) printf 'zh' ;;
     esac
 }
@@ -432,91 +434,135 @@ tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
         zh:press_return) echo '按回车返回...' ;;
+        zh-tw:press_return) echo '按 Enter 返回...' ;;
         en:press_return) echo 'Press Enter to return...' ;;
+        ja:press_return) echo 'Enter を押して戻る...' ;;
         ru:press_return) echo 'Нажмите Enter, чтобы вернуться...' ;;
         fa:press_return) echo 'برای بازگشت Enter را فشار دهید...' ;;
         zh:select_prompt) echo '请选择 / Select' ;;
+        zh-tw:select_prompt) echo '請選擇 / Select' ;;
         en:select_prompt) echo 'Select' ;;
+        ja:select_prompt) echo '選択してください' ;;
         ru:select_prompt) echo 'Выберите' ;;
         fa:select_prompt) echo 'انتخاب کنید' ;;
         zh:main_command) echo '请求下发执行代号: ' ;;
+        zh-tw:main_command) echo '請求下發執行代號: ' ;;
         en:main_command) echo 'Input command: ' ;;
+        ja:main_command) echo 'コマンドを入力: ' ;;
         ru:main_command) echo 'Введите команду: ' ;;
         fa:main_command) echo 'فرمان را وارد کنید: ' ;;
         zh:lang_title) echo '语言设置 / Language' ;;
+        zh-tw:lang_title) echo '語言設定 / Language' ;;
         en:lang_title) echo 'Language settings' ;;
+        ja:lang_title) echo '言語設定' ;;
         ru:lang_title) echo 'Настройки языка' ;;
         fa:lang_title) echo 'تنظیمات زبان' ;;
         zh:lang_saved) echo '语言已保存。' ;;
+        zh-tw:lang_saved) echo '語言已儲存。' ;;
         en:lang_saved) echo 'Language saved.' ;;
+        ja:lang_saved) echo '言語を保存しました。' ;;
         ru:lang_saved) echo 'Язык сохранён.' ;;
         fa:lang_saved) echo 'زبان ذخیره شد.' ;;
         zh:yes_no_default_no) echo '[Y/N]' ;;
+        zh-tw:yes_no_default_no) echo '[Y/N]' ;;
         en:yes_no_default_no) echo '[Y/N]' ;;
+        ja:yes_no_default_no) echo '[Y/N]' ;;
         ru:yes_no_default_no) echo '[Y/N]' ;;
         fa:yes_no_default_no) echo '[Y/N]' ;;
         zh:yes_no_default_yes) echo '[Y/N]' ;;
+        zh-tw:yes_no_default_yes) echo '[Y/N]' ;;
         en:yes_no_default_yes) echo '[Y/N]' ;;
+        ja:yes_no_default_yes) echo '[Y/N]' ;;
         ru:yes_no_default_yes) echo '[Y/N]' ;;
         fa:yes_no_default_yes) echo '[Y/N]' ;;
         zh:reality_sni_prompt) echo '   %s 请输入伪装 SNI (端口 %s，回车默认: %s): ' ;;
+        zh-tw:reality_sni_prompt) echo '   %s 請輸入偽裝 SNI (連接埠 %s，按 Enter 預設: %s): ' ;;
         en:reality_sni_prompt) echo '   %s Enter camouflage SNI (port %s, default: %s): ' ;;
+        ja:reality_sni_prompt) echo '   %s カモフラージュ SNI を入力 (ポート %s、既定値: %s): ' ;;
         ru:reality_sni_prompt) echo '   %s Введите маскирующий SNI (порт %s, по умолчанию: %s): ' ;;
         fa:reality_sni_prompt) echo '   %s نام SNI پوششی را وارد کنید (درگاه %s، پیش‌فرض: %s): ' ;;
         zh:bad_sni) echo 'SNI 格式非法: %s' ;;
+        zh-tw:bad_sni) echo 'SNI 格式無效: %s' ;;
         en:bad_sni) echo 'Invalid SNI format: %s' ;;
+        ja:bad_sni) echo 'SNI 形式が無効です: %s' ;;
         ru:bad_sni) echo 'Недопустимый формат SNI: %s' ;;
         fa:bad_sni) echo 'قالب SNI نامعتبر است: %s' ;;
         zh:apple_non443_warn) echo '检测到非 443 端口使用 Apple/iCloud 类 SNI：%s。Xray-core 对 apple/icloud target 与非443端口有风险警告，此组合可能提高 IP 封禁概率。' ;;
+        zh-tw:apple_non443_warn) echo '偵測到非 443 連接埠使用 Apple/iCloud 類 SNI：%s。Xray-core 對 apple/icloud target 與非 443 連接埠有風險警告，此組合可能提高 IP 封鎖機率。' ;;
         en:apple_non443_warn) echo 'Apple/iCloud-like SNI on non-443 port detected: %s. Xray-core warns about apple/icloud targets and non-443 listening ports; this combination may increase IP blocking risk.' ;;
+        ja:apple_non443_warn) echo '非 443 ポートで Apple/iCloud 系 SNI を検出: %s。Xray-core は apple/icloud ターゲットと非 443 ポートの組み合わせに警告しています。IP ブロックの可能性が高まる場合があります。' ;;
         ru:apple_non443_warn) echo 'На порту, отличном от 443, обнаружен SNI Apple/iCloud: %s. Xray предупреждает о сочетании таких целей и нестандартного порта; риск блокировки IP может возрасти.' ;;
         fa:apple_non443_warn) echo 'SNI شبیه Apple/iCloud روی درگاهی غیر از 443 شناسایی شد: %s. Xray درباره این ترکیب هشدار می‌دهد و احتمال مسدودشدن IP ممکن است افزایش یابد.' ;;
         zh:reality_non443_warn) echo '[!] REALITY/XHTTP 使用非 443 监听端口 (%s)。Xray 上游将其作为独立风险条件提示；请确认该端口符合你的网络环境。' ;;
+        zh-tw:reality_non443_warn) echo '[!] REALITY/XHTTP 使用非 443 監聽連接埠 (%s)。Xray 上游將其視為獨立風險條件；請確認該連接埠符合你的網路環境。' ;;
         en:reality_non443_warn) echo '[!] REALITY/XHTTP is using a non-443 listen port (%s). Xray treats this as a separate risk condition; confirm that the port is suitable for your network environment.' ;;
+        ja:reality_non443_warn) echo '[!] REALITY/XHTTP が非 443 待受ポート (%s) を使用しています。Xray はこれを独立したリスク条件としています。ポートがネットワーク環境に適しているか確認してください。' ;;
         ru:reality_non443_warn) echo '[!] REALITY/XHTTP использует порт %s вместо 443. Xray отмечает это как отдельный фактор риска; убедитесь, что порт подходит для вашей сети.' ;;
         fa:reality_non443_warn) echo '[!] REALITY/XHTTP از درگاه %s به‌جای 443 استفاده می‌کند. Xray این مورد را عامل خطر جداگانه می‌داند؛ سازگاری درگاه با شبکه را بررسی کنید.' ;;
         zh:apple_sni_warn) echo '[!] Apple/iCloud 类 target (%s) 被 Xray 上游作为独立风险条件提示；建议改用经过实测的非 Apple/iCloud 目标。' ;;
+        zh-tw:apple_sni_warn) echo '[!] Apple/iCloud 類 target (%s) 被 Xray 上游視為獨立風險條件；建議改用經過實測的非 Apple/iCloud 目標。' ;;
         en:apple_sni_warn) echo '[!] Apple/iCloud-like target (%s) is flagged by Xray as a separate risk condition; a tested non-Apple/iCloud target is recommended.' ;;
+        ja:apple_sni_warn) echo '[!] Apple/iCloud 系ターゲット (%s) は Xray により独立したリスク条件とされています。実測済みの非 Apple/iCloud ターゲットの使用を推奨します。' ;;
         ru:apple_sni_warn) echo '[!] Цель Apple/iCloud (%s) отмечена Xray как отдельный фактор риска; рекомендуется проверенная цель, не связанная с Apple/iCloud.' ;;
         fa:apple_sni_warn) echo '[!] مقصد شبیه Apple/iCloud (%s) از دید Xray عامل خطر جداگانه است؛ مقصد آزمایش‌شده‌ای غیرمرتبط با Apple/iCloud پیشنهاد می‌شود.' ;;
         zh:continue_or_reset) echo '继续使用此 SNI？输入 y 继续，其他任意键重新输入 %s: ' ;;
+        zh-tw:continue_or_reset) echo '繼續使用此 SNI？輸入 y 繼續，其他任意鍵重新輸入 %s: ' ;;
         en:continue_or_reset) echo 'Continue with this SNI? Type y to continue, anything else to re-enter %s: ' ;;
+        ja:continue_or_reset) echo 'この SNI を続けて使用しますか？続ける場合は y、それ以外で %s を再入力: ' ;;
         ru:continue_or_reset) echo 'Оставить этот SNI? Введите y для продолжения; любой другой ввод повторно задаст %s: ' ;;
         fa:continue_or_reset) echo 'این SNI حفظ شود؟ برای ادامه y و برای ورود دوباره %s کلید دیگری وارد کنید: ' ;;
         zh:port_prompt) echo '   %s 请输入监听端口 (回车默认: %s): ' ;;
+        zh-tw:port_prompt) echo '   %s 請輸入監聽連接埠 (按 Enter 預設: %s): ' ;;
         en:port_prompt) echo '   %s Enter listen port (default: %s): ' ;;
+        ja:port_prompt) echo '   %s 待受ポートを入力 (既定値: %s): ' ;;
         ru:port_prompt) echo '   %s Введите порт прослушивания (по умолчанию: %s): ' ;;
         fa:port_prompt) echo '   %s درگاه شنود را وارد کنید (پیش‌فرض: %s): ' ;;
         zh:ss_port_prompt) echo '   %s 请输入回程监听端口(TCP/UDP) (回车默认: %s): ' ;;
+        zh-tw:ss_port_prompt) echo '   %s 請輸入回程監聽連接埠(TCP/UDP) (按 Enter 預設: %s): ' ;;
         en:ss_port_prompt) echo '   %s Enter relay listen port (TCP/UDP, default: %s): ' ;;
+        ja:ss_port_prompt) echo '   %s リレー待受ポート(TCP/UDP)を入力 (既定値: %s): ' ;;
         ru:ss_port_prompt) echo '   %s Введите порт ретрансляции (TCP/UDP, по умолчанию: %s): ' ;;
         fa:ss_port_prompt) echo '   %s درگاه رله (TCP/UDP، پیش‌فرض: %s) را وارد کنید: ' ;;
         zh:bad_port) echo '端口非法: %s' ;;
+        zh-tw:bad_port) echo '連接埠無效: %s' ;;
         en:bad_port) echo 'Invalid port: %s' ;;
+        ja:bad_port) echo '無効なポート: %s' ;;
         ru:bad_port) echo 'Недопустимый порт: %s' ;;
         fa:bad_port) echo 'درگاه نامعتبر است: %s' ;;
         zh:toolbox_title) echo '综合工具箱 / Toolbox' ;;
+        zh-tw:toolbox_title) echo '綜合工具箱 / Toolbox' ;;
         en:toolbox_title) echo 'Toolbox' ;;
+        ja:toolbox_title) echo 'ツールボックス' ;;
         ru:toolbox_title) echo 'Инструменты' ;;
         fa:toolbox_title) echo 'جعبه ابزار' ;;
         zh:confirm_remote) echo '即将下载第三方远程脚本：%s。下载后会显示 SHA256 并要求强确认。继续下载？[Y/N]: ' ;;
+        zh-tw:confirm_remote) echo '即將下載第三方遠端指令碼：%s。下載後會顯示 SHA256 並要求強制確認。繼續下載？[Y/N]: ' ;;
         en:confirm_remote) echo 'About to download a third-party remote script: %s. SHA256 will be shown and a strong confirmation will be required. Continue download? [Y/N]: ' ;;
+        ja:confirm_remote) echo 'サードパーティのリモートスクリプトをダウンロードします: %s。SHA256 を表示し、強い確認を求めます。続行しますか？[Y/N]: ' ;;
         ru:confirm_remote) echo 'Будет загружен сторонний скрипт: %s. SHA256 будет показан, перед запуском потребуется подтверждение. Продолжить? [Y/N]: ' ;;
         fa:confirm_remote) echo 'اسکریپت شخص ثالث دریافت می‌شود: %s. مقدار SHA256 نمایش داده و پیش از اجرا تأیید خواسته می‌شود. ادامه؟ [Y/N]: ' ;;
         zh:confirm_local_sni_full) echo '即将运行本地内置全量 SNI 优选库（不执行远程脚本）。确认执行？[Y/N]: ' ;;
+        zh-tw:confirm_local_sni_full) echo '即將執行本地內建完整 SNI 優選庫（不執行遠端指令碼）。確認執行？[Y/N]: ' ;;
         en:confirm_local_sni_full) echo 'About to run the local built-in full SNI preference library (no remote script execution). Continue? [Y/N]: ' ;;
+        ja:confirm_local_sni_full) echo 'ローカル内蔵のフル SNI 選好ライブラリを実行します（リモートスクリプトは実行しません）。実行しますか？[Y/N]: ' ;;
         ru:confirm_local_sni_full) echo 'Будет запущен встроенный полный подбор SNI; удалённый скрипт не выполняется. Продолжить? [Y/N]: ' ;;
         fa:confirm_local_sni_full) echo 'گزینش کامل SNI داخلی اجرا می‌شود و هیچ اسکریپت راه‌دور اجرا نمی‌شود. ادامه؟ [Y/N]: ' ;;
         zh:confirm_local_sni_mini) echo '即将运行本地内置微型主机 SNI 优选库（候选库与全量相同，不执行远程脚本）。确认执行？[Y/N]: ' ;;
+        zh-tw:confirm_local_sni_mini) echo '即將執行本地內建微型主機 SNI 優選庫（候選庫與完整版相同，不執行遠端指令碼）。確認執行？[Y/N]: ' ;;
         en:confirm_local_sni_mini) echo 'About to run the local built-in mini-host SNI preference library (same candidate library as full, no remote script execution). Continue? [Y/N]: ' ;;
+        ja:confirm_local_sni_mini) echo 'ローカル内蔵のミニホスト SNI 選好ライブラリを実行します（候補はフル版と同一、リモートスクリプトは実行しません）。実行しますか？[Y/N]: ' ;;
         ru:confirm_local_sni_mini) echo 'Будет запущен облегчённый локальный подбор SNI с той же базой кандидатов; удалённый скрипт не выполняется. Продолжить? [Y/N]: ' ;;
         fa:confirm_local_sni_mini) echo 'گزینش سبک SNI داخلی با همان فهرست نامزدها اجرا می‌شود؛ هیچ اسکریپت راه‌دور اجرا نمی‌شود. ادامه؟ [Y/N]: ' ;;
         zh:swap_exists) echo '检测到 /swapfile 已存在，跳过创建。' ;;
+        zh-tw:swap_exists) echo '偵測到 /swapfile 已存在，略過建立。' ;;
         en:swap_exists) echo '/swapfile already exists; creation skipped.' ;;
+        ja:swap_exists) echo '/swapfile は既に存在するため、作成をスキップしました。' ;;
         ru:swap_exists) echo '/swapfile уже существует; создание пропущено.' ;;
         fa:swap_exists) echo '/swapfile از قبل وجود دارد؛ ساخت آن رد شد.' ;;
         zh:swap_done) echo 'Swap 处理完成。' ;;
+        zh-tw:swap_done) echo 'Swap 處理完成。' ;;
         en:swap_done) echo 'Swap operation completed.' ;;
+        ja:swap_done) echo 'Swap 処理が完了しました。' ;;
         ru:swap_done) echo 'Операция Swap завершена.' ;;
         fa:swap_done) echo 'عملیات Swap پایان یافت.' ;;
         *) echo "$key" ;;
@@ -595,16 +641,20 @@ save_lang() {
 initial_language_select() {
     [[ -f "$LANG_FILE" || -n "${ABOX_LANG_OVERRIDE:-}" ]] && return 0
     local c
-    echo 'Language / 语言 / Язык / زبان'
-    echo '1. 中文'
-    echo '2. English'
-    echo '3. Русский'
-    echo '4. فارسی'
-    read -r -p 'Select [1-4, default 1]: ' c || true
+    echo 'Language / 语言 / 語言 / 言語 / Язык / زبان'
+    echo '1. 中文 (简体)'
+    echo '2. 中文 (繁體)'
+    echo '3. English'
+    echo '4. 日本語'
+    echo '5. Русский'
+    echo '6. فارسی'
+    read -r -p 'Select [1-6, default 1]: ' c || true
     case "$c" in
-        2) ABOX_LANG='en' ;;
-        3) ABOX_LANG='ru' ;;
-        4) ABOX_LANG='fa' ;;
+        2) ABOX_LANG='zh-tw' ;;
+        3) ABOX_LANG='en' ;;
+        4) ABOX_LANG='ja' ;;
+        5) ABOX_LANG='ru' ;;
+        6) ABOX_LANG='fa' ;;
         *) ABOX_LANG='zh' ;;
     esac
     save_lang
@@ -614,18 +664,22 @@ language_menu() {
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}$(tr_msg lang_title)${NC}"
     msg "${CYAN}======================================================================${NC}"
-    msg "${YELLOW}1. 中文${NC}"
-    msg "${YELLOW}2. English${NC}"
-    msg "${YELLOW}3. Русский${NC}"
-    msg "${YELLOW}4. فارسی${NC}"
+    msg "${YELLOW}1. 中文 (简体)${NC}"
+    msg "${YELLOW}2. 中文 (繁體)${NC}"
+    msg "${YELLOW}3. English${NC}"
+    msg "${YELLOW}4. 日本語${NC}"
+    msg "${YELLOW}5. Русский${NC}"
+    msg "${YELLOW}6. فارسی${NC}"
     msg "${GREEN}0. 返回 / Back${NC}"
     local c
-    read -r -p 'Select [0-4]: ' c
+    read -r -p 'Select [0-6]: ' c
     case "$c" in
         1) ABOX_LANG='zh'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
-        2) ABOX_LANG='en'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
-        3) ABOX_LANG='ru'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
-        4) ABOX_LANG='fa'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
+        2) ABOX_LANG='zh-tw'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
+        3) ABOX_LANG='en'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
+        4) ABOX_LANG='ja'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
+        5) ABOX_LANG='ru'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
+        6) ABOX_LANG='fa'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
         *) return 0 ;;
     esac
 }
@@ -10284,7 +10338,7 @@ host_network_menu() {
             ;;
     esac
     local c
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-4]: ' ;; ru) prompt='Выберите [0–4]: ' ;; fa) prompt='انتخاب [۰ تا ۴]: ' ;; *) prompt='请选择 [0-4]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-4]: ' ;; ja) prompt='選択 [0-4]: ' ;; ru) prompt='Выберите [0–4]: ' ;; fa) prompt='انتخاب [۰ تا ۴]: ' ;; zh-tw) prompt='請選擇 [0-4]：' ;; *) prompt='请选择 [0-4]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1) ip_preference_menu ;;
@@ -10665,7 +10719,7 @@ timezone_locale_ntp_menu() {
             ;;
     esac
     msg "${GREEN}0. 返回${NC}"
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; *) prompt='请选择 [0-5]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ja) prompt='選択 [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; zh-tw) prompt='請選擇 [0-5]：' ;; *) prompt='请选择 [0-5]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1) timezone_choose_from_list '' ;;
@@ -11305,7 +11359,7 @@ dns_menu() {
             ;;
     esac
     msg "${GREEN}0. Back / 返回${NC}"
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-7]: ' ;; ru) prompt='Выберите [0–7]: ' ;; fa) prompt='انتخاب [۰ تا ۷]: ' ;; *) prompt='请选择 [0-7]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-7]: ' ;; ja) prompt='選択 [0-7]: ' ;; ru) prompt='Выберите [0–7]: ' ;; fa) prompt='انتخاب [۰ تا ۷]: ' ;; zh-tw) prompt='請選擇 [0-7]：' ;; *) prompt='请选择 [0-7]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1)
@@ -11367,7 +11421,7 @@ tune_vps() {
             ;;
     esac
     local c
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; *) prompt='请选择 [0-2]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ja) prompt='選択 [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; zh-tw) prompt='請選擇 [0-2]：' ;; *) prompt='请选择 [0-2]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1) apply_vps_tune; pause_return ;;
@@ -15443,11 +15497,11 @@ wallos_write_state() {
 
 wallos_install_or_update() {
     local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
-    (( EUID == 0 )) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Для установки Wallos требуются права root.${NC}" ;; fa) msg "${RED}برای نصب Wallos دسترسی root لازم است.${NC}" ;; zh) msg "${RED}安装 Wallos 需要 root 权限。${NC}" ;; *) msg "${RED}Run Wallos setup as root.${NC}" ;; esac; return 1; }
-    command -v jq >/dev/null 2>&1 || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Требуется jq; сначала установите зависимости A-Box.${NC}" ;; fa) msg "${RED}به jq نیاز است؛ ابتدا وابستگی‌های A-Box را نصب کنید.${NC}" ;; zh) msg "${RED}需要 jq，请先安装 A-Box 依赖。${NC}" ;; *) msg "${RED}jq is required; install the A-Box dependencies first.${NC}" ;; esac; return 1; }
+    (( EUID == 0 )) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Для установки Wallos требуются права root.${NC}" ;; fa) msg "${RED}برای نصب Wallos دسترسی root لازم است.${NC}" ;; ja) msg "${RED}Wallos のセットアップには root 権限が必要です。${NC}" ;; zh) msg "${RED}安装 Wallos 需要 root 权限。${NC}" ;; zh-tw) msg "${RED}安裝 Wallos 需要 root 權限。${NC}" ;; *) msg "${RED}Run Wallos setup as root.${NC}" ;; esac; return 1; }
+    command -v jq >/dev/null 2>&1 || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Требуется jq; сначала установите зависимости A-Box.${NC}" ;; fa) msg "${RED}به jq نیاز است؛ ابتدا وابستگی‌های A-Box را نصب کنید.${NC}" ;; ja) msg "${RED}jq が必要です。先に A-Box の依存関係をインストールしてください。${NC}" ;; zh) msg "${RED}需要 jq，请先安装 A-Box 依赖。${NC}" ;; zh-tw) msg "${RED}需要 jq，請先安裝 A-Box 依賴。${NC}" ;; *) msg "${RED}jq is required; install the A-Box dependencies first.${NC}" ;; esac; return 1; }
     wallos_print_host_info
-    arch=$(wallos_detect_arch) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Поддерживаются архитектуры amd64, arm64 и ARMv7.${NC}" ;; fa) msg "${RED}معماری‌های پشتیبانی‌شده amd64، arm64 و ARMv7 هستند.${NC}" ;; zh) msg "${RED}Wallos 支持 amd64、arm64 和 ARMv7 架构。${NC}" ;; *) msg "${RED}Supported Wallos image architectures are amd64, arm64 and ARMv7.${NC}" ;; esac; return 1; }
-    wallos_install_runtime || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Не удалось установить или запустить Docker; контейнер Wallos не изменён.${NC}" ;; fa) msg "${RED}نصب یا اجرای Docker شکست خورد؛ کانتینر Wallos تغییر نکرد.${NC}" ;; zh) msg "${RED}Docker 安装或启动失败，未修改 Wallos 容器。${NC}" ;; *) msg "${RED}Docker could not be installed or started; no Wallos container was changed.${NC}" ;; esac; return 1; }
+    arch=$(wallos_detect_arch) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Поддерживаются архитектуры amd64, arm64 и ARMv7.${NC}" ;; fa) msg "${RED}معماری‌های پشتیبانی‌شده amd64، arm64 و ARMv7 هستند.${NC}" ;; ja) msg "${RED}Wallos がサポートするイメージアーキテクチャは amd64、arm64、ARMv7 です。${NC}" ;; zh) msg "${RED}Wallos 支持 amd64、arm64 和 ARMv7 架构。${NC}" ;; zh-tw) msg "${RED}Wallos 支援 amd64、arm64 和 ARMv7 架構。${NC}" ;; *) msg "${RED}Supported Wallos image architectures are amd64, arm64 and ARMv7.${NC}" ;; esac; return 1; }
+    wallos_install_runtime || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Не удалось установить или запустить Docker; контейнер Wallos не изменён.${NC}" ;; fa) msg "${RED}نصب یا اجرای Docker شکست خورد؛ کانتینر Wallos تغییر نکرد.${NC}" ;; ja) msg "${RED}Docker のインストールまたは起動に失敗しました。Wallos コンテナは変更されていません。${NC}" ;; zh) msg "${RED}Docker 安装或启动失败，未修改 Wallos 容器。${NC}" ;; zh-tw) msg "${RED}Docker 安裝或啟動失敗，未修改 Wallos 容器。${NC}" ;; *) msg "${RED}Docker could not be installed or started; no Wallos container was changed.${NC}" ;; esac; return 1; }
     docker info >/dev/null 2>&1 || return 1
     if [[ -e "$WALLOS_DIR/.upgrade-transaction" || -L "$WALLOS_DIR/.upgrade-transaction" ]]; then
         wallos_recover_interrupted_upgrade || return 1
@@ -15495,7 +15549,7 @@ wallos_install_or_update() {
         port=8282
         while ! wallos_port_free "$port"; do
             port=$((port + 1))
-            (( port <= 8299 )) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Порты 8282–8299 заняты; освободите один и повторите попытку.${NC}" ;; fa) msg "${RED}درگاه‌های 8282 تا 8299 اشغال‌اند؛ یک درگاه آزاد کنید و دوباره تلاش کنید.${NC}" ;; zh) msg "${RED}8282–8299 端口均被占用，请释放端口后重试。${NC}" ;; *) msg "${RED}Ports 8282-8299 are occupied; free one and retry.${NC}" ;; esac; return 1; }
+            (( port <= 8299 )) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Порты 8282–8299 заняты; освободите один и повторите попытку.${NC}" ;; fa) msg "${RED}درگاه‌های 8282 تا 8299 اشغال‌اند؛ یک درگاه آزاد کنید و دوباره تلاش کنید.${NC}" ;; ja) msg "${RED}ポート 8282–8299 はすべて使用中です。ポートを解放して再試行してください。${NC}" ;; zh) msg "${RED}8282–8299 端口均被占用，请释放端口后重试。${NC}" ;; zh-tw) msg "${RED}8282–8299 連接埠均被佔用，請釋放連接埠後重試。${NC}" ;; *) msg "${RED}Ports 8282-8299 are occupied; free one and retry.${NC}" ;; esac; return 1; }
         done
         tz=$(current_timezone_name 2>/dev/null || printf 'UTC')
         valid_timezone_name "$tz" || tz='UTC'
@@ -15619,13 +15673,13 @@ wallos_install_or_update() {
 wallos_status() {
     local port
     if ! docker container inspect wallos >/dev/null 2>&1; then
-        case "${ABOX_LANG:-zh}" in ru) msg "Wallos не установлен." ;; fa) msg "Wallos نصب نشده است." ;; zh) msg "Wallos 尚未安装。" ;; *) msg "Wallos is not installed." ;; esac
+        case "${ABOX_LANG:-zh}" in ru) msg "Wallos не установлен." ;; fa) msg "Wallos نصب نشده است." ;; ja) msg "Wallos はインストールされていません。" ;; zh) msg "Wallos 尚未安装。" ;; zh-tw) msg "Wallos 尚未安裝。" ;; *) msg "Wallos is not installed." ;; esac
         return 0
     fi
     docker ps -a --filter name='^/wallos$' --format 'Container: {{.Names}} | Status: {{.Status}} | Image: {{.Image}}'
     port=$(wallos_state_value PORT 2>/dev/null || true)
     if [[ "$port" =~ ^[0-9]+$ ]]; then wallos_public_urls "$port"; else
-        case "${ABOX_LANG:-zh}" in ru) msg "Файл состояния Wallos отсутствует; проверьте публикацию портов контейнера." ;; fa) msg "فایل وضعیت Wallos وجود ندارد؛ نگاشت درگاه کانتینر را بررسی کنید." ;; zh) msg "Wallos 状态文件缺失，请检查容器端口映射。" ;; *) msg "Wallos state file is missing; inspect the container port mapping." ;; esac
+        case "${ABOX_LANG:-zh}" in ru) msg "Файл состояния Wallos отсутствует; проверьте публикацию портов контейнера." ;; fa) msg "فایل وضعیت Wallos وجود ندارد؛ نگاشت درگاه کانتینر را بررسی کنید." ;; ja) msg "Wallos の状態ファイルがありません。コンテナのポートマッピングを確認してください。" ;; zh) msg "Wallos 状态文件缺失，请检查容器端口映射。" ;; zh-tw) msg "Wallos 狀態檔案缺失，請檢查容器連接埠映射。" ;; *) msg "Wallos state file is missing; inspect the container port mapping." ;; esac
     fi
 }
 
@@ -15754,7 +15808,7 @@ wallos_menu() {
             ;;
     esac
     local c prompt_confirm prompt_remove menu_prompt
-    case "${ABOX_LANG:-zh}" in en) menu_prompt='Select [0-5]: ' ;; ru) menu_prompt='Выберите [0–5]: ' ;; fa) menu_prompt='انتخاب [۰ تا ۵]: ' ;; *) menu_prompt='请选择 [0-5]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) menu_prompt='Select [0-5]: ' ;; ja) menu_prompt='選択 [0-5]: ' ;; ru) menu_prompt='Выберите [0–5]: ' ;; fa) menu_prompt='انتخاب [۰ تا ۵]: ' ;; zh-tw) menu_prompt='請選擇 [0-5]：' ;; *) menu_prompt='请选择 [0-5]：' ;; esac
     read -r -p "$menu_prompt" c
     case "${ABOX_LANG:-zh}" in
         en) prompt_confirm='Wallos stores personal subscription/financial data. HTTP has no TLS. Continue? [Y/N]: '; prompt_remove="Remove the Wallos container and keep data in $WALLOS_DIR? [Y/N]: " ;;
@@ -15873,7 +15927,7 @@ vps_benchmark_menu() {
             ;;
     esac
     local bench_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-14]: ' ;; ru) select_prompt='Выберите [0–14]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۴]: ' ;; *) select_prompt='请选择 [0-14]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-14]: ' ;; ja) select_prompt='選択 [0-14]: ' ;; ru) select_prompt='Выберите [0–14]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۴]: ' ;; zh-tw) select_prompt='請選擇 [0-14]：' ;; *) select_prompt='请选择 [0-14]：' ;; esac
     read -r -p "$select_prompt" bench_choice
     case "$bench_choice" in
         1) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
@@ -16420,7 +16474,7 @@ show_usage() {
 16 Remove nodes and reinitialize the environment.
 17 Monthly vnStat traffic limits; opening the menu shows usage up to now.
 18 SS-2022 IP/CIDR allowlist.
-19 Language selection: Chinese, English, Russian, Persian.
+19 Language selection: Chinese (Simplified), Chinese (Traditional), English, Japanese, Russian, Persian.
 20 One-click Reality; shortcut `r` is also accepted.
 
 BBR/FQ does not run automatically after protocol deployment. Host DNS includes resolver benchmarking, supported DoT/DoH, and rollback. Timezone selection is based on the installed zone database and supports numbered paging/search; Locale and NTP are separate controls.
@@ -17690,7 +17744,7 @@ show_cli_help() {
 A-Box
 Usage:
   bash install.sh                    启动交互菜单 / Start interactive menu
-  bash install.sh --lang zh|en|ru|fa 设置脚本界面语言并启动 / Select UI language
+  bash install.sh --lang zh|zh-tw|en|ja|ru|fa 设置脚本界面语言并启动 / Select UI language
   bash install.sh --self-test        运行无副作用静态自测 / Run static self-test
   bash install.sh --status           显示当前配置和服务状态 / Show current status
   bash install.sh --stop             停止托管服务并保持手动停止状态 / Stop managed services

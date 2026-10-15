@@ -23,7 +23,7 @@ Xray-core、sing-box、公式 Hysteria 2 サーバー、VLESS Vision REALITY、V
 ### GitHub 公式ソース
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/d3cc55548e7c7cb4fcbb197741fab5379069876a/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/d29ca1dc999901c9b80b7e4eae20ff8c78901ada/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # ダウンロードしたスクリプトを確認後、別途実行してください：
 sudo bash A-Box.sh
@@ -32,13 +32,13 @@ sudo bash A-Box.sh
 ### サードパーティ・フォールバックミラー
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/d3cc55548e7c7cb4fcbb197741fab5379069876a/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/d29ca1dc999901c9b80b7e4eae20ff8c78901ada/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # ダウンロードしたスクリプトを確認後、別途実行してください：
 sudo bash A-Box.sh
 ```
 
-どちらのコマンドも、インストーラーを不変のコミット `888f2d9227d8f3aa4211d1bc036155747e83d390` にピン留めします。プロキシ URL はサードパーティの転送サービスであり、A-Box 公式エンドポイントではありません。構文チェックと SHA-256 のみでは発行者の真正性は証明されません。実行前にダウンロードしたファイルを確認し、本番環境では独立した信頼できる経路でコミットとチェックサムを検証してください。新規 Alpine インストールでは、まず `apk add --no-cache bash curl` を実行してください。インストール後は `sb` と入力してメニューを開きます。
+どちらのコマンドも、インストーラーを不変のコミット `d3cc55548e7c7cb4fcbb197741fab5379069876a` にピン留めします。プロキシ URL はサードパーティの転送サービスであり、A-Box 公式エンドポイントではありません。構文チェックと SHA-256 のみでは発行者の真正性は証明されません。実行前にダウンロードしたファイルを確認し、本番環境では独立した信頼できる経路でコミットとチェックサムを検証してください。新規 Alpine インストールでは、まず `apk add --no-cache bash curl` を実行してください。インストール後は `sb` と入力してメニューを開きます。
 
 ## 主な機能
 
@@ -76,7 +76,7 @@ sudo bash A-Box.sh
 | `16` | ノード削除と環境の再初期化 |
 | `17` | 月間トラフィック制限（vnStat）と現時点までの使用量表示 |
 | `18` | SS-2022 IP/CIDR 許可リスト管理 |
-| `19` | UI 言語：中文、English、Русский、فارسی |
+| `19` | UI 言語：簡体中文、繁體中文、English、日本語、Русский、فارسی |
 | `20` | **ワンクリック Reality**；`r` はエイリアス |
 | `0` | 終了 |
 
@@ -99,7 +99,7 @@ BBR/FQ の変更が黙って適用されることはありません。DNS 測定
 | コマンド | 目的 |
 |---|---|
 | `sudo bash A-Box.sh --help` | コマンドラインヘルプの表示 |
-| `sudo bash A-Box.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | UI 言語の設定とメニュー起動 |
+| `sudo bash A-Box.sh --lang zh` / `--lang zh-tw` / `--lang en` / `--lang ja` / `--lang ru` / `--lang fa` | UI 言語の設定とメニュー起動 |
 | `sudo bash A-Box.sh --self-test` | 内蔵回帰/セルフテストの実行 |
 | `sudo bash A-Box.sh --preflight` または `--dry-run` | 新規ノードをデプロイせずプリフライトチェックを実行 |
 | `sudo bash A-Box.sh --status` | 管理設定とサービス状態の表示 |

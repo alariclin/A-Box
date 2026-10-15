@@ -23,7 +23,7 @@ A-Box — автономный Bash-скрипт для развёртывани
 ### Официальный источник GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/d3cc55548e7c7cb4fcbb197741fab5379069876a/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/d29ca1dc999901c9b80b7e4eae20ff8c78901ada/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # После проверки загруженного скрипта выполните отдельно:
 sudo bash A-Box.sh
@@ -32,13 +32,13 @@ sudo bash A-Box.sh
 ### Резервное зеркало третьей стороны
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/d3cc55548e7c7cb4fcbb197741fab5379069876a/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/d29ca1dc999901c9b80b7e4eae20ff8c78901ada/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # После проверки загруженного скрипта выполните отдельно:
 sudo bash A-Box.sh
 ```
 
-Обе команды привязывают установщик к неизменяемому commit `888f2d9227d8f3aa4211d1bc036155747e83d390`; proxy URL остаётся сторонним транспортом, а не официальным endpoint A-Box. Проверка синтаксиса и SHA-256 сама по себе не подтверждает издателя. Просмотрите файл до запуска, а для production проверьте commit и checksum через независимый доверенный канал. На чистой Alpine сначала выполните `apk add --no-cache bash curl`. После установки введите `sb`.
+Обе команды привязывают установщик к неизменяемому commit `d3cc55548e7c7cb4fcbb197741fab5379069876a`; proxy URL остаётся сторонним транспортом, а не официальным endpoint A-Box. Проверка синтаксиса и SHA-256 сама по себе не подтверждает издателя. Просмотрите файл до запуска, а для production проверьте commit и checksum через независимый доверенный канал. На чистой Alpine сначала выполните `apk add --no-cache bash curl`. После установки введите `sb`.
 
 ## Основные функции
 
@@ -76,7 +76,7 @@ sudo bash A-Box.sh
 | `16` | Удалить узлы и переинициализировать окружение |
 | `17` | Месячный лимит трафика vnStat с показом текущего расхода |
 | `18` | Список IP/CIDR для SS-2022 |
-| `19` | Язык интерфейса: китайский, английский, русский или персидский |
+| `19` | Язык интерфейса: упрощённый китайский, традиционный китайский, английский, японский, русский или персидский |
 | `20` | **Reality в один клик**; `r` — псевдоним |
 | `0` | Выход |
 
@@ -101,7 +101,7 @@ Wallos — необязательное приложение для учёта �
 | Команда | Назначение |
 |---|---|
 | `sudo bash A-Box.sh --help` | Показать справку командной строки |
-| `sudo bash A-Box.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | Выбрать язык интерфейса и открыть меню |
+| `sudo bash A-Box.sh --lang zh` / `--lang zh-tw` / `--lang en` / `--lang ja` / `--lang ru` / `--lang fa` | Выбрать язык интерфейса и открыть меню |
 | `sudo bash A-Box.sh --self-test` | Запустить встроенные регрессионные тесты |
 | `sudo bash A-Box.sh --preflight` или `--dry-run` | Предварительная проверка без развёртывания нового узла |
 | `sudo bash A-Box.sh --status` | Показать управляемую конфигурацию и состояние служб |

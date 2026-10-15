@@ -496,19 +496,19 @@ tr_msg() {
         ru:apple_non443_warn) echo 'На порту, отличном от 443, обнаружен SNI Apple/iCloud: %s. Xray предупреждает о сочетании таких целей и нестандартного порта; риск блокировки IP может возрасти.' ;;
         fa:apple_non443_warn) echo 'SNI شبیه Apple/iCloud روی درگاهی غیر از 443 شناسایی شد: %s. Xray درباره این ترکیب هشدار می‌دهد و احتمال مسدودشدن IP ممکن است افزایش یابد.' ;;
         zh-tw:apple_non443_warn) echo '檢測到非 443 端口使用 Apple/iCloud 類 SNI：%s。Xray-core 對 apple/icloud target 與非443端口有風險警告，此組合可能提高 IP 封禁概率。' ;;
-        ja:apple_non443_warn) echo '非443ポートで Apple/iCloud 系 SNI を検出: %s。Xray-core は apple/icloud ターゲットと非443ポートの組み合わせに警告しています。' ;;
+        ja:apple_non443_warn) echo '非443ポートで Apple/iCloud 系 SNI (%s) を検出しました。Xray-core はこの組み合わせに警告しており、IP がブロックされるリスクが高まる可能性があります。' ;;
         zh:reality_non443_warn) echo '[!] REALITY/XHTTP 使用非 443 监听端口 (%s)。Xray 上游将其作为独立风险条件提示；请确认该端口符合你的网络环境。' ;;
         en:reality_non443_warn) echo '[!] REALITY/XHTTP is using a non-443 listen port (%s). Xray treats this as a separate risk condition; confirm that the port is suitable for your network environment.' ;;
         ru:reality_non443_warn) echo '[!] REALITY/XHTTP использует порт %s вместо 443. Xray отмечает это как отдельный фактор риска; убедитесь, что порт подходит для вашей сети.' ;;
         fa:reality_non443_warn) echo '[!] REALITY/XHTTP از درگاه %s به‌جای 443 استفاده می‌کند. Xray این مورد را عامل خطر جداگانه می‌داند؛ سازگاری درگاه با شبکه را بررسی کنید.' ;;
         zh-tw:reality_non443_warn) echo '[!] REALITY/XHTTP 使用非 443 監聽端口 (%s)。Xray 上游將其作為獨立風險條件提示；請確認該端口符合你的網絡環境。' ;;
-        ja:reality_non443_warn) echo '[!] REALITY/XHTTP が非443リッスンポート (%s) を使用しています。Xray はこれを独立したリスク条件として扱います。' ;;
+        ja:reality_non443_warn) echo '[!] REALITY/XHTTP が非443リッスンポート (%s) を使用しています。Xray はこれを独立したリスク条件として扱います。ご利用のネットワークでこのポートが適切か確認してください。' ;;
         zh:apple_sni_warn) echo '[!] Apple/iCloud 类 target (%s) 被 Xray 上游作为独立风险条件提示；建议改用经过实测的非 Apple/iCloud 目标。' ;;
         en:apple_sni_warn) echo '[!] Apple/iCloud-like target (%s) is flagged by Xray as a separate risk condition; a tested non-Apple/iCloud target is recommended.' ;;
         ru:apple_sni_warn) echo '[!] Цель Apple/iCloud (%s) отмечена Xray как отдельный фактор риска; рекомендуется проверенная цель, не связанная с Apple/iCloud.' ;;
         fa:apple_sni_warn) echo '[!] مقصد شبیه Apple/iCloud (%s) از دید Xray عامل خطر جداگانه است؛ مقصد آزمایش‌شده‌ای غیرمرتبط با Apple/iCloud پیشنهاد می‌شود.' ;;
         zh-tw:apple_sni_warn) echo '[!] Apple/iCloud 類 target (%s) 被 Xray 上游作為獨立風險條件提示；建議改用經過實測的非 Apple/iCloud 目標。' ;;
-        ja:apple_sni_warn) echo '[!] Apple/iCloud 系ターゲット (%s) は Xray により独立したリスク条件としてフラグされています。' ;;
+        ja:apple_sni_warn) echo '[!] Apple/iCloud 系ターゲット (%s) は Xray により独立したリスク要因として警告されています。実測済みの非Apple/iCloudターゲットへの変更を推奨します。' ;;
         zh:continue_or_reset) echo '继续使用此 SNI？输入 y 继续，其他任意键重新输入 %s: ' ;;
         en:continue_or_reset) echo 'Continue with this SNI? Type y to continue, anything else to re-enter %s: ' ;;
         ru:continue_or_reset) echo 'Оставить этот SNI? Введите y для продолжения; любой другой ввод повторно задаст %s: ' ;;
@@ -4406,7 +4406,7 @@ _ss_wl_snapshot_rules() {
 # Unlike the old _ss_rollback_ipv4_drop_rules, this never deletes pre-existing
 # rules and restores open ACCEPTs that remove_ss_open_accept_rules deleted.
 _ss_wl_rollback_to_snapshot() {
-    local ipt snap cur line
+    local ipt snap cur line failed=0
     [[ "${_SS_WL_SNAP_TAKEN:-0}" == 1 ]] || return 1
     [[ -n "${_SS_WL_SNAP_PORT:-}" ]] || return 1
     for ipt in "$IPT" "$IPT6"; do
@@ -4426,7 +4426,9 @@ _ss_wl_rollback_to_snapshot() {
                 line=${line//\"/}
                 # Rule comments contain no spaces; word-splitting here is intentional.
                 # shellcheck disable=SC2086
-                "$ipt" -w -D INPUT $line >/dev/null 2>&1 || true
+                if ! "$ipt" -w -D INPUT $line >/dev/null 2>&1; then
+                    failed=1
+                fi
             fi
         done <<< "$cur"
         # Re-add deletions: in snapshot but not in cur.
@@ -4436,10 +4438,24 @@ _ss_wl_rollback_to_snapshot() {
                 line=${line//\"/}
                 # See above: word-splitting intentional.
                 # shellcheck disable=SC2086
-                "$ipt" -w -A INPUT $line >/dev/null 2>&1 || true
+                if ! "$ipt" -w -A INPUT $line >/dev/null 2>&1; then
+                    failed=1
+                fi
             fi
         done <<< "$snap"
+        # Verify final state matches snapshot.
+        local final
+        final="$("$ipt" -w -S INPUT 2>/dev/null | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //' | sort || true)"
+        local expected
+        expected="$(printf '%s\n' "$snap" | grep -v '^$' | sort || true)"
+        if [[ "$final" != "$expected" ]]; then
+            failed=1
+        fi
     done
+    if (( failed != 0 )); then
+        printf '%s\n' 'ERROR: firewall rollback incomplete; manual recovery required.' >&2
+        return 1
+    fi
     _SS_WL_SNAP_TAKEN=0
     return 0
 }

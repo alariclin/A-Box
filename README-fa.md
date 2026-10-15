@@ -23,7 +23,7 @@ A-Box یک اسکریپت مستقل Bash برای راه‌اندازی و نگ
 ### منبع رسمی GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/d3cc55548e7c7cb4fcbb197741fab5379069876a/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/d29ca1dc999901c9b80b7e4eae20ff8c78901ada/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
 sudo bash A-Box.sh
@@ -32,13 +32,13 @@ sudo bash A-Box.sh
 ### آینه جایگزین شخص ثالث
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/d3cc55548e7c7cb4fcbb197741fab5379069876a/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/d29ca1dc999901c9b80b7e4eae20ff8c78901ada/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
 sudo bash A-Box.sh
 ```
 
-هر دو فرمان نصب‌کننده را به commit تغییرناپذیر `6bfbc79` متصل می‌کنند؛ نشانی proxy همچنان سرویس انتقال شخص ثالث است، نه نقطه پایانی رسمی A-Box. بررسی نحو و SHA-256 به‌تنهایی هویت ناشر را ثابت نمی‌کند؛ فایل را پیش از اجرا بازبینی و برای production، commit و checksum را از کانالی مستقل و مورداعتماد تأیید کنید. در Alpine تازه، پیش از اجرا `apk add --no-cache bash curl` را اجرا کنید. پس از نصب `sb` را وارد کنید.
+هر دو فرمان نصب‌کننده را به commit تغییرناپذیر `d3cc55548e7c7cb4fcbb197741fab5379069876a` متصل می‌کنند؛ نشانی proxy همچنان سرویس انتقال شخص ثالث است، نه نقطه پایانی رسمی A-Box. بررسی نحو و SHA-256 به‌تنهایی هویت ناشر را ثابت نمی‌کند؛ فایل را پیش از اجرا بازبینی و برای production، commit و checksum را از کانالی مستقل و مورداعتماد تأیید کنید. در Alpine تازه، پیش از اجرا `apk add --no-cache bash curl` را اجرا کنید. پس از نصب `sb` را وارد کنید.
 
 ## قابلیت‌های اصلی
 
@@ -76,7 +76,7 @@ sudo bash A-Box.sh
 | `16` | حذف نودها و راه‌اندازی دوباره محیط |
 | `17` | محدودیت ماهانه ترافیک vnStat همراه با نمایش مصرف تا همین لحظه |
 | `18` | مدیریت فهرست IP/CIDR برای SS-2022 |
-| `19` | زبان رابط: چینی، انگلیسی، روسی یا فارسی |
+| `19` | زبان رابط: چینی ساده‌شده، چینی سنتی، انگلیسی، ژاپنی، روسی یا فارسی |
 | `20` | **Reality با یک کلیک**؛ کلید `r` نیز همین کار را انجام می‌دهد |
 | `0` | خروج |
 
@@ -101,7 +101,7 @@ BBR/FQ بدون تأیید اعمال نمی‌شود. انتخاب DNS بر ا�
 | فرمان | کاربرد |
 |---|---|
 | `sudo bash A-Box.sh --help` | نمایش راهنمای خط فرمان |
-| `sudo bash A-Box.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | انتخاب زبان رابط و باز کردن منو |
+| `sudo bash A-Box.sh --lang zh` / `--lang zh-tw` / `--lang en` / `--lang ja` / `--lang ru` / `--lang fa` | انتخاب زبان رابط و باز کردن منو |
 | `sudo bash A-Box.sh --self-test` | اجرای آزمون‌های داخلی رگرسیون |
 | `sudo bash A-Box.sh --preflight` یا `--dry-run` | بررسی پیش از اجرا، بدون راه‌اندازی نود جدید |
 | `sudo bash A-Box.sh --status` | نمایش پیکربندی و وضعیت سرویس‌های مدیریت‌شده |

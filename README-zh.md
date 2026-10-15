@@ -23,7 +23,7 @@ A-Box 是一个独立 Bash 脚本，用于部署和维护 Linux 网络网关服�
 ### GitHub 官方源
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/d3cc55548e7c7cb4fcbb197741fab5379069876a/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/d29ca1dc999901c9b80b7e4eae20ff8c78901ada/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 审阅下载的脚本后，再单独执行：
 sudo bash A-Box.sh
@@ -32,13 +32,13 @@ sudo bash A-Box.sh
 ### 第三方备用镜像
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/d3cc55548e7c7cb4fcbb197741fab5379069876a/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/d29ca1dc999901c9b80b7e4eae20ff8c78901ada/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 审阅下载的脚本后，再单独执行：
 sudo bash A-Box.sh
 ```
 
-两个命令均将安装脚本固定到不可变提交 `6bfbc79`；代理网址仍属于第三方传输服务，不是 A-Box 官方端点。语法检查与 SHA-256 摘要本身不能证明发布者身份，执行前应审阅下载文件；生产环境还应通过独立可信渠道核对提交与摘要。全新 Alpine 系统运行前先执行 `apk add --no-cache bash curl`。安装后输入 `sb` 打开菜单。
+两个命令均将安装脚本固定到不可变提交 `d3cc55548e7c7cb4fcbb197741fab5379069876a`；代理网址仍属于第三方传输服务，不是 A-Box 官方端点。语法检查与 SHA-256 摘要本身不能证明发布者身份，执行前应审阅下载文件；生产环境还应通过独立可信渠道核对提交与摘要。全新 Alpine 系统运行前先执行 `apk add --no-cache bash curl`。安装后输入 `sb` 打开菜单。
 
 ## 主要功能
 
@@ -76,7 +76,7 @@ sudo bash A-Box.sh
 | `16` | 删除节点并重新初始化环境 |
 | `17` | 每月流量限制（vnStat），显示截至当前的累计用量 |
 | `18` | SS-2022 IP/CIDR 白名单管理 |
-| `19` | 界面语言：中文、English、Русский、فارسی |
+| `19` | 界面语言：简体中文、繁體中文、English、日本語、Русский、فارسی |
 | `20` | **一键 Reality**；`r` 为快捷别名 |
 | `0` | 退出 |
 
@@ -90,7 +90,7 @@ Wallos 是可选的自托管订阅管理工具。安装器优先读取 Wallos �
 
 BBR/FQ 不会静默修改系统。DNS 优选根据当前 VPS 对候选解析器发起多轮真实查询，延迟和可用率只代表本次测量，不是全球通用排名。DoT 仅在当前 DNS 后端支持时启用，并要求输入上游 TLS 认证主机名，让 systemd-resolved 校验解析器证书（例如 `1.1.1.1#cloudflare-dns.com` 或 `8.8.8.8#dns.google`）；DoH 使用 `dnscrypt-proxy`，且限制在支持的软件包和 systemd-resolved 环境。DNS 与时区设置均提供回滚路径。
 
-四种语言覆盖主菜单、运维菜单及本次新增/调整的工具流程；少数旧协议向导和旧错误消息仍可能混有中英文，不能据此宣称所有历史提示已完成百分之百的四语翻译。
+六种语言覆盖主菜单、运维菜单及本次新增/调整的工具流程；少数旧协议向导和旧错误消息仍可能混有中英文，不能据此宣称所有历史提示已完成百分之百的六语翻译。
 
 ## 命令行用法
 
@@ -101,7 +101,7 @@ BBR/FQ 不会静默修改系统。DNS 优选根据当前 VPS 对候选解析器�
 | 命令 | 作用 |
 |---|---|
 | `sudo bash A-Box.sh --help` | 显示命令行帮助 |
-| `sudo bash A-Box.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | 设置界面语言并启动菜单 |
+| `sudo bash A-Box.sh --lang zh` / `--lang zh-tw` / `--lang en` / `--lang ja` / `--lang ru` / `--lang fa` | 设置界面语言并启动菜单 |
 | `sudo bash A-Box.sh --self-test` | 运行内置回归/自测 |
 | `sudo bash A-Box.sh --preflight` 或 `--dry-run` | 运行预检查，不部署新节点 |
 | `sudo bash A-Box.sh --status` | 查看托管配置和服务状态 |

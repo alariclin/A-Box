@@ -23,7 +23,7 @@ The project is provided “as is”, without warranty. Review the script and the
 ### Official GitHub source
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/d3cc55548e7c7cb4fcbb197741fab5379069876a/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/d29ca1dc999901c9b80b7e4eae20ff8c78901ada/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh
@@ -32,13 +32,13 @@ sudo bash A-Box.sh
 ### Third-party fallback mirror
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/d3cc55548e7c7cb4fcbb197741fab5379069876a/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/d29ca1dc999901c9b80b7e4eae20ff8c78901ada/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh
 ```
 
-Both commands pin the installer to immutable commit `888f2d9227d8f3aa4211d1bc036155747e83d390`; the proxy URL remains a third-party transport, not an official A-Box endpoint. Syntax checking and SHA-256 alone do not prove publisher authenticity. Review the downloaded file before running it, and for production verify the commit and checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.
+Both commands pin the installer to immutable commit `d3cc55548e7c7cb4fcbb197741fab5379069876a`; the proxy URL remains a third-party transport, not an official A-Box endpoint. Syntax checking and SHA-256 alone do not prove publisher authenticity. Review the downloaded file before running it, and for production verify the commit and checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.
 
 ## Main Features
 
@@ -76,7 +76,7 @@ The repository ships a curated seed list at [`data/sni-candidates.txt`](data/sni
 | `16` | Delete nodes and reinitialize the environment |
 | `17` | Monthly traffic limit (vnStat) with usage-to-now display |
 | `18` | SS-2022 IP/CIDR allowlist manager |
-| `19` | UI language: Chinese, English, Russian or Persian |
+| `19` | UI language: Simplified Chinese, Traditional Chinese, English, Japanese, Russian or Persian |
 | `20` | **One-click Reality**; `r` is an alias |
 | `0` | Exit |
 
@@ -99,7 +99,7 @@ Run commands from the directory containing the script:
 | Command | Purpose |
 |---|---|
 | `sudo bash A-Box.sh --help` | Show command-line help |
-| `sudo bash A-Box.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | Set the UI language and start the menu |
+| `sudo bash A-Box.sh --lang zh` / `--lang zh-tw` / `--lang en` / `--lang ja` / `--lang ru` / `--lang fa` | Set the UI language and start the menu |
 | `sudo bash A-Box.sh --self-test` | Run built-in regression/self-tests |
 | `sudo bash A-Box.sh --preflight` or `--dry-run` | Run the preflight check without deploying a new node |
 | `sudo bash A-Box.sh --status` | Show managed configuration and service status |

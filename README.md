@@ -1,5 +1,3 @@
-# A-Box
-
 <p align="center">
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
@@ -8,7 +6,7 @@
 
 One-click Linux network gateway toolkit.
 
-A standalone Bash script for deploying and maintaining Linux network gateway services. Its compatibility pins are Xray `v26.7.28` (an upstream prerelease intentionally retained for compatibility), sing-box `v1.14.3`, and Hysteria `app/v2.13.0`; latest-stable selection never silently downgrades an already installed newer core.
+A-Box is a standalone Bash script for deploying and maintaining Linux network gateway services. Its compatibility pins are Xray `v26.7.28` (an upstream prerelease intentionally retained for compatibility), sing-box `v1.14.3`, and Hysteria `app/v2.13.0`; latest-stable selection never silently downgrades an already installed newer core.
 
 It supports Xray-core, sing-box, the official Hysteria 2 server, VLESS Vision REALITY, VLESS XHTTP REALITY, Shadowsocks-2022, client configuration export, local SNI candidate testing, backup and restore, firewall management, diagnostics, traffic limits, health checks, and core software upgrades.
 

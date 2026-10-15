@@ -1,5 +1,3 @@
-# A-Box
-
 <p align="center">
   <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
@@ -8,7 +6,7 @@
 
 ワンクリック Linux ネットワークゲートウェイ・ツールキット。
 
-Linux ネットワークゲートウェイサービスのデプロイと保守のためのスタンドアロン Bash スクリプトです。互換性ピンは Xray `v26.7.28`（互換性維持のため意図的に残された上流プレリリース）、sing-box `v1.14.3`、Hysteria `app/v2.13.0` です。最新安定版の選択時に、既にインストール済みの新しいコアを黙ってダウングレードすることはありません。
+A-Box は、Linux ネットワークゲートウェイサービスのデプロイと保守のためのスタンドアロン Bash スクリプトです。互換性ピンは Xray `v26.7.28`（互換性維持のため意図的に残された上流プレリリース）、sing-box `v1.14.3`、Hysteria `app/v2.13.0` です。最新安定版の選択時に、既にインストール済みの新しいコアを黙ってダウングレードすることはありません。
 
 Xray-core、sing-box、公式 Hysteria 2 サーバー、VLESS Vision REALITY、VLESS XHTTP REALITY、Shadowsocks-2022、クライアント設定のエクスポート、ローカル SNI 候補テスト、バックアップと復元、ファイアウォール管理、診断、トラフィック制限、ヘルスチェック、コアソフトウェアのアップグレードに対応しています。
 

@@ -112,10 +112,9 @@ ABOX_STABLE_COOLDOWN_DAYS="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
 #   2. CI switches to signing with the new private key.
 #   3. A later release removes the old pubkey.
 ABOX_SIGNING_PUBKEYS=(
-    # TEST-ONLY placeholder. The maintainer MUST replace this with the real
-    # production public key before setting ABOX_SIGNING_ENFORCE=1.
-    # (Throwaway test key; NOT trusted for production.)
-    'test-only:JQy/k33N/BisN+NXn0LaeCXqXm7a6q856U3mk6fwroo='
+    # Production Ed25519 public key (base64 raw 32 bytes).
+    # Private key held in GitHub Actions Secret ABOX_SIGNING_PRIVKEY_B64.
+    'release-2026:7V4PBUUVpnfYhKu5LBxACxywpYEtvnDpVpvFnSrOujQ='
 )
 # SHA256 fingerprints (lowercase hex) of REVOKED public keys.
 # A key listed here is skipped during verification even if present above.
@@ -126,12 +125,11 @@ ABOX_REVOKED_PUBKEY_FPS=(
 # Minimum trusted metadata timestamp (UTC, YYYYMMDDHHMMSS). Metadata carrying
 # an older updated_at_utc/retrieved_at_utc is rejected (anti-replay /
 # anti-downgrade). Bump when rotating keys or after a revocation event.
-ABOX_SIGNING_MIN_TIMESTAMP_UTC='20261014000000'
-# Enforcement: 0 = verify-if-sig-present, warn-only on failure (default until
-# the real production pubkey is installed); 1 = STRICT fail-closed —
+ABOX_SIGNING_MIN_TIMESTAMP_UTC='20261015225900'
+# Enforcement: 0 = verify-if-sig-present, warn-only on failure; 1 = STRICT fail-closed (default) —
 # missing/invalid signature rejects the asset source (falls back to next
 # trusted source, dies if none remain). NEVER warn-and-continue when 1.
-ABOX_SIGNING_ENFORCE="${ABOX_SIGNING_ENFORCE:-0}"
+ABOX_SIGNING_ENFORCE="${ABOX_SIGNING_ENFORCE:-1}"
 # ========== end F-05 ==========
 ABOX_RESOLVED_XRAY_VERSION=''
 ABOX_RESOLVED_SINGBOX_VERSION=''

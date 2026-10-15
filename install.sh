@@ -427,6 +427,8 @@ normalize_lang() {
         en|en_US|en-US|english|English) printf 'en' ;;
         ru|ru_RU|ru-RU|russian|Русский) printf 'ru' ;;
         fa|fa_IR|fa-IR|persian|فارسی) printf 'fa' ;;
+        ja|ja_JP|ja-JP|japanese|日本語) printf 'ja' ;;
+        zh-tw|zh_TW|zh-TW|tw|TW|繁體中文|繁体中文) printf 'zh-tw' ;;
         zh|zh_CN|zh-CN|cn|CN|中文|'') printf 'zh' ;;
         *) printf 'zh' ;;
     esac
@@ -439,90 +441,134 @@ tr_msg() {
         en:press_return) echo 'Press Enter to return...' ;;
         ru:press_return) echo 'Нажмите Enter, чтобы вернуться...' ;;
         fa:press_return) echo 'برای بازگشت Enter را فشار دهید...' ;;
+        zh-tw:press_return) echo '按 Enter 返回...' ;;
+        ja:press_return) echo 'Enter を押して戻る...' ;;
         zh:select_prompt) echo '请选择 / Select' ;;
         en:select_prompt) echo 'Select' ;;
         ru:select_prompt) echo 'Выберите' ;;
         fa:select_prompt) echo 'انتخاب کنید' ;;
+        zh-tw:select_prompt) echo '請選擇 / Select' ;;
+        ja:select_prompt) echo '選択してください' ;;
         zh:main_command) echo '请求下发执行代号: ' ;;
         en:main_command) echo 'Input command: ' ;;
         ru:main_command) echo 'Введите команду: ' ;;
         fa:main_command) echo 'فرمان را وارد کنید: ' ;;
+        zh-tw:main_command) echo '請求下發執行代號: ' ;;
+        ja:main_command) echo 'コマンドを入力: ' ;;
         zh:lang_title) echo '语言设置 / Language' ;;
         en:lang_title) echo 'Language settings' ;;
         ru:lang_title) echo 'Настройки языка' ;;
         fa:lang_title) echo 'تنظیمات زبان' ;;
+        zh-tw:lang_title) echo '語言設定 / Language' ;;
+        ja:lang_title) echo '言語設定' ;;
         zh:lang_saved) echo '语言已保存。' ;;
         en:lang_saved) echo 'Language saved.' ;;
         ru:lang_saved) echo 'Язык сохранён.' ;;
         fa:lang_saved) echo 'زبان ذخیره شد.' ;;
+        zh-tw:lang_saved) echo '語言已儲存。' ;;
+        ja:lang_saved) echo '言語を保存しました。' ;;
         zh:yes_no_default_no) echo '[Y/N]' ;;
         en:yes_no_default_no) echo '[Y/N]' ;;
         ru:yes_no_default_no) echo '[Y/N]' ;;
         fa:yes_no_default_no) echo '[Y/N]' ;;
+        zh-tw:yes_no_default_no) echo '[Y/N]' ;;
+        ja:yes_no_default_no) echo '[Y/N]' ;;
         zh:yes_no_default_yes) echo '[Y/N]' ;;
         en:yes_no_default_yes) echo '[Y/N]' ;;
         ru:yes_no_default_yes) echo '[Y/N]' ;;
         fa:yes_no_default_yes) echo '[Y/N]' ;;
+        zh-tw:yes_no_default_yes) echo '[Y/N]' ;;
+        ja:yes_no_default_yes) echo '[Y/N]' ;;
         zh:reality_sni_prompt) echo '   %s 请输入伪装 SNI (端口 %s，回车默认: %s): ' ;;
         en:reality_sni_prompt) echo '   %s Enter camouflage SNI (port %s, default: %s): ' ;;
         ru:reality_sni_prompt) echo '   %s Введите маскирующий SNI (порт %s, по умолчанию: %s): ' ;;
         fa:reality_sni_prompt) echo '   %s نام SNI پوششی را وارد کنید (درگاه %s، پیش‌فرض: %s): ' ;;
+        zh-tw:reality_sni_prompt) echo '   %s 請輸入偽裝 SNI (端口 %s，回車默認: %s): ' ;;
+        ja:reality_sni_prompt) echo '   %s カモフラージュ SNI を入力 (ポート %s、デフォルト: %s): ' ;;
         zh:bad_sni) echo 'SNI 格式非法: %s' ;;
         en:bad_sni) echo 'Invalid SNI format: %s' ;;
         ru:bad_sni) echo 'Недопустимый формат SNI: %s' ;;
         fa:bad_sni) echo 'قالب SNI نامعتبر است: %s' ;;
+        zh-tw:bad_sni) echo 'SNI 格式非法: %s' ;;
+        ja:bad_sni) echo '無効な SNI 形式: %s' ;;
         zh:apple_non443_warn) echo '检测到非 443 端口使用 Apple/iCloud 类 SNI：%s。Xray-core 对 apple/icloud target 与非443端口有风险警告，此组合可能提高 IP 封禁概率。' ;;
         en:apple_non443_warn) echo 'Apple/iCloud-like SNI on non-443 port detected: %s. Xray-core warns about apple/icloud targets and non-443 listening ports; this combination may increase IP blocking risk.' ;;
         ru:apple_non443_warn) echo 'На порту, отличном от 443, обнаружен SNI Apple/iCloud: %s. Xray предупреждает о сочетании таких целей и нестандартного порта; риск блокировки IP может возрасти.' ;;
         fa:apple_non443_warn) echo 'SNI شبیه Apple/iCloud روی درگاهی غیر از 443 شناسایی شد: %s. Xray درباره این ترکیب هشدار می‌دهد و احتمال مسدودشدن IP ممکن است افزایش یابد.' ;;
+        zh-tw:apple_non443_warn) echo '檢測到非 443 端口使用 Apple/iCloud 類 SNI：%s。Xray-core 對 apple/icloud target 與非443端口有風險警告，此組合可能提高 IP 封禁概率。' ;;
+        ja:apple_non443_warn) echo '非443ポートで Apple/iCloud 系 SNI を検出: %s。Xray-core は apple/icloud ターゲットと非443ポートの組み合わせに警告しています。' ;;
         zh:reality_non443_warn) echo '[!] REALITY/XHTTP 使用非 443 监听端口 (%s)。Xray 上游将其作为独立风险条件提示；请确认该端口符合你的网络环境。' ;;
         en:reality_non443_warn) echo '[!] REALITY/XHTTP is using a non-443 listen port (%s). Xray treats this as a separate risk condition; confirm that the port is suitable for your network environment.' ;;
         ru:reality_non443_warn) echo '[!] REALITY/XHTTP использует порт %s вместо 443. Xray отмечает это как отдельный фактор риска; убедитесь, что порт подходит для вашей сети.' ;;
         fa:reality_non443_warn) echo '[!] REALITY/XHTTP از درگاه %s به‌جای 443 استفاده می‌کند. Xray این مورد را عامل خطر جداگانه می‌داند؛ سازگاری درگاه با شبکه را بررسی کنید.' ;;
+        zh-tw:reality_non443_warn) echo '[!] REALITY/XHTTP 使用非 443 監聽端口 (%s)。Xray 上游將其作為獨立風險條件提示；請確認該端口符合你的網絡環境。' ;;
+        ja:reality_non443_warn) echo '[!] REALITY/XHTTP が非443リッスンポート (%s) を使用しています。Xray はこれを独立したリスク条件として扱います。' ;;
         zh:apple_sni_warn) echo '[!] Apple/iCloud 类 target (%s) 被 Xray 上游作为独立风险条件提示；建议改用经过实测的非 Apple/iCloud 目标。' ;;
         en:apple_sni_warn) echo '[!] Apple/iCloud-like target (%s) is flagged by Xray as a separate risk condition; a tested non-Apple/iCloud target is recommended.' ;;
         ru:apple_sni_warn) echo '[!] Цель Apple/iCloud (%s) отмечена Xray как отдельный фактор риска; рекомендуется проверенная цель, не связанная с Apple/iCloud.' ;;
         fa:apple_sni_warn) echo '[!] مقصد شبیه Apple/iCloud (%s) از دید Xray عامل خطر جداگانه است؛ مقصد آزمایش‌شده‌ای غیرمرتبط با Apple/iCloud پیشنهاد می‌شود.' ;;
+        zh-tw:apple_sni_warn) echo '[!] Apple/iCloud 類 target (%s) 被 Xray 上游作為獨立風險條件提示；建議改用經過實測的非 Apple/iCloud 目標。' ;;
+        ja:apple_sni_warn) echo '[!] Apple/iCloud 系ターゲット (%s) は Xray により独立したリスク条件としてフラグされています。' ;;
         zh:continue_or_reset) echo '继续使用此 SNI？输入 y 继续，其他任意键重新输入 %s: ' ;;
         en:continue_or_reset) echo 'Continue with this SNI? Type y to continue, anything else to re-enter %s: ' ;;
         ru:continue_or_reset) echo 'Оставить этот SNI? Введите y для продолжения; любой другой ввод повторно задаст %s: ' ;;
         fa:continue_or_reset) echo 'این SNI حفظ شود؟ برای ادامه y و برای ورود دوباره %s کلید دیگری وارد کنید: ' ;;
+        zh-tw:continue_or_reset) echo '繼續使用此 SNI？輸入 y 繼續，其他任意鍵重新輸入 %s: ' ;;
+        ja:continue_or_reset) echo 'この SNI を続行しますか？続行するには y を入力してください %s: ' ;;
         zh:port_prompt) echo '   %s 请输入监听端口 (回车默认: %s): ' ;;
         en:port_prompt) echo '   %s Enter listen port (default: %s): ' ;;
         ru:port_prompt) echo '   %s Введите порт прослушивания (по умолчанию: %s): ' ;;
         fa:port_prompt) echo '   %s درگاه شنود را وارد کنید (پیش‌فرض: %s): ' ;;
+        zh-tw:port_prompt) echo '   %s 請輸入監聽端口 (回車默認: %s): ' ;;
+        ja:port_prompt) echo '   %s リッスンポートを入力 (デフォルト: %s): ' ;;
         zh:ss_port_prompt) echo '   %s 请输入回程监听端口(TCP/UDP) (回车默认: %s): ' ;;
         en:ss_port_prompt) echo '   %s Enter relay listen port (TCP/UDP, default: %s): ' ;;
         ru:ss_port_prompt) echo '   %s Введите порт ретрансляции (TCP/UDP, по умолчанию: %s): ' ;;
         fa:ss_port_prompt) echo '   %s درگاه رله (TCP/UDP، پیش‌فرض: %s) را وارد کنید: ' ;;
+        zh-tw:ss_port_prompt) echo '   %s 請輸入回程監聽端口(TCP/UDP) (回車默認: %s): ' ;;
+        ja:ss_port_prompt) echo '   %s リレー受信ポートを入力 (TCP/UDP、デフォルト: %s): ' ;;
         zh:bad_port) echo '端口非法: %s' ;;
         en:bad_port) echo 'Invalid port: %s' ;;
         ru:bad_port) echo 'Недопустимый порт: %s' ;;
         fa:bad_port) echo 'درگاه نامعتبر است: %s' ;;
+        zh-tw:bad_port) echo '端口非法: %s' ;;
+        ja:bad_port) echo '無効なポート: %s' ;;
         zh:toolbox_title) echo '综合工具箱 / Toolbox' ;;
         en:toolbox_title) echo 'Toolbox' ;;
         ru:toolbox_title) echo 'Инструменты' ;;
         fa:toolbox_title) echo 'جعبه ابزار' ;;
+        zh-tw:toolbox_title) echo '綜合工具箱 / Toolbox' ;;
+        ja:toolbox_title) echo 'ツールボックス' ;;
         zh:confirm_remote) echo '即将下载第三方远程脚本：%s。下载后会显示 SHA256 并要求强确认。继续下载？[Y/N]: ' ;;
         en:confirm_remote) echo 'About to download a third-party remote script: %s. SHA256 will be shown and a strong confirmation will be required. Continue download? [Y/N]: ' ;;
         ru:confirm_remote) echo 'Будет загружен сторонний скрипт: %s. SHA256 будет показан, перед запуском потребуется подтверждение. Продолжить? [Y/N]: ' ;;
         fa:confirm_remote) echo 'اسکریپت شخص ثالث دریافت می‌شود: %s. مقدار SHA256 نمایش داده و پیش از اجرا تأیید خواسته می‌شود. ادامه؟ [Y/N]: ' ;;
+        zh-tw:confirm_remote) echo '即將下載第三方遠程腳本：%s。下載後會顯示 SHA256 並要求強確認。繼續下載？[Y/N]: ' ;;
+        ja:confirm_remote) echo 'サードパーティのリモートスクリプトをダウンロードします：%s。続行しますか？[Y/N]: ' ;;
         zh:confirm_local_sni_full) echo '即将运行本地内置全量 SNI 优选库（不执行远程脚本）。确认执行？[Y/N]: ' ;;
         en:confirm_local_sni_full) echo 'About to run the local built-in full SNI preference library (no remote script execution). Continue? [Y/N]: ' ;;
         ru:confirm_local_sni_full) echo 'Будет запущен встроенный полный подбор SNI; удалённый скрипт не выполняется. Продолжить? [Y/N]: ' ;;
         fa:confirm_local_sni_full) echo 'گزینش کامل SNI داخلی اجرا می‌شود و هیچ اسکریپت راه‌دور اجرا نمی‌شود. ادامه؟ [Y/N]: ' ;;
+        zh-tw:confirm_local_sni_full) echo '即將運行本地內置全量 SNI 優選庫（不執行遠程腳本）。確認執行？[Y/N]: ' ;;
+        ja:confirm_local_sni_full) echo 'ローカルの組み込みフル SNI 優先ライブラリを実行します。続行しますか？[Y/N]: ' ;;
         zh:confirm_local_sni_mini) echo '即将运行本地内置微型主机 SNI 优选库（候选库与全量相同，不执行远程脚本）。确认执行？[Y/N]: ' ;;
         en:confirm_local_sni_mini) echo 'About to run the local built-in mini-host SNI preference library (same candidate library as full, no remote script execution). Continue? [Y/N]: ' ;;
         ru:confirm_local_sni_mini) echo 'Будет запущен облегчённый локальный подбор SNI с той же базой кандидатов; удалённый скрипт не выполняется. Продолжить? [Y/N]: ' ;;
         fa:confirm_local_sni_mini) echo 'گزینش سبک SNI داخلی با همان فهرست نامزدها اجرا می‌شود؛ هیچ اسکریپت راه‌دور اجرا نمی‌شود. ادامه؟ [Y/N]: ' ;;
+        zh-tw:confirm_local_sni_mini) echo '即將運行本地內置微型主機 SNI 優選庫（候選庫與全量相同，不執行遠程腳本）。確認執行？[Y/N]: ' ;;
+        ja:confirm_local_sni_mini) echo 'ローカルの組み込みミニホスト SNI 優先ライブラリを実行します。続行しますか？[Y/N]: ' ;;
         zh:swap_exists) echo '检测到 /swapfile 已存在，跳过创建。' ;;
         en:swap_exists) echo '/swapfile already exists; creation skipped.' ;;
         ru:swap_exists) echo '/swapfile уже существует; создание пропущено.' ;;
         fa:swap_exists) echo '/swapfile از قبل وجود دارد؛ ساخت آن رد شد.' ;;
+        zh-tw:swap_exists) echo '檢測到 /swapfile 已存在，跳過創建。' ;;
+        ja:swap_exists) echo '/swapfile が既に存在します。作成をスキップしました。' ;;
         zh:swap_done) echo 'Swap 处理完成。' ;;
         en:swap_done) echo 'Swap operation completed.' ;;
         ru:swap_done) echo 'Операция Swap завершена.' ;;
         fa:swap_done) echo 'عملیات Swap پایان یافت.' ;;
+        zh-tw:swap_done) echo 'Swap 處理完成。' ;;
+        ja:swap_done) echo 'Swap 操作が完了しました。' ;;
         *) echo "$key" ;;
     esac
 }
@@ -599,16 +645,20 @@ save_lang() {
 initial_language_select() {
     [[ -f "$LANG_FILE" || -n "${ABOX_LANG_OVERRIDE:-}" ]] && return 0
     local c
-    echo 'Language / 语言 / Язык / زبان'
-    echo '1. 中文'
-    echo '2. English'
-    echo '3. Русский'
-    echo '4. فارسی'
-    read -r -p 'Select [1-4, default 1]: ' c || true
+    echo 'Language / 语言 / 語言 / 言語 / Язык / زبان'
+    echo '1. 简体中文'
+    echo '2. 繁體中文'
+    echo '3. English'
+    echo '4. 日本語'
+    echo '5. Русский'
+    echo '6. فارسی'
+    read -r -p 'Select [1-6, default 1]: ' c || true
     case "$c" in
-        2) ABOX_LANG='en' ;;
-        3) ABOX_LANG='ru' ;;
-        4) ABOX_LANG='fa' ;;
+        2) ABOX_LANG='zh-tw' ;;
+        3) ABOX_LANG='en' ;;
+        4) ABOX_LANG='ja' ;;
+        5) ABOX_LANG='ru' ;;
+        6) ABOX_LANG='fa' ;;
         *) ABOX_LANG='zh' ;;
     esac
     save_lang
@@ -618,18 +668,22 @@ language_menu() {
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}$(tr_msg lang_title)${NC}"
     msg "${CYAN}======================================================================${NC}"
-    msg "${YELLOW}1. 中文${NC}"
-    msg "${YELLOW}2. English${NC}"
-    msg "${YELLOW}3. Русский${NC}"
-    msg "${YELLOW}4. فارسی${NC}"
+    msg "${YELLOW}1. 简体中文${NC}"
+    msg "${YELLOW}2. 繁體中文${NC}"
+    msg "${YELLOW}3. English${NC}"
+    msg "${YELLOW}4. 日本語${NC}"
+    msg "${YELLOW}5. Русский${NC}"
+    msg "${YELLOW}6. فارسی${NC}"
     msg "${GREEN}0. 返回 / Back${NC}"
     local c
-    read -r -p 'Select [0-4]: ' c
+    read -r -p 'Select [0-6]: ' c
     case "$c" in
         1) ABOX_LANG='zh'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
-        2) ABOX_LANG='en'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
-        3) ABOX_LANG='ru'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
-        4) ABOX_LANG='fa'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
+        2) ABOX_LANG='zh-tw'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
+        3) ABOX_LANG='en'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
+        4) ABOX_LANG='ja'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
+        5) ABOX_LANG='ru'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
+        6) ABOX_LANG='fa'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
         *) return 0 ;;
     esac
 }
@@ -17877,7 +17931,7 @@ show_cli_help() {
 A-Box
 Usage:
   bash install.sh                    启动交互菜单 / Start interactive menu
-  bash install.sh --lang zh|en|ru|fa 设置脚本界面语言并启动 / Select UI language
+  bash install.sh --lang zh|zh-tw|en|ja|ru|fa 设置脚本界面语言并启动 / Select UI language
   bash install.sh --self-test        运行无副作用静态自测 / Run static self-test
   bash install.sh --status           显示当前配置和服务状态 / Show current status
   bash install.sh --stop             停止托管服务并保持手动停止状态 / Stop managed services

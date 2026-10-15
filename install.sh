@@ -14850,12 +14850,16 @@ wallos_prune_local_images() {
         if [[ "$img" != "$keep1" && "$img" != "$keep2" ]]; then
             # Keep at most 2: remove anything beyond keep1/keep2.
             # Count how many we would keep; if already 2 kept, remove the rest.
-            docker rmi "$img" >/dev/null 2>&1 && removed=$((removed + 1)) || true
+            if docker rmi "$img" >/dev/null 2>&1; then
+                removed=$((removed + 1))
+            else
+                # D-09: was silently swallowed by `|| true`.
+                msg "${YELLOW}[!] Could not remove old Wallos image $img; it may still be in use.${NC}"
+            fi
         fi
     done
-    # Report total size of retained wallos images (500MB cap awareness).
-    local total
-    total=$(docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' 2>/dev/null | grep '^bellamy/wallos:' | awk '{print $2}' || true)
+    # D-08: removed dead 500MB-cap computation (total was calculated but never
+    # used for enforcement or warning). Pruning is count-based (keep 2).
     if (( removed > 0 )); then
         msg "${CYAN}N-11: pruned $removed old Wallos image(s); retained: ${keep1:-none} ${keep2:-}${NC}"
     fi
@@ -15045,7 +15049,14 @@ wallos_pull_or_restore_image() {
                     curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_sum_url.sig" -o "$_n2_work/SHA256SUMS.sig" 2>/dev/null || true
                     curl -fLsS --connect-timeout 8 --max-time 30 "${_n2_manifest_url}.sig" -o "$_n2_work/wallos-manifest.txt.sig" 2>/dev/null || true
                     if ! abox_verify_sig_gate "$_n2_work/wallos-manifest.txt" "$_n2_work/wallos-manifest.txt.sig" "Wallos manifest (N-2 fast path)"; then
-                        msg "${YELLOW}[!] N-2 manifest signature rejected; falling back to tag pull.${NC}"
+                        # D-10: abox_verify_sig_gate only returns 1 when ABOX_SIGNING_ENFORCE=1.
+                        # In that mode, falling back to an unsigned tag pull would defeat
+                        # enforcement, so fail hard instead of silently downgrading.
+                        msg "${RED}[!] N-2 manifest signature rejected and signing enforcement is ON; refusing to fall back to unsigned tag pull.${NC}"
+                        trap - EXIT
+                        restore_saved_trap EXIT "$_n2_prev_trap_exit"
+                        rm -rf -- "$_n2_work"
+                        return 1
                     else
                         # F-05 anti-replay on manifest timestamp.
                         _n2_ts=$(awk -F= '$1=="retrieved_at_utc" {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
@@ -19477,14 +19488,14 @@ EOF_SVC_TEST_RCUPDATE
         mkdir -p "$WALLOS_DIR/db" "$WALLOS_DIR/logos" "$WALLOS_DIR/backups" || exit 31
         printf 'before-upgrade\n' > "$WALLOS_DIR/db/state.txt" || exit 32
         printf 'old-logo\n' > "$WALLOS_DIR/logos/logo.txt" || exit 33
-        printf 'image=bellamy/wallos:1.2.3\nport=8282\ntz=UTC\n' > "$WALLOS_DIR/.abox-state" || exit 34
+        printf 'IMAGE=bellamy/wallos:1.2.3\nPORT=8282\nTZ=UTC\n' > "$WALLOS_DIR/.abox-state" || exit 34
         backup=$(wallos_create_backup selftest) || exit 35
         wallos_upgrade_journal_write active 'bellamy/wallos:1.2.3' 8282 UTC 127.0.0.1 "$backup" 1 || exit 46
         [[ "$(stat -c %a "$WALLOS_DIR/.upgrade-transaction")" == 600 ]] || exit 47
         [[ "$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" phase)" == active ]] || exit 48
         printf 'partially-migrated\n' > "$WALLOS_DIR/db/state.txt" || exit 36
         printf 'new-logo\n' > "$WALLOS_DIR/logos/logo.txt" || exit 37
-        printf 'image=bellamy/wallos:1.2.4\nport=8282\ntz=UTC\n' > "$WALLOS_DIR/.abox-state" || exit 38
+        printf 'IMAGE=bellamy/wallos:1.2.4\nPORT=8282\nTZ=UTC\n' > "$WALLOS_DIR/.abox-state" || exit 38
         wallos_restore_backup "$backup" || exit 39
         grep -Fxq 'before-upgrade' "$WALLOS_DIR/db/state.txt" || exit 40
         grep -Fxq 'old-logo' "$WALLOS_DIR/logos/logo.txt" || exit 41

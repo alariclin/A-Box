@@ -38,7 +38,7 @@ bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 sudo bash A-Box.sh
 ```
 
-兩個命令均將安裝腳本固定到不可變提交 `888f2d9227d8f3aa4211d1bc036155747e83d390`；代理網址仍屬於第三方傳輸服務，不是 A-Box 官方端點。語法檢查與 SHA-256 摘要本身不能證明發布者身份，執行前應審閱下載檔案；生產環境還應透過獨立可信渠道核對提交與摘要。全新 Alpine 系統執行前先執行 `apk add --no-cache bash curl`。安裝後輸入 `sb` 開啟選單。
+兩個命令均將安裝腳本固定到不可變提交 `d3cc55548e7c7cb4fcbb197741fab5379069876a`；代理網址仍屬於第三方傳輸服務，不是 A-Box 官方端點。語法檢查與 SHA-256 摘要本身不能證明發布者身份，執行前應審閱下載檔案；生產環境還應透過獨立可信渠道核對提交與摘要。全新 Alpine 系統執行前先執行 `apk add --no-cache bash curl`。安裝後輸入 `sb` 開啟選單。
 
 ## 主要功能
 
@@ -76,7 +76,7 @@ sudo bash A-Box.sh
 | `16` | 刪除節點並重新初始化環境 |
 | `17` | 每月流量限制（vnStat），顯示截至目前的累計用量 |
 | `18` | SS-2022 IP/CIDR 白名單管理 |
-| `19` | 介面語言：中文、English、Русский、فارسی |
+| `19` | 介面語言：简体中文、繁體中文、English、日本語、Русский、فارسی |
 | `20` | **一鍵 Reality**；`r` 為快捷別名 |
 | `0` | 退出 |
 
@@ -101,7 +101,7 @@ BBR/FQ 不會靜默修改系統。DNS 優選根據當前 VPS 對候選解析器�
 | 命令 | 作用 |
 |---|---|
 | `sudo bash A-Box.sh --help` | 顯示命令列說明 |
-| `sudo bash A-Box.sh --lang zh` / `--lang en` / `--lang ru` / `--lang fa` | 設定介面語言並啟動選單 |
+| `sudo bash A-Box.sh --lang zh` / `--lang zh-tw` / `--lang en` / `--lang ja` / `--lang ru` / `--lang fa` | 設定介面語言並啟動選單 |
 | `sudo bash A-Box.sh --self-test` | 執行內建迴歸/自測 |
 | `sudo bash A-Box.sh --preflight` 或 `--dry-run` | 執行預檢查，不部署新節點 |
 | `sudo bash A-Box.sh --status` | 查看託管配置和服務狀態 |

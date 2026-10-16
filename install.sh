@@ -3608,6 +3608,10 @@ nftables_native_rules_present() {
             gsub(/\{/, "", cname)
             if (cname == "input" || cname == "forward" || cname == "output")
                 native=1
+            # G6: custom chain names with filter hook on input are also native.
+            # e.g. chain custom { type filter hook input priority 0; ... }
+            if ($0 ~ /type[[:space:]]+filter[[:space:]]+hook[[:space:]]+input/)
+                native=1
         }
         END { exit !native }
     '
@@ -4390,13 +4394,13 @@ _ss_wl_snapshot_rules() {
     # P2-01: distinguish "no rules" from "read failed". A failed iptables
     # query must abort the snapshot instead of being mistaken for empty.
     local out rc
-    out="$("$IPT" -w -S INPUT 2>/dev/null)"; rc=$?
+    out="$("$IPT" -w 5 -S INPUT 2>/dev/null)"; rc=$?
     (( rc == 0 )) || return 1
     _SS_WL_SNAP_V4="$(printf '%s\n' "$out" | grep -F "A-Box-${port}-" | sed 's/^-A INPUT //')"
     _SS_WL_SNAP_V6=""
     _SS_WL_SNAP_V6_TAKEN=0
     if host_has_usable_ipv6 && ip6tables_usable; then
-        out="$("$IPT6" -w -S INPUT 2>/dev/null)"; rc=$?
+        out="$("$IPT6" -w 5 -S INPUT 2>/dev/null)"; rc=$?
         (( rc == 0 )) || return 1
         _SS_WL_SNAP_V6="$(printf '%s\n' "$out" | grep -F "A-Box-${port}-" | sed 's/^-A INPUT //')"
         _SS_WL_SNAP_V6_TAKEN=1
@@ -4451,7 +4455,7 @@ _ss_wl_rollback_to_snapshot() {
         fi
         command -v "$restore_bin" >/dev/null 2>&1 || { failed=1; continue; }
         local cur_out cur_rc
-        cur_out="$("$ipt" -w -S INPUT 2>/dev/null)"; cur_rc=$?
+        cur_out="$("$ipt" -w 5 -S INPUT 2>/dev/null)"; cur_rc=$?
         if (( cur_rc != 0 )); then failed=1; continue; fi
         local cur
         cur="$(printf '%s\n' "$cur_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
@@ -4529,7 +4533,7 @@ _ss_wl_rollback_to_snapshot() {
         # (N = number of snapshot rules), proving they are at chain head.
         # Use normalized comparison to handle -m tcp / quote variations.
         local final_out final_rc
-        final_out="$("$ipt" -w -S INPUT 2>/dev/null)"; final_rc=$?
+        final_out="$("$ipt" -w 5 -S INPUT 2>/dev/null)"; final_rc=$?
         if (( final_rc != 0 )); then failed=1; continue; fi
         local snap_count
         snap_count="$(printf '%s\n' "$snap" | grep -c -v '^$' || true)"
@@ -4576,7 +4580,15 @@ _ss_wl_rollback_to_snapshot() {
         failed=1
     fi
     if (( failed != 0 )); then
-        printf '%s\n' 'ERROR: firewall rollback incomplete; manual recovery required.' >&2
+        local fail_fams=""
+        # v4 failed if overall failed and v6 either not needed or succeeded
+        # (v6 failure is tracked separately via v6_ok)
+        if (( v6_needed == 0 || v6_ok == 1 )); then
+            fail_fams="IPv4"
+        fi
+        (( v6_needed == 1 && v6_ok == 0 )) && fail_fams="${fail_fams:+$fail_fams,}IPv6"
+        printf '%s\n' "ERROR: firewall rollback incomplete (${fail_fams:-unknown}); manual recovery required." >&2
+        printf '%s\n' "Check: iptables -S INPUT / ip6tables -S INPUT against snapshot." >&2
         return 1
     fi
     _SS_WL_SNAP_TAKEN=0

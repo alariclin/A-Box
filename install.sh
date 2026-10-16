@@ -7120,7 +7120,8 @@ pre_install_setup() {
         en) L_GLOBAL=$(proto_label 'Global') ;;
         ru) L_GLOBAL=$(proto_label 'Global') ;;  # TODO: 俄语
         fa) L_GLOBAL=$(proto_label 'Global') ;;  # TODO: 波斯语
-        ja) L_GLOBAL=$(proto_label '全体的に') ;;
+        ja)
+            L_GLOBAL=$(proto_label 'グローバル') ;;
         zh-tw) L_GLOBAL=$(proto_label '全域性') ;;
         *) L_GLOBAL=$(proto_label '全局') ;;
     esac
@@ -7226,7 +7227,7 @@ pre_install_setup() {
                         read -r -p "   ${L_HY2} Use Cloudflare DNS-01 ACME instead of HTTP-01? [Y/N]: " INPUT_ACME_DNS || die '交互输入已结束 / Interactive input closed.'
                             ;;  # TODO: 波斯语
                         ja)
-                        read -r -p "   ${L_HY2} は使用しますか？ Cloudflare DNS-01 証明書の申請を行い、占有を避けます。 80 ポート？[Y/N]: " INPUT_ACME_DNS || die '交互入力は終了しました / Interactive input closed.'
+                            read -r -p "   ${L_HY2} HTTP-01 の代わりに Cloudflare DNS-01 ACME で証明書を取得しますか？[Y/N]: " INPUT_ACME_DNS || die '対話入力が終了しました / Interactive input closed.'
                             ;;
                         zh-tw)
                         read -r -p "   ${L_HY2} 是否使用 Cloudflare DNS-01 申請證書以避免佔用 80 埠？[Y/N]: " INPUT_ACME_DNS || die '互動輸入已結束 / Interactive input closed.'
@@ -7306,7 +7307,7 @@ pre_install_setup() {
             HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} Enter HTTP/3 masquerade URL (default: $masq_default): " "$masq_default") || die 'HY2 伪装 URL 输入已结束 / HY2 masquerade URL input closed.'
                 ;;  # TODO: 波斯语
             ja)
-            HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} 入力してください HTTP/3 偽装站点 URL (Enter by defaultです: $masq_default): " "$masq_default") || die 'HY2 偽装 URL 入力が完了しました / HY2 masquerade URL input closed.'
+                HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} HTTP/3 の偽装サイト URL を入力してください（既定値: $masq_default）: " "$masq_default") || die 'HY2 偽装 URL の入力が終了しました / HY2 masquerade URL input closed.'
                 ;;
             zh-tw)
             HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} 請輸入 HTTP/3 偽裝站點 URL (回車預設: $masq_default): " "$masq_default") || die 'HY2 偽裝 URL 輸入已結束 / HY2 masquerade URL input closed.'
@@ -7351,7 +7352,7 @@ pre_install_setup() {
             read -r -p "   ${L_GLOBAL} Enable TCP KeepAlive 45s to prevent NAT idle disconnect? [Y/N]: " INPUT_KA || die '交互输入已结束 / Interactive input closed.'
                 ;;  # TODO: 波斯语
             ja)
-            read -r -p "   ${L_GLOBAL} [はい]/[いいえ] は開きますか？ TCP KeepAlive (45s) 防除 NAT 空き切れ接続? [Y/N]: " INPUT_KA || die '交互入力は終了しました / Interactive input closed.'
+                read -r -p "   ${L_GLOBAL} NAT のアイドル時切断を防ぐため、TCP KeepAlive (45s) を有効にしますか？ [Y/N]: " INPUT_KA || die '対話入力が終了しました / Interactive input closed.'
                 ;;
             zh-tw)
             read -r -p "   ${L_GLOBAL} 是否開啟 TCP KeepAlive (45s) 防治 NAT 空閒斷連? [Y/N]: " INPUT_KA || die '互動輸入已結束 / Interactive input closed.'
@@ -10084,10 +10085,10 @@ one_click_reality_deploy() {
             prompt='نصب یک‌کلیکی Vision REALITY آغاز شود؟ [Y/N]: ' ;;
         ja)
             msg "${RED}${BOLD}ワンクリック Vision REALITY${NC}"
-            msg "デフォルトのSNIは現在のVPSのTLS/ASN/地域実測に基づき自動選択されます。www.amazon.comはTLS 1.3/h2/証明書SAN検証通過後のみフォールバックとして使用されます。検証可能なターゲットがない場合、ワンクリックインストールは停止します。KeepAliveはオフです。"
+            msg "デフォルト: port 443。SNI はこの VPS の TLS/ASN/地域に関する実測結果に基づいて自動選択されます。www.amazon.com は TLS 1.3/h2/証明書 SAN の検証に成功した場合のみフォールバック先として使用されます。検証可能な接続先がない場合、ワンクリックインストールは停止します。KeepAlive は無効です。"
             msg "${YELLOW}1. Xray Vision REALITY${NC}"
             msg "${YELLOW}2. sing-box Vision REALITY${NC}"
-            prompt='ワンクリック Vision REALITYを今すぐデプロイしますか？[Y/N]: ' ;;
+            prompt='今すぐ Vision REALITY をワンクリックでデプロイしますか？[Y/N]: ' ;;
         zh-tw)
             msg "${RED}${BOLD}一鍵 Vision REALITY${NC}"
             msg "預設 SNI 根據當前 VPS 的 TLS/ASN/地區實測自動選擇；僅在 www.amazon.com 透過 TLS 1.3/h2/證書 SAN 驗證後才用作回退。無可驗證目標時一鍵安裝會停止。KeepAlive 關閉。"
@@ -10110,7 +10111,8 @@ one_click_reality_deploy() {
             ru) msg "${YELLOW}Отменено.${NC}" ;;
             fa) msg "${YELLOW}لغو شد.${NC}" ;;
             zh-tw) msg "${YELLOW}已取消。${NC}" ;;
-            ja) msg "${黄色}キャンセルしました。${NC}" ;;
+            ja)
+                msg "${YELLOW}キャンセルしました。${NC}" ;;
             *) msg "${YELLOW}已取消。${NC}" ;;
         esac
         pause_return; return 0
@@ -10152,12 +10154,12 @@ ux_mode_menu() {
             msg "${YELLOW}3. 檢視正式穩定版策略與固定容災版本${NC}"
             msg "${GREEN}0. 返回${NC}" ;;
         ja)
-            msg "${BOLD}${GREEN}実行モードおよびコアバージョンポリシー${NC}"
-            msg "現在のモード: ${YELLOW}$(read_fast_mode_label)${NC} | 核心のソース: 上流公式安定版 → 固定災害復旧イメージ"
+            msg "${BOLD}${GREEN}実行モードとコアバージョンのポリシー${NC}"
+            msg "現在のモード: ${YELLOW}$(read_fast_mode_label)${NC} | コアの取得順序: 公式の安定版 → 固定リカバリミラー"
             msg "${YELLOW}1. 厳格モード${NC}"
-            msg "${黄色}2. ファストモード（非重要確認をスキップ）${NC}"
-            msg "${黄色}3. 正式安定版のポリシーと固定災害復旧バージョンを確認${NC}"
-            msg "${GREEN}0. 返${NC}" ;;
+            msg "${YELLOW}2. 高速モード（重要でない確認のみをスキップ）${NC}"
+            msg "${YELLOW}3. 公式安定版のポリシーと固定リカバリバージョンを表示${NC}"
+            msg "${GREEN}0. 戻る${NC}" ;;
         *)
             msg "${BOLD}${GREEN}运行模式与核心版本策略${NC}"
             msg "当前模式: ${YELLOW}$(read_fast_mode_label)${NC} | 核心来源：上游正式稳定版 → 固定容灾镜像"
@@ -10541,7 +10543,8 @@ ip_preference_menu() {
         ru) title='Предпочтение IP-протокола'; ipv4='Только IPv4 (слушатель 0.0.0.0)'; ipv6='Только IPv6 (требуется глобальный IPv6)'; dual='Два стека (IPv6 при доступности, иначе IPv4)'; back='Назад' ;;
         fa) title='ترجیح پروتکل IP'; ipv4='فقط IPv4 (نشانی شنونده 0.0.0.0)'; ipv6='فقط IPv6 (نیازمند IPv6 عمومی فعال)'; dual='دوپشته (در صورت دسترسی IPv6، وگرنه IPv4)'; back='بازگشت' ;;
         zh-tw) title='IP 協議偏好'; ipv4='僅 IPv4（監聽 0.0.0.0，分享連結優先 IPv4）'; ipv6='僅 IPv6（需要可用的全域性 IPv6）'; dual='雙棧（優先可用 IPv6，否則 IPv4）'; back='返回' ;;
-        ja) title='IPプロトコルの好み'; ipv4='仅 IPv4（监听 0.0.0.0，分享链接优先 IPv4）'; ipv6='仅 IPv6（需要可用的全局 IPv6）'; dual='双栈（优先可用 IPv6，否则 IPv4）'; back='返回' ;;
+        ja)
+            title='IP プロトコルの設定'; ipv4='IPv4 のみ（0.0.0.0 でリッスンし、共有リンクでは IPv4 を優先）'; ipv6='IPv6 のみ（利用可能なグローバル IPv6 が必要）'; dual='デュアルスタック（IPv6 が利用可能な場合は優先し、それ以外は IPv4）'; back='戻る' ;;
         *) title='IP 协议偏好'; ipv4='仅 IPv4（监听 0.0.0.0，分享链接优先 IPv4）'; ipv6='仅 IPv6（需要可用的全局 IPv6）'; dual='双栈（优先可用 IPv6，否则 IPv4）'; back='返回' ;;
     esac
     msg "${CYAN}======================================================================${NC}"
@@ -10561,7 +10564,8 @@ ip_preference_menu() {
                     ru) msg "${RED}Рабочий глобальный IPv6 не обнаружен; режим IPv6-only не сохранён.${NC}" ;;
                     fa) msg "${RED}IPv6 عمومی قابل استفاده یافت نشد؛ حالت فقط IPv6 ذخیره نشد.${NC}" ;;
                     zh-tw) msg "${RED}系統當前無可用全域性 IPv6，未儲存僅 IPv6 模式。${NC}" ;;
-                    ja) msg "${RED}現在、システムには利用可能なグローバルIPv6がありません。保存されているのはIPv6モードのみです。${NC}" ;;
+                    ja)
+                        msg "${RED}利用可能なグローバル IPv6 が検出されなかったため、IPv6 のみのモードは保存されませんでした。${NC}" ;;
                     *) msg "${RED}系统当前无可用全局 IPv6，未保存仅 IPv6 模式。${NC}" ;;
                 esac
                 pause_return; return 1
@@ -10575,7 +10579,8 @@ ip_preference_menu() {
         ru) msg "${GREEN}Сохранено: $(read_ip_pref). Настройка слушателя применяется к новым узлам; существующие узлы нужно переустановить или перезапустить.${NC}" ;;
         fa) msg "${GREEN}ذخیره شد: $(read_ip_pref). این تنظیم برای استقرارهای بعدی اعمال می‌شود؛ نودهای فعال به استقرار مجدد یا راه‌اندازی مجدد نیاز دارند.${NC}" ;;
         zh-tw) msg "${GREEN}已儲存：$(read_ip_pref)。新監聽偏好對後續部署生效；已執行節點需重新部署或適當重啟。${NC}" ;;
-        ja) msg "${GREEN}保存しました：$(read_ip_pref)。新しいリスニングオプションは次のデプロイメントで有効になります；既に動作しているノードは再デプロイまたは適切な再起動が必要です。${NC}" ;;
+        ja)
+            msg "${GREEN}保存しました: $(read_ip_pref)。新しいリスナー設定は今後のデプロイに適用されます。稼働中のノードには再デプロイまたは適切な再起動が必要です。${NC}" ;;
         *) msg "${GREEN}已保存：$(read_ip_pref)。新监听偏好对后续部署生效；已运行节点需重新部署或适当重启。${NC}" ;;
     esac
     pause_return
@@ -10617,12 +10622,12 @@ host_network_menu() {
             msg "${GREEN}0. 返回${NC}"
             ;;
         ja)
-            msg "${BOLD}${GREEN}ネットワークおよび地域設定${NC}"
-            msg "${YELLOW}1. IP プロトコルの好み（IPv4 / IPv6 / ダブルスタック）${NC}"
-            msg "${黄色}2. 本機DNS（自動測速 / DoT / DoH / 回滚）${NC}"
-            msg "${黄色}3. 時区、Locale と NTP${NC}"
-            msg "${YELLOW}4. ファスト/ストリクトモードとダウンロードソース${NC}"
-            msg "${GREEN}0. 返${NC}"
+            msg "${BOLD}${GREEN}ネットワークと地域の設定${NC}"
+            msg "${YELLOW}1. IP プロトコルの設定（IPv4 / IPv6 / デュアルスタック）${NC}"
+            msg "${YELLOW}2. ホスト DNS（自動ベンチマーク / DoT / DoH / ロールバック）${NC}"
+            msg "${YELLOW}3. タイムゾーン、Locale、NTP${NC}"
+            msg "${YELLOW}4. 高速モード / 厳格モードとダウンロード元${NC}"
+            msg "${GREEN}0. 戻る${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}网络与地区设置${NC}"
@@ -10825,7 +10830,8 @@ timezone_apply_with_rollback() {
             ru) msg "${RED}Недопустимый часовой пояс: $target${NC}" ;;
             fa) msg "${RED}منطقه زمانی نامعتبر است: $target${NC}" ;;
             zh-tw) msg "${RED}非法或不存在的時區: $target${NC}" ;;
-            ja) msg "${RED}無効または存在しない時区です: $target${NC}" ;;
+            ja)
+                msg "${RED}無効なタイムゾーン、または存在しないタイムゾーンです: $target${NC}" ;;
             *) msg "${RED}非法或不存在的时区: $target${NC}" ;;
         esac
         return 1
@@ -10838,7 +10844,8 @@ timezone_apply_with_rollback() {
             ru) msg "${RED}Не удалось сохранить снимок часового пояса; изменения не применены.${NC}" ;;
             fa) msg "${RED}ذخیره snapshot منطقه زمانی شکست خورد؛ تغییری اعمال نشد.${NC}" ;;
             zh-tw) msg "${RED}時區快照失敗，未修改設定。${NC}" ;;
-            ja) msg "${RED}時区スナップショット失敗、設定を変更していません${NC}" ;;
+            ja)
+                msg "${RED}タイムゾーンのスナップショットを保存できませんでした。設定は変更されていません。${NC}" ;;
             *) msg "${RED}时区快照失败，未修改设置。${NC}" ;;
         esac
         return 1
@@ -10851,7 +10858,8 @@ timezone_apply_with_rollback() {
             ru) msg "${RED}Не удалось изменить часовой пояс; выполнена попытка отката.${NC}" ;;
             fa) msg "${RED}تغییر منطقه زمانی شکست خورد؛ تلاش برای بازگردانی انجام شد.${NC}" ;;
             zh-tw) msg "${RED}時區應用失敗；已嘗試回滾。${NC}" ;;
-            ja) msg "${RED}時区適用失敗；ロールバックを試みました。${NC}" ;;
+            ja)
+                msg "${RED}タイムゾーンの更新に失敗しました。ロールバックを試みました。${NC}" ;;
             *) msg "${RED}时区应用失败；已尝试回滚。${NC}" ;;
         esac
         return 1
@@ -10874,7 +10882,8 @@ timezone_apply_with_rollback() {
         ru) msg "${GREEN}Часовой пояс установлен: $target; предыдущее состояние можно восстановить.${NC}" ;;
         fa) msg "${GREEN}منطقه زمانی روی $target تنظیم شد؛ امکان بازگردانی وضعیت قبلی وجود دارد.${NC}" ;;
         zh-tw) msg "${GREEN}時區已設定為 ${target}；修改前的狀態可透過回滾選單恢復。${NC}" ;;
-        ja) msg "${GREEN}時区が${target}に設定されました；変更前の状態はリロールメニューで復元できます。${NC}" ;;
+        ja)
+            msg "${GREEN}タイムゾーンを $target に設定しました。変更前の状態はロールバックメニューから復元できます。${NC}" ;;
         *) msg "${GREEN}时区已设置为 ${target}；修改前的状态可通过回滚菜单恢复。${NC}" ;;
     esac
 }
@@ -10891,7 +10900,7 @@ timezone_choose_from_list() {
         zh-tw)
             title='IANA 時區列表'; page_label='當前: %s | 搜尋: %s | 共 %s 項'; number_prompt='輸入編號；n/p 翻頁；s 搜尋；0 返回: '; search_prompt='時區關鍵詞: '; invalid_prompt='請輸入編號或 n/p/s/0。'; range_prompt='編號超出範圍。'; confirm_prompt='確認將時區改為 %s？[Y/N]: ' ;;
         ja)
-            title='IANA 時期リスト'; page_label='現在: %s | 検索: %s | 合計 %s 件'; number_prompt='入力番号を；[Y/N] ページを進める；[y/n] 検索；0 に戻る:'; search_prompt='時差キーワードです:'; invalid_prompt='お名前を入力してください。番号またはn/p/s/0を入力してください。'; range_prompt='番号が範囲外です。'; confirm_prompt='確認して時区を%sに変更しますか？[Y/N]:' ;;
+            title='IANA タイムゾーン一覧'; page_label='現在: %s | 検索: %s | 合計: %s'; number_prompt='番号を選択してください。n/p: 次/前のページ、s: 検索、0: 戻る: '; search_prompt='タイムゾーンを検索: '; invalid_prompt='番号、または n/p/s/0 を入力してください。'; range_prompt='番号が範囲外です。'; confirm_prompt='タイムゾーンを %s に変更しますか？[Y/N]: ' ;;
         *)
             title='IANA 时区列表'; page_label='当前: %s | 搜索: %s | 共 %s 项'; number_prompt='输入编号；n/p 翻页；s 搜索；0 返回: '; search_prompt='时区关键词: '; invalid_prompt='请输入编号或 n/p/s/0。'; range_prompt='编号超出范围。'; confirm_prompt='确认将时区改为 %s？[Y/N]: ' ;;
     esac
@@ -10939,7 +10948,8 @@ timezone_choose_locale() {
         ru) title='Доступные системные локали'; prompt='Номер; n/p страницы; 0 назад: '; invalid_prompt='Введите номер, n, p или 0.'; range_prompt='Номер вне диапазона.'; confirm_prompt='Установить системную локаль LANG=%s? [Y/N]: ' ;;
         fa) title='زبان‌های محلی نصب‌شده'; prompt='شماره؛ n/p صفحه؛ 0 بازگشت: '; invalid_prompt='شماره، n، p یا 0 را وارد کنید.'; range_prompt='شماره خارج از محدوده است.'; confirm_prompt='مقدار LANG سیستم روی %s تنظیم شود؟ [Y/N]: ' ;;
         zh-tw) title='可用系統 Locale'; prompt='輸入編號；n/p 翻頁；0 返回: '; invalid_prompt='請輸入編號、n、p 或 0。'; range_prompt='編號超出範圍。'; confirm_prompt='將系統 LANG 設定為 %s？[Y/N]: ' ;;
-        ja) title='利用可能なシステムロケール'; prompt='输入编号；n/p 翻页；0 返回: '; invalid_prompt='请输入编号、n、p 或 0。'; range_prompt='编号超出范围。'; confirm_prompt='将系统 LANG 设置为 %s？[Y/N]: ' ;;
+        ja)
+            title='利用可能なシステム Locale'; prompt='番号を入力してください。n/p: 次/前のページ、0: 戻る: '; invalid_prompt='番号、n、p、または 0 を入力してください。'; range_prompt='番号が範囲外です。'; confirm_prompt='システムの LANG を %s に設定しますか？[Y/N]: ' ;;
         *) title='可用系统 Locale'; prompt='输入编号；n/p 翻页；0 返回: '; invalid_prompt='请输入编号、n、p 或 0。'; range_prompt='编号超出范围。'; confirm_prompt='将系统 LANG 设置为 %s？[Y/N]: ' ;;
     esac
     if command -v localectl >/dev/null 2>&1; then
@@ -11028,13 +11038,13 @@ timezone_locale_ntp_menu() {
             msg "${YELLOW}5. 回滾到時區修改前快照${NC}"
             ;;
         ja)
-            msg "時間、時区と地域${NC}"
-            msg "現在時刻: $now | 時差: $(current_timezone_name) | NTP: $ntp | 同期済み: $synced"
-            msg "${黄色}1. 全ての時帯を確認して番号で選択${NC}"
-            msg "${黄色}2. 検索した時差を番号で選択${NC}"
-            msg "${黄色}3. インストールされたシステム Localeを選択${NC}"
-            msg "${YELLOW}4. NTP自動時刻同期を有効にします${NC}"
-            msg "${黄色}5. 時差変更前のスナップショットに戻します${NC}"
+            msg "${BOLD}${GREEN}時刻、タイムゾーン、Locale${NC}"
+            msg "現在の時刻: $now | タイムゾーン: $(current_timezone_name) | NTP: $ntp | 同期済み: $synced"
+            msg "${YELLOW}1. すべてのタイムゾーンを一覧表示し、番号で選択${NC}"
+            msg "${YELLOW}2. タイムゾーンを検索して番号で選択${NC}"
+            msg "${YELLOW}3. インストール済みのシステム Locale を選択${NC}"
+            msg "${YELLOW}4. NTP による時刻の自動同期を有効化${NC}"
+            msg "${YELLOW}5. タイムゾーン変更前のスナップショットにロールバック${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}时间、时区与地区${NC}"
@@ -11290,7 +11300,8 @@ apply_host_dns() {
         ru) confirm_prompt='Применить DNS для системы? Снимок для отката будет сохранён. [Y/N]: '; immutable_prompt='/etc/resolv.conf имеет immutable-флаг. Снять флаг и продолжить? [Y/N]: '; dot_error='Текущий DNS backend не поддерживает DoT; DNS не изменён.' ;;
         fa) confirm_prompt='تنظیم DNS سیستم اعمال شود؟ نسخه بازگشت ذخیره می‌شود. [Y/N]: '; immutable_prompt='پرچم immutable روی /etc/resolv.conf وجود دارد. حذف و ادامه داده شود؟ [Y/N]: '; dot_error='بک‌اند DNS فعلی از DoT پشتیبانی نمی‌کند؛ DNS تغییر نکرد.' ;;
         zh-tw) confirm_prompt='確認修改本機 DNS？可回滾。[Y/N]: '; immutable_prompt='/etc/resolv.conf 帶 immutable 屬性；是否移除後繼續？[Y/N]: '; dot_error='當前 DNS 後端不支援 DoT；未修改 DNS。' ;;
-        ja) confirm_prompt='確認しますか、本機のDNSを変更しますか？元に戻すことができます。[Y/N]:'; immutable_prompt='/etc/resolv.conf 带 immutable 属性；是否移除后继续？[Y/N]: '; dot_error='当前 DNS 后端不支持 DoT；未修改 DNS。' ;;
+        ja)
+            confirm_prompt='このホストの DNS 設定を適用しますか？ロールバック用スナップショットを保存します。[Y/N]: '; immutable_prompt='/etc/resolv.conf に immutable フラグが設定されています。解除して続行しますか？[Y/N]: '; dot_error='現在の DNS バックエンドは DoT をサポートしていません。DNS は変更されていません。' ;;
         *) confirm_prompt='确认修改本机 DNS？可回滚。[Y/N]: '; immutable_prompt='/etc/resolv.conf 带 immutable 属性；是否移除后继续？[Y/N]: '; dot_error='当前 DNS 后端不支持 DoT；未修改 DNS。' ;;
     esac
     # DoT requires systemd-resolved; unsupported backends fail closed.
@@ -11307,7 +11318,8 @@ apply_host_dns() {
                 ru) msg "${YELLOW}Для DoT с проверкой имени сервера требуется systemd-resolved версии 245 или новее; DNS не изменён.${NC}" ;;
                 fa) msg "${YELLOW}برای DoT با احراز هویت نام سرور، systemd-resolved نسخه 245 یا جدیدتر لازم است؛ DNS تغییر نکرد.${NC}" ;;
                 zh-tw) msg "${YELLOW}帶伺服器名稱校驗的 DoT 需要 systemd-resolved 245 或更高版本；未修改 DNS。${NC}" ;;
-                ja) msg "${YELLOW}サーバー名検証付きのDoTはsystemd-resolved 245またはそれ以上のバージョンが必要です；DNSは変更されていません。${NC}" ;;
+                ja)
+                    msg "${YELLOW}サーバー名認証付きの DoT には systemd-resolved 245 以降が必要です。DNS は変更されていません。${NC}" ;;
                 *) msg "${YELLOW}带服务器名称校验的 DoT 需要 systemd-resolved 245 或更高版本；未修改 DNS。${NC}" ;;
             esac
             return 1
@@ -11318,7 +11330,8 @@ apply_host_dns() {
                 ru) msg "${RED}Для DoT требуется корректное имя TLS-аутентификации, например dns.google или cloudflare-dns.com.${NC}" ;;
                 fa) msg "${RED}برای DoT نام معتبر احراز هویت TLS لازم است؛ مانند dns.google یا cloudflare-dns.com.${NC}" ;;
                 zh-tw) msg "${RED}DoT 需要有效的 TLS 認證主機名，例如 dns.google 或 cloudflare-dns.com。${NC}" ;;
-                ja) msg "${RED}DoTは有効なTLS認証ホスト名が必要です。例えば、dns.googleまたはcloudflare-dns.comです。${NC}" ;;
+                ja)
+                    msg "${RED}DoT には有効な TLS 認証ホスト名が必要です（例: dns.google または cloudflare-dns.com）。${NC}" ;;
                 *) msg "${RED}DoT 需要有效的 TLS 认证主机名，例如 dns.google 或 cloudflare-dns.com。${NC}" ;;
             esac
             return 1
@@ -11412,7 +11425,8 @@ EOF_DNS
         ru) msg "${GREEN}Системный DNS обновлён. Для отката используйте меню DNS.${NC}" ;;
         fa) msg "${GREEN}DNS سیستم به‌روزرسانی شد؛ برای بازگشت از منوی DNS استفاده کنید.${NC}" ;;
         zh-tw) msg "${GREEN}本機 DNS 已更新。可用選單回滾。${NC}" ;;
-        ja) msg "${GREEN}このコンピュータのDNSが更新されました。利用可能なメニューでロールバックしてください。${NC}" ;;
+        ja)
+            msg "${GREEN}ホストの DNS を更新しました。ロールバックするには DNS メニューを使用してください。${NC}" ;;
         *) msg "${GREEN}本机 DNS 已更新。可用菜单回滚。${NC}" ;;
     esac
 }
@@ -11451,7 +11465,8 @@ dns_auto_prefer() {
         ru) msg "${CYAN}Проверка DNS: три реальных запроса example.com к каждому серверу${NC}" ;;
         fa) msg "${CYAN}آزمون DNS: سه پرس‌وجوی واقعی example.com برای هر سرور${NC}" ;;
         zh-tw) msg "${CYAN}DNS 自動測速：每個候選對 example.com 發起 3 次真實查詢${NC}" ;;
-        ja) msg "${CYAN}DNS オートスピードテスト：example.com に対して各候補に対して 3 回の本番のクエリを発行${NC}" ;;
+        ja)
+            msg "${CYAN}DNS 優先度テスト: 各候補について example.com への実際のクエリを 3 回実行します${NC}" ;;
         *) msg "${CYAN}DNS 自动测速：每个候选对 example.com 发起 3 次真实查询${NC}" ;;
     esac
     for server in "${candidates[@]}"; do
@@ -11467,7 +11482,8 @@ dns_auto_prefer() {
                 ru) msg "${YELLOW}$server${NC}: успешно $successes/3, медиана ${median} мс" ;;
                 fa) msg "${YELLOW}$server${NC}: موفق $successes/3، میانه ${median} میلی‌ثانیه" ;;
                 zh-tw) msg "${YELLOW}$server${NC}: 成功 $successes/3，中位數 ${median} ms" ;;
-                ja) msg "${黄色}$server${NC}: 成功 ${成功/3}，中央値 ${median} ミリ秒" ;;
+                ja)
+                    msg "${YELLOW}$server${NC}: 成功: $successes/3、中央値: ${median} ms" ;;
                 *) msg "${YELLOW}$server${NC}: 成功 $successes/3，中位数 ${median} ms" ;;
             esac
             if (( successes > best_success )) || { (( successes == best_success )) && awk -v a="$median" -v b="$best_ms" 'BEGIN{exit !(a+0 < b+0)}'; }; then best="$server"; best_ms="$median"; best_success=$successes; fi
@@ -11477,7 +11493,8 @@ dns_auto_prefer() {
                 ru) msg "${YELLOW}$server${NC}: успешно 0/3" ;;
                 fa) msg "${YELLOW}$server${NC}: موفق 0/3" ;;
                 zh-tw) msg "${YELLOW}$server${NC}: 成功 0/3" ;;
-                ja) msg "${YELLOW}$server${NC}: 成功 0/3です" ;;
+                ja)
+                    msg "${YELLOW}$server${NC}: 成功: 0/3" ;;
                 *) msg "${YELLOW}$server${NC}: 成功 0/3" ;;
             esac
         fi
@@ -11488,7 +11505,8 @@ dns_auto_prefer() {
             ru) msg "${RED}Ни один DNS не прошёл проверку доступности; DNS не изменён.${NC}" ;;
             fa) msg "${RED}هیچ DNS از آستانه دسترس‌پذیری عبور نکرد؛ تنظیمات تغییر نکرد.${NC}" ;;
             zh-tw) msg "${RED}沒有候選透過可用性門檻；未修改 DNS。${NC}" ;;
-            ja) msg "${RED}候補が可用性基準を通過していません；DNSは変更されていません。${NC}" ;;
+            ja)
+                msg "${RED}可用性のしきい値を満たす DNS リゾルバーがありません。DNS は変更されていません。${NC}" ;;
             *) msg "${RED}没有候选通过可用性门槛；未修改 DNS。${NC}" ;;
         esac
         pause_return; return 1;
@@ -11517,10 +11535,10 @@ dns_auto_prefer() {
             prompt='將該解析器應用為本機 DNS？[Y/N]: '
             canceled='已取消，未修改本機 DNS。' ;;
         ja)
-            msg "${GREEN}本次テストの最も適切な候補：${best}、成功 ${best_success}/3、中央値 ${best_ms} ミリ秒。${NC}"
-            msg '結果は現在のVPSおよび現在のテスト期間にのみ適用され、全世界で一般的に最適なDNSを代表するものではありません。実際に測定されたIPv4解決器のみが適用されます。'
-            prompt='この解釈器を本機のDNSに適用しますか？[Y/N]:'
-            canceled='取消しました、本機のDNSを変更していませんです。' ;;
+            msg "${GREEN}今回の測定で最良の候補: $best、成功: ${best_success}/3、中央値: ${best_ms} ms。${NC}"
+            msg 'この結果はこの VPS および今回の測定時間帯に限られ、世界共通の最適な DNS を示すものではありません。実測済みの IPv4 リゾルバーのみを適用します。'
+            prompt='このリゾルバーをホストの DNS として適用しますか？[Y/N]: '
+            canceled='キャンセルしました。ホストの DNS は変更されていません。' ;;
         *)
             msg "${GREEN}本次测试最佳候选：${best}，成功 ${best_success}/3，中位数 ${best_ms} ms。${NC}"
             msg '结果仅适用于当前 VPS 和当前测试时段，不代表全球通用最佳 DNS。只应用已实测的 IPv4 解析器。'
@@ -11540,7 +11558,8 @@ dns_install_dnscrypt_proxy() {
         ru) prompt='Установить dnscrypt-proxy из системного репозитория для DoH? [Y/N]: ' ;;
         fa) prompt='برای DoH، dnscrypt-proxy از مخزن سیستم نصب شود؟ [Y/N]: ' ;;
         zh-tw) prompt='是否從當前系統軟體源安裝 dnscrypt-proxy 以提供 DoH？[Y/N]: ' ;;
-        ja) prompt='は、現在のシステムソフトウェアソースからdnscrypt-proxyをインストールしてDoHを提供するかどうか？[Y/N]:' ;;
+        ja)
+            prompt='DoH を提供するため、設定済みの OS パッケージリポジトリから dnscrypt-proxy をインストールしますか？[Y/N]: ' ;;
         *) prompt='是否从当前系统软件源安装 dnscrypt-proxy 以提供 DoH？[Y/N]: ' ;;
     esac
     read -r -p "$prompt" answer
@@ -11565,7 +11584,8 @@ dns_enable_doh() {
             ru) msg "${YELLOW}Для DoH через DNS=127.0.0.1:5353 требуется systemd-resolved версии 247 или новее; DNS не изменён.${NC}" ;;
             fa) msg "${YELLOW}برای DoH از طریق DNS=127.0.0.1:5353، systemd-resolved نسخه 247 یا جدیدتر لازم است؛ DNS تغییر نکرد.${NC}" ;;
             zh-tw) msg "${YELLOW}透過 DNS=127.0.0.1:5353 使用 DoH 需要 systemd-resolved 247 或更高版本；未修改 DNS。${NC}" ;;
-            ja) msg "${YELLOW}DNS=127.0.0.1:5353を使用してDoHを通じて、systemd-resolved 247またはそれ以降のバージョンが必要です；DNSは変更されていません。${NC}" ;;
+            ja)
+                msg "${YELLOW}DNS=127.0.0.1:5353 経由で DoH を使用するには systemd-resolved 247 以降が必要です。DNS は変更されていません。${NC}" ;;
             *) msg "${YELLOW}通过 DNS=127.0.0.1:5353 使用 DoH 需要 systemd-resolved 247 或更高版本；未修改 DNS。${NC}" ;;
         esac
         return 1
@@ -11575,7 +11595,8 @@ dns_enable_doh() {
         ru) prompt='Настроить Cloudflare DoH через локальный прокси 127.0.0.1:5353? [Y/N]: ' ;;
         fa) prompt='Cloudflare DoH از طریق پراکسی محلی 127.0.0.1:5353 تنظیم شود؟ [Y/N]: ' ;;
         zh-tw) prompt='是否配置 Cloudflare DoH，透過本地代理 127.0.0.1:5353 轉發？[Y/N]: ' ;;
-        ja) prompt='はCloudflare DoHを設定していますか、ローカルプロキシ127.0.0.1:5353を通じて転送しますか？[Y/N]:' ;;
+        ja)
+            prompt='127.0.0.1:5353 のローカルプロキシ経由で Cloudflare DoH を設定しますか？[Y/N]: ' ;;
         *) prompt='是否配置 Cloudflare DoH，通过本地代理 127.0.0.1:5353 转发？[Y/N]: ' ;;
     esac
     read -r -p "$prompt" answer
@@ -11720,13 +11741,13 @@ dns_menu() {
             msg "${YELLOW}7. 回滾到上次 DNS 修改前快照${NC}"
             ;;
         ja)
-            msg "${YELLOW}1. カスタムテキストDNS（オプションIPv6）${NC}"
-            msg "${黄色}2. プライバシー DNS DoT（systemd-resolvedのみサポート）${NC}"
+            msg "${YELLOW}1. カスタム平文 DNS（IPv6 は任意）${NC}"
+            msg "${YELLOW}2. プライバシー保護 DNS over TLS（DoT、systemd-resolved のみ対応）${NC}"
             msg "${YELLOW}3. Cloudflare DNS${NC}"
             msg "${YELLOW}4. Quad9 DNS${NC}"
-            msg "${黄色}5. 自動測定優先 DNS（多段遅延/可用性）${NC}"
-            msg "${黄色}6. プライバシー DNS DoH（dnscrypt-proxy ローカルフォワーディング）${NC}"
-            msg "${黄色}7. 前回のDNS変更前のスナップショットに戻します${NC}"
+            msg "${YELLOW}5. DNS リゾルバーの自動ベンチマーク（遅延 / 可用性を複数回測定）${NC}"
+            msg "${YELLOW}6. プライバシー保護 DNS over HTTPS（DoH、dnscrypt-proxy によるローカル転送）${NC}"
+            msg "${YELLOW}7. 前回の DNS 変更前のスナップショットにロールバック${NC}"
             ;;
         *)
             msg "${YELLOW}1. 自定义明文 DNS（可选 IPv6）${NC}"
@@ -11755,7 +11776,8 @@ dns_menu() {
                 ru) dot_ipv4_prompt='IPv4-адрес DNS для DoT: '; dot_ipv6_prompt='IPv6-адрес DNS для DoT (необязательно): '; dot_host_prompt='Имя TLS-аутентификации (например, dns.google): '; dot_host_error='Недопустимое имя TLS для DoT.' ;;
                 fa) dot_ipv4_prompt='نشانی IPv4 برای DNS روی TLS: '; dot_ipv6_prompt='نشانی IPv6 (اختیاری): '; dot_host_prompt='نام TLS (مثلاً dns.google): '; dot_host_error='نام TLS برای DoT نامعتبر است.' ;;
                 zh-tw) dot_ipv4_prompt='DoT 解析器 IPv4 地址：'; dot_ipv6_prompt='DoT 解析器 IPv6 地址（可選）：'; dot_host_prompt='TLS 認證主機名（例如 dns.google）：'; dot_host_error='DoT TLS 主機名無效。' ;;
-                ja) dot_ipv4_prompt='DoT 解析器 IPv4 アドレス：'; dot_ipv6_prompt='DoT 解析器 IPv6 地址（可选）：'; dot_host_prompt='TLS 认证主机名（例如 dns.google）：'; dot_host_error='DoT TLS 主机名无效。' ;;
+                ja)
+                    dot_ipv4_prompt='DoT リゾルバーの IPv4 アドレス: '; dot_ipv6_prompt='DoT リゾルバーの IPv6 アドレス（任意）: '; dot_host_prompt='TLS 認証ホスト名（例: dns.google）: '; dot_host_error='DoT の TLS ホスト名が無効です。' ;;
                 *) dot_ipv4_prompt='DoT 解析器 IPv4 地址：'; dot_ipv6_prompt='DoT 解析器 IPv6 地址（可选）：'; dot_host_prompt='TLS 认证主机名（例如 dns.google）：'; dot_host_error='DoT TLS 主机名无效。' ;;
             esac
             read -r -p "$dot_ipv4_prompt" v4
@@ -11802,10 +11824,10 @@ tune_vps() {
             msg "${GREEN}0. 返回${NC}"
             ;;
         ja)
-            msg "${BOLD}${GREEN}VPS 一括最適化${NC}"
-            msg "${黄色}1. 現在のカーネルがサポートする BBR/FQ とシステム調整（巻き戻し可能）です${NC}"
-            msg "${YELLOW}2. 調整前のスナップショットを復元${NC}"
-            msg "${GREEN}0. 戻ります${NC}"
+            msg "${BOLD}${GREEN}VPS ワンクリック最適化${NC}"
+            msg "${YELLOW}1. 現在のカーネルがサポートする BBR/FQ とシステム最適化を適用（ロールバック可能）${NC}"
+            msg "${YELLOW}2. 最適化前のスナップショットを復元${NC}"
+            msg "${GREEN}0. 戻る${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}VPS 一键优化${NC}"
@@ -11954,9 +11976,9 @@ confirm_remote_script_hash() {
         confirm_yes_no 'Execute this digest-pinned third-party script? [Y/N]: '
             ;;  # TODO: 波斯语
         ja)
-        msg "${YELLOW}[!] 摘要が固定されています，まだです A-Box コントロールできないサードパーティーのコードです。${NC}"
-        msg "${YELLOW}[!] 出典です：${url}${NC}"
-        confirm_yes_no '確認して、既に固定されたサマリーの第三者スクリプトを実行します？[Y/N]: '
+            msg "${YELLOW}[!] ダイジェストを固定していても、これは A-Box の管理外にあるサードパーティーコードです。${NC}"
+            msg "${YELLOW}[!] ソース: ${url}${NC}"
+            confirm_yes_no 'ダイジェストを固定したこのサードパーティースクリプトを実行しますか？[Y/N]: '
             ;;
         zh-tw)
         msg "${YELLOW}[!] 即使摘要已釘扎，仍是 A-Box 無法控制的第三方程式碼。${NC}"
@@ -12754,7 +12776,7 @@ show_sni_preference_records() {
             msg "${YELLOW}[!] No SNI preference record found. Run Toolbox option 3 or 4 first.${NC}"
                 ;;  # TODO: 波斯语
             ja)
-            msg "${YELLOW}[!] 未発見です SNI 優先記録。まず、ツールボックスを実行してください。 3 或 4。${NC}"
+                msg "${YELLOW}[!] SNI の優先設定レコードが見つかりません。先に Toolbox のオプション 3 または 4 を実行してください。${NC}"
                 ;;
             zh-tw)
             msg "${YELLOW}[!] 未發現 SNI 優選記錄。請先執行工具箱 3 或 4。${NC}"
@@ -14771,11 +14793,11 @@ backup_restore_menu() {
         msg "${GREEN}0. Back${NC}"
             ;;  # TODO: 波斯语
         ja)
-        msg "${YELLOW}1. 現在のバックアップ A-Box 設定${NC}"
-        msg "${YELLOW}2. バックアップから復元します${NC}"
-        msg "${YELLOW}3. 密钥を独立したメディアにエクスポートします${NC}"
-        msg "${YELLOW}4. 旧バージョンのバックアップを安全に変換します manifest v3${NC}"
-        msg "${GREEN}0. 戻ります${NC}"
+            msg "${YELLOW}1. 現在の A-Box 設定をバックアップ${NC}"
+            msg "${YELLOW}2. バックアップから復元${NC}"
+            msg "${YELLOW}3. 復旧キーを別の媒体にエクスポート${NC}"
+            msg "${YELLOW}4. 旧バージョンのバックアップを manifest v3 に安全に変換${NC}"
+            msg "${GREEN}0. 戻る${NC}"
             ;;
         zh-tw)
         msg "${YELLOW}1. 備份當前 A-Box 配置${NC}"
@@ -15142,7 +15164,8 @@ run_mirrored_test_script() {
                 ru) msg "${RED}[-] Проверенное зеркало A-Box недоступно, а непроверенный upstream запрещён.${NC}" ;;
                 fa) msg "${RED}[-] آینه تأییدشده در دسترس نیست و بازگشت تأییدنشده غیرفعال است.${NC}" ;;
                 zh-tw) msg "${RED}[-] A-Box 校驗映象不可用，且未校驗的上游回退已被禁用（如需允許請設定 ABOX_ALLOW_UNVERIFIED_UPSTREAM=1）。${NC}" ;;
-                ja) msg "${RED}[-] A-Boxのイメージ検証が利用不可能で、未検証のアップストリームリバートが無効になっています（許可する場合は ABOX_ALLOW_UNVERIFIED_UPSTREAM=1 として設定してください）。${NC}" ;;
+                ja)
+                    msg "${RED}[-] A-Box の検証済みミラーを利用できず、未検証の upstream フォールバックは無効です（許可するには ABOX_ALLOW_UNVERIFIED_UPSTREAM=1 を設定してください）。${NC}" ;;
                 *) msg "${RED}[-] A-Box 校验镜像不可用，且未校验的上游回退已被禁用（如需允许请设置 ABOX_ALLOW_UNVERIFIED_UPSTREAM=1）。${NC}" ;;
             esac
             rm -rf -- "$work"
@@ -15153,7 +15176,8 @@ run_mirrored_test_script() {
             ru) msg "${YELLOW}[!] Проверенный зеркальный файл A-Box недоступен; переходим к upstream (БЕЗ ПРОВЕРКИ).${NC}" ;;
             fa) msg "${YELLOW}[!] نسخه تأییدشده A-Box در دسترس نیست؛ بازگشت به upstream (بدون تأیید).${NC}" ;;
             zh-tw) msg "${YELLOW}[!] A-Box 校驗映象不可用或校驗失敗，回退到上游（未校驗，無 SHA 釘扎）。${NC}" ;;
-            ja) msg "${黄色}[！] A-Boxのイメージの検証が利用不可能または検証失敗、上位流に戻します（未検証、SHAの釘扎なし）。${NC}" ;;
+            ja)
+                msg "${YELLOW}[!] A-Box の検証済みミラーが利用できないか、チェックサムが一致しません。upstream にフォールバックします（未検証・SHA ピン留めなし）。${NC}" ;;
             *) msg "${YELLOW}[!] A-Box 校验镜像不可用或校验失败，回退到上游（未校验，无 SHA 钉扎）。${NC}" ;;
         esac
         if curl -fLsS --retry 1 --connect-timeout 10 --max-time 180 "$upstream_url" -o "$upstream" && validate_test_script "$upstream"; then
@@ -15166,7 +15190,8 @@ run_mirrored_test_script() {
                 ru) msg "${RED}Основной и резервный источники недоступны; скрипт не запускался.${NC}" ;;
                 fa) msg "${RED}منبع اصلی و پشتیبان در دسترس نیستند؛ اسکریپت اجرا نشد.${NC}" ;;
                 zh-tw) msg "${RED}上游與 A-Box 災備源均不可用；未執行指令碼。${NC}" ;;
-                ja) msg "${RED}アップストリームとA-ボックスの災害復旧元が利用不可能です；スクリプトを実行していません${NC}" ;;
+                ja)
+                    msg "${RED}upstream と A-Box のリカバリーソースを利用できません。スクリプトは実行されませんでした。${NC}" ;;
                 *) msg "${RED}上游与 A-Box 灾备源均不可用；未执行脚本。${NC}" ;;
             esac
             return 1
@@ -15178,7 +15203,8 @@ run_mirrored_test_script() {
         ru) msg "${CYAN}Тест: $label${NC}"; msg "${CYAN}Источник: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='Запустить сторонний тестовый скрипт? Он может обращаться к внешним узлам и создавать сетевой трафик. [Y/N]: ' ;;
         fa) msg "${CYAN}ابزار آزمون: $label${NC}"; msg "${CYAN}منبع: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='اسکریپت آزمون شخص ثالث اجرا شود؟ ممکن است به مقصدهای بیرونی متصل شود و ترافیک ایجاد کند. [Y/N]: ' ;;
         zh-tw) msg "${CYAN}測試工具: $label${NC}"; msg "${CYAN}來源: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='即將執行第三方測試指令碼。它可能訪問外部檢測端點併產生網路流量；確認執行？[Y/N]: ' ;;
-        ja) msg "${CYAN}测试工具: $label${NC}"; msg "${CYAN}来源: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='即座に第三者テストスクリプトを実行します。外部の検出エンドポイントにアクセスし、ネットワークトラフィックを生成する可能性があります；実行を確認しますか？[Y/N]:' ;;
+        ja)
+            msg "${CYAN}テストツール: $label${NC}"; msg "${CYAN}ソース: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='このサードパーティー製テストスクリプトを実行しますか？外部エンドポイントに接続し、ネットワークトラフィックを発生させる可能性があります。[Y/N]: ' ;;
         *) msg "${CYAN}测试工具: $label${NC}"; msg "${CYAN}来源: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='即将执行第三方测试脚本。它可能访问外部检测端点并产生网络流量；确认执行？[Y/N]: ' ;;
     esac
     if [[ "$selected" == "$mirror" ]]; then cat "$manifest" 2>/dev/null | head -12; fi
@@ -15253,9 +15279,9 @@ wallos_print_host_info() {
             msg "系統：$os_name ($os_version) | 架構：$arch | CPU 核心：$cores | 記憶體：${mem_gb} GiB | 可用磁碟：${disk_gb} GiB"
             msg "IPv4：${ipv4:-不可用} | IPv6：${ipv6:-不可用}" ;;
         ja)
-            msg "${CYAN}Wallos ホスト検出${NC}"
-            msg "システム：$os_name（$os_version）| 架构：$arch| CPU 核心数：$cores| メモリ：${mem_gb} GiB| 利用可能なディスク：${disk_gb} GiB"
-            msg "IPv4：${ipv4:-不可用} | IPv6：${ipv6:-不可用} IPv4：${ipv4:-利用不能} | IPv6：${ipv6:-利用不能}" ;;
+            msg "${CYAN}Wallos ホスト情報${NC}"
+            msg "OS: $os_name（$os_version）| アーキテクチャ: $arch | CPU コア数: $cores | RAM: ${mem_gb} GiB | 空きディスク容量: ${disk_gb} GiB"
+            msg "IPv4: ${ipv4:-利用不可} | IPv6: ${ipv6:-利用不可}" ;;
         *)
             msg "${CYAN}Wallos 主机检测${NC}"
             msg "系统：$os_name ($os_version) | 架构：$arch | CPU 核心：$cores | 内存：${mem_gb} GiB | 可用磁盘：${disk_gb} GiB"
@@ -15288,7 +15314,8 @@ wallos_install_runtime() {
             ru) runtime_error='Docker CLI установлен, но демон недоступен. A-Box не устанавливал другой пакет Docker во избежание конфликтов; исправьте существующую службу и повторите.' ;;
             fa) runtime_error='Docker CLI موجود است اما daemon در دسترس نیست. برای جلوگیری از تداخل، A-Box بسته Docker دیگری نصب نکرد؛ سرویس موجود را اصلاح و دوباره تلاش کنید.' ;;
             zh-tw) runtime_error='已檢測到 Docker 命令，但守護程序不可用。為避免覆蓋/衝突，A-Box 未安裝第二套 Docker；請先修復現有 Docker 服務後重試。' ;;
-            ja) runtime_error='既にDockerコマンドが検出されましたが、デーモンプロセスが利用できません。上書き/競合を避けるため、A-BoxはDockerの二番目のセットをインストールしていません；既存のDockerサービスを修正してからもう一度試してください。' ;;
+            ja)
+                runtime_error='Docker CLI は検出されましたが、デーモンは利用できません。競合や上書きを避けるため、A-Box は別の Docker パッケージをインストールしませんでした。既存の Docker サービスを修復してから再試行してください。' ;;
             *) runtime_error='已检测到 Docker 命令，但守护进程不可用。为避免覆盖/冲突，A-Box 未安装第二套 Docker；请先修复现有 Docker 服务后重试。' ;;
         esac
         msg "${RED}${runtime_error}${NC}"
@@ -15299,7 +15326,8 @@ wallos_install_runtime() {
         ru) prompt='Для Wallos требуется Docker. Установить и запустить его из репозитория ОС? [Y/N]: ' ;;
         fa) prompt='Wallos به Docker نیاز دارد. Docker از مخزن سیستم نصب و اجرا شود؟ [Y/N]: ' ;;
         zh-tw) prompt='Wallos 需要 Docker。是否透過當前系統軟體源安裝並啟動 Docker？[Y/N]: ' ;;
-        ja) prompt='ウォロスにはDockerが必要です。現在のシステムソフトウェアソースからインストールし、起動しますか？[Y/N]:' ;;
+        ja)
+            prompt='Docker が必要です。OS のパッケージリポジトリからインストールして起動しますか？[Y/N]: ' ;;
         *) prompt='Wallos 需要 Docker。是否通过当前系统软件源安装并启动 Docker？[Y/N]: ' ;;
     esac
     read -r -p "$prompt" answer
@@ -15337,7 +15365,8 @@ wallos_install_runtime() {
                     ru) conflict_prompt="Удалить перечисленные конфликтующие пакеты runtime перед установкой Docker CE? Это может повлиять на существующие контейнеры. [Y/N]: " ;;
                     fa) conflict_prompt="بسته‌های متعارض ذکرشده پیش از نصب Docker CE حذف شوند؟ ممکن است بر کانتینرهای فعلی اثر بگذارد. [Y/N]: " ;;
                     zh-tw) conflict_prompt="是否先移除上述衝突執行時包再安裝 Docker CE？這可能影響現有容器。[Y/N]: " ;;
-                    ja) conflict_prompt="は、上記の競合する実行時パッケージを先に削除して Docker CE をインストールしますか？これにより、現在のコンテナに影響を与える可能性があります。[Y/N]:" ;;
+                    ja)
+                        conflict_prompt="競合するランタイムパッケージを先に削除してから Docker CE をインストールしますか？既存のコンテナに影響する可能性があります。[Y/N]: " ;;
                     *) conflict_prompt="是否先移除上述冲突运行时包再安装 Docker CE？这可能影响现有容器。[Y/N]: " ;;
                 esac
                 read -r -p "$conflict_prompt" answer || return 1
@@ -15355,7 +15384,8 @@ wallos_install_runtime() {
                 ru) msg "${RED}ОС $os_id не поддерживается автоматической установкой Docker; системные изменения не выполнены.${NC}" ;;
                 fa) msg "${RED}سیستم‌عامل $os_id برای نصب خودکار Docker پشتیبانی نمی‌شود؛ تغییری اعمال نشد.${NC}" ;;
                 zh-tw) msg "${RED}當前系統 $os_id 暫不支援自動安裝 Docker，未修改系統。${NC}" ;;
-                ja) msg "${RED}現在のシステム${NC} $os_id は自動インストールの Docker をサポートしていません。システムは変更されていません。" ;;
+                ja)
+                    msg "${RED}現在のシステム $os_id では Docker の自動インストールはサポートされていません。システムは変更されていません。${NC}" ;;
                 *) msg "${RED}当前系统 $os_id 暂不支持自动安装 Docker，未修改系统。${NC}" ;;
             esac
             return 1
@@ -15710,7 +15740,8 @@ wallos_pull_or_restore_image() {
         ru) msg "${YELLOW}[!] Не удалось получить стабильную версию или образ; пробуем резервный Release Wallos от A-Box.${NC}" ;;
         fa) msg "${YELLOW}[!] دریافت نسخه پایدار یا تصویر ناموفق بود؛ نسخه بازیابی Wallos از A-Box بررسی می‌شود.${NC}" ;;
         zh-tw) msg "${YELLOW}[!] 官方穩定版資訊或映象拉取失敗，正在嘗試 A-Box Wallos 災備 Release。${NC}" ;;
-        ja) msg "${黄色}[！] 公式安定版情報またはイメージの引き出しに失敗しました、A-Box Wallos 災害復旧リリースを試行しています${NC}" ;;
+        ja)
+            msg "${YELLOW}[!] 公式安定版の情報取得またはイメージの取得に失敗しました。A-Box Wallos のリカバリー Release を試します。${NC}" ;;
         *) msg "${YELLOW}[!] 官方稳定版信息或镜像拉取失败，正在尝试 A-Box Wallos 灾备 Release。${NC}" ;;
     esac
     work=$(umask 077; mktemp -d /tmp/A-Box-Wallos.XXXXXX) || return 1
@@ -16118,7 +16149,8 @@ wallos_public_urls() {
             ru) msg "${GREEN}Локальный адрес Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Для доступа извне используйте HTTPS reverse proxy или SSH-туннель.${NC}" ;;
             fa) msg "${GREEN}نشانی محلی Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.${NC}" ;;
             zh-tw) msg "${GREEN}Wallos 本機地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}遠端訪問請使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端點。${NC}" ;;
-            ja) msg "${GREEN}Wallos 本機アドレス：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}リモートアクセスはHTTPSリバースプロキシまたはSSHトンネルを使用してください。HTTPエンドポイントを直接公開しないでください。${NC}" ;;
+            ja)
+                msg "${GREEN}Wallos のローカル URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。この HTTP エンドポイントを直接公開しないでください。${NC}" ;;
             *) msg "${GREEN}Wallos 本机地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}远程访问请使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端点。${NC}" ;;
         esac
         return 0
@@ -16143,9 +16175,9 @@ wallos_public_urls() {
             [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 網址：http://[$ipv6]:$port/${NC}"
             [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}無法檢測公網 IP，請使用 VPS 公網地址或域名訪問 TCP ${port}。${NC}" ;;
         ja)
-            [[ -z "$ipv4" ]] || msg "${GREEN}Wallos URL：http://$ipv4:$port/${NC}"
-            [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 ウェブサイト：http://[$ipv6]:$port/${NC}"
-            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}公網IPを検出できません、VPSの公網アドレスまたはドメインを使用してTCP ${port} にアクセスしてください${NC}" ;;
+            [[ -z "$ipv4" ]] || msg "${GREEN}Wallos URL: http://$ipv4:$port/${NC}"
+            [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 URL: http://[$ipv6]:$port/${NC}"
+            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}パブリック IP を検出できません。VPS のパブリック IP アドレスまたはドメインを使用して TCP ${port} にアクセスしてください。${NC}" ;;
         *)
             [[ -z "$ipv4" ]] || msg "${GREEN}Wallos 网址：http://$ipv4:$port/${NC}"
             [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 网址：http://[$ipv6]:$port/${NC}"
@@ -16250,8 +16282,8 @@ wallos_install_or_update() {
             if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='警告：Wallos 將以明文 HTTP 繫結所有 IPv4 網絡卡。只有已配置防火牆/HTTPS 反向代理時才繼續。[Y/N]: '
             else confirm_prompt='Wallos 儲存個人財務資料，預設僅繫結 127.0.0.1；遠端訪問請配置 HTTPS 反向代理或 SSH 隧道。是否繼續？[Y/N]: '; fi ;;
         ja)
-            if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='警告：WallosはすべてのIPv4ネットワークインターフェースに明文HTTPでバインドします。ファイアウォール/HTTPSリバースプロキシが設定されている場合のみ続行します。[Y/N]:'
-            else confirm_prompt='ウォロスは個人の財務データを保存しており、デフォルトでは127.0.0.1にのみバインドされています。リモートアクセスの場合、HTTPSリバースプロキシまたはSSHトンネルを設定してください。続行しますか？[Y/N]:'; fi ;;
+            if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='警告: Wallos はすべての IPv4 インターフェースで平文 HTTP を公開します。信頼できるファイアウォールまたは HTTPS リバースプロキシの背後でのみ続行してください。[Y/N]: '
+            else confirm_prompt='Wallos は個人のサブスクリプション / 財務データを保存します。デフォルトでは 127.0.0.1 のみにバインドされます。リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを設定してください。続行しますか？[Y/N]: '; fi ;;
         *)
             if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='警告：Wallos 将以明文 HTTP 绑定所有 IPv4 网卡。只有已配置防火墙/HTTPS 反向代理时才继续。[Y/N]: '
             else confirm_prompt='Wallos 存储个人财务数据，默认仅绑定 127.0.0.1；远程访问请配置 HTTPS 反向代理或 SSH 隧道。是否继续？[Y/N]: '; fi ;;
@@ -16400,7 +16432,8 @@ wallos_backup_now() {
         ru) msg "${GREEN}Резервная копия данных Wallos сохранена: $backup${NC}" ;;
         fa) msg "${GREEN}نسخه پشتیبان داده‌های Wallos ذخیره شد: $backup${NC}" ;;
         zh-tw) msg "${GREEN}Wallos 資料備份已儲存：$backup${NC}" ;;
-        ja) msg "${GREEN}Wallos データバックアップが保存されました：$backup${NC}" ;;
+        ja)
+            msg "${GREEN}Wallos のデータバックアップを保存しました: $backup${NC}" ;;
         *) msg "${GREEN}Wallos 数据备份已保存：$backup${NC}" ;;
     esac
 }
@@ -16457,7 +16490,8 @@ _wallos_manual_rollback() {
         ru) prompt="Выберите версию для отката [1-${#versions[@]}] (Enter=1): " ;;
         fa) prompt="نسخه برای بازگشت انتخاب کنید [1-${#versions[@]}] (Enter=1): " ;;
         zh-tw) prompt="選擇要回滾的版本 [1-${#versions[@]}]（回車=1）： " ;;
-        ja) prompt="バージョンをリバートする選択 [1-${#versions[@]}]（Enter=1）：" ;;
+        ja)
+            prompt="ロールバックするバージョンを選択してください [1-${#versions[@]}]（Enter=1）: " ;;
         *) prompt="选择要回滚的版本 [1-${#versions[@]}]（回车=1）： " ;;
     esac
     read -r -p "$prompt" sel
@@ -16508,13 +16542,13 @@ wallos_menu() {
             msg "${GREEN}0. 返回${NC}"
             ;;
         ja)
-            msg "${BOLD}${GREEN}ウォロス サブスクリプション マネジメント${NC}"
-            msg "${YELLOW}1. 一括インストール / アップグレード（アップストリーム優先、A-Box 災害復旧リバック）${NC}"
-            msg "${黄色}2. 状態を確認し、アクセスURLを表示${NC}"
-            msg "${黄色}3. データベースのバックアップと画像のアップロード${NC}"
-            msg "${黄色}4. コンテナを削除しますがデータは保持します${NC}"
-            msg "${黄色}5. 過去のバージョンに戻します${NC}"
-            msg "${GREEN}0. 返${NC}"
+            msg "${BOLD}${GREEN}Wallos サブスクリプション管理${NC}"
+            msg "${YELLOW}1. ワンクリックでインストール / アップグレード（upstream を優先し、A-Box Recovery にフォールバック）${NC}"
+            msg "${YELLOW}2. 状態とアクセス URL を表示${NC}"
+            msg "${YELLOW}3. データベースとアップロード画像をバックアップ${NC}"
+            msg "${YELLOW}4. データを保持してコンテナを削除${NC}"
+            msg "${YELLOW}5. 以前のバージョンにロールバック${NC}"
+            msg "${GREEN}0. 戻る${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}Wallos 订阅管理${NC}"
@@ -16534,7 +16568,8 @@ wallos_menu() {
         ru) prompt_confirm='Wallos хранит личные данные; HTTP не защищён TLS. Продолжить? [Y/N]: '; prompt_remove="Удалить контейнер Wallos, сохранив данные в $WALLOS_DIR? [Y/N]: " ;;
         fa) prompt_confirm='Wallos داده‌های شخصی را نگه می‌دارد؛ HTTP فاقد TLS است. ادامه؟ [Y/N]: '; prompt_remove="کانتینر Wallos حذف شود و داده‌ها در $WALLOS_DIR بمانند؟ [Y/N]: " ;;
         zh-tw) prompt_confirm='Wallos 儲存個人訂閱/財務資料，HTTP 無 TLS 加密。繼續？[Y/N]: '; prompt_remove="確認刪除 Wallos 容器並保留 $WALLOS_DIR 下的資料？[Y/N]: " ;;
-        ja) prompt_confirm='ウォロスは個人のサブスクリプション/財務データを保存します、HTTPはTLS暗号化なしです。続行しますか？[Y/N]:'; prompt_remove="确认删除 Wallos 容器并保留 $WALLOS_DIR 下的数据？[Y/N]: " ;;
+        ja)
+            prompt_confirm='Wallos は個人のサブスクリプション / 財務データを保存します。HTTP には TLS 暗号化がありません。続行しますか？[Y/N]: '; prompt_remove="Wallos コンテナを削除し、$WALLOS_DIR 内のデータを保持しますか？[Y/N]: " ;;
         *) prompt_confirm='Wallos 保存个人订阅/财务数据，HTTP 无 TLS 加密。继续？[Y/N]: '; prompt_remove="确认删除 Wallos 容器并保留 $WALLOS_DIR 下的数据？[Y/N]: " ;;
     esac
     case "$c" in
@@ -16550,7 +16585,8 @@ wallos_menu() {
                         ru) msg "${GREEN}Контейнер удалён. Данные и резервные копии сохранены.${NC}" ;;
                         fa) msg "${GREEN}کانتینر حذف شد؛ داده‌ها و پشتیبان‌ها حفظ شدند.${NC}" ;;
                         zh-tw) msg "${GREEN}容器已刪除，資料和備份已保留。${NC}" ;;
-                        ja) msg "${GREEN}コンテナが削除されました、データおよびバックアップは保持されています。${NC}" ;;
+                        ja)
+                            msg "${GREEN}コンテナを削除しました。データとバックアップは保持されています。${NC}" ;;
                         *) msg "${GREEN}容器已删除，数据和备份已保留。${NC}" ;;
                     esac
                 else
@@ -16651,22 +16687,17 @@ vps_benchmark_menu() {
             msg "${GREEN}0. 返回主選單${NC}"
             ;;
         ja)
-            msg "${BOLD}${GREEN}総合ツールボックス${NC}"
-            msg "${YELLOW}1. 本機設定およびダウンロード速度測定${NC}"
-            msg "${黄色}2. IP品質、ストリーミング解除とリターンテスト${NC}"
-            msg "${黄色}3. ローカルSNI優先${NC}"
-            msg "${YELLOW}4. 微型ホストローカル SNI オプション${NC}"
-            msg "${黄色}5. Cloudflare WARP 管理です"
-            msg "${黄色}6. 2 GBのSwapを作成${NC}"
-            msg "${黄色}7. 設定バックアップ / 恢復${NC}"
-            msg "${黄色}8. 脱感診断パックのエクスポート${NC}"
-            msg "${黄色}9. 読み取り専用プレックエック${NC}"
-            msg "${黄色}10. SNI 优选記録${NC}"
-            msg "${YELLOW}11. 多 UUID / サブスクリプションエクスポート${NC}"
-            msg "${黄色}12. VPS 一括最適化（手動で BBR/FQ を有効にするのみ；戻すことができます；プロトコルのインストール後に自動的に実行されません）${NC}"
-            msg "${黄色}13. IP / DNS / 時区 / Locale / ダウンロードソース設定${NC}"
-            msg "${黄色}14. Wallos インストール / アップグレード / バックアップ${NC}"
-            msg "${GREEN}0. メインメニューに戻る${NC}"
+            msg "${BOLD}${GREEN}ツールボックス${NC}"
+            msg "${YELLOW}1. システムのベンチマークとダウンロード速度測定${NC}"
+            msg "${YELLOW}2. IP 品質、ストリーミングサービスの利用可否、経路テスト${NC}"
+            msg "${YELLOW}3. ローカル SNI の最適化${NC}"
+            msg "${YELLOW}4. 小型ホストのローカル SNI 最適化${NC}"
+            msg "${YELLOW}5. Cloudflare WARP の管理${NC}"
+            msg "${YELLOW}6. 2 GB の Swap を作成${NC}"
+            msg "${YELLOW}7. 設定のバックアップ / 復元${NC}"
+            msg "${YELLOW}8. 匿名化した診断パッケージをエクスポート${NC}"
+            msg "${YELLOW}9. 読み取り専用の事前チェック${NC}"
+            msg "${YELLOW}10. SNI 最適化の記録${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}综合工具箱${NC}"
@@ -17346,35 +17377,35 @@ EOF_USAGE
             ;;
         ja)
             cat <<'EOF_USAGE'
-【部署类】
+【デプロイ】
 1  Xray VLESS Vision REALITY
 2  Xray VLESS XHTTP REALITY
 3  Xray Shadowsocks-2022
-4  官方 Hysteria 2
-5  Xray + 官方 Hysteria 2 组合部署
+4  公式 Hysteria 2
+5  Xray + 公式 Hysteria 2 の組み合わせデプロイ
 6  sing-box VLESS Vision REALITY
 7  sing-box Shadowsocks-2022
 8  sing-box VLESS + Shadowsocks-2022
 9  sing-box Hysteria 2
-10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP）
+10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（XHTTP を含まない）
 
-【运维类】
-11 综合工具箱：测速、IP/回程测试、SNI、WARP、Swap、备份恢复、脱敏诊断、预检查、多 UUID 导出、BBR/FQ 应用与回滚、主机设置和 Wallos。
-12 显示节点参数与客户端配置。
-13 当前说明书。
-14 脚本 OTA、Xray Geo 数据与核心单独升级。
-15 全部/部分卸载。
-16 删除节点并重新初始化环境。
-17 vnStat 月流量限制；打开后显示截至当前用量。
-18 SS-2022 IP/CIDR 白名单。
-19 语言设置：中文、English、Русский、فارسی。
-20 一键 Reality；也可输入快捷键 `r`。
+【運用】
+11 ツールボックス：ベンチマーク、IP / 経路テスト、SNI、WARP、Swap、バックアップ / 復元、匿名化診断、事前チェック、複数 UUID のエクスポート、BBR/FQ の適用とロールバック、ホスト設定、Wallos。
+12 ノードのパラメーターとクライアント設定を表示します。
+13 現在の説明書を表示します。
+14 A-Box スクリプト OTA、Xray Geo データ、コアの個別アップグレード。
+15 すべて、または一部をアンインストールします。
+16 ノードを削除し、環境を再初期化します。
+17 vnStat 月間トラフィック制限；メニューを開くと現在の使用量が表示されます。
+18 SS-2022 IP/CIDR ホワイトリスト。
+19 言語選択：中国語、English、Русский、فارسی。
+20 ワンクリック Reality；ショートカット `r` も使用できます。
 
-协议安装后不会自动应用 BBR/FQ。主机设置包含 DNS 真实测速、受支持后端的 DoT/DoH 和回滚。时区列表来自本机已安装时区数据库，支持编号、分页和搜索；Locale 与 NTP 分开设置。
+プロトコルのデプロイ後、BBR/FQ は自動的には適用されません。ホスト設定には DNS 実測、サポートされているバックエンドの DoT/DoH、ロールバックが含まれます。タイムゾーン一覧はホストにインストール済みのタイムゾーンデータベースに基づき、番号指定、ページング、検索に対応しています；Locale と NTP は別々に設定します。
 
-Wallos 为可选应用。正常情况下优先获取上游最新正式稳定版及匹配 Docker 镜像；上游失败时才使用 A-Box `wallos-mirror` 灾备 Release。数据独立持久化，升级前备份，健康检查失败时尝试回滚。初始 HTTP URL 没有 TLS 加密，录入个人数据前请配置 HTTPS。
+Wallos はオプションのアプリです。通常は upstream の最新の正式安定版と対応する Docker イメージを優先的に取得します；upstream が失敗した場合のみ A-Box `wallos-mirror` の災害復旧用 Release を使用します。データは独立して永続化され、アップグレード前にバックアップし、ヘルスチェック失敗時はロールバックを試みます。初期 HTTP URL には TLS 暗号化がないため、個人情報を入力する前に HTTPS を設定してください。
 
-测速脚本优先从上游下载，显示 SHA256 并要求确认；上游不可用时，仅在 SHA256 校验通过后使用 A-Box `test-tools-mirror`。两处来源都失败则不执行。
+テストスクリプトは upstream からのダウンロードを優先し、SHA256 を表示して確認を求めます；upstream が利用できない場合、SHA256 検証に合格した後にのみ A-Box `test-tools-mirror` を使用します。両方のソースが失敗した場合は実行しません。
 EOF_USAGE
             ;;
         *)
@@ -17465,9 +17496,9 @@ confirm_ota_script_hash() {
         read -r -p 'Install this downloaded A-Box script? [Y/N]: ' answer
             ;;  # TODO: 波斯语
         ja)
-        msg "${YELLOW}[!] OTA 既に固定されました Git commit。文法/指紋確認と SHA256 表示はまだ、パブリッシャーの暗号学的署名ではありませんです。${NC}"
-        msg "${YELLOW}[!] 元ネタ：${url}${NC}"
-        read -r -p 'は、このダウンロードされたものをインストールしますか？ A-Box スクリプト？[Y/N]: ' answer
+            msg "${YELLOW}[!] OTA のソースは変更不可能な Git commit に固定されています。構文 / フィンガープリントの確認と SHA256 の表示は、リリース発行者による暗号学的署名の代わりにはなりません。${NC}"
+            msg "${YELLOW}[!] ソース: ${url}${NC}"
+            read -r -p 'ダウンロードした A-Box スクリプトをインストールしますか？[Y/N]: ' answer
             ;;
         zh-tw)
         msg "${YELLOW}[!] OTA 已固定到不可變 Git commit。語法/指紋檢查與 SHA256 展示仍不是釋出者密碼學簽名。${NC}"
@@ -18303,15 +18334,15 @@ ota_and_geo_menu() {
         read -r -p 'Select [0-5]: ' ota_choice
             ;;  # TODO: 波斯语
         ja)
-        msg "${BOLD}${GREEN}スクリプトです OTA、Xray Geo コアの無損アップグレードとします${NC}"
-        msg "${CYAN}======================================================================${NC}"
-        msg "${YELLOW}1. アップグレードします A-Box コアスクリプト${NC}"
-        msg "${YELLOW}2. 即座に引き出し更新します Xray Loyalsoldier Geo リソース${NC}"
-        msg "${YELLOW}3. 現在インストールされているプロトコルコアのみをアップグレードします，ノードパラメータをリセットしないですか${NC}"
-        msg "${YELLOW}4. 表示を確認してください [U3]${NC}"
-        msg "${YELLOW}5. 危険です：試用アップストリーム latest コア（自動的にロールバックします）[U3]${NC}"
-        msg "${GREEN}0. メインメニューに戻る${NC}"
-        read -r -p 'お選びください [0-5]: ' ota_choice
+            msg "${BOLD}${GREEN}スクリプト OTA、Xray Geo データ、コアのみのアップグレード${NC}"
+            msg "${CYAN}======================================================================${NC}"
+            msg "${YELLOW}1. A-Box スクリプトをアップグレード${NC}"
+            msg "${YELLOW}2. Xray Loyalsoldier Geo データを直ちに取得して更新${NC}"
+            msg "${YELLOW}3. インストール済みのプロトコルコアのみをアップグレード（ノードパラメーターはリセットしません）${NC}"
+            msg "${YELLOW}4. 互換性のある固定バージョンの説明を表示 [U3]${NC}"
+            msg "${YELLOW}5. 危険: upstream の latest コアを試します（失敗時は自動ロールバック）[U3]${NC}"
+            msg "${GREEN}0. メインメニューに戻る${NC}"
+            read -r -p '0～5 を選択してください: ' ota_choice
             ;;
         zh-tw)
         msg "${BOLD}${GREEN}指令碼 OTA、Xray Geo 與核心無損升級${NC}"
@@ -20619,17 +20650,17 @@ main_loop() {
                 msg "${GREEN} 0.${NC} 退出指令碼"
                 ;;
             ja)
-                msg "ゲートウェイ/Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | 核心/Core: $STATUS_STR $CUR_MODE | モード: ${YELLOW}$(read_fast_mode_label)${NC}"
+                msg "ゲートウェイ: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | コア: $STATUS_STR $CUR_MODE | モード: ${YELLOW}$(read_fast_mode_label)${NC}"
                 msg "${RED}======================================================================${NC}"
-                msg "${RED}${BOLD}                    >>> 20  一 キー REALITY <<<                       ${NC}"
+                msg "${RED}${BOLD}                    >>> 20  ワンクリック REALITY <<<                       ${NC}"
                 msg "${RED}======================================================================${NC}"
-                msg "${YELLOW}                 ビジョンデフォルトSNI · 最少質問 · 入力r同等             ${NC}"
+                msg "${YELLOW}                 Vision デフォルト SNI · 最少質問 · 入力 r 同等             ${NC}"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${YELLOW}[ Xray-core 部署します ]${NC}                    ${YELLOW}[ Sing-box 部署します ]${NC}"
                 msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
                 msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
-                msg "${GREEN}4.${NC} ヒステリア2（公式）                  ${GREEN}9.${NC} ヒステリア2（シングボックス）"
+                msg "${GREEN}4.${NC} Hysteria 2（公式）                  ${GREEN}9.${NC} Hysteria 2（sing-box）"
                 msg "${GREEN}5.${NC} 全プロトコル統合（Xray+Hy2）${GREEN}10.${NC} 全プロトコル統合（Sing-box）"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${GREEN}11.${NC} 総合ツールボックスです"
@@ -20641,7 +20672,7 @@ main_loop() {
                 msg "${GREEN}17.${NC} 毎月のトラフィック制限管理"
                 msg "${GREEN}18.${NC} SS-2022 ホワイトリスト IP マネジメント"
                 msg "${GREEN}19.${NC} 言語設定 / Language"
-                msg "${RED}${BOLD}20. 一押し Reality [r]${NC}"
+                msg "${RED}${BOLD}20. ワンクリック Reality [r]${NC}"
                 msg "${GREEN} 0.${NC} スクリプトを終了します"
                 ;;
             *)

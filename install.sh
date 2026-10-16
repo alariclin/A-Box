@@ -14708,6 +14708,18 @@ run_mirrored_test_script() {
     fi
     if [[ -z "$selected" ]]; then
         rm -f -- "$mirror" "$sums" "$manifest"
+        # P2-03: upstream fallback has no pre-pinned SHA; default-deny unless
+        # the operator explicitly opts in via ABOX_ALLOW_UNVERIFIED_UPSTREAM=1.
+        if [[ "${ABOX_ALLOW_UNVERIFIED_UPSTREAM:-0}" != '1' ]]; then
+            case "${ABOX_LANG:-zh}" in
+                en) msg "${RED}[-] A-Box verified mirror unavailable and unverified upstream fallback is disabled (set ABOX_ALLOW_UNVERIFIED_UPSTREAM=1 to allow).${NC}" ;;
+                ru) msg "${RED}[-] Проверенное зеркало A-Box недоступно, а непроверенный upstream запрещён.${NC}" ;;
+                fa) msg "${RED}[-] آینه تأییدشده در دسترس نیست و بازگشت تأییدنشده غیرفعال است.${NC}" ;;
+                *) msg "${RED}[-] A-Box 校验镜像不可用，且未校验的上游回退已被禁用（如需允许请设置 ABOX_ALLOW_UNVERIFIED_UPSTREAM=1）。${NC}" ;;
+            esac
+            rm -rf -- "$work"
+            return 1
+        fi
         case "${ABOX_LANG:-zh}" in
             en) msg "${YELLOW}[!] A-Box verified mirror unavailable or checksum mismatch; falling back to upstream (UNVERIFIED - no SHA pin).${NC}" ;;
             ru) msg "${YELLOW}[!] Проверенный зеркальный файл A-Box недоступен; переходим к upstream (БЕЗ ПРОВЕРКИ).${NC}" ;;

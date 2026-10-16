@@ -23,7 +23,7 @@ A-Box 是一個獨立 Bash 腳本，用於部署和維護 Linux 網路閘道服�
 ### GitHub 官方源
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f2c5e0c8696011f9a48c58f727248356646e5d34/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9f8dea4c3765be763e29c00f964d17f34ae177d3/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 審閱下載的腳本後，再單獨執行：
 sudo bash A-Box.sh
@@ -32,7 +32,7 @@ sudo bash A-Box.sh
 ### 第三方備用映象
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f2c5e0c8696011f9a48c58f727248356646e5d34/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9f8dea4c3765be763e29c00f964d17f34ae177d3/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 審閱下載的腳本後，再單獨執行：
 sudo bash A-Box.sh
@@ -84,7 +84,7 @@ sudo bash A-Box.sh
 
 原有系統/下載測速、IP 品質、SNI 全量與微型主機優選、WARP、2 GB Swap、備份/恢復、脫敏診斷、預檢查和訂閱匯出功能均保留。新增/歸併的入口包括：BBR/FQ 調優子選單（僅應用與回滾）；主機設定（IP 偏好、明文 DNS、後端支援時的 DoT、實測 DNS 優選、受支援環境的 DoH、時區/Locale/NTP 與下載源偏好）；以及 Wallos 安裝、升級、狀態、備份和保留資料解除安裝容器功能。BBR 為手動選擇，不會在協議安裝後自動執行。
 
-測速和 IP 品質選項先存取上游腳本，檢查內容格式和 Bash 語法，顯示 SHA-256 並要求確認。上游不可用或內容無效時，才回退到 A-Box Release `test-tools-mirror`；只有 `SHA256SUMS` 校驗通過才會執行。雙源都失敗時不會執行腳本。
+測速和 IP 品質選項優先使用 A-Box 校驗鏡像（`test-tools-mirror` Release），只有 `SHA256SUMS` 校驗通過才會執行。鏡像不可用或校驗失敗時，僅在設定 `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` 的情況下回退到上游腳本（未校驗，無 SHA 釘扎）；否則不會執行腳本。
 
 Wallos 是可選的自託管訂閱管理工具。安裝器優先讀取 Wallos 穩定版與匹配的 Docker 映象；上游不可用時回退到 `wallos-mirror`。資料備份先寫入臨時檔案並驗證，再原子提交；升級失敗時會嘗試透過暫存恢復流程回滾。Wallos 預設只綁定 `127.0.0.1`；遠端存取應使用 HTTPS 反向代理或 SSH 隧道。只有明確設定 `WALLOS_BIND_ADDRESS=0.0.0.0` 並再次確認後，才會將未加密 HTTP 連接埠發佈到所有 IPv4 網卡。第三方測速腳本映象需要手動觸發工作流並確認重新整理。
 

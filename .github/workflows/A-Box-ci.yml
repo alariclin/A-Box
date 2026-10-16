@@ -122,7 +122,7 @@ jobs:
           for m in re.finditer(r'\$\{([A-Za-z_][A-Za-z0-9_]*)[^}]*\}', text):
               varname = m.group(1)
               if re.search(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]', varname):
-                  errors.append(f"Translated variable name: ${{{varname}}}")
+                  errors.append("Translated variable name: ${" + varname + "}")
 
           # 4. 检查 ja) 分支的 %s/%d 数量与 en) 一致（简单启发式）
           # 提取所有 case 块，比较 ja 和 en 的占位符数量

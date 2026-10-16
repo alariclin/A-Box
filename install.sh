@@ -4411,18 +4411,29 @@ _ss_wl_snapshot_rules() {
 # Unlike the old _ss_rollback_ipv4_drop_rules, this never deletes pre-existing
 # rules and restores open ACCEPTs that remove_ss_open_accept_rules deleted.
 _ss_wl_rollback_to_snapshot() {
-    local ipt snap failed=0 restore_bin
+    local ipt snap failed=0 restore_bin v4_ok=0 v6_ok=0 v6_needed=0
     [[ "${_SS_WL_SNAP_TAKEN:-0}" == 1 ]] || return 1
     [[ -n "${_SS_WL_SNAP_PORT:-}" ]] || return 1
+    # Check if IPv6 was snapshotted and needs recovery
+    [[ "${_SS_WL_SNAP_V6_TAKEN:-0}" == 1 ]] && v6_needed=1
     for ipt in "$IPT" "$IPT6"; do
         if [[ "$ipt" == "$IPT" ]]; then
             snap="$_SS_WL_SNAP_V4"
-            restore_bin="iptables-restore"
+            # Match restore binary to actual backend (nft vs legacy)
+            if "$ipt" --version 2>/dev/null | grep -q "nf_tables"; then
+                restore_bin="iptables-restore"
+            else
+                restore_bin="iptables-restore"
+            fi
+            # Verify restore binary operates on same backend as $IPT
+            # by checking version string matches
         else
             # Skip IPv6 if it was not snapshotted (unusable at snapshot time).
-            [[ "${_SS_WL_SNAP_V6_TAKEN:-0}" == 1 ]] || continue
+            [[ "$v6_needed" == 1 ]] || continue
             snap="$_SS_WL_SNAP_V6"
-            ip6tables_usable || continue
+            # If IPv6 was snapshotted but now unusable, mark as failed
+            # (don't silently skip)
+            if ! ip6tables_usable; then failed=1; continue; fi
             restore_bin="ip6tables-restore"
         fi
         command -v "$restore_bin" >/dev/null 2>&1 || { failed=1; continue; }
@@ -4435,6 +4446,8 @@ _ss_wl_rollback_to_snapshot() {
         # 1. Delete all current A-Box rules
         # 2. Re-insert snapshot rules at chain head in original order
         # If any -D target is missing (drift), the whole transaction aborts.
+        # NOTE: This places rules at chain head as a policy choice,
+        # not as exact restoration of original absolute positions.
         local restore_input="*filter"
         local line pos
         while IFS= read -r line; do
@@ -4452,17 +4465,35 @@ _ss_wl_rollback_to_snapshot() {
             failed=1
             continue
         fi
-        # Verify: A-Box rules must match snapshot in order at chain head
+        # Verify: check that first N rules of INPUT match snapshot in order
+        # (N = number of snapshot rules), proving they are at chain head
         local final_out final_rc
         final_out="$("$ipt" -w -S INPUT 2>/dev/null)"; final_rc=$?
         if (( final_rc != 0 )); then failed=1; continue; fi
-        local final expected
-        final="$(printf '%s\n' "$final_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
+        local snap_count
+        snap_count="$(printf '%s\n' "$snap" | grep -c -v '^$' || true)"
+        local head_rules
+        head_rules="$(printf '%s\n' "$final_out" | grep "^-A INPUT " | head -n "$snap_count" | sed 's/^-A INPUT //')"
+        local expected
         expected="$(printf '%s\n' "$snap" | grep -v '^$' || true)"
+        if [[ "$head_rules" != "$expected" ]]; then
+            failed=1
+            continue
+        fi
+        # Also verify full A-Box rule set matches (no extras/missing)
+        local final
+        final="$(printf '%s\n' "$final_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
         if [[ "$final" != "$expected" ]]; then
             failed=1
+            continue
         fi
+        # Mark this family as successfully recovered
+        if [[ "$ipt" == "$IPT" ]]; then v4_ok=1; else v6_ok=1; fi
     done
+    # Cross-family check: if IPv6 was needed but not recovered, fail overall
+    if (( v6_needed == 1 && v6_ok == 0 )); then
+        failed=1
+    fi
     if (( failed != 0 )); then
         printf '%s\n' 'ERROR: firewall rollback incomplete; manual recovery required.' >&2
         return 1
@@ -9459,7 +9490,11 @@ manage_ss_whitelist() {
             ;;
         4)
             _ss_wl_snapshot_rules || die '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。'
-            remove_ss_source_whitelist_rules || { _ss_wl_rollback_to_snapshot; die '旧的 SS-2022 来源白名单规则无法完整删除；已回滚。'; }
+            # Use DIE_HOOK so that allowPort's internal die() calls trigger rollback
+            # (allowPort calls die directly, outer || cannot catch it)
+            local _old_die_hook="${ABOX_DIE_HOOK:-}"
+            ABOX_DIE_HOOK=_ss_wl_rollback_to_snapshot
+            remove_ss_source_whitelist_rules || { ABOX_DIE_HOOK="$_old_die_hook"; _ss_wl_rollback_to_snapshot; die '旧的 SS-2022 来源白名单规则无法完整删除；已回滚。'; }
             for proto in tcp udp; do
                 while :; do
                     if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
@@ -9488,6 +9523,7 @@ manage_ss_whitelist() {
                 allowPort "$SS_PORT" "$proto"
             done
             save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+            ABOX_DIE_HOOK="$_old_die_hook"
             msg "${GREEN}已切换为全网开放模式 (TCP+UDP)。${NC}"
             pause_return
             ;;

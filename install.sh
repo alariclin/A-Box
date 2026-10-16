@@ -7345,7 +7345,7 @@ pre_install_setup() {
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; } ;;
+                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; else die "IPv6 SS DROP 规则写入失败，回滚失败，需人工处理: $proto"; fi; } ;;
                         *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                     esac
                 fi
@@ -7356,7 +7356,7 @@ pre_install_setup() {
             allowPort "$SS_PORT" udp
         fi
     fi
-    save_firewall_rules || { _ss_wl_rollback_to_snapshot; die 'A-Box 防火墙持久化失败，已回滚。'; }
+    save_firewall_rules || { if _ss_wl_rollback_to_snapshot; then die 'A-Box 防火墙持久化失败，已回滚。'; else die 'A-Box 防火墙持久化失败，回滚失败，需人工处理。'; fi; }
 }
 
 json_sockopt_xray() {
@@ -9539,13 +9539,13 @@ manage_ss_whitelist() {
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; } ;;
+                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; else die "IPv6 SS DROP 规则写入失败，回滚失败，需人工处理: $proto"; fi; } ;;
                         *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                     esac
                 fi
             done
             enforce_ss_whitelist_order "$SS_PORT" || { _ss_wl_rollback_to_snapshot; die 'SS 白名单规则顺序校正失败。'; }
-            save_firewall_rules || { _ss_wl_rollback_to_snapshot; die 'A-Box 防火墙持久化失败，已回滚。'; }
+            save_firewall_rules || { if _ss_wl_rollback_to_snapshot; then die 'A-Box 防火墙持久化失败，已回滚。'; else die 'A-Box 防火墙持久化失败，回滚失败，需人工处理。'; fi; }
             msg "${GREEN}已开启白名单保护模式 (TCP+UDP)。${NC}"
             pause_return
             ;;
@@ -9555,7 +9555,7 @@ manage_ss_whitelist() {
             # (allowPort calls die directly, outer || cannot catch it)
             local _old_die_hook="${ABOX_DIE_HOOK:-}"
             ABOX_DIE_HOOK=_ss_wl_rollback_to_snapshot
-            remove_ss_source_whitelist_rules || { ABOX_DIE_HOOK="$_old_die_hook"; _ss_wl_rollback_to_snapshot; die '旧的 SS-2022 来源白名单规则无法完整删除；已回滚。'; }
+            remove_ss_source_whitelist_rules || { ABOX_DIE_HOOK="$_old_die_hook"; if _ss_wl_rollback_to_snapshot; then die '旧的 SS-2022 来源白名单规则无法完整删除；已回滚。'; else die '旧的 SS-2022 来源白名单规则无法完整删除；回滚失败，需人工处理。'; fi; }
             for proto in tcp udp; do
                 while :; do
                     if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi

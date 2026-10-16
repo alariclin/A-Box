@@ -186,7 +186,9 @@ msg() { printf '%s\n' "$*"; }
 die() {
     printf '%s\n' "${RED}[!] $*${NC}" >&2
     if [[ -n "${ABOX_DIE_HOOK:-}" ]] && declare -F "$ABOX_DIE_HOOK" >/dev/null 2>&1; then
-        "$ABOX_DIE_HOOK" "$*" || true
+        if ! "$ABOX_DIE_HOOK" "$*"; then
+            printf '%s\n' "${RED}[!] WARNING: rollback hook '$ABOX_DIE_HOOK' failed; manual recovery may be required.${NC}" >&2
+        fi
     fi
     exit 1
 }
@@ -4501,10 +4503,13 @@ _ss_wl_rollback_to_snapshot() {
         fi
         # Lock handling: -w requires iptables-restore 1.6.2+.
         # 1.4.20+ has -w for iptables command, but restore -w came in 1.6.2.
+        # NOTE: --help output may not list -w even when supported (observed on
+        # 1.8.10), so probe by trial execution instead of help text parsing.
         # On older versions, use flock on xtables.lock.
         # If neither is available, refuse to rollback rather than run unlocked.
         local restore_rc=0
-        if "$restore_bin" --help 2>&1 | grep -q -- "-w"; then
+        # Probe -w support via trial --test execution (no state change)
+        if printf '*filter\nCOMMIT\n' | "$restore_bin" --noflush -w 1 --test >/dev/null 2>&1; then
             # Modern: use built-in wait
             printf '%s\n' "$restore_input" | "$restore_bin" --noflush -w 5 >/dev/null 2>&1
             restore_rc=$?

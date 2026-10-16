@@ -4411,54 +4411,54 @@ _ss_wl_snapshot_rules() {
 # Unlike the old _ss_rollback_ipv4_drop_rules, this never deletes pre-existing
 # rules and restores open ACCEPTs that remove_ss_open_accept_rules deleted.
 _ss_wl_rollback_to_snapshot() {
-    local ipt snap cur line failed=0
+    local ipt snap failed=0 restore_bin
     [[ "${_SS_WL_SNAP_TAKEN:-0}" == 1 ]] || return 1
     [[ -n "${_SS_WL_SNAP_PORT:-}" ]] || return 1
     for ipt in "$IPT" "$IPT6"; do
         if [[ "$ipt" == "$IPT" ]]; then
             snap="$_SS_WL_SNAP_V4"
+            restore_bin="iptables-restore"
         else
             # Skip IPv6 if it was not snapshotted (unusable at snapshot time).
             [[ "${_SS_WL_SNAP_V6_TAKEN:-0}" == 1 ]] || continue
             snap="$_SS_WL_SNAP_V6"
             ip6tables_usable || continue
+            restore_bin="ip6tables-restore"
         fi
+        command -v "$restore_bin" >/dev/null 2>&1 || { failed=1; continue; }
         local cur_out cur_rc
         cur_out="$("$ipt" -w -S INPUT 2>/dev/null)"; cur_rc=$?
         if (( cur_rc != 0 )); then failed=1; continue; fi
+        local cur
         cur="$(printf '%s\n' "$cur_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
-        # Delete insertions: in cur but not in snapshot.
+        # Build a single atomic restore transaction:
+        # 1. Delete all current A-Box rules
+        # 2. Re-insert snapshot rules at chain head in original order
+        # If any -D target is missing (drift), the whole transaction aborts.
+        local restore_input="*filter"
+        local line pos
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
-            if ! grep -Fxq -- "$line" <<< "$snap"; then
-                line=${line//\"/}
-                # Rule comments contain no spaces; word-splitting here is intentional.
-                # shellcheck disable=SC2086
-                if ! "$ipt" -w -D INPUT $line >/dev/null 2>&1; then
-                    failed=1
-                fi
-            fi
+            restore_input+=$'\n-D INPUT '"$line"
         done <<< "$cur"
-        # Re-add deletions: in snapshot but not in cur.
+        pos=1
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
-            if ! grep -Fxq -- "$line" <<< "$cur"; then
-                line=${line//\"/}
-                # See above: word-splitting intentional.
-                # shellcheck disable=SC2086
-                if ! "$ipt" -w -A INPUT $line >/dev/null 2>&1; then
-                    failed=1
-                fi
-            fi
+            restore_input+=$'\n-I INPUT '"$pos"' '"$line"
+            (( pos++ ))
         done <<< "$snap"
-        # Verify final state matches snapshot.
-        local final
+        restore_input+=$'\nCOMMIT'
+        if ! printf '%s\n' "$restore_input" | "$restore_bin" --noflush -w 5 >/dev/null 2>&1; then
+            failed=1
+            continue
+        fi
+        # Verify: A-Box rules must match snapshot in order at chain head
         local final_out final_rc
         final_out="$("$ipt" -w -S INPUT 2>/dev/null)"; final_rc=$?
         if (( final_rc != 0 )); then failed=1; continue; fi
-        final="$(printf '%s\n' "$final_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //' | sort)"
-        local expected
-        expected="$(printf '%s\n' "$snap" | grep -v '^$' | sort || true)"
+        local final expected
+        final="$(printf '%s\n' "$final_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
+        expected="$(printf '%s\n' "$snap" | grep -v '^$' || true)"
         if [[ "$final" != "$expected" ]]; then
             failed=1
         fi
@@ -9458,7 +9458,8 @@ manage_ss_whitelist() {
             pause_return
             ;;
         4)
-            remove_ss_source_whitelist_rules || die '旧的 SS-2022 来源白名单规则无法完整删除；拒绝切换为全网开放。'
+            _ss_wl_snapshot_rules || die '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。'
+            remove_ss_source_whitelist_rules || { _ss_wl_rollback_to_snapshot; die '旧的 SS-2022 来源白名单规则无法完整删除；已回滚。'; }
             for proto in tcp udp; do
                 while :; do
                     if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
@@ -14693,9 +14694,23 @@ run_mirrored_test_script() {
     # P2: Mirror-first (SHA-256 verified). Upstream has NO SHA pin — a
     # syntactically-valid malicious script passes validate_test_script.
     # Mirror is updated weekly; at most 1-week staleness for diagnostics.
+    local sums_dl_ok=0 sig_dl_ok=0
     if curl -fLsS --connect-timeout 10 --max-time 45 \
-        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums" &&
-       curl -fLsS --connect-timeout 10 --max-time 45 \
+        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums"; then
+        sums_dl_ok=1
+    fi
+    if curl -fLsS --connect-timeout 10 --max-time 45 \
+        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$sums.sig" 2>/dev/null; then
+        sig_dl_ok=1
+    fi
+    # P3-02: fail-closed - missing .sig or failed verification blocks mirror execution
+    if (( sums_dl_ok == 1 )); then
+        if (( sig_dl_ok == 0 )) || ! abox_verify_sig_gate "$sums" "$sums.sig" "test-tools SHA256SUMS"; then
+            rm -f -- "$sums" "$sums.sig"
+            sums_dl_ok=0
+        fi
+    fi
+    if (( sums_dl_ok == 1 )) && curl -fLsS --connect-timeout 10 --max-time 45 \
         "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" &&
        curl -fLsS --connect-timeout 10 --max-time 180 \
         "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then

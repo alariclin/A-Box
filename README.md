@@ -123,7 +123,7 @@ The script contains compatibility paths for the following environments; actual c
 | Network | Access to system package repositories and required upstream/GitHub release endpoints |
 | Script UI | Chinese, English, Russian and Persian menu selection; see note above for legacy prompts |
 
-The interactive language selector supports Chinese, English, Russian and Persian for the main menu and updated operations menus. Some older protocol-specific prompts remain bilingual and may still contain legacy Chinese/English wording.
+The interactive language selector supports Simplified Chinese, Traditional Chinese, English, Japanese, Russian and Persian for the main menu and updated operations menus. Some older protocol-specific prompts remain bilingual and may still contain legacy Chinese/English wording.
 
 ## Recommended Production Checklist
 

@@ -17384,7 +17384,7 @@ show_usage() {
 16 Remove nodes and reinitialize the environment.
 17 Monthly vnStat traffic limits; opening the menu shows usage up to now.
 18 SS-2022 IP/CIDR allowlist.
-19 Language selection: Chinese, English, Russian, Persian.
+19 Language selection: Simplified Chinese, Traditional Chinese, English, Japanese, Russian, Persian.
 20 One-click Reality; shortcut `r` is also accepted.
 
 BBR/FQ does not run automatically after protocol deployment. Host DNS includes resolver benchmarking, supported DoT/DoH, and rollback. Timezone selection is based on the installed zone database and supports numbered paging/search; Locale and NTP are separate controls.
@@ -17483,7 +17483,7 @@ EOF_USAGE
 16 刪除節點並重新初始化環境。
 17 vnStat 月流量限制；開啟後顯示截至當前用量。
 18 SS-2022 IP/CIDR 白名單。
-19 語言設定：中文、English、Русский、فارسی。
+19 語言設定：簡體中文、繁體中文、English、日本語、Русский、فارسی。
 20 一鍵 Reality；也可輸入快捷鍵 `r`。
 
 協議安裝後不會自動應用 BBR/FQ。主機設定包含 DNS 真實測速、受支援後端的 DoT/DoH 和回滾。時區列表來自本機已安裝時區資料庫，支援編號、分頁和搜尋；Locale 與 NTP 分開設定。
@@ -17549,7 +17549,7 @@ EOF_USAGE
 16 删除节点并重新初始化环境。
 17 vnStat 月流量限制；打开后显示截至当前用量。
 18 SS-2022 IP/CIDR 白名单。
-19 语言设置：中文、English、Русский、فارسی。
+19 语言设置：简体中文、繁体中文、English、日本語、Русский、فارسی。
 20 一键 Reality；也可输入快捷键 `r`。
 
 协议安装后不会自动应用 BBR/FQ。主机设置包含 DNS 真实测速、受支持后端的 DoT/DoH 和回滚。时区列表来自本机已安装时区数据库，支持编号、分页和搜索；Locale 与 NTP 分开设置。

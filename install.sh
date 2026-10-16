@@ -4410,6 +4410,15 @@ _ss_wl_snapshot_rules() {
 # half-configured state. The die that follows aborts the whitelist setup entirely.
 # Unlike the old _ss_rollback_ipv4_drop_rules, this never deletes pre-existing
 # rules and restores open ACCEPTs that remove_ss_open_accept_rules deleted.
+# Rollback SS whitelist firewall rules to snapshot state.
+# Uses a single iptables-restore transaction per address family.
+# Policy: A-Box rules are placed at chain head in snapshot order
+# ("unified top" strategy). This is NOT exact restoration of original
+# absolute positions - non-A-Box rules that were before A-Box rules
+# will shift down. This is an explicit priority policy choice.
+# CRITICAL: Never add :CHAIN declarations to the restore input.
+# Even with --noflush, iptables-restore will flush any user-defined
+# chain explicitly declared in the input stream.
 _ss_wl_rollback_to_snapshot() {
     local ipt snap failed=0 restore_bin v4_ok=0 v6_ok=0 v6_needed=0
     [[ "${_SS_WL_SNAP_TAKEN:-0}" == 1 ]] || return 1
@@ -4465,13 +4474,26 @@ _ss_wl_rollback_to_snapshot() {
             (( pos++ ))
         done <<< "$snap"
         restore_input+=$'\nCOMMIT'
-        # -w flag requires iptables 1.6+; fall back without it on older versions
-        local restore_wait=""
-        if "$restore_bin" --help 2>&1 | grep -q "\-w"; then
-            restore_wait="-w 5"
+        # Lock handling: -w requires iptables-restore 1.6+.
+        # On older versions (e.g. 1.4.x), use flock on xtables.lock.
+        # If neither is available, refuse to rollback rather than run unlocked.
+        local restore_rc=0
+        if "$restore_bin" --help 2>&1 | grep -q -- "-w"; then
+            # Modern: use built-in wait
+            printf '%s\n' "$restore_input" | "$restore_bin" --noflush -w 5 >/dev/null 2>&1
+            restore_rc=$?
+        elif command -v flock >/dev/null 2>&1 && [[ -e /run/xtables.lock || -e /var/run/xtables.lock ]]; then
+            # Legacy: wrap with flock (do not combine with -w to avoid self-deadlock)
+            local lock_file="/run/xtables.lock"
+            [[ -e "$lock_file" ]] || lock_file="/var/run/xtables.lock"
+            printf '%s\n' "$restore_input" | flock -w 5 "$lock_file" "$restore_bin" --noflush >/dev/null 2>&1
+            restore_rc=$?
+        else
+            # No locking available: refuse rather than run unlocked
+            printf '%s\n' 'ERROR: no xtables locking available; refusing rollback.' >&2
+            restore_rc=1
         fi
-        # shellcheck disable=SC2086
-        if ! printf '%s\n' "$restore_input" | "$restore_bin" --noflush $restore_wait >/dev/null 2>&1; then
+        if (( restore_rc != 0 )); then
             failed=1
             continue
         fi

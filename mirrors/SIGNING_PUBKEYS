@@ -14,6 +14,5 @@
 # Revocation: fingerprints (sha256 hex of raw key) go in
 # ABOX_REVOKED_PUBKEY_FPS in install.sh; CI re-signs with the backup key.
 
-# TEST-ONLY placeholder. Replace with the real production public key before
-# setting ABOX_SIGNING_ENFORCE=1. (Throwaway key; NOT trusted for production.)
-test-only:JQy/k33N/BisN+NXn0LaeCXqXm7a6q856U3mk6fwroo=
+# Production key (matches install.sh ABOX_SIGNING_PUBKEYS).
+release-2026:7V4PBUUVpnfYhKu5LBxACxywpYEtvnDpVpvFnSrOujQ=

@@ -150,7 +150,7 @@ jobs:
           fi
           umask 077
           # Reconstruct PKCS#8 PEM from raw 32-byte seed (no new deps).
-          python3 -c 'import base64,sys;raw=base64.b64decode(sys.argv[1],validate=True);assert len(raw)==32;der=bytes.fromhex("302e020100300506032b657004220402")+raw;sys.stdout.write("-----BEGIN PRIVATE KEY-----\n"+base64.encodebytes(der).decode().strip()+"\n-----END PRIVATE KEY-----\n")' "$ABOX_SIGNING_PRIVKEY_B64" > /tmp/abox-sign-priv.pem
+          python3 -c 'import base64,sys;raw=base64.b64decode(sys.argv[1],validate=True);assert len(raw)==32;der=bytes.fromhex("302e020100300506032b657004220420")+raw;sys.stdout.write("-----BEGIN PRIVATE KEY-----\n"+base64.encodebytes(der).decode().strip()+"\n-----END PRIVATE KEY-----\n")' "$ABOX_SIGNING_PRIVKEY_B64" > /tmp/abox-sign-priv.pem
           for meta in verified/CORE-VERSIONS verified/SHA256SUMS; do
             [[ -f "$meta" ]] || continue
             openssl pkeyutl -sign -inkey /tmp/abox-sign-priv.pem -rawin \
@@ -257,7 +257,7 @@ jobs:
               hysteria-*)
                 verify_upstream_digest "$name" "HyNetworks/hysteria" "$hysteria_tag" "hysteria-${name#hysteria-"$hysteria_leaf"-}"
                 ;;
-              SHA256SUMS|SHA256SUMS.incoming|CORE-VERSIONS)
+              SHA256SUMS|SHA256SUMS.incoming|CORE-VERSIONS|CORE-VERSIONS.sig|SHA256SUMS.sig)
                 # Manifests/metadata: not upstream binaries, skip.
                 ;;
               *)
@@ -316,7 +316,7 @@ jobs:
             [[ -f "$f" ]] || continue
             name=$(basename "$f")
             case "$name" in
-              SHA256SUMS|SHA256SUMS.incoming|CORE-VERSIONS) continue ;;
+              SHA256SUMS|SHA256SUMS.incoming|CORE-VERSIONS|CORE-VERSIONS.sig|SHA256SUMS.sig) continue ;;
             esac
             # Improvement 2026-10-14: whitelist known binary patterns.
             case "$name" in

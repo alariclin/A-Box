@@ -4488,7 +4488,9 @@ _ss_wl_rollback_to_snapshot() {
         # Pre-check with --test (if supported) to catch format errors
         # before making any real changes
         if "$restore_bin" --help 2>&1 | grep -q -- "--test"; then
-            if ! printf '%s\n' "$restore_input" | "$restore_bin" --noflush --test >/dev/null 2>&1; then
+            # Try with -w first (waits on lock), fall back to without -w for 1.4.x.
+            if ! printf '%s\n' "$restore_input" | "$restore_bin" --noflush -w 5 --test >/dev/null 2>&1 &&
+               ! printf '%s\n' "$restore_input" | "$restore_bin" --noflush --test >/dev/null 2>&1; then
                 printf '%s\n' 'ERROR: restore payload failed --test pre-check' >&2
                 failed=1
                 continue
@@ -4513,9 +4515,11 @@ _ss_wl_rollback_to_snapshot() {
             printf '%s\n' "$restore_input" | flock -w 5 "$lock_file" "$restore_bin" --noflush >/dev/null 2>&1
             restore_rc=$?
         else
-            # No locking available: refuse rather than run unlocked
-            printf '%s\n' 'ERROR: no xtables locking available; refusing rollback.' >&2
-            restore_rc=1
+            # Pre-1.6.2 (e.g. 1.4.x): no -w support and no file lock.
+            # 1.4.x restore never locked natively, so run unlocked best-effort.
+            printf '%s\n' 'WARNING: pre-1.6.2 iptables has no file lock; running unlocked rollback (best effort).' >&2
+            printf '%s\n' "$restore_input" | "$restore_bin" --noflush >/dev/null 2>&1
+            restore_rc=$?
         fi
         if (( restore_rc != 0 )); then
             failed=1

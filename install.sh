@@ -4461,22 +4461,40 @@ _ss_wl_rollback_to_snapshot() {
             (( pos++ ))
         done <<< "$snap"
         restore_input+=$'\nCOMMIT'
-        if ! printf '%s\n' "$restore_input" | "$restore_bin" --noflush -w 5 >/dev/null 2>&1; then
+        # -w flag requires iptables 1.6+; fall back without it on older versions
+        local restore_wait=""
+        if "$restore_bin" --help 2>&1 | grep -q "\-w"; then
+            restore_wait="-w 5"
+        fi
+        # shellcheck disable=SC2086
+        if ! printf '%s\n' "$restore_input" | "$restore_bin" --noflush $restore_wait >/dev/null 2>&1; then
             failed=1
             continue
         fi
         # Verify: check that first N rules of INPUT match snapshot in order
-        # (N = number of snapshot rules), proving they are at chain head
+        # (N = number of snapshot rules), proving they are at chain head.
+        # Use normalized comparison to handle -m tcp / quote variations.
         local final_out final_rc
         final_out="$("$ipt" -w -S INPUT 2>/dev/null)"; final_rc=$?
         if (( final_rc != 0 )); then failed=1; continue; fi
         local snap_count
         snap_count="$(printf '%s\n' "$snap" | grep -c -v '^$' || true)"
-        local head_rules
+        local head_rules normalized_head normalized_expected
         head_rules="$(printf '%s\n' "$final_out" | grep "^-A INPUT " | head -n "$snap_count" | sed 's/^-A INPUT //')"
-        local expected
-        expected="$(printf '%s\n' "$snap" | grep -v '^$' || true)"
-        if [[ "$head_rules" != "$expected" ]]; then
+        # Normalize both sides for comparison
+        normalized_head=""
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            line="$(__abox_normalize_managed_rule_line "$line" 2>/dev/null || printf '%s' "$line")"
+            normalized_head+="$line"$'\n'
+        done <<< "$head_rules"
+        normalized_expected=""
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            line="$(__abox_normalize_managed_rule_line "$line" 2>/dev/null || printf '%s' "$line")"
+            normalized_expected+="$line"$'\n'
+        done <<< "$snap"
+        if [[ "$normalized_head" != "$normalized_expected" ]]; then
             failed=1
             continue
         fi
@@ -14739,9 +14757,10 @@ run_mirrored_test_script() {
         "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$sums.sig" 2>/dev/null; then
         sig_dl_ok=1
     fi
-    # P3-02: fail-closed - missing .sig or failed verification blocks mirror execution
+    # P3-02: fail-closed - use verify_ed25519_detached directly (not the
+    # degradable gate). Missing .sig or failed verification blocks execution.
     if (( sums_dl_ok == 1 )); then
-        if (( sig_dl_ok == 0 )) || ! abox_verify_sig_gate "$sums" "$sums.sig" "test-tools SHA256SUMS"; then
+        if (( sig_dl_ok == 0 )) || ! verify_ed25519_detached "$sums" "$sums.sig" >/dev/null 2>&1; then
             rm -f -- "$sums" "$sums.sig"
             sums_dl_ok=0
         fi
@@ -14750,6 +14769,14 @@ run_mirrored_test_script() {
         "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" &&
        curl -fLsS --connect-timeout 10 --max-time 180 \
         "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then
+        # Verify manifest digest (manifest is covered by SHA256SUMS signature)
+        local manifest_expected manifest_sha
+        manifest_expected=$(awk -v f="test-tools-manifest.txt" '$2==f || $2==("*" f) {print $1; exit}' "$sums")
+        manifest_sha=$(sha256sum "$manifest" 2>/dev/null | awk '{print $1}')
+        if [[ ! "$manifest_expected" =~ ^[A-Fa-f0-9]{64}$ || "${manifest_sha,,}" != "${manifest_expected,,}" ]]; then
+            # Manifest digest mismatch - do not trust manifest content
+            rm -f -- "$manifest"
+        fi
         expected=$(awk -v f="$asset" '$2==f || $2==("*" f) {print $1; exit}' "$sums")
         sha=$(sha256sum "$mirror" | awk '{print $1}')
         if [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ && "${sha,,}" == "${expected,,}" ]] && validate_test_script "$mirror"; then

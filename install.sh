@@ -186,7 +186,9 @@ msg() { printf '%s\n' "$*"; }
 die() {
     printf '%s\n' "${RED}[!] $*${NC}" >&2
     if [[ -n "${ABOX_DIE_HOOK:-}" ]] && declare -F "$ABOX_DIE_HOOK" >/dev/null 2>&1; then
-        "$ABOX_DIE_HOOK" "$*" || true
+        if ! "$ABOX_DIE_HOOK" "$*"; then
+            printf '%s\n' "${RED}[!] WARNING: rollback hook '$ABOX_DIE_HOOK' failed; manual recovery may be required.${NC}" >&2
+        fi
     fi
     exit 1
 }
@@ -3101,7 +3103,7 @@ __abox_firewall_unlock() {
 __abox_normalize_managed_rule_line() {
     local line="$1"
     line=${line//\"/}
-    line=$(printf '%s\n' "$line" | sed -E 's/^(-A[[:space:]]+INPUT([[:space:]]+[^[:space:]]+)*[[:space:]]+-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\4/')
+    line=$(printf '%s\n' "$line" | sed -E 's/^(-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\2([[:space:]]|$)/\1\3/')
     printf '%s\n' "$line"
 }
 reorder_one() {
@@ -4134,7 +4136,7 @@ remove_ss_open_accept_rules() {
 __abox_normalize_managed_rule_line() {
     local line="$1"
     line=${line//\"/}
-    line=$(printf '%s\n' "$line" | sed -E 's/^(-A[[:space:]]+INPUT([[:space:]]+[^[:space:]]+)*[[:space:]]+-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\4/')
+    line=$(printf '%s\n' "$line" | sed -E 's/^(-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\2([[:space:]]|$)/\1\3/')
     printf '%s\n' "$line"
 }
 
@@ -4403,66 +4405,172 @@ _ss_wl_snapshot_rules() {
     return 0
 }
 
-# Restore the exact pre-operation SS rule set from the snapshot.
-# Deletes ONLY rules inserted by this invocation (present now, absent in snapshot);
-# re-adds rules deleted by this invocation (present in snapshot, absent now).
-# Called when a subsequent IPv6 rule operation fails, to avoid a dangerous
-# half-configured state. The die that follows aborts the whitelist setup entirely.
-# Unlike the old _ss_rollback_ipv4_drop_rules, this never deletes pre-existing
-# rules and restores open ACCEPTs that remove_ss_open_accept_rules deleted.
+# Rollback SS whitelist firewall rules to snapshot state.
+# Uses a single iptables-restore transaction per address family.
+# Policy: A-Box rules are placed at chain head in snapshot order
+# ("unified top" strategy). This is NOT exact restoration of original
+# absolute positions - non-A-Box rules that were before A-Box rules
+# will shift down. This is an explicit priority policy choice.
+# CRITICAL: Never add :CHAIN declarations to the restore input.
+# Even with --noflush, iptables-restore will flush any user-defined
+# chain explicitly declared in the input stream.
 _ss_wl_rollback_to_snapshot() {
-    local ipt snap cur line failed=0
+    local ipt snap failed=0 restore_bin v6_ok=0 v6_needed=0
     [[ "${_SS_WL_SNAP_TAKEN:-0}" == 1 ]] || return 1
     [[ -n "${_SS_WL_SNAP_PORT:-}" ]] || return 1
+    # Check if IPv6 was snapshotted and needs recovery
+    [[ "${_SS_WL_SNAP_V6_TAKEN:-0}" == 1 ]] && v6_needed=1
     for ipt in "$IPT" "$IPT6"; do
         if [[ "$ipt" == "$IPT" ]]; then
             snap="$_SS_WL_SNAP_V4"
+            # Match restore binary to actual backend (nft vs legacy).
+            # update-alternatives may point iptables/iptables-restore to different
+            # backends; detect via --version output.
+            local ipt_ver restore_ver
+            ipt_ver="$("$ipt" --version 2>/dev/null || echo "")"
+            # Default to iptables-restore; refine if version strings indicate mismatch
+            restore_bin="iptables-restore"
+            if command -v "$restore_bin" >/dev/null 2>&1; then
+                restore_ver="$("$restore_bin" --version 2>/dev/null || echo "")"
+                # If $IPT reports nf_tables but restore does not (or vice versa),
+                # try the alternative binary name
+                if [[ "$ipt_ver" == *"nf_tables"* && "$restore_ver" != *"nf_tables"* ]]; then
+                    command -v iptables-nft-restore >/dev/null 2>&1 && restore_bin="iptables-nft-restore"
+                elif [[ "$ipt_ver" != *"nf_tables"* && "$restore_ver" == *"nf_tables"* ]]; then
+                    command -v iptables-legacy-restore >/dev/null 2>&1 && restore_bin="iptables-legacy-restore"
+                fi
+            fi
         else
             # Skip IPv6 if it was not snapshotted (unusable at snapshot time).
-            [[ "${_SS_WL_SNAP_V6_TAKEN:-0}" == 1 ]] || continue
+            [[ "$v6_needed" == 1 ]] || continue
             snap="$_SS_WL_SNAP_V6"
-            ip6tables_usable || continue
+            # If IPv6 was snapshotted but now unusable, mark as failed
+            # (don't silently skip)
+            if ! ip6tables_usable; then failed=1; continue; fi
+            restore_bin="ip6tables-restore"
         fi
+        command -v "$restore_bin" >/dev/null 2>&1 || { failed=1; continue; }
         local cur_out cur_rc
         cur_out="$("$ipt" -w -S INPUT 2>/dev/null)"; cur_rc=$?
         if (( cur_rc != 0 )); then failed=1; continue; fi
+        local cur
         cur="$(printf '%s\n' "$cur_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
-        # Delete insertions: in cur but not in snapshot.
+        # Build a single atomic restore transaction:
+        # 1. Delete all current A-Box rules
+        # 2. Re-insert snapshot rules at chain head in original order
+        # If any -D target is missing (drift), the whole transaction aborts.
+        # NOTE: This places rules at chain head as a policy choice ("unified top"),
+        # not as exact restoration of original absolute positions. Non-A-Box rules
+        # that were before A-Box rules will shift down.
+        # CRITICAL: Never add :CHAIN declarations to this input. Even with
+        # --noflush, iptables-restore will flush any user-defined chain that
+        # is explicitly declared in the input stream.
+        local restore_input="*filter"
+        local line pos
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
-            if ! grep -Fxq -- "$line" <<< "$snap"; then
-                line=${line//\"/}
-                # Rule comments contain no spaces; word-splitting here is intentional.
-                # shellcheck disable=SC2086
-                if ! "$ipt" -w -D INPUT $line >/dev/null 2>&1; then
-                    failed=1
-                fi
-            fi
+            restore_input+=$'\n-D INPUT '"$line"
         done <<< "$cur"
-        # Re-add deletions: in snapshot but not in cur.
+        pos=1
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
-            if ! grep -Fxq -- "$line" <<< "$cur"; then
-                line=${line//\"/}
-                # See above: word-splitting intentional.
-                # shellcheck disable=SC2086
-                if ! "$ipt" -w -A INPUT $line >/dev/null 2>&1; then
-                    failed=1
-                fi
-            fi
+            restore_input+=$'\n-I INPUT '"$pos"' '"$line"
+            (( pos++ ))
         done <<< "$snap"
-        # Verify final state matches snapshot.
-        local final
+        restore_input+=$'\nCOMMIT'
+        # Guard: payload must not contain chain declarations.
+        # With --noflush, any declared custom chain would be flushed and rebuilt.
+        if printf '%s\n' "$restore_input" | grep -qE '^[[:space:]]*:'; then
+            printf '%s\n' 'ERROR: internal error: restore payload must not declare chains' >&2
+            failed=1
+            continue
+        fi
+        # Pre-check with --test (if supported) to catch format errors
+        # before making any real changes
+        if "$restore_bin" --help 2>&1 | grep -q -- "--test"; then
+            if ! printf '%s\n' "$restore_input" | "$restore_bin" --noflush --test >/dev/null 2>&1; then
+                printf '%s\n' 'ERROR: restore payload failed --test pre-check' >&2
+                failed=1
+                continue
+            fi
+        fi
+        # Lock handling: -w requires iptables-restore 1.6.2+.
+        # 1.4.20+ has -w for iptables command, but restore -w came in 1.6.2.
+        # NOTE: --help output may not list -w even when supported (observed on
+        # 1.8.10), so probe by trial execution instead of help text parsing.
+        # On older versions, use flock on xtables.lock.
+        # If neither is available, refuse to rollback rather than run unlocked.
+        local restore_rc=0
+        # Probe -w support via trial --test execution (no state change)
+        if printf '*filter\nCOMMIT\n' | "$restore_bin" --noflush -w 1 --test >/dev/null 2>&1; then
+            # Modern: use built-in wait
+            printf '%s\n' "$restore_input" | "$restore_bin" --noflush -w 5 >/dev/null 2>&1
+            restore_rc=$?
+        elif command -v flock >/dev/null 2>&1 && [[ -e /run/xtables.lock || -e /var/run/xtables.lock ]]; then
+            # Legacy: wrap with flock (do not combine with -w to avoid self-deadlock)
+            local lock_file="/run/xtables.lock"
+            [[ -e "$lock_file" ]] || lock_file="/var/run/xtables.lock"
+            printf '%s\n' "$restore_input" | flock -w 5 "$lock_file" "$restore_bin" --noflush >/dev/null 2>&1
+            restore_rc=$?
+        else
+            # No locking available: refuse rather than run unlocked
+            printf '%s\n' 'ERROR: no xtables locking available; refusing rollback.' >&2
+            restore_rc=1
+        fi
+        if (( restore_rc != 0 )); then
+            failed=1
+            continue
+        fi
+        # Verify: check that first N rules of INPUT match snapshot in order
+        # (N = number of snapshot rules), proving they are at chain head.
+        # Use normalized comparison to handle -m tcp / quote variations.
         local final_out final_rc
         final_out="$("$ipt" -w -S INPUT 2>/dev/null)"; final_rc=$?
         if (( final_rc != 0 )); then failed=1; continue; fi
-        final="$(printf '%s\n' "$final_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //' | sort)"
-        local expected
-        expected="$(printf '%s\n' "$snap" | grep -v '^$' | sort || true)"
-        if [[ "$final" != "$expected" ]]; then
+        local snap_count
+        snap_count="$(printf '%s\n' "$snap" | grep -c -v '^$' || true)"
+        local head_rules normalized_head normalized_expected
+        head_rules="$(printf '%s\n' "$final_out" | grep "^-A INPUT " | head -n "$snap_count" | sed 's/^-A INPUT //')"
+        # Normalize both sides for comparison
+        normalized_head=""
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            line="$(__abox_normalize_managed_rule_line "$line" 2>/dev/null || printf '%s' "$line")"
+            normalized_head+="$line"$'\n'
+        done <<< "$head_rules"
+        normalized_expected=""
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            line="$(__abox_normalize_managed_rule_line "$line" 2>/dev/null || printf '%s' "$line")"
+            normalized_expected+="$line"$'\n'
+        done <<< "$snap"
+        if [[ "$normalized_head" != "$normalized_expected" ]]; then
             failed=1
+            continue
         fi
+        # Also verify full A-Box rule set matches (no extras/missing)
+        # Compare normalized full sets (order-independent for this check,
+        # as head-order was already verified above)
+        local final normalized_final
+        final="$(printf '%s\n' "$final_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
+        normalized_final=""
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            line="$(__abox_normalize_managed_rule_line "$line" 2>/dev/null || printf '%s' "$line")"
+            normalized_final+="$line"$'\n'
+        done <<< "$final"
+        # Sort both for order-independent comparison
+        if [[ "$(printf '%s' "$normalized_final" | sort)" != "$(printf '%s' "$normalized_expected" | sort)" ]]; then
+            failed=1
+            continue
+        fi
+        # Mark IPv6 as successfully recovered (IPv4 success is tracked via failed==0)
+        if [[ "$ipt" != "$IPT" ]]; then v6_ok=1; fi
     done
+    # Cross-family check: if IPv6 was needed but not recovered, fail overall
+    if (( v6_needed == 1 && v6_ok == 0 )); then
+        failed=1
+    fi
     if (( failed != 0 )); then
         printf '%s\n' 'ERROR: firewall rollback incomplete; manual recovery required.' >&2
         return 1
@@ -7253,7 +7361,7 @@ pre_install_setup() {
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; } ;;
+                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; else die "IPv6 SS DROP 规则写入失败，回滚失败，需人工处理: $proto"; fi; } ;;
                         *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                     esac
                 fi
@@ -7264,7 +7372,7 @@ pre_install_setup() {
             allowPort "$SS_PORT" udp
         fi
     fi
-    save_firewall_rules || { _ss_wl_rollback_to_snapshot; die 'A-Box 防火墙持久化失败，已回滚。'; }
+    save_firewall_rules || { if _ss_wl_rollback_to_snapshot; then die 'A-Box 防火墙持久化失败，已回滚。'; else die 'A-Box 防火墙持久化失败，回滚失败，需人工处理。'; fi; }
 }
 
 json_sockopt_xray() {
@@ -9447,18 +9555,23 @@ manage_ss_whitelist() {
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; } ;;
+                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; else die "IPv6 SS DROP 规则写入失败，回滚失败，需人工处理: $proto"; fi; } ;;
                         *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                     esac
                 fi
             done
             enforce_ss_whitelist_order "$SS_PORT" || { _ss_wl_rollback_to_snapshot; die 'SS 白名单规则顺序校正失败。'; }
-            save_firewall_rules || { _ss_wl_rollback_to_snapshot; die 'A-Box 防火墙持久化失败，已回滚。'; }
+            save_firewall_rules || { if _ss_wl_rollback_to_snapshot; then die 'A-Box 防火墙持久化失败，已回滚。'; else die 'A-Box 防火墙持久化失败，回滚失败，需人工处理。'; fi; }
             msg "${GREEN}已开启白名单保护模式 (TCP+UDP)。${NC}"
             pause_return
             ;;
         4)
-            remove_ss_source_whitelist_rules || die '旧的 SS-2022 来源白名单规则无法完整删除；拒绝切换为全网开放。'
+            _ss_wl_snapshot_rules || die '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。'
+            # Use DIE_HOOK so that allowPort's internal die() calls trigger rollback
+            # (allowPort calls die directly, outer || cannot catch it)
+            local _old_die_hook="${ABOX_DIE_HOOK:-}"
+            ABOX_DIE_HOOK=_ss_wl_rollback_to_snapshot
+            remove_ss_source_whitelist_rules || { ABOX_DIE_HOOK="$_old_die_hook"; if _ss_wl_rollback_to_snapshot; then die '旧的 SS-2022 来源白名单规则无法完整删除；已回滚。'; else die '旧的 SS-2022 来源白名单规则无法完整删除；回滚失败，需人工处理。'; fi; }
             for proto in tcp udp; do
                 while :; do
                     if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
@@ -9487,6 +9600,7 @@ manage_ss_whitelist() {
                 allowPort "$SS_PORT" "$proto"
             done
             save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+            ABOX_DIE_HOOK="$_old_die_hook"
             msg "${GREEN}已切换为全网开放模式 (TCP+UDP)。${NC}"
             pause_return
             ;;
@@ -14693,12 +14807,35 @@ run_mirrored_test_script() {
     # P2: Mirror-first (SHA-256 verified). Upstream has NO SHA pin — a
     # syntactically-valid malicious script passes validate_test_script.
     # Mirror is updated weekly; at most 1-week staleness for diagnostics.
+    local sums_dl_ok=0 sig_dl_ok=0
     if curl -fLsS --connect-timeout 10 --max-time 45 \
-        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums" &&
-       curl -fLsS --connect-timeout 10 --max-time 45 \
+        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums"; then
+        sums_dl_ok=1
+    fi
+    if curl -fLsS --connect-timeout 10 --max-time 45 \
+        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$sums.sig" 2>/dev/null; then
+        sig_dl_ok=1
+    fi
+    # P3-02: fail-closed - use verify_ed25519_detached directly (not the
+    # degradable gate). Missing .sig or failed verification blocks execution.
+    if (( sums_dl_ok == 1 )); then
+        if (( sig_dl_ok == 0 )) || ! verify_ed25519_detached "$sums" "$sums.sig" >/dev/null 2>&1; then
+            rm -f -- "$sums" "$sums.sig"
+            sums_dl_ok=0
+        fi
+    fi
+    if (( sums_dl_ok == 1 )) && curl -fLsS --connect-timeout 10 --max-time 45 \
         "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" &&
        curl -fLsS --connect-timeout 10 --max-time 180 \
         "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then
+        # Verify manifest digest (manifest is covered by SHA256SUMS signature)
+        local manifest_expected manifest_sha
+        manifest_expected=$(awk -v f="test-tools-manifest.txt" '$2==f || $2==("*" f) {print $1; exit}' "$sums")
+        manifest_sha=$(sha256sum "$manifest" 2>/dev/null | awk '{print $1}')
+        if [[ ! "$manifest_expected" =~ ^[A-Fa-f0-9]{64}$ || "${manifest_sha,,}" != "${manifest_expected,,}" ]]; then
+            # Manifest digest mismatch - do not trust manifest content
+            rm -f -- "$manifest"
+        fi
         expected=$(awk -v f="$asset" '$2==f || $2==("*" f) {print $1; exit}' "$sums")
         sha=$(sha256sum "$mirror" | awk '{print $1}')
         if [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ && "${sha,,}" == "${expected,,}" ]] && validate_test_script "$mirror"; then

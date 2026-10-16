@@ -4411,58 +4411,60 @@ _ss_wl_snapshot_rules() {
 # Unlike the old _ss_rollback_ipv4_drop_rules, this never deletes pre-existing
 # rules and restores open ACCEPTs that remove_ss_open_accept_rules deleted.
 _ss_wl_rollback_to_snapshot() {
-    local ipt snap cur line failed=0
-    [[ "${_SS_WL_SNAP_TAKEN:-0}" == 1 ]] || return 1
+    local ipt snap failed=0
+    local final_out final_rc final expected
+    [[ "${_SS_WL_SNAP_TAKEN:-0}" == "1" ]] || return 1
     [[ -n "${_SS_WL_SNAP_PORT:-}" ]] || return 1
+
     for ipt in "$IPT" "$IPT6"; do
+        [[ -n "$ipt" ]] || continue
         if [[ "$ipt" == "$IPT" ]]; then
-            snap="$_SS_WL_SNAP_V4"
+            snap="${_SS_WL_SNAP_V4:-}"
         else
-            # Skip IPv6 if it was not snapshotted (unusable at snapshot time).
-            [[ "${_SS_WL_SNAP_V6_TAKEN:-0}" == 1 ]] || continue
-            snap="$_SS_WL_SNAP_V6"
-            ip6tables_usable || continue
+            # Skip IPv6 if not snapshotted
+            [[ "${_SS_WL_SNAP_V6_TAKEN:-0}" == "1" ]] || continue
+            ip6tables_usable || { failed=1; continue; }
+            snap="${_SS_WL_SNAP_V6:-}"
         fi
-        local cur_out cur_rc
-        cur_out="$("$ipt" -w -S INPUT 2>/dev/null)"; cur_rc=$?
-        if (( cur_rc != 0 )); then failed=1; continue; fi
-        cur="$(printf '%s\n' "$cur_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
-        # Delete insertions: in cur but not in snapshot.
-        while IFS= read -r line; do
-            [[ -n "$line" ]] || continue
-            if ! grep -Fxq -- "$line" <<< "$snap"; then
-                line=${line//\"/}
-                # Rule comments contain no spaces; word-splitting here is intentional.
-                # shellcheck disable=SC2086
-                if ! "$ipt" -w -D INPUT $line >/dev/null 2>&1; then
-                    failed=1
-                fi
+
+        # 1. 清空当前所有带专属注释的规则
+        local current_rules cur_rule
+        if ! current_rules="$("$ipt" -w -S INPUT 2>/dev/null)"; then
+            failed=1
+            continue
+        fi
+        while IFS= read -r cur_rule; do
+            [[ -n "$cur_rule" ]] || continue
+            # shellcheck disable=SC2086
+            if ! eval "$ipt -w -D INPUT ${cur_rule#-A INPUT }" >/dev/null 2>&1; then
+                failed=1
             fi
-        done <<< "$cur"
-        # Re-add deletions: in snapshot but not in cur.
+        done < <(printf '%s\n' "$current_rules" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-")
+
+        # 2. 严格按快照原始顺序重放（保证ACCEPT在DROP前）
+        local line
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
-            if ! grep -Fxq -- "$line" <<< "$cur"; then
-                line=${line//\"/}
-                # See above: word-splitting intentional.
-                # shellcheck disable=SC2086
-                if ! "$ipt" -w -A INPUT $line >/dev/null 2>&1; then
-                    failed=1
-                fi
+            # shellcheck disable=SC2086
+            if ! eval "$ipt -w -A INPUT $line" >/dev/null 2>&1; then
+                failed=1
             fi
         done <<< "$snap"
-        # Verify final state matches snapshot.
-        local final
-        local final_out final_rc
-        final_out="$("$ipt" -w -S INPUT 2>/dev/null)"; final_rc=$?
-        if (( final_rc != 0 )); then failed=1; continue; fi
-        final="$(printf '%s\n' "$final_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //' | sort)"
-        local expected
-        expected="$(printf '%s\n' "$snap" | grep -v '^$' | sort || true)"
+
+        # 3. 保序校验（无sort，直接比对顺序与内容）
+        final_out="$("$ipt" -w -S INPUT 2>/dev/null)"
+        final_rc=$?
+        if (( final_rc != 0 )); then
+            failed=1
+            continue
+        fi
+        final="$(printf '%s\n' "$final_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
+        expected="$(printf '%s\n' "$snap" | grep -v '^$' || true)"
         if [[ "$final" != "$expected" ]]; then
             failed=1
         fi
     done
+
     if (( failed != 0 )); then
         printf '%s\n' 'ERROR: firewall rollback incomplete; manual recovery required.' >&2
         return 1
@@ -14696,6 +14698,14 @@ run_mirrored_test_script() {
     if curl -fLsS --connect-timeout 10 --max-time 45 \
         "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums" &&
        curl -fLsS --connect-timeout 10 --max-time 45 \
+        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$sums.sig" 2>/dev/null; then
+        # P3-02: verify test-tools SHA256SUMS signature (fail-closed when ENFORCE=1)
+        if ! abox_verify_sig_gate "$sums" "$sums.sig" "test-tools SHA256SUMS"; then
+            rm -f -- "$sums" "$sums.sig"
+            # Fall through to unverified upstream handling below
+        fi
+    fi
+    if [[ -f "$sums" ]] && curl -fLsS --connect-timeout 10 --max-time 45 \
         "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" &&
        curl -fLsS --connect-timeout 10 --max-time 180 \
         "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then

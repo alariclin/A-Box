@@ -132,6 +132,7 @@ The interactive language selector supports Chinese, English, Russian and Persian
 3. Confirm provider firewall/security-group rules and client compatibility for the selected protocol and ports.
 4. Export and store the recovery key separately; keep a verified backup before destructive maintenance.
 5. Verify actual DNS, TLS, ALPN, SNI, reachability, and client behavior from the networks that will use the node. Passing CI alone does not prove that all VPS providers, operating systems, or clients will work.
+6. Supply-chain verification: release artifacts are Ed25519-signed (ENFORCE=1 by default) to detect tampering of Release assets. The public key is embedded in install.sh itself, so verify this document's pinned SHA256 matches the downloaded script to establish initial trust.
 
 ## Feedback and License
 

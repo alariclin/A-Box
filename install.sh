@@ -4474,8 +4474,25 @@ _ss_wl_rollback_to_snapshot() {
             (( pos++ ))
         done <<< "$snap"
         restore_input+=$'\nCOMMIT'
-        # Lock handling: -w requires iptables-restore 1.6+.
-        # On older versions (e.g. 1.4.x), use flock on xtables.lock.
+        # Guard: payload must not contain chain declarations.
+        # With --noflush, any declared custom chain would be flushed and rebuilt.
+        if printf '%s\n' "$restore_input" | grep -qE '^[[:space:]]*:'; then
+            printf '%s\n' 'ERROR: internal error: restore payload must not declare chains' >&2
+            failed=1
+            continue
+        fi
+        # Pre-check with --test (if supported) to catch format errors
+        # before making any real changes
+        if "$restore_bin" --help 2>&1 | grep -q -- "--test"; then
+            if ! printf '%s\n' "$restore_input" | "$restore_bin" --noflush --test >/dev/null 2>&1; then
+                printf '%s\n' 'ERROR: restore payload failed --test pre-check' >&2
+                failed=1
+                continue
+            fi
+        fi
+        # Lock handling: -w requires iptables-restore 1.6.2+.
+        # 1.4.20+ has -w for iptables command, but restore -w came in 1.6.2.
+        # On older versions, use flock on xtables.lock.
         # If neither is available, refuse to rollback rather than run unlocked.
         local restore_rc=0
         if "$restore_bin" --help 2>&1 | grep -q -- "-w"; then

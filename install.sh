@@ -7169,11 +7169,20 @@ pre_install_setup() {
     fi
 
     printf '\n%s\n' "${CYAN}======================================================================${NC}"
-    if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-        msg "${BOLD}Parameter Wizard [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
-    else
-        msg "${BOLD}参数构造向导 [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
-    fi
+    case "${ABOX_LANG:-zh}" in
+        en|ru|fa)
+            msg "${BOLD}Parameter Wizard [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
+            ;;
+        ja)
+            msg "${BOLD}パラメータウィザード [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
+            ;;
+        zh-tw)
+            msg "${BOLD}參數建構精靈 [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
+            ;;
+        *)
+            msg "${BOLD}参数构造向导 [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
+            ;;
+    esac
     msg "${BLUE}----------------------------------------------------------------------${NC}"
 
     if [[ "$HAS_VISION" == 'true' ]]; then
@@ -7189,19 +7198,36 @@ pre_install_setup() {
     if [[ "$HAS_HY2" == 'true' ]]; then
         HY2_BASE_PORT=$(prompt_port_input "$L_HY2" "$DEF_H_PORT") || die 'HY2 端口输入已结束 / HY2 port input closed.'
 
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-            if [[ "$CORE_IN" == 'singbox' ]]; then
-                read -r -p "   ${L_HY2} Optional server domain for Sing-box HY2 self-signed certificate/SNI (empty = IP + pinSHA256): " INPUT_H_DOMAIN || die '交互输入已结束 / Interactive input closed.'
-            else
-                read -r -p "   ${L_HY2} Do you have a domain already resolved to this server? (empty = self-signed certificate): " INPUT_H_DOMAIN || die '交互输入已结束 / Interactive input closed.'
-            fi
-        else
-            if [[ "$CORE_IN" == 'singbox' ]]; then
-                read -r -p "   ${L_HY2} 可选填写 Sing-box HY2 自签证书/SNI 域名（留空使用 IP + pinSHA256）: " INPUT_H_DOMAIN || die '交互输入已结束 / Interactive input closed.'
-            else
-                read -r -p "   ${L_HY2} 是否拥有已解析到本机的域名？(留空使用默认自签证书): " INPUT_H_DOMAIN || die '交互输入已结束 / Interactive input closed.'
-            fi
-        fi
+        case "${ABOX_LANG:-zh}" in
+            en|ru|fa)
+                if [[ "$CORE_IN" == 'singbox' ]]; then
+                    read -r -p "   ${L_HY2} Optional server domain for Sing-box HY2 self-signed certificate/SNI (empty = IP + pinSHA256): " INPUT_H_DOMAIN || die 'Interactive input closed.'
+                else
+                    read -r -p "   ${L_HY2} Do you have a domain already resolved to this server? (empty = self-signed certificate): " INPUT_H_DOMAIN || die 'Interactive input closed.'
+                fi
+                ;;
+            ja)
+                if [[ "$CORE_IN" == 'singbox' ]]; then
+                    read -r -p "   ${L_HY2} Sing-box HY2 自己署名証明書/SNI 用のサーバードメイン（任意、空欄 = IP + pinSHA256）: " INPUT_H_DOMAIN || die '対話入力が終了しました。'
+                else
+                    read -r -p "   ${L_HY2} このサーバーに解決済みのドメインをお持ちですか？（空欄 = 自己署名証明書）: " INPUT_H_DOMAIN || die '対話入力が終了しました。'
+                fi
+                ;;
+            zh-tw)
+                if [[ "$CORE_IN" == 'singbox' ]]; then
+                    read -r -p "   ${L_HY2} 可選填寫 Sing-box HY2 自簽憑證/SNI 網域（留空使用 IP + pinSHA256）: " INPUT_H_DOMAIN || die '互動輸入已結束。'
+                else
+                    read -r -p "   ${L_HY2} 是否擁有已解析到本機的網域？(留空使用預設自簽憑證): " INPUT_H_DOMAIN || die '互動輸入已結束。'
+                fi
+                ;;
+            *)
+                if [[ "$CORE_IN" == 'singbox' ]]; then
+                    read -r -p "   ${L_HY2} 可选填写 Sing-box HY2 自签证书/SNI 域名（留空使用 IP + pinSHA256）: " INPUT_H_DOMAIN || die '交互输入已结束。'
+                else
+                    read -r -p "   ${L_HY2} 是否拥有已解析到本机的域名？(留空使用默认自签证书): " INPUT_H_DOMAIN || die '交互输入已结束。'
+                fi
+                ;;
+        esac
         HY2_DOMAIN="$INPUT_H_DOMAIN"
         if [[ -n "$HY2_DOMAIN" ]]; then
             valid_domain "$HY2_DOMAIN" || die "域名格式非法 / Invalid domain: $HY2_DOMAIN"
@@ -7251,11 +7277,20 @@ pre_install_setup() {
             fi
         fi
 
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-            read -r -p "   ${L_HY2} Enable port hopping? [Y/N]: " INPUT_H_HOP || die '交互输入已结束 / Interactive input closed.'
-        else
-            read -r -p "   ${L_HY2} 是否开启端口跳跃 (单端口被限速环境建议开启)? [Y/N]: " INPUT_H_HOP || die '交互输入已结束 / Interactive input closed.'
-        fi
+        case "${ABOX_LANG:-zh}" in
+            en|ru|fa)
+                read -r -p "   ${L_HY2} Enable port hopping? [Y/N]: " INPUT_H_HOP || die 'Interactive input closed.'
+                ;;
+            ja)
+                read -r -p "   ${L_HY2} ポートホッピングを有効にしますか？ [Y/N]: " INPUT_H_HOP || die '対話入力が終了しました。'
+                ;;
+            zh-tw)
+                read -r -p "   ${L_HY2} 是否開啟連接埠跳躍 (單連接埠被限速環境建議開啟)? [Y/N]: " INPUT_H_HOP || die '互動輸入已結束。'
+                ;;
+            *)
+                read -r -p "   ${L_HY2} 是否开启端口跳跃 (单端口被限速环境建议开启)? [Y/N]: " INPUT_H_HOP || die '交互输入已结束。'
+                ;;
+        esac
         if is_yes "$INPUT_H_HOP"; then
             HY2_HOP='true'
             HY2_RANGE_START=20000
@@ -7284,16 +7319,34 @@ pre_install_setup() {
             HY2_MONITOR_PORT="$HY2_BASE_PORT"
         fi
 
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-            HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} Downlink Mbps (default: 1000): " 1000) || die 'HY2 下行速率输入已结束 / HY2 downlink input closed.'
-        else
-            HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 下行速率(Mbps) (回车默认: 1000): " 1000) || die 'HY2 下行速率输入已结束 / HY2 downlink input closed.'
-        fi
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-            HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} Uplink Mbps (default: 100): " 100) || die 'HY2 上行速率输入已结束 / HY2 uplink input closed.'
-        else
-            HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 上行速率(Mbps) (回车默认: 100): " 100) || die 'HY2 上行速率输入已结束 / HY2 uplink input closed.'
-        fi
+        case "${ABOX_LANG:-zh}" in
+            en|ru|fa)
+                HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} Downlink Mbps (default: 1000): " 1000) || die 'HY2 downlink input closed.'
+                ;;
+            ja)
+                HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 下り速度 (Mbps)（既定値: 1000）: " 1000) || die 'HY2 下り速度の入力が終了しました。'
+                ;;
+            zh-tw)
+                HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 下行速率(Mbps) (預設: 1000): " 1000) || die 'HY2 下行速率輸入已結束。'
+                ;;
+            *)
+                HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 下行速率(Mbps) (回车默认: 1000): " 1000) || die 'HY2 下行速率输入已结束。'
+                ;;
+        esac
+        case "${ABOX_LANG:-zh}" in
+            en|ru|fa)
+                HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} Uplink Mbps (default: 100): " 100) || die 'HY2 uplink input closed.'
+                ;;
+            ja)
+                HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 上り速度 (Mbps)（既定値: 100）: " 100) || die 'HY2 上り速度の入力が終了しました。'
+                ;;
+            zh-tw)
+                HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 上行速率(Mbps) (預設: 100): " 100) || die 'HY2 上行速率輸入已結束。'
+                ;;
+            *)
+                HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 上行速率(Mbps) (回车默认: 100): " 100) || die 'HY2 上行速率输入已结束。'
+                ;;
+        esac
 
         local masq_default="https://${VISION_SNI:-${XHTTP_SNI:-www.samsung.com}}/"
         case "${ABOX_LANG:-zh}" in
@@ -7319,11 +7372,20 @@ pre_install_setup() {
     fi
     if [[ "$HAS_SS" == 'true' ]]; then
         SS_PORT=$(prompt_ss_port_input "$L_SS" "$DEF_S_PORT") || die 'SS 端口输入已结束 / SS port input closed.'
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-            read -r -p "   ${L_SS} Enter frontend whitelist IP/CIDR (empty = open to all, space-separated): " INPUT_SS_WL || die '交互输入已结束 / Interactive input closed.'
-        else
-            read -r -p "   ${L_SS} 请输入前置机白名单 IP/CIDR (留空全网开放, 多个用空格分隔): " INPUT_SS_WL || die '交互输入已结束 / Interactive input closed.'
-        fi
+        case "${ABOX_LANG:-zh}" in
+            en|ru|fa)
+                read -r -p "   ${L_SS} Enter frontend whitelist IP/CIDR (empty = open to all, space-separated): " INPUT_SS_WL || die 'Interactive input closed.'
+                ;;
+            ja)
+                read -r -p "   ${L_SS} フロントエンドのホワイトリスト IP/CIDR を入力してください（空欄 = 全開放、複数はスペース区切り）: " INPUT_SS_WL || die '対話入力が終了しました。'
+                ;;
+            zh-tw)
+                read -r -p "   ${L_SS} 請輸入前置機白名單 IP/CIDR (留空全網開放, 多個用空格分隔): " INPUT_SS_WL || die '互動輸入已結束。'
+                ;;
+            *)
+                read -r -p "   ${L_SS} 请输入前置机白名单 IP/CIDR (留空全网开放, 多个用空格分隔): " INPUT_SS_WL || die '交互输入已结束。'
+                ;;
+        esac
         SS_WHITELIST_IP="$INPUT_SS_WL"
         if [[ -n "$SS_WHITELIST_IP" ]]; then
             read -r -a ss_whitelist_ips <<< "$SS_WHITELIST_IP"
@@ -12753,11 +12815,20 @@ show_sni_preference_records() {
     clear
     local files=() f profile topn="${ABOX_SNI_RECORDS_TOPN:-100}" shown=0 mtime
     msg "${CYAN}======================================================================${NC}"
-    if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-        msg "${BOLD}${GREEN}SNI Preference Records${NC}"
-    else
-        msg "${BOLD}${GREEN}SNI 优选记录${NC}"
-    fi
+    case "${ABOX_LANG:-zh}" in
+        en|ru|fa)
+            msg "${BOLD}${GREEN}SNI Preference Records${NC}"
+            ;;
+        ja)
+            msg "${BOLD}${GREEN}SNI 優先レコード${NC}"
+            ;;
+        zh-tw)
+            msg "${BOLD}${GREEN}SNI 優選記錄${NC}"
+            ;;
+        *)
+            msg "${BOLD}${GREEN}SNI 优选记录${NC}"
+            ;;
+    esac
     valid_decimal_upto "$topn" 200 || topn=100
     (( 10#$topn >= 1 )) || topn=100
     msg "${CYAN}======================================================================${NC}"
@@ -12793,11 +12864,20 @@ show_sni_preference_records() {
         profile="${profile%.tsv}"
         mtime=$(date -r "$f" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || echo 'unknown')
         msg "${BLUE}----------------------------------------------------------------------${NC}"
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-            msg "${YELLOW}[${profile}] Saved: ${f} | Updated: ${mtime}${NC}"
-        else
-            msg "${YELLOW}[${profile}] 保存路径: ${f} | 更新时间: ${mtime}${NC}"
-        fi
+        case "${ABOX_LANG:-zh}" in
+            en|ru|fa)
+                msg "${YELLOW}[${profile}] Saved: ${f} | Updated: ${mtime}${NC}"
+                ;;
+            ja)
+                msg "${YELLOW}[${profile}] 保存先: ${f} | 更新日時: ${mtime}${NC}"
+                ;;
+            zh-tw)
+                msg "${YELLOW}[${profile}] 儲存路徑: ${f} | 更新時間: ${mtime}${NC}"
+                ;;
+            *)
+                msg "${YELLOW}[${profile}] 保存路径: ${f} | 更新时间: ${mtime}${NC}"
+                ;;
+        esac
         sni_render_ranked_report "$f" "$topn" || msg "${YELLOW}[!] 无法读取该记录的分级结果。${NC}"
         shown=1
     done

@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
+  <img width="300" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
 [简体中文](README-zh.md) | [繁體中文](README-zh-tw.md) | [日本語](README-ja.md) | [Русский](README-ru.md) | [فارسی](README-fa.md)
@@ -84,7 +84,7 @@ The repository ships a curated seed list at [`data/sni-candidates.txt`](data/sni
 
 The toolbox keeps all existing benchmark, IP quality, SNI, WARP, Swap, backup/restore, redacted diagnostics, preflight and subscription-export functions. It also includes a BBR/FQ tuning submenu (apply and rollback only), host settings (IP preference, plain DNS, supported DoT, measured DNS selection, supported DoH, timezone/locale/NTP and download-source preference), and Wallos installation/update/status/backup. BBR is opt-in and does not run automatically after protocol installation.
 
-The benchmark and IP-quality options try the upstream script first, validate the downloaded content, display its SHA-256 and ask for confirmation. If the upstream endpoint fails or returns invalid content, they use the A-Box recovery Release (`test-tools-mirror`) only when the asset matches its `SHA256SUMS` entry. If both sources fail, no script is executed.
+The benchmark and IP-quality options try the A-Box verified mirror (`test-tools-mirror` Release) first, and run the script only when the asset matches its `SHA256SUMS` entry. If the mirror is unavailable or the checksum mismatches, they fall back to the upstream script only when `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` is set (unverified, no SHA pin); otherwise no script is executed.
 
 Wallos is an optional self-hosted subscription tracker. The installer detects OS and architecture, fetches a stable Wallos release and matching Docker image, and uses the fixed `wallos-mirror` release only if upstream retrieval fails. Backups are staged and validated before publication, and upgrades attempt rollback on a failed health check. Wallos binds to `127.0.0.1` by default; use an HTTPS reverse proxy or SSH tunnel for remote access. Publishing plain HTTP on all IPv4 interfaces requires the explicit `WALLOS_BIND_ADDRESS=0.0.0.0` override and confirmation. Refreshing mutable third-party benchmark scripts requires a manual workflow dispatch approval.
 

@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
+  <img width="300" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
 [English](README.md) | [简体中文](README-zh.md) | [繁體中文](README-zh-tw.md) | [Русский](README-ru.md) | [فارسی](README-fa.md)
@@ -84,7 +84,7 @@ sudo bash A-Box.sh
 
 ツールボックスには、既存のベンチマーク、IP 品質、SNI、WARP、Swap、バックアップ/復元、編集済み診断、プリフライト、サブスクリプションエクスポート機能がすべて保持されています。BBR/FQ チューニングサブメニュー（適用とロールバックのみ）、ホスト設定（IP プリファレンス、プレーン DNS、対応 DoT、実測 DNS 選択、対応 DoH、タイムゾーン/ロケール/NTP、ダウンロードソース設定）、Wallos インストール/更新/状態/バックアップも含まれます。BBR はオプトインであり、プロトコルインストール後に自動実行されることはありません。
 
-ベンチマークと IP 品質オプションは、まず上流スクリプトを試行し、ダウンロード内容を検証、SHA-256 を表示して確認を求めます。上流エンドポイントが失敗するか無効な内容を返した場合、`SHA256SUMS` エントリーと一致する場合にのみ A-Box 復旧 Release（`test-tools-mirror`）を使用します。両方のソースが失敗した場合、スクリプトは実行されません。
+ベンチマークと IP 品質オプションは、まず A-Box 検証済みミラー（`test-tools-mirror` Release）を試行し、`SHA256SUMS` エントリーと一致する場合にのみ実行します。ミラーが利用不可またはチェックサム不一致の場合、`ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` が設定されている場合にのみ上流スクリプトにフォールバックします（未検証、SHA ピンなし）。それ以外の場合はスクリプトは実行されません。
 
 Wallos はオプションのセルフホスト型サブスクリプショントラッカーです。インストーラーは OS とアーキテクチャを検出し、安定版 Wallos リリースと対応する Docker イメージを取得します。上流の取得に失敗した場合のみ固定 `wallos-mirror` リリースを使用します。バックアップは公開前にステージング・検証され、アップグレードはヘルスチェック失敗時にロールバックを試みます。Wallos はデフォルトで `127.0.0.1` にバインドします。リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。平文 HTTP を全 IPv4 インターフェースに公開するには、明示的な `WALLOS_BIND_ADDRESS=0.0.0.0` オーバーライドと確認が必要です。サードパーティ製ベンチマークスクリプトの更新には、手動ワークフローディスパッチの承認が必要です。
 

@@ -4405,13 +4405,6 @@ _ss_wl_snapshot_rules() {
     return 0
 }
 
-# Restore the exact pre-operation SS rule set from the snapshot.
-# Deletes ONLY rules inserted by this invocation (present now, absent in snapshot);
-# re-adds rules deleted by this invocation (present in snapshot, absent now).
-# Called when a subsequent IPv6 rule operation fails, to avoid a dangerous
-# half-configured state. The die that follows aborts the whitelist setup entirely.
-# Unlike the old _ss_rollback_ipv4_drop_rules, this never deletes pre-existing
-# rules and restores open ACCEPTs that remove_ss_open_accept_rules deleted.
 # Rollback SS whitelist firewall rules to snapshot state.
 # Uses a single iptables-restore transaction per address family.
 # Policy: A-Box rules are placed at chain head in snapshot order

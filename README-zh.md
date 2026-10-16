@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
+  <img width="300" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
 [English](README.md) | [繁體中文](README-zh-tw.md) | [日本語](README-ja.md) | [Русский](README-ru.md) | [فارسی](README-fa.md)
@@ -23,7 +23,7 @@ A-Box 是一个独立 Bash 脚本，用于部署和维护 Linux 网络网关服�
 ### GitHub 官方源
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f2c5e0c8696011f9a48c58f727248356646e5d34/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9f654dc3dc437e9786e9709167f2cfd0562ee31f/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 审阅下载的脚本后，再单独执行：
 sudo bash A-Box.sh
@@ -32,7 +32,7 @@ sudo bash A-Box.sh
 ### 第三方备用镜像
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f2c5e0c8696011f9a48c58f727248356646e5d34/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9f654dc3dc437e9786e9709167f2cfd0562ee31f/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # 审阅下载的脚本后，再单独执行：
 sudo bash A-Box.sh
@@ -84,7 +84,7 @@ sudo bash A-Box.sh
 
 原有系统/下载测速、IP 质量、SNI 全量与微型主机优选、WARP、2 GB Swap、备份/恢复、脱敏诊断、预检查和订阅导出功能均保留。新增/归并的入口包括：BBR/FQ 调优子菜单（仅应用与回滚）；主机设置（IP 偏好、明文 DNS、后端支持时的 DoT、实测 DNS 优选、受支持环境的 DoH、时区/Locale/NTP 与下载源偏好）；以及 Wallos 安装、升级、状态、备份和保留数据卸载容器功能。BBR 为手动选择，不会在协议安装后自动执行。
 
-测速和 IP 质量选项先访问上游脚本，检查内容格式和 Bash 语法，显示 SHA-256 并要求确认。上游不可用或内容无效时，才回退到 A-Box Release `test-tools-mirror`；只有 `SHA256SUMS` 校验通过才会执行。双源都失败时不会运行脚本。
+测速和 IP 质量选项优先使用 A-Box 校验镜像（`test-tools-mirror` Release），只有 `SHA256SUMS` 校验通过才会执行。镜像不可用或校验失败时，仅在设置 `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` 的情况下回退到上游脚本（未校验，无 SHA 钉扎）；否则不会运行脚本。
 
 Wallos 是可选的自托管订阅管理工具。安装器优先读取 Wallos 稳定版与匹配的 Docker 镜像；上游不可用时回退到 `wallos-mirror`。数据备份先写入临时文件并验证，再原子提交；升级失败时会尝试通过暂存恢复流程回滚。Wallos 默认只绑定 `127.0.0.1`；远程访问应使用 HTTPS 反向代理或 SSH 隧道。只有明确设置 `WALLOS_BIND_ADDRESS=0.0.0.0` 并再次确认后，才会将未加密 HTTP 端口发布到所有 IPv4 网卡。第三方测速脚本镜像需要手动触发工作流并确认刷新。
 

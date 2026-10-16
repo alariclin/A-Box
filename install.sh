@@ -4385,11 +4385,18 @@ _ss_wl_snapshot_rules() {
     local port="${1:-${SS_PORT:-}}"
     [[ -n "$port" ]] || return 1
     _SS_WL_SNAP_PORT="$port"
-    _SS_WL_SNAP_V4="$("$IPT" -w -S INPUT 2>/dev/null | grep -F "A-Box-${port}-" | sed 's/^-A INPUT //' || true)"
+    # P2-01: distinguish "no rules" from "read failed". A failed iptables
+    # query must abort the snapshot instead of being mistaken for empty.
+    local out rc
+    out="$("$IPT" -w -S INPUT 2>/dev/null)"; rc=$?
+    (( rc == 0 )) || return 1
+    _SS_WL_SNAP_V4="$(printf '%s\n' "$out" | grep -F "A-Box-${port}-" | sed 's/^-A INPUT //')"
     _SS_WL_SNAP_V6=""
     _SS_WL_SNAP_V6_TAKEN=0
     if host_has_usable_ipv6 && ip6tables_usable; then
-        _SS_WL_SNAP_V6="$("$IPT6" -w -S INPUT 2>/dev/null | grep -F "A-Box-${port}-" | sed 's/^-A INPUT //' || true)"
+        out="$("$IPT6" -w -S INPUT 2>/dev/null)"; rc=$?
+        (( rc == 0 )) || return 1
+        _SS_WL_SNAP_V6="$(printf '%s\n' "$out" | grep -F "A-Box-${port}-" | sed 's/^-A INPUT //')"
         _SS_WL_SNAP_V6_TAKEN=1
     fi
     _SS_WL_SNAP_TAKEN=1
@@ -4416,7 +4423,10 @@ _ss_wl_rollback_to_snapshot() {
             snap="$_SS_WL_SNAP_V6"
             ip6tables_usable || continue
         fi
-        cur="$("$ipt" -w -S INPUT 2>/dev/null | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //' || true)"
+        local cur_out cur_rc
+        cur_out="$("$ipt" -w -S INPUT 2>/dev/null)"; cur_rc=$?
+        if (( cur_rc != 0 )); then failed=1; continue; fi
+        cur="$(printf '%s\n' "$cur_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
         # Delete insertions: in cur but not in snapshot.
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
@@ -4443,7 +4453,10 @@ _ss_wl_rollback_to_snapshot() {
         done <<< "$snap"
         # Verify final state matches snapshot.
         local final
-        final="$("$ipt" -w -S INPUT 2>/dev/null | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //' | sort || true)"
+        local final_out final_rc
+        final_out="$("$ipt" -w -S INPUT 2>/dev/null)"; final_rc=$?
+        if (( final_rc != 0 )); then failed=1; continue; fi
+        final="$(printf '%s\n' "$final_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //' | sort)"
         local expected
         expected="$(printf '%s\n' "$snap" | grep -v '^$' | sort || true)"
         if [[ "$final" != "$expected" ]]; then
@@ -7241,17 +7254,17 @@ pre_install_setup() {
                     case "$check_rc" in
                         0) ;;
                         1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; } ;;
-                        *) die "无法检查防火墙规则。" ;;
+                        *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                     esac
                 fi
             done
-            enforce_ss_whitelist_order "$SS_PORT" || die 'SS 白名单规则顺序校正失败。'
+            enforce_ss_whitelist_order "$SS_PORT" || { _ss_wl_rollback_to_snapshot; die 'SS 白名单规则顺序校正失败。'; }
         else
             allowPort "$SS_PORT" tcp
             allowPort "$SS_PORT" udp
         fi
     fi
-    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    save_firewall_rules || { _ss_wl_rollback_to_snapshot; die 'A-Box 防火墙持久化失败，已回滚。'; }
 }
 
 json_sockopt_xray() {
@@ -9440,7 +9453,7 @@ manage_ss_whitelist() {
                 fi
             done
             enforce_ss_whitelist_order "$SS_PORT" || { _ss_wl_rollback_to_snapshot; die 'SS 白名单规则顺序校正失败。'; }
-            save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+            save_firewall_rules || { _ss_wl_rollback_to_snapshot; die 'A-Box 防火墙持久化失败，已回滚。'; }
             msg "${GREEN}已开启白名单保护模式 (TCP+UDP)。${NC}"
             pause_return
             ;;
@@ -14695,6 +14708,18 @@ run_mirrored_test_script() {
     fi
     if [[ -z "$selected" ]]; then
         rm -f -- "$mirror" "$sums" "$manifest"
+        # P2-03: upstream fallback has no pre-pinned SHA; default-deny unless
+        # the operator explicitly opts in via ABOX_ALLOW_UNVERIFIED_UPSTREAM=1.
+        if [[ "${ABOX_ALLOW_UNVERIFIED_UPSTREAM:-0}" != '1' ]]; then
+            case "${ABOX_LANG:-zh}" in
+                en) msg "${RED}[-] A-Box verified mirror unavailable and unverified upstream fallback is disabled (set ABOX_ALLOW_UNVERIFIED_UPSTREAM=1 to allow).${NC}" ;;
+                ru) msg "${RED}[-] Проверенное зеркало A-Box недоступно, а непроверенный upstream запрещён.${NC}" ;;
+                fa) msg "${RED}[-] آینه تأییدشده در دسترس نیست و بازگشت تأییدنشده غیرفعال است.${NC}" ;;
+                *) msg "${RED}[-] A-Box 校验镜像不可用，且未校验的上游回退已被禁用（如需允许请设置 ABOX_ALLOW_UNVERIFIED_UPSTREAM=1）。${NC}" ;;
+            esac
+            rm -rf -- "$work"
+            return 1
+        fi
         case "${ABOX_LANG:-zh}" in
             en) msg "${YELLOW}[!] A-Box verified mirror unavailable or checksum mismatch; falling back to upstream (UNVERIFIED - no SHA pin).${NC}" ;;
             ru) msg "${YELLOW}[!] Проверенный зеркальный файл A-Box недоступен; переходим к upstream (БЕЗ ПРОВЕРКИ).${NC}" ;;

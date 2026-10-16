@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
+  <img width="300" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
 [English](README.md) | [简体中文](README-zh.md) | [繁體中文](README-zh-tw.md) | [日本語](README-ja.md) | [Русский](README-ru.md)
@@ -23,7 +23,7 @@ A-Box یک اسکریپت مستقل Bash برای راه‌اندازی و نگ
 ### منبع رسمی GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f2c5e0c8696011f9a48c58f727248356646e5d34/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9f654dc3dc437e9786e9709167f2cfd0562ee31f/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
 sudo bash A-Box.sh
@@ -32,7 +32,7 @@ sudo bash A-Box.sh
 ### آینه جایگزین شخص ثالث
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f2c5e0c8696011f9a48c58f727248356646e5d34/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9f654dc3dc437e9786e9709167f2cfd0562ee31f/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
 sudo bash A-Box.sh
@@ -84,7 +84,7 @@ sudo bash A-Box.sh
 
 تمام قابلیت‌های قبلی حفظ شده‌اند: آزمون سیستم و سرعت دانلود، ارزیابی کیفیت IP، بررسی کامل و سبک SNI، مدیریت WARP، ایجاد Swap دو گیگابایتی، پشتیبان‌گیری/بازیابی، گزارش عیب‌یابی بدون اسرار، پیش‌آزمایی و خروجی اشتراک. زیرمنوهای BBR/FQ (اعمال و بازگردانی)، تنظیمات میزبان (ترجیح IP، DNS عادی، DoT فقط در صورت پشتیبانی backend، سنجش DNS، DoH در محیط پشتیبانی‌شده، منطقه زمانی/locale/NTP و ترجیح منبع دانلود) و نصب، ارتقا، وضعیت و پشتیبان‌گیری Wallos نیز افزوده شده‌اند. BBR فقط با انتخاب دستی اجرا می‌شود و پس از نصب پروتکل به‌صورت خودکار فعال نمی‌شود.
 
-گزینه‌های آزمون ابتدا به اسکریپت upstream متصل می‌شوند، قالب و نحو Bash را بررسی می‌کنند، SHA-256 را نمایش می‌دهند و برای اجرا تأیید می‌خواهند. اگر منبع اصلی در دسترس نباشد یا فایل نامعتبر برگرداند، از Release با نام ثابت `test-tools-mirror` استفاده می‌شود؛ اجرای نسخه پشتیبان منوط به تطبیق SHA-256 با `SHA256SUMS` است. اگر هر دو منبع شکست بخورند، اسکریپتی اجرا نمی‌شود.
+گزینه‌های آزمون ابتدا به آینه تأییدشده A-Box (Release `test-tools-mirror`) متصل می‌شوند و تنها در صورت تطبیق SHA-256 با `SHA256SUMS` اجرا می‌شوند. اگر آینه در دسترس نباشد یا checksum نامعتبر باشد، تنها در صورت تنظیم `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` به اسکریپت upstream بازمی‌گردند (تأییدنشده، بدون SHA pin)؛ در غیر این صورت اسکریپتی اجرا نمی‌شود.
 
 Wallos برنامه‌ای اختیاری برای مدیریت اشتراک‌هاست. نصب‌کننده نسخه پایدار و تصویر Docker متناظر را دریافت می‌کند و هنگام شکست منبع اصلی از Release ثابت `wallos-mirror` استفاده می‌کند. فایل پشتیبان ابتدا موقتاً ساخته و اعتبارسنجی می‌شود، سپس به‌صورت اتمی منتشر می‌شود. Wallos به‌طور پیش‌فرض فقط روی `127.0.0.1` در دسترس است؛ برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید. انتشار HTTP بدون TLS روی همه رابط‌های IPv4 فقط با تنظیم صریح `WALLOS_BIND_ADDRESS=0.0.0.0` و تأیید مجدد ممکن است. تازه‌سازی آینه اسکریپت‌های شخص ثالث نیازمند اجرای دستی workflow و تأیید است.
 

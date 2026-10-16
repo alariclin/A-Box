@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="804" height="867" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
+  <img width="300" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
 </p>
 
 [English](README.md) | [简体中文](README-zh.md) | [繁體中文](README-zh-tw.md) | [日本語](README-ja.md) | [فارسی](README-fa.md)
@@ -23,7 +23,7 @@ A-Box — автономный Bash-скрипт для развёртывани
 ### Официальный источник GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f2c5e0c8696011f9a48c58f727248356646e5d34/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9f654dc3dc437e9786e9709167f2cfd0562ee31f/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # После проверки загруженного скрипта выполните отдельно:
 sudo bash A-Box.sh
@@ -32,7 +32,7 @@ sudo bash A-Box.sh
 ### Резервное зеркало третьей стороны
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f2c5e0c8696011f9a48c58f727248356646e5d34/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9f654dc3dc437e9786e9709167f2cfd0562ee31f/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # После проверки загруженного скрипта выполните отдельно:
 sudo bash A-Box.sh
@@ -84,7 +84,7 @@ sudo bash A-Box.sh
 
 Все прежние функции сохранены: системный тест/скорость загрузки, проверка качества IP, полная и облегчённая проверка SNI, WARP, Swap 2 ГБ, резервное копирование/восстановление, диагностика без секретов, предварительная проверка и экспорт подписок. Добавлены подпункты BBR/FQ (применение и откат), настройки хоста (предпочтение IP, обычный DNS, DoT только при поддержке бэкенда, измерение DNS, DoH в поддерживаемой конфигурации, часовой пояс/locale/NTP и предпочтение источника загрузки), а также установка, обновление, статус, резервное копирование Wallos и удаление контейнера с сохранением данных. BBR запускается только вручную и не применяется автоматически после установки протокола.
 
-Для тестов система сначала обращается к upstream-скрипту, проверяет формат и синтаксис Bash, показывает SHA-256 и требует подтверждения. Если upstream недоступен или возвращает некорректный файл, используется Release A-Box `test-tools-mirror` только после проверки по `SHA256SUMS`. Если оба источника недоступны, скрипт не запускается.
+Для тестов система сначала обращается к проверенному зеркалу A-Box (Release `test-tools-mirror`) и запускает скрипт только после проверки по `SHA256SUMS`. Если зеркало недоступно или контрольная сумма не совпадает, откат к upstream-скрипту выполняется только при `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` (без проверки, без SHA-пина); иначе скрипт не запускается.
 
 Wallos — необязательное приложение для учёта подписок. Установщик получает стабильную версию и соответствующий Docker-образ, а при недоступности upstream использует Release `wallos-mirror`. Резервная копия сначала создаётся во временный файл и проверяется, затем публикуется атомарно. По умолчанию Wallos привязан только к `127.0.0.1`; для удалённого доступа используйте HTTPS reverse proxy или SSH-туннель. Публикация HTTP без TLS на всех IPv4-интерфейсах требует явного `WALLOS_BIND_ADDRESS=0.0.0.0` и повторного подтверждения. Обновление зеркала сторонних скриптов требует ручного запуска workflow и подтверждения.
 

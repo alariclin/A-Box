@@ -7118,8 +7118,8 @@ pre_install_setup() {
     L_SS=$(proto_label 'SS-2022')
     case "${ABOX_LANG:-zh}" in
         en) L_GLOBAL=$(proto_label 'Global') ;;
-        ru) L_GLOBAL=$(proto_label 'Global') ;;  # TODO: 俄语
-        fa) L_GLOBAL=$(proto_label 'Global') ;;  # TODO: 波斯语
+        ru) L_GLOBAL=$(proto_label 'Глобальный') ;;
+        fa) L_GLOBAL=$(proto_label 'گلوبال') ;;
         ja)
             L_GLOBAL=$(proto_label 'グローバル') ;;
         zh-tw) L_GLOBAL=$(proto_label '全域性') ;;
@@ -7247,11 +7247,11 @@ pre_install_setup() {
                         read -r -p "   ${L_HY2} Use Cloudflare DNS-01 ACME instead of HTTP-01? [Y/N]: " INPUT_ACME_DNS || die '交互输入已结束 / Interactive input closed.'
                             ;;
                         ru)
-                        read -r -p "   ${L_HY2} Use Cloudflare DNS-01 ACME instead of HTTP-01? [Y/N]: " INPUT_ACME_DNS || die '交互输入已结束 / Interactive input closed.'
-                            ;;  # TODO: 俄语
+                        read -r -p "   ${L_HY2} Использовать Cloudflare DNS-01 ACME вместо HTTP-01? [Y/N]: " INPUT_ACME_DNS || die 'Ввод завершён.'
+                            ;;
                         fa)
-                        read -r -p "   ${L_HY2} Use Cloudflare DNS-01 ACME instead of HTTP-01? [Y/N]: " INPUT_ACME_DNS || die '交互输入已结束 / Interactive input closed.'
-                            ;;  # TODO: 波斯语
+                        read -r -p "   ${L_HY2} استفاده از Cloudflare DNS-01 ACME به جای HTTP-01؟ [Y/N]: " INPUT_ACME_DNS || die 'ورودی به پایان رسید.'
+                            ;;
                         ja)
                             read -r -p "   ${L_HY2} HTTP-01 の代わりに Cloudflare DNS-01 ACME で証明書を取得しますか？[Y/N]: " INPUT_ACME_DNS || die '対話入力が終了しました / Interactive input closed.'
                             ;;
@@ -7354,11 +7354,11 @@ pre_install_setup() {
             HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} Enter HTTP/3 masquerade URL (default: $masq_default): " "$masq_default") || die 'HY2 伪装 URL 输入已结束 / HY2 masquerade URL input closed.'
                 ;;
             ru)
-            HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} Enter HTTP/3 masquerade URL (default: $masq_default): " "$masq_default") || die 'HY2 伪装 URL 输入已结束 / HY2 masquerade URL input closed.'
-                ;;  # TODO: 俄语
+            HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} Ввести URL маскировки HTTP/3 (по умолчанию: $masq_default): " "$masq_default") || die 'Ввод URL маскировки HY2 завершён.'
+                ;;
             fa)
-            HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} Enter HTTP/3 masquerade URL (default: $masq_default): " "$masq_default") || die 'HY2 伪装 URL 输入已结束 / HY2 masquerade URL input closed.'
-                ;;  # TODO: 波斯语
+            HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} URL استتار HTTP/3 را وارد کنید (پیش‌فرض: $masq_default): " "$masq_default") || die 'ورودی URL استتار HY2 به پایان رسید.'
+                ;;
             ja)
                 HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} HTTP/3 の偽装サイト URL を入力してください（既定値: $masq_default）: " "$masq_default") || die 'HY2 偽装 URL の入力が終了しました / HY2 masquerade URL input closed.'
                 ;;
@@ -7408,11 +7408,11 @@ pre_install_setup() {
             read -r -p "   ${L_GLOBAL} Enable TCP KeepAlive 45s to prevent NAT idle disconnect? [Y/N]: " INPUT_KA || die '交互输入已结束 / Interactive input closed.'
                 ;;
             ru)
-            read -r -p "   ${L_GLOBAL} Enable TCP KeepAlive 45s to prevent NAT idle disconnect? [Y/N]: " INPUT_KA || die '交互输入已结束 / Interactive input closed.'
-                ;;  # TODO: 俄语
+            read -r -p "   ${L_GLOBAL} Включить TCP KeepAlive 45с для предотвращения разрыва соединения NAT? [Y/N]: " INPUT_KA || die 'Ввод завершён.'
+                ;;
             fa)
-            read -r -p "   ${L_GLOBAL} Enable TCP KeepAlive 45s to prevent NAT idle disconnect? [Y/N]: " INPUT_KA || die '交互输入已结束 / Interactive input closed.'
-                ;;  # TODO: 波斯语
+            read -r -p "   ${L_GLOBAL} فعال‌سازی TCP KeepAlive به مدت 45 ثانیه برای جلوگیری از قطع اتصال بی‌فعال NAT؟ [Y/N]: " INPUT_KA || die 'ورودی به پایان رسید.'
+                ;;
             ja)
                 read -r -p "   ${L_GLOBAL} NAT のアイドル時切断を防ぐため、TCP KeepAlive (45s) を有効にしますか？ [Y/N]: " INPUT_KA || die '対話入力が終了しました / Interactive input closed.'
                 ;;
@@ -12028,15 +12028,15 @@ confirm_remote_script_hash() {
         confirm_yes_no 'Execute this digest-pinned third-party script? [Y/N]: '
             ;;
         ru)
-        msg "${YELLOW}[!] This is third-party code outside A-Box control even after digest pin.${NC}"
-        msg "${YELLOW}[!] Source: ${url}${NC}"
-        confirm_yes_no 'Execute this digest-pinned third-party script? [Y/N]: '
-            ;;  # TODO: 俄语
+        msg "${YELLOW}[!] Это код третьей стороны вне контроля A-Box, даже после digest pin.${NC}"
+        msg "${YELLOW}[!] Источник: ${url}${NC}"
+        confirm_yes_no 'Выполнить этот сторонний скрипт с фиксированным digest? [Y/N]: '
+            ;;
         fa)
-        msg "${YELLOW}[!] This is third-party code outside A-Box control even after digest pin.${NC}"
-        msg "${YELLOW}[!] Source: ${url}${NC}"
-        confirm_yes_no 'Execute this digest-pinned third-party script? [Y/N]: '
-            ;;  # TODO: 波斯语
+        msg "${YELLOW}[!] این کد سوم‌طرفانه خارج از کنترل A-Box است حتی پس از digest pin.${NC}"
+        msg "${YELLOW}[!] منبع: ${url}${NC}"
+        confirm_yes_no 'این اسکریپت سوم‌طرف با digest ثابت اجرا شود؟ [Y/N]: '
+            ;;
         ja)
             msg "${YELLOW}[!] ダイジェストを固定していても、これは A-Box の管理外にあるサードパーティーコードです。${NC}"
             msg "${YELLOW}[!] ソース: ${url}${NC}"
@@ -12841,11 +12841,11 @@ show_sni_preference_records() {
             msg "${YELLOW}[!] No SNI preference record found. Run Toolbox option 3 or 4 first.${NC}"
                 ;;
             ru)
-            msg "${YELLOW}[!] No SNI preference record found. Run Toolbox option 3 or 4 first.${NC}"
-                ;;  # TODO: 俄语
+            msg "${YELLOW}[!] Не найдена запись предпочтений SNI. Сначала запустите опцию 3 или 4 в Toolbox.${NC}"
+                ;;
             fa)
-            msg "${YELLOW}[!] No SNI preference record found. Run Toolbox option 3 or 4 first.${NC}"
-                ;;  # TODO: 波斯语
+            msg "${YELLOW}[!] رکورد ترجیح SNI یافت نشد. ابتدا گزینه 3 یا 4 جعبه‌ابزار را اجرا کنید.${NC}"
+                ;;
             ja)
                 msg "${YELLOW}[!] SNI の優先設定レコードが見つかりません。先に Toolbox のオプション 3 または 4 を実行してください。${NC}"
                 ;;
@@ -14859,19 +14859,19 @@ backup_restore_menu() {
         msg "${GREEN}0. Back${NC}"
             ;;
         ru)
-        msg "${YELLOW}1. Backup current A-Box configuration${NC}"
-        msg "${YELLOW}2. Restore from backup${NC}"
-        msg "${YELLOW}3. Export recovery key to a separate medium${NC}"
-        msg "${YELLOW}4. Convert a legacy backup to manifest v3${NC}"
-        msg "${GREEN}0. Back${NC}"
-            ;;  # TODO: 俄语
+        msg "${YELLOW}1. Резервное копирование текущей конфигурации A-Box${NC}"
+        msg "${YELLOW}2. Восстановление из резервной копии${NC}"
+        msg "${YELLOW}3. Экспорт ключа восстановления на отдельный носитель${NC}"
+        msg "${YELLOW}4. Конвертация старой резервной копии в manifest v3${NC}"
+        msg "${GREEN}0. Назад${NC}"
+            ;;
         fa)
-        msg "${YELLOW}1. Backup current A-Box configuration${NC}"
-        msg "${YELLOW}2. Restore from backup${NC}"
-        msg "${YELLOW}3. Export recovery key to a separate medium${NC}"
-        msg "${YELLOW}4. Convert a legacy backup to manifest v3${NC}"
-        msg "${GREEN}0. Back${NC}"
-            ;;  # TODO: 波斯语
+        msg "${YELLOW}1. پشتیبان‌گیری از پیکربندی فعلی A-Box${NC}"
+        msg "${YELLOW}2. بازیابی از پشتیبان${NC}"
+        msg "${YELLOW}3. صدور کلید بازیابی به رسانه جداگانه${NC}"
+        msg "${YELLOW}4. تبدیل پشتیبان قدیمی به manifest v3${NC}"
+        msg "${GREEN}0. بازگشت${NC}"
+            ;;
         ja)
             msg "${YELLOW}1. 現在の A-Box 設定をバックアップ${NC}"
             msg "${YELLOW}2. バックアップから復元${NC}"
@@ -17566,15 +17566,15 @@ confirm_ota_script_hash() {
         read -r -p 'Install this downloaded A-Box script? [Y/N]: ' answer
             ;;
         ru)
-        msg "${YELLOW}[!] OTA source is pinned to an immutable Git commit. Syntax/fingerprint and SHA256 display are not a cryptographic publisher signature.${NC}"
-        msg "${YELLOW}[!] Source: ${url}${NC}"
-        read -r -p 'Install this downloaded A-Box script? [Y/N]: ' answer
-            ;;  # TODO: 俄语
+        msg "${YELLOW}[!] Источник OTA привязан к неизменному Git-коммиту. Проверка синтаксиса/отпечатка и отображение SHA256 не являются криптографической подписью издателя.${NC}"
+        msg "${YELLOW}[!] Источник: ${url}${NC}"
+        read -r -p 'Установить этот загруженный скрипт A-Box? [Y/N]: ' answer
+            ;;
         fa)
-        msg "${YELLOW}[!] OTA source is pinned to an immutable Git commit. Syntax/fingerprint and SHA256 display are not a cryptographic publisher signature.${NC}"
-        msg "${YELLOW}[!] Source: ${url}${NC}"
-        read -r -p 'Install this downloaded A-Box script? [Y/N]: ' answer
-            ;;  # TODO: 波斯语
+        msg "${YELLOW}[!] منبع OTA به یک کامیت Git تغییرناپذیر سنجاق شده است. نمایش نحو/اثرانگشت و SHA256 امضای رمزنگاری ناشر نیست.${NC}"
+        msg "${YELLOW}[!] منبع: ${url}${NC}"
+        read -r -p 'این اسکریپت دانلود شده A-Box نصب شود؟ [Y/N]: ' answer
+            ;;
         ja)
             msg "${YELLOW}[!] OTA のソースは変更不可能な Git commit に固定されています。構文 / フィンガープリントの確認と SHA256 の表示は、リリース発行者による暗号学的署名の代わりにはなりません。${NC}"
             msg "${YELLOW}[!] ソース: ${url}${NC}"
@@ -18392,27 +18392,27 @@ ota_and_geo_menu() {
         read -r -p 'Select [0-5]: ' ota_choice
             ;;
         ru)
-        msg "${BOLD}${GREEN}OTA, Geo and Core-only Upgrade${NC}"
+        msg "${BOLD}${GREEN}OTA, Geo и обновление только ядер${NC}"
         msg "${CYAN}======================================================================${NC}"
-        msg "${YELLOW}1. Upgrade A-Box script${NC}"
-        msg "${YELLOW}2. Update Xray Loyalsoldier Geo resources now${NC}"
-        msg "${YELLOW}3. Upgrade current installed proxy cores only; preserve node parameters${NC}"
-        msg "${YELLOW}4. Show compatibility pin docs [U3]${NC}"
-        msg "${YELLOW}5. DANGER: try upstream latest cores (auto-rollback) [U3]${NC}"
-        msg "${GREEN}0. Back${NC}"
-        read -r -p 'Select [0-5]: ' ota_choice
-            ;;  # TODO: 俄语
+        msg "${YELLOW}1. Обновить скрипт A-Box${NC}"
+        msg "${YELLOW}2. Обновить Geo-ресурсы Xray Loyalsoldier${NC}"
+        msg "${YELLOW}3. Обновить только установленные ядра; сохранить параметры узлов${NC}"
+        msg "${YELLOW}4. Показать документацию по фиксированным версиям [U3]${NC}"
+        msg "${YELLOW}5. ОПАСНО: попробовать последние ядра upstream (автооткат) [U3]${NC}"
+        msg "${GREEN}0. Назад${NC}"
+        read -r -p 'Выберите [0-5]: ' ota_choice
+            ;;
         fa)
-        msg "${BOLD}${GREEN}OTA, Geo and Core-only Upgrade${NC}"
+        msg "${BOLD}${GREEN}ارتقای OTA، Geo و فقط هسته${NC}"
         msg "${CYAN}======================================================================${NC}"
-        msg "${YELLOW}1. Upgrade A-Box script${NC}"
-        msg "${YELLOW}2. Update Xray Loyalsoldier Geo resources now${NC}"
-        msg "${YELLOW}3. Upgrade current installed proxy cores only; preserve node parameters${NC}"
-        msg "${YELLOW}4. Show compatibility pin docs [U3]${NC}"
-        msg "${YELLOW}5. DANGER: try upstream latest cores (auto-rollback) [U3]${NC}"
-        msg "${GREEN}0. Back${NC}"
-        read -r -p 'Select [0-5]: ' ota_choice
-            ;;  # TODO: 波斯语
+        msg "${YELLOW}1. به‌روزرسانی اسکریپت A-Box${NC}"
+        msg "${YELLOW}2. به‌روزرسانی منابع Geo Loyalsoldier برای Xray${NC}"
+        msg "${YELLOW}3. فقط هسته‌های نصب‌شده را ارتقا بده؛ پارامترهای نود حفظ شود${NC}"
+        msg "${YELLOW}4. نمایش مستندات نسخه‌های ثابت [U3]${NC}"
+        msg "${YELLOW}5. خطر: امتحان آخرین هسته‌های upstream (بازگشت خودکار) [U3]${NC}"
+        msg "${GREEN}0. بازگشت${NC}"
+        read -r -p 'انتخاب [0-5]: ' ota_choice
+            ;;
         ja)
             msg "${BOLD}${GREEN}スクリプト OTA、Xray Geo データ、コアのみのアップグレード${NC}"
             msg "${CYAN}======================================================================${NC}"

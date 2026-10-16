@@ -6841,6 +6841,20 @@ _iptables_q() {
         "$cmd" "$@"
     fi
 }
+# G3: safe iptables modification wrapper. Uses -w only when supported.
+# Usage: _iptables_do <iptables|ip6tables> <args...>
+# NOTE: Existing bare 'iptables -w' calls have NOT been migrated yet.
+# Migration is pending due to self-test mock incompatibility (see G3 status).
+_iptables_do() {
+    local cmd="$1"; shift
+    local wflag
+    wflag=$(_iptables_w_flag "$cmd")
+    if [[ -n "$wflag" ]]; then
+        "$cmd" "$wflag" "$@"
+    else
+        "$cmd" "$@"
+    fi
+}
 ipv6_nat_redirect_usable() { command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -t nat -L PREROUTING >/dev/null 2>&1; }
 hysteria_official_hop_firewall_ok() {
     local start="${HY2_RANGE_START:-}" end="${HY2_RANGE_END:-}" first="${HY2_MONITOR_PORT:-${HY2_RANGE_START:-}}" first_other=''

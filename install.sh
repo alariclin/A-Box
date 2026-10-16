@@ -4428,14 +4428,23 @@ _ss_wl_rollback_to_snapshot() {
     for ipt in "$IPT" "$IPT6"; do
         if [[ "$ipt" == "$IPT" ]]; then
             snap="$_SS_WL_SNAP_V4"
-            # Match restore binary to actual backend (nft vs legacy)
-            if "$ipt" --version 2>/dev/null | grep -q "nf_tables"; then
-                restore_bin="iptables-restore"
-            else
-                restore_bin="iptables-restore"
+            # Match restore binary to actual backend (nft vs legacy).
+            # update-alternatives may point iptables/iptables-restore to different
+            # backends; detect via --version output.
+            local ipt_ver restore_ver
+            ipt_ver="$("$ipt" --version 2>/dev/null || echo "")"
+            # Default to iptables-restore; refine if version strings indicate mismatch
+            restore_bin="iptables-restore"
+            if command -v "$restore_bin" >/dev/null 2>&1; then
+                restore_ver="$("$restore_bin" --version 2>/dev/null || echo "")"
+                # If $IPT reports nf_tables but restore does not (or vice versa),
+                # try the alternative binary name
+                if [[ "$ipt_ver" == *"nf_tables"* && "$restore_ver" != *"nf_tables"* ]]; then
+                    command -v iptables-nft-restore >/dev/null 2>&1 && restore_bin="iptables-nft-restore"
+                elif [[ "$ipt_ver" != *"nf_tables"* && "$restore_ver" == *"nf_tables"* ]]; then
+                    command -v iptables-legacy-restore >/dev/null 2>&1 && restore_bin="iptables-legacy-restore"
+                fi
             fi
-            # Verify restore binary operates on same backend as $IPT
-            # by checking version string matches
         else
             # Skip IPv6 if it was not snapshotted (unusable at snapshot time).
             [[ "$v6_needed" == 1 ]] || continue
@@ -4542,9 +4551,18 @@ _ss_wl_rollback_to_snapshot() {
             continue
         fi
         # Also verify full A-Box rule set matches (no extras/missing)
-        local final
+        # Compare normalized full sets (order-independent for this check,
+        # as head-order was already verified above)
+        local final normalized_final
         final="$(printf '%s\n' "$final_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
-        if [[ "$final" != "$expected" ]]; then
+        normalized_final=""
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            line="$(__abox_normalize_managed_rule_line "$line" 2>/dev/null || printf '%s' "$line")"
+            normalized_final+="$line"$'\n'
+        done <<< "$final"
+        # Sort both for order-independent comparison
+        if [[ "$(printf '%s' "$normalized_final" | sort)" != "$(printf '%s' "$normalized_expected" | sort)" ]]; then
             failed=1
             continue
         fi

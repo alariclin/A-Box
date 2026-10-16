@@ -285,8 +285,19 @@ jobs:
             printf 'IPQuality-LICENSE.url=%s\n' "${ipquality_license_url}"
             printf 'validation=non-empty;size-bounds;shebang;no-html-signature;bash-n\n'
           } > test-tools-manifest.txt
-          sha256sum bench.sh Check.Place.sh YABS-LICENSE IPQuality-LICENSE > SHA256SUMS
+          sha256sum bench.sh Check.Place.sh YABS-LICENSE IPQuality-LICENSE test-tools-manifest.txt > SHA256SUMS
           sha256sum -c SHA256SUMS
+          # P3-02: Sign SHA256SUMS for test-tools (Ed25519)
+          if [[ -n "${ABOX_SIGNING_PRIVKEY_B64:-}" ]]; then
+            umask 077
+            python3 -c 'import base64,sys;raw=base64.b64decode(sys.argv[1],validate=True);assert len(raw)==32;der=bytes.fromhex("302e020100300506032b657004220402")+raw;sys.stdout.write("-----BEGIN PRIVATE KEY-----\n"+base64.encodebytes(der).decode().strip()+"\n-----END PRIVATE KEY-----\n")' "$ABOX_SIGNING_PRIVKEY_B64" > /tmp/abox-sign-priv.pem
+            openssl pkeyutl -sign -inkey /tmp/abox-sign-priv.pem -rawin -in SHA256SUMS | base64 > SHA256SUMS.sig
+            openssl pkeyutl -verify -pubin -inkey <(openssl pkey -in /tmp/abox-sign-priv.pem -pubout) -rawin -in SHA256SUMS -sigfile <(base64 -d SHA256SUMS.sig) || { echo "::error::test-tools SHA256SUMS self-check failed"; exit 1; }
+            echo "Signed: SHA256SUMS.sig"
+            shred -u /tmp/abox-sign-priv.pem 2>/dev/null || rm -f /tmp/abox-sign-priv.pem
+          else
+            echo "::notice::ABOX_SIGNING_PRIVKEY_B64 not set; skipping test-tools signing."
+          fi
 
       - name: Publish Wallos stable recovery Release
         if: always() && steps.wallos_assets.outcome == 'success'
@@ -362,6 +373,7 @@ jobs:
           # As above, publish payload first and checksum manifest last.
           gh release upload "$tag" "${assets[@]}" --clobber
           gh release upload "$tag" "$asset_dir/SHA256SUMS" --clobber
+          [[ -f "$asset_dir/SHA256SUMS.sig" ]] && gh release upload "$tag" "$asset_dir/SHA256SUMS.sig" --clobber
 
           gh release edit "$tag" --draft=false --latest=false
           echo "Published ${title}: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"

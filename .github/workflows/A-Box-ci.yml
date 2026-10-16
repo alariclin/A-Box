@@ -87,6 +87,28 @@ jobs:
                       sys.exit(1)
           print(f"OK: All {len(readme_files)} README files correctly pin install.sh commit {expected_sha}")
           PY
+      - name: Verify i18n case blocks have en) branch
+        run: |
+          python3 - <<'PY'
+          import re, sys
+          with open('install.sh', encoding='utf-8') as f:
+              content = f.read()
+          # Find all case "${ABOX_LANG...}" blocks and check for en) branch
+          # This is a simple heuristic: find 'case "${ABOX_LANG' then check
+          # if 'en)' appears before the matching 'esac'
+          pattern = re.compile(r'case "\$\{ABOX_LANG[^}]*\}" in(.*?)(?=\nesac)', re.DOTALL)
+          missing = []
+          for i, m in enumerate(pattern.finditer(content)):
+              block = m.group(1)
+              if 'en)' not in block:
+                  # Get line number
+                  lineno = content[:m.start()].count('\n') + 1
+                  missing.append(lineno)
+          if missing:
+              print(f"ERROR: {len(missing)} case ABOX_LANG blocks missing en) branch at lines: {missing[:10]}", file=sys.stderr)
+              sys.exit(1)
+          print(f"OK: All case ABOX_LANG blocks have en) branch")
+          PY
       - name: Verify normalize_managed_rule_line definitions (BUG-28 + B-02)
         run: |
           python3 - <<'PY'

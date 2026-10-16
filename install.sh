@@ -9434,6 +9434,16 @@ manage_ss_whitelist() {
             ;;
         3)
             ss_whitelist_ipv6_precheck || die '主机启用了 IPv6，但 IPv6 防火墙不可用；拒绝启用白名单模式以避免 IPv6 侧被静默放行。'
+            # 空白名单检查：没有白名单IP时开启会导致SS完全不可访问
+            local _wl_ips=()
+            [[ -n "${SS_WHITELIST_IP:-}" ]] && read -r -a _wl_ips <<< "${SS_WHITELIST_IP:-}"
+            if (( ${#_wl_ips[@]} == 0 )); then
+                case "${ABOX_LANG:-zh}" in
+                    en) msg "${YELLOW}[!] Whitelist is empty. Enabling whitelist mode now will block ALL connections to SS port ${SS_PORT}.${NC}" ;;
+                    *) msg "${YELLOW}[!] 白名单为空。现在开启白名单模式将阻断所有到 SS 端口 ${SS_PORT} 的连接。${NC}" ;;
+                esac
+                confirm_yes_no "Continue anyway? / 仍要继续吗？ [Y/N]: " || return 0
+            fi
             _ss_wl_snapshot_rules || die '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。'
             remove_ss_open_accept_rules || { _ss_wl_rollback_to_snapshot; die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'; }
             for proto in tcp udp; do
@@ -9458,35 +9468,36 @@ manage_ss_whitelist() {
             pause_return
             ;;
         4)
-            remove_ss_source_whitelist_rules || die '旧的 SS-2022 来源白名单规则无法完整删除；拒绝切换为全网开放。'
+            _ss_wl_snapshot_rules || die '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。'
+            remove_ss_source_whitelist_rules || { _ss_wl_rollback_to_snapshot; die '旧的 SS-2022 来源白名单规则无法完整删除；拒绝切换为全网开放。'; }
             for proto in tcp udp; do
                 while :; do
                     if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
                         1) break ;;
-                        *) die "无法检查 IPv4 SS DROP 规则: $proto" ;;
+                        *) { _ss_wl_rollback_to_snapshot; die "无法检查 IPv4 SS DROP 规则: $proto"; } ;;
                     esac
-                    $IPT -w -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则删除失败: $proto"
+                    $IPT -w -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 SS DROP 规则删除失败: $proto"; }
                 done
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
-                case "$check_rc" in 1) ;; 0) die "IPv4 SS DROP 规则仍然存在: $proto" ;; *) die "无法验证 IPv4 SS DROP 规则已删除: $proto" ;; esac
+                case "$check_rc" in 1) ;; 0) { _ss_wl_rollback_to_snapshot; die "IPv4 SS DROP 规则仍然存在: $proto"; } ;; *) { _ss_wl_rollback_to_snapshot; die "无法验证 IPv4 SS DROP 规则已删除: $proto"; } ;; esac
                 if command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
                     while :; do
                         if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                         case "$check_rc" in
                             0) ;;
                             1) break ;;
-                            *) die "无法检查 IPv6 SS DROP 规则: $proto" ;;
+                            *) { _ss_wl_rollback_to_snapshot; die "无法检查 IPv6 SS DROP 规则: $proto"; } ;;
                         esac
-                        $IPT6 -w -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || die "IPv6 SS DROP 规则删除失败: $proto"
+                        $IPT6 -w -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 SS DROP 规则删除失败: $proto"; }
                     done
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
-                    case "$check_rc" in 1) ;; 0) die "IPv6 SS DROP 规则仍然存在: $proto" ;; *) die "无法验证 IPv6 SS DROP 规则已删除: $proto" ;; esac
+                    case "$check_rc" in 1) ;; 0) { _ss_wl_rollback_to_snapshot; die "IPv6 SS DROP 规则仍然存在: $proto"; } ;; *) { _ss_wl_rollback_to_snapshot; die "无法验证 IPv6 SS DROP 规则已删除: $proto"; } ;; esac
                 fi
                 allowPort "$SS_PORT" "$proto"
             done
-            save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+            save_firewall_rules || { _ss_wl_rollback_to_snapshot; die 'A-Box 防火墙持久化失败，已回滚。'; }
             msg "${GREEN}已切换为全网开放模式 (TCP+UDP)。${NC}"
             pause_return
             ;;

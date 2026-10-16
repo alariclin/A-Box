@@ -10701,7 +10701,7 @@ host_network_menu() {
             ;;
     esac
     local c
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-4]: ' ;; ru) prompt='Выберите [0–4]: ' ;; fa) prompt='انتخاب [۰ تا ۴]: ' ;; *) prompt='请选择 [0-4]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-4]: ' ;; ru) prompt='Выберите [0–4]: ' ;; fa) prompt='انتخاب [۰ تا ۴]: ' ;; ja) prompt='選択してください [0-4]: ' ;; zh-tw) prompt='請選擇 [0-4]：' ;; *) prompt='请选择 [0-4]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1) ip_preference_menu ;;
@@ -11119,7 +11119,7 @@ timezone_locale_ntp_menu() {
             ;;
     esac
     msg "${GREEN}0. 返回${NC}"
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; *) prompt='请选择 [0-5]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; ja) prompt='選択してください [0-5]: ' ;; zh-tw) prompt='請選擇 [0-5]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1) timezone_choose_from_list '' ;;
@@ -11822,7 +11822,7 @@ dns_menu() {
             ;;
     esac
     msg "${GREEN}0. Back / 返回${NC}"
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-7]: ' ;; ru) prompt='Выберите [0–7]: ' ;; fa) prompt='انتخاب [۰ تا ۷]: ' ;; *) prompt='请选择 [0-7]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-7]: ' ;; ru) prompt='Выберите [0–7]: ' ;; fa) prompt='انتخاب [۰ تا ۷]: ' ;; ja) prompt='選択してください [0-7]: ' ;; zh-tw) prompt='請選擇 [0-7]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1)
@@ -11899,7 +11899,7 @@ tune_vps() {
             ;;
     esac
     local c
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; *) prompt='请选择 [0-2]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; ja) prompt='選択してください [0-2]: ' ;; zh-tw) prompt='請選擇 [0-2]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1) apply_vps_tune; pause_return ;;
@@ -16648,7 +16648,7 @@ wallos_menu() {
             ;;
     esac
     local c prompt_confirm prompt_remove menu_prompt
-    case "${ABOX_LANG:-zh}" in en) menu_prompt='Select [0-5]: ' ;; ru) menu_prompt='Выберите [0–5]: ' ;; fa) menu_prompt='انتخاب [۰ تا ۵]: ' ;; *) menu_prompt='请选择 [0-5]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) menu_prompt='Select [0-5]: ' ;; ru) menu_prompt='Выберите [0–5]: ' ;; fa) menu_prompt='انتخاب [۰ تا ۵]: ' ;; ja) menu_prompt='選択してください [0-5]: ' ;; zh-tw) menu_prompt='請選擇 [0-5]：' ;; *) menu_prompt='请选择 [0-5]：' ;; esac
     read -r -p "$menu_prompt" c
     case "${ABOX_LANG:-zh}" in
         en) prompt_confirm='Wallos stores personal subscription/financial data. HTTP has no TLS. Continue? [Y/N]: '; prompt_remove="Remove the Wallos container and keep data in $WALLOS_DIR? [Y/N]: " ;;
@@ -16806,7 +16806,7 @@ vps_benchmark_menu() {
             ;;
     esac
     local bench_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-14]: ' ;; ru) select_prompt='Выберите [0–14]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۴]: ' ;; *) select_prompt='请选择 [0-14]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-14]: ' ;; ru) select_prompt='Выберите [0–14]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۴]: ' ;; ja) select_prompt='選択してください [0-14]: ' ;; zh-tw) select_prompt='請選擇 [0-14]：' ;; *) select_prompt='请选择 [0-14]：' ;; esac
     read -r -p "$select_prompt" bench_choice
     case "$bench_choice" in
         1) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;

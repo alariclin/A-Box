@@ -1826,7 +1826,7 @@ wildcard_listen_address() {
 
 ipv6_nat_redirect_usable() {
     command -v ip6tables >/dev/null 2>&1 || return 1
-    $IPT6 -w -t nat -L PREROUTING >/dev/null 2>&1 || return 1
+    _iptables_q "$IPT6" -t nat -L PREROUTING >/dev/null 2>&1 || return 1
 }
 
 get_architecture() {
@@ -3088,7 +3088,7 @@ restore_one() {
 }
 iptables_rule_check() {
     local cmd="$1" rc; shift
-    if "$cmd" -w -C "$@" 2>/dev/null; then
+    if _iptables_q "$cmd" -C "$@" 2>/dev/null; then
         return 0
     else
         rc=$?
@@ -3126,7 +3126,7 @@ reorder_one() {
 
     command -v "$cmd" >/dev/null 2>&1 || return 0
     command -v "$save_cmd" >/dev/null 2>&1 || return 1
-    if ! "$cmd" -w -S INPUT >/dev/null 2>&1; then
+    if ! _iptables_q "$cmd" -S INPUT >/dev/null 2>&1; then
         if [[ "${cmd##*/}" == ip6tables ]] && ! has_ipv6; then return 0; fi
         return 1
     fi
@@ -3155,7 +3155,7 @@ reorder_one() {
 
     capture_firewall_views() {
         local item normalized
-        current_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || return 1
+        current_rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
         current_target_lines=()
         current_foreign_lines=()
         while IFS= read -r item; do
@@ -3191,7 +3191,7 @@ reorder_one() {
             rollback_line=${rollback_line//\"/}
             read -r -a rollback_argv_arr <<< "$rollback_line"
             [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
-            "${cmd}" -w -D INPUT "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
+            _iptables_do "$cmd" -D INPUT "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
         done
         # X-01/X-02: insert in FORWARD order at original 1-based positions.
         # Reverse insertion shifts indices: each -I at an absolute position
@@ -3200,7 +3200,7 @@ reorder_one() {
             rollback_line=${original_target_lines[i]//\"/}
             read -r -a rollback_argv_arr <<< "$rollback_line"
             [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
-            "${cmd}" -w -I INPUT "${original_target_positions[i]}" "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
+            _iptables_do "$cmd" -I INPUT "${original_target_positions[i]}" "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
         done
         capture_firewall_views || return 1
         [[ "$current_rules_output" == "$original_rules_output" ]] || return 1
@@ -3215,7 +3215,7 @@ reorder_one() {
         __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
-    original_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    original_rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     capture_firewall_views || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     original_target_lines=("${current_target_lines[@]}")
     original_foreign_rules=("${current_foreign_lines[@]}")
@@ -3249,7 +3249,7 @@ reorder_one() {
             __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         }
-        if ! "$cmd" -w -I INPUT 1 "${argv[@]:2}" >/dev/null 2>&1; then
+        if ! _iptables_do "$cmd" -I INPUT 1 "${argv[@]:2}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
             __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
@@ -3259,14 +3259,14 @@ reorder_one() {
     done
     local expected_drop_line="-A INPUT -p ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
     firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-    if ! "$cmd" -w -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
+    if ! _iptables_do "$cmd" -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
         __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     expected_target_lines=("${expected_target_lines[@]:0:n}" "$expected_drop_line" "${expected_target_lines[@]:n}")
 
-    rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     current_lines=(); mapfile -t current_lines <<< "$rules_output"
     delete_lines=(); delete_target_indices=(); target_idx=0; rule_no=0
     for i in "${!current_lines[@]}"; do
@@ -3287,7 +3287,7 @@ reorder_one() {
         line=${delete_lines[j]//\"/}
         read -r -a argv <<< "$line"
         [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-        if ! "$cmd" -w -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
+        if ! _iptables_do "$cmd" -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
             __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
@@ -3314,7 +3314,7 @@ reorder_policy() {
     local cmd="$1" wl_suffix="$2" drop_suffix="$3" line key port proto rules_output=''
     local -A seen=()
     command -v "$cmd" >/dev/null 2>&1 || return 0
-    rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || return 1
+    rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
     while IFS= read -r line; do
         if [[ "$line" =~ --comment[[:space:]]+"?A-Box-([0-9]{1,5})-(tcp|udp)-${drop_suffix}"?([[:space:]]|$) ]]; then
             port="${BASH_REMATCH[1]}"; proto="${BASH_REMATCH[2]}"; key="${port}|${proto}"
@@ -3947,7 +3947,7 @@ remove_abox_native_firewall_rule() {
                 while :; do
                     if iptables_rule_check "$cmd" INPUT -p "$proto" --dport "$spec" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
-                        0) "$cmd" -w -D INPUT -p "$proto" --dport "$spec" -m comment --comment "$comment" -j ACCEPT >/dev/null 2>&1 || return 1 ;;
+                        0) _iptables_do "$cmd" -D INPUT -p "$proto" --dport "$spec" -m comment --comment "$comment" -j ACCEPT >/dev/null 2>&1 || return 1 ;;
                         1) break ;;
                         *) return 1 ;;
                     esac
@@ -4016,7 +4016,7 @@ apply_native_firewall_rules_from_state() {
 
 iptables_rule_check() {
     local cmd="$1" rc; shift
-    if "$cmd" -w -C "$@" 2>/dev/null; then
+    if _iptables_q "$cmd" -C "$@" 2>/dev/null; then
         return 0
     else
         rc=$?
@@ -4087,14 +4087,14 @@ allowPort() {
     if iptables_rule_check "$IPT" INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
     case "$check_rc" in
         0) ;;
-        1) $IPT -w -I INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT >/dev/null 2>&1 || die "IPv4 防火墙放行失败: ${spec}/${type}" ;;
+        1) _iptables_do "$IPT" -I INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT >/dev/null 2>&1 || die "IPv4 防火墙放行失败: ${spec}/${type}" ;;
         *) die "无法检查 IPv4 防火墙规则: ${spec}/${type}" ;;
     esac
-    if has_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+    if has_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
         if iptables_rule_check "$IPT6" INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
         case "$check_rc" in
             0) ;;
-            1) $IPT6 -w -I INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT >/dev/null 2>&1 || die "IPv6 防火墙放行失败: ${spec}/${type}" ;;
+            1) _iptables_do "$IPT6" -I INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT >/dev/null 2>&1 || die "IPv6 防火墙放行失败: ${spec}/${type}" ;;
             *) die "无法检查 IPv6 防火墙规则: ${spec}/${type}" ;;
         esac
     fi
@@ -4112,11 +4112,11 @@ remove_ss_open_accept_rules() {
                 1) break ;;
                 *) failed=1; break ;;
             esac
-            $IPT -w -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT >/dev/null 2>&1 || { failed=1; break; }
+            _iptables_do "$IPT" -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT >/dev/null 2>&1 || { failed=1; break; }
         done
         if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
         [[ "$check_rc" == 1 ]] || failed=1
-        if command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+        if command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
             while :; do
                 if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in
@@ -4124,7 +4124,7 @@ remove_ss_open_accept_rules() {
                     1) break ;;
                     *) failed=1; break ;;
                 esac
-                $IPT6 -w -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT >/dev/null 2>&1 || { failed=1; break; }
+                _iptables_do "$IPT6" -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT >/dev/null 2>&1 || { failed=1; break; }
             done
             if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
             [[ "$check_rc" == 1 ]] || failed=1
@@ -4156,7 +4156,7 @@ reorder_ss_whitelist_rules_one() {
 
     command -v "$cmd" >/dev/null 2>&1 || return 0
     command -v "$save_cmd" >/dev/null 2>&1 || return 1
-    if ! "$cmd" -w -S INPUT >/dev/null 2>&1; then
+    if ! _iptables_q "$cmd" -S INPUT >/dev/null 2>&1; then
         if [[ "${cmd##*/}" == ip6tables ]] && ! has_ipv6; then return 0; fi
         return 1
     fi
@@ -4185,7 +4185,7 @@ reorder_ss_whitelist_rules_one() {
 
     capture_firewall_views() {
         local item normalized
-        current_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || return 1
+        current_rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
         current_target_lines=()
         current_foreign_lines=()
         while IFS= read -r item; do
@@ -4221,7 +4221,7 @@ reorder_ss_whitelist_rules_one() {
             rollback_line=${rollback_line//\"/}
             read -r -a rollback_argv_arr <<< "$rollback_line"
             [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
-            "${cmd}" -w -D INPUT "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
+            _iptables_do "$cmd" -D INPUT "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
         done
         # X-01/X-02: insert in FORWARD order at original 1-based positions.
         # Reverse insertion shifts indices: each -I at an absolute position
@@ -4230,7 +4230,7 @@ reorder_ss_whitelist_rules_one() {
             rollback_line=${original_target_lines[i]//\"/}
             read -r -a rollback_argv_arr <<< "$rollback_line"
             [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
-            "${cmd}" -w -I INPUT "${original_target_positions[i]}" "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
+            _iptables_do "$cmd" -I INPUT "${original_target_positions[i]}" "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
         done
         capture_firewall_views || return 1
         [[ "$current_rules_output" == "$original_rules_output" ]] || return 1
@@ -4245,7 +4245,7 @@ reorder_ss_whitelist_rules_one() {
         __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
-    original_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    original_rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     capture_firewall_views || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     original_target_lines=("${current_target_lines[@]}")
     original_foreign_rules=("${current_foreign_lines[@]}")
@@ -4279,7 +4279,7 @@ reorder_ss_whitelist_rules_one() {
             __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         }
-        if ! "$cmd" -w -I INPUT 1 "${argv[@]:2}" >/dev/null 2>&1; then
+        if ! _iptables_do "$cmd" -I INPUT 1 "${argv[@]:2}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
             __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
@@ -4289,14 +4289,14 @@ reorder_ss_whitelist_rules_one() {
     done
     local expected_drop_line="-A INPUT -p ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
     firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-    if ! "$cmd" -w -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
+    if ! _iptables_do "$cmd" -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
         __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     expected_target_lines=("${expected_target_lines[@]:0:n}" "$expected_drop_line" "${expected_target_lines[@]:n}")
 
-    rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     current_lines=(); mapfile -t current_lines <<< "$rules_output"
     delete_lines=(); delete_target_indices=(); target_idx=0; rule_no=0
     for i in "${!current_lines[@]}"; do
@@ -4317,7 +4317,7 @@ reorder_ss_whitelist_rules_one() {
         line=${delete_lines[j]//\"/}
         read -r -a argv <<< "$line"
         [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-        if ! "$cmd" -w -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
+        if ! _iptables_do "$cmd" -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
             __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
@@ -4622,25 +4622,25 @@ clean_nat_rules() {
     local -a argv=()
     owned_re='--comment "?A-Box-HY2-HOP"?([[:space:]]|$)'
     while :; do
-        output=$($IPT -w -t nat -S PREROUTING 2>/dev/null) || { failed=1; break; }
+        output=$(_iptables_q "$IPT" -t nat -S PREROUTING 2>/dev/null) || { failed=1; break; }
         rule=$(awk -v re="$owned_re" '$0 ~ re { sub(/^-A /,"-D "); print; exit }' <<< "$output")
         [[ -n "$rule" ]] || break
         rule=${rule//\"/}
         read -r -a argv <<< "$rule"
-        $IPT -w -t nat "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
+        _iptables_do "$IPT" -t nat "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
     done
     if command -v ip6tables >/dev/null 2>&1; then
-        if $IPT6 -w -t nat -S PREROUTING >/dev/null 2>&1; then
+        if _iptables_q "$IPT6" -t nat -S PREROUTING >/dev/null 2>&1; then
             while :; do
-                output=$($IPT6 -w -t nat -S PREROUTING 2>/dev/null) || { failed=1; break; }
+                output=$(_iptables_q "$IPT6" -t nat -S PREROUTING 2>/dev/null) || { failed=1; break; }
                 rule=$(awk -v re="$owned_re" '$0 ~ re { sub(/^-A /,"-D "); print; exit }' <<< "$output")
                 [[ -n "$rule" ]] || break
                 rule=${rule//\"/}
                 read -r -a argv <<< "$rule"
-                $IPT6 -w -t nat "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
+                _iptables_do "$IPT6" -t nat "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
             done
         else
-            ipv6_nat_error=$($IPT6 -w -t nat -S PREROUTING 2>&1 >/dev/null || true)
+            ipv6_nat_error=$(_iptables_q "$IPT6" -t nat -S PREROUTING 2>&1 >/dev/null || true)
             if ! grep -Eiq "table ['\"]?nat['\"]? does not exist|table does not exist|table nat is not supported|protocol not supported|can't initialize ip6tables table ['\"]nat['\"]|cannot initialize ip6tables table ['\"]nat['\"]|table ['\"]nat['\"] is incompatible, use ['\"]nft['\"] tool" <<< "$ipv6_nat_error"; then
                 failed=1
             fi
@@ -4662,22 +4662,22 @@ clean_input_rules() {
     owned_re='--comment "?A-Box-[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?"?([[:space:]]|$)'
     remove_native_firewall_rules 2>/dev/null || failed=1
     while :; do
-        output=$($IPT -w -S INPUT 2>/dev/null) || { failed=1; break; }
+        output=$(_iptables_q "$IPT" -S INPUT 2>/dev/null) || { failed=1; break; }
         rule=$(awk -v re="$owned_re" '$0 ~ re { sub(/^-A /,"-D "); print; exit }' <<< "$output")
         [[ -n "$rule" ]] || break
         rule=${rule//\"/}
         read -r -a argv <<< "$rule"
-        $IPT -w "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
+        _iptables_do "$IPT" "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
     done
     if command -v ip6tables >/dev/null 2>&1; then
-        if $IPT6 -w -S INPUT >/dev/null 2>&1; then
+        if _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
             while :; do
-                output=$($IPT6 -w -S INPUT 2>/dev/null) || { failed=1; break; }
+                output=$(_iptables_q "$IPT6" -S INPUT 2>/dev/null) || { failed=1; break; }
                 rule=$(awk -v re="$owned_re" '$0 ~ re { sub(/^-A /,"-D "); print; exit }' <<< "$output")
                 [[ -n "$rule" ]] || break
                 rule=${rule//\"/}
                 read -r -a argv <<< "$rule"
-                $IPT6 -w "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
+                _iptables_do "$IPT6" "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
             done
         elif has_ipv6; then
             failed=1
@@ -6620,7 +6620,7 @@ hysteria_official_hop_firewall_ok() {
     (( 10#$start <= 10#$end && 10#$first <= 10#$end )) || return 1
     first_other=$((10#$start + 1))
     if command -v iptables >/dev/null 2>&1; then
-        if iptables -w -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
+        if _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
             if has_ipv6; then
                 command -v ip6tables >/dev/null 2>&1 && ip6tables -w -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
             fi
@@ -6836,8 +6836,6 @@ _iptables_q() {
 }
 # G3: safe iptables modification wrapper. Uses -w only when supported.
 # Usage: _iptables_do <iptables|ip6tables> <args...>
-# NOTE: Existing bare 'iptables -w' calls have NOT been migrated yet.
-# Migration is pending due to self-test mock incompatibility (see G3 status).
 _iptables_do() {
     local cmd="$1"; shift
     local wflag
@@ -6848,13 +6846,27 @@ _iptables_do() {
         "$cmd" "$@"
     fi
 }
-ipv6_nat_redirect_usable() { command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -t nat -L PREROUTING >/dev/null 2>&1; }
+# G3: safe iptables modification wrapper. Uses -w only when supported.
+# Usage: _iptables_do <iptables|ip6tables> <args...>
+# NOTE: G3 migration complete. Bare 'iptables -w' calls in systemd service
+# templates are intentionally kept (no bash functions available at service runtime).
+_iptables_do() {
+    local cmd="$1"; shift
+    local wflag
+    wflag=$(_iptables_w_flag "$cmd")
+    if [[ -n "$wflag" ]]; then
+        "$cmd" "$wflag" "$@"
+    else
+        "$cmd" "$@"
+    fi
+}
+ipv6_nat_redirect_usable() { command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -t nat -L PREROUTING >/dev/null 2>&1; }
 hysteria_official_hop_firewall_ok() {
     local start="${HY2_RANGE_START:-}" end="${HY2_RANGE_END:-}" first="${HY2_MONITOR_PORT:-${HY2_RANGE_START:-}}" first_other=''
     [[ "$start" =~ ^[0-9]+$ && "$end" =~ ^[0-9]+$ && "$first" =~ ^[0-9]+$ ]] || return 1
     (( 10#$start <= 10#$end && 10#$first <= 10#$end )) || return 1
     first_other=$((10#$start + 1))
-    if command -v iptables >/dev/null 2>&1 && iptables -w -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
+    if command -v iptables >/dev/null 2>&1 && _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
         if has_ipv6; then
             command -v ip6tables >/dev/null 2>&1 && ip6tables -w -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
         fi
@@ -6879,9 +6891,9 @@ if [[ -z "$failed_srv" && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == offic
 fi
 if [[ -z "$failed_srv" && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == manual && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" && -n "${INGRESS_IF:-}" ]]; then
     redirect_port="${HY2_MONITOR_PORT:-${HY2_BASE_PORT:-${HY2_RANGE_START}}}"
-    $IPT -w -t nat -C PREROUTING -i "$INGRESS_IF" -p udp --dport "${HY2_RANGE_START}:${HY2_RANGE_END}" -m comment --comment A-Box-HY2-HOP -j REDIRECT --to-ports "$redirect_port" 2>/dev/null || failed_srv="$HY2_SRV"
+    _iptables_q "$IPT" -t nat -C PREROUTING -i "$INGRESS_IF" -p udp --dport "${HY2_RANGE_START}:${HY2_RANGE_END}" -m comment --comment A-Box-HY2-HOP -j REDIRECT --to-ports "$redirect_port" 2>/dev/null || failed_srv="$HY2_SRV"
     if has_ipv6 && ipv6_nat_redirect_usable; then
-        $IPT6 -w -t nat -C PREROUTING -i "$INGRESS_IF" -p udp --dport "${HY2_RANGE_START}:${HY2_RANGE_END}" -m comment --comment A-Box-HY2-HOP -j REDIRECT --to-ports "$redirect_port" 2>/dev/null || failed_srv="$HY2_SRV"
+        _iptables_q "$IPT6" -t nat -C PREROUTING -i "$INGRESS_IF" -p udp --dport "${HY2_RANGE_START}:${HY2_RANGE_END}" -m comment --comment A-Box-HY2-HOP -j REDIRECT --to-ports "$redirect_port" 2>/dev/null || failed_srv="$HY2_SRV"
     fi
 fi
 [[ -n "$failed_srv" || -z "${VLESS_PORT:-}" ]] || check_socket_or_fail tcp "$VLESS_PORT" "$MAIN_PID" "$MAIN_SRV"
@@ -7529,14 +7541,14 @@ pre_install_setup() {
             for ip in "${ss_whitelist_ips[@]}"; do
                 for proto in tcp udp; do
                     if [[ "$ip" == *:* ]]; then
-                        if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! $IPT6 -w -S INPUT >/dev/null 2>&1; then
+                        if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                             _ss_wl_rollback_to_snapshot; die "IPv6 白名单已配置，但系统没有可用 IPv6 防火墙；拒绝继续以避免白名单被静默丢弃: $ip/$proto"
                         fi
-                        if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+                        if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                             if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                             case "$check_rc" in
                                 0) ;;
-                                1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 白名单规则写入失败: $ip/$proto"; } ;;
+                                1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 白名单规则写入失败: $ip/$proto"; } ;;
                                 *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                             esac
                         fi
@@ -7544,7 +7556,7 @@ pre_install_setup() {
                         if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                         case "$check_rc" in
                             0) ;;
-                            1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 白名单规则写入失败: $ip/$proto"; } ;;
+                            1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 白名单规则写入失败: $ip/$proto"; } ;;
                             *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                         esac
                     fi
@@ -7554,14 +7566,14 @@ pre_install_setup() {
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in
                     0) ;;
-                    1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则写入失败: $proto" ;;
+                    1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则写入失败: $proto" ;;
                     *) die "无法检查防火墙规则。" ;;
                 esac
-                if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+                if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; else die "IPv6 SS DROP 规则写入失败，回滚失败，需人工处理: $proto"; fi; } ;;
+                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; else die "IPv6 SS DROP 规则写入失败，回滚失败，需人工处理: $proto"; fi; } ;;
                         *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                     esac
                 fi
@@ -9603,17 +9615,17 @@ remove_ss_source_whitelist_rules() {
     [[ -n "${SS_PORT:-}" ]] || return 0
     for cmd in "$IPT" "$IPT6"; do
         command -v "$cmd" >/dev/null 2>&1 || continue
-        "$cmd" -w -S INPUT >/dev/null 2>&1 || continue
+        _iptables_q "$cmd" -S INPUT >/dev/null 2>&1 || continue
         for proto in tcp udp; do
             while :; do
-                line=$("$cmd" -w -S INPUT 2>/dev/null | awk -v p="$proto" -v port="$SS_PORT" '''$0 ~ "^-A INPUT " && $0 ~ ("-p " p) && $0 ~ ("--dport " port) && $0 ~ ("--comment \"?A-Box-" port "-" p "-WL6?\"?($| )") {print; exit}''') || { failed=1; break; }
+                line=$(_iptables_q "$cmd" -S INPUT 2>/dev/null | awk -v p="$proto" -v port="$SS_PORT" '''$0 ~ "^-A INPUT " && $0 ~ ("-p " p) && $0 ~ ("--dport " port) && $0 ~ ("--comment \"?A-Box-" port "-" p "-WL6?\"?($| )") {print; exit}''') || { failed=1; break; }
                 [[ -n "$line" ]] || break
                 line=${line//\"/}
                 rule="${line#-A INPUT }"
                 # Word-splitting is intentional: all A-Box comments and source
                 # addresses are whitespace-free, and iptables itself tokenizes
                 # the normalized -S form.
-                "$cmd" -w -D INPUT $rule >/dev/null 2>&1 || { failed=1; break; }
+                _iptables_do "$cmd" -D INPUT $rule >/dev/null 2>&1 || { failed=1; break; }
             done
         done
     done
@@ -9682,13 +9694,13 @@ manage_ss_whitelist() {
             [[ -z "$add_ip" ]] && return
             if [[ "$add_ip" == *:* ]]; then
                 valid_ipv6_cidr "$add_ip" || { msg "${RED}[!] IPv6 白名单地址非法: $add_ip${NC}"; pause_return; return; }
-                has_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1 || die '系统无可用 IPv6 防火墙。'
+                has_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1 || die '系统无可用 IPv6 防火墙。'
                 for proto in tcp udp; do
                     # F-06: check existence first (idempotent) — do not insert duplicates.
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则写入失败: $add_ip/$proto" ;;
+                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则写入失败: $add_ip/$proto" ;;
                         *) die "无法检查防火墙规则。" ;;
                     esac
                 done
@@ -9699,7 +9711,7 @@ manage_ss_whitelist() {
                     if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则写入失败: $add_ip/$proto" ;;
+                        1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则写入失败: $add_ip/$proto" ;;
                         *) die "无法检查防火墙规则。" ;;
                     esac
                 done
@@ -9728,7 +9740,7 @@ manage_ss_whitelist() {
                             1) break ;;
                             *) die "无法检查 IPv6 白名单规则: $del_ip/$proto" ;;
                         esac
-                        $IPT6 -w -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则删除失败: $del_ip/$proto"
+                        _iptables_do "$IPT6" -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则删除失败: $del_ip/$proto"
                         found=1
                     done
                 done
@@ -9742,7 +9754,7 @@ manage_ss_whitelist() {
                             1) break ;;
                             *) die "无法检查 IPv4 白名单规则: $del_ip/$proto" ;;
                         esac
-                        $IPT -w -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则删除失败: $del_ip/$proto"
+                        _iptables_do "$IPT" -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则删除失败: $del_ip/$proto"
                         found=1
                     done
                 done
@@ -9760,14 +9772,14 @@ manage_ss_whitelist() {
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in
                     0) ;;
-                    1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 SS DROP 规则写入失败: $proto"; } ;;
+                    1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 SS DROP 规则写入失败: $proto"; } ;;
                     *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                 esac
-                if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+                if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; else die "IPv6 SS DROP 规则写入失败，回滚失败，需人工处理: $proto"; fi; } ;;
+                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; else die "IPv6 SS DROP 规则写入失败，回滚失败，需人工处理: $proto"; fi; } ;;
                         *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                     esac
                 fi
@@ -9792,11 +9804,11 @@ manage_ss_whitelist() {
                         1) break ;;
                         *) die "无法检查 IPv4 SS DROP 规则: $proto" ;;
                     esac
-                    $IPT -w -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则删除失败: $proto"
+                    _iptables_do "$IPT" -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则删除失败: $proto"
                 done
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in 1) ;; 0) die "IPv4 SS DROP 规则仍然存在: $proto" ;; *) die "无法验证 IPv4 SS DROP 规则已删除: $proto" ;; esac
-                if command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+                if command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                     while :; do
                         if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                         case "$check_rc" in
@@ -9804,7 +9816,7 @@ manage_ss_whitelist() {
                             1) break ;;
                             *) die "无法检查 IPv6 SS DROP 规则: $proto" ;;
                         esac
-                        $IPT6 -w -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || die "IPv6 SS DROP 规则删除失败: $proto"
+                        _iptables_do "$IPT6" -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || die "IPv6 SS DROP 规则删除失败: $proto"
                     done
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in 1) ;; 0) die "IPv6 SS DROP 规则仍然存在: $proto" ;; *) die "无法验证 IPv6 SS DROP 规则已删除: $proto" ;; esac
@@ -19582,6 +19594,9 @@ N11EOF
         firewall_backend() { printf '%s\n' iptables; }
         mock_iptables() { return 0; }
         ip6tables() { printf '%s\n' 'ip6tables: Table does not exist (do you need to insmod?)' >&2; return 1; }
+        # G3: mock wrappers to avoid _iptables_w_flag subshell issues in tests
+        _iptables_q() { local cmd="$1"; shift; "$cmd" "$@"; }
+        _iptables_do() { local cmd="$1"; shift; "$cmd" "$@"; }
         IPT=mock_iptables; IPT6=ip6tables
         has_ipv6() { return 1; }
         clean_nat_rules
@@ -20216,7 +20231,7 @@ PY_SELFTEST_YAML
 
     grep -Fq 'firewall_rollback() {' <<< "$source_body" || { echo 'FAIL: firewall reorder rollback helper missing'; failures=$((failures + 1)); }
     grep -Fq 'recovery snapshot preserved at $recovery_snapshot' <<< "$source_body" || { echo 'FAIL: firewall rollback conflict must preserve recovery snapshot'; failures=$((failures + 1)); }
-    grep -Fq '"${cmd}" -w -D INPUT "${rollback_argv_arr[@]:2}"' <<< "$source_body" || { echo 'FAIL: firewall rollback must remove exact owned rules'; failures=$((failures + 1)); }
+    grep -Fq '_iptables_do "$cmd" -D INPUT "${rollback_argv_arr[@]:2}"' <<< "$source_body" || { echo 'FAIL: firewall rollback must remove exact owned rules'; failures=$((failures + 1)); }
     grep -Fq 'current_foreign_lines' <<< "$source_body" || { echo 'FAIL: firewall rollback must track foreign INPUT rules'; failures=$((failures + 1)); }
     grep -Fq 'path_parent_chain_safe "$ABOX_DIR" || return 1' <<< "$source_body" || { echo 'FAIL: rollback restore must validate A-Box parent chain'; failures=$((failures + 1)); }
     grep -Fq 'install -d -m 700 "$ABOX_DIR" || return 1' <<< "$source_body" || { echo 'FAIL: rollback restore must recreate a missing A-Box directory'; failures=$((failures + 1)); }

@@ -4446,8 +4446,12 @@ _ss_wl_rollback_to_snapshot() {
         # 1. Delete all current A-Box rules
         # 2. Re-insert snapshot rules at chain head in original order
         # If any -D target is missing (drift), the whole transaction aborts.
-        # NOTE: This places rules at chain head as a policy choice,
-        # not as exact restoration of original absolute positions.
+        # NOTE: This places rules at chain head as a policy choice ("unified top"),
+        # not as exact restoration of original absolute positions. Non-A-Box rules
+        # that were before A-Box rules will shift down.
+        # CRITICAL: Never add :CHAIN declarations to this input. Even with
+        # --noflush, iptables-restore will flush any user-defined chain that
+        # is explicitly declared in the input stream.
         local restore_input="*filter"
         local line pos
         while IFS= read -r line; do

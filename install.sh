@@ -3103,7 +3103,7 @@ __abox_firewall_unlock() {
 __abox_normalize_managed_rule_line() {
     local line="$1"
     line=${line//\"/}
-    line=$(printf '%s\n' "$line" | sed -E 's/^(-A[[:space:]]+INPUT([[:space:]]+[^[:space:]]+)*[[:space:]]+-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\4/')
+    line=$(printf '%s\n' "$line" | sed -E 's/^(-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\2([[:space:]]|$)/\1\3/')
     printf '%s\n' "$line"
 }
 reorder_one() {
@@ -4136,7 +4136,7 @@ remove_ss_open_accept_rules() {
 __abox_normalize_managed_rule_line() {
     local line="$1"
     line=${line//\"/}
-    line=$(printf '%s\n' "$line" | sed -E 's/^(-A[[:space:]]+INPUT([[:space:]]+[^[:space:]]+)*[[:space:]]+-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\4/')
+    line=$(printf '%s\n' "$line" | sed -E 's/^(-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\2([[:space:]]|$)/\1\3/')
     printf '%s\n' "$line"
 }
 

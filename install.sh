@@ -4143,13 +4143,6 @@ __abox_normalize_managed_rule_line() {
 # D-01: main-script copy of __abox_firewall_unlock (heredoc copy at L3032 is
 # written to firewall_restore.sh and never executed by the main shell).
 # $1 = lock fd value. Closes it; caller clears its own lock_fd variable.
-__abox_firewall_unlock() {
-    local lock_fd="$1"
-    # Guard empty lock_fd: `exec >&-` would close stdout.
-    if [[ "$lock_fd" =~ ^[0-9]+$ ]]; then
-        eval "exec ${lock_fd}>&-" 2>/dev/null || true
-    fi
-}
 
 reorder_ss_whitelist_rules_one() {
     local cmd="$1" port="$2" proto="$3" wl_suffix="$4" drop_suffix="$5"

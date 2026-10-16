@@ -119,7 +119,8 @@ ABOX_SIGNING_PUBKEYS=(
 # SHA256 fingerprints (lowercase hex) of REVOKED public keys.
 # A key listed here is skipped during verification even if present above.
 # Emergency revocation: add the compromised key's fingerprint here, bump
-# ABOX_BUILD_EPOCH, and have CI re-sign all Release metadata with the backup key.
+# ABOX_BUILD_EPOCH, generate a new keypair per docs/SIGNING.md, and have CI
+# re-sign all Release metadata with the new key.
 ABOX_REVOKED_PUBKEY_FPS=(
 )
 # Minimum trusted metadata timestamp (UTC, YYYYMMDDHHMMSS). Metadata carrying

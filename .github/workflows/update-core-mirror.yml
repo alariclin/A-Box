@@ -161,7 +161,14 @@ jobs:
               -rawin -in "$meta" \
               -sigfile <(base64 -d "$meta.sig") \
               || { echo "::error::F-05 self-check failed for $meta"; exit 1; }
-            echo "Signed: $meta.sig"
+            # H6: verify derived public key matches install.sh trust anchor
+            derived_pub=$(openssl pkey -in /tmp/abox-sign-priv.pem -pubout 2>/dev/null | openssl pkey -pubin -outform DER 2>/dev/null | tail -c 32 | base64)
+            expected_pub="7V4PBUUVpnfYhKu5LBxACxywpYEtvnDpVpvFnSrOujQ="
+            if [[ "$derived_pub" != "$expected_pub" ]]; then
+              echo "::error::Derived public key does not match install.sh trust anchor"
+              exit 1
+            fi
+            echo "Signed: $meta.sig (pubkey verified)"
           done
           shred -u /tmp/abox-sign-priv.pem 2>/dev/null || rm -f /tmp/abox-sign-priv.pem
       - name: Upload to core-binaries Release (no execution)

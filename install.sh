@@ -3037,6 +3037,17 @@ has_ipv6() {
     ip -6 route show default 2>/dev/null | awk '/^default/ { found=1 } END { exit !found }' && return 0
     return 1
 }
+# Objective IPv6 usability check (not preference-aware).
+# Used by clean_chain for N-04 "never silently skip IPv6" intent.
+host_has_usable_ipv6() {
+    [[ -s /proc/net/if_inet6 ]] && return 0
+    local _d6
+    _d6=$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null || printf '1')
+    [[ "$_d6" != '1' ]] && return 0
+    ip -6 addr show scope global 2>/dev/null | grep -q 'inet6 ' && return 0
+    ip -6 addr show scope link 2>/dev/null | grep -q 'inet6 ' && return 0
+    return 1
+}
 clean_chain() {
     local cmd="$1" table="$2" chain="$3" output rule
     local owned_re='--comment "?A-Box-(HY2-HOP|[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?)"?([[:space:]]|$)'
@@ -3068,7 +3079,6 @@ clean_chain() {
 restore_one() {
     local file="$1" cmd="$2"
     [[ -s "$file" ]] || return 0
-    if [[ "${cmd##*/}" == ip6tables-restore ]] && ! has_ipv6; then return 0; fi
     command -v "$cmd" >/dev/null 2>&1 || return 1
     grep -q '^\*' "$file" || return 0
     "$cmd" -w --noflush < "$file" >/dev/null 2>&1 || "$cmd" --noflush < "$file" >/dev/null 2>&1
@@ -3320,14 +3330,7 @@ clean_chain iptables filter INPUT || exit 1
 clean_chain iptables nat PREROUTING || exit 1
 restore_one /etc/ddr/iptables.v4 iptables-restore || exit 1
 reorder_policy iptables WL DROP || exit 1
-if has_ipv6; then
-    command -v ip6tables >/dev/null 2>&1 || exit 1
-    ip6tables -w -S INPUT >/dev/null 2>&1 || exit 1
-    clean_chain ip6tables filter INPUT || exit 1
-    clean_chain ip6tables nat PREROUTING || exit 1
-    restore_one /etc/ddr/iptables.v6 ip6tables-restore || exit 1
-    reorder_policy ip6tables WL6 DROP6 || exit 1
-elif command -v ip6tables >/dev/null 2>&1 && ip6tables -w -S INPUT >/dev/null 2>&1; then
+if command -v ip6tables >/dev/null 2>&1 && ip6tables -w -S INPUT >/dev/null 2>&1; then
     clean_chain ip6tables filter INPUT || exit 1
     clean_chain ip6tables nat PREROUTING || exit 1
     restore_one /etc/ddr/iptables.v6 ip6tables-restore || exit 1

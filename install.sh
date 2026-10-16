@@ -15461,6 +15461,7 @@ wallos_install_runtime() {
             ;;
         *)
             case "${ABOX_LANG:-zh}" in
+                en) msg "${RED}OS $os_id does not support automatic Docker installation; no system changes made.${NC}" ;;
                 ru) msg "${RED}ОС $os_id не поддерживается автоматической установкой Docker; системные изменения не выполнены.${NC}" ;;
                 fa) msg "${RED}سیستم‌عامل $os_id برای نصب خودکار Docker پشتیبانی نمی‌شود؛ تغییری اعمال نشد.${NC}" ;;
                 zh-tw) msg "${RED}當前系統 $os_id 暫不支援自動安裝 Docker，未修改系統。${NC}" ;;
@@ -15817,6 +15818,7 @@ wallos_pull_or_restore_image() {
         fi
     fi
     case "${ABOX_LANG:-zh}" in
+        en) msg "${YELLOW}[!] Failed to get stable version or image; trying A-Box Wallos recovery Release.${NC}" ;;
         ru) msg "${YELLOW}[!] Не удалось получить стабильную версию или образ; пробуем резервный Release Wallos от A-Box.${NC}" ;;
         fa) msg "${YELLOW}[!] دریافت نسخه پایدار یا تصویر ناموفق بود؛ نسخه بازیابی Wallos از A-Box بررسی می‌شود.${NC}" ;;
         zh-tw) msg "${YELLOW}[!] 官方穩定版資訊或映象拉取失敗，正在嘗試 A-Box Wallos 災備 Release。${NC}" ;;
@@ -16435,6 +16437,10 @@ wallos_install_or_update() {
         wallos_prune_local_images "$image" "$old_image" || true
     fi
     case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${GREEN}Wallos is running: $image${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='Access is local-only by default. Use an HTTPS reverse proxy or SSH tunnel for remote access.'
+            else security_note="Plain HTTP is published on all IPv4 interfaces; protect TCP $port with an HTTPS reverse proxy and firewall."; fi ;;
         ru)
             msg "${GREEN}Wallos запущен: $image${NC}"
             if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='По умолчанию доступ разрешён только с этого хоста. Для удалённого доступа используйте HTTPS reverse proxy или SSH-туннель.'
@@ -16448,17 +16454,17 @@ wallos_install_or_update() {
             if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='默认仅允许本机访问；远程访问请使用 HTTPS 反向代理或 SSH 隧道，不需要为该本机端口开放公网入站规则。'
             else security_note="明文 HTTP 已绑定所有 IPv4 网卡；TCP $port 必须由 HTTPS 反向代理与防火墙保护。"; fi ;;
         zh-tw)
-            msg "${GREEN}Wallos is running: $image${NC}"
-            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='Access is local-only by default. Use an HTTPS reverse proxy or SSH tunnel for remote access.'
-            else security_note="Plain HTTP is published on all IPv4 interfaces; protect TCP $port with an HTTPS reverse proxy and firewall."; fi ;;
+            msg "${GREEN}Wallos 已啟動：$image${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='預設僅允許本機存取；遠端存取請使用 HTTPS 反向代理或 SSH 隧道。'
+            else security_note="明文 HTTP 已綁定所有 IPv4 網卡；TCP $port 必須由 HTTPS 反向代理與防火牆保護。"; fi ;;
         ja)
-            msg "${GREEN}Wallos is running: $image${NC}"
-            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='Access is local-only by default. Use an HTTPS reverse proxy or SSH tunnel for remote access.'
-            else security_note="Plain HTTP is published on all IPv4 interfaces; protect TCP $port with an HTTPS reverse proxy and firewall."; fi ;;
+            msg "${GREEN}Wallos を起動しました：$image${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='デフォルトではローカルホストからのアクセスのみ許可されています。リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。'
+            else security_note="平文 HTTP はすべての IPv4 インターフェースにバインドされています。TCP $port は HTTPS リバースプロキシとファイアウォールで保護してください。"; fi ;;
         *)
-            msg "${GREEN}Wallos is running: $image${NC}"
-            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='Access is local-only by default. Use an HTTPS reverse proxy or SSH tunnel for remote access.'
-            else security_note="Plain HTTP is published on all IPv4 interfaces; protect TCP $port with an HTTPS reverse proxy and firewall."; fi ;;
+            msg "${GREEN}Wallos 已启动：$image${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='默认仅允许本机访问；远程访问请使用 HTTPS 反向代理或 SSH 隧道。'
+            else security_note="明文 HTTP 已绑定所有 IPv4 网卡；TCP $port 必须由 HTTPS 反向代理与防火墙保护。"; fi ;;
     esac
     wallos_public_urls "$port"
     msg "${YELLOW}${security_note}${NC}"
@@ -16509,6 +16515,7 @@ wallos_backup_now() {
         return 1
     fi
     case "${ABOX_LANG:-zh}" in
+        en) msg "${GREEN}Wallos data backup saved: $backup${NC}" ;;
         ru) msg "${GREEN}Резервная копия данных Wallos сохранена: $backup${NC}" ;;
         fa) msg "${GREEN}نسخه پشتیبان داده‌های Wallos ذخیره شد: $backup${NC}" ;;
         zh-tw) msg "${GREEN}Wallos 資料備份已儲存：$backup${NC}" ;;

@@ -6784,6 +6784,37 @@ fi
 IPT=$(command -v iptables || echo /sbin/iptables)
 IPT6=$(command -v ip6tables || echo /sbin/ip6tables)
 has_ipv6() { local _p; _p=$(read_ip_pref 2>/dev/null || printf dual); [[ "$_p" == ipv4 ]] && return 1; ip -6 addr show scope global 2>/dev/null | awk '/inet6/ { found=1 } END { exit !found }' || ip -6 route show default 2>/dev/null | awk '/^default/ { found=1 } END { exit !found }'; }
+# G3: probe iptables -w (xtables lock wait) support. -w for the iptables
+# command exists since 1.4.20; pre-1.4.20 systems lack it. All callers use
+# this helper so very old systems degrade gracefully instead of failing
+# on an unrecognized option.
+_iptables_w_flag() {
+    local cmd="$1"
+    # Cache per-command result in a dynamic variable
+    local cache_var="_IPT_W_${cmd//[^a-zA-Z0-9]/_}"
+    if [[ -n "${!cache_var:-}" ]]; then
+        printf '%s' "${!cache_var}"
+        return 0
+    fi
+    local flag=""
+    if "$cmd" -w --version >/dev/null 2>&1; then
+        flag="-w"
+    fi
+    printf -v "$cache_var" '%s' "$flag"
+    printf '%s' "$flag"
+}
+# G3: safe iptables query wrapper. Uses -w only when supported.
+# Usage: _iptables_q <iptables|ip6tables> <args...>
+_iptables_q() {
+    local cmd="$1"; shift
+    local wflag
+    wflag=$(_iptables_w_flag "$cmd")
+    if [[ -n "$wflag" ]]; then
+        "$cmd" "$wflag" "$@"
+    else
+        "$cmd" "$@"
+    fi
+}
 ipv6_nat_redirect_usable() { command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -t nat -L PREROUTING >/dev/null 2>&1; }
 hysteria_official_hop_firewall_ok() {
     local start="${HY2_RANGE_START:-}" end="${HY2_RANGE_END:-}" first="${HY2_MONITOR_PORT:-${HY2_RANGE_START:-}}" first_other=''

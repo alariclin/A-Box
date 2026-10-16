@@ -15893,10 +15893,18 @@ wallos_pull_or_restore_image() {
         fi
         if docker pull "bellamy/wallos:$image_tag"; then
             # P2-1: record RepoDigest for auditability (mutable tag alone is not identity).
+            # G11 FIX: Use digest reference instead of mutable tag to prevent TOCTOU.
+            # After pull, immediately pin to digest so subsequent operations
+            # cannot be affected by tag mutation.
             local _pulled_digest
             _pulled_digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
-            [[ -n "$_pulled_digest" ]] && msg "${CYAN}Wallos image digest: $_pulled_digest${NC}"
-            WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+            if [[ -n "$_pulled_digest" ]]; then
+                msg "${CYAN}Wallos image digest: $_pulled_digest${NC}"
+                WALLOS_IMAGE_RESULT="$_pulled_digest"
+            else
+                # Fallback: digest not available (should not happen with successful pull)
+                WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+            fi
             return 0
         fi
     fi

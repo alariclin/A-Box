@@ -23,7 +23,7 @@ A-Box یک اسکریپت مستقل Bash برای راه‌اندازی و نگ
 ### منبع رسمی GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/863cb72543da8eff782bed85128134411222660c/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/6f95611f0fa1d58ebdf77b8f635b9e3f9a97ccde/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
 sudo bash A-Box.sh
@@ -32,13 +32,13 @@ sudo bash A-Box.sh
 ### آینه جایگزین شخص ثالث
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/863cb72543da8eff782bed85128134411222660c/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/6f95611f0fa1d58ebdf77b8f635b9e3f9a97ccde/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
 sudo bash A-Box.sh
 ```
 
-هر دو فرمان نصب‌کننده را به commit تغییرناپذیر `863cb72543da8eff782bed85128134411222660c` متصل می‌کنند؛ نشانی proxy همچنان سرویس انتقال شخص ثالث است، نه نقطه پایانی رسمی A-Box. بررسی نحو و SHA-256 به‌تنهایی هویت ناشر را ثابت نمی‌کند؛ فایل را پیش از اجرا بازبینی و برای production، commit و checksum را از کانالی مستقل و مورداعتماد تأیید کنید. در Alpine تازه، پیش از اجرا `apk add --no-cache bash curl` را اجرا کنید. پس از نصب `sb` را وارد کنید.
+هر دو فرمان نصب‌کننده را به commit تغییرناپذیر `6f95611f0fa1d58ebdf77b8f635b9e3f9a97ccde` متصل می‌کنند؛ نشانی proxy همچنان سرویس انتقال شخص ثالث است، نه نقطه پایانی رسمی A-Box. بررسی نحو و SHA-256 به‌تنهایی هویت ناشر را ثابت نمی‌کند؛ فایل را پیش از اجرا بازبینی و برای production، commit و checksum را از کانالی مستقل و مورداعتماد تأیید کنید. در Alpine تازه، پیش از اجرا `apk add --no-cache bash curl` را اجرا کنید. پس از نصب `sb` را وارد کنید.
 
 ## قابلیت‌های اصلی
 

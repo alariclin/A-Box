@@ -119,7 +119,8 @@ ABOX_SIGNING_PUBKEYS=(
 # SHA256 fingerprints (lowercase hex) of REVOKED public keys.
 # A key listed here is skipped during verification even if present above.
 # Emergency revocation: add the compromised key's fingerprint here, bump
-# ABOX_BUILD_EPOCH, and have CI re-sign all Release metadata with the backup key.
+# ABOX_BUILD_EPOCH, generate a new keypair per docs/SIGNING.md, and have CI
+# re-sign all Release metadata with the new key.
 ABOX_REVOKED_PUBKEY_FPS=(
 )
 # Minimum trusted metadata timestamp (UTC, YYYYMMDDHHMMSS). Metadata carrying
@@ -569,6 +570,8 @@ tr_msg() {
         fa:swap_done) echo 'عملیات Swap پایان یافت.' ;;
         zh-tw:swap_done) echo 'Swap 處理完成。' ;;
         ja:swap_done) echo 'Swap 操作が完了しました。' ;;
+        zh-tw) echo "$key" ;;
+        ja) echo "$key" ;;
         *) echo "$key" ;;
     esac
 }
@@ -1823,7 +1826,7 @@ wildcard_listen_address() {
 
 ipv6_nat_redirect_usable() {
     command -v ip6tables >/dev/null 2>&1 || return 1
-    $IPT6 -w -t nat -L PREROUTING >/dev/null 2>&1 || return 1
+    _iptables_q "$IPT6" -t nat -L PREROUTING >/dev/null 2>&1 || return 1
 }
 
 get_architecture() {
@@ -3085,7 +3088,7 @@ restore_one() {
 }
 iptables_rule_check() {
     local cmd="$1" rc; shift
-    if "$cmd" -w -C "$@" 2>/dev/null; then
+    if _iptables_q "$cmd" -C "$@" 2>/dev/null; then
         return 0
     else
         rc=$?
@@ -3095,12 +3098,7 @@ iptables_rule_check() {
         *) return 2 ;;
     esac
 }
-restore_iptables_saved_snapshot() {
-    local restore_cmd="$1" snapshot="$2"
-    [[ -s "$snapshot" ]] || return 1
-    command -v "$restore_cmd" >/dev/null 2>&1 || return 1
-    "$restore_cmd" -w < "$snapshot" >/dev/null 2>&1 || "$restore_cmd" < "$snapshot" >/dev/null 2>&1
-}
+# F12: removed zero-call restore_iptables_saved_snapshot (duplicate dead code)
 # BUG-28: hoisted from reorder_one()/reorder_ss_whitelist_rules_one().
 # $1 = lock fd value. Closes it; caller clears its own lock_fd variable.
 __abox_firewall_unlock() {
@@ -3128,7 +3126,7 @@ reorder_one() {
 
     command -v "$cmd" >/dev/null 2>&1 || return 0
     command -v "$save_cmd" >/dev/null 2>&1 || return 1
-    if ! "$cmd" -w -S INPUT >/dev/null 2>&1; then
+    if ! _iptables_q "$cmd" -S INPUT >/dev/null 2>&1; then
         if [[ "${cmd##*/}" == ip6tables ]] && ! has_ipv6; then return 0; fi
         return 1
     fi
@@ -3157,7 +3155,7 @@ reorder_one() {
 
     capture_firewall_views() {
         local item normalized
-        current_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || return 1
+        current_rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
         current_target_lines=()
         current_foreign_lines=()
         while IFS= read -r item; do
@@ -3193,7 +3191,7 @@ reorder_one() {
             rollback_line=${rollback_line//\"/}
             read -r -a rollback_argv_arr <<< "$rollback_line"
             [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
-            "${cmd}" -w -D INPUT "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
+            _iptables_do "$cmd" -D INPUT "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
         done
         # X-01/X-02: insert in FORWARD order at original 1-based positions.
         # Reverse insertion shifts indices: each -I at an absolute position
@@ -3202,7 +3200,7 @@ reorder_one() {
             rollback_line=${original_target_lines[i]//\"/}
             read -r -a rollback_argv_arr <<< "$rollback_line"
             [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
-            "${cmd}" -w -I INPUT "${original_target_positions[i]}" "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
+            _iptables_do "$cmd" -I INPUT "${original_target_positions[i]}" "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
         done
         capture_firewall_views || return 1
         [[ "$current_rules_output" == "$original_rules_output" ]] || return 1
@@ -3217,7 +3215,7 @@ reorder_one() {
         __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
-    original_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    original_rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     capture_firewall_views || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     original_target_lines=("${current_target_lines[@]}")
     original_foreign_rules=("${current_foreign_lines[@]}")
@@ -3251,7 +3249,7 @@ reorder_one() {
             __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         }
-        if ! "$cmd" -w -I INPUT 1 "${argv[@]:2}" >/dev/null 2>&1; then
+        if ! _iptables_do "$cmd" -I INPUT 1 "${argv[@]:2}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
             __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
@@ -3261,14 +3259,14 @@ reorder_one() {
     done
     local expected_drop_line="-A INPUT -p ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
     firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-    if ! "$cmd" -w -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
+    if ! _iptables_do "$cmd" -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
         __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     expected_target_lines=("${expected_target_lines[@]:0:n}" "$expected_drop_line" "${expected_target_lines[@]:n}")
 
-    rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     current_lines=(); mapfile -t current_lines <<< "$rules_output"
     delete_lines=(); delete_target_indices=(); target_idx=0; rule_no=0
     for i in "${!current_lines[@]}"; do
@@ -3289,7 +3287,7 @@ reorder_one() {
         line=${delete_lines[j]//\"/}
         read -r -a argv <<< "$line"
         [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-        if ! "$cmd" -w -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
+        if ! _iptables_do "$cmd" -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
             __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
@@ -3316,7 +3314,7 @@ reorder_policy() {
     local cmd="$1" wl_suffix="$2" drop_suffix="$3" line key port proto rules_output=''
     local -A seen=()
     command -v "$cmd" >/dev/null 2>&1 || return 0
-    rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || return 1
+    rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
     while IFS= read -r line; do
         if [[ "$line" =~ --comment[[:space:]]+"?A-Box-([0-9]{1,5})-(tcp|udp)-${drop_suffix}"?([[:space:]]|$) ]]; then
             port="${BASH_REMATCH[1]}"; proto="${BASH_REMATCH[2]}"; key="${port}|${proto}"
@@ -3949,7 +3947,7 @@ remove_abox_native_firewall_rule() {
                 while :; do
                     if iptables_rule_check "$cmd" INPUT -p "$proto" --dport "$spec" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
-                        0) "$cmd" -w -D INPUT -p "$proto" --dport "$spec" -m comment --comment "$comment" -j ACCEPT >/dev/null 2>&1 || return 1 ;;
+                        0) _iptables_do "$cmd" -D INPUT -p "$proto" --dport "$spec" -m comment --comment "$comment" -j ACCEPT >/dev/null 2>&1 || return 1 ;;
                         1) break ;;
                         *) return 1 ;;
                     esac
@@ -4018,7 +4016,7 @@ apply_native_firewall_rules_from_state() {
 
 iptables_rule_check() {
     local cmd="$1" rc; shift
-    if "$cmd" -w -C "$@" 2>/dev/null; then
+    if _iptables_q "$cmd" -C "$@" 2>/dev/null; then
         return 0
     else
         rc=$?
@@ -4028,12 +4026,7 @@ iptables_rule_check() {
         *) return 2 ;;
     esac
 }
-restore_iptables_saved_snapshot() {
-    local restore_cmd="$1" snapshot="$2"
-    [[ -s "$snapshot" ]] || return 1
-    command -v "$restore_cmd" >/dev/null 2>&1 || return 1
-    "$restore_cmd" -w < "$snapshot" >/dev/null 2>&1 || "$restore_cmd" < "$snapshot" >/dev/null 2>&1
-}
+# F12: removed zero-call restore_iptables_saved_snapshot (duplicate dead code)
 
 allowPort() {
     local raw_port="$1" type="${2:-tcp}" backend spec fw_spec runtime=0 permanent=0 added_runtime=0
@@ -4094,14 +4087,14 @@ allowPort() {
     if iptables_rule_check "$IPT" INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
     case "$check_rc" in
         0) ;;
-        1) $IPT -w -I INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT >/dev/null 2>&1 || die "IPv4 防火墙放行失败: ${spec}/${type}" ;;
+        1) _iptables_do "$IPT" -I INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT >/dev/null 2>&1 || die "IPv4 防火墙放行失败: ${spec}/${type}" ;;
         *) die "无法检查 IPv4 防火墙规则: ${spec}/${type}" ;;
     esac
-    if has_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+    if has_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
         if iptables_rule_check "$IPT6" INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
         case "$check_rc" in
             0) ;;
-            1) $IPT6 -w -I INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT >/dev/null 2>&1 || die "IPv6 防火墙放行失败: ${spec}/${type}" ;;
+            1) _iptables_do "$IPT6" -I INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT >/dev/null 2>&1 || die "IPv6 防火墙放行失败: ${spec}/${type}" ;;
             *) die "无法检查 IPv6 防火墙规则: ${spec}/${type}" ;;
         esac
     fi
@@ -4119,11 +4112,11 @@ remove_ss_open_accept_rules() {
                 1) break ;;
                 *) failed=1; break ;;
             esac
-            $IPT -w -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT >/dev/null 2>&1 || { failed=1; break; }
+            _iptables_do "$IPT" -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT >/dev/null 2>&1 || { failed=1; break; }
         done
         if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
         [[ "$check_rc" == 1 ]] || failed=1
-        if command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+        if command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
             while :; do
                 if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in
@@ -4131,7 +4124,7 @@ remove_ss_open_accept_rules() {
                     1) break ;;
                     *) failed=1; break ;;
                 esac
-                $IPT6 -w -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT >/dev/null 2>&1 || { failed=1; break; }
+                _iptables_do "$IPT6" -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT >/dev/null 2>&1 || { failed=1; break; }
             done
             if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
             [[ "$check_rc" == 1 ]] || failed=1
@@ -4150,13 +4143,6 @@ __abox_normalize_managed_rule_line() {
 # D-01: main-script copy of __abox_firewall_unlock (heredoc copy at L3032 is
 # written to firewall_restore.sh and never executed by the main shell).
 # $1 = lock fd value. Closes it; caller clears its own lock_fd variable.
-__abox_firewall_unlock() {
-    local lock_fd="$1"
-    # Guard empty lock_fd: `exec >&-` would close stdout.
-    if [[ "$lock_fd" =~ ^[0-9]+$ ]]; then
-        eval "exec ${lock_fd}>&-" 2>/dev/null || true
-    fi
-}
 
 reorder_ss_whitelist_rules_one() {
     local cmd="$1" port="$2" proto="$3" wl_suffix="$4" drop_suffix="$5"
@@ -4170,7 +4156,7 @@ reorder_ss_whitelist_rules_one() {
 
     command -v "$cmd" >/dev/null 2>&1 || return 0
     command -v "$save_cmd" >/dev/null 2>&1 || return 1
-    if ! "$cmd" -w -S INPUT >/dev/null 2>&1; then
+    if ! _iptables_q "$cmd" -S INPUT >/dev/null 2>&1; then
         if [[ "${cmd##*/}" == ip6tables ]] && ! has_ipv6; then return 0; fi
         return 1
     fi
@@ -4199,7 +4185,7 @@ reorder_ss_whitelist_rules_one() {
 
     capture_firewall_views() {
         local item normalized
-        current_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || return 1
+        current_rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
         current_target_lines=()
         current_foreign_lines=()
         while IFS= read -r item; do
@@ -4235,7 +4221,7 @@ reorder_ss_whitelist_rules_one() {
             rollback_line=${rollback_line//\"/}
             read -r -a rollback_argv_arr <<< "$rollback_line"
             [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
-            "${cmd}" -w -D INPUT "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
+            _iptables_do "$cmd" -D INPUT "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
         done
         # X-01/X-02: insert in FORWARD order at original 1-based positions.
         # Reverse insertion shifts indices: each -I at an absolute position
@@ -4244,7 +4230,7 @@ reorder_ss_whitelist_rules_one() {
             rollback_line=${original_target_lines[i]//\"/}
             read -r -a rollback_argv_arr <<< "$rollback_line"
             [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
-            "${cmd}" -w -I INPUT "${original_target_positions[i]}" "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
+            _iptables_do "$cmd" -I INPUT "${original_target_positions[i]}" "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
         done
         capture_firewall_views || return 1
         [[ "$current_rules_output" == "$original_rules_output" ]] || return 1
@@ -4259,7 +4245,7 @@ reorder_ss_whitelist_rules_one() {
         __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
-    original_rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    original_rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     capture_firewall_views || { rm -f -- "$recovery_snapshot"; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     original_target_lines=("${current_target_lines[@]}")
     original_foreign_rules=("${current_foreign_lines[@]}")
@@ -4293,7 +4279,7 @@ reorder_ss_whitelist_rules_one() {
             __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         }
-        if ! "$cmd" -w -I INPUT 1 "${argv[@]:2}" >/dev/null 2>&1; then
+        if ! _iptables_do "$cmd" -I INPUT 1 "${argv[@]:2}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
             __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
@@ -4303,14 +4289,14 @@ reorder_ss_whitelist_rules_one() {
     done
     local expected_drop_line="-A INPUT -p ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
     firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-    if ! "$cmd" -w -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
+    if ! _iptables_do "$cmd" -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
         __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
     expected_target_lines=("${expected_target_lines[@]:0:n}" "$expected_drop_line" "${expected_target_lines[@]:n}")
 
-    rules_output=$("$cmd" -w -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     current_lines=(); mapfile -t current_lines <<< "$rules_output"
     delete_lines=(); delete_target_indices=(); target_idx=0; rule_no=0
     for i in "${!current_lines[@]}"; do
@@ -4331,7 +4317,7 @@ reorder_ss_whitelist_rules_one() {
         line=${delete_lines[j]//\"/}
         read -r -a argv <<< "$line"
         [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-        if ! "$cmd" -w -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
+        if ! _iptables_do "$cmd" -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
             __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
@@ -4611,7 +4597,8 @@ ss_whitelist_ipv6_precheck() {
 
 enforce_ss_whitelist_order() {
     local port="${1:-${SS_PORT:-}}" failed=0 proto
-    valid_port "$port" || return 0
+    # G8: invalid port must fail, not silently succeed.
+    valid_port "$port" || return 1
     # FINAL-AUDIT: fail closed here too (defense in depth for restore paths).
     ss_whitelist_ipv6_precheck || return 1
     for proto in tcp udp; do
@@ -4635,25 +4622,25 @@ clean_nat_rules() {
     local -a argv=()
     owned_re='--comment "?A-Box-HY2-HOP"?([[:space:]]|$)'
     while :; do
-        output=$($IPT -w -t nat -S PREROUTING 2>/dev/null) || { failed=1; break; }
+        output=$(_iptables_q "$IPT" -t nat -S PREROUTING 2>/dev/null) || { failed=1; break; }
         rule=$(awk -v re="$owned_re" '$0 ~ re { sub(/^-A /,"-D "); print; exit }' <<< "$output")
         [[ -n "$rule" ]] || break
         rule=${rule//\"/}
         read -r -a argv <<< "$rule"
-        $IPT -w -t nat "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
+        _iptables_do "$IPT" -t nat "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
     done
     if command -v ip6tables >/dev/null 2>&1; then
-        if $IPT6 -w -t nat -S PREROUTING >/dev/null 2>&1; then
+        if _iptables_q "$IPT6" -t nat -S PREROUTING >/dev/null 2>&1; then
             while :; do
-                output=$($IPT6 -w -t nat -S PREROUTING 2>/dev/null) || { failed=1; break; }
+                output=$(_iptables_q "$IPT6" -t nat -S PREROUTING 2>/dev/null) || { failed=1; break; }
                 rule=$(awk -v re="$owned_re" '$0 ~ re { sub(/^-A /,"-D "); print; exit }' <<< "$output")
                 [[ -n "$rule" ]] || break
                 rule=${rule//\"/}
                 read -r -a argv <<< "$rule"
-                $IPT6 -w -t nat "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
+                _iptables_do "$IPT6" -t nat "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
             done
         else
-            ipv6_nat_error=$($IPT6 -w -t nat -S PREROUTING 2>&1 >/dev/null || true)
+            ipv6_nat_error=$(_iptables_q "$IPT6" -t nat -S PREROUTING 2>&1 >/dev/null || true)
             if ! grep -Eiq "table ['\"]?nat['\"]? does not exist|table does not exist|table nat is not supported|protocol not supported|can't initialize ip6tables table ['\"]nat['\"]|cannot initialize ip6tables table ['\"]nat['\"]|table ['\"]nat['\"] is incompatible, use ['\"]nft['\"] tool" <<< "$ipv6_nat_error"; then
                 failed=1
             fi
@@ -4675,22 +4662,22 @@ clean_input_rules() {
     owned_re='--comment "?A-Box-[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?"?([[:space:]]|$)'
     remove_native_firewall_rules 2>/dev/null || failed=1
     while :; do
-        output=$($IPT -w -S INPUT 2>/dev/null) || { failed=1; break; }
+        output=$(_iptables_q "$IPT" -S INPUT 2>/dev/null) || { failed=1; break; }
         rule=$(awk -v re="$owned_re" '$0 ~ re { sub(/^-A /,"-D "); print; exit }' <<< "$output")
         [[ -n "$rule" ]] || break
         rule=${rule//\"/}
         read -r -a argv <<< "$rule"
-        $IPT -w "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
+        _iptables_do "$IPT" "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
     done
     if command -v ip6tables >/dev/null 2>&1; then
-        if $IPT6 -w -S INPUT >/dev/null 2>&1; then
+        if _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
             while :; do
-                output=$($IPT6 -w -S INPUT 2>/dev/null) || { failed=1; break; }
+                output=$(_iptables_q "$IPT6" -S INPUT 2>/dev/null) || { failed=1; break; }
                 rule=$(awk -v re="$owned_re" '$0 ~ re { sub(/^-A /,"-D "); print; exit }' <<< "$output")
                 [[ -n "$rule" ]] || break
                 rule=${rule//\"/}
                 read -r -a argv <<< "$rule"
-                $IPT6 -w "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
+                _iptables_do "$IPT6" "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
             done
         elif has_ipv6; then
             failed=1
@@ -5149,6 +5136,31 @@ verify_github_asset_digest() {
 # ============ F-05: Ed25519 detached signature verification ============
 # Uses ONLY openssl + python3 (both guaranteed by ensure_commands).
 # .sig files are base64 text of the raw 64-byte Ed25519 signature.
+# F8: probe OpenSSL Ed25519/rawin capability. Ed25519 needs OpenSSL 1.1.1+;
+# -rawin for pkeyutl needs 1.1.1+. Cache the result.
+_openssl_has_ed25519() {
+    if [[ -n "${_OPENSSL_ED25519_OK:-}" ]]; then
+        return "$_OPENSSL_ED25519_OK"
+    fi
+    _OPENSSL_ED25519_OK=1
+    # Probe: genpkey with ed25519 algorithm
+    if ! openssl genpkey -algorithm ed25519 -out /dev/null 2>/dev/null; then
+        _OPENSSL_ED25519_OK=1
+    fi
+    # Probe: pkeyutl -rawin support. Note: -rawin requires file input,
+    # not stdin pipe (oneshot operation needs file size).
+    local _t
+    _t=$(mktemp -d 2>/dev/null) || { _OPENSSL_ED25519_OK=1; return 1; }
+    printf 'test' > "$_t/in.bin" 2>/dev/null
+    if ! openssl genpkey -algorithm ed25519 -out "$_t/priv.pem" 2>/dev/null || \
+       ! openssl pkeyutl -sign -inkey "$_t/priv.pem" -rawin -in "$_t/in.bin" -out "$_t/sig.bin" 2>/dev/null; then
+        _OPENSSL_ED25519_OK=1
+    else
+        _OPENSSL_ED25519_OK=0
+    fi
+    rm -rf -- "$_t"
+    return "$_OPENSSL_ED25519_OK"
+}
 # Returns 0 iff ANY non-revoked pubkey in ABOX_SIGNING_PUBKEYS verifies.
 verify_ed25519_detached() {
     local file="$1" sigfile="$2"
@@ -5224,6 +5236,15 @@ abox_signing_timestamp_ok() {
 # Returns 1 (fail-closed) iff ABOX_SIGNING_ENFORCE=1 and sig missing/invalid.
 abox_verify_sig_gate() {
     local file="$1" sigfile="$2" desc="${3:-metadata}"
+    # F8: if OpenSSL lacks Ed25519/rawin, we cannot verify; fail-closed when enforcing.
+    if ! _openssl_has_ed25519; then
+        printf '[A-Box][F-05] WARNING: OpenSSL lacks Ed25519/rawin support; cannot verify %s\n' "$desc" >&2
+        if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
+            printf '[A-Box][F-05] FATAL: signature enforcement is ON but OpenSSL cannot verify; rejecting %s\n' "$desc" >&2
+            return 1
+        fi
+        return 0
+    fi
     if [[ -f "$sigfile" ]]; then
         if verify_ed25519_detached "$file" "$sigfile"; then
             return 0
@@ -5232,7 +5253,7 @@ abox_verify_sig_gate() {
     else
         printf '[A-Box][F-05] WARNING: missing signature for %s (%s not found)\n' "$desc" "$sigfile" >&2
     fi
-    if [[ "${ABOX_SIGNING_ENFORCE:-0}" == '1' ]]; then
+    if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
         printf '[A-Box][F-05] FATAL: signature enforcement is ON; rejecting %s\n' "$desc" >&2
         return 1
     fi
@@ -5516,7 +5537,7 @@ core_latest_mirror_release_ref() {
     # F-05 anti-replay: CORE-VERSIONS timestamp must not predate trust floor.
     _f05_ts=$(awk -F= '$1=="updated_at_utc" {print $2; exit}' "$workdir/CORE-VERSIONS" 2>/dev/null || true)
     if [[ -n "$_f05_ts" ]] && ! abox_signing_timestamp_ok "$_f05_ts"; then
-        if [[ "${ABOX_SIGNING_ENFORCE:-0}" == '1' ]]; then
+        if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
             printf '[A-Box][F-05] FATAL: CORE-VERSIONS timestamp %s is older than trust floor %s\n' "$_f05_ts" "$ABOX_SIGNING_MIN_TIMESTAMP_UTC" >&2
             rm -rf -- "$workdir"; return 1
         fi
@@ -6599,7 +6620,7 @@ hysteria_official_hop_firewall_ok() {
     (( 10#$start <= 10#$end && 10#$first <= 10#$end )) || return 1
     first_other=$((10#$start + 1))
     if command -v iptables >/dev/null 2>&1; then
-        if iptables -w -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
+        if _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
             if has_ipv6; then
                 command -v ip6tables >/dev/null 2>&1 && ip6tables -w -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
             fi
@@ -6782,13 +6803,59 @@ fi
 IPT=$(command -v iptables || echo /sbin/iptables)
 IPT6=$(command -v ip6tables || echo /sbin/ip6tables)
 has_ipv6() { local _p; _p=$(read_ip_pref 2>/dev/null || printf dual); [[ "$_p" == ipv4 ]] && return 1; ip -6 addr show scope global 2>/dev/null | awk '/inet6/ { found=1 } END { exit !found }' || ip -6 route show default 2>/dev/null | awk '/^default/ { found=1 } END { exit !found }'; }
-ipv6_nat_redirect_usable() { command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -t nat -L PREROUTING >/dev/null 2>&1; }
+# G3: probe iptables -w (xtables lock wait) support. -w for the iptables
+# command exists since 1.4.20; pre-1.4.20 systems lack it. All callers use
+# this helper so very old systems degrade gracefully instead of failing
+# on an unrecognized option.
+_iptables_w_flag() {
+    local cmd="$1"
+    # Cache per-command result in a dynamic variable
+    local cache_var="_IPT_W_${cmd//[^a-zA-Z0-9]/_}"
+    if [[ -n "${!cache_var:-}" ]]; then
+        printf '%s' "${!cache_var}"
+        return 0
+    fi
+    local flag=""
+    if "$cmd" -w --version >/dev/null 2>&1; then
+        flag="-w"
+    fi
+    printf -v "$cache_var" '%s' "$flag"
+    printf '%s' "$flag"
+}
+# G3: safe iptables query wrapper. Uses -w only when supported.
+# Usage: _iptables_q <iptables|ip6tables> <args...>
+_iptables_q() {
+    local cmd="$1"; shift
+    local wflag
+    wflag=$(_iptables_w_flag "$cmd")
+    if [[ -n "$wflag" ]]; then
+        "$cmd" "$wflag" "$@"
+    else
+        "$cmd" "$@"
+    fi
+}
+# G3: safe iptables modification wrapper. Uses -w only when supported.
+# Usage: _iptables_do <iptables|ip6tables> <args...>
+# Usage: _iptables_do <iptables|ip6tables> <args...>
+# NOTE: G3 migration complete. Bare 'iptables -w' calls in systemd service
+# templates are intentionally kept (no bash functions available at service runtime).
+_iptables_do() {
+    local cmd="$1"; shift
+    local wflag
+    wflag=$(_iptables_w_flag "$cmd")
+    if [[ -n "$wflag" ]]; then
+        "$cmd" "$wflag" "$@"
+    else
+        "$cmd" "$@"
+    fi
+}
+ipv6_nat_redirect_usable() { command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -t nat -L PREROUTING >/dev/null 2>&1; }
 hysteria_official_hop_firewall_ok() {
     local start="${HY2_RANGE_START:-}" end="${HY2_RANGE_END:-}" first="${HY2_MONITOR_PORT:-${HY2_RANGE_START:-}}" first_other=''
     [[ "$start" =~ ^[0-9]+$ && "$end" =~ ^[0-9]+$ && "$first" =~ ^[0-9]+$ ]] || return 1
     (( 10#$start <= 10#$end && 10#$first <= 10#$end )) || return 1
     first_other=$((10#$start + 1))
-    if command -v iptables >/dev/null 2>&1 && iptables -w -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
+    if command -v iptables >/dev/null 2>&1 && _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
         if has_ipv6; then
             command -v ip6tables >/dev/null 2>&1 && ip6tables -w -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
         fi
@@ -6813,9 +6880,9 @@ if [[ -z "$failed_srv" && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == offic
 fi
 if [[ -z "$failed_srv" && "${HY2_HOP:-}" == true && "${HY2_HOP_IMPL:-}" == manual && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" && -n "${INGRESS_IF:-}" ]]; then
     redirect_port="${HY2_MONITOR_PORT:-${HY2_BASE_PORT:-${HY2_RANGE_START}}}"
-    $IPT -w -t nat -C PREROUTING -i "$INGRESS_IF" -p udp --dport "${HY2_RANGE_START}:${HY2_RANGE_END}" -m comment --comment A-Box-HY2-HOP -j REDIRECT --to-ports "$redirect_port" 2>/dev/null || failed_srv="$HY2_SRV"
+    _iptables_q "$IPT" -t nat -C PREROUTING -i "$INGRESS_IF" -p udp --dport "${HY2_RANGE_START}:${HY2_RANGE_END}" -m comment --comment A-Box-HY2-HOP -j REDIRECT --to-ports "$redirect_port" 2>/dev/null || failed_srv="$HY2_SRV"
     if has_ipv6 && ipv6_nat_redirect_usable; then
-        $IPT6 -w -t nat -C PREROUTING -i "$INGRESS_IF" -p udp --dport "${HY2_RANGE_START}:${HY2_RANGE_END}" -m comment --comment A-Box-HY2-HOP -j REDIRECT --to-ports "$redirect_port" 2>/dev/null || failed_srv="$HY2_SRV"
+        _iptables_q "$IPT6" -t nat -C PREROUTING -i "$INGRESS_IF" -p udp --dport "${HY2_RANGE_START}:${HY2_RANGE_END}" -m comment --comment A-Box-HY2-HOP -j REDIRECT --to-ports "$redirect_port" 2>/dev/null || failed_srv="$HY2_SRV"
     fi
 fi
 [[ -n "$failed_srv" || -z "${VLESS_PORT:-}" ]] || check_socket_or_fail tcp "$VLESS_PORT" "$MAIN_PID" "$MAIN_SRV"
@@ -7114,7 +7181,15 @@ pre_install_setup() {
     L_XHTTP=$(proto_label 'VLESS-XHTTP')
     L_HY2=$(proto_label 'HY2')
     L_SS=$(proto_label 'SS-2022')
-    if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then L_GLOBAL=$(proto_label 'Global'); else L_GLOBAL=$(proto_label '全局'); fi
+    case "${ABOX_LANG:-zh}" in
+        en) L_GLOBAL=$(proto_label 'Global') ;;
+        ru) L_GLOBAL=$(proto_label 'Глобальный') ;;
+        fa) L_GLOBAL=$(proto_label 'گلوبال') ;;
+        ja)
+            L_GLOBAL=$(proto_label 'グローバル') ;;
+        zh-tw) L_GLOBAL=$(proto_label '全域性') ;;
+        *) L_GLOBAL=$(proto_label '全局') ;;
+    esac
     [[ "$MODE_IN" == *'VISION'* || "$MODE_IN" == *'ALL'* || "$MODE_IN" == 'VLESS_SS' ]] && HAS_VISION=true
     [[ "$CORE_IN" == 'xray' && ( "$MODE_IN" == *'XHTTP'* || "$MODE_IN" == *'ALL'* ) ]] && HAS_XHTTP=true
     [[ "$MODE_IN" == *'HY2'* || "$MODE_IN" == *'ALL'* ]] && HAS_HY2=true
@@ -7159,11 +7234,20 @@ pre_install_setup() {
     fi
 
     printf '\n%s\n' "${CYAN}======================================================================${NC}"
-    if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-        msg "${BOLD}Parameter Wizard [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
-    else
-        msg "${BOLD}参数构造向导 [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
-    fi
+    case "${ABOX_LANG:-zh}" in
+        en|ru|fa)
+            msg "${BOLD}Parameter Wizard [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
+            ;;
+        ja)
+            msg "${BOLD}パラメータウィザード [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
+            ;;
+        zh-tw)
+            msg "${BOLD}參數建構精靈 [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
+            ;;
+        *)
+            msg "${BOLD}参数构造向导 [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
+            ;;
+    esac
     msg "${BLUE}----------------------------------------------------------------------${NC}"
 
     if [[ "$HAS_VISION" == 'true' ]]; then
@@ -7179,19 +7263,36 @@ pre_install_setup() {
     if [[ "$HAS_HY2" == 'true' ]]; then
         HY2_BASE_PORT=$(prompt_port_input "$L_HY2" "$DEF_H_PORT") || die 'HY2 端口输入已结束 / HY2 port input closed.'
 
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-            if [[ "$CORE_IN" == 'singbox' ]]; then
-                read -r -p "   ${L_HY2} Optional server domain for Sing-box HY2 self-signed certificate/SNI (empty = IP + pinSHA256): " INPUT_H_DOMAIN || die '交互输入已结束 / Interactive input closed.'
-            else
-                read -r -p "   ${L_HY2} Do you have a domain already resolved to this server? (empty = self-signed certificate): " INPUT_H_DOMAIN || die '交互输入已结束 / Interactive input closed.'
-            fi
-        else
-            if [[ "$CORE_IN" == 'singbox' ]]; then
-                read -r -p "   ${L_HY2} 可选填写 Sing-box HY2 自签证书/SNI 域名（留空使用 IP + pinSHA256）: " INPUT_H_DOMAIN || die '交互输入已结束 / Interactive input closed.'
-            else
-                read -r -p "   ${L_HY2} 是否拥有已解析到本机的域名？(留空使用默认自签证书): " INPUT_H_DOMAIN || die '交互输入已结束 / Interactive input closed.'
-            fi
-        fi
+        case "${ABOX_LANG:-zh}" in
+            en|ru|fa)
+                if [[ "$CORE_IN" == 'singbox' ]]; then
+                    read -r -p "   ${L_HY2} Optional server domain for Sing-box HY2 self-signed certificate/SNI (empty = IP + pinSHA256): " INPUT_H_DOMAIN || die 'Interactive input closed.'
+                else
+                    read -r -p "   ${L_HY2} Do you have a domain already resolved to this server? (empty = self-signed certificate): " INPUT_H_DOMAIN || die 'Interactive input closed.'
+                fi
+                ;;
+            ja)
+                if [[ "$CORE_IN" == 'singbox' ]]; then
+                    read -r -p "   ${L_HY2} Sing-box HY2 自己署名証明書/SNI 用のサーバードメイン（任意、空欄 = IP + pinSHA256）: " INPUT_H_DOMAIN || die '対話入力が終了しました。'
+                else
+                    read -r -p "   ${L_HY2} このサーバーに解決済みのドメインをお持ちですか？（空欄 = 自己署名証明書）: " INPUT_H_DOMAIN || die '対話入力が終了しました。'
+                fi
+                ;;
+            zh-tw)
+                if [[ "$CORE_IN" == 'singbox' ]]; then
+                    read -r -p "   ${L_HY2} 可選填寫 Sing-box HY2 自簽憑證/SNI 網域（留空使用 IP + pinSHA256）: " INPUT_H_DOMAIN || die '互動輸入已結束。'
+                else
+                    read -r -p "   ${L_HY2} 是否擁有已解析到本機的網域？(留空使用預設自簽憑證): " INPUT_H_DOMAIN || die '互動輸入已結束。'
+                fi
+                ;;
+            *)
+                if [[ "$CORE_IN" == 'singbox' ]]; then
+                    read -r -p "   ${L_HY2} 可选填写 Sing-box HY2 自签证书/SNI 域名（留空使用 IP + pinSHA256）: " INPUT_H_DOMAIN || die '交互输入已结束。'
+                else
+                    read -r -p "   ${L_HY2} 是否拥有已解析到本机的域名？(留空使用默认自签证书): " INPUT_H_DOMAIN || die '交互输入已结束。'
+                fi
+                ;;
+        esac
         HY2_DOMAIN="$INPUT_H_DOMAIN"
         if [[ -n "$HY2_DOMAIN" ]]; then
             valid_domain "$HY2_DOMAIN" || die "域名格式非法 / Invalid domain: $HY2_DOMAIN"
@@ -7206,11 +7307,26 @@ pre_install_setup() {
                     HY2_ACME_DNS_CF_API_TOKEN="${ABOX_HY2_ACME_DNS_CF_API_TOKEN:-${ABOX_ACME_DNS_CF_API_TOKEN:-}}"
                 else
                     local INPUT_ACME_DNS INPUT_CF_TOKEN
-                    if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
+                    case "${ABOX_LANG:-zh}" in
+                        en)
                         read -r -p "   ${L_HY2} Use Cloudflare DNS-01 ACME instead of HTTP-01? [Y/N]: " INPUT_ACME_DNS || die '交互输入已结束 / Interactive input closed.'
-                    else
+                            ;;
+                        ru)
+                        read -r -p "   ${L_HY2} Использовать Cloudflare DNS-01 ACME вместо HTTP-01? [Y/N]: " INPUT_ACME_DNS || die 'Ввод завершён.'
+                            ;;
+                        fa)
+                        read -r -p "   ${L_HY2} استفاده از Cloudflare DNS-01 ACME به جای HTTP-01؟ [Y/N]: " INPUT_ACME_DNS || die 'ورودی به پایان رسید.'
+                            ;;
+                        ja)
+                            read -r -p "   ${L_HY2} HTTP-01 の代わりに Cloudflare DNS-01 ACME で証明書を取得しますか？[Y/N]: " INPUT_ACME_DNS || die '対話入力が終了しました / Interactive input closed.'
+                            ;;
+                        zh-tw)
+                        read -r -p "   ${L_HY2} 是否使用 Cloudflare DNS-01 申請證書以避免佔用 80 埠？[Y/N]: " INPUT_ACME_DNS || die '互動輸入已結束 / Interactive input closed.'
+                            ;;
+                        *)
                         read -r -p "   ${L_HY2} 是否使用 Cloudflare DNS-01 申请证书以避免占用 80 端口？[Y/N]: " INPUT_ACME_DNS || die '交互输入已结束 / Interactive input closed.'
-                    fi
+                            ;;
+                    esac
                     if is_yes "$INPUT_ACME_DNS"; then
                         HY2_ACME_TYPE='dns'
                         HY2_ACME_DNS_PROVIDER='cloudflare'
@@ -7226,11 +7342,20 @@ pre_install_setup() {
             fi
         fi
 
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-            read -r -p "   ${L_HY2} Enable port hopping? [Y/N]: " INPUT_H_HOP || die '交互输入已结束 / Interactive input closed.'
-        else
-            read -r -p "   ${L_HY2} 是否开启端口跳跃 (单端口被限速环境建议开启)? [Y/N]: " INPUT_H_HOP || die '交互输入已结束 / Interactive input closed.'
-        fi
+        case "${ABOX_LANG:-zh}" in
+            en|ru|fa)
+                read -r -p "   ${L_HY2} Enable port hopping? [Y/N]: " INPUT_H_HOP || die 'Interactive input closed.'
+                ;;
+            ja)
+                read -r -p "   ${L_HY2} ポートホッピングを有効にしますか？ [Y/N]: " INPUT_H_HOP || die '対話入力が終了しました。'
+                ;;
+            zh-tw)
+                read -r -p "   ${L_HY2} 是否開啟連接埠跳躍 (單連接埠被限速環境建議開啟)? [Y/N]: " INPUT_H_HOP || die '互動輸入已結束。'
+                ;;
+            *)
+                read -r -p "   ${L_HY2} 是否开启端口跳跃 (单端口被限速环境建议开启)? [Y/N]: " INPUT_H_HOP || die '交互输入已结束。'
+                ;;
+        esac
         if is_yes "$INPUT_H_HOP"; then
             HY2_HOP='true'
             HY2_RANGE_START=20000
@@ -7259,31 +7384,73 @@ pre_install_setup() {
             HY2_MONITOR_PORT="$HY2_BASE_PORT"
         fi
 
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-            HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} Downlink Mbps (default: 1000): " 1000) || die 'HY2 下行速率输入已结束 / HY2 downlink input closed.'
-        else
-            HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 下行速率(Mbps) (回车默认: 1000): " 1000) || die 'HY2 下行速率输入已结束 / HY2 downlink input closed.'
-        fi
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-            HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} Uplink Mbps (default: 100): " 100) || die 'HY2 上行速率输入已结束 / HY2 uplink input closed.'
-        else
-            HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 上行速率(Mbps) (回车默认: 100): " 100) || die 'HY2 上行速率输入已结束 / HY2 uplink input closed.'
-        fi
+        case "${ABOX_LANG:-zh}" in
+            en|ru|fa)
+                HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} Downlink Mbps (default: 1000): " 1000) || die 'HY2 downlink input closed.'
+                ;;
+            ja)
+                HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 下り速度 (Mbps)（既定値: 1000）: " 1000) || die 'HY2 下り速度の入力が終了しました。'
+                ;;
+            zh-tw)
+                HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 下行速率(Mbps) (預設: 1000): " 1000) || die 'HY2 下行速率輸入已結束。'
+                ;;
+            *)
+                HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 下行速率(Mbps) (回车默认: 1000): " 1000) || die 'HY2 下行速率输入已结束。'
+                ;;
+        esac
+        case "${ABOX_LANG:-zh}" in
+            en|ru|fa)
+                HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} Uplink Mbps (default: 100): " 100) || die 'HY2 uplink input closed.'
+                ;;
+            ja)
+                HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 上り速度 (Mbps)（既定値: 100）: " 100) || die 'HY2 上り速度の入力が終了しました。'
+                ;;
+            zh-tw)
+                HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 上行速率(Mbps) (預設: 100): " 100) || die 'HY2 上行速率輸入已結束。'
+                ;;
+            *)
+                HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 上行速率(Mbps) (回车默认: 100): " 100) || die 'HY2 上行速率输入已结束。'
+                ;;
+        esac
 
         local masq_default="https://${VISION_SNI:-${XHTTP_SNI:-www.samsung.com}}/"
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
+        case "${ABOX_LANG:-zh}" in
+            en)
             HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} Enter HTTP/3 masquerade URL (default: $masq_default): " "$masq_default") || die 'HY2 伪装 URL 输入已结束 / HY2 masquerade URL input closed.'
-        else
+                ;;
+            ru)
+            HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} Ввести URL маскировки HTTP/3 (по умолчанию: $masq_default): " "$masq_default") || die 'Ввод URL маскировки HY2 завершён.'
+                ;;
+            fa)
+            HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} URL استتار HTTP/3 را وارد کنید (پیش‌فرض: $masq_default): " "$masq_default") || die 'ورودی URL استتار HY2 به پایان رسید.'
+                ;;
+            ja)
+                HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} HTTP/3 の偽装サイト URL を入力してください（既定値: $masq_default）: " "$masq_default") || die 'HY2 偽装 URL の入力が終了しました / HY2 masquerade URL input closed.'
+                ;;
+            zh-tw)
+            HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} 請輸入 HTTP/3 偽裝站點 URL (回車預設: $masq_default): " "$masq_default") || die 'HY2 偽裝 URL 輸入已結束 / HY2 masquerade URL input closed.'
+                ;;
+            *)
             HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} 请输入 HTTP/3 伪装站点 URL (回车默认: $masq_default): " "$masq_default") || die 'HY2 伪装 URL 输入已结束 / HY2 masquerade URL input closed.'
-        fi
+                ;;
+        esac
     fi
     if [[ "$HAS_SS" == 'true' ]]; then
         SS_PORT=$(prompt_ss_port_input "$L_SS" "$DEF_S_PORT") || die 'SS 端口输入已结束 / SS port input closed.'
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-            read -r -p "   ${L_SS} Enter frontend whitelist IP/CIDR (empty = open to all, space-separated): " INPUT_SS_WL || die '交互输入已结束 / Interactive input closed.'
-        else
-            read -r -p "   ${L_SS} 请输入前置机白名单 IP/CIDR (留空全网开放, 多个用空格分隔): " INPUT_SS_WL || die '交互输入已结束 / Interactive input closed.'
-        fi
+        case "${ABOX_LANG:-zh}" in
+            en|ru|fa)
+                read -r -p "   ${L_SS} Enter frontend whitelist IP/CIDR (empty = open to all, space-separated): " INPUT_SS_WL || die 'Interactive input closed.'
+                ;;
+            ja)
+                read -r -p "   ${L_SS} フロントエンドのホワイトリスト IP/CIDR を入力してください（空欄 = 全開放、複数はスペース区切り）: " INPUT_SS_WL || die '対話入力が終了しました。'
+                ;;
+            zh-tw)
+                read -r -p "   ${L_SS} 請輸入前置機白名單 IP/CIDR (留空全網開放, 多個用空格分隔): " INPUT_SS_WL || die '互動輸入已結束。'
+                ;;
+            *)
+                read -r -p "   ${L_SS} 请输入前置机白名单 IP/CIDR (留空全网开放, 多个用空格分隔): " INPUT_SS_WL || die '交互输入已结束。'
+                ;;
+        esac
         SS_WHITELIST_IP="$INPUT_SS_WL"
         if [[ -n "$SS_WHITELIST_IP" ]]; then
             read -r -a ss_whitelist_ips <<< "$SS_WHITELIST_IP"
@@ -7301,11 +7468,26 @@ pre_install_setup() {
         ENABLE_KEEPALIVE='false'
         msg "${YELLOW}[fast] TCP KeepAlive default off.${NC}"
     else
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
+        case "${ABOX_LANG:-zh}" in
+            en)
             read -r -p "   ${L_GLOBAL} Enable TCP KeepAlive 45s to prevent NAT idle disconnect? [Y/N]: " INPUT_KA || die '交互输入已结束 / Interactive input closed.'
-        else
+                ;;
+            ru)
+            read -r -p "   ${L_GLOBAL} Включить TCP KeepAlive 45с для предотвращения разрыва соединения NAT? [Y/N]: " INPUT_KA || die 'Ввод завершён.'
+                ;;
+            fa)
+            read -r -p "   ${L_GLOBAL} فعال‌سازی TCP KeepAlive به مدت 45 ثانیه برای جلوگیری از قطع اتصال بی‌فعال NAT؟ [Y/N]: " INPUT_KA || die 'ورودی به پایان رسید.'
+                ;;
+            ja)
+                read -r -p "   ${L_GLOBAL} NAT のアイドル時切断を防ぐため、TCP KeepAlive (45s) を有効にしますか？ [Y/N]: " INPUT_KA || die '対話入力が終了しました / Interactive input closed.'
+                ;;
+            zh-tw)
+            read -r -p "   ${L_GLOBAL} 是否開啟 TCP KeepAlive (45s) 防治 NAT 空閒斷連? [Y/N]: " INPUT_KA || die '互動輸入已結束 / Interactive input closed.'
+                ;;
+            *)
             read -r -p "   ${L_GLOBAL} 是否开启 TCP KeepAlive (45s) 防治 NAT 空闲断连? [Y/N]: " INPUT_KA || die '交互输入已结束 / Interactive input closed.'
-        fi
+                ;;
+        esac
         is_yes "$INPUT_KA" && ENABLE_KEEPALIVE='true' || ENABLE_KEEPALIVE='false'
     fi
     printf '%s\n\n' "${CYAN}======================================================================${NC}"
@@ -7348,14 +7530,14 @@ pre_install_setup() {
             for ip in "${ss_whitelist_ips[@]}"; do
                 for proto in tcp udp; do
                     if [[ "$ip" == *:* ]]; then
-                        if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! $IPT6 -w -S INPUT >/dev/null 2>&1; then
+                        if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                             _ss_wl_rollback_to_snapshot; die "IPv6 白名单已配置，但系统没有可用 IPv6 防火墙；拒绝继续以避免白名单被静默丢弃: $ip/$proto"
                         fi
-                        if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+                        if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                             if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                             case "$check_rc" in
                                 0) ;;
-                                1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 白名单规则写入失败: $ip/$proto"; } ;;
+                                1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 白名单规则写入失败: $ip/$proto"; } ;;
                                 *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                             esac
                         fi
@@ -7363,7 +7545,7 @@ pre_install_setup() {
                         if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                         case "$check_rc" in
                             0) ;;
-                            1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 白名单规则写入失败: $ip/$proto"; } ;;
+                            1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 白名单规则写入失败: $ip/$proto"; } ;;
                             *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                         esac
                     fi
@@ -7373,14 +7555,14 @@ pre_install_setup() {
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in
                     0) ;;
-                    1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则写入失败: $proto" ;;
+                    1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则写入失败: $proto" ;;
                     *) die "无法检查防火墙规则。" ;;
                 esac
-                if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+                if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; else die "IPv6 SS DROP 规则写入失败，回滚失败，需人工处理: $proto"; fi; } ;;
+                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; else die "IPv6 SS DROP 规则写入失败，回滚失败，需人工处理: $proto"; fi; } ;;
                         *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                     esac
                 fi
@@ -8143,6 +8325,12 @@ EOF_SVC
 
 deploy_singbox() {
     local MODE_IN=$1 KEYPAIR SB_PATH cert_cn='localhost' SB_PRE_START='' SB_POST_STOP='' SB_RC_PRE='' SB_RC_POST='' SB_CAPS='CAP_NET_BIND_SERVICE'
+    # G3: Probe -w support for service templates (global compat, not just self-use).
+    # Service files run at boot with /bin/sh, no bash functions available,
+    # so we bake the correct flag at generation time.
+    local IPT_W_FLAG='' IPT6_W_FLAG=''
+    $IPT -w --version >/dev/null 2>&1 && IPT_W_FLAG='-w'
+    $IPT6 -w --version >/dev/null 2>&1 && IPT6_W_FLAG='-w'
     clear; msg "${BOLD}${GREEN}部署 Sing-box 核心 [$MODE_IN]${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -8202,25 +8390,25 @@ deploy_singbox() {
     if [[ "$MODE_IN" == *'HY2'* || "$MODE_IN" == *'ALL'* ]] && [[ "${HY2_HOP:-}" == 'true' ]]; then
         # A-02: CAP_NET_ADMIN removed (see HY2_CAPS).
         SB_CAPS='CAP_NET_BIND_SERVICE'
-        SB_PRE_START="ExecStartPre=-+/bin/sh -c '$IPT -w -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true'
-ExecStartPre=+/bin/sh -c '$IPT -w -t nat -A PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT'"
-        SB_POST_STOP="ExecStopPost=-+/bin/sh -c '$IPT -w -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true'"
+        SB_PRE_START="ExecStartPre=-+/bin/sh -c '$IPT ${IPT_W_FLAG} -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true'
+ExecStartPre=+/bin/sh -c '$IPT ${IPT_W_FLAG} -t nat -A PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT'"
+        SB_POST_STOP="ExecStopPost=-+/bin/sh -c '$IPT ${IPT_W_FLAG} -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true'"
         SB_RC_PRE="start_pre() {
-  $IPT -w -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true
-  $IPT -w -t nat -A PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT || return 1"
+  $IPT ${IPT_W_FLAG} -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true
+  $IPT ${IPT_W_FLAG} -t nat -A PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT || return 1"
         SB_RC_POST="stop_post() {
-  $IPT -w -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true"
+  $IPT ${IPT_W_FLAG} -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true"
         if has_ipv6 && ipv6_nat_redirect_usable; then
             SB_PRE_START+="
-ExecStartPre=-+/bin/sh -c '$IPT6 -w -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true'
-ExecStartPre=+/bin/sh -c '$IPT6 -w -t nat -A PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT'"
+ExecStartPre=-+/bin/sh -c '$IPT6 ${IPT6_W_FLAG} -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true'
+ExecStartPre=+/bin/sh -c '$IPT6 ${IPT6_W_FLAG} -t nat -A PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT'"
             SB_POST_STOP+="
-ExecStopPost=-+/bin/sh -c '$IPT6 -w -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true'"
+ExecStopPost=-+/bin/sh -c '$IPT6 ${IPT6_W_FLAG} -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true'"
             SB_RC_PRE+="
-  $IPT6 -w -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true
-  $IPT6 -w -t nat -A PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT || return 1"
+  $IPT6 ${IPT6_W_FLAG} -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true
+  $IPT6 ${IPT6_W_FLAG} -t nat -A PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT || return 1"
             SB_RC_POST+="
-  $IPT6 -w -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true"
+  $IPT6 ${IPT6_W_FLAG} -t nat -D PREROUTING -i $INGRESS_IF -p udp --dport ${HY2_RANGE_START}:${HY2_RANGE_END} -m comment --comment \"A-Box-HY2-HOP\" -j REDIRECT --to-ports $HY2_BASE_PORT 2>/dev/null || true"
         fi
         SB_RC_PRE+="
   return 0
@@ -9422,17 +9610,17 @@ remove_ss_source_whitelist_rules() {
     [[ -n "${SS_PORT:-}" ]] || return 0
     for cmd in "$IPT" "$IPT6"; do
         command -v "$cmd" >/dev/null 2>&1 || continue
-        "$cmd" -w -S INPUT >/dev/null 2>&1 || continue
+        _iptables_q "$cmd" -S INPUT >/dev/null 2>&1 || continue
         for proto in tcp udp; do
             while :; do
-                line=$("$cmd" -w -S INPUT 2>/dev/null | awk -v p="$proto" -v port="$SS_PORT" '''$0 ~ "^-A INPUT " && $0 ~ ("-p " p) && $0 ~ ("--dport " port) && $0 ~ ("--comment \"?A-Box-" port "-" p "-WL6?\"?($| )") {print; exit}''') || { failed=1; break; }
+                line=$(_iptables_q "$cmd" -S INPUT 2>/dev/null | awk -v p="$proto" -v port="$SS_PORT" '''$0 ~ "^-A INPUT " && $0 ~ ("-p " p) && $0 ~ ("--dport " port) && $0 ~ ("--comment \"?A-Box-" port "-" p "-WL6?\"?($| )") {print; exit}''') || { failed=1; break; }
                 [[ -n "$line" ]] || break
                 line=${line//\"/}
                 rule="${line#-A INPUT }"
                 # Word-splitting is intentional: all A-Box comments and source
                 # addresses are whitespace-free, and iptables itself tokenizes
                 # the normalized -S form.
-                "$cmd" -w -D INPUT $rule >/dev/null 2>&1 || { failed=1; break; }
+                _iptables_do "$cmd" -D INPUT $rule >/dev/null 2>&1 || { failed=1; break; }
             done
         done
     done
@@ -9442,13 +9630,25 @@ remove_ss_source_whitelist_rules() {
 # B-12: Rebuild SS_WHITELIST_IP from live iptables rules and persist to .env,
 # so menu edits (add/remove) don't leave .env stale for redeploy wizards.
 sync_ss_whitelist_ip_to_env() {
-    local ips='' v6ips=''
+    local ips='' v6ips='' ipt_output
     # X-03: --line-numbers is required; without it awk '{print $5}' reads the
     # DESTINATION column (0.0.0.0/0) instead of SOURCE, wiping the whitelist.
-    ips=$($IPT -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '0.0.0.0/0' | sort -u | tr '\n' ' ' || true)
-    if command -v ip6tables >/dev/null 2>&1 && $IPT6 -nL INPUT >/dev/null 2>&1; then
-        v6ips=$($IPT6 -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '::/0' | sort -u | tr '\n' ' ' || true)
-        ips+="$v6ips"
+    # F5: do NOT swallow iptables query errors. If the query fails, abort
+    # instead of writing an empty whitelist to .env (which would wipe the
+    # real whitelist).
+    if ! ipt_output=$($IPT -nL INPUT --line-numbers 2>&1); then
+        printf '[A-Box] WARNING: iptables query failed, not syncing whitelist to .env: %s\n' "$ipt_output" >&2
+        return 1
+    fi
+    ips=$(printf '%s\n' "$ipt_output" | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '0.0.0.0/0' | sort -u | tr '\n' ' ')
+    if command -v ip6tables >/dev/null 2>&1; then
+        local ip6_output
+        if ipt_output=$($IPT6 -nL INPUT --line-numbers 2>&1); then
+            v6ips=$(printf '%s\n' "$ipt_output" | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '::/0' | sort -u | tr '\n' ' ')
+            ips+="$v6ips"
+        else
+            printf '[A-Box] WARNING: ip6tables query failed, skipping IPv6 whitelist sync: %s\n' "$ipt_output" >&2
+        fi
     fi
     SS_WHITELIST_IP=$(printf '%s' "$ips" | tr -s ' ' | sed 's/^ *//;s/ *$//')
     write_env || return 1
@@ -9489,13 +9689,13 @@ manage_ss_whitelist() {
             [[ -z "$add_ip" ]] && return
             if [[ "$add_ip" == *:* ]]; then
                 valid_ipv6_cidr "$add_ip" || { msg "${RED}[!] IPv6 白名单地址非法: $add_ip${NC}"; pause_return; return; }
-                has_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1 || die '系统无可用 IPv6 防火墙。'
+                has_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1 || die '系统无可用 IPv6 防火墙。'
                 for proto in tcp udp; do
                     # F-06: check existence first (idempotent) — do not insert duplicates.
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则写入失败: $add_ip/$proto" ;;
+                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则写入失败: $add_ip/$proto" ;;
                         *) die "无法检查防火墙规则。" ;;
                     esac
                 done
@@ -9506,7 +9706,7 @@ manage_ss_whitelist() {
                     if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则写入失败: $add_ip/$proto" ;;
+                        1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则写入失败: $add_ip/$proto" ;;
                         *) die "无法检查防火墙规则。" ;;
                     esac
                 done
@@ -9535,7 +9735,7 @@ manage_ss_whitelist() {
                             1) break ;;
                             *) die "无法检查 IPv6 白名单规则: $del_ip/$proto" ;;
                         esac
-                        $IPT6 -w -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则删除失败: $del_ip/$proto"
+                        _iptables_do "$IPT6" -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则删除失败: $del_ip/$proto"
                         found=1
                     done
                 done
@@ -9549,7 +9749,7 @@ manage_ss_whitelist() {
                             1) break ;;
                             *) die "无法检查 IPv4 白名单规则: $del_ip/$proto" ;;
                         esac
-                        $IPT -w -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则删除失败: $del_ip/$proto"
+                        _iptables_do "$IPT" -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则删除失败: $del_ip/$proto"
                         found=1
                     done
                 done
@@ -9567,14 +9767,14 @@ manage_ss_whitelist() {
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in
                     0) ;;
-                    1) $IPT -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 SS DROP 规则写入失败: $proto"; } ;;
+                    1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 SS DROP 规则写入失败: $proto"; } ;;
                     *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                 esac
-                if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+                if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) $IPT6 -w -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; else die "IPv6 SS DROP 规则写入失败，回滚失败，需人工处理: $proto"; fi; } ;;
+                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; else die "IPv6 SS DROP 规则写入失败，回滚失败，需人工处理: $proto"; fi; } ;;
                         *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                     esac
                 fi
@@ -9599,11 +9799,11 @@ manage_ss_whitelist() {
                         1) break ;;
                         *) die "无法检查 IPv4 SS DROP 规则: $proto" ;;
                     esac
-                    $IPT -w -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则删除失败: $proto"
+                    _iptables_do "$IPT" -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则删除失败: $proto"
                 done
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in 1) ;; 0) die "IPv4 SS DROP 规则仍然存在: $proto" ;; *) die "无法验证 IPv4 SS DROP 规则已删除: $proto" ;; esac
-                if command -v ip6tables >/dev/null 2>&1 && $IPT6 -w -S INPUT >/dev/null 2>&1; then
+                if command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                     while :; do
                         if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                         case "$check_rc" in
@@ -9611,7 +9811,7 @@ manage_ss_whitelist() {
                             1) break ;;
                             *) die "无法检查 IPv6 SS DROP 规则: $proto" ;;
                         esac
-                        $IPT6 -w -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || die "IPv6 SS DROP 规则删除失败: $proto"
+                        _iptables_do "$IPT6" -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || die "IPv6 SS DROP 规则删除失败: $proto"
                     done
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in 1) ;; 0) die "IPv6 SS DROP 规则仍然存在: $proto" ;; *) die "无法验证 IPv6 SS DROP 规则已删除: $proto" ;; esac
@@ -10028,6 +10228,18 @@ one_click_reality_deploy() {
             msg "${YELLOW}1. Xray Vision REALITY${NC}"
             msg "${YELLOW}2. sing-box Vision REALITY${NC}"
             prompt='نصب یک‌کلیکی Vision REALITY آغاز شود؟ [Y/N]: ' ;;
+        ja)
+            msg "${RED}${BOLD}ワンクリック Vision REALITY${NC}"
+            msg "デフォルト: port 443。SNI はこの VPS の TLS/ASN/地域に関する実測結果に基づいて自動選択されます。www.amazon.com は TLS 1.3/h2/証明書 SAN の検証に成功した場合のみフォールバック先として使用されます。検証可能な接続先がない場合、ワンクリックインストールは停止します。KeepAlive は無効です。"
+            msg "${YELLOW}1. Xray Vision REALITY${NC}"
+            msg "${YELLOW}2. sing-box Vision REALITY${NC}"
+            prompt='今すぐ Vision REALITY をワンクリックでデプロイしますか？[Y/N]: ' ;;
+        zh-tw)
+            msg "${RED}${BOLD}一鍵 Vision REALITY${NC}"
+            msg "預設 SNI 根據當前 VPS 的 TLS/ASN/地區實測自動選擇；僅在 www.amazon.com 透過 TLS 1.3/h2/證書 SAN 驗證後才用作回退。無可驗證目標時一鍵安裝會停止。KeepAlive 關閉。"
+            msg "${YELLOW}1. Xray Vision REALITY${NC}"
+            msg "${YELLOW}2. sing-box Vision REALITY${NC}"
+            prompt='現在開始一鍵部署 Vision REALITY？[Y/N]: ' ;;
         *)
             msg "${RED}${BOLD}一键 Vision REALITY${NC}"
             msg "默认 SNI 根据当前 VPS 的 TLS/ASN/地区实测自动选择；仅在 www.amazon.com 通过 TLS 1.3/h2/证书 SAN 验证后才用作回退。无可验证目标时一键安装会停止。KeepAlive 关闭。"
@@ -10043,6 +10255,9 @@ one_click_reality_deploy() {
             en) msg "${YELLOW}Cancelled.${NC}" ;;
             ru) msg "${YELLOW}Отменено.${NC}" ;;
             fa) msg "${YELLOW}لغو شد.${NC}" ;;
+            zh-tw) msg "${YELLOW}已取消。${NC}" ;;
+            ja)
+                msg "${YELLOW}キャンセルしました。${NC}" ;;
             *) msg "${YELLOW}已取消。${NC}" ;;
         esac
         pause_return; return 0
@@ -10076,6 +10291,20 @@ ux_mode_menu() {
             msg "${YELLOW}2. حالت سریع${NC}"
             msg "${YELLOW}3. سیاست نسخه پایدار و نسخه‌های بازیابی${NC}"
             msg "${GREEN}0. بازگشت${NC}" ;;
+        zh-tw)
+            msg "${BOLD}${GREEN}執行模式與核心版本策略${NC}"
+            msg "當前模式: ${YELLOW}$(read_fast_mode_label)${NC} | 核心來源：上游正式穩定版 → 固定容災映象"
+            msg "${YELLOW}1. 嚴格模式${NC}"
+            msg "${YELLOW}2. 快速模式（只跳過非關鍵確認）${NC}"
+            msg "${YELLOW}3. 檢視正式穩定版策略與固定容災版本${NC}"
+            msg "${GREEN}0. 返回${NC}" ;;
+        ja)
+            msg "${BOLD}${GREEN}実行モードとコアバージョンのポリシー${NC}"
+            msg "現在のモード: ${YELLOW}$(read_fast_mode_label)${NC} | コアの取得順序: 公式の安定版 → 固定リカバリミラー"
+            msg "${YELLOW}1. 厳格モード${NC}"
+            msg "${YELLOW}2. 高速モード（重要でない確認のみをスキップ）${NC}"
+            msg "${YELLOW}3. 公式安定版のポリシーと固定リカバリバージョンを表示${NC}"
+            msg "${GREEN}0. 戻る${NC}" ;;
         *)
             msg "${BOLD}${GREEN}运行模式与核心版本策略${NC}"
             msg "当前模式: ${YELLOW}$(read_fast_mode_label)${NC} | 核心来源：上游正式稳定版 → 固定容灾镜像"
@@ -10458,6 +10687,9 @@ ip_preference_menu() {
         en) title='IP protocol preference'; ipv4='IPv4 only (0.0.0.0 listener; prefer IPv4 share links)'; ipv6='IPv6 only (:: listener; requires working global IPv6)'; dual='Dual stack (prefer IPv6 when available, otherwise IPv4)'; back='Back' ;;
         ru) title='Предпочтение IP-протокола'; ipv4='Только IPv4 (слушатель 0.0.0.0)'; ipv6='Только IPv6 (требуется глобальный IPv6)'; dual='Два стека (IPv6 при доступности, иначе IPv4)'; back='Назад' ;;
         fa) title='ترجیح پروتکل IP'; ipv4='فقط IPv4 (نشانی شنونده 0.0.0.0)'; ipv6='فقط IPv6 (نیازمند IPv6 عمومی فعال)'; dual='دوپشته (در صورت دسترسی IPv6، وگرنه IPv4)'; back='بازگشت' ;;
+        zh-tw) title='IP 協議偏好'; ipv4='僅 IPv4（監聽 0.0.0.0，分享連結優先 IPv4）'; ipv6='僅 IPv6（需要可用的全域性 IPv6）'; dual='雙棧（優先可用 IPv6，否則 IPv4）'; back='返回' ;;
+        ja)
+            title='IP プロトコルの設定'; ipv4='IPv4 のみ（0.0.0.0 でリッスンし、共有リンクでは IPv4 を優先）'; ipv6='IPv6 のみ（利用可能なグローバル IPv6 が必要）'; dual='デュアルスタック（IPv6 が利用可能な場合は優先し、それ以外は IPv4）'; back='戻る' ;;
         *) title='IP 协议偏好'; ipv4='仅 IPv4（监听 0.0.0.0，分享链接优先 IPv4）'; ipv6='仅 IPv6（需要可用的全局 IPv6）'; dual='双栈（优先可用 IPv6，否则 IPv4）'; back='返回' ;;
     esac
     msg "${CYAN}======================================================================${NC}"
@@ -10476,6 +10708,9 @@ ip_preference_menu() {
                     en) msg "${RED}No usable global IPv6 was detected; IPv6-only mode was not saved.${NC}" ;;
                     ru) msg "${RED}Рабочий глобальный IPv6 не обнаружен; режим IPv6-only не сохранён.${NC}" ;;
                     fa) msg "${RED}IPv6 عمومی قابل استفاده یافت نشد؛ حالت فقط IPv6 ذخیره نشد.${NC}" ;;
+                    zh-tw) msg "${RED}系統當前無可用全域性 IPv6，未儲存僅 IPv6 模式。${NC}" ;;
+                    ja)
+                        msg "${RED}利用可能なグローバル IPv6 が検出されなかったため、IPv6 のみのモードは保存されませんでした。${NC}" ;;
                     *) msg "${RED}系统当前无可用全局 IPv6，未保存仅 IPv6 模式。${NC}" ;;
                 esac
                 pause_return; return 1
@@ -10488,6 +10723,9 @@ ip_preference_menu() {
         en) msg "${GREEN}Saved: $(read_ip_pref). New listener preference applies to future deployments; running nodes require redeployment or an applicable restart.${NC}" ;;
         ru) msg "${GREEN}Сохранено: $(read_ip_pref). Настройка слушателя применяется к новым узлам; существующие узлы нужно переустановить или перезапустить.${NC}" ;;
         fa) msg "${GREEN}ذخیره شد: $(read_ip_pref). این تنظیم برای استقرارهای بعدی اعمال می‌شود؛ نودهای فعال به استقرار مجدد یا راه‌اندازی مجدد نیاز دارند.${NC}" ;;
+        zh-tw) msg "${GREEN}已儲存：$(read_ip_pref)。新監聽偏好對後續部署生效；已執行節點需重新部署或適當重啟。${NC}" ;;
+        ja)
+            msg "${GREEN}保存しました: $(read_ip_pref)。新しいリスナー設定は今後のデプロイに適用されます。稼働中のノードには再デプロイまたは適切な再起動が必要です。${NC}" ;;
         *) msg "${GREEN}已保存：$(read_ip_pref)。新监听偏好对后续部署生效；已运行节点需重新部署或适当重启。${NC}" ;;
     esac
     pause_return
@@ -10520,6 +10758,22 @@ host_network_menu() {
             msg "${YELLOW}4. حالت و منبع دانلود${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
+        zh-tw)
+            msg "${BOLD}${GREEN}網路與地區設定${NC}"
+            msg "${YELLOW}1. IP 協議偏好（IPv4 / IPv6 / 雙棧）${NC}"
+            msg "${YELLOW}2. 本機 DNS（自動測速 / DoT / DoH / 回滾）${NC}"
+            msg "${YELLOW}3. 時區、Locale 與 NTP${NC}"
+            msg "${YELLOW}4. 快速/嚴格模式與下載源${NC}"
+            msg "${GREEN}0. 返回${NC}"
+            ;;
+        ja)
+            msg "${BOLD}${GREEN}ネットワークと地域の設定${NC}"
+            msg "${YELLOW}1. IP プロトコルの設定（IPv4 / IPv6 / デュアルスタック）${NC}"
+            msg "${YELLOW}2. ホスト DNS（自動ベンチマーク / DoT / DoH / ロールバック）${NC}"
+            msg "${YELLOW}3. タイムゾーン、Locale、NTP${NC}"
+            msg "${YELLOW}4. 高速モード / 厳格モードとダウンロード元${NC}"
+            msg "${GREEN}0. 戻る${NC}"
+            ;;
         *)
             msg "${BOLD}${GREEN}网络与地区设置${NC}"
             msg "${YELLOW}1. IP 协议偏好（IPv4 / IPv6 / 双栈）${NC}"
@@ -10530,7 +10784,7 @@ host_network_menu() {
             ;;
     esac
     local c
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-4]: ' ;; ru) prompt='Выберите [0–4]: ' ;; fa) prompt='انتخاب [۰ تا ۴]: ' ;; *) prompt='请选择 [0-4]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-4]: ' ;; ru) prompt='Выберите [0–4]: ' ;; fa) prompt='انتخاب [۰ تا ۴]: ' ;; ja) prompt='選択してください [0-4]: ' ;; zh-tw) prompt='請選擇 [0-4]：' ;; *) prompt='请选择 [0-4]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1) ip_preference_menu ;;
@@ -10720,6 +10974,9 @@ timezone_apply_with_rollback() {
             en) msg "${RED}Invalid timezone: $target${NC}" ;;
             ru) msg "${RED}Недопустимый часовой пояс: $target${NC}" ;;
             fa) msg "${RED}منطقه زمانی نامعتبر است: $target${NC}" ;;
+            zh-tw) msg "${RED}非法或不存在的時區: $target${NC}" ;;
+            ja)
+                msg "${RED}無効なタイムゾーン、または存在しないタイムゾーンです: $target${NC}" ;;
             *) msg "${RED}非法或不存在的时区: $target${NC}" ;;
         esac
         return 1
@@ -10731,6 +10988,9 @@ timezone_apply_with_rollback() {
             en) msg "${RED}Could not save the timezone snapshot; no change was applied.${NC}" ;;
             ru) msg "${RED}Не удалось сохранить снимок часового пояса; изменения не применены.${NC}" ;;
             fa) msg "${RED}ذخیره snapshot منطقه زمانی شکست خورد؛ تغییری اعمال نشد.${NC}" ;;
+            zh-tw) msg "${RED}時區快照失敗，未修改設定。${NC}" ;;
+            ja)
+                msg "${RED}タイムゾーンのスナップショットを保存できませんでした。設定は変更されていません。${NC}" ;;
             *) msg "${RED}时区快照失败，未修改设置。${NC}" ;;
         esac
         return 1
@@ -10742,6 +11002,9 @@ timezone_apply_with_rollback() {
             en) msg "${RED}Timezone update failed; rollback was attempted.${NC}" ;;
             ru) msg "${RED}Не удалось изменить часовой пояс; выполнена попытка отката.${NC}" ;;
             fa) msg "${RED}تغییر منطقه زمانی شکست خورد؛ تلاش برای بازگردانی انجام شد.${NC}" ;;
+            zh-tw) msg "${RED}時區應用失敗；已嘗試回滾。${NC}" ;;
+            ja)
+                msg "${RED}タイムゾーンの更新に失敗しました。ロールバックを試みました。${NC}" ;;
             *) msg "${RED}时区应用失败；已尝试回滚。${NC}" ;;
         esac
         return 1
@@ -10763,6 +11026,9 @@ timezone_apply_with_rollback() {
         en) msg "${GREEN}Timezone set to $target; the previous state is available for rollback.${NC}" ;;
         ru) msg "${GREEN}Часовой пояс установлен: $target; предыдущее состояние можно восстановить.${NC}" ;;
         fa) msg "${GREEN}منطقه زمانی روی $target تنظیم شد؛ امکان بازگردانی وضعیت قبلی وجود دارد.${NC}" ;;
+        zh-tw) msg "${GREEN}時區已設定為 ${target}；修改前的狀態可透過回滾選單恢復。${NC}" ;;
+        ja)
+            msg "${GREEN}タイムゾーンを $target に設定しました。変更前の状態はロールバックメニューから復元できます。${NC}" ;;
         *) msg "${GREEN}时区已设置为 ${target}；修改前的状态可通过回滚菜单恢复。${NC}" ;;
     esac
 }
@@ -10776,6 +11042,10 @@ timezone_choose_from_list() {
             title='Часовые пояса IANA'; page_label='Текущий: %s | Поиск: %s | Всего: %s'; number_prompt='Номер; n/p страницы; s поиск; 0 назад: '; search_prompt='Поиск часового пояса: '; invalid_prompt='Введите номер или n/p/s/0.'; range_prompt='Номер вне диапазона.'; confirm_prompt='Установить часовой пояс %s? [Y/N]: ' ;;
         fa)
             title='منطقه‌های زمانی IANA'; page_label='فعلی: %s | جست‌وجو: %s | تعداد: %s'; number_prompt='شماره؛ n/p صفحه؛ s جست‌وجو؛ 0 بازگشت: '; search_prompt='جست‌وجوی منطقه زمانی: '; invalid_prompt='شماره یا n/p/s/0 را وارد کنید.'; range_prompt='شماره خارج از محدوده است.'; confirm_prompt='منطقه زمانی روی %s تنظیم شود؟ [Y/N]: ' ;;
+        zh-tw)
+            title='IANA 時區列表'; page_label='當前: %s | 搜尋: %s | 共 %s 項'; number_prompt='輸入編號；n/p 翻頁；s 搜尋；0 返回: '; search_prompt='時區關鍵詞: '; invalid_prompt='請輸入編號或 n/p/s/0。'; range_prompt='編號超出範圍。'; confirm_prompt='確認將時區改為 %s？[Y/N]: ' ;;
+        ja)
+            title='IANA タイムゾーン一覧'; page_label='現在: %s | 検索: %s | 合計: %s'; number_prompt='番号を選択してください。n/p: 次/前のページ、s: 検索、0: 戻る: '; search_prompt='タイムゾーンを検索: '; invalid_prompt='番号、または n/p/s/0 を入力してください。'; range_prompt='番号が範囲外です。'; confirm_prompt='タイムゾーンを %s に変更しますか？[Y/N]: ' ;;
         *)
             title='IANA 时区列表'; page_label='当前: %s | 搜索: %s | 共 %s 项'; number_prompt='输入编号；n/p 翻页；s 搜索；0 返回: '; search_prompt='时区关键词: '; invalid_prompt='请输入编号或 n/p/s/0。'; range_prompt='编号超出范围。'; confirm_prompt='确认将时区改为 %s？[Y/N]: ' ;;
     esac
@@ -10822,6 +11092,9 @@ timezone_choose_locale() {
         en) title='Available system locales'; prompt='Enter number; n/p next/previous; 0 back: '; invalid_prompt='Enter a number, n, p or 0.'; range_prompt='Number out of range.'; confirm_prompt='Set system LANG to %s? [Y/N]: ' ;;
         ru) title='Доступные системные локали'; prompt='Номер; n/p страницы; 0 назад: '; invalid_prompt='Введите номер, n, p или 0.'; range_prompt='Номер вне диапазона.'; confirm_prompt='Установить системную локаль LANG=%s? [Y/N]: ' ;;
         fa) title='زبان‌های محلی نصب‌شده'; prompt='شماره؛ n/p صفحه؛ 0 بازگشت: '; invalid_prompt='شماره، n، p یا 0 را وارد کنید.'; range_prompt='شماره خارج از محدوده است.'; confirm_prompt='مقدار LANG سیستم روی %s تنظیم شود؟ [Y/N]: ' ;;
+        zh-tw) title='可用系統 Locale'; prompt='輸入編號；n/p 翻頁；0 返回: '; invalid_prompt='請輸入編號、n、p 或 0。'; range_prompt='編號超出範圍。'; confirm_prompt='將系統 LANG 設定為 %s？[Y/N]: ' ;;
+        ja)
+            title='利用可能なシステム Locale'; prompt='番号を入力してください。n/p: 次/前のページ、0: 戻る: '; invalid_prompt='番号、n、p、または 0 を入力してください。'; range_prompt='番号が範囲外です。'; confirm_prompt='システムの LANG を %s に設定しますか？[Y/N]: ' ;;
         *) title='可用系统 Locale'; prompt='输入编号；n/p 翻页；0 返回: '; invalid_prompt='请输入编号、n、p 或 0。'; range_prompt='编号超出范围。'; confirm_prompt='将系统 LANG 设置为 %s？[Y/N]: ' ;;
     esac
     if command -v localectl >/dev/null 2>&1; then
@@ -10900,6 +11173,24 @@ timezone_locale_ntp_menu() {
             msg "${YELLOW}4. فعال‌کردن همگام‌سازی زمان NTP${NC}"
             msg "${YELLOW}5. بازگردانی منطقه زمانی قبلی${NC}"
             ;;
+        zh-tw)
+            msg "${BOLD}${GREEN}時間、時區與地區${NC}"
+            msg "當前時間: $now | 時區: $(current_timezone_name) | NTP: $ntp | 已同步: $synced"
+            msg "${YELLOW}1. 檢視全部時區並按編號選擇${NC}"
+            msg "${YELLOW}2. 搜尋時區後按編號選擇${NC}"
+            msg "${YELLOW}3. 選擇已安裝的系統 Locale${NC}"
+            msg "${YELLOW}4. 啟用 NTP 自動時間同步${NC}"
+            msg "${YELLOW}5. 回滾到時區修改前快照${NC}"
+            ;;
+        ja)
+            msg "${BOLD}${GREEN}時刻、タイムゾーン、Locale${NC}"
+            msg "現在の時刻: $now | タイムゾーン: $(current_timezone_name) | NTP: $ntp | 同期済み: $synced"
+            msg "${YELLOW}1. すべてのタイムゾーンを一覧表示し、番号で選択${NC}"
+            msg "${YELLOW}2. タイムゾーンを検索して番号で選択${NC}"
+            msg "${YELLOW}3. インストール済みのシステム Locale を選択${NC}"
+            msg "${YELLOW}4. NTP による時刻の自動同期を有効化${NC}"
+            msg "${YELLOW}5. タイムゾーン変更前のスナップショットにロールバック${NC}"
+            ;;
         *)
             msg "${BOLD}${GREEN}时间、时区与地区${NC}"
             msg "当前时间: $now | 时区: $(current_timezone_name) | NTP: $ntp | 已同步: $synced"
@@ -10911,7 +11202,7 @@ timezone_locale_ntp_menu() {
             ;;
     esac
     msg "${GREEN}0. 返回${NC}"
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; *) prompt='请选择 [0-5]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; ja) prompt='選択してください [0-5]: ' ;; zh-tw) prompt='請選擇 [0-5]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1) timezone_choose_from_list '' ;;
@@ -11153,6 +11444,9 @@ apply_host_dns() {
         en) confirm_prompt='Apply this host DNS change? A rollback snapshot is kept. [Y/N]: '; immutable_prompt='/etc/resolv.conf has the immutable flag. Remove it and continue? [Y/N]: '; dot_error='The active DNS backend does not support DoT; DNS was not changed.' ;;
         ru) confirm_prompt='Применить DNS для системы? Снимок для отката будет сохранён. [Y/N]: '; immutable_prompt='/etc/resolv.conf имеет immutable-флаг. Снять флаг и продолжить? [Y/N]: '; dot_error='Текущий DNS backend не поддерживает DoT; DNS не изменён.' ;;
         fa) confirm_prompt='تنظیم DNS سیستم اعمال شود؟ نسخه بازگشت ذخیره می‌شود. [Y/N]: '; immutable_prompt='پرچم immutable روی /etc/resolv.conf وجود دارد. حذف و ادامه داده شود؟ [Y/N]: '; dot_error='بک‌اند DNS فعلی از DoT پشتیبانی نمی‌کند؛ DNS تغییر نکرد.' ;;
+        zh-tw) confirm_prompt='確認修改本機 DNS？可回滾。[Y/N]: '; immutable_prompt='/etc/resolv.conf 帶 immutable 屬性；是否移除後繼續？[Y/N]: '; dot_error='當前 DNS 後端不支援 DoT；未修改 DNS。' ;;
+        ja)
+            confirm_prompt='このホストの DNS 設定を適用しますか？ロールバック用スナップショットを保存します。[Y/N]: '; immutable_prompt='/etc/resolv.conf に immutable フラグが設定されています。解除して続行しますか？[Y/N]: '; dot_error='現在の DNS バックエンドは DoT をサポートしていません。DNS は変更されていません。' ;;
         *) confirm_prompt='确认修改本机 DNS？可回滚。[Y/N]: '; immutable_prompt='/etc/resolv.conf 带 immutable 属性；是否移除后继续？[Y/N]: '; dot_error='当前 DNS 后端不支持 DoT；未修改 DNS。' ;;
     esac
     # DoT requires systemd-resolved; unsupported backends fail closed.
@@ -11168,6 +11462,9 @@ apply_host_dns() {
                 en) msg "${YELLOW}DoT with authenticated server names requires systemd-resolved 245 or later; DNS was not changed.${NC}" ;;
                 ru) msg "${YELLOW}Для DoT с проверкой имени сервера требуется systemd-resolved версии 245 или новее; DNS не изменён.${NC}" ;;
                 fa) msg "${YELLOW}برای DoT با احراز هویت نام سرور، systemd-resolved نسخه 245 یا جدیدتر لازم است؛ DNS تغییر نکرد.${NC}" ;;
+                zh-tw) msg "${YELLOW}帶伺服器名稱校驗的 DoT 需要 systemd-resolved 245 或更高版本；未修改 DNS。${NC}" ;;
+                ja)
+                    msg "${YELLOW}サーバー名認証付きの DoT には systemd-resolved 245 以降が必要です。DNS は変更されていません。${NC}" ;;
                 *) msg "${YELLOW}带服务器名称校验的 DoT 需要 systemd-resolved 245 或更高版本；未修改 DNS。${NC}" ;;
             esac
             return 1
@@ -11177,6 +11474,9 @@ apply_host_dns() {
                 en) msg "${RED}DoT requires a valid TLS authentication hostname, such as dns.google or cloudflare-dns.com.${NC}" ;;
                 ru) msg "${RED}Для DoT требуется корректное имя TLS-аутентификации, например dns.google или cloudflare-dns.com.${NC}" ;;
                 fa) msg "${RED}برای DoT نام معتبر احراز هویت TLS لازم است؛ مانند dns.google یا cloudflare-dns.com.${NC}" ;;
+                zh-tw) msg "${RED}DoT 需要有效的 TLS 認證主機名，例如 dns.google 或 cloudflare-dns.com。${NC}" ;;
+                ja)
+                    msg "${RED}DoT には有効な TLS 認証ホスト名が必要です（例: dns.google または cloudflare-dns.com）。${NC}" ;;
                 *) msg "${RED}DoT 需要有效的 TLS 认证主机名，例如 dns.google 或 cloudflare-dns.com。${NC}" ;;
             esac
             return 1
@@ -11269,6 +11569,9 @@ EOF_DNS
         en) msg "${GREEN}Host DNS was updated. Use the DNS menu to roll back.${NC}" ;;
         ru) msg "${GREEN}Системный DNS обновлён. Для отката используйте меню DNS.${NC}" ;;
         fa) msg "${GREEN}DNS سیستم به‌روزرسانی شد؛ برای بازگشت از منوی DNS استفاده کنید.${NC}" ;;
+        zh-tw) msg "${GREEN}本機 DNS 已更新。可用選單回滾。${NC}" ;;
+        ja)
+            msg "${GREEN}ホストの DNS を更新しました。ロールバックするには DNS メニューを使用してください。${NC}" ;;
         *) msg "${GREEN}本机 DNS 已更新。可用菜单回滚。${NC}" ;;
     esac
 }
@@ -11306,6 +11609,9 @@ dns_auto_prefer() {
         en) msg "${CYAN}DNS preference test: three real example.com queries per candidate${NC}" ;;
         ru) msg "${CYAN}Проверка DNS: три реальных запроса example.com к каждому серверу${NC}" ;;
         fa) msg "${CYAN}آزمون DNS: سه پرس‌وجوی واقعی example.com برای هر سرور${NC}" ;;
+        zh-tw) msg "${CYAN}DNS 自動測速：每個候選對 example.com 發起 3 次真實查詢${NC}" ;;
+        ja)
+            msg "${CYAN}DNS 優先度テスト: 各候補について example.com への実際のクエリを 3 回実行します${NC}" ;;
         *) msg "${CYAN}DNS 自动测速：每个候选对 example.com 发起 3 次真实查询${NC}" ;;
     esac
     for server in "${candidates[@]}"; do
@@ -11320,6 +11626,9 @@ dns_auto_prefer() {
                 en) msg "${YELLOW}$server${NC}: $successes/3 successful, median ${median} ms" ;;
                 ru) msg "${YELLOW}$server${NC}: успешно $successes/3, медиана ${median} мс" ;;
                 fa) msg "${YELLOW}$server${NC}: موفق $successes/3، میانه ${median} میلی‌ثانیه" ;;
+                zh-tw) msg "${YELLOW}$server${NC}: 成功 $successes/3，中位數 ${median} ms" ;;
+                ja)
+                    msg "${YELLOW}$server${NC}: 成功: $successes/3、中央値: ${median} ms" ;;
                 *) msg "${YELLOW}$server${NC}: 成功 $successes/3，中位数 ${median} ms" ;;
             esac
             if (( successes > best_success )) || { (( successes == best_success )) && awk -v a="$median" -v b="$best_ms" 'BEGIN{exit !(a+0 < b+0)}'; }; then best="$server"; best_ms="$median"; best_success=$successes; fi
@@ -11328,6 +11637,9 @@ dns_auto_prefer() {
                 en) msg "${YELLOW}$server${NC}: 0/3 successful" ;;
                 ru) msg "${YELLOW}$server${NC}: успешно 0/3" ;;
                 fa) msg "${YELLOW}$server${NC}: موفق 0/3" ;;
+                zh-tw) msg "${YELLOW}$server${NC}: 成功 0/3" ;;
+                ja)
+                    msg "${YELLOW}$server${NC}: 成功: 0/3" ;;
                 *) msg "${YELLOW}$server${NC}: 成功 0/3" ;;
             esac
         fi
@@ -11337,6 +11649,9 @@ dns_auto_prefer() {
             en) msg "${RED}No resolver passed the availability threshold; DNS was not changed.${NC}" ;;
             ru) msg "${RED}Ни один DNS не прошёл проверку доступности; DNS не изменён.${NC}" ;;
             fa) msg "${RED}هیچ DNS از آستانه دسترس‌پذیری عبور نکرد؛ تنظیمات تغییر نکرد.${NC}" ;;
+            zh-tw) msg "${RED}沒有候選透過可用性門檻；未修改 DNS。${NC}" ;;
+            ja)
+                msg "${RED}可用性のしきい値を満たす DNS リゾルバーがありません。DNS は変更されていません。${NC}" ;;
             *) msg "${RED}没有候选通过可用性门槛；未修改 DNS。${NC}" ;;
         esac
         pause_return; return 1;
@@ -11359,6 +11674,16 @@ dns_auto_prefer() {
             msg 'این نتیجه مربوط به همین VPS و همین زمان آزمون است و رتبه‌بندی جهانی DNS نیست؛ فقط DNS IPv4 اندازه‌گیری‌شده اعمال می‌شود.'
             prompt='این DNS برای سیستم اعمال شود؟ [Y/N]: '
             canceled='لغو شد؛ DNS سیستم تغییر نکرد.' ;;
+        zh-tw)
+            msg "${GREEN}本次測試最佳候選：${best}，成功 ${best_success}/3，中位數 ${best_ms} ms。${NC}"
+            msg '結果僅適用於當前 VPS 和當前測試時段，不代表全球通用最佳 DNS。只應用已實測的 IPv4 解析器。'
+            prompt='將該解析器應用為本機 DNS？[Y/N]: '
+            canceled='已取消，未修改本機 DNS。' ;;
+        ja)
+            msg "${GREEN}今回の測定で最良の候補: $best、成功: ${best_success}/3、中央値: ${best_ms} ms。${NC}"
+            msg 'この結果はこの VPS および今回の測定時間帯に限られ、世界共通の最適な DNS を示すものではありません。実測済みの IPv4 リゾルバーのみを適用します。'
+            prompt='このリゾルバーをホストの DNS として適用しますか？[Y/N]: '
+            canceled='キャンセルしました。ホストの DNS は変更されていません。' ;;
         *)
             msg "${GREEN}本次测试最佳候选：${best}，成功 ${best_success}/3，中位数 ${best_ms} ms。${NC}"
             msg '结果仅适用于当前 VPS 和当前测试时段，不代表全球通用最佳 DNS。只应用已实测的 IPv4 解析器。'
@@ -11377,6 +11702,9 @@ dns_install_dnscrypt_proxy() {
         en) prompt='Install dnscrypt-proxy from the configured OS package repository to provide DoH? [Y/N]: ' ;;
         ru) prompt='Установить dnscrypt-proxy из системного репозитория для DoH? [Y/N]: ' ;;
         fa) prompt='برای DoH، dnscrypt-proxy از مخزن سیستم نصب شود؟ [Y/N]: ' ;;
+        zh-tw) prompt='是否從當前系統軟體源安裝 dnscrypt-proxy 以提供 DoH？[Y/N]: ' ;;
+        ja)
+            prompt='DoH を提供するため、設定済みの OS パッケージリポジトリから dnscrypt-proxy をインストールしますか？[Y/N]: ' ;;
         *) prompt='是否从当前系统软件源安装 dnscrypt-proxy 以提供 DoH？[Y/N]: ' ;;
     esac
     read -r -p "$prompt" answer
@@ -11400,6 +11728,9 @@ dns_enable_doh() {
             en) msg "${YELLOW}DoH via DNS=127.0.0.1:5353 requires systemd-resolved 247 or later; DNS was not changed.${NC}" ;;
             ru) msg "${YELLOW}Для DoH через DNS=127.0.0.1:5353 требуется systemd-resolved версии 247 или новее; DNS не изменён.${NC}" ;;
             fa) msg "${YELLOW}برای DoH از طریق DNS=127.0.0.1:5353، systemd-resolved نسخه 247 یا جدیدتر لازم است؛ DNS تغییر نکرد.${NC}" ;;
+            zh-tw) msg "${YELLOW}透過 DNS=127.0.0.1:5353 使用 DoH 需要 systemd-resolved 247 或更高版本；未修改 DNS。${NC}" ;;
+            ja)
+                msg "${YELLOW}DNS=127.0.0.1:5353 経由で DoH を使用するには systemd-resolved 247 以降が必要です。DNS は変更されていません。${NC}" ;;
             *) msg "${YELLOW}通过 DNS=127.0.0.1:5353 使用 DoH 需要 systemd-resolved 247 或更高版本；未修改 DNS。${NC}" ;;
         esac
         return 1
@@ -11408,6 +11739,9 @@ dns_enable_doh() {
         en) prompt='Configure Cloudflare DoH through the local proxy at 127.0.0.1:5353? [Y/N]: ' ;;
         ru) prompt='Настроить Cloudflare DoH через локальный прокси 127.0.0.1:5353? [Y/N]: ' ;;
         fa) prompt='Cloudflare DoH از طریق پراکسی محلی 127.0.0.1:5353 تنظیم شود؟ [Y/N]: ' ;;
+        zh-tw) prompt='是否配置 Cloudflare DoH，透過本地代理 127.0.0.1:5353 轉發？[Y/N]: ' ;;
+        ja)
+            prompt='127.0.0.1:5353 のローカルプロキシ経由で Cloudflare DoH を設定しますか？[Y/N]: ' ;;
         *) prompt='是否配置 Cloudflare DoH，通过本地代理 127.0.0.1:5353 转发？[Y/N]: ' ;;
     esac
     read -r -p "$prompt" answer
@@ -11542,6 +11876,24 @@ dns_menu() {
             msg "${YELLOW}6. DNS روی HTTPS با dnscrypt-proxy${NC}"
             msg "${YELLOW}7. بازگردانی تنظیمات قبلی DNS${NC}"
             ;;
+        zh-tw)
+            msg "${YELLOW}1. 自定義明文 DNS（可選 IPv6）${NC}"
+            msg "${YELLOW}2. 隱私 DNS DoT（僅 systemd-resolved 支援）${NC}"
+            msg "${YELLOW}3. Cloudflare DNS${NC}"
+            msg "${YELLOW}4. Quad9 DNS${NC}"
+            msg "${YELLOW}5. 自動實測優選 DNS（多輪延遲/可用性）${NC}"
+            msg "${YELLOW}6. 隱私 DNS DoH（dnscrypt-proxy 本地轉發）${NC}"
+            msg "${YELLOW}7. 回滾到上次 DNS 修改前快照${NC}"
+            ;;
+        ja)
+            msg "${YELLOW}1. カスタム平文 DNS（IPv6 は任意）${NC}"
+            msg "${YELLOW}2. プライバシー保護 DNS over TLS（DoT、systemd-resolved のみ対応）${NC}"
+            msg "${YELLOW}3. Cloudflare DNS${NC}"
+            msg "${YELLOW}4. Quad9 DNS${NC}"
+            msg "${YELLOW}5. DNS リゾルバーの自動ベンチマーク（遅延 / 可用性を複数回測定）${NC}"
+            msg "${YELLOW}6. プライバシー保護 DNS over HTTPS（DoH、dnscrypt-proxy によるローカル転送）${NC}"
+            msg "${YELLOW}7. 前回の DNS 変更前のスナップショットにロールバック${NC}"
+            ;;
         *)
             msg "${YELLOW}1. 自定义明文 DNS（可选 IPv6）${NC}"
             msg "${YELLOW}2. 隐私 DNS DoT（仅 systemd-resolved 支持）${NC}"
@@ -11553,7 +11905,7 @@ dns_menu() {
             ;;
     esac
     msg "${GREEN}0. Back / 返回${NC}"
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-7]: ' ;; ru) prompt='Выберите [0–7]: ' ;; fa) prompt='انتخاب [۰ تا ۷]: ' ;; *) prompt='请选择 [0-7]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-7]: ' ;; ru) prompt='Выберите [0–7]: ' ;; fa) prompt='انتخاب [۰ تا ۷]: ' ;; ja) prompt='選択してください [0-7]: ' ;; zh-tw) prompt='請選擇 [0-7]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1)
@@ -11568,6 +11920,9 @@ dns_menu() {
                 en) dot_ipv4_prompt='DoT resolver IPv4: '; dot_ipv6_prompt='DoT resolver IPv6 (optional): '; dot_host_prompt='TLS authentication hostname (e.g. dns.google): '; dot_host_error='Invalid DoT TLS hostname.' ;;
                 ru) dot_ipv4_prompt='IPv4-адрес DNS для DoT: '; dot_ipv6_prompt='IPv6-адрес DNS для DoT (необязательно): '; dot_host_prompt='Имя TLS-аутентификации (например, dns.google): '; dot_host_error='Недопустимое имя TLS для DoT.' ;;
                 fa) dot_ipv4_prompt='نشانی IPv4 برای DNS روی TLS: '; dot_ipv6_prompt='نشانی IPv6 (اختیاری): '; dot_host_prompt='نام TLS (مثلاً dns.google): '; dot_host_error='نام TLS برای DoT نامعتبر است.' ;;
+                zh-tw) dot_ipv4_prompt='DoT 解析器 IPv4 地址：'; dot_ipv6_prompt='DoT 解析器 IPv6 地址（可選）：'; dot_host_prompt='TLS 認證主機名（例如 dns.google）：'; dot_host_error='DoT TLS 主機名無效。' ;;
+                ja)
+                    dot_ipv4_prompt='DoT リゾルバーの IPv4 アドレス: '; dot_ipv6_prompt='DoT リゾルバーの IPv6 アドレス（任意）: '; dot_host_prompt='TLS 認証ホスト名（例: dns.google）: '; dot_host_error='DoT の TLS ホスト名が無効です。' ;;
                 *) dot_ipv4_prompt='DoT 解析器 IPv4 地址：'; dot_ipv6_prompt='DoT 解析器 IPv6 地址（可选）：'; dot_host_prompt='TLS 认证主机名（例如 dns.google）：'; dot_host_error='DoT TLS 主机名无效。' ;;
             esac
             read -r -p "$dot_ipv4_prompt" v4
@@ -11607,6 +11962,18 @@ tune_vps() {
             msg "${YELLOW}2. بازگردانی وضعیت قبلی${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
+        zh-tw)
+            msg "${BOLD}${GREEN}VPS 一鍵最佳化${NC}"
+            msg "${YELLOW}1. 應用當前核心支援的 BBR/FQ 與系統調優（可回滾）${NC}"
+            msg "${YELLOW}2. 恢復調優前快照${NC}"
+            msg "${GREEN}0. 返回${NC}"
+            ;;
+        ja)
+            msg "${BOLD}${GREEN}VPS ワンクリック最適化${NC}"
+            msg "${YELLOW}1. 現在のカーネルがサポートする BBR/FQ とシステム最適化を適用（ロールバック可能）${NC}"
+            msg "${YELLOW}2. 最適化前のスナップショットを復元${NC}"
+            msg "${GREEN}0. 戻る${NC}"
+            ;;
         *)
             msg "${BOLD}${GREEN}VPS 一键优化${NC}"
             msg "${YELLOW}1. 应用当前内核支持的 BBR/FQ 与系统调优（可回滚）${NC}"
@@ -11615,11 +11982,12 @@ tune_vps() {
             ;;
     esac
     local c
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; *) prompt='请选择 [0-2]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; ja) prompt='選択してください [0-2]: ' ;; zh-tw) prompt='請選擇 [0-2]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1) apply_vps_tune; pause_return ;;
         2) restore_vps_tune; pause_return ;;
+        zh-tw) return 0 ;;
         *) return 0 ;;
     esac
 }
@@ -11736,15 +12104,38 @@ confirm_remote_script_hash() {
         die "Remote script SHA256 is not in ABOX_REMOTE_SHA256_ALLOWLIST: ${label}"
     fi
     msg "${GREEN}[*] Remote script SHA256 matched ABOX_REMOTE_SHA256_ALLOWLIST.${NC}"
-    if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
+    case "${ABOX_LANG:-zh}" in
+        en)
         msg "${YELLOW}[!] This is third-party code outside A-Box control even after digest pin.${NC}"
         msg "${YELLOW}[!] Source: ${url}${NC}"
         confirm_yes_no 'Execute this digest-pinned third-party script? [Y/N]: '
-    else
+            ;;
+        ru)
+        msg "${YELLOW}[!] Это код третьей стороны вне контроля A-Box, даже после digest pin.${NC}"
+        msg "${YELLOW}[!] Источник: ${url}${NC}"
+        confirm_yes_no 'Выполнить этот сторонний скрипт с фиксированным digest? [Y/N]: '
+            ;;
+        fa)
+        msg "${YELLOW}[!] این کد سوم‌طرفانه خارج از کنترل A-Box است حتی پس از digest pin.${NC}"
+        msg "${YELLOW}[!] منبع: ${url}${NC}"
+        confirm_yes_no 'این اسکریپت سوم‌طرف با digest ثابت اجرا شود؟ [Y/N]: '
+            ;;
+        ja)
+            msg "${YELLOW}[!] ダイジェストを固定していても、これは A-Box の管理外にあるサードパーティーコードです。${NC}"
+            msg "${YELLOW}[!] ソース: ${url}${NC}"
+            confirm_yes_no 'ダイジェストを固定したこのサードパーティースクリプトを実行しますか？[Y/N]: '
+            ;;
+        zh-tw)
+        msg "${YELLOW}[!] 即使摘要已釘扎，仍是 A-Box 無法控制的第三方程式碼。${NC}"
+        msg "${YELLOW}[!] 來源：${url}${NC}"
+        confirm_yes_no '確認執行此已釘扎摘要的第三方指令碼？[Y/N]: '
+            ;;
+        *)
         msg "${YELLOW}[!] 即使摘要已钉扎，仍是 A-Box 无法控制的第三方代码。${NC}"
         msg "${YELLOW}[!] 来源：${url}${NC}"
         confirm_yes_no '确认执行此已钉扎摘要的第三方脚本？[Y/N]: '
-    fi
+            ;;
+    esac
 }
 
 run_remote_bash_script() {
@@ -12507,11 +12898,20 @@ show_sni_preference_records() {
     clear
     local files=() f profile topn="${ABOX_SNI_RECORDS_TOPN:-100}" shown=0 mtime
     msg "${CYAN}======================================================================${NC}"
-    if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-        msg "${BOLD}${GREEN}SNI Preference Records${NC}"
-    else
-        msg "${BOLD}${GREEN}SNI 优选记录${NC}"
-    fi
+    case "${ABOX_LANG:-zh}" in
+        en|ru|fa)
+            msg "${BOLD}${GREEN}SNI Preference Records${NC}"
+            ;;
+        ja)
+            msg "${BOLD}${GREEN}SNI 優先レコード${NC}"
+            ;;
+        zh-tw)
+            msg "${BOLD}${GREEN}SNI 優選記錄${NC}"
+            ;;
+        *)
+            msg "${BOLD}${GREEN}SNI 优选记录${NC}"
+            ;;
+    esac
     valid_decimal_upto "$topn" 200 || topn=100
     (( 10#$topn >= 1 )) || topn=100
     msg "${CYAN}======================================================================${NC}"
@@ -12519,11 +12919,26 @@ show_sni_preference_records() {
         [[ -s "$f" ]] && files+=("$f")
     done
     if (( ${#files[@]} == 0 )); then
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
+        case "${ABOX_LANG:-zh}" in
+            en)
             msg "${YELLOW}[!] No SNI preference record found. Run Toolbox option 3 or 4 first.${NC}"
-        else
+                ;;
+            ru)
+            msg "${YELLOW}[!] Не найдена запись предпочтений SNI. Сначала запустите опцию 3 или 4 в Toolbox.${NC}"
+                ;;
+            fa)
+            msg "${YELLOW}[!] رکورد ترجیح SNI یافت نشد. ابتدا گزینه 3 یا 4 جعبه‌ابزار را اجرا کنید.${NC}"
+                ;;
+            ja)
+                msg "${YELLOW}[!] SNI の優先設定レコードが見つかりません。先に Toolbox のオプション 3 または 4 を実行してください。${NC}"
+                ;;
+            zh-tw)
+            msg "${YELLOW}[!] 未發現 SNI 優選記錄。請先執行工具箱 3 或 4。${NC}"
+                ;;
+            *)
             msg "${YELLOW}[!] 未发现 SNI 优选记录。请先运行工具箱 3 或 4。${NC}"
-        fi
+                ;;
+        esac
         pause_return
         return 0
     fi
@@ -12532,11 +12947,20 @@ show_sni_preference_records() {
         profile="${profile%.tsv}"
         mtime=$(date -r "$f" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || echo 'unknown')
         msg "${BLUE}----------------------------------------------------------------------${NC}"
-        if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
-            msg "${YELLOW}[${profile}] Saved: ${f} | Updated: ${mtime}${NC}"
-        else
-            msg "${YELLOW}[${profile}] 保存路径: ${f} | 更新时间: ${mtime}${NC}"
-        fi
+        case "${ABOX_LANG:-zh}" in
+            en|ru|fa)
+                msg "${YELLOW}[${profile}] Saved: ${f} | Updated: ${mtime}${NC}"
+                ;;
+            ja)
+                msg "${YELLOW}[${profile}] 保存先: ${f} | 更新日時: ${mtime}${NC}"
+                ;;
+            zh-tw)
+                msg "${YELLOW}[${profile}] 儲存路徑: ${f} | 更新時間: ${mtime}${NC}"
+                ;;
+            *)
+                msg "${YELLOW}[${profile}] 保存路径: ${f} | 更新时间: ${mtime}${NC}"
+                ;;
+        esac
         sni_render_ranked_report "$f" "$topn" || msg "${YELLOW}[!] 无法读取该记录的分级结果。${NC}"
         shown=1
     done
@@ -14509,19 +14933,50 @@ backup_restore_menu() {
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}Backup / Restore / 配置备份与恢复${NC}"
     msg "${CYAN}======================================================================${NC}"
-    if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
+    case "${ABOX_LANG:-zh}" in
+        en)
         msg "${YELLOW}1. Backup current A-Box configuration${NC}"
         msg "${YELLOW}2. Restore from backup${NC}"
         msg "${YELLOW}3. Export recovery key to a separate medium${NC}"
         msg "${YELLOW}4. Convert a legacy backup to manifest v3${NC}"
         msg "${GREEN}0. Back${NC}"
-    else
+            ;;
+        ru)
+        msg "${YELLOW}1. Резервное копирование текущей конфигурации A-Box${NC}"
+        msg "${YELLOW}2. Восстановление из резервной копии${NC}"
+        msg "${YELLOW}3. Экспорт ключа восстановления на отдельный носитель${NC}"
+        msg "${YELLOW}4. Конвертация старой резервной копии в manifest v3${NC}"
+        msg "${GREEN}0. Назад${NC}"
+            ;;
+        fa)
+        msg "${YELLOW}1. پشتیبان‌گیری از پیکربندی فعلی A-Box${NC}"
+        msg "${YELLOW}2. بازیابی از پشتیبان${NC}"
+        msg "${YELLOW}3. صدور کلید بازیابی به رسانه جداگانه${NC}"
+        msg "${YELLOW}4. تبدیل پشتیبان قدیمی به manifest v3${NC}"
+        msg "${GREEN}0. بازگشت${NC}"
+            ;;
+        ja)
+            msg "${YELLOW}1. 現在の A-Box 設定をバックアップ${NC}"
+            msg "${YELLOW}2. バックアップから復元${NC}"
+            msg "${YELLOW}3. 復旧キーを別の媒体にエクスポート${NC}"
+            msg "${YELLOW}4. 旧バージョンのバックアップを manifest v3 に安全に変換${NC}"
+            msg "${GREEN}0. 戻る${NC}"
+            ;;
+        zh-tw)
+        msg "${YELLOW}1. 備份當前 A-Box 配置${NC}"
+        msg "${YELLOW}2. 從備份恢復${NC}"
+        msg "${YELLOW}3. 將恢復金鑰匯出到獨立介質${NC}"
+        msg "${YELLOW}4. 將舊版備份安全轉換為 manifest v3${NC}"
+        msg "${GREEN}0. 返回${NC}"
+            ;;
+        *)
         msg "${YELLOW}1. 备份当前 A-Box 配置${NC}"
         msg "${YELLOW}2. 从备份恢复${NC}"
         msg "${YELLOW}3. 将恢复密钥导出到独立介质${NC}"
         msg "${YELLOW}4. 将旧版备份安全转换为 manifest v3${NC}"
         msg "${GREEN}0. 返回${NC}"
-    fi
+            ;;
+    esac
     local c
     read -r -p 'Select [0-4]: ' c
     case "$c" in
@@ -14871,6 +15326,9 @@ run_mirrored_test_script() {
                 en) msg "${RED}[-] A-Box verified mirror unavailable and unverified upstream fallback is disabled (set ABOX_ALLOW_UNVERIFIED_UPSTREAM=1 to allow).${NC}" ;;
                 ru) msg "${RED}[-] Проверенное зеркало A-Box недоступно, а непроверенный upstream запрещён.${NC}" ;;
                 fa) msg "${RED}[-] آینه تأییدشده در دسترس نیست و بازگشت تأییدنشده غیرفعال است.${NC}" ;;
+                zh-tw) msg "${RED}[-] A-Box 校驗映象不可用，且未校驗的上游回退已被禁用（如需允許請設定 ABOX_ALLOW_UNVERIFIED_UPSTREAM=1）。${NC}" ;;
+                ja)
+                    msg "${RED}[-] A-Box の検証済みミラーを利用できず、未検証の upstream フォールバックは無効です（許可するには ABOX_ALLOW_UNVERIFIED_UPSTREAM=1 を設定してください）。${NC}" ;;
                 *) msg "${RED}[-] A-Box 校验镜像不可用，且未校验的上游回退已被禁用（如需允许请设置 ABOX_ALLOW_UNVERIFIED_UPSTREAM=1）。${NC}" ;;
             esac
             rm -rf -- "$work"
@@ -14880,6 +15338,9 @@ run_mirrored_test_script() {
             en) msg "${YELLOW}[!] A-Box verified mirror unavailable or checksum mismatch; falling back to upstream (UNVERIFIED - no SHA pin).${NC}" ;;
             ru) msg "${YELLOW}[!] Проверенный зеркальный файл A-Box недоступен; переходим к upstream (БЕЗ ПРОВЕРКИ).${NC}" ;;
             fa) msg "${YELLOW}[!] نسخه تأییدشده A-Box در دسترس نیست؛ بازگشت به upstream (بدون تأیید).${NC}" ;;
+            zh-tw) msg "${YELLOW}[!] A-Box 校驗映象不可用或校驗失敗，回退到上游（未校驗，無 SHA 釘扎）。${NC}" ;;
+            ja)
+                msg "${YELLOW}[!] A-Box の検証済みミラーが利用できないか、チェックサムが一致しません。upstream にフォールバックします（未検証・SHA ピン留めなし）。${NC}" ;;
             *) msg "${YELLOW}[!] A-Box 校验镜像不可用或校验失败，回退到上游（未校验，无 SHA 钉扎）。${NC}" ;;
         esac
         if curl -fLsS --retry 1 --connect-timeout 10 --max-time 180 "$upstream_url" -o "$upstream" && validate_test_script "$upstream"; then
@@ -14891,6 +15352,9 @@ run_mirrored_test_script() {
                 en) msg "${RED}Upstream and A-Box recovery sources are unavailable; the script was not run.${NC}" ;;
                 ru) msg "${RED}Основной и резервный источники недоступны; скрипт не запускался.${NC}" ;;
                 fa) msg "${RED}منبع اصلی و پشتیبان در دسترس نیستند؛ اسکریپت اجرا نشد.${NC}" ;;
+                zh-tw) msg "${RED}上游與 A-Box 災備源均不可用；未執行指令碼。${NC}" ;;
+                ja)
+                    msg "${RED}upstream と A-Box のリカバリーソースを利用できません。スクリプトは実行されませんでした。${NC}" ;;
                 *) msg "${RED}上游与 A-Box 灾备源均不可用；未执行脚本。${NC}" ;;
             esac
             return 1
@@ -14901,6 +15365,9 @@ run_mirrored_test_script() {
         en) msg "${CYAN}Test tool: $label${NC}"; msg "${CYAN}Source: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='Execute this third-party test script? It may contact external endpoints and generate network traffic. [Y/N]: ' ;;
         ru) msg "${CYAN}Тест: $label${NC}"; msg "${CYAN}Источник: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='Запустить сторонний тестовый скрипт? Он может обращаться к внешним узлам и создавать сетевой трафик. [Y/N]: ' ;;
         fa) msg "${CYAN}ابزار آزمون: $label${NC}"; msg "${CYAN}منبع: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='اسکریپت آزمون شخص ثالث اجرا شود؟ ممکن است به مقصدهای بیرونی متصل شود و ترافیک ایجاد کند. [Y/N]: ' ;;
+        zh-tw) msg "${CYAN}測試工具: $label${NC}"; msg "${CYAN}來源: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='即將執行第三方測試指令碼。它可能訪問外部檢測端點併產生網路流量；確認執行？[Y/N]: ' ;;
+        ja)
+            msg "${CYAN}テストツール: $label${NC}"; msg "${CYAN}ソース: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='このサードパーティー製テストスクリプトを実行しますか？外部エンドポイントに接続し、ネットワークトラフィックを発生させる可能性があります。[Y/N]: ' ;;
         *) msg "${CYAN}测试工具: $label${NC}"; msg "${CYAN}来源: $source${NC}"; msg "${CYAN}SHA256: $sha${NC}"; run_prompt='即将执行第三方测试脚本。它可能访问外部检测端点并产生网络流量；确认执行？[Y/N]: ' ;;
     esac
     if [[ "$selected" == "$mirror" ]]; then cat "$manifest" 2>/dev/null | head -12; fi
@@ -14970,6 +15437,14 @@ wallos_print_host_info() {
             msg "${CYAN}بررسی VPS برای Wallos${NC}"
             msg "سیستم‌عامل: $os_name ($os_version) | معماری: $arch | هسته CPU: $cores | RAM: ${mem_gb} GiB | فضای آزاد دیسک: ${disk_gb} GiB"
             msg "IPv4: ${ipv4:-ناموجود} | IPv6: ${ipv6:-ناموجود}" ;;
+        zh-tw)
+            msg "${CYAN}Wallos 主機檢測${NC}"
+            msg "系統：$os_name ($os_version) | 架構：$arch | CPU 核心：$cores | 記憶體：${mem_gb} GiB | 可用磁碟：${disk_gb} GiB"
+            msg "IPv4：${ipv4:-不可用} | IPv6：${ipv6:-不可用}" ;;
+        ja)
+            msg "${CYAN}Wallos ホスト情報${NC}"
+            msg "OS: $os_name（$os_version）| アーキテクチャ: $arch | CPU コア数: $cores | RAM: ${mem_gb} GiB | 空きディスク容量: ${disk_gb} GiB"
+            msg "IPv4: ${ipv4:-利用不可} | IPv6: ${ipv6:-利用不可}" ;;
         *)
             msg "${CYAN}Wallos 主机检测${NC}"
             msg "系统：$os_name ($os_version) | 架构：$arch | CPU 核心：$cores | 内存：${mem_gb} GiB | 可用磁盘：${disk_gb} GiB"
@@ -15001,6 +15476,9 @@ wallos_install_runtime() {
             en) runtime_error='Docker CLI exists, but its daemon is unavailable. A-Box did not install another Docker package to avoid conflicts; fix the existing Docker service and retry.' ;;
             ru) runtime_error='Docker CLI установлен, но демон недоступен. A-Box не устанавливал другой пакет Docker во избежание конфликтов; исправьте существующую службу и повторите.' ;;
             fa) runtime_error='Docker CLI موجود است اما daemon در دسترس نیست. برای جلوگیری از تداخل، A-Box بسته Docker دیگری نصب نکرد؛ سرویس موجود را اصلاح و دوباره تلاش کنید.' ;;
+            zh-tw) runtime_error='已檢測到 Docker 命令，但守護程序不可用。為避免覆蓋/衝突，A-Box 未安裝第二套 Docker；請先修復現有 Docker 服務後重試。' ;;
+            ja)
+                runtime_error='Docker CLI は検出されましたが、デーモンは利用できません。競合や上書きを避けるため、A-Box は別の Docker パッケージをインストールしませんでした。既存の Docker サービスを修復してから再試行してください。' ;;
             *) runtime_error='已检测到 Docker 命令，但守护进程不可用。为避免覆盖/冲突，A-Box 未安装第二套 Docker；请先修复现有 Docker 服务后重试。' ;;
         esac
         msg "${RED}${runtime_error}${NC}"
@@ -15010,6 +15488,9 @@ wallos_install_runtime() {
         en) prompt='Docker is required. Install and start it using the OS package source? [Y/N]: ' ;;
         ru) prompt='Для Wallos требуется Docker. Установить и запустить его из репозитория ОС? [Y/N]: ' ;;
         fa) prompt='Wallos به Docker نیاز دارد. Docker از مخزن سیستم نصب و اجرا شود؟ [Y/N]: ' ;;
+        zh-tw) prompt='Wallos 需要 Docker。是否透過當前系統軟體源安裝並啟動 Docker？[Y/N]: ' ;;
+        ja)
+            prompt='Docker が必要です。OS のパッケージリポジトリからインストールして起動しますか？[Y/N]: ' ;;
         *) prompt='Wallos 需要 Docker。是否通过当前系统软件源安装并启动 Docker？[Y/N]: ' ;;
     esac
     read -r -p "$prompt" answer
@@ -15046,6 +15527,9 @@ wallos_install_runtime() {
                     en) conflict_prompt="Remove the listed conflicting runtime packages before installing Docker CE? Existing containers may be affected. [Y/N]: " ;;
                     ru) conflict_prompt="Удалить перечисленные конфликтующие пакеты runtime перед установкой Docker CE? Это может повлиять на существующие контейнеры. [Y/N]: " ;;
                     fa) conflict_prompt="بسته‌های متعارض ذکرشده پیش از نصب Docker CE حذف شوند؟ ممکن است بر کانتینرهای فعلی اثر بگذارد. [Y/N]: " ;;
+                    zh-tw) conflict_prompt="是否先移除上述衝突執行時包再安裝 Docker CE？這可能影響現有容器。[Y/N]: " ;;
+                    ja)
+                        conflict_prompt="競合するランタイムパッケージを先に削除してから Docker CE をインストールしますか？既存のコンテナに影響する可能性があります。[Y/N]: " ;;
                     *) conflict_prompt="是否先移除上述冲突运行时包再安装 Docker CE？这可能影响现有容器。[Y/N]: " ;;
                 esac
                 read -r -p "$conflict_prompt" answer || return 1
@@ -15060,10 +15544,13 @@ wallos_install_runtime() {
             ;;
         *)
             case "${ABOX_LANG:-zh}" in
+                en) msg "${RED}OS $os_id does not support automatic Docker installation; no system changes made.${NC}" ;;
                 ru) msg "${RED}ОС $os_id не поддерживается автоматической установкой Docker; системные изменения не выполнены.${NC}" ;;
                 fa) msg "${RED}سیستم‌عامل $os_id برای نصب خودکار Docker پشتیبانی نمی‌شود؛ تغییری اعمال نشد.${NC}" ;;
-                zh) msg "${RED}当前系统 $os_id 暂不支持自动安装 Docker，未修改系统。${NC}" ;;
-                *) msg "${RED}Unsupported OS for automatic Docker setup: $os_id. No system changes were made.${NC}" ;;
+                zh-tw) msg "${RED}當前系統 $os_id 暫不支援自動安裝 Docker，未修改系統。${NC}" ;;
+                ja)
+                    msg "${RED}現在のシステム $os_id では Docker の自動インストールはサポートされていません。システムは変更されていません。${NC}" ;;
+                *) msg "${RED}当前系统 $os_id 暂不支持自动安装 Docker，未修改系统。${NC}" ;;
             esac
             return 1
             ;;
@@ -15372,7 +15859,7 @@ wallos_pull_or_restore_image() {
                             # X-02: under ENFORCE=1, a stale timestamp must fail hard
                             # like a bad signature (D-10); falling back to an
                             # unsigned tag pull would defeat enforcement.
-                            if [[ "${ABOX_SIGNING_ENFORCE:-0}" == '1' ]]; then
+                            if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
                                 msg "${RED}[!] N-2 manifest timestamp rejected and signing enforcement is ON; refusing to fall back to unsigned tag pull.${NC}"
                                 trap - EXIT
                                 restore_saved_trap EXIT "$_n2_prev_trap_exit"
@@ -15414,10 +15901,13 @@ wallos_pull_or_restore_image() {
         fi
     fi
     case "${ABOX_LANG:-zh}" in
+        en) msg "${YELLOW}[!] Failed to get stable version or image; trying A-Box Wallos recovery Release.${NC}" ;;
         ru) msg "${YELLOW}[!] Не удалось получить стабильную версию или образ; пробуем резервный Release Wallos от A-Box.${NC}" ;;
         fa) msg "${YELLOW}[!] دریافت نسخه پایدار یا تصویر ناموفق بود؛ نسخه بازیابی Wallos از A-Box بررسی می‌شود.${NC}" ;;
-        zh) msg "${YELLOW}[!] 官方稳定版信息或镜像拉取失败，正在尝试 A-Box Wallos 灾备 Release。${NC}" ;;
-        *) msg "${YELLOW}[!] Official stable metadata or image pull failed; trying the A-Box Wallos recovery Release.${NC}" ;;
+        zh-tw) msg "${YELLOW}[!] 官方穩定版資訊或映象拉取失敗，正在嘗試 A-Box Wallos 災備 Release。${NC}" ;;
+        ja)
+            msg "${YELLOW}[!] 公式安定版の情報取得またはイメージの取得に失敗しました。A-Box Wallos のリカバリー Release を試します。${NC}" ;;
+        *) msg "${YELLOW}[!] 官方稳定版信息或镜像拉取失败，正在尝试 A-Box Wallos 灾备 Release。${NC}" ;;
     esac
     work=$(umask 077; mktemp -d /tmp/A-Box-Wallos.XXXXXX) || return 1
     manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
@@ -15446,7 +15936,7 @@ wallos_pull_or_restore_image() {
     if [[ -n "$_w_ts" ]] && ! abox_signing_timestamp_ok "$_w_ts"; then
         # X-10: gate on ENFORCE like the core path (L5297); unconditional
         # reject breaks the default ENFORCE=0 flow on a stale mirror.
-        if [[ "${ABOX_SIGNING_ENFORCE:-0}" == '1' ]]; then
+        if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
             printf '[A-Box][F-05] FATAL: Wallos manifest timestamp %s predates trust floor\n' "$_w_ts" >&2
             rm -rf -- "$work"
             return 1
@@ -15823,6 +16313,9 @@ wallos_public_urls() {
             en) msg "${GREEN}Wallos local URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Use an HTTPS reverse proxy or SSH tunnel for remote access; do not expose this HTTP endpoint directly.${NC}" ;;
             ru) msg "${GREEN}Локальный адрес Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Для доступа извне используйте HTTPS reverse proxy или SSH-туннель.${NC}" ;;
             fa) msg "${GREEN}نشانی محلی Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.${NC}" ;;
+            zh-tw) msg "${GREEN}Wallos 本機地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}遠端訪問請使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端點。${NC}" ;;
+            ja)
+                msg "${GREEN}Wallos のローカル URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。この HTTP エンドポイントを直接公開しないでください。${NC}" ;;
             *) msg "${GREEN}Wallos 本机地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}远程访问请使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端点。${NC}" ;;
         esac
         return 0
@@ -15842,6 +16335,14 @@ wallos_public_urls() {
             [[ -z "$ipv4" ]] || msg "${GREEN}نشانی Wallos: http://$ipv4:$port/${NC}"
             [[ -z "$ipv6" ]] || msg "${GREEN}نشانی IPv6: http://[$ipv6]:$port/${NC}"
             [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}IP عمومی شناسایی نشد؛ از IP یا دامنه VPS با درگاه $port استفاده کنید.${NC}" ;;
+        zh-tw)
+            [[ -z "$ipv4" ]] || msg "${GREEN}Wallos 網址：http://$ipv4:$port/${NC}"
+            [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 網址：http://[$ipv6]:$port/${NC}"
+            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}無法檢測公網 IP，請使用 VPS 公網地址或域名訪問 TCP ${port}。${NC}" ;;
+        ja)
+            [[ -z "$ipv4" ]] || msg "${GREEN}Wallos URL: http://$ipv4:$port/${NC}"
+            [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 URL: http://[$ipv6]:$port/${NC}"
+            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}パブリック IP を検出できません。VPS のパブリック IP アドレスまたはドメインを使用して TCP ${port} にアクセスしてください。${NC}" ;;
         *)
             [[ -z "$ipv4" ]] || msg "${GREEN}Wallos 网址：http://$ipv4:$port/${NC}"
             [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 网址：http://[$ipv6]:$port/${NC}"
@@ -15942,6 +16443,12 @@ wallos_install_or_update() {
         fa)
             if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='هشدار: Wallos روی همه رابط‌های IPv4 با HTTP بدون TLS منتشر می‌شود؛ فقط با فایروال/پروکسی HTTPS مطمئن ادامه دهید. [Y/N]: '
             else confirm_prompt='Wallos به‌طور پیش‌فرض فقط به 127.0.0.1 متصل است؛ برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید. ادامه؟ [Y/N]: '; fi ;;
+        zh-tw)
+            if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='警告：Wallos 將以明文 HTTP 繫結所有 IPv4 網絡卡。只有已配置防火牆/HTTPS 反向代理時才繼續。[Y/N]: '
+            else confirm_prompt='Wallos 儲存個人財務資料，預設僅繫結 127.0.0.1；遠端訪問請配置 HTTPS 反向代理或 SSH 隧道。是否繼續？[Y/N]: '; fi ;;
+        ja)
+            if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='警告: Wallos はすべての IPv4 インターフェースで平文 HTTP を公開します。信頼できるファイアウォールまたは HTTPS リバースプロキシの背後でのみ続行してください。[Y/N]: '
+            else confirm_prompt='Wallos は個人のサブスクリプション / 財務データを保存します。デフォルトでは 127.0.0.1 のみにバインドされます。リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを設定してください。続行しますか？[Y/N]: '; fi ;;
         *)
             if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='警告：Wallos 将以明文 HTTP 绑定所有 IPv4 网卡。只有已配置防火墙/HTTPS 反向代理时才继续。[Y/N]: '
             else confirm_prompt='Wallos 存储个人财务数据，默认仅绑定 127.0.0.1；远程访问请配置 HTTPS 反向代理或 SSH 隧道。是否继续？[Y/N]: '; fi ;;
@@ -16013,6 +16520,10 @@ wallos_install_or_update() {
         wallos_prune_local_images "$image" "$old_image" || true
     fi
     case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${GREEN}Wallos is running: $image${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='Access is local-only by default. Use an HTTPS reverse proxy or SSH tunnel for remote access.'
+            else security_note="Plain HTTP is published on all IPv4 interfaces; protect TCP $port with an HTTPS reverse proxy and firewall."; fi ;;
         ru)
             msg "${GREEN}Wallos запущен: $image${NC}"
             if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='По умолчанию доступ разрешён только с этого хоста. Для удалённого доступа используйте HTTPS reverse proxy или SSH-туннель.'
@@ -16025,10 +16536,18 @@ wallos_install_or_update() {
             msg "${GREEN}Wallos 已启动：$image${NC}"
             if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='默认仅允许本机访问；远程访问请使用 HTTPS 反向代理或 SSH 隧道，不需要为该本机端口开放公网入站规则。'
             else security_note="明文 HTTP 已绑定所有 IPv4 网卡；TCP $port 必须由 HTTPS 反向代理与防火墙保护。"; fi ;;
+        zh-tw)
+            msg "${GREEN}Wallos 已啟動：$image${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='預設僅允許本機存取；遠端存取請使用 HTTPS 反向代理或 SSH 隧道。'
+            else security_note="明文 HTTP 已綁定所有 IPv4 網卡；TCP $port 必須由 HTTPS 反向代理與防火牆保護。"; fi ;;
+        ja)
+            msg "${GREEN}Wallos を起動しました：$image${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='デフォルトではローカルホストからのアクセスのみ許可されています。リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。'
+            else security_note="平文 HTTP はすべての IPv4 インターフェースにバインドされています。TCP $port は HTTPS リバースプロキシとファイアウォールで保護してください。"; fi ;;
         *)
-            msg "${GREEN}Wallos is running: $image${NC}"
-            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='Access is local-only by default. Use an HTTPS reverse proxy or SSH tunnel for remote access.'
-            else security_note="Plain HTTP is published on all IPv4 interfaces; protect TCP $port with an HTTPS reverse proxy and firewall."; fi ;;
+            msg "${GREEN}Wallos 已启动：$image${NC}"
+            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='默认仅允许本机访问；远程访问请使用 HTTPS 反向代理或 SSH 隧道。'
+            else security_note="明文 HTTP 已绑定所有 IPv4 网卡；TCP $port 必须由 HTTPS 反向代理与防火墙保护。"; fi ;;
     esac
     wallos_public_urls "$port"
     msg "${YELLOW}${security_note}${NC}"
@@ -16079,10 +16598,13 @@ wallos_backup_now() {
         return 1
     fi
     case "${ABOX_LANG:-zh}" in
+        en) msg "${GREEN}Wallos data backup saved: $backup${NC}" ;;
         ru) msg "${GREEN}Резервная копия данных Wallos сохранена: $backup${NC}" ;;
         fa) msg "${GREEN}نسخه پشتیبان داده‌های Wallos ذخیره شد: $backup${NC}" ;;
-        zh) msg "${GREEN}Wallos 数据备份已保存：$backup${NC}" ;;
-        *) msg "${GREEN}Wallos data backup saved: $backup${NC}" ;;
+        zh-tw) msg "${GREEN}Wallos 資料備份已儲存：$backup${NC}" ;;
+        ja)
+            msg "${GREEN}Wallos のデータバックアップを保存しました: $backup${NC}" ;;
+        *) msg "${GREEN}Wallos 数据备份已保存：$backup${NC}" ;;
     esac
 }
 
@@ -16137,6 +16659,9 @@ _wallos_manual_rollback() {
         en) prompt="Select version to roll back to [1-${#versions[@]}] (Enter=1): " ;;
         ru) prompt="Выберите версию для отката [1-${#versions[@]}] (Enter=1): " ;;
         fa) prompt="نسخه برای بازگشت انتخاب کنید [1-${#versions[@]}] (Enter=1): " ;;
+        zh-tw) prompt="選擇要回滾的版本 [1-${#versions[@]}]（回車=1）： " ;;
+        ja)
+            prompt="ロールバックするバージョンを選択してください [1-${#versions[@]}]（Enter=1）: " ;;
         *) prompt="选择要回滚的版本 [1-${#versions[@]}]（回车=1）： " ;;
     esac
     read -r -p "$prompt" sel
@@ -16177,6 +16702,24 @@ wallos_menu() {
             msg "${YELLOW}5. بازگشت به نسخه قبلی${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
+        zh-tw)
+            msg "${BOLD}${GREEN}Wallos 訂閱管理${NC}"
+            msg "${YELLOW}1. 一鍵安裝 / 升級（上游優先，A-Box 災備回退）${NC}"
+            msg "${YELLOW}2. 檢視狀態和訪問網址${NC}"
+            msg "${YELLOW}3. 備份資料庫和上傳圖片${NC}"
+            msg "${YELLOW}4. 刪除容器但保留資料${NC}"
+            msg "${YELLOW}5. 回滾到歷史版本${NC}"
+            msg "${GREEN}0. 返回${NC}"
+            ;;
+        ja)
+            msg "${BOLD}${GREEN}Wallos サブスクリプション管理${NC}"
+            msg "${YELLOW}1. ワンクリックでインストール / アップグレード（upstream を優先し、A-Box Recovery にフォールバック）${NC}"
+            msg "${YELLOW}2. 状態とアクセス URL を表示${NC}"
+            msg "${YELLOW}3. データベースとアップロード画像をバックアップ${NC}"
+            msg "${YELLOW}4. データを保持してコンテナを削除${NC}"
+            msg "${YELLOW}5. 以前のバージョンにロールバック${NC}"
+            msg "${GREEN}0. 戻る${NC}"
+            ;;
         *)
             msg "${BOLD}${GREEN}Wallos 订阅管理${NC}"
             msg "${YELLOW}1. 一键安装 / 升级（上游优先，A-Box 灾备回退）${NC}"
@@ -16188,12 +16731,15 @@ wallos_menu() {
             ;;
     esac
     local c prompt_confirm prompt_remove menu_prompt
-    case "${ABOX_LANG:-zh}" in en) menu_prompt='Select [0-5]: ' ;; ru) menu_prompt='Выберите [0–5]: ' ;; fa) menu_prompt='انتخاب [۰ تا ۵]: ' ;; *) menu_prompt='请选择 [0-5]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) menu_prompt='Select [0-5]: ' ;; ru) menu_prompt='Выберите [0–5]: ' ;; fa) menu_prompt='انتخاب [۰ تا ۵]: ' ;; ja) menu_prompt='選択してください [0-5]: ' ;; zh-tw) menu_prompt='請選擇 [0-5]：' ;; *) menu_prompt='请选择 [0-5]：' ;; esac
     read -r -p "$menu_prompt" c
     case "${ABOX_LANG:-zh}" in
         en) prompt_confirm='Wallos stores personal subscription/financial data. HTTP has no TLS. Continue? [Y/N]: '; prompt_remove="Remove the Wallos container and keep data in $WALLOS_DIR? [Y/N]: " ;;
         ru) prompt_confirm='Wallos хранит личные данные; HTTP не защищён TLS. Продолжить? [Y/N]: '; prompt_remove="Удалить контейнер Wallos, сохранив данные в $WALLOS_DIR? [Y/N]: " ;;
         fa) prompt_confirm='Wallos داده‌های شخصی را نگه می‌دارد؛ HTTP فاقد TLS است. ادامه؟ [Y/N]: '; prompt_remove="کانتینر Wallos حذف شود و داده‌ها در $WALLOS_DIR بمانند؟ [Y/N]: " ;;
+        zh-tw) prompt_confirm='Wallos 儲存個人訂閱/財務資料，HTTP 無 TLS 加密。繼續？[Y/N]: '; prompt_remove="確認刪除 Wallos 容器並保留 $WALLOS_DIR 下的資料？[Y/N]: " ;;
+        ja)
+            prompt_confirm='Wallos は個人のサブスクリプション / 財務データを保存します。HTTP には TLS 暗号化がありません。続行しますか？[Y/N]: '; prompt_remove="Wallos コンテナを削除し、$WALLOS_DIR 内のデータを保持しますか？[Y/N]: " ;;
         *) prompt_confirm='Wallos 保存个人订阅/财务数据，HTTP 无 TLS 加密。继续？[Y/N]: '; prompt_remove="确认删除 Wallos 容器并保留 $WALLOS_DIR 下的数据？[Y/N]: " ;;
     esac
     case "$c" in
@@ -16208,6 +16754,9 @@ wallos_menu() {
                         en) msg "${GREEN}Container removed. Data and backups retained.${NC}" ;;
                         ru) msg "${GREEN}Контейнер удалён. Данные и резервные копии сохранены.${NC}" ;;
                         fa) msg "${GREEN}کانتینر حذف شد؛ داده‌ها و پشتیبان‌ها حفظ شدند.${NC}" ;;
+                        zh-tw) msg "${GREEN}容器已刪除，資料和備份已保留。${NC}" ;;
+                        ja)
+                            msg "${GREEN}コンテナを削除しました。データとバックアップは保持されています。${NC}" ;;
                         *) msg "${GREEN}容器已删除，数据和备份已保留。${NC}" ;;
                     esac
                 else
@@ -16215,6 +16764,8 @@ wallos_menu() {
                         en) msg "${RED}[!] Failed to remove the wallos container; it may still exist.${NC}" ;;
                         ru) msg "${RED}[!] Не удалось удалить контейнер wallos.${NC}" ;;
                         fa) msg "${RED}[!] حذف کانتینر wallos ناموفق بود.${NC}" ;;
+                        zh-tw) msg "${RED}[!] 刪除 wallos 容器失敗，容器可能仍然存在。${NC}" ;;
+                        ja) msg "${RED}[!] wallos コンテナの削除に失敗しました、コンテナがまだ存在する可能性があります。${NC}" ;;
                         *) msg "${RED}[!] 删除 wallos 容器失败，容器可能仍然存在。${NC}" ;;
                     esac
                 fi
@@ -16287,6 +16838,37 @@ vps_benchmark_menu() {
             msg "${YELLOW}14. نصب و نگهداری Wallos${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
+        zh-tw)
+            msg "${BOLD}${GREEN}綜合工具箱${NC}"
+            msg "${YELLOW}1. 本機配置和下載測速${NC}"
+            msg "${YELLOW}2. IP 質量、流媒體解鎖與回程測試${NC}"
+            msg "${YELLOW}3. 本地 SNI 優選${NC}"
+            msg "${YELLOW}4. 微型主機本地 SNI 優選${NC}"
+            msg "${YELLOW}5. Cloudflare WARP 管理${NC}"
+            msg "${YELLOW}6. 建立 2 GB Swap${NC}"
+            msg "${YELLOW}7. 配置備份 / 恢復${NC}"
+            msg "${YELLOW}8. 匯出脫敏診斷包${NC}"
+            msg "${YELLOW}9. 只讀預檢查${NC}"
+            msg "${YELLOW}10. SNI 優選記錄${NC}"
+            msg "${YELLOW}11. 多 UUID / 訂閱匯出${NC}"
+            msg "${YELLOW}12. VPS 一鍵最佳化（僅手動啟用 BBR/FQ，可回滾；不會在協議安裝後自動執行）${NC}"
+            msg "${YELLOW}13. IP / DNS / 時區 / Locale / 下載源設定${NC}"
+            msg "${YELLOW}14. Wallos 安裝 / 升級 / 備份${NC}"
+            msg "${GREEN}0. 返回主選單${NC}"
+            ;;
+        ja)
+            msg "${BOLD}${GREEN}ツールボックス${NC}"
+            msg "${YELLOW}1. システムのベンチマークとダウンロード速度測定${NC}"
+            msg "${YELLOW}2. IP 品質、ストリーミングサービスの利用可否、経路テスト${NC}"
+            msg "${YELLOW}3. ローカル SNI の最適化${NC}"
+            msg "${YELLOW}4. 小型ホストのローカル SNI 最適化${NC}"
+            msg "${YELLOW}5. Cloudflare WARP の管理${NC}"
+            msg "${YELLOW}6. 2 GB の Swap を作成${NC}"
+            msg "${YELLOW}7. 設定のバックアップ / 復元${NC}"
+            msg "${YELLOW}8. 匿名化した診断パッケージをエクスポート${NC}"
+            msg "${YELLOW}9. 読み取り専用の事前チェック${NC}"
+            msg "${YELLOW}10. SNI 最適化の記録${NC}"
+            ;;
         *)
             msg "${BOLD}${GREEN}综合工具箱${NC}"
             msg "${YELLOW}1. 本机配置和下载测速${NC}"
@@ -16307,7 +16889,7 @@ vps_benchmark_menu() {
             ;;
     esac
     local bench_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-14]: ' ;; ru) select_prompt='Выберите [0–14]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۴]: ' ;; *) select_prompt='请选择 [0-14]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-14]: ' ;; ru) select_prompt='Выберите [0–14]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۴]: ' ;; ja) select_prompt='選択してください [0-14]: ' ;; zh-tw) select_prompt='請選擇 [0-14]：' ;; *) select_prompt='请选择 [0-14]：' ;; esac
     read -r -p "$select_prompt" bench_choice
     case "$bench_choice" in
         1) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
@@ -16854,7 +17436,7 @@ show_usage() {
 16 Remove nodes and reinitialize the environment.
 17 Monthly vnStat traffic limits; opening the menu shows usage up to now.
 18 SS-2022 IP/CIDR allowlist.
-19 Language selection: Chinese, English, Russian, Persian.
+19 Language selection: Simplified Chinese, Traditional Chinese, English, Japanese, Russian, Persian.
 20 One-click Reality; shortcut `r` is also accepted.
 
 BBR/FQ does not run automatically after protocol deployment. Host DNS includes resolver benchmarking, supported DoT/DoH, and rollback. Timezone selection is based on the installed zone database and supports numbered paging/search; Locale and NTP are separate controls.
@@ -16920,7 +17502,7 @@ EOF_USAGE
 16 حذف نودها و راه‌اندازی مجدد محیط.
 17 محدودیت ماهانه ترافیک vnStat؛ منو مصرف تا همین لحظه را نشان می‌دهد.
 18 فهرست مجاز IP/CIDR برای SS-2022.
-19 انتخاب زبان: چینی، انگلیسی، روسی، فارسی.
+19 انتخاب زبان: چینی ساده‌شده، چینی سنتی، انگلیسی، ژاپنی، روسی، فارسی.
 20 Reality با یک کلیک؛ میان‌بر `r` نیز پذیرفته می‌شود.
 
 BBR/FQ پس از نصب پروتکل به‌صورت خودکار اجرا نمی‌شود. تنظیم DNS شامل سنجش واقعی، DoT/DoH در backend پشتیبانی‌شده و بازگردانی است. منطقه زمانی از پایگاه نصب‌شده با انتخاب شماره‌ای، صفحه‌بندی و جست‌وجو انتخاب می‌شود؛ Locale و NTP گزینه‌های مستقل هستند.
@@ -16928,6 +17510,72 @@ BBR/FQ پس از نصب پروتکل به‌صورت خودکار اجرا نم�
 Wallos اختیاری است. ابتدا آخرین نسخه پایدار و غیرپیش‌انتشار upstream و تصویر Docker متناظر استفاده می‌شود؛ در صورت خرابی، Release بازیابی `wallos-mirror` جایگزین می‌شود. داده‌ها پایدار می‌مانند و پیش از ارتقا پشتیبان تهیه می‌شود. URL اولیه HTTP رمزگذاری ندارد؛ پیش از ورود اطلاعات شخصی HTTPS را تنظیم کنید.
 
 اسکریپت‌های آزمون ابتدا از upstream دریافت و اجرای آن‌ها با تأیید صریح انجام می‌شود. در صورت خرابی upstream، نسخه پشتیبان A-Box فقط پس از تطبیق SHA256 اجرا می‌شود. اگر هر دو منبع در دسترس نباشند، هیچ اسکریپتی اجرا نمی‌شود.
+EOF_USAGE
+            ;;
+        zh-tw)
+            cat <<'EOF_USAGE'
+【部署類】
+1  Xray VLESS Vision REALITY
+2  Xray VLESS XHTTP REALITY
+3  Xray Shadowsocks-2022
+4  官方 Hysteria 2
+5  Xray + 官方 Hysteria 2 組合部署
+6  sing-box VLESS Vision REALITY
+7  sing-box Shadowsocks-2022
+8  sing-box VLESS + Shadowsocks-2022
+9  sing-box Hysteria 2
+10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP）
+
+【運維類】
+11 綜合工具箱：測速、IP/回程測試、SNI、WARP、Swap、備份恢復、脫敏診斷、預檢查、多 UUID 匯出、BBR/FQ 應用與回滾、主機設定和 Wallos。
+12 顯示節點引數與客戶端配置。
+13 當前說明書。
+14 指令碼 OTA、Xray Geo 資料與核心單獨升級。
+15 全部/部分解除安裝。
+16 刪除節點並重新初始化環境。
+17 vnStat 月流量限制；開啟後顯示截至當前用量。
+18 SS-2022 IP/CIDR 白名單。
+19 語言設定：簡體中文、繁體中文、English、日本語、Русский、فارسی。
+20 一鍵 Reality；也可輸入快捷鍵 `r`。
+
+協議安裝後不會自動應用 BBR/FQ。主機設定包含 DNS 真實測速、受支援後端的 DoT/DoH 和回滾。時區列表來自本機已安裝時區資料庫，支援編號、分頁和搜尋；Locale 與 NTP 分開設定。
+
+Wallos 為可選應用。正常情況下優先獲取上游最新正式穩定版及匹配 Docker 映象；上游失敗時才使用 A-Box `wallos-mirror` 災備 Release。資料獨立持久化，升級前備份，健康檢查失敗時嘗試回滾。初始 HTTP URL 沒有 TLS 加密，錄入個人資料前請配置 HTTPS。
+
+測速指令碼優先從上游下載，顯示 SHA256 並要求確認；上游不可用時，僅在 SHA256 校驗透過後使用 A-Box `test-tools-mirror`。兩處來源都失敗則不執行。
+EOF_USAGE
+            ;;
+        ja)
+            cat <<'EOF_USAGE'
+【デプロイ】
+1  Xray VLESS Vision REALITY
+2  Xray VLESS XHTTP REALITY
+3  Xray Shadowsocks-2022
+4  公式 Hysteria 2
+5  Xray + 公式 Hysteria 2 の組み合わせデプロイ
+6  sing-box VLESS Vision REALITY
+7  sing-box Shadowsocks-2022
+8  sing-box VLESS + Shadowsocks-2022
+9  sing-box Hysteria 2
+10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（XHTTP を含まない）
+
+【運用】
+11 ツールボックス：ベンチマーク、IP / 経路テスト、SNI、WARP、Swap、バックアップ / 復元、匿名化診断、事前チェック、複数 UUID のエクスポート、BBR/FQ の適用とロールバック、ホスト設定、Wallos。
+12 ノードのパラメーターとクライアント設定を表示します。
+13 現在の説明書を表示します。
+14 A-Box スクリプト OTA、Xray Geo データ、コアの個別アップグレード。
+15 すべて、または一部をアンインストールします。
+16 ノードを削除し、環境を再初期化します。
+17 vnStat 月間トラフィック制限；メニューを開くと現在の使用量が表示されます。
+18 SS-2022 IP/CIDR ホワイトリスト。
+19 言語選択：簡体字中国語、繁体字中国語、English、日本語、Русский、فارسی。
+20 ワンクリック Reality；ショートカット `r` も使用できます。
+
+プロトコルのデプロイ後、BBR/FQ は自動的には適用されません。ホスト設定には DNS 実測、サポートされているバックエンドの DoT/DoH、ロールバックが含まれます。タイムゾーン一覧はホストにインストール済みのタイムゾーンデータベースに基づき、番号指定、ページング、検索に対応しています；Locale と NTP は別々に設定します。
+
+Wallos はオプションのアプリです。通常は upstream の最新の正式安定版と対応する Docker イメージを優先的に取得します；upstream が失敗した場合のみ A-Box `wallos-mirror` の災害復旧用 Release を使用します。データは独立して永続化され、アップグレード前にバックアップし、ヘルスチェック失敗時はロールバックを試みます。初期 HTTP URL には TLS 暗号化がないため、個人情報を入力する前に HTTPS を設定してください。
+
+テストスクリプトは upstream からのダウンロードを優先し、SHA256 を表示して確認を求めます；upstream が利用できない場合、SHA256 検証に合格した後にのみ A-Box `test-tools-mirror` を使用します。両方のソースが失敗した場合は実行しません。
 EOF_USAGE
             ;;
         *)
@@ -16953,7 +17601,7 @@ EOF_USAGE
 16 删除节点并重新初始化环境。
 17 vnStat 月流量限制；打开后显示截至当前用量。
 18 SS-2022 IP/CIDR 白名单。
-19 语言设置：中文、English、Русский、فارسی。
+19 语言设置：简体中文、繁体中文、English、日本語、Русский、فارسی。
 20 一键 Reality；也可输入快捷键 `r`。
 
 协议安装后不会自动应用 BBR/FQ。主机设置包含 DNS 真实测速、受支持后端的 DoT/DoH 和回滚。时区列表来自本机已安装时区数据库，支持编号、分页和搜索；Locale 与 NTP 分开设置。
@@ -17001,15 +17649,38 @@ confirm_ota_script_hash() {
         printf '%s\n' 'ABOX_ASSUME_YES_OTA 已禁用；非交互更新必须使用 ABOX_OTA_SHA256_ALLOWLIST。' >&2
         return 1
     fi
-    if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
+    case "${ABOX_LANG:-zh}" in
+        en)
         msg "${YELLOW}[!] OTA source is pinned to an immutable Git commit. Syntax/fingerprint and SHA256 display are not a cryptographic publisher signature.${NC}"
         msg "${YELLOW}[!] Source: ${url}${NC}"
         read -r -p 'Install this downloaded A-Box script? [Y/N]: ' answer
-    else
+            ;;
+        ru)
+        msg "${YELLOW}[!] Источник OTA привязан к неизменному Git-коммиту. Проверка синтаксиса/отпечатка и отображение SHA256 не являются криптографической подписью издателя.${NC}"
+        msg "${YELLOW}[!] Источник: ${url}${NC}"
+        read -r -p 'Установить этот загруженный скрипт A-Box? [Y/N]: ' answer
+            ;;
+        fa)
+        msg "${YELLOW}[!] منبع OTA به یک کامیت Git تغییرناپذیر سنجاق شده است. نمایش نحو/اثرانگشت و SHA256 امضای رمزنگاری ناشر نیست.${NC}"
+        msg "${YELLOW}[!] منبع: ${url}${NC}"
+        read -r -p 'این اسکریپت دانلود شده A-Box نصب شود؟ [Y/N]: ' answer
+            ;;
+        ja)
+            msg "${YELLOW}[!] OTA のソースは変更不可能な Git commit に固定されています。構文 / フィンガープリントの確認と SHA256 の表示は、リリース発行者による暗号学的署名の代わりにはなりません。${NC}"
+            msg "${YELLOW}[!] ソース: ${url}${NC}"
+            read -r -p 'ダウンロードした A-Box スクリプトをインストールしますか？[Y/N]: ' answer
+            ;;
+        zh-tw)
+        msg "${YELLOW}[!] OTA 已固定到不可變 Git commit。語法/指紋檢查與 SHA256 展示仍不是釋出者密碼學簽名。${NC}"
+        msg "${YELLOW}[!] 來源：${url}${NC}"
+        read -r -p '是否安裝此下載的 A-Box 指令碼？[Y/N]: ' answer
+            ;;
+        *)
         msg "${YELLOW}[!] OTA 已固定到不可变 Git commit。语法/指纹检查与 SHA256 展示仍不是发布者密码学签名。${NC}"
         msg "${YELLOW}[!] 来源：${url}${NC}"
         read -r -p '是否安装此下载的 A-Box 脚本？[Y/N]: ' answer
-    fi
+            ;;
+    esac
     is_yes "$answer"
 }
 
@@ -17798,7 +18469,8 @@ ota_and_geo_menu() {
     ota_choice=''
     clear
     msg "${CYAN}======================================================================${NC}"
-    if [[ "${ABOX_LANG:-zh}" == 'en' ]]; then
+    case "${ABOX_LANG:-zh}" in
+        en)
         msg "${BOLD}${GREEN}OTA, Geo and Core-only Upgrade${NC}"
         msg "${CYAN}======================================================================${NC}"
         msg "${YELLOW}1. Upgrade A-Box script${NC}"
@@ -17808,7 +18480,52 @@ ota_and_geo_menu() {
         msg "${YELLOW}5. DANGER: try upstream latest cores (auto-rollback) [U3]${NC}"
         msg "${GREEN}0. Back${NC}"
         read -r -p 'Select [0-5]: ' ota_choice
-    else
+            ;;
+        ru)
+        msg "${BOLD}${GREEN}OTA, Geo и обновление только ядер${NC}"
+        msg "${CYAN}======================================================================${NC}"
+        msg "${YELLOW}1. Обновить скрипт A-Box${NC}"
+        msg "${YELLOW}2. Обновить Geo-ресурсы Xray Loyalsoldier${NC}"
+        msg "${YELLOW}3. Обновить только установленные ядра; сохранить параметры узлов${NC}"
+        msg "${YELLOW}4. Показать документацию по фиксированным версиям [U3]${NC}"
+        msg "${YELLOW}5. ОПАСНО: попробовать последние ядра upstream (автооткат) [U3]${NC}"
+        msg "${GREEN}0. Назад${NC}"
+        read -r -p 'Выберите [0-5]: ' ota_choice
+            ;;
+        fa)
+        msg "${BOLD}${GREEN}ارتقای OTA، Geo و فقط هسته${NC}"
+        msg "${CYAN}======================================================================${NC}"
+        msg "${YELLOW}1. به‌روزرسانی اسکریپت A-Box${NC}"
+        msg "${YELLOW}2. به‌روزرسانی منابع Geo Loyalsoldier برای Xray${NC}"
+        msg "${YELLOW}3. فقط هسته‌های نصب‌شده را ارتقا بده؛ پارامترهای نود حفظ شود${NC}"
+        msg "${YELLOW}4. نمایش مستندات نسخه‌های ثابت [U3]${NC}"
+        msg "${YELLOW}5. خطر: امتحان آخرین هسته‌های upstream (بازگشت خودکار) [U3]${NC}"
+        msg "${GREEN}0. بازگشت${NC}"
+        read -r -p 'انتخاب [0-5]: ' ota_choice
+            ;;
+        ja)
+            msg "${BOLD}${GREEN}スクリプト OTA、Xray Geo データ、コアのみのアップグレード${NC}"
+            msg "${CYAN}======================================================================${NC}"
+            msg "${YELLOW}1. A-Box スクリプトをアップグレード${NC}"
+            msg "${YELLOW}2. Xray Loyalsoldier Geo データを直ちに取得して更新${NC}"
+            msg "${YELLOW}3. インストール済みのプロトコルコアのみをアップグレード（ノードパラメーターはリセットしません）${NC}"
+            msg "${YELLOW}4. 互換性のある固定バージョンの説明を表示 [U3]${NC}"
+            msg "${YELLOW}5. 危険: upstream の latest コアを試します（失敗時は自動ロールバック）[U3]${NC}"
+            msg "${GREEN}0. メインメニューに戻る${NC}"
+            read -r -p '0～5 を選択してください: ' ota_choice
+            ;;
+        zh-tw)
+        msg "${BOLD}${GREEN}指令碼 OTA、Xray Geo 與核心無損升級${NC}"
+        msg "${CYAN}======================================================================${NC}"
+        msg "${YELLOW}1. 升級 A-Box 核心指令碼${NC}"
+        msg "${YELLOW}2. 立即拉取並更新 Xray Loyalsoldier Geo 資源${NC}"
+        msg "${YELLOW}3. 僅升級當前已安裝協議核心，不重置節點引數${NC}"
+        msg "${YELLOW}4. 檢視相容釘扎說明 [U3]${NC}"
+        msg "${YELLOW}5. 危險：試用上游 latest 核心（失敗自動回滾）[U3]${NC}"
+        msg "${GREEN}0. 返回主選單${NC}"
+        read -r -p '請選擇 [0-5]: ' ota_choice
+            ;;
+        *)
         msg "${BOLD}${GREEN}脚本 OTA、Xray Geo 与核心无损升级${NC}"
         msg "${CYAN}======================================================================${NC}"
         msg "${YELLOW}1. 升级 A-Box 核心脚本${NC}"
@@ -17818,7 +18535,8 @@ ota_and_geo_menu() {
         msg "${YELLOW}5. 危险：试用上游 latest 核心（失败自动回滚）[U3]${NC}"
         msg "${GREEN}0. 返回主菜单${NC}"
         read -r -p '请选择 [0-5]: ' ota_choice
-    fi
+            ;;
+    esac
     case "$ota_choice" in
         1) update_script ;;
         2) force_update_geo ;;
@@ -18871,6 +19589,9 @@ N11EOF
         firewall_backend() { printf '%s\n' iptables; }
         mock_iptables() { return 0; }
         ip6tables() { printf '%s\n' 'ip6tables: Table does not exist (do you need to insmod?)' >&2; return 1; }
+        # G3: mock wrappers to avoid _iptables_w_flag subshell issues in tests
+        _iptables_q() { local cmd="$1"; shift; "$cmd" "$@"; }
+        _iptables_do() { local cmd="$1"; shift; "$cmd" "$@"; }
         IPT=mock_iptables; IPT6=ip6tables
         has_ipv6() { return 1; }
         clean_nat_rules
@@ -19505,7 +20226,7 @@ PY_SELFTEST_YAML
 
     grep -Fq 'firewall_rollback() {' <<< "$source_body" || { echo 'FAIL: firewall reorder rollback helper missing'; failures=$((failures + 1)); }
     grep -Fq 'recovery snapshot preserved at $recovery_snapshot' <<< "$source_body" || { echo 'FAIL: firewall rollback conflict must preserve recovery snapshot'; failures=$((failures + 1)); }
-    grep -Fq '"${cmd}" -w -D INPUT "${rollback_argv_arr[@]:2}"' <<< "$source_body" || { echo 'FAIL: firewall rollback must remove exact owned rules'; failures=$((failures + 1)); }
+    grep -Fq '_iptables_do "$cmd" -D INPUT "${rollback_argv_arr[@]:2}"' <<< "$source_body" || { echo 'FAIL: firewall rollback must remove exact owned rules'; failures=$((failures + 1)); }
     grep -Fq 'current_foreign_lines' <<< "$source_body" || { echo 'FAIL: firewall rollback must track foreign INPUT rules'; failures=$((failures + 1)); }
     grep -Fq 'path_parent_chain_safe "$ABOX_DIR" || return 1' <<< "$source_body" || { echo 'FAIL: rollback restore must validate A-Box parent chain'; failures=$((failures + 1)); }
     grep -Fq 'install -d -m 700 "$ABOX_DIR" || return 1' <<< "$source_body" || { echo 'FAIL: rollback restore must recreate a missing A-Box directory'; failures=$((failures + 1)); }
@@ -20074,6 +20795,58 @@ main_loop() {
                 msg "${GREEN}19.${NC} زبان"
                 msg "${RED}${BOLD}20. Reality با یک کلیک [r]${NC}"
                 msg "${GREEN} 0.${NC} خروج"
+                ;;
+            zh-tw)
+                msg "閘道器/Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | 核心/Core: $STATUS_STR $CUR_MODE | 模式: ${YELLOW}$(read_fast_mode_label)${NC}"
+                msg "${RED}======================================================================${NC}"
+                msg "${RED}${BOLD}                    >>> 20  一 鍵 REALITY <<<                       ${NC}"
+                msg "${RED}======================================================================${NC}"
+                msg "${YELLOW}                 Vision 預設 SNI · 最少提問 · 輸入 r 同效             ${NC}"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${YELLOW}[ Xray-core 部署 ]${NC}                    ${YELLOW}[ Sing-box 部署 ]${NC}"
+                msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
+                msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
+                msg "${GREEN}4.${NC} Hysteria 2 (官方)                  ${GREEN}9.${NC} Hysteria 2 (Sing-box)"
+                msg "${GREEN}5.${NC} 全協議四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全協議三合一 (Sing-box)"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${GREEN}11.${NC} 綜合工具箱"
+                msg "${GREEN}12.${NC} 全部節點引數顯示"
+                msg "${GREEN}13.${NC} 指令碼說明書"
+                msg "${GREEN}14.${NC} 指令碼 OTA、Xray Geo 與核心無損升級"
+                msg "${GREEN}15.${NC} 一鍵全部清空解除安裝"
+                msg "${GREEN}16.${NC} 刪除全部節點與環境初始化"
+                msg "${GREEN}17.${NC} 每月流量管控限制"
+                msg "${GREEN}18.${NC} SS-2022 白名單 IP 管理"
+                msg "${GREEN}19.${NC} 語言設定 / Language"
+                msg "${RED}${BOLD}20. 一鍵 Reality [r]${NC}"
+                msg "${GREEN} 0.${NC} 退出指令碼"
+                ;;
+            ja)
+                msg "ゲートウェイ: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | コア: $STATUS_STR $CUR_MODE | モード: ${YELLOW}$(read_fast_mode_label)${NC}"
+                msg "${RED}======================================================================${NC}"
+                msg "${RED}${BOLD}                    >>> 20  ワンクリック REALITY <<<                       ${NC}"
+                msg "${RED}======================================================================${NC}"
+                msg "${YELLOW}                 Vision デフォルト SNI · 最少質問 · 入力 r 同等             ${NC}"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${YELLOW}[ Xray-core 部署します ]${NC}                    ${YELLOW}[ Sing-box 部署します ]${NC}"
+                msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
+                msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
+                msg "${GREEN}4.${NC} Hysteria 2（公式）                  ${GREEN}9.${NC} Hysteria 2（sing-box）"
+                msg "${GREEN}5.${NC} 全プロトコル統合（Xray+Hy2）${GREEN}10.${NC} 全プロトコル統合（Sing-box）"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${GREEN}11.${NC} 総合ツールボックスです"
+                msg "${GREEN}12.${NC} 全てのノードパラメータを表示します"
+                msg "${GREEN}13.${NC} スクリプトマニュアルです"
+                msg "${GREEN}14.${NC} スクリプト OTA、Xray Geo そしてコアの無損アップグレードです"
+                msg "${GREEN}15.${NC} 一括全てクリアー・アンインストールします"
+                msg "${GREEN}16.${NC} ノードと環境の初期化をすべて削除します"
+                msg "${GREEN}17.${NC} 毎月のトラフィック制限管理"
+                msg "${GREEN}18.${NC} SS-2022 ホワイトリスト IP マネジメント"
+                msg "${GREEN}19.${NC} 言語設定 / Language"
+                msg "${RED}${BOLD}20. ワンクリック Reality [r]${NC}"
+                msg "${GREEN} 0.${NC} スクリプトを終了します"
                 ;;
             *)
                 msg "网关/Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | 核心/Core: $STATUS_STR $CUR_MODE | 模式: ${YELLOW}$(read_fast_mode_label)${NC}"

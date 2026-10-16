@@ -11,6 +11,11 @@ signature) are published alongside mirror metadata:
 | `SHA256SUMS`       | `SHA256SUMS.sig`        | `core-binaries`  |
 | `wallos-manifest.txt` | `wallos-manifest.txt.sig` | `wallos-mirror` |
 
+> **Note (H4):** `test-tools-mirror` Release assets are verified by SHA256
+> checksum only (not Ed25519). Test scripts are downloaded upstream-first
+> with explicit user confirmation; the mirror is a fallback. Adding
+> detached signatures to test-tools is tracked as future work.
+
 Verification uses **only `openssl` + `python3`** (both already in
 `install.sh`'s `ensure_commands`). No GPG / minisign / signify dependency —
 GPG was rejected (heavy, `~/.gnupg` state issues on Alpine/minimal), and
@@ -89,9 +94,16 @@ and dies if none remain. It never warn-and-continues.
 1. Add the compromised key's fingerprint
    (`sha256 hex` of the raw 32-byte public key) to `ABOX_REVOKED_PUBKEY_FPS`
    in install.sh and bump `ABOX_BUILD_EPOCH`.
-2. CI immediately re-signs all Release metadata with the backup key.
-3. Ship the updated install.sh; clients reject anything signed by the
+2. Generate a new keypair; add the new public key to `ABOX_SIGNING_PUBKEYS`
+   (keep the revoked one listed in `ABOX_REVOKED_PUBKEY_FPS`).
+3. CI re-signs all Release metadata with the new private key
+   (`ABOX_SIGNING_PRIVKEY_B64` secret must be updated first).
+4. Ship the updated install.sh; clients reject anything signed by the
    revoked key even if the signature is otherwise valid.
+
+> **Note (H5):** There is a single active signing key (`release-2026`).
+> There is no pre-provisioned backup key; rotation generates a new keypair
+> on demand following the steps above.
 
 ## Anti-replay
 

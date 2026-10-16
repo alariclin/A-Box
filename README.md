@@ -23,7 +23,7 @@ The project is provided “as is”, without warranty. Review the script and the
 ### Official GitHub source
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/3391912565488901f275400f70b6044871322a1d/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/b855d7e1c45a6d17b542196187d9f71bcc1be0e9/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh
@@ -32,13 +32,13 @@ sudo bash A-Box.sh
 ### Third-party fallback mirror
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/3391912565488901f275400f70b6044871322a1d/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/b855d7e1c45a6d17b542196187d9f71bcc1be0e9/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # After reviewing the downloaded script, execute it separately:
 sudo bash A-Box.sh
 ```
 
-Both commands pin the installer to immutable commit `3391912565488901f275400f70b6044871322a1d`; the proxy URL remains a third-party transport, not an official A-Box endpoint. Syntax checking and SHA-256 alone do not prove publisher authenticity. Review the downloaded file before running it, and for production verify the commit and checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.
+Both commands pin the installer to immutable commit `b855d7e1c45a6d17b542196187d9f71bcc1be0e9`; the proxy URL remains a third-party transport, not an official A-Box endpoint. Syntax checking and SHA-256 alone do not prove publisher authenticity. Review the downloaded file before running it, and for production verify the commit and checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.
 
 ## Main Features
 
@@ -123,7 +123,7 @@ The script contains compatibility paths for the following environments; actual c
 | Network | Access to system package repositories and required upstream/GitHub release endpoints |
 | Script UI | Chinese, English, Russian and Persian menu selection; see note above for legacy prompts |
 
-The interactive language selector supports Chinese, English, Russian and Persian for the main menu and updated operations menus. Some older protocol-specific prompts remain bilingual and may still contain legacy Chinese/English wording.
+The interactive language selector supports Simplified Chinese, Traditional Chinese, English, Japanese, Russian and Persian for the main menu and updated operations menus. Some older protocol-specific prompts remain bilingual and may still contain legacy Chinese/English wording.
 
 ## Recommended Production Checklist
 

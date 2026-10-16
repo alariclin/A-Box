@@ -102,6 +102,39 @@ jobs:
               sys.exit(f"ERROR: Expected 1 in main + 1 in heredoc, found {len(m_main)}+{len(m_hero)}")
           print("OK: normalize_managed_rule_line defined once in main and once in heredoc closure")
           PY
+      - name: Six-language i18n gate
+        run: |
+          python3 - <<'PY'
+          import re, sys
+          text = open("install.sh", encoding="utf-8").read()
+          errors = []
+
+          # 1. 禁止二分支 if ABOX_LANG == en（必须用六语言 case）
+          for i, line in enumerate(text.splitlines(), 1):
+              if re.search(r'if\s+\[\[.*ABOX_LANG.*==.*[\'"]en[\'"]', line):
+                  errors.append(f"Line {i}: bare 'if ABOX_LANG == en' found, use 6-language case instead")
+
+          # 2. 检查 [Y/N] / [y/n] 未被翻译（不应出现 [はい / [いいえ）
+          if "[はい" in text or "[いいえ" in text:
+              errors.append("Found translated [Y/N] markers ([はい / [いいえ), must keep [Y/N] as-is")
+
+          # 3. 检查变量名未被翻译（${...} 内不应有中文/日文/韩文）
+          for m in re.finditer(r'\$\{([A-Za-z_][A-Za-z0-9_]*)[^}]*\}', text):
+              varname = m.group(1)
+              if re.search(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]', varname):
+                  errors.append("Translated variable name: ${" + varname + "}")
+
+          # 4. 检查 ja) 分支的 %s/%d 数量与 en) 一致（简单启发式）
+          # 提取所有 case 块，比较 ja 和 en 的占位符数量
+          # （完整变量集合对齐检查在 --self-test 中覆盖）
+
+          if errors:
+              print("I18N GATE FAILURES:")
+              for e in errors[:20]:
+                  print(f"  - {e}")
+              sys.exit(1)
+          print("OK: six-language i18n gate passed")
+          PY
       # P3-13 fix: renamed from "Alpine clean-shell bootstrap syntax".
       # NOTE: This only checks syntax. Alpine runtime (BusyBox/musl/apk)
       # is NOT tested here.

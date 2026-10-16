@@ -5154,11 +5154,13 @@ _openssl_has_ed25519() {
     if ! openssl genpkey -algorithm ed25519 -out /dev/null 2>/dev/null; then
         _OPENSSL_ED25519_OK=1
     fi
-    # Probe: pkeyutl -rawin support (use a dummy sign operation)
+    # Probe: pkeyutl -rawin support. Note: -rawin requires file input,
+    # not stdin pipe (oneshot operation needs file size).
     local _t
     _t=$(mktemp -d 2>/dev/null) || { _OPENSSL_ED25519_OK=1; return 1; }
+    printf 'test' > "$_t/in.bin" 2>/dev/null
     if ! openssl genpkey -algorithm ed25519 -out "$_t/priv.pem" 2>/dev/null || \
-       ! printf 'test' | openssl pkeyutl -sign -inkey "$_t/priv.pem" -rawin -out "$_t/sig.bin" 2>/dev/null; then
+       ! openssl pkeyutl -sign -inkey "$_t/priv.pem" -rawin -in "$_t/in.bin" -out "$_t/sig.bin" 2>/dev/null; then
         _OPENSSL_ED25519_OK=1
     else
         _OPENSSL_ED25519_OK=0

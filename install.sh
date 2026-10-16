@@ -5152,6 +5152,29 @@ verify_github_asset_digest() {
 # ============ F-05: Ed25519 detached signature verification ============
 # Uses ONLY openssl + python3 (both guaranteed by ensure_commands).
 # .sig files are base64 text of the raw 64-byte Ed25519 signature.
+# F8: probe OpenSSL Ed25519/rawin capability. Ed25519 needs OpenSSL 1.1.1+;
+# -rawin for pkeyutl needs 1.1.1+. Cache the result.
+_openssl_has_ed25519() {
+    if [[ -n "${_OPENSSL_ED25519_OK:-}" ]]; then
+        return "$_OPENSSL_ED25519_OK"
+    fi
+    _OPENSSL_ED25519_OK=1
+    # Probe: genpkey with ed25519 algorithm
+    if ! openssl genpkey -algorithm ed25519 -out /dev/null 2>/dev/null; then
+        _OPENSSL_ED25519_OK=1
+    fi
+    # Probe: pkeyutl -rawin support (use a dummy sign operation)
+    local _t
+    _t=$(mktemp -d 2>/dev/null) || { _OPENSSL_ED25519_OK=1; return 1; }
+    if ! openssl genpkey -algorithm ed25519 -out "$_t/priv.pem" 2>/dev/null || \
+       ! printf 'test' | openssl pkeyutl -sign -inkey "$_t/priv.pem" -rawin -out "$_t/sig.bin" 2>/dev/null; then
+        _OPENSSL_ED25519_OK=1
+    else
+        _OPENSSL_ED25519_OK=0
+    fi
+    rm -rf -- "$_t"
+    return "$_OPENSSL_ED25519_OK"
+}
 # Returns 0 iff ANY non-revoked pubkey in ABOX_SIGNING_PUBKEYS verifies.
 verify_ed25519_detached() {
     local file="$1" sigfile="$2"
@@ -5227,6 +5250,15 @@ abox_signing_timestamp_ok() {
 # Returns 1 (fail-closed) iff ABOX_SIGNING_ENFORCE=1 and sig missing/invalid.
 abox_verify_sig_gate() {
     local file="$1" sigfile="$2" desc="${3:-metadata}"
+    # F8: if OpenSSL lacks Ed25519/rawin, we cannot verify; fail-closed when enforcing.
+    if ! _openssl_has_ed25519; then
+        printf '[A-Box][F-05] WARNING: OpenSSL lacks Ed25519/rawin support; cannot verify %s\n' "$desc" >&2
+        if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
+            printf '[A-Box][F-05] FATAL: signature enforcement is ON but OpenSSL cannot verify; rejecting %s\n' "$desc" >&2
+            return 1
+        fi
+        return 0
+    fi
     if [[ -f "$sigfile" ]]; then
         if verify_ed25519_detached "$file" "$sigfile"; then
             return 0
@@ -5235,7 +5267,7 @@ abox_verify_sig_gate() {
     else
         printf '[A-Box][F-05] WARNING: missing signature for %s (%s not found)\n' "$desc" "$sigfile" >&2
     fi
-    if [[ "${ABOX_SIGNING_ENFORCE:-0}" == '1' ]]; then
+    if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
         printf '[A-Box][F-05] FATAL: signature enforcement is ON; rejecting %s\n' "$desc" >&2
         return 1
     fi
@@ -5519,7 +5551,7 @@ core_latest_mirror_release_ref() {
     # F-05 anti-replay: CORE-VERSIONS timestamp must not predate trust floor.
     _f05_ts=$(awk -F= '$1=="updated_at_utc" {print $2; exit}' "$workdir/CORE-VERSIONS" 2>/dev/null || true)
     if [[ -n "$_f05_ts" ]] && ! abox_signing_timestamp_ok "$_f05_ts"; then
-        if [[ "${ABOX_SIGNING_ENFORCE:-0}" == '1' ]]; then
+        if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
             printf '[A-Box][F-05] FATAL: CORE-VERSIONS timestamp %s is older than trust floor %s\n' "$_f05_ts" "$ABOX_SIGNING_MIN_TIMESTAMP_UTC" >&2
             rm -rf -- "$workdir"; return 1
         fi
@@ -15808,7 +15840,7 @@ wallos_pull_or_restore_image() {
                             # X-02: under ENFORCE=1, a stale timestamp must fail hard
                             # like a bad signature (D-10); falling back to an
                             # unsigned tag pull would defeat enforcement.
-                            if [[ "${ABOX_SIGNING_ENFORCE:-0}" == '1' ]]; then
+                            if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
                                 msg "${RED}[!] N-2 manifest timestamp rejected and signing enforcement is ON; refusing to fall back to unsigned tag pull.${NC}"
                                 trap - EXIT
                                 restore_saved_trap EXIT "$_n2_prev_trap_exit"
@@ -15885,7 +15917,7 @@ wallos_pull_or_restore_image() {
     if [[ -n "$_w_ts" ]] && ! abox_signing_timestamp_ok "$_w_ts"; then
         # X-10: gate on ENFORCE like the core path (L5297); unconditional
         # reject breaks the default ENFORCE=0 flow on a stale mirror.
-        if [[ "${ABOX_SIGNING_ENFORCE:-0}" == '1' ]]; then
+        if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
             printf '[A-Box][F-05] FATAL: Wallos manifest timestamp %s predates trust floor\n' "$_w_ts" >&2
             rm -rf -- "$work"
             return 1

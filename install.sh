@@ -3098,12 +3098,7 @@ iptables_rule_check() {
         *) return 2 ;;
     esac
 }
-restore_iptables_saved_snapshot() {
-    local restore_cmd="$1" snapshot="$2"
-    [[ -s "$snapshot" ]] || return 1
-    command -v "$restore_cmd" >/dev/null 2>&1 || return 1
-    "$restore_cmd" -w < "$snapshot" >/dev/null 2>&1 || "$restore_cmd" < "$snapshot" >/dev/null 2>&1
-}
+# F12: removed zero-call restore_iptables_saved_snapshot (duplicate dead code)
 # BUG-28: hoisted from reorder_one()/reorder_ss_whitelist_rules_one().
 # $1 = lock fd value. Closes it; caller clears its own lock_fd variable.
 __abox_firewall_unlock() {
@@ -4031,12 +4026,7 @@ iptables_rule_check() {
         *) return 2 ;;
     esac
 }
-restore_iptables_saved_snapshot() {
-    local restore_cmd="$1" snapshot="$2"
-    [[ -s "$snapshot" ]] || return 1
-    command -v "$restore_cmd" >/dev/null 2>&1 || return 1
-    "$restore_cmd" -w < "$snapshot" >/dev/null 2>&1 || "$restore_cmd" < "$snapshot" >/dev/null 2>&1
-}
+# F12: removed zero-call restore_iptables_saved_snapshot (duplicate dead code)
 
 allowPort() {
     local raw_port="$1" type="${2:-tcp}" backend spec fw_spec runtime=0 permanent=0 added_runtime=0
@@ -4614,7 +4604,8 @@ ss_whitelist_ipv6_precheck() {
 
 enforce_ss_whitelist_order() {
     local port="${1:-${SS_PORT:-}}" failed=0 proto
-    valid_port "$port" || return 0
+    # G8: invalid port must fail, not silently succeed.
+    valid_port "$port" || return 1
     # FINAL-AUDIT: fail closed here too (defense in depth for restore paths).
     ss_whitelist_ipv6_precheck || return 1
     for proto in tcp udp; do
@@ -9623,13 +9614,25 @@ remove_ss_source_whitelist_rules() {
 # B-12: Rebuild SS_WHITELIST_IP from live iptables rules and persist to .env,
 # so menu edits (add/remove) don't leave .env stale for redeploy wizards.
 sync_ss_whitelist_ip_to_env() {
-    local ips='' v6ips=''
+    local ips='' v6ips='' ipt_output
     # X-03: --line-numbers is required; without it awk '{print $5}' reads the
     # DESTINATION column (0.0.0.0/0) instead of SOURCE, wiping the whitelist.
-    ips=$($IPT -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '0.0.0.0/0' | sort -u | tr '\n' ' ' || true)
-    if command -v ip6tables >/dev/null 2>&1 && $IPT6 -nL INPUT >/dev/null 2>&1; then
-        v6ips=$($IPT6 -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '::/0' | sort -u | tr '\n' ' ' || true)
-        ips+="$v6ips"
+    # F5: do NOT swallow iptables query errors. If the query fails, abort
+    # instead of writing an empty whitelist to .env (which would wipe the
+    # real whitelist).
+    if ! ipt_output=$($IPT -nL INPUT --line-numbers 2>&1); then
+        printf '[A-Box] WARNING: iptables query failed, not syncing whitelist to .env: %s\n' "$ipt_output" >&2
+        return 1
+    fi
+    ips=$(printf '%s\n' "$ipt_output" | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '0.0.0.0/0' | sort -u | tr '\n' ' ')
+    if command -v ip6tables >/dev/null 2>&1; then
+        local ip6_output
+        if ipt_output=$($IPT6 -nL INPUT --line-numbers 2>&1); then
+            v6ips=$(printf '%s\n' "$ipt_output" | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '::/0' | sort -u | tr '\n' ' ')
+            ips+="$v6ips"
+        else
+            printf '[A-Box] WARNING: ip6tables query failed, skipping IPv6 whitelist sync: %s\n' "$ipt_output" >&2
+        fi
     fi
     SS_WHITELIST_IP=$(printf '%s' "$ips" | tr -s ' ' | sed 's/^ *//;s/ *$//')
     write_env || return 1

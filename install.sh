@@ -4420,7 +4420,7 @@ _ss_wl_snapshot_rules() {
 # Even with --noflush, iptables-restore will flush any user-defined
 # chain explicitly declared in the input stream.
 _ss_wl_rollback_to_snapshot() {
-    local ipt snap failed=0 restore_bin v4_ok=0 v6_ok=0 v6_needed=0
+    local ipt snap failed=0 restore_bin v6_ok=0 v6_needed=0
     [[ "${_SS_WL_SNAP_TAKEN:-0}" == 1 ]] || return 1
     [[ -n "${_SS_WL_SNAP_PORT:-}" ]] || return 1
     # Check if IPv6 was snapshotted and needs recovery
@@ -4566,8 +4566,8 @@ _ss_wl_rollback_to_snapshot() {
             failed=1
             continue
         fi
-        # Mark this family as successfully recovered
-        if [[ "$ipt" == "$IPT" ]]; then v4_ok=1; else v6_ok=1; fi
+        # Mark IPv6 as successfully recovered (IPv4 success is tracked via failed==0)
+        if [[ "$ipt" != "$IPT" ]]; then v6_ok=1; fi
     done
     # Cross-family check: if IPv6 was needed but not recovered, fail overall
     if (( v6_needed == 1 && v6_ok == 0 )); then

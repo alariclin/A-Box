@@ -171,7 +171,7 @@ jobs:
           # See docs/SIGNING.md.
           if [[ -n "${ABOX_SIGNING_PRIVKEY_B64:-}" ]]; then
             umask 077
-            python3 -c 'import base64,sys;raw=base64.b64decode(sys.argv[1],validate=True);assert len(raw)==32;der=bytes.fromhex("302e020100300506032b657004220402")+raw;sys.stdout.write("-----BEGIN PRIVATE KEY-----\n"+base64.encodebytes(der).decode().strip()+"\n-----END PRIVATE KEY-----\n")' "$ABOX_SIGNING_PRIVKEY_B64" > /tmp/abox-sign-priv.pem
+            python3 -c 'import base64,sys;raw=base64.b64decode(sys.argv[1],validate=True);assert len(raw)==32;der=bytes.fromhex("302e020100300506032b657004220420")+raw;sys.stdout.write("-----BEGIN PRIVATE KEY-----\n"+base64.encodebytes(der).decode().strip()+"\n-----END PRIVATE KEY-----\n")' "$ABOX_SIGNING_PRIVKEY_B64" > /tmp/abox-sign-priv.pem
             openssl pkeyutl -sign -inkey /tmp/abox-sign-priv.pem -rawin \
               -in wallos-manifest.txt | base64 > wallos-manifest.txt.sig
             openssl pkeyutl -verify -pubin \
@@ -293,7 +293,7 @@ jobs:
           # P3-02: Sign SHA256SUMS for test-tools (Ed25519)
           if [[ -n "${ABOX_SIGNING_PRIVKEY_B64:-}" ]]; then
             umask 077
-            python3 -c 'import base64,sys;raw=base64.b64decode(sys.argv[1],validate=True);assert len(raw)==32;der=bytes.fromhex("302e020100300506032b657004220402")+raw;sys.stdout.write("-----BEGIN PRIVATE KEY-----\n"+base64.encodebytes(der).decode().strip()+"\n-----END PRIVATE KEY-----\n")' "$ABOX_SIGNING_PRIVKEY_B64" > /tmp/abox-sign-priv.pem
+            python3 -c 'import base64,sys;raw=base64.b64decode(sys.argv[1],validate=True);assert len(raw)==32;der=bytes.fromhex("302e020100300506032b657004220420")+raw;sys.stdout.write("-----BEGIN PRIVATE KEY-----\n"+base64.encodebytes(der).decode().strip()+"\n-----END PRIVATE KEY-----\n")' "$ABOX_SIGNING_PRIVKEY_B64" > /tmp/abox-sign-priv.pem
             openssl pkeyutl -sign -inkey /tmp/abox-sign-priv.pem -rawin -in SHA256SUMS | base64 > SHA256SUMS.sig
             openssl pkeyutl -verify -pubin -inkey <(openssl pkey -in /tmp/abox-sign-priv.pem -pubout) -rawin -in SHA256SUMS -sigfile <(base64 -d SHA256SUMS.sig) || { echo "::error::test-tools SHA256SUMS self-check failed"; exit 1; }
             # Verify derived public key matches install.sh trust anchor

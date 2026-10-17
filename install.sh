@@ -3169,7 +3169,7 @@ __abox_firewall_unlock() {
 __abox_normalize_managed_rule_line() {
     local line="$1"
     line=${line//\"/}
-    line=$(printf '%s\n' "$line" | sed -E 's/^(-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\2([[:space:]]|$)/\1\3/')
+    line=$(printf '%s\n' "$line" | sed -E 's/(^|[[:space:]])(-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\2\4/')
     printf '%s\n' "$line"
 }
 reorder_one() {
@@ -4194,7 +4194,7 @@ remove_ss_open_accept_rules() {
 __abox_normalize_managed_rule_line() {
     local line="$1"
     line=${line//\"/}
-    line=$(printf '%s\n' "$line" | sed -E 's/^(-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\2([[:space:]]|$)/\1\3/')
+    line=$(printf '%s\n' "$line" | sed -E 's/(^|[[:space:]])(-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\2\4/')
     printf '%s\n' "$line"
 }
 
@@ -4520,7 +4520,7 @@ _ss_wl_rollback_to_snapshot() {
         fi
         command -v "$restore_bin" >/dev/null 2>&1 || { failed=1; continue; }
         local cur_out cur_rc
-        cur_out="$("$ipt" -w 5 -S INPUT 2>/dev/null)"; cur_rc=$?
+        cur_out="$(_iptables_q "$ipt" -S INPUT 2>/dev/null)"; cur_rc=$?
         if (( cur_rc != 0 )); then failed=1; continue; fi
         local cur
         cur="$(printf '%s\n' "$cur_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
@@ -4588,7 +4588,7 @@ _ss_wl_rollback_to_snapshot() {
         # (N = number of snapshot rules), proving they are at chain head.
         # Use normalized comparison to handle -m tcp / quote variations.
         local final_out final_rc
-        final_out="$("$ipt" -w 5 -S INPUT 2>/dev/null)"; final_rc=$?
+        final_out="$(_iptables_q "$ipt" -S INPUT 2>/dev/null)"; final_rc=$?
         if (( final_rc != 0 )); then failed=1; continue; fi
         local snap_count
         snap_count="$(printf '%s\n' "$snap" | grep -c -v '^$' || true)"
@@ -6441,7 +6441,7 @@ ensure_abox_runtime_identity() {
 prepare_abox_runtime_config_dir() {
     local family="$1" dir="$2" user group gid mode nlink
     case "$family:$dir" in
-        sing-box:/etc/sing-box|hysteria:/etc/hysteria) ;;
+        sing-box:/etc/sing-box|hysteria:/etc/hysteria|xray:/usr/local/etc/xray) ;;
         *) return 1 ;;
     esac
     ensure_abox_runtime_identity "$family" || return 1
@@ -8291,7 +8291,8 @@ deploy_xray() {
     /usr/local/bin/xray version >/dev/null 2>&1 || die 'Xray 执行校验失败。'
     install -d -m 755 /usr/local/share/xray || die 'Xray data directory creation failed.'
     # B9-03: config dir 750 root:abox-xray like sing-box/hysteria (was 755).
-    install -d -o root -g abox-xray -m 750 -- /usr/local/etc/xray || die 'Xray config directory creation failed.'
+    # P0-1: use prepare_abox_runtime_config_dir to ensure group exists first.
+    prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
 
     geo_tmp="$xray_tmp/geo"
     mkdir -p "$geo_tmp" || die 'Xray Geo 临时目录创建失败。'
@@ -11215,7 +11216,7 @@ timezone_choose_locale() {
 }
 timezone_locale_ntp_menu() {
     clear
-    local c ntp synced now
+    local c ntp synced now prompt
     now=$(date '+%Y-%m-%d %H:%M:%S %Z (%z)' 2>/dev/null || date)
     ntp='unknown'; synced='unknown'
     if command -v timedatectl >/dev/null 2>&1; then
@@ -11279,7 +11280,7 @@ timezone_locale_ntp_menu() {
             ;;
     esac
     msg "${GREEN}0. 返回${NC}"
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; ja) prompt='選択してください [0-5]: ' ;; zh-tw) prompt='請選擇 [0-5]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; ja) prompt='選択してください [0-5]: ' ;; zh-tw) prompt='請選擇 [0-5]：' ;; *) prompt='请选择 [0-5]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1) timezone_choose_from_list '' ;;
@@ -11982,7 +11983,7 @@ dns_menu() {
             ;;
     esac
     msg "${GREEN}0. Back / 返回${NC}"
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-7]: ' ;; ru) prompt='Выберите [0–7]: ' ;; fa) prompt='انتخاب [۰ تا ۷]: ' ;; ja) prompt='選択してください [0-7]: ' ;; zh-tw) prompt='請選擇 [0-7]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-7]: ' ;; ru) prompt='Выберите [0–7]: ' ;; fa) prompt='انتخاب [۰ تا ۷]: ' ;; ja) prompt='選択してください [0-7]: ' ;; zh-tw) prompt='請選擇 [0-7]：' ;; *) prompt='请选择 [0-7]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1)
@@ -14141,10 +14142,6 @@ PY_LEGACY_EXTRACT
     [[ -f "$work/meta/iptables.snapshot" ]] || : > "$work/meta/iptables.snapshot"
     [[ -f "$work/meta/ip6tables.snapshot" ]] || : > "$work/meta/ip6tables.snapshot"
     printf 'iptables\n' > "$work/meta/firewall.backend"
-    : > "$work/meta/services.state"
-    for srv in xray sing-box hysteria; do
-        if backup_root_contains_service "$root" "$srv"; then printf '%s|0|0\n' "$srv" >> "$work/meta/services.state"; fi
-    done
     { managed_auxiliary_paths; printf '%s\n' \
         /usr/local/bin/xray /usr/local/etc/xray /usr/local/share/xray /etc/systemd/system/xray.service /etc/init.d/xray /etc/conf.d/xray \
         /usr/local/bin/sing-box /etc/sing-box /etc/systemd/system/sing-box.service /etc/init.d/sing-box /etc/conf.d/sing-box \
@@ -14191,6 +14188,7 @@ MAX_TOTAL=1024*1024*1024
 SB_DIR='root/etc/sing-box'
 HY_DIR='root/etc/hysteria'
 HY_ACME=HY_DIR + '/acme'
+XRAY_DIR='root/usr/local/etc/xray'
 XRAY_CFG='root/usr/local/etc/xray/config.json'
 sb_gid=None
 hy_uid=None
@@ -14221,6 +14219,7 @@ for m in members:
     in_sb = n == SB_DIR or n.startswith(SB_DIR + '/')
     in_hy = n == HY_DIR or n.startswith(HY_DIR + '/')
     in_hy_acme = n == HY_ACME or n.startswith(HY_ACME + '/')
+    in_xray = n == XRAY_DIR or n.startswith(XRAY_DIR + '/')
     in_xray_cfg = (n == XRAY_CFG)
     if in_xray_cfg:
         # Boundary 1: Xray config.json is root:abox-xray 0640 (gid != 0).
@@ -14232,6 +14231,16 @@ for m in members:
             if mode & 0o027: raise SystemExit(1)
             if xray_gid is None: xray_gid=m.gid
             elif m.gid != xray_gid: raise SystemExit(1)
+    elif in_xray:
+        # Xray config dir is root:abox-xray 0750 (gid != 0).
+        if m.uid != 0: raise SystemExit(1)
+        if m.gid == 0:
+            if mode & 0o077: raise SystemExit(1)
+        else:
+            if mode & 0o027: raise SystemExit(1)
+            if xray_gid is None: xray_gid=m.gid
+            elif m.gid != xray_gid: raise SystemExit(1)
+        if n == XRAY_DIR and not ((m.gid != 0 and mode == 0o750) or (m.gid == 0 and (mode & 0o022) == 0)): raise SystemExit(1)
     elif in_sb:
         # Sing-box config data may be group-readable by its dedicated runtime
         # service account. Preserve root:root compatibility, but when a non-root
@@ -14591,7 +14600,7 @@ normalize_restored_runtime_ownership() {
             ;;
         xray)
             [[ -d /usr/local/etc/xray && ! -L /usr/local/etc/xray ]] || return 1
-            chown -R root:root /usr/local/etc/xray || return 1
+            chown -R "root:$group" /usr/local/etc/xray || return 1
             ;;
         *) return 1 ;;
     esac

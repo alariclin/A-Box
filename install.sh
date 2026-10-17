@@ -6607,7 +6607,14 @@ EOF_F2B_FILTER
         [[ -n "${VLESS_PORT:-}" ]] && tcp_ports+="${VLESS_PORT},"
         [[ -n "${XHTTP_PORT:-}" ]] && tcp_ports+="${XHTTP_PORT},"
         [[ -n "${SS_PORT:-}" ]] && { tcp_ports+="${SS_PORT},"; udp_ports+="${SS_PORT},"; }
-        if [[ "${HY2_HOP:-}" == true && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" ]]; then udp_ports+="${HY2_RANGE_START}:${HY2_RANGE_END},"; elif [[ -n "${HY2_BASE_PORT:-}" ]]; then udp_ports+="${HY2_BASE_PORT},"; fi
+        if [[ "${HY2_HOP:-}" == true && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" ]]; then
+            # P2-2: manual hop REDIRECTs to HY2_BASE_PORT in PREROUTING, so Fail2Ban
+            # must monitor HY2_BASE_PORT in INPUT chain, not just the hop range.
+            [[ "${HY2_HOP_IMPL:-}" == manual && -n "${HY2_BASE_PORT:-}" ]] && udp_ports+="${HY2_BASE_PORT},"
+            udp_ports+="${HY2_RANGE_START}:${HY2_RANGE_END},"
+        elif [[ -n "${HY2_BASE_PORT:-}" ]]; then
+            udp_ports+="${HY2_BASE_PORT},"
+        fi
         tcp_ports="${tcp_ports%,}"; udp_ports="${udp_ports%,}"
         if [[ -n "$tcp_ports" || -n "$udp_ports" ]]; then
             f2b_backend=$(firewall_backend) || { rm -f -- "$jail_tmp"; die '无法确定 Fail2Ban 防火墙后端。'; }

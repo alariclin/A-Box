@@ -4201,6 +4201,13 @@ __abox_normalize_managed_rule_line() {
 # D-01: main-script copy of __abox_firewall_unlock (heredoc copy at L3032 is
 # written to firewall_restore.sh and never executed by the main shell).
 # $1 = lock fd value. Closes it; caller clears its own lock_fd variable.
+__abox_firewall_unlock() {
+    local lock_fd="$1"
+    # Guard empty lock_fd: `exec >&-` would close stdout.
+    if [[ "$lock_fd" =~ ^[0-9]+$ ]]; then
+        eval "exec ${lock_fd}>&-" 2>/dev/null || true
+    fi
+}
 
 reorder_ss_whitelist_rules_one() {
     local cmd="$1" port="$2" proto="$3" wl_suffix="$4" drop_suffix="$5"
@@ -4441,13 +4448,13 @@ _ss_wl_snapshot_rules() {
     # P2-01: distinguish "no rules" from "read failed". A failed iptables
     # query must abort the snapshot instead of being mistaken for empty.
     local out rc
-    out="$("$IPT" -w 5 -S INPUT 2>/dev/null)"; rc=$?
+    out="$(_iptables_q "$IPT" -S INPUT 2>/dev/null)"; rc=$?
     (( rc == 0 )) || return 1
     _SS_WL_SNAP_V4="$(printf '%s\n' "$out" | grep -F "A-Box-${port}-" | sed 's/^-A INPUT //')"
     _SS_WL_SNAP_V6=""
     _SS_WL_SNAP_V6_TAKEN=0
     if host_has_usable_ipv6 && ip6tables_usable; then
-        out="$("$IPT6" -w 5 -S INPUT 2>/dev/null)"; rc=$?
+        out="$(_iptables_q "$IPT6" -S INPUT 2>/dev/null)"; rc=$?
         (( rc == 0 )) || return 1
         _SS_WL_SNAP_V6="$(printf '%s\n' "$out" | grep -F "A-Box-${port}-" | sed 's/^-A INPUT //')"
         _SS_WL_SNAP_V6_TAKEN=1
@@ -5299,13 +5306,12 @@ abox_signing_timestamp_ok() {
 # Returns 1 (fail-closed) iff ABOX_SIGNING_ENFORCE=1 and sig missing/invalid.
 abox_verify_sig_gate() {
     local file="$1" sigfile="$2" desc="${3:-metadata}"
-    # F8: if OpenSSL lacks Ed25519/rawin, we cannot verify; fail-closed when enforcing.
+    # F8: if OpenSSL lacks Ed25519/rawin, we cannot verify.
+    # DS-Q4: CentOS 7 (OpenSSL 1.0.2) has no Ed25519. Fail-closed here would break
+    # the documented CentOS 7 support. Downgrade to LOUD warning instead of FATAL
+    # on platforms that fundamentally cannot verify (vs. missing .sig file).
     if ! _openssl_has_ed25519; then
-        printf '[A-Box][F-05] WARNING: OpenSSL lacks Ed25519/rawin support; cannot verify %s\n' "$desc" >&2
-        if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
-            printf '[A-Box][F-05] FATAL: signature enforcement is ON but OpenSSL cannot verify; rejecting %s\n' "$desc" >&2
-            return 1
-        fi
+        printf '[A-Box][F-05] WARNING: OpenSSL lacks Ed25519/rawin support (e.g. CentOS 7); cannot verify %s. Integrity is TLS-only on this platform.\n' "$desc" >&2
         return 0
     fi
     if [[ -f "$sigfile" ]]; then
@@ -10254,7 +10260,21 @@ fetch_abox_mirror_asset() {
     if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
     # N-16 fix: use fixed-string matching, not regex. The old $2~(f"$") treated
     # dots in filenames as regex wildcards.
-    expect_sum=$(curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" 2>/dev/null | awk -v f="$asset_leaf" '$2==f || $2==("./" f) || (n=length(f), substr($2, length($2)-n+1)==f && (length($2)==n || substr($2, length($2)-n, 1)=="/")) {print $1; exit}')
+    # DS-High-02: verify SHA256SUMS signature before trusting it (F-05 trust root).
+    local sum_file sum_sig
+    sum_file=$(mktemp) || { rm -f -- "$tmp_file"; return 1; }
+    sum_sig="${sum_file}.sig"
+    if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" -o "$sum_file" 2>/dev/null; then
+        rm -f -- "$tmp_file" "$sum_file"; return 1
+    fi
+    curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "${mirror_sum}.sig" -o "$sum_sig" 2>/dev/null || true
+    # DS-High-02: abox_verify_sig_gate 本身就是 (c) 语义 (默认 fail-closed,
+    # ABOX_SIGNING_ENFORCE=0 为显式逃生门)。无需新造变量。
+    if ! abox_verify_sig_gate "$sum_file" "$sum_sig" "recovery mirror SHA256SUMS"; then
+        rm -f -- "$tmp_file" "$sum_file" "$sum_sig"; return 1
+    fi
+    expect_sum=$(awk -v f="$asset_leaf" '$2==f || $2==("./" f) || (n=length(f), substr($2, length($2)-n+1)==f && (length($2)==n || substr($2, length($2)-n, 1)=="/")) {print $1; exit}' "$sum_file")
+    rm -f -- "$sum_file" "$sum_sig"
     got_sum=$(sha256sum "$tmp_file" 2>/dev/null | awk '{print $1}') || got_sum=''
     if [[ -z "$expect_sum" || ! "$expect_sum" =~ ^[A-Fa-f0-9]{64}$ || "${got_sum,,}" != "${expect_sum,,}" ]]; then msg "${YELLOW}[!] recovery mirror SHA-256 mismatch or missing SHA256SUMS${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
     if ! validate_core_asset_binary_version "$output_file" "$tmp_file" "$requested_version"; then msg "${YELLOW}[!] recovery binary version does not match requested version ${requested_version}${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
@@ -15902,6 +15922,14 @@ wallos_pull_or_restore_image() {
                     # F-05: verify detached Ed25519 signature of the manifest.
                     curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_sum_url.sig" -o "$_n2_work/SHA256SUMS.sig" 2>/dev/null || true
                     curl -fLsS --connect-timeout 8 --max-time 30 "${_n2_manifest_url}.sig" -o "$_n2_work/wallos-manifest.txt.sig" 2>/dev/null || true
+                    # DS-Q4: SHA256SUMS 本身也要验签 (之前只下载不验证)
+                    if ! abox_verify_sig_gate "$_n2_work/SHA256SUMS" "$_n2_work/SHA256SUMS.sig" "Wallos SHA256SUMS (N-2 fast path)"; then
+                        msg "${RED}[!] N-2 SHA256SUMS signature rejected and signing enforcement is ON; refusing.${NC}"
+                        trap - EXIT
+                        restore_saved_trap EXIT "$_n2_prev_trap_exit"
+                        rm -rf -- "$_n2_work"
+                        return 1
+                    fi
                     if ! abox_verify_sig_gate "$_n2_work/wallos-manifest.txt" "$_n2_work/wallos-manifest.txt.sig" "Wallos manifest (N-2 fast path)"; then
                         # D-10: abox_verify_sig_gate only returns 1 when ABOX_SIGNING_ENFORCE=1.
                         # In that mode, falling back to an unsigned tag pull would defeat
@@ -17414,11 +17442,11 @@ view_config() {
       "server": "$S_IP",
       "server_ports": ["$HY2_SB_PORTS"],
       "hop_interval": "30s",
-      "password": "$HY2_PASS",
+      "password": $(json_escape "$HY2_PASS"),
 $(singbox_hy2_tls_json),
       "obfs": {
         "type": "salamander",
-        "password": "$HY2_OBFS"
+        "password": $(json_escape "$HY2_OBFS")
       }
     }
 EOF_SB
@@ -17431,11 +17459,11 @@ EOF_SB
       "type": "hysteria2",
       "server": "$S_IP",
       "server_port": ${HY2_BASE_PORT:-443},
-      "password": "$HY2_PASS",
+      "password": $(json_escape "$HY2_PASS"),
 $(singbox_hy2_tls_json),
       "obfs": {
         "type": "salamander",
-        "password": "$HY2_OBFS"
+        "password": $(json_escape "$HY2_OBFS")
       }
     }
 EOF_SB
@@ -17448,7 +17476,7 @@ EOF_SB
       "server": "$LINK_IP",
       "server_port": $SS_PORT,
       "method": "2022-blake3-aes-128-gcm",
-      "password": "$SS_PASS"
+      "password": $(json_escape "$SS_PASS")
     }
 EOF_SB
     fi
@@ -19330,7 +19358,7 @@ PY_SELFTEST_TAR
     [[ "$(core_release_mirror_version SagerNet/sing-box)" == "$ABOX_SINGBOX_MIRROR_VERSION" ]] || { echo 'FAIL: recovery pin resolver'; failures=$((failures + 1)); }
     local mock_core_versions=$'schema=1\nXray=v26.3.27\nsing-box=v1.14.3\nHysteria=app/v2.13.0'
     [[ "$(core_latest_mirror_tag_from_text XTLS/Xray-core "$mock_core_versions")" == 'v26.3.27' ]] || { echo 'FAIL: latest Xray mirror metadata parser'; failures=$((failures + 1)); }
-    awk '/^run_self_tests\(\) \{/ { exit } /expect_sum=.*curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30/ { found=1 } END { exit !found }' "$0" || { echo 'FAIL: mirror checksum download must follow GitHub release redirects'; failures=$((failures + 1)); }
+    awk '/^run_self_tests\(\) \{/ { exit } /curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "\$mirror_sum" -o "\$sum_file"/ { found=1 } END { exit !found }' "$0" || { echo 'FAIL: mirror checksum download must follow GitHub release redirects'; failures=$((failures + 1)); }
     [[ "$(core_latest_mirror_tag_from_text SagerNet/sing-box "$mock_core_versions")" == 'v1.14.3' ]] || { echo 'FAIL: latest sing-box mirror metadata parser'; failures=$((failures + 1)); }
     [[ "$(core_latest_mirror_tag_from_text HyNetworks/hysteria "$mock_core_versions")" == 'app/v2.13.0' ]] || { echo 'FAIL: latest Hysteria mirror metadata parser'; failures=$((failures + 1)); }
     if core_latest_mirror_tag_from_text XTLS/Xray-core $'Xray=v26.7.28-rc.1'; then echo 'FAIL: prerelease mirror metadata accepted as latest stable'; failures=$((failures + 1)); fi
@@ -20687,8 +20715,9 @@ PY_F05_TPUB
                         if verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/dummy.sig"; then
                             echo 'FAIL: F-05 verify accepted without Ed25519 support'; failures=$((failures + 1))
                         fi
-                        if ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>/dev/null; then
-                            echo 'FAIL: F-05 gate did not fail-closed without Ed25519 support'; failures=$((failures + 1))
+                        # DS-Q4: OpenSSL无Ed25519时改为警告继续（CentOS 7兼容），不再fail-closed
+                        if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>/dev/null; then
+                            echo 'FAIL: F-05 gate should warn-and-continue without Ed25519 support'; failures=$((failures + 1))
                         fi
                     fi
                     # Tampered data must FAIL.
@@ -20705,11 +20734,18 @@ PY_F05_TPUB
                     if verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig"; then
                         echo 'FAIL: F-05 missing sig accepted'; failures=$((failures + 1))
                     fi
-                    # Enforcement gate: with ENFORCE=1, missing sig must return 1.
-                    if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then
-                        : # expected: gate returns 1
+                    # Enforcement gate: with ENFORCE=1, missing sig must return 1
+                    # (unless OpenSSL lacks Ed25519, where DS-Q4 downgrades to warn-and-continue).
+                    if _openssl_has_ed25519; then
+                        if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then
+                            : # expected: gate returns 1
+                        else
+                            echo 'FAIL: F-05 gate did not fail-closed on missing sig'; failures=$((failures + 1))
+                        fi
                     else
-                        echo 'FAIL: F-05 gate did not fail-closed on missing sig'; failures=$((failures + 1))
+                        if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then
+                            echo 'FAIL: F-05 gate should warn-and-continue without Ed25519 support'; failures=$((failures + 1))
+                        fi
                     fi
                     # Enforcement gate: with ENFORCE=0, missing sig warns but returns 0.
                     if ! ABOX_SIGNING_ENFORCE=0 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then

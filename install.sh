@@ -20606,14 +20606,32 @@ PY_F05_TPUB
 ) || _f05_pub_b64=''
                 if [[ -n "$_f05_pub_b64" ]]; then
                     printf 'F-05 test fixture data\n' > "$_f05_tdir/data.txt"
-                    openssl pkeyutl -sign -inkey "$_f05_tdir/priv.pem" -rawin \
-                        -in "$_f05_tdir/data.txt" 2>/dev/null | base64 > "$_f05_tdir/data.txt.sig" || \
-                        { echo 'FAIL: F-05 signing'; failures=$((failures + 1)); }
+                    # Ed25519 CLI signing needs `openssl pkeyutl -rawin` (OpenSSL 3.0+).
+                    # On older OpenSSL (e.g. 1.1.1 on RHEL8) the positive roundtrip is
+                    # impossible by design; assert the fail-closed behavior instead.
+                    if _openssl_has_ed25519; then
+                        openssl pkeyutl -sign -inkey "$_f05_tdir/priv.pem" -rawin \
+                            -in "$_f05_tdir/data.txt" 2>/dev/null | base64 > "$_f05_tdir/data.txt.sig" || \
+                            { echo 'FAIL: F-05 signing'; failures=$((failures + 1)); }
+                    else
+                        selftest_note 'F-05 positive roundtrip skipped (no Ed25519 CLI support); asserting fail-closed'
+                        : > "$_f05_tdir/data.txt.sig"
+                    fi
                     # Swap in the throwaway pubkey (save/restore the real array).
                     _f05_saved_pubkeys=("${ABOX_SIGNING_PUBKEYS[@]}")
                     ABOX_SIGNING_PUBKEYS=("f05-selftest:$_f05_pub_b64")
-                    if ! verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/data.txt.sig"; then
-                        echo 'FAIL: F-05 valid signature rejected'; failures=$((failures + 1))
+                    if _openssl_has_ed25519; then
+                        if ! verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/data.txt.sig"; then
+                            echo 'FAIL: F-05 valid signature rejected'; failures=$((failures + 1))
+                        fi
+                    else
+                        printf 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\n' > "$_f05_tdir/dummy.sig"
+                        if verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/dummy.sig"; then
+                            echo 'FAIL: F-05 verify accepted without Ed25519 support'; failures=$((failures + 1))
+                        fi
+                        if ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>/dev/null; then
+                            echo 'FAIL: F-05 gate did not fail-closed without Ed25519 support'; failures=$((failures + 1))
+                        fi
                     fi
                     # Tampered data must FAIL.
                     printf 'F-05 TAMPERED\n' > "$_f05_tdir/data-tampered.txt"

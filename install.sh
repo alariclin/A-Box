@@ -20715,8 +20715,9 @@ PY_F05_TPUB
                         if verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/dummy.sig"; then
                             echo 'FAIL: F-05 verify accepted without Ed25519 support'; failures=$((failures + 1))
                         fi
-                        if ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>/dev/null; then
-                            echo 'FAIL: F-05 gate did not fail-closed without Ed25519 support'; failures=$((failures + 1))
+                        # DS-Q4: OpenSSL无Ed25519时改为警告继续（CentOS 7兼容），不再fail-closed
+                        if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>/dev/null; then
+                            echo 'FAIL: F-05 gate should warn-and-continue without Ed25519 support'; failures=$((failures + 1))
                         fi
                     fi
                     # Tampered data must FAIL.
@@ -20733,11 +20734,18 @@ PY_F05_TPUB
                     if verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig"; then
                         echo 'FAIL: F-05 missing sig accepted'; failures=$((failures + 1))
                     fi
-                    # Enforcement gate: with ENFORCE=1, missing sig must return 1.
-                    if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then
-                        : # expected: gate returns 1
+                    # Enforcement gate: with ENFORCE=1, missing sig must return 1
+                    # (unless OpenSSL lacks Ed25519, where DS-Q4 downgrades to warn-and-continue).
+                    if _openssl_has_ed25519; then
+                        if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then
+                            : # expected: gate returns 1
+                        else
+                            echo 'FAIL: F-05 gate did not fail-closed on missing sig'; failures=$((failures + 1))
+                        fi
                     else
-                        echo 'FAIL: F-05 gate did not fail-closed on missing sig'; failures=$((failures + 1))
+                        if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then
+                            echo 'FAIL: F-05 gate should warn-and-continue without Ed25519 support'; failures=$((failures + 1))
+                        fi
                     fi
                     # Enforcement gate: with ENFORCE=0, missing sig warns but returns 0.
                     if ! ABOX_SIGNING_ENFORCE=0 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then

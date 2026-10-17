@@ -2606,7 +2606,7 @@ prune_owned_core_families_except() {
     local allowed=" $* " srv
     for srv in xray sing-box hysteria; do
         [[ "$allowed" == *" $srv "* ]] && continue
-        abox_owns_service "$srv" || continue
+        { abox_owns_service "$srv" || abox_owns_config_only_core_dir "$srv"; } || continue
         stop_abox_service "$srv" || die "无法停止 A-Box 托管服务: $srv"
         remove_owned_core_family "$srv" || die "无法删除 A-Box 托管核心文件: $srv"
     done
@@ -2615,11 +2615,26 @@ prune_owned_core_families_except() {
     fi
 }
 
+abox_owns_config_only_core_dir() {
+    local srv="$1" cfg_dir='' bin='' _u='' _g='' _gid=''
+    same_name_service_unit_path "$srv" >/dev/null 2>&1 && return 1
+    case "$srv" in
+        xray) cfg_dir=/usr/local/etc/xray; bin=/usr/local/bin/xray ;;
+        sing-box) cfg_dir=/etc/sing-box; bin=/usr/local/bin/sing-box ;;
+        hysteria) cfg_dir=/etc/hysteria; bin=/usr/local/bin/hysteria ;;
+        *) return 1 ;;
+    esac
+    [[ ! -e "$bin" && ! -L "$bin" && -d "$cfg_dir" && ! -L "$cfg_dir" ]] || return 1
+    IFS=$'\t' read -r _u _g < <(abox_runtime_identity "$srv" 2>/dev/null) || return 1
+    _gid=$(getent group "$_g" 2>/dev/null | awk -F: '{print $3}')
+    [[ -n "$_gid" && "$(stat -c %u:%g "$cfg_dir" 2>/dev/null || true)" == "0:$_gid" ]]
+}
+
 list_foreign_core_conflicts() {
     local srv path unit key core_paths=''
     local -A seen=()
     for srv in "$@"; do
-        abox_owns_service "$srv" && continue
+        { abox_owns_service "$srv" || abox_owns_config_only_core_dir "$srv"; } && continue
         unit=$(same_name_service_unit_path "$srv" 2>/dev/null || true)
         if [[ -n "$unit" ]]; then
             key="${srv}|${unit}"
@@ -2650,6 +2665,10 @@ remove_owned_core_family() {
     # Ambient ABOX_HEAL_MISSING_MANIFEST from the environment is never consulted.
     local srv="$1" force_heal="${2:-0}" path rc core_paths=''
     if ! abox_owns_service "$srv"; then
+        if abox_owns_config_only_core_dir "$srv"; then
+            remove_core_family_force "$srv" || return 1
+            return 0
+        fi
         core_paths=$(core_family_paths "$srv") || return 1
         while IFS= read -r path; do [[ -e "$path" || -L "$path" ]] && msg "${YELLOW}[!] Skip non-A-Box path: ${path}${NC}"; done <<< "$core_paths"
         return 0
@@ -3120,10 +3139,10 @@ clean_chain() {
         return 1
     fi
     while :; do
-        if ! output=$("$cmd" -w -t "$table" -S "$chain" 2>/dev/null); then
+        if ! output=$(_iptables_q "$cmd" -t "$table" -S "$chain" 2>/dev/null); then
             if [[ "$table" == nat ]]; then
                 local _nat_err
-                _nat_err=$("$cmd" -w -t "$table" -S "$chain" 2>&1 >/dev/null || true)
+                _nat_err=$(_iptables_q "$cmd" -t "$table" -S "$chain" 2>&1 >/dev/null || true)
                 if printf '%s\n' "$_nat_err" | grep -qiE "table .* does not exist|table does not exist|table nat is not supported|protocol not supported|can't initialize|cannot initialize"; then
                     return 0
                 fi
@@ -3134,7 +3153,7 @@ clean_chain() {
         [[ -n "$rule" ]] || break
         rule=${rule//\"/}
         read -r -a argv <<< "$rule"
-        "$cmd" -w -t "$table" "${argv[@]}" >/dev/null 2>&1 || return 1
+        _iptables_do "$cmd" -t "$table" "${argv[@]}" >/dev/null 2>&1 || return 1
     done
 }
 restore_one() {
@@ -3169,7 +3188,7 @@ __abox_firewall_unlock() {
 __abox_normalize_managed_rule_line() {
     local line="$1"
     line=${line//\"/}
-    line=$(printf '%s\n' "$line" | sed -E 's/^(-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\2([[:space:]]|$)/\1\3/')
+    line=$(printf '%s\n' "$line" | sed -E 's/(^|[[:space:]])(-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\2\4/')
     printf '%s\n' "$line"
 }
 reorder_one() {
@@ -3386,7 +3405,7 @@ clean_chain iptables filter INPUT || exit 1
 clean_chain iptables nat PREROUTING || exit 1
 restore_one /etc/ddr/iptables.v4 iptables-restore || exit 1
 reorder_policy iptables WL DROP || exit 1
-if command -v ip6tables >/dev/null 2>&1 && ip6tables -w -S INPUT >/dev/null 2>&1; then
+if command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -S INPUT >/dev/null 2>&1; then
     clean_chain ip6tables filter INPUT || exit 1
     clean_chain ip6tables nat PREROUTING || exit 1
     restore_one /etc/ddr/iptables.v6 ip6tables-restore || exit 1
@@ -4001,7 +4020,7 @@ remove_abox_native_firewall_rule() {
             local comment="A-Box-${spec}-${proto}" cmd check_rc
             for cmd in "$IPT" "$IPT6"; do
                 [[ "$cmd" == "$IPT" || -x "$cmd" || -n "$(command -v "$cmd" 2>/dev/null)" ]] || continue
-                [[ "$cmd" == "$IPT6" ]] && { command -v ip6tables >/dev/null 2>&1 || continue; "$IPT6" -w -S INPUT >/dev/null 2>&1 || continue; }
+                [[ "$cmd" == "$IPT6" ]] && { command -v ip6tables >/dev/null 2>&1 || continue; _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1 || continue; }
                 while :; do
                     if iptables_rule_check "$cmd" INPUT -p "$proto" --dport "$spec" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
@@ -4194,7 +4213,7 @@ remove_ss_open_accept_rules() {
 __abox_normalize_managed_rule_line() {
     local line="$1"
     line=${line//\"/}
-    line=$(printf '%s\n' "$line" | sed -E 's/^(-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\2([[:space:]]|$)/\1\3/')
+    line=$(printf '%s\n' "$line" | sed -E 's/(^|[[:space:]])(-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\2\4/')
     printf '%s\n' "$line"
 }
 
@@ -4434,7 +4453,7 @@ host_has_usable_ipv6() {
 # binary may exist without the kernel modules loaded.
 ip6tables_usable() {
     command -v ip6tables >/dev/null 2>&1 || return 1
-    "$IPT6" -w -S INPUT >/dev/null 2>&1
+    _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1
 }
 
 # Snapshot all A-Box SS rules for $SS_PORT before whitelist modification,
@@ -4520,7 +4539,7 @@ _ss_wl_rollback_to_snapshot() {
         fi
         command -v "$restore_bin" >/dev/null 2>&1 || { failed=1; continue; }
         local cur_out cur_rc
-        cur_out="$("$ipt" -w 5 -S INPUT 2>/dev/null)"; cur_rc=$?
+        cur_out="$(_iptables_q "$ipt" -S INPUT 2>/dev/null)"; cur_rc=$?
         if (( cur_rc != 0 )); then failed=1; continue; fi
         local cur
         cur="$(printf '%s\n' "$cur_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
@@ -4588,7 +4607,7 @@ _ss_wl_rollback_to_snapshot() {
         # (N = number of snapshot rules), proving they are at chain head.
         # Use normalized comparison to handle -m tcp / quote variations.
         local final_out final_rc
-        final_out="$("$ipt" -w 5 -S INPUT 2>/dev/null)"; final_rc=$?
+        final_out="$(_iptables_q "$ipt" -S INPUT 2>/dev/null)"; final_rc=$?
         if (( final_rc != 0 )); then failed=1; continue; fi
         local snap_count
         snap_count="$(printf '%s\n' "$snap" | grep -c -v '^$' || true)"
@@ -6441,7 +6460,7 @@ ensure_abox_runtime_identity() {
 prepare_abox_runtime_config_dir() {
     local family="$1" dir="$2" user group gid mode nlink
     case "$family:$dir" in
-        sing-box:/etc/sing-box|hysteria:/etc/hysteria) ;;
+        sing-box:/etc/sing-box|hysteria:/etc/hysteria|xray:/usr/local/etc/xray) ;;
         *) return 1 ;;
     esac
     ensure_abox_runtime_identity "$family" || return 1
@@ -6488,6 +6507,7 @@ prepare_abox_runtime_permissions() {
     ensure_abox_runtime_identity "$family" || return 1
     case "$family" in
         xray)
+            prepare_abox_runtime_config_dir xray /usr/local/etc/xray || return 1
             prepare_abox_runtime_read_file /usr/local/etc/xray/config.json xray || return 1
             prepare_abox_runtime_write_file /var/log/A-Box-xray-access.log xray || return 1
             prepare_abox_runtime_write_file /var/log/A-Box-xray-error.log xray || return 1
@@ -6607,7 +6627,14 @@ EOF_F2B_FILTER
         [[ -n "${VLESS_PORT:-}" ]] && tcp_ports+="${VLESS_PORT},"
         [[ -n "${XHTTP_PORT:-}" ]] && tcp_ports+="${XHTTP_PORT},"
         [[ -n "${SS_PORT:-}" ]] && { tcp_ports+="${SS_PORT},"; udp_ports+="${SS_PORT},"; }
-        if [[ "${HY2_HOP:-}" == true && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" ]]; then udp_ports+="${HY2_RANGE_START}:${HY2_RANGE_END},"; elif [[ -n "${HY2_BASE_PORT:-}" ]]; then udp_ports+="${HY2_BASE_PORT},"; fi
+        if [[ "${HY2_HOP:-}" == true && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" ]]; then
+            # P2-2: manual hop REDIRECTs to HY2_BASE_PORT in PREROUTING, so Fail2Ban
+            # must monitor HY2_BASE_PORT in INPUT chain, not just the hop range.
+            [[ "${HY2_HOP_IMPL:-}" == manual && -n "${HY2_BASE_PORT:-}" ]] && udp_ports+="${HY2_BASE_PORT},"
+            udp_ports+="${HY2_RANGE_START}:${HY2_RANGE_END},"
+        elif [[ -n "${HY2_BASE_PORT:-}" ]]; then
+            udp_ports+="${HY2_BASE_PORT},"
+        fi
         tcp_ports="${tcp_ports%,}"; udp_ports="${udp_ports%,}"
         if [[ -n "$tcp_ports" || -n "$udp_ports" ]]; then
             f2b_backend=$(firewall_backend) || { rm -f -- "$jail_tmp"; die '无法确定 Fail2Ban 防火墙后端。'; }
@@ -6691,7 +6718,7 @@ hysteria_official_hop_firewall_ok() {
     if command -v iptables >/dev/null 2>&1; then
         if _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
             if has_ipv6; then
-                command -v ip6tables >/dev/null 2>&1 && ip6tables -w -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
+                command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
             fi
             return 0
         fi
@@ -6914,7 +6941,7 @@ hysteria_official_hop_firewall_ok() {
     first_other=$((10#$start + 1))
     if command -v iptables >/dev/null 2>&1 && _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
         if has_ipv6; then
-            command -v ip6tables >/dev/null 2>&1 && ip6tables -w -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
+            command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
         fi
         return 0
     fi
@@ -7427,7 +7454,7 @@ pre_install_setup() {
                 HY2_MONITOR_PORT="$HY2_BASE_PORT"
                 if has_ipv6; then
                     command -v ip6tables >/dev/null 2>&1 || die '检测到全局 IPv6，但系统没有 ip6tables；拒绝启用手动 HY2 跳跃。'
-                    ip6tables -w -t nat -L PREROUTING >/dev/null 2>&1 || die '检测到全局 IPv6，但 ip6tables nat/PREROUTING 不可用；拒绝启用手动 HY2 跳跃。'
+                    _iptables_q ip6tables -t nat -L PREROUTING >/dev/null 2>&1 || die '检测到全局 IPv6，但 ip6tables nat/PREROUTING 不可用；拒绝启用手动 HY2 跳跃。'
                 fi
             fi
             HY2_CLASH_PORTS="${HY2_RANGE_START}-${HY2_RANGE_END}"
@@ -8291,7 +8318,8 @@ deploy_xray() {
     /usr/local/bin/xray version >/dev/null 2>&1 || die 'Xray 执行校验失败。'
     install -d -m 755 /usr/local/share/xray || die 'Xray data directory creation failed.'
     # B9-03: config dir 750 root:abox-xray like sing-box/hysteria (was 755).
-    install -d -o root -g abox-xray -m 750 -- /usr/local/etc/xray || die 'Xray config directory creation failed.'
+    # P0-1: use prepare_abox_runtime_config_dir to ensure group exists first.
+    prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
 
     geo_tmp="$xray_tmp/geo"
     mkdir -p "$geo_tmp" || die 'Xray Geo 临时目录创建失败。'
@@ -9784,7 +9812,7 @@ manage_ss_whitelist() {
             found=0
             if [[ "$del_ip" == *:* ]]; then
                 valid_ipv6_cidr "$del_ip" || { msg "${RED}[!] IPv6 白名单地址非法: $del_ip${NC}"; pause_return; return; }
-                if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! "$IPT6" -w -S INPUT >/dev/null 2>&1; then
+                if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                     msg "${YELLOW}[!] 当前系统没有可用的 IPv6 防火墙，无法移除 IPv6 白名单；IPv4 规则未受影响。${NC}"
                     pause_return
                     return
@@ -10491,10 +10519,10 @@ export_lightweight_subscription() {
     [[ "$F_IP" =~ : ]] && F_IP="[$F_IP]"
     VISION_SNI=${VISION_SNI:-${VLESS_SNI:-}}
     XHTTP_SNI=${XHTTP_SNI:-${VLESS_SNI:-}}
-    VISION_SNI_E=$(urlencode "$VISION_SNI")
-    XHTTP_SNI_E=$(urlencode "$XHTTP_SNI")
-    PUBLIC_KEY_E=$(urlencode "$PUBLIC_KEY")
-    SHORT_ID_E=$(urlencode "$SHORT_ID")
+    VISION_SNI_E=$(urlencode "${VISION_SNI:-}")
+    XHTTP_SNI_E=$(urlencode "${XHTTP_SNI:-}")
+    PUBLIC_KEY_E=$(urlencode "${PUBLIC_KEY:-}")
+    SHORT_ID_E=$(urlencode "${SHORT_ID:-}")
     uri_file="$SUBSCRIBE_DIR/uri-list.txt"
     b64_file="$SUBSCRIBE_DIR/subscription.base64"
     # A-05c-FIX: Build URI content in temp file (umask 077), then atomic install 600.
@@ -10513,7 +10541,7 @@ export_lightweight_subscription() {
     if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" ]] || continue
-            if [[ "$client_uuid" == "$UUID" ]]; then proxy_name='A-Box-VLESS-Vision'; else proxy_name="A-Box-VLESS-Vision-${client_uuid:0:8}"; fi
+            if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='A-Box-VLESS-Vision'; else proxy_name="A-Box-VLESS-Vision-${client_uuid:0:8}"; fi
             url="vless://$client_uuid@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#$proxy_name"
             printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp" "$_uuid_list_tmp"; return 1; }
         done < "$_uuid_list_tmp"
@@ -10521,7 +10549,7 @@ export_lightweight_subscription() {
     if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" ]] || continue
-            if [[ "$client_uuid" == "$UUID" ]]; then proxy_name='A-Box-VLESS-XHTTP'; else proxy_name="A-Box-VLESS-XHTTP-${client_uuid:0:8}"; fi
+            if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='A-Box-VLESS-XHTTP'; else proxy_name="A-Box-VLESS-XHTTP-${client_uuid:0:8}"; fi
             url="vless://$client_uuid@$F_IP:$XHTTP_PORT?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#$proxy_name"
             printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp" "$_uuid_list_tmp"; return 1; }
         done < "$_uuid_list_tmp"
@@ -11110,7 +11138,7 @@ timezone_apply_with_rollback() {
     esac
 }
 timezone_choose_from_list() {
-    local query="${1:-}" page=0 page_size=25 input tz confirm idx first last title page_label number_prompt search_prompt invalid_prompt range_prompt confirm_prompt
+    local query="${1:-}" page=0 page_size=25 input tz confirm idx first last title page_label number_prompt search_prompt invalid_prompt range_prompt confirm_prompt _formatted_prompt
     local -a all=() filtered=()
     case "${ABOX_LANG:-zh}" in
         en)
@@ -11152,8 +11180,8 @@ timezone_choose_from_list() {
             *)
                 ((input>=1 && input<=${#filtered[@]})) || { msg "${YELLOW}$range_prompt${NC}"; sleep 1; continue; }
                 tz="${filtered[$((input-1))]}"
-                printf -v confirm_prompt "$confirm_prompt" "$tz"
-                read -r -p "$confirm_prompt" confirm
+                printf -v _formatted_prompt "$confirm_prompt" "$tz"
+                read -r -p "$_formatted_prompt" confirm
                 is_yes "$confirm" || continue
                 timezone_apply_with_rollback "$tz"
                 pause_return
@@ -11163,7 +11191,7 @@ timezone_choose_from_list() {
     done
 }
 timezone_choose_locale() {
-    local page=0 page_size=25 first last i value answer title prompt invalid_prompt range_prompt confirm_prompt
+    local page=0 page_size=25 first last i value answer title prompt invalid_prompt range_prompt confirm_prompt _formatted_prompt
     local -a locales=()
     case "${ABOX_LANG:-zh}" in
         en) title='Available system locales'; prompt='Enter number; n/p next/previous; 0 back: '; invalid_prompt='Enter a number, n, p or 0.'; range_prompt='Number out of range.'; confirm_prompt='Set system LANG to %s? [Y/N]: ' ;;
@@ -11195,8 +11223,8 @@ timezone_choose_locale() {
             *)
                 ((value>=1 && value<=${#locales[@]})) || { msg "${YELLOW}$range_prompt${NC}"; sleep 1; continue; }
                 value="${locales[$((value-1))]}"
-                printf -v confirm_prompt "$confirm_prompt" "$value"
-                read -r -p "$confirm_prompt" answer
+                printf -v _formatted_prompt "$confirm_prompt" "$value"
+                read -r -p "$_formatted_prompt" answer
                 is_yes "$answer" || continue
                 if command -v localectl >/dev/null 2>&1; then
                     localectl set-locale "LANG=$value" || { msg "${RED}Locale update failed.${NC}"; pause_return; return 1; }
@@ -11215,7 +11243,7 @@ timezone_choose_locale() {
 }
 timezone_locale_ntp_menu() {
     clear
-    local c ntp synced now
+    local c ntp synced now prompt
     now=$(date '+%Y-%m-%d %H:%M:%S %Z (%z)' 2>/dev/null || date)
     ntp='unknown'; synced='unknown'
     if command -v timedatectl >/dev/null 2>&1; then
@@ -11279,7 +11307,7 @@ timezone_locale_ntp_menu() {
             ;;
     esac
     msg "${GREEN}0. 返回${NC}"
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; ja) prompt='選択してください [0-5]: ' ;; zh-tw) prompt='請選擇 [0-5]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; ja) prompt='選択してください [0-5]: ' ;; zh-tw) prompt='請選擇 [0-5]：' ;; *) prompt='请选择 [0-5]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1) timezone_choose_from_list '' ;;
@@ -11427,11 +11455,13 @@ dns_snapshot_recover_pending_swap() {
     elif [[ -n "$old_path" && -f "$old_path/COMPLETE" ]]; then
         # Interrupted after rename, before new moved in: restore old FIRST
         # so a subsequent restore always finds a complete snapshot.
-        mv -T -- "$old_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
+        rm -rf -- "$DNS_BACKUP_DIR" 2>/dev/null || true
+        mv -- "$old_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
         [[ -n "$new_path" ]] && rm -rf -- "$new_path" 2>/dev/null || true
     elif [[ -n "$new_path" && -f "$new_path/COMPLETE" ]]; then
         # Old renamed aside, new never moved: complete the swap.
-        mv -T -- "$new_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
+        rm -rf -- "$DNS_BACKUP_DIR" 2>/dev/null || true
+        mv -- "$new_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
         [[ -n "$old_path" ]] && rm -rf -- "$old_path" 2>/dev/null || true
     else
         # Total loss: none of target/old/new has COMPLETE. The pre-existing
@@ -11474,15 +11504,15 @@ dns_snapshot_install_new() {
         chmod 600 "$pending" 2>/dev/null || true
         mv -- "$DNS_BACKUP_DIR" "$old_backup" || { rm -f -- "$pending"; rm -rf -- "$staging"; return 1; }
         # mv -T: replace target, never move staging inside it.
-        if ! mv -T -- "$staging" "$DNS_BACKUP_DIR"; then
-            mv -T -- "$old_backup" "$DNS_BACKUP_DIR" 2>/dev/null || true
+        if ! mv -- "$staging" "$DNS_BACKUP_DIR"; then
+            mv -- "$old_backup" "$DNS_BACKUP_DIR" 2>/dev/null || true
             rm -f -- "$pending"
             return 1
         fi
         rm -rf -- "$old_backup"
         rm -f -- "$pending"
     else
-        mv -T -- "$staging" "$DNS_BACKUP_DIR" || { rm -rf -- "$staging"; return 1; }
+        mv -- "$staging" "$DNS_BACKUP_DIR" || { rm -rf -- "$staging"; return 1; }
     fi
     return 0
 }
@@ -11982,7 +12012,7 @@ dns_menu() {
             ;;
     esac
     msg "${GREEN}0. Back / 返回${NC}"
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-7]: ' ;; ru) prompt='Выберите [0–7]: ' ;; fa) prompt='انتخاب [۰ تا ۷]: ' ;; ja) prompt='選択してください [0-7]: ' ;; zh-tw) prompt='請選擇 [0-7]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-7]: ' ;; ru) prompt='Выберите [0–7]: ' ;; fa) prompt='انتخاب [۰ تا ۷]: ' ;; ja) prompt='選択してください [0-7]: ' ;; zh-tw) prompt='請選擇 [0-7]：' ;; *) prompt='请选择 [0-7]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1)
@@ -12059,7 +12089,7 @@ tune_vps() {
             ;;
     esac
     local c
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; ja) prompt='選択してください [0-2]: ' ;; zh-tw) prompt='請選擇 [0-2]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; ja) prompt='選択してください [0-2]: ' ;; zh-tw) prompt='請選擇 [0-2]：' ;; *) prompt='请选择 [0-2]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1) apply_vps_tune; pause_return ;;
@@ -14130,9 +14160,13 @@ PY_LEGACY_EXTRACT
     else
         rm -rf "$work"; die 'Legacy backup is missing /etc/ddr/.env.'
     fi
-    : > "$work/meta/cron.abox.txt"
-    : > "$work/meta/iptables.snapshot"
-    : > "$work/meta/ip6tables.snapshot"
+    local _legacy_cfg_dir
+    for _legacy_cfg_dir in "$root/usr/local/etc/xray" "$root/etc/sing-box" "$root/etc/hysteria"; do
+        if [[ -d "$_legacy_cfg_dir" && ! -L "$_legacy_cfg_dir" ]]; then
+            find "$_legacy_cfg_dir" -type d -exec chmod 700 {} + 2>/dev/null || true
+            find "$_legacy_cfg_dir" -type f -exec chmod 600 {} + 2>/dev/null || true
+        fi
+    done
     printf 'iptables\n' > "$work/meta/firewall.backend"
     : > "$work/meta/services.state"
     : > "$work/meta/managed-paths.txt"
@@ -14141,10 +14175,6 @@ PY_LEGACY_EXTRACT
     [[ -f "$work/meta/iptables.snapshot" ]] || : > "$work/meta/iptables.snapshot"
     [[ -f "$work/meta/ip6tables.snapshot" ]] || : > "$work/meta/ip6tables.snapshot"
     printf 'iptables\n' > "$work/meta/firewall.backend"
-    : > "$work/meta/services.state"
-    for srv in xray sing-box hysteria; do
-        if backup_root_contains_service "$root" "$srv"; then printf '%s|0|0\n' "$srv" >> "$work/meta/services.state"; fi
-    done
     { managed_auxiliary_paths; printf '%s\n' \
         /usr/local/bin/xray /usr/local/etc/xray /usr/local/share/xray /etc/systemd/system/xray.service /etc/init.d/xray /etc/conf.d/xray \
         /usr/local/bin/sing-box /etc/sing-box /etc/systemd/system/sing-box.service /etc/init.d/sing-box /etc/conf.d/sing-box \
@@ -14191,6 +14221,7 @@ MAX_TOTAL=1024*1024*1024
 SB_DIR='root/etc/sing-box'
 HY_DIR='root/etc/hysteria'
 HY_ACME=HY_DIR + '/acme'
+XRAY_DIR='root/usr/local/etc/xray'
 XRAY_CFG='root/usr/local/etc/xray/config.json'
 sb_gid=None
 hy_uid=None
@@ -14221,6 +14252,7 @@ for m in members:
     in_sb = n == SB_DIR or n.startswith(SB_DIR + '/')
     in_hy = n == HY_DIR or n.startswith(HY_DIR + '/')
     in_hy_acme = n == HY_ACME or n.startswith(HY_ACME + '/')
+    in_xray = n == XRAY_DIR or n.startswith(XRAY_DIR + '/')
     in_xray_cfg = (n == XRAY_CFG)
     if in_xray_cfg:
         # Boundary 1: Xray config.json is root:abox-xray 0640 (gid != 0).
@@ -14232,6 +14264,19 @@ for m in members:
             if mode & 0o027: raise SystemExit(1)
             if xray_gid is None: xray_gid=m.gid
             elif m.gid != xray_gid: raise SystemExit(1)
+    elif in_xray:
+        # Xray config dir is root:abox-xray 0750 (gid != 0) or legacy root:root (no group/other write).
+        if m.uid != 0: raise SystemExit(1)
+        if m.gid == 0:
+            if n == XRAY_DIR:
+                if mode & 0o022: raise SystemExit(1)
+            else:
+                if mode & 0o077: raise SystemExit(1)
+        else:
+            if mode & 0o027: raise SystemExit(1)
+            if xray_gid is None: xray_gid=m.gid
+            elif m.gid != xray_gid: raise SystemExit(1)
+        if n == XRAY_DIR and not ((m.gid != 0 and mode == 0o750) or (m.gid == 0 and (mode & 0o022) == 0)): raise SystemExit(1)
     elif in_sb:
         # Sing-box config data may be group-readable by its dedicated runtime
         # service account. Preserve root:root compatibility, but when a non-root
@@ -14591,7 +14636,8 @@ normalize_restored_runtime_ownership() {
             ;;
         xray)
             [[ -d /usr/local/etc/xray && ! -L /usr/local/etc/xray ]] || return 1
-            chown -R root:root /usr/local/etc/xray || return 1
+            chown -R "root:$group" /usr/local/etc/xray || return 1
+            chmod 750 /usr/local/etc/xray || return 1
             ;;
         *) return 1 ;;
     esac
@@ -15837,6 +15883,11 @@ _wallos_pull_versioned_image() {
        ! curl -fLsS --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
         rm -rf -- "$work"; return 1
     fi
+    # P1-2: verify SHA256SUMS signature before trusting it.
+    curl -fLsS --connect-timeout 8 --max-time 30 "${sum_url}.sig" -o "$work/SHA256SUMS.sig" 2>/dev/null || true
+    if ! abox_verify_sig_gate "$work/SHA256SUMS" "$work/SHA256SUMS.sig" "Wallos versioned SHA256SUMS"; then
+        rm -rf -- "$work"; return 1
+    fi
     # Verify manifest against SHA256SUMS (fail-closed).
     local manifest_expected manifest_actual
     manifest_expected=$(awk -v f="$ver_manifest" '$2==f || $2==("*" f) {print $1; exit}' "$work/SHA256SUMS" 2>/dev/null || true)
@@ -16017,6 +16068,12 @@ wallos_pull_or_restore_image() {
     if [[ ! "$manifest_expected" =~ ^[A-Fa-f0-9]{64}$ || "${manifest_expected,,}" != "${manifest_actual,,}" ]]; then
         rm -rf -- "$work"
         msg "${RED}Wallos manifest checksum mismatch; refusing to load it.${NC}"
+        return 1
+    fi
+    # P1-2: verify SHA256SUMS signature before trusting it.
+    curl -fLsS --connect-timeout 8 --max-time 30 "${sum_url}.sig" -o "$work/SHA256SUMS.sig" 2>/dev/null || true
+    if ! abox_verify_sig_gate "$work/SHA256SUMS" "$work/SHA256SUMS.sig" "Wallos SHA256SUMS (fallback path)"; then
+        rm -rf -- "$work"
         return 1
     fi
     # F-05: verify detached Ed25519 signature of the manifest.
@@ -16611,7 +16668,12 @@ wallos_install_or_update() {
             return 1
         }
         # N-11: prune local images to current + previous (2 max, 500MB cap).
-        wallos_prune_local_images "$image" "$old_image" || true
+        # P2-3: skip old_image when same as image to avoid deleting N-1 rollback.
+        if [[ "$image" != "$old_image" ]]; then
+            wallos_prune_local_images "$image" "$old_image" || true
+        else
+            wallos_prune_local_images "$image" || true
+        fi
     fi
     case "${ABOX_LANG:-zh}" in
         en)
@@ -17082,7 +17144,7 @@ EOF_TLS
 }
 
 write_clash_yaml() {
-    local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="$LINK_IP" hy2_name="A-Box-Hy2-Self" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
+    local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="${LINK_IP:-}" hy2_name="A-Box-Hy2-Self" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
     local hy2_pass_yaml hy2_obfs_yaml ss_pass_yaml clash_mlkem=false clash_mlkem_rc
     if clash_reality_mlkem_enabled; then
         clash_mlkem=true
@@ -17157,24 +17219,24 @@ EOF_CLASH
         if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
             while IFS= read -r client_uuid; do
                 [[ -n "$client_uuid" ]] || continue
-                if [[ "$client_uuid" == "$UUID" ]]; then proxy_name='A-Box-VLESS-Vision'; else proxy_name="A-Box-VLESS-Vision-${client_uuid:0:8}"; fi
+                if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='A-Box-VLESS-Vision'; else proxy_name="A-Box-VLESS-Vision-${client_uuid:0:8}"; fi
                 cat <<EOF_CLASH
   - name: "$proxy_name"
     type: vless
-    server: "$LINK_IP"
-    port: $VLESS_PORT
+    server: "${LINK_IP:-}"
+    port: ${VLESS_PORT:-443}
     uuid: "$client_uuid"
     udp: true
     tls: true
-    servername: "$VISION_SNI"
+    servername: "${VISION_SNI:-}"
     client-fingerprint: chrome
     encryption: ""
     network: tcp
     flow: xtls-rprx-vision
     packet-encoding: xudp
     reality-opts:
-      public-key: "$PUBLIC_KEY"
-      short-id: "$SHORT_ID"
+      public-key: "${PUBLIC_KEY:-}"
+      short-id: "${SHORT_ID:-}"
       support-x25519mlkem768: $clash_mlkem
     smux:
       enabled: false
@@ -17184,28 +17246,28 @@ EOF_CLASH
         if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
             while IFS= read -r client_uuid; do
                 [[ -n "$client_uuid" ]] || continue
-                if [[ "$client_uuid" == "$UUID" ]]; then proxy_name='A-Box-VLESS-XHTTP'; else proxy_name="A-Box-VLESS-XHTTP-${client_uuid:0:8}"; fi
+                if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='A-Box-VLESS-XHTTP'; else proxy_name="A-Box-VLESS-XHTTP-${client_uuid:0:8}"; fi
                 cat <<EOF_CLASH
   - name: "$proxy_name"
     type: vless
-    server: "$LINK_IP"
-    port: $XHTTP_PORT
+    server: "${LINK_IP:-}"
+    port: ${XHTTP_PORT:-8443}
     uuid: "$client_uuid"
     udp: true
     tls: true
-    servername: "$XHTTP_SNI"
+    servername: "${XHTTP_SNI:-}"
     client-fingerprint: chrome
     encryption: ""
     network: xhttp
     alpn:
       - h2
     reality-opts:
-      public-key: "$PUBLIC_KEY"
-      short-id: "$SHORT_ID"
+      public-key: "${PUBLIC_KEY:-}"
+      short-id: "${SHORT_ID:-}"
       support-x25519mlkem768: $clash_mlkem
     xhttp-opts:
       path: /xhttp
-      host: "$XHTTP_SNI"
+      host: "${XHTTP_SNI:-}"
       mode: stream-one
     smux:
       enabled: false
@@ -17234,7 +17296,7 @@ EOF_CLASH
   - name: "$hy2_name"
     type: hysteria2
     server: "$HY2_DOMAIN"
-    port: $HY2_BASE_PORT
+    port: ${HY2_BASE_PORT:-443}
     password: ${hy2_pass_yaml}
     alpn:
       - h3
@@ -17256,7 +17318,7 @@ EOF_CLASH
     alpn:
       - h3
     skip-cert-verify: true
-    fingerprint: "$HY2_CERT_SHA256_FP"
+    fingerprint: "${HY2_CERT_SHA256_FP:-}"
     obfs: salamander
     obfs-password: ${hy2_obfs_yaml}
 EOF_CLASH
@@ -17265,12 +17327,12 @@ EOF_CLASH
   - name: "$hy2_name"
     type: hysteria2
     server: "$S_IP"
-    port: $HY2_BASE_PORT
+    port: ${HY2_BASE_PORT:-443}
     password: ${hy2_pass_yaml}
     alpn:
       - h3
     skip-cert-verify: true
-    fingerprint: "$HY2_CERT_SHA256_FP"
+    fingerprint: "${HY2_CERT_SHA256_FP:-}"
     obfs: salamander
     obfs-password: ${hy2_obfs_yaml}
 EOF_CLASH
@@ -17281,8 +17343,8 @@ EOF_CLASH
             cat <<EOF_CLASH
   - name: "A-Box-SS"
     type: ss
-    server: "$LINK_IP"
-    port: $SS_PORT
+    server: "${LINK_IP:-}"
+    port: ${SS_PORT:-2053}
     cipher: 2022-blake3-aes-128-gcm
     password: ${ss_pass_yaml}
     udp: true
@@ -17300,7 +17362,7 @@ EOF_CLASH
         [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo '      - A-Box-VLESS-Vision'
         [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo '      - A-Box-VLESS-XHTTP'
         while IFS= read -r client_uuid; do
-            [[ -n "$client_uuid" && "$client_uuid" != "$UUID" ]] || continue
+            [[ -n "$client_uuid" && "$client_uuid" != "${UUID:-}" ]] || continue
             [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo "      - A-Box-VLESS-Vision-${client_uuid:0:8}"
             [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo "      - A-Box-VLESS-XHTTP-${client_uuid:0:8}"
         done < "$_clash_uuid_list_tmp"
@@ -17359,19 +17421,19 @@ view_config() {
     fi
     VISION_SNI=${VISION_SNI:-${VLESS_SNI:-}}
     XHTTP_SNI=${XHTTP_SNI:-${VLESS_SNI:-}}
-    local F_IP="$LINK_IP" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME
+    local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME
     local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX
     IFS=$'\t' read -r HY2_URI_PORT HY2_QUERY_PREFIX < <(build_hy2_uri_endpoint) || die 'Hysteria2 分享链接端口参数无效。'
     [[ "$LINK_IP" =~ : ]] && F_IP="[$LINK_IP]"
     [[ -z "$LINK_IP" || "$LINK_IP" == 'N/A' ]] && msg "${YELLOW}[!] 未能自动获取公网 IP，分享链接可能不可用。${NC}"
-    VISION_SNI_E=$(urlencode "$VISION_SNI")
-    XHTTP_SNI_E=$(urlencode "$XHTTP_SNI")
-    PUBLIC_KEY_E=$(urlencode "$PUBLIC_KEY")
-    SHORT_ID_E=$(urlencode "$SHORT_ID")
-    HY2_PASS_E=$(urlencode "$HY2_PASS")
-    HY2_OBFS_E=$(urlencode "$HY2_OBFS")
-    HY2_DOMAIN_E=$(urlencode "$HY2_DOMAIN")
-    HY2_PIN_E=$(urlencode "$HY2_CERT_SHA256_FP")
+    VISION_SNI_E=$(urlencode "${VISION_SNI:-}")
+    XHTTP_SNI_E=$(urlencode "${XHTTP_SNI:-}")
+    PUBLIC_KEY_E=$(urlencode "${PUBLIC_KEY:-}")
+    SHORT_ID_E=$(urlencode "${SHORT_ID:-}")
+    HY2_PASS_E=$(urlencode "${HY2_PASS:-}")
+    HY2_OBFS_E=$(urlencode "${HY2_OBFS:-}")
+    HY2_DOMAIN_E=$(urlencode "${HY2_DOMAIN:-}")
+    HY2_PIN_E=$(urlencode "${HY2_CERT_SHA256_FP:-}")
     msg "${BLUE}======================================================================${NC}"
     msg "${BOLD}${CYAN}全局拓扑网络参数 (${MODE}) / Network Parameters${NC}"
     msg "${BLUE}======================================================================${NC}"
@@ -19663,7 +19725,7 @@ N11EOF
     ( tr_msg() { printf '%s' '%s %s'; }; tprintf synthetic only-one ) >/dev/null 2>&1 && { echo 'FAIL: tprintf accepted mismatched placeholder arguments'; failures=$((failures + 1)); }
     grep -q 'command -v ss >/dev/null 2>&1 || return 2' "$0" || { echo 'FAIL: health probe socket checker must distinguish unavailable ss'; failures=$((failures + 1)); }
     grep -q '2) exit 0 ;;' "$0" || { echo 'FAIL: health probe must not restart services when ss is unavailable'; failures=$((failures + 1)); }
-    grep -q 'PY_VNSTAT_TOTAL_MAIN' "$0" || { echo 'FAIL: main vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
+    grep -q 'PY_TRAFFIC_NOW' <<< "$source_body" || { echo 'FAIL: main vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
     grep -q 'PY_VNSTAT_TOTAL_MONITOR' "$0" || { echo 'FAIL: traffic monitor vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
     grep -q 'PY_TRAFFIC_COMPARE' "$0" || { echo 'FAIL: traffic quota comparison must use exact integer arithmetic'; failures=$((failures + 1)); }
     ! grep -q '^    \[\[ -d /run/systemd/system \]\] && return 0$' "$0" || { echo 'FAIL: systemd detection must not trust /run/systemd/system alone'; failures=$((failures + 1)); }

@@ -2606,7 +2606,7 @@ prune_owned_core_families_except() {
     local allowed=" $* " srv
     for srv in xray sing-box hysteria; do
         [[ "$allowed" == *" $srv "* ]] && continue
-        abox_owns_service "$srv" || continue
+        { abox_owns_service "$srv" || abox_owns_config_only_core_dir "$srv"; } || continue
         stop_abox_service "$srv" || die "无法停止 A-Box 托管服务: $srv"
         remove_owned_core_family "$srv" || die "无法删除 A-Box 托管核心文件: $srv"
     done
@@ -2615,11 +2615,26 @@ prune_owned_core_families_except() {
     fi
 }
 
+abox_owns_config_only_core_dir() {
+    local srv="$1" cfg_dir='' bin='' _u='' _g='' _gid=''
+    same_name_service_unit_path "$srv" >/dev/null 2>&1 && return 1
+    case "$srv" in
+        xray) cfg_dir=/usr/local/etc/xray; bin=/usr/local/bin/xray ;;
+        sing-box) cfg_dir=/etc/sing-box; bin=/usr/local/bin/sing-box ;;
+        hysteria) cfg_dir=/etc/hysteria; bin=/usr/local/bin/hysteria ;;
+        *) return 1 ;;
+    esac
+    [[ ! -e "$bin" && ! -L "$bin" && -d "$cfg_dir" && ! -L "$cfg_dir" ]] || return 1
+    IFS=$'\t' read -r _u _g < <(abox_runtime_identity "$srv" 2>/dev/null) || return 1
+    _gid=$(getent group "$_g" 2>/dev/null | awk -F: '{print $3}')
+    [[ -n "$_gid" && "$(stat -c %u:%g "$cfg_dir" 2>/dev/null || true)" == "0:$_gid" ]]
+}
+
 list_foreign_core_conflicts() {
     local srv path unit key core_paths=''
     local -A seen=()
     for srv in "$@"; do
-        abox_owns_service "$srv" && continue
+        { abox_owns_service "$srv" || abox_owns_config_only_core_dir "$srv"; } && continue
         unit=$(same_name_service_unit_path "$srv" 2>/dev/null || true)
         if [[ -n "$unit" ]]; then
             key="${srv}|${unit}"
@@ -2650,6 +2665,10 @@ remove_owned_core_family() {
     # Ambient ABOX_HEAL_MISSING_MANIFEST from the environment is never consulted.
     local srv="$1" force_heal="${2:-0}" path rc core_paths=''
     if ! abox_owns_service "$srv"; then
+        if abox_owns_config_only_core_dir "$srv"; then
+            remove_core_family_force "$srv" || return 1
+            return 0
+        fi
         core_paths=$(core_family_paths "$srv") || return 1
         while IFS= read -r path; do [[ -e "$path" || -L "$path" ]] && msg "${YELLOW}[!] Skip non-A-Box path: ${path}${NC}"; done <<< "$core_paths"
         return 0

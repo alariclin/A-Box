@@ -14139,9 +14139,6 @@ PY_LEGACY_EXTRACT
     else
         rm -rf "$work"; die 'Legacy backup is missing /etc/ddr/.env.'
     fi
-    : > "$work/meta/cron.abox.txt"
-    : > "$work/meta/iptables.snapshot"
-    : > "$work/meta/ip6tables.snapshot"
     printf 'iptables\n' > "$work/meta/firewall.backend"
     : > "$work/meta/services.state"
     : > "$work/meta/managed-paths.txt"
@@ -14240,10 +14237,13 @@ for m in members:
             if xray_gid is None: xray_gid=m.gid
             elif m.gid != xray_gid: raise SystemExit(1)
     elif in_xray:
-        # Xray config dir is root:abox-xray 0750 (gid != 0).
+        # Xray config dir is root:abox-xray 0750 (gid != 0) or legacy root:root (no group/other write).
         if m.uid != 0: raise SystemExit(1)
         if m.gid == 0:
-            if mode & 0o077: raise SystemExit(1)
+            if n == XRAY_DIR:
+                if mode & 0o022: raise SystemExit(1)
+            else:
+                if mode & 0o077: raise SystemExit(1)
         else:
             if mode & 0o027: raise SystemExit(1)
             if xray_gid is None: xray_gid=m.gid
@@ -17393,7 +17393,7 @@ view_config() {
     fi
     VISION_SNI=${VISION_SNI:-${VLESS_SNI:-}}
     XHTTP_SNI=${XHTTP_SNI:-${VLESS_SNI:-}}
-    local F_IP="$LINK_IP" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME
+    local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME
     local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX
     IFS=$'\t' read -r HY2_URI_PORT HY2_QUERY_PREFIX < <(build_hy2_uri_endpoint) || die 'Hysteria2 分享链接端口参数无效。'
     [[ "$LINK_IP" =~ : ]] && F_IP="[$LINK_IP]"

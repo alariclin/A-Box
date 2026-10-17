@@ -3139,10 +3139,10 @@ clean_chain() {
         return 1
     fi
     while :; do
-        if ! output=$("$cmd" -w -t "$table" -S "$chain" 2>/dev/null); then
+        if ! output=$(_iptables_q "$cmd" -t "$table" -S "$chain" 2>/dev/null); then
             if [[ "$table" == nat ]]; then
                 local _nat_err
-                _nat_err=$("$cmd" -w -t "$table" -S "$chain" 2>&1 >/dev/null || true)
+                _nat_err=$(_iptables_q "$cmd" -t "$table" -S "$chain" 2>&1 >/dev/null || true)
                 if printf '%s\n' "$_nat_err" | grep -qiE "table .* does not exist|table does not exist|table nat is not supported|protocol not supported|can't initialize|cannot initialize"; then
                     return 0
                 fi
@@ -3153,7 +3153,7 @@ clean_chain() {
         [[ -n "$rule" ]] || break
         rule=${rule//\"/}
         read -r -a argv <<< "$rule"
-        "$cmd" -w -t "$table" "${argv[@]}" >/dev/null 2>&1 || return 1
+        _iptables_do "$cmd" -t "$table" "${argv[@]}" >/dev/null 2>&1 || return 1
     done
 }
 restore_one() {
@@ -3405,7 +3405,7 @@ clean_chain iptables filter INPUT || exit 1
 clean_chain iptables nat PREROUTING || exit 1
 restore_one /etc/ddr/iptables.v4 iptables-restore || exit 1
 reorder_policy iptables WL DROP || exit 1
-if command -v ip6tables >/dev/null 2>&1 && ip6tables -w -S INPUT >/dev/null 2>&1; then
+if command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -S INPUT >/dev/null 2>&1; then
     clean_chain ip6tables filter INPUT || exit 1
     clean_chain ip6tables nat PREROUTING || exit 1
     restore_one /etc/ddr/iptables.v6 ip6tables-restore || exit 1
@@ -4020,7 +4020,7 @@ remove_abox_native_firewall_rule() {
             local comment="A-Box-${spec}-${proto}" cmd check_rc
             for cmd in "$IPT" "$IPT6"; do
                 [[ "$cmd" == "$IPT" || -x "$cmd" || -n "$(command -v "$cmd" 2>/dev/null)" ]] || continue
-                [[ "$cmd" == "$IPT6" ]] && { command -v ip6tables >/dev/null 2>&1 || continue; "$IPT6" -w -S INPUT >/dev/null 2>&1 || continue; }
+                [[ "$cmd" == "$IPT6" ]] && { command -v ip6tables >/dev/null 2>&1 || continue; _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1 || continue; }
                 while :; do
                     if iptables_rule_check "$cmd" INPUT -p "$proto" --dport "$spec" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
@@ -4453,7 +4453,7 @@ host_has_usable_ipv6() {
 # binary may exist without the kernel modules loaded.
 ip6tables_usable() {
     command -v ip6tables >/dev/null 2>&1 || return 1
-    "$IPT6" -w -S INPUT >/dev/null 2>&1
+    _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1
 }
 
 # Snapshot all A-Box SS rules for $SS_PORT before whitelist modification,
@@ -6718,7 +6718,7 @@ hysteria_official_hop_firewall_ok() {
     if command -v iptables >/dev/null 2>&1; then
         if _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
             if has_ipv6; then
-                command -v ip6tables >/dev/null 2>&1 && ip6tables -w -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
+                command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
             fi
             return 0
         fi
@@ -6941,7 +6941,7 @@ hysteria_official_hop_firewall_ok() {
     first_other=$((10#$start + 1))
     if command -v iptables >/dev/null 2>&1 && _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
         if has_ipv6; then
-            command -v ip6tables >/dev/null 2>&1 && ip6tables -w -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
+            command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
         fi
         return 0
     fi
@@ -7454,7 +7454,7 @@ pre_install_setup() {
                 HY2_MONITOR_PORT="$HY2_BASE_PORT"
                 if has_ipv6; then
                     command -v ip6tables >/dev/null 2>&1 || die '检测到全局 IPv6，但系统没有 ip6tables；拒绝启用手动 HY2 跳跃。'
-                    ip6tables -w -t nat -L PREROUTING >/dev/null 2>&1 || die '检测到全局 IPv6，但 ip6tables nat/PREROUTING 不可用；拒绝启用手动 HY2 跳跃。'
+                    _iptables_q ip6tables -t nat -L PREROUTING >/dev/null 2>&1 || die '检测到全局 IPv6，但 ip6tables nat/PREROUTING 不可用；拒绝启用手动 HY2 跳跃。'
                 fi
             fi
             HY2_CLASH_PORTS="${HY2_RANGE_START}-${HY2_RANGE_END}"
@@ -9812,7 +9812,7 @@ manage_ss_whitelist() {
             found=0
             if [[ "$del_ip" == *:* ]]; then
                 valid_ipv6_cidr "$del_ip" || { msg "${RED}[!] IPv6 白名单地址非法: $del_ip${NC}"; pause_return; return; }
-                if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! "$IPT6" -w -S INPUT >/dev/null 2>&1; then
+                if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                     msg "${YELLOW}[!] 当前系统没有可用的 IPv6 防火墙，无法移除 IPv6 白名单；IPv4 规则未受影响。${NC}"
                     pause_return
                     return
@@ -10541,7 +10541,7 @@ export_lightweight_subscription() {
     if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" ]] || continue
-            if [[ "$client_uuid" == "$UUID" ]]; then proxy_name='A-Box-VLESS-Vision'; else proxy_name="A-Box-VLESS-Vision-${client_uuid:0:8}"; fi
+            if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='A-Box-VLESS-Vision'; else proxy_name="A-Box-VLESS-Vision-${client_uuid:0:8}"; fi
             url="vless://$client_uuid@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#$proxy_name"
             printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp" "$_uuid_list_tmp"; return 1; }
         done < "$_uuid_list_tmp"
@@ -10549,7 +10549,7 @@ export_lightweight_subscription() {
     if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" ]] || continue
-            if [[ "$client_uuid" == "$UUID" ]]; then proxy_name='A-Box-VLESS-XHTTP'; else proxy_name="A-Box-VLESS-XHTTP-${client_uuid:0:8}"; fi
+            if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='A-Box-VLESS-XHTTP'; else proxy_name="A-Box-VLESS-XHTTP-${client_uuid:0:8}"; fi
             url="vless://$client_uuid@$F_IP:$XHTTP_PORT?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#$proxy_name"
             printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp" "$_uuid_list_tmp"; return 1; }
         done < "$_uuid_list_tmp"
@@ -11455,10 +11455,12 @@ dns_snapshot_recover_pending_swap() {
     elif [[ -n "$old_path" && -f "$old_path/COMPLETE" ]]; then
         # Interrupted after rename, before new moved in: restore old FIRST
         # so a subsequent restore always finds a complete snapshot.
+        rm -rf -- "$DNS_BACKUP_DIR" 2>/dev/null || true
         mv -- "$old_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
         [[ -n "$new_path" ]] && rm -rf -- "$new_path" 2>/dev/null || true
     elif [[ -n "$new_path" && -f "$new_path/COMPLETE" ]]; then
         # Old renamed aside, new never moved: complete the swap.
+        rm -rf -- "$DNS_BACKUP_DIR" 2>/dev/null || true
         mv -- "$new_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
         [[ -n "$old_path" ]] && rm -rf -- "$old_path" 2>/dev/null || true
     else
@@ -14158,6 +14160,13 @@ PY_LEGACY_EXTRACT
     else
         rm -rf "$work"; die 'Legacy backup is missing /etc/ddr/.env.'
     fi
+    local _legacy_cfg_dir
+    for _legacy_cfg_dir in "$root/usr/local/etc/xray" "$root/etc/sing-box" "$root/etc/hysteria"; do
+        if [[ -d "$_legacy_cfg_dir" && ! -L "$_legacy_cfg_dir" ]]; then
+            find "$_legacy_cfg_dir" -type d -exec chmod 700 {} + 2>/dev/null || true
+            find "$_legacy_cfg_dir" -type f -exec chmod 600 {} + 2>/dev/null || true
+        fi
+    done
     printf 'iptables\n' > "$work/meta/firewall.backend"
     : > "$work/meta/services.state"
     : > "$work/meta/managed-paths.txt"
@@ -17135,7 +17144,7 @@ EOF_TLS
 }
 
 write_clash_yaml() {
-    local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="$LINK_IP" hy2_name="A-Box-Hy2-Self" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
+    local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="${LINK_IP:-}" hy2_name="A-Box-Hy2-Self" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
     local hy2_pass_yaml hy2_obfs_yaml ss_pass_yaml clash_mlkem=false clash_mlkem_rc
     if clash_reality_mlkem_enabled; then
         clash_mlkem=true
@@ -17210,24 +17219,24 @@ EOF_CLASH
         if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
             while IFS= read -r client_uuid; do
                 [[ -n "$client_uuid" ]] || continue
-                if [[ "$client_uuid" == "$UUID" ]]; then proxy_name='A-Box-VLESS-Vision'; else proxy_name="A-Box-VLESS-Vision-${client_uuid:0:8}"; fi
+                if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='A-Box-VLESS-Vision'; else proxy_name="A-Box-VLESS-Vision-${client_uuid:0:8}"; fi
                 cat <<EOF_CLASH
   - name: "$proxy_name"
     type: vless
-    server: "$LINK_IP"
-    port: $VLESS_PORT
+    server: "${LINK_IP:-}"
+    port: ${VLESS_PORT:-443}
     uuid: "$client_uuid"
     udp: true
     tls: true
-    servername: "$VISION_SNI"
+    servername: "${VISION_SNI:-}"
     client-fingerprint: chrome
     encryption: ""
     network: tcp
     flow: xtls-rprx-vision
     packet-encoding: xudp
     reality-opts:
-      public-key: "$PUBLIC_KEY"
-      short-id: "$SHORT_ID"
+      public-key: "${PUBLIC_KEY:-}"
+      short-id: "${SHORT_ID:-}"
       support-x25519mlkem768: $clash_mlkem
     smux:
       enabled: false
@@ -17237,28 +17246,28 @@ EOF_CLASH
         if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
             while IFS= read -r client_uuid; do
                 [[ -n "$client_uuid" ]] || continue
-                if [[ "$client_uuid" == "$UUID" ]]; then proxy_name='A-Box-VLESS-XHTTP'; else proxy_name="A-Box-VLESS-XHTTP-${client_uuid:0:8}"; fi
+                if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='A-Box-VLESS-XHTTP'; else proxy_name="A-Box-VLESS-XHTTP-${client_uuid:0:8}"; fi
                 cat <<EOF_CLASH
   - name: "$proxy_name"
     type: vless
-    server: "$LINK_IP"
-    port: $XHTTP_PORT
+    server: "${LINK_IP:-}"
+    port: ${XHTTP_PORT:-8443}
     uuid: "$client_uuid"
     udp: true
     tls: true
-    servername: "$XHTTP_SNI"
+    servername: "${XHTTP_SNI:-}"
     client-fingerprint: chrome
     encryption: ""
     network: xhttp
     alpn:
       - h2
     reality-opts:
-      public-key: "$PUBLIC_KEY"
-      short-id: "$SHORT_ID"
+      public-key: "${PUBLIC_KEY:-}"
+      short-id: "${SHORT_ID:-}"
       support-x25519mlkem768: $clash_mlkem
     xhttp-opts:
       path: /xhttp
-      host: "$XHTTP_SNI"
+      host: "${XHTTP_SNI:-}"
       mode: stream-one
     smux:
       enabled: false
@@ -17287,7 +17296,7 @@ EOF_CLASH
   - name: "$hy2_name"
     type: hysteria2
     server: "$HY2_DOMAIN"
-    port: $HY2_BASE_PORT
+    port: ${HY2_BASE_PORT:-443}
     password: ${hy2_pass_yaml}
     alpn:
       - h3
@@ -17309,7 +17318,7 @@ EOF_CLASH
     alpn:
       - h3
     skip-cert-verify: true
-    fingerprint: "$HY2_CERT_SHA256_FP"
+    fingerprint: "${HY2_CERT_SHA256_FP:-}"
     obfs: salamander
     obfs-password: ${hy2_obfs_yaml}
 EOF_CLASH
@@ -17318,12 +17327,12 @@ EOF_CLASH
   - name: "$hy2_name"
     type: hysteria2
     server: "$S_IP"
-    port: $HY2_BASE_PORT
+    port: ${HY2_BASE_PORT:-443}
     password: ${hy2_pass_yaml}
     alpn:
       - h3
     skip-cert-verify: true
-    fingerprint: "$HY2_CERT_SHA256_FP"
+    fingerprint: "${HY2_CERT_SHA256_FP:-}"
     obfs: salamander
     obfs-password: ${hy2_obfs_yaml}
 EOF_CLASH
@@ -17334,8 +17343,8 @@ EOF_CLASH
             cat <<EOF_CLASH
   - name: "A-Box-SS"
     type: ss
-    server: "$LINK_IP"
-    port: $SS_PORT
+    server: "${LINK_IP:-}"
+    port: ${SS_PORT:-2053}
     cipher: 2022-blake3-aes-128-gcm
     password: ${ss_pass_yaml}
     udp: true
@@ -17353,7 +17362,7 @@ EOF_CLASH
         [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo '      - A-Box-VLESS-Vision'
         [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo '      - A-Box-VLESS-XHTTP'
         while IFS= read -r client_uuid; do
-            [[ -n "$client_uuid" && "$client_uuid" != "$UUID" ]] || continue
+            [[ -n "$client_uuid" && "$client_uuid" != "${UUID:-}" ]] || continue
             [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo "      - A-Box-VLESS-Vision-${client_uuid:0:8}"
             [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo "      - A-Box-VLESS-XHTTP-${client_uuid:0:8}"
         done < "$_clash_uuid_list_tmp"

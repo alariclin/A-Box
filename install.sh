@@ -570,8 +570,6 @@ tr_msg() {
         fa:swap_done) echo 'عملیات Swap پایان یافت.' ;;
         zh-tw:swap_done) echo 'Swap 處理完成。' ;;
         ja:swap_done) echo 'Swap 操作が完了しました。' ;;
-        zh-tw) echo "$key" ;;
-        ja) echo "$key" ;;
         *) echo "$key" ;;
     esac
 }
@@ -1824,6 +1822,36 @@ wildcard_listen_address() {
     fi
 }
 
+_iptables_probe_w() {
+    local cmd="$1"
+    local cache_var="_IPT_W_${cmd//[^a-zA-Z0-9]/_}"
+    if [[ -z "${!cache_var+x}" ]]; then
+        if "$cmd" -w --version >/dev/null 2>&1; then
+            printf -v "$cache_var" '%s' '-w'
+        else
+            printf -v "$cache_var" '%s' ''
+        fi
+    fi
+    _IPT_W_CUR="${!cache_var}"
+}
+_iptables_q() {
+    local cmd="$1"; shift
+    _iptables_probe_w "$cmd"
+    if [[ -n "$_IPT_W_CUR" ]]; then
+        "$cmd" "$_IPT_W_CUR" "$@"
+    else
+        "$cmd" "$@"
+    fi
+}
+_iptables_do() {
+    local cmd="$1"; shift
+    _iptables_probe_w "$cmd"
+    if [[ -n "$_IPT_W_CUR" ]]; then
+        "$cmd" "$_IPT_W_CUR" "$@"
+    else
+        "$cmd" "$@"
+    fi
+}
 ipv6_nat_redirect_usable() {
     command -v ip6tables >/dev/null 2>&1 || return 1
     _iptables_q "$IPT6" -t nat -L PREROUTING >/dev/null 2>&1 || return 1
@@ -3051,9 +3079,39 @@ host_has_usable_ipv6() {
     ip -6 addr show scope link 2>/dev/null | grep -q 'inet6 ' && return 0
     return 1
 }
+_iptables_probe_w() {
+    local cmd="$1"
+    local cache_var="_IPT_W_${cmd//[^a-zA-Z0-9]/_}"
+    if [[ -z "${!cache_var+x}" ]]; then
+        if "$cmd" -w --version >/dev/null 2>&1; then
+            printf -v "$cache_var" '%s' '-w'
+        else
+            printf -v "$cache_var" '%s' ''
+        fi
+    fi
+    _IPT_W_CUR="${!cache_var}"
+}
+_iptables_q() {
+    local cmd="$1"; shift
+    _iptables_probe_w "$cmd"
+    if [[ -n "$_IPT_W_CUR" ]]; then
+        "$cmd" "$_IPT_W_CUR" "$@"
+    else
+        "$cmd" "$@"
+    fi
+}
+_iptables_do() {
+    local cmd="$1"; shift
+    _iptables_probe_w "$cmd"
+    if [[ -n "$_IPT_W_CUR" ]]; then
+        "$cmd" "$_IPT_W_CUR" "$@"
+    else
+        "$cmd" "$@"
+    fi
+}
 clean_chain() {
     local cmd="$1" table="$2" chain="$3" output rule
-    local owned_re='--comment "?A-Box-(HY2-HOP|[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?)"?([[:space:]]|$)'
+    local owned_re='--comment "?A-Box-(HY2-HOP|[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?)"?([ \t\r]|$)'
     local -a argv=()
     if ! command -v "$cmd" >/dev/null 2>&1; then
         # N-04: use objective host_has_usable_ipv6 (not preference-aware has_ipv6)
@@ -3604,14 +3662,14 @@ nftables_native_rules_present() {
         # tables use UPPERCASE (INPUT/FORWARD/OUTPUT). The case-insensitive
         # match misidentified iptables-nft rulesets as native nftables on
         # Debian/Ubuntu, breaking firewall_backend().
-        /^[[:space:]]*chain[[:space:]]+/ {
+        /^[ \t\r]*chain[ \t\r]+/ {
             cname=$2
             gsub(/\{/, "", cname)
             if (cname == "input" || cname == "forward" || cname == "output")
                 native=1
             # G6: custom chain names with filter hook on input are also native.
             # e.g. chain custom { type filter hook input priority 0; ... }
-            if ($0 ~ /type[[:space:]]+filter[[:space:]]+hook[[:space:]]+input/)
+            if ($0 ~ /type[ \t\r]+filter[ \t\r]+hook[ \t\r]+input/)
                 native=1
         }
         END { exit !native }
@@ -4440,7 +4498,18 @@ _ss_wl_rollback_to_snapshot() {
             # If IPv6 was snapshotted but now unusable, mark as failed
             # (don't silently skip)
             if ! ip6tables_usable; then failed=1; continue; fi
+            # G7: match IPv6 restore binary to actual backend (nft vs legacy)
+            local ipt6_ver restore6_ver
+            ipt6_ver="$("$ipt" --version 2>/dev/null || echo "")"
             restore_bin="ip6tables-restore"
+            if command -v "$restore_bin" >/dev/null 2>&1; then
+                restore6_ver="$("$restore_bin" --version 2>/dev/null || echo "")"
+                if [[ "$ipt6_ver" == *"nf_tables"* && "$restore6_ver" != *"nf_tables"* ]]; then
+                    command -v ip6tables-nft-restore >/dev/null 2>&1 && restore_bin="ip6tables-nft-restore"
+                elif [[ "$ipt6_ver" != *"nf_tables"* && "$restore6_ver" == *"nf_tables"* ]]; then
+                    command -v ip6tables-legacy-restore >/dev/null 2>&1 && restore_bin="ip6tables-legacy-restore"
+                fi
+            fi
         fi
         command -v "$restore_bin" >/dev/null 2>&1 || { failed=1; continue; }
         local cur_out cur_rc
@@ -4448,16 +4517,6 @@ _ss_wl_rollback_to_snapshot() {
         if (( cur_rc != 0 )); then failed=1; continue; fi
         local cur
         cur="$(printf '%s\n' "$cur_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
-        # Build a single atomic restore transaction:
-        # 1. Delete all current A-Box rules
-        # 2. Re-insert snapshot rules at chain head in original order
-        # If any -D target is missing (drift), the whole transaction aborts.
-        # NOTE: This places rules at chain head as a policy choice ("unified top"),
-        # not as exact restoration of original absolute positions. Non-A-Box rules
-        # that were before A-Box rules will shift down.
-        # CRITICAL: Never add :CHAIN declarations to this input. Even with
-        # --noflush, iptables-restore will flush any user-defined chain that
-        # is explicitly declared in the input stream.
         local restore_input="*filter"
         local line pos
         while IFS= read -r line; do
@@ -4471,17 +4530,22 @@ _ss_wl_rollback_to_snapshot() {
             (( pos++ ))
         done <<< "$snap"
         restore_input+=$'\nCOMMIT'
-        # Guard: payload must not contain chain declarations.
-        # With --noflush, any declared custom chain would be flushed and rebuilt.
-        if printf '%s\n' "$restore_input" | grep -qE '^[[:space:]]*:'; then
-            printf '%s\n' 'ERROR: internal error: restore payload must not declare chains' >&2
+        # G5: strict payload guard
+        if ! awk '
+            NR == 1 { if ($0 != "*filter") exit 1; next }
+            { lines[NR] = $0 }
+            END {
+                if (NR < 2 || lines[NR] != "COMMIT") exit 1
+                for (i = 2; i < NR; i++) {
+                    if (lines[i] !~ /^-(D|I) INPUT /) exit 1
+                }
+            }
+        ' <<< "$restore_input" || [[ "${restore_input//$'\n'/}" == *[[:cntrl:]]* ]]; then
+            printf '%s\n' 'ERROR: internal error: restore payload failed strict line guard' >&2
             failed=1
             continue
         fi
-        # Pre-check with --test (if supported) to catch format errors
-        # before making any real changes
         if "$restore_bin" --help 2>&1 | grep -q -- "--test"; then
-            # Try with -w first (waits on lock), fall back to without -w for 1.4.x.
             if ! printf '%s\n' "$restore_input" | "$restore_bin" --noflush -w 5 --test >/dev/null 2>&1 &&
                ! printf '%s\n' "$restore_input" | "$restore_bin" --noflush --test >/dev/null 2>&1; then
                 printf '%s\n' 'ERROR: restore payload failed --test pre-check' >&2
@@ -4489,15 +4553,10 @@ _ss_wl_rollback_to_snapshot() {
                 continue
             fi
         fi
-        # Lock handling: -w requires iptables-restore 1.6.2+.
-        # 1.4.20+ has -w for iptables command, but restore -w came in 1.6.2.
-        # NOTE: --help output may not list -w even when supported (observed on
-        # 1.8.10), so probe by trial execution instead of help text parsing.
-        # On older versions, use flock on xtables.lock.
-        # If neither is available, refuse to rollback rather than run unlocked.
-        local restore_rc=0
-        # Probe -w support via trial --test execution (no state change)
-        if printf '*filter\nCOMMIT\n' | "$restore_bin" --noflush -w 1 --test >/dev/null 2>&1; then
+        local restore_rc=0 w_probe_err=''
+        # F10: distinguish option syntax error from lock contention timeout
+        w_probe_err="$(printf '*filter\nCOMMIT\n' | "$restore_bin" --noflush -w 0 --test 2>&1 >/dev/null || true)"
+        if ! grep -qiE 'unrecognized option|unknown option|invalid option|bad argument' <<< "$w_probe_err"; then
             # Modern: use built-in wait
             printf '%s\n' "$restore_input" | "$restore_bin" --noflush -w 5 >/dev/null 2>&1
             restore_rc=$?
@@ -4581,6 +4640,7 @@ _ss_wl_rollback_to_snapshot() {
         return 1
     fi
     _SS_WL_SNAP_TAKEN=0
+    _SS_WL_SNAP_PORT=""
     return 0
 }
 
@@ -4597,6 +4657,9 @@ ss_whitelist_ipv6_precheck() {
 
 enforce_ss_whitelist_order() {
     local port="${1:-${SS_PORT:-}}" failed=0 proto
+    if (( $# == 0 )) && [[ -z "${SS_PORT:-}" ]]; then
+        return 0
+    fi
     # G8: invalid port must fail, not silently succeed.
     valid_port "$port" || return 1
     # FINAL-AUDIT: fail closed here too (defense in depth for restore paths).
@@ -4620,7 +4683,7 @@ clean_nat_rules() {
     }
     local output rule failed=0 owned_re ipv6_nat_error
     local -a argv=()
-    owned_re='--comment "?A-Box-HY2-HOP"?([[:space:]]|$)'
+    owned_re='--comment "?A-Box-HY2-HOP"?([ \t\r]|$)'
     while :; do
         output=$(_iptables_q "$IPT" -t nat -S PREROUTING 2>/dev/null) || { failed=1; break; }
         rule=$(awk -v re="$owned_re" '$0 ~ re { sub(/^-A /,"-D "); print; exit }' <<< "$output")
@@ -4659,7 +4722,7 @@ clean_input_rules() {
     }
     local output rule failed=0 owned_re
     local -a argv=()
-    owned_re='--comment "?A-Box-[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?"?([[:space:]]|$)'
+    owned_re='--comment "?A-Box-[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?"?([ \t\r]|$)'
     remove_native_firewall_rules 2>/dev/null || failed=1
     while :; do
         output=$(_iptables_q "$IPT" -S INPUT 2>/dev/null) || { failed=1; break; }
@@ -6807,44 +6870,32 @@ has_ipv6() { local _p; _p=$(read_ip_pref 2>/dev/null || printf dual); [[ "$_p" =
 # command exists since 1.4.20; pre-1.4.20 systems lack it. All callers use
 # this helper so very old systems degrade gracefully instead of failing
 # on an unrecognized option.
-_iptables_w_flag() {
+_iptables_probe_w() {
     local cmd="$1"
-    # Cache per-command result in a dynamic variable
     local cache_var="_IPT_W_${cmd//[^a-zA-Z0-9]/_}"
-    if [[ -n "${!cache_var:-}" ]]; then
-        printf '%s' "${!cache_var}"
-        return 0
+    if [[ -z "${!cache_var+x}" ]]; then
+        if "$cmd" -w --version >/dev/null 2>&1; then
+            printf -v "$cache_var" '%s' '-w'
+        else
+            printf -v "$cache_var" '%s' ''
+        fi
     fi
-    local flag=""
-    if "$cmd" -w --version >/dev/null 2>&1; then
-        flag="-w"
-    fi
-    printf -v "$cache_var" '%s' "$flag"
-    printf '%s' "$flag"
+    _IPT_W_CUR="${!cache_var}"
 }
-# G3: safe iptables query wrapper. Uses -w only when supported.
-# Usage: _iptables_q <iptables|ip6tables> <args...>
 _iptables_q() {
     local cmd="$1"; shift
-    local wflag
-    wflag=$(_iptables_w_flag "$cmd")
-    if [[ -n "$wflag" ]]; then
-        "$cmd" "$wflag" "$@"
+    _iptables_probe_w "$cmd"
+    if [[ -n "$_IPT_W_CUR" ]]; then
+        "$cmd" "$_IPT_W_CUR" "$@"
     else
         "$cmd" "$@"
     fi
 }
-# G3: safe iptables modification wrapper. Uses -w only when supported.
-# Usage: _iptables_do <iptables|ip6tables> <args...>
-# Usage: _iptables_do <iptables|ip6tables> <args...>
-# NOTE: G3 migration complete. Bare 'iptables -w' calls in systemd service
-# templates are intentionally kept (no bash functions available at service runtime).
 _iptables_do() {
     local cmd="$1"; shift
-    local wflag
-    wflag=$(_iptables_w_flag "$cmd")
-    if [[ -n "$wflag" ]]; then
-        "$cmd" "$wflag" "$@"
+    _iptables_probe_w "$cmd"
+    if [[ -n "$_IPT_W_CUR" ]]; then
+        "$cmd" "$_IPT_W_CUR" "$@"
     else
         "$cmd" "$@"
     fi
@@ -9606,20 +9657,18 @@ PY_TRAFFIC_NOW
 }
 
 remove_ss_source_whitelist_rules() {
-    local failed=0 cmd proto line rule
+    local failed=0 cmd proto line rule ipt_out
     [[ -n "${SS_PORT:-}" ]] || return 0
     for cmd in "$IPT" "$IPT6"; do
         command -v "$cmd" >/dev/null 2>&1 || continue
         _iptables_q "$cmd" -S INPUT >/dev/null 2>&1 || continue
         for proto in tcp udp; do
             while :; do
-                line=$(_iptables_q "$cmd" -S INPUT 2>/dev/null | awk -v p="$proto" -v port="$SS_PORT" '''$0 ~ "^-A INPUT " && $0 ~ ("-p " p) && $0 ~ ("--dport " port) && $0 ~ ("--comment \"?A-Box-" port "-" p "-WL6?\"?($| )") {print; exit}''') || { failed=1; break; }
+                ipt_out=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { failed=1; break; }
+                line=$(awk -v p="$proto" -v port="$SS_PORT" '$0 ~ "^-A INPUT " && $0 ~ ("-p " p) && $0 ~ ("--dport " port) && $0 ~ ("--comment \"?A-Box-" port "-" p "-WL6?\"?($|[ \t\r])") {print; exit}' <<< "$ipt_out") || { failed=1; break; }
                 [[ -n "$line" ]] || break
                 line=${line//\"/}
                 rule="${line#-A INPUT }"
-                # Word-splitting is intentional: all A-Box comments and source
-                # addresses are whitespace-free, and iptables itself tokenizes
-                # the normalized -S form.
                 _iptables_do "$cmd" -D INPUT $rule >/dev/null 2>&1 || { failed=1; break; }
             done
         done
@@ -9630,25 +9679,32 @@ remove_ss_source_whitelist_rules() {
 # B-12: Rebuild SS_WHITELIST_IP from live iptables rules and persist to .env,
 # so menu edits (add/remove) don't leave .env stale for redeploy wizards.
 sync_ss_whitelist_ip_to_env() {
-    local ips='' v6ips='' ipt_output
-    # X-03: --line-numbers is required; without it awk '{print $5}' reads the
-    # DESTINATION column (0.0.0.0/0) instead of SOURCE, wiping the whitelist.
-    # F5: do NOT swallow iptables query errors. If the query fails, abort
-    # instead of writing an empty whitelist to .env (which would wipe the
-    # real whitelist).
-    if ! ipt_output=$($IPT -nL INPUT --line-numbers 2>&1); then
+    local ips='' v6ips='' ipt_output ip6_output
+    [[ -n "${SS_PORT:-}" ]] || return 1
+    if ! ipt_output=$(_iptables_q "$IPT" -S INPUT 2>&1); then
         printf '[A-Box] WARNING: iptables query failed, not syncing whitelist to .env: %s\n' "$ipt_output" >&2
         return 1
     fi
-    ips=$(printf '%s\n' "$ipt_output" | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '0.0.0.0/0' | sort -u | tr '\n' ' ')
-    if command -v ip6tables >/dev/null 2>&1; then
-        local ip6_output
-        if ipt_output=$($IPT6 -nL INPUT --line-numbers 2>&1); then
-            v6ips=$(printf '%s\n' "$ipt_output" | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '::/0' | sort -u | tr '\n' ' ')
-            ips+="$v6ips"
-        else
-            printf '[A-Box] WARNING: ip6tables query failed, skipping IPv6 whitelist sync: %s\n' "$ipt_output" >&2
+    ips=$(awk -v port="$SS_PORT" '
+        $0 ~ ("--comment \"?A-Box-" port "-(tcp|udp)-WL\"?([ \t\r]|$)") && $0 ~ /-j ACCEPT([ \t\r]|$)/ {
+            for (i = 1; i < NF; i++) {
+                if ($i == "-s") { sub(/\/32$/, "", $(i+1)); print $(i+1) }
+            }
+        }
+    ' <<< "$ipt_output" | LC_ALL=C sort -u | tr '\n' ' ')
+    if host_has_usable_ipv6 && ip6tables_usable; then
+        if ! ip6_output=$(_iptables_q "$IPT6" -S INPUT 2>&1); then
+            printf '[A-Box] WARNING: ip6tables query failed, not syncing whitelist to .env: %s\n' "$ip6_output" >&2
+            return 1
         fi
+        v6ips=$(awk -v port="$SS_PORT" '
+            $0 ~ ("--comment \"?A-Box-" port "-(tcp|udp)-WL6\"?([ \t\r]|$)") && $0 ~ /-j ACCEPT([ \t\r]|$)/ {
+                for (i = 1; i < NF; i++) {
+                    if ($i == "-s") { sub(/\/128$/, "", $(i+1)); print $(i+1) }
+                }
+            }
+        ' <<< "$ip6_output" | LC_ALL=C sort -u | tr '\n' ' ')
+        ips+="$v6ips"
     fi
     SS_WHITELIST_IP=$(printf '%s' "$ips" | tr -s ' ' | sed 's/^ *//;s/ *$//')
     write_env || return 1
@@ -9819,6 +9875,7 @@ manage_ss_whitelist() {
                 allowPort "$SS_PORT" "$proto"
             done
             save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+            sync_ss_whitelist_ip_to_env || die 'A-Box 白名单 .env 同步失败。'
             ABOX_DIE_HOOK="$_old_die_hook"
             msg "${GREEN}已切换为全网开放模式 (TCP+UDP)。${NC}"
             pause_return
@@ -11987,7 +12044,6 @@ tune_vps() {
     case "$c" in
         1) apply_vps_tune; pause_return ;;
         2) restore_vps_tune; pause_return ;;
-        zh-tw) return 0 ;;
         *) return 0 ;;
     esac
 }
@@ -12637,8 +12693,8 @@ sni_build_diverse_candidate_pool() {
         }
         {
             line = tolower($0)
-            gsub(/^[[:space:]]+/, "", line)
-            gsub(/[[:space:]]+$/, "", line)
+            gsub(/^[ \t\r]+/, "", line)
+            gsub(/[ \t\r]+$/, "", line)
             if (line == "" || line ~ /^#/) next
             # Portable ERE: avoid {n,m} intervals (mawk does not support them).
             if (line !~ /^([a-z0-9]([a-z0-9-]*[a-z0-9])?[.])+[a-z][a-z]+$/) next
@@ -13753,14 +13809,14 @@ capture_abox_iptables_snapshot() {
     local out="$1" family="${2:-4}" cmd all
     [[ "$family" == 6 ]] && cmd=ip6tables-save || cmd=iptables-save
     if ! command -v "$cmd" >/dev/null 2>&1; then
-        [[ "$family" == 6 ]] && ! has_ipv6 || return 1
+        [[ "$family" == 6 ]] && ! host_has_usable_ipv6 || return 1
         : > "$out"
         return 0
     fi
     all=$(mktemp) || return 1
     if ! "$cmd" > "$all" 2>/dev/null; then
         rm -f "$all"
-        if [[ "$family" == 6 ]] && ! has_ipv6; then
+        if [[ "$family" == 6 ]] && ! host_has_usable_ipv6; then
             : > "$out"
             return 0
         fi
@@ -13772,7 +13828,7 @@ capture_abox_iptables_snapshot() {
 
 restore_abox_iptables_snapshot() {
     local snapshot="$1" family="${2:-4}" mode="${3:-all}" cmd tmp
-    [[ "$family" == 6 ]] && ! has_ipv6 && return 0
+    [[ "$family" == 6 ]] && ! host_has_usable_ipv6 && return 0
     [[ -s "$snapshot" ]] || return 0
     [[ "$family" == 6 ]] && cmd=ip6tables-restore || cmd=iptables-restore
     tmp=$(mktemp) || return 1
@@ -14821,7 +14877,7 @@ restore_latest_backup_silent() {
     # guard like regenerate_runtime_assets_after_restore does (L13851).
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
         load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
-        enforce_ss_whitelist_order "${SS_PORT:-}" || { rm -rf "$work"; return 1; }
+        if [[ -n "${SS_PORT:-}" ]]; then enforce_ss_whitelist_order "$SS_PORT" || { rm -rf "$work"; return 1; }; fi
     else
         clear_abox_env_vars
     fi
@@ -14914,7 +14970,7 @@ restore_from_backup() {
     restore_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 "$mode" || die 'IPv6 A-Box firewall restore failed.'
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
         load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || die '恢复后的 A-Box 环境文件校验失败。'
-        enforce_ss_whitelist_order "${SS_PORT:-}" || die 'Restored SS whitelist order validation failed.'
+        if [[ -n "${SS_PORT:-}" ]]; then enforce_ss_whitelist_order "$SS_PORT" || die 'Restored SS whitelist order validation failed.'; fi
     else
         clear_abox_env_vars
     fi
@@ -15902,13 +15958,11 @@ wallos_pull_or_restore_image() {
             # cannot be affected by tag mutation.
             local _pulled_digest
             _pulled_digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
-            if [[ -n "$_pulled_digest" ]]; then
+            if [[ "$_pulled_digest" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]]; then
                 msg "${CYAN}Wallos image digest: $_pulled_digest${NC}"
-                WALLOS_IMAGE_RESULT="$_pulled_digest"
-            else
-                # Fallback: digest not available (should not happen with successful pull)
-                WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+                docker tag "$_pulled_digest" "bellamy/wallos:$image_tag" >/dev/null 2>&1 || true
             fi
+            WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
             return 0
         fi
     fi
@@ -16377,11 +16431,11 @@ wallos_write_state() {
 
 wallos_install_or_update() {
     local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
-    (( EUID == 0 )) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Для установки Wallos требуются права root.${NC}" ;; fa) msg "${RED}برای نصب Wallos دسترسی root لازم است.${NC}" ;; zh) msg "${RED}安装 Wallos 需要 root 权限。${NC}" ;; *) msg "${RED}Run Wallos setup as root.${NC}" ;; esac; return 1; }
-    command -v jq >/dev/null 2>&1 || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Требуется jq; сначала установите зависимости A-Box.${NC}" ;; fa) msg "${RED}به jq نیاز است؛ ابتدا وابستگی‌های A-Box را نصب کنید.${NC}" ;; zh) msg "${RED}需要 jq，请先安装 A-Box 依赖。${NC}" ;; *) msg "${RED}jq is required; install the A-Box dependencies first.${NC}" ;; esac; return 1; }
+    (( EUID == 0 )) || { case "${ABOX_LANG:-zh}" in en) msg "${RED}Run Wallos setup as root.${NC}" ;; ru) msg "${RED}Для установки Wallos требуются права root.${NC}" ;; fa) msg "${RED}برای نصب Wallos دسترسی root لازم است.${NC}" ;; zh-tw) msg "${RED}安裝 Wallos 需要 root 權限。${NC}" ;; ja) msg "${RED}Wallos のセットアップは root 権限で実行してください。${NC}" ;; *) msg "${RED}安装 Wallos 需要 root 权限。${NC}" ;; esac; return 1; }
+    command -v jq >/dev/null 2>&1 || { case "${ABOX_LANG:-zh}" in en) msg "${RED}jq is required; install the A-Box dependencies first.${NC}" ;; ru) msg "${RED}Требуется jq; сначала установите зависимости A-Box.${NC}" ;; fa) msg "${RED}به jq نیاز است؛ ابتدا وابستگی‌های A-Box را نصب کنید.${NC}" ;; zh-tw) msg "${RED}需要 jq，請先安裝 A-Box 依賴。${NC}" ;; ja) msg "${RED}jq が必要です。先に A-Box の依存パッケージをインストールしてください。${NC}" ;; *) msg "${RED}需要 jq，请先安装 A-Box 依赖。${NC}" ;; esac; return 1; }
     wallos_print_host_info
-    arch=$(wallos_detect_arch) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Поддерживаются архитектуры amd64, arm64 и ARMv7.${NC}" ;; fa) msg "${RED}معماری‌های پشتیبانی‌شده amd64، arm64 و ARMv7 هستند.${NC}" ;; zh) msg "${RED}Wallos 支持 amd64、arm64 和 ARMv7 架构。${NC}" ;; *) msg "${RED}Supported Wallos image architectures are amd64, arm64 and ARMv7.${NC}" ;; esac; return 1; }
-    wallos_install_runtime || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Не удалось установить или запустить Docker; контейнер Wallos не изменён.${NC}" ;; fa) msg "${RED}نصب یا اجرای Docker شکست خورد؛ کانتینر Wallos تغییر نکرد.${NC}" ;; zh) msg "${RED}Docker 安装或启动失败，未修改 Wallos 容器。${NC}" ;; *) msg "${RED}Docker could not be installed or started; no Wallos container was changed.${NC}" ;; esac; return 1; }
+    arch=$(wallos_detect_arch) || { case "${ABOX_LANG:-zh}" in en) msg "${RED}Supported Wallos image architectures are amd64, arm64 and ARMv7.${NC}" ;; ru) msg "${RED}Поддерживаются архитектуры amd64, arm64 и ARMv7.${NC}" ;; fa) msg "${RED}معماری‌های پشتیبانی‌شده amd64، arm64 و ARMv7 هستند.${NC}" ;; zh-tw) msg "${RED}Wallos 支援 amd64、arm64 和 ARMv7 架構。${NC}" ;; ja) msg "${RED}サポートされている Wallos イメージのアーキテクチャは amd64、arm64、ARMv7 です。${NC}" ;; *) msg "${RED}Wallos 支持 amd64、arm64 和 ARMv7 架构。${NC}" ;; esac; return 1; }
+    wallos_install_runtime || { case "${ABOX_LANG:-zh}" in en) msg "${RED}Docker could not be installed or started; no Wallos container was changed.${NC}" ;; ru) msg "${RED}Не удалось установить или запустить Docker; контейнер Wallos не изменён.${NC}" ;; fa) msg "${RED}نصب یا اجرای Docker شکست خورد؛ کانتینر Wallos تغییر نکرد.${NC}" ;; zh-tw) msg "${RED}Docker 安裝或啟動失敗，未修改 Wallos 容器。${NC}" ;; ja) msg "${RED}Docker をインストールまたは起動できませんでした。Wallos コンテナは変更されていません。${NC}" ;; *) msg "${RED}Docker 安装或启动失败，未修改 Wallos 容器。${NC}" ;; esac; return 1; }
     docker info >/dev/null 2>&1 || return 1
     if [[ -e "$WALLOS_DIR/.upgrade-transaction" || -L "$WALLOS_DIR/.upgrade-transaction" ]]; then
         wallos_recover_interrupted_upgrade || return 1
@@ -16432,7 +16486,7 @@ wallos_install_or_update() {
         port=8282
         while ! wallos_port_free "$port"; do
             port=$((port + 1))
-            (( port <= 8299 )) || { case "${ABOX_LANG:-zh}" in ru) msg "${RED}Порты 8282–8299 заняты; освободите один и повторите попытку.${NC}" ;; fa) msg "${RED}درگاه‌های 8282 تا 8299 اشغال‌اند؛ یک درگاه آزاد کنید و دوباره تلاش کنید.${NC}" ;; zh) msg "${RED}8282–8299 端口均被占用，请释放端口后重试。${NC}" ;; *) msg "${RED}Ports 8282-8299 are occupied; free one and retry.${NC}" ;; esac; return 1; }
+            (( port <= 8299 )) || { case "${ABOX_LANG:-zh}" in en) msg "${RED}Ports 8282-8299 are occupied; free one and retry.${NC}" ;; ru) msg "${RED}Порты 8282–8299 заняты; освободите один и повторите попытку.${NC}" ;; fa) msg "${RED}درگاه‌های 8282 تا 8299 اشغال‌اند؛ یک درگاه آزاد کنید و دوباره تلاش کنید.${NC}" ;; zh-tw) msg "${RED}8282–8299 連接埠均被佔用，請釋放連接埠後重試。${NC}" ;; ja) msg "${RED}ポート 8282～8299 はすべて使用中です。空きを作ってから再試行してください。${NC}" ;; *) msg "${RED}8282–8299 端口均被占用，请释放端口后重试。${NC}" ;; esac; return 1; }
         done
         tz=$(current_timezone_name 2>/dev/null || printf 'UTC')
         valid_timezone_name "$tz" || tz='UTC'
@@ -16574,13 +16628,13 @@ wallos_install_or_update() {
 wallos_status() {
     local port
     if ! docker container inspect wallos >/dev/null 2>&1; then
-        case "${ABOX_LANG:-zh}" in ru) msg "Wallos не установлен." ;; fa) msg "Wallos نصب نشده است." ;; zh) msg "Wallos 尚未安装。" ;; *) msg "Wallos is not installed." ;; esac
+        case "${ABOX_LANG:-zh}" in en) msg "Wallos is not installed." ;; ru) msg "Wallos не установлен." ;; fa) msg "Wallos نصب نشده است." ;; zh-tw) msg "Wallos 尚未安裝。" ;; ja) msg "Wallos はまだインストールされていません。" ;; *) msg "Wallos 尚未安装。" ;; esac
         return 0
     fi
     docker ps -a --filter name='^/wallos$' --format 'Container: {{.Names}} | Status: {{.Status}} | Image: {{.Image}}'
     port=$(wallos_state_value PORT 2>/dev/null || true)
     if [[ "$port" =~ ^[0-9]+$ ]]; then wallos_public_urls "$port"; else
-        case "${ABOX_LANG:-zh}" in ru) msg "Файл состояния Wallos отсутствует; проверьте публикацию портов контейнера." ;; fa) msg "فایل وضعیت Wallos وجود ندارد؛ نگاشت درگاه کانتینر را بررسی کنید." ;; zh) msg "Wallos 状态文件缺失，请检查容器端口映射。" ;; *) msg "Wallos state file is missing; inspect the container port mapping." ;; esac
+        case "${ABOX_LANG:-zh}" in en) msg "Wallos state file is missing; inspect the container port mapping." ;; ru) msg "Файл состояния Wallos отсутствует; проверьте публикацию портов контейнера." ;; fa) msg "فایل وضعیت Wallos وجود ندارد؛ نگاشت درگاه کانتینر را بررسی کنید." ;; zh-tw) msg "Wallos 狀態檔案缺失，請檢查容器連接埠映射。" ;; ja) msg "Wallos の状態ファイルが見つかりません。コンテナのポートマッピングを確認してください。" ;; *) msg "Wallos 状态文件缺失，请检查容器端口映射。" ;; esac
     fi
 }
 
@@ -16880,6 +16934,11 @@ vps_benchmark_menu() {
             msg "${YELLOW}8. 匿名化した診断パッケージをエクスポート${NC}"
             msg "${YELLOW}9. 読み取り専用の事前チェック${NC}"
             msg "${YELLOW}10. SNI 最適化の記録${NC}"
+            msg "${YELLOW}11. 複数 UUID / サブスクリプションのエクスポート${NC}"
+            msg "${YELLOW}12. VPS ワンクリック最適化（手動で BBR/FQ を有効化、ロールバック可能）${NC}"
+            msg "${YELLOW}13. IP / DNS / タイムゾーン / Locale / ダウンロード元の設定${NC}"
+            msg "${YELLOW}14. Wallos のインストール / アップグレード / バックアップ${NC}"
+            msg "${GREEN}0. メインメニューに戻る${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}综合工具箱${NC}"
@@ -17481,7 +17540,7 @@ EOF_USAGE
 16 Удаление узлов и повторная инициализация окружения.
 17 Месячный лимит трафика vnStat; меню показывает расход на текущий момент.
 18 Список IP/CIDR для SS-2022.
-19 Выбор языка: китайский, английский, русский, персидский.
+19 Выбор языка: упрощённый китайский, традиционный китайский, английский, японский, русский, персидский.
 20 Reality в один клик; также доступен псевдоним `r`.
 
 BBR/FQ не запускается автоматически после установки протокола. Настройки DNS включают проверку задержки, поддерживаемые DoT/DoH и откат. Часовой пояс выбирается по установленной базе часовых поясов с нумерацией, страницами и поиском; Locale и NTP — отдельные настройки.
@@ -18950,6 +19009,8 @@ PY_ABOX_SIG
     assert_bad() { "$@" >/dev/null 2>&1 && { echo "FAIL expected bad: $*"; failures=$((failures + 1)); } || true; }
     selftest_has() { command -v "$1" >/dev/null 2>&1; }
     selftest_note() { printf 'SELF_TEST_NOTE: %s\n' "$*"; }
+    local source_body=""
+    source_body=$(sed -n '/^run_self_tests() {$/,/^main() {$/!p' "$0") || { echo 'FAIL: static source extraction for regression guards'; failures=$((failures + 1)); }
     # BusyBox tar rejects GNU --owner/--group; prefer GNU flags, else python, else plain tar.
     # Third arg force_root=1 rewrites members to uid/gid 0 (good/bad fixtures). Default preserves
     # on-disk ownership (needed for ACME runtime-owned backup acceptance tests).
@@ -19541,7 +19602,7 @@ N11EOF
     _http01_cleanup_helper='cleanup_http01_port_after_' ; _http01_cleanup_helper+='hy2_start'
     ! grep -Fq -- "$_http01_cleanup_helper" "$0" || { echo 'FAIL: obsolete HTTP-01 post-start cleanup path remains'; failures=$((failures + 1)); }
     grep -Fq 'IPv6 白名单已配置，但系统没有可用 IPv6 防火墙' "$0" || { echo 'FAIL: IPv6 whitelist silent-skip guard missing'; failures=$((failures + 1)); }
-    grep -Fq 'if [[ "$current_line" =~ ^-A[[:space:]]+INPUT[[:space:]] ]]; then' "$0" || { echo 'FAIL: firewall rule numbering must skip policy/header lines'; failures=$((failures + 1)); }
+    grep -Fq '[[ "$current_line" =~ ^-A[[:space:]]+INPUT[[:space:]] ]] || continue' <<< "$source_body" || { echo 'FAIL: firewall rule numbering must skip policy/header lines'; failures=$((failures + 1)); }
     grep -q 'iptables_rule_check() {' "$0" || { echo 'FAIL: standalone firewall restore helper missing'; failures=$((failures + 1)); }
     grep -q 'f2b_action='"'"'firewallcmd-multiport'"'"'' "$0" || { echo 'FAIL: Fail2Ban firewalld action mapping missing'; failures=$((failures + 1)); }
     grep -q 'f2b_action='"'"'ufw'"'"'' "$0" || { echo 'FAIL: Fail2Ban UFW action mapping missing'; failures=$((failures + 1)); }
@@ -19603,9 +19664,7 @@ N11EOF
         firewall_backend() { printf '%s\n' iptables; }
         mock_iptables() { return 0; }
         ip6tables() { printf '%s\n' 'ip6tables: Table does not exist (do you need to insmod?)' >&2; return 1; }
-        # G3: mock wrappers to avoid _iptables_w_flag subshell issues in tests
-        _iptables_q() { local cmd="$1"; shift; "$cmd" "$@"; }
-        _iptables_do() { local cmd="$1"; shift; "$cmd" "$@"; }
+        # P0-01 verified: test real _iptables_q / _iptables_do in main script
         IPT=mock_iptables; IPT6=ip6tables
         has_ipv6() { return 1; }
         clean_nat_rules
@@ -20221,7 +20280,6 @@ PY_SELFTEST_YAML
             echo 'FAIL: --self-test changed live /etc/ddr directory state'; failures=$((failures + 1))
         fi
     fi
-    source_body=$(sed -n '/^run_self_tests() {$/,/^main() {$/!p' "$0") || { echo 'FAIL: static source extraction for regression guards'; failures=$((failures + 1)); }
     ! grep -Fq "asn_cache='/tmp'" <<< "$source_body" || { echo 'FAIL: ASN cache must never fall back to shared /tmp'; failures=$((failures + 1)); }
     ! grep -Eq 'mktemp -d /tmp/A-Box-asn-cache\.XXXXXX.*\|\|[[:space:]]*asn_cache=.*/tmp' <<< "$source_body" || { echo 'FAIL: ASN cache mktemp failure must not fall back to shared /tmp'; failures=$((failures + 1)); }
     ! grep -Fq 'used=$(month_bytes "$iface" "${TRAFFIC_LIMIT_MODE:-total}") || exit 0' <<< "$source_body" || { echo 'FAIL: traffic measurement failure must not fail open'; failures=$((failures + 1)); }
@@ -20252,7 +20310,7 @@ PY_SELFTEST_YAML
     grep -Fq 'local preflight_rc=$(( fail > 0 ? 1 : 0 ))' "$0" || { echo 'FAIL: preflight must preserve result before cleanup'; failures=$((failures + 1)); }
     grep -Fq 'rm -rf -- "$report_dir" || return 1' "$0" || { echo 'FAIL: preflight report directory cleanup missing'; failures=$((failures + 1)); }
     grep -Fq 'local redacted_json redacted_headers' "$0" || { echo 'FAIL: redaction self-test variables are not separated'; failures=$((failures + 1)); }
-    grep -Fq 'target_ref="$(effective_xray_version)"' "$0" || { echo 'FAIL: Xray core-only upgrade must use centralized compatibility version'; failures=$((failures + 1)); }
+    grep -Fq 'target_ref="$ABOX_RESOLVED_XRAY_VERSION"' <<< "$source_body" || { echo 'FAIL: Xray core-only upgrade must use centralized compatibility version'; failures=$((failures + 1)); }
     grep -q '^core_post_upgrade_health_gate() {' "$0" || { echo 'FAIL: core post-upgrade health gate missing'; failures=$((failures + 1)); }
     grep -Fq 'core_post_upgrade_health_gate xray' "$0" || { echo 'FAIL: Xray post-upgrade health gate not enforced'; failures=$((failures + 1)); }
     grep -Fq 'core_post_upgrade_health_gate singbox' "$0" || { echo 'FAIL: sing-box post-upgrade health gate not enforced'; failures=$((failures + 1)); }

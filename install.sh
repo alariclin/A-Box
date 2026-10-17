@@ -2948,9 +2948,9 @@ firewall_snapshot_is_abox_managed() {
     grep -q '^\*' "$file" || return 1
     grep -q '^COMMIT$' "$file" || return 1
     awk '
-      /^\*[^[:space:]]+$/ {next}
+      /^\*[^ \t\r]+$/ {next}
       /^COMMIT$/ {next}
-      /^-A[[:space:]]/ && /--comment[[:space:]]+"?A-Box-/ {next}
+      /^-A[ \t\r]/ && /--comment[ \t\r]+"?A-Box-/ {next}
       {exit 1}
     ' "$file"
 }
@@ -3582,13 +3582,13 @@ save_firewall_rules() {
 
 ufw_is_active() {
     command -v ufw >/dev/null 2>&1 || return 1
-    LC_ALL=C ufw status 2>/dev/null | awk 'tolower($0) ~ /^status:[[:space:]]*active/ { found=1 } END { exit !found }'
+    LC_ALL=C ufw status 2>/dev/null | awk 'tolower($0) ~ /^status:[ \t\r]*active/ { found=1 } END { exit !found }'
 }
 
 nftables_native_rules_present() {
     command -v nft >/dev/null 2>&1 || return 1
     nft -nn list ruleset 2>/dev/null | awk '
-        /^[[:space:]]*table[[:space:]]+/ {
+        /^[ \t\r]*table[ \t\r]+/ {
             family=$2
             name=$3
             gsub(/[{}]/, "", name)
@@ -11997,7 +11997,7 @@ sha256_in_allowlist() {
     awk -v want="$sha" 'BEGIN {
         found=0
         while ((getline line) > 0) {
-            gsub(/[,;[:space:]]+/, "\n", line)
+            gsub(/[,; \t\r]+/, "\n", line)
             count=split(line, values, /\n/)
             for (i=1; i<=count; i++) {
                 value=tolower(values[i])
@@ -12510,7 +12510,7 @@ sni_san_matches_domain() {
                 [[ "$rest" == "$suffix" ]] && return 0
                 ;;
         esac
-    done < <(printf '%s\n' "$sanext" | awk '{ while (match($0, /DNS:[^,[:space:]]+/)) { item=substr($0,RSTART,RLENGTH); sub(/^DNS:/,"",item); print item; $0=substr($0,RSTART+RLENGTH) } }')
+    done < <(printf '%s\n' "$sanext" | awk '{ while (match($0, /DNS:[^, \t\r]+/)) { item=substr($0,RSTART,RLENGTH); sub(/^DNS:/,"",item); print item; $0=substr($0,RSTART+RLENGTH) } }')
     return 1
 }
 
@@ -13734,10 +13734,10 @@ extract_abox_iptables_rules() {
     awk -v mode="$mode" '''
       /^\*/ {table=$0; next} /^COMMIT$/ {next}
       /^-A / {
-        base=($0 ~ /--comment "?A-Box-[0-9]+(:[0-9]+)?-(tcp|udp)"?([[:space:]]|$)/)
-        wl=($0 ~ /--comment "?A-Box-[0-9]+-(tcp|udp)-WL6?"?([[:space:]]|$)/)
-        drop=($0 ~ /--comment "?A-Box-[0-9]+-(tcp|udp)-DROP6?"?([[:space:]]|$)/)
-        hop=($0 ~ /--comment "?A-Box-HY2-HOP"?([[:space:]]|$)/)
+        base=($0 ~ /--comment "?A-Box-[0-9]+(:[0-9]+)?-(tcp|udp)"?([ \t\r]|$)/)
+        wl=($0 ~ /--comment "?A-Box-[0-9]+-(tcp|udp)-WL6?"?([ \t\r]|$)/)
+        drop=($0 ~ /--comment "?A-Box-[0-9]+-(tcp|udp)-DROP6?"?([ \t\r]|$)/)
+        hop=($0 ~ /--comment "?A-Box-HY2-HOP"?([ \t\r]|$)/)
         owned=(base || wl || drop || hop)
         special=(wl || drop || hop)
         if ((mode=="all" && owned) || special) {
@@ -17906,8 +17906,8 @@ core_expected_listen_ports() {
             # Hysteria 2 config uses listen: :PORT (or [::]:PORT).
             awk '
                 $1 == "listen:" {
-                    v=$0; sub(/^[[:space:]]*listen:[[:space:]]*/, "", v)
-                    gsub(/["'"'"']/, "", v); sub(/[[:space:]#].*$/, "", v)
+                    v=$0; sub(/^[ \t\r]*listen:[ \t\r]*/, "", v)
+                    gsub(/["'"'"']/, "", v); sub(/[ \t\r#].*$/, "", v)
                     sub(/^.*:/, "", v)
                     # C-01: Port ranges like :20000-25000 must use FIRST port, not concat to 2000025000.
                     sub(/-.*$/, "", v)

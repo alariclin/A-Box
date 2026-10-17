@@ -6488,6 +6488,7 @@ prepare_abox_runtime_permissions() {
     ensure_abox_runtime_identity "$family" || return 1
     case "$family" in
         xray)
+            prepare_abox_runtime_config_dir xray /usr/local/etc/xray || return 1
             prepare_abox_runtime_read_file /usr/local/etc/xray/config.json xray || return 1
             prepare_abox_runtime_write_file /var/log/A-Box-xray-access.log xray || return 1
             prepare_abox_runtime_write_file /var/log/A-Box-xray-error.log xray || return 1
@@ -10499,8 +10500,8 @@ export_lightweight_subscription() {
     [[ "$F_IP" =~ : ]] && F_IP="[$F_IP]"
     VISION_SNI=${VISION_SNI:-${VLESS_SNI:-}}
     XHTTP_SNI=${XHTTP_SNI:-${VLESS_SNI:-}}
-    VISION_SNI_E=$(urlencode "$VISION_SNI")
-    XHTTP_SNI_E=$(urlencode "$XHTTP_SNI")
+    VISION_SNI_E=$(urlencode "${VISION_SNI:-}")
+    XHTTP_SNI_E=$(urlencode "${XHTTP_SNI:-}")
     PUBLIC_KEY_E=$(urlencode "${PUBLIC_KEY:-}")
     SHORT_ID_E=$(urlencode "${SHORT_ID:-}")
     uri_file="$SUBSCRIBE_DIR/uri-list.txt"
@@ -11118,7 +11119,7 @@ timezone_apply_with_rollback() {
     esac
 }
 timezone_choose_from_list() {
-    local query="${1:-}" page=0 page_size=25 input tz confirm idx first last title page_label number_prompt search_prompt invalid_prompt range_prompt confirm_prompt
+    local query="${1:-}" page=0 page_size=25 input tz confirm idx first last title page_label number_prompt search_prompt invalid_prompt range_prompt confirm_prompt _formatted_prompt
     local -a all=() filtered=()
     case "${ABOX_LANG:-zh}" in
         en)
@@ -11171,7 +11172,7 @@ timezone_choose_from_list() {
     done
 }
 timezone_choose_locale() {
-    local page=0 page_size=25 first last i value answer title prompt invalid_prompt range_prompt confirm_prompt
+    local page=0 page_size=25 first last i value answer title prompt invalid_prompt range_prompt confirm_prompt _formatted_prompt
     local -a locales=()
     case "${ABOX_LANG:-zh}" in
         en) title='Available system locales'; prompt='Enter number; n/p next/previous; 0 back: '; invalid_prompt='Enter a number, n, p or 0.'; range_prompt='Number out of range.'; confirm_prompt='Set system LANG to %s? [Y/N]: ' ;;
@@ -11204,7 +11205,7 @@ timezone_choose_locale() {
                 ((value>=1 && value<=${#locales[@]})) || { msg "${YELLOW}$range_prompt${NC}"; sleep 1; continue; }
                 value="${locales[$((value-1))]}"
                 printf -v _formatted_prompt "$confirm_prompt" "$value"
-                read -r -p "$confirm_prompt" answer
+                read -r -p "$_formatted_prompt" answer
                 is_yes "$answer" || continue
                 if command -v localectl >/dev/null 2>&1; then
                     localectl set-locale "LANG=$value" || { msg "${RED}Locale update failed.${NC}"; pause_return; return 1; }
@@ -12067,7 +12068,7 @@ tune_vps() {
             ;;
     esac
     local c
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; ja) prompt='選択してください [0-2]: ' ;; zh-tw) prompt='請選擇 [0-2]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; ja) prompt='選択してください [0-2]: ' ;; zh-tw) prompt='請選擇 [0-2]：' ;; *) prompt='请选择 [0-2]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1) apply_vps_tune; pause_return ;;
@@ -14608,6 +14609,7 @@ normalize_restored_runtime_ownership() {
         xray)
             [[ -d /usr/local/etc/xray && ! -L /usr/local/etc/xray ]] || return 1
             chown -R "root:$group" /usr/local/etc/xray || return 1
+            chmod 750 /usr/local/etc/xray || return 1
             ;;
         *) return 1 ;;
     esac
@@ -17396,14 +17398,14 @@ view_config() {
     IFS=$'\t' read -r HY2_URI_PORT HY2_QUERY_PREFIX < <(build_hy2_uri_endpoint) || die 'Hysteria2 分享链接端口参数无效。'
     [[ "$LINK_IP" =~ : ]] && F_IP="[$LINK_IP]"
     [[ -z "$LINK_IP" || "$LINK_IP" == 'N/A' ]] && msg "${YELLOW}[!] 未能自动获取公网 IP，分享链接可能不可用。${NC}"
-    VISION_SNI_E=$(urlencode "$VISION_SNI")
-    XHTTP_SNI_E=$(urlencode "$XHTTP_SNI")
+    VISION_SNI_E=$(urlencode "${VISION_SNI:-}")
+    XHTTP_SNI_E=$(urlencode "${XHTTP_SNI:-}")
     PUBLIC_KEY_E=$(urlencode "${PUBLIC_KEY:-}")
     SHORT_ID_E=$(urlencode "${SHORT_ID:-}")
     HY2_PASS_E=$(urlencode "${HY2_PASS:-}")
     HY2_OBFS_E=$(urlencode "${HY2_OBFS:-}")
-    HY2_DOMAIN_E=$(urlencode "$HY2_DOMAIN")
-    HY2_PIN_E=$(urlencode "$HY2_CERT_SHA256_FP")
+    HY2_DOMAIN_E=$(urlencode "${HY2_DOMAIN:-}")
+    HY2_PIN_E=$(urlencode "${HY2_CERT_SHA256_FP:-}")
     msg "${BLUE}======================================================================${NC}"
     msg "${BOLD}${CYAN}全局拓扑网络参数 (${MODE}) / Network Parameters${NC}"
     msg "${BLUE}======================================================================${NC}"

@@ -10270,8 +10270,15 @@ fetch_abox_mirror_asset() {
     fi
     curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "${mirror_sum}.sig" -o "$sum_sig" 2>/dev/null || true
     if ! abox_verify_sig_gate "$sum_file" "$sum_sig" "recovery mirror SHA256SUMS"; then
-        msg "${YELLOW}[!] recovery mirror SHA256SUMS signature verification failed${NC}" >&2
-        rm -f -- "$tmp_file" "$sum_file" "$sum_sig"; return 1
+        # DS-High-02 (c): default fail-closed + explicit opt-in escape hatch.
+        # Mirrors ABOX_ALLOW_UNVERIFIED_UPSTREAM pattern (P2-03).
+        if [[ "${ABOX_ALLOW_UNSIGNED_MIRROR:-0}" != '1' ]]; then
+            printf '%s\n' '[A-Box][F-05] FATAL: mirror SHA256SUMS.sig missing/invalid; refusing.' >&2
+            printf '%s\n' '[A-Box][F-05] CI 未发布签名。灾难恢复如确需继续，请显式设置 ABOX_ALLOW_UNSIGNED_MIRROR=1' >&2
+            printf '%s\n' '[A-Box][F-05] (该开关意味着你接受"仅 TLS 完整性"，不提供对 Release 属主的保护)。' >&2
+            rm -f -- "$tmp_file" "$sum_file" "$sum_sig"; return 1
+        fi
+        printf '%s\n' "${RED}[!] UNSIGNED MIRROR IN USE: SHA256SUMS.sig missing, integrity is TLS-only.${NC}" >&2
     fi
     expect_sum=$(awk -v f="$asset_leaf" '$2==f || $2==("./" f) || (n=length(f), substr($2, length($2)-n+1)==f && (length($2)==n || substr($2, length($2)-n, 1)=="/")) {print $1; exit}' "$sum_file")
     rm -f -- "$sum_file" "$sum_sig"

@@ -5306,13 +5306,12 @@ abox_signing_timestamp_ok() {
 # Returns 1 (fail-closed) iff ABOX_SIGNING_ENFORCE=1 and sig missing/invalid.
 abox_verify_sig_gate() {
     local file="$1" sigfile="$2" desc="${3:-metadata}"
-    # F8: if OpenSSL lacks Ed25519/rawin, we cannot verify; fail-closed when enforcing.
+    # F8: if OpenSSL lacks Ed25519/rawin, we cannot verify.
+    # DS-Q4: CentOS 7 (OpenSSL 1.0.2) has no Ed25519. Fail-closed here would break
+    # the documented CentOS 7 support. Downgrade to LOUD warning instead of FATAL
+    # on platforms that fundamentally cannot verify (vs. missing .sig file).
     if ! _openssl_has_ed25519; then
-        printf '[A-Box][F-05] WARNING: OpenSSL lacks Ed25519/rawin support; cannot verify %s\n' "$desc" >&2
-        if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
-            printf '[A-Box][F-05] FATAL: signature enforcement is ON but OpenSSL cannot verify; rejecting %s\n' "$desc" >&2
-            return 1
-        fi
+        printf '[A-Box][F-05] WARNING: OpenSSL lacks Ed25519/rawin support (e.g. CentOS 7); cannot verify %s. Integrity is TLS-only on this platform.\n' "$desc" >&2
         return 0
     fi
     if [[ -f "$sigfile" ]]; then
@@ -10269,16 +10268,10 @@ fetch_abox_mirror_asset() {
         rm -f -- "$tmp_file" "$sum_file"; return 1
     fi
     curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "${mirror_sum}.sig" -o "$sum_sig" 2>/dev/null || true
+    # DS-High-02: abox_verify_sig_gate 本身就是 (c) 语义 (默认 fail-closed,
+    # ABOX_SIGNING_ENFORCE=0 为显式逃生门)。无需新造变量。
     if ! abox_verify_sig_gate "$sum_file" "$sum_sig" "recovery mirror SHA256SUMS"; then
-        # DS-High-02 (c): default fail-closed + explicit opt-in escape hatch.
-        # Mirrors ABOX_ALLOW_UNVERIFIED_UPSTREAM pattern (P2-03).
-        if [[ "${ABOX_ALLOW_UNSIGNED_MIRROR:-0}" != '1' ]]; then
-            printf '%s\n' '[A-Box][F-05] FATAL: mirror SHA256SUMS.sig missing/invalid; refusing.' >&2
-            printf '%s\n' '[A-Box][F-05] CI 未发布签名。灾难恢复如确需继续，请显式设置 ABOX_ALLOW_UNSIGNED_MIRROR=1' >&2
-            printf '%s\n' '[A-Box][F-05] (该开关意味着你接受"仅 TLS 完整性"，不提供对 Release 属主的保护)。' >&2
-            rm -f -- "$tmp_file" "$sum_file" "$sum_sig"; return 1
-        fi
-        printf '%s\n' "${RED}[!] UNSIGNED MIRROR IN USE: SHA256SUMS.sig missing, integrity is TLS-only.${NC}" >&2
+        rm -f -- "$tmp_file" "$sum_file" "$sum_sig"; return 1
     fi
     expect_sum=$(awk -v f="$asset_leaf" '$2==f || $2==("./" f) || (n=length(f), substr($2, length($2)-n+1)==f && (length($2)==n || substr($2, length($2)-n, 1)=="/")) {print $1; exit}' "$sum_file")
     rm -f -- "$sum_file" "$sum_sig"
@@ -15929,6 +15922,14 @@ wallos_pull_or_restore_image() {
                     # F-05: verify detached Ed25519 signature of the manifest.
                     curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_sum_url.sig" -o "$_n2_work/SHA256SUMS.sig" 2>/dev/null || true
                     curl -fLsS --connect-timeout 8 --max-time 30 "${_n2_manifest_url}.sig" -o "$_n2_work/wallos-manifest.txt.sig" 2>/dev/null || true
+                    # DS-Q4: SHA256SUMS 本身也要验签 (之前只下载不验证)
+                    if ! abox_verify_sig_gate "$_n2_work/SHA256SUMS" "$_n2_work/SHA256SUMS.sig" "Wallos SHA256SUMS (N-2 fast path)"; then
+                        msg "${RED}[!] N-2 SHA256SUMS signature rejected and signing enforcement is ON; refusing.${NC}"
+                        trap - EXIT
+                        restore_saved_trap EXIT "$_n2_prev_trap_exit"
+                        rm -rf -- "$_n2_work"
+                        return 1
+                    fi
                     if ! abox_verify_sig_gate "$_n2_work/wallos-manifest.txt" "$_n2_work/wallos-manifest.txt.sig" "Wallos manifest (N-2 fast path)"; then
                         # D-10: abox_verify_sig_gate only returns 1 when ABOX_SIGNING_ENFORCE=1.
                         # In that mode, falling back to an unsigned tag pull would defeat

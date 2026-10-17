@@ -10494,8 +10494,8 @@ export_lightweight_subscription() {
     XHTTP_SNI=${XHTTP_SNI:-${VLESS_SNI:-}}
     VISION_SNI_E=$(urlencode "$VISION_SNI")
     XHTTP_SNI_E=$(urlencode "$XHTTP_SNI")
-    PUBLIC_KEY_E=$(urlencode "$PUBLIC_KEY")
-    SHORT_ID_E=$(urlencode "$SHORT_ID")
+    PUBLIC_KEY_E=$(urlencode "${PUBLIC_KEY:-}")
+    SHORT_ID_E=$(urlencode "${SHORT_ID:-}")
     uri_file="$SUBSCRIBE_DIR/uri-list.txt"
     b64_file="$SUBSCRIBE_DIR/subscription.base64"
     # A-05c-FIX: Build URI content in temp file (umask 077), then atomic install 600.
@@ -11153,8 +11153,8 @@ timezone_choose_from_list() {
             *)
                 ((input>=1 && input<=${#filtered[@]})) || { msg "${YELLOW}$range_prompt${NC}"; sleep 1; continue; }
                 tz="${filtered[$((input-1))]}"
-                printf -v confirm_prompt "$confirm_prompt" "$tz"
-                read -r -p "$confirm_prompt" confirm
+                printf -v _formatted_prompt "$confirm_prompt" "$tz"
+                read -r -p "$_formatted_prompt" confirm
                 is_yes "$confirm" || continue
                 timezone_apply_with_rollback "$tz"
                 pause_return
@@ -11196,7 +11196,7 @@ timezone_choose_locale() {
             *)
                 ((value>=1 && value<=${#locales[@]})) || { msg "${YELLOW}$range_prompt${NC}"; sleep 1; continue; }
                 value="${locales[$((value-1))]}"
-                printf -v confirm_prompt "$confirm_prompt" "$value"
+                printf -v _formatted_prompt "$confirm_prompt" "$value"
                 read -r -p "$confirm_prompt" answer
                 is_yes "$answer" || continue
                 if command -v localectl >/dev/null 2>&1; then
@@ -11428,11 +11428,11 @@ dns_snapshot_recover_pending_swap() {
     elif [[ -n "$old_path" && -f "$old_path/COMPLETE" ]]; then
         # Interrupted after rename, before new moved in: restore old FIRST
         # so a subsequent restore always finds a complete snapshot.
-        mv -T -- "$old_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
+        mv -- "$old_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
         [[ -n "$new_path" ]] && rm -rf -- "$new_path" 2>/dev/null || true
     elif [[ -n "$new_path" && -f "$new_path/COMPLETE" ]]; then
         # Old renamed aside, new never moved: complete the swap.
-        mv -T -- "$new_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
+        mv -- "$new_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
         [[ -n "$old_path" ]] && rm -rf -- "$old_path" 2>/dev/null || true
     else
         # Total loss: none of target/old/new has COMPLETE. The pre-existing
@@ -11475,15 +11475,15 @@ dns_snapshot_install_new() {
         chmod 600 "$pending" 2>/dev/null || true
         mv -- "$DNS_BACKUP_DIR" "$old_backup" || { rm -f -- "$pending"; rm -rf -- "$staging"; return 1; }
         # mv -T: replace target, never move staging inside it.
-        if ! mv -T -- "$staging" "$DNS_BACKUP_DIR"; then
-            mv -T -- "$old_backup" "$DNS_BACKUP_DIR" 2>/dev/null || true
+        if ! mv -- "$staging" "$DNS_BACKUP_DIR"; then
+            mv -- "$old_backup" "$DNS_BACKUP_DIR" 2>/dev/null || true
             rm -f -- "$pending"
             return 1
         fi
         rm -rf -- "$old_backup"
         rm -f -- "$pending"
     else
-        mv -T -- "$staging" "$DNS_BACKUP_DIR" || { rm -rf -- "$staging"; return 1; }
+        mv -- "$staging" "$DNS_BACKUP_DIR" || { rm -rf -- "$staging"; return 1; }
     fi
     return 0
 }
@@ -16620,7 +16620,12 @@ wallos_install_or_update() {
             return 1
         }
         # N-11: prune local images to current + previous (2 max, 500MB cap).
-        wallos_prune_local_images "$image" "$old_image" || true
+        # P2-3: skip old_image when same as image to avoid deleting N-1 rollback.
+        if [[ "$image" != "$old_image" ]]; then
+            wallos_prune_local_images "$image" "$old_image" || true
+        else
+            wallos_prune_local_images "$image" || true
+        fi
     fi
     case "${ABOX_LANG:-zh}" in
         en)
@@ -17375,10 +17380,10 @@ view_config() {
     [[ -z "$LINK_IP" || "$LINK_IP" == 'N/A' ]] && msg "${YELLOW}[!] 未能自动获取公网 IP，分享链接可能不可用。${NC}"
     VISION_SNI_E=$(urlencode "$VISION_SNI")
     XHTTP_SNI_E=$(urlencode "$XHTTP_SNI")
-    PUBLIC_KEY_E=$(urlencode "$PUBLIC_KEY")
-    SHORT_ID_E=$(urlencode "$SHORT_ID")
-    HY2_PASS_E=$(urlencode "$HY2_PASS")
-    HY2_OBFS_E=$(urlencode "$HY2_OBFS")
+    PUBLIC_KEY_E=$(urlencode "${PUBLIC_KEY:-}")
+    SHORT_ID_E=$(urlencode "${SHORT_ID:-}")
+    HY2_PASS_E=$(urlencode "${HY2_PASS:-}")
+    HY2_OBFS_E=$(urlencode "${HY2_OBFS:-}")
     HY2_DOMAIN_E=$(urlencode "$HY2_DOMAIN")
     HY2_PIN_E=$(urlencode "$HY2_CERT_SHA256_FP")
     msg "${BLUE}======================================================================${NC}"
@@ -19672,7 +19677,7 @@ N11EOF
     ( tr_msg() { printf '%s' '%s %s'; }; tprintf synthetic only-one ) >/dev/null 2>&1 && { echo 'FAIL: tprintf accepted mismatched placeholder arguments'; failures=$((failures + 1)); }
     grep -q 'command -v ss >/dev/null 2>&1 || return 2' "$0" || { echo 'FAIL: health probe socket checker must distinguish unavailable ss'; failures=$((failures + 1)); }
     grep -q '2) exit 0 ;;' "$0" || { echo 'FAIL: health probe must not restart services when ss is unavailable'; failures=$((failures + 1)); }
-    grep -q 'PY_VNSTAT_TOTAL_MAIN' "$0" || { echo 'FAIL: main vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
+    grep -q 'PY_TRAFFIC_NOW' <<< "$source_body" || { echo 'FAIL: main vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
     grep -q 'PY_VNSTAT_TOTAL_MONITOR' "$0" || { echo 'FAIL: traffic monitor vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
     grep -q 'PY_TRAFFIC_COMPARE' "$0" || { echo 'FAIL: traffic quota comparison must use exact integer arithmetic'; failures=$((failures + 1)); }
     ! grep -q '^    \[\[ -d /run/systemd/system \]\] && return 0$' "$0" || { echo 'FAIL: systemd detection must not trust /run/systemd/system alone'; failures=$((failures + 1)); }

@@ -12380,11 +12380,15 @@ sni_domain_penalty() {
     local domain="${1,,}" penalty=0
     case "$domain" in
         www.apple.com|www.icloud.com) penalty=$((penalty + 1800)) ;;
-        www.nike.com|www.adidas.com|www.amazon.com|www.google.com|www.youtube.com|www.netflix.com) penalty=$((penalty + 500)) ;;
+        www.nike.com|www.adidas.com|www.google.com|www.youtube.com|www.netflix.com) penalty=$((penalty + 500)) ;;
         *.google.com|*.gstatic.com|*.googleapis.com|*.youtube.com|*.facebook.com|*.instagram.com|*.twitter.com|*.x.com|*.tiktok.com|*.telegram.org|*.whatsapp.com|*.wikipedia.org|*.wikimedia.org|*.openai.com|*.anthropic.com|*.huggingface.co|*.torproject.org|*.nist.gov|*.cisa.gov|*.github.com|*.apple.com|*.icloud.com|apple.com|icloud.com|github.com|*.doubleclick.net|*.googlesyndication.com|*.googleadservices.com) penalty=$((penalty + 2400)) ;;
     esac
     case "$domain" in
-        *.microsoft.com|*.bing.com|*.apache.org|*.ietf.org|*.rfc-editor.org|*.w3.org|*.unicode.org|*.icann.org|*.iana.org|*.iso.org|*.itu.int|*.nginx.org|*.openssl.org|*.curl.se|*.kernel.org|*.debian.org|*.ubuntu.com|*.linuxfoundation.org|*.cncf.io) penalty=$((penalty - 220)) ;;
+        # 2026-10-17: microsoft/bing removed from the -220 preferred tier per SNI research
+        # (XTLS #2256: microsoft/apple-class targets heavily abused; te-st.org 2026-09-30:
+        # RKN SNI-consistency checks on big-brand SNIs; Xray warns www.microsoft.com raises
+        # GFW block probability). amazon likewise neutral: it is the verified safer fallback.
+        *.apache.org|*.ietf.org|*.rfc-editor.org|*.w3.org|*.unicode.org|*.icann.org|*.iana.org|*.iso.org|*.itu.int|*.nginx.org|*.openssl.org|*.curl.se|*.kernel.org|*.debian.org|*.ubuntu.com|*.linuxfoundation.org|*.cncf.io) penalty=$((penalty - 220)) ;;
         # B-09: Pure CDN hostnames must not be rewarded in stage 1 (stage 2 assigns +500 -> R tier).
         *.cloudflare.com|*.akamai.com|*.fastly.com) penalty=$((penalty + 400)) ;;
         docs.*|developer.*|developers.*|learn.*|support.*|download.*|downloads.*|packages.*|repo.*|registry.*|resources.*|community.*|help.*|security.*|*.mozilla.org|*.confluent.io|*.python.org|*.rust-lang.org|*.nodejs.org|*.postgresql.org|*.sqlite.org|*.eclipse.org|*.gnu.org|*.git-scm.com|*.cmake.org|*.llvm.org|*.mariadb.org|*.mysql.com) penalty=$((penalty - 120)) ;;
@@ -19485,6 +19489,8 @@ N11EOF
     [[ "$(sni_domain_penalty maps.apple.com)" == '2400' ]] || { echo 'FAIL: Apple subdomain SNI penalty'; failures=$((failures + 1)); }
     [[ "$(sni_domain_penalty apple.com)" == '2400' ]] || { echo 'FAIL: Apple apex SNI penalty'; failures=$((failures + 1)); }
     [[ "$(sni_domain_penalty github.com)" == '2400' ]] || { echo 'FAIL: GitHub apex SNI penalty'; failures=$((failures + 1)); }
+    [[ "$(sni_domain_penalty www.amazon.com)" == '0' ]] || { echo 'FAIL: Amazon SNI must be neutral (research-aligned fallback)'; failures=$((failures + 1)); }
+    [[ "$(sni_domain_penalty www.microsoft.com)" == '0' ]] || { echo 'FAIL: Microsoft SNI must be neutral (research-aligned)'; failures=$((failures + 1)); }
     [[ "$(sni_raw_score 0.1 0.1 0.1 -220)" == '-92' ]] || { echo 'FAIL: SNI raw score must preserve negative ranking values'; failures=$((failures + 1)); }
     [[ "$(sni_adjust_score -92 -1500)" == '-1592' ]] || { echo 'FAIL: SNI ASN bonus must preserve negative ranking values'; failures=$((failures + 1)); }
     local sni_diverse_in="$tmp/sni-diverse.in" sni_diverse_out="$tmp/sni-diverse.out"

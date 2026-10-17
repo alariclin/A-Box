@@ -15853,6 +15853,11 @@ _wallos_pull_versioned_image() {
        ! curl -fLsS --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
         rm -rf -- "$work"; return 1
     fi
+    # P1-2: verify SHA256SUMS signature before trusting it.
+    curl -fLsS --connect-timeout 8 --max-time 30 "${sum_url}.sig" -o "$work/SHA256SUMS.sig" 2>/dev/null || true
+    if ! abox_verify_sig_gate "$work/SHA256SUMS" "$work/SHA256SUMS.sig" "Wallos versioned SHA256SUMS"; then
+        rm -rf -- "$work"; return 1
+    fi
     # Verify manifest against SHA256SUMS (fail-closed).
     local manifest_expected manifest_actual
     manifest_expected=$(awk -v f="$ver_manifest" '$2==f || $2==("*" f) {print $1; exit}' "$work/SHA256SUMS" 2>/dev/null || true)
@@ -16033,6 +16038,12 @@ wallos_pull_or_restore_image() {
     if [[ ! "$manifest_expected" =~ ^[A-Fa-f0-9]{64}$ || "${manifest_expected,,}" != "${manifest_actual,,}" ]]; then
         rm -rf -- "$work"
         msg "${RED}Wallos manifest checksum mismatch; refusing to load it.${NC}"
+        return 1
+    fi
+    # P1-2: verify SHA256SUMS signature before trusting it.
+    curl -fLsS --connect-timeout 8 --max-time 30 "${sum_url}.sig" -o "$work/SHA256SUMS.sig" 2>/dev/null || true
+    if ! abox_verify_sig_gate "$work/SHA256SUMS" "$work/SHA256SUMS.sig" "Wallos SHA256SUMS (fallback path)"; then
+        rm -rf -- "$work"
         return 1
     fi
     # F-05: verify detached Ed25519 signature of the manifest.

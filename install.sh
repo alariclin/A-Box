@@ -9130,7 +9130,14 @@ traffic_snapshot_file_hash() {
 
 capture_traffic_env_state_file() {
     local source_file="$1" out="$2"
-    [[ -f "$source_file" && ! -L "$source_file" ]] || return 1
+    # Symlink: reject (security, unchanged).
+    [[ ! -L "$source_file" ]] || return 1
+    # Missing env file: fresh system where no core was installed yet; treat as
+    # "no traffic limit configured" instead of a fatal error.
+    if [[ ! -f "$source_file" ]]; then
+        : > "$out" || return 1
+        return 0
+    fi
     awk '/^TRAFFIC_LIMIT_(GB|MODE)=/{print}' "$source_file" | LC_ALL=C sort > "$out"
 }
 
@@ -9440,7 +9447,7 @@ prepare_traffic_quota_transaction() {
     mkdir -p "$tx_dir" || return 1
     chmod 700 "$tx_dir" || return 1
     traffic_env_tmp="$tx_dir/pre-traffic.env"
-    grep -E '^TRAFFIC_LIMIT_(GB|MODE)=' "$ABOX_ENV" > "$traffic_env_tmp" || :
+    grep -E '^TRAFFIC_LIMIT_(GB|MODE)=' "$ABOX_ENV" > "$traffic_env_tmp" 2>/dev/null || :
     [[ -f "$ABOX_DESIRED_STATE" ]] && { cp -a -- "$ABOX_DESIRED_STATE" "$tx_dir/pre.desired" || return 1; } || :
     [[ -f "$ABOX_TRAFFIC_BLOCK_STATE" ]] && { cp -a -- "$ABOX_TRAFFIC_BLOCK_STATE" "$tx_dir/pre.block" || return 1; } || :
     # C-06: Backup authoritative pair-state (was missing). Reject symlinks.
@@ -20937,15 +20944,15 @@ main_loop() {
             en)
                 msg "Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | Core: $STATUS_STR $CUR_MODE | Mode: ${YELLOW}$(read_fast_mode_label)${NC}"
                 msg "${RED}======================================================================${NC}"
-                msg "${RED}${BOLD}                    >>> 20  ONE-CLICK REALITY <<<                    ${NC}"
+                msg "${YELLOW}${BOLD}                    >>> 20  ONE-CLICK REALITY <<<                    ${NC}"
                 msg "${RED}======================================================================${NC}"
                 msg "${YELLOW}                 Vision REALITY, minimal prompts [r]                 ${NC}"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${YELLOW}[ Xray-core Deployment ]${NC}              ${YELLOW}[ Sing-box Deployment ]${NC}"
-                msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
-                msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
-                msg "${GREEN}4.${NC} Hysteria 2 (Official)               ${GREEN}9.${NC} Hysteria 2 (Sing-box)"
+                msg "${GREEN}1.${NC} VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
+                msg "${GREEN}3.${NC} Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
+                msg "${GREEN}4.${NC} Hysteria 2 (Official)              ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC} All-in-one (Xray+Hy2)              ${GREEN}10.${NC} All-in-one (Sing-box)"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${GREEN}11.${NC} Toolbox"
@@ -20957,20 +20964,20 @@ main_loop() {
                 msg "${GREEN}17.${NC} Monthly Traffic Limit"
                 msg "${GREEN}18.${NC} SS-2022 Whitelist Manager"
                 msg "${GREEN}19.${NC} Language"
-                msg "${RED}${BOLD}20. One-click Reality [r]${NC}"
+                msg "${YELLOW}${BOLD}20. One-click Reality [r]${NC}"
                 msg "${GREEN} 0.${NC} Exit"
                 ;;
             ru)
                 msg "Шлюз: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | Ядро: $STATUS_STR $CUR_MODE | Режим: ${YELLOW}$(read_fast_mode_label)${NC}"
                 msg "${RED}======================================================================${NC}"
-                msg "${RED}${BOLD}                    >>> 20  REALITY В ОДИН КЛИК <<<                  ${NC}"
+                msg "${YELLOW}${BOLD}                    >>> 20  REALITY В ОДИН КЛИК <<<                  ${NC}"
                 msg "${RED}======================================================================${NC}"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${YELLOW}[ Развёртывание Xray ]${NC}              ${YELLOW}[ Развёртывание sing-box ]${NC}"
-                msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
-                msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
-                msg "${GREEN}4.${NC} Hysteria 2 (официальный)            ${GREEN}9.${NC} Hysteria 2 (sing-box)"
+                msg "${GREEN}1.${NC} VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
+                msg "${GREEN}3.${NC} Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
+                msg "${GREEN}4.${NC} Hysteria 2 (официальный)           ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
                 msg "${GREEN}5.${NC} Комплексная установка               ${GREEN}10.${NC} Комплексная установка"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${GREEN}11.${NC} Инструменты"
@@ -20982,20 +20989,20 @@ main_loop() {
                 msg "${GREEN}17.${NC} Месячный лимит трафика"
                 msg "${GREEN}18.${NC} Белый список SS-2022"
                 msg "${GREEN}19.${NC} Язык"
-                msg "${RED}${BOLD}20. Reality в один клик [r]${NC}"
+                msg "${YELLOW}${BOLD}20. Reality в один клик [r]${NC}"
                 msg "${GREEN} 0.${NC} Выход"
                 ;;
             fa)
                 msg "درگاه: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | هسته: $STATUS_STR $CUR_MODE | حالت: ${YELLOW}$(read_fast_mode_label)${NC}"
                 msg "${RED}======================================================================${NC}"
-                msg "${RED}${BOLD}                    >>> 20  REALITY با یک کلیک <<<                  ${NC}"
+                msg "${YELLOW}${BOLD}                    >>> 20  REALITY با یک کلیک <<<                  ${NC}"
                 msg "${RED}======================================================================${NC}"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${YELLOW}[ نصب Xray ]${NC}                         ${YELLOW}[ نصب sing-box ]${NC}"
-                msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
-                msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
-                msg "${GREEN}4.${NC} Hysteria 2 (رسمی)                  ${GREEN}9.${NC} Hysteria 2 (sing-box)"
+                msg "${GREEN}1.${NC} VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
+                msg "${GREEN}3.${NC} Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
+                msg "${GREEN}4.${NC} Hysteria 2 (رسمی)                 ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
                 msg "${GREEN}5.${NC} نصب ترکیبی                          ${GREEN}10.${NC} نصب ترکیبی"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${GREEN}11.${NC} جعبه ابزار"
@@ -21007,21 +21014,21 @@ main_loop() {
                 msg "${GREEN}17.${NC} محدودیت ماهانه ترافیک"
                 msg "${GREEN}18.${NC} فهرست مجاز SS-2022"
                 msg "${GREEN}19.${NC} زبان"
-                msg "${RED}${BOLD}20. Reality با یک کلیک [r]${NC}"
+                msg "${YELLOW}${BOLD}20. Reality با یک کلیک [r]${NC}"
                 msg "${GREEN} 0.${NC} خروج"
                 ;;
             zh-tw)
                 msg "閘道器/Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | 核心/Core: $STATUS_STR $CUR_MODE | 模式: ${YELLOW}$(read_fast_mode_label)${NC}"
                 msg "${RED}======================================================================${NC}"
-                msg "${RED}${BOLD}                    >>> 20  一 鍵 REALITY <<<                       ${NC}"
+                msg "${YELLOW}${BOLD}                    >>> 20  一 鍵 REALITY <<<                       ${NC}"
                 msg "${RED}======================================================================${NC}"
                 msg "${YELLOW}                 Vision 預設 SNI · 最少提問 · 輸入 r 同效             ${NC}"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${YELLOW}[ Xray-core 部署 ]${NC}                    ${YELLOW}[ Sing-box 部署 ]${NC}"
-                msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
-                msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
-                msg "${GREEN}4.${NC} Hysteria 2 (官方)                  ${GREEN}9.${NC} Hysteria 2 (Sing-box)"
+                msg "${GREEN}1.${NC} VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
+                msg "${GREEN}3.${NC} Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
+                msg "${GREEN}4.${NC} Hysteria 2 (官方)                 ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC} 全協議四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全協議三合一 (Sing-box)"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${GREEN}11.${NC} 綜合工具箱"
@@ -21033,21 +21040,21 @@ main_loop() {
                 msg "${GREEN}17.${NC} 每月流量管控限制"
                 msg "${GREEN}18.${NC} SS-2022 白名單 IP 管理"
                 msg "${GREEN}19.${NC} 語言設定 / Language"
-                msg "${RED}${BOLD}20. 一鍵 Reality [r]${NC}"
+                msg "${YELLOW}${BOLD}20. 一鍵 Reality [r]${NC}"
                 msg "${GREEN} 0.${NC} 退出指令碼"
                 ;;
             ja)
                 msg "ゲートウェイ: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | コア: $STATUS_STR $CUR_MODE | モード: ${YELLOW}$(read_fast_mode_label)${NC}"
                 msg "${RED}======================================================================${NC}"
-                msg "${RED}${BOLD}                    >>> 20  ワンクリック REALITY <<<                       ${NC}"
+                msg "${YELLOW}${BOLD}                    >>> 20  ワンクリック REALITY <<<                       ${NC}"
                 msg "${RED}======================================================================${NC}"
                 msg "${YELLOW}                 Vision デフォルト SNI · 最少質問 · 入力 r 同等             ${NC}"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${YELLOW}[ Xray-core 部署します ]${NC}                    ${YELLOW}[ Sing-box 部署します ]${NC}"
-                msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
-                msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
-                msg "${GREEN}4.${NC} Hysteria 2（公式）                  ${GREEN}9.${NC} Hysteria 2（sing-box）"
+                msg "${GREEN}1.${NC} VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
+                msg "${GREEN}3.${NC} Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
+                msg "${GREEN}4.${NC} Hysteria 2（公式）                 ${GREEN}9.${NC}  Hysteria 2（sing-box）"
                 msg "${GREEN}5.${NC} 全プロトコル統合（Xray+Hy2）${GREEN}10.${NC} 全プロトコル統合（Sing-box）"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${GREEN}11.${NC} 総合ツールボックスです"
@@ -21059,21 +21066,21 @@ main_loop() {
                 msg "${GREEN}17.${NC} 毎月のトラフィック制限管理"
                 msg "${GREEN}18.${NC} SS-2022 ホワイトリスト IP マネジメント"
                 msg "${GREEN}19.${NC} 言語設定 / Language"
-                msg "${RED}${BOLD}20. ワンクリック Reality [r]${NC}"
+                msg "${YELLOW}${BOLD}20. ワンクリック Reality [r]${NC}"
                 msg "${GREEN} 0.${NC} スクリプトを終了します"
                 ;;
             *)
                 msg "网关/Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | 核心/Core: $STATUS_STR $CUR_MODE | 模式: ${YELLOW}$(read_fast_mode_label)${NC}"
                 msg "${RED}======================================================================${NC}"
-                msg "${RED}${BOLD}                    >>> 20  一 键 REALITY <<<                       ${NC}"
+                msg "${YELLOW}${BOLD}                    >>> 20  一 键 REALITY <<<                       ${NC}"
                 msg "${RED}======================================================================${NC}"
                 msg "${YELLOW}                 Vision 默认 SNI · 最少提问 · 输入 r 同效             ${NC}"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${YELLOW}[ Xray-core 部署 ]${NC}                    ${YELLOW}[ Sing-box 部署 ]${NC}"
-                msg "${GREEN}1.${NC} VLESS-Vision-Reality               ${GREEN}6.${NC} VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality                ${GREEN}7.${NC} Shadowsocks-2022"
-                msg "${GREEN}3.${NC} Shadowsocks-2022                   ${GREEN}8.${NC} VLESS + SS-2022"
-                msg "${GREEN}4.${NC} Hysteria 2 (官方)                  ${GREEN}9.${NC} Hysteria 2 (Sing-box)"
+                msg "${GREEN}1.${NC} VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC} VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
+                msg "${GREEN}3.${NC} Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
+                msg "${GREEN}4.${NC} Hysteria 2 (官方)                 ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC} 全协议四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全协议三合一 (Sing-box)"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${GREEN}11.${NC} 综合工具箱"
@@ -21085,7 +21092,7 @@ main_loop() {
                 msg "${GREEN}17.${NC} 每月流量管控限制"
                 msg "${GREEN}18.${NC} SS-2022 白名单 IP 管理"
                 msg "${GREEN}19.${NC} 语言设置 / Language"
-                msg "${RED}${BOLD}20. 一键 Reality [r]${NC}"
+                msg "${YELLOW}${BOLD}20. 一键 Reality [r]${NC}"
                 msg "${GREEN} 0.${NC} 退出脚本"
                 ;;
         esac

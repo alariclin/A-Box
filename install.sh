@@ -13033,6 +13033,7 @@ run_builtin_sni_radar() {
     msg "${GREEN}Saved: ${ABOX_DIR}/A-Box-sni-${profile}.tsv${NC}"
     msg "${YELLOW}A/B/C 等级仅表示本 VPS 的探测结果；风险复核和不合格项目不会因低延迟被标为优先推荐。${NC}"
     rm -rf "$workdir"
+    pause_return
 }
 
 show_sni_preference_records() {
@@ -13116,14 +13117,12 @@ run_local_sni_benchmark() {
     if confirm_yes_no "$(tr_msg confirm_local_sni_full)"; then
         run_builtin_sni_radar 'full' 'Local SNI preference / 本地 SNI 优选'
     fi
-    pause_return
 }
 
 run_local_sni_mini_benchmark() {
     if confirm_yes_no "$(tr_msg confirm_local_sni_mini)"; then
         run_builtin_sni_radar 'mini' 'Mini host local SNI preference / 微型主机本地 SNI 优选'
     fi
-    pause_return
 }
 
 

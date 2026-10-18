@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Best-effort UTF-8 locale (v2ray-agent pattern): harmless if locale missing,
+# makes [[ =~ ]], wc -m and case patterns UTF-8 correct; byte fallback remains.
+export LANG=en_US.UTF-8 2>/dev/null || true
 # ==============================A-Box===============================
 # SNI profile: built-in candidate library plus per-VPS automatic REALITY target selection; no remote script execution.
 # Hardened build: stricter GitHub digest trust, guarded shortcut persistence, Fail2Ban validation, and Sing-box HY2 ACME semantics.
@@ -37,13 +40,16 @@ BOLD=$'\033[1m'
 
 # Display width: accurate for CJK, symbols, 2-byte Latin/Cyrillic, emoji
 # 14-system safe: byte-based, no locale dependency
+# Optimized: single awk (was 2x grep + 3x wc = 5 subprocesses)
 _disp_width() {
     local s="$1"
     [[ -z "$s" ]] && { printf '0'; return; }
-    local bytes=$(printf '%s' "$s" | wc -c)
-    local sub1=$(printf '%s' "$s" | LC_ALL=C grep -o $'[\xc2-\xdf][\x80-\xbf]\|[\xe3-\xef][\x80-\xbf][\x80-\xbf]' 2>/dev/null | wc -l)
-    local sub2=$(printf '%s' "$s" | LC_ALL=C grep -o $'[\xe0-\xe2][\x80-\xbf][\x80-\xbf]\|[\xf0-\xf4][\x80-\xbf][\x80-\xbf][\x80-\xbf]' 2>/dev/null | wc -l)
-    printf '%d' $((bytes - sub1 - sub2 * 2))
+    printf '%s' "$s" | LC_ALL=C awk '
+    BEGIN { bytes=0; sub1=0; sub2=0 }
+    { bytes += length($0)
+      sub1 += gsub(/[\xc2-\xdf][\x80-\xbf]|[\xe3-\xef][\x80-\xbf][\x80-\xbf]/, "&")
+      sub2 += gsub(/[\xe0-\xe2][\x80-\xbf][\x80-\xbf]|[\xf0-\xf4][\x80-\xbf][\x80-\xbf][\x80-\xbf]/, "&") }
+    END { print bytes - sub1 - sub2*2 }'
 }
 
 DEPS_MARKER='/etc/ddr/.deps.v20260725'

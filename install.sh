@@ -12007,11 +12007,11 @@ _dns_provider_list() {
 # Get current DNS from resolv.conf or state file
 _dns_current_v4() {
     local cur=''
-    if [[ -f "$ABOX_ENV" ]]; then
-        cur=$(awk -F= '/^DNS_V4=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t ]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
+    if [[ -f "$DNS_STATE_FILE" ]]; then
+        cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^v4=/){sub(/^v4=/, "", $i); gsub(/["'"'"'\r\t ]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
     fi
-    if [[ -z "$cur" && -f "$DNS_STATE_FILE" ]]; then
-        cur=$(awk -F'[;=]' '{for(i=1;i<=NF;i++){if($i=="v4"){print $(i+1); exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
+    if [[ -z "$cur" && -f "$ABOX_ENV" ]]; then
+        cur=$(awk -F= '/^DNS_V4=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t ]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
     fi
     if [[ -z "$cur" && -r /etc/resolv.conf ]]; then
         cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\./ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
@@ -12027,11 +12027,11 @@ _dns_current_v4() {
 
 _dns_current_v6() {
     local cur=''
-    if [[ -f "$ABOX_ENV" ]]; then
-        cur=$(awk -F= '/^DNS_V6=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t ]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
+    if [[ -f "$DNS_STATE_FILE" ]]; then
+        cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^v6=/){sub(/^v6=/, "", $i); gsub(/["'"'"'\r\t ]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
     fi
-    if [[ -z "$cur" && -f "$DNS_STATE_FILE" ]]; then
-        cur=$(awk -F'[;=]' '{for(i=1;i<=NF;i++){if($i=="v6"){print $(i+1); exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
+    if [[ -z "$cur" && -f "$ABOX_ENV" ]]; then
+        cur=$(awk -F= '/^DNS_V6=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t ]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
     fi
     if [[ -z "$cur" && -r /etc/resolv.conf ]]; then
         cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)

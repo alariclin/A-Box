@@ -30,8 +30,26 @@ GREEN=$'\033[0;32m'
 YELLOW=$'\033[0;33m'
 BLUE=$'\033[0;34m'
 CYAN=$'\033[0;36m'
+GRAY=$'\033[0;37m'
+LIGHTBLUE=$'\033[0;94m'
 NC=$'\033[0m'
 BOLD=$'\033[1m'
+
+# Display width: CJK chars count as 2, others as 1
+# Used for menu layout across 14 systems (no external deps)
+_disp_width() {
+    local s="$1" w=0 c
+    while IFS= read -r -n1 c; do
+        [[ -z "$c" ]] && break
+        # CJK Unified Ideographs, Hiragana, Katakana, Hangul, fullwidth
+        if [[ "$c" =~ [぀-ヿ㐀-䶿一-鿿가-힯！-～] ]]; then
+            w=$((w + 2))
+        else
+            w=$((w + 1))
+        fi
+    done <<< "$s"
+    printf '%d' "$w"
+}
 
 DEPS_MARKER='/etc/ddr/.deps.v20260725'
 SCRIPT_URL='https://raw.githubusercontent.com/alariclin/A-Box/main/install.sh'
@@ -21062,6 +21080,27 @@ main_loop() {
     detect_lang
     init_system_environment
     setup_shortcut
+    # Menu status row: 3 segments spread left/center/right with margins
+    # 14-system safe: ASCII only, standard ANSI colors, CJK width aware
+    _menu_status_row() {
+        local lbl_gw="$1" lbl_core="$2" lbl_mode="$3"
+        local gw_txt="${lbl_gw}: ${GLOBAL_PUBLIC_IP:-?}"
+        local mode_txt="${lbl_mode}: $(read_fast_mode_label)"
+        # Core status with dot (strip colors for width calc)
+        local core_plain=$(printf '%s' "$STATUS_STR $CUR_MODE" | sed 's/\x1b\[[0-9;]*m//g')
+        local core_txt="${lbl_core}: ${core_plain}"
+        local w1=$(_disp_width "$gw_txt") w2=$(_disp_width "$core_txt") w3=$(_disp_width "$mode_txt")
+        local total=70 margin=2
+        local avail=$((total - margin*2))
+        # Positions: seg1 left, seg2 center, seg3 right
+        local pad1=$((margin))
+        local pad2=$((margin + (avail - w2)/2 - w1 - margin))
+        local pad3=$((total - margin - w3 - (margin + (avail - w2)/2 + w2)))
+        [[ $pad2 -lt 1 ]] && pad2=1
+        [[ $pad3 -lt 1 ]] && pad3=1
+        printf "%${pad1}s${LBLUE}%s${NC} ${CYAN}%s${NC}%${pad2}s${LBLUE}%s:${NC} ${RED}●${NC} %s%${pad3}s${LBLUE}%s:${NC} ${YELLOW}%s${NC}\n" \
+            "" "$lbl_gw" "$GLOBAL_PUBLIC_IP" "" "$lbl_core" "$core_plain" "" "$lbl_mode" "$(read_fast_mode_label)"
+    }
     # Safely migrate active, exactly marked v7 installations into the new
     # per-file ownership model. Inactive or ambiguous services are not adopted.
     local _srv _pid _exe
@@ -21079,16 +21118,16 @@ main_loop() {
         STATUS_STR=$(build_status_str)
         load_abox_env "$ABOX_ENV" 2>/dev/null && CUR_MODE="[${CORE}-${MODE}]" || CUR_MODE=''
         clear
-        msg "${BLUE}======================================================================${NC}"
-        msg "${BOLD}${YELLOW}==================================A-Box===============================${NC}"
-        msg "${BLUE}======================================================================${NC}"
+        _abox_tk="Linux Gateway Toolkit"
+        _abox_pad=$((70 - 5 - ${#_abox_tk}))
+        printf "${BOLD}${YELLOW}A-Box${NC}%${_abox_pad}s${GRAY}%s${NC}\n" "" "$_abox_tk"
+        msg "${YELLOW}----------------------------------------------------------------------${NC}"
         case "${ABOX_LANG:-zh}" in
             en)
-                msg "Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | Core: $STATUS_STR $CUR_MODE | Mode: ${YELLOW}$(read_fast_mode_label)${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}${BOLD}                    >>> 20  ONE-CLICK REALITY <<<                    ${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}                 Vision REALITY, minimal prompts [r]                 ${NC}"
+                _menu_status_row "Gateway" "Core" "Mode"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${YELLOW}${BOLD}—— 20 · One-click Reality ——${NC}"
+                msg "${LIGHTBLUE}Vision default SNI · minimal prompts · input r same${NC}"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${YELLOW}[ Xray-core Deployment ]${NC}              ${YELLOW}[ Sing-box Deployment ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
@@ -21105,10 +21144,9 @@ main_loop() {
                 msg "${GREEN} 0.${NC}  Exit"
                 ;;
             ru)
-                msg "Шлюз: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | Ядро: $STATUS_STR $CUR_MODE | Режим: ${YELLOW}$(read_fast_mode_label)${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}${BOLD}                    >>> 20  REALITY В ОДИН КЛИК <<<                  ${NC}"
-                msg "${BLUE}======================================================================${NC}"
+                _menu_status_row "Шлюз" "Ядро" "Режим"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${YELLOW}${BOLD}—— 20 · Reality в один клик ——${NC}"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${YELLOW}[ Развёртывание Xray ]${NC}              ${YELLOW}[ Развёртывание sing-box ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
@@ -21125,10 +21163,9 @@ main_loop() {
                 msg "${GREEN} 0.${NC}  Выход"
                 ;;
             fa)
-                msg "درگاه: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | هسته: $STATUS_STR $CUR_MODE | حالت: ${YELLOW}$(read_fast_mode_label)${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}${BOLD}                    >>> 20  REALITY با یک کلیک <<<                  ${NC}"
-                msg "${BLUE}======================================================================${NC}"
+                _menu_status_row "درگاه" "هسته" "حالت"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${YELLOW}${BOLD}—— 20 · ریالیتی تک‌کلیکی ——${NC}"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${YELLOW}[ نصب Xray ]${NC}                         ${YELLOW}[ نصب sing-box ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
@@ -21145,13 +21182,12 @@ main_loop() {
                 msg "${GREEN} 0.${NC}  خروج"
                 ;;
             zh-tw)
-                msg "閘道器/Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | 核心/Core: $STATUS_STR $CUR_MODE | 模式: ${YELLOW}$(read_fast_mode_label)${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}${BOLD}                    >>> 20  一 鍵 REALITY <<<                       ${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}                 Vision 預設 SNI · 最少提問 · 輸入 r 同效             ${NC}"
+                _menu_status_row "閘道器/Gateway" "核心/Core" "模式"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${YELLOW}[ Xray-core 部署 ]${NC}                    ${YELLOW}[ Sing-box 部署 ]${NC}"
+                msg "${YELLOW}${BOLD}—— 20 · 一鍵 Reality ——${NC}"
+                msg "${LIGHTBLUE}Vision 默認 SNI · 最少提問 · 輸入 r 同效${NC}"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${CYAN}[ Xray-core 部署 ]${NC}                    ${CYAN}[ Sing-box 部署 ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
@@ -21166,10 +21202,10 @@ main_loop() {
                 msg "${GREEN} 0.${NC}  退出指令碼"
                 ;;
             ja)
-                msg "ゲートウェイ: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | コア: $STATUS_STR $CUR_MODE | モード: ${YELLOW}$(read_fast_mode_label)${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}${BOLD}                    >>> 20  ワンクリック REALITY <<<                       ${NC}"
-                msg "${BLUE}======================================================================${NC}"
+                _menu_status_row "ゲートウェイ" "コア" "モード"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${YELLOW}${BOLD}—— 20 · ワンクリック Reality ——${NC}"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${YELLOW}                 Vision デフォルト SNI · 最少質問 · 入力 r 同等             ${NC}"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${YELLOW}[ Xray-core 部署します ]${NC}                    ${YELLOW}[ Sing-box 部署します ]${NC}"
@@ -21187,13 +21223,12 @@ main_loop() {
                 msg "${GREEN} 0.${NC}  スクリプトを終了します"
                 ;;
             *)
-                msg "网关/Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | 核心/Core: $STATUS_STR $CUR_MODE | 模式: ${YELLOW}$(read_fast_mode_label)${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}${BOLD}                    >>> 20  一 键 REALITY <<<                       ${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}                 Vision 默认 SNI · 最少提问 · 输入 r 同效             ${NC}"
+                _menu_status_row "网关/Gateway" "核心/Core" "模式"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${YELLOW}[ Xray-core 部署 ]${NC}                    ${YELLOW}[ Sing-box 部署 ]${NC}"
+                msg "${YELLOW}${BOLD}—— 20 · 一键 Reality ——${NC}"
+                msg "${LIGHTBLUE}Vision 默认 SNI · 最少提问 · 输入 r 同效${NC}"
+                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${CYAN}[ Xray-core 部署 ]${NC}                    ${CYAN}[ Sing-box 部署 ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"

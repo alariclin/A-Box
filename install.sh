@@ -11700,7 +11700,7 @@ EOF_DNS
             # "nameserver 2001:db8::53options timeout:2 attempts:3".
             {
                 printf '# Managed by A-Box host DNS helper\n'
-                printf 'nameserver %s\n' "$v4"
+                [[ -n "$v4" ]] && printf 'nameserver %s\n' "$v4"
                 [[ -n "$v6" ]] && printf 'nameserver %s\n' "$v6"
                 printf 'options timeout:2 attempts:3\n'
             } > "$DNS_BACKUP_DIR/resolv.conf.new" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 内容生成失败。'; }

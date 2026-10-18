@@ -21084,22 +21084,27 @@ main_loop() {
     # 14-system safe: ASCII only, standard ANSI colors, CJK width aware
     _menu_status_row() {
         local lbl_gw="$1" lbl_core="$2" lbl_mode="$3"
-        local gw_txt="${lbl_gw}: ${GLOBAL_PUBLIC_IP:-?}"
-        local mode_txt="${lbl_mode}: $(read_fast_mode_label)"
-        # Core status with dot (strip colors for width calc)
+        local gw_ip="${GLOBAL_PUBLIC_IP:-?}"
+        local mode_label="$(read_fast_mode_label)"
         local core_plain=$(printf '%s' "$STATUS_STR $CUR_MODE" | sed 's/\x1b\[[0-9;]*m//g')
-        local core_txt="${lbl_core}: ${core_plain}"
-        local w1=$(_disp_width "$gw_txt") w2=$(_disp_width "$core_txt") w3=$(_disp_width "$mode_txt")
-        local total=70 margin=2
-        local avail=$((total - margin*2))
-        # Positions: seg1 left, seg2 center, seg3 right
-        local pad1=$((margin))
-        local pad2=$((margin + (avail - w2)/2 - w1 - margin))
-        local pad3=$((total - margin - w3 - (margin + (avail - w2)/2 + w2)))
-        [[ $pad2 -lt 1 ]] && pad2=1
-        [[ $pad3 -lt 1 ]] && pad3=1
-        printf "%${pad1}s${LBLUE}%s${NC} ${CYAN}%s${NC}%${pad2}s${LBLUE}%s:${NC} ${RED}●${NC} %s%${pad3}s${LBLUE}%s:${NC} ${YELLOW}%s${NC}\n" \
-            "" "$lbl_gw" "$GLOBAL_PUBLIC_IP" "" "$lbl_core" "$core_plain" "" "$lbl_mode" "$(read_fast_mode_label)"
+        # Build three segments (plain text for width)
+        local seg1="${lbl_gw}: ${gw_ip}"
+        local seg2="${lbl_core}: ● ${core_plain}"
+        local seg3="${lbl_mode}: ${mode_label}"
+        local w1=$(_disp_width "$seg1") w2=$(_disp_width "$seg2") w3=$(_disp_width "$seg3")
+        local total=70
+        # seg1 at col 2, seg3 ends at col 68, seg2 centered
+        local pos1=2
+        local pos3=$((68 - w3))
+        local pos2=$(((70 - w2) / 2))
+        local pad1=$pos1
+        local pad2=$((pos2 - pos1 - w1))
+        local pad3=$((pos3 - pos2 - w2))
+        [[ $pad2 -lt 2 ]] && pad2=2
+        [[ $pad3 -lt 2 ]] && pad3=2
+        # Print with colors (pads are spaces only, no color interference)
+        printf "%*s${LBLUE}%s:${NC} ${CYAN}%s${NC}%*s${LBLUE}%s:${NC} ${RED}●${NC} %s%*s${LBLUE}%s:${NC} ${YELLOW}%s${NC}\n" \
+            "$pad1" "" "$lbl_gw" "$gw_ip" "$pad2" "" "$lbl_core" "$core_plain" "$pad3" "" "$lbl_mode" "$mode_label"
     }
     # Safely migrate active, exactly marked v7 installations into the new
     # per-file ownership model. Inactive or ambiguous services are not adopted.

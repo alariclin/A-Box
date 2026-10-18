@@ -11977,6 +11977,142 @@ EOF_DOH
     fi
 }
 
+# DNS provider list: tag|name|v4|v6
+# v4/v6 auto-pairing: selecting a v4 auto-suggests its paired v6 for dual-stack mode
+_dns_provider_list() {
+    printf '%s\n' \
+        'cf-main|Cloudflare|1.1.1.1|2606:4700:4700::1111' \
+        'cf-alt|Cloudflare备|1.0.0.1|2606:4700:4700::1001' \
+        'google-main|Google|8.8.8.8|2001:4860:4860::8888' \
+        'google-alt|Google备|8.8.4.4|2001:4860:4860::8844' \
+        'quad9|Quad9|9.9.9.9|2620:fe::fe' \
+        'opendns|OpenDNS|208.67.222.222|2620:119:35::35' \
+        'alidns|AliDNS|223.5.5.5|2400:3200::1' \
+        'dnspod|DNSPod|119.29.29.29|2402:4e00::'
+}
+
+# Get current DNS from resolv.conf or state file
+_dns_current_v4() {
+    local cur=''
+    if [[ -f "$ABOX_ENV" ]]; then
+        cur=$(grep '^DNS_V4=' "$ABOX_ENV" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"' || true)
+    fi
+    if [[ -z "$cur" && -r /etc/resolv.conf ]]; then
+        cur=$(grep -m1 '^nameserver' /etc/resolv.conf 2>/dev/null | awk '{print $2}' || true)
+    fi
+    printf '%s' "$cur"
+}
+
+_dns_current_v6() {
+    local cur=''
+    if [[ -f "$ABOX_ENV" ]]; then
+        cur=$(grep '^DNS_V6=' "$ABOX_ENV" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"' || true)
+    fi
+    if [[ -z "$cur" && -r /etc/resolv.conf ]]; then
+        cur=$(grep '^nameserver' /etc/resolv.conf 2>/dev/null | awk '$2 ~ /:/ {print $2; exit}' || true)
+    fi
+    printf '%s' "$cur"
+}
+
+# Tri-mode DNS setup wizard: v4-only / v6-only / dual-stack
+# Dual-stack auto-pairs v6 from v4 selection; single mode leaves the other unchanged
+dns_setup_tri_mode() {
+    local mode='' choice='' v4='' v6='' v6_auto='' input
+    local -a providers=()
+    while IFS= read -r line; do providers+=("$line"); done < <(_dns_provider_list)
+
+    clear
+    msg "${CYAN}======================================================================${NC}"
+    case "${ABOX_LANG:-zh}" in
+        en) msg "${BOLD}${GREEN}DNS Setup: IPv4 / IPv6 / Dual-stack${NC}" ;;
+        ru) msg "${BOLD}${GREEN}Настройка DNS: IPv4 / IPv6 / Dual-stack${NC}" ;;
+        fa) msg "${BOLD}${GREEN}تنظیم DNS: IPv4 / IPv6 / دوگانه${NC}" ;;
+        zh-tw) msg "${BOLD}${GREEN}DNS 設定：IPv4 / IPv6 / 雙棧${NC}" ;;
+        ja) msg "${BOLD}${GREEN}DNS 設定: IPv4 / IPv6 / デュアルスタック${NC}" ;;
+        *) msg "${BOLD}${GREEN}DNS 设置：IPv4 / IPv6 / 双栈${NC}" ;;
+    esac
+    msg "${CYAN}======================================================================${NC}"
+    msg "Current: IPv4=${YELLOW}$(_dns_current_v4)${NC} IPv6=${YELLOW}$(_dns_current_v6)${NC}"
+    msg ""
+    case "${ABOX_LANG:-zh}" in
+        en) msg "${YELLOW}1. IPv4 only (IPv6 unchanged)${NC}"; msg "${YELLOW}2. IPv6 only (IPv4 unchanged)${NC}"; msg "${YELLOW}3. Dual-stack (both)${NC}"; msg "${GREEN}0. Back${NC}" ;;
+        ru) msg "${YELLOW}1. Только IPv4 (IPv6 без изменений)${NC}"; msg "${YELLOW}2. Только IPv6 (IPv4 без изменений)${NC}"; msg "${YELLOW}3. Dual-stack (оба)${NC}"; msg "${GREEN}0. Назад${NC}" ;;
+        fa) msg "${YELLOW}۱. فقط IPv4${NC}"; msg "${YELLOW}۲. فقط IPv6${NC}"; msg "${YELLOW}۳. دوگانه${NC}"; msg "${GREEN}۰. بازگشت${NC}" ;;
+        zh-tw) msg "${YELLOW}1. 僅 IPv4（IPv6 不變）${NC}"; msg "${YELLOW}2. 僅 IPv6（IPv4 不變）${NC}"; msg "${YELLOW}3. 雙棧（兩者都設）${NC}"; msg "${GREEN}0. 返回${NC}" ;;
+        ja) msg "${YELLOW}1. IPv4 のみ (IPv6 は変更なし)${NC}"; msg "${YELLOW}2. IPv6 のみ (IPv4 は変更なし)${NC}"; msg "${YELLOW}3. デュアルスタック (両方)${NC}"; msg "${GREEN}0. 戻る${NC}" ;;
+        *) msg "${YELLOW}1. 仅 IPv4（IPv6 不变）${NC}"; msg "${YELLOW}2. 仅 IPv6（IPv4 不变）${NC}"; msg "${YELLOW}3. 双栈（两者都设）${NC}"; msg "${GREEN}0. 返回${NC}" ;;
+    esac
+    read -r -p "Select [0-3]: " mode
+    case "$mode" in
+        1|2|3) ;;
+        *) return 0 ;;
+    esac
+
+    # Provider list
+    msg ""
+    msg "${CYAN}----------------------------------------------------------------------${NC}"
+    local idx=1
+    for p in "${providers[@]}"; do
+        IFS='|' read -r tag name pv4 pv6 <<< "$p"
+        printf '  ${YELLOW}%d.${NC} %-14s ${GREEN}%s${NC} / ${CYAN}%s${NC}\n' "$idx" "$name" "$pv4" "$pv6"
+        idx=$((idx+1))
+    done
+    case "${ABOX_LANG:-zh}" in
+        en) msg "${YELLOW}0. Manual input${NC}" ;;
+        *) msg "${YELLOW}0. 手动输入${NC}" ;;
+    esac
+    msg "${CYAN}----------------------------------------------------------------------${NC}"
+
+    read -r -p "Select provider [0-8]: " choice
+    if [[ "$choice" == "0" ]]; then
+        # Manual input
+        if [[ "$mode" == "1" || "$mode" == "3" ]]; then
+            read -r -p 'IPv4 DNS: ' v4
+            valid_ipv4_cidr "$v4" && [[ "$v4" != */* ]] || { msg "${RED}Invalid IPv4${NC}"; pause_return; return 1; }
+        fi
+        if [[ "$mode" == "2" || "$mode" == "3" ]]; then
+            read -r -p 'IPv6 DNS: ' v6
+            valid_ipv6_cidr "$v6" && [[ "$v6" != */* ]] || { msg "${RED}Invalid IPv6${NC}"; pause_return; return 1; }
+        fi
+    elif [[ "$choice" =~ ^[1-8]$ ]]; then
+        IFS='|' read -r tag name pv4 pv6 <<< "${providers[$((choice-1))]}"
+        case "$mode" in
+            1) v4="$pv4" ;;
+            2) v6="$pv6" ;;
+            3)
+                v4="$pv4"
+                v6_auto="$pv6"
+                # Show auto-paired v6, allow override
+                case "${ABOX_LANG:-zh}" in
+                    en) msg "IPv4: ${GREEN}$v4${NC}, auto-paired IPv6: ${CYAN}$v6_auto${NC}" ;;
+                    *) msg "IPv4: ${GREEN}$v4${NC}，自动配对 IPv6: ${CYAN}$v6_auto${NC}" ;;
+                esac
+                read -r -p "IPv6 [Enter=auto $v6_auto]: " input
+                if [[ -n "$input" ]]; then
+                    valid_ipv6_cidr "$input" && [[ "$input" != */* ]] || { msg "${RED}Invalid IPv6${NC}"; pause_return; return 1; }
+                    v6="$input"
+                else
+                    v6="$v6_auto"
+                fi
+                ;;
+        esac
+    else
+        return 0
+    fi
+
+    # For single mode, preserve the unchanged side from current config
+    if [[ "$mode" == "1" ]]; then
+        v6="$(_dns_current_v6)"
+    elif [[ "$mode" == "2" ]]; then
+        v4="$(_dns_current_v4)"
+    fi
+
+    msg ""
+    msg "Apply: IPv4=${GREEN}${v4:-none}${NC} IPv6=${CYAN}${v6:-none}${NC}"
+    apply_host_dns plain "$v4" "$v6"
+    pause_return
+}
+
 dns_menu() {
     # Recover from any interrupted DNS snapshot swap on menu entry.
     dns_snapshot_recover_pending_swap 2>/dev/null || true
@@ -11995,6 +12131,7 @@ dns_menu() {
             msg "${YELLOW}5. Automatically benchmark resolvers${NC}"
             msg "${YELLOW}6. DNS over HTTPS via dnscrypt-proxy${NC}"
             msg "${YELLOW}7. Restore the previous DNS snapshot${NC}"
+            msg "${YELLOW}8. DNS tri-mode setup (v4/v6/dual)${NC}"
             ;;
         ru)
             msg "${YELLOW}1. Пользовательский открытый DNS${NC}"
@@ -12004,6 +12141,7 @@ dns_menu() {
             msg "${YELLOW}5. Автоматический тест DNS${NC}"
             msg "${YELLOW}6. DNS over HTTPS через dnscrypt-proxy${NC}"
             msg "${YELLOW}7. Восстановить предыдущую конфигурацию${NC}"
+            msg "${YELLOW}8. Настройка DNS (v4/v6/dual)${NC}"
             ;;
         fa)
             msg "${YELLOW}1. DNS ساده سفارشی${NC}"
@@ -12013,6 +12151,7 @@ dns_menu() {
             msg "${YELLOW}5. آزمون خودکار DNS${NC}"
             msg "${YELLOW}6. DNS روی HTTPS با dnscrypt-proxy${NC}"
             msg "${YELLOW}7. بازگردانی تنظیمات قبلی DNS${NC}"
+            msg "${YELLOW}8. تنظیم DNS سه‌حالته${NC}"
             ;;
         zh-tw)
             msg "${YELLOW}1. 自定義明文 DNS（可選 IPv6）${NC}"
@@ -12022,6 +12161,7 @@ dns_menu() {
             msg "${YELLOW}5. 自動實測優選 DNS（多輪延遲/可用性）${NC}"
             msg "${YELLOW}6. 隱私 DNS DoH（dnscrypt-proxy 本地轉發）${NC}"
             msg "${YELLOW}7. 回滾到上次 DNS 修改前快照${NC}"
+            msg "${YELLOW}8. DNS 三模式設定（v4/v6/雙棧）${NC}"
             ;;
         ja)
             msg "${YELLOW}1. カスタム平文 DNS（IPv6 は任意）${NC}"
@@ -12031,6 +12171,7 @@ dns_menu() {
             msg "${YELLOW}5. DNS リゾルバーの自動ベンチマーク（遅延 / 可用性を複数回測定）${NC}"
             msg "${YELLOW}6. プライバシー保護 DNS over HTTPS（DoH、dnscrypt-proxy によるローカル転送）${NC}"
             msg "${YELLOW}7. 前回の DNS 変更前のスナップショットにロールバック${NC}"
+            msg "${YELLOW}8. DNS 三モード設定 (v4/v6/デュアル)${NC}"
             ;;
         *)
             msg "${YELLOW}1. 自定义明文 DNS（可选 IPv6）${NC}"
@@ -12040,10 +12181,11 @@ dns_menu() {
             msg "${YELLOW}5. 自动实测优选 DNS（多轮延迟/可用性）${NC}"
             msg "${YELLOW}6. 隐私 DNS DoH（dnscrypt-proxy 本地转发）${NC}"
             msg "${YELLOW}7. 回滚到上次 DNS 修改前快照${NC}"
+            msg "${YELLOW}8. DNS 三模式设置（v4/v6/双栈）${NC}"
             ;;
     esac
     msg "${GREEN}0. Back / 返回${NC}"
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-7]: ' ;; ru) prompt='Выберите [0–7]: ' ;; fa) prompt='انتخاب [۰ تا ۷]: ' ;; ja) prompt='選択してください [0-7]: ' ;; zh-tw) prompt='請選擇 [0-7]：' ;; *) prompt='请选择 [0-7]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-8]: ' ;; ru) prompt='Выберите [0–8]: ' ;; fa) prompt='انتخاب [۰ تا ۸]: ' ;; ja) prompt='選択してください [0-8]: ' ;; zh-tw) prompt='請選擇 [0-8]：' ;; *) prompt='请选择 [0-8]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1)
@@ -12075,6 +12217,7 @@ dns_menu() {
         5) dns_auto_prefer ;;
         6) dns_enable_doh; pause_return ;;
         7) if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then restore_dns_snapshot "$DNS_BACKUP_DIR" && msg "${GREEN}DNS restored.${NC}" || msg "${RED}DNS rollback failed.${NC}"; else msg "${YELLOW}No DNS snapshot exists.${NC}"; fi; pause_return ;;
+        8) dns_setup_tri_mode ;;
         *) return 0 ;;
     esac
 }

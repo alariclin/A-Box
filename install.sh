@@ -12011,7 +12011,11 @@ _dns_current_v4() {
         cur=$(awk -F= '/^DNS_V4=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t ]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
     fi
     if [[ -z "$cur" && -r /etc/resolv.conf ]]; then
-        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\./ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
+    fi
+    # systemd-resolved fallback: /etc/resolv.conf 只有 127.0.0.53 stub 时查上游
+    if [[ -z "$cur" && -r /run/systemd/resolve/resolv.conf ]]; then
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\./ {print $2; exit}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
     fi
     if [[ "$cur" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
         printf '%s' "$cur"
@@ -12024,7 +12028,10 @@ _dns_current_v6() {
         cur=$(awk -F= '/^DNS_V6=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t ]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
     fi
     if [[ -z "$cur" && -r /etc/resolv.conf ]]; then
-        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
+    fi
+    if [[ -z "$cur" && -r /run/systemd/resolve/resolv.conf ]]; then
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2; exit}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
     fi
     cur="${cur%%%*}"
     if [[ "$cur" == *:* && "$cur" =~ ^[0-9a-fA-F:]+$ ]]; then
@@ -12125,6 +12132,12 @@ dns_setup_tri_mode() {
         v4="$(_dns_current_v4)"
     fi
 
+    # Safety: refuse to apply if both are empty (would break DNS)
+    if [[ -z "$v4" && -z "$v6" ]]; then
+        msg "${RED}No valid DNS to apply; aborted.${NC}"
+        pause_return
+        return 1
+    fi
     msg ""
     msg "Apply: IPv4=${GREEN}${v4:-none}${NC} IPv6=${CYAN}${v6:-none}${NC}"
     apply_host_dns plain "$v4" "$v6"

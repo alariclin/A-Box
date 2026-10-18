@@ -23,13 +23,13 @@ A-Box — автономный Bash-скрипт для развёртывани
 ### Официальный источник GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/85ace564bb9163ddb629fd151091d0bcd134e657/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9d18b21e1df2faade807b2ec6ff3e1017f49a807/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 ### Резервное зеркало третьей стороны
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/85ace564bb9163ddb629fd151091d0bcd134e657/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9d18b21e1df2faade807b2ec6ff3e1017f49a807/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 Обе команды привязывают установщик к неизменяемому commit `a7cb193e6539cee6478648e766f5ce415ccd5d41`; proxy URL остаётся сторонним транспортом, а не официальным endpoint A-Box. Для production проверьте commit и checksum через независимый доверенный канал. На чистой Alpine сначала выполните `apk add --no-cache bash curl`. После установки введите `sb`.

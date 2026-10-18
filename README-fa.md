@@ -18,27 +18,21 @@ A-Box یک اسکریپت مستقل Bash برای راه‌اندازی و نگ
 
 این پروژه «همان‌گونه که هست» و بدون ضمانت ارائه می‌شود. پیش از اجرا، اسکریپت و تغییرات احتمالی آن در سیستم را بررسی کنید و پیش از نگه‌داری یا ارتقا، نسخه پشتیبان قابل‌بازیابی تهیه کنید.
 
-## شروع سریع امن
+## شروع سریع
 
 ### منبع رسمی GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/81677a6ab1bd3be65f46a46d7b4d446d20e7f60b/install.sh -o A-Box.sh
-bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
-# پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
-sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/a8d2f0d222391c9b13ce04ed902562556cd1cc9d/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 ### آینه جایگزین شخص ثالث
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/81677a6ab1bd3be65f46a46d7b4d446d20e7f60b/install.sh -o A-Box.sh
-bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
-# پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
-sudo bash A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/a8d2f0d222391c9b13ce04ed902562556cd1cc9d/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
-هر دو فرمان نصب‌کننده را به commit تغییرناپذیر `a7cb193e6539cee6478648e766f5ce415ccd5d41` متصل می‌کنند؛ نشانی proxy همچنان سرویس انتقال شخص ثالث است، نه نقطه پایانی رسمی A-Box. بررسی نحو و SHA-256 به‌تنهایی هویت ناشر را ثابت نمی‌کند؛ فایل را پیش از اجرا بازبینی و برای production، commit و checksum را از کانالی مستقل و مورداعتماد تأیید کنید. در Alpine تازه، پیش از اجرا `apk add --no-cache bash curl` را اجرا کنید. پس از نصب `sb` را وارد کنید.
+هر دو فرمان نصب‌کننده را به commit تغییرناپذیر `a7cb193e6539cee6478648e766f5ce415ccd5d41` متصل می‌کنند؛ نشانی proxy همچنان سرویس انتقال شخص ثالث است، نه نقطه پایانی رسمی A-Box. برای production، commit و checksum را از کانالی مستقل و مورداعتماد تأیید کنید. در Alpine تازه، پیش از اجرا `apk add --no-cache bash curl` را اجرا کنید. پس از نصب `sb` را وارد کنید.
 
 ## قابلیت‌های اصلی
 

@@ -18,27 +18,21 @@ A-Box 是一個獨立 Bash 腳本，用於部署和維護 Linux 網路閘道服�
 
 本專案按「現狀」提供，不提供任何擔保。執行前請審閱腳本及其可能造成的系統變更；維護或升級前應保留可恢復的備份。
 
-## 安全快速開始
+## 快速開始
 
 ### GitHub 官方源
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/81677a6ab1bd3be65f46a46d7b4d446d20e7f60b/install.sh -o A-Box.sh
-bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
-# 審閱下載的腳本後，再單獨執行：
-sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/a8d2f0d222391c9b13ce04ed902562556cd1cc9d/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 ### 第三方備用映象
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/81677a6ab1bd3be65f46a46d7b4d446d20e7f60b/install.sh -o A-Box.sh
-bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
-# 審閱下載的腳本後，再單獨執行：
-sudo bash A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/a8d2f0d222391c9b13ce04ed902562556cd1cc9d/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
-兩個命令均將安裝腳本固定到不可變提交 `a7cb193e6539cee6478648e766f5ce415ccd5d41`；代理網址仍屬於第三方傳輸服務，不是 A-Box 官方端點。語法檢查與 SHA-256 摘要本身不能證明發布者身份，執行前應審閱下載檔案；生產環境還應透過獨立可信渠道核對提交與摘要。全新 Alpine 系統執行前先執行 `apk add --no-cache bash curl`。安裝後輸入 `sb` 開啟選單。
+兩個命令均將安裝腳本固定到不可變提交 `a7cb193e6539cee6478648e766f5ce415ccd5d41`；代理網址仍屬於第三方傳輸服務，不是 A-Box 官方端點。生產環境建議透過獨立可信渠道核對提交與摘要。全新 Alpine 系統執行前先執行 `apk add --no-cache bash curl`。安裝後輸入 `sb` 開啟選單。
 
 ## 主要功能
 

@@ -18,27 +18,21 @@ Xray-core、sing-box、公式 Hysteria 2 サーバー、VLESS Vision REALITY、V
 
 本プロジェクトは「現状のまま」提供され、保証はありません。実行前にスクリプトと想定される変更内容を確認し、メンテナンスやアップグレードの前に復元可能なバックアップを保持してください。
 
-## 安全なクイックスタート
+## クイックスタート
 
 ### GitHub 公式ソース
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/81677a6ab1bd3be65f46a46d7b4d446d20e7f60b/install.sh -o A-Box.sh
-bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
-# ダウンロードしたスクリプトを確認後、別途実行してください：
-sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/a8d2f0d222391c9b13ce04ed902562556cd1cc9d/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 ### サードパーティ・フォールバックミラー
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/81677a6ab1bd3be65f46a46d7b4d446d20e7f60b/install.sh -o A-Box.sh
-bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
-# ダウンロードしたスクリプトを確認後、別途実行してください：
-sudo bash A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/a8d2f0d222391c9b13ce04ed902562556cd1cc9d/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
-どちらのコマンドも、インストーラーを不変のコミット `a7cb193e6539cee6478648e766f5ce415ccd5d41` にピン留めします。プロキシ URL はサードパーティの転送サービスであり、A-Box 公式エンドポイントではありません。構文チェックと SHA-256 のみでは発行者の真正性は証明されません。実行前にダウンロードしたファイルを確認し、本番環境では独立した信頼できる経路でコミットとチェックサムを検証してください。新規 Alpine インストールでは、まず `apk add --no-cache bash curl` を実行してください。インストール後は `sb` と入力してメニューを開きます。
+どちらのコマンドも、インストーラーを不変のコミット `a7cb193e6539cee6478648e766f5ce415ccd5d41` にピン留めします。プロキシ URL はサードパーティの転送サービスであり、A-Box 公式エンドポイントではありません。本番環境では独立した信頼できる経路でコミットとチェックサムを検証してください。新規 Alpine インストールでは、まず `apk add --no-cache bash curl` を実行してください。インストール後は `sb` と入力してメニューを開きます。
 
 ## 主な機能
 

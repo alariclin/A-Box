@@ -1762,7 +1762,7 @@ ensure_commands() {
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     _pkg=$(__abox_missing_pkg_for "$release" cmp diffutils diffutils diffutils)
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
-    _pkg=$(__abox_missing_pkg_for "$release" crontab cron cronie cronie)
+    _pkg=$(__abox_missing_pkg_for "$release" crontab cron cronie busybox)
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     _pkg=$(__abox_missing_pkg_for "$release" logrotate logrotate logrotate logrotate)
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
@@ -3204,7 +3204,7 @@ reorder_one() {
     command -v "$cmd" >/dev/null 2>&1 || return 0
     command -v "$save_cmd" >/dev/null 2>&1 || return 1
     if ! _iptables_q "$cmd" -S INPUT >/dev/null 2>&1; then
-        if [[ "${cmd##*/}" == ip6tables ]] && ! has_ipv6; then return 0; fi
+        if [[ "${cmd##*/}" == ip6tables ]] && ! host_has_usable_ipv6; then return 0; fi
         return 1
     fi
     if iptables_rule_check "$cmd" INPUT -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP; then check_rc=0; else check_rc=$?; fi
@@ -3686,11 +3686,22 @@ nftables_native_rules_present() {
             gsub(/\{/, "", cname)
             if (cname == "input" || cname == "forward" || cname == "output")
                 native=1
-            # G6: custom chain names with filter hook on input are also native.
-            # e.g. chain custom { type filter hook input priority 0; ... }
+            # G6: custom chain name in a STANDARD table whose declaration
+            # continues on the NEXT line with a base-chain header. nftables
+            # prints chain declarations as two lines (see src/rule.c
+            # chain_print_declaration()). A comment line may sit between.
+            # iptables-nft compat chains are UPPERCASE and excluded here.
+            pend = ((family == "ip" || family == "ip6") && \
+                    (cname != "INPUT" && cname != "FORWARD" && cname != "OUTPUT"))
+            next
+        }
+        # G6 (cont): check the line following a pending custom chain.
+        pend && /^[ \t\r]*(comment[ \t"\r]|type[ \t\r])/ {
             if ($0 ~ /type[ \t\r]+filter[ \t\r]+hook[ \t\r]+input/)
                 native=1
+            next
         }
+        { pend = 0 }
         END { exit !native }
     '
 }
@@ -4241,7 +4252,7 @@ reorder_ss_whitelist_rules_one() {
     command -v "$cmd" >/dev/null 2>&1 || return 0
     command -v "$save_cmd" >/dev/null 2>&1 || return 1
     if ! _iptables_q "$cmd" -S INPUT >/dev/null 2>&1; then
-        if [[ "${cmd##*/}" == ip6tables ]] && ! has_ipv6; then return 0; fi
+        if [[ "${cmd##*/}" == ip6tables ]] && ! host_has_usable_ipv6; then return 0; fi
         return 1
     fi
     if iptables_rule_check "$cmd" INPUT -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP; then check_rc=0; else check_rc=$?; fi
@@ -4828,7 +4839,7 @@ check_selected_ports_free() {
         if ! holder=$(ss -H -n -l -p -A "$proto" 2>/dev/null); then
             die "无法检查 ${p}/${proto} 端口占用；ss 查询失败。"
         fi
-        holder=$(grep -E "[:.]${p}([[:space:]]|$)" <<< "$holder" || true)
+        holder=$(awk -v p="$p" '$4 ~ ("[:.]" p "$") || $5 ~ ("[:.]" p "$") { print }' <<< "$holder" || true)
         [[ -z "$holder" ]] && continue
         msg "${RED}[!] 新选择端口 ${p}/${proto} 仍被进程占用：${NC}"
         printf '%s\n' "$holder"
@@ -4885,7 +4896,7 @@ release_ports() {
         if ! holder=$(ss -H -n -l -p -A "$proto" 2>/dev/null); then
             die "无法检查 ${p}/${proto} 端口占用；ss 查询失败。"
         fi
-        holder=$(grep -E "[:.]${p}([[:space:]]|$)" <<< "$holder" || true)
+        holder=$(awk -v p="$p" '$4 ~ ("[:.]" p "$") || $5 ~ ("[:.]" p "$") { print }' <<< "$holder" || true)
         [[ -z "$holder" ]] && continue
         msg "${YELLOW}[!] 旧配置端口 ${p}/${proto} 当前被非 A-Box 进程占用；若向导中继续选择该端口需先手动释放，改选其它新端口则不受影响。${NC}"
     done
@@ -5231,24 +5242,32 @@ _openssl_has_ed25519() {
     if [[ -n "${_OPENSSL_ED25519_OK:-}" ]]; then
         return "$_OPENSSL_ED25519_OK"
     fi
-    _OPENSSL_ED25519_OK=1
-    # Probe: genpkey with ed25519 algorithm
-    if ! openssl genpkey -algorithm ed25519 -out /dev/null 2>/dev/null; then
-        _OPENSSL_ED25519_OK=1
+    # PROBE-ERROR must not be cached: only a DEFINITIVE "algorithm unsupported"
+    # is a platform capability answer. Infrastructure failures (mktemp, ENOSPC)
+    # are transient and must force fail-closed, not fail-open.
+    local _t _err
+    _t=$(mktemp -d 2>/dev/null) || return 1
+    printf 'test' > "$_t/in.bin" 2>/dev/null || { rm -rf -- "$_t"; return 1; }
+    _err="$_t/err"
+    if ! openssl genpkey -algorithm ed25519 -out "$_t/priv.pem" 2>"$_err"; then
+        # Only cache when the error definitively indicates unsupported algorithm.
+        if grep -qiE 'unknown[ _]algorithm|not found|unsupported|no such' "$_err" 2>/dev/null; then
+            _OPENSSL_ED25519_OK=1
+        fi
+        rm -rf -- "$_t"
+        return 1
     fi
     # Probe: pkeyutl -rawin support. Note: -rawin requires file input,
     # not stdin pipe (oneshot operation needs file size).
-    local _t
-    _t=$(mktemp -d 2>/dev/null) || { _OPENSSL_ED25519_OK=1; return 1; }
-    printf 'test' > "$_t/in.bin" 2>/dev/null
-    if ! openssl genpkey -algorithm ed25519 -out "$_t/priv.pem" 2>/dev/null || \
-       ! openssl pkeyutl -sign -inkey "$_t/priv.pem" -rawin -in "$_t/in.bin" -out "$_t/sig.bin" 2>/dev/null; then
+    if ! openssl pkeyutl -sign -inkey "$_t/priv.pem" -rawin -in "$_t/in.bin" -out "$_t/sig.bin" 2>/dev/null; then
+        # -rawin missing is a definitive capability gap; cache it.
         _OPENSSL_ED25519_OK=1
-    else
-        _OPENSSL_ED25519_OK=0
+        rm -rf -- "$_t"
+        return 1
     fi
     rm -rf -- "$_t"
-    return "$_OPENSSL_ED25519_OK"
+    _OPENSSL_ED25519_OK=0
+    return 0
 }
 # Returns 0 iff ANY non-revoked pubkey in ABOX_SIGNING_PUBKEYS verifies.
 verify_ed25519_detached() {
@@ -9692,6 +9711,7 @@ PY_TRAFFIC_NOW
 
 remove_ss_source_whitelist_rules() {
     local failed=0 cmd proto line rule ipt_out
+    local -a argv=()
     [[ -n "${SS_PORT:-}" ]] || return 0
     for cmd in "$IPT" "$IPT6"; do
         command -v "$cmd" >/dev/null 2>&1 || continue
@@ -9703,7 +9723,8 @@ remove_ss_source_whitelist_rules() {
                 [[ -n "$line" ]] || break
                 line=${line//\"/}
                 rule="${line#-A INPUT }"
-                _iptables_do "$cmd" -D INPUT $rule >/dev/null 2>&1 || { failed=1; break; }
+                read -r -a argv <<< "$rule"
+                _iptables_do "$cmd" -D INPUT "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
             done
         done
     done
@@ -12820,8 +12841,8 @@ sni_auto_select_default() {
 
     ABOX_CURL_TLS13_SUPPORTED=0
     ABOX_CURL_HTTP2_SUPPORTED=0
-    curl --help all 2>/dev/null | grep -F -- '--tlsv1.3' >/dev/null && ABOX_CURL_TLS13_SUPPORTED=1
-    curl --help all 2>/dev/null | grep -F -- '--http2' >/dev/null && ABOX_CURL_HTTP2_SUPPORTED=1
+    { curl --help all 2>/dev/null || curl --help 2>/dev/null; } | grep -F -- '--tlsv1.3' >/dev/null && ABOX_CURL_TLS13_SUPPORTED=1
+    { curl --help all 2>/dev/null || curl --help 2>/dev/null; } | grep -F -- '--http2' >/dev/null && ABOX_CURL_HTTP2_SUPPORTED=1
     : > "$raw"
     while IFS= read -r domain; do
         sni_probe_domain "$domain" "$raw" "$timeout_s" &
@@ -12924,12 +12945,12 @@ run_builtin_sni_radar() {
     raw_sorted="$workdir/results.raw.sorted.tsv"
     report="$workdir/results.tsv"
     write_sni_candidate_library "$profile" "$candidates"
-    if curl --help all 2>/dev/null | grep -F -- '--tlsv1.3' >/dev/null; then
+    if { curl --help all 2>/dev/null || curl --help 2>/dev/null; } | grep -F -- '--tlsv1.3' >/dev/null; then
         ABOX_CURL_TLS13_SUPPORTED=1
     else
         ABOX_CURL_TLS13_SUPPORTED=0
     fi
-    if curl --help all 2>/dev/null | grep -F -- '--http2' >/dev/null; then
+    if { curl --help all 2>/dev/null || curl --help 2>/dev/null; } | grep -F -- '--http2' >/dev/null; then
         ABOX_CURL_HTTP2_SUPPORTED=1
     else
         ABOX_CURL_HTTP2_SUPPORTED=0
@@ -15336,7 +15357,7 @@ preflight_check() {
                 continue
             fi
             local holder managed_owner
-            holder=$(grep -E "[:.]${port}([[:space:]]|$)" <<< "$preflight_ss_output" || true)
+            holder=$(awk -v p="$port" '$4 ~ ("[:.]" p "$") || $5 ~ ("[:.]" p "$") { print }' <<< "$preflight_ss_output" || true)
             if [[ -n "$holder" ]]; then
                 managed_owner=$(managed_socket_owner_for_port "$proto" "$port" 2>/dev/null || true)
                 if [[ -n "$managed_owner" ]]; then
@@ -16508,7 +16529,7 @@ wallos_public_urls() {
 
 wallos_write_state() {
     # P3-6: persist BIND so backup/restore and rebuild-from-state preserve network exposure.
-    local image="$1" port="$2" tz="$3" bind="${4:-127.0.0.1}" tmp
+    local image="$1" port="$2" tz="$3" bind="${4-127.0.0.1}" tmp
     tmp=$(umask 077; mktemp "$WALLOS_DIR/.abox-state.new.XXXXXX") || return 1
     if ! printf 'IMAGE=%s\nPORT=%s\nTZ=%s\nBIND=%s\n' "$image" "$port" "$tz" "$bind" > "$tmp" ||
        ! chmod 600 "$tmp" ||

@@ -35,20 +35,15 @@ LIGHTBLUE=$'\033[0;94m'
 NC=$'\033[0m'
 BOLD=$'\033[1m'
 
-# Display width: CJK chars count as 2, others as 1
-# Used for menu layout across 14 systems (no external deps)
+# Display width: CJK/wide chars count as 2, others as 1
+# 14-system safe: byte-based, no locale dependency
 _disp_width() {
-    local s="$1" w=0 c
-    while IFS= read -r -n1 c; do
-        [[ -z "$c" ]] && break
-        # CJK Unified Ideographs, Hiragana, Katakana, Hangul, fullwidth
-        if [[ "$c" =~ [぀-ヿ㐀-䶿一-鿿가-힯！-～] ]]; then
-            w=$((w + 2))
-        else
-            w=$((w + 1))
-        fi
-    done <<< "$s"
-    printf '%d' "$w"
+    local s="$1"
+    local bytes=$(printf '%s' "$s" | wc -c)
+    # Count 3-byte UTF-8 sequences (CJK + symbols like ● — ·)
+    local wide=$(printf '%s' "$s" | LC_ALL=C grep -o $'[\xe0-\xef][\x80-\xbf][\x80-\xbf]' 2>/dev/null | wc -l)
+    # width = ascii_bytes*1 + wide*2 = (bytes - 3*wide) + 2*wide = bytes - wide
+    printf '%d' $((bytes - wide))
 }
 
 DEPS_MARKER='/etc/ddr/.deps.v20260725'
@@ -21087,22 +21082,18 @@ main_loop() {
         local gw_ip="${GLOBAL_PUBLIC_IP:-?}"
         local mode_label="$(read_fast_mode_label)"
         local core_plain=$(printf '%s' "$STATUS_STR $CUR_MODE" | sed 's/\x1b\[[0-9;]*m//g')
-        # Build three segments (plain text for width)
         local seg1="${lbl_gw}: ${gw_ip}"
         local seg2="${lbl_core}: ● ${core_plain}"
         local seg3="${lbl_mode}: ${mode_label}"
         local w1=$(_disp_width "$seg1") w2=$(_disp_width "$seg2") w3=$(_disp_width "$seg3")
-        local total=70
-        # seg1 at col 2, seg3 ends at col 68, seg2 centered
-        local pos1=2
-        local pos3=$((68 - w3))
-        local pos2=$(((70 - w2) / 2))
-        local pad1=$pos1
-        local pad2=$((pos2 - pos1 - w1))
-        local pad3=$((pos3 - pos2 - w2))
-        [[ $pad2 -lt 2 ]] && pad2=2
-        [[ $pad3 -lt 2 ]] && pad3=2
-        # Print with colors (pads are spaces only, no color interference)
+        local total=70 margin=2
+        local gaps=$((total - margin*2 - w1 - w2 - w3))
+        # Distribute gaps evenly between segments (2 gaps)
+        local gap=$((gaps / 2))
+        [[ $gap -lt 2 ]] && gap=2
+        local pad1=$margin
+        local pad2=$gap
+        local pad3=$gap
         printf "%*s${LBLUE}%s:${NC} ${CYAN}%s${NC}%*s${LBLUE}%s:${NC} ${RED}●${NC} %s%*s${LBLUE}%s:${NC} ${YELLOW}%s${NC}\n" \
             "$pad1" "" "$lbl_gw" "$gw_ip" "$pad2" "" "$lbl_core" "$core_plain" "$pad3" "" "$lbl_mode" "$mode_label"
     }

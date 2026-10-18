@@ -7581,7 +7581,7 @@ pre_install_setup() {
         if ! holder=$(ss -H -n -l -p -A tcp 2>/dev/null); then
             die '无法检查 80/tcp 端口占用；ss 查询失败。'
         fi
-        holder=$(awk '{addr=$4; if (addr ~ /(^|:)80$/) { print; found=1 }} END { if (!found) exit 0 }' <<< "$holder" || true)
+        holder=$(awk '{if ($4 ~ /[:.]80$/ || $5 ~ /[:.]80$/) { print; found=1 }} END { if (!found) exit 0 }' <<< "$holder" || true)
         if [[ -n "$holder" ]]; then
             msg "${RED}[!] ACME HTTP-01 需要 80/tcp，但该端口仍被进程占用：${NC}"
             echo "$holder"
@@ -7639,8 +7639,8 @@ pre_install_setup() {
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in
                     0) ;;
-                    1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则写入失败: $proto" ;;
-                    *) die "无法检查防火墙规则。" ;;
+                    1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 SS DROP 规则写入失败: $proto"; } ;;
+                    *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
                 esac
                 if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
@@ -9779,7 +9779,9 @@ manage_ss_whitelist() {
             [[ -z "$add_ip" ]] && return
             if [[ "$add_ip" == *:* ]]; then
                 valid_ipv6_cidr "$add_ip" || { msg "${RED}[!] IPv6 白名单地址非法: $add_ip${NC}"; pause_return; return; }
-                has_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1 || die '系统无可用 IPv6 防火墙。'
+                # N-04: objective check (not preference-aware has_ipv6), consistent
+                # with option 2/3 and pre_install_setup.
+                host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1 || die '系统无可用 IPv6 防火墙。'
                 for proto in tcp udp; do
                     # F-06: check existence first (idempotent) — do not insert duplicates.
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
@@ -11392,9 +11394,10 @@ restore_dns_snapshot_body() {
     if [[ -e "$dir/resolv.conf" || -L "$dir/resolv.conf" ]]; then
         # FIX: cp -a follows a symlink at the destination and would overwrite
         # its TARGET (e.g. systemd-resolved stub target), reporting success
-        # while the snapshot is never applied. Remove a destination symlink
-        # first (mirrors restore_timezone_snapshot's rm -f /etc/localtime).
-        [[ -L /etc/resolv.conf ]] && rm -f /etc/resolv.conf
+        # while the snapshot is never applied. Remove destination first
+        # (mirrors restore_timezone_snapshot's rm -f /etc/localtime), so a
+        # symlinked snapshot can replace a regular file and vice versa.
+        rm -f /etc/resolv.conf || return 1
         cp -a "$dir/resolv.conf" /etc/resolv.conf || return 1
     elif [[ -f "$dir/resolv.conf.absent" ]]; then rm -f /etc/resolv.conf || return 1; fi
     if [[ -f "$dir/resolved.conf" ]]; then cp -a "$dir/resolved.conf" /etc/systemd/resolved.conf || return 1
@@ -11478,8 +11481,8 @@ dns_snapshot_recover_pending_swap() {
 
 # Unified DNS snapshot replacement primitive (used by apply_host_dns and
 # dns_enable_doh). Installs $1 (a COMPLETE staging dir) as $DNS_BACKUP_DIR.
-# - Uses `mv -T`: a pre-existing target is REPLACED, never moved-into.
-#   (Plain `mv staging target` when target exists moves staging INSIDE it.)
+# - Moves existing target aside before `mv --`, so target is replaced and
+#   staging is never moved inside it (POSIX mv, no GNU -T required).
 # - Idempotency: if a COMPLETE baseline already exists, it is PRESERVED and
 #   the new staging dir is discarded. The snapshot's purpose is rollback to
 #   the pre-change state; overwriting it on re-run would destroy that.
@@ -11503,7 +11506,7 @@ dns_snapshot_install_new() {
         printf 'old=%s\nnew=%s\n' "$old_backup" "$staging" > "$pending" || return 1
         chmod 600 "$pending" 2>/dev/null || true
         mv -- "$DNS_BACKUP_DIR" "$old_backup" || { rm -f -- "$pending"; rm -rf -- "$staging"; return 1; }
-        # mv -T: replace target, never move staging inside it.
+        # Target was moved to $old_backup above, so plain POSIX mv replaces cleanly.
         if ! mv -- "$staging" "$DNS_BACKUP_DIR"; then
             mv -- "$old_backup" "$DNS_BACKUP_DIR" 2>/dev/null || true
             rm -f -- "$pending"
@@ -11612,7 +11615,7 @@ apply_host_dns() {
         die "Failed to snapshot DNS state; previous rollback snapshot preserved."
     fi
     printf '%s\n' "$immutable_before" > "$dns_snap_tmp/resolv-immutable" || { rm -rf -- "$dns_snap_tmp"; die "Failed to save DNS immutable-flag state."; }
-    # TRAP-5: use the unified snapshot primitive (mv -T, idempotency,
+    # TRAP-5: use the unified snapshot primitive (POSIX mv + pre-move-aside, idempotency,
     # crash-safe pending-swap). Preserves an existing COMPLETE baseline.
     dns_snapshot_install_new "$dns_snap_tmp" || die "Failed to install new DNS rollback snapshot."
     if (( immutable_before == 1 )); then
@@ -11870,7 +11873,7 @@ dns_enable_doh() {
         msg "${RED}DNS rollback snapshot failed or incomplete; previous snapshot preserved; no resolver changes were made.${NC}"
         return 1
     fi
-    # TRAP-5: use the unified snapshot primitive (mv -T, idempotency,
+    # TRAP-5: use the unified snapshot primitive (POSIX mv + pre-move-aside, idempotency,
     # crash-safe pending-swap). Preserves an existing COMPLETE baseline.
     if ! dns_snapshot_install_new "$_doh_snap_new"; then
         msg "${RED}DNS snapshot install failed; previous snapshot preserved; no resolver changes were made.${NC}"
@@ -15833,6 +15836,8 @@ wallos_rollback_to_version() {
     # so the prune step can retain 2 images (new current + previous). (NEW-1)
     local prev_image
     prev_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+    # Normalize docker.io/ prefix (matches _installed_img and old_image handling).
+    prev_image="${prev_image#docker.io/}"
     docker rm -f wallos >/dev/null 2>&1 || {
         # A-04: rm failed after stop succeeded; try to restart the original
         # container instead of leaving it in Exited state.
@@ -17190,10 +17195,10 @@ PY_CLASH_REALPATH
         msg "${RED}UUID list unreadable or untrusted; refusing to generate incomplete Clash config.${NC}" >&2
         return 1
     fi
-    # F-11 fix: clean up tmp_out on every early return below.
-    hy2_pass_yaml=$(json_escape "${HY2_PASS:-}") || { rm -f -- "$tmp_out"; return 1; }
-    hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || { rm -f -- "$tmp_out"; return 1; }
-    ss_pass_yaml=$(json_escape "${SS_PASS:-}") || { rm -f -- "$tmp_out"; return 1; }
+    # F-11 fix: clean up tmp_out and _clash_uuid_list_tmp on every early return below.
+    hy2_pass_yaml=$(json_escape "${HY2_PASS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
+    hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
+    ss_pass_yaml=$(json_escape "${SS_PASS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     {
         cat <<EOF_CLASH
 mixed-port: 7890

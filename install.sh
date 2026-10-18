@@ -35,15 +35,15 @@ LIGHTBLUE=$'\033[0;94m'
 NC=$'\033[0m'
 BOLD=$'\033[1m'
 
-# Display width: CJK/wide chars count as 2, others as 1
+# Display width: accurate for CJK, symbols, 2-byte Latin/Cyrillic, emoji
 # 14-system safe: byte-based, no locale dependency
 _disp_width() {
     local s="$1"
+    [[ -z "$s" ]] && { printf '0'; return; }
     local bytes=$(printf '%s' "$s" | wc -c)
-    # Count 3-byte UTF-8 sequences (CJK + symbols like ● — ·)
-    local wide=$(printf '%s' "$s" | LC_ALL=C grep -o $'[\xe0-\xef][\x80-\xbf][\x80-\xbf]' 2>/dev/null | wc -l)
-    # width = ascii_bytes*1 + wide*2 = (bytes - 3*wide) + 2*wide = bytes - wide
-    printf '%d' $((bytes - wide))
+    local sub1=$(printf '%s' "$s" | LC_ALL=C grep -o $'[\xc2-\xdf][\x80-\xbf]\|[\xe3-\xef][\x80-\xbf][\x80-\xbf]' 2>/dev/null | wc -l)
+    local sub2=$(printf '%s' "$s" | LC_ALL=C grep -o $'[\xe0-\xe2][\x80-\xbf][\x80-\xbf]\|[\xf0-\xf4][\x80-\xbf][\x80-\xbf][\x80-\xbf]' 2>/dev/null | wc -l)
+    printf '%d' $((bytes - sub1 - sub2 * 2))
 }
 
 DEPS_MARKER='/etc/ddr/.deps.v20260725'
@@ -12008,23 +12008,28 @@ _dns_provider_list() {
 _dns_current_v4() {
     local cur=''
     if [[ -f "$ABOX_ENV" ]]; then
-        cur=$(grep '^DNS_V4=' "$ABOX_ENV" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"' || true)
+        cur=$(awk -F= '/^DNS_V4=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t ]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
     fi
     if [[ -z "$cur" && -r /etc/resolv.conf ]]; then
-        cur=$(grep -m1 '^nameserver' /etc/resolv.conf 2>/dev/null | awk '{print $2}' || true)
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
     fi
-    printf '%s' "$cur"
+    if [[ "$cur" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        printf '%s' "$cur"
+    fi
 }
 
 _dns_current_v6() {
     local cur=''
     if [[ -f "$ABOX_ENV" ]]; then
-        cur=$(grep '^DNS_V6=' "$ABOX_ENV" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"' || true)
+        cur=$(awk -F= '/^DNS_V6=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t ]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
     fi
     if [[ -z "$cur" && -r /etc/resolv.conf ]]; then
-        cur=$(grep '^nameserver' /etc/resolv.conf 2>/dev/null | awk '$2 ~ /:/ {print $2; exit}' || true)
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
     fi
-    printf '%s' "$cur"
+    cur="${cur%%%*}"
+    if [[ "$cur" == *:* && "$cur" =~ ^[0-9a-fA-F:]+$ ]]; then
+        printf '%s' "$cur"
+    fi
 }
 
 # Tri-mode DNS setup wizard: v4-only / v6-only / dual-stack
@@ -21081,21 +21086,23 @@ main_loop() {
         local lbl_gw="$1" lbl_core="$2" lbl_mode="$3"
         local gw_ip="${GLOBAL_PUBLIC_IP:-?}"
         local mode_label="$(read_fast_mode_label)"
-        local core_plain=$(printf '%s' "$STATUS_STR $CUR_MODE" | sed 's/\x1b\[[0-9;]*m//g')
+        # Strip all ANSI (CSI + charset) for width calc
+        local core_plain=$(printf '%s' "$STATUS_STR $CUR_MODE" | sed $'s/\x1b\\[[0-9;?]*[a-zA-Z]//g; s/\x1b([0-9A-Za-z]//g')
         local seg1="${lbl_gw}: ${gw_ip}"
         local seg2="${lbl_core}: ● ${core_plain}"
         local seg3="${lbl_mode}: ${mode_label}"
         local w1=$(_disp_width "$seg1") w2=$(_disp_width "$seg2") w3=$(_disp_width "$seg3")
         local total=70 margin=2
         local gaps=$((total - margin*2 - w1 - w2 - w3))
-        # Distribute gaps evenly between segments (2 gaps)
         local gap=$((gaps / 2))
         [[ $gap -lt 2 ]] && gap=2
-        local pad1=$margin
-        local pad2=$gap
-        local pad3=$gap
-        printf "%*s${LBLUE}%s:${NC} ${CYAN}%s${NC}%*s${LBLUE}%s:${NC} ${RED}●${NC} %s%*s${LBLUE}%s:${NC} ${YELLOW}%s${NC}\n" \
-            "$pad1" "" "$lbl_gw" "$gw_ip" "$pad2" "" "$lbl_core" "$core_plain" "$pad3" "" "$lbl_mode" "$mode_label"
+        local pad1=$margin pad2=$gap pad3=$gap
+        # Dot color: green if core running, red if stopped
+        local dot_color="$RED"
+        [[ -n "$STATUS_STR" ]] && [[ "$core_plain" != *"停止"* ]] && [[ "$core_plain" != *"Stopped"* ]] && dot_color="$GREEN"
+        # Display with original STATUS_STR colors preserved
+        printf "%*s${LBLUE}%s:${NC} ${CYAN}%s${NC}%*s${LBLUE}%s:${NC} ${dot_color}●${NC} %s%*s${LBLUE}%s:${NC} ${YELLOW}%s${NC}\n" \
+            "$pad1" "" "$lbl_gw" "$gw_ip" "$pad2" "" "$lbl_core" "$STATUS_STR $CUR_MODE" "$pad3" "" "$lbl_mode" "$mode_label"
     }
     # Safely migrate active, exactly marked v7 installations into the new
     # per-file ownership model. Inactive or ambiguous services are not adopted.

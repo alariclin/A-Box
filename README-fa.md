@@ -23,7 +23,7 @@ A-Box یک اسکریپت مستقل Bash برای راه‌اندازی و نگ
 ### منبع رسمی GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/40b9686e015cd6f260b828b978b725429316ca72/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/882ee86da80fa3dc0c056e7f51e05777a6117581/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
 sudo bash A-Box.sh
@@ -32,7 +32,7 @@ sudo bash A-Box.sh
 ### آینه جایگزین شخص ثالث
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/40b9686e015cd6f260b828b978b725429316ca72/install.sh -o A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/882ee86da80fa3dc0c056e7f51e05777a6117581/install.sh -o A-Box.sh
 bash -n A-Box.sh && sha256sum A-Box.sh && less A-Box.sh
 # پس از بررسی اسکریپت دریافت‌شده، جداگانه اجرا کنید:
 sudo bash A-Box.sh

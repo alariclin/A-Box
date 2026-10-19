@@ -6470,9 +6470,14 @@ set_traffic_block_period() {
 
 clear_traffic_block_period() {
     local state pair_fields
-    # B-03 fix: if the block file is absent AND the pair state is unreadable/
-    # corrupt, that is an error, not "nothing to clean". Do not return success.
+    # B-03 fix: if the block file is absent AND the pair state exists but is
+    # unreadable/corrupt, that is an error, not "nothing to clean".
+    # If neither file ever existed (fresh box / never configured), there is
+    # genuinely nothing to clean.
     if [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]]; then
+        if [[ ! -e "$ABOX_TRAFFIC_PAIR_STATE" && ! -L "$ABOX_TRAFFIC_PAIR_STATE" ]]; then
+            return 0
+        fi
         if ! pair_fields=$(read_traffic_pair_fields 2>/dev/null); then
             msg "${RED}[!] Traffic pair state is unreadable or corrupt; refusing to treat as clean.${NC}" >&2
             return 1

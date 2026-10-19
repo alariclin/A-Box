@@ -18676,6 +18676,12 @@ generate_qr() {
         printf '\n%s\n' "${CYAN}================ 扫码导入 / Scan QR Code =================${NC}"
         printf '%s' "$url" | qrencode -s 1 -m 2 -t UTF8
         printf '%s\n\n' "${CYAN}==========================================================${NC}"
+    elif [[ -z "${_QR_MISSING_WARNED:-}" ]]; then
+        _QR_MISSING_WARNED=1
+        msg "${YELLOW}[!] 未检测到 qrencode，跳过二维码显示。安装后进 12 号菜单重看即有：${NC}"
+        msg "${YELLOW}    Debian/Ubuntu: sudo apt install -y qrencode${NC}"
+        msg "${YELLOW}    Rocky/Alma/Fedora: sudo dnf install -y qrencode${NC}"
+        msg "${YELLOW}    Alpine: sudo apk add qrencode${NC}"
     fi
 }
 

@@ -8623,7 +8623,7 @@ setup_socks5_params() {
     [[ -n "$SOCKS_USER" ]] || SOCKS_USER="abox_user"
     SOCKS_PASS="$(head -c 64 /dev/urandom 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 16)"
     [[ -n "$SOCKS_PASS" ]] || SOCKS_PASS="abox_pass_123456"
-    if [[ "${CORE:-sing-box}" == "sing-box" ]]; then
+    if [[ "${CORE:-singbox}" == "singbox" ]]; then
         SOCKS_PROTO="mixed"
     else
         SOCKS_PROTO="socks"

@@ -21355,8 +21355,8 @@ main_loop() {
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core Deployment ]${NC}              ${CYAN}[ Sing-box Deployment ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
+                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  VLESS + SS-2022"
+                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (Official)              ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC}  All-in-one (Xray+Hy2)              ${GREEN}10.${NC} All-in-one (Sing-box)"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
@@ -21375,8 +21375,8 @@ main_loop() {
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Развёртывание Xray ]${NC}              ${CYAN}[ Развёртывание sing-box ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
+                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  VLESS + SS-2022"
+                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (официальный)           ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
                 msg "${GREEN}5.${NC}  Комплексная установка               ${GREEN}10.${NC} Комплексная установка"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
@@ -21395,8 +21395,8 @@ main_loop() {
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ نصب Xray ]${NC}                         ${CYAN}[ نصب sing-box ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
+                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  VLESS + SS-2022"
+                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (رسمی)                 ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
                 msg "${GREEN}5.${NC}  نصب ترکیبی                          ${GREEN}10.${NC} نصب ترکیبی"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
@@ -21415,8 +21415,8 @@ main_loop() {
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core 部署 ]${NC}                    ${CYAN}[ Sing-box 部署 ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
+                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  VLESS + SS-2022"
+                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (官方)                 ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC}  全協議四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全協議三合一 (Sing-box)"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
@@ -21435,8 +21435,8 @@ main_loop() {
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core 部署します ]${NC}                    ${CYAN}[ Sing-box 部署します ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
+                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  VLESS + SS-2022"
+                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2（公式）                 ${GREEN}9.${NC}  Hysteria 2（sing-box）"
                 msg "${GREEN}5.${NC}  全プロトコル統合（Xray+Hy2）${GREEN}10.${NC} 全プロトコル統合（Sing-box）"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
@@ -21455,8 +21455,8 @@ main_loop() {
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core 部署 ]${NC}                    ${CYAN}[ Sing-box 部署 ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
+                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  VLESS + SS-2022"
+                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (官方)                 ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC}  全协议四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全协议三合一 (Sing-box)"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
@@ -21486,8 +21486,8 @@ main_loop() {
             4) deploy_official_hy2 NORMAL ;;
             5) deploy_xray ALL ;;
             6) deploy_singbox VISION ;;
-            7) deploy_singbox SS ;;
-            8) deploy_singbox VLESS_SS ;;
+            7) deploy_singbox VLESS_SS ;;
+            8) deploy_singbox SS ;;
             9) deploy_singbox HY2 ;;
             10) deploy_singbox ALL ;;
             11) vps_benchmark_menu ;;

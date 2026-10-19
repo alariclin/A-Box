@@ -18220,6 +18220,9 @@ wallos_menu() {
     esac
 }
 vps_benchmark_menu() {
+    # Toolbox is a submenu loop: sub-functions return here, 0/Enter goes back
+    # to the main menu.
+    while true; do
     clear
     msg "${CYAN}======================================================================${NC}"
     case "${ABOX_LANG:-zh}" in
@@ -18328,7 +18331,7 @@ vps_benchmark_menu() {
     esac
     local bench_choice select_prompt
     case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-16]: ' ;; ru) select_prompt='Выберите [0–16]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۶]: ' ;; ja) select_prompt='選択してください [0-16]: ' ;; zh-tw) select_prompt='請選擇 [0-16]：' ;; *) select_prompt='请选择 [0-16]：' ;; esac
-    read -r -p "$select_prompt" bench_choice
+    read -r -p "$select_prompt" bench_choice || return 0
     case "$bench_choice" in
         1) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
         2) run_mirrored_test_script 'IP quality, streaming unlock and route test' 'https://Check.Place' 'Check.Place.sh' -I; pause_return ;;
@@ -18344,10 +18347,12 @@ vps_benchmark_menu() {
         12) tune_vps ;;
         13) host_network_menu ;;
         14) wallos_menu ;;
-        15) socks5_toolbox_entry ;; 
-        16) trojan_toolbox_entry ;;
-        *) return 0 ;;
+        15) socks5_toolbox_entry; pause_return ;;
+        16) trojan_toolbox_entry; pause_return ;;
+        0|'') return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $bench_choice${NC}"; sleep 1 ;;
     esac
+    done
 }
 
 # Toolbox entry 15: let the user freely choose the core for standalone SOCKS5.

@@ -8618,7 +8618,7 @@ setup_socks5_params() {
         _tries=$((_tries + 1))
         [[ $_tries -gt 20 ]] && break
     done
-    SOCKS_PORT=$(prompt_validated "$(tr_msg socks5_port_prompt 2>/dev/null || echo 'SOCKS5 port [default]: ')" port "$default_port") || return 1
+    SOCKS_PORT=$(prompt_validated "$(tr_msg socks5_port_prompt 2>/dev/null || echo 'SOCKS5 port'); [${default_port}]: " port "$default_port") || return 1
     SOCKS_USER="abox_$(head -c 32 /dev/urandom 2>/dev/null | tr -dc 'a-z0-9' | head -c 6)"
     [[ -n "$SOCKS_USER" ]] || SOCKS_USER="abox_user"
     SOCKS_PASS="$(head -c 64 /dev/urandom 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 16)"

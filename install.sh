@@ -634,6 +634,48 @@ tr_msg() {
         fa:socks5_core_prompt) echo 'هسته را انتخاب کنید [۱] Xray [۲] sing-box (mixed): ' ;;
         zh-tw:socks5_core_prompt) echo '選擇核心 [1] Xray (純SOCKS5) [2] sing-box (mixed): ' ;;
         ja:socks5_core_prompt) echo 'コアを選択 [1] Xray (SOCKS5) [2] sing-box (mixed): ' ;;
+        zh:trojan_title) echo '部署 Trojan-Reality 落地代理 (Xray-core)' ;;
+        en:trojan_title) echo 'Deploy Trojan-Reality landing proxy (Xray-core)' ;;
+        ru:trojan_title) echo 'Развёртывание Trojan-Reality (Xray-core)' ;;
+        fa:trojan_title) echo 'استقرار پروکسی لندینگ Trojan-Reality (Xray-core)' ;;
+        zh-tw:trojan_title) echo '部署 Trojan-Reality 落地代理 (Xray-core)' ;;
+        ja:trojan_title) echo 'Trojan-Reality ランディングプロキシを展開 (Xray-core)' ;;
+        zh:trojan_sb_title) echo '部署 Trojan-Reality 落地代理 (sing-box)' ;;
+        en:trojan_sb_title) echo 'Deploy Trojan-Reality landing proxy (sing-box)' ;;
+        ru:trojan_sb_title) echo 'Развёртывание Trojan-Reality (sing-box)' ;;
+        fa:trojan_sb_title) echo 'استقرار پروکسی لندینگ Trojan-Reality (sing-box)' ;;
+        zh-tw:trojan_sb_title) echo '部署 Trojan-Reality 落地代理 (sing-box)' ;;
+        ja:trojan_sb_title) echo 'Trojan-Reality ランディングプロキシを展開 (sing-box)' ;;
+        zh:trojan_port_prompt) echo '请输入 Trojan 监听端口 (回车默认 443): ' ;;
+        en:trojan_port_prompt) echo 'Enter Trojan listen port (default 443): ' ;;
+        ru:trojan_port_prompt) echo 'Введите порт Trojan (по умолчанию 443): ' ;;
+        fa:trojan_port_prompt) echo 'درگاه Trojan را وارد کنید (پیش‌فرض 443): ' ;;
+        zh-tw:trojan_port_prompt) echo '請輸入 Trojan 監聽端口 (回車默認 443): ' ;;
+        ja:trojan_port_prompt) echo 'Trojan リッスンポートを入力 (デフォルト 443): ' ;;
+        zh:trojan_pass_prompt) echo '请输入 Trojan 密码 (回车自动生成随机密码): ' ;;
+        en:trojan_pass_prompt) echo 'Enter Trojan password (Enter to auto-generate): ' ;;
+        ru:trojan_pass_prompt) echo 'Введите пароль Trojan (Enter для автогенерации): ' ;;
+        fa:trojan_pass_prompt) echo 'گذرواژه Trojan را وارد کنید (Enter برای تولید خودکار): ' ;;
+        zh-tw:trojan_pass_prompt) echo '請輸入 Trojan 密碼 (回車自動生成隨機密碼): ' ;;
+        ja:trojan_pass_prompt) echo 'Trojan パスワードを入力 (Enter で自動生成): ' ;;
+        zh:trojan_exists) echo '检测到已存在 trojan-landing 入站，将更新其配置。' ;;
+        en:trojan_exists) echo 'Existing trojan-landing inbound found, updating its config.' ;;
+        ru:trojan_exists) echo 'Найден существующий trojan-landing, обновляю конфигурацию.' ;;
+        fa:trojan_exists) echo 'ورودی trojan-landing موجود است، در حال به‌روزرسانی.' ;;
+        zh-tw:trojan_exists) echo '檢測到已存在 trojan-landing 入站，將更新其配置。' ;;
+        ja:trojan_exists) echo '既存の trojan-landing インバウンドを更新します。' ;;
+        zh:trojan_done) echo 'Trojan-Reality 部署完成，链接如下：' ;;
+        en:trojan_done) echo 'Trojan-Reality deployed, link:' ;;
+        ru:trojan_done) echo 'Trojan-Reality развёрнут, ссылка:' ;;
+        fa:trojan_done) echo 'Trojan-Reality مستقر شد، لینک:' ;;
+        zh-tw:trojan_done) echo 'Trojan-Reality 部署完成，鏈接如下：' ;;
+        ja:trojan_done) echo 'Trojan-Reality を展開しました、リンク:' ;;
+        zh:trojan_core_prompt) echo '选择核心 [1] Xray [2] sing-box: ' ;;
+        en:trojan_core_prompt) echo 'Select core [1] Xray [2] sing-box: ' ;;
+        ru:trojan_core_prompt) echo 'Выберите ядро [1] Xray [2] sing-box: ' ;;
+        fa:trojan_core_prompt) echo 'هسته را انتخاب کنید [۱] Xray [۲] sing-box: ' ;;
+        zh-tw:trojan_core_prompt) echo '選擇核心 [1] Xray [2] sing-box: ' ;;
+        ja:trojan_core_prompt) echo 'コアを選択 [1] Xray [2] sing-box: ' ;;
         zh:socks5_pass_prompt) echo '请输入 SOCKS5 密码 (回车自动生成随机密码): ' ;;
         en:socks5_pass_prompt) echo 'Enter SOCKS5 password (Enter to auto-generate): ' ;;
         ru:socks5_pass_prompt) echo 'Введите пароль SOCKS5 (Enter для автогенерации): ' ;;
@@ -8798,6 +8840,304 @@ EOF_SVC
     else
         msg "socks5://${user}:${pass}@${pub_ip}:${port}"
     fi
+}
+
+# Standalone Trojan-Reality via Xray-core (toolbox entry).
+# Reuses A-Box Reality key/SNI flow: xray x25519 + sni_auto_select_default.
+# Tag: trojan-landing. Hot-push via API when available, restart fallback.
+deploy_xray_trojan_landing() {
+    local port pass sni pk pbk sid cfg='/usr/local/etc/xray/config.json'
+    local tag='trojan-landing' tmp_json
+    clear; msg "${BOLD}${GREEN}$(tr_msg trojan_title)${NC}"
+    init_system_environment
+    load_optional_abox_env_or_die
+    light_preflight_check
+
+    port=$(prompt_validated "$(tr_msg trojan_port_prompt)" port '443') || die 'Trojan port input failed.'
+    read -r -p "$(tr_msg trojan_pass_prompt)" pass || pass=''
+    if [[ -z "$pass" ]]; then
+        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'Trojan password generation failed.'
+        [[ -n "$pass" ]] || die 'Trojan password generation failed.'
+    fi
+
+    # Minimal Xray install when the binary is missing (mirror SOCKS5 flow).
+    if [[ ! -x /usr/local/bin/xray ]]; then
+        local xray_tmp xray_zip xray_ext
+        get_architecture
+        xray_tmp=$(mktemp -d /tmp/A-Box-xray-trojan.XXXXXX) || die 'Xray 临时目录创建失败。'
+        xray_zip="$xray_tmp/xray_core.zip"
+        xray_ext="$xray_tmp/xray_ext"
+        mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
+        clear_core_release_resolution XTLS/Xray-core
+        fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
+        extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die 'Xray 压缩包安全提取失败。'
+        [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die '安全提取后未找到 xray 主程序。'
+        chmod 755 "$xray_ext/xray" || die 'Xray staged binary chmod failed.'
+        "$xray_ext/xray" version >/dev/null 2>&1 || die 'Xray staged binary execution check failed.'
+        install_binary_atomically "$xray_ext/xray" /usr/local/bin/xray || die 'Xray binary atomic install failed.'
+        /usr/local/bin/xray version >/dev/null 2>&1 || die 'Xray 执行校验失败。'
+        prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
+        rm -rf -- "$xray_tmp"
+        tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{loglevel:"warning"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
+            || die 'Xray 初始配置生成失败。'
+        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Xray config 原子写入失败。'
+        rm -f "$tmp_json"
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die 'Xray systemd unit 原子写入失败。'
+# Managed by A-Box
+[Unit]
+Description=A-Box Xray Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-xray
+Group=abox-xray
+UMask=0077
+Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        else
+            path_parent_chain_safe /etc/conf.d/xray || die 'OpenRC conf.d 父链不安全。'
+            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+            write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die 'Xray OpenRC conf.d 原子写入失败。'
+export XRAY_LOCATION_ASSET="/usr/local/share/xray"
+EOF_XRAY_CONFD
+            write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die 'Xray OpenRC unit 原子写入失败。'
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Xray Service"
+command="/usr/local/bin/xray"
+command_args="run -config /usr/local/etc/xray/config.json"
+command_background="yes"
+command_user="abox-xray:abox-xray"
+capabilities="cap_net_bind_service"
+umask=077
+pidfile="/run/xray.pid"
+depend() { need net; }
+EOF_SVC
+            chmod +x /etc/init.d/xray || die 'Xray OpenRC 服务权限设置失败。'
+        fi
+        prepare_abox_runtime_permissions xray || die 'Xray 运行时用户/文件权限准备失败。'
+    fi
+
+    # Reality keypair + SNI (reuse A-Box flow).
+    local keypair
+    keypair=$(/usr/local/bin/xray x25519) || die 'Xray REALITY 密钥对生成失败。'
+    IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die 'Xray REALITY 密钥解析失败。'
+    [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die 'Xray REALITY 密钥为空。'
+    sid=$(openssl rand -hex 4 | tr -d '\n\r') || die 'shortId 生成失败。'
+    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
+    [[ -n "$sni" ]] || sni='www.amazon.com'
+
+    # Build the trojan+reality inbound object (A-Box realitySettings format).
+    tmp_json=$(mktemp /tmp/A-Box-trojan-inbound.XXXXXX) || die '临时文件创建失败。'
+    jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" \
+        --arg pk "$pk" --arg sid "$sid" \
+        '{tag:"trojan-landing",port:$port,listen:"0.0.0.0",protocol:"trojan",
+          settings:{clients:[{password:$pass}]},
+          streamSettings:{network:"tcp",security:"reality",
+            realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}}}' \
+        > "$tmp_json" || die 'Trojan inbound JSON 生成失败。'
+
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        local tmp_cfg
+        msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
+        tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die '临时文件创建失败。'
+        if ! jq --slurpfile nb "$tmp_json" \
+                '(.inbounds | map(select(.tag=="trojan-landing"))) as $old
+                 | .inbounds |= (map(select(.tag!="trojan-landing")) + $nb)' \
+                "$cfg" > "$tmp_cfg" 2>/dev/null; then
+            rm -f "$tmp_cfg" "$tmp_json"; die 'Trojan inbound 配置更新失败。'
+        fi
+        jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray JSON 格式非法。'; }
+        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" >/dev/null 2>&1 \
+            || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray 配置校验失败。'; }
+        install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray config 原子写入失败。'; }
+        rm -f "$tmp_cfg"
+        prepare_abox_runtime_permissions xray 2>/dev/null || true
+        restart_service_soft xray || die 'Xray 服务重启失败。'
+    else
+        xray_hot_add_inbound "$tmp_json" || die 'Trojan inbound 添加失败。'
+    fi
+    rm -f "$tmp_json"
+
+    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    service_manager start xray 2>/dev/null || true
+    set_desired_state RUNNING 2>/dev/null || true
+
+    local pub_ip
+    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
+    msg "${GREEN}$(tr_msg trojan_done)${NC}"
+    msg "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+}
+
+# Standalone Trojan-Reality via sing-box (toolbox entry).
+# Mirrors the Xray flow; no API hot-push: config rewrite + `sing-box check` + restart.
+deploy_singbox_trojan_landing() {
+    local port pass sni pk pbk sid cfg='/etc/sing-box/config.json'
+    local tag='trojan-landing' tmp_json
+    clear; msg "${BOLD}${GREEN}$(tr_msg trojan_sb_title)${NC}"
+    init_system_environment
+    load_optional_abox_env_or_die
+    light_preflight_check
+
+    port=$(prompt_validated "$(tr_msg trojan_port_prompt)" port '443') || die 'Trojan port input failed.'
+    read -r -p "$(tr_msg trojan_pass_prompt)" pass || pass=''
+    if [[ -z "$pass" ]]; then
+        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'Trojan password generation failed.'
+        [[ -n "$pass" ]] || die 'Trojan password generation failed.'
+    fi
+
+    # Minimal sing-box install when the binary is missing.
+    if [[ ! -x /usr/local/bin/sing-box ]]; then
+        local sb_tmp sb_tar sb_ext SB_PATH
+        get_architecture
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-trojan.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tar="$sb_tmp/singbox_core.tar.gz"
+        sb_ext="$sb_tmp/extract"
+        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        clear_core_release_resolution SagerNet/sing-box
+        fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
+        SB_PATH="$sb_ext/sing-box"
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        rm -rf -- "$sb_tmp"
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die 'Sing-box 初始配置生成失败。'
+        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+        rm -f "$tmp_json"
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+# Managed by A-Box
+[Unit]
+Description=A-Box Sing-Box Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-singbox
+Group=abox-singbox
+UMask=0077
+ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        else
+            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
+            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+rc_ulimit="-n 1048576"
+EOF_SB_CONFD
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Sing-Box Service"
+command="/usr/local/bin/sing-box"
+command_args="run -c /etc/sing-box/config.json"
+command_background="yes"
+command_user="abox-singbox:abox-singbox"
+umask=077
+pidfile="/run/sing-box.pid"
+depend() { need net; }
+EOF_SVC
+            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+        fi
+        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+    fi
+
+    # Reality keypair + SNI (reuse A-Box flow).
+    local keypair
+    keypair=$(/usr/local/bin/sing-box generate reality-keypair) || die 'Sing-box REALITY 密钥对生成失败。'
+    IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die 'Sing-box REALITY 密钥解析失败。'
+    [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die 'Sing-box REALITY 密钥为空。'
+    sid=$(openssl rand -hex 4 | tr -d '\n\r') || die 'shortId 生成失败。'
+    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
+    [[ -n "$sni" ]] || sni='www.amazon.com'
+
+    # Build the trojan+reality inbound object.
+    tmp_json=$(mktemp /tmp/A-Box-sb-trojan-inbound.XXXXXX) || die '临时文件创建失败。'
+    jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" \
+        --arg pk "$pk" --arg sid "$sid" \
+        '{type:"trojan",tag:"trojan-landing",listen:"0.0.0.0",listen_port:$port,
+          users:[{password:$pass}],
+          tls:{enabled:true,server_name:$sni,
+            reality:{enabled:true,handshake:{server:$sni,server_port:443},private_key:$pk,short_id:[$sid]}}}' \
+        > "$tmp_json" || die 'Trojan inbound JSON 生成失败。'
+
+    local tmp_cfg
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
+    fi
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    if ! jq --slurpfile nb "$tmp_json" \
+            '(.inbounds | map(select(.tag=="trojan-landing"))) as $old
+             | .inbounds |= (map(select(.tag!="trojan-landing")) + $nb)' \
+            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+        rm -f "$tmp_cfg" "$tmp_json"; die 'Trojan inbound 配置更新失败。'
+    fi
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
+        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+    rm -f "$tmp_cfg" "$tmp_json"
+    prepare_abox_runtime_permissions sing-box 2>/dev/null || true
+    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+
+    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    service_manager start sing-box 2>/dev/null || true
+    set_desired_state RUNNING 2>/dev/null || true
+
+    local pub_ip
+    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
+    msg "${GREEN}$(tr_msg trojan_done)${NC}"
+    msg "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+}
+
+# Toolbox entry: standalone Trojan-Reality, free core choice.
+trojan_toolbox_entry() {
+    local _core_choice='' _default='1'
+    load_optional_abox_env_or_die 2>/dev/null || true
+    if [[ "${CORE:-}" == "singbox" ]]; then
+        _default='2'
+    fi
+    read -r -p "$(tr_msg trojan_core_prompt) [${_default}]: " _core_choice || _core_choice=''
+    _core_choice="${_core_choice:-$_default}"
+    case "$_core_choice" in
+        2) deploy_singbox_trojan_landing ;;
+        *) deploy_xray_trojan_landing ;;
+    esac
 }
 
 deploy_socks5_landing() {
@@ -17792,6 +18132,7 @@ vps_benchmark_menu() {
             msg "${YELLOW}13. IP / DNS / timezone / locale / download-source settings${NC}"
             msg "${YELLOW}14. Wallos install / update / backup${NC}"
             msg "${YELLOW}15. SOCKS5/Mixed landing deploy (fingerprint browsers/TG)${NC}"
+            msg "${YELLOW}16. Trojan-Reality landing deploy${NC}"
             msg "${GREEN}0. Back${NC}"
             ;;
         ru)
@@ -17811,6 +18152,7 @@ vps_benchmark_menu() {
             msg "${YELLOW}13. IP / DNS / часовой пояс / локаль / источники загрузки${NC}"
             msg "${YELLOW}14. Установка и обслуживание Wallos${NC}"
             msg "${YELLOW}15. SOCKS5/Mixed лендинг (для браузеров/TG)${NC}"
+            msg "${YELLOW}16. Trojan-Reality лендинг${NC}"
             msg "${GREEN}0. Назад${NC}"
             ;;
         fa)
@@ -17830,6 +18172,7 @@ vps_benchmark_menu() {
             msg "${YELLOW}13. IP / DNS / منطقه زمانی / locale / منبع دانلود${NC}"
             msg "${YELLOW}14. نصب و نگهداری Wallos${NC}"
             msg "${YELLOW}15. استقرار SOCKS5/Mixed (مرورگر/TG)${NC}"
+            msg "${YELLOW}16. استقرار Trojan-Reality${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
         zh-tw)
@@ -17849,6 +18192,7 @@ vps_benchmark_menu() {
             msg "${YELLOW}13. IP / DNS / 時區 / Locale / 下載源設定${NC}"
             msg "${YELLOW}14. Wallos 安裝 / 升級 / 備份${NC}"
             msg "${YELLOW}15. SOCKS5/Mixed 落地部署（指紋瀏覽器/TG專用）${NC}"
+            msg "${YELLOW}16. Trojan-Reality 落地部署${NC}"
             msg "${GREEN}0. 返回主選單${NC}"
             ;;
         ja)
@@ -17868,6 +18212,7 @@ vps_benchmark_menu() {
             msg "${YELLOW}13. IP / DNS / タイムゾーン / Locale / ダウンロード元の設定${NC}"
             msg "${YELLOW}14. Wallos のインストール / アップグレード / バックアップ${NC}"
             msg "${YELLOW}15. SOCKS5/Mixed ランディング構築（指紋ブラウザ/TG用）${NC}"
+            msg "${YELLOW}16. Trojan-Reality ランディング構築${NC}"
             msg "${GREEN}0. メインメニューに戻る${NC}"
             ;;
         *)
@@ -17887,11 +18232,12 @@ vps_benchmark_menu() {
             msg "${YELLOW}13. IP / DNS / 时区 / Locale / 下载源设置${NC}"
             msg "${YELLOW}14. Wallos 安装 / 升级 / 备份${NC}"
             msg "${YELLOW}15. SOCKS5/Mixed 落地部署（指纹浏览器/TG专用）${NC}"
+            msg "${YELLOW}16. Trojan-Reality 落地部署${NC}"
             msg "${GREEN}0. 返回主菜单${NC}"
             ;;
     esac
     local bench_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-15]: ' ;; ru) select_prompt='Выберите [0–15]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۵]: ' ;; ja) select_prompt='選択してください [0-15]: ' ;; zh-tw) select_prompt='請選擇 [0-15]：' ;; *) select_prompt='请选择 [0-15]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-16]: ' ;; ru) select_prompt='Выберите [0–16]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۶]: ' ;; ja) select_prompt='選択してください [0-16]: ' ;; zh-tw) select_prompt='請選擇 [0-16]：' ;; *) select_prompt='请选择 [0-16]：' ;; esac
     read -r -p "$select_prompt" bench_choice
     case "$bench_choice" in
         1) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
@@ -17909,6 +18255,7 @@ vps_benchmark_menu() {
         13) host_network_menu ;;
         14) wallos_menu ;;
         15) socks5_toolbox_entry ;; 
+        16) trojan_toolbox_entry ;;
         *) return 0 ;;
     esac
 }

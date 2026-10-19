@@ -598,6 +598,42 @@ tr_msg() {
         fa:swap_done) echo 'عملیات Swap پایان یافت.' ;;
         zh-tw:swap_done) echo 'Swap 處理完成。' ;;
         ja:swap_done) echo 'Swap 操作が完了しました。' ;;
+        zh:socks5_title) echo '部署 SOCKS5 落地代理 (Xray-core)' ;;
+        en:socks5_title) echo 'Deploy SOCKS5 landing proxy (Xray-core)' ;;
+        ru:socks5_title) echo 'Развёртывание SOCKS5 (Xray-core)' ;;
+        fa:socks5_title) echo 'استقرار پروکسی لندینگ SOCKS5 (Xray-core)' ;;
+        zh-tw:socks5_title) echo '部署 SOCKS5 落地代理 (Xray-core)' ;;
+        ja:socks5_title) echo 'SOCKS5 ランディングプロキシを展開 (Xray-core)' ;;
+        zh:socks5_port_prompt) echo '请输入 SOCKS5 监听端口 (回车默认 1080): ' ;;
+        en:socks5_port_prompt) echo 'Enter SOCKS5 listen port (default 1080): ' ;;
+        ru:socks5_port_prompt) echo 'Введите порт SOCKS5 (по умолчанию 1080): ' ;;
+        fa:socks5_port_prompt) echo 'درگاه SOCKS5 را وارد کنید (پیش‌فرض 1080): ' ;;
+        zh-tw:socks5_port_prompt) echo '請輸入 SOCKS5 監聽端口 (回車默認 1080): ' ;;
+        ja:socks5_port_prompt) echo 'SOCKS5 リッスンポートを入力 (デフォルト 1080): ' ;;
+        zh:socks5_user_prompt) echo '请输入 SOCKS5 用户名 (回车默认 abox): ' ;;
+        en:socks5_user_prompt) echo 'Enter SOCKS5 username (default abox): ' ;;
+        ru:socks5_user_prompt) echo 'Введите имя пользователя SOCKS5 (по умолчанию abox): ' ;;
+        fa:socks5_user_prompt) echo 'نام کاربری SOCKS5 را وارد کنید (پیش‌فرض abox): ' ;;
+        zh-tw:socks5_user_prompt) echo '請輸入 SOCKS5 用戶名 (回車默認 abox): ' ;;
+        ja:socks5_user_prompt) echo 'SOCKS5 ユーザー名を入力 (デフォルト abox): ' ;;
+        zh:socks5_pass_prompt) echo '请输入 SOCKS5 密码 (回车自动生成随机密码): ' ;;
+        en:socks5_pass_prompt) echo 'Enter SOCKS5 password (Enter to auto-generate): ' ;;
+        ru:socks5_pass_prompt) echo 'Введите пароль SOCKS5 (Enter для автогенерации): ' ;;
+        fa:socks5_pass_prompt) echo 'گذرواژه SOCKS5 را وارد کنید (Enter برای تولید خودکار): ' ;;
+        zh-tw:socks5_pass_prompt) echo '請輸入 SOCKS5 密碼 (回車自動生成隨機密碼): ' ;;
+        ja:socks5_pass_prompt) echo 'SOCKS5 パスワードを入力 (Enter で自動生成): ' ;;
+        zh:socks5_exists) echo '检测到已存在 socks5-landing 入站，将更新其配置。' ;;
+        en:socks5_exists) echo 'Existing socks5-landing inbound found; its config will be updated.' ;;
+        ru:socks5_exists) echo 'Найден существующий инбаунд socks5-landing; его конфигурация будет обновлена.' ;;
+        fa:socks5_exists) echo 'اینباند socks5-landing موجود است؛ پیکربندی آن به‌روزرسانی می‌شود.' ;;
+        zh-tw:socks5_exists) echo '檢測到已存在 socks5-landing 入站，將更新其配置。' ;;
+        ja:socks5_exists) echo '既存の socks5-landing インバウンドが見つかりました。設定を更新します。' ;;
+        zh:socks5_done) echo 'SOCKS5 落地代理部署完成。' ;;
+        en:socks5_done) echo 'SOCKS5 landing proxy deployed.' ;;
+        ru:socks5_done) echo 'SOCKS5 прокси развёрнут.' ;;
+        fa:socks5_done) echo 'پروکسی لندینگ SOCKS5 مستقر شد.' ;;
+        zh-tw:socks5_done) echo 'SOCKS5 落地代理部署完成。' ;;
+        ja:socks5_done) echo 'SOCKS5 ランディングプロキシを展開しました。' ;;
         *) echo "$key" ;;
     esac
 }
@@ -8531,6 +8567,150 @@ parse_x25519_keypair_output() {
     done <<< "$input"
     [[ -n "$private_key" && -n "$public_key" ]] || return 1
     printf '%s\t%s\n' "$private_key" "$public_key"
+}
+
+
+# SOCKS5 landing proxy via Xray-core.
+# Interactive: port (default 1080), username (default abox), password (default random).
+# If Xray is already installed, the socks5-landing inbound is added/updated via
+# xray_hot_add_inbound (hot-push when the API is available, restart fallback).
+# Otherwise a minimal Xray install (binary + config + systemd unit) is performed.
+deploy_socks5_landing() {
+    local port user pass cfg='/usr/local/etc/xray/config.json'
+    local tag='socks5-landing' tmp_json inbound_json
+    clear; msg "${BOLD}${GREEN}$(tr_msg socks5_title)${NC}"
+    init_system_environment
+    load_optional_abox_env_or_die
+    light_preflight_check
+
+    port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080') || die 'SOCKS5 port input failed.'
+    read -r -p "$(tr_msg socks5_user_prompt)" user || user=''
+    user="${user:-abox}"
+    read -r -p "$(tr_msg socks5_pass_prompt)" pass || pass=''
+    if [[ -z "$pass" ]]; then
+        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'SOCKS5 password generation failed.'
+        [[ -n "$pass" ]] || die 'SOCKS5 password generation failed.'
+    fi
+
+    # Minimal Xray install when the binary is missing.
+    if [[ ! -x /usr/local/bin/xray ]]; then
+        local xray_tmp xray_zip xray_ext
+        get_architecture
+        xray_tmp=$(mktemp -d /tmp/A-Box-xray-socks5.XXXXXX) || die 'Xray 临时目录创建失败。'
+        xray_zip="$xray_tmp/xray_core.zip"
+        xray_ext="$xray_tmp/xray_ext"
+        mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
+        clear_core_release_resolution XTLS/Xray-core
+        fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
+        extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die 'Xray 压缩包安全提取失败。'
+        [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die '安全提取后未找到 xray 主程序。'
+        chmod 755 "$xray_ext/xray" || die 'Xray staged binary chmod failed.'
+        "$xray_ext/xray" version >/dev/null 2>&1 || die 'Xray staged binary execution check failed.'
+        install_binary_atomically "$xray_ext/xray" /usr/local/bin/xray || die 'Xray binary atomic install failed.'
+        /usr/local/bin/xray version >/dev/null 2>&1 || die 'Xray 执行校验失败。'
+        prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
+        rm -rf -- "$xray_tmp"
+        # Seed a minimal config shell; the socks inbound is appended below.
+        tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{loglevel:"warning"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
+            || die 'Xray 初始配置生成失败。'
+        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Xray config 原子写入失败。'
+        rm -f "$tmp_json"
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die 'Xray systemd unit 原子写入失败。'
+# Managed by A-Box
+[Unit]
+Description=A-Box Xray Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-xray
+Group=abox-xray
+UMask=0077
+Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        else
+            path_parent_chain_safe /etc/conf.d/xray || die 'OpenRC conf.d 父链不安全。'
+            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+            write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die 'Xray OpenRC conf.d 原子写入失败。'
+export XRAY_LOCATION_ASSET="/usr/local/share/xray"
+EOF_XRAY_CONFD
+            write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die 'Xray OpenRC unit 原子写入失败。'
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Xray Service"
+command="/usr/local/bin/xray"
+command_args="run -config /usr/local/etc/xray/config.json"
+command_background="yes"
+command_user="abox-xray:abox-xray"
+capabilities="cap_net_bind_service"
+umask=077
+pidfile="/run/xray.pid"
+depend() { need net; }
+EOF_SVC
+            chmod +x /etc/init.d/xray || die 'Xray OpenRC 服务权限设置失败。'
+        fi
+        prepare_abox_runtime_permissions xray || die 'Xray 运行时用户/文件权限准备失败。'
+    fi
+
+    # Build the socks inbound object.
+    tmp_json=$(mktemp /tmp/A-Box-socks5-inbound.XXXXXX) || die '临时文件创建失败。'
+    jq -n --argjson port "$port" --arg user "$user" --arg pass "$pass" \
+        '{tag:"socks5-landing",port:$port,listen:"0.0.0.0",protocol:"socks",
+          settings:{auth:"password",accounts:[{user:$user,pass:$pass}],udp:true,ip:"0.0.0.0"}}' \
+        > "$tmp_json" || die 'SOCKS5 inbound JSON 生成失败。'
+
+    # If the tag already exists, replace it in place; otherwise hot-add.
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        local tmp_cfg
+        msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
+        tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die '临时文件创建失败。'
+        if ! jq --slurpfile nb "$tmp_json" \
+                '(.inbounds | map(select(.tag=="socks5-landing"))) as $old
+                 | .inbounds |= (map(select(.tag!="socks5-landing")) + $nb)' \
+                "$cfg" > "$tmp_cfg" 2>/dev/null; then
+            rm -f "$tmp_cfg" "$tmp_json"; die 'SOCKS5 inbound 配置更新失败。'
+        fi
+        jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray JSON 格式非法。'; }
+        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" >/dev/null 2>&1 \
+            || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray 配置校验失败。'; }
+        install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray config 原子写入失败。'; }
+        rm -f "$tmp_cfg"
+        prepare_abox_runtime_permissions xray 2>/dev/null || true
+        restart_service_soft xray || die 'Xray 服务重启失败。'
+    else
+        xray_hot_add_inbound "$tmp_json" || die 'SOCKS5 inbound 添加失败。'
+    fi
+    rm -f "$tmp_json"
+
+    # Firewall: TCP + UDP.
+    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    allowPort "$port" udp || die "防火墙放行失败: ${port}/udp"
+    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+
+    # Ensure the service is running (minimal-install path or API-unavailable hosts).
+    service_manager start xray 2>/dev/null || true
+    set_desired_state RUNNING 2>/dev/null || true
+
+    local pub_ip
+    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
+    msg "${GREEN}$(tr_msg socks5_done)${NC}"
+    msg "socks5://${user}:${pass}@${pub_ip}:${port}"
 }
 
 

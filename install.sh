@@ -791,6 +791,8 @@ initial_language_select() {
     save_lang
 }
 language_menu() {
+    # Submenu loop: 0/Enter returns to the parent menu.
+    while true; do
     clear
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}$(tr_msg lang_title)${NC}"
@@ -803,7 +805,7 @@ language_menu() {
     msg "${YELLOW}6. فارسی${NC}"
     msg "${GREEN}0. 返回 / Back${NC}"
     local c
-    read -r -p 'Select [0-6]: ' c
+    read -r -p 'Select [0-6]: ' c || return 0
     case "$c" in
         1) ABOX_LANG='zh'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
         2) ABOX_LANG='zh-tw'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
@@ -811,8 +813,10 @@ language_menu() {
         4) ABOX_LANG='ja'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
         5) ABOX_LANG='ru'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
         6) ABOX_LANG='fa'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 need_interactive_tty() {
     if [[ ! -t 0 ]]; then
@@ -10519,6 +10523,8 @@ start_services_for_traffic_unblock() {
 }
 
 traffic_management_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     clear
     local INTERFACE limit_gb mode_choice previous_state
     load_optional_abox_env_or_die
@@ -10630,7 +10636,7 @@ PY_TRAFFIC_DASH
     msg "${GREEN}1.${NC}  设定/修改每月流量上限"
     msg "${GREEN}2.${NC}  解除流量限制"
     msg "${GREEN}0.${NC}  返回主菜单"
-    read -r -p '请选择 [0-2]: ' tr_choice
+    read -r -p '请选择 [0-2]: ' tr_choice || return 0
     case "$tr_choice" in
         1)
             read -r -p '请输入每月流量上限(GB)，纯数字: ' limit_gb
@@ -10774,8 +10780,10 @@ PY_TRAFFIC_DASH
             msg "${GREEN}流量限制已解除。${NC}"
             pause_return
             ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $tr_choice${NC}"; sleep 1 ;;
     esac
+    done
 }
 
 remove_ss_source_whitelist_rules() {
@@ -11203,10 +11211,10 @@ apply_vps_tune() {
     assert_abox_auxiliary_safe /etc/security/limits.d/A-Box.conf || die "拒绝覆盖非 A-Box 辅助文件: /etc/security/limits.d/A-Box.conf"
     assert_abox_auxiliary_safe /etc/sysctl.d/99-A-Box-tune.conf || die "拒绝覆盖非 A-Box 辅助文件: /etc/sysctl.d/99-A-Box-tune.conf"
     assert_abox_auxiliary_safe "$bbr_module_file" || die "拒绝覆盖非 A-Box 辅助文件: $bbr_module_file"
-    if [[ -f "$dir/.captured" ]]; then die '检测到尚未恢复的调优快照；请先执行恢复，再重新应用。'; fi
+    if [[ -f "$dir/.captured" ]]; then msg "${RED}[!] 检测到尚未恢复的调优快照；请先执行恢复，再重新应用。${NC}"; return 1; fi
     if [[ -e "$dir" || -L "$dir" ]]; then
         [[ -d "$dir" && ! -L "$dir" ]] || die '调优备份路径不是安全目录。'
-        [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]] || die '检测到未完成的调优快照；请先检查并恢复/清理该快照。'
+        [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]] || { msg "${RED}[!] 检测到未完成的调优快照；请先检查并恢复/清理该快照。${NC}"; return 1; }
     fi
     local snapshot_tmp
     snapshot_tmp=$(mktemp -d "$ABOX_DIR/.tune-backup-new.XXXXXX") || die '无法创建调优备份临时目录。'
@@ -11474,6 +11482,8 @@ one_click_reality_deploy() {
     unset ABOX_QUICK_DEPLOY
 }
 ux_mode_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     clear
     local c
     case "${ABOX_LANG:-zh}" in
@@ -11520,13 +11530,15 @@ ux_mode_menu() {
             msg "${YELLOW}3. 查看正式稳定版策略与固定容灾版本${NC}"
             msg "${GREEN}0. 返回${NC}" ;;
     esac
-    read -r -p 'Select [0-3]: ' c
+    read -r -p 'Select [0-3]: ' c || return 0
     case "$c" in
         1) save_fast_mode 0; pause_return ;;
         2) save_fast_mode 1; pause_return ;;
         3) show_core_pin_docs ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 list_extra_uuids() {
     # FINAL-AUDIT fix: only a TRULY ABSENT file is an empty list. A file that
@@ -11685,6 +11697,8 @@ export_lightweight_subscription() {
 }
 
 multi_uuid_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     clear
     local c nu answer selected tx cfg='/usr/local/etc/xray/config.json' list_tmp old_state='absent' tx_ok=0
     [[ -f "$ABOX_ENV" && ! -L "$ABOX_ENV" ]] && load_abox_env "$ABOX_ENV" 2>/dev/null || true
@@ -11704,7 +11718,7 @@ multi_uuid_menu() {
     msg "${YELLOW}3. Revoke one extra UUID from the Xray server${NC}"
     msg "${YELLOW}4. Clear only the local extra-UUID file (does not revoke server access)${NC}"
     msg "${GREEN}0. Back${NC}"
-    read -r -p 'Select [0-4]: ' c
+    read -r -p 'Select [0-4]: ' c || return 0
     case "$c" in
         1)
             [[ "${CORE:-}" == xray && -f "$cfg" && ! -L "$cfg" ]] || {
@@ -11812,8 +11826,10 @@ multi_uuid_menu() {
             msg "${GREEN}Local UUID list cleared. Server-side UUIDs were not revoked.${NC}"
             pause_return
             ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 
 try_latest_cores_danger() {
@@ -11887,6 +11903,8 @@ save_ip_pref() {
 }
 
 ip_preference_menu() {
+    # Submenu loop: 0/Enter returns to the parent menu.
+    while true; do
     clear
     local cur c title ipv4 ipv6 dual back
     cur=$(read_ip_pref)
@@ -11906,7 +11924,7 @@ ip_preference_menu() {
     msg "${YELLOW}2. $ipv6${NC}"
     msg "${YELLOW}3. $dual${NC}"
     msg "${GREEN}0. $back${NC}"
-    read -r -p 'Select [0-3]: ' c
+    read -r -p 'Select [0-3]: ' c || return 0
     case "$c" in
         1) save_ip_pref ipv4 ;;
         2)
@@ -11924,7 +11942,8 @@ ip_preference_menu() {
             fi
             save_ip_pref ipv6 ;;
         3) save_ip_pref dual ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1; continue ;;
     esac
     case "${ABOX_LANG:-zh}" in
         en) msg "${GREEN}Saved: $(read_ip_pref). New listener preference applies to future deployments; running nodes require redeployment or an applicable restart.${NC}" ;;
@@ -11936,8 +11955,11 @@ ip_preference_menu() {
         *) msg "${GREEN}已保存：$(read_ip_pref)。新监听偏好对后续部署生效；已运行节点需重新部署或适当重启。${NC}" ;;
     esac
     pause_return
+    done
 }
 host_network_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     clear
     local prompt
     case "${ABOX_LANG:-zh}" in
@@ -11992,14 +12014,16 @@ host_network_menu() {
     esac
     local c
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-4]: ' ;; ru) prompt='Выберите [0–4]: ' ;; fa) prompt='انتخاب [۰ تا ۴]: ' ;; ja) prompt='選択してください [0-4]: ' ;; zh-tw) prompt='請選擇 [0-4]：' ;; *) prompt='请选择 [0-4]：' ;; esac
-    read -r -p "$prompt" c
+    read -r -p "$prompt" c || return 0
     case "$c" in
         1) ip_preference_menu ;;
         2) dns_menu ;;
         3) timezone_menu ;;
         4) ux_mode_menu ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 
 timezone_for_country() {
@@ -13212,6 +13236,8 @@ dns_setup_tri_mode() {
 }
 
 dns_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     # Recover from any interrupted DNS snapshot swap on menu entry.
     dns_snapshot_recover_pending_swap 2>/dev/null || true
     clear
@@ -13284,7 +13310,7 @@ dns_menu() {
     esac
     msg "${GREEN}0. Back / 返回${NC}"
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-8]: ' ;; ru) prompt='Выберите [0–8]: ' ;; fa) prompt='انتخاب [۰ تا ۸]: ' ;; ja) prompt='選択してください [0-8]: ' ;; zh-tw) prompt='請選擇 [0-8]：' ;; *) prompt='请选择 [0-8]：' ;; esac
-    read -r -p "$prompt" c
+    read -r -p "$prompt" c || return 0
     case "$c" in
         1)
             read -r -p 'IPv4 DNS: ' v4
@@ -13316,10 +13342,14 @@ dns_menu() {
         6) dns_enable_doh; pause_return ;;
         7) if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then restore_dns_snapshot "$DNS_BACKUP_DIR" && msg "${GREEN}DNS restored.${NC}" || msg "${RED}DNS rollback failed.${NC}"; else msg "${YELLOW}No DNS snapshot exists.${NC}"; fi; pause_return ;;
         8) dns_setup_tri_mode ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 tune_vps() {
+    # Submenu loop: sub-functions return here; 0 goes back to the parent menu.
+    while true; do
     clear
     local prompt
     case "${ABOX_LANG:-zh}" in
@@ -13362,12 +13392,14 @@ tune_vps() {
     esac
     local c
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; ja) prompt='選択してください [0-2]: ' ;; zh-tw) prompt='請選擇 [0-2]：' ;; *) prompt='请选择 [0-2]：' ;; esac
-    read -r -p "$prompt" c
+    read -r -p "$prompt" c || return 0
     case "$c" in
         1) apply_vps_tune; pause_return ;;
         2) restore_vps_tune; pause_return ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 sha256_in_allowlist() {
     local sha="${1,,}" allowlist="${2:-}"
@@ -16336,6 +16368,8 @@ restore_from_backup() {
 }
 
 backup_restore_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     clear
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}Backup / Restore / 配置备份与恢复${NC}"
@@ -16385,7 +16419,7 @@ backup_restore_menu() {
             ;;
     esac
     local c
-    read -r -p 'Select [0-4]: ' c
+    read -r -p 'Select [0-4]: ' c || return 0
     case "$c" in
         1) backup_current_config; pause_return ;;
         2) restore_from_backup ;;
@@ -16400,8 +16434,10 @@ backup_restore_menu() {
             read -r -p 'Output directory (default: same directory): ' legacy_out
             convert_legacy_backup_archive "$legacy_path" "${legacy_out:-$(dirname "$legacy_path")}"; pause_return
             ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 
 write_diagnostic_checksum() {
@@ -18112,6 +18148,8 @@ _wallos_manual_rollback() {
 }
 
 wallos_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     clear
     case "${ABOX_LANG:-zh}" in
         en)
@@ -18171,7 +18209,7 @@ wallos_menu() {
     esac
     local c prompt_confirm prompt_remove menu_prompt
     case "${ABOX_LANG:-zh}" in en) menu_prompt='Select [0-5]: ' ;; ru) menu_prompt='Выберите [0–5]: ' ;; fa) menu_prompt='انتخاب [۰ تا ۵]: ' ;; ja) menu_prompt='選択してください [0-5]: ' ;; zh-tw) menu_prompt='請選擇 [0-5]：' ;; *) menu_prompt='请选择 [0-5]：' ;; esac
-    read -r -p "$menu_prompt" c
+    read -r -p "$menu_prompt" c || return 0
     case "${ABOX_LANG:-zh}" in
         en) prompt_confirm='Wallos stores personal subscription/financial data. HTTP has no TLS. Continue? [Y/N]: '; prompt_remove="Remove the Wallos container and keep data in $WALLOS_DIR? [Y/N]: " ;;
         ru) prompt_confirm='Wallos хранит личные данные; HTTP не защищён TLS. Продолжить? [Y/N]: '; prompt_remove="Удалить контейнер Wallos, сохранив данные в $WALLOS_DIR? [Y/N]: " ;;
@@ -18216,8 +18254,10 @@ wallos_menu() {
             # Interactive: show retained versions, Enter defaults to 1 (previous).
             _wallos_manual_rollback
             pause_return ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 vps_benchmark_menu() {
     # Toolbox is a submenu loop: sub-functions return here, 0/Enter goes back
@@ -18349,7 +18389,7 @@ vps_benchmark_menu() {
         14) wallos_menu ;;
         15) socks5_toolbox_entry; pause_return ;;
         16) trojan_toolbox_entry; pause_return ;;
-        0|'') return 0 ;;
+        0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $bench_choice${NC}"; sleep 1 ;;
     esac
     done
@@ -19981,6 +20021,8 @@ upgrade_current_cores_only() {
 }
 
 ota_and_geo_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     # P3: Clear stale choice so EOF (Ctrl-D) does not re-execute previous selection.
     ota_choice=''
     clear
@@ -20050,7 +20092,7 @@ ota_and_geo_menu() {
         msg "${YELLOW}4. 查看兼容钉扎说明 [U3]${NC}"
         msg "${YELLOW}5. 危险：试用上游 latest 核心（失败自动回滚）[U3]${NC}"
         msg "${GREEN}0. 返回主菜单${NC}"
-        read -r -p '请选择 [0-5]: ' ota_choice
+        read -r -p '请选择 [0-5]: ' ota_choice || return 0
             ;;
     esac
     case "$ota_choice" in
@@ -20059,8 +20101,10 @@ ota_and_geo_menu() {
         3) upgrade_current_cores_only ;;
         4) show_core_pin_docs ;;
         5) try_latest_cores_danger ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $ota_choice${NC}"; sleep 1 ;;
     esac
+    done
 }
 
 

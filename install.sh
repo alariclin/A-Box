@@ -1363,12 +1363,17 @@ clear_abox_env_vars() {
 
 validate_abox_env_semantics() {
     local p value
-    [[ "${CORE:-}" =~ ^(xray|singbox|hysteria)$ ]] || return 1
-    [[ "${MODE:-}" =~ ^(VISION|XHTTP|SS|ALL|VLESS_SS|HY2|SOCKS)$ ]] || return 1
-    case "${CORE}:${MODE}" in
-        xray:VISION|xray:XHTTP|xray:SS|xray:ALL|xray:VLESS_SS|xray:SOCKS|singbox:VISION|singbox:SS|singbox:VLESS_SS|singbox:HY2|singbox:ALL|singbox:SOCKS|hysteria:HY2) ;;
-        *) return 1 ;;
-    esac
+    # Pre-deployment state (e.g. traffic limit set before any protocol is
+    # deployed) has neither CORE nor MODE; accept it. A half-present pair
+    # (one set, one empty/mismatched) is still rejected as corrupt.
+    if [[ -n "${CORE:-}${MODE:-}" ]]; then
+        [[ "${CORE:-}" =~ ^(xray|singbox|hysteria)$ ]] || return 1
+        [[ "${MODE:-}" =~ ^(VISION|XHTTP|SS|ALL|VLESS_SS|HY2|SOCKS)$ ]] || return 1
+        case "${CORE}:${MODE}" in
+            xray:VISION|xray:XHTTP|xray:SS|xray:ALL|xray:VLESS_SS|xray:SOCKS|singbox:VISION|singbox:SS|singbox:VLESS_SS|singbox:HY2|singbox:ALL|singbox:SOCKS|hysteria:HY2) ;;
+            *) return 1 ;;
+        esac
+    fi
     for p in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT HY2_MONITOR_PORT HY2_RANGE_START HY2_RANGE_END SOCKS_PORT; do
         value=${!p:-}
         [[ -z "$value" ]] || valid_canonical_port "$value" || return 1

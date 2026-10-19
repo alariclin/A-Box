@@ -10522,6 +10522,24 @@ start_services_for_traffic_unblock() {
     done <<< "$services"
 }
 
+# Traffic transaction failure: run the rollback hook (fail-closed), clean up the
+# die hook so a stale hook cannot fire later, show the error, and return to the
+# traffic menu instead of exiting the script. Must be followed by `continue`
+# (we are inside the menu's while loop).
+_traffic_txn_fail() {
+    local _rb_fn="$1" _oldhook_vn="$2" _reason="$3" _old=''
+    if declare -F "$_rb_fn" >/dev/null 2>&1; then
+        "$_rb_fn" "$_reason" || msg "${RED}[!] WARNING: rollback failed; manual recovery may be required.${NC}"
+    fi
+    unset ABOX_DIE_HOOK
+    _old="${!_oldhook_vn:-}"
+    if [[ -n "$_old" ]]; then ABOX_DIE_HOOK="$_old"; fi
+    ABOX_TRAFFIC_TX_DIR=''
+    msg "${RED}[!] $_reason${NC}"
+    pause_return
+}
+
+
 traffic_management_menu() {
     # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
     while true; do
@@ -10645,15 +10663,15 @@ PY_TRAFFIC_DASH
             mode_choice=${mode_choice:-total}
             [[ "$mode_choice" =~ ^(total|rx|tx)$ ]] || { msg "${RED}[!] 计量模式无效。${NC}"; pause_return; return; }
             local traffic_tx_dir="" old_die_hook="" traffic_previous_state='' traffic_service_pre='' traffic_service_changed_pre='' traffic_service_changed_expected='' traffic_op_rc=0 traffic_target_state=''
-            traffic_previous_state=$(get_desired_state) || die '无法可靠读取当前服务期望状态；未修改流量限制。'
-            traffic_tx_dir=$(mktemp -d /run/A-Box-traffic-tx.XXXXXX) || die '无法创建流量状态事务目录。'
-            chmod 700 "$traffic_tx_dir" || { rm -rf -- "$traffic_tx_dir"; die '流量状态事务目录权限设置失败。'; }
-            prepare_traffic_quota_transaction "$traffic_tx_dir" || { rm -rf -- "$traffic_tx_dir"; die '无法保存流量限制事务前态。'; }
+            traffic_previous_state=$(get_desired_state) || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '无法可靠读取当前服务期望状态；未修改流量限制。'; continue
+            traffic_tx_dir=$(mktemp -d /run/A-Box-traffic-tx.XXXXXX) || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '无法创建流量状态事务目录。'; continue
+            chmod 700 "$traffic_tx_dir" || { rm -rf -- "$traffic_tx_dir"; _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量状态事务目录权限设置失败。'; continue; }
+            prepare_traffic_quota_transaction "$traffic_tx_dir" || { rm -rf -- "$traffic_tx_dir"; _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '无法保存流量限制事务前态。'; continue; }
             if [[ "$traffic_previous_state" == TRAFFIC_BLOCKED ]]; then
                 traffic_service_pre="$traffic_tx_dir/pre-services.state"
                 traffic_service_changed_pre="$traffic_tx_dir/changed-services-pre.state"
                 traffic_service_changed_expected="$traffic_tx_dir/changed-services-expected.state"
-                capture_managed_service_state "$traffic_service_pre" || { rm -rf -- "$traffic_tx_dir"; die '无法保存解除流量封锁前的服务状态。'; }
+                capture_managed_service_state "$traffic_service_pre" || { rm -rf -- "$traffic_tx_dir"; _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '无法保存解除流量封锁前的服务状态。'; continue; }
                 : > "$traffic_service_changed_pre"; : > "$traffic_service_changed_expected"
             fi
             if [[ ${ABOX_DIE_HOOK+x} ]]; then old_die_hook="$ABOX_DIE_HOOK"; fi
@@ -10684,42 +10702,42 @@ PY_TRAFFIC_DASH
             }
             setup_traffic_monitor
             if update_traffic_state_atomically "$limit_gb" "$mode_choice"; then traffic_op_rc=0; else traffic_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$traffic_tx_dir" || die '流量限制更新后无法核验状态；事务已中止。'
-            (( traffic_op_rc == 0 )) || die '流量限制状态原子提交失败。'
+            capture_traffic_quota_expected_state "$traffic_tx_dir" || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量限制更新后无法核验状态；事务已中止。'; continue
+            (( traffic_op_rc == 0 )) || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量限制状态原子提交失败。'; continue
             if clear_traffic_block_period; then traffic_op_rc=0; else traffic_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$traffic_tx_dir" || die '清除旧封锁周期后无法核验状态；事务已中止。'
-            (( traffic_op_rc == 0 )) || die '旧流量封锁周期清理失败。'
+            capture_traffic_quota_expected_state "$traffic_tx_dir" || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '清除旧封锁周期后无法核验状态；事务已中止。'; continue
+            (( traffic_op_rc == 0 )) || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '旧流量封锁周期清理失败。'; continue
             case "$traffic_previous_state" in
                 TRAFFIC_BLOCKED)
-                    start_services_for_traffic_unblock "$traffic_service_pre" "$traffic_service_changed_pre" "$traffic_service_changed_expected" || die '新流量上限已写入，但托管服务无法恢复运行；事务已中止。'
+                    start_services_for_traffic_unblock "$traffic_service_pre" "$traffic_service_changed_pre" "$traffic_service_changed_expected" || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '新流量上限已写入，但托管服务无法恢复运行；事务已中止。'; continue
                     traffic_target_state=RUNNING
                     ;;
                 RUNNING|MANUAL_STOPPED|MAINTENANCE)
                     traffic_target_state="$traffic_previous_state"
                     ;;
-                *) die "未知服务期望状态 ${traffic_previous_state}；拒绝提交流量限制。" ;;
+                *) _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "未知服务期望状态 ${traffic_previous_state}；拒绝提交流量限制。"; continue ;;
             esac
             if set_desired_state "$traffic_target_state"; then traffic_op_rc=0; else traffic_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$traffic_tx_dir" || die '期望状态提交后无法核验事务；已中止。'
-            (( traffic_op_rc == 0 )) || die '服务期望状态写入失败。'
-            finalize_traffic_quota_transaction "$traffic_tx_dir" || die '流量限制事务提交后校验失败。'
+            capture_traffic_quota_expected_state "$traffic_tx_dir" || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '期望状态提交后无法核验事务；已中止。'; continue
+            (( traffic_op_rc == 0 )) || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '服务期望状态写入失败。'; continue
+            finalize_traffic_quota_transaction "$traffic_tx_dir" || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量限制事务提交后校验失败。'; continue
             unset ABOX_DIE_HOOK
             if [[ -n "$old_die_hook" ]]; then ABOX_DIE_HOOK="$old_die_hook"; fi
             ABOX_TRAFFIC_TX_DIR=''
-            rm -rf -- "$traffic_tx_dir" || die '流量状态事务清理失败。'
+            rm -rf -- "$traffic_tx_dir" || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量状态事务清理失败。'; continue
             msg "${GREEN}流量限制已设定为 ${limit_gb} GB，模式 ${mode_choice}。${NC}"
             pause_return
             ;;
         2)
-            previous_state=$(get_desired_state) || die '无法可靠读取当前服务期望状态；未解除流量限制。'
+            previous_state=$(get_desired_state) || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '无法可靠读取当前服务期望状态；未解除流量限制。'; continue
             local unblock_tx_dir='' unblock_old_die_hook='' unblock_state_pre='' unblock_changed_pre='' unblock_changed_expected='' unblock_op_rc=0 target_state=''
-            unblock_tx_dir=$(mktemp -d /run/A-Box-traffic-unblock.XXXXXX) || die '无法创建流量解除事务目录。'
-            chmod 700 "$unblock_tx_dir" || { rm -rf -- "$unblock_tx_dir"; die '流量解除事务目录权限设置失败。'; }
-            prepare_traffic_quota_transaction "$unblock_tx_dir" || { rm -rf -- "$unblock_tx_dir"; die '无法保存流量解除事务前态。'; }
+            unblock_tx_dir=$(mktemp -d /run/A-Box-traffic-unblock.XXXXXX) || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '无法创建流量解除事务目录。'; continue
+            chmod 700 "$unblock_tx_dir" || { rm -rf -- "$unblock_tx_dir"; _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量解除事务目录权限设置失败。'; continue; }
+            prepare_traffic_quota_transaction "$unblock_tx_dir" || { rm -rf -- "$unblock_tx_dir"; _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '无法保存流量解除事务前态。'; continue; }
             unblock_state_pre="$unblock_tx_dir/pre-services.state"
             unblock_changed_pre="$unblock_tx_dir/changed-services-pre.state"
             unblock_changed_expected="$unblock_tx_dir/changed-services-expected.state"
-            capture_managed_service_state "$unblock_state_pre" || { rm -rf -- "$unblock_tx_dir"; die '无法保存流量解除前的服务状态。'; }
+            capture_managed_service_state "$unblock_state_pre" || { rm -rf -- "$unblock_tx_dir"; _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '无法保存流量解除前的服务状态。'; continue; }
             : > "$unblock_changed_pre"; : > "$unblock_changed_expected"
             if [[ ${ABOX_DIE_HOOK+x} ]]; then unblock_old_die_hook="$ABOX_DIE_HOOK"; fi
             ABOX_TRAFFIC_TX_DIR="$unblock_tx_dir"
@@ -10747,36 +10765,36 @@ PY_TRAFFIC_DASH
             }
 
             if update_traffic_state_atomically '' ''; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || die '流量解除时无法验证新状态；事务已中止。'
-            (( unblock_op_rc == 0 )) || die '解除流量限制时状态原子提交失败。'
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量解除时无法验证新状态；事务已中止。'; continue
+            (( unblock_op_rc == 0 )) || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '解除流量限制时状态原子提交失败。'; continue
             if remove_abox_cron_block TRAFFIC; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || die '移除流量监控任务后状态核验失败；事务已中止。'
-            (( unblock_op_rc == 0 )) || die '移除流量监控任务失败；未提交解除操作。'
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '移除流量监控任务后状态核验失败；事务已中止。'; continue
+            (( unblock_op_rc == 0 )) || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '移除流量监控任务失败；未提交解除操作。'; continue
             if remove_owned_runtime_helper "$ABOX_DIR/traffic_monitor.sh"; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || die '移除流量监控脚本后状态核验失败；事务已中止。'
-            (( unblock_op_rc == 0 )) || die '移除流量监控脚本失败；未提交解除操作。'
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '移除流量监控脚本后状态核验失败；事务已中止。'; continue
+            (( unblock_op_rc == 0 )) || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '移除流量监控脚本失败；未提交解除操作。'; continue
             if clear_traffic_block_period; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || die '清除流量封锁周期后状态核验失败；事务已中止。'
-            (( unblock_op_rc == 0 )) || die '清除流量封锁周期失败；未提交解除操作。'
-            load_abox_env "$ABOX_ENV" || die '流量配置重读失败；未提交解除操作。'
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '清除流量封锁周期后状态核验失败；事务已中止。'; continue
+            (( unblock_op_rc == 0 )) || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '清除流量封锁周期失败；未提交解除操作。'; continue
+            load_abox_env "$ABOX_ENV" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量配置重读失败；未提交解除操作。'; continue
             case "$previous_state" in
                 TRAFFIC_BLOCKED)
-                    start_services_for_traffic_unblock "$unblock_state_pre" "$unblock_changed_pre" "$unblock_changed_expected" || die '流量封锁解除后有托管服务未能启动/启用并通过状态核验。'
+                    start_services_for_traffic_unblock "$unblock_state_pre" "$unblock_changed_pre" "$unblock_changed_expected" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量封锁解除后有托管服务未能启动/启用并通过状态核验。'; continue
                     target_state=RUNNING
                     ;;
                 RUNNING|MANUAL_STOPPED|MAINTENANCE)
                     target_state="$previous_state"
                     ;;
-                *) die "未知服务期望状态 ${previous_state}；拒绝解除流量限制。" ;;
+                *) _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "未知服务期望状态 ${previous_state}；拒绝解除流量限制。"; continue ;;
             esac
             if set_desired_state "$target_state"; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || die '提交服务期望状态后核验失败；事务已中止。'
-            (( unblock_op_rc == 0 )) || die '服务期望状态写入失败。'
-            finalize_traffic_quota_transaction "$unblock_tx_dir" || die '流量解除事务最终状态校验失败。'
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '提交服务期望状态后核验失败；事务已中止。'; continue
+            (( unblock_op_rc == 0 )) || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '服务期望状态写入失败。'; continue
+            finalize_traffic_quota_transaction "$unblock_tx_dir" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量解除事务最终状态校验失败。'; continue
             unset ABOX_DIE_HOOK
             if [[ -n "$unblock_old_die_hook" ]]; then ABOX_DIE_HOOK="$unblock_old_die_hook"; fi
             ABOX_TRAFFIC_TX_DIR=''
-            rm -rf -- "$unblock_tx_dir" || die '流量解除事务清理失败；状态已提交但恢复材料清理失败。'
+            rm -rf -- "$unblock_tx_dir" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量解除事务清理失败；状态已提交但恢复材料清理失败。'; continue
             msg "${GREEN}流量限制已解除。${NC}"
             pause_return
             ;;

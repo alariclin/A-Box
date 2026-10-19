@@ -7737,6 +7737,19 @@ pre_install_setup() {
                 fi
             done
         fi
+        # SOCKS5/Mixed 落地入站（可选，仅供指纹浏览器/TG等强制明文场景）
+        local _ask_socks="n"
+        case "${ABOX_LANG:-zh}" in
+            en) read -r -p "   Enable SOCKS5/Mixed landing inbound (for fingerprint browsers/TG, reuses whitelist)? [y/N]: " _ask_socks || true ;;
+            ru) read -r -p "   Включить SOCKS5/Mixed inbound (для браузеров/TG)? [y/N]: " _ask_socks || true ;;
+            fa) read -r -p "   ورودی SOCKS5/Mixed فعال شود؟ [y/N]: " _ask_socks || true ;;
+            zh-tw) read -r -p "   是否同時開啟 SOCKS5/Mixed 落地入站（僅供指紋瀏覽器/TG使用，複用白名單）？[y/N]: " _ask_socks || true ;;
+            ja) read -r -p "   SOCKS5/Mixed ランディングを有効化しますか？[y/N]: " _ask_socks || true ;;
+            *) read -r -p "   是否同时开启 SOCKS5/Mixed 落地入站（仅供指纹浏览器/TG使用，复用白名单）？[y/N]: " _ask_socks || true ;;
+        esac
+        if [[ "$_ask_socks" =~ ^[Yy]$ ]]; then
+            setup_socks5_params || die 'SOCKS5 参数设置失败。'
+        fi
     fi
 
     if abox_is_fast; then
@@ -8594,6 +8607,29 @@ parse_x25519_keypair_output() {
 
 
 # SOCKS5 landing proxy via Xray-core.
+# Setup SOCKS5 params (port/user/pass/proto). Used by SS-2022 wizard and toolbox.
+# Sets SOCKS_PORT, SOCKS_USER, SOCKS_PASS, SOCKS_PROTO globals.
+setup_socks5_params() {
+    local default_port
+    default_port=$(shuf -i 20000-55000 -n 1 2>/dev/null || echo 20808)
+    local _tries=0
+    while ! is_test port "$default_port" 2>/dev/null || [[ "$default_port" == "${SS_PORT:-}" || "$default_port" == "${VLESS_PORT:-}" || "$default_port" == "10085" ]]; do
+        default_port=$(shuf -i 20000-55000 -n 1 2>/dev/null || echo 20808)
+        _tries=$((_tries + 1))
+        [[ $_tries -gt 20 ]] && break
+    done
+    SOCKS_PORT=$(prompt_validated "$(tr_msg socks5_port_prompt 2>/dev/null || echo 'SOCKS5 port [default]: ')" port "$default_port") || return 1
+    SOCKS_USER="abox_$(head -c 32 /dev/urandom 2>/dev/null | tr -dc 'a-z0-9' | head -c 6)"
+    [[ -n "$SOCKS_USER" ]] || SOCKS_USER="abox_user"
+    SOCKS_PASS="$(head -c 64 /dev/urandom 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 16)"
+    [[ -n "$SOCKS_PASS" ]] || SOCKS_PASS="abox_pass_123456"
+    if [[ "${CORE:-sing-box}" == "sing-box" ]]; then
+        SOCKS_PROTO="mixed"
+    else
+        SOCKS_PROTO="socks"
+    fi
+}
+
 # Interactive: port (default 1080), username (default abox), password (default random).
 # If Xray is already installed, the socks5-landing inbound is added/updated via
 # xray_hot_add_inbound (hot-push when the API is available, restart fallback).

@@ -22164,7 +22164,7 @@ main_loop() {
                 msg "${GREEN}12.${NC}  View Node Configs & Links          ${GREEN}17.${NC}  Monthly Traffic Quota"
                 msg "${GREEN}13.${NC}  User Guide & Manual                ${GREEN}18.${NC}  SS-2022 IP Whitelist"
                 msg "${GREEN}14.${NC}  Update Core & Script (OTA)         ${GREEN}19.${NC}  Language / 语言设置"
-                msg "15.  VPS Optimization                   ${YELLOW}20.  Uninstall Script & Cores${NC}"
+                msg "${GREEN}15.${NC}  VPS Optimization                   ${YELLOW}20.  Uninstall Script & Cores${NC}"
                 msg "${GREEN} 0.${NC}  Exit"
                 ;;
             ru)
@@ -22185,7 +22185,7 @@ main_loop() {
                 msg "${GREEN}12.${NC}  Просмотр параметров узлов          ${GREEN}17.${NC}  Лимит месячного трафика"
                 msg "${GREEN}13.${NC}  Справка и руководство              ${GREEN}18.${NC}  Белый список IP (SS-2022)"
                 msg "${GREEN}14.${NC}  Обновление ядра и скрипта          ${GREEN}19.${NC}  Язык / Language"
-                msg "15.  Оптимизация VPS                    ${YELLOW}20.  Полное удаление скрипта${NC}"
+                msg "${GREEN}15.${NC}  Оптимизация VPS                    ${YELLOW}20.  Полное удаление скрипта${NC}"
                 msg "${GREEN} 0.${NC}  Выход"
                 ;;
             fa)
@@ -22206,7 +22206,7 @@ main_loop() {
                 msg "${GREEN}12.${NC}  مشاهده تنظیمات و نودها             ${GREEN}17.${NC}  مدیریت و محدودیت ترافیک"
                 msg "${GREEN}13.${NC}  راهنمای استفاده                    ${GREEN}18.${NC}  لیست سفید آی‌پی SS-2022"
                 msg "${GREEN}14.${NC}  به‌روزرسانی هسته و اسکریپت         ${GREEN}19.${NC}  تنظیم زبان / Language"
-                msg "15.  بهینه‌سازی VPS                     ${YELLOW}20.  حذف کامل اسکریپت و هسته${NC}"
+                msg "${GREEN}15.${NC}  بهینه‌سازی VPS                     ${YELLOW}20.  حذف کامل اسکریپت و هسته${NC}"
                 msg "${GREEN} 0.${NC}  خروج"
                 ;;
             zh-tw)
@@ -22227,7 +22227,7 @@ main_loop() {
                 msg "${GREEN}12.${NC}  查看節點配置與參數                 ${GREEN}17.${NC}  流量管控與額度限制"
                 msg "${GREEN}13.${NC}  使用幫助與說明書                   ${GREEN}18.${NC}  SS-2022 訪問白名單"
                 msg "${GREEN}14.${NC}  核心與腳本升級 (OTA)               ${GREEN}19.${NC}  多語言設置 / Language"
-                msg "15.  VPS 一鍵優化                       ${YELLOW}20.  徹底卸載腳本與核心${NC}"
+                msg "${GREEN}15.${NC}  VPS 一鍵優化                       ${YELLOW}20.  徹底卸載腳本與核心${NC}"
                 msg "${GREEN} 0.${NC}  退出指令碼"
                 ;;
             ja)
@@ -22248,7 +22248,7 @@ main_loop() {
                 msg "${GREEN}12.${NC}  ノード設定と情報の表示             ${GREEN}17.${NC}  月間通信量制限と管理"
                 msg "${GREEN}13.${NC}  ヘルプとマニュアル                 ${GREEN}18.${NC}  SS-2022 IPホワイトリスト"
                 msg "${GREEN}14.${NC}  コアとスクリプト更新 (OTA)         ${GREEN}19.${NC}  言語設定 / Language"
-                msg "15.  VPS 最適化                         ${YELLOW}20.  スクリプトとコアの完全削除${NC}"
+                msg "${GREEN}15.${NC}  VPS 最適化                         ${YELLOW}20.  スクリプトとコアの完全削除${NC}"
                 msg "${GREEN} 0.${NC}  スクリプトを終了します"
                 ;;
             *)
@@ -22269,7 +22269,7 @@ main_loop() {
                 msg "${GREEN}12.${NC}  查看节点配置与参数                 ${GREEN}17.${NC}  流量管控与额度限制"
                 msg "${GREEN}13.${NC}  使用帮助与说明书                   ${GREEN}18.${NC}  SS-2022 访问白名单"
                 msg "${GREEN}14.${NC}  核心与脚本升级 (OTA)               ${GREEN}19.${NC}  多语言设置 / Language"
-                msg "15.  VPS 一键优化                       ${YELLOW}20.  彻底卸载脚本与核心${NC}"
+                msg "${GREEN}15.${NC}  VPS 一键优化                       ${YELLOW}20.  彻底卸载脚本与核心${NC}"
                 msg "${GREEN} 0.${NC}  退出脚本"
                 ;;
         esac

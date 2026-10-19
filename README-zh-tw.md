@@ -23,13 +23,13 @@ A-Box 是一個獨立 Bash 腳本，用於部署和維護 Linux 網路閘道服�
 ### GitHub 官方源
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/db9ac206f7d90d931d55bbb84bec07154520b912/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/dc7b47278ab65bc2fc74ce92e33cdfdd93f36619/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 ### 第三方備用映象
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/db9ac206f7d90d931d55bbb84bec07154520b912/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/dc7b47278ab65bc2fc74ce92e33cdfdd93f36619/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 兩個命令均將安裝腳本固定到不可變提交 `a7cb193e6539cee6478648e766f5ce415ccd5d41`；代理網址仍屬於第三方傳輸服務，不是 A-Box 官方端點。生產環境建議透過獨立可信渠道核對提交與摘要。全新 Alpine 系統執行前先執行 `apk add --no-cache bash curl`。安裝後輸入 `sb` 開啟選單。

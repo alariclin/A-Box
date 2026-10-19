@@ -1,0 +1,82 @@
+# One-off: sign the CURRENT wallos-mirror SHA256SUMS with the release-2026
+# Ed25519 key and publish SHA256SUMS.sig.
+#
+# Background: the N-2 Wallos fast path verifies detached signatures for BOTH
+# wallos-manifest.txt and SHA256SUMS. update-mirrors.yml only signed the
+# manifest; SHA256SUMS.sig was never published, so Wallos installs fail
+# closed under ABOX_SIGNING_ENFORCE=1. This workflow signs exactly the bytes
+# currently on the release (no mirror regeneration).
+#
+# Run: Actions -> Sign wallos-mirror SHA256SUMS -> Run workflow.
+# Afterwards verify: the .sig asset appears on the wallos-mirror release and
+# `wallos_pull_or_restore_image` passes the F-05 gate on a client.
+
+name: Sign wallos-mirror SHA256SUMS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sign:
+    name: Sign and publish SHA256SUMS.sig
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      ABOX_SIGNING_PRIVKEY_B64: ${{ secrets.ABOX_SIGNING_PRIVKEY_B64 }}
+      # Must match the release-2026 entry in install.sh ABOX_SIGNING_PUBKEYS.
+      ABOX_SIGNING_PUBKEY_B64: 7V4PBUUVpnfYhKu5LBxACxywpYEtvnDpVpvFnSrOujQ=
+    steps:
+      - name: Fetch current SHA256SUMS from wallos-mirror release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fLsS --connect-timeout 10 --max-time 60 \
+            "https://github.com/${{ github.repository }}/releases/download/wallos-mirror/SHA256SUMS" \
+            -o SHA256SUMS
+          grep -qE '^[A-Fa-f0-9]{64}  ' SHA256SUMS
+          echo "SHA256SUMS entries: $(grep -cE '^[A-Fa-f0-9]{64}  ' SHA256SUMS)"
+
+      - name: Sign SHA256SUMS (F-05 detached Ed25519)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -z "${ABOX_SIGNING_PRIVKEY_B64:-}" ]]; then
+            echo "::error::ABOX_SIGNING_PRIVKEY_B64 secret is not set; cannot sign."
+            exit 1
+          fi
+          umask 077
+          python3 -c 'import base64,sys;raw=base64.b64decode(sys.argv[1],validate=True);assert len(raw)==32;der=bytes.fromhex("302e020100300506032b657004220420")+raw;sys.stdout.write("-----BEGIN PRIVATE KEY-----\n"+base64.encodebytes(der).decode().strip()+"\n-----END PRIVATE KEY-----\n")' \
+            "$ABOX_SIGNING_PRIVKEY_B64" > /tmp/abox-sign-priv.pem
+          openssl pkeyutl -sign -inkey /tmp/abox-sign-priv.pem -rawin \
+            -in SHA256SUMS | base64 > SHA256SUMS.sig
+          # Self-check 1: signature is 64 raw bytes and verifies with the
+          # private key's own public half.
+          openssl pkeyutl -verify -pubin \
+            -inkey <(openssl pkey -in /tmp/abox-sign-priv.pem -pubout) \
+            -rawin -in SHA256SUMS -sigfile <(base64 -d SHA256SUMS.sig)
+          # Self-check 2: the signing key's public half is the release-2026
+          # key clients trust.
+          derived_pub=$(openssl pkey -in /tmp/abox-sign-priv.pem -pubout | python3 -c '
+          import base64,sys
+          pem=sys.stdin.read()
+          der=base64.b64decode("".join(l for l in pem.splitlines() if "---" not in l))
+          print(base64.b64encode(der[-32:]).decode())')
+          [[ "$derived_pub" == "$ABOX_SIGNING_PUBKEY_B64" ]] \
+            || { echo "::error::signing key does not match release-2026 pubkey"; exit 1; }
+          echo "Self-checks passed: valid 64-byte Ed25519 signature from release-2026 key."
+          shred -u /tmp/abox-sign-priv.pem 2>/dev/null || rm -f /tmp/abox-sign-priv.pem
+
+      - name: Publish SHA256SUMS.sig to wallos-mirror release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh release upload wallos-mirror SHA256SUMS.sig --clobber \
+            --repo "${{ github.repository }}"
+          echo "Published SHA256SUMS.sig to wallos-mirror."

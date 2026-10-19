@@ -21394,12 +21394,12 @@ main_loop() {
                 msg "${GREEN}4.${NC}  Hysteria 2 (Official)              ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC}  All-in-one (Xray+Hy2)              ${GREEN}10.${NC} All-in-one (Sing-box)"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${CYAN}[ Tools & System ]${NC}                    ${YELLOW}[ Ops & Policy ]${NC}"
+                msg "${CYAN}[ Tools & System ]${NC}                    ${CYAN}[ Ops & Policy ]${NC}"
                 msg "${GREEN}11.${NC}  Toolbox & Benchmark               ${GREEN}16.${NC}  Wipe Nodes & Reset Env"
                 msg "${GREEN}12.${NC}  View Node Configs & Links         ${GREEN}17.${NC}  Monthly Traffic Quota"
                 msg "${GREEN}13.${NC}  User Guide & Manual               ${GREEN}18.${NC}  SS-2022 IP Whitelist"
                 msg "${GREEN}14.${NC}  Update Core & Script (OTA)        ${GREEN}19.${NC}  Language / 语言设置"
-                msg "${RED}15.${NC}  Uninstall Script & Cores          ${YELLOW}${BOLD}20.${NC} Quick Reality [r]"
+                msg "${YELLOW}15.${NC}  Uninstall Script & Cores          ${YELLOW}${BOLD}20.${NC} Quick Reality [r]"
                 msg "${GREEN} 0.${NC}  Exit"
                 ;;
             ru)
@@ -21415,12 +21415,12 @@ main_loop() {
                 msg "${GREEN}4.${NC}  Hysteria 2 (официальный)           ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
                 msg "${GREEN}5.${NC}  Комплексная установка               ${GREEN}10.${NC} Комплексная установка"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${CYAN}[ Инструменты и система ]${NC}             ${YELLOW}[ Управление и политики ]${NC}"
+                msg "${CYAN}[ Инструменты и система ]${NC}             ${CYAN}[ Управление и политики ]${NC}"
                 msg "${GREEN}11.${NC}  Панель инструментов / Тест        ${GREEN}16.${NC}  Сброс узлов и окружения"
                 msg "${GREEN}12.${NC}  Просмотр параметров узлов         ${GREEN}17.${NC}  Лимит месячного трафика"
                 msg "${GREEN}13.${NC}  Справка и руководство             ${GREEN}18.${NC}  Белый список IP (SS-2022)"
                 msg "${GREEN}14.${NC}  Обновление ядра и скрипта         ${GREEN}19.${NC}  Язык / Language"
-                msg "${RED}15.${NC}  Полное удаление скрипта           ${YELLOW}${BOLD}20.${NC} Быстрый Reality [r]"
+                msg "${YELLOW}15.${NC}  Полное удаление скрипта           ${YELLOW}${BOLD}20.${NC} Быстрый Reality [r]"
                 msg "${GREEN} 0.${NC}  Выход"
                 ;;
             fa)
@@ -21436,12 +21436,12 @@ main_loop() {
                 msg "${GREEN}4.${NC}  Hysteria 2 (رسمی)                 ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
                 msg "${GREEN}5.${NC}  نصب ترکیبی                          ${GREEN}10.${NC} نصب ترکیبی"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${CYAN}[ ابزارها و سیستم ]${NC}                   ${YELLOW}[ عملیات و سیاست‌ها ]${NC}"
+                msg "${CYAN}[ ابزارها و سیستم ]${NC}                   ${CYAN}[ عملیات و سیاست‌ها ]${NC}"
                 msg "${GREEN}11.${NC}  جعبه ابزار و تست سرعت             ${GREEN}16.${NC}  پاکسازی نودها و بازنشانی محیط"
                 msg "${GREEN}12.${NC}  مشاهده تنظیمات و نودها            ${GREEN}17.${NC}  مدیریت و محدودیت ترافیک"
                 msg "${GREEN}13.${NC}  راهنمای استفاده                   ${GREEN}18.${NC}  لیست سفید آی‌پی SS-2022"
                 msg "${GREEN}14.${NC}  به‌روزرسانی هسته و اسکریپت        ${GREEN}19.${NC}  تنظیم زبان / Language"
-                msg "${RED}15.${NC}  حذف کامل اسکریپت و هسته           ${YELLOW}${BOLD}20.${NC} نصب سریع Reality [r]"
+                msg "${YELLOW}15.${NC}  حذف کامل اسکریپت و هسته           ${YELLOW}${BOLD}20.${NC} نصب سریع Reality [r]"
                 msg "${GREEN} 0.${NC}  خروج"
                 ;;
             zh-tw)
@@ -21457,12 +21457,12 @@ main_loop() {
                 msg "${GREEN}4.${NC}  Hysteria 2 (官方)                 ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC}  全協議四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全協議三合一 (Sing-box)"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${CYAN}[ 工具與系統 ]${NC}                             ${YELLOW}[ 運維與策略 ]${NC}"
+                msg "${CYAN}[ 工具與系統 ]${NC}                             ${CYAN}[ 運維與策略 ]${NC}"
                 msg "${GREEN}11.${NC}  綜合工具箱 / 測速                        ${GREEN}16.${NC}  清空節點與重置環境"
                 msg "${GREEN}12.${NC}  查看節點配置與參數                         ${GREEN}17.${NC}  流量管控與額度限制"
                 msg "${GREEN}13.${NC}  使用幫助與說明書                          ${GREEN}18.${NC}  SS-2022 訪問白名單"
                 msg "${GREEN}14.${NC}  核心與腳本升級 (OTA)                     ${GREEN}19.${NC}  多語言設置 / Language"
-                msg "${RED}15.${NC}  徹底卸載腳本與核心                         ${YELLOW}${BOLD}20.${NC} 一鍵 Reality [r]"
+                msg "${YELLOW}15.${NC}  徹底卸載腳本與核心                         ${YELLOW}${BOLD}20.${NC} 一鍵 Reality [r]"
                 msg "${GREEN} 0.${NC}  退出指令碼"
                 ;;
             ja)
@@ -21478,12 +21478,12 @@ main_loop() {
                 msg "${GREEN}4.${NC}  Hysteria 2（公式）                 ${GREEN}9.${NC}  Hysteria 2（sing-box）"
                 msg "${GREEN}5.${NC}  全プロトコル統合（Xray+Hy2）${GREEN}10.${NC} 全プロトコル統合（Sing-box）"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${CYAN}[ ツールとシステム ]${NC}                          ${YELLOW}[ 運用とポリシー ]${NC}"
+                msg "${CYAN}[ ツールとシステム ]${NC}                          ${CYAN}[ 運用とポリシー ]${NC}"
                 msg "${GREEN}11.${NC}  総合ツール / 速度測定                      ${GREEN}16.${NC}  全ノード削除と環境初期化"
                 msg "${GREEN}12.${NC}  ノード設定と情報の表示                       ${GREEN}17.${NC}  月間通信量制限と管理"
                 msg "${GREEN}13.${NC}  ヘルプとマニュアル                         ${GREEN}18.${NC}  SS-2022 IPホワイトリスト"
                 msg "${GREEN}14.${NC}  コアとスクリプト更新 (OTA)                  ${GREEN}19.${NC}  言語設定 / Language"
-                msg "${RED}15.${NC}  スクリプトとコアの完全削除                     ${YELLOW}${BOLD}20.${NC} ワンクリック Reality [r]"
+                msg "${YELLOW}15.${NC}  スクリプトとコアの完全削除                     ${YELLOW}${BOLD}20.${NC} ワンクリック Reality [r]"
                 msg "${GREEN} 0.${NC}  スクリプトを終了します"
                 ;;
             *)
@@ -21499,12 +21499,12 @@ main_loop() {
                 msg "${GREEN}4.${NC}  Hysteria 2 (官方)                 ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC}  全协议四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全协议三合一 (Sing-box)"
                 msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${CYAN}[ 工具与系统 ]${NC}                             ${YELLOW}[ 运维与策略 ]${NC}"
-                msg "${GREEN}11.${NC}  综合工具箱 / 测速                        ${GREEN}16.${NC}  清空节点与重置环境"
-                msg "${GREEN}12.${NC}  查看节点配置与参数                         ${GREEN}17.${NC}  流量管控与额度限制"
-                msg "${GREEN}13.${NC}  使用帮助与说明书                          ${GREEN}18.${NC}  SS-2022 访问白名单"
-                msg "${GREEN}14.${NC}  核心与脚本升级 (OTA)                     ${GREEN}19.${NC}  多语言设置 / Language"
-                msg "${RED}15.${NC}  彻底卸载脚本与核心                         ${YELLOW}${BOLD}20.${NC} 一键 Reality [r]"
+                msg "${CYAN}[ 工具与系统 ]${NC}                             ${CYAN}[ 运维与策略 ]${NC}"
+                msg "${GREEN}11.${NC}  综合工具箱 / 测速                ${GREEN}16.${NC}  清空节点与重置环境"
+                msg "${GREEN}12.${NC}  查看节点配置与参数               ${GREEN}17.${NC}  流量管控与额度限制"
+                msg "${GREEN}13.${NC}  使用帮助与说明书                 ${GREEN}18.${NC}  SS-2022 访问白名单"
+                msg "${GREEN}14.${NC}  核心与脚本升级 (OTA)             ${GREEN}19.${NC}  多语言设置 / Language"
+                msg "${YELLOW}15.${NC}  彻底卸载脚本与核心                         ${YELLOW}${BOLD}20.${NC} 一键 Reality [r]"
                 msg "${GREEN} 0.${NC}  退出脚本"
                 ;;
         esac

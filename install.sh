@@ -63,7 +63,7 @@ _menu_two_col() {
     local w; w=$(_disp_width "$left_plain")
     local pad=$((38 - w)); (( pad < 1 )) && pad=1
     local spaces; spaces=$(printf '%*s' "$pad" '')
-    msg "${lc} ${ln}.${NC}  ${lt}${spaces}${rc} ${rn}.${NC}  ${rt}"
+    msg "${lc} ${ln}.  ${lt}${NC}${spaces}${rc} ${rn}.  ${rt}${NC}"
 }
 
 DEPS_MARKER='/etc/ddr/.deps.v20260725'

@@ -18680,10 +18680,10 @@ core_expected_listen_ports() {
         xray)
             # XRAY-API: exclude the loopback-only gRPC control plane (tag "api")
             # from data-plane health checks; it is infrastructure, not a service port.
-            jq -r '.inbounds[]? | select(.port != null and .tag != "api") | (if .protocol == "shadowsocks" then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end)' "$cfg" 2>/dev/null
+            jq -r '.inbounds[]? | select(.port != null and .tag != "api") | (if .protocol == "shadowsocks" then "tcp/\(.port)\nudp/\(.port)" elif .protocol == "socks" then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end)' "$cfg" 2>/dev/null
             ;;
         singbox)
-            jq -r '.inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" then "udp/\(.listen_port)" elif .type == "shadowsocks" then "tcp/\(.listen_port)\nudp/\(.listen_port)" else "tcp/\(.listen_port)" end)' "$cfg" 2>/dev/null
+            jq -r '.inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" then "udp/\(.listen_port)" elif .type == "shadowsocks" then "tcp/\(.listen_port)\nudp/\(.listen_port)" elif .type == "socks" or .type == "mixed" then "tcp/\(.listen_port)\nudp/\(.listen_port)" else "tcp/\(.listen_port)" end)' "$cfg" 2>/dev/null
             ;;
         hysteria)
             # Hysteria 2 config uses listen: :PORT (or [::]:PORT).

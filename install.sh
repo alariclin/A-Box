@@ -8854,6 +8854,11 @@ EOF_SVC
     else
         msg "socks5://${user}:${pass}@${pub_ip}:${port}"
     fi
+    if [[ "$proto" == "mixed" ]]; then
+        generate_qr "mixed://${user}:${pass}@${pub_ip}:${port}"
+    else
+        generate_qr "socks5://${user}:${pass}@${pub_ip}:${port}"
+    fi
 }
 
 # Standalone Trojan-Reality via Xray-core (toolbox entry).
@@ -8999,6 +9004,7 @@ EOF_SVC
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
     msg "${GREEN}$(tr_msg trojan_done)${NC}"
     msg "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    generate_qr "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
 }
 
 # Standalone Trojan-Reality via sing-box (toolbox entry).
@@ -9137,6 +9143,7 @@ EOF_SVC
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
     msg "${GREEN}$(tr_msg trojan_done)${NC}"
     msg "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    generate_qr "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
 }
 
 # Toolbox entry: standalone Trojan-Reality, free core choice.
@@ -9290,6 +9297,7 @@ EOF_SVC
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
     msg "${GREEN}$(tr_msg socks5_done)${NC}"
     msg "socks5://${user}:${pass}@${pub_ip}:${port}"
+    generate_qr "socks5://${user}:${pass}@${pub_ip}:${port}"
 }
 
 
@@ -18430,9 +18438,32 @@ EOF_TLS
     fi
 }
 
+# Detect the VPS country (ISO-3166 alpha-2, uppercase) from the public egress IP.
+# Used to pick bootstrap DNS for the Clash YAML: Chinese defaults must never be
+# hard-coded for non-CN VPS. Returns empty on any failure; caller falls back to
+# global defaults.
+_detect_vps_country() {
+    local trace loc
+    trace=$(curl -sS --connect-timeout 2 -m 5 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null || true)
+    loc=$(printf '%s\n' "$trace" | grep -m1 '^loc=' | cut -d= -f2 | tr -d '[:space:]')
+    [[ "$loc" =~ ^[A-Za-z]{2}$ ]] || return 1
+    printf '%s\n' "$loc" | tr 'a-z' 'A-Z'
+}
+
+# Bootstrap nameservers for the Clash YAML, chosen by VPS geolocation.
+# Prints two plain IPv4 addresses, one per line.
+_clash_default_nameservers() {
+    local country="${1:-}"
+    case "$country" in
+        CN) printf '223.5.5.5\n119.29.29.29\n' ;;
+        *)  printf '1.1.1.1\n8.8.8.8\n' ;;
+    esac
+}
+
 write_clash_yaml() {
     local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="${LINK_IP:-}" hy2_name="A-Box-Hy2-Self" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
     local hy2_pass_yaml hy2_obfs_yaml ss_pass_yaml clash_mlkem=false clash_mlkem_rc
+    local clash_ns1 clash_ns2 clash_country
     if clash_reality_mlkem_enabled; then
         clash_mlkem=true
     else
@@ -18481,6 +18512,11 @@ PY_CLASH_REALPATH
     hy2_pass_yaml=$(json_escape "${HY2_PASS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     ss_pass_yaml=$(json_escape "${SS_PASS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
+    # Bootstrap DNS by VPS geolocation; Chinese defaults only for CN VPS.
+    clash_country=$(_detect_vps_country 2>/dev/null || true)
+    clash_ns1=$(_clash_default_nameservers "$clash_country" 2>/dev/null | sed -n '1p')
+    clash_ns2=$(_clash_default_nameservers "$clash_country" 2>/dev/null | sed -n '2p')
+    [[ -n "$clash_ns1" && -n "$clash_ns2" ]] || { clash_ns1='1.1.1.1'; clash_ns2='8.8.8.8'; }
     {
         cat <<EOF_CLASH
 mixed-port: 7890
@@ -18495,8 +18531,8 @@ dns:
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
   default-nameserver:
-    - 223.5.5.5
-    - 119.29.29.29
+    - ${clash_ns1}
+    - ${clash_ns2}
   fake-ip-filter:
     - "*.lan"
     - "*.local"

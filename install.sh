@@ -21385,7 +21385,7 @@ main_loop() {
                 _menu_status_row "Gateway" "Core" "Mode"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— 20 · One-click Reality ——${NC}"
-                msg "${LIGHTBLUE}Default SNI · minimal prompts · input r same${NC}"
+                msg "${LIGHTBLUE}Default SNI · ${NC}${YELLOW}input r same${NC}"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core Deployment ]${NC}              ${CYAN}[ Sing-box Deployment ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
@@ -21399,14 +21399,14 @@ main_loop() {
                 msg "${GREEN}12.${NC}  View Node Configs & Links         ${GREEN}17.${NC}  Monthly Traffic Quota"
                 msg "${GREEN}13.${NC}  User Guide & Manual               ${GREEN}18.${NC}  SS-2022 IP Whitelist"
                 msg "${GREEN}14.${NC}  Update Core & Script (OTA)        ${GREEN}19.${NC}  Language / 语言设置"
-                msg "${YELLOW}15.  Uninstall Script & Cores${NC}          ${YELLOW}20.  Quick Reality [r]${NC}"
+                msg "${GREEN}15.  VPS Optimization${NC}          ${YELLOW}20.  Uninstall Script & Cores${NC}"
                 msg "${GREEN} 0.${NC}  Exit"
                 ;;
             ru)
                 _menu_status_row "Шлюз" "Ядро" "Режим"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— 20 · Reality в один клик ——${NC}"
-                msg "${LIGHTBLUE}SNI по умолчанию · минимум вопросов · r то же${NC}"
+                msg "${LIGHTBLUE}SNI по умолчанию · ${NC}${YELLOW}r то же${NC}"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Развёртывание Xray ]${NC}              ${CYAN}[ Развёртывание sing-box ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
@@ -21420,14 +21420,14 @@ main_loop() {
                 msg "${GREEN}12.${NC}  Просмотр параметров узлов         ${GREEN}17.${NC}  Лимит месячного трафика"
                 msg "${GREEN}13.${NC}  Справка и руководство             ${GREEN}18.${NC}  Белый список IP (SS-2022)"
                 msg "${GREEN}14.${NC}  Обновление ядра и скрипта         ${GREEN}19.${NC}  Язык / Language"
-                msg "${YELLOW}15.  Полное удаление скрипта${NC}           ${YELLOW}20.  Быстрый Reality [r]${NC}"
+                msg "${GREEN}15.  Оптимизация VPS${NC}           ${YELLOW}20.  Полное удаление скрипта${NC}"
                 msg "${GREEN} 0.${NC}  Выход"
                 ;;
             fa)
                 _menu_status_row "درگاه" "هسته" "حالت"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— 20 · ریالیتی تک‌کلیکی ——${NC}"
-                msg "${LIGHTBLUE}SNI پیش‌فرض Vision · حداقل سؤال · r همان${NC}"
+                msg "${LIGHTBLUE}SNI پیش‌فرض · ${NC}${YELLOW}r همان${NC}"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ نصب Xray ]${NC}                         ${CYAN}[ نصب sing-box ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
@@ -21441,14 +21441,14 @@ main_loop() {
                 msg "${GREEN}12.${NC}  مشاهده تنظیمات و نودها            ${GREEN}17.${NC}  مدیریت و محدودیت ترافیک"
                 msg "${GREEN}13.${NC}  راهنمای استفاده                   ${GREEN}18.${NC}  لیست سفید آی‌پی SS-2022"
                 msg "${GREEN}14.${NC}  به‌روزرسانی هسته و اسکریپت        ${GREEN}19.${NC}  تنظیم زبان / Language"
-                msg "${YELLOW}15.  حذف کامل اسکریپت و هسته${NC}           ${YELLOW}20.  نصب سریع Reality [r]${NC}"
+                msg "${GREEN}15.  بهینه‌سازی VPS${NC}           ${YELLOW}20.  حذف کامل اسکریپت و هسته${NC}"
                 msg "${GREEN} 0.${NC}  خروج"
                 ;;
             zh-tw)
                 _menu_status_row "閘道器/Gateway" "核心/Core" "模式"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— 20 · 一鍵 Reality ——${NC}"
-                msg "${LIGHTBLUE}默認 SNI · 最少提問 · 輸入 r 同效${NC}"
+                msg "${LIGHTBLUE}默認 SNI · ${NC}${YELLOW}輸入 r 同效${NC}"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core 部署 ]${NC}                    ${CYAN}[ Sing-box 部署 ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
@@ -21462,14 +21462,14 @@ main_loop() {
                 msg "${GREEN}12.${NC}  查看節點配置與參數                         ${GREEN}17.${NC}  流量管控與額度限制"
                 msg "${GREEN}13.${NC}  使用幫助與說明書                          ${GREEN}18.${NC}  SS-2022 訪問白名單"
                 msg "${GREEN}14.${NC}  核心與腳本升級 (OTA)                     ${GREEN}19.${NC}  多語言設置 / Language"
-                msg "${YELLOW}15.  徹底卸載腳本與核心${NC}                         ${YELLOW}20.  一鍵 Reality [r]${NC}"
+                msg "${GREEN}15.  VPS 一鍵優化${NC}                         ${YELLOW}20.  徹底卸載腳本與核心${NC}"
                 msg "${GREEN} 0.${NC}  退出指令碼"
                 ;;
             ja)
                 _menu_status_row "ゲートウェイ" "コア" "モード"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— 20 · ワンクリック Reality ——${NC}"
-                msg "${LIGHTBLUE}デフォルト SNI · 最少質問 · 入力 r 同等${NC}"
+                msg "${LIGHTBLUE}デフォルト SNI · ${NC}${YELLOW}入力 r 同等${NC}"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core 部署します ]${NC}                    ${CYAN}[ Sing-box 部署します ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
@@ -21483,14 +21483,14 @@ main_loop() {
                 msg "${GREEN}12.${NC}  ノード設定と情報の表示                       ${GREEN}17.${NC}  月間通信量制限と管理"
                 msg "${GREEN}13.${NC}  ヘルプとマニュアル                         ${GREEN}18.${NC}  SS-2022 IPホワイトリスト"
                 msg "${GREEN}14.${NC}  コアとスクリプト更新 (OTA)                  ${GREEN}19.${NC}  言語設定 / Language"
-                msg "${YELLOW}15.  スクリプトとコアの完全削除${NC}                     ${YELLOW}20.  ワンクリック Reality [r]${NC}"
+                msg "${GREEN}15.  VPS 最適化${NC}                     ${YELLOW}20.  スクリプトとコアの完全削除${NC}"
                 msg "${GREEN} 0.${NC}  スクリプトを終了します"
                 ;;
             *)
                 _menu_status_row "网关/Gateway" "核心/Core" "模式"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— 20 · 一键 Reality ——${NC}"
-                msg "${LIGHTBLUE}默认 SNI · 最少提问 · 输入 r 同效${NC}"
+                msg "${LIGHTBLUE}默认 SNI · ${NC}${YELLOW}输入 r 同效${NC}"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core 部署 ]${NC}                    ${CYAN}[ Sing-box 部署 ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
@@ -21504,7 +21504,7 @@ main_loop() {
                 msg "${GREEN}12.${NC}  查看节点配置与参数                         ${GREEN}17.${NC}  流量管控与额度限制"
                 msg "${GREEN}13.${NC}  使用帮助与说明书                          ${GREEN}18.${NC}  SS-2022 访问白名单"
                 msg "${GREEN}14.${NC}  核心与脚本升级 (OTA)                     ${GREEN}19.${NC}  多语言设置 / Language"
-                msg "${YELLOW}15.  彻底卸载脚本与核心${NC}                         ${YELLOW}20.  一键 Reality [r]${NC}"
+                msg "${GREEN}15.  VPS 一键优化${NC}                         ${YELLOW}20.  彻底卸载脚本与核心${NC}"
                 msg "${GREEN} 0.${NC}  退出脚本"
                 ;;
         esac
@@ -21534,12 +21534,13 @@ main_loop() {
             12) view_config manual ;;
             13) show_usage ;;
             14) ota_and_geo_menu ;;
-            15) clean_uninstall_menu ;;
+            15) tune_vps ;;
             16) check_virgin_state ;;
             17) traffic_management_menu ;;
             18) manage_ss_whitelist ;;
             19) language_menu ;;
-            20|r|R) one_click_reality_deploy ;;
+            20) clean_uninstall_menu ;;
+            r|R) one_click_reality_deploy ;;
             0) clear; exit 0 ;;
             *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
         esac

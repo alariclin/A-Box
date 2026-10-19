@@ -17625,6 +17625,7 @@ vps_benchmark_menu() {
             msg "${YELLOW}12. VPS one-click optimization${NC}"
             msg "${YELLOW}13. IP / DNS / timezone / locale / download-source settings${NC}"
             msg "${YELLOW}14. Wallos install / update / backup${NC}"
+            msg "${YELLOW}15. SOCKS5/Mixed landing deploy (fingerprint browsers/TG)${NC}"
             msg "${GREEN}0. Back${NC}"
             ;;
         ru)
@@ -17643,6 +17644,7 @@ vps_benchmark_menu() {
             msg "${YELLOW}12. Оптимизация VPS${NC}"
             msg "${YELLOW}13. IP / DNS / часовой пояс / локаль / источники загрузки${NC}"
             msg "${YELLOW}14. Установка и обслуживание Wallos${NC}"
+            msg "${YELLOW}15. SOCKS5/Mixed лендинг (для браузеров/TG)${NC}"
             msg "${GREEN}0. Назад${NC}"
             ;;
         fa)
@@ -17661,6 +17663,7 @@ vps_benchmark_menu() {
             msg "${YELLOW}12. بهینه‌سازی VPS${NC}"
             msg "${YELLOW}13. IP / DNS / منطقه زمانی / locale / منبع دانلود${NC}"
             msg "${YELLOW}14. نصب و نگهداری Wallos${NC}"
+            msg "${YELLOW}15. استقرار SOCKS5/Mixed (مرورگر/TG)${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
         zh-tw)
@@ -17679,6 +17682,7 @@ vps_benchmark_menu() {
             msg "${YELLOW}12. VPS 一鍵最佳化（僅手動啟用 BBR/FQ，可回滾；不會在協議安裝後自動執行）${NC}"
             msg "${YELLOW}13. IP / DNS / 時區 / Locale / 下載源設定${NC}"
             msg "${YELLOW}14. Wallos 安裝 / 升級 / 備份${NC}"
+            msg "${YELLOW}15. SOCKS5/Mixed 落地部署（指紋瀏覽器/TG專用）${NC}"
             msg "${GREEN}0. 返回主選單${NC}"
             ;;
         ja)
@@ -17697,6 +17701,7 @@ vps_benchmark_menu() {
             msg "${YELLOW}12. VPS ワンクリック最適化（手動で BBR/FQ を有効化、ロールバック可能）${NC}"
             msg "${YELLOW}13. IP / DNS / タイムゾーン / Locale / ダウンロード元の設定${NC}"
             msg "${YELLOW}14. Wallos のインストール / アップグレード / バックアップ${NC}"
+            msg "${YELLOW}15. SOCKS5/Mixed ランディング構築（指紋ブラウザ/TG用）${NC}"
             msg "${GREEN}0. メインメニューに戻る${NC}"
             ;;
         *)
@@ -17715,11 +17720,12 @@ vps_benchmark_menu() {
             msg "${YELLOW}12. VPS 一键优化（仅手动启用 BBR/FQ，可回滚；不会在协议安装后自动运行）${NC}"
             msg "${YELLOW}13. IP / DNS / 时区 / Locale / 下载源设置${NC}"
             msg "${YELLOW}14. Wallos 安装 / 升级 / 备份${NC}"
+            msg "${YELLOW}15. SOCKS5/Mixed 落地部署（指纹浏览器/TG专用）${NC}"
             msg "${GREEN}0. 返回主菜单${NC}"
             ;;
     esac
     local bench_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-14]: ' ;; ru) select_prompt='Выберите [0–14]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۴]: ' ;; ja) select_prompt='選択してください [0-14]: ' ;; zh-tw) select_prompt='請選擇 [0-14]：' ;; *) select_prompt='请选择 [0-14]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-15]: ' ;; ru) select_prompt='Выберите [0–15]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۵]: ' ;; ja) select_prompt='選択してください [0-15]: ' ;; zh-tw) select_prompt='請選擇 [0-15]：' ;; *) select_prompt='请选择 [0-15]：' ;; esac
     read -r -p "$select_prompt" bench_choice
     case "$bench_choice" in
         1) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
@@ -17736,6 +17742,7 @@ vps_benchmark_menu() {
         12) tune_vps ;;
         13) host_network_menu ;;
         14) wallos_menu ;;
+        15) deploy_socks5_landing ;;
         *) return 0 ;;
     esac
 }

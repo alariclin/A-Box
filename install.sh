@@ -22147,6 +22147,14 @@ main() {
         --convert-legacy-backup) shift; prepare_noninteractive_file_operation; convert_legacy_backup_archive "${1:-}" "${2:-$(dirname "${1:-.}")}"; exit 0 ;;
         --help|-h) show_cli_help; exit 0 ;;
         --self-test) run_self_tests; exit $? ;;
+        --sni-test)
+            # Hidden test hook: run SNI radar non-interactively for A/B testing.
+            # Usage: sudo ABOX_SNI_TEST_PROFILE=mini ABOX_SNI_MINI_CONCURRENCY=16 \
+            #          ABOX_SNI_MINI_MAX=500 bash install.sh --sni-test
+            [[ $EUID -eq 0 ]] || die 'SNI test requires root.'
+            run_builtin_sni_radar "${ABOX_SNI_TEST_PROFILE:-mini}" "SNI test (${ABOX_SNI_TEST_PROFILE:-mini})"
+            exit 0
+            ;;
         --status) show_status_report; exit 0 ;;
         --stop) manual_stop_managed_stack; exit $? ;;
         --start) manual_start_managed_stack; exit $? ;;

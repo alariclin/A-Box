@@ -478,6 +478,12 @@ tr_msg() {
         fa:main_command) echo 'فرمان را وارد کنید: ' ;;
         zh-tw:main_command) echo '請求下發執行代號: ' ;;
         ja:main_command) echo 'コマンドを入力: ' ;;
+        zh:invalid_input) echo '无效输入' ;;
+        en:invalid_input) echo 'Invalid input' ;;
+        ru:invalid_input) echo 'Неверный ввод' ;;
+        fa:invalid_input) echo 'ورودی نامعتبر' ;;
+        zh-tw:invalid_input) echo '無效輸入' ;;
+        ja:invalid_input) echo '無効な入力' ;;
         zh:lang_title) echo '语言设置 / Language' ;;
         en:lang_title) echo 'Language settings' ;;
         ru:lang_title) echo 'Настройки языка' ;;
@@ -7871,6 +7877,15 @@ XRAY_API_PORT='10085'
 # Returns 0 if the Xray API endpoint answers on loopback.
 xray_api_available() {
     [[ -x /usr/local/bin/xray ]] || return 1
+    is_service_running xray 2>/dev/null || return 1
+    local pid
+    pid=$(managed_service_pid xray 2>/dev/null || true)
+    pid=${pid%%$'\n'*}
+    [[ -n "$pid" ]] || return 1
+    if command -v ss >/dev/null 2>&1; then
+        ss -tlnp 2>/dev/null | grep -qE ":${XRAY_API_PORT}[[:space:]].*pid=${pid},"
+        return $?
+    fi
     # Loopback-only TCP probe; never touches the network.
     (exec 3<>/dev/tcp/127.0.0.1/10085) >/dev/null 2>&1 || return 1
     exec 3<&- 3>&- 2>/dev/null || true
@@ -21519,7 +21534,7 @@ main_loop() {
             19) language_menu ;;
             20|r|R) one_click_reality_deploy ;;
             0) clear; exit 0 ;;
-            *) msg "${RED}无效输入: $choice${NC}"; sleep 1 ;;
+            *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
         esac
     done
 }

@@ -18112,12 +18112,11 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ SNI Optimization ]                  [ Config Management ]${NC}"
             msg "${YELLOW}3.  Local SNI preference              7.  Backup / restore configuration${NC}"
-            msg "${YELLOW}4.  Mini-host SNI preference          11.  Multi-UUID / subscription export${NC}"
+            msg "${YELLOW}4.  Mini-host SNI preference          11.  Multi-user / subscription link export${NC}"
             msg "${YELLOW}10.  SNI preference records           14.  Wallos install / update / backup${NC}"
             msg ""
             msg "${CYAN}[ Protocol Deployment ]${NC}"
-            msg "${YELLOW}15.  SOCKS5/Mixed landing deploy${NC}"
-            msg "${YELLOW}16.  Trojan-Reality landing deploy${NC}"
+            msg "${YELLOW}15.  SOCKS5/Mixed                     16.  Trojan-Reality${NC}"
             msg "${GREEN}0. Back${NC}"
             ;;
         ru)
@@ -18130,12 +18129,11 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ Подбор SNI ]                        [ Управление конфигурацией ]${NC}"
             msg "${YELLOW}3.  Подбор SNI                        7.  Бэкап / восстановление${NC}"
-            msg "${YELLOW}4.  Подбор SNI (мини-хост)            11.  Экспорт UUID / подписки${NC}"
+            msg "${YELLOW}4.  Подбор SNI (мини-хост)            11.  Пользователи / экспорт подписки${NC}"
             msg "${YELLOW}10.  Записи подбора SNI               14.  Wallos: установка / обновление${NC}"
             msg ""
             msg "${CYAN}[ Развёртывание протоколов ]${NC}"
-            msg "${YELLOW}15.  SOCKS5/Mixed лендинг${NC}"
-            msg "${YELLOW}16.  Trojan-Reality лендинг${NC}"
+            msg "${YELLOW}15.  SOCKS5/Mixed                     16.  Trojan-Reality${NC}"
             msg "${GREEN}0. Назад${NC}"
             ;;
         fa)
@@ -18148,12 +18146,11 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ بهینه‌سازی SNI ]                    [ مدیریت پیکربندی ]${NC}"
             msg "${YELLOW}3.  بهینه‌سازی SNI محلی               7.  پشتیبان‌گیری / بازیابی${NC}"
-            msg "${YELLOW}4.  بهینه‌سازی SNI مینی‌هاست          11.  خروجی چند UUID / اشتراک${NC}"
+            msg "${YELLOW}4.  بهینه‌سازی SNI مینی‌هاست          11.  کاربران / خروجی لینک اشتراک${NC}"
             msg "${YELLOW}10.  سوابق بهینه‌سازی SNI             14.  نصب / به‌روزرسانی Wallos${NC}"
             msg ""
             msg "${CYAN}[ استقرار پروتکل ]${NC}"
-            msg "${YELLOW}15.  استقرار SOCKS5/Mixed${NC}"
-            msg "${YELLOW}16.  استقرار Trojan-Reality${NC}"
+            msg "${YELLOW}15.  SOCKS5/Mixed                     16.  Trojan-Reality${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
         zh-tw)
@@ -18166,12 +18163,11 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ SNI 優選 ]                          [ 配置管理 ]${NC}"
             msg "${YELLOW}3.  本地 SNI 優選                     7.  配置備份 / 恢復${NC}"
-            msg "${YELLOW}4.  微型主機 SNI 優選                 11.  多 UUID / 訂閱導出${NC}"
+            msg "${YELLOW}4.  微型主機 SNI 優選                 11.  多用戶 / 訂閱連結導出${NC}"
             msg "${YELLOW}10.  SNI 優選記錄                     14.  Wallos 安裝 / 升級 / 備份${NC}"
             msg ""
             msg "${CYAN}[ 協議部署 ]${NC}"
-            msg "${YELLOW}15.  SOCKS5/Mixed 落地部署${NC}"
-            msg "${YELLOW}16.  Trojan-Reality 落地部署${NC}"
+            msg "${YELLOW}15.  SOCKS5/Mixed                     16.  Trojan-Reality${NC}"
             msg "${GREEN}0. 返回主選單${NC}"
             ;;
         ja)
@@ -18184,12 +18180,11 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ SNI 最適化 ]                        [ 構成管理 ]${NC}"
             msg "${YELLOW}3.  ローカル SNI 最適化               7.  設定のバックアップ/復元${NC}"
-            msg "${YELLOW}4.  ミニホスト SNI 最適化             11.  複数UUID/サブスクリプション出力${NC}"
+            msg "${YELLOW}4.  ミニホスト SNI 最適化             11.  複数ユーザー / サブスクリプション出力${NC}"
             msg "${YELLOW}10.  SNI 最適化記録                   14.  Wallos インストール/更新${NC}"
             msg ""
             msg "${CYAN}[ プロトコル展開 ]${NC}"
-            msg "${YELLOW}15.  SOCKS5/Mixed ランディング構築${NC}"
-            msg "${YELLOW}16.  Trojan-Reality ランディング構築${NC}"
+            msg "${YELLOW}15.  SOCKS5/Mixed                     16.  Trojan-Reality${NC}"
             msg "${GREEN}0. メインメニューに戻る${NC}"
             ;;
         *)
@@ -18202,12 +18197,11 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ SNI 优选 ]                          [ 配置管理 ]${NC}"
             msg "${YELLOW}3.  本地 SNI 优选                     7.  配置备份 / 恢复${NC}"
-            msg "${YELLOW}4.  微型主机 SNI 优选                 11.  多 UUID / 订阅导出${NC}"
+            msg "${YELLOW}4.  微型主机 SNI 优选                 11.  多用户 / 订阅链接导出${NC}"
             msg "${YELLOW}10.  SNI 优选记录                     14.  Wallos 安装 / 升级 / 备份${NC}"
             msg ""
             msg "${CYAN}[ 协议部署 ]${NC}"
-            msg "${YELLOW}15.  SOCKS5/Mixed 落地部署（指纹浏览器/TG专用）${NC}"
-            msg "${YELLOW}16.  Trojan-Reality 落地部署${NC}"
+            msg "${YELLOW}15.  SOCKS5/Mixed                     16.  Trojan-Reality${NC}"
             msg "${GREEN}0. 返回主菜单${NC}"
             ;;
     esac

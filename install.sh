@@ -21504,7 +21504,7 @@ main_loop() {
                 msg "${GREEN}12.${NC}  查看节点配置与参数               ${GREEN}17.${NC}  流量管控与额度限制"
                 msg "${GREEN}13.${NC}  使用帮助与说明书                 ${GREEN}18.${NC}  SS-2022 访问白名单"
                 msg "${GREEN}14.${NC}  核心与脚本升级 (OTA)             ${GREEN}19.${NC}  多语言设置 / Language"
-                msg "${YELLOW}15.${NC}  彻底卸载脚本与核心                         ${YELLOW}${BOLD}20.${NC} 一键 Reality [r]"
+                msg "${YELLOW}15.${NC}  彻底卸载脚本与核心               ${YELLOW}${BOLD}20.${NC} 一键 Reality [r]"
                 msg "${GREEN} 0.${NC}  退出脚本"
                 ;;
         esac

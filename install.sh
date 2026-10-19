@@ -11201,6 +11201,50 @@ restore_vps_tune() {
     [[ "$quiet" == 1 ]] || msg "${GREEN}A-Box VPS 调优已恢复。${NC}"
 }
 
+# Desired sysctl tune set, one "key value" per line. BBR/FQ keys are included
+# only when the running kernel actually offers BBR.
+_tune_desired_sysctl() {
+    local available
+    printf '%s\n' \
+        'fs.file-max 1048576' \
+        'fs.inotify.max_user_instances 8192' \
+        'net.ipv4.tcp_syncookies 1' \
+        'net.ipv4.tcp_fin_timeout 30' \
+        'net.ipv4.tcp_max_syn_backlog 8192' \
+        'net.ipv4.tcp_fastopen 3' \
+        'net.ipv4.tcp_mtu_probing 1' \
+        'net.ipv4.tcp_notsent_lowat 16384' \
+        'net.core.netdev_max_backlog 250000' \
+        'net.core.somaxconn 32768'
+    available=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
+    if grep -qw bbr <<< "$available"; then
+        printf '%s\n' 'net.core.default_qdisc fq' 'net.ipv4.tcp_congestion_control bbr'
+    fi
+}
+
+# Prints one line per tune item that is missing or drifted from the desired
+# state (sysctl live values, limits file, BBR persistence). Empty output means
+# the VPS is fully tuned.
+_tune_missing_items() {
+    local key want got missing_list='' available
+    while read -r key want; do
+        [[ -n "$key" ]] || continue
+        sysctl -n "$key" >/dev/null 2>&1 || continue
+        got=$(sysctl -n "$key" 2>/dev/null)
+        [[ "$got" == "$want" ]] || missing_list+="${key}（当前 ${got:-<空>}，期望 $want）"$'\n'
+    done < <(_tune_desired_sysctl)
+    if ! grep -q '^# Managed by A-Box' /etc/security/limits.d/A-Box.conf 2>/dev/null \
+        || ! grep -q '^\* soft nofile 1048576' /etc/security/limits.d/A-Box.conf 2>/dev/null; then
+        missing_list+='limits 配置（nofile 上限 1048576）'$'\n'
+    fi
+    available=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
+    if grep -qw bbr <<< "$available" && modprobe tcp_bbr >/dev/null 2>&1; then
+        grep -qx 'tcp_bbr' /etc/modules-load.d/A-Box-bbr.conf 2>/dev/null \
+            || missing_list+='BBR 模块开机自动加载配置'$'\n'
+    fi
+    printf '%s' "$missing_list"
+}
+
 # BUG-28: hoisted from apply_vps_tune(). $3 = destination file.
 __abox_add_sysctl() {
     sysctl -n "$1" >/dev/null 2>&1 && printf '%s = %s\n' "$1" "$2" >> "$3"
@@ -11208,35 +11252,49 @@ __abox_add_sysctl() {
 apply_vps_tune() {
     local dir="$ABOX_DIR/tune-backup" tmp key value available bbr_loaded=0
     local bbr_module_file='/etc/modules-load.d/A-Box-bbr.conf'
+    local missing snapshot_exists=0 snapshot_tmp
     assert_abox_auxiliary_safe /etc/security/limits.d/A-Box.conf || die "拒绝覆盖非 A-Box 辅助文件: /etc/security/limits.d/A-Box.conf"
     assert_abox_auxiliary_safe /etc/sysctl.d/99-A-Box-tune.conf || die "拒绝覆盖非 A-Box 辅助文件: /etc/sysctl.d/99-A-Box-tune.conf"
     assert_abox_auxiliary_safe "$bbr_module_file" || die "拒绝覆盖非 A-Box 辅助文件: $bbr_module_file"
-    if [[ -f "$dir/.captured" ]]; then msg "${RED}[!] 检测到尚未恢复的调优快照；请先执行恢复，再重新应用。${NC}"; return 1; fi
-    if [[ -e "$dir" || -L "$dir" ]]; then
+    # Snapshot state validation stays strict: a half-written snapshot is unsafe.
+    if [[ -f "$dir/.captured" ]]; then
+        snapshot_exists=1
+    elif [[ -e "$dir" || -L "$dir" ]]; then
         [[ -d "$dir" && ! -L "$dir" ]] || die '调优备份路径不是安全目录。'
         [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]] || { msg "${RED}[!] 检测到未完成的调优快照；请先检查并恢复/清理该快照。${NC}"; return 1; }
     fi
-    local snapshot_tmp
-    snapshot_tmp=$(mktemp -d "$ABOX_DIR/.tune-backup-new.XXXXXX") || die '无法创建调优备份临时目录。'
-    if [[ -f /etc/sysctl.d/99-A-Box-tune.conf ]] && ! cp -a /etc/sysctl.d/99-A-Box-tune.conf "$snapshot_tmp/sysctl.conf"; then
-        rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原配置备份失败。'
+    # Idempotent re-run: inspect live state first, never error out on re-apply.
+    missing=$(_tune_missing_items)
+    if [[ -z "$missing" ]]; then
+        msg "${GREEN}VPS 调优已全部应用，无需重复操作。${NC}"
+        return 0
     fi
-    if [[ -f /etc/security/limits.d/A-Box.conf ]] && ! cp -a /etc/security/limits.d/A-Box.conf "$snapshot_tmp/limits.conf"; then
-        rm -rf -- "$snapshot_tmp"; die '调优 limits 原配置备份失败。'
+    msg "${YELLOW}检测到未应用的调优项：${NC}"
+    msg "$missing"
+    if (( snapshot_exists == 1 )); then
+        msg "${YELLOW}[!] 保留已有调优快照（恢复时仍回到最初状态），仅补齐缺失项。${NC}"
+    else
+        snapshot_tmp=$(mktemp -d "$ABOX_DIR/.tune-backup-new.XXXXXX") || die '无法创建调优备份临时目录。'
+        if [[ -f /etc/sysctl.d/99-A-Box-tune.conf ]] && ! cp -a /etc/sysctl.d/99-A-Box-tune.conf "$snapshot_tmp/sysctl.conf"; then
+            rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原配置备份失败。'
+        fi
+        if [[ -f /etc/security/limits.d/A-Box.conf ]] && ! cp -a /etc/security/limits.d/A-Box.conf "$snapshot_tmp/limits.conf"; then
+            rm -rf -- "$snapshot_tmp"; die '调优 limits 原配置备份失败。'
+        fi
+        if [[ -f "$bbr_module_file" ]] && ! cp -a "$bbr_module_file" "$snapshot_tmp/bbr-modules.conf"; then
+            rm -rf -- "$snapshot_tmp"; die 'BBR 模块自动加载配置备份失败。'
+        fi
+        : > "$snapshot_tmp/sysctl.original" || { rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原始值快照创建失败。'; }
+        for key in fs.file-max fs.inotify.max_user_instances net.ipv4.tcp_syncookies net.ipv4.tcp_fin_timeout net.ipv4.tcp_keepalive_time net.ipv4.tcp_max_syn_backlog net.ipv4.tcp_max_tw_buckets net.ipv4.tcp_fastopen net.ipv4.tcp_mtu_probing net.ipv4.tcp_notsent_lowat net.core.netdev_max_backlog net.core.somaxconn net.core.default_qdisc net.ipv4.tcp_congestion_control; do
+            value=$(sysctl -n "$key" 2>/dev/null) || continue
+            printf '%s=%s\n' "$key" "$value" >> "$snapshot_tmp/sysctl.original" || { rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原始值快照写入失败。'; }
+        done
+        touch "$snapshot_tmp/.captured" || { rm -rf -- "$snapshot_tmp"; die '调优快照完成标记写入失败。'; }
+        if [[ -d "$dir" ]]; then
+            rmdir -- "$dir" || { rm -rf -- "$snapshot_tmp"; die '无法原子替换调优备份目录。'; }
+        fi
+        mv -f -- "$snapshot_tmp" "$dir" || { rm -rf -- "$snapshot_tmp"; die '调优备份快照原子提交失败。'; }
     fi
-    if [[ -f "$bbr_module_file" ]] && ! cp -a "$bbr_module_file" "$snapshot_tmp/bbr-modules.conf"; then
-        rm -rf -- "$snapshot_tmp"; die 'BBR 模块自动加载配置备份失败。'
-    fi
-    : > "$snapshot_tmp/sysctl.original" || { rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原始值快照创建失败。'; }
-    for key in fs.file-max fs.inotify.max_user_instances net.ipv4.tcp_syncookies net.ipv4.tcp_fin_timeout net.ipv4.tcp_keepalive_time net.ipv4.tcp_max_syn_backlog net.ipv4.tcp_max_tw_buckets net.ipv4.tcp_fastopen net.ipv4.tcp_mtu_probing net.ipv4.tcp_notsent_lowat net.core.netdev_max_backlog net.core.somaxconn net.core.default_qdisc net.ipv4.tcp_congestion_control; do
-        value=$(sysctl -n "$key" 2>/dev/null) || continue
-        printf '%s=%s\n' "$key" "$value" >> "$snapshot_tmp/sysctl.original" || { rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原始值快照写入失败。'; }
-    done
-    touch "$snapshot_tmp/.captured" || { rm -rf -- "$snapshot_tmp"; die '调优快照完成标记写入失败。'; }
-    if [[ -d "$dir" ]]; then
-        rmdir -- "$dir" || { rm -rf -- "$snapshot_tmp"; die '无法原子替换调优备份目录。'; }
-    fi
-    mv -f -- "$snapshot_tmp" "$dir" || { rm -rf -- "$snapshot_tmp"; die '调优备份快照原子提交失败。'; }
     write_file_atomically_from_stdin /etc/security/limits.d/A-Box.conf 644 <<'EOF_LIMITS' || { restore_vps_tune 1 || true; die 'limits 配置原子写入失败，已恢复原状态。'; }
 # Managed by A-Box
 * soft nofile 1048576
@@ -11276,7 +11334,13 @@ EOF_BBR
     install_file_atomically "$tmp" /etc/sysctl.d/99-A-Box-tune.conf 600 || { rm -f "$tmp"; restore_vps_tune 1 || true; die '调优配置原子写入失败。'; }
     rm -f "$tmp"
     if ! sysctl -p /etc/sysctl.d/99-A-Box-tune.conf >/dev/null 2>&1; then restore_vps_tune 1; die 'sysctl 调优应用失败，已恢复原状态。'; fi
-    msg "${GREEN}系统调优已应用；未强制启用 IP forwarding，也未修改核心 JSON 配置。${NC}"
+    missing=$(_tune_missing_items)
+    if [[ -z "$missing" ]]; then
+        msg "${GREEN}缺失项已补齐，系统调优已全部应用；未强制启用 IP forwarding，也未修改核心 JSON 配置。${NC}"
+    else
+        msg "${YELLOW}[!] 以下调优项仍未生效（可能为内核限制）：${NC}"
+        msg "$missing"
+    fi
 }
 
 

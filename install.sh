@@ -7797,19 +7797,6 @@ pre_install_setup() {
                 fi
             done
         fi
-        # SOCKS5/Mixed 落地入站（可选，仅供指纹浏览器/TG等强制明文场景）
-        local _ask_socks="n"
-        case "${ABOX_LANG:-zh}" in
-            en) read -r -p "   Enable SOCKS5/Mixed landing inbound (for fingerprint browsers/TG, reuses whitelist)? [y/N]: " _ask_socks || true ;;
-            ru) read -r -p "   Включить SOCKS5/Mixed inbound (для браузеров/TG)? [y/N]: " _ask_socks || true ;;
-            fa) read -r -p "   ورودی SOCKS5/Mixed فعال شود؟ [y/N]: " _ask_socks || true ;;
-            zh-tw) read -r -p "   是否同時開啟 SOCKS5/Mixed 落地入站（僅供指紋瀏覽器/TG使用，複用白名單）？[y/N]: " _ask_socks || true ;;
-            ja) read -r -p "   SOCKS5/Mixed ランディングを有効化しますか？[y/N]: " _ask_socks || true ;;
-            *) read -r -p "   是否同时开启 SOCKS5/Mixed 落地入站（仅供指纹浏览器/TG使用，复用白名单）？[y/N]: " _ask_socks || true ;;
-        esac
-        if [[ "$_ask_socks" =~ ^[Yy]$ ]]; then
-            setup_socks5_params || die 'SOCKS5 参数设置失败。'
-        fi
     fi
 
     if abox_is_fast; then
@@ -22160,7 +22147,7 @@ main_loop() {
                 _menu_status_row "Gateway" "Core" "Mode"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— One-click Reality ——${NC}"
-                msg "${LIGHTBLUE}Default SNI · ${NC}${YELLOW}input r same${NC}"
+                msg "${LIGHTBLUE}Default SNI · ${NC}${YELLOW}input r to execute${NC}"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core Deployment ]${NC}              ${CYAN}[ Sing-box Deployment ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
@@ -22181,7 +22168,7 @@ main_loop() {
                 _menu_status_row "Шлюз" "Ядро" "Режим"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— Reality в один клик ——${NC}"
-                msg "${LIGHTBLUE}SNI по умолчанию · ${NC}${YELLOW}r то же${NC}"
+                msg "${LIGHTBLUE}SNI по умолчанию · ${NC}${YELLOW}r выполнить${NC}"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Развёртывание Xray ]${NC}              ${CYAN}[ Развёртывание sing-box ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
@@ -22202,7 +22189,7 @@ main_loop() {
                 _menu_status_row "درگاه" "هسته" "حالت"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— ریالیتی تک‌کلیکی ——${NC}"
-                msg "${LIGHTBLUE}SNI پیش‌فرض · ${NC}${YELLOW}r همان${NC}"
+                msg "${LIGHTBLUE}SNI پیش‌فرض · ${NC}${YELLOW}r اجرا شود${NC}"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ نصب Xray ]${NC}                         ${CYAN}[ نصب sing-box ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
@@ -22223,7 +22210,7 @@ main_loop() {
                 _menu_status_row "閘道器/Gateway" "核心/Core" "模式"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— 一鍵 Reality ——${NC}"
-                msg "${LIGHTBLUE}默認 SNI · ${NC}${YELLOW}輸入 r 同效${NC}"
+                msg "${LIGHTBLUE}默認 SNI · ${NC}${YELLOW}輸入 r 執行${NC}"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core 部署 ]${NC}                    ${CYAN}[ Sing-box 部署 ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
@@ -22244,7 +22231,7 @@ main_loop() {
                 _menu_status_row "ゲートウェイ" "コア" "モード"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— ワンクリック Reality ——${NC}"
-                msg "${LIGHTBLUE}デフォルト SNI · ${NC}${YELLOW}入力 r 同等${NC}"
+                msg "${LIGHTBLUE}デフォルト SNI · ${NC}${YELLOW}入力 r で実行${NC}"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core 部署します ]${NC}                    ${CYAN}[ Sing-box 部署します ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
@@ -22265,7 +22252,7 @@ main_loop() {
                 _menu_status_row "网关/Gateway" "核心/Core" "模式"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— 一键 Reality ——${NC}"
-                msg "${LIGHTBLUE}默认 SNI · ${NC}${YELLOW}输入 r 同效${NC}"
+                msg "${LIGHTBLUE}默认 SNI · ${NC}${YELLOW}输入 r 执行${NC}"
                 msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core 部署 ]${NC}                    ${CYAN}[ Sing-box 部署 ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"

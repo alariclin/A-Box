@@ -627,6 +627,8 @@ proto_label() {
 }
 
 pause_return() {
+    # Piped-menu automation: skip pause when stdin is not a TTY (non-interactive).
+    [[ ! -t 0 ]] && return 0
     local released=0
     if [[ -t 0 ]]; then
         # Briefly release exclusive flock during idle prompt so cron helpers can run.
@@ -712,6 +714,12 @@ language_menu() {
 }
 need_interactive_tty() {
     if [[ ! -t 0 ]]; then
+        # Version B: piped-menu automation. Honor non-TTY stdin (pipe/file redirect)
+        # for scripted menu runs instead of stealing /dev/tty. The main menu
+        # already exits cleanly on EOF (read ... || exit 0), and pause_return()
+        # skips when stdin is not a TTY.
+        # Set ABOX_FORCE_TTY=1 to restore legacy "always reattach to /dev/tty".
+        [[ "${ABOX_FORCE_TTY:-0}" == 1 ]] || return 0
         if [[ -r /dev/tty ]] && ( : < /dev/tty ) 2>/dev/null; then
             exec < /dev/tty || die '当前环境无可交互 TTY，无法打开控制终端。'
         else
@@ -871,6 +879,71 @@ valid_single_line_secret() {
     [[ -n "$value" && ${#value} -le $max_len ]] || return 1
     [[ "$value" != *[[:cntrl:]]* ]]
 }
+
+# ============ Version C: unified validation framework ============
+# valid_uuid: standalone UUIDv4 shape check (was inline at config validation).
+valid_uuid() {
+    local input="${1:-}"
+    [[ "$input" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]]
+}
+
+# valid_path: must start with /, no whitespace or control chars.
+valid_path() {
+    local input="${1:-}"
+    [[ -n "$input" ]] || return 1
+    [[ "$input" == /* ]] || return 1
+    [[ "$input" != *[[:space:]]* ]] || return 1
+    [[ "$input" != *$'\n'* && "$input" != *$'\r'* ]] || return 1
+    [[ "$input" != *[[:cntrl:]]* ]]
+}
+
+# port_is_free: true when nothing is listening on the TCP port locally.
+port_is_free() {
+    local port="${1:-}"
+    [[ -n "$port" ]] || return 1
+    if command -v ss >/dev/null 2>&1; then
+        ! ss -tln 2>/dev/null | grep -q ":${port} "
+    else
+        ! (exec 3<>/dev/tcp/127.0.0.1/"$port") 2>/dev/null
+    fi
+}
+
+# is_test: single dispatcher for all input validation types (233boy pattern).
+#   port   -> 1-65535 and not occupied
+#   domain -> valid_domain regex
+#   uuid   -> UUIDv4 shape
+#   ip     -> plain IPv4 or IPv6 address (no CIDR)
+#   path   -> /-prefixed, no whitespace/control chars
+#   cidr   -> IPv4 or IPv6 with optional /mask
+is_test() {
+    local type="${1:-}" value="${2:-}"
+    case "$type" in
+        port)   valid_port "$value" && port_is_free "$value" ;;
+        domain) valid_domain "$value" ;;
+        uuid)   valid_uuid "$value" ;;
+        ip)     valid_ip_address "$value" ;;
+        path)   valid_path "$value" ;;
+        cidr)   valid_ipv4_cidr "$value" || valid_ipv6_cidr "$value" ;;
+        *)      return 1 ;;
+    esac
+}
+
+# prompt_validated: read from stdin, apply default on empty, re-prompt until
+# is_test passes. Prints the accepted value to stdout.
+prompt_validated() {
+    local prompt="$1" type="$2" default="$3"
+    local val
+    while true; do
+        read -r -p "$prompt" val
+        val="${val:-$default}"
+        if is_test "$type" "$val"; then
+            printf '%s' "$val"
+            return 0
+        fi
+        msg "${RED}Invalid $type: $val${NC}"
+    done
+}
+# ============ end Version C ============
 
 is_apple_like_sni() {
     local sni="${1,,}"
@@ -7756,18 +7829,119 @@ build_xray_config() {
     [[ -d "$out_dir" ]] || install -d -m 755 -- "$out_dir" || die 'Xray 配置目录创建失败。'
     tmp_out=$(mktemp "$out_dir/.A-Box-xray-config.XXXXXX") || die 'Xray 配置临时文件创建失败。'
     umask 077
+    # XRAY-API (Version A experiment): gRPC control plane for hot-reload.
+    # SECURITY: the API has NO authentication. listen is hardcoded to 127.0.0.1
+    # and NEVER derived from wildcard_listen_address (which may be 0.0.0.0/::).
+    # Binding it to anything but loopback would expose full config control.
     jq -n --argjson inbounds "$inbounds_json" '{
         log:{loglevel:"warning", access:"/var/log/A-Box-xray-access.log", error:"/var/log/A-Box-xray-error.log"},
+        api:{tag:"api", services:["HandlerService","LoggerService","StatsService"]},
         routing:{domainStrategy:"IPIfNonMatch", rules:[
+            {type:"field", inboundTag:["api"], outboundTag:"api"},
             {type:"field", protocol:["bittorrent"], outboundTag:"block"},
             {type:"field", domain:["geosite:category-ads-all"], outboundTag:"block"}
         ]},
-        inbounds:$inbounds,
-        outbounds:[{protocol:"freedom", tag:"direct"}, {protocol:"blackhole", tag:"block"}]
+        inbounds:([{listen:"127.0.0.1", port:10085, protocol:"dokodemo-door", settings:{address:"127.0.0.1"}, tag:"api"}] + $inbounds),
+        outbounds:[{protocol:"freedom", tag:"direct"}, {protocol:"blackhole", tag:"block"}, {protocol:"freedom", tag:"api"}]
     }' > "$tmp_out" || { rm -f "$tmp_out"; die 'Xray JSON 生成失败。'; }
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die 'Xray 配置权限设置失败。'; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
     mv -f "$tmp_out" "$out" || { rm -f "$tmp_out"; die 'Xray 配置原子提交失败。'; }
+}
+
+# ============ Xray API hot-reload (Version A experiment, 233boy style) ============
+# Control plane: 127.0.0.1:10085 ONLY. The gRPC API has no authentication, so the
+# address is a hardcoded constant here and in build_xray_config -- never derived
+# from wildcard_listen_address, never 0.0.0.0, never ::.
+XRAY_API_SERVER='127.0.0.1:10085'
+XRAY_API_PORT='10085'
+
+# Returns 0 if the Xray API endpoint answers on loopback.
+xray_api_available() {
+    [[ -x /usr/local/bin/xray ]] || return 1
+    # Loopback-only TCP probe; never touches the network.
+    (exec 3<>/dev/tcp/127.0.0.1/10085) >/dev/null 2>&1 || return 1
+    exec 3<&- 3>&- 2>/dev/null || true
+    return 0
+}
+
+# Low-level: push ONE inbound object to the running Xray via gRPC API.
+# $1 = path to a JSON file containing a single inbound OBJECT (not an array).
+# Prints nothing; returns 0 on success, 1 on failure (caller falls back).
+xray_api_add_inbound() {
+    local json_file="$1"
+    [[ -n "$json_file" && -f "$json_file" && ! -L "$json_file" ]] || return 1
+    [[ -x /usr/local/bin/xray ]] || return 1
+    # The object must carry a usable, non-reserved tag.
+    local tag
+    tag=$(jq -r '.tag // empty' "$json_file" 2>/dev/null) || return 1
+    [[ -n "$tag" && "$tag" != 'api' ]] || return 1
+    /usr/local/bin/xray api --server "$XRAY_API_SERVER" addinbound < "$json_file" >/dev/null 2>&1
+}
+
+# Low-level: remove an inbound from the running Xray by tag via gRPC API.
+# $1 = inbound tag. The built-in "api" tag is protected and always refused.
+xray_api_remove_inbound() {
+    local tag="$1"
+    [[ -n "$tag" && "$tag" != 'api' ]] || return 1
+    [[ -x /usr/local/bin/xray ]] || return 1
+    /usr/local/bin/xray api --server "$XRAY_API_SERVER" delinbound --tag "$tag" >/dev/null 2>&1
+}
+
+# High-level: persist a new inbound to disk config AND hot-push it via API.
+# $1 = path to a JSON file with one inbound object.
+# Fallback: if the API push fails, restart_service_soft picks up the persisted
+# config, so the change is never lost and existing behavior is preserved.
+xray_hot_add_inbound() {
+    local json_file="$1" cfg='/usr/local/etc/xray/config.json' tmp tag
+    [[ -n "$json_file" && -f "$json_file" && ! -L "$json_file" ]] || return 1
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    tag=$(jq -r '.tag // empty' "$json_file" 2>/dev/null) || return 1
+    [[ -n "$tag" && "$tag" != 'api' ]] || return 1
+    if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        return 1  # duplicate tag already persisted
+    fi
+    tmp=$(mktemp /tmp/A-Box-xray-hotadd.XXXXXX) || return 1
+    if ! jq --slurpfile nb "$json_file" '.inbounds += $nb' "$cfg" > "$tmp" 2>/dev/null; then
+        rm -f "$tmp"; return 1
+    fi
+    jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+    if [[ -x /usr/local/bin/xray ]]; then
+        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+    fi
+    install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
+    prepare_abox_runtime_permissions xray 2>/dev/null || true
+    rm -f "$tmp"
+    # Hot path first: no connection drop. Fallback: restart (old behavior).
+    if xray_api_available && xray_api_add_inbound "$json_file"; then
+        return 0
+    fi
+    restart_service_soft xray
+}
+
+# High-level: remove an inbound from disk config AND from the running Xray.
+# $1 = inbound tag (never "api").
+# Fallback: if the API call fails, restart_service_soft picks up the persisted
+# config, so the change is never lost and existing behavior is preserved.
+xray_hot_remove_inbound() {
+    local tag="$1" cfg='/usr/local/etc/xray/config.json' tmp
+    [[ -n "$tag" && "$tag" != 'api' ]] || return 1
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    tmp=$(mktemp /tmp/A-Box-xray-hotdel.XXXXXX) || return 1
+    if ! jq --arg t "$tag" '.inbounds |= map(select(.tag != $t))' "$cfg" > "$tmp" 2>/dev/null; then
+        rm -f "$tmp"; return 1
+    fi
+    jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+    if [[ -x /usr/local/bin/xray ]]; then
+        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+    fi
+    install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
+    prepare_abox_runtime_permissions xray 2>/dev/null || true
+    rm -f "$tmp"
+    if xray_api_available && xray_api_remove_inbound "$tag"; then
+        return 0
+    fi
+    restart_service_soft xray
 }
 
 build_singbox_config() {
@@ -12010,7 +12184,9 @@ _dns_provider_list() {
         'quad9|Quad9|9.9.9.9|2620:fe::fe' \
         'opendns|OpenDNS|208.67.222.222|2620:119:35::35' \
         'alidns|AliDNS|223.5.5.5|2400:3200::1' \
-        'dnspod|DNSPod|119.29.29.29|2402:4e00::'
+        'dnspod|DNSPod|119.29.29.29|2402:4e00::' \
+        'cf-family|Cloudflare Family|1.1.1.2|2606:4700:4700::1112' \
+        'quad9-sec|Quad9安全|9.9.9.11|2620:fe::11'
 }
 
 # Get current DNS from resolv.conf or state file
@@ -12103,7 +12279,7 @@ dns_setup_tri_mode() {
     esac
     msg "${CYAN}----------------------------------------------------------------------${NC}"
 
-    read -r -p "Select provider [0-8]: " choice
+    read -r -p "Select provider [0-10]: " choice
     if [[ "$choice" == "0" ]]; then
         # Manual input
         if [[ "$mode" == "1" || "$mode" == "3" ]]; then
@@ -12114,7 +12290,7 @@ dns_setup_tri_mode() {
             read -r -p 'IPv6 DNS: ' v6
             valid_ipv6_cidr "$v6" && [[ "$v6" != */* ]] || { msg "${RED}Invalid IPv6${NC}"; pause_return; return 1; }
         fi
-    elif [[ "$choice" =~ ^[1-8]$ ]]; then
+    elif [[ "$choice" =~ ^([1-9]|10)$ ]]; then
         IFS='|' read -r tag name pv4 pv6 <<< "${providers[$((choice-1))]}"
         case "$mode" in
             1) v4="$pv4" ;;
@@ -18267,7 +18443,9 @@ core_expected_listen_ports() {
     local core="$1" cfg="$2"
     case "$core" in
         xray)
-            jq -r '.inbounds[]? | select(.port != null) | (if .protocol == "shadowsocks" then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end)' "$cfg" 2>/dev/null
+            # XRAY-API: exclude the loopback-only gRPC control plane (tag "api")
+            # from data-plane health checks; it is infrastructure, not a service port.
+            jq -r '.inbounds[]? | select(.port != null and .tag != "api") | (if .protocol == "shadowsocks" then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end)' "$cfg" 2>/dev/null
             ;;
         singbox)
             jq -r '.inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" then "udp/\(.listen_port)" elif .type == "shadowsocks" then "tcp/\(.listen_port)\nudp/\(.listen_port)" else "tcp/\(.listen_port)" end)' "$cfg" 2>/dev/null
@@ -21112,14 +21290,29 @@ main_loop() {
     # 14-system safe: ASCII only, standard ANSI colors, CJK width aware
     _menu_status_row() {
         local lbl_gw="$1" lbl_core="$2" lbl_mode="$3"
+        # Perf: label prefixes are fixed per ABOX_LANG; cache their widths once.
+        # Only dynamic parts (IP, status text, mode label) are measured per render.
+        # Display width is additive over concatenation: w = cached_prefix + dynamic.
+        if [[ "${_CACHED_STATUS_LANG:-}" != "${ABOX_LANG:-zh}" ]]; then
+            _CACHED_STATUS_LANG="${ABOX_LANG:-zh}"
+            _CACHED_GW_W=$(_disp_width "${lbl_gw}: ")
+            _CACHED_CORE_W=$(_disp_width "${lbl_core}: ● ")
+            _CACHED_MODE_W=$(_disp_width "${lbl_mode}: ")
+        fi
         local gw_ip="${GLOBAL_PUBLIC_IP:-?}"
         local mode_label="$(read_fast_mode_label)"
         # Strip all ANSI (CSI + charset) for width calc
         local core_plain=$(printf '%s' "$STATUS_STR $CUR_MODE" | sed $'s/\x1b\\[[0-9;?]*[a-zA-Z]//g; s/\x1b([0-9A-Za-z]//g')
-        local seg1="${lbl_gw}: ${gw_ip}"
-        local seg2="${lbl_core}: ● ${core_plain}"
-        local seg3="${lbl_mode}: ${mode_label}"
-        local w1=$(_disp_width "$seg1") w2=$(_disp_width "$seg2") w3=$(_disp_width "$seg3")
+        # Single awk measures all three dynamic widths (was 3x _disp_width).
+        # All three values are single-line: IP / stripped status / fast|strict.
+        local _dw _dw1 _dw2 _dw3
+        _dw=$(printf '%s\n%s\n%s\n' "$gw_ip" "$core_plain" "$mode_label" | LC_ALL=C awk '
+            { b=length($0)
+              s1=gsub(/[\xc2-\xdf][\x80-\xbf]|[\xe3-\xef][\x80-\xbf][\x80-\xbf]/, "&")
+              s2=gsub(/[\xe0-\xe2][\x80-\xbf][\x80-\xbf]|[\xf0-\xf4][\x80-\xbf][\x80-\xbf][\x80-\xbf]/, "&")
+              print b - s1 - s2*2 }')
+        { IFS= read -r _dw1; IFS= read -r _dw2; IFS= read -r _dw3; } <<< "$_dw"
+        local w1=$((_CACHED_GW_W + ${_dw1:-0})) w2=$((_CACHED_CORE_W + ${_dw2:-0})) w3=$((_CACHED_MODE_W + ${_dw3:-0}))
         local total=70 margin=2
         local gaps=$((total - margin*2 - w1 - w2 - w3))
         local gap=$((gaps / 2))
@@ -21129,7 +21322,7 @@ main_loop() {
         local dot_color="$RED"
         [[ -n "$STATUS_STR" ]] && [[ "$core_plain" != *"停止"* ]] && [[ "$core_plain" != *"Stopped"* ]] && dot_color="$GREEN"
         # Display with original STATUS_STR colors preserved
-        printf "%*s${LBLUE}%s:${NC} ${CYAN}%s${NC}%*s${LBLUE}%s:${NC} ${dot_color}●${NC} %s%*s${LBLUE}%s:${NC} ${YELLOW}%s${NC}\n" \
+        printf "%*s${LIGHTBLUE}%s:${NC} ${CYAN}%s${NC}%*s${LIGHTBLUE}%s:${NC} ${dot_color}●${NC} %s%*s${LIGHTBLUE}%s:${NC} ${YELLOW}%s${NC}\n" \
             "$pad1" "" "$lbl_gw" "$gw_ip" "$pad2" "" "$lbl_core" "$STATUS_STR $CUR_MODE" "$pad3" "" "$lbl_mode" "$mode_label"
     }
     # Safely migrate active, exactly marked v7 installations into the new

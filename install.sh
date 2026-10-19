@@ -59,15 +59,12 @@ _disp_width() {
 # 用法: _menu_two_col "1" "VLESS-Vision" "6" "VLESS-Vision" "$GREEN" "$GREEN"
 _menu_two_col() {
     local ln="$1" lt="$2" rn="$3" rt="$4" lc="${5:-$GREEN}" rc="${6:-$GREEN}"
-    # 不用前导空格：个位数点后3空格、十位数点后2空格，保证文本纵向对齐
-    local ldot="." rdot="."
-    [[ ${#ln} -eq 1 ]] && ldot=".   " || ldot=".  "
-    [[ ${#rn} -eq 1 ]] && rdot=".   " || rdot=".  "
-    local left_plain="${ln}${ldot}${lt}"
+    # 老版本格式：数字. + 2空格，无前导空格，靠动态padding对齐
+    local left_plain="${ln}.  ${lt}"
     local w; w=$(_disp_width "$left_plain")
     local pad=$((38 - w)); (( pad < 1 )) && pad=1
     local spaces; spaces=$(printf '%*s' "$pad" '')
-    msg "${lc}${ln}${ldot}${lt}${NC}${spaces}${rc}${rn}${rdot}${rt}${NC}"
+    msg "${lc}${ln}.  ${lt}${NC}${spaces}${rc}${rn}.  ${rt}${NC}"
 }
 
 DEPS_MARKER='/etc/ddr/.deps.v20260725'

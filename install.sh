@@ -2,6 +2,9 @@
 # Best-effort UTF-8 locale (v2ray-agent pattern): harmless if locale missing,
 # makes [[ =~ ]], wc -m and case patterns UTF-8 correct; byte fallback remains.
 export LANG=en_US.UTF-8 2>/dev/null || true
+# Fix backspace/delete key: some terminals (FinalShell) send ^H but tty expects ^?
+# This makes the delete key work correctly in menu input
+stty erase '^H' 2>/dev/null || true
 # ==============================A-Box===============================
 # SNI profile: built-in candidate library plus per-VPS automatic REALITY target selection; no remote script execution.
 # Hardened build: stricter GitHub digest trust, guarded shortcut persistence, Fail2Ban validation, and Sing-box HY2 ACME semantics.
@@ -21305,7 +21308,7 @@ main_loop() {
             19) language_menu ;;
             20|r|R) one_click_reality_deploy ;;
             0) clear; exit 0 ;;
-            *) sleep 1 ;;
+            *) msg "${RED}无效输入: $choice${NC}"; sleep 1 ;;
         esac
     done
 }

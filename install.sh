@@ -616,6 +616,24 @@ tr_msg() {
         fa:socks5_user_prompt) echo 'نام کاربری SOCKS5 را وارد کنید (پیش‌فرض abox): ' ;;
         zh-tw:socks5_user_prompt) echo '請輸入 SOCKS5 用戶名 (回車默認 abox): ' ;;
         ja:socks5_user_prompt) echo 'SOCKS5 ユーザー名を入力 (デフォルト abox): ' ;;
+        zh:socks5_sb_title) echo '部署 SOCKS5/Mixed 落地代理 (sing-box)' ;;
+        en:socks5_sb_title) echo 'Deploy SOCKS5/Mixed landing proxy (sing-box)' ;;
+        ru:socks5_sb_title) echo 'Развёртывание SOCKS5/Mixed (sing-box)' ;;
+        fa:socks5_sb_title) echo 'استقرار پروکسی لندینگ SOCKS5/Mixed (sing-box)' ;;
+        zh-tw:socks5_sb_title) echo '部署 SOCKS5/Mixed 落地代理 (sing-box)' ;;
+        ja:socks5_sb_title) echo 'SOCKS5/Mixed ランディングプロキシを展開 (sing-box)' ;;
+        zh:socks5_proto_prompt) echo '选择协议类型 [1] mixed (推荐, SOCKS5+HTTP同端口) [2] 纯SOCKS5: ' ;;
+        en:socks5_proto_prompt) echo 'Protocol [1] mixed (recommended, SOCKS5+HTTP same port) [2] plain SOCKS5: ' ;;
+        ru:socks5_proto_prompt) echo 'Протокол [1] mixed (рекомендуется) [2] только SOCKS5: ' ;;
+        fa:socks5_proto_prompt) echo 'پروتکل [۱] mixed (پیشنهادی) [۲] فقط SOCKS5: ' ;;
+        zh-tw:socks5_proto_prompt) echo '選擇協議類型 [1] mixed (推薦, SOCKS5+HTTP同端口) [2] 純SOCKS5: ' ;;
+        ja:socks5_proto_prompt) echo 'プロトコル [1] mixed (推奨) [2] SOCKS5のみ: ' ;;
+        zh:socks5_core_prompt) echo '选择核心 [1] Xray (纯SOCKS5) [2] sing-box (mixed, SOCKS5+HTTP): ' ;;
+        en:socks5_core_prompt) echo 'Select core [1] Xray (plain SOCKS5) [2] sing-box (mixed, SOCKS5+HTTP): ' ;;
+        ru:socks5_core_prompt) echo 'Выберите ядро [1] Xray (SOCKS5) [2] sing-box (mixed): ' ;;
+        fa:socks5_core_prompt) echo 'هسته را انتخاب کنید [۱] Xray [۲] sing-box (mixed): ' ;;
+        zh-tw:socks5_core_prompt) echo '選擇核心 [1] Xray (純SOCKS5) [2] sing-box (mixed): ' ;;
+        ja:socks5_core_prompt) echo 'コアを選択 [1] Xray (SOCKS5) [2] sing-box (mixed): ' ;;
         zh:socks5_pass_prompt) echo '请输入 SOCKS5 密码 (回车自动生成随机密码): ' ;;
         en:socks5_pass_prompt) echo 'Enter SOCKS5 password (Enter to auto-generate): ' ;;
         ru:socks5_pass_prompt) echo 'Введите пароль SOCKS5 (Enter для автогенерации): ' ;;
@@ -8634,6 +8652,154 @@ setup_socks5_params() {
 # If Xray is already installed, the socks5-landing inbound is added/updated via
 # xray_hot_add_inbound (hot-push when the API is available, restart fallback).
 # Otherwise a minimal Xray install (binary + config + systemd unit) is performed.
+# Interactive: port (default 1080), username (default abox), password (default random).
+# If Xray is already installed, the socks5-landing inbound is added/updated via
+# xray_hot_add_inbound (hot-push when the API is available, restart fallback).
+# Otherwise a minimal Xray install (binary + config + systemd unit) is performed.
+# sing-box variant: uses type "mixed" (default, SOCKS5+HTTP auto-detect) or "socks".
+# No API hot-push on sing-box: config rewrite + `sing-box check` + service restart.
+deploy_singbox_socks5_landing() {
+    local port user pass proto cfg='/etc/sing-box/config.json'
+    local tag='socks5-landing' tmp_json
+    clear; msg "${BOLD}${GREEN}$(tr_msg socks5_sb_title)${NC}"
+    init_system_environment
+    load_optional_abox_env_or_die
+    light_preflight_check
+
+    port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080') || die 'SOCKS5 port input failed.'
+    read -r -p "$(tr_msg socks5_user_prompt)" user || user=''
+    user="${user:-abox}"
+    read -r -p "$(tr_msg socks5_pass_prompt)" pass || pass=''
+    if [[ -z "$pass" ]]; then
+        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'SOCKS5 password generation failed.'
+        [[ -n "$pass" ]] || die 'SOCKS5 password generation failed.'
+    fi
+    local _proto_choice=''
+    read -r -p "$(tr_msg socks5_proto_prompt)" _proto_choice || _proto_choice=''
+    case "$_proto_choice" in
+        2) proto='socks' ;;
+        *) proto='mixed' ;;
+    esac
+
+    # Minimal sing-box install when the binary is missing.
+    if [[ ! -x /usr/local/bin/sing-box ]]; then
+        local sb_tmp sb_tar sb_ext SB_PATH
+        get_architecture
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-socks5.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tar="$sb_tmp/singbox_core.tar.gz"
+        sb_ext="$sb_tmp/extract"
+        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        clear_core_release_resolution SagerNet/sing-box
+        fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
+        SB_PATH="$sb_ext/sing-box"
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        rm -rf -- "$sb_tmp"
+        # Seed a minimal config shell; the socks/mixed inbound is appended below.
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die 'Sing-box 初始配置生成失败。'
+        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+        rm -f "$tmp_json"
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+# Managed by A-Box
+[Unit]
+Description=A-Box Sing-Box Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-singbox
+Group=abox-singbox
+UMask=0077
+ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        else
+            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
+            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+rc_ulimit="-n 1048576"
+EOF_SB_CONFD
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Sing-Box Service"
+command="/usr/local/bin/sing-box"
+command_args="run -c /etc/sing-box/config.json"
+command_background="yes"
+command_user="abox-singbox:abox-singbox"
+umask=077
+pidfile="/run/sing-box.pid"
+depend() { need net; }
+EOF_SVC
+            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+        fi
+        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+    fi
+
+    # Build the socks/mixed inbound object.
+    tmp_json=$(mktemp /tmp/A-Box-singbox-socks5-inbound.XXXXXX) || die '临时文件创建失败。'
+    jq -n --argjson port "$port" --arg proto "$proto" --arg user "$user" --arg pass "$pass" \
+        '{type:$proto,tag:"socks5-landing",listen:"0.0.0.0",listen_port:$port,
+          users:[{username:$user,password:$pass}]}' \
+        > "$tmp_json" || die 'SOCKS5 inbound JSON 生成失败。'
+
+    # Replace in place if the tag exists; otherwise append. No API: restart after check.
+    local tmp_cfg
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
+    fi
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    if ! jq --slurpfile nb "$tmp_json" \
+            '(.inbounds | map(select(.tag=="socks5-landing"))) as $old
+             | .inbounds |= (map(select(.tag!="socks5-landing")) + $nb)' \
+            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+        rm -f "$tmp_cfg" "$tmp_json"; die 'SOCKS5 inbound 配置更新失败。'
+    fi
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
+        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+    rm -f "$tmp_cfg" "$tmp_json"
+    prepare_abox_runtime_permissions sing-box 2>/dev/null || true
+    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+
+    # Firewall: TCP + UDP.
+    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    allowPort "$port" udp || die "防火墙放行失败: ${port}/udp"
+    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+
+    # Ensure the service is running (minimal-install path).
+    service_manager start sing-box 2>/dev/null || true
+    set_desired_state RUNNING 2>/dev/null || true
+
+    local pub_ip
+    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
+    msg "${GREEN}$(tr_msg socks5_done)${NC}"
+    if [[ "$proto" == "mixed" ]]; then
+        msg "mixed://${user}:${pass}@${pub_ip}:${port} (SOCKS5+HTTP)"
+    else
+        msg "socks5://${user}:${pass}@${pub_ip}:${port}"
+    fi
+}
+
 deploy_socks5_landing() {
     local port user pass cfg='/usr/local/etc/xray/config.json'
     local tag='socks5-landing' tmp_json inbound_json
@@ -17742,8 +17908,24 @@ vps_benchmark_menu() {
         12) tune_vps ;;
         13) host_network_menu ;;
         14) wallos_menu ;;
-        15) deploy_socks5_landing ;;
+        15) socks5_toolbox_entry ;; 
         *) return 0 ;;
+    esac
+}
+
+# Toolbox entry 15: let the user freely choose the core for standalone SOCKS5.
+# Defaults to the currently deployed core when detectable.
+socks5_toolbox_entry() {
+    local _core_choice='' _default='1'
+    load_optional_abox_env_or_die 2>/dev/null || true
+    if [[ "${CORE:-}" == "singbox" ]]; then
+        _default='2'
+    fi
+    read -r -p "$(tr_msg socks5_core_prompt) [${_default}]: " _core_choice || _core_choice=''
+    _core_choice="${_core_choice:-$_default}"
+    case "$_core_choice" in
+        2) deploy_singbox_socks5_landing ;;
+        *) deploy_socks5_landing ;;
     esac
 }
 clean_uninstall_menu() {

@@ -6504,6 +6504,13 @@ remove_owned_runtime_helper() {
 
 update_traffic_state_atomically() {
     local limit="${1:-}" mode="${2:-}" tmp
+    # Fresh boxes may have no .env yet (no deployment); create it securely
+    # so a traffic limit can be set standalone.
+    if [[ ! -e "$ABOX_ENV" && ! -L "$ABOX_ENV" ]]; then
+        ensure_abox_dir_owned "$ABOX_DIR" >/dev/null 2>&1 || return 1
+        install -m 600 /dev/null "$ABOX_ENV" || return 1
+        if [[ $EUID -eq 0 ]]; then chown root:root "$ABOX_ENV" || { rm -f -- "$ABOX_ENV"; return 1; }; fi
+    fi
     validate_abox_env_file_for_write || return 1
     ensure_abox_dir_owned "$ABOX_DIR" >/dev/null 2>&1 || return 1
     tmp=$(mktemp "$ABOX_DIR/.env.A-Box-update.XXXXXX") || return 1
@@ -10265,7 +10272,7 @@ capture_traffic_quota_expected_state() {
 }
 
 traffic_quota_transaction_rollback() {
-    local tx_dir="$1" rc=0 current_monitor='' expected_monitor='' pre_monitor=0 current_block='' expected_block='' cron_rc vnstat_state='' expected_vnstat='' current_state current_traffic_env current_vnstat
+    local tx_dir="$1" rc=0 current_monitor='' expected_monitor='' pre_monitor=0 current_block='' expected_block='' cron_rc=0 vnstat_state='' expected_vnstat='' current_state current_traffic_env current_vnstat
     [[ -d "$tx_dir" && ! -L "$tx_dir" ]] || return 2
 
     # Establish every expected post-state before changing anything. This prevents
@@ -10364,7 +10371,12 @@ traffic_quota_transaction_rollback() {
         local envtmp
         envtmp=$(mktemp "$ABOX_DIR/.env.A-Box-traffic-rollback.XXXXXX") || rc=1
         if (( rc == 0 )); then
-            awk '!/^TRAFFIC_LIMIT_(GB|MODE)=/' "$ABOX_ENV" > "$envtmp" || rc=1
+            # .env may not exist on fresh boxes; treat as empty in that case.
+            if [[ -f "$ABOX_ENV" && ! -L "$ABOX_ENV" ]]; then
+                awk '!/^TRAFFIC_LIMIT_(GB|MODE)=/' "$ABOX_ENV" > "$envtmp" || rc=1
+            else
+                : > "$envtmp" || rc=1
+            fi
             cat "$tx_dir/pre-traffic.env" >> "$envtmp" || rc=1
             chmod 600 "$envtmp" || rc=1
             (( rc == 0 )) && mv -f -- "$envtmp" "$ABOX_ENV" || rm -f -- "$envtmp"

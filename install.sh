@@ -7464,7 +7464,7 @@ pre_install_setup() {
             msg "${BOLD}参数构造向导 [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
             ;;
     esac
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
 
     if [[ "$HAS_VISION" == 'true' ]]; then
         VLESS_PORT=$(prompt_port_input "$L_VISION" "$DEF_V_PORT") || die '监听端口输入已结束 / Port input closed.'
@@ -10022,7 +10022,7 @@ manage_ss_whitelist() {
         msg "IPv6 白名单:"
         $IPT6 -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '::/0' | sort -u || true
     fi
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}1. 新增白名单 IP/CIDR (TCP+UDP)${NC}"
     msg "${YELLOW}2. 移除白名单 IP/CIDR (TCP+UDP)${NC}"
     msg "${YELLOW}3. 开启白名单模式 (TCP+UDP DROP)${NC}"
@@ -12299,7 +12299,7 @@ dns_setup_tri_mode() {
 
     # Provider list
     msg ""
-    msg "${CYAN}----------------------------------------------------------------------${NC}"
+    msg "${CYAN}--------------------------------------------------------------------------------${NC}"
     local idx=1
     for p in "${providers[@]}"; do
         IFS='|' read -r tag name pv4 pv6 <<< "$p"
@@ -12310,7 +12310,7 @@ dns_setup_tri_mode() {
         en) msg "${YELLOW}0. Manual input${NC}" ;;
         *) msg "${YELLOW}0. 手动输入${NC}" ;;
     esac
-    msg "${CYAN}----------------------------------------------------------------------${NC}"
+    msg "${CYAN}--------------------------------------------------------------------------------${NC}"
 
     read -r -p "Select provider [0-10]: " choice
     if [[ "$choice" == "0" ]]; then
@@ -13424,10 +13424,10 @@ run_builtin_sni_radar() {
     [[ -s "$saved_report" && ! -L "$saved_report" ]] || die 'SNI record persistence verification failed.'
     path_owned_by_root "$saved_report" || die 'SNI record ownership verification failed.'
     path_mode_has_no_group_other_write "$saved_report" || die 'SNI record permission verification failed.'
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ Top SNI Candidates / 优选 SNI 候选 ]${NC}"
     sni_render_ranked_report "$report" "$topn" || msg "${YELLOW}[!] 结果分级显示失败；完整 TSV 仍已保存。${NC}"
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${GREEN}Saved: ${ABOX_DIR}/A-Box-sni-${profile}.tsv${NC}"
     msg "${YELLOW}A/B/C 等级仅表示本 VPS 的探测结果；风险复核和不合格项目不会因低延迟被标为优先推荐。${NC}"
     rm -rf "$workdir"
@@ -13486,7 +13486,7 @@ show_sni_preference_records() {
         profile="${f##*/A-Box-sni-}"
         profile="${profile%.tsv}"
         mtime=$(date -r "$f" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || echo 'unknown')
-        msg "${BLUE}----------------------------------------------------------------------${NC}"
+        msg "${BLUE}--------------------------------------------------------------------------------${NC}"
         case "${ABOX_LANG:-zh}" in
             en|ru|fa)
                 msg "${YELLOW}[${profile}] Saved: ${f} | Updated: ${mtime}${NC}"
@@ -13504,7 +13504,7 @@ show_sni_preference_records() {
         sni_render_ranked_report "$f" "$topn" || msg "${YELLOW}[!] 无法读取该记录的分级结果。${NC}"
         shown=1
     done
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     if [[ "$shown" == '1' ]]; then
         msg "${YELLOW}Use only domains with tls13=1 and san=1. Prefer asnmatch=1/samecountry=1 when available.${NC}"
     fi
@@ -15699,7 +15699,7 @@ preflight_check() {
 
     : > "$report"
     echo "A-Box preflight check: $(now_iso)" | tee -a "$report"
-    echo "----------------------------------------------------------------------" | tee -a "$report"
+    echo "--------------------------------------------------------------------------------" | tee -a "$report"
 
     [[ $EUID -eq 0 ]] && __abox_pf_log "$report" PASS "" 'root privilege available' || __abox_pf_log "$report" FAIL fail 'not running as root'
     [[ -t 0 ]] && __abox_pf_log "$report" PASS "" 'interactive TTY available' || __abox_pf_log "$report" WARN warn 'no interactive TTY on stdin'
@@ -15792,7 +15792,7 @@ preflight_check() {
         [[ -d "$(dirname "$ABOX_DIR")" && ! -L "$(dirname "$ABOX_DIR")" ]] && __abox_pf_log "$report" PASS "" "A-Box directory can be created after runtime ownership checks: $ABOX_DIR" || __abox_pf_log "$report" FAIL fail "A-Box directory parent is unavailable or symlinked: $(dirname "$ABOX_DIR")"
     fi
 
-    echo "----------------------------------------------------------------------" | tee -a "$report"
+    echo "--------------------------------------------------------------------------------" | tee -a "$report"
     echo "Summary: FAIL=${fail} WARN=${warn}" | tee -a "$report"
     echo "Report: temporary report generated for this run; cleaned after result." | tee -a "$report"
     if (( fail > 0 )); then
@@ -17868,7 +17868,7 @@ view_config() {
     msg "${BOLD}${CYAN}全局拓扑网络参数 (${MODE}) / Network Parameters${NC}"
     msg "${BLUE}======================================================================${NC}"
     msg "${BOLD}引擎栈:${NC} $CORE | ${BOLD}模式:${NC} $MODE"
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ Shadowrocket / v2rayNG / NekoBox 单节点 URI ]${NC}"
     if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
         VLESS_URL="vless://$UUID@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#A-Box-VLESS-Vision"
@@ -17903,7 +17903,7 @@ view_config() {
 
     CLASH_FILE=$(write_clash_yaml) || die 'Clash/Mihomo YAML 配置生成失败。'
     CLASH_SUB_URL="${ABOX_CLASH_SUB_URL:-${CLASH_SUB_URL:-}}"
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ Clash / Mihomo 完整配置 ]${NC}"
     msg "${GREEN}Local YAML: ${CLASH_FILE}${NC}"
     msg "${YELLOW}Clash/Mihomo 类客户端请导入完整 YAML 或远程订阅 URL；不要扫描上方单条 vless:// / hysteria2:// / ss://。${NC}"
@@ -17918,7 +17918,7 @@ view_config() {
         msg "${CYAN}ABOX_CLASH_SUB_URL='https://example.com/A-Box-clash.yaml' sb${NC}"
     fi
 
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ Clash / Mihomo YAML 预览 ]${NC}"
     sed -n '1,220p' "$CLASH_FILE" 2>/dev/null || true
 
@@ -17993,7 +17993,7 @@ EOF_SB
 }
 EOF_V2N
     fi
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     [[ "$CALLER" == 'deploy' ]] && msg "${GREEN}服务池部署完成。${NC}"
     pause_return
 }
@@ -21379,21 +21379,21 @@ main_loop() {
         _abox_tk="Linux Gateway Toolkit"
         _abox_pad=$((70 - 5 - ${#_abox_tk}))
         printf "${BOLD}${YELLOW}A-Box${NC}%${_abox_pad}s${GRAY}%s${NC}\n" "" "$_abox_tk"
-        msg "${YELLOW}----------------------------------------------------------------------${NC}"
+        msg "${YELLOW}--------------------------------------------------------------------------------${NC}"
         case "${ABOX_LANG:-zh}" in
             en)
                 _menu_status_row "Gateway" "Core" "Mode"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— 20 · One-click Reality ——${NC}"
                 msg "${LIGHTBLUE}Vision default SNI · minimal prompts · input r same${NC}"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core Deployment ]${NC}              ${CYAN}[ Sing-box Deployment ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (Official)              ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC}  All-in-one (Xray+Hy2)              ${GREEN}10.${NC} All-in-one (Sing-box)"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Tools & System ]${NC}                    ${CYAN}[ Ops & Policy ]${NC}"
                 msg "${GREEN}11.${NC}  Toolbox & Benchmark               ${GREEN}16.${NC}  Wipe Nodes & Reset Env"
                 msg "${GREEN}12.${NC}  View Node Configs & Links         ${GREEN}17.${NC}  Monthly Traffic Quota"
@@ -21404,17 +21404,17 @@ main_loop() {
                 ;;
             ru)
                 _menu_status_row "Шлюз" "Ядро" "Режим"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— 20 · Reality в один клик ——${NC}"
                 msg "${LIGHTBLUE}Vision SNI по умолчанию · минимум вопросов · r то же${NC}"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Развёртывание Xray ]${NC}              ${CYAN}[ Развёртывание sing-box ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (официальный)           ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
                 msg "${GREEN}5.${NC}  Комплексная установка               ${GREEN}10.${NC} Комплексная установка"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Инструменты и система ]${NC}             ${CYAN}[ Управление и политики ]${NC}"
                 msg "${GREEN}11.${NC}  Панель инструментов / Тест        ${GREEN}16.${NC}  Сброс узлов и окружения"
                 msg "${GREEN}12.${NC}  Просмотр параметров узлов         ${GREEN}17.${NC}  Лимит месячного трафика"
@@ -21425,17 +21425,17 @@ main_loop() {
                 ;;
             fa)
                 _menu_status_row "درگاه" "هسته" "حالت"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— 20 · ریالیتی تک‌کلیکی ——${NC}"
                 msg "${LIGHTBLUE}SNI پیش‌فرض Vision · حداقل سؤال · r همان${NC}"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ نصب Xray ]${NC}                         ${CYAN}[ نصب sing-box ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (رسمی)                 ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
                 msg "${GREEN}5.${NC}  نصب ترکیبی                          ${GREEN}10.${NC} نصب ترکیبی"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ ابزارها و سیستم ]${NC}                   ${CYAN}[ عملیات و سیاست‌ها ]${NC}"
                 msg "${GREEN}11.${NC}  جعبه ابزار و تست سرعت             ${GREEN}16.${NC}  پاکسازی نودها و بازنشانی محیط"
                 msg "${GREEN}12.${NC}  مشاهده تنظیمات و نودها            ${GREEN}17.${NC}  مدیریت و محدودیت ترافیک"
@@ -21446,17 +21446,17 @@ main_loop() {
                 ;;
             zh-tw)
                 _menu_status_row "閘道器/Gateway" "核心/Core" "模式"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— 20 · 一鍵 Reality ——${NC}"
                 msg "${LIGHTBLUE}Vision 默認 SNI · 最少提問 · 輸入 r 同效${NC}"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core 部署 ]${NC}                    ${CYAN}[ Sing-box 部署 ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (官方)                 ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC}  全協議四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全協議三合一 (Sing-box)"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ 工具與系統 ]${NC}                             ${CYAN}[ 運維與策略 ]${NC}"
                 msg "${GREEN}11.${NC}  綜合工具箱 / 測速                        ${GREEN}16.${NC}  清空節點與重置環境"
                 msg "${GREEN}12.${NC}  查看節點配置與參數                         ${GREEN}17.${NC}  流量管控與額度限制"
@@ -21467,17 +21467,17 @@ main_loop() {
                 ;;
             ja)
                 _menu_status_row "ゲートウェイ" "コア" "モード"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— 20 · ワンクリック Reality ——${NC}"
                 msg "${LIGHTBLUE}Vision デフォルト SNI · 最少質問 · 入力 r 同等${NC}"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core 部署します ]${NC}                    ${CYAN}[ Sing-box 部署します ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2（公式）                 ${GREEN}9.${NC}  Hysteria 2（sing-box）"
                 msg "${GREEN}5.${NC}  全プロトコル統合（Xray+Hy2）${GREEN}10.${NC} 全プロトコル統合（Sing-box）"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ ツールとシステム ]${NC}                          ${CYAN}[ 運用とポリシー ]${NC}"
                 msg "${GREEN}11.${NC}  総合ツール / 速度測定                      ${GREEN}16.${NC}  全ノード削除と環境初期化"
                 msg "${GREEN}12.${NC}  ノード設定と情報の表示                       ${GREEN}17.${NC}  月間通信量制限と管理"
@@ -21488,23 +21488,23 @@ main_loop() {
                 ;;
             *)
                 _menu_status_row "网关/Gateway" "核心/Core" "模式"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${YELLOW}${BOLD}—— 20 · 一键 Reality ——${NC}"
                 msg "${LIGHTBLUE}Vision 默认 SNI · 最少提问 · 输入 r 同效${NC}"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ Xray-core 部署 ]${NC}                    ${CYAN}[ Sing-box 部署 ]${NC}"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (官方)                 ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC}  全协议四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全协议三合一 (Sing-box)"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
+                msg "${BLUE}--------------------------------------------------------------------------------${NC}"
                 msg "${CYAN}[ 工具与系统 ]${NC}                             ${CYAN}[ 运维与策略 ]${NC}"
                 msg "${GREEN}11.${NC}  综合工具箱 / 测速                ${GREEN}16.${NC}  清空节点与重置环境"
                 msg "${GREEN}12.${NC}  查看节点配置与参数               ${GREEN}17.${NC}  流量管控与额度限制"
                 msg "${GREEN}13.${NC}  使用帮助与说明书                 ${GREEN}18.${NC}  SS-2022 访问白名单"
                 msg "${GREEN}14.${NC}  核心与脚本升级 (OTA)             ${GREEN}19.${NC}  多语言设置 / Language"
-                msg "${YELLOW}15.${NC}  彻底卸载脚本与核心               ${YELLOW}${BOLD}20.${NC}  一键 Reality [r]"
+                msg "${YELLOW}15.  彻底卸载脚本与核心${NC}               ${YELLOW}20.  一键 Reality [r]${NC}"
                 msg "${GREEN} 0.${NC}  退出脚本"
                 ;;
         esac

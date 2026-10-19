@@ -18494,6 +18494,25 @@ dns:
   listen: 127.0.0.1:1053
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  fake-ip-filter:
+    - "*.lan"
+    - "*.local"
+    - "*.internal"
+    - "*.example"
+    - "localhost"
+    - "time.apple.com"
+    - "captive.apple.com"
+    - "detectportal.firefox.com"
+    - "msftconnecttest.com"
+    - "www.msftconnecttest.com"
+    - "msftncsi.com"
+    - "www.msftncsi.com"
+    - "connectivitycheck.platform.hicloud.com"
+    - "connectivitycheck.gstatic.com"
+    - "ntp.tencent.com"
   nameserver:
     - https://dns.google/dns-query
     - https://cloudflare-dns.com/dns-query
@@ -21579,6 +21598,8 @@ EOF_SELFTEST_IPT
         grep -q '^proxy-groups:' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash YAML proxy-groups'; failures=$((failures + 1)); }
         grep -q '^dns:' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash YAML dns'; failures=$((failures + 1)); }
         grep -q '^  listen: 127.0.0.1:1053$' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash DNS listener must stay loopback-only'; failures=$((failures + 1)); }
+        grep -q '^  default-nameserver:' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash YAML default-nameserver'; failures=$((failures + 1)); }
+        grep -q '^  fake-ip-filter:' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash YAML fake-ip-filter'; failures=$((failures + 1)); }
         grep -q 'host: "www.microsoft.com"' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash XHTTP host'; failures=$((failures + 1)); }
         [[ "$(grep -Fc 'support-x25519mlkem768: false' "$clash_dir/A-Box-clash.yaml")" -eq 2 ]] || { echo 'FAIL: default Xray REALITY ML-KEM flags must remain disabled'; failures=$((failures + 1)); }
         ABOX_XRAY_VERSION=v26.9.8 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef CLASH_YAML_PATH="$clash_dir/A-Box-clash-mlkem.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: new-Xray Clash YAML generation'; failures=$((failures + 1)); }

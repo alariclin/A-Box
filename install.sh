@@ -6990,7 +6990,7 @@ load_state() {
     parsed=$(umask 077; mktemp /tmp/A-Box-helper-env.XXXXXX) || return 1
     if ! python3 - "$ENV" > "$parsed" <<'PY_HELPER_ENV'; then
 import shlex,sys
-allowed={"CORE","MODE","VLESS_PORT","XHTTP_PORT","HY2_BASE_PORT","HY2_MONITOR_PORT","HY2_HOP","HY2_HOP_IMPL","HY2_RANGE_START","HY2_RANGE_END","INGRESS_IF","SS_PORT","TRAFFIC_LIMIT_GB","TRAFFIC_LIMIT_MODE"}
+allowed={"CORE","MODE","VLESS_PORT","XHTTP_PORT","HY2_BASE_PORT","HY2_MONITOR_PORT","HY2_HOP","HY2_HOP_IMPL","HY2_RANGE_START","HY2_RANGE_END","INGRESS_IF","SS_PORT","TRAFFIC_LIMIT_GB","TRAFFIC_LIMIT_MODE","SOCKS_PORT"}
 seen=set()
 with open(sys.argv[1],encoding="utf-8",errors="strict") as h:
     for raw in h:
@@ -7162,6 +7162,9 @@ fi
 if [[ -z "$failed_srv" && -n "${SS_PORT:-}" ]]; then
     check_socket_or_fail tcp "$SS_PORT" "$MAIN_PID" "$MAIN_SRV"
     [[ -z "$failed_srv" ]] && check_socket_or_fail udp "$SS_PORT" "$MAIN_PID" "$MAIN_SRV"
+fi
+if [[ -z "$failed_srv" && -n "${SOCKS_PORT:-}" ]]; then
+    check_socket_or_fail tcp "$SOCKS_PORT" "$MAIN_PID" "$MAIN_SRV"
 fi
 if [[ -z "$failed_srv" ]]; then rm -f "$STATE"; exit 0; fi
 count=0; last=0
@@ -9103,7 +9106,7 @@ load_state() {
     if ! python3 - "$ENV" > "$parsed" <<'PY_HELPER_ENV'; then
 import shlex
 import sys
-allowed = {"CORE", "MODE", "VLESS_PORT", "XHTTP_PORT", "HY2_MONITOR_PORT", "HY2_HOP", "HY2_HOP_IMPL", "HY2_RANGE_START", "HY2_RANGE_END", "SS_PORT", "TRAFFIC_LIMIT_GB", "TRAFFIC_LIMIT_MODE", "INGRESS_IF"}
+allowed = {"CORE", "MODE", "VLESS_PORT", "XHTTP_PORT", "HY2_MONITOR_PORT", "HY2_HOP", "HY2_HOP_IMPL", "HY2_RANGE_START", "HY2_RANGE_END", "SS_PORT", "TRAFFIC_LIMIT_GB", "TRAFFIC_LIMIT_MODE", "INGRESS_IF", "SOCKS_PORT"}
 seen = set()
 with open(sys.argv[1], encoding="utf-8", errors="strict") as handle:
     for raw in handle:

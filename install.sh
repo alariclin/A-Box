@@ -10493,52 +10493,113 @@ traffic_management_menu() {
     local INTERFACE limit_gb mode_choice previous_state
     load_optional_abox_env_or_die
     INTERFACE="${INGRESS_IF:-$(get_active_interface)}"
-    msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}每月流量管控限制 / Monthly Traffic Management Limit${NC}"
-    msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${CYAN}[截至当前 / Usage up to now]${NC}"
-    msg "${YELLOW}网卡 ${INTERFACE} · 本月累计（非秒级实时；数据来自 vnStat 当前统计周期）${NC}"
+    # Traffic dashboard (2026-10-19, per traffic-table.png): progress bar +
+    # clean monthly table instead of raw vnStat ASCII boxes.
+    local _tjson='' _tlimit="${TRAFFIC_LIMIT_GB:-}"
     if command -v vnstat >/dev/null 2>&1; then
-        # Prefer JSON one-shot for a clear rx/tx/total line when available.
-        if command -v jq >/dev/null 2>&1; then
-            if json=$(vnstat -i "$INTERFACE" --json m 1 2>/dev/null); then
-                python3 - "$json" <<'PY_TRAFFIC_NOW' 2>/dev/null || true
-import json,sys
+        _tjson=$(vnstat -i "$INTERFACE" --json m 2>/dev/null) || _tjson=''
+    fi
+    if [[ -n "$_tjson" ]]; then
+        python3 - "$_tjson" "$INTERFACE" "$_tlimit" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
+            msg "${YELLOW}[!] 流量数据解析失败。${NC}"
+import json, sys, unicodedata
+
+def dw(s):
+    return sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1 for c in s)
+
+def pad(s, w, right=False):
+    p = " " * max(0, w - dw(s))
+    return (p + s) if right else (s + p)
+
+def center(s, w=80):
+    return " " * max(0, (w - dw(s)) // 2) + s
+
+YELLOW = "\033[0;33m"; CYAN = "\033[0;36m"; GREEN = "\033[0;32m"
+RED = "\033[0;31m"; GRAY = "\033[0;37m"; BLUE = "\033[0;34m"
+BOLD = "\033[1m"; NC = "\033[0m"
+BAR = "─" * 80
+GIB = 1073741824
+
+raw, iface, limit_s = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
-    data=json.loads(sys.argv[1])
-    iface=(data.get("interfaces") or [{}])[0]
-    traffic=((iface.get("traffic") or {}).get("month") or [{}])[0]
-    rx=int(traffic.get("rx",0)); tx=int(traffic.get("tx",0))
-    def hum(n):
-        for u in ("B","KiB","MiB","GiB","TiB"):
-            if n<1024 or u=="TiB":
-                return f"{n:.2f} {u}" if u!="B" else f"{n} B"
-            n/=1024
-        return str(n)
-    print(f"  RX={hum(rx)}  TX={hum(tx)}  TOTAL={hum(rx+tx)}")
-    y,m=traffic.get("date",{}).get("year"), traffic.get("date",{}).get("month")
-    if y and m: print(f"  Period: {y}-{int(m):02d} (month-to-date)")
+    limit_gb = float(limit_s)
+except (ValueError, TypeError):
+    limit_gb = 0.0
+
+def fmt_gb(n):
+    return f"{n / GIB:,.1f} GB"
+
+def progress_bar(pct, width=60):
+    pct = max(0.0, min(pct, 1.0))
+    filled = int(width * pct)
+    label = f"{pct * 100:.1f}%"
+    ls = (width - len(label)) // 2
+    parts = []
+    for i in range(width):
+        if ls <= i < ls + len(label):
+            parts.append(f"{BOLD}{label[i - ls]}{NC}")
+        elif i < filled:
+            parts.append(f"{YELLOW}\u2588{NC}")
+        else:
+            parts.append(f"{GRAY}\u2591{NC}")
+    return "".join(parts)
+
+try:
+    data = json.loads(raw)
 except Exception:
-    pass
-PY_TRAFFIC_NOW
-            fi
-        fi
-        # Do not cap the raw output at 8 lines: vnStat headers consume several
-        # lines, which previously hid every month after roughly the third row.
-        msg "${YELLOW}--- vnStat 月表 ---${NC}"
-        vnstat -i "$INTERFACE" -m 2>/dev/null | awk 'NF { print; shown=1 } END { exit !shown }' || msg "${YELLOW}暂无本月统计数据，vnstat 正在收集中。${NC}"
+    sys.exit(1)
+months = ((data.get("interfaces") or [{}])[0].get("traffic") or {}).get("month") or []
+months = sorted(months,
+                key=lambda m: (m.get("date", {}).get("year", 0),
+                               m.get("date", {}).get("month", 0)),
+                reverse=True)
+
+out = []
+out.append(f"{BLUE}{BAR}{NC}")
+out.append(f"{YELLOW}{center('每月流量管控 / Monthly Traffic')}{NC}")
+out.append(f"{BLUE}{BAR}{NC}")
+if months:
+    cur = months[0]
+    rx = int(cur.get("rx", 0)); tx = int(cur.get("tx", 0)); total = rx + tx
+    d = cur.get("date", {})
+    ym = f"{d.get('year', '--')}-{int(d.get('month', 0)):02d}" if d.get("year") else "本月"
+    out.append(f"本月已用 ({iface} \u00b7 {ym}):")
+    if limit_gb > 0:
+        cap = limit_gb * GIB
+        out.append(progress_bar(total / cap))
+        rem = cap - total
+        rem_s = f"{GREEN}剩余 {fmt_gb(rem)}{NC}" if rem >= 0 else f"{RED}超出 {fmt_gb(-rem)}{NC}"
+        out.append(f"{YELLOW}已用 {fmt_gb(total)}{NC} / 上限 {limit_gb:,.0f} GB / {rem_s}")
+    else:
+        out.append(f"{YELLOW}已用 {fmt_gb(total)}{NC} / 上限 未设定")
+    out.append(f"{BLUE}{BAR}{NC}")
+    out.append(f"{CYAN}{center('历史月度统计')}{NC}")
+    out.append(f"{YELLOW}{pad('月份', 10)}{pad('总流量', 15, True)}"
+               f"{pad('下行 RX', 15, True)}{pad('上行 TX', 15, True)}  状态{NC}")
+    out.append(f"{GRAY}{'─' * 66}{NC}")
+    for i, m in enumerate(months):
+        dd = m.get("date", {})
+        yymm = f"{dd.get('year', '--')}-{int(dd.get('month', 0)):02d}"
+        r = int(m.get("rx", 0)); t = int(m.get("tx", 0)); tot = r + t
+        if i == 0:
+            st = f"{YELLOW}进行中{NC}"
+        elif limit_gb > 0 and tot > limit_gb * GIB:
+            st = f"{RED}超限{NC}"
+        else:
+            st = f"{GREEN}正常{NC}"
+        out.append(f"{pad(yymm, 10)}{pad(fmt_gb(tot), 15, True)}"
+                   f"{pad(fmt_gb(r), 15, True)}{pad(fmt_gb(t), 15, True)}  {st}")
+else:
+    out.append(f"{YELLOW}暂无本月统计数据，vnStat 正在收集中。{NC}")
+sys.stdout.write("\n".join(out) + "\n")
+PY_TRAFFIC_DASH
     else
-        msg "${YELLOW}[!] vnStat 未安装；打开流量菜单设定上限时会按需安装。${NC}"
+        msg "${YELLOW}[!] vnStat 未安装或暂无数据；设定上限时会按需安装。${NC}"
     fi
-    if [[ -n "${TRAFFIC_LIMIT_GB:-}" ]]; then
-        msg "当前设定: ${GREEN}${TRAFFIC_LIMIT_GB} GB${NC} | 模式: ${TRAFFIC_LIMIT_MODE:-total}"
-    else
-        msg "当前设定: ${RED}未开启${NC}"
-    fi
-    msg "${CYAN}======================================================================${NC}"
-    msg "${YELLOW}1. 设定/修改每月流量上限${NC}"
-    msg "${YELLOW}2. 解除流量限制${NC}"
-    msg "${GREEN}0. 返回主菜单${NC}"
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+    msg "${GREEN}1.${NC}  设定/修改每月流量上限"
+    msg "${GREEN}2.${NC}  解除流量限制"
+    msg "${GREEN}0.${NC}  返回主菜单"
     read -r -p '请选择 [0-2]: ' tr_choice
     case "$tr_choice" in
         1)
@@ -20921,7 +20982,7 @@ N11EOF
     ( tr_msg() { printf '%s' '%s %s'; }; tprintf synthetic only-one ) >/dev/null 2>&1 && { echo 'FAIL: tprintf accepted mismatched placeholder arguments'; failures=$((failures + 1)); }
     grep -q 'command -v ss >/dev/null 2>&1 || return 2' "$0" || { echo 'FAIL: health probe socket checker must distinguish unavailable ss'; failures=$((failures + 1)); }
     grep -q '2) exit 0 ;;' "$0" || { echo 'FAIL: health probe must not restart services when ss is unavailable'; failures=$((failures + 1)); }
-    grep -q 'PY_TRAFFIC_NOW' <<< "$source_body" || { echo 'FAIL: main vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
+    grep -q 'PY_TRAFFIC_DASH' <<< "$source_body" || { echo 'FAIL: main vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
     grep -q 'PY_VNSTAT_TOTAL_MONITOR' "$0" || { echo 'FAIL: traffic monitor vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
     grep -q 'PY_TRAFFIC_COMPARE' "$0" || { echo 'FAIL: traffic quota comparison must use exact integer arithmetic'; failures=$((failures + 1)); }
     ! grep -q '^    \[\[ -d /run/systemd/system \]\] && return 0$' "$0" || { echo 'FAIL: systemd detection must not trust /run/systemd/system alone'; failures=$((failures + 1)); }

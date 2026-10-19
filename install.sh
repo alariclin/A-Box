@@ -718,8 +718,9 @@ need_interactive_tty() {
         # for scripted menu runs instead of stealing /dev/tty. The main menu
         # already exits cleanly on EOF (read ... || exit 0), and pause_return()
         # skips when stdin is not a TTY.
-        # Set ABOX_FORCE_TTY=1 to restore legacy "always reattach to /dev/tty".
-        [[ "${ABOX_FORCE_TTY:-0}" == 1 ]] || return 0
+        # Default: reattach /dev/tty for interactive safety (prevents curl|bash early exit).
+        # Automation: set ABOX_PIPED=1 to explicitly enable piped-menu mode.
+        [[ "${ABOX_PIPED:-0}" == 1 ]] && return 0
         if [[ -r /dev/tty ]] && ( : < /dev/tty ) 2>/dev/null; then
             exec < /dev/tty || die '当前环境无可交互 TTY，无法打开控制终端。'
         else
@@ -887,14 +888,15 @@ valid_uuid() {
     [[ "$input" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]]
 }
 
-# valid_path: must start with /, no whitespace or control chars.
+# valid_path: must start with /, no whitespace/control/quotes/backslash.
 valid_path() {
     local input="${1:-}"
     [[ -n "$input" ]] || return 1
     [[ "$input" == /* ]] || return 1
-    [[ "$input" != *[[:space:]]* ]] || return 1
-    [[ "$input" != *$'\n'* && "$input" != *$'\r'* ]] || return 1
-    [[ "$input" != *[[:cntrl:]]* ]]
+    case "$input" in
+        *[[:space:][:cntrl:]]*|*\"*|*\'*|*\\*) return 1 ;;
+    esac
+    return 0
 }
 
 # port_is_free: true when nothing is listening on the TCP port locally.
@@ -902,7 +904,9 @@ port_is_free() {
     local port="${1:-}"
     [[ -n "$port" ]] || return 1
     if command -v ss >/dev/null 2>&1; then
-        ! ss -tln 2>/dev/null | grep -q ":${port} "
+        ! ss -tuln 2>/dev/null | awk 'NR>1 {print $5}' | grep -qE ":${port}$"
+    elif command -v netstat >/dev/null 2>&1; then
+        ! netstat -tuln 2>/dev/null | awk 'NR>2 {print $4}' | grep -qE ":${port}$"
     else
         ! (exec 3<>/dev/tcp/127.0.0.1/"$port") 2>/dev/null
     fi
@@ -931,16 +935,24 @@ is_test() {
 # prompt_validated: read from stdin, apply default on empty, re-prompt until
 # is_test passes. Prints the accepted value to stdout.
 prompt_validated() {
-    local prompt="$1" type="$2" default="$3"
+    local prompt="$1" type="$2" default="${3:-}"
     local val
     while true; do
-        read -r -p "$prompt" val
+        if ! read -r -p "$prompt" val; then
+            val="$default"
+            if is_test "$type" "$val"; then
+                printf '%s' "$val"
+                return 0
+            fi
+            msg "${RED}EOF reached without valid $type${NC}" >&2
+            return 1
+        fi
         val="${val:-$default}"
         if is_test "$type" "$val"; then
             printf '%s' "$val"
             return 0
         fi
-        msg "${RED}Invalid $type: $val${NC}"
+        msg "${RED}Invalid $type: $val${NC}" >&2
     done
 }
 # ============ end Version C ============
@@ -7924,9 +7936,15 @@ xray_hot_add_inbound() {
 # Fallback: if the API call fails, restart_service_soft picks up the persisted
 # config, so the change is never lost and existing behavior is preserved.
 xray_hot_remove_inbound() {
-    local tag="$1" cfg='/usr/local/etc/xray/config.json' tmp
+    local tag="$1"
+    local cfg='/usr/local/etc/xray/config.json' tmp
     [[ -n "$tag" && "$tag" != 'api' ]] || return 1
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    # Skip if tag not in config (avoid unnecessary restart)
+    if ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        xray_api_available && xray_api_remove_inbound "$tag" || true
+        return 0
+    fi
     tmp=$(mktemp /tmp/A-Box-xray-hotdel.XXXXXX) || return 1
     if ! jq --arg t "$tag" '.inbounds |= map(select(.tag != $t))' "$cfg" > "$tmp" 2>/dev/null; then
         rm -f "$tmp"; return 1
@@ -21320,7 +21338,7 @@ main_loop() {
         local pad1=$margin pad2=$gap pad3=$gap
         # Dot color: green if core running, red if stopped
         local dot_color="$RED"
-        [[ -n "$STATUS_STR" ]] && [[ "$core_plain" != *"停止"* ]] && [[ "$core_plain" != *"Stopped"* ]] && dot_color="$GREEN"
+        [[ "$STATUS_STR" == *"${GREEN}"* ]] && dot_color="$GREEN"
         # Display with original STATUS_STR colors preserved
         printf "%*s${LIGHTBLUE}%s:${NC} ${CYAN}%s${NC}%*s${LIGHTBLUE}%s:${NC} ${dot_color}●${NC} %s%*s${LIGHTBLUE}%s:${NC} ${YELLOW}%s${NC}\n" \
             "$pad1" "" "$lbl_gw" "$gw_ip" "$pad2" "" "$lbl_core" "$STATUS_STR $CUR_MODE" "$pad3" "" "$lbl_mode" "$mode_label"

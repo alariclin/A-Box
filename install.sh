@@ -14200,8 +14200,11 @@ run_builtin_sni_radar() {
     total=$(wc -l < "$candidates" | tr -d ' ')
     if [[ "$profile" == 'mini' ]]; then
         # Mini mode uses the same candidate library as full mode. It reduces concurrency and verification depth only.
-        concurrency="${ABOX_SNI_MINI_CONCURRENCY:-8}"
-        timeout_s="${ABOX_SNI_MINI_TIMEOUT:-5}"
+        # Mini defaults (2026-10-19): 5-version A/B test on 2 VPS showed
+        # concurrency=32/timeout=3 is ~25% faster than 8/5 with identical
+        # valid counts and 9/10 top-pick overlap. Env overrides still work.
+        concurrency="${ABOX_SNI_MINI_CONCURRENCY:-32}"
+        timeout_s="${ABOX_SNI_MINI_TIMEOUT:-3}"
         topn="${ABOX_SNI_MINI_TOPN:-60}"
         verify_limit="${ABOX_SNI_MINI_VERIFY:-240}"
     else

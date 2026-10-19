@@ -22217,7 +22217,13 @@ main_loop() {
     while true; do
         local STATUS_STR='' CUR_MODE='' choice
         STATUS_STR=$(build_status_str)
-        load_abox_env "$ABOX_ENV" 2>/dev/null && CUR_MODE="[${CORE}-${MODE}]" || CUR_MODE=''
+        # A loadable .env may carry no deployment yet (e.g. traffic limit set
+        # before any protocol install); only show [CORE-MODE] when both exist.
+        if load_abox_env "$ABOX_ENV" 2>/dev/null && [[ -n "${CORE:-}" && -n "${MODE:-}" ]]; then
+            CUR_MODE="[${CORE}-${MODE}]"
+        else
+            CUR_MODE=''
+        fi
         clear
         _abox_tk="Linux Gateway Toolkit"
         _abox_pad=$((70 - 5 - ${#_abox_tk}))

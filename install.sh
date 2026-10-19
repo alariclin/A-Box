@@ -14355,7 +14355,7 @@ run_builtin_sni_radar() {
     msg "${YELLOW}[*] Progress is printed after each batch; large libraries can take several minutes on low-end VPS.${NC}"
     : > "$raw"
     while IFS= read -r domain; do
-        sni_probe_domain "$domain" "$raw" "$timeout_s" &
+        sni_probe_domain "$domain" "$raw" "$timeout_s" </dev/null &
         running=$((running + 1))
         processed=$((processed + 1))
         if (( running >= concurrency )); then

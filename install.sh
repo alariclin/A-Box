@@ -6814,6 +6814,7 @@ EOF_F2B_FILTER
         [[ -n "${VLESS_PORT:-}" ]] && tcp_ports+="${VLESS_PORT},"
         [[ -n "${XHTTP_PORT:-}" ]] && tcp_ports+="${XHTTP_PORT},"
         [[ -n "${SS_PORT:-}" ]] && { tcp_ports+="${SS_PORT},"; udp_ports+="${SS_PORT},"; }
+        [[ -n "${SOCKS_PORT:-}" ]] && { tcp_ports+="${SOCKS_PORT},"; udp_ports+="${SOCKS_PORT},"; }
         if [[ "${HY2_HOP:-}" == true && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" ]]; then
             # P2-2: manual hop REDIRECTs to HY2_BASE_PORT in PREROUTING, so Fail2Ban
             # must monitor HY2_BASE_PORT in INPUT chain, not just the hop range.
@@ -10213,7 +10214,7 @@ manage_ss_whitelist() {
         return 1
     }
     load_optional_abox_env_or_die
-    [[ -z "${SS_PORT:-}" ]] && { msg "${RED}[!] 未检测到已部署的 SS-2022 服务端口。${NC}"; pause_return; return; }
+    [[ -z "${SS_PORT:-}" && -z "${SOCKS_PORT:-}" ]] && { msg "${RED}[!] 未检测到已部署的 SS-2022 或 SOCKS5 服务端口。${NC}"; pause_return; return; }
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}SS-2022 白名单 IP 管理 / SS-2022 Whitelist Manager${NC}"
     msg "${CYAN}======================================================================${NC}"

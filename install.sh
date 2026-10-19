@@ -14085,7 +14085,9 @@ sni_auto_select_default() {
     { curl --help all 2>/dev/null || curl --help 2>/dev/null; } | grep -F -- '--http2' >/dev/null && ABOX_CURL_HTTP2_SUPPORTED=1
     : > "$raw"
     while IFS= read -r domain; do
-        sni_probe_domain "$domain" "$raw" "$timeout_s" &
+        # Detach probe subshells from the terminal stdin so stray keystrokes
+        # during the long run cannot be consumed by them.
+        sni_probe_domain "$domain" "$raw" "$timeout_s" </dev/null &
         running=$((running + 1))
         if (( running >= 8 )); then
             wait || true
@@ -14266,6 +14268,11 @@ run_builtin_sni_radar() {
     msg "${GREEN}Saved: ${ABOX_DIR}/A-Box-sni-${profile}.tsv${NC}"
     msg "${YELLOW}A/B/C 等级仅表示本 VPS 的探测结果；风险复核和不合格项目不会因低延迟被标为优先推荐。${NC}"
     rm -rf "$workdir"
+    # Drain keystrokes typed during the long run; otherwise pause_return would
+    # consume them instantly and the ranked results would flash by.
+    while read -r -t 0 _ 2>/dev/null; do
+        read -r -t 0.1 _ 2>/dev/null || break
+    done
     pause_return
 }
 

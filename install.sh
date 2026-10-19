@@ -1298,17 +1298,18 @@ clear_abox_env_vars() {
     unset HY2_HOP HY2_HOP_IMPL HY2_MONITOR_PORT HY2_ACME_TYPE HY2_ACME_DNS_PROVIDER HY2_ACME_DNS_CF_API_TOKEN
     unset HY2_URI_PORTS HY2_CLASH_PORTS HY2_SB_PORTS HY2_RANGE_START HY2_RANGE_END INGRESS_IF ENABLE_KEEPALIVE
     unset TRAFFIC_LIMIT_GB TRAFFIC_LIMIT_MODE
+    unset SOCKS_PORT SOCKS_USER SOCKS_PASS SOCKS_PROTO
 }
 
 validate_abox_env_semantics() {
     local p value
     [[ "${CORE:-}" =~ ^(xray|singbox|hysteria)$ ]] || return 1
-    [[ "${MODE:-}" =~ ^(VISION|XHTTP|SS|ALL|VLESS_SS|HY2)$ ]] || return 1
+    [[ "${MODE:-}" =~ ^(VISION|XHTTP|SS|ALL|VLESS_SS|HY2|SOCKS)$ ]] || return 1
     case "${CORE}:${MODE}" in
-        xray:VISION|xray:XHTTP|xray:SS|xray:ALL|xray:VLESS_SS|singbox:VISION|singbox:SS|singbox:VLESS_SS|singbox:HY2|singbox:ALL|hysteria:HY2) ;;
+        xray:VISION|xray:XHTTP|xray:SS|xray:ALL|xray:VLESS_SS|xray:SOCKS|singbox:VISION|singbox:SS|singbox:VLESS_SS|singbox:HY2|singbox:ALL|singbox:SOCKS|hysteria:HY2) ;;
         *) return 1 ;;
     esac
-    for p in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT HY2_MONITOR_PORT HY2_RANGE_START HY2_RANGE_END; do
+    for p in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT HY2_MONITOR_PORT HY2_RANGE_START HY2_RANGE_END SOCKS_PORT; do
         value=${!p:-}
         [[ -z "$value" ]] || valid_canonical_port "$value" || return 1
     done
@@ -1369,6 +1370,19 @@ validate_abox_env_semantics() {
     [[ -z "${HY2_PASS:-}" ]] || valid_single_line_secret "$HY2_PASS" 512 || return 1
     [[ -z "${HY2_OBFS:-}" ]] || valid_single_line_secret "$HY2_OBFS" 512 || return 1
     [[ -z "${SS_PASS:-}" ]] || valid_single_line_secret "$SS_PASS" 512 || return 1
+    # SOCKS5: validate port/user/pass/proto when enabled.
+    if [[ -n "${SOCKS_PORT:-}" ]]; then
+        valid_canonical_port "$SOCKS_PORT" || return 1
+        [[ -n "${SOCKS_USER:-}" ]] || return 1
+        valid_single_line_secret "$SOCKS_USER" 64 || return 1
+        [[ -n "${SOCKS_PASS:-}" ]] || return 1
+        valid_single_line_secret "$SOCKS_PASS" 128 || return 1
+        [[ "${SOCKS_PROTO:-socks}" =~ ^(socks|mixed)$ ]] || return 1
+        [[ "$SOCKS_PORT" != "${VLESS_PORT:-}" && "$SOCKS_PORT" != "${SS_PORT:-}" && "$SOCKS_PORT" != "${HY2_BASE_PORT:-}" && "$SOCKS_PORT" != "10085" ]] || return 1
+    fi
+    if [[ "${MODE:-}" == "SOCKS" && -z "${SOCKS_PORT:-}" ]]; then
+        return 1
+    fi
 }
 
 load_abox_env() {
@@ -1401,7 +1415,7 @@ allowed = {
     "HY2_ACME_DNS_CF_API_TOKEN", "HY2_URI_PORTS", "HY2_CLASH_PORTS",
     "HY2_SB_PORTS", "HY2_RANGE_START", "HY2_RANGE_END", "INGRESS_IF",
     "ENABLE_KEEPALIVE", "TRAFFIC_LIMIT_GB", "TRAFFIC_LIMIT_MODE",
-    "SS_WHITELIST_IP",
+    "SS_WHITELIST_IP", "SOCKS_PORT", "SOCKS_USER", "SOCKS_PASS", "SOCKS_PROTO",
 }
 seen = set()
 with open(sys.argv[1], "r", encoding="utf-8", errors="strict") as handle:
@@ -6441,6 +6455,7 @@ reset_protocol_vars() {
     unset HY2_CERT_SHA256_FP HY2_CERT_PUBKEY_SHA256_B64 HY2_HOP HY2_HOP_IMPL HY2_MONITOR_PORT
     unset HY2_ACME_TYPE HY2_ACME_DNS_PROVIDER HY2_ACME_DNS_CF_API_TOKEN
     unset HY2_URI_PORTS HY2_CLASH_PORTS HY2_SB_PORTS HY2_RANGE_START HY2_RANGE_END ENABLE_KEEPALIVE
+    unset SOCKS_PORT SOCKS_USER SOCKS_PASS SOCKS_PROTO
 }
 
 path_parent_chain_safe() {
@@ -6516,6 +6531,10 @@ write_env() {
         printf 'HY2_MASQ_URL=%s\n' "$(shell_quote "${HY2_MASQ_URL:-}")"
         printf 'SS_PORT=%s\n' "$(shell_quote "${SS_PORT:-}")"
         printf 'SS_WHITELIST_IP=%s\n' "$(shell_quote "${SS_WHITELIST_IP:-}")"
+        printf 'SOCKS_PORT=%s\n' "$(shell_quote "${SOCKS_PORT:-}")"
+        printf 'SOCKS_USER=%s\n' "$(shell_quote "${SOCKS_USER:-}")"
+        printf 'SOCKS_PASS=%s\n' "$(shell_quote "${SOCKS_PASS:-}")"
+        printf 'SOCKS_PROTO=%s\n' "$(shell_quote "${SOCKS_PROTO:-}")"
         printf 'PUBLIC_KEY=%s\n' "$(shell_quote "${PUBLIC_KEY:-${PBK:-}}")"
         printf 'SHORT_ID=%s\n' "$(shell_quote "${SHORT_ID:-}")"
         printf 'HY2_PASS=%s\n' "$(shell_quote "${HY2_PASS:-}")"

@@ -10828,11 +10828,13 @@ _ip_geo_refresh() {
         ru) geo_lang='ru' ;;
     esac
     if [[ -f "$IP_GEO_FILE" && ! -L "$IP_GEO_FILE" ]]; then
-        local _cip _clang _now _mt
+        local _cip _clang _cl6 _now _mt
         IFS= read -r _cip < "$IP_GEO_FILE" 2>/dev/null
         _now=$(date +%s 2>/dev/null || echo 0)
         _mt=$(stat -c %Y "$IP_GEO_FILE" 2>/dev/null || echo 0)
         _clang=$(awk 'NR==12' "$IP_GEO_FILE" 2>/dev/null)
+        _cl6=$(awk 'NR==6' "$IP_GEO_FILE" 2>/dev/null)
+        if [[ "$_cl6" == 'true' || "$_cl6" == 'false' ]]; then _clang='__stale_v2__'; fi
         if [[ "$_cip" == "$ip" && "$_clang" == "$geo_lang" ]] && (( _now - _mt < 86400 )); then return 0; fi
     fi
     local resp
@@ -10985,8 +10987,8 @@ _menu_info_collect() {
     if [[ -f "$IP_GEO_FILE" ]]; then
         local _gip _gst _gcountry _gcc _gcity _gmob _ghost _gas _gisp _gorg _gcc2
         { IFS= read -r _gip; IFS= read -r _gst; IFS= read -r _gcountry; IFS= read -r _gcc
-          IFS= read -r _gcity; IFS= read -r _gmob; IFS= read -r _ghost; IFS= read -r _gas
-          IFS= read -r _gisp; IFS= read -r _gorg; IFS= read -r _gcc2
+          IFS= read -r _gcity; IFS= read -r _gisp; IFS= read -r _gorg; IFS= read -r _gas
+          IFS= read -r _gmob; IFS= read -r _ghost; IFS= read -r _gcc2
         } < "$IP_GEO_FILE" 2>/dev/null
         if [[ "$_gip" == "${GLOBAL_PUBLIC_IP:-}" && "$_gst" == 'success' ]]; then
             _MI_GEO_COUNTRY="$_gcountry"

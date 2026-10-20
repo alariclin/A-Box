@@ -37,6 +37,7 @@ YELLOW=$'\033[0;33m'
 BLUE=$'\033[0;34m'
 CYAN=$'\033[0;36m'
 GRAY=$'\033[0;37m'
+LBLW=$'\033[0;97m'
 LIGHTBLUE=$'\033[0;94m'
 NC=$'\033[0m'
 BOLD=$'\033[1m'
@@ -10971,9 +10972,9 @@ _menu_info_collect() {
     _MI_VIRT="$virt"; _MI_BBR="$bbr"; _MI_UP="$up_days"; _MI_IPV6="$ipv6"
 
     # --- deployed nodes (from live config); SNI captured separately ---
-    local nodes='' sni=''
+    local nodes='' nodes_x='' nodes_s='' sni=''
     if [[ "$_MI_XRUN" == "1" && -f /usr/local/etc/xray/config.json ]]; then
-        nodes=$(jq -r '.inbounds[]? | select(.tag != "api") |
+        nodes_x=$(jq -r '.inbounds[]? | select(.tag != "api") |
             (if .protocol == "vless" and (.settings.clients[0].flow // "" | startswith("xtls")) then "Vision"
              elif .protocol == "vless" and (.streamSettings.network // "") == "xhttp" then "XHTTP"
              elif .protocol == "vless" then "VLESS"
@@ -10986,13 +10987,15 @@ _menu_info_collect() {
             /usr/local/etc/xray/config.json 2>/dev/null | tr '\n' '|' | sed 's/|$//')
         sni=$(jq -r '[.inbounds[]? | select(.tag != "api") | .streamSettings.realitySettings.serverNames[0] // empty][0] // empty' \
             /usr/local/etc/xray/config.json 2>/dev/null)
-    elif [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]]; then
-        nodes=$(jq -r '.inbounds[]? | select(.tag != "shadowtls-ss" and .tag != "vmess-ws-in" and .tag != "vless-ws-in") |
+    fi
+    if [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]]; then
+        nodes_s=$(jq -r '.inbounds[]? | select(.tag != "shadowtls-ss" and .tag != "vmess-ws-in" and .tag != "vless-ws-in") |
             (if .type == "vless" then "VLESS" elif .type == "shadowsocks" then "SS"
              elif .type == "hysteria2" then "Hy2" elif .type == "mixed" then "SOCKS5"
-             elif .type == "socks" then "SOCKS5" elif .type == "tuic" then "TUIC" elif .type == "anytls" then "AnyTLS" elif .type == "shadowtls" then "ShadowTLS" else .type end)
-            | "\(.) :\(.listen_port)"' /etc/sing-box/config.json 2>/dev/null | tr '\n' '|' | sed 's/ :/:/g;s/|$//')
+             elif .type == "socks" then "SOCKS5" elif .type == "tuic" then "TUIC" elif .type == "anytls" then "AnyTLS" elif .type == "shadowtls" then "ShadowTLS" else .type end) as $n
+            | "\($n):\(.listen_port)"' /etc/sing-box/config.json 2>/dev/null | tr '\n' '|' | sed 's/|$//')
     fi
+    nodes="${nodes_x:+$nodes_x|}${nodes_s}"
     nodes="${nodes%|}"
     # Hy2: separate service; port + hop range from env
     local hy2_note=''
@@ -11119,9 +11122,9 @@ _menu_info_display() {
     msg "$_mrow"
     msg ''
     # --- system / hardware ---
-    msg "  ${GRAY}$(tr_msg mi_system)：${NC}  ${CYAN}${_MI_OS} · $(tr_msg mi_kernel) ${_MI_KERNEL} · ${_MI_VIRT} · $(tprintf mi_uptime "$_MI_UP")${NC}"
+    msg "  ${LBLW}$(tr_msg mi_system)：${NC}  ${CYAN}${_MI_OS} · $(tr_msg mi_kernel) ${_MI_KERNEL} · ${_MI_VIRT} · $(tprintf mi_uptime "$_MI_UP")${NC}"
     msg ''
-    msg "  ${GRAY}$(tr_msg mi_hw)：${NC}  ${CYAN}${_MI_CPU_MODEL} (${_MI_CPU}$(tr_msg mi_cores)) · $(tr_msg mi_mem) ${_MI_MEM_USED}/${_MI_MEM}G · $(tr_msg mi_disk) ${_MI_DISK}${_MI_DISK_KIND:+ $_MI_DISK_KIND}${NC}"
+    msg "  ${LBLW}$(tr_msg mi_hw)：${NC}  ${CYAN}${_MI_CPU_MODEL} (${_MI_CPU}$(tr_msg mi_cores)) · $(tr_msg mi_mem) ${_MI_MEM_USED}/${_MI_MEM}G · $(tr_msg mi_disk) ${_MI_DISK}${_MI_DISK_KIND:+ $_MI_DISK_KIND}${NC}"
     msg ''
     # --- network (IPv4 with geo, IPv6) ---
     local _v4dot='○' _geo=''
@@ -11129,7 +11132,7 @@ _menu_info_display() {
     if [[ -n "$_MI_GEO_COUNTRY" ]]; then
         _geo=" ${_MI_FLAG}${_MI_FLAG:+ }${_MI_GEO_COUNTRY}${_MI_GEO_CITY:+ · ${_MI_GEO_CITY}} · ${_MI_GEO_KIND} · ${_MI_GEO_ORIGIN}"
     fi
-    msg "  ${GRAY}$(tr_msg mi_net)：${NC}  ${CYAN}IPv4${NC} ${_v4dot} ${CYAN}${GLOBAL_PUBLIC_IP:-?}${_geo}${NC}"
+    msg "  ${LBLW}$(tr_msg mi_net)：${NC}  ${CYAN}IPv4${NC} ${_v4dot} ${CYAN}${GLOBAL_PUBLIC_IP:-?}${_geo}${NC}"
     if [[ -n "$_MI_IPV6" ]]; then
         msg "          ${CYAN}IPv6${NC} ${GREEN}●${NC} ${CYAN}${_MI_IPV6}${NC}"
     else
@@ -11141,14 +11144,15 @@ _menu_info_display() {
         local _suffix=''
         [[ -n "$_MI_SNI" ]] && _suffix=" · SNI：${_MI_SNI}"
         local _lbl="$(tr_msg mi_nodes)" _cur='' _seg _first=1 _w
+        local _lim=126; if (( ${COLUMNS:-0} >= 84 && COLUMNS < _lim )); then _lim=$((COLUMNS - 2)); fi
         local _segs
         IFS='|' read -r -a _segs <<< "$_MI_NODES"
         for _seg in "${_segs[@]}"; do
             [[ -z "$_seg" ]] && continue
             if [[ -z "$_cur" ]]; then _cur="$_seg"; else
                 _w=$(_disp_width "  ${_lbl}：  ${_cur}|${_seg}")
-                if (( _w > 78 )); then
-                    if (( _first )); then msg "  ${GRAY}${_lbl}：${NC}  ${CYAN}${_cur}${NC}"; _first=0
+                if (( _w > _lim )); then
+                    if (( _first )); then msg "  ${LBLW}${_lbl}：${NC}  ${CYAN}${_cur}${NC}"; _first=0
                     else msg "          ${CYAN}${_cur}${NC}"; fi
                     _cur="$_seg"
                 else _cur="${_cur}|${_seg}"; fi
@@ -11156,28 +11160,28 @@ _menu_info_display() {
         done
         if [[ -n "$_cur" ]]; then
             _w=$(_disp_width "  ${_lbl}：  ${_cur}${_suffix}")
-            if (( _w <= 80 )); then
-                if (( _first )); then msg "  ${GRAY}${_lbl}：${NC}  ${CYAN}${_cur}${NC} · ${GRAY}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"
-                else msg "          ${CYAN}${_cur}${NC} · ${GRAY}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"; fi
+            if (( _w <= _lim + 2 )); then
+                if (( _first )); then msg "  ${LBLW}${_lbl}：${NC}  ${CYAN}${_cur}${NC} · ${LBLW}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"
+                else msg "          ${CYAN}${_cur}${NC} · ${LBLW}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"; fi
             else
-                if (( _first )); then msg "  ${GRAY}${_lbl}：${NC}  ${CYAN}${_cur}${NC}"
+                if (( _first )); then msg "  ${LBLW}${_lbl}：${NC}  ${CYAN}${_cur}${NC}"
                 else msg "          ${CYAN}${_cur}${NC}"; fi
-                [[ -n "$_MI_SNI" ]] && msg "          ${GRAY}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"
+                [[ -n "$_MI_SNI" ]] && msg "          ${LBLW}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"
             fi
         fi
     else
-        msg "  ${GRAY}$(tr_msg mi_nodes)：${NC}  ${CYAN}$(tr_msg mi_no_nodes)${NC}"
+        msg "  ${LBLW}$(tr_msg mi_nodes)：${NC}  ${CYAN}$(tr_msg mi_no_nodes)${NC}"
     fi
     msg ''
     # --- split (hidden entirely when nothing is configured) ---
     if [[ -n "$_MI_EXITS" || "$_MI_RULES" != '0' ]]; then
         local _split='' _e
         for _e in $_MI_EXITS; do _split+="${CYAN}${_e}${NC} ${GREEN}●${NC} · "; done
-        msg "  ${GRAY}$(tr_msg mi_split)：${NC}  ${_split}$(tprintf mi_rules "$_MI_RULES")"
+        msg "  ${LBLW}$(tr_msg mi_split)：${NC}  ${_split}$(tprintf mi_rules "$_MI_RULES")"
         msg ''
     fi
     # --- legend ---
-    msg "  ${GRAY}$(tr_msg mi_state)：  ${GREEN}●${NC} ${GRAY}$(tr_msg mi_run)  ·  ○ $(tr_msg mi_off)  ·  ${RED}●${NC} ${GRAY}$(tr_msg mi_fault)${NC}        ${CYAN}$(tr_msg mi_quick_r)${NC}"
+    msg "  ${LBLW}$(tr_msg mi_state)：  ${GREEN}●${NC} ${GRAY}$(tr_msg mi_run)  ·  ○ $(tr_msg mi_off)  ·  ${RED}●${NC} ${GRAY}$(tr_msg mi_fault)${NC}        ${CYAN}$(tr_msg mi_quick_r)${NC}"
     printf '\033[38;2;0;170;255m%s\033[0m\n' '════════════════════════════════════════════════════════════════════════════════'
 }
 

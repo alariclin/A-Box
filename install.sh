@@ -18810,6 +18810,72 @@ wallos_recover_interrupted_upgrade() {
     msg "${YELLOW}Recovered an interrupted Wallos upgrade by restoring the previous image and validated data backup. Review logs before retrying the upgrade.${NC}"
 }
 
+# ============ Wallos brute-force protection (fail2ban on nginx access log) ============
+# Wallos keeps nginx access log inside the container's writable layer; fail2ban
+# reads it from the host at <UpperDir>/var/log/nginx/access.log.
+# Re-run after every (re)create of the container (install / upgrade / rollback).
+wallos_bruteforce_protection() {
+    local port="$1" bind_address="$2"
+    local filter='/etc/fail2ban/filter.d/A-Box-wallos.conf'
+    local jail='/etc/fail2ban/jail.d/A-Box-wallos.local'
+    # Localhost-only Wallos cannot be reached remotely; no jail needed.
+    if [[ "$bind_address" == 127.0.0.1 ]]; then
+        rm -f -- "$jail" 2>/dev/null || true
+        return 0
+    fi
+    command -v fail2ban-client >/dev/null 2>&1 || return 0
+    command -v docker >/dev/null 2>&1 || return 0
+    local upperdir logpath
+    upperdir=$(docker inspect -f '{{.GraphDriver.Data.UpperDir}}' wallos 2>/dev/null || true)
+    [[ -n "$upperdir" && -d "$upperdir" ]] || return 0
+    logpath="$upperdir/var/log/nginx/access.log"
+    # The log file appears on first HTTP request; create empty placeholder dir-wise only (file is created by nginx).
+    [[ -e "$logpath" ]] || return 0
+    local backend action
+    backend=$(firewall_backend 2>/dev/null || true)
+    case "$backend" in
+        firewalld) action='firewallcmd-multiport' ;;
+        ufw) action='ufw' ;;
+        iptables) action='iptables-multiport' ;;
+        *) return 0 ;;
+    esac
+    [[ -r "/etc/fail2ban/action.d/${action}.conf" ]] || return 0
+    mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d || return 0
+    assert_abox_auxiliary_safe "$filter" 2>/dev/null || return 0
+    assert_abox_auxiliary_safe "$jail" 2>/dev/null || return 0
+    write_file_atomically_from_stdin "$filter" 644 <<'EOF_WF2B_FILTER' || return 0
+# Managed by A-Box
+[Definition]
+failregex = ^<HOST> - \S+ \[[^\]]+\] "POST /login\.php HTTP/[0-9.]+" [0-9]{3} [0-9]+
+ignoreregex =
+EOF_WF2B_FILTER
+    if [[ "$action" == 'ufw' ]]; then
+        action="ufw[name=A-Box-wallos]"
+    else
+        action="${action}[name=A-Box-wallos, port=\"${port}\", protocol=tcp]"
+    fi
+    write_file_atomically_from_stdin "$jail" 644 <<EOF_WF2B_JAIL || return 0
+# Managed by A-Box
+[A-Box-wallos]
+enabled = true
+ignoreip = 127.0.0.1/8 ::1
+port = ${port}
+filter = A-Box-wallos
+logpath = ${logpath}
+maxretry = 10
+findtime = 600
+bantime = 86400
+action = ${action}
+EOF_WF2B_JAIL
+    validate_fail2ban_config_or_die >/dev/null 2>&1 || { rm -f -- "$jail"; return 0; }
+    if [[ "${INIT_SYS:-}" == systemd ]]; then
+        systemctl restart fail2ban >/dev/null 2>&1 || true
+    else
+        rc-service fail2ban restart >/dev/null 2>&1 || true
+    fi
+    return 0
+}
+
 wallos_public_urls() {
     local port="$1" ipv4 ipv6 host_ip
     host_ip=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
@@ -18941,11 +19007,14 @@ wallos_install_or_update() {
         [[ ! -e "$WALLOS_DIR" || -f "$WALLOS_DIR/.A-Box-managed" ]] || {
             msg "${RED}$WALLOS_DIR exists without an A-Box ownership marker; refusing to overwrite it.${NC}"; return 1;
         }
-        port=8282
-        while ! wallos_port_free "$port"; do
-            port=$((port + 1))
-            (( port <= 8299 )) || { case "${ABOX_LANG:-zh}" in en) msg "${RED}Ports 8282-8299 are occupied; free one and retry.${NC}" ;; ru) msg "${RED}Порты 8282–8299 заняты; освободите один и повторите попытку.${NC}" ;; fa) msg "${RED}درگاه‌های 8282 تا 8299 اشغال‌اند؛ یک درگاه آزاد کنید و دوباره تلاش کنید.${NC}" ;; zh-tw) msg "${RED}8282–8299 連接埠均被佔用，請釋放連接埠後重試。${NC}" ;; ja) msg "${RED}ポート 8282～8299 はすべて使用中です。空きを作ってから再試行してください。${NC}" ;; *) msg "${RED}8282–8299 端口均被占用，请释放端口后重试。${NC}" ;; esac; return 1; }
+        # Fresh install: random high port (20000-60000) instead of predictable 8282.
+        port=''
+        local _try
+        for _try in $(seq 1 50); do
+            local _cand=$(( (RANDOM * 32768 + RANDOM) % 40001 + 20000 ))
+            if wallos_port_free "$_cand"; then port="$_cand"; break; fi
         done
+        [[ "$port" =~ ^[0-9]+$ ]] || { case "${ABOX_LANG:-zh}" in en) msg "${RED}No free high port found in 20000-60000; free one and retry.${NC}" ;; ru) msg "${RED}Нет свободного высокого порта 20000–60000.${NC}" ;; fa) msg "${RED}درگاه آزاد در 20000 تا 60000 یافت نشد.${NC}" ;; zh-tw) msg "${RED}20000–60000 無可用高位連接埠，請釋放後重試。${NC}" ;; ja) msg "${RED}20000～60000 に空きポートがありません。${NC}" ;; *) msg "${RED}20000–60000 无可用高位端口，请释放端口后重试。${NC}" ;; esac; return 1; }
         tz=$(current_timezone_name 2>/dev/null || printf 'UTC')
         valid_timezone_name "$tz" || tz='UTC'
     fi
@@ -19084,6 +19153,17 @@ wallos_install_or_update() {
         if confirm_yes_no "Allow TCP $port through UFW? [Y/N]: "; then ufw allow "$port/tcp" || msg "${YELLOW}Could not update UFW; add the rule manually.${NC}"; fi
     elif [[ "$bind_address" == 0.0.0.0 ]] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
         if confirm_yes_no "Allow TCP $port through firewalld? [Y/N]: "; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}Could not update firewalld; add the rule manually.${NC}"; fi
+    fi
+    wallos_bruteforce_protection "$port" "$bind_address"
+    if [[ "$bind_address" == 0.0.0.0 ]]; then
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${CYAN}Direct-access security checklist:${NC}"; msg "  1) Cloud security group: allow TCP $port from YOUR IP ONLY (/32), not 0.0.0.0/0."; msg "  2) Set a strong Wallos admin password (20+ chars) on first login."; msg "  3) Fail2ban is active on this port: 10 failed logins in 10 min = 24h ban." ;;
+            ru) msg "${CYAN}Чек-лист безопасности прямого доступа:${NC}"; msg "  1) Группа безопасности: TCP $port только с ВАШЕГО IP (/32), не 0.0.0.0/0."; msg "  2) Сильный пароль администратора Wallos (20+ символов)."; msg "  3) Fail2ban активен: 10 неудачных входов за 10 мин = бан 24ч." ;;
+            fa) msg "${CYAN}چک‌لیست امنیتی دسترسی مستقیم:${NC}"; msg "  1) گروه امنیتی: TCP $port فقط از IP شما (/32)، نه 0.0.0.0/0."; msg "  2) رمز قوی مدیر Wallos (۲۰+ نویسه)."; msg "  3) Fail2ban فعال است: ۱۰ ورود ناموفق در ۱۰ دقیقه = ۲۴ ساعت مسدودی." ;;
+            zh-tw) msg "${CYAN}直連安全清單：${NC}"; msg "  1) 雲安全組：TCP $port 只放你自己的 IP(/32)，不要 0.0.0.0/0。"; msg "  2) Wallos 管理員密碼設 20 位以上強密碼。"; msg "  3) fail2ban 已啟用：10 分鐘內 10 次登錄失敗 = 封 24 小時。" ;;
+            ja) msg "${CYAN}直接アクセス安全チェックリスト：${NC}"; msg "  1) セキュリティグループ：TCP $port は自分の IP(/32) のみ許可、0.0.0.0/0 は不可。"; msg "  2) Wallos 管理者パスワードは 20 文字以上の強いものを。"; msg "  3) fail2ban 有効：10 分で 10 回失敗 = 24 時間 BAN。" ;;
+            *) msg "${CYAN}直连安全清单：${NC}"; msg "  1) 云安全组：TCP $port 只放你自己的 IP(/32)，不要开 0.0.0.0/0。"; msg "  2) Wallos 管理员密码设 20 位以上强密码。"; msg "  3) fail2ban 已启用：10 分钟内 10 次登录失败 = 封 24 小时。" ;;
+        esac
     fi
     [[ -z "$backup" ]] || msg "Pre-upgrade backup: $backup"
 }

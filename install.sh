@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Best-effort UTF-8 locale (v2ray-agent pattern): harmless if locale missing,
+# makes [[ =~ ]], wc -m and case patterns UTF-8 correct; byte fallback remains.
+export LANG=en_US.UTF-8 2>/dev/null || true
+# Fix backspace/delete key: some terminals (FinalShell) send ^H but tty expects ^?
+# This makes the delete key work correctly in menu input
+stty erase '^H' 2>/dev/null || true
 # ==============================A-Box===============================
 # SNI profile: built-in candidate library plus per-VPS automatic REALITY target selection; no remote script execution.
 # Hardened build: stricter GitHub digest trust, guarded shortcut persistence, Fail2Ban validation, and Sing-box HY2 ACME semantics.
@@ -30,8 +36,24 @@ GREEN=$'\033[0;32m'
 YELLOW=$'\033[0;33m'
 BLUE=$'\033[0;34m'
 CYAN=$'\033[0;36m'
+GRAY=$'\033[0;37m'
+LIGHTBLUE=$'\033[0;94m'
 NC=$'\033[0m'
 BOLD=$'\033[1m'
+
+# Display width: accurate for CJK, symbols, 2-byte Latin/Cyrillic, emoji
+# 14-system safe: byte-based, no locale dependency
+# Optimized: single awk (was 2x grep + 3x wc = 5 subprocesses)
+_disp_width() {
+    local s="$1"
+    [[ -z "$s" ]] && { printf '0'; return; }
+    printf '%s' "$s" | LC_ALL=C awk '
+    BEGIN { bytes=0; sub1=0; sub2=0 }
+    { bytes += length($0)
+      sub1 += gsub(/[\xc2-\xdf][\x80-\xbf]|[\xe3-\xef][\x80-\xbf][\x80-\xbf]/, "&")
+      sub2 += gsub(/[\xe0-\xe2][\x80-\xbf][\x80-\xbf]|[\xf0-\xf4][\x80-\xbf][\x80-\xbf][\x80-\xbf]/, "&") }
+    END { print bytes - sub1 - sub2*2 }'
+}
 
 DEPS_MARKER='/etc/ddr/.deps.v20260725'
 SCRIPT_URL='https://raw.githubusercontent.com/alariclin/A-Box/main/install.sh'
@@ -456,6 +478,12 @@ tr_msg() {
         fa:main_command) echo 'فرمان را وارد کنید: ' ;;
         zh-tw:main_command) echo '請求下發執行代號: ' ;;
         ja:main_command) echo 'コマンドを入力: ' ;;
+        zh:invalid_input) echo '无效输入' ;;
+        en:invalid_input) echo 'Invalid input' ;;
+        ru:invalid_input) echo 'Неверный ввод' ;;
+        fa:invalid_input) echo 'ورودی نامعتبر' ;;
+        zh-tw:invalid_input) echo '無效輸入' ;;
+        ja:invalid_input) echo '無効な入力' ;;
         zh:lang_title) echo '语言设置 / Language' ;;
         en:lang_title) echo 'Language settings' ;;
         ru:lang_title) echo 'Настройки языка' ;;
@@ -570,6 +598,102 @@ tr_msg() {
         fa:swap_done) echo 'عملیات Swap پایان یافت.' ;;
         zh-tw:swap_done) echo 'Swap 處理完成。' ;;
         ja:swap_done) echo 'Swap 操作が完了しました。' ;;
+        zh:socks5_title) echo '部署 SOCKS5 落地代理 (Xray-core)' ;;
+        en:socks5_title) echo 'Deploy SOCKS5 landing proxy (Xray-core)' ;;
+        ru:socks5_title) echo 'Развёртывание SOCKS5 (Xray-core)' ;;
+        fa:socks5_title) echo 'استقرار پروکسی لندینگ SOCKS5 (Xray-core)' ;;
+        zh-tw:socks5_title) echo '部署 SOCKS5 落地代理 (Xray-core)' ;;
+        ja:socks5_title) echo 'SOCKS5 ランディングプロキシを展開 (Xray-core)' ;;
+        zh:socks5_port_prompt) echo '请输入 SOCKS5 监听端口 (回车默认 1080): ' ;;
+        en:socks5_port_prompt) echo 'Enter SOCKS5 listen port (default 1080): ' ;;
+        ru:socks5_port_prompt) echo 'Введите порт SOCKS5 (по умолчанию 1080): ' ;;
+        fa:socks5_port_prompt) echo 'درگاه SOCKS5 را وارد کنید (پیش‌فرض 1080): ' ;;
+        zh-tw:socks5_port_prompt) echo '請輸入 SOCKS5 監聽端口 (回車默認 1080): ' ;;
+        ja:socks5_port_prompt) echo 'SOCKS5 リッスンポートを入力 (デフォルト 1080): ' ;;
+        zh:socks5_user_prompt) echo '请输入 SOCKS5 用户名 (回车默认 abox): ' ;;
+        en:socks5_user_prompt) echo 'Enter SOCKS5 username (default abox): ' ;;
+        ru:socks5_user_prompt) echo 'Введите имя пользователя SOCKS5 (по умолчанию abox): ' ;;
+        fa:socks5_user_prompt) echo 'نام کاربری SOCKS5 را وارد کنید (پیش‌فرض abox): ' ;;
+        zh-tw:socks5_user_prompt) echo '請輸入 SOCKS5 用戶名 (回車默認 abox): ' ;;
+        ja:socks5_user_prompt) echo 'SOCKS5 ユーザー名を入力 (デフォルト abox): ' ;;
+        zh:socks5_sb_title) echo '部署 SOCKS5/Mixed 落地代理 (sing-box)' ;;
+        en:socks5_sb_title) echo 'Deploy SOCKS5/Mixed landing proxy (sing-box)' ;;
+        ru:socks5_sb_title) echo 'Развёртывание SOCKS5/Mixed (sing-box)' ;;
+        fa:socks5_sb_title) echo 'استقرار پروکسی لندینگ SOCKS5/Mixed (sing-box)' ;;
+        zh-tw:socks5_sb_title) echo '部署 SOCKS5/Mixed 落地代理 (sing-box)' ;;
+        ja:socks5_sb_title) echo 'SOCKS5/Mixed ランディングプロキシを展開 (sing-box)' ;;
+        zh:socks5_proto_prompt) echo '选择协议类型 [1] mixed (推荐, SOCKS5+HTTP同端口) [2] 纯SOCKS5: ' ;;
+        en:socks5_proto_prompt) echo 'Protocol [1] mixed (recommended, SOCKS5+HTTP same port) [2] plain SOCKS5: ' ;;
+        ru:socks5_proto_prompt) echo 'Протокол [1] mixed (рекомендуется) [2] только SOCKS5: ' ;;
+        fa:socks5_proto_prompt) echo 'پروتکل [۱] mixed (پیشنهادی) [۲] فقط SOCKS5: ' ;;
+        zh-tw:socks5_proto_prompt) echo '選擇協議類型 [1] mixed (推薦, SOCKS5+HTTP同端口) [2] 純SOCKS5: ' ;;
+        ja:socks5_proto_prompt) echo 'プロトコル [1] mixed (推奨) [2] SOCKS5のみ: ' ;;
+        zh:socks5_core_prompt) echo '选择核心 [1] Xray (纯SOCKS5) [2] sing-box (mixed, SOCKS5+HTTP): ' ;;
+        en:socks5_core_prompt) echo 'Select core [1] Xray (plain SOCKS5) [2] sing-box (mixed, SOCKS5+HTTP): ' ;;
+        ru:socks5_core_prompt) echo 'Выберите ядро [1] Xray (SOCKS5) [2] sing-box (mixed): ' ;;
+        fa:socks5_core_prompt) echo 'هسته را انتخاب کنید [۱] Xray [۲] sing-box (mixed): ' ;;
+        zh-tw:socks5_core_prompt) echo '選擇核心 [1] Xray (純SOCKS5) [2] sing-box (mixed): ' ;;
+        ja:socks5_core_prompt) echo 'コアを選択 [1] Xray (SOCKS5) [2] sing-box (mixed): ' ;;
+        zh:trojan_title) echo '部署 Trojan-Reality 落地代理 (Xray-core)' ;;
+        en:trojan_title) echo 'Deploy Trojan-Reality landing proxy (Xray-core)' ;;
+        ru:trojan_title) echo 'Развёртывание Trojan-Reality (Xray-core)' ;;
+        fa:trojan_title) echo 'استقرار پروکسی لندینگ Trojan-Reality (Xray-core)' ;;
+        zh-tw:trojan_title) echo '部署 Trojan-Reality 落地代理 (Xray-core)' ;;
+        ja:trojan_title) echo 'Trojan-Reality ランディングプロキシを展開 (Xray-core)' ;;
+        zh:trojan_sb_title) echo '部署 Trojan-Reality 落地代理 (sing-box)' ;;
+        en:trojan_sb_title) echo 'Deploy Trojan-Reality landing proxy (sing-box)' ;;
+        ru:trojan_sb_title) echo 'Развёртывание Trojan-Reality (sing-box)' ;;
+        fa:trojan_sb_title) echo 'استقرار پروکسی لندینگ Trojan-Reality (sing-box)' ;;
+        zh-tw:trojan_sb_title) echo '部署 Trojan-Reality 落地代理 (sing-box)' ;;
+        ja:trojan_sb_title) echo 'Trojan-Reality ランディングプロキシを展開 (sing-box)' ;;
+        zh:trojan_port_prompt) echo '请输入 Trojan 监听端口 (回车默认 443): ' ;;
+        en:trojan_port_prompt) echo 'Enter Trojan listen port (default 443): ' ;;
+        ru:trojan_port_prompt) echo 'Введите порт Trojan (по умолчанию 443): ' ;;
+        fa:trojan_port_prompt) echo 'درگاه Trojan را وارد کنید (پیش‌فرض 443): ' ;;
+        zh-tw:trojan_port_prompt) echo '請輸入 Trojan 監聽端口 (回車默認 443): ' ;;
+        ja:trojan_port_prompt) echo 'Trojan リッスンポートを入力 (デフォルト 443): ' ;;
+        zh:trojan_pass_prompt) echo '请输入 Trojan 密码 (回车自动生成随机密码): ' ;;
+        en:trojan_pass_prompt) echo 'Enter Trojan password (Enter to auto-generate): ' ;;
+        ru:trojan_pass_prompt) echo 'Введите пароль Trojan (Enter для автогенерации): ' ;;
+        fa:trojan_pass_prompt) echo 'گذرواژه Trojan را وارد کنید (Enter برای تولید خودکار): ' ;;
+        zh-tw:trojan_pass_prompt) echo '請輸入 Trojan 密碼 (回車自動生成隨機密碼): ' ;;
+        ja:trojan_pass_prompt) echo 'Trojan パスワードを入力 (Enter で自動生成): ' ;;
+        zh:trojan_exists) echo '检测到已存在 trojan-landing 入站，将更新其配置。' ;;
+        en:trojan_exists) echo 'Existing trojan-landing inbound found, updating its config.' ;;
+        ru:trojan_exists) echo 'Найден существующий trojan-landing, обновляю конфигурацию.' ;;
+        fa:trojan_exists) echo 'ورودی trojan-landing موجود است، در حال به‌روزرسانی.' ;;
+        zh-tw:trojan_exists) echo '檢測到已存在 trojan-landing 入站，將更新其配置。' ;;
+        ja:trojan_exists) echo '既存の trojan-landing インバウンドを更新します。' ;;
+        zh:trojan_done) echo 'Trojan-Reality 部署完成，链接如下：' ;;
+        en:trojan_done) echo 'Trojan-Reality deployed, link:' ;;
+        ru:trojan_done) echo 'Trojan-Reality развёрнут, ссылка:' ;;
+        fa:trojan_done) echo 'Trojan-Reality مستقر شد، لینک:' ;;
+        zh-tw:trojan_done) echo 'Trojan-Reality 部署完成，鏈接如下：' ;;
+        ja:trojan_done) echo 'Trojan-Reality を展開しました、リンク:' ;;
+        zh:trojan_core_prompt) echo '选择核心 [1] Xray [2] sing-box: ' ;;
+        en:trojan_core_prompt) echo 'Select core [1] Xray [2] sing-box: ' ;;
+        ru:trojan_core_prompt) echo 'Выберите ядро [1] Xray [2] sing-box: ' ;;
+        fa:trojan_core_prompt) echo 'هسته را انتخاب کنید [۱] Xray [۲] sing-box: ' ;;
+        zh-tw:trojan_core_prompt) echo '選擇核心 [1] Xray [2] sing-box: ' ;;
+        ja:trojan_core_prompt) echo 'コアを選択 [1] Xray [2] sing-box: ' ;;
+        zh:socks5_pass_prompt) echo '请输入 SOCKS5 密码 (回车自动生成随机密码): ' ;;
+        en:socks5_pass_prompt) echo 'Enter SOCKS5 password (Enter to auto-generate): ' ;;
+        ru:socks5_pass_prompt) echo 'Введите пароль SOCKS5 (Enter для автогенерации): ' ;;
+        fa:socks5_pass_prompt) echo 'گذرواژه SOCKS5 را وارد کنید (Enter برای تولید خودکار): ' ;;
+        zh-tw:socks5_pass_prompt) echo '請輸入 SOCKS5 密碼 (回車自動生成隨機密碼): ' ;;
+        ja:socks5_pass_prompt) echo 'SOCKS5 パスワードを入力 (Enter で自動生成): ' ;;
+        zh:socks5_exists) echo '检测到已存在 socks5-landing 入站，将更新其配置。' ;;
+        en:socks5_exists) echo 'Existing socks5-landing inbound found; its config will be updated.' ;;
+        ru:socks5_exists) echo 'Найден существующий инбаунд socks5-landing; его конфигурация будет обновлена.' ;;
+        fa:socks5_exists) echo 'اینباند socks5-landing موجود است؛ پیکربندی آن به‌روزرسانی می‌شود.' ;;
+        zh-tw:socks5_exists) echo '檢測到已存在 socks5-landing 入站，將更新其配置。' ;;
+        ja:socks5_exists) echo '既存の socks5-landing インバウンドが見つかりました。設定を更新します。' ;;
+        zh:socks5_done) echo 'SOCKS5 落地代理部署完成。' ;;
+        en:socks5_done) echo 'SOCKS5 landing proxy deployed.' ;;
+        ru:socks5_done) echo 'SOCKS5 прокси развёрнут.' ;;
+        fa:socks5_done) echo 'پروکسی لندینگ SOCKS5 مستقر شد.' ;;
+        zh-tw:socks5_done) echo 'SOCKS5 落地代理部署完成。' ;;
+        ja:socks5_done) echo 'SOCKS5 ランディングプロキシを展開しました。' ;;
         *) echo "$key" ;;
     esac
 }
@@ -605,6 +729,8 @@ proto_label() {
 }
 
 pause_return() {
+    # Piped-menu automation: skip pause when stdin is not a TTY (non-interactive).
+    [[ ! -t 0 ]] && return 0
     local released=0
     if [[ -t 0 ]]; then
         # Briefly release exclusive flock during idle prompt so cron helpers can run.
@@ -665,6 +791,8 @@ initial_language_select() {
     save_lang
 }
 language_menu() {
+    # Submenu loop: 0/Enter returns to the parent menu.
+    while true; do
     clear
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}$(tr_msg lang_title)${NC}"
@@ -677,7 +805,7 @@ language_menu() {
     msg "${YELLOW}6. فارسی${NC}"
     msg "${GREEN}0. 返回 / Back${NC}"
     local c
-    read -r -p 'Select [0-6]: ' c
+    read -r -p 'Select [0-6]: ' c || return 0
     case "$c" in
         1) ABOX_LANG='zh'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
         2) ABOX_LANG='zh-tw'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
@@ -685,11 +813,20 @@ language_menu() {
         4) ABOX_LANG='ja'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
         5) ABOX_LANG='ru'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
         6) ABOX_LANG='fa'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 need_interactive_tty() {
     if [[ ! -t 0 ]]; then
+        # Version B: piped-menu automation. Honor non-TTY stdin (pipe/file redirect)
+        # for scripted menu runs instead of stealing /dev/tty. The main menu
+        # already exits cleanly on EOF (read ... || exit 0), and pause_return()
+        # skips when stdin is not a TTY.
+        # Default: reattach /dev/tty for interactive safety (prevents curl|bash early exit).
+        # Automation: set ABOX_PIPED=1 to explicitly enable piped-menu mode.
+        [[ "${ABOX_PIPED:-0}" == 1 ]] && return 0
         if [[ -r /dev/tty ]] && ( : < /dev/tty ) 2>/dev/null; then
             exec < /dev/tty || die '当前环境无可交互 TTY，无法打开控制终端。'
         else
@@ -849,6 +986,82 @@ valid_single_line_secret() {
     [[ -n "$value" && ${#value} -le $max_len ]] || return 1
     [[ "$value" != *[[:cntrl:]]* ]]
 }
+
+# ============ Version C: unified validation framework ============
+# valid_uuid: standalone UUIDv4 shape check (was inline at config validation).
+valid_uuid() {
+    local input="${1:-}"
+    [[ "$input" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]]
+}
+
+# valid_path: must start with /, no whitespace/control/quotes/backslash.
+valid_path() {
+    local input="${1:-}"
+    [[ -n "$input" ]] || return 1
+    [[ "$input" == /* ]] || return 1
+    case "$input" in
+        *[[:space:][:cntrl:]]*|*\"*|*\'*|*\\*) return 1 ;;
+    esac
+    return 0
+}
+
+# port_is_free: true when nothing is listening on the TCP port locally.
+port_is_free() {
+    local port="${1:-}"
+    [[ -n "$port" ]] || return 1
+    if command -v ss >/dev/null 2>&1; then
+        ! ss -tuln 2>/dev/null | awk 'NR>1 {print $5}' | grep -qE ":${port}$"
+    elif command -v netstat >/dev/null 2>&1; then
+        ! netstat -tuln 2>/dev/null | awk 'NR>2 {print $4}' | grep -qE ":${port}$"
+    else
+        ! (exec 3<>/dev/tcp/127.0.0.1/"$port") 2>/dev/null
+    fi
+}
+
+# is_test: single dispatcher for all input validation types (233boy pattern).
+#   port   -> 1-65535 and not occupied
+#   domain -> valid_domain regex
+#   uuid   -> UUIDv4 shape
+#   ip     -> plain IPv4 or IPv6 address (no CIDR)
+#   path   -> /-prefixed, no whitespace/control chars
+#   cidr   -> IPv4 or IPv6 with optional /mask
+is_test() {
+    local type="${1:-}" value="${2:-}"
+    case "$type" in
+        port)   valid_port "$value" && port_is_free "$value" ;;
+        domain) valid_domain "$value" ;;
+        uuid)   valid_uuid "$value" ;;
+        ip)     valid_ip_address "$value" ;;
+        path)   valid_path "$value" ;;
+        cidr)   valid_ipv4_cidr "$value" || valid_ipv6_cidr "$value" ;;
+        *)      return 1 ;;
+    esac
+}
+
+# prompt_validated: read from stdin, apply default on empty, re-prompt until
+# is_test passes. Prints the accepted value to stdout.
+prompt_validated() {
+    local prompt="$1" type="$2" default="${3:-}"
+    local val
+    while true; do
+        if ! read -r -p "$prompt" val; then
+            val="$default"
+            if is_test "$type" "$val"; then
+                printf '%s' "$val"
+                return 0
+            fi
+            msg "${RED}EOF reached without valid $type${NC}" >&2
+            return 1
+        fi
+        val="${val:-$default}"
+        if is_test "$type" "$val"; then
+            printf '%s' "$val"
+            return 0
+        fi
+        msg "${RED}Invalid $type: $val${NC}" >&2
+    done
+}
+# ============ end Version C ============
 
 is_apple_like_sni() {
     local sni="${1,,}"
@@ -1149,17 +1362,23 @@ clear_abox_env_vars() {
     unset HY2_HOP HY2_HOP_IMPL HY2_MONITOR_PORT HY2_ACME_TYPE HY2_ACME_DNS_PROVIDER HY2_ACME_DNS_CF_API_TOKEN
     unset HY2_URI_PORTS HY2_CLASH_PORTS HY2_SB_PORTS HY2_RANGE_START HY2_RANGE_END INGRESS_IF ENABLE_KEEPALIVE
     unset TRAFFIC_LIMIT_GB TRAFFIC_LIMIT_MODE
+    unset SOCKS_PORT SOCKS_USER SOCKS_PASS SOCKS_PROTO
 }
 
 validate_abox_env_semantics() {
     local p value
-    [[ "${CORE:-}" =~ ^(xray|singbox|hysteria)$ ]] || return 1
-    [[ "${MODE:-}" =~ ^(VISION|XHTTP|SS|ALL|VLESS_SS|HY2)$ ]] || return 1
-    case "${CORE}:${MODE}" in
-        xray:VISION|xray:XHTTP|xray:SS|xray:ALL|xray:VLESS_SS|singbox:VISION|singbox:SS|singbox:VLESS_SS|singbox:HY2|singbox:ALL|hysteria:HY2) ;;
-        *) return 1 ;;
-    esac
-    for p in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT HY2_MONITOR_PORT HY2_RANGE_START HY2_RANGE_END; do
+    # Pre-deployment state (e.g. traffic limit set before any protocol is
+    # deployed) has neither CORE nor MODE; accept it. A half-present pair
+    # (one set, one empty/mismatched) is still rejected as corrupt.
+    if [[ -n "${CORE:-}${MODE:-}" ]]; then
+        [[ "${CORE:-}" =~ ^(xray|singbox|hysteria)$ ]] || return 1
+        [[ "${MODE:-}" =~ ^(VISION|XHTTP|SS|ALL|VLESS_SS|HY2|SOCKS)$ ]] || return 1
+        case "${CORE}:${MODE}" in
+            xray:VISION|xray:XHTTP|xray:SS|xray:ALL|xray:VLESS_SS|xray:SOCKS|singbox:VISION|singbox:SS|singbox:VLESS_SS|singbox:HY2|singbox:ALL|singbox:SOCKS|hysteria:HY2) ;;
+            *) return 1 ;;
+        esac
+    fi
+    for p in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT HY2_MONITOR_PORT HY2_RANGE_START HY2_RANGE_END SOCKS_PORT; do
         value=${!p:-}
         [[ -z "$value" ]] || valid_canonical_port "$value" || return 1
     done
@@ -1220,6 +1439,19 @@ validate_abox_env_semantics() {
     [[ -z "${HY2_PASS:-}" ]] || valid_single_line_secret "$HY2_PASS" 512 || return 1
     [[ -z "${HY2_OBFS:-}" ]] || valid_single_line_secret "$HY2_OBFS" 512 || return 1
     [[ -z "${SS_PASS:-}" ]] || valid_single_line_secret "$SS_PASS" 512 || return 1
+    # SOCKS5: validate port/user/pass/proto when enabled.
+    if [[ -n "${SOCKS_PORT:-}" ]]; then
+        valid_canonical_port "$SOCKS_PORT" || return 1
+        [[ -n "${SOCKS_USER:-}" ]] || return 1
+        valid_single_line_secret "$SOCKS_USER" 64 || return 1
+        [[ -n "${SOCKS_PASS:-}" ]] || return 1
+        valid_single_line_secret "$SOCKS_PASS" 128 || return 1
+        [[ "${SOCKS_PROTO:-socks}" =~ ^(socks|mixed)$ ]] || return 1
+        [[ "$SOCKS_PORT" != "${VLESS_PORT:-}" && "$SOCKS_PORT" != "${SS_PORT:-}" && "$SOCKS_PORT" != "${HY2_BASE_PORT:-}" && "$SOCKS_PORT" != "10085" ]] || return 1
+    fi
+    if [[ "${MODE:-}" == "SOCKS" && -z "${SOCKS_PORT:-}" ]]; then
+        return 1
+    fi
 }
 
 load_abox_env() {
@@ -1252,7 +1484,7 @@ allowed = {
     "HY2_ACME_DNS_CF_API_TOKEN", "HY2_URI_PORTS", "HY2_CLASH_PORTS",
     "HY2_SB_PORTS", "HY2_RANGE_START", "HY2_RANGE_END", "INGRESS_IF",
     "ENABLE_KEEPALIVE", "TRAFFIC_LIMIT_GB", "TRAFFIC_LIMIT_MODE",
-    "SS_WHITELIST_IP",
+    "SS_WHITELIST_IP", "SOCKS_PORT", "SOCKS_USER", "SOCKS_PASS", "SOCKS_PROTO",
 }
 seen = set()
 with open(sys.argv[1], "r", encoding="utf-8", errors="strict") as handle:
@@ -2883,12 +3115,22 @@ build_status_str() {
             *) unknown=1 ;;
         esac
     done
+    # Menu target look (2026-10-19): stack-state words follow UI language.
+    local _w_stopped _w_unknown _w_svc_unknown
+    case "${ABOX_LANG:-zh}" in
+        en)    _w_stopped='Stopped';              _w_unknown='State Unknown';          _w_svc_unknown='Service State Unknown' ;;
+        ru)    _w_stopped='Остановлен';            _w_unknown='Состояние неизвестно';   _w_svc_unknown='Состояние служб неизвестно' ;;
+        fa)    _w_stopped='متوقف';                 _w_unknown='وضعیت نامشخص';            _w_svc_unknown='وضعیت سرویس نامشخص' ;;
+        zh-tw) _w_stopped='已停止';                _w_unknown='狀態未知';                _w_svc_unknown='服務狀態未知' ;;
+        ja)    _w_stopped='停止中';                _w_unknown='状態不明';                _w_svc_unknown='サービス状態不明' ;;
+        *)     _w_stopped='已停止';                _w_unknown='状态未知';                _w_svc_unknown='服务状态未知' ;;
+    esac
     if [[ -n "$status_str" ]]; then
-        (( unknown == 1 )) && status_str+="${YELLOW}State Unknown${NC} "
+        (( unknown == 1 )) && status_str+="${YELLOW}${_w_unknown}${NC} "
     elif (( unknown == 1 )); then
-        status_str="${YELLOW}Service State Unknown${NC}"
+        status_str="${YELLOW}${_w_svc_unknown}${NC}"
     else
-        status_str="${RED}Stack Stopped${NC}"
+        status_str="${RED}${_w_stopped}${NC}"
     fi
     printf '%s' "$status_str"
 }
@@ -6232,9 +6474,14 @@ set_traffic_block_period() {
 
 clear_traffic_block_period() {
     local state pair_fields
-    # B-03 fix: if the block file is absent AND the pair state is unreadable/
-    # corrupt, that is an error, not "nothing to clean". Do not return success.
+    # B-03 fix: if the block file is absent AND the pair state exists but is
+    # unreadable/corrupt, that is an error, not "nothing to clean".
+    # If neither file ever existed (fresh box / never configured), there is
+    # genuinely nothing to clean.
     if [[ ! -e "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]]; then
+        if [[ ! -e "$ABOX_TRAFFIC_PAIR_STATE" && ! -L "$ABOX_TRAFFIC_PAIR_STATE" ]]; then
+            return 0
+        fi
         if ! pair_fields=$(read_traffic_pair_fields 2>/dev/null); then
             msg "${RED}[!] Traffic pair state is unreadable or corrupt; refusing to treat as clean.${NC}" >&2
             return 1
@@ -6271,6 +6518,13 @@ remove_owned_runtime_helper() {
 
 update_traffic_state_atomically() {
     local limit="${1:-}" mode="${2:-}" tmp
+    # Fresh boxes may have no .env yet (no deployment); create it securely
+    # so a traffic limit can be set standalone.
+    if [[ ! -e "$ABOX_ENV" && ! -L "$ABOX_ENV" ]]; then
+        ensure_abox_dir_owned "$ABOX_DIR" >/dev/null 2>&1 || return 1
+        install -m 600 /dev/null "$ABOX_ENV" || return 1
+        if [[ $EUID -eq 0 ]]; then chown root:root "$ABOX_ENV" || { rm -f -- "$ABOX_ENV"; return 1; }; fi
+    fi
     validate_abox_env_file_for_write || return 1
     ensure_abox_dir_owned "$ABOX_DIR" >/dev/null 2>&1 || return 1
     tmp=$(mktemp "$ABOX_DIR/.env.A-Box-update.XXXXXX") || return 1
@@ -6292,6 +6546,7 @@ reset_protocol_vars() {
     unset HY2_CERT_SHA256_FP HY2_CERT_PUBKEY_SHA256_B64 HY2_HOP HY2_HOP_IMPL HY2_MONITOR_PORT
     unset HY2_ACME_TYPE HY2_ACME_DNS_PROVIDER HY2_ACME_DNS_CF_API_TOKEN
     unset HY2_URI_PORTS HY2_CLASH_PORTS HY2_SB_PORTS HY2_RANGE_START HY2_RANGE_END ENABLE_KEEPALIVE
+    unset SOCKS_PORT SOCKS_USER SOCKS_PASS SOCKS_PROTO
 }
 
 path_parent_chain_safe() {
@@ -6367,6 +6622,10 @@ write_env() {
         printf 'HY2_MASQ_URL=%s\n' "$(shell_quote "${HY2_MASQ_URL:-}")"
         printf 'SS_PORT=%s\n' "$(shell_quote "${SS_PORT:-}")"
         printf 'SS_WHITELIST_IP=%s\n' "$(shell_quote "${SS_WHITELIST_IP:-}")"
+        printf 'SOCKS_PORT=%s\n' "$(shell_quote "${SOCKS_PORT:-}")"
+        printf 'SOCKS_USER=%s\n' "$(shell_quote "${SOCKS_USER:-}")"
+        printf 'SOCKS_PASS=%s\n' "$(shell_quote "${SOCKS_PASS:-}")"
+        printf 'SOCKS_PROTO=%s\n' "$(shell_quote "${SOCKS_PROTO:-}")"
         printf 'PUBLIC_KEY=%s\n' "$(shell_quote "${PUBLIC_KEY:-${PBK:-}}")"
         printf 'SHORT_ID=%s\n' "$(shell_quote "${SHORT_ID:-}")"
         printf 'HY2_PASS=%s\n' "$(shell_quote "${HY2_PASS:-}")"
@@ -6646,6 +6905,7 @@ EOF_F2B_FILTER
         [[ -n "${VLESS_PORT:-}" ]] && tcp_ports+="${VLESS_PORT},"
         [[ -n "${XHTTP_PORT:-}" ]] && tcp_ports+="${XHTTP_PORT},"
         [[ -n "${SS_PORT:-}" ]] && { tcp_ports+="${SS_PORT},"; udp_ports+="${SS_PORT},"; }
+        [[ -n "${SOCKS_PORT:-}" ]] && { tcp_ports+="${SOCKS_PORT},"; udp_ports+="${SOCKS_PORT},"; }
         if [[ "${HY2_HOP:-}" == true && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" ]]; then
             # P2-2: manual hop REDIRECTs to HY2_BASE_PORT in PREROUTING, so Fail2Ban
             # must monitor HY2_BASE_PORT in INPUT chain, not just the hop range.
@@ -6822,7 +7082,7 @@ load_state() {
     parsed=$(umask 077; mktemp /tmp/A-Box-helper-env.XXXXXX) || return 1
     if ! python3 - "$ENV" > "$parsed" <<'PY_HELPER_ENV'; then
 import shlex,sys
-allowed={"CORE","MODE","VLESS_PORT","XHTTP_PORT","HY2_BASE_PORT","HY2_MONITOR_PORT","HY2_HOP","HY2_HOP_IMPL","HY2_RANGE_START","HY2_RANGE_END","INGRESS_IF","SS_PORT","TRAFFIC_LIMIT_GB","TRAFFIC_LIMIT_MODE"}
+allowed={"CORE","MODE","VLESS_PORT","XHTTP_PORT","HY2_BASE_PORT","HY2_MONITOR_PORT","HY2_HOP","HY2_HOP_IMPL","HY2_RANGE_START","HY2_RANGE_END","INGRESS_IF","SS_PORT","TRAFFIC_LIMIT_GB","TRAFFIC_LIMIT_MODE","SOCKS_PORT"}
 seen=set()
 with open(sys.argv[1],encoding="utf-8",errors="strict") as h:
     for raw in h:
@@ -6994,6 +7254,9 @@ fi
 if [[ -z "$failed_srv" && -n "${SS_PORT:-}" ]]; then
     check_socket_or_fail tcp "$SS_PORT" "$MAIN_PID" "$MAIN_SRV"
     [[ -z "$failed_srv" ]] && check_socket_or_fail udp "$SS_PORT" "$MAIN_PID" "$MAIN_SRV"
+fi
+if [[ -z "$failed_srv" && -n "${SOCKS_PORT:-}" ]]; then
+    check_socket_or_fail tcp "$SOCKS_PORT" "$MAIN_PID" "$MAIN_SRV"
 fi
 if [[ -z "$failed_srv" ]]; then rm -f "$STATE"; exit 0; fi
 count=0; last=0
@@ -7351,7 +7614,7 @@ pre_install_setup() {
             msg "${BOLD}参数构造向导 [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
             ;;
     esac
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
 
     if [[ "$HAS_VISION" == 'true' ]]; then
         VLESS_PORT=$(prompt_port_input "$L_VISION" "$DEF_V_PORT") || die '监听端口输入已结束 / Port input closed.'
@@ -7734,18 +7997,134 @@ build_xray_config() {
     [[ -d "$out_dir" ]] || install -d -m 755 -- "$out_dir" || die 'Xray 配置目录创建失败。'
     tmp_out=$(mktemp "$out_dir/.A-Box-xray-config.XXXXXX") || die 'Xray 配置临时文件创建失败。'
     umask 077
+    # XRAY-API (Version A experiment): gRPC control plane for hot-reload.
+    # SECURITY: the API has NO authentication. listen is hardcoded to 127.0.0.1
+    # and NEVER derived from wildcard_listen_address (which may be 0.0.0.0/::).
+    # Binding it to anything but loopback would expose full config control.
     jq -n --argjson inbounds "$inbounds_json" '{
         log:{loglevel:"warning", access:"/var/log/A-Box-xray-access.log", error:"/var/log/A-Box-xray-error.log"},
+        api:{tag:"api", services:["HandlerService","LoggerService","StatsService"]},
         routing:{domainStrategy:"IPIfNonMatch", rules:[
+            {type:"field", inboundTag:["api"], outboundTag:"api"},
             {type:"field", protocol:["bittorrent"], outboundTag:"block"},
             {type:"field", domain:["geosite:category-ads-all"], outboundTag:"block"}
         ]},
-        inbounds:$inbounds,
-        outbounds:[{protocol:"freedom", tag:"direct"}, {protocol:"blackhole", tag:"block"}]
+        inbounds:([{listen:"127.0.0.1", port:10085, protocol:"dokodemo-door", settings:{address:"127.0.0.1"}, tag:"api"}] + $inbounds),
+        outbounds:[{protocol:"freedom", tag:"direct"}, {protocol:"blackhole", tag:"block"}, {protocol:"freedom", tag:"api"}]
     }' > "$tmp_out" || { rm -f "$tmp_out"; die 'Xray JSON 生成失败。'; }
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die 'Xray 配置权限设置失败。'; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
     mv -f "$tmp_out" "$out" || { rm -f "$tmp_out"; die 'Xray 配置原子提交失败。'; }
+}
+
+# ============ Xray API hot-reload (Version A experiment, 233boy style) ============
+# Control plane: 127.0.0.1:10085 ONLY. The gRPC API has no authentication, so the
+# address is a hardcoded constant here and in build_xray_config -- never derived
+# from wildcard_listen_address, never 0.0.0.0, never ::.
+XRAY_API_SERVER='127.0.0.1:10085'
+XRAY_API_PORT='10085'
+
+# Returns 0 if the Xray API endpoint answers on loopback.
+xray_api_available() {
+    [[ -x /usr/local/bin/xray ]] || return 1
+    is_service_running xray 2>/dev/null || return 1
+    local pid
+    pid=$(managed_service_pid xray 2>/dev/null || true)
+    pid=${pid%%$'\n'*}
+    [[ -n "$pid" ]] || return 1
+    if command -v ss >/dev/null 2>&1; then
+        ss -tlnp 2>/dev/null | grep -qE ":${XRAY_API_PORT}[[:space:]].*pid=${pid},"
+        return $?
+    fi
+    # Loopback-only TCP probe; never touches the network.
+    (exec 3<>/dev/tcp/127.0.0.1/10085) >/dev/null 2>&1 || return 1
+    exec 3<&- 3>&- 2>/dev/null || true
+    return 0
+}
+
+# Low-level: push ONE inbound object to the running Xray via gRPC API.
+# $1 = path to a JSON file containing a single inbound OBJECT (not an array).
+# Prints nothing; returns 0 on success, 1 on failure (caller falls back).
+xray_api_add_inbound() {
+    local json_file="$1"
+    [[ -n "$json_file" && -f "$json_file" && ! -L "$json_file" ]] || return 1
+    [[ -x /usr/local/bin/xray ]] || return 1
+    # The object must carry a usable, non-reserved tag.
+    local tag
+    tag=$(jq -r '.tag // empty' "$json_file" 2>/dev/null) || return 1
+    [[ -n "$tag" && "$tag" != 'api' ]] || return 1
+    /usr/local/bin/xray api --server "$XRAY_API_SERVER" addinbound < "$json_file" >/dev/null 2>&1
+}
+
+# Low-level: remove an inbound from the running Xray by tag via gRPC API.
+# $1 = inbound tag. The built-in "api" tag is protected and always refused.
+xray_api_remove_inbound() {
+    local tag="$1"
+    [[ -n "$tag" && "$tag" != 'api' ]] || return 1
+    [[ -x /usr/local/bin/xray ]] || return 1
+    /usr/local/bin/xray api --server "$XRAY_API_SERVER" delinbound --tag "$tag" >/dev/null 2>&1
+}
+
+# High-level: persist a new inbound to disk config AND hot-push it via API.
+# $1 = path to a JSON file with one inbound object.
+# Fallback: if the API push fails, restart_service_soft picks up the persisted
+# config, so the change is never lost and existing behavior is preserved.
+xray_hot_add_inbound() {
+    local json_file="$1" cfg='/usr/local/etc/xray/config.json' tmp tag
+    [[ -n "$json_file" && -f "$json_file" && ! -L "$json_file" ]] || return 1
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    tag=$(jq -r '.tag // empty' "$json_file" 2>/dev/null) || return 1
+    [[ -n "$tag" && "$tag" != 'api' ]] || return 1
+    if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        return 1  # duplicate tag already persisted
+    fi
+    tmp=$(mktemp /tmp/A-Box-xray-hotadd.XXXXXX) || return 1
+    if ! jq --slurpfile nb "$json_file" '.inbounds += $nb' "$cfg" > "$tmp" 2>/dev/null; then
+        rm -f "$tmp"; return 1
+    fi
+    jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+    if [[ -x /usr/local/bin/xray ]]; then
+        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+    fi
+    install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
+    prepare_abox_runtime_permissions xray 2>/dev/null || true
+    rm -f "$tmp"
+    # Hot path first: no connection drop. Fallback: restart (old behavior).
+    if xray_api_available && xray_api_add_inbound "$json_file"; then
+        return 0
+    fi
+    restart_service_soft xray
+}
+
+# High-level: remove an inbound from disk config AND from the running Xray.
+# $1 = inbound tag (never "api").
+# Fallback: if the API call fails, restart_service_soft picks up the persisted
+# config, so the change is never lost and existing behavior is preserved.
+xray_hot_remove_inbound() {
+    local tag="$1"
+    local cfg='/usr/local/etc/xray/config.json' tmp
+    [[ -n "$tag" && "$tag" != 'api' ]] || return 1
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    # Skip if tag not in config (avoid unnecessary restart)
+    if ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        xray_api_available && xray_api_remove_inbound "$tag" || true
+        return 0
+    fi
+    tmp=$(mktemp /tmp/A-Box-xray-hotdel.XXXXXX) || return 1
+    if ! jq --arg t "$tag" '.inbounds |= map(select(.tag != $t))' "$cfg" > "$tmp" 2>/dev/null; then
+        rm -f "$tmp"; return 1
+    fi
+    jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+    if [[ -x /usr/local/bin/xray ]]; then
+        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+    fi
+    install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
+    prepare_abox_runtime_permissions xray 2>/dev/null || true
+    rm -f "$tmp"
+    if xray_api_available && xray_api_remove_inbound "$tag"; then
+        return 0
+    fi
+    restart_service_soft xray
 }
 
 build_singbox_config() {
@@ -8305,6 +8684,627 @@ parse_x25519_keypair_output() {
 }
 
 
+# SOCKS5 landing proxy via Xray-core.
+# Setup SOCKS5 params (port/user/pass/proto). Used by SS-2022 wizard and toolbox.
+# Sets SOCKS_PORT, SOCKS_USER, SOCKS_PASS, SOCKS_PROTO globals.
+setup_socks5_params() {
+    local default_port
+    default_port=$(shuf -i 20000-55000 -n 1 2>/dev/null || echo 20808)
+    local _tries=0
+    while ! is_test port "$default_port" 2>/dev/null || [[ "$default_port" == "${SS_PORT:-}" || "$default_port" == "${VLESS_PORT:-}" || "$default_port" == "10085" ]]; do
+        default_port=$(shuf -i 20000-55000 -n 1 2>/dev/null || echo 20808)
+        _tries=$((_tries + 1))
+        [[ $_tries -gt 20 ]] && break
+    done
+    SOCKS_PORT=$(prompt_validated "$(tr_msg socks5_port_prompt 2>/dev/null || echo 'SOCKS5 port'); [${default_port}]: " port "$default_port") || return 1
+    SOCKS_USER="abox_$(head -c 32 /dev/urandom 2>/dev/null | tr -dc 'a-z0-9' | head -c 6)"
+    [[ -n "$SOCKS_USER" ]] || SOCKS_USER="abox_user"
+    SOCKS_PASS="$(head -c 64 /dev/urandom 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 16)"
+    [[ -n "$SOCKS_PASS" ]] || SOCKS_PASS="abox_pass_123456"
+    if [[ "${CORE:-singbox}" == "singbox" ]]; then
+        SOCKS_PROTO="mixed"
+    else
+        SOCKS_PROTO="socks"
+    fi
+}
+
+# Interactive: port (default 1080), username (default abox), password (default random).
+# If Xray is already installed, the socks5-landing inbound is added/updated via
+# xray_hot_add_inbound (hot-push when the API is available, restart fallback).
+# Otherwise a minimal Xray install (binary + config + systemd unit) is performed.
+# Interactive: port (default 1080), username (default abox), password (default random).
+# If Xray is already installed, the socks5-landing inbound is added/updated via
+# xray_hot_add_inbound (hot-push when the API is available, restart fallback).
+# Otherwise a minimal Xray install (binary + config + systemd unit) is performed.
+# sing-box variant: uses type "mixed" (default, SOCKS5+HTTP auto-detect) or "socks".
+# No API hot-push on sing-box: config rewrite + `sing-box check` + service restart.
+deploy_singbox_socks5_landing() {
+    local port user pass proto cfg='/etc/sing-box/config.json'
+    local tag='socks5-landing' tmp_json
+    clear; msg "${BOLD}${GREEN}$(tr_msg socks5_sb_title)${NC}"
+    init_system_environment
+    load_optional_abox_env_or_die
+    light_preflight_check
+
+    port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080') || die 'SOCKS5 port input failed.'
+    read -r -p "$(tr_msg socks5_user_prompt)" user || user=''
+    user="${user:-abox}"
+    read -r -p "$(tr_msg socks5_pass_prompt)" pass || pass=''
+    if [[ -z "$pass" ]]; then
+        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'SOCKS5 password generation failed.'
+        [[ -n "$pass" ]] || die 'SOCKS5 password generation failed.'
+    fi
+    local _proto_choice=''
+    read -r -p "$(tr_msg socks5_proto_prompt)" _proto_choice || _proto_choice=''
+    case "$_proto_choice" in
+        2) proto='socks' ;;
+        *) proto='mixed' ;;
+    esac
+
+    # Minimal sing-box install when the binary is missing.
+    if [[ ! -x /usr/local/bin/sing-box ]]; then
+        local sb_tmp sb_tar sb_ext SB_PATH
+        get_architecture
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-socks5.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tar="$sb_tmp/singbox_core.tar.gz"
+        sb_ext="$sb_tmp/extract"
+        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        clear_core_release_resolution SagerNet/sing-box
+        fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
+        SB_PATH="$sb_ext/sing-box"
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        rm -rf -- "$sb_tmp"
+        # Seed a minimal config shell; the socks/mixed inbound is appended below.
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die 'Sing-box 初始配置生成失败。'
+        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+        rm -f "$tmp_json"
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+# Managed by A-Box
+[Unit]
+Description=A-Box Sing-Box Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-singbox
+Group=abox-singbox
+UMask=0077
+ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        else
+            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
+            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+rc_ulimit="-n 1048576"
+EOF_SB_CONFD
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Sing-Box Service"
+command="/usr/local/bin/sing-box"
+command_args="run -c /etc/sing-box/config.json"
+command_background="yes"
+command_user="abox-singbox:abox-singbox"
+umask=077
+pidfile="/run/sing-box.pid"
+depend() { need net; }
+EOF_SVC
+            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+        fi
+        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+    fi
+
+    # Build the socks/mixed inbound object.
+    tmp_json=$(mktemp /tmp/A-Box-singbox-socks5-inbound.XXXXXX) || die '临时文件创建失败。'
+    jq -n --argjson port "$port" --arg proto "$proto" --arg user "$user" --arg pass "$pass" \
+        '{type:$proto,tag:"socks5-landing",listen:"0.0.0.0",listen_port:$port,
+          users:[{username:$user,password:$pass}]}' \
+        > "$tmp_json" || die 'SOCKS5 inbound JSON 生成失败。'
+
+    # Replace in place if the tag exists; otherwise append. No API: restart after check.
+    local tmp_cfg
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
+    fi
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    if ! jq --slurpfile nb "$tmp_json" \
+            '(.inbounds | map(select(.tag=="socks5-landing"))) as $old
+             | .inbounds |= (map(select(.tag!="socks5-landing")) + $nb)' \
+            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+        rm -f "$tmp_cfg" "$tmp_json"; die 'SOCKS5 inbound 配置更新失败。'
+    fi
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
+        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+    rm -f "$tmp_cfg" "$tmp_json"
+    prepare_abox_runtime_permissions sing-box 2>/dev/null || true
+    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+
+    # Firewall: TCP + UDP.
+    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    allowPort "$port" udp || die "防火墙放行失败: ${port}/udp"
+    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+
+    # Ensure the service is running (minimal-install path).
+    service_manager start sing-box 2>/dev/null || true
+    set_desired_state RUNNING 2>/dev/null || true
+
+    local pub_ip
+    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
+    msg "${GREEN}$(tr_msg socks5_done)${NC}"
+    if [[ "$proto" == "mixed" ]]; then
+        msg "mixed://${user}:${pass}@${pub_ip}:${port} (SOCKS5+HTTP)"
+    else
+        msg "socks5://${user}:${pass}@${pub_ip}:${port}"
+    fi
+    if [[ "$proto" == "mixed" ]]; then
+        generate_qr "mixed://${user}:${pass}@${pub_ip}:${port}"
+    else
+        generate_qr "socks5://${user}:${pass}@${pub_ip}:${port}"
+    fi
+}
+
+# Standalone Trojan-Reality via Xray-core (toolbox entry).
+# Reuses A-Box Reality key/SNI flow: xray x25519 + sni_auto_select_default.
+# Tag: trojan-landing. Hot-push via API when available, restart fallback.
+deploy_xray_trojan_landing() {
+    local port pass sni pk pbk sid cfg='/usr/local/etc/xray/config.json'
+    local tag='trojan-landing' tmp_json
+    clear; msg "${BOLD}${GREEN}$(tr_msg trojan_title)${NC}"
+    init_system_environment
+    load_optional_abox_env_or_die
+    light_preflight_check
+
+    port=$(prompt_validated "$(tr_msg trojan_port_prompt)" port '443') || die 'Trojan port input failed.'
+    read -r -p "$(tr_msg trojan_pass_prompt)" pass || pass=''
+    if [[ -z "$pass" ]]; then
+        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'Trojan password generation failed.'
+        [[ -n "$pass" ]] || die 'Trojan password generation failed.'
+    fi
+
+    # Minimal Xray install when the binary is missing (mirror SOCKS5 flow).
+    if [[ ! -x /usr/local/bin/xray ]]; then
+        local xray_tmp xray_zip xray_ext
+        get_architecture
+        xray_tmp=$(mktemp -d /tmp/A-Box-xray-trojan.XXXXXX) || die 'Xray 临时目录创建失败。'
+        xray_zip="$xray_tmp/xray_core.zip"
+        xray_ext="$xray_tmp/xray_ext"
+        mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
+        clear_core_release_resolution XTLS/Xray-core
+        fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
+        extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die 'Xray 压缩包安全提取失败。'
+        [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die '安全提取后未找到 xray 主程序。'
+        chmod 755 "$xray_ext/xray" || die 'Xray staged binary chmod failed.'
+        "$xray_ext/xray" version >/dev/null 2>&1 || die 'Xray staged binary execution check failed.'
+        install_binary_atomically "$xray_ext/xray" /usr/local/bin/xray || die 'Xray binary atomic install failed.'
+        /usr/local/bin/xray version >/dev/null 2>&1 || die 'Xray 执行校验失败。'
+        prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
+        rm -rf -- "$xray_tmp"
+        tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{loglevel:"warning"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
+            || die 'Xray 初始配置生成失败。'
+        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Xray config 原子写入失败。'
+        rm -f "$tmp_json"
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die 'Xray systemd unit 原子写入失败。'
+# Managed by A-Box
+[Unit]
+Description=A-Box Xray Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-xray
+Group=abox-xray
+UMask=0077
+Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        else
+            path_parent_chain_safe /etc/conf.d/xray || die 'OpenRC conf.d 父链不安全。'
+            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+            write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die 'Xray OpenRC conf.d 原子写入失败。'
+export XRAY_LOCATION_ASSET="/usr/local/share/xray"
+EOF_XRAY_CONFD
+            write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die 'Xray OpenRC unit 原子写入失败。'
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Xray Service"
+command="/usr/local/bin/xray"
+command_args="run -config /usr/local/etc/xray/config.json"
+command_background="yes"
+command_user="abox-xray:abox-xray"
+capabilities="cap_net_bind_service"
+umask=077
+pidfile="/run/xray.pid"
+depend() { need net; }
+EOF_SVC
+            chmod +x /etc/init.d/xray || die 'Xray OpenRC 服务权限设置失败。'
+        fi
+        prepare_abox_runtime_permissions xray || die 'Xray 运行时用户/文件权限准备失败。'
+    fi
+
+    # Reality keypair + SNI (reuse A-Box flow).
+    local keypair
+    keypair=$(/usr/local/bin/xray x25519) || die 'Xray REALITY 密钥对生成失败。'
+    IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die 'Xray REALITY 密钥解析失败。'
+    [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die 'Xray REALITY 密钥为空。'
+    sid=$(openssl rand -hex 4 | tr -d '\n\r') || die 'shortId 生成失败。'
+    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
+    [[ -n "$sni" ]] || sni='www.amazon.com'
+
+    # Build the trojan+reality inbound object (A-Box realitySettings format).
+    tmp_json=$(mktemp /tmp/A-Box-trojan-inbound.XXXXXX) || die '临时文件创建失败。'
+    jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" \
+        --arg pk "$pk" --arg sid "$sid" \
+        '{tag:"trojan-landing",port:$port,listen:"0.0.0.0",protocol:"trojan",
+          settings:{clients:[{password:$pass}]},
+          streamSettings:{network:"tcp",security:"reality",
+            realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}}}' \
+        > "$tmp_json" || die 'Trojan inbound JSON 生成失败。'
+
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        local tmp_cfg
+        msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
+        tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die '临时文件创建失败。'
+        if ! jq --slurpfile nb "$tmp_json" \
+                '(.inbounds | map(select(.tag=="trojan-landing"))) as $old
+                 | .inbounds |= (map(select(.tag!="trojan-landing")) + $nb)' \
+                "$cfg" > "$tmp_cfg" 2>/dev/null; then
+            rm -f "$tmp_cfg" "$tmp_json"; die 'Trojan inbound 配置更新失败。'
+        fi
+        jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray JSON 格式非法。'; }
+        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" >/dev/null 2>&1 \
+            || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray 配置校验失败。'; }
+        install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray config 原子写入失败。'; }
+        rm -f "$tmp_cfg"
+        prepare_abox_runtime_permissions xray 2>/dev/null || true
+        restart_service_soft xray || die 'Xray 服务重启失败。'
+    else
+        xray_hot_add_inbound "$tmp_json" || die 'Trojan inbound 添加失败。'
+    fi
+    rm -f "$tmp_json"
+
+    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    service_manager start xray 2>/dev/null || true
+    set_desired_state RUNNING 2>/dev/null || true
+
+    local pub_ip
+    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
+    msg "${GREEN}$(tr_msg trojan_done)${NC}"
+    msg "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    generate_qr "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+}
+
+# Standalone Trojan-Reality via sing-box (toolbox entry).
+# Mirrors the Xray flow; no API hot-push: config rewrite + `sing-box check` + restart.
+deploy_singbox_trojan_landing() {
+    local port pass sni pk pbk sid cfg='/etc/sing-box/config.json'
+    local tag='trojan-landing' tmp_json
+    clear; msg "${BOLD}${GREEN}$(tr_msg trojan_sb_title)${NC}"
+    init_system_environment
+    load_optional_abox_env_or_die
+    light_preflight_check
+
+    port=$(prompt_validated "$(tr_msg trojan_port_prompt)" port '443') || die 'Trojan port input failed.'
+    read -r -p "$(tr_msg trojan_pass_prompt)" pass || pass=''
+    if [[ -z "$pass" ]]; then
+        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'Trojan password generation failed.'
+        [[ -n "$pass" ]] || die 'Trojan password generation failed.'
+    fi
+
+    # Minimal sing-box install when the binary is missing.
+    if [[ ! -x /usr/local/bin/sing-box ]]; then
+        local sb_tmp sb_tar sb_ext SB_PATH
+        get_architecture
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-trojan.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tar="$sb_tmp/singbox_core.tar.gz"
+        sb_ext="$sb_tmp/extract"
+        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        clear_core_release_resolution SagerNet/sing-box
+        fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
+        SB_PATH="$sb_ext/sing-box"
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        rm -rf -- "$sb_tmp"
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die 'Sing-box 初始配置生成失败。'
+        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+        rm -f "$tmp_json"
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+# Managed by A-Box
+[Unit]
+Description=A-Box Sing-Box Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-singbox
+Group=abox-singbox
+UMask=0077
+ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        else
+            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
+            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+rc_ulimit="-n 1048576"
+EOF_SB_CONFD
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Sing-Box Service"
+command="/usr/local/bin/sing-box"
+command_args="run -c /etc/sing-box/config.json"
+command_background="yes"
+command_user="abox-singbox:abox-singbox"
+umask=077
+pidfile="/run/sing-box.pid"
+depend() { need net; }
+EOF_SVC
+            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+        fi
+        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+    fi
+
+    # Reality keypair + SNI (reuse A-Box flow).
+    local keypair
+    keypair=$(/usr/local/bin/sing-box generate reality-keypair) || die 'Sing-box REALITY 密钥对生成失败。'
+    IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die 'Sing-box REALITY 密钥解析失败。'
+    [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die 'Sing-box REALITY 密钥为空。'
+    sid=$(openssl rand -hex 4 | tr -d '\n\r') || die 'shortId 生成失败。'
+    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
+    [[ -n "$sni" ]] || sni='www.amazon.com'
+
+    # Build the trojan+reality inbound object.
+    tmp_json=$(mktemp /tmp/A-Box-sb-trojan-inbound.XXXXXX) || die '临时文件创建失败。'
+    jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" \
+        --arg pk "$pk" --arg sid "$sid" \
+        '{type:"trojan",tag:"trojan-landing",listen:"0.0.0.0",listen_port:$port,
+          users:[{password:$pass}],
+          tls:{enabled:true,server_name:$sni,
+            reality:{enabled:true,handshake:{server:$sni,server_port:443},private_key:$pk,short_id:[$sid]}}}' \
+        > "$tmp_json" || die 'Trojan inbound JSON 生成失败。'
+
+    local tmp_cfg
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
+    fi
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    if ! jq --slurpfile nb "$tmp_json" \
+            '(.inbounds | map(select(.tag=="trojan-landing"))) as $old
+             | .inbounds |= (map(select(.tag!="trojan-landing")) + $nb)' \
+            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+        rm -f "$tmp_cfg" "$tmp_json"; die 'Trojan inbound 配置更新失败。'
+    fi
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
+        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+    rm -f "$tmp_cfg" "$tmp_json"
+    prepare_abox_runtime_permissions sing-box 2>/dev/null || true
+    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+
+    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    service_manager start sing-box 2>/dev/null || true
+    set_desired_state RUNNING 2>/dev/null || true
+
+    local pub_ip
+    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
+    msg "${GREEN}$(tr_msg trojan_done)${NC}"
+    msg "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    generate_qr "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+}
+
+# Toolbox entry: standalone Trojan-Reality, free core choice.
+trojan_toolbox_entry() {
+    local _core_choice='' _default='1'
+    load_optional_abox_env_or_die 2>/dev/null || true
+    if [[ "${CORE:-}" == "singbox" ]]; then
+        _default='2'
+    fi
+    read -r -p "$(tr_msg trojan_core_prompt) [${_default}]: " _core_choice || _core_choice=''
+    _core_choice="${_core_choice:-$_default}"
+    case "$_core_choice" in
+        2) deploy_singbox_trojan_landing ;;
+        *) deploy_xray_trojan_landing ;;
+    esac
+}
+
+deploy_socks5_landing() {
+    local port user pass cfg='/usr/local/etc/xray/config.json'
+    local tag='socks5-landing' tmp_json inbound_json
+    clear; msg "${BOLD}${GREEN}$(tr_msg socks5_title)${NC}"
+    init_system_environment
+    load_optional_abox_env_or_die
+    light_preflight_check
+
+    port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080') || die 'SOCKS5 port input failed.'
+    read -r -p "$(tr_msg socks5_user_prompt)" user || user=''
+    user="${user:-abox}"
+    read -r -p "$(tr_msg socks5_pass_prompt)" pass || pass=''
+    if [[ -z "$pass" ]]; then
+        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'SOCKS5 password generation failed.'
+        [[ -n "$pass" ]] || die 'SOCKS5 password generation failed.'
+    fi
+
+    # Minimal Xray install when the binary is missing.
+    if [[ ! -x /usr/local/bin/xray ]]; then
+        local xray_tmp xray_zip xray_ext
+        get_architecture
+        xray_tmp=$(mktemp -d /tmp/A-Box-xray-socks5.XXXXXX) || die 'Xray 临时目录创建失败。'
+        xray_zip="$xray_tmp/xray_core.zip"
+        xray_ext="$xray_tmp/xray_ext"
+        mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
+        clear_core_release_resolution XTLS/Xray-core
+        fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
+        extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die 'Xray 压缩包安全提取失败。'
+        [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die '安全提取后未找到 xray 主程序。'
+        chmod 755 "$xray_ext/xray" || die 'Xray staged binary chmod failed.'
+        "$xray_ext/xray" version >/dev/null 2>&1 || die 'Xray staged binary execution check failed.'
+        install_binary_atomically "$xray_ext/xray" /usr/local/bin/xray || die 'Xray binary atomic install failed.'
+        /usr/local/bin/xray version >/dev/null 2>&1 || die 'Xray 执行校验失败。'
+        prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
+        rm -rf -- "$xray_tmp"
+        # Seed a minimal config shell; the socks inbound is appended below.
+        tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{loglevel:"warning"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
+            || die 'Xray 初始配置生成失败。'
+        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Xray config 原子写入失败。'
+        rm -f "$tmp_json"
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die 'Xray systemd unit 原子写入失败。'
+# Managed by A-Box
+[Unit]
+Description=A-Box Xray Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-xray
+Group=abox-xray
+UMask=0077
+Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        else
+            path_parent_chain_safe /etc/conf.d/xray || die 'OpenRC conf.d 父链不安全。'
+            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+            write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die 'Xray OpenRC conf.d 原子写入失败。'
+export XRAY_LOCATION_ASSET="/usr/local/share/xray"
+EOF_XRAY_CONFD
+            write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die 'Xray OpenRC unit 原子写入失败。'
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Xray Service"
+command="/usr/local/bin/xray"
+command_args="run -config /usr/local/etc/xray/config.json"
+command_background="yes"
+command_user="abox-xray:abox-xray"
+capabilities="cap_net_bind_service"
+umask=077
+pidfile="/run/xray.pid"
+depend() { need net; }
+EOF_SVC
+            chmod +x /etc/init.d/xray || die 'Xray OpenRC 服务权限设置失败。'
+        fi
+        prepare_abox_runtime_permissions xray || die 'Xray 运行时用户/文件权限准备失败。'
+    fi
+
+    # Build the socks inbound object.
+    tmp_json=$(mktemp /tmp/A-Box-socks5-inbound.XXXXXX) || die '临时文件创建失败。'
+    jq -n --argjson port "$port" --arg user "$user" --arg pass "$pass" \
+        '{tag:"socks5-landing",port:$port,listen:"0.0.0.0",protocol:"socks",
+          settings:{auth:"password",accounts:[{user:$user,pass:$pass}],udp:true,ip:"0.0.0.0"}}' \
+        > "$tmp_json" || die 'SOCKS5 inbound JSON 生成失败。'
+
+    # If the tag already exists, replace it in place; otherwise hot-add.
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        local tmp_cfg
+        msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
+        tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die '临时文件创建失败。'
+        if ! jq --slurpfile nb "$tmp_json" \
+                '(.inbounds | map(select(.tag=="socks5-landing"))) as $old
+                 | .inbounds |= (map(select(.tag!="socks5-landing")) + $nb)' \
+                "$cfg" > "$tmp_cfg" 2>/dev/null; then
+            rm -f "$tmp_cfg" "$tmp_json"; die 'SOCKS5 inbound 配置更新失败。'
+        fi
+        jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray JSON 格式非法。'; }
+        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" >/dev/null 2>&1 \
+            || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray 配置校验失败。'; }
+        install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray config 原子写入失败。'; }
+        rm -f "$tmp_cfg"
+        prepare_abox_runtime_permissions xray 2>/dev/null || true
+        restart_service_soft xray || die 'Xray 服务重启失败。'
+    else
+        xray_hot_add_inbound "$tmp_json" || die 'SOCKS5 inbound 添加失败。'
+    fi
+    rm -f "$tmp_json"
+
+    # Firewall: TCP + UDP.
+    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    allowPort "$port" udp || die "防火墙放行失败: ${port}/udp"
+    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+
+    # Ensure the service is running (minimal-install path or API-unavailable hosts).
+    service_manager start xray 2>/dev/null || true
+    set_desired_state RUNNING 2>/dev/null || true
+
+    local pub_ip
+    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
+    msg "${GREEN}$(tr_msg socks5_done)${NC}"
+    msg "socks5://${user}:${pass}@${pub_ip}:${port}"
+    generate_qr "socks5://${user}:${pass}@${pub_ip}:${port}"
+}
+
+
 deploy_xray() {
     local MODE_IN=$1 KEYPAIR
     clear; msg "${BOLD}${GREEN}部署 Xray-core [$MODE_IN]${NC}"
@@ -8675,7 +9675,7 @@ load_state() {
     if ! python3 - "$ENV" > "$parsed" <<'PY_HELPER_ENV'; then
 import shlex
 import sys
-allowed = {"CORE", "MODE", "VLESS_PORT", "XHTTP_PORT", "HY2_MONITOR_PORT", "HY2_HOP", "HY2_HOP_IMPL", "HY2_RANGE_START", "HY2_RANGE_END", "SS_PORT", "TRAFFIC_LIMIT_GB", "TRAFFIC_LIMIT_MODE", "INGRESS_IF"}
+allowed = {"CORE", "MODE", "VLESS_PORT", "XHTTP_PORT", "HY2_MONITOR_PORT", "HY2_HOP", "HY2_HOP_IMPL", "HY2_RANGE_START", "HY2_RANGE_END", "SS_PORT", "TRAFFIC_LIMIT_GB", "TRAFFIC_LIMIT_MODE", "INGRESS_IF", "SOCKS_PORT"}
 seen = set()
 with open(sys.argv[1], encoding="utf-8", errors="strict") as handle:
     for raw in handle:
@@ -9294,7 +10294,7 @@ capture_traffic_quota_expected_state() {
 }
 
 traffic_quota_transaction_rollback() {
-    local tx_dir="$1" rc=0 current_monitor='' expected_monitor='' pre_monitor=0 current_block='' expected_block='' cron_rc vnstat_state='' expected_vnstat='' current_state current_traffic_env current_vnstat
+    local tx_dir="$1" rc=0 current_monitor='' expected_monitor='' pre_monitor=0 current_block='' expected_block='' cron_rc=0 vnstat_state='' expected_vnstat='' current_state current_traffic_env current_vnstat
     [[ -d "$tx_dir" && ! -L "$tx_dir" ]] || return 2
 
     # Establish every expected post-state before changing anything. This prevents
@@ -9393,7 +10393,12 @@ traffic_quota_transaction_rollback() {
         local envtmp
         envtmp=$(mktemp "$ABOX_DIR/.env.A-Box-traffic-rollback.XXXXXX") || rc=1
         if (( rc == 0 )); then
-            awk '!/^TRAFFIC_LIMIT_(GB|MODE)=/' "$ABOX_ENV" > "$envtmp" || rc=1
+            # .env may not exist on fresh boxes; treat as empty in that case.
+            if [[ -f "$ABOX_ENV" && ! -L "$ABOX_ENV" ]]; then
+                awk '!/^TRAFFIC_LIMIT_(GB|MODE)=/' "$ABOX_ENV" > "$envtmp" || rc=1
+            else
+                : > "$envtmp" || rc=1
+            fi
             cat "$tx_dir/pre-traffic.env" >> "$envtmp" || rc=1
             chmod 600 "$envtmp" || rc=1
             (( rc == 0 )) && mv -f -- "$envtmp" "$ABOX_ENV" || rm -f -- "$envtmp"
@@ -9517,58 +10522,139 @@ start_services_for_traffic_unblock() {
     done <<< "$services"
 }
 
+# Traffic transaction failure: run the rollback hook (fail-closed), clean up the
+# die hook so a stale hook cannot fire later, show the error, and return to the
+# traffic menu instead of exiting the script. Must be followed by `continue`
+# (we are inside the menu's while loop).
+_traffic_txn_fail() {
+    local _rb_fn="$1" _oldhook_vn="$2" _reason="$3" _old=''
+    if declare -F "$_rb_fn" >/dev/null 2>&1; then
+        "$_rb_fn" "$_reason" || msg "${RED}[!] WARNING: rollback failed; manual recovery may be required.${NC}"
+    fi
+    unset ABOX_DIE_HOOK
+    _old="${!_oldhook_vn:-}"
+    if [[ -n "$_old" ]]; then ABOX_DIE_HOOK="$_old"; fi
+    ABOX_TRAFFIC_TX_DIR=''
+    msg "${RED}[!] $_reason${NC}"
+    pause_return
+}
+
+
 traffic_management_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     clear
     local INTERFACE limit_gb mode_choice previous_state
     load_optional_abox_env_or_die
     INTERFACE="${INGRESS_IF:-$(get_active_interface)}"
-    msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}每月流量管控限制 / Monthly Traffic Management Limit${NC}"
-    msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${CYAN}[截至当前 / Usage up to now]${NC}"
-    msg "${YELLOW}网卡 ${INTERFACE} · 本月累计（非秒级实时；数据来自 vnStat 当前统计周期）${NC}"
+    # Traffic dashboard (2026-10-19, per traffic-table.png): progress bar +
+    # clean monthly table instead of raw vnStat ASCII boxes.
+    local _tjson='' _tlimit="${TRAFFIC_LIMIT_GB:-}"
     if command -v vnstat >/dev/null 2>&1; then
-        # Prefer JSON one-shot for a clear rx/tx/total line when available.
-        if command -v jq >/dev/null 2>&1; then
-            if json=$(vnstat -i "$INTERFACE" --json m 1 2>/dev/null); then
-                python3 - "$json" <<'PY_TRAFFIC_NOW' 2>/dev/null || true
-import json,sys
+        _tjson=$(vnstat -i "$INTERFACE" --json m 2>/dev/null) || _tjson=''
+    fi
+    if [[ -n "$_tjson" ]]; then
+        python3 - "$_tjson" "$INTERFACE" "$_tlimit" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
+            msg "${YELLOW}[!] 流量数据解析失败。${NC}"
+import json, sys, unicodedata
+
+def dw(s):
+    return sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1 for c in s)
+
+def pad(s, w, right=False):
+    p = " " * max(0, w - dw(s))
+    return (p + s) if right else (s + p)
+
+def center(s, w=80):
+    return " " * max(0, (w - dw(s)) // 2) + s
+
+YELLOW = "\033[0;33m"; CYAN = "\033[0;36m"; GREEN = "\033[0;32m"
+RED = "\033[0;31m"; GRAY = "\033[0;37m"; BLUE = "\033[0;34m"
+BOLD = "\033[1m"; NC = "\033[0m"
+BAR = "─" * 80
+GIB = 1073741824
+
+raw, iface, limit_s = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
-    data=json.loads(sys.argv[1])
-    iface=(data.get("interfaces") or [{}])[0]
-    traffic=((iface.get("traffic") or {}).get("month") or [{}])[0]
-    rx=int(traffic.get("rx",0)); tx=int(traffic.get("tx",0))
-    def hum(n):
-        for u in ("B","KiB","MiB","GiB","TiB"):
-            if n<1024 or u=="TiB":
-                return f"{n:.2f} {u}" if u!="B" else f"{n} B"
-            n/=1024
-        return str(n)
-    print(f"  RX={hum(rx)}  TX={hum(tx)}  TOTAL={hum(rx+tx)}")
-    y,m=traffic.get("date",{}).get("year"), traffic.get("date",{}).get("month")
-    if y and m: print(f"  Period: {y}-{int(m):02d} (month-to-date)")
+    limit_gb = float(limit_s)
+except (ValueError, TypeError):
+    limit_gb = 0.0
+
+def fmt_gb(n):
+    return f"{n / GIB:,.1f} GB"
+
+def progress_bar(pct, width=60):
+    pct = max(0.0, min(pct, 1.0))
+    filled = int(width * pct)
+    label = f"{pct * 100:.1f}%"
+    ls = (width - len(label)) // 2
+    parts = []
+    for i in range(width):
+        if ls <= i < ls + len(label):
+            parts.append(f"{BOLD}{label[i - ls]}{NC}")
+        elif i < filled:
+            parts.append(f"{YELLOW}\u2588{NC}")
+        else:
+            parts.append(f"{GRAY}\u2591{NC}")
+    return "".join(parts)
+
+try:
+    data = json.loads(raw)
 except Exception:
-    pass
-PY_TRAFFIC_NOW
-            fi
-        fi
-        # Do not cap the raw output at 8 lines: vnStat headers consume several
-        # lines, which previously hid every month after roughly the third row.
-        msg "${YELLOW}--- vnStat 月表 ---${NC}"
-        vnstat -i "$INTERFACE" -m 2>/dev/null | awk 'NF { print; shown=1 } END { exit !shown }' || msg "${YELLOW}暂无本月统计数据，vnstat 正在收集中。${NC}"
+    sys.exit(1)
+months = ((data.get("interfaces") or [{}])[0].get("traffic") or {}).get("month") or []
+months = sorted(months,
+                key=lambda m: (m.get("date", {}).get("year", 0),
+                               m.get("date", {}).get("month", 0)),
+                reverse=True)
+
+out = []
+out.append(f"{BLUE}{BAR}{NC}")
+out.append(f"{YELLOW}{center('每月流量管控 / Monthly Traffic')}{NC}")
+out.append(f"{BLUE}{BAR}{NC}")
+if months:
+    cur = months[0]
+    rx = int(cur.get("rx", 0)); tx = int(cur.get("tx", 0)); total = rx + tx
+    d = cur.get("date", {})
+    ym = f"{d.get('year', '--')}-{int(d.get('month', 0)):02d}" if d.get("year") else "本月"
+    out.append(f"本月已用 ({iface} \u00b7 {ym}):")
+    if limit_gb > 0:
+        cap = limit_gb * GIB
+        out.append(progress_bar(total / cap))
+        rem = cap - total
+        rem_s = f"{GREEN}剩余 {fmt_gb(rem)}{NC}" if rem >= 0 else f"{RED}超出 {fmt_gb(-rem)}{NC}"
+        out.append(f"{YELLOW}已用 {fmt_gb(total)}{NC} / 上限 {limit_gb:,.0f} GB / {rem_s}")
+    else:
+        out.append(f"{YELLOW}已用 {fmt_gb(total)}{NC} / 上限 未设定")
+    out.append(f"{BLUE}{BAR}{NC}")
+    out.append(f"{CYAN}{center('历史月度统计')}{NC}")
+    out.append(f"{YELLOW}{pad('月份', 10)}{pad('总流量', 15, True)}"
+               f"{pad('下行 RX', 15, True)}{pad('上行 TX', 15, True)}  状态{NC}")
+    out.append(f"{GRAY}{'─' * 66}{NC}")
+    for i, m in enumerate(months):
+        dd = m.get("date", {})
+        yymm = f"{dd.get('year', '--')}-{int(dd.get('month', 0)):02d}"
+        r = int(m.get("rx", 0)); t = int(m.get("tx", 0)); tot = r + t
+        if i == 0:
+            st = f"{YELLOW}进行中{NC}"
+        elif limit_gb > 0 and tot > limit_gb * GIB:
+            st = f"{RED}超限{NC}"
+        else:
+            st = f"{GREEN}正常{NC}"
+        out.append(f"{pad(yymm, 10)}{pad(fmt_gb(tot), 15, True)}"
+                   f"{pad(fmt_gb(r), 15, True)}{pad(fmt_gb(t), 15, True)}  {st}")
+else:
+    out.append(f"{YELLOW}暂无本月统计数据，vnStat 正在收集中。{NC}")
+sys.stdout.write("\n".join(out) + "\n")
+PY_TRAFFIC_DASH
     else
-        msg "${YELLOW}[!] vnStat 未安装；打开流量菜单设定上限时会按需安装。${NC}"
+        msg "${YELLOW}[!] vnStat 未安装或暂无数据；设定上限时会按需安装。${NC}"
     fi
-    if [[ -n "${TRAFFIC_LIMIT_GB:-}" ]]; then
-        msg "当前设定: ${GREEN}${TRAFFIC_LIMIT_GB} GB${NC} | 模式: ${TRAFFIC_LIMIT_MODE:-total}"
-    else
-        msg "当前设定: ${RED}未开启${NC}"
-    fi
-    msg "${CYAN}======================================================================${NC}"
-    msg "${YELLOW}1. 设定/修改每月流量上限${NC}"
-    msg "${YELLOW}2. 解除流量限制${NC}"
-    msg "${GREEN}0. 返回主菜单${NC}"
-    read -r -p '请选择 [0-2]: ' tr_choice
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+    msg "${GREEN}1.${NC}  设定/修改每月流量上限"
+    msg "${GREEN}2.${NC}  解除流量限制"
+    msg "${GREEN}0.${NC}  返回主菜单"
+    read -r -p '请选择 [0-2]: ' tr_choice || return 0
     case "$tr_choice" in
         1)
             read -r -p '请输入每月流量上限(GB)，纯数字: ' limit_gb
@@ -9577,15 +10663,15 @@ PY_TRAFFIC_NOW
             mode_choice=${mode_choice:-total}
             [[ "$mode_choice" =~ ^(total|rx|tx)$ ]] || { msg "${RED}[!] 计量模式无效。${NC}"; pause_return; return; }
             local traffic_tx_dir="" old_die_hook="" traffic_previous_state='' traffic_service_pre='' traffic_service_changed_pre='' traffic_service_changed_expected='' traffic_op_rc=0 traffic_target_state=''
-            traffic_previous_state=$(get_desired_state) || die '无法可靠读取当前服务期望状态；未修改流量限制。'
-            traffic_tx_dir=$(mktemp -d /run/A-Box-traffic-tx.XXXXXX) || die '无法创建流量状态事务目录。'
-            chmod 700 "$traffic_tx_dir" || { rm -rf -- "$traffic_tx_dir"; die '流量状态事务目录权限设置失败。'; }
-            prepare_traffic_quota_transaction "$traffic_tx_dir" || { rm -rf -- "$traffic_tx_dir"; die '无法保存流量限制事务前态。'; }
+            traffic_previous_state=$(get_desired_state) || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '无法可靠读取当前服务期望状态；未修改流量限制。'; continue
+            traffic_tx_dir=$(mktemp -d /run/A-Box-traffic-tx.XXXXXX) || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '无法创建流量状态事务目录。'; continue
+            chmod 700 "$traffic_tx_dir" || { rm -rf -- "$traffic_tx_dir"; _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量状态事务目录权限设置失败。'; continue; }
+            prepare_traffic_quota_transaction "$traffic_tx_dir" || { rm -rf -- "$traffic_tx_dir"; _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '无法保存流量限制事务前态。'; continue; }
             if [[ "$traffic_previous_state" == TRAFFIC_BLOCKED ]]; then
                 traffic_service_pre="$traffic_tx_dir/pre-services.state"
                 traffic_service_changed_pre="$traffic_tx_dir/changed-services-pre.state"
                 traffic_service_changed_expected="$traffic_tx_dir/changed-services-expected.state"
-                capture_managed_service_state "$traffic_service_pre" || { rm -rf -- "$traffic_tx_dir"; die '无法保存解除流量封锁前的服务状态。'; }
+                capture_managed_service_state "$traffic_service_pre" || { rm -rf -- "$traffic_tx_dir"; _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '无法保存解除流量封锁前的服务状态。'; continue; }
                 : > "$traffic_service_changed_pre"; : > "$traffic_service_changed_expected"
             fi
             if [[ ${ABOX_DIE_HOOK+x} ]]; then old_die_hook="$ABOX_DIE_HOOK"; fi
@@ -9616,42 +10702,42 @@ PY_TRAFFIC_NOW
             }
             setup_traffic_monitor
             if update_traffic_state_atomically "$limit_gb" "$mode_choice"; then traffic_op_rc=0; else traffic_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$traffic_tx_dir" || die '流量限制更新后无法核验状态；事务已中止。'
-            (( traffic_op_rc == 0 )) || die '流量限制状态原子提交失败。'
+            capture_traffic_quota_expected_state "$traffic_tx_dir" || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量限制更新后无法核验状态；事务已中止。'; continue
+            (( traffic_op_rc == 0 )) || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量限制状态原子提交失败。'; continue
             if clear_traffic_block_period; then traffic_op_rc=0; else traffic_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$traffic_tx_dir" || die '清除旧封锁周期后无法核验状态；事务已中止。'
-            (( traffic_op_rc == 0 )) || die '旧流量封锁周期清理失败。'
+            capture_traffic_quota_expected_state "$traffic_tx_dir" || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '清除旧封锁周期后无法核验状态；事务已中止。'; continue
+            (( traffic_op_rc == 0 )) || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '旧流量封锁周期清理失败。'; continue
             case "$traffic_previous_state" in
                 TRAFFIC_BLOCKED)
-                    start_services_for_traffic_unblock "$traffic_service_pre" "$traffic_service_changed_pre" "$traffic_service_changed_expected" || die '新流量上限已写入，但托管服务无法恢复运行；事务已中止。'
+                    start_services_for_traffic_unblock "$traffic_service_pre" "$traffic_service_changed_pre" "$traffic_service_changed_expected" || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '新流量上限已写入，但托管服务无法恢复运行；事务已中止。'; continue
                     traffic_target_state=RUNNING
                     ;;
                 RUNNING|MANUAL_STOPPED|MAINTENANCE)
                     traffic_target_state="$traffic_previous_state"
                     ;;
-                *) die "未知服务期望状态 ${traffic_previous_state}；拒绝提交流量限制。" ;;
+                *) _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "未知服务期望状态 ${traffic_previous_state}；拒绝提交流量限制。"; continue ;;
             esac
             if set_desired_state "$traffic_target_state"; then traffic_op_rc=0; else traffic_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$traffic_tx_dir" || die '期望状态提交后无法核验事务；已中止。'
-            (( traffic_op_rc == 0 )) || die '服务期望状态写入失败。'
-            finalize_traffic_quota_transaction "$traffic_tx_dir" || die '流量限制事务提交后校验失败。'
+            capture_traffic_quota_expected_state "$traffic_tx_dir" || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '期望状态提交后无法核验事务；已中止。'; continue
+            (( traffic_op_rc == 0 )) || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '服务期望状态写入失败。'; continue
+            finalize_traffic_quota_transaction "$traffic_tx_dir" || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量限制事务提交后校验失败。'; continue
             unset ABOX_DIE_HOOK
             if [[ -n "$old_die_hook" ]]; then ABOX_DIE_HOOK="$old_die_hook"; fi
             ABOX_TRAFFIC_TX_DIR=''
-            rm -rf -- "$traffic_tx_dir" || die '流量状态事务清理失败。'
+            rm -rf -- "$traffic_tx_dir" || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量状态事务清理失败。'; continue
             msg "${GREEN}流量限制已设定为 ${limit_gb} GB，模式 ${mode_choice}。${NC}"
             pause_return
             ;;
         2)
-            previous_state=$(get_desired_state) || die '无法可靠读取当前服务期望状态；未解除流量限制。'
+            previous_state=$(get_desired_state) || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '无法可靠读取当前服务期望状态；未解除流量限制。'; continue
             local unblock_tx_dir='' unblock_old_die_hook='' unblock_state_pre='' unblock_changed_pre='' unblock_changed_expected='' unblock_op_rc=0 target_state=''
-            unblock_tx_dir=$(mktemp -d /run/A-Box-traffic-unblock.XXXXXX) || die '无法创建流量解除事务目录。'
-            chmod 700 "$unblock_tx_dir" || { rm -rf -- "$unblock_tx_dir"; die '流量解除事务目录权限设置失败。'; }
-            prepare_traffic_quota_transaction "$unblock_tx_dir" || { rm -rf -- "$unblock_tx_dir"; die '无法保存流量解除事务前态。'; }
+            unblock_tx_dir=$(mktemp -d /run/A-Box-traffic-unblock.XXXXXX) || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '无法创建流量解除事务目录。'; continue
+            chmod 700 "$unblock_tx_dir" || { rm -rf -- "$unblock_tx_dir"; _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量解除事务目录权限设置失败。'; continue; }
+            prepare_traffic_quota_transaction "$unblock_tx_dir" || { rm -rf -- "$unblock_tx_dir"; _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '无法保存流量解除事务前态。'; continue; }
             unblock_state_pre="$unblock_tx_dir/pre-services.state"
             unblock_changed_pre="$unblock_tx_dir/changed-services-pre.state"
             unblock_changed_expected="$unblock_tx_dir/changed-services-expected.state"
-            capture_managed_service_state "$unblock_state_pre" || { rm -rf -- "$unblock_tx_dir"; die '无法保存流量解除前的服务状态。'; }
+            capture_managed_service_state "$unblock_state_pre" || { rm -rf -- "$unblock_tx_dir"; _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '无法保存流量解除前的服务状态。'; continue; }
             : > "$unblock_changed_pre"; : > "$unblock_changed_expected"
             if [[ ${ABOX_DIE_HOOK+x} ]]; then unblock_old_die_hook="$ABOX_DIE_HOOK"; fi
             ABOX_TRAFFIC_TX_DIR="$unblock_tx_dir"
@@ -9679,41 +10765,43 @@ PY_TRAFFIC_NOW
             }
 
             if update_traffic_state_atomically '' ''; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || die '流量解除时无法验证新状态；事务已中止。'
-            (( unblock_op_rc == 0 )) || die '解除流量限制时状态原子提交失败。'
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量解除时无法验证新状态；事务已中止。'; continue
+            (( unblock_op_rc == 0 )) || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '解除流量限制时状态原子提交失败。'; continue
             if remove_abox_cron_block TRAFFIC; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || die '移除流量监控任务后状态核验失败；事务已中止。'
-            (( unblock_op_rc == 0 )) || die '移除流量监控任务失败；未提交解除操作。'
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '移除流量监控任务后状态核验失败；事务已中止。'; continue
+            (( unblock_op_rc == 0 )) || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '移除流量监控任务失败；未提交解除操作。'; continue
             if remove_owned_runtime_helper "$ABOX_DIR/traffic_monitor.sh"; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || die '移除流量监控脚本后状态核验失败；事务已中止。'
-            (( unblock_op_rc == 0 )) || die '移除流量监控脚本失败；未提交解除操作。'
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '移除流量监控脚本后状态核验失败；事务已中止。'; continue
+            (( unblock_op_rc == 0 )) || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '移除流量监控脚本失败；未提交解除操作。'; continue
             if clear_traffic_block_period; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || die '清除流量封锁周期后状态核验失败；事务已中止。'
-            (( unblock_op_rc == 0 )) || die '清除流量封锁周期失败；未提交解除操作。'
-            load_abox_env "$ABOX_ENV" || die '流量配置重读失败；未提交解除操作。'
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '清除流量封锁周期后状态核验失败；事务已中止。'; continue
+            (( unblock_op_rc == 0 )) || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '清除流量封锁周期失败；未提交解除操作。'; continue
+            load_abox_env "$ABOX_ENV" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量配置重读失败；未提交解除操作。'; continue
             case "$previous_state" in
                 TRAFFIC_BLOCKED)
-                    start_services_for_traffic_unblock "$unblock_state_pre" "$unblock_changed_pre" "$unblock_changed_expected" || die '流量封锁解除后有托管服务未能启动/启用并通过状态核验。'
+                    start_services_for_traffic_unblock "$unblock_state_pre" "$unblock_changed_pre" "$unblock_changed_expected" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量封锁解除后有托管服务未能启动/启用并通过状态核验。'; continue
                     target_state=RUNNING
                     ;;
                 RUNNING|MANUAL_STOPPED|MAINTENANCE)
                     target_state="$previous_state"
                     ;;
-                *) die "未知服务期望状态 ${previous_state}；拒绝解除流量限制。" ;;
+                *) _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "未知服务期望状态 ${previous_state}；拒绝解除流量限制。"; continue ;;
             esac
             if set_desired_state "$target_state"; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || die '提交服务期望状态后核验失败；事务已中止。'
-            (( unblock_op_rc == 0 )) || die '服务期望状态写入失败。'
-            finalize_traffic_quota_transaction "$unblock_tx_dir" || die '流量解除事务最终状态校验失败。'
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '提交服务期望状态后核验失败；事务已中止。'; continue
+            (( unblock_op_rc == 0 )) || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '服务期望状态写入失败。'; continue
+            finalize_traffic_quota_transaction "$unblock_tx_dir" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量解除事务最终状态校验失败。'; continue
             unset ABOX_DIE_HOOK
             if [[ -n "$unblock_old_die_hook" ]]; then ABOX_DIE_HOOK="$unblock_old_die_hook"; fi
             ABOX_TRAFFIC_TX_DIR=''
-            rm -rf -- "$unblock_tx_dir" || die '流量解除事务清理失败；状态已提交但恢复材料清理失败。'
+            rm -rf -- "$unblock_tx_dir" || _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量解除事务清理失败；状态已提交但恢复材料清理失败。'; continue
             msg "${GREEN}流量限制已解除。${NC}"
             pause_return
             ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $tr_choice${NC}"; sleep 1 ;;
     esac
+    done
 }
 
 remove_ss_source_whitelist_rules() {
@@ -9782,7 +10870,7 @@ manage_ss_whitelist() {
         return 1
     }
     load_optional_abox_env_or_die
-    [[ -z "${SS_PORT:-}" ]] && { msg "${RED}[!] 未检测到已部署的 SS-2022 服务端口。${NC}"; pause_return; return; }
+    [[ -z "${SS_PORT:-}" && -z "${SOCKS_PORT:-}" ]] && { msg "${RED}[!] 未检测到已部署的 SS-2022 或 SOCKS5 服务端口。${NC}"; pause_return; return; }
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}SS-2022 白名单 IP 管理 / SS-2022 Whitelist Manager${NC}"
     msg "${CYAN}======================================================================${NC}"
@@ -9793,7 +10881,7 @@ manage_ss_whitelist() {
         msg "IPv6 白名单:"
         $IPT6 -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '::/0' | sort -u || true
     fi
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}1. 新增白名单 IP/CIDR (TCP+UDP)${NC}"
     msg "${YELLOW}2. 移除白名单 IP/CIDR (TCP+UDP)${NC}"
     msg "${YELLOW}3. 开启白名单模式 (TCP+UDP DROP)${NC}"
@@ -10131,6 +11219,50 @@ restore_vps_tune() {
     [[ "$quiet" == 1 ]] || msg "${GREEN}A-Box VPS 调优已恢复。${NC}"
 }
 
+# Desired sysctl tune set, one "key value" per line. BBR/FQ keys are included
+# only when the running kernel actually offers BBR.
+_tune_desired_sysctl() {
+    local available
+    printf '%s\n' \
+        'fs.file-max 1048576' \
+        'fs.inotify.max_user_instances 8192' \
+        'net.ipv4.tcp_syncookies 1' \
+        'net.ipv4.tcp_fin_timeout 30' \
+        'net.ipv4.tcp_max_syn_backlog 8192' \
+        'net.ipv4.tcp_fastopen 3' \
+        'net.ipv4.tcp_mtu_probing 1' \
+        'net.ipv4.tcp_notsent_lowat 16384' \
+        'net.core.netdev_max_backlog 250000' \
+        'net.core.somaxconn 32768'
+    available=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
+    if grep -qw bbr <<< "$available"; then
+        printf '%s\n' 'net.core.default_qdisc fq' 'net.ipv4.tcp_congestion_control bbr'
+    fi
+}
+
+# Prints one line per tune item that is missing or drifted from the desired
+# state (sysctl live values, limits file, BBR persistence). Empty output means
+# the VPS is fully tuned.
+_tune_missing_items() {
+    local key want got missing_list='' available
+    while read -r key want; do
+        [[ -n "$key" ]] || continue
+        sysctl -n "$key" >/dev/null 2>&1 || continue
+        got=$(sysctl -n "$key" 2>/dev/null)
+        [[ "$got" == "$want" ]] || missing_list+="${key}（当前 ${got:-<空>}，期望 $want）"$'\n'
+    done < <(_tune_desired_sysctl)
+    if ! grep -q '^# Managed by A-Box' /etc/security/limits.d/A-Box.conf 2>/dev/null \
+        || ! grep -q '^\* soft nofile 1048576' /etc/security/limits.d/A-Box.conf 2>/dev/null; then
+        missing_list+='limits 配置（nofile 上限 1048576）'$'\n'
+    fi
+    available=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
+    if grep -qw bbr <<< "$available" && modprobe tcp_bbr >/dev/null 2>&1; then
+        grep -qx 'tcp_bbr' /etc/modules-load.d/A-Box-bbr.conf 2>/dev/null \
+            || missing_list+='BBR 模块开机自动加载配置'$'\n'
+    fi
+    printf '%s' "$missing_list"
+}
+
 # BUG-28: hoisted from apply_vps_tune(). $3 = destination file.
 __abox_add_sysctl() {
     sysctl -n "$1" >/dev/null 2>&1 && printf '%s = %s\n' "$1" "$2" >> "$3"
@@ -10138,35 +11270,49 @@ __abox_add_sysctl() {
 apply_vps_tune() {
     local dir="$ABOX_DIR/tune-backup" tmp key value available bbr_loaded=0
     local bbr_module_file='/etc/modules-load.d/A-Box-bbr.conf'
+    local missing snapshot_exists=0 snapshot_tmp
     assert_abox_auxiliary_safe /etc/security/limits.d/A-Box.conf || die "拒绝覆盖非 A-Box 辅助文件: /etc/security/limits.d/A-Box.conf"
     assert_abox_auxiliary_safe /etc/sysctl.d/99-A-Box-tune.conf || die "拒绝覆盖非 A-Box 辅助文件: /etc/sysctl.d/99-A-Box-tune.conf"
     assert_abox_auxiliary_safe "$bbr_module_file" || die "拒绝覆盖非 A-Box 辅助文件: $bbr_module_file"
-    if [[ -f "$dir/.captured" ]]; then die '检测到尚未恢复的调优快照；请先执行恢复，再重新应用。'; fi
-    if [[ -e "$dir" || -L "$dir" ]]; then
+    # Snapshot state validation stays strict: a half-written snapshot is unsafe.
+    if [[ -f "$dir/.captured" ]]; then
+        snapshot_exists=1
+    elif [[ -e "$dir" || -L "$dir" ]]; then
         [[ -d "$dir" && ! -L "$dir" ]] || die '调优备份路径不是安全目录。'
-        [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]] || die '检测到未完成的调优快照；请先检查并恢复/清理该快照。'
+        [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]] || { msg "${RED}[!] 检测到未完成的调优快照；请先检查并恢复/清理该快照。${NC}"; return 1; }
     fi
-    local snapshot_tmp
-    snapshot_tmp=$(mktemp -d "$ABOX_DIR/.tune-backup-new.XXXXXX") || die '无法创建调优备份临时目录。'
-    if [[ -f /etc/sysctl.d/99-A-Box-tune.conf ]] && ! cp -a /etc/sysctl.d/99-A-Box-tune.conf "$snapshot_tmp/sysctl.conf"; then
-        rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原配置备份失败。'
+    # Idempotent re-run: inspect live state first, never error out on re-apply.
+    missing=$(_tune_missing_items)
+    if [[ -z "$missing" ]]; then
+        msg "${GREEN}VPS 调优已全部应用，无需重复操作。${NC}"
+        return 0
     fi
-    if [[ -f /etc/security/limits.d/A-Box.conf ]] && ! cp -a /etc/security/limits.d/A-Box.conf "$snapshot_tmp/limits.conf"; then
-        rm -rf -- "$snapshot_tmp"; die '调优 limits 原配置备份失败。'
+    msg "${YELLOW}检测到未应用的调优项：${NC}"
+    msg "$missing"
+    if (( snapshot_exists == 1 )); then
+        msg "${YELLOW}[!] 保留已有调优快照（恢复时仍回到最初状态），仅补齐缺失项。${NC}"
+    else
+        snapshot_tmp=$(mktemp -d "$ABOX_DIR/.tune-backup-new.XXXXXX") || die '无法创建调优备份临时目录。'
+        if [[ -f /etc/sysctl.d/99-A-Box-tune.conf ]] && ! cp -a /etc/sysctl.d/99-A-Box-tune.conf "$snapshot_tmp/sysctl.conf"; then
+            rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原配置备份失败。'
+        fi
+        if [[ -f /etc/security/limits.d/A-Box.conf ]] && ! cp -a /etc/security/limits.d/A-Box.conf "$snapshot_tmp/limits.conf"; then
+            rm -rf -- "$snapshot_tmp"; die '调优 limits 原配置备份失败。'
+        fi
+        if [[ -f "$bbr_module_file" ]] && ! cp -a "$bbr_module_file" "$snapshot_tmp/bbr-modules.conf"; then
+            rm -rf -- "$snapshot_tmp"; die 'BBR 模块自动加载配置备份失败。'
+        fi
+        : > "$snapshot_tmp/sysctl.original" || { rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原始值快照创建失败。'; }
+        for key in fs.file-max fs.inotify.max_user_instances net.ipv4.tcp_syncookies net.ipv4.tcp_fin_timeout net.ipv4.tcp_keepalive_time net.ipv4.tcp_max_syn_backlog net.ipv4.tcp_max_tw_buckets net.ipv4.tcp_fastopen net.ipv4.tcp_mtu_probing net.ipv4.tcp_notsent_lowat net.core.netdev_max_backlog net.core.somaxconn net.core.default_qdisc net.ipv4.tcp_congestion_control; do
+            value=$(sysctl -n "$key" 2>/dev/null) || continue
+            printf '%s=%s\n' "$key" "$value" >> "$snapshot_tmp/sysctl.original" || { rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原始值快照写入失败。'; }
+        done
+        touch "$snapshot_tmp/.captured" || { rm -rf -- "$snapshot_tmp"; die '调优快照完成标记写入失败。'; }
+        if [[ -d "$dir" ]]; then
+            rmdir -- "$dir" || { rm -rf -- "$snapshot_tmp"; die '无法原子替换调优备份目录。'; }
+        fi
+        mv -f -- "$snapshot_tmp" "$dir" || { rm -rf -- "$snapshot_tmp"; die '调优备份快照原子提交失败。'; }
     fi
-    if [[ -f "$bbr_module_file" ]] && ! cp -a "$bbr_module_file" "$snapshot_tmp/bbr-modules.conf"; then
-        rm -rf -- "$snapshot_tmp"; die 'BBR 模块自动加载配置备份失败。'
-    fi
-    : > "$snapshot_tmp/sysctl.original" || { rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原始值快照创建失败。'; }
-    for key in fs.file-max fs.inotify.max_user_instances net.ipv4.tcp_syncookies net.ipv4.tcp_fin_timeout net.ipv4.tcp_keepalive_time net.ipv4.tcp_max_syn_backlog net.ipv4.tcp_max_tw_buckets net.ipv4.tcp_fastopen net.ipv4.tcp_mtu_probing net.ipv4.tcp_notsent_lowat net.core.netdev_max_backlog net.core.somaxconn net.core.default_qdisc net.ipv4.tcp_congestion_control; do
-        value=$(sysctl -n "$key" 2>/dev/null) || continue
-        printf '%s=%s\n' "$key" "$value" >> "$snapshot_tmp/sysctl.original" || { rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原始值快照写入失败。'; }
-    done
-    touch "$snapshot_tmp/.captured" || { rm -rf -- "$snapshot_tmp"; die '调优快照完成标记写入失败。'; }
-    if [[ -d "$dir" ]]; then
-        rmdir -- "$dir" || { rm -rf -- "$snapshot_tmp"; die '无法原子替换调优备份目录。'; }
-    fi
-    mv -f -- "$snapshot_tmp" "$dir" || { rm -rf -- "$snapshot_tmp"; die '调优备份快照原子提交失败。'; }
     write_file_atomically_from_stdin /etc/security/limits.d/A-Box.conf 644 <<'EOF_LIMITS' || { restore_vps_tune 1 || true; die 'limits 配置原子写入失败，已恢复原状态。'; }
 # Managed by A-Box
 * soft nofile 1048576
@@ -10206,7 +11352,13 @@ EOF_BBR
     install_file_atomically "$tmp" /etc/sysctl.d/99-A-Box-tune.conf 600 || { rm -f "$tmp"; restore_vps_tune 1 || true; die '调优配置原子写入失败。'; }
     rm -f "$tmp"
     if ! sysctl -p /etc/sysctl.d/99-A-Box-tune.conf >/dev/null 2>&1; then restore_vps_tune 1; die 'sysctl 调优应用失败，已恢复原状态。'; fi
-    msg "${GREEN}系统调优已应用；未强制启用 IP forwarding，也未修改核心 JSON 配置。${NC}"
+    missing=$(_tune_missing_items)
+    if [[ -z "$missing" ]]; then
+        msg "${GREEN}缺失项已补齐，系统调优已全部应用；未强制启用 IP forwarding，也未修改核心 JSON 配置。${NC}"
+    else
+        msg "${YELLOW}[!] 以下调优项仍未生效（可能为内核限制）：${NC}"
+        msg "$missing"
+    fi
 }
 
 
@@ -10219,7 +11371,17 @@ abox_is_fast() {
 }
 
 read_fast_mode_label() {
-    if abox_is_fast; then printf 'fast\n'; else printf 'strict\n'; fi
+    # Menu target look (2026-10-19): mode word follows UI language (display only).
+    local _m=strict
+    abox_is_fast && _m=fast
+    case "${ABOX_LANG:-zh}" in
+        en)    printf '%s\n' "$_m" ;;
+        ru)    [[ "$_m" == fast ]] && printf 'быстрый\n' || printf 'строгий\n' ;;
+        fa)    [[ "$_m" == fast ]] && printf 'سریع\n' || printf 'سخت‌گیرانه\n' ;;
+        zh-tw) [[ "$_m" == fast ]] && printf '快速\n' || printf '嚴格\n' ;;
+        ja)    [[ "$_m" == fast ]] && printf '高速\n' || printf '厳格\n' ;;
+        *)     [[ "$_m" == fast ]] && printf '快速\n' || printf '严格\n' ;;
+    esac
 }
 
 save_fast_mode() {
@@ -10402,6 +11564,8 @@ one_click_reality_deploy() {
     unset ABOX_QUICK_DEPLOY
 }
 ux_mode_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     clear
     local c
     case "${ABOX_LANG:-zh}" in
@@ -10448,13 +11612,15 @@ ux_mode_menu() {
             msg "${YELLOW}3. 查看正式稳定版策略与固定容灾版本${NC}"
             msg "${GREEN}0. 返回${NC}" ;;
     esac
-    read -r -p 'Select [0-3]: ' c
+    read -r -p 'Select [0-3]: ' c || return 0
     case "$c" in
         1) save_fast_mode 0; pause_return ;;
         2) save_fast_mode 1; pause_return ;;
         3) show_core_pin_docs ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 list_extra_uuids() {
     # FINAL-AUDIT fix: only a TRULY ABSENT file is an empty list. A file that
@@ -10613,6 +11779,8 @@ export_lightweight_subscription() {
 }
 
 multi_uuid_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     clear
     local c nu answer selected tx cfg='/usr/local/etc/xray/config.json' list_tmp old_state='absent' tx_ok=0
     [[ -f "$ABOX_ENV" && ! -L "$ABOX_ENV" ]] && load_abox_env "$ABOX_ENV" 2>/dev/null || true
@@ -10632,7 +11800,7 @@ multi_uuid_menu() {
     msg "${YELLOW}3. Revoke one extra UUID from the Xray server${NC}"
     msg "${YELLOW}4. Clear only the local extra-UUID file (does not revoke server access)${NC}"
     msg "${GREEN}0. Back${NC}"
-    read -r -p 'Select [0-4]: ' c
+    read -r -p 'Select [0-4]: ' c || return 0
     case "$c" in
         1)
             [[ "${CORE:-}" == xray && -f "$cfg" && ! -L "$cfg" ]] || {
@@ -10740,8 +11908,10 @@ multi_uuid_menu() {
             msg "${GREEN}Local UUID list cleared. Server-side UUIDs were not revoked.${NC}"
             pause_return
             ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 
 try_latest_cores_danger() {
@@ -10815,6 +11985,8 @@ save_ip_pref() {
 }
 
 ip_preference_menu() {
+    # Submenu loop: 0/Enter returns to the parent menu.
+    while true; do
     clear
     local cur c title ipv4 ipv6 dual back
     cur=$(read_ip_pref)
@@ -10834,7 +12006,7 @@ ip_preference_menu() {
     msg "${YELLOW}2. $ipv6${NC}"
     msg "${YELLOW}3. $dual${NC}"
     msg "${GREEN}0. $back${NC}"
-    read -r -p 'Select [0-3]: ' c
+    read -r -p 'Select [0-3]: ' c || return 0
     case "$c" in
         1) save_ip_pref ipv4 ;;
         2)
@@ -10852,7 +12024,8 @@ ip_preference_menu() {
             fi
             save_ip_pref ipv6 ;;
         3) save_ip_pref dual ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1; continue ;;
     esac
     case "${ABOX_LANG:-zh}" in
         en) msg "${GREEN}Saved: $(read_ip_pref). New listener preference applies to future deployments; running nodes require redeployment or an applicable restart.${NC}" ;;
@@ -10864,8 +12037,11 @@ ip_preference_menu() {
         *) msg "${GREEN}已保存：$(read_ip_pref)。新监听偏好对后续部署生效；已运行节点需重新部署或适当重启。${NC}" ;;
     esac
     pause_return
+    done
 }
 host_network_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     clear
     local prompt
     case "${ABOX_LANG:-zh}" in
@@ -10920,14 +12096,16 @@ host_network_menu() {
     esac
     local c
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-4]: ' ;; ru) prompt='Выберите [0–4]: ' ;; fa) prompt='انتخاب [۰ تا ۴]: ' ;; ja) prompt='選択してください [0-4]: ' ;; zh-tw) prompt='請選擇 [0-4]：' ;; *) prompt='请选择 [0-4]：' ;; esac
-    read -r -p "$prompt" c
+    read -r -p "$prompt" c || return 0
     case "$c" in
         1) ip_preference_menu ;;
         2) dns_menu ;;
         3) timezone_menu ;;
         4) ux_mode_menu ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 
 timezone_for_country() {
@@ -11687,7 +12865,7 @@ EOF_DNS
             # "nameserver 2001:db8::53options timeout:2 attempts:3".
             {
                 printf '# Managed by A-Box host DNS helper\n'
-                printf 'nameserver %s\n' "$v4"
+                [[ -n "$v4" ]] && printf 'nameserver %s\n' "$v4"
                 [[ -n "$v6" ]] && printf 'nameserver %s\n' "$v6"
                 printf 'options timeout:2 attempts:3\n'
             } > "$DNS_BACKUP_DIR/resolv.conf.new" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 内容生成失败。'; }
@@ -11977,7 +13155,171 @@ EOF_DOH
     fi
 }
 
+# DNS provider list: tag|name|v4|v6
+# v4/v6 auto-pairing: selecting a v4 auto-suggests its paired v6 for dual-stack mode
+_dns_provider_list() {
+    printf '%s\n' \
+        'cf-main|Cloudflare|1.1.1.1|2606:4700:4700::1111' \
+        'cf-alt|Cloudflare备|1.0.0.1|2606:4700:4700::1001' \
+        'google-main|Google|8.8.8.8|2001:4860:4860::8888' \
+        'google-alt|Google备|8.8.4.4|2001:4860:4860::8844' \
+        'quad9|Quad9|9.9.9.9|2620:fe::fe' \
+        'opendns|OpenDNS|208.67.222.222|2620:119:35::35' \
+        'alidns|AliDNS|223.5.5.5|2400:3200::1' \
+        'dnspod|DNSPod|119.29.29.29|2402:4e00::' \
+        'cf-family|Cloudflare Family|1.1.1.2|2606:4700:4700::1112' \
+        'quad9-sec|Quad9安全|9.9.9.11|2620:fe::11'
+}
+
+# Get current DNS from resolv.conf or state file
+_dns_current_v4() {
+    local cur=''
+    if [[ -f "$DNS_STATE_FILE" ]]; then
+        cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*v4=/){sub(/^[ \t]*v4=/, "", $i); gsub(/["'"'"'\r\t ]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
+    fi
+    if [[ -z "$cur" && -f "$ABOX_ENV" ]]; then
+        cur=$(awk -F= '/^DNS_V4=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t ]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
+    fi
+    if [[ -z "$cur" && -r /etc/resolv.conf ]]; then
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\./ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
+    fi
+    # systemd-resolved fallback: /etc/resolv.conf 只有 127.0.0.53 stub 时查上游
+    if [[ -z "$cur" && -r /run/systemd/resolve/resolv.conf ]]; then
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\./ {print $2; exit}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
+    fi
+    if [[ "$cur" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        printf '%s' "$cur"
+    fi
+}
+
+_dns_current_v6() {
+    local cur=''
+    if [[ -f "$DNS_STATE_FILE" ]]; then
+        cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*v6=/){sub(/^[ \t]*v6=/, "", $i); gsub(/["'"'"'\r\t ]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
+    fi
+    if [[ -z "$cur" && -f "$ABOX_ENV" ]]; then
+        cur=$(awk -F= '/^DNS_V6=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t ]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
+    fi
+    if [[ -z "$cur" && -r /etc/resolv.conf ]]; then
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 !~ /\\./ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
+    fi
+    if [[ -z "$cur" && -r /run/systemd/resolve/resolv.conf ]]; then
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 !~ /\\./ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2; exit}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
+    fi
+    cur="${cur%%%*}"
+    if [[ "$cur" == *:* && "$cur" =~ ^[0-9a-fA-F:]+$ ]]; then
+        printf '%s' "$cur"
+    fi
+}
+
+# Tri-mode DNS setup wizard: v4-only / v6-only / dual-stack
+# Dual-stack auto-pairs v6 from v4 selection; single mode leaves the other unchanged
+dns_setup_tri_mode() {
+    local mode='' choice='' v4='' v6='' v6_auto='' input
+    local -a providers=()
+    while IFS= read -r line; do providers+=("$line"); done < <(_dns_provider_list)
+
+    clear
+    msg "${CYAN}======================================================================${NC}"
+    case "${ABOX_LANG:-zh}" in
+        en) msg "${BOLD}${GREEN}DNS Setup: IPv4 / IPv6 / Dual-stack${NC}" ;;
+        ru) msg "${BOLD}${GREEN}Настройка DNS: IPv4 / IPv6 / Dual-stack${NC}" ;;
+        fa) msg "${BOLD}${GREEN}تنظیم DNS: IPv4 / IPv6 / دوگانه${NC}" ;;
+        zh-tw) msg "${BOLD}${GREEN}DNS 設定：IPv4 / IPv6 / 雙棧${NC}" ;;
+        ja) msg "${BOLD}${GREEN}DNS 設定: IPv4 / IPv6 / デュアルスタック${NC}" ;;
+        *) msg "${BOLD}${GREEN}DNS 设置：IPv4 / IPv6 / 双栈${NC}" ;;
+    esac
+    msg "${CYAN}======================================================================${NC}"
+    msg "Current: IPv4=${YELLOW}$(_dns_current_v4)${NC} IPv6=${YELLOW}$(_dns_current_v6)${NC}"
+    msg ""
+    case "${ABOX_LANG:-zh}" in
+        en) msg "${YELLOW}1. IPv4 only (IPv6 unchanged)${NC}"; msg "${YELLOW}2. IPv6 only (IPv4 unchanged)${NC}"; msg "${YELLOW}3. Dual-stack (both)${NC}"; msg "${GREEN}0. Back${NC}" ;;
+        ru) msg "${YELLOW}1. Только IPv4 (IPv6 без изменений)${NC}"; msg "${YELLOW}2. Только IPv6 (IPv4 без изменений)${NC}"; msg "${YELLOW}3. Dual-stack (оба)${NC}"; msg "${GREEN}0. Назад${NC}" ;;
+        fa) msg "${YELLOW}۱. فقط IPv4${NC}"; msg "${YELLOW}۲. فقط IPv6${NC}"; msg "${YELLOW}۳. دوگانه${NC}"; msg "${GREEN}۰. بازگشت${NC}" ;;
+        zh-tw) msg "${YELLOW}1. 僅 IPv4（IPv6 不變）${NC}"; msg "${YELLOW}2. 僅 IPv6（IPv4 不變）${NC}"; msg "${YELLOW}3. 雙棧（兩者都設）${NC}"; msg "${GREEN}0. 返回${NC}" ;;
+        ja) msg "${YELLOW}1. IPv4 のみ (IPv6 は変更なし)${NC}"; msg "${YELLOW}2. IPv6 のみ (IPv4 は変更なし)${NC}"; msg "${YELLOW}3. デュアルスタック (両方)${NC}"; msg "${GREEN}0. 戻る${NC}" ;;
+        *) msg "${YELLOW}1. 仅 IPv4（IPv6 不变）${NC}"; msg "${YELLOW}2. 仅 IPv6（IPv4 不变）${NC}"; msg "${YELLOW}3. 双栈（两者都设）${NC}"; msg "${GREEN}0. 返回${NC}" ;;
+    esac
+    read -r -p "Select [0-3]: " mode
+    case "$mode" in
+        1|2|3) ;;
+        *) return 0 ;;
+    esac
+
+    # Provider list
+    msg ""
+    msg "${CYAN}--------------------------------------------------------------------------------${NC}"
+    local idx=1
+    for p in "${providers[@]}"; do
+        IFS='|' read -r tag name pv4 pv6 <<< "$p"
+        printf '  ${YELLOW}%d.${NC} %-14s ${GREEN}%s${NC} / ${CYAN}%s${NC}\n' "$idx" "$name" "$pv4" "$pv6"
+        idx=$((idx+1))
+    done
+    case "${ABOX_LANG:-zh}" in
+        en) msg "${YELLOW}0. Manual input${NC}" ;;
+        *) msg "${YELLOW}0. 手动输入${NC}" ;;
+    esac
+    msg "${CYAN}--------------------------------------------------------------------------------${NC}"
+
+    read -r -p "Select provider [0-10]: " choice
+    if [[ "$choice" == "0" ]]; then
+        # Manual input
+        if [[ "$mode" == "1" || "$mode" == "3" ]]; then
+            read -r -p 'IPv4 DNS: ' v4
+            valid_ipv4_cidr "$v4" && [[ "$v4" != */* ]] || { msg "${RED}Invalid IPv4${NC}"; pause_return; return 1; }
+        fi
+        if [[ "$mode" == "2" || "$mode" == "3" ]]; then
+            read -r -p 'IPv6 DNS: ' v6
+            valid_ipv6_cidr "$v6" && [[ "$v6" != */* ]] || { msg "${RED}Invalid IPv6${NC}"; pause_return; return 1; }
+        fi
+    elif [[ "$choice" =~ ^([1-9]|10)$ ]]; then
+        IFS='|' read -r tag name pv4 pv6 <<< "${providers[$((choice-1))]}"
+        case "$mode" in
+            1) v4="$pv4" ;;
+            2) v6="$pv6" ;;
+            3)
+                v4="$pv4"
+                v6_auto="$pv6"
+                # Show auto-paired v6, allow override
+                case "${ABOX_LANG:-zh}" in
+                    en) msg "IPv4: ${GREEN}$v4${NC}, auto-paired IPv6: ${CYAN}$v6_auto${NC}" ;;
+                    *) msg "IPv4: ${GREEN}$v4${NC}，自动配对 IPv6: ${CYAN}$v6_auto${NC}" ;;
+                esac
+                read -r -p "IPv6 [Enter=auto $v6_auto]: " input
+                if [[ -n "$input" ]]; then
+                    valid_ipv6_cidr "$input" && [[ "$input" != */* ]] || { msg "${RED}Invalid IPv6${NC}"; pause_return; return 1; }
+                    v6="$input"
+                else
+                    v6="$v6_auto"
+                fi
+                ;;
+        esac
+    else
+        return 0
+    fi
+
+    # For single mode, preserve the unchanged side from current config
+    if [[ "$mode" == "1" ]]; then
+        v6="$(_dns_current_v6)"
+    elif [[ "$mode" == "2" ]]; then
+        v4="$(_dns_current_v4)"
+    fi
+
+    # Safety: refuse to apply if both are empty (would break DNS)
+    if [[ -z "$v4" && -z "$v6" ]]; then
+        msg "${RED}No valid DNS to apply; aborted.${NC}"
+        pause_return
+        return 1
+    fi
+    msg ""
+    msg "Apply: IPv4=${GREEN}${v4:-none}${NC} IPv6=${CYAN}${v6:-none}${NC}"
+    apply_host_dns plain "$v4" "$v6"
+    pause_return
+}
+
 dns_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     # Recover from any interrupted DNS snapshot swap on menu entry.
     dns_snapshot_recover_pending_swap 2>/dev/null || true
     clear
@@ -11995,6 +13337,7 @@ dns_menu() {
             msg "${YELLOW}5. Automatically benchmark resolvers${NC}"
             msg "${YELLOW}6. DNS over HTTPS via dnscrypt-proxy${NC}"
             msg "${YELLOW}7. Restore the previous DNS snapshot${NC}"
+            msg "${YELLOW}8. DNS tri-mode setup (v4/v6/dual)${NC}"
             ;;
         ru)
             msg "${YELLOW}1. Пользовательский открытый DNS${NC}"
@@ -12004,6 +13347,7 @@ dns_menu() {
             msg "${YELLOW}5. Автоматический тест DNS${NC}"
             msg "${YELLOW}6. DNS over HTTPS через dnscrypt-proxy${NC}"
             msg "${YELLOW}7. Восстановить предыдущую конфигурацию${NC}"
+            msg "${YELLOW}8. Настройка DNS (v4/v6/dual)${NC}"
             ;;
         fa)
             msg "${YELLOW}1. DNS ساده سفارشی${NC}"
@@ -12013,6 +13357,7 @@ dns_menu() {
             msg "${YELLOW}5. آزمون خودکار DNS${NC}"
             msg "${YELLOW}6. DNS روی HTTPS با dnscrypt-proxy${NC}"
             msg "${YELLOW}7. بازگردانی تنظیمات قبلی DNS${NC}"
+            msg "${YELLOW}8. تنظیم DNS سه‌حالته${NC}"
             ;;
         zh-tw)
             msg "${YELLOW}1. 自定義明文 DNS（可選 IPv6）${NC}"
@@ -12022,6 +13367,7 @@ dns_menu() {
             msg "${YELLOW}5. 自動實測優選 DNS（多輪延遲/可用性）${NC}"
             msg "${YELLOW}6. 隱私 DNS DoH（dnscrypt-proxy 本地轉發）${NC}"
             msg "${YELLOW}7. 回滾到上次 DNS 修改前快照${NC}"
+            msg "${YELLOW}8. DNS 三模式設定（v4/v6/雙棧）${NC}"
             ;;
         ja)
             msg "${YELLOW}1. カスタム平文 DNS（IPv6 は任意）${NC}"
@@ -12031,6 +13377,7 @@ dns_menu() {
             msg "${YELLOW}5. DNS リゾルバーの自動ベンチマーク（遅延 / 可用性を複数回測定）${NC}"
             msg "${YELLOW}6. プライバシー保護 DNS over HTTPS（DoH、dnscrypt-proxy によるローカル転送）${NC}"
             msg "${YELLOW}7. 前回の DNS 変更前のスナップショットにロールバック${NC}"
+            msg "${YELLOW}8. DNS 三モード設定 (v4/v6/デュアル)${NC}"
             ;;
         *)
             msg "${YELLOW}1. 自定义明文 DNS（可选 IPv6）${NC}"
@@ -12040,11 +13387,12 @@ dns_menu() {
             msg "${YELLOW}5. 自动实测优选 DNS（多轮延迟/可用性）${NC}"
             msg "${YELLOW}6. 隐私 DNS DoH（dnscrypt-proxy 本地转发）${NC}"
             msg "${YELLOW}7. 回滚到上次 DNS 修改前快照${NC}"
+            msg "${YELLOW}8. DNS 三模式设置（v4/v6/双栈）${NC}"
             ;;
     esac
     msg "${GREEN}0. Back / 返回${NC}"
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-7]: ' ;; ru) prompt='Выберите [0–7]: ' ;; fa) prompt='انتخاب [۰ تا ۷]: ' ;; ja) prompt='選択してください [0-7]: ' ;; zh-tw) prompt='請選擇 [0-7]：' ;; *) prompt='请选择 [0-7]：' ;; esac
-    read -r -p "$prompt" c
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-8]: ' ;; ru) prompt='Выберите [0–8]: ' ;; fa) prompt='انتخاب [۰ تا ۸]: ' ;; ja) prompt='選択してください [0-8]: ' ;; zh-tw) prompt='請選擇 [0-8]：' ;; *) prompt='请选择 [0-8]：' ;; esac
+    read -r -p "$prompt" c || return 0
     case "$c" in
         1)
             read -r -p 'IPv4 DNS: ' v4
@@ -12075,10 +13423,15 @@ dns_menu() {
         5) dns_auto_prefer ;;
         6) dns_enable_doh; pause_return ;;
         7) if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then restore_dns_snapshot "$DNS_BACKUP_DIR" && msg "${GREEN}DNS restored.${NC}" || msg "${RED}DNS rollback failed.${NC}"; else msg "${YELLOW}No DNS snapshot exists.${NC}"; fi; pause_return ;;
-        *) return 0 ;;
+        8) dns_setup_tri_mode ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 tune_vps() {
+    # Submenu loop: sub-functions return here; 0 goes back to the parent menu.
+    while true; do
     clear
     local prompt
     case "${ABOX_LANG:-zh}" in
@@ -12121,12 +13474,14 @@ tune_vps() {
     esac
     local c
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; ja) prompt='選択してください [0-2]: ' ;; zh-tw) prompt='請選擇 [0-2]：' ;; *) prompt='请选择 [0-2]：' ;; esac
-    read -r -p "$prompt" c
+    read -r -p "$prompt" c || return 0
     case "$c" in
         1) apply_vps_tune; pause_return ;;
         2) restore_vps_tune; pause_return ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 sha256_in_allowlist() {
     local sha="${1,,}" allowlist="${2:-}"
@@ -12852,7 +14207,9 @@ sni_auto_select_default() {
     { curl --help all 2>/dev/null || curl --help 2>/dev/null; } | grep -F -- '--http2' >/dev/null && ABOX_CURL_HTTP2_SUPPORTED=1
     : > "$raw"
     while IFS= read -r domain; do
-        sni_probe_domain "$domain" "$raw" "$timeout_s" &
+        # Detach probe subshells from the terminal stdin so stray keystrokes
+        # during the long run cannot be consumed by them.
+        sni_probe_domain "$domain" "$raw" "$timeout_s" </dev/null &
         running=$((running + 1))
         if (( running >= 8 )); then
             wait || true
@@ -12965,8 +14322,11 @@ run_builtin_sni_radar() {
     total=$(wc -l < "$candidates" | tr -d ' ')
     if [[ "$profile" == 'mini' ]]; then
         # Mini mode uses the same candidate library as full mode. It reduces concurrency and verification depth only.
-        concurrency="${ABOX_SNI_MINI_CONCURRENCY:-8}"
-        timeout_s="${ABOX_SNI_MINI_TIMEOUT:-5}"
+        # Mini defaults (2026-10-19): 5-version A/B test on 2 VPS showed
+        # concurrency=32/timeout=3 is ~25% faster than 8/5 with identical
+        # valid counts and 9/10 top-pick overlap. Env overrides still work.
+        concurrency="${ABOX_SNI_MINI_CONCURRENCY:-32}"
+        timeout_s="${ABOX_SNI_MINI_TIMEOUT:-3}"
         topn="${ABOX_SNI_MINI_TOPN:-60}"
         verify_limit="${ABOX_SNI_MINI_VERIFY:-240}"
     else
@@ -12995,7 +14355,7 @@ run_builtin_sni_radar() {
     msg "${YELLOW}[*] Progress is printed after each batch; large libraries can take several minutes on low-end VPS.${NC}"
     : > "$raw"
     while IFS= read -r domain; do
-        sni_probe_domain "$domain" "$raw" "$timeout_s" &
+        sni_probe_domain "$domain" "$raw" "$timeout_s" </dev/null &
         running=$((running + 1))
         processed=$((processed + 1))
         if (( running >= concurrency )); then
@@ -13026,13 +14386,18 @@ run_builtin_sni_radar() {
     [[ -s "$saved_report" && ! -L "$saved_report" ]] || die 'SNI record persistence verification failed.'
     path_owned_by_root "$saved_report" || die 'SNI record ownership verification failed.'
     path_mode_has_no_group_other_write "$saved_report" || die 'SNI record permission verification failed.'
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ Top SNI Candidates / 优选 SNI 候选 ]${NC}"
     sni_render_ranked_report "$report" "$topn" || msg "${YELLOW}[!] 结果分级显示失败；完整 TSV 仍已保存。${NC}"
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${GREEN}Saved: ${ABOX_DIR}/A-Box-sni-${profile}.tsv${NC}"
     msg "${YELLOW}A/B/C 等级仅表示本 VPS 的探测结果；风险复核和不合格项目不会因低延迟被标为优先推荐。${NC}"
     rm -rf "$workdir"
+    # Drain keystrokes typed during the long run; otherwise pause_return would
+    # consume them instantly and the ranked results would flash by.
+    while read -r -t 0 _ 2>/dev/null; do
+        read -r -t 0.1 _ 2>/dev/null || break
+    done
     pause_return
 }
 
@@ -13088,7 +14453,7 @@ show_sni_preference_records() {
         profile="${f##*/A-Box-sni-}"
         profile="${profile%.tsv}"
         mtime=$(date -r "$f" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || echo 'unknown')
-        msg "${BLUE}----------------------------------------------------------------------${NC}"
+        msg "${BLUE}--------------------------------------------------------------------------------${NC}"
         case "${ABOX_LANG:-zh}" in
             en|ru|fa)
                 msg "${YELLOW}[${profile}] Saved: ${f} | Updated: ${mtime}${NC}"
@@ -13106,7 +14471,7 @@ show_sni_preference_records() {
         sni_render_ranked_report "$f" "$topn" || msg "${YELLOW}[!] 无法读取该记录的分级结果。${NC}"
         shown=1
     done
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     if [[ "$shown" == '1' ]]; then
         msg "${YELLOW}Use only domains with tls13=1 and san=1. Prefer asnmatch=1/samecountry=1 when available.${NC}"
     fi
@@ -15085,6 +16450,8 @@ restore_from_backup() {
 }
 
 backup_restore_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     clear
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}Backup / Restore / 配置备份与恢复${NC}"
@@ -15134,7 +16501,7 @@ backup_restore_menu() {
             ;;
     esac
     local c
-    read -r -p 'Select [0-4]: ' c
+    read -r -p 'Select [0-4]: ' c || return 0
     case "$c" in
         1) backup_current_config; pause_return ;;
         2) restore_from_backup ;;
@@ -15149,8 +16516,10 @@ backup_restore_menu() {
             read -r -p 'Output directory (default: same directory): ' legacy_out
             convert_legacy_backup_archive "$legacy_path" "${legacy_out:-$(dirname "$legacy_path")}"; pause_return
             ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 
 write_diagnostic_checksum() {
@@ -15301,7 +16670,7 @@ preflight_check() {
 
     : > "$report"
     echo "A-Box preflight check: $(now_iso)" | tee -a "$report"
-    echo "----------------------------------------------------------------------" | tee -a "$report"
+    echo "--------------------------------------------------------------------------------" | tee -a "$report"
 
     [[ $EUID -eq 0 ]] && __abox_pf_log "$report" PASS "" 'root privilege available' || __abox_pf_log "$report" FAIL fail 'not running as root'
     [[ -t 0 ]] && __abox_pf_log "$report" PASS "" 'interactive TTY available' || __abox_pf_log "$report" WARN warn 'no interactive TTY on stdin'
@@ -15394,7 +16763,7 @@ preflight_check() {
         [[ -d "$(dirname "$ABOX_DIR")" && ! -L "$(dirname "$ABOX_DIR")" ]] && __abox_pf_log "$report" PASS "" "A-Box directory can be created after runtime ownership checks: $ABOX_DIR" || __abox_pf_log "$report" FAIL fail "A-Box directory parent is unavailable or symlinked: $(dirname "$ABOX_DIR")"
     fi
 
-    echo "----------------------------------------------------------------------" | tee -a "$report"
+    echo "--------------------------------------------------------------------------------" | tee -a "$report"
     echo "Summary: FAIL=${fail} WARN=${warn}" | tee -a "$report"
     echo "Report: temporary report generated for this run; cleaned after result." | tee -a "$report"
     if (( fail > 0 )); then
@@ -16861,6 +18230,8 @@ _wallos_manual_rollback() {
 }
 
 wallos_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     clear
     case "${ABOX_LANG:-zh}" in
         en)
@@ -16920,7 +18291,7 @@ wallos_menu() {
     esac
     local c prompt_confirm prompt_remove menu_prompt
     case "${ABOX_LANG:-zh}" in en) menu_prompt='Select [0-5]: ' ;; ru) menu_prompt='Выберите [0–5]: ' ;; fa) menu_prompt='انتخاب [۰ تا ۵]: ' ;; ja) menu_prompt='選択してください [0-5]: ' ;; zh-tw) menu_prompt='請選擇 [0-5]：' ;; *) menu_prompt='请选择 [0-5]：' ;; esac
-    read -r -p "$menu_prompt" c
+    read -r -p "$menu_prompt" c || return 0
     case "${ABOX_LANG:-zh}" in
         en) prompt_confirm='Wallos stores personal subscription/financial data. HTTP has no TLS. Continue? [Y/N]: '; prompt_remove="Remove the Wallos container and keep data in $WALLOS_DIR? [Y/N]: " ;;
         ru) prompt_confirm='Wallos хранит личные данные; HTTP не защищён TLS. Продолжить? [Y/N]: '; prompt_remove="Удалить контейнер Wallos, сохранив данные в $WALLOS_DIR? [Y/N]: " ;;
@@ -16965,125 +18336,124 @@ wallos_menu() {
             # Interactive: show retained versions, Enter defaults to 1 (previous).
             _wallos_manual_rollback
             pause_return ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
+    done
 }
 vps_benchmark_menu() {
+    # Toolbox is a submenu loop: sub-functions return here, 0/Enter goes back
+    # to the main menu.
+    while true; do
     clear
     msg "${CYAN}======================================================================${NC}"
     case "${ABOX_LANG:-zh}" in
         en)
             msg "${BOLD}${GREEN}Toolbox${NC}"
-            msg "${YELLOW}1. System benchmark and download speed${NC}"
-            msg "${YELLOW}2. IP quality, streaming unlock and route test${NC}"
-            msg "${YELLOW}3. Local SNI preference${NC}"
-            msg "${YELLOW}4. Mini-host local SNI preference${NC}"
-            msg "${YELLOW}5. Cloudflare WARP manager${NC}"
-            msg "${YELLOW}6. Allocate 2 GB Swap${NC}"
-            msg "${YELLOW}7. Backup / restore configuration${NC}"
-            msg "${YELLOW}8. Export redacted diagnostics${NC}"
-            msg "${YELLOW}9. Read-only preflight${NC}"
-            msg "${YELLOW}10. SNI preference records${NC}"
-            msg "${YELLOW}11. Multi-UUID / subscription export${NC}"
-            msg "${YELLOW}12. VPS one-click optimization${NC}"
-            msg "${YELLOW}13. IP / DNS / timezone / locale / download-source settings${NC}"
-            msg "${YELLOW}14. Wallos install / update / backup${NC}"
+            msg "${CYAN}[ Test & Diagnostics ]                    [ System Tuning ]${NC}"
+            msg "${YELLOW}1.  System benchmark & download speed     5.  Cloudflare WARP manager${NC}"
+            msg "${YELLOW}2.  IP quality / streaming / route test   6.  Allocate 2 GB Swap${NC}"
+            msg "${YELLOW}8.  Export redacted diagnostics           12.  VPS one-click optimization${NC}"
+            msg "${YELLOW}9.  Read-only preflight                   13.  IP / DNS / timezone / download-source${NC}"
+            msg ""
+            msg "${CYAN}[ SNI Optimization ]                      [ Config Management ]${NC}"
+            msg "${YELLOW}3.  Local SNI preference                  7.  Backup / restore configuration${NC}"
+            msg "${YELLOW}4.  Mini-host SNI preference              11.  Multi-user / subscription link export${NC}"
+            msg "${YELLOW}10.  SNI preference records               14.  Wallos install / update / backup${NC}"
+            msg ""
+            msg "${CYAN}[ Protocol Deployment ]${NC}"
+            msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
             msg "${GREEN}0. Back${NC}"
             ;;
         ru)
             msg "${BOLD}${GREEN}Инструменты${NC}"
-            msg "${YELLOW}1. Тест системы и скорости загрузки${NC}"
-            msg "${YELLOW}2. Качество IP, потоковые сервисы и маршрут${NC}"
-            msg "${YELLOW}3. Подбор SNI${NC}"
-            msg "${YELLOW}4. Облегчённый подбор SNI${NC}"
-            msg "${YELLOW}5. Управление Cloudflare WARP${NC}"
-            msg "${YELLOW}6. Создать Swap 2 ГБ${NC}"
-            msg "${YELLOW}7. Резервная копия / восстановление${NC}"
-            msg "${YELLOW}8. Диагностический архив без секретов${NC}"
-            msg "${YELLOW}9. Предварительная проверка${NC}"
-            msg "${YELLOW}10. Записи результатов SNI${NC}"
-            msg "${YELLOW}11. Несколько UUID / экспорт подписки${NC}"
-            msg "${YELLOW}12. Оптимизация VPS${NC}"
-            msg "${YELLOW}13. IP / DNS / часовой пояс / локаль / источники загрузки${NC}"
-            msg "${YELLOW}14. Установка и обслуживание Wallos${NC}"
+            msg "${CYAN}[ Тесты и диагностика ]                   [ Оптимизация системы ]${NC}"
+            msg "${YELLOW}1.  Тест системы и скорости               5.  Менеджер Cloudflare WARP${NC}"
+            msg "${YELLOW}2.  Качество IP / стриминг / маршрут      6.  Создать Swap 2 ГБ${NC}"
+            msg "${YELLOW}8.  Экспорт диагностики                   12.  Оптимизация VPS${NC}"
+            msg "${YELLOW}9.  Проверка перед установкой             13.  IP / DNS / часовой пояс / источники${NC}"
+            msg ""
+            msg "${CYAN}[ Подбор SNI ]                            [ Управление конфигурацией ]${NC}"
+            msg "${YELLOW}3.  Подбор SNI                            7.  Бэкап / восстановление${NC}"
+            msg "${YELLOW}4.  Подбор SNI (мини-хост)                11.  Пользователи / экспорт подписки${NC}"
+            msg "${YELLOW}10.  Записи подбора SNI                   14.  Wallos: установка / обновление${NC}"
+            msg ""
+            msg "${CYAN}[ Развёртывание протоколов ]${NC}"
+            msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
             msg "${GREEN}0. Назад${NC}"
             ;;
         fa)
             msg "${BOLD}${GREEN}جعبه ابزار${NC}"
-            msg "${YELLOW}1. آزمون سیستم و سرعت دانلود${NC}"
-            msg "${YELLOW}2. کیفیت IP، رسانه و مسیر${NC}"
-            msg "${YELLOW}3. انتخاب SNI${NC}"
-            msg "${YELLOW}4. انتخاب سبک SNI${NC}"
-            msg "${YELLOW}5. مدیریت Cloudflare WARP${NC}"
-            msg "${YELLOW}6. ایجاد Swap دو گیگابایتی${NC}"
-            msg "${YELLOW}7. پشتیبان‌گیری / بازیابی${NC}"
-            msg "${YELLOW}8. گزارش عیب‌یابی بدون اسرار${NC}"
-            msg "${YELLOW}9. بررسی پیش از اجرا${NC}"
-            msg "${YELLOW}10. سوابق SNI${NC}"
-            msg "${YELLOW}11. چند UUID / خروجی اشتراک${NC}"
-            msg "${YELLOW}12. بهینه‌سازی VPS${NC}"
-            msg "${YELLOW}13. IP / DNS / منطقه زمانی / locale / منبع دانلود${NC}"
-            msg "${YELLOW}14. نصب و نگهداری Wallos${NC}"
+            msg "${CYAN}[ تست و عیب‌یابی ]                        [ بهینه‌سازی سیستم ]${NC}"
+            msg "${YELLOW}1.  تست سیستم و سرعت دانلود               5.  مدیریت Cloudflare WARP${NC}"
+            msg "${YELLOW}2.  کیفیت IP / استریم / مسیر              6.  ساخت Swap دو گیگابایتی${NC}"
+            msg "${YELLOW}8.  خروجی تشخیص عیب‌یابی                  12.  بهینه‌سازی تک‌کلیکی VPS${NC}"
+            msg "${YELLOW}9.  پیش‌بررسی فقط‌خواندنی                 13.  تنظیمات IP / DNS / منطقه زمانی${NC}"
+            msg ""
+            msg "${CYAN}[ بهینه‌سازی SNI ]                        [ مدیریت پیکربندی ]${NC}"
+            msg "${YELLOW}3.  بهینه‌سازی SNI محلی                   7.  پشتیبان‌گیری / بازیابی${NC}"
+            msg "${YELLOW}4.  بهینه‌سازی SNI مینی‌هاست              11.  کاربران / خروجی لینک اشتراک${NC}"
+            msg "${YELLOW}10.  سوابق بهینه‌سازی SNI                 14.  نصب / به‌روزرسانی Wallos${NC}"
+            msg ""
+            msg "${CYAN}[ استقرار پروتکل ]${NC}"
+            msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}綜合工具箱${NC}"
-            msg "${YELLOW}1. 本機配置和下載測速${NC}"
-            msg "${YELLOW}2. IP 質量、流媒體解鎖與回程測試${NC}"
-            msg "${YELLOW}3. 本地 SNI 優選${NC}"
-            msg "${YELLOW}4. 微型主機本地 SNI 優選${NC}"
-            msg "${YELLOW}5. Cloudflare WARP 管理${NC}"
-            msg "${YELLOW}6. 建立 2 GB Swap${NC}"
-            msg "${YELLOW}7. 配置備份 / 恢復${NC}"
-            msg "${YELLOW}8. 匯出脫敏診斷包${NC}"
-            msg "${YELLOW}9. 只讀預檢查${NC}"
-            msg "${YELLOW}10. SNI 優選記錄${NC}"
-            msg "${YELLOW}11. 多 UUID / 訂閱匯出${NC}"
-            msg "${YELLOW}12. VPS 一鍵最佳化（僅手動啟用 BBR/FQ，可回滾；不會在協議安裝後自動執行）${NC}"
-            msg "${YELLOW}13. IP / DNS / 時區 / Locale / 下載源設定${NC}"
-            msg "${YELLOW}14. Wallos 安裝 / 升級 / 備份${NC}"
+            msg "${CYAN}[ 測試診斷 ]                              [ 系統優化 ]${NC}"
+            msg "${YELLOW}1.  系統性能與下載測速                    5.  Cloudflare WARP 管理${NC}"
+            msg "${YELLOW}2.  IP 質量/流媒體解鎖/回程測試           6.  創建 2 GB Swap${NC}"
+            msg "${YELLOW}8.  導出脫敏診斷包                        12.  VPS 一鍵優化${NC}"
+            msg "${YELLOW}9.  只讀預檢查                            13.  IP / DNS / 時區 / 下載源設置${NC}"
+            msg ""
+            msg "${CYAN}[ SNI 優選 ]                              [ 配置管理 ]${NC}"
+            msg "${YELLOW}3.  本地 SNI 優選                         7.  配置備份 / 恢復${NC}"
+            msg "${YELLOW}4.  微型主機 SNI 優選                     11.  多用戶 / 訂閱連結導出${NC}"
+            msg "${YELLOW}10.  SNI 優選記錄                         14.  Wallos 安裝 / 升級 / 備份${NC}"
+            msg ""
+            msg "${CYAN}[ 協議部署 ]${NC}"
+            msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
             msg "${GREEN}0. 返回主選單${NC}"
             ;;
         ja)
             msg "${BOLD}${GREEN}ツールボックス${NC}"
-            msg "${YELLOW}1. システムのベンチマークとダウンロード速度測定${NC}"
-            msg "${YELLOW}2. IP 品質、ストリーミングサービスの利用可否、経路テスト${NC}"
-            msg "${YELLOW}3. ローカル SNI の最適化${NC}"
-            msg "${YELLOW}4. 小型ホストのローカル SNI 最適化${NC}"
-            msg "${YELLOW}5. Cloudflare WARP の管理${NC}"
-            msg "${YELLOW}6. 2 GB の Swap を作成${NC}"
-            msg "${YELLOW}7. 設定のバックアップ / 復元${NC}"
-            msg "${YELLOW}8. 匿名化した診断パッケージをエクスポート${NC}"
-            msg "${YELLOW}9. 読み取り専用の事前チェック${NC}"
-            msg "${YELLOW}10. SNI 最適化の記録${NC}"
-            msg "${YELLOW}11. 複数 UUID / サブスクリプションのエクスポート${NC}"
-            msg "${YELLOW}12. VPS ワンクリック最適化（手動で BBR/FQ を有効化、ロールバック可能）${NC}"
-            msg "${YELLOW}13. IP / DNS / タイムゾーン / Locale / ダウンロード元の設定${NC}"
-            msg "${YELLOW}14. Wallos のインストール / アップグレード / バックアップ${NC}"
+            msg "${CYAN}[ テストと診断 ]                          [ システム最適化 ]${NC}"
+            msg "${YELLOW}1.  システムベンチマークと速度測定        5.  Cloudflare WARP 管理${NC}"
+            msg "${YELLOW}2.  IP品質/ストリーミング/ルートテスト    6.  2GB Swap 作成${NC}"
+            msg "${YELLOW}8.  診断パッケージのエクスポート          12.  VPS ワンクリック最適化${NC}"
+            msg "${YELLOW}9.  読み取り専用事前チェック              13.  IP / DNS / タイムゾーン設定${NC}"
+            msg ""
+            msg "${CYAN}[ SNI 最適化 ]                            [ 構成管理 ]${NC}"
+            msg "${YELLOW}3.  ローカル SNI 最適化                   7.  設定のバックアップ/復元${NC}"
+            msg "${YELLOW}4.  ミニホスト SNI 最適化                 11.  複数ユーザー / サブスクリプション出力${NC}"
+            msg "${YELLOW}10.  SNI 最適化記録                       14.  Wallos インストール/更新${NC}"
+            msg ""
+            msg "${CYAN}[ プロトコル展開 ]${NC}"
+            msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
             msg "${GREEN}0. メインメニューに戻る${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}综合工具箱${NC}"
-            msg "${YELLOW}1. 本机配置和下载测速${NC}"
-            msg "${YELLOW}2. IP 质量、流媒体解锁与回程测试${NC}"
-            msg "${YELLOW}3. 本地 SNI 优选${NC}"
-            msg "${YELLOW}4. 微型主机本地 SNI 优选${NC}"
-            msg "${YELLOW}5. Cloudflare WARP 管理${NC}"
-            msg "${YELLOW}6. 创建 2 GB Swap${NC}"
-            msg "${YELLOW}7. 配置备份 / 恢复${NC}"
-            msg "${YELLOW}8. 导出脱敏诊断包${NC}"
-            msg "${YELLOW}9. 只读预检查${NC}"
-            msg "${YELLOW}10. SNI 优选记录${NC}"
-            msg "${YELLOW}11. 多 UUID / 订阅导出${NC}"
-            msg "${YELLOW}12. VPS 一键优化（仅手动启用 BBR/FQ，可回滚；不会在协议安装后自动运行）${NC}"
-            msg "${YELLOW}13. IP / DNS / 时区 / Locale / 下载源设置${NC}"
-            msg "${YELLOW}14. Wallos 安装 / 升级 / 备份${NC}"
+            msg "${CYAN}[ 测试诊断 ]                              [ 系统优化 ]${NC}"
+            msg "${YELLOW}1.  系统性能与下载测速                    5.  Cloudflare WARP 管理${NC}"
+            msg "${YELLOW}2.  IP 质量/流媒体解锁/回程测试           6.  创建 2 GB Swap${NC}"
+            msg "${YELLOW}8.  导出脱敏诊断包                        12.  VPS 一键优化${NC}"
+            msg "${YELLOW}9.  只读预检查                            13.  IP / DNS / 时区 / 下载源设置${NC}"
+            msg ""
+            msg "${CYAN}[ SNI 优选 ]                              [ 配置管理 ]${NC}"
+            msg "${YELLOW}3.  本地 SNI 优选                         7.  配置备份 / 恢复${NC}"
+            msg "${YELLOW}4.  微型主机 SNI 优选                     11.  多用户 / 订阅链接导出${NC}"
+            msg "${YELLOW}10.  SNI 优选记录                         14.  Wallos 安装 / 升级 / 备份${NC}"
+            msg ""
+            msg "${CYAN}[ 协议部署 ]${NC}"
+            msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
             msg "${GREEN}0. 返回主菜单${NC}"
             ;;
     esac
     local bench_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-14]: ' ;; ru) select_prompt='Выберите [0–14]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۴]: ' ;; ja) select_prompt='選択してください [0-14]: ' ;; zh-tw) select_prompt='請選擇 [0-14]：' ;; *) select_prompt='请选择 [0-14]：' ;; esac
-    read -r -p "$select_prompt" bench_choice
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-16]: ' ;; ru) select_prompt='Выберите [0–16]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۶]: ' ;; ja) select_prompt='選択してください [0-16]: ' ;; zh-tw) select_prompt='請選擇 [0-16]：' ;; *) select_prompt='请选择 [0-16]：' ;; esac
+    read -r -p "$select_prompt" bench_choice || return 0
     case "$bench_choice" in
         1) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
         2) run_mirrored_test_script 'IP quality, streaming unlock and route test' 'https://Check.Place' 'Check.Place.sh' -I; pause_return ;;
@@ -17099,7 +18469,27 @@ vps_benchmark_menu() {
         12) tune_vps ;;
         13) host_network_menu ;;
         14) wallos_menu ;;
-        *) return 0 ;;
+        15) socks5_toolbox_entry; pause_return ;;
+        16) trojan_toolbox_entry; pause_return ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $bench_choice${NC}"; sleep 1 ;;
+    esac
+    done
+}
+
+# Toolbox entry 15: let the user freely choose the core for standalone SOCKS5.
+# Defaults to the currently deployed core when detectable.
+socks5_toolbox_entry() {
+    local _core_choice='' _default='1'
+    load_optional_abox_env_or_die 2>/dev/null || true
+    if [[ "${CORE:-}" == "singbox" ]]; then
+        _default='2'
+    fi
+    read -r -p "$(tr_msg socks5_core_prompt) [${_default}]: " _core_choice || _core_choice=''
+    _core_choice="${_core_choice:-$_default}"
+    case "$_core_choice" in
+        2) deploy_singbox_socks5_landing ;;
+        *) deploy_socks5_landing ;;
     esac
 }
 clean_uninstall_menu() {
@@ -17175,9 +18565,32 @@ EOF_TLS
     fi
 }
 
+# Detect the VPS country (ISO-3166 alpha-2, uppercase) from the public egress IP.
+# Used to pick bootstrap DNS for the Clash YAML: Chinese defaults must never be
+# hard-coded for non-CN VPS. Returns empty on any failure; caller falls back to
+# global defaults.
+_detect_vps_country() {
+    local trace loc
+    trace=$(curl -sS --connect-timeout 2 -m 5 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null || true)
+    loc=$(printf '%s\n' "$trace" | grep -m1 '^loc=' | cut -d= -f2 | tr -d '[:space:]')
+    [[ "$loc" =~ ^[A-Za-z]{2}$ ]] || return 1
+    printf '%s\n' "$loc" | tr 'a-z' 'A-Z'
+}
+
+# Bootstrap nameservers for the Clash YAML, chosen by VPS geolocation.
+# Prints two plain IPv4 addresses, one per line.
+_clash_default_nameservers() {
+    local country="${1:-}"
+    case "$country" in
+        CN) printf '223.5.5.5\n119.29.29.29\n' ;;
+        *)  printf '1.1.1.1\n8.8.8.8\n' ;;
+    esac
+}
+
 write_clash_yaml() {
     local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="${LINK_IP:-}" hy2_name="A-Box-Hy2-Self" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
     local hy2_pass_yaml hy2_obfs_yaml ss_pass_yaml clash_mlkem=false clash_mlkem_rc
+    local clash_ns1 clash_ns2 clash_country
     if clash_reality_mlkem_enabled; then
         clash_mlkem=true
     else
@@ -17226,6 +18639,11 @@ PY_CLASH_REALPATH
     hy2_pass_yaml=$(json_escape "${HY2_PASS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     ss_pass_yaml=$(json_escape "${SS_PASS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
+    # Bootstrap DNS by VPS geolocation; Chinese defaults only for CN VPS.
+    clash_country=$(_detect_vps_country 2>/dev/null || true)
+    clash_ns1=$(_clash_default_nameservers "$clash_country" 2>/dev/null | sed -n '1p')
+    clash_ns2=$(_clash_default_nameservers "$clash_country" 2>/dev/null | sed -n '2p')
+    [[ -n "$clash_ns1" && -n "$clash_ns2" ]] || { clash_ns1='1.1.1.1'; clash_ns2='8.8.8.8'; }
     {
         cat <<EOF_CLASH
 mixed-port: 7890
@@ -17239,6 +18657,25 @@ dns:
   listen: 127.0.0.1:1053
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
+  default-nameserver:
+    - ${clash_ns1}
+    - ${clash_ns2}
+  fake-ip-filter:
+    - "*.lan"
+    - "*.local"
+    - "*.internal"
+    - "*.example"
+    - "localhost"
+    - "time.apple.com"
+    - "captive.apple.com"
+    - "detectportal.firefox.com"
+    - "msftconnecttest.com"
+    - "www.msftconnecttest.com"
+    - "msftncsi.com"
+    - "www.msftncsi.com"
+    - "connectivitycheck.platform.hicloud.com"
+    - "connectivitycheck.gstatic.com"
+    - "ntp.tencent.com"
   nameserver:
     - https://dns.google/dns-query
     - https://cloudflare-dns.com/dns-query
@@ -17421,6 +18858,12 @@ generate_qr() {
         printf '\n%s\n' "${CYAN}================ 扫码导入 / Scan QR Code =================${NC}"
         printf '%s' "$url" | qrencode -s 1 -m 2 -t UTF8
         printf '%s\n\n' "${CYAN}==========================================================${NC}"
+    elif [[ -z "${_QR_MISSING_WARNED:-}" ]]; then
+        _QR_MISSING_WARNED=1
+        msg "${YELLOW}[!] 未检测到 qrencode，跳过二维码显示。安装后进 12 号菜单重看即有：${NC}"
+        msg "${YELLOW}    Debian/Ubuntu: sudo apt install -y qrencode${NC}"
+        msg "${YELLOW}    Rocky/Alma/Fedora: sudo dnf install -y qrencode${NC}"
+        msg "${YELLOW}    Alpine: sudo apk add qrencode${NC}"
     fi
 }
 
@@ -17470,7 +18913,7 @@ view_config() {
     msg "${BOLD}${CYAN}全局拓扑网络参数 (${MODE}) / Network Parameters${NC}"
     msg "${BLUE}======================================================================${NC}"
     msg "${BOLD}引擎栈:${NC} $CORE | ${BOLD}模式:${NC} $MODE"
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ Shadowrocket / v2rayNG / NekoBox 单节点 URI ]${NC}"
     if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
         VLESS_URL="vless://$UUID@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#A-Box-VLESS-Vision"
@@ -17505,7 +18948,7 @@ view_config() {
 
     CLASH_FILE=$(write_clash_yaml) || die 'Clash/Mihomo YAML 配置生成失败。'
     CLASH_SUB_URL="${ABOX_CLASH_SUB_URL:-${CLASH_SUB_URL:-}}"
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ Clash / Mihomo 完整配置 ]${NC}"
     msg "${GREEN}Local YAML: ${CLASH_FILE}${NC}"
     msg "${YELLOW}Clash/Mihomo 类客户端请导入完整 YAML 或远程订阅 URL；不要扫描上方单条 vless:// / hysteria2:// / ss://。${NC}"
@@ -17520,7 +18963,7 @@ view_config() {
         msg "${CYAN}ABOX_CLASH_SUB_URL='https://example.com/A-Box-clash.yaml' sb${NC}"
     fi
 
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ Clash / Mihomo YAML 预览 ]${NC}"
     sed -n '1,220p' "$CLASH_FILE" 2>/dev/null || true
 
@@ -17595,7 +19038,7 @@ EOF_SB
 }
 EOF_V2N
     fi
-    msg "${BLUE}----------------------------------------------------------------------${NC}"
+    msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     [[ "$CALLER" == 'deploy' ]] && msg "${GREEN}服务池部署完成。${NC}"
     pause_return
 }
@@ -18078,10 +19521,12 @@ core_expected_listen_ports() {
     local core="$1" cfg="$2"
     case "$core" in
         xray)
-            jq -r '.inbounds[]? | select(.port != null) | (if .protocol == "shadowsocks" then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end)' "$cfg" 2>/dev/null
+            # XRAY-API: exclude the loopback-only gRPC control plane (tag "api")
+            # from data-plane health checks; it is infrastructure, not a service port.
+            jq -r '.inbounds[]? | select(.port != null and .tag != "api") | (if .protocol == "shadowsocks" then "tcp/\(.port)\nudp/\(.port)" elif .protocol == "socks" then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end)' "$cfg" 2>/dev/null
             ;;
         singbox)
-            jq -r '.inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" then "udp/\(.listen_port)" elif .type == "shadowsocks" then "tcp/\(.listen_port)\nudp/\(.listen_port)" else "tcp/\(.listen_port)" end)' "$cfg" 2>/dev/null
+            jq -r '.inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" then "udp/\(.listen_port)" elif .type == "shadowsocks" then "tcp/\(.listen_port)\nudp/\(.listen_port)" elif .type == "socks" or .type == "mixed" then "tcp/\(.listen_port)\nudp/\(.listen_port)" else "tcp/\(.listen_port)" end)' "$cfg" 2>/dev/null
             ;;
         hysteria)
             # Hysteria 2 config uses listen: :PORT (or [::]:PORT).
@@ -18658,6 +20103,8 @@ upgrade_current_cores_only() {
 }
 
 ota_and_geo_menu() {
+    # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    while true; do
     # P3: Clear stale choice so EOF (Ctrl-D) does not re-execute previous selection.
     ota_choice=''
     clear
@@ -18727,7 +20174,7 @@ ota_and_geo_menu() {
         msg "${YELLOW}4. 查看兼容钉扎说明 [U3]${NC}"
         msg "${YELLOW}5. 危险：试用上游 latest 核心（失败自动回滚）[U3]${NC}"
         msg "${GREEN}0. 返回主菜单${NC}"
-        read -r -p '请选择 [0-5]: ' ota_choice
+        read -r -p '请选择 [0-5]: ' ota_choice || return 0
             ;;
     esac
     case "$ota_choice" in
@@ -18736,8 +20183,10 @@ ota_and_geo_menu() {
         3) upgrade_current_cores_only ;;
         4) show_core_pin_docs ;;
         5) try_latest_cores_danger ;;
-        *) return 0 ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $ota_choice${NC}"; sleep 1 ;;
     esac
+    done
 }
 
 
@@ -19757,7 +21206,7 @@ N11EOF
     ( tr_msg() { printf '%s' '%s %s'; }; tprintf synthetic only-one ) >/dev/null 2>&1 && { echo 'FAIL: tprintf accepted mismatched placeholder arguments'; failures=$((failures + 1)); }
     grep -q 'command -v ss >/dev/null 2>&1 || return 2' "$0" || { echo 'FAIL: health probe socket checker must distinguish unavailable ss'; failures=$((failures + 1)); }
     grep -q '2) exit 0 ;;' "$0" || { echo 'FAIL: health probe must not restart services when ss is unavailable'; failures=$((failures + 1)); }
-    grep -q 'PY_TRAFFIC_NOW' <<< "$source_body" || { echo 'FAIL: main vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
+    grep -q 'PY_TRAFFIC_DASH' <<< "$source_body" || { echo 'FAIL: main vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
     grep -q 'PY_VNSTAT_TOTAL_MONITOR' "$0" || { echo 'FAIL: traffic monitor vnStat total must use exact integer arithmetic'; failures=$((failures + 1)); }
     grep -q 'PY_TRAFFIC_COMPARE' "$0" || { echo 'FAIL: traffic quota comparison must use exact integer arithmetic'; failures=$((failures + 1)); }
     ! grep -q '^    \[\[ -d /run/systemd/system \]\] && return 0$' "$0" || { echo 'FAIL: systemd detection must not trust /run/systemd/system alone'; failures=$((failures + 1)); }
@@ -20316,6 +21765,8 @@ EOF_SELFTEST_IPT
         grep -q '^proxy-groups:' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash YAML proxy-groups'; failures=$((failures + 1)); }
         grep -q '^dns:' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash YAML dns'; failures=$((failures + 1)); }
         grep -q '^  listen: 127.0.0.1:1053$' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash DNS listener must stay loopback-only'; failures=$((failures + 1)); }
+        grep -q '^  default-nameserver:' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash YAML default-nameserver'; failures=$((failures + 1)); }
+        grep -q '^  fake-ip-filter:' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash YAML fake-ip-filter'; failures=$((failures + 1)); }
         grep -q 'host: "www.microsoft.com"' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash XHTTP host'; failures=$((failures + 1)); }
         [[ "$(grep -Fc 'support-x25519mlkem768: false' "$clash_dir/A-Box-clash.yaml")" -eq 2 ]] || { echo 'FAIL: default Xray REALITY ML-KEM flags must remain disabled'; failures=$((failures + 1)); }
         ABOX_XRAY_VERSION=v26.9.8 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef CLASH_YAML_PATH="$clash_dir/A-Box-clash-mlkem.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: new-Xray Clash YAML generation'; failures=$((failures + 1)); }
@@ -20696,7 +22147,8 @@ EOF_SVC_TEST_RCUPDATE
             *) printf '0\n' ;;
         esac
     }
-    [[ "$(build_status_str)" == *'Xray-Core'* && "$(build_status_str)" == *'State Unknown'* ]] || { echo 'FAIL: mixed active/unknown status UI'; failures=$((failures + 1)); }
+    # build_status_str state words are localized; assert the English rendering.
+    ( ABOX_LANG=en; [[ "$(build_status_str)" == *'Xray-Core'* && "$(build_status_str)" == *'State Unknown'* ]] ) || { echo 'FAIL: mixed active/unknown status UI'; failures=$((failures + 1)); }
     eval "$_status_owns_orig"
     eval "$_status_state_orig"
 
@@ -20892,6 +22344,14 @@ main() {
         --convert-legacy-backup) shift; prepare_noninteractive_file_operation; convert_legacy_backup_archive "${1:-}" "${2:-$(dirname "${1:-.}")}"; exit 0 ;;
         --help|-h) show_cli_help; exit 0 ;;
         --self-test) run_self_tests; exit $? ;;
+        --sni-test)
+            # Hidden test hook: run SNI radar non-interactively for A/B testing.
+            # Usage: sudo ABOX_SNI_TEST_PROFILE=mini ABOX_SNI_MINI_CONCURRENCY=16 \
+            #          ABOX_SNI_MINI_MAX=500 bash install.sh --sni-test
+            [[ $EUID -eq 0 ]] || die 'SNI test requires root.'
+            run_builtin_sni_radar "${ABOX_SNI_TEST_PROFILE:-mini}" "SNI test (${ABOX_SNI_TEST_PROFILE:-mini})"
+            exit 0
+            ;;
         --status) show_status_report; exit 0 ;;
         --stop) manual_stop_managed_stack; exit $? ;;
         --start) manual_start_managed_stack; exit $? ;;
@@ -20919,6 +22379,46 @@ main_loop() {
     detect_lang
     init_system_environment
     setup_shortcut
+    # Menu status row: 3 segments spread left/center/right with margins
+    # 14-system safe: ASCII only, standard ANSI colors, CJK width aware
+    _menu_status_row() {
+        local lbl_gw="$1" lbl_core="$2" lbl_mode="$3"
+        # Perf: label prefixes are fixed per ABOX_LANG; cache their widths once.
+        # Only dynamic parts (IP, status text, mode label) are measured per render.
+        # Display width is additive over concatenation: w = cached_prefix + dynamic.
+        local _status_key="${lbl_gw}|${lbl_core}|${lbl_mode}"
+        if [[ "${_CACHED_STATUS_KEY:-}" != "$_status_key" ]]; then
+            _CACHED_STATUS_KEY="$_status_key"
+            _CACHED_GW_W=$(_disp_width "${lbl_gw}: ")
+            _CACHED_CORE_W=$(_disp_width "${lbl_core}: ● ")
+            _CACHED_MODE_W=$(_disp_width "${lbl_mode}: ")
+        fi
+        local gw_ip="${GLOBAL_PUBLIC_IP:-?}"
+        local mode_label="$(read_fast_mode_label)"
+        # Strip all ANSI (CSI + charset) for width calc
+        local core_plain=$(printf '%s' "$STATUS_STR $CUR_MODE" | sed $'s/\x1b\\[[0-9;?]*[a-zA-Z]//g; s/\x1b([0-9A-Za-z]//g')
+        # Single awk measures all three dynamic widths (was 3x _disp_width).
+        # All three values are single-line: IP / stripped status / fast|strict.
+        local _dw _dw1 _dw2 _dw3
+        _dw=$(printf '%s\n%s\n%s\n' "$gw_ip" "$core_plain" "$mode_label" | LC_ALL=C awk '
+            { b=length($0)
+              s1=gsub(/[\xc2-\xdf][\x80-\xbf]|[\xe3-\xef][\x80-\xbf][\x80-\xbf]/, "&")
+              s2=gsub(/[\xe0-\xe2][\x80-\xbf][\x80-\xbf]|[\xf0-\xf4][\x80-\xbf][\x80-\xbf][\x80-\xbf]/, "&")
+              print b - s1 - s2*2 }')
+        { IFS= read -r _dw1; IFS= read -r _dw2; IFS= read -r _dw3; } <<< "$_dw"
+        local w1=$((_CACHED_GW_W + ${_dw1:-0})) w2=$((_CACHED_CORE_W + ${_dw2:-0})) w3=$((_CACHED_MODE_W + ${_dw3:-0}))
+        local total=70 margin=2
+        local gaps=$((total - margin*2 - w1 - w2 - w3))
+        local gap=$((gaps / 2))
+        [[ $gap -lt 2 ]] && gap=2
+        local pad1=$margin pad2=$gap pad3=$gap
+        # Dot color: green if core running, red if stopped
+        local dot_color="$RED"
+        [[ "$STATUS_STR" == *"${GREEN}"* ]] && dot_color="$GREEN"
+        # Display with original STATUS_STR colors preserved
+        printf "%*s${LIGHTBLUE}%s:${NC} ${CYAN}%s${NC}%*s${LIGHTBLUE}%s:${NC} ${dot_color}●${NC} %s%*s${LIGHTBLUE}%s:${NC} ${YELLOW}%s${NC}\n" \
+            "$pad1" "" "$lbl_gw" "$gw_ip" "$pad2" "" "$lbl_core" "$STATUS_STR $CUR_MODE" "$pad3" "" "$lbl_mode" "$mode_label"
+    }
     # Safely migrate active, exactly marked v7 installations into the new
     # per-file ownership model. Inactive or ambiguous services are not adopted.
     local _srv _pid _exe
@@ -20934,138 +22434,153 @@ main_loop() {
     while true; do
         local STATUS_STR='' CUR_MODE='' choice
         STATUS_STR=$(build_status_str)
-        load_abox_env "$ABOX_ENV" 2>/dev/null && CUR_MODE="[${CORE}-${MODE}]" || CUR_MODE=''
+        # A loadable .env may carry no deployment yet (e.g. traffic limit set
+        # before any protocol install); only show [CORE-MODE] when both exist.
+        if load_abox_env "$ABOX_ENV" 2>/dev/null && [[ -n "${CORE:-}" && -n "${MODE:-}" ]]; then
+            CUR_MODE="[${CORE}-${MODE}]"
+        else
+            CUR_MODE=''
+        fi
         clear
-        msg "${BLUE}======================================================================${NC}"
-        msg "${BOLD}${YELLOW}==================================A-Box===============================${NC}"
-        msg "${BLUE}======================================================================${NC}"
+        _abox_tk="Linux Gateway Toolkit"
+        _abox_pad=$((70 - 5 - ${#_abox_tk}))
+        printf "${YELLOW}A-Box${NC}%${_abox_pad}s${GRAY}%s${NC}\n" "" "$_abox_tk"
+        msg "${YELLOW}────────────────────────────────────────────────────────────────────────────────${NC}"
         case "${ABOX_LANG:-zh}" in
             en)
-                msg "Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | Core: $STATUS_STR $CUR_MODE | Mode: ${YELLOW}$(read_fast_mode_label)${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}${BOLD}                    >>> 20  ONE-CLICK REALITY <<<                    ${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}                 Vision REALITY, minimal prompts [r]                 ${NC}"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${YELLOW}[ Xray-core Deployment ]${NC}              ${YELLOW}[ Sing-box Deployment ]${NC}"
-                msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
-                msg "${GREEN}4.${NC}  Hysteria 2 (Official)              ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
-                msg "${GREEN}5.${NC}  All-in-one (Xray+Hy2)              ${GREEN}10.${NC} All-in-one (Sing-box)"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${GREEN}11.${NC} Toolbox                           ${GREEN}16.${NC} Delete Nodes & Reinitialize Environment"
-                msg "${GREEN}12.${NC} Display All Node Parameters       ${GREEN}17.${NC} Monthly Traffic Limit"
-                msg "${GREEN}13.${NC} Manual                            ${GREEN}18.${NC} SS-2022 Whitelist Manager"
-                msg "${GREEN}14.${NC} OTA & Core Upgrade                ${GREEN}19.${NC} Language"
-                msg "${GREEN}15.${NC} Clean Uninstall                   ${YELLOW}${BOLD}20.${NC} One-click Reality [r]"
+                _menu_status_row "Gateway" "Core" "Mode"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "                               ${YELLOW}One-click Reality${NC}"
+                msg "                        ${GRAY}Default SNI · input r to execute${NC}"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}[ Xray-core Deployment ]${NC}                ${CYAN}[ Sing-box Deployment ]${NC}"
+                msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
+                msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
+                msg "${GREEN}4.${NC}  Hysteria 2 (Official)               ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
+                msg "${GREEN}5.${NC}  All-in-one (Xray+Hy2)               ${GREEN}10.${NC} All-in-one (Sing-box)"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}[ Tools & System ]${NC}                      ${CYAN}[ Ops & Policy ]${NC}"
+                msg "${GREEN}11.${NC}  Toolbox                            ${GREEN}16.${NC}  Wipe Nodes & Reset Env"
+                msg "${GREEN}12.${NC}  View Node Configs & Links          ${GREEN}17.${NC}  Monthly Traffic Quota"
+                msg "${GREEN}13.${NC}  User Guide & Manual                ${GREEN}18.${NC}  SS-2022 IP Whitelist"
+                msg "${GREEN}14.${NC}  Update Core & Script (OTA)         ${GREEN}19.${NC}  Language / 语言设置"
+                msg "${GREEN}15.${NC}  VPS Optimization                   ${YELLOW}20.  Uninstall Script & Cores${NC}"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${GREEN} 0.${NC}  Exit"
                 ;;
             ru)
-                msg "Шлюз: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | Ядро: $STATUS_STR $CUR_MODE | Режим: ${YELLOW}$(read_fast_mode_label)${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}${BOLD}                    >>> 20  REALITY В ОДИН КЛИК <<<                  ${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${YELLOW}[ Развёртывание Xray ]${NC}              ${YELLOW}[ Развёртывание sing-box ]${NC}"
-                msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
-                msg "${GREEN}4.${NC}  Hysteria 2 (официальный)           ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
+                _menu_status_row "Шлюз" "Ядро" "Режим"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "                              ${YELLOW}Reality в один клик${NC}"
+                msg "                         ${GRAY}SNI по умолчанию · r выполнить${NC}"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}[ Развёртывание Xray ]${NC}                  ${CYAN}[ Развёртывание sing-box ]${NC}"
+                msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
+                msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
+                msg "${GREEN}4.${NC}  Hysteria 2 (официальный)            ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
                 msg "${GREEN}5.${NC}  Комплексная установка               ${GREEN}10.${NC} Комплексная установка"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${GREEN}11.${NC} Инструменты                       ${GREEN}16.${NC} Сброс узлов и среды"
-                msg "${GREEN}12.${NC} Параметры узлов                   ${GREEN}17.${NC} Месячный лимит трафика"
-                msg "${GREEN}13.${NC} Руководство                       ${GREEN}18.${NC} Белый список SS-2022"
-                msg "${GREEN}14.${NC} OTA и ядра                        ${GREEN}19.${NC} Язык"
-                msg "${GREEN}15.${NC} Удаление                          ${YELLOW}${BOLD}20.${NC} Reality в один клик [r]"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}[ Инструменты и система ]${NC}               ${CYAN}[ Управление и политики ]${NC}"
+                msg "${GREEN}11.${NC}  Панель инструментов                ${GREEN}16.${NC}  Сброс узлов и окружения"
+                msg "${GREEN}12.${NC}  Просмотр параметров узлов          ${GREEN}17.${NC}  Лимит месячного трафика"
+                msg "${GREEN}13.${NC}  Справка и руководство              ${GREEN}18.${NC}  Белый список IP (SS-2022)"
+                msg "${GREEN}14.${NC}  Обновление ядра и скрипта          ${GREEN}19.${NC}  Язык / Language"
+                msg "${GREEN}15.${NC}  Оптимизация VPS                    ${YELLOW}20.  Полное удаление скрипта${NC}"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${GREEN} 0.${NC}  Выход"
                 ;;
             fa)
-                msg "درگاه: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | هسته: $STATUS_STR $CUR_MODE | حالت: ${YELLOW}$(read_fast_mode_label)${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}${BOLD}                    >>> 20  REALITY با یک کلیک <<<                  ${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${YELLOW}[ نصب Xray ]${NC}                         ${YELLOW}[ نصب sing-box ]${NC}"
-                msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
-                msg "${GREEN}4.${NC}  Hysteria 2 (رسمی)                 ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
+                _menu_status_row "درگاه" "هسته" "حالت"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "                                ${YELLOW}ریالیتی تک‌کلیکی${NC}"
+                msg "                            ${GRAY}SNI پیش‌فرض · r اجرا شود${NC}"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}[ نصب Xray ]${NC}                            ${CYAN}[ نصب sing-box ]${NC}"
+                msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
+                msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
+                msg "${GREEN}4.${NC}  Hysteria 2 (رسمی)                   ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
                 msg "${GREEN}5.${NC}  نصب ترکیبی                          ${GREEN}10.${NC} نصب ترکیبی"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${GREEN}11.${NC} جعبه ابزار                        ${GREEN}16.${NC} بازنشانی نودها و محیط"
-                msg "${GREEN}12.${NC} پارامترهای نود                    ${GREEN}17.${NC} محدودیت ماهانه ترافیک"
-                msg "${GREEN}13.${NC} راهنما                            ${GREEN}18.${NC} فهرست مجاز SS-2022"
-                msg "${GREEN}14.${NC} OTA و هسته                        ${GREEN}19.${NC} زبان"
-                msg "${GREEN}15.${NC} حذف کامل                          ${YELLOW}${BOLD}20.${NC} Reality با یک کلیک [r]"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}[ ابزارها و سیستم ]${NC}                     ${CYAN}[ عملیات و سیاست‌ها ]${NC}"
+                msg "${GREEN}11.${NC}  جعبه ابزار                         ${GREEN}16.${NC}  پاکسازی نودها و بازنشانی محیط"
+                msg "${GREEN}12.${NC}  مشاهده تنظیمات و نودها             ${GREEN}17.${NC}  مدیریت و محدودیت ترافیک"
+                msg "${GREEN}13.${NC}  راهنمای استفاده                    ${GREEN}18.${NC}  لیست سفید آی‌پی SS-2022"
+                msg "${GREEN}14.${NC}  به‌روزرسانی هسته و اسکریپت         ${GREEN}19.${NC}  تنظیم زبان / Language"
+                msg "${GREEN}15.${NC}  بهینه‌سازی VPS                     ${YELLOW}20.  حذف کامل اسکریپت و هسته${NC}"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${GREEN} 0.${NC}  خروج"
                 ;;
             zh-tw)
-                msg "閘道器/Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | 核心/Core: $STATUS_STR $CUR_MODE | 模式: ${YELLOW}$(read_fast_mode_label)${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}${BOLD}                    >>> 20  一 鍵 REALITY <<<                       ${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}                 Vision 預設 SNI · 最少提問 · 輸入 r 同效             ${NC}"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${YELLOW}[ Xray-core 部署 ]${NC}                    ${YELLOW}[ Sing-box 部署 ]${NC}"
-                msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
-                msg "${GREEN}4.${NC}  Hysteria 2 (官方)                 ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
+                _menu_status_row "閘道器/Gateway" "核心/Core" "模式"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "                                  ${YELLOW}一鍵 Reality${NC}"
+                msg "                             ${GRAY}默認 SNI · 輸入 r 執行${NC}"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ Sing-box 部署 ]${NC}"
+                msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
+                msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
+                msg "${GREEN}4.${NC}  Hysteria 2 (官方)                   ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC}  全協議四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全協議三合一 (Sing-box)"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${GREEN}11.${NC} 綜合工具箱                        ${GREEN}16.${NC} 刪除全部節點與環境初始化"
-                msg "${GREEN}12.${NC} 全部節點引數顯示                  ${GREEN}17.${NC} 每月流量管控限制"
-                msg "${GREEN}13.${NC} 指令碼說明書                      ${GREEN}18.${NC} SS-2022 白名單 IP 管理"
-                msg "${GREEN}14.${NC} OTA 與核心升級                    ${GREEN}19.${NC} 語言設定 / Language"
-                msg "${GREEN}15.${NC} 一鍵全部清空解除安裝              ${YELLOW}${BOLD}20.${NC} 一鍵 Reality [r]"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}[ 工具與系統 ]${NC}                          ${CYAN}[ 運維與策略 ]${NC}"
+                msg "${GREEN}11.${NC}  綜合工具箱                         ${GREEN}16.${NC}  清空節點與重置環境"
+                msg "${GREEN}12.${NC}  查看節點配置與參數                 ${GREEN}17.${NC}  流量管控與額度限制"
+                msg "${GREEN}13.${NC}  使用幫助與說明書                   ${GREEN}18.${NC}  SS-2022 訪問白名單"
+                msg "${GREEN}14.${NC}  核心與腳本升級 (OTA)               ${GREEN}19.${NC}  多語言設置 / Language"
+                msg "${GREEN}15.${NC}  VPS 一鍵優化                       ${YELLOW}20.  徹底卸載腳本與核心${NC}"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${GREEN} 0.${NC}  退出指令碼"
                 ;;
             ja)
-                msg "ゲートウェイ: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | コア: $STATUS_STR $CUR_MODE | モード: ${YELLOW}$(read_fast_mode_label)${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}${BOLD}                    >>> 20  ワンクリック REALITY <<<                       ${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}                 Vision デフォルト SNI · 最少質問 · 入力 r 同等             ${NC}"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${YELLOW}[ Xray-core 部署します ]${NC}                    ${YELLOW}[ Sing-box 部署します ]${NC}"
-                msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
-                msg "${GREEN}4.${NC}  Hysteria 2（公式）                 ${GREEN}9.${NC}  Hysteria 2（sing-box）"
-                msg "${GREEN}5.${NC}  全プロトコル統合（Xray+Hy2）${GREEN}10.${NC} 全プロトコル統合（Sing-box）"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${GREEN}11.${NC} 総合ツールボックスです            ${GREEN}16.${NC} ノードと環境の初期化をすべて削除します"
-                msg "${GREEN}12.${NC} 全てのノードパラメータを表示します  ${GREEN}17.${NC} 毎月のトラフィック制限管理"
-                msg "${GREEN}13.${NC} スクリプトマニュアルです          ${GREEN}18.${NC} SS-2022 ホワイトリスト IP マネジメント"
-                msg "${GREEN}14.${NC} OTA とコア更新                    ${GREEN}19.${NC} 言語設定 / Language"
-                msg "${GREEN}15.${NC} 一括全てクリアー・アンインストールします  ${YELLOW}${BOLD}20.${NC} ワンクリック Reality [r]"
+                _menu_status_row "ゲートウェイ" "コア" "モード"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "                              ${YELLOW}ワンクリック Reality${NC}"
+                msg "                         ${GRAY}デフォルト SNI · 入力 r で実行${NC}"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}[ Xray-core 部署します ]${NC}                ${CYAN}[ Sing-box 部署します ]${NC}"
+                msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
+                msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
+                msg "${GREEN}4.${NC}  Hysteria 2（公式）                  ${GREEN}9.${NC}  Hysteria 2（sing-box）"
+                msg "${GREEN}5.${NC}  全プロトコル統合（Xray+Hy2）        ${GREEN}10.${NC} 全プロトコル統合（Sing-box）"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}[ ツールとシステム ]${NC}                    ${CYAN}[ 運用とポリシー ]${NC}"
+                msg "${GREEN}11.${NC}  総合ツールボックス                 ${GREEN}16.${NC}  全ノード削除と環境初期化"
+                msg "${GREEN}12.${NC}  ノード設定と情報の表示             ${GREEN}17.${NC}  月間通信量制限と管理"
+                msg "${GREEN}13.${NC}  ヘルプとマニュアル                 ${GREEN}18.${NC}  SS-2022 IPホワイトリスト"
+                msg "${GREEN}14.${NC}  コアとスクリプト更新 (OTA)         ${GREEN}19.${NC}  言語設定 / Language"
+                msg "${GREEN}15.${NC}  VPS 最適化                         ${YELLOW}20.  スクリプトとコアの完全削除${NC}"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${GREEN} 0.${NC}  スクリプトを終了します"
                 ;;
             *)
-                msg "网关/Gateway: ${YELLOW}$GLOBAL_PUBLIC_IP${NC} | 核心/Core: $STATUS_STR $CUR_MODE | 模式: ${YELLOW}$(read_fast_mode_label)${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}${BOLD}                    >>> 20  一 键 REALITY <<<                       ${NC}"
-                msg "${BLUE}======================================================================${NC}"
-                msg "${YELLOW}                 Vision 默认 SNI · 最少提问 · 输入 r 同效             ${NC}"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${YELLOW}[ Xray-core 部署 ]${NC}                    ${YELLOW}[ Sing-box 部署 ]${NC}"
-                msg "${GREEN}1.${NC}  VLESS-Vision-Reality              ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality               ${GREEN}7.${NC}  Shadowsocks-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                  ${GREEN}8.${NC}  VLESS + SS-2022"
-                msg "${GREEN}4.${NC}  Hysteria 2 (官方)                 ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
+                _menu_status_row "网关/Gateway" "核心/Core" "模式"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "                                  ${YELLOW}一键 Reality${NC}"
+                msg "                             ${GRAY}默认 SNI · 输入 r 执行${NC}"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ Sing-box 部署 ]${NC}"
+                msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
+                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
+                msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
+                msg "${GREEN}4.${NC}  Hysteria 2 (官方)                   ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC}  全协议四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全协议三合一 (Sing-box)"
-                msg "${BLUE}----------------------------------------------------------------------${NC}"
-                msg "${GREEN}11.${NC} 综合工具箱                        ${GREEN}16.${NC} 删除全部节点与环境初始化"
-                msg "${GREEN}12.${NC} 全部节点参数显示                  ${GREEN}17.${NC} 每月流量管控限制"
-                msg "${GREEN}13.${NC} 脚本说明书                        ${GREEN}18.${NC} SS-2022 白名单 IP 管理"
-                msg "${GREEN}14.${NC} OTA 与核心升级                    ${GREEN}19.${NC} 语言设置 / Language"
-                msg "${GREEN}15.${NC} 一键全部清空卸载                  ${YELLOW}${BOLD}20.${NC} 一键 Reality [r]"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}[ 工具与系统 ]${NC}                          ${CYAN}[ 运维与策略 ]${NC}"
+                msg "${GREEN}11.${NC}  综合工具箱                         ${GREEN}16.${NC}  清空节点与重置环境"
+                msg "${GREEN}12.${NC}  查看节点配置与参数                 ${GREEN}17.${NC}  流量管控与额度限制"
+                msg "${GREEN}13.${NC}  使用帮助与说明书                   ${GREEN}18.${NC}  SS-2022 访问白名单"
+                msg "${GREEN}14.${NC}  核心与脚本升级 (OTA)               ${GREEN}19.${NC}  多语言设置 / Language"
+                msg "${GREEN}15.${NC}  VPS 一键优化                       ${YELLOW}20.  彻底卸载脚本与核心${NC}"
+                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${GREEN} 0.${NC}  退出脚本"
                 ;;
         esac
-        msg "${BLUE}======================================================================${NC}"
+        msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
         _menu_lock_released=0
         if [[ "${ABOX_RUNTIME_LOCK_MODE:-}" == flock ]] && [[ -e /proc/$$/fd/9 ]]; then
             flock -u 9 2>/dev/null && _menu_lock_released=1 || true
@@ -21083,22 +22598,23 @@ main_loop() {
             4) deploy_official_hy2 NORMAL ;;
             5) deploy_xray ALL ;;
             6) deploy_singbox VISION ;;
-            7) deploy_singbox SS ;;
-            8) deploy_singbox VLESS_SS ;;
+            7) deploy_singbox VLESS_SS ;;
+            8) deploy_singbox SS ;;
             9) deploy_singbox HY2 ;;
             10) deploy_singbox ALL ;;
             11) vps_benchmark_menu ;;
             12) view_config manual ;;
             13) show_usage ;;
             14) ota_and_geo_menu ;;
-            15) clean_uninstall_menu ;;
+            15) tune_vps ;;
             16) check_virgin_state ;;
             17) traffic_management_menu ;;
             18) manage_ss_whitelist ;;
             19) language_menu ;;
-            20|r|R) one_click_reality_deploy ;;
+            20) clean_uninstall_menu ;;
+            r|R) one_click_reality_deploy ;;
             0) clear; exit 0 ;;
-            *) sleep 1 ;;
+            *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
         esac
     done
 }

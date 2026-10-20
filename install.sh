@@ -11117,7 +11117,17 @@ _menu_info_collect() {
     local cf_st=none
     if [[ -f /etc/ddr/.argo-state ]] || [[ "$(wallos_state_value MODE 2>/dev/null || true)" == cftunnel ]]; then cf_st=stop; fi
     if is_service_running argo 2>/dev/null || is_service_running argo-vmess 2>/dev/null || is_service_running argo-vless 2>/dev/null || is_service_running abox-wallos-cftunnel 2>/dev/null; then cf_st=run; fi
-    _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"; _MI_F2B="$f2st"; _MI_WALLOS="$dost"; _MI_TROJAN="$tjt"; _MI_TUIC="$tut"; _MI_ANYTLS="$ant"; _MI_STLS="$stt"; _MI_ARGO="$argo_st"; _MI_CF="$cf_st"
+    # --- variant-16 extra probes (comparison build only) ---
+    local traf='' dock='' bbr='' fwst=''
+    # Toggle-type cells: on = run, off/absent = none (red is reserved
+    # for installed-but-broken, per the legend).
+    if [[ -s "${ABOX_TRAFFIC_PAIR_STATE:-/etc/ddr/.traffic-pair-state}" ]]; then traf=run; fi
+    if command -v docker >/dev/null 2>&1; then dock=stop; docker info >/dev/null 2>&1 && dock=run; fi
+    local _cc=''; _cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
+    [[ "$_cc" == "bbr" ]] && bbr=run
+    if command -v ufw >/dev/null 2>&1; then fwst=stop; ufw status 2>/dev/null | grep -qi '^Status: active' && fwst=run
+    elif command -v nft >/dev/null 2>&1 && [[ -n "$(nft list ruleset 2>/dev/null)" ]]; then fwst=run; fi
+    _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"; _MI_F2B="$f2st"; _MI_WALLOS="$dost"; _MI_TROJAN="$tjt"; _MI_TUIC="$tut"; _MI_ANYTLS="$ant"; _MI_STLS="$stt"; _MI_ARGO="$argo_st"; _MI_CF="$cf_st"; _MI_TRAFFIC="$traf"; _MI_DOCKER="$dock"; _MI_BBR="$bbr"; _MI_FW="$fwst"
 
     # --- system info ---
     local os_name='?' kernel='?' cpu_n='?' cpu_model='' mem_tot='?' mem_used='?'
@@ -11266,7 +11276,7 @@ _mi_cell() {
         stop) dot="${RED}●${NC}" ;;
         *) dot='○' ;;
     esac
-    printf '[ %s%-18s%s %s ]' "$CYAN" "$nm" "$NC" "$dot"
+    printf '[ %s%-11s%s %s ]' "$CYAN" "$nm" "$NC" "$dot"
 }
 
 # A-BOX pixel banner: 5x5 glyphs, blue gradient (electric -> deep -> cyan),
@@ -11293,7 +11303,7 @@ _menu_banner() {
 # Display the info panel (v3: status matrix + spaced rows, two-color scheme).
 _menu_info_display() {
     _menu_info_collect || return 0
-    # --- status matrix: fixed 12 cells, always shown, 3 per row ---
+    # --- status matrix: VARIANT 16 cells, 4 per row ---
     local _mrow='  ' _sep=''
     local _warp_st=none; [[ -n "$_MI_WARP" ]] && _warp_st=run
     local _cells=(
@@ -11301,11 +11311,13 @@ _menu_info_display() {
         "Trojan|${_MI_TROJAN:-none}" "TUIC|${_MI_TUIC:-none}" "AnyTLS|${_MI_ANYTLS:-none}"
         "ShadowTLS|${_MI_STLS:-none}" "SOCKS5|${_MI_SOCKS_ST:-none}" "WARP|$_warp_st"
         "Cloudflare|${_MI_CF:-none}" "Fail2ban|${_MI_F2B:-none}" "Wallos|${_MI_WALLOS:-none}"
+        "Traffic|${_MI_TRAFFIC:-none}" "Docker|${_MI_DOCKER:-none}" "BBR|${_MI_BBR:-none}"
+        "Firewall|${_MI_FW:-none}"
     )
     local _c _nm _st _n=0
     for _c in "${_cells[@]}"; do
         _nm="${_c%%|*}"; _st="${_c##*|}"
-        if (( _n == 3 )); then
+        if (( _n == 4 )); then
             msg "$_mrow"; _mrow='  '; _sep=''; _n=0
         fi
         _mrow+="${_sep}$(_mi_cell "$_nm" "$_st")"; _sep='  '; _n=$((_n + 1))

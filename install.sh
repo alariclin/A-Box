@@ -18823,14 +18823,24 @@ wallos_public_urls() {
         return 0
     fi
     if [[ "$host_ip" == 127.0.0.1 ]]; then
+        local _pub="${GLOBAL_PUBLIC_IP:-}"
+        [[ -z "$_pub" ]] && _pub=$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null || true)
+        [[ -z "$_pub" ]] && _pub='<VPS公网IP>'
+        local _who="$(whoami)"
         case "${ABOX_LANG:-zh}" in
-            en) msg "${GREEN}Wallos local URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Use an HTTPS reverse proxy or SSH tunnel for remote access; do not expose this HTTP endpoint directly.${NC}" ;;
-            ru) msg "${GREEN}Локальный адрес Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Для доступа извне используйте HTTPS reverse proxy или SSH-туннель.${NC}" ;;
-            fa) msg "${GREEN}نشانی محلی Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.${NC}" ;;
-            zh-tw) msg "${GREEN}Wallos 本機地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}遠端訪問請使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端點。${NC}" ;;
+            en) msg "${GREEN}Wallos local URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Use an HTTPS reverse proxy or SSH tunnel for remote access; do not expose this HTTP endpoint directly.${NC}"
+            msg "${CYAN}Remote access via SSH tunnel (run on your own computer):${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}Then open http://127.0.0.1:$port/ in your browser; create the admin account on first visit.${NC}" ;;
+            ru) msg "${GREEN}Локальный адрес Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Для доступа извне используйте HTTPS reverse proxy или SSH-туннель.${NC}"
+            msg "${CYAN}Доступ через SSH-туннель (на своём компьютере):${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}Затем откройте http://127.0.0.1:$port/ и создайте учётную запись при первом визите.${NC}" ;;
+            fa) msg "${GREEN}نشانی محلی Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.${NC}"
+            msg "${CYAN}دسترسی از راه دور با SSH tunnel (در کامپیوتر خودتان):${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}سپس http://127.0.0.1:$port/ را در مرورگر باز کنید؛ در اولین بازدید حساب مدیر بسازید.${NC}" ;;
+            zh-tw) msg "${GREEN}Wallos 本機地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}遠端訪問請使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端點。${NC}"
+            msg "${CYAN}遠端用 SSH 隧道（在自己的電腦上執行）：${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}然後瀏覽器打開 http://127.0.0.1:$port/，首次訪問創建管理員賬號。${NC}" ;;
             ja)
-                msg "${GREEN}Wallos のローカル URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。この HTTP エンドポイントを直接公開しないでください。${NC}" ;;
-            *) msg "${GREEN}Wallos 本机地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}远程访问请使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端点。${NC}" ;;
+                msg "${GREEN}Wallos のローカル URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。この HTTP エンドポイントを直接公開しないでください。${NC}"
+            msg "${CYAN}SSH トンネルでのリモートアクセス（自分の PC で実行）：${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}ブラウザで http://127.0.0.1:$port/ を開き、初回に管理者アカウントを作成してください。${NC}" ;;
+            *) msg "${GREEN}Wallos 本机地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}远程访问请使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端点。${NC}"
+            msg "${CYAN}远程用 SSH 隧道（在自己的电脑上执行）：${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}然后浏览器打开 http://127.0.0.1:$port/，首次访问创建管理员账号。${NC}" ;;
         esac
         return 0
     fi

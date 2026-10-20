@@ -9518,17 +9518,17 @@ _menu_info_collect() {
     local xv='' sv='' hv='' xrun=0 srun=0 hrun=0
     if [[ -x /usr/local/bin/xray ]]; then
         xv=$(/usr/local/bin/xray version 2>/dev/null | head -1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-        [[ -z "$xv" ]] && xv='?'
+        xv="${xv#v}"; [[ -z "$xv" ]] && xv='?'
         is_service_running xray 2>/dev/null && xrun=1
     fi
     if [[ -x /usr/local/bin/sing-box ]]; then
         sv=$(/usr/local/bin/sing-box version 2>/dev/null | head -1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-        [[ -z "$sv" ]] && sv='?'
+        sv="${sv#v}"; [[ -z "$sv" ]] && sv='?'
         is_service_running sing-box 2>/dev/null && srun=1
     fi
     if [[ -x /usr/local/bin/hysteria ]]; then
         hv=$(/usr/local/bin/hysteria version 2>/dev/null | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-        [[ -z "$hv" ]] && hv='?'
+        hv="${hv#v}"; [[ -z "$hv" ]] && hv='?'
         is_service_running hysteria 2>/dev/null && hrun=1
     fi
     _MI_XV="$xv"; _MI_SV="$sv"; _MI_HV="$hv"
@@ -9560,12 +9560,27 @@ _menu_info_collect() {
     _MI_OS="$os_name"; _MI_KERNEL="$kernel"; _MI_CPU="$cpu_n"; _MI_MEM="$mem_g"
     _MI_VIRT="$virt"; _MI_BBR="$bbr"; _MI_UP="$up_days"; _MI_IPV6="$ipv6"
 
-    # --- deployed nodes (from live config) ---
+    # --- deployed nodes (from live config): "Vision:443 SNI amazon.com" style ---
     local nodes=''
     if [[ "$_MI_XRUN" == "1" && -f /usr/local/etc/xray/config.json ]]; then
-        nodes=$(jq -r '.inbounds[]? | select(.tag != "api") | "\(.protocol):\(.port)"' /usr/local/etc/xray/config.json 2>/dev/null | tr '\n' ' ')
+        nodes=$(jq -r '.inbounds[]? | select(.tag != "api") |
+            (if .protocol == "vless" and (.settings.clients[0].flow // "" | startswith("xtls")) then "Vision"
+             elif .protocol == "vless" and (.streamSettings.network // "") == "xhttp" then "XHTTP"
+             elif .protocol == "vless" then "VLESS"
+             elif .protocol == "shadowsocks" then "SS"
+             elif .protocol == "vmess" then "VMess"
+             elif .protocol == "trojan" then "Trojan"
+             else .protocol end) as $n
+            | "\($n):\(.port)\((.streamSettings.realitySettings.serverNames[0] // empty | if . == "" then empty else " SNI " + . end))"' \
+            /usr/local/etc/xray/config.json 2>/dev/null | tr '\n' ' ')
     elif [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]]; then
         nodes=$(jq -r '.inbounds[]? | "\(.type):\(.listen_port)"' /etc/sing-box/config.json 2>/dev/null | tr '\n' ' ')
+    fi
+    # Hy2 runs as a separate service; port from env
+    if [[ "$_MI_HRUN" == "1" ]]; then
+        local _hy2port=''
+        if load_abox_env "$ABOX_ENV" 2>/dev/null; then _hy2port="${HY2_BASE_PORT:-}"; fi
+        [[ -n "$_hy2port" ]] && nodes="${nodes} Hy2:${_hy2port}"
     fi
     _MI_NODES="$nodes"
 
@@ -9812,8 +9827,14 @@ warp_build_outbound_json() {
     priv=$(grep '^PrivateKey' "$profile" | head -1 | awk '{print $3}') || return 1
     peer=$(grep '^PublicKey' "$profile" | head -1 | awk '{print $3}') || return 1
     endpoint=$(grep '^Endpoint' "$profile" | head -1 | awk '{print $3}') || return 1
-    addr4=$(grep '^Address' "$profile" | head -1 | awk '{print $3}') || return 1
-    addr6=$(grep '^Address' "$profile" | sed -n '2p' | awk '{print $3}') || true
+    # wgcf writes both addresses on ONE line: "Address = 172.16.0.2/32, 2606:.../128"
+    local addr_line
+    addr_line=$(grep '^Address' "$profile" | head -1 | cut -d'=' -f2- | tr -d ' ') || return 1
+    local _addrs
+    IFS=',' read -r -a _addrs <<< "$addr_line"
+    addr4="${_addrs[0]:-}"; addr6="${_addrs[1]:-}"
+    [[ "$addr4" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]] || return 1
+    [[ -n "$addr6" && ! "$addr6" =~ : ]] && addr6='' 
     [[ -n "$priv" && -n "$peer" && -n "$endpoint" ]] || return 1
     local srv sport
     srv="${endpoint%:*}"; sport="${endpoint##*:}"

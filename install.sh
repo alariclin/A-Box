@@ -20699,6 +20699,20 @@ wallos_public_urls() {
             [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 网址：http://[$ipv6]:$port/${NC}"
             [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}无法检测公网 IP，请使用 VPS 公网地址或域名访问 TCP ${port}。${NC}" ;;
     esac
+    if [[ "$host_ip" == 0.0.0.0 ]]; then
+        msg ''
+        if [[ "${ABOX_LANG:-zh}" == zh* ]]; then
+            msg "${BOLD}── Wallos 使用教程 ──${NC}"
+            msg "1) 访问：手机/电脑浏览器打开上面的 Wallos 网址，首次打开先创建管理员账号和密码（请设强密码，里面是财务数据）。"
+            msg "2) 打不开，多半是云安全组没放行：到云厂商控制台给这台机器放行 TCP ${port} 端口（Lightsail：实例 → 联网 → IPv4 防火墙 → 添加规则，协议 TCP、端口 ${port}；阿里云/腾讯云：安全组入方向放行）。本机防火墙已由脚本自动放行，不用管。"
+            msg "3) 安全：已自动启用 Fail2Ban 专用防护拦截暴力登录；该网址是 HTTP 明文，不要在公共 Wi-Fi 下登录，长期使用建议再套一层 HTTPS 反向代理。"
+        else
+            msg "${BOLD}-- Wallos quick guide --${NC}"
+            msg "1) Open the Wallos URL above in any browser; on first visit create the admin account and password (use a strong one - this is financial data)."
+            msg "2) If it does not open, the cloud security group is the usual cause: allow inbound TCP ${port} for this instance in your cloud console (Lightsail: instance -> Networking -> IPv4 Firewall -> Add rule, TCP ${port}; AWS: security group inbound rule). The host firewall was already opened by the script."
+            msg "3) Security: a dedicated Fail2Ban jail already blocks login brute force; the URL is plain HTTP, so avoid logging in on public Wi-Fi and consider an HTTPS reverse proxy for long-term use."
+        fi
+    fi
 }
 
 wallos_write_state() {

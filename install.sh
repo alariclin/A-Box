@@ -694,6 +694,258 @@ tr_msg() {
         fa:socks5_done) echo 'پروکسی لندینگ SOCKS5 مستقر شد.' ;;
         zh-tw:socks5_done) echo 'SOCKS5 落地代理部署完成。' ;;
         ja:socks5_done) echo 'SOCKS5 ランディングプロキシを展開しました。' ;;
+        zh:warp_split_title) echo 'WARP 与分流管理' ;;
+        en:warp_split_title) echo 'WARP & Split Routing' ;;
+        ru:warp_split_title) echo 'WARP и разделение трафика' ;;
+        fa:warp_split_title) echo 'مدیریت WARP و تفکیک ترافیک' ;;
+        zh-tw:warp_split_title) echo 'WARP 與分流管理' ;;
+        ja:warp_split_title) echo 'WARP と振り分け管理' ;;
+        zh:warp_deploying) echo '正在部署 WARP 出口...' ;;
+        en:warp_deploying) echo 'Deploying WARP egress...' ;;
+        ru:warp_deploying) echo 'Развёртывание WARP...' ;;
+        fa:warp_deploying) echo 'در حال استقرار خروجی WARP...' ;;
+        zh-tw:warp_deploying) echo '正在部署 WARP 出口...' ;;
+        ja:warp_deploying) echo 'WARP 出口を展開中...' ;;
+        zh:warp_register_fail) echo 'WARP 账号注册失败。' ;;
+        en:warp_register_fail) echo 'WARP account registration failed.' ;;
+        ru:warp_register_fail) echo 'Не удалось зарегистрировать WARP.' ;;
+        fa:warp_register_fail) echo 'ثبت حساب WARP ناموفق بود.' ;;
+        zh-tw:warp_register_fail) echo 'WARP 賬號註冊失敗。' ;;
+        ja:warp_register_fail) echo 'WARP アカウントの登録に失敗しました。' ;;
+        zh:warp_profile_fail) echo 'WARP 配置解析失败。' ;;
+        en:warp_profile_fail) echo 'Failed to parse WARP profile.' ;;
+        ru:warp_profile_fail) echo 'Не удалось разобрать профиль WARP.' ;;
+        fa:warp_profile_fail) echo 'تجزیه پیکربندی WARP ناموفق بود.' ;;
+        zh-tw:warp_profile_fail) echo 'WARP 配置解析失敗。' ;;
+        ja:warp_profile_fail) echo 'WARP プロファイルの解析に失敗しました。' ;;
+        zh:warp_state_fail) echo '路由状态保存失败。' ;;
+        en:warp_state_fail) echo 'Failed to save routing state.' ;;
+        ru:warp_state_fail) echo 'Не удалось сохранить состояние маршрутизации.' ;;
+        fa:warp_state_fail) echo 'ذخیره وضعیت مسیریابی ناموفق بود.' ;;
+        zh-tw:warp_state_fail) echo '路由狀態保存失敗。' ;;
+        ja:warp_state_fail) echo 'ルーティング状態の保存に失敗しました。' ;;
+        zh:warp_apply_fail) echo '配置应用失败。' ;;
+        en:warp_apply_fail) echo 'Failed to apply configuration.' ;;
+        ru:warp_apply_fail) echo 'Не удалось применить конфигурацию.' ;;
+        fa:warp_apply_fail) echo 'اعمال پیکربندی ناموفق بود.' ;;
+        zh-tw:warp_apply_fail) echo '配置應用失敗。' ;;
+        ja:warp_apply_fail) echo '設定の適用に失敗しました。' ;;
+        zh:warp_done) echo 'WARP 出口部署完成。' ;;
+        en:warp_done) echo 'WARP egress deployed.' ;;
+        ru:warp_done) echo 'WARP-выход развёрнут.' ;;
+        fa:warp_done) echo 'خروجی WARP مستقر شد.' ;;
+        zh-tw:warp_done) echo 'WARP 出口部署完成。' ;;
+        ja:warp_done) echo 'WARP 出口を展開しました。' ;;
+        zh:warp_removed) echo 'WARP 已卸载。' ;;
+        en:warp_removed) echo 'WARP removed.' ;;
+        ru:warp_removed) echo 'WARP удалён.' ;;
+        fa:warp_removed) echo 'WARP حذف شد.' ;;
+        zh-tw:warp_removed) echo 'WARP 已卸載。' ;;
+        ja:warp_removed) echo 'WARP をアンインストールしました。' ;;
+        zh:warp_status_on) echo 'WARP 状态：已部署' ;;
+        en:warp_status_on) echo 'WARP status: deployed' ;;
+        ru:warp_status_on) echo 'Статус WARP: развёрнут' ;;
+        fa:warp_status_on) echo 'وضعیت WARP: مستقر شده' ;;
+        zh-tw:warp_status_on) echo 'WARP 狀態：已部署' ;;
+        ja:warp_status_on) echo 'WARP 状態：展開済み' ;;
+        zh:warp_status_off) echo 'WARP 状态：未部署' ;;
+        en:warp_status_off) echo 'WARP status: not deployed' ;;
+        ru:warp_status_off) echo 'Статус WARP: не развёрнут' ;;
+        fa:warp_status_off) echo 'وضعیت WARP: مستقر نشده' ;;
+        zh-tw:warp_status_off) echo 'WARP 狀態：未部署' ;;
+        ja:warp_status_off) echo 'WARP 状態：未展開' ;;
+        zh:warp_rules_count) echo '分流规则数：%s' ;;
+        en:warp_rules_count) echo 'Routing rules: %s' ;;
+        ru:warp_rules_count) echo 'Правил маршрутизации: %s' ;;
+        fa:warp_rules_count) echo 'تعداد قوانین مسیریابی: %s' ;;
+        zh-tw:warp_rules_count) echo '分流規則數：%s' ;;
+        ja:warp_rules_count) echo 'ルーティングルール数：%s' ;;
+        zh:warp_need_deploy) echo '请先部署 WARP 出口。' ;;
+        en:warp_need_deploy) echo 'Deploy WARP egress first.' ;;
+        ru:warp_need_deploy) echo 'Сначала разверните WARP.' ;;
+        fa:warp_need_deploy) echo 'ابتدا خروجی WARP را مستقر کنید.' ;;
+        zh-tw:warp_need_deploy) echo '請先部署 WARP 出口。' ;;
+        ja:warp_need_deploy) echo '先に WARP 出口を展開してください。' ;;
+        zh:warp_preset_done) echo '分流预设已应用。' ;;
+        en:warp_preset_done) echo 'Split preset applied.' ;;
+        ru:warp_preset_done) echo 'Пресет разделения применён.' ;;
+        fa:warp_preset_done) echo 'پیش‌تنظیم تفکیک اعمال شد.' ;;
+        zh-tw:warp_preset_done) echo '分流預設已應用。' ;;
+        ja:warp_preset_done) echo '振り分けプリセットを適用しました。' ;;
+        zh:warp_deploy_item) echo '一键部署 WARP 出口' ;;
+        en:warp_deploy_item) echo 'One-click WARP egress deploy' ;;
+        ru:warp_deploy_item) echo 'Развернуть WARP в один клик' ;;
+        fa:warp_deploy_item) echo 'استقرار تک‌کلیکی خروجی WARP' ;;
+        zh-tw:warp_deploy_item) echo '一鍵部署 WARP 出口' ;;
+        ja:warp_deploy_item) echo 'ワンクリックで WARP 出口を展開' ;;
+        zh:warp_preset_item) echo 'WARP 分流预设' ;;
+        en:warp_preset_item) echo 'WARP split presets' ;;
+        ru:warp_preset_item) echo 'Пресеты разделения WARP' ;;
+        fa:warp_preset_item) echo 'پیش‌تنظیم‌های تفکیک WARP' ;;
+        zh-tw:warp_preset_item) echo 'WARP 分流預設' ;;
+        ja:warp_preset_item) echo 'WARP 振り分けプリセット' ;;
+        zh:split_add_socks_item) echo '添加 SOCKS5 出站（落地机）' ;;
+        en:split_add_socks_item) echo 'Add SOCKS5 outbound (landing host)' ;;
+        ru:split_add_socks_item) echo 'Добавить SOCKS5-исходящий (целевой хост)' ;;
+        fa:split_add_socks_item) echo 'افزودن خروجی SOCKS5 (هاست مقصد)' ;;
+        zh-tw:split_add_socks_item) echo '添加 SOCKS5 出站（落地機）' ;;
+        ja:split_add_socks_item) echo 'SOCKS5 アウトバウンド追加（ランディング）' ;;
+        zh:split_rules_item) echo '分流规则管理' ;;
+        en:split_rules_item) echo 'Split rule management' ;;
+        ru:split_rules_item) echo 'Управление правилами разделения' ;;
+        fa:split_rules_item) echo 'مدیریت قوانین تفکیک' ;;
+        zh-tw:split_rules_item) echo '分流規則管理' ;;
+        ja:split_rules_item) echo '振り分けルール管理' ;;
+        zh:warp_uninstall_item) echo '卸载 WARP / 清空分流' ;;
+        en:warp_uninstall_item) echo 'Remove WARP / clear split' ;;
+        ru:warp_uninstall_item) echo 'Удалить WARP / очистить разделение' ;;
+        fa:warp_uninstall_item) echo 'حذف WARP / پاک‌سازی تفکیک' ;;
+        zh-tw:warp_uninstall_item) echo '卸載 WARP / 清空分流' ;;
+        ja:warp_uninstall_item) echo 'WARP 削除 / 振り分けクリア' ;;
+        zh:back_to_parent) echo '返回上级' ;;
+        en:back_to_parent) echo 'Back' ;;
+        ru:back_to_parent) echo 'Назад' ;;
+        fa:back_to_parent) echo 'بازگشت' ;;
+        zh-tw:back_to_parent) echo '返回上級' ;;
+        ja:back_to_parent) echo '戻る' ;;
+        zh:warp_preset_title) echo 'WARP 分流预设' ;;
+        en:warp_preset_title) echo 'WARP Split Presets' ;;
+        ru:warp_preset_title) echo 'Пресеты разделения WARP' ;;
+        fa:warp_preset_title) echo 'پیش‌تنظیم‌های تفکیک WARP' ;;
+        zh-tw:warp_preset_title) echo 'WARP 分流預設' ;;
+        ja:warp_preset_title) echo 'WARP 振り分けプリセット' ;;
+        zh:warp_preset_streaming) echo '流媒体走 WARP（推荐）' ;;
+        en:warp_preset_streaming) echo 'Streaming via WARP (recommended)' ;;
+        ru:warp_preset_streaming) echo 'Стриминг через WARP (рекомендуется)' ;;
+        fa:warp_preset_streaming) echo 'استریم از طریق WARP (پیشنهادی)' ;;
+        zh-tw:warp_preset_streaming) echo '流媒體走 WARP（推薦）' ;;
+        ja:warp_preset_streaming) echo 'ストリーミングは WARP 経由（推奨）' ;;
+        zh:warp_preset_cn_direct) echo '流媒体走 WARP + 中国大陆直连' ;;
+        en:warp_preset_cn_direct) echo 'Streaming via WARP + CN direct' ;;
+        ru:warp_preset_cn_direct) echo 'Стриминг через WARP + CN напрямую' ;;
+        fa:warp_preset_cn_direct) echo 'استریم از طریق WARP + اتصال مستقیم CN' ;;
+        zh-tw:warp_preset_cn_direct) echo '流媒體走 WARP + 中國大陸直連' ;;
+        ja:warp_preset_cn_direct) echo 'ストリーミングは WARP、中国本土は直結' ;;
+        zh:warp_preset_global) echo '全部流量走 WARP' ;;
+        en:warp_preset_global) echo 'All traffic via WARP' ;;
+        ru:warp_preset_global) echo 'Весь трафик через WARP' ;;
+        fa:warp_preset_global) echo 'همه ترافیک از طریق WARP' ;;
+        zh-tw:warp_preset_global) echo '全部流量走 WARP' ;;
+        ja:warp_preset_global) echo '全トラフィックを WARP 経由' ;;
+        zh:warp_uninstall_confirm) echo '确认卸载 WARP 并清空分流规则？' ;;
+        en:warp_uninstall_confirm) echo 'Remove WARP and clear split rules?' ;;
+        ru:warp_uninstall_confirm) echo 'Удалить WARP и очистить правила?' ;;
+        fa:warp_uninstall_confirm) echo 'WARP حذف و قوانین تفکیک پاک شود؟' ;;
+        zh-tw:warp_uninstall_confirm) echo '確認卸載 WARP 並清空分流規則？' ;;
+        ja:warp_uninstall_confirm) echo 'WARP を削除し振り分けルールをクリアしますか？' ;;
+        zh:split_ip_prompt) echo '请输入落地机 IP' ;;
+        en:split_ip_prompt) echo 'Enter landing host IP' ;;
+        ru:split_ip_prompt) echo 'Введите IP целевого хоста' ;;
+        fa:split_ip_prompt) echo 'IP هاست مقصد را وارد کنید' ;;
+        zh-tw:split_ip_prompt) echo '請輸入落地機 IP' ;;
+        ja:split_ip_prompt) echo 'ランディングホストの IP を入力' ;;
+        zh:split_port_prompt) echo '请输入端口（默认 %s）' ;;
+        en:split_port_prompt) echo 'Enter port (default %s)' ;;
+        ru:split_port_prompt) echo 'Введите порт (по умолчанию %s)' ;;
+        fa:split_port_prompt) echo 'درگاه را وارد کنید (پیش‌فرض %s)' ;;
+        zh-tw:split_port_prompt) echo '請輸入端口（默認 %s）' ;;
+        ja:split_port_prompt) echo 'ポートを入力（デフォルト %s）' ;;
+        zh:split_user_prompt) echo '请输入用户名（可空，回车跳过）' ;;
+        en:split_user_prompt) echo 'Enter username (optional)' ;;
+        ru:split_user_prompt) echo 'Введите имя пользователя (необязательно)' ;;
+        fa:split_user_prompt) echo 'نام کاربری را وارد کنید (اختیاری)' ;;
+        zh-tw:split_user_prompt) echo '請輸入用戶名（可空，回車跳過）' ;;
+        ja:split_user_prompt) echo 'ユーザー名を入力（任意）' ;;
+        zh:split_pass_prompt) echo '请输入密码（可空，回车跳过）' ;;
+        en:split_pass_prompt) echo 'Enter password (optional)' ;;
+        ru:split_pass_prompt) echo 'Введите пароль (необязательно)' ;;
+        fa:split_pass_prompt) echo 'گذرواژه را وارد کنید (اختیاری)' ;;
+        zh-tw:split_pass_prompt) echo '請輸入密碼（可空，回車跳過）' ;;
+        ja:split_pass_prompt) echo 'パスワードを入力（任意）' ;;
+        zh:split_add_fail) echo 'SOCKS5 出站添加失败。' ;;
+        en:split_add_fail) echo 'Failed to add SOCKS5 outbound.' ;;
+        ru:split_add_fail) echo 'Не удалось добавить SOCKS5-исходящий.' ;;
+        fa:split_add_fail) echo 'افزودن خروجی SOCKS5 ناموفق بود.' ;;
+        zh-tw:split_add_fail) echo 'SOCKS5 出站添加失敗。' ;;
+        ja:split_add_fail) echo 'SOCKS5 アウトバウンドの追加に失敗しました。' ;;
+        zh:split_add_done) echo 'SOCKS5 出站已添加：%s' ;;
+        en:split_add_done) echo 'SOCKS5 outbound added: %s' ;;
+        ru:split_add_done) echo 'SOCKS5-исходящий добавлен: %s' ;;
+        fa:split_add_done) echo 'خروجی SOCKS5 اضافه شد: %s' ;;
+        zh-tw:split_add_done) echo 'SOCKS5 出站已添加：%s' ;;
+        ja:split_add_done) echo 'SOCKS5 アウトバウンドを追加しました：%s' ;;
+        zh:split_rules_title) echo '分流规则管理' ;;
+        en:split_rules_title) echo 'Split Rule Management' ;;
+        ru:split_rules_title) echo 'Управление правилами разделения' ;;
+        fa:split_rules_title) echo 'مدیریت قوانین تفکیک' ;;
+        zh-tw:split_rules_title) echo '分流規則管理' ;;
+        ja:split_rules_title) echo '振り分けルール管理' ;;
+        zh:split_no_rules) echo '暂无分流规则。' ;;
+        en:split_no_rules) echo 'No split rules.' ;;
+        ru:split_no_rules) echo 'Нет правил разделения.' ;;
+        fa:split_no_rules) echo 'قانون تفکیکی وجود ندارد.' ;;
+        zh-tw:split_no_rules) echo '暫無分流規則。' ;;
+        ja:split_no_rules) echo '振り分けルールがありません。' ;;
+        zh:split_rule_add) echo '添加规则' ;;
+        en:split_rule_add) echo 'Add rule' ;;
+        ru:split_rule_add) echo 'Добавить правило' ;;
+        fa:split_rule_add) echo 'افزودن قانون' ;;
+        zh-tw:split_rule_add) echo '添加規則' ;;
+        ja:split_rule_add) echo 'ルール追加' ;;
+        zh:split_rule_del) echo '删除规则' ;;
+        en:split_rule_del) echo 'Delete rule' ;;
+        ru:split_rule_del) echo 'Удалить правило' ;;
+        fa:split_rule_del) echo 'حذف قانون' ;;
+        zh-tw:split_rule_del) echo '刪除規則' ;;
+        ja:split_rule_del) echo 'ルール削除' ;;
+        zh:split_domains_hint) echo '域名用逗号分隔，支持 geosite:xxx 或普通域名（如 example.com）。' ;;
+        en:split_domains_hint) echo 'Comma-separated domains; geosite:xxx or plain domains (e.g. example.com) supported.' ;;
+        ru:split_domains_hint) echo 'Домены через запятую; поддерживаются geosite:xxx и обычные домены.' ;;
+        fa:split_domains_hint) echo 'دامنه‌ها با کاما جدا شوند؛ geosite:xxx یا دامنه معمولی پشتیبانی می‌شود.' ;;
+        zh-tw:split_domains_hint) echo '域名用逗號分隔，支持 geosite:xxx 或普通域名（如 example.com）。' ;;
+        ja:split_domains_hint) echo 'カンマ区切りのドメイン。geosite:xxx または通常ドメイン対応。' ;;
+        zh:split_domains_prompt) echo '请输入域名列表' ;;
+        en:split_domains_prompt) echo 'Enter domain list' ;;
+        ru:split_domains_prompt) echo 'Введите список доменов' ;;
+        fa:split_domains_prompt) echo 'فهرست دامنه‌ها را وارد کنید' ;;
+        zh-tw:split_domains_prompt) echo '請輸入域名列表' ;;
+        ja:split_domains_prompt) echo 'ドメインリストを入力' ;;
+        zh:split_outbound_hint) echo '可用出口 tag：' ;;
+        en:split_outbound_hint) echo 'Available outbound tags:' ;;
+        ru:split_outbound_hint) echo 'Доступные исходящие теги:' ;;
+        fa:split_outbound_hint) echo 'تگ‌های خروجی موجود:' ;;
+        zh-tw:split_outbound_hint) echo '可用出口 tag：' ;;
+        ja:split_outbound_hint) echo '利用可能なアウトバウンドタグ：' ;;
+        zh:split_outbound_prompt) echo '请选择出口 tag' ;;
+        en:split_outbound_prompt) echo 'Select outbound tag' ;;
+        ru:split_outbound_prompt) echo 'Выберите исходящий тег' ;;
+        fa:split_outbound_prompt) echo 'تگ خروجی را انتخاب کنید' ;;
+        zh-tw:split_outbound_prompt) echo '請選擇出口 tag' ;;
+        ja:split_outbound_prompt) echo 'アウトバウンドタグを選択' ;;
+        zh:split_rule_done) echo '规则已添加。' ;;
+        en:split_rule_done) echo 'Rule added.' ;;
+        ru:split_rule_done) echo 'Правило добавлено.' ;;
+        fa:split_rule_done) echo 'قانون اضافه شد.' ;;
+        zh-tw:split_rule_done) echo '規則已添加。' ;;
+        ja:split_rule_done) echo 'ルールを追加しました。' ;;
+        zh:split_rule_fail) echo '规则添加失败。' ;;
+        en:split_rule_fail) echo 'Failed to add rule.' ;;
+        ru:split_rule_fail) echo 'Не удалось добавить правило.' ;;
+        fa:split_rule_fail) echo 'افزودن قانون ناموفق بود.' ;;
+        zh-tw:split_rule_fail) echo '規則添加失敗。' ;;
+        ja:split_rule_fail) echo 'ルールの追加に失敗しました。' ;;
+        zh:split_rule_del_prompt) echo '请输入要删除的规则序号' ;;
+        en:split_rule_del_prompt) echo 'Enter rule number to delete' ;;
+        ru:split_rule_del_prompt) echo 'Введите номер правила для удаления' ;;
+        fa:split_rule_del_prompt) echo 'شماره قانون برای حذف را وارد کنید' ;;
+        zh-tw:split_rule_del_prompt) echo '請輸入要刪除的規則序號' ;;
+        ja:split_rule_del_prompt) echo '削除するルール番号を入力' ;;
+        zh:split_rule_del_done) echo '规则已删除。' ;;
+        en:split_rule_del_done) echo 'Rule deleted.' ;;
+        ru:split_rule_del_done) echo 'Правило удалено.' ;;
+        fa:split_rule_del_done) echo 'قانون حذف شد.' ;;
+        zh-tw:split_rule_del_done) echo '規則已刪除。' ;;
+        ja:split_rule_del_done) echo 'ルールを削除しました。' ;;
         *) echo "$key" ;;
     esac
 }
@@ -8001,16 +8253,22 @@ build_xray_config() {
     # SECURITY: the API has NO authentication. listen is hardcoded to 127.0.0.1
     # and NEVER derived from wildcard_listen_address (which may be 0.0.0.0/::).
     # Binding it to anything but loopback would expose full config control.
-    jq -n --argjson inbounds "$inbounds_json" '{
+    # Merge routing state (WARP / split-routing outbounds + rules); survives redeploys.
+    local _rs_ob='[]' _rs_rules='[]'
+    if [[ -f "$ROUTING_STATE_FILE" && ! -L "$ROUTING_STATE_FILE" ]]; then
+        _rs_ob=$(jq -c '[.outbounds[]?.xray] // []' "$ROUTING_STATE_FILE" 2>/dev/null || echo '[]')
+        _rs_rules=$(jq -c '[.rules[]?.xray_rule] // []' "$ROUTING_STATE_FILE" 2>/dev/null || echo '[]')
+    fi
+    jq -n --argjson inbounds "$inbounds_json" --argjson rs_ob "$_rs_ob" --argjson rs_rules "$_rs_rules" '{
         log:{loglevel:"warning", access:"/var/log/A-Box-xray-access.log", error:"/var/log/A-Box-xray-error.log"},
         api:{tag:"api", services:["HandlerService","LoggerService","StatsService"]},
-        routing:{domainStrategy:"IPIfNonMatch", rules:[
+        routing:{domainStrategy:"IPIfNonMatch", rules: ([
             {type:"field", inboundTag:["api"], outboundTag:"api"},
             {type:"field", protocol:["bittorrent"], outboundTag:"block"},
             {type:"field", domain:["geosite:category-ads-all"], outboundTag:"block"}
-        ]},
+        ] + $rs_rules) },
         inbounds:([{listen:"127.0.0.1", port:10085, protocol:"dokodemo-door", settings:{address:"127.0.0.1"}, tag:"api"}] + $inbounds),
-        outbounds:[{protocol:"freedom", tag:"direct"}, {protocol:"blackhole", tag:"block"}, {protocol:"freedom", tag:"api"}]
+        outbounds: ([{protocol:"freedom", tag:"direct"}, {protocol:"blackhole", tag:"block"}, {protocol:"freedom", tag:"api"}] + $rs_ob)
     }' > "$tmp_out" || { rm -f "$tmp_out"; die 'Xray JSON 生成失败。'; }
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die 'Xray 配置权限设置失败。'; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
@@ -8170,11 +8428,17 @@ build_singbox_config() {
     fi
     tmp_out=$(mktemp "$out_dir/.A-Box-singbox-config.XXXXXX") || die 'Sing-box 配置临时文件创建失败。'
     umask 077
-    jq -n --argjson inbounds "$inbounds_json" '{
+    # Merge routing state (WARP / split-routing outbounds + rules); survives redeploys.
+    local _rs_ob='[]' _rs_rules='[]'
+    if [[ -f "$ROUTING_STATE_FILE" && ! -L "$ROUTING_STATE_FILE" ]]; then
+        _rs_ob=$(jq -c '[.outbounds[]?.singbox] // []' "$ROUTING_STATE_FILE" 2>/dev/null || echo '[]')
+        _rs_rules=$(jq -c '[.rules[]?.singbox_rule] // []' "$ROUTING_STATE_FILE" 2>/dev/null || echo '[]')
+    fi
+    jq -n --argjson inbounds "$inbounds_json" --argjson rs_ob "$_rs_ob" --argjson rs_rules "$_rs_rules" '{
         log:{level:"warn", output:"/var/log/A-Box-singbox.log"},
-        route:{rules:[{network:["tcp"], action:"sniff"},{protocol:"bittorrent", action:"reject"}], auto_detect_interface:true},
+        route:{rules: (([{network:["tcp"], action:"sniff"},{protocol:"bittorrent", action:"reject"}] + $rs_rules)), auto_detect_interface:true},
         inbounds:$inbounds,
-        outbounds:[{type:"direct", tag:"direct"}]
+        outbounds: ([{type:"direct", tag:"direct"}] + $rs_ob)
     }' > "$tmp_out" || { rm -f "$tmp_out"; die 'Sing-box JSON 生成失败。'; }
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die 'Sing-box 配置权限设置失败。'; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
@@ -9164,6 +9428,457 @@ trojan_toolbox_entry() {
         *) deploy_xray_trojan_landing ;;
     esac
 }
+# ============ WARP 与分流管理 (routing state + WARP one-click) ============
+# State file persists custom outbounds + routing rules across redeploys.
+# Builders (build_xray_config / build_singbox_config) merge this state in.
+ROUTING_STATE_FILE='/etc/ddr/.routing-state'
+WGCF_VERSION='2.2.29'
+WGCF_BIN='/usr/local/bin/wgcf'
+
+routing_state_init() {
+    if [[ -f "$ROUTING_STATE_FILE" && ! -L "$ROUTING_STATE_FILE" ]]; then
+        return 0
+    fi
+    [[ ! -e "$ROUTING_STATE_FILE" ]] || return 1
+    local tmp _rs_dir
+    _rs_dir=$(dirname -- "$ROUTING_STATE_FILE")
+    [[ -d "$_rs_dir" ]] || install -d -m 755 -- "$_rs_dir" || return 1
+    tmp=$(mktemp "$_rs_dir/.routing-state.XXXXXX") || return 1
+    printf '%s\n' '{"version":1,"outbounds":[],"rules":[]}' > "$tmp" || { rm -f "$tmp"; return 1; }
+    chmod 600 "$tmp" || { rm -f "$tmp"; return 1; }
+    mv -f "$tmp" "$ROUTING_STATE_FILE" || { rm -f "$tmp"; return 1; }
+}
+
+routing_state_put() {
+    local tmp
+    routing_state_init || return 1
+    tmp=$(mktemp "$(dirname -- "$ROUTING_STATE_FILE")/.routing-state.XXXXXX") || return 1
+    if ! cat > "$tmp"; then rm -f "$tmp"; return 1; fi
+    jq -e '.version == 1 and (.outbounds | type == "array") and (.rules | type == "array")' \
+        "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+    chmod 600 "$tmp" || { rm -f "$tmp"; return 1; }
+    mv -f "$tmp" "$ROUTING_STATE_FILE" || { rm -f "$tmp"; return 1; }
+}
+
+routing_outbound_has() {
+    local tag="$1"
+    [[ -n "$tag" ]] || return 1
+    routing_state_init || return 1
+    jq -e --arg t "$tag" '.outbounds[]? | select(.tag == $t)' \
+        "$ROUTING_STATE_FILE" >/dev/null 2>&1
+}
+
+# $1=tag, $2=xray outbound JSON file, $3=singbox outbound JSON file (idempotent)
+routing_outbound_add() {
+    local tag="$1" xf="$2" sf="$3" tmp rc
+    [[ -n "$tag" && -f "$xf" && -f "$sf" && ! -L "$xf" && ! -L "$sf" ]] || return 1
+    jq empty "$xf" >/dev/null 2>&1 || return 1
+    jq empty "$sf" >/dev/null 2>&1 || return 1
+    routing_state_init || return 1
+    tmp=$(mktemp) || return 1
+    jq --arg t "$tag" --slurpfile x "$xf" --slurpfile s "$sf" \
+        '.outbounds |= (map(select(.tag != $t)) + [{tag:$t, xray:$x[0], singbox:$s[0]}])' \
+        "$ROUTING_STATE_FILE" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+    routing_state_put < "$tmp"; rc=$?; rm -f "$tmp"; return $rc
+}
+
+# $1=tag (also drops rules referencing it)
+routing_outbound_del() {
+    local tag="$1" tmp rc
+    [[ -n "$tag" ]] || return 1
+    routing_state_init || return 1
+    tmp=$(mktemp) || return 1
+    jq --arg t "$tag" \
+        '.outbounds |= map(select(.tag != $t)) | .rules |= map(select(.outbound != $t))' \
+        "$ROUTING_STATE_FILE" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+    routing_state_put < "$tmp"; rc=$?; rm -f "$tmp"; return $rc
+}
+
+# $1=comma-separated domains (geosite:xxx or plain), $2=outbound tag
+routing_rule_add() {
+    local domains_csv="$1" outbound="$2" tmp rc
+    [[ -n "$domains_csv" && -n "$outbound" ]] || return 1
+    routing_outbound_has "$outbound" || return 1
+    routing_state_init || return 1
+    tmp=$(mktemp) || return 1
+    jq --arg d "$domains_csv" --arg o "$outbound" '
+        ($d | split(",") | map(select(length > 0))) as $doms
+        | ($doms | map(select(startswith("geosite:")) | ltrimstr("geosite:"))) as $geo
+        | ($doms | map(select(startswith("geosite:") | not))) as $plain
+        | .rules += [{
+            domains: $doms, outbound: $o,
+            xray_rule: {type:"field", domain:$doms, outboundTag:$o},
+            singbox_rule: ({outbound:$o}
+                + (if ($geo|length) > 0 then {geosite:$geo} else {} end)
+                + (if ($plain|length) > 0 then {domain_suffix:$plain} else {} end))
+          }]
+    ' "$ROUTING_STATE_FILE" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+    routing_state_put < "$tmp"; rc=$?; rm -f "$tmp"; return $rc
+}
+
+# $1=0-based rule index
+routing_rule_del() {
+    local idx="$1" tmp rc
+    [[ "$idx" =~ ^[0-9]+$ ]] || return 1
+    routing_state_init || return 1
+    tmp=$(mktemp) || return 1
+    jq --argjson i "$idx" 'del(.rules[$i])' \
+        "$ROUTING_STATE_FILE" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+    routing_state_put < "$tmp"; rc=$?; rm -f "$tmp"; return $rc
+}
+
+routing_rules_clear() {
+    local tmp rc
+    routing_state_init || return 1
+    tmp=$(mktemp) || return 1
+    jq '.rules = []' "$ROUTING_STATE_FILE" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+    routing_state_put < "$tmp"; rc=$?; rm -f "$tmp"; return $rc
+}
+
+routing_state_clear() {
+    printf '%s\n' '{"version":1,"outbounds":[],"rules":[]}' | routing_state_put
+}
+
+# Surgically merge routing state into the LIVE config file, validate, restart.
+# $1 = xray | singbox (defaults to $CORE)
+routing_apply_live() {
+    local core="${1:-${CORE:-}}" cfg tmp
+    routing_state_init || return 1
+    case "$core" in
+        xray)
+            cfg='/usr/local/etc/xray/config.json'
+            [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+            tmp=$(mktemp) || return 1
+            jq --slurpfile st "$ROUTING_STATE_FILE" '
+                ($st[0].outbounds | map(.tag)) as $managed
+                | .outbounds |= (map(select(.tag as $t | $managed | index($t) | not))
+                    + [$st[0].outbounds[]?.xray])
+                | .routing.rules |= (map(select(.outboundTag as $t | $managed | index($t) | not))
+                    + [$st[0].rules[]?.xray_rule])
+            ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+            jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+            if [[ -x /usr/local/bin/xray ]]; then
+                XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+            fi
+            install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
+            rm -f "$tmp"
+            restart_service_soft xray
+            ;;
+        singbox|sing-box)
+            cfg='/etc/sing-box/config.json'
+            [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+            tmp=$(mktemp) || return 1
+            jq --slurpfile st "$ROUTING_STATE_FILE" '
+                ($st[0].outbounds | map(.tag)) as $managed
+                | .outbounds |= (map(select(.tag as $t | $managed | index($t) | not))
+                    + [$st[0].outbounds[]?.singbox])
+                | .route.rules |= (map(select(.outbound as $t | $managed | index($t) | not))
+                    + [$st[0].rules[]?.singbox_rule])
+            ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+            jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+            if [[ -x /usr/local/bin/sing-box ]]; then
+                /usr/local/bin/sing-box check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+            fi
+            install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
+            rm -f "$tmp"
+            restart_service_soft singbox
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+# ---------------- WARP one-click ----------------
+
+warp_fetch_wgcf() {
+    local arch url tmp
+    [[ -x "$WGCF_BIN" ]] && return 0
+    case "$(uname -m)" in
+        x86_64|amd64) arch='amd64' ;;
+        aarch64|arm64) arch='arm64' ;;
+        *) return 1 ;;
+    esac
+    url="https://github.com/ViRb3/wgcf/releases/download/v${WGCF_VERSION}/wgcf_${WGCF_VERSION}_linux_${arch}"
+    tmp=$(mktemp) || return 1
+    if ! curl -sSL --max-time 60 -o "$tmp" "$url"; then rm -f "$tmp"; return 1; fi
+    [[ -s "$tmp" ]] || { rm -f "$tmp"; return 1; }
+    # sanity: must be an ELF binary
+    head -c 4 "$tmp" | grep -q $'\x7fELF' || { rm -f "$tmp"; return 1; }
+    install -m 755 "$tmp" "$WGCF_BIN" || { rm -f "$tmp"; return 1; }
+    rm -f "$tmp"
+}
+
+# $1 = work dir. Outputs "OK" on success. Registers WARP account and generates profile.
+warp_register_profile() {
+    local workdir="$1" profile
+    [[ -n "$workdir" && -d "$workdir" ]] || return 1
+    warp_fetch_wgcf || return 1
+    cd "$workdir" || return 1
+    [[ -f wgcf-account.toml ]] || "$WGCF_BIN" register --accept-tos >/dev/null 2>&1 || return 1
+    "$WGCF_BIN" generate >/dev/null 2>&1 || return 1
+    profile="$workdir/wgcf-profile.conf"
+    [[ -f "$profile" ]] || return 1
+    grep -q '^PrivateKey' "$profile" || return 1
+    echo 'OK'
+}
+
+# $1 = wgcf-profile.conf, $2 = output dir for xray/singbox JSON files
+warp_build_outbound_json() {
+    local profile="$1" outdir="$2"
+    local priv peer endpoint addr4 addr6
+    [[ -f "$profile" && -d "$outdir" ]] || return 1
+    priv=$(grep '^PrivateKey' "$profile" | head -1 | awk '{print $3}') || return 1
+    peer=$(grep '^PublicKey' "$profile" | head -1 | awk '{print $3}') || return 1
+    endpoint=$(grep '^Endpoint' "$profile" | head -1 | awk '{print $3}') || return 1
+    addr4=$(grep '^Address' "$profile" | head -1 | awk '{print $3}') || return 1
+    addr6=$(grep '^Address' "$profile" | sed -n '2p' | awk '{print $3}') || true
+    [[ -n "$priv" && -n "$peer" && -n "$endpoint" ]] || return 1
+    local srv sport
+    srv="${endpoint%:*}"; sport="${endpoint##*:}"
+    [[ -n "$srv" && -n "$sport" ]] || return 1
+    local addrs_json
+    if [[ -n "$addr6" ]]; then
+        addrs_json=$(jq -nc --arg a4 "$addr4" --arg a6 "$addr6" '[$a4,$a6]')
+    else
+        addrs_json=$(jq -nc --arg a4 "$addr4" '[$a4]')
+    fi
+    jq -n --arg priv "$priv" --arg peer "$peer" --arg ep "$endpoint" \
+        --argjson addrs "$addrs_json" '{
+        protocol:"wireguard", tag:"warp-out",
+        settings:{secretKey:$priv, address:$addrs, mtu:1280,
+            peers:[{publicKey:$peer, endpoint:$ep, keepAlive:25}]}
+    }' > "$outdir/warp-xray.json" || return 1
+    jq -n --arg priv "$priv" --arg peer "$peer" --arg srv "$srv" --argjson sport "$sport" \
+        --argjson addrs "$addrs_json" '{
+        type:"wireguard", tag:"warp-out",
+        server:$srv, server_port:$sport,
+        private_key:$priv, peer_public_key:$peer,
+        local_address:$addrs, mtu:1280, keepalive:25
+    }' > "$outdir/warp-singbox.json" || return 1
+}
+
+warp_deploy() {
+    local workdir xray_json singbox_json core
+    workdir=$(mktemp -d) || return 1
+    trap 'rm -rf -- "$workdir"' RETURN
+    msg "$(tr_msg warp_deploying)"
+    [[ "$(warp_register_profile "$workdir")" == 'OK' ]] || { msg "$(tr_msg warp_register_fail)"; return 1; }
+    warp_build_outbound_json "$workdir/wgcf-profile.conf" "$workdir" || { msg "$(tr_msg warp_profile_fail)"; return 1; }
+    routing_outbound_add 'warp-out' "$workdir/warp-xray.json" "$workdir/warp-singbox.json" \
+        || { msg "$(tr_msg warp_state_fail)"; return 1; }
+    core="${CORE:-}"
+    if [[ -z "$core" ]]; then
+        load_optional_abox_env_or_die 2>/dev/null || true
+        core="${CORE:-}"
+    fi
+    if [[ -n "$core" ]]; then
+        routing_apply_live "$core" || { msg "$(tr_msg warp_apply_fail)"; return 1; }
+    fi
+    msg "$(tr_msg warp_done)"
+}
+
+warp_undeploy() {
+    routing_outbound_del 'warp-out' || return 1
+    local core="${CORE:-}"
+    if [[ -z "$core" ]]; then
+        load_optional_abox_env_or_die 2>/dev/null || true
+        core="${CORE:-}"
+    fi
+    [[ -n "$core" ]] && routing_apply_live "$core" || true
+    msg "$(tr_msg warp_removed)"
+}
+
+warp_status() {
+    if routing_outbound_has 'warp-out'; then
+        msg "$(tr_msg warp_status_on)"
+    else
+        msg "$(tr_msg warp_status_off)"
+    fi
+    local n_rules
+    n_rules=$(jq '.rules | length' "$ROUTING_STATE_FILE" 2>/dev/null || echo 0)
+    msg "$(tprintf warp_rules_count "$n_rules")"
+}
+
+# WARP split presets (single-machine). $1 = preset name
+warp_apply_preset() {
+    local preset="$1"
+    routing_outbound_has 'warp-out' || { msg "$(tr_msg warp_need_deploy)"; return 1; }
+    routing_rules_clear || return 1
+    case "$preset" in
+        streaming)
+            routing_rule_add 'geosite:netflix,geosite:disney,geosite:youtube,geosite:primevideo,geosite:hbomax' 'warp-out' || return 1
+            ;;
+        cn-direct)
+            routing_rule_add 'geosite:netflix,geosite:disney,geosite:youtube' 'warp-out' || return 1
+            routing_rule_add 'geosite:cn' 'direct' || return 1
+            ;;
+        global)
+            routing_rule_add 'geosite:all' 'warp-out' || return 1
+            ;;
+        *) return 1 ;;
+    esac
+    local core="${CORE:-}"
+    if [[ -z "$core" ]]; then
+        load_optional_abox_env_or_die 2>/dev/null || true
+        core="${CORE:-}"
+    fi
+    [[ -n "$core" ]] && routing_apply_live "$core"
+    msg "$(tr_msg warp_preset_done)"
+}
+
+# ---------------- multi-machine split routing ----------------
+
+# $1=landing IP, $2=port, $3=user, $4=pass. Creates tag socks-land<N>.
+split_add_socks_outbound() {
+    local ip="$1" port="$2" user="$3" pass="$4"
+    local tag workdir n
+    [[ -n "$ip" && -n "$port" ]] || return 1
+    n=1
+    while routing_outbound_has "socks-land$n"; do n=$((n+1)); done
+    tag="socks-land$n"
+    workdir=$(mktemp -d) || return 1
+    trap 'rm -rf -- "$workdir"' RETURN
+    jq -n --arg tag "$tag" --arg ip "$ip" --argjson port "$port" --arg u "$user" --arg p "$pass" '{
+        protocol:"socks", tag:$tag,
+        settings:{servers:[{address:$ip, port:$port,
+            users:((if $u != "" then [{user:$u, pass:$p}] else [] end))}]}
+    }' > "$workdir/socks-xray.json" || return 1
+    jq -n --arg ip "$ip" --argjson port "$port" --arg u "$user" --arg p "$pass" --arg tag "$tag" '{
+        type:"socks", tag:$tag, server:$ip, server_port:$port
+    } + (if $u != "" then {username:$u, password:$p} else {} end)' > "$workdir/socks-singbox.json" || return 1
+    routing_outbound_add "$tag" "$workdir/socks-xray.json" "$workdir/socks-singbox.json" || return 1
+    echo "$tag"
+}
+
+# ============ WARP 与分流管理菜单 (toolbox 5) ============
+warp_split_menu() {
+    # Submenu loop: 0/Enter goes back to the parent menu.
+    while true; do
+    clear
+    msg "${YELLOW}$(tr_msg warp_split_title)${NC}"
+    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    warp_status
+    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "1. $(tr_msg warp_deploy_item)"
+    msg "2. $(tr_msg warp_preset_item)"
+    msg "3. $(tr_msg split_add_socks_item)"
+    msg "4. $(tr_msg split_rules_item)"
+    msg "5. $(tr_msg warp_uninstall_item)"
+    msg "0. $(tr_msg back_to_parent)"
+    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    local choice
+    read -r -p "$(tr_msg select_prompt) [0-5]: " choice || return 0
+    case "$choice" in
+        1) warp_deploy; pause_return ;;
+        2) warp_preset_menu ;;
+        3) split_add_socks_interactive ;;
+        4) split_rules_menu ;;
+        5)
+            if confirm_yes_no "$(tr_msg warp_uninstall_confirm)"; then
+                warp_undeploy
+                routing_rules_clear 2>/dev/null || true
+                local core="${CORE:-}"; [[ -z "$core" ]] && { load_optional_abox_env_or_die 2>/dev/null || true; core="${CORE:-}"; }
+                [[ -n "$core" ]] && routing_apply_live "$core" || true
+            fi
+            pause_return ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
+    esac
+    done
+}
+
+warp_preset_menu() {
+    while true; do
+    clear
+    msg "${YELLOW}$(tr_msg warp_preset_title)${NC}"
+    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "1. $(tr_msg warp_preset_streaming)"
+    msg "2. $(tr_msg warp_preset_cn_direct)"
+    msg "3. $(tr_msg warp_preset_global)"
+    msg "0. $(tr_msg back_to_parent)"
+    local choice
+    read -r -p "$(tr_msg select_prompt) [0-3]: " choice || return 0
+    case "$choice" in
+        1) warp_apply_preset streaming; pause_return ;;
+        2) warp_apply_preset cn-direct; pause_return ;;
+        3) warp_apply_preset global; pause_return ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
+    esac
+    done
+}
+
+split_add_socks_interactive() {
+    local ip port user pass tag
+    read -r -p "$(tr_msg split_ip_prompt): " ip || return 0
+    [[ -n "$ip" ]] || { msg "${RED}$(tr_msg invalid_input)${NC}"; return 1; }
+    read -r -p "$(tprintf split_port_prompt '1080'): " port || return 0
+    port="${port:-1080}"
+    read -r -p "$(tr_msg split_user_prompt): " user || return 0
+    read -r -s -p "$(tr_msg split_pass_prompt): " pass; echo || return 0
+    tag=$(split_add_socks_outbound "$ip" "$port" "$user" "$pass") || { msg "${RED}$(tr_msg split_add_fail)${NC}"; return 1; }
+    msg "$(tprintf split_add_done "$tag")"
+    local core="${CORE:-}"; [[ -z "$core" ]] && { load_optional_abox_env_or_die 2>/dev/null || true; core="${CORE:-}"; }
+    [[ -n "$core" ]] && routing_apply_live "$core"
+    pause_return
+}
+
+split_rules_menu() {
+    while true; do
+    clear
+    msg "${YELLOW}$(tr_msg split_rules_title)${NC}"
+    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    local i=0
+    while IFS= read -r line; do
+        msg "$i. $line"; i=$((i+1))
+    done < <(jq -r '.rules[]? | "\(.domains | join(",")) -> \(.outbound)"' "$ROUTING_STATE_FILE" 2>/dev/null)
+    [[ "$i" -eq 0 ]] && msg "$(tr_msg split_no_rules)"
+    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "a. $(tr_msg split_rule_add)"
+    msg "d. $(tr_msg split_rule_del)"
+    msg "0. $(tr_msg back_to_parent)"
+    local choice
+    read -r -p "$(tr_msg select_prompt) [a/d/0]: " choice || return 0
+    case "$choice" in
+        a|A) split_rule_add_interactive ;;
+        d|D) split_rule_del_interactive ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
+    esac
+    done
+}
+
+split_rule_add_interactive() {
+    local domains outbound
+    msg "$(tr_msg split_domains_hint)"
+    read -r -p "$(tr_msg split_domains_prompt): " domains || return 0
+    [[ -n "$domains" ]] || return 1
+    msg "$(tr_msg split_outbound_hint)"
+    jq -r '.outbounds[]? | .tag' "$ROUTING_STATE_FILE" 2>/dev/null | while IFS= read -r t; do msg " - $t"; done
+    read -r -p "$(tr_msg split_outbound_prompt): " outbound || return 0
+    [[ -n "$outbound" ]] || return 1
+    if routing_rule_add "$domains" "$outbound"; then
+        local core="${CORE:-}"; [[ -z "$core" ]] && { load_optional_abox_env_or_die 2>/dev/null || true; core="${CORE:-}"; }
+        [[ -n "$core" ]] && routing_apply_live "$core"
+        msg "$(tr_msg split_rule_done)"
+    else
+        msg "${RED}$(tr_msg split_rule_fail)${NC}"
+    fi
+    pause_return
+}
+
+split_rule_del_interactive() {
+    local idx
+    read -r -p "$(tr_msg split_rule_del_prompt): " idx || return 0
+    if routing_rule_del "$idx"; then
+        local core="${CORE:-}"; [[ -z "$core" ]] && { load_optional_abox_env_or_die 2>/dev/null || true; core="${CORE:-}"; }
+        [[ -n "$core" ]] && routing_apply_live "$core"
+        msg "$(tr_msg split_rule_del_done)"
+    else
+        msg "${RED}$(tr_msg invalid_input)${NC}"
+    fi
+    pause_return
+}
+
 
 deploy_socks5_landing() {
     local port user pass cfg='/usr/local/etc/xray/config.json'
@@ -18351,7 +19066,7 @@ vps_benchmark_menu() {
         en)
             msg "${BOLD}${GREEN}Toolbox${NC}"
             msg "${CYAN}[ Test & Diagnostics ]                    [ System Tuning ]${NC}"
-            msg "${YELLOW}1.  System benchmark & download speed     5.  Cloudflare WARP manager${NC}"
+            msg "${YELLOW}1.  System benchmark & download speed     5.  WARP & split-routing${NC}"
             msg "${YELLOW}2.  IP quality / streaming / route test   6.  Allocate 2 GB Swap${NC}"
             msg "${YELLOW}8.  Export redacted diagnostics           12.  VPS one-click optimization${NC}"
             msg "${YELLOW}9.  Read-only preflight                   13.  IP / DNS / timezone / download-source${NC}"
@@ -18368,7 +19083,7 @@ vps_benchmark_menu() {
         ru)
             msg "${BOLD}${GREEN}Инструменты${NC}"
             msg "${CYAN}[ Тесты и диагностика ]                   [ Оптимизация системы ]${NC}"
-            msg "${YELLOW}1.  Тест системы и скорости               5.  Менеджер Cloudflare WARP${NC}"
+            msg "${YELLOW}1.  Тест системы и скорости               5.  WARP и разделение трафика${NC}"
             msg "${YELLOW}2.  Качество IP / стриминг / маршрут      6.  Создать Swap 2 ГБ${NC}"
             msg "${YELLOW}8.  Экспорт диагностики                   12.  Оптимизация VPS${NC}"
             msg "${YELLOW}9.  Проверка перед установкой             13.  IP / DNS / часовой пояс / источники${NC}"
@@ -18385,7 +19100,7 @@ vps_benchmark_menu() {
         fa)
             msg "${BOLD}${GREEN}جعبه ابزار${NC}"
             msg "${CYAN}[ تست و عیب‌یابی ]                        [ بهینه‌سازی سیستم ]${NC}"
-            msg "${YELLOW}1.  تست سیستم و سرعت دانلود               5.  مدیریت Cloudflare WARP${NC}"
+            msg "${YELLOW}1.  تست سیستم و سرعت دانلود               5.  مدیریت WARP و تفکیک ترافیک${NC}"
             msg "${YELLOW}2.  کیفیت IP / استریم / مسیر              6.  ساخت Swap دو گیگابایتی${NC}"
             msg "${YELLOW}8.  خروجی تشخیص عیب‌یابی                  12.  بهینه‌سازی تک‌کلیکی VPS${NC}"
             msg "${YELLOW}9.  پیش‌بررسی فقط‌خواندنی                 13.  تنظیمات IP / DNS / منطقه زمانی${NC}"
@@ -18402,7 +19117,7 @@ vps_benchmark_menu() {
         zh-tw)
             msg "${BOLD}${GREEN}綜合工具箱${NC}"
             msg "${CYAN}[ 測試診斷 ]                              [ 系統優化 ]${NC}"
-            msg "${YELLOW}1.  系統性能與下載測速                    5.  Cloudflare WARP 管理${NC}"
+            msg "${YELLOW}1.  系統性能與下載測速                    5.  WARP 與分流管理${NC}"
             msg "${YELLOW}2.  IP 質量/流媒體解鎖/回程測試           6.  創建 2 GB Swap${NC}"
             msg "${YELLOW}8.  導出脫敏診斷包                        12.  VPS 一鍵優化${NC}"
             msg "${YELLOW}9.  只讀預檢查                            13.  IP / DNS / 時區 / 下載源設置${NC}"
@@ -18419,7 +19134,7 @@ vps_benchmark_menu() {
         ja)
             msg "${BOLD}${GREEN}ツールボックス${NC}"
             msg "${CYAN}[ テストと診断 ]                          [ システム最適化 ]${NC}"
-            msg "${YELLOW}1.  システムベンチマークと速度測定        5.  Cloudflare WARP 管理${NC}"
+            msg "${YELLOW}1.  システムベンチマークと速度測定        5.  WARP と振り分け管理${NC}"
             msg "${YELLOW}2.  IP品質/ストリーミング/ルートテスト    6.  2GB Swap 作成${NC}"
             msg "${YELLOW}8.  診断パッケージのエクスポート          12.  VPS ワンクリック最適化${NC}"
             msg "${YELLOW}9.  読み取り専用事前チェック              13.  IP / DNS / タイムゾーン設定${NC}"
@@ -18436,7 +19151,7 @@ vps_benchmark_menu() {
         *)
             msg "${BOLD}${GREEN}综合工具箱${NC}"
             msg "${CYAN}[ 测试诊断 ]                              [ 系统优化 ]${NC}"
-            msg "${YELLOW}1.  系统性能与下载测速                    5.  Cloudflare WARP 管理${NC}"
+            msg "${YELLOW}1.  系统性能与下载测速                    5.  WARP 与分流管理${NC}"
             msg "${YELLOW}2.  IP 质量/流媒体解锁/回程测试           6.  创建 2 GB Swap${NC}"
             msg "${YELLOW}8.  导出脱敏诊断包                        12.  VPS 一键优化${NC}"
             msg "${YELLOW}9.  只读预检查                            13.  IP / DNS / 时区 / 下载源设置${NC}"
@@ -18459,7 +19174,7 @@ vps_benchmark_menu() {
         2) run_mirrored_test_script 'IP quality, streaming unlock and route test' 'https://Check.Place' 'Check.Place.sh' -I; pause_return ;;
         3) run_local_sni_benchmark ;;
         4) run_local_sni_mini_benchmark ;;
-        5) run_warp_manager ;;
+        5) warp_split_menu ;;
         6) setup_swap_2g ;;
         7) backup_restore_menu ;;
         8) export_diagnostic_bundle ;;

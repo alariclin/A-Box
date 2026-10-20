@@ -1210,12 +1210,12 @@ tr_msg() {
         fa:mi_fault) echo 'خطا' ;;
         zh-tw:mi_fault) echo '故障' ;;
         ja:mi_fault) echo '障害' ;;
-        zh:mi_quick_r) echo '一键 Reality（默认 SNI）' ;;
-        en:mi_quick_r) echo 'One-click Reality (default SNI)' ;;
-        ru:mi_quick_r) echo 'Reality в один клик (SNI по умолчанию)' ;;
-        fa:mi_quick_r) echo 'ریالیتی تک‌کلیکی (SNI پیش‌فرض)' ;;
-        zh-tw:mi_quick_r) echo '一鍵 Reality（預設 SNI）' ;;
-        ja:mi_quick_r) echo 'ワンクリック Reality（デフォルト SNI）' ;;
+        zh:mi_quick_r) echo '一键 Reality（按 R 执行）' ;;
+        en:mi_quick_r) echo 'One-click Reality (press R)' ;;
+        ru:mi_quick_r) echo 'Reality в один клик (клавиша R)' ;;
+        fa:mi_quick_r) echo 'ریالیتی تک‌کلیکی (با کلید R)' ;;
+        zh-tw:mi_quick_r) echo '一鍵 Reality（按 R 執行）' ;;
+        ja:mi_quick_r) echo 'ワンクリック Reality（Rキーで実行）' ;;
         zh:mi_land) echo '落地' ;;
         en:mi_land) echo 'Exit' ;;
         ru:mi_land) echo 'Exit' ;;
@@ -10562,9 +10562,9 @@ _menu_info_display() {
     msg "$_mrow"
     msg ''
     # --- system / hardware ---
-    msg "  ${LIGHTBLUE}$(tr_msg mi_system)：${NC}  ${CYAN}${_MI_OS} · $(tr_msg mi_kernel) ${_MI_KERNEL} · ${_MI_VIRT} · $(tprintf mi_uptime "$_MI_UP")${NC}"
+    msg "  ${GRAY}$(tr_msg mi_system)：${NC}  ${CYAN}${_MI_OS} · $(tr_msg mi_kernel) ${_MI_KERNEL} · ${_MI_VIRT} · $(tprintf mi_uptime "$_MI_UP")${NC}"
     msg ''
-    msg "  ${LIGHTBLUE}$(tr_msg mi_hw)：${NC}  ${CYAN}${_MI_CPU_MODEL} (${_MI_CPU}$(tr_msg mi_cores)) · $(tr_msg mi_mem) ${_MI_MEM_USED}/${_MI_MEM}G · $(tr_msg mi_disk) ${_MI_DISK}${_MI_DISK_KIND:+ $_MI_DISK_KIND}${NC}"
+    msg "  ${GRAY}$(tr_msg mi_hw)：${NC}  ${CYAN}${_MI_CPU_MODEL} (${_MI_CPU}$(tr_msg mi_cores)) · $(tr_msg mi_mem) ${_MI_MEM_USED}/${_MI_MEM}G · $(tr_msg mi_disk) ${_MI_DISK}${_MI_DISK_KIND:+ $_MI_DISK_KIND}${NC}"
     msg ''
     # --- network (IPv4 with geo, IPv6) ---
     local _v4dot='○' _geo=''
@@ -10572,7 +10572,7 @@ _menu_info_display() {
     if [[ -n "$_MI_GEO_COUNTRY" ]]; then
         _geo=" ${_MI_FLAG}${_MI_FLAG:+ }${_MI_GEO_COUNTRY}${_MI_GEO_CITY:+ · ${_MI_GEO_CITY}} · ${_MI_GEO_KIND} · ${_MI_GEO_ORIGIN}"
     fi
-    msg "  ${LIGHTBLUE}$(tr_msg mi_net)：${NC}  ${CYAN}IPv4${NC} ${_v4dot} ${CYAN}${GLOBAL_PUBLIC_IP:-?}${_geo}${NC}"
+    msg "  ${GRAY}$(tr_msg mi_net)：${NC}  ${CYAN}IPv4${NC} ${_v4dot} ${CYAN}${GLOBAL_PUBLIC_IP:-?}${_geo}${NC}"
     if [[ -n "$_MI_IPV6" ]]; then
         msg "          ${CYAN}IPv6${NC} ${GREEN}●${NC} ${CYAN}${_MI_IPV6}${NC}"
     else
@@ -10591,7 +10591,7 @@ _menu_info_display() {
             if [[ -z "$_cur" ]]; then _cur="$_seg"; else
                 _w=$(_disp_width "  ${_lbl}：  ${_cur}|${_seg}")
                 if (( _w > 78 )); then
-                    if (( _first )); then msg "  ${LIGHTBLUE}${_lbl}：${NC}  ${CYAN}${_cur}${NC}"; _first=0
+                    if (( _first )); then msg "  ${GRAY}${_lbl}：${NC}  ${CYAN}${_cur}${NC}"; _first=0
                     else msg "          ${CYAN}${_cur}${NC}"; fi
                     _cur="$_seg"
                 else _cur="${_cur}|${_seg}"; fi
@@ -10600,27 +10600,27 @@ _menu_info_display() {
         if [[ -n "$_cur" ]]; then
             _w=$(_disp_width "  ${_lbl}：  ${_cur}${_suffix}")
             if (( _w <= 80 )); then
-                if (( _first )); then msg "  ${LIGHTBLUE}${_lbl}：${NC}  ${CYAN}${_cur}${NC} · ${LIGHTBLUE}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"
-                else msg "          ${CYAN}${_cur}${NC} · ${LIGHTBLUE}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"; fi
+                if (( _first )); then msg "  ${GRAY}${_lbl}：${NC}  ${CYAN}${_cur}${NC} · ${GRAY}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"
+                else msg "          ${CYAN}${_cur}${NC} · ${GRAY}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"; fi
             else
-                if (( _first )); then msg "  ${LIGHTBLUE}${_lbl}：${NC}  ${CYAN}${_cur}${NC}"
+                if (( _first )); then msg "  ${GRAY}${_lbl}：${NC}  ${CYAN}${_cur}${NC}"
                 else msg "          ${CYAN}${_cur}${NC}"; fi
-                [[ -n "$_MI_SNI" ]] && msg "          ${LIGHTBLUE}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"
+                [[ -n "$_MI_SNI" ]] && msg "          ${GRAY}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"
             fi
         fi
     else
-        msg "  ${LIGHTBLUE}$(tr_msg mi_nodes)：${NC}  ${CYAN}$(tr_msg mi_no_nodes)${NC}"
+        msg "  ${GRAY}$(tr_msg mi_nodes)：${NC}  ${CYAN}$(tr_msg mi_no_nodes)${NC}"
     fi
     msg ''
     # --- split (hidden entirely when nothing is configured) ---
     if [[ -n "$_MI_EXITS" || "$_MI_RULES" != '0' ]]; then
         local _split='' _e
         for _e in $_MI_EXITS; do _split+="${CYAN}${_e}${NC} ${GREEN}●${NC} · "; done
-        msg "  ${LIGHTBLUE}$(tr_msg mi_split)：${NC}  ${_split}$(tprintf mi_rules "$_MI_RULES")"
+        msg "  ${GRAY}$(tr_msg mi_split)：${NC}  ${_split}$(tprintf mi_rules "$_MI_RULES")"
         msg ''
     fi
     # --- legend ---
-    msg "  ${GRAY}$(tr_msg mi_state)：  ${GREEN}●${NC} ${GRAY}$(tr_msg mi_run)  ·  ○ $(tr_msg mi_off)  ·  ${RED}●${NC} ${GRAY}$(tr_msg mi_fault)${NC}        ${CYAN}r. $(tr_msg mi_quick_r)${NC}"
+    msg "  ${GRAY}$(tr_msg mi_state)：  ${GREEN}●${NC} ${GRAY}$(tr_msg mi_run)  ·  ○ $(tr_msg mi_off)  ·  ${RED}●${NC} ${GRAY}$(tr_msg mi_fault)${NC}        ${CYAN}$(tr_msg mi_quick_r)${NC}"
     printf '\033[38;2;0;170;255m%s\033[0m\n' '════════════════════════════════════════════════════════════════════════════════'
 }
 

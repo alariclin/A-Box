@@ -10514,6 +10514,7 @@ WALLOS_CADDY_VERSION='2.11.7'
 WALLOS_CADDY_SHA256_AMD64='727b91701a392de6ebc5027509f548bf39979e5216340d0faed8fa5e69c84f8b'
 WALLOS_CADDY_SHA256_ARM64='d8fc6d179a5d283028a472a5618564f6ad8a86fed513e64f032b3b0b7cc45e42'
 WALLOS_CADDY_LOG='/var/log/A-Box-wallos-caddy.log'
+WALLOS_CF_TOKEN_FILE='/etc/ddr/.wallos-cf-token'
 ARGO_STATE_FILE='/etc/ddr/.argo-state'
 ARGO_UUID='' ARGO_VMESS_PORT='' ARGO_VLESS_PORT=''
 
@@ -13828,6 +13829,7 @@ do_cleanup() {
         if [[ -f "$_wf" ]] && grep -q 'A-Box-wallos' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
     done
     wallos_https_teardown >/dev/null 2>&1 || true
+    wallos_cftunnel_teardown >/dev/null 2>&1 || true
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         if systemctl list-unit-files fail2ban.service >/dev/null 2>&1 && systemctl cat fail2ban.service >/dev/null 2>&1; then
             systemctl try-restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响 A-Box 清理。${NC}"
@@ -20710,6 +20712,28 @@ EOF_WF2B_JAIL
 
 wallos_public_urls() {
     local port="$1" ipv4 ipv6 host_ip
+    local _cmode=''; _cmode=$(wallos_state_value MODE 2>/dev/null || true)
+    if [[ "$_cmode" == cftunnel ]]; then
+        local _ch=''; _ch=$(wallos_state_value CFHOST 2>/dev/null || true)
+        if [[ -n "$_ch" ]]; then
+            if [[ "${ABOX_LANG:-zh}" == en ]]; then
+                msg "${GREEN}Wallos URL (Cloudflare Tunnel): https://$_ch/${NC}"
+                msg ''
+                msg "${BOLD}-- Wallos quick guide (Cloudflare Tunnel) --${NC}"
+                msg "1) Open the URL above from any device; if you enabled Access in Cloudflare, sign in with your email first."
+                msg "2) If it does not open: in the CF dashboard check the tunnel is Healthy and its Public Hostname service is http://127.0.0.1:$port."
+                msg "3) Security: zero inbound ports on this host, the real IP stays hidden, HTTPS is served by Cloudflare. Manage the hostname and Access policy in the CF dashboard."
+            else
+                msg "${GREEN}Wallos 网址（CF 隧道）：https://$_ch/${NC}"
+                msg ''
+                msg "${BOLD}── Wallos 使用教程（CF 隧道）──${NC}"
+                msg "1) 访问：任意设备浏览器打开上面的网址；若你在 CF 后台开了 Access，先按提示用邮箱验证。"
+                msg "2) 打不开：去 CF 后台看隧道状态是否为 Healthy、Public Hostname 的 Service 是否为 http://127.0.0.1:$port（不对就在后台改成这个）。"
+                msg "3) 安全：本机零入站端口、真实 IP 不暴露、全程走 CF 的 HTTPS；建议 Access 只放行你自己的邮箱。域名与 Access 策略都在 CF 后台管理。"
+            fi
+            return 0
+        fi
+    fi
     local _hmode=''; _hmode=$(wallos_state_value MODE 2>/dev/null || true)
     if [[ "$_hmode" == https ]] && is_service_running abox-wallos-caddy 2>/dev/null; then
         local _hp='' _hip=''
@@ -20957,19 +20981,111 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     return 0
 }
 
+
+wallos_cftunnel_write_unit() {
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        write_file_atomically_from_stdin "/etc/systemd/system/abox-wallos-cftunnel.service" 600 <<'EOF_WCFT' || return 1
+# Managed by A-Box
+[Unit]
+Description=A-Box Wallos Cloudflare Tunnel
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/ddr/.wallos-cf-token
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate run
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/etc/ddr/abox-wallos-cftunnel.log
+StandardError=append:/etc/ddr/abox-wallos-cftunnel.log
+
+[Install]
+WantedBy=multi-user.target
+EOF_WCFT
+        systemctl daemon-reload >/dev/null 2>&1 || return 1
+        systemctl enable abox-wallos-cftunnel.service >/dev/null 2>&1 || true
+        systemctl restart abox-wallos-cftunnel.service >/dev/null 2>&1 || return 1
+    else
+        local _tok=''
+        _tok=$(sed -n 's/^TUNNEL_TOKEN=//p' "$WALLOS_CF_TOKEN_FILE" 2>/dev/null | head -1)
+        [[ -n "$_tok" ]] || return 1
+        write_file_atomically_from_stdin "/etc/init.d/abox-wallos-cftunnel" 755 <<EOF_WCFTRC || return 1
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Wallos Cloudflare Tunnel"
+command="/usr/local/bin/cloudflared"
+command_args="tunnel --no-autoupdate run"
+command_env="TUNNEL_TOKEN=${_tok}"
+command_background="yes"
+pidfile="/run/abox-wallos-cftunnel.pid"
+output_log="/etc/ddr/abox-wallos-cftunnel.log"
+error_log="/etc/ddr/abox-wallos-cftunnel.log"
+depend() { need net; }
+EOF_WCFTRC
+        chmod +x "/etc/init.d/abox-wallos-cftunnel" || return 1
+        rc-update add abox-wallos-cftunnel default >/dev/null 2>&1 || true
+        rc-service abox-wallos-cftunnel restart >/dev/null 2>&1 9>&- 10>&- || return 1
+    fi
+}
+
+wallos_cftunnel_teardown() { # best-effort
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        systemctl stop abox-wallos-cftunnel.service >/dev/null 2>&1 || true
+        systemctl disable abox-wallos-cftunnel.service >/dev/null 2>&1 || true
+        rm -f "/etc/systemd/system/abox-wallos-cftunnel.service"
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    else
+        rc-service abox-wallos-cftunnel stop >/dev/null 2>&1 || true
+        rc-update del abox-wallos-cftunnel default >/dev/null 2>&1 || true
+        rm -f "/etc/init.d/abox-wallos-cftunnel"
+    fi
+    rm -f "$WALLOS_CF_TOKEN_FILE" /etc/ddr/abox-wallos-cftunnel.log
+    return 0
+}
+
+wallos_cftunnel_setup() { # $1 = public hostname (wallos.example.com)
+    local host="$1" _t=0 _code='' _iport=''
+    if [[ ! "$host" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+        msg "${RED}CF 隧道域名无效：${host}。Wallos 保持仅本机访问。${NC}"
+        return 1
+    fi
+    if [[ ! -s "$WALLOS_CF_TOKEN_FILE" ]]; then
+        msg "${RED}CF 隧道令牌缺失（$WALLOS_CF_TOKEN_FILE）。Wallos 保持仅本机访问。${NC}"
+        return 1
+    fi
+    install_cloudflared || return 1
+    wallos_cftunnel_write_unit || { msg "${RED}CF 隧道服务启动失败，见 /etc/ddr/abox-wallos-cftunnel.log。${NC}"; return 1; }
+    while (( _t < 30 )); do
+        is_service_running abox-wallos-cftunnel 2>/dev/null && break
+        sleep 3; _t=$((_t + 3))
+    done
+    if ! is_service_running abox-wallos-cftunnel 2>/dev/null; then
+        msg "${RED}CF 隧道进程未运行（令牌可能无效），见 /etc/ddr/abox-wallos-cftunnel.log。Wallos 保持仅本机访问。${NC}"
+        return 1
+    fi
+    _code=$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' "https://${host}/" 2>/dev/null || true)
+    if [[ -z "$_code" || "$_code" == '000' ]]; then
+        _iport=$(wallos_state_value PORT 2>/dev/null || true)
+        msg "${YELLOW}隧道已运行，但 https://${host}/ 暂时无响应：请在 CF 后台确认隧道状态为 Healthy、且 Public Hostname 的 Service 为 http://127.0.0.1:${_iport}（域名刚绑定时也可能需要等 1-2 分钟）。${NC}"
+    fi
+    return 0
+}
+
 wallos_write_state() {
     # P3-6: persist BIND so backup/restore and rebuild-from-state preserve network exposure.
     # Round 15: also persist MODE (local|https) + PUBPORT (the Caddy
     # public port in https mode). When $5/$6 are omitted, existing
     # values are carried over so restore/rollback paths keep them.
-    local image="$1" port="$2" tz="$3" bind="${4-127.0.0.1}" mode="${5:-}" pubport="${6:-}" tmp
+    local image="$1" port="$2" tz="$3" bind="${4-127.0.0.1}" mode="${5:-}" pubport="${6:-}" cfhost="${7:-}" tmp
     if [[ -z "$mode" ]]; then mode=$(wallos_state_value MODE 2>/dev/null || true); fi
     if [[ -z "$pubport" ]]; then pubport=$(wallos_state_value PUBPORT 2>/dev/null || true); fi
+    if [[ -z "$cfhost" ]]; then cfhost=$(wallos_state_value CFHOST 2>/dev/null || true); fi
     tmp=$(umask 077; mktemp "$WALLOS_DIR/.abox-state.new.XXXXXX") || return 1
     if ! printf 'IMAGE=%s\nPORT=%s\nTZ=%s\nBIND=%s\n' "$image" "$port" "$tz" "$bind" > "$tmp"; then
         rm -f -- "$tmp"; return 1
     fi
-    if [[ "$mode" == https ]]; then printf 'MODE=https\n' >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
+    if [[ "$mode" == https || "$mode" == cftunnel ]]; then printf 'MODE=%s\n' "$mode" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
+    if [[ "$mode" == cftunnel && "$cfhost" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then printf 'CFHOST=%s\n' "$cfhost" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
     if [[ "$pubport" =~ ^[0-9]+$ ]]; then printf 'PUBPORT=%s\n' "$pubport" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
     if ! chmod 600 "$tmp" || ! mv -f -- "$tmp" "$WALLOS_DIR/.abox-state"; then
         rm -f -- "$tmp"
@@ -21050,33 +21166,82 @@ wallos_install_or_update() {
     if [[ -n "${WALLOS_BIND_ADDRESS:-}" && "$bind_address" != 127.0.0.1 && "$bind_address" != 0.0.0.0 ]]; then
         msg "${RED}WALLOS_BIND_ADDRESS override must be 127.0.0.1 or 0.0.0.0.${NC}"; return 1
     fi
-    # Access mode (user direction 2026-10-20): [1] public now means
-    # HTTPS - Caddy terminates TLS with an auto-renewed Let's Encrypt
-    # IP certificate while Wallos itself stays bound to loopback.
-    # [2] is localhost-only. Plain public HTTP is no longer offered;
-    # an existing public-HTTP install migrates to HTTPS and keeps its
-    # public port, so the URL port does not change.
-    local _bind_chosen=0 wmode='local' pubport=''
+    # Access mode: [1] public HTTPS (Caddy + Let's Encrypt IP cert),
+    # [2] localhost only (SSH tunnel), [3] Cloudflare Tunnel (needs a
+    # domain on Cloudflare; zero inbound ports). Plain public HTTP is
+    # not offered. An existing public-HTTP install migrates to HTTPS
+    # keeping its public port.
+    local _bind_chosen=0 wmode='local' pubport='' cfhost='' cftoken=''
     local _old_mode='' _old_pubport=''
     _old_mode=$(wallos_state_value MODE 2>/dev/null || true)
     _old_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
-    if [[ -n "${WALLOS_BIND_ADDRESS:-}" ]]; then
+    if [[ -n "${WALLOS_ACCESS_MODE:-}" ]]; then
+        _bind_chosen=1
+        case "$WALLOS_ACCESS_MODE" in https|cftunnel|local) wmode="$WALLOS_ACCESS_MODE" ;; *) wmode='local' ;; esac
+        cfhost="${WALLOS_CF_HOSTNAME:-}"
+    elif [[ -n "${WALLOS_BIND_ADDRESS:-}" ]]; then
         _bind_chosen=1
         [[ "$bind_address" == 0.0.0.0 ]] && wmode='https'
     elif [[ -t 0 ]]; then
         local _ans=''
         case "${ABOX_LANG:-zh}" in
-            en) printf 'Wallos access mode: [1] Public HTTPS (open the URL from any device; encrypted, certificate auto-renews)  [2] Localhost only (SSH tunnel). Choose [1]: ' ;;
-            *) printf 'Wallos 访问方式：[1] 公网直连 HTTPS（任意设备打开网址即可访问，全程加密、证书自动续期）[2] 仅本机（用 SSH 隧道访问）。请选择 [1]: ' ;;
+            en) printf 'Wallos access mode: [1] Public HTTPS (any device; encrypted, auto-renewed cert)  [2] Localhost only (SSH tunnel)  [3] Cloudflare Tunnel (needs your domain on Cloudflare; zero open ports). Choose [1]: ' ;;
+            *) printf 'Wallos 访问方式：[1] 公网直连 HTTPS（任意设备打开，全程加密、证书自动续期）[2] 仅本机（用 SSH 隧道访问）[3] CF 隧道（需自备 Cloudflare 域名，零开放端口）。请选择 [1]: ' ;;
         esac
         read -r _ans || _ans=''
         _bind_chosen=1
-        [[ "$_ans" == '2' ]] || wmode='https'
+        case "$_ans" in 2) wmode='local' ;; 3) wmode='cftunnel' ;; *) wmode='https' ;; esac
     elif [[ "$_old_mode" == https && "$_old_pubport" =~ ^[0-9]+$ ]]; then
         # Non-interactive rerun of an HTTPS install: keep HTTPS.
         wmode='https'; pubport="$_old_pubport"; _bind_chosen=1
+    elif [[ "$_old_mode" == cftunnel ]]; then
+        # Non-interactive rerun of a tunnel install: keep the tunnel.
+        wmode='cftunnel'; _bind_chosen=1
+        cfhost=$(wallos_state_value CFHOST 2>/dev/null || true)
     fi
-    if [[ "$wmode" == https ]]; then
+    if [[ "$wmode" == cftunnel ]]; then
+        bind_address='127.0.0.1'
+        [[ -n "$cfhost" ]] || cfhost=$(wallos_state_value CFHOST 2>/dev/null || true)
+        if [[ -t 0 ]]; then
+            case "${ABOX_LANG:-zh}" in
+                en)
+                    msg "Cloudflare Tunnel mode - prepare in the CF dashboard first (about 2 min):"
+                    msg "  1) Zero Trust -> Networks -> Tunnels -> Create a tunnel (cloudflared); its install command contains a --token value."
+                    msg "  2) Add a Public Hostname on that tunnel: your hostname (e.g. wallos.example.com), Service HTTP, URL 127.0.0.1:${port}."
+                    msg "  3) Strongly recommended: Zero Trust -> Access -> Applications - restrict that hostname to your own email."
+                    ;;
+                *)
+                    msg "CF 隧道模式——请先在 Cloudflare 后台准备（约 2 分钟）："
+                    msg "  1) Zero Trust → Networks → Tunnels → Create a tunnel（选 cloudflared），页面会给出一条带 --token 的命令；"
+                    msg "  2) 在该隧道添加 Public Hostname：域名填你想要的（如 wallos.example.com），Service 选 HTTP，URL 填 127.0.0.1:${port}；"
+                    msg "  3) 强烈建议：Zero Trust → Access → Applications 给该域名加策略，只允许你自己的邮箱。"
+                    ;;
+            esac
+            local _h=''
+            if [[ "${ABOX_LANG:-zh}" == en ]]; then printf 'Public hostname [%s]: ' "${cfhost:-wallos.example.com}"; else printf '绑定的完整域名 [%s]: ' "${cfhost:-wallos.example.com}"; fi
+            read -r _h || _h=''
+            [[ -n "$_h" ]] && cfhost="$_h"
+            if [[ -s "$WALLOS_CF_TOKEN_FILE" ]]; then
+                if [[ "${ABOX_LANG:-zh}" == en ]]; then printf 'Tunnel token (Enter keeps the saved one; paste to replace): '; else printf '隧道令牌（已有令牌，回车保留；粘贴新令牌替换）: '; fi
+            else
+                if [[ "${ABOX_LANG:-zh}" == en ]]; then printf 'Paste the tunnel token (the value after --token): '; else printf '粘贴隧道令牌（--token 后面那串）: '; fi
+            fi
+            read -r cftoken || cftoken=''
+        fi
+        if [[ ! "$cfhost" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+            case "${ABOX_LANG:-zh}" in
+                en) msg "${RED}No valid hostname given; the tunnel cannot be set up. Installing as localhost-only this time - rerun and choose [3] when ready.${NC}" ;;
+                *) msg "${RED}未提供有效域名，CF 隧道无法建立；本次按「仅本机」安装，准备好后重跑安装选 [3]。${NC}" ;;
+            esac
+            wmode='local'
+        elif [[ -z "$cftoken" && ! -s "$WALLOS_CF_TOKEN_FILE" ]]; then
+            case "${ABOX_LANG:-zh}" in
+                en) msg "${RED}No tunnel token given; the tunnel cannot be set up. Installing as localhost-only this time - rerun and choose [3] when ready.${NC}" ;;
+                *) msg "${RED}未提供隧道令牌，CF 隧道无法建立；本次按「仅本机」安装，准备好后重跑安装选 [3]。${NC}" ;;
+            esac
+            wmode='local'
+        fi
+    elif [[ "$wmode" == https ]]; then
         bind_address='127.0.0.1'
         if [[ -z "$pubport" ]]; then
             if [[ "$old_bind" == 0.0.0.0 && "$old_port" =~ ^[0-9]+$ ]]; then pubport="$old_port"
@@ -21135,11 +21300,18 @@ wallos_install_or_update() {
             if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='警告：Wallos 将以明文 HTTP 绑定所有 IPv4 网卡。只有已配置防火墙/HTTPS 反向代理时才继续。[Y/N]: '
             else confirm_prompt='Wallos 存储个人财务数据，默认仅绑定 127.0.0.1；远程访问请配置 HTTPS 反向代理或 SSH 隧道。是否继续？[Y/N]: '; fi ;;
     esac
-    if [[ "$wmode" == https && (( ! _bind_chosen )) ]]; then
-        case "${ABOX_LANG:-zh}" in
-            en) confirm_prompt='Wallos will be served over HTTPS (auto-renewed IP certificate); the app itself stays on localhost. Continue? [Y/N]: ' ;;
-            *) confirm_prompt='Wallos 将通过 HTTPS 对外提供服务（IP 证书自动续期），应用本身仍只绑定本机。是否继续？[Y/N]: ' ;;
-        esac
+    if [[ "$wmode" != local && (( ! _bind_chosen )) ]]; then
+        if [[ "$wmode" == https ]]; then
+            case "${ABOX_LANG:-zh}" in
+                en) confirm_prompt='Wallos will be served over HTTPS (auto-renewed IP certificate); the app itself stays on localhost. Continue? [Y/N]: ' ;;
+                *) confirm_prompt='Wallos 将通过 HTTPS 对外提供服务（IP 证书自动续期），应用本身仍只绑定本机。是否继续？[Y/N]: ' ;;
+            esac
+        else
+            case "${ABOX_LANG:-zh}" in
+                en) confirm_prompt='Wallos will be served through a Cloudflare Tunnel (zero inbound ports); the app itself stays on localhost. Continue? [Y/N]: ' ;;
+                *) confirm_prompt='Wallos 将通过 Cloudflare 隧道对外提供服务（零入站端口），应用本身仍只绑定本机。是否继续？[Y/N]: ' ;;
+            esac
+        fi
     fi
     if (( ! _bind_chosen )) && ! confirm_yes_no "$confirm_prompt"; then return 0; fi
 
@@ -21183,7 +21355,7 @@ wallos_install_or_update() {
     # The ownership marker was created and permission-checked before starting
     # the container. Commit the mutable image/port/timezone state atomically;
     # do not silently report a complete update if metadata cannot be saved.
-    if ! wallos_write_state "$image" "$port" "$tz" "$bind_address" "$wmode" "$pubport"; then
+    if ! wallos_write_state "$image" "$port" "$tz" "$bind_address" "$wmode" "$pubport" "$cfhost"; then
         msg "${RED}Wallos state metadata failed to commit. Rolling back the incomplete upgrade where possible.${NC}"
         if (( running == 1 )); then
             docker rm -f wallos >/dev/null 2>&1 || true
@@ -21243,6 +21415,7 @@ wallos_install_or_update() {
             else security_note="明文 HTTP 已绑定所有 IPv4 网卡；TCP $port 必须由 HTTPS 反向代理与防火墙保护。"; fi ;;
     esac
     if [[ "$wmode" == https ]]; then
+        wallos_cftunnel_teardown >/dev/null 2>&1 || true
         if ! wallos_https_setup "$pubport" "$port"; then
             msg "${RED}HTTPS 配置未完成：Wallos 已在本机运行，但未对外暴露。修复后重跑安装即可重试。${NC}"
             return 1
@@ -21251,8 +21424,23 @@ wallos_install_or_update() {
             en) security_note='HTTPS is on: traffic is encrypted end to the server; the certificate renews automatically.' ;;
             *) security_note='已启用 HTTPS：全程加密，证书自动续期，无需人工维护。' ;;
         esac
-    elif [[ "$_old_mode" == https ]]; then
+    elif [[ "$wmode" == cftunnel ]]; then
+        if [[ -n "$cftoken" ]]; then
+            write_file_atomically_from_stdin "$WALLOS_CF_TOKEN_FILE" 600 <<< "TUNNEL_TOKEN=${cftoken}" || { msg "${RED}CF 隧道令牌保存失败。${NC}"; return 1; }
+            cftoken=''
+        fi
         wallos_https_teardown >/dev/null 2>&1 || true
+        if ! wallos_cftunnel_setup "$cfhost"; then
+            msg "${RED}CF 隧道配置未完成：Wallos 已在本机运行，但未对外暴露。修复后重跑安装即可重试。${NC}"
+            return 1
+        fi
+        case "${ABOX_LANG:-zh}" in
+            en) security_note='Cloudflare Tunnel is on: zero inbound ports, the real IP stays hidden, HTTPS is terminated at the Cloudflare edge.' ;;
+            *) security_note='已启用 CF 隧道：零入站端口、真实 IP 不暴露，HTTPS 由 Cloudflare 边缘终结。' ;;
+        esac
+    elif [[ "$_old_mode" == https || "$_old_mode" == cftunnel ]]; then
+        wallos_https_teardown >/dev/null 2>&1 || true
+        wallos_cftunnel_teardown >/dev/null 2>&1 || true
     fi
     wallos_public_urls "$port"
     msg "${YELLOW}${security_note}${NC}"
@@ -21486,6 +21674,7 @@ wallos_menu() {
                         *) msg "${GREEN}容器已删除，数据和备份已保留。${NC}" ;;
                     esac
                     wallos_https_teardown >/dev/null 2>&1 || true
+                    wallos_cftunnel_teardown >/dev/null 2>&1 || true
                 else
                     case "${ABOX_LANG:-zh}" in
                         en) msg "${RED}[!] Failed to remove the wallos container; it may still exist.${NC}" ;;

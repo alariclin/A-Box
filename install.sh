@@ -8905,15 +8905,32 @@ build_singbox_config() {
     # Merge routing state (WARP / split-routing outbounds + rules); survives redeploys.
     local _rs_ob='[]' _rs_rules='[]'
     if [[ -f "$ROUTING_STATE_FILE" && ! -L "$ROUTING_STATE_FILE" ]]; then
-        _rs_ob=$(jq -c '[.outbounds[]?.singbox] // []' "$ROUTING_STATE_FILE" 2>/dev/null || echo '[]')
-        _rs_rules=$(jq -c '[.rules[]?.singbox_rule] // []' "$ROUTING_STATE_FILE" 2>/dev/null || echo '[]')
+        _rs_ob=$(jq -c '[.outbounds[]?.singbox
+            | if (.type == "wireguard" and has("server")) then
+                {type:"wireguard", tag:.tag, address:.local_address, private_key:.private_key,
+                 mtu:(.mtu // 1280),
+                 peers:[{address:.server, port:.server_port, public_key:.peer_public_key,
+                     persistent_keepalive_interval:(.keepalive // 25),
+                     allowed_ips:["0.0.0.0/0","::/0"]}]}
+              else . end] // []' "$ROUTING_STATE_FILE" 2>/dev/null || echo '[]')
+        _rs_rules=$(jq -c '[.rules[]?.singbox_rule
+            | if has("geosite") then
+                (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite))
+              else . end] // []' "$ROUTING_STATE_FILE" 2>/dev/null || echo '[]')
     fi
-    jq -n --argjson inbounds "$inbounds_json" --argjson rs_ob "$_rs_ob" --argjson rs_rules "$_rs_rules" '{
+    jq -n --argjson inbounds "$inbounds_json" --argjson rs_ob "$_rs_ob" --argjson rs_rules "$_rs_rules" '
+        ($rs_ob | map(select(.type == "wireguard"))) as $eps
+        | ($rs_ob | map(select(.type != "wireguard"))) as $obs
+        | ($rs_rules | map(.rule_set[]?) | unique) as $tags
+        | {
         log:{level:"warn", output:"/var/log/A-Box-singbox.log"},
-        route:{rules: (([{network:["tcp"], action:"sniff"},{protocol:"bittorrent", action:"reject"}] + $rs_rules)), auto_detect_interface:true},
+        route: ({rules: (([{network:["tcp"], action:"sniff"},{protocol:"bittorrent", action:"reject"}] + $rs_rules)), auto_detect_interface:true}
+            + (if ($tags | length) > 0 then {rule_set: ($tags | map({type:"remote", tag:., format:"binary",
+                url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
+                download_detour:"direct"}))} else {} end)),
         inbounds:$inbounds,
-        outbounds: ([{type:"direct", tag:"direct"}] + $rs_ob)
-    }' > "$tmp_out" || { rm -f "$tmp_out"; die 'Sing-box JSON 生成失败。'; }
+        outbounds: ([{type:"direct", tag:"direct"}] + $obs)
+    } + (if ($eps | length) > 0 then {endpoints:$eps} else {} end)' > "$tmp_out" || { rm -f "$tmp_out"; die 'Sing-box JSON 生成失败。'; }
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die 'Sing-box 配置权限设置失败。'; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
     mv -f "$tmp_out" "$out" || { rm -f "$tmp_out"; die 'Sing-box 配置原子提交失败。'; }
@@ -9469,7 +9486,7 @@ deploy_singbox_socks5_landing() {
     user="${user:-abox}"
     read -r -p "$(tr_msg socks5_pass_prompt)" pass || pass=''
     if [[ -z "$pass" ]]; then
-        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'SOCKS5 password generation failed.'
+        pass=$(rand_alnum 16) || die 'SOCKS5 password generation failed.'
         [[ -n "$pass" ]] || die 'SOCKS5 password generation failed.'
     fi
     local _proto_choice=''
@@ -9595,14 +9612,14 @@ EOF_SVC
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
     msg "${GREEN}$(tr_msg socks5_done)${NC}"
     if [[ "$proto" == "mixed" ]]; then
-        msg "mixed://${user}:${pass}@${pub_ip}:${port} (SOCKS5+HTTP)"
+        msg "mixed://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port} (SOCKS5+HTTP)"
     else
-        msg "socks5://${user}:${pass}@${pub_ip}:${port}"
+        msg "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     fi
     if [[ "$proto" == "mixed" ]]; then
-        generate_qr "mixed://${user}:${pass}@${pub_ip}:${port}"
+        generate_qr "mixed://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     else
-        generate_qr "socks5://${user}:${pass}@${pub_ip}:${port}"
+        generate_qr "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     fi
     ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
@@ -9621,7 +9638,7 @@ deploy_xray_trojan_landing() {
     port=$(prompt_validated "$(tr_msg trojan_port_prompt)" port '443') || die 'Trojan port input failed.'
     read -r -p "$(tr_msg trojan_pass_prompt)" pass || pass=''
     if [[ -z "$pass" ]]; then
-        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'Trojan password generation failed.'
+        pass=$(rand_alnum 16) || die 'Trojan password generation failed.'
         [[ -n "$pass" ]] || die 'Trojan password generation failed.'
     fi
 
@@ -9761,8 +9778,8 @@ EOF_SVC
     [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
     msg "${GREEN}$(tr_msg trojan_done)${NC}"
-    msg "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
-    generate_qr "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    msg "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    generate_qr "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
 }
 
 # Standalone Trojan-Reality via sing-box (toolbox entry).
@@ -9778,7 +9795,7 @@ deploy_singbox_trojan_landing() {
     port=$(prompt_validated "$(tr_msg trojan_port_prompt)" port '443') || die 'Trojan port input failed.'
     read -r -p "$(tr_msg trojan_pass_prompt)" pass || pass=''
     if [[ -z "$pass" ]]; then
-        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'Trojan password generation failed.'
+        pass=$(rand_alnum 16) || die 'Trojan password generation failed.'
         [[ -n "$pass" ]] || die 'Trojan password generation failed.'
     fi
 
@@ -9903,8 +9920,8 @@ EOF_SVC
     [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
     msg "${GREEN}$(tr_msg trojan_done)${NC}"
-    msg "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
-    generate_qr "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    msg "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    generate_qr "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
 }
 
 
@@ -9922,7 +9939,7 @@ deploy_singbox_tuic() {
     port=$(prompt_validated "$(tr_msg tuic_port_prompt)" port '443') || die 'TUIC port input failed.'
     read -r -p "$(tr_msg tuic_pass_prompt)" pass || pass=''
     if [[ -z "$pass" ]]; then
-        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'TUIC password generation failed.'
+        pass=$(rand_alnum 16) || die 'TUIC password generation failed.'
         [[ -n "$pass" ]] || die 'TUIC password generation failed.'
     fi
     local cc_choice=''
@@ -10051,7 +10068,7 @@ EOF_SVC
     pub_ip=$(read_cached_public_ip 2>/dev/null || true)
     [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
-    local link="tuic://${uuid}:${pass}@${pub_ip}:${port}?congestion_control=${cc}&alpn=h3&sni=${sni}&allow_insecure=1#TUIC"
+    local link="tuic://${uuid}:$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?congestion_control=${cc}&alpn=h3&sni=${sni}&allow_insecure=1#TUIC"
     msg "${GREEN}$(tr_msg tuic_done)${NC}"
     msg "$link"
     generate_qr "$link"
@@ -10073,7 +10090,7 @@ deploy_singbox_anytls() {
     port=$(prompt_validated "$(tr_msg anytls_port_prompt)" port '443') || die 'AnyTLS port input failed.'
     read -r -p "$(tr_msg anytls_pass_prompt)" pass || pass=''
     if [[ -z "$pass" ]]; then
-        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'AnyTLS password generation failed.'
+        pass=$(rand_alnum 16) || die 'AnyTLS password generation failed.'
         [[ -n "$pass" ]] || die 'AnyTLS password generation failed.'
     fi
 
@@ -10197,7 +10214,7 @@ EOF_SVC
     pub_ip=$(read_cached_public_ip 2>/dev/null || true)
     [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
-    local link="anytls://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}#AnyTLS-Reality"
+    local link="anytls://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}#AnyTLS-Reality"
     msg "${GREEN}$(tr_msg anytls_done)${NC}"
     msg "$link"
     generate_qr "$link"
@@ -10217,7 +10234,7 @@ deploy_singbox_shadowtls() {
     port=$(prompt_validated "$(tr_msg shadowtls_port_prompt)" port '443') || die 'ShadowTLS port input failed.'
     read -r -p "$(tr_msg shadowtls_pass_prompt)" pass || pass=''
     if [[ -z "$pass" ]]; then
-        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'ShadowTLS password generation failed.'
+        pass=$(rand_alnum 16) || die 'ShadowTLS password generation failed.'
         [[ -n "$pass" ]] || die 'ShadowTLS password generation failed.'
     fi
     inner=$(openssl rand -base64 16 | tr -d '\n\r') || die 'ShadowTLS SS password generation failed.'
@@ -10339,7 +10356,7 @@ EOF_SVC
     [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
     local user_b64 plugin_b64
-    user_b64=$(printf '%s' "2022-blake3-aes-128-gcm:${inner}@${pub_ip}:${port}" | base64 | tr -d '\n\r')
+    user_b64=$(printf '%s' "2022-blake3-aes-128-gcm:${inner}@$(uri_host "$pub_ip"):${port}" | base64 | tr -d '\n\r')
     plugin_b64=$(printf '%s' "{\"version\":\"3\",\"host\":\"${sni}\",\"password\":\"${pass}\"}" | base64 | tr -d '\n\r')
     local link="ss://${user_b64}?shadow-tls=${plugin_b64}#ShadowTLS"
     msg "${GREEN}$(tr_msg shadowtls_done)${NC}"
@@ -11229,15 +11246,23 @@ routing_rule_add() {
     tmp=$(mktemp) || return 1
     jq --arg d "$domains_csv" --arg o "$outbound" '
         ($d | split(",") | map(select(length > 0))) as $doms
-        | ($doms | map(select(startswith("geosite:")) | ltrimstr("geosite:"))) as $geo
-        | ($doms | map(select(startswith("geosite:") | not))) as $plain
-        | .rules += [{
-            domains: $doms, outbound: $o,
-            xray_rule: {type:"field", domain:$doms, outboundTag:$o},
-            singbox_rule: ({outbound:$o}
-                + (if ($geo|length) > 0 then {geosite:$geo} else {} end)
-                + (if ($plain|length) > 0 then {domain_suffix:$plain} else {} end))
-          }]
+        | if $doms == ["all"] then
+            .rules += [{
+                domains: $doms, outbound: $o,
+                xray_rule: {type:"field", network:"tcp,udp", outboundTag:$o},
+                singbox_rule: {outbound:$o, network:["tcp","udp"]}
+            }]
+          else
+            ($doms | map(select(startswith("geosite:")) | ltrimstr("geosite:"))) as $geo
+            | ($doms | map(select(startswith("geosite:") | not))) as $plain
+            | .rules += [{
+                domains: $doms, outbound: $o,
+                xray_rule: {type:"field", domain:$doms, outboundTag:$o},
+                singbox_rule: ({outbound:$o}
+                    + (if ($geo|length) > 0 then {rule_set: ($geo | map("geosite-" + .))} else {} end)
+                    + (if ($plain|length) > 0 then {domain_suffix:$plain} else {} end))
+              }]
+          end
     ' "$ROUTING_STATE_FILE" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
     routing_state_put < "$tmp"; rc=$?; rm -f "$tmp"; return $rc
 }
@@ -11299,10 +11324,27 @@ routing_apply_live() {
             mv "$tmp" "$tmp.json" || { rm -f "$tmp"; return 1; }; tmp="$tmp.json"
             jq --slurpfile st "$ROUTING_STATE_FILE" '
                 ($st[0].outbounds | map(.tag)) as $managed
-                | .outbounds |= (map(select(.tag as $t | $managed | index($t) | not))
-                    + [$st[0].outbounds[]?.singbox])
-                | .route.rules |= (map(select(.outbound as $t | $managed | index($t) | not))
-                    + [$st[0].rules[]?.singbox_rule])
+                | ($st[0].outbounds | map(.singbox
+                    | if (.type == "wireguard" and has("server")) then
+                        {type:"wireguard", tag:.tag, address:.local_address, private_key:.private_key,
+                         mtu:(.mtu // 1280),
+                         peers:[{address:.server, port:.server_port, public_key:.peer_public_key,
+                             persistent_keepalive_interval:(.keepalive // 25),
+                             allowed_ips:["0.0.0.0/0","::/0"]}]}
+                      else . end)) as $frag
+                | ($frag | map(select(.type == "wireguard"))) as $eps
+                | ($frag | map(select(.type != "wireguard"))) as $obs
+                | ($st[0].rules | map(.singbox_rule
+                    | if has("geosite") then
+                        (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite))
+                      else . end)) as $srules
+                | ($srules | map(.rule_set[]?) | unique) as $tags
+                | .outbounds |= (map(select(.tag as $t | $managed | index($t) | not)) + $obs)
+                | .endpoints = (((.endpoints // []) | map(select(.tag as $t | $managed | index($t) | not))) + $eps)
+                | .route.rules = (((.route.rules // []) | map(select(.outbound as $t | $managed | index($t) | not))) + $srules)
+                | .route.rule_set = ($tags | map({type:"remote", tag:., format:"binary",
+                    url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
+                    download_detour:"direct"}))
             ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
             jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
             if [[ -x /usr/local/bin/sing-box ]]; then
@@ -11333,6 +11375,13 @@ warp_fetch_wgcf() {
     [[ -s "$tmp" ]] || { rm -f "$tmp"; return 1; }
     # sanity: must be an ELF binary
     head -c 4 "$tmp" | grep -q $'\x7fELF' || { rm -f "$tmp"; return 1; }
+    # Supply-chain pin (official v2.2.29 release binaries).
+    local want=''
+    case "$arch" in
+        amd64) want='572d102720ee39a6a0a6a22a0b4689fdf92b8974ede927111e3daf8d2ed5dec1' ;;
+        arm64) want='6228ae03ce2004edb24888aa119d7bd3978004964113f9f1e00841db1b01313c' ;;
+    esac
+    [[ "$(sha256sum "$tmp" 2>/dev/null | awk '{print $1}')" == "$want" ]] || { rm -f "$tmp"; return 1; }
     install -m 755 "$tmp" "$WGCF_BIN" || { rm -f "$tmp"; return 1; }
     rm -f "$tmp"
 }
@@ -11386,9 +11435,9 @@ warp_build_outbound_json() {
     jq -n --arg priv "$priv" --arg peer "$peer" --arg srv "$srv" --argjson sport "$sport" \
         --argjson addrs "$addrs_json" '{
         type:"wireguard", tag:"warp-out",
-        server:$srv, server_port:$sport,
-        private_key:$priv, peer_public_key:$peer,
-        local_address:$addrs, mtu:1280, keepalive:25
+        address:$addrs, private_key:$priv, mtu:1280,
+        peers:[{address:$srv, port:$sport, public_key:$peer,
+            persistent_keepalive_interval:25, allowed_ips:["0.0.0.0/0","::/0"]}]
     }' > "$outdir/warp-singbox.json" || return 1
 }
 
@@ -11448,7 +11497,7 @@ warp_apply_preset() {
             routing_rule_add 'geosite:cn' 'direct' || return 1
             ;;
         global)
-            routing_rule_add 'geosite:all' 'warp-out' || return 1
+            routing_rule_add 'all' 'warp-out' || return 1
             ;;
         *) return 1 ;;
     esac
@@ -11672,7 +11721,7 @@ deploy_socks5_landing() {
     user="${user:-abox}"
     read -r -p "$(tr_msg socks5_pass_prompt)" pass || pass=''
     if [[ -z "$pass" ]]; then
-        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'SOCKS5 password generation failed.'
+        pass=$(rand_alnum 16) || die 'SOCKS5 password generation failed.'
         [[ -n "$pass" ]] || die 'SOCKS5 password generation failed.'
     fi
 
@@ -11795,8 +11844,8 @@ EOF_SVC
     [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
     msg "${GREEN}$(tr_msg socks5_done)${NC}"
-    msg "socks5://${user}:${pass}@${pub_ip}:${port}"
-    generate_qr "socks5://${user}:${pass}@${pub_ip}:${port}"
+    msg "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
+    generate_qr "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 
@@ -21177,6 +21226,8 @@ clean_uninstall_menu() {
     esac
 }
 
+
+uri_host() { if [[ "$1" == *:* ]]; then printf '[%s]' "$1"; else printf '%s' "$1"; fi; }
 
 urlencode() {
     local raw="${1:-}"

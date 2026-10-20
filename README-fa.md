@@ -23,13 +23,13 @@ A-Box یک اسکریپت مستقل Bash برای راه‌اندازی و نگ
 ### منبع رسمی GitHub
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/ce6d2dab600f97b29bc78ac557ebf446be260f0b/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/8ff8231b11368535a33196398485b3e10308bb64/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 ### آینه جایگزین شخص ثالث
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/ce6d2dab600f97b29bc78ac557ebf446be260f0b/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/8ff8231b11368535a33196398485b3e10308bb64/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 هر دو فرمان نصب‌کننده را به commit تغییرناپذیر `a7cb193e6539cee6478648e766f5ce415ccd5d41` متصل می‌کنند؛ نشانی proxy همچنان سرویس انتقال شخص ثالث است، نه نقطه پایانی رسمی A-Box. برای production، commit و checksum را از کانالی مستقل و مورداعتماد تأیید کنید. در Alpine تازه، پیش از اجرا `apk add --no-cache bash curl` را اجرا کنید. پس از نصب `sb` را وارد کنید.

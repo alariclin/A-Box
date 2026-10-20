@@ -247,6 +247,97 @@ register_standalone_link() {
     mv -f -- "$_tmp" "$_dir/${_key}.link" 2>/dev/null || rm -f -- "$_tmp"
     return 0
 }
+
+# Derive an X25519 public key (base64url) from a raw private key
+# (base64url) through an openssl PKCS#8 wrap; prints nothing on failure.
+x25519_pub_from_priv() {
+    local _priv="$1" _der _raw _pub
+    [[ "$_priv" =~ ^[A-Za-z0-9_-]{43}$ ]] || return 1
+    _der=$(mktemp /tmp/A-Box-x25519.XXXXXX) || return 1
+    _raw=$(printf '%s' "$_priv" | tr '_-' '/+')
+    while (( ${#_raw} % 4 )); do _raw+='='; done
+    { printf '\x30\x2e\x02\x01\x00\x30\x05\x06\x03\x2b\x65\x6e\x04\x22\x04\x20'
+      printf '%s' "$_raw" | base64 -d 2>/dev/null
+    } > "$_der" || { rm -f -- "$_der"; return 1; }
+    _pub=$(openssl pkey -inform DER -in "$_der" -pubout -outform DER 2>/dev/null | tail -c 32 | base64 | tr '+/' '-_' | tr -d '=\n')
+    rm -f -- "$_der"
+    [[ "$_pub" =~ ^[A-Za-z0-9_-]{43}$ ]] || return 1
+    printf '%s' "$_pub"
+}
+
+# Rebuild missing standalone registry entries from the live core configs
+# (nodes deployed before the registry existed). Best-effort: a node with
+# any missing field is skipped silently. Argo is registry-only - its
+# domains live in cloudflared logs, not in the core config.
+rebuild_standalone_links() {
+    local _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ip="${F_IP:-}"
+    [[ -n "$_ip" && "$_ip" != 'N/A' ]] || return 0
+    local _xc='/usr/local/etc/xray/config.json' _sc='/etc/sing-box/config.json'
+    local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user=''
+    if [[ -f "$_xc" ]]; then
+        if [[ ! -f "$_dir/trojan-xray.link" ]]; then
+            _port=''; _pass=''; _pk=''; _sni=''; _sid=''
+            read -r _port _pass _pk _sni _sid < <(jq -r 'first(.inbounds[]? | select(.protocol=="trojan")) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // "")] | @tsv' "$_xc" 2>/dev/null)
+            if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
+                _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
+                register_standalone_link trojan-xray "Trojan-Reality (Xray) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&type=tcp#Trojan-Reality"
+            fi
+        fi
+        if [[ ! -f "$_dir/socks5-xray.link" ]]; then
+            _port=''; _user=''; _pass=''
+            read -r _port _user _pass < <(jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' "$_xc" 2>/dev/null)
+            if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
+                register_standalone_link socks5-xray "SOCKS5 (Xray) · 端口 ${_port}" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
+            fi
+        fi
+    fi
+    if [[ -f "$_sc" ]]; then
+        if [[ ! -f "$_dir/trojan-sb.link" ]]; then
+            _port=''; _pass=''; _pk=''; _sni=''; _sid=''
+            read -r _port _pass _pk _sni _sid < <(jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), (.tls.reality.short_id[0] // "")] | @tsv' "$_sc" 2>/dev/null)
+            if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
+                _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
+                register_standalone_link trojan-sb "Trojan-Reality (sing-box) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&type=tcp#Trojan-Reality"
+            fi
+        fi
+        if [[ ! -f "$_dir/tuic.link" ]]; then
+            _port=''; _uuid=''; _pass=''; _cc=''; _sni=''
+            read -r _port _uuid _pass _cc _sni < <(jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // "")] | @tsv' "$_sc" 2>/dev/null)
+            if [[ "$_port" =~ ^[0-9]+$ && -n "$_uuid" && -n "$_pass" ]]; then
+                register_standalone_link tuic "TUIC · 端口 ${_port}" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=h3&sni=${_sni}&allow_insecure=1#TUIC"
+            fi
+        fi
+        if [[ ! -f "$_dir/anytls.link" ]]; then
+            _port=''; _pass=''; _pk=''; _sni=''; _sid=''
+            read -r _port _pass _pk _sni _sid < <(jq -r 'first(.inbounds[]? | select(.tag=="anytls-in")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), (.tls.reality.short_id[0] // "")] | @tsv' "$_sc" 2>/dev/null)
+            if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
+                _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
+                register_standalone_link anytls "AnyTLS-Reality · 端口 ${_port}" "anytls://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}#AnyTLS-Reality"
+            fi
+        fi
+        if [[ ! -f "$_dir/shadowtls.link" ]]; then
+            _port=''; _pass=''; _sni=''; _inner=''
+            read -r _port _pass _sni _inner < <(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-in")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // "")] | @tsv' "$_sc" 2>/dev/null)
+            if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
+                _inner=$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-ss")) | .password // ""' "$_sc" 2>/dev/null)
+                if [[ -n "$_inner" ]]; then
+                    local _ub _pb
+                    _ub=$(printf '%s' "2022-blake3-aes-128-gcm:${_inner}@$(uri_host "$_ip"):${_port}" | base64 | tr -d '\n\r')
+                    _pb=$(printf '%s' "{\"version\":\"3\",\"host\":\"${_sni}\",\"password\":\"${_pass}\"}" | base64 | tr -d '\n\r')
+                    register_standalone_link shadowtls "ShadowTLS · 端口 ${_port}" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
+                fi
+            fi
+        fi
+        if [[ ! -f "$_dir/socks5-sb.link" ]]; then
+            _port=''; _user=''; _pass=''
+            read -r _port _user _pass < <(jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' "$_sc" 2>/dev/null)
+            if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
+                register_standalone_link socks5-sb "SOCKS5 (sing-box) · 端口 ${_port}" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
+            fi
+        fi
+    fi
+    return 0
+}
 die() {
     printf '%s\n' "${RED}[!] $*${NC}" >&2
     if [[ -n "${ABOX_DIE_HOOK:-}" ]] && declare -F "$ABOX_DIE_HOOK" >/dev/null 2>&1; then
@@ -10979,7 +11070,10 @@ _menu_info_collect() {
     [[ -x /usr/local/bin/xray ]] && xst=stop; [[ "$xrun" == 1 ]] && xst=run
     [[ -x /usr/local/bin/sing-box ]] && sst=stop; [[ "$srun" == 1 ]] && sst=run
     [[ -x /usr/local/bin/hysteria ]] && hst=stop; [[ "$hrun" == 1 ]] && hst=run
-    _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"
+    local f2st=none dost=none
+    if command -v fail2ban-client >/dev/null 2>&1; then f2st=stop; fail2ban-client ping >/dev/null 2>&1 && f2st=run; fi
+    if command -v docker >/dev/null 2>&1; then dost=stop; is_service_running docker 2>/dev/null && dost=run; fi
+    _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"; _MI_F2B="$f2st"; _MI_DOCKER="$dost"
 
     # --- system info ---
     local os_name='?' kernel='?' cpu_n='?' cpu_model='' mem_tot='?' mem_used='?'
@@ -11161,6 +11255,7 @@ _menu_info_display() {
     local _cells=("Xray|$_MI_XST" "Hy2|$_MI_HST" "sing-box|$_MI_SST" "SOCKS5|$_MI_SOCKS_ST")
     [[ "$_MI_BBR" == 'bbr' ]] && _cells+=("BBR|run") || _cells+=("BBR|none")
     [[ -n "$_MI_WARP" ]] && _cells+=("WARP|run")
+    _cells+=("Fail2ban|$_MI_F2B" "Docker|$_MI_DOCKER")
     local _c _nm _st
     for _c in "${_cells[@]}"; do
         _nm="${_c%%|*}"; _st="${_c##*|}"
@@ -11190,36 +11285,34 @@ _menu_info_display() {
         msg "          ${CYAN}IPv6${NC} ○ ${GRAY}$(tr_msg mi_none)${NC}"
     fi
     msg ''
-    # --- nodes (segments joined by |, SNI at row end; wrap by segment) ---
+    # --- nodes (fixed grid: max 3 per row, ASCII-exact lengths,
+    # continuations aligned at the value column like the IPv6 row) ---
     if [[ -n "$_MI_NODES" ]]; then
-        local _suffix=''
-        [[ -n "$_MI_SNI" ]] && _suffix=" · SNI：${_MI_SNI}"
-        local _lbl="$(tr_msg mi_nodes)" _cur='' _seg _first=1 _w
-        local _lim=76; if (( ${COLUMNS:-0} >= 44 && COLUMNS - 4 < _lim )); then _lim=$((COLUMNS - 4)); fi
-        local _segs
+        local _lbl="$(tr_msg mi_nodes)" _seg _row='' _cnt=0 _first=1
+        local _segs _rows=()
         IFS='|' read -r -a _segs <<< "$_MI_NODES"
         for _seg in "${_segs[@]}"; do
             [[ -z "$_seg" ]] && continue
-            if [[ -z "$_cur" ]]; then _cur="$_seg"; else
-                _w=$(_disp_width "  ${_lbl}：  ${_cur} | ${_seg}")
-                if (( _w > _lim )); then
-                    if (( _first )); then msg "  ${LBLW}${_lbl}：${NC}  ${CYAN}${_cur}${NC}"; _first=0
-                    else msg "          ${CYAN}${_cur}${NC}"; fi
-                    _cur="$_seg"
-                else _cur="${_cur} | ${_seg}"; fi
+            if (( _cnt >= 3 || ( ${#_row} > 0 && ${#_row} + 3 + ${#_seg} > 64 ) )); then
+                _rows+=("$_row"); _row=''; _cnt=0
+            fi
+            _row="${_row:+$_row | }${_seg}"; _cnt=$((_cnt + 1))
+        done
+        [[ -n "$_row" ]] && _rows+=("$_row")
+        local _i _n=${#_rows[@]}
+        for (( _i=0; _i<_n; _i++ )); do
+            _row="${_rows[$_i]}"
+            if (( _i == _n - 1 )) && [[ -n "$_MI_SNI" ]] && (( ${#_row} + 9 + ${#_MI_SNI} <= 66 )); then
+                if (( _first )); then msg "  ${LBLW}${_lbl}：${NC}  ${CYAN}${_row}${NC} · ${LBLW}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"; _first=0
+                else msg "          ${CYAN}${_row}${NC} · ${LBLW}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"; fi
+            else
+                if (( _first )); then msg "  ${LBLW}${_lbl}：${NC}  ${CYAN}${_row}${NC}"; _first=0
+                else msg "          ${CYAN}${_row}${NC}"; fi
+                if (( _i == _n - 1 )) && [[ -n "$_MI_SNI" ]]; then
+                    msg "          ${LBLW}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"
+                fi
             fi
         done
-        if [[ -n "$_cur" ]]; then
-            _w=$(_disp_width "  ${_lbl}：  ${_cur}${_suffix}")
-            if (( _w <= _lim + 2 )); then
-                if (( _first )); then msg "  ${LBLW}${_lbl}：${NC}  ${CYAN}${_cur}${NC} · ${LBLW}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"
-                else msg "          ${CYAN}${_cur}${NC} · ${LBLW}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"; fi
-            else
-                if (( _first )); then msg "  ${LBLW}${_lbl}：${NC}  ${CYAN}${_cur}${NC}"
-                else msg "          ${CYAN}${_cur}${NC}"; fi
-                [[ -n "$_MI_SNI" ]] && msg "          ${LBLW}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"
-            fi
-        fi
     else
         msg "  ${LBLW}$(tr_msg mi_nodes)：${NC}  ${CYAN}$(tr_msg mi_no_nodes)${NC}"
     fi
@@ -20560,7 +20653,7 @@ wallos_public_urls() {
         local _pub="${GLOBAL_PUBLIC_IP:-}"
         [[ -z "$_pub" ]] && _pub=$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null || true)
         [[ -z "$_pub" ]] && _pub='<VPS公网IP>'
-        local _who="$(whoami)"
+        local _who="${SUDO_USER:-$(whoami)}"
         case "${ABOX_LANG:-zh}" in
             en) msg "${GREEN}Wallos local URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Use an HTTPS reverse proxy or SSH tunnel for remote access; do not expose this HTTP endpoint directly.${NC}"
             msg "${CYAN}Remote access via SSH tunnel (run on your own computer):${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}Then open http://127.0.0.1:$port/ in your browser; create the admin account on first visit.${NC}" ;;
@@ -21848,6 +21941,7 @@ EOF_SB
 }
 EOF_V2N
     fi
+    rebuild_standalone_links || true
     # --- standalone protocols (links registered at deploy time) ---
     if [[ -d "${ABOX_DIR:-/etc/ddr}/standalone-links.d" ]]; then
         local _lf _lt _lu _shown_sa=0

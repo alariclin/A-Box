@@ -23,13 +23,13 @@ Xray-core、sing-box、公式 Hysteria 2 サーバー、VLESS Vision REALITY、V
 ### GitHub 公式ソース
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/443e534f01712cd65d1e2c4e0f4a4f3c0d7c22ea/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/d1e0b8703177557bc343ce4567033fba693500aa/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 ### サードパーティ・フォールバックミラー
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/443e534f01712cd65d1e2c4e0f4a4f3c0d7c22ea/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/d1e0b8703177557bc343ce4567033fba693500aa/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 どちらのコマンドも、インストーラーを不変のコミット `a7cb193e6539cee6478648e766f5ce415ccd5d41` にピン留めします。プロキシ URL はサードパーティの転送サービスであり、A-Box 公式エンドポイントではありません。本番環境では独立した信頼できる経路でコミットとチェックサムを検証してください。新規 Alpine インストールでは、まず `apk add --no-cache bash curl` を実行してください。インストール後は `sb` と入力してメニューを開きます。
@@ -45,6 +45,8 @@ curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alaricli
 - **SNI 候補ワークフロー：** ローカルのフル・ミニホスト候補テスト、保存済み結果ビューア、入力検証、ファイルサイズ/行数上限、重複除去、利用可能な場合は有効なローカルキャッシュまたは隣接データファイルへのフォールバック。
 - **メンテナンス：** SHA-256 を表示し明示的な確認を求めるスクリプト OTA、Xray Geo データ更新、ノードパラメータを保持したコア単体アップグレード。
 - **安全制御：** デプロイ前プリフライトチェック、保護されたサービス所有権/状態変更、ファイアウォール処理、対応操作のロールバックパス。
+- **WARP ワンクリック出口と振り分け:** Cloudflare WARP をネイティブ WireGuard アウトバウンドとしてワンクリック展開。ストリーミング/CN 直結/グローバルのプリセット、マルチホスト SOCKS5 アウトバウンドとドメインベースのルール。
+- **DNS 3 モード:** IPv4 のみ、IPv6 のみ、デュアルスタック。10 プロバイダー、v4/v6 自動ペアリング。
 
 リポジトリには [`data/sni-candidates.txt`](data/sni-candidates.txt) に厳選されたシードリストが同梱されています。SNI エントリーは候補に過ぎません。ホスト名がリストに載っていることは、特定の VPS から現在動作すること、必要な TLS/ALPN/SAN 特性を満たすこと、特定の REALITY デプロイに適することを**保証しません**。使用前に対象ネットワークで検証してください。有効な候補リストまたはフォールバックコピーを取得できない場合、SNI ワークフローはフェイルクローズします。
 
@@ -62,21 +64,22 @@ curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alaricli
 | `8` | sing-box VLESS + Shadowsocks-2022 |
 | `9` | sing-box Hysteria 2 |
 | `10` | sing-box Vision + Hysteria 2 + Shadowsocks-2022（XHTTP なし） |
-| `11` | ツールボックス：ベンチマーク、診断、Wallos、ホスト設定 |
-| `12` | ノードパラメータとクライアント設定の表示 |
+| `11` | ツールボックス：ベンチマーク、診断、WARP・振り分け、Wallos、ホスト設定 |
+| `12` | ノード設定とパラメータ表示 |
 | `13` | マニュアル |
-| `14` | スクリプト OTA、Xray Geo データ、コア単体アップグレード |
-| `15` | 完全/部分アンインストール |
-| `16` | ノード削除と環境の再初期化 |
-| `17` | 月間トラフィック制限（vnStat）と現時点までの使用量表示 |
-| `18` | SS-2022 IP/CIDR 許可リスト管理 |
+| `14` | コアとスクリプトのアップグレード（OTA） |
+| `15` | VPS ワンクリック最適化 |
+| `16` | ノード削除と環境リセット |
+| `17` | 月間トラフィック管理（ダッシュボード・プログレスバー付き） |
+| `18` | SS-2022 IP/CIDR ホワイトリスト管理 |
 | `19` | UI 言語：簡体中文、繁體中文、English、日本語、Русский、فارسی |
-| `20` | **ワンクリック Reality**；`r` はエイリアス |
+| `20` | スクリプトとコアの完全アンインストール |
 | `0` | 終了 |
+| `r` | ワンクリック Reality ショートカット |
 
 ### ツールボックス
 
-ツールボックスには、既存のベンチマーク、IP 品質、SNI、WARP、Swap、バックアップ/復元、編集済み診断、プリフライト、サブスクリプションエクスポート機能がすべて保持されています。BBR/FQ チューニングサブメニュー（適用とロールバックのみ）、ホスト設定（IP プリファレンス、プレーン DNS、対応 DoT、実測 DNS 選択、対応 DoH、タイムゾーン/ロケール/NTP、ダウンロードソース設定）、Wallos インストール/更新/状態/バックアップも含まれます。BBR はオプトインであり、プロトコルインストール後に自動実行されることはありません。
+ツールボックスには、既存のベンチマーク、IP 品質、SNI、WARP ワンクリック出口と振り分け、Swap、バックアップ/復元、編集済み診断、プリフライト、サブスクリプションエクスポート機能がすべて保持されています。BBR/FQ チューニングサブメニュー（適用とロールバックのみ）、ホスト設定（IP プリファレンス、プレーン DNS、対応 DoT、実測 DNS 選択、対応 DoH、タイムゾーン/ロケール/NTP、ダウンロードソース設定）、Wallos インストール/更新/状態/バックアップも含まれます。BBR はオプトインであり、プロトコルインストール後に自動実行されることはありません。
 
 ベンチマークと IP 品質オプションは、まず A-Box 検証済みミラー（`test-tools-mirror` Release）を試行し、`SHA256SUMS` エントリーと一致する場合にのみ実行します。ミラーが利用不可またはチェックサム不一致の場合、`ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` が設定されている場合にのみ上流スクリプトにフォールバックします（未検証、SHA ピンなし）。それ以外の場合はスクリプトは実行されません。
 

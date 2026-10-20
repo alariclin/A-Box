@@ -23,13 +23,13 @@ The project is provided “as is”, without warranty. Review the script and the
 ### Official GitHub source
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/443e534f01712cd65d1e2c4e0f4a4f3c0d7c22ea/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/d1e0b8703177557bc343ce4567033fba693500aa/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 ### Third-party fallback mirror
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/443e534f01712cd65d1e2c4e0f4a4f3c0d7c22ea/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/d1e0b8703177557bc343ce4567033fba693500aa/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 Both commands pin the installer to immutable commit `a7cb193e6539cee6478648e766f5ce415ccd5d41`; the proxy URL remains a third-party transport, not an official A-Box endpoint. For production, verify the commit and checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.
@@ -45,6 +45,8 @@ Both commands pin the installer to immutable commit `a7cb193e6539cee6478648e766f
 - **SNI candidate workflow:** local full and mini-host candidate tests, saved-result viewer, input validation, bounded file size/row count, duplicate removal, and fallback to a valid local cache or adjacent data file when available.
 - **Maintenance:** controlled script OTA with displayed SHA-256 and explicit confirmation, Xray Geo data updates, and core-only upgrades that preserve node parameters.
 - **Safety controls:** deployment preflight checks, guarded service ownership/state changes, firewall handling, and rollback paths for supported operations.
+- **WARP one-click egress & split routing:** deploy Cloudflare WARP as a native WireGuard outbound in one click; streaming/CN-direct/global presets; multi-host SOCKS5 outbound with domain-based routing rules.
+- **DNS three-mode:** IPv4-only, IPv6-only, or dual-stack DNS with 10 providers and automatic v4/v6 pairing.
 
 The repository ships a curated seed list at [`data/sni-candidates.txt`](data/sni-candidates.txt). SNI entries are only candidates. A listed hostname is **not** a guarantee that it currently works from a particular VPS, supports the required TLS/ALPN/SAN characteristics, or is suitable for a specific REALITY deployment. Verify candidates on the target network before use. The SNI workflow fails closed when it cannot obtain a valid candidate list or fallback copy.
 
@@ -62,21 +64,22 @@ The repository ships a curated seed list at [`data/sni-candidates.txt`](data/sni
 | `8` | sing-box VLESS + Shadowsocks-2022 |
 | `9` | sing-box Hysteria 2 |
 | `10` | sing-box Vision + Hysteria 2 + Shadowsocks-2022 (no XHTTP) |
-| `11` | Toolbox: benchmarks, diagnostics, Wallos and host settings |
+| `11` | Toolbox: benchmarks, diagnostics, WARP & split routing, Wallos and host settings |
 | `12` | Display node parameters and client configurations |
 | `13` | Manual |
 | `14` | Script OTA, Xray Geo data, and core-only upgrade |
-| `15` | Full/partial uninstall |
+| `15` | VPS one-click optimization |
 | `16` | Delete nodes and reinitialize the environment |
-| `17` | Monthly traffic limit (vnStat) with usage-to-now display |
+| `17` | Monthly traffic control with usage dashboard and progress bar |
 | `18` | SS-2022 IP/CIDR allowlist manager |
 | `19` | UI language: Simplified Chinese, Traditional Chinese, English, Japanese, Russian or Persian |
-| `20` | **One-click Reality**; `r` is an alias |
+| `20` | Complete uninstall of script and cores |
 | `0` | Exit |
+| `r` | One-click Reality shortcut |
 
 ### Toolbox
 
-The toolbox keeps all existing benchmark, IP quality, SNI, WARP, Swap, backup/restore, redacted diagnostics, preflight and subscription-export functions. It also includes a BBR/FQ tuning submenu (apply and rollback only), host settings (IP preference, plain DNS, supported DoT, measured DNS selection, supported DoH, timezone/locale/NTP and download-source preference), and Wallos installation/update/status/backup. BBR is opt-in and does not run automatically after protocol installation.
+The toolbox keeps all existing benchmark, IP quality, SNI, WARP one-click egress & split routing (WireGuard outbound, streaming/CN-direct/global presets, multi-host SOCKS5 outbound with domain rules), Swap, backup/restore, redacted diagnostics, preflight and subscription-export functions. It also includes a BBR/FQ tuning submenu (apply and rollback only), host settings (IP preference, plain DNS, supported DoT, measured DNS selection, supported DoH, timezone/locale/NTP and download-source preference), and Wallos installation/update/status/backup. BBR is opt-in and does not run automatically after protocol installation.
 
 The benchmark and IP-quality options try the A-Box verified mirror (`test-tools-mirror` Release) first, and run the script only when the asset matches its `SHA256SUMS` entry. If the mirror is unavailable or the checksum mismatches, they fall back to the upstream script only when `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` is set (unverified, no SHA pin); otherwise no script is executed.
 

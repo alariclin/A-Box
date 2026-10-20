@@ -1718,7 +1718,11 @@ prompt_validated() {
             printf '%s' "$val"
             return 0
         fi
-        msg "${RED}Invalid $type: $val${NC}" >&2
+        if [[ "$type" == 'port' ]] && valid_port "$val"; then
+            msg "${RED}端口 ${val} 已被占用，请换一个端口${NC}" >&2
+        else
+            msg "${RED}Invalid $type: $val${NC}" >&2
+        fi
     done
 }
 # ============ end Version C ============
@@ -9706,9 +9710,19 @@ EOF_SVC
             realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}}}' \
         > "$tmp_json" || die 'Trojan inbound JSON 生成失败。'
 
-    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+    if [[ ! -f "$cfg" || -L "$cfg" ]]; then
+        local seed_json
+        seed_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{loglevel:"warning"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$seed_json" || { rm -f "$seed_json"; die 'Xray 初始配置生成失败。'; }
+        prepare_abox_runtime_config_dir xray /usr/local/etc/xray || { rm -f "$seed_json"; die 'Xray config directory creation failed.'; }
+        install_file_atomically "$seed_json" "$cfg" 600 || { rm -f "$seed_json"; die 'Xray config 原子写入失败。'; }
+        rm -f "$seed_json"
+    fi
+    if [[ -f "$cfg" && ! -L "$cfg" ]]; then
         local tmp_cfg
-        msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
+        if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+            msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
+        fi
         tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die '临时文件创建失败。'
         if ! jq --slurpfile nb "$tmp_json" \
                 '(.inbounds | map(select(.tag=="trojan-landing"))) as $old
@@ -9723,8 +9737,6 @@ EOF_SVC
         rm -f "$tmp_cfg"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
         restart_service_soft xray || die 'Xray 服务重启失败。'
-    else
-        xray_hot_add_inbound "$tmp_json" || die 'Trojan inbound 添加失败。'
     fi
     rm -f "$tmp_json"
 
@@ -10994,7 +11006,8 @@ _mi_cell() {
 }
 
 # A-BOX pixel banner: 5x5 glyphs, blue gradient (electric -> deep -> cyan),
-# boxed by electric-blue double lines. Pixel = 2 background-colored spaces.
+# boxed by electric-blue double lines. Pixel = 2 foreground full blocks
+# (background-colored spaces vanish on terminals that skip cell backgrounds).
 _menu_banner() {
     local _rows=('011100000000011110001110010001'
                  '100010000000010001010001001010'
@@ -11005,7 +11018,7 @@ _menu_banner() {
     for _c in $(seq 0 28); do
         if (( _c <= 14 )); then _g=$((170 - 100 * _c / 14)); _b=$((255 - 75 * _c / 14))
         else _k=$((_c - 14)); _g=$((70 + 150 * _k / 14)); _b=$((180 + 40 * _k / 14)); fi
-        _bg[$_c]=$'\033[48;2;0;'"${_g};${_b}"'m'
+        _bg[$_c]=$'\033[38;2;0;'"${_g};${_b}"'m'
     done
     local _eq='════════════════════════════════════════════════════════════════════════════════'
     printf '\033[38;2;0;170;255m%s\033[0m\n' "$_eq"
@@ -11014,7 +11027,7 @@ _menu_banner() {
         _line='           '
         for ((_j = 0; _j < 29; _j++)); do
             _px="${_r:_j:1}"
-            if [[ "$_px" == '1' ]]; then _line+="${_bg[$_j]}  "$'\033[0m'; else _line+='  '; fi
+            if [[ "$_px" == '1' ]]; then _line+="${_bg[$_j]}██"$'\033[0m'; else _line+='  '; fi
         done
         printf '%s\n' "$_line"
     done

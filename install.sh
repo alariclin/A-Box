@@ -832,12 +832,12 @@ tr_msg() {
         fa:warp_preset_global) echo 'همه ترافیک از طریق WARP' ;;
         zh-tw:warp_preset_global) echo '全部流量走 WARP' ;;
         ja:warp_preset_global) echo '全トラフィックを WARP 経由' ;;
-        zh:warp_uninstall_confirm) echo '确认卸载 WARP 并清空分流规则？' ;;
-        en:warp_uninstall_confirm) echo 'Remove WARP and clear split rules?' ;;
-        ru:warp_uninstall_confirm) echo 'Удалить WARP и очистить правила?' ;;
-        fa:warp_uninstall_confirm) echo 'WARP حذف و قوانین تفکیک پاک شود؟' ;;
-        zh-tw:warp_uninstall_confirm) echo '確認卸載 WARP 並清空分流規則？' ;;
-        ja:warp_uninstall_confirm) echo 'WARP を削除し振り分けルールをクリアしますか？' ;;
+        zh:warp_uninstall_confirm) echo '确认卸载 WARP 并清空分流规则？ [Y/N]: ' ;;
+        en:warp_uninstall_confirm) echo 'Remove WARP and clear split rules? [Y/N]: ' ;;
+        ru:warp_uninstall_confirm) echo 'Удалить WARP и очистить правила? [Y/N]: ' ;;
+        fa:warp_uninstall_confirm) echo 'WARP حذف و قوانین تفکیک پاک شود؟ [Y/N]: ' ;;
+        zh-tw:warp_uninstall_confirm) echo '確認卸載 WARP 並清空分流規則？ [Y/N]: ' ;;
+        ja:warp_uninstall_confirm) echo 'WARP を削除し振り分けルールをクリアしますか？ [Y/N]: ' ;;
         zh:split_ip_prompt) echo '请输入落地机 IP' ;;
         en:split_ip_prompt) echo 'Enter landing host IP' ;;
         ru:split_ip_prompt) echo 'Введите IP целевого хоста' ;;
@@ -9982,16 +9982,16 @@ warp_split_menu() {
     while true; do
     clear
     msg "${YELLOW}$(tr_msg warp_split_title)${NC}"
-    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
     warp_status
-    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
     msg "1. $(tr_msg warp_deploy_item)"
     msg "2. $(tr_msg warp_preset_item)"
     msg "3. $(tr_msg split_add_socks_item)"
     msg "4. $(tr_msg split_rules_item)"
     msg "5. $(tr_msg warp_uninstall_item)"
     msg "0. $(tr_msg back_to_parent)"
-    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
     local choice
     read -r -p "$(tr_msg select_prompt) [0-5]: " choice || return 0
     case "$choice" in
@@ -10017,7 +10017,7 @@ warp_preset_menu() {
     while true; do
     clear
     msg "${YELLOW}$(tr_msg warp_preset_title)${NC}"
-    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
     msg "1. $(tr_msg warp_preset_streaming)"
     msg "2. $(tr_msg warp_preset_cn_direct)"
     msg "3. $(tr_msg warp_preset_global)"
@@ -10053,13 +10053,13 @@ split_rules_menu() {
     while true; do
     clear
     msg "${YELLOW}$(tr_msg split_rules_title)${NC}"
-    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
     local i=0
     while IFS= read -r line; do
         msg "$i. $line"; i=$((i+1))
     done < <(jq -r '.rules[]? | "\(.domains | join(",")) -> \(.outbound)"' "$ROUTING_STATE_FILE" 2>/dev/null)
     [[ "$i" -eq 0 ]] && msg "$(tr_msg split_no_rules)"
-    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
     msg "a. $(tr_msg split_rule_add)"
     msg "d. $(tr_msg split_rule_del)"
     msg "s. $(tr_msg split_preset_streaming)"

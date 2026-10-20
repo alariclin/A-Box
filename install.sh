@@ -676,6 +676,42 @@ tr_msg() {
         fa:trojan_core_prompt) echo 'هسته را انتخاب کنید [۱] Xray [۲] sing-box: ' ;;
         zh-tw:trojan_core_prompt) echo '選擇核心 [1] Xray [2] sing-box: ' ;;
         ja:trojan_core_prompt) echo 'コアを選択 [1] Xray [2] sing-box: ' ;;
+        zh:tuic_title) echo '部署 TUIC 落地代理 (sing-box)' ;;
+        en:tuic_title) echo 'Deploy TUIC landing proxy (sing-box)' ;;
+        ru:tuic_title) echo 'Развернуть TUIC (sing-box)' ;;
+        fa:tuic_title) echo 'استقرار TUIC (sing-box)' ;;
+        zh-tw:tuic_title) echo '部署 TUIC 落地代理 (sing-box)' ;;
+        ja:tuic_title) echo 'TUIC を展開 (sing-box)' ;;
+        zh:tuic_port_prompt) echo '请输入 TUIC 监听端口 (UDP, 回车默认 443): ' ;;
+        en:tuic_port_prompt) echo 'Enter TUIC listen port (UDP, Enter for 443): ' ;;
+        ru:tuic_port_prompt) echo 'Порт TUIC (UDP, Enter = 443): ' ;;
+        fa:tuic_port_prompt) echo 'پورت TUIC (UDP، Enter = 443): ' ;;
+        zh-tw:tuic_port_prompt) echo '請輸入 TUIC 監聽連接埠 (UDP, 預設 443): ' ;;
+        ja:tuic_port_prompt) echo 'TUIC のポート (UDP、デフォルト 443): ' ;;
+        zh:tuic_pass_prompt) echo '请输入 TUIC 密码 (回车自动生成随机密码): ' ;;
+        en:tuic_pass_prompt) echo 'Enter TUIC password (Enter to auto-generate): ' ;;
+        ru:tuic_pass_prompt) echo 'Пароль TUIC (Enter для автогенерации): ' ;;
+        fa:tuic_pass_prompt) echo 'گذرواژه TUIC (Enter برای تولید خودکار): ' ;;
+        zh-tw:tuic_pass_prompt) echo '請輸入 TUIC 密碼 (Enter 自動產生): ' ;;
+        ja:tuic_pass_prompt) echo 'TUIC パスワード (Enter で自動生成): ' ;;
+        zh:tuic_cc_prompt) echo '拥塞控制算法 [1] BBR [2] Cubic [3] NewReno (回车默认 BBR): ' ;;
+        en:tuic_cc_prompt) echo 'Congestion control [1] BBR [2] Cubic [3] NewReno (Enter = BBR): ' ;;
+        ru:tuic_cc_prompt) echo 'Алгоритм контроля перегрузки [1] BBR [2] Cubic [3] NewReno (Enter = BBR): ' ;;
+        fa:tuic_cc_prompt) echo 'الگوریتم کنترل ازدحام [1] BBR [2] Cubic [3] NewReno (Enter = BBR): ' ;;
+        zh-tw:tuic_cc_prompt) echo '壅塞控制演算法 [1] BBR [2] Cubic [3] NewReno (預設 BBR): ' ;;
+        ja:tuic_cc_prompt) echo '輻輳制御 [1] BBR [2] Cubic [3] NewReno (デフォルト BBR): ' ;;
+        zh:tuic_exists) echo '检测到已存在 tuic-in 入站，将更新其配置。' ;;
+        en:tuic_exists) echo 'Existing tuic-in inbound detected; updating its config.' ;;
+        ru:tuic_exists) echo 'Обнаружен существующий tuic-in; обновляю конфигурацию.' ;;
+        fa:tuic_exists) echo 'ورودی tuic-in موجود شناسایی شد؛ در حال به‌روزرسانی.' ;;
+        zh-tw:tuic_exists) echo '偵測到已存在 tuic-in 入站，將更新其設定。' ;;
+        ja:tuic_exists) echo '既存の tuic-in が見つかりました。設定を更新します。' ;;
+        zh:tuic_done) echo 'TUIC 部署完成，链接如下：' ;;
+        en:tuic_done) echo 'TUIC deployed, link below:' ;;
+        ru:tuic_done) echo 'TUIC развернут, ссылка ниже:' ;;
+        fa:tuic_done) echo 'TUIC مستقر شد، لینک زیر:' ;;
+        zh-tw:tuic_done) echo 'TUIC 部署完成，連結如下：' ;;
+        ja:tuic_done) echo 'TUIC を展開しました。リンク：' ;;
         zh:socks5_pass_prompt) echo '请输入 SOCKS5 密码 (回车自动生成随机密码): ' ;;
         en:socks5_pass_prompt) echo 'Enter SOCKS5 password (Enter to auto-generate): ' ;;
         ru:socks5_pass_prompt) echo 'Введите пароль SOCKS5 (Enter для автогенерации): ' ;;
@@ -9618,6 +9654,153 @@ EOF_SVC
     generate_qr "trojan://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
 }
 
+
+# TUIC deployment (sing-box only; Xray has no TUIC inbound).
+# Modeled on deploy_singbox_trojan_landing: standalone inbound merged into the
+# live sing-box config by tag, validated with `sing-box check` before install.
+deploy_singbox_tuic() {
+    local port pass uuid sni cc cfg='/etc/sing-box/config.json'
+    local tag='tuic-in' tmp_json
+    clear; msg "${BOLD}${GREEN}$(tr_msg tuic_title)${NC}"
+    init_system_environment
+    load_optional_abox_env_or_die
+    light_preflight_check
+
+    port=$(prompt_validated "$(tr_msg tuic_port_prompt)" port '443') || die 'TUIC port input failed.'
+    read -r -p "$(tr_msg tuic_pass_prompt)" pass || pass=''
+    if [[ -z "$pass" ]]; then
+        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'TUIC password generation failed.'
+        [[ -n "$pass" ]] || die 'TUIC password generation failed.'
+    fi
+    local cc_choice=''
+    read -r -p "$(tr_msg tuic_cc_prompt)" cc_choice || cc_choice=''
+    case "$cc_choice" in
+        2) cc='cubic' ;;
+        3) cc='new_reno' ;;
+        *) cc='bbr' ;;
+    esac
+    uuid=$(generate_robust_uuid) || die 'TUIC UUID generation failed.'
+
+    # Minimal sing-box install when the binary is missing.
+    if [[ ! -x /usr/local/bin/sing-box ]]; then
+        local sb_tmp sb_tar sb_ext SB_PATH
+        get_architecture
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-tuic.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tar="$sb_tmp/singbox_core.tar.gz"
+        sb_ext="$sb_tmp/extract"
+        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        clear_core_release_resolution SagerNet/sing-box
+        fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
+        SB_PATH="$sb_ext/sing-box"
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        rm -rf -- "$sb_tmp"
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die 'Sing-box 初始配置生成失败。'
+        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+        rm -f "$tmp_json"
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+# Managed by A-Box
+[Unit]
+Description=A-Box Sing-Box Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-singbox
+Group=abox-singbox
+UMask=0077
+ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        else
+            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
+            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+rc_ulimit="-n 1048576"
+EOF_SB_CONFD
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Sing-Box Service"
+command="/usr/local/bin/sing-box"
+command_args="run -c /etc/sing-box/config.json"
+command_background="yes"
+command_user="abox-singbox:abox-singbox"
+umask=077
+pidfile="/run/sing-box.pid"
+depend() { need net; }
+EOF_SVC
+            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+        fi
+        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+    fi
+
+    # Self-signed TLS cert (TUIC requires TLS; clients pin/skip-verify).
+    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
+    [[ -n "$sni" ]] || sni='www.amazon.com'
+    generate_self_signed_cert_atomically /etc/sing-box/tuic.key /etc/sing-box/tuic.crt "$sni" \
+        || die 'TUIC 自签证书生成失败。'
+
+    # Build the TUIC inbound object.
+    tmp_json=$(mktemp /tmp/A-Box-sb-tuic-inbound.XXXXXX) || die '临时文件创建失败。'
+    jq -n --argjson port "$port" --arg uuid "$uuid" --arg pass "$pass" --arg sni "$sni" --arg cc "$cc" \
+        '{type:"tuic",tag:"tuic-in",listen:"0.0.0.0",listen_port:$port,
+          users:[{uuid:$uuid,password:$pass}],
+          congestion_control:$cc,
+          tls:{enabled:true,server_name:$sni,alpn:["h3"],
+            certificate_path:"/etc/sing-box/tuic.crt",key_path:"/etc/sing-box/tuic.key"}}' \
+        > "$tmp_json" || die 'TUIC inbound JSON 生成失败。'
+
+    local tmp_cfg
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        msg "${YELLOW}$(tr_msg tuic_exists)${NC}"
+    fi
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    if ! jq --slurpfile nb "$tmp_json" \
+            '(.inbounds | map(select(.tag=="tuic-in"))) as $old
+             | .inbounds |= (map(select(.tag!="tuic-in")) + $nb)' \
+            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+        rm -f "$tmp_cfg" "$tmp_json"; die 'TUIC inbound 配置更新失败。'
+    fi
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
+        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+    rm -f "$tmp_cfg" "$tmp_json"
+    prepare_abox_runtime_permissions sing-box 2>/dev/null || true
+    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+
+    allowPort "$port" udp || die "防火墙放行失败: ${port}/udp"
+    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    service_manager start sing-box 2>/dev/null || true
+    set_desired_state RUNNING 2>/dev/null || true
+
+    local pub_ip
+    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
+    local link="tuic://${uuid}:${pass}@${pub_ip}:${port}?congestion_control=${cc}&alpn=h3&sni=${sni}&allow_insecure=1#TUIC"
+    msg "${GREEN}$(tr_msg tuic_done)${NC}"
+    msg "$link"
+    generate_qr "$link"
+}
+
 # Toolbox entry: standalone Trojan-Reality, free core choice.
 trojan_toolbox_entry() {
     local _core_choice='' _default='1'
@@ -9756,7 +9939,7 @@ _menu_info_collect() {
         nodes=$(jq -r '.inbounds[]? |
             (if .type == "vless" then "VLESS" elif .type == "shadowsocks" then "SS"
              elif .type == "hysteria2" then "Hy2" elif .type == "mixed" then "SOCKS5"
-             elif .type == "socks" then "SOCKS5" else .type end)
+             elif .type == "socks" then "SOCKS5" elif .type == "tuic" then "TUIC" elif .type == "anytls" then "AnyTLS" else .type end)
             | "\(.) :\(.listen_port)"' /etc/sing-box/config.json 2>/dev/null | tr '\n' '|' | sed 's/ :/:/g;s/|$//')
     fi
     nodes="${nodes%|}"
@@ -19733,6 +19916,7 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ Protocol Deployment ]${NC}"
             msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
+            msg "${YELLOW}17.  TUIC (sing-box)${NC}"
             msg "${GREEN}0. Back${NC}"
             ;;
         ru)
@@ -19750,6 +19934,7 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ Развёртывание протоколов ]${NC}"
             msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
+            msg "${YELLOW}17.  TUIC (sing-box)${NC}"
             msg "${GREEN}0. Назад${NC}"
             ;;
         fa)
@@ -19767,6 +19952,7 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ استقرار پروتکل ]${NC}"
             msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
+            msg "${YELLOW}17.  TUIC (sing-box)${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
         zh-tw)
@@ -19784,6 +19970,7 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ 協議部署 ]${NC}"
             msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
+            msg "${YELLOW}17.  TUIC (sing-box)${NC}"
             msg "${GREEN}0. 返回主選單${NC}"
             ;;
         ja)
@@ -19801,6 +19988,7 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ プロトコル展開 ]${NC}"
             msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
+            msg "${YELLOW}17.  TUIC (sing-box)${NC}"
             msg "${GREEN}0. メインメニューに戻る${NC}"
             ;;
         *)
@@ -19818,6 +20006,7 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ 协议部署 ]${NC}"
             msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
+            msg "${YELLOW}17.  TUIC (sing-box)${NC}"
             msg "${GREEN}0. 返回主菜单${NC}"
             ;;
     esac
@@ -19841,6 +20030,7 @@ vps_benchmark_menu() {
         14) wallos_menu ;;
         15) socks5_toolbox_entry; pause_return ;;
         16) trojan_toolbox_entry; pause_return ;;
+        17) deploy_singbox_tuic; pause_return ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $bench_choice${NC}"; sleep 1 ;;
     esac
@@ -20896,7 +21086,7 @@ core_expected_listen_ports() {
             jq -r '.inbounds[]? | select(.port != null and .tag != "api") | (if .protocol == "shadowsocks" then "tcp/\(.port)\nudp/\(.port)" elif .protocol == "socks" then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end)' "$cfg" 2>/dev/null
             ;;
         singbox)
-            jq -r '.inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" then "udp/\(.listen_port)" elif .type == "shadowsocks" then "tcp/\(.listen_port)\nudp/\(.listen_port)" elif .type == "socks" or .type == "mixed" then "tcp/\(.listen_port)\nudp/\(.listen_port)" else "tcp/\(.listen_port)" end)' "$cfg" 2>/dev/null
+            jq -r '.inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" or .type == "tuic" then "udp/\(.listen_port)" elif .type == "shadowsocks" then "tcp/\(.listen_port)\nudp/\(.listen_port)" elif .type == "socks" or .type == "mixed" then "tcp/\(.listen_port)\nudp/\(.listen_port)" else "tcp/\(.listen_port)" end)' "$cfg" 2>/dev/null
             ;;
         hysteria)
             # Hysteria 2 config uses listen: :PORT (or [::]:PORT).

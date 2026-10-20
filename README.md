@@ -23,13 +23,13 @@ The project is provided “as is”, without warranty. Review the script and the
 ### Official GitHub source
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/dc7b47278ab65bc2fc74ce92e33cdfdd93f36619/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/1baadecf7c38a723b8003972ef882d0cee70646d/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 ### Third-party fallback mirror
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/dc7b47278ab65bc2fc74ce92e33cdfdd93f36619/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/1baadecf7c38a723b8003972ef882d0cee70646d/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 Both commands pin the installer to immutable commit `a7cb193e6539cee6478648e766f5ce415ccd5d41`; the proxy URL remains a third-party transport, not an official A-Box endpoint. For production, verify the commit and checksum through an independent trusted channel. On a fresh Alpine install, first run `apk add --no-cache bash curl`. After installation, enter `sb` to open the menu.

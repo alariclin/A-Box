@@ -8809,6 +8809,7 @@ xray_hot_add_inbound() {
         return 1  # duplicate tag already persisted
     fi
     tmp=$(mktemp /tmp/A-Box-xray-hotadd.XXXXXX) || return 1
+    mv "$tmp" "$tmp.json" || { rm -f "$tmp"; return 1; }; tmp="$tmp.json"
     if ! jq --slurpfile nb "$json_file" '.inbounds += $nb' "$cfg" > "$tmp" 2>/dev/null; then
         rm -f "$tmp"; return 1
     fi
@@ -8841,6 +8842,7 @@ xray_hot_remove_inbound() {
         return 0
     fi
     tmp=$(mktemp /tmp/A-Box-xray-hotdel.XXXXXX) || return 1
+    mv "$tmp" "$tmp.json" || { rm -f "$tmp"; return 1; }; tmp="$tmp.json"
     if ! jq --arg t "$tag" '.inbounds |= map(select(.tag != $t))' "$cfg" > "$tmp" 2>/dev/null; then
         rm -f "$tmp"; return 1
     fi
@@ -9726,6 +9728,7 @@ EOF_SVC
             msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
         fi
         tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die '临时文件创建失败。'
+        mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json"; die '临时文件创建失败。'; }; tmp_cfg="$tmp_cfg.json"
         if ! jq --slurpfile nb "$tmp_json" \
                 '(.inbounds | map(select(.tag=="trojan-landing"))) as $old
                  | .inbounds |= (map(select(.tag!="trojan-landing")) + $nb)' \
@@ -11030,29 +11033,20 @@ _mi_cell() {
 # boxed by electric-blue double lines. Pixel = 2 foreground full blocks
 # (background-colored spaces vanish on terminals that skip cell backgrounds).
 _menu_banner() {
-    local _rows=('011100000000011110001110010001'
-                 '100010000000010001010001001010'
-                 '11111001110011110010001000100'
-                 '100010000000010001010001001010'
-                 '100010000000011110001110010001')
-    local _bg=() _c _g _b _k
-    for _c in $(seq 0 28); do
-        if (( _c <= 14 )); then _g=$((170 - 100 * _c / 14)); _b=$((255 - 75 * _c / 14))
-        else _k=$((_c - 14)); _g=$((70 + 150 * _k / 14)); _b=$((180 + 40 * _k / 14)); fi
-        _bg[$_c]=$'\033[38;2;0;'"${_g};${_b}"'m'
-    done
+    # FIGlet 'ANSI Shadow' line art (same style as A-Check): real letterform
+    # glyphs stay legible on any terminal, unlike block mosaics. Drawn as
+    # per-letter segments with a truecolor gradient; no per-char slicing
+    # (multibyte-safe under C locales).
     local _eq='════════════════════════════════════════════════════════════════════════════════'
+    local _cA=$'\033[38;2;0;170;255m' _cH=$'\033[38;2;0;140;240m' _cB=$'\033[38;2;0;80;205m' _cO=$'\033[38;2;0;120;225m' _cX=$'\033[38;2;0;190;245m'
+    local _pad='                 '
     printf '\033[38;2;0;170;255m%s\033[0m\n' "$_eq"
-    local _r _line _j _px
-    for _r in "${_rows[@]}"; do
-        _line='           '
-        for ((_j = 0; _j < 29; _j++)); do
-            _px="${_r:_j:1}"
-            if [[ "$_px" == '1' ]]; then _line+="${_bg[$_j]}██"$'\033[0m'; else _line+='  '; fi
-        done
-        printf '%s\n' "$_line"
-        printf '%s\n' "$_line"
-    done
+    printf '%s' "${_pad}${_cA} █████╗  ${_cH}        ${_cB}██████╗  ${_cO} ██████╗  ${_cX}██╗  ██╗ ${NC}"; printf '\n'
+    printf '%s' "${_pad}${_cA}██╔══██╗ ${_cH}        ${_cB}██╔══██╗ ${_cO}██╔═══██╗ ${_cX}╚██╗██╔╝ ${NC}"; printf '\n'
+    printf '%s' "${_pad}${_cA}███████║ ${_cH}        ${_cB}██████╔╝ ${_cO}██║   ██║ ${_cX} ╚███╔╝  ${NC}"; printf '\n'
+    printf '%s' "${_pad}${_cA}██╔══██║ ${_cH}██████╗ ${_cB}██╔══██╗ ${_cO}██║   ██║ ${_cX} ██╔██╗  ${NC}"; printf '\n'
+    printf '%s' "${_pad}${_cA}██║  ██║ ${_cH}╚═════╝ ${_cB}██████╔╝ ${_cO}╚██████╔╝ ${_cX}██╔╝╚██╗ ${NC}"; printf '\n'
+    printf '%s' "${_pad}${_cA}╚═╝  ╚═╝ ${_cH}        ${_cB}╚═════╝  ${_cO} ╚═════╝  ${_cX}╚═╝  ╚═╝ ${NC}"; printf '\n'
     printf '\033[38;2;0;170;255m%s\033[0m\n' "$_eq"
 }
 
@@ -11255,6 +11249,7 @@ routing_apply_live() {
             cfg='/usr/local/etc/xray/config.json'
             [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
             tmp=$(mktemp) || return 1
+            mv "$tmp" "$tmp.json" || { rm -f "$tmp"; return 1; }; tmp="$tmp.json"
             jq --slurpfile st "$ROUTING_STATE_FILE" '
                 ($st[0].outbounds | map(.tag)) as $managed
                 | .outbounds |= (map(select(.tag as $t | $managed | index($t) | not))
@@ -11274,6 +11269,7 @@ routing_apply_live() {
             cfg='/etc/sing-box/config.json'
             [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
             tmp=$(mktemp) || return 1
+            mv "$tmp" "$tmp.json" || { rm -f "$tmp"; return 1; }; tmp="$tmp.json"
             jq --slurpfile st "$ROUTING_STATE_FILE" '
                 ($st[0].outbounds | map(.tag)) as $managed
                 | .outbounds |= (map(select(.tag as $t | $managed | index($t) | not))
@@ -11738,6 +11734,7 @@ EOF_SVC
         local tmp_cfg
         msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
         tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die '临时文件创建失败。'
+        mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json"; die '临时文件创建失败。'; }; tmp_cfg="$tmp_cfg.json"
         if ! jq --slurpfile nb "$tmp_json" \
                 '(.inbounds | map(select(.tag=="socks5-landing"))) as $old
                  | .inbounds |= (map(select(.tag!="socks5-landing")) + $nb)' \

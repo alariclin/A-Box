@@ -11112,7 +11112,12 @@ _menu_info_collect() {
         argo_st=stop
         if is_service_running argo 2>/dev/null || is_service_running argo-vmess 2>/dev/null || is_service_running argo-vless 2>/dev/null; then argo_st=run; fi
     fi
-    _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"; _MI_F2B="$f2st"; _MI_WALLOS="$dost"; _MI_TROJAN="$tjt"; _MI_TUIC="$tut"; _MI_ANYTLS="$ant"; _MI_STLS="$stt"; _MI_ARGO="$argo_st"
+    # Cloudflare fronts (panel plan A): Argo tunnels and/or the
+    # Wallos CF tunnel - one cell supervises all of them.
+    local cf_st=none
+    if [[ -f /etc/ddr/.argo-state ]] || [[ "$(wallos_state_value MODE 2>/dev/null || true)" == cftunnel ]]; then cf_st=stop; fi
+    if is_service_running argo 2>/dev/null || is_service_running argo-vmess 2>/dev/null || is_service_running argo-vless 2>/dev/null || is_service_running abox-wallos-cftunnel 2>/dev/null; then cf_st=run; fi
+    _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"; _MI_F2B="$f2st"; _MI_WALLOS="$dost"; _MI_TROJAN="$tjt"; _MI_TUIC="$tut"; _MI_ANYTLS="$ant"; _MI_STLS="$stt"; _MI_ARGO="$argo_st"; _MI_CF="$cf_st"
 
     # --- system info ---
     local os_name='?' kernel='?' cpu_n='?' cpu_model='' mem_tot='?' mem_used='?'
@@ -11262,7 +11267,7 @@ _mi_cell() {
         stop) dot="${RED}●${NC}" ;;
         *) dot='○' ;;
     esac
-    printf '[ %s%-8s%s %s ]' "$CYAN" "$nm" "$NC" "$dot"
+    printf '[ %s%-10s%s %s ]' "$CYAN" "$nm" "$NC" "$dot"
 }
 
 # A-BOX pixel banner: 5x5 glyphs, blue gradient (electric -> deep -> cyan),
@@ -11289,25 +11294,22 @@ _menu_banner() {
 # Display the info panel (v3: status matrix + spaced rows, two-color scheme).
 _menu_info_display() {
     _menu_info_collect || return 0
-    # --- status matrix (WARP cell only when active) ---
-    local _mrow='  ' _sep='' _mwid=2
-    local _cells=("Xray|$_MI_XST" "Hy2|$_MI_HST" "sing-box|$_MI_SST" "SOCKS5|$_MI_SOCKS_ST")
-    [[ "$_MI_BBR" == 'bbr' ]] && _cells+=("BBR|run") || _cells+=("BBR|none")
-    [[ -n "$_MI_WARP" ]] && _cells+=("WARP|run")
-    _cells+=("Fail2ban|$_MI_F2B" "Wallos|$_MI_WALLOS")
-    [[ -n "${_MI_TROJAN:-}" ]] && _cells+=("Trojan|$_MI_TROJAN")
-    [[ -n "${_MI_TUIC:-}" ]] && _cells+=("TUIC|$_MI_TUIC")
-    [[ -n "${_MI_ANYTLS:-}" ]] && _cells+=("AnyTLS|$_MI_ANYTLS")
-    [[ -n "${_MI_STLS:-}" ]] && _cells+=("ShadowTLS|$_MI_STLS")
-    [[ -n "${_MI_ARGO:-}" ]] && _cells+=("Argo|$_MI_ARGO")
-    local _c _nm _st
+    # --- status matrix: fixed 12 cells, always shown, 3 per row ---
+    local _mrow='  ' _sep=''
+    local _warp_st=none; [[ -n "$_MI_WARP" ]] && _warp_st=run
+    local _cells=(
+        "Xray|${_MI_XST:-none}" "sing-box|${_MI_SST:-none}" "Hy2|${_MI_HST:-none}"
+        "Trojan|${_MI_TROJAN:-none}" "TUIC|${_MI_TUIC:-none}" "AnyTLS|${_MI_ANYTLS:-none}"
+        "ShadowTLS|${_MI_STLS:-none}" "SOCKS5|${_MI_SOCKS_ST:-none}" "WARP|$_warp_st"
+        "Cloudflare|${_MI_CF:-none}" "Fail2ban|${_MI_F2B:-none}" "Wallos|${_MI_WALLOS:-none}"
+    )
+    local _c _nm _st _n=0
     for _c in "${_cells[@]}"; do
         _nm="${_c%%|*}"; _st="${_c##*|}"
-        # each cell renders 14 wide; wrap inside the frame like the info rows
-        if [[ -n "$_sep" ]] && (( _mwid + 2 + 14 > 78 )); then
-            msg "$_mrow"; _mrow='  '; _sep=''; _mwid=2
+        if (( _n == 3 )); then
+            msg "$_mrow"; _mrow='  '; _sep=''; _n=0
         fi
-        _mrow+="${_sep}$(_mi_cell "$_nm" "$_st")"; _mwid=$((_mwid + ${#_sep} + 14)); _sep='  '
+        _mrow+="${_sep}$(_mi_cell "$_nm" "$_st")"; _sep='  '; _n=$((_n + 1))
     done
     msg "$_mrow"
     msg ''

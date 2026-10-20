@@ -7459,6 +7459,8 @@ prepare_abox_runtime_permissions() {
             prepare_abox_runtime_read_file /etc/sing-box/config.json sing-box || return 1
             [[ ! -e /etc/sing-box/hy2.crt ]] || prepare_abox_runtime_read_file /etc/sing-box/hy2.crt sing-box || return 1
             [[ ! -e /etc/sing-box/hy2.key ]] || prepare_abox_runtime_read_file /etc/sing-box/hy2.key sing-box || return 1
+            [[ ! -e /etc/sing-box/tuic.crt ]] || prepare_abox_runtime_read_file /etc/sing-box/tuic.crt sing-box || return 1
+            [[ ! -e /etc/sing-box/tuic.key ]] || prepare_abox_runtime_read_file /etc/sing-box/tuic.key sing-box || return 1
             prepare_abox_runtime_write_file /var/log/A-Box-singbox.log sing-box || return 1
             ;;
         hysteria)
@@ -9570,7 +9572,7 @@ EOF_SVC
         || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box 2>/dev/null || true
+    prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
     restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
 
     # Firewall: TCP + UDP.
@@ -9731,8 +9733,11 @@ EOF_SVC
             rm -f "$tmp_cfg" "$tmp_json"; die 'Trojan inbound 配置更新失败。'
         fi
         jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray JSON 格式非法。'; }
-        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" >/dev/null 2>&1 \
-            || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray 配置校验失败。'; }
+        if ! XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" >/dev/null 2>&1; then
+            msg "${RED}Xray 配置校验失败，校验器输出:${NC}"
+            XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" 2>&1 | tail -5
+            rm -f "$tmp_cfg" "$tmp_json"; die 'Xray 配置校验失败。'
+        fi
         install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray config 原子写入失败。'; }
         rm -f "$tmp_cfg"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
@@ -9876,7 +9881,7 @@ EOF_SVC
         || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box 2>/dev/null || true
+    prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
     restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
 
     allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
@@ -10022,7 +10027,7 @@ EOF_SVC
         || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box 2>/dev/null || true
+    prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
     restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
 
     allowPort "$port" udp || die "防火墙放行失败: ${port}/udp"
@@ -10165,7 +10170,7 @@ EOF_SVC
         || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box 2>/dev/null || true
+    prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
     restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
 
     allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
@@ -10827,13 +10832,17 @@ _ip_geo_refresh() {
         IFS= read -r _cip < "$IP_GEO_FILE" 2>/dev/null
         _now=$(date +%s 2>/dev/null || echo 0)
         _mt=$(stat -c %Y "$IP_GEO_FILE" 2>/dev/null || echo 0)
-        _clang=$(awk 'NR==9' "$IP_GEO_FILE" 2>/dev/null)
+        _clang=$(awk 'NR==12' "$IP_GEO_FILE" 2>/dev/null)
         if [[ "$_cip" == "$ip" && "$_clang" == "$geo_lang" ]] && (( _now - _mt < 86400 )); then return 0; fi
     fi
     local resp
-    resp=$(curl -fsS --max-time 5 "http://ip-api.com/line/${ip}?fields=status,country,countryCode,city,mobile,hosting,as&lang=${geo_lang}" 2>/dev/null) || return 1
+    resp=$(curl -fsS --max-time 5 "http://ip-api.com/line/${ip}?fields=status,country,countryCode,city,mobile,hosting,as,isp,org&lang=${geo_lang}" 2>/dev/null) || return 1
     [[ "$(printf '%s' "$resp" | head -1)" == 'success' ]] || return 1
-    printf '%s\n%s\n%s\n' "$ip" "$resp" "$geo_lang" > "$IP_GEO_FILE" 2>/dev/null || return 1
+    # Second source (ipwho.is) country code, best-effort: only used to flag
+    # multi-source country disagreement (broadcast/anycast heuristic).
+    local cc2=''
+    cc2=$(curl -fsS --max-time 4 "https://ipwho.is/${ip}?fields=success,country_code" 2>/dev/null | jq -r 'select(.success == true) | .country_code // empty' 2>/dev/null) || cc2=''
+    printf '%s\n%s\n%s\n%s\n' "$ip" "$resp" "$cc2" "$geo_lang" > "$IP_GEO_FILE" 2>/dev/null || return 1
     return 0
 }
 
@@ -10974,21 +10983,31 @@ _menu_info_collect() {
     _MI_FLAG=''; _MI_GEO_COUNTRY=''; _MI_GEO_CITY=''; _MI_GEO_KIND=''; _MI_GEO_ORIGIN=''
     _ip_geo_refresh || true
     if [[ -f "$IP_GEO_FILE" ]]; then
-        local _gip _gst _gcountry _gcc _gcity _gmob _ghost _gas
+        local _gip _gst _gcountry _gcc _gcity _gmob _ghost _gas _gisp _gorg _gcc2
         { IFS= read -r _gip; IFS= read -r _gst; IFS= read -r _gcountry; IFS= read -r _gcc
           IFS= read -r _gcity; IFS= read -r _gmob; IFS= read -r _ghost; IFS= read -r _gas
+          IFS= read -r _gisp; IFS= read -r _gorg; IFS= read -r _gcc2
         } < "$IP_GEO_FILE" 2>/dev/null
         if [[ "$_gip" == "${GLOBAL_PUBLIC_IP:-}" && "$_gst" == 'success' ]]; then
             _MI_GEO_COUNTRY="$_gcountry"
             _MI_GEO_CITY="$_gcity"
             _MI_FLAG=$(_flag_for_cc "$_gcc")
+            # Datacenter call (A-Check approach): vendor/hosting keywords in
+            # the AS+ISP+Org text outrank ip-api's bare hosting flag, which
+            # mislabels several cloud ranges as residential.
+            local _gtext _gdc=0
+            _gtext=$(printf '%s %s %s' "$_gas" "$_gisp" "$_gorg" | tr '[:upper:]' '[:lower:]')
+            case "$_gtext" in
+                *amazon*|*google*|*microsoft*|*azure*|*alibaba*|*tencent*|*huawei\ cloud*|*oracle*|*digitalocean*|*linode*|*vultr*|*ovh*|*hetzner*|*contabo*|*leaseweb*|*choopa*|*datacenter*|*data\ center*|*data\ centre*|*hosting*|*vps*|*dedicated*|*colocation*|*cloudflare*|*akamai*|*fastly*|*scaleway*|*upcloud*|*kamatera*|*hostwinds*|*bandwagon*|*buyvm*|*frantech*|*serverius*|*selectel*|*worldstream*|*psychz*|*quadranet*) _gdc=1 ;;
+            esac
             if [[ "$_gmob" == 'true' ]]; then _MI_GEO_KIND=$(tr_msg mi_cell)
-            elif [[ "$_ghost" == 'true' ]]; then _MI_GEO_KIND=$(tr_msg mi_dc)
+            elif [[ "$_ghost" == 'true' || "$_gdc" == '1' ]]; then _MI_GEO_KIND=$(tr_msg mi_dc)
             else _MI_GEO_KIND=$(tr_msg mi_res); fi
-            # Anycast heuristic: well-known anycast ASNs only; otherwise native.
+            # Broadcast call: known anycast ASNs, or the two sources disagree
+            # on the country (multi-source mismatch heuristic from A-Check).
             case "$_gas" in
-                *'AS13335'*|*'Cloudflare'*) _MI_GEO_ORIGIN=$(tr_msg mi_anycast) ;;
-                *) _MI_GEO_ORIGIN=$(tr_msg mi_native) ;;
+                *'AS13335'*|*'AS209242'*|*'Cloudflare'*) _MI_GEO_ORIGIN=$(tr_msg mi_anycast) ;;
+                *) if [[ -n "$_gcc2" && -n "$_gcc" && "$_gcc2" != "$_gcc" ]]; then _MI_GEO_ORIGIN=$(tr_msg mi_anycast); else _MI_GEO_ORIGIN=$(tr_msg mi_native); fi ;;
             esac
         fi
     fi
@@ -11029,6 +11048,7 @@ _menu_banner() {
             _px="${_r:_j:1}"
             if [[ "$_px" == '1' ]]; then _line+="${_bg[$_j]}██"$'\033[0m'; else _line+='  '; fi
         done
+        printf '%s\n' "$_line"
         printf '%s\n' "$_line"
     done
     printf '\033[38;2;0;170;255m%s\033[0m\n' "$_eq"

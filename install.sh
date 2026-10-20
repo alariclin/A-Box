@@ -832,12 +832,12 @@ tr_msg() {
         fa:warp_preset_global) echo 'همه ترافیک از طریق WARP' ;;
         zh-tw:warp_preset_global) echo '全部流量走 WARP' ;;
         ja:warp_preset_global) echo '全トラフィックを WARP 経由' ;;
-        zh:warp_uninstall_confirm) echo '确认卸载 WARP 并清空分流规则？' ;;
-        en:warp_uninstall_confirm) echo 'Remove WARP and clear split rules?' ;;
-        ru:warp_uninstall_confirm) echo 'Удалить WARP и очистить правила?' ;;
-        fa:warp_uninstall_confirm) echo 'WARP حذف و قوانین تفکیک پاک شود؟' ;;
-        zh-tw:warp_uninstall_confirm) echo '確認卸載 WARP 並清空分流規則？' ;;
-        ja:warp_uninstall_confirm) echo 'WARP を削除し振り分けルールをクリアしますか？' ;;
+        zh:warp_uninstall_confirm) echo '确认卸载 WARP 并清空分流规则？ [Y/N]: ' ;;
+        en:warp_uninstall_confirm) echo 'Remove WARP and clear split rules? [Y/N]: ' ;;
+        ru:warp_uninstall_confirm) echo 'Удалить WARP и очистить правила? [Y/N]: ' ;;
+        fa:warp_uninstall_confirm) echo 'WARP حذف و قوانین تفکیک پاک شود؟ [Y/N]: ' ;;
+        zh-tw:warp_uninstall_confirm) echo '確認卸載 WARP 並清空分流規則？ [Y/N]: ' ;;
+        ja:warp_uninstall_confirm) echo 'WARP を削除し振り分けルールをクリアしますか？ [Y/N]: ' ;;
         zh:split_ip_prompt) echo '请输入落地机 IP' ;;
         en:split_ip_prompt) echo 'Enter landing host IP' ;;
         ru:split_ip_prompt) echo 'Введите IP целевого хоста' ;;
@@ -9518,17 +9518,17 @@ _menu_info_collect() {
     local xv='' sv='' hv='' xrun=0 srun=0 hrun=0
     if [[ -x /usr/local/bin/xray ]]; then
         xv=$(/usr/local/bin/xray version 2>/dev/null | head -1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-        [[ -z "$xv" ]] && xv='?'
+        xv="${xv#v}"; [[ -z "$xv" ]] && xv='?'
         is_service_running xray 2>/dev/null && xrun=1
     fi
     if [[ -x /usr/local/bin/sing-box ]]; then
         sv=$(/usr/local/bin/sing-box version 2>/dev/null | head -1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-        [[ -z "$sv" ]] && sv='?'
+        sv="${sv#v}"; [[ -z "$sv" ]] && sv='?'
         is_service_running sing-box 2>/dev/null && srun=1
     fi
     if [[ -x /usr/local/bin/hysteria ]]; then
         hv=$(/usr/local/bin/hysteria version 2>/dev/null | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-        [[ -z "$hv" ]] && hv='?'
+        hv="${hv#v}"; [[ -z "$hv" ]] && hv='?'
         is_service_running hysteria 2>/dev/null && hrun=1
     fi
     _MI_XV="$xv"; _MI_SV="$sv"; _MI_HV="$hv"
@@ -9560,12 +9560,27 @@ _menu_info_collect() {
     _MI_OS="$os_name"; _MI_KERNEL="$kernel"; _MI_CPU="$cpu_n"; _MI_MEM="$mem_g"
     _MI_VIRT="$virt"; _MI_BBR="$bbr"; _MI_UP="$up_days"; _MI_IPV6="$ipv6"
 
-    # --- deployed nodes (from live config) ---
+    # --- deployed nodes (from live config): "Vision:443 SNI amazon.com" style ---
     local nodes=''
     if [[ "$_MI_XRUN" == "1" && -f /usr/local/etc/xray/config.json ]]; then
-        nodes=$(jq -r '.inbounds[]? | select(.tag != "api") | "\(.protocol):\(.port)"' /usr/local/etc/xray/config.json 2>/dev/null | tr '\n' ' ')
+        nodes=$(jq -r '.inbounds[]? | select(.tag != "api") |
+            (if .protocol == "vless" and (.settings.clients[0].flow // "" | startswith("xtls")) then "Vision"
+             elif .protocol == "vless" and (.streamSettings.network // "") == "xhttp" then "XHTTP"
+             elif .protocol == "vless" then "VLESS"
+             elif .protocol == "shadowsocks" then "SS"
+             elif .protocol == "vmess" then "VMess"
+             elif .protocol == "trojan" then "Trojan"
+             else .protocol end) as $n
+            | "\($n):\(.port)\((.streamSettings.realitySettings.serverNames[0] // empty | if . == "" then empty else " SNI " + . end))"' \
+            /usr/local/etc/xray/config.json 2>/dev/null | tr '\n' ' ')
     elif [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]]; then
         nodes=$(jq -r '.inbounds[]? | "\(.type):\(.listen_port)"' /etc/sing-box/config.json 2>/dev/null | tr '\n' ' ')
+    fi
+    # Hy2 runs as a separate service; port from env
+    if [[ "$_MI_HRUN" == "1" ]]; then
+        local _hy2port=''
+        if load_abox_env "$ABOX_ENV" 2>/dev/null; then _hy2port="${HY2_BASE_PORT:-}"; fi
+        [[ -n "$_hy2port" ]] && nodes="${nodes} Hy2:${_hy2port}"
     fi
     _MI_NODES="$nodes"
 
@@ -9812,8 +9827,14 @@ warp_build_outbound_json() {
     priv=$(grep '^PrivateKey' "$profile" | head -1 | awk '{print $3}') || return 1
     peer=$(grep '^PublicKey' "$profile" | head -1 | awk '{print $3}') || return 1
     endpoint=$(grep '^Endpoint' "$profile" | head -1 | awk '{print $3}') || return 1
-    addr4=$(grep '^Address' "$profile" | head -1 | awk '{print $3}') || return 1
-    addr6=$(grep '^Address' "$profile" | sed -n '2p' | awk '{print $3}') || true
+    # wgcf writes both addresses on ONE line: "Address = 172.16.0.2/32, 2606:.../128"
+    local addr_line
+    addr_line=$(grep '^Address' "$profile" | head -1 | cut -d'=' -f2- | tr -d ' ') || return 1
+    local _addrs
+    IFS=',' read -r -a _addrs <<< "$addr_line"
+    addr4="${_addrs[0]:-}"; addr6="${_addrs[1]:-}"
+    [[ "$addr4" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]] || return 1
+    [[ -n "$addr6" && ! "$addr6" =~ : ]] && addr6='' 
     [[ -n "$priv" && -n "$peer" && -n "$endpoint" ]] || return 1
     local srv sport
     srv="${endpoint%:*}"; sport="${endpoint##*:}"
@@ -9961,16 +9982,16 @@ warp_split_menu() {
     while true; do
     clear
     msg "${YELLOW}$(tr_msg warp_split_title)${NC}"
-    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
     warp_status
-    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
     msg "1. $(tr_msg warp_deploy_item)"
     msg "2. $(tr_msg warp_preset_item)"
     msg "3. $(tr_msg split_add_socks_item)"
     msg "4. $(tr_msg split_rules_item)"
     msg "5. $(tr_msg warp_uninstall_item)"
     msg "0. $(tr_msg back_to_parent)"
-    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
     local choice
     read -r -p "$(tr_msg select_prompt) [0-5]: " choice || return 0
     case "$choice" in
@@ -9996,7 +10017,7 @@ warp_preset_menu() {
     while true; do
     clear
     msg "${YELLOW}$(tr_msg warp_preset_title)${NC}"
-    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
     msg "1. $(tr_msg warp_preset_streaming)"
     msg "2. $(tr_msg warp_preset_cn_direct)"
     msg "3. $(tr_msg warp_preset_global)"
@@ -10032,13 +10053,13 @@ split_rules_menu() {
     while true; do
     clear
     msg "${YELLOW}$(tr_msg split_rules_title)${NC}"
-    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
     local i=0
     while IFS= read -r line; do
         msg "$i. $line"; i=$((i+1))
     done < <(jq -r '.rules[]? | "\(.domains | join(",")) -> \(.outbound)"' "$ROUTING_STATE_FILE" 2>/dev/null)
     [[ "$i" -eq 0 ]] && msg "$(tr_msg split_no_rules)"
-    msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
     msg "a. $(tr_msg split_rule_add)"
     msg "d. $(tr_msg split_rule_del)"
     msg "s. $(tr_msg split_preset_streaming)"
@@ -18802,14 +18823,24 @@ wallos_public_urls() {
         return 0
     fi
     if [[ "$host_ip" == 127.0.0.1 ]]; then
+        local _pub="${GLOBAL_PUBLIC_IP:-}"
+        [[ -z "$_pub" ]] && _pub=$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null || true)
+        [[ -z "$_pub" ]] && _pub='<VPS公网IP>'
+        local _who="$(whoami)"
         case "${ABOX_LANG:-zh}" in
-            en) msg "${GREEN}Wallos local URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Use an HTTPS reverse proxy or SSH tunnel for remote access; do not expose this HTTP endpoint directly.${NC}" ;;
-            ru) msg "${GREEN}Локальный адрес Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Для доступа извне используйте HTTPS reverse proxy или SSH-туннель.${NC}" ;;
-            fa) msg "${GREEN}نشانی محلی Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.${NC}" ;;
-            zh-tw) msg "${GREEN}Wallos 本機地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}遠端訪問請使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端點。${NC}" ;;
+            en) msg "${GREEN}Wallos local URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Use an HTTPS reverse proxy or SSH tunnel for remote access; do not expose this HTTP endpoint directly.${NC}"
+            msg "${CYAN}Remote access via SSH tunnel (run on your own computer):${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}Then open http://127.0.0.1:$port/ in your browser; create the admin account on first visit.${NC}" ;;
+            ru) msg "${GREEN}Локальный адрес Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Для доступа извне используйте HTTPS reverse proxy или SSH-туннель.${NC}"
+            msg "${CYAN}Доступ через SSH-туннель (на своём компьютере):${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}Затем откройте http://127.0.0.1:$port/ и создайте учётную запись при первом визите.${NC}" ;;
+            fa) msg "${GREEN}نشانی محلی Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.${NC}"
+            msg "${CYAN}دسترسی از راه دور با SSH tunnel (در کامپیوتر خودتان):${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}سپس http://127.0.0.1:$port/ را در مرورگر باز کنید؛ در اولین بازدید حساب مدیر بسازید.${NC}" ;;
+            zh-tw) msg "${GREEN}Wallos 本機地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}遠端訪問請使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端點。${NC}"
+            msg "${CYAN}遠端用 SSH 隧道（在自己的電腦上執行）：${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}然後瀏覽器打開 http://127.0.0.1:$port/，首次訪問創建管理員賬號。${NC}" ;;
             ja)
-                msg "${GREEN}Wallos のローカル URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。この HTTP エンドポイントを直接公開しないでください。${NC}" ;;
-            *) msg "${GREEN}Wallos 本机地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}远程访问请使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端点。${NC}" ;;
+                msg "${GREEN}Wallos のローカル URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。この HTTP エンドポイントを直接公開しないでください。${NC}"
+            msg "${CYAN}SSH トンネルでのリモートアクセス（自分の PC で実行）：${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}ブラウザで http://127.0.0.1:$port/ を開き、初回に管理者アカウントを作成してください。${NC}" ;;
+            *) msg "${GREEN}Wallos 本机地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}远程访问请使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端点。${NC}"
+            msg "${CYAN}远程用 SSH 隧道（在自己的电脑上执行）：${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}然后浏览器打开 http://127.0.0.1:$port/，首次访问创建管理员账号。${NC}" ;;
         esac
         return 0
     fi

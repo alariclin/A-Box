@@ -10469,6 +10469,11 @@ argo_deploy_ws() {
 # $1 = unit name (argo-vmess | argo-vless | argo), $2 = cloudflared args (no binary)
 argo_write_unit() {
     local name="$1" args="$2"
+    local env_file_line='' rc_env_line=''
+    if [[ "$name" == 'argo' ]]; then
+        env_file_line='EnvironmentFile=/etc/ddr/.argo-token'
+        rc_env_line='command_env="TUNNEL_TOKEN=$(cut -d= -f2- /etc/ddr/.argo-token 2>/dev/null)"'
+    fi
     rm -f "/etc/ddr/${name}.log"
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         write_file_atomically_from_stdin "/etc/systemd/system/${name}.service" 600 <<EOF_UNIT || die "Argo systemd unit 写入失败: ${name}"
@@ -10479,6 +10484,7 @@ After=network-online.target nss-lookup.target
 Wants=network-online.target
 
 [Service]
+${env_file_line}
 ExecStart=/usr/local/bin/cloudflared ${args}
 Restart=on-failure
 RestartSec=5
@@ -10498,6 +10504,7 @@ EOF_UNIT
 description="A-Box Argo Tunnel (${name})"
 command="/usr/local/bin/cloudflared"
 command_args="${args}"
+${rc_env_line}
 command_background="yes"
 pidfile="/run/${name}.pid"
 output_log="/etc/ddr/${name}.log"
@@ -10662,6 +10669,9 @@ deploy_argo_fixed() {
     read -r -s -p "$(tr_msg argo_token_prompt)" token || token=''
     msg ''
     [[ -n "$token" ]] || die 'Token 为空。'
+    valid_single_line_secret "$token" 512 || die 'Token 格式无效。'
+    [[ "$token" =~ ^[A-Za-z0-9_-]+$ ]] || die 'Token 格式无效。'
+    write_file_atomically_from_stdin /etc/ddr/.argo-token 600 <<< "TUNNEL_TOKEN=${token}" || die 'Argo Token 文件写入失败。'
     install_cloudflared
     local cfg='/etc/sing-box/config.json' tmp_json
     # Minimal sing-box install when the binary is missing.
@@ -10739,7 +10749,7 @@ EOF_SVC
     argo_deploy_ws
     argo_remove_unit argo-vmess
     argo_remove_unit argo-vless
-    argo_write_unit argo "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 run --token ${token}"
+    argo_write_unit argo "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 run"
     _argo_state_write "mode=fixed
 uuid=${ARGO_UUID}
 vmess_port=${ARGO_VMESS_PORT}
@@ -10800,7 +10810,7 @@ argo_uninstall() {
         fi
         rm -f "$tmp_cfg"
     fi
-    rm -f "$ARGO_STATE_FILE" /usr/local/bin/cloudflared
+    rm -f "$ARGO_STATE_FILE" /usr/local/bin/cloudflared /etc/ddr/.argo-token
     msg "${GREEN}$(tr_msg argo_uninstalled)${NC}"
 }
 
@@ -13616,6 +13626,15 @@ do_cleanup() {
     remove_owned_auxiliary_path /etc/fail2ban/filter.d/A-Box.conf || die '删除 A-Box Fail2Ban filter 失败。'
     remove_owned_auxiliary_path /etc/logrotate.d/A-Box || die '删除 A-Box logrotate 配置失败。'
     remove_abox_log_files || die '删除 A-Box 日志失败；检测到非托管或不安全日志文件。'
+    # Argo units/binary, WARP/Argo/traffic state and the Wallos fail2ban
+    # pair are outside the managed-path lists; remove them best-effort.
+    argo_remove_unit argo || true
+    argo_remove_unit argo-vmess || true
+    argo_remove_unit argo-vless || true
+    rm -f /usr/local/bin/cloudflared "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true
+    for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local; do
+        if [[ -f "$_wf" ]] && grep -q 'A-Box-wallos' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
+    done
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         if systemctl list-unit-files fail2ban.service >/dev/null 2>&1 && systemctl cat fail2ban.service >/dev/null 2>&1; then
             systemctl try-restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响 A-Box 清理。${NC}"
@@ -13717,6 +13736,15 @@ check_virgin_state() {
     remove_owned_auxiliary_path /etc/fail2ban/filter.d/A-Box.conf || die '删除 A-Box Fail2Ban filter 失败。'
     remove_owned_auxiliary_path /etc/logrotate.d/A-Box || die '删除 A-Box logrotate 配置失败。'
     remove_abox_log_files || die '删除 A-Box 日志失败；检测到非托管或不安全日志文件。'
+    # Argo units/binary, WARP/Argo/traffic state and the Wallos fail2ban
+    # pair are outside the managed-path lists; remove them best-effort.
+    argo_remove_unit argo || true
+    argo_remove_unit argo-vmess || true
+    argo_remove_unit argo-vless || true
+    rm -f /usr/local/bin/cloudflared "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true
+    for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local; do
+        if [[ -f "$_wf" ]] && grep -q 'A-Box-wallos' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
+    done
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         if systemctl list-unit-files fail2ban.service >/dev/null 2>&1 && systemctl cat fail2ban.service >/dev/null 2>&1; then
             systemctl try-restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响环境初始化。${NC}"
@@ -14515,6 +14543,8 @@ read_ip_pref() {
     local v='dual'
     if [[ -r "$IP_PREF_FILE" && -f "$IP_PREF_FILE" && ! -L "$IP_PREF_FILE" ]]; then
         [[ "$(stat -c %u:%g "$IP_PREF_FILE" 2>/dev/null || true)" == '0:0' ]] || { printf 'dual\n'; return 0; }
+        local _m; _m=$(stat -c %a "$IP_PREF_FILE" 2>/dev/null || echo 777)
+        [[ "$_m" =~ ^[0-7]{3,4}$ ]] && (( (8#$_m & 8#022) == 0 )) || { printf 'dual\n'; return 0; }
         v=$(tr -d '[:space:]' < "$IP_PREF_FILE" 2>/dev/null || true)
     fi
     valid_ip_pref "$v" || v='dual'

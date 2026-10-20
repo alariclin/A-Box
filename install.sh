@@ -1024,6 +1024,78 @@ tr_msg() {
         fa:split_need_outbound) echo 'ابتدا خروجی SOCKS5 اضافه کنید.' ;;
         zh-tw:split_need_outbound) echo '請先添加 SOCKS5 出站。' ;;
         ja:split_need_outbound) echo '先に SOCKS5 アウトバウンドを追加してください。' ;;
+        zh:mi_running) echo '运行中' ;;
+        en:mi_running) echo 'running' ;;
+        ru:mi_running) echo 'работает' ;;
+        fa:mi_running) echo 'در حال اجرا' ;;
+        zh-tw:mi_running) echo '運行中' ;;
+        ja:mi_running) echo '稼働中' ;;
+        zh:mi_stopped) echo '已停止' ;;
+        en:mi_stopped) echo 'stopped' ;;
+        ru:mi_stopped) echo 'остановлено' ;;
+        fa:mi_stopped) echo 'متوقف' ;;
+        zh-tw:mi_stopped) echo '已停止' ;;
+        ja:mi_stopped) echo '停止中' ;;
+        zh:mi_not_installed) echo '未安装' ;;
+        en:mi_not_installed) echo 'not installed' ;;
+        ru:mi_not_installed) echo 'не установлено' ;;
+        fa:mi_not_installed) echo 'نصب نشده' ;;
+        zh-tw:mi_not_installed) echo '未安裝' ;;
+        ja:mi_not_installed) echo '未インストール' ;;
+        zh:mi_on) echo '已开启' ;;
+        en:mi_on) echo 'on' ;;
+        ru:mi_on) echo 'вкл' ;;
+        fa:mi_on) echo 'روشن' ;;
+        zh-tw:mi_on) echo '已開啟' ;;
+        ja:mi_on) echo '有効' ;;
+        zh:mi_off) echo '未开启' ;;
+        en:mi_off) echo 'off' ;;
+        ru:mi_off) echo 'выкл' ;;
+        fa:mi_off) echo 'خاموش' ;;
+        zh-tw:mi_off) echo '未開啟' ;;
+        ja:mi_off) echo '無効' ;;
+        zh:mi_none) echo '无' ;;
+        en:mi_none) echo 'none' ;;
+        ru:mi_none) echo 'нет' ;;
+        fa:mi_none) echo 'ندارد' ;;
+        zh-tw:mi_none) echo '無' ;;
+        ja:mi_none) echo 'なし' ;;
+        zh:mi_kernel) echo '内核' ;;
+        en:mi_kernel) echo 'kernel' ;;
+        ru:mi_kernel) echo 'ядро' ;;
+        fa:mi_kernel) echo 'هسته' ;;
+        zh-tw:mi_kernel) echo '內核' ;;
+        ja:mi_kernel) echo 'カーネル' ;;
+        zh:mi_hw) echo '硬件' ;;
+        en:mi_hw) echo 'HW' ;;
+        ru:mi_hw) echo 'Железо' ;;
+        fa:mi_hw) echo 'سخت‌افزار' ;;
+        zh-tw:mi_hw) echo '硬體' ;;
+        ja:mi_hw) echo 'HW' ;;
+        zh:mi_mem) echo '内存' ;;
+        en:mi_mem) echo 'RAM' ;;
+        ru:mi_mem) echo 'ОЗУ' ;;
+        fa:mi_mem) echo 'رم' ;;
+        zh-tw:mi_mem) echo '內存' ;;
+        ja:mi_mem) echo 'メモリ' ;;
+        zh:mi_disk) echo '硬盘' ;;
+        en:mi_disk) echo 'Disk' ;;
+        ru:mi_disk) echo 'Диск' ;;
+        fa:mi_disk) echo 'دیسک' ;;
+        zh-tw:mi_disk) echo '硬碟' ;;
+        ja:mi_disk) echo 'ディスク' ;;
+        zh:mi_net) echo '网络' ;;
+        en:mi_net) echo 'Network' ;;
+        ru:mi_net) echo 'Сеть' ;;
+        fa:mi_net) echo 'شبکه' ;;
+        zh-tw:mi_net) echo '網絡' ;;
+        ja:mi_net) echo 'ネットワーク' ;;
+        zh:mi_hy2_hop) echo '跳跃端口 %s' ;;
+        en:mi_hy2_hop) echo 'hop ports %s' ;;
+        ru:mi_hy2_hop) echo 'порты hop %s' ;;
+        fa:mi_hy2_hop) echo 'درگاه‌های hop ‏%s' ;;
+        zh-tw:mi_hy2_hop) echo '跳躍連接埠 %s' ;;
+        ja:mi_hy2_hop) echo 'ホップポート %s' ;;
         *) echo "$key" ;;
     esac
 }
@@ -9506,11 +9578,10 @@ trojan_toolbox_entry() {
         *) deploy_xray_trojan_landing ;;
     esac
 }
-# ============ Main menu info lines (versions / system / nodes / split) ============
-# Collected once per main_loop invocation (not per redraw) for performance.
+# ============ Main menu info panel (versions / system / nodes / split) ============
+# Collected once per main_loop invocation (cached), not per redraw.
 
 _menu_info_collect() {
-    # Skip if already collected in this session
     [[ -n "${_MI_COLLECTED:-}" ]] && return 0
     _MI_COLLECTED=1
 
@@ -9535,16 +9606,29 @@ _menu_info_collect() {
     _MI_XRUN="$xrun"; _MI_SRUN="$srun"; _MI_HRUN="$hrun"
 
     # --- system info ---
-    local os_name='?' kernel='?' cpu_n='?' mem_g='?' virt='?' bbr='?' up_days='?' ipv6='无'
+    local os_name='?' kernel='?' cpu_n='?' cpu_model='' mem_tot='?' mem_used='?'
+    local disk_sz='?' disk_kind='' virt='?' bbr='?' up_days='0' ipv6=''
     if [[ -f /etc/os-release ]]; then
-        os_name=$(grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d'"' -f2 | awk '{print $1, $2}')
+        os_name=$(grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d'"' -f2 | sed 's/ GNU\/Linux//')
         [[ -z "$os_name" ]] && os_name='?'
     fi
-    kernel=$(uname -r 2>/dev/null | cut -d. -f1,2)
+    kernel=$(uname -r 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' || uname -r)
     cpu_n=$(nproc 2>/dev/null || echo '?')
+    cpu_model=$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | sed 's/^ *//;s/ *$//;s/ Processor//;s/ CPU @ .*//;s/(R)//g;s/(TM)//g')
+    # shorten long CPU names: keep first 3 words
+    cpu_model=$(echo "$cpu_model" | awk '{print $1, $2, $3}')
     if command -v free >/dev/null 2>&1; then
-        mem_g=$(free -g 2>/dev/null | awk '/^Mem:/{print $2}')
-        [[ -z "$mem_g" || "$mem_g" == "0" ]] && mem_g=$(free -m 2>/dev/null | awk '/^Mem:/{printf "%.1f", $2/1024}')
+        mem_tot=$(free -m 2>/dev/null | awk '/^Mem:/{printf "%.1f", $2/1024}')
+        mem_used=$(free -m 2>/dev/null | awk '/^Mem:/{printf "%.1f", $3/1024}')
+        [[ -z "$mem_tot" ]] && mem_tot='?'
+    fi
+    disk_sz=$(df -h / 2>/dev/null | awk 'NR==2{print $2}')
+    [[ -z "$disk_sz" ]] && disk_sz='?'
+    if command -v lsblk >/dev/null 2>&1; then
+        local _rota
+        _rota=$(lsblk -dno ROTA 2>/dev/null | head -1)
+        [[ "$_rota" == "0" ]] && disk_kind='SSD'
+        [[ "$_rota" == "1" ]] && disk_kind='HDD'
     fi
     if command -v systemd-detect-virt >/dev/null 2>&1; then
         virt=$(systemd-detect-virt 2>/dev/null || echo '?')
@@ -9553,14 +9637,12 @@ _menu_info_collect() {
     if [[ -f /proc/uptime ]]; then
         up_days=$(awk '{printf "%d", $1/86400}' /proc/uptime 2>/dev/null)
     fi
-    # IPv6 check (cheap)
-    if ip -6 addr show scope global 2>/dev/null | grep -q 'inet6'; then
-        ipv6='有'
-    fi
-    _MI_OS="$os_name"; _MI_KERNEL="$kernel"; _MI_CPU="$cpu_n"; _MI_MEM="$mem_g"
+    ipv6=$(ip -6 addr show scope global 2>/dev/null | grep -oE 'inet6 [0-9a-f:]+' | head -1 | awk '{print $2}')
+    _MI_OS="$os_name"; _MI_KERNEL="$kernel"; _MI_CPU="$cpu_n"; _MI_CPU_MODEL="$cpu_model"
+    _MI_MEM="$mem_tot"; _MI_MEM_USED="$mem_used"; _MI_DISK="$disk_sz"; _MI_DISK_KIND="$disk_kind"
     _MI_VIRT="$virt"; _MI_BBR="$bbr"; _MI_UP="$up_days"; _MI_IPV6="$ipv6"
 
-    # --- deployed nodes (from live config): "Vision:443 SNI amazon.com" style ---
+    # --- deployed nodes (from live config) ---
     local nodes=''
     if [[ "$_MI_XRUN" == "1" && -f /usr/local/etc/xray/config.json ]]; then
         nodes=$(jq -r '.inbounds[]? | select(.tag != "api") |
@@ -9570,59 +9652,99 @@ _menu_info_collect() {
              elif .protocol == "shadowsocks" then "SS"
              elif .protocol == "vmess" then "VMess"
              elif .protocol == "trojan" then "Trojan"
+             elif .protocol == "socks" then "SOCKS5"
              else .protocol end) as $n
             | "\($n):\(.port)\((.streamSettings.realitySettings.serverNames[0] // empty | if . == "" then empty else " SNI " + . end))"' \
-            /usr/local/etc/xray/config.json 2>/dev/null | tr '\n' ' ')
+            /usr/local/etc/xray/config.json 2>/dev/null | tr '\n' ' | ')
     elif [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]]; then
-        nodes=$(jq -r '.inbounds[]? | "\(.type):\(.listen_port)"' /etc/sing-box/config.json 2>/dev/null | tr '\n' ' ')
+        nodes=$(jq -r '.inbounds[]? |
+            (if .type == "vless" then "VLESS" elif .type == "shadowsocks" then "SS"
+             elif .type == "hysteria2" then "Hy2" elif .type == "mixed" then "SOCKS5"
+             elif .type == "socks" then "SOCKS5" else .type end)
+            | "\(.) :\(.listen_port)"' /etc/sing-box/config.json 2>/dev/null | tr '\n' ' | ' | sed 's/ :/:/g')
     fi
-    # Hy2 runs as a separate service; port from env
+    nodes="${nodes% | }"
+    # Hy2: separate service; port + hop range from env
+    local hy2_note=''
     if [[ "$_MI_HRUN" == "1" ]]; then
-        local _hy2port=''
-        if load_abox_env "$ABOX_ENV" 2>/dev/null; then _hy2port="${HY2_BASE_PORT:-}"; fi
-        [[ -n "$_hy2port" ]] && nodes="${nodes} Hy2:${_hy2port}"
+        if load_abox_env "$ABOX_ENV" 2>/dev/null; then
+            [[ -n "${HY2_BASE_PORT:-}" ]] && hy2_note="Hy2:${HY2_BASE_PORT}"
+            if [[ "${HY2_HOP:-}" == true && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" ]]; then
+                hy2_note="${hy2_note:+$hy2_note }$(tprintf mi_hy2_hop "${HY2_RANGE_START}-${HY2_RANGE_END}")"
+            fi
+        fi
     fi
+    [[ -n "$hy2_note" ]] && nodes="${nodes:+$nodes | }$hy2_note"
     _MI_NODES="$nodes"
+    _MI_SOCKS=''
+    [[ "$nodes" == *'SOCKS5:'* ]] && _MI_SOCKS='on'
 
-    # --- split/WARP status ---
-    local warp_st='未部署' rule_n=0
+    # --- split/WARP status + rule summary ---
+    local warp_st='' rule_n=0 rule_summary=''
     if [[ -f "$ROUTING_STATE_FILE" ]]; then
-        routing_outbound_has 'warp-out' 2>/dev/null && warp_st='已部署'
+        routing_outbound_has 'warp-out' 2>/dev/null && warp_st='on'
         rule_n=$(jq '.rules | length' "$ROUTING_STATE_FILE" 2>/dev/null || echo 0)
+        rule_summary=$(jq -r '.rules[]? | "\(.domains | map(sub("geosite:";"")) | join(",")) → \(.outbound)"' "$ROUTING_STATE_FILE" 2>/dev/null | head -3 | tr '\n' '；')
     fi
-    _MI_WARP="$warp_st"; _MI_RULES="$rule_n"
+    _MI_WARP="$warp_st"; _MI_RULES="$rule_n"; _MI_RULE_SUMMARY="$rule_summary"
 }
 
-# Display the 4 info lines. Called after the status-row separator.
+# Display the info panel. Called after the status-row separator.
 _menu_info_display() {
     _menu_info_collect || return 0
-    local dot_g="●" dot_r="○"
-    # versions line
-    local vline="  $(tr_msg mi_version)："
+    local run_txt stop_txt off_txt
+    run_txt=$(tr_msg mi_running); stop_txt=$(tr_msg mi_stopped); off_txt=$(tr_msg mi_not_installed)
+    # --- versions ---
+    local vline="  ${LIGHTBLUE}$(tr_msg mi_version)：${NC} "
     if [[ -n "$_MI_XV" ]]; then
         vline+="Xray v${_MI_XV} "
-        [[ "$_MI_XRUN" == "1" ]] && vline+="${GREEN}${dot_g}${NC} " || vline+="${RED}${dot_r}${NC} "
+        [[ "$_MI_XRUN" == "1" ]] && vline+="${GREEN}${run_txt}${NC} · " || vline+="${RED}${stop_txt}${NC} · "
     fi
     if [[ -n "$_MI_HV" ]]; then
-        vline+="· Hy2 v${_MI_HV} "
-        [[ "$_MI_HRUN" == "1" ]] && vline+="${GREEN}${dot_g}${NC} " || vline+="${RED}${dot_r}${NC} "
+        vline+="Hy2 v${_MI_HV} "
+        [[ "$_MI_HRUN" == "1" ]] && vline+="${GREEN}${run_txt}${NC} · " || vline+="${RED}${stop_txt}${NC} · "
     fi
     if [[ -n "$_MI_SV" ]]; then
-        vline+="· sing-box v${_MI_SV} "
-        [[ "$_MI_SRUN" == "1" ]] && vline+="${GREEN}${dot_g}${NC} " || vline+="${RED}${dot_r}${NC} "
+        vline+="sing-box v${_MI_SV} "
+        [[ "$_MI_SRUN" == "1" ]] && vline+="${GREEN}${run_txt}${NC}" || vline+="${RED}${stop_txt}${NC}"
     fi
-    [[ -z "$_MI_XV$_MI_SV$_MI_HV" ]] && vline+="$(tr_msg mi_no_core)"
-    msg "${LIGHTBLUE}$vline${NC}"
-    # system line
-    msg "  ${LIGHTBLUE}$(tr_msg mi_system)：${NC} ${_MI_OS} (${_MI_KERNEL}) · ${_MI_CPU}$(tr_msg mi_cores) ${_MI_MEM}G · ${_MI_VIRT} · BBR ${_MI_BBR} · $(tprintf mi_uptime "$_MI_UP") · IPv6 ${_MI_IPV6}"
-    # nodes line
+    [[ -z "$_MI_XV$_MI_SV$_MI_HV" ]] && vline+="${RED}$(tr_msg mi_no_core)${NC}"
+    vline="${vline% · }"
+    msg "$vline"
+    # --- system ---
+    local bbr_txt
+    if [[ "$_MI_BBR" == "bbr" ]]; then bbr_txt="${GREEN}BBR $(tr_msg mi_on)${NC}"; else bbr_txt="BBR ${_MI_BBR}"; fi
+    msg "  ${LIGHTBLUE}$(tr_msg mi_system)：${NC} ${_MI_OS} · $(tr_msg mi_kernel) ${_MI_KERNEL} · ${_MI_VIRT}"
+    local sys2="  ${LIGHTBLUE}$(tr_msg mi_hw)：${NC} ${_MI_CPU_MODEL} (${_MI_CPU}$(tr_msg mi_cores)) · $(tr_msg mi_mem) ${_MI_MEM_USED}/${_MI_MEM}G · $(tr_msg mi_disk) ${_MI_DISK}${_MI_DISK_KIND:+ $_MI_DISK_KIND}"
+    msg "$sys2"
+    msg "  ${LIGHTBLUE}$(tr_msg mi_net)：${NC} IPv4 ${GLOBAL_PUBLIC_IP:-?} · IPv6 ${_MI_IPV6:-$(tr_msg mi_none)} · ${bbr_txt} · $(tprintf mi_uptime "$_MI_UP")"
+    # --- nodes (wrap by segments so long lists never overflow 80 cols) ---
     if [[ -n "$_MI_NODES" ]]; then
-        msg "  ${LIGHTBLUE}$(tr_msg mi_nodes)：${NC} ${_MI_NODES}"
+        local _lbl="  $(tr_msg mi_nodes)： " _cur='' _seg _first=1 _w
+        local _segs
+        IFS='|' read -r -a _segs <<< "${_MI_NODES//|/|}"
+        for _seg in "${_segs[@]}"; do
+            _seg="${_seg# }"; _seg="${_seg% }"
+            [[ -z "$_seg" ]] && continue
+            if [[ -z "$_cur" ]]; then _cur="$_seg"; else
+                _w=$(_disp_width "${_lbl}${_cur} | ${_seg}")
+                if (( _w > 78 )); then
+                    if (( _first )); then msg "  ${LIGHTBLUE}$(tr_msg mi_nodes)：${NC} ${_cur}"; _first=0
+                    else msg "        ${_cur}"; fi
+                    _cur="$_seg"
+                else _cur="${_cur} | ${_seg}"; fi
+            fi
+        done
+        [[ -n "$_cur" ]] && { if (( _first )); then msg "  ${LIGHTBLUE}$(tr_msg mi_nodes)：${NC} ${_cur}"; else msg "        ${_cur}"; fi; }
     else
         msg "  ${LIGHTBLUE}$(tr_msg mi_nodes)：${NC} $(tr_msg mi_no_nodes)"
     fi
-    # split line
-    msg "  ${LIGHTBLUE}$(tr_msg mi_split)：${NC} WARP ${_MI_WARP} │ $(tprintf mi_rules "$_MI_RULES")"
+    # --- split ---
+    local warp_txt socks_txt
+    [[ -n "$_MI_WARP" ]] && warp_txt="WARP ${GREEN}$(tr_msg mi_on)${NC}" || warp_txt="WARP $(tr_msg mi_off)"
+    [[ -n "$_MI_SOCKS" ]] && socks_txt="SOCKS5 ${GREEN}$(tr_msg mi_on)${NC}" || socks_txt="SOCKS5 $(tr_msg mi_off)"
+    msg "  ${LIGHTBLUE}$(tr_msg mi_split)：${NC} ${warp_txt} · ${socks_txt} · $(tprintf mi_rules "$_MI_RULES")"
+    [[ -n "$_MI_RULE_SUMMARY" ]] && msg "    ${_MI_RULE_SUMMARY}"
     msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
 }
 
@@ -23508,10 +23630,10 @@ main_loop() {
             CUR_MODE=''
         fi
         clear
-        _abox_tk="Linux Gateway Toolkit"
-        _abox_pad=$((70 - 5 - ${#_abox_tk}))
-        printf "${YELLOW}A-Box${NC}%${_abox_pad}s${GRAY}%s${NC}\n" "" "$_abox_tk"
-        msg "${YELLOW}────────────────────────────────────────────────────────────────────────────────${NC}"
+        msg "${YELLOW}════════════════════════════════════════════════════════════════════════════════${NC}"
+        msg "                                     ${YELLOW}A - B o x${NC}"
+        msg "                          ${GRAY}Linux Gateway Toolkit${NC}"
+        msg "${YELLOW}════════════════════════════════════════════════════════════════════════════════${NC}"
         case "${ABOX_LANG:-zh}" in
             en)
                 _menu_status_row "Gateway" "Core" "Mode"

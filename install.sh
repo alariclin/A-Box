@@ -742,6 +742,36 @@ tr_msg() {
         fa:anytls_done) echo 'AnyTLS مستقر شد، لینک زیر:' ;;
         zh-tw:anytls_done) echo 'AnyTLS 部署完成，連結如下：' ;;
         ja:anytls_done) echo 'AnyTLS を展開しました。リンク：' ;;
+        zh:shadowtls_title) echo '部署 ShadowTLS 落地代理 (sing-box)' ;;
+        en:shadowtls_title) echo 'Deploy ShadowTLS landing proxy (sing-box)' ;;
+        ru:shadowtls_title) echo 'Развернуть ShadowTLS (sing-box)' ;;
+        fa:shadowtls_title) echo 'استقرار ShadowTLS (sing-box)' ;;
+        zh-tw:shadowtls_title) echo '部署 ShadowTLS 落地代理 (sing-box)' ;;
+        ja:shadowtls_title) echo 'ShadowTLS を展開 (sing-box)' ;;
+        zh:shadowtls_port_prompt) echo '请输入 ShadowTLS 监听端口 (回车默认 443): ' ;;
+        en:shadowtls_port_prompt) echo 'Enter ShadowTLS listen port (Enter for 443): ' ;;
+        ru:shadowtls_port_prompt) echo 'Порт ShadowTLS (Enter = 443): ' ;;
+        fa:shadowtls_port_prompt) echo 'پورت ShadowTLS (Enter = 443): ' ;;
+        zh-tw:shadowtls_port_prompt) echo '請輸入 ShadowTLS 監聽連接埠 (預設 443): ' ;;
+        ja:shadowtls_port_prompt) echo 'ShadowTLS のポート (デフォルト 443): ' ;;
+        zh:shadowtls_pass_prompt) echo '请输入 ShadowTLS 密码 (回车自动生成随机密码): ' ;;
+        en:shadowtls_pass_prompt) echo 'Enter ShadowTLS password (Enter to auto-generate): ' ;;
+        ru:shadowtls_pass_prompt) echo 'Пароль ShadowTLS (Enter для автогенерации): ' ;;
+        fa:shadowtls_pass_prompt) echo 'گذرواژه ShadowTLS (Enter برای تولید خودکار): ' ;;
+        zh-tw:shadowtls_pass_prompt) echo '請輸入 ShadowTLS 密碼 (Enter 自動產生): ' ;;
+        ja:shadowtls_pass_prompt) echo 'ShadowTLS パスワード (Enter で自動生成): ' ;;
+        zh:shadowtls_exists) echo '检测到已存在 shadowtls-in 入站，将更新其配置。' ;;
+        en:shadowtls_exists) echo 'Existing shadowtls-in inbound detected; updating its config.' ;;
+        ru:shadowtls_exists) echo 'Обнаружен существующий shadowtls-in; обновляю конфиг.' ;;
+        fa:shadowtls_exists) echo 'ورودی shadowtls-in موجود شناسایی شد؛ در حال به‌روزرسانی پیکربندی.' ;;
+        zh-tw:shadowtls_exists) echo '偵測到已存在 shadowtls-in 入站，將更新其設定。' ;;
+        ja:shadowtls_exists) echo '既存の shadowtls-in が見つかりました。設定を更新します。' ;;
+        zh:shadowtls_done) echo 'ShadowTLS 部署完成，链接如下：' ;;
+        en:shadowtls_done) echo 'ShadowTLS deployed, link below:' ;;
+        ru:shadowtls_done) echo 'ShadowTLS развернут, ссылка ниже:' ;;
+        fa:shadowtls_done) echo 'ShadowTLS مستقر شد، لینک زیر:' ;;
+        zh-tw:shadowtls_done) echo 'ShadowTLS 部署完成，連結如下：' ;;
+        ja:shadowtls_done) echo 'ShadowTLS を展開しました。リンク：' ;;
         zh:socks5_pass_prompt) echo '请输入 SOCKS5 密码 (回车自动生成随机密码): ' ;;
         en:socks5_pass_prompt) echo 'Enter SOCKS5 password (Enter to auto-generate): ' ;;
         ru:socks5_pass_prompt) echo 'Введите пароль SOCKS5 (Enter для автогенерации): ' ;;
@@ -9979,6 +10009,287 @@ EOF_SVC
     generate_qr "$link"
 }
 
+
+# Standalone Trojan-Reality via Xray-core (toolbox entry).
+# Reuses A-Box Reality key/SNI flow: xray x25519 + sni_auto_select_default.
+# Tag: trojan-landing. Hot-push via API when available, restart fallback.
+deploy_xray_trojan_landing() {
+    local port pass sni pk pbk sid cfg='/usr/local/etc/xray/config.json'
+    local tag='trojan-landing' tmp_json
+    clear; msg "${BOLD}${GREEN}$(tr_msg trojan_title)${NC}"
+    init_system_environment
+    load_optional_abox_env_or_die
+    light_preflight_check
+
+    port=$(prompt_validated "$(tr_msg trojan_port_prompt)" port '443') || die 'Trojan port input failed.'
+    read -r -p "$(tr_msg trojan_pass_prompt)" pass || pass=''
+    if [[ -z "$pass" ]]; then
+        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'Trojan password generation failed.'
+        [[ -n "$pass" ]] || die 'Trojan password generation failed.'
+    fi
+
+    # Minimal Xray install when the binary is missing (mirror SOCKS5 flow).
+    if [[ ! -x /usr/local/bin/xray ]]; then
+        local xray_tmp xray_zip xray_ext
+        get_architecture
+        xray_tmp=$(mktemp -d /tmp/A-Box-xray-trojan.XXXXXX) || die 'Xray 临时目录创建失败。'
+        xray_zip="$xray_tmp/xray_core.zip"
+        xray_ext="$xray_tmp/xray_ext"
+        mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
+        clear_core_release_resolution XTLS/Xray-core
+        fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
+        extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die 'Xray 压缩包安全提取失败。'
+        [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die '安全提取后未找到 xray 主程序。'
+        chmod 755 "$xray_ext/xray" || die 'Xray staged binary chmod failed.'
+        "$xray_ext/xray" version >/dev/null 2>&1 || die 'Xray staged binary execution check failed.'
+        install_binary_atomically "$xray_ext/xray" /usr/local/bin/xray || die 'Xray binary atomic install failed.'
+        /usr/local/bin/xray version >/dev/null 2>&1 || die 'Xray 执行校验失败。'
+        prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
+        rm -rf -- "$xray_tmp"
+        tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{loglevel:"warning"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
+            || die 'Xray 初始配置生成失败。'
+        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Xray config 原子写入失败。'
+        rm -f "$tmp_json"
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die 'Xray systemd unit 原子写入失败。'
+# Managed by A-Box
+[Unit]
+Description=A-Box Xray Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-xray
+Group=abox-xray
+UMask=0077
+Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        else
+            path_parent_chain_safe /etc/conf.d/xray || die 'OpenRC conf.d 父链不安全。'
+            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+            write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die 'Xray OpenRC conf.d 原子写入失败。'
+export XRAY_LOCATION_ASSET="/usr/local/share/xray"
+EOF_XRAY_CONFD
+            write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die 'Xray OpenRC unit 原子写入失败。'
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Xray Service"
+command="/usr/local/bin/xray"
+command_args="run -config /usr/local/etc/xray/config.json"
+command_background="yes"
+command_user="abox-xray:abox-xray"
+capabilities="cap_net_bind_service"
+umask=077
+pidfile="/run/xray.pid"
+depend() { need net; }
+EOF_SVC
+            chmod +x /etc/init.d/xray || die 'Xray OpenRC 服务权限设置失败。'
+        fi
+        prepare_abox_runtime_permissions xray || die 'Xray 运行时用户/文件权限准备失败。'
+    fi
+
+    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
+    [[ -n "$sni" ]] || sni='www.amazon.com'
+
+    # shadowtls v3 (strict) detouring to a loopback-only SS-2022 inbound that
+    # has no listen_port of its own (reachable only through the detour).
+    tmp_json=$(mktemp /tmp/A-Box-sb-shadowtls-inbound.XXXXXX) || die '临时文件创建失败。'
+    jq -n --argjson port "$port" --arg pass "$pass" --arg inner "$inner" --arg sni "$sni" \
+        '({type:"shadowtls",tag:"shadowtls-in",listen:"0.0.0.0",listen_port:$port,version:3,strict_mode:true,
+           users:[{password:$pass}],handshake:{server:$sni,server_port:443},detour:"shadowtls-ss"}),
+         ({type:"shadowsocks",tag:"shadowtls-ss",listen:"127.0.0.1",network:"tcp",
+           method:"2022-blake3-aes-128-gcm",password:$inner,multiplex:{enabled:true,padding:true}})' \
+        > "$tmp_json" || die 'ShadowTLS inbound JSON 生成失败。'
+
+    local tmp_cfg
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        msg "${YELLOW}$(tr_msg shadowtls_exists)${NC}"
+    fi
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    if ! jq --slurpfile nb "$tmp_json" \
+            '(.inbounds | map(select(.tag=="shadowtls-in" or .tag=="shadowtls-ss"))) as $old
+             | .inbounds |= (map(select(.tag!="shadowtls-in" and .tag!="shadowtls-ss")) + $nb)' \
+            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+        rm -f "$tmp_cfg" "$tmp_json"; die 'ShadowTLS inbound 配置更新失败。'
+    fi
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
+        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+    rm -f "$tmp_cfg" "$tmp_json"
+
+    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+
+    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    service_manager start sing-box 2>/dev/null || true
+    set_desired_state RUNNING 2>/dev/null || true
+
+    local pub_ip
+    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
+    local user_b64 plugin_b64
+    user_b64=$(printf '%s' "2022-blake3-aes-128-gcm:${inner}@${pub_ip}:${port}" | base64 | tr -d '\n\r')
+    plugin_b64=$(printf '%s' "{\"version\":\"3\",\"host\":\"${sni}\",\"password\":\"${pass}\"}" | base64 | tr -d '\n\r')
+    local link="ss://${user_b64}?shadow-tls=${plugin_b64}#ShadowTLS"
+    msg "${GREEN}$(tr_msg shadowtls_done)${NC}"
+    msg "$link"
+    msg "Clash: - {name: \"ShadowTLS\", type: ss, server: ${pub_ip}, port: ${port}, cipher: 2022-blake3-aes-128-gcm, password: ${inner}, plugin: shadow-tls, client-fingerprint: chrome, plugin-opts: {host: ${sni}, password: \"${pass}\", version: 3}}"
+    generate_qr "$link"
+}
+
+deploy_singbox_shadowtls() {
+    local port pass inner sni cfg='/etc/sing-box/config.json'
+    local tag='shadowtls-in' tmp_json
+    clear; msg "${BOLD}${GREEN}$(tr_msg shadowtls_title)${NC}"
+    init_system_environment
+    load_optional_abox_env_or_die
+    light_preflight_check
+
+    port=$(prompt_validated "$(tr_msg shadowtls_port_prompt)" port '443') || die 'ShadowTLS port input failed.'
+    read -r -p "$(tr_msg shadowtls_pass_prompt)" pass || pass=''
+    if [[ -z "$pass" ]]; then
+        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'ShadowTLS password generation failed.'
+        [[ -n "$pass" ]] || die 'ShadowTLS password generation failed.'
+    fi
+    inner=$(openssl rand -base64 16 | tr -d '\n\r') || die 'ShadowTLS SS password generation failed.'
+    [[ -n "$inner" ]] || die 'ShadowTLS SS password generation failed.'
+
+    # Minimal sing-box install when the binary is missing.
+    if [[ ! -x /usr/local/bin/sing-box ]]; then
+        local sb_tmp sb_tar sb_ext SB_PATH
+        get_architecture
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-shadowtls.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tar="$sb_tmp/singbox_core.tar.gz"
+        sb_ext="$sb_tmp/extract"
+        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        clear_core_release_resolution SagerNet/sing-box
+        fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
+        SB_PATH="$sb_ext/sing-box"
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        rm -rf -- "$sb_tmp"
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die 'Sing-box 初始配置生成失败。'
+        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+        rm -f "$tmp_json"
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+# Managed by A-Box
+[Unit]
+Description=A-Box Sing-Box Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-singbox
+Group=abox-singbox
+UMask=0077
+ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        else
+            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
+            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+rc_ulimit="-n 1048576"
+EOF_SB_CONFD
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Sing-Box Service"
+command="/usr/local/bin/sing-box"
+command_args="run -c /etc/sing-box/config.json"
+command_background="yes"
+command_user="abox-singbox:abox-singbox"
+umask=077
+pidfile="/run/sing-box.pid"
+depend() { need net; }
+EOF_SVC
+            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+        fi
+        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+    fi
+
+    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
+    [[ -n "$sni" ]] || sni='www.amazon.com'
+
+    # shadowtls v3 (strict) detouring to a loopback-only SS-2022 inbound that
+    # has no listen_port of its own (reachable only through the detour).
+    tmp_json=$(mktemp /tmp/A-Box-sb-shadowtls-inbound.XXXXXX) || die '临时文件创建失败。'
+    jq -n --argjson port "$port" --arg pass "$pass" --arg inner "$inner" --arg sni "$sni" \
+        '({type:"shadowtls",tag:"shadowtls-in",listen:"0.0.0.0",listen_port:$port,version:3,strict_mode:true,
+           users:[{password:$pass}],handshake:{server:$sni,server_port:443},detour:"shadowtls-ss"}),
+         ({type:"shadowsocks",tag:"shadowtls-ss",listen:"127.0.0.1",network:"tcp",
+           method:"2022-blake3-aes-128-gcm",password:$inner,multiplex:{enabled:true,padding:true}})' \
+        > "$tmp_json" || die 'ShadowTLS inbound JSON 生成失败。'
+
+    local tmp_cfg
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        msg "${YELLOW}$(tr_msg shadowtls_exists)${NC}"
+    fi
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    if ! jq --slurpfile nb "$tmp_json" \
+            '(.inbounds | map(select(.tag=="shadowtls-in" or .tag=="shadowtls-ss"))) as $old
+             | .inbounds |= (map(select(.tag!="shadowtls-in" and .tag!="shadowtls-ss")) + $nb)' \
+            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+        rm -f "$tmp_cfg" "$tmp_json"; die 'ShadowTLS inbound 配置更新失败。'
+    fi
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
+        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+    rm -f "$tmp_cfg" "$tmp_json"
+
+    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+
+    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    service_manager start sing-box 2>/dev/null || true
+    set_desired_state RUNNING 2>/dev/null || true
+
+    local pub_ip
+    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
+    local user_b64 plugin_b64
+    user_b64=$(printf '%s' "2022-blake3-aes-128-gcm:${inner}@${pub_ip}:${port}" | base64 | tr -d '\n\r')
+    plugin_b64=$(printf '%s' "{\"version\":\"3\",\"host\":\"${sni}\",\"password\":\"${pass}\"}" | base64 | tr -d '\n\r')
+    local link="ss://${user_b64}?shadow-tls=${plugin_b64}#ShadowTLS"
+    msg "${GREEN}$(tr_msg shadowtls_done)${NC}"
+    msg "$link"
+    msg "Clash: - {name: \"ShadowTLS\", type: ss, server: ${pub_ip}, port: ${port}, cipher: 2022-blake3-aes-128-gcm, password: ${inner}, plugin: shadow-tls, client-fingerprint: chrome, plugin-opts: {host: ${sni}, password: \"${pass}\", version: 3}}"
+    generate_qr "$link"
+}
+
 # Other-protocols entry: standalone Trojan-Reality, free core choice.
 trojan_toolbox_entry() {
     local _core_choice='' _default='1'
@@ -10122,10 +10433,10 @@ _menu_info_collect() {
         sni=$(jq -r '[.inbounds[]? | select(.tag != "api") | .streamSettings.realitySettings.serverNames[0] // empty][0] // empty' \
             /usr/local/etc/xray/config.json 2>/dev/null)
     elif [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]]; then
-        nodes=$(jq -r '.inbounds[]? |
+        nodes=$(jq -r '.inbounds[]? | select(.tag != "shadowtls-ss") |
             (if .type == "vless" then "VLESS" elif .type == "shadowsocks" then "SS"
              elif .type == "hysteria2" then "Hy2" elif .type == "mixed" then "SOCKS5"
-             elif .type == "socks" then "SOCKS5" elif .type == "tuic" then "TUIC" elif .type == "anytls" then "AnyTLS" else .type end)
+             elif .type == "socks" then "SOCKS5" elif .type == "tuic" then "TUIC" elif .type == "anytls" then "AnyTLS" elif .type == "shadowtls" then "ShadowTLS" else .type end)
             | "\(.) :\(.listen_port)"' /etc/sing-box/config.json 2>/dev/null | tr '\n' '|' | sed 's/ :/:/g;s/|$//')
     fi
     nodes="${nodes%|}"
@@ -20094,6 +20405,7 @@ other_protocols_menu() {
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${GREEN}0. Back${NC}"
             ;;
         ru)
@@ -20102,6 +20414,7 @@ other_protocols_menu() {
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${GREEN}0. Назад${NC}"
             ;;
         fa)
@@ -20110,6 +20423,7 @@ other_protocols_menu() {
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
         zh-tw)
@@ -20118,6 +20432,7 @@ other_protocols_menu() {
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${GREEN}0. 返回主選單${NC}"
             ;;
         ja)
@@ -20126,6 +20441,7 @@ other_protocols_menu() {
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${GREEN}0. メインメニューに戻る${NC}"
             ;;
         *)
@@ -20134,17 +20450,19 @@ other_protocols_menu() {
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${GREEN}0. 返回主菜单${NC}"
             ;;
     esac
     local op_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-4]: ' ;; ru) select_prompt='Выберите [0–4]: ' ;; fa) select_prompt='انتخاب [۰ تا ۴]: ' ;; ja) select_prompt='選択してください [0-4]: ' ;; zh-tw) select_prompt='請選擇 [0-4]：' ;; *) select_prompt='请选择 [0-4]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-5]: ' ;; ru) select_prompt='Выберите [0–5]: ' ;; fa) select_prompt='انتخاب [۰ تا ۵]: ' ;; ja) select_prompt='選択してください [0-5]: ' ;; zh-tw) select_prompt='請選擇 [0-5]：' ;; *) select_prompt='请选择 [0-5]：' ;; esac
     read -r -p "$select_prompt" op_choice || return 0
     case "$op_choice" in
         1) trojan_toolbox_entry; pause_return ;;
         2) deploy_singbox_tuic; pause_return ;;
         3) deploy_singbox_anytls; pause_return ;;
         4) socks5_toolbox_entry; pause_return ;;
+        5) deploy_singbox_shadowtls; pause_return ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $op_choice${NC}"; sleep 1 ;;
     esac

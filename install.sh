@@ -11072,8 +11072,10 @@ _menu_info_collect() {
     [[ -x /usr/local/bin/hysteria ]] && hst=stop; [[ "$hrun" == 1 ]] && hst=run
     local f2st=none dost=none
     if command -v fail2ban-client >/dev/null 2>&1; then f2st=stop; fail2ban-client ping >/dev/null 2>&1 && f2st=run; fi
-    if command -v docker >/dev/null 2>&1; then dost=stop; is_service_running docker 2>/dev/null && dost=run; fi
-    _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"; _MI_F2B="$f2st"; _MI_DOCKER="$dost"
+    if command -v docker >/dev/null 2>&1 && docker container inspect wallos >/dev/null 2>&1; then
+        dost=stop; [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null)" == 'true' ]] && dost=run
+    fi
+    _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"; _MI_F2B="$f2st"; _MI_WALLOS="$dost"
 
     # --- system info ---
     local os_name='?' kernel='?' cpu_n='?' cpu_model='' mem_tot='?' mem_used='?'
@@ -11255,7 +11257,7 @@ _menu_info_display() {
     local _cells=("Xray|$_MI_XST" "Hy2|$_MI_HST" "sing-box|$_MI_SST" "SOCKS5|$_MI_SOCKS_ST")
     [[ "$_MI_BBR" == 'bbr' ]] && _cells+=("BBR|run") || _cells+=("BBR|none")
     [[ -n "$_MI_WARP" ]] && _cells+=("WARP|run")
-    _cells+=("Fail2ban|$_MI_F2B" "Docker|$_MI_DOCKER")
+    _cells+=("Fail2ban|$_MI_F2B" "Wallos|$_MI_WALLOS")
     local _c _nm _st
     for _c in "${_cells[@]}"; do
         _nm="${_c%%|*}"; _st="${_c##*|}"
@@ -20705,7 +20707,7 @@ wallos_public_urls() {
             msg "${BOLD}── Wallos 使用教程 ──${NC}"
             msg "1) 访问：手机/电脑浏览器打开上面的 Wallos 网址，首次打开先创建管理员账号和密码（请设强密码，里面是财务数据）。"
             msg "2) 打不开，多半是云安全组没放行：到云厂商控制台给这台机器放行 TCP ${port} 端口（Lightsail：实例 → 联网 → IPv4 防火墙 → 添加规则，协议 TCP、端口 ${port}；阿里云/腾讯云：安全组入方向放行）。本机防火墙已由脚本自动放行，不用管。"
-            msg "3) 安全：已自动启用 Fail2Ban 专用防护拦截暴力登录；该网址是 HTTP 明文，不要在公共 Wi-Fi 下登录，长期使用建议再套一层 HTTPS 反向代理。"
+            msg "3) 安全：随机高位端口 + Fail2Ban 专用防护已自动启用（拦截暴力登录）；该网址是 HTTP 明文，不要在公共 Wi-Fi 下登录，长期使用建议再套一层 HTTPS 反向代理。"
         else
             msg "${BOLD}-- Wallos quick guide --${NC}"
             msg "1) Open the Wallos URL above in any browser; on first visit create the admin account and password (use a strong one - this is financial data)."
@@ -20800,6 +20802,39 @@ wallos_install_or_update() {
     if [[ -n "${WALLOS_BIND_ADDRESS:-}" && "$bind_address" != 127.0.0.1 && "$bind_address" != 0.0.0.0 ]]; then
         msg "${RED}WALLOS_BIND_ADDRESS override must be 127.0.0.1 or 0.0.0.0.${NC}"; return 1
     fi
+    # Simplified exposure choice (interactive only): public direct is
+    # the default pick; localhost-only stays available. The choice is
+    # the decision, so the generic bind confirm below is skipped then.
+    # Non-interactive runs keep the env/preserved/default bind unchanged.
+    local _bind_chosen=0
+    if [[ -z "${WALLOS_BIND_ADDRESS:-}" && -t 0 && "$bind_address" != 0.0.0.0 ]]; then
+        local _ans=''
+        case "${ABOX_LANG:-zh}" in
+            en) printf 'Wallos access mode: [1] Public direct (open the Wallos URL from any device; plain HTTP with Fail2Ban brute-force protection)  [2] Localhost only (SSH tunnel). Choose [1]: ' ;;
+            *) printf 'Wallos 访问方式：[1] 公网直连（任意设备打开网址即可访问；明文 HTTP，已带 Fail2Ban 防暴力破解）[2] 仅本机（用 SSH 隧道访问）。请选择 [1]: ' ;;
+        esac
+        read -r _ans || _ans=''
+        _bind_chosen=1
+        if [[ "$_ans" == '2' ]]; then bind_address='127.0.0.1'; else bind_address='0.0.0.0'; fi
+        if [[ "$bind_address" == 0.0.0.0 && "$port" =~ ^[0-9]+$ ]] && (( port < 20000 )); then
+            # Public exposure never keeps a predictable port: rotate a
+            # preserved legacy port (e.g. 8282) to a random high one.
+            # Runs before the upgrade journal write; rollback keeps the
+            # old port from its own recorded values.
+            local _np='' _try
+            for _try in $(seq 1 50); do
+                local _cand=$(( (RANDOM * 32768 + RANDOM) % 40001 + 20000 ))
+                if wallos_port_free "$_cand"; then _np="$_cand"; break; fi
+            done
+            if [[ -n "$_np" ]]; then
+                case "${ABOX_LANG:-zh}" in
+                    en) msg "${YELLOW}Public mode uses a random high port: ${port} -> ${_np}; use the URL printed at the end.${NC}" ;;
+                    *) msg "${YELLOW}公网模式已自动换用随机高位端口：${port} → ${_np}（新网址以结尾教程为准）。${NC}" ;;
+                esac
+                port="$_np"
+            fi
+        fi
+    fi
     local confirm_prompt
     case "${ABOX_LANG:-zh}" in
         en)
@@ -20821,7 +20856,7 @@ wallos_install_or_update() {
             if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='警告：Wallos 将以明文 HTTP 绑定所有 IPv4 网卡。只有已配置防火墙/HTTPS 反向代理时才继续。[Y/N]: '
             else confirm_prompt='Wallos 存储个人财务数据，默认仅绑定 127.0.0.1；远程访问请配置 HTTPS 反向代理或 SSH 隧道。是否继续？[Y/N]: '; fi ;;
     esac
-    if ! confirm_yes_no "$confirm_prompt"; then return 0; fi
+    if (( ! _bind_chosen )) && ! confirm_yes_no "$confirm_prompt"; then return 0; fi
 
     wallos_pull_or_restore_image "$arch" || { msg "${RED}Official Wallos source and the A-Box recovery image are both unavailable.${NC}"; return 1; }
     image="$WALLOS_IMAGE_RESULT"
@@ -20928,6 +20963,10 @@ wallos_install_or_update() {
         if confirm_yes_no "Allow TCP $port through UFW? [Y/N]: "; then ufw allow "$port/tcp" || msg "${YELLOW}Could not update UFW; add the rule manually.${NC}"; fi
     elif [[ "$bind_address" == 0.0.0.0 ]] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
         if confirm_yes_no "Allow TCP $port through firewalld? [Y/N]: "; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}Could not update firewalld; add the rule manually.${NC}"; fi
+    fi
+    if [[ "$bind_address" == 0.0.0.0 ]]; then
+        allowPort "$port" tcp 2>/dev/null || true
+        save_firewall_rules 2>/dev/null || true
     fi
     wallos_bruteforce_protection "$port" "$bind_address"
     if [[ "$bind_address" == 0.0.0.0 ]]; then

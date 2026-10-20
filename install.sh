@@ -7517,6 +7517,33 @@ remove_abox_log_files() {
     done < <(abox_log_files)
 }
 
+ensure_fail2ban() {
+    command -v fail2ban-client >/dev/null 2>&1 && return 0
+    msg "${YELLOW}[*] 未检测到 Fail2Ban, 正在自动安装 (主动防御需要)...${NC}"
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -y -q >/dev/null 2>&1 || true
+        apt-get -y install fail2ban >/dev/null 2>&1 || true
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf -y install fail2ban >/dev/null 2>&1 || true
+    elif command -v yum >/dev/null 2>&1; then
+        yum -y install fail2ban >/dev/null 2>&1 || true
+    elif command -v apk >/dev/null 2>&1; then
+        apk add --no-cache fail2ban >/dev/null 2>&1 || true
+    fi
+    if ! command -v fail2ban-client >/dev/null 2>&1; then
+        msg "${RED}[!] Fail2Ban 自动安装失败, 主动防御 (日志封禁) 本次不生效; 节点本身不受影响。${NC}"
+        return 1
+    fi
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        systemctl enable fail2ban >/dev/null 2>&1 || true
+        systemctl start fail2ban >/dev/null 2>&1 || true
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
+        rc-update add fail2ban default >/dev/null 2>&1 || true
+        rc-service fail2ban start >/dev/null 2>&1 || true
+    fi
+    return 0
+}
+
 setup_active_defense() {
     local log_file
     msg "${YELLOW}[*] 正在挂载私有日志与 Fail2Ban 主动防御矩阵...${NC}"
@@ -7540,8 +7567,9 @@ setup_active_defense() {
     # abox-xray / abox-singbox / abox-hysteria (mode 0660 root:group) can keep writing.
 }
 EOF_LOGROTATE
+    ensure_fail2ban || true
     if command -v fail2ban-client >/dev/null 2>&1; then
-        local tcp_ports='' udp_ports='' jail_tmp='' f2b_action='' f2b_backend='' f2b_tcp_action='' f2b_udp_action=''
+        local tcp_ports='' udp_ports='' jail_tmp='' f2b_action='' f2b_backend='' f2b_tcp_action='' f2b_udp_action='' sb_harv='' xr_harv='' f2b_inc='' f2b_ver=''
         path_parent_chain_safe /etc/fail2ban/filter.d/A-Box.conf || die 'Fail2Ban filter 父目录链不安全，拒绝创建或写入。'
         path_parent_chain_safe /etc/fail2ban/jail.d/A-Box.local || die 'Fail2Ban jail 父目录链不安全，拒绝创建或写入。'
         mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d || die 'Fail2Ban 目录创建失败。'
@@ -7567,6 +7595,34 @@ EOF_F2B_FILTER
             udp_ports+="${HY2_RANGE_START}:${HY2_RANGE_END},"
         elif [[ -n "${HY2_BASE_PORT:-}" ]]; then
             udp_ports+="${HY2_BASE_PORT},"
+        fi
+        # Harvest public ports from the live core configs so standalone
+        # protocols (TUIC/AnyTLS/ShadowTLS/Trojan/SOCKS landings) are covered
+        # by the jails too. Loopback inbounds (Argo WS, detour targets) are
+        # excluded: they have no public attack surface.
+        if command -v jq >/dev/null 2>&1 && [[ -r /etc/sing-box/config.json ]]; then
+            sb_harv=$(jq -r '.inbounds[]? | select(.listen_port != null) | select(.listen != "127.0.0.1" and .listen != "::1") | (if .type == "tuic" or .type == "hysteria2" then "udp/\(.listen_port)" elif .type == "shadowsocks" or .type == "socks" or .type == "mixed" then "tcp/\(.listen_port),udp/\(.listen_port)" else "tcp/\(.listen_port)" end)' /etc/sing-box/config.json 2>/dev/null | paste -sd, -)
+            if [[ -n "$sb_harv" ]]; then
+                tcp_ports+=",$(printf '%s' "$sb_harv" | tr ',' '\n' | awk -F/ '$1=="tcp" {print $2}' | paste -sd, -)"
+                udp_ports+=",$(printf '%s' "$sb_harv" | tr ',' '\n' | awk -F/ '$1=="udp" {print $2}' | paste -sd, -)"
+            fi
+        fi
+        if command -v jq >/dev/null 2>&1 && [[ -r /usr/local/etc/xray/config.json ]]; then
+            xr_harv=$(jq -r '.inbounds[]? | select(.port != null and .tag != "api") | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1")) | (if .protocol == "shadowsocks" or .protocol == "socks" then "tcp/\(.port),udp/\(.port)" else "tcp/\(.port)" end)' /usr/local/etc/xray/config.json 2>/dev/null | paste -sd, -)
+            if [[ -n "$xr_harv" ]]; then
+                tcp_ports+=",$(printf '%s' "$xr_harv" | tr ',' '\n' | awk -F/ '$1=="tcp" {print $2}' | paste -sd, -)"
+                udp_ports+=",$(printf '%s' "$xr_harv" | tr ',' '\n' | awk -F/ '$1=="udp" {print $2}' | paste -sd, -)"
+            fi
+        fi
+        tcp_ports=$(printf '%s' "$tcp_ports" | tr ',' '\n' | awk 'NF && !seen[$0]++' | paste -sd, -)
+        udp_ports=$(printf '%s' "$udp_ports" | tr ',' '\n' | awk 'NF && !seen[$0]++' | paste -sd, -)
+        # Repeat offenders: exponential bantime growth (fail2ban >= 0.11 only;
+        # older parsers reject the keys, so gate on the client version).
+        f2b_ver=$(fail2ban-client --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
+        if [[ -n "$f2b_ver" ]] && awk -v v="$f2b_ver" 'BEGIN { split(v, a, "."); exit !(a[1] > 0 || (a[1] == 0 && a[2] >= 11)) }'; then
+            f2b_inc='bantime.increment = true
+bantime.factor = 2
+bantime.maxtime = 86400'
         fi
         tcp_ports="${tcp_ports%,}"; udp_ports="${udp_ports%,}"
         if [[ -n "$tcp_ports" || -n "$udp_ports" ]]; then
@@ -7607,6 +7663,7 @@ logpath = /var/log/A-Box-xray-error.log
 maxretry = 8
 findtime = 120
 bantime = 3600
+${f2b_inc}
 action = ${f2b_tcp_action}
 
 EOF_F2B_TCP
@@ -7622,6 +7679,7 @@ logpath = /var/log/A-Box-singbox.log
 maxretry = 8
 findtime = 120
 bantime = 3600
+${f2b_inc}
 action = ${f2b_udp_action}
 EOF_F2B_UDP
         fi
@@ -9529,6 +9587,7 @@ EOF_SVC
     else
         generate_qr "socks5://${user}:${pass}@${pub_ip}:${port}"
     fi
+    ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 
 # Standalone Trojan-Reality via Xray-core (toolbox entry).
@@ -9961,6 +10020,7 @@ EOF_SVC
     msg "${GREEN}$(tr_msg tuic_done)${NC}"
     msg "$link"
     generate_qr "$link"
+    ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 
 
@@ -10103,6 +10163,7 @@ EOF_SVC
     msg "${GREEN}$(tr_msg anytls_done)${NC}"
     msg "$link"
     generate_qr "$link"
+    ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 
 
@@ -10384,6 +10445,7 @@ EOF_SVC
     msg "$link"
     msg "Clash: - {name: \"ShadowTLS\", type: ss, server: ${pub_ip}, port: ${port}, cipher: 2022-blake3-aes-128-gcm, password: ${inner}, plugin: shadow-tls, client-fingerprint: chrome, plugin-opts: {host: ${sni}, password: \"${pass}\", version: 3}}"
     generate_qr "$link"
+    ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 
 # ================= Argo / CDN front (sing-box WS + cloudflared) =================
@@ -10850,6 +10912,7 @@ trojan_toolbox_entry() {
         2) deploy_singbox_trojan_landing ;;
         *) deploy_xray_trojan_landing ;;
     esac
+    ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 # ============ Main menu info panel (versions / system / nodes / split) ============
 # Collected once per main_loop invocation (cached), not per redraw.
@@ -11809,6 +11872,7 @@ EOF_SVC
     msg "${GREEN}$(tr_msg socks5_done)${NC}"
     msg "socks5://${user}:${pass}@${pub_ip}:${port}"
     generate_qr "socks5://${user}:${pass}@${pub_ip}:${port}"
+    ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 
 

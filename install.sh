@@ -11043,6 +11043,13 @@ _ip_geo_refresh() {
     return 0
 }
 
+_mi_port_listening() {
+    # $1 = ss -tuln dump, $2 = port. Local-address column only in
+    # practice: listener rows carry a wildcard foreign address.
+    [[ -n "$1" && -n "$2" ]] || return 1
+    printf '%s\n' "$1" | grep -qE "[:.]$2[[:space:]]"
+}
+
 _menu_info_collect() {
     [[ -n "${_MI_COLLECTED:-}" ]] && return 0
     _MI_COLLECTED=1
@@ -11075,7 +11082,30 @@ _menu_info_collect() {
     if command -v docker >/dev/null 2>&1 && docker container inspect wallos >/dev/null 2>&1; then
         dost=stop; [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null)" == 'true' ]] && dost=run
     fi
-    _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"; _MI_F2B="$f2st"; _MI_WALLOS="$dost"
+        # --- standalone protocol listeners (presence + port state) ---
+    local tjt='' tut='' ant='' stt='' argo_st='' _ss='' _p='' _t='' _tags=''
+    if command -v ss >/dev/null 2>&1; then _ss=$(ss -tuln 2>/dev/null); fi
+    if [[ -r /etc/sing-box/config.json ]] && command -v jq >/dev/null 2>&1; then
+        _tags=$(jq -r '(.inbounds // [])[] | select(.tag=="tuic-in" or .tag=="anytls-in" or .tag=="shadowtls-in" or .tag=="trojan-landing") | "\(.tag) \(.listen_port // empty)"' /etc/sing-box/config.json 2>/dev/null)
+        while read -r _t _p; do
+            [[ -n "$_p" ]] || continue
+            case "$_t" in
+                tuic-in) tut=stop; _mi_port_listening "$_ss" "$_p" && tut=run ;;
+                anytls-in) ant=stop; _mi_port_listening "$_ss" "$_p" && ant=run ;;
+                shadowtls-in) stt=stop; _mi_port_listening "$_ss" "$_p" && stt=run ;;
+                trojan-landing) tjt=stop; _mi_port_listening "$_ss" "$_p" && tjt=run ;;
+            esac
+        done <<< "$_tags"
+    fi
+    if [[ -z "$tjt" && -r /etc/xray/config.json ]] && command -v jq >/dev/null 2>&1; then
+        _p=$(jq -r '(.inbounds // [])[] | select(.protocol=="trojan") | (.port // empty)' /etc/xray/config.json 2>/dev/null | head -1)
+        if [[ -n "$_p" ]]; then tjt=stop; _mi_port_listening "$_ss" "$_p" && tjt=run; fi
+    fi
+    if [[ -f /etc/ddr/.argo-state ]]; then
+        argo_st=stop
+        if is_service_running argo 2>/dev/null || is_service_running argo-vmess 2>/dev/null || is_service_running argo-vless 2>/dev/null; then argo_st=run; fi
+    fi
+    _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"; _MI_F2B="$f2st"; _MI_WALLOS="$dost"; _MI_TROJAN="$tjt"; _MI_TUIC="$tut"; _MI_ANYTLS="$ant"; _MI_STLS="$stt"; _MI_ARGO="$argo_st"
 
     # --- system info ---
     local os_name='?' kernel='?' cpu_n='?' cpu_model='' mem_tot='?' mem_used='?'
@@ -11258,6 +11288,11 @@ _menu_info_display() {
     [[ "$_MI_BBR" == 'bbr' ]] && _cells+=("BBR|run") || _cells+=("BBR|none")
     [[ -n "$_MI_WARP" ]] && _cells+=("WARP|run")
     _cells+=("Fail2ban|$_MI_F2B" "Wallos|$_MI_WALLOS")
+    [[ -n "${_MI_TROJAN:-}" ]] && _cells+=("Trojan|$_MI_TROJAN")
+    [[ -n "${_MI_TUIC:-}" ]] && _cells+=("TUIC|$_MI_TUIC")
+    [[ -n "${_MI_ANYTLS:-}" ]] && _cells+=("AnyTLS|$_MI_ANYTLS")
+    [[ -n "${_MI_STLS:-}" ]] && _cells+=("ShadowTLS|$_MI_STLS")
+    [[ -n "${_MI_ARGO:-}" ]] && _cells+=("Argo|$_MI_ARGO")
     local _c _nm _st
     for _c in "${_cells[@]}"; do
         _nm="${_c%%|*}"; _st="${_c##*|}"

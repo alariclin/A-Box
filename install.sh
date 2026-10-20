@@ -10303,7 +10303,7 @@ _menu_info_display() {
         msg ''
     fi
     # --- legend ---
-    msg "  ${GRAY}$(tr_msg mi_state)：  ${GREEN}●${NC} ${GRAY}$(tr_msg mi_run)   ○ $(tr_msg mi_off)   ${RED}●${NC} ${GRAY}$(tr_msg mi_fault)${NC}"
+    msg "  ${GRAY}$(tr_msg mi_state)：  ${GREEN}●${NC} ${CYAN}$(tr_msg mi_run)${GRAY}  ·  ○ ${CYAN}$(tr_msg mi_off)${GRAY}  ·  ${RED}●${NC} ${CYAN}$(tr_msg mi_fault)${NC}"
     printf '\033[38;2;0;170;255m%s\033[0m\n' '════════════════════════════════════════════════════════════════════════════════'
 }
 
@@ -20083,7 +20083,7 @@ other_protocols_menu() {
     msg "${CYAN}======================================================================${NC}"
     case "${ABOX_LANG:-zh}" in
         en)
-            msg "${BOLD}${GREEN}Other Protocols${NC}"
+            msg "${BOLD}${GREEN}More Protocols${NC}"
             msg "${YELLOW}1.  Trojan-Reality${NC}"
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
@@ -20091,7 +20091,7 @@ other_protocols_menu() {
             msg "${GREEN}0. Back${NC}"
             ;;
         ru)
-            msg "${BOLD}${GREEN}Другие протоколы${NC}"
+            msg "${BOLD}${GREEN}Ещё протоколы${NC}"
             msg "${YELLOW}1.  Trojan-Reality${NC}"
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
@@ -20099,7 +20099,7 @@ other_protocols_menu() {
             msg "${GREEN}0. Назад${NC}"
             ;;
         fa)
-            msg "${BOLD}${GREEN}پروتکل‌های دیگر${NC}"
+            msg "${BOLD}${GREEN}پروتکل‌های بیشتر${NC}"
             msg "${YELLOW}1.  Trojan-Reality${NC}"
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
@@ -20107,7 +20107,7 @@ other_protocols_menu() {
             msg "${GREEN}0. بازگشت${NC}"
             ;;
         zh-tw)
-            msg "${BOLD}${GREEN}其他協議${NC}"
+            msg "${BOLD}${GREEN}更多協議${NC}"
             msg "${YELLOW}1.  Trojan-Reality${NC}"
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
@@ -20115,7 +20115,7 @@ other_protocols_menu() {
             msg "${GREEN}0. 返回主選單${NC}"
             ;;
         ja)
-            msg "${BOLD}${GREEN}その他のプロトコル${NC}"
+            msg "${BOLD}${GREEN}追加のプロトコル${NC}"
             msg "${YELLOW}1.  Trojan-Reality${NC}"
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
@@ -20123,7 +20123,7 @@ other_protocols_menu() {
             msg "${GREEN}0. メインメニューに戻る${NC}"
             ;;
         *)
-            msg "${BOLD}${GREEN}其他协议${NC}"
+            msg "${BOLD}${GREEN}更多协议${NC}"
             msg "${YELLOW}1.  Trojan-Reality${NC}"
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
@@ -24222,7 +24222,7 @@ main_loop() {
                 msg "${CYAN}[ Tools & System ]${NC}                      ${CYAN}[ Ops & Policy ]${NC}"
                 msg "${GREEN}11.${NC}  Toolbox                            ${GREEN}16.${NC}  Wipe Nodes & Reset Env"
                 msg "${GREEN}12.${NC}  View Node Configs & Links          ${GREEN}17.${NC}  Monthly Traffic Quota"
-                msg "${GREEN}13.${NC}  User Guide & Manual                ${GREEN}18.${NC}  Other Protocols"
+                msg "${GREEN}13.${NC}  User Guide & Manual                ${GREEN}18.${NC}  More Protocols"
                 msg "${GREEN}14.${NC}  Update Core & Script (OTA)         ${GREEN}19.${NC}  Language / 语言设置"
                 msg "${GREEN}15.${NC}  VPS Optimization                   ${YELLOW}20.  Uninstall Script & Cores${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -24241,7 +24241,7 @@ main_loop() {
                 msg "${CYAN}[ Инструменты и система ]${NC}               ${CYAN}[ Управление и политики ]${NC}"
                 msg "${GREEN}11.${NC}  Панель инструментов                ${GREEN}16.${NC}  Сброс узлов и окружения"
                 msg "${GREEN}12.${NC}  Просмотр параметров узлов          ${GREEN}17.${NC}  Лимит месячного трафика"
-                msg "${GREEN}13.${NC}  Справка и руководство              ${GREEN}18.${NC}  Другие протоколы"
+                msg "${GREEN}13.${NC}  Справка и руководство              ${GREEN}18.${NC}  Ещё протоколы"
                 msg "${GREEN}14.${NC}  Обновление ядра и скрипта          ${GREEN}19.${NC}  Язык / Language"
                 msg "${GREEN}15.${NC}  Оптимизация VPS                    ${YELLOW}20.  Полное удаление скрипта${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -24260,7 +24260,7 @@ main_loop() {
                 msg "${CYAN}[ ابزارها و سیستم ]${NC}                     ${CYAN}[ عملیات و سیاست‌ها ]${NC}"
                 msg "${GREEN}11.${NC}  جعبه ابزار                         ${GREEN}16.${NC}  پاکسازی نودها و بازنشانی محیط"
                 msg "${GREEN}12.${NC}  مشاهده تنظیمات و نودها             ${GREEN}17.${NC}  مدیریت و محدودیت ترافیک"
-                msg "${GREEN}13.${NC}  راهنمای استفاده                    ${GREEN}18.${NC}  پروتکل‌های دیگر"
+                msg "${GREEN}13.${NC}  راهنمای استفاده                    ${GREEN}18.${NC}  پروتکل‌های بیشتر"
                 msg "${GREEN}14.${NC}  به‌روزرسانی هسته و اسکریپت         ${GREEN}19.${NC}  تنظیم زبان / Language"
                 msg "${GREEN}15.${NC}  بهینه‌سازی VPS                     ${YELLOW}20.  حذف کامل اسکریپت و هسته${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -24279,7 +24279,7 @@ main_loop() {
                 msg "${CYAN}[ 工具與系統 ]${NC}                          ${CYAN}[ 運維與策略 ]${NC}"
                 msg "${GREEN}11.${NC}  綜合工具箱                         ${GREEN}16.${NC}  清空節點與重置環境"
                 msg "${GREEN}12.${NC}  查看節點配置與參數                 ${GREEN}17.${NC}  流量管控與額度限制"
-                msg "${GREEN}13.${NC}  使用幫助與說明書                   ${GREEN}18.${NC}  其他協議"
+                msg "${GREEN}13.${NC}  使用幫助與說明書                   ${GREEN}18.${NC}  更多協議"
                 msg "${GREEN}14.${NC}  核心與腳本升級 (OTA)               ${GREEN}19.${NC}  多語言設置 / Language"
                 msg "${GREEN}15.${NC}  VPS 一鍵優化                       ${YELLOW}20.  徹底卸載腳本與核心${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -24298,7 +24298,7 @@ main_loop() {
                 msg "${CYAN}[ ツールとシステム ]${NC}                    ${CYAN}[ 運用とポリシー ]${NC}"
                 msg "${GREEN}11.${NC}  総合ツールボックス                 ${GREEN}16.${NC}  全ノード削除と環境初期化"
                 msg "${GREEN}12.${NC}  ノード設定と情報の表示             ${GREEN}17.${NC}  月間通信量制限と管理"
-                msg "${GREEN}13.${NC}  ヘルプとマニュアル                 ${GREEN}18.${NC}  その他のプロトコル"
+                msg "${GREEN}13.${NC}  ヘルプとマニュアル                 ${GREEN}18.${NC}  追加のプロトコル"
                 msg "${GREEN}14.${NC}  コアとスクリプト更新 (OTA)         ${GREEN}19.${NC}  言語設定 / Language"
                 msg "${GREEN}15.${NC}  VPS 最適化                         ${YELLOW}20.  スクリプトとコアの完全削除${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -24317,7 +24317,7 @@ main_loop() {
                 msg "${CYAN}[ 工具与系统 ]${NC}                          ${CYAN}[ 运维与策略 ]${NC}"
                 msg "${GREEN}11.${NC}  综合工具箱                         ${GREEN}16.${NC}  清空节点与重置环境"
                 msg "${GREEN}12.${NC}  查看节点配置与参数                 ${GREEN}17.${NC}  流量管控与额度限制"
-                msg "${GREEN}13.${NC}  使用帮助与说明书                   ${GREEN}18.${NC}  其他协议"
+                msg "${GREEN}13.${NC}  使用帮助与说明书                   ${GREEN}18.${NC}  更多协议"
                 msg "${GREEN}14.${NC}  核心与脚本升级 (OTA)               ${GREEN}19.${NC}  多语言设置 / Language"
                 msg "${GREEN}15.${NC}  VPS 一键优化                       ${YELLOW}20.  彻底卸载脚本与核心${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"

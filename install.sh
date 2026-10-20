@@ -230,6 +230,23 @@ abox_run_wait() {
     printf '\r\033[K' >&2
     return "$_rc"
 }
+
+# Standalone protocols register their share links here at deploy time so
+# menu 12 can reproduce them later (combo links are rebuilt from .env,
+# but standalone credentials live only inside the core configs).
+# File format: line 1 = display title, lines 2+ = share URIs. Display
+# cache only: every failure is swallowed, never fails a deployment.
+register_standalone_link() {
+    local _key="$1" _title="$2"; shift 2
+    local _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _tmp
+    mkdir -p "$_dir" 2>/dev/null || return 0
+    chmod 700 "$_dir" 2>/dev/null || true
+    _tmp=$(mktemp "$_dir/.tmp.XXXXXX" 2>/dev/null) || return 0
+    { printf '%s\n' "$_title"; printf '%s\n' "$@"; } > "$_tmp" 2>/dev/null         || { rm -f -- "$_tmp"; return 0; }
+    chmod 600 "$_tmp" 2>/dev/null || true
+    mv -f -- "$_tmp" "$_dir/${_key}.link" 2>/dev/null || rm -f -- "$_tmp"
+    return 0
+}
 die() {
     printf '%s\n' "${RED}[!] $*${NC}" >&2
     if [[ -n "${ABOX_DIE_HOOK:-}" ]] && declare -F "$ABOX_DIE_HOOK" >/dev/null 2>&1; then
@@ -9644,6 +9661,7 @@ EOF_SVC
         generate_qr "mixed://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     else
         generate_qr "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
+        register_standalone_link socks5-sb "SOCKS5 (sing-box) · 端口 ${port}" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     fi
     ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
@@ -9804,6 +9822,7 @@ EOF_SVC
     msg "${GREEN}$(tr_msg trojan_done)${NC}"
     msg "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     generate_qr "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    register_standalone_link trojan-xray "Trojan-Reality (Xray) · 端口 ${port}" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
 }
 
 # Standalone Trojan-Reality via sing-box (toolbox entry).
@@ -9946,6 +9965,7 @@ EOF_SVC
     msg "${GREEN}$(tr_msg trojan_done)${NC}"
     msg "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     generate_qr "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    register_standalone_link trojan-sb "Trojan-Reality (sing-box) · 端口 ${port}" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
 }
 
 
@@ -10096,6 +10116,7 @@ EOF_SVC
     msg "${GREEN}$(tr_msg tuic_done)${NC}"
     msg "$link"
     generate_qr "$link"
+    register_standalone_link tuic "TUIC · 端口 ${port}" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 
@@ -10242,6 +10263,7 @@ EOF_SVC
     msg "${GREEN}$(tr_msg anytls_done)${NC}"
     msg "$link"
     generate_qr "$link"
+    register_standalone_link anytls "AnyTLS-Reality · 端口 ${port}" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 
@@ -10387,6 +10409,7 @@ EOF_SVC
     msg "$link"
     msg "Clash: - {name: \"ShadowTLS\", type: ss, server: ${pub_ip}, port: ${port}, cipher: 2022-blake3-aes-128-gcm, password: ${inner}, plugin: shadow-tls, client-fingerprint: chrome, plugin-opts: {host: ${sni}, password: \"${pass}\", version: 3}}"
     generate_qr "$link"
+    register_standalone_link shadowtls "ShadowTLS · 端口 ${port}" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 
@@ -10584,6 +10607,7 @@ argo_links_for() { # $1 = vmess domain, $2 = vless domain
     msg "VMess: vmess://${vm_b64}"
     msg "VLESS: ${vless_link}"
     generate_qr "$vless_link"
+    register_standalone_link argo "Argo (CDN)" "vmess://${vm_b64}" "${vless_link}"
 }
 
 deploy_argo_temp() {
@@ -10834,7 +10858,7 @@ argo_uninstall() {
         fi
         rm -f "$tmp_cfg"
     fi
-    rm -f "$ARGO_STATE_FILE" /usr/local/bin/cloudflared /etc/ddr/.argo-token
+    rm -f "$ARGO_STATE_FILE" /usr/local/bin/cloudflared /etc/ddr/.argo-token /etc/ddr/standalone-links.d/argo.link
     msg "${GREEN}$(tr_msg argo_uninstalled)${NC}"
 }
 
@@ -11133,14 +11157,18 @@ _menu_banner() {
 _menu_info_display() {
     _menu_info_collect || return 0
     # --- status matrix (WARP cell only when active) ---
-    local _mrow='  ' _sep=''
+    local _mrow='  ' _sep='' _mwid=2
     local _cells=("Xray|$_MI_XST" "Hy2|$_MI_HST" "sing-box|$_MI_SST" "SOCKS5|$_MI_SOCKS_ST")
     [[ "$_MI_BBR" == 'bbr' ]] && _cells+=("BBR|run") || _cells+=("BBR|none")
     [[ -n "$_MI_WARP" ]] && _cells+=("WARP|run")
     local _c _nm _st
     for _c in "${_cells[@]}"; do
         _nm="${_c%%|*}"; _st="${_c##*|}"
-        _mrow+="${_sep}$(_mi_cell "$_nm" "$_st")"; _sep='  '
+        # each cell renders 14 wide; wrap inside the frame like the info rows
+        if [[ -n "$_sep" ]] && (( _mwid + 2 + 14 > 78 )); then
+            msg "$_mrow"; _mrow='  '; _sep=''; _mwid=2
+        fi
+        _mrow+="${_sep}$(_mi_cell "$_nm" "$_st")"; _mwid=$((_mwid + ${#_sep} + 14)); _sep='  '
     done
     msg "$_mrow"
     msg ''
@@ -11167,18 +11195,18 @@ _menu_info_display() {
         local _suffix=''
         [[ -n "$_MI_SNI" ]] && _suffix=" · SNI：${_MI_SNI}"
         local _lbl="$(tr_msg mi_nodes)" _cur='' _seg _first=1 _w
-        local _lim=126; if (( ${COLUMNS:-0} >= 84 && COLUMNS < _lim )); then _lim=$((COLUMNS - 2)); fi
+        local _lim=76; if (( ${COLUMNS:-0} >= 44 && COLUMNS - 4 < _lim )); then _lim=$((COLUMNS - 4)); fi
         local _segs
         IFS='|' read -r -a _segs <<< "$_MI_NODES"
         for _seg in "${_segs[@]}"; do
             [[ -z "$_seg" ]] && continue
             if [[ -z "$_cur" ]]; then _cur="$_seg"; else
-                _w=$(_disp_width "  ${_lbl}：  ${_cur}|${_seg}")
+                _w=$(_disp_width "  ${_lbl}：  ${_cur} | ${_seg}")
                 if (( _w > _lim )); then
                     if (( _first )); then msg "  ${LBLW}${_lbl}：${NC}  ${CYAN}${_cur}${NC}"; _first=0
                     else msg "          ${CYAN}${_cur}${NC}"; fi
                     _cur="$_seg"
-                else _cur="${_cur}|${_seg}"; fi
+                else _cur="${_cur} | ${_seg}"; fi
             fi
         done
         if [[ -n "$_cur" ]]; then
@@ -11204,7 +11232,7 @@ _menu_info_display() {
         msg ''
     fi
     # --- legend ---
-    msg "  ${LBLW}$(tr_msg mi_state)：  ${GREEN}●${NC} ${GRAY}$(tr_msg mi_run)  ·  ○ $(tr_msg mi_off)  ·  ${RED}●${NC} ${GRAY}$(tr_msg mi_fault)${NC}        ${CYAN}$(tr_msg mi_quick_r)${NC}"
+    msg "  ${LBLW}$(tr_msg mi_state)：  ${GREEN}●${NC} ${GRAY}$(tr_msg mi_run)  ·  ○ $(tr_msg mi_off)  ·  ${RED}●${NC} ${GRAY}$(tr_msg mi_fault)${NC}        ${LBLW}$(tr_msg mi_quick_r)${NC}"
     printf '\033[38;2;0;170;255m%s\033[0m\n' '════════════════════════════════════════════════════════════════════════════════'
 }
 
@@ -11883,6 +11911,7 @@ EOF_SVC
     msg "${GREEN}$(tr_msg socks5_done)${NC}"
     msg "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     generate_qr "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
+    register_standalone_link socks5-xray "SOCKS5 (Xray) · 端口 ${port}" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 
@@ -13658,7 +13687,7 @@ do_cleanup() {
     argo_remove_unit argo || true
     argo_remove_unit argo-vmess || true
     argo_remove_unit argo-vless || true
-    rm -f /usr/local/bin/cloudflared "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true
+    rm -f /usr/local/bin/cloudflared "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true; rm -rf -- /etc/ddr/standalone-links.d 2>/dev/null || true
     for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local; do
         if [[ -f "$_wf" ]] && grep -q 'A-Box-wallos' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
     done
@@ -13768,7 +13797,7 @@ check_virgin_state() {
     argo_remove_unit argo || true
     argo_remove_unit argo-vmess || true
     argo_remove_unit argo-vless || true
-    rm -f /usr/local/bin/cloudflared "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true
+    rm -f /usr/local/bin/cloudflared "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true; rm -rf -- /etc/ddr/standalone-links.d 2>/dev/null || true
     for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local; do
         if [[ -f "$_wf" ]] && grep -q 'A-Box-wallos' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
     done
@@ -21818,6 +21847,24 @@ EOF_SB
   "sid": "$SHORT_ID"
 }
 EOF_V2N
+    fi
+    # --- standalone protocols (links registered at deploy time) ---
+    if [[ -d "${ABOX_DIR:-/etc/ddr}/standalone-links.d" ]]; then
+        local _lf _lt _lu _shown_sa=0
+        for _lf in "${ABOX_DIR:-/etc/ddr}/standalone-links.d"/*.link; do
+            [[ -f "$_lf" ]] || continue
+            if (( ! _shown_sa )); then
+                msg "${YELLOW}[ 独立协议节点 / Standalone Protocols ]${NC}"
+                _shown_sa=1
+            fi
+            _lt=$(sed -n '1p' "$_lf")
+            msg "${BOLD}${CYAN}── ${_lt}${NC}"
+            while IFS= read -r _lu; do
+                [[ -n "$_lu" ]] || continue
+                msg "${GREEN}${_lu}${NC}"
+                generate_qr "$_lu"
+            done < <(sed -n '2,$p' "$_lf")
+        done
     fi
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     [[ "$CALLER" == 'deploy' ]] && msg "${GREEN}服务池部署完成。${NC}"

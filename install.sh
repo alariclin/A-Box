@@ -1881,7 +1881,6 @@ json_escape() { jq -Rn --arg v "${1:-}" '$v'; }
 clear_abox_env_vars() {
     unset CORE MODE UUID VLESS_SNI VISION_SNI XHTTP_SNI VLESS_PORT XHTTP_PORT HY2_BASE_PORT HY2_DOMAIN HY2_UP HY2_DOWN HY2_MASQ_URL
     unset SS_PORT SS_WHITELIST_IP PUBLIC_KEY PBK SHORT_ID HY2_PASS HY2_OBFS SS_PASS LINK_IP HY2_CERT_SHA256_FP HY2_CERT_PUBKEY_SHA256_B64
-    unset TROJAN_PORT TROJAN_PASS
     unset HY2_HOP HY2_HOP_IMPL HY2_MONITOR_PORT HY2_ACME_TYPE HY2_ACME_DNS_PROVIDER HY2_ACME_DNS_CF_API_TOKEN
     unset HY2_URI_PORTS HY2_CLASH_PORTS HY2_SB_PORTS HY2_RANGE_START HY2_RANGE_END INGRESS_IF ENABLE_KEEPALIVE
     unset TRAFFIC_LIMIT_GB TRAFFIC_LIMIT_MODE
@@ -1901,7 +1900,7 @@ validate_abox_env_semantics() {
             *) return 1 ;;
         esac
     fi
-    for p in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT HY2_MONITOR_PORT HY2_RANGE_START HY2_RANGE_END SOCKS_PORT TROJAN_PORT; do
+    for p in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT HY2_MONITOR_PORT HY2_RANGE_START HY2_RANGE_END SOCKS_PORT; do
         value=${!p:-}
         [[ -z "$value" ]] || valid_canonical_port "$value" || return 1
     done
@@ -2006,7 +2005,6 @@ allowed = {
     "HY2_MONITOR_PORT", "HY2_ACME_TYPE", "HY2_ACME_DNS_PROVIDER",
     "HY2_ACME_DNS_CF_API_TOKEN", "HY2_URI_PORTS", "HY2_CLASH_PORTS",
     "HY2_SB_PORTS", "HY2_RANGE_START", "HY2_RANGE_END", "INGRESS_IF",
-    "TROJAN_PORT", "TROJAN_PASS",
     "ENABLE_KEEPALIVE", "TRAFFIC_LIMIT_GB", "TRAFFIC_LIMIT_MODE",
     "SS_WHITELIST_IP", "SOCKS_PORT", "SOCKS_USER", "SOCKS_PASS", "SOCKS_PROTO",
 }
@@ -5572,7 +5570,6 @@ selected_port_pairs() {
     add_port_pair pairs tcp "${XHTTP_PORT:-}"
     add_port_pair pairs tcp "${SS_PORT:-}"
     add_port_pair pairs udp "${SS_PORT:-}"
-    add_port_pair pairs tcp "${TROJAN_PORT:-}"
     if hy2_http01_enabled; then
         add_port_pair pairs tcp 80
     fi
@@ -7068,7 +7065,6 @@ update_traffic_state_atomically() {
 reset_protocol_vars() {
     unset UUID VLESS_SNI VISION_SNI XHTTP_SNI VLESS_PORT XHTTP_PORT HY2_BASE_PORT HY2_DOMAIN HY2_UP HY2_DOWN HY2_MASQ_URL
     unset SS_PORT SS_WHITELIST_IP PUBLIC_KEY PBK SHORT_ID HY2_PASS HY2_OBFS SS_PASS
-    unset TROJAN_PORT TROJAN_PASS
     unset HY2_CERT_SHA256_FP HY2_CERT_PUBKEY_SHA256_B64 HY2_HOP HY2_HOP_IMPL HY2_MONITOR_PORT
     unset HY2_ACME_TYPE HY2_ACME_DNS_PROVIDER HY2_ACME_DNS_CF_API_TOKEN
     unset HY2_URI_PORTS HY2_CLASH_PORTS HY2_SB_PORTS HY2_RANGE_START HY2_RANGE_END ENABLE_KEEPALIVE
@@ -7157,8 +7153,6 @@ write_env() {
         printf 'HY2_PASS=%s\n' "$(shell_quote "${HY2_PASS:-}")"
         printf 'HY2_OBFS=%s\n' "$(shell_quote "${HY2_OBFS:-}")"
         printf 'SS_PASS=%s\n' "$(shell_quote "${SS_PASS:-}")"
-        printf 'TROJAN_PORT=%s\n' "$(shell_quote "${TROJAN_PORT:-}")"
-        printf 'TROJAN_PASS=%s\n' "$(shell_quote "${TROJAN_PASS:-}")"
         printf 'LINK_IP=%s\n' "$(shell_quote "${LINK_IP:-${GLOBAL_PUBLIC_IP:-}}")"
         printf 'HY2_CERT_SHA256_FP=%s\n' "$(shell_quote "${HY2_CERT_SHA256_FP:-}")"
         printf 'HY2_CERT_PUBKEY_SHA256_B64=%s\n' "$(shell_quote "${HY2_CERT_PUBKEY_SHA256_B64:-}")"
@@ -8066,16 +8060,15 @@ EOF_GEO
 pre_install_setup() {
     local CORE_IN=$1 MODE_IN=$2
     reset_protocol_vars
-    local DEF_V_PORT=443 DEF_X_PORT=8443 DEF_H_PORT=443 DEF_S_PORT=2053 DEF_T_PORT=8444
+    local DEF_V_PORT=443 DEF_X_PORT=8443 DEF_H_PORT=443 DEF_S_PORT=2053
     local INPUT_H_DOMAIN INPUT_H_HOP INPUT_SS_WL INPUT_KA ip prompt proto holder check_rc
     local -a ss_whitelist_ips=()
-    local HAS_VISION=false HAS_XHTTP=false HAS_HY2=false HAS_SS=false HAS_TROJAN=false
+    local HAS_VISION=false HAS_XHTTP=false HAS_HY2=false HAS_SS=false
     local L_VISION L_XHTTP L_HY2 L_SS L_GLOBAL
     L_VISION=$(proto_label 'VLESS-Vision')
     L_XHTTP=$(proto_label 'VLESS-XHTTP')
     L_HY2=$(proto_label 'HY2')
     L_SS=$(proto_label 'SS-2022')
-    L_TROJAN=$(proto_label 'Trojan-Reality')
     case "${ABOX_LANG:-zh}" in
         en) L_GLOBAL=$(proto_label 'Global') ;;
         ru) L_GLOBAL=$(proto_label 'Глобальный') ;;
@@ -8089,9 +8082,8 @@ pre_install_setup() {
     [[ "$CORE_IN" == 'xray' && ( "$MODE_IN" == *'XHTTP'* || "$MODE_IN" == *'ALL'* ) ]] && HAS_XHTTP=true
     [[ "$MODE_IN" == *'HY2'* || "$MODE_IN" == *'ALL'* ]] && HAS_HY2=true
     [[ "$MODE_IN" == *'SS'* || "$MODE_IN" == *'ALL'* || "$MODE_IN" == 'VLESS_SS' ]] && HAS_SS=true
-    [[ "$CORE_IN" == 'xray' && "$MODE_IN" == *'ALL'* ]] && HAS_TROJAN=true
 
-    # Xray ALL: Vision TCP 443 + XHTTP TCP 8443 + HY2 UDP 443 + SS-2022 TCP/UDP 2053 + Trojan-Reality TCP 8444.
+    # Xray ALL: Vision TCP 443 + XHTTP TCP 8443 + HY2 UDP 443 + SS-2022 TCP/UDP 2053.
     # Sing-box ALL: Vision TCP 443 + HY2 UDP 443 + SS-2022 TCP/UDP 2053. XHTTP is intentionally excluded.
 
     INGRESS_IF=$(get_active_interface)
@@ -8153,9 +8145,6 @@ pre_install_setup() {
     if [[ "$HAS_XHTTP" == 'true' ]]; then
         XHTTP_PORT=$(prompt_port_input "$L_XHTTP" "$DEF_X_PORT") || die 'XHTTP 端口输入已结束 / XHTTP port input closed.'
         XHTTP_SNI=$(prompt_reality_sni "$L_XHTTP" "$XHTTP_PORT") || die 'XHTTP SNI 输入已结束 / XHTTP SNI input closed.'
-    fi
-    if [[ "$HAS_TROJAN" == 'true' ]]; then
-        TROJAN_PORT=$(prompt_port_input "$L_TROJAN" "$DEF_T_PORT") || die 'Trojan 端口输入已结束 / Trojan port input closed.'
     fi
     VLESS_SNI=${VISION_SNI:-${XHTTP_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}
 
@@ -8406,7 +8395,6 @@ pre_install_setup() {
 
     [[ "$HAS_VISION" == 'true' ]] && allowPort "$VLESS_PORT" tcp
     [[ "$HAS_XHTTP" == 'true' ]] && allowPort "$XHTTP_PORT" tcp
-    [[ "$HAS_TROJAN" == 'true' ]] && allowPort "$TROJAN_PORT" tcp
     if [[ "$HAS_HY2" == 'true' ]]; then
         if hy2_http01_enabled "$CORE_IN" "$MODE_IN"; then
             allowPort 80 tcp
@@ -8499,8 +8487,6 @@ build_xray_config() {
         --argjson vport "${VLESS_PORT:-443}" \
         --argjson xport "${XHTTP_PORT:-8443}" \
         --argjson ssport "${SS_PORT:-2053}" \
-        --argjson tport "${TROJAN_PORT:-8444}" \
-        --arg trojan_pass "${TROJAN_PASS:-}" \
         --arg ss_pass "${SS_PASS:-}" \
         --argjson sock "$sockopt_json" '
         def maybe_sock: if $sock == null then {} else {sockopt:$sock} end;
@@ -8521,18 +8507,10 @@ build_xray_config() {
         def ss:
           ({listen:$listen_addr, port:$ssport, protocol:"shadowsocks", settings:{method:"2022-blake3-aes-128-gcm", password:$ss_pass, network:"tcp,udp"}}
            + (if $sock == null then {} else {streamSettings:{sockopt:$sock}} end));
-        def trojan:
-          {
-            listen:$listen_addr, port:$tport, protocol:"trojan",
-            settings:{clients:[{password:$trojan_pass}]},
-            streamSettings:({network:"tcp", security:"reality", realitySettings:{target:($v_sni + ":443"), serverNames:[$v_sni], privateKey:$pk, shortIds:[$sid], minClientVer:"1.8.2"}} + maybe_sock),
-            sniffing:{enabled:true, destOverride:["http","tls","quic"]}
-          };
         []
         | if ($mode|contains("VISION")) or ($mode|contains("ALL")) or $mode == "VLESS_SS" then . + [vision] else . end
         | if ($mode|contains("XHTTP")) or ($mode|contains("ALL")) then . + [xhttp] else . end
         | if ($mode|contains("SS")) or ($mode|contains("ALL")) or $mode == "VLESS_SS" then . + [ss] else . end
-        | if ($mode|contains("ALL")) then . + [trojan] else . end
     ') || die 'Xray inbounds JSON 构造失败。'
     local out_dir
     out_dir=$(dirname -- "$out")
@@ -9995,7 +9973,7 @@ EOF_SVC
     generate_qr "$link"
 }
 
-# Toolbox entry: standalone Trojan-Reality, free core choice.
+# Other-protocols entry: standalone Trojan-Reality, free core choice.
 trojan_toolbox_entry() {
     local _core_choice='' _default='1'
     load_optional_abox_env_or_die 2>/dev/null || true
@@ -10033,17 +10011,25 @@ _flag_for_cc() {
 _ip_geo_refresh() {
     local ip="${GLOBAL_PUBLIC_IP:-}"
     [[ -z "$ip" ]] && return 1
+    # Localized country/city names from ip-api (fa unsupported -> en).
+    local geo_lang='en'
+    case "${ABOX_LANG:-zh}" in
+        zh|zh-tw) geo_lang='zh-CN' ;;
+        ja) geo_lang='ja' ;;
+        ru) geo_lang='ru' ;;
+    esac
     if [[ -f "$IP_GEO_FILE" && ! -L "$IP_GEO_FILE" ]]; then
-        local _cip _now _mt
+        local _cip _clang _now _mt
         IFS= read -r _cip < "$IP_GEO_FILE" 2>/dev/null
         _now=$(date +%s 2>/dev/null || echo 0)
         _mt=$(stat -c %Y "$IP_GEO_FILE" 2>/dev/null || echo 0)
-        if [[ "$_cip" == "$ip" ]] && (( _now - _mt < 86400 )); then return 0; fi
+        _clang=$(awk 'NR==9' "$IP_GEO_FILE" 2>/dev/null)
+        if [[ "$_cip" == "$ip" && "$_clang" == "$geo_lang" ]] && (( _now - _mt < 86400 )); then return 0; fi
     fi
     local resp
-    resp=$(curl -fsS --max-time 5 "http://ip-api.com/line/${ip}?fields=status,country,countryCode,city,mobile,hosting,as" 2>/dev/null) || return 1
+    resp=$(curl -fsS --max-time 5 "http://ip-api.com/line/${ip}?fields=status,country,countryCode,city,mobile,hosting,as&lang=${geo_lang}" 2>/dev/null) || return 1
     [[ "$(printf '%s' "$resp" | head -1)" == 'success' ]] || return 1
-    printf '%s\n%s\n' "$ip" "$resp" > "$IP_GEO_FILE" 2>/dev/null || return 1
+    printf '%s\n%s\n%s\n' "$ip" "$resp" "$geo_lang" > "$IP_GEO_FILE" 2>/dev/null || return 1
     return 0
 }
 
@@ -11013,8 +10999,6 @@ deploy_xray() {
     SHORT_ID=$(openssl rand -hex 4 | tr -d '\n\r')
     SS_PASS=$(openssl rand -base64 16 | tr -d '\n\r')
     [[ -n "$SS_PASS" ]] || die 'SS-2022 密钥生成失败。'
-    TROJAN_PASS=$(openssl rand -base64 16 | tr -d '\n\r')
-    [[ -n "$TROJAN_PASS" ]] || die 'Trojan 密码生成失败。'
 
     build_xray_config "$MODE_IN"
     chmod 600 /usr/local/etc/xray/config.json || die 'Xray config permission hardening failed.'
@@ -20090,6 +20074,77 @@ wallos_menu() {
     esac
     done
 }
+other_protocols_menu() {
+    # Other protocols submenu: standalone deployments (Trojan-Reality, TUIC,
+    # AnyTLS, SOCKS5) that used to live in the toolbox. Self-looping like the
+    # other submenus; 0/Enter returns to the main menu.
+    while true; do
+    clear
+    msg "${CYAN}======================================================================${NC}"
+    case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${BOLD}${GREEN}Other Protocols${NC}"
+            msg "${YELLOW}1.  Trojan-Reality${NC}"
+            msg "${YELLOW}2.  TUIC (sing-box)${NC}"
+            msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
+            msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${GREEN}0. Back${NC}"
+            ;;
+        ru)
+            msg "${BOLD}${GREEN}Другие протоколы${NC}"
+            msg "${YELLOW}1.  Trojan-Reality${NC}"
+            msg "${YELLOW}2.  TUIC (sing-box)${NC}"
+            msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
+            msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${GREEN}0. Назад${NC}"
+            ;;
+        fa)
+            msg "${BOLD}${GREEN}پروتکل‌های دیگر${NC}"
+            msg "${YELLOW}1.  Trojan-Reality${NC}"
+            msg "${YELLOW}2.  TUIC (sing-box)${NC}"
+            msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
+            msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${GREEN}0. بازگشت${NC}"
+            ;;
+        zh-tw)
+            msg "${BOLD}${GREEN}其他協議${NC}"
+            msg "${YELLOW}1.  Trojan-Reality${NC}"
+            msg "${YELLOW}2.  TUIC (sing-box)${NC}"
+            msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
+            msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${GREEN}0. 返回主選單${NC}"
+            ;;
+        ja)
+            msg "${BOLD}${GREEN}その他のプロトコル${NC}"
+            msg "${YELLOW}1.  Trojan-Reality${NC}"
+            msg "${YELLOW}2.  TUIC (sing-box)${NC}"
+            msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
+            msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${GREEN}0. メインメニューに戻る${NC}"
+            ;;
+        *)
+            msg "${BOLD}${GREEN}其他协议${NC}"
+            msg "${YELLOW}1.  Trojan-Reality${NC}"
+            msg "${YELLOW}2.  TUIC (sing-box)${NC}"
+            msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
+            msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${GREEN}0. 返回主菜单${NC}"
+            ;;
+    esac
+    local op_choice select_prompt
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-4]: ' ;; ru) select_prompt='Выберите [0–4]: ' ;; fa) select_prompt='انتخاب [۰ تا ۴]: ' ;; ja) select_prompt='選択してください [0-4]: ' ;; zh-tw) select_prompt='請選擇 [0-4]：' ;; *) select_prompt='请选择 [0-4]：' ;; esac
+    read -r -p "$select_prompt" op_choice || return 0
+    case "$op_choice" in
+        1) trojan_toolbox_entry; pause_return ;;
+        2) deploy_singbox_tuic; pause_return ;;
+        3) deploy_singbox_anytls; pause_return ;;
+        4) socks5_toolbox_entry; pause_return ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $op_choice${NC}"; sleep 1 ;;
+    esac
+    done
+}
+
 vps_benchmark_menu() {
     # Toolbox is a submenu loop: sub-functions return here, 0/Enter goes back
     # to the main menu.
@@ -20110,10 +20165,8 @@ vps_benchmark_menu() {
             msg "${YELLOW}4.  Mini-host SNI preference              11.  Multi-user / subscription link export${NC}"
             msg "${YELLOW}10.  SNI preference records               14.  Wallos install / update / backup${NC}"
             msg ""
-            msg "${CYAN}[ Protocol Deployment ]${NC}"
-            msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
-            msg "${YELLOW}17.  TUIC (sing-box)${NC}"
-            msg "${YELLOW}18.  AnyTLS (sing-box)${NC}"
+            msg "${CYAN}[ Security ]${NC}"
+            msg "${YELLOW}15.  SS-2022 IP whitelist${NC}"
             msg "${GREEN}0. Back${NC}"
             ;;
         ru)
@@ -20129,10 +20182,8 @@ vps_benchmark_menu() {
             msg "${YELLOW}4.  Подбор SNI (мини-хост)                11.  Пользователи / экспорт подписки${NC}"
             msg "${YELLOW}10.  Записи подбора SNI                   14.  Wallos: установка / обновление${NC}"
             msg ""
-            msg "${CYAN}[ Развёртывание протоколов ]${NC}"
-            msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
-            msg "${YELLOW}17.  TUIC (sing-box)${NC}"
-            msg "${YELLOW}18.  AnyTLS (sing-box)${NC}"
+            msg "${CYAN}[ Безопасность ]${NC}"
+            msg "${YELLOW}15.  Белый список IP (SS-2022)${NC}"
             msg "${GREEN}0. Назад${NC}"
             ;;
         fa)
@@ -20148,10 +20199,8 @@ vps_benchmark_menu() {
             msg "${YELLOW}4.  بهینه‌سازی SNI مینی‌هاست              11.  کاربران / خروجی لینک اشتراک${NC}"
             msg "${YELLOW}10.  سوابق بهینه‌سازی SNI                 14.  نصب / به‌روزرسانی Wallos${NC}"
             msg ""
-            msg "${CYAN}[ استقرار پروتکل ]${NC}"
-            msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
-            msg "${YELLOW}17.  TUIC (sing-box)${NC}"
-            msg "${YELLOW}18.  AnyTLS (sing-box)${NC}"
+            msg "${CYAN}[ امنیت ]${NC}"
+            msg "${YELLOW}15.  لیست سفید آی‌پی SS-2022${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
         zh-tw)
@@ -20167,10 +20216,8 @@ vps_benchmark_menu() {
             msg "${YELLOW}4.  微型主機 SNI 優選                     11.  多用戶 / 訂閱連結導出${NC}"
             msg "${YELLOW}10.  SNI 優選記錄                         14.  Wallos 安裝 / 升級 / 備份${NC}"
             msg ""
-            msg "${CYAN}[ 協議部署 ]${NC}"
-            msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
-            msg "${YELLOW}17.  TUIC (sing-box)${NC}"
-            msg "${YELLOW}18.  AnyTLS (sing-box)${NC}"
+            msg "${CYAN}[ 安全 ]${NC}"
+            msg "${YELLOW}15.  SS-2022 訪問白名單${NC}"
             msg "${GREEN}0. 返回主選單${NC}"
             ;;
         ja)
@@ -20186,10 +20233,8 @@ vps_benchmark_menu() {
             msg "${YELLOW}4.  ミニホスト SNI 最適化                 11.  複数ユーザー / サブスクリプション出力${NC}"
             msg "${YELLOW}10.  SNI 最適化記録                       14.  Wallos インストール/更新${NC}"
             msg ""
-            msg "${CYAN}[ プロトコル展開 ]${NC}"
-            msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
-            msg "${YELLOW}17.  TUIC (sing-box)${NC}"
-            msg "${YELLOW}18.  AnyTLS (sing-box)${NC}"
+            msg "${CYAN}[ セキュリティ ]${NC}"
+            msg "${YELLOW}15.  SS-2022 IPホワイトリスト${NC}"
             msg "${GREEN}0. メインメニューに戻る${NC}"
             ;;
         *)
@@ -20205,15 +20250,13 @@ vps_benchmark_menu() {
             msg "${YELLOW}4.  微型主机 SNI 优选                     11.  多用户 / 订阅链接导出${NC}"
             msg "${YELLOW}10.  SNI 优选记录                         14.  Wallos 安装 / 升级 / 备份${NC}"
             msg ""
-            msg "${CYAN}[ 协议部署 ]${NC}"
-            msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
-            msg "${YELLOW}17.  TUIC (sing-box)${NC}"
-            msg "${YELLOW}18.  AnyTLS (sing-box)${NC}"
+            msg "${CYAN}[ 安全 ]${NC}"
+            msg "${YELLOW}15.  SS-2022 访问白名单${NC}"
             msg "${GREEN}0. 返回主菜单${NC}"
             ;;
     esac
     local bench_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-16]: ' ;; ru) select_prompt='Выберите [0–16]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۶]: ' ;; ja) select_prompt='選択してください [0-16]: ' ;; zh-tw) select_prompt='請選擇 [0-16]：' ;; *) select_prompt='请选择 [0-16]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-15]: ' ;; ru) select_prompt='Выберите [0–15]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۵]: ' ;; ja) select_prompt='選択してください [0-15]: ' ;; zh-tw) select_prompt='請選擇 [0-15]：' ;; *) select_prompt='请选择 [0-15]：' ;; esac
     read -r -p "$select_prompt" bench_choice || return 0
     case "$bench_choice" in
         1) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
@@ -20230,17 +20273,14 @@ vps_benchmark_menu() {
         12) tune_vps ;;
         13) host_network_menu ;;
         14) wallos_menu ;;
-        15) socks5_toolbox_entry; pause_return ;;
-        16) trojan_toolbox_entry; pause_return ;;
-        17) deploy_singbox_tuic; pause_return ;;
-        18) deploy_singbox_anytls; pause_return ;;
+        15) manage_ss_whitelist ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $bench_choice${NC}"; sleep 1 ;;
     esac
     done
 }
 
-# Toolbox entry 15: let the user freely choose the core for standalone SOCKS5.
+# Other-protocols entry: let the user freely choose the core for standalone SOCKS5.
 # Defaults to the currently deployed core when detectable.
 socks5_toolbox_entry() {
     local _core_choice='' _default='1'
@@ -20584,25 +20624,6 @@ EOF_CLASH
       enabled: false
 EOF_CLASH
         fi
-        if [[ "$CORE" == 'xray' && "$MODE" == *'ALL'* && -n "${TROJAN_PORT:-}" && -n "${TROJAN_PASS:-}" ]]; then
-            cat <<EOF_CLASH
-  - name: "A-Box-Trojan-Reality"
-    type: trojan
-    server: "${LINK_IP:-}"
-    port: ${TROJAN_PORT:-8444}
-    password: $(json_escape "$TROJAN_PASS")
-    udp: true
-    tls: true
-    servername: "${VISION_SNI:-}"
-    client-fingerprint: chrome
-    network: tcp
-    reality-opts:
-      public-key: "${PUBLIC_KEY:-}"
-      short-id: "${SHORT_ID:-}"
-    smux:
-      enabled: false
-EOF_CLASH
-        fi
         cat <<EOF_CLASH
 
 proxy-groups:
@@ -20619,7 +20640,6 @@ EOF_CLASH
         done < "$_clash_uuid_list_tmp"
         [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]] && echo "      - $hy2_name"
         [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo '      - A-Box-SS'
-        [[ "$CORE" == 'xray' && "$MODE" == *'ALL'* && -n "${TROJAN_PORT:-}" && -n "${TROJAN_PASS:-}" ]] && echo '      - A-Box-Trojan-Reality'
         cat <<EOF_CLASH
       - DIRECT
 
@@ -20679,7 +20699,7 @@ view_config() {
     fi
     VISION_SNI=${VISION_SNI:-${VLESS_SNI:-}}
     XHTTP_SNI=${XHTTP_SNI:-${VLESS_SNI:-}}
-    local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL TROJAN_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME
+    local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME
     local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX
     IFS=$'\t' read -r HY2_URI_PORT HY2_QUERY_PREFIX < <(build_hy2_uri_endpoint) || die 'Hysteria2 分享链接端口参数无效。'
     [[ "$LINK_IP" =~ : ]] && F_IP="[$LINK_IP]"
@@ -20727,11 +20747,6 @@ view_config() {
         SS_URL=$(build_ss2022_uri "$F_IP" "$SS_PORT" "$SS_PASS")
         msg "${GREEN}${SS_URL}${NC}"
         generate_qr "$SS_URL"
-    fi
-    if [[ "$CORE" == 'xray' && "$MODE" == *'ALL'* && -n "${TROJAN_PORT:-}" && -n "${TROJAN_PASS:-}" ]]; then
-        TROJAN_URL="trojan://$(urlencode "$TROJAN_PASS")@$F_IP:$TROJAN_PORT?security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#A-Box-Trojan-Reality"
-        msg "${GREEN}${TROJAN_URL}${NC}"
-        generate_qr "$TROJAN_URL"
     fi
 
     CLASH_FILE=$(write_clash_yaml) || die 'Clash/Mihomo YAML 配置生成失败。'
@@ -21365,7 +21380,7 @@ core_expected_tls_tcp_ports() {
     local core="$1" cfg="$2"
     case "$core" in
         xray)
-            jq -r '.inbounds[]? | select((.protocol == "vless" or .protocol == "trojan") and (.streamSettings.security == "reality" or .streamSettings.security == "tls")) | .port // empty' "$cfg" 2>/dev/null
+            jq -r '.inbounds[]? | select(.protocol == "vless" and (.streamSettings.security == "reality" or .streamSettings.security == "tls")) | .port // empty' "$cfg" 2>/dev/null
             ;;
         singbox)
             jq -r '.inbounds[]? | select(.type == "vless" and .tls.enabled == true) | .listen_port // empty' "$cfg" 2>/dev/null
@@ -24207,7 +24222,7 @@ main_loop() {
                 msg "${CYAN}[ Tools & System ]${NC}                      ${CYAN}[ Ops & Policy ]${NC}"
                 msg "${GREEN}11.${NC}  Toolbox                            ${GREEN}16.${NC}  Wipe Nodes & Reset Env"
                 msg "${GREEN}12.${NC}  View Node Configs & Links          ${GREEN}17.${NC}  Monthly Traffic Quota"
-                msg "${GREEN}13.${NC}  User Guide & Manual                ${GREEN}18.${NC}  SS-2022 IP Whitelist"
+                msg "${GREEN}13.${NC}  User Guide & Manual                ${GREEN}18.${NC}  Other Protocols"
                 msg "${GREEN}14.${NC}  Update Core & Script (OTA)         ${GREEN}19.${NC}  Language / 语言设置"
                 msg "${GREEN}15.${NC}  VPS Optimization                   ${YELLOW}20.  Uninstall Script & Cores${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -24226,7 +24241,7 @@ main_loop() {
                 msg "${CYAN}[ Инструменты и система ]${NC}               ${CYAN}[ Управление и политики ]${NC}"
                 msg "${GREEN}11.${NC}  Панель инструментов                ${GREEN}16.${NC}  Сброс узлов и окружения"
                 msg "${GREEN}12.${NC}  Просмотр параметров узлов          ${GREEN}17.${NC}  Лимит месячного трафика"
-                msg "${GREEN}13.${NC}  Справка и руководство              ${GREEN}18.${NC}  Белый список IP (SS-2022)"
+                msg "${GREEN}13.${NC}  Справка и руководство              ${GREEN}18.${NC}  Другие протоколы"
                 msg "${GREEN}14.${NC}  Обновление ядра и скрипта          ${GREEN}19.${NC}  Язык / Language"
                 msg "${GREEN}15.${NC}  Оптимизация VPS                    ${YELLOW}20.  Полное удаление скрипта${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -24245,7 +24260,7 @@ main_loop() {
                 msg "${CYAN}[ ابزارها و سیستم ]${NC}                     ${CYAN}[ عملیات و سیاست‌ها ]${NC}"
                 msg "${GREEN}11.${NC}  جعبه ابزار                         ${GREEN}16.${NC}  پاکسازی نودها و بازنشانی محیط"
                 msg "${GREEN}12.${NC}  مشاهده تنظیمات و نودها             ${GREEN}17.${NC}  مدیریت و محدودیت ترافیک"
-                msg "${GREEN}13.${NC}  راهنمای استفاده                    ${GREEN}18.${NC}  لیست سفید آی‌پی SS-2022"
+                msg "${GREEN}13.${NC}  راهنمای استفاده                    ${GREEN}18.${NC}  پروتکل‌های دیگر"
                 msg "${GREEN}14.${NC}  به‌روزرسانی هسته و اسکریپت         ${GREEN}19.${NC}  تنظیم زبان / Language"
                 msg "${GREEN}15.${NC}  بهینه‌سازی VPS                     ${YELLOW}20.  حذف کامل اسکریپت و هسته${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -24259,12 +24274,12 @@ main_loop() {
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (官方)                   ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
-                msg "${GREEN}5.${NC}  全協議五合一 (Xray+Hy2)             ${GREEN}10.${NC} 全協議三合一 (Sing-box)"
+                msg "${GREEN}5.${NC}  全協議四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全協議三合一 (Sing-box)"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ 工具與系統 ]${NC}                          ${CYAN}[ 運維與策略 ]${NC}"
                 msg "${GREEN}11.${NC}  綜合工具箱                         ${GREEN}16.${NC}  清空節點與重置環境"
                 msg "${GREEN}12.${NC}  查看節點配置與參數                 ${GREEN}17.${NC}  流量管控與額度限制"
-                msg "${GREEN}13.${NC}  使用幫助與說明書                   ${GREEN}18.${NC}  SS-2022 訪問白名單"
+                msg "${GREEN}13.${NC}  使用幫助與說明書                   ${GREEN}18.${NC}  其他協議"
                 msg "${GREEN}14.${NC}  核心與腳本升級 (OTA)               ${GREEN}19.${NC}  多語言設置 / Language"
                 msg "${GREEN}15.${NC}  VPS 一鍵優化                       ${YELLOW}20.  徹底卸載腳本與核心${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -24283,7 +24298,7 @@ main_loop() {
                 msg "${CYAN}[ ツールとシステム ]${NC}                    ${CYAN}[ 運用とポリシー ]${NC}"
                 msg "${GREEN}11.${NC}  総合ツールボックス                 ${GREEN}16.${NC}  全ノード削除と環境初期化"
                 msg "${GREEN}12.${NC}  ノード設定と情報の表示             ${GREEN}17.${NC}  月間通信量制限と管理"
-                msg "${GREEN}13.${NC}  ヘルプとマニュアル                 ${GREEN}18.${NC}  SS-2022 IPホワイトリスト"
+                msg "${GREEN}13.${NC}  ヘルプとマニュアル                 ${GREEN}18.${NC}  その他のプロトコル"
                 msg "${GREEN}14.${NC}  コアとスクリプト更新 (OTA)         ${GREEN}19.${NC}  言語設定 / Language"
                 msg "${GREEN}15.${NC}  VPS 最適化                         ${YELLOW}20.  スクリプトとコアの完全削除${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -24297,12 +24312,12 @@ main_loop() {
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (官方)                   ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
-                msg "${GREEN}5.${NC}  全协议五合一 (Xray+Hy2)             ${GREEN}10.${NC} 全协议三合一 (Sing-box)"
+                msg "${GREEN}5.${NC}  全协议四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全协议三合一 (Sing-box)"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ 工具与系统 ]${NC}                          ${CYAN}[ 运维与策略 ]${NC}"
                 msg "${GREEN}11.${NC}  综合工具箱                         ${GREEN}16.${NC}  清空节点与重置环境"
                 msg "${GREEN}12.${NC}  查看节点配置与参数                 ${GREEN}17.${NC}  流量管控与额度限制"
-                msg "${GREEN}13.${NC}  使用帮助与说明书                   ${GREEN}18.${NC}  SS-2022 访问白名单"
+                msg "${GREEN}13.${NC}  使用帮助与说明书                   ${GREEN}18.${NC}  其他协议"
                 msg "${GREEN}14.${NC}  核心与脚本升级 (OTA)               ${GREEN}19.${NC}  多语言设置 / Language"
                 msg "${GREEN}15.${NC}  VPS 一键优化                       ${YELLOW}20.  彻底卸载脚本与核心${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -24338,7 +24353,7 @@ main_loop() {
             15) tune_vps ;;
             16) check_virgin_state ;;
             17) traffic_management_menu ;;
-            18) manage_ss_whitelist ;;
+            18) other_protocols_menu ;;
             19) language_menu ;;
             20) clean_uninstall_menu ;;
             r|R) one_click_reality_deploy ;;

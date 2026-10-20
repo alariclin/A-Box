@@ -23,13 +23,13 @@ Xray-core、sing-box、公式 Hysteria 2 サーバー、VLESS Vision REALITY、V
 ### GitHub 公式ソース
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/3b8cbcac1d12764aad4cd7a48bad8182d96c343b/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/516dfb1cb3041d1ea5c2ad0488751ba5b4d3be2a/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 ### サードパーティ・フォールバックミラー
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/3b8cbcac1d12764aad4cd7a48bad8182d96c343b/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/516dfb1cb3041d1ea5c2ad0488751ba5b4d3be2a/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 どちらのコマンドも、インストーラーを不変のコミット `a7cb193e6539cee6478648e766f5ce415ccd5d41` にピン留めします。プロキシ URL はサードパーティの転送サービスであり、A-Box 公式エンドポイントではありません。本番環境では独立した信頼できる経路でコミットとチェックサムを検証してください。新規 Alpine インストールでは、まず `apk add --no-cache bash curl` を実行してください。インストール後は `sb` と入力してメニューを開きます。

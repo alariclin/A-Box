@@ -10508,6 +10508,12 @@ EOF_SVC
 CLOUDFLARED_VERSION='2026.10.2'
 CLOUDFLARED_SHA256_AMD64='35fbdd2beb378436c7da377d7358cea8e33f9c94a6705d1d8036bf9b0d6d8005'
 CLOUDFLARED_SHA256_ARM64='b7e55b4d9702c2ab5f8348f780bb1db044527fc555367714c78e0595750a4665'
+# Wallos HTTPS front (Caddy). Tarball SHA256 pins; the tarballs were
+# cross-verified against Caddy's official SHA512 checksums file.
+WALLOS_CADDY_VERSION='2.11.7'
+WALLOS_CADDY_SHA256_AMD64='727b91701a392de6ebc5027509f548bf39979e5216340d0faed8fa5e69c84f8b'
+WALLOS_CADDY_SHA256_ARM64='d8fc6d179a5d283028a472a5618564f6ad8a86fed513e64f032b3b0b7cc45e42'
+WALLOS_CADDY_LOG='/var/log/A-Box-wallos-caddy.log'
 ARGO_STATE_FILE='/etc/ddr/.argo-state'
 ARGO_UUID='' ARGO_VMESS_PORT='' ARGO_VLESS_PORT=''
 
@@ -13821,6 +13827,7 @@ do_cleanup() {
     for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local; do
         if [[ -f "$_wf" ]] && grep -q 'A-Box-wallos' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
     done
+    wallos_https_teardown >/dev/null 2>&1 || true
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         if systemctl list-unit-files fail2ban.service >/dev/null 2>&1 && systemctl cat fail2ban.service >/dev/null 2>&1; then
             systemctl try-restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响 A-Box 清理。${NC}"
@@ -20613,22 +20620,36 @@ wallos_recover_interrupted_upgrade() {
 # reads it from the host at <UpperDir>/var/log/nginx/access.log.
 # Re-run after every (re)create of the container (install / upgrade / rollback).
 wallos_bruteforce_protection() {
-    local port="$1" bind_address="$2"
+    local port="$1" bind_address="$2" wmode="${3:-}"
     local filter='/etc/fail2ban/filter.d/A-Box-wallos.conf'
     local jail='/etc/fail2ban/jail.d/A-Box-wallos.local'
+    [[ -n "$wmode" ]] || wmode=$(wallos_state_value MODE 2>/dev/null || true)
+    if [[ "$wmode" == https ]]; then
+        # The jail watches Caddy's access log and bans on the public
+        # port; the action port is the public (Caddy) port.
+        local _pp=''; _pp=$(wallos_state_value PUBPORT 2>/dev/null || true)
+        [[ "$_pp" =~ ^[0-9]+$ ]] && port="$_pp"
+    fi
     # Localhost-only Wallos cannot be reached remotely; no jail needed.
-    if [[ "$bind_address" == 127.0.0.1 ]]; then
+    if [[ "$bind_address" == 127.0.0.1 && "$wmode" != https ]]; then
         rm -f -- "$jail" 2>/dev/null || true
         return 0
     fi
     command -v fail2ban-client >/dev/null 2>&1 || return 0
     command -v docker >/dev/null 2>&1 || return 0
     local upperdir logpath
-    upperdir=$(docker inspect -f '{{.GraphDriver.Data.UpperDir}}' wallos 2>/dev/null || true)
-    [[ -n "$upperdir" && -d "$upperdir" ]] || return 0
-    logpath="$upperdir/var/log/nginx/access.log"
-    # The log file appears on first HTTP request; create empty placeholder dir-wise only (file is created by nginx).
-    [[ -e "$logpath" ]] || return 0
+    if [[ "$wmode" == https ]]; then
+        logpath="$WALLOS_CADDY_LOG"
+        # fail2ban needs the log file to exist; Caddy creates it on
+        # start, but make sure an idle system still gets a jail.
+        [[ -e "$logpath" ]] || : > "$logpath" 2>/dev/null || return 0
+    else
+        upperdir=$(docker inspect -f '{{.GraphDriver.Data.UpperDir}}' wallos 2>/dev/null || true)
+        [[ -n "$upperdir" && -d "$upperdir" ]] || return 0
+        logpath="$upperdir/var/log/nginx/access.log"
+        # The log file appears on first HTTP request; create empty placeholder dir-wise only (file is created by nginx).
+        [[ -e "$logpath" ]] || return 0
+    fi
     local backend action
     backend=$(firewall_backend 2>/dev/null || true)
     case "$backend" in
@@ -20641,12 +20662,25 @@ wallos_bruteforce_protection() {
     mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d || return 0
     assert_abox_auxiliary_safe "$filter" 2>/dev/null || return 0
     assert_abox_auxiliary_safe "$jail" 2>/dev/null || return 0
-    write_file_atomically_from_stdin "$filter" 644 <<'EOF_WF2B_FILTER' || return 0
+    if [[ "$wmode" == https ]]; then
+        # Caddy JSON access log: remote_ip comes first in the line.
+        # Failed Wallos logins are POST /login.php answered 200; a
+        # successful login redirects (302), so only 200s are counted
+        # (verified against upstream login.php, 2026-10-20).
+        write_file_atomically_from_stdin "$filter" 644 <<'EOF_WF2B_FILTER_HTTPS' || return 0
+# Managed by A-Box
+[Definition]
+failregex = "remote_ip":\s*"<HOST>".*"method":\s*"POST".*"uri":\s*"/login\.php".*"status":\s*200
+ignoreregex =
+EOF_WF2B_FILTER_HTTPS
+    else
+        write_file_atomically_from_stdin "$filter" 644 <<'EOF_WF2B_FILTER' || return 0
 # Managed by A-Box
 [Definition]
 failregex = ^<HOST> - \S+ \[[^\]]+\] "POST /login\.php HTTP/[0-9.]+" [0-9]{3} [0-9]+
 ignoreregex =
 EOF_WF2B_FILTER
+    fi
     if [[ "$action" == 'ufw' ]]; then
         action="ufw[name=A-Box-wallos]"
     else
@@ -20676,6 +20710,30 @@ EOF_WF2B_JAIL
 
 wallos_public_urls() {
     local port="$1" ipv4 ipv6 host_ip
+    local _hmode=''; _hmode=$(wallos_state_value MODE 2>/dev/null || true)
+    if [[ "$_hmode" == https ]] && is_service_running abox-wallos-caddy 2>/dev/null; then
+        local _hp='' _hip=''
+        _hp=$(wallos_state_value PUBPORT 2>/dev/null || true)
+        _hip=$(get_public_ip 2>/dev/null || true); [[ -n "$_hip" ]] || _hip="${GLOBAL_PUBLIC_IP:-}"
+        if [[ "$_hp" =~ ^[0-9]+$ && -n "$_hip" ]]; then
+            if [[ "${ABOX_LANG:-zh}" == en ]]; then
+                msg "${GREEN}Wallos URL (HTTPS): https://$_hip:$_hp/${NC}"
+                msg ''
+                msg "${BOLD}-- Wallos quick guide (HTTPS) --${NC}"
+                msg "1) Open the HTTPS URL above in any browser; on first visit create the admin account and a strong password."
+                msg "2) If it does not open, the cloud security group is the usual cause: allow inbound TCP ${_hp} AND TCP 80 (80 is only used for automatic certificate issuance/renewal). The host firewall was already opened by the script."
+                msg "3) Security: full HTTPS, a Let's Encrypt IP certificate renewed automatically by Caddy (6-day cycle), and a Fail2Ban jail watching logins. If the VPS public IP ever changes, re-run the install to re-issue."
+            else
+                msg "${GREEN}Wallos 网址（HTTPS）：https://$_hip:$_hp/${NC}"
+                msg ''
+                msg "${BOLD}── Wallos 使用教程（HTTPS）──${NC}"
+                msg "1) 访问：手机/电脑浏览器打开上面的 HTTPS 网址，首次打开先创建管理员账号和密码（请设强密码，里面是财务数据）。"
+                msg "2) 打不开，多半是云安全组没放行：给这台机器放行 TCP ${_hp} 和 TCP 80 两个端口（80 只用于证书自动签发与续期）。本机防火墙已由脚本自动放行，不用管。"
+                msg "3) 安全：全程 HTTPS 加密；证书由 Let's Encrypt 签发、Caddy 每 6 天自动续期；Fail2Ban 已盯住登录爆破。若以后 VPS 公网 IP 更换，重新运行一次安装即可换证。"
+            fi
+            return 0
+        fi
+    fi
     host_ip=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
     # P3-8: handle empty binding and LAN-specific IPs explicitly (was: fell through to public-IP URL).
     if [[ -z "$host_ip" ]]; then
@@ -20752,13 +20810,168 @@ wallos_public_urls() {
     fi
 }
 
+
+install_wallos_caddy() {
+    if [[ -x /usr/local/bin/caddy ]] && /usr/local/bin/caddy version 2>/dev/null | grep -q "v${WALLOS_CADDY_VERSION}"; then
+        return 0
+    fi
+    get_architecture
+    local want='' url='' tmp got
+    case "$SB_ARCH" in
+        amd64) want="$WALLOS_CADDY_SHA256_AMD64" ;;
+        arm64) want="$WALLOS_CADDY_SHA256_ARM64" ;;
+        *) msg "${RED}Caddy 不支持当前架构: $SB_ARCH${NC}"; return 1 ;;
+    esac
+    url="https://github.com/caddyserver/caddy/releases/download/v${WALLOS_CADDY_VERSION}/caddy_${WALLOS_CADDY_VERSION}_linux_${SB_ARCH}.tar.gz"
+    tmp=$(mktemp -d /tmp/A-Box-caddy.XXXXXX) || return 1
+    abox_run_wait 'Caddy download' curl -fL --retry 2 --connect-timeout 15 -o "$tmp/caddy.tgz" "$url" || { rm -rf "$tmp"; msg "${RED}Caddy 下载失败。${NC}"; return 1; }
+    got=$(sha256sum "$tmp/caddy.tgz" 2>/dev/null | awk '{print $1}')
+    if [[ "$got" != "$want" ]]; then
+        rm -rf "$tmp"; msg "${RED}Caddy SHA256 校验失败 (供应链完整性保护)。${NC}"; return 1
+    fi
+    tar -xzf "$tmp/caddy.tgz" -C "$tmp" caddy 2>/dev/null || { rm -rf "$tmp"; msg "${RED}Caddy 解包失败。${NC}"; return 1; }
+    chmod 755 "$tmp/caddy" || { rm -rf "$tmp"; return 1; }
+    "$tmp/caddy" version >/dev/null 2>&1 || { rm -rf "$tmp"; msg "${RED}Caddy 执行校验失败。${NC}"; return 1; }
+    install_binary_atomically "$tmp/caddy" /usr/local/bin/caddy || { rm -rf "$tmp"; msg "${RED}Caddy 原子安装失败。${NC}"; return 1; }
+    rm -rf "$tmp"
+}
+
+wallos_https_write_unit() {
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        write_file_atomically_from_stdin "/etc/systemd/system/abox-wallos-caddy.service" 600 <<'EOF_WCADDY' || return 1
+# Managed by A-Box
+[Unit]
+Description=A-Box Wallos HTTPS front (Caddy)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Environment=XDG_DATA_HOME=/etc/ddr/wallos-caddy/data
+Environment=XDG_CONFIG_HOME=/etc/ddr/wallos-caddy/conf
+ExecStart=/usr/local/bin/caddy run --config /etc/ddr/wallos-caddy.json
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/etc/ddr/abox-wallos-caddy.log
+StandardError=append:/etc/ddr/abox-wallos-caddy.log
+
+[Install]
+WantedBy=multi-user.target
+EOF_WCADDY
+        systemctl daemon-reload >/dev/null 2>&1 || return 1
+        systemctl enable abox-wallos-caddy.service >/dev/null 2>&1 || true
+        systemctl restart abox-wallos-caddy.service >/dev/null 2>&1 || return 1
+    else
+        write_file_atomically_from_stdin "/etc/init.d/abox-wallos-caddy" 755 <<'EOF_WCADDY_RC' || return 1
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Wallos HTTPS front (Caddy)"
+command="/usr/local/bin/caddy"
+command_args="run --config /etc/ddr/wallos-caddy.json"
+command_env="XDG_DATA_HOME=/etc/ddr/wallos-caddy/data XDG_CONFIG_HOME=/etc/ddr/wallos-caddy/conf"
+command_background="yes"
+pidfile="/run/abox-wallos-caddy.pid"
+output_log="/etc/ddr/abox-wallos-caddy.log"
+error_log="/etc/ddr/abox-wallos-caddy.log"
+depend() { need net; }
+EOF_WCADDY_RC
+        chmod +x "/etc/init.d/abox-wallos-caddy" || return 1
+        rc-update add abox-wallos-caddy default >/dev/null 2>&1 || true
+        rc-service abox-wallos-caddy restart >/dev/null 2>&1 9>&- 10>&- || return 1
+    fi
+}
+
+wallos_https_teardown() { # best-effort: stop the HTTPS front, drop its config/data
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        systemctl stop abox-wallos-caddy.service >/dev/null 2>&1 || true
+        systemctl disable abox-wallos-caddy.service >/dev/null 2>&1 || true
+        rm -f "/etc/systemd/system/abox-wallos-caddy.service"
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    else
+        rc-service abox-wallos-caddy stop >/dev/null 2>&1 || true
+        rc-update del abox-wallos-caddy default >/dev/null 2>&1 || true
+        rm -f "/etc/init.d/abox-wallos-caddy"
+    fi
+    rm -f /etc/ddr/wallos-caddy.json /etc/ddr/abox-wallos-caddy.log "$WALLOS_CADDY_LOG"
+    rm -rf /etc/ddr/wallos-caddy
+    return 0
+}
+
+wallos_https_setup() { # $1 = public port, $2 = internal container port
+    local pubport="$1" internal="$2" pub_ip='' tmp_json='' _t=0 _cert='' _code=''
+    pub_ip=$(get_public_ip 2>/dev/null || true)
+    if [[ ! "$pub_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        msg "${RED}无法检测公网 IPv4，HTTPS 无法签发 IP 证书；Wallos 保持仅本机访问。${NC}"
+        return 1
+    fi
+    install_wallos_caddy || return 1
+    mkdir -p /etc/ddr/wallos-caddy/data /etc/ddr/wallos-caddy/conf || return 1
+    tmp_json=$(mktemp /tmp/wallos-caddy.XXXXXX.json) || return 1
+    # Explicit automation policy is REQUIRED: with a plain Caddyfile,
+    # IP subjects silently fall back to Caddy's internal CA (verified
+    # locally 2026-10-20). The JSON policy pins subject + shortlived.
+    if ! jq -n --arg ip "$pub_ip" --argjson pub "$pubport" --arg dial "127.0.0.1:${internal}" \
+            --arg ca "${WALLOS_CADDY_CA_URL:-}" --arg caroot "${WALLOS_CADDY_CA_ROOT:-}" \
+            --arg logf "$WALLOS_CADDY_LOG" '
+        {
+          admin: {disabled: true},
+          logging: {logs: {
+            "wallos-access": {writer: {output: "file", filename: $logf}, encoder: {format: "json"}}
+          }},
+          apps: {
+            tls: {automation: {policies: [
+              {subjects: [$ip], issuers: [
+                ({module: "acme", profile: "shortlived"}
+                 + (if $ca != "" then {ca: $ca} else {} end)
+                 + (if $caroot != "" then {trusted_roots_pem_files: [$caroot]} else {} end))
+              ]}
+            ]}},
+            http: {servers: {wallos: {
+              listen: [(":" + ($pub | tostring))],
+              logs: {logger_names: {($ip): "wallos-access"}, default_logger_name: "wallos-access"},
+              routes: [{match: [{host: [$ip]}],
+                        handle: [{handler: "reverse_proxy", upstreams: [{dial: $dial}]}],
+                        terminal: true}]
+            }}}
+          }
+        }' > "$tmp_json"; then
+        rm -f "$tmp_json"; msg "${RED}Wallos HTTPS 配置生成失败。${NC}"; return 1
+    fi
+    install_file_atomically "$tmp_json" /etc/ddr/wallos-caddy.json 600 || { rm -f "$tmp_json"; return 1; }
+    rm -f "$tmp_json"
+    wallos_https_write_unit || { msg "${RED}Wallos HTTPS 服务启动失败，见 /etc/ddr/abox-wallos-caddy.log。${NC}"; return 1; }
+    # Wait for the IP certificate (ACME HTTP-01 runs over port 80).
+    while (( _t < 120 )); do
+        _cert=$(find /etc/ddr/wallos-caddy/data/caddy/certificates -name "${pub_ip}.crt" 2>/dev/null | head -1)
+        [[ -n "$_cert" ]] && break
+        is_service_running abox-wallos-caddy 2>/dev/null || break
+        sleep 3; _t=$((_t + 3))
+    done
+    if [[ -z "$_cert" ]]; then
+        msg "${RED}HTTPS 证书未在 120 秒内签发（常见原因：云安全组未放行 TCP 80、或 80 端口被占用）。Wallos 保持仅本机访问，修复后重跑安装即可。日志：/etc/ddr/abox-wallos-caddy.log${NC}"
+        return 1
+    fi
+    _code=$(curl -ks --max-time 6 -o /dev/null -w '%{http_code}' "https://${pub_ip}:${pubport}/" 2>/dev/null || true)
+    if [[ ! "$_code" =~ ^[0-9]+$ || "$_code" == '000' ]]; then
+        msg "${YELLOW}证书已签发，但从本机探测公网地址未通：请确认云安全组已放行 TCP ${pubport} 与 TCP 80。${NC}"
+    fi
+    return 0
+}
+
 wallos_write_state() {
     # P3-6: persist BIND so backup/restore and rebuild-from-state preserve network exposure.
-    local image="$1" port="$2" tz="$3" bind="${4-127.0.0.1}" tmp
+    # Round 15: also persist MODE (local|https) + PUBPORT (the Caddy
+    # public port in https mode). When $5/$6 are omitted, existing
+    # values are carried over so restore/rollback paths keep them.
+    local image="$1" port="$2" tz="$3" bind="${4-127.0.0.1}" mode="${5:-}" pubport="${6:-}" tmp
+    if [[ -z "$mode" ]]; then mode=$(wallos_state_value MODE 2>/dev/null || true); fi
+    if [[ -z "$pubport" ]]; then pubport=$(wallos_state_value PUBPORT 2>/dev/null || true); fi
     tmp=$(umask 077; mktemp "$WALLOS_DIR/.abox-state.new.XXXXXX") || return 1
-    if ! printf 'IMAGE=%s\nPORT=%s\nTZ=%s\nBIND=%s\n' "$image" "$port" "$tz" "$bind" > "$tmp" ||
-       ! chmod 600 "$tmp" ||
-       ! mv -f -- "$tmp" "$WALLOS_DIR/.abox-state"; then
+    if ! printf 'IMAGE=%s\nPORT=%s\nTZ=%s\nBIND=%s\n' "$image" "$port" "$tz" "$bind" > "$tmp"; then
+        rm -f -- "$tmp"; return 1
+    fi
+    if [[ "$mode" == https ]]; then printf 'MODE=https\n' >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
+    if [[ "$pubport" =~ ^[0-9]+$ ]]; then printf 'PUBPORT=%s\n' "$pubport" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
+    if ! chmod 600 "$tmp" || ! mv -f -- "$tmp" "$WALLOS_DIR/.abox-state"; then
         rm -f -- "$tmp"
         return 1
     fi
@@ -20837,38 +21050,69 @@ wallos_install_or_update() {
     if [[ -n "${WALLOS_BIND_ADDRESS:-}" && "$bind_address" != 127.0.0.1 && "$bind_address" != 0.0.0.0 ]]; then
         msg "${RED}WALLOS_BIND_ADDRESS override must be 127.0.0.1 or 0.0.0.0.${NC}"; return 1
     fi
-    # Simplified exposure choice (interactive only): public direct is
-    # the default pick; localhost-only stays available. The choice is
-    # the decision, so the generic bind confirm below is skipped then.
-    # Non-interactive runs keep the env/preserved/default bind unchanged.
-    local _bind_chosen=0
-    if [[ -z "${WALLOS_BIND_ADDRESS:-}" && -t 0 && "$bind_address" != 0.0.0.0 ]]; then
+    # Access mode (user direction 2026-10-20): [1] public now means
+    # HTTPS - Caddy terminates TLS with an auto-renewed Let's Encrypt
+    # IP certificate while Wallos itself stays bound to loopback.
+    # [2] is localhost-only. Plain public HTTP is no longer offered;
+    # an existing public-HTTP install migrates to HTTPS and keeps its
+    # public port, so the URL port does not change.
+    local _bind_chosen=0 wmode='local' pubport=''
+    local _old_mode='' _old_pubport=''
+    _old_mode=$(wallos_state_value MODE 2>/dev/null || true)
+    _old_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
+    if [[ -n "${WALLOS_BIND_ADDRESS:-}" ]]; then
+        _bind_chosen=1
+        [[ "$bind_address" == 0.0.0.0 ]] && wmode='https'
+    elif [[ -t 0 ]]; then
         local _ans=''
         case "${ABOX_LANG:-zh}" in
-            en) printf 'Wallos access mode: [1] Public direct (open the Wallos URL from any device; plain HTTP with Fail2Ban brute-force protection)  [2] Localhost only (SSH tunnel). Choose [1]: ' ;;
-            *) printf 'Wallos 访问方式：[1] 公网直连（任意设备打开网址即可访问；明文 HTTP，已带 Fail2Ban 防暴力破解）[2] 仅本机（用 SSH 隧道访问）。请选择 [1]: ' ;;
+            en) printf 'Wallos access mode: [1] Public HTTPS (open the URL from any device; encrypted, certificate auto-renews)  [2] Localhost only (SSH tunnel). Choose [1]: ' ;;
+            *) printf 'Wallos 访问方式：[1] 公网直连 HTTPS（任意设备打开网址即可访问，全程加密、证书自动续期）[2] 仅本机（用 SSH 隧道访问）。请选择 [1]: ' ;;
         esac
         read -r _ans || _ans=''
         _bind_chosen=1
-        if [[ "$_ans" == '2' ]]; then bind_address='127.0.0.1'; else bind_address='0.0.0.0'; fi
-        if [[ "$bind_address" == 0.0.0.0 && "$port" =~ ^[0-9]+$ ]] && (( port < 20000 )); then
-            # Public exposure never keeps a predictable port: rotate a
-            # preserved legacy port (e.g. 8282) to a random high one.
-            # Runs before the upgrade journal write; rollback keeps the
-            # old port from its own recorded values.
+        [[ "$_ans" == '2' ]] || wmode='https'
+    elif [[ "$_old_mode" == https && "$_old_pubport" =~ ^[0-9]+$ ]]; then
+        # Non-interactive rerun of an HTTPS install: keep HTTPS.
+        wmode='https'; pubport="$_old_pubport"; _bind_chosen=1
+    fi
+    if [[ "$wmode" == https ]]; then
+        bind_address='127.0.0.1'
+        if [[ -z "$pubport" ]]; then
+            if [[ "$old_bind" == 0.0.0.0 && "$old_port" =~ ^[0-9]+$ ]]; then pubport="$old_port"
+            elif [[ "$_old_pubport" =~ ^[0-9]+$ ]]; then pubport="$_old_pubport"; fi
+        fi
+        if [[ ! "$pubport" =~ ^[0-9]+$ ]] || (( pubport < 20000 )); then
+            # Public exposure never uses a predictable port.
             local _np='' _try
             for _try in $(seq 1 50); do
                 local _cand=$(( (RANDOM * 32768 + RANDOM) % 40001 + 20000 ))
                 if wallos_port_free "$_cand"; then _np="$_cand"; break; fi
             done
             if [[ -n "$_np" ]]; then
-                case "${ABOX_LANG:-zh}" in
-                    en) msg "${YELLOW}Public mode uses a random high port: ${port} -> ${_np}; use the URL printed at the end.${NC}" ;;
-                    *) msg "${YELLOW}公网模式已自动换用随机高位端口：${port} → ${_np}（新网址以结尾教程为准）。${NC}" ;;
-                esac
-                port="$_np"
+                if [[ "$pubport" =~ ^[0-9]+$ ]]; then
+                    case "${ABOX_LANG:-zh}" in
+                        en) msg "${YELLOW}Public HTTPS uses a random high port: ${pubport} -> ${_np}; use the URL printed at the end.${NC}" ;;
+                        *) msg "${YELLOW}公网 HTTPS 已自动换用随机高位端口：${pubport} → ${_np}（新网址以结尾为准）。${NC}" ;;
+                    esac
+                fi
+                pubport="$_np"
             fi
         fi
+        # The container port is internal in HTTPS mode and must differ
+        # from the public port Caddy binds.
+        if [[ "$port" == "$pubport" ]]; then
+            local _ip2='' _try2
+            for _try2 in $(seq 1 50); do
+                local _cand2=$(( (RANDOM * 32768 + RANDOM) % 40001 + 20000 ))
+                if [[ "$_cand2" != "$pubport" ]] && wallos_port_free "$_cand2"; then _ip2="$_cand2"; break; fi
+            done
+            [[ -n "$_ip2" ]] && port="$_ip2"
+        fi
+    elif (( _bind_chosen )); then
+        # An explicit localhost choice also unpublishes a legacy
+        # public-HTTP install.
+        bind_address='127.0.0.1'
     fi
     local confirm_prompt
     case "${ABOX_LANG:-zh}" in
@@ -20891,6 +21135,12 @@ wallos_install_or_update() {
             if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='警告：Wallos 将以明文 HTTP 绑定所有 IPv4 网卡。只有已配置防火墙/HTTPS 反向代理时才继续。[Y/N]: '
             else confirm_prompt='Wallos 存储个人财务数据，默认仅绑定 127.0.0.1；远程访问请配置 HTTPS 反向代理或 SSH 隧道。是否继续？[Y/N]: '; fi ;;
     esac
+    if [[ "$wmode" == https && (( ! _bind_chosen )) ]]; then
+        case "${ABOX_LANG:-zh}" in
+            en) confirm_prompt='Wallos will be served over HTTPS (auto-renewed IP certificate); the app itself stays on localhost. Continue? [Y/N]: ' ;;
+            *) confirm_prompt='Wallos 将通过 HTTPS 对外提供服务（IP 证书自动续期），应用本身仍只绑定本机。是否继续？[Y/N]: ' ;;
+        esac
+    fi
     if (( ! _bind_chosen )) && ! confirm_yes_no "$confirm_prompt"; then return 0; fi
 
     wallos_pull_or_restore_image "$arch" || { msg "${RED}Official Wallos source and the A-Box recovery image are both unavailable.${NC}"; return 1; }
@@ -20933,7 +21183,7 @@ wallos_install_or_update() {
     # The ownership marker was created and permission-checked before starting
     # the container. Commit the mutable image/port/timezone state atomically;
     # do not silently report a complete update if metadata cannot be saved.
-    if ! wallos_write_state "$image" "$port" "$tz" "$bind_address"; then
+    if ! wallos_write_state "$image" "$port" "$tz" "$bind_address" "$wmode" "$pubport"; then
         msg "${RED}Wallos state metadata failed to commit. Rolling back the incomplete upgrade where possible.${NC}"
         if (( running == 1 )); then
             docker rm -f wallos >/dev/null 2>&1 || true
@@ -20992,6 +21242,18 @@ wallos_install_or_update() {
             if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='默认仅允许本机访问；远程访问请使用 HTTPS 反向代理或 SSH 隧道。'
             else security_note="明文 HTTP 已绑定所有 IPv4 网卡；TCP $port 必须由 HTTPS 反向代理与防火墙保护。"; fi ;;
     esac
+    if [[ "$wmode" == https ]]; then
+        if ! wallos_https_setup "$pubport" "$port"; then
+            msg "${RED}HTTPS 配置未完成：Wallos 已在本机运行，但未对外暴露。修复后重跑安装即可重试。${NC}"
+            return 1
+        fi
+        case "${ABOX_LANG:-zh}" in
+            en) security_note='HTTPS is on: traffic is encrypted end to the server; the certificate renews automatically.' ;;
+            *) security_note='已启用 HTTPS：全程加密，证书自动续期，无需人工维护。' ;;
+        esac
+    elif [[ "$_old_mode" == https ]]; then
+        wallos_https_teardown >/dev/null 2>&1 || true
+    fi
     wallos_public_urls "$port"
     msg "${YELLOW}${security_note}${NC}"
     if [[ "$bind_address" == 0.0.0.0 ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
@@ -20999,11 +21261,15 @@ wallos_install_or_update() {
     elif [[ "$bind_address" == 0.0.0.0 ]] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
         if confirm_yes_no "Allow TCP $port through firewalld? [Y/N]: "; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}Could not update firewalld; add the rule manually.${NC}"; fi
     fi
-    if [[ "$bind_address" == 0.0.0.0 ]]; then
+    if [[ "$wmode" == https ]]; then
+        allowPort "$pubport" tcp 2>/dev/null || true
+        allowPort 80 tcp 2>/dev/null || true
+        save_firewall_rules 2>/dev/null || true
+    elif [[ "$bind_address" == 0.0.0.0 ]]; then
         allowPort "$port" tcp 2>/dev/null || true
         save_firewall_rules 2>/dev/null || true
     fi
-    wallos_bruteforce_protection "$port" "$bind_address"
+    wallos_bruteforce_protection "$port" "$bind_address" "$wmode"
     if [[ "$bind_address" == 0.0.0.0 ]]; then
         case "${ABOX_LANG:-zh}" in
             en) msg "${CYAN}Direct-access security checklist:${NC}"; msg "  1) Cloud security group: allow TCP $port from YOUR IP ONLY (/32), not 0.0.0.0/0."; msg "  2) Set a strong Wallos admin password (20+ chars) on first login."; msg "  3) Fail2ban is active on this port: 10 failed logins in 10 min = 24h ban." ;;
@@ -21219,6 +21485,7 @@ wallos_menu() {
                             msg "${GREEN}コンテナを削除しました。データとバックアップは保持されています。${NC}" ;;
                         *) msg "${GREEN}容器已删除，数据和备份已保留。${NC}" ;;
                     esac
+                    wallos_https_teardown >/dev/null 2>&1 || true
                 else
                     case "${ABOX_LANG:-zh}" in
                         en) msg "${RED}[!] Failed to remove the wallos container; it may still exist.${NC}" ;;

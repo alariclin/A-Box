@@ -712,6 +712,36 @@ tr_msg() {
         fa:tuic_done) echo 'TUIC مستقر شد، لینک زیر:' ;;
         zh-tw:tuic_done) echo 'TUIC 部署完成，連結如下：' ;;
         ja:tuic_done) echo 'TUIC を展開しました。リンク：' ;;
+        zh:anytls_title) echo '部署 AnyTLS-Reality 落地代理 (sing-box)' ;;
+        en:anytls_title) echo 'Deploy AnyTLS-Reality landing proxy (sing-box)' ;;
+        ru:anytls_title) echo 'Развернуть AnyTLS-Reality (sing-box)' ;;
+        fa:anytls_title) echo 'استقرار AnyTLS-Reality (sing-box)' ;;
+        zh-tw:anytls_title) echo '部署 AnyTLS-Reality 落地代理 (sing-box)' ;;
+        ja:anytls_title) echo 'AnyTLS-Reality を展開 (sing-box)' ;;
+        zh:anytls_port_prompt) echo '请输入 AnyTLS 监听端口 (回车默认 443): ' ;;
+        en:anytls_port_prompt) echo 'Enter AnyTLS listen port (Enter for 443): ' ;;
+        ru:anytls_port_prompt) echo 'Порт AnyTLS (Enter = 443): ' ;;
+        fa:anytls_port_prompt) echo 'پورت AnyTLS (Enter = 443): ' ;;
+        zh-tw:anytls_port_prompt) echo '請輸入 AnyTLS 監聽連接埠 (預設 443): ' ;;
+        ja:anytls_port_prompt) echo 'AnyTLS のポート (デフォルト 443): ' ;;
+        zh:anytls_pass_prompt) echo '请输入 AnyTLS 密码 (回车自动生成随机密码): ' ;;
+        en:anytls_pass_prompt) echo 'Enter AnyTLS password (Enter to auto-generate): ' ;;
+        ru:anytls_pass_prompt) echo 'Пароль AnyTLS (Enter для автогенерации): ' ;;
+        fa:anytls_pass_prompt) echo 'گذرواژه AnyTLS (Enter برای تولید خودکار): ' ;;
+        zh-tw:anytls_pass_prompt) echo '請輸入 AnyTLS 密碼 (Enter 自動產生): ' ;;
+        ja:anytls_pass_prompt) echo 'AnyTLS パスワード (Enter で自動生成): ' ;;
+        zh:anytls_exists) echo '检测到已存在 anytls-in 入站，将更新其配置。' ;;
+        en:anytls_exists) echo 'Existing anytls-in inbound detected; updating its config.' ;;
+        ru:anytls_exists) echo 'Обнаружен существующий anytls-in; обновляю конфигурацию.' ;;
+        fa:anytls_exists) echo 'ورودی anytls-in موجود شناسایی شد؛ در حال به‌روزرسانی.' ;;
+        zh-tw:anytls_exists) echo '偵測到已存在 anytls-in 入站，將更新其設定。' ;;
+        ja:anytls_exists) echo '既存の anytls-in が見つかりました。設定を更新します。' ;;
+        zh:anytls_done) echo 'AnyTLS 部署完成，链接如下：' ;;
+        en:anytls_done) echo 'AnyTLS deployed, link below:' ;;
+        ru:anytls_done) echo 'AnyTLS развернут, ссылка ниже:' ;;
+        fa:anytls_done) echo 'AnyTLS مستقر شد، لینک زیر:' ;;
+        zh-tw:anytls_done) echo 'AnyTLS 部署完成，連結如下：' ;;
+        ja:anytls_done) echo 'AnyTLS を展開しました。リンク：' ;;
         zh:socks5_pass_prompt) echo '请输入 SOCKS5 密码 (回车自动生成随机密码): ' ;;
         en:socks5_pass_prompt) echo 'Enter SOCKS5 password (Enter to auto-generate): ' ;;
         ru:socks5_pass_prompt) echo 'Введите пароль SOCKS5 (Enter для автогенерации): ' ;;
@@ -9797,6 +9827,148 @@ EOF_SVC
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
     local link="tuic://${uuid}:${pass}@${pub_ip}:${port}?congestion_control=${cc}&alpn=h3&sni=${sni}&allow_insecure=1#TUIC"
     msg "${GREEN}$(tr_msg tuic_done)${NC}"
+    msg "$link"
+    generate_qr "$link"
+}
+
+
+# AnyTLS deployment (sing-box only; Xray has no AnyTLS inbound).
+# AnyTLS + REALITY, same shape as deploy_singbox_trojan_landing: standalone
+# inbound merged into the live sing-box config by tag, `sing-box check` first.
+deploy_singbox_anytls() {
+    local port pass sni pk pbk sid cfg='/etc/sing-box/config.json'
+    local tag='anytls-in' tmp_json
+    clear; msg "${BOLD}${GREEN}$(tr_msg anytls_title)${NC}"
+    init_system_environment
+    load_optional_abox_env_or_die
+    light_preflight_check
+
+    port=$(prompt_validated "$(tr_msg anytls_port_prompt)" port '443') || die 'AnyTLS port input failed.'
+    read -r -p "$(tr_msg anytls_pass_prompt)" pass || pass=''
+    if [[ -z "$pass" ]]; then
+        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'AnyTLS password generation failed.'
+        [[ -n "$pass" ]] || die 'AnyTLS password generation failed.'
+    fi
+
+    # Minimal sing-box install when the binary is missing.
+    if [[ ! -x /usr/local/bin/sing-box ]]; then
+        local sb_tmp sb_tar sb_ext SB_PATH
+        get_architecture
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-anytls.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tar="$sb_tmp/singbox_core.tar.gz"
+        sb_ext="$sb_tmp/extract"
+        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        clear_core_release_resolution SagerNet/sing-box
+        fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
+        SB_PATH="$sb_ext/sing-box"
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        rm -rf -- "$sb_tmp"
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die 'Sing-box 初始配置生成失败。'
+        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+        rm -f "$tmp_json"
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+# Managed by A-Box
+[Unit]
+Description=A-Box Sing-Box Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-singbox
+Group=abox-singbox
+UMask=0077
+ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        else
+            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
+            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+rc_ulimit="-n 1048576"
+EOF_SB_CONFD
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Sing-Box Service"
+command="/usr/local/bin/sing-box"
+command_args="run -c /etc/sing-box/config.json"
+command_background="yes"
+command_user="abox-singbox:abox-singbox"
+umask=077
+pidfile="/run/sing-box.pid"
+depend() { need net; }
+EOF_SVC
+            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+        fi
+        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+    fi
+
+    # Reality keypair + SNI (reuse A-Box flow).
+    local keypair
+    keypair=$(/usr/local/bin/sing-box generate reality-keypair) || die 'Sing-box REALITY 密钥对生成失败。'
+    IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die 'Sing-box REALITY 密钥解析失败。'
+    [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die 'Sing-box REALITY 密钥为空。'
+    sid=$(openssl rand -hex 4 | tr -d '\n\r') || die 'shortId 生成失败。'
+    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
+    [[ -n "$sni" ]] || sni='www.amazon.com'
+
+    # Build the anytls+reality inbound object.
+    tmp_json=$(mktemp /tmp/A-Box-sb-anytls-inbound.XXXXXX) || die '临时文件创建失败。'
+    jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" \
+        --arg pk "$pk" --arg sid "$sid" \
+        '{type:"anytls",tag:"anytls-in",listen:"0.0.0.0",listen_port:$port,
+          users:[{name:"abox",password:$pass}],
+          tls:{enabled:true,server_name:$sni,
+            reality:{enabled:true,handshake:{server:$sni,server_port:443},private_key:$pk,short_id:[$sid]}}}' \
+        > "$tmp_json" || die 'AnyTLS inbound JSON 生成失败。'
+
+    local tmp_cfg
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        msg "${YELLOW}$(tr_msg anytls_exists)${NC}"
+    fi
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    if ! jq --slurpfile nb "$tmp_json" \
+            '(.inbounds | map(select(.tag=="anytls-in"))) as $old
+             | .inbounds |= (map(select(.tag!="anytls-in")) + $nb)' \
+            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+        rm -f "$tmp_cfg" "$tmp_json"; die 'AnyTLS inbound 配置更新失败。'
+    fi
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
+        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+    rm -f "$tmp_cfg" "$tmp_json"
+    prepare_abox_runtime_permissions sing-box 2>/dev/null || true
+    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+
+    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    service_manager start sing-box 2>/dev/null || true
+    set_desired_state RUNNING 2>/dev/null || true
+
+    local pub_ip
+    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
+    local link="anytls://${pass}@${pub_ip}:${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}#AnyTLS-Reality"
+    msg "${GREEN}$(tr_msg anytls_done)${NC}"
     msg "$link"
     generate_qr "$link"
 }
@@ -19917,6 +20089,7 @@ vps_benchmark_menu() {
             msg "${CYAN}[ Protocol Deployment ]${NC}"
             msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
             msg "${YELLOW}17.  TUIC (sing-box)${NC}"
+            msg "${YELLOW}18.  AnyTLS (sing-box)${NC}"
             msg "${GREEN}0. Back${NC}"
             ;;
         ru)
@@ -19935,6 +20108,7 @@ vps_benchmark_menu() {
             msg "${CYAN}[ Развёртывание протоколов ]${NC}"
             msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
             msg "${YELLOW}17.  TUIC (sing-box)${NC}"
+            msg "${YELLOW}18.  AnyTLS (sing-box)${NC}"
             msg "${GREEN}0. Назад${NC}"
             ;;
         fa)
@@ -19953,6 +20127,7 @@ vps_benchmark_menu() {
             msg "${CYAN}[ استقرار پروتکل ]${NC}"
             msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
             msg "${YELLOW}17.  TUIC (sing-box)${NC}"
+            msg "${YELLOW}18.  AnyTLS (sing-box)${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
         zh-tw)
@@ -19971,6 +20146,7 @@ vps_benchmark_menu() {
             msg "${CYAN}[ 協議部署 ]${NC}"
             msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
             msg "${YELLOW}17.  TUIC (sing-box)${NC}"
+            msg "${YELLOW}18.  AnyTLS (sing-box)${NC}"
             msg "${GREEN}0. 返回主選單${NC}"
             ;;
         ja)
@@ -19989,6 +20165,7 @@ vps_benchmark_menu() {
             msg "${CYAN}[ プロトコル展開 ]${NC}"
             msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
             msg "${YELLOW}17.  TUIC (sing-box)${NC}"
+            msg "${YELLOW}18.  AnyTLS (sing-box)${NC}"
             msg "${GREEN}0. メインメニューに戻る${NC}"
             ;;
         *)
@@ -20007,6 +20184,7 @@ vps_benchmark_menu() {
             msg "${CYAN}[ 协议部署 ]${NC}"
             msg "${YELLOW}15.  SOCKS5/Mixed                         16.  Trojan-Reality${NC}"
             msg "${YELLOW}17.  TUIC (sing-box)${NC}"
+            msg "${YELLOW}18.  AnyTLS (sing-box)${NC}"
             msg "${GREEN}0. 返回主菜单${NC}"
             ;;
     esac
@@ -20031,6 +20209,7 @@ vps_benchmark_menu() {
         15) socks5_toolbox_entry; pause_return ;;
         16) trojan_toolbox_entry; pause_return ;;
         17) deploy_singbox_tuic; pause_return ;;
+        18) deploy_singbox_anytls; pause_return ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $bench_choice${NC}"; sleep 1 ;;
     esac

@@ -2471,7 +2471,7 @@ __abox_reconcile_openrc_service() {
     local unit="$1"
     [[ -x "/etc/init.d/${unit}" ]] || return 0
     rc-update add "$unit" default >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 无法加入 default runlevel。"
-    rc-service "$unit" status >/dev/null 2>&1 || rc-service "$unit" start >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 无法启动。"
+    rc-service "$unit" status >/dev/null 2>&1 || rc-service "$unit" start >/dev/null 2>&1 9>&- 10>&- || die "OpenRC 服务 ${unit} 无法启动。"
     rc-service "$unit" status >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 未处于运行状态。"
 }
 init_system_environment() {
@@ -2865,7 +2865,7 @@ service_manager() {
                     ;;
                 start)
                     rc-update add "$srv" default >/dev/null 2>&1 || die "服务 $srv 无法加入 OpenRC default runlevel。"
-                    rc-service "$srv" restart >/dev/null 2>&1 || die "服务 $srv 的 OpenRC restart 命令失败。"
+                    rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&- || die "服务 $srv 的 OpenRC restart 命令失败。"
                     sleep 2
                     if ! rc-service "$srv" status >/dev/null 2>&1; then
                         case "$srv" in sing-box|hysteria) clean_nat_rules 2>/dev/null || true; save_firewall_rules 2>/dev/null || true ;; esac
@@ -3287,7 +3287,7 @@ hysteria_acme_dir_runtime_permissions_valid() {
     mode=$(stat -c %a "$dir" 2>/dev/null) || return 1
     nlink=$(stat -c %h "$dir" 2>/dev/null) || return 1
     # R-01: Accept 1770 (sticky bit) as well as 770.
-    [[ "$nlink" =~ ^[2-9][0-9]*$ && "$mode" =~ ^0?1?770$ ]] || return 1
+    [[ "$nlink" =~ ^[1-9][0-9]*$ && "$mode" =~ ^0?1?770$ ]] || return 1
     return 0
 }
 
@@ -7415,7 +7415,7 @@ prepare_abox_runtime_config_dir() {
     [[ "$(stat -c %u:%g "$dir" 2>/dev/null || true)" == "0:$gid" ]] || return 1
     mode=$(stat -c %a "$dir" 2>/dev/null) || return 1
     nlink=$(stat -c %h "$dir" 2>/dev/null) || return 1
-    [[ "$nlink" =~ ^[2-9][0-9]*$ && "$mode" =~ ^0?750$ ]] || return 1
+    [[ "$nlink" =~ ^[1-9][0-9]*$ && "$mode" =~ ^0?750$ ]] || return 1
 }
 
 prepare_abox_runtime_read_file() {
@@ -7551,7 +7551,7 @@ ensure_fail2ban() {
         systemctl start fail2ban >/dev/null 2>&1 || true
     elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
         rc-update add fail2ban default >/dev/null 2>&1 || true
-        rc-service fail2ban start >/dev/null 2>&1 || true
+        rc-service fail2ban start >/dev/null 2>&1 9>&- 10>&- || true
     fi
     return 0
 }
@@ -7702,7 +7702,7 @@ EOF_F2B_UDP
             if [[ "${INIT_SYS:-}" == systemd ]]; then
                 systemctl restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响 A-Box 核心服务提交。${NC}"
             else
-                rc-service fail2ban restart >/dev/null 2>&1 || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响 A-Box 核心服务提交。${NC}"
+                rc-service fail2ban restart >/dev/null 2>&1 9>&- 10>&- || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响 A-Box 核心服务提交。${NC}"
             fi
         else
             rm -f -- "$jail_tmp"
@@ -7881,7 +7881,7 @@ check_socket_or_fail() {
 restart_owned() {
     local srv="$1"
     service_is_abox_managed "$srv" || return 1
-    if is_systemd; then systemctl restart "$srv" >/dev/null 2>&1; else rc-service "$srv" restart >/dev/null 2>&1; fi
+    if is_systemd; then systemctl restart "$srv" >/dev/null 2>&1; else rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&-; fi
 }
 load_state || exit 0
 [[ -n "${CORE:-}" ]] || exit 0
@@ -8158,7 +8158,7 @@ if [[ -e "$GEO_TXN" || -L "$GEO_TXN" ]]; then
     if is_systemd; then
         systemctl restart xray >/dev/null 2>&1 || exit 1
     else
-        rc-service xray restart >/dev/null 2>&1 || exit 1
+        rc-service xray restart >/dev/null 2>&1 9>&- 10>&- || exit 1
     fi
 fi
 desired=RUNNING
@@ -8234,16 +8234,16 @@ restart_ok=0
 if is_systemd; then
     systemctl restart xray >/dev/null 2>&1 && systemctl is-active --quiet xray && restart_ok=1
 else
-    rc-service xray restart >/dev/null 2>&1 && rc-service xray status >/dev/null 2>&1 && restart_ok=1
+    rc-service xray restart >/dev/null 2>&1 9>&- 10>&- && rc-service xray status >/dev/null 2>&1 && restart_ok=1
 fi
 if [[ "$restart_ok" != 1 ]]; then
     restore_geo_transaction || exit 1
-    if is_systemd; then systemctl restart xray >/dev/null 2>&1 || true; else rc-service xray restart >/dev/null 2>&1 || true; fi
+    if is_systemd; then systemctl restart xray >/dev/null 2>&1 || true; else rc-service xray restart >/dev/null 2>&1 9>&- 10>&- || true; fi
     exit 1
 fi
 if ! update_geo_ownership; then
     restore_geo_transaction || exit 1
-    if is_systemd; then systemctl restart xray >/dev/null 2>&1 || true; else rc-service xray restart >/dev/null 2>&1 || true; fi
+    if is_systemd; then systemctl restart xray >/dev/null 2>&1 || true; else rc-service xray restart >/dev/null 2>&1 9>&- 10>&- || true; fi
     exit 1
 fi
 rm -rf -- "$GEO_TXN" || exit 1
@@ -9500,7 +9500,7 @@ deploy_singbox_socks5_landing() {
         rm -rf -- "$sb_tmp"
         # Seed a minimal config shell; the socks/mixed inbound is appended below.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
-        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die 'Sing-box 初始配置生成失败。'
         install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
         rm -f "$tmp_json"
@@ -9516,6 +9516,8 @@ Wants=network-online.target
 User=abox-singbox
 Group=abox-singbox
 UMask=0077
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
 NoNewPrivileges=true
 PrivateTmp=true
@@ -9541,6 +9543,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
+capabilities="cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -9641,7 +9644,7 @@ deploy_xray_trojan_landing() {
         prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
         rm -rf -- "$xray_tmp"
         tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die '临时文件创建失败。'
-        jq -n '{log:{loglevel:"warning"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
             || die 'Xray 初始配置生成失败。'
         install_file_atomically "$tmp_json" "$cfg" 600 || die 'Xray config 原子写入失败。'
         rm -f "$tmp_json"
@@ -9717,7 +9720,7 @@ EOF_SVC
     if [[ ! -f "$cfg" || -L "$cfg" ]]; then
         local seed_json
         seed_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die '临时文件创建失败。'
-        jq -n '{log:{loglevel:"warning"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$seed_json" || { rm -f "$seed_json"; die 'Xray 初始配置生成失败。'; }
+        jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$seed_json" || { rm -f "$seed_json"; die 'Xray 初始配置生成失败。'; }
         prepare_abox_runtime_config_dir xray /usr/local/etc/xray || { rm -f "$seed_json"; die 'Xray config directory creation failed.'; }
         install_file_atomically "$seed_json" "$cfg" 600 || { rm -f "$seed_json"; die 'Xray config 原子写入失败。'; }
         rm -f "$seed_json"
@@ -9799,7 +9802,7 @@ deploy_singbox_trojan_landing() {
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
-        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die 'Sing-box 初始配置生成失败。'
         install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
         rm -f "$tmp_json"
@@ -9815,6 +9818,8 @@ Wants=network-online.target
 User=abox-singbox
 Group=abox-singbox
 UMask=0077
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
 NoNewPrivileges=true
 PrivateTmp=true
@@ -9840,6 +9845,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
+capabilities="cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -9948,7 +9954,7 @@ deploy_singbox_tuic() {
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
-        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die 'Sing-box 初始配置生成失败。'
         install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
         rm -f "$tmp_json"
@@ -9964,6 +9970,8 @@ Wants=network-online.target
 User=abox-singbox
 Group=abox-singbox
 UMask=0077
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
 NoNewPrivileges=true
 PrivateTmp=true
@@ -9989,6 +9997,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
+capabilities="cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -10088,7 +10097,7 @@ deploy_singbox_anytls() {
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
-        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die 'Sing-box 初始配置生成失败。'
         install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
         rm -f "$tmp_json"
@@ -10104,6 +10113,8 @@ Wants=network-online.target
 User=abox-singbox
 Group=abox-singbox
 UMask=0077
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
 NoNewPrivileges=true
 PrivateTmp=true
@@ -10129,6 +10140,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
+capabilities="cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -10231,7 +10243,7 @@ deploy_singbox_shadowtls() {
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
-        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die 'Sing-box 初始配置生成失败。'
         install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
         rm -f "$tmp_json"
@@ -10247,6 +10259,8 @@ Wants=network-online.target
 User=abox-singbox
 Group=abox-singbox
 UMask=0077
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
 NoNewPrivileges=true
 PrivateTmp=true
@@ -10272,6 +10286,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
+capabilities="cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -10309,6 +10324,7 @@ EOF_SVC
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+    prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
     rm -f "$tmp_cfg" "$tmp_json"
 
     restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
@@ -10427,6 +10443,7 @@ argo_deploy_ws() {
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+    prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
     rm -f "$tmp_cfg" "$tmp_json"
     restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
     service_manager start sing-box 2>/dev/null || true
@@ -10472,7 +10489,7 @@ depend() { need net; }
 EOF_RC
         chmod +x "/etc/init.d/${name}" || die 'Argo OpenRC 权限设置失败。'
         rc-update add "$name" default >/dev/null 2>&1 || true
-        rc-service "$name" restart >/dev/null 2>&1 || die "Argo 服务启动失败: ${name}"
+        rc-service "$name" restart >/dev/null 2>&1 9>&- 10>&- || die "Argo 服务启动失败: ${name}"
     fi
 }
 
@@ -10527,6 +10544,7 @@ deploy_argo_temp() {
     load_optional_abox_env_or_die
     light_preflight_check
     install_cloudflared
+    local cfg='/etc/sing-box/config.json' tmp_json
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         local sb_tmp sb_tar sb_ext SB_PATH
@@ -10547,7 +10565,7 @@ deploy_argo_temp() {
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
-        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die 'Sing-box 初始配置生成失败。'
         install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
         rm -f "$tmp_json"
@@ -10563,6 +10581,8 @@ Wants=network-online.target
 User=abox-singbox
 Group=abox-singbox
 UMask=0077
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
 NoNewPrivileges=true
 PrivateTmp=true
@@ -10588,6 +10608,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
+capabilities="cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -10625,6 +10646,7 @@ deploy_argo_fixed() {
     msg ''
     [[ -n "$token" ]] || die 'Token 为空。'
     install_cloudflared
+    local cfg='/etc/sing-box/config.json' tmp_json
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         local sb_tmp sb_tar sb_ext SB_PATH
@@ -10645,7 +10667,7 @@ deploy_argo_fixed() {
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
-        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die 'Sing-box 初始配置生成失败。'
         install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
         rm -f "$tmp_json"
@@ -10661,6 +10683,8 @@ Wants=network-online.target
 User=abox-singbox
 Group=abox-singbox
 UMask=0077
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
 NoNewPrivileges=true
 PrivateTmp=true
@@ -10686,6 +10710,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
+capabilities="cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -10753,6 +10778,7 @@ argo_uninstall() {
         if jq '.inbounds |= map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in"))' "$cfg" > "$tmp_cfg" 2>/dev/null \
             && /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1; then
             install_file_atomically "$tmp_cfg" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+            prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
             restart_service_soft sing-box || true
         fi
         rm -f "$tmp_cfg"
@@ -11263,6 +11289,7 @@ routing_apply_live() {
             fi
             install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
             rm -f "$tmp"
+            prepare_abox_runtime_permissions xray || return 1
             restart_service_soft xray
             ;;
         singbox|sing-box)
@@ -11283,7 +11310,8 @@ routing_apply_live() {
             fi
             install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
             rm -f "$tmp"
-            restart_service_soft singbox
+            prepare_abox_runtime_permissions sing-box || return 1
+            restart_service_soft sing-box
             ;;
         *) return 1 ;;
     esac
@@ -11668,7 +11696,7 @@ deploy_socks5_landing() {
         rm -rf -- "$xray_tmp"
         # Seed a minimal config shell; the socks inbound is appended below.
         tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die '临时文件创建失败。'
-        jq -n '{log:{loglevel:"warning"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
             || die 'Xray 初始配置生成失败。'
         install_file_atomically "$tmp_json" "$cfg" 600 || die 'Xray config 原子写入失败。'
         rm -f "$tmp_json"
@@ -11939,7 +11967,6 @@ deploy_singbox() {
     KEYPAIR=$(/usr/local/bin/sing-box generate reality-keypair) || die 'Sing-box REALITY 密钥对生成失败。'
     IFS=$'\t' read -r PK PBK < <(parse_x25519_keypair_output "$KEYPAIR") || die 'Sing-box REALITY 密钥解析失败。'
     [[ -n "${PK:-}" && -n "${PBK:-}" ]] || die 'Sing-box REALITY 密钥解析失败：密钥为空。'
-    [[ -n "$PK" && -n "$PBK" ]] || die 'Sing-box REALITY 密钥生成失败。'
     UUID=$(generate_robust_uuid)
     SHORT_ID=$(openssl rand -hex 4 | tr -d '\n\r')
     SS_PASS=$(openssl rand -base64 16 | tr -d '\n\r')
@@ -12074,7 +12101,7 @@ ensure_vnstat_runtime() {
     elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
         [[ -x /etc/init.d/vnstatd ]] || die '系统未提供 vnstatd OpenRC 服务；无法安全启用流量限制。'
         rc-update add vnstatd default >/dev/null 2>&1 || die 'vnStat OpenRC 服务无法加入 default runlevel。'
-        rc-service vnstatd restart >/dev/null 2>&1 || die 'vnStat OpenRC 服务无法启动；未启用流量限制。'
+        rc-service vnstatd restart >/dev/null 2>&1 9>&- 10>&- || die 'vnStat OpenRC 服务无法启动；未启用流量限制。'
         rc-service vnstatd status >/dev/null 2>&1 || die 'vnStat OpenRC 服务未处于运行状态；未启用流量限制。'
     else
         die '无法确认 vnStat 运行时环境；未启用流量限制。'
@@ -12435,7 +12462,7 @@ start_owned() {
         systemctl is-active --quiet "$srv"
     else
         rc-update add "$srv" default >/dev/null 2>&1 || return 1
-        rc-service "$srv" restart >/dev/null 2>&1 || return 1
+        rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&- || return 1
         rc-service "$srv" status >/dev/null 2>&1
     fi
 }
@@ -12675,7 +12702,7 @@ restore_vnstat_runtime_state() {
             ;;
         openrc)
             if [[ "$enabled" == 1 ]]; then rc-update add "$name" default >/dev/null 2>&1 || return 1; elif rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${name}([[:space:]]|$)"; then rc-update del "$name" default >/dev/null 2>&1 || return 1; fi
-            if [[ "$active" == 1 ]]; then rc-service "$name" start >/dev/null 2>&1 || rc-service "$name" restart >/dev/null 2>&1 || return 1; else rc-service "$name" stop >/dev/null 2>&1 || return 1; fi
+            if [[ "$active" == 1 ]]; then rc-service "$name" start >/dev/null 2>&1 9>&- 10>&- || rc-service "$name" restart >/dev/null 2>&1 9>&- 10>&- || return 1; else rc-service "$name" stop >/dev/null 2>&1 || return 1; fi
             ;;
         *) return 1 ;;
     esac
@@ -13542,11 +13569,11 @@ do_cleanup() {
     remove_abox_log_files || die '删除 A-Box 日志失败；检测到非托管或不安全日志文件。'
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         if systemctl list-unit-files fail2ban.service >/dev/null 2>&1 && systemctl cat fail2ban.service >/dev/null 2>&1; then
-            systemctl restart fail2ban >/dev/null 2>&1 || die 'Fail2Ban 重启失败，清理未完成。'
+            systemctl try-restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响 A-Box 清理。${NC}"
         fi
         systemctl daemon-reload >/dev/null 2>&1 || die '清理后 systemd daemon-reload 失败。'
     elif [[ "${INIT_SYS:-}" == openrc ]] && [[ -x /etc/init.d/fail2ban ]]; then
-        rc-service fail2ban restart >/dev/null 2>&1 || die 'Fail2Ban 重启失败，清理未完成。'
+        { rc-service fail2ban status >/dev/null 2>&1 && rc-service fail2ban restart >/dev/null 2>&1 9>&- 10>&-; } || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响 A-Box 清理。${NC}"
     fi
     if [[ "${1:-}" == full ]]; then
         remove_abox_shortcut /usr/local/bin/sb || die 'A-Box 快捷入口删除失败；清理未完成。'
@@ -13643,11 +13670,11 @@ check_virgin_state() {
     remove_abox_log_files || die '删除 A-Box 日志失败；检测到非托管或不安全日志文件。'
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         if systemctl list-unit-files fail2ban.service >/dev/null 2>&1 && systemctl cat fail2ban.service >/dev/null 2>&1; then
-            systemctl restart fail2ban >/dev/null 2>&1 || die '环境初始化时 Fail2Ban 重启失败。'
+            systemctl try-restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响环境初始化。${NC}"
         fi
         systemctl daemon-reload >/dev/null 2>&1 || die '环境初始化后的 systemd daemon-reload 失败。'
     elif [[ "${INIT_SYS:-}" == openrc ]] && [[ -x /etc/init.d/fail2ban ]]; then
-        rc-service fail2ban restart >/dev/null 2>&1 || die '环境初始化时 Fail2Ban 重启失败。'
+        { rc-service fail2ban status >/dev/null 2>&1 && rc-service fail2ban restart >/dev/null 2>&1 9>&- 10>&-; } || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响环境初始化。${NC}"
     fi
     commit_deployment_transaction
     remove_abox_swap || msg "${YELLOW}[!] A-Box Swap 未能自动删除；为安全起见保留现状。${NC}"
@@ -17635,7 +17662,7 @@ _apply_managed_service_state_file() {
                 fi
             fi
             if [[ "$active" == 1 ]]; then
-                rc-service "$srv" start >/dev/null 2>&1 || rc-service "$srv" restart >/dev/null 2>&1 || return 1
+                rc-service "$srv" start >/dev/null 2>&1 || rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&- || return 1
             else
                 rc-service "$srv" stop >/dev/null 2>&1 || return 1
             fi
@@ -19455,7 +19482,7 @@ wallos_install_runtime() {
         if docker info >/dev/null 2>&1; then return 0; fi
         case "$os_id" in
             alpine)
-                command -v rc-service >/dev/null 2>&1 && rc-service docker start >/dev/null 2>&1 || true
+                command -v rc-service >/dev/null 2>&1 && rc-service docker start >/dev/null 2>&1 9>&- 10>&- || true
                 ;;
             *)
                 if command -v systemctl >/dev/null 2>&1 && systemctl cat docker.service >/dev/null 2>&1; then
@@ -20377,7 +20404,7 @@ EOF_WF2B_JAIL
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         systemctl restart fail2ban >/dev/null 2>&1 || true
     else
-        rc-service fail2ban restart >/dev/null 2>&1 || true
+        rc-service fail2ban restart >/dev/null 2>&1 9>&- 10>&- || true
     fi
     return 0
 }
@@ -22106,7 +22133,7 @@ restart_service_soft() {
         systemctl is-active --quiet "$srv" || return 1
         record_core_family_ownership "$srv"
     else
-        rc-service "$srv" restart >/dev/null 2>&1 || return 1
+        rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&- || return 1
         sleep 2
         rc-service "$srv" status >/dev/null 2>&1 || return 1
         record_core_family_ownership "$srv"
@@ -22139,7 +22166,7 @@ start_abox_service_soft() {
         record_core_family_ownership "$srv"
     else
         rc-update add "$srv" default >/dev/null 2>&1 || return 1
-        rc-service "$srv" restart >/dev/null 2>&1 || return 1
+        rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&- || return 1
         sleep 2
         rc-service "$srv" status >/dev/null 2>&1 || return 1
         record_core_family_ownership "$srv"
@@ -22560,7 +22587,7 @@ hysteria_binary_smoke_test() {
             fi
         fi
     else
-        if rc-service hysteria restart >/dev/null 2>&1; then
+        if rc-service hysteria restart >/dev/null 2>&1 9>&- 10>&-; then
             while (( waited < 10 )); do
                 sleep 1; waited=$((waited + 1))
                 is_service_running hysteria 2>/dev/null && break
@@ -23596,7 +23623,7 @@ PY_SELFTEST_TAR
     grep -Fq 'ABOX_CORE_MIRROR_BASE_DEFAULT=' "$0" || { echo 'FAIL: core disaster mirror base missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_CORE_MIRROR_RELEASE='core-binaries'" "$0" || { echo 'FAIL: stable core mirror tag missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/A-Box/releases/download/core-binaries'" "$0" || { echo 'FAIL: stable core mirror URL missing'; failures=$((failures + 1)); }
-    grep -Fq '截至当前 / Usage up to now' "$0" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
+    grep -Fq '每月流量管控 / Monthly Traffic' <<< "$source_body" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
     grep -Fq 'one_click_reality_deploy()' "$0" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
     grep -Fq 'abox_is_fast()' "$0" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }
     grep -Fq 'try_latest_cores_danger()' "$0" || { echo 'FAIL: try-latest cores missing'; failures=$((failures + 1)); }
@@ -24614,7 +24641,7 @@ PY_MOUNTINFO_DECODE_TEST
         rm -f -- "$tmp/python3" "$_guard_fail_bin"
         rm -rf -- "$_guard_fail_fixture"
     fi
-    grep -q 'os.path.ismount(path)' "$0" || { echo 'FAIL: core ownership record/remove mountpoint guard missing'; failures=$((failures + 1)); }
+    grep -Fq '/proc/self/mountinfo' <<< "$source_body" || { echo 'FAIL: core ownership record/remove mountpoint guard missing'; failures=$((failures + 1)); }
     grep -q 'Restore cleanup encountered a mountpoint' "$0" || { echo 'FAIL: restore cleanup mountpoint guard missing'; failures=$((failures + 1)); }
     grep -Fq 'path_tree_has_mountpoint "$path" && return 1' "$0" || { echo 'FAIL: source-absent restore must guard the entire target tree for nested mounts'; failures=$((failures + 1)); }
     grep -Fq 'remove_owned_runtime_helper "$ABOX_DIR/geo_update.sh"' "$0" || { echo 'FAIL: Geo helper deletion must be ownership-gated'; failures=$((failures + 1)); }
@@ -25193,6 +25220,7 @@ main_loop() {
             0) clear; exit 0 ;;
             *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
         esac
+        unset _MI_COLLECTED
     done
 }
 

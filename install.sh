@@ -207,6 +207,29 @@ ABOX_CORE_UPGRADE_TMP=''
 ABOX_TRAFFIC_TX_DIR=''
 
 msg() { printf '%s\n' "$*"; }
+
+# Activity indicator for long leaf commands (downloads, image pulls):
+# ASCII spinner + label + elapsed seconds on stderr while the command
+# runs; the command's exit code is returned unchanged. When stderr is
+# not a TTY only a plain label line is printed. Wrap leaf commands only
+# (never interactive ones, never functions that rely on die/exit).
+abox_run_wait() {
+    local _label="$1"; shift
+    if [[ ! -t 2 ]]; then
+        msg "  [*] ${_label} ..."
+        "$@"
+        return $?
+    fi
+    "$@" &
+    local _pid=$! _i=0 _t0=$SECONDS _frames='|/-\\'
+    while kill -0 "$_pid" 2>/dev/null; do
+        printf '\r  [%s] %s ... %ds ' "${_frames:$((_i % 4)):1}" "$_label" "$((SECONDS - _t0))" >&2
+        _i=$((_i + 1)); sleep 0.2
+    done
+    wait "$_pid"; local _rc=$?
+    printf '\r\033[K' >&2
+    return "$_rc"
+}
 die() {
     printf '%s\n' "${RED}[!] $*${NC}" >&2
     if [[ -n "${ABOX_DIE_HOOK:-}" ]] && declare -F "$ABOX_DIE_HOOK" >/dev/null 2>&1; then
@@ -5844,7 +5867,7 @@ install_remote_abox_script_guarded() {
         url="$resolved_url"
     fi
     tmp=$(umask 077; mktemp /tmp/A-Box-script.XXXXXX.sh) || die '远端脚本临时文件创建失败。'
-    curl -fLs --connect-timeout 10 -m 60 "$url" -o "$tmp" || { rm -f -- "$tmp"; die '远端脚本下载失败。'; }
+    abox_run_wait '下载远端脚本' curl -fLs --connect-timeout 10 -m 60 "$url" -o "$tmp" || { rm -f -- "$tmp"; die '远端脚本下载失败。'; }
     if ! ( validate_abox_script_file "$tmp" '远端 A-Box 脚本' && validate_ota_version_direction "$tmp" ); then
         rm -f -- "$tmp"
         die '远端 A-Box 脚本校验或版本方向检查失败。'
@@ -6822,7 +6845,7 @@ core_fetch_upstream_release_asset() {
     [[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]] || { msg "${YELLOW}[!] 官方 Release 缺少有效 SHA-256 digest。${NC}" >&2; return 1; }
     for mirror in '' 'https://ghp.ci/' 'https://mirror.ghproxy.com/'; do
         tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
-        if curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
+        if abox_run_wait "下载 ${asset_name}" curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
             if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 下载归档格式校验失败，继续下一个通道。${NC}" >&2; continue; fi
             if ! verify_github_asset_digest "$tmp_file" "$digest"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 资产 SHA-256 不匹配，继续下一个通道。${NC}" >&2; continue; fi
             if ! validate_core_asset_binary_version "$output_file" "$tmp_file" "$release_ref"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 二进制版本与上游 tag 不一致，拒绝该候选。${NC}" >&2; continue; fi
@@ -6942,7 +6965,7 @@ fetch_geo_data() {
         digest=$(jq -r '.digest // ""' <<< "$asset_json")
         [[ -n "$asset_name" && -n "$release_ref" ]] || { rm -f -- "$tmp_out"; die 'Geo Release metadata missing asset name or tag.'; }
         valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { rm -f -- "$tmp_out"; die 'Geo GitHub Release 下载地址域名/仓库不匹配。'; }
-        curl -fLs --connect-timeout 10 -m 90 "$download_url" -o "$tmp_out" || { rm -f -- "$tmp_out"; die "Geo 数据文件 ${file_name} 下载失败。"; }
+        abox_run_wait "下载 ${file_name}" curl -fLs --connect-timeout 10 -m 90 "$download_url" -o "$tmp_out" || { rm -f -- "$tmp_out"; die "Geo 数据文件 ${file_name} 下载失败。"; }
         if ! verify_github_asset_digest "$tmp_out" "$digest"; then
             rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"
             die "Geo 数据文件 ${file_name} 官方 digest 校验失败。"
@@ -8141,7 +8164,7 @@ fetch_one() {
     [[ -n "$GEO_RELEASE_TAG" && "$url" == "https://github.com/${GEO_REPO}/releases/download/${GEO_RELEASE_TAG}/${asset}" && "$digest" == sha256:* ]] || return 1
     expected="${digest#sha256:}"
     [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ ]] || return 1
-    curl -fLsS --connect-timeout 10 -m 90 "$url" -o "$out" || return 1
+    abox_run_wait '下载 Geo 数据' curl -fLsS --connect-timeout 10 -m 90 "$url" -o "$out" || return 1
     actual=$(sha256sum "$out" | awk '{print $1}')
     [[ "${actual,,}" == "${expected,,}" ]] || return 1
     size=$(wc -c < "$out" 2>/dev/null | tr -d ' ')
@@ -20002,14 +20025,14 @@ wallos_pull_or_restore_image() {
             if [[ "$_manifest_tag" == "$tag" ]]; then
                 # N-2: docker pull by digest creates NO tag. Must docker tag
                 # for downstream checks (require ^bellamy/wallos:[A-Za-z0-9._-]+$).
-                if docker pull "$_mirror_digest" && docker tag "$_mirror_digest" "bellamy/wallos:$image_tag"; then
+                if abox_run_wait '拉取 Wallos 镜像' docker pull "$_mirror_digest" && docker tag "$_mirror_digest" "bellamy/wallos:$image_tag"; then
                     WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
                     return 0
                 fi
                 msg "${YELLOW}[!] Digest-pinned pull failed; falling back to tag pull.${NC}"
             fi
         fi
-        if docker pull "bellamy/wallos:$image_tag"; then
+        if abox_run_wait '拉取 Wallos 镜像' docker pull "bellamy/wallos:$image_tag"; then
             # P2-1: record RepoDigest for auditability (mutable tag alone is not identity).
             # G11 FIX: Use digest reference instead of mutable tag to prevent TOCTOU.
             # After pull, immediately pin to digest so subsequent operations
@@ -21671,6 +21694,7 @@ view_config() {
     msg "${YELLOW}[ Shadowrocket / v2rayNG / NekoBox 单节点 URI ]${NC}"
     if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
         VLESS_URL="vless://$UUID@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#A-Box-VLESS-Vision"
+        msg "${BOLD}${CYAN}── VLESS-Vision-Reality · 端口 ${VLESS_PORT}${NC}"
         msg "${GREEN}${VLESS_URL}${NC}"
         if [[ "$CORE" == 'xray' ]] && xray_reality_requires_mlkem; then
             msg "${YELLOW}当前 Xray $(effective_xray_version) 的 REALITY 服务端涉及较新的兼容门槛；Mihomo 请使用下方完整 YAML。部分 Shadowrocket / sing-box 版本可能无法建立连接。A-Box 默认使用经过当前 iOS + XHTTP/REALITY 兼容性权衡的版本 Xray ${ABOX_XRAY_DEFAULT_VERSION}（兼容性固定版，非 26.9.x ML-KEM prerelease）；更高 prerelease 版本请显式设置 ABOX_XRAY_VERSION。${NC}"
@@ -21679,6 +21703,7 @@ view_config() {
     fi
     if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
         XHTTP_URL="vless://$UUID@$F_IP:$XHTTP_PORT?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#A-Box-VLESS-XHTTP"
+        msg "${BOLD}${CYAN}── VLESS-XHTTP-Reality · 端口 ${XHTTP_PORT}${NC}"
         msg "${GREEN}${XHTTP_URL}${NC}"
         generate_qr "$XHTTP_URL"
     fi
@@ -21690,12 +21715,14 @@ view_config() {
             [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="$HY2_DOMAIN"
             HY2_URL="hysteria2://$HY2_PASS_E@$S_IP:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}insecure=1&pinSHA256=$HY2_PIN_E&obfs=salamander&obfs-password=$HY2_OBFS_E#A-Box-Hy2-Self"
         fi
+        msg "${BOLD}${CYAN}── Hysteria 2 · 端口 ${HY2_URI_PORT}${NC}"
         msg "${GREEN}${HY2_URL}${NC}"
         [[ "${HY2_HOP:-}" == 'true' ]] && msg "${YELLOW}端口跳跃默认间隔 30s；不建议低于 5s。${NC}"
         generate_qr "$HY2_URL"
     fi
     if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
         SS_URL=$(build_ss2022_uri "$F_IP" "$SS_PORT" "$SS_PASS")
+        msg "${BOLD}${CYAN}── Shadowsocks-2022 · 端口 ${SS_PORT}${NC}"
         msg "${GREEN}${SS_URL}${NC}"
         generate_qr "$SS_URL"
     fi

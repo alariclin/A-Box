@@ -484,6 +484,12 @@ tr_msg() {
         fa:invalid_input) echo 'ورودی نامعتبر' ;;
         zh-tw:invalid_input) echo '無效輸入' ;;
         ja:invalid_input) echo '無効な入力' ;;
+        zh:invalid_choice) echo '无效选择' ;;
+        en:invalid_choice) echo 'Invalid choice' ;;
+        ru:invalid_choice) echo 'Неверный выбор' ;;
+        fa:invalid_choice) echo 'انتخاب نامعتبر' ;;
+        zh-tw:invalid_choice) echo '無效選擇' ;;
+        ja:invalid_choice) echo '無効な選択肢' ;;
         zh:lang_title) echo '语言设置 / Language' ;;
         en:lang_title) echo 'Language settings' ;;
         ru:lang_title) echo 'Настройки языка' ;;
@@ -10167,147 +10173,6 @@ EOF_SVC
 }
 
 
-# Standalone Trojan-Reality via Xray-core (toolbox entry).
-# Reuses A-Box Reality key/SNI flow: xray x25519 + sni_auto_select_default.
-# Tag: trojan-landing. Hot-push via API when available, restart fallback.
-deploy_xray_trojan_landing() {
-    local port pass sni pk pbk sid cfg='/usr/local/etc/xray/config.json'
-    local tag='trojan-landing' tmp_json
-    clear; msg "${BOLD}${GREEN}$(tr_msg trojan_title)${NC}"
-    init_system_environment
-    load_optional_abox_env_or_die
-    light_preflight_check
-
-    port=$(prompt_validated "$(tr_msg trojan_port_prompt)" port '443') || die 'Trojan port input failed.'
-    read -r -p "$(tr_msg trojan_pass_prompt)" pass || pass=''
-    if [[ -z "$pass" ]]; then
-        pass=$(openssl rand -base64 12 | tr -d '\n\r') || die 'Trojan password generation failed.'
-        [[ -n "$pass" ]] || die 'Trojan password generation failed.'
-    fi
-
-    # Minimal Xray install when the binary is missing (mirror SOCKS5 flow).
-    if [[ ! -x /usr/local/bin/xray ]]; then
-        local xray_tmp xray_zip xray_ext
-        get_architecture
-        xray_tmp=$(mktemp -d /tmp/A-Box-xray-trojan.XXXXXX) || die 'Xray 临时目录创建失败。'
-        xray_zip="$xray_tmp/xray_core.zip"
-        xray_ext="$xray_tmp/xray_ext"
-        mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
-        clear_core_release_resolution XTLS/Xray-core
-        fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
-        extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die 'Xray 压缩包安全提取失败。'
-        [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die '安全提取后未找到 xray 主程序。'
-        chmod 755 "$xray_ext/xray" || die 'Xray staged binary chmod failed.'
-        "$xray_ext/xray" version >/dev/null 2>&1 || die 'Xray staged binary execution check failed.'
-        install_binary_atomically "$xray_ext/xray" /usr/local/bin/xray || die 'Xray binary atomic install failed.'
-        /usr/local/bin/xray version >/dev/null 2>&1 || die 'Xray 执行校验失败。'
-        prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
-        rm -rf -- "$xray_tmp"
-        tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die '临时文件创建失败。'
-        jq -n '{log:{loglevel:"warning"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
-            || die 'Xray 初始配置生成失败。'
-        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Xray config 原子写入失败。'
-        rm -f "$tmp_json"
-        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die 'Xray systemd unit 原子写入失败。'
-# Managed by A-Box
-[Unit]
-Description=A-Box Xray Service
-After=network-online.target nss-lookup.target
-Wants=network-online.target
-
-[Service]
-User=abox-xray
-Group=abox-xray
-UMask=0077
-Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
-NoNewPrivileges=true
-PrivateTmp=true
-Restart=always
-RestartSec=10
-LimitNOFILE=1048576
-LimitNPROC=1048576
-
-[Install]
-WantedBy=multi-user.target
-EOF_SVC
-        else
-            path_parent_chain_safe /etc/conf.d/xray || die 'OpenRC conf.d 父链不安全。'
-            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
-            write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die 'Xray OpenRC conf.d 原子写入失败。'
-export XRAY_LOCATION_ASSET="/usr/local/share/xray"
-EOF_XRAY_CONFD
-            write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die 'Xray OpenRC unit 原子写入失败。'
-#!/sbin/openrc-run
-# Managed by A-Box
-description="A-Box Xray Service"
-command="/usr/local/bin/xray"
-command_args="run -config /usr/local/etc/xray/config.json"
-command_background="yes"
-command_user="abox-xray:abox-xray"
-capabilities="cap_net_bind_service"
-umask=077
-pidfile="/run/xray.pid"
-depend() { need net; }
-EOF_SVC
-            chmod +x /etc/init.d/xray || die 'Xray OpenRC 服务权限设置失败。'
-        fi
-        prepare_abox_runtime_permissions xray || die 'Xray 运行时用户/文件权限准备失败。'
-    fi
-
-    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
-    [[ -n "$sni" ]] || sni='www.amazon.com'
-
-    # shadowtls v3 (strict) detouring to a loopback-only SS-2022 inbound that
-    # has no listen_port of its own (reachable only through the detour).
-    tmp_json=$(mktemp /tmp/A-Box-sb-shadowtls-inbound.XXXXXX) || die '临时文件创建失败。'
-    jq -n --argjson port "$port" --arg pass "$pass" --arg inner "$inner" --arg sni "$sni" \
-        '({type:"shadowtls",tag:"shadowtls-in",listen:"0.0.0.0",listen_port:$port,version:3,strict_mode:true,
-           users:[{password:$pass}],handshake:{server:$sni,server_port:443},detour:"shadowtls-ss"}),
-         ({type:"shadowsocks",tag:"shadowtls-ss",listen:"127.0.0.1",network:"tcp",
-           method:"2022-blake3-aes-128-gcm",password:$inner,multiplex:{enabled:true,padding:true}})' \
-        > "$tmp_json" || die 'ShadowTLS inbound JSON 生成失败。'
-
-    local tmp_cfg
-    if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        msg "${YELLOW}$(tr_msg shadowtls_exists)${NC}"
-    fi
-    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
-    if ! jq --slurpfile nb "$tmp_json" \
-            '(.inbounds | map(select(.tag=="shadowtls-in" or .tag=="shadowtls-ss"))) as $old
-             | .inbounds |= (map(select(.tag!="shadowtls-in" and .tag!="shadowtls-ss")) + $nb)' \
-            "$cfg" > "$tmp_cfg" 2>/dev/null; then
-        rm -f "$tmp_cfg" "$tmp_json"; die 'ShadowTLS inbound 配置更新失败。'
-    fi
-    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
-    /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
-        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
-    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
-    rm -f "$tmp_cfg" "$tmp_json"
-
-    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
-
-    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
-    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
-    service_manager start sing-box 2>/dev/null || true
-    set_desired_state RUNNING 2>/dev/null || true
-
-    local pub_ip
-    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
-    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
-    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
-    local user_b64 plugin_b64
-    user_b64=$(printf '%s' "2022-blake3-aes-128-gcm:${inner}@${pub_ip}:${port}" | base64 | tr -d '\n\r')
-    plugin_b64=$(printf '%s' "{\"version\":\"3\",\"host\":\"${sni}\",\"password\":\"${pass}\"}" | base64 | tr -d '\n\r')
-    local link="ss://${user_b64}?shadow-tls=${plugin_b64}#ShadowTLS"
-    msg "${GREEN}$(tr_msg shadowtls_done)${NC}"
-    msg "$link"
-    msg "Clash: - {name: \"ShadowTLS\", type: ss, server: ${pub_ip}, port: ${port}, cipher: 2022-blake3-aes-128-gcm, password: ${inner}, plugin: shadow-tls, client-fingerprint: chrome, plugin-opts: {host: ${sni}, password: \"${pass}\", version: 3}}"
-    generate_qr "$link"
-}
 
 deploy_singbox_shadowtls() {
     local port pass inner sni cfg='/etc/sing-box/config.json'

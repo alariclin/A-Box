@@ -772,6 +772,102 @@ tr_msg() {
         fa:shadowtls_done) echo 'ShadowTLS مستقر شد، لینک زیر:' ;;
         zh-tw:shadowtls_done) echo 'ShadowTLS 部署完成，連結如下：' ;;
         ja:shadowtls_done) echo 'ShadowTLS を展開しました。リンク：' ;;
+        zh:argo_title) echo 'Argo / CDN 前置 (sing-box + cloudflared)' ;;
+        en:argo_title) echo 'Argo / CDN Front (sing-box + cloudflared)' ;;
+        ru:argo_title) echo 'Argo / CDN-фронт (sing-box + cloudflared)' ;;
+        fa:argo_title) echo 'Argo / CDN (sing-box + cloudflared)' ;;
+        zh-tw:argo_title) echo 'Argo / CDN 前置 (sing-box + cloudflared)' ;;
+        ja:argo_title) echo 'Argo / CDN フロント (sing-box + cloudflared)' ;;
+        zh:argo_m_temp) echo '部署临时隧道 (trycloudflare, 免账号)' ;;
+        en:argo_m_temp) echo 'Deploy temporary tunnel (trycloudflare, no account)' ;;
+        ru:argo_m_temp) echo 'Временный туннель (trycloudflare, без аккаунта)' ;;
+        fa:argo_m_temp) echo 'استقرار تونل موقت (trycloudflare، بدون حساب)' ;;
+        zh-tw:argo_m_temp) echo '部署臨時隧道 (trycloudflare, 免帳號)' ;;
+        ja:argo_m_temp) echo '一時トンネルを展開 (trycloudflare、アカウント不要)' ;;
+        zh:argo_m_fixed) echo '部署固定隧道 (Token + 自有域名)' ;;
+        en:argo_m_fixed) echo 'Deploy fixed tunnel (token + own domain)' ;;
+        ru:argo_m_fixed) echo 'Постоянный туннель (токен + свой домен)' ;;
+        fa:argo_m_fixed) echo 'استقرار تونل ثابت (توکن + دامنه شخصی)' ;;
+        zh-tw:argo_m_fixed) echo '部署固定隧道 (Token + 自有域名)' ;;
+        ja:argo_m_fixed) echo '固定トンネルを展開 (トークン + 独自ドメイン)' ;;
+        zh:argo_m_status) echo '状态与链接' ;;
+        en:argo_m_status) echo 'Status and links' ;;
+        ru:argo_m_status) echo 'Статус и ссылки' ;;
+        fa:argo_m_status) echo 'وضعیت و لینک‌ها' ;;
+        zh-tw:argo_m_status) echo '狀態與連結' ;;
+        ja:argo_m_status) echo 'ステータスとリンク' ;;
+        zh:argo_m_uninstall) echo '卸载 Argo' ;;
+        en:argo_m_uninstall) echo 'Uninstall Argo' ;;
+        ru:argo_m_uninstall) echo 'Удалить Argo' ;;
+        fa:argo_m_uninstall) echo 'حذف Argo' ;;
+        zh-tw:argo_m_uninstall) echo '卸載 Argo' ;;
+        ja:argo_m_uninstall) echo 'Argo をアンインストール' ;;
+        zh:argo_m_back) echo '返回上级' ;;
+        en:argo_m_back) echo 'Back' ;;
+        ru:argo_m_back) echo 'Назад' ;;
+        fa:argo_m_back) echo 'بازگشت' ;;
+        zh-tw:argo_m_back) echo '返回上級' ;;
+        ja:argo_m_back) echo '戻る' ;;
+        zh:argo_prompt) echo '请选择 [0-4]: ' ;;
+        en:argo_prompt) echo 'Select [0-4]: ' ;;
+        ru:argo_prompt) echo 'Выберите [0–4]: ' ;;
+        fa:argo_prompt) echo 'انتخاب [۰ تا ۴]: ' ;;
+        zh-tw:argo_prompt) echo '請選擇 [0-4]：' ;;
+        ja:argo_prompt) echo '選択してください [0-4]: ' ;;
+        zh:argo_cf_installing) echo '正在下载并校验 cloudflared (固定版本 + SHA256)...' ;;
+        en:argo_cf_installing) echo 'Downloading and verifying cloudflared (pinned + SHA256)...' ;;
+        ru:argo_cf_installing) echo 'Загрузка и проверка cloudflared (пин + SHA256)...' ;;
+        fa:argo_cf_installing) echo 'در حال دانلود و بررسی cloudflared (نسخه ثابت + SHA256)...' ;;
+        zh-tw:argo_cf_installing) echo '正在下載並校驗 cloudflared (固定版本 + SHA256)...' ;;
+        ja:argo_cf_installing) echo 'cloudflared をダウンロードして検証中 (固定版 + SHA256)...' ;;
+        zh:argo_domain_prompt) echo '请输入你的 Cloudflare 域名 (如 tunnel.example.com): ' ;;
+        en:argo_domain_prompt) echo 'Enter your Cloudflare domain (e.g. tunnel.example.com): ' ;;
+        ru:argo_domain_prompt) echo 'Ваш домен Cloudflare (например tunnel.example.com): ' ;;
+        fa:argo_domain_prompt) echo 'دامنه Cloudflare خود را وارد کنید (مثال: tunnel.example.com): ' ;;
+        zh-tw:argo_domain_prompt) echo '請輸入你的 Cloudflare 域名 (如 tunnel.example.com): ' ;;
+        ja:argo_domain_prompt) echo 'Cloudflare ドメインを入力 (例: tunnel.example.com): ' ;;
+        zh:argo_token_prompt) echo '请粘贴隧道 Token (Zero Trust 后台创建隧道时生成, 输入不回显): ' ;;
+        en:argo_token_prompt) echo 'Paste the tunnel token (from Zero Trust dashboard, input hidden): ' ;;
+        ru:argo_token_prompt) echo 'Вставьте токен туннеля (из Zero Trust, ввод скрыт): ' ;;
+        fa:argo_token_prompt) echo 'توکن تونل را وارد کنید (از Zero Trust، ورودی پنهان است): ' ;;
+        zh-tw:argo_token_prompt) echo '請貼上隧道 Token (Zero Trust 後台建立隧道時產生, 輸入不回顯): ' ;;
+        ja:argo_token_prompt) echo 'トンネルトークンを貼り付け (Zero Trust で発行、入力は非表示): ' ;;
+        zh:argo_done) echo 'Argo 部署完成，链接如下：' ;;
+        en:argo_done) echo 'Argo deployed, links below:' ;;
+        ru:argo_done) echo 'Argo развернут, ссылки ниже:' ;;
+        fa:argo_done) echo 'Argo مستقر شد، لینک‌ها در زیر:' ;;
+        zh-tw:argo_done) echo 'Argo 部署完成，連結如下：' ;;
+        ja:argo_done) echo 'Argo を展開しました。リンク：' ;;
+        zh:argo_temp_note) echo '注意: 临时隧道域名在 cloudflared 重启后会变化, 届时请在本菜单查看新链接。' ;;
+        en:argo_temp_note) echo 'Note: temporary tunnel domains change when cloudflared restarts; re-check links here afterwards.' ;;
+        ru:argo_temp_note) echo 'Примечание: домены временного туннеля меняются при перезапуске cloudflared; проверяйте ссылки здесь.' ;;
+        fa:argo_temp_note) echo 'توجه: دامنه‌های تونل موقت پس از راه‌اندازی مجدد cloudflared تغییر می‌کنند؛ لینک‌ها را اینجا دوباره بررسی کنید.' ;;
+        zh-tw:argo_temp_note) echo '注意: 臨時隧道域名在 cloudflared 重新啟動後會變化, 屆時請在本選單查看新連結。' ;;
+        ja:argo_temp_note) echo '注意: 一時トンネルのドメインは cloudflared 再起動で変わります。再度ここでリンクを確認してください。' ;;
+        zh:argo_fixed_steps) echo '还差一步: 在 Cloudflare Zero Trust 后台为该隧道添加 Public Hostname, 按路径分流到本机两个 WS 端口 (见下行数据):' ;;
+        en:argo_fixed_steps) echo 'One more step: in the Cloudflare Zero Trust dashboard, add Public Hostnames for this tunnel routing by path to the two local WS ports (see data below):' ;;
+        ru:argo_fixed_steps) echo 'Ещё шаг: в Cloudflare Zero Trust добавьте Public Hostname для этого туннеля с маршрутизацией по пути на два локальных WS-порта (данные ниже):' ;;
+        fa:argo_fixed_steps) echo 'یک گام دیگر: در داشبورد Cloudflare Zero Trust برای این تونل Public Hostname اضافه کنید و بر اساس مسیر به دو پورت WS محلی هدایت کنید (داده‌ها در زیر):' ;;
+        zh-tw:argo_fixed_steps) echo '還差一步: 在 Cloudflare Zero Trust 後台為該隧道新增 Public Hostname, 按路徑分流到本機兩個 WS 連接埠 (見下行資料):' ;;
+        ja:argo_fixed_steps) echo 'あと一歩: Cloudflare Zero Trust でこのトンネルに Public Hostname を追加し、パスで2つのローカル WS ポートへ振り分けてください (下記データ参照):' ;;
+        zh:argo_not_deployed) echo '尚未部署 Argo。' ;;
+        en:argo_not_deployed) echo 'Argo is not deployed yet.' ;;
+        ru:argo_not_deployed) echo 'Argo ещё не развернут.' ;;
+        fa:argo_not_deployed) echo 'Argo هنوز مستقر نشده است.' ;;
+        zh-tw:argo_not_deployed) echo '尚未部署 Argo。' ;;
+        ja:argo_not_deployed) echo 'Argo はまだ展開されていません。' ;;
+        zh:argo_confirm_uninstall) echo '确认卸载 Argo (删除隧道服务与 WS 入站)? [Y/N]: ' ;;
+        en:argo_confirm_uninstall) echo 'Uninstall Argo (remove tunnel services and WS inbounds)? [Y/N]: ' ;;
+        ru:argo_confirm_uninstall) echo 'Удалить Argo (службы туннеля и WS inbounds)? [Y/N]: ' ;;
+        fa:argo_confirm_uninstall) echo 'Argo حذف شود (سرویس‌های تونل و ورودی‌های WS)؟ [Y/N]: ' ;;
+        zh-tw:argo_confirm_uninstall) echo '確認卸載 Argo (刪除隧道服務與 WS 入站)? [Y/N]: ' ;;
+        ja:argo_confirm_uninstall) echo 'Argo をアンインストールしますか (トンネルサービスと WS インバウンドを削除)? [Y/N]: ' ;;
+        zh:argo_uninstalled) echo 'Argo 已卸载。' ;;
+        en:argo_uninstalled) echo 'Argo uninstalled.' ;;
+        ru:argo_uninstalled) echo 'Argo удалён.' ;;
+        fa:argo_uninstalled) echo 'Argo حذف شد.' ;;
+        zh-tw:argo_uninstalled) echo 'Argo 已卸載。' ;;
+        ja:argo_uninstalled) echo 'Argo をアンインストールしました。' ;;
         zh:socks5_pass_prompt) echo '请输入 SOCKS5 密码 (回车自动生成随机密码): ' ;;
         en:socks5_pass_prompt) echo 'Enter SOCKS5 password (Enter to auto-generate): ' ;;
         ru:socks5_pass_prompt) echo 'Введите пароль SOCKS5 (Enter для автогенерации): ' ;;
@@ -10290,6 +10386,457 @@ EOF_SVC
     generate_qr "$link"
 }
 
+# ================= Argo / CDN front (sing-box WS + cloudflared) =================
+CLOUDFLARED_VERSION='2026.10.2'
+CLOUDFLARED_SHA256_AMD64='35fbdd2beb378436c7da377d7358cea8e33f9c94a6705d1d8036bf9b0d6d8005'
+CLOUDFLARED_SHA256_ARM64='b7e55b4d9702c2ab5f8348f780bb1db044527fc555367714c78e0595750a4665'
+ARGO_STATE_FILE='/etc/ddr/.argo-state'
+ARGO_UUID='' ARGO_VMESS_PORT='' ARGO_VLESS_PORT=''
+
+_argo_state_get() {
+    [[ -f "$ARGO_STATE_FILE" && ! -L "$ARGO_STATE_FILE" ]] || return 0
+    awk -F= -v k="$1" '$1==k {sub(/^[^=]*=/,""); print; exit}' "$ARGO_STATE_FILE" 2>/dev/null
+}
+
+_argo_state_write() { # $1 = full file content
+    mkdir -p /etc/ddr || die '/etc/ddr 创建失败。'
+    local tmp_f
+    tmp_f=$(mktemp /tmp/A-Box-argo-state.XXXXXX) || die '临时文件创建失败。'
+    printf '%s\n' "$1" > "$tmp_f" || { rm -f "$tmp_f"; die 'Argo 状态写入失败。'; }
+    install_file_atomically "$tmp_f" "$ARGO_STATE_FILE" 600 || { rm -f "$tmp_f"; die 'Argo 状态原子写入失败。'; }
+    rm -f "$tmp_f"
+}
+
+install_cloudflared() {
+    if [[ -x /usr/local/bin/cloudflared ]] && /usr/local/bin/cloudflared --version 2>/dev/null | grep -q "$CLOUDFLARED_VERSION"; then
+        return 0
+    fi
+    get_architecture
+    local want='' url='' tmp got
+    case "$SB_ARCH" in
+        amd64) want="$CLOUDFLARED_SHA256_AMD64" ;;
+        arm64) want="$CLOUDFLARED_SHA256_ARM64" ;;
+        *) die "cloudflared 不支持当前架构: $SB_ARCH" ;;
+    esac
+    url="https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-${SB_ARCH}"
+    tmp=$(mktemp -d /tmp/A-Box-cloudflared.XXXXXX) || die 'cloudflared 临时目录创建失败。'
+    msg "$(tr_msg argo_cf_installing)"
+    if ! curl -fL --retry 2 --connect-timeout 15 -o "$tmp/cloudflared" "$url"; then
+        rm -rf "$tmp"; die 'cloudflared 下载失败。'
+    fi
+    got=$(sha256sum "$tmp/cloudflared" 2>/dev/null | awk '{print $1}')
+    if [[ "$got" != "$want" ]]; then
+        rm -rf "$tmp"; die 'cloudflared SHA256 校验失败 (供应链完整性保护)。'
+    fi
+    chmod 755 "$tmp/cloudflared" || { rm -rf "$tmp"; die 'cloudflared chmod 失败。'; }
+    "$tmp/cloudflared" --version >/dev/null 2>&1 || { rm -rf "$tmp"; die 'cloudflared 执行校验失败。'; }
+    install_binary_atomically "$tmp/cloudflared" /usr/local/bin/cloudflared || { rm -rf "$tmp"; die 'cloudflared 原子安装失败。'; }
+    rm -rf "$tmp"
+}
+
+_argo_pick_port() {
+    local p tries=0
+    while (( tries < 40 )); do
+        p=$(shuf -i 20000-55000 -n 1 2>/dev/null || echo 0)
+        (( p >= 1024 )) || p=28080
+        if ! ss -lnt 2>/dev/null | awk '{print $4}' | grep -q ":${p}\$"; then
+            printf '%s' "$p"; return 0
+        fi
+        tries=$((tries + 1))
+    done
+    return 1
+}
+
+# Build/refresh the two loopback WS inbounds in the sing-box config.
+argo_deploy_ws() {
+    local cfg='/etc/sing-box/config.json' tmp_json tmp_cfg
+    ARGO_UUID=$(_argo_state_get uuid)
+    if [[ ! "$ARGO_UUID" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-4[0-9A-Fa-f]{3}-[89AaBb][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$ ]]; then
+        ARGO_UUID=$(generate_robust_uuid) || die 'UUID 生成失败。'
+    fi
+    ARGO_VMESS_PORT=$(_argo_state_get vmess_port)
+    [[ "$ARGO_VMESS_PORT" =~ ^[0-9]+$ ]] || ARGO_VMESS_PORT=$(_argo_pick_port) || die 'VMess-WS 端口选取失败。'
+    ARGO_VLESS_PORT=$(_argo_state_get vless_port)
+    if [[ ! "$ARGO_VLESS_PORT" =~ ^[0-9]+$ || "$ARGO_VLESS_PORT" == "$ARGO_VMESS_PORT" ]]; then
+        ARGO_VLESS_PORT=$(_argo_pick_port) || die 'VLESS-WS 端口选取失败。'
+        [[ "$ARGO_VLESS_PORT" != "$ARGO_VMESS_PORT" ]] || ARGO_VLESS_PORT=$((ARGO_VMESS_PORT + 1))
+    fi
+    tmp_json=$(mktemp /tmp/A-Box-sb-argo-inbound.XXXXXX) || die '临时文件创建失败。'
+    jq -n --arg uuid "$ARGO_UUID" --argjson vp "$ARGO_VMESS_PORT" --argjson vlp "$ARGO_VLESS_PORT" \
+        '({type:"vmess",tag:"vmess-ws-in",listen:"127.0.0.1",listen_port:$vp,
+           users:[{uuid:$uuid,alterId:0}],
+           transport:{type:"ws",path:("/" + $uuid + "-vmess"),max_early_data:2560,early_data_header_name:"Sec-WebSocket-Protocol"}}),
+         ({type:"vless",tag:"vless-ws-in",listen:"127.0.0.1",listen_port:$vlp,
+           users:[{uuid:$uuid}],
+           transport:{type:"ws",path:("/" + $uuid + "-vless"),max_early_data:2560,early_data_header_name:"Sec-WebSocket-Protocol"}})' \
+        > "$tmp_json" || die 'Argo WS inbound JSON 生成失败。'
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    if ! jq --slurpfile nb "$tmp_json" \
+            '.inbounds |= (map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in")) + $nb)' \
+            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+        rm -f "$tmp_cfg" "$tmp_json"; die 'Argo WS inbound 配置更新失败。'
+    fi
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
+        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+    rm -f "$tmp_cfg" "$tmp_json"
+    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+    service_manager start sing-box 2>/dev/null || true
+}
+
+# $1 = unit name (argo-vmess | argo-vless | argo), $2 = cloudflared args (no binary)
+argo_write_unit() {
+    local name="$1" args="$2"
+    rm -f "/etc/ddr/${name}.log"
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        write_file_atomically_from_stdin "/etc/systemd/system/${name}.service" 600 <<EOF_UNIT || die "Argo systemd unit 写入失败: ${name}"
+# Managed by A-Box
+[Unit]
+Description=A-Box Argo Tunnel (${name})
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/cloudflared ${args}
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/etc/ddr/${name}.log
+StandardError=append:/etc/ddr/${name}.log
+
+[Install]
+WantedBy=multi-user.target
+EOF_UNIT
+        systemctl daemon-reload >/dev/null 2>&1 || die 'systemd daemon-reload 失败。'
+        systemctl enable "${name}.service" >/dev/null 2>&1 || true
+        systemctl restart "${name}.service" >/dev/null 2>&1 || die "Argo 服务启动失败: ${name}"
+    else
+        write_file_atomically_from_stdin "/etc/init.d/${name}" 755 <<EOF_RC || die "Argo OpenRC unit 写入失败: ${name}"
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Argo Tunnel (${name})"
+command="/usr/local/bin/cloudflared"
+command_args="${args}"
+command_background="yes"
+pidfile="/run/${name}.pid"
+output_log="/etc/ddr/${name}.log"
+error_log="/etc/ddr/${name}.log"
+depend() { need net; }
+EOF_RC
+        chmod +x "/etc/init.d/${name}" || die 'Argo OpenRC 权限设置失败。'
+        rc-update add "$name" default >/dev/null 2>&1 || true
+        rc-service "$name" restart >/dev/null 2>&1 || die "Argo 服务启动失败: ${name}"
+    fi
+}
+
+argo_remove_unit() { # $1 = unit name; best-effort
+    local name="$1"
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        systemctl stop "${name}.service" >/dev/null 2>&1 || true
+        systemctl disable "${name}.service" >/dev/null 2>&1 || true
+        rm -f "/etc/systemd/system/${name}.service"
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    else
+        rc-service "$name" stop >/dev/null 2>&1 || true
+        rc-update del "$name" default >/dev/null 2>&1 || true
+        rm -f "/etc/init.d/${name}"
+    fi
+    rm -f "/etc/ddr/${name}.log"
+}
+
+argo_unit_active() { # $1 = unit name -> 0 active
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        systemctl is-active --quiet "$1" 2>/dev/null
+    else
+        rc-service "$1" status >/dev/null 2>&1
+    fi
+}
+
+argo_capture_domain() { # $1 = log file -> domain on stdout
+    local i d
+    for i in $(seq 1 45); do
+        d=$(grep -aoE '[a-z0-9-]+\.trycloudflare\.com' "$1" 2>/dev/null | grep -v '^api\.trycloudflare\.com$' | tail -1)
+        [[ -n "$d" ]] && { printf '%s' "$d"; return 0; }
+        sleep 2
+    done
+    return 1
+}
+
+argo_links_for() { # $1 = vmess domain, $2 = vless domain
+    local vm_json vm_b64 vless_link
+    vm_json=$(jq -nc --arg d "$1" --arg id "$ARGO_UUID" \
+        '{v:"2",ps:"VMess-Argo",add:$d,port:"443",id:$id,aid:"0",scy:"auto",net:"ws",type:"none",host:$d,path:("/" + $id + "-vmess"),tls:"tls",sni:$d,fp:"chrome"}') \
+        || die 'VMess 链接构造失败。'
+    vm_b64=$(printf '%s' "$vm_json" | base64 | tr -d '\n\r')
+    vless_link="vless://${ARGO_UUID}@${2}:443?encryption=none&security=tls&sni=${2}&type=ws&host=${2}&path=%2F${ARGO_UUID}-vless%3Fed%3D2560#VLESS-Argo"
+    msg "VMess: vmess://${vm_b64}"
+    msg "VLESS: ${vless_link}"
+    generate_qr "$vless_link"
+}
+
+deploy_argo_temp() {
+    clear; msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
+    init_system_environment
+    load_optional_abox_env_or_die
+    light_preflight_check
+    install_cloudflared
+    # Minimal sing-box install when the binary is missing.
+    if [[ ! -x /usr/local/bin/sing-box ]]; then
+        local sb_tmp sb_tar sb_ext SB_PATH
+        get_architecture
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-argo.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tar="$sb_tmp/singbox_core.tar.gz"
+        sb_ext="$sb_tmp/extract"
+        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        clear_core_release_resolution SagerNet/sing-box
+        fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
+        SB_PATH="$sb_ext/sing-box"
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        rm -rf -- "$sb_tmp"
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die 'Sing-box 初始配置生成失败。'
+        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+        rm -f "$tmp_json"
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+# Managed by A-Box
+[Unit]
+Description=A-Box Sing-Box Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-singbox
+Group=abox-singbox
+UMask=0077
+ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        else
+            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
+            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+rc_ulimit="-n 1048576"
+EOF_SB_CONFD
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Sing-Box Service"
+command="/usr/local/bin/sing-box"
+command_args="run -c /etc/sing-box/config.json"
+command_background="yes"
+command_user="abox-singbox:abox-singbox"
+umask=077
+pidfile="/run/sing-box.pid"
+depend() { need net; }
+EOF_SVC
+            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+        fi
+        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+    fi
+    argo_deploy_ws
+    argo_write_unit argo-vmess "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 --url http://127.0.0.1:${ARGO_VMESS_PORT}"
+    argo_write_unit argo-vless "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 --url http://127.0.0.1:${ARGO_VLESS_PORT}"
+    local d1='' d2=''
+    d1=$(argo_capture_domain /etc/ddr/argo-vmess.log) || die 'VMess 临时隧道域名获取超时, 请检查 cloudflared 日志 /etc/ddr/argo-vmess.log。'
+    d2=$(argo_capture_domain /etc/ddr/argo-vless.log) || die 'VLESS 临时隧道域名获取超时, 请检查 cloudflared 日志 /etc/ddr/argo-vless.log。'
+    _argo_state_write "mode=temp
+uuid=${ARGO_UUID}
+vmess_port=${ARGO_VMESS_PORT}
+vless_port=${ARGO_VLESS_PORT}
+vmess_domain=${d1}
+vless_domain=${d2}"
+    msg "${GREEN}$(tr_msg argo_done)${NC}"
+    argo_links_for "$d1" "$d2"
+    msg "${YELLOW}$(tr_msg argo_temp_note)${NC}"
+}
+
+deploy_argo_fixed() {
+    clear; msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
+    init_system_environment
+    load_optional_abox_env_or_die
+    light_preflight_check
+    local domain='' token=''
+    read -r -p "$(tr_msg argo_domain_prompt)" domain || domain=''
+    [[ "$domain" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die '域名格式无效。'
+    read -r -s -p "$(tr_msg argo_token_prompt)" token || token=''
+    msg ''
+    [[ -n "$token" ]] || die 'Token 为空。'
+    install_cloudflared
+    # Minimal sing-box install when the binary is missing.
+    if [[ ! -x /usr/local/bin/sing-box ]]; then
+        local sb_tmp sb_tar sb_ext SB_PATH
+        get_architecture
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-argo.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tar="$sb_tmp/singbox_core.tar.gz"
+        sb_ext="$sb_tmp/extract"
+        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        clear_core_release_resolution SagerNet/sing-box
+        fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
+        SB_PATH="$sb_ext/sing-box"
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
+        "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
+        install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        rm -rf -- "$sb_tmp"
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        jq -n '{log:{level:"warning"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die 'Sing-box 初始配置生成失败。'
+        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+        rm -f "$tmp_json"
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+# Managed by A-Box
+[Unit]
+Description=A-Box Sing-Box Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-singbox
+Group=abox-singbox
+UMask=0077
+ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        else
+            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
+            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+rc_ulimit="-n 1048576"
+EOF_SB_CONFD
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Sing-Box Service"
+command="/usr/local/bin/sing-box"
+command_args="run -c /etc/sing-box/config.json"
+command_background="yes"
+command_user="abox-singbox:abox-singbox"
+umask=077
+pidfile="/run/sing-box.pid"
+depend() { need net; }
+EOF_SVC
+            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+        fi
+        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+    fi
+    argo_deploy_ws
+    argo_remove_unit argo-vmess
+    argo_remove_unit argo-vless
+    argo_write_unit argo "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 run --token ${token}"
+    _argo_state_write "mode=fixed
+uuid=${ARGO_UUID}
+vmess_port=${ARGO_VMESS_PORT}
+vless_port=${ARGO_VLESS_PORT}
+domain=${domain}"
+    msg "${GREEN}$(tr_msg argo_done)${NC}"
+    msg "${YELLOW}$(tr_msg argo_fixed_steps)${NC}"
+    msg "  ${domain}  path /${ARGO_UUID}-vmess  ->  http://localhost:${ARGO_VMESS_PORT}"
+    msg "  ${domain}  path /${ARGO_UUID}-vless  ->  http://localhost:${ARGO_VLESS_PORT}"
+    argo_links_for "$domain" "$domain"
+}
+
+argo_status() {
+    clear; msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
+    local mode
+    mode=$(_argo_state_get mode)
+    if [[ -z "$mode" ]]; then
+        msg "${YELLOW}$(tr_msg argo_not_deployed)${NC}"
+        return 0
+    fi
+    ARGO_UUID=$(_argo_state_get uuid)
+    ARGO_VMESS_PORT=$(_argo_state_get vmess_port)
+    ARGO_VLESS_PORT=$(_argo_state_get vless_port)
+    msg "Mode: ${mode} | UUID: ${ARGO_UUID} | VMess-WS: 127.0.0.1:${ARGO_VMESS_PORT} | VLESS-WS: 127.0.0.1:${ARGO_VLESS_PORT}"
+    if [[ "$mode" == 'temp' ]]; then
+        local u1='' u2=''
+        argo_unit_active argo-vmess && u1='running' || u1='stopped'
+        argo_unit_active argo-vless && u2='running' || u2='stopped'
+        msg "argo-vmess: ${u1} | argo-vless: ${u2}"
+        argo_links_for "$(_argo_state_get vmess_domain)" "$(_argo_state_get vless_domain)"
+        msg "${YELLOW}$(tr_msg argo_temp_note)${NC}"
+    else
+        local u=''
+        argo_unit_active argo && u='running' || u='stopped'
+        msg "argo: ${u}"
+        argo_links_for "$(_argo_state_get domain)" "$(_argo_state_get domain)"
+    fi
+}
+
+argo_uninstall() {
+    local ans=''
+    read -r -p "$(tr_msg argo_confirm_uninstall)" ans || ans=''
+    case "$ans" in
+        Y|y) ;;
+        *) return 0 ;;
+    esac
+    argo_remove_unit argo
+    argo_remove_unit argo-vmess
+    argo_remove_unit argo-vless
+    local cfg='/etc/sing-box/config.json' tmp_cfg
+    if [[ -f "$cfg" && ! -L "$cfg" ]] && command -v jq >/dev/null 2>&1; then
+        tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+        if jq '.inbounds |= map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in"))' "$cfg" > "$tmp_cfg" 2>/dev/null \
+            && /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1; then
+            install_file_atomically "$tmp_cfg" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+            restart_service_soft sing-box || true
+        fi
+        rm -f "$tmp_cfg"
+    fi
+    rm -f "$ARGO_STATE_FILE" /usr/local/bin/cloudflared
+    msg "${GREEN}$(tr_msg argo_uninstalled)${NC}"
+}
+
+argo_menu() {
+    local choice
+    while true; do
+        clear
+        msg "${CYAN}============================================================${NC}"
+        msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
+        msg "${YELLOW}1.  $(tr_msg argo_m_temp)${NC}"
+        msg "${YELLOW}2.  $(tr_msg argo_m_fixed)${NC}"
+        msg "${YELLOW}3.  $(tr_msg argo_m_status)${NC}"
+        msg "${YELLOW}4.  $(tr_msg argo_m_uninstall)${NC}"
+        msg "${YELLOW}0.  $(tr_msg argo_m_back)${NC}"
+        read -r -p "$(tr_msg argo_prompt)" choice || choice=0
+        case "$choice" in
+            1) deploy_argo_temp; pause_return ;;
+            2) deploy_argo_fixed; pause_return ;;
+            3) argo_status; pause_return ;;
+            4) argo_uninstall; pause_return ;;
+            0) break ;;
+            *) msg "${RED}$(tr_msg invalid_choice)${NC}"; sleep 1 ;;
+        esac
+    done
+}
+
 # Other-protocols entry: standalone Trojan-Reality, free core choice.
 trojan_toolbox_entry() {
     local _core_choice='' _default='1'
@@ -10433,7 +10980,7 @@ _menu_info_collect() {
         sni=$(jq -r '[.inbounds[]? | select(.tag != "api") | .streamSettings.realitySettings.serverNames[0] // empty][0] // empty' \
             /usr/local/etc/xray/config.json 2>/dev/null)
     elif [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]]; then
-        nodes=$(jq -r '.inbounds[]? | select(.tag != "shadowtls-ss") |
+        nodes=$(jq -r '.inbounds[]? | select(.tag != "shadowtls-ss" and .tag != "vmess-ws-in" and .tag != "vless-ws-in") |
             (if .type == "vless" then "VLESS" elif .type == "shadowsocks" then "SS"
              elif .type == "hysteria2" then "Hy2" elif .type == "mixed" then "SOCKS5"
              elif .type == "socks" then "SOCKS5" elif .type == "tuic" then "TUIC" elif .type == "anytls" then "AnyTLS" elif .type == "shadowtls" then "ShadowTLS" else .type end)
@@ -20406,6 +20953,7 @@ other_protocols_menu() {
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
+            msg "${YELLOW}6.  Argo (CDN)${NC}"
             msg "${GREEN}0. Back${NC}"
             ;;
         ru)
@@ -20415,6 +20963,7 @@ other_protocols_menu() {
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
+            msg "${YELLOW}6.  Argo (CDN)${NC}"
             msg "${GREEN}0. Назад${NC}"
             ;;
         fa)
@@ -20424,6 +20973,7 @@ other_protocols_menu() {
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
+            msg "${YELLOW}6.  Argo (CDN)${NC}"
             msg "${GREEN}0. بازگشت${NC}"
             ;;
         zh-tw)
@@ -20433,6 +20983,7 @@ other_protocols_menu() {
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
+            msg "${YELLOW}6.  Argo (CDN)${NC}"
             msg "${GREEN}0. 返回主選單${NC}"
             ;;
         ja)
@@ -20442,6 +20993,7 @@ other_protocols_menu() {
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
+            msg "${YELLOW}6.  Argo (CDN)${NC}"
             msg "${GREEN}0. メインメニューに戻る${NC}"
             ;;
         *)
@@ -20451,11 +21003,12 @@ other_protocols_menu() {
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
+            msg "${YELLOW}6.  Argo (CDN)${NC}"
             msg "${GREEN}0. 返回主菜单${NC}"
             ;;
     esac
     local op_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-5]: ' ;; ru) select_prompt='Выберите [0–5]: ' ;; fa) select_prompt='انتخاب [۰ تا ۵]: ' ;; ja) select_prompt='選択してください [0-5]: ' ;; zh-tw) select_prompt='請選擇 [0-5]：' ;; *) select_prompt='请选择 [0-5]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-6]: ' ;; ru) select_prompt='Выберите [0–6]: ' ;; fa) select_prompt='انتخاب [۰ تا ۶]: ' ;; ja) select_prompt='選択してください [0-6]: ' ;; zh-tw) select_prompt='請選擇 [0-6]：' ;; *) select_prompt='请选择 [0-6]：' ;; esac
     read -r -p "$select_prompt" op_choice || return 0
     case "$op_choice" in
         1) trojan_toolbox_entry; pause_return ;;
@@ -20463,6 +21016,7 @@ other_protocols_menu() {
         3) deploy_singbox_anytls; pause_return ;;
         4) socks5_toolbox_entry; pause_return ;;
         5) deploy_singbox_shadowtls; pause_return ;;
+        6) argo_menu ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $op_choice${NC}"; sleep 1 ;;
     esac

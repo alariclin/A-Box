@@ -1180,6 +1180,12 @@ tr_msg() {
         fa:mi_fault) echo 'خطا' ;;
         zh-tw:mi_fault) echo '故障' ;;
         ja:mi_fault) echo '障害' ;;
+        zh:mi_quick_r) echo '一键 Reality（默认 SNI）' ;;
+        en:mi_quick_r) echo 'One-click Reality (default SNI)' ;;
+        ru:mi_quick_r) echo 'Reality в один клик (SNI по умолчанию)' ;;
+        fa:mi_quick_r) echo 'ریالیتی تک‌کلیکی (SNI پیش‌فرض)' ;;
+        zh-tw:mi_quick_r) echo '一鍵 Reality（預設 SNI）' ;;
+        ja:mi_quick_r) echo 'ワンクリック Reality（デフォルト SNI）' ;;
         zh:mi_land) echo '落地' ;;
         en:mi_land) echo 'Exit' ;;
         ru:mi_land) echo 'Exit' ;;
@@ -10303,7 +10309,7 @@ _menu_info_display() {
         msg ''
     fi
     # --- legend ---
-    msg "  ${GRAY}$(tr_msg mi_state)：  ${GREEN}●${NC} ${CYAN}$(tr_msg mi_run)${GRAY}  ·  ○ ${CYAN}$(tr_msg mi_off)${GRAY}  ·  ${RED}●${NC} ${CYAN}$(tr_msg mi_fault)${NC}"
+    msg "  ${GRAY}$(tr_msg mi_state)：  ${GREEN}●${NC} ${CYAN}$(tr_msg mi_run)${GRAY}  ·  ○ ${CYAN}$(tr_msg mi_off)${GRAY}  ·  ${RED}●${NC} ${CYAN}$(tr_msg mi_fault)${NC}        ${CYAN}r. $(tr_msg mi_quick_r)${NC}"
     printf '\033[38;2;0;170;255m%s\033[0m\n' '════════════════════════════════════════════════════════════════════════════════'
 }
 
@@ -24212,7 +24218,6 @@ main_loop() {
             en)
                 _menu_info_display
                 msg "${CYAN}[ Xray-core Deployment ]${NC}                ${CYAN}[ Sing-box Deployment ]${NC}"
-                msg "${YELLOW}r.${NC}  One-click Reality (default SNI)"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
@@ -24231,7 +24236,6 @@ main_loop() {
             ru)
                 _menu_info_display
                 msg "${CYAN}[ Развёртывание Xray ]${NC}                  ${CYAN}[ Развёртывание sing-box ]${NC}"
-                msg "${YELLOW}r.${NC}  Reality в один клик (SNI по умолчанию)"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
@@ -24250,7 +24254,6 @@ main_loop() {
             fa)
                 _menu_info_display
                 msg "${CYAN}[ نصب Xray ]${NC}                            ${CYAN}[ نصب sing-box ]${NC}"
-                msg "${YELLOW}r.${NC}  ریالیتی تک‌کلیکی (SNI پیش‌فرض)"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
@@ -24269,7 +24272,6 @@ main_loop() {
             zh-tw)
                 _menu_info_display
                 msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ Sing-box 部署 ]${NC}"
-                msg "${YELLOW}r.${NC}  一鍵 Reality（預設 SNI）"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
@@ -24288,7 +24290,6 @@ main_loop() {
             ja)
                 _menu_info_display
                 msg "${CYAN}[ Xray-core 部署します ]${NC}                ${CYAN}[ Sing-box 部署します ]${NC}"
-                msg "${YELLOW}r.${NC}  ワンクリック Reality（デフォルト SNI）"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
@@ -24307,7 +24308,6 @@ main_loop() {
             *)
                 _menu_info_display
                 msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ Sing-box 部署 ]${NC}"
-                msg "${YELLOW}r.${NC}  一键 Reality（默认 SNI）"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"

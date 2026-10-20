@@ -10309,7 +10309,7 @@ _menu_info_display() {
         msg ''
     fi
     # --- legend ---
-    msg "  ${GRAY}$(tr_msg mi_state)：  ${GREEN}●${NC} ${CYAN}$(tr_msg mi_run)${GRAY}  ·  ○ ${CYAN}$(tr_msg mi_off)${GRAY}  ·  ${RED}●${NC} ${CYAN}$(tr_msg mi_fault)${NC}        ${CYAN}r. $(tr_msg mi_quick_r)${NC}"
+    msg "  ${GRAY}$(tr_msg mi_state)：  ${GREEN}●${NC} ${GRAY}$(tr_msg mi_run)  ·  ○ $(tr_msg mi_off)  ·  ${RED}●${NC} ${GRAY}$(tr_msg mi_fault)${NC}        ${CYAN}r. $(tr_msg mi_quick_r)${NC}"
     printf '\033[38;2;0;170;255m%s\033[0m\n' '════════════════════════════════════════════════════════════════════════════════'
 }
 

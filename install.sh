@@ -946,6 +946,84 @@ tr_msg() {
         fa:split_rule_del_done) echo 'قانون حذف شد.' ;;
         zh-tw:split_rule_del_done) echo '規則已刪除。' ;;
         ja:split_rule_del_done) echo 'ルールを削除しました。' ;;
+        zh:mi_version) echo '版本' ;;
+        en:mi_version) echo 'Versions' ;;
+        ru:mi_version) echo 'Версии' ;;
+        fa:mi_version) echo 'نسخه‌ها' ;;
+        zh-tw:mi_version) echo '版本' ;;
+        ja:mi_version) echo 'バージョン' ;;
+        zh:mi_no_core) echo '未安装核心' ;;
+        en:mi_no_core) echo 'No core installed' ;;
+        ru:mi_no_core) echo 'Ядро не установлено' ;;
+        fa:mi_no_core) echo 'هسته‌ای نصب نشده' ;;
+        zh-tw:mi_no_core) echo '未安裝核心' ;;
+        ja:mi_no_core) echo 'コア未インストール' ;;
+        zh:mi_system) echo '系统' ;;
+        en:mi_system) echo 'System' ;;
+        ru:mi_system) echo 'Система' ;;
+        fa:mi_system) echo 'سیستم' ;;
+        zh-tw:mi_system) echo '系統' ;;
+        ja:mi_system) echo 'システム' ;;
+        zh:mi_cores) echo '核' ;;
+        en:mi_cores) echo ' cores' ;;
+        ru:mi_cores) echo ' ядер' ;;
+        fa:mi_cores) echo ' هسته' ;;
+        zh-tw:mi_cores) echo '核' ;;
+        ja:mi_cores) echo 'コア' ;;
+        zh:mi_uptime) echo '运行%s天' ;;
+        en:mi_uptime) echo 'uptime %sd' ;;
+        ru:mi_uptime) echo 'аптайм %sд' ;;
+        fa:mi_uptime) echo '%s روز روشن' ;;
+        zh-tw:mi_uptime) echo '運行%s天' ;;
+        ja:mi_uptime) echo '稼働%s日' ;;
+        zh:mi_nodes) echo '节点' ;;
+        en:mi_nodes) echo 'Nodes' ;;
+        ru:mi_nodes) echo 'Ноды' ;;
+        fa:mi_nodes) echo 'نودها' ;;
+        zh-tw:mi_nodes) echo '節點' ;;
+        ja:mi_nodes) echo 'ノード' ;;
+        zh:mi_no_nodes) echo '未部署节点' ;;
+        en:mi_no_nodes) echo 'No nodes deployed' ;;
+        ru:mi_no_nodes) echo 'Ноды не развёрнуты' ;;
+        fa:mi_no_nodes) echo 'نودی مستقر نشده' ;;
+        zh-tw:mi_no_nodes) echo '未部署節點' ;;
+        ja:mi_no_nodes) echo 'ノード未展開' ;;
+        zh:mi_split) echo '分流' ;;
+        en:mi_split) echo 'Split' ;;
+        ru:mi_split) echo 'Разделение' ;;
+        fa:mi_split) echo 'تفکیک' ;;
+        zh-tw:mi_split) echo '分流' ;;
+        ja:mi_split) echo '振り分け' ;;
+        zh:mi_rules) echo '规则 %s 条' ;;
+        en:mi_rules) echo '%s rules' ;;
+        ru:mi_rules) echo 'правил: %s' ;;
+        fa:mi_rules) echo '%s قانون' ;;
+        zh-tw:mi_rules) echo '規則 %s 條' ;;
+        ja:mi_rules) echo 'ルール %s 件' ;;
+        zh:split_preset_streaming) echo '流媒体预设（一键）' ;;
+        en:split_preset_streaming) echo 'Streaming preset (one-click)' ;;
+        ru:split_preset_streaming) echo 'Пресет стриминга' ;;
+        fa:split_preset_streaming) echo 'پیش‌تنظیم استریم' ;;
+        zh-tw:split_preset_streaming) echo '流媒體預設（一鍵）' ;;
+        ja:split_preset_streaming) echo 'ストリーミングプリセット' ;;
+        zh:split_preset_social) echo '社交媒体预设（一键）' ;;
+        en:split_preset_social) echo 'Social media preset (one-click)' ;;
+        ru:split_preset_social) echo 'Пресет соцсетей' ;;
+        fa:split_preset_social) echo 'پیش‌تنظیم شبکه اجتماعی' ;;
+        zh-tw:split_preset_social) echo '社交媒體預設（一鍵）' ;;
+        ja:split_preset_social) echo 'SNSプリセット' ;;
+        zh:split_preset_ai) echo 'AI 服务预设（一键）' ;;
+        en:split_preset_ai) echo 'AI services preset (one-click)' ;;
+        ru:split_preset_ai) echo 'Пресет ИИ-сервисов' ;;
+        fa:split_preset_ai) echo 'پیش‌تنظیم سرویس‌های هوش مصنوعی' ;;
+        zh-tw:split_preset_ai) echo 'AI 服務預設（一鍵）' ;;
+        ja:split_preset_ai) echo 'AIサービスプリセット' ;;
+        zh:split_need_outbound) echo '请先添加 SOCKS5 出站。' ;;
+        en:split_need_outbound) echo 'Add a SOCKS5 outbound first.' ;;
+        ru:split_need_outbound) echo 'Сначала добавьте SOCKS5-исходящий.' ;;
+        fa:split_need_outbound) echo 'ابتدا خروجی SOCKS5 اضافه کنید.' ;;
+        zh-tw:split_need_outbound) echo '請先添加 SOCKS5 出站。' ;;
+        ja:split_need_outbound) echo '先に SOCKS5 アウトバウンドを追加してください。' ;;
         *) echo "$key" ;;
     esac
 }
@@ -9428,6 +9506,111 @@ trojan_toolbox_entry() {
         *) deploy_xray_trojan_landing ;;
     esac
 }
+# ============ Main menu info lines (versions / system / nodes / split) ============
+# Collected once per main_loop invocation (not per redraw) for performance.
+
+_menu_info_collect() {
+    # Skip if already collected in this session
+    [[ -n "${_MI_COLLECTED:-}" ]] && return 0
+    _MI_COLLECTED=1
+
+    # --- versions + running status ---
+    local xv='' sv='' hv='' xrun=0 srun=0 hrun=0
+    if [[ -x /usr/local/bin/xray ]]; then
+        xv=$(/usr/local/bin/xray version 2>/dev/null | head -1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        [[ -z "$xv" ]] && xv='?'
+        is_service_running xray 2>/dev/null && xrun=1
+    fi
+    if [[ -x /usr/local/bin/sing-box ]]; then
+        sv=$(/usr/local/bin/sing-box version 2>/dev/null | head -1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        [[ -z "$sv" ]] && sv='?'
+        is_service_running sing-box 2>/dev/null && srun=1
+    fi
+    if [[ -x /usr/local/bin/hysteria ]]; then
+        hv=$(/usr/local/bin/hysteria version 2>/dev/null | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        [[ -z "$hv" ]] && hv='?'
+        is_service_running hysteria 2>/dev/null && hrun=1
+    fi
+    _MI_XV="$xv"; _MI_SV="$sv"; _MI_HV="$hv"
+    _MI_XRUN="$xrun"; _MI_SRUN="$srun"; _MI_HRUN="$hrun"
+
+    # --- system info ---
+    local os_name='?' kernel='?' cpu_n='?' mem_g='?' virt='?' bbr='?' up_days='?' ipv6='无'
+    if [[ -f /etc/os-release ]]; then
+        os_name=$(grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d'"' -f2 | awk '{print $1, $2}')
+        [[ -z "$os_name" ]] && os_name='?'
+    fi
+    kernel=$(uname -r 2>/dev/null | cut -d. -f1,2)
+    cpu_n=$(nproc 2>/dev/null || echo '?')
+    if command -v free >/dev/null 2>&1; then
+        mem_g=$(free -g 2>/dev/null | awk '/^Mem:/{print $2}')
+        [[ -z "$mem_g" || "$mem_g" == "0" ]] && mem_g=$(free -m 2>/dev/null | awk '/^Mem:/{printf "%.1f", $2/1024}')
+    fi
+    if command -v systemd-detect-virt >/dev/null 2>&1; then
+        virt=$(systemd-detect-virt 2>/dev/null || echo '?')
+    fi
+    bbr=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo '?')
+    if [[ -f /proc/uptime ]]; then
+        up_days=$(awk '{printf "%d", $1/86400}' /proc/uptime 2>/dev/null)
+    fi
+    # IPv6 check (cheap)
+    if ip -6 addr show scope global 2>/dev/null | grep -q 'inet6'; then
+        ipv6='有'
+    fi
+    _MI_OS="$os_name"; _MI_KERNEL="$kernel"; _MI_CPU="$cpu_n"; _MI_MEM="$mem_g"
+    _MI_VIRT="$virt"; _MI_BBR="$bbr"; _MI_UP="$up_days"; _MI_IPV6="$ipv6"
+
+    # --- deployed nodes (from live config) ---
+    local nodes=''
+    if [[ "$_MI_XRUN" == "1" && -f /usr/local/etc/xray/config.json ]]; then
+        nodes=$(jq -r '.inbounds[]? | select(.tag != "api") | "\(.protocol):\(.port)"' /usr/local/etc/xray/config.json 2>/dev/null | tr '\n' ' ')
+    elif [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]]; then
+        nodes=$(jq -r '.inbounds[]? | "\(.type):\(.listen_port)"' /etc/sing-box/config.json 2>/dev/null | tr '\n' ' ')
+    fi
+    _MI_NODES="$nodes"
+
+    # --- split/WARP status ---
+    local warp_st='未部署' rule_n=0
+    if [[ -f "$ROUTING_STATE_FILE" ]]; then
+        routing_outbound_has 'warp-out' 2>/dev/null && warp_st='已部署'
+        rule_n=$(jq '.rules | length' "$ROUTING_STATE_FILE" 2>/dev/null || echo 0)
+    fi
+    _MI_WARP="$warp_st"; _MI_RULES="$rule_n"
+}
+
+# Display the 4 info lines. Called after the status-row separator.
+_menu_info_display() {
+    _menu_info_collect || return 0
+    local dot_g="●" dot_r="○"
+    # versions line
+    local vline="  $(tr_msg mi_version)："
+    if [[ -n "$_MI_XV" ]]; then
+        vline+="Xray v${_MI_XV} "
+        [[ "$_MI_XRUN" == "1" ]] && vline+="${GREEN}${dot_g}${NC} " || vline+="${RED}${dot_r}${NC} "
+    fi
+    if [[ -n "$_MI_HV" ]]; then
+        vline+="· Hy2 v${_MI_HV} "
+        [[ "$_MI_HRUN" == "1" ]] && vline+="${GREEN}${dot_g}${NC} " || vline+="${RED}${dot_r}${NC} "
+    fi
+    if [[ -n "$_MI_SV" ]]; then
+        vline+="· sing-box v${_MI_SV} "
+        [[ "$_MI_SRUN" == "1" ]] && vline+="${GREEN}${dot_g}${NC} " || vline+="${RED}${dot_r}${NC} "
+    fi
+    [[ -z "$_MI_XV$_MI_SV$_MI_HV" ]] && vline+="$(tr_msg mi_no_core)"
+    msg "${LIGHTBLUE}$vline${NC}"
+    # system line
+    msg "  ${LIGHTBLUE}$(tr_msg mi_system)：${NC} ${_MI_OS} (${_MI_KERNEL}) · ${_MI_CPU}$(tr_msg mi_cores) ${_MI_MEM}G · ${_MI_VIRT} · BBR ${_MI_BBR} · $(tprintf mi_uptime "$_MI_UP") · IPv6 ${_MI_IPV6}"
+    # nodes line
+    if [[ -n "$_MI_NODES" ]]; then
+        msg "  ${LIGHTBLUE}$(tr_msg mi_nodes)：${NC} ${_MI_NODES}"
+    else
+        msg "  ${LIGHTBLUE}$(tr_msg mi_nodes)：${NC} $(tr_msg mi_no_nodes)"
+    fi
+    # split line
+    msg "  ${LIGHTBLUE}$(tr_msg mi_split)：${NC} WARP ${_MI_WARP} │ $(tprintf mi_rules "$_MI_RULES")"
+    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+}
+
 # ============ WARP 与分流管理 (routing state + WARP one-click) ============
 # State file persists custom outbounds + routing rules across redeploys.
 # Builders (build_xray_config / build_singbox_config) merge this state in.
@@ -9725,6 +9908,29 @@ warp_apply_preset() {
     msg "$(tr_msg warp_preset_done)"
 }
 
+
+# Landing-machine one-click presets: streaming / social / AI.
+# $1 = preset name, $2 = outbound tag
+split_apply_preset() {
+    local preset="$1" outbound="$2" domains
+    [[ -n "$preset" && -n "$outbound" ]] || return 1
+    routing_outbound_has "$outbound" || { msg "$(tr_msg split_need_outbound)"; return 1; }
+    case "$preset" in
+        streaming) domains='geosite:netflix,geosite:disney,geosite:hbo,geosite:hulu,geosite:primevideo,geosite:dazn' ;;
+        social)    domains='geosite:tiktok,geosite:twitter,geosite:instagram,geosite:facebook,geosite:telegram' ;;
+        ai)        domains='geosite:openai' ;;
+        *) return 1 ;;
+    esac
+    routing_rule_add "$domains" "$outbound" || return 1
+    local core="${CORE:-}"
+    if [[ -z "$core" ]]; then
+        load_optional_abox_env_or_die 2>/dev/null || true
+        core="${CORE:-}"
+    fi
+    [[ -n "$core" ]] && routing_apply_live "$core"
+    msg "$(tr_msg warp_preset_done)"
+}
+
 # ---------------- multi-machine split routing ----------------
 
 # $1=landing IP, $2=port, $3=user, $4=pass. Creates tag socks-land<N>.
@@ -9835,12 +10041,18 @@ split_rules_menu() {
     msg "${BLUE}$(printf '%80s' | tr ' ' '─')${NC}"
     msg "a. $(tr_msg split_rule_add)"
     msg "d. $(tr_msg split_rule_del)"
+    msg "s. $(tr_msg split_preset_streaming)"
+    msg "m. $(tr_msg split_preset_social)"
+    msg "i. $(tr_msg split_preset_ai)"
     msg "0. $(tr_msg back_to_parent)"
     local choice
-    read -r -p "$(tr_msg select_prompt) [a/d/0]: " choice || return 0
+    read -r -p "$(tr_msg select_prompt) [a/d/s/m/i/0]: " choice || return 0
     case "$choice" in
         a|A) split_rule_add_interactive ;;
         d|D) split_rule_del_interactive ;;
+        s|S) split_preset_interactive streaming ;;
+        m|M) split_preset_interactive social ;;
+        i|I) split_preset_interactive ai ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
     esac
@@ -9859,6 +10071,20 @@ split_rule_add_interactive() {
     if routing_rule_add "$domains" "$outbound"; then
         local core="${CORE:-}"; [[ -z "$core" ]] && { load_optional_abox_env_or_die 2>/dev/null || true; core="${CORE:-}"; }
         [[ -n "$core" ]] && routing_apply_live "$core"
+        msg "$(tr_msg split_rule_done)"
+    else
+        msg "${RED}$(tr_msg split_rule_fail)${NC}"
+    fi
+    pause_return
+}
+
+split_preset_interactive() {
+    local preset="$1" outbound
+    msg "$(tr_msg split_outbound_hint)"
+    jq -r '.outbounds[]? | .tag' "$ROUTING_STATE_FILE" 2>/dev/null | while IFS= read -r t; do msg " - $t"; done
+    read -r -p "$(tr_msg split_outbound_prompt): " outbound || return 0
+    [[ -n "$outbound" ]] || return 1
+    if split_apply_preset "$preset" "$outbound"; then
         msg "$(tr_msg split_rule_done)"
     else
         msg "${RED}$(tr_msg split_rule_fail)${NC}"
@@ -23179,6 +23405,7 @@ main_loop() {
             en)
                 _menu_status_row "Gateway" "Core" "Mode"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                _menu_info_display
                 msg "                               ${YELLOW}One-click Reality${NC}"
                 msg "                        ${GRAY}Default SNI · input r to execute${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -23201,6 +23428,7 @@ main_loop() {
             ru)
                 _menu_status_row "Шлюз" "Ядро" "Режим"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                _menu_info_display
                 msg "                              ${YELLOW}Reality в один клик${NC}"
                 msg "                         ${GRAY}SNI по умолчанию · r выполнить${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -23223,6 +23451,7 @@ main_loop() {
             fa)
                 _menu_status_row "درگاه" "هسته" "حالت"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                _menu_info_display
                 msg "                                ${YELLOW}ریالیتی تک‌کلیکی${NC}"
                 msg "                            ${GRAY}SNI پیش‌فرض · r اجرا شود${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -23245,6 +23474,7 @@ main_loop() {
             zh-tw)
                 _menu_status_row "閘道器/Gateway" "核心/Core" "模式"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                _menu_info_display
                 msg "                                  ${YELLOW}一鍵 Reality${NC}"
                 msg "                             ${GRAY}默認 SNI · 輸入 r 執行${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -23267,6 +23497,7 @@ main_loop() {
             ja)
                 _menu_status_row "ゲートウェイ" "コア" "モード"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                _menu_info_display
                 msg "                              ${YELLOW}ワンクリック Reality${NC}"
                 msg "                         ${GRAY}デフォルト SNI · 入力 r で実行${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
@@ -23292,6 +23523,7 @@ main_loop() {
                     *) _menu_status_row "网关/Gateway" "核心/Core" "模式" ;;
                 esac
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                _menu_info_display
                 msg "                                  ${YELLOW}一键 Reality${NC}"
                 msg "                             ${GRAY}默认 SNI · 输入 r 执行${NC}"
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"

@@ -3361,7 +3361,7 @@ build_status_str() {
         fi
         case "$state" in
             1)
-                case "$srv" in xray) status_str+="${GREEN}Xray-Core${NC} ";; sing-box) status_str+="${CYAN}Sing-Box${NC} ";; hysteria) status_str+="${GREEN}Hy2(Native)${NC} ";; esac
+                case "$srv" in xray) status_str+="${GREEN}Xray${NC} ";; sing-box) status_str+="${CYAN}Sing-Box${NC} ";; hysteria) status_str+="${GREEN}Hy2${NC} ";; esac
                 ;;
             0) ;;
             *) unknown=1 ;;
@@ -22863,7 +22863,7 @@ EOF_SVC_TEST_RCUPDATE
         esac
     }
     # build_status_str state words are localized; assert the English rendering.
-    ( ABOX_LANG=en; [[ "$(build_status_str)" == *'Xray-Core'* && "$(build_status_str)" == *'State Unknown'* ]] ) || { echo 'FAIL: mixed active/unknown status UI'; failures=$((failures + 1)); }
+    ( ABOX_LANG=en; [[ "$(build_status_str)" == *'Xray'* && "$(build_status_str)" == *'State Unknown'* ]] ) || { echo 'FAIL: mixed active/unknown status UI'; failures=$((failures + 1)); }
     eval "$_status_owns_orig"
     eval "$_status_state_orig"
 
@@ -23122,7 +23122,21 @@ main_loop() {
               print b - s1 - s2*2 }')
         { IFS= read -r _dw1; IFS= read -r _dw2; IFS= read -r _dw3; } <<< "$_dw"
         local w1=$((_CACHED_GW_W + ${_dw1:-0})) w2=$((_CACHED_CORE_W + ${_dw2:-0})) w3=$((_CACHED_MODE_W + ${_dw3:-0}))
-        local total=70 margin=2
+        local total=76 margin=2
+        # Overflow protection: drop CUR_MODE ([core-mode] tag) if the row doesn't fit.
+        # The core name itself already identifies what's running; the mode tag is secondary.
+        local core_display="$STATUS_STR $CUR_MODE"
+        if (( w1 + w2 + w3 + 8 > total )); then
+            core_display="$STATUS_STR"
+            # Recompute core width without CUR_MODE
+            local _core_plain2=$(printf '%s' "$STATUS_STR" | sed $'s/\\x1b\\[[0-9;?]*[a-zA-Z]//g; s/\\x1b([0-9A-Za-z]//g')
+            local _dw2b=$(printf '%s' "$_core_plain2" | LC_ALL=C awk '
+                { b=length($0)
+                  s1=gsub(/[\\xc2-\\xdf][\\x80-\\xbf]|[\\xe3-\\xef][\\x80-\\xbf][\\x80-\\xbf]/, "&")
+                  s2=gsub(/[\\xe0-\\xe2][\\x80-\\xbf][\\x80-\\xbf]|[\\xf0-\\xf4][\\x80-\\xbf][\\x80-\\xbf][\\x80-\\xbf]/, "&")
+                  print b - s1 - s2*2 }')
+            w2=$((_CACHED_CORE_W + ${_dw2b:-0}))
+        fi
         local gaps=$((total - margin*2 - w1 - w2 - w3))
         local gap=$((gaps / 2))
         [[ $gap -lt 2 ]] && gap=2
@@ -23132,7 +23146,7 @@ main_loop() {
         [[ "$STATUS_STR" == *"${GREEN}"* ]] && dot_color="$GREEN"
         # Display with original STATUS_STR colors preserved
         printf "%*s${LIGHTBLUE}%s:${NC} ${CYAN}%s${NC}%*s${LIGHTBLUE}%s:${NC} ${dot_color}●${NC} %s%*s${LIGHTBLUE}%s:${NC} ${YELLOW}%s${NC}\n" \
-            "$pad1" "" "$lbl_gw" "$gw_ip" "$pad2" "" "$lbl_core" "$STATUS_STR $CUR_MODE" "$pad3" "" "$lbl_mode" "$mode_label"
+            "$pad1" "" "$lbl_gw" "$gw_ip" "$pad2" "" "$lbl_core" "$core_display" "$pad3" "" "$lbl_mode" "$mode_label"
     }
     # Safely migrate active, exactly marked v7 installations into the new
     # per-file ownership model. Inactive or ambiguous services are not adopted.
@@ -23273,7 +23287,10 @@ main_loop() {
                 msg "${GREEN} 0.${NC}  スクリプトを終了します"
                 ;;
             *)
-                _menu_status_row "网关/Gateway" "核心/Core" "模式"
+                case "${ABOX_LANG:-zh}" in
+                    zh|zh-tw) _menu_status_row "网关" "核心" "模式" ;;
+                    *) _menu_status_row "网关/Gateway" "核心/Core" "模式" ;;
+                esac
                 msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "                                  ${YELLOW}一键 Reality${NC}"
                 msg "                             ${GRAY}默认 SNI · 输入 r 执行${NC}"

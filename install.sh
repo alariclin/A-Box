@@ -1096,6 +1096,60 @@ tr_msg() {
         fa:mi_hy2_hop) echo 'درگاه‌های hop ‏%s' ;;
         zh-tw:mi_hy2_hop) echo '跳躍連接埠 %s' ;;
         ja:mi_hy2_hop) echo 'ホップポート %s' ;;
+        zh:mi_state) echo '状态' ;;
+        en:mi_state) echo 'State' ;;
+        ru:mi_state) echo 'Состояние' ;;
+        fa:mi_state) echo 'وضعیت' ;;
+        zh-tw:mi_state) echo '狀態' ;;
+        ja:mi_state) echo '状態' ;;
+        zh:mi_run) echo '运行' ;;
+        en:mi_run) echo 'Running' ;;
+        ru:mi_run) echo 'Работает' ;;
+        fa:mi_run) echo 'در حال اجرا' ;;
+        zh-tw:mi_run) echo '運行' ;;
+        ja:mi_run) echo '実行中' ;;
+        zh:mi_fault) echo '故障' ;;
+        en:mi_fault) echo 'Fault' ;;
+        ru:mi_fault) echo 'Сбой' ;;
+        fa:mi_fault) echo 'خطا' ;;
+        zh-tw:mi_fault) echo '故障' ;;
+        ja:mi_fault) echo '障害' ;;
+        zh:mi_land) echo '落地' ;;
+        en:mi_land) echo 'Exit' ;;
+        ru:mi_land) echo 'Exit' ;;
+        fa:mi_land) echo 'Exit' ;;
+        zh-tw:mi_land) echo '落地' ;;
+        ja:mi_land) echo 'Exit' ;;
+        zh:mi_dc) echo '机房' ;;
+        en:mi_dc) echo 'Datacenter' ;;
+        ru:mi_dc) echo 'Дата-центр' ;;
+        fa:mi_dc) echo 'مرکز داده' ;;
+        zh-tw:mi_dc) echo '機房' ;;
+        ja:mi_dc) echo 'データセンター' ;;
+        zh:mi_res) echo '住宅' ;;
+        en:mi_res) echo 'Residential' ;;
+        ru:mi_res) echo 'Жилой' ;;
+        fa:mi_res) echo 'مسکونی' ;;
+        zh-tw:mi_res) echo '住宅' ;;
+        ja:mi_res) echo '住宅' ;;
+        zh:mi_cell) echo '蜂窝' ;;
+        en:mi_cell) echo 'Cellular' ;;
+        ru:mi_cell) echo 'Сотовая' ;;
+        fa:mi_cell) echo 'سلولی' ;;
+        zh-tw:mi_cell) echo '蜂窩' ;;
+        ja:mi_cell) echo 'モバイル' ;;
+        zh:mi_native) echo '原生' ;;
+        en:mi_native) echo 'Native' ;;
+        ru:mi_native) echo 'Нативный' ;;
+        fa:mi_native) echo 'بومی' ;;
+        zh-tw:mi_native) echo '原生' ;;
+        ja:mi_native) echo 'ネイティブ' ;;
+        zh:mi_anycast) echo '广播' ;;
+        en:mi_anycast) echo 'Anycast' ;;
+        ru:mi_anycast) echo 'Anycast' ;;
+        fa:mi_anycast) echo 'Anycast' ;;
+        zh-tw:mi_anycast) echo '廣播' ;;
+        ja:mi_anycast) echo 'Anycast' ;;
         *) echo "$key" ;;
     esac
 }
@@ -9581,11 +9635,46 @@ trojan_toolbox_entry() {
 # ============ Main menu info panel (versions / system / nodes / split) ============
 # Collected once per main_loop invocation (cached), not per redraw.
 
+# ---- Panel v3 helpers (IP geo + flag) ----
+IP_GEO_FILE='/etc/ddr/.ip-geo'
+
+# country code (AU) -> flag emoji (regional indicator pair)
+_flag_for_cc() {
+    local cc="$1" out='' i ch n
+    cc=$(printf '%s' "$cc" | tr 'a-z' 'A-Z')
+    for ((i = 0; i < ${#cc}; i++)); do
+        ch="${cc:i:1}"
+        case "$ch" in
+            [A-Z]) printf -v n '%d' "'$ch"; printf -v _fx '%02x' $((0xA6 + n - 65)); printf -v _fb '%b' "\xf0\x9f\x87\x$_fx"; out+="$_fb" ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
+# Fetch IP intelligence into the 24h cache (line format, first line = the IP).
+# Source: ip-api.com (free, no key). Fields order = output order.
+_ip_geo_refresh() {
+    local ip="${GLOBAL_PUBLIC_IP:-}"
+    [[ -z "$ip" ]] && return 1
+    if [[ -f "$IP_GEO_FILE" && ! -L "$IP_GEO_FILE" ]]; then
+        local _cip _now _mt
+        IFS= read -r _cip < "$IP_GEO_FILE" 2>/dev/null
+        _now=$(date +%s 2>/dev/null || echo 0)
+        _mt=$(stat -c %Y "$IP_GEO_FILE" 2>/dev/null || echo 0)
+        if [[ "$_cip" == "$ip" ]] && (( _now - _mt < 86400 )); then return 0; fi
+    fi
+    local resp
+    resp=$(curl -fsS --max-time 5 "http://ip-api.com/line/${ip}?fields=status,country,countryCode,city,mobile,hosting,as" 2>/dev/null) || return 1
+    [[ "$(printf '%s' "$resp" | head -1)" == 'success' ]] || return 1
+    printf '%s\n%s\n' "$ip" "$resp" > "$IP_GEO_FILE" 2>/dev/null || return 1
+    return 0
+}
+
 _menu_info_collect() {
     [[ -n "${_MI_COLLECTED:-}" ]] && return 0
     _MI_COLLECTED=1
 
-    # --- versions + running status ---
+    # --- versions + running status (three-state: run/stop/none) ---
     local xv='' sv='' hv='' xrun=0 srun=0 hrun=0
     if [[ -x /usr/local/bin/xray ]]; then
         xv=$(/usr/local/bin/xray version 2>/dev/null | head -1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
@@ -9604,6 +9693,11 @@ _menu_info_collect() {
     fi
     _MI_XV="$xv"; _MI_SV="$sv"; _MI_HV="$hv"
     _MI_XRUN="$xrun"; _MI_SRUN="$srun"; _MI_HRUN="$hrun"
+    local xst=none sst=none hst=none
+    [[ -x /usr/local/bin/xray ]] && xst=stop; [[ "$xrun" == 1 ]] && xst=run
+    [[ -x /usr/local/bin/sing-box ]] && sst=stop; [[ "$srun" == 1 ]] && sst=run
+    [[ -x /usr/local/bin/hysteria ]] && hst=stop; [[ "$hrun" == 1 ]] && hst=run
+    _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"
 
     # --- system info ---
     local os_name='?' kernel='?' cpu_n='?' cpu_model='' mem_tot='?' mem_used='?'
@@ -9615,7 +9709,6 @@ _menu_info_collect() {
     kernel=$(uname -r 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' || uname -r)
     cpu_n=$(nproc 2>/dev/null || echo '?')
     cpu_model=$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | sed 's/^ *//;s/ *$//;s/ Processor//;s/ CPU @ .*//;s/(R)//g;s/(TM)//g')
-    # shorten long CPU names: keep first 3 words
     cpu_model=$(echo "$cpu_model" | awk '{print $1, $2, $3}')
     if command -v free >/dev/null 2>&1; then
         mem_tot=$(free -m 2>/dev/null | awk '/^Mem:/{printf "%.1f", $2/1024}')
@@ -9637,13 +9730,14 @@ _menu_info_collect() {
     if [[ -f /proc/uptime ]]; then
         up_days=$(awk '{printf "%d", $1/86400}' /proc/uptime 2>/dev/null)
     fi
-    ipv6=$(ip -6 addr show scope global 2>/dev/null | grep -oE 'inet6 [0-9a-f:]+' | head -1 | awk '{print $2}')
+    # Global unicast only: drop ULA (fc00::/7) and other non-routable ranges
+    ipv6=$(ip -6 addr show scope global 2>/dev/null | grep -oE 'inet6 [0-9a-f:]+' | grep -viE 'inet6 f[cd][0-9a-f]{2}:' | head -1 | awk '{print $2}')
     _MI_OS="$os_name"; _MI_KERNEL="$kernel"; _MI_CPU="$cpu_n"; _MI_CPU_MODEL="$cpu_model"
     _MI_MEM="$mem_tot"; _MI_MEM_USED="$mem_used"; _MI_DISK="$disk_sz"; _MI_DISK_KIND="$disk_kind"
     _MI_VIRT="$virt"; _MI_BBR="$bbr"; _MI_UP="$up_days"; _MI_IPV6="$ipv6"
 
-    # --- deployed nodes (from live config) ---
-    local nodes=''
+    # --- deployed nodes (from live config); SNI captured separately ---
+    local nodes='' sni=''
     if [[ "$_MI_XRUN" == "1" && -f /usr/local/etc/xray/config.json ]]; then
         nodes=$(jq -r '.inbounds[]? | select(.tag != "api") |
             (if .protocol == "vless" and (.settings.clients[0].flow // "" | startswith("xtls")) then "Vision"
@@ -9654,16 +9748,18 @@ _menu_info_collect() {
              elif .protocol == "trojan" then "Trojan"
              elif .protocol == "socks" then "SOCKS5"
              else .protocol end) as $n
-            | "\($n):\(.port)\((.streamSettings.realitySettings.serverNames[0] // empty | if . == "" then empty else " SNI " + . end))"' \
-            /usr/local/etc/xray/config.json 2>/dev/null | tr '\n' ' | ')
+            | "\($n):\(.port)"' \
+            /usr/local/etc/xray/config.json 2>/dev/null | tr '\n' '|' | sed 's/|$//')
+        sni=$(jq -r '[.inbounds[]? | select(.tag != "api") | .streamSettings.realitySettings.serverNames[0] // empty][0] // empty' \
+            /usr/local/etc/xray/config.json 2>/dev/null)
     elif [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]]; then
         nodes=$(jq -r '.inbounds[]? |
             (if .type == "vless" then "VLESS" elif .type == "shadowsocks" then "SS"
              elif .type == "hysteria2" then "Hy2" elif .type == "mixed" then "SOCKS5"
              elif .type == "socks" then "SOCKS5" else .type end)
-            | "\(.) :\(.listen_port)"' /etc/sing-box/config.json 2>/dev/null | tr '\n' ' | ' | sed 's/ :/:/g')
+            | "\(.) :\(.listen_port)"' /etc/sing-box/config.json 2>/dev/null | tr '\n' '|' | sed 's/ :/:/g;s/|$//')
     fi
-    nodes="${nodes% | }"
+    nodes="${nodes%|}"
     # Hy2: separate service; port + hop range from env
     local hy2_note=''
     if [[ "$_MI_HRUN" == "1" ]]; then
@@ -9674,78 +9770,178 @@ _menu_info_collect() {
             fi
         fi
     fi
-    [[ -n "$hy2_note" ]] && nodes="${nodes:+$nodes | }$hy2_note"
-    _MI_NODES="$nodes"
-    _MI_SOCKS=''
-    [[ "$nodes" == *'SOCKS5:'* ]] && _MI_SOCKS='on'
+    [[ -n "$hy2_note" ]] && nodes="${nodes:+$nodes|}$hy2_note"
+    _MI_NODES="$nodes"; _MI_SNI="$sni"
+    # SOCKS5 service state (inbound deployed on some core)
+    _MI_SOCKS_ST='none'
+    if [[ "$nodes" == *'SOCKS5:'* ]]; then
+        _MI_SOCKS_ST='stop'
+        if [[ "$_MI_XRUN" == "1" && -f /usr/local/etc/xray/config.json ]] \
+           && jq -e '.inbounds[]? | select(.protocol == "socks")' /usr/local/etc/xray/config.json >/dev/null 2>&1; then
+            _MI_SOCKS_ST='run'
+        elif [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]] \
+             && jq -e '.inbounds[]? | select(.type == "socks" or .type == "mixed")' /etc/sing-box/config.json >/dev/null 2>&1; then
+            _MI_SOCKS_ST='run'
+        fi
+    fi
 
-    # --- split/WARP status + rule summary ---
-    local warp_st='' rule_n=0 rule_summary=''
+    # --- split/WARP status + exits (display labels; SOCKS5 inbound is separate) ---
+    local warp_st='' rule_n=0 exits=''
     if [[ -f "$ROUTING_STATE_FILE" ]]; then
         routing_outbound_has 'warp-out' 2>/dev/null && warp_st='on'
         rule_n=$(jq '.rules | length' "$ROUTING_STATE_FILE" 2>/dev/null || echo 0)
-        rule_summary=$(jq -r '.rules[]? | "\(.domains | map(sub("geosite:";"")) | join(",")) → \(.outbound)"' "$ROUTING_STATE_FILE" 2>/dev/null | head -3 | tr '\n' '；')
+        local _tag _lbl
+        while IFS= read -r _tag; do
+            [[ -z "$_tag" ]] && continue
+            case "$_tag" in
+                warp-out) _lbl='WARP' ;;
+                socks-land*) _lbl="$(tr_msg mi_land)${_tag#socks-land}" ;;
+                *) _lbl="$_tag" ;;
+            esac
+            exits+="${exits:+ }$_lbl"
+        done < <(jq -r '.outbounds[]?.tag' "$ROUTING_STATE_FILE" 2>/dev/null)
     fi
-    _MI_WARP="$warp_st"; _MI_RULES="$rule_n"; _MI_RULE_SUMMARY="$rule_summary"
+    _MI_WARP="$warp_st"; _MI_RULES="$rule_n"; _MI_EXITS="$exits"
+
+    # --- IP intelligence (flag / country / city / hosting type / origin) ---
+    _MI_FLAG=''; _MI_GEO_COUNTRY=''; _MI_GEO_CITY=''; _MI_GEO_KIND=''; _MI_GEO_ORIGIN=''
+    _ip_geo_refresh || true
+    if [[ -f "$IP_GEO_FILE" ]]; then
+        local _gip _gst _gcountry _gcc _gcity _gmob _ghost _gas
+        { IFS= read -r _gip; IFS= read -r _gst; IFS= read -r _gcountry; IFS= read -r _gcc
+          IFS= read -r _gcity; IFS= read -r _gmob; IFS= read -r _ghost; IFS= read -r _gas
+        } < "$IP_GEO_FILE" 2>/dev/null
+        if [[ "$_gip" == "${GLOBAL_PUBLIC_IP:-}" && "$_gst" == 'success' ]]; then
+            _MI_GEO_COUNTRY="$_gcountry"
+            _MI_GEO_CITY="$_gcity"
+            _MI_FLAG=$(_flag_for_cc "$_gcc")
+            if [[ "$_gmob" == 'true' ]]; then _MI_GEO_KIND=$(tr_msg mi_cell)
+            elif [[ "$_ghost" == 'true' ]]; then _MI_GEO_KIND=$(tr_msg mi_dc)
+            else _MI_GEO_KIND=$(tr_msg mi_res); fi
+            # Anycast heuristic: well-known anycast ASNs only; otherwise native.
+            case "$_gas" in
+                *'AS13335'*|*'Cloudflare'*) _MI_GEO_ORIGIN=$(tr_msg mi_anycast) ;;
+                *) _MI_GEO_ORIGIN=$(tr_msg mi_native) ;;
+            esac
+        fi
+    fi
 }
 
-# Display the info panel. Called after the status-row separator.
+# One matrix cell: [ name(padded) dot ]
+_mi_cell() {
+    local nm="$1" st="$2" dot
+    case "$st" in
+        run) dot="${GREEN}●${NC}" ;;
+        stop) dot="${RED}●${NC}" ;;
+        *) dot='○' ;;
+    esac
+    printf '[ %s%-8s%s %s ]' "$CYAN" "$nm" "$NC" "$dot"
+}
+
+# A-BOX pixel banner: 5x5 glyphs, blue gradient (electric -> deep -> cyan),
+# boxed by electric-blue double lines. Pixel = 2 background-colored spaces.
+_menu_banner() {
+    local _rows=('011100000000011110001110010001'
+                 '100010000000010001010001001010'
+                 '11111001110011110010001000100'
+                 '100010000000010001010001001010'
+                 '100010000000011110001110010001')
+    local _bg=() _c _g _b _k
+    for _c in $(seq 0 28); do
+        if (( _c <= 14 )); then _g=$((170 - 100 * _c / 14)); _b=$((255 - 75 * _c / 14))
+        else _k=$((_c - 14)); _g=$((70 + 150 * _k / 14)); _b=$((180 + 40 * _k / 14)); fi
+        _bg[$_c]=$'\033[48;2;0;'"${_g};${_b}"'m'
+    done
+    local _eq='════════════════════════════════════════════════════════════════════════════════'
+    printf '\033[38;2;0;170;255m%s\033[0m\n' "$_eq"
+    local _r _line _j _px
+    for _r in "${_rows[@]}"; do
+        _line='           '
+        for ((_j = 0; _j < 29; _j++)); do
+            _px="${_r:_j:1}"
+            if [[ "$_px" == '1' ]]; then _line+="${_bg[$_j]}  "$'\033[0m'; else _line+='  '; fi
+        done
+        printf '%s\n' "$_line"
+    done
+    printf '\033[38;2;0;170;255m%s\033[0m\n' "$_eq"
+}
+
+# Display the info panel (v3: status matrix + spaced rows, two-color scheme).
 _menu_info_display() {
     _menu_info_collect || return 0
-    local run_txt stop_txt off_txt
-    run_txt=$(tr_msg mi_running); stop_txt=$(tr_msg mi_stopped); off_txt=$(tr_msg mi_not_installed)
-    # --- versions ---
-    local vline="  ${LIGHTBLUE}$(tr_msg mi_version)：${NC} "
-    if [[ -n "$_MI_XV" ]]; then
-        vline+="Xray v${_MI_XV} "
-        [[ "$_MI_XRUN" == "1" ]] && vline+="${GREEN}${run_txt}${NC} · " || vline+="${RED}${stop_txt}${NC} · "
+    # --- status matrix (WARP cell only when active) ---
+    local _mrow='  ' _sep=''
+    local _cells=("Xray|$_MI_XST" "Hy2|$_MI_HST" "sing-box|$_MI_SST" "SOCKS5|$_MI_SOCKS_ST")
+    [[ "$_MI_BBR" == 'bbr' ]] && _cells+=("BBR|run") || _cells+=("BBR|none")
+    [[ -n "$_MI_WARP" ]] && _cells+=("WARP|run")
+    local _c _nm _st
+    for _c in "${_cells[@]}"; do
+        _nm="${_c%%|*}"; _st="${_c##*|}"
+        _mrow+="${_sep}$(_mi_cell "$_nm" "$_st")"; _sep='  '
+    done
+    msg "$_mrow"
+    msg ''
+    # --- system / hardware ---
+    msg "  ${LIGHTBLUE}$(tr_msg mi_system)：${NC}  ${CYAN}${_MI_OS} · $(tr_msg mi_kernel) ${_MI_KERNEL} · ${_MI_VIRT} · $(tprintf mi_uptime "$_MI_UP")${NC}"
+    msg ''
+    msg "  ${LIGHTBLUE}$(tr_msg mi_hw)：${NC}  ${CYAN}${_MI_CPU_MODEL} (${_MI_CPU}$(tr_msg mi_cores)) · $(tr_msg mi_mem) ${_MI_MEM_USED}/${_MI_MEM}G · $(tr_msg mi_disk) ${_MI_DISK}${_MI_DISK_KIND:+ $_MI_DISK_KIND}${NC}"
+    msg ''
+    # --- network (IPv4 with geo, IPv6) ---
+    local _v4dot='○' _geo=''
+    [[ -n "${GLOBAL_PUBLIC_IP:-}" ]] && _v4dot="${GREEN}●${NC}"
+    if [[ -n "$_MI_GEO_COUNTRY" ]]; then
+        _geo=" ${_MI_FLAG}${_MI_FLAG:+ }${_MI_GEO_COUNTRY}${_MI_GEO_CITY:+ · ${_MI_GEO_CITY}} · ${_MI_GEO_KIND} · ${_MI_GEO_ORIGIN}"
     fi
-    if [[ -n "$_MI_HV" ]]; then
-        vline+="Hy2 v${_MI_HV} "
-        [[ "$_MI_HRUN" == "1" ]] && vline+="${GREEN}${run_txt}${NC} · " || vline+="${RED}${stop_txt}${NC} · "
+    msg "  ${LIGHTBLUE}$(tr_msg mi_net)：${NC}  ${CYAN}IPv4${NC} ${_v4dot} ${CYAN}${GLOBAL_PUBLIC_IP:-?}${_geo}${NC}"
+    if [[ -n "$_MI_IPV6" ]]; then
+        msg "          ${CYAN}IPv6${NC} ${GREEN}●${NC} ${CYAN}${_MI_IPV6}${NC}"
+    else
+        msg "          ${CYAN}IPv6${NC} ○ ${GRAY}$(tr_msg mi_none)${NC}"
     fi
-    if [[ -n "$_MI_SV" ]]; then
-        vline+="sing-box v${_MI_SV} "
-        [[ "$_MI_SRUN" == "1" ]] && vline+="${GREEN}${run_txt}${NC}" || vline+="${RED}${stop_txt}${NC}"
-    fi
-    [[ -z "$_MI_XV$_MI_SV$_MI_HV" ]] && vline+="${RED}$(tr_msg mi_no_core)${NC}"
-    vline="${vline% · }"
-    msg "$vline"
-    # --- system ---
-    local bbr_txt
-    if [[ "$_MI_BBR" == "bbr" ]]; then bbr_txt="${GREEN}BBR $(tr_msg mi_on)${NC}"; else bbr_txt="BBR ${_MI_BBR}"; fi
-    msg "  ${LIGHTBLUE}$(tr_msg mi_system)：${NC} ${_MI_OS} · $(tr_msg mi_kernel) ${_MI_KERNEL} · ${_MI_VIRT}"
-    local sys2="  ${LIGHTBLUE}$(tr_msg mi_hw)：${NC} ${_MI_CPU_MODEL} (${_MI_CPU}$(tr_msg mi_cores)) · $(tr_msg mi_mem) ${_MI_MEM_USED}/${_MI_MEM}G · $(tr_msg mi_disk) ${_MI_DISK}${_MI_DISK_KIND:+ $_MI_DISK_KIND}"
-    msg "$sys2"
-    msg "  ${LIGHTBLUE}$(tr_msg mi_net)：${NC} IPv4 ${GLOBAL_PUBLIC_IP:-?} · IPv6 ${_MI_IPV6:-$(tr_msg mi_none)} · ${bbr_txt} · $(tprintf mi_uptime "$_MI_UP")"
-    # --- nodes (wrap by segments so long lists never overflow 80 cols) ---
+    msg ''
+    # --- nodes (segments joined by |, SNI at row end; wrap by segment) ---
     if [[ -n "$_MI_NODES" ]]; then
-        local _lbl="  $(tr_msg mi_nodes)： " _cur='' _seg _first=1 _w
+        local _suffix=''
+        [[ -n "$_MI_SNI" ]] && _suffix=" · SNI：${_MI_SNI}"
+        local _lbl="$(tr_msg mi_nodes)" _cur='' _seg _first=1 _w
         local _segs
-        IFS='|' read -r -a _segs <<< "${_MI_NODES//|/|}"
+        IFS='|' read -r -a _segs <<< "$_MI_NODES"
         for _seg in "${_segs[@]}"; do
-            _seg="${_seg# }"; _seg="${_seg% }"
             [[ -z "$_seg" ]] && continue
             if [[ -z "$_cur" ]]; then _cur="$_seg"; else
-                _w=$(_disp_width "${_lbl}${_cur} | ${_seg}")
+                _w=$(_disp_width "  ${_lbl}：  ${_cur}|${_seg}")
                 if (( _w > 78 )); then
-                    if (( _first )); then msg "  ${LIGHTBLUE}$(tr_msg mi_nodes)：${NC} ${_cur}"; _first=0
-                    else msg "        ${_cur}"; fi
+                    if (( _first )); then msg "  ${LIGHTBLUE}${_lbl}：${NC}  ${CYAN}${_cur}${NC}"; _first=0
+                    else msg "          ${CYAN}${_cur}${NC}"; fi
                     _cur="$_seg"
-                else _cur="${_cur} | ${_seg}"; fi
+                else _cur="${_cur}|${_seg}"; fi
             fi
         done
-        [[ -n "$_cur" ]] && { if (( _first )); then msg "  ${LIGHTBLUE}$(tr_msg mi_nodes)：${NC} ${_cur}"; else msg "        ${_cur}"; fi; }
+        if [[ -n "$_cur" ]]; then
+            _w=$(_disp_width "  ${_lbl}：  ${_cur}${_suffix}")
+            if (( _w <= 80 )); then
+                if (( _first )); then msg "  ${LIGHTBLUE}${_lbl}：${NC}  ${CYAN}${_cur}${NC} · ${LIGHTBLUE}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"
+                else msg "          ${CYAN}${_cur}${NC} · ${LIGHTBLUE}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"; fi
+            else
+                if (( _first )); then msg "  ${LIGHTBLUE}${_lbl}：${NC}  ${CYAN}${_cur}${NC}"
+                else msg "          ${CYAN}${_cur}${NC}"; fi
+                [[ -n "$_MI_SNI" ]] && msg "          ${LIGHTBLUE}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"
+            fi
+        fi
     else
-        msg "  ${LIGHTBLUE}$(tr_msg mi_nodes)：${NC} $(tr_msg mi_no_nodes)"
+        msg "  ${LIGHTBLUE}$(tr_msg mi_nodes)：${NC}  ${CYAN}$(tr_msg mi_no_nodes)${NC}"
     fi
-    # --- split ---
-    local warp_txt socks_txt
-    [[ -n "$_MI_WARP" ]] && warp_txt="WARP ${GREEN}$(tr_msg mi_on)${NC}" || warp_txt="WARP $(tr_msg mi_off)"
-    [[ -n "$_MI_SOCKS" ]] && socks_txt="SOCKS5 ${GREEN}$(tr_msg mi_on)${NC}" || socks_txt="SOCKS5 $(tr_msg mi_off)"
-    msg "  ${LIGHTBLUE}$(tr_msg mi_split)：${NC} ${warp_txt} · ${socks_txt} · $(tprintf mi_rules "$_MI_RULES")"
-    [[ -n "$_MI_RULE_SUMMARY" ]] && msg "    ${_MI_RULE_SUMMARY}"
-    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+    msg ''
+    # --- split (hidden entirely when nothing is configured) ---
+    if [[ -n "$_MI_EXITS" || "$_MI_RULES" != '0' ]]; then
+        local _split='' _e
+        for _e in $_MI_EXITS; do _split+="${CYAN}${_e}${NC} ${GREEN}●${NC} · "; done
+        msg "  ${LIGHTBLUE}$(tr_msg mi_split)：${NC}  ${_split}$(tprintf mi_rules "$_MI_RULES")"
+        msg ''
+    fi
+    # --- legend ---
+    msg "  ${GRAY}$(tr_msg mi_state)：  ${GREEN}●${NC} ${GRAY}$(tr_msg mi_run)   ○ $(tr_msg mi_off)   ${RED}●${NC} ${GRAY}$(tr_msg mi_fault)${NC}"
+    printf '\033[38;2;0;170;255m%s\033[0m\n' '════════════════════════════════════════════════════════════════════════════════'
 }
 
 # ============ WARP 与分流管理 (routing state + WARP one-click) ============
@@ -23555,58 +23751,6 @@ main_loop() {
     setup_shortcut
     # Menu status row: 3 segments spread left/center/right with margins
     # 14-system safe: ASCII only, standard ANSI colors, CJK width aware
-    _menu_status_row() {
-        local lbl_gw="$1" lbl_core="$2" lbl_mode="$3"
-        # Perf: label prefixes are fixed per ABOX_LANG; cache their widths once.
-        # Only dynamic parts (IP, status text, mode label) are measured per render.
-        # Display width is additive over concatenation: w = cached_prefix + dynamic.
-        local _status_key="${lbl_gw}|${lbl_core}|${lbl_mode}"
-        if [[ "${_CACHED_STATUS_KEY:-}" != "$_status_key" ]]; then
-            _CACHED_STATUS_KEY="$_status_key"
-            _CACHED_GW_W=$(_disp_width "${lbl_gw}: ")
-            _CACHED_CORE_W=$(_disp_width "${lbl_core}: ● ")
-            _CACHED_MODE_W=$(_disp_width "${lbl_mode}: ")
-        fi
-        local gw_ip="${GLOBAL_PUBLIC_IP:-?}"
-        local mode_label="$(read_fast_mode_label)"
-        # Strip all ANSI (CSI + charset) for width calc
-        local core_plain=$(printf '%s' "$STATUS_STR $CUR_MODE" | sed $'s/\x1b\\[[0-9;?]*[a-zA-Z]//g; s/\x1b([0-9A-Za-z]//g')
-        # Single awk measures all three dynamic widths (was 3x _disp_width).
-        # All three values are single-line: IP / stripped status / fast|strict.
-        local _dw _dw1 _dw2 _dw3
-        _dw=$(printf '%s\n%s\n%s\n' "$gw_ip" "$core_plain" "$mode_label" | LC_ALL=C awk '
-            { b=length($0)
-              s1=gsub(/[\xc2-\xdf][\x80-\xbf]|[\xe3-\xef][\x80-\xbf][\x80-\xbf]/, "&")
-              s2=gsub(/[\xe0-\xe2][\x80-\xbf][\x80-\xbf]|[\xf0-\xf4][\x80-\xbf][\x80-\xbf][\x80-\xbf]/, "&")
-              print b - s1 - s2*2 }')
-        { IFS= read -r _dw1; IFS= read -r _dw2; IFS= read -r _dw3; } <<< "$_dw"
-        local w1=$((_CACHED_GW_W + ${_dw1:-0})) w2=$((_CACHED_CORE_W + ${_dw2:-0})) w3=$((_CACHED_MODE_W + ${_dw3:-0}))
-        local total=76 margin=2
-        # Overflow protection: drop CUR_MODE ([core-mode] tag) if the row doesn't fit.
-        # The core name itself already identifies what's running; the mode tag is secondary.
-        local core_display="$STATUS_STR $CUR_MODE"
-        if (( w1 + w2 + w3 + 8 > total )); then
-            core_display="$STATUS_STR"
-            # Recompute core width without CUR_MODE
-            local _core_plain2=$(printf '%s' "$STATUS_STR" | sed $'s/\\x1b\\[[0-9;?]*[a-zA-Z]//g; s/\\x1b([0-9A-Za-z]//g')
-            local _dw2b=$(printf '%s' "$_core_plain2" | LC_ALL=C awk '
-                { b=length($0)
-                  s1=gsub(/[\\xc2-\\xdf][\\x80-\\xbf]|[\\xe3-\\xef][\\x80-\\xbf][\\x80-\\xbf]/, "&")
-                  s2=gsub(/[\\xe0-\\xe2][\\x80-\\xbf][\\x80-\\xbf]|[\\xf0-\\xf4][\\x80-\\xbf][\\x80-\\xbf][\\x80-\\xbf]/, "&")
-                  print b - s1 - s2*2 }')
-            w2=$((_CACHED_CORE_W + ${_dw2b:-0}))
-        fi
-        local gaps=$((total - margin*2 - w1 - w2 - w3))
-        local gap=$((gaps / 2))
-        [[ $gap -lt 2 ]] && gap=2
-        local pad1=$margin pad2=$gap pad3=$gap
-        # Dot color: green if core running, red if stopped
-        local dot_color="$RED"
-        [[ "$STATUS_STR" == *"${GREEN}"* ]] && dot_color="$GREEN"
-        # Display with original STATUS_STR colors preserved
-        printf "%*s${LIGHTBLUE}%s:${NC} ${CYAN}%s${NC}%*s${LIGHTBLUE}%s:${NC} ${dot_color}●${NC} %s%*s${LIGHTBLUE}%s:${NC} ${YELLOW}%s${NC}\n" \
-            "$pad1" "" "$lbl_gw" "$gw_ip" "$pad2" "" "$lbl_core" "$core_display" "$pad3" "" "$lbl_mode" "$mode_label"
-    }
     # Safely migrate active, exactly marked v7 installations into the new
     # per-file ownership model. Inactive or ambiguous services are not adopted.
     local _srv _pid _exe
@@ -23630,19 +23774,12 @@ main_loop() {
             CUR_MODE=''
         fi
         clear
-        msg "${YELLOW}════════════════════════════════════════════════════════════════════════════════${NC}"
-        msg "                                     ${YELLOW}A - B o x${NC}"
-        msg "                          ${GRAY}Linux Gateway Toolkit${NC}"
-        msg "${YELLOW}════════════════════════════════════════════════════════════════════════════════${NC}"
+        _menu_banner
         case "${ABOX_LANG:-zh}" in
             en)
-                _menu_status_row "Gateway" "Core" "Mode"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 _menu_info_display
-                msg "                               ${YELLOW}One-click Reality${NC}"
-                msg "                        ${GRAY}Default SNI · input r to execute${NC}"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ Xray-core Deployment ]${NC}                ${CYAN}[ Sing-box Deployment ]${NC}"
+                msg "${YELLOW}r.${NC}  One-click Reality (default SNI)"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
@@ -23659,13 +23796,9 @@ main_loop() {
                 msg "${GREEN} 0.${NC}  Exit"
                 ;;
             ru)
-                _menu_status_row "Шлюз" "Ядро" "Режим"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 _menu_info_display
-                msg "                              ${YELLOW}Reality в один клик${NC}"
-                msg "                         ${GRAY}SNI по умолчанию · r выполнить${NC}"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ Развёртывание Xray ]${NC}                  ${CYAN}[ Развёртывание sing-box ]${NC}"
+                msg "${YELLOW}r.${NC}  Reality в один клик (SNI по умолчанию)"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
@@ -23682,13 +23815,9 @@ main_loop() {
                 msg "${GREEN} 0.${NC}  Выход"
                 ;;
             fa)
-                _menu_status_row "درگاه" "هسته" "حالت"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 _menu_info_display
-                msg "                                ${YELLOW}ریالیتی تک‌کلیکی${NC}"
-                msg "                            ${GRAY}SNI پیش‌فرض · r اجرا شود${NC}"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ نصب Xray ]${NC}                            ${CYAN}[ نصب sing-box ]${NC}"
+                msg "${YELLOW}r.${NC}  ریالیتی تک‌کلیکی (SNI پیش‌فرض)"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
@@ -23705,13 +23834,9 @@ main_loop() {
                 msg "${GREEN} 0.${NC}  خروج"
                 ;;
             zh-tw)
-                _menu_status_row "閘道器/Gateway" "核心/Core" "模式"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 _menu_info_display
-                msg "                                  ${YELLOW}一鍵 Reality${NC}"
-                msg "                             ${GRAY}默認 SNI · 輸入 r 執行${NC}"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ Sing-box 部署 ]${NC}"
+                msg "${YELLOW}r.${NC}  一鍵 Reality（預設 SNI）"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
@@ -23728,13 +23853,9 @@ main_loop() {
                 msg "${GREEN} 0.${NC}  退出指令碼"
                 ;;
             ja)
-                _menu_status_row "ゲートウェイ" "コア" "モード"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 _menu_info_display
-                msg "                              ${YELLOW}ワンクリック Reality${NC}"
-                msg "                         ${GRAY}デフォルト SNI · 入力 r で実行${NC}"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ Xray-core 部署します ]${NC}                ${CYAN}[ Sing-box 部署します ]${NC}"
+                msg "${YELLOW}r.${NC}  ワンクリック Reality（デフォルト SNI）"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
@@ -23751,16 +23872,9 @@ main_loop() {
                 msg "${GREEN} 0.${NC}  スクリプトを終了します"
                 ;;
             *)
-                case "${ABOX_LANG:-zh}" in
-                    zh|zh-tw) _menu_status_row "网关" "核心" "模式" ;;
-                    *) _menu_status_row "网关/Gateway" "核心/Core" "模式" ;;
-                esac
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 _menu_info_display
-                msg "                                  ${YELLOW}一键 Reality${NC}"
-                msg "                             ${GRAY}默认 SNI · 输入 r 执行${NC}"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ Sing-box 部署 ]${NC}"
+                msg "${YELLOW}r.${NC}  一键 Reality（默认 SNI）"
                 msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
                 msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"

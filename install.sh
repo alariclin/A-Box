@@ -11237,12 +11237,6 @@ _menu_info_collect() {
         if [[ "$_gip" == "${GLOBAL_PUBLIC_IP:-}" && "$_gst" == 'success' ]]; then
             _MI_GEO_COUNTRY="$_gcountry"
             _MI_GEO_CITY="$_gcity"
-            _MI_FLAG=$(_flag_for_cc "$_gcc")
-            # Badge fallback for terminals that cannot render flag
-            # emoji (FinalShell, Windows): blue block with the code.
-            if [[ "$_gcc" =~ ^[A-Za-z][A-Za-z]$ ]]; then
-                _MI_BADGE=$(printf '\033[44m\033[97m\033[1m %s \033[0m' "$(printf '%s' "$_gcc" | tr 'a-z' 'A-Z')")
-            fi
             # Datacenter call (A-Check approach): vendor/hosting keywords in
             # the AS+ISP+Org text outrank ip-api's bare hosting flag, which
             # mislabels several cloud ranges as residential.
@@ -11327,7 +11321,7 @@ _menu_info_display() {
     local _v4dot='○' _geo=''
     [[ -n "${GLOBAL_PUBLIC_IP:-}" ]] && _v4dot="${GREEN}●${NC}"
     if [[ -n "$_MI_GEO_COUNTRY" ]]; then
-        _geo=" ${_MI_FLAG}${_MI_FLAG:+ }${_MI_BADGE}${_MI_BADGE:+ }${_MI_BADGE:+${CYAN}}${_MI_GEO_COUNTRY}${_MI_GEO_CITY:+ · ${_MI_GEO_CITY}} · ${_MI_GEO_KIND} · ${_MI_GEO_ORIGIN}"
+        _geo=" ${_MI_GEO_COUNTRY}${_MI_GEO_CITY:+ · ${_MI_GEO_CITY}} · ${_MI_GEO_KIND} · ${_MI_GEO_ORIGIN}"
     fi
     msg "  ${LBLW}$(tr_msg mi_net)：${NC}  ${CYAN}IPv4${NC} ${_v4dot} ${CYAN}${GLOBAL_PUBLIC_IP:-?}${_geo}${NC}"
     if [[ -n "$_MI_IPV6" ]]; then

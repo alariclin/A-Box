@@ -12370,34 +12370,34 @@ EOF_SVC
 ensure_vnstat_runtime() {
     if ! command -v vnstat >/dev/null 2>&1; then
         msg "${YELLOW}[*] 未检测到 vnStat；正在按需安装流量统计组件...${NC}"
-        install_optional_package vnstat || die 'vnStat 安装失败，无法启用流量限制。'
+        install_optional_package vnstat || { msg "${RED}[!] vnStat 安装失败，无法启用流量限制。${NC}" >&2; return 1; }
     fi
-    command -v vnstat >/dev/null 2>&1 || die 'vnStat 安装后仍不可用，无法启用流量限制。'
+    command -v vnstat >/dev/null 2>&1 || { msg "${RED}[!] vnStat 安装后仍不可用，无法启用流量限制。${NC}" >&2; return 1; }
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         if systemctl list-unit-files vnstat.service >/dev/null 2>&1; then
-            systemctl enable --now vnstat >/dev/null 2>&1 || die 'vnStat 服务无法启动；未启用流量限制。'
-            systemctl is-active --quiet vnstat || die 'vnStat 服务未处于 active 状态；未启用流量限制。'
+            systemctl enable --now vnstat >/dev/null 2>&1 || { msg "${RED}[!] vnStat 服务无法启动；未启用流量限制。${NC}" >&2; return 1; }
+            systemctl is-active --quiet vnstat || { msg "${RED}[!] vnStat 服务未处于 active 状态；未启用流量限制。${NC}" >&2; return 1; }
         elif systemctl list-unit-files vnstatd.service >/dev/null 2>&1; then
-            systemctl enable --now vnstatd >/dev/null 2>&1 || die 'vnStat 服务无法启动；未启用流量限制。'
-            systemctl is-active --quiet vnstatd || die 'vnStat 服务未处于 active 状态；未启用流量限制。'
+            systemctl enable --now vnstatd >/dev/null 2>&1 || { msg "${RED}[!] vnStat 服务无法启动；未启用流量限制。${NC}" >&2; return 1; }
+            systemctl is-active --quiet vnstatd || { msg "${RED}[!] vnStat 服务未处于 active 状态；未启用流量限制。${NC}" >&2; return 1; }
         else
-            die '系统未提供可识别的 vnStat systemd 服务；无法安全启用流量限制。'
+            { msg "${RED}[!] 系统未提供可识别的 vnStat systemd 服务；无法安全启用流量限制。${NC}" >&2; return 1; }
         fi
     elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
-        [[ -x /etc/init.d/vnstatd ]] || die '系统未提供 vnstatd OpenRC 服务；无法安全启用流量限制。'
-        rc-update add vnstatd default >/dev/null 2>&1 || die 'vnStat OpenRC 服务无法加入 default runlevel。'
-        rc-service vnstatd restart >/dev/null 2>&1 9>&- 10>&- || die 'vnStat OpenRC 服务无法启动；未启用流量限制。'
-        rc-service vnstatd status >/dev/null 2>&1 || die 'vnStat OpenRC 服务未处于运行状态；未启用流量限制。'
+        [[ -x /etc/init.d/vnstatd ]] || { msg "${RED}[!] 系统未提供 vnstatd OpenRC 服务；无法安全启用流量限制。${NC}" >&2; return 1; }
+        rc-update add vnstatd default >/dev/null 2>&1 || { msg "${RED}[!] vnStat OpenRC 服务无法加入 default runlevel。${NC}" >&2; return 1; }
+        rc-service vnstatd restart >/dev/null 2>&1 9>&- 10>&- || { msg "${RED}[!] vnStat OpenRC 服务无法启动；未启用流量限制。${NC}" >&2; return 1; }
+        rc-service vnstatd status >/dev/null 2>&1 || { msg "${RED}[!] vnStat OpenRC 服务未处于运行状态；未启用流量限制。${NC}" >&2; return 1; }
     else
-        die '无法确认 vnStat 运行时环境；未启用流量限制。'
+        { msg "${RED}[!] 无法确认 vnStat 运行时环境；未启用流量限制。${NC}" >&2; return 1; }
     fi
 }
 
 setup_traffic_monitor() {
-    ensure_vnstat_runtime
-    [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || die '流量限制事务状态快照失败。'
-    install -d -m 700 "$ABOX_DIR" || die '无法创建流量监控目录。'
-    write_file_atomically_from_stdin "$ABOX_DIR/traffic_monitor.sh" 700 <<'EOF_TRAFFIC' || die '流量监控脚本原子写入失败。'
+    ensure_vnstat_runtime || return 1
+    [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] 流量限制事务状态快照失败。${NC}" >&2; return 1; }
+    install -d -m 700 "$ABOX_DIR" || { msg "${RED}[!] 无法创建流量监控目录。${NC}" >&2; return 1; }
+    write_file_atomically_from_stdin "$ABOX_DIR/traffic_monitor.sh" 700 <<'EOF_TRAFFIC' || { msg "${RED}[!] 流量监控脚本原子写入失败。${NC}" >&2; return 1; }
 #!/usr/bin/env bash
 # Managed by A-Box
 # A-06: umask 077 ensures lock/temp files are 0600 (not world-readable 0644).
@@ -12885,15 +12885,15 @@ elif [[ "$desired" == TRAFFIC_BLOCKED ]]; then
 fi
 EOF_TRAFFIC
     if [[ "${INIT_SYS:-}" == systemd ]]; then
-        sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='systemd'|" "$ABOX_DIR/traffic_monitor.sh" || die '流量监控脚本运行环境标记写入失败。'
+        sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='systemd'|" "$ABOX_DIR/traffic_monitor.sh" || { msg "${RED}[!] 流量监控脚本运行环境标记写入失败。${NC}" >&2; return 1; }
     else
-        sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='openrc'|" "$ABOX_DIR/traffic_monitor.sh" || die '流量监控脚本运行环境标记写入失败。'
+        sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='openrc'|" "$ABOX_DIR/traffic_monitor.sh" || { msg "${RED}[!] 流量监控脚本运行环境标记写入失败。${NC}" >&2; return 1; }
     fi
-    grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/traffic_monitor.sh" || die '流量监控脚本运行环境标记后置校验失败。'
-    chmod 700 "$ABOX_DIR/traffic_monitor.sh" || die '流量监控脚本权限设置失败。'
-    [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || die '流量限制监控脚本事务快照失败。'
-    install_abox_cron_block TRAFFIC '* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1'
-    [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || die '流量限制 cron 事务快照失败。'
+    grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/traffic_monitor.sh" || { msg "${RED}[!] 流量监控脚本运行环境标记后置校验失败。${NC}" >&2; return 1; }
+    chmod 700 "$ABOX_DIR/traffic_monitor.sh" || { msg "${RED}[!] 流量监控脚本权限设置失败。${NC}" >&2; return 1; }
+    [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] 流量限制监控脚本事务快照失败。${NC}" >&2; return 1; }
+    ( ABOX_DIE_HOOK=''; install_abox_cron_block TRAFFIC '* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1' ) || { msg "${RED}[!] 流量限制 cron 写入失败。${NC}" >&2; return 1; }
+    [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] 流量限制 cron 事务快照失败。${NC}" >&2; return 1; }
 }
 
 disable_traffic_monitor() {
@@ -13480,7 +13480,9 @@ PY_TRAFFIC_DASH
                 fi
                 return "$rollback_rc"
             }
-            setup_traffic_monitor
+            if ! setup_traffic_monitor; then
+                _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量监控初始化失败；事务已中止，未修改流量限制。'; continue
+            fi
             if update_traffic_state_atomically "$limit_gb" "$mode_choice"; then traffic_op_rc=0; else traffic_op_rc=$?; fi
             capture_traffic_quota_expected_state "$traffic_tx_dir" || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量限制更新后无法核验状态；事务已中止。'; continue
             (( traffic_op_rc == 0 )) || _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量限制状态原子提交失败。'; continue

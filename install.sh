@@ -12518,7 +12518,7 @@ _menu_info_display() {
                     _ucnt=0
                 elif [[ "$_urec" == USR$'\t'* ]]; then
                     IFS='|' read -r _unm _uused _umark _uexp _uqta <<< "${_urec#USR$'\t'}"
-                    if [[ "$_uused" == '-' ]]; then
+                    if [[ "$_uused" == '-' || "${_uused:-0}" == '0' ]]; then
                         _utok="$_unm -"
                     else
                         _utok="$_unm $(users_fmt_bytes "${_uused:-0}")"
@@ -12542,22 +12542,50 @@ _menu_info_display() {
                 fi
             done <<< "$_MI_USER_RECS"
             [[ -n "$_usegtxt" ]] && _usegs+=("$_usegtxt")
-            # Pack node segments onto shared lines (same language as
-            # the node grid); multi-line segments keep their own line.
-            local _pline='' _pseg='' _uall=''
+            # Fixed-column grid (same language as the node grid):
+            # single-line segments are cells of one shared width,
+            # 3 or 2 per row; multi-line segments keep their own line.
+            local _cw=0 _pseg='' _uall='' _cols=3
             for _pseg in "${_usegs[@]}"; do
-                if [[ "$_pseg" == *$'\n'* ]]; then
-                    [[ -n "$_pline" ]] && { _uall+="$_pline"$'\n'; _pline=''; }
+                [[ "$_pseg" == *$'\n'* ]] && continue
+                (( ${#_pseg} > 37 )) && continue
+                (( ${#_pseg} > _cw )) && _cw=${#_pseg}
+            done
+            if (( _cw > 37 )); then _cols=1
+            elif (( _cw > 24 )); then _cols=2
+            fi
+            local -a _row=()
+            local _cell='' _line=''
+            for _pseg in "${_usegs[@]}"; do
+                if [[ "$_pseg" == *$'\n'* ]] || (( ${#_pseg} > 37 )); then
+                    if (( ${#_row[@]} > 0 )); then
+                        _line=''
+                        for _cell in "${_row[@]}"; do
+                            if [[ -z "$_line" ]]; then printf -v _line '%-*s' "$_cw" "$_cell"; else printf -v _line '%s | %-*s' "$_line" "$_cw" "$_cell"; fi
+                        done
+                        _uall+="${_line%"${_line##*[! ]}"}"$'\n'
+                        _row=()
+                    fi
                     _uall+="$_pseg"$'\n'
-                elif [[ -z "$_pline" ]]; then
-                    _pline="$_pseg"
-                elif (( ${#_pline} + 3 + ${#_pseg} <= 76 )); then
-                    _pline+=" | $_pseg"
                 else
-                    _uall+="$_pline"$'\n'; _pline="$_pseg"
+                    _row+=("$_pseg")
+                    if (( ${#_row[@]} >= _cols )); then
+                        _line=''
+                        for _cell in "${_row[@]}"; do
+                            if [[ -z "$_line" ]]; then printf -v _line '%-*s' "$_cw" "$_cell"; else printf -v _line '%s | %-*s' "$_line" "$_cw" "$_cell"; fi
+                        done
+                        _uall+="${_line%"${_line##*[! ]}"}"$'\n'
+                        _row=()
+                    fi
                 fi
             done
-            [[ -n "$_pline" ]] && _uall+="$_pline"$'\n'
+            if (( ${#_row[@]} > 0 )); then
+                _line=''
+                for _cell in "${_row[@]}"; do
+                    if [[ -z "$_line" ]]; then printf -v _line '%-*s' "$_cw" "$_cell"; else printf -v _line '%s | %-*s' "$_line" "$_cw" "$_cell"; fi
+                done
+                _uall+="${_line%"${_line##*[! ]}"}"$'\n'
+            fi
             local _ufirst=1 _upline=''
             while IFS= read -r _upline; do
                 [[ -z "$_upline" ]] && continue
@@ -16044,6 +16072,20 @@ users_normalize_default_name() {
     users_reg_write "$core" "$tag" "$new" >/dev/null 2>&1 || return 0
     users_sync "$core" "$tag" >/dev/null 2>&1 || true
 }
+# Startup sweep: normalize every registry's default label without
+# waiting for the toolbox or the guard tick to visit it.
+users_normalize_all_default_names() {
+    local _dir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}" _f='' _c='' _t=''
+    [[ -d "$_dir" ]] || return 0
+    for _f in "$_dir"/*.json; do
+        [[ -f "$_f" && ! -L "$_f" ]] || continue
+        _c=$(jq -r '.core // ""' "$_f" 2>/dev/null) || continue
+        _t=$(jq -r '.tag // ""' "$_f" 2>/dev/null) || continue
+        [[ -n "$_c" && -n "$_t" ]] && users_normalize_default_name "$_c" "$_t"
+    done
+    return 0
+}
+
 
 
 users_cfg_of() {
@@ -16624,7 +16666,7 @@ users_export_all() {
 users_fmt_bytes() {
     local b="${1:-0}"
     [[ "$b" =~ ^[0-9]+$ ]] || b=0
-    if (( b == 0 )); then tr_msg fmt_unused; return 0; fi
+    if (( b == 0 )); then printf '-'; return 0; fi
     awk -v b="$b" 'BEGIN { if (b < 1024) printf "%dB", b; else if (b < 1048576) printf "%.1fK", b/1024; else if (b < 1073741824) printf "%.1fM", b/1048576; else { v = sprintf("%.2f", b/1073741824); sub(/\.?0+$/, "", v); printf "%sG", v } }' 2>/dev/null || printf '%sB' "$b"
 }
 # Display width of a string: wide (CJK/fullwidth) codepoints count 2.
@@ -27524,6 +27566,7 @@ enter_runtime() {
     # Die-hooks are installed only by in-script transactions; ignore ambient export.
     unset ABOX_DIE_HOOK 2>/dev/null || true
     need_interactive_tty
+    users_normalize_all_default_names >/dev/null 2>&1 || true
     mkdir -p /var/run || die '无法创建 /var/run。'
     ensure_abox_dir_owned "$ABOX_DIR"
     acquire_runtime_lock

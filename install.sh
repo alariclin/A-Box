@@ -2020,6 +2020,18 @@ tr_msg() {
         fa:mi_users_line) echo 'مجموع %s کاربر · مسدود %s · مصرف این دوره %s' ;;
         zh-tw:mi_users_line) echo '共 %s 人 · 封鎖 %s · 本期用量 %s' ;;
         ja:mi_users_line) echo '合計 %s 人 · ブロック %s · 今期使用量 %s' ;;
+        zh:mi_u_blocked) echo '封锁' ;;
+        en:mi_u_blocked) echo 'blocked' ;;
+        ru:mi_u_blocked) echo 'заблокирован' ;;
+        fa:mi_u_blocked) echo 'مسدود' ;;
+        zh-tw:mi_u_blocked) echo '封鎖' ;;
+        ja:mi_u_blocked) echo 'ブロック' ;;
+        zh:mi_u_disabled) echo '停用' ;;
+        en:mi_u_disabled) echo 'disabled' ;;
+        ru:mi_u_disabled) echo 'отключён' ;;
+        fa:mi_u_disabled) echo 'غیرفعال' ;;
+        zh-tw:mi_u_disabled) echo '停用' ;;
+        ja:mi_u_disabled) echo '無効' ;;
         zh:split_preset_streaming) echo '流媒体预设（一键）' ;;
         en:split_preset_streaming) echo 'Streaming preset (one-click)' ;;
         ru:split_preset_streaming) echo 'Пресет стриминга' ;;
@@ -12052,10 +12064,56 @@ _menu_info_collect() {
     _MI_USERS_N=0; _MI_USERS_BLOCKED=0; _MI_USERS_USED=0
     local _udir="${ABOX_USERS_DIR:-/etc/ddr/users.d}" _rf='' _us=''
     local -a _rfiles=()
-    for _rf in "$_udir"/*.json; do [[ -f "$_rf" && ! -L "$_rf" ]] && _rfiles+=("$_rf"); done
+    local _oc
+    for _oc in xray xray-latest sing-box hy2; do
+        for _rf in "$_udir/${_oc}__"*.json; do [[ -f "$_rf" && ! -L "$_rf" ]] && _rfiles+=("$_rf"); done
+    done
     if (( ${#_rfiles[@]} > 0 )); then
         _us=$(jq -s -r '[.[].users[]?] as $u | "\($u | length) \($u | map(select((.blocked // "") != "" or .disabled == true)) | length) \($u | map((.used_up // 0) + (.used_down // 0)) | add // 0)"' "${_rfiles[@]}" 2>/dev/null || true)
         read -r _MI_USERS_N _MI_USERS_BLOCKED _MI_USERS_USED <<< "${_us:-0 0 0}"
+        # Per-node user records for the panel detail section:
+        # SEG\t<segment> / USR\t<name>\t<used bytes>\t<mark>.
+        _MI_USER_RECS=''
+        local _rcore='' _rtag='' _rseg='' _rcfg='' _ut=''
+        for _rf in "${_rfiles[@]}"; do
+            _rcore=$(jq -r '.core // ""' "$_rf" 2>/dev/null)
+            _rtag=$(jq -r '.tag // ""' "$_rf" 2>/dev/null)
+            _rseg="$_rtag"
+            case "$_rcore" in
+                xray|xray-latest)
+                    _rcfg='/usr/local/etc/xray/config.json'
+                    [[ "$_rcore" == 'xray-latest' ]] && _rcfg='/etc/ddr/xray-latest/config.json'
+                    if [[ -f "$_rcfg" ]]; then
+                        _rseg=$(jq -r --arg t "$_rtag" '.inbounds[]? | select(.tag == $t) |
+                            (if .protocol == "vless" and (.settings.clients[0].flow // "" | startswith("xtls")) then "Vision:\(.port)"
+                             elif .protocol == "vless" and (.streamSettings.network // "") == "xhttp" then "XHTTP:\(.port)"
+                             elif .protocol == "vless" then "VLESS:\(.port)"
+                             elif .protocol == "shadowsocks" then "SS:\(.port)"
+                             elif .protocol == "trojan" then "Trojan:\(.port)"
+                             elif .protocol == "hysteria2" then "Hy2:\(.port)"
+                             else "\(.protocol):\(.port)" end)' "$_rcfg" 2>/dev/null)
+                        [[ -z "$_rseg" ]] && _rseg="$_rtag"
+                    fi ;;
+                sing-box)
+                    if [[ -f /etc/sing-box/config.json ]]; then
+                        _rseg=$(jq -r --arg t "$_rtag" '.inbounds[]? | select(.tag == $t) |
+                            (if .type == "vless" then "VLESS:\(.listen_port)"
+                             elif .type == "shadowsocks" then "SS:\(.listen_port)"
+                             elif .type == "tuic" then "TUIC:\(.listen_port)"
+                             elif .type == "anytls" then "AnyTLS:\(.listen_port)"
+                             elif .type == "shadowtls" then "ShadowTLS:\(.listen_port)"
+                             elif .type == "hysteria2" then "Hy2:\(.listen_port)"
+                             else "\(.type):\(.listen_port)" end)' /etc/sing-box/config.json 2>/dev/null)
+                        [[ -z "$_rseg" ]] && _rseg="$_rtag"
+                    fi ;;
+                hy2) _rseg="Hy2:${HY2_BASE_PORT:-?}" ;;
+            esac
+            _MI_USER_RECS+=$'SEG\t'"${_rseg}"$'\n'
+            while IFS= read -r _ut; do
+                [[ -n "$_ut" ]] && _MI_USER_RECS+=$'USR\t'"${_ut}"$'\n'
+            done < <(jq -r '.users[]? | .name + "\t" + (((.used_up // 0) + (.used_down // 0)) | tostring) + "\t" + (if .disabled == true then "disabled" elif (.blocked // "") != "" then "blocked" else "" end)' "$_rf" 2>/dev/null)
+        done
+
     fi
 
     # SOCKS5 service state (inbound deployed on some core)
@@ -12248,18 +12306,10 @@ _menu_info_display() {
         local _i _n=${#_rows[@]}
         for (( _i=0; _i<_n; _i++ )); do
             _row="${_rows[$_i]}"
-            if (( _i == _n - 1 )) && [[ -n "$_MI_SNI" ]] && (( ${_MI_SNI_DISTINCT:-0} < 2 )) && (( ${#_row} + 9 + ${#_MI_SNI} <= 66 )); then
-                if (( _first )); then msg "  ${CYAN}${_lbl}：${NC}  ${LBLW}${_row}${NC} · ${CYAN}SNI：${NC} ${LBLW}${_MI_SNI}${NC}"; _first=0
-                else msg "          ${LBLW}${_row}${NC} · ${CYAN}SNI：${NC} ${LBLW}${_MI_SNI}${NC}"; fi
-            else
-                if (( _first )); then msg "  ${CYAN}${_lbl}：${NC}  ${LBLW}${_row}${NC}"; _first=0
-                else msg "          ${LBLW}${_row}${NC}"; fi
-                if (( _i == _n - 1 )) && [[ -n "$_MI_SNI" ]] && (( ${_MI_SNI_DISTINCT:-0} < 2 )); then
-                    msg "          ${CYAN}SNI：${NC} ${LBLW}${_MI_SNI}${NC}"
-                fi
-            fi
+            if (( _first )); then msg "  ${CYAN}${_lbl}：${NC}  ${LBLW}${_row}${NC}"; _first=0
+            else msg "          ${LBLW}${_row}${NC}"; fi
         done
-        if (( ${_MI_SNI_DISTINCT:-0} >= 2 )); then
+        if [[ -n "$_MI_SNI_LIST" ]]; then
             local _se='' _srow='' _srows=() _sents=()
             IFS='|' read -r -a _sents <<< "$_MI_SNI_LIST"
             for _se in "${_sents[@]}"; do
@@ -12277,15 +12327,35 @@ _menu_info_display() {
         msg "  ${CYAN}$(tr_msg mi_nodes)：${NC}  ${LBLW}$(tr_msg mi_no_nodes)${NC}"
     fi
     msg ''
-    if (( ${_MI_USERS_N:-0} > 0 )); then
-        msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}$(tprintf mi_users_line "$_MI_USERS_N" "$_MI_USERS_BLOCKED" "$(users_fmt_bytes "${_MI_USERS_USED:-0}")")${NC}"
-        msg ''
-    fi
-    # --- split (hidden entirely when nothing is configured) ---
-    if [[ -n "$_MI_EXITS" || "$_MI_RULES" != '0' ]]; then
-        local _split='' _e
-        for _e in $_MI_EXITS; do _split+="${LBLW}${_e}${NC} ${GREEN}●${NC} · "; done
-        msg "  ${CYAN}$(tr_msg mi_split)：${NC}  ${_split}$(tprintf mi_rules "$_MI_RULES")"
+    if [[ -n "${_MI_USER_RECS:-}" ]]; then
+        local _urec='' _uline='' _ufirst=1 _ucnt=0 _unm='' _uused=0 _umark='' _utok=''
+        while IFS= read -r _urec; do
+            [[ -z "$_urec" ]] && continue
+            if [[ "$_urec" == SEG$'\t'* ]]; then
+                if [[ -n "$_uline" ]]; then
+                    if (( _ufirst )); then msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}${_uline}${NC}"; _ufirst=0
+                    else msg "          ${LBLW}${_uline}${NC}"; fi
+                fi
+                _uline="${_urec#SEG$'\t'}  "; _ucnt=0
+            elif [[ "$_urec" == USR$'\t'* ]]; then
+                IFS=$'\t' read -r _ _unm _uused _umark <<< "$_urec"
+                _utok="$_unm"
+                (( ${_uused:-0} > 0 )) && _utok+=" $(users_fmt_bytes "$_uused")"
+                [[ "$_umark" == 'blocked' ]] && _utok+="·$(tr_msg mi_u_blocked)"
+                [[ "$_umark" == 'disabled' ]] && _utok+="·$(tr_msg mi_u_disabled)"
+                if (( _ucnt >= 3 )); then
+                    if (( _ufirst )); then msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}${_uline}${NC}"; _ufirst=0
+                    else msg "          ${LBLW}${_uline}${NC}"; fi
+                    _uline=''; _ucnt=0
+                fi
+                if (( _ucnt > 0 )); then _uline+=" · $_utok"; else _uline+="$_utok"; fi
+                _ucnt=$((_ucnt + 1))
+            fi
+        done <<< "$_MI_USER_RECS"
+        if [[ -n "$_uline" ]]; then
+            if (( _ufirst )); then msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}${_uline}${NC}"
+            else msg "          ${LBLW}${_uline}${NC}"; fi
+        fi
         msg ''
     fi
     # --- legend ---
@@ -12606,6 +12676,19 @@ warp_status() {
     local n_rules
     n_rules=$(jq '.rules | length' "$ROUTING_STATE_FILE" 2>/dev/null || echo 0)
     msg "$(tprintf warp_rules_count "$n_rules")"
+    if [[ -f "$ROUTING_STATE_FILE" ]]; then
+        local _tag _lbl _exits=''
+        while IFS= read -r _tag; do
+            [[ -z "$_tag" ]] && continue
+            case "$_tag" in
+                warp-out) _lbl='WARP' ;;
+                socks-land*) _lbl="$(tr_msg mi_land)${_tag#socks-land}" ;;
+                *) _lbl="$_tag" ;;
+            esac
+            _exits+="${_exits:+ · }$_lbl"
+        done < <(jq -r '.outbounds[]?.tag' "$ROUTING_STATE_FILE" 2>/dev/null)
+        [[ -n "$_exits" ]] && msg "$(tr_msg mi_split): $_exits"
+    fi
 }
 
 # WARP split presets (single-machine). $1 = preset name
@@ -27661,6 +27744,8 @@ PY_SELFTEST_TAR
     grep -Fq '_ip_geo_fetch_now()' "$0" || { echo 'FAIL: _ip_geo_fetch_now missing'; failures=$((failures + 1)); }
     grep -Fq '_MI_SNI_LIST' "$0" || { echo 'FAIL: SNI list missing'; failures=$((failures + 1)); }
     grep -Fq 'mi_users_line' "$0" || { echo 'FAIL: mi_users_line missing'; failures=$((failures + 1)); }
+    grep -Fq '_MI_USER_RECS' "$0" || { echo 'FAIL: user records missing'; failures=$((failures + 1)); }
+    grep -Fq 'mi_u_blocked' "$0" || { echo 'FAIL: mi_u_blocked missing'; failures=$((failures + 1)); }
     grep -Fq 'statsUserUplink' "$0" || { echo 'FAIL: per-user stats policy missing'; failures=$((failures + 1)); }
     grep -Fq 'revoke one extra UUID from the Xray server' "$0" || grep -Fq 'Revoke one extra UUID from the Xray server' "$0" || { echo 'FAIL: server-side UUID revocation option missing'; failures=$((failures + 1)); }
     # Exercise multi-UUID validation/deduplication on a temporary fixture; never touch /etc/ddr.

@@ -592,6 +592,198 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:wl_hi_title) echo 'Wallos 主机检测' ;;
+        en:wl_hi_title) echo 'Wallos host check' ;;
+        ru:wl_hi_title) echo 'Проверка VPS для Wallos' ;;
+        fa:wl_hi_title) echo 'بررسی VPS برای Wallos' ;;
+        zh-tw:wl_hi_title) echo 'Wallos 主機檢測' ;;
+        ja:wl_hi_title) echo 'Wallos ホスト情報' ;;
+        zh:wl_hi_na) echo '不可用' ;;
+        en:wl_hi_na) echo 'unavailable' ;;
+        ru:wl_hi_na) echo 'недоступен' ;;
+        fa:wl_hi_na) echo 'ناموجود' ;;
+        zh-tw:wl_hi_na) echo '不可用' ;;
+        ja:wl_hi_na) echo '利用不可' ;;
+        zh:wl_hi_info) echo '系统：%s (%s) | 架构：%s | CPU 核心：%s | 内存：%s GiB | 可用磁盘：%s GiB' ;;
+        en:wl_hi_info) echo 'OS: %s (%s) | architecture: %s | CPU cores: %s | RAM: %s GiB | free disk: %s GiB' ;;
+        ru:wl_hi_info) echo 'ОС: %s (%s) | архитектура: %s | ядер CPU: %s | ОЗУ: %s ГиБ | свободно на диске: %s ГиБ' ;;
+        fa:wl_hi_info) echo 'سیستم‌عامل: %s (%s) | معماری: %s | هسته CPU: %s | RAM: %s GiB | فضای آزاد دیسک: %s GiB' ;;
+        zh-tw:wl_hi_info) echo '系統：%s (%s) | 架構：%s | CPU 核心：%s | 記憶體：%s GiB | 可用磁碟：%s GiB' ;;
+        ja:wl_hi_info) echo 'OS: %s（%s）| アーキテクチャ: %s | CPU コア数: %s | RAM: %s GiB | 空きディスク容量: %s GiB' ;;
+        zh:wl_hi_ip) echo 'IPv4：%s | IPv6：%s' ;;
+        en:wl_hi_ip) echo 'IPv4: %s | IPv6: %s' ;;
+        ru:wl_hi_ip) echo 'IPv4: %s | IPv6: %s' ;;
+        fa:wl_hi_ip) echo 'IPv4: %s | IPv6: %s' ;;
+        zh-tw:wl_hi_ip) echo 'IPv4：%s | IPv6：%s' ;;
+        ja:wl_hi_ip) echo 'IPv4: %s | IPv6: %s' ;;
+        zh:wl_pu_url_cf) echo 'Wallos 网址（CF 隧道）：https://%s/' ;;
+        en:wl_pu_url_cf) echo 'Wallos URL (Cloudflare Tunnel): https://%s/' ;;
+        ru:wl_pu_url_cf) echo 'Адрес Wallos (туннель Cloudflare): https://%s/' ;;
+        fa:wl_pu_url_cf) echo 'نشانی Wallos (تونل Cloudflare): https://%s/' ;;
+        zh-tw:wl_pu_url_cf) echo 'Wallos 網址（CF 隧道）：https://%s/' ;;
+        ja:wl_pu_url_cf) echo 'Wallos URL（Cloudflare Tunnel）: https://%s/' ;;
+        zh:wl_pu_guide_cf_t) echo '── Wallos 使用教程（CF 隧道）──' ;;
+        en:wl_pu_guide_cf_t) echo '-- Wallos quick guide (Cloudflare Tunnel) --' ;;
+        ru:wl_pu_guide_cf_t) echo '-- Краткое руководство Wallos (туннель Cloudflare) --' ;;
+        fa:wl_pu_guide_cf_t) echo '-- راهنمای سریع Wallos (تونل Cloudflare) --' ;;
+        zh-tw:wl_pu_guide_cf_t) echo '── Wallos 使用教學（CF 隧道）──' ;;
+        ja:wl_pu_guide_cf_t) echo '-- Wallos クイックガイド（Cloudflare Tunnel）--' ;;
+        zh:wl_pu_guide_cf_1) echo '1) 访问：任意设备浏览器打开上面的网址；若你在 CF 后台开了 Access，先按提示用邮箱验证。' ;;
+        en:wl_pu_guide_cf_1) echo '1) Open the URL above from any device; if you enabled Access in Cloudflare, sign in with your email first.' ;;
+        ru:wl_pu_guide_cf_1) echo '1) Откройте адрес выше с любого устройства; если в Cloudflare включён Access, сначала подтвердите email.' ;;
+        fa:wl_pu_guide_cf_1) echo '۱) نشانی بالا را از هر دستگاهی باز کنید؛ اگر در Cloudflare گزینه Access را فعال کرده‌اید، ابتدا با ایمیل خود را تأیید کنید.' ;;
+        zh-tw:wl_pu_guide_cf_1) echo '1) 存取：任意裝置瀏覽器打開上面的網址；若你在 CF 後台開了 Access，先按提示用信箱驗證。' ;;
+        ja:wl_pu_guide_cf_1) echo '1) アクセス: 任意のデバイスのブラウザで上の URL を開きます。CF で Access を有効にした場合は、先にメールで認証してください。' ;;
+        zh:wl_pu_guide_cf_2) echo '2) 打不开：去 CF 后台看隧道状态是否为 Healthy、Public Hostname 的 Service 是否为 http://127.0.0.1:%s（不对就在后台改成这个）。' ;;
+        en:wl_pu_guide_cf_2) echo '2) If it does not open: in the CF dashboard check the tunnel is Healthy and its Public Hostname service is http://127.0.0.1:%s.' ;;
+        ru:wl_pu_guide_cf_2) echo '2) Если не открывается: в панели CF проверьте, что туннель Healthy, а служба Public Hostname - http://127.0.0.1:%s.' ;;
+        fa:wl_pu_guide_cf_2) echo '۲) اگر باز نشد: در داشبورد CF بررسی کنید تونل Healthy باشد و سرویس Public Hostname برابر http://127.0.0.1:%s باشد (اگر نیست، همان‌جا اصلاح کنید).' ;;
+        zh-tw:wl_pu_guide_cf_2) echo '2) 打不開：去 CF 後台看隧道狀態是否為 Healthy、Public Hostname 的 Service 是否為 http://127.0.0.1:%s（不對就在後台改成這個）。' ;;
+        ja:wl_pu_guide_cf_2) echo '2) 開けない場合: CF ダッシュボードでトンネルが Healthy か、Public Hostname の Service が http://127.0.0.1:%s かを確認してください（違えばそこで修正）。' ;;
+        zh:wl_pu_guide_cf_3) echo '3) 安全：本机零入站端口、真实 IP 不暴露、全程走 CF 的 HTTPS；建议 Access 只放行你自己的邮箱。域名与 Access 策略都在 CF 后台管理。' ;;
+        en:wl_pu_guide_cf_3) echo '3) Security: zero inbound ports on this host, the real IP stays hidden, HTTPS is served by Cloudflare. Manage the hostname and Access policy in the CF dashboard.' ;;
+        ru:wl_pu_guide_cf_3) echo '3) Безопасность: ноль входящих портов на хосте, реальный IP скрыт, HTTPS обеспечивает Cloudflare. Рекомендуется ограничить Access только вашим email. Имя и политики Access управляются в панели CF.' ;;
+        fa:wl_pu_guide_cf_3) echo '۳) امنیت: روی این میزبان هیچ درگاه ورودی بازی نیست، IP واقعی پنهان می‌ماند و HTTPS را Cloudflare ارائه می‌کند. توصیه می‌شود Access فقط به ایمیل خودتان محدود شود. نام میزبان و سیاست‌های Access در داشبورد CF مدیریت می‌شوند.' ;;
+        zh-tw:wl_pu_guide_cf_3) echo '3) 安全：本機零入站連接埠、真實 IP 不暴露、全程走 CF 的 HTTPS；建議 Access 只放行你自己的信箱。域名與 Access 策略都在 CF 後台管理。' ;;
+        ja:wl_pu_guide_cf_3) echo '3) セキュリティ: このホストのインバウンドポートはゼロ、実 IP は隠れたまま、HTTPS は Cloudflare が提供します。Access は自分のメールのみに制限することを推奨します。ホスト名と Access ポリシーは CF ダッシュボードで管理します。' ;;
+        zh:wl_pu_url_https) echo 'Wallos 网址（HTTPS）：https://%s:%s/' ;;
+        en:wl_pu_url_https) echo 'Wallos URL (HTTPS): https://%s:%s/' ;;
+        ru:wl_pu_url_https) echo 'Адрес Wallos (HTTPS): https://%s:%s/' ;;
+        fa:wl_pu_url_https) echo 'نشانی Wallos (HTTPS): https://%s:%s/' ;;
+        zh-tw:wl_pu_url_https) echo 'Wallos 網址（HTTPS）：https://%s:%s/' ;;
+        ja:wl_pu_url_https) echo 'Wallos URL（HTTPS）: https://%s:%s/' ;;
+        zh:wl_pu_guide_https_t) echo '── Wallos 使用教程（HTTPS）──' ;;
+        en:wl_pu_guide_https_t) echo '-- Wallos quick guide (HTTPS) --' ;;
+        ru:wl_pu_guide_https_t) echo '-- Краткое руководство Wallos (HTTPS) --' ;;
+        fa:wl_pu_guide_https_t) echo '-- راهنمای سریع Wallos (HTTPS) --' ;;
+        zh-tw:wl_pu_guide_https_t) echo '── Wallos 使用教學（HTTPS）──' ;;
+        ja:wl_pu_guide_https_t) echo '-- Wallos クイックガイド（HTTPS）--' ;;
+        zh:wl_pu_guide_https_1) echo '1) 访问：手机/电脑浏览器打开上面的 HTTPS 网址，首次打开先创建管理员账号和密码（请设强密码，里面是财务数据）。' ;;
+        en:wl_pu_guide_https_1) echo '1) Open the HTTPS URL above in any browser; on first visit create the admin account and a strong password.' ;;
+        ru:wl_pu_guide_https_1) echo '1) Откройте HTTPS-адрес выше в любом браузере; при первом визите создайте учётную запись администратора и надёжный пароль (это финансовые данные).' ;;
+        fa:wl_pu_guide_https_1) echo '۱) نشانی HTTPS بالا را در هر مرورگری باز کنید؛ در اولین بازدید حساب مدیر و یک گذرواژه قوی بسازید (این‌ها داده‌های مالی هستند).' ;;
+        zh-tw:wl_pu_guide_https_1) echo '1) 存取：手機/電腦瀏覽器打開上面的 HTTPS 網址，首次打開先建立管理員帳號和密碼（請設強密碼，裡面是財務資料）。' ;;
+        ja:wl_pu_guide_https_1) echo '1) アクセス: スマホ/PC のブラウザで上の HTTPS URL を開き、初回に管理者アカウントとパスワードを作成してください（財務データなので強力なものを）。' ;;
+        zh:wl_pu_guide_https_2) echo '2) 打不开，多半是云安全组没放行：给这台机器放行 TCP %s 和 TCP 80 两个端口（80 只用于证书自动签发与续期）。本机防火墙已由脚本自动放行，不用管。' ;;
+        en:wl_pu_guide_https_2) echo '2) If it does not open, the cloud security group is the usual cause: allow inbound TCP %s AND TCP 80 (80 is only used for automatic certificate issuance/renewal). The host firewall was already opened by the script.' ;;
+        ru:wl_pu_guide_https_2) echo '2) Если не открывается, причина обычно в группе безопасности: разрешите для этой машины TCP %s И TCP 80 (80 нужен только для автоматической выдачи/продления сертификата). Файрвол хоста скрипт уже открыл.' ;;
+        fa:wl_pu_guide_https_2) echo '۲) اگر باز نشد، علت معمولاً گروه امنیتی ابری است: برای این ماشین TCP %s و TCP 80 را مجاز کنید (۸۰ فقط برای صدور/تمدید خودکار گواهی است). فایروال میزبان را اسکریپت از قبل باز کرده است.' ;;
+        zh-tw:wl_pu_guide_https_2) echo '2) 打不開，多半是雲安全組沒放行：給這台機器放行 TCP %s 和 TCP 80 兩個連接埠（80 只用於憑證自動簽發與續期）。本機防火牆已由腳本自動放行，不用管。' ;;
+        ja:wl_pu_guide_https_2) echo '2) 開けない場合、原因はたいていクラウドのセキュリティグループです。このマシンに TCP %s と TCP 80 の両方を許可してください（80 は証明書の自動発行/更新専用）。ホストのファイアウォールはスクリプトが自動で開けています。' ;;
+        zh:wl_pu_guide_https_3) echo '3) 安全：全程 HTTPS 加密；证书由 Let'\''s Encrypt 签发、Caddy 每 6 天自动续期；Fail2Ban 已盯住登录爆破。若以后 VPS 公网 IP 更换，重新运行一次安装即可换证。' ;;
+        en:wl_pu_guide_https_3) echo '3) Security: full HTTPS, a Let'\''s Encrypt IP certificate renewed automatically by Caddy (6-day cycle), and a Fail2Ban jail watching logins. If the VPS public IP ever changes, re-run the install to re-issue.' ;;
+        ru:wl_pu_guide_https_3) echo '3) Безопасность: полное HTTPS; сертификат Let'\''s Encrypt автоматически продлевается Caddy каждые 6 дней; Fail2Ban следит за перебором паролей. Если публичный IP VPS изменится, просто повторите установку для перевыпуска.' ;;
+        fa:wl_pu_guide_https_3) echo '۳) امنیت: HTTPS کامل؛ گواهی Let'\''s Encrypt را Caddy هر ۶ روز به‌صورت خودکار تمدید می‌کند؛ Fail2Ban مراقب حملات حدس گذرواژه است. اگر IP عمومی VPS عوض شد، نصب را دوباره اجرا کنید تا گواهی از نو صادر شود.' ;;
+        zh-tw:wl_pu_guide_https_3) echo '3) 安全：全程 HTTPS 加密；憑證由 Let'\''s Encrypt 簽發、Caddy 每 6 天自動續期；Fail2Ban 已盯住登入爆破。若以後 VPS 公網 IP 更換，重新執行一次安裝即可換證。' ;;
+        ja:wl_pu_guide_https_3) echo '3) セキュリティ: 全経路 HTTPS。証明書は Let'\''s Encrypt が発行し、Caddy が 6 日周期で自動更新します。Fail2Ban がログイン総当たりを監視しています。VPS のパブリック IP が変わったら、インストールを再実行すれば再発行できます。' ;;
+        zh:wl_pu_url_http) echo 'Wallos 网址（HTTP 容灾）：http://%s:%s/' ;;
+        en:wl_pu_url_http) echo 'Wallos URL (HTTP, disaster recovery): http://%s:%s/' ;;
+        ru:wl_pu_url_http) echo 'Адрес Wallos (HTTP, аварийный режим): http://%s:%s/' ;;
+        fa:wl_pu_url_http) echo 'نشانی Wallos (HTTP، بازیابی بحران): http://%s:%s/' ;;
+        zh-tw:wl_pu_url_http) echo 'Wallos 網址（HTTP 容災）：http://%s:%s/' ;;
+        ja:wl_pu_url_http) echo 'Wallos URL（HTTP、災害復旧）: http://%s:%s/' ;;
+        zh:wl_pu_guide_http_t) echo '── Wallos 使用教程（HTTP 容灾）──' ;;
+        en:wl_pu_guide_http_t) echo '-- Wallos quick guide (HTTP fallback) --' ;;
+        ru:wl_pu_guide_http_t) echo '-- Краткое руководство Wallos (HTTP, аварийный режим) --' ;;
+        fa:wl_pu_guide_http_t) echo '-- راهنمای سریع Wallos (جایگزین HTTP) --' ;;
+        zh-tw:wl_pu_guide_http_t) echo '── Wallos 使用教學（HTTP 容災）──' ;;
+        ja:wl_pu_guide_http_t) echo '-- Wallos クイックガイド（HTTP フォールバック）--' ;;
+        zh:wl_pu_guide_http_1) echo '1) 访问：浏览器打开上面的网址，首次打开先创建管理员账号并设强密码——本模式无加密，密码强度更重要。' ;;
+        en:wl_pu_guide_http_1) echo '1) Open the URL above; on first visit create the admin account with a STRONG password - this mode has no encryption.' ;;
+        ru:wl_pu_guide_http_1) echo '1) Откройте адрес выше; при первом визите создайте учётную запись администратора с НАДЁЖНЫМ паролем - в этом режиме нет шифрования.' ;;
+        fa:wl_pu_guide_http_1) echo '۱) نشانی بالا را باز کنید؛ در اولین بازدید حساب مدیر را با گذرواژه‌ای قوی بسازید - این حالت رمزگذاری ندارد.' ;;
+        zh-tw:wl_pu_guide_http_1) echo '1) 存取：瀏覽器打開上面的網址，首次打開先建立管理員帳號並設強密碼——本模式無加密，密碼強度更重要。' ;;
+        ja:wl_pu_guide_http_1) echo '1) アクセス: ブラウザで上の URL を開き、初回に管理者アカウントと強力なパスワードを作成してください。このモードには暗号化がありません。' ;;
+        zh:wl_pu_guide_http_2) echo '2) 打不开：云安全组放行 TCP %s 即可；本机防火墙已由脚本自动放行。' ;;
+        en:wl_pu_guide_http_2) echo '2) If it does not open: allow inbound TCP %s in the cloud security group. The host firewall was already opened by the script.' ;;
+        ru:wl_pu_guide_http_2) echo '2) Если не открывается: разрешите входящий TCP %s в группе безопасности. Файрвол хоста скрипт уже открыл.' ;;
+        fa:wl_pu_guide_http_2) echo '۲) اگر باز نشد: در گروه امنیتی ابری TCP %s ورودی را مجاز کنید. فایروال میزبان را اسکریپت از قبل باز کرده است.' ;;
+        zh-tw:wl_pu_guide_http_2) echo '2) 打不開：雲安全組放行 TCP %s 即可；本機防火牆已由腳本自動放行。' ;;
+        ja:wl_pu_guide_http_2) echo '2) 開けない場合: クラウドのセキュリティグループで TCP %s のインバウンドを許可してください。ホストのファイアウォールはスクリプトが自動で開けています。' ;;
+        zh:wl_pu_guide_http_3) echo '3) Fail2Ban 已盯住登录爆破。证书通道恢复后建议重跑安装选 [1] 或 [3] 切回加密模式。' ;;
+        en:wl_pu_guide_http_3) echo '3) Fail2Ban watches login brute force. Once the certificate path works again, rerun install and choose [1] or [3] to return to an encrypted mode.' ;;
+        ru:wl_pu_guide_http_3) echo '3) Fail2Ban следит за перебором паролей. Когда путь сертификата снова заработает, повторите установку и выберите [1] или [3], чтобы вернуться в зашифрованный режим.' ;;
+        fa:wl_pu_guide_http_3) echo '۳) Fail2Ban مراقب حدس گذرواژه است. وقتی مسیر گواهی دوباره کار کرد، نصب را از نو اجرا و [۱] یا [۳] را انتخاب کنید تا به حالت رمزگذاری‌شده برگردید.' ;;
+        zh-tw:wl_pu_guide_http_3) echo '3) Fail2Ban 已盯住登入爆破。憑證通道恢復後建議重跑安裝選 [1] 或 [3] 切回加密模式。' ;;
+        ja:wl_pu_guide_http_3) echo '3) Fail2Ban がログイン総当たりを監視しています。証明書の経路が復旧したら、インストールを再実行して [1] または [3] を選び、暗号化モードに戻してください。' ;;
+        zh:wl_pu_no_bind) echo 'Wallos 容器没有 80/tcp 端口绑定；请用 docker inspect wallos 检查。' ;;
+        en:wl_pu_no_bind) echo 'Wallos container has no 80/tcp port binding; inspect with: docker inspect wallos' ;;
+        ru:wl_pu_no_bind) echo 'У контейнера Wallos нет привязки порта 80/tcp; проверьте: docker inspect wallos' ;;
+        fa:wl_pu_no_bind) echo 'کانتینر Wallos اتصال درگاه 80/tcp ندارد؛ با docker inspect wallos بررسی کنید.' ;;
+        zh-tw:wl_pu_no_bind) echo 'Wallos 容器沒有 80/tcp 連接埠綁定；請用 docker inspect wallos 檢查。' ;;
+        ja:wl_pu_no_bind) echo 'Wallos コンテナに 80/tcp のポートバインディングがありません。docker inspect wallos で確認してください。' ;;
+        zh:wl_pu_url_bound) echo 'Wallos 网址：http://%s:%s/（绑定于 %s；公网 IP 网址不适用）' ;;
+        en:wl_pu_url_bound) echo 'Wallos URL: http://%s:%s/ (bound to %s; public-IP URL does not apply)' ;;
+        ru:wl_pu_url_bound) echo 'Адрес Wallos: http://%s:%s/ (привязка к %s; адрес по публичному IP не применим)' ;;
+        fa:wl_pu_url_bound) echo 'نشانی Wallos: http://%s:%s/ (متصل به %s؛ نشانی IP عمومی کاربرد ندارد)' ;;
+        zh-tw:wl_pu_url_bound) echo 'Wallos 網址：http://%s:%s/（綁定於 %s；公網 IP 網址不適用）' ;;
+        ja:wl_pu_url_bound) echo 'Wallos URL: http://%s:%s/（%s にバインド。パブリック IP の URL は該当しません）' ;;
+        zh:wl_pu_local_url) echo 'Wallos 本机地址：http://127.0.0.1:%s/' ;;
+        en:wl_pu_local_url) echo 'Wallos local URL: http://127.0.0.1:%s/' ;;
+        ru:wl_pu_local_url) echo 'Локальный адрес Wallos: http://127.0.0.1:%s/' ;;
+        fa:wl_pu_local_url) echo 'نشانی محلی Wallos: http://127.0.0.1:%s/' ;;
+        zh-tw:wl_pu_local_url) echo 'Wallos 本機地址：http://127.0.0.1:%s/' ;;
+        ja:wl_pu_local_url) echo 'Wallos のローカル URL: http://127.0.0.1:%s/' ;;
+        zh:wl_pu_local_warn) echo '远程访问请使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端点。' ;;
+        en:wl_pu_local_warn) echo 'Use an HTTPS reverse proxy or SSH tunnel for remote access; do not expose this HTTP endpoint directly.' ;;
+        ru:wl_pu_local_warn) echo 'Для доступа извне используйте HTTPS reverse proxy или SSH-туннель.' ;;
+        fa:wl_pu_local_warn) echo 'برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.' ;;
+        zh-tw:wl_pu_local_warn) echo '遠端訪問請使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端點。' ;;
+        ja:wl_pu_local_warn) echo 'リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。この HTTP エンドポイントを直接公開しないでください。' ;;
+        zh:wl_pu_ssh_t) echo '远程用 SSH 隧道（在自己的电脑上执行）：' ;;
+        en:wl_pu_ssh_t) echo 'Remote access via SSH tunnel (run on your own computer):' ;;
+        ru:wl_pu_ssh_t) echo 'Доступ через SSH-туннель (на своём компьютере):' ;;
+        fa:wl_pu_ssh_t) echo 'دسترسی از راه دور با SSH tunnel (در کامپیوتر خودتان):' ;;
+        zh-tw:wl_pu_ssh_t) echo '遠端用 SSH 隧道（在自己的電腦上執行）：' ;;
+        ja:wl_pu_ssh_t) echo 'SSH トンネルでのリモートアクセス（自分の PC で実行）：' ;;
+        zh:wl_pu_ssh_then) echo '然后浏览器打开 http://127.0.0.1:%s/，首次访问创建管理员账号。' ;;
+        en:wl_pu_ssh_then) echo 'Then open http://127.0.0.1:%s/ in your browser; create the admin account on first visit.' ;;
+        ru:wl_pu_ssh_then) echo 'Затем откройте http://127.0.0.1:%s/ и создайте учётную запись при первом визите.' ;;
+        fa:wl_pu_ssh_then) echo 'سپس http://127.0.0.1:%s/ را در مرورگر باز کنید؛ در اولین بازدید حساب مدیر بسازید.' ;;
+        zh-tw:wl_pu_ssh_then) echo '然後瀏覽器打開 http://127.0.0.1:%s/，首次訪問創建管理員賬號。' ;;
+        ja:wl_pu_ssh_then) echo 'ブラウザで http://127.0.0.1:%s/ を開き、初回に管理者アカウントを作成してください。' ;;
+        zh:wl_pu_url) echo 'Wallos 网址：http://%s:%s/' ;;
+        en:wl_pu_url) echo 'Wallos URL: http://%s:%s/' ;;
+        ru:wl_pu_url) echo 'Адрес Wallos: http://%s:%s/' ;;
+        fa:wl_pu_url) echo 'نشانی Wallos: http://%s:%s/' ;;
+        zh-tw:wl_pu_url) echo 'Wallos 網址：http://%s:%s/' ;;
+        ja:wl_pu_url) echo 'Wallos URL: http://%s:%s/' ;;
+        zh:wl_pu_url6) echo 'IPv6 网址：http://[%s]:%s/' ;;
+        en:wl_pu_url6) echo 'IPv6 URL: http://[%s]:%s/' ;;
+        ru:wl_pu_url6) echo 'Адрес IPv6: http://[%s]:%s/' ;;
+        fa:wl_pu_url6) echo 'نشانی IPv6: http://[%s]:%s/' ;;
+        zh-tw:wl_pu_url6) echo 'IPv6 網址：http://[%s]:%s/' ;;
+        ja:wl_pu_url6) echo 'IPv6 URL: http://[%s]:%s/' ;;
+        zh:wl_pu_no_pub) echo '无法检测公网 IP，请使用 VPS 公网地址或域名访问 TCP %s。' ;;
+        en:wl_pu_no_pub) echo 'Could not detect a public address. Use your VPS public IP or domain on TCP %s.' ;;
+        ru:wl_pu_no_pub) echo 'Публичный IP не определён; используйте IP или домен VPS и порт %s.' ;;
+        fa:wl_pu_no_pub) echo 'IP عمومی شناسایی نشد؛ از IP یا دامنه VPS با درگاه %s استفاده کنید.' ;;
+        zh-tw:wl_pu_no_pub) echo '無法檢測公網 IP，請使用 VPS 公網地址或域名訪問 TCP %s。' ;;
+        ja:wl_pu_no_pub) echo 'パブリック IP を検出できません。VPS のパブリック IP アドレスまたはドメインを使用して TCP %s にアクセスしてください。' ;;
+        zh:wl_pu_guide_t) echo '── Wallos 使用教程 ──' ;;
+        en:wl_pu_guide_t) echo '-- Wallos quick guide --' ;;
+        ru:wl_pu_guide_t) echo '-- Краткое руководство Wallos --' ;;
+        fa:wl_pu_guide_t) echo '-- راهنمای سریع Wallos --' ;;
+        zh-tw:wl_pu_guide_t) echo '── Wallos 使用教學 ──' ;;
+        ja:wl_pu_guide_t) echo '-- Wallos クイックガイド --' ;;
+        zh:wl_pu_guide_1) echo '1) 访问：手机/电脑浏览器打开上面的 Wallos 网址，首次打开先创建管理员账号和密码（请设强密码，里面是财务数据）。' ;;
+        en:wl_pu_guide_1) echo '1) Open the Wallos URL above in any browser; on first visit create the admin account and password (use a strong one - this is financial data).' ;;
+        ru:wl_pu_guide_1) echo '1) Откройте адрес Wallos выше в любом браузере; при первом визите создайте учётную запись администратора и пароль (надёжный - это финансовые данные).' ;;
+        fa:wl_pu_guide_1) echo '۱) نشانی Wallos بالا را در هر مرورگری باز کنید؛ در اولین بازدید حساب مدیر و گذرواژه بسازید (قوی انتخاب کنید - این‌ها داده‌های مالی هستند).' ;;
+        zh-tw:wl_pu_guide_1) echo '1) 存取：手機/電腦瀏覽器打開上面的 Wallos 網址，首次打開先建立管理員帳號和密碼（請設強密碼，裡面是財務資料）。' ;;
+        ja:wl_pu_guide_1) echo '1) アクセス: スマホ/PC のブラウザで上の Wallos URL を開き、初回に管理者アカウントとパスワードを作成してください（財務データなので強力なものを）。' ;;
+        zh:wl_pu_guide_2) echo '2) 打不开，多半是云安全组没放行：到云厂商控制台给这台机器放行 TCP %s 端口（Lightsail：实例 → 联网 → IPv4 防火墙 → 添加规则，协议 TCP、端口 %s；阿里云/腾讯云：安全组入方向放行）。本机防火墙已由脚本自动放行，不用管。' ;;
+        en:wl_pu_guide_2) echo '2) If it does not open, the cloud security group is the usual cause: allow inbound TCP %s for this instance in your cloud console (Lightsail: instance -> Networking -> IPv4 Firewall -> Add rule, TCP %s; AWS: security group inbound rule). The host firewall was already opened by the script.' ;;
+        ru:wl_pu_guide_2) echo '2) Если не открывается, причина обычно в группе безопасности: разрешите входящий TCP %s для этого экземпляра в консоли облака (Lightsail: экземпляр → Сеть → IPv4 Firewall → Добавить правило, TCP %s; AWS: правило входящего трафика группы безопасности). Файрвол хоста скрипт уже открыл.' ;;
+        fa:wl_pu_guide_2) echo '۲) اگر باز نشد، علت معمولاً گروه امنیتی ابری است: در کنسول ابری برای این نمونه TCP %s ورودی را مجاز کنید (Lightsail: نمونه ← شبکه ← فایروال IPv4 ← افزودن قانون، TCP %s؛ AWS: قانون ورودی گروه امنیتی). فایروال میزبان را اسکریپت از قبل باز کرده است.' ;;
+        zh-tw:wl_pu_guide_2) echo '2) 打不開，多半是雲安全組沒放行：到雲廠商控制台給這台機器放行 TCP %s 連接埠（Lightsail：實例 → 網路 → IPv4 防火牆 → 新增規則，協議 TCP、連接埠 %s；阿里雲/騰訊雲：安全組入方向放行）。本機防火牆已由腳本自動放行，不用管。' ;;
+        ja:wl_pu_guide_2) echo '2) 開けない場合、原因はたいていクラウドのセキュリティグループです。クラウドコンソールでこのインスタンスの TCP %s インバウンドを許可してください（Lightsail: インスタンス → ネットワーキング → IPv4 ファイアウォール → ルール追加、TCP %s。AWS: セキュリティグループのインバウンドルール）。ホストのファイアウォールはスクリプトが自動で開けています。' ;;
+        zh:wl_pu_guide_3) echo '3) 安全：随机高位端口 + Fail2Ban 专用防护已自动启用（拦截暴力登录）；该网址是 HTTP 明文，不要在公共 Wi-Fi 下登录，长期使用建议再套一层 HTTPS 反向代理。' ;;
+        en:wl_pu_guide_3) echo '3) Security: a dedicated Fail2Ban jail already blocks login brute force; the URL is plain HTTP, so avoid logging in on public Wi-Fi and consider an HTTPS reverse proxy for long-term use.' ;;
+        ru:wl_pu_guide_3) echo '3) Безопасность: случайный высокий порт и отдельный jail Fail2Ban уже включены (блокирует перебор паролей); адрес - обычный HTTP, не входите с публичного Wi-Fi и рассмотрите HTTPS reverse proxy для постоянного использования.' ;;
+        fa:wl_pu_guide_3) echo '۳) امنیت: درگاه بالای تصادفی + زندان اختصاصی Fail2Ban از قبل فعال است (حدس گذرواژه را مسدود می‌کند)؛ این نشانی HTTP ساده است، در Wi-Fi عمومی وارد نشوید و برای استفاده بلندمدت یک HTTPS reverse proxy در نظر بگیرید.' ;;
+        zh-tw:wl_pu_guide_3) echo '3) 安全：隨機高位連接埠 + Fail2Ban 專用防護已自動啟用（攔截暴力登入）；該網址是 HTTP 明文，不要在公用 Wi-Fi 下登入，長期使用建議再套一層 HTTPS 反向代理。' ;;
+        ja:wl_pu_guide_3) echo '3) セキュリティ: ランダムな高ポート + Fail2Ban の専用 jail が既に有効で、ログイン総当たりをブロックします。この URL は平文 HTTP なので、公共 Wi-Fi でのログインは避け、長期利用では HTTPS リバースプロキシの追加を検討してください。' ;;
         zh:wl_iu_need_root) echo '安装 Wallos 需要 root 权限。' ;;
         en:wl_iu_need_root) echo 'Run Wallos setup as root.' ;;
         ru:wl_iu_need_root) echo 'Для установки Wallos требуются права root.' ;;
@@ -25190,32 +25382,10 @@ wallos_print_host_info() {
     cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf 'unknown')
     ipv4=$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null || true)
     ipv6=$(curl -6fsS --connect-timeout 3 --max-time 5 https://api64.ipify.org 2>/dev/null || true)
-    case "${ABOX_LANG:-zh}" in
-        en)
-            msg "${CYAN}Wallos host check${NC}"
-            msg "OS: $os_name ($os_version) | architecture: $arch | CPU cores: $cores | RAM: ${mem_gb} GiB | free disk: ${disk_gb} GiB"
-            msg "IPv4: ${ipv4:-unavailable} | IPv6: ${ipv6:-unavailable}" ;;
-        ru)
-            msg "${CYAN}Проверка VPS для Wallos${NC}"
-            msg "ОС: $os_name ($os_version) | архитектура: $arch | ядер CPU: $cores | ОЗУ: ${mem_gb} ГиБ | свободно на диске: ${disk_gb} ГиБ"
-            msg "IPv4: ${ipv4:-недоступен} | IPv6: ${ipv6:-недоступен}" ;;
-        fa)
-            msg "${CYAN}بررسی VPS برای Wallos${NC}"
-            msg "سیستم‌عامل: $os_name ($os_version) | معماری: $arch | هسته CPU: $cores | RAM: ${mem_gb} GiB | فضای آزاد دیسک: ${disk_gb} GiB"
-            msg "IPv4: ${ipv4:-ناموجود} | IPv6: ${ipv6:-ناموجود}" ;;
-        zh-tw)
-            msg "${CYAN}Wallos 主機檢測${NC}"
-            msg "系統：$os_name ($os_version) | 架構：$arch | CPU 核心：$cores | 記憶體：${mem_gb} GiB | 可用磁碟：${disk_gb} GiB"
-            msg "IPv4：${ipv4:-不可用} | IPv6：${ipv6:-不可用}" ;;
-        ja)
-            msg "${CYAN}Wallos ホスト情報${NC}"
-            msg "OS: $os_name（$os_version）| アーキテクチャ: $arch | CPU コア数: $cores | RAM: ${mem_gb} GiB | 空きディスク容量: ${disk_gb} GiB"
-            msg "IPv4: ${ipv4:-利用不可} | IPv6: ${ipv6:-利用不可}" ;;
-        *)
-            msg "${CYAN}Wallos 主机检测${NC}"
-            msg "系统：$os_name ($os_version) | 架构：$arch | CPU 核心：$cores | 内存：${mem_gb} GiB | 可用磁盘：${disk_gb} GiB"
-            msg "IPv4：${ipv4:-不可用} | IPv6：${ipv6:-不可用}" ;;
-    esac
+    local _na; _na=$(tr_msg wl_hi_na)
+    msg "${CYAN}$(tr_msg wl_hi_title)${NC}"
+    msg "$(tprintf wl_hi_info "$os_name" "$os_version" "$arch" "$cores" "$mem_gb" "$disk_gb")"
+    msg "$(tprintf wl_hi_ip "${ipv4:-$_na}" "${ipv6:-$_na}")"
 }
 
 wallos_install_runtime() {
@@ -26148,21 +26318,12 @@ wallos_public_urls() {
     if [[ "$_cmode" == cftunnel ]]; then
         local _ch=''; _ch=$(wallos_state_value CFHOST 2>/dev/null || true)
         if [[ -n "$_ch" ]]; then
-            if [[ "${ABOX_LANG:-zh}" == en ]]; then
-                msg "${GREEN}Wallos URL (Cloudflare Tunnel): https://$_ch/${NC}"
-                msg ''
-                msg "${BOLD}-- Wallos quick guide (Cloudflare Tunnel) --${NC}"
-                msg "1) Open the URL above from any device; if you enabled Access in Cloudflare, sign in with your email first."
-                msg "2) If it does not open: in the CF dashboard check the tunnel is Healthy and its Public Hostname service is http://127.0.0.1:$port."
-                msg "3) Security: zero inbound ports on this host, the real IP stays hidden, HTTPS is served by Cloudflare. Manage the hostname and Access policy in the CF dashboard."
-            else
-                msg "${GREEN}Wallos 网址（CF 隧道）：https://$_ch/${NC}"
-                msg ''
-                msg "${BOLD}── Wallos 使用教程（CF 隧道）──${NC}"
-                msg "1) 访问：任意设备浏览器打开上面的网址；若你在 CF 后台开了 Access，先按提示用邮箱验证。"
-                msg "2) 打不开：去 CF 后台看隧道状态是否为 Healthy、Public Hostname 的 Service 是否为 http://127.0.0.1:$port（不对就在后台改成这个）。"
-                msg "3) 安全：本机零入站端口、真实 IP 不暴露、全程走 CF 的 HTTPS；建议 Access 只放行你自己的邮箱。域名与 Access 策略都在 CF 后台管理。"
-            fi
+            msg "${GREEN}$(tprintf wl_pu_url_cf "$_ch")${NC}"
+            msg ''
+            msg "${BOLD}$(tr_msg wl_pu_guide_cf_t)${NC}"
+            msg "$(tr_msg wl_pu_guide_cf_1)"
+            msg "$(tprintf wl_pu_guide_cf_2 "$port")"
+            msg "$(tr_msg wl_pu_guide_cf_3)"
             return 0
         fi
     fi
@@ -26172,51 +26333,33 @@ wallos_public_urls() {
         _hp=$(wallos_state_value PUBPORT 2>/dev/null || true)
         _hip=$(get_public_ip 2>/dev/null || true); [[ -n "$_hip" ]] || _hip="${GLOBAL_PUBLIC_IP:-}"
         if [[ "$_hp" =~ ^[0-9]+$ && -n "$_hip" ]]; then
-            if [[ "${ABOX_LANG:-zh}" == en ]]; then
-                msg "${GREEN}Wallos URL (HTTPS): https://$_hip:$_hp/${NC}"
-                msg ''
-                msg "${BOLD}-- Wallos quick guide (HTTPS) --${NC}"
-                msg "1) Open the HTTPS URL above in any browser; on first visit create the admin account and a strong password."
-                msg "2) If it does not open, the cloud security group is the usual cause: allow inbound TCP ${_hp} AND TCP 80 (80 is only used for automatic certificate issuance/renewal). The host firewall was already opened by the script."
-                msg "3) Security: full HTTPS, a Let's Encrypt IP certificate renewed automatically by Caddy (6-day cycle), and a Fail2Ban jail watching logins. If the VPS public IP ever changes, re-run the install to re-issue."
-            else
-                msg "${GREEN}Wallos 网址（HTTPS）：https://$_hip:$_hp/${NC}"
-                msg ''
-                msg "${BOLD}── Wallos 使用教程（HTTPS）──${NC}"
-                msg "1) 访问：手机/电脑浏览器打开上面的 HTTPS 网址，首次打开先创建管理员账号和密码（请设强密码，里面是财务数据）。"
-                msg "2) 打不开，多半是云安全组没放行：给这台机器放行 TCP ${_hp} 和 TCP 80 两个端口（80 只用于证书自动签发与续期）。本机防火墙已由脚本自动放行，不用管。"
-                msg "3) 安全：全程 HTTPS 加密；证书由 Let's Encrypt 签发、Caddy 每 6 天自动续期；Fail2Ban 已盯住登录爆破。若以后 VPS 公网 IP 更换，重新运行一次安装即可换证。"
-            fi
+            msg "${GREEN}$(tprintf wl_pu_url_https "$_hip" "$_hp")${NC}"
+            msg ''
+            msg "${BOLD}$(tr_msg wl_pu_guide_https_t)${NC}"
+            msg "$(tr_msg wl_pu_guide_https_1)"
+            msg "$(tprintf wl_pu_guide_https_2 "$_hp")"
+            msg "$(tr_msg wl_pu_guide_https_3)"
             return 0
         fi
     fi
     if [[ "$_hmode" == http ]]; then
         local _pip=''; _pip=$(get_public_ip 2>/dev/null || true); [[ -n "$_pip" ]] || _pip="${GLOBAL_PUBLIC_IP:-<VPS public IP>}"
-        if [[ "${ABOX_LANG:-zh}" == en ]]; then
-            msg "${GREEN}Wallos URL (HTTP, disaster recovery): http://$_pip:$port/${NC}"
-            msg ''
-            msg "${BOLD}-- Wallos quick guide (HTTP fallback) --${NC}"
-            msg "1) Open the URL above; on first visit create the admin account with a STRONG password - this mode has no encryption."
-            msg "2) If it does not open: allow inbound TCP $port in the cloud security group. The host firewall was already opened by the script."
-            msg "3) Fail2Ban watches login brute force. Once the certificate path works again, rerun install and choose [1] or [3] to return to an encrypted mode."
-        else
-            msg "${GREEN}Wallos 网址（HTTP 容灾）：http://$_pip:$port/${NC}"
-            msg ''
-            msg "${BOLD}── Wallos 使用教程（HTTP 容灾）──${NC}"
-            msg "1) 访问：浏览器打开上面的网址，首次打开先创建管理员账号并设强密码——本模式无加密，密码强度更重要。"
-            msg "2) 打不开：云安全组放行 TCP $port 即可；本机防火墙已由脚本自动放行。"
-            msg "3) Fail2Ban 已盯住登录爆破。证书通道恢复后建议重跑安装选 [1] 或 [3] 切回加密模式。"
-        fi
+        msg "${GREEN}$(tprintf wl_pu_url_http "$_pip" "$port")${NC}"
+        msg ''
+        msg "${BOLD}$(tr_msg wl_pu_guide_http_t)${NC}"
+        msg "$(tr_msg wl_pu_guide_http_1)"
+        msg "$(tprintf wl_pu_guide_http_2 "$port")"
+        msg "$(tr_msg wl_pu_guide_http_3)"
         return 0
     fi
     host_ip=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
     # P3-8: handle empty binding and LAN-specific IPs explicitly (was: fell through to public-IP URL).
     if [[ -z "$host_ip" ]]; then
-        msg "${YELLOW}Wallos container has no 80/tcp port binding; inspect with: docker inspect wallos${NC}"
+        msg "${YELLOW}$(tr_msg wl_pu_no_bind)${NC}"
         return 0
     fi
     if [[ "$host_ip" != 127.0.0.1 && "$host_ip" != 0.0.0.0 ]]; then
-        msg "${GREEN}Wallos URL: http://$host_ip:$port/ (bound to $host_ip; public-IP URL does not apply)${NC}"
+        msg "${GREEN}$(tprintf wl_pu_url_bound "$host_ip" "$port" "$host_ip")${NC}"
         return 0
     fi
     if [[ "$host_ip" == 127.0.0.1 ]]; then
@@ -26224,64 +26367,21 @@ wallos_public_urls() {
         [[ -z "$_pub" ]] && _pub=$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null || true)
         [[ -z "$_pub" ]] && _pub='<VPS公网IP>'
         local _who="${SUDO_USER:-$(whoami)}"
-        case "${ABOX_LANG:-zh}" in
-            en) msg "${GREEN}Wallos local URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Use an HTTPS reverse proxy or SSH tunnel for remote access; do not expose this HTTP endpoint directly.${NC}"
-            msg "${CYAN}Remote access via SSH tunnel (run on your own computer):${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}Then open http://127.0.0.1:$port/ in your browser; create the admin account on first visit.${NC}" ;;
-            ru) msg "${GREEN}Локальный адрес Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}Для доступа извне используйте HTTPS reverse proxy или SSH-туннель.${NC}"
-            msg "${CYAN}Доступ через SSH-туннель (на своём компьютере):${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}Затем откройте http://127.0.0.1:$port/ и создайте учётную запись при первом визите.${NC}" ;;
-            fa) msg "${GREEN}نشانی محلی Wallos: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.${NC}"
-            msg "${CYAN}دسترسی از راه دور با SSH tunnel (در کامپیوتر خودتان):${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}سپس http://127.0.0.1:$port/ را در مرورگر باز کنید؛ در اولین بازدید حساب مدیر بسازید.${NC}" ;;
-            zh-tw) msg "${GREEN}Wallos 本機地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}遠端訪問請使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端點。${NC}"
-            msg "${CYAN}遠端用 SSH 隧道（在自己的電腦上執行）：${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}然後瀏覽器打開 http://127.0.0.1:$port/，首次訪問創建管理員賬號。${NC}" ;;
-            ja)
-                msg "${GREEN}Wallos のローカル URL: http://127.0.0.1:$port/${NC}"; msg "${YELLOW}リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。この HTTP エンドポイントを直接公開しないでください。${NC}"
-            msg "${CYAN}SSH トンネルでのリモートアクセス（自分の PC で実行）：${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}ブラウザで http://127.0.0.1:$port/ を開き、初回に管理者アカウントを作成してください。${NC}" ;;
-            *) msg "${GREEN}Wallos 本机地址：http://127.0.0.1:$port/${NC}"; msg "${YELLOW}远程访问请使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端点。${NC}"
-            msg "${CYAN}远程用 SSH 隧道（在自己的电脑上执行）：${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}然后浏览器打开 http://127.0.0.1:$port/，首次访问创建管理员账号。${NC}" ;;
-        esac
+        msg "${GREEN}$(tprintf wl_pu_local_url "$port")${NC}"; msg "${YELLOW}$(tr_msg wl_pu_local_warn)${NC}"
+        msg "${CYAN}$(tr_msg wl_pu_ssh_t)${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}$(tprintf wl_pu_ssh_then "$port")${NC}"
         return 0
     fi
     ipv4=$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null || true)
     ipv6=$(curl -6fsS --connect-timeout 3 --max-time 5 https://api64.ipify.org 2>/dev/null || true)
-    case "${ABOX_LANG:-zh}" in
-        en)
-            [[ -z "$ipv4" ]] || msg "${GREEN}Wallos URL: http://$ipv4:$port/${NC}"
-            [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 URL: http://[$ipv6]:$port/${NC}"
-            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}Could not detect a public address. Use your VPS public IP or domain on TCP $port.${NC}" ;;
-        ru)
-            [[ -z "$ipv4" ]] || msg "${GREEN}Адрес Wallos: http://$ipv4:$port/${NC}"
-            [[ -z "$ipv6" ]] || msg "${GREEN}Адрес IPv6: http://[$ipv6]:$port/${NC}"
-            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}Публичный IP не определён; используйте IP или домен VPS и порт $port.${NC}" ;;
-        fa)
-            [[ -z "$ipv4" ]] || msg "${GREEN}نشانی Wallos: http://$ipv4:$port/${NC}"
-            [[ -z "$ipv6" ]] || msg "${GREEN}نشانی IPv6: http://[$ipv6]:$port/${NC}"
-            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}IP عمومی شناسایی نشد؛ از IP یا دامنه VPS با درگاه $port استفاده کنید.${NC}" ;;
-        zh-tw)
-            [[ -z "$ipv4" ]] || msg "${GREEN}Wallos 網址：http://$ipv4:$port/${NC}"
-            [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 網址：http://[$ipv6]:$port/${NC}"
-            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}無法檢測公網 IP，請使用 VPS 公網地址或域名訪問 TCP ${port}。${NC}" ;;
-        ja)
-            [[ -z "$ipv4" ]] || msg "${GREEN}Wallos URL: http://$ipv4:$port/${NC}"
-            [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 URL: http://[$ipv6]:$port/${NC}"
-            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}パブリック IP を検出できません。VPS のパブリック IP アドレスまたはドメインを使用して TCP ${port} にアクセスしてください。${NC}" ;;
-        *)
-            [[ -z "$ipv4" ]] || msg "${GREEN}Wallos 网址：http://$ipv4:$port/${NC}"
-            [[ -z "$ipv6" ]] || msg "${GREEN}IPv6 网址：http://[$ipv6]:$port/${NC}"
-            [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}无法检测公网 IP，请使用 VPS 公网地址或域名访问 TCP ${port}。${NC}" ;;
-    esac
+    [[ -z "$ipv4" ]] || msg "${GREEN}$(tprintf wl_pu_url "$ipv4" "$port")${NC}"
+    [[ -z "$ipv6" ]] || msg "${GREEN}$(tprintf wl_pu_url6 "$ipv6" "$port")${NC}"
+    [[ -n "$ipv4" || -n "$ipv6" ]] || msg "${YELLOW}$(tprintf wl_pu_no_pub "$port")${NC}"
     if [[ "$host_ip" == 0.0.0.0 ]]; then
         msg ''
-        if [[ "${ABOX_LANG:-zh}" == zh* ]]; then
-            msg "${BOLD}── Wallos 使用教程 ──${NC}"
-            msg "1) 访问：手机/电脑浏览器打开上面的 Wallos 网址，首次打开先创建管理员账号和密码（请设强密码，里面是财务数据）。"
-            msg "2) 打不开，多半是云安全组没放行：到云厂商控制台给这台机器放行 TCP ${port} 端口（Lightsail：实例 → 联网 → IPv4 防火墙 → 添加规则，协议 TCP、端口 ${port}；阿里云/腾讯云：安全组入方向放行）。本机防火墙已由脚本自动放行，不用管。"
-            msg "3) 安全：随机高位端口 + Fail2Ban 专用防护已自动启用（拦截暴力登录）；该网址是 HTTP 明文，不要在公共 Wi-Fi 下登录，长期使用建议再套一层 HTTPS 反向代理。"
-        else
-            msg "${BOLD}-- Wallos quick guide --${NC}"
-            msg "1) Open the Wallos URL above in any browser; on first visit create the admin account and password (use a strong one - this is financial data)."
-            msg "2) If it does not open, the cloud security group is the usual cause: allow inbound TCP ${port} for this instance in your cloud console (Lightsail: instance -> Networking -> IPv4 Firewall -> Add rule, TCP ${port}; AWS: security group inbound rule). The host firewall was already opened by the script."
-            msg "3) Security: a dedicated Fail2Ban jail already blocks login brute force; the URL is plain HTTP, so avoid logging in on public Wi-Fi and consider an HTTPS reverse proxy for long-term use."
-        fi
+        msg "${BOLD}$(tr_msg wl_pu_guide_t)${NC}"
+        msg "$(tr_msg wl_pu_guide_1)"
+        msg "$(tprintf wl_pu_guide_2 "$port" "$port")"
+        msg "$(tr_msg wl_pu_guide_3)"
     fi
 }
 

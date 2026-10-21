@@ -1216,6 +1216,18 @@ tr_msg() {
         fa:bk_created) echo 'پشتیبان ایجاد شد:' ;;
         zh-tw:bk_created) echo '備份已建立：' ;;
         ja:bk_created) echo 'バックアップを作成しました:' ;;
+        zh:xl_invalid) echo '输入无效。' ;;
+        en:xl_invalid) echo 'Invalid input.' ;;
+        ru:xl_invalid) echo 'Неверный ввод.' ;;
+        fa:xl_invalid) echo 'ورودی نامعتبر است.' ;;
+        zh-tw:xl_invalid) echo '輸入無效。' ;;
+        ja:xl_invalid) echo '入力が無効です。' ;;
+        zh:xl_remove_cancelled) echo '已取消删除。' ;;
+        en:xl_remove_cancelled) echo 'Removal cancelled.' ;;
+        ru:xl_remove_cancelled) echo 'Удаление отменено.' ;;
+        fa:xl_remove_cancelled) echo 'حذف لغو شد.' ;;
+        zh-tw:xl_remove_cancelled) echo '已取消刪除。' ;;
+        ja:xl_remove_cancelled) echo '削除をキャンセルしました。' ;;
         zh:xl_select) echo '请选择 [0-10]：' ;;
         en:xl_select) echo 'Select [0-10]: ' ;;
         ru:xl_select) echo 'Выберите [0–10]: ' ;;

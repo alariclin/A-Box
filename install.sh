@@ -15285,7 +15285,12 @@ users_reg_file() { printf '%s/%s__%s.json' "${ABOX_USERS_DIR:-$USERS_DIR}" "$1" 
 users_cfg_of() {
     case "$1" in
         xray) printf '%s' "${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" ;;
-        xray-latest) printf '%s' "${XRAY_LATEST_CFG:-/etc/ddr/xray-latest/config.json}" ;;
+        xray-latest)
+            if [[ "$(_xl_state_get mode 2>/dev/null)" == 'takeover' ]]; then
+                printf '%s' "${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}"
+            else
+                printf '%s' "${XRAY_LATEST_CFG:-/etc/ddr/xray-latest/config.json}"
+            fi ;;
         sing-box) printf '%s' '/etc/sing-box/config.json' ;;
         hy2) printf '%s' '/etc/hysteria/config.yaml' ;;
         *) return 1 ;;
@@ -15304,8 +15309,13 @@ users_svc_of() {
 
 users_bin_of() {
     case "$1" in
-        xray) printf '%s' '/usr/local/bin/xray' ;;
-        xray-latest) printf '%s' "${XRAY_LATEST_BIN:-/usr/local/bin/xray-latest}" ;;
+        xray) printf '%s' "${XRAY_SLOT_BIN:-/usr/local/bin/xray}" ;;
+        xray-latest)
+            if [[ "$(_xl_state_get mode 2>/dev/null)" == 'takeover' ]]; then
+                printf '%s' "${XRAY_SLOT_BIN:-/usr/local/bin/xray}"
+            else
+                printf '%s' "${XRAY_LATEST_BIN:-/usr/local/bin/xray-latest}"
+            fi ;;
         sing-box) printf '%s' '/usr/local/bin/sing-box' ;;
         hy2) printf '%s' '/usr/local/bin/hysteria' ;;
         *) return 1 ;;
@@ -15315,7 +15325,8 @@ users_bin_of() {
 users_api_port_of() {
     case "$1" in
         xray) printf '%s' '10085' ;;
-        xray-latest) printf '%s' '10086' ;;
+        xray-latest)
+            if [[ "$(_xl_state_get mode 2>/dev/null)" == 'takeover' ]]; then printf '%s' '10085'; else printf '%s' '10086'; fi ;;
         *) printf '%s' '10085' ;;
     esac
 }
@@ -16020,6 +16031,7 @@ multi_user_menu() {
     local slot_cfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}"
     [[ -f "$slot_cfg" && ! -L "$slot_cfg" ]] && users_xray_ensure_tags "$slot_cfg" >/dev/null 2>&1 || true
     [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json ]] && users_sb_ensure_tags /etc/sing-box/config.json >/dev/null 2>&1 || true
+    setup_user_guard >/dev/null 2>&1 || true
     while true; do
         clear
         msg "${CYAN}======================================================================${NC}"
@@ -16059,6 +16071,193 @@ multi_user_menu() {
                 fi ;;
         esac
     done
+}
+
+# ================= User guard (fix47 stage 3) =================
+# Enforcement engine for per-user quota / expiry / time-window rules.
+# A cron tick every 5 minutes runs a stamped copy of this script with
+# --user-guard-tick: it folds Xray StatsService counters into the
+# registries, re-evaluates each user's blocked state, and applies
+# transitions. Xray blocks go through the hot path (config edit + API
+# rmu, no restart); unblocks and sing-box/Hy2 changes use users_sync.
+
+setup_user_guard() {
+    local runner="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh"
+    [[ -f "$0" && ! -L "$0" ]] || return 1
+    install -d -m 700 "$(dirname -- "$runner")" 2>/dev/null || return 1
+    local sha_new='' sha_old=''
+    sha_new=$(sha256sum -- "$0" 2>/dev/null | awk '{print $1}')
+    sha_old=$(sha256sum -- "$runner" 2>/dev/null | awk '{print $1}')
+    if [[ -z "$sha_new" || "$sha_new" != "$sha_old" ]]; then
+        local tmp=''
+        tmp=$(mktemp "$(dirname -- "$runner")/.guard-runner.XXXXXX") || return 1
+        cp -f -- "$0" "$tmp" || { rm -f -- "$tmp"; return 1; }
+        chmod 700 "$tmp" || { rm -f -- "$tmp"; return 1; }
+        mv -f -- "$tmp" "$runner" || { rm -f -- "$tmp"; return 1; }
+    fi
+    ( ABOX_DIE_HOOK=''; install_abox_cron_block USERGUARD "*/5 * * * * /bin/bash $runner --user-guard-tick >/dev/null 2>&1" ) || return 1
+    return 0
+}
+
+# Query one Xray-family API for per-user counters.
+# $1=binary $2=port -> JSON map: email -> {up, down}; rc 1 when down.
+users_stats_snapshot() {
+    local bin="$1" port="$2" out=''
+    [[ -x "$bin" ]] || return 1
+    out=$("$bin" api statsquery --server "127.0.0.1:$port" -pattern 'user>>>' 2>/dev/null) || return 1
+    [[ -n "$out" ]] || return 1
+    printf '%s' "$out" | jq -c '
+        [(.stat[]? | (.name | split(">>>")) as $p | select($p[0] == "user") | {e: $p[1], d: $p[3], v: (.value // 0)})]
+        | group_by(.e)
+        | map({(.[0].e): {up: ([.[] | select(.d == "uplink") | .v] | add // 0),
+                          down: ([.[] | select(.d == "downlink") | .v] | add // 0)}})
+        | add // {}' 2>/dev/null || return 1
+}
+
+# Hot-remove one user from a RUNNING Xray-family core: first drop the
+# client from the on-disk config (so a restart cannot resurrect it),
+# then rmu it from the live process. No restart. rc 1 -> caller falls
+# back to a full users_sync.
+users_hot_remove() {
+    local core="$1" tag="$2" email="$3" cfg='' bin='' reg='' proto='' tmp=''
+    [[ -n "$email" ]] || return 1
+    cfg=$(users_cfg_of "$core") || return 1
+    bin=$(users_bin_of "$core") || return 1
+    reg=$(users_reg_file "$core" "$tag")
+    proto=$(jq -r '.protocol // ""' "$reg" 2>/dev/null) || return 1
+    [[ -f "$cfg" && ! -L "$cfg" && -x "$bin" ]] || return 1
+    tmp=$(mktemp /tmp/A-Box-uhot.XXXXXX) || return 1
+    mv -- "$tmp" "$tmp.json" || { rm -f -- "$tmp"; return 1; }; tmp="$tmp.json"
+    local ok=0
+    case "$proto" in
+        vless|trojan)
+            jq --arg t "$tag" --arg e "$email" '
+                .inbounds |= map(if .tag == $t then .settings.clients |= map(select(.email != $e)) else . end)
+            ' "$cfg" > "$tmp" 2>/dev/null && ok=1 ;;
+        shadowsocks)
+            jq --arg t "$tag" --arg e "$email" '
+                .inbounds |= map(if .tag == $t then
+                    (if ((.settings.clients // null) | type) == "array"
+                     then .settings.clients |= map(select(.email != $e))
+                     else .settings.password = "AAAAAAAAAAAAAAAAAAAAAA" end)
+                else . end)
+            ' "$cfg" > "$tmp" 2>/dev/null && ok=1 ;;
+        *) : ;;
+    esac
+    (( ok == 1 )) || { rm -f -- "$tmp"; return 1; }
+    jq empty "$tmp" >/dev/null 2>&1 || { rm -f -- "$tmp"; return 1; }
+    install_file_atomically "$tmp" "$cfg" 600 || { rm -f -- "$tmp"; return 1; }
+    rm -f -- "$tmp"
+    case "$core" in
+        xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || true ;;
+        xray-latest) prepare_abox_runtime_read_file "$cfg" xray >/dev/null 2>&1 || true ;;
+    esac
+    "$bin" api rmu --server "127.0.0.1:$(users_api_port_of "$core")" -tag "$tag" "$email" >/dev/null 2>&1 || return 1
+    return 0
+}
+
+# Evaluate one registry: fold counters in, recompute blocked states,
+# write back, and apply transitions. All inputs are parameters so the
+# policy core is directly testable.
+# $1=reg $2=core $3=tag $4=now-epoch $5=period(YYYY-MM) $6=hh:mm $7=stats-json $8=have-stats(0/1)
+users_guard_eval() {
+    local reg="$1" core="$2" tag="$3" now_s="$4" period="$5" hhmm="$6" stats="$7" have="$8"
+    local old_json='' updated=''
+    old_json=$(jq -c . "$reg" 2>/dev/null) || return 0
+    [[ -n "$old_json" ]] || return 0
+    updated=$(jq -c --arg per "$period" --argjson now "$now_s" --arg hhmm "$hhmm" --argjson stats "${stats:-{\}}" --argjson have "$have" '
+        def inwindow($w; $t):
+            if $w == "" then true
+            else ($w | split("-")) as $r
+                 | (if $r[0] <= $r[1] then ($t >= $r[0] and $t < $r[1]) else ($t >= $r[0] or $t < $r[1]) end)
+            end;
+        .users |= map(
+            (if $have == 1 and (.email // "") != "" and ($stats[.email] != null) then
+                (if .period != $per then
+                    .used_up = 0 | .used_down = 0 | .period = $per
+                    | .last_up = $stats[.email].up | .last_down = $stats[.email].down
+                 else
+                    .used_up += (if $stats[.email].up >= (.last_up // 0) then $stats[.email].up - (.last_up // 0) else $stats[.email].up end)
+                    | .used_down += (if $stats[.email].down >= (.last_down // 0) then $stats[.email].down - (.last_down // 0) else $stats[.email].down end)
+                    | .last_up = $stats[.email].up | .last_down = $stats[.email].down
+                 end)
+             elif .period != $per then
+                .used_up = 0 | .used_down = 0 | .period = $per
+             else . end)
+            | (if .disabled == true then .
+               else
+                 .blocked = (
+                    if (.expire_at // 0) > 0 and $now >= .expire_at then "expired"
+                    elif $have == 1 and (.quota_gb // 0) > 0 and ((.used_up + .used_down) >= (.quota_gb * 1073741824)) then "quota"
+                    elif (inwindow(.window // ""; $hhmm) | not) then "window"
+                    else "" end)
+               end)
+        )' "$reg" 2>/dev/null) || return 0
+    [[ -n "$updated" && "$updated" != "$old_json" ]] || return 0
+    # Transitions, by name (emails only exist on the Xray family).
+    local new_blocked='' unblocked=''
+    new_blocked=$(jq -rn --argjson old "$old_json" --argjson new "$updated" '
+        [$new.users[] | select((.blocked // "") != "" and .disabled != true) | .name
+         | select(. as $n | [$old.users[] | select(.name == $n) | (.blocked // "")] | .[0] == "")] | .[]' 2>/dev/null || true)
+    unblocked=$(jq -cn --argjson old "$old_json" --argjson new "$updated" '
+        [$old.users[] | select((.blocked // "") != "" and .disabled != true) | .name
+         | select(. as $n | [$new.users[] | select(.name == $n) | (.blocked // "")] | .[0] == "")] | length' 2>/dev/null || echo 0)
+    users_reg_write "$core" "$tag" "$updated" || return 0
+    local need_sync=0
+    if [[ "$core" == 'sing-box' || "$core" == 'hy2' ]]; then
+        [[ -n "$new_blocked" || "$unblocked" != '0' ]] && need_sync=1
+    else
+        # Xray family: hot-remove each newly blocked user; sync only
+        # when a hot removal fails or someone was unblocked.
+        if [[ -n "$new_blocked" ]]; then
+            local nm='' em=''
+            while IFS= read -r nm; do
+                [[ -n "$nm" ]] || continue
+                em=$(jq -r --arg n "$nm" '.users[] | select(.name == $n) | .email // ""' "$reg" 2>/dev/null)
+                users_hot_remove "$core" "$tag" "$em" || need_sync=1
+            done <<< "$new_blocked"
+        fi
+        [[ "$unblocked" != '0' ]] && need_sync=1
+    fi
+    (( need_sync == 1 )) && { users_sync "$core" "$tag" >/dev/null 2>&1 || true; }
+    return 0
+}
+
+user_guard_tick() {
+    exec 9>>/run/A-Box-user-guard.lock 2>/dev/null || return 0
+    flock -n 9 || return 0
+    local now_s='' period='' hhmm=''
+    now_s=$(date +%s); period=$(date '+%Y-%m'); hhmm=$(date '+%H:%M')
+    local core='' tag='' proto='' port=''
+    while IFS=$'\t' read -r core tag proto port; do
+        [[ -n "$core" && -n "$tag" && "$proto" != 'shadowtls' ]] || continue
+        users_reg_ensure "$core" "$tag" >/dev/null 2>&1 || true
+    done < <(protocol_inventory 2>/dev/null || true)
+    local stats_xray='' have_xray=0 stats_latest='' have_latest=0
+    if is_service_running xray 2>/dev/null; then
+        stats_xray=$(users_stats_snapshot /usr/local/bin/xray 10085) && have_xray=1
+    fi
+    if [[ -n "$(_xl_state_get mode 2>/dev/null)" ]]; then
+        local lbin='' lport=''
+        lbin=$(users_bin_of xray-latest 2>/dev/null || true)
+        lport=$(users_api_port_of xray-latest 2>/dev/null || echo 10086)
+        if [[ -n "$lbin" ]] && is_service_running "$(users_svc_of xray-latest 2>/dev/null || echo xray-latest)" 2>/dev/null; then
+            stats_latest=$(users_stats_snapshot "$lbin" "$lport") && have_latest=1
+        fi
+    fi
+    local reg='' rcore='' rtag='' stats='' have=0
+    for reg in "${ABOX_USERS_DIR:-$USERS_DIR}"/*.json; do
+        [[ -f "$reg" ]] || continue
+        rcore=$(jq -r '.core // ""' "$reg" 2>/dev/null); rtag=$(jq -r '.tag // ""' "$reg" 2>/dev/null)
+        [[ -n "$rcore" && -n "$rtag" ]] || continue
+        case "$rcore" in
+            xray) stats="$stats_xray"; have=$have_xray ;;
+            xray-latest) stats="$stats_latest"; have=$have_latest ;;
+            *) stats=''; have=0 ;;
+        esac
+        users_guard_eval "$reg" "$rcore" "$rtag" "$now_s" "$period" "$hhmm" "$stats" "$have"
+    done
+    return 0
 }
 
 multi_uuid_menu() {
@@ -26998,6 +27197,9 @@ PY_SELFTEST_TAR
     grep -Fq 'xray_ensure_stats()' "$0" || { echo 'FAIL: xray_ensure_stats missing'; failures=$((failures + 1)); }
     grep -Fq 'multi_user_menu()' "$0" || { echo 'FAIL: multi_user_menu missing'; failures=$((failures + 1)); }
     grep -Fq 'users_sync()' "$0" || { echo 'FAIL: users_sync missing'; failures=$((failures + 1)); }
+    grep -Fq 'user_guard_tick()' "$0" || { echo 'FAIL: user_guard_tick missing'; failures=$((failures + 1)); }
+    grep -Fq 'setup_user_guard()' "$0" || { echo 'FAIL: setup_user_guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'users_hot_remove()' "$0" || { echo 'FAIL: users_hot_remove missing'; failures=$((failures + 1)); }
     grep -Fq 'statsUserUplink' "$0" || { echo 'FAIL: per-user stats policy missing'; failures=$((failures + 1)); }
     grep -Fq 'revoke one extra UUID from the Xray server' "$0" || grep -Fq 'Revoke one extra UUID from the Xray server' "$0" || { echo 'FAIL: server-side UUID revocation option missing'; failures=$((failures + 1)); }
     # Exercise multi-UUID validation/deduplication on a temporary fixture; never touch /etc/ddr.
@@ -28377,6 +28579,7 @@ main() {
         --convert-legacy-backup) shift; prepare_noninteractive_file_operation; convert_legacy_backup_archive "${1:-}" "${2:-$(dirname "${1:-.}")}"; exit 0 ;;
         --help|-h) show_cli_help; exit 0 ;;
         --self-test) run_self_tests; exit $? ;;
+        --user-guard-tick) user_guard_tick; exit $? ;;
         --sni-test)
             # Hidden test hook: run SNI radar non-interactively for A/B testing.
             # Usage: sudo ABOX_SNI_TEST_PROFILE=mini ABOX_SNI_MINI_CONCURRENCY=16 \

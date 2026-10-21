@@ -34,13 +34,13 @@ A-Box is a single-file Bash script (`install.sh`, about 26,000 lines) that deplo
 Official source, pinned to an immutable commit:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/d63434e3b98d666896e37787b050e6f4e8737601/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/906b70cad6e710d621cd121df1bd746de22b3a61/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 Third-party mirror of the same pinned file (transport only, not an official endpoint):
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/d63434e3b98d666896e37787b050e6f4e8737601/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/906b70cad6e710d621cd121df1bd746de22b3a61/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 - On a fresh Alpine system, first run `apk add --no-cache bash curl`.

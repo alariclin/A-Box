@@ -12406,7 +12406,7 @@ _menu_info_display() {
                     _utok="$_unm $(users_fmt_bytes "${_uused:-0}")"
                     (( ${_uqta:-0} > 0 )) && _utok+="/$(users_fmt_bytes "$_uqta")"
                     case "${_uexp:-F}" in
-                        F) _utok+=" · $(tr_msg mi_u_forever)" ;;
+                        F) ;;  # nothing set: name + used only (user rule 2026-10-21)
                         E) _utok+=" · $(tr_msg mi_u_expired)" ;;
                         *[!0-9]*|'') ;;
                         *) _utok+=" · $(tprintf mi_u_days "$_uexp")" ;;

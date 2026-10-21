@@ -1156,6 +1156,66 @@ tr_msg() {
         fa:xl_back_main) echo 'بازگشت' ;;
         zh-tw:xl_back_main) echo '返回' ;;
         ja:xl_back_main) echo '戻る' ;;
+        zh:bk_recommend) echo '建议先备份——即将执行：%s' ;;
+        en:bk_recommend) echo 'Backup recommended before: %s' ;;
+        ru:bk_recommend) echo 'Рекомендуется резервная копия перед: %s' ;;
+        fa:bk_recommend) echo 'پیش از این کار پشتیبان‌گیری توصیه می‌شود: %s' ;;
+        zh-tw:bk_recommend) echo '建議先備份——即將執行：%s' ;;
+        ja:bk_recommend) echo 'バックアップを推奨します——実行内容: %s' ;;
+        zh:bk_op_full) echo '完全卸载' ;;
+        en:bk_op_full) echo 'full uninstall' ;;
+        ru:bk_op_full) echo 'полное удаление' ;;
+        fa:bk_op_full) echo 'حذف کامل' ;;
+        zh-tw:bk_op_full) echo '完全卸載' ;;
+        ja:bk_op_full) echo '完全アンインストール' ;;
+        zh:bk_op_keep) echo '保留脚本清场' ;;
+        en:bk_op_keep) echo 'uninstall while keeping script entry' ;;
+        ru:bk_op_keep) echo 'удаление с сохранением скрипта' ;;
+        fa:bk_op_keep) echo 'حذف با حفظ اسکریپت' ;;
+        zh-tw:bk_op_keep) echo '保留腳本清場' ;;
+        ja:bk_op_keep) echo 'スクリプトを残して削除' ;;
+        zh:bk_create_prompt) echo '现在创建备份？[Y/N]：' ;;
+        en:bk_create_prompt) echo 'Create backup now? [Y/N]: ' ;;
+        ru:bk_create_prompt) echo 'Создать резервную копию сейчас? [Y/N]: ' ;;
+        fa:bk_create_prompt) echo 'اکنون پشتیبان ایجاد شود؟ [Y/N]: ' ;;
+        zh-tw:bk_create_prompt) echo '現在建立備份？[Y/N]：' ;;
+        ja:bk_create_prompt) echo '今すぐバックアップを作成しますか？[Y/N]: ' ;;
+        zh:bk_skipped) echo '已跳过备份。' ;;
+        en:bk_skipped) echo 'Backup skipped by user.' ;;
+        ru:bk_skipped) echo 'Резервная копия пропущена.' ;;
+        fa:bk_skipped) echo 'پشتیبان‌گیری رد شد.' ;;
+        zh-tw:bk_skipped) echo '已跳過備份。' ;;
+        ja:bk_skipped) echo 'バックアップをスキップしました。' ;;
+        zh:bk_creating) echo '正在创建 A-Box 配置备份…' ;;
+        en:bk_creating) echo 'Creating A-Box configuration backup...' ;;
+        ru:bk_creating) echo 'Создание резервной копии конфигурации A-Box...' ;;
+        fa:bk_creating) echo 'در حال ایجاد پشتیبان پیکربندی A-Box...' ;;
+        zh-tw:bk_creating) echo '正在建立 A-Box 配置備份…' ;;
+        ja:bk_creating) echo 'A-Box 設定のバックアップを作成中...' ;;
+        zh:bk_recovery_key) echo '恢复密钥（分离保存）：' ;;
+        en:bk_recovery_key) echo 'Recovery key (separated):' ;;
+        ru:bk_recovery_key) echo 'Ключ восстановления (отдельно):' ;;
+        fa:bk_recovery_key) echo 'کلید بازیابی (جداگانه):' ;;
+        zh-tw:bk_recovery_key) echo '恢復金鑰（分離保存）：' ;;
+        ja:bk_recovery_key) echo '復旧キー（分離保管）:' ;;
+        zh:bk_keep_key) echo '请将分离密钥离线保存；持有归档、HMAC 与密钥的人，可以让被修改的归档通过认证。' ;;
+        en:bk_keep_key) echo 'Keep the separated key offline; anyone with archive+HMAC+key can authenticate modified archives.' ;;
+        ru:bk_keep_key) echo 'Храните отдельный ключ офлайн; любой, у кого есть архив+HMAC+ключ, может аутентифицировать изменённые архивы.' ;;
+        fa:bk_keep_key) echo 'کلید جدا را آفلاین نگه دارید؛ هر کس آرشیو+HMAC+کلید را داشته باشد می‌تواند آرشیوهای تغییر یافته را احراز کند.' ;;
+        zh-tw:bk_keep_key) echo '請將分離金鑰離線保存；持有歸檔、HMAC 與金鑰的人，可以讓被修改的歸檔通過認證。' ;;
+        ja:bk_keep_key) echo '分離キーはオフラインで保管してください。アーカイブとHMACとキーを保持する者は、改ざんされたアーカイブを認証できてしまいます。' ;;
+        zh:bk_retention_fail) echo '备份保留枚举失败；现有备份保持不变。' ;;
+        en:bk_retention_fail) echo 'Backup retention enumeration failed; keeping existing backups unchanged.' ;;
+        ru:bk_retention_fail) echo 'Не удалось перечислить резервные копии; существующие копии не изменены.' ;;
+        fa:bk_retention_fail) echo 'شمارش نسخه‌های پشتیبان ناموفق بود؛ پشتیبان‌های موجود بدون تغییر باقی ماندند.' ;;
+        zh-tw:bk_retention_fail) echo '備份保留列舉失敗；現有備份保持不變。' ;;
+        ja:bk_retention_fail) echo 'バックアップ保持の列挙に失敗しました。既存のバックアップは変更されません。' ;;
+        zh:bk_created) echo '备份已创建：' ;;
+        en:bk_created) echo 'Backup created:' ;;
+        ru:bk_created) echo 'Резервная копия создана:' ;;
+        fa:bk_created) echo 'پشتیبان ایجاد شد:' ;;
+        zh-tw:bk_created) echo '備份已建立：' ;;
+        ja:bk_created) echo 'バックアップを作成しました:' ;;
         zh:xl_select) echo '请选择 [0-10]：' ;;
         en:xl_select) echo 'Select [0-10]: ' ;;
         ru:xl_select) echo 'Выберите [0–10]: ' ;;
@@ -22292,7 +22352,7 @@ backup_current_config() {
         managed_paths+=$'\n'"$core_paths"
     done
     printf '%s\n' "$managed_paths" | awk 'NF && !seen[$0]++' > "$work/meta/managed-paths.txt" || { rm -rf "$work"; die 'Managed path list write failed.'; }
-    msg "${YELLOW}[*] Creating A-Box configuration backup...${NC}"
+    msg "${YELLOW}[*] $(tr_msg bk_creating)${NC}"
     if [[ -d "$ABOX_DIR" ]]; then
         # The A-Box data directory itself can live on a separate filesystem, but
         # a nested mount must never be traversed by tar during backup. This also
@@ -22360,8 +22420,8 @@ backup_current_config() {
         fi
         # A-05a: Do NOT write ${tarball}.key next to archive (co-location defeats HMAC trust model).
         # Key lives ONLY in /root/A-Box-backup-keys/ (mode 700, root-only).
-        msg "${GREEN}[*] Recovery key (separated):${NC} $separated_key"
-        msg "${YELLOW}[!] Keep the separated key offline; anyone with archive+HMAC+key can authenticate modified archives.${NC}"
+        msg "${GREEN}[*] $(tr_msg bk_recovery_key)${NC} $separated_key"
+        msg "${YELLOW}[!] $(tr_msg bk_keep_key)${NC}"
     fi
     rm -rf "$work"
     ABOX_LAST_BACKUP="$tarball"
@@ -22382,19 +22442,22 @@ PY_BACKUP_RETENTION
         [[ -z "$_old_backups_output" ]] || mapfile -t _old_backups <<< "$_old_backups_output"
         for _old in "${_old_backups[@]}"; do [[ "$_old" == "$ABOX_LAST_BACKUP" ]] || rm -f -- "$_old" "${_old}.sha256" "${_old}.hmac" "${_old}.key"; done
     else
-        msg "${YELLOW}[!] Backup retention enumeration failed; keeping existing backups unchanged.${NC}"
+        msg "${YELLOW}[!] $(tr_msg bk_retention_fail)${NC}"
     fi
-    msg "${GREEN}[*] Backup created:${NC} $tarball"
+    msg "${GREEN}[*] $(tr_msg bk_created)${NC} $tarball"
 }
 
 auto_backup_prompt() {
     local reason="${1:-operation}" dest="${2:-$ABOX_DIR/backups}" answer
-    msg "${YELLOW}[!] Backup recommended before: ${reason}${NC}"
-    read -r -p 'Create backup now? [Y/N]: ' answer
+    local _lbl=''
+    _lbl=$(tr_msg "$reason")
+    [[ -n "$_lbl" ]] || _lbl="$reason"
+    msg "${YELLOW}[!] $(tprintf bk_recommend "$_lbl")${NC}"
+    read -r -p "$(tr_msg bk_create_prompt)" answer
     if is_yes "$answer"; then
         backup_current_config "$dest"
     else
-        msg "${YELLOW}[*] Backup skipped by user.${NC}"
+        msg "${YELLOW}[*] $(tr_msg bk_skipped)${NC}"
     fi
 }
 
@@ -26035,8 +26098,8 @@ clean_uninstall_menu() {
     msg "${CYAN}0. 取消并返回${NC}"
     read -r -p '请输入执行代码 [0-2]: ' un_choice
     case "$un_choice" in
-        1) auto_backup_prompt 'full uninstall' '/root/A-Box-backups'; do_cleanup full ;;
-        2) auto_backup_prompt 'uninstall while keeping script entry' "$ABOX_DIR/backups"; do_cleanup keep ;;
+        1) auto_backup_prompt bk_op_full '/root/A-Box-backups'; do_cleanup full ;;
+        2) auto_backup_prompt bk_op_keep "$ABOX_DIR/backups"; do_cleanup keep ;;
         *) return 0 ;;
     esac
 }

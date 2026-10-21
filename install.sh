@@ -21798,6 +21798,38 @@ wallos_https_teardown() { # best-effort: stop the HTTPS front, drop its config/d
     return 0
 }
 
+# Real TLS handshake probe against the local Caddy listener.
+# $1=port $2=servername ("" sends no SNI at all — the way browsers and
+# curl treat IP-literal URLs). Returns 0 only if a TLS session is
+# established without a fatal alert; 2 when openssl is unavailable.
+wallos_tls_probe() {
+    local port="$1" sni="${2:-}" out=''
+    command -v openssl >/dev/null 2>&1 || return 2
+    if [[ -n "$sni" ]]; then
+        out=$(printf '' | timeout 12 openssl s_client -connect "127.0.0.1:${port}" -servername "$sni" 2>&1 || true)
+    else
+        out=$(printf '' | timeout 12 openssl s_client -connect "127.0.0.1:${port}" 2>&1 || true)
+    fi
+    printf '%s' "$out" | grep -qiE 'alert (internal error|handshake failure|protocol version)' && return 1
+    printf '%s' "$out" | grep -q 'CONNECTED(' || return 1
+    return 0
+}
+
+# Both handshake legs with a few retries while Caddy settles. On failure
+# echoes the failing leg names ("SNI" / "no-SNI") and returns 1.
+wallos_tls_handshake_check() { # $1=port $2=ip
+    local port="$1" ip="$2" _try=0 legs=''
+    command -v openssl >/dev/null 2>&1 || return 2
+    while (( _try < 5 )); do
+        if wallos_tls_probe "$port" "$ip" && wallos_tls_probe "$port" ''; then return 0; fi
+        sleep 3; _try=$((_try + 1))
+    done
+    wallos_tls_probe "$port" "$ip" || legs="${legs} SNI"
+    wallos_tls_probe "$port" '' || legs="${legs} no-SNI"
+    printf '%s' "${legs# }"
+    return 1
+}
+
 wallos_https_setup() { # $1 = public port, $2 = internal container port
     local pubport="$1" internal="$2" pub_ip='' tmp_json='' _t=0 _cert='' _code=''
     pub_ip=$(get_public_ip 2>/dev/null || true)
@@ -21811,6 +21843,12 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     # Explicit automation policy is REQUIRED: with a plain Caddyfile,
     # IP subjects silently fall back to Caddy's internal CA (verified
     # locally 2026-10-20). The JSON policy pins subject + shortlived.
+    # tls_connection_policies.default_sni is equally load-bearing:
+    # browsers and curl send NO SNI for IP-literal URLs, and certmagic's
+    # no-SNI fallback selects by the connection's local address — on
+    # 1:1-NAT clouds (Lightsail/EC2) that is the PRIVATE address, which
+    # matches no certificate, so every no-SNI handshake died with
+    # internal_error (root-caused and A/B-verified locally 2026-10-21).
     if ! jq -n --arg ip "$pub_ip" --argjson pub "$pubport" --arg dial "127.0.0.1:${internal}" \
             --arg ca "${WALLOS_CADDY_CA_URL:-}" --arg caroot "${WALLOS_CADDY_CA_ROOT:-}" \
             --arg logf "$WALLOS_CADDY_LOG" '
@@ -21830,6 +21868,7 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
             http: {servers: {wallos: {
               listen: [(":" + ($pub | tostring))],
               logs: {logger_names: {($ip): "wallos-access"}, default_logger_name: "wallos-access"},
+              tls_connection_policies: [{default_sni: $ip}],
               routes: [{match: [{host: [$ip]}],
                         handle: [{handler: "reverse_proxy", upstreams: [{dial: $dial}]}],
                         terminal: true}]
@@ -21858,6 +21897,19 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     _code=$(curl -ks --max-time 6 --resolve "${pub_ip}:${pubport}:127.0.0.1" -o /dev/null -w '%{http_code}' "https://${pub_ip}:${pubport}/" 2>/dev/null || true)
     if [[ ! "$_code" =~ ^[0-9]+$ || "$_code" == '000' ]]; then
         msg "${YELLOW}证书已签发，但本机回环探测 Caddy 未通（服务可能尚在启动）：稍后打开网址确认；若仍不通，请看 /etc/ddr/abox-wallos-caddy.log。外网可达性取决于云安全组是否放行 TCP ${pubport} 与 TCP 80。${NC}"
+    fi
+    # Real-handshake self-check. The probe above pins SNI via --resolve,
+    # which is NOT how browsers reach an IP URL: they send no SNI, and
+    # without default_sni those handshakes were rejected even while this
+    # probe passed (the false "healthy" of 2026-10-21). Probe both legs
+    # the way real clients connect and shout in red when one fails.
+    if command -v openssl >/dev/null 2>&1; then
+        local _legs=''
+        if _legs=$(wallos_tls_handshake_check "$pubport" "$pub_ip"); then
+            case "${ABOX_LANG:-zh}" in en) msg "${GREEN}TLS handshake self-check passed (SNI and no-SNI both OK).${NC}" ;; *) msg "${GREEN}TLS 握手自检通过（SNI / 无 SNI 双路正常）。${NC}" ;; esac
+        else
+            case "${ABOX_LANG:-zh}" in en) msg "${RED}TLS handshake self-check FAILED (${_legs}) - public browsers may fail to open Wallos; fix and re-run the Wallos install. Log: /etc/ddr/abox-wallos-caddy.log${NC}" ;; *) msg "${RED}TLS 握手自检失败（${_legs}）——公网浏览器可能打不开 Wallos，请修复后重跑 Wallos 安装。日志：/etc/ddr/abox-wallos-caddy.log${NC}" ;; esac
+        fi
     fi
     return 0
 }
@@ -22440,6 +22492,19 @@ wallos_status() {
         if [[ -n "$_crt" ]] && command -v openssl >/dev/null 2>&1; then
             _exp=$(openssl x509 -enddate -noout -in "$_crt" 2>/dev/null | sed 's/^notAfter=//')
             [[ -n "$_exp" ]] && msg "证书到期（UTC）：${_exp}（Caddy 自动续期；若到期仍未续上，重跑安装可回退 HTTP 容灾）"
+        fi
+        # Real handshake state (both legs), not just certificate files:
+        # a present-but-unselectable certificate reports healthy here no
+        # longer (2026-10-21 lesson).
+        local _wport='' _wip='' _legs=''
+        _wport=$(wallos_state_value PORT 2>/dev/null || true)
+        _wip=$(get_public_ip 2>/dev/null || true)
+        if [[ "$_wport" =~ ^[0-9]+$ && "$_wip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && command -v openssl >/dev/null 2>&1; then
+            if _legs=$(wallos_tls_handshake_check "$_wport" "$_wip"); then
+                case "${ABOX_LANG:-zh}" in en) msg "${GREEN}TLS handshake: OK (SNI / no-SNI)${NC}" ;; *) msg "${GREEN}TLS 握手：正常（SNI / 无 SNI 双路）${NC}" ;; esac
+            else
+                case "${ABOX_LANG:-zh}" in en) msg "${RED}TLS handshake: FAILED (${_legs}) - browsers opening the IP URL may be rejected; re-run the Wallos install (mode 1) to repair.${NC}" ;; *) msg "${RED}TLS 握手：异常（${_legs} 失败）——浏览器直连 IP 可能被拒绝，重跑 Wallos 安装（模式 1）可修复。${NC}" ;; esac
+            fi
         fi
     fi
     port=$(wallos_state_value PORT 2>/dev/null || true)

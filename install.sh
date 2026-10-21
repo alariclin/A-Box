@@ -12512,54 +12512,6 @@ _menu_info_display() {
     msg ''
     # --- nodes (fixed grid: max 3 per row, ASCII-exact lengths,
     # continuations aligned at the value column like the IPv6 row) ---
-    if [[ -n "$_MI_NODES" ]]; then
-        local _lbl="$(tr_msg mi_nodes)" _seg _row='' _cnt=0 _first=1
-        local _segs _rows=()
-        IFS='|' read -r -a _segs <<< "$_MI_NODES"
-        # Fixed-column grid: pad every column to the widest segment
-        # (14..20) so node columns align vertically on every row.
-        local _w=14 _cell
-        for _seg in "${_segs[@]}"; do (( ${#_seg} > _w )) && _w=${#_seg}; done
-        (( _w > 20 )) && _w=20
-        local _rsegs=()
-        for _seg in "${_segs[@]}"; do
-            [[ -z "$_seg" ]] && continue
-            _rsegs+=("$_seg")
-            if (( ${#_rsegs[@]} == 3 )); then
-                printf -v _row '%-*s | %-*s | %s' "$_w" "${_rsegs[0]}" "$_w" "${_rsegs[1]}" "${_rsegs[2]}"
-                _rows+=("$_row"); _rsegs=()
-            fi
-        done
-        if (( ${#_rsegs[@]} == 2 )); then printf -v _row '%-*s | %s' "$_w" "${_rsegs[0]}" "${_rsegs[1]}"; _rows+=("$_row")
-        elif (( ${#_rsegs[@]} == 1 )); then _rows+=("${_rsegs[0]}"); fi
-        local _i _n=${#_rows[@]}
-        for (( _i=0; _i<_n; _i++ )); do
-            _row="${_rows[$_i]}"
-            if (( _first )); then msg "  ${CYAN}${_lbl}：${NC}  ${LBLW}${_row}${NC}"; _first=0
-            else msg "          ${LBLW}${_row}${NC}"; fi
-        done
-        if [[ -n "$_MI_SNI_LIST" ]]; then
-            local _se='' _sents=() _sseg='' _ssni='' _sw=14
-            IFS='|' read -r -a _sents <<< "$_MI_SNI_LIST"
-            for _se in "${_sents[@]}"; do
-                [[ -z "$_se" ]] && continue
-                _sseg="${_se%% *}"
-                (( ${#_sseg} > _sw )) && _sw=${#_sseg}
-            done
-            (( _sw > 22 )) && _sw=22
-            local _si=0
-            for _se in "${_sents[@]}"; do
-                [[ -z "$_se" ]] && continue
-                _sseg="${_se%% *}"; _ssni="${_se#* }"
-                if (( _si == 0 )); then msg "  ${CYAN}SNI：${NC}   ${LBLW}$(printf '%-*s' "$_sw" "$_sseg")  ${_ssni}${NC}"
-                else msg "          ${LBLW}$(printf '%-*s' "$_sw" "$_sseg")  ${_ssni}${NC}"; fi
-                _si=$((_si + 1))
-            done
-        fi
-    else
-        msg "  ${CYAN}$(tr_msg mi_nodes)：${NC}  ${LBLW}$(tr_msg mi_no_nodes)${NC}"
-    fi
-    msg ''
     if [[ -n "${_MI_USER_RECS:-}" || -n "$_MI_NODES" ]]; then
         if [[ -z "${_MI_USER_RECS:-}" ]]; then
             msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}$(tr_msg mi_users_none)${NC}"
@@ -12659,6 +12611,55 @@ _menu_info_display() {
         fi
         msg ''
     fi
+
+    if [[ -n "$_MI_NODES" ]]; then
+        local _lbl="$(tr_msg mi_nodes)" _seg _row='' _cnt=0 _first=1
+        local _segs _rows=()
+        IFS='|' read -r -a _segs <<< "$_MI_NODES"
+        # Fixed-column grid: pad every column to the widest segment
+        # (14..20) so node columns align vertically on every row.
+        local _w=14 _cell
+        for _seg in "${_segs[@]}"; do (( ${#_seg} > _w )) && _w=${#_seg}; done
+        (( _w > 20 )) && _w=20
+        local _rsegs=()
+        for _seg in "${_segs[@]}"; do
+            [[ -z "$_seg" ]] && continue
+            _rsegs+=("$_seg")
+            if (( ${#_rsegs[@]} == 3 )); then
+                printf -v _row '%-*s | %-*s | %s' "$_w" "${_rsegs[0]}" "$_w" "${_rsegs[1]}" "${_rsegs[2]}"
+                _rows+=("$_row"); _rsegs=()
+            fi
+        done
+        if (( ${#_rsegs[@]} == 2 )); then printf -v _row '%-*s | %s' "$_w" "${_rsegs[0]}" "${_rsegs[1]}"; _rows+=("$_row")
+        elif (( ${#_rsegs[@]} == 1 )); then _rows+=("${_rsegs[0]}"); fi
+        local _i _n=${#_rows[@]}
+        for (( _i=0; _i<_n; _i++ )); do
+            _row="${_rows[$_i]}"
+            if (( _first )); then msg "  ${CYAN}${_lbl}：${NC}  ${LBLW}${_row}${NC}"; _first=0
+            else msg "          ${LBLW}${_row}${NC}"; fi
+        done
+        if [[ -n "$_MI_SNI_LIST" ]]; then
+            local _se='' _sents=() _sseg='' _ssni='' _sw=14
+            IFS='|' read -r -a _sents <<< "$_MI_SNI_LIST"
+            for _se in "${_sents[@]}"; do
+                [[ -z "$_se" ]] && continue
+                _sseg="${_se%% *}"
+                (( ${#_sseg} > _sw )) && _sw=${#_sseg}
+            done
+            (( _sw > 22 )) && _sw=22
+            local _si=0
+            for _se in "${_sents[@]}"; do
+                [[ -z "$_se" ]] && continue
+                _sseg="${_se%% *}"; _ssni="${_se#* }"
+                if (( _si == 0 )); then msg "  ${CYAN}SNI：${NC}   ${LBLW}$(printf '%-*s' "$_sw" "$_sseg")  ${_ssni}${NC}"
+                else msg "          ${LBLW}$(printf '%-*s' "$_sw" "$_sseg")  ${_ssni}${NC}"; fi
+                _si=$((_si + 1))
+            done
+        fi
+    else
+        msg "  ${CYAN}$(tr_msg mi_nodes)：${NC}  ${LBLW}$(tr_msg mi_no_nodes)${NC}"
+    fi
+    msg ''
     # --- legend ---
     msg "  ${CYAN}$(tr_msg mi_state)：  ${GREEN}●${NC} ${LBLW}$(tr_msg mi_run)  ·  ○ ${LBLW}$(tr_msg mi_off)${NC}  ·  ${RED}●${NC} ${LBLW}$(tr_msg mi_fault)${NC}        ${LBLW}$(tr_msg mi_quick_r)${NC}"
     printf '\033[38;2;0;170;255m%s\033[0m\n' '════════════════════════════════════════════════════════════════════════════════'

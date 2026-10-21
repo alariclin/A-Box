@@ -592,6 +592,270 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:wl_iu_need_root) echo '安装 Wallos 需要 root 权限。' ;;
+        en:wl_iu_need_root) echo 'Run Wallos setup as root.' ;;
+        ru:wl_iu_need_root) echo 'Для установки Wallos требуются права root.' ;;
+        fa:wl_iu_need_root) echo 'برای نصب Wallos دسترسی root لازم است.' ;;
+        zh-tw:wl_iu_need_root) echo '安裝 Wallos 需要 root 權限。' ;;
+        ja:wl_iu_need_root) echo 'Wallos のセットアップは root 権限で実行してください。' ;;
+        zh:wl_iu_need_jq) echo '需要 jq，请先安装 A-Box 依赖。' ;;
+        en:wl_iu_need_jq) echo 'jq is required; install the A-Box dependencies first.' ;;
+        ru:wl_iu_need_jq) echo 'Требуется jq; сначала установите зависимости A-Box.' ;;
+        fa:wl_iu_need_jq) echo 'به jq نیاز است؛ ابتدا وابستگی‌های A-Box را نصب کنید.' ;;
+        zh-tw:wl_iu_need_jq) echo '需要 jq，請先安裝 A-Box 依賴。' ;;
+        ja:wl_iu_need_jq) echo 'jq が必要です。先に A-Box の依存パッケージをインストールしてください。' ;;
+        zh:wl_iu_arch) echo 'Wallos 支持 amd64、arm64 和 ARMv7 架构。' ;;
+        en:wl_iu_arch) echo 'Supported Wallos image architectures are amd64, arm64 and ARMv7.' ;;
+        ru:wl_iu_arch) echo 'Поддерживаются архитектуры amd64, arm64 и ARMv7.' ;;
+        fa:wl_iu_arch) echo 'معماری‌های پشتیبانی‌شده amd64، arm64 و ARMv7 هستند.' ;;
+        zh-tw:wl_iu_arch) echo 'Wallos 支援 amd64、arm64 和 ARMv7 架構。' ;;
+        ja:wl_iu_arch) echo 'サポートされている Wallos イメージのアーキテクチャは amd64、arm64、ARMv7 です。' ;;
+        zh:wl_iu_docker_fail) echo 'Docker 安装或启动失败，未修改 Wallos 容器。' ;;
+        en:wl_iu_docker_fail) echo 'Docker could not be installed or started; no Wallos container was changed.' ;;
+        ru:wl_iu_docker_fail) echo 'Не удалось установить или запустить Docker; контейнер Wallos не изменён.' ;;
+        fa:wl_iu_docker_fail) echo 'نصب یا اجرای Docker شکست خورد؛ کانتینر Wallos تغییر نکرد.' ;;
+        zh-tw:wl_iu_docker_fail) echo 'Docker 安裝或啟動失敗，未修改 Wallos 容器。' ;;
+        ja:wl_iu_docker_fail) echo 'Docker をインストールまたは起動できませんでした。Wallos コンテナは変更されていません。' ;;
+        zh:wl_iu_no_free_port) echo '20000–60000 无可用高位端口，请释放端口后重试。' ;;
+        en:wl_iu_no_free_port) echo 'No free high port found in 20000-60000; free one and retry.' ;;
+        ru:wl_iu_no_free_port) echo 'Нет свободного высокого порта 20000–60000.' ;;
+        fa:wl_iu_no_free_port) echo 'درگاه آزاد در 20000 تا 60000 یافت نشد.' ;;
+        zh-tw:wl_iu_no_free_port) echo '20000–60000 無可用高位連接埠，請釋放後重試。' ;;
+        ja:wl_iu_no_free_port) echo '20000～60000 に空きポートがありません。' ;;
+        zh:wl_iu_unmanaged) echo '已存在一个非 A-Box 管理的 wallos 容器。请改名或在 A-Box 之外管理它；未尝试接管。' ;;
+        en:wl_iu_unmanaged) echo 'An unmanaged container named wallos already exists. Rename it or manage it outside A-Box; no takeover was attempted.' ;;
+        ru:wl_iu_unmanaged) echo 'Уже существует неуправляемый контейнер с именем wallos. Переименуйте его или управляйте вне A-Box; попытка захвата не выполнялась.' ;;
+        fa:wl_iu_unmanaged) echo 'یک کانتینر مدیریت‌نشده با نام wallos از قبل وجود دارد. آن را تغییر نام دهید یا بیرون از A-Box مدیریت کنید؛ تلاشی برای تصاحب انجام نشد.' ;;
+        zh-tw:wl_iu_unmanaged) echo '已存在一個非 A-Box 管理的 wallos 容器。請改名或在 A-Box 之外管理它；未嘗試接管。' ;;
+        ja:wl_iu_unmanaged) echo '管理対象外の wallos コンテナが既に存在します。名前を変更するか A-Box の外で管理してください。引き継ぎは試みていません。' ;;
+        zh:wl_iu_bad_bind) echo 'Wallos 现有绑定地址无效：%s；拒绝升级。' ;;
+        en:wl_iu_bad_bind) echo 'Wallos existing bind address is invalid: %s; refusing to upgrade.' ;;
+        ru:wl_iu_bad_bind) echo 'Существующий адрес привязки Wallos недействителен: %s; обновление отклонено.' ;;
+        fa:wl_iu_bad_bind) echo 'نشانی اتصال موجود Wallos نامعتبر است: %s؛ ارتقا رد شد.' ;;
+        zh-tw:wl_iu_bad_bind) echo 'Wallos 現有綁定位址無效：%s；拒絕升級。' ;;
+        ja:wl_iu_bad_bind) echo 'Wallos の既存バインドアドレスが無効です: %s。アップグレードを中止します。' ;;
+        zh:wl_iu_bad_port) echo 'Wallos 保存的端口无效：%s；拒绝升级。' ;;
+        en:wl_iu_bad_port) echo 'Wallos persisted port is invalid: %s; refusing to upgrade.' ;;
+        ru:wl_iu_bad_port) echo 'Сохранённый порт Wallos недействителен: %s; обновление отклонено.' ;;
+        fa:wl_iu_bad_port) echo 'درگاه ذخیره‌شده Wallos نامعتبر است: %s؛ ارتقا رد شد.' ;;
+        zh-tw:wl_iu_bad_port) echo 'Wallos 保存的連接埠無效：%s；拒絕升級。' ;;
+        ja:wl_iu_bad_port) echo 'Wallos に保存されたポートが無効です: %s。アップグレードを中止します。' ;;
+        zh:wl_iu_bad_tz) echo 'Wallos 保存的时区无效：%s；拒绝升级。' ;;
+        en:wl_iu_bad_tz) echo 'Wallos persisted timezone is invalid: %s; refusing to upgrade.' ;;
+        ru:wl_iu_bad_tz) echo 'Сохранённый часовой пояс Wallos недействителен: %s; обновление отклонено.' ;;
+        fa:wl_iu_bad_tz) echo 'منطقه زمانی ذخیره‌شده Wallos نامعتبر است: %s؛ ارتقا رد شد.' ;;
+        zh-tw:wl_iu_bad_tz) echo 'Wallos 保存的時區無效：%s；拒絕升級。' ;;
+        ja:wl_iu_bad_tz) echo 'Wallos に保存されたタイムゾーンが無効です: %s。アップグレードを中止します。' ;;
+        zh:wl_iu_state_incomplete) echo 'Wallos 状态不完整；拒绝升级。' ;;
+        en:wl_iu_state_incomplete) echo 'Wallos state is incomplete; refusing to upgrade it.' ;;
+        ru:wl_iu_state_incomplete) echo 'Состояние Wallos неполно; обновление отклонено.' ;;
+        fa:wl_iu_state_incomplete) echo 'وضعیت Wallos ناقص است؛ ارتقا رد شد.' ;;
+        zh-tw:wl_iu_state_incomplete) echo 'Wallos 狀態不完整；拒絕升級。' ;;
+        ja:wl_iu_state_incomplete) echo 'Wallos の状態が不完全です。アップグレードを中止します。' ;;
+        zh:wl_iu_no_marker) echo '%s 已存在但没有 A-Box 归属标记；拒绝覆盖。' ;;
+        en:wl_iu_no_marker) echo '%s exists without an A-Box ownership marker; refusing to overwrite it.' ;;
+        ru:wl_iu_no_marker) echo '%s существует без маркера владения A-Box; перезапись отклонена.' ;;
+        fa:wl_iu_no_marker) echo '%s بدون نشان مالکیت A-Box وجود دارد؛ بازنویسی رد شد.' ;;
+        zh-tw:wl_iu_no_marker) echo '%s 已存在但沒有 A-Box 歸屬標記；拒絕覆寫。' ;;
+        ja:wl_iu_no_marker) echo '%s は存在しますが A-Box の所有マーカーがありません。上書きを中止します。' ;;
+        zh:wl_iu_bind_invalid) echo 'WALLOS_BIND_ADDRESS 不是有效的 IPv4 地址：%s' ;;
+        en:wl_iu_bind_invalid) echo 'WALLOS_BIND_ADDRESS is not a valid IPv4 address: %s' ;;
+        ru:wl_iu_bind_invalid) echo 'WALLOS_BIND_ADDRESS не является допустимым адресом IPv4: %s' ;;
+        fa:wl_iu_bind_invalid) echo 'WALLOS_BIND_ADDRESS یک نشانی IPv4 معتبر نیست: %s' ;;
+        zh-tw:wl_iu_bind_invalid) echo 'WALLOS_BIND_ADDRESS 不是有效的 IPv4 位址：%s' ;;
+        ja:wl_iu_bind_invalid) echo 'WALLOS_BIND_ADDRESS は有効な IPv4 アドレスではありません: %s' ;;
+        zh:wl_iu_bind_override) echo 'WALLOS_BIND_ADDRESS 覆盖值只能是 127.0.0.1 或 0.0.0.0。' ;;
+        en:wl_iu_bind_override) echo 'WALLOS_BIND_ADDRESS override must be 127.0.0.1 or 0.0.0.0.' ;;
+        ru:wl_iu_bind_override) echo 'Переопределение WALLOS_BIND_ADDRESS должно быть 127.0.0.1 или 0.0.0.0.' ;;
+        fa:wl_iu_bind_override) echo 'بازنویسی WALLOS_BIND_ADDRESS باید 127.0.0.1 یا 0.0.0.0 باشد.' ;;
+        zh-tw:wl_iu_bind_override) echo 'WALLOS_BIND_ADDRESS 覆寫值只能是 127.0.0.1 或 0.0.0.0。' ;;
+        ja:wl_iu_bind_override) echo 'WALLOS_BIND_ADDRESS の上書き値は 127.0.0.1 または 0.0.0.0 でなければなりません。' ;;
+        zh:wl_iu_cf_guide_t) echo 'CF 隧道模式——请先在 Cloudflare 后台准备（约 2 分钟）：' ;;
+        en:wl_iu_cf_guide_t) echo 'Cloudflare Tunnel mode - prepare in the CF dashboard first (about 2 min):' ;;
+        ru:wl_iu_cf_guide_t) echo 'Режим туннеля Cloudflare - сначала подготовьте всё в панели CF (около 2 минут):' ;;
+        fa:wl_iu_cf_guide_t) echo 'حالت تونل Cloudflare - ابتدا در داشبورد CF آماده کنید (حدود ۲ دقیقه):' ;;
+        zh-tw:wl_iu_cf_guide_t) echo 'CF 隧道模式——請先在 Cloudflare 後台準備（約 2 分鐘）：' ;;
+        ja:wl_iu_cf_guide_t) echo 'Cloudflare Tunnel モード - 先に CF ダッシュボードで準備してください（約 2 分）:' ;;
+        zh:wl_iu_cf_guide_1) echo '1) Zero Trust → Networks → Tunnels → Create a tunnel（选 cloudflared），页面会给出一条带 --token 的命令；' ;;
+        en:wl_iu_cf_guide_1) echo '1) Zero Trust -> Networks -> Tunnels -> Create a tunnel (cloudflared); its install command contains a --token value.' ;;
+        ru:wl_iu_cf_guide_1) echo '1) Zero Trust → Networks → Tunnels → Create a tunnel (cloudflared); команда установки содержит значение --token.' ;;
+        fa:wl_iu_cf_guide_1) echo '۱) Zero Trust ← Networks ← Tunnels ← ساخت تونل (cloudflared)؛ دستور نصب آن شامل مقدار --token است.' ;;
+        zh-tw:wl_iu_cf_guide_1) echo '1) Zero Trust → Networks → Tunnels → Create a tunnel（選 cloudflared），頁面會給出一條帶 --token 的命令；' ;;
+        ja:wl_iu_cf_guide_1) echo '1) Zero Trust → Networks → Tunnels → Create a tunnel（cloudflared を選択）。表示されるインストールコマンドに --token の値が含まれます。' ;;
+        zh:wl_iu_cf_guide_2) echo '2) 在该隧道添加 Public Hostname：域名填你想要的（如 wallos.example.com），Service 选 HTTP，URL 填 127.0.0.1:%s；' ;;
+        en:wl_iu_cf_guide_2) echo '2) Add a Public Hostname on that tunnel: your hostname (e.g. wallos.example.com), Service HTTP, URL 127.0.0.1:%s.' ;;
+        ru:wl_iu_cf_guide_2) echo '2) Добавьте в этот туннель Public Hostname: ваше имя (например wallos.example.com), служба HTTP, URL 127.0.0.1:%s.' ;;
+        fa:wl_iu_cf_guide_2) echo '۲) در آن تونل یک Public Hostname اضافه کنید: نام میزبان شما (مثلاً wallos.example.com)، سرویس HTTP، نشانی 127.0.0.1:%s.' ;;
+        zh-tw:wl_iu_cf_guide_2) echo '2) 在該隧道新增 Public Hostname：域名填你想要的（如 wallos.example.com），Service 選 HTTP，URL 填 127.0.0.1:%s；' ;;
+        ja:wl_iu_cf_guide_2) echo '2) そのトンネルに Public Hostname を追加します: ホスト名（例 wallos.example.com）、Service は HTTP、URL は 127.0.0.1:%s。' ;;
+        zh:wl_iu_cf_guide_3) echo '3) 强烈建议：Zero Trust → Access → Applications 给该域名加策略，只允许你自己的邮箱。' ;;
+        en:wl_iu_cf_guide_3) echo '3) Strongly recommended: Zero Trust -> Access -> Applications - restrict that hostname to your own email.' ;;
+        ru:wl_iu_cf_guide_3) echo '3) Настоятельно рекомендуется: Zero Trust → Access → Applications - ограничить это имя только вашим email.' ;;
+        fa:wl_iu_cf_guide_3) echo '۳) اکیداً توصیه می‌شود: Zero Trust ← Access ← Applications - آن نام میزبان را فقط به ایمیل خودتان محدود کنید.' ;;
+        zh-tw:wl_iu_cf_guide_3) echo '3) 強烈建議：Zero Trust → Access → Applications 給該域名加策略，只允許你自己的信箱。' ;;
+        ja:wl_iu_cf_guide_3) echo '3) 強く推奨: Zero Trust → Access → Applications で、そのホスト名を自分のメールアドレスのみに制限してください。' ;;
+        zh:wl_iu_host_prompt) echo '绑定的完整域名 [%s]: ' ;;
+        en:wl_iu_host_prompt) echo 'Public hostname [%s]: ' ;;
+        ru:wl_iu_host_prompt) echo 'Публичное имя хоста [%s]: ' ;;
+        fa:wl_iu_host_prompt) echo 'نام میزبان عمومی [%s]: ' ;;
+        zh-tw:wl_iu_host_prompt) echo '綁定的完整域名 [%s]: ' ;;
+        ja:wl_iu_host_prompt) echo 'パブリックホスト名 [%s]: ' ;;
+        zh:wl_iu_token_keep) echo '隧道令牌（已有令牌，回车保留；粘贴新令牌替换）: ' ;;
+        en:wl_iu_token_keep) echo 'Tunnel token (Enter keeps the saved one; paste to replace): ' ;;
+        ru:wl_iu_token_keep) echo 'Токен туннеля (Enter - оставить сохранённый; вставьте новый для замены): ' ;;
+        fa:wl_iu_token_keep) echo 'توکن تونل (Enter توکن ذخیره‌شده را نگه می‌دارد؛ برای جایگزینی بچسبانید): ' ;;
+        zh-tw:wl_iu_token_keep) echo '隧道權杖（已有權杖，Enter 保留；貼上新權杖替換）: ' ;;
+        ja:wl_iu_token_keep) echo 'トンネルトークン（Enter で保存済みを保持、貼り付けで置き換え）: ' ;;
+        zh:wl_iu_token_paste) echo '粘贴隧道令牌（--token 后面那串）: ' ;;
+        en:wl_iu_token_paste) echo 'Paste the tunnel token (the value after --token): ' ;;
+        ru:wl_iu_token_paste) echo 'Вставьте токен туннеля (значение после --token): ' ;;
+        fa:wl_iu_token_paste) echo 'توکن تونل را بچسبانید (مقدار بعد از --token): ' ;;
+        zh-tw:wl_iu_token_paste) echo '貼上隧道權杖（--token 後面那串）: ' ;;
+        ja:wl_iu_token_paste) echo 'トンネルトークンを貼り付けてください（--token の後の値）: ' ;;
+        zh:wl_iu_src_unavail) echo 'Wallos 官方源与 A-Box 恢复镜像均不可用。' ;;
+        en:wl_iu_src_unavail) echo 'Official Wallos source and the A-Box recovery image are both unavailable.' ;;
+        ru:wl_iu_src_unavail) echo 'Официальный источник Wallos и образ восстановления A-Box оба недоступны.' ;;
+        fa:wl_iu_src_unavail) echo 'منبع رسمی Wallos و تصویر بازیابی A-Box هر دو در دسترس نیستند.' ;;
+        zh-tw:wl_iu_src_unavail) echo 'Wallos 官方來源與 A-Box 還原映像均不可用。' ;;
+        ja:wl_iu_src_unavail) echo 'Wallos 公式ソースと A-Box 復旧イメージの両方が利用できません。' ;;
+        zh:wl_iu_backup_fail) echo '升级前备份失败；已保留旧容器。' ;;
+        en:wl_iu_backup_fail) echo 'Pre-upgrade backup failed; old container was retained.' ;;
+        ru:wl_iu_backup_fail) echo 'Резервное копирование перед обновлением не удалось; старый контейнер сохранён.' ;;
+        fa:wl_iu_backup_fail) echo 'پشتیبان‌گیری پیش از ارتقا ناموفق بود؛ کانتینر قدیمی نگه داشته شد.' ;;
+        zh-tw:wl_iu_backup_fail) echo '升級前備份失敗；已保留舊容器。' ;;
+        ja:wl_iu_backup_fail) echo 'アップグレード前のバックアップに失敗しました。旧コンテナを保持しました。' ;;
+        zh:wl_iu_journal_fail) echo '无法提交 Wallos 升级日志；已保留旧容器。' ;;
+        en:wl_iu_journal_fail) echo 'Could not commit the Wallos upgrade journal; the old container was retained.' ;;
+        ru:wl_iu_journal_fail) echo 'Не удалось зафиксировать журнал обновления Wallos; старый контейнер сохранён.' ;;
+        fa:wl_iu_journal_fail) echo 'ثبت ژورنال ارتقای Wallos ممکن نشد؛ کانتینر قدیمی نگه داشته شد.' ;;
+        zh-tw:wl_iu_journal_fail) echo '無法提交 Wallos 升級日誌；已保留舊容器。' ;;
+        ja:wl_iu_journal_fail) echo 'Wallos アップグレードジャーナルをコミットできませんでした。旧コンテナを保持しました。' ;;
+        zh:wl_iu_start_fail) echo 'Wallos 升级无法启动；请保留事务日志与备份。' ;;
+        en:wl_iu_start_fail) echo 'Wallos upgrade could not start; preserve the transaction journal and backup.' ;;
+        ru:wl_iu_start_fail) echo 'Обновление Wallos не удалось запустить; сохраните журнал транзакции и резервную копию.' ;;
+        fa:wl_iu_start_fail) echo 'ارتقای Wallos شروع نشد؛ ژورنال تراکنش و نسخه پشتیبان را نگه دارید.' ;;
+        zh-tw:wl_iu_start_fail) echo 'Wallos 升級無法啟動；請保留交易日誌與備份。' ;;
+        ja:wl_iu_start_fail) echo 'Wallos のアップグレードを開始できませんでした。トランザクションジャーナルとバックアップを保持してください。' ;;
+        zh:wl_iu_rb_incomplete) echo 'Wallos 自动回滚未完成。请保留事务日志 %s 与备份 %s。' ;;
+        en:wl_iu_rb_incomplete) echo 'Automatic Wallos rollback did not complete. Preserve the transaction journal at %s and backup %s.' ;;
+        ru:wl_iu_rb_incomplete) echo 'Автоматический откат Wallos не завершён. Сохраните журнал транзакции %s и резервную копию %s.' ;;
+        fa:wl_iu_rb_incomplete) echo 'بازگشت خودکار Wallos کامل نشد. ژورنال تراکنش %s و نسخه پشتیبان %s را نگه دارید.' ;;
+        zh-tw:wl_iu_rb_incomplete) echo 'Wallos 自動回滾未完成。請保留交易日誌 %s 與備份 %s。' ;;
+        ja:wl_iu_rb_incomplete) echo 'Wallos の自動ロールバックが完了しませんでした。トランザクションジャーナル %s とバックアップ %s を保持してください。' ;;
+        zh:wl_iu_health_kept) echo 'Wallos 未通过健康检查。已尝试回滚。' ;;
+        en:wl_iu_health_kept) echo 'Wallos did not pass health check. Rollback was attempted.' ;;
+        ru:wl_iu_health_kept) echo 'Wallos не прошёл проверку состояния. Выполнена попытка отката.' ;;
+        fa:wl_iu_health_kept) echo 'Wallos بررسی سلامت را نگذراند. بازگشت تلاش شد.' ;;
+        zh-tw:wl_iu_health_kept) echo 'Wallos 未通過健康檢查。已嘗試回滾。' ;;
+        ja:wl_iu_health_kept) echo 'Wallos がヘルスチェックに合格しませんでした。ロールバックを試みました。' ;;
+        zh:wl_iu_meta_fail) echo 'Wallos 状态元数据提交失败。正在尽可能回滚未完成的升级。' ;;
+        en:wl_iu_meta_fail) echo 'Wallos state metadata failed to commit. Rolling back the incomplete upgrade where possible.' ;;
+        ru:wl_iu_meta_fail) echo 'Не удалось зафиксировать метаданные состояния Wallos. Выполняется откат незавершённого обновления, где возможно.' ;;
+        fa:wl_iu_meta_fail) echo 'ثبت فراداده وضعیت Wallos ناموفق بود. ارتقای ناقص تا حد امکان بازگردانده می‌شود.' ;;
+        zh-tw:wl_iu_meta_fail) echo 'Wallos 狀態中繼資料提交失敗。正在盡可能回滾未完成的升級。' ;;
+        ja:wl_iu_meta_fail) echo 'Wallos の状態メタデータのコミットに失敗しました。可能な範囲で未完了のアップグレードをロールバックします。' ;;
+        zh:wl_iu_rb_fail) echo '回滚失败；请保留 %s 与 %s。' ;;
+        en:wl_iu_rb_fail) echo 'Rollback failed; preserve %s and %s.' ;;
+        ru:wl_iu_rb_fail) echo 'Откат не удался; сохраните %s и %s.' ;;
+        fa:wl_iu_rb_fail) echo 'بازگشت ناموفق بود؛ %s و %s را نگه دارید.' ;;
+        zh-tw:wl_iu_rb_fail) echo '回滾失敗；請保留 %s 與 %s。' ;;
+        ja:wl_iu_rb_fail) echo 'ロールバックに失敗しました。%s と %s を保持してください。' ;;
+        zh:wl_iu_health_meta_fail) echo 'Wallos 健康检查通过，但事务提交元数据失败；正在恢复到之前的版本。' ;;
+        en:wl_iu_health_meta_fail) echo 'Wallos health check passed but transaction commit metadata failed; restoring the previous version.' ;;
+        ru:wl_iu_health_meta_fail) echo 'Проверка состояния Wallos пройдена, но метаданные фиксации транзакции не удались; восстанавливается предыдущая версия.' ;;
+        fa:wl_iu_health_meta_fail) echo 'بررسی سلامت Wallos موفق بود اما فراداده ثبت تراکنش ناموفق شد؛ نسخه قبلی بازیابی می‌شود.' ;;
+        zh-tw:wl_iu_health_meta_fail) echo 'Wallos 健康檢查通過，但交易提交中繼資料失敗；正在還原到之前的版本。' ;;
+        ja:wl_iu_health_meta_fail) echo 'Wallos のヘルスチェックは合格しましたが、トランザクションコミットのメタデータが失敗しました。前のバージョンに復元します。' ;;
+        zh:wl_iu_journal_pending) echo 'Wallos 已更新；已提交日志的清理将在下次运行时完成。' ;;
+        en:wl_iu_journal_pending) echo 'Wallos is updated; committed journal cleanup will finish on the next run.' ;;
+        ru:wl_iu_journal_pending) echo 'Wallos обновлён; очистка зафиксированного журнала завершится при следующем запуске.' ;;
+        fa:wl_iu_journal_pending) echo 'Wallos به‌روز شد؛ پاک‌سازی ژورنال ثبت‌شده در اجرای بعدی کامل می‌شود.' ;;
+        zh-tw:wl_iu_journal_pending) echo 'Wallos 已更新；已提交日誌的清理將在下次執行時完成。' ;;
+        ja:wl_iu_journal_pending) echo 'Wallos は更新されました。コミット済みジャーナルのクリーンアップは次回実行時に完了します。' ;;
+        zh:wl_iu_running) echo 'Wallos 已启动：%s' ;;
+        en:wl_iu_running) echo 'Wallos is running: %s' ;;
+        ru:wl_iu_running) echo 'Wallos запущен: %s' ;;
+        fa:wl_iu_running) echo 'Wallos اجرا شد: %s' ;;
+        zh-tw:wl_iu_running) echo 'Wallos 已啟動：%s' ;;
+        ja:wl_iu_running) echo 'Wallos を起動しました：%s' ;;
+        zh:wl_iu_note_local) echo '默认仅允许本机访问；远程访问请使用 HTTPS 反向代理或 SSH 隧道，不需要为该本机端口开放公网入站规则。' ;;
+        en:wl_iu_note_local) echo 'Access is local-only by default. Use an HTTPS reverse proxy or SSH tunnel for remote access.' ;;
+        ru:wl_iu_note_local) echo 'По умолчанию доступ разрешён только с этого хоста. Для удалённого доступа используйте HTTPS reverse proxy или SSH-туннель.' ;;
+        fa:wl_iu_note_local) echo 'دسترسی به‌طور پیش‌فرض فقط از همین میزبان است؛ برای راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.' ;;
+        zh-tw:wl_iu_note_local) echo '預設僅允許本機存取；遠端存取請使用 HTTPS 反向代理或 SSH 隧道。' ;;
+        ja:wl_iu_note_local) echo 'デフォルトではローカルホストからのアクセスのみ許可されています。リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。' ;;
+        zh:wl_iu_note_http_pub) echo '明文 HTTP 已绑定所有 IPv4 网卡；TCP %s 必须由 HTTPS 反向代理与防火墙保护。' ;;
+        en:wl_iu_note_http_pub) echo 'Plain HTTP is published on all IPv4 interfaces; protect TCP %s with an HTTPS reverse proxy and firewall.' ;;
+        ru:wl_iu_note_http_pub) echo 'HTTP без TLS опубликован на всех IPv4-интерфейсах и требует внешней защиты HTTPS reverse proxy/firewall на TCP %s.' ;;
+        fa:wl_iu_note_http_pub) echo 'HTTP بدون TLS روی همه رابط‌های IPv4 منتشر شده است؛ روی TCP %s به HTTPS reverse proxy و firewall نیاز دارید.' ;;
+        zh-tw:wl_iu_note_http_pub) echo '明文 HTTP 已綁定所有 IPv4 網卡；TCP %s 必須由 HTTPS 反向代理與防火牆保護。' ;;
+        ja:wl_iu_note_http_pub) echo '平文 HTTP はすべての IPv4 インターフェースにバインドされています。TCP %s は HTTPS リバースプロキシとファイアウォールで保護してください。' ;;
+        zh:wl_iu_state_save_fail) echo 'Wallos 状态保存失败，重跑安装可修复元数据。' ;;
+        en:wl_iu_state_save_fail) echo 'Wallos state save failed; re-running the install can repair the metadata.' ;;
+        ru:wl_iu_state_save_fail) echo 'Не удалось сохранить состояние Wallos; повторный запуск установки может исправить метаданные.' ;;
+        fa:wl_iu_state_save_fail) echo 'ذخیره وضعیت Wallos ناموفق بود؛ اجرای دوباره نصب می‌تواند فراداده را تعمیر کند.' ;;
+        zh-tw:wl_iu_state_save_fail) echo 'Wallos 狀態保存失敗，重跑安裝可修復中繼資料。' ;;
+        ja:wl_iu_state_save_fail) echo 'Wallos の状態保存に失敗しました。インストールを再実行するとメタデータを修復できます。' ;;
+        zh:wl_iu_https_incomplete) echo 'HTTPS 配置未完成：Wallos 已在本机运行，但未对外暴露。修复后重跑安装即可重试。' ;;
+        en:wl_iu_https_incomplete) echo 'HTTPS setup did not complete: Wallos is running locally but not exposed. Fix the cause and re-run the install to retry.' ;;
+        ru:wl_iu_https_incomplete) echo 'Настройка HTTPS не завершена: Wallos работает локально, но не опубликован. Устраните причину и повторите установку.' ;;
+        fa:wl_iu_https_incomplete) echo 'تنظیم HTTPS کامل نشد: Wallos به‌صورت محلی در حال اجراست اما در معرض نیست. علت را رفع و نصب را دوباره اجرا کنید.' ;;
+        zh-tw:wl_iu_https_incomplete) echo 'HTTPS 設定未完成：Wallos 已在本機運行，但未對外暴露。修復後重跑安裝即可重試。' ;;
+        ja:wl_iu_https_incomplete) echo 'HTTPS の設定が完了しませんでした。Wallos はローカルで実行中ですが公開されていません。原因を修正してインストールを再実行してください。' ;;
+        zh:wl_iu_cf_incomplete) echo 'CF 隧道配置未完成：Wallos 已在本机运行，但未对外暴露。修复后重跑安装即可重试。' ;;
+        en:wl_iu_cf_incomplete) echo 'CF tunnel setup did not complete: Wallos is running locally but not exposed. Fix the cause and re-run the install to retry.' ;;
+        ru:wl_iu_cf_incomplete) echo 'Настройка туннеля CF не завершена: Wallos работает локально, но не опубликован. Устраните причину и повторите установку.' ;;
+        fa:wl_iu_cf_incomplete) echo 'تنظیم تونل CF کامل نشد: Wallos به‌صورت محلی در حال اجراست اما در معرض نیست. علت را رفع و نصب را دوباره اجرا کنید.' ;;
+        zh-tw:wl_iu_cf_incomplete) echo 'CF 隧道設定未完成：Wallos 已在本機運行，但未對外暴露。修復後重跑安裝即可重試。' ;;
+        ja:wl_iu_cf_incomplete) echo 'CF トンネルの設定が完了しませんでした。Wallos はローカルで実行中ですが公開されていません。原因を修正してインストールを再実行してください。' ;;
+        zh:wl_iu_ufw_q) echo '通过 UFW 放行 TCP %s？[Y/N]: ' ;;
+        en:wl_iu_ufw_q) echo 'Allow TCP %s through UFW? [Y/N]: ' ;;
+        ru:wl_iu_ufw_q) echo 'Разрешить TCP %s через UFW? [Y/N]: ' ;;
+        fa:wl_iu_ufw_q) echo 'TCP %s از UFW مجاز شود؟ [Y/N]: ' ;;
+        zh-tw:wl_iu_ufw_q) echo '透過 UFW 放行 TCP %s？[Y/N]: ' ;;
+        ja:wl_iu_ufw_q) echo 'UFW で TCP %s を許可しますか？[Y/N]: ' ;;
+        zh:wl_iu_ufw_fail) echo '无法更新 UFW；请手动添加规则。' ;;
+        en:wl_iu_ufw_fail) echo 'Could not update UFW; add the rule manually.' ;;
+        ru:wl_iu_ufw_fail) echo 'Не удалось обновить UFW; добавьте правило вручную.' ;;
+        fa:wl_iu_ufw_fail) echo 'به‌روزرسانی UFW ممکن نشد؛ قانون را دستی اضافه کنید.' ;;
+        zh-tw:wl_iu_ufw_fail) echo '無法更新 UFW；請手動新增規則。' ;;
+        ja:wl_iu_ufw_fail) echo 'UFW を更新できませんでした。手動でルールを追加してください。' ;;
+        zh:wl_iu_fwd_q) echo '通过 firewalld 放行 TCP %s？[Y/N]: ' ;;
+        en:wl_iu_fwd_q) echo 'Allow TCP %s through firewalld? [Y/N]: ' ;;
+        ru:wl_iu_fwd_q) echo 'Разрешить TCP %s через firewalld? [Y/N]: ' ;;
+        fa:wl_iu_fwd_q) echo 'TCP %s از firewalld مجاز شود؟ [Y/N]: ' ;;
+        zh-tw:wl_iu_fwd_q) echo '透過 firewalld 放行 TCP %s？[Y/N]: ' ;;
+        ja:wl_iu_fwd_q) echo 'firewalld で TCP %s を許可しますか？[Y/N]: ' ;;
+        zh:wl_iu_fwd_fail) echo '无法更新 firewalld；请手动添加规则。' ;;
+        en:wl_iu_fwd_fail) echo 'Could not update firewalld; add the rule manually.' ;;
+        ru:wl_iu_fwd_fail) echo 'Не удалось обновить firewalld; добавьте правило вручную.' ;;
+        fa:wl_iu_fwd_fail) echo 'به‌روزرسانی firewalld ممکن نشد؛ قانون را دستی اضافه کنید.' ;;
+        zh-tw:wl_iu_fwd_fail) echo '無法更新 firewalld；請手動新增規則。' ;;
+        ja:wl_iu_fwd_fail) echo 'firewalld を更新できませんでした。手動でルールを追加してください。' ;;
+        zh:wl_iu_check_t) echo '直连安全清单：' ;;
+        en:wl_iu_check_t) echo 'Direct-access security checklist:' ;;
+        ru:wl_iu_check_t) echo 'Чек-лист безопасности прямого доступа:' ;;
+        fa:wl_iu_check_t) echo 'چک‌لیست امنیتی دسترسی مستقیم:' ;;
+        zh-tw:wl_iu_check_t) echo '直連安全清單：' ;;
+        ja:wl_iu_check_t) echo '直接アクセス安全チェックリスト：' ;;
+        zh:wl_iu_check_1) echo '云安全组：TCP %s 只放你自己的 IP(/32)，不要开 0.0.0.0/0。' ;;
+        en:wl_iu_check_1) echo 'Cloud security group: allow TCP %s from YOUR IP ONLY (/32), not 0.0.0.0/0.' ;;
+        ru:wl_iu_check_1) echo 'Группа безопасности: TCP %s только с ВАШЕГО IP (/32), не 0.0.0.0/0.' ;;
+        fa:wl_iu_check_1) echo 'گروه امنیتی: TCP %s فقط از IP شما (/32)، نه 0.0.0.0/0.' ;;
+        zh-tw:wl_iu_check_1) echo '雲安全組：TCP %s 只放你自己的 IP(/32)，不要 0.0.0.0/0。' ;;
+        ja:wl_iu_check_1) echo 'セキュリティグループ：TCP %s は自分の IP(/32) のみ許可、0.0.0.0/0 は不可。' ;;
+        zh:wl_iu_check_2) echo 'Wallos 管理员密码设 20 位以上强密码。' ;;
+        en:wl_iu_check_2) echo 'Set a strong Wallos admin password (20+ chars) on first login.' ;;
+        ru:wl_iu_check_2) echo 'Сильный пароль администратора Wallos (20+ символов).' ;;
+        fa:wl_iu_check_2) echo 'رمز قوی مدیر Wallos (۲۰+ نویسه).' ;;
+        zh-tw:wl_iu_check_2) echo 'Wallos 管理員密碼設 20 位以上強密碼。' ;;
+        ja:wl_iu_check_2) echo 'Wallos 管理者パスワードは 20 文字以上の強いものを。' ;;
+        zh:wl_iu_check_3) echo 'fail2ban 已启用：10 分钟内 10 次登录失败 = 封 24 小时。' ;;
+        en:wl_iu_check_3) echo 'Fail2ban is active on this port: 10 failed logins in 10 min = 24h ban.' ;;
+        ru:wl_iu_check_3) echo 'Fail2ban активен: 10 неудачных входов за 10 мин = бан 24ч.' ;;
+        fa:wl_iu_check_3) echo 'Fail2ban فعال است: ۱۰ ورود ناموفق در ۱۰ دقیقه = ۲۴ ساعت مسدودی.' ;;
+        zh-tw:wl_iu_check_3) echo 'fail2ban 已啟用：10 分鐘內 10 次登錄失敗 = 封 24 小時。' ;;
+        ja:wl_iu_check_3) echo 'fail2ban 有効：10 分で 10 回失敗 = 24 時間 BAN。' ;;
         zh:wl_rt_daemon_down) echo '已检测到 Docker 命令，但守护进程不可用。为避免覆盖/冲突，A-Box 未安装第二套 Docker；请先修复现有 Docker 服务后重试。' ;;
         en:wl_rt_daemon_down) echo 'Docker CLI exists, but its daemon is unavailable. A-Box did not install another Docker package to avoid conflicts; fix the existing Docker service and retry.' ;;
         ru:wl_rt_daemon_down) echo 'Docker CLI установлен, но демон недоступен. A-Box не устанавливал другой пакет Docker во избежание конфликтов; исправьте существующую службу и повторите.' ;;
@@ -26395,11 +26659,11 @@ wallos_http_rebind() { # $1=public port $2=image $3=tz: republish the container 
 
 wallos_install_or_update() {
     local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
-    (( EUID == 0 )) || { case "${ABOX_LANG:-zh}" in en) msg "${RED}Run Wallos setup as root.${NC}" ;; ru) msg "${RED}Для установки Wallos требуются права root.${NC}" ;; fa) msg "${RED}برای نصب Wallos دسترسی root لازم است.${NC}" ;; zh-tw) msg "${RED}安裝 Wallos 需要 root 權限。${NC}" ;; ja) msg "${RED}Wallos のセットアップは root 権限で実行してください。${NC}" ;; *) msg "${RED}安装 Wallos 需要 root 权限。${NC}" ;; esac; return 1; }
-    command -v jq >/dev/null 2>&1 || { case "${ABOX_LANG:-zh}" in en) msg "${RED}jq is required; install the A-Box dependencies first.${NC}" ;; ru) msg "${RED}Требуется jq; сначала установите зависимости A-Box.${NC}" ;; fa) msg "${RED}به jq نیاز است؛ ابتدا وابستگی‌های A-Box را نصب کنید.${NC}" ;; zh-tw) msg "${RED}需要 jq，請先安裝 A-Box 依賴。${NC}" ;; ja) msg "${RED}jq が必要です。先に A-Box の依存パッケージをインストールしてください。${NC}" ;; *) msg "${RED}需要 jq，请先安装 A-Box 依赖。${NC}" ;; esac; return 1; }
+    (( EUID == 0 )) || { msg "${RED}$(tr_msg wl_iu_need_root)${NC}"; return 1; }
+    command -v jq >/dev/null 2>&1 || { msg "${RED}$(tr_msg wl_iu_need_jq)${NC}"; return 1; }
     wallos_print_host_info
-    arch=$(wallos_detect_arch) || { case "${ABOX_LANG:-zh}" in en) msg "${RED}Supported Wallos image architectures are amd64, arm64 and ARMv7.${NC}" ;; ru) msg "${RED}Поддерживаются архитектуры amd64, arm64 и ARMv7.${NC}" ;; fa) msg "${RED}معماری‌های پشتیبانی‌شده amd64، arm64 و ARMv7 هستند.${NC}" ;; zh-tw) msg "${RED}Wallos 支援 amd64、arm64 和 ARMv7 架構。${NC}" ;; ja) msg "${RED}サポートされている Wallos イメージのアーキテクチャは amd64、arm64、ARMv7 です。${NC}" ;; *) msg "${RED}Wallos 支持 amd64、arm64 和 ARMv7 架构。${NC}" ;; esac; return 1; }
-    wallos_install_runtime || { case "${ABOX_LANG:-zh}" in en) msg "${RED}Docker could not be installed or started; no Wallos container was changed.${NC}" ;; ru) msg "${RED}Не удалось установить или запустить Docker; контейнер Wallos не изменён.${NC}" ;; fa) msg "${RED}نصب یا اجرای Docker شکست خورد؛ کانتینر Wallos تغییر نکرد.${NC}" ;; zh-tw) msg "${RED}Docker 安裝或啟動失敗，未修改 Wallos 容器。${NC}" ;; ja) msg "${RED}Docker をインストールまたは起動できませんでした。Wallos コンテナは変更されていません。${NC}" ;; *) msg "${RED}Docker 安装或启动失败，未修改 Wallos 容器。${NC}" ;; esac; return 1; }
+    arch=$(wallos_detect_arch) || { msg "${RED}$(tr_msg wl_iu_arch)${NC}"; return 1; }
+    wallos_install_runtime || { msg "${RED}$(tr_msg wl_iu_docker_fail)${NC}"; return 1; }
     docker info >/dev/null 2>&1 || return 1
     if [[ -e "$WALLOS_DIR/.upgrade-transaction" || -L "$WALLOS_DIR/.upgrade-transaction" ]]; then
         wallos_recover_interrupted_upgrade || return 1
@@ -26408,7 +26672,7 @@ wallos_install_or_update() {
 
     if docker container inspect wallos >/dev/null 2>&1; then
         [[ -f "$WALLOS_DIR/.A-Box-managed" && ! -L "$WALLOS_DIR/.A-Box-managed" ]] || {
-            msg "${RED}An unmanaged container named wallos already exists. Rename it or manage it outside A-Box; no takeover was attempted.${NC}"
+            msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}"
             return 1
         }
         running=1
@@ -26422,30 +26686,30 @@ wallos_install_or_update() {
         # Empty means no port binding — preserve empty (do not invent a publication).
         # Invalid values refuse the upgrade rather than silently expanding exposure.
         if [[ -n "$old_bind" ]]; then
-            valid_ip_address "$old_bind" || { msg "${RED}Wallos existing bind address is invalid: $old_bind; refusing to upgrade.${NC}"; return 1; }
+            valid_ip_address "$old_bind" || { msg "${RED}$(tprintf wl_iu_bad_bind "$old_bind")${NC}"; return 1; }
         fi
         # C-03: Read old_port from state (was never assigned, causing 100% upgrade failure).
         old_port=$(wallos_state_value PORT 2>/dev/null || true)
         # C-03: Validate port is canonical (1-65535, no leading zeros) BEFORE any
         # destructive step (docker stop / backup / journal). Old check only ^[0-9]+$
         # admitted 0, 080, 70000.
-        valid_canonical_port "$old_port" || { msg "${RED}Wallos persisted port is invalid: $old_port; refusing to upgrade.${NC}"; return 1; }
+        valid_canonical_port "$old_port" || { msg "${RED}$(tprintf wl_iu_bad_port "$old_port")${NC}"; return 1; }
         old_tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
         [[ -n "$old_tz" ]] || old_tz='UTC'
         # P3-7: refuse on invalid persisted TZ (was silent fallback to UTC).
-        valid_timezone_name "$old_tz" || { msg "${RED}Wallos persisted timezone is invalid: $old_tz; refusing to upgrade.${NC}"; return 1; }
+        valid_timezone_name "$old_tz" || { msg "${RED}$(tprintf wl_iu_bad_tz "$old_tz")${NC}"; return 1; }
         tz="$old_tz"
         # F-09: preserve old bind address for the new container when WALLOS_BIND_ADDRESS is unset.
         if [[ -z "${WALLOS_BIND_ADDRESS:-}" && -n "$old_bind" ]]; then
             bind_address="$old_bind"
         fi
         [[ -n "$old_image" && "$old_image" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ && "$old_port" =~ ^[0-9]+$ ]] || {
-            msg "${RED}Wallos state is incomplete; refusing to upgrade it.${NC}"; return 1;
+            msg "${RED}$(tr_msg wl_iu_state_incomplete)${NC}"; return 1;
         }
         port="$old_port"
     else
         [[ ! -e "$WALLOS_DIR" || -f "$WALLOS_DIR/.A-Box-managed" ]] || {
-            msg "${RED}$WALLOS_DIR exists without an A-Box ownership marker; refusing to overwrite it.${NC}"; return 1;
+            msg "${RED}$(tprintf wl_iu_no_marker "$WALLOS_DIR")${NC}"; return 1;
         }
         # Fresh install: random high port (20000-60000) instead of predictable 8282.
         port=''
@@ -26454,16 +26718,16 @@ wallos_install_or_update() {
             local _cand=$(( (RANDOM * 32768 + RANDOM) % 40001 + 20000 ))
             if wallos_port_free "$_cand"; then port="$_cand"; break; fi
         done
-        [[ "$port" =~ ^[0-9]+$ ]] || { case "${ABOX_LANG:-zh}" in en) msg "${RED}No free high port found in 20000-60000; free one and retry.${NC}" ;; ru) msg "${RED}Нет свободного высокого порта 20000–60000.${NC}" ;; fa) msg "${RED}درگاه آزاد در 20000 تا 60000 یافت نشد.${NC}" ;; zh-tw) msg "${RED}20000–60000 無可用高位連接埠，請釋放後重試。${NC}" ;; ja) msg "${RED}20000～60000 に空きポートがありません。${NC}" ;; *) msg "${RED}20000–60000 无可用高位端口，请释放端口后重试。${NC}" ;; esac; return 1; }
+        [[ "$port" =~ ^[0-9]+$ ]] || { msg "${RED}$(tr_msg wl_iu_no_free_port)${NC}"; return 1; }
         tz=$(current_timezone_name 2>/dev/null || printf 'UTC')
         valid_timezone_name "$tz" || tz='UTC'
     fi
     # C-03: Wallos container listens on IPv4 only. Require IPv4 (no CIDR suffix).
     # F-09 preserved bind (any valid IPv4, e.g. LAN/Tailscale) is allowed.
     # Only an explicit WALLOS_BIND_ADDRESS override is restricted to loopback/all.
-    valid_ipv4_cidr "$bind_address" && [[ "$bind_address" != */* ]] || { msg "${RED}WALLOS_BIND_ADDRESS is not a valid IPv4 address: $bind_address${NC}"; return 1; }
+    valid_ipv4_cidr "$bind_address" && [[ "$bind_address" != */* ]] || { msg "${RED}$(tprintf wl_iu_bind_invalid "$bind_address")${NC}"; return 1; }
     if [[ -n "${WALLOS_BIND_ADDRESS:-}" && "$bind_address" != 127.0.0.1 && "$bind_address" != 0.0.0.0 ]]; then
-        msg "${RED}WALLOS_BIND_ADDRESS override must be 127.0.0.1 or 0.0.0.0.${NC}"; return 1
+        msg "${RED}$(tr_msg wl_iu_bind_override)${NC}"; return 1
     fi
     # Access mode: [1] public HTTPS (Caddy + Let's Encrypt IP cert),
     # [2] localhost only (SSH tunnel), [3] Cloudflare Tunnel (needs a
@@ -26504,28 +26768,18 @@ wallos_install_or_update() {
         bind_address='127.0.0.1'
         [[ -n "$cfhost" ]] || cfhost=$(wallos_state_value CFHOST 2>/dev/null || true)
         if [[ -t 0 ]]; then
-            case "${ABOX_LANG:-zh}" in
-                en)
-                    msg "Cloudflare Tunnel mode - prepare in the CF dashboard first (about 2 min):"
-                    msg "  1) Zero Trust -> Networks -> Tunnels -> Create a tunnel (cloudflared); its install command contains a --token value."
-                    msg "  2) Add a Public Hostname on that tunnel: your hostname (e.g. wallos.example.com), Service HTTP, URL 127.0.0.1:${port}."
-                    msg "  3) Strongly recommended: Zero Trust -> Access -> Applications - restrict that hostname to your own email."
-                    ;;
-                *)
-                    msg "CF 隧道模式——请先在 Cloudflare 后台准备（约 2 分钟）："
-                    msg "  1) Zero Trust → Networks → Tunnels → Create a tunnel（选 cloudflared），页面会给出一条带 --token 的命令；"
-                    msg "  2) 在该隧道添加 Public Hostname：域名填你想要的（如 wallos.example.com），Service 选 HTTP，URL 填 127.0.0.1:${port}；"
-                    msg "  3) 强烈建议：Zero Trust → Access → Applications 给该域名加策略，只允许你自己的邮箱。"
-                    ;;
-            esac
+            msg "$(tr_msg wl_iu_cf_guide_t)"
+            msg "  $(tr_msg wl_iu_cf_guide_1)"
+            msg "  $(tprintf wl_iu_cf_guide_2 "$port")"
+            msg "  $(tr_msg wl_iu_cf_guide_3)"
             local _h=''
-            if [[ "${ABOX_LANG:-zh}" == en ]]; then printf 'Public hostname [%s]: ' "${cfhost:-wallos.example.com}"; else printf '绑定的完整域名 [%s]: ' "${cfhost:-wallos.example.com}"; fi
+            printf '%s' "$(tprintf wl_iu_host_prompt "${cfhost:-wallos.example.com}")"
             read -r _h || _h=''
             [[ -n "$_h" ]] && cfhost="$_h"
             if [[ -s "$WALLOS_CF_TOKEN_FILE" ]]; then
-                if [[ "${ABOX_LANG:-zh}" == en ]]; then printf 'Tunnel token (Enter keeps the saved one; paste to replace): '; else printf '隧道令牌（已有令牌，回车保留；粘贴新令牌替换）: '; fi
+                printf '%s' "$(tr_msg wl_iu_token_keep)"
             else
-                if [[ "${ABOX_LANG:-zh}" == en ]]; then printf 'Paste the tunnel token (the value after --token): '; else printf '粘贴隧道令牌（--token 后面那串）: '; fi
+                printf '%s' "$(tr_msg wl_iu_token_paste)"
             fi
             read -r cftoken || cftoken=''
         fi
@@ -26617,7 +26871,7 @@ wallos_install_or_update() {
     fi
     if (( ! _bind_chosen )) && ! confirm_yes_no "$confirm_prompt"; then return 0; fi
 
-    wallos_pull_or_restore_image "$arch" || { msg "${RED}Official Wallos source and the A-Box recovery image are both unavailable.${NC}"; return 1; }
+    wallos_pull_or_restore_image "$arch" || { msg "${RED}$(tr_msg wl_iu_src_unavail)${NC}"; return 1; }
     image="$WALLOS_IMAGE_RESULT"
     mkdir -p "$WALLOS_DIR/db" "$WALLOS_DIR/logos" "$WALLOS_DIR/backups" || return 1
     chmod 750 "$WALLOS_DIR" "$WALLOS_DIR/db" "$WALLOS_DIR/logos" || return 1
@@ -26628,14 +26882,14 @@ wallos_install_or_update() {
     if (( running == 1 )); then
         if (( was_running == 1 )); then docker stop wallos >/dev/null 2>&1 || return 1; fi
         stamp=$(date -u '+%Y%m%dT%H%M%SZ')
-        backup=$(wallos_create_backup "$stamp") || { (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true; msg "${RED}Pre-upgrade backup failed; old container was retained.${NC}"; return 1; }
+        backup=$(wallos_create_backup "$stamp") || { (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true; msg "${RED}$(tr_msg wl_iu_backup_fail)${NC}"; return 1; }
         wallos_upgrade_journal_write active "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" || {
             (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true
-            msg "${RED}Could not commit the Wallos upgrade journal; the old container was retained.${NC}"
+            msg "${RED}$(tr_msg wl_iu_journal_fail)${NC}"
             return 1
         }
         docker rm wallos >/dev/null 2>&1 || {
-            wallos_recover_interrupted_upgrade || msg "${RED}Wallos upgrade could not start; preserve the transaction journal and backup.${NC}"
+            wallos_recover_interrupted_upgrade || msg "${RED}$(tr_msg wl_iu_start_fail)${NC}"
             return 1
         }
     fi
@@ -26648,9 +26902,9 @@ wallos_install_or_update() {
     if (( code != 0 )) || ! wallos_wait_healthy "$port"; then
         docker rm -f wallos >/dev/null 2>&1 || true
         if (( running == 1 )); then
-            wallos_recover_interrupted_upgrade || msg "${RED}Automatic Wallos rollback did not complete. Preserve the transaction journal at ${WALLOS_DIR}/.upgrade-transaction and backup ${backup:-unavailable}.${NC}"
+            wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_incomplete "${WALLOS_DIR}/.upgrade-transaction" "${backup:-unavailable}")${NC}"
         fi
-        msg "${RED}Wallos did not pass health check. Rollback was attempted.${NC}"
+        msg "${RED}$(tr_msg wl_iu_health_kept)${NC}"
         return 1
     fi
 
@@ -26658,10 +26912,10 @@ wallos_install_or_update() {
     # the container. Commit the mutable image/port/timezone state atomically;
     # do not silently report a complete update if metadata cannot be saved.
     if ! wallos_write_state "$image" "$port" "$tz" "$bind_address" "$wmode" "$pubport" "$cfhost"; then
-        msg "${RED}Wallos state metadata failed to commit. Rolling back the incomplete upgrade where possible.${NC}"
+        msg "${RED}$(tr_msg wl_iu_meta_fail)${NC}"
         if (( running == 1 )); then
             docker rm -f wallos >/dev/null 2>&1 || true
-            wallos_recover_interrupted_upgrade || msg "${RED}Rollback failed; preserve $WALLOS_DIR/.upgrade-transaction and $backup.${NC}"
+            wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
         else
             docker rm -f wallos >/dev/null 2>&1 || true
         fi
@@ -26669,13 +26923,13 @@ wallos_install_or_update() {
     fi
     if (( running == 1 )); then
         if ! wallos_upgrade_journal_write committed "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running"; then
-            msg "${RED}Wallos health check passed but transaction commit metadata failed; restoring the previous version.${NC}"
+            msg "${RED}$(tr_msg wl_iu_health_meta_fail)${NC}"
             docker rm -f wallos >/dev/null 2>&1 || true
-            wallos_recover_interrupted_upgrade || msg "${RED}Rollback failed; preserve $WALLOS_DIR/.upgrade-transaction and $backup.${NC}"
+            wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
             return 1
         fi
         rm -f -- "$WALLOS_DIR/.upgrade-transaction" || {
-            msg "${YELLOW}Wallos is updated; committed journal cleanup will finish on the next run.${NC}"
+            msg "${YELLOW}$(tr_msg wl_iu_journal_pending)${NC}"
             return 1
         }
         # N-11: prune local images to current + previous (2 max, 500MB cap).
@@ -26686,36 +26940,9 @@ wallos_install_or_update() {
             wallos_prune_local_images "$image" || true
         fi
     fi
-    case "${ABOX_LANG:-zh}" in
-        en)
-            msg "${GREEN}Wallos is running: $image${NC}"
-            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='Access is local-only by default. Use an HTTPS reverse proxy or SSH tunnel for remote access.'
-            else security_note="Plain HTTP is published on all IPv4 interfaces; protect TCP $port with an HTTPS reverse proxy and firewall."; fi ;;
-        ru)
-            msg "${GREEN}Wallos запущен: $image${NC}"
-            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='По умолчанию доступ разрешён только с этого хоста. Для удалённого доступа используйте HTTPS reverse proxy или SSH-туннель.'
-            else security_note="HTTP без TLS опубликован на всех IPv4-интерфейсах и требует внешней защиты HTTPS reverse proxy/firewall на TCP $port."; fi ;;
-        fa)
-            msg "${GREEN}Wallos اجرا شد: $image${NC}"
-            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='دسترسی به‌طور پیش‌فرض فقط از همین میزبان است؛ برای راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.'
-            else security_note="HTTP بدون TLS روی همه رابط‌های IPv4 منتشر شده است؛ روی TCP $port به HTTPS reverse proxy و firewall نیاز دارید."; fi ;;
-        zh)
-            msg "${GREEN}Wallos 已启动：$image${NC}"
-            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='默认仅允许本机访问；远程访问请使用 HTTPS 反向代理或 SSH 隧道，不需要为该本机端口开放公网入站规则。'
-            else security_note="明文 HTTP 已绑定所有 IPv4 网卡；TCP $port 必须由 HTTPS 反向代理与防火墙保护。"; fi ;;
-        zh-tw)
-            msg "${GREEN}Wallos 已啟動：$image${NC}"
-            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='預設僅允許本機存取；遠端存取請使用 HTTPS 反向代理或 SSH 隧道。'
-            else security_note="明文 HTTP 已綁定所有 IPv4 網卡；TCP $port 必須由 HTTPS 反向代理與防火牆保護。"; fi ;;
-        ja)
-            msg "${GREEN}Wallos を起動しました：$image${NC}"
-            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='デフォルトではローカルホストからのアクセスのみ許可されています。リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。'
-            else security_note="平文 HTTP はすべての IPv4 インターフェースにバインドされています。TCP $port は HTTPS リバースプロキシとファイアウォールで保護してください。"; fi ;;
-        *)
-            msg "${GREEN}Wallos 已启动：$image${NC}"
-            if [[ "$bind_address" == 127.0.0.1 ]]; then security_note='默认仅允许本机访问；远程访问请使用 HTTPS 反向代理或 SSH 隧道。'
-            else security_note="明文 HTTP 已绑定所有 IPv4 网卡；TCP $port 必须由 HTTPS 反向代理与防火墙保护。"; fi ;;
-    esac
+    msg "${GREEN}$(tprintf wl_iu_running "$image")${NC}"
+    if [[ "$bind_address" == 127.0.0.1 ]]; then security_note=$(tr_msg wl_iu_note_local)
+    else security_note=$(tprintf wl_iu_note_http_pub "$port"); fi
     if [[ "$wmode" == https ]]; then
         wallos_cftunnel_teardown >/dev/null 2>&1 || true
         if ! wallos_https_setup "$pubport" "$port"; then
@@ -26728,12 +26955,12 @@ wallos_install_or_update() {
             fi
             if (( _fb == 1 )) && wallos_http_rebind "$pubport" "$image" "$tz"; then
                 wmode='http'; port="$pubport"; bind_address='0.0.0.0'
-                wallos_write_state "$image" "$port" "$tz" "$bind_address" http '' "$cfhost" || msg "${YELLOW}Wallos 状态保存失败，重跑安装可修复元数据。${NC}"
+                wallos_write_state "$image" "$port" "$tz" "$bind_address" http '' "$cfhost" || msg "${YELLOW}$(tr_msg wl_iu_state_save_fail)${NC}"
                 case "${ABOX_LANG:-zh}" in
                     *) security_note="$(tr_msg wl_note_http)" ;;
                 esac
             else
-                msg "${RED}HTTPS 配置未完成：Wallos 已在本机运行，但未对外暴露。修复后重跑安装即可重试。${NC}"
+                msg "${RED}$(tr_msg wl_iu_https_incomplete)${NC}"
                 return 1
             fi
         fi
@@ -26747,7 +26974,7 @@ wallos_install_or_update() {
         fi
         wallos_https_teardown >/dev/null 2>&1 || true
         if ! wallos_cftunnel_setup "$cfhost"; then
-            msg "${RED}CF 隧道配置未完成：Wallos 已在本机运行，但未对外暴露。修复后重跑安装即可重试。${NC}"
+            msg "${RED}$(tr_msg wl_iu_cf_incomplete)${NC}"
             return 1
         fi
         case "${ABOX_LANG:-zh}" in
@@ -26765,9 +26992,9 @@ wallos_install_or_update() {
     wallos_public_urls "$port"
     msg "${YELLOW}${security_note}${NC}"
     if [[ "$bind_address" == 0.0.0.0 ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
-        if confirm_yes_no "Allow TCP $port through UFW? [Y/N]: "; then ufw allow "$port/tcp" || msg "${YELLOW}Could not update UFW; add the rule manually.${NC}"; fi
+        if confirm_yes_no "$(tprintf wl_iu_ufw_q "$port")"; then ufw allow "$port/tcp" || msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}"; fi
     elif [[ "$bind_address" == 0.0.0.0 ]] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-        if confirm_yes_no "Allow TCP $port through firewalld? [Y/N]: "; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}Could not update firewalld; add the rule manually.${NC}"; fi
+        if confirm_yes_no "$(tprintf wl_iu_fwd_q "$port")"; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}"; fi
     fi
     if [[ "$wmode" == https ]]; then
         allowPort "$pubport" tcp 2>/dev/null || true
@@ -26779,14 +27006,10 @@ wallos_install_or_update() {
     fi
     wallos_bruteforce_protection "$port" "$bind_address" "$wmode"
     if [[ "$bind_address" == 0.0.0.0 ]]; then
-        case "${ABOX_LANG:-zh}" in
-            en) msg "${CYAN}Direct-access security checklist:${NC}"; msg "  1) Cloud security group: allow TCP $port from YOUR IP ONLY (/32), not 0.0.0.0/0."; msg "  2) Set a strong Wallos admin password (20+ chars) on first login."; msg "  3) Fail2ban is active on this port: 10 failed logins in 10 min = 24h ban." ;;
-            ru) msg "${CYAN}Чек-лист безопасности прямого доступа:${NC}"; msg "  1) Группа безопасности: TCP $port только с ВАШЕГО IP (/32), не 0.0.0.0/0."; msg "  2) Сильный пароль администратора Wallos (20+ символов)."; msg "  3) Fail2ban активен: 10 неудачных входов за 10 мин = бан 24ч." ;;
-            fa) msg "${CYAN}چک‌لیست امنیتی دسترسی مستقیم:${NC}"; msg "  1) گروه امنیتی: TCP $port فقط از IP شما (/32)، نه 0.0.0.0/0."; msg "  2) رمز قوی مدیر Wallos (۲۰+ نویسه)."; msg "  3) Fail2ban فعال است: ۱۰ ورود ناموفق در ۱۰ دقیقه = ۲۴ ساعت مسدودی." ;;
-            zh-tw) msg "${CYAN}直連安全清單：${NC}"; msg "  1) 雲安全組：TCP $port 只放你自己的 IP(/32)，不要 0.0.0.0/0。"; msg "  2) Wallos 管理員密碼設 20 位以上強密碼。"; msg "  3) fail2ban 已啟用：10 分鐘內 10 次登錄失敗 = 封 24 小時。" ;;
-            ja) msg "${CYAN}直接アクセス安全チェックリスト：${NC}"; msg "  1) セキュリティグループ：TCP $port は自分の IP(/32) のみ許可、0.0.0.0/0 は不可。"; msg "  2) Wallos 管理者パスワードは 20 文字以上の強いものを。"; msg "  3) fail2ban 有効：10 分で 10 回失敗 = 24 時間 BAN。" ;;
-            *) msg "${CYAN}直连安全清单：${NC}"; msg "  1) 云安全组：TCP $port 只放你自己的 IP(/32)，不要开 0.0.0.0/0。"; msg "  2) Wallos 管理员密码设 20 位以上强密码。"; msg "  3) fail2ban 已启用：10 分钟内 10 次登录失败 = 封 24 小时。" ;;
-        esac
+        msg "${CYAN}$(tr_msg wl_iu_check_t)${NC}"
+        msg "  $(tprintf wl_iu_check_1 "$port")"
+        msg "  $(tr_msg wl_iu_check_2)"
+        msg "  $(tr_msg wl_iu_check_3)"
     fi
     [[ -z "$backup" ]] || msg "$(tprintf wl_backup "$backup")"
 }

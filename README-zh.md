@@ -34,13 +34,13 @@ A-Box 是一个单文件 Bash 脚本（`install.sh`，约 26,000 行），用于
 官方来源，命令已锁定到不可变的提交：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/ba0d6f0698b825de1b6ccff0426ebfd3302d5067/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/ba0d6f0f70fce0ce4110af16215335f83ed78594/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 第三方镜像（与上面是同一个锁定文件，仅作传输通道，不是官方入口）：
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/ba0d6f0698b825de1b6ccff0426ebfd3302d5067/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/ba0d6f0f70fce0ce4110af16215335f83ed78594/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 - 全新的 Alpine 系统请先运行 `apk add --no-cache bash curl`。

@@ -100,6 +100,10 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 第 1、2 項的測試腳本從經校驗的 `test-tools-mirror` 發布中取得，SHA-256 與清單一致才執行。鏡像不可用或校驗不一致時，只有設定了 `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` 才會改用上游腳本，否則什麼都不執行。
 
+第 16 項 **A-Check** 是配套專案 [A-Check](https://github.com/alariclin/A-Check) 的 IP 純淨度檢測工具。腳本下載其鎖定版本檔案（`v4.13.4`），執行前校驗 SHA-256，並快取在 `/etc/ddr/tools`；校驗不一致的副本永不執行。需要 Python 3.8 或更高版本。
+
+第 17 項 **14 系統兼容性測試**，把目前運行的腳本檔案放進 14 個已實測系統的臨時 Docker 容器裡，逐個跑 `bash -n` 與自檢，逐系統報告 PASS / FAIL / SKIP。需要可用的 Docker；沒有 Docker 時，腳本會先詢問，再透過系統套件管理器安裝。
+
 ## 子系統
 
 **用戶端配置。** 每次部署都會列印分享連結和 QR 碼。選單 12 隨時可重看全部節點參數與連結——包括選單 18 的獨立協議——並匯出 Clash / Mihomo YAML、sing-box JSON 與 v2rayN / v2rayNG 配置。支援在伺服器端新增或撤銷多個 UUID，並按用戶分別匯出。
@@ -111,6 +115,8 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 **Wallos。** 可選的自託管訂閱管理器（Docker）。安裝時選擇存取方式：公網 HTTPS（Caddy 終結 Let's Encrypt 的 IP 憑證，自動續期；失敗時經你確認才回退到下一種方式）、僅本機 + SSH 隧道、用自己網域的 Cloudflare 隧道，或公網明文 HTTP 容災。帶狀態頁、資料庫健康檢查與 tar 備份。
 
 **主動防禦。** 系統沒有 Fail2Ban 時自動安裝。它的 jail 除 SSH 外，還覆蓋從現行 Xray / sing-box 設定裡收割到的全部公網連接埠——不只是最近一次部署的連接埠——封禁時長遞增。Wallos 有盯住其登入入口的專屬 jail。
+
+**快速模式。** 設定 `ABOX_FAST=1` 後，部署過程中的重複確認提示會被跳過。
 
 **備份、升級與 OTA。** 配置備份/還原使用帶版本號的清單格式與還原金鑰（`--export-backup-key`）。核心升級保留現有節點參數；腳本自身的 OTA 更新會顯示 SHA-256 並要求明確確認。Xray Geo 資料可單獨更新。
 

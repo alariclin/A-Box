@@ -976,6 +976,48 @@ tr_msg() {
         fa:argo_done) echo 'Argo مستقر شد، لینک‌ها در زیر:' ;;
         zh-tw:argo_done) echo 'Argo 部署完成，連結如下：' ;;
         ja:argo_done) echo 'Argo を展開しました。リンク：' ;;
+        zh:acheck_no_python) echo '未找到 python3：A-Check 需要 Python 3.8 或更高版本，装好后重试。' ;;
+        en:acheck_no_python) echo 'python3 not found: A-Check requires Python 3.8 or newer. Install it and retry.' ;;
+        ru:acheck_no_python) echo 'python3 не найден: для A-Check нужен Python 3.8 или новее. Установите его и повторите.' ;;
+        fa:acheck_no_python) echo 'python3 پیدا نشد: A-Check به Python 3.8 یا جدیدتر نیاز دارد. آن را نصب و دوباره تلاش کنید.' ;;
+        zh-tw:acheck_no_python) echo '找不到 python3：A-Check 需要 Python 3.8 或更高版本，裝好後重試。' ;;
+        ja:acheck_no_python) echo 'python3 が見つかりません：A-Check には Python 3.8 以上が必要です。インストールして再試行してください。' ;;
+        zh:acheck_failed) echo 'A-Check 下载或 SHA-256 校验失败，未运行。' ;;
+        en:acheck_failed) echo 'A-Check download or SHA-256 verification failed; nothing was run.' ;;
+        ru:acheck_failed) echo 'Не удалось скачать A-Check или проверить SHA-256; ничего не запущено.' ;;
+        fa:acheck_failed) echo 'دانلود A-Check یا بررسی SHA-256 ناموفق بود؛ چیزی اجرا نشد.' ;;
+        zh-tw:acheck_failed) echo 'A-Check 下載或 SHA-256 校驗失敗，未執行。' ;;
+        ja:acheck_failed) echo 'A-Check のダウンロードまたは SHA-256 検証に失敗しました。何も実行していません。' ;;
+        zh:sys14_need_docker) echo '需要可用的 Docker 才能跑 14 系统测试：请先安装并启动 Docker 后重试。' ;;
+        en:sys14_need_docker) echo 'The 14-system test needs a working Docker: install and start Docker, then retry.' ;;
+        ru:sys14_need_docker) echo 'Для теста 14 систем нужен работающий Docker: установите и запустите Docker, затем повторите.' ;;
+        fa:sys14_need_docker) echo 'آزمون ۱۴ سیستم به Docker در حال اجرا نیاز دارد: Docker را نصب و راه‌اندازی کنید و دوباره تلاش کنید.' ;;
+        zh-tw:sys14_need_docker) echo '需要可用的 Docker 才能跑 14 系統測試：請先安裝並啟動 Docker 後重試。' ;;
+        ja:sys14_need_docker) echo '14 システムテストには動作する Docker が必要です：Docker をインストールして起動し、再試行してください。' ;;
+        zh:sys14_install_docker) echo '未检测到 Docker，是否现在通过系统包管理器安装 Docker？' ;;
+        en:sys14_install_docker) echo 'Docker was not found. Install it now through the system package manager?' ;;
+        ru:sys14_install_docker) echo 'Docker не найден. Установить его сейчас через системный менеджер пакетов?' ;;
+        fa:sys14_install_docker) echo 'Docker پیدا نشد. اکنون از راه مدیر بسته سیستم نصب شود؟' ;;
+        zh-tw:sys14_install_docker) echo '未偵測到 Docker，是否現在透過系統套件管理器安裝 Docker？' ;;
+        ja:sys14_install_docker) echo 'Docker が見つかりません。システムのパッケージマネージャで今すぐインストールしますか？' ;;
+        zh:sys14_syntax) echo '语法' ;;
+        en:sys14_syntax) echo 'Syntax' ;;
+        ru:sys14_syntax) echo 'Синтаксис' ;;
+        fa:sys14_syntax) echo 'نحو' ;;
+        zh-tw:sys14_syntax) echo '語法' ;;
+        ja:sys14_syntax) echo '構文' ;;
+        zh:sys14_selftest) echo '自检' ;;
+        en:sys14_selftest) echo 'Self-test' ;;
+        ru:sys14_selftest) echo 'Самотест' ;;
+        fa:sys14_selftest) echo 'خودآزمون' ;;
+        zh-tw:sys14_selftest) echo '自檢' ;;
+        ja:sys14_selftest) echo 'セルフテスト' ;;
+        zh:sys14_summary) echo '14 系统测试汇总' ;;
+        en:sys14_summary) echo '14-system test summary' ;;
+        ru:sys14_summary) echo 'Итоги теста 14 систем' ;;
+        fa:sys14_summary) echo 'خلاصه آزمون ۱۴ سیستم' ;;
+        zh-tw:sys14_summary) echo '14 系統測試彙總' ;;
+        ja:sys14_summary) echo '14 システムテスト結果' ;;
         zh:argo_temp_note) echo '注意: 临时隧道域名在 cloudflared 重启后会变化, 届时请在本菜单查看新链接。' ;;
         en:argo_temp_note) echo 'Note: temporary tunnel domains change when cloudflared restarts; re-check links here afterwards.' ;;
         ru:argo_temp_note) echo 'Примечание: домены временного туннеля меняются при перезапуске cloudflared; проверяйте ссылки здесь.' ;;
@@ -22220,6 +22262,112 @@ other_protocols_menu() {
     done
 }
 
+# A-Check (companion IP checker): the pinned release file is verified
+# against its SHA-256 before it is cached under /etc/ddr/tools, and a
+# cached copy is re-verified on every use. Mismatch = never executed.
+ACHECK_VERSION='4.13.4'
+ACHECK_SHA256='3d50a616e06fda8cd367622fa20ed4a2d5230e4d9dced3a657d4d3d57fdd1cea'
+ACHECK_URL='https://raw.githubusercontent.com/alariclin/A-Check/v4.13.4/acheck.py'
+
+run_acheck_tool() {
+    command -v python3 >/dev/null 2>&1 || { msg "${RED}$(tr_msg acheck_no_python)${NC}"; return 1; }
+    local _dir='/etc/ddr/tools' _f='/etc/ddr/tools/acheck.py' _tmp='' _sha=''
+    if [[ -f "$_f" ]]; then
+        _sha=$(sha256sum "$_f" 2>/dev/null | awk '{print $1}')
+        [[ "${_sha,,}" == "$ACHECK_SHA256" ]] || rm -f -- "$_f"
+    fi
+    if [[ ! -f "$_f" ]]; then
+        mkdir -p "$_dir" 2>/dev/null
+        _tmp=$(mktemp /tmp/acheck.XXXXXX) || return 1
+        if curl -fLsS --connect-timeout 10 --max-time 120 "$ACHECK_URL" -o "$_tmp"; then
+            _sha=$(sha256sum "$_tmp" 2>/dev/null | awk '{print $1}')
+            if [[ "${_sha,,}" == "$ACHECK_SHA256" ]]; then
+                install -m 600 "$_tmp" "$_f" 2>/dev/null || cp "$_tmp" "$_f"
+            fi
+        fi
+        rm -f -- "$_tmp"
+    fi
+    [[ -f "$_f" ]] || { msg "${RED}$(tr_msg acheck_failed)${NC}"; return 1; }
+    python3 "$_f"
+}
+
+
+# 14-system compatibility test: for each of the 14 supported distro
+# images, install the base dependencies in a throwaway container and
+# run bash -n plus --self-test against the currently running script
+# file. Same system list and per-distro commands as the standalone
+# release-gate harness. Requires a working Docker daemon.
+run_all_systems_test() {
+    if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+        if confirm_yes_no "$(tr_msg sys14_install_docker)"; then
+            if command -v apt-get >/dev/null 2>&1; then
+                apt-get update -qq 2>/dev/null; apt-get install -y docker.io 2>/dev/null || apt-get install -y docker 2>/dev/null
+            elif command -v dnf >/dev/null 2>&1; then
+                dnf install -y docker 2>/dev/null
+            elif command -v yum >/dev/null 2>&1; then
+                yum install -y docker 2>/dev/null
+            elif command -v apk >/dev/null 2>&1; then
+                apk add --no-cache docker 2>/dev/null
+            fi
+            if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl start docker 2>/dev/null;
+            elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then rc-service docker start 2>/dev/null 9>&- 10>&-; fi
+            sleep 2
+        fi
+    fi
+    if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+        msg "${RED}$(tr_msg sys14_need_docker)${NC}"
+        return 1
+    fi
+    local _self _sys _img _rest _name _pkgmgr _cmd _result _syntax _selftest
+    _self=$(readlink -f "$0" 2>/dev/null || echo "$0")
+    local _systems=(
+        "debian:trixie-slim|Debian 13|apt"
+        "debian:bookworm-slim|Debian 12|apt"
+        "debian:bullseye-slim|Debian 11|apt"
+        "debian:buster-slim|Debian 10|apt"
+        "ubuntu:24.04|Ubuntu 24.04|apt"
+        "ubuntu:22.04|Ubuntu 22.04|apt"
+        "ubuntu:20.04|Ubuntu 20.04|apt"
+        "rockylinux:9|Rocky Linux 9|dnf"
+        "rockylinux:8|Rocky Linux 8|dnf"
+        "almalinux:9|AlmaLinux 9|dnf"
+        "almalinux:8|AlmaLinux 8|dnf"
+        "alpine:3.19|Alpine 3.19|apk"
+        "alpine:3.18|Alpine 3.18|apk"
+        "fedora:40|Fedora 40|dnf"
+    )
+    local _pass=0 _fail=0 _skip=0
+    for _sys in "${_systems[@]}"; do
+        _img="${_sys%%|*}"; _rest="${_sys#*|}"; _name="${_rest%%|*}"; _pkgmgr="${_rest##*|}"
+        msg "${CYAN}=== $_name ($_img) ===${NC}"
+        if ! docker pull "$_img" >/dev/null 2>&1; then
+            msg "  SKIP (pull failed)"
+            _skip=$((_skip + 1)); continue
+        fi
+        case "$_pkgmgr" in
+            apt) _cmd=". /etc/os-release 2>/dev/null; if [ \"\${VERSION_CODENAME:-}\" = \"buster\" ] || [ \"\${VERSION_CODENAME:-}\" = \"bullseye\" ]; then sed -i \"s|deb.debian.org|archive.debian.org|g; s|security.debian.org|archive.debian.org|g\" /etc/apt/sources.list 2>/dev/null; apt-get update -o Acquire::Check-Valid-Until=false -qq 2>/dev/null && apt-get install -y -qq -o Acquire::Check-Valid-Until=false bash tzdata iptables openssl python3 jq curl wget tar unzip zip 2>/dev/null; else apt-get update -qq 2>/dev/null && apt-get install -y -qq bash tzdata iptables openssl python3 jq curl wget tar unzip zip 2>/dev/null; fi" ;;
+            dnf) _cmd="for p in bash tzdata iptables openssl python3 jq curl wget tar unzip zip; do dnf install -y -q \"\$p\" >/dev/null 2>&1 || yum install -y -q \"\$p\" >/dev/null 2>&1 || true; done" ;;
+            apk) _cmd="apk add --no-cache bash tzdata iptables openssl python3 jq curl wget tar unzip zip 2>/dev/null" ;;
+        esac
+        _result=$(docker run --rm -v "$_self:/test/install.sh:ro" "$_img" sh -c "
+            $_cmd >/dev/null 2>&1
+            echo 'SYNTAX:'
+            bash -n /test/install.sh 2>/dev/null && echo 'SYNTAX_OK' || echo 'SYNTAX_FAIL'
+            echo 'SELFTEST:'
+            timeout 120 bash /test/install.sh --self-test 2>&1 | grep -E 'SELF_TEST_OK|SELF_TEST_FAILED' | head -1
+        " 2>&1)
+        _syntax=$(echo "$_result" | grep -A1 "SYNTAX:" | grep "SYNTAX_" | head -1)
+        _selftest=$(echo "$_result" | grep -A1 "SELFTEST:" | grep "SELF_TEST" | head -1)
+        msg "  $(tr_msg sys14_syntax): ${_syntax:-?}  $(tr_msg sys14_selftest): ${_selftest:-?}"
+        if [[ "$_syntax" == "SYNTAX_OK" && "$_selftest" == "SELF_TEST_OK" ]]; then
+            _pass=$((_pass + 1))
+        else
+            _fail=$((_fail + 1))
+        fi
+    done
+    msg "${BOLD}$(tr_msg sys14_summary): PASS=$_pass FAIL=$_fail SKIP=$_skip${NC}"
+}
+
 vps_benchmark_menu() {
     # Toolbox is a submenu loop: sub-functions return here, 0/Enter goes back
     # to the main menu.
@@ -22234,6 +22382,8 @@ vps_benchmark_menu() {
             msg "${YELLOW}2.  IP quality / streaming / route test   6.  Allocate 2 GB Swap${NC}"
             msg "${YELLOW}8.  Export redacted diagnostics           12.  VPS one-click optimization${NC}"
             msg "${YELLOW}9.  Read-only preflight                   13.  IP / DNS / timezone / download-source${NC}"
+            msg "${YELLOW}16. A-Check IP reputation & network check${NC}"
+            msg "${YELLOW}17. 14-system compatibility test${NC}"
             msg ""
             msg "${CYAN}[ SNI Optimization ]                      [ Config Management ]${NC}"
             msg "${YELLOW}3.  Local SNI preference                  7.  Backup / restore configuration${NC}"
@@ -22251,6 +22401,8 @@ vps_benchmark_menu() {
             msg "${YELLOW}2.  Качество IP / стриминг / маршрут      6.  Создать Swap 2 ГБ${NC}"
             msg "${YELLOW}8.  Экспорт диагностики                   12.  Оптимизация VPS${NC}"
             msg "${YELLOW}9.  Проверка перед установкой             13.  IP / DNS / часовой пояс / источники${NC}"
+            msg "${YELLOW}16. A-Check: проверка IP${NC}"
+            msg "${YELLOW}17. Тест совместимости (14 систем)${NC}"
             msg ""
             msg "${CYAN}[ Подбор SNI ]                            [ Управление конфигурацией ]${NC}"
             msg "${YELLOW}3.  Подбор SNI                            7.  Бэкап / восстановление${NC}"
@@ -22268,6 +22420,8 @@ vps_benchmark_menu() {
             msg "${YELLOW}2.  کیفیت IP / استریم / مسیر              6.  ساخت Swap دو گیگابایتی${NC}"
             msg "${YELLOW}8.  خروجی تشخیص عیب‌یابی                  12.  بهینه‌سازی تک‌کلیکی VPS${NC}"
             msg "${YELLOW}9.  پیش‌بررسی فقط‌خواندنی                 13.  تنظیمات IP / DNS / منطقه زمانی${NC}"
+            msg "${YELLOW}16. بررسی IP با A-Check${NC}"
+            msg "${YELLOW}17. آزمون سازگاری ۱۴ سیستم${NC}"
             msg ""
             msg "${CYAN}[ بهینه‌سازی SNI ]                        [ مدیریت پیکربندی ]${NC}"
             msg "${YELLOW}3.  بهینه‌سازی SNI محلی                   7.  پشتیبان‌گیری / بازیابی${NC}"
@@ -22285,6 +22439,8 @@ vps_benchmark_menu() {
             msg "${YELLOW}2.  IP 質量/流媒體解鎖/回程測試           6.  創建 2 GB Swap${NC}"
             msg "${YELLOW}8.  導出脫敏診斷包                        12.  VPS 一鍵優化${NC}"
             msg "${YELLOW}9.  只讀預檢查                            13.  IP / DNS / 時區 / 下載源設置${NC}"
+            msg "${YELLOW}16. A-Check IP 純淨度檢測${NC}"
+            msg "${YELLOW}17. 14 系統兼容性測試${NC}"
             msg ""
             msg "${CYAN}[ SNI 優選 ]                              [ 配置管理 ]${NC}"
             msg "${YELLOW}3.  本地 SNI 優選                         7.  配置備份 / 恢復${NC}"
@@ -22302,6 +22458,8 @@ vps_benchmark_menu() {
             msg "${YELLOW}2.  IP品質/ストリーミング/ルートテスト    6.  2GB Swap 作成${NC}"
             msg "${YELLOW}8.  診断パッケージのエクスポート          12.  VPS ワンクリック最適化${NC}"
             msg "${YELLOW}9.  読み取り専用事前チェック              13.  IP / DNS / タイムゾーン設定${NC}"
+            msg "${YELLOW}16. A-Check IP 品質チェック${NC}"
+            msg "${YELLOW}17. 14 システム互換性テスト${NC}"
             msg ""
             msg "${CYAN}[ SNI 最適化 ]                            [ 構成管理 ]${NC}"
             msg "${YELLOW}3.  ローカル SNI 最適化                   7.  設定のバックアップ/復元${NC}"
@@ -22319,6 +22477,8 @@ vps_benchmark_menu() {
             msg "${YELLOW}2.  IP 质量/流媒体解锁/回程测试           6.  创建 2 GB Swap${NC}"
             msg "${YELLOW}8.  导出脱敏诊断包                        12.  VPS 一键优化${NC}"
             msg "${YELLOW}9.  只读预检查                            13.  IP / DNS / 时区 / 下载源设置${NC}"
+            msg "${YELLOW}16. A-Check IP 纯净度检测${NC}"
+            msg "${YELLOW}17. 14 系统兼容性测试${NC}"
             msg ""
             msg "${CYAN}[ SNI 优选 ]                              [ 配置管理 ]${NC}"
             msg "${YELLOW}3.  本地 SNI 优选                         7.  配置备份 / 恢复${NC}"
@@ -22331,7 +22491,7 @@ vps_benchmark_menu() {
             ;;
     esac
     local bench_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-15]: ' ;; ru) select_prompt='Выберите [0–15]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۵]: ' ;; ja) select_prompt='選択してください [0-15]: ' ;; zh-tw) select_prompt='請選擇 [0-15]：' ;; *) select_prompt='请选择 [0-15]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-17]: ' ;; ru) select_prompt='Выберите [0–17]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۷]: ' ;; ja) select_prompt='選択してください [0-17]: ' ;; zh-tw) select_prompt='請選擇 [0-17]：' ;; *) select_prompt='请选择 [0-17]：' ;; esac
     read -r -p "$select_prompt" bench_choice || return 0
     case "$bench_choice" in
         1) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
@@ -22349,6 +22509,8 @@ vps_benchmark_menu() {
         13) host_network_menu ;;
         14) wallos_menu ;;
         15) manage_ss_whitelist ;;
+        16) run_acheck_tool; pause_return ;;
+        17) run_all_systems_test; pause_return ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $bench_choice${NC}"; sleep 1 ;;
     esac
@@ -22967,7 +23129,7 @@ show_usage() {
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022 (no XHTTP)
 
 [Operations]
-11 Toolbox: benchmarks, IP/route tests, SNI workflows, WARP, Swap, backup/restore, redacted diagnostics, preflight, multi-UUID export, BBR/FQ apply/rollback, host settings and Wallos.
+11 Toolbox: benchmarks, IP/route tests, SNI workflows, WARP, Swap, backup/restore, redacted diagnostics, preflight, multi-UUID export, BBR/FQ apply/rollback, host settings, Wallos, the A-Check IP checker and the 14-system compatibility test.
 12 Display node parameters and client exports.
 13 This manual.
 14 Script OTA, Xray Geo data and core-only upgrade.
@@ -23000,7 +23162,7 @@ EOF_USAGE
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022 (без XHTTP)
 
 [Обслуживание]
-11 Инструменты: тесты, качество IP/маршрута, SNI, WARP, Swap, резервное копирование/восстановление, диагностика без секретов, предварительная проверка, экспорт нескольких UUID, BBR/FQ и откат, настройки хоста и Wallos.
+11 Инструменты: тесты, качество IP/маршрута, SNI, WARP, Swap, резервное копирование/восстановление, диагностика без секретов, предварительная проверка, экспорт нескольких UUID, BBR/FQ и откат, настройки хоста, Wallos, проверка IP A-Check и тест совместимости 14 систем.
 12 Параметры узлов и экспорт клиентских конфигураций.
 13 Это руководство.
 14 OTA скрипта, Geo-данные Xray и отдельное обновление ядер.
@@ -23033,7 +23195,7 @@ EOF_USAGE
 10 ترکیب sing-box Vision + Hysteria 2 + Shadowsocks-2022 (بدون XHTTP)
 
 [عملیات]
-11 جعبه ابزار: آزمون سرعت، کیفیت IP/مسیر، SNI، WARP، Swap، پشتیبان‌گیری/بازیابی، گزارش عیب‌یابی بدون اسرار، پیش‌آزمایی، خروجی چند UUID، اعمال/بازگردانی BBR/FQ، تنظیمات میزبان و Wallos.
+11 جعبه ابزار: آزمون سرعت، کیفیت IP/مسیر، SNI، WARP، Swap، پشتیبان‌گیری/بازیابی، گزارش عیب‌یابی بدون اسرار، پیش‌آزمایی، خروجی چند UUID، اعمال/بازگردانی BBR/FQ، تنظیمات میزبان، Wallos، بررسی‌گر IP ‏A-Check و آزمون سازگاری ۱۴ سیستم.
 12 نمایش پارامترهای نود و خروجی کلاینت.
 13 همین راهنما.
 14 OTA اسکریپت، داده Geo برای Xray و ارتقای مستقل هسته.
@@ -23066,7 +23228,7 @@ EOF_USAGE
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP）
 
 【運維類】
-11 綜合工具箱：測速、IP/回程測試、SNI、WARP、Swap、備份恢復、脫敏診斷、預檢查、多 UUID 匯出、BBR/FQ 應用與回滾、主機設定和 Wallos。
+11 綜合工具箱：測速、IP/回程測試、SNI、WARP、Swap、備份恢復、脫敏診斷、預檢查、多 UUID 匯出、BBR/FQ 應用與回滾、主機設定、Wallos、A-Check IP 檢測和 14 系統兼容性測試。
 12 顯示節點引數與客戶端配置。
 13 當前說明書。
 14 指令碼 OTA、Xray Geo 資料與核心單獨升級。
@@ -23099,7 +23261,7 @@ EOF_USAGE
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（XHTTP を含まない）
 
 【運用】
-11 ツールボックス：ベンチマーク、IP / 経路テスト、SNI、WARP、Swap、バックアップ / 復元、匿名化診断、事前チェック、複数 UUID のエクスポート、BBR/FQ の適用とロールバック、ホスト設定、Wallos。
+11 ツールボックス：ベンチマーク、IP / 経路テスト、SNI、WARP、Swap、バックアップ / 復元、匿名化診断、事前チェック、複数 UUID のエクスポート、BBR/FQ の適用とロールバック、ホスト設定、Wallos、A-Check IP チェック、14 システム互換性テスト。
 12 ノードのパラメーターとクライアント設定を表示します。
 13 現在の説明書を表示します。
 14 A-Box スクリプト OTA、Xray Geo データ、コアの個別アップグレード。
@@ -23132,7 +23294,7 @@ EOF_USAGE
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP）
 
 【运维类】
-11 综合工具箱：测速、IP/回程测试、SNI、WARP、Swap、备份恢复、脱敏诊断、预检查、多 UUID 导出、BBR/FQ 应用与回滚、主机设置和 Wallos。
+11 综合工具箱：测速、IP/回程测试、SNI、WARP、Swap、备份恢复、脱敏诊断、预检查、多 UUID 导出、BBR/FQ 应用与回滚、主机设置、Wallos、A-Check IP 检测和 14 系统兼容性测试。
 12 显示节点参数与客户端配置。
 13 当前说明书。
 14 脚本 OTA、Xray Geo 数据与核心单独升级。

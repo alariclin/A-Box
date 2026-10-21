@@ -100,6 +100,10 @@ The top of the menu shows a 16-cell status matrix (running / stopped / not insta
 
 The two test scripts (items 1–2) are fetched from the verified `test-tools-mirror` release and run only when their SHA-256 matches the manifest. If the mirror is unavailable or the checksum differs, the upstream script is used only when `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` is set; otherwise nothing is executed.
 
+Item 16, **A-Check**, is the IP-reputation checker from the companion [A-Check](https://github.com/alariclin/A-Check) project. The script downloads its pinned release file (`v4.13.4`), verifies the SHA-256 before running it, and caches it under `/etc/ddr/tools`; a copy whose checksum does not match is never executed. It requires Python 3.8 or newer.
+
+Item 17, **14-system compatibility test**, runs the currently running script file through `bash -n` and its self-test inside throwaway Docker containers of all 14 tested systems, and reports PASS / FAIL / SKIP per system. It needs a working Docker daemon; if Docker is missing, the script asks before installing it through the system package manager.
+
 ## Subsystems
 
 **Client configurations.** Every deployment prints a share link and a QR code. Menu 12 re-displays all node parameters and links at any time — including the standalone protocols of menu 18 — and exports Clash / Mihomo YAML, sing-box JSON and v2rayN / v2rayNG configurations. Multiple UUIDs can be added or revoked server-side, with per-user export.
@@ -111,6 +115,8 @@ The two test scripts (items 1–2) are fetched from the verified `test-tools-mir
 **Wallos.** Optional self-hosted subscription tracker (Docker). At install time you choose how it is reached: public HTTPS with a Let's Encrypt IP certificate terminated by Caddy (auto-renewed; falls back to the next option on failure only with your confirmation), local-only access through an SSH tunnel, a Cloudflare Tunnel with your own domain, or plain public HTTP as a fallback. Includes status, database health checks and tar backups.
 
 **Active defense.** Fail2Ban is installed automatically when missing. Its jails cover SSH plus every public port found in the live Xray / sing-box configurations — not just the ports of the last deployment — with incremental ban times. Wallos gets its own jail on its login endpoint.
+
+**Fast mode.** Setting `ABOX_FAST=1` skips repeated confirmation prompts during deployments.
 
 **Backup, upgrades, OTA.** Configuration backup/restore uses a versioned manifest with a recovery key (`--export-backup-key`). Core upgrades keep existing node parameters; the script's own OTA update shows the SHA-256 and asks for explicit confirmation. Xray Geo data can be updated separately.
 

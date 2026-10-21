@@ -11288,22 +11288,22 @@ _menu_banner() {
     # per-letter segments with a truecolor gradient; no per-char slicing
     # (multibyte-safe under C locales).
     local _eq='════════════════════════════════════════════════════════════════════════════════'
-    local _cA=$'\033[38;2;0;170;255m' _cH=$'\033[38;2;0;170;255m' _cB=$'\033[38;2;0;170;255m' _cO=$'\033[38;2;0;170;255m' _cX=$'\033[38;2;0;170;255m'
+    local _cA=$'\033[38;2;0;95;215m' _cH=$'\033[38;2;0;95;255m' _cB=$'\033[38;2;0;135;255m' _cO=$'\033[38;2;0;175;255m' _cX=$'\033[38;2;0;255;255m'
     local _pad='                 '
-    printf '\033[38;2;0;170;255m%s\033[0m\n' "$_eq"
+    printf '\033[38;2;0;255;255m%s\033[0m\n' "$_eq"
     printf '%s' "${_pad}${_cA} █████╗  ${_cH}        ${_cB}██████╗  ${_cO} ██████╗  ${_cX}██╗  ██╗ ${NC}"; printf '\n'
     printf '%s' "${_pad}${_cA}██╔══██╗ ${_cH}        ${_cB}██╔══██╗ ${_cO}██╔═══██╗ ${_cX}╚██╗██╔╝ ${NC}"; printf '\n'
     printf '%s' "${_pad}${_cA}███████║ ${_cH}        ${_cB}██████╔╝ ${_cO}██║   ██║ ${_cX} ╚███╔╝  ${NC}"; printf '\n'
     printf '%s' "${_pad}${_cA}██╔══██║ ${_cH}██████╗ ${_cB}██╔══██╗ ${_cO}██║   ██║ ${_cX} ██╔██╗  ${NC}"; printf '\n'
     printf '%s' "${_pad}${_cA}██║  ██║ ${_cH}╚═════╝ ${_cB}██████╔╝ ${_cO}╚██████╔╝ ${_cX}██╔╝╚██╗ ${NC}"; printf '\n'
     printf '%s' "${_pad}${_cA}╚═╝  ╚═╝ ${_cH}        ${_cB}╚═════╝  ${_cO} ╚═════╝  ${_cX}╚═╝  ╚═╝ ${NC}"; printf '\n'
-    printf '\033[38;2;0;170;255m%s\033[0m\n' "$_eq"
+    printf '\033[38;2;0;255;255m%s\033[0m\n' "$_eq"
 }
 
 # Display the info panel (v3: status matrix + spaced rows, two-color scheme).
 _menu_info_display() {
     _menu_info_collect || return 0
-    # --- status matrix: VARIANT 16 cells, 4 per row ---
+    # --- status matrix: fixed 16 cells, always shown, 4 per row ---
     local _mrow='  ' _sep=''
     local _warp_st=none; [[ -n "$_MI_WARP" ]] && _warp_st=run
     local _cells=(
@@ -11325,9 +11325,9 @@ _menu_info_display() {
     msg "$_mrow"
     msg ''
     # --- system / hardware ---
-    msg "  ${LBLW}$(tr_msg mi_system)：${NC}  ${CYAN}${_MI_OS} · $(tr_msg mi_kernel) ${_MI_KERNEL} · ${_MI_VIRT} · $(tprintf mi_uptime "$_MI_UP")${NC}"
+    msg "  ${CYAN}$(tr_msg mi_system)：${NC}  ${LBLW}${_MI_OS} · $(tr_msg mi_kernel) ${_MI_KERNEL} · ${_MI_VIRT} · $(tprintf mi_uptime "$_MI_UP")${NC}"
     msg ''
-    msg "  ${LBLW}$(tr_msg mi_hw)：${NC}  ${CYAN}${_MI_CPU_MODEL} (${_MI_CPU}$(tr_msg mi_cores)) · $(tr_msg mi_mem) ${_MI_MEM_USED}/${_MI_MEM}G · $(tr_msg mi_disk) ${_MI_DISK}${_MI_DISK_KIND:+ $_MI_DISK_KIND}${NC}"
+    msg "  ${CYAN}$(tr_msg mi_hw)：${NC}  ${LBLW}${_MI_CPU_MODEL} (${_MI_CPU}$(tr_msg mi_cores)) · $(tr_msg mi_mem) ${_MI_MEM_USED}/${_MI_MEM}G · $(tr_msg mi_disk) ${_MI_DISK}${_MI_DISK_KIND:+ $_MI_DISK_KIND}${NC}"
     msg ''
     # --- network (IPv4 with geo, IPv6) ---
     local _v4dot='○' _geo=''
@@ -11335,11 +11335,11 @@ _menu_info_display() {
     if [[ -n "$_MI_GEO_COUNTRY" ]]; then
         _geo=" ${_MI_GEO_COUNTRY}${_MI_GEO_CITY:+ · ${_MI_GEO_CITY}} · ${_MI_GEO_KIND} · ${_MI_GEO_ORIGIN}"
     fi
-    msg "  ${LBLW}$(tr_msg mi_net)：${NC}  ${CYAN}IPv4${NC} ${_v4dot} ${CYAN}${GLOBAL_PUBLIC_IP:-?}${_geo}${NC}"
+    msg "  ${CYAN}$(tr_msg mi_net)：${NC}  ${LBLW}IPv4${NC} ${_v4dot} ${LBLW}${GLOBAL_PUBLIC_IP:-?}${_geo}${NC}"
     if [[ -n "$_MI_IPV6" ]]; then
-        msg "          ${CYAN}IPv6${NC} ${GREEN}●${NC} ${CYAN}${_MI_IPV6}${NC}"
+        msg "          ${LBLW}IPv6${NC} ${GREEN}●${NC} ${LBLW}${_MI_IPV6}${NC}"
     else
-        msg "          ${CYAN}IPv6${NC} ○ ${GRAY}$(tr_msg mi_none)${NC}"
+        msg "          ${LBLW}IPv6${NC} ○ ${GRAY}$(tr_msg mi_none)${NC}"
     fi
     msg ''
     # --- nodes (fixed grid: max 3 per row, ASCII-exact lengths,
@@ -11360,30 +11360,30 @@ _menu_info_display() {
         for (( _i=0; _i<_n; _i++ )); do
             _row="${_rows[$_i]}"
             if (( _i == _n - 1 )) && [[ -n "$_MI_SNI" ]] && (( ${#_row} + 9 + ${#_MI_SNI} <= 66 )); then
-                if (( _first )); then msg "  ${LBLW}${_lbl}：${NC}  ${CYAN}${_row}${NC} · ${LBLW}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"; _first=0
-                else msg "          ${CYAN}${_row}${NC} · ${LBLW}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"; fi
+                if (( _first )); then msg "  ${CYAN}${_lbl}：${NC}  ${LBLW}${_row}${NC} · ${CYAN}SNI：${NC} ${LBLW}${_MI_SNI}${NC}"; _first=0
+                else msg "          ${LBLW}${_row}${NC} · ${CYAN}SNI：${NC} ${LBLW}${_MI_SNI}${NC}"; fi
             else
-                if (( _first )); then msg "  ${LBLW}${_lbl}：${NC}  ${CYAN}${_row}${NC}"; _first=0
-                else msg "          ${CYAN}${_row}${NC}"; fi
+                if (( _first )); then msg "  ${CYAN}${_lbl}：${NC}  ${LBLW}${_row}${NC}"; _first=0
+                else msg "          ${LBLW}${_row}${NC}"; fi
                 if (( _i == _n - 1 )) && [[ -n "$_MI_SNI" ]]; then
-                    msg "          ${LBLW}SNI：${NC} ${CYAN}${_MI_SNI}${NC}"
+                    msg "          ${CYAN}SNI：${NC} ${LBLW}${_MI_SNI}${NC}"
                 fi
             fi
         done
     else
-        msg "  ${LBLW}$(tr_msg mi_nodes)：${NC}  ${CYAN}$(tr_msg mi_no_nodes)${NC}"
+        msg "  ${CYAN}$(tr_msg mi_nodes)：${NC}  ${LBLW}$(tr_msg mi_no_nodes)${NC}"
     fi
     msg ''
     # --- split (hidden entirely when nothing is configured) ---
     if [[ -n "$_MI_EXITS" || "$_MI_RULES" != '0' ]]; then
         local _split='' _e
-        for _e in $_MI_EXITS; do _split+="${CYAN}${_e}${NC} ${GREEN}●${NC} · "; done
-        msg "  ${LBLW}$(tr_msg mi_split)：${NC}  ${_split}$(tprintf mi_rules "$_MI_RULES")"
+        for _e in $_MI_EXITS; do _split+="${LBLW}${_e}${NC} ${GREEN}●${NC} · "; done
+        msg "  ${CYAN}$(tr_msg mi_split)：${NC}  ${_split}$(tprintf mi_rules "$_MI_RULES")"
         msg ''
     fi
     # --- legend ---
-    msg "  ${LBLW}$(tr_msg mi_state)：  ${GREEN}●${NC} ${GRAY}$(tr_msg mi_run)  ·  ○ $(tr_msg mi_off)  ·  ${RED}●${NC} ${GRAY}$(tr_msg mi_fault)${NC}        ${LBLW}$(tr_msg mi_quick_r)${NC}"
-    printf '\033[38;2;0;170;255m%s\033[0m\n' '════════════════════════════════════════════════════════════════════════════════'
+    msg "  ${CYAN}$(tr_msg mi_state)：  ${GREEN}●${NC} ${LBLW}$(tr_msg mi_run)  ·  ○ ${LBLW}$(tr_msg mi_off)${NC}  ·  ${RED}●${NC} ${LBLW}$(tr_msg mi_fault)${NC}        ${LBLW}$(tr_msg mi_quick_r)${NC}"
+    printf '\033[38;2;0;255;255m%s\033[0m\n' '════════════════════════════════════════════════════════════════════════════════'
 }
 
 # ============ WARP 与分流管理 (routing state + WARP one-click) ============
@@ -11778,16 +11778,16 @@ warp_split_menu() {
     while true; do
     clear
     msg "${YELLOW}$(tr_msg warp_split_title)${NC}"
-    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+    msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     warp_status
-    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+    msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     msg "1. $(tr_msg warp_deploy_item)"
     msg "2. $(tr_msg warp_preset_item)"
     msg "3. $(tr_msg split_add_socks_item)"
     msg "4. $(tr_msg split_rules_item)"
     msg "5. $(tr_msg warp_uninstall_item)"
     msg "0. $(tr_msg back_to_parent)"
-    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+    msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     local choice
     read -r -p "$(tr_msg select_prompt) [0-5]: " choice || return 0
     case "$choice" in
@@ -11813,7 +11813,7 @@ warp_preset_menu() {
     while true; do
     clear
     msg "${YELLOW}$(tr_msg warp_preset_title)${NC}"
-    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+    msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     msg "1. $(tr_msg warp_preset_streaming)"
     msg "2. $(tr_msg warp_preset_cn_direct)"
     msg "3. $(tr_msg warp_preset_global)"
@@ -11849,13 +11849,13 @@ split_rules_menu() {
     while true; do
     clear
     msg "${YELLOW}$(tr_msg split_rules_title)${NC}"
-    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+    msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     local i=0
     while IFS= read -r line; do
         msg "$i. $line"; i=$((i+1))
     done < <(jq -r '.rules[]? | "\(.domains | join(",")) -> \(.outbound)"' "$ROUTING_STATE_FILE" 2>/dev/null)
     [[ "$i" -eq 0 ]] && msg "$(tr_msg split_no_rules)"
-    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+    msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     msg "a. $(tr_msg split_rule_add)"
     msg "d. $(tr_msg split_rule_del)"
     msg "s. $(tr_msg split_preset_streaming)"
@@ -13410,7 +13410,7 @@ PY_TRAFFIC_DASH
     else
         msg "${YELLOW}[!] vnStat 未安装或暂无数据；设定上限时会按需安装。${NC}"
     fi
-    msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+    msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     msg "${GREEN}1.${NC}  设定/修改每月流量上限"
     msg "${GREEN}2.${NC}  解除流量限制"
     msg "${GREEN}0.${NC}  返回主菜单"
@@ -25893,14 +25893,14 @@ main_loop() {
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (Official)               ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC}  All-in-one (Xray+Hy2)               ${GREEN}10.${NC} All-in-one (Sing-box)"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ Tools & System ]${NC}                      ${CYAN}[ Ops & Policy ]${NC}"
                 msg "${GREEN}11.${NC}  Toolbox                            ${GREEN}16.${NC}  Wipe Nodes & Reset Env"
                 msg "${GREEN}12.${NC}  View Node Configs & Links          ${GREEN}17.${NC}  Monthly Traffic Quota"
                 msg "${GREEN}13.${NC}  User Guide & Manual                ${GREEN}18.${NC}  More Protocols"
                 msg "${GREEN}14.${NC}  Update Core & Script (OTA)         ${GREEN}19.${NC}  Language / 语言设置"
                 msg "${GREEN}15.${NC}  VPS Optimization                   ${YELLOW}20.  Uninstall Script & Cores${NC}"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${GREEN} 0.${NC}  Exit"
                 ;;
             ru)
@@ -25911,14 +25911,14 @@ main_loop() {
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (официальный)            ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
                 msg "${GREEN}5.${NC}  Комплексная установка               ${GREEN}10.${NC} Комплексная установка"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ Инструменты и система ]${NC}               ${CYAN}[ Управление и политики ]${NC}"
                 msg "${GREEN}11.${NC}  Панель инструментов                ${GREEN}16.${NC}  Сброс узлов и окружения"
                 msg "${GREEN}12.${NC}  Просмотр параметров узлов          ${GREEN}17.${NC}  Лимит месячного трафика"
                 msg "${GREEN}13.${NC}  Справка и руководство              ${GREEN}18.${NC}  Ещё протоколы"
                 msg "${GREEN}14.${NC}  Обновление ядра и скрипта          ${GREEN}19.${NC}  Язык / Language"
                 msg "${GREEN}15.${NC}  Оптимизация VPS                    ${YELLOW}20.  Полное удаление скрипта${NC}"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${GREEN} 0.${NC}  Выход"
                 ;;
             fa)
@@ -25929,14 +25929,14 @@ main_loop() {
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (رسمی)                   ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
                 msg "${GREEN}5.${NC}  نصب ترکیبی                          ${GREEN}10.${NC} نصب ترکیبی"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ ابزارها و سیستم ]${NC}                     ${CYAN}[ عملیات و سیاست‌ها ]${NC}"
                 msg "${GREEN}11.${NC}  جعبه ابزار                         ${GREEN}16.${NC}  پاکسازی نودها و بازنشانی محیط"
                 msg "${GREEN}12.${NC}  مشاهده تنظیمات و نودها             ${GREEN}17.${NC}  مدیریت و محدودیت ترافیک"
                 msg "${GREEN}13.${NC}  راهنمای استفاده                    ${GREEN}18.${NC}  پروتکل‌های بیشتر"
                 msg "${GREEN}14.${NC}  به‌روزرسانی هسته و اسکریپت         ${GREEN}19.${NC}  تنظیم زبان / Language"
                 msg "${GREEN}15.${NC}  بهینه‌سازی VPS                     ${YELLOW}20.  حذف کامل اسکریپت و هسته${NC}"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${GREEN} 0.${NC}  خروج"
                 ;;
             zh-tw)
@@ -25947,14 +25947,14 @@ main_loop() {
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (官方)                   ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC}  全協議四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全協議三合一 (Sing-box)"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ 工具與系統 ]${NC}                          ${CYAN}[ 運維與策略 ]${NC}"
                 msg "${GREEN}11.${NC}  綜合工具箱                         ${GREEN}16.${NC}  清空節點與重置環境"
                 msg "${GREEN}12.${NC}  查看節點配置與參數                 ${GREEN}17.${NC}  流量管控與額度限制"
                 msg "${GREEN}13.${NC}  使用幫助與說明書                   ${GREEN}18.${NC}  更多協議"
                 msg "${GREEN}14.${NC}  核心與腳本升級 (OTA)               ${GREEN}19.${NC}  多語言設置 / Language"
                 msg "${GREEN}15.${NC}  VPS 一鍵優化                       ${YELLOW}20.  徹底卸載腳本與核心${NC}"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${GREEN} 0.${NC}  退出指令碼"
                 ;;
             ja)
@@ -25965,14 +25965,14 @@ main_loop() {
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2（公式）                  ${GREEN}9.${NC}  Hysteria 2（sing-box）"
                 msg "${GREEN}5.${NC}  全プロトコル統合（Xray+Hy2）        ${GREEN}10.${NC} 全プロトコル統合（Sing-box）"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ ツールとシステム ]${NC}                    ${CYAN}[ 運用とポリシー ]${NC}"
                 msg "${GREEN}11.${NC}  総合ツールボックス                 ${GREEN}16.${NC}  全ノード削除と環境初期化"
                 msg "${GREEN}12.${NC}  ノード設定と情報の表示             ${GREEN}17.${NC}  月間通信量制限と管理"
                 msg "${GREEN}13.${NC}  ヘルプとマニュアル                 ${GREEN}18.${NC}  追加のプロトコル"
                 msg "${GREEN}14.${NC}  コアとスクリプト更新 (OTA)         ${GREEN}19.${NC}  言語設定 / Language"
                 msg "${GREEN}15.${NC}  VPS 最適化                         ${YELLOW}20.  スクリプトとコアの完全削除${NC}"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${GREEN} 0.${NC}  スクリプトを終了します"
                 ;;
             *)
@@ -25983,18 +25983,18 @@ main_loop() {
                 msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
                 msg "${GREEN}4.${NC}  Hysteria 2 (官方)                   ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
                 msg "${GREEN}5.${NC}  全协议四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全协议三合一 (Sing-box)"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ 工具与系统 ]${NC}                          ${CYAN}[ 运维与策略 ]${NC}"
                 msg "${GREEN}11.${NC}  综合工具箱                         ${GREEN}16.${NC}  清空节点与重置环境"
                 msg "${GREEN}12.${NC}  查看节点配置与参数                 ${GREEN}17.${NC}  流量管控与额度限制"
                 msg "${GREEN}13.${NC}  使用帮助与说明书                   ${GREEN}18.${NC}  更多协议"
                 msg "${GREEN}14.${NC}  核心与脚本升级 (OTA)               ${GREEN}19.${NC}  多语言设置 / Language"
                 msg "${GREEN}15.${NC}  VPS 一键优化                       ${YELLOW}20.  彻底卸载脚本与核心${NC}"
-                msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+                msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${GREEN} 0.${NC}  退出脚本"
                 ;;
         esac
-        msg "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}"
+        msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
         _menu_lock_released=0
         if [[ "${ABOX_RUNTIME_LOCK_MODE:-}" == flock ]] && [[ -e /proc/$$/fd/9 ]]; then
             flock -u 9 2>/dev/null && _menu_lock_released=1 || true

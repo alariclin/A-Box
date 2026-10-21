@@ -1156,12 +1156,12 @@ tr_msg() {
         fa:xl_back_main) echo 'بازگشت' ;;
         zh-tw:xl_back_main) echo '返回' ;;
         ja:xl_back_main) echo '戻る' ;;
-        zh:xl_select) echo '请选择 [0-9]：' ;;
-        en:xl_select) echo 'Select [0-9]: ' ;;
-        ru:xl_select) echo 'Выберите [0–9]: ' ;;
+        zh:xl_select) echo '请选择 [0-10]：' ;;
+        en:xl_select) echo 'Select [0-10]: ' ;;
+        ru:xl_select) echo 'Выберите [0–10]: ' ;;
         fa:xl_select) echo 'انتخاب [۰ تا ۹]: ' ;;
-        zh-tw:xl_select) echo '請選擇 [0-9]：' ;;
-        ja:xl_select) echo '選択してください [0-9]：' ;;
+        zh-tw:xl_select) echo '請選擇 [0-10]：' ;;
+        ja:xl_select) echo '選択してください [0-10]：' ;;
         zh:xl_mode_ask) echo '请选择安装模式 [1-2，0 取消]：' ;;
         en:xl_mode_ask) echo 'Install mode [1-2, 0 cancel]: ' ;;
         ru:xl_mode_ask) echo 'Режим установки [1-2, 0 — отмена]: ' ;;
@@ -15303,7 +15303,8 @@ remove_single_protocol_menu() {
         idx=$((idx + 1))
         IFS=$'\t' read -r core tag proto port <<< "$row"
         label=$(protocol_label "$tag" "$proto")
-        msg "${YELLOW}${idx}.  ${label} · ${core} · :${port:-—}${NC}"
+        local _idxf=''; printf -v _idxf '%2d' "$idx"
+        msg "${YELLOW}${_idxf}.  ${label} · ${core} · :${port:-—}${NC}"
     done
     read -r -p "$(tr_msg cl_select)" choice || return 0
     if [[ ! "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > ${#rows[@]} )); then
@@ -25201,6 +25202,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
         xhttp) defport='8443'; tag="${ABOX_DEPLOY_TAG:-latest-xhttp}"; label='VLESS-XHTTP-Reality (Latest Xray)' ;;
         trojan) defport='443'; tag="${ABOX_DEPLOY_TAG:-latest-trojan}"; label='Trojan-Reality (Latest Xray)' ;;
         ss) defport='2053'; tag="${ABOX_DEPLOY_TAG:-latest-ss}"; label='SS-2022 (Latest Xray)' ;;
+        socks) defport='1080'; tag="${ABOX_DEPLOY_TAG:-latest-socks}"; label='SOCKS5 (Latest Xray)' ;;
         *) msg "${RED}$(tr_msg invalid_input): $kind${NC}"; return 1 ;;
     esac
     clear
@@ -25216,7 +25218,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
         return 1
     fi
     listen_addr=$(wildcard_listen_address)
-    sni=$(sni_prompt_or_auto)
+    [[ "$kind" == 'socks' ]] || sni=$(sni_prompt_or_auto)
     tmp_json=$(mktemp /tmp/A-Box-xl-inbound.XXXXXX) || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     case "$kind" in
         vision|xhttp)
@@ -25259,6 +25261,15 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
                 '{tag:$tag,listen:$listen,port:$port,protocol:"shadowsocks",
                   settings:{method:"2022-blake3-aes-128-gcm",password:$pass,network:"tcp,udp"}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
             ;;
+        socks)
+            local suser='' spass=''
+            read -r -p "$(tr_msg socks5_user_prompt)" suser || suser=''
+            suser="${suser:-main}"
+            spass=$(rand_alnum 16) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+            jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg user "$suser" --arg pass "$spass" \
+                '{tag:$tag,listen:$listen,port:$port,protocol:"socks",
+                  settings:{auth:"password",accounts:[{user:$user,pass:$pass}],udp:true}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
+            ;;
     esac
     if [[ ! -f "$cfg" || -L "$cfg" ]]; then
         rm -f "$tmp_json"
@@ -25292,7 +25303,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     fi
     rm -f "$bak"
     allowPort "$port" tcp || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    [[ "$kind" == 'ss' ]] && { allowPort "$port" udp || true; }
+    [[ "$kind" == 'ss' || "$kind" == 'socks' ]] && { allowPort "$port" udp || true; }
     save_firewall_rules || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     pub_ip=$(read_cached_public_ip 2>/dev/null || true)
     [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
@@ -25302,6 +25313,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
         xhttp) link="vless://$(urlencode "$uuid")@$(uri_host "$pub_ip"):${port}?security=reality&encryption=none&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=xhttp&path=%2Fxhttp&mode=auto#Latest-XHTTP" ;;
         trojan) link="trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Latest-Trojan" ;;
         ss) link="ss://$(printf '%s' "2022-blake3-aes-128-gcm:${pass}" | base64 -w0 2>/dev/null | tr '+/' '-_' | tr -d '=')@$(uri_host "$pub_ip"):${port}#Latest-SS2022" ;;
+        socks) link="socks5://$(urlencode "$suser"):$(urlencode "$spass")@$(uri_host "$pub_ip"):${port}#Latest-SOCKS5" ;;
     esac
     msg "${GREEN}$(tr_msg xl_ok_installed): ${label} :${port}${NC}"
     msg "$link"
@@ -25473,16 +25485,17 @@ xray_latest_menu() {
         if [[ -n "$latest_tag" ]] && ABOX_XRAY_VERSION="$latest_tag" xray_reality_requires_mlkem 2>/dev/null; then
             msg "${RED}${BOLD}$(tr_msg xl_mlkem_warn)${NC}"
         fi
-        msg "${YELLOW}1.  $(tr_msg xl_m_install)${NC}"
-        msg "${YELLOW}2.  VLESS + Vision + REALITY${NC}"
-        msg "${YELLOW}3.  VLESS + XHTTP + REALITY${NC}"
-        msg "${YELLOW}4.  Trojan-Reality${NC}"
-        msg "${YELLOW}5.  Shadowsocks 2022${NC}"
-        msg "${YELLOW}6.  $(tr_msg xl_m_trio)${NC}"
-        msg "${YELLOW}7.  $(tr_msg xl_m_quad)${NC}"
-        msg "${YELLOW}8.  $(tr_msg xl_m_ports)${NC}"
-        msg "${YELLOW}9.  $(tr_msg xl_m_remove)${NC}"
-        msg "${CYAN}0.  $(tr_msg xl_back_main)${NC}"
+        msg "${YELLOW} 1.  $(tr_msg xl_m_install)${NC}"
+        msg "${YELLOW} 2.  VLESS + Vision + REALITY${NC}"
+        msg "${YELLOW} 3.  VLESS + XHTTP + REALITY${NC}"
+        msg "${YELLOW} 4.  Trojan-Reality${NC}"
+        msg "${YELLOW} 5.  Shadowsocks 2022${NC}"
+        msg "${YELLOW} 6.  SOCKS5${NC}"
+        msg "${YELLOW} 7.  $(tr_msg xl_m_trio)${NC}"
+        msg "${YELLOW} 8.  $(tr_msg xl_m_quad)${NC}"
+        msg "${YELLOW} 9.  $(tr_msg xl_m_ports)${NC}"
+        msg "${YELLOW}10.  $(tr_msg xl_m_remove)${NC}"
+        msg "${CYAN} 0.  $(tr_msg xl_back_main)${NC}"
         read -r -p "$(tr_msg xl_select)" choice || return 0
         case "$choice" in
             1) xray_latest_install_core; pause_return ;;
@@ -25490,10 +25503,11 @@ xray_latest_menu() {
             3) deploy_with_instance_choice xray-latest latest-xhttp xray_latest_deploy xhttp; pause_return ;;
             4) deploy_with_instance_choice xray-latest latest-trojan xray_latest_deploy trojan; pause_return ;;
             5) deploy_with_instance_choice xray-latest latest-ss xray_latest_deploy ss; pause_return ;;
-            6) xray_latest_deploy_trio; pause_return ;;
-            7) xray_latest_deploy_quad; pause_return ;;
-            8) xl_show_ports; pause_return ;;
-            9) xray_latest_remove; pause_return ;;
+            6) deploy_with_instance_choice xray-latest latest-socks xray_latest_deploy socks; pause_return ;;
+            7) xray_latest_deploy_trio; pause_return ;;
+            8) xray_latest_deploy_quad; pause_return ;;
+            9) xl_show_ports; pause_return ;;
+            10) xray_latest_remove; pause_return ;;
             0) return 0 ;;
             *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
         esac

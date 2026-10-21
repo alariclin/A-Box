@@ -12333,7 +12333,7 @@ _menu_info_collect() {
         # Per-node user records for the panel detail section:
         # SEG\t<segment> / USR\t<name>\t<used bytes>\t<mark>.
         _MI_USER_RECS=''
-        local _rcore='' _rtag='' _rseg='' _rcfg='' _ut=''
+        local _rcore='' _rtag='' _rseg='' _rcfg='' _ut='' _usegbuf='' _uhit=0
         # Order registries like the live configs (grid order):
         # per core, inbounds in config order; leftovers by filename.
         local -a _ordered_rf=()
@@ -12394,10 +12394,11 @@ _menu_info_collect() {
                     fi ;;
                 hy2) _rseg="Hy2:${HY2_BASE_PORT:-?}" ;;
             esac
-            _MI_USER_RECS+=$'SEG\t'"${_rseg}"$'\n'
+            _usegbuf=$'SEG\t'"${_rseg}"$'\n'; _uhit=0
             while IFS= read -r _ut; do
-                [[ -n "$_ut" ]] && _MI_USER_RECS+=$'USR\t'"${_ut}"$'\n'
-            done < <(jq -r '(.core // "") as $c | .users[]? | ([.name, (if $c == "sing-box" then "-" else (((.used_up // 0) + (.used_down // 0)) | tostring) end), (if .disabled == true then "disabled" elif (.blocked // "") != "" then "blocked" else "" end), (if (.expire_at // 0) == 0 then "F" elif (.expire_at // 0) <= now then "E" else (((.expire_at // 0) - now) / 86400 | ceil | tostring) end), (if $c == "sing-box" then "0" else (((.quota_gb // 0) * 1073741824) | floor | tostring) end)] | join("|"))' "$_rf" 2>/dev/null)
+                if [[ -n "$_ut" ]]; then _usegbuf+=$'USR\t'"${_ut}"$'\n'; _uhit=1; fi
+            done < <(jq -r '(.core // "") as $c | .users[]? | select((.blocked // "") == "" and (.disabled // false) != true) | ([.name, (if $c == "sing-box" then "-" else (((.used_up // 0) + (.used_down // 0)) | tostring) end), (if .disabled == true then "disabled" elif (.blocked // "") != "" then "blocked" else "" end), (if (.expire_at // 0) == 0 then "F" elif (.expire_at // 0) <= now then "E" else (((.expire_at // 0) - now) / 86400 | ceil | tostring) end), (if $c == "sing-box" then "0" else (((.quota_gb // 0) * 1073741824) | floor | tostring) end)] | join("|"))' "$_rf" 2>/dev/null)
+            (( _uhit )) && _MI_USER_RECS+="$_usegbuf"
         done
         # Scheme B: reorder segment blocks by the canonical rank
         # (stable; orphan registries keep their relative order last).
@@ -12630,8 +12631,8 @@ _menu_info_display() {
                         *[!0-9]*|'') ;;
                         *) _utok+=" · $(tprintf mi_u_days "$_uexp")" ;;
                     esac
-                    [[ "$_umark" == 'blocked' ]] && _utok+="·$(tr_msg mi_u_blocked)"
-                    [[ "$_umark" == 'disabled' ]] && _utok+="·$(tr_msg mi_u_disabled)"
+                    [[ "$_umark" == 'blocked' ]] && _utok+=" · $(tr_msg mi_u_blocked)"
+                    [[ "$_umark" == 'disabled' ]] && _utok+=" · $(tr_msg mi_u_disabled)"
                     if (( _ucnt >= 3 )); then
                         printf -v _ucont '%-*s  ' "$_usw" ''
                         _usegtxt+=$'\n'"$_ucont"
@@ -16857,7 +16858,7 @@ users_fmt_bytes() {
     local b="${1:-0}"
     [[ "$b" =~ ^[0-9]+$ ]] || b=0
     if (( b == 0 )); then printf '-'; return 0; fi
-    awk -v b="$b" 'BEGIN { if (b < 1024) printf "%dB", b; else if (b < 1048576) printf "%.1fK", b/1024; else if (b < 1073741824) printf "%.1fM", b/1048576; else { v = sprintf("%.2f", b/1073741824); sub(/\.?0+$/, "", v); printf "%sG", v } }' 2>/dev/null || printf '%sB' "$b"
+    awk -v b="$b" 'BEGIN { if (b < 1073741824) printf "%.1fM", b/1048576; else { v = sprintf("%.2f", b/1073741824); sub(/\.?0+$/, "", v); printf "%sG", v } }' 2>/dev/null || printf '%sB' "$b"
 }
 # Display width of a string: wide (CJK/fullwidth) codepoints count 2.
 _str_dwidth() {

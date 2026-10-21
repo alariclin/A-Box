@@ -2008,6 +2008,18 @@ tr_msg() {
         fa:mi_rules) echo '%s قانون' ;;
         zh-tw:mi_rules) echo '規則 %s 條' ;;
         ja:mi_rules) echo 'ルール %s 件' ;;
+        zh:mi_users) echo '用户' ;;
+        en:mi_users) echo 'Users' ;;
+        ru:mi_users) echo 'Пользователи' ;;
+        fa:mi_users) echo 'کاربران' ;;
+        zh-tw:mi_users) echo '用戶' ;;
+        ja:mi_users) echo 'ユーザー' ;;
+        zh:mi_users_line) echo '共 %s 人 · 封锁 %s · 本期用量 %s' ;;
+        en:mi_users_line) echo '%s users · %s blocked · used %s this period' ;;
+        ru:mi_users_line) echo 'всего %s · заблокировано %s · трафик за период %s' ;;
+        fa:mi_users_line) echo 'مجموع %s کاربر · مسدود %s · مصرف این دوره %s' ;;
+        zh-tw:mi_users_line) echo '共 %s 人 · 封鎖 %s · 本期用量 %s' ;;
+        ja:mi_users_line) echo '合計 %s 人 · ブロック %s · 今期使用量 %s' ;;
         zh:split_preset_streaming) echo '流媒体预设（一键）' ;;
         en:split_preset_streaming) echo 'Streaming preset (one-click)' ;;
         ru:split_preset_streaming) echo 'Пресет стриминга' ;;
@@ -3207,6 +3219,35 @@ get_public_ip() {
     fi
     printf 'N/A\n'
     return 1
+}
+
+# Background refresh of the public-IP cache (best effort, detached).
+refresh_public_ip_bg() {
+    ( refresh_public_ip >/dev/null 2>&1 || true ) >/dev/null 2>&1 &
+}
+
+# Startup/menu path: stale-while-revalidate. A fresh cache (strict TTL)
+# is used as-is; a stale-but-recent (<=24h) cache is served immediately
+# and refreshed in the background, so entering the menu never blocks on
+# the serial IP-echo endpoints. Only a missing/unusable cache pays the
+# synchronous fetch. Link generation keeps the strict code paths.
+get_public_ip_swr() {
+    local ip=''
+    if ip=$(read_cached_public_ip 2>/dev/null) && [[ -n "$ip" ]]; then
+        printf '%s\n' "$ip"; return 0
+    fi
+    if [[ -r "$PUBLIC_IP_CACHE" && -f "$PUBLIC_IP_CACHE" && ! -L "$PUBLIC_IP_CACHE" ]]; then
+        local _ip='' _now=0 _mt=0
+        _ip=$(head -n 1 "$PUBLIC_IP_CACHE" 2>/dev/null | tr -d '[:space:]')
+        if valid_public_ip "$_ip"; then
+            _now=$(date +%s); _mt=$(stat -c %Y "$PUBLIC_IP_CACHE" 2>/dev/null || echo 0)
+            if (( _now - _mt >= 0 && _now - _mt <= 86400 )); then
+                refresh_public_ip_bg
+                printf '%s\n' "$_ip"; return 0
+            fi
+        fi
+    fi
+    get_public_ip
 }
 
 refresh_public_ip() {
@@ -11789,23 +11830,39 @@ _ip_geo_refresh() {
         ru) geo_lang='ru' ;;
     esac
     if [[ -f "$IP_GEO_FILE" && ! -L "$IP_GEO_FILE" ]]; then
-        local _cip _clang _cl6 _now _mt
+        local _cip _clang _now _mt
         IFS= read -r _cip < "$IP_GEO_FILE" 2>/dev/null
         _now=$(date +%s 2>/dev/null || echo 0)
         _mt=$(stat -c %Y "$IP_GEO_FILE" 2>/dev/null || echo 0)
         _clang=$(awk 'NR==12' "$IP_GEO_FILE" 2>/dev/null)
-        _cl6=$(awk 'NR==6' "$IP_GEO_FILE" 2>/dev/null)
-        if [[ "$_cl6" == 'true' || "$_cl6" == 'false' ]]; then _clang='__stale_v2__'; fi
-        if [[ "$_cip" == "$ip" && "$_clang" == "$geo_lang" ]] && (( _now - _mt < 86400 )); then return 0; fi
+        if [[ "$_cip" == "$ip" && "$_clang" == "$geo_lang" ]]; then
+            if (( _now - _mt < 86400 )); then return 0; fi
+            # Stale but usable: the panel reads the file as-is; refresh
+            # detached so the menu never blocks on the network.
+            ( _ip_geo_fetch_now "$ip" "$geo_lang" ) >/dev/null 2>&1 &
+            return 0
+        fi
     fi
-    local resp
-    resp=$(curl -fsS --max-time 5 "http://ip-api.com/line/${ip}?fields=status,country,countryCode,city,mobile,hosting,as,isp,org&lang=${geo_lang}" 2>/dev/null) || return 1
-    [[ "$(printf '%s' "$resp" | head -1)" == 'success' ]] || return 1
+    _ip_geo_fetch_now "$ip" "$geo_lang"
+}
+
+# Synchronous geo fetch: the two sources race concurrently and the
+# cache file is replaced atomically.
+_ip_geo_fetch_now() {
+    local ip="$1" geo_lang="$2"
+    local resp='' cc2='' tmpd=''
+    tmpd=$(mktemp -d /tmp/A-Box-geo.XXXXXX 2>/dev/null) || return 1
+    ( curl -fsS --max-time 4 "https://ipwho.is/${ip}?fields=success,country_code" 2>/dev/null | jq -r 'select(.success == true) | .country_code // empty' 2>/dev/null > "$tmpd/cc2" ) &
+    resp=$(curl -fsS --max-time 5 "http://ip-api.com/line/${ip}?fields=status,country,countryCode,city,isp,org,as,mobile,hosting&lang=${geo_lang}" 2>/dev/null) || { rm -rf "$tmpd"; return 1; }
+    wait
+    [[ "$(printf '%s' "$resp" | head -1)" == 'success' ]] || { rm -rf "$tmpd"; return 1; }
     # Second source (ipwho.is) country code, best-effort: only used to flag
     # multi-source country disagreement (broadcast/anycast heuristic).
-    local cc2=''
-    cc2=$(curl -fsS --max-time 4 "https://ipwho.is/${ip}?fields=success,country_code" 2>/dev/null | jq -r 'select(.success == true) | .country_code // empty' 2>/dev/null) || cc2=''
-    printf '%s\n%s\n%s\n%s\n' "$ip" "$resp" "$cc2" "$geo_lang" > "$IP_GEO_FILE" 2>/dev/null || return 1
+    cc2=$(cat "$tmpd/cc2" 2>/dev/null || true)
+    rm -rf "$tmpd"
+    local _tmpf="${IP_GEO_FILE}.tmp.$$"
+    printf '%s\n%s\n%s\n%s\n' "$ip" "$resp" "$cc2" "$geo_lang" > "$_tmpf" 2>/dev/null || return 1
+    mv -f -- "$_tmpf" "$IP_GEO_FILE" 2>/dev/null || { rm -f -- "$_tmpf"; return 1; }
     return 0
 }
 
@@ -11966,6 +12023,41 @@ _menu_info_collect() {
     fi
     [[ -n "$hy2_note" ]] && nodes="${nodes:+$nodes|}$hy2_note"
     _MI_NODES="$nodes"; _MI_SNI="$sni"
+    # --- per-node SNI list (grouped by SNI) for the detail block ---
+    _MI_SNI_LIST=''; _MI_SNI_DISTINCT=0
+    local _sni_rows=''
+    _sni_rows=$( {
+        if [[ "$_MI_XRUN" == "1" && -f /usr/local/etc/xray/config.json ]]; then
+            jq -r '.inbounds[]? | select(.tag != "api") | (.streamSettings.realitySettings.serverNames[0] // empty) as $sn | select($sn != "") |
+                (if .protocol == "vless" and (.settings.clients[0].flow // "" | startswith("xtls")) then "Vision:\(.port)"
+                 elif .protocol == "vless" and (.streamSettings.network // "") == "xhttp" then "XHTTP:\(.port)"
+                 elif .protocol == "vless" then "VLESS:\(.port)"
+                 elif .protocol == "trojan" then "Trojan:\(.port)"
+                 elif .protocol == "vmess" then "VMess:\(.port)" else empty end) + "\t" + $sn' /usr/local/etc/xray/config.json 2>/dev/null
+        fi
+        if [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]]; then
+            jq -r '.inbounds[]? | select(.tag != "shadowtls-ss") |
+                (if .type == "vless" then ((.tls.reality.handshake.server // .tls.server_name // empty)) as $sn | select($sn != "") | "VLESS:\(.listen_port)\t\($sn)"
+                 elif .type == "anytls" then ((.tls.reality.handshake.server // .tls.server_name // empty)) as $sn | select($sn != "") | "AnyTLS:\(.listen_port)\t\($sn)"
+                 elif .type == "tuic" then ((.tls.server_name // empty)) as $sn | select($sn != "") | "TUIC:\(.listen_port)\t\($sn)"
+                 elif .type == "shadowtls" then ((.handshake.server // empty)) as $sn | select($sn != "") | "ShadowTLS:\(.listen_port)\t\($sn)"
+                 else empty end)' /etc/sing-box/config.json 2>/dev/null
+        fi
+    } 2>/dev/null )
+    if [[ -n "$_sni_rows" ]]; then
+        _MI_SNI_LIST=$(printf '%s\n' "$_sni_rows" | awk -F '\t' '{n[$2] = n[$2] ? n[$2] "/" $1 : $1; if (!seen[$2]++) order[++c] = $2} END {for (i = 1; i <= c; i++) printf "%s%s %s", (i > 1 ? "|" : ""), n[order[i]], order[i]}')
+        [[ -n "$_MI_SNI_LIST" ]] && _MI_SNI_DISTINCT=$(( $(printf '%s' "$_MI_SNI_LIST" | tr -cd '|' | wc -c) + 1 ))
+    fi
+    # --- multi-user summary (registries of the toolbox manager) ---
+    _MI_USERS_N=0; _MI_USERS_BLOCKED=0; _MI_USERS_USED=0
+    local _udir="${ABOX_USERS_DIR:-/etc/ddr/users.d}" _rf='' _us=''
+    local -a _rfiles=()
+    for _rf in "$_udir"/*.json; do [[ -f "$_rf" && ! -L "$_rf" ]] && _rfiles+=("$_rf"); done
+    if (( ${#_rfiles[@]} > 0 )); then
+        _us=$(jq -s -r '[.[].users[]?] as $u | "\($u | length) \($u | map(select((.blocked // "") != "" or .disabled == true)) | length) \($u | map((.used_up // 0) + (.used_down // 0)) | add // 0)"' "${_rfiles[@]}" 2>/dev/null || true)
+        read -r _MI_USERS_N _MI_USERS_BLOCKED _MI_USERS_USED <<< "${_us:-0 0 0}"
+    fi
+
     # SOCKS5 service state (inbound deployed on some core)
     _MI_SOCKS_ST='none'
     if [[ "$nodes" == *'SOCKS5:'* ]]; then
@@ -12156,21 +12248,39 @@ _menu_info_display() {
         local _i _n=${#_rows[@]}
         for (( _i=0; _i<_n; _i++ )); do
             _row="${_rows[$_i]}"
-            if (( _i == _n - 1 )) && [[ -n "$_MI_SNI" ]] && (( ${#_row} + 9 + ${#_MI_SNI} <= 66 )); then
+            if (( _i == _n - 1 )) && [[ -n "$_MI_SNI" ]] && (( ${_MI_SNI_DISTINCT:-0} < 2 )) && (( ${#_row} + 9 + ${#_MI_SNI} <= 66 )); then
                 if (( _first )); then msg "  ${CYAN}${_lbl}：${NC}  ${LBLW}${_row}${NC} · ${CYAN}SNI：${NC} ${LBLW}${_MI_SNI}${NC}"; _first=0
                 else msg "          ${LBLW}${_row}${NC} · ${CYAN}SNI：${NC} ${LBLW}${_MI_SNI}${NC}"; fi
             else
                 if (( _first )); then msg "  ${CYAN}${_lbl}：${NC}  ${LBLW}${_row}${NC}"; _first=0
                 else msg "          ${LBLW}${_row}${NC}"; fi
-                if (( _i == _n - 1 )) && [[ -n "$_MI_SNI" ]]; then
+                if (( _i == _n - 1 )) && [[ -n "$_MI_SNI" ]] && (( ${_MI_SNI_DISTINCT:-0} < 2 )); then
                     msg "          ${CYAN}SNI：${NC} ${LBLW}${_MI_SNI}${NC}"
                 fi
             fi
         done
+        if (( ${_MI_SNI_DISTINCT:-0} >= 2 )); then
+            local _se='' _srow='' _srows=() _sents=()
+            IFS='|' read -r -a _sents <<< "$_MI_SNI_LIST"
+            for _se in "${_sents[@]}"; do
+                [[ -z "$_se" ]] && continue
+                if [[ -z "$_srow" ]]; then _srow="$_se"; else _srows+=("$_srow · $_se"); _srow=''; fi
+            done
+            [[ -n "$_srow" ]] && _srows+=("$_srow")
+            local _si=0
+            for (( _si=0; _si<${#_srows[@]}; _si++ )); do
+                if (( _si == 0 )); then msg "  ${CYAN}SNI：${NC}  ${LBLW}${_srows[$_si]}${NC}"
+                else msg "          ${LBLW}${_srows[$_si]}${NC}"; fi
+            done
+        fi
     else
         msg "  ${CYAN}$(tr_msg mi_nodes)：${NC}  ${LBLW}$(tr_msg mi_no_nodes)${NC}"
     fi
     msg ''
+    if (( ${_MI_USERS_N:-0} > 0 )); then
+        msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}$(tprintf mi_users_line "$_MI_USERS_N" "$_MI_USERS_BLOCKED" "$(users_fmt_bytes "${_MI_USERS_USED:-0}")")${NC}"
+        msg ''
+    fi
     # --- split (hidden entirely when nothing is configured) ---
     if [[ -n "$_MI_EXITS" || "$_MI_RULES" != '0' ]]; then
         local _split='' _e
@@ -27547,6 +27657,10 @@ PY_SELFTEST_TAR
     grep -Fq 'setup_user_guard()' "$0" || { echo 'FAIL: setup_user_guard missing'; failures=$((failures + 1)); }
     grep -Fq 'users_hot_remove()' "$0" || { echo 'FAIL: users_hot_remove missing'; failures=$((failures + 1)); }
     grep -Fq 'deploy_with_instance_choice()' "$0" || { echo 'FAIL: deploy_with_instance_choice missing'; failures=$((failures + 1)); }
+    grep -Fq 'get_public_ip_swr()' "$0" || { echo 'FAIL: get_public_ip_swr missing'; failures=$((failures + 1)); }
+    grep -Fq '_ip_geo_fetch_now()' "$0" || { echo 'FAIL: _ip_geo_fetch_now missing'; failures=$((failures + 1)); }
+    grep -Fq '_MI_SNI_LIST' "$0" || { echo 'FAIL: SNI list missing'; failures=$((failures + 1)); }
+    grep -Fq 'mi_users_line' "$0" || { echo 'FAIL: mi_users_line missing'; failures=$((failures + 1)); }
     grep -Fq 'statsUserUplink' "$0" || { echo 'FAIL: per-user stats policy missing'; failures=$((failures + 1)); }
     grep -Fq 'revoke one extra UUID from the Xray server' "$0" || grep -Fq 'Revoke one extra UUID from the Xray server' "$0" || { echo 'FAIL: server-side UUID revocation option missing'; failures=$((failures + 1)); }
     # Exercise multi-UUID validation/deduplication on a temporary fixture; never touch /etc/ddr.
@@ -28974,7 +29088,7 @@ main_loop() {
             record_core_family_ownership "$_srv" || msg "${YELLOW}[!] Ownership migration for active ${_srv} could not be verified; destructive maintenance will remain blocked until registration succeeds.${NC}" >&2
         fi
     done
-    GLOBAL_PUBLIC_IP=$(get_public_ip || true)
+    GLOBAL_PUBLIC_IP=$(get_public_ip_swr || true)
     while true; do
         local STATUS_STR='' CUR_MODE='' choice
         STATUS_STR=$(build_status_str)

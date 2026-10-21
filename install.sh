@@ -12223,12 +12223,15 @@ _menu_info_collect() {
     if command -v docker >/dev/null 2>&1; then dock=stop; timeout 1 docker info >/dev/null 2>&1 && dock=run; fi
     local _cc=''; _cc=$(cat /proc/sys/net/ipv4/tcp_congestion_control 2>/dev/null || sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null); _cc=${_cc//[[:space:]]/}
     [[ "$_cc" == "bbr" ]] && bbr=run
-    if command -v ufw >/dev/null 2>&1; then fwst=stop; ufw status 2>/dev/null | grep -qi '^Status: active' && fwst=run
-    else
+    # Any live evidence counts; an installed-but-inactive ufw
+    # (Ubuntu default) must not mask A-Box's own rules.
+    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi '^Status: active'; then fwst=run; fi
+    if [[ -z "$fwst" ]]; then
         local _ipt=''; _ipt=$(command -v iptables 2>/dev/null || true); [[ -z "$_ipt" && -x /sbin/iptables ]] && _ipt=/sbin/iptables
         if [[ -n "$_ipt" ]] && (( $("$_ipt" -S 2>/dev/null | grep -c .) > 3 )); then fwst=run
         elif command -v nft >/dev/null 2>&1 && [[ -n "$(nft list ruleset 2>/dev/null)" ]]; then fwst=run; fi
     fi
+    if [[ -z "$fwst" ]] && is_systemd && systemctl is-failed A-Box-firewall.service >/dev/null 2>&1; then fwst=stop; fi
     _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"; _MI_F2B="$f2st"; _MI_WALLOS="$dost"; _MI_TROJAN="$tjt"; _MI_TUIC="$tut"; _MI_ANYTLS="$ant"; _MI_STLS="$stt"; _MI_ARGO="$argo_st"; _MI_CF="$cf_st"; _MI_TRAFFIC="$traf"; _MI_DOCKER="$dock"; _MI_BBR="$bbr"; _MI_FW="$fwst"
 
     # --- system info ---
@@ -26512,8 +26515,25 @@ EOF_CLASH
     printf '%s\n' "$out"
 }
 
+ensure_qrencode() {
+    command -v qrencode >/dev/null 2>&1 && return 0
+    [[ -n "${_QR_ENSURED:-}" ]] && return 1
+    _QR_ENSURED=1
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -y -q >/dev/null 2>&1 || true
+        apt-get -y install qrencode >/dev/null 2>&1 || true
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf -y install qrencode >/dev/null 2>&1 || true
+    elif command -v yum >/dev/null 2>&1; then
+        yum -y install qrencode >/dev/null 2>&1 || true
+    elif command -v apk >/dev/null 2>&1; then
+        apk add --no-cache qrencode >/dev/null 2>&1 || true
+    fi
+    command -v qrencode >/dev/null 2>&1
+}
 generate_qr() {
     local url=$1
+    ensure_qrencode || true
     if command -v qrencode >/dev/null 2>&1; then
         printf '\n%s\n' "${CYAN}================ 扫码导入 / Scan QR Code =================${NC}"
         printf '%s' "$url" | qrencode -s 1 -m 2 -t UTF8

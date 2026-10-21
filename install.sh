@@ -988,36 +988,6 @@ tr_msg() {
         fa:acheck_failed) echo 'دانلود A-Check یا بررسی SHA-256 ناموفق بود؛ چیزی اجرا نشد.' ;;
         zh-tw:acheck_failed) echo 'A-Check 下載或 SHA-256 校驗失敗，未執行。' ;;
         ja:acheck_failed) echo 'A-Check のダウンロードまたは SHA-256 検証に失敗しました。何も実行していません。' ;;
-        zh:sys14_need_docker) echo '需要可用的 Docker 才能跑 14 系统测试：请先安装并启动 Docker 后重试。' ;;
-        en:sys14_need_docker) echo 'The 14-system test needs a working Docker: install and start Docker, then retry.' ;;
-        ru:sys14_need_docker) echo 'Для теста 14 систем нужен работающий Docker: установите и запустите Docker, затем повторите.' ;;
-        fa:sys14_need_docker) echo 'آزمون ۱۴ سیستم به Docker در حال اجرا نیاز دارد: Docker را نصب و راه‌اندازی کنید و دوباره تلاش کنید.' ;;
-        zh-tw:sys14_need_docker) echo '需要可用的 Docker 才能跑 14 系統測試：請先安裝並啟動 Docker 後重試。' ;;
-        ja:sys14_need_docker) echo '14 システムテストには動作する Docker が必要です：Docker をインストールして起動し、再試行してください。' ;;
-        zh:sys14_install_docker) echo '未检测到 Docker，是否现在通过系统包管理器安装 Docker？' ;;
-        en:sys14_install_docker) echo 'Docker was not found. Install it now through the system package manager?' ;;
-        ru:sys14_install_docker) echo 'Docker не найден. Установить его сейчас через системный менеджер пакетов?' ;;
-        fa:sys14_install_docker) echo 'Docker پیدا نشد. اکنون از راه مدیر بسته سیستم نصب شود؟' ;;
-        zh-tw:sys14_install_docker) echo '未偵測到 Docker，是否現在透過系統套件管理器安裝 Docker？' ;;
-        ja:sys14_install_docker) echo 'Docker が見つかりません。システムのパッケージマネージャで今すぐインストールしますか？' ;;
-        zh:sys14_syntax) echo '语法' ;;
-        en:sys14_syntax) echo 'Syntax' ;;
-        ru:sys14_syntax) echo 'Синтаксис' ;;
-        fa:sys14_syntax) echo 'نحو' ;;
-        zh-tw:sys14_syntax) echo '語法' ;;
-        ja:sys14_syntax) echo '構文' ;;
-        zh:sys14_selftest) echo '自检' ;;
-        en:sys14_selftest) echo 'Self-test' ;;
-        ru:sys14_selftest) echo 'Самотест' ;;
-        fa:sys14_selftest) echo 'خودآزمون' ;;
-        zh-tw:sys14_selftest) echo '自檢' ;;
-        ja:sys14_selftest) echo 'セルフテスト' ;;
-        zh:sys14_summary) echo '14 系统测试汇总' ;;
-        en:sys14_summary) echo '14-system test summary' ;;
-        ru:sys14_summary) echo 'Итоги теста 14 систем' ;;
-        fa:sys14_summary) echo 'خلاصه آزمون ۱۴ سیستم' ;;
-        zh-tw:sys14_summary) echo '14 系統測試彙總' ;;
-        ja:sys14_summary) echo '14 システムテスト結果' ;;
         zh:argo_temp_note) echo '注意: 临时隧道域名在 cloudflared 重启后会变化, 届时请在本菜单查看新链接。' ;;
         en:argo_temp_note) echo 'Note: temporary tunnel domains change when cloudflared restarts; re-check links here afterwards.' ;;
         ru:argo_temp_note) echo 'Примечание: домены временного туннеля меняются при перезапуске cloudflared; проверяйте ссылки здесь.' ;;
@@ -22292,82 +22262,6 @@ run_acheck_tool() {
 }
 
 
-# 14-system compatibility test: for each of the 14 supported distro
-# images, install the base dependencies in a throwaway container and
-# run bash -n plus --self-test against the currently running script
-# file. Same system list and per-distro commands as the standalone
-# release-gate harness. Requires a working Docker daemon.
-run_all_systems_test() {
-    if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
-        if confirm_yes_no "$(tr_msg sys14_install_docker)"; then
-            if command -v apt-get >/dev/null 2>&1; then
-                apt-get update -qq 2>/dev/null; apt-get install -y docker.io 2>/dev/null || apt-get install -y docker 2>/dev/null
-            elif command -v dnf >/dev/null 2>&1; then
-                dnf install -y docker 2>/dev/null
-            elif command -v yum >/dev/null 2>&1; then
-                yum install -y docker 2>/dev/null
-            elif command -v apk >/dev/null 2>&1; then
-                apk add --no-cache docker 2>/dev/null
-            fi
-            if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl start docker 2>/dev/null;
-            elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then rc-service docker start 2>/dev/null 9>&- 10>&-; fi
-            sleep 2
-        fi
-    fi
-    if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
-        msg "${RED}$(tr_msg sys14_need_docker)${NC}"
-        return 1
-    fi
-    local _self _sys _img _rest _name _pkgmgr _cmd _result _syntax _selftest
-    _self=$(readlink -f "$0" 2>/dev/null || echo "$0")
-    local _systems=(
-        "debian:trixie-slim|Debian 13|apt"
-        "debian:bookworm-slim|Debian 12|apt"
-        "debian:bullseye-slim|Debian 11|apt"
-        "debian:buster-slim|Debian 10|apt"
-        "ubuntu:24.04|Ubuntu 24.04|apt"
-        "ubuntu:22.04|Ubuntu 22.04|apt"
-        "ubuntu:20.04|Ubuntu 20.04|apt"
-        "rockylinux:9|Rocky Linux 9|dnf"
-        "rockylinux:8|Rocky Linux 8|dnf"
-        "almalinux:9|AlmaLinux 9|dnf"
-        "almalinux:8|AlmaLinux 8|dnf"
-        "alpine:3.19|Alpine 3.19|apk"
-        "alpine:3.18|Alpine 3.18|apk"
-        "fedora:40|Fedora 40|dnf"
-    )
-    local _pass=0 _fail=0 _skip=0
-    for _sys in "${_systems[@]}"; do
-        _img="${_sys%%|*}"; _rest="${_sys#*|}"; _name="${_rest%%|*}"; _pkgmgr="${_rest##*|}"
-        msg "${CYAN}=== $_name ($_img) ===${NC}"
-        if ! docker pull "$_img" >/dev/null 2>&1; then
-            msg "  SKIP (pull failed)"
-            _skip=$((_skip + 1)); continue
-        fi
-        case "$_pkgmgr" in
-            apt) _cmd=". /etc/os-release 2>/dev/null; if [ \"\${VERSION_CODENAME:-}\" = \"buster\" ] || [ \"\${VERSION_CODENAME:-}\" = \"bullseye\" ]; then sed -i \"s|deb.debian.org|archive.debian.org|g; s|security.debian.org|archive.debian.org|g\" /etc/apt/sources.list 2>/dev/null; apt-get update -o Acquire::Check-Valid-Until=false -qq 2>/dev/null && apt-get install -y -qq -o Acquire::Check-Valid-Until=false bash tzdata iptables openssl python3 jq curl wget tar unzip zip 2>/dev/null; else apt-get update -qq 2>/dev/null && apt-get install -y -qq bash tzdata iptables openssl python3 jq curl wget tar unzip zip 2>/dev/null; fi" ;;
-            dnf) _cmd="for p in bash tzdata iptables openssl python3 jq curl wget tar unzip zip; do dnf install -y -q \"\$p\" >/dev/null 2>&1 || yum install -y -q \"\$p\" >/dev/null 2>&1 || true; done" ;;
-            apk) _cmd="apk add --no-cache bash tzdata iptables openssl python3 jq curl wget tar unzip zip 2>/dev/null" ;;
-        esac
-        _result=$(docker run --rm -v "$_self:/test/install.sh:ro" "$_img" sh -c "
-            $_cmd >/dev/null 2>&1
-            echo 'SYNTAX:'
-            bash -n /test/install.sh 2>/dev/null && echo 'SYNTAX_OK' || echo 'SYNTAX_FAIL'
-            echo 'SELFTEST:'
-            timeout 120 bash /test/install.sh --self-test 2>&1 | grep -E 'SELF_TEST_OK|SELF_TEST_FAILED' | head -1
-        " 2>&1)
-        _syntax=$(echo "$_result" | grep -A1 "SYNTAX:" | grep "SYNTAX_" | head -1)
-        _selftest=$(echo "$_result" | grep -A1 "SELFTEST:" | grep "SELF_TEST" | head -1)
-        msg "  $(tr_msg sys14_syntax): ${_syntax:-?}  $(tr_msg sys14_selftest): ${_selftest:-?}"
-        if [[ "$_syntax" == "SYNTAX_OK" && "$_selftest" == "SELF_TEST_OK" ]]; then
-            _pass=$((_pass + 1))
-        else
-            _fail=$((_fail + 1))
-        fi
-    done
-    msg "${BOLD}$(tr_msg sys14_summary): PASS=$_pass FAIL=$_fail SKIP=$_skip${NC}"
-}
-
 vps_benchmark_menu() {
     # Toolbox is a submenu loop: sub-functions return here, 0/Enter goes back
     # to the main menu.
@@ -22378,139 +22272,132 @@ vps_benchmark_menu() {
         en)
             msg "${BOLD}${GREEN}Toolbox${NC}"
             msg "${CYAN}[ Test & Diagnostics ]                    [ System Tuning ]${NC}"
-            msg "${YELLOW}1.  System benchmark & download speed     7.  WARP & split-routing${NC}"
-            msg "${YELLOW}2.  IP quality / streaming / route test   8.  Allocate 2 GB Swap${NC}"
-            msg "${YELLOW}3.  Export redacted diagnostics           9.  VPS one-click optimization${NC}"
-            msg "${YELLOW}4.  Read-only preflight                   10.  IP / DNS / timezone / download-source${NC}"
-            msg "${YELLOW}5. A-Check IP reputation & network check${NC}"
-            msg "${YELLOW}6. 14-system compatibility test${NC}"
+            msg "${YELLOW}1.  A-Check IP reputation check           6.  WARP & split-routing${NC}"
+            msg "${YELLOW}2.  System benchmark & download speed     7.  Allocate 2 GB Swap${NC}"
+            msg "${YELLOW}3.  IP quality / streaming / route test   8.  VPS one-click optimization${NC}"
+            msg "${YELLOW}4.  Export redacted diagnostics           9.  IP / DNS / timezone / download-source${NC}"
+            msg "${YELLOW}5.  Read-only preflight${NC}"
             msg ""
             msg "${CYAN}[ SNI Optimization ]                      [ Config Management ]${NC}"
-            msg "${YELLOW}11.  Local SNI preference                 14.  Backup / restore configuration${NC}"
-            msg "${YELLOW}12.  Mini-host SNI preference             15.  Multi-user / subscription link export${NC}"
-            msg "${YELLOW}13.  SNI preference records               16.  Wallos install / update / backup${NC}"
+            msg "${YELLOW}10.  Local SNI preference                 13.  Backup / restore configuration${NC}"
+            msg "${YELLOW}11.  Mini-host SNI preference             14.  Multi-user / subscription link export${NC}"
+            msg "${YELLOW}12.  SNI preference records               15.  Wallos install / update / backup${NC}"
             msg ""
             msg "${CYAN}[ Security ]${NC}"
-            msg "${YELLOW}17.  SS-2022 IP whitelist${NC}"
+            msg "${YELLOW}16.  SS-2022 IP whitelist${NC}"
             msg "${CYAN}0. Back${NC}"
             ;;
         ru)
             msg "${BOLD}${GREEN}Инструменты${NC}"
             msg "${CYAN}[ Тесты и диагностика ]                   [ Оптимизация системы ]${NC}"
-            msg "${YELLOW}1.  Тест системы и скорости               7.  WARP и разделение трафика${NC}"
-            msg "${YELLOW}2.  Качество IP / стриминг / маршрут      8.  Создать Swap 2 ГБ${NC}"
-            msg "${YELLOW}3.  Экспорт диагностики                   9.  Оптимизация VPS${NC}"
-            msg "${YELLOW}4.  Проверка перед установкой             10.  IP / DNS / часовой пояс / источники${NC}"
-            msg "${YELLOW}5. A-Check: проверка IP${NC}"
-            msg "${YELLOW}6. Тест совместимости (14 систем)${NC}"
+            msg "${YELLOW}1.  A-Check: проверка IP                  6.  WARP и разделение трафика${NC}"
+            msg "${YELLOW}2.  Тест системы и скорости               7.  Создать Swap 2 ГБ${NC}"
+            msg "${YELLOW}3.  Качество IP / стриминг / маршрут      8.  Оптимизация VPS${NC}"
+            msg "${YELLOW}4.  Экспорт диагностики                   9.  IP / DNS / часовой пояс / источники${NC}"
+            msg "${YELLOW}5.  Проверка перед установкой${NC}"
             msg ""
             msg "${CYAN}[ Подбор SNI ]                            [ Управление конфигурацией ]${NC}"
-            msg "${YELLOW}11.  Подбор SNI                           14.  Бэкап / восстановление${NC}"
-            msg "${YELLOW}12.  Подбор SNI (мини-хост)               15.  Пользователи / экспорт подписки${NC}"
-            msg "${YELLOW}13.  Записи подбора SNI                   16.  Wallos: установка / обновление${NC}"
+            msg "${YELLOW}10.  Подбор SNI                           13.  Бэкап / восстановление${NC}"
+            msg "${YELLOW}11.  Подбор SNI (мини-хост)               14.  Пользователи / экспорт подписки${NC}"
+            msg "${YELLOW}12.  Записи подбора SNI                   15.  Wallos: установка / обновление${NC}"
             msg ""
             msg "${CYAN}[ Безопасность ]${NC}"
-            msg "${YELLOW}17.  Белый список IP (SS-2022)${NC}"
+            msg "${YELLOW}16.  Белый список IP (SS-2022)${NC}"
             msg "${CYAN}0. Назад${NC}"
             ;;
         fa)
             msg "${BOLD}${GREEN}جعبه ابزار${NC}"
             msg "${CYAN}[ تست و عیب‌یابی ]                        [ بهینه‌سازی سیستم ]${NC}"
-            msg "${YELLOW}1.  تست سیستم و سرعت دانلود               7.  مدیریت WARP و تفکیک ترافیک${NC}"
-            msg "${YELLOW}2.  کیفیت IP / استریم / مسیر              8.  ساخت Swap دو گیگابایتی${NC}"
-            msg "${YELLOW}3.  خروجی تشخیص عیب‌یابی                  9.  بهینه‌سازی تک‌کلیکی VPS${NC}"
-            msg "${YELLOW}4.  پیش‌بررسی فقط‌خواندنی                 10.  تنظیمات IP / DNS / منطقه زمانی${NC}"
-            msg "${YELLOW}5. بررسی IP با A-Check${NC}"
-            msg "${YELLOW}6. آزمون سازگاری ۱۴ سیستم${NC}"
+            msg "${YELLOW}1.  بررسی IP با A-Check                   6.  مدیریت WARP و تفکیک ترافیک${NC}"
+            msg "${YELLOW}2.  تست سیستم و سرعت دانلود               7.  ساخت Swap دو گیگابایتی${NC}"
+            msg "${YELLOW}3.  کیفیت IP / استریم / مسیر              8.  بهینه‌سازی تک‌کلیکی VPS${NC}"
+            msg "${YELLOW}4.  خروجی تشخیص عیب‌یابی                  9.  تنظیمات IP / DNS / منطقه زمانی${NC}"
+            msg "${YELLOW}5.  پیش‌بررسی فقط‌خواندنی${NC}"
             msg ""
             msg "${CYAN}[ بهینه‌سازی SNI ]                        [ مدیریت پیکربندی ]${NC}"
-            msg "${YELLOW}11.  بهینه‌سازی SNI محلی                  14.  پشتیبان‌گیری / بازیابی${NC}"
-            msg "${YELLOW}12.  بهینه‌سازی SNI مینی‌هاست             15.  کاربران / خروجی لینک اشتراک${NC}"
-            msg "${YELLOW}13.  سوابق بهینه‌سازی SNI                 16.  نصب / به‌روزرسانی Wallos${NC}"
+            msg "${YELLOW}10.  بهینه‌سازی SNI محلی                  13.  پشتیبان‌گیری / بازیابی${NC}"
+            msg "${YELLOW}11.  بهینه‌سازی SNI مینی‌هاست             14.  کاربران / خروجی لینک اشتراک${NC}"
+            msg "${YELLOW}12.  سوابق بهینه‌سازی SNI                 15.  نصب / به‌روزرسانی Wallos${NC}"
             msg ""
             msg "${CYAN}[ امنیت ]${NC}"
-            msg "${YELLOW}17.  لیست سفید آی‌پی SS-2022${NC}"
+            msg "${YELLOW}16.  لیست سفید آی‌پی SS-2022${NC}"
             msg "${CYAN}0. بازگشت${NC}"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}綜合工具箱${NC}"
             msg "${CYAN}[ 測試診斷 ]                              [ 系統優化 ]${NC}"
-            msg "${YELLOW}1.  系統性能與下載測速                    7.  WARP 與分流管理${NC}"
-            msg "${YELLOW}2.  IP 質量/流媒體解鎖/回程測試           8.  創建 2 GB Swap${NC}"
-            msg "${YELLOW}3.  導出脫敏診斷包                        9.  VPS 一鍵優化${NC}"
-            msg "${YELLOW}4.  只讀預檢查                            10.  IP / DNS / 時區 / 下載源設置${NC}"
-            msg "${YELLOW}5. A-Check IP 純淨度檢測${NC}"
-            msg "${YELLOW}6. 14 系統兼容性測試${NC}"
+            msg "${YELLOW}1.  A-Check IP 純淨度檢測             6.  WARP 與分流管理${NC}"
+            msg "${YELLOW}2.  系統性能與下載測速                  7.  創建 2 GB Swap${NC}"
+            msg "${YELLOW}3.  IP 質量/流媒體解鎖/回程測試               8.  VPS 一鍵優化${NC}"
+            msg "${YELLOW}4.  導出脫敏診斷包                          9.  IP / DNS / 時區 / 下載源設置${NC}"
+            msg "${YELLOW}5.  只讀預檢查${NC}"
             msg ""
             msg "${CYAN}[ SNI 優選 ]                              [ 配置管理 ]${NC}"
-            msg "${YELLOW}11.  本地 SNI 優選                        14.  配置備份 / 恢復${NC}"
-            msg "${YELLOW}12.  微型主機 SNI 優選                    15.  多用戶 / 訂閱連結導出${NC}"
-            msg "${YELLOW}13.  SNI 優選記錄                         16.  Wallos 安裝 / 升級 / 備份${NC}"
+            msg "${YELLOW}10.  本地 SNI 優選                        13.  配置備份 / 恢復${NC}"
+            msg "${YELLOW}11.  微型主機 SNI 優選                    14.  多用戶 / 訂閱連結導出${NC}"
+            msg "${YELLOW}12.  SNI 優選記錄                         15.  Wallos 安裝 / 升級 / 備份${NC}"
             msg ""
             msg "${CYAN}[ 安全 ]${NC}"
-            msg "${YELLOW}17.  SS-2022 訪問白名單${NC}"
+            msg "${YELLOW}16.  SS-2022 訪問白名單${NC}"
             msg "${CYAN}0. 返回主選單${NC}"
             ;;
         ja)
             msg "${BOLD}${GREEN}ツールボックス${NC}"
             msg "${CYAN}[ テストと診断 ]                          [ システム最適化 ]${NC}"
-            msg "${YELLOW}1.  システムベンチマークと速度測定        7.  WARP と振り分け管理${NC}"
-            msg "${YELLOW}2.  IP品質/ストリーミング/ルートテスト    8.  2GB Swap 作成${NC}"
-            msg "${YELLOW}3.  診断パッケージのエクスポート          9.  VPS ワンクリック最適化${NC}"
-            msg "${YELLOW}4.  読み取り専用事前チェック              10.  IP / DNS / タイムゾーン設定${NC}"
-            msg "${YELLOW}5. A-Check IP 品質チェック${NC}"
-            msg "${YELLOW}6. 14 システム互換性テスト${NC}"
+            msg "${YELLOW}1.  A-Check IP 品質チェック      6.  WARP と振り分け管理${NC}"
+            msg "${YELLOW}2.  システムベンチマークと速度測定        7.  2GB Swap 作成${NC}"
+            msg "${YELLOW}3.  IP品質/ストリーミング/ルートテスト     8.  VPS ワンクリック最適化${NC}"
+            msg "${YELLOW}4.  診断パッケージのエクスポート            9.  IP / DNS / タイムゾーン設定${NC}"
+            msg "${YELLOW}5.  読み取り専用事前チェック${NC}"
             msg ""
             msg "${CYAN}[ SNI 最適化 ]                            [ 構成管理 ]${NC}"
-            msg "${YELLOW}11.  ローカル SNI 最適化                  14.  設定のバックアップ/復元${NC}"
-            msg "${YELLOW}12.  ミニホスト SNI 最適化                15.  複数ユーザー / サブスクリプション出力${NC}"
-            msg "${YELLOW}13.  SNI 最適化記録                       16.  Wallos インストール/更新${NC}"
+            msg "${YELLOW}10.  ローカル SNI 最適化                  13.  設定のバックアップ/復元${NC}"
+            msg "${YELLOW}11.  ミニホスト SNI 最適化                14.  複数ユーザー / サブスクリプション出力${NC}"
+            msg "${YELLOW}12.  SNI 最適化記録                       15.  Wallos インストール/更新${NC}"
             msg ""
             msg "${CYAN}[ セキュリティ ]${NC}"
-            msg "${YELLOW}17.  SS-2022 IPホワイトリスト${NC}"
+            msg "${YELLOW}16.  SS-2022 IPホワイトリスト${NC}"
             msg "${CYAN}0. メインメニューに戻る${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}综合工具箱${NC}"
             msg "${CYAN}[ 测试诊断 ]                              [ 系统优化 ]${NC}"
-            msg "${YELLOW}1.  系统性能与下载测速                    7.  WARP 与分流管理${NC}"
-            msg "${YELLOW}2.  IP 质量/流媒体解锁/回程测试           8.  创建 2 GB Swap${NC}"
-            msg "${YELLOW}3.  导出脱敏诊断包                        9.  VPS 一键优化${NC}"
-            msg "${YELLOW}4.  只读预检查                            10.  IP / DNS / 时区 / 下载源设置${NC}"
-            msg "${YELLOW}5. A-Check IP 纯净度检测${NC}"
-            msg "${YELLOW}6. 14 系统兼容性测试${NC}"
+            msg "${YELLOW}1.  A-Check IP 纯净度检测             6.  WARP 与分流管理${NC}"
+            msg "${YELLOW}2.  系统性能与下载测速                  7.  创建 2 GB Swap${NC}"
+            msg "${YELLOW}3.  IP 质量/流媒体解锁/回程测试               8.  VPS 一键优化${NC}"
+            msg "${YELLOW}4.  导出脱敏诊断包                          9.  IP / DNS / 时区 / 下载源设置${NC}"
+            msg "${YELLOW}5.  只读预检查${NC}"
             msg ""
             msg "${CYAN}[ SNI 优选 ]                              [ 配置管理 ]${NC}"
-            msg "${YELLOW}11.  本地 SNI 优选                        14.  配置备份 / 恢复${NC}"
-            msg "${YELLOW}12.  微型主机 SNI 优选                    15.  多用户 / 订阅链接导出${NC}"
-            msg "${YELLOW}13.  SNI 优选记录                         16.  Wallos 安装 / 升级 / 备份${NC}"
+            msg "${YELLOW}10.  本地 SNI 优选                        13.  配置备份 / 恢复${NC}"
+            msg "${YELLOW}11.  微型主机 SNI 优选                    14.  多用户 / 订阅链接导出${NC}"
+            msg "${YELLOW}12.  SNI 优选记录                         15.  Wallos 安装 / 升级 / 备份${NC}"
             msg ""
             msg "${CYAN}[ 安全 ]${NC}"
-            msg "${YELLOW}17.  SS-2022 访问白名单${NC}"
+            msg "${YELLOW}16.  SS-2022 访问白名单${NC}"
             msg "${CYAN}0. 返回主菜单${NC}"
             ;;
     esac
     local bench_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-17]: ' ;; ru) select_prompt='Выберите [0–17]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۷]: ' ;; ja) select_prompt='選択してください [0-17]: ' ;; zh-tw) select_prompt='請選擇 [0-17]：' ;; *) select_prompt='请选择 [0-17]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-16]: ' ;; ru) select_prompt='Выберите [0–16]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۶]: ' ;; ja) select_prompt='選択してください [0-16]: ' ;; zh-tw) select_prompt='請選擇 [0-16]：' ;; *) select_prompt='请选择 [0-16]：' ;; esac
     read -r -p "$select_prompt" bench_choice || return 0
     case "$bench_choice" in
-        1) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
-        2) run_mirrored_test_script 'IP quality, streaming unlock and route test' 'https://Check.Place' 'Check.Place.sh' -I; pause_return ;;
-        3) export_diagnostic_bundle ;;
-        4) preflight_check ;;
-        5) run_acheck_tool; pause_return ;;
-        6) run_all_systems_test; pause_return ;;
-        7) warp_split_menu ;;
-        8) setup_swap_2g ;;
-        9) tune_vps ;;
-        10) host_network_menu ;;
-        11) run_local_sni_benchmark ;;
-        12) run_local_sni_mini_benchmark ;;
-        13) show_sni_preference_records ;;
-        14) backup_restore_menu ;;
-        15) multi_uuid_menu ;;
-        16) wallos_menu ;;
-        17) manage_ss_whitelist ;;
+        1) run_acheck_tool; pause_return ;;
+        2) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
+        3) run_mirrored_test_script 'IP quality, streaming unlock and route test' 'https://Check.Place' 'Check.Place.sh' -I; pause_return ;;
+        4) export_diagnostic_bundle ;;
+        5) preflight_check ;;
+        6) warp_split_menu ;;
+        7) setup_swap_2g ;;
+        8) tune_vps ;;
+        9) host_network_menu ;;
+        10) run_local_sni_benchmark ;;
+        11) run_local_sni_mini_benchmark ;;
+        12) show_sni_preference_records ;;
+        13) backup_restore_menu ;;
+        14) multi_uuid_menu ;;
+        15) wallos_menu ;;
+        16) manage_ss_whitelist ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $bench_choice${NC}"; sleep 1 ;;
     esac
@@ -23129,7 +23016,7 @@ show_usage() {
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022 (no XHTTP)
 
 [Operations]
-11 Toolbox: benchmarks, IP/route tests, SNI workflows, WARP, Swap, backup/restore, redacted diagnostics, preflight, multi-UUID export, BBR/FQ apply/rollback, host settings, Wallos, the A-Check IP checker and the 14-system compatibility test.
+11 Toolbox: the A-Check IP checker, benchmarks, IP/route tests, SNI workflows, WARP, Swap, backup/restore, redacted diagnostics, preflight, multi-UUID export, BBR/FQ apply/rollback, host settings and Wallos.
 12 Display node parameters and client exports.
 13 This manual.
 14 Script OTA, Xray Geo data and core-only upgrade.
@@ -23162,7 +23049,7 @@ EOF_USAGE
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022 (без XHTTP)
 
 [Обслуживание]
-11 Инструменты: тесты, качество IP/маршрута, SNI, WARP, Swap, резервное копирование/восстановление, диагностика без секретов, предварительная проверка, экспорт нескольких UUID, BBR/FQ и откат, настройки хоста, Wallos, проверка IP A-Check и тест совместимости 14 систем.
+11 Инструменты: проверка IP A-Check, тесты, качество IP/маршрута, SNI, WARP, Swap, резервное копирование/восстановление, диагностика без секретов, предварительная проверка, экспорт нескольких UUID, BBR/FQ и откат, настройки хоста и Wallos.
 12 Параметры узлов и экспорт клиентских конфигураций.
 13 Это руководство.
 14 OTA скрипта, Geo-данные Xray и отдельное обновление ядер.
@@ -23195,7 +23082,7 @@ EOF_USAGE
 10 ترکیب sing-box Vision + Hysteria 2 + Shadowsocks-2022 (بدون XHTTP)
 
 [عملیات]
-11 جعبه ابزار: آزمون سرعت، کیفیت IP/مسیر، SNI، WARP، Swap، پشتیبان‌گیری/بازیابی، گزارش عیب‌یابی بدون اسرار، پیش‌آزمایی، خروجی چند UUID، اعمال/بازگردانی BBR/FQ، تنظیمات میزبان، Wallos، بررسی‌گر IP ‏A-Check و آزمون سازگاری ۱۴ سیستم.
+11 جعبه ابزار: بررسی‌گر IP ‏A-Check، آزمون سرعت، کیفیت IP/مسیر، SNI، WARP، Swap، پشتیبان‌گیری/بازیابی، گزارش عیب‌یابی بدون اسرار، پیش‌آزمایی، خروجی چند UUID، اعمال/بازگردانی BBR/FQ، تنظیمات میزبان و Wallos.
 12 نمایش پارامترهای نود و خروجی کلاینت.
 13 همین راهنما.
 14 OTA اسکریپت، داده Geo برای Xray و ارتقای مستقل هسته.
@@ -23228,7 +23115,7 @@ EOF_USAGE
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP）
 
 【運維類】
-11 綜合工具箱：測速、IP/回程測試、SNI、WARP、Swap、備份恢復、脫敏診斷、預檢查、多 UUID 匯出、BBR/FQ 應用與回滾、主機設定、Wallos、A-Check IP 檢測和 14 系統兼容性測試。
+11 綜合工具箱：A-Check IP 檢測、測速、IP/回程測試、SNI、WARP、Swap、備份恢復、脫敏診斷、預檢查、多 UUID 匯出、BBR/FQ 應用與回滾、主機設定和 Wallos。
 12 顯示節點引數與客戶端配置。
 13 當前說明書。
 14 指令碼 OTA、Xray Geo 資料與核心單獨升級。
@@ -23261,7 +23148,7 @@ EOF_USAGE
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（XHTTP を含まない）
 
 【運用】
-11 ツールボックス：ベンチマーク、IP / 経路テスト、SNI、WARP、Swap、バックアップ / 復元、匿名化診断、事前チェック、複数 UUID のエクスポート、BBR/FQ の適用とロールバック、ホスト設定、Wallos、A-Check IP チェック、14 システム互換性テスト。
+11 ツールボックス：A-Check IP チェック、ベンチマーク、IP / 経路テスト、SNI、WARP、Swap、バックアップ / 復元、匿名化診断、事前チェック、複数 UUID のエクスポート、BBR/FQ の適用とロールバック、ホスト設定と Wallos。
 12 ノードのパラメーターとクライアント設定を表示します。
 13 現在の説明書を表示します。
 14 A-Box スクリプト OTA、Xray Geo データ、コアの個別アップグレード。
@@ -23294,7 +23181,7 @@ EOF_USAGE
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP）
 
 【运维类】
-11 综合工具箱：测速、IP/回程测试、SNI、WARP、Swap、备份恢复、脱敏诊断、预检查、多 UUID 导出、BBR/FQ 应用与回滚、主机设置、Wallos、A-Check IP 检测和 14 系统兼容性测试。
+11 综合工具箱：A-Check IP 检测、测速、IP/回程测试、SNI、WARP、Swap、备份恢复、脱敏诊断、预检查、多 UUID 导出、BBR/FQ 应用与回滚、主机设置和 Wallos。
 12 显示节点参数与客户端配置。
 13 当前说明书。
 14 脚本 OTA、Xray Geo 数据与核心单独升级。

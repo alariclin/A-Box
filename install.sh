@@ -16836,6 +16836,23 @@ _menu_info_collect() {
     [[ -n "${_MI_COLLECTED:-}" ]] && return 0
     _MI_COLLECTED=1
 
+    # Slow probes (fail2ban-client/docker/ufw are interpreter CLIs with
+    # 0.2-0.8s cold starts) launch concurrently here; results are read
+    # back at the original consumption points below. If the temp dir
+    # cannot be created, the original serial probes run instead.
+    local _mi_pd='' _mi_p_f2='' _mi_p_wl='' _mi_p_di='' _mi_p_uf=''
+    _mi_pd=$(mktemp -d /tmp/A-Box-mi.XXXXXX 2>/dev/null || true)
+    if [[ -n "$_mi_pd" ]]; then
+        ( _v=none; if command -v fail2ban-client >/dev/null 2>&1; then _v=stop; timeout 1 fail2ban-client ping >/dev/null 2>&1 && _v=run; fi; printf '%s' "$_v" > "$_mi_pd/f2" ) </dev/null 9>&- 10>&- &
+        _mi_p_f2=$!
+        ( _v=none; if command -v docker >/dev/null 2>&1 && timeout 1 docker container inspect wallos >/dev/null 2>&1; then _v=stop; [[ "$(timeout 1 docker inspect -f '{{.State.Running}}' wallos 2>/dev/null)" == 'true' ]] && _v=run; fi; printf '%s' "$_v" > "$_mi_pd/wl" ) </dev/null 9>&- 10>&- &
+        _mi_p_wl=$!
+        ( _v=''; if command -v docker >/dev/null 2>&1; then _v=stop; timeout 1 docker info >/dev/null 2>&1 && _v=run; fi; printf '%s' "$_v" > "$_mi_pd/di" ) </dev/null 9>&- 10>&- &
+        _mi_p_di=$!
+        ( _v=''; if command -v ufw >/dev/null 2>&1 && timeout 2 ufw status 2>/dev/null | grep -qi '^Status: active'; then _v=run; fi; printf '%s' "$_v" > "$_mi_pd/uf" ) </dev/null 9>&- 10>&- &
+        _mi_p_uf=$!
+    fi
+
     # --- versions + running status (three-state: run/stop/none) ---
     local xv='' sv='' hv='' xrun=0 srun=0 hrun=0
     if [[ -x /usr/local/bin/xray ]]; then
@@ -16873,9 +16890,14 @@ _menu_info_collect() {
         [[ "$hrun" == 1 ]] && hst=run
     fi
     local f2st=none dost=none
-    if command -v fail2ban-client >/dev/null 2>&1; then f2st=stop; timeout 1 fail2ban-client ping >/dev/null 2>&1 && f2st=run; fi
-    if command -v docker >/dev/null 2>&1 && timeout 1 docker container inspect wallos >/dev/null 2>&1; then
-        dost=stop; [[ "$(timeout 1 docker inspect -f '{{.State.Running}}' wallos 2>/dev/null)" == 'true' ]] && dost=run
+    if [[ -n "$_mi_pd" ]]; then
+        wait "$_mi_p_f2" 2>/dev/null || true; f2st=$(cat "$_mi_pd/f2" 2>/dev/null || echo none)
+        wait "$_mi_p_wl" 2>/dev/null || true; dost=$(cat "$_mi_pd/wl" 2>/dev/null || echo none)
+    else
+        if command -v fail2ban-client >/dev/null 2>&1; then f2st=stop; timeout 1 fail2ban-client ping >/dev/null 2>&1 && f2st=run; fi
+        if command -v docker >/dev/null 2>&1 && timeout 1 docker container inspect wallos >/dev/null 2>&1; then
+            dost=stop; [[ "$(timeout 1 docker inspect -f '{{.State.Running}}' wallos 2>/dev/null)" == 'true' ]] && dost=run
+        fi
     fi
         # --- standalone protocol listeners (presence + port state) ---
     local tjt='' tut='' ant='' stt='' argo_st='' _ss='' _p='' _t='' _tags=''
@@ -16910,18 +16932,23 @@ _menu_info_collect() {
     # Toggle-type cells: on = run, off/absent = none (red is reserved
     # for installed-but-broken, per the legend).
     if [[ -s "${ABOX_TRAFFIC_PAIR_STATE:-/etc/ddr/.traffic-pair-state}" ]]; then traf=run; fi
-    if command -v docker >/dev/null 2>&1; then dock=stop; timeout 1 docker info >/dev/null 2>&1 && dock=run; fi
+    if [[ -n "$_mi_pd" ]]; then
+        wait "$_mi_p_di" 2>/dev/null || true; dock=$(cat "$_mi_pd/di" 2>/dev/null || echo '')
+    elif command -v docker >/dev/null 2>&1; then dock=stop; timeout 1 docker info >/dev/null 2>&1 && dock=run; fi
     local _cc=''; _cc=$(cat /proc/sys/net/ipv4/tcp_congestion_control 2>/dev/null || sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null); _cc=${_cc//[[:space:]]/}
     [[ "$_cc" == "bbr" ]] && bbr=run
     # Any live evidence counts; an installed-but-inactive ufw
     # (Ubuntu default) must not mask A-Box's own rules.
-    if command -v ufw >/dev/null 2>&1 && timeout 2 ufw status 2>/dev/null | grep -qi '^Status: active'; then fwst=run; fi
+    if [[ -n "$_mi_pd" ]]; then
+        wait "$_mi_p_uf" 2>/dev/null || true; fwst=$(cat "$_mi_pd/uf" 2>/dev/null || echo '')
+    elif command -v ufw >/dev/null 2>&1 && timeout 2 ufw status 2>/dev/null | grep -qi '^Status: active'; then fwst=run; fi
     if [[ -z "$fwst" ]]; then
         local _ipt=''; _ipt=$(command -v iptables 2>/dev/null || true); [[ -z "$_ipt" && -x /sbin/iptables ]] && _ipt=/sbin/iptables
         if [[ -n "$_ipt" ]] && (( $("$_ipt" -S 2>/dev/null | grep -c .) > 3 )); then fwst=run
         elif command -v nft >/dev/null 2>&1 && [[ -n "$(nft list ruleset 2>/dev/null)" ]]; then fwst=run; fi
     fi
     if [[ -z "$fwst" ]] && [[ "${INIT_SYS:-}" == systemd ]] && systemctl is-failed A-Box-firewall.service >/dev/null 2>&1; then fwst=stop; fi
+    [[ -n "$_mi_pd" ]] && rm -rf -- "$_mi_pd"
     _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"; _MI_F2B="$f2st"; _MI_WALLOS="$dost"; _MI_TROJAN="$tjt"; _MI_TUIC="$tut"; _MI_ANYTLS="$ant"; _MI_STLS="$stt"; _MI_ARGO="$argo_st"; _MI_CF="$cf_st"; _MI_TRAFFIC="$traf"; _MI_DOCKER="$dock"; _MI_BBR="$bbr"; _MI_FW="$fwst"
 
     # --- system info ---

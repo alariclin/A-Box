@@ -525,12 +525,12 @@ assert_default_abox_parent_chain_trusted() {
     local dir="$1" parent uid gid mode
     [[ "$dir" == '/etc/ddr' ]] || return 0
     for parent in / /etc; do
-        [[ -d "$parent" && ! -L "$parent" ]] || die "A-Box 父目录不可信: $parent"
-        uid=$(stat -c %u "$parent" 2>/dev/null) || die "无法读取父目录属主: $parent"
-        gid=$(stat -c %g "$parent" 2>/dev/null) || die "无法读取父目录属组: $parent"
-        mode=$(stat -c %a "$parent" 2>/dev/null) || die "无法读取父目录权限: $parent"
-        [[ "$uid" == 0 && "$gid" == 0 ]] || die "A-Box 父目录不是 root:root: $parent"
-        [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#022) == 0 )) || die "A-Box 父目录可被非 root 写入: $parent"
+        [[ -d "$parent" && ! -L "$parent" ]] || die "$(tprintf pc_untrusted "$parent")"
+        uid=$(stat -c %u "$parent" 2>/dev/null) || die "$(tprintf pc_owner_read "$parent")"
+        gid=$(stat -c %g "$parent" 2>/dev/null) || die "$(tprintf pc_group_read "$parent")"
+        mode=$(stat -c %a "$parent" 2>/dev/null) || die "$(tprintf pc_mode_read "$parent")"
+        [[ "$uid" == 0 && "$gid" == 0 ]] || die "$(tprintf pc_not_root "$parent")"
+        [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#022) == 0 )) || die "$(tprintf pc_writable "$parent")"
     done
 }
 
@@ -538,33 +538,33 @@ ensure_abox_dir_owned() {
     local dir="${1:-$ABOX_DIR}" owner tmp uid gid mode
     owner="$dir/.A-Box-owner"
     assert_default_abox_parent_chain_trusted "$dir"
-    [[ ! -L "$dir" ]] || die "拒绝使用符号链接形式的 A-Box 目录: $dir"
+    [[ ! -L "$dir" ]] || die "$(tprintf do_symlink "$dir")"
     if [[ -e "$dir" && ! -d "$dir" ]]; then
-        die "A-Box 路径不是目录: $dir"
+        die "$(tprintf do_notdir "$dir")"
     fi
     if [[ -d "$dir" ]]; then
-        path_owned_by_root "$dir" || die "拒绝使用非 root:root 所有的 A-Box 目录: $dir"
-        path_mode_has_no_group_other_write "$dir" || die "拒绝使用可被组/其他用户写入的 A-Box 目录: $dir"
+        path_owned_by_root "$dir" || die "$(tprintf do_not_root "$dir")"
+        path_mode_has_no_group_other_write "$dir" || die "$(tprintf do_writable "$dir")"
         if [[ -f "$owner" && ! -L "$owner" ]] && grep -Fxq 'A-Box managed directory v1' "$owner" 2>/dev/null; then
-            path_owned_by_root "$owner" || die "A-Box 目录归属标记不是 root:root: $owner"
-            mode=$(stat -c %a "$owner" 2>/dev/null) || die "无法读取 A-Box 目录标记权限: $owner"
-            [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || die "A-Box 目录标记权限不安全: $owner"
-            chmod 700 "$dir" || die "无法收紧 A-Box 目录权限: $dir"
-            chmod 600 "$owner" || die "无法收紧 A-Box 目录标记权限: $owner"
+            path_owned_by_root "$owner" || die "$(tprintf do_mark_not_root "$owner")"
+            mode=$(stat -c %a "$owner" 2>/dev/null) || die "$(tprintf do_mark_mode_read "$owner")"
+            [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || die "$(tprintf do_mark_mode_unsafe "$owner")"
+            chmod 700 "$dir" || die "$(tprintf do_tighten_dir "$dir")"
+            chmod 600 "$owner" || die "$(tprintf do_tighten_mark "$owner")"
             return 0
         fi
-        abox_dir_has_legacy_fingerprint "$dir" || die "拒绝复用未知归属目录: $dir"
+        abox_dir_has_legacy_fingerprint "$dir" || die "$(tprintf do_legacy "$dir")"
     else
-        mkdir -p "$dir" || die "无法创建 A-Box 目录: $dir"
+        mkdir -p "$dir" || die "$(tprintf do_mkdir "$dir")"
     fi
-    chown root:root "$dir" || die "无法设置 A-Box 目录属主: $dir"
-    chmod 700 "$dir" || die "无法设置 A-Box 目录权限: $dir"
-    tmp=$(umask 077; mktemp "$dir/.A-Box-owner.XXXXXX") || die 'A-Box 目录归属标记临时文件创建失败。'
-    printf '%s\n' 'A-Box managed directory v1' > "$tmp" || { rm -f "$tmp"; die 'A-Box 目录归属标记写入失败。'; }
-    chown root:root "$tmp" || { rm -f "$tmp"; die 'A-Box 目录归属标记属主设置失败。'; }
-    chmod 600 "$tmp" || { rm -f "$tmp"; die 'A-Box 目录归属标记权限设置失败。'; }
-    mv -f "$tmp" "$owner" || { rm -f "$tmp"; die 'A-Box 目录归属标记提交失败。'; }
-    path_owned_by_root "$owner" || die 'A-Box 目录归属标记提交后属主异常。'
+    chown root:root "$dir" || die "$(tprintf do_chown "$dir")"
+    chmod 700 "$dir" || die "$(tprintf do_chmod "$dir")"
+    tmp=$(umask 077; mktemp "$dir/.A-Box-owner.XXXXXX") || die "$(tr_msg do_mark_tmp)"
+    printf '%s\n' 'A-Box managed directory v1' > "$tmp" || { rm -f "$tmp"; die "$(tr_msg do_mark_write)"; }
+    chown root:root "$tmp" || { rm -f "$tmp"; die "$(tr_msg do_mark_chown)"; }
+    chmod 600 "$tmp" || { rm -f "$tmp"; die "$(tr_msg do_mark_chmod)"; }
+    mv -f "$tmp" "$owner" || { rm -f "$tmp"; die "$(tr_msg do_mark_commit)"; }
+    path_owned_by_root "$owner" || die "$(tr_msg do_mark_verify)"
 }
 
 normalize_lang() {
@@ -4956,6 +4956,348 @@ tr_msg() {
         ru:mw_wl6_del) echo 'Не удалось удалить правило белого списка IPv6: %s' ;;
         fa:mw_wl6_del) echo 'حذف قانون فهرست سفید IPv6 ناموفق بود: %s' ;;
         ja:mw_wl6_del) echo 'IPv6 ホワイトリストルールの削除に失敗しました： %s' ;;
+        zh:af_enum) echo '无法安全枚举现有核心文件，拒绝继续部署。' ;;
+        zh-tw:af_enum) echo '無法安全列舉現有核心檔案，拒絕繼續部署。' ;;
+        en:af_enum) echo 'Cannot safely enumerate the existing core files; refusing to continue the deployment.' ;;
+        ru:af_enum) echo 'Невозможно безопасно перечислить существующие файлы ядер; развёртывание остановлено.' ;;
+        fa:af_enum) echo 'شمارش امن فایل‌های هسته موجود ممکن نیست؛ ادامه استقرار رد شد.' ;;
+        ja:af_enum) echo '既存のコアファイルを安全に列挙できないため、デプロイを続行しません。' ;;
+        zh:af_migrate) echo '请先迁移或删除上述非 A-Box 安装。A-Box 不会覆盖未知归属的核心、配置或服务文件。' ;;
+        zh-tw:af_migrate) echo '請先遷移或刪除上述非 A-Box 安裝。A-Box 不會覆寫未知歸屬的核心、設定或服務檔案。' ;;
+        en:af_migrate) echo 'Migrate or remove the non-A-Box installations above first. A-Box will not overwrite core, configuration, or service files of unknown ownership.' ;;
+        ru:af_migrate) echo 'Сначала перенесите или удалите перечисленные выше установки не-A-Box. A-Box не будет перезаписывать файлы ядер, конфигурации или служб с неизвестной принадлежностью.' ;;
+        fa:af_migrate) echo 'ابتدا نصب‌های غیر A-Box بالا را منتقل یا حذف کنید. A-Box فایل‌های هسته، پیکربندی یا سرویس با مالکیت نامشخص را بازنویسی نمی‌کند.' ;;
+        ja:af_migrate) echo '上記の非 A-Box インストールを先に移行または削除してください。A-Box は所有者不明のコア、設定、サービスファイルを上書きしません。' ;;
+        zh:do_chmod) echo '无法设置 A-Box 目录权限： %s' ;;
+        zh-tw:do_chmod) echo '無法設定 A-Box 目錄權限： %s' ;;
+        en:do_chmod) echo 'Cannot set the A-Box directory permissions: %s' ;;
+        ru:do_chmod) echo 'Невозможно задать права каталога A-Box: %s' ;;
+        fa:do_chmod) echo 'تنظیم مجوزهای پوشه A-Box ممکن نیست: %s' ;;
+        ja:do_chmod) echo 'A-Box ディレクトリの権限を設定できません： %s' ;;
+        zh:do_chown) echo '无法设置 A-Box 目录属主： %s' ;;
+        zh-tw:do_chown) echo '無法設定 A-Box 目錄屬主： %s' ;;
+        en:do_chown) echo 'Cannot set the A-Box directory owner: %s' ;;
+        ru:do_chown) echo 'Невозможно задать владельца каталога A-Box: %s' ;;
+        fa:do_chown) echo 'تنظیم مالک پوشه A-Box ممکن نیست: %s' ;;
+        ja:do_chown) echo 'A-Box ディレクトリの所有者を設定できません： %s' ;;
+        zh:do_legacy) echo '拒绝复用未知归属目录： %s' ;;
+        zh-tw:do_legacy) echo '拒絕復用未知歸屬目錄： %s' ;;
+        en:do_legacy) echo 'Refusing to reuse a directory of unknown ownership: %s' ;;
+        ru:do_legacy) echo 'Отказ от повторного использования каталога с неизвестной принадлежностью: %s' ;;
+        fa:do_legacy) echo 'استفاده مجدد از پوشه‌ای با مالکیت نامشخص رد شد: %s' ;;
+        ja:do_legacy) echo '所有者不明のディレクトリの再利用を拒否します： %s' ;;
+        zh:do_mark_chmod) echo 'A-Box 目录归属标记权限设置失败。' ;;
+        zh-tw:do_mark_chmod) echo 'A-Box 目錄歸屬標記權限設定失敗。' ;;
+        en:do_mark_chmod) echo 'Failed to set the A-Box directory ownership marker permissions.' ;;
+        ru:do_mark_chmod) echo 'Не удалось задать права маркера принадлежности каталога A-Box.' ;;
+        fa:do_mark_chmod) echo 'تنظیم مجوزهای نشان مالکیت پوشه A-Box ناموفق بود.' ;;
+        ja:do_mark_chmod) echo 'A-Box ディレクトリ所有マーカーの権限を設定できませんでした。' ;;
+        zh:do_mark_chown) echo 'A-Box 目录归属标记属主设置失败。' ;;
+        zh-tw:do_mark_chown) echo 'A-Box 目錄歸屬標記屬主設定失敗。' ;;
+        en:do_mark_chown) echo 'Failed to set the A-Box directory ownership marker owner.' ;;
+        ru:do_mark_chown) echo 'Не удалось задать владельца маркера принадлежности каталога A-Box.' ;;
+        fa:do_mark_chown) echo 'تنظیم مالک نشان مالکیت پوشه A-Box ناموفق بود.' ;;
+        ja:do_mark_chown) echo 'A-Box ディレクトリ所有マーカーの所有者を設定できませんでした。' ;;
+        zh:do_mark_commit) echo 'A-Box 目录归属标记提交失败。' ;;
+        zh-tw:do_mark_commit) echo 'A-Box 目錄歸屬標記提交失敗。' ;;
+        en:do_mark_commit) echo 'Failed to commit the A-Box directory ownership marker.' ;;
+        ru:do_mark_commit) echo 'Не удалось зафиксировать маркер принадлежности каталога A-Box.' ;;
+        fa:do_mark_commit) echo 'ثبت نشان مالکیت پوشه A-Box ناموفق بود.' ;;
+        ja:do_mark_commit) echo 'A-Box ディレクトリ所有マーカーをコミットできませんでした。' ;;
+        zh:do_mark_mode_read) echo '无法读取 A-Box 目录标记权限： %s' ;;
+        zh-tw:do_mark_mode_read) echo '無法讀取 A-Box 目錄標記權限： %s' ;;
+        en:do_mark_mode_read) echo 'Cannot read the A-Box directory marker permissions: %s' ;;
+        ru:do_mark_mode_read) echo 'Невозможно прочитать права маркера каталога A-Box: %s' ;;
+        fa:do_mark_mode_read) echo 'خواندن مجوزهای نشان پوشه A-Box ممکن نیست: %s' ;;
+        ja:do_mark_mode_read) echo 'A-Box ディレクトリマーカーの権限を読み取れません： %s' ;;
+        zh:do_mark_mode_unsafe) echo 'A-Box 目录标记权限不安全： %s' ;;
+        zh-tw:do_mark_mode_unsafe) echo 'A-Box 目錄標記權限不安全： %s' ;;
+        en:do_mark_mode_unsafe) echo 'The A-Box directory marker permissions are unsafe: %s' ;;
+        ru:do_mark_mode_unsafe) echo 'Права маркера каталога A-Box небезопасны: %s' ;;
+        fa:do_mark_mode_unsafe) echo 'مجوزهای نشان پوشه A-Box امن نیست: %s' ;;
+        ja:do_mark_mode_unsafe) echo 'A-Box ディレクトリマーカーの権限が安全ではありません： %s' ;;
+        zh:do_mark_not_root) echo 'A-Box 目录归属标记不是 root:root： %s' ;;
+        zh-tw:do_mark_not_root) echo 'A-Box 目錄歸屬標記不是 root:root： %s' ;;
+        en:do_mark_not_root) echo 'The A-Box directory ownership marker is not root:root: %s' ;;
+        ru:do_mark_not_root) echo 'Маркер принадлежности каталога A-Box не принадлежит root:root: %s' ;;
+        fa:do_mark_not_root) echo 'نشان مالکیت پوشه A-Box ‏root:root نیست: %s' ;;
+        ja:do_mark_not_root) echo 'A-Box ディレクトリの所有マーカーが root:root ではありません： %s' ;;
+        zh:do_mark_tmp) echo 'A-Box 目录归属标记临时文件创建失败。' ;;
+        zh-tw:do_mark_tmp) echo 'A-Box 目錄歸屬標記臨時檔案建立失敗。' ;;
+        en:do_mark_tmp) echo 'Failed to create the A-Box directory ownership marker temp file.' ;;
+        ru:do_mark_tmp) echo 'Не удалось создать временный файл маркера принадлежности каталога A-Box.' ;;
+        fa:do_mark_tmp) echo 'ایجاد فایل موقت نشان مالکیت پوشه A-Box ناموفق بود.' ;;
+        ja:do_mark_tmp) echo 'A-Box ディレクトリ所有マーカーの一時ファイルを作成できませんでした。' ;;
+        zh:do_mark_verify) echo 'A-Box 目录归属标记提交后属主异常。' ;;
+        zh-tw:do_mark_verify) echo 'A-Box 目錄歸屬標記提交後屬主異常。' ;;
+        en:do_mark_verify) echo 'The A-Box directory ownership marker owner is abnormal after commit.' ;;
+        ru:do_mark_verify) echo 'Владелец маркера принадлежности каталога A-Box после фиксации некорректен.' ;;
+        fa:do_mark_verify) echo 'مالک نشان مالکیت پوشه A-Box پس از ثبت غیرعادی است.' ;;
+        ja:do_mark_verify) echo 'コミット後の A-Box ディレクトリ所有マーカーの所有者が異常です。' ;;
+        zh:do_mark_write) echo 'A-Box 目录归属标记写入失败。' ;;
+        zh-tw:do_mark_write) echo 'A-Box 目錄歸屬標記寫入失敗。' ;;
+        en:do_mark_write) echo 'Failed to write the A-Box directory ownership marker.' ;;
+        ru:do_mark_write) echo 'Не удалось записать маркер принадлежности каталога A-Box.' ;;
+        fa:do_mark_write) echo 'نوشتن نشان مالکیت پوشه A-Box ناموفق بود.' ;;
+        ja:do_mark_write) echo 'A-Box ディレクトリ所有マーカーを書き込めませんでした。' ;;
+        zh:do_mkdir) echo '无法创建 A-Box 目录： %s' ;;
+        zh-tw:do_mkdir) echo '無法建立 A-Box 目錄： %s' ;;
+        en:do_mkdir) echo 'Cannot create the A-Box directory: %s' ;;
+        ru:do_mkdir) echo 'Невозможно создать каталог A-Box: %s' ;;
+        fa:do_mkdir) echo 'ایجاد پوشه A-Box ممکن نیست: %s' ;;
+        ja:do_mkdir) echo 'A-Box ディレクトリを作成できません： %s' ;;
+        zh:do_not_root) echo '拒绝使用非 root:root 所有的 A-Box 目录： %s' ;;
+        zh-tw:do_not_root) echo '拒絕使用非 root:root 所有的 A-Box 目錄： %s' ;;
+        en:do_not_root) echo 'Refusing to use an A-Box directory not owned by root:root: %s' ;;
+        ru:do_not_root) echo 'Отказ от использования каталога A-Box, не принадлежащего root:root: %s' ;;
+        fa:do_not_root) echo 'استفاده از پوشه A-Box که مالک آن root:root نیست رد شد: %s' ;;
+        ja:do_not_root) echo 'root:root 所有でない A-Box ディレクトリの使用を拒否します： %s' ;;
+        zh:do_notdir) echo 'A-Box 路径不是目录： %s' ;;
+        zh-tw:do_notdir) echo 'A-Box 路徑不是目錄： %s' ;;
+        en:do_notdir) echo 'The A-Box path is not a directory: %s' ;;
+        ru:do_notdir) echo 'Путь A-Box не является каталогом: %s' ;;
+        fa:do_notdir) echo 'مسیر A-Box یک پوشه نیست: %s' ;;
+        ja:do_notdir) echo 'A-Box のパスがディレクトリではありません： %s' ;;
+        zh:do_symlink) echo '拒绝使用符号链接形式的 A-Box 目录： %s' ;;
+        zh-tw:do_symlink) echo '拒絕使用符號連結形式的 A-Box 目錄： %s' ;;
+        en:do_symlink) echo 'Refusing to use a symlinked A-Box directory: %s' ;;
+        ru:do_symlink) echo 'Отказ от использования каталога A-Box в виде символьной ссылки: %s' ;;
+        fa:do_symlink) echo 'استفاده از پوشه A-Box به‌صورت پیوند نمادین رد شد: %s' ;;
+        ja:do_symlink) echo 'シンボリックリンク形式の A-Box ディレクトリの使用を拒否します： %s' ;;
+        zh:do_tighten_dir) echo '无法收紧 A-Box 目录权限： %s' ;;
+        zh-tw:do_tighten_dir) echo '無法收緊 A-Box 目錄權限： %s' ;;
+        en:do_tighten_dir) echo 'Cannot tighten the A-Box directory permissions: %s' ;;
+        ru:do_tighten_dir) echo 'Невозможно ужесточить права каталога A-Box: %s' ;;
+        fa:do_tighten_dir) echo 'سفت کردن مجوزهای پوشه A-Box ممکن نیست: %s' ;;
+        ja:do_tighten_dir) echo 'A-Box ディレクトリの権限を厳格化できません： %s' ;;
+        zh:do_tighten_mark) echo '无法收紧 A-Box 目录标记权限： %s' ;;
+        zh-tw:do_tighten_mark) echo '無法收緊 A-Box 目錄標記權限： %s' ;;
+        en:do_tighten_mark) echo 'Cannot tighten the A-Box directory marker permissions: %s' ;;
+        ru:do_tighten_mark) echo 'Невозможно ужесточить права маркера каталога A-Box: %s' ;;
+        fa:do_tighten_mark) echo 'سفت کردن مجوزهای نشان پوشه A-Box ممکن نیست: %s' ;;
+        ja:do_tighten_mark) echo 'A-Box ディレクトリマーカーの権限を厳格化できません： %s' ;;
+        zh:do_writable) echo '拒绝使用可被组/其他用户写入的 A-Box 目录： %s' ;;
+        zh-tw:do_writable) echo '拒絕使用可被組/其他使用者寫入的 A-Box 目錄： %s' ;;
+        en:do_writable) echo 'Refusing to use an A-Box directory writable by group/others: %s' ;;
+        ru:do_writable) echo 'Отказ от использования каталога A-Box, доступного для записи группе/прочим: %s' ;;
+        fa:do_writable) echo 'استفاده از پوشه A-Box قابل نوشتن برای گروه/دیگران رد شد: %s' ;;
+        ja:do_writable) echo 'グループ/その他から書き込み可能な A-Box ディレクトリの使用を拒否します： %s' ;;
+        zh:ec_lock) echo '已安装 flock，但无法将 fallback 运行锁升级为 flock；请结束其它 A-Box 实例后重试。' ;;
+        zh-tw:ec_lock) echo '已安裝 flock，但無法將 fallback 執行鎖升級為 flock；請結束其它 A-Box 實例後重試。' ;;
+        en:ec_lock) echo 'flock is installed, but the fallback run lock could not be upgraded to flock; end other A-Box instances and retry.' ;;
+        ru:ec_lock) echo 'flock установлен, но не удалось повысить резервную блокировку запуска до flock; завершите другие экземпляры A-Box и повторите.' ;;
+        fa:ec_lock) echo '‏flock نصب است، اما ارتقای قفل اجرای جایگزین به flock ممکن نشد؛ نمونه‌های دیگر A-Box را ببندید و دوباره تلاش کنید.' ;;
+        ja:ec_lock) echo 'flock はインストール済みですが、フォールバック実行ロックを flock にアップグレードできません。他の A-Box インスタンスを終了して再試行してください。' ;;
+        zh:ec_missing) echo '关键依赖缺失： %s' ;;
+        zh-tw:ec_missing) echo '關鍵相依缺失： %s' ;;
+        en:ec_missing) echo 'A critical dependency is missing: %s' ;;
+        ru:ec_missing) echo 'Отсутствует критическая зависимость: %s' ;;
+        fa:ec_missing) echo 'یک وابستگی حیاتی وجود ندارد: %s' ;;
+        ja:ec_missing) echo '重要な依存関係が不足しています： %s' ;;
+        zh:ec_reinstall) echo '依赖补装失败。' ;;
+        zh-tw:ec_reinstall) echo '相依補裝失敗。' ;;
+        en:ec_reinstall) echo 'Failed to install the missing dependencies.' ;;
+        ru:ec_reinstall) echo 'Не удалось доустановить зависимости.' ;;
+        fa:ec_reinstall) echo 'نصب وابستگی‌های جاافتاده ناموفق بود.' ;;
+        ja:ec_reinstall) echo '不足している依存関係のインストールに失敗しました。' ;;
+        zh:ga_unknown) echo '无法识别的底层 CPU 架构： %s' ;;
+        zh-tw:ga_unknown) echo '無法識別的底層 CPU 架構： %s' ;;
+        en:ga_unknown) echo 'Unrecognized underlying CPU architecture: %s' ;;
+        ru:ga_unknown) echo 'Неизвестная архитектура CPU: %s' ;;
+        fa:ga_unknown) echo 'معماری CPU زیرین ناشناخته است: %s' ;;
+        ja:ga_unknown) echo '認識できない CPU アーキテクチャ： %s' ;;
+        zh:gu_chmod) echo 'Geo 更新脚本权限设置失败。' ;;
+        zh-tw:gu_chmod) echo 'Geo 更新腳本權限設定失敗。' ;;
+        en:gu_chmod) echo 'Failed to set permissions on the Geo update script.' ;;
+        ru:gu_chmod) echo 'Не удалось задать права скрипта обновления Geo.' ;;
+        fa:gu_chmod) echo 'تنظیم مجوزهای اسکریپت به‌روزرسانی Geo ناموفق بود.' ;;
+        ja:gu_chmod) echo 'Geo 更新スクリプトの権限設定に失敗しました。' ;;
+        zh:gu_mark) echo 'Geo 更新脚本运行环境标记写入失败。' ;;
+        zh-tw:gu_mark) echo 'Geo 更新腳本執行環境標記寫入失敗。' ;;
+        en:gu_mark) echo 'Failed to write the runtime marker into the Geo update script.' ;;
+        ru:gu_mark) echo 'Не удалось записать маркер среды выполнения в скрипт обновления Geo.' ;;
+        fa:gu_mark) echo 'نوشتن نشان محیط اجرا در اسکریپت به‌روزرسانی Geo ناموفق بود.' ;;
+        ja:gu_mark) echo 'Geo 更新スクリプトへのランタイムマーカー書き込みに失敗しました。' ;;
+        zh:gu_mark_verify) echo 'Geo 更新脚本运行环境标记后置校验失败。' ;;
+        zh-tw:gu_mark_verify) echo 'Geo 更新腳本執行環境標記後置校驗失敗。' ;;
+        en:gu_mark_verify) echo 'The post-write check of the Geo update script runtime marker failed.' ;;
+        ru:gu_mark_verify) echo 'Проверка маркера среды выполнения скрипта обновления Geo после записи не пройдена.' ;;
+        fa:gu_mark_verify) echo 'بررسی پس از نوشتن نشان محیط اجرای اسکریپت به‌روزرسانی Geo ناموفق بود.' ;;
+        ja:gu_mark_verify) echo 'Geo 更新スクリプトのランタイムマーカーの事後チェックに失敗しました。' ;;
+        zh:ie_deps) echo '基础依赖包安装失败。' ;;
+        zh-tw:ie_deps) echo '基礎相依套件安裝失敗。' ;;
+        en:ie_deps) echo 'Failed to install the base dependency packages.' ;;
+        ru:ie_deps) echo 'Не удалось установить базовые пакеты зависимостей.' ;;
+        fa:ie_deps) echo 'نصب بسته‌های وابستگی پایه ناموفق بود.' ;;
+        ja:ie_deps) echo '基本依存パッケージのインストールに失敗しました。' ;;
+        zh:ie_deps_marker) echo '依赖标记写入失败。' ;;
+        zh-tw:ie_deps_marker) echo '相依標記寫入失敗。' ;;
+        en:ie_deps_marker) echo 'Failed to write the dependency marker.' ;;
+        ru:ie_deps_marker) echo 'Не удалось записать маркер зависимостей.' ;;
+        fa:ie_deps_marker) echo 'نوشتن نشان وابستگی ناموفق بود.' ;;
+        ja:ie_deps_marker) echo '依存マーカーを書き込めませんでした。' ;;
+        zh:ie_no_init) echo '无法检测到受支持的守护进程初始化系统 (Systemd/OpenRC)。' ;;
+        zh-tw:ie_no_init) echo '無法偵測到受支援的守護行程初始化系統 (Systemd/OpenRC)。' ;;
+        en:ie_no_init) echo 'No supported daemon init system (Systemd/OpenRC) could be detected.' ;;
+        ru:ie_no_init) echo 'Не удалось обнаружить поддерживаемую систему инициализации демонов (Systemd/OpenRC).' ;;
+        fa:ie_no_init) echo 'هیچ سیستم راه‌اندازی دیمون پشتیبانی‌شده‌ای (Systemd/OpenRC) شناسایی نشد.' ;;
+        ja:ie_no_init) echo 'サポートされるデーモン初期化システム (Systemd/OpenRC) を検出できません。' ;;
+        zh:ie_unsupported) echo '本脚本不支持当前异构系统。' ;;
+        zh-tw:ie_unsupported) echo '本腳本不支援目前異構系統。' ;;
+        en:ie_unsupported) echo 'This script does not support the current system.' ;;
+        ru:ie_unsupported) echo 'Этот скрипт не поддерживает текущую систему.' ;;
+        fa:ie_unsupported) echo 'این اسکریپت از سیستم فعلی پشتیبانی نمی‌کند.' ;;
+        ja:ie_unsupported) echo 'このスクリプトは現在のシステムをサポートしていません。' ;;
+        zh:ir_cancelled) echo '远端脚本安装被取消。' ;;
+        zh-tw:ir_cancelled) echo '遠端腳本安裝被取消。' ;;
+        en:ir_cancelled) echo 'The remote script installation was cancelled.' ;;
+        ru:ir_cancelled) echo 'Установка удалённого скрипта отменена.' ;;
+        fa:ir_cancelled) echo 'نصب اسکریپت راه‌دور لغو شد.' ;;
+        ja:ir_cancelled) echo 'リモートスクリプトのインストールがキャンセルされました。' ;;
+        zh:ir_dl_label) echo '下载远端脚本' ;;
+        zh-tw:ir_dl_label) echo '下載遠端腳本' ;;
+        en:ir_dl_label) echo 'Downloading the remote script' ;;
+        ru:ir_dl_label) echo 'Загрузка удалённого скрипта' ;;
+        fa:ir_dl_label) echo 'در حال دانلود اسکریپت راه‌دور' ;;
+        ja:ir_dl_label) echo 'リモートスクリプトをダウンロード中' ;;
+        zh:ir_download) echo '远端脚本下载失败。' ;;
+        zh-tw:ir_download) echo '遠端腳本下載失敗。' ;;
+        en:ir_download) echo 'Failed to download the remote script.' ;;
+        ru:ir_download) echo 'Не удалось загрузить удалённый скрипт.' ;;
+        fa:ir_download) echo 'دانلود اسکریپت راه‌دور ناموفق بود.' ;;
+        ja:ir_download) echo 'リモートスクリプトのダウンロードに失敗しました。' ;;
+        zh:ir_persist) echo '远端 A-Box 脚本原子持久化失败。' ;;
+        zh-tw:ir_persist) echo '遠端 A-Box 腳本原子持久化失敗。' ;;
+        en:ir_persist) echo 'Failed to atomically persist the remote A-Box script.' ;;
+        ru:ir_persist) echo 'Не удалось атомарно сохранить удалённый скрипт A-Box.' ;;
+        fa:ir_persist) echo 'ذخیره اتمی اسکریپت راه‌دور A-Box ناموفق بود.' ;;
+        ja:ir_persist) echo 'リモート A-Box スクリプトのアトミック保存に失敗しました。' ;;
+        zh:ir_resolve) echo '无法将 A-Box main 分支解析为不可变 commit；已拒绝下载可变源码。' ;;
+        zh-tw:ir_resolve) echo '無法將 A-Box main 分支解析為不可變 commit；已拒絕下載可變原始碼。' ;;
+        en:ir_resolve) echo 'Cannot resolve the A-Box main branch to an immutable commit; refused to download mutable source.' ;;
+        ru:ir_resolve) echo 'Невозможно разрешить ветку main A-Box в неизменяемый коммит; загрузка изменяемых исходников отклонена.' ;;
+        fa:ir_resolve) echo 'تبدیل شاخه main ‏A-Box به یک commit تغییرناپذیر ممکن نیست؛ دانلود کد قابل تغییر رد شد.' ;;
+        ja:ir_resolve) echo 'A-Box の main ブランチを不変のコミットに解決できないため、変更可能なソースのダウンロードを拒否しました。' ;;
+        zh:ir_tmp) echo '远端脚本临时文件创建失败。' ;;
+        zh-tw:ir_tmp) echo '遠端腳本臨時檔案建立失敗。' ;;
+        en:ir_tmp) echo 'Failed to create the remote script temp file.' ;;
+        ru:ir_tmp) echo 'Не удалось создать временный файл удалённого скрипта.' ;;
+        fa:ir_tmp) echo 'ایجاد فایل موقت اسکریپت راه‌دور ناموفق بود.' ;;
+        ja:ir_tmp) echo 'リモートスクリプトの一時ファイルを作成できませんでした。' ;;
+        zh:ir_verify) echo '远端 A-Box 脚本校验或版本方向检查失败。' ;;
+        zh-tw:ir_verify) echo '遠端 A-Box 腳本校驗或版本方向檢查失敗。' ;;
+        en:ir_verify) echo 'The remote A-Box script verification or version-direction check failed.' ;;
+        ru:ir_verify) echo 'Проверка удалённого скрипта A-Box или направления версии не пройдена.' ;;
+        fa:ir_verify) echo 'بررسی اسکریپت راه‌دور A-Box یا جهت نسخه ناموفق بود.' ;;
+        ja:ir_verify) echo 'リモート A-Box スクリプトの検証またはバージョン方向チェックに失敗しました。' ;;
+        zh:lg_create) echo 'A-Box 日志文件创建失败： %s' ;;
+        zh-tw:lg_create) echo 'A-Box 日誌檔案建立失敗： %s' ;;
+        en:lg_create) echo 'Failed to create the A-Box log file: %s' ;;
+        ru:lg_create) echo 'Не удалось создать файл журнала A-Box: %s' ;;
+        fa:lg_create) echo 'ایجاد فایل لاگ A-Box ناموفق بود: %s' ;;
+        ja:lg_create) echo 'A-Box ログファイルを作成できませんでした： %s' ;;
+        zh:lg_refuse) echo '拒绝覆盖非安全 A-Box 日志文件： %s' ;;
+        zh-tw:lg_refuse) echo '拒絕覆寫非安全 A-Box 日誌檔案： %s' ;;
+        en:lg_refuse) echo 'Refusing to overwrite an unsafe A-Box log file: %s' ;;
+        ru:lg_refuse) echo 'Отказ от перезаписи небезопасного файла журнала A-Box: %s' ;;
+        fa:lg_refuse) echo 'بازنویسی فایل لاگ ناامن A-Box رد شد: %s' ;;
+        ja:lg_refuse) echo '安全でない A-Box ログファイルの上書きを拒否します： %s' ;;
+        zh:lg_user) echo 'A-Box 运行用户创建失败： %s' ;;
+        zh-tw:lg_user) echo 'A-Box 執行使用者建立失敗： %s' ;;
+        en:lg_user) echo 'Failed to create the A-Box runtime user: %s' ;;
+        ru:lg_user) echo 'Не удалось создать runtime-пользователя A-Box: %s' ;;
+        fa:lg_user) echo 'ایجاد کاربر زمان اجرای A-Box ناموفق بود: %s' ;;
+        ja:lg_user) echo 'A-Box ランタイムユーザーを作成できませんでした： %s' ;;
+        zh:lg_user_parse) echo 'A-Box 运行用户解析失败： %s' ;;
+        zh-tw:lg_user_parse) echo 'A-Box 執行使用者解析失敗： %s' ;;
+        en:lg_user_parse) echo 'Failed to resolve the A-Box runtime user: %s' ;;
+        ru:lg_user_parse) echo 'Не удалось разрешить runtime-пользователя A-Box: %s' ;;
+        fa:lg_user_parse) echo 'تجزیه کاربر زمان اجرای A-Box ناموفق بود: %s' ;;
+        ja:lg_user_parse) echo 'A-Box ランタイムユーザーを解決できませんでした： %s' ;;
+        zh:pc_group_read) echo '无法读取父目录属组： %s' ;;
+        zh-tw:pc_group_read) echo '無法讀取父目錄屬組： %s' ;;
+        en:pc_group_read) echo 'Cannot read the parent directory group: %s' ;;
+        ru:pc_group_read) echo 'Невозможно прочитать группу родительского каталога: %s' ;;
+        fa:pc_group_read) echo 'خواندن گروه پوشه والد ممکن نیست: %s' ;;
+        ja:pc_group_read) echo '親ディレクトリのグループを読み取れません： %s' ;;
+        zh:pc_mode_read) echo '无法读取父目录权限： %s' ;;
+        zh-tw:pc_mode_read) echo '無法讀取父目錄權限： %s' ;;
+        en:pc_mode_read) echo 'Cannot read the parent directory permissions: %s' ;;
+        ru:pc_mode_read) echo 'Невозможно прочитать права родительского каталога: %s' ;;
+        fa:pc_mode_read) echo 'خواندن مجوزهای پوشه والد ممکن نیست: %s' ;;
+        ja:pc_mode_read) echo '親ディレクトリの権限を読み取れません： %s' ;;
+        zh:pc_not_root) echo 'A-Box 父目录不是 root:root： %s' ;;
+        zh-tw:pc_not_root) echo 'A-Box 父目錄不是 root:root： %s' ;;
+        en:pc_not_root) echo 'The A-Box parent directory is not root:root: %s' ;;
+        ru:pc_not_root) echo 'Родительский каталог A-Box не принадлежит root:root: %s' ;;
+        fa:pc_not_root) echo 'پوشه والد A-Box ‏root:root نیست: %s' ;;
+        ja:pc_not_root) echo 'A-Box の親ディレクトリが root:root ではありません： %s' ;;
+        zh:pc_owner_read) echo '无法读取父目录属主： %s' ;;
+        zh-tw:pc_owner_read) echo '無法讀取父目錄屬主： %s' ;;
+        en:pc_owner_read) echo 'Cannot read the parent directory owner: %s' ;;
+        ru:pc_owner_read) echo 'Невозможно прочитать владельца родительского каталога: %s' ;;
+        fa:pc_owner_read) echo 'خواندن مالک پوشه والد ممکن نیست: %s' ;;
+        ja:pc_owner_read) echo '親ディレクトリの所有者を読み取れません： %s' ;;
+        zh:pc_untrusted) echo 'A-Box 父目录不可信： %s' ;;
+        zh-tw:pc_untrusted) echo 'A-Box 父目錄不可信： %s' ;;
+        en:pc_untrusted) echo 'The A-Box parent directory is not trusted: %s' ;;
+        ru:pc_untrusted) echo 'Родительский каталог A-Box не доверен: %s' ;;
+        fa:pc_untrusted) echo 'پوشه والد A-Box قابل اعتماد نیست: %s' ;;
+        ja:pc_untrusted) echo 'A-Box の親ディレクトリが信頼できません： %s' ;;
+        zh:pc_writable) echo 'A-Box 父目录可被非 root 写入： %s' ;;
+        zh-tw:pc_writable) echo 'A-Box 父目錄可被非 root 寫入： %s' ;;
+        en:pc_writable) echo 'The A-Box parent directory is writable by non-root: %s' ;;
+        ru:pc_writable) echo 'Родительский каталог A-Box доступен для записи не-root: %s' ;;
+        fa:pc_writable) echo 'پوشه والد A-Box برای غیر root قابل نوشتن است: %s' ;;
+        ja:pc_writable) echo 'A-Box の親ディレクトリが root 以外から書き込み可能です： %s' ;;
+        zh:pr_reload) echo '删除 A-Box 托管核心后 systemd daemon-reload 失败。' ;;
+        zh-tw:pr_reload) echo '刪除 A-Box 託管核心後 systemd daemon-reload 失敗。' ;;
+        en:pr_reload) echo 'systemd daemon-reload failed after removing the A-Box managed core.' ;;
+        ru:pr_reload) echo 'systemd daemon-reload не удался после удаления управляемого ядра A-Box.' ;;
+        fa:pr_reload) echo 'پس از حذف هسته مدیریت‌شده A-Box، اجرای systemd daemon-reload ناموفق بود.' ;;
+        ja:pr_reload) echo 'A-Box 管理コアの削除後、systemd daemon-reload に失敗しました。' ;;
+        zh:pr_remove) echo '无法删除 A-Box 托管核心文件： %s' ;;
+        zh-tw:pr_remove) echo '無法刪除 A-Box 託管核心檔案： %s' ;;
+        en:pr_remove) echo 'Cannot remove the A-Box managed core files: %s' ;;
+        ru:pr_remove) echo 'Невозможно удалить файлы управляемого ядра A-Box: %s' ;;
+        fa:pr_remove) echo 'حذف فایل‌های هسته مدیریت‌شده A-Box ممکن نیست: %s' ;;
+        ja:pr_remove) echo 'A-Box 管理コアファイルを削除できません： %s' ;;
+        zh:pr_stop) echo '无法停止 A-Box 托管服务： %s' ;;
+        zh-tw:pr_stop) echo '無法停止 A-Box 託管服務： %s' ;;
+        en:pr_stop) echo 'Cannot stop the A-Box managed service: %s' ;;
+        ru:pr_stop) echo 'Невозможно остановить управляемую службу A-Box: %s' ;;
+        fa:pr_stop) echo 'توقف سرویس مدیریت‌شده A-Box ممکن نیست: %s' ;;
+        ja:pr_stop) echo 'A-Box 管理サービスを停止できません： %s' ;;
+        zh:sc_refuse) echo '拒绝覆盖非 A-Box 快捷入口： %s' ;;
+        zh-tw:sc_refuse) echo '拒絕覆寫非 A-Box 快捷入口： %s' ;;
+        en:sc_refuse) echo 'Refusing to overwrite a non-A-Box shortcut: %s' ;;
+        ru:sc_refuse) echo 'Отказ от перезаписи ярлыка, не принадлежащего A-Box: %s' ;;
+        fa:sc_refuse) echo 'بازنویسی میانبر غیر A-Box رد شد: %s' ;;
+        ja:sc_refuse) echo 'A-Box でないショートカットの上書きを拒否します： %s' ;;
+        zh:vs_empty) echo '%s 为空或不存在。' ;;
+        zh-tw:vs_empty) echo '%s 為空或不存在。' ;;
+        en:vs_empty) echo '%s is empty or does not exist.' ;;
+        ru:vs_empty) echo '%s пуст или не существует.' ;;
+        fa:vs_empty) echo '‏%s خالی است یا وجود ندارد.' ;;
+        ja:vs_empty) echo '%s が空か存在しません。' ;;
+        zh:vs_entry) echo '%s 入口指纹不匹配。' ;;
+        zh-tw:vs_entry) echo '%s 入口指紋不匹配。' ;;
+        en:vs_entry) echo '%s entry fingerprint does not match.' ;;
+        ru:vs_entry) echo 'Отпечаток точки входа %s не совпадает.' ;;
+        fa:vs_entry) echo 'اثر انگشت ورودی %s مطابقت ندارد.' ;;
+        ja:vs_entry) echo '%s のエントリ指紋が一致しません。' ;;
+        zh:vs_fingerprint) echo '%s 文本指纹不匹配。' ;;
+        zh-tw:vs_fingerprint) echo '%s 文字指紋不匹配。' ;;
+        en:vs_fingerprint) echo '%s text fingerprint does not match.' ;;
+        ru:vs_fingerprint) echo 'Текстовый отпечаток %s не совпадает.' ;;
+        fa:vs_fingerprint) echo 'اثر انگشت متنی %s مطابقت ندارد.' ;;
+        ja:vs_fingerprint) echo '%s のテキスト指紋が一致しません。' ;;
+        zh:vs_syntax) echo '%s 语法校验失败。' ;;
+        zh-tw:vs_syntax) echo '%s 語法校驗失敗。' ;;
+        en:vs_syntax) echo '%s failed the syntax check.' ;;
+        ru:vs_syntax) echo '%s не прошёл проверку синтаксиса.' ;;
+        fa:vs_syntax) echo '‏%s بررسی نحوی را رد کرد.' ;;
+        ja:vs_syntax) echo '%s の構文チェックに失敗しました。' ;;
         zh:fmt_unused) echo '未用' ;;
         en:fmt_unused) echo 'unused' ;;
         ru:fmt_unused) echo 'нет трафика' ;;
@@ -6388,7 +6730,7 @@ init_system_environment() {
             release='ubuntu'; install_cmd=(apt-get -y install)
         fi
     fi
-    [[ -z "$release" ]] && die '本脚本不支持当前异构系统。'
+    [[ -z "$release" ]] && die "$(tr_msg ie_unsupported)"
     if [[ "$release" == 'centos' ]] && command -v dnf >/dev/null 2>&1; then
         install_cmd=(dnf -y install)
     fi
@@ -6404,7 +6746,7 @@ init_system_environment() {
         INIT_SYS='unknown'
         msg "${YELLOW}[!] $(tr_msg init_soft_warn)${NC}"
     else
-        die '无法检测到受支持的守护进程初始化系统 (Systemd/OpenRC)。'
+        die "$(tr_msg ie_no_init)"
     fi
 
     if [[ ! -f "$DEPS_MARKER" ]]; then
@@ -6440,12 +6782,12 @@ init_system_environment() {
         esac
         if [[ "$release" == 'centos' ]] && command -v dnf >/dev/null 2>&1; then
             # --allowerasing covers residual curl <-> curl-minimal swaps if curl is needed.
-            dnf -y install --allowerasing "${deps[@]}" >/dev/null 2>&1 || die '基础依赖包安装失败。'
+            dnf -y install --allowerasing "${deps[@]}" >/dev/null 2>&1 || die "$(tr_msg ie_deps)"
         else
-            "${install_cmd[@]}" "${deps[@]}" >/dev/null 2>&1 || die '基础依赖包安装失败。'
+            "${install_cmd[@]}" "${deps[@]}" >/dev/null 2>&1 || die "$(tr_msg ie_deps)"
         fi
         ensure_abox_dir_owned "$ABOX_DIR"
-        install -m 600 /dev/null "$DEPS_MARKER" || die '依赖标记写入失败。'
+        install -m 600 /dev/null "$DEPS_MARKER" || die "$(tr_msg ie_deps_marker)"
     fi
 
     ensure_commands
@@ -6562,16 +6904,16 @@ ensure_commands() {
         local -a unique_pkgs=()
         mapfile -t unique_pkgs < <(printf '%s\n' "${missing_pkgs[@]}" | awk 'NF && !seen[$0]++')
         msg "${YELLOW}[*] 检测到缺失依赖包，正在补装...${NC}"
-        "${_ens_install_cmd[@]}" "${unique_pkgs[@]}" >/dev/null 2>&1 || die '依赖补装失败。'
+        "${_ens_install_cmd[@]}" "${unique_pkgs[@]}" >/dev/null 2>&1 || die "$(tr_msg ec_reinstall)"
     fi
     local required=(curl jq openssl bc unzip tar iptables ss lsof crontab logrotate python3 flock cmp)
     local c
     for c in "${required[@]}"; do
-        command -v "$c" >/dev/null 2>&1 || die "关键依赖缺失: $c"
+        command -v "$c" >/dev/null 2>&1 || die "$(tprintf ec_missing "$c")"
     done
     # flock is now guaranteed; upgrade any pre-ensure fallback lock onto LOCK_FILE.
     if [[ "${ABOX_RUNTIME_LOCK_MODE:-}" == fallback ]]; then
-        upgrade_runtime_lock_to_flock_if_possible || die '已安装 flock，但无法将 fallback 运行锁升级为 flock；请结束其它 A-Box 实例后重试。'
+        upgrade_runtime_lock_to_flock_if_possible || die "$(tr_msg ec_lock)"
     fi
 }
 
@@ -6651,7 +6993,7 @@ get_architecture() {
         # armv8l is a 32-bit ARMv8 target, not AArch64; fail closed rather than
         # installing 64-bit arm64/aarch64 binaries into a 32-bit userspace.
         aarch64|arm64) XRAY_ARCH='arm64-v8a'; SB_ARCH='arm64'; HY2_ARCH='arm64' ;;
-        *) die "无法识别的底层 CPU 架构: $ARCH" ;;
+        *) die "$(tprintf ga_unknown "$ARCH")" ;;
     esac
 }
 
@@ -7393,11 +7735,11 @@ prune_owned_core_families_except() {
     for srv in xray sing-box hysteria; do
         [[ "$allowed" == *" $srv "* ]] && continue
         { abox_owns_service "$srv" || abox_owns_config_only_core_dir "$srv"; } || continue
-        stop_abox_service "$srv" || die "无法停止 A-Box 托管服务: $srv"
-        remove_owned_core_family "$srv" || die "无法删除 A-Box 托管核心文件: $srv"
+        stop_abox_service "$srv" || die "$(tprintf pr_stop "$srv")"
+        remove_owned_core_family "$srv" || die "$(tprintf pr_remove "$srv")"
     done
     if [[ "${INIT_SYS:-}" == systemd ]]; then
-        systemctl daemon-reload >/dev/null 2>&1 || die '删除 A-Box 托管核心后 systemd daemon-reload 失败。'
+        systemctl daemon-reload >/dev/null 2>&1 || die "$(tr_msg pr_reload)"
     fi
 }
 
@@ -7439,11 +7781,11 @@ list_foreign_core_conflicts() {
 
 assert_no_foreign_core_conflicts() {
     local conflicts
-    conflicts=$(list_foreign_core_conflicts "$@") || die '无法安全枚举现有核心文件，拒绝继续部署。'
+    conflicts=$(list_foreign_core_conflicts "$@") || die "$(tr_msg af_enum)"
     [[ -z "$conflicts" ]] && return 0
     msg "${RED}[!] Refusing to overwrite non-A-Box core files/services:${NC}"
     while IFS='|' read -r srv path; do [[ -n "$path" ]] && msg "${RED}    ${srv}: ${path}${NC}"; done <<< "$conflicts"
-    die '请先迁移或删除上述非 A-Box 安装。A-Box 不会覆盖未知归属的核心、配置或服务文件。'
+    die "$(tr_msg af_migrate)"
 }
 
 # Legacy residue check: the core's unit file and config dir are
@@ -7528,7 +7870,7 @@ assert_abox_shortcut_safe() {
     local path="${1:-/usr/local/bin/sb}"
     [[ ! -e "$path" && ! -L "$path" ]] && return 0
     shortcut_is_abox_managed "$path" && return 0
-    die "拒绝覆盖非 A-Box 快捷入口: $path"
+    die "$(tprintf sc_refuse "$path")"
 }
 
 remove_abox_shortcut() {
@@ -9740,10 +10082,10 @@ write_if_changed() {
 
 validate_abox_script_file() {
     local f="$1" context="${2:-script}"
-    [[ -s "$f" ]] || { printf '%s\n' "${context} 为空或不存在。" >&2; return 1; }
-    bash -n "$f" >/dev/null 2>&1 || { printf '%s\n' "${context} 语法校验失败。" >&2; return 1; }
-    grep -q '==============================A-Box===============================' "$f" || { printf '%s\n' "${context} 文本指纹不匹配。" >&2; return 1; }
-    grep -q '^main "\$@"' "$f" || { printf '%s\n' "${context} 入口指纹不匹配。" >&2; return 1; }
+    [[ -s "$f" ]] || { printf '%s\n' "$(tprintf vs_empty "$context")" >&2; return 1; }
+    bash -n "$f" >/dev/null 2>&1 || { printf '%s\n' "$(tprintf vs_syntax "$context")" >&2; return 1; }
+    grep -q '==============================A-Box===============================' "$f" || { printf '%s\n' "$(tprintf vs_fingerprint "$context")" >&2; return 1; }
+    grep -q '^main "\$@"' "$f" || { printf '%s\n' "$(tprintf vs_entry "$context")" >&2; return 1; }
 }
 
 
@@ -9758,19 +10100,19 @@ resolve_abox_main_commit_url() {
 install_remote_abox_script_guarded() {
     local url="$1" dest="$2" tmp sha resolved_url
     if [[ "$url" == 'https://raw.githubusercontent.com/alariclin/A-Box/main/install.sh' ]]; then
-        resolved_url=$(resolve_abox_main_commit_url) || die '无法将 A-Box main 分支解析为不可变 commit；已拒绝下载可变源码。'
+        resolved_url=$(resolve_abox_main_commit_url) || die "$(tr_msg ir_resolve)"
         url="$resolved_url"
     fi
-    tmp=$(umask 077; mktemp /tmp/A-Box-script.XXXXXX.sh) || die '远端脚本临时文件创建失败。'
-    abox_run_wait '下载远端脚本' curl -fLs --connect-timeout 10 -m 60 "$url" -o "$tmp" || { rm -f -- "$tmp"; die '远端脚本下载失败。'; }
+    tmp=$(umask 077; mktemp /tmp/A-Box-script.XXXXXX.sh) || die "$(tr_msg ir_tmp)"
+    abox_run_wait "$(tr_msg ir_dl_label)" curl -fLs --connect-timeout 10 -m 60 "$url" -o "$tmp" || { rm -f -- "$tmp"; die "$(tr_msg ir_download)"; }
     if ! ( validate_abox_script_file "$tmp" '远端 A-Box 脚本' && validate_ota_version_direction "$tmp" ); then
         rm -f -- "$tmp"
-        die '远端 A-Box 脚本校验或版本方向检查失败。'
+        die "$(tr_msg ir_verify)"
     fi
     sha=$(sha256sum "$tmp" | awk '{print $1}')
     msg "${YELLOW}[*] Remote script SHA256: ${sha}${NC}"
-    confirm_ota_script_hash "$sha" "$url" || { rm -f -- "$tmp"; die '远端脚本安装被取消。'; }
-    write_if_changed "$dest" "$tmp" 700 || { rm -f -- "$tmp"; die '远端 A-Box 脚本原子持久化失败。'; }
+    confirm_ota_script_hash "$sha" "$url" || { rm -f -- "$tmp"; die "$(tr_msg ir_cancelled)"; }
+    write_if_changed "$dest" "$tmp" 700 || { rm -f -- "$tmp"; die "$(tr_msg ir_persist)"; }
     rm -f -- "$tmp"
 }
 
@@ -11422,18 +11764,18 @@ assert_abox_log_file_safe() {
 
 ensure_abox_log_file() {
     local path="$1" family='' user group
-    assert_abox_log_file_safe "$path" || die "拒绝覆盖非安全 A-Box 日志文件: $path"
+    assert_abox_log_file_safe "$path" || die "$(tprintf lg_refuse "$path")"
     [[ -e "$path" ]] && return 0
     case "$path" in
         /var/log/A-Box-xray-*.log) family=xray ;;
         /var/log/A-Box-singbox.log) family=sing-box ;;
         /var/log/A-Box-hysteria.log) family=hysteria ;;
-        /var/log/A-Box-traffic.log) install -o root -g root -m 600 /dev/null "$path" || die "A-Box 日志文件创建失败: $path"; return 0 ;;
+        /var/log/A-Box-traffic.log) install -o root -g root -m 600 /dev/null "$path" || die "$(tprintf lg_create "$path")"; return 0 ;;
         *) return 1 ;;
     esac
-    ensure_abox_runtime_identity "$family" || die "A-Box 运行用户创建失败: $family"
-    IFS=$'\t' read -r user group < <(abox_runtime_identity "$family") || die "A-Box 运行用户解析失败: $family"
-    install -o root -g "$group" -m 660 /dev/null "$path" || die "A-Box 日志文件创建失败: $path"
+    ensure_abox_runtime_identity "$family" || die "$(tprintf lg_user "$family")"
+    IFS=$'\t' read -r user group < <(abox_runtime_identity "$family") || die "$(tprintf lg_user_parse "$family")"
+    install -o root -g "$group" -m 660 /dev/null "$path" || die "$(tprintf lg_create "$path")"
 }
 
 remove_abox_log_files() {
@@ -12168,12 +12510,12 @@ fi
 rm -rf -- "$GEO_TXN" || exit 1
 EOF_GEO
     if [[ "${INIT_SYS:-}" == systemd ]]; then
-        sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='systemd'|" "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本运行环境标记写入失败。'
+        sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='systemd'|" "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gu_mark)"
     else
-        sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='openrc'|" "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本运行环境标记写入失败。'
+        sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='openrc'|" "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gu_mark)"
     fi
-    grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本运行环境标记后置校验失败。'
-    chmod 700 "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本权限设置失败。'
+    grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gu_mark_verify)"
+    chmod 700 "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gu_chmod)"
     # A-06-FIX: No outer flock (see PROBE above).
     install_abox_cron_block GEO '0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1'
 }

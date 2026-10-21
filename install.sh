@@ -2092,6 +2092,12 @@ tr_msg() {
         fa:mi_users_none) echo 'هیچ‌کدام' ;;
         zh-tw:mi_users_none) echo '暫無' ;;
         ja:mi_users_none) echo 'なし' ;;
+        zh:fmt_unused) echo '未用' ;;
+        en:fmt_unused) echo 'unused' ;;
+        ru:fmt_unused) echo 'нет трафика' ;;
+        fa:fmt_unused) echo 'بدون مصرف' ;;
+        zh-tw:fmt_unused) echo '未用' ;;
+        ja:fmt_unused) echo '未使用' ;;
         zh:mi_u_forever) echo '永久' ;;
         en:mi_u_forever) echo 'forever' ;;
         ru:mi_u_forever) echo 'навсегда' ;;
@@ -11176,7 +11182,7 @@ EOF_SVC
     jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" --arg tag "$tag" \
         --arg pk "$pk" --arg sid "$sid" \
         '{type:"anytls",tag:$tag,listen:"0.0.0.0",listen_port:$port,
-          users:[{name:"abox",password:$pass}],
+          users:[{name:"main",password:$pass}],
           tls:{enabled:true,server_name:$sni,
             reality:{enabled:true,handshake:{server:$sni,server_port:443},private_key:$pk,short_id:[$sid]}}}' \
         > "$tmp_json" || die 'AnyTLS inbound JSON 生成失败。'
@@ -16561,7 +16567,10 @@ users_export_all() {
 
 # ---- menu ----
 users_fmt_bytes() {
-    awk -v b="${1:-0}" 'BEGIN { if (b < 1024) printf "%dB", b; else if (b < 1048576) printf "%.1fK", b/1024; else if (b < 1073741824) printf "%.1fM", b/1048576; else { v = sprintf("%.2f", b/1073741824); sub(/\.?0+$/, "", v); printf "%sG", v } }' 2>/dev/null || printf '%sB' "${1:-0}"
+    local b="${1:-0}"
+    [[ "$b" =~ ^[0-9]+$ ]] || b=0
+    if (( b == 0 )); then tr_msg fmt_unused; return 0; fi
+    awk -v b="$b" 'BEGIN { if (b < 1024) printf "%dB", b; else if (b < 1048576) printf "%.1fK", b/1024; else if (b < 1073741824) printf "%.1fM", b/1048576; else { v = sprintf("%.2f", b/1073741824); sub(/\.?0+$/, "", v); printf "%sG", v } }' 2>/dev/null || printf '%sB' "$b"
 }
 # Display width of a string: wide (CJK/fullwidth) codepoints count 2.
 _str_dwidth() {

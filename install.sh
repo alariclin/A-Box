@@ -582,6 +582,126 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:pi_bad_domain) echo '域名格式非法：%s' ;;
+        en:pi_bad_domain) echo 'Invalid domain format: %s' ;;
+        ru:pi_bad_domain) echo 'Недопустимый формат домена: %s' ;;
+        fa:pi_bad_domain) echo 'قالب دامنه نامعتبر است: %s' ;;
+        zh-tw:pi_bad_domain) echo '域名格式不合法：%s' ;;
+        ja:pi_bad_domain) echo 'ドメイン形式が無効です: %s' ;;
+        zh:pi_hy2_masq_prompt) echo '请输入 HTTP/3 伪装站点 URL (回车默认: %s): ' ;;
+        en:pi_hy2_masq_prompt) echo 'Enter HTTP/3 masquerade URL (default: %s): ' ;;
+        ru:pi_hy2_masq_prompt) echo 'Ввести URL маскировки HTTP/3 (по умолчанию: %s): ' ;;
+        fa:pi_hy2_masq_prompt) echo 'URL استتار HTTP/3 را وارد کنید (پیش‌فرض: %s): ' ;;
+        zh-tw:pi_hy2_masq_prompt) echo '請輸入 HTTP/3 偽裝站點 URL (回車預設: %s): ' ;;
+        ja:pi_hy2_masq_prompt) echo 'HTTP/3 の偽装サイト URL を入力してください（既定値: %s）: ' ;;
+        zh:pi_hy2_masq_closed) echo 'HY2 伪装 URL 输入已结束。' ;;
+        en:pi_hy2_masq_closed) echo 'HY2 masquerade URL input closed.' ;;
+        ru:pi_hy2_masq_closed) echo 'Ввод URL маскировки HY2 завершён.' ;;
+        fa:pi_hy2_masq_closed) echo 'ورودی URL استتار HY2 به پایان رسید.' ;;
+        zh-tw:pi_hy2_masq_closed) echo 'HY2 偽裝 URL 輸入已結束。' ;;
+        ja:pi_hy2_masq_closed) echo 'HY2 偽装 URL の入力が終了しました。' ;;
+        zh:pi_ss_port_closed) echo 'SS 端口输入已结束。' ;;
+        en:pi_ss_port_closed) echo 'SS port input closed.' ;;
+        ru:pi_ss_port_closed) echo 'Ввод порта SS завершён.' ;;
+        fa:pi_ss_port_closed) echo 'ورودی درگاه SS به پایان رسید.' ;;
+        zh-tw:pi_ss_port_closed) echo 'SS 連接埠輸入已結束。' ;;
+        ja:pi_ss_port_closed) echo 'SS ポートの入力が終了しました。' ;;
+        zh:pi_wl6_bad) echo 'IPv6 白名单地址非法：%s' ;;
+        en:pi_wl6_bad) echo 'Invalid IPv6 whitelist address: %s' ;;
+        ru:pi_wl6_bad) echo 'Недопустимый адрес IPv6 в белом списке: %s' ;;
+        fa:pi_wl6_bad) echo 'نشانی IPv6 فهرست سفید نامعتبر است: %s' ;;
+        zh-tw:pi_wl6_bad) echo 'IPv6 白名單位址不合法：%s' ;;
+        ja:pi_wl6_bad) echo 'IPv6 ホワイトリストアドレスが無効です: %s' ;;
+        zh:pi_wl4_bad) echo 'IPv4 白名单地址非法：%s' ;;
+        en:pi_wl4_bad) echo 'Invalid IPv4 whitelist address: %s' ;;
+        ru:pi_wl4_bad) echo 'Недопустимый адрес IPv4 в белом списке: %s' ;;
+        fa:pi_wl4_bad) echo 'نشانی IPv4 فهرست سفید نامعتبر است: %s' ;;
+        zh-tw:pi_wl4_bad) echo 'IPv4 白名單位址不合法：%s' ;;
+        ja:pi_wl4_bad) echo 'IPv4 ホワイトリストアドレスが無効です: %s' ;;
+        zh:pi_ss_backend) echo '当前防火墙后端不是原生 iptables；SS-2022 源地址白名单仅在 iptables/ip6tables 后端启用，拒绝静默写入不可持久化的白名单规则。' ;;
+        en:pi_ss_backend) echo 'The current firewall backend is not native iptables; the SS-2022 source whitelist only works on the iptables/ip6tables backend, and non-persistable whitelist rules will not be written silently.' ;;
+        ru:pi_ss_backend) echo 'Текущий бэкенд межсетевого экрана - не нативный iptables; белый список источников SS-2022 работает только на бэкенде iptables/ip6tables, и несохраняемые правила не будут записаны молча.' ;;
+        fa:pi_ss_backend) echo 'پس‌زمینه کنونی فایروال iptables بومی نیست؛ فهرست سفید مبدأ SS-2022 فقط روی پس‌زمینه iptables/ip6tables کار می‌کند و قوانین غیرقابل‌ماندگاری بی‌سروصدا نوشته نمی‌شوند.' ;;
+        zh-tw:pi_ss_backend) echo '目前防火牆後端不是原生 iptables；SS-2022 來源白名單僅在 iptables/ip6tables 後端啟用，拒絕靜默寫入不可持久化的白名單規則。' ;;
+        ja:pi_ss_backend) echo '現在のファイアウォールバックエンドはネイティブ iptables ではありません。SS-2022 の送信元ホワイトリストは iptables/ip6tables バックエンドでのみ有効です。永続化できないルールを黙って書き込むことはしません。' ;;
+        zh:pi_ss_v6_fw) echo '主机启用了 IPv6，但 IPv6 防火墙不可用；拒绝启用白名单模式以避免 IPv6 侧被静默放行。' ;;
+        en:pi_ss_v6_fw) echo 'The host has IPv6 enabled but no working IPv6 firewall; refusing to enable whitelist mode to avoid silently allowing IPv6 traffic.' ;;
+        ru:pi_ss_v6_fw) echo 'На хосте включён IPv6, но IPv6-файрвол недоступен; отказ от включения режима белого списка, чтобы не разрешить IPv6-трафик молча.' ;;
+        fa:pi_ss_v6_fw) echo 'میزبان IPv6 فعال دارد اما فایروال IPv6 در دسترس نیست؛ برای جلوگیری از اجازه بی‌سروصدای ترافیک IPv6، حالت فهرست سفید فعال نمی‌شود.' ;;
+        zh-tw:pi_ss_v6_fw) echo '主機啟用了 IPv6，但 IPv6 防火牆不可用；拒絕啟用白名單模式，以免 IPv6 側被靜默放行。' ;;
+        ja:pi_ss_v6_fw) echo 'ホストで IPv6 が有効ですが IPv6 ファイアウォールが利用できません。IPv6 側が黙って許可されるのを避けるため、ホワイトリストモードを有効化しません。' ;;
+        zh:pi_ss_snapshot) echo '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。' ;;
+        en:pi_ss_snapshot) echo 'Cannot snapshot the current SS firewall rules; refusing to continue to avoid a failed rollback.' ;;
+        ru:pi_ss_snapshot) echo 'Не удалось сделать снимок текущих правил SS; отказ от продолжения во избежание неудачного отката.' ;;
+        fa:pi_ss_snapshot) echo 'نمی‌توان از قوانین کنونی SS عکس گرفت؛ برای جلوگیری از بازگشت ناموفق، ادامه داده نمی‌شود.' ;;
+        zh-tw:pi_ss_snapshot) echo '無法快照目前 SS 防火牆規則；拒絕繼續，以免回滾失敗。' ;;
+        ja:pi_ss_snapshot) echo '現在の SS ファイアウォールルールのスナップショットを取得できません。ロールバック失敗を避けるため続行しません。' ;;
+        zh:pi_ss_old_accept) echo '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。' ;;
+        en:pi_ss_old_accept) echo 'The old open SS ACCEPT rules could not be fully removed; refusing to enable whitelist mode.' ;;
+        ru:pi_ss_old_accept) echo 'Старые открытые правила ACCEPT для SS не удалось удалить полностью; отказ от включения режима белого списка.' ;;
+        fa:pi_ss_old_accept) echo 'قوانین قدیمی ACCEPT باز SS به‌طور کامل حذف نشدند؛ حالت فهرست سفید فعال نمی‌شود.' ;;
+        zh-tw:pi_ss_old_accept) echo '舊的 SS 全網 ACCEPT 規則無法完整刪除；拒絕啟用白名單模式。' ;;
+        ja:pi_ss_old_accept) echo '古い SS の全面 ACCEPT ルールを完全に削除できませんでした。ホワイトリストモードを有効化しません。' ;;
+        zh:pi_ss_v6_dropped) echo 'IPv6 白名单已配置，但系统没有可用 IPv6 防火墙；拒绝继续以避免白名单被静默丢弃：%s/%s' ;;
+        en:pi_ss_v6_dropped) echo 'An IPv6 whitelist is configured, but the system has no usable IPv6 firewall; refusing to continue to avoid silently dropping the whitelist: %s/%s' ;;
+        ru:pi_ss_v6_dropped) echo 'Белый список IPv6 настроен, но в системе нет рабочего IPv6-файрвола; отказ от продолжения, чтобы список не был молча потерян: %s/%s' ;;
+        fa:pi_ss_v6_dropped) echo 'فهرست سفید IPv6 تنظیم شده، اما سیستم فایروال IPv6 قابل‌استفاده ندارد؛ برای جلوگیری از حذف بی‌سروصدای فهرست، ادامه داده نمی‌شود: %s/%s' ;;
+        zh-tw:pi_ss_v6_dropped) echo 'IPv6 白名單已設定，但系統沒有可用的 IPv6 防火牆；拒絕繼續，以免白名單被靜默丟棄：%s/%s' ;;
+        ja:pi_ss_v6_dropped) echo 'IPv6 ホワイトリストが設定されていますが、利用可能な IPv6 ファイアウォールがありません。ホワイトリストが黙って破棄されるのを避けるため続行しません: %s/%s' ;;
+        zh:pi_ss_wl6_fail) echo 'IPv6 白名单规则写入失败：%s/%s' ;;
+        en:pi_ss_wl6_fail) echo 'IPv6 whitelist rule write failed: %s/%s' ;;
+        ru:pi_ss_wl6_fail) echo 'Не удалось записать правило белого списка IPv6: %s/%s' ;;
+        fa:pi_ss_wl6_fail) echo 'نوشتن قانون فهرست سفید IPv6 ناموفق بود: %s/%s' ;;
+        zh-tw:pi_ss_wl6_fail) echo 'IPv6 白名單規則寫入失敗：%s/%s' ;;
+        ja:pi_ss_wl6_fail) echo 'IPv6 ホワイトリストルールの書き込みに失敗しました: %s/%s' ;;
+        zh:pi_ss_wl4_fail) echo 'IPv4 白名单规则写入失败：%s/%s' ;;
+        en:pi_ss_wl4_fail) echo 'IPv4 whitelist rule write failed: %s/%s' ;;
+        ru:pi_ss_wl4_fail) echo 'Не удалось записать правило белого списка IPv4: %s/%s' ;;
+        fa:pi_ss_wl4_fail) echo 'نوشتن قانون فهرست سفید IPv4 ناموفق بود: %s/%s' ;;
+        zh-tw:pi_ss_wl4_fail) echo 'IPv4 白名單規則寫入失敗：%s/%s' ;;
+        ja:pi_ss_wl4_fail) echo 'IPv4 ホワイトリストルールの書き込みに失敗しました: %s/%s' ;;
+        zh:pi_ss_fw_check) echo '无法检查防火墙规则。' ;;
+        en:pi_ss_fw_check) echo 'Cannot inspect firewall rules.' ;;
+        ru:pi_ss_fw_check) echo 'Не удалось проверить правила межсетевого экрана.' ;;
+        fa:pi_ss_fw_check) echo 'نمی‌توان قوانین فایروال را بررسی کرد.' ;;
+        zh-tw:pi_ss_fw_check) echo '無法檢查防火牆規則。' ;;
+        ja:pi_ss_fw_check) echo 'ファイアウォールルールを確認できません。' ;;
+        zh:pi_ss_drop4_fail) echo 'IPv4 SS DROP 规则写入失败：%s' ;;
+        en:pi_ss_drop4_fail) echo 'IPv4 SS DROP rule write failed: %s' ;;
+        ru:pi_ss_drop4_fail) echo 'Не удалось записать правило DROP SS для IPv4: %s' ;;
+        fa:pi_ss_drop4_fail) echo 'نوشتن قانون DROP SS برای IPv4 ناموفق بود: %s' ;;
+        zh-tw:pi_ss_drop4_fail) echo 'IPv4 SS DROP 規則寫入失敗：%s' ;;
+        ja:pi_ss_drop4_fail) echo 'IPv4 SS DROP ルールの書き込みに失敗しました: %s' ;;
+        zh:pi_ss_drop6_fail_rb) echo 'IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单：%s' ;;
+        en:pi_ss_drop6_fail_rb) echo 'IPv6 SS DROP rule write failed; rolled back to the pre-operation firewall state to avoid a half-configured whitelist: %s' ;;
+        ru:pi_ss_drop6_fail_rb) echo 'Не удалось записать правило DROP SS для IPv6; выполнен откат к состоянию межсетевого экрана до операции, чтобы избежать частично настроенного белого списка: %s' ;;
+        fa:pi_ss_drop6_fail_rb) echo 'نوشتن قانون DROP SS برای IPv6 ناموفق بود؛ برای جلوگیری از فهرست سفید نیمه‌تنظیم، به وضعیت فایروال پیش از عملیات بازگردانده شد: %s' ;;
+        zh-tw:pi_ss_drop6_fail_rb) echo 'IPv6 SS DROP 規則寫入失敗，已回滾到操作前防火牆狀態，以免半設定白名單：%s' ;;
+        ja:pi_ss_drop6_fail_rb) echo 'IPv6 SS DROP ルールの書き込みに失敗しました。中途半端なホワイトリストを避けるため、操作前のファイアウォール状態にロールバックしました: %s' ;;
+        zh:pi_ss_drop6_fail_norb) echo 'IPv6 SS DROP 规则写入失败，回滚失败，需人工处理：%s' ;;
+        en:pi_ss_drop6_fail_norb) echo 'IPv6 SS DROP rule write failed; rollback failed, manual intervention required: %s' ;;
+        ru:pi_ss_drop6_fail_norb) echo 'Не удалось записать правило DROP SS для IPv6; откат не удался, требуется ручное вмешательство: %s' ;;
+        fa:pi_ss_drop6_fail_norb) echo 'نوشتن قانون DROP SS برای IPv6 ناموفق بود؛ بازگشت هم ناموفق شد، مداخله دستی لازم است: %s' ;;
+        zh-tw:pi_ss_drop6_fail_norb) echo 'IPv6 SS DROP 規則寫入失敗，回滾失敗，需人工處理：%s' ;;
+        ja:pi_ss_drop6_fail_norb) echo 'IPv6 SS DROP ルールの書き込みに失敗し、ロールバックも失敗しました。手動対応が必要です: %s' ;;
+        zh:pi_ss_order) echo 'SS 白名单规则顺序校正失败。' ;;
+        en:pi_ss_order) echo 'SS whitelist rule order correction failed.' ;;
+        ru:pi_ss_order) echo 'Не удалось исправить порядок правил белого списка SS.' ;;
+        fa:pi_ss_order) echo 'اصلاح ترتیب قوانین فهرست سفید SS ناموفق بود.' ;;
+        zh-tw:pi_ss_order) echo 'SS 白名單規則順序校正失敗。' ;;
+        ja:pi_ss_order) echo 'SS ホワイトリストルールの順序修正に失敗しました。' ;;
+        zh:pi_fw_persist_rb) echo 'A-Box 防火墙持久化失败，已回滚。' ;;
+        en:pi_fw_persist_rb) echo 'A-Box firewall persistence failed; rolled back.' ;;
+        ru:pi_fw_persist_rb) echo 'Не удалось сохранить правила A-Box; выполнен откат.' ;;
+        fa:pi_fw_persist_rb) echo 'ماندگار‌سازی فایروال A-Box ناموفق بود؛ بازگردانده شد.' ;;
+        zh-tw:pi_fw_persist_rb) echo 'A-Box 防火牆持久化失敗，已回滾。' ;;
+        ja:pi_fw_persist_rb) echo 'A-Box ファイアウォールの永続化に失敗しました。ロールバック済みです。' ;;
+        zh:pi_fw_persist_norb) echo 'A-Box 防火墙持久化失败，回滚失败，需人工处理。' ;;
+        en:pi_fw_persist_norb) echo 'A-Box firewall persistence failed; rollback failed, manual intervention required.' ;;
+        ru:pi_fw_persist_norb) echo 'Не удалось сохранить правила A-Box; откат не удался, требуется ручное вмешательство.' ;;
+        fa:pi_fw_persist_norb) echo 'ماندگار‌سازی فایروال A-Box ناموفق بود؛ بازگشت هم ناموفق شد، مداخله دستی لازم است.' ;;
+        zh-tw:pi_fw_persist_norb) echo 'A-Box 防火牆持久化失敗，回滾失敗，需人工處理。' ;;
+        ja:pi_fw_persist_norb) echo 'A-Box ファイアウォールの永続化に失敗し、ロールバックも失敗しました。手動対応が必要です。' ;;
         zh:wl_hi_title) echo 'Wallos 主机检测' ;;
         en:wl_hi_title) echo 'Wallos host check' ;;
         ru:wl_hi_title) echo 'Проверка VPS для Wallos' ;;
@@ -11661,7 +11781,7 @@ pre_install_setup() {
         fi
         HY2_DOMAIN="$INPUT_H_DOMAIN"
         if [[ -n "$HY2_DOMAIN" ]]; then
-            valid_domain "$HY2_DOMAIN" || die "域名格式非法 / Invalid domain: $HY2_DOMAIN"
+            valid_domain "$HY2_DOMAIN" || die "$(tprintf pi_bad_domain "$HY2_DOMAIN")"
             [[ "${GLOBAL_PUBLIC_IP:-N/A}" != 'N/A' ]] && verify_domain_points_to_self "$HY2_DOMAIN" "$GLOBAL_PUBLIC_IP"
             HY2_ACME_TYPE='http'
             HY2_ACME_DNS_PROVIDER=''
@@ -11741,38 +11861,19 @@ pre_install_setup() {
         HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} $(tr_msg pi_up)" 100) || die "$(tr_msg pi_up_closed)"
 
         local masq_default="https://${VISION_SNI:-${XHTTP_SNI:-www.samsung.com}}/"
-        case "${ABOX_LANG:-zh}" in
-            en)
-            HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} Enter HTTP/3 masquerade URL (default: $masq_default): " "$masq_default") || die 'HY2 伪装 URL 输入已结束 / HY2 masquerade URL input closed.'
-                ;;
-            ru)
-            HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} Ввести URL маскировки HTTP/3 (по умолчанию: $masq_default): " "$masq_default") || die 'Ввод URL маскировки HY2 завершён.'
-                ;;
-            fa)
-            HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} URL استتار HTTP/3 را وارد کنید (پیش‌فرض: $masq_default): " "$masq_default") || die 'ورودی URL استتار HY2 به پایان رسید.'
-                ;;
-            ja)
-                HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} HTTP/3 の偽装サイト URL を入力してください（既定値: $masq_default）: " "$masq_default") || die 'HY2 偽装 URL の入力が終了しました / HY2 masquerade URL input closed.'
-                ;;
-            zh-tw)
-            HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} 請輸入 HTTP/3 偽裝站點 URL (回車預設: $masq_default): " "$masq_default") || die 'HY2 偽裝 URL 輸入已結束 / HY2 masquerade URL input closed.'
-                ;;
-            *)
-            HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} 请输入 HTTP/3 伪装站点 URL (回车默认: $masq_default): " "$masq_default") || die 'HY2 伪装 URL 输入已结束 / HY2 masquerade URL input closed.'
-                ;;
-        esac
+        HY2_MASQ_URL=$(prompt_https_url "   ${L_HY2} $(tprintf pi_hy2_masq_prompt "$masq_default")" "$masq_default") || die "$(tr_msg pi_hy2_masq_closed)"
     fi
     if [[ "$HAS_SS" == 'true' ]]; then
-        SS_PORT=$(prompt_ss_port_input "$L_SS" "$DEF_S_PORT") || die 'SS 端口输入已结束 / SS port input closed.'
+        SS_PORT=$(prompt_ss_port_input "$L_SS" "$DEF_S_PORT") || die "$(tr_msg pi_ss_port_closed)"
         read -r -p "   ${L_SS} $(tr_msg pi_ss_wl)" INPUT_SS_WL || die "$(tr_msg pi_input_closed)"
         SS_WHITELIST_IP="$INPUT_SS_WL"
         if [[ -n "$SS_WHITELIST_IP" ]]; then
             read -r -a ss_whitelist_ips <<< "$SS_WHITELIST_IP"
             for ip in "${ss_whitelist_ips[@]}"; do
                 if [[ "$ip" == *:* ]]; then
-                    valid_ipv6_cidr "$ip" || die "IPv6 白名单地址非法: $ip"
+                    valid_ipv6_cidr "$ip" || die "$(tprintf pi_wl6_bad "$ip")"
                 else
-                    valid_ipv4_cidr "$ip" || die "IPv4 白名单地址非法: $ip"
+                    valid_ipv4_cidr "$ip" || die "$(tprintf pi_wl4_bad "$ip")"
                 fi
             done
         fi
@@ -11834,33 +11935,33 @@ pre_install_setup() {
     fi
     if [[ "$HAS_SS" == 'true' ]]; then
         if [[ -n "${SS_WHITELIST_IP:-}" && "$(firewall_backend)" != 'iptables' ]]; then
-            die '当前防火墙后端不是原生 iptables；SS-2022 源地址白名单仅在 iptables/ip6tables 后端启用，拒绝静默写入不可持久化的白名单规则。'
+            die "$(tr_msg pi_ss_backend)"
         fi
         if [[ -n "${SS_WHITELIST_IP:-}" ]]; then
-            ss_whitelist_ipv6_precheck || die '主机启用了 IPv6，但 IPv6 防火墙不可用；拒绝启用白名单模式以避免 IPv6 侧被静默放行。'
-            _ss_wl_snapshot_rules || die '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。'
-            remove_ss_open_accept_rules || { _ss_wl_rollback_to_snapshot; die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'; }
+            ss_whitelist_ipv6_precheck || die "$(tr_msg pi_ss_v6_fw)"
+            _ss_wl_snapshot_rules || die "$(tr_msg pi_ss_snapshot)"
+            remove_ss_open_accept_rules || { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_old_accept)"; }
             read -r -a ss_whitelist_ips <<< "$SS_WHITELIST_IP"
             for ip in "${ss_whitelist_ips[@]}"; do
                 for proto in tcp udp; do
                     if [[ "$ip" == *:* ]]; then
                         if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
-                            _ss_wl_rollback_to_snapshot; die "IPv6 白名单已配置，但系统没有可用 IPv6 防火墙；拒绝继续以避免白名单被静默丢弃: $ip/$proto"
+                            _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_v6_dropped "$ip" "$proto")"
                         fi
                         if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                             if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                             case "$check_rc" in
                                 0) ;;
-                                1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv6 白名单规则写入失败: $ip/$proto"; } ;;
-                                *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
+                                1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_wl6_fail "$ip" "$proto")"; } ;;
+                                *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
                             esac
                         fi
                     else
                         if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                         case "$check_rc" in
                             0) ;;
-                            1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 白名单规则写入失败: $ip/$proto"; } ;;
-                            *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
+                            1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_wl4_fail "$ip" "$proto")"; } ;;
+                            *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
                         esac
                     fi
                 done
@@ -11869,25 +11970,25 @@ pre_install_setup() {
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in
                     0) ;;
-                    1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 SS DROP 规则写入失败: $proto"; } ;;
-                    *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
+                    1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_drop4_fail "$proto")"; } ;;
+                    *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
                 esac
                 if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; else die "IPv6 SS DROP 规则写入失败，回滚失败，需人工处理: $proto"; fi; } ;;
-                        *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
+                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "$(tprintf pi_ss_drop6_fail_rb "$proto")"; else die "$(tprintf pi_ss_drop6_fail_norb "$proto")"; fi; } ;;
+                        *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
                     esac
                 fi
             done
-            enforce_ss_whitelist_order "$SS_PORT" || { _ss_wl_rollback_to_snapshot; die 'SS 白名单规则顺序校正失败。'; }
+            enforce_ss_whitelist_order "$SS_PORT" || { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_order)"; }
         else
             allowPort "$SS_PORT" tcp
             allowPort "$SS_PORT" udp
         fi
     fi
-    save_firewall_rules || { if _ss_wl_rollback_to_snapshot; then die 'A-Box 防火墙持久化失败，已回滚。'; else die 'A-Box 防火墙持久化失败，回滚失败，需人工处理。'; fi; }
+    save_firewall_rules || { if _ss_wl_rollback_to_snapshot; then die "$(tr_msg pi_fw_persist_rb)"; else die "$(tr_msg pi_fw_persist_norb)"; fi; }
 }
 
 json_sockopt_xray() {
@@ -17194,7 +17295,7 @@ manage_ss_whitelist() {
                     case "$check_rc" in
                         0) ;;
                         1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则写入失败: $add_ip/$proto" ;;
-                        *) die "无法检查防火墙规则。" ;;
+                        *) die "$(tr_msg pi_ss_fw_check)" ;;
                     esac
                 done
             else
@@ -17205,7 +17306,7 @@ manage_ss_whitelist() {
                     case "$check_rc" in
                         0) ;;
                         1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则写入失败: $add_ip/$proto" ;;
-                        *) die "无法检查防火墙规则。" ;;
+                        *) die "$(tr_msg pi_ss_fw_check)" ;;
                     esac
                 done
             fi
@@ -17258,32 +17359,32 @@ manage_ss_whitelist() {
             pause_return
             ;;
         3)
-            ss_whitelist_ipv6_precheck || die '主机启用了 IPv6，但 IPv6 防火墙不可用；拒绝启用白名单模式以避免 IPv6 侧被静默放行。'
-            _ss_wl_snapshot_rules || die '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。'
-            remove_ss_open_accept_rules || { _ss_wl_rollback_to_snapshot; die '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。'; }
+            ss_whitelist_ipv6_precheck || die "$(tr_msg pi_ss_v6_fw)"
+            _ss_wl_snapshot_rules || die "$(tr_msg pi_ss_snapshot)"
+            remove_ss_open_accept_rules || { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_old_accept)"; }
             for proto in tcp udp; do
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in
                     0) ;;
-                    1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "IPv4 SS DROP 规则写入失败: $proto"; } ;;
-                    *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
+                    1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_drop4_fail "$proto")"; } ;;
+                    *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
                 esac
                 if host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "IPv6 SS DROP 规则写入失败，已回滚到操作前防火墙状态以避免半配置白名单: $proto"; else die "IPv6 SS DROP 规则写入失败，回滚失败，需人工处理: $proto"; fi; } ;;
-                        *) { _ss_wl_rollback_to_snapshot; die "无法检查防火墙规则。"; } ;;
+                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || { if _ss_wl_rollback_to_snapshot; then die "$(tprintf pi_ss_drop6_fail_rb "$proto")"; else die "$(tprintf pi_ss_drop6_fail_norb "$proto")"; fi; } ;;
+                        *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
                     esac
                 fi
             done
-            enforce_ss_whitelist_order "$SS_PORT" || { _ss_wl_rollback_to_snapshot; die 'SS 白名单规则顺序校正失败。'; }
-            save_firewall_rules || { if _ss_wl_rollback_to_snapshot; then die 'A-Box 防火墙持久化失败，已回滚。'; else die 'A-Box 防火墙持久化失败，回滚失败，需人工处理。'; fi; }
+            enforce_ss_whitelist_order "$SS_PORT" || { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_order)"; }
+            save_firewall_rules || { if _ss_wl_rollback_to_snapshot; then die "$(tr_msg pi_fw_persist_rb)"; else die "$(tr_msg pi_fw_persist_norb)"; fi; }
             msg "${GREEN}已开启白名单保护模式 (TCP+UDP)。${NC}"
             pause_return
             ;;
         4)
-            _ss_wl_snapshot_rules || die '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。'
+            _ss_wl_snapshot_rules || die "$(tr_msg pi_ss_snapshot)"
             # Use DIE_HOOK so that allowPort's internal die() calls trigger rollback
             # (allowPort calls die directly, outer || cannot catch it)
             local _old_die_hook="${ABOX_DIE_HOOK:-}"

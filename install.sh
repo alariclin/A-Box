@@ -15842,6 +15842,148 @@ dns_dot_prefer() {
     pause_return
 }
 
+dns_doh_probe_once() {
+    local server="$1" host="$2" name="${3:-example.com}"
+    command -v python3 >/dev/null 2>&1 || return 1
+    python3 - "$server" "$host" "$name" <<'PY_DOH_PROBE'
+import os, socket, ssl, struct, sys, time
+server, host, name = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    ident = int.from_bytes(os.urandom(2), 'big')
+    qname = b''.join(bytes([len(x)]) + x for x in name.rstrip('.').encode('ascii').split(b'.')) + b'\0'
+    query = struct.pack('!HHHHHH', ident, 0x0100, 1, 0, 0, 0) + qname + struct.pack('!HH', 1, 1)
+    ctx = ssl.create_default_context()
+    start = time.monotonic()
+    raw = socket.create_connection((server, 443), timeout=4)
+    conn = ctx.wrap_socket(raw, server_hostname=host)
+    conn.settimeout(4)
+    req = (f"POST /dns-query HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/dns-message\r\nAccept: application/dns-message\r\nContent-Length: {len(query)}\r\nConnection: close\r\n\r\n").encode('ascii') + query
+    conn.sendall(req)
+    chunks = []
+    while True:
+        data = conn.recv(65536)
+        if not data: break
+        chunks.append(data)
+    elapsed = (time.monotonic() - start) * 1000
+    conn.close()
+    resp = b''.join(chunks)
+    head, _, body = resp.partition(b'\r\n\r\n')
+    parts = head.split(b' ')
+    if len(parts) < 2: raise RuntimeError('bad response')
+    if int(parts[1]) != 200: raise RuntimeError('http status')
+    if b'transfer-encoding: chunked' in head.lower():
+        out = b''; rest = body
+        while True:
+            line, _, rest = rest.partition(b'\r\n')
+            n = int(line.strip(), 16)
+            if n == 0: break
+            out += rest[:n]; rest = rest[n + 2:]
+        body = out
+    if len(body) < 12: raise RuntimeError('short response')
+    rid, flags, qd, an, ns, ar = struct.unpack('!HHHHHH', body[:12])
+    if rid != ident or not (flags & 0x8000) or (flags & 15) != 0 or an < 1: raise RuntimeError('query failed')
+    print(f'{elapsed:.1f}')
+except Exception:
+    raise SystemExit(1)
+PY_DOH_PROBE
+}
+
+dns_doh_prefer() {
+    local result successes median best='' best_ms=999999 best_success=0 round prompt canceled
+    local -a names=('Cloudflare' 'Google' 'AdGuard')
+    local -a v4s=('1.1.1.1' '8.8.8.8' '94.140.14.14')
+    local -a hosts=('cloudflare-dns.com' 'dns.google' 'dns.adguard-dns.com')
+    local -a srvs=('cloudflare' 'google' 'adguard-dns')
+    local i name v4 host srv label best_srv=''
+    local -a timings=()
+    command -v python3 >/dev/null 2>&1 || { msg "${RED}DNS benchmark requires Python 3.${NC}"; pause_return; return 1; }
+    clear
+    case "${ABOX_LANG:-zh}" in
+        en) msg "${CYAN}DoH preference test: three real example.com queries per candidate (TLS handshake included). Quad9 is excluded: its DoH requires HTTP/2, which this probe cannot speak.${NC}" ;;
+        ru) msg "${CYAN}Проверка DoH: три реальных запроса example.com к каждому серверу (включая TLS-рукопожатие). Quad9 исключён: его DoH требует HTTP/2.${NC}" ;;
+        fa) msg "${CYAN}آزمون DoH: سه پرس‌وجوی واقعی example.com برای هر سرور (شامل دست‌دهی TLS). Quad9 حذف شده: DoH آن HTTP/2 می‌خواهد.${NC}" ;;
+        zh-tw) msg "${CYAN}DoH 自動測速：每個候選對 example.com 發起 3 次真實查詢（含 TLS 握手）。Quad9 的 DoH 強制 HTTP/2，探針無法測量，未納入。${NC}" ;;
+        ja) msg "${CYAN}DoH 優先度テスト: 各候補について example.com への実際のクエリを 3 回（TLS ハンドシェイク込み）。Quad9 は DoH に HTTP/2 を必須とするため除外。${NC}" ;;
+        *) msg "${CYAN}DoH 自动测速：每个候选对 example.com 发起 3 次真实查询（含 TLS 握手）。Quad9 的 DoH 强制 HTTP/2，探针无法测量，未纳入。${NC}" ;;
+    esac
+    for i in 0 1 2; do
+        name="${names[$i]}"; v4="${v4s[$i]}"; host="${hosts[$i]}"; srv="${srvs[$i]}"; label="$name ($v4)"
+        timings=(); successes=0
+        for round in 1 2 3; do
+            result=$(dns_doh_probe_once "$v4" "$host" example.com 2>/dev/null || true)
+            if [[ "$result" =~ ^[0-9]+([.][0-9]+)?$ ]]; then timings+=("$result"); successes=$((successes+1)); fi
+        done
+        if (( successes > 0 )); then
+            median=$(printf '%s\n' "${timings[@]}" | LC_ALL=C sort -n | awk '{v[NR]=$1} END {if (NR%2) print v[(NR+1)/2]; else printf "%.1f", (v[NR/2]+v[NR/2+1])/2}')
+            case "${ABOX_LANG:-zh}" in
+                en) msg "${YELLOW}$label${NC}: $successes/3 successful, median ${median} ms" ;;
+                ru) msg "${YELLOW}$label${NC}: успешно $successes/3, медиана ${median} мс" ;;
+                fa) msg "${YELLOW}$label${NC}: موفق $successes/3، میانه ${median} میلی‌ثانیه" ;;
+                zh-tw) msg "${YELLOW}$label${NC}: 成功 $successes/3，中位數 ${median} ms" ;;
+                ja) msg "${YELLOW}$label${NC}: 成功: $successes/3、中央値: ${median} ms" ;;
+                *) msg "${YELLOW}$label${NC}: 成功 $successes/3，中位数 ${median} ms" ;;
+            esac
+            if (( successes > best_success )) || { (( successes == best_success )) && awk -v a="$median" -v b="$best_ms" 'BEGIN{exit !(a+0 < b+0)}'; }; then best="$label"; best_ms="$median"; best_success=$successes; best_srv="$srv"; fi
+        else
+            case "${ABOX_LANG:-zh}" in
+                en) msg "${YELLOW}$label${NC}: 0/3 successful" ;;
+                ru) msg "${YELLOW}$label${NC}: успешно 0/3" ;;
+                fa) msg "${YELLOW}$label${NC}: موفق 0/3" ;;
+                zh-tw) msg "${YELLOW}$label${NC}: 成功 0/3" ;;
+                ja) msg "${YELLOW}$label${NC}: 成功: 0/3" ;;
+                *) msg "${YELLOW}$label${NC}: 成功 0/3" ;;
+            esac
+        fi
+    done
+    [[ -n "$best" && $best_success -ge 2 ]] || {
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${RED}No DoH resolver passed the availability threshold; DNS was not changed.${NC}" ;;
+            ru) msg "${RED}Ни один DoH-сервер не прошёл проверку доступности; DNS не изменён.${NC}" ;;
+            fa) msg "${RED}هیچ سرور DoH از آستانه دسترس‌پذیری عبور نکرد؛ DNS تغییر نکرد.${NC}" ;;
+            zh-tw) msg "${RED}沒有 DoH 候選透過可用性門檻；未修改 DNS。${NC}" ;;
+            ja) msg "${RED}可用性のしきい値を満たす DoH リゾルバーがありません。DNS は変更されていません。${NC}" ;;
+            *) msg "${RED}没有 DoH 候选通过可用性门槛；未修改 DNS。${NC}" ;;
+        esac
+        pause_return; return 1;
+    }
+    case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${GREEN}Best measured DoH candidate now: $best, ${best_success}/3 successful, median ${best_ms} ms.${NC}"
+            msg 'This result describes this VPS and this test window; timings include the TLS handshake. The winner is applied through the local dnscrypt-proxy forwarder.'
+            prompt='Apply this DoH resolver as host DNS? [Y/N]: '
+            canceled='Canceled; host DNS was not changed.' ;;
+        ru)
+            msg "${GREEN}Лучший DoH сейчас: $best; успешно ${best_success}/3, медиана ${best_ms} мс.${NC}"
+            msg 'Результат относится к этому VPS и времени проверки; время включает TLS-рукопожатие. Победитель применяется через локальный dnscrypt-proxy.'
+            prompt='Применить этот DoH для системы? [Y/N]: '
+            canceled='Отменено; системный DNS не изменён.' ;;
+        fa)
+            msg "${GREEN}بهترین DoH فعلی: ${best}؛ موفق ${best_success}/3، میانه ${best_ms} میلی‌ثانیه.${NC}"
+            msg 'این نتیجه مربوط به همین VPS و همین زمان آزمون است؛ زمان شامل دست‌دهی TLS است. برنده از طریق dnscrypt-proxy محلی اعمال می‌شود.'
+            prompt='این DoH برای سیستم اعمال شود؟ [Y/N]: '
+            canceled='لغو شد؛ DNS سیستم تغییر نکرد.' ;;
+        zh-tw)
+            msg "${GREEN}本次測試最佳 DoH 候選：${best}，成功 ${best_success}/3，中位數 ${best_ms} ms。${NC}"
+            msg '結果僅適用於當前 VPS 和當前測試時段；延遲含 TLS 握手。將透過本地 dnscrypt-proxy 轉發應用勝出者。'
+            prompt='將該 DoH 解析器應用為本機 DNS？[Y/N]: '
+            canceled='已取消，未修改本機 DNS。' ;;
+        ja)
+            msg "${GREEN}今回の測定で最良の DoH 候補: $best、成功: ${best_success}/3、中央値: ${best_ms} ms。${NC}"
+            msg 'この結果はこの VPS および今回の測定時間帯に限られます。時間には TLS ハンドシェイクを含みます。勝者はローカル dnscrypt-proxy 経由で適用されます。'
+            prompt='この DoH リゾルバーをホストの DNS として適用しますか？ [Y/N]: '
+            canceled='キャンセルしました。ホストの DNS は変更されていません。' ;;
+        *)
+            msg "${GREEN}本次测试最佳 DoH 候选：${best}，成功 ${best_success}/3，中位数 ${best_ms} ms。${NC}"
+            msg '结果仅适用于当前 VPS 和当前测试时段；延迟含 TLS 握手。将通过本地 dnscrypt-proxy 转发应用胜出者。'
+            prompt='将该 DoH 解析器应用为本机 DNS？[Y/N]: '
+            canceled='已取消，未修改本机 DNS。' ;;
+    esac
+    read -r -p "$prompt" result
+    is_yes "$result" || { msg "$canceled"; pause_return; return 0; }
+    ABOX_DOH_YES=1 dns_enable_doh "$best_srv" "$best"
+    pause_return
+}
+
 dns_auto_prefer() {
     local server result successes median best='' best_ms=999999 best_success=0 round v6 prompt canceled
     local -a candidates=('1.1.1.1' '8.8.8.8' '9.9.9.9' '208.67.222.222') timings=()
@@ -15959,6 +16101,7 @@ dns_install_dnscrypt_proxy() {
 
 dns_enable_doh() {
     local backend config answer temp rc prompt resolved_major
+    local doh_server="${1:-cloudflare}" doh_label="${2:-Cloudflare}"
     backend=$(dns_backend_detect)
     [[ "$backend" == resolved ]] && command -v systemctl >/dev/null 2>&1 || {
         msg "${YELLOW}DoH setup requires an active systemd-resolved backend. Current backend: $backend. DNS was not changed.${NC}"
@@ -15986,7 +16129,8 @@ dns_enable_doh() {
             prompt='127.0.0.1:5353 のローカルプロキシ経由で Cloudflare DoH を設定しますか？[Y/N]: ' ;;
         *) prompt='是否配置 Cloudflare DoH，通过本地代理 127.0.0.1:5353 转发？[Y/N]: ' ;;
     esac
-    read -r -p "$prompt" answer
+    if [[ "${ABOX_DOH_YES:-}" == 1 ]]; then answer='y'
+    else prompt=${prompt/Cloudflare/$doh_label}; read -r -p "$prompt" answer; fi
     is_yes "$answer" || return 0
     # X-04: install only after user confirmation; the pre-confirm install left
     # dnscrypt-proxy present even on "N", skewing the rollback snapshot.
@@ -16012,9 +16156,10 @@ dns_enable_doh() {
         return 1
     fi
     temp=$(umask 077; mktemp /tmp/A-Box-doh.XXXXXX) || return 1
-    python3 - "$config" "$temp" <<'PY_DOH_CONFIG'
+    python3 - "$config" "$temp" "$doh_server" <<'PY_DOH_CONFIG'
 import re, sys
 source, target = sys.argv[1:3]
+server = sys.argv[3] if len(sys.argv) > 3 else 'cloudflare'
 with open(source, encoding='utf-8') as handle: text = handle.read()
 def set_option(name, value):
     global text
@@ -16029,7 +16174,7 @@ def set_option(name, value):
         text = text[:offset] + remaining
     else:
         text += '\n' + line + '\n'
-set_option('server_names', "['cloudflare']")
+set_option('server_names', "['%s']" % server)
 set_option('listen_addresses', "['127.0.0.1:5353']")
 set_option('dnscrypt_servers', 'false')
 set_option('doh_servers', 'true')
@@ -16256,77 +16401,92 @@ dns_menu() {
     if [[ -r /etc/resolv.conf ]]; then grep -E '^(nameserver|search|options)' /etc/resolv.conf 2>/dev/null | head -8 || true; fi
     case "${ABOX_LANG:-zh}" in
         en)
-            msg "${YELLOW}1. Custom plain DNS${NC}"
-            msg "${YELLOW}2. DNS over TLS (systemd-resolved only)${NC}"
-            msg "${YELLOW}3. Cloudflare DNS${NC}"
-            msg "${YELLOW}4. Quad9 DNS${NC}"
-            msg "${YELLOW}5. Automatically benchmark resolvers${NC}"
-            msg "${YELLOW}6. DNS over HTTPS via dnscrypt-proxy${NC}"
-            msg "${YELLOW}7. Restore the previous DNS snapshot${NC}"
-            msg "${YELLOW}8. DNS tri-mode setup (v4/v6/dual)${NC}"
+            msg "${YELLOW}1. Auto-benchmark DNS (plain)${NC}"
+            msg "${YELLOW}2. Auto-benchmark DNS over TLS (DoT)${NC}"
+            msg "${YELLOW}3. Auto-benchmark DNS over HTTPS (DoH)${NC}"
+            msg "${YELLOW}4. Custom plain DNS${NC}"
+            msg "${YELLOW}5. DNS over TLS (presets / custom)${NC}"
+            msg "${YELLOW}6. DNS over HTTPS via dnscrypt-proxy (Cloudflare)${NC}"
+            msg "${YELLOW}7. Cloudflare DNS (plain)${NC}"
+            msg "${YELLOW}8. Quad9 DNS (plain)${NC}"
+            msg "${YELLOW}9. Restore the previous DNS snapshot${NC}"
+            msg "${YELLOW}10. DNS tri-mode setup (v4/v6/dual)${NC}"
             ;;
         ru)
-            msg "${YELLOW}1. Пользовательский открытый DNS${NC}"
-            msg "${YELLOW}2. DNS over TLS (только systemd-resolved)${NC}"
-            msg "${YELLOW}3. Cloudflare DNS${NC}"
-            msg "${YELLOW}4. Quad9 DNS${NC}"
-            msg "${YELLOW}5. Автоматический тест DNS${NC}"
-            msg "${YELLOW}6. DNS over HTTPS через dnscrypt-proxy${NC}"
-            msg "${YELLOW}7. Восстановить предыдущую конфигурацию${NC}"
-            msg "${YELLOW}8. Настройка DNS (v4/v6/dual)${NC}"
+            msg "${YELLOW}1. Автоподбор DNS (обычный)${NC}"
+            msg "${YELLOW}2. Автоподбор DNS over TLS (DoT)${NC}"
+            msg "${YELLOW}3. Автоподбор DNS over HTTPS (DoH)${NC}"
+            msg "${YELLOW}4. Пользовательский открытый DNS${NC}"
+            msg "${YELLOW}5. DNS over TLS (пресеты / свой)${NC}"
+            msg "${YELLOW}6. DNS over HTTPS через dnscrypt-proxy (Cloudflare)${NC}"
+            msg "${YELLOW}7. Cloudflare DNS (обычный)${NC}"
+            msg "${YELLOW}8. Quad9 DNS (обычный)${NC}"
+            msg "${YELLOW}9. Восстановить предыдущую конфигурацию${NC}"
+            msg "${YELLOW}10. Настройка DNS (v4/v6/dual)${NC}"
             ;;
         fa)
-            msg "${YELLOW}1. DNS ساده سفارشی${NC}"
-            msg "${YELLOW}2. DNS روی TLS (فقط systemd-resolved)${NC}"
-            msg "${YELLOW}3. Cloudflare DNS${NC}"
-            msg "${YELLOW}4. Quad9 DNS${NC}"
-            msg "${YELLOW}5. آزمون خودکار DNS${NC}"
-            msg "${YELLOW}6. DNS روی HTTPS با dnscrypt-proxy${NC}"
-            msg "${YELLOW}7. بازگردانی تنظیمات قبلی DNS${NC}"
-            msg "${YELLOW}8. تنظیم DNS سه‌حالته${NC}"
+            msg "${YELLOW}1. انتخاب خودکار DNS (ساده)${NC}"
+            msg "${YELLOW}2. انتخاب خودکار DNS روی TLS (DoT)${NC}"
+            msg "${YELLOW}3. انتخاب خودکار DNS روی HTTPS (DoH)${NC}"
+            msg "${YELLOW}4. DNS ساده سفارشی${NC}"
+            msg "${YELLOW}5. DNS روی TLS (پیش‌فرض / سفارشی)${NC}"
+            msg "${YELLOW}6. DNS روی HTTPS با dnscrypt-proxy (Cloudflare)${NC}"
+            msg "${YELLOW}7. Cloudflare DNS (ساده)${NC}"
+            msg "${YELLOW}8. Quad9 DNS (ساده)${NC}"
+            msg "${YELLOW}9. بازگردانی تنظیمات قبلی DNS${NC}"
+            msg "${YELLOW}10. تنظیم DNS سه‌حالته${NC}"
             ;;
         zh-tw)
-            msg "${YELLOW}1. 自定義明文 DNS（可選 IPv6）${NC}"
-            msg "${YELLOW}2. 隱私 DNS DoT（僅 systemd-resolved 支援）${NC}"
-            msg "${YELLOW}3. Cloudflare DNS${NC}"
-            msg "${YELLOW}4. Quad9 DNS${NC}"
-            msg "${YELLOW}5. 自動實測優選 DNS（多輪延遲/可用性）${NC}"
-            msg "${YELLOW}6. 隱私 DNS DoH（dnscrypt-proxy 本地轉發）${NC}"
-            msg "${YELLOW}7. 回滾到上次 DNS 修改前快照${NC}"
-            msg "${YELLOW}8. DNS 三模式設定（v4/v6/雙棧）${NC}"
+            msg "${YELLOW}1. 自動實測優選 DNS（明文）${NC}"
+            msg "${YELLOW}2. 自動實測優選 DoT${NC}"
+            msg "${YELLOW}3. 自動實測優選 DoH${NC}"
+            msg "${YELLOW}4. 自定義明文 DNS（可選 IPv6）${NC}"
+            msg "${YELLOW}5. 隱私 DNS DoT（預置 / 自定義）${NC}"
+            msg "${YELLOW}6. 隱私 DNS DoH（dnscrypt-proxy 本地轉發，Cloudflare）${NC}"
+            msg "${YELLOW}7. Cloudflare DNS（明文）${NC}"
+            msg "${YELLOW}8. Quad9 DNS（明文）${NC}"
+            msg "${YELLOW}9. 回滾到上次 DNS 修改前快照${NC}"
+            msg "${YELLOW}10. DNS 三模式設定（v4/v6/雙棧）${NC}"
             ;;
         ja)
-            msg "${YELLOW}1. カスタム平文 DNS（IPv6 は任意）${NC}"
-            msg "${YELLOW}2. プライバシー保護 DNS over TLS（DoT、systemd-resolved のみ対応）${NC}"
-            msg "${YELLOW}3. Cloudflare DNS${NC}"
-            msg "${YELLOW}4. Quad9 DNS${NC}"
-            msg "${YELLOW}5. DNS リゾルバーの自動ベンチマーク（遅延 / 可用性を複数回測定）${NC}"
-            msg "${YELLOW}6. プライバシー保護 DNS over HTTPS（DoH、dnscrypt-proxy によるローカル転送）${NC}"
-            msg "${YELLOW}7. 前回の DNS 変更前のスナップショットにロールバック${NC}"
-            msg "${YELLOW}8. DNS 三モード設定 (v4/v6/デュアル)${NC}"
+            msg "${YELLOW}1. DNS 自動ベンチマーク（平文）${NC}"
+            msg "${YELLOW}2. DoT 自動ベンチマーク${NC}"
+            msg "${YELLOW}3. DoH 自動ベンチマーク${NC}"
+            msg "${YELLOW}4. カスタム平文 DNS（IPv6 は任意）${NC}"
+            msg "${YELLOW}5. プライバシー保護 DNS over TLS（DoT、プリセット / カスタム）${NC}"
+            msg "${YELLOW}6. プライバシー保護 DNS over HTTPS（DoH、dnscrypt-proxy ローカル転送、Cloudflare）${NC}"
+            msg "${YELLOW}7. Cloudflare DNS（平文）${NC}"
+            msg "${YELLOW}8. Quad9 DNS（平文）${NC}"
+            msg "${YELLOW}9. 前回の DNS 変更前のスナップショットにロールバック${NC}"
+            msg "${YELLOW}10. DNS 三モード設定 (v4/v6/デュアル)${NC}"
             ;;
         *)
-            msg "${YELLOW}1. 自定义明文 DNS（可选 IPv6）${NC}"
-            msg "${YELLOW}2. 隐私 DNS DoT（仅 systemd-resolved 支持）${NC}"
-            msg "${YELLOW}3. Cloudflare DNS${NC}"
-            msg "${YELLOW}4. Quad9 DNS${NC}"
-            msg "${YELLOW}5. 自动实测优选 DNS（多轮延迟/可用性）${NC}"
-            msg "${YELLOW}6. 隐私 DNS DoH（dnscrypt-proxy 本地转发）${NC}"
-            msg "${YELLOW}7. 回滚到上次 DNS 修改前快照${NC}"
-            msg "${YELLOW}8. DNS 三模式设置（v4/v6/双栈）${NC}"
+            msg "${YELLOW}1. 自动实测优选 DNS（明文）${NC}"
+            msg "${YELLOW}2. 自动实测优选 DoT${NC}"
+            msg "${YELLOW}3. 自动实测优选 DoH${NC}"
+            msg "${YELLOW}4. 自定义明文 DNS（可选 IPv6）${NC}"
+            msg "${YELLOW}5. 隐私 DNS DoT（预置 / 自定义）${NC}"
+            msg "${YELLOW}6. 隐私 DNS DoH（dnscrypt-proxy 本地转发，Cloudflare）${NC}"
+            msg "${YELLOW}7. Cloudflare DNS（明文预置）${NC}"
+            msg "${YELLOW}8. Quad9 DNS（明文预置）${NC}"
+            msg "${YELLOW}9. 回滚到上次 DNS 修改前快照${NC}"
+            msg "${YELLOW}10. DNS 三模式设置（v4/v6/双栈）${NC}"
             ;;
     esac
     msg "${CYAN}0. Back / 返回${NC}"
-    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-8]: ' ;; ru) prompt='Выберите [0–8]: ' ;; fa) prompt='انتخاب [۰ تا ۸]: ' ;; ja) prompt='選択してください [0-8]: ' ;; zh-tw) prompt='請選擇 [0-8]：' ;; *) prompt='请选择 [0-8]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) prompt='Select [0-10]: ' ;; ru) prompt='Выберите [0–10]: ' ;; fa) prompt='انتخاب [۰ تا ۱۰]: ' ;; ja) prompt='選択してください [0-10]: ' ;; zh-tw) prompt='請選擇 [0-10]：' ;; *) prompt='请选择 [0-10]：' ;; esac
     read -r -p "$prompt" c || return 0
     case "$c" in
-        1)
+        1) dns_auto_prefer ;;
+        2) dns_dot_prefer ;;
+        3) dns_doh_prefer ;;
+        4)
             read -r -p 'IPv4 DNS: ' v4
             valid_ipv4_cidr "$v4" && [[ "$v4" != */* ]] || { msg "${RED}Invalid IPv4 DNS${NC}"; pause_return; return 1; }
             read -r -p 'IPv6 DNS (optional): ' v6
             [[ -z "$v6" ]] || { valid_ipv6_cidr "$v6" && [[ "$v6" != */* ]]; } || { msg "${RED}Invalid IPv6 DNS${NC}"; pause_return; return 1; }
             apply_host_dns plain "$v4" "$v6"; pause_return ;;
-        2)
+        5)
             local dot_preset dot_preset_prompt dot_custom_word
             case "${ABOX_LANG:-zh}" in
                 en) dot_preset_prompt='DoT provider [1-4]: '; dot_custom_word='Custom' ;;
@@ -16364,26 +16524,11 @@ dns_menu() {
             valid_domain "$dot_name" || { msg "${RED}$dot_host_error${NC}"; pause_return; return 1; }
             apply_host_dns dot "$v4" "$v6" "$dot_name"; pause_return ;;
             esac ;;
-        3) apply_host_dns plain '1.1.1.1' '2606:4700:4700::1111'; pause_return ;;
-        4) apply_host_dns plain '9.9.9.9' '2620:fe::fe'; pause_return ;;
-        5)
-            local bench_prompt bench_choice
-            case "${ABOX_LANG:-zh}" in
-                en) bench_prompt='Benchmark type [1=Plain 2=DoT]: ' ;;
-                ru) bench_prompt='Тип теста [1=Обычный 2=DoT]: ' ;;
-                fa) bench_prompt='نوع آزمون [1=ساده 2=DoT]: ' ;;
-                zh-tw) bench_prompt='測速類型 [1=明文 2=DoT]：' ;;
-                ja) bench_prompt='測定タイプ [1=平文 2=DoT]: ' ;;
-                *) bench_prompt='测速类型 [1=明文 2=DoT]：' ;;
-            esac
-            read -r -p "$bench_prompt" bench_choice
-            case "$bench_choice" in
-                2) dns_dot_prefer ;;
-                *) dns_auto_prefer ;;
-            esac ;;
+        7) apply_host_dns plain '1.1.1.1' '2606:4700:4700::1111'; pause_return ;;
+        8) apply_host_dns plain '9.9.9.9' '2620:fe::fe'; pause_return ;;
         6) dns_enable_doh; pause_return ;;
-        7) if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then restore_dns_snapshot "$DNS_BACKUP_DIR" && msg "${GREEN}DNS restored.${NC}" || msg "${RED}DNS rollback failed.${NC}"; else msg "${YELLOW}No DNS snapshot exists.${NC}"; fi; pause_return ;;
-        8) dns_setup_tri_mode ;;
+        9) if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then restore_dns_snapshot "$DNS_BACKUP_DIR" && msg "${GREEN}DNS restored.${NC}" || msg "${RED}DNS rollback failed.${NC}"; else msg "${YELLOW}No DNS snapshot exists.${NC}"; fi; pause_return ;;
+        10) dns_setup_tri_mode ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
@@ -21376,8 +21521,8 @@ wallos_install_or_update() {
     elif [[ -t 0 ]]; then
         local _ans=''
         case "${ABOX_LANG:-zh}" in
-            en) printf 'Wallos access mode: [1] Public HTTPS (any device; encrypted, auto-renewed cert)  [2] Localhost only (SSH tunnel)  [3] Cloudflare Tunnel (needs your domain on Cloudflare; zero open ports). Choose [1]: ' ;;
-            *) printf 'Wallos 访问方式：[1] 公网直连 HTTPS（任意设备打开，全程加密、证书自动续期）[2] 仅本机（用 SSH 隧道访问）[3] CF 隧道（需自备 Cloudflare 域名，零开放端口）。请选择 [1]: ' ;;
+            en) msg 'Wallos access mode:'; msg '  [1] Public HTTPS (any device; encrypted, auto-renewed cert)'; msg '  [2] Localhost only (SSH tunnel)'; msg '  [3] Cloudflare Tunnel (needs your domain on Cloudflare; zero open ports)'; printf 'Choose [1]: ' ;;
+            *) msg 'Wallos 访问方式：'; msg '  [1] 公网直连 HTTPS（任意设备打开，全程加密、证书自动续期）'; msg '  [2] 仅本机（用 SSH 隧道访问）'; msg '  [3] CF 隧道（需自备 Cloudflare 域名，零开放端口）'; printf '请选择 [1]: ' ;;
         esac
         read -r _ans || _ans=''
         _bind_chosen=1

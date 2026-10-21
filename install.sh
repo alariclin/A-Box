@@ -12080,7 +12080,28 @@ _menu_info_collect() {
         # SEG\t<segment> / USR\t<name>\t<used bytes>\t<mark>.
         _MI_USER_RECS=''
         local _rcore='' _rtag='' _rseg='' _rcfg='' _ut=''
+        # Order registries like the live configs (grid order):
+        # per core, inbounds in config order; leftovers by filename.
+        local -a _ordered_rf=()
+        local _ocore='' _otags='' _ot=''
+        for _ocore in xray xray-latest sing-box hy2; do
+            case "$_ocore" in
+                xray) _otags=$(jq -r '.inbounds[]?.tag' /usr/local/etc/xray/config.json 2>/dev/null) ;;
+                xray-latest) _otags=$(jq -r '.inbounds[]?.tag' /etc/ddr/xray-latest/config.json 2>/dev/null) ;;
+                sing-box) _otags=$(jq -r '.inbounds[]?.tag' /etc/sing-box/config.json 2>/dev/null) ;;
+                hy2) _otags='hy2' ;;
+            esac
+            for _ot in $_otags; do
+                [[ -f "$_udir/${_ocore}__${_ot}.json" && ! -L "$_udir/${_ocore}__${_ot}.json" ]] && _ordered_rf+=("$_udir/${_ocore}__${_ot}.json")
+            done
+        done
+        local _seen_rf=0 _of=''
         for _rf in "${_rfiles[@]}"; do
+            _seen_rf=0
+            for _of in "${_ordered_rf[@]}"; do [[ "$_of" == "$_rf" ]] && { _seen_rf=1; break; }; done
+            (( _seen_rf )) || _ordered_rf+=("$_rf")
+        done
+        for _rf in "${_ordered_rf[@]}"; do
             _rcore=$(jq -r '.core // ""' "$_rf" 2>/dev/null)
             _rtag=$(jq -r '.tag // ""' "$_rf" 2>/dev/null)
             _rseg="$_rtag"
@@ -12089,7 +12110,7 @@ _menu_info_collect() {
                     _rcfg='/usr/local/etc/xray/config.json'
                     [[ "$_rcore" == 'xray-latest' ]] && _rcfg='/etc/ddr/xray-latest/config.json'
                     if [[ -f "$_rcfg" ]]; then
-                        _rseg=$(jq -r --arg t "$_rtag" '.inbounds[]? | select(.tag == $t) |
+                        _rseg=$(jq -r --arg t "$_rtag" '.inbounds[]? | select(.tag == $t) | select(.port != null) |
                             (if .protocol == "vless" and (.settings.clients[0].flow // "" | startswith("xtls")) then "Vision:\(.port)"
                              elif .protocol == "vless" and (.streamSettings.network // "") == "xhttp" then "XHTTP:\(.port)"
                              elif .protocol == "vless" then "VLESS:\(.port)"
@@ -12101,7 +12122,7 @@ _menu_info_collect() {
                     fi ;;
                 sing-box)
                     if [[ -f /etc/sing-box/config.json ]]; then
-                        _rseg=$(jq -r --arg t "$_rtag" '.inbounds[]? | select(.tag == $t) |
+                        _rseg=$(jq -r --arg t "$_rtag" '.inbounds[]? | select(.tag == $t) | select(.listen_port != null) |
                             (if .type == "vless" then "VLESS:\(.listen_port)"
                              elif .type == "shadowsocks" then "SS:\(.listen_port)"
                              elif .type == "tuic" then "TUIC:\(.listen_port)"
@@ -12337,38 +12358,47 @@ _menu_info_display() {
     fi
     msg ''
     if [[ -n "${_MI_USER_RECS:-}" || -n "$_MI_NODES" ]]; then
-      if [[ -z "${_MI_USER_RECS:-}" ]]; then
-        msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}$(tr_msg mi_users_none)${NC}"
-      else
-        local _urec='' _uline='' _ufirst=1 _ucnt=0 _unm='' _uused=0 _umark='' _utok=''
-        while IFS= read -r _urec; do
-            [[ -z "$_urec" ]] && continue
-            if [[ "$_urec" == SEG$'\t'* ]]; then
-                if [[ -n "$_uline" ]]; then
-                    if (( _ufirst )); then msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}${_uline}${NC}"; _ufirst=0
-                    else msg "          ${LBLW}${_uline}${NC}"; fi
-                fi
-                _uline="${_urec#SEG$'\t'}  "; _ucnt=0
-            elif [[ "$_urec" == USR$'\t'* ]]; then
-                IFS=$'\t' read -r _ _unm _uused _umark <<< "$_urec"
-                _utok="$_unm"
-                (( ${_uused:-0} > 0 )) && _utok+=" $(users_fmt_bytes "$_uused")"
-                [[ "$_umark" == 'blocked' ]] && _utok+="·$(tr_msg mi_u_blocked)"
-                [[ "$_umark" == 'disabled' ]] && _utok+="·$(tr_msg mi_u_disabled)"
-                if (( _ucnt >= 3 )); then
-                    if (( _ufirst )); then msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}${_uline}${NC}"; _ufirst=0
-                    else msg "          ${LBLW}${_uline}${NC}"; fi
+        if [[ -z "${_MI_USER_RECS:-}" ]]; then
+            msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}$(tr_msg mi_users_none)${NC}"
+        else
+            local _urec='' _useg='' _usw=10 _uline='' _ucnt=0 _unm='' _uused=0 _umark='' _utok=''
+            local -a _ulines=()
+            while IFS= read -r _urec; do
+                [[ "$_urec" == SEG$'\t'* ]] || continue
+                _useg="${_urec#SEG$'\t'}"
+                (( ${#_useg} > _usw )) && _usw=${#_useg}
+            done <<< "$_MI_USER_RECS"
+            (( _usw > 22 )) && _usw=22
+            local _upfx=''
+            while IFS= read -r _urec; do
+                [[ -z "$_urec" ]] && continue
+                if [[ "$_urec" == SEG$'\t'* ]]; then
+                    [[ -n "$_upfx" || -n "$_uline" ]] && _ulines+=("${_upfx}${_uline}")
+                    _useg="${_urec#SEG$'\t'}"
+                    printf -v _upfx '%-*s  ' "$_usw" "$_useg"
                     _uline=''; _ucnt=0
+                elif [[ "$_urec" == USR$'\t'* ]]; then
+                    IFS=$'\t' read -r _ _unm _uused _umark <<< "$_urec"
+                    _utok="$_unm"
+                    (( ${_uused:-0} > 0 )) && _utok+=" $(users_fmt_bytes "$_uused")"
+                    [[ "$_umark" == 'blocked' ]] && _utok+="·$(tr_msg mi_u_blocked)"
+                    [[ "$_umark" == 'disabled' ]] && _utok+="·$(tr_msg mi_u_disabled)"
+                    if (( _ucnt >= 3 )); then
+                        _ulines+=("${_upfx}${_uline}")
+                        printf -v _upfx '%-*s  ' "$_usw" ''
+                        _uline=''; _ucnt=0
+                    fi
+                    if (( _ucnt > 0 )); then _uline+=" · $_utok"; else _uline+="$_utok"; fi
+                    _ucnt=$((_ucnt + 1))
                 fi
-                if (( _ucnt > 0 )); then _uline+=" · $_utok"; else _uline+="$_utok"; fi
-                _ucnt=$((_ucnt + 1))
-            fi
-        done <<< "$_MI_USER_RECS"
-        if [[ -n "$_uline" ]]; then
-            if (( _ufirst )); then msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}${_uline}${NC}"
-            else msg "          ${LBLW}${_uline}${NC}"; fi
+            done <<< "$_MI_USER_RECS"
+            [[ -n "$_upfx" || -n "$_uline" ]] && _ulines+=("${_upfx}${_uline}")
+            local _ui=0
+            for (( _ui=0; _ui<${#_ulines[@]}; _ui++ )); do
+                if (( _ui == 0 )); then msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}${_ulines[$_ui]}${NC}"
+                else msg "          ${LBLW}${_ulines[$_ui]}${NC}"; fi
+            done
         fi
-      fi
         msg ''
     fi
     # --- legend ---
@@ -24356,7 +24386,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${YELLOW}7.  Latest Xray${NC}"
+            msg "${YELLOW}7.  最新版 Xray${NC}"
             msg "${CYAN}0. 返回主選單${NC}"
             ;;
         ja)
@@ -24367,7 +24397,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${YELLOW}7.  Latest Xray${NC}"
+            msg "${YELLOW}7.  最新 Xray${NC}"
             msg "${CYAN}0. メインメニューに戻る${NC}"
             ;;
         *)
@@ -24378,7 +24408,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${YELLOW}7.  Latest Xray${NC}"
+            msg "${YELLOW}7.  最新版 Xray${NC}"
             msg "${CYAN}0. 返回主菜单${NC}"
             ;;
     esac
@@ -25107,13 +25137,13 @@ vps_benchmark_menu() {
         en)
             msg "${BOLD}${GREEN}Toolbox${NC}"
             msg "${CYAN}[ Test & Diagnostics ]                    [ System Tuning ]${NC}"
-            msg "${YELLOW}1.  A-Check IP reputation check           5.  WARP & split-routing${NC}"
-            msg "${YELLOW}2.  System benchmark & download speed     6.  Allocate 2 GB Swap${NC}"
-            msg "${YELLOW}3.  IP quality / streaming / route test   7.  VPS one-click optimization${NC}"
-            msg "${YELLOW}4.  Export redacted diagnostics           8.  IP / DNS / timezone / download-source${NC}"
+            msg "${YELLOW} 1.  A-Check IP reputation check           5.  WARP & split-routing${NC}"
+            msg "${YELLOW} 2.  System benchmark & download speed     6.  Allocate 2 GB Swap${NC}"
+            msg "${YELLOW} 3.  IP quality / streaming / route test   7.  VPS one-click optimization${NC}"
+            msg "${YELLOW} 4.  Export redacted diagnostics           8.  IP / DNS / timezone / download-source${NC}"
             msg ""
             msg "${CYAN}[ SNI Optimization ]                      [ Config Management ]${NC}"
-            msg "${YELLOW}9.  Local SNI preference                  12.  Backup / restore configuration${NC}"
+            msg "${YELLOW} 9.  Local SNI preference                 12.  Backup / restore configuration${NC}"
             msg "${YELLOW}10.  Mini-host SNI preference             13.  Multi-user / subscription link export${NC}"
             msg "${YELLOW}11.  SNI preference records               14.  Wallos install / update / backup${NC}"
             msg ""
@@ -25124,13 +25154,13 @@ vps_benchmark_menu() {
         ru)
             msg "${BOLD}${GREEN}Инструменты${NC}"
             msg "${CYAN}[ Тесты и диагностика ]                   [ Оптимизация системы ]${NC}"
-            msg "${YELLOW}1.  A-Check: проверка IP                  5.  WARP и разделение трафика${NC}"
-            msg "${YELLOW}2.  Тест системы и скорости               6.  Создать Swap 2 ГБ${NC}"
-            msg "${YELLOW}3.  Качество IP / стриминг / маршрут      7.  Оптимизация VPS${NC}"
-            msg "${YELLOW}4.  Экспорт диагностики                   8.  IP / DNS / часовой пояс / источники${NC}"
+            msg "${YELLOW} 1.  A-Check: проверка IP                  5.  WARP и разделение трафика${NC}"
+            msg "${YELLOW} 2.  Тест системы и скорости               6.  Создать Swap 2 ГБ${NC}"
+            msg "${YELLOW} 3.  Качество IP / стриминг / маршрут      7.  Оптимизация VPS${NC}"
+            msg "${YELLOW} 4.  Экспорт диагностики                   8.  IP / DNS / часовой пояс / источники${NC}"
             msg ""
             msg "${CYAN}[ Подбор SNI ]                            [ Управление конфигурацией ]${NC}"
-            msg "${YELLOW}9.  Подбор SNI                            12.  Бэкап / восстановление${NC}"
+            msg "${YELLOW} 9.  Подбор SNI                           12.  Бэкап / восстановление${NC}"
             msg "${YELLOW}10.  Подбор SNI (мини-хост)               13.  Пользователи / экспорт подписки${NC}"
             msg "${YELLOW}11.  Записи подбора SNI                   14.  Wallos: установка / обновление${NC}"
             msg ""
@@ -25141,13 +25171,13 @@ vps_benchmark_menu() {
         fa)
             msg "${BOLD}${GREEN}جعبه ابزار${NC}"
             msg "${CYAN}[ تست و عیب‌یابی ]                        [ بهینه‌سازی سیستم ]${NC}"
-            msg "${YELLOW}1.  بررسی IP با A-Check                   5.  مدیریت WARP و تفکیک ترافیک${NC}"
-            msg "${YELLOW}2.  تست سیستم و سرعت دانلود               6.  ساخت Swap دو گیگابایتی${NC}"
-            msg "${YELLOW}3.  کیفیت IP / استریم / مسیر              7.  بهینه‌سازی تک‌کلیکی VPS${NC}"
-            msg "${YELLOW}4.  خروجی تشخیص عیب‌یابی                  8.  تنظیمات IP / DNS / منطقه زمانی${NC}"
+            msg "${YELLOW} 1.  بررسی IP با A-Check                   5.  مدیریت WARP و تفکیک ترافیک${NC}"
+            msg "${YELLOW} 2.  تست سیستم و سرعت دانلود               6.  ساخت Swap دو گیگابایتی${NC}"
+            msg "${YELLOW} 3.  کیفیت IP / استریم / مسیر              7.  بهینه‌سازی تک‌کلیکی VPS${NC}"
+            msg "${YELLOW} 4.  خروجی تشخیص عیب‌یابی                  8.  تنظیمات IP / DNS / منطقه زمانی${NC}"
             msg ""
             msg "${CYAN}[ بهینه‌سازی SNI ]                        [ مدیریت پیکربندی ]${NC}"
-            msg "${YELLOW}9.  بهینه‌سازی SNI محلی                   12.  پشتیبان‌گیری / بازیابی${NC}"
+            msg "${YELLOW} 9.  بهینه‌سازی SNI محلی                  12.  پشتیبان‌گیری / بازیابی${NC}"
             msg "${YELLOW}10.  بهینه‌سازی SNI مینی‌هاست             13.  کاربران / خروجی لینک اشتراک${NC}"
             msg "${YELLOW}11.  سوابق بهینه‌سازی SNI                 14.  نصب / به‌روزرسانی Wallos${NC}"
             msg ""
@@ -25158,13 +25188,13 @@ vps_benchmark_menu() {
         zh-tw)
             msg "${BOLD}${GREEN}綜合工具箱${NC}"
             msg "${CYAN}[ 測試診斷 ]                              [ 系統優化 ]${NC}"
-            msg "${YELLOW}1.  A-Check IP 純淨度檢測                 5.  WARP 與分流管理${NC}"
-            msg "${YELLOW}2.  系統性能與下載測速                    6.  創建 2 GB Swap${NC}"
-            msg "${YELLOW}3.  IP 質量/流媒體解鎖/回程測試           7.  VPS 一鍵優化${NC}"
-            msg "${YELLOW}4.  導出脫敏診斷包                        8.  IP / DNS / 時區 / 下載源設置${NC}"
+            msg "${YELLOW} 1.  A-Check IP 純淨度檢測                 5.  WARP 與分流管理${NC}"
+            msg "${YELLOW} 2.  系統性能與下載測速                    6.  創建 2 GB Swap${NC}"
+            msg "${YELLOW} 3.  IP 質量/流媒體解鎖/回程測試           7.  VPS 一鍵優化${NC}"
+            msg "${YELLOW} 4.  導出脫敏診斷包                        8.  IP / DNS / 時區 / 下載源設置${NC}"
             msg ""
             msg "${CYAN}[ SNI 優選 ]                              [ 配置管理 ]${NC}"
-            msg "${YELLOW}9.  本地 SNI 優選                         12.  配置備份 / 恢復${NC}"
+            msg "${YELLOW} 9.  本地 SNI 優選                        12.  配置備份 / 恢復${NC}"
             msg "${YELLOW}10.  微型主機 SNI 優選                    13.  多用戶 / 訂閱連結導出${NC}"
             msg "${YELLOW}11.  SNI 優選記錄                         14.  Wallos 安裝 / 升級 / 備份${NC}"
             msg ""
@@ -25175,13 +25205,13 @@ vps_benchmark_menu() {
         ja)
             msg "${BOLD}${GREEN}ツールボックス${NC}"
             msg "${CYAN}[ テストと診断 ]                          [ システム最適化 ]${NC}"
-            msg "${YELLOW}1.  A-Check IP 品質チェック               5.  WARP と振り分け管理${NC}"
-            msg "${YELLOW}2.  システムベンチマークと速度測定        6.  2GB Swap 作成${NC}"
-            msg "${YELLOW}3.  IP品質/ストリーミング/ルートテスト    7.  VPS ワンクリック最適化${NC}"
-            msg "${YELLOW}4.  診断パッケージのエクスポート          8.  IP / DNS / タイムゾーン設定${NC}"
+            msg "${YELLOW} 1.  A-Check IP 品質チェック               5.  WARP と振り分け管理${NC}"
+            msg "${YELLOW} 2.  システムベンチマークと速度測定        6.  2GB Swap 作成${NC}"
+            msg "${YELLOW} 3.  IP品質/ストリーミング/ルートテスト    7.  VPS ワンクリック最適化${NC}"
+            msg "${YELLOW} 4.  診断パッケージのエクスポート          8.  IP / DNS / タイムゾーン設定${NC}"
             msg ""
             msg "${CYAN}[ SNI 最適化 ]                            [ 構成管理 ]${NC}"
-            msg "${YELLOW}9.  ローカル SNI 最適化                   12.  設定のバックアップ/復元${NC}"
+            msg "${YELLOW} 9.  ローカル SNI 最適化                  12.  設定のバックアップ/復元${NC}"
             msg "${YELLOW}10.  ミニホスト SNI 最適化                13.  複数ユーザー / サブスクリプション出力${NC}"
             msg "${YELLOW}11.  SNI 最適化記録                       14.  Wallos インストール/更新${NC}"
             msg ""
@@ -25192,13 +25222,13 @@ vps_benchmark_menu() {
         *)
             msg "${BOLD}${GREEN}综合工具箱${NC}"
             msg "${CYAN}[ 测试诊断 ]                              [ 系统优化 ]${NC}"
-            msg "${YELLOW}1.  A-Check IP 纯净度检测                 5.  WARP 与分流管理${NC}"
-            msg "${YELLOW}2.  系统性能与下载测速                    6.  创建 2 GB Swap${NC}"
-            msg "${YELLOW}3.  IP 质量/流媒体解锁/回程测试           7.  VPS 一键优化${NC}"
-            msg "${YELLOW}4.  导出脱敏诊断包                        8.  IP / DNS / 时区 / 下载源设置${NC}"
+            msg "${YELLOW} 1.  A-Check IP 纯净度检测                 5.  WARP 与分流管理${NC}"
+            msg "${YELLOW} 2.  系统性能与下载测速                    6.  创建 2 GB Swap${NC}"
+            msg "${YELLOW} 3.  IP 质量/流媒体解锁/回程测试           7.  VPS 一键优化${NC}"
+            msg "${YELLOW} 4.  导出脱敏诊断包                        8.  IP / DNS / 时区 / 下载源设置${NC}"
             msg ""
             msg "${CYAN}[ SNI 优选 ]                              [ 配置管理 ]${NC}"
-            msg "${YELLOW}9.  本地 SNI 优选                         12.  配置备份 / 恢复${NC}"
+            msg "${YELLOW} 9.  本地 SNI 优选                        12.  配置备份 / 恢复${NC}"
             msg "${YELLOW}10.  微型主机 SNI 优选                    13.  多用户 / 订阅链接导出${NC}"
             msg "${YELLOW}11.  SNI 优选记录                         14.  Wallos 安装 / 升级 / 备份${NC}"
             msg ""

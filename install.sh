@@ -2032,6 +2032,12 @@ tr_msg() {
         fa:mi_u_disabled) echo 'غیرفعال' ;;
         zh-tw:mi_u_disabled) echo '停用' ;;
         ja:mi_u_disabled) echo '無効' ;;
+        zh:mi_users_none) echo '暂无' ;;
+        en:mi_users_none) echo 'none' ;;
+        ru:mi_users_none) echo 'нет' ;;
+        fa:mi_users_none) echo 'هیچ‌کدام' ;;
+        zh-tw:mi_users_none) echo '暫無' ;;
+        ja:mi_users_none) echo 'なし' ;;
         zh:split_preset_streaming) echo '流媒体预设（一键）' ;;
         en:split_preset_streaming) echo 'Streaming preset (one-click)' ;;
         ru:split_preset_streaming) echo 'Пресет стриминга' ;;
@@ -12036,7 +12042,7 @@ _menu_info_collect() {
     [[ -n "$hy2_note" ]] && nodes="${nodes:+$nodes|}$hy2_note"
     _MI_NODES="$nodes"; _MI_SNI="$sni"
     # --- per-node SNI list (grouped by SNI) for the detail block ---
-    _MI_SNI_LIST=''; _MI_SNI_DISTINCT=0
+    _MI_SNI_LIST=''
     local _sni_rows=''
     _sni_rows=$( {
         if [[ "$_MI_XRUN" == "1" && -f /usr/local/etc/xray/config.json ]]; then
@@ -12057,8 +12063,7 @@ _menu_info_collect() {
         fi
     } 2>/dev/null )
     if [[ -n "$_sni_rows" ]]; then
-        _MI_SNI_LIST=$(printf '%s\n' "$_sni_rows" | awk -F '\t' '{n[$2] = n[$2] ? n[$2] "/" $1 : $1; if (!seen[$2]++) order[++c] = $2} END {for (i = 1; i <= c; i++) printf "%s%s %s", (i > 1 ? "|" : ""), n[order[i]], order[i]}')
-        [[ -n "$_MI_SNI_LIST" ]] && _MI_SNI_DISTINCT=$(( $(printf '%s' "$_MI_SNI_LIST" | tr -cd '|' | wc -c) + 1 ))
+        _MI_SNI_LIST=$(printf '%s\n' "$_sni_rows" | awk -F '\t' '!seen[$1 "|" $2]++ {printf "%s%s %s", (n++ ? "|" : ""), $1, $2}')
     fi
     # --- multi-user summary (registries of the toolbox manager) ---
     _MI_USERS_N=0; _MI_USERS_BLOCKED=0; _MI_USERS_USED=0
@@ -12310,24 +12315,31 @@ _menu_info_display() {
             else msg "          ${LBLW}${_row}${NC}"; fi
         done
         if [[ -n "$_MI_SNI_LIST" ]]; then
-            local _se='' _srow='' _srows=() _sents=()
+            local _se='' _sents=() _sseg='' _ssni='' _sw=14
             IFS='|' read -r -a _sents <<< "$_MI_SNI_LIST"
             for _se in "${_sents[@]}"; do
                 [[ -z "$_se" ]] && continue
-                if [[ -z "$_srow" ]]; then _srow="$_se"; else _srows+=("$_srow · $_se"); _srow=''; fi
+                _sseg="${_se%% *}"
+                (( ${#_sseg} > _sw )) && _sw=${#_sseg}
             done
-            [[ -n "$_srow" ]] && _srows+=("$_srow")
+            (( _sw > 22 )) && _sw=22
             local _si=0
-            for (( _si=0; _si<${#_srows[@]}; _si++ )); do
-                if (( _si == 0 )); then msg "  ${CYAN}SNI：${NC}  ${LBLW}${_srows[$_si]}${NC}"
-                else msg "          ${LBLW}${_srows[$_si]}${NC}"; fi
+            for _se in "${_sents[@]}"; do
+                [[ -z "$_se" ]] && continue
+                _sseg="${_se%% *}"; _ssni="${_se#* }"
+                if (( _si == 0 )); then msg "  ${CYAN}SNI：${NC}   ${LBLW}$(printf '%-*s' "$_sw" "$_sseg")  ${_ssni}${NC}"
+                else msg "          ${LBLW}$(printf '%-*s' "$_sw" "$_sseg")  ${_ssni}${NC}"; fi
+                _si=$((_si + 1))
             done
         fi
     else
         msg "  ${CYAN}$(tr_msg mi_nodes)：${NC}  ${LBLW}$(tr_msg mi_no_nodes)${NC}"
     fi
     msg ''
-    if [[ -n "${_MI_USER_RECS:-}" ]]; then
+    if [[ -n "${_MI_USER_RECS:-}" || -n "$_MI_NODES" ]]; then
+      if [[ -z "${_MI_USER_RECS:-}" ]]; then
+        msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}$(tr_msg mi_users_none)${NC}"
+      else
         local _urec='' _uline='' _ufirst=1 _ucnt=0 _unm='' _uused=0 _umark='' _utok=''
         while IFS= read -r _urec; do
             [[ -z "$_urec" ]] && continue
@@ -12356,6 +12368,7 @@ _menu_info_display() {
             if (( _ufirst )); then msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}${_uline}${NC}"
             else msg "          ${LBLW}${_uline}${NC}"; fi
         fi
+      fi
         msg ''
     fi
     # --- legend ---
@@ -27746,6 +27759,7 @@ PY_SELFTEST_TAR
     grep -Fq 'mi_users_line' "$0" || { echo 'FAIL: mi_users_line missing'; failures=$((failures + 1)); }
     grep -Fq '_MI_USER_RECS' "$0" || { echo 'FAIL: user records missing'; failures=$((failures + 1)); }
     grep -Fq 'mi_u_blocked' "$0" || { echo 'FAIL: mi_u_blocked missing'; failures=$((failures + 1)); }
+    grep -Fq 'mi_users_none' "$0" || { echo 'FAIL: mi_users_none missing'; failures=$((failures + 1)); }
     grep -Fq 'statsUserUplink' "$0" || { echo 'FAIL: per-user stats policy missing'; failures=$((failures + 1)); }
     grep -Fq 'revoke one extra UUID from the Xray server' "$0" || grep -Fq 'Revoke one extra UUID from the Xray server' "$0" || { echo 'FAIL: server-side UUID revocation option missing'; failures=$((failures + 1)); }
     # Exercise multi-UUID validation/deduplication on a temporary fixture; never touch /etc/ddr.

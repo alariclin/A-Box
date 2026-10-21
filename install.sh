@@ -12030,6 +12030,35 @@ _mi_port_listening() {
     printf '%s\n' "$1" | grep -qE "[:.]$2[[:space:]]"
 }
 
+# Canonical panel order (scheme B): every panel section (nodes, SNI,
+# users) sorts by this rank so a node keeps the same relative
+# position everywhere. Unknown names rank last, stable.
+_panel_rank_of() {
+    case "$1" in
+        Vision:*) printf '1' ;;
+        XHTTP:*) printf '2' ;;
+        SS:*) printf '3' ;;
+        SOCKS5:*|socks:*) printf '4' ;;
+        Trojan:*) printf '5' ;;
+        AnyTLS:*) printf '6' ;;
+        TUIC:*) printf '7' ;;
+        ShadowTLS:*|shadowtls-ss) printf '8' ;;
+        Hy2:*) printf '9' ;;
+        VMess:*) printf '10' ;;
+        VLESS:*) printf '11' ;;
+        *) printf '12' ;;
+    esac
+}
+
+# Stable-sort a '|'-joined cell string by _panel_rank_of.
+_panel_sort_cells() {
+    local _joined="$1" _c=''
+    [[ -n "$_joined" ]] || return 0
+    printf '%s\n' "$_joined" | tr '|' '\n' | while IFS= read -r _c; do
+        [[ -n "$_c" ]] && printf '%s\t%s\n' "$(_panel_rank_of "$_c")" "$_c"
+    done | sort -t "$(printf '\t')" -k1,1n -s | cut -f2- | paste -sd'|' -
+}
+
 _menu_info_collect() {
     [[ -n "${_MI_COLLECTED:-}" ]] && return 0
     _MI_COLLECTED=1
@@ -12179,6 +12208,7 @@ _menu_info_collect() {
         fi
     fi
     [[ -n "$hy2_note" ]] && nodes="${nodes:+$nodes|}$hy2_note"
+    [[ -n "$nodes" ]] && nodes=$(_panel_sort_cells "$nodes")
     _MI_NODES="$nodes"; _MI_SNI="$sni"
     # --- per-node SNI list (grouped by SNI) for the detail block ---
     _MI_SNI_LIST=''
@@ -12203,6 +12233,7 @@ _menu_info_collect() {
     } 2>/dev/null )
     if [[ -n "$_sni_rows" ]]; then
         _MI_SNI_LIST=$(printf '%s\n' "$_sni_rows" | awk -F '\t' '!seen[$1 "|" $2]++ {printf "%s%s %s", (n++ ? "|" : ""), $1, $2}')
+        [[ -n "$_MI_SNI_LIST" ]] && _MI_SNI_LIST=$(_panel_sort_cells "$_MI_SNI_LIST")
     fi
     # --- multi-user summary (registries of the toolbox manager) ---
     _MI_USERS_N=0; _MI_USERS_BLOCKED=0; _MI_USERS_USED=0
@@ -12270,6 +12301,12 @@ _menu_info_collect() {
                              elif .type == "hysteria2" then "Hy2:\(.listen_port)"
                              else "\(.type):\(.listen_port)" end)' /etc/sing-box/config.json 2>/dev/null)
                         [[ -z "$_rseg" ]] && _rseg="$_rtag"
+                        if [[ "$_rtag" == 'shadowtls-ss' ]]; then
+                            local _stp=''
+                            _stp=$(jq -r '[.inbounds[]? | select(.type == "shadowtls") | .listen_port // empty][0] // empty' /etc/sing-box/config.json 2>/dev/null)
+                            [[ -z "$_stp" ]] && _stp=$(jq -r --arg t "$_rtag" '[.inbounds[]? | select(.tag == $t) | .listen_port // empty][0] // empty' /etc/sing-box/config.json 2>/dev/null)
+                            [[ -n "$_stp" ]] && _rseg="ShadowTLS:$_stp"
+                        fi
                     fi ;;
                 hy2) _rseg="Hy2:${HY2_BASE_PORT:-?}" ;;
             esac
@@ -12278,6 +12315,33 @@ _menu_info_collect() {
                 [[ -n "$_ut" ]] && _MI_USER_RECS+=$'USR\t'"${_ut}"$'\n'
             done < <(jq -r '(.core // "") as $c | .users[]? | ([.name, (if $c == "sing-box" then "-" else (((.used_up // 0) + (.used_down // 0)) | tostring) end), (if .disabled == true then "disabled" elif (.blocked // "") != "" then "blocked" else "" end), (if (.expire_at // 0) == 0 then "F" elif (.expire_at // 0) <= now then "E" else (((.expire_at // 0) - now) / 86400 | ceil | tostring) end), (if $c == "sing-box" then "0" else (((.quota_gb // 0) * 1073741824) | floor | tostring) end)] | join("|"))' "$_rf" 2>/dev/null)
         done
+        # Scheme B: reorder segment blocks by the canonical rank
+        # (stable; orphan registries keep their relative order last).
+        if [[ -n "$_MI_USER_RECS" ]]; then
+            local -a _blks=() _ord=()
+            local _cur='' _l='' _i=0 _rk='' _oi=''
+            while IFS= read -r _l; do
+                case "$_l" in
+                    SEG$'\t'*)
+                        [[ -n "$_cur" ]] && _blks+=("$_cur")
+                        _cur="$_l" ;;
+                    *) _cur+=$'\n'"$_l" ;;
+                esac
+            done <<< "$_MI_USER_RECS"
+            [[ -n "$_cur" ]] && _blks+=("$_cur")
+            if (( ${#_blks[@]} > 1 )); then
+                _ord=()
+                for _i in "${!_blks[@]}"; do
+                    _rk=$(_panel_rank_of "${_blks[$_i]#SEG$'\t'}")
+                    [[ "$_rk" =~ ^[0-9]+$ ]] || _rk=12
+                    _ord+=("$_rk $_i")
+                done
+                _MI_USER_RECS=''
+                while read -r _rk _oi; do
+                    _MI_USER_RECS+="${_blks[$_oi]}"$'\n'
+                done < <(printf '%s\n' "${_ord[@]}" | sort -k1,1n -k2,2n -s)
+            fi
+        fi
 
     fi
 

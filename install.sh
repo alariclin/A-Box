@@ -10017,7 +10017,7 @@ setup_socks5_params() {
 # No API hot-push on sing-box: config rewrite + `sing-box check` + service restart.
 deploy_singbox_socks5_landing() {
     local port user pass proto cfg='/etc/sing-box/config.json'
-    local tag='socks5-landing' tmp_json
+    local tag="${ABOX_DEPLOY_TAG:-socks5-landing}" tmp_json
     clear; msg "${BOLD}${GREEN}$(tr_msg socks5_sb_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -10114,8 +10114,8 @@ EOF_SVC
 
     # Build the socks/mixed inbound object.
     tmp_json=$(mktemp /tmp/A-Box-singbox-socks5-inbound.XXXXXX) || die '临时文件创建失败。'
-    jq -n --argjson port "$port" --arg proto "$proto" --arg user "$user" --arg pass "$pass" \
-        '{type:$proto,tag:"socks5-landing",listen:"0.0.0.0",listen_port:$port,
+    jq -n --argjson port "$port" --arg proto "$proto" --arg user "$user" --arg pass "$pass" --arg tag "$tag" \
+        '{type:$proto,tag:$tag,listen:"0.0.0.0",listen_port:$port,
           users:[{username:$user,password:$pass}]}' \
         > "$tmp_json" || die 'SOCKS5 inbound JSON 生成失败。'
 
@@ -10126,8 +10126,8 @@ EOF_SVC
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
     if ! jq --slurpfile nb "$tmp_json" \
-            '(.inbounds | map(select(.tag=="socks5-landing"))) as $old
-             | .inbounds |= (map(select(.tag!="socks5-landing")) + $nb)' \
+            '(.inbounds | map(select(.tag==$t))) as $old
+             | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die 'SOCKS5 inbound 配置更新失败。'
     fi
@@ -10162,7 +10162,7 @@ EOF_SVC
         generate_qr "mixed://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     else
         generate_qr "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
-        register_standalone_link socks5-sb "SOCKS5 (sing-box) · 端口 ${port}" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
+        register_standalone_link "${ABOX_DEPLOY_STEM:-socks5-sb}" "SOCKS5 (sing-box) · 端口 ${port}" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     fi
     ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
@@ -10172,7 +10172,7 @@ EOF_SVC
 # Tag: trojan-landing. Hot-push via API when available, restart fallback.
 deploy_xray_trojan_landing() {
     local port pass sni pk pbk sid cfg='/usr/local/etc/xray/config.json'
-    local tag='trojan-landing' tmp_json
+    local tag="${ABOX_DEPLOY_TAG:-trojan-landing}" tmp_json
     clear; msg "${BOLD}${GREEN}$(tr_msg trojan_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -10269,10 +10269,10 @@ EOF_SVC
 
     # Build the trojan+reality inbound object (A-Box realitySettings format).
     tmp_json=$(mktemp /tmp/A-Box-trojan-inbound.XXXXXX) || die '临时文件创建失败。'
-    jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" \
+    jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" --arg tag "$tag" \
         --arg pk "$pk" --arg sid "$sid" \
-        '{tag:"trojan-landing",port:$port,listen:"0.0.0.0",protocol:"trojan",
-          settings:{clients:[{password:$pass,email:"trojan-landing/main"}]},
+        '{tag:$tag,port:$port,listen:"0.0.0.0",protocol:"trojan",
+          settings:{clients:[{password:$pass,email:($tag + "/main")}]},
           streamSettings:{network:"tcp",security:"reality",
             realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}}}' \
         > "$tmp_json" || die 'Trojan inbound JSON 生成失败。'
@@ -10293,8 +10293,8 @@ EOF_SVC
         tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die '临时文件创建失败。'
         mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json"; die '临时文件创建失败。'; }; tmp_cfg="$tmp_cfg.json"
         if ! jq --slurpfile nb "$tmp_json" \
-                '(.inbounds | map(select(.tag=="trojan-landing"))) as $old
-                 | .inbounds |= (map(select(.tag!="trojan-landing")) + $nb)' \
+                '(.inbounds | map(select(.tag==$t))) as $old
+                 | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
                 "$cfg" > "$tmp_cfg" 2>/dev/null; then
             rm -f "$tmp_cfg" "$tmp_json"; die 'Trojan inbound 配置更新失败。'
         fi
@@ -10323,14 +10323,14 @@ EOF_SVC
     msg "${GREEN}$(tr_msg trojan_done)${NC}"
     msg "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     generate_qr "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
-    register_standalone_link trojan-xray "Trojan-Reality (Xray) · 端口 ${port}" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    register_standalone_link "${ABOX_DEPLOY_STEM:-trojan-xray}" "Trojan-Reality (Xray) · 端口 ${port}" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
 }
 
 # Standalone Trojan-Reality via sing-box (toolbox entry).
 # Mirrors the Xray flow; no API hot-push: config rewrite + `sing-box check` + restart.
 deploy_singbox_trojan_landing() {
     local port pass sni pk pbk sid cfg='/etc/sing-box/config.json'
-    local tag='trojan-landing' tmp_json
+    local tag="${ABOX_DEPLOY_TAG:-trojan-landing}" tmp_json
     clear; msg "${BOLD}${GREEN}$(tr_msg trojan_sb_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -10427,9 +10427,9 @@ EOF_SVC
 
     # Build the trojan+reality inbound object.
     tmp_json=$(mktemp /tmp/A-Box-sb-trojan-inbound.XXXXXX) || die '临时文件创建失败。'
-    jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" \
+    jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" --arg tag "$tag" \
         --arg pk "$pk" --arg sid "$sid" \
-        '{type:"trojan",tag:"trojan-landing",listen:"0.0.0.0",listen_port:$port,
+        '{type:"trojan",tag:$tag,listen:"0.0.0.0",listen_port:$port,
           users:[{password:$pass}],
           tls:{enabled:true,server_name:$sni,
             reality:{enabled:true,handshake:{server:$sni,server_port:443},private_key:$pk,short_id:[$sid]}}}' \
@@ -10441,8 +10441,8 @@ EOF_SVC
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
     if ! jq --slurpfile nb "$tmp_json" \
-            '(.inbounds | map(select(.tag=="trojan-landing"))) as $old
-             | .inbounds |= (map(select(.tag!="trojan-landing")) + $nb)' \
+            '(.inbounds | map(select(.tag==$t))) as $old
+             | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die 'Trojan inbound 配置更新失败。'
     fi
@@ -10466,7 +10466,7 @@ EOF_SVC
     msg "${GREEN}$(tr_msg trojan_done)${NC}"
     msg "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     generate_qr "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
-    register_standalone_link trojan-sb "Trojan-Reality (sing-box) · 端口 ${port}" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    register_standalone_link "${ABOX_DEPLOY_STEM:-trojan-sb}" "Trojan-Reality (sing-box) · 端口 ${port}" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
 }
 
 
@@ -10475,7 +10475,7 @@ EOF_SVC
 # live sing-box config by tag, validated with `sing-box check` before install.
 deploy_singbox_tuic() {
     local port pass uuid sni cc cfg='/etc/sing-box/config.json'
-    local tag='tuic-in' tmp_json
+    local tag="${ABOX_DEPLOY_TAG:-tuic-in}" tmp_json
     clear; msg "${BOLD}${GREEN}$(tr_msg tuic_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -10577,8 +10577,8 @@ EOF_SVC
 
     # Build the TUIC inbound object.
     tmp_json=$(mktemp /tmp/A-Box-sb-tuic-inbound.XXXXXX) || die '临时文件创建失败。'
-    jq -n --argjson port "$port" --arg uuid "$uuid" --arg pass "$pass" --arg sni "$sni" --arg cc "$cc" \
-        '{type:"tuic",tag:"tuic-in",listen:"0.0.0.0",listen_port:$port,
+    jq -n --argjson port "$port" --arg uuid "$uuid" --arg pass "$pass" --arg sni "$sni" --arg cc "$cc" --arg tag "$tag" \
+        '{type:"tuic",tag:$tag,listen:"0.0.0.0",listen_port:$port,
           users:[{uuid:$uuid,password:$pass}],
           congestion_control:$cc,
           tls:{enabled:true,server_name:$sni,alpn:["h3"],
@@ -10590,9 +10590,9 @@ EOF_SVC
         msg "${YELLOW}$(tr_msg tuic_exists)${NC}"
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
-    if ! jq --slurpfile nb "$tmp_json" \
-            '(.inbounds | map(select(.tag=="tuic-in"))) as $old
-             | .inbounds |= (map(select(.tag!="tuic-in")) + $nb)' \
+    if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" \
+            '(.inbounds | map(select(.tag==$t))) as $old
+             | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die 'TUIC inbound 配置更新失败。'
     fi
@@ -10617,7 +10617,7 @@ EOF_SVC
     msg "${GREEN}$(tr_msg tuic_done)${NC}"
     msg "$link"
     generate_qr "$link"
-    register_standalone_link tuic "TUIC · 端口 ${port}" "$link"
+    register_standalone_link "${ABOX_DEPLOY_STEM:-tuic}" "TUIC · 端口 ${port}" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 
@@ -10627,7 +10627,7 @@ EOF_SVC
 # inbound merged into the live sing-box config by tag, `sing-box check` first.
 deploy_singbox_anytls() {
     local port pass sni pk pbk sid cfg='/etc/sing-box/config.json'
-    local tag='anytls-in' tmp_json
+    local tag="${ABOX_DEPLOY_TAG:-anytls-in}" tmp_json
     clear; msg "${BOLD}${GREEN}$(tr_msg anytls_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -10724,9 +10724,9 @@ EOF_SVC
 
     # Build the anytls+reality inbound object.
     tmp_json=$(mktemp /tmp/A-Box-sb-anytls-inbound.XXXXXX) || die '临时文件创建失败。'
-    jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" \
+    jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" --arg tag "$tag" \
         --arg pk "$pk" --arg sid "$sid" \
-        '{type:"anytls",tag:"anytls-in",listen:"0.0.0.0",listen_port:$port,
+        '{type:"anytls",tag:$tag,listen:"0.0.0.0",listen_port:$port,
           users:[{name:"abox",password:$pass}],
           tls:{enabled:true,server_name:$sni,
             reality:{enabled:true,handshake:{server:$sni,server_port:443},private_key:$pk,short_id:[$sid]}}}' \
@@ -10738,8 +10738,8 @@ EOF_SVC
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
     if ! jq --slurpfile nb "$tmp_json" \
-            '(.inbounds | map(select(.tag=="anytls-in"))) as $old
-             | .inbounds |= (map(select(.tag!="anytls-in")) + $nb)' \
+            '(.inbounds | map(select(.tag==$t))) as $old
+             | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die 'AnyTLS inbound 配置更新失败。'
     fi
@@ -10764,7 +10764,7 @@ EOF_SVC
     msg "${GREEN}$(tr_msg anytls_done)${NC}"
     msg "$link"
     generate_qr "$link"
-    register_standalone_link anytls "AnyTLS-Reality · 端口 ${port}" "$link"
+    register_standalone_link "${ABOX_DEPLOY_STEM:-anytls}" "AnyTLS-Reality · 端口 ${port}" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 
@@ -10772,7 +10772,8 @@ EOF_SVC
 
 deploy_singbox_shadowtls() {
     local port pass inner sni cfg='/etc/sing-box/config.json'
-    local tag='shadowtls-in' tmp_json
+    local tag="${ABOX_DEPLOY_TAG:-shadowtls-in}" tmp_json
+    local itag='shadowtls-ss'; [[ "$tag" != 'shadowtls-in' ]] && itag="${tag}-ss"
     clear; msg "${BOLD}${GREEN}$(tr_msg shadowtls_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -10866,10 +10867,10 @@ EOF_SVC
     # shadowtls v3 (strict) detouring to a loopback-only SS-2022 inbound that
     # has no listen_port of its own (reachable only through the detour).
     tmp_json=$(mktemp /tmp/A-Box-sb-shadowtls-inbound.XXXXXX) || die '临时文件创建失败。'
-    jq -n --argjson port "$port" --arg pass "$pass" --arg inner "$inner" --arg sni "$sni" \
-        '({type:"shadowtls",tag:"shadowtls-in",listen:"0.0.0.0",listen_port:$port,version:3,strict_mode:true,
-           users:[{password:$pass}],handshake:{server:$sni,server_port:443},detour:"shadowtls-ss"}),
-         ({type:"shadowsocks",tag:"shadowtls-ss",listen:"127.0.0.1",network:"tcp",
+    jq -n --argjson port "$port" --arg pass "$pass" --arg inner "$inner" --arg sni "$sni" --arg tag "$tag" --arg itag "$itag" \
+        '({type:"shadowtls",tag:$tag,listen:"0.0.0.0",listen_port:$port,version:3,strict_mode:true,
+           users:[{password:$pass}],handshake:{server:$sni,server_port:443},detour:$itag}),
+         ({type:"shadowsocks",tag:$itag,listen:"127.0.0.1",network:"tcp",
            method:"2022-blake3-aes-128-gcm",password:$inner,multiplex:{enabled:true,padding:true}})' \
         > "$tmp_json" || die 'ShadowTLS inbound JSON 生成失败。'
 
@@ -10878,9 +10879,9 @@ EOF_SVC
         msg "${YELLOW}$(tr_msg shadowtls_exists)${NC}"
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
-    if ! jq --slurpfile nb "$tmp_json" \
-            '(.inbounds | map(select(.tag=="shadowtls-in" or .tag=="shadowtls-ss"))) as $old
-             | .inbounds |= (map(select(.tag!="shadowtls-in" and .tag!="shadowtls-ss")) + $nb)' \
+    if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" --arg it "$itag" \
+            '(.inbounds | map(select(.tag==$t or .tag==$it))) as $old
+             | .inbounds |= (map(select(.tag!=$t and .tag!=$it)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die 'ShadowTLS inbound 配置更新失败。'
     fi
@@ -10910,7 +10911,7 @@ EOF_SVC
     msg "$link"
     msg "Clash: - {name: \"ShadowTLS\", type: ss, server: ${pub_ip}, port: ${port}, cipher: 2022-blake3-aes-128-gcm, password: ${inner}, plugin: shadow-tls, client-fingerprint: chrome, plugin-opts: {host: ${sni}, password: \"${pass}\", version: 3}}"
     generate_qr "$link"
-    register_standalone_link shadowtls "ShadowTLS · 端口 ${port}" "$link"
+    register_standalone_link "${ABOX_DEPLOY_STEM:-shadowtls}" "ShadowTLS · 端口 ${port}" "$link"
     ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 
@@ -11397,6 +11398,33 @@ argo_menu() {
 }
 
 # Other-protocols entry: standalone Trojan-Reality, free core choice.
+
+# Run a standalone deploy, offering "add another instance" when the
+# protocol already exists on that core. Extra instances get tag-<n>
+# (and a matching link stem), so inventory, deletion and the
+# multi-user manager treat them as independent nodes.
+# $1=core $2=base-tag, rest = deploy command
+deploy_with_instance_choice() {
+    local core="$1" btag="$2"; shift 2
+    local cfg='' exists=0
+    cfg=$(users_cfg_of "$core" 2>/dev/null || true)
+    if [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$btag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; then exists=1; fi
+    if (( exists == 0 )); then "$@"; return $?; fi
+    msg "${YELLOW}该协议在本核心已有一个实例 (${btag})。${NC}"
+    msg "${YELLOW}1. 替换现有实例   2. 新增一个实例（独立端口/凭据/用户名单）   0. 取消${NC}"
+    local ch=''
+    read -r -p 'Select [0-2]: ' ch || return 0
+    case "$ch" in
+        1) "$@" ;;
+        2)
+            local n=2
+            while jq -e --arg t "${btag}-${n}" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; do n=$((n + 1)); done
+            msg "${CYAN}新实例标签: ${btag}-${n}（部署时请选一个未被占用的端口）${NC}"
+            ABOX_DEPLOY_TAG="${btag}-${n}" ABOX_DEPLOY_STEM="${btag}-${n}" "$@" ;;
+        *) msg '已取消。'; return 0 ;;
+    esac
+}
+
 trojan_toolbox_entry() {
     local _core_choice='' _default='1'
     load_optional_abox_env_or_die 2>/dev/null || true
@@ -11406,8 +11434,8 @@ trojan_toolbox_entry() {
     read -r -p "$(tr_msg trojan_core_prompt) [${_default}]: " _core_choice || _core_choice=''
     _core_choice="${_core_choice:-$_default}"
     case "$_core_choice" in
-        2) deploy_singbox_trojan_landing ;;
-        *) deploy_xray_trojan_landing ;;
+        2) deploy_with_instance_choice sing-box trojan-landing deploy_singbox_trojan_landing ;;
+        *) deploy_with_instance_choice xray trojan-landing deploy_xray_trojan_landing ;;
     esac
     ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
@@ -12379,7 +12407,7 @@ split_rule_del_interactive() {
 
 deploy_socks5_landing() {
     local port user pass cfg='/usr/local/etc/xray/config.json'
-    local tag='socks5-landing' tmp_json inbound_json
+    local tag="${ABOX_DEPLOY_TAG:-socks5-landing}" tmp_json inbound_json
     clear; msg "${BOLD}${GREEN}$(tr_msg socks5_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -12470,8 +12498,8 @@ EOF_SVC
 
     # Build the socks inbound object.
     tmp_json=$(mktemp /tmp/A-Box-socks5-inbound.XXXXXX) || die '临时文件创建失败。'
-    jq -n --argjson port "$port" --arg user "$user" --arg pass "$pass" \
-        '{tag:"socks5-landing",port:$port,listen:"0.0.0.0",protocol:"socks",
+    jq -n --argjson port "$port" --arg user "$user" --arg pass "$pass" --arg tag "$tag" \
+        '{tag:$tag,port:$port,listen:"0.0.0.0",protocol:"socks",
           settings:{auth:"password",accounts:[{user:$user,pass:$pass}],udp:true,ip:"0.0.0.0"}}' \
         > "$tmp_json" || die 'SOCKS5 inbound JSON 生成失败。'
 
@@ -12482,8 +12510,8 @@ EOF_SVC
         tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die '临时文件创建失败。'
         mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json"; die '临时文件创建失败。'; }; tmp_cfg="$tmp_cfg.json"
         if ! jq --slurpfile nb "$tmp_json" \
-                '(.inbounds | map(select(.tag=="socks5-landing"))) as $old
-                 | .inbounds |= (map(select(.tag!="socks5-landing")) + $nb)' \
+                '(.inbounds | map(select(.tag==$t))) as $old
+                 | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
                 "$cfg" > "$tmp_cfg" 2>/dev/null; then
             rm -f "$tmp_cfg" "$tmp_json"; die 'SOCKS5 inbound 配置更新失败。'
         fi
@@ -12515,7 +12543,7 @@ EOF_SVC
     msg "${GREEN}$(tr_msg socks5_done)${NC}"
     msg "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     generate_qr "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
-    register_standalone_link socks5-xray "SOCKS5 (Xray) · 端口 ${port}" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
+    register_standalone_link "${ABOX_DEPLOY_STEM:-socks5-xray}" "SOCKS5 (Xray) · 端口 ${port}" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
 }
 
@@ -23835,10 +23863,10 @@ other_protocols_menu() {
     read -r -p "$select_prompt" op_choice || return 0
     case "$op_choice" in
         1) trojan_toolbox_entry; pause_return ;;
-        2) deploy_singbox_tuic; pause_return ;;
-        3) deploy_singbox_anytls; pause_return ;;
+        2) deploy_with_instance_choice sing-box tuic-in deploy_singbox_tuic; pause_return ;;
+        3) deploy_with_instance_choice sing-box anytls-in deploy_singbox_anytls; pause_return ;;
         4) socks5_toolbox_entry; pause_return ;;
-        5) deploy_singbox_shadowtls; pause_return ;;
+        5) deploy_with_instance_choice sing-box shadowtls-in deploy_singbox_shadowtls; pause_return ;;
         6) argo_menu ;;
         7) xray_latest_menu ;;
         0) return 0 ;;
@@ -24210,10 +24238,10 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     load_optional_abox_env_or_die
     light_preflight_check
     case "$kind" in
-        vision) defport='443'; tag='latest-vision'; label='VLESS-Vision-Reality (Latest Xray)' ;;
-        xhttp) defport='8443'; tag='latest-xhttp'; label='VLESS-XHTTP-Reality (Latest Xray)' ;;
-        trojan) defport='443'; tag='latest-trojan'; label='Trojan-Reality (Latest Xray)' ;;
-        ss) defport='2053'; tag='latest-ss'; label='SS-2022 (Latest Xray)' ;;
+        vision) defport='443'; tag="${ABOX_DEPLOY_TAG:-latest-vision}"; label='VLESS-Vision-Reality (Latest Xray)' ;;
+        xhttp) defport='8443'; tag="${ABOX_DEPLOY_TAG:-latest-xhttp}"; label='VLESS-XHTTP-Reality (Latest Xray)' ;;
+        trojan) defport='443'; tag="${ABOX_DEPLOY_TAG:-latest-trojan}"; label='Trojan-Reality (Latest Xray)' ;;
+        ss) defport='2053'; tag="${ABOX_DEPLOY_TAG:-latest-ss}"; label='SS-2022 (Latest Xray)' ;;
         *) msg "${RED}$(tr_msg invalid_input): $kind${NC}"; return 1 ;;
     esac
     clear
@@ -24320,7 +24348,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     msg "${GREEN}$(tr_msg xl_ok_installed): ${label} :${port}${NC}"
     msg "$link"
     generate_qr "$link"
-    register_standalone_link "latest-${kind}" "${label} · :${port}" "$link"
+    register_standalone_link "${ABOX_DEPLOY_STEM:-latest-${kind}}" "${label} · :${port}" "$link"
     return 0
 }
 
@@ -24501,10 +24529,10 @@ xray_latest_menu() {
         read -r -p "$(tr_msg xl_select)" choice || return 0
         case "$choice" in
             1) xray_latest_install_core; pause_return ;;
-            2) xray_latest_deploy vision; pause_return ;;
-            3) xray_latest_deploy xhttp; pause_return ;;
-            4) xray_latest_deploy trojan; pause_return ;;
-            5) xray_latest_deploy ss; pause_return ;;
+            2) deploy_with_instance_choice xray-latest latest-vision xray_latest_deploy vision; pause_return ;;
+            3) deploy_with_instance_choice xray-latest latest-xhttp xray_latest_deploy xhttp; pause_return ;;
+            4) deploy_with_instance_choice xray-latest latest-trojan xray_latest_deploy trojan; pause_return ;;
+            5) deploy_with_instance_choice xray-latest latest-ss xray_latest_deploy ss; pause_return ;;
             6) xray_latest_deploy_trio; pause_return ;;
             7) xray_latest_deploy_quad; pause_return ;;
             8) xl_show_ports; pause_return ;;
@@ -24691,8 +24719,8 @@ socks5_toolbox_entry() {
     read -r -p "$(tr_msg socks5_core_prompt) [${_default}]: " _core_choice || _core_choice=''
     _core_choice="${_core_choice:-$_default}"
     case "$_core_choice" in
-        2) deploy_singbox_socks5_landing ;;
-        *) deploy_socks5_landing ;;
+        2) deploy_with_instance_choice sing-box socks5-landing deploy_singbox_socks5_landing ;;
+        *) deploy_with_instance_choice xray socks5-landing deploy_socks5_landing ;;
     esac
 }
 clean_uninstall_menu() {
@@ -27200,6 +27228,7 @@ PY_SELFTEST_TAR
     grep -Fq 'user_guard_tick()' "$0" || { echo 'FAIL: user_guard_tick missing'; failures=$((failures + 1)); }
     grep -Fq 'setup_user_guard()' "$0" || { echo 'FAIL: setup_user_guard missing'; failures=$((failures + 1)); }
     grep -Fq 'users_hot_remove()' "$0" || { echo 'FAIL: users_hot_remove missing'; failures=$((failures + 1)); }
+    grep -Fq 'deploy_with_instance_choice()' "$0" || { echo 'FAIL: deploy_with_instance_choice missing'; failures=$((failures + 1)); }
     grep -Fq 'statsUserUplink' "$0" || { echo 'FAIL: per-user stats policy missing'; failures=$((failures + 1)); }
     grep -Fq 'revoke one extra UUID from the Xray server' "$0" || grep -Fq 'Revoke one extra UUID from the Xray server' "$0" || { echo 'FAIL: server-side UUID revocation option missing'; failures=$((failures + 1)); }
     # Exercise multi-UUID validation/deduplication on a temporary fixture; never touch /etc/ddr.

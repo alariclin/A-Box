@@ -592,6 +592,108 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:wl_cv_downgrade) echo '拒绝 Wallos 降级：候选版本 %s，已安装 %s。只有在确认 schema 兼容性后才可设置 ABOX_WALLOS_ALLOW_DOWNGRADE=1。' ;;
+        en:wl_cv_downgrade) echo 'Refusing Wallos downgrade: candidate %s, installed %s. Set ABOX_WALLOS_ALLOW_DOWNGRADE=1 only after reviewing schema compatibility.' ;;
+        ru:wl_cv_downgrade) echo 'Откат Wallos запрещён: кандидат %s, установлено %s. Устанавливайте ABOX_WALLOS_ALLOW_DOWNGRADE=1 только после проверки совместимости схемы.' ;;
+        fa:wl_cv_downgrade) echo 'بازگردانی Wallos رد می‌شود: نامزد %s، نصب‌شده %s. فقط پس از بررسی سازگاری طرحواره ABOX_WALLOS_ALLOW_DOWNGRADE=1 را تنظیم کنید.' ;;
+        zh-tw:wl_cv_downgrade) echo '拒絕 Wallos 降級：候選版本 %s，已安裝 %s。只有在確認 schema 相容性後才可設定 ABOX_WALLOS_ALLOW_DOWNGRADE=1。' ;;
+        ja:wl_cv_downgrade) echo 'Wallos のダウングレードを拒否します: 候補 %s、インストール済み %s。スキーマ互換性を確認した場合にのみ ABOX_WALLOS_ALLOW_DOWNGRADE=1 を設定してください。' ;;
+        zh:wl_cv_compare) echo '无法将候选 Wallos %s 与已安装镜像 %s 比较；拒绝自动回退。' ;;
+        en:wl_cv_compare) echo 'Cannot compare candidate Wallos %s with installed image %s; refusing automatic fallback.' ;;
+        ru:wl_cv_compare) echo 'Невозможно сравнить кандидата Wallos %s с установленным образом %s; автоматический откат отклонён.' ;;
+        fa:wl_cv_compare) echo 'مقایسه Wallos نامزد %s با تصویر نصب‌شده %s ممکن نیست؛ بازگشت خودکار رد می‌شود.' ;;
+        zh-tw:wl_cv_compare) echo '無法將候選 Wallos %s 與已安裝映像 %s 比較；拒絕自動回退。' ;;
+        ja:wl_cv_compare) echo '候補 Wallos %s とインストール済みイメージ %s を比較できません。自動フォールバックを拒否します。' ;;
+        zh:wl_pr_rm_fail) echo '[!] 无法删除旧 Wallos 镜像 %s，它可能仍在使用中。' ;;
+        en:wl_pr_rm_fail) echo '[!] Could not remove old Wallos image %s; it may still be in use.' ;;
+        ru:wl_pr_rm_fail) echo '[!] Не удалось удалить старый образ Wallos %s; возможно, он всё ещё используется.' ;;
+        fa:wl_pr_rm_fail) echo '[!] حذف تصویر قدیمی Wallos %s ممکن نشد؛ ممکن است هنوز در حال استفاده باشد.' ;;
+        zh-tw:wl_pr_rm_fail) echo '[!] 無法刪除舊 Wallos 映像 %s，它可能仍在使用中。' ;;
+        ja:wl_pr_rm_fail) echo '[!] 古い Wallos イメージ %s を削除できませんでした。まだ使用中の可能性があります。' ;;
+        zh:wl_pr_done) echo 'N-11：已清理 %s 个旧 Wallos 镜像；保留：%s %s' ;;
+        en:wl_pr_done) echo 'N-11: pruned %s old Wallos image(s); retained: %s %s' ;;
+        ru:wl_pr_done) echo 'N-11: удалено старых образов Wallos: %s; сохранены: %s %s' ;;
+        fa:wl_pr_done) echo 'N-11: %s تصویر قدیمی Wallos پاک شد؛ نگه داشته شد: %s %s' ;;
+        zh-tw:wl_pr_done) echo 'N-11：已清理 %s 個舊 Wallos 映像；保留：%s %s' ;;
+        ja:wl_pr_done) echo 'N-11: 古い Wallos イメージ %s 件を削除しました。保持: %s %s' ;;
+        zh:wl_pi_sig_sums) echo '[!] N-2 SHA256SUMS 签名被拒绝且签名强制已开启；拒绝继续。' ;;
+        en:wl_pi_sig_sums) echo '[!] N-2 SHA256SUMS signature rejected and signing enforcement is ON; refusing.' ;;
+        ru:wl_pi_sig_sums) echo '[!] N-2: подпись SHA256SUMS отклонена, а принудительная проверка подписи включена; отказ.' ;;
+        fa:wl_pi_sig_sums) echo '[!] N-2 امضای SHA256SUMS رد شد و اجبار امضا فعال است؛ رد می‌شود.' ;;
+        zh-tw:wl_pi_sig_sums) echo '[!] N-2 SHA256SUMS 簽章被拒絕且簽章強制已開啟；拒絕繼續。' ;;
+        ja:wl_pi_sig_sums) echo '[!] N-2 SHA256SUMS の署名が拒否され、署名強制が有効です。中止します。' ;;
+        zh:wl_pi_sig_manifest) echo '[!] N-2 清单签名被拒绝且签名强制已开启；拒绝回退到未签名标签拉取。' ;;
+        en:wl_pi_sig_manifest) echo '[!] N-2 manifest signature rejected and signing enforcement is ON; refusing to fall back to unsigned tag pull.' ;;
+        ru:wl_pi_sig_manifest) echo '[!] N-2: подпись манифеста отклонена, а принудительная проверка включена; откат к неподписанному тегу запрещён.' ;;
+        fa:wl_pi_sig_manifest) echo '[!] N-2 امضای مانیفست رد شد و اجبار امضا فعال است؛ بازگشت به دریافت برچسب بدون امضا رد می‌شود.' ;;
+        zh-tw:wl_pi_sig_manifest) echo '[!] N-2 清單簽章被拒絕且簽章強制已開啟；拒絕回退到未簽章標籤拉取。' ;;
+        ja:wl_pi_sig_manifest) echo '[!] N-2 マニフェスト署名が拒否され、署名強制が有効です。署名なしタグ取得へのフォールバックを拒否します。' ;;
+        zh:wl_pi_ts_reject_on) echo '[!] N-2 清单时间戳被拒绝且签名强制已开启；拒绝回退到未签名标签拉取。' ;;
+        en:wl_pi_ts_reject_on) echo '[!] N-2 manifest timestamp rejected and signing enforcement is ON; refusing to fall back to unsigned tag pull.' ;;
+        ru:wl_pi_ts_reject_on) echo '[!] N-2: метка времени манифеста отклонена, а принудительная проверка включена; откат к неподписанному тегу запрещён.' ;;
+        fa:wl_pi_ts_reject_on) echo '[!] N-2 مُهر زمانی مانیفست رد شد و اجبار امضا فعال است؛ بازگشت به دریافت برچسب بدون امضا رد می‌شود.' ;;
+        zh-tw:wl_pi_ts_reject_on) echo '[!] N-2 清單時間戳被拒絕且簽章強制已開啟；拒絕回退到未簽章標籤拉取。' ;;
+        ja:wl_pi_ts_reject_on) echo '[!] N-2 マニフェストのタイムスタンプが拒否され、署名強制が有効です。署名なしタグ取得へのフォールバックを拒否します。' ;;
+        zh:wl_pi_ts_reject_off) echo '[!] N-2 清单时间戳被拒绝；回退到标签拉取。' ;;
+        en:wl_pi_ts_reject_off) echo '[!] N-2 manifest timestamp rejected; falling back to tag pull.' ;;
+        ru:wl_pi_ts_reject_off) echo '[!] N-2: метка времени манифеста отклонена; откат к загрузке по тегу.' ;;
+        fa:wl_pi_ts_reject_off) echo '[!] N-2 مُهر زمانی مانیفست رد شد؛ بازگشت به دریافت با برچسب.' ;;
+        zh-tw:wl_pi_ts_reject_off) echo '[!] N-2 清單時間戳被拒絕；回退到標籤拉取。' ;;
+        ja:wl_pi_ts_reject_off) echo '[!] N-2 マニフェストのタイムスタンプが拒否されました。タグ取得にフォールバックします。' ;;
+        zh:wl_pi_fp_mismatch) echo '[!] N-2 快速路径清单校验和不符；回退到标签拉取。' ;;
+        en:wl_pi_fp_mismatch) echo '[!] N-2 fast-path manifest checksum mismatch; falling back to tag pull.' ;;
+        ru:wl_pi_fp_mismatch) echo '[!] N-2: контрольная сумма манифеста (быстрый путь) не совпала; откат к загрузке по тегу.' ;;
+        fa:wl_pi_fp_mismatch) echo '[!] N-2 مجموع بررسی مانیفست در مسیر سریع مطابقت ندارد؛ بازگشت به دریافت با برچسب.' ;;
+        zh-tw:wl_pi_fp_mismatch) echo '[!] N-2 快速路徑清單校驗和不符；回退到標籤拉取。' ;;
+        ja:wl_pi_fp_mismatch) echo '[!] N-2 高速パスのマニフェストチェックサムが一致しません。タグ取得にフォールバックします。' ;;
+        zh:wl_pi_digest_fail) echo '[!] 按摘要固定的拉取失败；回退到标签拉取。' ;;
+        en:wl_pi_digest_fail) echo '[!] Digest-pinned pull failed; falling back to tag pull.' ;;
+        ru:wl_pi_digest_fail) echo '[!] Загрузка по дайджесту не удалась; откат к загрузке по тегу.' ;;
+        fa:wl_pi_digest_fail) echo '[!] دریافت با دایجست ثابت ناموفق بود؛ بازگشت به دریافت با برچسب.' ;;
+        zh-tw:wl_pi_digest_fail) echo '[!] 按摘要固定的拉取失敗；回退到標籤拉取。' ;;
+        ja:wl_pi_digest_fail) echo '[!] ダイジェスト固定の取得に失敗しました。タグ取得にフォールバックします。' ;;
+        zh:wl_pi_digest) echo 'Wallos 镜像摘要：%s' ;;
+        en:wl_pi_digest) echo 'Wallos image digest: %s' ;;
+        ru:wl_pi_digest) echo 'Дайджест образа Wallos: %s' ;;
+        fa:wl_pi_digest) echo 'دایجست تصویر Wallos: %s' ;;
+        zh-tw:wl_pi_digest) echo 'Wallos 映像摘要：%s' ;;
+        ja:wl_pi_digest) echo 'Wallos イメージのダイジェスト: %s' ;;
+        zh:wl_pi_recovery) echo '[!] 官方稳定版信息或镜像拉取失败，正在尝试 A-Box Wallos 灾备 Release。' ;;
+        en:wl_pi_recovery) echo '[!] Failed to get stable version or image; trying A-Box Wallos recovery Release.' ;;
+        ru:wl_pi_recovery) echo '[!] Не удалось получить стабильную версию или образ; пробуем резервный Release Wallos от A-Box.' ;;
+        fa:wl_pi_recovery) echo '[!] دریافت نسخه پایدار یا تصویر ناموفق بود؛ نسخه بازیابی Wallos از A-Box بررسی می‌شود.' ;;
+        zh-tw:wl_pi_recovery) echo '[!] 官方穩定版資訊或映象拉取失敗，正在嘗試 A-Box Wallos 災備 Release。' ;;
+        ja:wl_pi_recovery) echo '[!] 公式安定版の情報取得またはイメージの取得に失敗しました。A-Box Wallos のリカバリー Release を試します。' ;;
+        zh:wl_pi_manifest_sum) echo 'Wallos 清单校验和不符；拒绝加载。' ;;
+        en:wl_pi_manifest_sum) echo 'Wallos manifest checksum mismatch; refusing to load it.' ;;
+        ru:wl_pi_manifest_sum) echo 'Контрольная сумма манифеста Wallos не совпала; загрузка отклонена.' ;;
+        fa:wl_pi_manifest_sum) echo 'مجموع بررسی مانیفست Wallos مطابقت ندارد؛ بارگذاری رد می‌شود.' ;;
+        zh-tw:wl_pi_manifest_sum) echo 'Wallos 清單校驗和不符；拒絕載入。' ;;
+        ja:wl_pi_manifest_sum) echo 'Wallos マニフェストのチェックサムが一致しません。読み込みを拒否します。' ;;
+        zh:wl_pi_mirror_sum) echo 'Wallos 镜像校验和不符；拒绝加载。' ;;
+        en:wl_pi_mirror_sum) echo 'Wallos mirror checksum mismatch; refusing to load it.' ;;
+        ru:wl_pi_mirror_sum) echo 'Контрольная сумма зеркала Wallos не совпала; загрузка отклонена.' ;;
+        fa:wl_pi_mirror_sum) echo 'مجموع بررسی آینه Wallos مطابقت ندارد؛ بارگذاری رد می‌شود.' ;;
+        zh-tw:wl_pi_mirror_sum) echo 'Wallos 鏡像校驗和不符；拒絕載入。' ;;
+        ja:wl_pi_mirror_sum) echo 'Wallos ミラーのチェックサムが一致しません。読み込みを拒否します。' ;;
+        zh:wl_pi_archive) echo 'Wallos 归档未加载预期的唯一镜像 bellamy/wallos:%s。' ;;
+        en:wl_pi_archive) echo 'Wallos archive did not load the single expected image bellamy/wallos:%s.' ;;
+        ru:wl_pi_archive) echo 'Архив Wallos не загрузил единственный ожидаемый образ bellamy/wallos:%s.' ;;
+        fa:wl_pi_archive) echo 'بایگانی Wallos تصویر مورد انتظار bellamy/wallos:%s را بارگذاری نکرد.' ;;
+        zh-tw:wl_pi_archive) echo 'Wallos 歸檔未載入預期的唯一映像 bellamy/wallos:%s。' ;;
+        ja:wl_pi_archive) echo 'Wallos アーカイブから予期した単一イメージ bellamy/wallos:%s が読み込まれませんでした。' ;;
+        zh:wl_pi_no_digest) echo 'Wallos 清单缺少有效的 image_digest.%s；拒绝加载。' ;;
+        en:wl_pi_no_digest) echo 'Wallos manifest is missing a valid image_digest.%s; refusing to load.' ;;
+        ru:wl_pi_no_digest) echo 'В манифесте Wallos отсутствует допустимый image_digest.%s; загрузка отклонена.' ;;
+        fa:wl_pi_no_digest) echo 'مانیفست Wallos فاقد image_digest.%s معتبر است؛ بارگذاری رد می‌شود.' ;;
+        zh-tw:wl_pi_no_digest) echo 'Wallos 清單缺少有效的 image_digest.%s；拒絕載入。' ;;
+        ja:wl_pi_no_digest) echo 'Wallos マニフェストに有効な image_digest.%s がありません。読み込みを拒否します。' ;;
+        zh:wl_pi_digest_mismatch) echo 'Wallos 镜像摘要不符；拒绝使用。' ;;
+        en:wl_pi_digest_mismatch) echo 'Wallos mirror image digest mismatch; refusing to use it.' ;;
+        ru:wl_pi_digest_mismatch) echo 'Дайджест образа на зеркале Wallos не совпал; использование отклонено.' ;;
+        fa:wl_pi_digest_mismatch) echo 'دایجست تصویر آینه Wallos مطابقت ندارد؛ استفاده از آن رد می‌شود.' ;;
+        zh-tw:wl_pi_digest_mismatch) echo 'Wallos 鏡像摘要不符；拒絕使用。' ;;
+        ja:wl_pi_digest_mismatch) echo 'Wallos ミラーイメージのダイジェストが一致しません。使用を拒否します。' ;;
         zh:wl_rb_invalid_ver) echo '无效的 Wallos 版本：%s' ;;
         en:wl_rb_invalid_ver) echo 'Invalid Wallos version: %s' ;;
         ru:wl_rb_invalid_ver) echo 'Недопустимая версия Wallos: %s' ;;
@@ -24769,12 +24871,12 @@ wallos_candidate_version_allowed() {
         wallos_version_is_older "$candidate" "$installed_version"
         rc=$?
         if (( rc == 0 )); then
-            msg "${RED}Refusing Wallos downgrade: candidate ${candidate}, installed ${installed_version}. Set ABOX_WALLOS_ALLOW_DOWNGRADE=1 only after reviewing schema compatibility.${NC}"
+            msg "${RED}$(tprintf wl_cv_downgrade "$candidate" "$installed_version")${NC}"
             return 1
         fi
         (( rc == 1 )) && return 0
     fi
-    msg "${RED}Cannot compare candidate Wallos ${candidate} with installed image ${installed_image}; refusing automatic fallback.${NC}"
+    msg "${RED}$(tprintf wl_cv_compare "$candidate" "$installed_image")${NC}"
     return 1
 }
 
@@ -24816,14 +24918,14 @@ wallos_prune_local_images() {
                 removed=$((removed + 1))
             else
                 # D-09: was silently swallowed by `|| true`.
-                msg "${YELLOW}[!] Could not remove old Wallos image $img; it may still be in use.${NC}"
+                msg "${YELLOW}$(tprintf wl_pr_rm_fail "$img")${NC}"
             fi
         fi
     done
     # D-08: removed dead 500MB-cap computation (total was calculated but never
     # used for enforcement or warning). Pruning is count-based (keep 2).
     if (( removed > 0 )); then
-        msg "${CYAN}N-11: pruned $removed old Wallos image(s); retained: ${keep1:-none} ${keep2:-}${NC}"
+        msg "${CYAN}$(tprintf wl_pr_done "$removed" "${keep1:-none}" "${keep2:-}")${NC}"
     fi
     return 0
 }
@@ -25035,7 +25137,7 @@ wallos_pull_or_restore_image() {
                     curl -fLsS --connect-timeout 8 --max-time 30 "${_n2_manifest_url}.sig" -o "$_n2_work/wallos-manifest.txt.sig" 2>/dev/null || true
                     # DS-Q4: SHA256SUMS 本身也要验签 (之前只下载不验证)
                     if ! abox_verify_sig_gate "$_n2_work/SHA256SUMS" "$_n2_work/SHA256SUMS.sig" "Wallos SHA256SUMS (N-2 fast path)"; then
-                        msg "${RED}[!] N-2 SHA256SUMS signature rejected and signing enforcement is ON; refusing.${NC}"
+                        msg "${RED}$(tr_msg wl_pi_sig_sums)${NC}"
                         trap - EXIT
                         restore_saved_trap EXIT "$_n2_prev_trap_exit"
                         rm -rf -- "$_n2_work"
@@ -25045,7 +25147,7 @@ wallos_pull_or_restore_image() {
                         # D-10: abox_verify_sig_gate only returns 1 when ABOX_SIGNING_ENFORCE=1.
                         # In that mode, falling back to an unsigned tag pull would defeat
                         # enforcement, so fail hard instead of silently downgrading.
-                        msg "${RED}[!] N-2 manifest signature rejected and signing enforcement is ON; refusing to fall back to unsigned tag pull.${NC}"
+                        msg "${RED}$(tr_msg wl_pi_sig_manifest)${NC}"
                         trap - EXIT
                         restore_saved_trap EXIT "$_n2_prev_trap_exit"
                         rm -rf -- "$_n2_work"
@@ -25059,20 +25161,20 @@ wallos_pull_or_restore_image() {
                             # like a bad signature (D-10); falling back to an
                             # unsigned tag pull would defeat enforcement.
                             if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
-                                msg "${RED}[!] N-2 manifest timestamp rejected and signing enforcement is ON; refusing to fall back to unsigned tag pull.${NC}"
+                                msg "${RED}$(tr_msg wl_pi_ts_reject_on)${NC}"
                                 trap - EXIT
                                 restore_saved_trap EXIT "$_n2_prev_trap_exit"
                                 rm -rf -- "$_n2_work"
                                 return 1
                             fi
-                            msg "${YELLOW}[!] N-2 manifest timestamp rejected; falling back to tag pull.${NC}"
+                            msg "${YELLOW}$(tr_msg wl_pi_ts_reject_off)${NC}"
                         else
                             _mirror_digest=$(awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
                             _manifest_tag=$(awk -F= '$1=="tag" {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
                         fi
                     fi
                 else
-                    msg "${YELLOW}[!] N-2 fast-path manifest checksum mismatch; falling back to tag pull.${NC}"
+                    msg "${YELLOW}$(tr_msg wl_pi_fp_mismatch)${NC}"
                 fi
             fi
             trap - EXIT
@@ -25087,7 +25189,7 @@ wallos_pull_or_restore_image() {
                     WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
                     return 0
                 fi
-                msg "${YELLOW}[!] Digest-pinned pull failed; falling back to tag pull.${NC}"
+                msg "${YELLOW}$(tr_msg wl_pi_digest_fail)${NC}"
             fi
         fi
         if abox_run_wait '拉取 Wallos 镜像' docker pull "bellamy/wallos:$image_tag"; then
@@ -25098,22 +25200,14 @@ wallos_pull_or_restore_image() {
             local _pulled_digest
             _pulled_digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
             if [[ "$_pulled_digest" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]]; then
-                msg "${CYAN}Wallos image digest: $_pulled_digest${NC}"
+                msg "${CYAN}$(tprintf wl_pi_digest "$_pulled_digest")${NC}"
                 docker tag "$_pulled_digest" "bellamy/wallos:$image_tag" >/dev/null 2>&1 || true
             fi
             WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
             return 0
         fi
     fi
-    case "${ABOX_LANG:-zh}" in
-        en) msg "${YELLOW}[!] Failed to get stable version or image; trying A-Box Wallos recovery Release.${NC}" ;;
-        ru) msg "${YELLOW}[!] Не удалось получить стабильную версию или образ; пробуем резервный Release Wallos от A-Box.${NC}" ;;
-        fa) msg "${YELLOW}[!] دریافت نسخه پایدار یا تصویر ناموفق بود؛ نسخه بازیابی Wallos از A-Box بررسی می‌شود.${NC}" ;;
-        zh-tw) msg "${YELLOW}[!] 官方穩定版資訊或映象拉取失敗，正在嘗試 A-Box Wallos 災備 Release。${NC}" ;;
-        ja)
-            msg "${YELLOW}[!] 公式安定版の情報取得またはイメージの取得に失敗しました。A-Box Wallos のリカバリー Release を試します。${NC}" ;;
-        *) msg "${YELLOW}[!] 官方稳定版信息或镜像拉取失败，正在尝试 A-Box Wallos 灾备 Release。${NC}" ;;
-    esac
+    msg "${YELLOW}$(tr_msg wl_pi_recovery)${NC}"
     work=$(umask 077; mktemp -d /tmp/A-Box-Wallos.XXXXXX) || return 1
     manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
     sum_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
@@ -25127,7 +25221,7 @@ wallos_pull_or_restore_image() {
     manifest_actual=$(sha256sum "$work/wallos-manifest.txt" | awk '{print $1}')
     if [[ ! "$manifest_expected" =~ ^[A-Fa-f0-9]{64}$ || "${manifest_expected,,}" != "${manifest_actual,,}" ]]; then
         rm -rf -- "$work"
-        msg "${RED}Wallos manifest checksum mismatch; refusing to load it.${NC}"
+        msg "${RED}$(tr_msg wl_pi_manifest_sum)${NC}"
         return 1
     fi
     # P1-2: verify SHA256SUMS signature before trusting it.
@@ -25167,7 +25261,7 @@ wallos_pull_or_restore_image() {
     actual=$(sha256sum "$work/$asset" | awk '{print $1}')
     if [[ ! "$expected" =~ ^[A-Fa-f0-9]{64}$ || "${expected,,}" != "${actual,,}" ]]; then
         rm -rf -- "$work"
-        msg "${RED}Wallos mirror checksum mismatch; refusing to load it.${NC}"
+        msg "${RED}$(tr_msg wl_pi_mirror_sum)${NC}"
         return 1
     fi
     # N-3: Verify docker load loaded exactly the single expected image.
@@ -25177,7 +25271,7 @@ wallos_pull_or_restore_image() {
     if [[ "$(grep -c '^Loaded image:' <<< "$load_out")" -ne 1 ]] ||
        ! grep -Fqx "Loaded image: bellamy/wallos:${tag#v}" <<< "$load_out"; then
         rm -rf -- "$work"
-        msg "${RED}Wallos archive did not load the single expected image bellamy/wallos:${tag#v}.${NC}"
+        msg "${RED}$(tprintf wl_pi_archive "${tag#v}")${NC}"
         return 1
     fi
     # D-2-FIX: Fail-closed digest check. Manifest is now hash-verified above.
@@ -25190,7 +25284,7 @@ wallos_pull_or_restore_image() {
     # Allow optional docker.io/ prefix (containerd image store).
     if [[ ! "$expected_digest" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]]; then
         rm -rf -- "$work"
-        msg "${RED}Wallos manifest is missing a valid image_digest.$arch; refusing to load.${NC}"
+        msg "${RED}$(tprintf wl_pi_no_digest "$arch")${NC}"
         return 1
     fi
     # Defense-in-depth: If RepoDigests is populated (e.g. image was pulled), verify it matches.
@@ -25198,7 +25292,7 @@ wallos_pull_or_restore_image() {
     loaded_digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "bellamy/wallos:${tag#v}" 2>/dev/null || true)
     if [[ -n "$loaded_digest" && "$loaded_digest" != "$expected_digest" ]]; then
         rm -rf -- "$work"
-        msg "${RED}Wallos mirror image digest mismatch; refusing to use it.${NC}"
+        msg "${RED}$(tr_msg wl_pi_digest_mismatch)${NC}"
         return 1
     fi
     rm -rf -- "$work"

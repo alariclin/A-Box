@@ -25899,7 +25899,7 @@ main_loop() {
                 msg "${CYAN}12.${NC}  View Node Configs & Links          ${CYAN}17.${NC}  Monthly Traffic Quota"
                 msg "${CYAN}13.${NC}  User Guide & Manual                ${CYAN}18.${NC}  More Protocols"
                 msg "${CYAN}14.${NC}  Update Core & Script (OTA)         ${CYAN}19.${NC}  Language / 语言设置"
-                msg "${CYAN}15.${NC}  VPS Optimization                   ${CYAN}20.  Uninstall Script & Cores${NC}"
+                msg "${CYAN}15.${NC}  VPS Optimization                   ${CYAN}20.${NC}  Uninstall Script & Cores${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN} 0.${NC}  Exit"
                 ;;
@@ -25917,7 +25917,7 @@ main_loop() {
                 msg "${CYAN}12.${NC}  Просмотр параметров узлов          ${CYAN}17.${NC}  Лимит месячного трафика"
                 msg "${CYAN}13.${NC}  Справка и руководство              ${CYAN}18.${NC}  Ещё протоколы"
                 msg "${CYAN}14.${NC}  Обновление ядра и скрипта          ${CYAN}19.${NC}  Язык / Language"
-                msg "${CYAN}15.${NC}  Оптимизация VPS                    ${CYAN}20.  Полное удаление скрипта${NC}"
+                msg "${CYAN}15.${NC}  Оптимизация VPS                    ${CYAN}20.${NC}  Полное удаление скрипта${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN} 0.${NC}  Выход"
                 ;;
@@ -25935,7 +25935,7 @@ main_loop() {
                 msg "${CYAN}12.${NC}  مشاهده تنظیمات و نودها             ${CYAN}17.${NC}  مدیریت و محدودیت ترافیک"
                 msg "${CYAN}13.${NC}  راهنمای استفاده                    ${CYAN}18.${NC}  پروتکل‌های بیشتر"
                 msg "${CYAN}14.${NC}  به‌روزرسانی هسته و اسکریپت         ${CYAN}19.${NC}  تنظیم زبان / Language"
-                msg "${CYAN}15.${NC}  بهینه‌سازی VPS                     ${CYAN}20.  حذف کامل اسکریپت و هسته${NC}"
+                msg "${CYAN}15.${NC}  بهینه‌سازی VPS                     ${CYAN}20.${NC}  حذف کامل اسکریپت و هسته${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN} 0.${NC}  خروج"
                 ;;
@@ -25953,7 +25953,7 @@ main_loop() {
                 msg "${CYAN}12.${NC}  查看節點配置與參數                 ${CYAN}17.${NC}  流量管控與額度限制"
                 msg "${CYAN}13.${NC}  使用幫助與說明書                   ${CYAN}18.${NC}  更多協議"
                 msg "${CYAN}14.${NC}  核心與腳本升級 (OTA)               ${CYAN}19.${NC}  多語言設置 / Language"
-                msg "${CYAN}15.${NC}  VPS 一鍵優化                       ${CYAN}20.  徹底卸載腳本與核心${NC}"
+                msg "${CYAN}15.${NC}  VPS 一鍵優化                       ${CYAN}20.${NC}  徹底卸載腳本與核心${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN} 0.${NC}  退出指令碼"
                 ;;
@@ -25971,7 +25971,7 @@ main_loop() {
                 msg "${CYAN}12.${NC}  ノード設定と情報の表示             ${CYAN}17.${NC}  月間通信量制限と管理"
                 msg "${CYAN}13.${NC}  ヘルプとマニュアル                 ${CYAN}18.${NC}  追加のプロトコル"
                 msg "${CYAN}14.${NC}  コアとスクリプト更新 (OTA)         ${CYAN}19.${NC}  言語設定 / Language"
-                msg "${CYAN}15.${NC}  VPS 最適化                         ${CYAN}20.  スクリプトとコアの完全削除${NC}"
+                msg "${CYAN}15.${NC}  VPS 最適化                         ${CYAN}20.${NC}  スクリプトとコアの完全削除${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN} 0.${NC}  スクリプトを終了します"
                 ;;
@@ -25989,7 +25989,7 @@ main_loop() {
                 msg "${CYAN}12.${NC}  查看节点配置与参数                 ${CYAN}17.${NC}  流量管控与额度限制"
                 msg "${CYAN}13.${NC}  使用帮助与说明书                   ${CYAN}18.${NC}  更多协议"
                 msg "${CYAN}14.${NC}  核心与脚本升级 (OTA)               ${CYAN}19.${NC}  多语言设置 / Language"
-                msg "${CYAN}15.${NC}  VPS 一键优化                       ${CYAN}20.  彻底卸载脚本与核心${NC}"
+                msg "${CYAN}15.${NC}  VPS 一键优化                       ${CYAN}20.${NC}  彻底卸载脚本与核心${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN} 0.${NC}  退出脚本"
                 ;;

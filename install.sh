@@ -6936,6 +6936,30 @@ tr_msg() {
         ru:wl_v6_only) echo 'Предпочтение — только IPv6, но в системе нет доступного глобального адреса IPv6/маршрута по умолчанию.' ;;
         fa:wl_v6_only) echo 'ترجیح فقط IPv6 است، اما سیستم هیچ آدرس IPv6 جهانی/مسیر پیش‌فرض قابل استفاده‌ای ندارد.' ;;
         ja:wl_v6_only) echo '設定は IPv6 のみですが、システムに利用可能なグローバル IPv6 アドレス/デフォルトルートがありません。' ;;
+        zh:wl_php_ok) echo '容器 PHP %s 已达到 php2shell 安全修复线。' ;;
+        en:wl_php_ok) echo 'Container PHP %s meets the php2shell security fix line.' ;;
+        ru:wl_php_ok) echo 'PHP контейнера %s соответствует линии исправлений php2shell.' ;;
+        fa:wl_php_ok) echo 'نسخهٔ PHP کانتینر %s به خط اصلاح امنیتی php2shell رسیده است.' ;;
+        zh-tw:wl_php_ok) echo '容器 PHP %s 已達到 php2shell 安全修復線。' ;;
+        ja:wl_php_ok) echo 'コンテナの PHP %s は php2shell セキュリティ修正ラインを満たしています。' ;;
+        zh:wl_php_bad) echo '警告：容器 PHP %s 低于修复线 %s，php2shell 漏洞（CVE-2026-109618 / CVE-2026-109619）未修复，请立即升级 Wallos 镜像。' ;;
+        en:wl_php_bad) echo 'Warning: container PHP %s is below the fix line %s; the php2shell vulnerabilities (CVE-2026-109618 / CVE-2026-109619) are unpatched — upgrade the Wallos image now.' ;;
+        ru:wl_php_bad) echo 'Внимание: PHP контейнера %s ниже линии исправлений %s; уязвимости php2shell (CVE-2026-109618 / CVE-2026-109619) не исправлены — срочно обновите образ Wallos.' ;;
+        fa:wl_php_bad) echo 'هشدار: PHP کانتینر %s پایین‌تر از خط اصلاح %s است؛ آسیب‌پذیری‌های php2shell (CVE-2026-109618 / CVE-2026-109619) اصلاح نشده‌اند — تصویر Wallos را فوراً ارتقا دهید.' ;;
+        zh-tw:wl_php_bad) echo '警告：容器 PHP %s 低於修復線 %s，php2shell 漏洞（CVE-2026-109618 / CVE-2026-109619）未修復，請立即升級 Wallos 鏡像。' ;;
+        ja:wl_php_bad) echo '警告: コンテナの PHP %s は修正ライン %s 未満です。php2shell 脆弱性（CVE-2026-109618 / CVE-2026-109619）は未修正です — Wallos イメージを直ちにアップグレードしてください。' ;;
+        zh:wl_st_php_ok) echo 'PHP 版本：%s（php2shell 已修复）' ;;
+        en:wl_st_php_ok) echo 'PHP version: %s (php2shell patched)' ;;
+        ru:wl_st_php_ok) echo 'Версия PHP: %s (php2shell исправлена)' ;;
+        fa:wl_st_php_ok) echo 'نسخهٔ PHP: ‏%s (php2shell اصلاح شده است)' ;;
+        zh-tw:wl_st_php_ok) echo 'PHP 版本：%s（php2shell 已修復）' ;;
+        ja:wl_st_php_ok) echo 'PHP バージョン: %s（php2shell 修正済み）' ;;
+        zh:wl_st_php_bad) echo 'PHP 版本：%s（php2shell 未修复 — 请升级 Wallos）' ;;
+        en:wl_st_php_bad) echo 'PHP version: %s (php2shell UNPATCHED — upgrade Wallos)' ;;
+        ru:wl_st_php_bad) echo 'Версия PHP: %s (php2shell НЕ исправлена — обновите Wallos)' ;;
+        fa:wl_st_php_bad) echo 'نسخهٔ PHP: ‏%s (php2shell اصلاح نشده است — Wallos را ارتقا دهید)' ;;
+        zh-tw:wl_st_php_bad) echo 'PHP 版本：%s（php2shell 未修復 — 請升級 Wallos）' ;;
+        ja:wl_st_php_bad) echo 'PHP バージョン: %s（php2shell 未修正 — Wallos をアップグレードしてください）' ;;
         zh:fmt_unused) echo '未用' ;;
         en:fmt_unused) echo 'unused' ;;
         ru:fmt_unused) echo 'нет трафика' ;;
@@ -29306,6 +29330,7 @@ wallos_install_or_update() {
             *) msg "${RED}$(tr_msg wl_health_fail)${NC}" ;;
         esac
     fi
+    wallos_php_gate_warn || true
     wallos_public_urls "$port"
     msg "${YELLOW}${security_note}${NC}"
     if [[ "$bind_address" == 0.0.0.0 ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
@@ -29331,6 +29356,62 @@ wallos_install_or_update() {
     [[ -z "$backup" ]] || msg "$(tprintf wl_backup "$backup")"
 }
 
+wallos_container_php_version() {
+    command -v docker >/dev/null 2>&1 || return 1
+    docker exec wallos php -v 2>/dev/null | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1
+}
+
+# php2shell fix line per PHP branch (2026-10-21 PHP security release):
+# 8.2 -> 8.2.35, 8.3 -> 8.3.36, 8.4 -> 8.4.27, 8.5 -> 8.5.12.
+wallos_php_fixline() { # $1 = x.y.z
+    case "${1%.*}" in
+        8.2) echo '8.2.35' ;;
+        8.3) echo '8.3.36' ;;
+        8.4) echo '8.4.27' ;;
+        8.5) echo '8.5.12' ;;
+        *) return 1 ;;
+    esac
+}
+
+wallos_php_is_patched() { # $1 = x.y.z (branch must have a fix line)
+    local _fix='' _x='' _y='' _z='' _fx='' _fy='' _fz=''
+    _fix=$(wallos_php_fixline "$1") || return 1
+    IFS=. read -r _x _y _z <<< "$1"
+    IFS=. read -r _fx _fy _fz <<< "$_fix"
+    (( 10#${_x:-0} > 10#${_fx:-0} )) && return 0
+    (( 10#${_x:-0} < 10#${_fx:-0} )) && return 1
+    (( 10#${_y:-0} > 10#${_fy:-0} )) && return 0
+    (( 10#${_y:-0} < 10#${_fy:-0} )) && return 1
+    (( 10#${_z:-0} >= 10#${_fz:-0} ))
+}
+
+# Echoes one of: patched | vulnerable | unknown.
+wallos_php2shell_state() { # $1 = x.y.z (may be empty)
+    local _v="${1:-}" _mj='' _mm=''
+    [[ "$_v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo unknown; return 0; }
+    if wallos_php_fixline "$_v" >/dev/null 2>&1; then
+        if wallos_php_is_patched "$_v"; then echo patched; else echo vulnerable; fi
+        return 0
+    fi
+    # Branch outside the advisory table: anything newer than 8.5
+    # postdates the advisory; anything older has no fix at all.
+    _mj="${_v%%.*}"; _mm="${_v#*.}"; _mm="${_mm%%.*}"
+    if (( 10#${_mj:-0} > 8 || ( 10#${_mj:-0} == 8 && 10#${_mm:-0} > 5 ) )); then echo patched; else echo vulnerable; fi
+}
+
+wallos_php_gate_warn() {
+    local _v='' _st='' _fix=''
+    _v=$(wallos_container_php_version) || true
+    [[ "$_v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
+    _st=$(wallos_php2shell_state "$_v")
+    if [[ "$_st" == vulnerable ]]; then
+        _fix=$(wallos_php_fixline "$_v" || echo '-')
+        msg "${RED}$(tprintf wl_php_bad "$_v" "$_fix")${NC}"
+    else
+        msg "${GREEN}$(tprintf wl_php_ok "$_v")${NC}"
+    fi
+}
+
 wallos_status() {
     local port
     if ! docker container inspect wallos >/dev/null 2>&1; then
@@ -29342,6 +29423,16 @@ wallos_status() {
         msg "${GREEN}$(tr_msg wl_st_health_ok)${NC}"
     else
         msg "${RED}$(tr_msg wl_st_health_bad)${NC}"
+    fi
+    local _php_v='' _php_st=''
+    _php_v=$(wallos_container_php_version) || true
+    if [[ "$_php_v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        _php_st=$(wallos_php2shell_state "$_php_v")
+        if [[ "$_php_st" == vulnerable ]]; then
+            msg "${RED}$(tprintf wl_st_php_bad "$_php_v")${NC}"
+        else
+            msg "${GREEN}$(tprintf wl_st_php_ok "$_php_v")${NC}"
+        fi
     fi
     if [[ "$(wallos_state_value MODE 2>/dev/null || true)" == https ]]; then
         local _crt='' _exp=''

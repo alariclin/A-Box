@@ -20465,6 +20465,222 @@ EOF_SWAP_MARK
     pause_return
 }
 
+# --- zram compressed swap -------------------------------------------
+# Helper: /usr/local/sbin/abox-zram (start|stop|status); its config
+# /etc/ddr/zram.conf pins SIZE_MB/ALGO so a boot-time start reproduces
+# exactly what setup created. zram runs at swap priority 100, above
+# the disk swapfile, so the kernel prefers it automatically.
+abox_zram_write_helper() {
+    write_file_atomically_from_stdin /usr/local/sbin/abox-zram 755 <<'EOF_ZRAM_HELPER'
+#!/bin/bash
+# A-Box zram swap helper: start|stop|status
+set -u
+CONF=/etc/ddr/zram.conf
+SIZE_MB=512
+ALGO=zstd
+if [[ -f "$CONF" ]]; then . "$CONF"; fi
+zram_active_devs() {
+    swapon --show=NAME --noheadings 2>/dev/null | grep -E '^/dev/zram[0-9]+$' || true
+}
+case "${1:-}" in
+    start)
+        [[ -z "$(zram_active_devs)" ]] || exit 0
+        modprobe zram 2>/dev/null || true
+        [[ -e /sys/class/zram-control ]] || exit 1
+        dev=''
+        if command -v zramctl >/dev/null 2>&1; then
+            dev=$(zramctl --find --size "${SIZE_MB}M" --algorithm "$ALGO" 2>/dev/null) || dev=''
+        fi
+        if [[ -z "$dev" ]]; then
+            id=$(cat /sys/class/zram-control/hot_add 2>/dev/null) || exit 1
+            [[ "$id" =~ ^[0-9]+$ ]] || exit 1
+            dev="/dev/zram${id}"
+            echo "$ALGO" > "/sys/block/zram${id}/comp_algorithm" 2>/dev/null || true
+            echo "${SIZE_MB}M" > "/sys/block/zram${id}/disksize" || exit 1
+        fi
+        mkswap "$dev" >/dev/null 2>&1 || exit 1
+        swapon -p 100 "$dev" || exit 1
+        ;;
+    stop)
+        for d in $(zram_active_devs); do swapoff "$d" 2>/dev/null || exit 1; done
+        if command -v zramctl >/dev/null 2>&1; then
+            for b in /sys/block/zram[0-9]*; do
+                [[ -e "$b" ]] || continue
+                zramctl --reset "/dev/${b##*/}" >/dev/null 2>&1 || true
+            done
+        fi
+        ;;
+    status)
+        zram_active_devs
+        ;;
+    *) echo "usage: abox-zram start|stop|status" >&2; exit 2 ;;
+esac
+EOF_ZRAM_HELPER
+}
+
+setup_zram_swap() {
+    clear
+    msg "${CYAN}======================================================================${NC}"
+    msg "${BOLD}${GREEN}zram 压缩交换 / zram Compressed Swap${NC}"
+    msg "${CYAN}======================================================================${NC}"
+    if swapon --show=NAME --noheadings 2>/dev/null | grep -qE '^/dev/zram[0-9]+$'; then
+        msg "${YELLOW}zram 交换已在运行：${NC}"
+        swapon --show || true
+        pause_return
+        return 0
+    fi
+    modprobe zram 2>/dev/null || true
+    if [[ ! -e /sys/class/zram-control ]]; then
+        msg "${RED}当前内核没有 zram 支持（模块不可用）。请改用本菜单第 2 项的磁盘 Swap 文件。${NC}"
+        pause_return
+        return 0
+    fi
+    local algo='' supported='' cand=''
+    if [[ -r /sys/block/zram0/comp_algorithm ]]; then
+        supported=$(tr -d '[]' < /sys/block/zram0/comp_algorithm)
+        for cand in zstd lz4 lzo-rle lzo; do
+            if [[ " $supported " == *" $cand "* ]]; then algo="$cand"; break; fi
+        done
+    fi
+    [[ -n "$algo" ]] || algo='lz4'
+    local mem_kb=0 size_mb=512
+    mem_kb=$(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    [[ "$mem_kb" =~ ^[0-9]+$ ]] || mem_kb=0
+    size_mb=$(( mem_kb / 1024 / 2 ))
+    (( size_mb < 256 )) && size_mb=256
+    (( size_mb > 2048 )) && size_mb=2048
+    if ! write_file_atomically_from_stdin /etc/ddr/zram.conf 600 <<EOF_ZRAM_CONF
+SIZE_MB=${size_mb}
+ALGO=${algo}
+EOF_ZRAM_CONF
+    then
+        msg "${RED}zram 配置写入失败。${NC}"
+        pause_return
+        return 0
+    fi
+    if ! abox_zram_write_helper; then
+        rm -f /etc/ddr/zram.conf
+        msg "${RED}zram 辅助脚本写入失败。${NC}"
+        pause_return
+        return 0
+    fi
+    if ! /usr/local/sbin/abox-zram start; then
+        rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf
+        msg "${RED}zram 启用失败（设备创建/格式化/挂载任一环节未通过），已清理。请改用磁盘 Swap 文件。${NC}"
+        pause_return
+        return 0
+    fi
+    local init=''
+    init=$(effective_init_system)
+    case "$init" in
+        systemd)
+            write_file_atomically_from_stdin /etc/systemd/system/abox-zram.service 644 <<'EOF_ZRAM_UNIT' || true
+[Unit]
+Description=A-Box zram compressed swap
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/abox-zram start
+ExecStop=/usr/local/sbin/abox-zram stop
+
+[Install]
+WantedBy=multi-user.target
+EOF_ZRAM_UNIT
+            systemctl daemon-reload >/dev/null 2>&1 || true
+            systemctl enable abox-zram.service >/dev/null 2>&1 || msg "${YELLOW}[!] zram 已启用，但开机自启设置未成功（systemctl enable 失败），重启后需手动重新启用。${NC}"
+            ;;
+        openrc)
+            write_file_atomically_from_stdin /etc/init.d/abox-zram 755 <<'EOF_ZRAM_RC' || true
+#!/sbin/openrc-run
+description="A-Box zram compressed swap"
+depend() {
+    need localmount
+    before swap
+}
+start() {
+    ebegin "Starting A-Box zram swap"
+    /usr/local/sbin/abox-zram start
+    eend $?
+}
+stop() {
+    ebegin "Stopping A-Box zram swap"
+    /usr/local/sbin/abox-zram stop
+    eend $?
+}
+EOF_ZRAM_RC
+            rc-update add abox-zram default >/dev/null 2>&1 || msg "${YELLOW}[!] zram 已启用，但开机自启设置未成功（rc-update 失败），重启后需手动重新启用。${NC}"
+            ;;
+        *)
+            msg "${YELLOW}[!] 无法识别 init 系统：zram 本次已启用，但未设置开机自启。${NC}"
+            ;;
+    esac
+    msg "${GREEN}zram 已启用：大小 ${size_mb}M · 算法 ${algo} · 优先级 100（高于磁盘 Swap，内核优先使用）${NC}"
+    swapon --show || true
+    pause_return
+}
+
+remove_zram_swap() {
+    local init=''
+    init=$(effective_init_system)
+    if [[ "$init" == 'systemd' ]]; then
+        systemctl disable abox-zram.service >/dev/null 2>&1 || true
+        rm -f /etc/systemd/system/abox-zram.service
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    elif [[ "$init" == 'openrc' ]]; then
+        rc-update del abox-zram default >/dev/null 2>&1 || true
+        rm -f /etc/init.d/abox-zram
+    fi
+    [[ -x /usr/local/sbin/abox-zram ]] && /usr/local/sbin/abox-zram stop || true
+    rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf
+    msg "${GREEN}zram 已移除（A-Box 创建的配置与自启已清理）。${NC}"
+    swapon --show || true
+    pause_return
+}
+
+swap_status_show() {
+    msg "${BOLD}${GREEN}当前交换状态 / Swap Status${NC}"
+    swapon --show || true
+    if command -v zramctl >/dev/null 2>&1; then zramctl || true; fi
+    free -m | grep -iE '^(Mem|Swap|内存|交换)' || free -m || true
+    pause_return
+}
+
+swap_menu() {
+    local choice=''
+    while true; do
+        clear
+        msg "${CYAN}======================================================================${NC}"
+        msg "${BOLD}${GREEN}交换内存管理 / Swap Manager${NC}"
+        msg "${CYAN}======================================================================${NC}"
+        msg "${YELLOW} 1.  zram 压缩交换（推荐：内存内压缩，不占磁盘）${NC}"
+        msg "${YELLOW} 2.  磁盘 Swap 文件 2G（传统方式）${NC}"
+        msg "${YELLOW} 3.  查看当前交换状态${NC}"
+        msg "${YELLOW} 4.  移除 zram（仅 A-Box 创建的）${NC}"
+        msg "${YELLOW} 5.  移除磁盘 Swap 文件（仅 A-Box 创建的）${NC}"
+        msg "${CYAN} 0.  返回${NC}"
+        read -r -p "请选择 [0-5]：" choice || return 0
+        case "$choice" in
+            1) setup_zram_swap ;;
+            2) setup_swap_2g ;;
+            3) swap_status_show ;;
+            4) remove_zram_swap ;;
+            5)
+                if [[ -f /etc/ddr/.swapfile.managed ]]; then
+                    remove_abox_swap && msg "${GREEN}磁盘 Swap 文件已移除。${NC}" || msg "${RED}移除失败，请检查 /swapfile 与 /etc/fstab。${NC}"
+                else
+                    msg "${YELLOW}没有 A-Box 创建的磁盘 Swap 文件。${NC}"
+                fi
+                pause_return
+                ;;
+            0) return 0 ;;
+            *) msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1 ;;
+        esac
+    done
+}
+
+
 # BUG-28: hoisted from remove_abox_swap(). $1 = fstab backup path.
 __abox_restore_fstab_from_swap_backup() {
     local backup="$1"
@@ -25645,7 +25861,7 @@ vps_benchmark_menu() {
             msg "${BOLD}${GREEN}综合工具箱${NC}"
             msg "${CYAN}[ 测试诊断 ]                              [ 系统优化 ]${NC}"
             msg "${YELLOW} 1.  A-Check IP 纯净度检测                 5.  WARP 与分流管理${NC}"
-            msg "${YELLOW} 2.  系统性能与下载测速                    6.  创建 2 GB Swap${NC}"
+            msg "${YELLOW} 2.  系统性能与下载测速                    6.  Swap / zram 交换${NC}"
             msg "${YELLOW} 3.  IP 质量/流媒体解锁/回程测试           7.  VPS 一键优化${NC}"
             msg "${YELLOW} 4.  导出脱敏诊断包                        8.  IP / DNS / 时区 / 下载源设置${NC}"
             msg ""
@@ -25669,7 +25885,7 @@ vps_benchmark_menu() {
         3) run_mirrored_test_script 'IP quality, streaming unlock and route test' 'https://Check.Place' 'Check.Place.sh' -I; pause_return ;;
         4) export_diagnostic_bundle ;;
         5) warp_split_menu ;;
-        6) setup_swap_2g ;;
+        6) swap_menu ;;
         7) tune_vps ;;
         8) host_network_menu ;;
         9) run_local_sni_benchmark ;;
@@ -28444,6 +28660,9 @@ N11EOF
     grep -q -- '--config -' "$0" || { echo 'FAIL: GitHub token pipe config guard missing'; failures=$((failures + 1)); }
     grep -q '2300000' "$0" || { echo 'FAIL: swap free-space safety check missing'; failures=$((failures + 1)); }
     grep -q 'created_by_abox == 1' "$0" || { echo 'FAIL: swap ownership must only be recorded for A-Box-created swap'; failures=$((failures + 1)); }
+    grep -Fq 'setup_zram_swap()' "$0" || { echo 'FAIL: zram swap setup missing'; failures=$((failures + 1)); }
+    grep -Fq '6) swap_menu ;;' "$0" || { echo 'FAIL: toolbox 6 must open the swap submenu'; failures=$((failures + 1)); }
+    grep -Fq '/usr/local/sbin/abox-zram' "$0" || { echo 'FAIL: zram helper path missing'; failures=$((failures + 1)); }
     grep -q '^swapfile_active_state() {' "$0" || { echo 'FAIL: Swap activity query must have explicit three-state error handling'; failures=$((failures + 1)); }
     grep -Fq '无法可靠判断 /swapfile 当前是否已激活' "$0" || { echo 'FAIL: Swap activity query failure must fail closed'; failures=$((failures + 1)); }
     swapon() { printf '%s\n' '/swapfile'; }

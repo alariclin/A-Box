@@ -592,6 +592,48 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:xl_m_trio) echo '一键三合一（Xray：Vision + XHTTP + SS-2022）' ;;
+        en:xl_m_trio) echo 'One-click trio (Xray: Vision + XHTTP + SS-2022)' ;;
+        ru:xl_m_trio) echo 'Трио в один клик (Xray: Vision + XHTTP + SS-2022)' ;;
+        fa:xl_m_trio) echo 'سه‌تایی با یک کلیک (Xray: Vision + XHTTP + SS-2022)' ;;
+        zh-tw:xl_m_trio) echo '一鍵三合一（Xray：Vision + XHTTP + SS-2022）' ;;
+        ja:xl_m_trio) echo 'ワンクリック三点セット（Xray：Vision + XHTTP + SS-2022）' ;;
+        zh:xl_m_quad) echo '一键四合一（Xray 三合一 + Hy2 官方版）' ;;
+        en:xl_m_quad) echo 'One-click quad (Xray trio + official Hy2)' ;;
+        ru:xl_m_quad) echo 'Четыре в один клик (трио Xray + официальный Hy2)' ;;
+        fa:xl_m_quad) echo 'چهارتایی با یک کلیک (سه‌تایی Xray + Hy2 رسمی)' ;;
+        zh-tw:xl_m_quad) echo '一鍵四合一（Xray 三合一 + Hy2 官方版）' ;;
+        ja:xl_m_quad) echo 'ワンクリック四点セット（Xray 三点セット + 公式 Hy2）' ;;
+        zh:xl_sb_ports) echo 'sing-box 端口' ;;
+        en:xl_sb_ports) echo 'sing-box ports' ;;
+        ru:xl_sb_ports) echo 'Порты sing-box' ;;
+        fa:xl_sb_ports) echo 'پورت‌های sing-box' ;;
+        zh-tw:xl_sb_ports) echo 'sing-box 連接埠' ;;
+        ja:xl_sb_ports) echo 'sing-box ポート' ;;
+        zh:xl_hy2_port_l) echo 'Hy2 官方版端口' ;;
+        en:xl_hy2_port_l) echo 'Official Hy2 port' ;;
+        ru:xl_hy2_port_l) echo 'Порт официального Hy2' ;;
+        fa:xl_hy2_port_l) echo 'پورت Hy2 رسمی' ;;
+        zh-tw:xl_hy2_port_l) echo 'Hy2 官方版連接埠' ;;
+        ja:xl_hy2_port_l) echo '公式 Hy2 ポート' ;;
+        zh:xl_sys_ports) echo '本机全部监听端口（TCP/UDP）' ;;
+        en:xl_sys_ports) echo 'All listening ports on this machine (TCP/UDP)' ;;
+        ru:xl_sys_ports) echo 'Все слушающие порты машины (TCP/UDP)' ;;
+        fa:xl_sys_ports) echo 'همه پورت‌های در حال گوش‌دادن این ماشین (TCP/UDP)' ;;
+        zh-tw:xl_sys_ports) echo '本機全部監聽連接埠（TCP/UDP）' ;;
+        ja:xl_sys_ports) echo 'このマシンの全リッスンポート（TCP/UDP）' ;;
+        zh:xl_quad_note) echo '接下来部署官方版 Hysteria2（独立流程，按提示操作）' ;;
+        en:xl_quad_note) echo 'Next: deploy official Hysteria2 (separate flow, follow its prompts)' ;;
+        ru:xl_quad_note) echo 'Далее: развёртывание официального Hysteria2 (отдельный процесс, следуйте подсказкам)' ;;
+        fa:xl_quad_note) echo 'در ادامه: استقرار Hy2 رسمی (فرایند جداگانه، طبق راهنما پیش بروید)' ;;
+        zh-tw:xl_quad_note) echo '接下來部署官方版 Hysteria2（獨立流程，按提示操作）' ;;
+        ja:xl_quad_note) echo '続いて公式 Hysteria2 を導入します（別フロー、案内に従ってください）' ;;
+        zh:xl_quad_hy2_fail) echo 'Hy2 官方版部署失败（原因见上方），Xray 三合一已保留。' ;;
+        en:xl_quad_hy2_fail) echo 'Official Hy2 deployment failed (see above); the Xray trio was kept.' ;;
+        ru:xl_quad_hy2_fail) echo 'Развёртывание официального Hy2 не удалось (см. выше); трио Xray сохранено.' ;;
+        fa:xl_quad_hy2_fail) echo 'استقرار Hy2 رسمی ناموفق بود (بالا را ببینید)؛ سه‌تایی Xray حفظ شد.' ;;
+        zh-tw:xl_quad_hy2_fail) echo 'Hy2 官方版部署失敗（原因見上方），Xray 三合一已保留。' ;;
+        ja:xl_quad_hy2_fail) echo '公式 Hy2 の導入に失敗しました（上記参照）。Xray 三点セットは保持されています。' ;;
         zh:xl_title) echo '最新 Xray（上游最新版 · 实验功能）' ;;
         en:xl_title) echo 'Latest Xray (upstream latest · experimental)' ;;
         ru:xl_title) echo 'Последний Xray (новейший upstream · эксперимент)' ;;
@@ -670,12 +712,12 @@ tr_msg() {
         fa:xl_back_main) echo 'بازگشت' ;;
         zh-tw:xl_back_main) echo '返回' ;;
         ja:xl_back_main) echo '戻る' ;;
-        zh:xl_select) echo '请选择 [0-7]：' ;;
-        en:xl_select) echo 'Select [0-7]: ' ;;
-        ru:xl_select) echo 'Выберите [0–7]: ' ;;
-        fa:xl_select) echo 'انتخاب [۰ تا ۷]: ' ;;
-        zh-tw:xl_select) echo '請選擇 [0-7]：' ;;
-        ja:xl_select) echo '選択してください [0-7]：' ;;
+        zh:xl_select) echo '请选择 [0-9]：' ;;
+        en:xl_select) echo 'Select [0-9]: ' ;;
+        ru:xl_select) echo 'Выберите [0–9]: ' ;;
+        fa:xl_select) echo 'انتخاب [۰ تا ۹]: ' ;;
+        zh-tw:xl_select) echo '請選擇 [0-9]：' ;;
+        ja:xl_select) echo '選択してください [0-9]：' ;;
         zh:xl_mode_ask) echo '请选择安装模式 [1-2，0 取消]：' ;;
         en:xl_mode_ask) echo 'Install mode [1-2, 0 cancel]: ' ;;
         ru:xl_mode_ask) echo 'Режим установки [1-2, 0 — отмена]: ' ;;
@@ -22460,12 +22502,34 @@ xl_config_ports() { # $1 = config path -> sorted unique public ports
     jq -r '.inbounds[]? | select(.port != null and .tag != "api") | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1")) | .port' "$cfg" 2>/dev/null | sort -un
 }
 
+xl_singbox_ports() {
+    local cfg='/etc/sing-box/config.json'
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 0
+    jq -r '.inbounds[]? | select(.listen_port != null) | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1")) | .listen_port' "$cfg" 2>/dev/null | sort -un
+}
+
+xl_hy2_port() {
+    local cfg='/etc/hysteria/config.yaml'
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 0
+    grep -E '^[[:space:]]*listen:' "$cfg" 2>/dev/null | head -1 | grep -oE '[0-9]+[[:space:]]*$' | tr -d ' '
+}
+
+xl_listen_ports() {
+    ss -tuln 2>/dev/null | awk 'NR>1 {print $5}' | sed -E 's/.*[:.]([0-9]+)$/\1/' | grep -E '^[0-9]+$' | sort -un
+}
+
 xl_show_ports() {
-    local sp lp
+    local sp lp sb hy sy
     sp=$(xl_config_ports "$XRAY_SLOT_CFG" | paste -sd, -)
     lp=$(xl_config_ports "$XRAY_LATEST_CFG" | paste -sd, -)
+    sb=$(xl_singbox_ports | paste -sd, -)
+    hy=$(xl_hy2_port)
+    sy=$(xl_listen_ports | paste -sd, -)
     msg "${CYAN}$(tr_msg xl_slot_ports): ${sp:-—}${NC}"
     msg "${CYAN}$(tr_msg xl_latest_ports): ${lp:-—}${NC}"
+    msg "${CYAN}$(tr_msg xl_sb_ports): ${sb:-—}${NC}"
+    msg "${CYAN}$(tr_msg xl_hy2_port_l): ${hy:-—}${NC}"
+    msg "${CYAN}$(tr_msg xl_sys_ports): ${sy:-—}${NC}"
 }
 
 # Conflict = port used by the OTHER Xray instance's config, or held by a
@@ -22475,6 +22539,8 @@ xl_port_conflict() { # $1=port $2=target_cfg
     [[ "$port" =~ ^[0-9]+$ ]] || return 1
     if [[ "$target_cfg" == "$XRAY_SLOT_CFG" ]]; then other_cfg="$XRAY_LATEST_CFG"; else other_cfg="$XRAY_SLOT_CFG"; fi
     while read -r p; do [[ "$p" == "$port" ]] && return 0; done < <(xl_config_ports "$other_cfg")
+    while read -r p; do [[ "$p" == "$port" ]] && return 0; done < <(xl_singbox_ports)
+    [[ "$(xl_hy2_port)" == "$port" ]] && return 0
     while read -r p; do own+="$p "; done < <(xl_config_ports "$target_cfg")
     if ss -tuln 2>/dev/null | awk '{print $5}' | grep -qE "[:.]${port}\$"; then
         [[ "$own" == *" $port "* ]] || return 0
@@ -22745,8 +22811,8 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     msg "${BOLD}${GREEN}${label}${NC}"
     if [[ "$mode" == 'coexist' ]]; then
         msg "${YELLOW}$(tr_msg xl_coexist_note)${NC}"
-        xl_show_ports
     fi
+    xl_show_ports
     port=$(prompt_validated "$(tr_msg xl_port_prompt)" port "$defport") || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     if xl_port_conflict "$port" "$cfg"; then
         msg "${RED}$(tr_msg xl_port_conflict): ${port}${NC}"
@@ -22849,6 +22915,112 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     return 0
 }
 
+
+# One-click trio on the latest instance: Vision + XHTTP + SS-2022 in one
+# atomic config merge (shared UUID / REALITY keypair / SNI, like the main
+# combo builder), one restart, snapshot rollback on failure.
+xray_latest_deploy_trio() {
+    local target='' cfg='' bin='' svc='' mode=''
+    local vp='' xp='' sp2='' keypair='' pk='' pbk='' sid='' uuid='' sspass='' sni=''
+    local tmp_json='' tmp_cfg='' bak='' pub_ip='' link='' listen_addr=''
+    target=$(_xl_target) || { msg "${RED}$(tr_msg xl_need_core)${NC}"; return 1; }
+    IFS='|' read -r cfg bin svc <<< "$target"
+    mode=$(_xl_state_get mode)
+    init_system_environment || return 1
+    load_optional_abox_env_or_die
+    light_preflight_check
+    clear
+    msg "${BOLD}${GREEN}$(tr_msg xl_m_trio)${NC}"
+    if [[ "$mode" == 'coexist' ]]; then msg "${YELLOW}$(tr_msg xl_coexist_note)${NC}"; fi
+    xl_show_ports
+    vp=$(prompt_validated "$(tr_msg xl_port_prompt)" port '443') || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    if xl_port_conflict "$vp" "$cfg"; then msg "${RED}$(tr_msg xl_port_conflict): ${vp}${NC}"; return 1; fi
+    xp=$(prompt_validated "$(tr_msg xl_port_prompt)" port '8443') || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    if [[ "$xp" == "$vp" ]] || xl_port_conflict "$xp" "$cfg"; then msg "${RED}$(tr_msg xl_port_conflict): ${xp}${NC}"; return 1; fi
+    sp2=$(prompt_validated "$(tr_msg xl_port_prompt)" port '2053') || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    if [[ "$sp2" == "$vp" || "$sp2" == "$xp" ]] || xl_port_conflict "$sp2" "$cfg"; then msg "${RED}$(tr_msg xl_port_conflict): ${sp2}${NC}"; return 1; fi
+    listen_addr=$(wildcard_listen_address)
+    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
+    [[ -n "$sni" ]] || sni='www.amazon.com'
+    keypair=$("$bin" x25519) || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    [[ -n "$pk" && -n "$pbk" ]] || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    sid=$(openssl rand -hex 4 | tr -d '\n\r') || return 1
+    uuid=$(generate_robust_uuid) || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    sspass=$(openssl rand -base64 16 | tr -d '\n\r') || return 1
+    [[ -n "$sspass" ]] || return 1
+    tmp_json=$(mktemp /tmp/A-Box-xl-trio.XXXXXX) || return 1
+    jq -n --arg listen "$listen_addr" --arg uuid "$uuid" --arg sni "$sni" --arg pk "$pk" --arg sid "$sid" --arg sspass "$sspass" \
+        --argjson vp "$vp" --argjson xp "$xp" --argjson sp "$sp2" '
+        [{tag:"latest-vision",listen:$listen,port:$vp,protocol:"vless",
+          settings:{clients:[{id:$uuid,flow:"xtls-rprx-vision"}],decryption:"none"},
+          streamSettings:{network:"tcp",security:"reality",realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}},
+          sniffing:{enabled:true,destOverride:["http","tls","quic"]}},
+         {tag:"latest-xhttp",listen:$listen,port:$xp,protocol:"vless",
+          settings:{clients:[{id:$uuid}],decryption:"none"},
+          streamSettings:{network:"xhttp",security:"reality",xhttpSettings:{mode:"auto",path:"/xhttp"},realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}},
+          sniffing:{enabled:true,destOverride:["http","tls","quic"]}},
+         {tag:"latest-ss",listen:$listen,port:$sp,protocol:"shadowsocks",
+          settings:{method:"2022-blake3-aes-128-gcm",password:$sspass,network:"tcp,udp"}}]' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
+    if [[ ! -f "$cfg" || -L "$cfg" ]]; then rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"; return 1; fi
+    bak=$(mktemp /tmp/A-Box-xl-trio-bak.XXXXXX) || { rm -f "$tmp_json"; return 1; }
+    cp -f -- "$cfg" "$bak" || { rm -f "$tmp_json" "$bak"; return 1; }
+    tmp_cfg=$(mktemp /tmp/A-Box-xl-trio-cfg.XXXXXX) || { rm -f "$tmp_json" "$bak"; return 1; }
+    mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; return 1; }; tmp_cfg="$tmp_cfg.json"
+    if ! jq --slurpfile nb "$tmp_json" \
+            '.inbounds |= (map(select(.tag != "latest-vision" and .tag != "latest-xhttp" and .tag != "latest-ss")) + $nb[0])' \
+            "$cfg" > "$tmp_cfg" 2>/dev/null; then
+        rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1
+    fi
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$tmp_cfg" >/dev/null 2>&1; then
+        rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"; return 1
+    fi
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    rm -f "$tmp_cfg" "$tmp_json"
+    if [[ "$svc" == 'xray' ]]; then prepare_abox_runtime_permissions xray 2>/dev/null || true; else prepare_abox_runtime_read_file "$cfg" xray 2>/dev/null || true; fi
+    if ! restart_service_soft "$svc"; then
+        install_file_atomically "$bak" "$cfg" 600 2>/dev/null || cp -f -- "$bak" "$cfg"
+        restart_service_soft "$svc" >/dev/null 2>&1 || true
+        rm -f "$bak"
+        msg "${RED}$(tr_msg xl_restart_fail)${NC}"
+        return 1
+    fi
+    rm -f "$bak"
+    allowPort "$vp" tcp || return 1
+    allowPort "$xp" tcp || return 1
+    allowPort "$sp2" tcp || return 1
+    allowPort "$sp2" udp || true
+    save_firewall_rules || return 1
+    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
+    link="vless://$(urlencode "$uuid")@$(uri_host "$pub_ip"):${vp}?security=reality&encryption=none&flow=xtls-rprx-vision&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Latest-Vision"
+    msg "${GREEN}$(tr_msg xl_ok_installed): VLESS-Vision-Reality :${vp}${NC}"; msg "$link"; generate_qr "$link"
+    register_standalone_link latest-vision "VLESS-Vision-Reality (Latest Xray) · :${vp}" "$link"
+    link="vless://$(urlencode "$uuid")@$(uri_host "$pub_ip"):${xp}?security=reality&encryption=none&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=xhttp&path=%2Fxhttp&mode=auto#Latest-XHTTP"
+    msg "${GREEN}$(tr_msg xl_ok_installed): VLESS-XHTTP-Reality :${xp}${NC}"; msg "$link"; generate_qr "$link"
+    register_standalone_link latest-xhttp "VLESS-XHTTP-Reality (Latest Xray) · :${xp}" "$link"
+    link="ss://$(printf '%s' "2022-blake3-aes-128-gcm:${sspass}" | base64 -w0 2>/dev/null | tr '+/' '-_' | tr -d '=')@$(uri_host "$pub_ip"):${sp2}#Latest-SS2022"
+    msg "${GREEN}$(tr_msg xl_ok_installed): SS-2022 :${sp2}${NC}"; msg "$link"; generate_qr "$link"
+    register_standalone_link latest-ss "SS-2022 (Latest Xray) · :${sp2}" "$link"
+    return 0
+}
+
+# One-click quad: the Xray trio above + the official Hysteria2 deployment
+# (its own established flow and transaction handling, run in a subshell so
+# its die paths cannot kill this menu).
+xray_latest_deploy_quad() {
+    xray_latest_deploy_trio || return 1
+    msg "${CYAN}$(tr_msg xl_quad_note)${NC}"
+    if ( deploy_official_hy2 ); then
+        msg "${GREEN}$(tr_msg xl_ok_installed): Hysteria2${NC}"
+        return 0
+    fi
+    msg "${RED}$(tr_msg xl_quad_hy2_fail)${NC}"
+    return 1
+}
+
 xray_latest_remove() {
     local mode='' ver=''
     mode=$(_xl_state_get mode)
@@ -22912,8 +23084,10 @@ xray_latest_menu() {
         msg "${YELLOW}3.  VLESS + XHTTP + REALITY${NC}"
         msg "${YELLOW}4.  Trojan-Reality${NC}"
         msg "${YELLOW}5.  Shadowsocks 2022${NC}"
-        msg "${YELLOW}6.  $(tr_msg xl_m_ports)${NC}"
-        msg "${YELLOW}7.  $(tr_msg xl_m_remove)${NC}"
+        msg "${YELLOW}6.  $(tr_msg xl_m_trio)${NC}"
+        msg "${YELLOW}7.  $(tr_msg xl_m_quad)${NC}"
+        msg "${YELLOW}8.  $(tr_msg xl_m_ports)${NC}"
+        msg "${YELLOW}9.  $(tr_msg xl_m_remove)${NC}"
         msg "${CYAN}0.  $(tr_msg xl_back_main)${NC}"
         read -r -p "$(tr_msg xl_select)" choice || return 0
         case "$choice" in
@@ -22922,8 +23096,10 @@ xray_latest_menu() {
             3) xray_latest_deploy xhttp; pause_return ;;
             4) xray_latest_deploy trojan; pause_return ;;
             5) xray_latest_deploy ss; pause_return ;;
-            6) xl_show_ports; pause_return ;;
-            7) xray_latest_remove; pause_return ;;
+            6) xray_latest_deploy_trio; pause_return ;;
+            7) xray_latest_deploy_quad; pause_return ;;
+            8) xl_show_ports; pause_return ;;
+            9) xray_latest_remove; pause_return ;;
             0) return 0 ;;
             *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
         esac
@@ -25598,6 +25774,8 @@ PY_SELFTEST_TAR
     declare -F xray_latest_menu >/dev/null 2>&1 || { echo 'FAIL: latest Xray menu missing'; failures=$((failures + 1)); }
     declare -F xray_latest_install_core >/dev/null 2>&1 || { echo 'FAIL: latest Xray core installer missing'; failures=$((failures + 1)); }
     declare -F xray_latest_deploy >/dev/null 2>&1 || { echo 'FAIL: latest Xray deployer missing'; failures=$((failures + 1)); }
+    declare -F xray_latest_deploy_trio >/dev/null 2>&1 || { echo 'FAIL: latest Xray trio deployer missing'; failures=$((failures + 1)); }
+    declare -F xray_latest_deploy_quad >/dev/null 2>&1 || { echo 'FAIL: latest Xray quad deployer missing'; failures=$((failures + 1)); }
     grep -Fq "XRAY_LATEST_BIN='/usr/local/bin/xray-latest'" "$0" || { echo 'FAIL: xray-latest binary path missing'; failures=$((failures + 1)); }
     grep -Fq '每月流量管控 / Monthly Traffic' <<< "$source_body" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
     grep -Fq 'one_click_reality_deploy()' "$0" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }

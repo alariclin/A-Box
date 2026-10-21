@@ -80,7 +80,7 @@ Standalone deployments, independent of the combined bundles above. Each one asks
 | 4 | SOCKS5 / Mixed | Standalone SOCKS5 with authentication; choose the core |
 | 5 | ShadowTLS | ShadowTLS v3 on sing-box, detouring to an internal Shadowsocks-2022 inbound |
 | 6 | Argo (CDN) | VMess / VLESS over WebSocket through a Cloudflare Tunnel — no inbound port is opened on the server. Temporary quick tunnels get a random `*.trycloudflare.com` address that changes on restart; fixed tunnels use your own domain and tunnel token |
-| 7 | Latest Xray | Experimental: installs the newest upstream Xray core (take over the slot, or coexist as a separate xray-latest instance with port-conflict warnings) and deploys VLESS-Vision / XHTTP / Trojan-Reality / SS-2022 on it one by one. Failures are reported and removed; the stable pinned core is never auto-reinstalled |
+| 7 | Latest Xray | Experimental: installs the newest upstream Xray core (take over the slot, or coexist as a separate xray-latest instance with port-conflict warnings) and deploys VLESS-Vision / XHTTP / Trojan-Reality / SS-2022 on it one by one. Failures are reported and removed; the stable pinned core is never auto-reinstalled Includes one-click trio and quad (+ official Hy2) combos, and full-machine port-conflict warnings. |
 
 ## Status panel
 

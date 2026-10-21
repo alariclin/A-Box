@@ -80,7 +80,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 | 4 | SOCKS5 / Mixed | 獨立 SOCKS5，帶帳號密碼認證，可選核心 |
 | 5 | ShadowTLS | sing-box 的 ShadowTLS v3，轉接到內部 Shadowsocks-2022 入站 |
 | 6 | Argo (CDN) | VMess / VLESS 經 WebSocket 走 Cloudflare 隧道，伺服器不開任何入站連接埠。臨時隧道是隨機 `*.trycloudflare.com` 位址，重新啟動即變；固定隧道用你自己的網域和隧道權杖 |
-| 7 | 最新 Xray | 實驗功能：安裝上游最新版 Xray 核心（接管槽位，或以 xray-latest 實例並存並提示連接埠衝突），逐個部署 VLESS-Vision / XHTTP / Trojan-Reality / SS-2022。失敗會告知原因並刪除，不會自動裝回穩定版核心 |
+| 7 | 最新 Xray | 實驗功能：安裝上游最新版 Xray 核心（接管槽位，或以 xray-latest 實例並存並提示連接埠衝突），逐個部署 VLESS-Vision / XHTTP / Trojan-Reality / SS-2022。失敗會告知原因並刪除，不會自動裝回穩定版核心含一鍵三合一與四合一組合，並提供整機連接埠衝突提醒。 |
 
 ## 狀態面板
 

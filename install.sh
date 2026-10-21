@@ -6180,6 +6180,228 @@ tr_msg() {
         ru:we_write) echo 'Не удалось записать состояние A-Box.' ;;
         fa:we_write) echo 'نوشتن وضعیت A-Box ناموفق بود.' ;;
         ja:we_write) echo 'A-Box の状態を書き込めませんでした。' ;;
+        zh:tf_commit) echo '流量限制状态原子提交失败。' ;;
+        zh-tw:tf_commit) echo '流量限制狀態原子提交失敗。' ;;
+        en:tf_commit) echo 'Failed to atomically commit the traffic limit state.' ;;
+        ru:tf_commit) echo 'Не удалось атомарно зафиксировать состояние лимита трафика.' ;;
+        fa:tf_commit) echo 'ثبت اتمی وضعیت حد ترافیک ناموفق بود.' ;;
+        ja:tf_commit) echo 'トラフィック制限状態のアトミックコミットに失敗しました。' ;;
+        zh:tf_desired_write) echo '服务期望状态写入失败。' ;;
+        zh-tw:tf_desired_write) echo '服務期望狀態寫入失敗。' ;;
+        en:tf_desired_write) echo 'Failed to write the desired service state.' ;;
+        ru:tf_desired_write) echo 'Не удалось записать желаемое состояние службы.' ;;
+        fa:tf_desired_write) echo 'نوشتن وضعیت مطلوب سرویس ناموفق بود.' ;;
+        ja:tf_desired_write) echo 'サービスの望ましい状態を書き込めませんでした。' ;;
+        zh:tf_finalize) echo '流量限制事务提交后校验失败。' ;;
+        zh-tw:tf_finalize) echo '流量限制事務提交後校驗失敗。' ;;
+        en:tf_finalize) echo 'The traffic limit transaction failed the post-commit check.' ;;
+        ru:tf_finalize) echo 'Транзакция лимита трафика не прошла проверку после фиксации.' ;;
+        fa:tf_finalize) echo 'تراکنش حد ترافیک بررسی پس از ثبت را رد نکرد.' ;;
+        ja:tf_finalize) echo 'トラフィック制限トランザクションがコミット後チェックに失敗しました。' ;;
+        zh:tf_limit_prompt) echo '请输入每月流量上限(GB)，纯数字: ' ;;
+        zh-tw:tf_limit_prompt) echo '請輸入每月流量上限(GB)，純數字: ' ;;
+        en:tf_limit_prompt) echo 'Enter the monthly traffic limit (GB), digits only: ' ;;
+        ru:tf_limit_prompt) echo 'Введите месячный лимит трафика (ГБ), только цифры: ' ;;
+        fa:tf_limit_prompt) echo 'حد ماهانه ترافیک (GB) را وارد کنید، فقط عدد: ' ;;
+        ja:tf_limit_prompt) echo '月間トラフィック上限 (GB) を数字のみで入力してください: ' ;;
+        zh:tf_mode_prompt) echo '计量模式 total/rx/tx (回车默认 total): ' ;;
+        zh-tw:tf_mode_prompt) echo '計量模式 total/rx/tx (回車預設 total): ' ;;
+        en:tf_mode_prompt) echo 'Metering mode total/rx/tx (Enter = total): ' ;;
+        ru:tf_mode_prompt) echo 'Режим учёта total/rx/tx (Enter = total): ' ;;
+        fa:tf_mode_prompt) echo 'حالت اندازه‌گیری total/rx/tx (Enter = total): ' ;;
+        ja:tf_mode_prompt) echo '計量モード total/rx/tx (Enter で total): ' ;;
+        zh:tf_monitor_init) echo '流量监控初始化失败；事务已中止，未修改流量限制。' ;;
+        zh-tw:tf_monitor_init) echo '流量監控初始化失敗；事務已中止，未修改流量限制。' ;;
+        en:tf_monitor_init) echo 'The traffic monitor initialization failed; the transaction was aborted and the traffic limit was not changed.' ;;
+        ru:tf_monitor_init) echo 'Инициализация мониторинга трафика не удалась; транзакция прервана, лимит трафика не изменён.' ;;
+        fa:tf_monitor_init) echo 'مقداردهی اولیه پایش ترافیک ناموفق بود؛ تراکنش متوقف شد و حد ترافیک تغییر نکرد.' ;;
+        ja:tf_monitor_init) echo 'トラフィック監視の初期化に失敗しました。トランザクションは中止され、トラフィック制限は変更されていません。' ;;
+        zh:tf_pick) echo '请选择 [0-2]: ' ;;
+        zh-tw:tf_pick) echo '請選擇 [0-2]: ' ;;
+        en:tf_pick) echo 'Choose [0-2]: ' ;;
+        ru:tf_pick) echo 'Выберите [0-2]: ' ;;
+        fa:tf_pick) echo 'انتخاب کنید [0-2]: ' ;;
+        ja:tf_pick) echo '選択してください [0-2]: ' ;;
+        zh:tf_purge_old) echo '旧流量封锁周期清理失败。' ;;
+        zh-tw:tf_purge_old) echo '舊流量封鎖週期清理失敗。' ;;
+        en:tf_purge_old) echo 'Failed to clear the old traffic block cycle.' ;;
+        ru:tf_purge_old) echo 'Не удалось очистить старый цикл блокировки трафика.' ;;
+        fa:tf_purge_old) echo 'پاک کردن چرخه مسدودی قدیمی ترافیک ناموفق بود.' ;;
+        ja:tf_purge_old) echo '古いトラフィックブロック周期のクリアに失敗しました。' ;;
+        zh:tf_read_state) echo '无法可靠读取当前服务期望状态；未修改流量限制。' ;;
+        zh-tw:tf_read_state) echo '無法可靠讀取目前服務期望狀態；未修改流量限制。' ;;
+        en:tf_read_state) echo 'Cannot reliably read the current desired service state; the traffic limit was not changed.' ;;
+        ru:tf_read_state) echo 'Невозможно надёжно прочитать текущее желаемое состояние службы; лимит трафика не изменён.' ;;
+        fa:tf_read_state) echo 'خواندن قابل اعتماد وضعیت مطلوب فعلی سرویس ممکن نیست؛ حد ترافیک تغییر نکرد.' ;;
+        ja:tf_read_state) echo '現在のサービスの望ましい状態を確実に読み取れないため、トラフィック制限は変更されていません。' ;;
+        zh:tf_read_state_unblock) echo '无法可靠读取当前服务期望状态；未解除流量限制。' ;;
+        zh-tw:tf_read_state_unblock) echo '無法可靠讀取目前服務期望狀態；未解除流量限制。' ;;
+        en:tf_read_state_unblock) echo 'Cannot reliably read the current desired service state; the traffic limit was not lifted.' ;;
+        ru:tf_read_state_unblock) echo 'Невозможно надёжно прочитать текущее желаемое состояние службы; лимит трафика не снят.' ;;
+        fa:tf_read_state_unblock) echo 'خواندن قابل اعتماد وضعیت مطلوب فعلی سرویس ممکن نیست؛ حد ترافیک برداشته نشد.' ;;
+        ja:tf_read_state_unblock) echo '現在のサービスの望ましい状態を確実に読み取れないため、トラフィック制限は解除されていません。' ;;
+        zh:tf_services_restore) echo '新流量上限已写入，但托管服务无法恢复运行；事务已中止。' ;;
+        zh-tw:tf_services_restore) echo '新流量上限已寫入，但託管服務無法恢復運行；事務已中止。' ;;
+        en:tf_services_restore) echo 'The new traffic limit was written, but the managed services could not resume running; the transaction was aborted.' ;;
+        ru:tf_services_restore) echo 'Новый лимит трафика записан, но управляемые службы не удалось вернуть к работе; транзакция прервана.' ;;
+        fa:tf_services_restore) echo 'حد جدید ترافیک نوشته شد، اما سرویس‌های مدیریت‌شده نتوانستند به کار ادامه دهند؛ تراکنش متوقف شد.' ;;
+        ja:tf_services_restore) echo '新しいトラフィック上限は書き込まれましたが、管理サービスを再開できませんでした。トランザクションは中止されました。' ;;
+        zh:tf_tx_cleanup) echo '流量状态事务清理失败。' ;;
+        zh-tw:tf_tx_cleanup) echo '流量狀態事務清理失敗。' ;;
+        en:tf_tx_cleanup) echo 'Failed to clean up the traffic state transaction.' ;;
+        ru:tf_tx_cleanup) echo 'Не удалось очистить транзакцию состояния трафика.' ;;
+        fa:tf_tx_cleanup) echo 'پاک‌سازی تراکنش وضعیت ترافیک ناموفق بود.' ;;
+        ja:tf_tx_cleanup) echo 'トラフィック状態トランザクションのクリーンアップに失敗しました。' ;;
+        zh:tf_tx_dir) echo '无法创建流量状态事务目录。' ;;
+        zh-tw:tf_tx_dir) echo '無法建立流量狀態事務目錄。' ;;
+        en:tf_tx_dir) echo 'Cannot create the traffic state transaction directory.' ;;
+        ru:tf_tx_dir) echo 'Невозможно создать каталог транзакции состояния трафика.' ;;
+        fa:tf_tx_dir) echo 'ایجاد پوشه تراکنش وضعیت ترافیک ممکن نیست.' ;;
+        ja:tf_tx_dir) echo 'トラフィック状態トランザクションのディレクトリを作成できません。' ;;
+        zh:tf_tx_dir_mode) echo '流量状态事务目录权限设置失败。' ;;
+        zh-tw:tf_tx_dir_mode) echo '流量狀態事務目錄權限設定失敗。' ;;
+        en:tf_tx_dir_mode) echo 'Failed to set permissions on the traffic state transaction directory.' ;;
+        ru:tf_tx_dir_mode) echo 'Не удалось задать права каталога транзакции состояния трафика.' ;;
+        fa:tf_tx_dir_mode) echo 'تنظیم مجوزهای پوشه تراکنش وضعیت ترافیک ناموفق بود.' ;;
+        ja:tf_tx_dir_mode) echo 'トラフィック状態トランザクションディレクトリの権限設定に失敗しました。' ;;
+        zh:tf_tx_presave) echo '无法保存流量限制事务前态。' ;;
+        zh-tw:tf_tx_presave) echo '無法保存流量限制事務前態。' ;;
+        en:tf_tx_presave) echo 'Cannot save the pre-transaction state of the traffic limit.' ;;
+        ru:tf_tx_presave) echo 'Невозможно сохранить состояние лимита трафика до транзакции.' ;;
+        fa:tf_tx_presave) echo 'ذخیره وضعیت پیش از تراکنش حد ترافیک ممکن نیست.' ;;
+        ja:tf_tx_presave) echo 'トラフィック制限のトランザクション前状態を保存できません。' ;;
+        zh:tf_unblock_cleanup) echo '流量解除事务清理失败；状态已提交但恢复材料清理失败。' ;;
+        zh-tw:tf_unblock_cleanup) echo '流量解除事務清理失敗；狀態已提交但恢復材料清理失敗。' ;;
+        en:tf_unblock_cleanup) echo 'Failed to clean up the traffic unblock transaction; the state was committed but the recovery material cleanup failed.' ;;
+        ru:tf_unblock_cleanup) echo 'Не удалось очистить транзакцию снятия лимита трафика; состояние зафиксировано, но очистка материалов восстановления не удалась.' ;;
+        fa:tf_unblock_cleanup) echo 'پاک‌سازی تراکنش رفع حد ترافیک ناموفق بود؛ وضعیت ثبت شد اما پاک‌سازی مواد بازیابی ناموفق بود.' ;;
+        ja:tf_unblock_cleanup) echo 'トラフィック解除トランザクションのクリーンアップに失敗しました。状態はコミット済みですが、復旧材料のクリーンアップに失敗しました。' ;;
+        zh:tf_unblock_commit) echo '解除流量限制时状态原子提交失败。' ;;
+        zh-tw:tf_unblock_commit) echo '解除流量限制時狀態原子提交失敗。' ;;
+        en:tf_unblock_commit) echo 'Failed to atomically commit the state while lifting the traffic limit.' ;;
+        ru:tf_unblock_commit) echo 'Не удалось атомарно зафиксировать состояние при снятии лимита трафика.' ;;
+        fa:tf_unblock_commit) echo 'ثبت اتمی وضعیت هنگام رفع حد ترافیک ناموفق بود.' ;;
+        ja:tf_unblock_commit) echo 'トラフィック制限の解除時に状態のアトミックコミットに失敗しました。' ;;
+        zh:tf_unblock_finalize) echo '流量解除事务最终状态校验失败。' ;;
+        zh-tw:tf_unblock_finalize) echo '流量解除事務最終狀態校驗失敗。' ;;
+        en:tf_unblock_finalize) echo 'The traffic unblock transaction failed the final state check.' ;;
+        ru:tf_unblock_finalize) echo 'Транзакция снятия лимита трафика не прошла финальную проверку состояния.' ;;
+        fa:tf_unblock_finalize) echo 'تراکنش رفع حد ترافیک بررسی نهایی وضعیت را رد نکرد.' ;;
+        ja:tf_unblock_finalize) echo 'トラフィック解除トランザクションが最終状態チェックに失敗しました。' ;;
+        zh:tf_unblock_presave) echo '无法保存流量解除事务前态。' ;;
+        zh-tw:tf_unblock_presave) echo '無法保存流量解除事務前態。' ;;
+        en:tf_unblock_presave) echo 'Cannot save the pre-transaction state of the traffic unblock.' ;;
+        ru:tf_unblock_presave) echo 'Невозможно сохранить состояние до транзакции снятия лимита трафика.' ;;
+        fa:tf_unblock_presave) echo 'ذخیره وضعیت پیش از تراکنش رفع حد ترافیک ممکن نیست.' ;;
+        ja:tf_unblock_presave) echo 'トラフィック解除のトランザクション前状態を保存できません。' ;;
+        zh:tf_unblock_purge) echo '清除流量封锁周期失败；未提交解除操作。' ;;
+        zh-tw:tf_unblock_purge) echo '清除流量封鎖週期失敗；未提交解除操作。' ;;
+        en:tf_unblock_purge) echo 'Failed to clear the traffic block cycle; the unblock was not committed.' ;;
+        ru:tf_unblock_purge) echo 'Не удалось очистить цикл блокировки трафика; снятие не зафиксировано.' ;;
+        fa:tf_unblock_purge) echo 'پاک کردن چرخه مسدودی ترافیک ناموفق بود؛ رفع مسدودی ثبت نشد.' ;;
+        ja:tf_unblock_purge) echo 'トラフィックブロック周期のクリアに失敗しました。解除はコミットされていません。' ;;
+        zh:tf_unblock_reload) echo '流量配置重读失败；未提交解除操作。' ;;
+        zh-tw:tf_unblock_reload) echo '流量設定重讀失敗；未提交解除操作。' ;;
+        en:tf_unblock_reload) echo 'Failed to re-read the traffic configuration; the unblock was not committed.' ;;
+        ru:tf_unblock_reload) echo 'Не удалось перечитать конфигурацию трафика; снятие не зафиксировано.' ;;
+        fa:tf_unblock_reload) echo 'بازخوانی پیکربندی ترافیک ناموفق بود؛ رفع مسدودی ثبت نشد.' ;;
+        ja:tf_unblock_reload) echo 'トラフィック設定の再読み込みに失敗しました。解除はコミットされていません。' ;;
+        zh:tf_unblock_rm_cron) echo '移除流量监控任务失败；未提交解除操作。' ;;
+        zh-tw:tf_unblock_rm_cron) echo '移除流量監控任務失敗；未提交解除操作。' ;;
+        en:tf_unblock_rm_cron) echo 'Failed to remove the traffic monitor job; the unblock was not committed.' ;;
+        ru:tf_unblock_rm_cron) echo 'Не удалось удалить задачу мониторинга трафика; снятие не зафиксировано.' ;;
+        fa:tf_unblock_rm_cron) echo 'حذف وظیفه پایش ترافیک ناموفق بود؛ رفع مسدودی ثبت نشد.' ;;
+        ja:tf_unblock_rm_cron) echo 'トラフィック監視ジョブの削除に失敗しました。解除はコミットされていません。' ;;
+        zh:tf_unblock_rm_script) echo '移除流量监控脚本失败；未提交解除操作。' ;;
+        zh-tw:tf_unblock_rm_script) echo '移除流量監控腳本失敗；未提交解除操作。' ;;
+        en:tf_unblock_rm_script) echo 'Failed to remove the traffic monitor script; the unblock was not committed.' ;;
+        ru:tf_unblock_rm_script) echo 'Не удалось удалить скрипт мониторинга трафика; снятие не зафиксировано.' ;;
+        fa:tf_unblock_rm_script) echo 'حذف اسکریپت پایش ترافیک ناموفق بود؛ رفع مسدودی ثبت نشد.' ;;
+        ja:tf_unblock_rm_script) echo 'トラフィック監視スクリプトの削除に失敗しました。解除はコミットされていません。' ;;
+        zh:tf_unblock_services) echo '流量封锁解除后有托管服务未能启动/启用并通过状态核验。' ;;
+        zh-tw:tf_unblock_services) echo '流量封鎖解除後有託管服務未能啟動/啟用並通過狀態核驗。' ;;
+        en:tf_unblock_services) echo 'After lifting the traffic block, some managed services failed to start/be enabled and pass the state check.' ;;
+        ru:tf_unblock_services) echo 'После снятия блокировки трафика некоторые управляемые службы не удалось запустить/включить и пройти проверку состояния.' ;;
+        fa:tf_unblock_services) echo 'پس از رفع مسدودی ترافیک، برخی سرویس‌های مدیریت‌شده شروع/فعال نشدند و بررسی وضعیت را رد نکردند.' ;;
+        ja:tf_unblock_services) echo 'トラフィックブロック解除後、一部の管理サービスが開始/有効化できず、状態確認に合格しませんでした。' ;;
+        zh:tf_unblock_svc_presave) echo '无法保存流量解除前的服务状态。' ;;
+        zh-tw:tf_unblock_svc_presave) echo '無法保存流量解除前的服務狀態。' ;;
+        en:tf_unblock_svc_presave) echo 'Cannot save the service state before the traffic unblock.' ;;
+        ru:tf_unblock_svc_presave) echo 'Невозможно сохранить состояние службы до снятия лимита трафика.' ;;
+        fa:tf_unblock_svc_presave) echo 'ذخیره وضعیت سرویس پیش از رفع حد ترافیک ممکن نیست.' ;;
+        ja:tf_unblock_svc_presave) echo 'トラフィック解除前のサービス状態を保存できません。' ;;
+        zh:tf_unblock_tx_dir) echo '无法创建流量解除事务目录。' ;;
+        zh-tw:tf_unblock_tx_dir) echo '無法建立流量解除事務目錄。' ;;
+        en:tf_unblock_tx_dir) echo 'Cannot create the traffic unblock transaction directory.' ;;
+        ru:tf_unblock_tx_dir) echo 'Невозможно создать каталог транзакции снятия лимита трафика.' ;;
+        fa:tf_unblock_tx_dir) echo 'ایجاد پوشه تراکنش رفع حد ترافیک ممکن نیست.' ;;
+        ja:tf_unblock_tx_dir) echo 'トラフィック解除トランザクションのディレクトリを作成できません。' ;;
+        zh:tf_unblock_tx_mode) echo '流量解除事务目录权限设置失败。' ;;
+        zh-tw:tf_unblock_tx_mode) echo '流量解除事務目錄權限設定失敗。' ;;
+        en:tf_unblock_tx_mode) echo 'Failed to set permissions on the traffic unblock transaction directory.' ;;
+        ru:tf_unblock_tx_mode) echo 'Не удалось задать права каталога транзакции снятия лимита трафика.' ;;
+        fa:tf_unblock_tx_mode) echo 'تنظیم مجوزهای پوشه تراکنش رفع حد ترافیک ناموفق بود.' ;;
+        ja:tf_unblock_tx_mode) echo 'トラフィック解除トランザクションディレクトリの権限設定に失敗しました。' ;;
+        zh:tf_unblock_verify_cron) echo '移除流量监控任务后状态核验失败；事务已中止。' ;;
+        zh-tw:tf_unblock_verify_cron) echo '移除流量監控任務後狀態核驗失敗；事務已中止。' ;;
+        en:tf_unblock_verify_cron) echo 'The state check failed after removing the traffic monitor job; the transaction was aborted.' ;;
+        ru:tf_unblock_verify_cron) echo 'Проверка состояния после удаления задачи мониторинга трафика не пройдена; транзакция прервана.' ;;
+        fa:tf_unblock_verify_cron) echo 'بررسی وضعیت پس از حذف وظیفه پایش ترافیک ناموفق بود؛ تراکنش متوقف شد.' ;;
+        ja:tf_unblock_verify_cron) echo 'トラフィック監視ジョブの削除後に状態確認に失敗しました。トランザクションは中止されました。' ;;
+        zh:tf_unblock_verify_desired) echo '提交服务期望状态后核验失败；事务已中止。' ;;
+        zh-tw:tf_unblock_verify_desired) echo '提交服務期望狀態後核驗失敗；事務已中止。' ;;
+        en:tf_unblock_verify_desired) echo 'The check failed after committing the desired service state; the transaction was aborted.' ;;
+        ru:tf_unblock_verify_desired) echo 'Проверка после фиксации желаемого состояния службы не пройдена; транзакция прервана.' ;;
+        fa:tf_unblock_verify_desired) echo 'بررسی پس از ثبت وضعیت مطلوب سرویس ناموفق بود؛ تراکنش متوقف شد.' ;;
+        ja:tf_unblock_verify_desired) echo 'サービスの望ましい状態をコミットした後の確認に失敗しました。トランザクションは中止されました。' ;;
+        zh:tf_unblock_verify_new) echo '流量解除时无法验证新状态；事务已中止。' ;;
+        zh-tw:tf_unblock_verify_new) echo '流量解除時無法驗證新狀態；事務已中止。' ;;
+        en:tf_unblock_verify_new) echo 'Cannot verify the new state during the traffic unblock; the transaction was aborted.' ;;
+        ru:tf_unblock_verify_new) echo 'Невозможно проверить новое состояние при снятии лимита трафика; транзакция прервана.' ;;
+        fa:tf_unblock_verify_new) echo 'تأیید وضعیت جدید هنگام رفع حد ترافیک ممکن نیست؛ تراکنش متوقف شد.' ;;
+        ja:tf_unblock_verify_new) echo 'トラフィック解除時に新しい状態を確認できません。トランザクションは中止されました。' ;;
+        zh:tf_unblock_verify_purge) echo '清除流量封锁周期后状态核验失败；事务已中止。' ;;
+        zh-tw:tf_unblock_verify_purge) echo '清除流量封鎖週期後狀態核驗失敗；事務已中止。' ;;
+        en:tf_unblock_verify_purge) echo 'The state check failed after clearing the traffic block cycle; the transaction was aborted.' ;;
+        ru:tf_unblock_verify_purge) echo 'Проверка состояния после очистки цикла блокировки трафика не пройдена; транзакция прервана.' ;;
+        fa:tf_unblock_verify_purge) echo 'بررسی وضعیت پس از پاک کردن چرخه مسدودی ترافیک ناموفق بود؛ تراکنش متوقف شد.' ;;
+        ja:tf_unblock_verify_purge) echo 'トラフィックブロック周期のクリア後に状態確認に失敗しました。トランザクションは中止されました。' ;;
+        zh:tf_unblock_verify_script) echo '移除流量监控脚本后状态核验失败；事务已中止。' ;;
+        zh-tw:tf_unblock_verify_script) echo '移除流量監控腳本後狀態核驗失敗；事務已中止。' ;;
+        en:tf_unblock_verify_script) echo 'The state check failed after removing the traffic monitor script; the transaction was aborted.' ;;
+        ru:tf_unblock_verify_script) echo 'Проверка состояния после удаления скрипта мониторинга трафика не пройдена; транзакция прервана.' ;;
+        fa:tf_unblock_verify_script) echo 'بررسی وضعیت پس از حذف اسکریپت پایش ترافیک ناموفق بود؛ تراکنش متوقف شد.' ;;
+        ja:tf_unblock_verify_script) echo 'トラフィック監視スクリプトの削除後に状態確認に失敗しました。トランザクションは中止されました。' ;;
+        zh:tf_unknown_state) echo '未知服务期望状态 %s；拒绝提交流量限制。' ;;
+        zh-tw:tf_unknown_state) echo '未知服務期望狀態 %s；拒絕提交流量限制。' ;;
+        en:tf_unknown_state) echo 'Unknown desired service state %s; refusing to commit the traffic limit.' ;;
+        ru:tf_unknown_state) echo 'Неизвестное желаемое состояние службы %s; фиксация лимита трафика отклонена.' ;;
+        fa:tf_unknown_state) echo 'وضعیت مطلوب سرویس ناشناخته است %s؛ ثبت حد ترافیک رد شد.' ;;
+        ja:tf_unknown_state) echo '未知のサービスの望ましい状態 %s。トラフィック制限のコミットを拒否します。' ;;
+        zh:tf_unknown_state_unblock) echo '未知服务期望状态 %s；拒绝解除流量限制。' ;;
+        zh-tw:tf_unknown_state_unblock) echo '未知服務期望狀態 %s；拒絕解除流量限制。' ;;
+        en:tf_unknown_state_unblock) echo 'Unknown desired service state %s; refusing to lift the traffic limit.' ;;
+        ru:tf_unknown_state_unblock) echo 'Неизвестное желаемое состояние службы %s; снятие лимита трафика отклонено.' ;;
+        fa:tf_unknown_state_unblock) echo 'وضعیت مطلوب سرویس ناشناخته است %s؛ رفع حد ترافیک رد شد.' ;;
+        ja:tf_unknown_state_unblock) echo '未知のサービスの望ましい状態 %s。トラフィック制限の解除を拒否します。' ;;
+        zh:tf_verify_after_desired) echo '期望状态提交后无法核验事务；已中止。' ;;
+        zh-tw:tf_verify_after_desired) echo '期望狀態提交後無法核驗事務；已中止。' ;;
+        en:tf_verify_after_desired) echo 'Cannot verify the transaction after committing the desired state; aborted.' ;;
+        ru:tf_verify_after_desired) echo 'Невозможно проверить транзакцию после фиксации желаемого состояния; прервано.' ;;
+        fa:tf_verify_after_desired) echo 'تأیید تراکنش پس از ثبت وضعیت مطلوب ممکن نیست؛ متوقف شد.' ;;
+        ja:tf_verify_after_desired) echo '望ましい状態のコミット後にトランザクションを確認できません。中止しました。' ;;
+        zh:tf_verify_after_purge) echo '清除旧封锁周期后无法核验状态；事务已中止。' ;;
+        zh-tw:tf_verify_after_purge) echo '清除舊封鎖週期後無法核驗狀態；事務已中止。' ;;
+        en:tf_verify_after_purge) echo 'Cannot verify the state after clearing the old block cycle; the transaction was aborted.' ;;
+        ru:tf_verify_after_purge) echo 'Невозможно проверить состояние после очистки старого цикла блокировки; транзакция прервана.' ;;
+        fa:tf_verify_after_purge) echo 'تأیید وضعیت پس از پاک کردن چرخه مسدودی قدیمی ممکن نیست؛ تراکنش متوقف شد.' ;;
+        ja:tf_verify_after_purge) echo '古いブロック周期をクリアした後に状態を確認できません。トランザクションは中止されました。' ;;
+        zh:tf_verify_after_update) echo '流量限制更新后无法核验状态；事务已中止。' ;;
+        zh-tw:tf_verify_after_update) echo '流量限制更新後無法核驗狀態；事務已中止。' ;;
+        en:tf_verify_after_update) echo 'Cannot verify the state after updating the traffic limit; the transaction was aborted.' ;;
+        ru:tf_verify_after_update) echo 'Невозможно проверить состояние после обновления лимита трафика; транзакция прервана.' ;;
+        fa:tf_verify_after_update) echo 'تأیید وضعیت پس از به‌روزرسانی حد ترافیک ممکن نیست؛ تراکنش متوقف شد.' ;;
+        ja:tf_verify_after_update) echo 'トラフィック制限の更新後に状態を確認できません。トランザクションは中止されました。' ;;
         zh:fmt_unused) echo '未用' ;;
         en:fmt_unused) echo 'unused' ;;
         ru:fmt_unused) echo 'нет трафика' ;;
@@ -18765,19 +18987,19 @@ PY_TRAFFIC_DASH
     msg "${CYAN}1.${NC}  设定/修改每月流量上限"
     msg "${CYAN}2.${NC}  解除流量限制"
     msg "${CYAN}0.${NC}  返回主菜单"
-    read -r -p '请选择 [0-2]: ' tr_choice || return 0
+    read -r -p "$(tr_msg tf_pick)" tr_choice || return 0
     case "$tr_choice" in
         1)
-            read -r -p '请输入每月流量上限(GB)，纯数字: ' limit_gb
+            read -r -p "$(tr_msg tf_limit_prompt)" limit_gb
             valid_traffic_limit_gb "$limit_gb" || { msg "${RED}[!] 流量上限必须是 1-8589934591 GB 的整数。${NC}"; pause_return; return; }
-            read -r -p '计量模式 total/rx/tx (回车默认 total): ' mode_choice
+            read -r -p "$(tr_msg tf_mode_prompt)" mode_choice
             mode_choice=${mode_choice:-total}
             [[ "$mode_choice" =~ ^(total|rx|tx)$ ]] || { msg "${RED}[!] 计量模式无效。${NC}"; pause_return; return; }
             local traffic_tx_dir="" old_die_hook="" traffic_previous_state='' traffic_service_pre='' traffic_service_changed_pre='' traffic_service_changed_expected='' traffic_op_rc=0 traffic_target_state=''
-            traffic_previous_state=$(get_desired_state) || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '无法可靠读取当前服务期望状态；未修改流量限制。'; continue; }
-            traffic_tx_dir=$(mktemp -d /run/A-Box-traffic-tx.XXXXXX) || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '无法创建流量状态事务目录。'; continue; }
-            chmod 700 "$traffic_tx_dir" || { rm -rf -- "$traffic_tx_dir"; _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量状态事务目录权限设置失败。'; continue; }
-            prepare_traffic_quota_transaction "$traffic_tx_dir" || { rm -rf -- "$traffic_tx_dir"; _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '无法保存流量限制事务前态。'; continue; }
+            traffic_previous_state=$(get_desired_state) || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_read_state)"; continue; }
+            traffic_tx_dir=$(mktemp -d /run/A-Box-traffic-tx.XXXXXX) || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_tx_dir)"; continue; }
+            chmod 700 "$traffic_tx_dir" || { rm -rf -- "$traffic_tx_dir"; _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_tx_dir_mode)"; continue; }
+            prepare_traffic_quota_transaction "$traffic_tx_dir" || { rm -rf -- "$traffic_tx_dir"; _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_tx_presave)"; continue; }
             if [[ "$traffic_previous_state" == TRAFFIC_BLOCKED ]]; then
                 traffic_service_pre="$traffic_tx_dir/pre-services.state"
                 traffic_service_changed_pre="$traffic_tx_dir/changed-services-pre.state"
@@ -18812,45 +19034,45 @@ PY_TRAFFIC_DASH
                 return "$rollback_rc"
             }
             if ! setup_traffic_monitor; then
-                _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量监控初始化失败；事务已中止，未修改流量限制。'; continue
+                _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_monitor_init)"; continue
             fi
             if update_traffic_state_atomically "$limit_gb" "$mode_choice"; then traffic_op_rc=0; else traffic_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$traffic_tx_dir" || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量限制更新后无法核验状态；事务已中止。'; continue; }
-            (( traffic_op_rc == 0 )) || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量限制状态原子提交失败。'; continue; }
+            capture_traffic_quota_expected_state "$traffic_tx_dir" || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_verify_after_update)"; continue; }
+            (( traffic_op_rc == 0 )) || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_commit)"; continue; }
             if clear_traffic_block_period; then traffic_op_rc=0; else traffic_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$traffic_tx_dir" || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '清除旧封锁周期后无法核验状态；事务已中止。'; continue; }
-            (( traffic_op_rc == 0 )) || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '旧流量封锁周期清理失败。'; continue; }
+            capture_traffic_quota_expected_state "$traffic_tx_dir" || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_verify_after_purge)"; continue; }
+            (( traffic_op_rc == 0 )) || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_purge_old)"; continue; }
             case "$traffic_previous_state" in
                 TRAFFIC_BLOCKED)
-                    start_services_for_traffic_unblock "$traffic_service_pre" "$traffic_service_changed_pre" "$traffic_service_changed_expected" || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '新流量上限已写入，但托管服务无法恢复运行；事务已中止。'; continue; }
+                    start_services_for_traffic_unblock "$traffic_service_pre" "$traffic_service_changed_pre" "$traffic_service_changed_expected" || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_services_restore)"; continue; }
                     traffic_target_state=RUNNING
                     ;;
                 RUNNING|MANUAL_STOPPED|MAINTENANCE)
                     traffic_target_state="$traffic_previous_state"
                     ;;
-                *) _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "未知服务期望状态 ${traffic_previous_state}；拒绝提交流量限制。"; continue ;;
+                *) _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tprintf tf_unknown_state "$traffic_previous_state")"; continue ;;
             esac
             if set_desired_state "$traffic_target_state"; then traffic_op_rc=0; else traffic_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$traffic_tx_dir" || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '期望状态提交后无法核验事务；已中止。'; continue; }
-            (( traffic_op_rc == 0 )) || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '服务期望状态写入失败。'; continue; }
-            finalize_traffic_quota_transaction "$traffic_tx_dir" || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量限制事务提交后校验失败。'; continue; }
+            capture_traffic_quota_expected_state "$traffic_tx_dir" || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_verify_after_desired)"; continue; }
+            (( traffic_op_rc == 0 )) || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_desired_write)"; continue; }
+            finalize_traffic_quota_transaction "$traffic_tx_dir" || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_finalize)"; continue; }
             unset ABOX_DIE_HOOK
             if [[ -n "$old_die_hook" ]]; then ABOX_DIE_HOOK="$old_die_hook"; fi
             ABOX_TRAFFIC_TX_DIR=''
-            rm -rf -- "$traffic_tx_dir" || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '流量状态事务清理失败。'; continue; }
+            rm -rf -- "$traffic_tx_dir" || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_tx_cleanup)"; continue; }
             msg "${GREEN}流量限制已设定为 ${limit_gb} GB，模式 ${mode_choice}。${NC}"
             pause_return
             ;;
         2)
-            previous_state=$(get_desired_state) || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '无法可靠读取当前服务期望状态；未解除流量限制。'; continue; }
+            previous_state=$(get_desired_state) || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_read_state_unblock)"; continue; }
             local unblock_tx_dir='' unblock_old_die_hook='' unblock_state_pre='' unblock_changed_pre='' unblock_changed_expected='' unblock_op_rc=0 target_state=''
-            unblock_tx_dir=$(mktemp -d /run/A-Box-traffic-unblock.XXXXXX) || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '无法创建流量解除事务目录。'; continue; }
-            chmod 700 "$unblock_tx_dir" || { rm -rf -- "$unblock_tx_dir"; _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量解除事务目录权限设置失败。'; continue; }
-            prepare_traffic_quota_transaction "$unblock_tx_dir" || { rm -rf -- "$unblock_tx_dir"; _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '无法保存流量解除事务前态。'; continue; }
+            unblock_tx_dir=$(mktemp -d /run/A-Box-traffic-unblock.XXXXXX) || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_tx_dir)"; continue; }
+            chmod 700 "$unblock_tx_dir" || { rm -rf -- "$unblock_tx_dir"; _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_tx_mode)"; continue; }
+            prepare_traffic_quota_transaction "$unblock_tx_dir" || { rm -rf -- "$unblock_tx_dir"; _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_presave)"; continue; }
             unblock_state_pre="$unblock_tx_dir/pre-services.state"
             unblock_changed_pre="$unblock_tx_dir/changed-services-pre.state"
             unblock_changed_expected="$unblock_tx_dir/changed-services-expected.state"
-            capture_managed_service_state "$unblock_state_pre" || { rm -rf -- "$unblock_tx_dir"; _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '无法保存流量解除前的服务状态。'; continue; }
+            capture_managed_service_state "$unblock_state_pre" || { rm -rf -- "$unblock_tx_dir"; _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_svc_presave)"; continue; }
             : > "$unblock_changed_pre"; : > "$unblock_changed_expected"
             if [[ ${ABOX_DIE_HOOK+x} ]]; then unblock_old_die_hook="$ABOX_DIE_HOOK"; fi
             ABOX_TRAFFIC_TX_DIR="$unblock_tx_dir"
@@ -18878,36 +19100,36 @@ PY_TRAFFIC_DASH
             }
 
             if update_traffic_state_atomically '' ''; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量解除时无法验证新状态；事务已中止。'; continue; }
-            (( unblock_op_rc == 0 )) || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '解除流量限制时状态原子提交失败。'; continue; }
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_verify_new)"; continue; }
+            (( unblock_op_rc == 0 )) || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_commit)"; continue; }
             if remove_abox_cron_block TRAFFIC; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '移除流量监控任务后状态核验失败；事务已中止。'; continue; }
-            (( unblock_op_rc == 0 )) || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '移除流量监控任务失败；未提交解除操作。'; continue; }
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_verify_cron)"; continue; }
+            (( unblock_op_rc == 0 )) || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_rm_cron)"; continue; }
             if remove_owned_runtime_helper "$ABOX_DIR/traffic_monitor.sh"; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '移除流量监控脚本后状态核验失败；事务已中止。'; continue; }
-            (( unblock_op_rc == 0 )) || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '移除流量监控脚本失败；未提交解除操作。'; continue; }
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_verify_script)"; continue; }
+            (( unblock_op_rc == 0 )) || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_rm_script)"; continue; }
             if clear_traffic_block_period; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '清除流量封锁周期后状态核验失败；事务已中止。'; continue; }
-            (( unblock_op_rc == 0 )) || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '清除流量封锁周期失败；未提交解除操作。'; continue; }
-            load_abox_env "$ABOX_ENV" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量配置重读失败；未提交解除操作。'; continue; }
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_verify_purge)"; continue; }
+            (( unblock_op_rc == 0 )) || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_purge)"; continue; }
+            load_abox_env "$ABOX_ENV" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_reload)"; continue; }
             case "$previous_state" in
                 TRAFFIC_BLOCKED)
-                    start_services_for_traffic_unblock "$unblock_state_pre" "$unblock_changed_pre" "$unblock_changed_expected" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量封锁解除后有托管服务未能启动/启用并通过状态核验。'; continue; }
+                    start_services_for_traffic_unblock "$unblock_state_pre" "$unblock_changed_pre" "$unblock_changed_expected" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_services)"; continue; }
                     target_state=RUNNING
                     ;;
                 RUNNING|MANUAL_STOPPED|MAINTENANCE)
                     target_state="$previous_state"
                     ;;
-                *) _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "未知服务期望状态 ${previous_state}；拒绝解除流量限制。"; continue ;;
+                *) _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tprintf tf_unknown_state_unblock "$previous_state")"; continue ;;
             esac
             if set_desired_state "$target_state"; then unblock_op_rc=0; else unblock_op_rc=$?; fi
-            capture_traffic_quota_expected_state "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '提交服务期望状态后核验失败；事务已中止。'; continue; }
-            (( unblock_op_rc == 0 )) || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '服务期望状态写入失败。'; continue; }
-            finalize_traffic_quota_transaction "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量解除事务最终状态校验失败。'; continue; }
+            capture_traffic_quota_expected_state "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_verify_desired)"; continue; }
+            (( unblock_op_rc == 0 )) || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_desired_write)"; continue; }
+            finalize_traffic_quota_transaction "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_finalize)"; continue; }
             unset ABOX_DIE_HOOK
             if [[ -n "$unblock_old_die_hook" ]]; then ABOX_DIE_HOOK="$unblock_old_die_hook"; fi
             ABOX_TRAFFIC_TX_DIR=''
-            rm -rf -- "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook '流量解除事务清理失败；状态已提交但恢复材料清理失败。'; continue; }
+            rm -rf -- "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_cleanup)"; continue; }
             msg "${GREEN}流量限制已解除。${NC}"
             pause_return
             ;;

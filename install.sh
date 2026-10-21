@@ -5298,6 +5298,270 @@ tr_msg() {
         ru:vs_syntax) echo '%s не прошёл проверку синтаксиса.' ;;
         fa:vs_syntax) echo '‏%s بررسی نحوی را رد کرد.' ;;
         ja:vs_syntax) echo '%s の構文チェックに失敗しました。' ;;
+        zh:fb_regex_fail) echo 'Fail2Ban 正则测试执行失败。' ;;
+        zh-tw:fb_regex_fail) echo 'Fail2Ban 正則測試執行失敗。' ;;
+        en:fb_regex_fail) echo 'Failed to run the Fail2Ban regex test.' ;;
+        ru:fb_regex_fail) echo 'Не удалось выполнить тест регулярных выражений Fail2Ban.' ;;
+        fa:fb_regex_fail) echo 'اجرای آزمون regex ‏Fail2Ban ناموفق بود.' ;;
+        ja:fb_regex_fail) echo 'Fail2Ban の正規表現テストの実行に失敗しました。' ;;
+        zh:fg_bad_ref) echo '核心目标版本格式非法： %s:%s' ;;
+        zh-tw:fg_bad_ref) echo '核心目標版本格式不合法： %s:%s' ;;
+        en:fg_bad_ref) echo 'The core target version format is invalid: %s:%s' ;;
+        ru:fg_bad_ref) echo 'Формат целевой версии ядра недопустим: %s:%s' ;;
+        fa:fg_bad_ref) echo 'قالب نسخه هدف هسته نامعتبر است: %s:%s' ;;
+        ja:fg_bad_ref) echo 'コアのターゲットバージョン形式が不正です： %s:%s' ;;
+        zh:fg_exact_unavail) echo '显式指定的精确版本 %s 在上游和镜像中均不可用；不会替换为其他版本。' ;;
+        zh-tw:fg_exact_unavail) echo '明確指定的精確版本 %s 在上游和鏡像中均不可用；不會替換為其他版本。' ;;
+        en:fg_exact_unavail) echo 'The explicitly specified exact version %s is unavailable upstream and in the mirror; it will not be replaced with another version.' ;;
+        ru:fg_exact_unavail) echo 'Явно указанная точная версия %s недоступна ни у источника, ни в зеркале; замена на другую версию не будет выполнена.' ;;
+        fa:fg_exact_unavail) echo 'نسخه دقیق صراحتاً مشخص‌شده %s نه در منبع بالادست و نه در آینه موجود نیست؛ با نسخه دیگری جایگزین نخواهد شد.' ;;
+        ja:fg_exact_unavail) echo '明示指定された正確なバージョン %s はアップストリームにもミラーにもなく、別のバージョンに置き換えません。' ;;
+        zh:fg_explicit_unavail) echo '显式指定的核心版本 %s 在上游与同标签镜像中均不可用；为避免静默替换版本，停止安装。' ;;
+        zh-tw:fg_explicit_unavail) echo '明確指定的核心版本 %s 在上游與同標籤鏡像中均不可用；為避免靜默替換版本，停止安裝。' ;;
+        en:fg_explicit_unavail) echo 'The explicitly specified core version %s is unavailable upstream and in the same-tag mirror; installation stopped to avoid silently replacing the version.' ;;
+        ru:fg_explicit_unavail) echo 'Явно указанная версия ядра %s недоступна у источника и в зеркале с тем же тегом; установка остановлена во избежание тихой замены версии.' ;;
+        fa:fg_explicit_unavail) echo 'نسخه هسته صراحتاً مشخص‌شده %s نه در منبع بالادست و نه در آینه با همان برچسب موجود نیست؛ برای جلوگیری از جایگزینی بی‌صدا، نصب متوقف شد.' ;;
+        ja:fg_explicit_unavail) echo '明示指定されたコアバージョン %s はアップストリームにも同タグのミラーにもありません。サイレントな置き換えを避けるためインストールを停止します。' ;;
+        zh:fg_mlkem) echo 'Xray %s 使用较新的 REALITY ML-KEM ClientHello 门槛；部分旧版客户端可能无法连接。' ;;
+        zh-tw:fg_mlkem) echo 'Xray %s 使用較新的 REALITY ML-KEM ClientHello 門檻；部分舊版用戶端可能無法連線。' ;;
+        en:fg_mlkem) echo 'Xray %s uses the newer REALITY ML-KEM ClientHello threshold; some older clients may be unable to connect.' ;;
+        ru:fg_mlkem) echo 'Xray %s использует новый порог REALITY ML-KEM ClientHello; некоторые старые клиенты могут не подключиться.' ;;
+        fa:fg_mlkem) echo '‏Xray %s از آستانه جدیدتر REALITY ML-KEM ClientHello استفاده می‌کند؛ برخی کلاینت‌های قدیمی ممکن است نتوانند متصل شوند.' ;;
+        ja:fg_mlkem) echo 'Xray %s は新しい REALITY ML-KEM ClientHello しきい値を使用します。一部の旧クライアントは接続できない場合があります。' ;;
+        zh:fg_no_pin) echo '缺少 %s 的固定容灾版本 pin。' ;;
+        zh-tw:fg_no_pin) echo '缺少 %s 的固定容災版本 pin。' ;;
+        en:fg_no_pin) echo 'Missing the pinned failover version for %s.' ;;
+        ru:fg_no_pin) echo 'Отсутствует закреплённая резервная версия для %s.' ;;
+        fa:fg_no_pin) echo 'نسخه پشتیبان پین‌شده برای %s وجود ندارد.' ;;
+        ja:fg_no_pin) echo '%s の固定フェイルオーバーバージョンがありません。' ;;
+        zh:fg_no_rule) echo '未定义的核心资产匹配规则： %s:%s' ;;
+        zh-tw:fg_no_rule) echo '未定義的核心資產符合規則： %s:%s' ;;
+        en:fg_no_rule) echo 'Undefined core asset matching rule: %s:%s' ;;
+        ru:fg_no_rule) echo 'Не определено правило сопоставления активов ядра: %s:%s' ;;
+        fa:fg_no_rule) echo 'قانون تطبیق دارایی هسته تعریف نشده است: %s:%s' ;;
+        ja:fg_no_rule) echo '未定義のコアアセット一致ルール： %s:%s' ;;
+        zh:fg_none_valid) echo '固定版本候选与最新稳定容灾候选均未通过验证；拒绝安装版本不匹配的资产。' ;;
+        zh-tw:fg_none_valid) echo '固定版本候選與最新穩定容災候選均未通過驗證；拒絕安裝版本不符的資產。' ;;
+        en:fg_none_valid) echo 'Neither the pinned candidate nor the latest stable failover candidate passed verification; refusing to install a version-mismatched asset.' ;;
+        ru:fg_none_valid) echo 'Ни закреплённый кандидат, ни последний стабильный резервный кандидат не прошли проверку; установка актива с несоответствующей версией отклонена.' ;;
+        fa:fg_none_valid) echo 'نه نامزد پین‌شده و نه آخرین نامزد پایدار پشتیبان بررسی را رد نکردند؛ نصب دارایی با نسخه ناهماهنگ رد شد.' ;;
+        ja:fg_none_valid) echo '固定候補も最新の安定フェイルオーバー候補も検証に合格しなかったため、バージョン不一致のアセットのインストールを拒否します。' ;;
+        zh:fg_outdir) echo '核心资产输出目录创建失败。' ;;
+        zh-tw:fg_outdir) echo '核心資產輸出目錄建立失敗。' ;;
+        en:fg_outdir) echo 'Failed to create the core asset output directory.' ;;
+        ru:fg_outdir) echo 'Не удалось создать выходной каталог активов ядра.' ;;
+        fa:fg_outdir) echo 'ایجاد پوشه خروجی دارایی هسته ناموفق بود.' ;;
+        ja:fg_outdir) echo 'コアアセットの出力ディレクトリを作成できませんでした。' ;;
+        zh:fg_read_src) echo '无法读取核心目标来源： %s' ;;
+        zh-tw:fg_read_src) echo '無法讀取核心目標來源： %s' ;;
+        en:fg_read_src) echo 'Cannot read the core target source: %s' ;;
+        ru:fg_read_src) echo 'Невозможно прочитать источник целевого ядра: %s' ;;
+        fa:fg_read_src) echo 'خواندن منبع هدف هسته ممکن نیست: %s' ;;
+        ja:fg_read_src) echo 'コアのターゲットソースを読み取れません： %s' ;;
+        zh:fg_read_ver) echo '无法读取核心目标版本： %s' ;;
+        zh-tw:fg_read_ver) echo '無法讀取核心目標版本： %s' ;;
+        en:fg_read_ver) echo 'Cannot read the core target version: %s' ;;
+        ru:fg_read_ver) echo 'Невозможно прочитать целевую версию ядра: %s' ;;
+        fa:fg_read_ver) echo 'خواندن نسخه هدف هسته ممکن نیست: %s' ;;
+        ja:fg_read_ver) echo 'コアのターゲットバージョンを読み取れません： %s' ;;
+        zh:fg_record_exact) echo '无法记录已验证的精确版本镜像。' ;;
+        zh-tw:fg_record_exact) echo '無法記錄已驗證的精確版本鏡像。' ;;
+        en:fg_record_exact) echo 'Cannot record the verified exact-version mirror.' ;;
+        ru:fg_record_exact) echo 'Невозможно записать проверенное зеркало точной версии.' ;;
+        fa:fg_record_exact) echo 'ثبت آینه نسخه دقیق تأییدشده ممکن نیست.' ;;
+        ja:fg_record_exact) echo '検証済みの正確なバージョンのミラーを記録できません。' ;;
+        zh:fg_record_latest) echo '无法记录已验证的最新镜像版本。' ;;
+        zh-tw:fg_record_latest) echo '無法記錄已驗證的最新鏡像版本。' ;;
+        en:fg_record_latest) echo 'Cannot record the verified latest mirror version.' ;;
+        ru:fg_record_latest) echo 'Невозможно записать проверенную последнюю версию зеркала.' ;;
+        fa:fg_record_latest) echo 'ثبت آخرین نسخه آینه تأییدشده ممکن نیست.' ;;
+        ja:fg_record_latest) echo '検証済みの最新ミラーバージョンを記録できません。' ;;
+        zh:fg_record_pin) echo '无法记录已验证的固定容灾版本。' ;;
+        zh-tw:fg_record_pin) echo '無法記錄已驗證的固定容災版本。' ;;
+        en:fg_record_pin) echo 'Cannot record the verified pinned failover version.' ;;
+        ru:fg_record_pin) echo 'Невозможно записать проверенную закреплённую резервную версию.' ;;
+        fa:fg_record_pin) echo 'ثبت نسخه پشتیبان پین‌شده تأییدشده ممکن نیست.' ;;
+        ja:fg_record_pin) echo '検証済みの固定フェイルオーバーバージョンを記録できません。' ;;
+        zh:fg_resolve) echo '无法解析核心目标版本： %s' ;;
+        zh-tw:fg_resolve) echo '無法解析核心目標版本： %s' ;;
+        en:fg_resolve) echo 'Cannot resolve the core target version: %s' ;;
+        ru:fg_resolve) echo 'Невозможно разрешить целевую версию ядра: %s' ;;
+        fa:fg_resolve) echo 'تجزیه نسخه هدف هسته ممکن نیست: %s' ;;
+        ja:fg_resolve) echo 'コアのターゲットバージョンを解決できません： %s' ;;
+        zh:fg_tmpdir) echo '核心资产临时目录创建失败。' ;;
+        zh-tw:fg_tmpdir) echo '核心資產臨時目錄建立失敗。' ;;
+        en:fg_tmpdir) echo 'Failed to create the core asset temp directory.' ;;
+        ru:fg_tmpdir) echo 'Не удалось создать временный каталог активов ядра.' ;;
+        fa:fg_tmpdir) echo 'ایجاد پوشه موقت دارایی هسته ناموفق بود.' ;;
+        ja:fg_tmpdir) echo 'コアアセットの一時ディレクトリを作成できませんでした。' ;;
+        zh:fg_unparsable) echo 'Xray 版本号无法解析。' ;;
+        zh-tw:fg_unparsable) echo 'Xray 版本號無法解析。' ;;
+        en:fg_unparsable) echo 'The Xray version number cannot be parsed.' ;;
+        ru:fg_unparsable) echo 'Невозможно разобрать номер версии Xray.' ;;
+        fa:fg_unparsable) echo 'تجزیه شماره نسخه Xray ممکن نیست.' ;;
+        ja:fg_unparsable) echo 'Xray のバージョン番号を解析できません。' ;;
+        zh:gd_api) echo 'Geo Release API 请求失败： %s' ;;
+        zh-tw:gd_api) echo 'Geo Release API 請求失敗： %s' ;;
+        en:gd_api) echo 'The Geo Release API request failed: %s' ;;
+        ru:gd_api) echo 'Запрос к API релизов Geo не удался: %s' ;;
+        fa:gd_api) echo 'درخواست API انتشار Geo ناموفق بود: %s' ;;
+        ja:gd_api) echo 'Geo Release API リクエストに失敗しました： %s' ;;
+        zh:gd_asset_missing) echo 'Geo Release asset 未找到： %s' ;;
+        zh-tw:gd_asset_missing) echo 'Geo Release asset 未找到： %s' ;;
+        en:gd_asset_missing) echo 'The Geo Release asset was not found: %s' ;;
+        ru:gd_asset_missing) echo 'Актив релиза Geo не найден: %s' ;;
+        fa:gd_asset_missing) echo 'دارایی انتشار Geo یافت نشد: %s' ;;
+        ja:gd_asset_missing) echo 'Geo Release アセットが見つかりません： %s' ;;
+        zh:gd_bad_name) echo 'Geo 数据文件名非法： %s' ;;
+        zh-tw:gd_bad_name) echo 'Geo 資料檔案名不合法： %s' ;;
+        en:gd_bad_name) echo 'Invalid Geo data file name: %s' ;;
+        ru:gd_bad_name) echo 'Недопустимое имя файла данных Geo: %s' ;;
+        fa:gd_bad_name) echo 'نام فایل داده Geo نامعتبر است: %s' ;;
+        ja:gd_bad_name) echo 'Geo データのファイル名が不正です： %s' ;;
+        zh:gd_commit) echo 'Geo 数据文件 %s 原子提交失败。' ;;
+        zh-tw:gd_commit) echo 'Geo 資料檔案 %s 原子提交失敗。' ;;
+        en:gd_commit) echo 'Failed to atomically commit the Geo data file %s.' ;;
+        ru:gd_commit) echo 'Не удалось атомарно зафиксировать файл данных Geo %s.' ;;
+        fa:gd_commit) echo 'ثبت اتمی فایل داده Geo ‏%s ناموفق بود.' ;;
+        ja:gd_commit) echo 'Geo データファイル %s のアトミックコミットに失敗しました。' ;;
+        zh:gd_digest) echo 'Geo 数据文件 %s 官方 digest 校验失败。' ;;
+        zh-tw:gd_digest) echo 'Geo 資料檔案 %s 官方 digest 校驗失敗。' ;;
+        en:gd_digest) echo 'The official digest verification of the Geo data file %s failed.' ;;
+        ru:gd_digest) echo 'Проверка официального digest файла данных Geo %s не пройдена.' ;;
+        fa:gd_digest) echo 'بررسی digest رسمی فایل داده Geo ‏%s ناموفق بود.' ;;
+        ja:gd_digest) echo 'Geo データファイル %s の公式 digest 検証に失敗しました。' ;;
+        zh:gd_dl_label) echo '下载 %s' ;;
+        zh-tw:gd_dl_label) echo '下載 %s' ;;
+        en:gd_dl_label) echo 'Downloading %s' ;;
+        ru:gd_dl_label) echo 'Загрузка %s' ;;
+        fa:gd_dl_label) echo 'در حال دانلود %s' ;;
+        ja:gd_dl_label) echo '%s をダウンロード中' ;;
+        zh:gd_download) echo 'Geo 数据文件 %s 下载失败。' ;;
+        zh-tw:gd_download) echo 'Geo 資料檔案 %s 下載失敗。' ;;
+        en:gd_download) echo 'Failed to download the Geo data file %s.' ;;
+        ru:gd_download) echo 'Не удалось загрузить файл данных Geo %s.' ;;
+        fa:gd_download) echo 'دانلود فایل داده Geo ‏%s ناموفق بود.' ;;
+        ja:gd_download) echo 'Geo データファイル %s のダウンロードに失敗しました。' ;;
+        zh:gd_html) echo 'Geo 数据文件 %s 看起来是 HTML 错误页。' ;;
+        zh-tw:gd_html) echo 'Geo 資料檔案 %s 看起來是 HTML 錯誤頁。' ;;
+        en:gd_html) echo 'The Geo data file %s looks like an HTML error page.' ;;
+        ru:gd_html) echo 'Файл данных Geo %s выглядит как HTML-страница ошибки.' ;;
+        fa:gd_html) echo 'فایل داده Geo ‏%s شبیه صفحه خطای HTML است.' ;;
+        ja:gd_html) echo 'Geo データファイル %s は HTML エラーページのようです。' ;;
+        zh:gd_no_digest) echo 'Geo 数据 URL 必须是带官方 digest 的 GitHub Release 下载地址；拒绝无 digest 的明文拉取： %s' ;;
+        zh-tw:gd_no_digest) echo 'Geo 資料 URL 必須是帶官方 digest 的 GitHub Release 下載位址；拒絕無 digest 的明文拉取： %s' ;;
+        en:gd_no_digest) echo 'The Geo data URL must be a GitHub Release download URL with an official digest; refusing a plaintext fetch without a digest: %s' ;;
+        ru:gd_no_digest) echo 'URL данных Geo должен быть адресом загрузки релиза GitHub с официальным digest; загрузка открытым текстом без digest отклонена: %s' ;;
+        fa:gd_no_digest) echo 'نشانی داده Geo باید نشانی دانلود انتشار GitHub همراه با digest رسمی باشد؛ دریافت متن ساده بدون digest رد شد: %s' ;;
+        ja:gd_no_digest) echo 'Geo データ URL は公式 digest 付きの GitHub Release ダウンロード URL でなければなりません。digest なしの平文取得を拒否します： %s' ;;
+        zh:gd_out_dir) echo 'Geo 输出目录创建失败。' ;;
+        zh-tw:gd_out_dir) echo 'Geo 輸出目錄建立失敗。' ;;
+        en:gd_out_dir) echo 'Failed to create the Geo output directory.' ;;
+        ru:gd_out_dir) echo 'Не удалось создать выходной каталог Geo.' ;;
+        fa:gd_out_dir) echo 'ایجاد پوشه خروجی Geo ناموفق بود.' ;;
+        ja:gd_out_dir) echo 'Geo の出力ディレクトリを作成できませんでした。' ;;
+        zh:gd_out_init) echo 'Geo 输出临时文件初始化失败。' ;;
+        zh-tw:gd_out_init) echo 'Geo 輸出臨時檔案初始化失敗。' ;;
+        en:gd_out_init) echo 'Failed to initialize the Geo output temp file.' ;;
+        ru:gd_out_init) echo 'Не удалось инициализировать выходной временный файл Geo.' ;;
+        fa:gd_out_init) echo 'مقداردهی اولیه فایل موقت خروجی Geo ناموفق بود.' ;;
+        ja:gd_out_init) echo 'Geo 出力の一時ファイルの初期化に失敗しました。' ;;
+        zh:gd_out_notfile) echo 'Geo 输出路径不是普通文件： %s' ;;
+        zh-tw:gd_out_notfile) echo 'Geo 輸出路徑不是普通檔案： %s' ;;
+        en:gd_out_notfile) echo 'The Geo output path is not a regular file: %s' ;;
+        ru:gd_out_notfile) echo 'Выходной путь Geo не является обычным файлом: %s' ;;
+        fa:gd_out_notfile) echo 'مسیر خروجی Geo یک فایل عادی نیست: %s' ;;
+        ja:gd_out_notfile) echo 'Geo の出力パスが通常ファイルではありません： %s' ;;
+        zh:gd_out_tmp) echo 'Geo 输出临时文件创建失败。' ;;
+        zh-tw:gd_out_tmp) echo 'Geo 輸出臨時檔案建立失敗。' ;;
+        en:gd_out_tmp) echo 'Failed to create the Geo output temp file.' ;;
+        ru:gd_out_tmp) echo 'Не удалось создать выходной временный файл Geo.' ;;
+        fa:gd_out_tmp) echo 'ایجاد فایل موقت خروجی Geo ناموفق بود.' ;;
+        ja:gd_out_tmp) echo 'Geo 出力の一時ファイルを作成できませんでした。' ;;
+        zh:gd_params) echo 'Geo 数据下载参数缺失。' ;;
+        zh-tw:gd_params) echo 'Geo 資料下載參數缺失。' ;;
+        en:gd_params) echo 'The Geo data download parameters are missing.' ;;
+        ru:gd_params) echo 'Отсутствуют параметры загрузки данных Geo.' ;;
+        fa:gd_params) echo 'پارامترهای دانلود داده Geo وجود ندارد.' ;;
+        ja:gd_params) echo 'Geo データのダウンロードパラメータが不足しています。' ;;
+        zh:gd_size) echo 'Geo 数据文件 %s 大小异常。' ;;
+        zh-tw:gd_size) echo 'Geo 資料檔案 %s 大小異常。' ;;
+        en:gd_size) echo 'The Geo data file %s has an abnormal size.' ;;
+        ru:gd_size) echo 'Файл данных Geo %s имеет аномальный размер.' ;;
+        fa:gd_size) echo 'اندازه فایل داده Geo ‏%s غیرعادی است.' ;;
+        ja:gd_size) echo 'Geo データファイル %s のサイズが異常です。' ;;
+        zh:gd_tmp) echo 'Geo 数据临时文件创建失败。' ;;
+        zh-tw:gd_tmp) echo 'Geo 資料臨時檔案建立失敗。' ;;
+        en:gd_tmp) echo 'Failed to create the Geo data temp file.' ;;
+        ru:gd_tmp) echo 'Не удалось создать временный файл данных Geo.' ;;
+        fa:gd_tmp) echo 'ایجاد فایل موقت داده Geo ناموفق بود.' ;;
+        ja:gd_tmp) echo 'Geo データの一時ファイルを作成できませんでした。' ;;
+        zh:gd_url_mismatch) echo 'Geo GitHub Release 下载地址域名/仓库不匹配。' ;;
+        zh-tw:gd_url_mismatch) echo 'Geo GitHub Release 下載位址網域/倉庫不符。' ;;
+        en:gd_url_mismatch) echo 'The Geo GitHub Release download URL domain/repository does not match.' ;;
+        ru:gd_url_mismatch) echo 'Домен/репозиторий адреса загрузки релиза Geo на GitHub не совпадает.' ;;
+        fa:gd_url_mismatch) echo 'دامنه/مخزن نشانی دانلود انتشار Geo در GitHub مطابقت ندارد.' ;;
+        ja:gd_url_mismatch) echo 'Geo GitHub Release のダウンロード URL のドメイン/リポジトリが一致しません。' ;;
+        zh:rc_bad_override) echo '显式指定的核心版本号非法： %s:%s' ;;
+        zh-tw:rc_bad_override) echo '明確指定的核心版本號不合法： %s:%s' ;;
+        en:rc_bad_override) echo 'The explicitly specified core version is invalid: %s:%s' ;;
+        ru:rc_bad_override) echo 'Явно указанная версия ядра недопустима: %s:%s' ;;
+        fa:rc_bad_override) echo 'نسخه هسته صراحتاً مشخص‌شده نامعتبر است: %s:%s' ;;
+        ja:rc_bad_override) echo '明示指定されたコアバージョンが不正です： %s:%s' ;;
+        zh:va_empty) echo '下载资产为空： %s' ;;
+        zh-tw:va_empty) echo '下載資產為空： %s' ;;
+        en:va_empty) echo 'The downloaded asset is empty: %s' ;;
+        ru:va_empty) echo 'Загруженный актив пуст: %s' ;;
+        fa:va_empty) echo 'دارایی دانلودشده خالی است: %s' ;;
+        ja:va_empty) echo 'ダウンロードしたアセットが空です： %s' ;;
+        zh:va_hy2_elf) echo 'Hysteria 下载结果不是 ELF 可执行文件。' ;;
+        zh-tw:va_hy2_elf) echo 'Hysteria 下載結果不是 ELF 可執行檔案。' ;;
+        en:va_hy2_elf) echo 'The Hysteria download is not an ELF executable.' ;;
+        ru:va_hy2_elf) echo 'Загруженный Hysteria не является исполняемым файлом ELF.' ;;
+        fa:va_hy2_elf) echo 'دانلود Hysteria یک فایل اجرایی ELF نیست.' ;;
+        ja:va_hy2_elf) echo 'Hysteria のダウンロード結果が ELF 実行ファイルではありません。' ;;
+        zh:va_sb_tar) echo 'Sing-box 压缩包校验失败。' ;;
+        zh-tw:va_sb_tar) echo 'Sing-box 壓縮包校驗失敗。' ;;
+        en:va_sb_tar) echo 'The Sing-box archive check failed.' ;;
+        ru:va_sb_tar) echo 'Проверка архива Sing-box не пройдена.' ;;
+        fa:va_sb_tar) echo 'بررسی آرشیو Sing-box ناموفق بود.' ;;
+        ja:va_sb_tar) echo 'Sing-box アーカイブのチェックに失敗しました。' ;;
+        zh:va_undefined) echo '未定义的下载校验规则： %s' ;;
+        zh-tw:va_undefined) echo '未定義的下載校驗規則： %s' ;;
+        en:va_undefined) echo 'Undefined download validation rule: %s' ;;
+        ru:va_undefined) echo 'Не определено правило проверки загрузки: %s' ;;
+        fa:va_undefined) echo 'قانون بررسی دانلود تعریف نشده است: %s' ;;
+        ja:va_undefined) echo '未定義のダウンロード検証ルール： %s' ;;
+        zh:va_xray_zip) echo 'Xray 压缩包校验失败。' ;;
+        zh-tw:va_xray_zip) echo 'Xray 壓縮包校驗失敗。' ;;
+        en:va_xray_zip) echo 'The Xray archive check failed.' ;;
+        ru:va_xray_zip) echo 'Проверка архива Xray не пройдена.' ;;
+        fa:va_xray_zip) echo 'بررسی آرشیو Xray ناموفق بود.' ;;
+        ja:va_xray_zip) echo 'Xray アーカイブのチェックに失敗しました。' ;;
+        zh:vg_bad_format) echo 'GitHub Release digest 格式异常。' ;;
+        zh-tw:vg_bad_format) echo 'GitHub Release digest 格式異常。' ;;
+        en:vg_bad_format) echo 'The GitHub Release digest format is abnormal.' ;;
+        ru:vg_bad_format) echo 'Формат digest GitHub Release некорректен.' ;;
+        fa:vg_bad_format) echo 'قالب digest ‏GitHub Release غیرعادی است.' ;;
+        ja:vg_bad_format) echo 'GitHub Release の digest 形式が異常です。' ;;
+        zh:vg_mismatch) echo 'GitHub Release digest 校验失败。' ;;
+        zh-tw:vg_mismatch) echo 'GitHub Release digest 校驗失敗。' ;;
+        en:vg_mismatch) echo 'The GitHub Release digest verification failed.' ;;
+        ru:vg_mismatch) echo 'Проверка digest GitHub Release не пройдена.' ;;
+        fa:vg_mismatch) echo 'بررسی digest ‏GitHub Release ناموفق بود.' ;;
+        ja:vg_mismatch) echo 'GitHub Release の digest 検証に失敗しました。' ;;
+        zh:vg_missing) echo 'GitHub Release asset 缺少官方 SHA256 digest，拒绝安装。' ;;
+        zh-tw:vg_missing) echo 'GitHub Release asset 缺少官方 SHA256 digest，拒絕安裝。' ;;
+        en:vg_missing) echo 'The GitHub Release asset has no official SHA256 digest; installation refused.' ;;
+        ru:vg_missing) echo 'У актива GitHub Release нет официального SHA256 digest; установка отклонена.' ;;
+        fa:vg_missing) echo 'دارایی GitHub Release فاقد digest رسمی SHA256 است؛ نصب رد شد.' ;;
+        ja:vg_missing) echo 'GitHub Release アセットに公式 SHA256 digest がないため、インストールを拒否します。' ;;
+        zh:vg_not_sha) echo 'GitHub Release digest 不是 sha256 格式。' ;;
+        zh-tw:vg_not_sha) echo 'GitHub Release digest 不是 sha256 格式。' ;;
+        en:vg_not_sha) echo 'The GitHub Release digest is not in sha256 format.' ;;
+        ru:vg_not_sha) echo 'Digest GitHub Release не в формате sha256.' ;;
+        fa:vg_not_sha) echo '‏digest ‏GitHub Release در قالب sha256 نیست.' ;;
+        ja:vg_not_sha) echo 'GitHub Release の digest が sha256 形式ではありません。' ;;
         zh:fmt_unused) echo '未用' ;;
         en:fmt_unused) echo 'unused' ;;
         ru:fmt_unused) echo 'нет трафика' ;;
@@ -10175,20 +10439,20 @@ EOS
 }
 validate_downloaded_asset() {
     local asset_name="$1" f="${2:-/tmp/$1}" magic=''
-    [[ -s "$f" ]] || { printf '%s\n' "下载资产为空: $asset_name" >&2; return 1; }
+    [[ -s "$f" ]] || { printf '%s\n' "$(tprintf va_empty "$asset_name")" >&2; return 1; }
     case "$asset_name" in
         xray_core.zip)
-            unzip -tqq "$f" >/dev/null 2>&1 || { printf '%s\n' 'Xray 压缩包校验失败。' >&2; return 1; }
+            unzip -tqq "$f" >/dev/null 2>&1 || { printf '%s\n' "$(tr_msg va_xray_zip)" >&2; return 1; }
             ;;
         singbox_core.tar.gz)
-            tar -tzf "$f" >/dev/null 2>&1 || { printf '%s\n' 'Sing-box 压缩包校验失败。' >&2; return 1; }
+            tar -tzf "$f" >/dev/null 2>&1 || { printf '%s\n' "$(tr_msg va_sb_tar)" >&2; return 1; }
             ;;
         hysteria_core)
             magic=$(head -c 4 "$f" | od -An -tx1 | tr -d ' \n' || true)
-            [[ "$magic" == '7f454c46' ]] || { printf '%s\n' 'Hysteria 下载结果不是 ELF 可执行文件。' >&2; return 1; }
+            [[ "$magic" == '7f454c46' ]] || { printf '%s\n' "$(tr_msg va_hy2_elf)" >&2; return 1; }
             ;;
         *)
-            printf '%s\n' "未定义的下载校验规则: $asset_name" >&2
+            printf '%s\n' "$(tprintf va_undefined "$asset_name")" >&2
             return 1
             ;;
     esac
@@ -10390,14 +10654,14 @@ github_api_get() {
 verify_github_asset_digest() {
     local file="$1" digest="${2:-}" expected actual
     if [[ -z "$digest" || "$digest" == 'null' ]]; then
-        printf '%s\n' 'GitHub Release asset 缺少官方 SHA256 digest，拒绝安装。' >&2
+        printf '%s\n' "$(tr_msg vg_missing)" >&2
         return 1
     fi
-    [[ "$digest" == sha256:* ]] || { printf '%s\n' 'GitHub Release digest 不是 sha256 格式。' >&2; return 1; }
+    [[ "$digest" == sha256:* ]] || { printf '%s\n' "$(tr_msg vg_not_sha)" >&2; return 1; }
     expected="${digest#sha256:}"
-    [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ ]] || { printf '%s\n' 'GitHub Release digest 格式异常。' >&2; return 1; }
+    [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ ]] || { printf '%s\n' "$(tr_msg vg_bad_format)" >&2; return 1; }
     actual=$(sha256sum "$file" 2>/dev/null | awk '{print $1}') || actual=''
-    [[ "${actual,,}" == "${expected,,}" ]] || { printf '%s\n' 'GitHub Release digest 校验失败。' >&2; return 1; }
+    [[ "${actual,,}" == "${expected,,}" ]] || { printf '%s\n' "$(tr_msg vg_mismatch)" >&2; return 1; }
 }
 
 # ============ F-05: Ed25519 detached signature verification ============
@@ -10946,7 +11210,7 @@ resolve_core_release_target() {
         *) return 1 ;;
     esac
     if [[ -n "$override" ]]; then
-        core_release_ref_valid "$repo" "$override" || { msg "${RED}[!] 显式指定的核心版本号非法: $repo:$override${NC}" >&2; return 1; }
+        core_release_ref_valid "$repo" "$override" || { msg "${RED}[!] $(tprintf rc_bad_override "$repo" "$override")${NC}" >&2; return 1; }
         target="$override"; source='explicit'
     else
         resolved=$(core_resolved_version "$repo" 2>/dev/null || true)
@@ -11100,24 +11364,24 @@ core_fetch_upstream_release_asset() {
 
 fetch_github_release() {
     local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" asset_re='' target_ref='' target_source='' mirror_ref=''
-    case "$repo:$output_file" in XTLS/Xray-core:xray_core.zip) asset_re="^Xray-linux-${XRAY_ARCH}[.]zip$" ;; SagerNet/sing-box:singbox_core.tar.gz) asset_re="$(singbox_asset_regex)" ;; HyNetworks/hysteria:hysteria_core) asset_re="^hysteria-linux-${HY2_ARCH}$" ;; *) die "未定义的核心资产匹配规则: ${repo}:${output_file}" ;; esac
-    resolve_core_release_target "$repo" || die "无法解析核心目标版本: ${repo}"
-    target_ref=$(core_resolved_version "$repo") || die "无法读取核心目标版本: ${repo}"
-    target_source=$(core_resolved_source "$repo") || die "无法读取核心目标来源: ${repo}"
-    core_release_ref_valid "$repo" "$target_ref" || die "核心目标版本格式非法: ${repo}:${target_ref}"
-    [[ -n "$dest_file" ]] || { local tmp_dir; tmp_dir=$(mktemp -d /tmp/A-Box-asset.XXXXXX) || die '核心资产临时目录创建失败。'; dest_file="$tmp_dir/$output_file"; }
-    mkdir -p "$(dirname "$dest_file")" || die '核心资产输出目录创建失败。'
+    case "$repo:$output_file" in XTLS/Xray-core:xray_core.zip) asset_re="^Xray-linux-${XRAY_ARCH}[.]zip$" ;; SagerNet/sing-box:singbox_core.tar.gz) asset_re="$(singbox_asset_regex)" ;; HyNetworks/hysteria:hysteria_core) asset_re="^hysteria-linux-${HY2_ARCH}$" ;; *) die "$(tprintf fg_no_rule "$repo" "$output_file")" ;; esac
+    resolve_core_release_target "$repo" || die "$(tprintf fg_resolve "$repo")"
+    target_ref=$(core_resolved_version "$repo") || die "$(tprintf fg_read_ver "$repo")"
+    target_source=$(core_resolved_source "$repo") || die "$(tprintf fg_read_src "$repo")"
+    core_release_ref_valid "$repo" "$target_ref" || die "$(tprintf fg_bad_ref "$repo" "$target_ref")"
+    [[ -n "$dest_file" ]] || { local tmp_dir; tmp_dir=$(mktemp -d /tmp/A-Box-asset.XXXXXX) || die "$(tr_msg fg_tmpdir)"; dest_file="$tmp_dir/$output_file"; }
+    mkdir -p "$(dirname "$dest_file")" || die "$(tr_msg fg_outdir)"
     if [[ "$repo:$output_file" == 'XTLS/Xray-core:xray_core.zip' ]]; then
-        if ABOX_XRAY_VERSION="$target_ref" xray_reality_requires_mlkem; then msg "${YELLOW}[!] Xray ${target_ref} 使用较新的 REALITY ML-KEM ClientHello 门槛；部分旧版客户端可能无法连接。${NC}"; else local mlkem_rc=$?; (( mlkem_rc == 1 )) || die 'Xray 版本号无法解析。'; fi
+        if ABOX_XRAY_VERSION="$target_ref" xray_reality_requires_mlkem; then msg "${YELLOW}[!] $(tprintf fg_mlkem "$target_ref")${NC}"; else local mlkem_rc=$?; (( mlkem_rc == 1 )) || die "$(tr_msg fg_unparsable)"; fi
     fi
     msg "${YELLOW} -> 核心候选 [${repo}:${target_ref}，source=${target_source}]... ${NC}"
     probe_core_sources_banner
 
     if [[ "$target_source" == 'mirror-exact' ]]; then
         if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then return 0; fi
-        mirror_ref=$(core_release_mirror_version "$repo") || die "缺少 ${repo} 的固定容灾版本 pin。"
+        mirror_ref=$(core_release_mirror_version "$repo") || die "$(tprintf fg_no_pin "$repo")"
         if [[ "$target_ref" == "$mirror_ref" ]] && fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 0; then return 0; fi
-        die "显式指定的精确版本 ${target_ref} 在上游和镜像中均不可用；不会替换为其他版本。"
+        die "$(tprintf fg_exact_unavail "$target_ref")"
     fi
 
     if [[ "$target_source" == 'upstream' || "$target_source" == 'explicit' || "$target_source" == 'pinned' ]]; then
@@ -11127,7 +11391,7 @@ fetch_github_release() {
         # documented "same version mirror first" policy.
         if [[ "$target_source" == 'upstream' ]]; then
             if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
-                core_set_resolved_target "$repo" "$target_ref" mirror-exact || die '无法记录已验证的精确版本镜像。'
+                core_set_resolved_target "$repo" "$target_ref" mirror-exact || die "$(tr_msg fg_record_exact)"
                 ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-exact'
                 msg "${GREEN}   上游失败，从同标签版本化镜像恢复 ${target_ref}；未替换版本号。${NC}"
                 return 0
@@ -11136,25 +11400,25 @@ fetch_github_release() {
         fi
         if [[ "$target_source" == 'explicit' ]]; then
             if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
-                core_set_resolved_target "$repo" "$target_ref" mirror-exact || die '无法记录已验证的精确版本镜像。'
+                core_set_resolved_target "$repo" "$target_ref" mirror-exact || die "$(tr_msg fg_record_exact)"
                 ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-exact'
                 msg "${GREEN}   显式版本从同标签容灾资产恢复；未替换版本号。${NC}"
                 return 0
             fi
-            mirror_ref=$(core_release_mirror_version "$repo") || die "缺少 ${repo} 的固定容灾版本 pin。"
+            mirror_ref=$(core_release_mirror_version "$repo") || die "$(tprintf fg_no_pin "$repo")"
             if [[ "$target_ref" == "$mirror_ref" ]] && fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 0; then
-                core_set_resolved_target "$repo" "$target_ref" mirror-exact || die '无法记录已验证的精确版本镜像。'
+                core_set_resolved_target "$repo" "$target_ref" mirror-exact || die "$(tr_msg fg_record_exact)"
                 ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-exact'
                 msg "${GREEN}   显式版本从同标签固定容灾资产恢复；未替换版本号。${NC}"
                 return 0
             fi
-            die "显式指定的核心版本 ${target_ref} 在上游与同标签镜像中均不可用；为避免静默替换版本，停止安装。"
+            die "$(tprintf fg_explicit_unavail "$target_ref")"
         fi
     fi
 
     if [[ "$target_source" == 'mirror-latest' || ( "$target_source" == 'upstream' && "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ) ]]; then
         if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
-            core_set_resolved_target "$repo" "$target_ref" mirror-latest || die '无法记录已验证的最新镜像版本。'
+            core_set_resolved_target "$repo" "$target_ref" mirror-latest || die "$(tr_msg fg_record_latest)"
             ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-latest'
             msg "${GREEN}   最新稳定镜像候选通过 SHA-256 与实际二进制版本校验：${target_ref}${NC}"
             return 0
@@ -11162,15 +11426,15 @@ fetch_github_release() {
         msg "${YELLOW}[!] 与目标版本一致的最新稳定镜像资产不可用；继续尝试固定兼容性容灾版本。${NC}" >&2
     fi
 
-    mirror_ref=$(core_release_mirror_version "$repo") || die "缺少 ${repo} 的固定容灾版本 pin。"
+    mirror_ref=$(core_release_mirror_version "$repo") || die "$(tprintf fg_no_pin "$repo")"
     msg "${YELLOW}[!] 使用固定 A-Box 兼容性容灾版本 ${mirror_ref}，独立于失败的目标 ${target_ref}。${NC}" >&2
     if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$mirror_ref"; then
-        core_set_resolved_target "$repo" "$mirror_ref" mirror || die '无法记录已验证的固定容灾版本。'
+        core_set_resolved_target "$repo" "$mirror_ref" mirror || die "$(tr_msg fg_record_pin)"
         ABOX_LAST_CORE_RELEASE_REF="$mirror_ref"; ABOX_LAST_CORE_SOURCE='mirror'
         msg "${GREEN}   固定容灾候选通过 SHA-256 与实际二进制版本校验：${mirror_ref}${NC}"
         return 0
     fi
-    die '固定版本候选与最新稳定容灾候选均未通过验证；拒绝安装版本不匹配的资产。'
+    die "$(tr_msg fg_none_valid)"
 }
 
 fetch_geo_data() {
@@ -11178,47 +11442,47 @@ fetch_geo_data() {
     file_name="${1:-}"
     official_url="${2:-}"
     out="${3:-}"
-    [[ -n "$file_name" && -n "$official_url" ]] || die 'Geo 数据下载参数缺失。'
-    [[ "$file_name" =~ ^[A-Za-z0-9._-]+$ ]] || die "Geo 数据文件名非法: $file_name"
+    [[ -n "$file_name" && -n "$official_url" ]] || die "$(tr_msg gd_params)"
+    [[ "$file_name" =~ ^[A-Za-z0-9._-]+$ ]] || die "$(tprintf gd_bad_name "$file_name")"
     if [[ -z "$out" ]]; then
-        out="$(umask 077; mktemp "/tmp/${file_name}.XXXXXX")" || die 'Geo 输出临时文件创建失败。'
+        out="$(umask 077; mktemp "/tmp/${file_name}.XXXXXX")" || die "$(tr_msg gd_out_tmp)"
         out_created=1
-        rm -f -- "$out" || die 'Geo 输出临时文件初始化失败。'
+        rm -f -- "$out" || die "$(tr_msg gd_out_init)"
     fi
-    [[ ! -L "$out" && ! -d "$out" ]] || die "Geo 输出路径不是普通文件: $out"
-    mkdir -p "$(dirname "$out")" || die 'Geo 输出目录创建失败。'
-    tmp_out=$(umask 077; mktemp "${out}.download.XXXXXX") || { (( out_created == 1 )) && rm -f -- "$out"; die 'Geo 数据临时文件创建失败。'; }
+    [[ ! -L "$out" && ! -d "$out" ]] || die "$(tprintf gd_out_notfile "$out")"
+    mkdir -p "$(dirname "$out")" || die "$(tr_msg gd_out_dir)"
+    tmp_out=$(umask 077; mktemp "${out}.download.XXXXXX") || { (( out_created == 1 )) && rm -f -- "$out"; die "$(tr_msg gd_tmp)"; }
 
     if [[ "$official_url" =~ ^https://github.com/([^/]+/[^/]+)/releases/latest/download/([^/?#]+)$ ]]; then
         repo="${BASH_REMATCH[1]}"
         asset="${BASH_REMATCH[2]}"
         release_json=$(github_api_get "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null) || release_json=''
-        [[ -n "$release_json" ]] || { rm -f -- "$tmp_out"; die "Geo Release API 请求失败: ${repo}"; }
+        [[ -n "$release_json" ]] || { rm -f -- "$tmp_out"; die "$(tprintf gd_api "$repo")"; }
         asset_json=$(jq -c --arg name "$asset" 'first(.assets[]? | select(.name == $name) | {name:.name,url:.browser_download_url,digest:(.digest // "")}) // empty' <<< "$release_json")
-        [[ -n "$asset_json" && "$asset_json" != 'null' ]] || { rm -f -- "$tmp_out"; die "Geo Release asset 未找到: ${asset}"; }
+        [[ -n "$asset_json" && "$asset_json" != 'null' ]] || { rm -f -- "$tmp_out"; die "$(tprintf gd_asset_missing "$asset")"; }
         asset_name=$(jq -r '.name // ""' <<< "$asset_json")
         release_ref=$(jq -r '.tag_name // ""' <<< "$release_json")
         download_url=$(jq -r '.url' <<< "$asset_json")
         digest=$(jq -r '.digest // ""' <<< "$asset_json")
         [[ -n "$asset_name" && -n "$release_ref" ]] || { rm -f -- "$tmp_out"; die 'Geo Release metadata missing asset name or tag.'; }
-        valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { rm -f -- "$tmp_out"; die 'Geo GitHub Release 下载地址域名/仓库不匹配。'; }
-        abox_run_wait "下载 ${file_name}" curl -fLs --connect-timeout 10 -m 90 "$download_url" -o "$tmp_out" || { rm -f -- "$tmp_out"; die "Geo 数据文件 ${file_name} 下载失败。"; }
+        valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { rm -f -- "$tmp_out"; die "$(tr_msg gd_url_mismatch)"; }
+        abox_run_wait "$(tprintf gd_dl_label "$file_name")" curl -fLs --connect-timeout 10 -m 90 "$download_url" -o "$tmp_out" || { rm -f -- "$tmp_out"; die "$(tprintf gd_download "$file_name")"; }
         if ! verify_github_asset_digest "$tmp_out" "$digest"; then
             rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"
-            die "Geo 数据文件 ${file_name} 官方 digest 校验失败。"
+            die "$(tprintf gd_digest "$file_name")"
         fi
     else
         rm -f -- "$tmp_out"
-        die "Geo 数据 URL 必须是带官方 digest 的 GitHub Release 下载地址；拒绝无 digest 的明文拉取: ${file_name}"
+        die "$(tprintf gd_no_digest "$file_name")"
     fi
 
     size=$(wc -c < "$tmp_out" 2>/dev/null | tr -d ' ')
-    [[ -n "$size" && "$size" -gt 500000 ]] || { rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"; die "Geo 数据文件 ${file_name} 大小异常。"; }
+    [[ -n "$size" && "$size" -gt 500000 ]] || { rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"; die "$(tprintf gd_size "$file_name")"; }
     if head -c 256 "$tmp_out" 2>/dev/null | grep -Eiq '<(html|!doctype)'; then
         rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"
-        die "Geo 数据文件 ${file_name} 看起来是 HTML 错误页。"
+        die "$(tprintf gd_html "$file_name")"
     fi
-    mv -f -- "$tmp_out" "$out" || { rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"; die "Geo 数据文件 ${file_name} 原子提交失败。"; }
+    mv -f -- "$tmp_out" "$out" || { rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"; die "$(tprintf gd_commit "$file_name")"; }
 }
 
 desired_state_valid() { [[ "${1:-}" =~ ^(RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE)$ ]]; }
@@ -11603,7 +11867,7 @@ validate_fail2ban_config_or_die() {
 2026-07-25T10:00:03Z client=198.51.100.8 rejected
 2026-07-25T10:00:04Z health check succeeded without authentication failure
 EOF_F2B_SAMPLE
-        out=$(fail2ban-regex "$sample" /etc/fail2ban/filter.d/A-Box.conf 2>&1) || { rm -f "$sample"; printf '%s\n' "$out" >&2; die 'Fail2Ban 正则测试执行失败。'; }
+        out=$(fail2ban-regex "$sample" /etc/fail2ban/filter.d/A-Box.conf 2>&1) || { rm -f "$sample"; printf '%s\n' "$out" >&2; die "$(tr_msg fb_regex_fail)"; }
         rm -f "$sample"
         local summary matched_count missed_count
         summary=$(grep -E '^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, [0-9]+ missed' <<< "$out" | tail -n 1)

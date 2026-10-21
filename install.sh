@@ -15141,6 +15141,8 @@ do_cleanup() {
     done
     wallos_https_teardown >/dev/null 2>&1 || true
     wallos_cftunnel_teardown >/dev/null 2>&1 || true
+    users_registries_wipe || msg "${YELLOW}[!] 用户注册表清理未完成，请手动检查 /etc/ddr/users.d。${NC}"
+    abox_zram_teardown
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         if systemctl list-unit-files fail2ban.service >/dev/null 2>&1 && systemctl cat fail2ban.service >/dev/null 2>&1; then
             systemctl try-restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响 A-Box 清理。${NC}"
@@ -15517,15 +15519,7 @@ check_virgin_state() {
     argo_remove_unit argo-vless || true
     rm -f /usr/local/bin/cloudflared "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true; rm -rf -- /etc/ddr/standalone-links.d 2>/dev/null || true
     users_registries_wipe || true
-    if [[ -x /usr/local/sbin/abox-zram ]]; then /usr/local/sbin/abox-zram stop >/dev/null 2>&1 || true; fi
-    if [[ "${INIT_SYS:-}" == systemd ]]; then
-        systemctl disable abox-zram.service >/dev/null 2>&1 || true
-        rm -f /etc/systemd/system/abox-zram.service 2>/dev/null || true
-    elif [[ "${INIT_SYS:-}" == openrc ]]; then
-        rc-update del abox-zram default >/dev/null 2>&1 || true
-        rm -f /etc/init.d/abox-zram 2>/dev/null || true
-    fi
-    rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf 2>/dev/null || true
+    abox_zram_teardown
     for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local; do
         if [[ -f "$_wf" ]] && grep -q 'A-Box-wallos' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
     done
@@ -20623,6 +20617,25 @@ case "${1:-}" in
 esac
 EOF_ZRAM_HELPER
 }
+# Stop the zram swap and remove its persistence (unit/init script,
+# helper, config). Best-effort; used by the toolbox remover, the
+# virgin reset and the full uninstaller.
+abox_zram_teardown() {
+    if [[ -x /usr/local/sbin/abox-zram ]]; then /usr/local/sbin/abox-zram stop >/dev/null 2>&1 || true; fi
+    local _init=''
+    _init=$(effective_init_system)
+    if [[ "$_init" == 'systemd' ]]; then
+        systemctl disable abox-zram.service >/dev/null 2>&1 || true
+        rm -f /etc/systemd/system/abox-zram.service 2>/dev/null || true
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    elif [[ "$_init" == 'openrc' ]]; then
+        rc-update del abox-zram default >/dev/null 2>&1 || true
+        rm -f /etc/init.d/abox-zram 2>/dev/null || true
+    fi
+    rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf 2>/dev/null || true
+    return 0
+}
+
 
 setup_zram_swap() {
     clear
@@ -20728,18 +20741,7 @@ EOF_ZRAM_RC
 }
 
 remove_zram_swap() {
-    local init=''
-    init=$(effective_init_system)
-    if [[ "$init" == 'systemd' ]]; then
-        systemctl disable abox-zram.service >/dev/null 2>&1 || true
-        rm -f /etc/systemd/system/abox-zram.service
-        systemctl daemon-reload >/dev/null 2>&1 || true
-    elif [[ "$init" == 'openrc' ]]; then
-        rc-update del abox-zram default >/dev/null 2>&1 || true
-        rm -f /etc/init.d/abox-zram
-    fi
-    [[ -x /usr/local/sbin/abox-zram ]] && /usr/local/sbin/abox-zram stop || true
-    rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf
+    abox_zram_teardown
     msg "${GREEN}zram 已移除（A-Box 创建的配置与自启已清理）。${NC}"
     swapon --show || true
     pause_return

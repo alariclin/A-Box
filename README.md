@@ -89,14 +89,14 @@ The top of the menu shows a 16-cell status matrix (running / stopped / not insta
 
 | No. | Function | No. | Function |
 |---:|---|---:|---|
-| 1 | A-Check IP reputation check | 9 | IP / DNS / timezone / source settings |
-| 2 | System benchmark & download speed test | 10 | Local SNI selection test |
-| 3 | IP quality / streaming / route test | 11 | Mini-host SNI selection test |
-| 4 | Export redacted diagnostics | 12 | SNI test records |
-| 5 | Read-only preflight check | 13 | Configuration backup / restore |
-| 6 | WARP & split routing | 14 | Multi-user / subscription export |
-| 7 | Create 2 GB swap | 15 | Wallos install / upgrade / backup |
-| 8 | VPS one-click optimization | 16 | SS-2022 access allowlist |
+| 1 | A-Check IP reputation check | 9 | Local SNI selection test |
+| 2 | System benchmark & download speed test | 10 | Mini-host SNI selection test |
+| 3 | IP quality / streaming / route test | 11 | SNI test records |
+| 4 | Export redacted diagnostics | 12 | Configuration backup / restore |
+| 5 | WARP & split routing | 13 | Multi-user / subscription export |
+| 6 | Create 2 GB swap | 14 | Wallos install / upgrade / backup |
+| 7 | VPS one-click optimization | 15 | SS-2022 access allowlist |
+| 8 | IP / DNS / timezone / source settings | | |
 | 0 | Back to main menu | | |
 
 The two test scripts (items 1–2) are fetched from the verified `test-tools-mirror` release and run only when their SHA-256 matches the manifest. If the mirror is unavailable or the checksum differs, the upstream script is used only when `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` is set; otherwise nothing is executed.
@@ -131,14 +131,13 @@ Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](h
 | `sudo bash A-Box.sh --help` | Show command-line help |
 | `sudo bash A-Box.sh --lang zh` / `zh-tw` / `en` / `ja` / `ru` / `fa` | Start with a given UI language |
 | `sudo bash A-Box.sh --self-test` | Run the built-in self-tests |
-| `sudo bash A-Box.sh --preflight` (or `--dry-run`) | Read-only preflight check, no changes |
 | `sudo bash A-Box.sh --status` | Show managed services and configuration status |
 | `sudo bash A-Box.sh --start` / `--stop` | Start or stop the managed services |
 | `sudo bash A-Box.sh --version` | Show the script build identifier |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | Export the backup recovery key |
 | `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [DIR]` | Convert a legacy backup to the current format |
 
-A passing self-test does not replace a preflight on the target host, a real installation, or a client connectivity test.
+A passing self-test does not replace a real installation or a client connectivity test.
 
 ## System requirements
 

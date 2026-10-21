@@ -19801,145 +19801,6 @@ light_preflight_check() {
     msg "${GREEN}[*] Lightweight preflight completed. WARN=${warn}${NC}"
 }
 
-# BUG-28: hoisted from preflight_check(). Unifies __abox_pf_log "$report" PASS ""/__abox_pf_log "$report" WARN warn/__abox_pf_log "$report" FAIL fail.
-# $1=report file, $2=LEVEL, $3=counter variable name (empty for PASS), rest=message args.
-__abox_pf_log() {
-    local report="$1" level="$2" counter_var="$3"
-    shift 3
-    if [[ -n "$counter_var" ]]; then
-        local -n __pf_c="$counter_var"
-        __pf_c=$((__pf_c + 1))
-    fi
-    printf '[%s] %s\n' "$level" "$*" | tee -a "$report"
-}
-preflight_check() {
-    local report_dir report fail=0 warn=0 port proto holder now interactive=1
-    local _pf_lock_held=0
-    [[ "${1:-}" == '--no-pause' ]] && interactive=0
-    if [[ ${EUID:-0} -eq 0 ]] && command -v flock >/dev/null 2>&1 && [[ -f "$LOCK_FILE" && ! -L "$LOCK_FILE" ]]; then
-        exec 8>>"$LOCK_FILE" 2>/dev/null || true
-        if flock -s -n 8 2>/dev/null; then _pf_lock_held=1; fi
-    fi
-    report_dir=$(umask 077; mktemp -d /tmp/A-Box-preflight.XXXXXX) || die 'Preflight report directory creation failed.'
-    chmod 700 "$report_dir" || { rm -rf -- "$report_dir"; die 'Preflight report directory permission setup failed.'; }
-    report="$report_dir/A-Box-preflight-$(date +%Y%m%d-%H%M%S).txt"
-
-
-    : > "$report"
-    echo "A-Box preflight check: $(now_iso)" | tee -a "$report"
-    echo "--------------------------------------------------------------------------------" | tee -a "$report"
-
-    [[ $EUID -eq 0 ]] && __abox_pf_log "$report" PASS "" 'root privilege available' || __abox_pf_log "$report" FAIL fail 'not running as root'
-    [[ -t 0 ]] && __abox_pf_log "$report" PASS "" 'interactive TTY available' || __abox_pf_log "$report" WARN warn 'no interactive TTY on stdin'
-    if [[ -r /etc/os-release ]]; then
-        . /etc/os-release
-        case "${ID:-}" in debian|ubuntu|centos|rhel|rocky|almalinux|alpine|fedora|amzn|ol|oracle) __abox_pf_log "$report" PASS "" "supported OS detected: ${ID:-unknown}" ;; *) __abox_pf_log "$report" WARN warn "OS may be unsupported: ${ID:-unknown}" ;; esac
-    else
-        __abox_pf_log "$report" WARN warn '/etc/os-release not readable'
-    fi
-    if systemd_available; then
-        INIT_SYS='systemd'
-        __abox_pf_log "$report" PASS "" 'systemd detected'
-    elif command -v rc-service >/dev/null 2>&1; then
-        INIT_SYS='openrc'
-        __abox_pf_log "$report" PASS "" 'OpenRC detected'
-    else
-        __abox_pf_log "$report" FAIL fail 'no supported init system detected'
-    fi
-    case "$(uname -m)" in x86_64|amd64|aarch64|arm64) __abox_pf_log "$report" PASS "" "supported CPU architecture: $(uname -m)" ;; *) __abox_pf_log "$report" FAIL fail "unsupported CPU architecture: $(uname -m)" ;; esac
-
-    for c in bash curl jq openssl bc unzip tar iptables ss lsof vnstat python3 getent flock qrencode fail2ban-client; do
-        command -v "$c" >/dev/null 2>&1 && __abox_pf_log "$report" PASS "" "command available: $c" || __abox_pf_log "$report" WARN warn "command missing before dependency sync: $c"
-    done
-
-    if curl -fsS --connect-timeout 5 -m 10 https://api.github.com >/dev/null 2>&1; then
-        __abox_pf_log "$report" PASS "" 'GitHub API reachable'
-    else
-        __abox_pf_log "$report" WARN warn 'GitHub API unreachable from this host now; official release metadata/digest cannot be verified and core installation may fail'
-    fi
-
-    local preflight_pairs='' env_present=0
-    if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
-        env_present=1
-        if ! load_abox_env "$ABOX_ENV" >/dev/null 2>&1; then
-            __abox_pf_log "$report" FAIL fail "A-Box environment state exists but failed trust/parse validation: $ABOX_ENV"
-        elif ! validate_abox_env_semantics >/dev/null 2>&1; then
-            __abox_pf_log "$report" FAIL fail "A-Box environment state failed semantic validation: $ABOX_ENV"
-        else
-            preflight_pairs=$(selected_port_pairs | awk 'NF' | sort -u) || preflight_pairs=''
-        fi
-    fi
-    if (( env_present == 0 )); then
-        preflight_pairs=$'tcp/443\ntcp/8443\ntcp/2053\nudp/2053'
-    fi
-    if ! command -v ss >/dev/null 2>&1; then
-        __abox_pf_log "$report" WARN warn 'ss is unavailable; port occupancy audit skipped'
-    else
-        local -a preflight_pairs_arr=()
-        if [[ -n "$preflight_pairs" ]]; then
-            mapfile -t preflight_pairs_arr <<< "$preflight_pairs"
-        fi
-        for pair in "${preflight_pairs_arr[@]}"; do
-            [[ "$pair" =~ ^(tcp|udp)/([0-9]+)$ ]] || continue
-            proto=${BASH_REMATCH[1]}
-            port=${BASH_REMATCH[2]}
-            local preflight_ss_output
-            if ! preflight_ss_output=$(ss -H -n -l -p -A "$proto" 2>/dev/null); then
-                __abox_pf_log "$report" WARN warn "ss failed for ${proto}; port occupancy audit skipped for ${proto}"
-                continue
-            fi
-            local holder managed_owner
-            holder=$(awk -v p="$port" '$4 ~ ("[:.]" p "$") || $5 ~ ("[:.]" p "$") { print }' <<< "$preflight_ss_output" || true)
-            if [[ -n "$holder" ]]; then
-                managed_owner=$(managed_socket_owner_for_port "$proto" "$port" 2>/dev/null || true)
-                if [[ -n "$managed_owner" ]]; then
-                    __abox_pf_log "$report" PASS "" "${port}/${proto} occupied by managed A-Box service: ${managed_owner}"
-                else
-                    __abox_pf_log "$report" WARN warn "${port}/${proto} occupied by foreign or unresolved process: $(head -n 1 <<< "$holder")"
-                fi
-            else
-                __abox_pf_log "$report" PASS "" "${port}/${proto} available"
-            fi
-        done
-    fi
-
-    managed_services_active
-    case $? in
-        0) __abox_pf_log "$report" WARN warn 'existing A-Box managed service is active' ;;
-        1) __abox_pf_log "$report" PASS "" 'no active A-Box managed service detected' ;;
-        2) __abox_pf_log "$report" WARN warn 'A-Box managed service state could not be determined safely' ;;
-        *) __abox_pf_log "$report" FAIL fail 'A-Box managed service state query failed unexpectedly' ;;
-    esac
-    if [[ -L "$ABOX_DIR" ]]; then
-        __abox_pf_log "$report" FAIL fail "A-Box directory is a symbolic link: $ABOX_DIR"
-    elif [[ -e "$ABOX_DIR" && ! -d "$ABOX_DIR" ]]; then
-        __abox_pf_log "$report" FAIL fail "A-Box path is not a directory: $ABOX_DIR"
-    elif [[ -d "$ABOX_DIR" ]]; then
-        path_owned_by_root "$ABOX_DIR" && path_mode_has_no_group_other_write "$ABOX_DIR" && __abox_pf_log "$report" PASS "" "A-Box directory ownership/mode is safe: $ABOX_DIR" || __abox_pf_log "$report" FAIL fail "A-Box directory is not root-owned and protected: $ABOX_DIR"
-    else
-        [[ -d "$(dirname "$ABOX_DIR")" && ! -L "$(dirname "$ABOX_DIR")" ]] && __abox_pf_log "$report" PASS "" "A-Box directory can be created after runtime ownership checks: $ABOX_DIR" || __abox_pf_log "$report" FAIL fail "A-Box directory parent is unavailable or symlinked: $(dirname "$ABOX_DIR")"
-    fi
-
-    echo "--------------------------------------------------------------------------------" | tee -a "$report"
-    echo "Summary: FAIL=${fail} WARN=${warn}" | tee -a "$report"
-    echo "Report: temporary report generated for this run; cleaned after result." | tee -a "$report"
-    if (( fail > 0 )); then
-        msg "${RED}[!] Preflight completed with blocking failures.${NC}"
-    elif (( warn > 0 )); then
-        msg "${YELLOW}[*] Preflight completed with warnings.${NC}"
-    else
-        msg "${GREEN}[*] Preflight passed.${NC}"
-    fi
-    if (( _pf_lock_held == 1 )); then
-        flock -u 8 2>/dev/null || true
-        eval "exec 8>&-" 2>/dev/null || true
-        _pf_lock_held=0
-    fi
-    (( interactive == 1 )) && pause_return
-    local preflight_rc=$(( fail > 0 ? 1 : 0 ))
-    rm -rf -- "$report_dir" || return 1
-    return "$preflight_rc"
-}
 
 
 validate_test_script() {
@@ -22316,132 +22177,125 @@ vps_benchmark_menu() {
         en)
             msg "${BOLD}${GREEN}Toolbox${NC}"
             msg "${CYAN}[ Test & Diagnostics ]                    [ System Tuning ]${NC}"
-            msg "${YELLOW}1.  A-Check IP reputation check           6.  WARP & split-routing${NC}"
-            msg "${YELLOW}2.  System benchmark & download speed     7.  Allocate 2 GB Swap${NC}"
-            msg "${YELLOW}3.  IP quality / streaming / route test   8.  VPS one-click optimization${NC}"
-            msg "${YELLOW}4.  Export redacted diagnostics           9.  IP / DNS / timezone / download-source${NC}"
-            msg "${YELLOW}5.  Read-only preflight${NC}"
+            msg "${YELLOW}1.  A-Check IP reputation check           5.  WARP & split-routing${NC}"
+            msg "${YELLOW}2.  System benchmark & download speed     6.  Allocate 2 GB Swap${NC}"
+            msg "${YELLOW}3.  IP quality / streaming / route test   7.  VPS one-click optimization${NC}"
+            msg "${YELLOW}4.  Export redacted diagnostics           8.  IP / DNS / timezone / download-source${NC}"
             msg ""
             msg "${CYAN}[ SNI Optimization ]                      [ Config Management ]${NC}"
-            msg "${YELLOW}10.  Local SNI preference                 13.  Backup / restore configuration${NC}"
-            msg "${YELLOW}11.  Mini-host SNI preference             14.  Multi-user / subscription link export${NC}"
-            msg "${YELLOW}12.  SNI preference records               15.  Wallos install / update / backup${NC}"
+            msg "${YELLOW}9.  Local SNI preference                  12.  Backup / restore configuration${NC}"
+            msg "${YELLOW}10.  Mini-host SNI preference             13.  Multi-user / subscription link export${NC}"
+            msg "${YELLOW}11.  SNI preference records               14.  Wallos install / update / backup${NC}"
             msg ""
             msg "${CYAN}[ Security ]${NC}"
-            msg "${YELLOW}16.  SS-2022 IP whitelist${NC}"
+            msg "${YELLOW}15.  SS-2022 IP whitelist${NC}"
             msg "${CYAN}0. Back${NC}"
             ;;
         ru)
             msg "${BOLD}${GREEN}Инструменты${NC}"
             msg "${CYAN}[ Тесты и диагностика ]                   [ Оптимизация системы ]${NC}"
-            msg "${YELLOW}1.  A-Check: проверка IP                  6.  WARP и разделение трафика${NC}"
-            msg "${YELLOW}2.  Тест системы и скорости               7.  Создать Swap 2 ГБ${NC}"
-            msg "${YELLOW}3.  Качество IP / стриминг / маршрут      8.  Оптимизация VPS${NC}"
-            msg "${YELLOW}4.  Экспорт диагностики                   9.  IP / DNS / часовой пояс / источники${NC}"
-            msg "${YELLOW}5.  Проверка перед установкой${NC}"
+            msg "${YELLOW}1.  A-Check: проверка IP                  5.  WARP и разделение трафика${NC}"
+            msg "${YELLOW}2.  Тест системы и скорости               6.  Создать Swap 2 ГБ${NC}"
+            msg "${YELLOW}3.  Качество IP / стриминг / маршрут      7.  Оптимизация VPS${NC}"
+            msg "${YELLOW}4.  Экспорт диагностики                   8.  IP / DNS / часовой пояс / источники${NC}"
             msg ""
             msg "${CYAN}[ Подбор SNI ]                            [ Управление конфигурацией ]${NC}"
-            msg "${YELLOW}10.  Подбор SNI                           13.  Бэкап / восстановление${NC}"
-            msg "${YELLOW}11.  Подбор SNI (мини-хост)               14.  Пользователи / экспорт подписки${NC}"
-            msg "${YELLOW}12.  Записи подбора SNI                   15.  Wallos: установка / обновление${NC}"
+            msg "${YELLOW}9.  Подбор SNI                            12.  Бэкап / восстановление${NC}"
+            msg "${YELLOW}10.  Подбор SNI (мини-хост)               13.  Пользователи / экспорт подписки${NC}"
+            msg "${YELLOW}11.  Записи подбора SNI                   14.  Wallos: установка / обновление${NC}"
             msg ""
             msg "${CYAN}[ Безопасность ]${NC}"
-            msg "${YELLOW}16.  Белый список IP (SS-2022)${NC}"
+            msg "${YELLOW}15.  Белый список IP (SS-2022)${NC}"
             msg "${CYAN}0. Назад${NC}"
             ;;
         fa)
             msg "${BOLD}${GREEN}جعبه ابزار${NC}"
             msg "${CYAN}[ تست و عیب‌یابی ]                        [ بهینه‌سازی سیستم ]${NC}"
-            msg "${YELLOW}1.  بررسی IP با A-Check                   6.  مدیریت WARP و تفکیک ترافیک${NC}"
-            msg "${YELLOW}2.  تست سیستم و سرعت دانلود               7.  ساخت Swap دو گیگابایتی${NC}"
-            msg "${YELLOW}3.  کیفیت IP / استریم / مسیر              8.  بهینه‌سازی تک‌کلیکی VPS${NC}"
-            msg "${YELLOW}4.  خروجی تشخیص عیب‌یابی                  9.  تنظیمات IP / DNS / منطقه زمانی${NC}"
-            msg "${YELLOW}5.  پیش‌بررسی فقط‌خواندنی${NC}"
+            msg "${YELLOW}1.  بررسی IP با A-Check                   5.  مدیریت WARP و تفکیک ترافیک${NC}"
+            msg "${YELLOW}2.  تست سیستم و سرعت دانلود               6.  ساخت Swap دو گیگابایتی${NC}"
+            msg "${YELLOW}3.  کیفیت IP / استریم / مسیر              7.  بهینه‌سازی تک‌کلیکی VPS${NC}"
+            msg "${YELLOW}4.  خروجی تشخیص عیب‌یابی                  8.  تنظیمات IP / DNS / منطقه زمانی${NC}"
             msg ""
             msg "${CYAN}[ بهینه‌سازی SNI ]                        [ مدیریت پیکربندی ]${NC}"
-            msg "${YELLOW}10.  بهینه‌سازی SNI محلی                  13.  پشتیبان‌گیری / بازیابی${NC}"
-            msg "${YELLOW}11.  بهینه‌سازی SNI مینی‌هاست             14.  کاربران / خروجی لینک اشتراک${NC}"
-            msg "${YELLOW}12.  سوابق بهینه‌سازی SNI                 15.  نصب / به‌روزرسانی Wallos${NC}"
+            msg "${YELLOW}9.  بهینه‌سازی SNI محلی                   12.  پشتیبان‌گیری / بازیابی${NC}"
+            msg "${YELLOW}10.  بهینه‌سازی SNI مینی‌هاست             13.  کاربران / خروجی لینک اشتراک${NC}"
+            msg "${YELLOW}11.  سوابق بهینه‌سازی SNI                 14.  نصب / به‌روزرسانی Wallos${NC}"
             msg ""
             msg "${CYAN}[ امنیت ]${NC}"
-            msg "${YELLOW}16.  لیست سفید آی‌پی SS-2022${NC}"
+            msg "${YELLOW}15.  لیست سفید آی‌پی SS-2022${NC}"
             msg "${CYAN}0. بازگشت${NC}"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}綜合工具箱${NC}"
             msg "${CYAN}[ 測試診斷 ]                              [ 系統優化 ]${NC}"
-            msg "${YELLOW}1.  A-Check IP 純淨度檢測                 6.  WARP 與分流管理${NC}"
-            msg "${YELLOW}2.  系統性能與下載測速                    7.  創建 2 GB Swap${NC}"
-            msg "${YELLOW}3.  IP 質量/流媒體解鎖/回程測試           8.  VPS 一鍵優化${NC}"
-            msg "${YELLOW}4.  導出脫敏診斷包                        9.  IP / DNS / 時區 / 下載源設置${NC}"
-            msg "${YELLOW}5.  只讀預檢查${NC}"
+            msg "${YELLOW}1.  A-Check IP 純淨度檢測                 5.  WARP 與分流管理${NC}"
+            msg "${YELLOW}2.  系統性能與下載測速                    6.  創建 2 GB Swap${NC}"
+            msg "${YELLOW}3.  IP 質量/流媒體解鎖/回程測試           7.  VPS 一鍵優化${NC}"
+            msg "${YELLOW}4.  導出脫敏診斷包                        8.  IP / DNS / 時區 / 下載源設置${NC}"
             msg ""
             msg "${CYAN}[ SNI 優選 ]                              [ 配置管理 ]${NC}"
-            msg "${YELLOW}10.  本地 SNI 優選                        13.  配置備份 / 恢復${NC}"
-            msg "${YELLOW}11.  微型主機 SNI 優選                    14.  多用戶 / 訂閱連結導出${NC}"
-            msg "${YELLOW}12.  SNI 優選記錄                         15.  Wallos 安裝 / 升級 / 備份${NC}"
+            msg "${YELLOW}9.  本地 SNI 優選                         12.  配置備份 / 恢復${NC}"
+            msg "${YELLOW}10.  微型主機 SNI 優選                    13.  多用戶 / 訂閱連結導出${NC}"
+            msg "${YELLOW}11.  SNI 優選記錄                         14.  Wallos 安裝 / 升級 / 備份${NC}"
             msg ""
             msg "${CYAN}[ 安全 ]${NC}"
-            msg "${YELLOW}16.  SS-2022 訪問白名單${NC}"
+            msg "${YELLOW}15.  SS-2022 訪問白名單${NC}"
             msg "${CYAN}0. 返回主選單${NC}"
             ;;
         ja)
             msg "${BOLD}${GREEN}ツールボックス${NC}"
             msg "${CYAN}[ テストと診断 ]                          [ システム最適化 ]${NC}"
-            msg "${YELLOW}1.  A-Check IP 品質チェック               6.  WARP と振り分け管理${NC}"
-            msg "${YELLOW}2.  システムベンチマークと速度測定        7.  2GB Swap 作成${NC}"
-            msg "${YELLOW}3.  IP品質/ストリーミング/ルートテスト    8.  VPS ワンクリック最適化${NC}"
-            msg "${YELLOW}4.  診断パッケージのエクスポート          9.  IP / DNS / タイムゾーン設定${NC}"
-            msg "${YELLOW}5.  読み取り専用事前チェック${NC}"
+            msg "${YELLOW}1.  A-Check IP 品質チェック               5.  WARP と振り分け管理${NC}"
+            msg "${YELLOW}2.  システムベンチマークと速度測定        6.  2GB Swap 作成${NC}"
+            msg "${YELLOW}3.  IP品質/ストリーミング/ルートテスト    7.  VPS ワンクリック最適化${NC}"
+            msg "${YELLOW}4.  診断パッケージのエクスポート          8.  IP / DNS / タイムゾーン設定${NC}"
             msg ""
             msg "${CYAN}[ SNI 最適化 ]                            [ 構成管理 ]${NC}"
-            msg "${YELLOW}10.  ローカル SNI 最適化                  13.  設定のバックアップ/復元${NC}"
-            msg "${YELLOW}11.  ミニホスト SNI 最適化                14.  複数ユーザー / サブスクリプション出力${NC}"
-            msg "${YELLOW}12.  SNI 最適化記録                       15.  Wallos インストール/更新${NC}"
+            msg "${YELLOW}9.  ローカル SNI 最適化                   12.  設定のバックアップ/復元${NC}"
+            msg "${YELLOW}10.  ミニホスト SNI 最適化                13.  複数ユーザー / サブスクリプション出力${NC}"
+            msg "${YELLOW}11.  SNI 最適化記録                       14.  Wallos インストール/更新${NC}"
             msg ""
             msg "${CYAN}[ セキュリティ ]${NC}"
-            msg "${YELLOW}16.  SS-2022 IPホワイトリスト${NC}"
+            msg "${YELLOW}15.  SS-2022 IPホワイトリスト${NC}"
             msg "${CYAN}0. メインメニューに戻る${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}综合工具箱${NC}"
             msg "${CYAN}[ 测试诊断 ]                              [ 系统优化 ]${NC}"
-            msg "${YELLOW}1.  A-Check IP 纯净度检测                 6.  WARP 与分流管理${NC}"
-            msg "${YELLOW}2.  系统性能与下载测速                    7.  创建 2 GB Swap${NC}"
-            msg "${YELLOW}3.  IP 质量/流媒体解锁/回程测试           8.  VPS 一键优化${NC}"
-            msg "${YELLOW}4.  导出脱敏诊断包                        9.  IP / DNS / 时区 / 下载源设置${NC}"
-            msg "${YELLOW}5.  只读预检查${NC}"
+            msg "${YELLOW}1.  A-Check IP 纯净度检测                 5.  WARP 与分流管理${NC}"
+            msg "${YELLOW}2.  系统性能与下载测速                    6.  创建 2 GB Swap${NC}"
+            msg "${YELLOW}3.  IP 质量/流媒体解锁/回程测试           7.  VPS 一键优化${NC}"
+            msg "${YELLOW}4.  导出脱敏诊断包                        8.  IP / DNS / 时区 / 下载源设置${NC}"
             msg ""
             msg "${CYAN}[ SNI 优选 ]                              [ 配置管理 ]${NC}"
-            msg "${YELLOW}10.  本地 SNI 优选                        13.  配置备份 / 恢复${NC}"
-            msg "${YELLOW}11.  微型主机 SNI 优选                    14.  多用户 / 订阅链接导出${NC}"
-            msg "${YELLOW}12.  SNI 优选记录                         15.  Wallos 安装 / 升级 / 备份${NC}"
+            msg "${YELLOW}9.  本地 SNI 优选                         12.  配置备份 / 恢复${NC}"
+            msg "${YELLOW}10.  微型主机 SNI 优选                    13.  多用户 / 订阅链接导出${NC}"
+            msg "${YELLOW}11.  SNI 优选记录                         14.  Wallos 安装 / 升级 / 备份${NC}"
             msg ""
             msg "${CYAN}[ 安全 ]${NC}"
-            msg "${YELLOW}16.  SS-2022 访问白名单${NC}"
+            msg "${YELLOW}15.  SS-2022 访问白名单${NC}"
             msg "${CYAN}0. 返回主菜单${NC}"
             ;;
     esac
     local bench_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-16]: ' ;; ru) select_prompt='Выберите [0–16]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۶]: ' ;; ja) select_prompt='選択してください [0-16]: ' ;; zh-tw) select_prompt='請選擇 [0-16]：' ;; *) select_prompt='请选择 [0-16]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-15]: ' ;; ru) select_prompt='Выберите [0–15]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۵]: ' ;; ja) select_prompt='選択してください [0-15]: ' ;; zh-tw) select_prompt='請選擇 [0-15]：' ;; *) select_prompt='请选择 [0-15]：' ;; esac
     read -r -p "$select_prompt" bench_choice || return 0
     case "$bench_choice" in
         1) run_acheck_tool; pause_return ;;
         2) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
         3) run_mirrored_test_script 'IP quality, streaming unlock and route test' 'https://Check.Place' 'Check.Place.sh' -I; pause_return ;;
         4) export_diagnostic_bundle ;;
-        5) preflight_check ;;
-        6) warp_split_menu ;;
-        7) setup_swap_2g ;;
-        8) tune_vps ;;
-        9) host_network_menu ;;
-        10) run_local_sni_benchmark ;;
-        11) run_local_sni_mini_benchmark ;;
-        12) show_sni_preference_records ;;
-        13) backup_restore_menu ;;
-        14) multi_uuid_menu ;;
-        15) wallos_menu ;;
-        16) manage_ss_whitelist ;;
+        5) warp_split_menu ;;
+        6) setup_swap_2g ;;
+        7) tune_vps ;;
+        8) host_network_menu ;;
+        9) run_local_sni_benchmark ;;
+        10) run_local_sni_mini_benchmark ;;
+        11) show_sni_preference_records ;;
+        12) backup_restore_menu ;;
+        13) multi_uuid_menu ;;
+        14) wallos_menu ;;
+        15) manage_ss_whitelist ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $bench_choice${NC}"; sleep 1 ;;
     esac
@@ -24487,8 +24341,6 @@ Usage:
   bash install.sh --status           显示当前配置和服务状态 / Show current status
   bash install.sh --stop             停止托管服务并保持手动停止状态 / Stop managed services
   bash install.sh --start            启动托管服务并恢复运行状态 / Start managed services
-  bash install.sh --preflight        运行完整预检查 / Run full dry-run preflight check
-  bash install.sh --dry-run          同 --preflight / Alias of --preflight
   bash install.sh --version          显示构建版本 / Show build version
   bash install.sh --export-backup-key /secure/path/A-Box-recovery.key
                                       将恢复密钥导出到独立可信介质
@@ -24797,7 +24649,6 @@ PY_SELFTEST_TAR
     grep -Fq 'refusing to report a false Saved state' "$0" || { echo 'FAIL: SNI persistence must fail closed'; failures=$((failures + 1)); }
     grep -Fq 'Diagnostic bundle checksum generation failed' "$0" || { echo 'FAIL: diagnostic checksum failures must be blocking'; failures=$((failures + 1)); }
     declare -F write_diagnostic_checksum >/dev/null 2>&1 || { echo 'FAIL: diagnostic checksum helper missing'; failures=$((failures + 1)); }
-    declare -F preflight_check >/dev/null 2>&1 || { echo 'FAIL: preflight_check missing'; failures=$((failures + 1)); }
     bash -n "$0" >/dev/null 2>&1 || { echo 'FAIL: installer source must pass bash -n'; failures=$((failures + 1)); }
     declare -F confirm_remote_script_hash >/dev/null 2>&1 || { echo 'FAIL: remote script hash gate missing'; failures=$((failures + 1)); }
     declare -F confirm_ota_script_hash >/dev/null 2>&1 || { echo 'FAIL: OTA hash gate missing'; failures=$((failures + 1)); }
@@ -25876,8 +25727,6 @@ PY_SELFTEST_YAML
     grep -Fq 'restore_managed_service_state "$changed_pre" "$changed_expected"' "$0" || { echo 'FAIL: manual service rollback must use expected-state conflict guards'; failures=$((failures + 1)); }
     grep -Fq 'current_state_before=$(managed_service_state_value' "$0" || { echo 'FAIL: service rollback must recheck state before mutation'; failures=$((failures + 1)); }
     grep -Fq 'start_abox_service_soft "$srv"' "$0" || { echo 'FAIL: manual start must use non-fatal service start path'; failures=$((failures + 1)); }
-    grep -Fq 'local preflight_rc=$(( fail > 0 ? 1 : 0 ))' "$0" || { echo 'FAIL: preflight must preserve result before cleanup'; failures=$((failures + 1)); }
-    grep -Fq 'rm -rf -- "$report_dir" || return 1' "$0" || { echo 'FAIL: preflight report directory cleanup missing'; failures=$((failures + 1)); }
     grep -Fq 'local redacted_json redacted_headers' "$0" || { echo 'FAIL: redaction self-test variables are not separated'; failures=$((failures + 1)); }
     grep -Fq 'target_ref="$ABOX_RESOLVED_XRAY_VERSION"' <<< "$source_body" || { echo 'FAIL: Xray core-only upgrade must use centralized compatibility version'; failures=$((failures + 1)); }
     grep -q '^core_post_upgrade_health_gate() {' "$0" || { echo 'FAIL: core post-upgrade health gate missing'; failures=$((failures + 1)); }
@@ -26114,11 +25963,6 @@ EOF_SVC_TEST_RCUPDATE
         selftest_cleanup
         return 1
     fi
-    _legacy_preflight_pattern='managed_services_active && __abox_pf_log \"\$report\" WARN warn ' ; _legacy_preflight_pattern="${_legacy_preflight_pattern}existing A-Box managed service is active" ; _legacy_preflight_pattern="${_legacy_preflight_pattern}' || __abox_pf_log \"\$report\" PASS """
-    if grep -Fq -- "$_legacy_preflight_pattern" "$0"; then
-        echo 'FAIL: preflight still collapses unknown managed-service state into inactive'
-        failures=$((failures + 1))
-    fi
 
     # Read-only status reporting must distinguish an inactive service from an
     # unqueryable service; query failure is an unknown state, not "stopped".
@@ -26351,7 +26195,6 @@ main() {
         --status) show_status_report; exit 0 ;;
         --stop) manual_stop_managed_stack; exit $? ;;
         --start) manual_start_managed_stack; exit $? ;;
-        --preflight|--dry-run) detect_lang; preflight_check --no-pause; exit $? ;;
         --lang)
             ABOX_LANG_OVERRIDE="${2:-zh}"
             enter_runtime "$@"

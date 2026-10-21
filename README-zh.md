@@ -89,14 +89,14 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 | 编号 | 功能 | 编号 | 功能 |
 |---:|---|---:|---|
-| 1 | A-Check IP 纯净度检测 | 9 | IP / DNS / 时区 / 下载源设置 |
-| 2 | 系统性能与下载测速 | 10 | 本地 SNI 优选 |
-| 3 | IP 质量 / 流媒体解锁 / 回程测试 | 11 | 微型主机 SNI 优选 |
-| 4 | 导出脱敏诊断包 | 12 | SNI 优选记录 |
-| 5 | 只读预检查 | 13 | 配置备份 / 恢复 |
-| 6 | WARP 与分流管理 | 14 | 多用户 / 订阅链接导出 |
-| 7 | 创建 2 GB Swap | 15 | Wallos 安装 / 升级 / 备份 |
-| 8 | VPS 一键优化 | 16 | SS-2022 访问白名单 |
+| 1 | A-Check IP 纯净度检测 | 9 | 本地 SNI 优选 |
+| 2 | 系统性能与下载测速 | 10 | 微型主机 SNI 优选 |
+| 3 | IP 质量 / 流媒体解锁 / 回程测试 | 11 | SNI 优选记录 |
+| 4 | 导出脱敏诊断包 | 12 | 配置备份 / 恢复 |
+| 5 | WARP 与分流管理 | 13 | 多用户 / 订阅链接导出 |
+| 6 | 创建 2 GB Swap | 14 | Wallos 安装 / 升级 / 备份 |
+| 7 | VPS 一键优化 | 15 | SS-2022 访问白名单 |
+| 8 | IP / DNS / 时区 / 下载源设置 | | |
 | 0 | 返回主菜单 | | |
 
 第 1、2 项的测试脚本从经校验的 `test-tools-mirror` 发布中获取，SHA-256 与清单一致才运行。镜像不可用或校验不一致时，只有设置了 `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` 才会改用上游脚本，否则什么都不执行。
@@ -131,14 +131,13 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 | `sudo bash A-Box.sh --help` | 显示命令行帮助 |
 | `sudo bash A-Box.sh --lang zh` / `zh-tw` / `en` / `ja` / `ru` / `fa` | 指定界面语言启动 |
 | `sudo bash A-Box.sh --self-test` | 运行内置自检 |
-| `sudo bash A-Box.sh --preflight`（或 `--dry-run`） | 只读预检查，不做任何改动 |
 | `sudo bash A-Box.sh --status` | 显示受管服务与配置状态 |
 | `sudo bash A-Box.sh --start` / `--stop` | 启动或停止受管服务 |
 | `sudo bash A-Box.sh --version` | 显示脚本构建标识 |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | 导出备份恢复密钥 |
 | `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [目录]` | 把旧格式备份转换为现行格式 |
 
-自检通过不等于目标机预检查、真实安装或客户端连通验证都通过。
+自检通过不等于真实安装或客户端连通验证都通过。
 
 ## 系统要求
 

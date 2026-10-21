@@ -27,7 +27,7 @@ Main menu (status matrix, system / network information and the deployment menu):
 
 ## What it is
 
-A-Box is a single-file Bash script (`install.sh`, about 26,000 lines) that deploys and maintains proxy and network services on a Linux VPS. It installs and configures Xray, sing-box and the official Hysteria 2 server, generates client configurations, and provides day-to-day operations — firewall rules, Fail2Ban protection, DNS settings, backups, upgrades and diagnostics — from one interactive menu in six languages. Nothing is deployed before you pick it in the menu, and destructive actions ask for confirmation.
+A-Box is a single-file Bash script (`install.sh`, about 30,000 lines) that deploys and maintains proxy and network services on a Linux VPS. It installs and configures Xray, sing-box and the official Hysteria 2 server, generates client configurations, and provides day-to-day operations — firewall rules, Fail2Ban protection, DNS settings, backups, upgrades and diagnostics — from one interactive menu in six languages. Nothing is deployed before you pick it in the menu, and destructive actions ask for confirmation.
 
 ## Quick start
 
@@ -70,7 +70,7 @@ The Xray all-in-one combines Vision (TCP 443), XHTTP (TCP 8443), Shadowsocks-202
 
 ### More protocols (menu 18)
 
-Standalone deployments, independent of the combined bundles above. Each one asks for a port, generates or accepts a password, verifies the configuration with the core before writing it, registers its share link under menu 12, and refreshes the Fail2Ban rules when it finishes.
+Standalone deployments, independent of the combined bundles above. Each one asks for a port, generates or accepts a password, verifies the configuration with the core before writing it, registers its share link under menu 12, and refreshes the Fail2Ban rules when it finishes. Where a protocol uses an SNI, deployment offers a choice: press Enter for automatic best-SNI selection or type a domain; the SNI of an already deployed node can be changed later in the toolbox (item 16).
 
 | No. | Protocol | Notes |
 |---:|---|---|
@@ -80,11 +80,11 @@ Standalone deployments, independent of the combined bundles above. Each one asks
 | 4 | SOCKS5 / Mixed | Standalone SOCKS5 with authentication; choose the core |
 | 5 | ShadowTLS | ShadowTLS v3 on sing-box, detouring to an internal Shadowsocks-2022 inbound |
 | 6 | Argo (CDN) | VMess / VLESS over WebSocket through a Cloudflare Tunnel — no inbound port is opened on the server. Temporary quick tunnels get a random `*.trycloudflare.com` address that changes on restart; fixed tunnels use your own domain and tunnel token |
-| 7 | Latest Xray | Experimental: installs the newest upstream Xray core (take over the slot, or coexist as a separate xray-latest instance with port-conflict warnings) and deploys VLESS-Vision / XHTTP / Trojan-Reality / SS-2022 on it one by one. Failures are reported and removed; the stable pinned core is never auto-reinstalled Includes one-click trio and quad (+ official Hy2) combos, and full-machine port-conflict warnings. |
+| 7 | Latest Xray | Experimental: installs the newest upstream Xray core (take over the slot, or coexist as a separate xray-latest instance with port-conflict warnings). Deploys VLESS-Vision / XHTTP / Trojan-Reality / SS-2022 / SOCKS5 one by one, plus one-click trio and quad (+ official Hy2) combos and full-machine port-conflict warnings. Failures are reported and the attempt is removed; the stable pinned core is never reinstalled automatically. |
 
 ## Status panel
 
-The top of the menu shows a 16-cell status matrix (running / stopped / not installed) for Xray, sing-box, Hy2, Trojan, TUIC, AnyTLS, ShadowTLS, SOCKS5, WARP, Cloudflare, Fail2Ban, Wallos, Traffic, Docker, BBR and Firewall, followed by system, hardware and network lines. The network line identifies the egress IP's location and type (datacentre / residential / mobile, broadcast or native). Deployed nodes are listed with their ports and SNI. A green cell means the service is running or listening; it is not an end-to-end connectivity test — verify with a client.
+The top of the menu shows a 16-cell status matrix (running / stopped / not installed) for Xray, sing-box, Hy2, Trojan, TUIC, AnyTLS, ShadowTLS, SOCKS5, WARP, Cloudflare, Fail2Ban, Wallos, Traffic, Docker, BBR and Firewall, followed by system, hardware and network lines. The network line identifies the egress IP's location and type (datacentre / residential / mobile, broadcast or native). Deployed nodes are listed with their ports and SNI. A green cell means the service is running or listening; it is not an end-to-end connectivity test — verify with a client. The users section below lists, per node, the active users with their own traffic (shown in M/G units), quota and expiry when set; blocked or disabled users are not shown on the panel — they are managed in the toolbox (item 13).
 
 ## Toolbox (menu 11)
 
@@ -95,9 +95,9 @@ The top of the menu shows a 16-cell status matrix (running / stopped / not insta
 | 3 | IP quality / streaming / route test | 11 | SNI test records |
 | 4 | Export redacted diagnostics | 12 | Configuration backup / restore |
 | 5 | WARP & split routing | 13 | Multi-user / subscription export |
-| 6 | Create 2 GB swap | 14 | Wallos install / upgrade / backup |
+| 6 | Swap memory (zram / swap file) | 14 | Wallos install / upgrade / backup |
 | 7 | VPS one-click optimization | 15 | SS-2022 access allowlist |
-| 8 | IP / DNS / timezone / source settings | | |
+| 8 | IP / DNS / timezone / source settings | 16 | Edit node SNI |
 | 0 | Back to main menu | | |
 
 The two test scripts (items 1–2) are fetched from the verified `test-tools-mirror` release and run only when their SHA-256 matches the manifest. If the mirror is unavailable or the checksum differs, the upstream script is used only when `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` is set; otherwise nothing is executed.
@@ -110,7 +110,7 @@ Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](h
 
 ## Subsystems
 
-**Client configurations.** Every deployment prints a share link and a QR code. Menu 12 re-displays all node parameters and links at any time — including the standalone protocols of menu 18 — and exports Clash / Mihomo YAML, sing-box JSON and v2rayN / v2rayNG configurations. Multiple UUIDs can be added or revoked server-side, with per-user export.
+**Client configurations.** Every deployment prints a share link and a QR code. Menu 12 re-displays all node parameters and links at any time — including the standalone protocols of menu 18 — and exports Clash / Mihomo YAML, sing-box JSON and v2rayN / v2rayNG configurations. Multiple UUIDs can be added or revoked server-side, with per-user export. Node names in share links and exported files are the protocol name only (Vision, XHTTP, SS, Hy2, Trojan-Reality, …) — no brand prefix.
 
 **WARP & split routing.** One-click Cloudflare WARP egress as a native WireGuard outbound/endpoint, with streaming, CN-direct and global presets, plus custom domain routing rules and multi-host SOCKS5 outbounds.
 

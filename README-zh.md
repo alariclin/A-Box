@@ -27,7 +27,7 @@
 
 ## 这是什么
 
-A-Box 是一个单文件 Bash 脚本（`install.sh`，约 26,000 行），用于在 Linux VPS 上部署和维护代理与网络服务。它负责安装和配置 Xray、sing-box 与官方 Hysteria 2 服务端，生成客户端配置，并把日常运维——防火墙规则、Fail2Ban 防护、DNS 设置、备份、升级与诊断——收进一个六种语言的交互菜单。你在菜单里选定之前，脚本不会部署任何东西；破坏性操作都会先要求确认。
+A-Box 是一个单文件 Bash 脚本（`install.sh`，约 30,000 行），用于在 Linux VPS 上部署和维护代理与网络服务。它负责安装和配置 Xray、sing-box 与官方 Hysteria 2 服务端，生成客户端配置，并把日常运维——防火墙规则、Fail2Ban 防护、DNS 设置、备份、升级与诊断——收进一个六种语言的交互菜单。你在菜单里选定之前，脚本不会部署任何东西；破坏性操作都会先要求确认。
 
 ## 快速开始
 
@@ -70,7 +70,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 ### 更多协议（菜单 18）
 
-独立部署，与上面的组合部署互不影响。每个协议都会询问端口、生成或接受密码、写入前先用核心校验配置、把分享链接登记到菜单 12，并在结束时刷新 Fail2Ban 规则。
+独立部署，与上面的组合部署互不影响。每个协议都会询问端口、生成或接受密码、写入前先用核心校验配置、把分享链接登记到菜单 12，并在结束时刷新 Fail2Ban 规则。涉及 SNI 的协议在部署时可选：回车自动优选，或手填域名；已部署节点的 SNI 可在工具箱 16 修改。
 
 | 编号 | 协议 | 说明 |
 |---:|---|---|
@@ -80,11 +80,11 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 | 4 | SOCKS5 / Mixed | 独立 SOCKS5，带账号密码认证，可选核心 |
 | 5 | ShadowTLS | sing-box 的 ShadowTLS v3，转接到内部 Shadowsocks-2022 入站 |
 | 6 | Argo (CDN) | VMess / VLESS 经 WebSocket 走 Cloudflare 隧道，服务器不开任何入站端口。临时隧道是随机 `*.trycloudflare.com` 地址，重启即变；固定隧道用你自己的域名和隧道令牌 |
-| 7 | 最新 Xray | 实验功能：安装上游最新版 Xray 核心（接管槽位，或以 xray-latest 实例并存并提示端口冲突），逐个部署 VLESS-Vision / XHTTP / Trojan-Reality / SS-2022。失败会告知原因并删除，不会自动装回稳定版核心含一键三合一与四合一组合，并提供整机端口冲突提醒。 |
+| 7 | 最新 Xray | 实验功能：安装上游最新版 Xray 核心（接管槽位，或以 xray-latest 实例并存并提示端口冲突），可逐个部署 VLESS-Vision / XHTTP / Trojan-Reality / SS-2022 / SOCKS5，也有一键三合一与一键四合一（+ 官方 Hy2），并提供整机端口冲突提醒。失败会告知原因并删除本次部署，绝不自动装回稳定版核心。 |
 
 ## 状态面板
 
-菜单顶部是 16 格状态矩阵（运行 / 未开启 / 故障）：Xray、sing-box、Hy2、Trojan、TUIC、AnyTLS、ShadowTLS、SOCKS5、WARP、Cloudflare、Fail2ban、Wallos、Traffic、Docker、BBR、Firewall，其后是系统、硬件与网络信息行。网络行会标注出口 IP 的位置与类型（机房 / 住宅 / 蜂窝、广播或原生）。已部署节点会列出端口与 SNI。绿格只表示服务在运行或端口在监听，不等于端到端连通，请以客户端实测为准。
+菜单顶部是 16 格状态矩阵（运行 / 未开启 / 故障）：Xray、sing-box、Hy2、Trojan、TUIC、AnyTLS、ShadowTLS、SOCKS5、WARP、Cloudflare、Fail2ban、Wallos、Traffic、Docker、BBR、Firewall，其后是系统、硬件与网络信息行。网络行会标注出口 IP 的位置与类型（机房 / 住宅 / 蜂窝、广播或原生）。已部署节点会列出端口与 SNI。绿格只表示服务在运行或端口在监听，不等于端到端连通，请以客户端实测为准。其下是用户区：按节点列出在用用户各自的用量（只用 M/G 单位）、已设的限额与到期；封锁或停用的用户不在面板显示，只在工具箱 13 里管理。
 
 ## 综合工具箱（菜单 11）
 
@@ -95,9 +95,9 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 | 3 | IP 质量 / 流媒体解锁 / 回程测试 | 11 | SNI 优选记录 |
 | 4 | 导出脱敏诊断包 | 12 | 配置备份 / 恢复 |
 | 5 | WARP 与分流管理 | 13 | 多用户 / 订阅链接导出 |
-| 6 | 创建 2 GB Swap | 14 | Wallos 安装 / 升级 / 备份 |
+| 6 | 交换内存（zram / Swap）| 14 | Wallos 安装 / 升级 / 备份 |
 | 7 | VPS 一键优化 | 15 | SS-2022 访问白名单 |
-| 8 | IP / DNS / 时区 / 下载源设置 | | |
+| 8 | IP / DNS / 时区 / 下载源设置 | 16 | 修改节点 SNI |
 | 0 | 返回主菜单 | | |
 
 第 1、2 项的测试脚本从经校验的 `test-tools-mirror` 发布中获取，SHA-256 与清单一致才运行。镜像不可用或校验不一致时，只有设置了 `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` 才会改用上游脚本，否则什么都不执行。
@@ -110,7 +110,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 ## 子系统
 
-**客户端配置。** 每次部署都会打印分享链接和二维码。菜单 12 随时可重看全部节点参数与链接——包括菜单 18 的独立协议——并导出 Clash / Mihomo YAML、sing-box JSON 与 v2rayN / v2rayNG 配置。支持在服务端添加或吊销多个 UUID，并按用户分别导出。
+**客户端配置。** 每次部署都会打印分享链接和二维码。菜单 12 随时可重看全部节点参数与链接——包括菜单 18 的独立协议——并导出 Clash / Mihomo YAML、sing-box JSON 与 v2rayN / v2rayNG 配置。支持在服务端添加或吊销多个 UUID，并按用户分别导出。分享链接与导出文件中的节点名只用协议名（Vision、XHTTP、SS、Hy2、Trojan-Reality 等），不带品牌前缀。
 
 **WARP 与分流。** 一键把 Cloudflare WARP 作为原生 WireGuard 出站部署，带流媒体、CN 直连与全局三种预设，外加自定义域名分流规则和多主机 SOCKS5 出站。
 

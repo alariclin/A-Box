@@ -10570,8 +10570,11 @@ install_cloudflared() {
     url="https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-${SB_ARCH}"
     tmp=$(mktemp -d /tmp/A-Box-cloudflared.XXXXXX) || die 'cloudflared 临时目录创建失败。'
     msg "$(tr_msg argo_cf_installing)"
-    if ! curl -fL --retry 2 --connect-timeout 15 -o "$tmp/cloudflared" "$url"; then
-        rm -rf "$tmp"; die 'cloudflared 下载失败。'
+    if ! fetch_util_mirror_asset "cloudflared-${CLOUDFLARED_VERSION}-linux-${SB_ARCH}" "$tmp/cloudflared" \
+        || [[ "$(sha256sum "$tmp/cloudflared" 2>/dev/null | awk '{print $1}')" != "$want" ]]; then
+        if ! curl -fL --retry 2 --connect-timeout 15 -o "$tmp/cloudflared" "$url"; then
+            rm -rf "$tmp"; die 'cloudflared 下载失败。'
+        fi
     fi
     got=$(sha256sum "$tmp/cloudflared" 2>/dev/null | awk '{print $1}')
     if [[ "$got" != "$want" ]]; then
@@ -11648,16 +11651,19 @@ warp_fetch_wgcf() {
     esac
     url="https://github.com/ViRb3/wgcf/releases/download/v${WGCF_VERSION}/wgcf_${WGCF_VERSION}_linux_${arch}"
     tmp=$(mktemp) || return 1
-    if ! curl -sSL --max-time 60 -o "$tmp" "$url"; then rm -f "$tmp"; return 1; fi
-    [[ -s "$tmp" ]] || { rm -f "$tmp"; return 1; }
-    # sanity: must be an ELF binary
-    head -c 4 "$tmp" | grep -q $'\x7fELF' || { rm -f "$tmp"; return 1; }
     # Supply-chain pin (official v2.2.29 release binaries).
     local want=''
     case "$arch" in
         amd64) want='572d102720ee39a6a0a6a22a0b4689fdf92b8974ede927111e3daf8d2ed5dec1' ;;
         arm64) want='6228ae03ce2004edb24888aa119d7bd3978004964113f9f1e00841db1b01313c' ;;
     esac
+    if ! fetch_util_mirror_asset "wgcf_${WGCF_VERSION}_linux_${arch}" "$tmp" \
+        || [[ "$(sha256sum "$tmp" 2>/dev/null | awk '{print $1}')" != "$want" ]]; then
+        if ! curl -sSL --max-time 60 -o "$tmp" "$url"; then rm -f "$tmp"; return 1; fi
+    fi
+    [[ -s "$tmp" ]] || { rm -f "$tmp"; return 1; }
+    # sanity: must be an ELF binary
+    head -c 4 "$tmp" | grep -q $'\x7fELF' || { rm -f "$tmp"; return 1; }
     [[ "$(sha256sum "$tmp" 2>/dev/null | awk '{print $1}')" == "$want" ]] || { rm -f "$tmp"; return 1; }
     install -m 755 "$tmp" "$WGCF_BIN" || { rm -f "$tmp"; return 1; }
     rm -f "$tmp"
@@ -14283,6 +14289,18 @@ probe_core_sources_banner() {
     case "$api_code" in 200) api_code='available (HTTP 200)' ;; *) api_code="unavailable (HTTP ${api_code:-000})" ;; esac
     case "$mirror_code" in 200) mirror_code='available (HTTP 200)' ;; *) mirror_code="unavailable (HTTP ${mirror_code:-000})" ;; esac
     msg "${CYAN}[download sources] order=${pref} → fixed recovery mirror; release API: ${api_code}; recovery SHA256SUMS: ${mirror_code}; custom base=${ABOX_CORE_MIRROR_BASE:-<unset>}${NC}"
+}
+
+# Pinned-utility mirror fetch (cloudflared / wgcf). The caller's in-script
+# SHA-256 pin remains the verification anchor for BOTH sources: mirror bytes
+# are used only when they match the pin exactly, so this adds an
+# availability fallback without any new trust assumption.
+fetch_util_mirror_asset() {
+    local leaf="${1:-}" dest="${2:-}" base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
+    [[ -n "$leaf" && -n "$dest" && -n "$base" ]] || return 1
+    case "$base" in https://*) ;; *) return 1 ;; esac
+    msg "${YELLOW} -> A-Box recovery mirror: ${base%/}/${leaf}${NC}"
+    curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${base%/}/${leaf}" -o "$dest" 2>/dev/null
 }
 
 fetch_abox_mirror_asset() {
@@ -24801,6 +24819,7 @@ PY_SELFTEST_TAR
     grep -Fq 'ABOX_CORE_MIRROR_BASE_DEFAULT=' "$0" || { echo 'FAIL: core disaster mirror base missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_CORE_MIRROR_RELEASE='core-binaries'" "$0" || { echo 'FAIL: stable core mirror tag missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/A-Box/releases/download/core-binaries'" "$0" || { echo 'FAIL: stable core mirror URL missing'; failures=$((failures + 1)); }
+    declare -F fetch_util_mirror_asset >/dev/null 2>&1 || { echo 'FAIL: pinned-utility mirror fetch missing'; failures=$((failures + 1)); }
     grep -Fq '每月流量管控 / Monthly Traffic' <<< "$source_body" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
     grep -Fq 'one_click_reality_deploy()' "$0" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
     grep -Fq 'abox_is_fast()' "$0" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }

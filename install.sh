@@ -11135,7 +11135,7 @@ _menu_info_collect() {
 
     # --- system info ---
     local os_name='?' kernel='?' cpu_n='?' cpu_model='' mem_tot='?' mem_used='?'
-    local disk_sz='?' disk_kind='' virt='?' bbr='?' up_days='0' ipv6=''
+    local disk_sz='?' disk_kind='' virt='?' up_days='0' ipv6=''
     if [[ -f /etc/os-release ]]; then
         os_name=$(grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d'"' -f2 | sed 's/ GNU\/Linux//')
         [[ -z "$os_name" ]] && os_name='?'
@@ -11160,7 +11160,6 @@ _menu_info_collect() {
     if command -v systemd-detect-virt >/dev/null 2>&1; then
         virt=$(systemd-detect-virt 2>/dev/null || echo '?')
     fi
-    bbr=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo '?')
     if [[ -f /proc/uptime ]]; then
         up_days=$(awk '{printf "%d", $1/86400}' /proc/uptime 2>/dev/null)
     fi
@@ -11168,7 +11167,7 @@ _menu_info_collect() {
     ipv6=$(ip -6 addr show scope global 2>/dev/null | grep -oE 'inet6 [0-9a-f:]+' | grep -viE 'inet6 f[cd][0-9a-f]{2}:' | head -1 | awk '{print $2}')
     _MI_OS="$os_name"; _MI_KERNEL="$kernel"; _MI_CPU="$cpu_n"; _MI_CPU_MODEL="$cpu_model"
     _MI_MEM="$mem_tot"; _MI_MEM_USED="$mem_used"; _MI_DISK="$disk_sz"; _MI_DISK_KIND="$disk_kind"
-    _MI_VIRT="$virt"; _MI_BBR="$bbr"; _MI_UP="$up_days"; _MI_IPV6="$ipv6"
+    _MI_VIRT="$virt"; _MI_UP="$up_days"; _MI_IPV6="$ipv6"
 
     # --- deployed nodes (from live config); SNI captured separately ---
     local nodes='' nodes_x='' nodes_s='' sni=''

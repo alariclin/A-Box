@@ -104,6 +104,10 @@ The two test scripts (items 1–2) are fetched from the verified `test-tools-mir
 
 Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](https://github.com/alariclin/A-Check) project. The script downloads its pinned release file (`v4.13.4`), verifies the SHA-256 before running it, and caches it under `/etc/ddr/tools`; a copy whose checksum does not match is never executed. It requires Python 3.8 or newer.
 
+**Multi-user management (toolbox item 13).** Every deployed node — combos and standalone protocols alike, on Xray, sing-box, the Latest Xray instance and the official Hysteria 2 — can carry multiple named users, each with an own credential and share link / QR code. Per user you can set a monthly traffic quota (GB), an expiry (in days) and an allowed time window. A background check runs every 5 minutes and enforces them: expired, over-quota or out-of-window users are revoked automatically (on Xray cores the revocation is hot, with no restart). Per-user traffic statistics and quota enforcement exist on the Xray family (StatsService); the official sing-box binary exposes no per-user statistics, so on sing-box only expiry and time-window rules apply. All user links can be exported at once as subscription files.
+
+**Multiple instances of one protocol.** When a standalone protocol already exists on a core, its deploy entry now offers "add another instance": the extra copy gets its own port, credentials and user list (tags suffixed -2, -3, ...) and is managed and deleted independently.
+
 ## Subsystems
 
 **Client configurations.** Every deployment prints a share link and a QR code. Menu 12 re-displays all node parameters and links at any time — including the standalone protocols of menu 18 — and exports Clash / Mihomo YAML, sing-box JSON and v2rayN / v2rayNG configurations. Multiple UUIDs can be added or revoked server-side, with per-user export.

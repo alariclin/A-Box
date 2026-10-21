@@ -592,6 +592,324 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:mu_title) echo '多用户管理' ;;
+        en:mu_title) echo 'Multi-user management' ;;
+        ru:mu_title) echo 'Управление пользователями' ;;
+        fa:mu_title) echo 'مدیریت چندکاربره' ;;
+        zh-tw:mu_title) echo '多用戶管理' ;;
+        ja:mu_title) echo 'ユーザー管理' ;;
+        zh:mu_reg_bad) echo '无法读取该节点的用户名单。' ;;
+        en:mu_reg_bad) echo 'Cannot read this node'\''s user registry.' ;;
+        ru:mu_reg_bad) echo 'Не удалось прочитать список пользователей узла.' ;;
+        fa:mu_reg_bad) echo 'خواندن فهرست کاربران این گره ممکن نیست.' ;;
+        zh-tw:mu_reg_bad) echo '無法讀取該節點的用戶名單。' ;;
+        ja:mu_reg_bad) echo 'このノードのユーザーリストを読み取れません。' ;;
+        zh:mu_note_sb) echo '注：sing-box 官方二进制无按用户流量统计，该核心的流量限额不生效（到期/时段仍生效）。' ;;
+        en:mu_note_sb) echo 'Note: the official sing-box binary has no per-user traffic stats, so quotas do not apply on this core (expiry and time windows still apply).' ;;
+        ru:mu_note_sb) echo 'Примечание: официальный sing-box не ведёт статистику по пользователям, лимиты трафика на этом ядре не действуют (срок и расписание действуют).' ;;
+        fa:mu_note_sb) echo 'توجه: باینری رسمی sing-box آمار ترافیک هر کاربر را ندارد، بنابراین سهمیه ترافیک در این هسته اعمال نمی‌شود (انقضا و بازه زمانی اعمال می‌شود).' ;;
+        zh-tw:mu_note_sb) echo '注：sing-box 官方版無按用戶流量統計，本核心的流量限額不生效（到期/時段仍生效）。' ;;
+        ja:mu_note_sb) echo '注: sing-box 公式バイナリにはユーザー別の流量統計がないため、このコアでは流量制限は効きません（有効期限と時間帯は有効）。' ;;
+        zh:mu_st_ok) echo '正常' ;;
+        en:mu_st_ok) echo 'active' ;;
+        ru:mu_st_ok) echo 'активен' ;;
+        fa:mu_st_ok) echo 'فعال' ;;
+        zh-tw:mu_st_ok) echo '正常' ;;
+        ja:mu_st_ok) echo '有効' ;;
+        zh:mu_st_disabled) echo '已停用' ;;
+        en:mu_st_disabled) echo 'disabled' ;;
+        ru:mu_st_disabled) echo 'отключён' ;;
+        fa:mu_st_disabled) echo 'غیرفعال' ;;
+        zh-tw:mu_st_disabled) echo '已停用' ;;
+        ja:mu_st_disabled) echo '無効' ;;
+        zh:mu_st_blocked) echo '已封锁' ;;
+        en:mu_st_blocked) echo 'blocked' ;;
+        ru:mu_st_blocked) echo 'заблокирован' ;;
+        fa:mu_st_blocked) echo 'مسدود' ;;
+        zh-tw:mu_st_blocked) echo '已封鎖' ;;
+        ja:mu_st_blocked) echo 'ブロック中' ;;
+        zh:mu_exp_forever) echo '永久' ;;
+        en:mu_exp_forever) echo 'never' ;;
+        ru:mu_exp_forever) echo 'бессрочно' ;;
+        fa:mu_exp_forever) echo 'دائمی' ;;
+        zh-tw:mu_exp_forever) echo '永久' ;;
+        ja:mu_exp_forever) echo '無期限' ;;
+        zh:mu_allday) echo '全天' ;;
+        en:mu_allday) echo 'all day' ;;
+        ru:mu_allday) echo 'круглосуточно' ;;
+        fa:mu_allday) echo 'تمام روز' ;;
+        zh-tw:mu_allday) echo '全天' ;;
+        ja:mu_allday) echo '終日' ;;
+        zh:mu_col_usage) echo '用量' ;;
+        en:mu_col_usage) echo 'usage' ;;
+        ru:mu_col_usage) echo 'трафик' ;;
+        fa:mu_col_usage) echo 'مصرف' ;;
+        zh-tw:mu_col_usage) echo '用量' ;;
+        ja:mu_col_usage) echo '使用量' ;;
+        zh:mu_col_expiry) echo '到期' ;;
+        en:mu_col_expiry) echo 'expiry' ;;
+        ru:mu_col_expiry) echo 'срок' ;;
+        fa:mu_col_expiry) echo 'انقضا' ;;
+        zh-tw:mu_col_expiry) echo '到期' ;;
+        ja:mu_col_expiry) echo '期限' ;;
+        zh:mu_col_window) echo '时段' ;;
+        en:mu_col_window) echo 'window' ;;
+        ru:mu_col_window) echo 'расписание' ;;
+        fa:mu_col_window) echo 'بازه' ;;
+        zh-tw:mu_col_window) echo '時段' ;;
+        ja:mu_col_window) echo '時間帯' ;;
+        zh:mu_opts1) echo '1. 添加用户   2. 删除用户   3. 设置流量限额(GB)  4. 设置到期(天)  5. 设置可用时段' ;;
+        en:mu_opts1) echo '1. Add user   2. Delete user   3. Set quota (GB)  4. Set expiry (days)  5. Set time window' ;;
+        ru:mu_opts1) echo '1. Добавить   2. Удалить   3. Лимит трафика (ГБ)  4. Срок (дней)  5. Расписание' ;;
+        fa:mu_opts1) echo '1. افزودن کاربر   2. حذف کاربر   3. سهمیه ترافیک (GB)  4. انقضا (روز)  5. بازه زمانی' ;;
+        zh-tw:mu_opts1) echo '1. 新增用戶   2. 刪除用戶   3. 設定流量限額(GB)  4. 設定到期(天)  5. 設定可用時段' ;;
+        ja:mu_opts1) echo '1. ユーザー追加   2. ユーザー削除   3. 流量制限 (GB)  4. 有効期限 (日)  5. 時間帯設定' ;;
+        zh:mu_opts2) echo '6. 用量清零   7. 查看专属链接   8. 停用/启用   9. 从配置重新导入名单   0. 返回' ;;
+        en:mu_opts2) echo '6. Reset usage   7. View user link   8. Enable/Disable   9. Re-import from config   0. Back' ;;
+        ru:mu_opts2) echo '6. Сброс трафика   7. Ссылка пользователя   8. Вкл/Выкл   9. Переимпорт из конфига   0. Назад' ;;
+        fa:mu_opts2) echo '6. صفر کردن مصرف   7. مشاهده پیوند کاربر   8. فعال/غیرفعال   9. وارد کردن مجدد از پیکربندی   0. بازگشت' ;;
+        zh-tw:mu_opts2) echo '6. 用量清零   7. 查看專屬連結   8. 停用/啟用   9. 從設定重新匯入名單   0. 返回' ;;
+        ja:mu_opts2) echo '6. 使用量リセット   7. ユーザーリンク表示   8. 有効/無効   9. 設定から再インポート   0. 戻る' ;;
+        zh:mu_name_prompt) echo '用户名 (字母/数字/_/-, 最长24): ' ;;
+        en:mu_name_prompt) echo 'User name (letters/digits/_/-, max 24): ' ;;
+        ru:mu_name_prompt) echo 'Имя пользователя (буквы/цифры/_/-, до 24): ' ;;
+        fa:mu_name_prompt) echo 'نام کاربری (حروف/عدد/_/-، حداکثر 24): ' ;;
+        zh-tw:mu_name_prompt) echo '用戶名 (字母/數字/_/-, 最長24): ' ;;
+        ja:mu_name_prompt) echo 'ユーザー名 (英数字/_/-, 最大24): ' ;;
+        zh:mu_name_bad) echo '用户名不合法。' ;;
+        en:mu_name_bad) echo 'Invalid user name.' ;;
+        ru:mu_name_bad) echo 'Недопустимое имя пользователя.' ;;
+        fa:mu_name_bad) echo 'نام کاربری نامعتبر است.' ;;
+        zh-tw:mu_name_bad) echo '用戶名不合法。' ;;
+        ja:mu_name_bad) echo 'ユーザー名が不正です。' ;;
+        zh:mu_name_dup) echo '用户名已存在。' ;;
+        en:mu_name_dup) echo 'User name already exists.' ;;
+        ru:mu_name_dup) echo 'Такое имя уже существует.' ;;
+        fa:mu_name_dup) echo 'این نام کاربری قبلاً وجود دارد.' ;;
+        zh-tw:mu_name_dup) echo '用戶名已存在。' ;;
+        ja:mu_name_dup) echo 'そのユーザー名は既に存在します。' ;;
+        zh:mu_added) echo '用户已添加' ;;
+        en:mu_added) echo 'User added' ;;
+        ru:mu_added) echo 'Пользователь добавлен' ;;
+        fa:mu_added) echo 'کاربر افزوده شد' ;;
+        zh-tw:mu_added) echo '用戶已新增' ;;
+        ja:mu_added) echo 'ユーザーを追加しました' ;;
+        zh:mu_ss_warn) echo '注意：SS 已切换为多用户模式（服务端密钥+每人密钥），所有人的链接都已变化，请重新下发。' ;;
+        en:mu_ss_warn) echo 'Note: SS switched to multi-user mode (server key + per-user keys); everyone'\''s link has changed and must be re-issued.' ;;
+        ru:mu_ss_warn) echo 'Внимание: SS перешёл в многопользовательский режим (серверный ключ + ключи пользователей); ссылки всех пользователей изменились, разошлите заново.' ;;
+        fa:mu_ss_warn) echo 'توجه: SS به حالت چندکاربره تغییر کرد (کلید سرور + کلید هر کاربر)؛ پیوند همه تغییر کرده و باید دوباره ارسال شود.' ;;
+        zh-tw:mu_ss_warn) echo '注意：SS 已切換為多用戶模式（服務端密鑰+每人密鑰），所有人的連結都已變化，請重新下發。' ;;
+        ja:mu_ss_warn) echo '注: SS がマルチユーザーモード（サーバー鍵＋ユーザー鍵）に切り替わりました。全員のリンクが変わったため再配布してください。' ;;
+        zh:mu_add_fail) echo '添加失败，名单与配置均未改变。' ;;
+        en:mu_add_fail) echo 'Failed to add; registry and config unchanged.' ;;
+        ru:mu_add_fail) echo 'Не удалось добавить; список и конфиг не изменены.' ;;
+        fa:mu_add_fail) echo 'افزودن ناموفق بود؛ فهرست و پیکربندی تغییری نکرد.' ;;
+        zh-tw:mu_add_fail) echo '新增失敗，名單與設定均未改變。' ;;
+        ja:mu_add_fail) echo '追加に失敗しました。リストと設定は変更されていません。' ;;
+        zh:mu_pick) echo '选择用户编号: ' ;;
+        en:mu_pick) echo 'Select user number: ' ;;
+        ru:mu_pick) echo 'Номер пользователя: ' ;;
+        fa:mu_pick) echo 'شماره کاربر: ' ;;
+        zh-tw:mu_pick) echo '選擇用戶編號: ' ;;
+        ja:mu_pick) echo 'ユーザー番号を選択: ' ;;
+        zh:mu_pick_del) echo '选择要删除的用户编号: ' ;;
+        en:mu_pick_del) echo 'Select user number to delete: ' ;;
+        ru:mu_pick_del) echo 'Номер пользователя для удаления: ' ;;
+        fa:mu_pick_del) echo 'شماره کاربر برای حذف: ' ;;
+        zh-tw:mu_pick_del) echo '選擇要刪除的用戶編號: ' ;;
+        ja:mu_pick_del) echo '削除するユーザー番号を選択: ' ;;
+        zh:mu_main_keep) echo '主用户不可删除。' ;;
+        en:mu_main_keep) echo 'The main user cannot be deleted.' ;;
+        ru:mu_main_keep) echo 'Основного пользователя удалить нельзя.' ;;
+        fa:mu_main_keep) echo 'کاربر اصلی قابل حذف نیست.' ;;
+        zh-tw:mu_main_keep) echo '主用戶不可刪除。' ;;
+        ja:mu_main_keep) echo 'メインユーザーは削除できません。' ;;
+        zh:mu_del_confirm) echo '删除用户' ;;
+        en:mu_del_confirm) echo 'Delete user' ;;
+        ru:mu_del_confirm) echo 'Удалить пользователя' ;;
+        fa:mu_del_confirm) echo 'حذف کاربر' ;;
+        zh-tw:mu_del_confirm) echo '刪除用戶' ;;
+        ja:mu_del_confirm) echo 'ユーザーを削除' ;;
+        zh:mu_deleted) echo '已删除' ;;
+        en:mu_deleted) echo 'Deleted' ;;
+        ru:mu_deleted) echo 'Удалено' ;;
+        fa:mu_deleted) echo 'حذف شد' ;;
+        zh-tw:mu_deleted) echo '已刪除' ;;
+        ja:mu_deleted) echo '削除しました' ;;
+        zh:mu_del_fail) echo '删除失败，未做改变。' ;;
+        en:mu_del_fail) echo 'Delete failed; nothing changed.' ;;
+        ru:mu_del_fail) echo 'Не удалось удалить; изменений нет.' ;;
+        fa:mu_del_fail) echo 'حذف ناموفق بود؛ تغییری اعمال نشد.' ;;
+        zh-tw:mu_del_fail) echo '刪除失敗，未作改變。' ;;
+        ja:mu_del_fail) echo '削除に失敗しました。変更はありません。' ;;
+        zh:mu_gb_prompt) echo '流量限额 GB (0=不限): ' ;;
+        en:mu_gb_prompt) echo 'Quota in GB (0 = unlimited): ' ;;
+        ru:mu_gb_prompt) echo 'Лимит трафика, ГБ (0 = без лимита): ' ;;
+        fa:mu_gb_prompt) echo 'سهمیه ترافیک GB (0=نامحدود): ' ;;
+        zh-tw:mu_gb_prompt) echo '流量限額 GB (0=不限): ' ;;
+        ja:mu_gb_prompt) echo '流量制限 GB (0=無制限): ' ;;
+        zh:mu_int_err) echo '请输入非负整数。' ;;
+        en:mu_int_err) echo 'Enter a non-negative integer.' ;;
+        ru:mu_int_err) echo 'Введите неотрицательное целое число.' ;;
+        fa:mu_int_err) echo 'یک عدد صحیح نامنفی وارد کنید.' ;;
+        zh-tw:mu_int_err) echo '請輸入非負整數。' ;;
+        ja:mu_int_err) echo '0以上の整数を入力してください。' ;;
+        zh:mu_quota_set) echo '限额已设置' ;;
+        en:mu_quota_set) echo 'Quota set' ;;
+        ru:mu_quota_set) echo 'Лимит установлен' ;;
+        fa:mu_quota_set) echo 'سهمیه تنظیم شد' ;;
+        zh-tw:mu_quota_set) echo '限額已設定' ;;
+        ja:mu_quota_set) echo '制限を設定しました' ;;
+        zh:mu_set_fail) echo '设置失败。' ;;
+        en:mu_set_fail) echo 'Failed to apply.' ;;
+        ru:mu_set_fail) echo 'Не удалось применить.' ;;
+        fa:mu_set_fail) echo 'تنظیم ناموفق بود.' ;;
+        zh-tw:mu_set_fail) echo '設定失敗。' ;;
+        ja:mu_set_fail) echo '設定に失敗しました。' ;;
+        zh:mu_days_prompt) echo '有效天数 (0=永久): ' ;;
+        en:mu_days_prompt) echo 'Valid days (0 = forever): ' ;;
+        ru:mu_days_prompt) echo 'Срок в днях (0 = бессрочно): ' ;;
+        fa:mu_days_prompt) echo 'روزهای اعتبار (0=دائمی): ' ;;
+        zh-tw:mu_days_prompt) echo '有效天數 (0=永久): ' ;;
+        ja:mu_days_prompt) echo '有効日数 (0=無期限): ' ;;
+        zh:mu_expiry_set) echo '到期已更新' ;;
+        en:mu_expiry_set) echo 'Expiry updated' ;;
+        ru:mu_expiry_set) echo 'Срок обновлён' ;;
+        fa:mu_expiry_set) echo 'انقضا به‌روزرسانی شد' ;;
+        zh-tw:mu_expiry_set) echo '到期已更新' ;;
+        ja:mu_expiry_set) echo '期限を更新しました' ;;
+        zh:mu_win_prompt) echo '可用时段 HH:MM-HH:MM (留空=全天): ' ;;
+        en:mu_win_prompt) echo 'Allowed window HH:MM-HH:MM (empty = all day): ' ;;
+        ru:mu_win_prompt) echo 'Расписание HH:MM-HH:MM (пусто = круглосуточно): ' ;;
+        fa:mu_win_prompt) echo 'بازه مجاز HH:MM-HH:MM (خالی=تمام روز): ' ;;
+        zh-tw:mu_win_prompt) echo '可用時段 HH:MM-HH:MM (留空=全天): ' ;;
+        ja:mu_win_prompt) echo '利用可能時間帯 HH:MM-HH:MM (空欄=終日): ' ;;
+        zh:mu_win_bad) echo '时段格式不对。' ;;
+        en:mu_win_bad) echo 'Invalid window format.' ;;
+        ru:mu_win_bad) echo 'Неверный формат расписания.' ;;
+        fa:mu_win_bad) echo 'قالب بازه زمانی نادرست است.' ;;
+        zh-tw:mu_win_bad) echo '時段格式不對。' ;;
+        ja:mu_win_bad) echo '時間帯の形式が不正です。' ;;
+        zh:mu_win_set) echo '时段已更新' ;;
+        en:mu_win_set) echo 'Window updated' ;;
+        ru:mu_win_set) echo 'Расписание обновлено' ;;
+        fa:mu_win_set) echo 'بازه به‌روزرسانی شد' ;;
+        zh-tw:mu_win_set) echo '時段已更新' ;;
+        ja:mu_win_set) echo '時間帯を更新しました' ;;
+        zh:mu_reset_done) echo '用量已清零' ;;
+        en:mu_reset_done) echo 'Usage reset' ;;
+        ru:mu_reset_done) echo 'Трафик сброшен' ;;
+        fa:mu_reset_done) echo 'مصرف صفر شد' ;;
+        zh-tw:mu_reset_done) echo '用量已清零' ;;
+        ja:mu_reset_done) echo '使用量をリセットしました' ;;
+        zh:mu_reset_fail) echo '清零失败。' ;;
+        en:mu_reset_fail) echo 'Reset failed.' ;;
+        ru:mu_reset_fail) echo 'Сброс не удался.' ;;
+        fa:mu_reset_fail) echo 'صفر کردن ناموفق بود.' ;;
+        zh-tw:mu_reset_fail) echo '清零失敗。' ;;
+        ja:mu_reset_fail) echo 'リセットに失敗しました。' ;;
+        zh:mu_nolink) echo '无法生成该用户的链接（登记链接缺失时请重跑该协议的部署）。' ;;
+        en:mu_nolink) echo 'Cannot build this user'\''s link (if the registered link is missing, re-run that protocol'\''s deployment).' ;;
+        ru:mu_nolink) echo 'Не удалось построить ссылку (если зарегистрированная ссылка отсутствует, повторите развёртывание протокола).' ;;
+        fa:mu_nolink) echo 'ساخت پیوند این کاربر ممکن نیست (اگر پیوند ثبت‌شده وجود ندارد، نصب آن پروتکل را دوباره اجرا کنید).' ;;
+        zh-tw:mu_nolink) echo '無法產生該用戶的連結（登記連結缺失時請重跑該協定的部署）。' ;;
+        ja:mu_nolink) echo 'このユーザーのリンクを生成できません（登録リンクがない場合はそのプロトコルのデプロイを再実行してください）。' ;;
+        zh:mu_toggled) echo '启用状态已切换' ;;
+        en:mu_toggled) echo 'Enabled state toggled' ;;
+        ru:mu_toggled) echo 'Состояние переключено' ;;
+        fa:mu_toggled) echo 'وضعیت فعال‌سازی تغییر کرد' ;;
+        zh-tw:mu_toggled) echo '啟用狀態已切換' ;;
+        ja:mu_toggled) echo '有効状態を切り替えました' ;;
+        zh:mu_op_fail) echo '操作失败。' ;;
+        en:mu_op_fail) echo 'Operation failed.' ;;
+        ru:mu_op_fail) echo 'Операция не удалась.' ;;
+        fa:mu_op_fail) echo 'عملیات ناموفق بود.' ;;
+        zh-tw:mu_op_fail) echo '操作失敗。' ;;
+        ja:mu_op_fail) echo '操作に失敗しました。' ;;
+        zh:mu_reimport_confirm) echo '从配置重新导入将覆盖当前名单（限额/到期等设置会丢失）?' ;;
+        en:mu_reimport_confirm) echo 'Re-importing from config overwrites the current registry (quota/expiry settings will be lost)?' ;;
+        ru:mu_reimport_confirm) echo 'Переимпорт из конфига перезапишет текущий список (лимиты и сроки будут потеряны)?' ;;
+        fa:mu_reimport_confirm) echo 'وارد کردن مجدد از پیکربندی فهرست فعلی را بازنویسی می‌کند (سهمیه/انقضا از دست می‌رود)؟' ;;
+        zh-tw:mu_reimport_confirm) echo '從設定重新匯入將覆蓋目前名單（限額/到期等設定會遺失）?' ;;
+        ja:mu_reimport_confirm) echo '設定から再インポートすると現在のリストが上書きされます（制限/期限設定は失われます）?' ;;
+        zh:mu_reimported) echo '已按配置重新导入。' ;;
+        en:mu_reimported) echo 'Re-imported from config.' ;;
+        ru:mu_reimported) echo 'Переимпорт из конфига выполнен.' ;;
+        fa:mu_reimported) echo 'از پیکربندی دوباره وارد شد.' ;;
+        zh-tw:mu_reimported) echo '已按設定重新匯入。' ;;
+        ja:mu_reimported) echo '設定から再インポートしました。' ;;
+        zh:mu_import_fail) echo '导入失败。' ;;
+        en:mu_import_fail) echo 'Import failed.' ;;
+        ru:mu_import_fail) echo 'Импорт не удался.' ;;
+        fa:mu_import_fail) echo 'وارد کردن ناموفق بود.' ;;
+        zh-tw:mu_import_fail) echo '匯入失敗。' ;;
+        ja:mu_import_fail) echo 'インポートに失敗しました。' ;;
+        zh:mu_cancelled) echo '已取消。' ;;
+        en:mu_cancelled) echo 'Cancelled.' ;;
+        ru:mu_cancelled) echo 'Отменено.' ;;
+        fa:mu_cancelled) echo 'لغو شد.' ;;
+        zh-tw:mu_cancelled) echo '已取消。' ;;
+        ja:mu_cancelled) echo 'キャンセルしました。' ;;
+        zh:mu_none) echo '暂无可管理的节点（先部署协议）。' ;;
+        en:mu_none) echo 'No manageable nodes yet (deploy a protocol first).' ;;
+        ru:mu_none) echo 'Нет доступных узлов (сначала разверните протокол).' ;;
+        fa:mu_none) echo 'هنوز گره قابل مدیریتی وجود ندارد (ابتدا یک پروتکل نصب کنید).' ;;
+        zh-tw:mu_none) echo '尚無可管理的節點（請先部署協定）。' ;;
+        ja:mu_none) echo '管理できるノードがありません（先にプロトコルをデプロイしてください）。' ;;
+        zh:mu_export) echo '导出全部用户链接（订阅文件）' ;;
+        en:mu_export) echo 'Export all user links (subscription files)' ;;
+        ru:mu_export) echo 'Экспорт всех ссылок пользователей (файлы подписки)' ;;
+        fa:mu_export) echo 'خروجی همه پیوندهای کاربران (فایل‌های اشتراک)' ;;
+        zh-tw:mu_export) echo '匯出全部用戶連結（訂閱檔案）' ;;
+        ja:mu_export) echo '全ユーザーのリンクをエクスポート（購読ファイル）' ;;
+        zh:mu_back_word) echo '返回' ;;
+        en:mu_back_word) echo 'Back' ;;
+        ru:mu_back_word) echo 'Назад' ;;
+        fa:mu_back_word) echo 'بازگشت' ;;
+        zh-tw:mu_back_word) echo '返回' ;;
+        ja:mu_back_word) echo '戻る' ;;
+        zh:mu_exported) echo '已导出用户链接到订阅目录（条数）' ;;
+        en:mu_exported) echo 'User links exported to the subscription directory (count)' ;;
+        ru:mu_exported) echo 'Ссылки экспортированы в каталог подписки (количество)' ;;
+        fa:mu_exported) echo 'پیوندهای کاربران به پوشه اشتراک صادر شد (تعداد)' ;;
+        zh-tw:mu_exported) echo '已匯出用戶連結到訂閱目錄（條數）' ;;
+        ja:mu_exported) echo 'ユーザーリンクを購読ディレクトリにエクスポートしました（件数）' ;;
+        zh:mu_export_fail) echo '导出失败或无可用链接。' ;;
+        en:mu_export_fail) echo 'Export failed or no links available.' ;;
+        ru:mu_export_fail) echo 'Экспорт не удался или нет доступных ссылок.' ;;
+        fa:mu_export_fail) echo 'خروجی ناموفق بود یا پیوندی موجود نیست.' ;;
+        zh-tw:mu_export_fail) echo '匯出失敗或無可用連結。' ;;
+        ja:mu_export_fail) echo 'エクスポートに失敗したか、リンクがありません。' ;;
+        zh:mu_users_word) echo '用户' ;;
+        en:mu_users_word) echo 'users' ;;
+        ru:mu_users_word) echo 'польз.' ;;
+        fa:mu_users_word) echo 'کاربر' ;;
+        zh-tw:mu_users_word) echo '用戶' ;;
+        ja:mu_users_word) echo 'ユーザー' ;;
+        zh:mu_inst_exists) echo '该协议在本核心已有实例' ;;
+        en:mu_inst_exists) echo 'This protocol already has an instance on this core' ;;
+        ru:mu_inst_exists) echo 'У этого протокола уже есть экземпляр на этом ядре' ;;
+        fa:mu_inst_exists) echo 'این پروتکل در این هسته 이미 یک نمونه دارد' ;;
+        zh-tw:mu_inst_exists) echo '該協定在本核心已有實例' ;;
+        ja:mu_inst_exists) echo 'このプロトコルはこのコアに既にインスタンスがあります' ;;
+        zh:mu_inst_choice) echo '1. 替换现有实例   2. 新增一个实例（独立端口/凭据/用户名单）   0. 取消' ;;
+        en:mu_inst_choice) echo '1. Replace existing instance   2. Add another instance (own port/credentials/users)   0. Cancel' ;;
+        ru:mu_inst_choice) echo '1. Заменить существующий   2. Добавить ещё экземпляр (свой порт/доступ/пользователи)   0. Отмена' ;;
+        fa:mu_inst_choice) echo '1. جایگزینی نمونه موجود   2. افزودن نمونه دیگر (پورت/دسترسی/کاربران مستقل)   0. لغو' ;;
+        zh-tw:mu_inst_choice) echo '1. 取代現有實例   2. 新增一個實例（獨立埠/憑據/用戶名單）   0. 取消' ;;
+        ja:mu_inst_choice) echo '1. 既存を置き換え   2. インスタンスを追加（専用ポート/認証情報/ユーザー）   0. キャンセル' ;;
+        zh:mu_inst_tag) echo '新实例标签' ;;
+        en:mu_inst_tag) echo 'New instance tag' ;;
+        ru:mu_inst_tag) echo 'Тег нового экземпляра' ;;
+        fa:mu_inst_tag) echo 'برچسب نمونه جدید' ;;
+        zh-tw:mu_inst_tag) echo '新實例標籤' ;;
+        ja:mu_inst_tag) echo '新しいインスタンスのタグ' ;;
+        zh:mu_inst_port_note) echo '部署时请选一个未被占用的端口' ;;
+        en:mu_inst_port_note) echo 'pick an unused port during deployment' ;;
+        ru:mu_inst_port_note) echo 'при развёртывании выберите свободный порт' ;;
+        fa:mu_inst_port_note) echo 'هنگام نصب یک پورت آزاد انتخاب کنید' ;;
+        zh-tw:mu_inst_port_note) echo '部署時請選一個未被佔用的埠' ;;
+        ja:mu_inst_port_note) echo 'デプロイ時に空いているポートを選んでください' ;;
         zh:xl_m_trio) echo '一键三合一（Xray：Vision + XHTTP + SS-2022）' ;;
         en:xl_m_trio) echo 'One-click trio (Xray: Vision + XHTTP + SS-2022)' ;;
         ru:xl_m_trio) echo 'Трио в один клик (Xray: Vision + XHTTP + SS-2022)' ;;
@@ -11410,8 +11728,8 @@ deploy_with_instance_choice() {
     cfg=$(users_cfg_of "$core" 2>/dev/null || true)
     if [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$btag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; then exists=1; fi
     if (( exists == 0 )); then "$@"; return $?; fi
-    msg "${YELLOW}该协议在本核心已有一个实例 (${btag})。${NC}"
-    msg "${YELLOW}1. 替换现有实例   2. 新增一个实例（独立端口/凭据/用户名单）   0. 取消${NC}"
+    msg "${YELLOW}$(tr_msg mu_inst_exists) (${btag})${NC}"
+    msg "${YELLOW}$(tr_msg mu_inst_choice)${NC}"
     local ch=''
     read -r -p 'Select [0-2]: ' ch || return 0
     case "$ch" in
@@ -11419,9 +11737,9 @@ deploy_with_instance_choice() {
         2)
             local n=2
             while jq -e --arg t "${btag}-${n}" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; do n=$((n + 1)); done
-            msg "${CYAN}新实例标签: ${btag}-${n}（部署时请选一个未被占用的端口）${NC}"
+            msg "${CYAN}$(tr_msg mu_inst_tag): ${btag}-${n} ($(tr_msg mu_inst_port_note))${NC}"
             ABOX_DEPLOY_TAG="${btag}-${n}" ABOX_DEPLOY_STEM="${btag}-${n}" "$@" ;;
-        *) msg '已取消。'; return 0 ;;
+        *) msg "$(tr_msg mu_cancelled)"; return 0 ;;
     esac
 }
 
@@ -15913,12 +16231,12 @@ users_pick_user() {
 users_inbound_menu() {
     local core="$1" tag="$2" proto="$3" port="$4" reg=''
     reg=$(users_reg_file "$core" "$tag")
-    users_reg_ensure "$core" "$tag" || { msg "${RED}无法读取该节点的用户名单。${NC}"; pause_return; return 1; }
+    users_reg_ensure "$core" "$tag" || { msg "${RED}$(tr_msg mu_reg_bad)${NC}"; pause_return; return 1; }
     while true; do
         clear
         msg "${BOLD}${GREEN}$(protocol_label "$core" "$tag" "$proto" 2>/dev/null || printf '%s' "$tag") · ${core} · :${port}${NC}"
         if [[ "$core" == 'sing-box' ]]; then
-            msg "${YELLOW}注：sing-box 官方二进制无按用户流量统计，该核心的流量限额不生效（到期/时段仍生效）。${NC}"
+            msg "${YELLOW}$(tr_msg mu_note_sb)${NC}"
         fi
         msg "--------------------------------------------------------------------------------"
         local line='' name='' dis='' blk='' qu='' exp='' win='' used=''
@@ -15931,10 +16249,10 @@ users_inbound_menu() {
             qu=$(printf '%s' "$line" | jq -r '.quota_gb // 0')
             exp=$(printf '%s' "$line" | jq -r '.expire_at // 0')
             win=$(printf '%s' "$line" | jq -r '.window // ""')
-            local st='正常'
-            [[ "$dis" == 'true' ]] && st='已停用'
-            [[ -n "$blk" ]] && st="已封锁($blk)"
-            local expd='永久'
+            local st="$(tr_msg mu_st_ok)"
+            [[ "$dis" == 'true' ]] && st="$(tr_msg mu_st_disabled)"
+            [[ -n "$blk" ]] && st="$(tr_msg mu_st_blocked)($blk)"
+            local expd="$(tr_msg mu_exp_forever)"
             if [[ "$exp" =~ ^[0-9]+$ ]] && (( exp > 0 )); then expd=$(date -d "@$exp" '+%Y-%m-%d' 2>/dev/null || printf '%s' "$exp"); fi
             local usd='-'
             if [[ "$core" == xray* ]]; then
@@ -15943,11 +16261,11 @@ users_inbound_menu() {
                 usd="$(users_fmt_bytes $((uu + ud)))"
                 [[ "$qu" != '0' ]] && usd="${usd}/${qu}G"
             fi
-            printf '%3d. %-18s %-12s 用量:%-14s 到期:%-12s 时段:%s\n' "$idx" "$name" "$st" "$usd" "$expd" "${win:-全天}"
+            printf '%3d. %-18s %-12s %s:%-14s %s:%-12s %s:%s\n' "$idx" "$name" "$st" "$(tr_msg mu_col_usage)" "$usd" "$(tr_msg mu_col_expiry)" "$expd" "$(tr_msg mu_col_window)" "${win:-$(tr_msg mu_allday)}"
         done < <(jq -c '.users[]' "$reg" 2>/dev/null)
         msg "--------------------------------------------------------------------------------"
-        msg "${YELLOW}1. 添加用户   2. 删除用户   3. 设置流量限额(GB)  4. 设置到期(天)  5. 设置可用时段${NC}"
-        msg "${YELLOW}6. 用量清零   7. 查看专属链接   8. 停用/启用   9. 从配置重新导入名单   0. 返回${NC}"
+        msg "${YELLOW}$(tr_msg mu_opts1)${NC}"
+        msg "${YELLOW}$(tr_msg mu_opts2)${NC}"
         local c=''
         read -r -p 'Select [0-9]: ' c || return 0
         local old='' new='' nm='' now=''
@@ -15955,9 +16273,9 @@ users_inbound_menu() {
         now=$(date +%s)
         case "$c" in
             1)
-                read -r -p '用户名 (字母/数字/_/-, 最长24): ' nm || continue
-                users_valid_name "$nm" || { msg "${RED}用户名不合法。${NC}"; pause_return; continue; }
-                jq -e --arg n "$nm" '.users[] | select(.name == $n)' "$reg" >/dev/null 2>&1 && { msg "${RED}用户名已存在。${NC}"; pause_return; continue; }
+                read -r -p "$(tr_msg mu_name_prompt)" nm || continue
+                users_valid_name "$nm" || { msg "${RED}$(tr_msg mu_name_bad)${NC}"; pause_return; continue; }
+                jq -e --arg n "$nm" '.users[] | select(.name == $n)' "$reg" >/dev/null 2>&1 && { msg "${RED}$(tr_msg mu_name_dup)${NC}"; pause_return; continue; }
                 local secret='' nuuid='' flow='' email=''
                 flow=$(jq -r '.users[] | select(.name == "main") | .flow // ""' "$reg" 2>/dev/null | head -1)
                 case "$proto" in
@@ -15974,81 +16292,81 @@ users_inbound_menu() {
                                 expire_at: 0, quota_gb: 0, window: "", disabled: false, blocked: "",
                                 period: "", used_up: 0, used_down: 0, last_up: 0, last_down: 0}]') || continue
                 if users_apply_reg "$core" "$tag" "$new" "$old"; then
-                    msg "${GREEN}用户已添加: ${nm}${NC}"
+                    msg "${GREEN}$(tr_msg mu_added): ${nm}${NC}"
                     if [[ "$proto" == 'shadowsocks' ]] && (( $(printf '%s' "$new" | jq '.users | length') == 2 )) && [[ -z "$(printf '%s' "$old" | jq -r '.server_secret // ""')" ]]; then
-                        msg "${YELLOW}注意：SS 已切换为多用户模式（服务端密钥+每人密钥），所有人的链接都已变化，请重新下发。${NC}"
+                        msg "${YELLOW}$(tr_msg mu_ss_warn)${NC}"
                     fi
                     local lk=''
                     lk=$(users_link "$core" "$tag" "$nm" 2>/dev/null || true)
                     [[ -n "$lk" ]] && { msg "$lk"; generate_qr "$lk"; }
                 else
-                    msg "${RED}添加失败，名单与配置均未改变。${NC}"
+                    msg "${RED}$(tr_msg mu_add_fail)${NC}"
                 fi
                 pause_return ;;
             2)
-                nm=$(users_pick_user "$reg" '选择要删除的用户编号: ') || { pause_return; continue; }
-                [[ -n "$nm" && "$nm" != 'main' ]] || { msg "${RED}主用户不可删除。${NC}"; pause_return; continue; }
-                is_yes "$(printf '删除用户 %s ? [Y/N]: ' "$nm")" || { msg '已取消。'; pause_return; continue; }
+                nm=$(users_pick_user "$reg" "$(tr_msg mu_pick_del)") || { pause_return; continue; }
+                [[ -n "$nm" && "$nm" != 'main' ]] || { msg "${RED}$(tr_msg mu_main_keep)${NC}"; pause_return; continue; }
+                is_yes "$(printf '%s %s ? [Y/N]: ' "$(tr_msg mu_del_confirm)" "$nm")" || { msg "$(tr_msg mu_cancelled)"; pause_return; continue; }
                 new=$(printf '%s' "$old" | jq -c --arg n "$nm" '.users |= map(select(.name != $n))') || continue
-                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}已删除: ${nm}${NC}"; else msg "${RED}删除失败，未做改变。${NC}"; fi
+                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_deleted): ${nm}${NC}"; else msg "${RED}$(tr_msg mu_del_fail)${NC}"; fi
                 pause_return ;;
             3)
-                nm=$(users_pick_user "$reg" '选择用户编号: ') || { pause_return; continue; }
+                nm=$(users_pick_user "$reg" "$(tr_msg mu_pick)") || { pause_return; continue; }
                 local gb=''
-                read -r -p '流量限额 GB (0=不限): ' gb || continue
-                [[ "$gb" =~ ^[0-9]+$ ]] || { msg "${RED}请输入非负整数。${NC}"; pause_return; continue; }
+                read -r -p "$(tr_msg mu_gb_prompt)" gb || continue
+                [[ "$gb" =~ ^[0-9]+$ ]] || { msg "${RED}$(tr_msg mu_int_err)${NC}"; pause_return; continue; }
                 new=$(printf '%s' "$old" | jq -c --arg n "$nm" --argjson g "$gb" '
                     .users |= map(if .name == $n then .quota_gb = $g | (if .blocked == "quota" and $g == 0 then .blocked = "" else . end) else . end)') || continue
-                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}${nm} 的限额已设为 ${gb} GB。${NC}"; else msg "${RED}设置失败。${NC}"; fi
+                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_quota_set): ${nm} = ${gb} GB${NC}"; else msg "${RED}$(tr_msg mu_set_fail)${NC}"; fi
                 pause_return ;;
             4)
-                nm=$(users_pick_user "$reg" '选择用户编号: ') || { pause_return; continue; }
+                nm=$(users_pick_user "$reg" "$(tr_msg mu_pick)") || { pause_return; continue; }
                 local days=''
-                read -r -p '有效天数 (0=永久): ' days || continue
-                [[ "$days" =~ ^[0-9]+$ ]] || { msg "${RED}请输入非负整数。${NC}"; pause_return; continue; }
+                read -r -p "$(tr_msg mu_days_prompt)" days || continue
+                [[ "$days" =~ ^[0-9]+$ ]] || { msg "${RED}$(tr_msg mu_int_err)${NC}"; pause_return; continue; }
                 local expat=0
                 (( days > 0 )) && expat=$((now + days * 86400))
                 new=$(printf '%s' "$old" | jq -c --arg n "$nm" --argjson e "$expat" '
                     .users |= map(if .name == $n then .expire_at = $e | (if .blocked == "expired" and $e > 0 then .blocked = "" else . end) else . end)') || continue
-                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}${nm} 的到期已更新。${NC}"; else msg "${RED}设置失败。${NC}"; fi
+                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_expiry_set): ${nm}${NC}"; else msg "${RED}$(tr_msg mu_set_fail)${NC}"; fi
                 pause_return ;;
             5)
-                nm=$(users_pick_user "$reg" '选择用户编号: ') || { pause_return; continue; }
+                nm=$(users_pick_user "$reg" "$(tr_msg mu_pick)") || { pause_return; continue; }
                 local w=''
-                read -r -p '可用时段 HH:MM-HH:MM (留空=全天): ' w || continue
+                read -r -p "$(tr_msg mu_win_prompt)" w || continue
                 if [[ -n "$w" && ! "$w" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]-([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
-                    msg "${RED}时段格式不对。${NC}"; pause_return; continue
+                    msg "${RED}$(tr_msg mu_win_bad)${NC}"; pause_return; continue
                 fi
                 new=$(printf '%s' "$old" | jq -c --arg n "$nm" --arg w "$w" '
                     .users |= map(if .name == $n then .window = $w | (if .blocked == "window" then .blocked = "" else . end) else . end)') || continue
-                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}${nm} 的时段已更新。${NC}"; else msg "${RED}设置失败。${NC}"; fi
+                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_win_set): ${nm}${NC}"; else msg "${RED}$(tr_msg mu_set_fail)${NC}"; fi
                 pause_return ;;
             6)
-                nm=$(users_pick_user "$reg" '选择用户编号: ') || { pause_return; continue; }
+                nm=$(users_pick_user "$reg" "$(tr_msg mu_pick)") || { pause_return; continue; }
                 local per=''
                 per=$(date '+%Y-%m')
                 new=$(printf '%s' "$old" | jq -c --arg n "$nm" --arg p "$per" '
                     .users |= map(if .name == $n then .used_up = 0 | .used_down = 0 | .period = $p | (if .blocked == "quota" then .blocked = "" else . end) else . end)') || continue
-                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}${nm} 的用量已清零。${NC}"; else msg "${RED}清零失败。${NC}"; fi
+                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_reset_done): ${nm}${NC}"; else msg "${RED}$(tr_msg mu_reset_fail)${NC}"; fi
                 pause_return ;;
             7)
-                nm=$(users_pick_user "$reg" '选择用户编号: ') || { pause_return; continue; }
+                nm=$(users_pick_user "$reg" "$(tr_msg mu_pick)") || { pause_return; continue; }
                 local lk=''
                 lk=$(users_link "$core" "$tag" "$nm" 2>/dev/null || true)
-                if [[ -n "$lk" ]]; then msg "$lk"; generate_qr "$lk"; else msg "${RED}无法生成该用户的链接（登记链接缺失时请重跑该协议的部署）。${NC}"; fi
+                if [[ -n "$lk" ]]; then msg "$lk"; generate_qr "$lk"; else msg "${RED}$(tr_msg mu_nolink)${NC}"; fi
                 pause_return ;;
             8)
-                nm=$(users_pick_user "$reg" '选择用户编号: ') || { pause_return; continue; }
+                nm=$(users_pick_user "$reg" "$(tr_msg mu_pick)") || { pause_return; continue; }
                 new=$(printf '%s' "$old" | jq -c --arg n "$nm" '
                     .users |= map(if .name == $n then .disabled = (.disabled != true) | (if .disabled == false then .blocked = "" else . end) else . end)') || continue
-                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}${nm} 的启用状态已切换。${NC}"; else msg "${RED}操作失败。${NC}"; fi
+                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_toggled): ${nm}${NC}"; else msg "${RED}$(tr_msg mu_op_fail)${NC}"; fi
                 pause_return ;;
             9)
-                is_yes '从配置重新导入将覆盖当前名单（限额/到期等设置会丢失）? [Y/N]: ' || { msg '已取消。'; pause_return; continue; }
-                if users_adopt "$core" "$tag" && users_sync "$core" "$tag"; then msg "${GREEN}已按配置重新导入。${NC}"; else msg "${RED}导入失败。${NC}"; fi
+                is_yes "$(tr_msg mu_reimport_confirm) [Y/N]: " || { msg "$(tr_msg mu_cancelled)"; pause_return; continue; }
+                if users_adopt "$core" "$tag" && users_sync "$core" "$tag"; then msg "${GREEN}$(tr_msg mu_reimported)${NC}"; else msg "${RED}$(tr_msg mu_import_fail)${NC}"; fi
                 pause_return ;;
             0) return 0 ;;
-            *) msg "${RED}无效选择。${NC}"; sleep 1 ;;
+            *) msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1 ;;
         esac
     done
 }
@@ -16063,7 +16381,7 @@ multi_user_menu() {
     while true; do
         clear
         msg "${CYAN}======================================================================${NC}"
-        msg "${BOLD}${GREEN}多用户管理 / Multi-user${NC}"
+        msg "${BOLD}${GREEN}$(tr_msg mu_title)${NC}"
         msg "${CYAN}======================================================================${NC}"
         local rows='' i=0 core='' tag='' proto='' port=''
         rows=$(protocol_inventory 2>/dev/null || true)
@@ -16076,11 +16394,11 @@ multi_user_menu() {
             cnt=$(jq '.users | length' "$(users_reg_file "$core" "$tag")" 2>/dev/null || echo 0)
             i=$((i + 1))
             cores+=("$core"); tags+=("$tag"); protos+=("$proto"); ports+=("$port")
-            printf '%3d. %-46s %-11s :%-6s 用户 %s\n' "$i" "$(protocol_label "$core" "$tag" "$proto" 2>/dev/null || printf '%s' "$tag")" "$core" "$port" "$cnt"
+            printf '%3d. %-46s %-11s :%-6s %s %s\n' "$i" "$(protocol_label "$core" "$tag" "$proto" 2>/dev/null || printf '%s' "$tag")" "$core" "$port" "$(tr_msg mu_users_word)" "$cnt"
         done <<< "$rows"
-        if (( i == 0 )); then msg "${YELLOW}暂无可管理的节点（先部署协议）。${NC}"; fi
-        msg "${YELLOW}E. 导出全部用户链接（订阅文件）${NC}"
-        msg "${CYAN}0. 返回${NC}"
+        if (( i == 0 )); then msg "${YELLOW}$(tr_msg mu_none)${NC}"; fi
+        msg "${YELLOW}E. $(tr_msg mu_export)${NC}"
+        msg "${CYAN}0. $(tr_msg mu_back_word)${NC}"
         local c=''
         read -r -p "Select [0-${i}/E]: " c || return 0
         case "$c" in
@@ -16088,14 +16406,14 @@ multi_user_menu() {
             E|e)
                 local n=''
                 n=$(users_export_all 2>/dev/null || true)
-                if [[ -n "$n" ]]; then msg "${GREEN}已导出 ${n} 条用户链接到订阅目录（uri-list.txt / subscription.base64）。${NC}"; else msg "${RED}导出失败或无可用链接。${NC}"; fi
+                if [[ -n "$n" ]]; then msg "${GREEN}$(tr_msg mu_exported): ${n} (uri-list.txt / subscription.base64)${NC}"; else msg "${RED}$(tr_msg mu_export_fail)${NC}"; fi
                 pause_return ;;
-            ''|*[!0-9]*) msg "${RED}无效选择。${NC}"; sleep 1 ;;
+            ''|*[!0-9]*) msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1 ;;
             *)
                 if (( c >= 1 && c <= i )); then
                     users_inbound_menu "${cores[$((c - 1))]}" "${tags[$((c - 1))]}" "${protos[$((c - 1))]}" "${ports[$((c - 1))]}"
                 else
-                    msg "${RED}无效选择。${NC}"; sleep 1
+                    msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1
                 fi ;;
         esac
     done

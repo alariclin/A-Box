@@ -592,6 +592,390 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:pi_input_closed) echo '交互输入已结束。' ;;
+        en:pi_input_closed) echo 'Interactive input closed.' ;;
+        ru:pi_input_closed) echo 'Ввод завершён.' ;;
+        fa:pi_input_closed) echo 'ورودی تعاملی بسته شد.' ;;
+        zh-tw:pi_input_closed) echo '互動輸入已結束。' ;;
+        ja:pi_input_closed) echo '対話入力が終了しました。' ;;
+        zh:pf_running) echo '正在运行轻量部署前检查...' ;;
+        en:pf_running) echo 'Running lightweight preflight check...' ;;
+        ru:pf_running) echo 'Выполняется лёгкая предварительная проверка...' ;;
+        fa:pf_running) echo 'در حال اجرای بررسی مقدماتی سبک...' ;;
+        zh-tw:pf_running) echo '正在執行輕量部署前檢查...' ;;
+        ja:pf_running) echo '軽量な事前チェックを実行中...' ;;
+        zh:pf_root) echo '需要 root 权限' ;;
+        en:pf_root) echo 'root privilege required' ;;
+        ru:pf_root) echo 'требуются права root' ;;
+        fa:pf_root) echo 'دسترسی root لازم است' ;;
+        zh-tw:pf_root) echo '需要 root 權限' ;;
+        ja:pf_root) echo 'root 権限が必要です' ;;
+        zh:pf_notty) echo '标准输入无交互终端' ;;
+        en:pf_notty) echo 'no interactive TTY on stdin' ;;
+        ru:pf_notty) echo 'нет интерактивного TTY на stdin' ;;
+        fa:pf_notty) echo 'ترمینال تعاملی روی ورودی استاندارد نیست' ;;
+        zh-tw:pf_notty) echo '標準輸入無互動終端' ;;
+        ja:pf_notty) echo '標準入力に対話型 TTY がありません' ;;
+        zh:pf_os_maybe) echo '该系统可能不受支持：%s' ;;
+        en:pf_os_maybe) echo 'OS may be unsupported: %s' ;;
+        ru:pf_os_maybe) echo 'ОС может не поддерживаться: %s' ;;
+        fa:pf_os_maybe) echo 'این سیستم‌عامل ممکن است پشتیبانی نشود: %s' ;;
+        zh-tw:pf_os_maybe) echo '此系統可能不受支援：%s' ;;
+        ja:pf_os_maybe) echo 'この OS はサポート対象外の可能性があります: %s' ;;
+        zh:pf_os_unreadable) echo '无法读取 /etc/os-release' ;;
+        en:pf_os_unreadable) echo '/etc/os-release not readable' ;;
+        ru:pf_os_unreadable) echo 'не удалось прочитать /etc/os-release' ;;
+        fa:pf_os_unreadable) echo '/etc/os-release خوانا نیست' ;;
+        zh-tw:pf_os_unreadable) echo '無法讀取 /etc/os-release' ;;
+        ja:pf_os_unreadable) echo '/etc/os-release を読めません' ;;
+        zh:pf_warp_route) echo '默认公网路由经由 %s；REALITY dest、HY2 伪装和公网 IP 探测可能使用该出口。' ;;
+        en:pf_warp_route) echo 'The default public route goes via %s; REALITY dest, HY2 masquerade and public-IP detection may use this egress.' ;;
+        ru:pf_warp_route) echo 'Маршрут по умолчанию идёт через %s; dest REALITY, маскировка HY2 и определение публичного IP могут использовать этот выход.' ;;
+        fa:pf_warp_route) echo 'مسیر پیش‌فرض اینترنت از %s عبور می‌کند؛ مقصد REALITY، پوشش HY2 و تشخیص IP عمومی ممکن است از همین خروجی استفاده کنند.' ;;
+        zh-tw:pf_warp_route) echo '預設公網路由經由 %s；REALITY dest、HY2 偽裝與公網 IP 偵測可能使用此出口。' ;;
+        ja:pf_warp_route) echo 'デフォルトの公網ルートは %s 経由です。REALITY の dest、HY2 の偽装、公網 IP の検出がこの出口を使う場合があります。' ;;
+        zh:pf_warp_confirm) echo '仍要使用当前默认公网路由继续部署吗？[Y/N]: ' ;;
+        en:pf_warp_confirm) echo 'Continue deploying with the current default public route? [Y/N]: ' ;;
+        ru:pf_warp_confirm) echo 'Продолжить развёртывание с текущим маршрутом по умолчанию? [Y/N]: ' ;;
+        fa:pf_warp_confirm) echo 'با همین مسیر پیش‌فرض فعلی استقرار ادامه یابد؟ [Y/N]: ' ;;
+        zh-tw:pf_warp_confirm) echo '仍要使用目前預設公網路由繼續部署嗎？[Y/N]: ' ;;
+        ja:pf_warp_confirm) echo '現在のデフォルトルートのまま導入を続けますか？[Y/N]: ' ;;
+        zh:pf_warp_unconfirmed) echo '未确认使用 wg/warp/tun 默认出口。' ;;
+        en:pf_warp_unconfirmed) echo 'Use of the wg/warp/tun default egress was not confirmed.' ;;
+        ru:pf_warp_unconfirmed) echo 'Использование выхода wg/warp/tun по умолчанию не подтверждено.' ;;
+        fa:pf_warp_unconfirmed) echo 'استفاده از خروجی پیش‌فرض wg/warp/tun تأیید نشد.' ;;
+        zh-tw:pf_warp_unconfirmed) echo '未確認使用 wg/warp/tun 預設出口。' ;;
+        ja:pf_warp_unconfirmed) echo 'wg/warp/tun のデフォルト出口の使用が確認されませんでした。' ;;
+        zh:pf_warp_noninteractive) echo '非交互部署检测到 wg/warp/tun 默认出口；必须显式在交互环境确认后再部署。' ;;
+        en:pf_warp_noninteractive) echo 'Non-interactive deployment detected a wg/warp/tun default egress; confirm interactively before deploying.' ;;
+        ru:pf_warp_noninteractive) echo 'Неинтерактивное развёртывание обнаружило выход wg/warp/tun по умолчанию; подтвердите в интерактивном режиме перед развёртыванием.' ;;
+        fa:pf_warp_noninteractive) echo 'استقرار غیرتعاملی خروجی پیش‌فرض wg/warp/tun را تشخیص داد؛ پیش از استقرار باید در محیط تعاملی تأیید شود.' ;;
+        zh-tw:pf_warp_noninteractive) echo '非互動部署偵測到 wg/warp/tun 預設出口；必須先在互動環境確認後再部署。' ;;
+        ja:pf_warp_noninteractive) echo '非対話型の導入で wg/warp/tun のデフォルト出口を検出しました。導入前に、対話環境で明示的に確認してください。' ;;
+        zh:pf_no_init) echo '未检测到受支持的 init 系统' ;;
+        en:pf_no_init) echo 'no supported init system detected' ;;
+        ru:pf_no_init) echo 'не обнаружена поддерживаемая система инициализации' ;;
+        fa:pf_no_init) echo 'سیستم init پشتیبانی‌شده‌ای یافت نشد' ;;
+        zh-tw:pf_no_init) echo '未偵測到受支援的 init 系統' ;;
+        ja:pf_no_init) echo 'サポートされる init システムが検出されません' ;;
+        zh:pf_bad_arch) echo '不支持的架构：%s' ;;
+        en:pf_bad_arch) echo 'unsupported arch: %s' ;;
+        ru:pf_bad_arch) echo 'неподдерживаемая архитектура: %s' ;;
+        fa:pf_bad_arch) echo 'معماری پشتیبانی‌نشده: %s' ;;
+        zh-tw:pf_bad_arch) echo '不支援的架構：%s' ;;
+        ja:pf_bad_arch) echo '未対応のアーキテクチャです: %s' ;;
+        zh:pf_cmd_missing) echo '依赖同步前缺少命令：%s' ;;
+        en:pf_cmd_missing) echo 'command missing before dependency sync: %s' ;;
+        ru:pf_cmd_missing) echo 'перед синхронизацией зависимостей отсутствует команда: %s' ;;
+        fa:pf_cmd_missing) echo 'پیش از همگام‌سازی وابستگی‌ها، این دستور موجود نیست: %s' ;;
+        zh-tw:pf_cmd_missing) echo '相依性同步前缺少命令：%s' ;;
+        ja:pf_cmd_missing) echo '依存関係の同期前に不足しているコマンド: %s' ;;
+        zh:pf_gh_ok) echo 'GitHub API 可达' ;;
+        en:pf_gh_ok) echo 'GitHub API reachable' ;;
+        ru:pf_gh_ok) echo 'GitHub API доступен' ;;
+        fa:pf_gh_ok) echo 'API گیت‌هاب در دسترس است' ;;
+        zh-tw:pf_gh_ok) echo 'GitHub API 可達' ;;
+        ja:pf_gh_ok) echo 'GitHub API に到達可能' ;;
+        zh:pf_gh_bad) echo 'GitHub API 当前不可达；无法校验官方发布元数据/摘要，核心安装可能失败' ;;
+        en:pf_gh_bad) echo 'GitHub API unreachable now; official release metadata/digest cannot be verified and core installation may fail' ;;
+        ru:pf_gh_bad) echo 'GitHub API сейчас недоступен; метаданные и дайджесты официальных релизов нельзя проверить, установка ядра может не удасться' ;;
+        fa:pf_gh_bad) echo 'API گیت‌هاب فعلاً در دسترس نیست؛ فراداده و خلاصه انتشار رسمی قابل بررسی نیست و نصب هسته ممکن است شکست بخورد' ;;
+        zh-tw:pf_gh_bad) echo 'GitHub API 目前不可達；無法校驗官方發布中繼資料/摘要，核心安裝可能失敗' ;;
+        ja:pf_gh_bad) echo 'GitHub API に現在到達できません。公式リリースのメタデータ/ダイジェストを検証できず、コアのインストールが失敗する可能性があります' ;;
+        zh:pf_blocked) echo '部署前检查发现阻断性失败。' ;;
+        en:pf_blocked) echo 'Lightweight preflight found blocking failures.' ;;
+        ru:pf_blocked) echo 'Предварительная проверка выявила блокирующие ошибки.' ;;
+        fa:pf_blocked) echo 'بررسی مقدماتی خطاهای مسدودکننده یافت.' ;;
+        zh-tw:pf_blocked) echo '部署前檢查發現阻斷性失敗。' ;;
+        ja:pf_blocked) echo '事前チェックで致命的な失敗が見つかりました。' ;;
+        zh:pf_done) echo '部署前检查完成。WARN=%s' ;;
+        en:pf_done) echo 'Lightweight preflight completed. WARN=%s' ;;
+        ru:pf_done) echo 'Предварительная проверка завершена. WARN=%s' ;;
+        fa:pf_done) echo 'بررسی مقدماتی کامل شد. WARN=%s' ;;
+        zh-tw:pf_done) echo '部署前檢查完成。WARN=%s' ;;
+        ja:pf_done) echo '事前チェックが完了しました。WARN=%s' ;;
+        zh:dp_stop_warn) echo 'A-Box 将在部署新栈前停止受管服务。' ;;
+        en:dp_stop_warn) echo 'A-Box will stop managed services before deploying a new stack.' ;;
+        ru:dp_stop_warn) echo 'A-Box остановит управляемые службы перед развёртыванием нового стека.' ;;
+        fa:dp_stop_warn) echo '‏A-Box پیش از استقرار پشته جدید، سرویس‌های مدیریت‌شده را متوقف می‌کند.' ;;
+        zh-tw:dp_stop_warn) echo 'A-Box 將在部署新堆疊前停止受管服務。' ;;
+        ja:dp_stop_warn) echo 'A-Box は新しいスタックを導入する前に、管理対象サービスを停止します。' ;;
+        zh:dp_current) echo '当前配置：%s | 新部署：%s' ;;
+        en:dp_current) echo 'Current config: %s | New deployment: %s' ;;
+        ru:dp_current) echo 'Текущая конфигурация: %s | Новое развёртывание: %s' ;;
+        fa:dp_current) echo 'پیکربندی کنونی: %s | استقرار جدید: %s' ;;
+        zh-tw:dp_current) echo '目前設定：%s | 新部署：%s' ;;
+        ja:dp_current) echo '現在の設定: %s | 新規導入: %s' ;;
+        zh:dp_continue) echo '继续部署吗？[Y/N]: ' ;;
+        en:dp_continue) echo 'Continue deployment? [Y/N]: ' ;;
+        ru:dp_continue) echo 'Продолжить развёртывание? [Y/N]: ' ;;
+        fa:dp_continue) echo 'استقرار ادامه یابد؟ [Y/N]: ' ;;
+        zh-tw:dp_continue) echo '繼續部署嗎？[Y/N]: ' ;;
+        ja:dp_continue) echo '導入を続けますか？[Y/N]: ' ;;
+        zh:dp_fast_skip) echo '[快速/一键] 全新主机，跳过部署确认。' ;;
+        en:dp_fast_skip) echo '[fast/one-click] fresh host; skip deploy confirm.' ;;
+        ru:dp_fast_skip) echo '[быстрый/в один клик] новый хост; подтверждение развёртывания пропущено.' ;;
+        fa:dp_fast_skip) echo '[سریع/یک‌کلیکه] میزبان تازه؛ تأیید استقرار رد شد.' ;;
+        zh-tw:dp_fast_skip) echo '[快速/一鍵] 全新主機，略過部署確認。' ;;
+        ja:dp_fast_skip) echo '[高速/ワンクリック] 新規ホストのため、導入確認をスキップします。' ;;
+        zh:dp_cancelled) echo '已取消部署。' ;;
+        en:dp_cancelled) echo 'Deployment canceled.' ;;
+        ru:dp_cancelled) echo 'Развёртывание отменено.' ;;
+        fa:dp_cancelled) echo 'استقرار لغو شد.' ;;
+        zh-tw:dp_cancelled) echo '已取消部署。' ;;
+        ja:dp_cancelled) echo '導入をキャンセルしました。' ;;
+        zh:pv_eof) echo '输入结束，未获得有效的 %s' ;;
+        en:pv_eof) echo 'EOF reached without valid %s' ;;
+        ru:pv_eof) echo 'ввод завершён без допустимого значения %s' ;;
+        fa:pv_eof) echo 'ورودی بدون مقدار معتبر %s به پایان رسید' ;;
+        zh-tw:pv_eof) echo '輸入結束，未取得有效的 %s' ;;
+        ja:pv_eof) echo '入力が終了し、有効な %s が得られませんでした' ;;
+        zh:pv_invalid) echo '无效的 %s：%s' ;;
+        en:pv_invalid) echo 'Invalid %s: %s' ;;
+        ru:pv_invalid) echo 'Недопустимое значение %s: %s' ;;
+        fa:pv_invalid) echo '%s نامعتبر است: %s' ;;
+        zh-tw:pv_invalid) echo '無效的 %s：%s' ;;
+        ja:pv_invalid) echo '無効な %s: %s' ;;
+        zh:pv_port_busy) echo '端口 %s 已被占用，请换一个端口' ;;
+        en:pv_port_busy) echo 'Port %s is already in use; choose another port' ;;
+        ru:pv_port_busy) echo 'Порт %s уже занят; выберите другой порт' ;;
+        fa:pv_port_busy) echo 'پورت %s از قبل در حال استفاده است؛ پورت دیگری انتخاب کنید' ;;
+        zh-tw:pv_port_busy) echo '連接埠 %s 已被占用，請換一個連接埠' ;;
+        ja:pv_port_busy) echo 'ポート %s は使用中です。別のポートを選んでください' ;;
+        zh:pi_wizard) echo '参数构造向导 [Engine: %s | Mode: %s]' ;;
+        en:pi_wizard) echo 'Parameter Wizard [Engine: %s | Mode: %s]' ;;
+        ru:pi_wizard) echo 'Мастер параметров [Engine: %s | Mode: %s]' ;;
+        fa:pi_wizard) echo 'جادوگر پارامترها [Engine: %s | Mode: %s]' ;;
+        zh-tw:pi_wizard) echo '參數建構精靈 [Engine: %s | Mode: %s]' ;;
+        ja:pi_wizard) echo 'パラメータウィザード [Engine: %s | Mode: %s]' ;;
+        zh:pi_no_iface) echo '无法识别公网入接口。' ;;
+        en:pi_no_iface) echo 'Cannot identify the public ingress interface.' ;;
+        ru:pi_no_iface) echo 'Не удалось определить публичный входной интерфейс.' ;;
+        fa:pi_no_iface) echo 'رابط ورودی عمومی قابل شناسایی نیست.' ;;
+        zh-tw:pi_no_iface) echo '無法識別公網入口介面。' ;;
+        ja:pi_no_iface) echo 'パブリックな入力インターフェースを特定できません。' ;;
+        zh:pi_bad_iface) echo '网卡名称非法。' ;;
+        en:pi_bad_iface) echo 'Illegal interface name.' ;;
+        ru:pi_bad_iface) echo 'Недопустимое имя интерфейса.' ;;
+        fa:pi_bad_iface) echo 'نام رابط نامعتبر است.' ;;
+        zh-tw:pi_bad_iface) echo '網卡名稱不合法。' ;;
+        ja:pi_bad_iface) echo 'インターフェース名が不正です。' ;;
+        zh:pi_sni_ok) echo '[SNI auto] 当前 VPS 的默认 REALITY SNI：%s。' ;;
+        en:pi_sni_ok) echo '[SNI auto] Default REALITY SNI for this VPS: %s.' ;;
+        ru:pi_sni_ok) echo '[SNI auto] SNI REALITY по умолчанию для этого VPS: %s.' ;;
+        fa:pi_sni_ok) echo '[SNI auto] ‏SNI پیش‌فرض REALITY برای این VPS: ‏%s.' ;;
+        zh-tw:pi_sni_ok) echo '[SNI auto] 本 VPS 的預設 REALITY SNI：%s。' ;;
+        ja:pi_sni_ok) echo '[SNI auto] この VPS のデフォルト REALITY SNI: %s。' ;;
+        zh:pi_sni_none) echo '[SNI auto] 没有候选或 Amazon 回退通过实时 TLS 1.3/h2/SAN 验证；请手动输入并确认可用的 SNI。' ;;
+        en:pi_sni_none) echo '[SNI auto] No candidate or the Amazon fallback passed live TLS 1.3/h2/SAN verification; enter and confirm a working SNI manually.' ;;
+        ru:pi_sni_none) echo '[SNI auto] Ни один кандидат и запасной Amazon не прошли живую проверку TLS 1.3/h2/SAN; введите и подтвердите рабочий SNI вручную.' ;;
+        fa:pi_sni_none) echo '[SNI auto] هیچ نامزدی و جایگزین Amazon بررسی زنده TLS 1.3/h2/SAN را نگذراند؛ یک SNI قابل استفاده را دستی وارد و تأیید کنید.' ;;
+        zh-tw:pi_sni_none) echo '[SNI auto] 沒有候選或 Amazon 回退通過即時 TLS 1.3/h2/SAN 驗證；請手動輸入並確認可用的 SNI。' ;;
+        ja:pi_sni_none) echo '[SNI auto] 候補も Amazon フォールバックも TLS 1.3/h2/SAN のライブ検証を通過しませんでした。使用可能な SNI を手動で入力し確認してください。' ;;
+        zh:pi_oneclick_sni_fail) echo 'SNI 自动优选及 Amazon 回退均未通过实时验证；为避免部署不可用节点，已停止一键安装。请使用交互式安装并输入可验证的 SNI。' ;;
+        en:pi_oneclick_sni_fail) echo 'SNI auto-selection and the Amazon fallback both failed live verification; one-click install stopped to avoid deploying an unusable node. Use interactive install and enter a verifiable SNI.' ;;
+        ru:pi_oneclick_sni_fail) echo 'Автовыбор SNI и запасной Amazon не прошли живую проверку; установка в один клик остановлена, чтобы не развернуть нерабочий узел. Используйте интерактивную установку и введите проверяемый SNI.' ;;
+        fa:pi_oneclick_sni_fail) echo 'انتخاب خودکار SNI و جایگزین Amazon هر دو در بررسی زنده رد شدند؛ نصب یک‌کلیکه متوقف شد تا گره غیرقابل استفاده مستقر نشود. از نصب تعاملی استفاده کنید و یک SNI قابل بررسی وارد کنید.' ;;
+        zh-tw:pi_oneclick_sni_fail) echo 'SNI 自動優選及 Amazon 回退均未通過即時驗證；為避免部署不可用節點，已停止一鍵安裝。請使用互動式安裝並輸入可驗證的 SNI。' ;;
+        ja:pi_oneclick_sni_fail) echo 'SNI の自動選択と Amazon フォールバックの両方がライブ検証に失敗しました。使用できないノードの導入を避けるため、ワンクリックインストールを停止しました。対話型インストールで検証可能な SNI を入力してください。' ;;
+        zh:pi_oneclick_defaults) echo '[one-click] Vision REALITY 默认值：port=%s SNI=%s' ;;
+        en:pi_oneclick_defaults) echo '[one-click] Vision REALITY defaults: port=%s SNI=%s' ;;
+        ru:pi_oneclick_defaults) echo '[one-click] Значения Vision REALITY по умолчанию: port=%s SNI=%s' ;;
+        fa:pi_oneclick_defaults) echo '[one-click] پیش‌فرض‌های Vision REALITY: ‏port=%s SNI=%s' ;;
+        zh-tw:pi_oneclick_defaults) echo '[one-click] Vision REALITY 預設值：port=%s SNI=%s' ;;
+        ja:pi_oneclick_defaults) echo '[one-click] Vision REALITY の既定値: port=%s SNI=%s' ;;
+        zh:pi_fw_persist_fail) echo 'A-Box 防火墙持久化失败。' ;;
+        en:pi_fw_persist_fail) echo 'A-Box firewall persistence failed.' ;;
+        ru:pi_fw_persist_fail) echo 'Не удалось сохранить правила межсетевого экрана A-Box.' ;;
+        fa:pi_fw_persist_fail) echo 'ماندگار‌سازی فایروال A-Box شکست خورد.' ;;
+        zh-tw:pi_fw_persist_fail) echo 'A-Box 防火牆持久化失敗。' ;;
+        ja:pi_fw_persist_fail) echo 'A-Box ファイアウォールの永続化に失敗しました。' ;;
+        zh:pi_port_closed) echo '%s 端口输入已结束。' ;;
+        en:pi_port_closed) echo '%s port input closed.' ;;
+        ru:pi_port_closed) echo 'Ввод порта %s завершён.' ;;
+        fa:pi_port_closed) echo 'ورودی پورت %s بسته شد.' ;;
+        zh-tw:pi_port_closed) echo '%s 連接埠輸入已結束。' ;;
+        ja:pi_port_closed) echo '%s のポート入力が終了しました。' ;;
+        zh:pi_sni_closed) echo '%s SNI 输入已结束。' ;;
+        en:pi_sni_closed) echo '%s SNI input closed.' ;;
+        ru:pi_sni_closed) echo 'Ввод SNI %s завершён.' ;;
+        fa:pi_sni_closed) echo 'ورودی SNI مربوط به %s بسته شد.' ;;
+        zh-tw:pi_sni_closed) echo '%s SNI 輸入已結束。' ;;
+        ja:pi_sni_closed) echo '%s の SNI 入力が終了しました。' ;;
+        zh:pi_hy2_domain_sb) echo '可选填写 Sing-box HY2 自签证书/SNI 域名（留空使用 IP + pinSHA256）: ' ;;
+        en:pi_hy2_domain_sb) echo 'Optional server domain for Sing-box HY2 self-signed certificate/SNI (empty = IP + pinSHA256): ' ;;
+        ru:pi_hy2_domain_sb) echo 'Необязательный домен сервера для самоподписанного сертификата/SNI Sing-box HY2 (пусто = IP + pinSHA256): ' ;;
+        fa:pi_hy2_domain_sb) echo 'دامنه اختیاری سرور برای گواهی خودامضا/SNI در Sing-box HY2 (خالی = IP + pinSHA256): ' ;;
+        zh-tw:pi_hy2_domain_sb) echo '可選填寫 Sing-box HY2 自簽憑證/SNI 網域（留空使用 IP + pinSHA256）: ' ;;
+        ja:pi_hy2_domain_sb) echo 'Sing-box HY2 自己署名証明書/SNI 用のサーバードメイン（任意、空欄 = IP + pinSHA256）: ' ;;
+        zh:pi_hy2_domain) echo '是否拥有已解析到本机的域名？(留空使用默认自签证书): ' ;;
+        en:pi_hy2_domain) echo 'Do you have a domain already resolved to this server? (empty = self-signed certificate): ' ;;
+        ru:pi_hy2_domain) echo 'Есть ли у вас домен, уже направленный на этот сервер? (пусто = самоподписанный сертификат): ' ;;
+        fa:pi_hy2_domain) echo 'آیا دامنه‌ای دارید که به این سرور اشاره کند؟ (خالی = گواهی خودامضا): ' ;;
+        zh-tw:pi_hy2_domain) echo '是否擁有已解析到本機的網域？(留空使用預設自簽憑證): ' ;;
+        ja:pi_hy2_domain) echo 'このサーバーに解決済みのドメインをお持ちですか？（空欄 = 自己署名証明書）: ' ;;
+        zh:pi_hop) echo '是否开启端口跳跃 (单端口被限速环境建议开启)? [Y/N]: ' ;;
+        en:pi_hop) echo 'Enable port hopping? [Y/N]: ' ;;
+        ru:pi_hop) echo 'Включить перескок портов? [Y/N]: ' ;;
+        fa:pi_hop) echo 'فعال‌سازی پرش پورت؟ [Y/N]: ' ;;
+        zh-tw:pi_hop) echo '是否開啟連接埠跳躍 (單連接埠被限速環境建議開啟)? [Y/N]: ' ;;
+        ja:pi_hop) echo 'ポートホッピングを有効にしますか？ [Y/N]: ' ;;
+        zh:pi_down) echo '下行速率(Mbps) (回车默认: 1000): ' ;;
+        en:pi_down) echo 'Downlink Mbps (default: 1000): ' ;;
+        ru:pi_down) echo 'Скорость вниз, Мбит/с (по умолчанию: 1000): ' ;;
+        fa:pi_down) echo 'سرعت دانلود Mbps (پیش‌فرض: 1000): ' ;;
+        zh-tw:pi_down) echo '下行速率(Mbps) (預設: 1000): ' ;;
+        ja:pi_down) echo '下り速度 (Mbps)（既定値: 1000）: ' ;;
+        zh:pi_up) echo '上行速率(Mbps) (回车默认: 100): ' ;;
+        en:pi_up) echo 'Uplink Mbps (default: 100): ' ;;
+        ru:pi_up) echo 'Скорость вверх, Мбит/с (по умолчанию: 100): ' ;;
+        fa:pi_up) echo 'سرعت آپلود Mbps (پیش‌فرض: 100): ' ;;
+        zh-tw:pi_up) echo '上行速率(Mbps) (預設: 100): ' ;;
+        ja:pi_up) echo '上り速度 (Mbps)（既定値: 100）: ' ;;
+        zh:pi_down_closed) echo 'HY2 下行速率输入已结束。' ;;
+        en:pi_down_closed) echo 'HY2 downlink input closed.' ;;
+        ru:pi_down_closed) echo 'Ввод скорости вниз HY2 завершён.' ;;
+        fa:pi_down_closed) echo 'ورودی سرعت دانلود HY2 بسته شد.' ;;
+        zh-tw:pi_down_closed) echo 'HY2 下行速率輸入已結束。' ;;
+        ja:pi_down_closed) echo 'HY2 下り速度の入力が終了しました。' ;;
+        zh:pi_up_closed) echo 'HY2 上行速率输入已结束。' ;;
+        en:pi_up_closed) echo 'HY2 uplink input closed.' ;;
+        ru:pi_up_closed) echo 'Ввод скорости вверх HY2 завершён.' ;;
+        fa:pi_up_closed) echo 'ورودی سرعت آپلود HY2 بسته شد.' ;;
+        zh-tw:pi_up_closed) echo 'HY2 上行速率輸入已結束。' ;;
+        ja:pi_up_closed) echo 'HY2 上り速度の入力が終了しました。' ;;
+        zh:pi_ss_wl) echo '请输入前置机白名单 IP/CIDR (留空全网开放, 多个用空格分隔): ' ;;
+        en:pi_ss_wl) echo 'Enter frontend whitelist IP/CIDR (empty = open to all, space-separated): ' ;;
+        ru:pi_ss_wl) echo 'Введите IP/CIDR белого списка фронтенда (пусто = открыто всем, через пробел): ' ;;
+        fa:pi_ss_wl) echo 'IP/CIDR فهرست مجاز فرانت‌اند را وارد کنید (خالی = باز برای همه، با فاصله جدا کنید): ' ;;
+        zh-tw:pi_ss_wl) echo '請輸入前置機白名單 IP/CIDR (留空全網開放, 多個用空格分隔): ' ;;
+        ja:pi_ss_wl) echo 'フロントエンドのホワイトリスト IP/CIDR を入力してください（空欄 = 全開放、複数はスペース区切り）: ' ;;
+        zh:pi_fast_ka_off) echo '[fast] TCP KeepAlive 默认关闭。' ;;
+        en:pi_fast_ka_off) echo '[fast] TCP KeepAlive default off.' ;;
+        ru:pi_fast_ka_off) echo '[fast] TCP KeepAlive по умолчанию отключён.' ;;
+        fa:pi_fast_ka_off) echo '[fast] ‏TCP KeepAlive به‌صورت پیش‌فرض خاموش است.' ;;
+        zh-tw:pi_fast_ka_off) echo '[fast] TCP KeepAlive 預設關閉。' ;;
+        ja:pi_fast_ka_off) echo '[fast] TCP KeepAlive は既定でオフです。' ;;
+        zh:pi_acme_cf_only) echo '当前仅内置支持 Cloudflare DNS-01 ACME。' ;;
+        en:pi_acme_cf_only) echo 'Only Cloudflare DNS-01 ACME is built in at present.' ;;
+        ru:pi_acme_cf_only) echo 'Сейчас встроена поддержка только Cloudflare DNS-01 ACME.' ;;
+        fa:pi_acme_cf_only) echo 'در حال حاضر فقط Cloudflare DNS-01 ACME به‌صورت داخلی پشتیبانی می‌شود.' ;;
+        zh-tw:pi_acme_cf_only) echo '目前僅內建支援 Cloudflare DNS-01 ACME。' ;;
+        ja:pi_acme_cf_only) echo '現在組み込まれているのは Cloudflare DNS-01 ACME のみです。' ;;
+        zh:pi_acme_token_bad) echo 'Cloudflare DNS-01 ACME Token 为空、过长或包含换行。' ;;
+        en:pi_acme_token_bad) echo 'Cloudflare DNS-01 ACME token is empty, too long, or contains a newline.' ;;
+        ru:pi_acme_token_bad) echo 'Токен Cloudflare DNS-01 ACME пуст, слишком длинный или содержит перевод строки.' ;;
+        fa:pi_acme_token_bad) echo 'توکن Cloudflare DNS-01 ACME خالی است، بیش از حد طولانی است یا خط جدید دارد.' ;;
+        zh-tw:pi_acme_token_bad) echo 'Cloudflare DNS-01 ACME Token 為空、過長或包含換行。' ;;
+        ja:pi_acme_token_bad) echo 'Cloudflare DNS-01 ACME トークンが空、長すぎ、または改行を含んでいます。' ;;
+        zh:pi_hop_v6a) echo '检测到全局 IPv6，但系统没有 ip6tables；拒绝启用手动 HY2 跳跃。' ;;
+        en:pi_hop_v6a) echo 'Global IPv6 detected but ip6tables is missing; refusing to enable manual HY2 hopping.' ;;
+        ru:pi_hop_v6a) echo 'Обнаружен глобальный IPv6, но ip6tables отсутствует; ручной хоппинг HY2 не будет включён.' ;;
+        fa:pi_hop_v6a) echo 'IPv6 سراسری تشخیص داده شد اما ip6tables موجود نیست؛ فعال‌سازی دستی پرش HY2 رد شد.' ;;
+        zh-tw:pi_hop_v6a) echo '偵測到全域 IPv6，但系統沒有 ip6tables；拒絕啟用手動 HY2 跳躍。' ;;
+        ja:pi_hop_v6a) echo 'グローバル IPv6 を検出しましたが ip6tables がありません。手動 HY2 ホッピングの有効化を拒否します。' ;;
+        zh:pi_hop_v6b) echo '检测到全局 IPv6，但 ip6tables nat/PREROUTING 不可用；拒绝启用手动 HY2 跳跃。' ;;
+        en:pi_hop_v6b) echo 'Global IPv6 detected but ip6tables nat/PREROUTING is unavailable; refusing to enable manual HY2 hopping.' ;;
+        ru:pi_hop_v6b) echo 'Обнаружен глобальный IPv6, но nat/PREROUTING в ip6tables недоступен; ручной хоппинг HY2 не будет включён.' ;;
+        fa:pi_hop_v6b) echo 'IPv6 سراسری تشخیص داده شد اما nat/PREROUTING در ip6tables در دسترس نیست؛ فعال‌سازی دستی پرش HY2 رد شد.' ;;
+        zh-tw:pi_hop_v6b) echo '偵測到全域 IPv6，但 ip6tables nat/PREROUTING 不可用；拒絕啟用手動 HY2 跳躍。' ;;
+        ja:pi_hop_v6b) echo 'グローバル IPv6 を検出しましたが ip6tables の nat/PREROUTING が使えません。手動 HY2 ホッピングの有効化を拒否します。' ;;
+        zh:pi_ss_check_fail) echo '无法检查 80/tcp 端口占用；ss 查询失败。' ;;
+        en:pi_ss_check_fail) echo 'Cannot check 80/tcp occupancy; the ss query failed.' ;;
+        ru:pi_ss_check_fail) echo 'Не удалось проверить занятость 80/tcp; запрос ss завершился ошибкой.' ;;
+        fa:pi_ss_check_fail) echo 'بررسی اشغال 80/tcp ممکن نیست؛ کوئری ss شکست خورد.' ;;
+        zh-tw:pi_ss_check_fail) echo '無法檢查 80/tcp 連接埠占用；ss 查詢失敗。' ;;
+        ja:pi_ss_check_fail) echo '80/tcp の占有を確認できません。ss クエリに失敗しました。' ;;
+        zh:pi_acme_port_busy) echo '[!] ACME HTTP-01 需要 80/tcp，但该端口仍被进程占用：' ;;
+        en:pi_acme_port_busy) echo '[!] ACME HTTP-01 needs 80/tcp, but the port is still held by a process:' ;;
+        ru:pi_acme_port_busy) echo '[!] ACME HTTP-01 нужен 80/tcp, но порт всё ещё занят процессом:' ;;
+        fa:pi_acme_port_busy) echo '[!] ‏ACME HTTP-01 به 80/tcp نیاز دارد، اما این پورت هنوز در اشغال یک پردازه است:' ;;
+        zh-tw:pi_acme_port_busy) echo '[!] ACME HTTP-01 需要 80/tcp，但該連接埠仍被行程占用：' ;;
+        ja:pi_acme_port_busy) echo '[!] ACME HTTP-01 には 80/tcp が必要ですが、そのポートはプロセスに占有されています:' ;;
+        zh:pi_acme_port_advice) echo '请先释放 80/tcp，或改用 Cloudflare DNS-01 ACME 后再部署 HY2 域名证书。' ;;
+        en:pi_acme_port_advice) echo 'Free 80/tcp first, or switch to Cloudflare DNS-01 ACME before deploying the HY2 domain certificate.' ;;
+        ru:pi_acme_port_advice) echo 'Сначала освободите 80/tcp или перейдите на Cloudflare DNS-01 ACME перед развёртыванием доменного сертификата HY2.' ;;
+        fa:pi_acme_port_advice) echo 'ابتدا 80/tcp را آزاد کنید، یا پیش از استقرار گواهی دامنه HY2 به Cloudflare DNS-01 ACME تغییر دهید.' ;;
+        zh-tw:pi_acme_port_advice) echo '請先釋放 80/tcp，或改用 Cloudflare DNS-01 ACME 後再部署 HY2 網域憑證。' ;;
+        ja:pi_acme_port_advice) echo '先に 80/tcp を解放するか、Cloudflare DNS-01 ACME に切り替えてから HY2 のドメイン証明書を導入してください。' ;;
+        zh:mu_none) echo '没有可吊销的额外 UUID。' ;;
+        en:mu_none) echo 'No extra UUIDs to revoke.' ;;
+        ru:mu_none) echo 'Нет дополнительных UUID для отзыва.' ;;
+        fa:mu_none) echo 'UUID اضافه‌ای برای لغو نیست.' ;;
+        zh-tw:mu_none) echo '沒有可撤銷的額外 UUID。' ;;
+        ja:mu_none) echo '失効できる追加 UUID はありません。' ;;
+        zh:mu_select) echo '选择要吊销的额外 UUID 编号：' ;;
+        en:mu_select) echo 'Select the extra UUID number to revoke: ' ;;
+        ru:mu_select) echo 'Выберите номер дополнительного UUID для отзыва: ' ;;
+        fa:mu_select) echo 'شماره UUID اضافه برای لغو را انتخاب کنید: ' ;;
+        zh-tw:mu_select) echo '選擇要撤銷的額外 UUID 編號：' ;;
+        ja:mu_select) echo '失効する追加 UUID の番号を選択: ' ;;
+        zh:mu_invalid_sel) echo '选择无效。' ;;
+        en:mu_invalid_sel) echo 'Invalid selection.' ;;
+        ru:mu_invalid_sel) echo 'Недопустимый выбор.' ;;
+        fa:mu_invalid_sel) echo 'انتخاب نامعتبر است.' ;;
+        zh-tw:mu_invalid_sel) echo '選擇無效。' ;;
+        ja:mu_invalid_sel) echo '無効な選択です。' ;;
+        zh:mu_revoke_warn) echo '这将从 Xray 吊销 %s 并重新生成全部受管 VLESS 客户端列表。输入 REVOKE 继续：' ;;
+        en:mu_revoke_warn) echo 'This revokes %s from Xray and regenerates every managed VLESS client list. Type REVOKE to continue: ' ;;
+        ru:mu_revoke_warn) echo 'Это отзовёт %s из Xray и перегенерирует все управляемые списки клиентов VLESS. Введите REVOKE для продолжения: ' ;;
+        fa:mu_revoke_warn) echo 'این کار %s را از Xray لغو و همه فهرست‌های کلاینت VLESS مدیریت‌شده را بازتولید می‌کند. برای ادامه REVOKE را تایپ کنید: ' ;;
+        zh-tw:mu_revoke_warn) echo '這將從 Xray 撤銷 %s 並重新產生全部受管 VLESS 用戶端清單。輸入 REVOKE 繼續：' ;;
+        ja:mu_revoke_warn) echo 'これは %s を Xray から失効させ、管理対象の全 VLESS クライアントリストを再生成します。続行するには REVOKE と入力: ' ;;
+        zh:mu_cancelled) echo '已取消，未做任何更改。' ;;
+        en:mu_cancelled) echo 'Cancelled; no change made.' ;;
+        ru:mu_cancelled) echo 'Отменено; изменения не внесены.' ;;
+        fa:mu_cancelled) echo 'لغو شد؛ هیچ تغییری اعمال نشد.' ;;
+        zh-tw:mu_cancelled) echo '已取消，未做任何變更。' ;;
+        ja:mu_cancelled) echo 'キャンセルしました。変更はありません。' ;;
+        zh:mu_clear_warn) echo '这只清理 A-Box 的本地列表，不会吊销仍在 Xray 服务端配置中的 UUID；在服务端吊销前它们可能仍可用。' ;;
+        en:mu_clear_warn) echo 'This only clears A-Box'\''s local list. It does not revoke UUIDs still present in the Xray server config; those may remain usable until server-side revocation is performed.' ;;
+        ru:mu_clear_warn) echo 'Это очищает только локальный список A-Box и не отзывает UUID, всё ещё присутствующие в конфигурации сервера Xray; они могут оставаться доступными до отзыва на стороне сервера.' ;;
+        fa:mu_clear_warn) echo 'این فقط فهرست محلی A-Box را پاک می‌کند و UUIDهایی را که هنوز در پیکربندی سرور Xray هستند لغو نمی‌کند؛ آن‌ها ممکن است تا لغو سمت سرور قابل استفاده بمانند.' ;;
+        zh-tw:mu_clear_warn) echo '這只清理 A-Box 的本地清單，不會撤銷仍在 Xray 伺服器設定中的 UUID；在伺服器端撤銷前它們可能仍可用。' ;;
+        ja:mu_clear_warn) echo 'これは A-Box のローカルリストを消去するだけです。Xray サーバー設定に残る UUID は失効しません。サーバー側で失効するまで使用できる場合があります。' ;;
+        zh:mu_type_clear) echo '输入 CLEAR 只移除本地列表：' ;;
+        en:mu_type_clear) echo 'Type CLEAR to remove only the local list: ' ;;
+        ru:mu_type_clear) echo 'Введите CLEAR, чтобы удалить только локальный список: ' ;;
+        fa:mu_type_clear) echo 'برای حذف فقط فهرست محلی، CLEAR را تایپ کنید: ' ;;
+        zh-tw:mu_type_clear) echo '輸入 CLEAR 只移除本地清單：' ;;
+        ja:mu_type_clear) echo 'ローカルリストのみを削除するには CLEAR と入力: ' ;;
+        zh:mu_clear_failed) echo '无法移除本地 UUID 列表。' ;;
+        en:mu_clear_failed) echo 'Could not remove the local UUID list.' ;;
+        ru:mu_clear_failed) echo 'Не удалось удалить локальный список UUID.' ;;
+        fa:mu_clear_failed) echo 'حذف فهرست محلی UUID ممکن نشد.' ;;
+        zh-tw:mu_clear_failed) echo '無法移除本地 UUID 清單。' ;;
+        ja:mu_clear_failed) echo 'ローカルの UUID リストを削除できませんでした。' ;;
+        zh:mu_cleared) echo '本地 UUID 列表已清理。服务端的 UUID 未被吊销。' ;;
+        en:mu_cleared) echo 'Local UUID list cleared. Server-side UUIDs were not revoked.' ;;
+        ru:mu_cleared) echo 'Локальный список UUID очищен. UUID на сервере не отозваны.' ;;
+        fa:mu_cleared) echo 'فهرست محلی UUID پاک شد. UUIDهای سمت سرور لغو نشدند.' ;;
+        zh-tw:mu_cleared) echo '本地 UUID 清單已清理。伺服器端的 UUID 未被撤銷。' ;;
+        ja:mu_cleared) echo 'ローカルの UUID リストを消去しました。サーバー側の UUID は失効していません。' ;;
+        zh:tl_body) echo '日常部署与常规核心升级保留经测试的兼容锁定版本：%s / %s / %s。' ;;
+        en:tl_body) echo 'Routine deployment and normal core upgrades retain tested compatibility pins: %s / %s / %s.' ;;
+        ru:tl_body) echo 'Обычные развёртывания и обновления ядер сохраняют проверенные совместимые пины: %s / %s / %s.' ;;
+        fa:tl_body) echo 'استقرار معمول و به‌روزرسانی عادی هسته‌ها، پین‌های سازگاری آزمایش‌شده را نگه می‌دارد: %s / %s / %s.' ;;
+        zh-tw:tl_body) echo '日常部署與一般核心升級保留經測試的相容鎖定版本：%s / %s / %s。' ;;
+        ja:tl_body) echo '通常の導入とコアアップグレードでは、テスト済みの互換性ピンを維持します: %s / %s / %s。' ;;
+        zh:tl_risk) echo '这条自选路径可能破坏 Shadowrocket/Mihomo 的兼容性（例如 Xray ML-KEM）。失败会触发已有的核心升级事务回滚。' ;;
+        en:tl_risk) echo 'This opt-in path may break Shadowrocket/Mihomo (e.g. Xray ML-KEM). Failure triggers the existing core-upgrade transaction rollback.' ;;
+        ru:tl_risk) echo 'Этот необязательный путь может нарушить совместимость Shadowrocket/Mihomo (например, Xray ML-KEM). При сбое сработает существующий транзакционный откат обновления ядра.' ;;
+        fa:tl_risk) echo 'این مسیر اختیاری ممکن است سازگاری Shadowrocket/Mihomo را بشکند (مثلاً Xray ML-KEM). در صورت شکست، بازگشت تراکنشی موجودِ به‌روزرسانی هسته اجرا می‌شود.' ;;
+        zh-tw:tl_risk) echo '這條自選路徑可能破壞 Shadowrocket/Mihomo 的相容性（例如 Xray ML-KEM）。失敗會觸發已有的核心升級事務回滾。' ;;
+        ja:tl_risk) echo 'このオプトイン経路は Shadowrocket/Mihomo の互換性を壊す場合があります（例: Xray ML-KEM）。失敗すると、既存のコアアップグレード用トランザクション・ロールバックが作動します。' ;;
+        zh:tl_type_yes) echo '输入 YES 继续：' ;;
+        en:tl_type_yes) echo 'Type YES to continue: ' ;;
+        ru:tl_type_yes) echo 'Введите YES для продолжения: ' ;;
+        fa:tl_type_yes) echo 'برای ادامه YES را تایپ کنید: ' ;;
+        zh-tw:tl_type_yes) echo '輸入 YES 繼續：' ;;
+        ja:tl_type_yes) echo '続行するには YES と入力: ' ;;
+        zh:tl_cancelled) echo '已取消。' ;;
+        en:tl_cancelled) echo 'Canceled.' ;;
+        ru:tl_cancelled) echo 'Отменено.' ;;
+        fa:tl_cancelled) echo 'لغو شد.' ;;
+        zh-tw:tl_cancelled) echo '已取消。' ;;
+        ja:tl_cancelled) echo 'キャンセルしました。' ;;
         zh:mu_title) echo '多用户管理' ;;
         en:mu_title) echo 'Multi-user management' ;;
         ru:mu_title) echo 'Управление пользователями' ;;
@@ -2772,7 +3156,7 @@ prompt_validated() {
                 printf '%s' "$val"
                 return 0
             fi
-            msg "${RED}EOF reached without valid $type${NC}" >&2
+            msg "${RED}$(tprintf pv_eof "$type")${NC}" >&2
             return 1
         fi
         val="${val:-$default}"
@@ -2781,9 +3165,9 @@ prompt_validated() {
             return 0
         fi
         if [[ "$type" == 'port' ]] && valid_port "$val"; then
-            msg "${RED}端口 ${val} 已被占用，请换一个端口${NC}" >&2
+            msg "${RED}$(tprintf pv_port_busy "$val")${NC}" >&2
         else
-            msg "${RED}Invalid $type: $val${NC}" >&2
+            msg "${RED}$(tprintf pv_invalid "$type" "$val")${NC}" >&2
         fi
     done
 }
@@ -4938,7 +5322,7 @@ confirm_deployment_replacement() {
             1)
                 # No managed services: soft skip in fast/one-click; otherwise no prompt needed either.
                 if abox_is_fast || [[ "${ABOX_QUICK_DEPLOY:-0}" == '1' ]]; then
-                    msg "${YELLOW}[fast/one-click] fresh host; skip deploy confirm.${NC}"
+                    msg "${YELLOW}$(tr_msg dp_fast_skip)${NC}"
                 fi
                 return 0
                 ;;
@@ -4946,11 +5330,11 @@ confirm_deployment_replacement() {
             *) return 1 ;;
         esac
     fi
-    msg "${YELLOW}[!] A-Box will stop managed services before deploying a new stack.${NC}"
-    msg "Current config: ${current} | New deployment: ${next_core}-${next_mode}"
+    msg "${YELLOW}[!] $(tr_msg dp_stop_warn)${NC}"
+    msg "$(tprintf dp_current "$current" "${next_core}-${next_mode}")"
     # Critical when replacing existing config/services: never auto-yes in fast mode.
-    read -r -p 'Continue deployment? [Y/N]: ' answer
-    is_yes "$answer" || die '已取消部署 / Deployment canceled.'
+    read -r -p "$(tr_msg dp_continue)" answer
+    is_yes "$answer" || die "$(tr_msg dp_cancelled)"
 }
 
 service_report_state() {
@@ -9404,9 +9788,9 @@ pre_install_setup() {
     # Sing-box ALL: Vision TCP 443 + HY2 UDP 443 + SS-2022 TCP/UDP 2053. XHTTP is intentionally excluded.
 
     INGRESS_IF=$(get_active_interface)
-    [[ -z "$INGRESS_IF" ]] && die '无法识别公网入接口。'
+    [[ -z "$INGRESS_IF" ]] && die "$(tr_msg pi_no_iface)"
     # A-02: Validate interface name before interpolating into ExecStartPre (command injection).
-    valid_interface_name "$INGRESS_IF" || die '网卡名称非法。'
+    valid_interface_name "$INGRESS_IF" || die "$(tr_msg pi_bad_iface)"
     GLOBAL_PUBLIC_IP=$(refresh_public_ip)
 
     # Resolve one SNI per REALITY deployment. Amazon is used only after a live
@@ -9417,87 +9801,62 @@ pre_install_setup() {
     if [[ "$HAS_VISION" == 'true' || "$HAS_XHTTP" == 'true' ]]; then
         ABOX_AUTO_SNI_SELECTED=$(sni_auto_select_default) || ABOX_AUTO_SNI_SELECTED=''
         if valid_sni "$ABOX_AUTO_SNI_SELECTED"; then
-            msg "[SNI auto] 当前 VPS 的默认 REALITY SNI：${ABOX_AUTO_SNI_SELECTED}。"
+            msg "$(tprintf pi_sni_ok "$ABOX_AUTO_SNI_SELECTED")"
         else
             ABOX_AUTO_SNI_SELECTED=''
-            msg "${YELLOW}[SNI auto] 没有候选或 Amazon 回退通过实时 TLS 1.3/h2/SAN 验证；请手动输入并确认可用的 SNI。${NC}"
+            msg "${YELLOW}$(tr_msg pi_sni_none)${NC}"
         fi
     fi
 
     # U1 one-click / quick path: Vision-only defaults, reuse remaining setup (ports/firewall).
     if [[ "${ABOX_QUICK_DEPLOY:-0}" == '1' && "$HAS_VISION" == 'true' && "$HAS_XHTTP" != 'true' && "$HAS_HY2" != 'true' && "$HAS_SS" != 'true' ]]; then
         VLESS_PORT="$DEF_V_PORT"
-        valid_sni "$ABOX_AUTO_SNI_SELECTED" || die 'SNI 自动优选及 Amazon 回退均未通过实时验证；为避免部署不可用节点，已停止一键安装。请使用交互式安装并输入可验证的 SNI。'
+        valid_sni "$ABOX_AUTO_SNI_SELECTED" || die "$(tr_msg pi_oneclick_sni_fail)"
         VISION_SNI="$ABOX_AUTO_SNI_SELECTED"
         VLESS_SNI="$VISION_SNI"
         ENABLE_KEEPALIVE='false'
-        msg "${GREEN}[one-click] Vision REALITY defaults: port=${VLESS_PORT} SNI=${VISION_SNI}${NC}"
+        msg "${GREEN}$(tprintf pi_oneclick_defaults "$VLESS_PORT" "$VISION_SNI")${NC}"
         check_selected_ports_free
         allowPort "$VLESS_PORT" tcp
-        save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+        save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
         return 0
     fi
 
     printf '\n%s\n' "${CYAN}======================================================================${NC}"
     case "${ABOX_LANG:-zh}" in
         en|ru|fa)
-            msg "${BOLD}Parameter Wizard [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
+            msg "${BOLD}$(tprintf pi_wizard "$CORE_IN" "$MODE_IN")${NC}"
             ;;
         ja)
-            msg "${BOLD}パラメータウィザード [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
+            msg "${BOLD}$(tprintf pi_wizard "$CORE_IN" "$MODE_IN")${NC}"
             ;;
         zh-tw)
-            msg "${BOLD}參數建構精靈 [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
+            msg "${BOLD}$(tprintf pi_wizard "$CORE_IN" "$MODE_IN")${NC}"
             ;;
         *)
-            msg "${BOLD}参数构造向导 [Engine: $CORE_IN | Mode: $MODE_IN]${NC}"
+            msg "${BOLD}$(tprintf pi_wizard "$CORE_IN" "$MODE_IN")${NC}"
             ;;
     esac
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
 
     if [[ "$HAS_VISION" == 'true' ]]; then
-        VLESS_PORT=$(prompt_port_input "$L_VISION" "$DEF_V_PORT") || die '监听端口输入已结束 / Port input closed.'
-        VISION_SNI=$(prompt_reality_sni "$L_VISION" "$VLESS_PORT") || die 'REALITY SNI 输入已结束 / SNI input closed.'
+        VLESS_PORT=$(prompt_port_input "$L_VISION" "$DEF_V_PORT") || die "$(tprintf pi_port_closed "$L_VISION")"
+        VISION_SNI=$(prompt_reality_sni "$L_VISION" "$VLESS_PORT") || die "$(tprintf pi_sni_closed "$L_VISION")"
     fi
     if [[ "$HAS_XHTTP" == 'true' ]]; then
-        XHTTP_PORT=$(prompt_port_input "$L_XHTTP" "$DEF_X_PORT") || die 'XHTTP 端口输入已结束 / XHTTP port input closed.'
-        XHTTP_SNI=$(prompt_reality_sni "$L_XHTTP" "$XHTTP_PORT") || die 'XHTTP SNI 输入已结束 / XHTTP SNI input closed.'
+        XHTTP_PORT=$(prompt_port_input "$L_XHTTP" "$DEF_X_PORT") || die "$(tprintf pi_port_closed "$L_XHTTP")"
+        XHTTP_SNI=$(prompt_reality_sni "$L_XHTTP" "$XHTTP_PORT") || die "$(tprintf pi_sni_closed "$L_XHTTP")"
     fi
     VLESS_SNI=${VISION_SNI:-${XHTTP_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}
 
     if [[ "$HAS_HY2" == 'true' ]]; then
-        HY2_BASE_PORT=$(prompt_port_input "$L_HY2" "$DEF_H_PORT") || die 'HY2 端口输入已结束 / HY2 port input closed.'
+        HY2_BASE_PORT=$(prompt_port_input "$L_HY2" "$DEF_H_PORT") || die "$(tprintf pi_port_closed "$L_HY2")"
 
-        case "${ABOX_LANG:-zh}" in
-            en|ru|fa)
-                if [[ "$CORE_IN" == 'singbox' ]]; then
-                    read -r -p "   ${L_HY2} Optional server domain for Sing-box HY2 self-signed certificate/SNI (empty = IP + pinSHA256): " INPUT_H_DOMAIN || die 'Interactive input closed.'
-                else
-                    read -r -p "   ${L_HY2} Do you have a domain already resolved to this server? (empty = self-signed certificate): " INPUT_H_DOMAIN || die 'Interactive input closed.'
-                fi
-                ;;
-            ja)
-                if [[ "$CORE_IN" == 'singbox' ]]; then
-                    read -r -p "   ${L_HY2} Sing-box HY2 自己署名証明書/SNI 用のサーバードメイン（任意、空欄 = IP + pinSHA256）: " INPUT_H_DOMAIN || die '対話入力が終了しました。'
-                else
-                    read -r -p "   ${L_HY2} このサーバーに解決済みのドメインをお持ちですか？（空欄 = 自己署名証明書）: " INPUT_H_DOMAIN || die '対話入力が終了しました。'
-                fi
-                ;;
-            zh-tw)
-                if [[ "$CORE_IN" == 'singbox' ]]; then
-                    read -r -p "   ${L_HY2} 可選填寫 Sing-box HY2 自簽憑證/SNI 網域（留空使用 IP + pinSHA256）: " INPUT_H_DOMAIN || die '互動輸入已結束。'
-                else
-                    read -r -p "   ${L_HY2} 是否擁有已解析到本機的網域？(留空使用預設自簽憑證): " INPUT_H_DOMAIN || die '互動輸入已結束。'
-                fi
-                ;;
-            *)
-                if [[ "$CORE_IN" == 'singbox' ]]; then
-                    read -r -p "   ${L_HY2} 可选填写 Sing-box HY2 自签证书/SNI 域名（留空使用 IP + pinSHA256）: " INPUT_H_DOMAIN || die '交互输入已结束。'
-                else
-                    read -r -p "   ${L_HY2} 是否拥有已解析到本机的域名？(留空使用默认自签证书): " INPUT_H_DOMAIN || die '交互输入已结束。'
-                fi
-                ;;
-        esac
+        if [[ "$CORE_IN" == 'singbox' ]]; then
+            read -r -p "   ${L_HY2} $(tr_msg pi_hy2_domain_sb)" INPUT_H_DOMAIN || die "$(tr_msg pi_input_closed)"
+        else
+            read -r -p "   ${L_HY2} $(tr_msg pi_hy2_domain)" INPUT_H_DOMAIN || die "$(tr_msg pi_input_closed)"
+        fi
         HY2_DOMAIN="$INPUT_H_DOMAIN"
         if [[ -n "$HY2_DOMAIN" ]]; then
             valid_domain "$HY2_DOMAIN" || die "域名格式非法 / Invalid domain: $HY2_DOMAIN"
@@ -9514,53 +9873,40 @@ pre_install_setup() {
                     local INPUT_ACME_DNS INPUT_CF_TOKEN
                     case "${ABOX_LANG:-zh}" in
                         en)
-                        read -r -p "   ${L_HY2} Use Cloudflare DNS-01 ACME instead of HTTP-01? [Y/N]: " INPUT_ACME_DNS || die '交互输入已结束 / Interactive input closed.'
+                        read -r -p "   ${L_HY2} Use Cloudflare DNS-01 ACME instead of HTTP-01? [Y/N]: " INPUT_ACME_DNS || die "$(tr_msg pi_input_closed)"
                             ;;
                         ru)
-                        read -r -p "   ${L_HY2} Использовать Cloudflare DNS-01 ACME вместо HTTP-01? [Y/N]: " INPUT_ACME_DNS || die 'Ввод завершён.'
+                        read -r -p "   ${L_HY2} Использовать Cloudflare DNS-01 ACME вместо HTTP-01? [Y/N]: " INPUT_ACME_DNS || die "$(tr_msg pi_input_closed)"
                             ;;
                         fa)
-                        read -r -p "   ${L_HY2} استفاده از Cloudflare DNS-01 ACME به جای HTTP-01؟ [Y/N]: " INPUT_ACME_DNS || die 'ورودی به پایان رسید.'
+                        read -r -p "   ${L_HY2} استفاده از Cloudflare DNS-01 ACME به جای HTTP-01؟ [Y/N]: " INPUT_ACME_DNS || die "$(tr_msg pi_input_closed)"
                             ;;
                         ja)
-                            read -r -p "   ${L_HY2} HTTP-01 の代わりに Cloudflare DNS-01 ACME で証明書を取得しますか？[Y/N]: " INPUT_ACME_DNS || die '対話入力が終了しました / Interactive input closed.'
+                            read -r -p "   ${L_HY2} HTTP-01 の代わりに Cloudflare DNS-01 ACME で証明書を取得しますか？[Y/N]: " INPUT_ACME_DNS || die "$(tr_msg pi_input_closed)"
                             ;;
                         zh-tw)
-                        read -r -p "   ${L_HY2} 是否使用 Cloudflare DNS-01 申請證書以避免佔用 80 埠？[Y/N]: " INPUT_ACME_DNS || die '互動輸入已結束 / Interactive input closed.'
+                        read -r -p "   ${L_HY2} 是否使用 Cloudflare DNS-01 申請證書以避免佔用 80 埠？[Y/N]: " INPUT_ACME_DNS || die "$(tr_msg pi_input_closed)"
                             ;;
                         *)
-                        read -r -p "   ${L_HY2} 是否使用 Cloudflare DNS-01 申请证书以避免占用 80 端口？[Y/N]: " INPUT_ACME_DNS || die '交互输入已结束 / Interactive input closed.'
+                        read -r -p "   ${L_HY2} 是否使用 Cloudflare DNS-01 申请证书以避免占用 80 端口？[Y/N]: " INPUT_ACME_DNS || die "$(tr_msg pi_input_closed)"
                             ;;
                     esac
                     if is_yes "$INPUT_ACME_DNS"; then
                         HY2_ACME_TYPE='dns'
                         HY2_ACME_DNS_PROVIDER='cloudflare'
-                        read -r -s -p "   ${L_HY2} Cloudflare API Token: " INPUT_CF_TOKEN || die '交互输入已结束 / Interactive input closed.'
+                        read -r -s -p "   ${L_HY2} Cloudflare API Token: " INPUT_CF_TOKEN || die "$(tr_msg pi_input_closed)"
                         echo
                         HY2_ACME_DNS_CF_API_TOKEN="$INPUT_CF_TOKEN"
                     fi
                 fi
                 if [[ "${HY2_ACME_TYPE:-http}" == 'dns' ]]; then
-                    [[ "${HY2_ACME_DNS_PROVIDER:-}" == 'cloudflare' ]] || die '当前仅内置支持 Cloudflare DNS-01 ACME。'
-                    valid_single_line_secret "${HY2_ACME_DNS_CF_API_TOKEN:-}" 512 || die 'Cloudflare DNS-01 ACME Token 为空、过长或包含换行。'
+                    [[ "${HY2_ACME_DNS_PROVIDER:-}" == 'cloudflare' ]] || die "$(tr_msg pi_acme_cf_only)"
+                    valid_single_line_secret "${HY2_ACME_DNS_CF_API_TOKEN:-}" 512 || die "$(tr_msg pi_acme_token_bad)"
                 fi
             fi
         fi
 
-        case "${ABOX_LANG:-zh}" in
-            en|ru|fa)
-                read -r -p "   ${L_HY2} Enable port hopping? [Y/N]: " INPUT_H_HOP || die 'Interactive input closed.'
-                ;;
-            ja)
-                read -r -p "   ${L_HY2} ポートホッピングを有効にしますか？ [Y/N]: " INPUT_H_HOP || die '対話入力が終了しました。'
-                ;;
-            zh-tw)
-                read -r -p "   ${L_HY2} 是否開啟連接埠跳躍 (單連接埠被限速環境建議開啟)? [Y/N]: " INPUT_H_HOP || die '互動輸入已結束。'
-                ;;
-            *)
-                read -r -p "   ${L_HY2} 是否开启端口跳跃 (单端口被限速环境建议开启)? [Y/N]: " INPUT_H_HOP || die '交互输入已结束。'
-                ;;
-        esac
+        read -r -p "   ${L_HY2} $(tr_msg pi_hop)" INPUT_H_HOP || die "$(tr_msg pi_input_closed)"
         if is_yes "$INPUT_H_HOP"; then
             HY2_HOP='true'
             HY2_RANGE_START=20000
@@ -9574,8 +9920,8 @@ pre_install_setup() {
                 HY2_URI_PORTS="${HY2_BASE_PORT}"
                 HY2_MONITOR_PORT="$HY2_BASE_PORT"
                 if has_ipv6; then
-                    command -v ip6tables >/dev/null 2>&1 || die '检测到全局 IPv6，但系统没有 ip6tables；拒绝启用手动 HY2 跳跃。'
-                    _iptables_q ip6tables -t nat -L PREROUTING >/dev/null 2>&1 || die '检测到全局 IPv6，但 ip6tables nat/PREROUTING 不可用；拒绝启用手动 HY2 跳跃。'
+                    command -v ip6tables >/dev/null 2>&1 || die "$(tr_msg pi_hop_v6a)"
+                    _iptables_q ip6tables -t nat -L PREROUTING >/dev/null 2>&1 || die "$(tr_msg pi_hop_v6b)"
                 fi
             fi
             HY2_CLASH_PORTS="${HY2_RANGE_START}-${HY2_RANGE_END}"
@@ -9589,34 +9935,8 @@ pre_install_setup() {
             HY2_MONITOR_PORT="$HY2_BASE_PORT"
         fi
 
-        case "${ABOX_LANG:-zh}" in
-            en|ru|fa)
-                HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} Downlink Mbps (default: 1000): " 1000) || die 'HY2 downlink input closed.'
-                ;;
-            ja)
-                HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 下り速度 (Mbps)（既定値: 1000）: " 1000) || die 'HY2 下り速度の入力が終了しました。'
-                ;;
-            zh-tw)
-                HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 下行速率(Mbps) (預設: 1000): " 1000) || die 'HY2 下行速率輸入已結束。'
-                ;;
-            *)
-                HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 下行速率(Mbps) (回车默认: 1000): " 1000) || die 'HY2 下行速率输入已结束。'
-                ;;
-        esac
-        case "${ABOX_LANG:-zh}" in
-            en|ru|fa)
-                HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} Uplink Mbps (default: 100): " 100) || die 'HY2 uplink input closed.'
-                ;;
-            ja)
-                HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 上り速度 (Mbps)（既定値: 100）: " 100) || die 'HY2 上り速度の入力が終了しました。'
-                ;;
-            zh-tw)
-                HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 上行速率(Mbps) (預設: 100): " 100) || die 'HY2 上行速率輸入已結束。'
-                ;;
-            *)
-                HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} 上行速率(Mbps) (回车默认: 100): " 100) || die 'HY2 上行速率输入已结束。'
-                ;;
-        esac
+        HY2_DOWN=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} $(tr_msg pi_down)" 1000) || die "$(tr_msg pi_down_closed)"
+        HY2_UP=$(prompt_hy2_bandwidth_mbps_input "   ${L_HY2} $(tr_msg pi_up)" 100) || die "$(tr_msg pi_up_closed)"
 
         local masq_default="https://${VISION_SNI:-${XHTTP_SNI:-www.samsung.com}}/"
         case "${ABOX_LANG:-zh}" in
@@ -9642,20 +9962,7 @@ pre_install_setup() {
     fi
     if [[ "$HAS_SS" == 'true' ]]; then
         SS_PORT=$(prompt_ss_port_input "$L_SS" "$DEF_S_PORT") || die 'SS 端口输入已结束 / SS port input closed.'
-        case "${ABOX_LANG:-zh}" in
-            en|ru|fa)
-                read -r -p "   ${L_SS} Enter frontend whitelist IP/CIDR (empty = open to all, space-separated): " INPUT_SS_WL || die 'Interactive input closed.'
-                ;;
-            ja)
-                read -r -p "   ${L_SS} フロントエンドのホワイトリスト IP/CIDR を入力してください（空欄 = 全開放、複数はスペース区切り）: " INPUT_SS_WL || die '対話入力が終了しました。'
-                ;;
-            zh-tw)
-                read -r -p "   ${L_SS} 請輸入前置機白名單 IP/CIDR (留空全網開放, 多個用空格分隔): " INPUT_SS_WL || die '互動輸入已結束。'
-                ;;
-            *)
-                read -r -p "   ${L_SS} 请输入前置机白名单 IP/CIDR (留空全网开放, 多个用空格分隔): " INPUT_SS_WL || die '交互输入已结束。'
-                ;;
-        esac
+        read -r -p "   ${L_SS} $(tr_msg pi_ss_wl)" INPUT_SS_WL || die "$(tr_msg pi_input_closed)"
         SS_WHITELIST_IP="$INPUT_SS_WL"
         if [[ -n "$SS_WHITELIST_IP" ]]; then
             read -r -a ss_whitelist_ips <<< "$SS_WHITELIST_IP"
@@ -9671,26 +9978,26 @@ pre_install_setup() {
 
     if abox_is_fast; then
         ENABLE_KEEPALIVE='false'
-        msg "${YELLOW}[fast] TCP KeepAlive default off.${NC}"
+        msg "${YELLOW}$(tr_msg pi_fast_ka_off)${NC}"
     else
         case "${ABOX_LANG:-zh}" in
             en)
-            read -r -p "   ${L_GLOBAL} Enable TCP KeepAlive 45s to prevent NAT idle disconnect? [Y/N]: " INPUT_KA || die '交互输入已结束 / Interactive input closed.'
+            read -r -p "   ${L_GLOBAL} Enable TCP KeepAlive 45s to prevent NAT idle disconnect? [Y/N]: " INPUT_KA || die "$(tr_msg pi_input_closed)"
                 ;;
             ru)
-            read -r -p "   ${L_GLOBAL} Включить TCP KeepAlive 45с для предотвращения разрыва соединения NAT? [Y/N]: " INPUT_KA || die 'Ввод завершён.'
+            read -r -p "   ${L_GLOBAL} Включить TCP KeepAlive 45с для предотвращения разрыва соединения NAT? [Y/N]: " INPUT_KA || die "$(tr_msg pi_input_closed)"
                 ;;
             fa)
-            read -r -p "   ${L_GLOBAL} فعال‌سازی TCP KeepAlive به مدت 45 ثانیه برای جلوگیری از قطع اتصال بی‌فعال NAT؟ [Y/N]: " INPUT_KA || die 'ورودی به پایان رسید.'
+            read -r -p "   ${L_GLOBAL} فعال‌سازی TCP KeepAlive به مدت 45 ثانیه برای جلوگیری از قطع اتصال بی‌فعال NAT؟ [Y/N]: " INPUT_KA || die "$(tr_msg pi_input_closed)"
                 ;;
             ja)
-                read -r -p "   ${L_GLOBAL} NAT のアイドル時切断を防ぐため、TCP KeepAlive (45s) を有効にしますか？ [Y/N]: " INPUT_KA || die '対話入力が終了しました / Interactive input closed.'
+                read -r -p "   ${L_GLOBAL} NAT のアイドル時切断を防ぐため、TCP KeepAlive (45s) を有効にしますか？ [Y/N]: " INPUT_KA || die "$(tr_msg pi_input_closed)"
                 ;;
             zh-tw)
-            read -r -p "   ${L_GLOBAL} 是否開啟 TCP KeepAlive (45s) 防治 NAT 空閒斷連? [Y/N]: " INPUT_KA || die '互動輸入已結束 / Interactive input closed.'
+            read -r -p "   ${L_GLOBAL} 是否開啟 TCP KeepAlive (45s) 防治 NAT 空閒斷連? [Y/N]: " INPUT_KA || die "$(tr_msg pi_input_closed)"
                 ;;
             *)
-            read -r -p "   ${L_GLOBAL} 是否开启 TCP KeepAlive (45s) 防治 NAT 空闲断连? [Y/N]: " INPUT_KA || die '交互输入已结束 / Interactive input closed.'
+            read -r -p "   ${L_GLOBAL} 是否开启 TCP KeepAlive (45s) 防治 NAT 空闲断连? [Y/N]: " INPUT_KA || die "$(tr_msg pi_input_closed)"
                 ;;
         esac
         is_yes "$INPUT_KA" && ENABLE_KEEPALIVE='true' || ENABLE_KEEPALIVE='false'
@@ -9700,13 +10007,13 @@ pre_install_setup() {
     check_selected_ports_free
     if [[ "$HAS_HY2" == 'true' ]] && hy2_http01_enabled "$CORE_IN" "$MODE_IN"; then
         if ! holder=$(ss -H -n -l -p -A tcp 2>/dev/null); then
-            die '无法检查 80/tcp 端口占用；ss 查询失败。'
+            die "$(tr_msg pi_ss_check_fail)"
         fi
         holder=$(awk '{if ($4 ~ /[:.]80$/ || $5 ~ /[:.]80$/) { print; found=1 }} END { if (!found) exit 0 }' <<< "$holder" || true)
         if [[ -n "$holder" ]]; then
-            msg "${RED}[!] ACME HTTP-01 需要 80/tcp，但该端口仍被进程占用：${NC}"
+            msg "${RED}$(tr_msg pi_acme_port_busy)${NC}"
             echo "$holder"
-            die '请先释放 80/tcp，或改用 Cloudflare DNS-01 ACME 后再部署 HY2 域名证书。'
+            die "$(tr_msg pi_acme_port_advice)"
         fi
     fi
 
@@ -10189,7 +10496,7 @@ deploy_official_hy2() {
         release_ports
         clean_nat_rules || die '旧的 A-Box HY2 NAT 规则无法完整删除。'
         clean_input_rules || die '旧的 A-Box INPUT/原生防火墙规则无法完整删除。'
-        save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+        save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
         pre_install_setup hysteria HY2
         get_architecture
     fi
@@ -10212,8 +10519,8 @@ deploy_official_hy2() {
     if [[ -n "${HY2_DOMAIN:-}" ]]; then
         prepare_hysteria_acme_dir_ownership || die 'Hysteria ACME 目录已有非 A-Box 内容且无法安全确认归属，拒绝接管。'
         if [[ "${HY2_ACME_TYPE:-http}" == 'dns' ]]; then
-            [[ "${HY2_ACME_DNS_PROVIDER:-}" == 'cloudflare' ]] || die '当前仅内置支持 Cloudflare DNS-01 ACME。'
-            valid_single_line_secret "${HY2_ACME_DNS_CF_API_TOKEN:-}" 512 || die 'Cloudflare DNS-01 ACME Token 为空、过长或包含换行。'
+            [[ "${HY2_ACME_DNS_PROVIDER:-}" == 'cloudflare' ]] || die "$(tr_msg pi_acme_cf_only)"
+            valid_single_line_secret "${HY2_ACME_DNS_CF_API_TOKEN:-}" 512 || die "$(tr_msg pi_acme_token_bad)"
             domain_yaml=$(json_escape "$HY2_DOMAIN")
             token_yaml=$(json_escape "$HY2_ACME_DNS_CF_API_TOKEN")
             TLS_CONFIG="acme:
@@ -10753,7 +11060,7 @@ EOF_SVC
     # Firewall: TCP + UDP.
     allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
     allowPort "$port" udp || die "防火墙放行失败: ${port}/udp"
-    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
 
     # Ensure the service is running (minimal-install path).
     service_manager start sing-box 2>/dev/null || true
@@ -10922,7 +11229,7 @@ EOF_SVC
     rm -f "$tmp_json"
 
     allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
-    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     service_manager start xray 2>/dev/null || true
     set_desired_state RUNNING 2>/dev/null || true
 
@@ -11064,7 +11371,7 @@ EOF_SVC
     restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
 
     allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
-    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING 2>/dev/null || true
 
@@ -11213,7 +11520,7 @@ EOF_SVC
     restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
 
     allowPort "$port" udp || die "防火墙放行失败: ${port}/udp"
-    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING 2>/dev/null || true
 
@@ -11359,7 +11666,7 @@ EOF_SVC
     restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
 
     allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
-    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING 2>/dev/null || true
 
@@ -11501,7 +11808,7 @@ EOF_SVC
     restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
 
     allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
-    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING 2>/dev/null || true
 
@@ -13444,7 +13751,7 @@ EOF_SVC
     # Firewall: TCP + UDP.
     allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
     allowPort "$port" udp || die "防火墙放行失败: ${port}/udp"
-    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
 
     # Ensure the service is running (minimal-install path or API-unavailable hosts).
     service_manager start xray 2>/dev/null || true
@@ -13474,7 +13781,7 @@ deploy_xray() {
     release_ports
     clean_nat_rules || die '旧的 A-Box HY2 NAT 规则无法完整删除。'
     clean_input_rules || die '旧的 A-Box INPUT/原生防火墙规则无法完整删除。'
-    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     pre_install_setup xray "$MODE_IN"
     get_architecture
 
@@ -13602,7 +13909,7 @@ deploy_singbox() {
     release_ports
     clean_nat_rules || die '旧的 A-Box HY2 NAT 规则无法完整删除。'
     clean_input_rules || die '旧的 A-Box INPUT/原生防火墙规则无法完整删除。'
-    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     pre_install_setup singbox "$MODE_IN"
     get_architecture
 
@@ -15077,7 +15384,7 @@ manage_ss_whitelist() {
                     esac
                 done
             fi
-            save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+            save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
             sync_ss_whitelist_ip_to_env || die 'A-Box 白名单 .env 同步失败。'
             msg "${GREEN}已添加白名单: $add_ip (TCP+UDP)${NC}"
             pause_return
@@ -15120,7 +15427,7 @@ manage_ss_whitelist() {
                     done
                 done
             fi
-            save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+            save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
             sync_ss_whitelist_ip_to_env || die 'A-Box 白名单 .env 同步失败。'
             [[ "$found" == 1 ]] && msg "${GREEN}已移除白名单: $del_ip${NC}" || msg "${YELLOW}未找到该白名单规则。${NC}"
             pause_return
@@ -15184,7 +15491,7 @@ manage_ss_whitelist() {
                 fi
                 allowPort "$SS_PORT" "$proto"
             done
-            save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+            save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
             sync_ss_whitelist_ip_to_env || die 'A-Box 白名单 .env 同步失败。'
             ABOX_DIE_HOOK="$_old_die_hook"
             msg "${GREEN}已切换为全网开放模式 (TCP+UDP)。${NC}"
@@ -15216,7 +15523,7 @@ do_cleanup() {
     stop_all_managed_services || die '清理前无法停止全部 A-Box 托管服务。'
     clean_nat_rules || die '旧的 A-Box HY2 NAT 规则无法完整删除。'
     clean_input_rules || die '旧的 A-Box INPUT/原生防火墙规则无法完整删除。'
-    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     kill_managed_residual_pids || die 'A-Box 残留进程无法完整停止。'
     remove_all_owned_core_families 1 || die '删除 A-Box 托管核心文件失败。'
     if [[ -d "$ABOX_DIR/tune-backup" ]]; then
@@ -15600,7 +15907,7 @@ check_virgin_state() {
     stop_all_managed_services || die '环境重置前无法停止全部 A-Box 托管服务。'
     clean_nat_rules || die '旧的 A-Box HY2 NAT 规则无法完整删除。'
     clean_input_rules || die '旧的 A-Box INPUT/原生防火墙规则无法完整删除。'
-    save_firewall_rules || die 'A-Box 防火墙持久化失败。'
+    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     remove_all_abox_cron_blocks || die '删除 A-Box cron 任务失败。'
     # Menu 17 deep self-heal: pass force_heal=1 explicitly (never via environment).
     remove_all_owned_core_families 1 || die '环境重置时删除 A-Box 托管核心文件失败。'
@@ -17522,14 +17829,14 @@ multi_uuid_menu() {
             if [[ -n "$_uuid_list_raw" ]]; then
                 mapfile -t uuids <<< "$_uuid_list_raw"
             fi
-            ((${#uuids[@]} > 0)) || { msg 'No extra UUIDs to revoke.'; pause_return; return 0; }
+            ((${#uuids[@]} > 0)) || { msg "$(tr_msg mu_none)"; pause_return; return 0; }
             local idx
             for idx in "${!uuids[@]}"; do printf '%3d. %s\n' "$((idx+1))" "${uuids[$idx]}"; done
-            read -r -p 'Select the extra UUID number to revoke: ' selected
-            [[ "$selected" =~ ^[0-9]+$ ]] && (( selected >= 1 && selected <= ${#uuids[@]} )) || { msg "${YELLOW}Invalid selection.${NC}"; pause_return; return 1; }
+            read -r -p "$(tr_msg mu_select)" selected
+            [[ "$selected" =~ ^[0-9]+$ ]] && (( selected >= 1 && selected <= ${#uuids[@]} )) || { msg "${YELLOW}$(tr_msg mu_invalid_sel)${NC}"; pause_return; return 1; }
             nu="${uuids[$((selected-1))]}"
-            read -r -p "This revokes $nu from Xray and regenerates every managed VLESS client list. Type REVOKE to continue: " answer
-            [[ "$answer" == REVOKE ]] || { msg 'Cancelled; no change made.'; pause_return; return 0; }
+            read -r -p "$(tprintf mu_revoke_warn "$nu")" answer
+            [[ "$answer" == REVOKE ]] || { msg "$(tr_msg mu_cancelled)"; pause_return; return 0; }
             tx=$(umask 077; mktemp -d "$ABOX_DIR/.uuid-transaction.XXXXXX") || return 1
             cp -a "$cfg" "$tx/config.json" || { rm -rf -- "$tx"; return 1; }
             [[ ! -f "$EXTRA_UUID_FILE" ]] || cp -a "$EXTRA_UUID_FILE" "$tx/extra-uuids" || { rm -rf -- "$tx"; return 1; }
@@ -17561,11 +17868,11 @@ multi_uuid_menu() {
             pause_return
             ;;
         4)
-            msg "${YELLOW}This only clears A-Box's local list. It does not revoke UUIDs still present in the Xray server config; those may remain usable until server-side revocation is performed.${NC}"
-            read -r -p 'Type CLEAR to remove only the local list: ' answer
-            [[ "$answer" == CLEAR ]] || { msg 'Cancelled; no change made.'; pause_return; return 0; }
-            rm -f -- "$EXTRA_UUID_FILE" || { msg "${RED}Could not remove the local UUID list.${NC}"; pause_return; return 1; }
-            msg "${GREEN}Local UUID list cleared. Server-side UUIDs were not revoked.${NC}"
+            msg "${YELLOW}$(tr_msg mu_clear_warn)${NC}"
+            read -r -p "$(tr_msg mu_type_clear)" answer
+            [[ "$answer" == CLEAR ]] || { msg "$(tr_msg mu_cancelled)"; pause_return; return 0; }
+            rm -f -- "$EXTRA_UUID_FILE" || { msg "${RED}$(tr_msg mu_clear_failed)${NC}"; pause_return; return 1; }
+            msg "${GREEN}$(tr_msg mu_cleared)${NC}"
             pause_return
             ;;
         0) return 0 ;;
@@ -17578,10 +17885,10 @@ try_latest_cores_danger() {
     local answer targets=() t latest
     clear
     msg "${RED}${BOLD}DANGER: 尝试上游最新正式稳定版 / Try latest upstream stable release${NC}"
-    msg "Routine deployment and normal core upgrades retain tested compatibility pins: ${ABOX_XRAY_DEFAULT_VERSION} / ${ABOX_SINGBOX_DEFAULT_VERSION} / ${ABOX_HYSTERIA_DEFAULT_VERSION}."
-    msg "This opt-in path may break Shadowrocket/Mihomo (e.g. Xray ML-KEM). Failure triggers the existing core-upgrade transaction rollback."
-    read -r -p 'Type YES to continue: ' answer
-    [[ "$answer" == 'YES' ]] || { msg "${YELLOW}Canceled.${NC}"; pause_return; return 0; }
+    msg "$(tprintf tl_body "${ABOX_XRAY_DEFAULT_VERSION}" "${ABOX_SINGBOX_DEFAULT_VERSION}" "${ABOX_HYSTERIA_DEFAULT_VERSION}")"
+    msg "$(tr_msg tl_risk)"
+    read -r -p "$(tr_msg tl_type_yes)" answer
+    [[ "$answer" == 'YES' ]] || { msg "${YELLOW}$(tr_msg tl_cancelled)${NC}"; pause_return; return 0; }
     init_system_environment
     load_optional_abox_env_or_die
     if abox_owns_service xray && [[ -x /usr/local/bin/xray ]]; then targets+=(xray); fi
@@ -22816,24 +23123,24 @@ default_route_uses_warp() {
 
 light_preflight_check() {
     local fail=0 warn=0 c
-    msg "${YELLOW}[*] Running lightweight preflight check...${NC}"
-    [[ $EUID -eq 0 ]] || { msg "${RED}[FAIL] root privilege required${NC}"; fail=$((fail+1)); }
-    [[ -t 0 ]] || { msg "${YELLOW}[WARN] no interactive TTY on stdin${NC}"; warn=$((warn+1)); }
+    msg "${YELLOW}[*] $(tr_msg pf_running)${NC}"
+    [[ $EUID -eq 0 ]] || { msg "${RED}[FAIL] $(tr_msg pf_root)${NC}"; fail=$((fail+1)); }
+    [[ -t 0 ]] || { msg "${YELLOW}[WARN] $(tr_msg pf_notty)${NC}"; warn=$((warn+1)); }
     if [[ -r /etc/os-release ]]; then
         . /etc/os-release
-        case "${ID:-}" in debian|ubuntu|centos|rhel|rocky|almalinux|alpine|fedora|amzn|ol|oracle) msg "${GREEN}[PASS] OS: ${ID:-unknown}${NC}" ;; *) msg "${YELLOW}[WARN] OS may be unsupported: ${ID:-unknown}${NC}"; warn=$((warn+1)) ;; esac
+        case "${ID:-}" in debian|ubuntu|centos|rhel|rocky|almalinux|alpine|fedora|amzn|ol|oracle) msg "${GREEN}[PASS] OS: ${ID:-unknown}${NC}" ;; *) msg "${YELLOW}[WARN] $(tprintf pf_os_maybe "${ID:-unknown}")${NC}"; warn=$((warn+1)) ;; esac
     else
-        msg "${YELLOW}[WARN] /etc/os-release not readable${NC}"; warn=$((warn+1))
+        msg "${YELLOW}[WARN] $(tr_msg pf_os_unreadable)${NC}"; warn=$((warn+1))
     fi
     local route_dev warp_confirm=''
     route_dev=$(ip -o route get 8.8.8.8 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}' || true)
     if default_route_uses_warp; then
-        msg "${YELLOW}[WARN] 默认公网路由经由 ${route_dev}；REALITY dest、HY2 伪装和公网 IP 探测可能使用该出口。${NC}"
+        msg "${YELLOW}[WARN] $(tprintf pf_warp_route "$route_dev")${NC}"
         if [[ -t 0 ]]; then
-            read -r -p '仍要使用当前默认公网路由继续部署吗？[Y/N]: ' warp_confirm || warp_confirm='N'
-            is_yes "$warp_confirm" || { msg "${RED}[FAIL] 未确认使用 wg/warp/tun 默认出口。${NC}"; fail=$((fail+1)); }
+            read -r -p "$(tr_msg pf_warp_confirm)" warp_confirm || warp_confirm='N'
+            is_yes "$warp_confirm" || { msg "${RED}[FAIL] $(tr_msg pf_warp_unconfirmed)${NC}"; fail=$((fail+1)); }
         else
-            msg "${RED}[FAIL] 非交互部署检测到 wg/warp/tun 默认出口；必须显式在交互环境确认后再部署。${NC}"
+            msg "${RED}[FAIL] $(tr_msg pf_warp_noninteractive)${NC}"
             fail=$((fail+1))
         fi
     fi
@@ -22842,21 +23149,21 @@ light_preflight_check() {
     elif command -v rc-service >/dev/null 2>&1; then
         msg "${GREEN}[PASS] init: OpenRC${NC}"
     else
-        msg "${RED}[FAIL] no supported init system detected${NC}"; fail=$((fail+1))
+        msg "${RED}[FAIL] $(tr_msg pf_no_init)${NC}"; fail=$((fail+1))
     fi
-    case "$(uname -m)" in x86_64|amd64|aarch64|arm64) msg "${GREEN}[PASS] arch: $(uname -m)${NC}" ;; *) msg "${RED}[FAIL] unsupported arch: $(uname -m)${NC}"; fail=$((fail+1)) ;; esac
+    case "$(uname -m)" in x86_64|amd64|aarch64|arm64) msg "${GREEN}[PASS] arch: $(uname -m)${NC}" ;; *) msg "${RED}[FAIL] $(tprintf pf_bad_arch "$(uname -m)")${NC}"; fail=$((fail+1)) ;; esac
     for c in bash curl jq openssl unzip tar iptables ss lsof python3 getent flock qrencode fail2ban-client; do
-        command -v "$c" >/dev/null 2>&1 || { msg "${YELLOW}[WARN] command missing before dependency sync: $c${NC}"; warn=$((warn+1)); }
+        command -v "$c" >/dev/null 2>&1 || { msg "${YELLOW}[WARN] $(tprintf pf_cmd_missing "$c")${NC}"; warn=$((warn+1)); }
     done
     if curl -fsS --connect-timeout 3 -m 6 https://api.github.com >/dev/null 2>&1; then
-        msg "${GREEN}[PASS] GitHub API reachable${NC}"
+        msg "${GREEN}[PASS] $(tr_msg pf_gh_ok)${NC}"
     else
-        msg "${YELLOW}[WARN] GitHub API unreachable now; official release metadata/digest cannot be verified and core installation may fail${NC}"; warn=$((warn+1))
+        msg "${YELLOW}[WARN] $(tr_msg pf_gh_bad)${NC}"; warn=$((warn+1))
     fi
     if (( fail > 0 )); then
-        die "Lightweight preflight found blocking failures."
+        die "$(tr_msg pf_blocked)"
     fi
-    msg "${GREEN}[*] Lightweight preflight completed. WARN=${warn}${NC}"
+    msg "${GREEN}[*] $(tprintf pf_done "$warn")${NC}"
 }
 
 
@@ -27778,7 +28085,7 @@ upgrade_current_cores_only() {
     msg "Detected A-Box-owned cores: ${targets[*]}"
     msg 'Each staged binary is executed and checked against the current config where supported before atomic replacement.'
     read -r -p 'Continue core-only upgrade? [Y/N]: ' answer
-    is_yes "$answer" || { msg "${YELLOW}Canceled.${NC}"; pause_return; return 0; }
+    is_yes "$answer" || { msg "${YELLOW}$(tr_msg tl_cancelled)${NC}"; pause_return; return 0; }
     # Each core gets an independent transaction (begin → upgrade → commit)
     # inside a subshell, so a failure rolls back only that core.
     local failed_cores=()
@@ -28395,6 +28702,12 @@ PY_SELFTEST_TAR
     [[ "$(normalize_https_url_input www.microsoft.com)" == 'https://www.microsoft.com/' ]] || { echo 'FAIL: normalize HTTPS URL'; failures=$((failures + 1)); }
     [[ "$(normalize_https_url_input https://www.microsoft.com)" == 'https://www.microsoft.com/' ]] || { echo 'FAIL: normalize HTTPS URL trailing slash'; failures=$((failures + 1)); }
     [[ "$(build_ss2022_uri 203.0.113.10 2053 'abc+/=')" == 'ss://2022-blake3-aes-128-gcm:abc%2B%2F%3D@203.0.113.10:2053#SS' ]] || { echo 'FAIL: SS-2022 SIP002/SIP022 URI percent encoding'; failures=$((failures + 1)); }
+    # i18n parity guard: every tr_msg key needs all six language arms.
+    local _i18n_key _i18n_n
+    while read -r _i18n_key; do
+        _i18n_n=$(grep -cE "^        (zh|en|ru|fa|zh-tw|ja):${_i18n_key}\\)" "$0")
+        [[ "$_i18n_n" == '6' ]] || { echo "FAIL: i18n key ${_i18n_key} has ${_i18n_n}/6 language arms"; failures=$((failures + 1)); }
+    done < <(grep -oE '^        (zh|en|ru|fa|zh-tw|ja):[a-z0-9_]+\\)' "$0" | sed 's/^.*://; s/)$//' | sort -u)
 
     selftest_script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P) || selftest_script_dir=''
     if [[ -n "${ABOX_SNI_CANDIDATE_SOURCE_OVERRIDE:-}" && -f "$ABOX_SNI_CANDIDATE_SOURCE_OVERRIDE" && ! -L "$ABOX_SNI_CANDIDATE_SOURCE_OVERRIDE" ]]; then

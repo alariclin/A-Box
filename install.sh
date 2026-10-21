@@ -670,6 +670,60 @@ tr_msg() {
         fa:mu_opts2) echo '6. صفر کردن مصرف   7. مشاهده پیوند کاربر   8. فعال/غیرفعال   9. وارد کردن مجدد از پیکربندی   0. بازگشت' ;;
         zh-tw:mu_opts2) echo '6. 用量清零   7. 查看專屬連結   8. 停用/啟用   9. 從設定重新匯入名單   0. 返回' ;;
         ja:mu_opts2) echo '6. 使用量リセット   7. ユーザーリンク表示   8. 有効/無効   9. 設定から再インポート   0. 戻る' ;;
+        zh:mu_a1) echo '添加用户' ;;
+        en:mu_a1) echo 'Add user' ;;
+        ru:mu_a1) echo 'Добавить' ;;
+        fa:mu_a1) echo 'افزودن کاربر' ;;
+        zh-tw:mu_a1) echo '新增用戶' ;;
+        ja:mu_a1) echo 'ユーザー追加' ;;
+        zh:mu_a2) echo '删除用户' ;;
+        en:mu_a2) echo 'Delete user' ;;
+        ru:mu_a2) echo 'Удалить' ;;
+        fa:mu_a2) echo 'حذف کاربر' ;;
+        zh-tw:mu_a2) echo '刪除用戶' ;;
+        ja:mu_a2) echo 'ユーザー削除' ;;
+        zh:mu_a3) echo '设置流量限额(GB)' ;;
+        en:mu_a3) echo 'Set quota (GB)' ;;
+        ru:mu_a3) echo 'Лимит трафика (ГБ)' ;;
+        fa:mu_a3) echo 'سهمیه ترافیک (GB)' ;;
+        zh-tw:mu_a3) echo '設定流量限額(GB)' ;;
+        ja:mu_a3) echo '流量制限 (GB)' ;;
+        zh:mu_a4) echo '设置到期(天)' ;;
+        en:mu_a4) echo 'Set expiry (days)' ;;
+        ru:mu_a4) echo 'Срок (дней)' ;;
+        fa:mu_a4) echo 'انقضا (روز)' ;;
+        zh-tw:mu_a4) echo '設定到期(天)' ;;
+        ja:mu_a4) echo '有効期限 (日)' ;;
+        zh:mu_a5) echo '设置可用时段' ;;
+        en:mu_a5) echo 'Set time window' ;;
+        ru:mu_a5) echo 'Расписание' ;;
+        fa:mu_a5) echo 'بازه زمانی' ;;
+        zh-tw:mu_a5) echo '設定可用時段' ;;
+        ja:mu_a5) echo '時間帯設定' ;;
+        zh:mu_a6) echo '用量清零' ;;
+        en:mu_a6) echo 'Reset usage' ;;
+        ru:mu_a6) echo 'Сброс трафика' ;;
+        fa:mu_a6) echo 'صفر کردن مصرف' ;;
+        zh-tw:mu_a6) echo '用量清零' ;;
+        ja:mu_a6) echo '使用量リセット' ;;
+        zh:mu_a7) echo '查看专属链接' ;;
+        en:mu_a7) echo 'View user link' ;;
+        ru:mu_a7) echo 'Ссылка пользователя' ;;
+        fa:mu_a7) echo 'مشاهده پیوند کاربر' ;;
+        zh-tw:mu_a7) echo '查看專屬連結' ;;
+        ja:mu_a7) echo 'ユーザーリンク表示' ;;
+        zh:mu_a8) echo '停用/启用' ;;
+        en:mu_a8) echo 'Enable/Disable' ;;
+        ru:mu_a8) echo 'Вкл/Выкл' ;;
+        fa:mu_a8) echo 'فعال/غیرفعال' ;;
+        zh-tw:mu_a8) echo '停用/啟用' ;;
+        ja:mu_a8) echo '有効/無効' ;;
+        zh:mu_a9) echo '从配置重新导入名单' ;;
+        en:mu_a9) echo 'Re-import from config' ;;
+        ru:mu_a9) echo 'Переимпорт из конфига' ;;
+        fa:mu_a9) echo 'وارد کردن مجدد از پیکربندی' ;;
+        zh-tw:mu_a9) echo '從設定重新匯入名單' ;;
+        ja:mu_a9) echo '設定から再インポート' ;;
         zh:mu_name_prompt) echo '用户名 (字母/数字/_/-, 最长24): ' ;;
         en:mu_name_prompt) echo 'User name (letters/digits/_/-, max 24): ' ;;
         ru:mu_name_prompt) echo 'Имя пользователя (буквы/цифры/_/-, до 24): ' ;;
@@ -1414,12 +1468,12 @@ tr_msg() {
         fa:socks5_port_prompt) echo 'درگاه SOCKS5 را وارد کنید (پیش‌فرض 1080): ' ;;
         zh-tw:socks5_port_prompt) echo '請輸入 SOCKS5 監聽端口 (回車默認 1080): ' ;;
         ja:socks5_port_prompt) echo 'SOCKS5 リッスンポートを入力 (デフォルト 1080): ' ;;
-        zh:socks5_user_prompt) echo '请输入 SOCKS5 用户名 (回车默认 abox): ' ;;
-        en:socks5_user_prompt) echo 'Enter SOCKS5 username (default abox): ' ;;
-        ru:socks5_user_prompt) echo 'Введите имя пользователя SOCKS5 (по умолчанию abox): ' ;;
-        fa:socks5_user_prompt) echo 'نام کاربری SOCKS5 را وارد کنید (پیش‌فرض abox): ' ;;
-        zh-tw:socks5_user_prompt) echo '請輸入 SOCKS5 用戶名 (回車默認 abox): ' ;;
-        ja:socks5_user_prompt) echo 'SOCKS5 ユーザー名を入力 (デフォルト abox): ' ;;
+        zh:socks5_user_prompt) echo '请输入 SOCKS5 用户名 (回车默认 main): ' ;;
+        en:socks5_user_prompt) echo 'Enter SOCKS5 username (default main): ' ;;
+        ru:socks5_user_prompt) echo 'Введите имя пользователя SOCKS5 (по умолчанию main): ' ;;
+        fa:socks5_user_prompt) echo 'نام کاربری SOCKS5 را وارد کنید (پیش‌فرض main): ' ;;
+        zh-tw:socks5_user_prompt) echo '請輸入 SOCKS5 用戶名 (回車默認 main): ' ;;
+        ja:socks5_user_prompt) echo 'SOCKS5 ユーザー名を入力 (デフォルト main): ' ;;
         zh:socks5_sb_title) echo '部署 SOCKS5/Mixed 落地代理 (sing-box)' ;;
         en:socks5_sb_title) echo 'Deploy SOCKS5/Mixed landing proxy (sing-box)' ;;
         ru:socks5_sb_title) echo 'Развёртывание SOCKS5/Mixed (sing-box)' ;;
@@ -10420,7 +10474,7 @@ deploy_singbox_socks5_landing() {
 
     port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080') || die 'SOCKS5 port input failed.'
     read -r -p "$(tr_msg socks5_user_prompt)" user || user=''
-    user="${user:-abox}"
+    user="${user:-main}"
     read -r -p "$(tr_msg socks5_pass_prompt)" pass || pass=''
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'SOCKS5 password generation failed.'
@@ -12161,7 +12215,7 @@ _menu_info_collect() {
             _MI_USER_RECS+=$'SEG\t'"${_rseg}"$'\n'
             while IFS= read -r _ut; do
                 [[ -n "$_ut" ]] && _MI_USER_RECS+=$'USR\t'"${_ut}"$'\n'
-            done < <(jq -r '.users[]? | ([.name, (((.used_up // 0) + (.used_down // 0)) | tostring), (if .disabled == true then "disabled" elif (.blocked // "") != "" then "blocked" else "" end), (if (.expire_at // 0) == 0 then "F" elif (.expire_at // 0) <= now then "E" else (((.expire_at // 0) - now) / 86400 | ceil | tostring) end), (((.quota_gb // 0) * 1073741824) | floor | tostring)] | join("|"))' "$_rf" 2>/dev/null)
+            done < <(jq -r '(.core // "") as $c | .users[]? | ([.name, (if $c == "sing-box" then "-" else (((.used_up // 0) + (.used_down // 0)) | tostring) end), (if .disabled == true then "disabled" elif (.blocked // "") != "" then "blocked" else "" end), (if (.expire_at // 0) == 0 then "F" elif (.expire_at // 0) <= now then "E" else (((.expire_at // 0) - now) / 86400 | ceil | tostring) end), (if $c == "sing-box" then "0" else (((.quota_gb // 0) * 1073741824) | floor | tostring) end)] | join("|"))' "$_rf" 2>/dev/null)
         done
 
     fi
@@ -12385,26 +12439,30 @@ _menu_info_display() {
         if [[ -z "${_MI_USER_RECS:-}" ]]; then
             msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}$(tr_msg mi_users_none)${NC}"
         else
-            local _urec='' _useg='' _usw=10 _uline='' _ucnt=0 _unm='' _uused=0 _umark='' _utok='' _uexp='' _uqta=0
-            local -a _ulines=()
+            local _urec='' _useg='' _usw=10 _ucnt=0 _unm='' _uused='' _umark='' _utok='' _uexp='' _uqta=0
+            local -a _usegs=()
+            local _usegtxt='' _ucont=''
             while IFS= read -r _urec; do
                 [[ "$_urec" == SEG$'\t'* ]] || continue
                 _useg="${_urec#SEG$'\t'}"
                 (( ${#_useg} > _usw )) && _usw=${#_useg}
             done <<< "$_MI_USER_RECS"
             (( _usw > 22 )) && _usw=22
-            local _upfx=''
             while IFS= read -r _urec; do
                 [[ -z "$_urec" ]] && continue
                 if [[ "$_urec" == SEG$'\t'* ]]; then
-                    [[ -n "$_upfx" || -n "$_uline" ]] && _ulines+=("${_upfx}${_uline}")
+                    [[ -n "$_usegtxt" ]] && _usegs+=("$_usegtxt")
                     _useg="${_urec#SEG$'\t'}"
-                    printf -v _upfx '%-*s  ' "$_usw" "$_useg"
-                    _uline=''; _ucnt=0
+                    printf -v _usegtxt '%-*s  ' "$_usw" "$_useg"
+                    _ucnt=0
                 elif [[ "$_urec" == USR$'\t'* ]]; then
                     IFS='|' read -r _unm _uused _umark _uexp _uqta <<< "${_urec#USR$'\t'}"
-                    _utok="$_unm $(users_fmt_bytes "${_uused:-0}")"
-                    (( ${_uqta:-0} > 0 )) && _utok+="/$(users_fmt_bytes "$_uqta")"
+                    if [[ "$_uused" == '-' ]]; then
+                        _utok="$_unm -"
+                    else
+                        _utok="$_unm $(users_fmt_bytes "${_uused:-0}")"
+                        (( ${_uqta:-0} > 0 )) && _utok+="/$(users_fmt_bytes "$_uqta")"
+                    fi
                     case "${_uexp:-F}" in
                         F) ;;  # nothing set: name + used only (user rule 2026-10-21)
                         E) _utok+=" · $(tr_msg mi_u_expired)" ;;
@@ -12413,21 +12471,38 @@ _menu_info_display() {
                     esac
                     [[ "$_umark" == 'blocked' ]] && _utok+="·$(tr_msg mi_u_blocked)"
                     [[ "$_umark" == 'disabled' ]] && _utok+="·$(tr_msg mi_u_disabled)"
-                    if (( _ucnt >= 3 )) || { (( _ucnt > 0 )) && (( ${#_upfx} + ${#_uline} + ${#_utok} + 3 > 78 )); }; then
-                        _ulines+=("${_upfx}${_uline}")
-                        printf -v _upfx '%-*s  ' "$_usw" ''
-                        _uline=''; _ucnt=0
+                    if (( _ucnt >= 3 )); then
+                        printf -v _ucont '%-*s  ' "$_usw" ''
+                        _usegtxt+=$'\n'"$_ucont"
+                        _ucnt=0
                     fi
-                    if (( _ucnt > 0 )); then _uline+=" · $_utok"; else _uline+="$_utok"; fi
+                    if (( _ucnt > 0 )); then _usegtxt+=" · $_utok"; else _usegtxt+="$_utok"; fi
                     _ucnt=$((_ucnt + 1))
                 fi
             done <<< "$_MI_USER_RECS"
-            [[ -n "$_upfx" || -n "$_uline" ]] && _ulines+=("${_upfx}${_uline}")
-            local _ui=0
-            for (( _ui=0; _ui<${#_ulines[@]}; _ui++ )); do
-                if (( _ui == 0 )); then msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}${_ulines[$_ui]}${NC}"
-                else msg "          ${LBLW}${_ulines[$_ui]}${NC}"; fi
+            [[ -n "$_usegtxt" ]] && _usegs+=("$_usegtxt")
+            # Pack node segments onto shared lines (same language as
+            # the node grid); multi-line segments keep their own line.
+            local _pline='' _pseg='' _uall=''
+            for _pseg in "${_usegs[@]}"; do
+                if [[ "$_pseg" == *$'\n'* ]]; then
+                    [[ -n "$_pline" ]] && { _uall+="$_pline"$'\n'; _pline=''; }
+                    _uall+="$_pseg"$'\n'
+                elif [[ -z "$_pline" ]]; then
+                    _pline="$_pseg"
+                elif (( ${#_pline} + 3 + ${#_pseg} <= 76 )); then
+                    _pline+=" | $_pseg"
+                else
+                    _uall+="$_pline"$'\n'; _pline="$_pseg"
+                fi
             done
+            [[ -n "$_pline" ]] && _uall+="$_pline"$'\n'
+            local _ufirst=1 _upline=''
+            while IFS= read -r _upline; do
+                [[ -z "$_upline" ]] && continue
+                if (( _ufirst )); then msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}${_upline}${NC}"; _ufirst=0
+                else msg "          ${LBLW}${_upline}${NC}"; fi
+            done <<< "$_uall"
         fi
         msg ''
     fi
@@ -12999,7 +13074,7 @@ deploy_socks5_landing() {
 
     port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080') || die 'SOCKS5 port input failed.'
     read -r -p "$(tr_msg socks5_user_prompt)" user || user=''
-    user="${user:-abox}"
+    user="${user:-main}"
     read -r -p "$(tr_msg socks5_pass_prompt)" pass || pass=''
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'SOCKS5 password generation failed.'
@@ -15893,6 +15968,22 @@ export_lightweight_subscription() {
 USERS_DIR='/etc/ddr/users.d'
 
 users_reg_file() { printf '%s/%s__%s.json' "${ABOX_USERS_DIR:-$USERS_DIR}" "$1" "$2"; }
+# Rename the historical default label 'abox' to 'main' so every
+# node's default user reads the same. SOCKS-type registries are
+# excluded: there the name IS the login username (a credential).
+users_normalize_default_name() {
+    local core="$1" tag="$2" reg='' proto='' new=''
+    reg=$(users_reg_file "$core" "$tag")
+    [[ -f "$reg" && ! -L "$reg" ]] || return 0
+    proto=$(jq -r '.protocol // ""' "$reg" 2>/dev/null) || return 0
+    case "$proto" in *socks*|mixed) return 0 ;; esac
+    jq -e '([.users[].name] | (index("abox") != null) and (index("main") == null))' "$reg" >/dev/null 2>&1 || return 0
+    new=$(jq -c --arg tag "$tag" '.users |= map(if .name == "abox" then .name = "main" | (if .email == ($tag + "/abox") then .email = ($tag + "/main") else . end) else . end)' "$reg" 2>/dev/null) || return 0
+    [[ -n "$new" ]] || return 0
+    users_reg_write "$core" "$tag" "$new" >/dev/null 2>&1 || return 0
+    users_sync "$core" "$tag" >/dev/null 2>&1 || true
+}
+
 
 users_cfg_of() {
     case "$1" in
@@ -16161,6 +16252,7 @@ users_reg_ensure() {
     reg=$(users_reg_file "$core" "$tag")
     if [[ ! -f "$reg" ]]; then
         users_adopt "$core" "$tag" || return 1
+        users_normalize_default_name "$core" "$tag"
         return 0
     fi
     jq -e '.users | type == "array"' "$reg" >/dev/null 2>&1 || return 1
@@ -16174,6 +16266,7 @@ users_reg_ensure() {
         ' "$reg" 2>/dev/null) && [[ -n "$merged" ]] && users_reg_write "$core" "$tag" "$merged" || true
     fi
     rm -f -- "$scratch"
+    users_normalize_default_name "$core" "$tag"
     return 0
 }
 
@@ -16470,6 +16563,17 @@ users_export_all() {
 users_fmt_bytes() {
     awk -v b="${1:-0}" 'BEGIN { if (b < 1024) printf "%dB", b; else if (b < 1048576) printf "%.1fK", b/1024; else if (b < 1073741824) printf "%.1fM", b/1048576; else { v = sprintf("%.2f", b/1073741824); sub(/\.?0+$/, "", v); printf "%sG", v } }' 2>/dev/null || printf '%sB' "${1:-0}"
 }
+# Display width of a string: wide (CJK/fullwidth) codepoints count 2.
+_str_dwidth() {
+    local s="${1:-}" w=0 i=0 c='' cp=0
+    for (( i=0; i<${#s}; i++ )); do
+        c="${s:i:1}"
+        cp=$(printf '%d' "'$c" 2>/dev/null || echo 0)
+        if (( cp >= 4352 )); then w=$((w + 2)); else w=$((w + 1)); fi
+    done
+    printf '%d' "$w"
+}
+
 
 # Write a mutated registry and sync it; roll the registry back when the
 # sync fails. $1=core $2=tag $3=new-json $4=old-json
@@ -16530,10 +16634,20 @@ users_inbound_menu() {
             printf '%3d. %-18s %-12s %s:%-14s %s:%-12s %s:%s\n' "$idx" "$name" "$st" "$(tr_msg mu_col_usage)" "$usd" "$(tr_msg mu_col_expiry)" "$expd" "$(tr_msg mu_col_window)" "${win:-$(tr_msg mu_allday)}"
         done < <(jq -c '.users[]' "$reg" 2>/dev/null)
         msg "--------------------------------------------------------------------------------"
-        msg "${YELLOW}$(tr_msg mu_opts1)${NC}"
-        msg "${YELLOW}$(tr_msg mu_opts2)${NC}"
+        local -a _oacts=("" "$(tr_msg mu_a1)" "$(tr_msg mu_a2)" "$(tr_msg mu_a3)" "$(tr_msg mu_a4)" "$(tr_msg mu_a5)" "$(tr_msg mu_a6)" "$(tr_msg mu_a7)" "$(tr_msg mu_a8)" "$(tr_msg mu_a9)")
+        local _or=0 _oleft='' _opad=''
+        for _or in 1 2 3 4 5; do
+            _oleft="${_or}. ${_oacts[$_or]}"
+            printf -v _opad '%*s' $(( 36 - $(_str_dwidth "$_oleft") )) ''
+            (( ${#_opad} < 2 )) && _opad='  '
+            if (( _or == 5 )); then
+                msg "${YELLOW}${_oleft}${_opad}0. $(tr_msg mu_back_word)${NC}"
+            else
+                msg "${YELLOW}${_oleft}${_opad}$((_or + 5)). ${_oacts[$((_or + 5))]}${NC}"
+            fi
+        done
         local c=''
-        read -r -p 'Select [0-9]: ' c || return 0
+        read -r -p "$(tr_msg select_prompt) [0-9]: " c || return 0
         local old='' new='' nm='' now=''
         old=$(cat "$reg" 2>/dev/null) || return 1
         now=$(date +%s)
@@ -16663,10 +16777,10 @@ multi_user_menu() {
             printf '%3d. %-46s %-11s :%-6s %s %s\n' "$i" "$(protocol_label "$core" "$tag" "$proto" 2>/dev/null || printf '%s' "$tag")" "$core" "$port" "$(tr_msg mu_users_word)" "$cnt"
         done <<< "$rows"
         if (( i == 0 )); then msg "${YELLOW}$(tr_msg mu_none)${NC}"; fi
-        msg "${YELLOW}E. $(tr_msg mu_export)${NC}"
-        msg "${CYAN}0. $(tr_msg mu_back_word)${NC}"
+        msg "${YELLOW}  E. $(tr_msg mu_export)${NC}"
+        msg "${CYAN}  0. $(tr_msg mu_back_word)${NC}"
         local c=''
-        read -r -p "Select [0-${i}/E]: " c || return 0
+        read -r -p "$(tr_msg select_prompt) [0-${i}/E]: " c || return 0
         case "$c" in
             0) return 0 ;;
             E|e)
@@ -24416,7 +24530,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${YELLOW}7.  最新版 Xray${NC}"
+            msg "${YELLOW}7.  最新 Xray 核心（实验）${NC}"
             msg "${CYAN}0. 返回主選單${NC}"
             ;;
         ja)
@@ -24427,7 +24541,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${YELLOW}7.  最新 Xray${NC}"
+            msg "${YELLOW}7.  最新 Xray コア（実験）${NC}"
             msg "${CYAN}0. メインメニューに戻る${NC}"
             ;;
         *)
@@ -24438,7 +24552,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${YELLOW}7.  最新版 Xray${NC}"
+            msg "${YELLOW}7.  最新 Xray 核心（实验）${NC}"
             msg "${CYAN}0. 返回主菜单${NC}"
             ;;
     esac

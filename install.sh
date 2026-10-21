@@ -592,6 +592,12 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:init_soft_warn) echo '未检测到受支持的初始化系统 (Systemd/OpenRC)，菜单以只读方式打开，部署类操作不可用。' ;;
+        en:init_soft_warn) echo 'No supported init system (systemd/OpenRC) detected; the menu opens read-only and deployment operations are unavailable.' ;;
+        ru:init_soft_warn) echo 'Поддерживаемая система инициализации (systemd/OpenRC) не обнаружена; меню открыто только для просмотра, операции развёртывания недоступны.' ;;
+        fa:init_soft_warn) echo 'سیستم init پشتیبانی‌شده (Systemd/OpenRC) شناسایی نشد؛ منو به‌صورت فقط‌خواندنی باز می‌شود و عملیات استقرار در دسترس نیست.' ;;
+        zh-tw:init_soft_warn) echo '未偵測到受支援的初始化系統 (Systemd/OpenRC)，選單以唯讀方式開啟，部署類操作不可用。' ;;
+        ja:init_soft_warn) echo 'サポートされる init システム (systemd/OpenRC) が検出されませんでした。メニューは読み取り専用で開き、デプロイ操作は利用できません。' ;;
         zh:wl_menu_prompt) echo '请选择 [0-5]：' ;;
         en:wl_menu_prompt) echo 'Select [0-5]: ' ;;
         ru:wl_menu_prompt) echo 'Выберите [0–5]: ' ;;
@@ -5024,6 +5030,7 @@ __abox_reconcile_openrc_service() {
     rc-service "$unit" status >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 未处于运行状态。"
 }
 init_system_environment() {
+    local _init_soft="${1:-}"
     release=''
     local -a install_cmd=()
     if [[ -f /etc/os-release ]]; then
@@ -5062,6 +5069,12 @@ init_system_environment() {
         INIT_SYS='systemd'
     elif command -v rc-service >/dev/null 2>&1; then
         INIT_SYS='openrc'
+    elif [[ "$_init_soft" == 'soft' ]]; then
+        # Menu-open path only: browsing needs no init system. Every
+        # deployment entry calls this function without 'soft' and
+        # keeps the hard gate below.
+        INIT_SYS='unknown'
+        msg "${YELLOW}[!] $(tr_msg init_soft_warn)${NC}"
     else
         die '无法检测到受支持的守护进程初始化系统 (Systemd/OpenRC)。'
     fi
@@ -13573,9 +13586,22 @@ _menu_info_collect() {
     _MI_XV="$xv"; _MI_SV="$sv"; _MI_HV="$hv"
     _MI_XRUN="$xrun"; _MI_SRUN="$srun"; _MI_HRUN="$hrun"
     local xst=none sst=none hst=none
-    [[ -x /usr/local/bin/xray ]] && xst=stop; [[ "$xrun" == 1 ]] && xst=run
-    [[ -x /usr/local/bin/sing-box ]] && sst=stop; [[ "$srun" == 1 ]] && sst=run
-    [[ -x /usr/local/bin/hysteria ]] && hst=stop; [[ "$hrun" == 1 ]] && hst=run
+    # fix78: a leftover core binary alone is not a fault. The red
+    # "stop" state requires deployment evidence - a live config or an
+    # A-Box-managed service unit. Binary-only residue left after a
+    # full removal reads as "none", consistent with the nodes row.
+    if [[ -x /usr/local/bin/xray ]]; then
+        if [[ -s /usr/local/etc/xray/config.json ]] || abox_owns_service xray 2>/dev/null; then xst=stop; fi
+        [[ "$xrun" == 1 ]] && xst=run
+    fi
+    if [[ -x /usr/local/bin/sing-box ]]; then
+        if [[ -s /etc/sing-box/config.json ]] || abox_owns_service sing-box 2>/dev/null; then sst=stop; fi
+        [[ "$srun" == 1 ]] && sst=run
+    fi
+    if [[ -x /usr/local/bin/hysteria ]]; then
+        if [[ -s /etc/hysteria/config.yaml ]] || abox_owns_service hysteria 2>/dev/null; then hst=stop; fi
+        [[ "$hrun" == 1 ]] && hst=run
+    fi
     local f2st=none dost=none
     if command -v fail2ban-client >/dev/null 2>&1; then f2st=stop; timeout 1 fail2ban-client ping >/dev/null 2>&1 && f2st=run; fi
     if command -v docker >/dev/null 2>&1 && timeout 1 docker container inspect wallos >/dev/null 2>&1; then
@@ -31447,7 +31473,7 @@ main() {
 
 main_loop() {
     detect_lang
-    init_system_environment
+    init_system_environment soft
     setup_shortcut
     # Menu status row: 3 segments spread left/center/right with margins
     # 14-system safe: ASCII only, standard ANSI colors, CJK width aware

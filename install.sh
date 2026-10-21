@@ -12767,17 +12767,6 @@ trojan_toolbox_entry() {
 IP_GEO_FILE='/etc/ddr/.ip-geo'
 
 # country code (AU) -> flag emoji (regional indicator pair)
-_flag_for_cc() {
-    local cc="$1" out='' i ch n
-    cc=$(printf '%s' "$cc" | tr 'a-z' 'A-Z')
-    for ((i = 0; i < ${#cc}; i++)); do
-        ch="${cc:i:1}"
-        case "$ch" in
-            [A-Z]) printf -v n '%d' "'$ch"; printf -v _fx '%02x' $((0xA6 + n - 65)); printf -v _fb '%b' "\xf0\x9f\x87\x$_fx"; out+="$_fb" ;;
-        esac
-    done
-    printf '%s' "$out"
-}
 
 # Fetch IP intelligence into the 24h cache (line format, first line = the IP).
 # Source: ip-api.com (free, no key). Fields order = output order.
@@ -12900,7 +12889,7 @@ _menu_info_collect() {
     local f2st=none dost=none
     if command -v fail2ban-client >/dev/null 2>&1; then f2st=stop; timeout 1 fail2ban-client ping >/dev/null 2>&1 && f2st=run; fi
     if command -v docker >/dev/null 2>&1 && timeout 1 docker container inspect wallos >/dev/null 2>&1; then
-        dost=stop; [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null)" == 'true' ]] && dost=run
+        dost=stop; [[ "$(timeout 1 docker inspect -f '{{.State.Running}}' wallos 2>/dev/null)" == 'true' ]] && dost=run
     fi
         # --- standalone protocol listeners (presence + port state) ---
     local tjt='' tut='' ant='' stt='' argo_st='' _ss='' _p='' _t='' _tags=''
@@ -12940,7 +12929,7 @@ _menu_info_collect() {
     [[ "$_cc" == "bbr" ]] && bbr=run
     # Any live evidence counts; an installed-but-inactive ufw
     # (Ubuntu default) must not mask A-Box's own rules.
-    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi '^Status: active'; then fwst=run; fi
+    if command -v ufw >/dev/null 2>&1 && timeout 2 ufw status 2>/dev/null | grep -qi '^Status: active'; then fwst=run; fi
     if [[ -z "$fwst" ]]; then
         local _ipt=''; _ipt=$(command -v iptables 2>/dev/null || true); [[ -z "$_ipt" && -x /sbin/iptables ]] && _ipt=/sbin/iptables
         if [[ -n "$_ipt" ]] && (( $("$_ipt" -S 2>/dev/null | grep -c .) > 3 )); then fwst=run
@@ -17615,7 +17604,19 @@ users_fmt_bytes() {
     local b="${1:-0}"
     [[ "$b" =~ ^[0-9]+$ ]] || b=0
     if (( b == 0 )); then printf '-'; return 0; fi
-    awk -v b="$b" 'BEGIN { if (b < 1073741824) printf "%.1fM", b/1048576; else { v = sprintf("%.2f", b/1073741824); sub(/\.?0+$/, "", v); printf "%sG", v } }' 2>/dev/null || printf '%sB' "$b"
+    awk -v b="$b" 'BEGIN { if (b < 1073741824) printf "%.1fM", b/1048576; else { v = sprintf("%.2f", b/1073741824); sub(/\.?0+$/, "", v); printf "%sG", v } }' 2>/dev/null || {
+        # awk unavailable: pure-bash mirror of the same M/G format.
+        if (( b < 1073741824 )); then
+            local _m10=$(( (b * 10 + 524288) / 1048576 ))
+            printf '%d.%dM' $(( _m10 / 10 )) $(( _m10 % 10 ))
+        else
+            local _g100=$(( (b * 100 + 5368709) / 1073741824 )) _frac
+            _frac=$(( _g100 % 100 ))
+            if (( _frac == 0 )); then printf '%dG' $(( _g100 / 100 ));
+            elif (( _frac % 10 == 0 )); then printf '%d.%dG' $(( _g100 / 100 )) $(( _frac / 10 ));
+            else printf '%d.%02dG' $(( _g100 / 100 )) "$_frac"; fi
+        fi
+    }
 }
 # Display width of a string: wide (CJK/fullwidth) codepoints count 2.
 _str_dwidth() {

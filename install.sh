@@ -2098,6 +2098,66 @@ tr_msg() {
         fa:fmt_unused) echo 'بدون مصرف' ;;
         zh-tw:fmt_unused) echo '未用' ;;
         ja:fmt_unused) echo '未使用' ;;
+        zh:sni_custom_prompt) echo 'SNI（回车 = 自动优选，或直接输入域名）: ' ;;
+        en:sni_custom_prompt) echo 'SNI (Enter = auto-select, or type a domain): ' ;;
+        ru:sni_custom_prompt) echo 'SNI (Enter — автовыбор, или введите домен): ' ;;
+        fa:sni_custom_prompt) echo 'SNI (Enter = انتخاب خودکار، یا دامنه را وارد کنید): ' ;;
+        zh-tw:sni_custom_prompt) echo 'SNI（回車 = 自動優選，或直接輸入網域）: ' ;;
+        ja:sni_custom_prompt) echo 'SNI（Enter = 自動選択、またはドメインを入力）: ' ;;
+        zh:sni_custom_invalid) echo '域名格式无效，改用自动优选。' ;;
+        en:sni_custom_invalid) echo 'Invalid domain; falling back to auto-select.' ;;
+        ru:sni_custom_invalid) echo 'Недопустимый домен; использую автовыбор.' ;;
+        fa:sni_custom_invalid) echo 'دامنه نامعتبر است؛ انتخاب خودکار اعمال شد.' ;;
+        zh-tw:sni_custom_invalid) echo '網域格式無效，改用自動優選。' ;;
+        ja:sni_custom_invalid) echo 'ドメイン形式が無効です。自動選択に切り替えます。' ;;
+        zh:tb_nsni) echo '修改节点 SNI' ;;
+        en:tb_nsni) echo 'Change node SNI' ;;
+        ru:tb_nsni) echo 'Изменить SNI узла' ;;
+        fa:tb_nsni) echo 'تغییر SNI گره' ;;
+        zh-tw:tb_nsni) echo '修改節點 SNI' ;;
+        ja:tb_nsni) echo 'ノードの SNI を変更' ;;
+        zh:nsni_none) echo '没有可修改 SNI 的节点（SOCKS/SS/Hy2/Argo 不适用）' ;;
+        en:nsni_none) echo 'No nodes with a changeable SNI (SOCKS/SS/Hy2/Argo excluded)' ;;
+        ru:nsni_none) echo 'Нет узлов с изменяемым SNI (SOCKS/SS/Hy2/Argo исключены)' ;;
+        fa:nsni_none) echo 'گرهی با SNI قابل تغییر نیست (SOCKS/SS/Hy2/Argo مستثنی هستند)' ;;
+        zh-tw:nsni_none) echo '沒有可修改 SNI 的節點（SOCKS/SS/Hy2/Argo 不適用）' ;;
+        ja:nsni_none) echo 'SNI を変更できるノードがありません（SOCKS/SS/Hy2/Argo は対象外）' ;;
+        zh:nsni_cur) echo '当前 SNI' ;;
+        en:nsni_cur) echo 'Current SNI' ;;
+        ru:nsni_cur) echo 'Текущий SNI' ;;
+        fa:nsni_cur) echo 'SNI فعلی' ;;
+        zh-tw:nsni_cur) echo '目前 SNI' ;;
+        ja:nsni_cur) echo '現在の SNI' ;;
+        zh:nsni_prompt) echo '输入新 SNI 域名（回车取消）: ' ;;
+        en:nsni_prompt) echo 'New SNI domain (Enter cancels): ' ;;
+        ru:nsni_prompt) echo 'Новый домен SNI (Enter — отмена): ' ;;
+        fa:nsni_prompt) echo 'دامنه SNI جدید (Enter = لغو): ' ;;
+        zh-tw:nsni_prompt) echo '輸入新 SNI 網域（回車取消）: ' ;;
+        ja:nsni_prompt) echo '新しい SNI ドメイン（Enter でキャンセル）: ' ;;
+        zh:nsni_invalid) echo '域名格式无效，未修改。' ;;
+        en:nsni_invalid) echo 'Invalid domain; nothing changed.' ;;
+        ru:nsni_invalid) echo 'Недопустимый домен; изменений нет.' ;;
+        fa:nsni_invalid) echo 'دامنه نامعتبر است؛ تغییری اعمال نشد.' ;;
+        zh-tw:nsni_invalid) echo '網域格式無效，未修改。' ;;
+        ja:nsni_invalid) echo 'ドメイン形式が無効です。変更しませんでした。' ;;
+        zh:nsni_done) echo 'SNI 已更新，服务已重启。' ;;
+        en:nsni_done) echo 'SNI updated; service restarted.' ;;
+        ru:nsni_done) echo 'SNI обновлён; служба перезапущена.' ;;
+        fa:nsni_done) echo 'SNI به‌روزرسانی شد؛ سرویس راه‌اندازی مجدد شد.' ;;
+        zh-tw:nsni_done) echo 'SNI 已更新，服務已重啟。' ;;
+        ja:nsni_done) echo 'SNI を更新し、サービスを再起動しました。' ;;
+        zh:nsni_fail) echo '更新失败，已回滚到原配置。' ;;
+        en:nsni_fail) echo 'Update failed; original configuration restored.' ;;
+        ru:nsni_fail) echo 'Ошибка обновления; исходная конфигурация восстановлена.' ;;
+        fa:nsni_fail) echo 'به‌روزرسانی ناموفق بود؛ پیکربندی اصلی بازگردانده شد.' ;;
+        zh-tw:nsni_fail) echo '更新失敗，已回滾到原配置。' ;;
+        ja:nsni_fail) echo '更新に失敗しました。元の設定に戻しました。' ;;
+        zh:nsni_warn) echo '注意：客户端必须用新链接重新导入，旧链接的 SNI 已失效。' ;;
+        en:nsni_warn) echo 'Note: clients must re-import the new link; the old SNI no longer works.' ;;
+        ru:nsni_warn) echo 'Внимание: клиентам нужно заново импортировать новую ссылку; старый SNI не работает.' ;;
+        fa:nsni_warn) echo 'توجه: کلاینت‌ها باید پیوند جدید را دوباره وارد کنند؛ SNI قدیمی دیگر کار نمی‌کند.' ;;
+        zh-tw:nsni_warn) echo '注意：用戶端必須用新連結重新導入，舊連結的 SNI 已失效。' ;;
+        ja:nsni_warn) echo '注意：クライアントは新しいリンクを再インポートする必要があります。旧 SNI は無効です。' ;;
         zh:mi_u_forever) echo '永久' ;;
         en:mi_u_forever) echo 'forever' ;;
         ru:mi_u_forever) echo 'навсегда' ;;
@@ -10719,8 +10779,7 @@ EOF_SVC
     IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die 'Xray REALITY 密钥解析失败。'
     [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die 'Xray REALITY 密钥为空。'
     sid=$(openssl rand -hex 4 | tr -d '\n\r') || die 'shortId 生成失败。'
-    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
-    [[ -n "$sni" ]] || sni='www.amazon.com'
+    sni=$(sni_prompt_or_auto)
 
     # Build the trojan+reality inbound object (A-Box realitySettings format).
     tmp_json=$(mktemp /tmp/A-Box-trojan-inbound.XXXXXX) || die '临时文件创建失败。'
@@ -10877,8 +10936,7 @@ EOF_SVC
     IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die 'Sing-box REALITY 密钥解析失败。'
     [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die 'Sing-box REALITY 密钥为空。'
     sid=$(openssl rand -hex 4 | tr -d '\n\r') || die 'shortId 生成失败。'
-    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
-    [[ -n "$sni" ]] || sni='www.amazon.com'
+    sni=$(sni_prompt_or_auto)
 
     # Build the trojan+reality inbound object.
     tmp_json=$(mktemp /tmp/A-Box-sb-trojan-inbound.XXXXXX) || die '临时文件创建失败。'
@@ -11025,8 +11083,7 @@ EOF_SVC
     fi
 
     # Self-signed TLS cert (TUIC requires TLS; clients pin/skip-verify).
-    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
-    [[ -n "$sni" ]] || sni='www.amazon.com'
+    sni=$(sni_prompt_or_auto)
     generate_self_signed_cert_atomically /etc/sing-box/tuic.key /etc/sing-box/tuic.crt "$sni" \
         || die 'TUIC 自签证书生成失败。'
 
@@ -11174,8 +11231,7 @@ EOF_SVC
     IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die 'Sing-box REALITY 密钥解析失败。'
     [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die 'Sing-box REALITY 密钥为空。'
     sid=$(openssl rand -hex 4 | tr -d '\n\r') || die 'shortId 生成失败。'
-    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
-    [[ -n "$sni" ]] || sni='www.amazon.com'
+    sni=$(sni_prompt_or_auto)
 
     # Build the anytls+reality inbound object.
     tmp_json=$(mktemp /tmp/A-Box-sb-anytls-inbound.XXXXXX) || die '临时文件创建失败。'
@@ -11316,8 +11372,7 @@ EOF_SVC
         prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
     fi
 
-    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
-    [[ -n "$sni" ]] || sni='www.amazon.com'
+    sni=$(sni_prompt_or_auto)
 
     # shadowtls v3 (strict) detouring to a loopback-only SS-2022 inbound that
     # has no listen_port of its own (reachable only through the detour).
@@ -16958,6 +17013,146 @@ users_guard_eval() {
     return 0
 }
 
+
+# ---- change one deployed node's SNI (credentials untouched) ----
+# Probe one inbound: echoes kind|current|key_path|crt_path|cfg_path.
+_nsni_probe() {
+    local core="$1" tag="$2" cfg='' j=''
+    case "$core" in
+        xray) cfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" ;;
+        xray-latest) cfg='/etc/ddr/xray-latest/config.json' ;;
+        sing-box) cfg='/etc/sing-box/config.json' ;;
+        *) return 0 ;;
+    esac
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 0
+    if [[ "$core" == 'sing-box' ]]; then
+        j=$(jq -r --arg t "$tag" '
+            .inbounds[]? | select(.tag == $t) |
+            if (.tls.reality.handshake.server // "") != "" then "reality-sb|" + .tls.reality.handshake.server + "||"
+            elif .type == "tuic" then "tuic|" + (.tls.server_name // "") + "|" + (.tls.key_path // "") + "|" + (.tls.certificate_path // "")
+            elif .type == "shadowtls" then "shadowtls|" + (.handshake.server // "") + "||"
+            else "" end' "$cfg" 2>/dev/null)
+    else
+        j=$(jq -r --arg t "$tag" '
+            .inbounds[]? | select(.tag == $t) |
+            if (.streamSettings.realitySettings.serverNames[0] // "") != "" then "reality-xray|" + .streamSettings.realitySettings.serverNames[0] + "||"
+            else "" end' "$cfg" 2>/dev/null)
+    fi
+    [[ -n "$j" ]] && printf '%s|%s' "$j" "$cfg"
+    return 0
+}
+
+# Apply a new SNI: validated config edit, TUIC cert re-issue, restart,
+# standalone-link and .env follow-through. Prints the updated link.
+_nsni_apply() {
+    local core="$1" tag="$2" kind="$3" cfg="$4" old="$5" new="$6" key="${7:-}" crt="${8:-}"
+    local bak='' tmp='' bin='' filter=''
+    bak=$(mktemp /tmp/A-Box-nsni-bak.XXXXXX) || return 1
+    cp -a "$cfg" "$bak" || { rm -f "$bak"; return 1; }
+    tmp=$(mktemp /tmp/A-Box-nsni.XXXXXX) || { rm -f "$bak"; return 1; }
+    mv "$tmp" "$tmp.json"; tmp="$tmp.json"
+    case "$kind" in
+        reality-xray) filter='.inbounds |= map(if .tag == $t then (.streamSettings.realitySettings |= (.serverNames = [$s] | .target = (if .target then ($s + (.target | if contains(":") then sub("^[^:]*"; "") else "" end)) else .target end) | .dest = (if .dest then ($s + (.dest | if contains(":") then sub("^[^:]*"; "") else "" end)) else .dest end))) else . end)' ;;
+        reality-sb) filter='.inbounds |= map(if .tag == $t then (.tls.reality.handshake.server = $s | if .tls.server_name then .tls.server_name = $s else . end) else . end)' ;;
+        tuic) filter='.inbounds |= map(if .tag == $t then .tls.server_name = $s else . end)' ;;
+        shadowtls) filter='.inbounds |= map(if .tag == $t then .handshake.server = $s else . end)' ;;
+        *) rm -f "$tmp" "$bak"; return 1 ;;
+    esac
+    if ! jq --arg t "$tag" --arg s "$new" "$filter" "$cfg" > "$tmp" 2>/dev/null; then rm -f "$tmp" "$bak"; return 1; fi
+    case "$core" in
+        xray) bin='/usr/local/bin/xray'; if [[ -x "$bin" ]]; then "$bin" run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
+        xray-latest) bin=$(users_bin_of xray-latest 2>/dev/null || echo /usr/local/bin/xray-latest); if [[ -x "$bin" ]]; then "$bin" run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
+        sing-box) bin="${SB_PATH:-/usr/local/bin/sing-box}"; if [[ -x "$bin" ]]; then "$bin" check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
+    esac
+    cat "$tmp" > "$cfg" || { cp -a "$bak" "$cfg" 2>/dev/null; rm -f "$tmp" "$bak"; return 1; }
+    rm -f "$tmp"
+    if [[ "$kind" == 'tuic' && -n "$key" && -n "$crt" ]]; then
+        if ! generate_self_signed_cert_atomically "$key" "$crt" "$new" >/dev/null 2>&1; then
+            cp -a "$bak" "$cfg" 2>/dev/null; rm -f "$bak"; return 1
+        fi
+    fi
+    rm -f "$bak"
+    if is_service_running "$core" 2>/dev/null; then
+        if is_systemd; then systemctl restart "$core" >/dev/null 2>&1 || true; else rc-service "$core" restart >/dev/null 2>&1 || true; fi
+    fi
+    local _ldir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _lf='' _shown=''
+    local -a _cands=("${tag}.link")
+    case "$tag" in
+        *trojan*) if [[ "$core" == 'sing-box' ]]; then _cands+=('trojan-sb.link'); else _cands+=('trojan-xray.link'); fi ;;
+        *tuic*) _cands+=('tuic.link') ;;
+        *anytls*) _cands+=('anytls.link') ;;
+        *shadowtls*) _cands+=('shadowtls.link') ;;
+    esac
+    for _lf in "${_cands[@]}"; do
+        [[ -f "$_ldir/$_lf" && ! -L "$_ldir/$_lf" ]] || continue
+        if grep -q 'sni=' "$_ldir/$_lf" 2>/dev/null; then
+            sed -i "s|\([?&]sni=\)[^&#]*|\1${new}|g" "$_ldir/$_lf" 2>/dev/null || true
+            _shown=$(cat "$_ldir/$_lf" 2>/dev/null)
+        fi
+    done
+    local _envf="${ABOX_ENV:-/etc/ddr/.env}" _var=''
+    if [[ -f "$_envf" && ! -L "$_envf" ]]; then
+        while IFS= read -r _var; do
+            sed -i "s|^${_var}=${old}\$|${_var}=${new}|" "$_envf" 2>/dev/null || true
+        done < <(grep -oE '^[A-Z0-9_]*SNI[A-Z0-9_]*' "$_envf" 2>/dev/null | sort -u)
+    fi
+    [[ -n "$_shown" ]] && printf '%s' "$_shown"
+    return 0
+}
+
+node_sni_menu() {
+    while true; do
+        clear
+        msg "${CYAN}======================================================================${NC}"
+        msg "${BOLD}${GREEN}$(tr_msg tb_nsni)${NC}"
+        msg "${CYAN}======================================================================${NC}"
+        local rows='' i=0 core='' tag='' proto='' port='' probe='' kind='' cur='' key='' crt='' cfg=''
+        rows=$(protocol_inventory 2>/dev/null || true)
+        local -a _cs=() _ts=() _ks=() _os=() _cfgs=()
+        while IFS=$'\t' read -r core tag proto port; do
+            [[ -n "$core" && -n "$tag" ]] || continue
+            case "$proto" in socks|mixed|shadowsocks|hysteria2) continue ;; esac
+            case "$tag" in *-ws-in) continue ;; esac
+            probe=$(_nsni_probe "$core" "$tag")
+            [[ -n "$probe" ]] || continue
+            IFS='|' read -r kind cur key crt cfg <<< "$probe"
+            [[ -n "$cur" ]] || continue
+            i=$((i + 1))
+            _cs+=("$core"); _ts+=("$tag"); _ks+=("$kind"); _os+=("$cur"); _cfgs+=("$cfg")
+            printf '%3d. %-40s %-11s :%-6s %s: %s\n' "$i" "$(protocol_label "$core" "$tag" "$proto" 2>/dev/null || printf '%s' "$tag")" "$core" "$port" "$(tr_msg nsni_cur)" "$cur"
+        done <<< "$rows"
+        if (( i == 0 )); then msg "${YELLOW}$(tr_msg nsni_none)${NC}"; fi
+        msg "${CYAN}  0. $(tr_msg mu_back_word)${NC}"
+        local c=''
+        read -r -p "$(tr_msg select_prompt) [0-${i}]: " c || return 0
+        case "$c" in
+            0|'') return 0 ;;
+            *[!0-9]*) msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1 ;;
+            *)
+                if (( c >= 1 && c <= i )); then
+                    local _ix=$((c - 1)) _probe2='' _k2='' _c2='' _new='' _shown=''
+                    _probe2=$(_nsni_probe "${_cs[$_ix]}" "${_ts[$_ix]}")
+                    IFS='|' read -r _ _ _k2 _c2 _ <<< "$_probe2"
+                    printf '%s: %s\n' "$(tr_msg nsni_cur)" "${_os[$_ix]}"
+                    read -r -p "$(tr_msg nsni_prompt)" _new || continue
+                    _new=$(printf '%s' "$_new" | tr -d '[:space:]')
+                    [[ -n "$_new" ]] || continue
+                    if ! valid_sni "$_new"; then msg "${RED}$(tr_msg nsni_invalid)${NC}"; pause_return; continue; fi
+                    if _shown=$(_nsni_apply "${_cs[$_ix]}" "${_ts[$_ix]}" "${_ks[$_ix]}" "${_cfgs[$_ix]}" "${_os[$_ix]}" "$_new" "$_k2" "$_c2"); then
+                        msg "${GREEN}$(tr_msg nsni_done)${NC}"
+                        [[ -n "$_shown" ]] && msg "${LBLW}${_shown}${NC}"
+                        msg "${YELLOW}$(tr_msg nsni_warn)${NC}"
+                    else
+                        msg "${RED}$(tr_msg nsni_fail)${NC}"
+                    fi
+                    pause_return
+                else
+                    msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1
+                fi ;;
+        esac
+    done
+}
+
 user_guard_tick() {
     exec 9>>/run/A-Box-user-guard.lock 2>/dev/null || return 0
     flock -n 9 || return 0
@@ -19785,6 +19980,21 @@ sni_auto_select_default() {
         sni_verified_amazon_fallback
     fi
 }
+# Deploy-time SNI choice: Enter keeps the automatic selection;
+# a typed domain is validated and used instead. Prompts go to
+# stderr so the result can be captured with $(...).
+sni_prompt_or_auto() {
+    local _in=''
+    printf '%s' "$(tr_msg sni_custom_prompt)" >&2
+    read -r _in || _in=''
+    _in=$(printf '%s' "$_in" | tr -d '[:space:]')
+    if [[ -n "$_in" ]]; then
+        if valid_sni "$_in"; then printf '%s' "$_in"; return 0; fi
+        printf '%s\n' "$(tr_msg sni_custom_invalid)" >&2
+    fi
+    sni_auto_select_default 2>/dev/null || echo 'www.amazon.com'
+}
+
 
 sni_render_ranked_report() {
     local report_file="${1:-}" requested_limit="${2:-100}" display_dir selected_file
@@ -24964,8 +25174,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
         return 1
     fi
     listen_addr=$(wildcard_listen_address)
-    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
-    [[ -n "$sni" ]] || sni='www.amazon.com'
+    sni=$(sni_prompt_or_auto)
     tmp_json=$(mktemp /tmp/A-Box-xl-inbound.XXXXXX) || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     case "$kind" in
         vision|xhttp)
@@ -25084,8 +25293,7 @@ xray_latest_deploy_trio() {
     sp2=$(prompt_validated "$(tr_msg xl_port_prompt)" port '2053') || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     if [[ "$sp2" == "$vp" || "$sp2" == "$xp" ]] || xl_port_conflict "$sp2" "$cfg"; then msg "${RED}$(tr_msg xl_port_conflict): ${sp2}${NC}"; return 1; fi
     listen_addr=$(wildcard_listen_address)
-    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
-    [[ -n "$sni" ]] || sni='www.amazon.com'
+    sni=$(sni_prompt_or_auto)
     keypair=$("$bin" x25519) || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     [[ -n "$pk" && -n "$pbk" ]] || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
@@ -25299,6 +25507,7 @@ vps_benchmark_menu() {
             msg "${YELLOW} 9.  Local SNI preference                 12.  Backup / restore configuration${NC}"
             msg "${YELLOW}10.  Mini-host SNI preference             13.  Multi-user / subscription link export${NC}"
             msg "${YELLOW}11.  SNI preference records               14.  Wallos install / update / backup${NC}"
+        msg "${YELLOW}16.  $(tr_msg tb_nsni)${NC}"
             msg ""
             msg "${CYAN}[ Security ]${NC}"
             msg "${YELLOW}15.  SS-2022 IP whitelist${NC}"
@@ -25316,6 +25525,7 @@ vps_benchmark_menu() {
             msg "${YELLOW} 9.  Подбор SNI                           12.  Бэкап / восстановление${NC}"
             msg "${YELLOW}10.  Подбор SNI (мини-хост)               13.  Пользователи / экспорт подписки${NC}"
             msg "${YELLOW}11.  Записи подбора SNI                   14.  Wallos: установка / обновление${NC}"
+        msg "${YELLOW}16.  $(tr_msg tb_nsni)${NC}"
             msg ""
             msg "${CYAN}[ Безопасность ]${NC}"
             msg "${YELLOW}15.  Белый список IP (SS-2022)${NC}"
@@ -25333,6 +25543,7 @@ vps_benchmark_menu() {
             msg "${YELLOW} 9.  بهینه‌سازی SNI محلی                  12.  پشتیبان‌گیری / بازیابی${NC}"
             msg "${YELLOW}10.  بهینه‌سازی SNI مینی‌هاست             13.  کاربران / خروجی لینک اشتراک${NC}"
             msg "${YELLOW}11.  سوابق بهینه‌سازی SNI                 14.  نصب / به‌روزرسانی Wallos${NC}"
+        msg "${YELLOW}16.  $(tr_msg tb_nsni)${NC}"
             msg ""
             msg "${CYAN}[ امنیت ]${NC}"
             msg "${YELLOW}15.  لیست سفید آی‌پی SS-2022${NC}"
@@ -25350,6 +25561,7 @@ vps_benchmark_menu() {
             msg "${YELLOW} 9.  本地 SNI 優選                        12.  配置備份 / 恢復${NC}"
             msg "${YELLOW}10.  微型主機 SNI 優選                    13.  多用戶 / 訂閱連結導出${NC}"
             msg "${YELLOW}11.  SNI 優選記錄                         14.  Wallos 安裝 / 升級 / 備份${NC}"
+        msg "${YELLOW}16.  $(tr_msg tb_nsni)${NC}"
             msg ""
             msg "${CYAN}[ 安全 ]${NC}"
             msg "${YELLOW}15.  SS-2022 訪問白名單${NC}"
@@ -25367,6 +25579,7 @@ vps_benchmark_menu() {
             msg "${YELLOW} 9.  ローカル SNI 最適化                  12.  設定のバックアップ/復元${NC}"
             msg "${YELLOW}10.  ミニホスト SNI 最適化                13.  複数ユーザー / サブスクリプション出力${NC}"
             msg "${YELLOW}11.  SNI 最適化記録                       14.  Wallos インストール/更新${NC}"
+        msg "${YELLOW}16.  $(tr_msg tb_nsni)${NC}"
             msg ""
             msg "${CYAN}[ セキュリティ ]${NC}"
             msg "${YELLOW}15.  SS-2022 IPホワイトリスト${NC}"
@@ -25384,6 +25597,7 @@ vps_benchmark_menu() {
             msg "${YELLOW} 9.  本地 SNI 优选                        12.  配置备份 / 恢复${NC}"
             msg "${YELLOW}10.  微型主机 SNI 优选                    13.  多用户 / 订阅链接导出${NC}"
             msg "${YELLOW}11.  SNI 优选记录                         14.  Wallos 安装 / 升级 / 备份${NC}"
+        msg "${YELLOW}16.  $(tr_msg tb_nsni)${NC}"
             msg ""
             msg "${CYAN}[ 安全 ]${NC}"
             msg "${YELLOW}15.  SS-2022 访问白名单${NC}"
@@ -25391,7 +25605,7 @@ vps_benchmark_menu() {
             ;;
     esac
     local bench_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-15]: ' ;; ru) select_prompt='Выберите [0–15]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۵]: ' ;; ja) select_prompt='選択してください [0-15]: ' ;; zh-tw) select_prompt='請選擇 [0-15]：' ;; *) select_prompt='请选择 [0-15]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-16]: ' ;; ru) select_prompt='Выберите [0–16]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۶]: ' ;; ja) select_prompt='選択してください [0-16]: ' ;; zh-tw) select_prompt='請選擇 [0-16]：' ;; *) select_prompt='请选择 [0-16]：' ;; esac
     read -r -p "$select_prompt" bench_choice || return 0
     case "$bench_choice" in
         1) run_acheck_tool; pause_return ;;
@@ -25409,6 +25623,7 @@ vps_benchmark_menu() {
         13) multi_user_menu ;;
         14) wallos_menu ;;
         15) manage_ss_whitelist ;;
+        16) node_sni_menu ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $bench_choice${NC}"; sleep 1 ;;
     esac
@@ -27944,6 +28159,8 @@ PY_SELFTEST_TAR
     grep -Fq 'mi_u_blocked' "$0" || { echo 'FAIL: mi_u_blocked missing'; failures=$((failures + 1)); }
     grep -Fq 'mi_users_none' "$0" || { echo 'FAIL: mi_users_none missing'; failures=$((failures + 1)); }
     grep -Fq 'mi_u_days' "$0" || { echo 'FAIL: mi_u_days missing'; failures=$((failures + 1)); }
+    grep -Fq 'node_sni_menu' "$0" || { echo 'FAIL: node_sni_menu missing'; failures=$((failures + 1)); }
+    grep -Fq 'sni_prompt_or_auto' "$0" || { echo 'FAIL: sni_prompt_or_auto missing'; failures=$((failures + 1)); }
     grep -Fq 'statsUserUplink' "$0" || { echo 'FAIL: per-user stats policy missing'; failures=$((failures + 1)); }
     grep -Fq 'revoke one extra UUID from the Xray server' "$0" || grep -Fq 'Revoke one extra UUID from the Xray server' "$0" || { echo 'FAIL: server-side UUID revocation option missing'; failures=$((failures + 1)); }
     # Exercise multi-UUID validation/deduplication on a temporary fixture; never touch /etc/ddr.

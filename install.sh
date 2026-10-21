@@ -592,6 +592,336 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:cl_nat) echo '旧的 A-Box HY2 NAT 规则无法完整删除。' ;;
+        en:cl_nat) echo 'The old A-Box HY2 NAT rules could not be fully removed.' ;;
+        ru:cl_nat) echo 'Не удалось полностью удалить старые правила NAT HY2 A-Box.' ;;
+        fa:cl_nat) echo 'حذف کامل قوانین قدیمی NAT ‏HY2 ‏A-Box ممکن نشد.' ;;
+        zh-tw:cl_nat) echo '舊的 A-Box HY2 NAT 規則無法完整刪除。' ;;
+        ja:cl_nat) echo '古い A-Box HY2 の NAT ルールを完全に削除できませんでした。' ;;
+        zh:cl_input) echo '旧的 A-Box INPUT/原生防火墙规则无法完整删除。' ;;
+        en:cl_input) echo 'The old A-Box INPUT/native firewall rules could not be fully removed.' ;;
+        ru:cl_input) echo 'Не удалось полностью удалить старые правила INPUT/родного брандмауэра A-Box.' ;;
+        fa:cl_input) echo 'حذف کامل قوانین قدیمی INPUT/دیوار آتش بومی A-Box ممکن نشد.' ;;
+        zh-tw:cl_input) echo '舊的 A-Box INPUT/原生防火牆規則無法完整刪除。' ;;
+        ja:cl_input) echo '古い A-Box INPUT/ネイティブファイアウォールルールを完全に削除できませんでした。' ;;
+        zh:cl_cron) echo '删除 A-Box cron 任务失败。' ;;
+        en:cl_cron) echo 'Failed to remove the A-Box cron jobs.' ;;
+        ru:cl_cron) echo 'Не удалось удалить задания cron A-Box.' ;;
+        fa:cl_cron) echo 'حذف وظایف cron ‏A-Box ناموفق بود.' ;;
+        zh-tw:cl_cron) echo '刪除 A-Box cron 任務失敗。' ;;
+        ja:cl_cron) echo 'A-Box の cron ジョブを削除できませんでした。' ;;
+        zh:cl_f2b_jail) echo '删除 A-Box Fail2Ban jail 失败。' ;;
+        en:cl_f2b_jail) echo 'Failed to remove the A-Box Fail2Ban jail.' ;;
+        ru:cl_f2b_jail) echo 'Не удалось удалить jail Fail2Ban A-Box.' ;;
+        fa:cl_f2b_jail) echo 'حذف jail ‏Fail2Ban ‏A-Box ناموفق بود.' ;;
+        zh-tw:cl_f2b_jail) echo '刪除 A-Box Fail2Ban jail 失敗。' ;;
+        ja:cl_f2b_jail) echo 'A-Box の Fail2Ban jail を削除できませんでした。' ;;
+        zh:cl_f2b_filter) echo '删除 A-Box Fail2Ban filter 失败。' ;;
+        en:cl_f2b_filter) echo 'Failed to remove the A-Box Fail2Ban filter.' ;;
+        ru:cl_f2b_filter) echo 'Не удалось удалить фильтр Fail2Ban A-Box.' ;;
+        fa:cl_f2b_filter) echo 'حذف فیلتر Fail2Ban ‏A-Box ناموفق بود.' ;;
+        zh-tw:cl_f2b_filter) echo '刪除 A-Box Fail2Ban filter 失敗。' ;;
+        ja:cl_f2b_filter) echo 'A-Box の Fail2Ban フィルターを削除できませんでした。' ;;
+        zh:cl_logrotate) echo '删除 A-Box logrotate 配置失败。' ;;
+        en:cl_logrotate) echo 'Failed to remove the A-Box logrotate config.' ;;
+        ru:cl_logrotate) echo 'Не удалось удалить конфигурацию logrotate A-Box.' ;;
+        fa:cl_logrotate) echo 'حذف پیکربندی logrotate ‏A-Box ناموفق بود.' ;;
+        zh-tw:cl_logrotate) echo '刪除 A-Box logrotate 設定失敗。' ;;
+        ja:cl_logrotate) echo 'A-Box の logrotate 設定を削除できませんでした。' ;;
+        zh:cl_log_files) echo '删除 A-Box 日志失败；检测到非托管或不安全日志文件。' ;;
+        en:cl_log_files) echo 'Failed to remove A-Box logs; unmanaged or unsafe log files were detected.' ;;
+        ru:cl_log_files) echo 'Не удалось удалить журналы A-Box; обнаружены неуправляемые или небезопасные файлы журналов.' ;;
+        fa:cl_log_files) echo 'حذف گزارش‌های A-Box ناموفق بود؛ فایل‌های گزارش مدیریت‌نشده یا ناامن شناسایی شد.' ;;
+        zh-tw:cl_log_files) echo '刪除 A-Box 日誌失敗；偵測到非託管或不安全的日誌檔案。' ;;
+        ja:cl_log_files) echo 'A-Box のログを削除できませんでした。管理外または安全でないログファイルが検出されました。' ;;
+        zh:cl_swap_keep) echo 'A-Box Swap 未能自动删除；为安全起见保留现状。' ;;
+        en:cl_swap_keep) echo 'A-Box Swap could not be removed automatically; left as-is for safety.' ;;
+        ru:cl_swap_keep) echo 'Не удалось автоматически удалить Swap A-Box; оставлен как есть в целях безопасности.' ;;
+        fa:cl_swap_keep) echo 'حذف خودکار Swap ‏A-Box ممکن نشد؛ برای ایمنی به همان حال ماند.' ;;
+        zh-tw:cl_swap_keep) echo 'A-Box Swap 未能自動刪除；為安全起見保留現狀。' ;;
+        ja:cl_swap_keep) echo 'A-Box の Swap を自動で削除できなかったため、安全のため現状のまま保持します。' ;;
+        zh:cl_cores_clean) echo '删除 A-Box 托管核心文件失败。' ;;
+        en:cl_cores_clean) echo 'Failed to remove the A-Box-managed core files.' ;;
+        ru:cl_cores_clean) echo 'Не удалось удалить файлы ядер под управлением A-Box.' ;;
+        fa:cl_cores_clean) echo 'حذف فایل‌های هسته مدیریت‌شده A-Box ناموفق بود.' ;;
+        zh-tw:cl_cores_clean) echo '刪除 A-Box 託管核心檔案失敗。' ;;
+        ja:cl_cores_clean) echo 'A-Box 管理下のコアファイルを削除できませんでした。' ;;
+        zh:cl_cores_reset) echo '环境重置时删除 A-Box 托管核心文件失败。' ;;
+        en:cl_cores_reset) echo 'Failed to remove the A-Box-managed core files during the environment reset.' ;;
+        ru:cl_cores_reset) echo 'Не удалось удалить файлы ядер под управлением A-Box при сбросе окружения.' ;;
+        fa:cl_cores_reset) echo 'حذف فایل‌های هسته مدیریت‌شده A-Box هنگام بازنشانی محیط ناموفق بود.' ;;
+        zh-tw:cl_cores_reset) echo '環境重置時刪除 A-Box 託管核心檔案失敗。' ;;
+        ja:cl_cores_reset) echo '環境リセット時に A-Box 管理下のコアファイルを削除できませんでした。' ;;
+        zh:cl_env_clean) echo '清理 A-Box .env 失败；检测到非托管或不安全状态文件。' ;;
+        en:cl_env_clean) echo 'Failed to clean the A-Box .env; an unmanaged or unsafe state file was detected.' ;;
+        ru:cl_env_clean) echo 'Не удалось очистить .env A-Box; обнаружен неуправляемый или небезопасный файл состояния.' ;;
+        fa:cl_env_clean) echo 'پاک‌سازی ‎.env ‏A-Box ناموفق بود؛ فایل وضعیت مدیریت‌نشده یا ناامن شناسایی شد.' ;;
+        zh-tw:cl_env_clean) echo '清理 A-Box .env 失敗；偵測到非託管或不安全的狀態檔案。' ;;
+        ja:cl_env_clean) echo 'A-Box の .env をクリーンアップできませんでした。管理外または安全でない状態ファイルが検出されました。' ;;
+        zh:cl_env_reset) echo '环境重置时清理 A-Box .env 失败；检测到非托管或不安全状态文件。' ;;
+        en:cl_env_reset) echo 'Failed to clean the A-Box .env during the environment reset; an unmanaged or unsafe state file was detected.' ;;
+        ru:cl_env_reset) echo 'Не удалось очистить .env A-Box при сбросе окружения; обнаружен неуправляемый или небезопасный файл состояния.' ;;
+        fa:cl_env_reset) echo 'پاک‌سازی ‎.env ‏A-Box هنگام بازنشانی محیط ناموفق بود؛ فایل وضعیت مدیریت‌نشده یا ناامن شناسایی شد.' ;;
+        zh-tw:cl_env_reset) echo '環境重置時清理 A-Box .env 失敗；偵測到非託管或不安全的狀態檔案。' ;;
+        ja:cl_env_reset) echo '環境リセット時に A-Box の .env をクリーンアップできませんでした。管理外または安全でない状態ファイルが検出されました。' ;;
+        zh:cl_runtime_clean) echo '清理 A-Box 运行文件失败: %s' ;;
+        en:cl_runtime_clean) echo 'Failed to clean the A-Box runtime file: %s' ;;
+        ru:cl_runtime_clean) echo 'Не удалось очистить файл среды выполнения A-Box: %s' ;;
+        fa:cl_runtime_clean) echo 'پاک‌سازی فایل اجرایی A-Box ناموفق بود: %s' ;;
+        zh-tw:cl_runtime_clean) echo '清理 A-Box 執行檔案失敗：%s' ;;
+        ja:cl_runtime_clean) echo 'A-Box のランタイムファイルをクリーンアップできませんでした：%s' ;;
+        zh:cl_runtime_reset) echo '环境重置时删除 A-Box 运行文件失败: %s' ;;
+        en:cl_runtime_reset) echo 'Failed to remove the A-Box runtime file during the environment reset: %s' ;;
+        ru:cl_runtime_reset) echo 'Не удалось удалить файл среды выполнения A-Box при сбросе окружения: %s' ;;
+        fa:cl_runtime_reset) echo 'حذف فایل اجرایی A-Box هنگام بازنشانی محیط ناموفق بود: %s' ;;
+        zh-tw:cl_runtime_reset) echo '環境重置時刪除 A-Box 執行檔案失敗：%s' ;;
+        ja:cl_runtime_reset) echo '環境リセット時に A-Box のランタイムファイルを削除できませんでした：%s' ;;
+        zh:cl_sni_clean) echo '清理 A-Box SNI 候选缓存失败或路径不安全。' ;;
+        en:cl_sni_clean) echo 'Failed to clean the A-Box SNI candidate cache, or the path is unsafe.' ;;
+        ru:cl_sni_clean) echo 'Не удалось очистить кэш кандидатов SNI A-Box, или путь небезопасен.' ;;
+        fa:cl_sni_clean) echo 'پاک‌سازی حافظه نهان نامزدهای SNI ‏A-Box ناموفق بود یا مسیر ناامن است.' ;;
+        zh-tw:cl_sni_clean) echo '清理 A-Box SNI 候選快取失敗或路徑不安全。' ;;
+        ja:cl_sni_clean) echo 'A-Box の SNI 候補キャッシュをクリーンアップできないか、パスが安全ではありません。' ;;
+        zh:cl_sni_reset) echo '环境重置时删除 A-Box SNI 缓存失败或路径不安全。' ;;
+        en:cl_sni_reset) echo 'Failed to remove the A-Box SNI cache during the environment reset, or the path is unsafe.' ;;
+        ru:cl_sni_reset) echo 'Не удалось удалить кэш SNI A-Box при сбросе окружения, или путь небезопасен.' ;;
+        fa:cl_sni_reset) echo 'حذف حافظه نهان SNI ‏A-Box هنگام بازنشانی محیط ناموفق بود یا مسیر ناامن است.' ;;
+        zh-tw:cl_sni_reset) echo '環境重置時刪除 A-Box SNI 快取失敗或路徑不安全。' ;;
+        ja:cl_sni_reset) echo '環境リセット時に A-Box の SNI キャッシュを削除できないか、パスが安全ではありません。' ;;
+        zh:cl_deps_clean) echo '清理 A-Box 依赖标记失败。' ;;
+        en:cl_deps_clean) echo 'Failed to clean the A-Box dependency marker.' ;;
+        ru:cl_deps_clean) echo 'Не удалось очистить маркер зависимостей A-Box.' ;;
+        fa:cl_deps_clean) echo 'پاک‌سازی نشانگر وابستگی A-Box ناموفق بود.' ;;
+        zh-tw:cl_deps_clean) echo '清理 A-Box 依賴標記失敗。' ;;
+        ja:cl_deps_clean) echo 'A-Box の依存マーカをクリーンアップできませんでした。' ;;
+        zh:cl_deps_reset) echo '环境重置时删除 A-Box 依赖标记失败。' ;;
+        en:cl_deps_reset) echo 'Failed to remove the A-Box dependency marker during the environment reset.' ;;
+        ru:cl_deps_reset) echo 'Не удалось удалить маркер зависимостей A-Box при сбросе окружения.' ;;
+        fa:cl_deps_reset) echo 'حذف نشانگر وابستگی A-Box هنگام بازنشانی محیط ناموفق بود.' ;;
+        zh-tw:cl_deps_reset) echo '環境重置時刪除 A-Box 依賴標記失敗。' ;;
+        ja:cl_deps_reset) echo '環境リセット時に A-Box の依存マーカを削除できませんでした。' ;;
+        zh:cl_f2b_restart_clean) echo 'Fail2Ban 重启失败；不影响 A-Box 清理。' ;;
+        en:cl_f2b_restart_clean) echo 'Fail2Ban restart failed; this does not affect the A-Box cleanup.' ;;
+        ru:cl_f2b_restart_clean) echo 'Не удалось перезапустить Fail2Ban; на очистку A-Box это не влияет.' ;;
+        fa:cl_f2b_restart_clean) echo 'راه‌اندازی مجدد Fail2Ban ناموفق بود؛ بر پاک‌سازی A-Box اثری ندارد.' ;;
+        zh-tw:cl_f2b_restart_clean) echo 'Fail2Ban 重啟失敗；不影響 A-Box 清理。' ;;
+        ja:cl_f2b_restart_clean) echo 'Fail2Ban の再起動に失敗しましたが、A-Box のクリーンアップには影響しません。' ;;
+        zh:cl_f2b_restart_reset) echo 'Fail2Ban 重启失败；不影响环境初始化。' ;;
+        en:cl_f2b_restart_reset) echo 'Fail2Ban restart failed; this does not affect the environment initialization.' ;;
+        ru:cl_f2b_restart_reset) echo 'Не удалось перезапустить Fail2Ban; на инициализацию окружения это не влияет.' ;;
+        fa:cl_f2b_restart_reset) echo 'راه‌اندازی مجدد Fail2Ban ناموفق بود؛ بر مقداردهی محیط اثری ندارد.' ;;
+        zh-tw:cl_f2b_restart_reset) echo 'Fail2Ban 重啟失敗；不影響環境初始化。' ;;
+        ja:cl_f2b_restart_reset) echo 'Fail2Ban の再起動に失敗しましたが、環境の初期化には影響しません。' ;;
+        zh:cl_reload_clean) echo '清理后 systemd daemon-reload 失败。' ;;
+        en:cl_reload_clean) echo 'systemd daemon-reload failed after cleanup.' ;;
+        ru:cl_reload_clean) echo 'После очистки не удался systemd daemon-reload.' ;;
+        fa:cl_reload_clean) echo 'پس از پاک‌سازی، systemd daemon-reload ناموفق بود.' ;;
+        zh-tw:cl_reload_clean) echo '清理後 systemd daemon-reload 失敗。' ;;
+        ja:cl_reload_clean) echo 'クリーンアップ後の systemd daemon-reload に失敗しました。' ;;
+        zh:cl_reload_reset) echo '环境初始化后的 systemd daemon-reload 失败。' ;;
+        en:cl_reload_reset) echo 'systemd daemon-reload failed after the environment initialization.' ;;
+        ru:cl_reload_reset) echo 'После инициализации окружения не удался systemd daemon-reload.' ;;
+        fa:cl_reload_reset) echo 'پس از مقداردهی محیط، systemd daemon-reload ناموفق بود.' ;;
+        zh-tw:cl_reload_reset) echo '環境初始化後的 systemd daemon-reload 失敗。' ;;
+        ja:cl_reload_reset) echo '環境初期化後の systemd daemon-reload に失敗しました。' ;;
+        zh:cu_running) echo '正在执行清理逻辑...' ;;
+        en:cu_running) echo 'Running the cleanup logic...' ;;
+        ru:cu_running) echo 'Выполняется очистка...' ;;
+        fa:cu_running) echo 'در حال اجرای پاک‌سازی...' ;;
+        zh-tw:cu_running) echo '正在執行清理邏輯...' ;;
+        ja:cu_running) echo 'クリーンアップを実行しています...' ;;
+        zh:cu_tx_dir) echo '无法创建完全卸载回滚事务目录。' ;;
+        en:cu_tx_dir) echo 'Could not create the full-uninstall rollback transaction directory.' ;;
+        ru:cu_tx_dir) echo 'Не удалось создать каталог транзакции отката полного удаления.' ;;
+        fa:cu_tx_dir) echo 'ایجاد پوشه تراکنش بازگشت حذف کامل ممکن نشد.' ;;
+        zh-tw:cu_tx_dir) echo '無法建立完全卸載回滾事務目錄。' ;;
+        ja:cu_tx_dir) echo '完全アンインストール用ロールバックトランザクションのディレクトリを作成できませんでした。' ;;
+        zh:cu_tx_perm) echo '完全卸载回滚事务目录权限设置失败。' ;;
+        en:cu_tx_perm) echo 'Failed to set permissions on the full-uninstall rollback transaction directory.' ;;
+        ru:cu_tx_perm) echo 'Не удалось задать права каталога транзакции отката полного удаления.' ;;
+        fa:cu_tx_perm) echo 'تنظیم مجوزهای پوشه تراکنش بازگشت حذف کامل ناموفق بود.' ;;
+        zh-tw:cu_tx_perm) echo '完全卸載回滾事務目錄權限設定失敗。' ;;
+        ja:cu_tx_perm) echo '完全アンインストール用ロールバックディレクトリの権限設定に失敗しました。' ;;
+        zh:cu_tx_key_new) echo '无法建立完全卸载事务恢复密钥。' ;;
+        en:cu_tx_key_new) echo 'Could not create the full-uninstall transaction recovery key.' ;;
+        ru:cu_tx_key_new) echo 'Не удалось создать ключ восстановления транзакции полного удаления.' ;;
+        fa:cu_tx_key_new) echo 'ایجاد کلید بازیابی تراکنش حذف کامل ممکن نشد.' ;;
+        zh-tw:cu_tx_key_new) echo '無法建立完全卸載事務還原金鑰。' ;;
+        ja:cu_tx_key_new) echo '完全アンインストールトランザクションの復旧キーを作成できませんでした。' ;;
+        zh:cu_tx_key_read) echo '完全卸载事务恢复密钥读取失败。' ;;
+        en:cu_tx_key_read) echo 'Failed to read the full-uninstall transaction recovery key.' ;;
+        ru:cu_tx_key_read) echo 'Не удалось прочитать ключ восстановления транзакции полного удаления.' ;;
+        fa:cu_tx_key_read) echo 'خواندن کلید بازیابی تراکنش حذف کامل ناموفق بود.' ;;
+        zh-tw:cu_tx_key_read) echo '完全卸載事務還原金鑰讀取失敗。' ;;
+        ja:cu_tx_key_read) echo '完全アンインストールトランザクションの復旧キーを読み取れませんでした。' ;;
+        zh:cu_tx_key_save) echo '完全卸载事务恢复密钥保存失败。' ;;
+        en:cu_tx_key_save) echo 'Failed to save the full-uninstall transaction recovery key.' ;;
+        ru:cu_tx_key_save) echo 'Не удалось сохранить ключ восстановления транзакции полного удаления.' ;;
+        fa:cu_tx_key_save) echo 'ذخیره کلید بازیابی تراکنش حذف کامل ناموفق بود.' ;;
+        zh-tw:cu_tx_key_save) echo '完全卸載事務還原金鑰儲存失敗。' ;;
+        ja:cu_tx_key_save) echo '完全アンインストールトランザクションの復旧キーを保存できませんでした。' ;;
+        zh:cu_stop) echo '清理前无法停止全部 A-Box 托管服务。' ;;
+        en:cu_stop) echo 'Could not stop all A-Box-managed services before cleanup.' ;;
+        ru:cu_stop) echo 'Не удалось остановить все службы A-Box перед очисткой.' ;;
+        fa:cu_stop) echo 'پیش از پاک‌سازی، توقف همه سرویس‌های مدیریت‌شده A-Box ممکن نشد.' ;;
+        zh-tw:cu_stop) echo '清理前無法停止全部 A-Box 託管服務。' ;;
+        ja:cu_stop) echo 'クリーンアップ前に A-Box 管理サービスをすべて停止できませんでした。' ;;
+        zh:cu_residual) echo 'A-Box 残留进程无法完整停止。' ;;
+        en:cu_residual) echo 'Residual A-Box processes could not be fully stopped.' ;;
+        ru:cu_residual) echo 'Не удалось полностью остановить остаточные процессы A-Box.' ;;
+        fa:cu_residual) echo 'توقف کامل فرایندهای باقی‌مانده A-Box ممکن نشد.' ;;
+        zh-tw:cu_residual) echo 'A-Box 殘留行程無法完整停止。' ;;
+        ja:cu_residual) echo 'A-Box の残留プロセスを完全に停止できませんでした。' ;;
+        zh:cu_tune) echo 'VPS 调优恢复失败；检测到非 A-Box 替换文件或系统写入错误。' ;;
+        en:cu_tune) echo 'Failed to restore the VPS tuning; a non-A-Box replacement file or a system write error was detected.' ;;
+        ru:cu_tune) echo 'Не удалось восстановить настройку VPS; обнаружен файл, заменённый не A-Box, или ошибка записи.' ;;
+        fa:cu_tune) echo 'بازیابی تنظیمات VPS ناموفق بود؛ فایل جایگزین غیر A-Box یا خطای نوشتن سیستم شناسایی شد.' ;;
+        zh-tw:cu_tune) echo 'VPS 調校還原失敗；偵測到非 A-Box 取代檔案或系統寫入錯誤。' ;;
+        ja:cu_tune) echo 'VPS チューニングの復元に失敗しました。A-Box 以外による置換ファイル、またはシステム書き込みエラーが検出されました。' ;;
+        zh:cu_sysctl) echo '删除 A-Box sysctl 配置失败。' ;;
+        en:cu_sysctl) echo 'Failed to remove the A-Box sysctl config.' ;;
+        ru:cu_sysctl) echo 'Не удалось удалить конфигурацию sysctl A-Box.' ;;
+        fa:cu_sysctl) echo 'حذف پیکربندی sysctl ‏A-Box ناموفق بود.' ;;
+        zh-tw:cu_sysctl) echo '刪除 A-Box sysctl 設定失敗。' ;;
+        ja:cu_sysctl) echo 'A-Box の sysctl 設定を削除できませんでした。' ;;
+        zh:cu_limits) echo '删除 A-Box limits 配置失败。' ;;
+        en:cu_limits) echo 'Failed to remove the A-Box limits config.' ;;
+        ru:cu_limits) echo 'Не удалось удалить конфигурацию limits A-Box.' ;;
+        fa:cu_limits) echo 'حذف پیکربندی limits ‏A-Box ناموفق بود.' ;;
+        zh-tw:cu_limits) echo '刪除 A-Box limits 設定失敗。' ;;
+        ja:cu_limits) echo 'A-Box の limits 設定を削除できませんでした。' ;;
+        zh:cu_users_note) echo '用户注册表清理未完成，请手动检查 %s。' ;;
+        en:cu_users_note) echo 'User registry cleanup did not finish; please check %s manually.' ;;
+        ru:cu_users_note) echo 'Очистка реестра пользователей не завершена; проверьте %s вручную.' ;;
+        fa:cu_users_note) echo 'پاک‌سازی رجیستری کاربران کامل نشد؛ %s را دستی بررسی کنید.' ;;
+        zh-tw:cu_users_note) echo '使用者註冊表清理未完成，請手動檢查 %s。' ;;
+        ja:cu_users_note) echo 'ユーザーレジストリのクリーンアップが完了しませんでした。%s を手動で確認してください。' ;;
+        zh:cu_shortcut) echo 'A-Box 快捷入口删除失败；清理未完成。' ;;
+        en:cu_shortcut) echo 'Failed to remove the A-Box shortcut; cleanup is incomplete.' ;;
+        ru:cu_shortcut) echo 'Не удалось удалить ярлык A-Box; очистка не завершена.' ;;
+        fa:cu_shortcut) echo 'حذف میانبر A-Box ناموفق بود؛ پاک‌سازی ناتمام ماند.' ;;
+        zh-tw:cu_shortcut) echo 'A-Box 快捷入口刪除失敗；清理未完成。' ;;
+        ja:cu_shortcut) echo 'A-Box のショートカットを削除できなかったため、クリーンアップは未完了です。' ;;
+        zh:cu_swap_note) echo 'A-Box Swap 未能自动删除；保留 %s 归属标记以便稍后安全重试。' ;;
+        en:cu_swap_note) echo 'A-Box Swap could not be removed automatically; the ownership marker in %s is kept for a safe retry later.' ;;
+        ru:cu_swap_note) echo 'Не удалось автоматически удалить Swap A-Box; маркер владения в %s сохранён для безопасного повтора.' ;;
+        fa:cu_swap_note) echo 'حذف خودکار Swap ‏A-Box ممکن نشد؛ نشانگر مالکیت در %s برای تلاش امن بعدی نگه داشته شد.' ;;
+        zh-tw:cu_swap_note) echo 'A-Box Swap 未能自動刪除；保留 %s 歸屬標記以便稍後安全重試。' ;;
+        ja:cu_swap_note) echo 'A-Box の Swap を自動削除できなかったため、後で安全に再試行できるよう %s の所有マーカを保持します。' ;;
+        zh:cu_swap_die) echo 'Swap 清理失败；已停止完全清场以避免遗留无归属状态。' ;;
+        en:cu_swap_die) echo 'Swap cleanup failed; the full wipe was stopped to avoid leaving unowned state behind.' ;;
+        ru:cu_swap_die) echo 'Очистка Swap не удалась; полная зачистка остановлена, чтобы не оставить бесхозное состояние.' ;;
+        fa:cu_swap_die) echo 'پاک‌سازی Swap ناموفق بود؛ پاک‌سازی کامل متوقف شد تا وضعیت بدون مالک نماند.' ;;
+        zh-tw:cu_swap_die) echo 'Swap 清理失敗；已停止完全清場以避免遺留無歸屬狀態。' ;;
+        ja:cu_swap_die) echo 'Swap のクリーンアップに失敗したため、所有者不明の状態を残さないよう完全消去を停止しました。' ;;
+        zh:cu_mount) echo '检测到 A-Box 数据目录或其子树存在挂载点；拒绝递归删除，以保留挂载内容。' ;;
+        en:cu_mount) echo 'A mount point exists in the A-Box data directory or its subtree; recursive deletion was refused to preserve the mounted content.' ;;
+        ru:cu_mount) echo 'В каталоге данных A-Box или его поддереве есть точка монтирования; рекурсивное удаление отклонено для сохранения содержимого.' ;;
+        fa:cu_mount) echo 'در پوشه داده A-Box یا زیرشاخه‌اش نقطه اتصال وجود دارد؛ حذف بازگشتی برای حفظ محتوای متصل رد شد.' ;;
+        zh-tw:cu_mount) echo '偵測到 A-Box 資料目錄或其子樹存在掛載點；拒絕遞歸刪除，以保留掛載內容。' ;;
+        ja:cu_mount) echo 'A-Box のデータディレクトリまたはそのサブツリーにマウントポイントがあるため、マウント内容を保持するために再帰削除を拒否しました。' ;;
+        zh:cu_datadir) echo '删除 A-Box 数据目录失败；清理未完成。' ;;
+        en:cu_datadir) echo 'Failed to remove the A-Box data directory; cleanup is incomplete.' ;;
+        ru:cu_datadir) echo 'Не удалось удалить каталог данных A-Box; очистка не завершена.' ;;
+        fa:cu_datadir) echo 'حذف پوشه داده A-Box ناموفق بود؛ پاک‌سازی ناتمام ماند.' ;;
+        zh-tw:cu_datadir) echo '刪除 A-Box 資料目錄失敗；清理未完成。' ;;
+        ja:cu_datadir) echo 'A-Box のデータディレクトリを削除できなかったため、クリーンアップは未完了です。' ;;
+        zh:cu_datadir_left) echo 'A-Box 数据目录仍然存在；清理未完成。' ;;
+        en:cu_datadir_left) echo 'The A-Box data directory still exists; cleanup is incomplete.' ;;
+        ru:cu_datadir_left) echo 'Каталог данных A-Box всё ещё существует; очистка не завершена.' ;;
+        fa:cu_datadir_left) echo 'پوشه داده A-Box هنوز وجود دارد؛ پاک‌سازی ناتمام ماند.' ;;
+        zh-tw:cu_datadir_left) echo 'A-Box 資料目錄仍然存在；清理未完成。' ;;
+        ja:cu_datadir_left) echo 'A-Box のデータディレクトリがまだ存在します。クリーンアップは未完了です。' ;;
+        zh:cu_full_done) echo '完全清理完成。' ;;
+        en:cu_full_done) echo 'Full cleanup completed.' ;;
+        ru:cu_full_done) echo 'Полная очистка завершена.' ;;
+        fa:cu_full_done) echo 'پاک‌سازی کامل انجام شد.' ;;
+        zh-tw:cu_full_done) echo '完全清理完成。' ;;
+        ja:cu_full_done) echo '完全クリーンアップが完了しました。' ;;
+        zh:cu_proxy_done) echo '代理系统已销毁，保留 A-Box 托管的 sb 入口。' ;;
+        en:cu_proxy_done) echo 'The proxy system was destroyed; the A-Box-managed sb entry was kept.' ;;
+        ru:cu_proxy_done) echo 'Прокси-система уничтожена; точка входа sb под управлением A-Box сохранена.' ;;
+        fa:cu_proxy_done) echo 'سیستم پروکسی نابود شد؛ ورودی sb مدیریت‌شده A-Box نگه داشته شد.' ;;
+        zh-tw:cu_proxy_done) echo '代理系統已銷毀，保留 A-Box 託管的 sb 入口。' ;;
+        ja:cu_proxy_done) echo 'プロキシシステムを破棄しました。A-Box 管理の sb 入口は保持されます。' ;;
+        zh:vg_init_fail) echo '初始化系统环境失败。' ;;
+        en:vg_init_fail) echo 'Failed to initialize the system environment.' ;;
+        ru:vg_init_fail) echo 'Не удалось инициализировать системное окружение.' ;;
+        fa:vg_init_fail) echo 'مقداردهی محیط سیستم ناموفق بود.' ;;
+        zh-tw:vg_init_fail) echo '初始化系統環境失敗。' ;;
+        ja:vg_init_fail) echo 'システム環境の初期化に失敗しました。' ;;
+        zh:vg_title) echo '删除全部节点与环境初始化' ;;
+        en:vg_title) echo 'Delete all nodes and perform environment initialization' ;;
+        ru:vg_title) echo 'Удалить все узлы и выполнить инициализацию окружения' ;;
+        fa:vg_title) echo 'حذف همه گره‌ها و مقداردهی محیط' ;;
+        zh-tw:vg_title) echo '刪除全部節點與環境初始化' ;;
+        ja:vg_title) echo '全ノードを削除して環境を初期化' ;;
+        zh:vg_confirm) echo '确定执行环境深度自愈吗？[Y/N]: ' ;;
+        en:vg_confirm) echo 'Run the deep environment self-heal? [Y/N]: ' ;;
+        ru:vg_confirm) echo 'Выполнить глубокое самовосстановление окружения? [Y/N]: ' ;;
+        fa:vg_confirm) echo 'خودترمیمی عمیق محیط اجرا شود؟ [Y/N]: ' ;;
+        zh-tw:vg_confirm) echo '確定執行環境深度自癒嗎？[Y/N]: ' ;;
+        ja:vg_confirm) echo '環境のディープセルフヒールを実行しますか？[Y/N]: ' ;;
+        zh:vg_cancelled) echo '操作已取消。' ;;
+        en:vg_cancelled) echo 'Operation cancelled.' ;;
+        ru:vg_cancelled) echo 'Операция отменена.' ;;
+        fa:vg_cancelled) echo 'عملیات لغو شد.' ;;
+        zh-tw:vg_cancelled) echo '操作已取消。' ;;
+        ja:vg_cancelled) echo '操作をキャンセルしました。' ;;
+        zh:vg_tx_fail) echo '开启环境重置事务失败。' ;;
+        en:vg_tx_fail) echo 'Failed to open the environment-reset transaction.' ;;
+        ru:vg_tx_fail) echo 'Не удалось открыть транзакцию сброса окружения.' ;;
+        fa:vg_tx_fail) echo 'بازکردن تراکنش بازنشانی محیط ناموفق بود.' ;;
+        zh-tw:vg_tx_fail) echo '開啟環境重置事務失敗。' ;;
+        ja:vg_tx_fail) echo '環境リセットトランザクションを開始できませんでした。' ;;
+        zh:vg_preflight_fail) echo '环境重置预检失败；检测到非托管、挂载或不安全文件，已中止。' ;;
+        en:vg_preflight_fail) echo 'Environment-reset preflight failed; unmanaged, mounted or unsafe files were detected. Aborted.' ;;
+        ru:vg_preflight_fail) echo 'Предпроверка сброса окружения не пройдена; обнаружены неуправляемые, смонтированные или небезопасные файлы. Прервано.' ;;
+        fa:vg_preflight_fail) echo 'پیش‌بررسی بازنشانی محیط ناموفق بود؛ فایل‌های مدیریت‌نشده، متصل یا ناامن شناسایی شد. متوقف شد.' ;;
+        zh-tw:vg_preflight_fail) echo '環境重置預檢失敗；偵測到非託管、掛載或不安全的檔案，已中止。' ;;
+        ja:vg_preflight_fail) echo '環境リセットの事前チェックに失敗しました。管理外・マウント済み・安全でないファイルが検出されたため中止しました。' ;;
+        zh:vg_stop) echo '环境重置前无法停止全部 A-Box 托管服务。' ;;
+        en:vg_stop) echo 'Could not stop all A-Box-managed services before the environment reset.' ;;
+        ru:vg_stop) echo 'Не удалось остановить все службы A-Box перед сбросом окружения.' ;;
+        fa:vg_stop) echo 'پیش از بازنشانی محیط، توقف همه سرویس‌های مدیریت‌شده A-Box ممکن نشد.' ;;
+        zh-tw:vg_stop) echo '環境重置前無法停止全部 A-Box 託管服務。' ;;
+        ja:vg_stop) echo '環境リセット前に A-Box 管理サービスをすべて停止できませんでした。' ;;
+        zh:vg_done) echo '环境初始化完成；非 A-Box 同名安装未被删除。' ;;
+        en:vg_done) echo 'Environment initialization completed; same-named non-A-Box installs were not removed.' ;;
+        ru:vg_done) echo 'Инициализация окружения завершена; одноимённые установки не от A-Box не удалены.' ;;
+        fa:vg_done) echo 'مقداردهی محیط کامل شد؛ نصب‌های هم‌نام غیر A-Box حذف نشدند.' ;;
+        zh-tw:vg_done) echo '環境初始化完成；非 A-Box 同名安裝未被刪除。' ;;
+        ja:vg_done) echo '環境の初期化が完了しました。同名の A-Box 以外のインストールは削除されていません。' ;;
+        zh:um_title) echo '深度卸载系统' ;;
+        en:um_title) echo 'Deep Unloading System' ;;
+        ru:um_title) echo 'Система глубокой деинсталляции' ;;
+        fa:um_title) echo 'سیستم حذف عمیق' ;;
+        zh-tw:um_title) echo '深度卸載系統' ;;
+        ja:um_title) echo 'ディープアンインストール' ;;
+        zh:um_item1) echo '1. 完全物理清场 (销毁节点、配置、防火墙映射与 sb 入口)' ;;
+        en:um_item1) echo '1. Full physical wipe (destroy nodes, configs, firewall mappings and the sb entry)' ;;
+        ru:um_item1) echo '1. Полная физическая зачистка (узлы, конфигурации, правила брандмауэра и вход sb)' ;;
+        fa:um_item1) echo '1. پاک‌سازی فیزیکی کامل (نابودی گره‌ها، پیکربندی‌ها، نگاشت‌های دیوار آتش و ورودی sb)' ;;
+        zh-tw:um_item1) echo '1. 完全物理清場 (銷毀節點、設定、防火牆映射與 sb 入口)' ;;
+        ja:um_item1) echo '1. 完全物理クリーン (ノード、設定、ファイアウォールマッピング、sb 入口を破棄)' ;;
+        zh:um_item2) echo '2. 保留脚本与清场 (销毁节点配置，保留控制台与 sb 入口)' ;;
+        en:um_item2) echo '2. Keep the script and wipe (destroy node configs, keep the console and the sb entry)' ;;
+        ru:um_item2) echo '2. Сохранить скрипт и зачистить (уничтожить конфигурации узлов, сохранить консоль и вход sb)' ;;
+        fa:um_item2) echo '2. نگه‌داشتن اسکریپت و پاک‌سازی (نابودی پیکربندی گره‌ها، نگه‌داشتن کنسول و ورودی sb)' ;;
+        zh-tw:um_item2) echo '2. 保留腳本與清場 (銷毀節點設定，保留控制台與 sb 入口)' ;;
+        ja:um_item2) echo '2. スクリプトを保持してクリーン (ノード設定を破棄し、コンソールと sb 入口を保持)' ;;
+        zh:um_back) echo '0. 取消并返回' ;;
+        en:um_back) echo '0. Cancel and back' ;;
+        ru:um_back) echo '0. Отмена и назад' ;;
+        fa:um_back) echo '0. لغو و بازگشت' ;;
+        zh-tw:um_back) echo '0. 取消並返回' ;;
+        ja:um_back) echo '0. キャンセルして戻る' ;;
+        zh:um_prompt) echo '请输入执行代码 [0-2]: ' ;;
+        en:um_prompt) echo 'Enter the execution code [0-2]: ' ;;
+        ru:um_prompt) echo 'Введите код выполнения [0-2]: ' ;;
+        fa:um_prompt) echo 'کد اجرا را وارد کنید [0-2]: ' ;;
+        zh-tw:um_prompt) echo '請輸入執行代碼 [0-2]: ' ;;
+        ja:um_prompt) echo '実行コードを入力してください [0-2]: ' ;;
         zh:mu_title) echo '多 UUID / 订阅导出' ;;
         en:mu_title) echo 'Multi-UUID / Subscription export' ;;
         ru:mu_title) echo 'Несколько UUID / экспорт подписки' ;;
@@ -10902,8 +11232,8 @@ deploy_official_hy2() {
         confirm_deployment_replacement hysteria HY2
         begin_deployment_transaction 'official Hysteria 2 deployment' hysteria
         release_ports
-        clean_nat_rules || die '旧的 A-Box HY2 NAT 规则无法完整删除。'
-        clean_input_rules || die '旧的 A-Box INPUT/原生防火墙规则无法完整删除。'
+        clean_nat_rules || die "$(tr_msg cl_nat)"
+        clean_input_rules || die "$(tr_msg cl_input)"
         save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
         pre_install_setup hysteria HY2
         get_architecture
@@ -14176,8 +14506,8 @@ deploy_xray() {
     confirm_deployment_replacement xray "$MODE_IN"
     if [[ "$MODE_IN" == *'ALL'* ]]; then begin_deployment_transaction "xray ${MODE_IN} deployment" xray hysteria; else begin_deployment_transaction "xray ${MODE_IN} deployment" xray; fi
     release_ports
-    clean_nat_rules || die '旧的 A-Box HY2 NAT 规则无法完整删除。'
-    clean_input_rules || die '旧的 A-Box INPUT/原生防火墙规则无法完整删除。'
+    clean_nat_rules || die "$(tr_msg cl_nat)"
+    clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     pre_install_setup xray "$MODE_IN"
     get_architecture
@@ -14304,8 +14634,8 @@ deploy_singbox() {
     confirm_deployment_replacement singbox "$MODE_IN"
     begin_deployment_transaction "sing-box ${MODE_IN} deployment" sing-box
     release_ports
-    clean_nat_rules || die '旧的 A-Box HY2 NAT 规则无法完整删除。'
-    clean_input_rules || die '旧的 A-Box INPUT/原生防火墙规则无法完整删除。'
+    clean_nat_rules || die "$(tr_msg cl_nat)"
+    clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     pre_install_setup singbox "$MODE_IN"
     get_architecture
@@ -15920,41 +16250,41 @@ manage_ss_whitelist() {
 }
 
 do_cleanup() {
-    clear; msg "${RED}正在执行清理逻辑...${NC}"
+    clear; msg "${RED}$(tr_msg cu_running)${NC}"
     init_system_environment
     local uninstall_tx_dir='' uninstall_tx_key='' uninstall_tx_value=''
     if [[ "${1:-}" == full ]]; then
-        uninstall_tx_dir=$(mktemp -d /run/A-Box-uninstall-tx.XXXXXX) || die '无法创建完全卸载回滚事务目录。'
-        chmod 700 "$uninstall_tx_dir" || { rm -rf -- "$uninstall_tx_dir"; die '完全卸载回滚事务目录权限设置失败。'; }
+        uninstall_tx_dir=$(mktemp -d /run/A-Box-uninstall-tx.XXXXXX) || die "$(tr_msg cu_tx_dir)"
+        chmod 700 "$uninstall_tx_dir" || { rm -rf -- "$uninstall_tx_dir"; die "$(tr_msg cu_tx_perm)"; }
         ABOX_DEPLOY_TX_BACKUP_DIR="$uninstall_tx_dir"
         ABOX_DEPLOY_TX_EPHEMERAL_DIR="$uninstall_tx_dir"
         ABOX_DIE_HOOK='cleanup_ephemeral_deployment_transaction_dir'
     fi
     begin_deployment_transaction 'full A-Box cleanup' xray sing-box hysteria
     if [[ -n "$uninstall_tx_dir" ]]; then
-        ensure_backup_auth_key || die '无法建立完全卸载事务恢复密钥。'
-        IFS= read -r uninstall_tx_value < "$ABOX_BACKUP_KEY" || die '完全卸载事务恢复密钥读取失败。'
+        ensure_backup_auth_key || die "$(tr_msg cu_tx_key_new)"
+        IFS= read -r uninstall_tx_value < "$ABOX_BACKUP_KEY" || die "$(tr_msg cu_tx_key_read)"
         uninstall_tx_key="$uninstall_tx_dir/recovery.key"
-        write_private_sidecar "$uninstall_tx_key" "$uninstall_tx_value" || die '完全卸载事务恢复密钥保存失败。'
+        write_private_sidecar "$uninstall_tx_key" "$uninstall_tx_value" || die "$(tr_msg cu_tx_key_save)"
         ABOX_DEPLOY_TX_KEY_FILE="$uninstall_tx_key"
     fi
-    stop_all_managed_services || die '清理前无法停止全部 A-Box 托管服务。'
-    clean_nat_rules || die '旧的 A-Box HY2 NAT 规则无法完整删除。'
-    clean_input_rules || die '旧的 A-Box INPUT/原生防火墙规则无法完整删除。'
+    stop_all_managed_services || die "$(tr_msg cu_stop)"
+    clean_nat_rules || die "$(tr_msg cl_nat)"
+    clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
-    kill_managed_residual_pids || die 'A-Box 残留进程无法完整停止。'
-    remove_all_owned_core_families 1 || die '删除 A-Box 托管核心文件失败。'
+    kill_managed_residual_pids || die "$(tr_msg cu_residual)"
+    remove_all_owned_core_families 1 || die "$(tr_msg cl_cores_clean)"
     if [[ -d "$ABOX_DIR/tune-backup" ]]; then
-        restore_vps_tune 1 >/dev/null 2>&1 || die 'VPS 调优恢复失败；检测到非 A-Box 替换文件或系统写入错误。'
+        restore_vps_tune 1 >/dev/null 2>&1 || die "$(tr_msg cu_tune)"
     else
-        remove_owned_auxiliary_path /etc/sysctl.d/99-A-Box-tune.conf || die '删除 A-Box sysctl 配置失败。'
-        remove_owned_auxiliary_path /etc/security/limits.d/A-Box.conf || die '删除 A-Box limits 配置失败。'
+        remove_owned_auxiliary_path /etc/sysctl.d/99-A-Box-tune.conf || die "$(tr_msg cu_sysctl)"
+        remove_owned_auxiliary_path /etc/security/limits.d/A-Box.conf || die "$(tr_msg cu_limits)"
     fi
-    remove_all_abox_cron_blocks || die '删除 A-Box cron 任务失败。'
-    remove_owned_auxiliary_path /etc/fail2ban/jail.d/A-Box.local || die '删除 A-Box Fail2Ban jail 失败。'
-    remove_owned_auxiliary_path /etc/fail2ban/filter.d/A-Box.conf || die '删除 A-Box Fail2Ban filter 失败。'
-    remove_owned_auxiliary_path /etc/logrotate.d/A-Box || die '删除 A-Box logrotate 配置失败。'
-    remove_abox_log_files || die '删除 A-Box 日志失败；检测到非托管或不安全日志文件。'
+    remove_all_abox_cron_blocks || die "$(tr_msg cl_cron)"
+    remove_owned_auxiliary_path /etc/fail2ban/jail.d/A-Box.local || die "$(tr_msg cl_f2b_jail)"
+    remove_owned_auxiliary_path /etc/fail2ban/filter.d/A-Box.conf || die "$(tr_msg cl_f2b_filter)"
+    remove_owned_auxiliary_path /etc/logrotate.d/A-Box || die "$(tr_msg cl_logrotate)"
+    remove_abox_log_files || die "$(tr_msg cl_log_files)"
     # Argo units/binary, WARP/Argo/traffic state and the Wallos fail2ban
     # pair are outside the managed-path lists; remove them best-effort.
     argo_remove_unit argo || true
@@ -15967,45 +16297,45 @@ do_cleanup() {
     wallos_https_teardown >/dev/null 2>&1 || true
     wallos_cftunnel_teardown >/dev/null 2>&1 || true
     wallos_stack_teardown
-    users_registries_wipe || msg "${YELLOW}[!] 用户注册表清理未完成，请手动检查 /etc/ddr/users.d。${NC}"
+    users_registries_wipe || msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"
     abox_zram_teardown
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         if systemctl list-unit-files fail2ban.service >/dev/null 2>&1 && systemctl cat fail2ban.service >/dev/null 2>&1; then
-            systemctl try-restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响 A-Box 清理。${NC}"
+            systemctl try-restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] $(tr_msg cl_f2b_restart_clean)${NC}"
         fi
-        systemctl daemon-reload >/dev/null 2>&1 || die '清理后 systemd daemon-reload 失败。'
+        systemctl daemon-reload >/dev/null 2>&1 || die "$(tr_msg cl_reload_clean)"
     elif [[ "${INIT_SYS:-}" == openrc ]] && [[ -x /etc/init.d/fail2ban ]]; then
-        { rc-service fail2ban status >/dev/null 2>&1 && rc-service fail2ban restart >/dev/null 2>&1 9>&- 10>&-; } || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响 A-Box 清理。${NC}"
+        { rc-service fail2ban status >/dev/null 2>&1 && rc-service fail2ban restart >/dev/null 2>&1 9>&- 10>&-; } || msg "${YELLOW}[!] $(tr_msg cl_f2b_restart_clean)${NC}"
     fi
     if [[ "${1:-}" == full ]]; then
-        remove_abox_shortcut /usr/local/bin/sb || die 'A-Box 快捷入口删除失败；清理未完成。'
+        remove_abox_shortcut /usr/local/bin/sb || die "$(tr_msg cu_shortcut)"
         # Do not destroy ABOX_DIR until managed Swap has been removed successfully.
         # The ownership marker is required for a safe retry when /etc/fstab or swapoff fails.
         if ! remove_abox_swap; then
-            msg "${YELLOW}[!] A-Box Swap 未能自动删除；保留 $ABOX_DIR 归属标记以便稍后安全重试。${NC}"
-            die 'Swap 清理失败；已停止完全清场以避免遗留无归属状态。'
+            msg "${YELLOW}[!] $(tprintf cu_swap_note "$ABOX_DIR")${NC}"
+            die "$(tr_msg cu_swap_die)"
         fi
         wallos_stack_teardown purge-data
-        path_tree_has_mountpoint "$ABOX_DIR" && die '检测到 A-Box 数据目录或其子树存在挂载点；拒绝递归删除，以保留挂载内容。'
+        path_tree_has_mountpoint "$ABOX_DIR" && die "$(tr_msg cu_mount)"
         # Keep the deployment transaction active until the final data-directory
         # deletion has been confirmed. If rm/race/permission errors occur, the
         # transaction hook must still be able to restore the pre-uninstall backup.
-        rm -rf -- "$ABOX_DIR" || die '删除 A-Box 数据目录失败；清理未完成。'
-        [[ ! -e "$ABOX_DIR" && ! -L "$ABOX_DIR" ]] || die 'A-Box 数据目录仍然存在；清理未完成。'
+        rm -rf -- "$ABOX_DIR" || die "$(tr_msg cu_datadir)"
+        [[ ! -e "$ABOX_DIR" && ! -L "$ABOX_DIR" ]] || die "$(tr_msg cu_datadir_left)"
         commit_deployment_transaction
-        msg "${GREEN}完全清理完成。${NC}"
+        msg "${GREEN}$(tr_msg cu_full_done)${NC}"
         exit 0
     fi
-    remove_abox_env_file || die '清理 A-Box .env 失败；检测到非托管或不安全状态文件。'
+    remove_abox_env_file || die "$(tr_msg cl_env_clean)"
     for runtime_file in "$ABOX_DIR/traffic_monitor.sh" "$ABOX_DIR/geo_update.sh" "$ABOX_DIR/socket_probe.sh"; do
-        remove_owned_runtime_helper "$runtime_file" || die "清理 A-Box 运行文件失败: $runtime_file"
+        remove_owned_runtime_helper "$runtime_file" || die "$(tprintf cl_runtime_clean "$runtime_file")"
     done
-    remove_sni_candidate_cache || die '清理 A-Box SNI 候选缓存失败或路径不安全。'
-    if [[ -f "$DEPS_MARKER" && ! -L "$DEPS_MARKER" ]]; then rm -f -- "$DEPS_MARKER" || die '清理 A-Box 依赖标记失败。'; fi
+    remove_sni_candidate_cache || die "$(tr_msg cl_sni_clean)"
+    if [[ -f "$DEPS_MARKER" && ! -L "$DEPS_MARKER" ]]; then rm -f -- "$DEPS_MARKER" || die "$(tr_msg cl_deps_clean)"; fi
     setup_shortcut
     commit_deployment_transaction
-    remove_abox_swap || msg "${YELLOW}[!] A-Box Swap 未能自动删除；为安全起见保留现状。${NC}"
-    msg "${GREEN}代理系统已销毁，保留 A-Box 托管的 sb 入口。${NC}"
+    remove_abox_swap || msg "${YELLOW}[!] $(tr_msg cl_swap_keep)${NC}"
+    msg "${GREEN}$(tr_msg cu_proxy_done)${NC}"
     pause_return
 }
 
@@ -16276,7 +16606,7 @@ clear_all_protocols() {
     done
     argo_remove_unit argo || true
     if [[ -f /etc/hysteria/config.yaml ]]; then _remove_hy2_official; fi
-    users_registries_wipe || msg "${YELLOW}[!] 用户注册表清理未完成，请手动检查 /etc/ddr/users.d。${NC}"
+    users_registries_wipe || msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"
     rm -f -- /etc/ddr/standalone-links.d/*.link 2>/dev/null || true
     ( setup_active_defense ) >/dev/null 2>&1 || true
     msg "${GREEN}$(tr_msg cl_all_done)${NC}"
@@ -16309,36 +16639,36 @@ check_virgin_state() {
     if [[ -t 1 ]]; then
         command clear || true
     fi
-    init_system_environment || die '初始化系统环境失败。'
-    msg "${YELLOW}删除全部节点与环境初始化 / Delete all nodes and perform environment initialization${NC}"
+    init_system_environment || die "$(tr_msg vg_init_fail)"
+    msg "${YELLOW}$(tr_msg vg_title)${NC}"
     local confirm_virgin=""
     if [[ -t 0 ]]; then
-        read -r -p '确定执行环境深度自愈吗？[Y/N]: ' confirm_virgin || confirm_virgin='N'
+        read -r -p "$(tr_msg vg_confirm)" confirm_virgin || confirm_virgin='N'
     else
         confirm_virgin="${ABOX_YES:-N}"
     fi
     [[ -n "$confirm_virgin" ]] || confirm_virgin='N'
-    is_yes "$confirm_virgin" || { msg "${GREEN}操作已取消。${NC}"; pause_return; return 0; }
+    is_yes "$confirm_virgin" || { msg "${GREEN}$(tr_msg vg_cancelled)${NC}"; pause_return; return 0; }
     : "${ABOX_DIR:?ABOX_DIR 未定义}"
-    begin_deployment_transaction 'environment reset' xray sing-box hysteria || die '开启环境重置事务失败。'
-    preflight_reset_ownership || die '环境重置预检失败；检测到非托管、挂载或不安全文件，已中止。'
-    stop_all_managed_services || die '环境重置前无法停止全部 A-Box 托管服务。'
-    clean_nat_rules || die '旧的 A-Box HY2 NAT 规则无法完整删除。'
-    clean_input_rules || die '旧的 A-Box INPUT/原生防火墙规则无法完整删除。'
+    begin_deployment_transaction 'environment reset' xray sing-box hysteria || die "$(tr_msg vg_tx_fail)"
+    preflight_reset_ownership || die "$(tr_msg vg_preflight_fail)"
+    stop_all_managed_services || die "$(tr_msg vg_stop)"
+    clean_nat_rules || die "$(tr_msg cl_nat)"
+    clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
-    remove_all_abox_cron_blocks || die '删除 A-Box cron 任务失败。'
+    remove_all_abox_cron_blocks || die "$(tr_msg cl_cron)"
     # Menu 17 deep self-heal: pass force_heal=1 explicitly (never via environment).
-    remove_all_owned_core_families 1 || die '环境重置时删除 A-Box 托管核心文件失败。'
-    remove_abox_env_file || die '环境重置时清理 A-Box .env 失败；检测到非托管或不安全状态文件。'
+    remove_all_owned_core_families 1 || die "$(tr_msg cl_cores_reset)"
+    remove_abox_env_file || die "$(tr_msg cl_env_reset)"
     for runtime_file in "$ABOX_DIR/traffic_monitor.sh" "$ABOX_DIR/geo_update.sh" "$ABOX_DIR/socket_probe.sh"; do
-        remove_owned_runtime_helper "$runtime_file" || die "环境重置时删除 A-Box 运行文件失败: $runtime_file"
+        remove_owned_runtime_helper "$runtime_file" || die "$(tprintf cl_runtime_reset "$runtime_file")"
     done
-    remove_sni_candidate_cache || die '环境重置时删除 A-Box SNI 缓存失败或路径不安全。'
-    if [[ -f "$DEPS_MARKER" && ! -L "$DEPS_MARKER" ]]; then rm -f -- "$DEPS_MARKER" || die '环境重置时删除 A-Box 依赖标记失败。'; fi
-    remove_owned_auxiliary_path /etc/fail2ban/jail.d/A-Box.local || die '删除 A-Box Fail2Ban jail 失败。'
-    remove_owned_auxiliary_path /etc/fail2ban/filter.d/A-Box.conf || die '删除 A-Box Fail2Ban filter 失败。'
-    remove_owned_auxiliary_path /etc/logrotate.d/A-Box || die '删除 A-Box logrotate 配置失败。'
-    remove_abox_log_files || die '删除 A-Box 日志失败；检测到非托管或不安全日志文件。'
+    remove_sni_candidate_cache || die "$(tr_msg cl_sni_reset)"
+    if [[ -f "$DEPS_MARKER" && ! -L "$DEPS_MARKER" ]]; then rm -f -- "$DEPS_MARKER" || die "$(tr_msg cl_deps_reset)"; fi
+    remove_owned_auxiliary_path /etc/fail2ban/jail.d/A-Box.local || die "$(tr_msg cl_f2b_jail)"
+    remove_owned_auxiliary_path /etc/fail2ban/filter.d/A-Box.conf || die "$(tr_msg cl_f2b_filter)"
+    remove_owned_auxiliary_path /etc/logrotate.d/A-Box || die "$(tr_msg cl_logrotate)"
+    remove_abox_log_files || die "$(tr_msg cl_log_files)"
     # Argo units/binary, WARP/Argo/traffic state and the Wallos fail2ban
     # pair are outside the managed-path lists; remove them best-effort.
     argo_remove_unit argo || true
@@ -16355,15 +16685,15 @@ check_virgin_state() {
     wallos_stack_teardown
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         if systemctl list-unit-files fail2ban.service >/dev/null 2>&1 && systemctl cat fail2ban.service >/dev/null 2>&1; then
-            systemctl try-restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响环境初始化。${NC}"
+            systemctl try-restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] $(tr_msg cl_f2b_restart_reset)${NC}"
         fi
-        systemctl daemon-reload >/dev/null 2>&1 || die '环境初始化后的 systemd daemon-reload 失败。'
+        systemctl daemon-reload >/dev/null 2>&1 || die "$(tr_msg cl_reload_reset)"
     elif [[ "${INIT_SYS:-}" == openrc ]] && [[ -x /etc/init.d/fail2ban ]]; then
-        { rc-service fail2ban status >/dev/null 2>&1 && rc-service fail2ban restart >/dev/null 2>&1 9>&- 10>&-; } || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响环境初始化。${NC}"
+        { rc-service fail2ban status >/dev/null 2>&1 && rc-service fail2ban restart >/dev/null 2>&1 9>&- 10>&-; } || msg "${YELLOW}[!] $(tr_msg cl_f2b_restart_reset)${NC}"
     fi
     commit_deployment_transaction
-    remove_abox_swap || msg "${YELLOW}[!] A-Box Swap 未能自动删除；为安全起见保留现状。${NC}"
-    msg "${GREEN}环境初始化完成；非 A-Box 同名安装未被删除。${NC}"
+    remove_abox_swap || msg "${YELLOW}[!] $(tr_msg cl_swap_keep)${NC}"
+    msg "${GREEN}$(tr_msg vg_done)${NC}"
     pause_return
 }
 
@@ -26867,12 +27197,12 @@ socks5_toolbox_entry() {
 clean_uninstall_menu() {
     clear
     msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${RED}深度卸载系统 / Deep Unloading System${NC}"
+    msg "${BOLD}${RED}$(tr_msg um_title)${NC}"
     msg "${CYAN}======================================================================${NC}"
-    msg "${YELLOW}1. 完全物理清场 (销毁节点、配置、防火墙映射与 sb 入口)${NC}"
-    msg "${YELLOW}2. 保留脚本与清场 (销毁节点配置，保留控制台与 sb 入口)${NC}"
-    msg "${CYAN}0. 取消并返回${NC}"
-    read -r -p '请输入执行代码 [0-2]: ' un_choice
+    msg "${YELLOW}$(tr_msg um_item1)${NC}"
+    msg "${YELLOW}$(tr_msg um_item2)${NC}"
+    msg "${CYAN}$(tr_msg um_back)${NC}"
+    read -r -p "$(tr_msg um_prompt)" un_choice
     case "$un_choice" in
         1) auto_backup_prompt bk_op_full '/root/A-Box-backups'; do_cleanup full ;;
         2) auto_backup_prompt bk_op_keep "$ABOX_DIR/backups"; do_cleanup keep ;;

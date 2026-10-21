@@ -25,6 +25,14 @@
 
 ![主選單](docs/showcase-menu.png)
 
+綜合工具箱（選單 11）：
+
+![綜合工具箱](docs/showcase-toolbox.png)
+
+更多協議（選單 18）：
+
+![更多協議](docs/showcase-more-protocols.png)
+
 ## 這是什麼
 
 A-Box 是一個單一檔案 Bash 腳本（`install.sh`，約 30,000 行），用於在 Linux VPS 上部署和維護代理與網路服務。它負責安裝和設定 Xray、sing-box 與官方 Hysteria 2 伺服器端，產生用戶端設定，並把日常維運——防火牆規則、Fail2Ban 防護、DNS 設定、備份、升級與診斷——收進一個六種語言的互動選單。你在選單裡選定之前，腳本不會部署任何東西；破壞性操作都會先要求確認。

@@ -15624,7 +15624,7 @@ apply_vps_tune() {
             rm -rf -- "$snapshot_tmp"; die 'BBR 模块自动加载配置备份失败。'
         fi
         : > "$snapshot_tmp/sysctl.original" || { rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原始值快照创建失败。'; }
-        for key in fs.file-max fs.inotify.max_user_instances net.ipv4.tcp_syncookies net.ipv4.tcp_fin_timeout net.ipv4.tcp_keepalive_time net.ipv4.tcp_max_syn_backlog net.ipv4.tcp_max_tw_buckets net.ipv4.tcp_fastopen net.ipv4.tcp_mtu_probing net.ipv4.tcp_notsent_lowat net.core.netdev_max_backlog net.core.somaxconn net.core.default_qdisc net.ipv4.tcp_congestion_control; do
+        for key in fs.file-max fs.inotify.max_user_instances net.ipv4.tcp_syncookies net.ipv4.tcp_fin_timeout net.ipv4.tcp_keepalive_time net.ipv4.tcp_max_syn_backlog net.ipv4.tcp_max_tw_buckets net.ipv4.tcp_fastopen net.ipv4.tcp_mtu_probing net.ipv4.tcp_notsent_lowat net.core.netdev_max_backlog net.core.somaxconn net.core.rmem_max net.core.wmem_max net.ipv4.tcp_rmem net.ipv4.tcp_wmem net.ipv4.tcp_slow_start_after_idle net.ipv4.ip_local_port_range net.core.default_qdisc net.ipv4.tcp_congestion_control; do
             value=$(sysctl -n "$key" 2>/dev/null) || continue
             printf '%s=%s\n' "$key" "$value" >> "$snapshot_tmp/sysctl.original" || { rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原始值快照写入失败。'; }
         done
@@ -15653,6 +15653,13 @@ EOF_LIMITS
     __abox_add_sysctl net.ipv4.tcp_notsent_lowat 16384 "$tmp"
     __abox_add_sysctl net.core.netdev_max_backlog 250000 "$tmp"
     __abox_add_sysctl net.core.somaxconn 32768 "$tmp"
+    __abox_add_sysctl net.core.rmem_max 16777216 "$tmp"
+    __abox_add_sysctl net.core.wmem_max 16777216 "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_rmem '4096 87380 16777216' "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_wmem '4096 65536 16777216' "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_keepalive_time 600 "$tmp"
+    __abox_add_sysctl net.ipv4.tcp_slow_start_after_idle 0 "$tmp"
+    __abox_add_sysctl net.ipv4.ip_local_port_range '10240 65535' "$tmp"
     if modprobe tcp_bbr >/dev/null 2>&1; then bbr_loaded=1; fi
     available=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
     if grep -qw bbr <<< "$available"; then

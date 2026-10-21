@@ -592,6 +592,132 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:sr_title) echo 'SNI 优选记录' ;;
+        en:sr_title) echo 'SNI Preference Records' ;;
+        ru:sr_title) echo 'Записи подбора SNI' ;;
+        fa:sr_title) echo 'سوابق بهینه‌سازی SNI' ;;
+        zh-tw:sr_title) echo 'SNI 優選記錄' ;;
+        ja:sr_title) echo 'SNI 優先レコード' ;;
+        zh:sr_saved) echo '[%s] 保存路径: %s | 更新时间: %s' ;;
+        en:sr_saved) echo '[%s] Saved: %s | Updated: %s' ;;
+        ru:sr_saved) echo '[%s] Сохранено: %s | Обновлено: %s' ;;
+        fa:sr_saved) echo '[%s] ذخیره شد: %s | به‌روزرسانی: %s' ;;
+        zh-tw:sr_saved) echo '[%s] 儲存路徑: %s | 更新時間: %s' ;;
+        ja:sr_saved) echo '[%s] 保存先: %s | 更新日時: %s' ;;
+        zh:pm_manual) echo '0. 手动输入' ;;
+        en:pm_manual) echo '0. Manual input' ;;
+        ru:pm_manual) echo '0. Ввод вручную' ;;
+        fa:pm_manual) echo '0. ورودی دستی' ;;
+        zh-tw:pm_manual) echo '0. 手動輸入' ;;
+        ja:pm_manual) echo '0. 手動入力' ;;
+        zh:pm_paired) echo 'IPv4: %s，自动配对 IPv6: %s' ;;
+        en:pm_paired) echo 'IPv4: %s, auto-paired IPv6: %s' ;;
+        ru:pm_paired) echo 'IPv4: %s, автоматически подобран IPv6: %s' ;;
+        fa:pm_paired) echo 'IPv4: %s، IPv6 جفت‌شده خودکار: %s' ;;
+        zh-tw:pm_paired) echo 'IPv4: %s，自動配對 IPv6: %s' ;;
+        ja:pm_paired) echo 'IPv4: %s、自動ペアリング IPv6: %s' ;;
+        zh:wl_mode_title) echo 'Wallos 访问方式：' ;;
+        en:wl_mode_title) echo 'Wallos access mode:' ;;
+        ru:wl_mode_title) echo 'Способ доступа к Wallos:' ;;
+        fa:wl_mode_title) echo 'روش دسترسی به Wallos:' ;;
+        zh-tw:wl_mode_title) echo 'Wallos 存取方式：' ;;
+        ja:wl_mode_title) echo 'Wallos のアクセス方式:' ;;
+        zh:wl_mode_1) echo '  [1] 公网直连 HTTPS（任意设备打开，全程加密、证书自动续期）' ;;
+        en:wl_mode_1) echo '  [1] Public HTTPS (any device; encrypted, auto-renewed cert)' ;;
+        ru:wl_mode_1) echo '  [1] Публичный HTTPS (любое устройство; шифрование, автопродление сертификата)' ;;
+        fa:wl_mode_1) echo '  [1] HTTPS عمومی (هر دستگاه؛ رمزنگاری، تمدید خودکار گواهی)' ;;
+        zh-tw:wl_mode_1) echo '  [1] 公網直連 HTTPS（任意裝置開啟，全程加密、憑證自動續期）' ;;
+        ja:wl_mode_1) echo '  [1] 公開 HTTPS（任意のデバイスで接続、暗号化、証明書自動更新）' ;;
+        zh:wl_mode_2) echo '  [2] 仅本机（用 SSH 隧道访问）' ;;
+        en:wl_mode_2) echo '  [2] Localhost only (SSH tunnel)' ;;
+        ru:wl_mode_2) echo '  [2] Только локально (SSH-туннель)' ;;
+        fa:wl_mode_2) echo '  [2] فقط محلی (تونل SSH)' ;;
+        zh-tw:wl_mode_2) echo '  [2] 僅本機（用 SSH 隧道存取）' ;;
+        ja:wl_mode_2) echo '  [2] ローカルホストのみ（SSH トンネル）' ;;
+        zh:wl_mode_3) echo '  [3] CF 隧道（需自备 Cloudflare 域名，零开放端口）' ;;
+        en:wl_mode_3) echo '  [3] Cloudflare Tunnel (needs your domain on Cloudflare; zero open ports)' ;;
+        ru:wl_mode_3) echo '  [3] Туннель Cloudflare (нужен ваш домен на Cloudflare; ноль открытых портов)' ;;
+        fa:wl_mode_3) echo '  [3] تونل Cloudflare (نیازمند دامنه شما در Cloudflare؛ بدون پورت باز)' ;;
+        zh-tw:wl_mode_3) echo '  [3] CF 隧道（需自備 Cloudflare 網域，零開放連接埠）' ;;
+        ja:wl_mode_3) echo '  [3] Cloudflare Tunnel（Cloudflare 上のドメインが必要、開放ポートなし）' ;;
+        zh:wl_mode_4) echo '  [4] 公网明文 HTTP（容灾用，无加密）' ;;
+        en:wl_mode_4) echo '  [4] Public HTTP (disaster recovery; no encryption)' ;;
+        ru:wl_mode_4) echo '  [4] Публичный HTTP (аварийный режим; без шифрования)' ;;
+        fa:wl_mode_4) echo '  [4] HTTP عمومی (بازیابی بحران؛ بدون رمزنگاری)' ;;
+        zh-tw:wl_mode_4) echo '  [4] 公網明文 HTTP（容災用，無加密）' ;;
+        ja:wl_mode_4) echo '  [4] 公開 HTTP（災害復旧用、暗号化なし）' ;;
+        zh:wl_choose) echo '请选择 [1]: ' ;;
+        en:wl_choose) echo 'Choose [1]: ' ;;
+        ru:wl_choose) echo 'Выберите [1]: ' ;;
+        fa:wl_choose) echo 'انتخاب کنید [1]: ' ;;
+        zh-tw:wl_choose) echo '請選擇 [1]: ' ;;
+        ja:wl_choose) echo '選択してください [1]: ' ;;
+        zh:wl_no_hostname) echo '未提供有效域名，CF 隧道无法建立；本次按「仅本机」安装，准备好后重跑安装选 [3]。' ;;
+        en:wl_no_hostname) echo 'No valid hostname given; the tunnel cannot be set up. Installing as localhost-only this time - rerun and choose [3] when ready.' ;;
+        ru:wl_no_hostname) echo 'Не указан допустимый домен; туннель создать нельзя. В этот раз установка выполняется как «только локально» — подготовьтесь и запустите установку снова, выбрав [3].' ;;
+        fa:wl_no_hostname) echo 'نام میزبان معتبری داده نشد؛ تونل قابل ایجاد نیست. این بار نصب به‌صورت «فقط محلی» انجام می‌شود — آماده که شدید، نصب را دوباره اجرا و [3] را انتخاب کنید.' ;;
+        zh-tw:wl_no_hostname) echo '未提供有效網域，CF 隧道無法建立；本次按「僅本機」安裝，準備好後重跑安裝選 [3]。' ;;
+        ja:wl_no_hostname) echo '有効なドメインが指定されていないため、トンネルを作成できません。今回は「ローカルホストのみ」でインストールします。準備ができたらインストールを再実行し、[3] を選んでください。' ;;
+        zh:wl_no_token) echo '未提供隧道令牌，CF 隧道无法建立；本次按「仅本机」安装，准备好后重跑安装选 [3]。' ;;
+        en:wl_no_token) echo 'No tunnel token given; the tunnel cannot be set up. Installing as localhost-only this time - rerun and choose [3] when ready.' ;;
+        ru:wl_no_token) echo 'Не указан токен туннеля; туннель создать нельзя. В этот раз установка выполняется как «только локально» — подготовьтесь и запустите установку снова, выбрав [3].' ;;
+        fa:wl_no_token) echo 'توکن تونل داده نشد؛ تونل قابل ایجاد نیست. این بار نصب به‌صورت «فقط محلی» انجام می‌شود — آماده که شدید، نصب را دوباره اجرا و [3] را انتخاب کنید.' ;;
+        zh-tw:wl_no_token) echo '未提供隧道權杖，CF 隧道無法建立；本次按「僅本機」安裝，準備好後重跑安裝選 [3]。' ;;
+        ja:wl_no_token) echo 'トンネルトークンが指定されていないため、トンネルを作成できません。今回は「ローカルホストのみ」でインストールします。準備ができたらインストールを再実行し、[3] を選んでください。' ;;
+        zh:wl_port_swap) echo '公网 HTTPS 已自动换用随机高位端口：%s → %s（新网址以结尾为准）。' ;;
+        en:wl_port_swap) echo 'Public HTTPS uses a random high port: %s -> %s; use the URL printed at the end.' ;;
+        ru:wl_port_swap) echo 'Публичный HTTPS автоматически перешёл на случайный высокий порт: %s → %s (используйте URL в конце).' ;;
+        fa:wl_port_swap) echo 'HTTPS عمومی به‌طور خودکار به پورت بالای تصادفی %s ← %s تغییر کرد؛ از URL انتهای خروجی استفاده کنید.' ;;
+        zh-tw:wl_port_swap) echo '公網 HTTPS 已自動換用隨機高位連接埠：%s → %s（新網址以結尾為準）。' ;;
+        ja:wl_port_swap) echo '公開 HTTPS はランダムな高ポートへ自動切替しました: %s → %s（最後に表示される URL を使用してください）。' ;;
+        zh:wl_confirm_https) echo 'Wallos 将通过 HTTPS 对外提供服务（IP 证书自动续期），应用本身仍只绑定本机。是否继续？[Y/N]: ' ;;
+        en:wl_confirm_https) echo 'Wallos will be served over HTTPS (auto-renewed IP certificate); the app itself stays on localhost. Continue? [Y/N]: ' ;;
+        ru:wl_confirm_https) echo 'Wallos будет доступен по HTTPS (IP-сертификат с автопродлением); само приложение останется только на localhost. Продолжить? [Y/N]: ' ;;
+        fa:wl_confirm_https) echo 'Wallos از طریق HTTPS ارائه می‌شود (گواهی IP با تمدید خودکار)؛ خود برنامه فقط روی localhost می‌ماند. ادامه می‌دهید؟ [Y/N]: ' ;;
+        zh-tw:wl_confirm_https) echo 'Wallos 將透過 HTTPS 對外提供服務（IP 憑證自動續期），應用本身仍只綁定本機。是否繼續？[Y/N]: ' ;;
+        ja:wl_confirm_https) echo 'Wallos を HTTPS で公開します（IP 証明書は自動更新）。アプリ自体はローカルホストにのみバインドされます。続行しますか？[Y/N]: ' ;;
+        zh:wl_confirm_http) echo 'Wallos 将以公网明文 HTTP 发布（无加密；容灾模式）。是否继续？[Y/N]: ' ;;
+        en:wl_confirm_http) echo 'Wallos will be published over plain HTTP (no encryption; disaster-recovery mode). Continue? [Y/N]: ' ;;
+        ru:wl_confirm_http) echo 'Wallos будет опубликован по открытому HTTP (без шифрования; аварийный режим). Продолжить? [Y/N]: ' ;;
+        fa:wl_confirm_http) echo 'Wallos از طریق HTTP ساده منتشر می‌شود (بدون رمزنگاری؛ حالت بازیابی بحران). ادامه می‌دهید؟ [Y/N]: ' ;;
+        zh-tw:wl_confirm_http) echo 'Wallos 將以公網明文 HTTP 發布（無加密；容災模式）。是否繼續？[Y/N]: ' ;;
+        ja:wl_confirm_http) echo 'Wallos を平文 HTTP で公開します（暗号化なし、災害復旧モード）。続行しますか？[Y/N]: ' ;;
+        zh:wl_confirm_cf) echo 'Wallos 将通过 Cloudflare 隧道对外提供服务（零入站端口），应用本身仍只绑定本机。是否继续？[Y/N]: ' ;;
+        en:wl_confirm_cf) echo 'Wallos will be served through a Cloudflare Tunnel (zero inbound ports); the app itself stays on localhost. Continue? [Y/N]: ' ;;
+        ru:wl_confirm_cf) echo 'Wallos будет доступен через туннель Cloudflare (ноль входящих портов); само приложение останется только на localhost. Продолжить? [Y/N]: ' ;;
+        fa:wl_confirm_cf) echo 'Wallos از طریق تونل Cloudflare ارائه می‌شود (بدون پورت ورودی)؛ خود برنامه فقط روی localhost می‌ماند. ادامه می‌دهید؟ [Y/N]: ' ;;
+        zh-tw:wl_confirm_cf) echo 'Wallos 將透過 Cloudflare 隧道對外提供服務（零入站連接埠），應用本身仍只綁定本機。是否繼續？[Y/N]: ' ;;
+        ja:wl_confirm_cf) echo 'Wallos を Cloudflare Tunnel 経由で公開します（インバウンドポートなし）。アプリ自体はローカルホストにのみバインドされます。続行しますか？[Y/N]: ' ;;
+        zh:wl_fb_prompt) echo 'HTTPS 搭建失败。是否回退为公网明文 HTTP（容灾模式、无加密）？[Y/N]: ' ;;
+        en:wl_fb_prompt) echo 'HTTPS setup failed. Fall back to plain public HTTP (disaster-recovery mode, no encryption)? [Y/N]: ' ;;
+        ru:wl_fb_prompt) echo 'Не удалось настроить HTTPS. Откатиться на публичный HTTP (аварийный режим, без шифрования)? [Y/N]: ' ;;
+        fa:wl_fb_prompt) echo 'راه‌اندازی HTTPS ناموفق بود. به HTTP عمومی ساده برگردیم (حالت بازیابی بحران، بدون رمزنگاری)؟ [Y/N]: ' ;;
+        zh-tw:wl_fb_prompt) echo 'HTTPS 搭建失敗。是否回退為公網明文 HTTP（容災模式、無加密）？[Y/N]: ' ;;
+        ja:wl_fb_prompt) echo 'HTTPS のセットアップに失敗しました。公開 HTTP（災害復旧モード、暗号化なし）にフォールバックしますか？[Y/N]: ' ;;
+        zh:wl_note_http) echo '容灾模式：公网明文 HTTP（无加密）。请设强管理员密码，Fail2Ban 会盯登录爆破；证书通道恢复后建议切回 HTTPS 或 CF 隧道。' ;;
+        en:wl_note_http) echo 'Disaster-recovery mode: plain HTTP (no encryption). Use a strong admin password; Fail2Ban watches logins. Switch back to HTTPS or the CF Tunnel once the certificate path works again.' ;;
+        ru:wl_note_http) echo 'Аварийный режим: открытый HTTP (без шифрования). Задайте надёжный пароль администратора; Fail2Ban следит за попытками входа. Когда путь сертификата снова заработает, вернитесь на HTTPS или туннель CF.' ;;
+        fa:wl_note_http) echo 'حالت بازیابی بحران: HTTP ساده (بدون رمزنگاری). رمز مدیر قوی بگذارید؛ Fail2Ban ورودها را زیر نظر دارد؛ وقتی مسیر گواهی درست شد، به HTTPS یا تونل CF برگردید.' ;;
+        zh-tw:wl_note_http) echo '容災模式：公網明文 HTTP（無加密）。請設強管理員密碼，Fail2Ban 會盯登入爆破；憑證通道恢復後建議切回 HTTPS 或 CF 隧道。' ;;
+        ja:wl_note_http) echo '災害復旧モード：平文 HTTP（暗号化なし）。強力な管理者パスワードを設定してください。Fail2Ban がログイン試行を監視します。証明書の経路が復旧したら HTTPS または CF トンネルに戻してください。' ;;
+        zh:wl_note_https) echo '已启用 HTTPS：全程加密，证书自动续期，无需人工维护。' ;;
+        en:wl_note_https) echo 'HTTPS is on: traffic is encrypted end to the server; the certificate renews automatically.' ;;
+        ru:wl_note_https) echo 'HTTPS включён: трафик шифруется до сервера; сертификат продлевается автоматически.' ;;
+        fa:wl_note_https) echo 'HTTPS فعال است: ترافیک تا سرور رمزنگاری می‌شود؛ گواهی به‌طور خودکار تمدید می‌شود.' ;;
+        zh-tw:wl_note_https) echo '已啟用 HTTPS：全程加密，憑證自動續期，無需人工維護。' ;;
+        ja:wl_note_https) echo 'HTTPS が有効です：サーバーまで暗号化され、証明書は自動更新されます。' ;;
+        zh:wl_note_cf) echo '已启用 CF 隧道：零入站端口、真实 IP 不暴露，HTTPS 由 Cloudflare 边缘终结。' ;;
+        en:wl_note_cf) echo 'Cloudflare Tunnel is on: zero inbound ports, the real IP stays hidden, HTTPS is terminated at the Cloudflare edge.' ;;
+        ru:wl_note_cf) echo 'Туннель Cloudflare включён: ноль входящих портов, реальный IP скрыт, HTTPS завершается на границе Cloudflare.' ;;
+        fa:wl_note_cf) echo 'تونل Cloudflare فعال است: بدون پورت ورودی، IP واقعی پنهان می‌ماند و HTTPS در لبه Cloudflare پایان می‌یابد.' ;;
+        zh-tw:wl_note_cf) echo '已啟用 CF 隧道：零入站連接埠、真實 IP 不暴露，HTTPS 由 Cloudflare 邊緣終結。' ;;
+        ja:wl_note_cf) echo 'CF トンネルが有効です：インバウンドポートなし、実 IP は隠され、HTTPS は Cloudflare エッジで終端します。' ;;
+        zh:wl_health_fail) echo 'Wallos 健康检查未通过：容器在重启循环或数据库不完整（核心表缺失），实际不可用。请检查：docker logs wallos' ;;
+        en:wl_health_fail) echo 'Wallos health check FAILED: the container is restart-looping or the database is incomplete (core tables missing). It is NOT actually usable - inspect: docker logs wallos' ;;
+        ru:wl_health_fail) echo 'Проверка состояния Wallos НЕ пройдена: контейнер в цикле перезапуска или база данных неполна (нет основных таблиц). Фактически неработоспособно — смотрите: docker logs wallos' ;;
+        fa:wl_health_fail) echo 'بررسی سلامت Wallos ناموفق بود: کانتینر در چرخه راه‌اندازی مجدد است یا پایگاه داده ناقص است (جدول‌های اصلی نیست). عملاً قابل استفاده نیست — ببینید: docker logs wallos' ;;
+        zh-tw:wl_health_fail) echo 'Wallos 健康檢查未通過：容器在重啟迴圈或資料庫不完整（核心表缺失），實際不可用。請檢查：docker logs wallos' ;;
+        ja:wl_health_fail) echo 'Wallos のヘルスチェックに失敗しました：コンテナが再起動ループ中か、データベースが不完全（主要テーブル欠落）で、実際には使用できません。確認：docker logs wallos' ;;
         zh:dp_existing) echo '已部署节点（见磁盘配置）' ;;
         en:dp_existing) echo 'existing deployment (on disk)' ;;
         ru:dp_existing) echo 'существующее развёртывание (на диске)' ;;
@@ -19571,8 +19697,7 @@ dns_setup_tri_mode() {
         idx=$((idx+1))
     done
     case "${ABOX_LANG:-zh}" in
-        en) msg "${YELLOW}0. Manual input${NC}" ;;
-        *) msg "${YELLOW}0. 手动输入${NC}" ;;
+        *) msg "${YELLOW}$(tr_msg pm_manual)${NC}" ;;
     esac
     msg "${CYAN}--------------------------------------------------------------------------------${NC}"
 
@@ -19597,8 +19722,7 @@ dns_setup_tri_mode() {
                 v6_auto="$pv6"
                 # Show auto-paired v6, allow override
                 case "${ABOX_LANG:-zh}" in
-                    en) msg "IPv4: ${GREEN}$v4${NC}, auto-paired IPv6: ${CYAN}$v6_auto${NC}" ;;
-                    *) msg "IPv4: ${GREEN}$v4${NC}，自动配对 IPv6: ${CYAN}$v6_auto${NC}" ;;
+                    *) msg "$(tprintf pm_paired "${GREEN}$v4${NC}" "${CYAN}$v6_auto${NC}")" ;;
                 esac
                 read -r -p "IPv6 [Enter=auto $v6_auto]: " input
                 if [[ -n "$input" ]]; then
@@ -20770,17 +20894,8 @@ show_sni_preference_records() {
     local files=() f profile topn="${ABOX_SNI_RECORDS_TOPN:-100}" shown=0 mtime
     msg "${CYAN}======================================================================${NC}"
     case "${ABOX_LANG:-zh}" in
-        en|ru|fa)
-            msg "${BOLD}${GREEN}SNI Preference Records${NC}"
-            ;;
-        ja)
-            msg "${BOLD}${GREEN}SNI 優先レコード${NC}"
-            ;;
-        zh-tw)
-            msg "${BOLD}${GREEN}SNI 優選記錄${NC}"
-            ;;
         *)
-            msg "${BOLD}${GREEN}SNI 优选记录${NC}"
+            msg "${BOLD}${GREEN}$(tr_msg sr_title)${NC}"
             ;;
     esac
     valid_decimal_upto "$topn" 200 || topn=100
@@ -20819,17 +20934,8 @@ show_sni_preference_records() {
         mtime=$(date -r "$f" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || echo 'unknown')
         msg "${BLUE}--------------------------------------------------------------------------------${NC}"
         case "${ABOX_LANG:-zh}" in
-            en|ru|fa)
-                msg "${YELLOW}[${profile}] Saved: ${f} | Updated: ${mtime}${NC}"
-                ;;
-            ja)
-                msg "${YELLOW}[${profile}] 保存先: ${f} | 更新日時: ${mtime}${NC}"
-                ;;
-            zh-tw)
-                msg "${YELLOW}[${profile}] 儲存路徑: ${f} | 更新時間: ${mtime}${NC}"
-                ;;
             *)
-                msg "${YELLOW}[${profile}] 保存路径: ${f} | 更新时间: ${mtime}${NC}"
+                msg "${YELLOW}$(tprintf sr_saved "$profile" "$f" "$mtime")${NC}"
                 ;;
         esac
         sni_render_ranked_report "$f" "$topn" || msg "${YELLOW}[!] 无法读取该记录的分级结果。${NC}"
@@ -24999,8 +25105,7 @@ wallos_install_or_update() {
     elif [[ -t 0 ]]; then
         local _ans=''
         case "${ABOX_LANG:-zh}" in
-            en) msg 'Wallos access mode:'; msg '  [1] Public HTTPS (any device; encrypted, auto-renewed cert)'; msg '  [2] Localhost only (SSH tunnel)'; msg '  [3] Cloudflare Tunnel (needs your domain on Cloudflare; zero open ports)'; msg '  [4] Public HTTP (disaster recovery; no encryption)'; printf 'Choose [1]: ' ;;
-            *) msg 'Wallos 访问方式：'; msg '  [1] 公网直连 HTTPS（任意设备打开，全程加密、证书自动续期）'; msg '  [2] 仅本机（用 SSH 隧道访问）'; msg '  [3] CF 隧道（需自备 Cloudflare 域名，零开放端口）'; msg '  [4] 公网明文 HTTP（容灾用，无加密）'; printf '请选择 [1]: ' ;;
+            *) msg "$(tr_msg wl_mode_title)"; msg "$(tr_msg wl_mode_1)"; msg "$(tr_msg wl_mode_2)"; msg "$(tr_msg wl_mode_3)"; msg "$(tr_msg wl_mode_4)"; printf '%s' "$(tr_msg wl_choose)" ;;
         esac
         read -r _ans || _ans=''
         _bind_chosen=1
@@ -25047,14 +25152,12 @@ wallos_install_or_update() {
         fi
         if [[ ! "$cfhost" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
             case "${ABOX_LANG:-zh}" in
-                en) msg "${RED}No valid hostname given; the tunnel cannot be set up. Installing as localhost-only this time - rerun and choose [3] when ready.${NC}" ;;
-                *) msg "${RED}未提供有效域名，CF 隧道无法建立；本次按「仅本机」安装，准备好后重跑安装选 [3]。${NC}" ;;
+                *) msg "${RED}$(tr_msg wl_no_hostname)${NC}" ;;
             esac
             wmode='local'
         elif [[ -z "$cftoken" && ! -s "$WALLOS_CF_TOKEN_FILE" ]]; then
             case "${ABOX_LANG:-zh}" in
-                en) msg "${RED}No tunnel token given; the tunnel cannot be set up. Installing as localhost-only this time - rerun and choose [3] when ready.${NC}" ;;
-                *) msg "${RED}未提供隧道令牌，CF 隧道无法建立；本次按「仅本机」安装，准备好后重跑安装选 [3]。${NC}" ;;
+                *) msg "${RED}$(tr_msg wl_no_token)${NC}" ;;
             esac
             wmode='local'
         fi
@@ -25074,8 +25177,7 @@ wallos_install_or_update() {
             if [[ -n "$_np" ]]; then
                 if [[ "$pubport" =~ ^[0-9]+$ ]]; then
                     case "${ABOX_LANG:-zh}" in
-                        en) msg "${YELLOW}Public HTTPS uses a random high port: ${pubport} -> ${_np}; use the URL printed at the end.${NC}" ;;
-                        *) msg "${YELLOW}公网 HTTPS 已自动换用随机高位端口：${pubport} → ${_np}（新网址以结尾为准）。${NC}" ;;
+                        *) msg "${YELLOW}$(tprintf wl_port_swap "$pubport" "$_np")${NC}" ;;
                     esac
                 fi
                 pubport="$_np"
@@ -25122,18 +25224,15 @@ wallos_install_or_update() {
     if [[ "$wmode" != local && (( ! _bind_chosen )) ]]; then
         if [[ "$wmode" == https ]]; then
             case "${ABOX_LANG:-zh}" in
-                en) confirm_prompt='Wallos will be served over HTTPS (auto-renewed IP certificate); the app itself stays on localhost. Continue? [Y/N]: ' ;;
-                *) confirm_prompt='Wallos 将通过 HTTPS 对外提供服务（IP 证书自动续期），应用本身仍只绑定本机。是否继续？[Y/N]: ' ;;
+                *) confirm_prompt="$(tr_msg wl_confirm_https)" ;;
             esac
         elif [[ "$wmode" == http ]]; then
             case "${ABOX_LANG:-zh}" in
-                en) confirm_prompt='Wallos will be published over plain HTTP (no encryption; disaster-recovery mode). Continue? [Y/N]: ' ;;
-                *) confirm_prompt='Wallos 将以公网明文 HTTP 发布（无加密；容灾模式）。是否继续？[Y/N]: ' ;;
+                *) confirm_prompt="$(tr_msg wl_confirm_http)" ;;
             esac
         else
             case "${ABOX_LANG:-zh}" in
-                en) confirm_prompt='Wallos will be served through a Cloudflare Tunnel (zero inbound ports); the app itself stays on localhost. Continue? [Y/N]: ' ;;
-                *) confirm_prompt='Wallos 将通过 Cloudflare 隧道对外提供服务（零入站端口），应用本身仍只绑定本机。是否继续？[Y/N]: ' ;;
+                *) confirm_prompt="$(tr_msg wl_confirm_cf)" ;;
             esac
         fi
     fi
@@ -25245,16 +25344,14 @@ wallos_install_or_update() {
             local _fb=0
             if [[ -t 0 ]]; then
                 case "${ABOX_LANG:-zh}" in
-                    en) confirm_yes_no 'HTTPS setup failed. Fall back to plain public HTTP (disaster-recovery mode, no encryption)? [Y/N]: ' && _fb=1 ;;
-                    *) confirm_yes_no 'HTTPS 搭建失败。是否回退为公网明文 HTTP（容灾模式、无加密）？[Y/N]: ' && _fb=1 ;;
+                    *) confirm_yes_no "$(tr_msg wl_fb_prompt)" && _fb=1 ;;
                 esac
             fi
             if (( _fb == 1 )) && wallos_http_rebind "$pubport" "$image" "$tz"; then
                 wmode='http'; port="$pubport"; bind_address='0.0.0.0'
                 wallos_write_state "$image" "$port" "$tz" "$bind_address" http '' "$cfhost" || msg "${YELLOW}Wallos 状态保存失败，重跑安装可修复元数据。${NC}"
                 case "${ABOX_LANG:-zh}" in
-                    en) security_note='Disaster-recovery mode: plain HTTP (no encryption). Use a strong admin password; Fail2Ban watches logins. Switch back to HTTPS or the CF Tunnel once the certificate path works again.' ;;
-                    *) security_note='容灾模式：公网明文 HTTP（无加密）。请设强管理员密码，Fail2Ban 会盯登录爆破；证书通道恢复后建议切回 HTTPS 或 CF 隧道。' ;;
+                    *) security_note="$(tr_msg wl_note_http)" ;;
                 esac
             else
                 msg "${RED}HTTPS 配置未完成：Wallos 已在本机运行，但未对外暴露。修复后重跑安装即可重试。${NC}"
@@ -25262,8 +25359,7 @@ wallos_install_or_update() {
             fi
         fi
         case "${ABOX_LANG:-zh}" in
-            en) security_note='HTTPS is on: traffic is encrypted end to the server; the certificate renews automatically.' ;;
-            *) security_note='已启用 HTTPS：全程加密，证书自动续期，无需人工维护。' ;;
+            *) security_note="$(tr_msg wl_note_https)" ;;
         esac
     elif [[ "$wmode" == cftunnel ]]; then
         if [[ -n "$cftoken" ]]; then
@@ -25276,8 +25372,7 @@ wallos_install_or_update() {
             return 1
         fi
         case "${ABOX_LANG:-zh}" in
-            en) security_note='Cloudflare Tunnel is on: zero inbound ports, the real IP stays hidden, HTTPS is terminated at the Cloudflare edge.' ;;
-            *) security_note='已启用 CF 隧道：零入站端口、真实 IP 不暴露，HTTPS 由 Cloudflare 边缘终结。' ;;
+            *) security_note="$(tr_msg wl_note_cf)" ;;
         esac
     elif [[ "$_old_mode" == https || "$_old_mode" == cftunnel ]]; then
         wallos_https_teardown >/dev/null 2>&1 || true
@@ -25285,8 +25380,7 @@ wallos_install_or_update() {
     fi
     if ! wallos_db_health; then
         case "${ABOX_LANG:-zh}" in
-            en) msg "${RED}Wallos health check FAILED: the container is restart-looping or the database is incomplete (core tables missing). It is NOT actually usable - inspect: docker logs wallos${NC}" ;;
-            *) msg "${RED}Wallos 健康检查未通过：容器在重启循环或数据库不完整（核心表缺失），实际不可用。请检查：docker logs wallos${NC}" ;;
+            *) msg "${RED}$(tr_msg wl_health_fail)${NC}" ;;
         esac
     fi
     wallos_public_urls "$port"

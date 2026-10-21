@@ -592,6 +592,108 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:wl_rs_nonregular) echo '[!] Wallos 备份包含非常规文件（符号链接/硬链接/特殊文件），拒绝处理。' ;;
+        en:wl_rs_nonregular) echo '[!] Wallos backup contains non-regular file (symlink/hardlink/special); refusing.' ;;
+        ru:wl_rs_nonregular) echo '[!] Резервная копия Wallos содержит нерегулярный файл (симлинк/хардлинк/специальный); отказ.' ;;
+        fa:wl_rs_nonregular) echo '[!] نسخه پشتیبان Wallos دارای فایل نامنظم (پیوند نمادین/سخت/ویژه) است؛ رد می‌شود.' ;;
+        zh-tw:wl_rs_nonregular) echo '[!] Wallos 備份包含非常規檔案（符號連結/硬連結/特殊檔案），拒絕處理。' ;;
+        ja:wl_rs_nonregular) echo '[!] Wallos バックアップに通常でないファイル（シンボリックリンク/ハードリンク/特殊ファイル）が含まれています。中止します。' ;;
+        zh:wl_rs_oversized) echo '[!] Wallos 备份包含超大成员（>512MB），拒绝处理。' ;;
+        en:wl_rs_oversized) echo '[!] Wallos backup contains oversized member (>512MB); refusing.' ;;
+        ru:wl_rs_oversized) echo '[!] Резервная копия Wallos содержит слишком большой элемент (>512 МБ); отказ.' ;;
+        fa:wl_rs_oversized) echo '[!] نسخه پشتیبان Wallos دارای عضو بسیار بزرگ (>512MB) است؛ رد می‌شود.' ;;
+        zh-tw:wl_rs_oversized) echo '[!] Wallos 備份包含超大成員（>512MB），拒絕處理。' ;;
+        ja:wl_rs_oversized) echo '[!] Wallos バックアップに大きすぎるメンバー（>512MB）が含まれています。中止します。' ;;
+        zh:wl_rs_toomany) echo '[!] Wallos 备份成员过多（>%s > 10000），拒绝处理。' ;;
+        en:wl_rs_toomany) echo '[!] Wallos backup has too many members (>%s > 10000); refusing.' ;;
+        ru:wl_rs_toomany) echo '[!] В резервной копии Wallos слишком много элементов (>%s > 10000); отказ.' ;;
+        fa:wl_rs_toomany) echo '[!] نسخه پشتیبان Wallos اعضای بسیار زیادی دارد (>‎%s > 10000)؛ رد می‌شود.' ;;
+        zh-tw:wl_rs_toomany) echo '[!] Wallos 備份成員過多（>%s > 10000），拒絕處理。' ;;
+        ja:wl_rs_toomany) echo '[!] Wallos バックアップのメンバー数が多すぎます（>%s > 10000）。中止します。' ;;
+        zh:wl_rs_toobig) echo '[!] Wallos 备份解压后总大小超过 1GB（%s 字节），拒绝处理。' ;;
+        en:wl_rs_toobig) echo '[!] Wallos backup total decompressed size exceeds 1GB (%s bytes); refusing.' ;;
+        ru:wl_rs_toobig) echo '[!] Общий размер резервной копии Wallos после распаковки превышает 1 ГБ (%s байт); отказ.' ;;
+        fa:wl_rs_toobig) echo '[!] حجم کلی نسخه پشتیبان Wallos پس از استخراج از 1GB بیشتر است (%s بایت)؛ رد می‌شود.' ;;
+        zh-tw:wl_rs_toobig) echo '[!] Wallos 備份解壓後總大小超過 1GB（%s 位元組），拒絕處理。' ;;
+        ja:wl_rs_toobig) echo '[!] Wallos バックアップの解凍後合計サイズが 1GB を超えています（%s バイト）。中止します。' ;;
+        zh:wl_rs_incomplete_check) echo '[!] Wallos 恢复回滚未完成；请检查 %s 中保留的原始文件。' ;;
+        en:wl_rs_incomplete_check) echo '[!] Wallos restore rollback INCOMPLETE; check %s for preserved originals.' ;;
+        ru:wl_rs_incomplete_check) echo '[!] Откат восстановления Wallos НЕ ЗАВЕРШЁН; проверьте сохранённые оригиналы в %s.' ;;
+        fa:wl_rs_incomplete_check) echo '[!] بازگشت بازیابی Wallos ناقص است؛ نسخه‌های اصلی نگه‌داشته‌شده را در %s بررسی کنید.' ;;
+        zh-tw:wl_rs_incomplete_check) echo '[!] Wallos 還原回滾未完成；請檢查 %s 中保留的原始檔案。' ;;
+        ja:wl_rs_incomplete_check) echo '[!] Wallos 復元のロールバックが不完全です。保持された原本について %s を確認してください。' ;;
+        zh:wl_rs_incomplete_at) echo '[!] Wallos 恢复回滚未完成；原始文件保留在 %s。' ;;
+        en:wl_rs_incomplete_at) echo '[!] Wallos restore rollback INCOMPLETE; originals preserved at %s.' ;;
+        ru:wl_rs_incomplete_at) echo '[!] Откат восстановления Wallos НЕ ЗАВЕРШЁН; оригиналы сохранены в %s.' ;;
+        fa:wl_rs_incomplete_at) echo '[!] بازگشت بازیابی Wallos ناقص است؛ نسخه‌های اصلی در %s نگه داشته شدند.' ;;
+        zh-tw:wl_rs_incomplete_at) echo '[!] Wallos 還原回滾未完成；原始檔案保留在 %s。' ;;
+        ja:wl_rs_incomplete_at) echo '[!] Wallos 復元のロールバックが不完全です。原本は %s に保持されています。' ;;
+        zh:wl_st_not_installed) echo 'Wallos 尚未安装。' ;;
+        en:wl_st_not_installed) echo 'Wallos is not installed.' ;;
+        ru:wl_st_not_installed) echo 'Wallos не установлен.' ;;
+        fa:wl_st_not_installed) echo 'Wallos نصب نشده است.' ;;
+        zh-tw:wl_st_not_installed) echo 'Wallos 尚未安裝。' ;;
+        ja:wl_st_not_installed) echo 'Wallos はまだインストールされていません。' ;;
+        zh:wl_st_health_ok) echo '健康：正常（容器稳定、数据库完整）' ;;
+        en:wl_st_health_ok) echo 'Health: OK (container stable, database complete)' ;;
+        ru:wl_st_health_ok) echo 'Состояние: OK (контейнер стабилен, база данных полна)' ;;
+        fa:wl_st_health_ok) echo 'سلامت: سالم (کانتینر پایدار، پایگاه داده کامل)' ;;
+        zh-tw:wl_st_health_ok) echo '健康：正常（容器穩定、資料庫完整）' ;;
+        ja:wl_st_health_ok) echo 'ヘルス: 正常（コンテナ安定、データベース完全）' ;;
+        zh:wl_st_health_bad) echo '健康：异常——容器重启循环或数据库不完整，请检查：docker logs wallos' ;;
+        en:wl_st_health_bad) echo 'Health: ABNORMAL - container restart-looping or database incomplete; inspect: docker logs wallos' ;;
+        ru:wl_st_health_bad) echo 'Состояние: СБОЙ - контейнер циклически перезапускается или база данных неполна; проверьте: docker logs wallos' ;;
+        fa:wl_st_health_bad) echo 'سلامت: غیرعادی - کانتینر در چرخه راه‌اندازی مجدد است یا پایگاه داده ناقص است؛ بررسی کنید: docker logs wallos' ;;
+        zh-tw:wl_st_health_bad) echo '健康：異常——容器重啟循環或資料庫不完整，請檢查：docker logs wallos' ;;
+        ja:wl_st_health_bad) echo 'ヘルス: 異常 - コンテナが再起動を繰り返しているか、データベースが不完全です。確認: docker logs wallos' ;;
+        zh:wl_st_cert_exp) echo '证书到期（UTC）：%s（Caddy 自动续期；若到期仍未续上，重跑安装可回退 HTTP 容灾）' ;;
+        en:wl_st_cert_exp) echo 'Certificate expires (UTC): %s (Caddy renews automatically; if it is still not renewed after expiry, re-run the install to fall back to HTTP disaster mode)' ;;
+        ru:wl_st_cert_exp) echo 'Срок действия сертификата (UTC): %s (Caddy продлевает автоматически; если после истечения продления нет, повторный запуск установки вернёт HTTP-режим восстановления)' ;;
+        fa:wl_st_cert_exp) echo 'انقضای گواهی (UTC): %s (Caddy به‌صورت خودکار تمدید می‌کند؛ اگر پس از انقضا تمدید نشد، نصب را دوباره اجرا کنید تا به حالت HTTP بازیابی برگردد)' ;;
+        zh-tw:wl_st_cert_exp) echo '憑證到期（UTC）：%s（Caddy 自動續期；若到期仍未續上，重跑安裝可回退 HTTP 容災）' ;;
+        ja:wl_st_cert_exp) echo '証明書の有効期限（UTC）: %s（Caddy が自動更新します。期限後も更新されない場合は、インストールを再実行すると HTTP 容災モードに戻せます）' ;;
+        zh:wl_st_tls_ok) echo 'TLS 握手：正常（SNI / 无 SNI 双路）' ;;
+        en:wl_st_tls_ok) echo 'TLS handshake: OK (SNI / no-SNI)' ;;
+        ru:wl_st_tls_ok) echo 'TLS-рукопожатие: OK (SNI / без SNI)' ;;
+        fa:wl_st_tls_ok) echo 'دست‌دهی TLS: سالم (SNI / بدون SNI)' ;;
+        zh-tw:wl_st_tls_ok) echo 'TLS 握手：正常（SNI / 無 SNI 雙路）' ;;
+        ja:wl_st_tls_ok) echo 'TLS ハンドシェイク: 正常（SNI / 無 SNI 両経路）' ;;
+        zh:wl_st_tls_fail) echo 'TLS 握手：异常（%s 失败）——浏览器直连 IP 可能被拒绝，重跑 Wallos 安装（模式 1）可修复。' ;;
+        en:wl_st_tls_fail) echo 'TLS handshake: FAILED (%s) - browsers opening the IP URL may be rejected; re-run the Wallos install (mode 1) to repair.' ;;
+        ru:wl_st_tls_fail) echo 'TLS-рукопожатие: СБОЙ (%s) - браузеры при открытии IP-адреса могут получить отказ; повторите установку Wallos (режим 1) для исправления.' ;;
+        fa:wl_st_tls_fail) echo 'دست‌دهی TLS: ناموفق (%s) - ممکن است مرورگرها هنگام باز کردن نشانی IP رد شوند؛ نصب Wallos (حالت 1) را برای تعمیر دوباره اجرا کنید.' ;;
+        zh-tw:wl_st_tls_fail) echo 'TLS 握手：異常（%s 失敗）——瀏覽器直連 IP 可能被拒絕，重跑 Wallos 安裝（模式 1）可修復。' ;;
+        ja:wl_st_tls_fail) echo 'TLS ハンドシェイク: 失敗（%s）- IP URL を開くブラウザが拒否される可能性があります。Wallos インストール（モード 1）を再実行して修復してください。' ;;
+        zh:wl_st_state_missing) echo 'Wallos 状态文件缺失，请检查容器端口映射。' ;;
+        en:wl_st_state_missing) echo 'Wallos state file is missing; inspect the container port mapping.' ;;
+        ru:wl_st_state_missing) echo 'Файл состояния Wallos отсутствует; проверьте публикацию портов контейнера.' ;;
+        fa:wl_st_state_missing) echo 'فایل وضعیت Wallos وجود ندارد؛ نگاشت درگاه کانتینر را بررسی کنید.' ;;
+        zh-tw:wl_st_state_missing) echo 'Wallos 狀態檔案缺失，請檢查容器連接埠映射。' ;;
+        ja:wl_st_state_missing) echo 'Wallos の状態ファイルが見つかりません。コンテナのポートマッピングを確認してください。' ;;
+        zh:wl_bn_none) echo '没有找到由 A-Box 管理的 Wallos。' ;;
+        en:wl_bn_none) echo 'No A-Box-managed Wallos was found.' ;;
+        ru:wl_bn_none) echo 'Wallos под управлением A-Box не найден.' ;;
+        fa:wl_bn_none) echo 'Wallos تحت مدیریت A-Box یافت نشد.' ;;
+        zh-tw:wl_bn_none) echo '沒有找到由 A-Box 管理的 Wallos。' ;;
+        ja:wl_bn_none) echo 'A-Box が管理する Wallos が見つかりません。' ;;
+        zh:wl_bn_fail) echo 'Wallos 备份创建失败；已尽可能恢复之前的容器状态。' ;;
+        en:wl_bn_fail) echo 'Wallos backup creation failed; the previous container state was restored where possible.' ;;
+        ru:wl_bn_fail) echo 'Не удалось создать резервную копию Wallos; прежнее состояние контейнера восстановлено, где это возможно.' ;;
+        fa:wl_bn_fail) echo 'ایجاد نسخه پشتیبان Wallos ناموفق بود؛ وضعیت قبلی کانتینر تا حد امکان بازیابی شد.' ;;
+        zh-tw:wl_bn_fail) echo 'Wallos 備份建立失敗；已盡可能還原之前的容器狀態。' ;;
+        ja:wl_bn_fail) echo 'Wallos バックアップの作成に失敗しました。可能な範囲で以前のコンテナ状態を復元しました。' ;;
+        zh:wl_bn_saved) echo 'Wallos 数据备份已保存：%s' ;;
+        en:wl_bn_saved) echo 'Wallos data backup saved: %s' ;;
+        ru:wl_bn_saved) echo 'Резервная копия данных Wallos сохранена: %s' ;;
+        fa:wl_bn_saved) echo 'نسخه پشتیبان داده‌های Wallos ذخیره شد: %s' ;;
+        zh-tw:wl_bn_saved) echo 'Wallos 資料備份已儲存：%s' ;;
+        ja:wl_bn_saved) echo 'Wallos のデータバックアップを保存しました: %s' ;;
+        zh:wl_bn_restart_fail) echo '备份尝试后 Wallos 无法重新启动。备份路径：%s。请检查 docker logs wallos 并手动启动容器。' ;;
+        en:wl_bn_restart_fail) echo 'Wallos could not be restarted after the backup attempt. Backup path: %s. Check '\''docker logs wallos'\'' and start the container manually.' ;;
+        ru:wl_bn_restart_fail) echo 'Wallos не удалось перезапустить после попытки резервного копирования. Путь копии: %s. Проверьте docker logs wallos и запустите контейнер вручную.' ;;
+        fa:wl_bn_restart_fail) echo 'پس از تلاش برای پشتیبان‌گیری، Wallos دوباره راه‌اندازی نشد. مسیر نسخه پشتیبان: %s. docker logs wallos را بررسی و کانتینر را دستی راه‌اندازی کنید.' ;;
+        zh-tw:wl_bn_restart_fail) echo '備份嘗試後 Wallos 無法重新啟動。備份路徑：%s。請檢查 docker logs wallos 並手動啟動容器。' ;;
+        ja:wl_bn_restart_fail) echo 'バックアップ試行後に Wallos を再起動できませんでした。バックアップパス: %s。docker logs wallos を確認し、コンテナを手動で起動してください。' ;;
         zh:wl_cv_downgrade) echo '拒绝 Wallos 降级：候选版本 %s，已安装 %s。只有在确认 schema 兼容性后才可设置 ABOX_WALLOS_ALLOW_DOWNGRADE=1。' ;;
         en:wl_cv_downgrade) echo 'Refusing Wallos downgrade: candidate %s, installed %s. Set ABOX_WALLOS_ALLOW_DOWNGRADE=1 only after reviewing schema compatibility.' ;;
         ru:wl_cv_downgrade) echo 'Откат Wallos запрещён: кандидат %s, установлено %s. Устанавливайте ABOX_WALLOS_ALLOW_DOWNGRADE=1 только после проверки совместимости схемы.' ;;
@@ -25386,13 +25488,13 @@ wallos_restore_backup() {
         # tar -tv output starts with file type char: - regular, d dir, l symlink, h hardlink, c/b/p/s/D special
         case "${line:0:1}" in
             -|d) ;;
-            *) msg "${RED}[!] Wallos backup contains non-regular file (symlink/hardlink/special); refusing.${NC}" >&2; return 1 ;;
+            *) msg "${RED}$(tr_msg wl_rs_nonregular)${NC}" >&2; return 1 ;;
         esac
         # Size is the 3rd field in tar -tv output.
         local fsize
         fsize=$(awk '{print $3}' <<< "$line" 2>/dev/null || true)
         if [[ "$fsize" =~ ^[0-9]+$ ]] && (( 10#$fsize > 536870912 )); then
-            msg "${RED}[!] Wallos backup contains oversized member (>512MB); refusing.${NC}" >&2
+            msg "${RED}$(tr_msg wl_rs_oversized)${NC}" >&2
             return 1
         fi
         # Fix 2026-10-14: accumulate total decompressed size from tar listing.
@@ -25402,13 +25504,13 @@ wallos_restore_backup() {
         fi
     done <<< "$vlisting"
     if (( member_count > 10000 )); then
-        msg "${RED}[!] Wallos backup has too many members (>$member_count > 10000); refusing.${NC}" >&2
+        msg "${RED}$(tprintf wl_rs_toomany "$member_count")${NC}" >&2
         return 1
     fi
     # Fix 2026-10-14: total decompressed size guard uses summed tar member sizes.
     # (gzip -l is unreliable for multi-member streams; it reports only the last member.)
     if (( total_usize > 1073741824 )); then
-        msg "${RED}[!] Wallos backup total decompressed size exceeds 1GB (${total_usize} bytes); refusing.${NC}" >&2
+        msg "${RED}$(tprintf wl_rs_toobig "$total_usize")${NC}" >&2
         return 1
     fi
     stage=$(umask 077; mktemp -d "$WALLOS_DIR/.restore-stage.XXXXXX") || return 1
@@ -25433,7 +25535,7 @@ wallos_restore_backup() {
                     fi
                 done
                 rm -rf -- "$stage"
-                (( rb_failed == 0 )) || msg "${RED}[!] Wallos restore rollback INCOMPLETE; check $rescue for preserved originals.${NC}" >&2
+                (( rb_failed == 0 )) || msg "${RED}$(tprintf wl_rs_incomplete_check "$rescue")${NC}" >&2
                 return 1
             }
         fi
@@ -25452,7 +25554,7 @@ wallos_restore_backup() {
                 fi
             done
             rm -rf -- "$stage"
-            (( rb_failed == 0 )) || msg "${RED}[!] Wallos restore rollback INCOMPLETE; originals preserved at $rescue.${NC}" >&2
+            (( rb_failed == 0 )) || msg "${RED}$(tprintf wl_rs_incomplete_at "$rescue")${NC}" >&2
             return 1
         fi
     done
@@ -26610,21 +26712,21 @@ wallos_install_or_update() {
 wallos_status() {
     local port
     if ! docker container inspect wallos >/dev/null 2>&1; then
-        case "${ABOX_LANG:-zh}" in en) msg "Wallos is not installed." ;; ru) msg "Wallos не установлен." ;; fa) msg "Wallos نصب نشده است." ;; zh-tw) msg "Wallos 尚未安裝。" ;; ja) msg "Wallos はまだインストールされていません。" ;; *) msg "Wallos 尚未安装。" ;; esac
+        msg "$(tr_msg wl_st_not_installed)"
         return 0
     fi
     docker ps -a --filter name='^/wallos$' --format 'Container: {{.Names}} | Status: {{.Status}} | Image: {{.Image}}'
     if wallos_db_health quick; then
-        case "${ABOX_LANG:-zh}" in en) msg "${GREEN}Health: OK (container stable, database complete)${NC}" ;; *) msg "${GREEN}健康：正常（容器稳定、数据库完整）${NC}" ;; esac
+        msg "${GREEN}$(tr_msg wl_st_health_ok)${NC}"
     else
-        case "${ABOX_LANG:-zh}" in en) msg "${RED}Health: ABNORMAL - container restart-looping or database incomplete; inspect: docker logs wallos${NC}" ;; *) msg "${RED}健康：异常——容器重启循环或数据库不完整，请检查：docker logs wallos${NC}" ;; esac
+        msg "${RED}$(tr_msg wl_st_health_bad)${NC}"
     fi
     if [[ "$(wallos_state_value MODE 2>/dev/null || true)" == https ]]; then
         local _crt='' _exp=''
         _crt=$(find /etc/ddr/wallos-caddy/data -name '*.crt' -type f 2>/dev/null | head -n 1 || true)
         if [[ -n "$_crt" ]] && command -v openssl >/dev/null 2>&1; then
             _exp=$(openssl x509 -enddate -noout -in "$_crt" 2>/dev/null | sed 's/^notAfter=//')
-            [[ -n "$_exp" ]] && msg "证书到期（UTC）：${_exp}（Caddy 自动续期；若到期仍未续上，重跑安装可回退 HTTP 容灾）"
+            msg "$(tprintf wl_st_cert_exp "$_exp")"
         fi
         # Real handshake state (both legs), not just certificate files:
         # a present-but-unselectable certificate reports healthy here no
@@ -26634,15 +26736,15 @@ wallos_status() {
         _wip=$(get_public_ip 2>/dev/null || true)
         if [[ "$_wport" =~ ^[0-9]+$ && "$_wip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && command -v openssl >/dev/null 2>&1; then
             if _legs=$(wallos_tls_handshake_check "$_wport" "$_wip"); then
-                case "${ABOX_LANG:-zh}" in en) msg "${GREEN}TLS handshake: OK (SNI / no-SNI)${NC}" ;; *) msg "${GREEN}TLS 握手：正常（SNI / 无 SNI 双路）${NC}" ;; esac
+                msg "${GREEN}$(tr_msg wl_st_tls_ok)${NC}"
             else
-                case "${ABOX_LANG:-zh}" in en) msg "${RED}TLS handshake: FAILED (${_legs}) - browsers opening the IP URL may be rejected; re-run the Wallos install (mode 1) to repair.${NC}" ;; *) msg "${RED}TLS 握手：异常（${_legs} 失败）——浏览器直连 IP 可能被拒绝，重跑 Wallos 安装（模式 1）可修复。${NC}" ;; esac
+                msg "${RED}$(tprintf wl_st_tls_fail "$_legs")${NC}"
             fi
         fi
     fi
     port=$(wallos_state_value PORT 2>/dev/null || true)
     if [[ "$port" =~ ^[0-9]+$ ]]; then wallos_public_urls "$port"; else
-        case "${ABOX_LANG:-zh}" in en) msg "Wallos state file is missing; inspect the container port mapping." ;; ru) msg "Файл состояния Wallos отсутствует; проверьте публикацию портов контейнера." ;; fa) msg "فایل وضعیت Wallos وجود ندارد؛ نگاشت درگاه کانتینر را بررسی کنید." ;; zh-tw) msg "Wallos 狀態檔案缺失，請檢查容器連接埠映射。" ;; ja) msg "Wallos の状態ファイルが見つかりません。コンテナのポートマッピングを確認してください。" ;; *) msg "Wallos 状态文件缺失，请检查容器端口映射。" ;; esac
+        msg "$(tr_msg wl_st_state_missing)"
     fi
 }
 
@@ -26651,13 +26753,13 @@ wallos_resume_after_backup() {
     [[ "$was_running" == 0 || "$was_running" == 1 ]] || return 2
     [[ "$was_running" == 1 ]] || return 0
     if docker start wallos >/dev/null 2>&1; then return 0; fi
-    msg "${RED}Wallos could not be restarted after the backup attempt. Backup path: ${backup_path:-not-created}. Check 'docker logs wallos' and start the container manually.${NC}" >&2
+    msg "${RED}$(tprintf wl_bn_restart_fail "${backup_path:-not-created}")${NC}" >&2
     return 1
 }
 
 wallos_backup_now() {
     local stamp backup was_running=0
-    [[ -f "$WALLOS_DIR/.A-Box-managed" && ! -L "$WALLOS_DIR/.A-Box-managed" ]] || { msg "No A-Box-managed Wallos was found."; return 1; }
+    [[ -f "$WALLOS_DIR/.A-Box-managed" && ! -L "$WALLOS_DIR/.A-Box-managed" ]] || { msg "$(tr_msg wl_bn_none)"; return 1; }
     if docker container inspect wallos >/dev/null 2>&1 && [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null)" == true ]]; then
         docker stop wallos >/dev/null 2>&1 || return 1
         was_running=1
@@ -26665,20 +26767,14 @@ wallos_backup_now() {
     stamp=$(date -u '+%Y%m%dT%H%M%SZ')
     if ! backup=$(wallos_create_backup "$stamp"); then
         wallos_resume_after_backup "$was_running" '' || true
-        msg "${RED}Wallos backup creation failed; the previous container state was restored where possible.${NC}"
+        msg "${RED}$(tr_msg wl_bn_fail)${NC}"
         return 1
     fi
     if ! wallos_resume_after_backup "$was_running" "$backup"; then
         return 1
     fi
     case "${ABOX_LANG:-zh}" in
-        en) msg "${GREEN}Wallos data backup saved: $backup${NC}" ;;
-        ru) msg "${GREEN}Резервная копия данных Wallos сохранена: $backup${NC}" ;;
-        fa) msg "${GREEN}نسخه پشتیبان داده‌های Wallos ذخیره شد: $backup${NC}" ;;
-        zh-tw) msg "${GREEN}Wallos 資料備份已儲存：$backup${NC}" ;;
-        ja)
-            msg "${GREEN}Wallos のデータバックアップを保存しました: $backup${NC}" ;;
-        *) msg "${GREEN}Wallos 数据备份已保存：$backup${NC}" ;;
+        *) msg "${GREEN}$(tprintf wl_bn_saved "$backup")${NC}" ;;
     esac
 }
 

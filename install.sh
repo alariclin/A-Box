@@ -21328,9 +21328,12 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
         msg "${RED}HTTPS 证书未在 120 秒内签发（常见原因：云安全组未放行 TCP 80、或 80 端口被占用）。Wallos 保持仅本机访问，修复后重跑安装即可。日志：/etc/ddr/abox-wallos-caddy.log${NC}"
         return 1
     fi
-    _code=$(curl -ks --max-time 6 -o /dev/null -w '%{http_code}' "https://${pub_ip}:${pubport}/" 2>/dev/null || true)
+    # Readiness probe via loopback with SNI pinning: dialing the
+    # public IP from the host itself fails on NAT-hairpin clouds
+    # (e.g. Lightsail) even when external access is perfectly fine.
+    _code=$(curl -ks --max-time 6 --resolve "${pub_ip}:${pubport}:127.0.0.1" -o /dev/null -w '%{http_code}' "https://${pub_ip}:${pubport}/" 2>/dev/null || true)
     if [[ ! "$_code" =~ ^[0-9]+$ || "$_code" == '000' ]]; then
-        msg "${YELLOW}证书已签发，但从本机探测公网地址未通：请确认云安全组已放行 TCP ${pubport} 与 TCP 80。${NC}"
+        msg "${YELLOW}证书已签发，但本机回环探测 Caddy 未通（服务可能尚在启动）：稍后打开网址确认；若仍不通，请看 /etc/ddr/abox-wallos-caddy.log。外网可达性取决于云安全组是否放行 TCP ${pubport} 与 TCP 80。${NC}"
     fi
     return 0
 }

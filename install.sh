@@ -5562,6 +5562,624 @@ tr_msg() {
         ru:vg_not_sha) echo 'Digest GitHub Release не в формате sha256.' ;;
         fa:vg_not_sha) echo '‏digest ‏GitHub Release در قالب sha256 نیست.' ;;
         ja:vg_not_sha) echo 'GitHub Release の digest が sha256 形式ではありません。' ;;
+        zh:ad_action_missing) echo 'Fail2Ban action 定义不存在: %s' ;;
+        zh-tw:ad_action_missing) echo 'Fail2Ban action 定義不存在: %s' ;;
+        en:ad_action_missing) echo 'The Fail2Ban action definition does not exist: %s' ;;
+        ru:ad_action_missing) echo 'Определение action Fail2Ban не существует: %s' ;;
+        fa:ad_action_missing) echo 'تعریف action ‏Fail2Ban وجود ندارد: %s' ;;
+        ja:ad_action_missing) echo 'Fail2Ban の action 定義が存在しません： %s' ;;
+        zh:ad_backend_unknown) echo '无法确定 Fail2Ban 防火墙后端。' ;;
+        zh-tw:ad_backend_unknown) echo '無法確定 Fail2Ban 防火牆後端。' ;;
+        en:ad_backend_unknown) echo 'Cannot determine the Fail2Ban firewall backend.' ;;
+        ru:ad_backend_unknown) echo 'Невозможно определить бэкенд брандмауэра Fail2Ban.' ;;
+        fa:ad_backend_unknown) echo 'تعیین بک‌اند دیوار آتش Fail2Ban ممکن نیست.' ;;
+        ja:ad_backend_unknown) echo 'Fail2Ban のファイアウォールバックエンドを特定できません。' ;;
+        zh:ad_backend_unsupported) echo '不支持的 Fail2Ban 防火墙后端: %s' ;;
+        zh-tw:ad_backend_unsupported) echo '不支援的 Fail2Ban 防火牆後端: %s' ;;
+        en:ad_backend_unsupported) echo 'Unsupported Fail2Ban firewall backend: %s' ;;
+        ru:ad_backend_unsupported) echo 'Неподдерживаемый бэкенд брандмауэра Fail2Ban: %s' ;;
+        fa:ad_backend_unsupported) echo 'بک‌اند دیوار آتش Fail2Ban پشتیبانی نمی‌شود: %s' ;;
+        ja:ad_backend_unsupported) echo 'サポートされていない Fail2Ban ファイアウォールバックエンド： %s' ;;
+        zh:ad_dirs) echo 'Fail2Ban 目录创建失败。' ;;
+        zh-tw:ad_dirs) echo 'Fail2Ban 目錄建立失敗。' ;;
+        en:ad_dirs) echo 'Failed to create the Fail2Ban directories.' ;;
+        ru:ad_dirs) echo 'Не удалось создать каталоги Fail2Ban.' ;;
+        fa:ad_dirs) echo 'ایجاد پوشه‌های Fail2Ban ناموفق بود.' ;;
+        ja:ad_dirs) echo 'Fail2Ban ディレクトリを作成できませんでした。' ;;
+        zh:ad_filter_chain) echo 'Fail2Ban filter 父目录链不安全，拒绝创建或写入。' ;;
+        zh-tw:ad_filter_chain) echo 'Fail2Ban filter 父目錄鏈不安全，拒絕建立或寫入。' ;;
+        en:ad_filter_chain) echo 'The Fail2Ban filter parent chain is unsafe; refusing to create or write.' ;;
+        ru:ad_filter_chain) echo 'Родительская цепочка фильтра Fail2Ban небезопасна; создание или запись отклонены.' ;;
+        fa:ad_filter_chain) echo 'زنجیره والد فیلتر Fail2Ban امن نیست؛ ایجاد یا نوشتن رد شد.' ;;
+        ja:ad_filter_chain) echo 'Fail2Ban フィルタの親チェーンが安全でないため、作成または書き込みを拒否します。' ;;
+        zh:ad_jail_chain) echo 'Fail2Ban jail 父目录链不安全，拒绝创建或写入。' ;;
+        zh-tw:ad_jail_chain) echo 'Fail2Ban jail 父目錄鏈不安全，拒絕建立或寫入。' ;;
+        en:ad_jail_chain) echo 'The Fail2Ban jail parent chain is unsafe; refusing to create or write.' ;;
+        ru:ad_jail_chain) echo 'Родительская цепочка jail Fail2Ban небезопасна; создание или запись отклонены.' ;;
+        fa:ad_jail_chain) echo 'زنجیره والد jail ‏Fail2Ban امن نیست؛ ایجاد یا نوشتن رد شد.' ;;
+        ja:ad_jail_chain) echo 'Fail2Ban jail の親チェーンが安全でないため、作成または書き込みを拒否します。' ;;
+        zh:ad_jail_chmod) echo 'Fail2Ban jail 权限设置失败。' ;;
+        zh-tw:ad_jail_chmod) echo 'Fail2Ban jail 權限設定失敗。' ;;
+        en:ad_jail_chmod) echo 'Failed to set the Fail2Ban jail permissions.' ;;
+        ru:ad_jail_chmod) echo 'Не удалось задать права jail Fail2Ban.' ;;
+        fa:ad_jail_chmod) echo 'تنظیم مجوزهای jail ‏Fail2Ban ناموفق بود.' ;;
+        ja:ad_jail_chmod) echo 'Fail2Ban jail の権限設定に失敗しました。' ;;
+        zh:ad_jail_commit) echo 'Fail2Ban jail 原子提交失败。' ;;
+        zh-tw:ad_jail_commit) echo 'Fail2Ban jail 原子提交失敗。' ;;
+        en:ad_jail_commit) echo 'Failed to atomically commit the Fail2Ban jail.' ;;
+        ru:ad_jail_commit) echo 'Не удалось атомарно зафиксировать jail Fail2Ban.' ;;
+        fa:ad_jail_commit) echo 'ثبت اتمی jail ‏Fail2Ban ناموفق بود.' ;;
+        ja:ad_jail_commit) echo 'Fail2Ban jail のアトミックコミットに失敗しました。' ;;
+        zh:ad_jail_remove) echo '空的 A-Box Fail2Ban jail 删除失败。' ;;
+        zh-tw:ad_jail_remove) echo '空的 A-Box Fail2Ban jail 刪除失敗。' ;;
+        en:ad_jail_remove) echo 'Failed to remove the empty A-Box Fail2Ban jail.' ;;
+        ru:ad_jail_remove) echo 'Не удалось удалить пустой jail Fail2Ban A-Box.' ;;
+        fa:ad_jail_remove) echo 'حذف jail خالی Fail2Ban ‏A-Box ناموفق بود.' ;;
+        ja:ad_jail_remove) echo '空の A-Box Fail2Ban jail の削除に失敗しました。' ;;
+        zh:ad_jail_tmp) echo 'Fail2Ban jail 临时文件创建失败。' ;;
+        zh-tw:ad_jail_tmp) echo 'Fail2Ban jail 臨時檔案建立失敗。' ;;
+        en:ad_jail_tmp) echo 'Failed to create the Fail2Ban jail temp file.' ;;
+        ru:ad_jail_tmp) echo 'Не удалось создать временный файл jail Fail2Ban.' ;;
+        fa:ad_jail_tmp) echo 'ایجاد فایل موقت jail ‏Fail2Ban ناموفق بود.' ;;
+        ja:ad_jail_tmp) echo 'Fail2Ban jail の一時ファイルを作成できませんでした。' ;;
+        zh:ax_refuse) echo '拒绝覆盖非 A-Box 辅助文件: %s' ;;
+        zh-tw:ax_refuse) echo '拒絕覆寫非 A-Box 輔助檔案: %s' ;;
+        en:ax_refuse) echo 'Refusing to overwrite a non-A-Box auxiliary file: %s' ;;
+        ru:ax_refuse) echo 'Отказ от перезаписи вспомогательного файла, не принадлежащего A-Box: %s' ;;
+        fa:ax_refuse) echo 'بازنویسی فایل کمکی غیر A-Box رد شد: %s' ;;
+        ja:ax_refuse) echo 'A-Box でない補助ファイルの上書きを拒否します： %s' ;;
+        zh:fw2_bad_port) echo '端口或端口范围非法: %s' ;;
+        zh-tw:fw2_bad_port) echo '埠或埠範圍不合法: %s' ;;
+        en:fw2_bad_port) echo 'Invalid port or port range: %s' ;;
+        ru:fw2_bad_port) echo 'Недопустимый порт или диапазон портов: %s' ;;
+        fa:fw2_bad_port) echo 'پورت یا بازه پورت نامعتبر است: %s' ;;
+        ja:fw2_bad_port) echo '不正なポートまたはポート範囲： %s' ;;
+        zh:fw2_bad_proto) echo '协议非法: %s' ;;
+        zh-tw:fw2_bad_proto) echo '協定不合法: %s' ;;
+        en:fw2_bad_proto) echo 'Invalid protocol: %s' ;;
+        ru:fw2_bad_proto) echo 'Недопустимый протокол: %s' ;;
+        fa:fw2_bad_proto) echo 'پروتکل نامعتبر است: %s' ;;
+        ja:fw2_bad_proto) echo '不正なプロトコル： %s' ;;
+        zh:fw2_fwd_convert) echo 'firewalld 端口范围转换失败: %s' ;;
+        zh-tw:fw2_fwd_convert) echo 'firewalld 埠範圍轉換失敗: %s' ;;
+        en:fw2_fwd_convert) echo 'The firewalld port range conversion failed: %s' ;;
+        ru:fw2_fwd_convert) echo 'Не удалось преобразовать диапазон портов firewalld: %s' ;;
+        fa:fw2_fwd_convert) echo 'تبدیل بازه پورت firewalld ناموفق بود: %s' ;;
+        ja:fw2_fwd_convert) echo 'firewalld のポート範囲変換に失敗しました： %s' ;;
+        zh:fw2_fwd_perm_add) echo 'firewalld permanent 放行失败: %s' ;;
+        zh-tw:fw2_fwd_perm_add) echo 'firewalld permanent 放行失敗: %s' ;;
+        en:fw2_fwd_perm_add) echo 'The firewalld permanent open failed: %s' ;;
+        ru:fw2_fwd_perm_add) echo 'Не удалось открыть порт в permanent firewalld: %s' ;;
+        fa:fw2_fwd_perm_add) echo 'باز کردن پورت در permanent ‏firewalld ناموفق بود: %s' ;;
+        ja:fw2_fwd_perm_add) echo 'firewalld の permanent 開放に失敗しました： %s' ;;
+        zh:fw2_fwd_perm_q) echo 'firewalld permanent 查询失败。' ;;
+        zh-tw:fw2_fwd_perm_q) echo 'firewalld permanent 查詢失敗。' ;;
+        en:fw2_fwd_perm_q) echo 'The firewalld permanent query failed.' ;;
+        ru:fw2_fwd_perm_q) echo 'Запрос permanent firewalld не удался.' ;;
+        fa:fw2_fwd_perm_q) echo 'پرس‌وجوی permanent ‏firewalld ناموفق بود.' ;;
+        ja:fw2_fwd_perm_q) echo 'firewalld の permanent クエリに失敗しました。' ;;
+        zh:fw2_fwd_perm_record) echo 'firewalld permanent 规则归属记录失败。' ;;
+        zh-tw:fw2_fwd_perm_record) echo 'firewalld permanent 規則歸屬記錄失敗。' ;;
+        en:fw2_fwd_perm_record) echo 'Failed to record the firewalld permanent rule ownership.' ;;
+        ru:fw2_fwd_perm_record) echo 'Не удалось записать принадлежность permanent-правила firewalld.' ;;
+        fa:fw2_fwd_perm_record) echo 'ثبت مالکیت قانون permanent ‏firewalld ناموفق بود.' ;;
+        ja:fw2_fwd_perm_record) echo 'firewalld の permanent ルール所有記録に失敗しました。' ;;
+        zh:fw2_fwd_perm_verify) echo 'firewalld permanent 后置验证失败。' ;;
+        zh-tw:fw2_fwd_perm_verify) echo 'firewalld permanent 後置驗證失敗。' ;;
+        en:fw2_fwd_perm_verify) echo 'The firewalld permanent post-check failed.' ;;
+        ru:fw2_fwd_perm_verify) echo 'Проверка permanent firewalld после изменения не пройдена.' ;;
+        fa:fw2_fwd_perm_verify) echo 'بررسی پس از تغییر permanent ‏firewalld ناموفق بود.' ;;
+        ja:fw2_fwd_perm_verify) echo 'firewalld の permanent 事後確認に失敗しました。' ;;
+        zh:fw2_fwd_runtime_add) echo 'firewalld runtime 放行失败: %s' ;;
+        zh-tw:fw2_fwd_runtime_add) echo 'firewalld runtime 放行失敗: %s' ;;
+        en:fw2_fwd_runtime_add) echo 'The firewalld runtime open failed: %s' ;;
+        ru:fw2_fwd_runtime_add) echo 'Не удалось открыть порт в runtime firewalld: %s' ;;
+        fa:fw2_fwd_runtime_add) echo 'باز کردن پورت در runtime ‏firewalld ناموفق بود: %s' ;;
+        ja:fw2_fwd_runtime_add) echo 'firewalld の runtime 開放に失敗しました： %s' ;;
+        zh:fw2_fwd_runtime_q) echo 'firewalld runtime 查询失败。' ;;
+        zh-tw:fw2_fwd_runtime_q) echo 'firewalld runtime 查詢失敗。' ;;
+        en:fw2_fwd_runtime_q) echo 'The firewalld runtime query failed.' ;;
+        ru:fw2_fwd_runtime_q) echo 'Запрос runtime firewalld не удался.' ;;
+        fa:fw2_fwd_runtime_q) echo 'پرس‌وجوی runtime ‏firewalld ناموفق بود.' ;;
+        ja:fw2_fwd_runtime_q) echo 'firewalld の runtime クエリに失敗しました。' ;;
+        zh:fw2_fwd_runtime_record) echo 'firewalld runtime 规则归属记录失败。' ;;
+        zh-tw:fw2_fwd_runtime_record) echo 'firewalld runtime 規則歸屬記錄失敗。' ;;
+        en:fw2_fwd_runtime_record) echo 'Failed to record the firewalld runtime rule ownership.' ;;
+        ru:fw2_fwd_runtime_record) echo 'Не удалось записать принадлежность runtime-правила firewalld.' ;;
+        fa:fw2_fwd_runtime_record) echo 'ثبت مالکیت قانون runtime ‏firewalld ناموفق بود.' ;;
+        ja:fw2_fwd_runtime_record) echo 'firewalld の runtime ルール所有記録に失敗しました。' ;;
+        zh:fw2_fwd_runtime_verify) echo 'firewalld runtime 后置验证失败。' ;;
+        zh-tw:fw2_fwd_runtime_verify) echo 'firewalld runtime 後置驗證失敗。' ;;
+        en:fw2_fwd_runtime_verify) echo 'The firewalld runtime post-check failed.' ;;
+        ru:fw2_fwd_runtime_verify) echo 'Проверка runtime firewalld после изменения не пройдена.' ;;
+        fa:fw2_fwd_runtime_verify) echo 'بررسی پس از تغییر runtime ‏firewalld ناموفق بود.' ;;
+        ja:fw2_fwd_runtime_verify) echo 'firewalld の runtime 事後確認に失敗しました。' ;;
+        zh:fw2_nft) echo '检测到原生 nftables 或未知防火墙后端（%s）；A-Box 暂不支持安全地修改该后端，已拒绝放行端口。' ;;
+        zh-tw:fw2_nft) echo '偵測到原生 nftables 或未知防火牆後端（%s）；A-Box 暫不支援安全地修改該後端，已拒絕放行埠。' ;;
+        en:fw2_nft) echo 'A native nftables or unknown firewall backend (%s) was detected; A-Box cannot safely modify this backend yet, so the port was not opened.' ;;
+        ru:fw2_nft) echo 'Обнаружен нативный nftables или неизвестный бэкенд брандмауэра (%s); A-Box пока не может безопасно изменять этот бэкенд, порт не открыт.' ;;
+        fa:fw2_nft) echo 'یک بک‌اند بومی nftables یا دیوار آتش ناشناخته (%s) شناسایی شد؛ A-Box هنوز نمی‌تواند این بک‌اند را به‌صورت امن تغییر دهد، بنابراین پورت باز نشد.' ;;
+        ja:fw2_nft) echo 'ネイティブ nftables または未知のファイアウォールバックエンド（%s）が検出されました。A-Box はこのバックエンドを安全に変更できないため、ポート開放を拒否しました。' ;;
+        zh:fw2_ufw_allow) echo 'UFW 防火墙放行失败或当前 UFW 不支持规则评论: %s' ;;
+        zh-tw:fw2_ufw_allow) echo 'UFW 防火牆放行失敗或目前 UFW 不支援規則評論: %s' ;;
+        en:fw2_ufw_allow) echo 'The UFW firewall open failed, or the current UFW does not support rule comments: %s' ;;
+        ru:fw2_ufw_allow) echo 'Не удалось открыть порт в UFW, или текущий UFW не поддерживает комментарии правил: %s' ;;
+        fa:fw2_ufw_allow) echo 'باز کردن پورت در UFW ناموفق بود، یا UFW فعلی از توضیح قوانین پشتیبانی نمی‌کند: %s' ;;
+        ja:fw2_ufw_allow) echo 'UFW ファイアウォールの開放に失敗したか、現在の UFW がルールコメントをサポートしていません： %s' ;;
+        zh:fw2_ufw_record) echo 'UFW 已有托管规则但归属状态记录失败。' ;;
+        zh-tw:fw2_ufw_record) echo 'UFW 已有託管規則但歸屬狀態記錄失敗。' ;;
+        en:fw2_ufw_record) echo 'UFW already has a managed rule, but recording its ownership state failed.' ;;
+        ru:fw2_ufw_record) echo 'У UFW уже есть управляемое правило, но не удалось записать его состояние принадлежности.' ;;
+        fa:fw2_ufw_record) echo '‏UFW از قبل یک قانون مدیریت‌شده دارد، اما ثبت وضعیت مالکیت آن ناموفق بود.' ;;
+        ja:fw2_ufw_record) echo 'UFW には管理ルールがありますが、その所有状態の記録に失敗しました。' ;;
+        zh:fw2_ufw_record_rb) echo 'UFW 规则已添加但归属状态记录失败，已尝试精确回滚: %s' ;;
+        zh-tw:fw2_ufw_record_rb) echo 'UFW 規則已新增但歸屬狀態記錄失敗，已嘗試精確回滾: %s' ;;
+        en:fw2_ufw_record_rb) echo 'The UFW rule was added, but recording its ownership state failed; an exact rollback was attempted: %s' ;;
+        ru:fw2_ufw_record_rb) echo 'Правило UFW добавлено, но не удалось записать состояние принадлежности; выполнен точный откат: %s' ;;
+        fa:fw2_ufw_record_rb) echo 'قانون UFW افزوده شد، اما ثبت وضعیت مالکیت آن ناموفق بود؛ بازگشت دقیق انجام شد: %s' ;;
+        ja:fw2_ufw_record_rb) echo 'UFW ルールは追加されましたが所有状態の記録に失敗し、正確なロールバックを試みました： %s' ;;
+        zh:fw2_ufw_verify) echo 'UFW 规则后置归属验证失败: %s' ;;
+        zh-tw:fw2_ufw_verify) echo 'UFW 規則後置歸屬驗證失敗: %s' ;;
+        en:fw2_ufw_verify) echo 'The post-add UFW rule ownership verification failed: %s' ;;
+        ru:fw2_ufw_verify) echo 'Проверка принадлежности правила UFW после добавления не пройдена: %s' ;;
+        fa:fw2_ufw_verify) echo 'بررسی مالکیت قانون UFW پس از افزودن ناموفق بود: %s' ;;
+        ja:fw2_ufw_verify) echo 'UFW ルール追加後の所有確認に失敗しました： %s' ;;
+        zh:fw2_v4_allow) echo 'IPv4 防火墙放行失败: %s' ;;
+        zh-tw:fw2_v4_allow) echo 'IPv4 防火牆放行失敗: %s' ;;
+        en:fw2_v4_allow) echo 'The IPv4 firewall open failed: %s' ;;
+        ru:fw2_v4_allow) echo 'Не удалось открыть порт в брандмауэре IPv4: %s' ;;
+        fa:fw2_v4_allow) echo 'باز کردن پورت در دیوار آتش IPv4 ناموفق بود: %s' ;;
+        ja:fw2_v4_allow) echo 'IPv4 ファイアウォールの開放に失敗しました： %s' ;;
+        zh:fw2_v4_check) echo '无法检查 IPv4 防火墙规则: %s' ;;
+        zh-tw:fw2_v4_check) echo '無法檢查 IPv4 防火牆規則: %s' ;;
+        en:fw2_v4_check) echo 'Cannot check the IPv4 firewall rule: %s' ;;
+        ru:fw2_v4_check) echo 'Невозможно проверить правило брандмауэра IPv4: %s' ;;
+        fa:fw2_v4_check) echo 'بررسی قانون دیوار آتش IPv4 ممکن نیست: %s' ;;
+        ja:fw2_v4_check) echo 'IPv4 ファイアウォールルールを確認できません： %s' ;;
+        zh:fw2_v6_allow) echo 'IPv6 防火墙放行失败: %s' ;;
+        zh-tw:fw2_v6_allow) echo 'IPv6 防火牆放行失敗: %s' ;;
+        en:fw2_v6_allow) echo 'The IPv6 firewall open failed: %s' ;;
+        ru:fw2_v6_allow) echo 'Не удалось открыть порт в брандмауэре IPv6: %s' ;;
+        fa:fw2_v6_allow) echo 'باز کردن پورت در دیوار آتش IPv6 ناموفق بود: %s' ;;
+        ja:fw2_v6_allow) echo 'IPv6 ファイアウォールの開放に失敗しました： %s' ;;
+        zh:fw2_v6_check) echo '无法检查 IPv6 防火墙规则: %s' ;;
+        zh-tw:fw2_v6_check) echo '無法檢查 IPv6 防火牆規則: %s' ;;
+        en:fw2_v6_check) echo 'Cannot check the IPv6 firewall rule: %s' ;;
+        ru:fw2_v6_check) echo 'Невозможно проверить правило брандмауэра IPv6: %s' ;;
+        fa:fw2_v6_check) echo 'بررسی قانون دیوار آتش IPv6 ممکن نیست: %s' ;;
+        ja:fw2_v6_check) echo 'IPv6 ファイアウォールルールを確認できません： %s' ;;
+        zh:hd_nm_apply) echo 'NetworkManager DNS 应用失败，已回滚。' ;;
+        zh-tw:hd_nm_apply) echo 'NetworkManager DNS 應用失敗，已回滾。' ;;
+        en:hd_nm_apply) echo 'Failed to apply the NetworkManager DNS; rolled back.' ;;
+        ru:hd_nm_apply) echo 'Не удалось применить DNS NetworkManager; выполнен откат.' ;;
+        fa:hd_nm_apply) echo 'اعمال DNS ‏NetworkManager ناموفق بود؛ بازگشت انجام شد.' ;;
+        ja:hd_nm_apply) echo 'NetworkManager DNS の適用に失敗し、ロールバックしました。' ;;
+        zh:hd_nm_v4) echo 'NetworkManager IPv4 DNS 写入失败。' ;;
+        zh-tw:hd_nm_v4) echo 'NetworkManager IPv4 DNS 寫入失敗。' ;;
+        en:hd_nm_v4) echo 'Failed to write the NetworkManager IPv4 DNS.' ;;
+        ru:hd_nm_v4) echo 'Не удалось записать DNS IPv4 в NetworkManager.' ;;
+        fa:hd_nm_v4) echo 'نوشتن DNS ‏IPv4 ‏NetworkManager ناموفق بود.' ;;
+        ja:hd_nm_v4) echo 'NetworkManager の IPv4 DNS の書き込みに失敗しました。' ;;
+        zh:hd_nm_v6) echo 'NetworkManager IPv6 DNS 写入失败。' ;;
+        zh-tw:hd_nm_v6) echo 'NetworkManager IPv6 DNS 寫入失敗。' ;;
+        en:hd_nm_v6) echo 'Failed to write the NetworkManager IPv6 DNS.' ;;
+        ru:hd_nm_v6) echo 'Не удалось записать DNS IPv6 в NetworkManager.' ;;
+        fa:hd_nm_v6) echo 'نوشتن DNS ‏IPv6 ‏NetworkManager ناموفق بود.' ;;
+        ja:hd_nm_v6) echo 'NetworkManager の IPv6 DNS の書き込みに失敗しました。' ;;
+        zh:hd_no_conn) echo '未找到活动 NetworkManager 连接配置。' ;;
+        zh-tw:hd_no_conn) echo '未找到活動 NetworkManager 連線設定。' ;;
+        en:hd_no_conn) echo 'No active NetworkManager connection profile was found.' ;;
+        ru:hd_no_conn) echo 'Не найдена активная конфигурация подключения NetworkManager.' ;;
+        fa:hd_no_conn) echo 'هیچ پیکربندی اتصال فعال NetworkManager یافت نشد.' ;;
+        ja:hd_no_conn) echo 'アクティブな NetworkManager 接続設定が見つかりません。' ;;
+        zh:hd_no_iface) echo '未找到 NetworkManager 活动接口。' ;;
+        zh-tw:hd_no_iface) echo '未找到 NetworkManager 活動介面。' ;;
+        en:hd_no_iface) echo 'No active NetworkManager interface was found.' ;;
+        ru:hd_no_iface) echo 'Не найден активный интерфейс NetworkManager.' ;;
+        fa:hd_no_iface) echo 'هیچ رابط فعال NetworkManager یافت نشد.' ;;
+        ja:hd_no_iface) echo 'アクティブな NetworkManager インターフェースが見つかりません。' ;;
+        zh:hd_resolv_gen) echo 'resolv.conf 内容生成失败。' ;;
+        zh-tw:hd_resolv_gen) echo 'resolv.conf 內容產生失敗。' ;;
+        en:hd_resolv_gen) echo 'Failed to generate the resolv.conf content.' ;;
+        ru:hd_resolv_gen) echo 'Не удалось сгенерировать содержимое resolv.conf.' ;;
+        fa:hd_resolv_gen) echo 'ساخت محتوای resolv.conf ناموفق بود.' ;;
+        ja:hd_resolv_gen) echo 'resolv.conf の内容を生成できませんでした。' ;;
+        zh:hd_resolv_symlink) echo '/etc/resolv.conf 是符号链接；当前 generic DNS 后端拒绝覆盖受其他服务管理的路径。' ;;
+        zh-tw:hd_resolv_symlink) echo '/etc/resolv.conf 是符號連結；目前 generic DNS 後端拒絕覆寫受其他服務管理的路徑。' ;;
+        en:hd_resolv_symlink) echo '/etc/resolv.conf is a symlink; the current generic DNS backend refuses to overwrite a path managed by another service.' ;;
+        ru:hd_resolv_symlink) echo '/etc/resolv.conf является символьной ссылкой; текущий общий бэкенд DNS отказывается перезаписывать путь, управляемый другой службой.' ;;
+        fa:hd_resolv_symlink) echo '‏/etc/resolv.conf یک پیوند نمادین است؛ بک‌اند DNS عمومی فعلی از بازنویسی مسیری که سرویس دیگری مدیریت می‌کند خودداری می‌کند.' ;;
+        ja:hd_resolv_symlink) echo '/etc/resolv.conf はシンボリックリンクです。現在の generic DNS バックエンドは、他のサービスが管理するパスの上書きを拒否します。' ;;
+        zh:hd_resolv_write) echo 'resolv.conf 原子写入失败。' ;;
+        zh-tw:hd_resolv_write) echo 'resolv.conf 原子寫入失敗。' ;;
+        en:hd_resolv_write) echo 'Failed to atomically write resolv.conf.' ;;
+        ru:hd_resolv_write) echo 'Не удалось атомарно записать resolv.conf.' ;;
+        fa:hd_resolv_write) echo 'نوشتن اتمی resolv.conf ناموفق بود.' ;;
+        ja:hd_resolv_write) echo 'resolv.conf のアトミック書き込みに失敗しました。' ;;
+        zh:hd_resolved_dir) echo '无法创建 resolved.conf.d' ;;
+        zh-tw:hd_resolved_dir) echo '無法建立 resolved.conf.d' ;;
+        en:hd_resolved_dir) echo 'Cannot create resolved.conf.d' ;;
+        ru:hd_resolved_dir) echo 'Невозможно создать resolved.conf.d' ;;
+        fa:hd_resolved_dir) echo 'ایجاد resolved.conf.d ممکن نیست' ;;
+        ja:hd_resolved_dir) echo 'resolved.conf.d を作成できません' ;;
+        zh:hm_dir) echo '无法创建健康探针目录。' ;;
+        zh-tw:hm_dir) echo '無法建立健康探針目錄。' ;;
+        en:hm_dir) echo 'Cannot create the health probe directory.' ;;
+        ru:hm_dir) echo 'Невозможно создать каталог зонда здоровья.' ;;
+        fa:hm_dir) echo 'ایجاد پوشه کاوشگر سلامت ممکن نیست.' ;;
+        ja:hm_dir) echo 'ヘルスプローブのディレクトリを作成できません。' ;;
+        zh:pt_dup) echo '端口冲突：当前配置中存在重复监听组合 (%s)。' ;;
+        zh-tw:pt_dup) echo '埠衝突：目前設定中存在重複監聽組合 (%s)。' ;;
+        en:pt_dup) echo 'Port conflict: the current configuration contains a duplicate listen combination (%s).' ;;
+        ru:pt_dup) echo 'Конфликт портов: в текущей конфигурации есть повторяющаяся комбинация прослушивания (%s).' ;;
+        fa:pt_dup) echo 'تضاد پورت: پیکربندی فعلی شامل یک ترکیب شنود تکراری است (%s).' ;;
+        ja:pt_dup) echo 'ポート競合：現在の設定に重複するリッスン組み合わせがあります（%s）。' ;;
+        zh:pt_hy2_range) echo '端口冲突：HY2 基础 UDP 端口 (%s) 不能落在跳跃区间 (%s-%s) 内。' ;;
+        zh-tw:pt_hy2_range) echo '埠衝突：HY2 基礎 UDP 埠 (%s) 不能落在跳躍區間 (%s-%s) 內。' ;;
+        en:pt_hy2_range) echo 'Port conflict: the HY2 base UDP port (%s) must not fall inside the hopping range (%s-%s).' ;;
+        ru:pt_hy2_range) echo 'Конфликт портов: базовый UDP-порт HY2 (%s) не должен попадать в диапазон прыжков (%s-%s).' ;;
+        fa:pt_hy2_range) echo 'تضاد پورت: پورت پایه UDP ‏HY2 ‏(%s) نباید داخل بازه پرش (%s-%s) قرار گیرد.' ;;
+        ja:pt_hy2_range) echo 'ポート競合：HY2 の基本 UDP ポート（%s）はホッピング区間（%s-%s）内に入れてはいけません。' ;;
+        zh:pt_hy2_release) echo '请先手动释放 HY2 UDP 跳跃区间内的占用端口。' ;;
+        zh-tw:pt_hy2_release) echo '請先手動釋放 HY2 UDP 跳躍區間內的占用埠。' ;;
+        en:pt_hy2_release) echo 'Manually release the occupied ports inside the HY2 UDP hopping range first.' ;;
+        ru:pt_hy2_release) echo 'Сначала вручную освободите занятые порты в диапазоне прыжков UDP HY2.' ;;
+        fa:pt_hy2_release) echo 'ابتدا پورت‌های اشغال‌شده داخل بازه پرش UDP ‏HY2 را به‌صورت دستی آزاد کنید.' ;;
+        ja:pt_hy2_release) echo '先に HY2 UDP ホッピング区間内の使用中ポートを手動で解放してください。' ;;
+        zh:pt_hy2_ss_fail) echo '无法检查 HY2 UDP 跳跃区间占用；ss 查询失败。' ;;
+        zh-tw:pt_hy2_ss_fail) echo '無法檢查 HY2 UDP 跳躍區間占用；ss 查詢失敗。' ;;
+        en:pt_hy2_ss_fail) echo 'Cannot check usage of the HY2 UDP hopping range; the ss query failed.' ;;
+        ru:pt_hy2_ss_fail) echo 'Невозможно проверить занятость диапазона прыжков UDP HY2; запрос ss не удался.' ;;
+        fa:pt_hy2_ss_fail) echo 'بررسی اشغال بازه پرش UDP ‏HY2 ممکن نیست؛ پرس‌وجوی ss ناموفق بود.' ;;
+        ja:pt_hy2_ss_fail) echo 'HY2 UDP ホッピング区間の使用状況を確認できません。ss クエリに失敗しました。' ;;
+        zh:pt_no_ss) echo '系统缺少 ss，无法可靠检查端口占用。' ;;
+        zh-tw:pt_no_ss) echo '系統缺少 ss，無法可靠檢查埠占用。' ;;
+        en:pt_no_ss) echo 'The system lacks ss; port usage cannot be checked reliably.' ;;
+        ru:pt_no_ss) echo 'В системе отсутствует ss; надёжно проверить занятость портов невозможно.' ;;
+        fa:pt_no_ss) echo 'سیستم فاقد ss است؛ بررسی قابل اعتماد اشغال پورت ممکن نیست.' ;;
+        ja:pt_no_ss) echo 'システムに ss がなく、ポート使用状況を確実に確認できません。' ;;
+        zh:pt_release_manual) echo '请先手动释放端口 %s。' ;;
+        zh-tw:pt_release_manual) echo '請先手動釋放埠 %s。' ;;
+        en:pt_release_manual) echo 'Release port %s manually first.' ;;
+        ru:pt_release_manual) echo 'Сначала освободите порт %s вручную.' ;;
+        fa:pt_release_manual) echo 'ابتدا پورت %s را به‌صورت دستی آزاد کنید.' ;;
+        ja:pt_release_manual) echo '先にポート %s を手動で解放してください。' ;;
+        zh:pt_ss_fail) echo '无法检查 %s 端口占用；ss 查询失败。' ;;
+        zh-tw:pt_ss_fail) echo '無法檢查 %s 埠占用；ss 查詢失敗。' ;;
+        en:pt_ss_fail) echo 'Cannot check %s port usage; the ss query failed.' ;;
+        ru:pt_ss_fail) echo 'Невозможно проверить занятость порта %s; запрос ss не удался.' ;;
+        fa:pt_ss_fail) echo 'بررسی اشغال پورت %s ممکن نیست؛ پرس‌وجوی ss ناموفق بود.' ;;
+        ja:pt_ss_fail) echo '%s ポートの使用状況を確認できません。ss クエリに失敗しました。' ;;
+        zh:pt_stop_all) echo '无法停止全部 A-Box 托管服务。' ;;
+        zh-tw:pt_stop_all) echo '無法停止全部 A-Box 託管服務。' ;;
+        en:pt_stop_all) echo 'Cannot stop all A-Box managed services.' ;;
+        ru:pt_stop_all) echo 'Невозможно остановить все управляемые службы A-Box.' ;;
+        fa:pt_stop_all) echo 'توقف همه سرویس‌های مدیریت‌شده A-Box ممکن نیست.' ;;
+        ja:pt_stop_all) echo 'A-Box 管理サービスをすべて停止できません。' ;;
+        zh:ss2_chmod) echo 'A-Box 主脚本执行权限设置失败。' ;;
+        zh-tw:ss2_chmod) echo 'A-Box 主腳本執行權限設定失敗。' ;;
+        en:ss2_chmod) echo 'Failed to set the executable permission on the main A-Box script.' ;;
+        ru:ss2_chmod) echo 'Не удалось задать право на исполнение главного скрипта A-Box.' ;;
+        fa:ss2_chmod) echo 'تنظیم مجوز اجرای اسکریپت اصلی A-Box ناموفق بود.' ;;
+        ja:ss2_chmod) echo 'A-Box メインスクリプトの実行権限設定に失敗しました。' ;;
+        zh:ss2_ctx_current) echo '当前 A-Box 脚本' ;;
+        zh-tw:ss2_ctx_current) echo '目前 A-Box 腳本' ;;
+        en:ss2_ctx_current) echo 'the current A-Box script' ;;
+        ru:ss2_ctx_current) echo 'текущий скрипт A-Box' ;;
+        fa:ss2_ctx_current) echo 'اسکریپت فعلی A-Box' ;;
+        ja:ss2_ctx_current) echo '現在の A-Box スクリプト' ;;
+        zh:ss2_ctx_persisted) echo '持久化 A-Box 脚本' ;;
+        zh-tw:ss2_ctx_persisted) echo '持久化 A-Box 腳本' ;;
+        en:ss2_ctx_persisted) echo 'the persisted A-Box script' ;;
+        ru:ss2_ctx_persisted) echo 'сохранённый скрипт A-Box' ;;
+        fa:ss2_ctx_persisted) echo 'اسکریپت ذخیره‌شده A-Box' ;;
+        ja:ss2_ctx_persisted) echo '永続化された A-Box スクリプト' ;;
+        zh:ss2_downgrade_prompt) echo '当前本地 A-Box 脚本版本低于已安装版本，确认降级？[Y/N]: ' ;;
+        zh-tw:ss2_downgrade_prompt) echo '目前本機 A-Box 腳本版本低於已安裝版本，確認降級？[Y/N]: ' ;;
+        en:ss2_downgrade_prompt) echo 'The local A-Box script version is lower than the installed one. Confirm downgrade? [Y/N]: ' ;;
+        ru:ss2_downgrade_prompt) echo 'Локальная версия скрипта A-Box ниже установленной. Подтвердить понижение? [Y/N]: ' ;;
+        fa:ss2_downgrade_prompt) echo 'نسخه محلی اسکریپت A-Box از نسخه نصب‌شده پایین‌تر است. کاهش نسخه تأیید شود؟ [Y/N]: ' ;;
+        ja:ss2_downgrade_prompt) echo 'ローカルの A-Box スクリプトのバージョンがインストール済みより低いです。ダウングレードしますか？ [Y/N]: ' ;;
+        zh:ss2_persist) echo '持久化当前脚本失败。' ;;
+        zh-tw:ss2_persist) echo '持久化目前腳本失敗。' ;;
+        en:ss2_persist) echo 'Failed to persist the current script.' ;;
+        ru:ss2_persist) echo 'Не удалось сохранить текущий скрипт.' ;;
+        fa:ss2_persist) echo 'ذخیره اسکریپت فعلی ناموفق بود.' ;;
+        ja:ss2_persist) echo '現在のスクリプトの永続化に失敗しました。' ;;
+        zh:ss2_persist_missing) echo '持久化 A-Box 脚本不存在。' ;;
+        zh-tw:ss2_persist_missing) echo '持久化 A-Box 腳本不存在。' ;;
+        en:ss2_persist_missing) echo 'The persisted A-Box script does not exist.' ;;
+        ru:ss2_persist_missing) echo 'Сохранённый скрипт A-Box не существует.' ;;
+        fa:ss2_persist_missing) echo 'اسکریپت ذخیره‌شده A-Box وجود ندارد.' ;;
+        ja:ss2_persist_missing) echo '永続化された A-Box スクリプトが存在しません。' ;;
+        zh:ss2_persist_verify) echo '持久化 A-Box 脚本校验失败。' ;;
+        zh-tw:ss2_persist_verify) echo '持久化 A-Box 腳本校驗失敗。' ;;
+        en:ss2_persist_verify) echo 'The persisted A-Box script verification failed.' ;;
+        ru:ss2_persist_verify) echo 'Проверка сохранённого скрипта A-Box не пройдена.' ;;
+        fa:ss2_persist_verify) echo 'بررسی اسکریپت ذخیره‌شده A-Box ناموفق بود.' ;;
+        ja:ss2_persist_verify) echo '永続化された A-Box スクリプトの検証に失敗しました。' ;;
+        zh:ss2_refuse_downgrade) echo '已拒绝降级 A-Box 脚本。' ;;
+        zh-tw:ss2_refuse_downgrade) echo '已拒絕降級 A-Box 腳本。' ;;
+        en:ss2_refuse_downgrade) echo 'The A-Box script downgrade was refused.' ;;
+        ru:ss2_refuse_downgrade) echo 'Понижение скрипта A-Box отклонено.' ;;
+        fa:ss2_refuse_downgrade) echo 'کاهش نسخه اسکریپت A-Box رد شد.' ;;
+        ja:ss2_refuse_downgrade) echo 'A-Box スクリプトのダウングレードを拒否しました。' ;;
+        zh:ss2_sb_unsafe) echo '现有 /usr/local/bin/sb 归属/内容不安全，拒绝覆盖。' ;;
+        zh-tw:ss2_sb_unsafe) echo '現有 /usr/local/bin/sb 歸屬/內容不安全，拒絕覆寫。' ;;
+        en:ss2_sb_unsafe) echo 'The existing /usr/local/bin/sb has unsafe ownership/content; refusing to overwrite.' ;;
+        ru:ss2_sb_unsafe) echo 'Существующий /usr/local/bin/sb имеет небезопасную принадлежность/содержимое; перезапись отклонена.' ;;
+        fa:ss2_sb_unsafe) echo '‏/usr/local/bin/sb موجود مالکیت/محتوای ناامن دارد؛ بازنویسی رد شد.' ;;
+        ja:ss2_sb_unsafe) echo '既存の /usr/local/bin/sb の所有/内容が安全でないため、上書きを拒否します。' ;;
+        zh:ss2_self_verify) echo '当前 A-Box 脚本校验失败。' ;;
+        zh-tw:ss2_self_verify) echo '目前 A-Box 腳本校驗失敗。' ;;
+        en:ss2_self_verify) echo 'The current A-Box script verification failed.' ;;
+        ru:ss2_self_verify) echo 'Проверка текущего скрипта A-Box не пройдена.' ;;
+        fa:ss2_self_verify) echo 'بررسی اسکریپت فعلی A-Box ناموفق بود.' ;;
+        ja:ss2_self_verify) echo '現在の A-Box スクリプトの検証に失敗しました。' ;;
+        zh:ss2_tmp) echo '快捷入口临时文件创建失败。' ;;
+        zh-tw:ss2_tmp) echo '快捷入口臨時檔案建立失敗。' ;;
+        en:ss2_tmp) echo 'Failed to create the shortcut temp file.' ;;
+        ru:ss2_tmp) echo 'Не удалось создать временный файл ярлыка.' ;;
+        fa:ss2_tmp) echo 'ایجاد فایل موقت میانبر ناموفق بود.' ;;
+        ja:ss2_tmp) echo 'ショートカットの一時ファイルを作成できませんでした。' ;;
+        zh:ss2_tmp_chmod) echo '快捷入口临时文件权限设置失败。' ;;
+        zh-tw:ss2_tmp_chmod) echo '快捷入口臨時檔案權限設定失敗。' ;;
+        en:ss2_tmp_chmod) echo 'Failed to set permissions on the shortcut temp file.' ;;
+        ru:ss2_tmp_chmod) echo 'Не удалось задать права временного файла ярлыка.' ;;
+        fa:ss2_tmp_chmod) echo 'تنظیم مجوزهای فایل موقت میانبر ناموفق بود.' ;;
+        ja:ss2_tmp_chmod) echo 'ショートカット一時ファイルの権限設定に失敗しました。' ;;
+        zh:ss2_write) echo '快捷入口写入失败。' ;;
+        zh-tw:ss2_write) echo '快捷入口寫入失敗。' ;;
+        en:ss2_write) echo 'Failed to write the shortcut.' ;;
+        ru:ss2_write) echo 'Не удалось записать ярлык.' ;;
+        fa:ss2_write) echo 'نوشتن میانبر ناموفق بود.' ;;
+        ja:ss2_write) echo 'ショートカットの書き込みに失敗しました。' ;;
+        zh:sv_enable_boot) echo '服务 %s 无法设置为开机启动。' ;;
+        zh-tw:sv_enable_boot) echo '服務 %s 無法設定為開機啟動。' ;;
+        en:sv_enable_boot) echo 'The service %s could not be set to start at boot.' ;;
+        ru:sv_enable_boot) echo 'Службу %s не удалось настроить на автозапуск.' ;;
+        fa:sv_enable_boot) echo 'سرویس %s برای شروع هنگام بوت تنظیم نشد.' ;;
+        ja:sv_enable_boot) echo 'サービス %s をブート時起動に設定できませんでした。' ;;
+        zh:sv_orc_add) echo 'OpenRC 服务 %s 无法加入 default runlevel。' ;;
+        zh-tw:sv_orc_add) echo 'OpenRC 服務 %s 無法加入 default runlevel。' ;;
+        en:sv_orc_add) echo 'The OpenRC service %s could not be added to the default runlevel.' ;;
+        ru:sv_orc_add) echo 'Службу OpenRC %s не удалось добавить в runlevel default.' ;;
+        fa:sv_orc_add) echo 'سرویس OpenRC ‏%s به runlevel پیش‌فرض اضافه نشد.' ;;
+        ja:sv_orc_add) echo 'OpenRC サービス %s を default ランレベルに追加できませんでした。' ;;
+        zh:sv_orc_add2) echo '服务 %s 无法加入 OpenRC default runlevel。' ;;
+        zh-tw:sv_orc_add2) echo '服務 %s 無法加入 OpenRC default runlevel。' ;;
+        en:sv_orc_add2) echo 'The service %s could not be added to the OpenRC default runlevel.' ;;
+        ru:sv_orc_add2) echo 'Службу %s не удалось добавить в runlevel default OpenRC.' ;;
+        fa:sv_orc_add2) echo 'سرویس %s به runlevel پیش‌فرض OpenRC اضافه نشد.' ;;
+        ja:sv_orc_add2) echo 'サービス %s を OpenRC default ランレベルに追加できませんでした。' ;;
+        zh:sv_orc_notrunning) echo 'OpenRC 服务 %s 未处于运行状态。' ;;
+        zh-tw:sv_orc_notrunning) echo 'OpenRC 服務 %s 未處於運行狀態。' ;;
+        en:sv_orc_notrunning) echo 'The OpenRC service %s is not running.' ;;
+        ru:sv_orc_notrunning) echo 'Служба OpenRC %s не запущена.' ;;
+        fa:sv_orc_notrunning) echo 'سرویس OpenRC ‏%s در حال اجرا نیست.' ;;
+        ja:sv_orc_notrunning) echo 'OpenRC サービス %s が実行状態ではありません。' ;;
+        zh:sv_orc_restart) echo '服务 %s 的 OpenRC restart 命令失败。' ;;
+        zh-tw:sv_orc_restart) echo '服務 %s 的 OpenRC restart 命令失敗。' ;;
+        en:sv_orc_restart) echo 'The OpenRC restart command for service %s failed.' ;;
+        ru:sv_orc_restart) echo 'Команда OpenRC restart для службы %s не удалась.' ;;
+        fa:sv_orc_restart) echo 'دستور restart ‏OpenRC برای سرویس %s ناموفق بود.' ;;
+        ja:sv_orc_restart) echo 'サービス %s の OpenRC restart コマンドに失敗しました。' ;;
+        zh:sv_orc_start) echo 'OpenRC 服务 %s 无法启动。' ;;
+        zh-tw:sv_orc_start) echo 'OpenRC 服務 %s 無法啟動。' ;;
+        en:sv_orc_start) echo 'The OpenRC service %s could not be started.' ;;
+        ru:sv_orc_start) echo 'Службу OpenRC %s не удалось запустить.' ;;
+        fa:sv_orc_start) echo 'سرویس OpenRC ‏%s شروع نشد.' ;;
+        ja:sv_orc_start) echo 'OpenRC サービス %s を開始できませんでした。' ;;
+        zh:sv_ownership) echo '服务 %s 已启动，但逐文件归属清单写入失败。' ;;
+        zh-tw:sv_ownership) echo '服務 %s 已啟動，但逐檔案歸屬清單寫入失敗。' ;;
+        en:sv_ownership) echo 'Service %s started, but writing the per-file ownership manifest failed.' ;;
+        ru:sv_ownership) echo 'Служба %s запущена, но не удалось записать манифест принадлежности по файлам.' ;;
+        fa:sv_ownership) echo 'سرویس %s شروع شد، اما نوشتن فهرست مالکیت تک‌تک فایل‌ها ناموفق بود.' ;;
+        ja:sv_ownership) echo 'サービス %s は起動しましたが、ファイルごとの所有マニフェストの書き込みに失敗しました。' ;;
+        zh:sv_restart_fail) echo '服务 %s 重启命令失败。' ;;
+        zh-tw:sv_restart_fail) echo '服務 %s 重啟命令失敗。' ;;
+        en:sv_restart_fail) echo 'The restart command for service %s failed.' ;;
+        ru:sv_restart_fail) echo 'Команда перезапуска службы %s не удалась.' ;;
+        fa:sv_restart_fail) echo 'دستور راه‌اندازی مجدد سرویس %s ناموفق بود.' ;;
+        ja:sv_restart_fail) echo 'サービス %s の再起動コマンドに失敗しました。' ;;
+        zh:sv_unit_enable) echo '系统服务 %s 无法启用或启动。' ;;
+        zh-tw:sv_unit_enable) echo '系統服務 %s 無法啟用或啟動。' ;;
+        en:sv_unit_enable) echo 'The system service %s could not be enabled or started.' ;;
+        ru:sv_unit_enable) echo 'Системную службу %s не удалось включить или запустить.' ;;
+        fa:sv_unit_enable) echo 'سرویس سیستم %s فعال یا شروع نشد.' ;;
+        ja:sv_unit_enable) echo 'システムサービス %s を有効化または開始できませんでした。' ;;
+        zh:sv_unit_inactive) echo '系统服务 %s 未处于 active 状态。' ;;
+        zh-tw:sv_unit_inactive) echo '系統服務 %s 未處於 active 狀態。' ;;
+        en:sv_unit_inactive) echo 'The system service %s is not in the active state.' ;;
+        ru:sv_unit_inactive) echo 'Системная служба %s не находится в состоянии active.' ;;
+        fa:sv_unit_inactive) echo 'سرویس سیستم %s در وضعیت active نیست.' ;;
+        ja:sv_unit_inactive) echo 'システムサービス %s が active 状態ではありません。' ;;
+        zh:sv_unknown_action) echo '未知服务操作: %s' ;;
+        zh-tw:sv_unknown_action) echo '未知服務操作: %s' ;;
+        en:sv_unknown_action) echo 'Unknown service action: %s' ;;
+        ru:sv_unknown_action) echo 'Неизвестное действие службы: %s' ;;
+        fa:sv_unknown_action) echo 'عملیات سرویس ناشناخته: %s' ;;
+        ja:sv_unknown_action) echo '未知のサービス操作： %s' ;;
+        zh:sv_up_fail) echo '服务 %s 拉起失败。' ;;
+        zh-tw:sv_up_fail) echo '服務 %s 拉起失敗。' ;;
+        en:sv_up_fail) echo 'Failed to bring up service %s.' ;;
+        ru:sv_up_fail) echo 'Не удалось поднять службу %s.' ;;
+        fa:sv_up_fail) echo 'بالا آوردن سرویس %s ناموفق بود.' ;;
+        ja:sv_up_fail) echo 'サービス %s の起動に失敗しました。' ;;
+        zh:tn_apply) echo 'sysctl 调优应用失败，已恢复原状态。' ;;
+        zh-tw:tn_apply) echo 'sysctl 調優應用失敗，已恢復原狀態。' ;;
+        en:tn_apply) echo 'Failed to apply the sysctl tuning; the original state was restored.' ;;
+        ru:tn_apply) echo 'Не удалось применить настройку sysctl; исходное состояние восстановлено.' ;;
+        fa:tn_apply) echo 'اعمال بهینه‌سازی sysctl ناموفق بود؛ وضعیت اصلی بازگردانده شد.' ;;
+        ja:tn_apply) echo 'sysctl チューニングの適用に失敗し、元の状態に復旧しました。' ;;
+        zh:tn_atomic_write) echo '调优配置原子写入失败。' ;;
+        zh-tw:tn_atomic_write) echo '調優設定原子寫入失敗。' ;;
+        en:tn_atomic_write) echo 'Failed to atomically write the tune configuration.' ;;
+        ru:tn_atomic_write) echo 'Не удалось атомарно записать конфигурацию настройки.' ;;
+        fa:tn_atomic_write) echo 'نوشتن اتمی پیکربندی بهینه‌سازی ناموفق بود.' ;;
+        ja:tn_atomic_write) echo 'チューニング設定のアトミック書き込みに失敗しました。' ;;
+        zh:tn_backup_tmp) echo '无法创建调优备份临时目录。' ;;
+        zh-tw:tn_backup_tmp) echo '無法建立調優備份臨時目錄。' ;;
+        en:tn_backup_tmp) echo 'Cannot create the tune backup temp directory.' ;;
+        ru:tn_backup_tmp) echo 'Невозможно создать временный каталог резервной копии настройки.' ;;
+        fa:tn_backup_tmp) echo 'ایجاد پوشه موقت پشتیبان بهینه‌سازی ممکن نیست.' ;;
+        ja:tn_backup_tmp) echo 'チューニングバックアップの一時ディレクトリを作成できません。' ;;
+        zh:tn_backup_unsafe) echo '调优备份路径不是安全目录。' ;;
+        zh-tw:tn_backup_unsafe) echo '調優備份路徑不是安全目錄。' ;;
+        en:tn_backup_unsafe) echo 'The tune backup path is not a safe directory.' ;;
+        ru:tn_backup_unsafe) echo 'Путь резервной копии настройки не является безопасным каталогом.' ;;
+        fa:tn_backup_unsafe) echo 'مسیر پشتیبان بهینه‌سازی یک پوشه امن نیست.' ;;
+        ja:tn_backup_unsafe) echo 'チューニングバックアップのパスが安全なディレクトリではありません。' ;;
+        zh:tn_bbr_backup) echo 'BBR 模块自动加载配置备份失败。' ;;
+        zh-tw:tn_bbr_backup) echo 'BBR 模組自動載入設定備份失敗。' ;;
+        en:tn_bbr_backup) echo 'Failed to back up the BBR module autoload configuration.' ;;
+        ru:tn_bbr_backup) echo 'Не удалось создать резервную копию конфигурации автозагрузки модуля BBR.' ;;
+        fa:tn_bbr_backup) echo 'پشتیبان‌گیری از پیکربندی بارگذاری خودکار ماژول BBR ناموفق بود.' ;;
+        ja:tn_bbr_backup) echo 'BBR モジュールの自動読み込み設定のバックアップに失敗しました。' ;;
+        zh:tn_bbr_chain) echo '内核模块自动加载配置父链不安全。' ;;
+        zh-tw:tn_bbr_chain) echo '內核模組自動載入設定父鏈不安全。' ;;
+        en:tn_bbr_chain) echo 'The kernel module autoload configuration parent chain is unsafe.' ;;
+        ru:tn_bbr_chain) echo 'Родительская цепочка конфигурации автозагрузки модулей ядра небезопасна.' ;;
+        fa:tn_bbr_chain) echo 'زنجیره والد پیکربندی بارگذاری خودکار ماژول هسته امن نیست.' ;;
+        ja:tn_bbr_chain) echo 'カーネルモジュール自動読み込み設定の親チェーンが安全ではありません。' ;;
+        zh:tn_commit) echo '调优备份快照原子提交失败。' ;;
+        zh-tw:tn_commit) echo '調優備份快照原子提交失敗。' ;;
+        en:tn_commit) echo 'Failed to atomically commit the tune backup snapshot.' ;;
+        ru:tn_commit) echo 'Не удалось атомарно зафиксировать снимок резервной копии настройки.' ;;
+        fa:tn_commit) echo 'ثبت اتمی snapshot پشتیبان بهینه‌سازی ناموفق بود.' ;;
+        ja:tn_commit) echo 'チューニングバックアップスナップショットのアトミックコミットに失敗しました。' ;;
+        zh:tn_limits_backup) echo '调优 limits 原配置备份失败。' ;;
+        zh-tw:tn_limits_backup) echo '調優 limits 原設定備份失敗。' ;;
+        en:tn_limits_backup) echo 'Failed to back up the original limits configuration for tuning.' ;;
+        ru:tn_limits_backup) echo 'Не удалось создать резервную копию исходной конфигурации limits для настройки.' ;;
+        fa:tn_limits_backup) echo 'پشتیبان‌گیری از پیکربندی اصلی limits برای بهینه‌سازی ناموفق بود.' ;;
+        ja:tn_limits_backup) echo 'チューニング用の元の limits 設定のバックアップに失敗しました。' ;;
+        zh:tn_moddir_create) echo '无法创建内核模块自动加载目录。' ;;
+        zh-tw:tn_moddir_create) echo '無法建立內核模組自動載入目錄。' ;;
+        en:tn_moddir_create) echo 'Cannot create the kernel module autoload directory.' ;;
+        ru:tn_moddir_create) echo 'Невозможно создать каталог автозагрузки модулей ядра.' ;;
+        fa:tn_moddir_create) echo 'ایجاد پوشه بارگذاری خودکار ماژول هسته ممکن نیست.' ;;
+        ja:tn_moddir_create) echo 'カーネルモジュール自動読み込みディレクトリを作成できません。' ;;
+        zh:tn_moddir_unsafe) echo '内核模块自动加载目录不安全。' ;;
+        zh-tw:tn_moddir_unsafe) echo '內核模組自動載入目錄不安全。' ;;
+        en:tn_moddir_unsafe) echo 'The kernel module autoload directory is unsafe.' ;;
+        ru:tn_moddir_unsafe) echo 'Каталог автозагрузки модулей ядра небезопасен.' ;;
+        fa:tn_moddir_unsafe) echo 'پوشه بارگذاری خودکار ماژول هسته امن نیست.' ;;
+        ja:tn_moddir_unsafe) echo 'カーネルモジュール自動読み込みディレクトリが安全ではありません。' ;;
+        zh:tn_replace_dir) echo '无法原子替换调优备份目录。' ;;
+        zh-tw:tn_replace_dir) echo '無法原子替換調優備份目錄。' ;;
+        en:tn_replace_dir) echo 'Cannot atomically replace the tune backup directory.' ;;
+        ru:tn_replace_dir) echo 'Невозможно атомарно заменить каталог резервной копии настройки.' ;;
+        fa:tn_replace_dir) echo 'جایگزینی اتمی پوشه پشتیبان بهینه‌سازی ممکن نیست.' ;;
+        ja:tn_replace_dir) echo 'チューニングバックアップディレクトリをアトミックに置き換えできません。' ;;
+        zh:tn_snapshot_create) echo '调优 sysctl 原始值快照创建失败。' ;;
+        zh-tw:tn_snapshot_create) echo '調優 sysctl 原始值快照建立失敗。' ;;
+        en:tn_snapshot_create) echo 'Failed to create the tune sysctl original-values snapshot.' ;;
+        ru:tn_snapshot_create) echo 'Не удалось создать снимок исходных значений sysctl для настройки.' ;;
+        fa:tn_snapshot_create) echo 'ایجاد snapshot مقادیر اصلی sysctl برای بهینه‌سازی ناموفق بود.' ;;
+        ja:tn_snapshot_create) echo 'チューニング用 sysctl 元値スナップショットの作成に失敗しました。' ;;
+        zh:tn_snapshot_mark) echo '调优快照完成标记写入失败。' ;;
+        zh-tw:tn_snapshot_mark) echo '調優快照完成標記寫入失敗。' ;;
+        en:tn_snapshot_mark) echo 'Failed to write the tune snapshot completion marker.' ;;
+        ru:tn_snapshot_mark) echo 'Не удалось записать маркер завершения снимка настройки.' ;;
+        fa:tn_snapshot_mark) echo 'نوشتن نشان تکمیل snapshot بهینه‌سازی ناموفق بود.' ;;
+        ja:tn_snapshot_mark) echo 'チューニングスナップショットの完了マーカーを書き込めませんでした。' ;;
+        zh:tn_snapshot_write) echo '调优 sysctl 原始值快照写入失败。' ;;
+        zh-tw:tn_snapshot_write) echo '調優 sysctl 原始值快照寫入失敗。' ;;
+        en:tn_snapshot_write) echo 'Failed to write the tune sysctl original-values snapshot.' ;;
+        ru:tn_snapshot_write) echo 'Не удалось записать снимок исходных значений sysctl для настройки.' ;;
+        fa:tn_snapshot_write) echo 'نوشتن snapshot مقادیر اصلی sysctl برای بهینه‌سازی ناموفق بود.' ;;
+        ja:tn_snapshot_write) echo 'チューニング用 sysctl 元値スナップショットの書き込みに失敗しました。' ;;
+        zh:tn_sysctl_backup) echo '调优 sysctl 原配置备份失败。' ;;
+        zh-tw:tn_sysctl_backup) echo '調優 sysctl 原設定備份失敗。' ;;
+        en:tn_sysctl_backup) echo 'Failed to back up the original sysctl configuration for tuning.' ;;
+        ru:tn_sysctl_backup) echo 'Не удалось создать резервную копию исходной конфигурации sysctl для настройки.' ;;
+        fa:tn_sysctl_backup) echo 'پشتیبان‌گیری از پیکربندی اصلی sysctl برای بهینه‌سازی ناموفق بود.' ;;
+        ja:tn_sysctl_backup) echo 'チューニング用の元の sysctl 設定のバックアップに失敗しました。' ;;
+        zh:tn_tmp) echo '调优临时文件创建失败，已恢复原状态。' ;;
+        zh-tw:tn_tmp) echo '調優臨時檔案建立失敗，已恢復原狀態。' ;;
+        en:tn_tmp) echo 'Failed to create the tune temp file; the original state was restored.' ;;
+        ru:tn_tmp) echo 'Не удалось создать временный файл настройки; исходное состояние восстановлено.' ;;
+        fa:tn_tmp) echo 'ایجاد فایل موقت بهینه‌سازی ناموفق بود؛ وضعیت اصلی بازگردانده شد.' ;;
+        ja:tn_tmp) echo 'チューニング一時ファイルを作成できず、元の状態に復旧しました。' ;;
+        zh:tn_tmp_init) echo '调优临时文件初始化失败，已恢复原状态。' ;;
+        zh-tw:tn_tmp_init) echo '調優臨時檔案初始化失敗，已恢復原狀態。' ;;
+        en:tn_tmp_init) echo 'Failed to initialize the tune temp file; the original state was restored.' ;;
+        ru:tn_tmp_init) echo 'Не удалось инициализировать временный файл настройки; исходное состояние восстановлено.' ;;
+        fa:tn_tmp_init) echo 'مقداردهی اولیه فایل موقت بهینه‌سازی ناموفق بود؛ وضعیت اصلی بازگردانده شد.' ;;
+        ja:tn_tmp_init) echo 'チューニング一時ファイルの初期化に失敗し、元の状態に復旧しました。' ;;
+        zh:tx_backup) echo '无法确认部署前备份文件。' ;;
+        zh-tw:tx_backup) echo '無法確認部署前備份檔案。' ;;
+        en:tx_backup) echo 'Cannot confirm the pre-deployment backup file.' ;;
+        ru:tx_backup) echo 'Невозможно подтвердить файл резервной копии перед развёртыванием.' ;;
+        fa:tx_backup) echo 'تأیید فایل پشتیبان پیش از استقرار ممکن نیست.' ;;
+        ja:tx_backup) echo 'デプロイ前のバックアップファイルを確認できません。' ;;
+        zh:tx_nested) echo '检测到嵌套部署事务；拒绝静默复用外层事务。' ;;
+        zh-tw:tx_nested) echo '偵測到巢狀部署事務；拒絕靜默復用外層事務。' ;;
+        en:tx_nested) echo 'A nested deployment transaction was detected; refusing to silently reuse the outer transaction.' ;;
+        ru:tx_nested) echo 'Обнаружена вложенная транзакция развёртывания; тихий повтор использования внешней транзакции отклонён.' ;;
+        fa:tx_nested) echo 'یک تراکنش استقرار تو در تو شناسایی شد؛ استفاده بی‌صدا از تراکنش بیرونی رد شد.' ;;
+        ja:tx_nested) echo '入れ子のデプロイトランザクションが検出されました。外側のトランザクションのサイレントな再利用を拒否します。' ;;
+        zh:we_chmod) echo 'A-Box 状态权限设置失败。' ;;
+        zh-tw:we_chmod) echo 'A-Box 狀態權限設定失敗。' ;;
+        en:we_chmod) echo 'Failed to set the A-Box state permissions.' ;;
+        ru:we_chmod) echo 'Не удалось задать права состояния A-Box.' ;;
+        fa:we_chmod) echo 'تنظیم مجوزهای وضعیت A-Box ناموفق بود.' ;;
+        ja:we_chmod) echo 'A-Box の状態の権限設定に失敗しました。' ;;
+        zh:we_commit) echo 'A-Box 状态原子提交失败。' ;;
+        zh-tw:we_commit) echo 'A-Box 狀態原子提交失敗。' ;;
+        en:we_commit) echo 'Failed to atomically commit the A-Box state.' ;;
+        ru:we_commit) echo 'Не удалось атомарно зафиксировать состояние A-Box.' ;;
+        fa:we_commit) echo 'ثبت اتمی وضعیت A-Box ناموفق بود.' ;;
+        ja:we_commit) echo 'A-Box の状態のアトミックコミットに失敗しました。' ;;
+        zh:we_dir_create) echo 'A-Box 状态目录创建失败。' ;;
+        zh-tw:we_dir_create) echo 'A-Box 狀態目錄建立失敗。' ;;
+        en:we_dir_create) echo 'Failed to create the A-Box state directory.' ;;
+        ru:we_dir_create) echo 'Не удалось создать каталог состояния A-Box.' ;;
+        fa:we_dir_create) echo 'ایجاد پوشه وضعیت A-Box ناموفق بود.' ;;
+        ja:we_dir_create) echo 'A-Box の状態ディレクトリを作成できませんでした。' ;;
+        zh:we_dir_symlink) echo 'A-Box 状态目录是符号链接，拒绝写入。' ;;
+        zh-tw:we_dir_symlink) echo 'A-Box 狀態目錄是符號連結，拒絕寫入。' ;;
+        en:we_dir_symlink) echo 'The A-Box state directory is a symlink; refusing to write.' ;;
+        ru:we_dir_symlink) echo 'Каталог состояния A-Box является символьной ссылкой; запись отклонена.' ;;
+        fa:we_dir_symlink) echo 'پوشه وضعیت A-Box یک پیوند نمادین است؛ نوشتن رد شد.' ;;
+        ja:we_dir_symlink) echo 'A-Box の状態ディレクトリがシンボリックリンクのため、書き込みを拒否します。' ;;
+        zh:we_file_mode) echo 'A-Box 状态文件权限不安全，拒绝覆盖。' ;;
+        zh-tw:we_file_mode) echo 'A-Box 狀態檔案權限不安全，拒絕覆寫。' ;;
+        en:we_file_mode) echo 'The A-Box state file permissions are unsafe; refusing to overwrite.' ;;
+        ru:we_file_mode) echo 'Права файла состояния A-Box небезопасны; перезапись отклонена.' ;;
+        fa:we_file_mode) echo 'مجوزهای فایل وضعیت A-Box امن نیست؛ بازنویسی رد شد.' ;;
+        ja:we_file_mode) echo 'A-Box の状態ファイルの権限が安全でないため、上書きを拒否します。' ;;
+        zh:we_file_owner) echo 'A-Box 状态文件属主不是 root:root，拒绝覆盖。' ;;
+        zh-tw:we_file_owner) echo 'A-Box 狀態檔案屬主不是 root:root，拒絕覆寫。' ;;
+        en:we_file_owner) echo 'The A-Box state file is not owned by root:root; refusing to overwrite.' ;;
+        ru:we_file_owner) echo 'Файл состояния A-Box не принадлежит root:root; перезапись отклонена.' ;;
+        fa:we_file_owner) echo 'مالک فایل وضعیت A-Box ‏root:root نیست؛ بازنویسی رد شد.' ;;
+        ja:we_file_owner) echo 'A-Box の状態ファイルが root:root 所有でないため、上書きを拒否します。' ;;
+        zh:we_file_unsafe) echo 'A-Box 状态文件不是安全的普通文件，拒绝覆盖。' ;;
+        zh-tw:we_file_unsafe) echo 'A-Box 狀態檔案不是安全的普通檔案，拒絕覆寫。' ;;
+        en:we_file_unsafe) echo 'The A-Box state file is not a safe regular file; refusing to overwrite.' ;;
+        ru:we_file_unsafe) echo 'Файл состояния A-Box не является безопасным обычным файлом; перезапись отклонена.' ;;
+        fa:we_file_unsafe) echo 'فایل وضعیت A-Box یک فایل عادی امن نیست؛ بازنویسی رد شد.' ;;
+        ja:we_file_unsafe) echo 'A-Box の状態ファイルが安全な通常ファイルではないため、上書きを拒否します。' ;;
+        zh:we_missing) echo 'A-Box 状态写入缺少 CORE/MODE，拒绝覆盖现有状态。' ;;
+        zh-tw:we_missing) echo 'A-Box 狀態寫入缺少 CORE/MODE，拒絕覆寫現有狀態。' ;;
+        en:we_missing) echo 'The A-Box state write lacks CORE/MODE; refusing to overwrite the existing state.' ;;
+        ru:we_missing) echo 'В записи состояния A-Box отсутствуют CORE/MODE; перезапись существующего состояния отклонена.' ;;
+        fa:we_missing) echo 'نوشتن وضعیت A-Box فاقد CORE/MODE است؛ بازنویسی وضعیت موجود رد شد.' ;;
+        ja:we_missing) echo 'A-Box の状態書き込みに CORE/MODE がないため、既存の状態への上書きを拒否します。' ;;
+        zh:we_tmp) echo 'A-Box 状态临时文件创建失败。' ;;
+        zh-tw:we_tmp) echo 'A-Box 狀態臨時檔案建立失敗。' ;;
+        en:we_tmp) echo 'Failed to create the A-Box state temp file.' ;;
+        ru:we_tmp) echo 'Не удалось создать временный файл состояния A-Box.' ;;
+        fa:we_tmp) echo 'ایجاد فایل موقت وضعیت A-Box ناموفق بود.' ;;
+        ja:we_tmp) echo 'A-Box の状態一時ファイルを作成できませんでした。' ;;
+        zh:we_write) echo 'A-Box 状态写入失败。' ;;
+        zh-tw:we_write) echo 'A-Box 狀態寫入失敗。' ;;
+        en:we_write) echo 'Failed to write the A-Box state.' ;;
+        ru:we_write) echo 'Не удалось записать состояние A-Box.' ;;
+        fa:we_write) echo 'نوشتن وضعیت A-Box ناموفق بود.' ;;
+        ja:we_write) echo 'A-Box の状態を書き込めませんでした。' ;;
         zh:fmt_unused) echo '未用' ;;
         en:fmt_unused) echo 'unused' ;;
         ru:fmt_unused) echo 'нет трафика' ;;
@@ -6952,16 +7570,16 @@ openrc_cron_service_name() {
 __abox_reconcile_systemd_unit() {
     local unit="$1"
     systemctl list-unit-files --type=service --no-legend "${unit}.service" 2>/dev/null | awk -v wanted="${unit}.service" '$1 == wanted { found=1 } END { exit !found }' || return 0
-    systemctl enable --now "$unit" >/dev/null 2>&1 || die "系统服务 ${unit} 无法启用或启动。"
-    systemctl is-active --quiet "$unit" || die "系统服务 ${unit} 未处于 active 状态。"
+    systemctl enable --now "$unit" >/dev/null 2>&1 || die "$(tprintf sv_unit_enable "$unit")"
+    systemctl is-active --quiet "$unit" || die "$(tprintf sv_unit_inactive "$unit")"
 }
 # BUG-28: hoisted from init_system_environment().
 __abox_reconcile_openrc_service() {
     local unit="$1"
     [[ -x "/etc/init.d/${unit}" ]] || return 0
-    rc-update add "$unit" default >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 无法加入 default runlevel。"
-    rc-service "$unit" status >/dev/null 2>&1 || rc-service "$unit" start >/dev/null 2>&1 9>&- 10>&- || die "OpenRC 服务 ${unit} 无法启动。"
-    rc-service "$unit" status >/dev/null 2>&1 || die "OpenRC 服务 ${unit} 未处于运行状态。"
+    rc-update add "$unit" default >/dev/null 2>&1 || die "$(tprintf sv_orc_add "$unit")"
+    rc-service "$unit" status >/dev/null 2>&1 || rc-service "$unit" start >/dev/null 2>&1 9>&- 10>&- || die "$(tprintf sv_orc_start "$unit")"
+    rc-service "$unit" status >/dev/null 2>&1 || die "$(tprintf sv_orc_notrunning "$unit")"
 }
 init_system_environment() {
     local _init_soft="${1:-}"
@@ -7333,20 +7951,20 @@ service_manager() {
                     ;;
                 start)
                     systemctl daemon-reload >/dev/null 2>&1 || die 'systemd daemon-reload failed.'
-                    systemctl enable "$srv" >/dev/null 2>&1 || die "服务 $srv 无法设置为开机启动。"
+                    systemctl enable "$srv" >/dev/null 2>&1 || die "$(tprintf sv_enable_boot "$srv")"
                     if ! systemctl restart "$srv" >/dev/null 2>&1; then
                         journalctl -u "$srv" --no-pager -n 80 2>/dev/null || true
-                        die "服务 $srv 重启命令失败。"
+                        die "$(tprintf sv_restart_fail "$srv")"
                     fi
                     sleep 2
                     if ! systemctl is-active --quiet "$srv"; then
                         journalctl -u "$srv" --no-pager -n 80 2>/dev/null || true
                         case "$srv" in sing-box|hysteria) clean_nat_rules 2>/dev/null || true; save_firewall_rules 2>/dev/null || true ;; esac
-                        die "服务 $srv 拉起失败。"
+                        die "$(tprintf sv_up_fail "$srv")"
                     fi
-                    record_core_family_ownership "$srv" || die "服务 $srv 已启动，但逐文件归属清单写入失败。"
+                    record_core_family_ownership "$srv" || die "$(tprintf sv_ownership "$srv")"
                     ;;
-                *) die "未知服务操作: $action" ;;
+                *) die "$(tprintf sv_unknown_action "$action")" ;;
             esac
         else
             case "$action" in
@@ -7360,16 +7978,16 @@ service_manager() {
                     [[ "$(service_active_state_value "$srv" 2>/dev/null || printf '%s' unknown)" == 0 ]] || return 1
                     ;;
                 start)
-                    rc-update add "$srv" default >/dev/null 2>&1 || die "服务 $srv 无法加入 OpenRC default runlevel。"
-                    rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&- || die "服务 $srv 的 OpenRC restart 命令失败。"
+                    rc-update add "$srv" default >/dev/null 2>&1 || die "$(tprintf sv_orc_add2 "$srv")"
+                    rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&- || die "$(tprintf sv_orc_restart "$srv")"
                     sleep 2
                     if ! rc-service "$srv" status >/dev/null 2>&1; then
                         case "$srv" in sing-box|hysteria) clean_nat_rules 2>/dev/null || true; save_firewall_rules 2>/dev/null || true ;; esac
-                        die "服务 $srv 拉起失败。"
+                        die "$(tprintf sv_up_fail "$srv")"
                     fi
-                    record_core_family_ownership "$srv" || die "服务 $srv 已启动，但逐文件归属清单写入失败。"
+                    record_core_family_ownership "$srv" || die "$(tprintf sv_ownership "$srv")"
                     ;;
-                *) die "未知服务操作: $action" ;;
+                *) die "$(tprintf sv_unknown_action "$action")" ;;
             esac
         fi
     done
@@ -9549,56 +10167,56 @@ iptables_rule_check() {
 
 allowPort() {
     local raw_port="$1" type="${2:-tcp}" backend spec fw_spec runtime=0 permanent=0 added_runtime=0
-    spec=$(normalize_port_spec "$raw_port") || die "端口或端口范围非法: $raw_port"
-    [[ "$type" == tcp || "$type" == udp ]] || die "协议非法: $type"
+    spec=$(normalize_port_spec "$raw_port") || die "$(tprintf fw2_bad_port "$raw_port")"
+    [[ "$type" == tcp || "$type" == udp ]] || die "$(tprintf fw2_bad_proto "$type")"
     backend=$(firewall_backend)
     case "$backend" in
         iptables|ufw|firewalld) ;;
-        *) die "检测到原生 nftables 或未知防火墙后端（${backend}）；A-Box 暂不支持安全地修改该后端，已拒绝放行端口。" ;;
+        *) die "$(tprintf fw2_nft "$backend")" ;;
     esac
     case "$backend" in
         ufw)
             if ufw_owned_rule_exists "$spec" "$type"; then
-                record_native_firewall_rule ufw "$spec" "$type" rule || die 'UFW 已有托管规则但归属状态记录失败。'
+                record_native_firewall_rule ufw "$spec" "$type" rule || die "$(tr_msg fw2_ufw_record)"
             elif ufw_rule_exists "$spec" "$type"; then
                 msg "${YELLOW}[!] ${spec}/${type} 已由非 A-Box UFW 全局规则放行；保留该规则且不声明所有权。${NC}"
             else
-                ufw allow proto "$type" from any to any port "$spec" comment "A-Box-${spec}-${type}" >/dev/null 2>&1 || die "UFW 防火墙放行失败或当前 UFW 不支持规则评论: ${spec}/${type}"
+                ufw allow proto "$type" from any to any port "$spec" comment "A-Box-${spec}-${type}" >/dev/null 2>&1 || die "$(tprintf fw2_ufw_allow "${spec}/${type}")"
                 if ! ufw_owned_rule_exists "$spec" "$type"; then
                     ufw_delete_owned_rules "$spec" "$type" >/dev/null 2>&1 || true
-                    die "UFW 规则后置归属验证失败: ${spec}/${type}"
+                    die "$(tprintf fw2_ufw_verify "${spec}/${type}")"
                 fi
                 if ! record_native_firewall_rule ufw "$spec" "$type" rule; then
                     ufw_delete_owned_rules "$spec" "$type" >/dev/null 2>&1 || true
-                    die "UFW 规则已添加但归属状态记录失败，已尝试精确回滚: ${spec}/${type}"
+                    die "$(tprintf fw2_ufw_record_rb "${spec}/${type}")"
                 fi
             fi
             return 0
             ;;
         firewalld)
-            fw_spec=$(port_spec_for_firewalld "$spec") || die "firewalld 端口范围转换失败: $spec"
+            fw_spec=$(port_spec_for_firewalld "$spec") || die "$(tprintf fw2_fwd_convert "$spec")"
             firewalld_port_state "$spec" "$type" runtime
-            case $? in 0) runtime=1 ;; 1) runtime=0 ;; *) die 'firewalld runtime 查询失败。' ;; esac
+            case $? in 0) runtime=1 ;; 1) runtime=0 ;; *) die "$(tr_msg fw2_fwd_runtime_q)" ;; esac
             firewalld_port_state "$spec" "$type" permanent
-            case $? in 0) permanent=1 ;; 1) permanent=0 ;; *) die 'firewalld permanent 查询失败。' ;; esac
+            case $? in 0) permanent=1 ;; 1) permanent=0 ;; *) die "$(tr_msg fw2_fwd_perm_q)" ;; esac
             if [[ "$runtime" == 0 ]]; then
-                firewalld_cmd --add-port="${fw_spec}/${type}" >/dev/null 2>&1 || die "firewalld runtime 放行失败: ${fw_spec}/${type}"
+                firewalld_cmd --add-port="${fw_spec}/${type}" >/dev/null 2>&1 || die "$(tprintf fw2_fwd_runtime_add "${fw_spec}/${type}")"
                 added_runtime=1
-                record_native_firewall_rule firewalld "$spec" "$type" runtime || { firewalld_cmd --remove-port="${fw_spec}/${type}" >/dev/null 2>&1 || true; die 'firewalld runtime 规则归属记录失败。'; }
+                record_native_firewall_rule firewalld "$spec" "$type" runtime || { firewalld_cmd --remove-port="${fw_spec}/${type}" >/dev/null 2>&1 || true; die "$(tr_msg fw2_fwd_runtime_record)"; }
             fi
             if [[ "$permanent" == 0 ]]; then
                 if ! firewalld_cmd --permanent --add-port="${fw_spec}/${type}" >/dev/null 2>&1; then
                     [[ "$added_runtime" == 1 ]] && firewalld_cmd --remove-port="${fw_spec}/${type}" >/dev/null 2>&1 || true
-                    die "firewalld permanent 放行失败: ${fw_spec}/${type}"
+                    die "$(tprintf fw2_fwd_perm_add "${fw_spec}/${type}")"
                 fi
                 if ! record_native_firewall_rule firewalld "$spec" "$type" permanent; then
                     firewalld_cmd --permanent --remove-port="${fw_spec}/${type}" >/dev/null 2>&1 || true
                     [[ "$added_runtime" == 1 ]] && firewalld_cmd --remove-port="${fw_spec}/${type}" >/dev/null 2>&1 || true
-                    die 'firewalld permanent 规则归属记录失败。'
+                    die "$(tr_msg fw2_fwd_perm_record)"
                 fi
             fi
-            firewalld_port_state "$spec" "$type" runtime || die 'firewalld runtime 后置验证失败。'
-            firewalld_port_state "$spec" "$type" permanent || die 'firewalld permanent 后置验证失败。'
+            firewalld_port_state "$spec" "$type" runtime || die "$(tr_msg fw2_fwd_runtime_verify)"
+            firewalld_port_state "$spec" "$type" permanent || die "$(tr_msg fw2_fwd_perm_verify)"
             return 0
             ;;
     esac
@@ -9606,15 +10224,15 @@ allowPort() {
     if iptables_rule_check "$IPT" INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
     case "$check_rc" in
         0) ;;
-        1) _iptables_do "$IPT" -I INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT >/dev/null 2>&1 || die "IPv4 防火墙放行失败: ${spec}/${type}" ;;
-        *) die "无法检查 IPv4 防火墙规则: ${spec}/${type}" ;;
+        1) _iptables_do "$IPT" -I INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT >/dev/null 2>&1 || die "$(tprintf fw2_v4_allow "${spec}/${type}")" ;;
+        *) die "$(tprintf fw2_v4_check "${spec}/${type}")" ;;
     esac
     if has_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
         if iptables_rule_check "$IPT6" INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
         case "$check_rc" in
             0) ;;
-            1) _iptables_do "$IPT6" -I INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT >/dev/null 2>&1 || die "IPv6 防火墙放行失败: ${spec}/${type}" ;;
-            *) die "无法检查 IPv6 防火墙规则: ${spec}/${type}" ;;
+            1) _iptables_do "$IPT6" -I INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT >/dev/null 2>&1 || die "$(tprintf fw2_v6_allow "${spec}/${type}")" ;;
+            *) die "$(tprintf fw2_v6_check "${spec}/${type}")" ;;
         esac
     fi
 }
@@ -10253,34 +10871,34 @@ check_selected_ports_free() {
     local pairs pair proto p holder dup line
     pairs=$(selected_port_pairs | awk 'NF')
     dup=$(printf '%s\n' "$pairs" | awk 'NF { seen[$0]++ } END { for (k in seen) if (seen[k] > 1) { print k; break } }')
-    [[ -n "$dup" ]] && die "端口冲突：当前配置中存在重复监听组合 ($dup)。"
+    [[ -n "$dup" ]] && die "$(tprintf pt_dup "$dup")"
 
     if [[ "${HY2_HOP:-}" == 'true' && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" ]]; then
         for pair in $pairs; do
             proto=${pair%/*}; p=${pair#*/}
             if [[ "$proto" == 'udp' ]] && (( 10#$p >= 10#$HY2_RANGE_START && 10#$p <= 10#$HY2_RANGE_END )); then
-                die "端口冲突：HY2 基础 UDP 端口 ($p) 不能落在跳跃区间 (${HY2_RANGE_START}-${HY2_RANGE_END}) 内。"
+                die "$(tprintf pt_hy2_range "$p" "$HY2_RANGE_START" "$HY2_RANGE_END")"
             fi
         done
     fi
 
-    command -v ss >/dev/null 2>&1 || die '系统缺少 ss，无法可靠检查端口占用。'
+    command -v ss >/dev/null 2>&1 || die "$(tr_msg pt_no_ss)"
     for pair in $pairs; do
         proto=${pair%/*}; p=${pair#*/}
         if ! holder=$(ss -H -n -l -p -A "$proto" 2>/dev/null); then
-            die "无法检查 ${p}/${proto} 端口占用；ss 查询失败。"
+            die "$(tprintf pt_ss_fail "${p}/${proto}")"
         fi
         holder=$(awk -v p="$p" '$4 ~ ("[:.]" p "$") || $5 ~ ("[:.]" p "$") { print }' <<< "$holder" || true)
         [[ -z "$holder" ]] && continue
         msg "${RED}[!] 新选择端口 ${p}/${proto} 仍被进程占用：${NC}"
         printf '%s\n' "$holder"
-        die "请先手动释放端口 ${p}/${proto}。"
+        die "$(tprintf pt_release_manual "${p}/${proto}")"
     done
 
     if [[ "${HY2_HOP:-}" == 'true' && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" ]]; then
         local ss_udp_output
         if ! ss_udp_output=$(ss -H -n -l -p -A udp 2>/dev/null); then
-            die '无法检查 HY2 UDP 跳跃区间占用；ss 查询失败。'
+            die "$(tr_msg pt_hy2_ss_fail)"
         fi
         holder=''
         if [[ -n "$ss_udp_output" ]]; then
@@ -10302,14 +10920,14 @@ check_selected_ports_free() {
         if [[ -n "$holder" ]]; then
             msg "${RED}[!] HY2 UDP 跳跃区间 ${HY2_RANGE_START}-${HY2_RANGE_END} 仍被进程占用：${NC}"
             printf '%s' "$holder"
-            die '请先手动释放 HY2 UDP 跳跃区间内的占用端口。'
+            die "$(tr_msg pt_hy2_release)"
         fi
     fi
 }
 
 release_ports() {
     msg "${YELLOW}[*] 正在停止 A-Box 托管服务...${NC}"
-    stop_all_managed_services || die '无法停止全部 A-Box 托管服务。'
+    stop_all_managed_services || die "$(tr_msg pt_stop_all)"
     sleep 1
     local pairs pair proto p holder
     pairs=$(selected_port_pairs | awk 'NF' | sort -u)
@@ -10321,11 +10939,11 @@ release_ports() {
         return 0
     fi
     msg "${YELLOW}[*] 正在检查已配置端口占用...${NC}"
-    command -v ss >/dev/null 2>&1 || die '系统缺少 ss，无法可靠检查端口占用。'
+    command -v ss >/dev/null 2>&1 || die "$(tr_msg pt_no_ss)"
     for pair in $pairs; do
         proto=${pair%/*}; p=${pair#*/}
         if ! holder=$(ss -H -n -l -p -A "$proto" 2>/dev/null); then
-            die "无法检查 ${p}/${proto} 端口占用；ss 查询失败。"
+            die "$(tprintf pt_ss_fail "${p}/${proto}")"
         fi
         holder=$(awk -v p="$p" '$4 ~ ("[:.]" p "$") || $5 ~ ("[:.]" p "$") { print }' <<< "$holder" || true)
         [[ -z "$holder" ]] && continue
@@ -10383,17 +11001,17 @@ install_remote_abox_script_guarded() {
 setup_shortcut() {
     ensure_abox_dir_owned "$ABOX_DIR" || return 1
     if [[ -f "$0" && -r "$0" && "$0" != 'bash' && "$0" != '-bash' ]]; then
-        validate_abox_script_file "$0" '当前 A-Box 脚本' || die '当前 A-Box 脚本校验失败。'
+        validate_abox_script_file "$0" "$(tr_msg ss2_ctx_current)" || die "$(tr_msg ss2_self_verify)"
         if [[ -f "$ABOX_DIR/A-Box.sh" ]]; then
             local current_build_epoch remote_build_epoch
             current_build_epoch=$(awk -F= '/^ABOX_BUILD_EPOCH=/{gsub(/[^0-9]/,"",$2); print $2; exit}' "$ABOX_DIR/A-Box.sh" 2>/dev/null || true)
             remote_build_epoch=$(awk -F= '/^ABOX_BUILD_EPOCH=/{gsub(/[^0-9]/,"",$2); print $2; exit}' "$0" 2>/dev/null || true)
             if [[ "$current_build_epoch" =~ ^[0-9]+$ && "$remote_build_epoch" =~ ^[0-9]+$ ]] && (( 10#$remote_build_epoch < 10#$current_build_epoch )); then
-                confirm_yes_no '当前本地 A-Box 脚本版本低于已安装版本，确认降级？[Y/N]: ' || die '已拒绝降级 A-Box 脚本。'
+                confirm_yes_no "$(tr_msg ss2_downgrade_prompt)" || die "$(tr_msg ss2_refuse_downgrade)"
             fi
         fi
         if [[ ! -f "$ABOX_DIR/A-Box.sh" ]] || ! cmp -s "$0" "$ABOX_DIR/A-Box.sh"; then
-            install_binary_atomically "$0" "$ABOX_DIR/A-Box.sh" || die '持久化当前脚本失败。'
+            install_binary_atomically "$0" "$ABOX_DIR/A-Box.sh" || die "$(tr_msg ss2_persist)"
         fi
     else
         # A piped invocation has no readable $0 file to persist.
@@ -10409,12 +11027,12 @@ setup_shortcut() {
             install_remote_abox_script_guarded "$SCRIPT_URL" "$ABOX_DIR/A-Box.sh"
         fi
     fi
-    [[ -f "$ABOX_DIR/A-Box.sh" ]] || die '持久化 A-Box 脚本不存在。'
-    validate_abox_script_file "$ABOX_DIR/A-Box.sh" '持久化 A-Box 脚本' || die '持久化 A-Box 脚本校验失败。'
-    chmod +x "$ABOX_DIR/A-Box.sh" || die 'A-Box 主脚本执行权限设置失败。'
+    [[ -f "$ABOX_DIR/A-Box.sh" ]] || die "$(tr_msg ss2_persist_missing)"
+    validate_abox_script_file "$ABOX_DIR/A-Box.sh" "$(tr_msg ss2_ctx_persisted)" || die "$(tr_msg ss2_persist_verify)"
+    chmod +x "$ABOX_DIR/A-Box.sh" || die "$(tr_msg ss2_chmod)"
 
     local shortcut_tmp
-    shortcut_tmp=$(umask 077; mktemp /tmp/A-Box-sb.XXXXXX) || die '快捷入口临时文件创建失败。'
+    shortcut_tmp=$(umask 077; mktemp /tmp/A-Box-sb.XXXXXX) || die "$(tr_msg ss2_tmp)"
     cat > "$shortcut_tmp" <<'EOS' || { rm -f -- "$shortcut_tmp"; die '快捷入口临时文件写入失败。'; }
 #!/usr/bin/env bash
 # Managed by A-Box
@@ -10427,13 +11045,13 @@ else
     exit 1
 fi
 EOS
-    chmod 755 "$shortcut_tmp" || { rm -f -- "$shortcut_tmp"; die '快捷入口临时文件权限设置失败。'; }
+    chmod 755 "$shortcut_tmp" || { rm -f -- "$shortcut_tmp"; die "$(tr_msg ss2_tmp_chmod)"; }
     if ! assert_abox_shortcut_safe /usr/local/bin/sb; then
         rm -f -- "$shortcut_tmp"
-        die '现有 /usr/local/bin/sb 归属/内容不安全，拒绝覆盖。'
+        die "$(tr_msg ss2_sb_unsafe)"
     fi
     if [[ ! -f /usr/local/bin/sb ]] || ! cmp -s "$shortcut_tmp" /usr/local/bin/sb; then
-        install_binary_atomically "$shortcut_tmp" /usr/local/bin/sb || { rm -f -- "$shortcut_tmp"; die '快捷入口写入失败。'; }
+        install_binary_atomically "$shortcut_tmp" /usr/local/bin/sb || { rm -f -- "$shortcut_tmp"; die "$(tr_msg ss2_write)"; }
     fi
     rm -f -- "$shortcut_tmp"
 }
@@ -11777,12 +12395,12 @@ write_file_atomically_from_stdin() {
 
 write_env() {
     local env_core="${1:-${CORE:-}}" env_mode="${2:-${MODE:-}}" old_traffic_limit_gb='' old_traffic_limit_mode='' tmp
-    [[ -n "$env_core" && -n "$env_mode" ]] || die 'A-Box 状态写入缺少 CORE/MODE，拒绝覆盖现有状态。'
-    [[ ! -L "$ABOX_DIR" ]] || die 'A-Box 状态目录是符号链接，拒绝写入。'
+    [[ -n "$env_core" && -n "$env_mode" ]] || die "$(tr_msg we_missing)"
+    [[ ! -L "$ABOX_DIR" ]] || die "$(tr_msg we_dir_symlink)"
     if [[ -e "$ABOX_ENV" ]]; then
-        [[ -f "$ABOX_ENV" && ! -L "$ABOX_ENV" ]] || die 'A-Box 状态文件不是安全的普通文件，拒绝覆盖。'
-        path_owned_by_root "$ABOX_ENV" || die 'A-Box 状态文件属主不是 root:root，拒绝覆盖。'
-        path_mode_has_no_group_other_write "$ABOX_ENV" || die 'A-Box 状态文件权限不安全，拒绝覆盖。'
+        [[ -f "$ABOX_ENV" && ! -L "$ABOX_ENV" ]] || die "$(tr_msg we_file_unsafe)"
+        path_owned_by_root "$ABOX_ENV" || die "$(tr_msg we_file_owner)"
+        path_mode_has_no_group_other_write "$ABOX_ENV" || die "$(tr_msg we_file_mode)"
     fi
     if [[ -f "$ABOX_ENV" && ! -L "$ABOX_ENV" ]]; then
         old_traffic_limit_gb=$(grep '^TRAFFIC_LIMIT_GB=' "$ABOX_ENV" | tail -n 1 | cut -d= -f2- | tr -d '"')
@@ -11793,8 +12411,8 @@ write_env() {
         fi
     fi
     umask 077
-    install -d -m 700 "$ABOX_DIR" || die 'A-Box 状态目录创建失败。'
-    tmp=$(mktemp "$ABOX_DIR/.env.A-Box-new.XXXXXX") || die 'A-Box 状态临时文件创建失败。'
+    install -d -m 700 "$ABOX_DIR" || die "$(tr_msg we_dir_create)"
+    tmp=$(mktemp "$ABOX_DIR/.env.A-Box-new.XXXXXX") || die "$(tr_msg we_tmp)"
     {
         printf 'CORE=%s\n' "$(shell_quote "$env_core")"
         printf 'MODE=%s\n' "$(shell_quote "$env_mode")"
@@ -11839,9 +12457,9 @@ write_env() {
         [[ -n "$old_traffic_limit_gb" ]] && printf 'TRAFFIC_LIMIT_GB=%s\n' "$(shell_quote "$old_traffic_limit_gb")"
         [[ -n "$old_traffic_limit_mode" ]] && printf 'TRAFFIC_LIMIT_MODE=%s\n' "$(shell_quote "$old_traffic_limit_mode")"
         :
-    } > "$tmp" || { rm -f -- "$tmp"; die 'A-Box 状态写入失败。'; }
-    chmod 600 "$tmp" || { rm -f -- "$tmp"; die 'A-Box 状态权限设置失败。'; }
-    mv -f -- "$tmp" "$ABOX_ENV" || { rm -f -- "$tmp"; die 'A-Box 状态原子提交失败。'; }
+    } > "$tmp" || { rm -f -- "$tmp"; die "$(tr_msg we_write)"; }
+    chmod 600 "$tmp" || { rm -f -- "$tmp"; die "$(tr_msg we_chmod)"; }
+    mv -f -- "$tmp" "$ABOX_ENV" || { rm -f -- "$tmp"; die "$(tr_msg we_commit)"; }
 }
 
 validate_fail2ban_config_or_die() {
@@ -12088,7 +12706,7 @@ setup_active_defense() {
         [[ -n "$log_file" ]] || continue
         ensure_abox_log_file "$log_file"
     done < <(abox_log_files)
-    assert_abox_auxiliary_safe /etc/logrotate.d/A-Box || die "拒绝覆盖非 A-Box 辅助文件: /etc/logrotate.d/A-Box"
+    assert_abox_auxiliary_safe /etc/logrotate.d/A-Box || die "$(tprintf ax_refuse "/etc/logrotate.d/A-Box")"
     write_file_atomically_from_stdin /etc/logrotate.d/A-Box 644 <<'EOF_LOGROTATE' || die 'logrotate 配置原子写入失败。'
 # Managed by A-Box
 /var/log/A-Box-*.log {
@@ -12107,12 +12725,12 @@ EOF_LOGROTATE
     ensure_fail2ban || true
     if command -v fail2ban-client >/dev/null 2>&1; then
         local tcp_ports='' udp_ports='' jail_tmp='' f2b_action='' f2b_backend='' f2b_tcp_action='' f2b_udp_action='' sb_harv='' xr_harv='' f2b_inc='' f2b_ver=''
-        path_parent_chain_safe /etc/fail2ban/filter.d/A-Box.conf || die 'Fail2Ban filter 父目录链不安全，拒绝创建或写入。'
-        path_parent_chain_safe /etc/fail2ban/jail.d/A-Box.local || die 'Fail2Ban jail 父目录链不安全，拒绝创建或写入。'
-        mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d || die 'Fail2Ban 目录创建失败。'
-        assert_abox_auxiliary_safe /etc/fail2ban/filter.d/A-Box.conf || die "拒绝覆盖非 A-Box 辅助文件: /etc/fail2ban/filter.d/A-Box.conf"
-        assert_abox_auxiliary_safe /etc/fail2ban/jail.d/A-Box.local || die "拒绝覆盖非 A-Box 辅助文件: /etc/fail2ban/jail.d/A-Box.local"
-        jail_tmp=$(mktemp /etc/fail2ban/jail.d/.A-Box.local.A-Box-new.XXXXXX) || die 'Fail2Ban jail 临时文件创建失败。'
+        path_parent_chain_safe /etc/fail2ban/filter.d/A-Box.conf || die "$(tr_msg ad_filter_chain)"
+        path_parent_chain_safe /etc/fail2ban/jail.d/A-Box.local || die "$(tr_msg ad_jail_chain)"
+        mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d || die "$(tr_msg ad_dirs)"
+        assert_abox_auxiliary_safe /etc/fail2ban/filter.d/A-Box.conf || die "$(tprintf ax_refuse "/etc/fail2ban/filter.d/A-Box.conf")"
+        assert_abox_auxiliary_safe /etc/fail2ban/jail.d/A-Box.local || die "$(tprintf ax_refuse "/etc/fail2ban/jail.d/A-Box.local")"
+        jail_tmp=$(mktemp /etc/fail2ban/jail.d/.A-Box.local.A-Box-new.XXXXXX) || die "$(tr_msg ad_jail_tmp)"
         write_file_atomically_from_stdin /etc/fail2ban/filter.d/A-Box.conf 644 <<'EOF_F2B_FILTER' || { rm -f -- "$jail_tmp"; die 'Fail2Ban filter 原子写入失败。'; }
 # Managed by A-Box
 [Definition]
@@ -12163,7 +12781,7 @@ bantime.maxtime = 86400'
         fi
         tcp_ports="${tcp_ports%,}"; udp_ports="${udp_ports%,}"
         if [[ -n "$tcp_ports" || -n "$udp_ports" ]]; then
-            f2b_backend=$(firewall_backend) || { rm -f -- "$jail_tmp"; die '无法确定 Fail2Ban 防火墙后端。'; }
+            f2b_backend=$(firewall_backend) || { rm -f -- "$jail_tmp"; die "$(tr_msg ad_backend_unknown)"; }
             case "$f2b_backend" in
                 firewalld)
                     # firewallcmd-multiport invokes iptables -m multiport --dports (requires colon port ranges).
@@ -12171,11 +12789,11 @@ bantime.maxtime = 86400'
                     ;;
                 ufw) f2b_action='ufw' ;;
                 iptables) f2b_action='iptables-multiport' ;;
-                *) rm -f -- "$jail_tmp"; die "不支持的 Fail2Ban 防火墙后端: $f2b_backend" ;;
+                *) rm -f -- "$jail_tmp"; die "$(tprintf ad_backend_unsupported "$f2b_backend")" ;;
             esac
             [[ -r "/etc/fail2ban/action.d/${f2b_action}.conf" ]] || {
                 rm -f -- "$jail_tmp"
-                die "Fail2Ban action 定义不存在: ${f2b_action}"
+                die "$(tprintf ad_action_missing "$f2b_action")"
             }
             if [[ "$f2b_action" == 'ufw' ]]; then
                 # Stock Fail2Ban UFW action blocks the offending source host-wide;
@@ -12221,8 +12839,8 @@ action = ${f2b_udp_action}
 EOF_F2B_UDP
         fi
         if [[ -n "$tcp_ports" || -n "$udp_ports" ]]; then
-            chmod 644 "$jail_tmp" || { rm -f -- "$jail_tmp"; die 'Fail2Ban jail 权限设置失败。'; }
-            mv -f -- "$jail_tmp" /etc/fail2ban/jail.d/A-Box.local || { rm -f -- "$jail_tmp"; die 'Fail2Ban jail 原子提交失败。'; }
+            chmod 644 "$jail_tmp" || { rm -f -- "$jail_tmp"; die "$(tr_msg ad_jail_chmod)"; }
+            mv -f -- "$jail_tmp" /etc/fail2ban/jail.d/A-Box.local || { rm -f -- "$jail_tmp"; die "$(tr_msg ad_jail_commit)"; }
             validate_fail2ban_config_or_die
             if [[ "${INIT_SYS:-}" == systemd ]]; then
                 systemctl restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响 A-Box 核心服务提交。${NC}"
@@ -12231,7 +12849,7 @@ EOF_F2B_UDP
             fi
         else
             rm -f -- "$jail_tmp"
-            remove_owned_auxiliary_path /etc/fail2ban/jail.d/A-Box.local || die '空的 A-Box Fail2Ban jail 删除失败。'
+            remove_owned_auxiliary_path /etc/fail2ban/jail.d/A-Box.local || die "$(tr_msg ad_jail_remove)"
         fi
     fi
 }
@@ -12260,7 +12878,7 @@ hysteria_official_hop_firewall_ok() {
 
 setup_health_monitor() {
     msg "${YELLOW}[*] 正在注入带锁、连续失败阈值与退避的 L4 健康探针...${NC}"
-    install -d -m 700 "$ABOX_DIR" || die '无法创建健康探针目录。'
+    install -d -m 700 "$ABOX_DIR" || die "$(tr_msg hm_dir)"
     write_file_atomically_from_stdin "$ABOX_DIR/socket_probe.sh" 700 <<'EOF_PROBE' || die '健康探针原子写入失败。'
 #!/usr/bin/env bash
 # Managed by A-Box
@@ -13845,11 +14463,11 @@ deployment_transaction_rollback() {
 
 begin_deployment_transaction() {
     local reason="$1"; shift
-    [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] && die '检测到嵌套部署事务；拒绝静默复用外层事务。'
+    [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] && die "$(tr_msg tx_nested)"
     ABOX_LAST_BACKUP=''
     local backup_dir="${ABOX_DEPLOY_TX_BACKUP_DIR:-$ABOX_DIR/backups}"
     auto_backup_silent "$reason" "$backup_dir"
-    [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || die '无法确认部署前备份文件。'
+    [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || die "$(tr_msg tx_backup)"
     ABOX_DEPLOY_TX_BACKUP_DIR="$backup_dir"
     ABOX_DEPLOY_TX_ACTIVE=1
     ABOX_DEPLOY_TX_REASON="$reason"
@@ -19063,14 +19681,14 @@ apply_vps_tune() {
     local dir="$ABOX_DIR/tune-backup" tmp key value available bbr_loaded=0
     local bbr_module_file='/etc/modules-load.d/A-Box-bbr.conf'
     local missing snapshot_exists=0 snapshot_tmp
-    assert_abox_auxiliary_safe /etc/security/limits.d/A-Box.conf || die "拒绝覆盖非 A-Box 辅助文件: /etc/security/limits.d/A-Box.conf"
-    assert_abox_auxiliary_safe /etc/sysctl.d/99-A-Box-tune.conf || die "拒绝覆盖非 A-Box 辅助文件: /etc/sysctl.d/99-A-Box-tune.conf"
-    assert_abox_auxiliary_safe "$bbr_module_file" || die "拒绝覆盖非 A-Box 辅助文件: $bbr_module_file"
+    assert_abox_auxiliary_safe /etc/security/limits.d/A-Box.conf || die "$(tprintf ax_refuse "/etc/security/limits.d/A-Box.conf")"
+    assert_abox_auxiliary_safe /etc/sysctl.d/99-A-Box-tune.conf || die "$(tprintf ax_refuse "/etc/sysctl.d/99-A-Box-tune.conf")"
+    assert_abox_auxiliary_safe "$bbr_module_file" || die "$(tprintf ax_refuse "$bbr_module_file")"
     # Snapshot state validation stays strict: a half-written snapshot is unsafe.
     if [[ -f "$dir/.captured" ]]; then
         snapshot_exists=1
     elif [[ -e "$dir" || -L "$dir" ]]; then
-        [[ -d "$dir" && ! -L "$dir" ]] || die '调优备份路径不是安全目录。'
+        [[ -d "$dir" && ! -L "$dir" ]] || die "$(tr_msg tn_backup_unsafe)"
         [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]] || { msg "${RED}[!] 检测到未完成的调优快照；请先检查并恢复/清理该快照。${NC}"; return 1; }
     fi
     # Idempotent re-run: inspect live state first, never error out on re-apply.
@@ -19084,26 +19702,26 @@ apply_vps_tune() {
     if (( snapshot_exists == 1 )); then
         msg "${YELLOW}[!] 保留已有调优快照（恢复时仍回到最初状态），仅补齐缺失项。${NC}"
     else
-        snapshot_tmp=$(mktemp -d "$ABOX_DIR/.tune-backup-new.XXXXXX") || die '无法创建调优备份临时目录。'
+        snapshot_tmp=$(mktemp -d "$ABOX_DIR/.tune-backup-new.XXXXXX") || die "$(tr_msg tn_backup_tmp)"
         if [[ -f /etc/sysctl.d/99-A-Box-tune.conf ]] && ! cp -a /etc/sysctl.d/99-A-Box-tune.conf "$snapshot_tmp/sysctl.conf"; then
-            rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原配置备份失败。'
+            rm -rf -- "$snapshot_tmp"; die "$(tr_msg tn_sysctl_backup)"
         fi
         if [[ -f /etc/security/limits.d/A-Box.conf ]] && ! cp -a /etc/security/limits.d/A-Box.conf "$snapshot_tmp/limits.conf"; then
-            rm -rf -- "$snapshot_tmp"; die '调优 limits 原配置备份失败。'
+            rm -rf -- "$snapshot_tmp"; die "$(tr_msg tn_limits_backup)"
         fi
         if [[ -f "$bbr_module_file" ]] && ! cp -a "$bbr_module_file" "$snapshot_tmp/bbr-modules.conf"; then
-            rm -rf -- "$snapshot_tmp"; die 'BBR 模块自动加载配置备份失败。'
+            rm -rf -- "$snapshot_tmp"; die "$(tr_msg tn_bbr_backup)"
         fi
-        : > "$snapshot_tmp/sysctl.original" || { rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原始值快照创建失败。'; }
+        : > "$snapshot_tmp/sysctl.original" || { rm -rf -- "$snapshot_tmp"; die "$(tr_msg tn_snapshot_create)"; }
         for key in fs.file-max fs.inotify.max_user_instances net.ipv4.tcp_syncookies net.ipv4.tcp_fin_timeout net.ipv4.tcp_keepalive_time net.ipv4.tcp_max_syn_backlog net.ipv4.tcp_max_tw_buckets net.ipv4.tcp_fastopen net.ipv4.tcp_mtu_probing net.ipv4.tcp_notsent_lowat net.core.netdev_max_backlog net.core.somaxconn net.core.rmem_max net.core.wmem_max net.ipv4.tcp_rmem net.ipv4.tcp_wmem net.ipv4.tcp_slow_start_after_idle net.ipv4.ip_local_port_range net.core.default_qdisc net.ipv4.tcp_congestion_control; do
             value=$(sysctl -n "$key" 2>/dev/null) || continue
-            printf '%s=%s\n' "$key" "$value" >> "$snapshot_tmp/sysctl.original" || { rm -rf -- "$snapshot_tmp"; die '调优 sysctl 原始值快照写入失败。'; }
+            printf '%s=%s\n' "$key" "$value" >> "$snapshot_tmp/sysctl.original" || { rm -rf -- "$snapshot_tmp"; die "$(tr_msg tn_snapshot_write)"; }
         done
-        touch "$snapshot_tmp/.captured" || { rm -rf -- "$snapshot_tmp"; die '调优快照完成标记写入失败。'; }
+        touch "$snapshot_tmp/.captured" || { rm -rf -- "$snapshot_tmp"; die "$(tr_msg tn_snapshot_mark)"; }
         if [[ -d "$dir" ]]; then
-            rmdir -- "$dir" || { rm -rf -- "$snapshot_tmp"; die '无法原子替换调优备份目录。'; }
+            rmdir -- "$dir" || { rm -rf -- "$snapshot_tmp"; die "$(tr_msg tn_replace_dir)"; }
         fi
-        mv -f -- "$snapshot_tmp" "$dir" || { rm -rf -- "$snapshot_tmp"; die '调优备份快照原子提交失败。'; }
+        mv -f -- "$snapshot_tmp" "$dir" || { rm -rf -- "$snapshot_tmp"; die "$(tr_msg tn_commit)"; }
     fi
     write_file_atomically_from_stdin /etc/security/limits.d/A-Box.conf 644 <<'EOF_LIMITS' || { restore_vps_tune 1 || true; die 'limits 配置原子写入失败，已恢复原状态。'; }
 # Managed by A-Box
@@ -19112,8 +19730,8 @@ apply_vps_tune() {
 root soft nofile 1048576
 root hard nofile 1048576
 EOF_LIMITS
-    tmp=$(umask 077; mktemp /tmp/A-Box-sysctl.XXXXXX) || { restore_vps_tune 1 || true; die '调优临时文件创建失败，已恢复原状态。'; }
-    printf '%s\n' '# Managed by A-Box' > "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die '调优临时文件初始化失败，已恢复原状态。'; }
+    tmp=$(umask 077; mktemp /tmp/A-Box-sysctl.XXXXXX) || { restore_vps_tune 1 || true; die "$(tr_msg tn_tmp)"; }
+    printf '%s\n' '# Managed by A-Box' > "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg tn_tmp_init)"; }
     __abox_add_sysctl fs.file-max 1048576 "$tmp"
     __abox_add_sysctl fs.inotify.max_user_instances 8192 "$tmp"
     __abox_add_sysctl net.ipv4.tcp_syncookies 1 "$tmp"
@@ -19137,9 +19755,9 @@ EOF_LIMITS
         __abox_add_sysctl net.core.default_qdisc fq "$tmp"
         __abox_add_sysctl net.ipv4.tcp_congestion_control bbr "$tmp"
         if (( bbr_loaded == 1 )); then
-            path_parent_chain_safe "$bbr_module_file" || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die '内核模块自动加载配置父链不安全。'; }
-            [[ ! -L /etc/modules-load.d && (! -e /etc/modules-load.d || -d /etc/modules-load.d) ]] || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die '内核模块自动加载目录不安全。'; }
-            install -d -m 755 /etc/modules-load.d || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die '无法创建内核模块自动加载目录。'; }
+            path_parent_chain_safe "$bbr_module_file" || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg tn_bbr_chain)"; }
+            [[ ! -L /etc/modules-load.d && (! -e /etc/modules-load.d || -d /etc/modules-load.d) ]] || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg tn_moddir_unsafe)"; }
+            install -d -m 755 /etc/modules-load.d || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg tn_moddir_create)"; }
             write_file_atomically_from_stdin "$bbr_module_file" 644 <<'EOF_BBR' || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die 'BBR 内核模块持久加载配置写入失败。'; }
 # Managed by A-Box
 tcp_bbr
@@ -19148,9 +19766,9 @@ EOF_BBR
     else
         msg "${YELLOW}[!] 当前内核未提供 BBR，跳过 BBR/FQ 设置。${NC}"
     fi
-    install_file_atomically "$tmp" /etc/sysctl.d/99-A-Box-tune.conf 600 || { rm -f "$tmp"; restore_vps_tune 1 || true; die '调优配置原子写入失败。'; }
+    install_file_atomically "$tmp" /etc/sysctl.d/99-A-Box-tune.conf 600 || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg tn_atomic_write)"; }
     rm -f "$tmp"
-    if ! sysctl -p /etc/sysctl.d/99-A-Box-tune.conf >/dev/null 2>&1; then restore_vps_tune 1; die 'sysctl 调优应用失败，已恢复原状态。'; fi
+    if ! sysctl -p /etc/sysctl.d/99-A-Box-tune.conf >/dev/null 2>&1; then restore_vps_tune 1; die "$(tr_msg tn_apply)"; fi
     missing=$(_tune_missing_items)
     if [[ -z "$missing" ]]; then
         msg "${GREEN}缺失项已补齐，系统调优已全部应用；未强制启用 IP forwarding，也未修改核心 JSON 配置。${NC}"
@@ -21711,7 +22329,7 @@ apply_host_dns() {
     fi
     case "$backend" in
         resolved)
-            mkdir -p /etc/systemd/resolved.conf.d || die '无法创建 resolved.conf.d'
+            mkdir -p /etc/systemd/resolved.conf.d || die "$(tr_msg hd_resolved_dir)"
             dropin=/etc/systemd/resolved.conf.d/99-abox-dns.conf
             if [[ "$mode" == 'dot' ]]; then
                 write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'DoT drop-in 写入失败。'; }
@@ -21733,15 +22351,15 @@ EOF_DNS
         networkmanager)
             local iface connection
             iface=$(nmcli -t -f DEVICE,STATE device 2>/dev/null | awk -F: '$2=="connected"{print $1; exit}')
-            [[ -n "$iface" ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die '未找到 NetworkManager 活动接口。'; }
+            [[ -n "$iface" ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_no_iface)"; }
             connection=$(nmcli -g GENERAL.CONNECTION device show "$iface" 2>/dev/null || true)
-            [[ -n "$connection" && "$connection" != '--' ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die '未找到活动 NetworkManager 连接配置。'; }
-            nmcli connection modify "$connection" ipv4.ignore-auto-dns yes ipv4.dns "$v4" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'NetworkManager IPv4 DNS 写入失败。'; }
-            nmcli connection modify "$connection" ipv6.ignore-auto-dns yes ipv6.dns "${v6:-}" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'NetworkManager IPv6 DNS 写入失败。'; }
-            nmcli device reapply "$iface" >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'NetworkManager DNS 应用失败，已回滚。'; }
+            [[ -n "$connection" && "$connection" != '--' ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_no_conn)"; }
+            nmcli connection modify "$connection" ipv4.ignore-auto-dns yes ipv4.dns "$v4" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_nm_v4)"; }
+            nmcli connection modify "$connection" ipv6.ignore-auto-dns yes ipv6.dns "${v6:-}" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_nm_v6)"; }
+            nmcli device reapply "$iface" >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_nm_apply)"; }
             ;;
         *)
-            [[ ! -L /etc/resolv.conf ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die '/etc/resolv.conf 是符号链接；当前 generic DNS 后端拒绝覆盖受其他服务管理的路径。'; }
+            [[ ! -L /etc/resolv.conf ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_resolv_symlink)"; }
             # A-01 fix: build resolv.conf lines explicitly to avoid the
             # command-substitution newline-stripping bug that used to produce
             # "nameserver 2001:db8::53options timeout:2 attempts:3".
@@ -21750,8 +22368,8 @@ EOF_DNS
                 [[ -n "$v4" ]] && printf 'nameserver %s\n' "$v4"
                 [[ -n "$v6" ]] && printf 'nameserver %s\n' "$v6"
                 printf 'options timeout:2 attempts:3\n'
-            } > "$DNS_BACKUP_DIR/resolv.conf.new" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 内容生成失败。'; }
-            write_file_atomically_from_stdin /etc/resolv.conf 644 < "$DNS_BACKUP_DIR/resolv.conf.new" || { rm -f "$DNS_BACKUP_DIR/resolv.conf.new"; restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'resolv.conf 原子写入失败。'; }
+            } > "$DNS_BACKUP_DIR/resolv.conf.new" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_resolv_gen)"; }
+            write_file_atomically_from_stdin /etc/resolv.conf 644 < "$DNS_BACKUP_DIR/resolv.conf.new" || { rm -f "$DNS_BACKUP_DIR/resolv.conf.new"; restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_resolv_write)"; }
             rm -f "$DNS_BACKUP_DIR/resolv.conf.new"
             ;;
     esac
@@ -30055,7 +30673,7 @@ update_script() {
         (( cache_restore_ok == 1 )) && die 'OTA 脚本原子写入失败；旧脚本保留，SNI 缓存已回滚。'
         die 'OTA 脚本原子写入失败，且 SNI 缓存回滚不完整；请保留当前文件并检查 A-Box-sni-candidates.txt。'
     fi
-    if ! validate_abox_script_file "$ABOX_DIR/A-Box.sh" '持久化 A-Box 脚本'; then
+    if ! validate_abox_script_file "$ABOX_DIR/A-Box.sh" "$(tr_msg ss2_ctx_persisted)"; then
         rollback_binary_install "$ABOX_DIR/A-Box.sh" "$tmp_old_script" || script_restore_ok=0
         restore_sni_candidate_cache_snapshot "$tmp_old_sni_cache" "$old_cache_exists" || cache_restore_ok=0
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized" "$tmp_old_script" "$tmp_old_sni_cache"

@@ -592,6 +592,120 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:wl_rt_daemon_down) echo '已检测到 Docker 命令，但守护进程不可用。为避免覆盖/冲突，A-Box 未安装第二套 Docker；请先修复现有 Docker 服务后重试。' ;;
+        en:wl_rt_daemon_down) echo 'Docker CLI exists, but its daemon is unavailable. A-Box did not install another Docker package to avoid conflicts; fix the existing Docker service and retry.' ;;
+        ru:wl_rt_daemon_down) echo 'Docker CLI установлен, но демон недоступен. A-Box не устанавливал другой пакет Docker во избежание конфликтов; исправьте существующую службу и повторите.' ;;
+        fa:wl_rt_daemon_down) echo 'Docker CLI موجود است اما daemon در دسترس نیست. برای جلوگیری از تداخل، A-Box بسته Docker دیگری نصب نکرد؛ سرویس موجود را اصلاح و دوباره تلاش کنید.' ;;
+        zh-tw:wl_rt_daemon_down) echo '已檢測到 Docker 命令，但守護程序不可用。為避免覆蓋/衝突，A-Box 未安裝第二套 Docker；請先修復現有 Docker 服務後重試。' ;;
+        ja:wl_rt_daemon_down) echo 'Docker CLI は検出されましたが、デーモンは利用できません。競合や上書きを避けるため、A-Box は別の Docker パッケージをインストールしませんでした。既存の Docker サービスを修復してから再試行してください。' ;;
+        zh:wl_rt_install_prompt) echo 'Wallos 需要 Docker。是否通过当前系统软件源安装并启动 Docker？[Y/N]: ' ;;
+        en:wl_rt_install_prompt) echo 'Docker is required. Install and start it using the OS package source? [Y/N]: ' ;;
+        ru:wl_rt_install_prompt) echo 'Для Wallos требуется Docker. Установить и запустить его из репозитория ОС? [Y/N]: ' ;;
+        fa:wl_rt_install_prompt) echo 'Wallos به Docker نیاز دارد. Docker از مخزن سیستم نصب و اجرا شود؟ [Y/N]: ' ;;
+        zh-tw:wl_rt_install_prompt) echo 'Wallos 需要 Docker。是否透過當前系統軟體源安裝並啟動 Docker？[Y/N]: ' ;;
+        ja:wl_rt_install_prompt) echo 'Docker が必要です。OS のパッケージリポジトリからインストールして起動しますか？[Y/N]: ' ;;
+        zh:wl_rt_conflicts) echo '[!] 检测到可能冲突的已安装包：%s。移除这些包可能影响现有 Podman/Docker 容器。' ;;
+        en:wl_rt_conflicts) echo '[!] Possible conflicting packages are installed: %s. Removing them may affect existing Podman/Docker containers.' ;;
+        ru:wl_rt_conflicts) echo '[!] Обнаружены возможно конфликтующие пакеты: %s. Их удаление может повлиять на существующие контейнеры Podman/Docker.' ;;
+        fa:wl_rt_conflicts) echo '[!] بسته‌های احتمالاً متعارض نصب شده‌اند: %s. حذف آن‌ها ممکن است بر کانتینرهای موجود Podman/Docker اثر بگذارد.' ;;
+        zh-tw:wl_rt_conflicts) echo '[!] 偵測到可能衝突的已安裝套件：%s。移除這些套件可能影響現有 Podman/Docker 容器。' ;;
+        ja:wl_rt_conflicts) echo '[!] 競合する可能性のあるパッケージがインストールされています: %s。これらを削除すると既存の Podman/Docker コンテナに影響する可能性があります。' ;;
+        zh:wl_rt_conflict_prompt) echo '是否先移除上述冲突运行时包再安装 Docker CE？这可能影响现有容器。[Y/N]: ' ;;
+        en:wl_rt_conflict_prompt) echo 'Remove the listed conflicting runtime packages before installing Docker CE? Existing containers may be affected. [Y/N]: ' ;;
+        ru:wl_rt_conflict_prompt) echo 'Удалить перечисленные конфликтующие пакеты runtime перед установкой Docker CE? Это может повлиять на существующие контейнеры. [Y/N]: ' ;;
+        fa:wl_rt_conflict_prompt) echo 'بسته‌های متعارض ذکرشده پیش از نصب Docker CE حذف شوند؟ ممکن است بر کانتینرهای فعلی اثر بگذارد. [Y/N]: ' ;;
+        zh-tw:wl_rt_conflict_prompt) echo '是否先移除上述衝突執行時包再安裝 Docker CE？這可能影響現有容器。[Y/N]: ' ;;
+        ja:wl_rt_conflict_prompt) echo '競合するランタイムパッケージを先に削除してから Docker CE をインストールしますか？既存のコンテナに影響する可能性があります。[Y/N]: ' ;;
+        zh:wl_rt_declined) echo '[!] 用户未授权删除冲突包；未继续安装 Docker CE。' ;;
+        en:wl_rt_declined) echo '[!] User did not authorize removing the conflicting packages; Docker CE installation was not continued.' ;;
+        ru:wl_rt_declined) echo '[!] Пользователь не разрешил удаление конфликтующих пакетов; установка Docker CE не продолжена.' ;;
+        fa:wl_rt_declined) echo '[!] کاربر حذف بسته‌های متعارض را تأیید نکرد؛ نصب Docker CE ادامه نیافت.' ;;
+        zh-tw:wl_rt_declined) echo '[!] 使用者未授權刪除衝突套件；未繼續安裝 Docker CE。' ;;
+        ja:wl_rt_declined) echo '[!] 競合パッケージの削除が承認されませんでした。Docker CE のインストールを続行しません。' ;;
+        zh:wl_rt_ce_fail) echo '[!] Docker CE 依赖事务失败；没有使用 --allowerasing 自动删除其他包。' ;;
+        en:wl_rt_ce_fail) echo '[!] Docker CE dependency transaction failed; --allowerasing was not used to remove other packages automatically.' ;;
+        ru:wl_rt_ce_fail) echo '[!] Транзакция зависимостей Docker CE не удалась; --allowerasing для автоматического удаления других пакетов не использовался.' ;;
+        fa:wl_rt_ce_fail) echo '[!] تراکنش وابستگی Docker CE ناموفق بود؛ از --allowerasing برای حذف خودکار بسته‌های دیگر استفاده نشد.' ;;
+        zh-tw:wl_rt_ce_fail) echo '[!] Docker CE 相依性交易失敗；沒有使用 --allowerasing 自動刪除其他套件。' ;;
+        ja:wl_rt_ce_fail) echo '[!] Docker CE の依存関係トランザクションに失敗しました。--allowerasing で他のパッケージを自動削除することはしませんでした。' ;;
+        zh:wl_rt_unsupported) echo '当前系统 %s 暂不支持自动安装 Docker，未修改系统。' ;;
+        en:wl_rt_unsupported) echo 'OS %s does not support automatic Docker installation; no system changes made.' ;;
+        ru:wl_rt_unsupported) echo 'ОС %s не поддерживается автоматической установкой Docker; системные изменения не выполнены.' ;;
+        fa:wl_rt_unsupported) echo 'سیستم‌عامل %s برای نصب خودکار Docker پشتیبانی نمی‌شود؛ تغییری اعمال نشد.' ;;
+        zh-tw:wl_rt_unsupported) echo '當前系統 %s 暫不支援自動安裝 Docker，未修改系統。' ;;
+        ja:wl_rt_unsupported) echo '現在のシステム %s では Docker の自動インストールはサポートされていません。システムは変更されていません。' ;;
+        zh:wl_hs_no_ipv4) echo '无法检测公网 IPv4，HTTPS 无法签发 IP 证书；Wallos 保持仅本机访问。' ;;
+        en:wl_hs_no_ipv4) echo 'No public IPv4 detected; HTTPS cannot issue an IP certificate. Wallos stays local-only.' ;;
+        ru:wl_hs_no_ipv4) echo 'Публичный IPv4 не определён; HTTPS не может выпустить IP-сертификат. Wallos остаётся доступен только локально.' ;;
+        fa:wl_hs_no_ipv4) echo 'IPv4 عمومی شناسایی نشد؛ HTTPS نمی‌تواند گواهی IP صادر کند. Wallos فقط محلی می‌ماند.' ;;
+        zh-tw:wl_hs_no_ipv4) echo '無法偵測公網 IPv4，HTTPS 無法簽發 IP 憑證；Wallos 保持僅本機訪問。' ;;
+        ja:wl_hs_no_ipv4) echo 'パブリック IPv4 を検出できません。HTTPS の IP 証明書を発行できないため、Wallos はローカル専用のままです。' ;;
+        zh:wl_hs_cfg_fail) echo 'Wallos HTTPS 配置生成失败。' ;;
+        en:wl_hs_cfg_fail) echo 'Wallos HTTPS configuration generation failed.' ;;
+        ru:wl_hs_cfg_fail) echo 'Не удалось сгенерировать конфигурацию HTTPS для Wallos.' ;;
+        fa:wl_hs_cfg_fail) echo 'ایجاد پیکربندی HTTPS برای Wallos ناموفق بود.' ;;
+        zh-tw:wl_hs_cfg_fail) echo 'Wallos HTTPS 設定產生失敗。' ;;
+        ja:wl_hs_cfg_fail) echo 'Wallos HTTPS 設定の生成に失敗しました。' ;;
+        zh:wl_hs_unit_fail) echo 'Wallos HTTPS 服务启动失败，见 /etc/ddr/abox-wallos-caddy.log。' ;;
+        en:wl_hs_unit_fail) echo 'Wallos HTTPS service failed to start; see /etc/ddr/abox-wallos-caddy.log.' ;;
+        ru:wl_hs_unit_fail) echo 'Не удалось запустить службу HTTPS Wallos; см. /etc/ddr/abox-wallos-caddy.log.' ;;
+        fa:wl_hs_unit_fail) echo 'راه‌اندازی سرویس HTTPS Wallos ناموفق بود؛ /etc/ddr/abox-wallos-caddy.log را ببینید.' ;;
+        zh-tw:wl_hs_unit_fail) echo 'Wallos HTTPS 服務啟動失敗，見 /etc/ddr/abox-wallos-caddy.log。' ;;
+        ja:wl_hs_unit_fail) echo 'Wallos HTTPS サービスの起動に失敗しました。/etc/ddr/abox-wallos-caddy.log を確認してください。' ;;
+        zh:wl_hs_cert_timeout) echo 'HTTPS 证书未在 120 秒内签发（常见原因：云安全组未放行 TCP 80、或 80 端口被占用）。Wallos 保持仅本机访问，修复后重跑安装即可。日志：/etc/ddr/abox-wallos-caddy.log' ;;
+        en:wl_hs_cert_timeout) echo 'The HTTPS certificate was not issued within 120 seconds (common causes: the cloud security group does not allow TCP 80, or port 80 is taken). Wallos stays local-only; fix the cause and re-run the install. Log: /etc/ddr/abox-wallos-caddy.log' ;;
+        ru:wl_hs_cert_timeout) echo 'HTTPS-сертификат не был выпущен за 120 секунд (частые причины: группа безопасности не разрешает TCP 80 или порт 80 занят). Wallos остаётся локальным; устраните причину и повторите установку. Журнал: /etc/ddr/abox-wallos-caddy.log' ;;
+        fa:wl_hs_cert_timeout) echo 'گواهی HTTPS در ۱۲۰ ثانیه صادر نشد (دلایل رایج: گروه امنیتی ابری TCP 80 را اجازه نمی‌دهد یا درگاه ۸۰ اشغال است). Wallos فقط محلی می‌ماند؛ علت را رفع و نصب را دوباره اجرا کنید. گزارش: /etc/ddr/abox-wallos-caddy.log' ;;
+        zh-tw:wl_hs_cert_timeout) echo 'HTTPS 憑證未在 120 秒內簽發（常見原因：雲安全組未放行 TCP 80、或 80 連接埠被占用）。Wallos 保持僅本機訪問，修復後重跑安裝即可。日誌：/etc/ddr/abox-wallos-caddy.log' ;;
+        ja:wl_hs_cert_timeout) echo 'HTTPS 証明書が 120 秒以内に発行されませんでした（よくある原因: クラウドのセキュリティグループで TCP 80 が許可されていない、または 80 番ポートが使用中）。Wallos はローカル専用のままです。原因を修正してインストールを再実行してください。ログ: /etc/ddr/abox-wallos-caddy.log' ;;
+        zh:wl_hs_probe_warn) echo '证书已签发，但本机回环探测 Caddy 未通（服务可能尚在启动）：稍后打开网址确认；若仍不通，请看 /etc/ddr/abox-wallos-caddy.log。外网可达性取决于云安全组是否放行 TCP %s 与 TCP 80。' ;;
+        en:wl_hs_probe_warn) echo 'The certificate was issued, but the local loopback probe to Caddy did not pass (the service may still be starting): open the URL shortly to confirm; if it still fails, see /etc/ddr/abox-wallos-caddy.log. External reachability depends on the cloud security group allowing TCP %s and TCP 80.' ;;
+        ru:wl_hs_probe_warn) echo 'Сертификат выпущен, но локальная проверка Caddy через loopback не прошла (служба, возможно, ещё запускается): откройте адрес чуть позже для подтверждения; если не работает, см. /etc/ddr/abox-wallos-caddy.log. Внешняя доступность зависит от того, разрешены ли в группе безопасности TCP %s и TCP 80.' ;;
+        fa:wl_hs_probe_warn) echo 'گواهی صادر شد، اما بررسی محلی Caddy از راه loopback موفق نبود (سرویس ممکن است هنوز در حال راه‌اندازی باشد): کمی بعد نشانی را برای تأیید باز کنید؛ اگر همچنان نشد، /etc/ddr/abox-wallos-caddy.log را ببینید. دسترسی از بیرون به این بستگی دارد که گروه امنیتی ابری TCP %s و TCP 80 را اجازه دهد.' ;;
+        zh-tw:wl_hs_probe_warn) echo '憑證已簽發，但本機回環探測 Caddy 未通（服務可能尚在啟動）：稍後打開網址確認；若仍不通，請看 /etc/ddr/abox-wallos-caddy.log。外網可達性取決於雲安全組是否放行 TCP %s 與 TCP 80。' ;;
+        ja:wl_hs_probe_warn) echo '証明書は発行されましたが、Caddy へのローカルループバック探査が通りませんでした（サービスはまだ起動中の可能性があります）。しばらくしてから URL を開いて確認してください。それでも失敗する場合は /etc/ddr/abox-wallos-caddy.log を確認してください。外部からの到達性は、クラウドのセキュリティグループで TCP %s と TCP 80 が許可されているかによります。' ;;
+        zh:wl_hs_tls_ok) echo 'TLS 握手自检通过（SNI / 无 SNI 双路正常）。' ;;
+        en:wl_hs_tls_ok) echo 'TLS handshake self-check passed (SNI and no-SNI both OK).' ;;
+        ru:wl_hs_tls_ok) echo 'Самопроверка TLS-рукопожатия пройдена (SNI и без SNI - OK).' ;;
+        fa:wl_hs_tls_ok) echo 'خودآزمایی دست‌دهی TLS موفق بود (SNI و بدون SNI هر دو سالم).' ;;
+        zh-tw:wl_hs_tls_ok) echo 'TLS 握手自我檢查通過（SNI / 無 SNI 雙路正常）。' ;;
+        ja:wl_hs_tls_ok) echo 'TLS ハンドシェイクのセルフチェックに合格しました（SNI / 無 SNI 両方 OK）。' ;;
+        zh:wl_hs_tls_fail) echo 'TLS 握手自检失败（%s）——公网浏览器可能打不开 Wallos，请修复后重跑 Wallos 安装。日志：/etc/ddr/abox-wallos-caddy.log' ;;
+        en:wl_hs_tls_fail) echo 'TLS handshake self-check FAILED (%s) - public browsers may fail to open Wallos; fix and re-run the Wallos install. Log: /etc/ddr/abox-wallos-caddy.log' ;;
+        ru:wl_hs_tls_fail) echo 'Самопроверка TLS-рукопожатия НЕ ПРОЙДЕНА (%s) - публичные браузеры могут не открыть Wallos; исправьте и повторите установку Wallos. Журнал: /etc/ddr/abox-wallos-caddy.log' ;;
+        fa:wl_hs_tls_fail) echo 'خودآزمایی دست‌دهی TLS ناموفق بود (%s) - ممکن است مرورگرهای عمومی نتوانند Wallos را باز کنند؛ رفع و نصب Wallos را دوباره اجرا کنید. گزارش: /etc/ddr/abox-wallos-caddy.log' ;;
+        zh-tw:wl_hs_tls_fail) echo 'TLS 握手自我檢查失敗（%s）——公網瀏覽器可能打不開 Wallos，請修復後重跑 Wallos 安裝。日誌：/etc/ddr/abox-wallos-caddy.log' ;;
+        ja:wl_hs_tls_fail) echo 'TLS ハンドシェイクのセルフチェックに失敗しました（%s）。パブリックブラウザで Wallos を開けない可能性があります。修正して Wallos のインストールを再実行してください。ログ: /etc/ddr/abox-wallos-caddy.log' ;;
+        zh:wl_cf_bad_host) echo 'CF 隧道域名无效：%s。Wallos 保持仅本机访问。' ;;
+        en:wl_cf_bad_host) echo 'Invalid CF tunnel hostname: %s. Wallos stays local-only.' ;;
+        ru:wl_cf_bad_host) echo 'Недопустимое имя хоста туннеля CF: %s. Wallos остаётся доступен только локально.' ;;
+        fa:wl_cf_bad_host) echo 'نام میزبان تونل CF نامعتبر است: %s. Wallos فقط محلی می‌ماند.' ;;
+        zh-tw:wl_cf_bad_host) echo 'CF 隧道域名無效：%s。Wallos 保持僅本機訪問。' ;;
+        ja:wl_cf_bad_host) echo 'CF トンネルのホスト名が無効です: %s。Wallos はローカル専用のままです。' ;;
+        zh:wl_cf_no_token) echo 'CF 隧道令牌缺失（%s）。Wallos 保持仅本机访问。' ;;
+        en:wl_cf_no_token) echo 'CF tunnel token is missing (%s). Wallos stays local-only.' ;;
+        ru:wl_cf_no_token) echo 'Отсутствует токен туннеля CF (%s). Wallos остаётся доступен только локально.' ;;
+        fa:wl_cf_no_token) echo 'توکن تونل CF وجود ندارد (%s). Wallos فقط محلی می‌ماند.' ;;
+        zh-tw:wl_cf_no_token) echo 'CF 隧道權杖缺失（%s）。Wallos 保持僅本機訪問。' ;;
+        ja:wl_cf_no_token) echo 'CF トンネルのトークンがありません（%s）。Wallos はローカル専用のままです。' ;;
+        zh:wl_cf_unit_fail) echo 'CF 隧道服务启动失败，见 /etc/ddr/abox-wallos-cftunnel.log。' ;;
+        en:wl_cf_unit_fail) echo 'CF tunnel service failed to start; see /etc/ddr/abox-wallos-cftunnel.log.' ;;
+        ru:wl_cf_unit_fail) echo 'Не удалось запустить службу туннеля CF; см. /etc/ddr/abox-wallos-cftunnel.log.' ;;
+        fa:wl_cf_unit_fail) echo 'راه‌اندازی سرویس تونل CF ناموفق بود؛ /etc/ddr/abox-wallos-cftunnel.log را ببینید.' ;;
+        zh-tw:wl_cf_unit_fail) echo 'CF 隧道服務啟動失敗，見 /etc/ddr/abox-wallos-cftunnel.log。' ;;
+        ja:wl_cf_unit_fail) echo 'CF トンネルサービスの起動に失敗しました。/etc/ddr/abox-wallos-cftunnel.log を確認してください。' ;;
+        zh:wl_cf_not_running) echo 'CF 隧道进程未运行（令牌可能无效），见 /etc/ddr/abox-wallos-cftunnel.log。Wallos 保持仅本机访问。' ;;
+        en:wl_cf_not_running) echo 'The CF tunnel process is not running (the token may be invalid); see /etc/ddr/abox-wallos-cftunnel.log. Wallos stays local-only.' ;;
+        ru:wl_cf_not_running) echo 'Процесс туннеля CF не запущен (возможно, токен недействителен); см. /etc/ddr/abox-wallos-cftunnel.log. Wallos остаётся доступен только локально.' ;;
+        fa:wl_cf_not_running) echo 'فرایند تونل CF در حال اجرا نیست (ممکن است توکن نامعتبر باشد)؛ /etc/ddr/abox-wallos-cftunnel.log را ببینید. Wallos فقط محلی می‌ماند.' ;;
+        zh-tw:wl_cf_not_running) echo 'CF 隧道程序未運行（權杖可能無效），見 /etc/ddr/abox-wallos-cftunnel.log。Wallos 保持僅本機訪問。' ;;
+        ja:wl_cf_not_running) echo 'CF トンネルプロセスが実行されていません（トークンが無効な可能性があります）。/etc/ddr/abox-wallos-cftunnel.log を確認してください。Wallos はローカル専用のままです。' ;;
+        zh:wl_cf_no_resp) echo '隧道已运行，但 https://%s/ 暂时无响应：请在 CF 后台确认隧道状态为 Healthy、且 Public Hostname 的 Service 为 http://127.0.0.1:%s（域名刚绑定时也可能需要等 1-2 分钟）。' ;;
+        en:wl_cf_no_resp) echo 'The tunnel is running, but https://%s/ is not responding yet: in the CF dashboard confirm the tunnel is Healthy and the Public Hostname service is http://127.0.0.1:%s (a freshly bound hostname may also need 1-2 minutes).' ;;
+        ru:wl_cf_no_resp) echo 'Туннель работает, но https://%s/ пока не отвечает: в панели CF убедитесь, что туннель Healthy, а служба Public Hostname - http://127.0.0.1:%s (свежепривязанному имени может понадобиться 1-2 минуты).' ;;
+        fa:wl_cf_no_resp) echo 'تونل در حال اجراست، اما https://%s/ هنوز پاسخ نمی‌دهد: در داشبورد CF مطمئن شوید تونل Healthy است و سرویس Public Hostname برابر http://127.0.0.1:%s است (نام تازه‌متصل‌شده ممکن است ۱-۲ دقیقه زمان بخواهد).' ;;
+        zh-tw:wl_cf_no_resp) echo '隧道已運行，但 https://%s/ 暫時無回應：請在 CF 後台確認隧道狀態為 Healthy、且 Public Hostname 的 Service 為 http://127.0.0.1:%s（域名剛綁定時也可能需要等 1-2 分鐘）。' ;;
+        ja:wl_cf_no_resp) echo 'トンネルは実行中ですが、https://%s/ がまだ応答しません。CF ダッシュボードでトンネルが Healthy であることと、Public Hostname の Service が http://127.0.0.1:%s であることを確認してください（バインド直後は 1〜2 分かかる場合があります）。' ;;
         zh:wl_rs_nonregular) echo '[!] Wallos 备份包含非常规文件（符号链接/硬链接/特殊文件），拒绝处理。' ;;
         en:wl_rs_nonregular) echo '[!] Wallos backup contains non-regular file (symlink/hardlink/special); refusing.' ;;
         ru:wl_rs_nonregular) echo '[!] Резервная копия Wallos содержит нерегулярный файл (симлинк/хардлинк/специальный); отказ.' ;;
@@ -24860,27 +24974,11 @@ wallos_install_runtime() {
                 ;;
         esac
         if docker info >/dev/null 2>&1; then return 0; fi
-        case "${ABOX_LANG:-zh}" in
-            en) runtime_error='Docker CLI exists, but its daemon is unavailable. A-Box did not install another Docker package to avoid conflicts; fix the existing Docker service and retry.' ;;
-            ru) runtime_error='Docker CLI установлен, но демон недоступен. A-Box не устанавливал другой пакет Docker во избежание конфликтов; исправьте существующую службу и повторите.' ;;
-            fa) runtime_error='Docker CLI موجود است اما daemon در دسترس نیست. برای جلوگیری از تداخل، A-Box بسته Docker دیگری نصب نکرد؛ سرویس موجود را اصلاح و دوباره تلاش کنید.' ;;
-            zh-tw) runtime_error='已檢測到 Docker 命令，但守護程序不可用。為避免覆蓋/衝突，A-Box 未安裝第二套 Docker；請先修復現有 Docker 服務後重試。' ;;
-            ja)
-                runtime_error='Docker CLI は検出されましたが、デーモンは利用できません。競合や上書きを避けるため、A-Box は別の Docker パッケージをインストールしませんでした。既存の Docker サービスを修復してから再試行してください。' ;;
-            *) runtime_error='已检测到 Docker 命令，但守护进程不可用。为避免覆盖/冲突，A-Box 未安装第二套 Docker；请先修复现有 Docker 服务后重试。' ;;
-        esac
+        runtime_error=$(tr_msg wl_rt_daemon_down)
         msg "${RED}${runtime_error}${NC}"
         return 1
     fi
-    case "${ABOX_LANG:-zh}" in
-        en) prompt='Docker is required. Install and start it using the OS package source? [Y/N]: ' ;;
-        ru) prompt='Для Wallos требуется Docker. Установить и запустить его из репозитория ОС? [Y/N]: ' ;;
-        fa) prompt='Wallos به Docker نیاز دارد. Docker از مخزن سیستم نصب و اجرا شود؟ [Y/N]: ' ;;
-        zh-tw) prompt='Wallos 需要 Docker。是否透過當前系統軟體源安裝並啟動 Docker？[Y/N]: ' ;;
-        ja)
-            prompt='Docker が必要です。OS のパッケージリポジトリからインストールして起動しますか？[Y/N]: ' ;;
-        *) prompt='Wallos 需要 Docker。是否通过当前系统软件源安装并启动 Docker？[Y/N]: ' ;;
-    esac
+    prompt=$(tr_msg wl_rt_install_prompt)
     read -r -p "$prompt" answer
     is_yes "$answer" || return 1
     case "$os_id" in
@@ -24910,36 +25008,20 @@ wallos_install_runtime() {
                 rpm -q "$pkg" >/dev/null 2>&1 && docker_conflicts+=("$pkg")
             done
             if (("${#docker_conflicts[@]}" > 0)); then
-                msg "${YELLOW}[!] 检测到可能冲突的已安装包：${docker_conflicts[*]}。移除这些包可能影响现有 Podman/Docker 容器。${NC}"
-                case "${ABOX_LANG:-zh}" in
-                    en) conflict_prompt="Remove the listed conflicting runtime packages before installing Docker CE? Existing containers may be affected. [Y/N]: " ;;
-                    ru) conflict_prompt="Удалить перечисленные конфликтующие пакеты runtime перед установкой Docker CE? Это может повлиять на существующие контейнеры. [Y/N]: " ;;
-                    fa) conflict_prompt="بسته‌های متعارض ذکرشده پیش از نصب Docker CE حذف شوند؟ ممکن است بر کانتینرهای فعلی اثر بگذارد. [Y/N]: " ;;
-                    zh-tw) conflict_prompt="是否先移除上述衝突執行時包再安裝 Docker CE？這可能影響現有容器。[Y/N]: " ;;
-                    ja)
-                        conflict_prompt="競合するランタイムパッケージを先に削除してから Docker CE をインストールしますか？既存のコンテナに影響する可能性があります。[Y/N]: " ;;
-                    *) conflict_prompt="是否先移除上述冲突运行时包再安装 Docker CE？这可能影响现有容器。[Y/N]: " ;;
-                esac
+                msg "${YELLOW}$(tprintf wl_rt_conflicts "${docker_conflicts[*]}")${NC}"
+                conflict_prompt=$(tr_msg wl_rt_conflict_prompt)
                 read -r -p "$conflict_prompt" answer || return 1
-                is_yes "$answer" || { msg "${YELLOW}[!] 用户未授权删除冲突包；未继续安装 Docker CE。${NC}"; return 1; }
+                is_yes "$answer" || { msg "${YELLOW}$(tr_msg wl_rt_declined)${NC}"; return 1; }
                 dnf -y remove "${docker_conflicts[@]}" || return 1
             fi
             dnf -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin || {
-                msg "${RED}[!] Docker CE 依赖事务失败；没有使用 --allowerasing 自动删除其他包。${NC}"
+                msg "${RED}$(tr_msg wl_rt_ce_fail)${NC}"
                 return 1
             }
             systemctl enable --now docker || return 1
             ;;
         *)
-            case "${ABOX_LANG:-zh}" in
-                en) msg "${RED}OS $os_id does not support automatic Docker installation; no system changes made.${NC}" ;;
-                ru) msg "${RED}ОС $os_id не поддерживается автоматической установкой Docker; системные изменения не выполнены.${NC}" ;;
-                fa) msg "${RED}سیستم‌عامل $os_id برای نصب خودکار Docker پشتیبانی نمی‌شود؛ تغییری اعمال نشد.${NC}" ;;
-                zh-tw) msg "${RED}當前系統 $os_id 暫不支援自動安裝 Docker，未修改系統。${NC}" ;;
-                ja)
-                    msg "${RED}現在のシステム $os_id では Docker の自動インストールはサポートされていません。システムは変更されていません。${NC}" ;;
-                *) msg "${RED}当前系统 $os_id 暂不支持自动安装 Docker，未修改系统。${NC}" ;;
-            esac
+            msg "${RED}$(tprintf wl_rt_unsupported "$os_id")${NC}"
             return 1
             ;;
     esac
@@ -26061,7 +26143,7 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     local pubport="$1" internal="$2" pub_ip='' tmp_json='' _t=0 _cert='' _code=''
     pub_ip=$(get_public_ip 2>/dev/null || true)
     if [[ ! "$pub_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        msg "${RED}无法检测公网 IPv4，HTTPS 无法签发 IP 证书；Wallos 保持仅本机访问。${NC}"
+        msg "${RED}$(tr_msg wl_hs_no_ipv4)${NC}"
         return 1
     fi
     install_wallos_caddy || return 1
@@ -26102,11 +26184,11 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
             }}}
           }
         }' > "$tmp_json"; then
-        rm -f "$tmp_json"; msg "${RED}Wallos HTTPS 配置生成失败。${NC}"; return 1
+        rm -f "$tmp_json"; msg "${RED}$(tr_msg wl_hs_cfg_fail)${NC}"; return 1
     fi
     install_file_atomically "$tmp_json" /etc/ddr/wallos-caddy.json 600 || { rm -f "$tmp_json"; return 1; }
     rm -f "$tmp_json"
-    wallos_https_write_unit || { msg "${RED}Wallos HTTPS 服务启动失败，见 /etc/ddr/abox-wallos-caddy.log。${NC}"; return 1; }
+    wallos_https_write_unit || { msg "${RED}$(tr_msg wl_hs_unit_fail)${NC}"; return 1; }
     # Wait for the IP certificate (ACME HTTP-01 runs over port 80).
     while (( _t < 120 )); do
         _cert=$(find /etc/ddr/wallos-caddy/data/caddy/certificates -name "${pub_ip}.crt" 2>/dev/null | head -1)
@@ -26115,7 +26197,7 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
         sleep 3; _t=$((_t + 3))
     done
     if [[ -z "$_cert" ]]; then
-        msg "${RED}HTTPS 证书未在 120 秒内签发（常见原因：云安全组未放行 TCP 80、或 80 端口被占用）。Wallos 保持仅本机访问，修复后重跑安装即可。日志：/etc/ddr/abox-wallos-caddy.log${NC}"
+        msg "${RED}$(tr_msg wl_hs_cert_timeout)${NC}"
         return 1
     fi
     # Readiness probe via loopback with SNI pinning: dialing the
@@ -26123,7 +26205,7 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     # (e.g. Lightsail) even when external access is perfectly fine.
     _code=$(curl -ks --max-time 6 --resolve "${pub_ip}:${pubport}:127.0.0.1" -o /dev/null -w '%{http_code}' "https://${pub_ip}:${pubport}/" 2>/dev/null || true)
     if [[ ! "$_code" =~ ^[0-9]+$ || "$_code" == '000' ]]; then
-        msg "${YELLOW}证书已签发，但本机回环探测 Caddy 未通（服务可能尚在启动）：稍后打开网址确认；若仍不通，请看 /etc/ddr/abox-wallos-caddy.log。外网可达性取决于云安全组是否放行 TCP ${pubport} 与 TCP 80。${NC}"
+        msg "${YELLOW}$(tprintf wl_hs_probe_warn "$pubport")${NC}"
     fi
     # Real-handshake self-check. The probe above pins SNI via --resolve,
     # which is NOT how browsers reach an IP URL: they send no SNI, and
@@ -26133,9 +26215,9 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     if command -v openssl >/dev/null 2>&1; then
         local _legs=''
         if _legs=$(wallos_tls_handshake_check "$pubport" "$pub_ip"); then
-            case "${ABOX_LANG:-zh}" in en) msg "${GREEN}TLS handshake self-check passed (SNI and no-SNI both OK).${NC}" ;; *) msg "${GREEN}TLS 握手自检通过（SNI / 无 SNI 双路正常）。${NC}" ;; esac
+            msg "${GREEN}$(tr_msg wl_hs_tls_ok)${NC}"
         else
-            case "${ABOX_LANG:-zh}" in en) msg "${RED}TLS handshake self-check FAILED (${_legs}) - public browsers may fail to open Wallos; fix and re-run the Wallos install. Log: /etc/ddr/abox-wallos-caddy.log${NC}" ;; *) msg "${RED}TLS 握手自检失败（${_legs}）——公网浏览器可能打不开 Wallos，请修复后重跑 Wallos 安装。日志：/etc/ddr/abox-wallos-caddy.log${NC}" ;; esac
+            msg "${RED}$(tprintf wl_hs_tls_fail "$_legs")${NC}"
         fi
     fi
     return 0
@@ -26226,27 +26308,27 @@ wallos_stack_teardown() {
 wallos_cftunnel_setup() { # $1 = public hostname (wallos.example.com)
     local host="$1" _t=0 _code='' _iport=''
     if [[ ! "$host" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
-        msg "${RED}CF 隧道域名无效：${host}。Wallos 保持仅本机访问。${NC}"
+        msg "${RED}$(tprintf wl_cf_bad_host "$host")${NC}"
         return 1
     fi
     if [[ ! -s "$WALLOS_CF_TOKEN_FILE" ]]; then
-        msg "${RED}CF 隧道令牌缺失（$WALLOS_CF_TOKEN_FILE）。Wallos 保持仅本机访问。${NC}"
+        msg "${RED}$(tprintf wl_cf_no_token "$WALLOS_CF_TOKEN_FILE")${NC}"
         return 1
     fi
     install_cloudflared || return 1
-    wallos_cftunnel_write_unit || { msg "${RED}CF 隧道服务启动失败，见 /etc/ddr/abox-wallos-cftunnel.log。${NC}"; return 1; }
+    wallos_cftunnel_write_unit || { msg "${RED}$(tr_msg wl_cf_unit_fail)${NC}"; return 1; }
     while (( _t < 30 )); do
         is_service_running abox-wallos-cftunnel 2>/dev/null && break
         sleep 3; _t=$((_t + 3))
     done
     if ! is_service_running abox-wallos-cftunnel 2>/dev/null; then
-        msg "${RED}CF 隧道进程未运行（令牌可能无效），见 /etc/ddr/abox-wallos-cftunnel.log。Wallos 保持仅本机访问。${NC}"
+        msg "${RED}$(tr_msg wl_cf_not_running)${NC}"
         return 1
     fi
     _code=$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' "https://${host}/" 2>/dev/null || true)
     if [[ -z "$_code" || "$_code" == '000' ]]; then
         _iport=$(wallos_state_value PORT 2>/dev/null || true)
-        msg "${YELLOW}隧道已运行，但 https://${host}/ 暂时无响应：请在 CF 后台确认隧道状态为 Healthy、且 Public Hostname 的 Service 为 http://127.0.0.1:${_iport}（域名刚绑定时也可能需要等 1-2 分钟）。${NC}"
+        msg "${YELLOW}$(tprintf wl_cf_no_resp "$host" "$_iport")${NC}"
     fi
     return 0
 }

@@ -592,6 +592,72 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:wl_menu_prompt) echo '请选择 [0-5]：' ;;
+        en:wl_menu_prompt) echo 'Select [0-5]: ' ;;
+        ru:wl_menu_prompt) echo 'Выберите [0–5]: ' ;;
+        fa:wl_menu_prompt) echo 'انتخاب [۰ تا ۵]: ' ;;
+        zh-tw:wl_menu_prompt) echo '請選擇 [0-5]：' ;;
+        ja:wl_menu_prompt) echo '選択してください [0-5]: ' ;;
+        zh:wl_menu_title) echo 'Wallos 订阅管理' ;;
+        en:wl_menu_title) echo 'Wallos subscription manager' ;;
+        ru:wl_menu_title) echo 'Управление подписками Wallos' ;;
+        fa:wl_menu_title) echo 'مدیریت اشتراک‌های Wallos' ;;
+        zh-tw:wl_menu_title) echo 'Wallos 訂閱管理' ;;
+        ja:wl_menu_title) echo 'Wallos サブスクリプション管理' ;;
+        zh:wl_menu_install) echo '1. 一键安装 / 升级（上游优先，A-Box 灾备回退）' ;;
+        en:wl_menu_install) echo '1. Install / update (upstream first, A-Box recovery fallback)' ;;
+        ru:wl_menu_install) echo '1. Установить / обновить (upstream, затем резервная копия A-Box)' ;;
+        fa:wl_menu_install) echo '1. نصب / ارتقا (ابتدا upstream و سپس پشتیبان A-Box)' ;;
+        zh-tw:wl_menu_install) echo '1. 一鍵安裝 / 升級（上游優先，A-Box 災備回退）' ;;
+        ja:wl_menu_install) echo '1. ワンクリックでインストール / アップグレード（upstream を優先し、A-Box Recovery にフォールバック）' ;;
+        zh:wl_menu_status) echo '2. 查看状态和访问网址' ;;
+        en:wl_menu_status) echo '2. Status and access URL' ;;
+        ru:wl_menu_status) echo '2. Состояние и адрес доступа' ;;
+        fa:wl_menu_status) echo '2. وضعیت و نشانی دسترسی' ;;
+        zh-tw:wl_menu_status) echo '2. 檢視狀態和訪問網址' ;;
+        ja:wl_menu_status) echo '2. 状態とアクセス URL を表示' ;;
+        zh:wl_menu_backup) echo '3. 备份数据库和上传图片' ;;
+        en:wl_menu_backup) echo '3. Back up database and uploaded logos' ;;
+        ru:wl_menu_backup) echo '3. Резервная копия базы и загруженных логотипов' ;;
+        fa:wl_menu_backup) echo '3. پشتیبان‌گیری از پایگاه داده و تصاویر بارگذاری‌شده' ;;
+        zh-tw:wl_menu_backup) echo '3. 備份資料庫和上傳圖片' ;;
+        ja:wl_menu_backup) echo '3. データベースとアップロード画像をバックアップ' ;;
+        zh:wl_menu_remove) echo '4. 删除容器但保留数据' ;;
+        en:wl_menu_remove) echo '4. Remove container but keep data' ;;
+        ru:wl_menu_remove) echo '4. Удалить контейнер, сохранив данные' ;;
+        fa:wl_menu_remove) echo '4. حذف کانتینر با حفظ داده‌ها' ;;
+        zh-tw:wl_menu_remove) echo '4. 刪除容器但保留資料' ;;
+        ja:wl_menu_remove) echo '4. データを保持してコンテナを削除' ;;
+        zh:wl_menu_rollback) echo '5. 回滚到历史版本' ;;
+        en:wl_menu_rollback) echo '5. Roll back to a previous version' ;;
+        ru:wl_menu_rollback) echo '5. Откатить к предыдущей версии' ;;
+        fa:wl_menu_rollback) echo '5. بازگشت به نسخه قبلی' ;;
+        zh-tw:wl_menu_rollback) echo '5. 回滾到歷史版本' ;;
+        ja:wl_menu_rollback) echo '5. 以前のバージョンにロールバック' ;;
+        zh:wl_remove_q) echo '删除 Wallos 容器并保留 %s 下的数据？[Y/N]: ' ;;
+        en:wl_remove_q) echo 'Remove the Wallos container and keep data in %s? [Y/N]: ' ;;
+        ru:wl_remove_q) echo 'Удалить контейнер Wallos, сохранив данные в %s? [Y/N]: ' ;;
+        fa:wl_remove_q) echo 'کانتینر Wallos حذف شود و داده‌ها در %s بمانند؟ [Y/N]: ' ;;
+        zh-tw:wl_remove_q) echo '刪除 Wallos 容器並保留 %s 下的資料？[Y/N]: ' ;;
+        ja:wl_remove_q) echo 'Wallos コンテナを削除し、%s 内のデータを保持しますか？[Y/N]: ' ;;
+        zh:wl_removed) echo '容器已删除，数据和备份已保留。' ;;
+        en:wl_removed) echo 'Container removed. Data and backups retained.' ;;
+        ru:wl_removed) echo 'Контейнер удалён. Данные и резервные копии сохранены.' ;;
+        fa:wl_removed) echo 'کانتینر حذف شد؛ داده‌ها و پشتیبان‌ها حفظ شدند.' ;;
+        zh-tw:wl_removed) echo '容器已刪除，資料和備份已保留。' ;;
+        ja:wl_removed) echo 'コンテナを削除しました。データとバックアップは保持されています。' ;;
+        zh:wl_remove_fail) echo '[!] 删除 wallos 容器失败，容器可能仍然存在。' ;;
+        en:wl_remove_fail) echo '[!] Failed to remove the wallos container; it may still exist.' ;;
+        ru:wl_remove_fail) echo '[!] Не удалось удалить контейнер wallos.' ;;
+        fa:wl_remove_fail) echo '[!] حذف کانتینر wallos ناموفق بود.' ;;
+        zh-tw:wl_remove_fail) echo '[!] 刪除 wallos 容器失敗，容器可能仍然存在。' ;;
+        ja:wl_remove_fail) echo '[!] wallos コンテナの削除に失敗しました、コンテナがまだ存在する可能性があります。' ;;
+        zh:wl_backup) echo '升级前备份：%s' ;;
+        en:wl_backup) echo 'Pre-upgrade backup: %s' ;;
+        ru:wl_backup) echo 'Резервная копия перед обновлением: %s' ;;
+        fa:wl_backup) echo 'نسخه پشتیبان قبل از ارتقا: %s' ;;
+        zh-tw:wl_backup) echo '升級前備份：%s' ;;
+        ja:wl_backup) echo 'アップグレード前のバックアップ: %s' ;;
         zh:tl_no_owned) echo '没有 A-Box 托管的核心。' ;;
         en:tl_no_owned) echo 'No owned cores.' ;;
         ru:tl_no_owned) echo 'Нет ядер под управлением A-Box.' ;;
@@ -26274,7 +26340,7 @@ wallos_install_or_update() {
             *) msg "${CYAN}直连安全清单：${NC}"; msg "  1) 云安全组：TCP $port 只放你自己的 IP(/32)，不要开 0.0.0.0/0。"; msg "  2) Wallos 管理员密码设 20 位以上强密码。"; msg "  3) fail2ban 已启用：10 分钟内 10 次登录失败 = 封 24 小时。" ;;
         esac
     fi
-    [[ -z "$backup" ]] || msg "Pre-upgrade backup: $backup"
+    [[ -z "$backup" ]] || msg "$(tprintf wl_backup "$backup")"
 }
 
 wallos_status() {
@@ -26420,102 +26486,38 @@ wallos_menu() {
     # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
     while true; do
     clear
+    msg "${BOLD}${GREEN}$(tr_msg wl_menu_title)${NC}"
+    msg "${YELLOW}$(tr_msg wl_menu_install)${NC}"
+    msg "${YELLOW}$(tr_msg wl_menu_status)${NC}"
+    msg "${YELLOW}$(tr_msg wl_menu_backup)${NC}"
+    msg "${YELLOW}$(tr_msg wl_menu_remove)${NC}"
+    msg "${YELLOW}$(tr_msg wl_menu_rollback)${NC}"
+    msg "${CYAN}0. $(tr_msg mu_back_word)${NC}"
+    local c prompt_confirm
+    read -r -p "$(tr_msg wl_menu_prompt)" c || return 0
+
     case "${ABOX_LANG:-zh}" in
-        en)
-            msg "${BOLD}${GREEN}Wallos subscription manager${NC}"
-            msg "${YELLOW}1. Install / update (upstream first, A-Box recovery fallback)${NC}"
-            msg "${YELLOW}2. Status and access URL${NC}"
-            msg "${YELLOW}3. Back up database and uploaded logos${NC}"
-            msg "${YELLOW}4. Remove container but keep data${NC}"
-            msg "${YELLOW}5. Roll back to a previous version${NC}"
-            msg "${CYAN}0. Back${NC}"
-            ;;
-        ru)
-            msg "${BOLD}${GREEN}Управление подписками Wallos${NC}"
-            msg "${YELLOW}1. Установить / обновить (upstream, затем резервная копия A-Box)${NC}"
-            msg "${YELLOW}2. Состояние и адрес доступа${NC}"
-            msg "${YELLOW}3. Резервная копия базы и загруженных логотипов${NC}"
-            msg "${YELLOW}4. Удалить контейнер, сохранив данные${NC}"
-            msg "${YELLOW}5. Откатить к предыдущей версии${NC}"
-            msg "${CYAN}0. Назад${NC}"
-            ;;
-        fa)
-            msg "${BOLD}${GREEN}مدیریت اشتراک‌های Wallos${NC}"
-            msg "${YELLOW}1. نصب / ارتقا (ابتدا upstream و سپس پشتیبان A-Box)${NC}"
-            msg "${YELLOW}2. وضعیت و نشانی دسترسی${NC}"
-            msg "${YELLOW}3. پشتیبان‌گیری از پایگاه داده و تصاویر بارگذاری‌شده${NC}"
-            msg "${YELLOW}4. حذف کانتینر با حفظ داده‌ها${NC}"
-            msg "${YELLOW}5. بازگشت به نسخه قبلی${NC}"
-            msg "${CYAN}0. بازگشت${NC}"
-            ;;
-        zh-tw)
-            msg "${BOLD}${GREEN}Wallos 訂閱管理${NC}"
-            msg "${YELLOW}1. 一鍵安裝 / 升級（上游優先，A-Box 災備回退）${NC}"
-            msg "${YELLOW}2. 檢視狀態和訪問網址${NC}"
-            msg "${YELLOW}3. 備份資料庫和上傳圖片${NC}"
-            msg "${YELLOW}4. 刪除容器但保留資料${NC}"
-            msg "${YELLOW}5. 回滾到歷史版本${NC}"
-            msg "${CYAN}0. 返回${NC}"
-            ;;
+        en) prompt_confirm='Wallos stores personal subscription/financial data. HTTP has no TLS. Continue? [Y/N]: ' ;;
+        ru) prompt_confirm='Wallos хранит личные данные; HTTP не защищён TLS. Продолжить? [Y/N]: ' ;;
+        fa) prompt_confirm='Wallos داده‌های شخصی را نگه می‌دارد؛ HTTP فاقد TLS است. ادامه؟ [Y/N]: ' ;;
+        zh-tw) prompt_confirm='Wallos 儲存個人訂閱/財務資料，HTTP 無 TLS 加密。繼續？[Y/N]: ' ;;
         ja)
-            msg "${BOLD}${GREEN}Wallos サブスクリプション管理${NC}"
-            msg "${YELLOW}1. ワンクリックでインストール / アップグレード（upstream を優先し、A-Box Recovery にフォールバック）${NC}"
-            msg "${YELLOW}2. 状態とアクセス URL を表示${NC}"
-            msg "${YELLOW}3. データベースとアップロード画像をバックアップ${NC}"
-            msg "${YELLOW}4. データを保持してコンテナを削除${NC}"
-            msg "${YELLOW}5. 以前のバージョンにロールバック${NC}"
-            msg "${CYAN}0. 戻る${NC}"
-            ;;
-        *)
-            msg "${BOLD}${GREEN}Wallos 订阅管理${NC}"
-            msg "${YELLOW}1. 一键安装 / 升级（上游优先，A-Box 灾备回退）${NC}"
-            msg "${YELLOW}2. 查看状态和访问网址${NC}"
-            msg "${YELLOW}3. 备份数据库和上传图片${NC}"
-            msg "${YELLOW}4. 删除容器但保留数据${NC}"
-            msg "${YELLOW}5. 回滚到历史版本${NC}"
-            msg "${CYAN}0. 返回${NC}"
-            ;;
-    esac
-    local c prompt_confirm prompt_remove menu_prompt
-    case "${ABOX_LANG:-zh}" in en) menu_prompt='Select [0-5]: ' ;; ru) menu_prompt='Выберите [0–5]: ' ;; fa) menu_prompt='انتخاب [۰ تا ۵]: ' ;; ja) menu_prompt='選択してください [0-5]: ' ;; zh-tw) menu_prompt='請選擇 [0-5]：' ;; *) menu_prompt='请选择 [0-5]：' ;; esac
-    read -r -p "$menu_prompt" c || return 0
-    case "${ABOX_LANG:-zh}" in
-        en) prompt_confirm='Wallos stores personal subscription/financial data. HTTP has no TLS. Continue? [Y/N]: '; prompt_remove="Remove the Wallos container and keep data in $WALLOS_DIR? [Y/N]: " ;;
-        ru) prompt_confirm='Wallos хранит личные данные; HTTP не защищён TLS. Продолжить? [Y/N]: '; prompt_remove="Удалить контейнер Wallos, сохранив данные в $WALLOS_DIR? [Y/N]: " ;;
-        fa) prompt_confirm='Wallos داده‌های شخصی را نگه می‌دارد؛ HTTP فاقد TLS است. ادامه؟ [Y/N]: '; prompt_remove="کانتینر Wallos حذف شود و داده‌ها در $WALLOS_DIR بمانند؟ [Y/N]: " ;;
-        zh-tw) prompt_confirm='Wallos 儲存個人訂閱/財務資料，HTTP 無 TLS 加密。繼續？[Y/N]: '; prompt_remove="確認刪除 Wallos 容器並保留 $WALLOS_DIR 下的資料？[Y/N]: " ;;
-        ja)
-            prompt_confirm='Wallos は個人のサブスクリプション / 財務データを保存します。HTTP には TLS 暗号化がありません。続行しますか？[Y/N]: '; prompt_remove="Wallos コンテナを削除し、$WALLOS_DIR 内のデータを保持しますか？[Y/N]: " ;;
-        *) prompt_confirm='Wallos 保存个人订阅/财务数据，HTTP 无 TLS 加密。继续？[Y/N]: '; prompt_remove="确认删除 Wallos 容器并保留 $WALLOS_DIR 下的数据？[Y/N]: " ;;
+            prompt_confirm='Wallos は個人のサブスクリプション / 財務データを保存します。HTTP には TLS 暗号化がありません。続行しますか？[Y/N]: ' ;;
+        *) prompt_confirm='Wallos 保存个人订阅/财务数据，HTTP 无 TLS 加密。继续？[Y/N]: ' ;;
     esac
     case "$c" in
         1) wallos_install_or_update; pause_return ;;
         2) wallos_status; pause_return ;;
         3) wallos_backup_now; pause_return ;;
         4)
-            if [[ -f "$WALLOS_DIR/.A-Box-managed" ]] && confirm_yes_no "$prompt_remove"; then
+            if [[ -f "$WALLOS_DIR/.A-Box-managed" ]] && confirm_yes_no "$(tprintf wl_remove_q "$WALLOS_DIR")"; then
                 # B-06 fix: verify the container is actually gone before reporting success.
                 if docker rm -f wallos >/dev/null 2>&1 && ! docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'wallos'; then
-                    case "${ABOX_LANG:-zh}" in
-                        en) msg "${GREEN}Container removed. Data and backups retained.${NC}" ;;
-                        ru) msg "${GREEN}Контейнер удалён. Данные и резервные копии сохранены.${NC}" ;;
-                        fa) msg "${GREEN}کانتینر حذف شد؛ داده‌ها و پشتیبان‌ها حفظ شدند.${NC}" ;;
-                        zh-tw) msg "${GREEN}容器已刪除，資料和備份已保留。${NC}" ;;
-                        ja)
-                            msg "${GREEN}コンテナを削除しました。データとバックアップは保持されています。${NC}" ;;
-                        *) msg "${GREEN}容器已删除，数据和备份已保留。${NC}" ;;
-                    esac
+                    msg "${GREEN}$(tr_msg wl_removed)${NC}"
                     wallos_https_teardown >/dev/null 2>&1 || true
                     wallos_cftunnel_teardown >/dev/null 2>&1 || true
                 else
-                    case "${ABOX_LANG:-zh}" in
-                        en) msg "${RED}[!] Failed to remove the wallos container; it may still exist.${NC}" ;;
-                        ru) msg "${RED}[!] Не удалось удалить контейнер wallos.${NC}" ;;
-                        fa) msg "${RED}[!] حذف کانتینر wallos ناموفق بود.${NC}" ;;
-                        zh-tw) msg "${RED}[!] 刪除 wallos 容器失敗，容器可能仍然存在。${NC}" ;;
-                        ja) msg "${RED}[!] wallos コンテナの削除に失敗しました、コンテナがまだ存在する可能性があります。${NC}" ;;
-                        *) msg "${RED}[!] 删除 wallos 容器失败，容器可能仍然存在。${NC}" ;;
-                    esac
+                    msg "${RED}$(tr_msg wl_remove_fail)${NC}"
                 fi
             fi
             pause_return ;;

@@ -9198,20 +9198,20 @@ build_xray_config() {
         def maybe_sock: if $sock == null then {} else {sockopt:$sock} end;
         def vision:
           {
-            listen:$listen_addr, port:$vport, protocol:"vless",
-            settings:{clients:[{id:$uuid, flow:"xtls-rprx-vision"}], decryption:"none"},
+            listen:$listen_addr, port:$vport, protocol:"vless", tag:"vision",
+            settings:{clients:[{id:$uuid, flow:"xtls-rprx-vision", email:"vision/main"}], decryption:"none"},
             streamSettings:({network:"tcp", security:"reality", realitySettings:{target:($v_sni + ":443"), serverNames:[$v_sni], privateKey:$pk, shortIds:[$sid], minClientVer:"1.8.2"}} + maybe_sock),
             sniffing:{enabled:true, destOverride:["http","tls","quic"]}
           };
         def xhttp:
           {
-            listen:$listen_addr, port:$xport, protocol:"vless",
-            settings:{clients:[{id:$uuid}], decryption:"none"},
+            listen:$listen_addr, port:$xport, protocol:"vless", tag:"xhttp",
+            settings:{clients:[{id:$uuid, email:"xhttp/main"}], decryption:"none"},
             streamSettings:({network:"xhttp", security:"reality", xhttpSettings:{mode:"auto", path:"/xhttp"}, realitySettings:{target:($x_sni + ":443"), serverNames:[$x_sni], privateKey:$pk, shortIds:[$sid], minClientVer:"1.8.2"}} + maybe_sock),
             sniffing:{enabled:true, destOverride:["http","tls","quic"]}
           };
         def ss:
-          ({listen:$listen_addr, port:$ssport, protocol:"shadowsocks", settings:{method:"2022-blake3-aes-128-gcm", password:$ss_pass, network:"tcp,udp"}}
+          ({listen:$listen_addr, port:$ssport, protocol:"shadowsocks", tag:"ss", settings:{method:"2022-blake3-aes-128-gcm", password:$ss_pass, network:"tcp,udp"}}
            + (if $sock == null then {} else {streamSettings:{sockopt:$sock}} end));
         []
         | if ($mode|contains("VISION")) or ($mode|contains("ALL")) or $mode == "VLESS_SS" then . + [vision] else . end
@@ -9238,6 +9238,8 @@ build_xray_config() {
     jq -n --argjson inbounds "$inbounds_json" --argjson rs_ob "$_rs_ob" --argjson rs_rules "$_rs_rules" '{
         log:{loglevel:"warning", access:"/var/log/A-Box-xray-access.log", error:"/var/log/A-Box-xray-error.log"},
         api:{tag:"api", services:["HandlerService","LoggerService","StatsService"]},
+        stats:{},
+        policy:{levels:{"0":{statsUserUplink:true, statsUserDownlink:true}}, system:{statsInboundUplink:true, statsInboundDownlink:true}},
         routing:{domainStrategy:"IPIfNonMatch", rules: ([
             {type:"field", inboundTag:["api"], outboundTag:"api"},
             {type:"field", protocol:["bittorrent"], outboundTag:"block"},
@@ -9297,6 +9299,42 @@ xray_api_remove_inbound() {
     [[ -n "$tag" && "$tag" != 'api' ]] || return 1
     [[ -x /usr/local/bin/xray ]] || return 1
     /usr/local/bin/xray api --server "$XRAY_API_SERVER" delinbound --tag "$tag" >/dev/null 2>&1
+}
+
+
+# Ensure an Xray-family config carries the stats/policy blocks and the
+# loopback API inbound that per-user accounting (fix47) relies on.
+# Idempotent. Used when the multi-user manager first touches a config
+# that predates fix47 (standalone-only slot configs, xray-latest
+# configs). Callers snapshot first and validate with the core's -test
+# afterwards; this helper only transforms and atomically installs.
+# $1 = config path, $2 = api port (10085 slot / 10086 latest).
+xray_ensure_stats() {
+    local cfg="$1" api_port="${2:-10085}" tmp=''
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    if jq -e '
+        (.stats != null) and (.policy != null)
+        and ([.inbounds[]? | select(.tag == "api")] | length > 0)
+        and ([.outbounds[]? | select(.tag == "api")] | length > 0)' "$cfg" >/dev/null 2>&1; then
+        return 0
+    fi
+    tmp=$(mktemp /tmp/A-Box-xstats.XXXXXX) || return 1
+    if ! jq --argjson ap "$api_port" '
+        .stats = (.stats // {})
+        | .policy = (.policy // {levels:{"0":{statsUserUplink:true, statsUserDownlink:true}}, system:{statsInboundUplink:true, statsInboundDownlink:true}})
+        | .api = (.api // {tag:"api", services:["HandlerService","LoggerService","StatsService"]})
+        | (if ([.inbounds[]? | select(.tag == "api")] | length) == 0
+           then .inbounds = ([{listen:"127.0.0.1", port:$ap, protocol:"dokodemo-door", settings:{address:"127.0.0.1"}, tag:"api"}] + (.inbounds // [])) else . end)
+        | (if ([.outbounds[]? | select(.tag == "api")] | length) == 0
+           then .outbounds = ((.outbounds // []) + [{protocol:"freedom", tag:"api"}]) else . end)
+        | .routing = (.routing // {domainStrategy:"IPIfNonMatch", rules:[]})
+        | (if ([.routing.rules[]? | select(.outboundTag == "api")] | length) == 0
+           then .routing.rules = ([{type:"field", inboundTag:["api"], outboundTag:"api"}] + (.routing.rules // [])) else . end)
+    ' "$cfg" > "$tmp"; then rm -f "$tmp"; return 1; fi
+    jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+    install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
+    rm -f "$tmp"
+    return 0
 }
 
 # High-level: persist a new inbound to disk config AND hot-push it via API.
@@ -10234,7 +10272,7 @@ EOF_SVC
     jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" \
         --arg pk "$pk" --arg sid "$sid" \
         '{tag:"trojan-landing",port:$port,listen:"0.0.0.0",protocol:"trojan",
-          settings:{clients:[{password:$pass}]},
+          settings:{clients:[{password:$pass,email:"trojan-landing/main"}]},
           streamSettings:{network:"tcp",security:"reality",
             realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}}}' \
         > "$tmp_json" || die 'Trojan inbound JSON 生成失败。'
@@ -15137,9 +15175,10 @@ sync_uuids_into_xray_config() {
         .inbounds |= map(
           if .protocol=="vless" then
             (.settings.clients[0].flow // "") as $flow |
+            (.tag // "vless") as $itag |
             .settings.clients = (
-              [({id:$p} + (if $flow != "" then {flow:$flow} else {} end))]
-              + ($extras | map({id:.} + (if $flow != "" then {flow:$flow} else {} end)))
+              [({id:$p, email:($itag + "/main")} + (if $flow != "" then {flow:$flow} else {} end))]
+              + ($extras | map({id:., email:($itag + "/x-" + .[0:8])} + (if $flow != "" then {flow:$flow} else {} end)))
             )
           else . end
         )
@@ -23215,13 +23254,13 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
             if [[ "$kind" == 'vision' ]]; then
                 jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg uuid "$uuid" --arg sni "$sni" --arg pk "$pk" --arg sid "$sid" \
                     '{tag:$tag,listen:$listen,port:$port,protocol:"vless",
-                      settings:{clients:[{id:$uuid,flow:"xtls-rprx-vision"}],decryption:"none"},
+                      settings:{clients:[{id:$uuid,flow:"xtls-rprx-vision",email:($tag + "/main")}],decryption:"none"},
                       streamSettings:{network:"tcp",security:"reality",realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}},
                       sniffing:{enabled:true,destOverride:["http","tls","quic"]}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
             else
                 jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg uuid "$uuid" --arg sni "$sni" --arg pk "$pk" --arg sid "$sid" \
                     '{tag:$tag,listen:$listen,port:$port,protocol:"vless",
-                      settings:{clients:[{id:$uuid}],decryption:"none"},
+                      settings:{clients:[{id:$uuid,email:($tag + "/main")}],decryption:"none"},
                       streamSettings:{network:"xhttp",security:"reality",xhttpSettings:{mode:"auto",path:"/xhttp"},realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}},
                       sniffing:{enabled:true,destOverride:["http","tls","quic"]}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
             fi
@@ -23235,7 +23274,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
             pass=$(rand_alnum 16) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
             jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg pass "$pass" --arg sni "$sni" --arg pk "$pk" --arg sid "$sid" \
                 '{tag:$tag,listen:$listen,port:$port,protocol:"trojan",
-                  settings:{clients:[{password:$pass}]},
+                  settings:{clients:[{password:$pass,email:($tag + "/main")}]},
                   streamSettings:{network:"tcp",security:"reality",realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
             ;;
         ss)
@@ -23334,11 +23373,11 @@ xray_latest_deploy_trio() {
     jq -n --arg listen "$listen_addr" --arg uuid "$uuid" --arg sni "$sni" --arg pk "$pk" --arg sid "$sid" --arg sspass "$sspass" \
         --argjson vp "$vp" --argjson xp "$xp" --argjson sp "$sp2" '
         [{tag:"latest-vision",listen:$listen,port:$vp,protocol:"vless",
-          settings:{clients:[{id:$uuid,flow:"xtls-rprx-vision"}],decryption:"none"},
+          settings:{clients:[{id:$uuid,flow:"xtls-rprx-vision",email:"latest-vision/main"}],decryption:"none"},
           streamSettings:{network:"tcp",security:"reality",realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}},
           sniffing:{enabled:true,destOverride:["http","tls","quic"]}},
          {tag:"latest-xhttp",listen:$listen,port:$xp,protocol:"vless",
-          settings:{clients:[{id:$uuid}],decryption:"none"},
+          settings:{clients:[{id:$uuid,email:"latest-xhttp/main"}],decryption:"none"},
           streamSettings:{network:"xhttp",security:"reality",xhttpSettings:{mode:"auto",path:"/xhttp"},realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}},
           sniffing:{enabled:true,destOverride:["http","tls","quic"]}},
          {tag:"latest-ss",listen:$listen,port:$sp,protocol:"shadowsocks",
@@ -26166,6 +26205,8 @@ PY_SELFTEST_TAR
     grep -Fq 'abox_is_fast()' "$0" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }
     grep -Fq 'try_latest_cores_danger()' "$0" || { echo 'FAIL: try-latest cores missing'; failures=$((failures + 1)); }
     grep -Fq 'export_lightweight_subscription()' "$0" || { echo 'FAIL: lightweight subscription missing'; failures=$((failures + 1)); }
+    grep -Fq 'xray_ensure_stats()' "$0" || { echo 'FAIL: xray_ensure_stats missing'; failures=$((failures + 1)); }
+    grep -Fq 'statsUserUplink' "$0" || { echo 'FAIL: per-user stats policy missing'; failures=$((failures + 1)); }
     grep -Fq 'revoke one extra UUID from the Xray server' "$0" || grep -Fq 'Revoke one extra UUID from the Xray server' "$0" || { echo 'FAIL: server-side UUID revocation option missing'; failures=$((failures + 1)); }
     # Exercise multi-UUID validation/deduplication on a temporary fixture; never touch /etc/ddr.
     _saved_extra_uuid_file="$EXTRA_UUID_FILE"

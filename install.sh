@@ -592,6 +592,246 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:mu_title) echo '多 UUID / 订阅导出' ;;
+        en:mu_title) echo 'Multi-UUID / Subscription export' ;;
+        ru:mu_title) echo 'Несколько UUID / экспорт подписки' ;;
+        fa:mu_title) echo 'چند UUID / خروجی اشتراک' ;;
+        zh-tw:mu_title) echo '多 UUID / 訂閱匯出' ;;
+        ja:mu_title) echo 'マルチ UUID / サブスクリプション書き出し' ;;
+        zh:mu_primary) echo '主 UUID: %s' ;;
+        en:mu_primary) echo 'Primary UUID: %s' ;;
+        ru:mu_primary) echo 'Основной UUID: %s' ;;
+        fa:mu_primary) echo 'UUID اصلی: %s' ;;
+        zh-tw:mu_primary) echo '主 UUID：%s' ;;
+        ja:mu_primary) echo 'プライマリ UUID: %s' ;;
+        zh:mu_load_env_first) echo '请先加载环境' ;;
+        en:mu_load_env_first) echo 'load env first' ;;
+        ru:mu_load_env_first) echo 'сначала загрузите окружение' ;;
+        fa:mu_load_env_first) echo 'ابتدا محیط را بارگذاری کنید' ;;
+        zh-tw:mu_load_env_first) echo '請先載入環境' ;;
+        ja:mu_load_env_first) echo 'まず環境を読み込んでください' ;;
+        zh:mu_unreadable_note) echo '  [!] 额外 UUID 列表不可读或不可信' ;;
+        en:mu_unreadable_note) echo '  [!] Extra UUID list unreadable or untrusted' ;;
+        ru:mu_unreadable_note) echo '  [!] Список дополнительных UUID недоступен или недоверенный' ;;
+        fa:mu_unreadable_note) echo '  [!] فهرست UUID اضافی خوانا نیست یا قابل اعتماد نیست' ;;
+        zh-tw:mu_unreadable_note) echo '  [!] 額外 UUID 清單不可讀或不可信' ;;
+        ja:mu_unreadable_note) echo '  [!] 追加 UUID リストが読み取れないか信頼できません' ;;
+        zh:mu_item1) echo '1. 添加并应用一个额外 UUID（仅 Xray）' ;;
+        en:mu_item1) echo '1. Add and apply an extra UUID (Xray only)' ;;
+        ru:mu_item1) echo '1. Добавить и применить дополнительный UUID (только Xray)' ;;
+        fa:mu_item1) echo '1. افزودن و اعمال یک UUID اضافی (فقط Xray)' ;;
+        zh-tw:mu_item1) echo '1. 新增並套用一個額外 UUID（僅 Xray）' ;;
+        ja:mu_item1) echo '1. 追加 UUID を登録して適用（Xray のみ）' ;;
+        zh:mu_item2) echo '2. 导出 Vision/XHTTP 的 URI 列表、Base64 与 Clash YAML' ;;
+        en:mu_item2) echo '2. Export Vision/XHTTP URI list, Base64 and Clash YAML' ;;
+        ru:mu_item2) echo '2. Экспорт списка URI Vision/XHTTP, Base64 и Clash YAML' ;;
+        fa:mu_item2) echo '2. خروجی فهرست URI مربوط به Vision/XHTTP، Base64 و Clash YAML' ;;
+        zh-tw:mu_item2) echo '2. 匯出 Vision/XHTTP 的 URI 清單、Base64 與 Clash YAML' ;;
+        ja:mu_item2) echo '2. Vision/XHTTP の URI リスト、Base64、Clash YAML を書き出し' ;;
+        zh:mu_item3) echo '3. 从 Xray 服务器吊销一个额外 UUID' ;;
+        en:mu_item3) echo '3. Revoke one extra UUID from the Xray server' ;;
+        ru:mu_item3) echo '3. Отозвать один дополнительный UUID на сервере Xray' ;;
+        fa:mu_item3) echo '3. لغو یک UUID اضافی از سرور Xray' ;;
+        zh-tw:mu_item3) echo '3. 從 Xray 伺服器撤銷一個額外 UUID' ;;
+        ja:mu_item3) echo '3. Xray サーバーから追加 UUID を 1 件取り消し' ;;
+        zh:mu_item4) echo '4. 仅清空本机额外 UUID 文件（不吊销服务器访问）' ;;
+        en:mu_item4) echo '4. Clear only the local extra-UUID file (does not revoke server access)' ;;
+        ru:mu_item4) echo '4. Очистить только локальный файл доп. UUID (доступ на сервере не отзывается)' ;;
+        fa:mu_item4) echo '4. فقط پاک‌کردن فایل محلی UUID اضافی (دسترسی سرور لغو نمی‌شود)' ;;
+        zh-tw:mu_item4) echo '4. 僅清空本機額外 UUID 檔案（不撤銷伺服器存取）' ;;
+        ja:mu_item4) echo '4. ローカルの追加 UUID ファイルのみ消去（サーバー側のアクセスは取り消しません）' ;;
+        zh:mu_back) echo '0. 返回' ;;
+        en:mu_back) echo '0. Back' ;;
+        ru:mu_back) echo '0. Назад' ;;
+        fa:mu_back) echo '0. بازگشت' ;;
+        zh-tw:mu_back) echo '0. 返回' ;;
+        ja:mu_back) echo '0. 戻る' ;;
+        zh:mu_pick) echo '请选择 [0-4]: ' ;;
+        en:mu_pick) echo 'Select [0-4]: ' ;;
+        ru:mu_pick) echo 'Выберите [0-4]: ' ;;
+        fa:mu_pick) echo 'انتخاب کنید [0-4]: ' ;;
+        zh-tw:mu_pick) echo '請選擇 [0-4]: ' ;;
+        ja:mu_pick) echo '選択してください [0-4]: ' ;;
+        zh:mu_only_xray) echo '服务器端多 UUID 管理仅支持已安装的 Xray 部署。未做任何更改。' ;;
+        en:mu_only_xray) echo 'Server-side multi-UUID management is supported only for an installed Xray deployment. Nothing was changed.' ;;
+        ru:mu_only_xray) echo 'Управление несколькими UUID на сервере поддерживается только для установленной конфигурации Xray. Ничего не изменено.' ;;
+        fa:mu_only_xray) echo 'مدیریت چند UUID در سمت سرور فقط برای استقرار نصب‌شده Xray پشتیبانی می‌شود. چیزی تغییر نکرد.' ;;
+        zh-tw:mu_only_xray) echo '伺服器端多 UUID 管理僅支援已安裝的 Xray 部署。未做任何變更。' ;;
+        ja:mu_only_xray) echo 'サーバー側のマルチ UUID 管理は、インストール済みの Xray 構成でのみサポートされます。何も変更されていません。' ;;
+        zh:mu_not_managed) echo 'Xray 未注册为 A-Box 托管服务。未做任何更改。' ;;
+        en:mu_not_managed) echo 'Xray is not registered as an A-Box-managed service. Nothing was changed.' ;;
+        ru:mu_not_managed) echo 'Xray не зарегистрирован как служба под управлением A-Box. Ничего не изменено.' ;;
+        fa:mu_not_managed) echo 'Xray به‌عنوان سرویس مدیریت‌شده A-Box ثبت نشده است. چیزی تغییر نکرد.' ;;
+        zh-tw:mu_not_managed) echo 'Xray 未註冊為 A-Box 託管服務。未做任何變更。' ;;
+        ja:mu_not_managed) echo 'Xray は A-Box 管理サービスとして登録されていません。何も変更されていません。' ;;
+        zh:mu_primary_missing) echo '主 UUID 不可用；请先重新加载部署状态。' ;;
+        en:mu_primary_missing) echo 'Primary UUID is unavailable; reload deployment state first.' ;;
+        ru:mu_primary_missing) echo 'Основной UUID недоступен; сначала перезагрузите состояние развёртывания.' ;;
+        fa:mu_primary_missing) echo 'UUID اصلی در دسترس نیست؛ ابتدا وضعیت استقرار را دوباره بارگذاری کنید.' ;;
+        zh-tw:mu_primary_missing) echo '主 UUID 不可用；請先重新載入部署狀態。' ;;
+        ja:mu_primary_missing) echo 'プライマリ UUID が利用できません。先にデプロイ状態を再読み込みしてください。' ;;
+        zh:mu_untrusted_modify) echo '额外 UUID 列表不可读或不可信；拒绝修改。' ;;
+        en:mu_untrusted_modify) echo 'Extra UUID list is unreadable or untrusted; refusing to modify.' ;;
+        ru:mu_untrusted_modify) echo 'Список дополнительных UUID недоступен или недоверенный; изменение отклонено.' ;;
+        fa:mu_untrusted_modify) echo 'فهرست UUID اضافی خوانا نیست یا قابل اعتماد نیست؛ از تغییر خودداری شد.' ;;
+        zh-tw:mu_untrusted_modify) echo '額外 UUID 清單不可讀或不可信；拒絕修改。' ;;
+        ja:mu_untrusted_modify) echo '追加 UUID リストが読み取れないか信頼できないため、変更を拒否します。' ;;
+        zh:mu_untrusted_list) echo '额外 UUID 列表不可读或不可信；拒绝列出。' ;;
+        en:mu_untrusted_list) echo 'Extra UUID list is unreadable or untrusted; refusing to list.' ;;
+        ru:mu_untrusted_list) echo 'Список дополнительных UUID недоступен или недоверенный; вывод отклонён.' ;;
+        fa:mu_untrusted_list) echo 'فهرست UUID اضافی خوانا نیست یا قابل اعتماد نیست؛ از نمایش خودداری شد.' ;;
+        zh-tw:mu_untrusted_list) echo '額外 UUID 清單不可讀或不可信；拒絕列出。' ;;
+        ja:mu_untrusted_list) echo '追加 UUID リストが読み取れないか信頼できないため、一覧表示を拒否します。' ;;
+        zh:mu_restore_cfg_fail) echo '无法自动恢复之前的 Xray 配置。' ;;
+        en:mu_restore_cfg_fail) echo 'Could not restore the previous Xray configuration automatically.' ;;
+        ru:mu_restore_cfg_fail) echo 'Не удалось автоматически восстановить прежнюю конфигурацию Xray.' ;;
+        fa:mu_restore_cfg_fail) echo 'بازیابی خودکار پیکربندی قبلی Xray ممکن نشد.' ;;
+        zh-tw:mu_restore_cfg_fail) echo '無法自動還原之前的 Xray 設定。' ;;
+        ja:mu_restore_cfg_fail) echo '以前の Xray 設定を自動で復元できませんでした。' ;;
+        zh:mu_restore_perm_fail) echo '无法恢复 Xray 运行时读取权限。' ;;
+        en:mu_restore_perm_fail) echo 'Could not restore Xray runtime read permissions.' ;;
+        ru:mu_restore_perm_fail) echo 'Не удалось восстановить права чтения среды выполнения Xray.' ;;
+        fa:mu_restore_perm_fail) echo 'بازیابی مجوزهای خواندن زمان اجرای Xray ممکن نشد.' ;;
+        zh-tw:mu_restore_perm_fail) echo '無法還原 Xray 執行時讀取權限。' ;;
+        ja:mu_restore_perm_fail) echo 'Xray のランタイム読み取り権限を復元できませんでした。' ;;
+        zh:mu_restore_health_fail) echo 'Xray 未能恢复到之前的健康状态；请立即检查服务。' ;;
+        en:mu_restore_health_fail) echo 'Xray did not return to its previous healthy state; inspect the service immediately.' ;;
+        ru:mu_restore_health_fail) echo 'Xray не вернулся в прежнее работоспособное состояние; немедленно проверьте службу.' ;;
+        fa:mu_restore_health_fail) echo 'Xray به وضعیت سالم قبلی برنگشت؛ فوراً سرویس را بررسی کنید.' ;;
+        zh-tw:mu_restore_health_fail) echo 'Xray 未能還原到之前的健康狀態；請立即檢查服務。' ;;
+        ja:mu_restore_health_fail) echo 'Xray が以前の正常な状態に戻りませんでした。直ちにサービスを確認してください。' ;;
+        zh:mu_add_failed) echo 'UUID 添加失败。已尽可能恢复之前的配置与本地列表；未报告成功。' ;;
+        en:mu_add_failed) echo 'UUID addition failed. The previous configuration and local list were restored where possible; success was not reported.' ;;
+        ru:mu_add_failed) echo 'Не удалось добавить UUID. Прежняя конфигурация и локальный список восстановлены, где возможно; успех не подтверждён.' ;;
+        fa:mu_add_failed) echo 'افزودن UUID ناموفق بود. پیکربندی قبلی و فهرست محلی تا حد امکان بازیابی شد؛ موفقیتی گزارش نشد.' ;;
+        zh-tw:mu_add_failed) echo 'UUID 新增失敗。已盡可能還原之前的設定與本機清單；未回報成功。' ;;
+        ja:mu_add_failed) echo 'UUID の追加に失敗しました。以前の設定とローカルリストは可能な範囲で復元されました。成功は報告されていません。' ;;
+        zh:mu_added_ok) echo 'UUID 已添加，Xray 配置已验证且服务健康确认：%s' ;;
+        en:mu_added_ok) echo 'UUID added, Xray config validated and service health confirmed: %s' ;;
+        ru:mu_added_ok) echo 'UUID добавлен, конфигурация Xray проверена, служба исправна: %s' ;;
+        fa:mu_added_ok) echo 'UUID افزوده شد، پیکربندی Xray اعتبارسنجی و سلامت سرویس تأیید شد: %s' ;;
+        zh-tw:mu_added_ok) echo 'UUID 已新增，Xray 設定已驗證且服務健康確認：%s' ;;
+        ja:mu_added_ok) echo 'UUID を追加しました。Xray 設定の検証とサービスの正常性を確認：%s' ;;
+        zh:mu_export_retry) echo 'UUID 已生效；订阅导出失败，可从选项 2 重试。' ;;
+        en:mu_export_retry) echo 'UUID is active; subscription export failed and can be retried from option 2.' ;;
+        ru:mu_export_retry) echo 'UUID активен; экспорт подписки не удался, повторите из пункта 2.' ;;
+        fa:mu_export_retry) echo 'UUID فعال است؛ خروجی اشتراک ناموفق بود و از گزینه ۲ قابل تلاش مجدد است.' ;;
+        zh-tw:mu_export_retry) echo 'UUID 已生效；訂閱匯出失敗，可從選項 2 重試。' ;;
+        ja:mu_export_retry) echo 'UUID は有効です。サブスクリプションの書き出しに失敗しました。オプション 2 から再試行できます。' ;;
+        zh:mu_revoke_need_xray) echo '服务器端吊销需要已安装的 Xray 部署。未做更改。' ;;
+        en:mu_revoke_need_xray) echo 'Server-side revocation requires an installed Xray deployment. No change made.' ;;
+        ru:mu_revoke_need_xray) echo 'Для отзыва на сервере требуется установленная конфигурация Xray. Изменений нет.' ;;
+        fa:mu_revoke_need_xray) echo 'لغو در سمت سرور نیازمند استقرار نصب‌شده Xray است. تغییری داده نشد.' ;;
+        zh-tw:mu_revoke_need_xray) echo '伺服器端撤銷需要已安裝的 Xray 部署。未做變更。' ;;
+        ja:mu_revoke_need_xray) echo 'サーバー側の取り消しには、インストール済みの Xray 構成が必要です。変更は行われていません。' ;;
+        zh:mu_revoke_failed) echo '吊销失败；已尝试回滚。' ;;
+        en:mu_revoke_failed) echo 'Revocation failed; rollback was attempted.' ;;
+        ru:mu_revoke_failed) echo 'Отзыв не удался; выполнен откат.' ;;
+        fa:mu_revoke_failed) echo 'لغو ناموفق بود؛ بازگشت انجام شد.' ;;
+        zh-tw:mu_revoke_failed) echo '撤銷失敗；已嘗試回滾。' ;;
+        ja:mu_revoke_failed) echo '取り消しに失敗しました。ロールバックを試みました。' ;;
+        zh:mu_revoked_ok) echo 'UUID 已在 Xray 上吊销且健康检查通过：%s' ;;
+        en:mu_revoked_ok) echo 'UUID revoked on Xray and health check passed: %s' ;;
+        ru:mu_revoked_ok) echo 'UUID отозван на Xray, проверка состояния пройдена: %s' ;;
+        fa:mu_revoked_ok) echo 'UUID در Xray لغو شد و بررسی سلامت موفق بود: %s' ;;
+        zh-tw:mu_revoked_ok) echo 'UUID 已在 Xray 上撤銷且健康檢查通過：%s' ;;
+        ja:mu_revoked_ok) echo 'Xray 上で UUID を取り消し、ヘルスチェックに合格：%s' ;;
+        zh:rb_enum_fail) echo '无法枚举 A-Box 备份；恢复未启动。' ;;
+        en:rb_enum_fail) echo 'Failed to enumerate A-Box backups; restore was not started.' ;;
+        ru:rb_enum_fail) echo 'Не удалось перечислить резервные копии A-Box; восстановление не запущено.' ;;
+        fa:rb_enum_fail) echo 'فهرست‌کردن پشتیبان‌های A-Box ناموفق بود؛ بازیابی آغاز نشد.' ;;
+        zh-tw:rb_enum_fail) echo '無法列舉 A-Box 備份；還原未啟動。' ;;
+        ja:rb_enum_fail) echo 'A-Box のバックアップを列挙できなかったため、復元を開始しませんでした。' ;;
+        zh:rb_none_found) echo '在 %s/backups 或 /root/A-Box-backups 中未找到 A-Box 备份包。' ;;
+        en:rb_none_found) echo 'No A-Box backup tarballs found in %s/backups or /root/A-Box-backups.' ;;
+        ru:rb_none_found) echo 'Не найдено tar-архивов A-Box в %s/backups или /root/A-Box-backups.' ;;
+        fa:rb_none_found) echo 'هیچ بسته پشتیبان A-Box در %s/backups یا /root/A-Box-backups یافت نشد.' ;;
+        zh-tw:rb_none_found) echo '在 %s/backups 或 /root/A-Box-backups 中未找到 A-Box 備份包。' ;;
+        ja:rb_none_found) echo '%s/backups または /root/A-Box-backups に A-Box のバックアップが見つかりません。' ;;
+        zh:rb_select) echo '选择备份（0 返回）: ' ;;
+        en:rb_select) echo 'Select backup (0 back): ' ;;
+        ru:rb_select) echo 'Выберите копию (0 — назад): ' ;;
+        fa:rb_select) echo 'پشتیبان را انتخاب کنید (0 بازگشت): ' ;;
+        zh-tw:rb_select) echo '選擇備份（0 返回）: ' ;;
+        ja:rb_select) echo 'バックアップを選択（0 で戻る）: ' ;;
+        zh:rb_invalid) echo '选择无效。' ;;
+        en:rb_invalid) echo 'Invalid selection.' ;;
+        ru:rb_invalid) echo 'Неверный выбор.' ;;
+        fa:rb_invalid) echo 'انتخاب نامعتبر است.' ;;
+        zh-tw:rb_invalid) echo '選擇無效。' ;;
+        ja:rb_invalid) echo '選択が無効です。' ;;
+        zh:rb_sha_bad) echo '备份 SHA256 缺失或无效。' ;;
+        en:rb_sha_bad) echo 'Backup SHA256 is missing or invalid.' ;;
+        ru:rb_sha_bad) echo 'SHA256 копии отсутствует или неверна.' ;;
+        fa:rb_sha_bad) echo 'SHA256 پشتیبان نیست یا نامعتبر است.' ;;
+        zh-tw:rb_sha_bad) echo '備份 SHA256 缺失或無效。' ;;
+        ja:rb_sha_bad) echo 'バックアップの SHA256 がないか無効です。' ;;
+        zh:rb_auth_fail) echo '备份 HMAC/恢复密钥认证失败或未获授权。' ;;
+        en:rb_auth_fail) echo 'Backup HMAC/recovery-key authentication failed or was not authorized.' ;;
+        ru:rb_auth_fail) echo 'Аутентификация HMAC/ключа восстановления не пройдена или не разрешена.' ;;
+        fa:rb_auth_fail) echo 'احراز هویت HMAC/کلید بازیابی پشتیبان ناموفق بود یا مجاز نبود.' ;;
+        zh-tw:rb_auth_fail) echo '備份 HMAC/還原金鑰認證失敗或未獲授權。' ;;
+        ja:rb_auth_fail) echo 'バックアップの HMAC/復旧キー認証に失敗したか、承認されていません。' ;;
+        zh:rb_structure_fail) echo '备份归档结构/链接校验失败。' ;;
+        en:rb_structure_fail) echo 'Backup archive structure/link validation failed.' ;;
+        ru:rb_structure_fail) echo 'Проверка структуры/ссылок архива не пройдена.' ;;
+        fa:rb_structure_fail) echo 'اعتبارسنجی ساختار/پیوند بایگانی پشتیبان ناموفق بود.' ;;
+        zh-tw:rb_structure_fail) echo '備份歸檔結構/連結驗證失敗。' ;;
+        ja:rb_structure_fail) echo 'バックアップアーカイブの構造/リンク検証に失敗しました。' ;;
+        zh:rb_tmp_fail) echo '恢复临时目录创建失败。' ;;
+        en:rb_tmp_fail) echo 'Restore temp directory creation failed.' ;;
+        ru:rb_tmp_fail) echo 'Не удалось создать временный каталог восстановления.' ;;
+        fa:rb_tmp_fail) echo 'ایجاد پوشه موقت بازیابی ناموفق بود.' ;;
+        zh-tw:rb_tmp_fail) echo '還原暫存目錄建立失敗。' ;;
+        ja:rb_tmp_fail) echo '復元用の一時ディレクトリを作成できませんでした。' ;;
+        zh:rb_extract_fail) echo '备份解压失败。' ;;
+        en:rb_extract_fail) echo 'Backup extraction failed.' ;;
+        ru:rb_extract_fail) echo 'Не удалось распаковать копию.' ;;
+        fa:rb_extract_fail) echo 'استخراج پشتیبان ناموفق بود.' ;;
+        zh-tw:rb_extract_fail) echo '備份解壓失敗。' ;;
+        ja:rb_extract_fail) echo 'バックアップの展開に失敗しました。' ;;
+        zh:rb_target_fail) echo '恢复目标归属校验失败。' ;;
+        en:rb_target_fail) echo 'Restore target ownership check failed.' ;;
+        ru:rb_target_fail) echo 'Проверка владения целью восстановления не пройдена.' ;;
+        fa:rb_target_fail) echo 'بررسی مالکیت مقصد بازیابی ناموفق بود.' ;;
+        zh-tw:rb_target_fail) echo '還原目標歸屬驗證失敗。' ;;
+        ja:rb_target_fail) echo '復元先の所有権チェックに失敗しました。' ;;
+        zh:rb_shortcut_fail) echo '恢复快捷入口归属校验失败。' ;;
+        en:rb_shortcut_fail) echo 'Restore shortcut ownership check failed.' ;;
+        ru:rb_shortcut_fail) echo 'Проверка владения ярлыком не пройдена.' ;;
+        fa:rb_shortcut_fail) echo 'بررسی مالکیت میانبر بازیابی ناموفق بود.' ;;
+        zh-tw:rb_shortcut_fail) echo '還原快捷入口歸屬驗證失敗。' ;;
+        ja:rb_shortcut_fail) echo '復元ショートカットの所有権チェックに失敗しました。' ;;
+        zh:rb_init_incompat) echo '备份的 init 系统与当前 VPS 不兼容；恢复已在破坏性更改前中止。' ;;
+        en:rb_init_incompat) echo 'Backup init system is incompatible with the current VPS; restore was aborted before destructive changes.' ;;
+        ru:rb_init_incompat) echo 'Init-система копии несовместима с текущим VPS; восстановление прервано до разрушающих изменений.' ;;
+        fa:rb_init_incompat) echo 'سیستم init پشتیبان با VPS فعلی ناسازگار است؛ بازیابی پیش از تغییرات مخرب متوقف شد.' ;;
+        zh-tw:rb_init_incompat) echo '備份的 init 系統與目前 VPS 不相容；還原已在破壞性變更前中止。' ;;
+        ja:rb_init_incompat) echo 'バックアップの init システムは現在の VPS と互換性がないため、破壊的変更の前に復元を中止しました。' ;;
+        zh:rb_replace_note) echo '恢复只会替换 A-Box 拥有的路径与 A-Box 防火墙规则。' ;;
+        en:rb_replace_note) echo 'Restore will replace only A-Box-owned paths and A-Box firewall rules.' ;;
+        ru:rb_replace_note) echo 'Восстановление заменит только пути, принадлежащие A-Box, и правила брандмауэра A-Box.' ;;
+        fa:rb_replace_note) echo 'بازیابی فقط مسیرهای متعلق به A-Box و قوانین دیوار آتش A-Box را جایگزین می‌کند.' ;;
+        zh-tw:rb_replace_note) echo '還原只會取代 A-Box 擁有的路徑與 A-Box 防火牆規則。' ;;
+        ja:rb_replace_note) echo '復元では A-Box 所有のパスと A-Box ファイアウォールルールのみを置き換えます。' ;;
+        zh:rb_continue) echo '继续恢复？[Y/N]: ' ;;
+        en:rb_continue) echo 'Continue restore? [Y/N]: ' ;;
+        ru:rb_continue) echo 'Продолжить восстановление? [Y/N]: ' ;;
+        fa:rb_continue) echo 'بازیابی ادامه یابد؟ [Y/N]: ' ;;
+        zh-tw:rb_continue) echo '繼續還原？[Y/N]: ' ;;
+        ja:rb_continue) echo '復元を続行しますか？[Y/N]: ' ;;
+        zh:rb_snapshot_fail) echo '恢复前快照创建失败。' ;;
+        en:rb_snapshot_fail) echo 'Pre-restore snapshot creation failed.' ;;
+        ru:rb_snapshot_fail) echo 'Не удалось создать снимок перед восстановлением.' ;;
+        fa:rb_snapshot_fail) echo 'ایجاد snapshot پیش از بازیابی ناموفق بود.' ;;
+        zh-tw:rb_snapshot_fail) echo '還原前快照建立失敗。' ;;
+        ja:rb_snapshot_fail) echo '復元前スナップショットの作成に失敗しました。' ;;
+        zh:rb_done) echo '恢复完成。' ;;
+        en:rb_done) echo 'Restore completed.' ;;
+        ru:rb_done) echo 'Восстановление завершено.' ;;
+        fa:rb_done) echo 'بازیابی کامل شد.' ;;
+        zh-tw:rb_done) echo '還原完成。' ;;
+        ja:rb_done) echo '復元が完了しました。' ;;
         zh:sr_title) echo 'SNI 优选记录' ;;
         en:sr_title) echo 'SNI Preference Records' ;;
         ru:sr_title) echo 'Записи подбора SNI' ;;
@@ -17947,30 +18187,30 @@ multi_uuid_menu() {
     local c nu answer selected tx cfg='/usr/local/etc/xray/config.json' list_tmp old_state='absent' tx_ok=0
     [[ -f "$ABOX_ENV" && ! -L "$ABOX_ENV" ]] && load_abox_env "$ABOX_ENV" 2>/dev/null || true
     msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}Multi-UUID / Subscription export${NC}"
-    msg "Primary UUID: ${YELLOW}${UUID:-load env first}${NC}"
+    msg "${BOLD}${GREEN}$(tr_msg mu_title)${NC}"
+    msg "$(tprintf mu_primary "${UUID:-$(tr_msg mu_load_env_first)}")"
     msg 'Extra UUIDs:'
     # TRAP-7: surface failure instead of silently showing an empty list.
     local _uuid_display=""
     if _uuid_display=$(list_extra_uuids); then
         printf '%s\n' "$_uuid_display" | sed 's/^/  /'
     else
-        msg "${RED}  [!] Extra UUID list unreadable or untrusted${NC}"
+        msg "${RED}$(tr_msg mu_unreadable_note)${NC}"
     fi
-    msg "${YELLOW}1. Add and apply an extra UUID (Xray only)${NC}"
-    msg "${YELLOW}2. Export Vision/XHTTP URI list, Base64 and Clash YAML${NC}"
-    msg "${YELLOW}3. Revoke one extra UUID from the Xray server${NC}"
-    msg "${YELLOW}4. Clear only the local extra-UUID file (does not revoke server access)${NC}"
-    msg "${CYAN}0. Back${NC}"
-    read -r -p 'Select [0-4]: ' c || return 0
+    msg "${YELLOW}$(tr_msg mu_item1)${NC}"
+    msg "${YELLOW}$(tr_msg mu_item2)${NC}"
+    msg "${YELLOW}$(tr_msg mu_item3)${NC}"
+    msg "${YELLOW}$(tr_msg mu_item4)${NC}"
+    msg "${CYAN}$(tr_msg mu_back)${NC}"
+    read -r -p "$(tr_msg mu_pick)" c || return 0
     case "$c" in
         1)
             [[ "${CORE:-}" == xray && -f "$cfg" && ! -L "$cfg" ]] || {
-                msg "${RED}Server-side multi-UUID management is supported only for an installed Xray deployment. Nothing was changed.${NC}"
+                msg "${RED}$(tr_msg mu_only_xray)${NC}"
                 pause_return; return 1;
             }
-            abox_owns_service xray || { msg "${RED}Xray is not registered as an A-Box-managed service. Nothing was changed.${NC}"; pause_return; return 1; }
-            [[ -n "${UUID:-}" ]] || { msg "${RED}Primary UUID is unavailable; reload deployment state first.${NC}"; pause_return; return 1; }
+            abox_owns_service xray || { msg "${RED}$(tr_msg mu_not_managed)${NC}"; pause_return; return 1; }
+            [[ -n "${UUID:-}" ]] || { msg "${RED}$(tr_msg mu_primary_missing)${NC}"; pause_return; return 1; }
             ensure_abox_dir_owned "$ABOX_DIR" || return 1
             tx=$(umask 077; mktemp -d "$ABOX_DIR/.uuid-transaction.XXXXXX") || return 1
             cp -a "$cfg" "$tx/config.json" || { rm -rf -- "$tx"; return 1; }
@@ -17987,7 +18227,7 @@ multi_uuid_menu() {
             local _existing_uuids=""
             if ! _existing_uuids=$(list_extra_uuids); then
                 rm -f -- "$list_tmp"; rm -rf -- "$tx"
-                msg "${RED}Extra UUID list is unreadable or untrusted; refusing to modify.${NC}" >&2
+                msg "${RED}$(tr_msg mu_untrusted_modify)${NC}" >&2
                 return 1
             fi
             { printf '%s\n' "$_existing_uuids"; printf '%s\n' "$nu"; } | awk 'NF && !seen[tolower($0)]++' > "$list_tmp" || { rm -f -- "$list_tmp"; rm -rf -- "$tx"; return 1; }
@@ -17996,28 +18236,28 @@ multi_uuid_menu() {
                 tx_ok=1
             fi
             if (( tx_ok == 0 )); then
-                install_file_atomically "$tx/config.json" "$cfg" 600 || msg "${RED}Could not restore the previous Xray configuration automatically.${NC}"
-                prepare_abox_runtime_permissions xray || msg "${RED}Could not restore Xray runtime read permissions.${NC}"
+                install_file_atomically "$tx/config.json" "$cfg" 600 || msg "${RED}$(tr_msg mu_restore_cfg_fail)${NC}"
+                prepare_abox_runtime_permissions xray || msg "${RED}$(tr_msg mu_restore_perm_fail)${NC}"
                 if [[ "$old_state" == present ]]; then install_file_atomically "$tx/extra-uuids" "$EXTRA_UUID_FILE" 600 || true; else rm -f -- "$EXTRA_UUID_FILE"; fi
-                restart_service_soft xray || msg "${RED}Xray did not return to its previous healthy state; inspect the service immediately.${NC}"
+                restart_service_soft xray || msg "${RED}$(tr_msg mu_restore_health_fail)${NC}"
                 rm -rf -- "$tx"
-                msg "${RED}UUID addition failed. The previous configuration and local list were restored where possible; success was not reported.${NC}"
+                msg "${RED}$(tr_msg mu_add_failed)${NC}"
                 pause_return; return 1
             fi
             rm -rf -- "$tx"
-            msg "${GREEN}UUID added, Xray config validated and service health confirmed: $nu${NC}"
-            export_lightweight_subscription quiet || { msg "${YELLOW}UUID is active; subscription export failed and can be retried from option 2.${NC}"; }
+            msg "${GREEN}$(tprintf mu_added_ok "$nu")${NC}"
+            export_lightweight_subscription quiet || { msg "${YELLOW}$(tr_msg mu_export_retry)${NC}"; }
             pause_return
             ;;
         2) export_lightweight_subscription manual ;;
         3)
-            [[ "${CORE:-}" == xray && -f "$cfg" && ! -L "$cfg" ]] || { msg "${RED}Server-side revocation requires an installed Xray deployment. No change made.${NC}"; pause_return; return 1; }
-            abox_owns_service xray || { msg "${RED}Xray is not registered as an A-Box-managed service. No change made.${NC}"; pause_return; return 1; }
+            [[ "${CORE:-}" == xray && -f "$cfg" && ! -L "$cfg" ]] || { msg "${RED}$(tr_msg mu_revoke_need_xray)${NC}"; pause_return; return 1; }
+            abox_owns_service xray || { msg "${RED}$(tr_msg mu_not_managed)${NC}"; pause_return; return 1; }
             local -a uuids=() _uuid_list_raw=""
             # FINAL-AUDIT: surface an untrusted list instead of silently
             # showing "no UUIDs".
             if ! _uuid_list_raw=$(list_extra_uuids); then
-                msg "${RED}Extra UUID list is unreadable or untrusted; refusing to list.${NC}"
+                msg "${RED}$(tr_msg mu_untrusted_list)${NC}"
                 pause_return
                 return 1
             fi
@@ -18041,7 +18281,7 @@ multi_uuid_menu() {
             local _existing_uuids=""
             if ! _existing_uuids=$(list_extra_uuids); then
                 rm -f -- "$list_tmp"; rm -rf -- "$tx"
-                msg "${RED}Extra UUID list is unreadable or untrusted; refusing to modify.${NC}" >&2
+                msg "${RED}$(tr_msg mu_untrusted_modify)${NC}" >&2
                 return 1
             fi
             printf '%s\n' "$_existing_uuids" | awk -v remove="$nu" 'tolower($0)!=tolower(remove)' > "$list_tmp" || { rm -f -- "$list_tmp"; rm -rf -- "$tx"; return 1; }
@@ -18051,14 +18291,14 @@ multi_uuid_menu() {
             tx_ok=0
             if sync_uuids_into_xray_config && restart_service_soft xray; then tx_ok=1; fi
             if (( tx_ok == 0 )); then
-                install_file_atomically "$tx/config.json" "$cfg" 600 || msg "${RED}Could not restore the previous Xray configuration automatically.${NC}"
-                prepare_abox_runtime_permissions xray || msg "${RED}Could not restore Xray runtime read permissions.${NC}"
+                install_file_atomically "$tx/config.json" "$cfg" 600 || msg "${RED}$(tr_msg mu_restore_cfg_fail)${NC}"
+                prepare_abox_runtime_permissions xray || msg "${RED}$(tr_msg mu_restore_perm_fail)${NC}"
                 if [[ -f "$tx/extra-uuids" ]]; then install_file_atomically "$tx/extra-uuids" "$EXTRA_UUID_FILE" 600 || true; else rm -f -- "$EXTRA_UUID_FILE"; fi
-                restart_service_soft xray || msg "${RED}Xray did not return to its previous healthy state; inspect the service immediately.${NC}"
-                rm -rf -- "$tx"; msg "${RED}Revocation failed; rollback was attempted.${NC}"; pause_return; return 1
+                restart_service_soft xray || msg "${RED}$(tr_msg mu_restore_health_fail)${NC}"
+                rm -rf -- "$tx"; msg "${RED}$(tr_msg mu_revoke_failed)${NC}"; pause_return; return 1
             fi
             rm -rf -- "$tx"
-            msg "${GREEN}UUID revoked on Xray and health check passed: $nu${NC}"
+            msg "${GREEN}$(tprintf mu_revoked_ok "$nu")${NC}"
             export_lightweight_subscription quiet || true
             pause_return
             ;;
@@ -23053,40 +23293,40 @@ restore_from_backup() {
             find "$_dir" -maxdepth 1 -type f -name 'A-Box-backup-*.tar.gz' -print
         done | sort -ru
     ); then
-        msg "${RED}[!] Failed to enumerate A-Box backups; restore was not started.${NC}"
+        msg "${RED}[!] $(tr_msg rb_enum_fail)${NC}"
         pause_return
         return
     fi
     backups=()
     [[ -z "$backups_output" ]] || mapfile -t backups <<< "$backups_output"
-    (( ${#backups[@]} )) || { msg "${RED}[!] No A-Box backup tarballs found in $ABOX_DIR/backups or /root/A-Box-backups.${NC}"; pause_return; return; }
+    (( ${#backups[@]} )) || { msg "${RED}[!] $(tprintf rb_none_found "$ABOX_DIR")${NC}"; pause_return; return; }
     clear
     for i in "${!backups[@]}"; do printf '%2d. %s\n' "$((i+1))" "${backups[$i]}"; done
-    read -r -p 'Select backup (0 back): ' choice
+    read -r -p "$(tr_msg rb_select)" choice
     [[ "$choice" == 0 ]] && return
     if ! [[ "$choice" =~ ^[1-9][0-9]*$ ]] || ! valid_decimal_upto "$choice" "${#backups[@]}"; then
-        msg "${RED}[!] Invalid selection.${NC}"
+        msg "${RED}[!] $(tr_msg rb_invalid)${NC}"
         pause_return
         return
     fi
     selected="${backups[$((10#$choice-1))]}"
-    backup_checksum_verify "$selected" "${selected}.sha256" || die 'Backup SHA256 is missing or invalid.'
-    prepare_backup_auth_for_manual_restore "$selected" || die 'Backup HMAC/recovery-key authentication failed or was not authorized.'
-    validate_backup_archive "$selected" || die 'Backup archive structure/link validation failed.'
-    work=$(mktemp -d /tmp/A-Box-restore.XXXXXX) || die 'Restore temp directory creation failed.'
+    backup_checksum_verify "$selected" "${selected}.sha256" || die "$(tr_msg rb_sha_bad)"
+    prepare_backup_auth_for_manual_restore "$selected" || die "$(tr_msg rb_auth_fail)"
+    validate_backup_archive "$selected" || die "$(tr_msg rb_structure_fail)"
+    work=$(mktemp -d /tmp/A-Box-restore.XXXXXX) || die "$(tr_msg rb_tmp_fail)"
     chmod 700 "$work"
-    tar -xzf "$selected" -C "$work" || { rm -rf "$work"; die 'Backup extraction failed.'; }
+    tar -xzf "$selected" -C "$work" || { rm -rf "$work"; die "$(tr_msg rb_extract_fail)"; }
     root="$work/root"
-    assert_restore_target_safe "$root" || { rm -rf "$work"; die 'Restore target ownership check failed.'; }
-    assert_restore_shortcut_safe "$root" || { rm -rf "$work"; die 'Restore shortcut ownership check failed.'; }
-    validate_backup_core_init_compatibility "$root" || { rm -rf "$work"; die 'Backup init system is incompatible with the current VPS; restore was aborted before destructive changes.'; }
-    msg "${YELLOW}[!] Restore will replace only A-Box-owned paths and A-Box firewall rules.${NC}"
-    read -r -p 'Continue restore? [Y/N]: ' answer
+    assert_restore_target_safe "$root" || { rm -rf "$work"; die "$(tr_msg rb_target_fail)"; }
+    assert_restore_shortcut_safe "$root" || { rm -rf "$work"; die "$(tr_msg rb_shortcut_fail)"; }
+    validate_backup_core_init_compatibility "$root" || { rm -rf "$work"; die "$(tr_msg rb_init_incompat)"; }
+    msg "${YELLOW}[!] $(tr_msg rb_replace_note)${NC}"
+    read -r -p "$(tr_msg rb_continue)" answer
     is_yes "$answer" || { rm -rf "$work"; return; }
 
     ABOX_LAST_BACKUP=''
     backup_current_config "$backup_dir"
-    [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || { rm -rf "$work"; die 'Pre-restore snapshot creation failed.'; }
+    [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || { rm -rf "$work"; die "$(tr_msg rb_snapshot_fail)"; }
     for srv in xray sing-box hysteria; do
         if abox_owns_service "$srv" || backup_root_contains_service "$root" "$srv"; then
             targets+=" ${srv}"
@@ -23142,7 +23382,7 @@ restore_from_backup() {
     done
     commit_deployment_transaction
     rm -rf "$work"
-    msg "${GREEN}[*] Restore completed.${NC}"
+    msg "${GREEN}[*] $(tr_msg rb_done)${NC}"
     pause_return
 }
 

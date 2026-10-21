@@ -2038,6 +2038,24 @@ tr_msg() {
         fa:mi_users_none) echo 'هیچ‌کدام' ;;
         zh-tw:mi_users_none) echo '暫無' ;;
         ja:mi_users_none) echo 'なし' ;;
+        zh:mi_u_forever) echo '永久' ;;
+        en:mi_u_forever) echo 'forever' ;;
+        ru:mi_u_forever) echo 'навсегда' ;;
+        fa:mi_u_forever) echo 'دائمی' ;;
+        zh-tw:mi_u_forever) echo '永久' ;;
+        ja:mi_u_forever) echo '無期限' ;;
+        zh:mi_u_expired) echo '已过期' ;;
+        en:mi_u_expired) echo 'expired' ;;
+        ru:mi_u_expired) echo 'истёк' ;;
+        fa:mi_u_expired) echo 'منقضی شده' ;;
+        zh-tw:mi_u_expired) echo '已過期' ;;
+        ja:mi_u_expired) echo '期限切れ' ;;
+        zh:mi_u_days) echo '剩%s天' ;;
+        en:mi_u_days) echo '%s d left' ;;
+        ru:mi_u_days) echo 'осталось %s дн.' ;;
+        fa:mi_u_days) echo '%s روز مانده' ;;
+        zh-tw:mi_u_days) echo '剩%s天' ;;
+        ja:mi_u_days) echo 'あと%s日' ;;
         zh:split_preset_streaming) echo '流媒体预设（一键）' ;;
         en:split_preset_streaming) echo 'Streaming preset (one-click)' ;;
         ru:split_preset_streaming) echo 'Пресет стриминга' ;;
@@ -11861,6 +11879,12 @@ _ip_geo_refresh() {
             return 0
         fi
     fi
+    # A cache file exists but belongs to another IP/language: refresh
+    # detached; the menu never blocks on the network for it.
+    if [[ -f "$IP_GEO_FILE" ]]; then
+        ( _ip_geo_fetch_now "$ip" "$geo_lang" ) >/dev/null 2>&1 &
+        return 0
+    fi
     _ip_geo_fetch_now "$ip" "$geo_lang"
 }
 
@@ -11919,8 +11943,8 @@ _menu_info_collect() {
     [[ -x /usr/local/bin/sing-box ]] && sst=stop; [[ "$srun" == 1 ]] && sst=run
     [[ -x /usr/local/bin/hysteria ]] && hst=stop; [[ "$hrun" == 1 ]] && hst=run
     local f2st=none dost=none
-    if command -v fail2ban-client >/dev/null 2>&1; then f2st=stop; fail2ban-client ping >/dev/null 2>&1 && f2st=run; fi
-    if command -v docker >/dev/null 2>&1 && docker container inspect wallos >/dev/null 2>&1; then
+    if command -v fail2ban-client >/dev/null 2>&1; then f2st=stop; timeout 1 fail2ban-client ping >/dev/null 2>&1 && f2st=run; fi
+    if command -v docker >/dev/null 2>&1 && timeout 1 docker container inspect wallos >/dev/null 2>&1; then
         dost=stop; [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null)" == 'true' ]] && dost=run
     fi
         # --- standalone protocol listeners (presence + port state) ---
@@ -11956,7 +11980,7 @@ _menu_info_collect() {
     # Toggle-type cells: on = run, off/absent = none (red is reserved
     # for installed-but-broken, per the legend).
     if [[ -s "${ABOX_TRAFFIC_PAIR_STATE:-/etc/ddr/.traffic-pair-state}" ]]; then traf=run; fi
-    if command -v docker >/dev/null 2>&1; then dock=stop; docker info >/dev/null 2>&1 && dock=run; fi
+    if command -v docker >/dev/null 2>&1; then dock=stop; timeout 1 docker info >/dev/null 2>&1 && dock=run; fi
     local _cc=''; _cc=$(cat /proc/sys/net/ipv4/tcp_congestion_control 2>/dev/null || sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null); _cc=${_cc//[[:space:]]/}
     [[ "$_cc" == "bbr" ]] && bbr=run
     if command -v ufw >/dev/null 2>&1; then fwst=stop; ufw status 2>/dev/null | grep -qi '^Status: active' && fwst=run
@@ -12137,7 +12161,7 @@ _menu_info_collect() {
             _MI_USER_RECS+=$'SEG\t'"${_rseg}"$'\n'
             while IFS= read -r _ut; do
                 [[ -n "$_ut" ]] && _MI_USER_RECS+=$'USR\t'"${_ut}"$'\n'
-            done < <(jq -r '.users[]? | .name + "\t" + (((.used_up // 0) + (.used_down // 0)) | tostring) + "\t" + (if .disabled == true then "disabled" elif (.blocked // "") != "" then "blocked" else "" end)' "$_rf" 2>/dev/null)
+            done < <(jq -r '.users[]? | ([.name, (((.used_up // 0) + (.used_down // 0)) | tostring), (if .disabled == true then "disabled" elif (.blocked // "") != "" then "blocked" else "" end), (if (.expire_at // 0) == 0 then "F" elif (.expire_at // 0) <= now then "E" else (((.expire_at // 0) - now) / 86400 | ceil | tostring) end), (((.quota_gb // 0) * 1073741824) | floor | tostring)] | join("|"))' "$_rf" 2>/dev/null)
         done
 
     fi
@@ -12361,7 +12385,7 @@ _menu_info_display() {
         if [[ -z "${_MI_USER_RECS:-}" ]]; then
             msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}$(tr_msg mi_users_none)${NC}"
         else
-            local _urec='' _useg='' _usw=10 _uline='' _ucnt=0 _unm='' _uused=0 _umark='' _utok=''
+            local _urec='' _useg='' _usw=10 _uline='' _ucnt=0 _unm='' _uused=0 _umark='' _utok='' _uexp='' _uqta=0
             local -a _ulines=()
             while IFS= read -r _urec; do
                 [[ "$_urec" == SEG$'\t'* ]] || continue
@@ -12378,12 +12402,18 @@ _menu_info_display() {
                     printf -v _upfx '%-*s  ' "$_usw" "$_useg"
                     _uline=''; _ucnt=0
                 elif [[ "$_urec" == USR$'\t'* ]]; then
-                    IFS=$'\t' read -r _ _unm _uused _umark <<< "$_urec"
-                    _utok="$_unm"
-                    (( ${_uused:-0} > 0 )) && _utok+=" $(users_fmt_bytes "$_uused")"
+                    IFS='|' read -r _unm _uused _umark _uexp _uqta <<< "${_urec#USR$'\t'}"
+                    _utok="$_unm $(users_fmt_bytes "${_uused:-0}")"
+                    (( ${_uqta:-0} > 0 )) && _utok+="/$(users_fmt_bytes "$_uqta")"
+                    case "${_uexp:-F}" in
+                        F) _utok+=" · $(tr_msg mi_u_forever)" ;;
+                        E) _utok+=" · $(tr_msg mi_u_expired)" ;;
+                        *[!0-9]*|'') ;;
+                        *) _utok+=" · $(tprintf mi_u_days "$_uexp")" ;;
+                    esac
                     [[ "$_umark" == 'blocked' ]] && _utok+="·$(tr_msg mi_u_blocked)"
                     [[ "$_umark" == 'disabled' ]] && _utok+="·$(tr_msg mi_u_disabled)"
-                    if (( _ucnt >= 3 )); then
+                    if (( _ucnt >= 3 )) || { (( _ucnt > 0 )) && (( ${#_upfx} + ${#_uline} + ${#_utok} + 3 > 78 )); }; then
                         _ulines+=("${_upfx}${_uline}")
                         printf -v _upfx '%-*s  ' "$_usw" ''
                         _uline=''; _ucnt=0
@@ -16438,7 +16468,7 @@ users_export_all() {
 
 # ---- menu ----
 users_fmt_bytes() {
-    awk -v b="${1:-0}" 'BEGIN { if (b < 1024) printf "%dB", b; else if (b < 1048576) printf "%.1fK", b/1024; else if (b < 1073741824) printf "%.1fM", b/1048576; else printf "%.2fG", b/1073741824 }' 2>/dev/null || printf '%sB' "${1:-0}"
+    awk -v b="${1:-0}" 'BEGIN { if (b < 1024) printf "%dB", b; else if (b < 1048576) printf "%.1fK", b/1024; else if (b < 1073741824) printf "%.1fM", b/1048576; else { v = sprintf("%.2f", b/1073741824); sub(/\.?0+$/, "", v); printf "%sG", v } }' 2>/dev/null || printf '%sB' "${1:-0}"
 }
 
 # Write a mutated registry and sync it; roll the registry back when the
@@ -24347,10 +24377,10 @@ other_protocols_menu() {
     case "${ABOX_LANG:-zh}" in
         en)
             msg "${BOLD}${GREEN}More Protocols${NC}"
-            msg "${YELLOW}1.  Trojan-Reality${NC}"
+            msg "${YELLOW}1.  Trojan-Reality (Xray/sing-box)${NC}"
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
-            msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
             msg "${YELLOW}7.  Latest Xray${NC}"
@@ -24358,10 +24388,10 @@ other_protocols_menu() {
             ;;
         ru)
             msg "${BOLD}${GREEN}Ещё протоколы${NC}"
-            msg "${YELLOW}1.  Trojan-Reality${NC}"
+            msg "${YELLOW}1.  Trojan-Reality (Xray/sing-box)${NC}"
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
-            msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
             msg "${YELLOW}7.  Latest Xray${NC}"
@@ -24369,10 +24399,10 @@ other_protocols_menu() {
             ;;
         fa)
             msg "${BOLD}${GREEN}پروتکل‌های بیشتر${NC}"
-            msg "${YELLOW}1.  Trojan-Reality${NC}"
+            msg "${YELLOW}1.  Trojan-Reality (Xray/sing-box)${NC}"
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
-            msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
             msg "${YELLOW}7.  Latest Xray${NC}"
@@ -24380,10 +24410,10 @@ other_protocols_menu() {
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}更多協議${NC}"
-            msg "${YELLOW}1.  Trojan-Reality${NC}"
+            msg "${YELLOW}1.  Trojan-Reality (Xray/sing-box)${NC}"
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
-            msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
             msg "${YELLOW}7.  最新版 Xray${NC}"
@@ -24391,10 +24421,10 @@ other_protocols_menu() {
             ;;
         ja)
             msg "${BOLD}${GREEN}追加のプロトコル${NC}"
-            msg "${YELLOW}1.  Trojan-Reality${NC}"
+            msg "${YELLOW}1.  Trojan-Reality (Xray/sing-box)${NC}"
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
-            msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
             msg "${YELLOW}7.  最新 Xray${NC}"
@@ -24402,10 +24432,10 @@ other_protocols_menu() {
             ;;
         *)
             msg "${BOLD}${GREEN}更多协议${NC}"
-            msg "${YELLOW}1.  Trojan-Reality${NC}"
+            msg "${YELLOW}1.  Trojan-Reality (Xray/sing-box)${NC}"
             msg "${YELLOW}2.  TUIC (sing-box)${NC}"
             msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
-            msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
+            msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
             msg "${YELLOW}7.  最新版 Xray${NC}"
@@ -27790,6 +27820,7 @@ PY_SELFTEST_TAR
     grep -Fq '_MI_USER_RECS' "$0" || { echo 'FAIL: user records missing'; failures=$((failures + 1)); }
     grep -Fq 'mi_u_blocked' "$0" || { echo 'FAIL: mi_u_blocked missing'; failures=$((failures + 1)); }
     grep -Fq 'mi_users_none' "$0" || { echo 'FAIL: mi_users_none missing'; failures=$((failures + 1)); }
+    grep -Fq 'mi_u_days' "$0" || { echo 'FAIL: mi_u_days missing'; failures=$((failures + 1)); }
     grep -Fq 'statsUserUplink' "$0" || { echo 'FAIL: per-user stats policy missing'; failures=$((failures + 1)); }
     grep -Fq 'revoke one extra UUID from the Xray server' "$0" || grep -Fq 'Revoke one extra UUID from the Xray server' "$0" || { echo 'FAIL: server-side UUID revocation option missing'; failures=$((failures + 1)); }
     # Exercise multi-UUID validation/deduplication on a temporary fixture; never touch /etc/ddr.
@@ -29220,7 +29251,12 @@ main_loop() {
     GLOBAL_PUBLIC_IP=$(get_public_ip_swr || true)
     while true; do
         local STATUS_STR='' CUR_MODE='' choice
-        STATUS_STR=$(build_status_str)
+        if [[ -z "${_ABOX_STATUS_CACHE:-}" ]] || (( EPOCHSECONDS - ${_ABOX_STATUS_TS:-0} >= 5 )); then
+            STATUS_STR=$(build_status_str)
+            _ABOX_STATUS_CACHE="$STATUS_STR"; _ABOX_STATUS_TS=$EPOCHSECONDS
+        else
+            STATUS_STR="$_ABOX_STATUS_CACHE"
+        fi
         # A loadable .env may carry no deployment yet (e.g. traffic limit set
         # before any protocol install); only show [CORE-MODE] when both exist.
         if load_abox_env "$ABOX_ENV" 2>/dev/null && [[ -n "${CORE:-}" && -n "${MODE:-}" ]]; then

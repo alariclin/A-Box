@@ -89,20 +89,21 @@ The top of the menu shows a 16-cell status matrix (running / stopped / not insta
 
 | No. | Function | No. | Function |
 |---:|---|---:|---|
-| 1 | System benchmark & download speed test | 9 | Read-only preflight check |
-| 2 | IP quality / streaming / route test | 10 | SNI test records |
-| 3 | Local SNI selection test | 11 | Multi-user / subscription export |
-| 4 | Mini-host SNI selection test | 12 | VPS one-click optimization |
-| 5 | WARP & split routing | 13 | IP / DNS / timezone / source settings |
-| 6 | Create 2 GB swap | 14 | Wallos install / upgrade / backup |
-| 7 | Configuration backup / restore | 15 | SS-2022 access allowlist |
-| 8 | Export redacted diagnostics | 0 | Back to main menu |
+| 1 | System benchmark & download speed test | 10 | IP / DNS / timezone / source settings |
+| 2 | IP quality / streaming / route test | 11 | Local SNI selection test |
+| 3 | Export redacted diagnostics | 12 | Mini-host SNI selection test |
+| 4 | Read-only preflight check | 13 | SNI test records |
+| 5 | A-Check IP reputation & network check | 14 | Configuration backup / restore |
+| 6 | 14-system compatibility test | 15 | Multi-user / subscription export |
+| 7 | WARP & split routing | 16 | Wallos install / upgrade / backup |
+| 8 | Create 2 GB swap | 17 | SS-2022 access allowlist |
+| 9 | VPS one-click optimization | 0 | Back to main menu |
 
 The two test scripts (items 1–2) are fetched from the verified `test-tools-mirror` release and run only when their SHA-256 matches the manifest. If the mirror is unavailable or the checksum differs, the upstream script is used only when `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` is set; otherwise nothing is executed.
 
-Item 16, **A-Check**, is the IP-reputation checker from the companion [A-Check](https://github.com/alariclin/A-Check) project. The script downloads its pinned release file (`v4.13.4`), verifies the SHA-256 before running it, and caches it under `/etc/ddr/tools`; a copy whose checksum does not match is never executed. It requires Python 3.8 or newer.
+Item 5, **A-Check**, is the IP-reputation checker from the companion [A-Check](https://github.com/alariclin/A-Check) project. The script downloads its pinned release file (`v4.13.4`), verifies the SHA-256 before running it, and caches it under `/etc/ddr/tools`; a copy whose checksum does not match is never executed. It requires Python 3.8 or newer.
 
-Item 17, **14-system compatibility test**, runs the currently running script file through `bash -n` and its self-test inside throwaway Docker containers of all 14 tested systems, and reports PASS / FAIL / SKIP per system. It needs a working Docker daemon; if Docker is missing, the script asks before installing it through the system package manager.
+Item 6, **14-system compatibility test**, runs the currently running script file through `bash -n` and its self-test inside throwaway Docker containers of all 14 tested systems, and reports PASS / FAIL / SKIP per system. It needs a working Docker daemon; if Docker is missing, the script asks before installing it through the system package manager.
 
 ## Subsystems
 

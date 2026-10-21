@@ -22378,115 +22378,115 @@ vps_benchmark_menu() {
         en)
             msg "${BOLD}${GREEN}Toolbox${NC}"
             msg "${CYAN}[ Test & Diagnostics ]                    [ System Tuning ]${NC}"
-            msg "${YELLOW}1.  System benchmark & download speed     5.  WARP & split-routing${NC}"
-            msg "${YELLOW}2.  IP quality / streaming / route test   6.  Allocate 2 GB Swap${NC}"
-            msg "${YELLOW}8.  Export redacted diagnostics           12.  VPS one-click optimization${NC}"
-            msg "${YELLOW}9.  Read-only preflight                   13.  IP / DNS / timezone / download-source${NC}"
-            msg "${YELLOW}16. A-Check IP reputation & network check${NC}"
-            msg "${YELLOW}17. 14-system compatibility test${NC}"
+            msg "${YELLOW}1.  System benchmark & download speed     7.  WARP & split-routing${NC}"
+            msg "${YELLOW}2.  IP quality / streaming / route test   8.  Allocate 2 GB Swap${NC}"
+            msg "${YELLOW}3.  Export redacted diagnostics           9.  VPS one-click optimization${NC}"
+            msg "${YELLOW}4.  Read-only preflight                   10.  IP / DNS / timezone / download-source${NC}"
+            msg "${YELLOW}5. A-Check IP reputation & network check${NC}"
+            msg "${YELLOW}6. 14-system compatibility test${NC}"
             msg ""
             msg "${CYAN}[ SNI Optimization ]                      [ Config Management ]${NC}"
-            msg "${YELLOW}3.  Local SNI preference                  7.  Backup / restore configuration${NC}"
-            msg "${YELLOW}4.  Mini-host SNI preference              11.  Multi-user / subscription link export${NC}"
-            msg "${YELLOW}10.  SNI preference records               14.  Wallos install / update / backup${NC}"
+            msg "${YELLOW}11.  Local SNI preference                 14.  Backup / restore configuration${NC}"
+            msg "${YELLOW}12.  Mini-host SNI preference             15.  Multi-user / subscription link export${NC}"
+            msg "${YELLOW}13.  SNI preference records               16.  Wallos install / update / backup${NC}"
             msg ""
             msg "${CYAN}[ Security ]${NC}"
-            msg "${YELLOW}15.  SS-2022 IP whitelist${NC}"
+            msg "${YELLOW}17.  SS-2022 IP whitelist${NC}"
             msg "${CYAN}0. Back${NC}"
             ;;
         ru)
             msg "${BOLD}${GREEN}Инструменты${NC}"
             msg "${CYAN}[ Тесты и диагностика ]                   [ Оптимизация системы ]${NC}"
-            msg "${YELLOW}1.  Тест системы и скорости               5.  WARP и разделение трафика${NC}"
-            msg "${YELLOW}2.  Качество IP / стриминг / маршрут      6.  Создать Swap 2 ГБ${NC}"
-            msg "${YELLOW}8.  Экспорт диагностики                   12.  Оптимизация VPS${NC}"
-            msg "${YELLOW}9.  Проверка перед установкой             13.  IP / DNS / часовой пояс / источники${NC}"
-            msg "${YELLOW}16. A-Check: проверка IP${NC}"
-            msg "${YELLOW}17. Тест совместимости (14 систем)${NC}"
+            msg "${YELLOW}1.  Тест системы и скорости               7.  WARP и разделение трафика${NC}"
+            msg "${YELLOW}2.  Качество IP / стриминг / маршрут      8.  Создать Swap 2 ГБ${NC}"
+            msg "${YELLOW}3.  Экспорт диагностики                   9.  Оптимизация VPS${NC}"
+            msg "${YELLOW}4.  Проверка перед установкой             10.  IP / DNS / часовой пояс / источники${NC}"
+            msg "${YELLOW}5. A-Check: проверка IP${NC}"
+            msg "${YELLOW}6. Тест совместимости (14 систем)${NC}"
             msg ""
             msg "${CYAN}[ Подбор SNI ]                            [ Управление конфигурацией ]${NC}"
-            msg "${YELLOW}3.  Подбор SNI                            7.  Бэкап / восстановление${NC}"
-            msg "${YELLOW}4.  Подбор SNI (мини-хост)                11.  Пользователи / экспорт подписки${NC}"
-            msg "${YELLOW}10.  Записи подбора SNI                   14.  Wallos: установка / обновление${NC}"
+            msg "${YELLOW}11.  Подбор SNI                           14.  Бэкап / восстановление${NC}"
+            msg "${YELLOW}12.  Подбор SNI (мини-хост)               15.  Пользователи / экспорт подписки${NC}"
+            msg "${YELLOW}13.  Записи подбора SNI                   16.  Wallos: установка / обновление${NC}"
             msg ""
             msg "${CYAN}[ Безопасность ]${NC}"
-            msg "${YELLOW}15.  Белый список IP (SS-2022)${NC}"
+            msg "${YELLOW}17.  Белый список IP (SS-2022)${NC}"
             msg "${CYAN}0. Назад${NC}"
             ;;
         fa)
             msg "${BOLD}${GREEN}جعبه ابزار${NC}"
             msg "${CYAN}[ تست و عیب‌یابی ]                        [ بهینه‌سازی سیستم ]${NC}"
-            msg "${YELLOW}1.  تست سیستم و سرعت دانلود               5.  مدیریت WARP و تفکیک ترافیک${NC}"
-            msg "${YELLOW}2.  کیفیت IP / استریم / مسیر              6.  ساخت Swap دو گیگابایتی${NC}"
-            msg "${YELLOW}8.  خروجی تشخیص عیب‌یابی                  12.  بهینه‌سازی تک‌کلیکی VPS${NC}"
-            msg "${YELLOW}9.  پیش‌بررسی فقط‌خواندنی                 13.  تنظیمات IP / DNS / منطقه زمانی${NC}"
-            msg "${YELLOW}16. بررسی IP با A-Check${NC}"
-            msg "${YELLOW}17. آزمون سازگاری ۱۴ سیستم${NC}"
+            msg "${YELLOW}1.  تست سیستم و سرعت دانلود               7.  مدیریت WARP و تفکیک ترافیک${NC}"
+            msg "${YELLOW}2.  کیفیت IP / استریم / مسیر              8.  ساخت Swap دو گیگابایتی${NC}"
+            msg "${YELLOW}3.  خروجی تشخیص عیب‌یابی                  9.  بهینه‌سازی تک‌کلیکی VPS${NC}"
+            msg "${YELLOW}4.  پیش‌بررسی فقط‌خواندنی                 10.  تنظیمات IP / DNS / منطقه زمانی${NC}"
+            msg "${YELLOW}5. بررسی IP با A-Check${NC}"
+            msg "${YELLOW}6. آزمون سازگاری ۱۴ سیستم${NC}"
             msg ""
             msg "${CYAN}[ بهینه‌سازی SNI ]                        [ مدیریت پیکربندی ]${NC}"
-            msg "${YELLOW}3.  بهینه‌سازی SNI محلی                   7.  پشتیبان‌گیری / بازیابی${NC}"
-            msg "${YELLOW}4.  بهینه‌سازی SNI مینی‌هاست              11.  کاربران / خروجی لینک اشتراک${NC}"
-            msg "${YELLOW}10.  سوابق بهینه‌سازی SNI                 14.  نصب / به‌روزرسانی Wallos${NC}"
+            msg "${YELLOW}11.  بهینه‌سازی SNI محلی                  14.  پشتیبان‌گیری / بازیابی${NC}"
+            msg "${YELLOW}12.  بهینه‌سازی SNI مینی‌هاست             15.  کاربران / خروجی لینک اشتراک${NC}"
+            msg "${YELLOW}13.  سوابق بهینه‌سازی SNI                 16.  نصب / به‌روزرسانی Wallos${NC}"
             msg ""
             msg "${CYAN}[ امنیت ]${NC}"
-            msg "${YELLOW}15.  لیست سفید آی‌پی SS-2022${NC}"
+            msg "${YELLOW}17.  لیست سفید آی‌پی SS-2022${NC}"
             msg "${CYAN}0. بازگشت${NC}"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}綜合工具箱${NC}"
             msg "${CYAN}[ 測試診斷 ]                              [ 系統優化 ]${NC}"
-            msg "${YELLOW}1.  系統性能與下載測速                    5.  WARP 與分流管理${NC}"
-            msg "${YELLOW}2.  IP 質量/流媒體解鎖/回程測試           6.  創建 2 GB Swap${NC}"
-            msg "${YELLOW}8.  導出脫敏診斷包                        12.  VPS 一鍵優化${NC}"
-            msg "${YELLOW}9.  只讀預檢查                            13.  IP / DNS / 時區 / 下載源設置${NC}"
-            msg "${YELLOW}16. A-Check IP 純淨度檢測${NC}"
-            msg "${YELLOW}17. 14 系統兼容性測試${NC}"
+            msg "${YELLOW}1.  系統性能與下載測速                    7.  WARP 與分流管理${NC}"
+            msg "${YELLOW}2.  IP 質量/流媒體解鎖/回程測試           8.  創建 2 GB Swap${NC}"
+            msg "${YELLOW}3.  導出脫敏診斷包                        9.  VPS 一鍵優化${NC}"
+            msg "${YELLOW}4.  只讀預檢查                            10.  IP / DNS / 時區 / 下載源設置${NC}"
+            msg "${YELLOW}5. A-Check IP 純淨度檢測${NC}"
+            msg "${YELLOW}6. 14 系統兼容性測試${NC}"
             msg ""
             msg "${CYAN}[ SNI 優選 ]                              [ 配置管理 ]${NC}"
-            msg "${YELLOW}3.  本地 SNI 優選                         7.  配置備份 / 恢復${NC}"
-            msg "${YELLOW}4.  微型主機 SNI 優選                     11.  多用戶 / 訂閱連結導出${NC}"
-            msg "${YELLOW}10.  SNI 優選記錄                         14.  Wallos 安裝 / 升級 / 備份${NC}"
+            msg "${YELLOW}11.  本地 SNI 優選                        14.  配置備份 / 恢復${NC}"
+            msg "${YELLOW}12.  微型主機 SNI 優選                    15.  多用戶 / 訂閱連結導出${NC}"
+            msg "${YELLOW}13.  SNI 優選記錄                         16.  Wallos 安裝 / 升級 / 備份${NC}"
             msg ""
             msg "${CYAN}[ 安全 ]${NC}"
-            msg "${YELLOW}15.  SS-2022 訪問白名單${NC}"
+            msg "${YELLOW}17.  SS-2022 訪問白名單${NC}"
             msg "${CYAN}0. 返回主選單${NC}"
             ;;
         ja)
             msg "${BOLD}${GREEN}ツールボックス${NC}"
             msg "${CYAN}[ テストと診断 ]                          [ システム最適化 ]${NC}"
-            msg "${YELLOW}1.  システムベンチマークと速度測定        5.  WARP と振り分け管理${NC}"
-            msg "${YELLOW}2.  IP品質/ストリーミング/ルートテスト    6.  2GB Swap 作成${NC}"
-            msg "${YELLOW}8.  診断パッケージのエクスポート          12.  VPS ワンクリック最適化${NC}"
-            msg "${YELLOW}9.  読み取り専用事前チェック              13.  IP / DNS / タイムゾーン設定${NC}"
-            msg "${YELLOW}16. A-Check IP 品質チェック${NC}"
-            msg "${YELLOW}17. 14 システム互換性テスト${NC}"
+            msg "${YELLOW}1.  システムベンチマークと速度測定        7.  WARP と振り分け管理${NC}"
+            msg "${YELLOW}2.  IP品質/ストリーミング/ルートテスト    8.  2GB Swap 作成${NC}"
+            msg "${YELLOW}3.  診断パッケージのエクスポート          9.  VPS ワンクリック最適化${NC}"
+            msg "${YELLOW}4.  読み取り専用事前チェック              10.  IP / DNS / タイムゾーン設定${NC}"
+            msg "${YELLOW}5. A-Check IP 品質チェック${NC}"
+            msg "${YELLOW}6. 14 システム互換性テスト${NC}"
             msg ""
             msg "${CYAN}[ SNI 最適化 ]                            [ 構成管理 ]${NC}"
-            msg "${YELLOW}3.  ローカル SNI 最適化                   7.  設定のバックアップ/復元${NC}"
-            msg "${YELLOW}4.  ミニホスト SNI 最適化                 11.  複数ユーザー / サブスクリプション出力${NC}"
-            msg "${YELLOW}10.  SNI 最適化記録                       14.  Wallos インストール/更新${NC}"
+            msg "${YELLOW}11.  ローカル SNI 最適化                  14.  設定のバックアップ/復元${NC}"
+            msg "${YELLOW}12.  ミニホスト SNI 最適化                15.  複数ユーザー / サブスクリプション出力${NC}"
+            msg "${YELLOW}13.  SNI 最適化記録                       16.  Wallos インストール/更新${NC}"
             msg ""
             msg "${CYAN}[ セキュリティ ]${NC}"
-            msg "${YELLOW}15.  SS-2022 IPホワイトリスト${NC}"
+            msg "${YELLOW}17.  SS-2022 IPホワイトリスト${NC}"
             msg "${CYAN}0. メインメニューに戻る${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}综合工具箱${NC}"
             msg "${CYAN}[ 测试诊断 ]                              [ 系统优化 ]${NC}"
-            msg "${YELLOW}1.  系统性能与下载测速                    5.  WARP 与分流管理${NC}"
-            msg "${YELLOW}2.  IP 质量/流媒体解锁/回程测试           6.  创建 2 GB Swap${NC}"
-            msg "${YELLOW}8.  导出脱敏诊断包                        12.  VPS 一键优化${NC}"
-            msg "${YELLOW}9.  只读预检查                            13.  IP / DNS / 时区 / 下载源设置${NC}"
-            msg "${YELLOW}16. A-Check IP 纯净度检测${NC}"
-            msg "${YELLOW}17. 14 系统兼容性测试${NC}"
+            msg "${YELLOW}1.  系统性能与下载测速                    7.  WARP 与分流管理${NC}"
+            msg "${YELLOW}2.  IP 质量/流媒体解锁/回程测试           8.  创建 2 GB Swap${NC}"
+            msg "${YELLOW}3.  导出脱敏诊断包                        9.  VPS 一键优化${NC}"
+            msg "${YELLOW}4.  只读预检查                            10.  IP / DNS / 时区 / 下载源设置${NC}"
+            msg "${YELLOW}5. A-Check IP 纯净度检测${NC}"
+            msg "${YELLOW}6. 14 系统兼容性测试${NC}"
             msg ""
             msg "${CYAN}[ SNI 优选 ]                              [ 配置管理 ]${NC}"
-            msg "${YELLOW}3.  本地 SNI 优选                         7.  配置备份 / 恢复${NC}"
-            msg "${YELLOW}4.  微型主机 SNI 优选                     11.  多用户 / 订阅链接导出${NC}"
-            msg "${YELLOW}10.  SNI 优选记录                         14.  Wallos 安装 / 升级 / 备份${NC}"
+            msg "${YELLOW}11.  本地 SNI 优选                        14.  配置备份 / 恢复${NC}"
+            msg "${YELLOW}12.  微型主机 SNI 优选                    15.  多用户 / 订阅链接导出${NC}"
+            msg "${YELLOW}13.  SNI 优选记录                         16.  Wallos 安装 / 升级 / 备份${NC}"
             msg ""
             msg "${CYAN}[ 安全 ]${NC}"
-            msg "${YELLOW}15.  SS-2022 访问白名单${NC}"
+            msg "${YELLOW}17.  SS-2022 访问白名单${NC}"
             msg "${CYAN}0. 返回主菜单${NC}"
             ;;
     esac
@@ -22496,21 +22496,21 @@ vps_benchmark_menu() {
     case "$bench_choice" in
         1) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
         2) run_mirrored_test_script 'IP quality, streaming unlock and route test' 'https://Check.Place' 'Check.Place.sh' -I; pause_return ;;
-        3) run_local_sni_benchmark ;;
-        4) run_local_sni_mini_benchmark ;;
-        5) warp_split_menu ;;
-        6) setup_swap_2g ;;
-        7) backup_restore_menu ;;
-        8) export_diagnostic_bundle ;;
-        9) preflight_check ;;
-        10) show_sni_preference_records ;;
-        11) multi_uuid_menu ;;
-        12) tune_vps ;;
-        13) host_network_menu ;;
-        14) wallos_menu ;;
-        15) manage_ss_whitelist ;;
-        16) run_acheck_tool; pause_return ;;
-        17) run_all_systems_test; pause_return ;;
+        3) export_diagnostic_bundle ;;
+        4) preflight_check ;;
+        5) run_acheck_tool; pause_return ;;
+        6) run_all_systems_test; pause_return ;;
+        7) warp_split_menu ;;
+        8) setup_swap_2g ;;
+        9) tune_vps ;;
+        10) host_network_menu ;;
+        11) run_local_sni_benchmark ;;
+        12) run_local_sni_mini_benchmark ;;
+        13) show_sni_preference_records ;;
+        14) backup_restore_menu ;;
+        15) multi_uuid_menu ;;
+        16) wallos_menu ;;
+        17) manage_ss_whitelist ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $bench_choice${NC}"; sleep 1 ;;
     esac

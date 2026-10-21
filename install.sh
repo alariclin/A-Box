@@ -11323,7 +11323,7 @@ _menu_info_display() {
         _mrow+="${_sep}$(_mi_cell "$_nm" "$_st")"; _sep='  '; _n=$((_n + 1))
     done
     msg "$_mrow"
-    msg ''
+    printf '\033[38;2;0;170;255m%s\033[0m\n' '════════════════════════════════════════════════════════════════════════════════'
     # --- system / hardware ---
     msg "  ${CYAN}$(tr_msg mi_system)：${NC}  ${LBLW}${_MI_OS} · $(tr_msg mi_kernel) ${_MI_KERNEL} · ${_MI_VIRT} · $(tprintf mi_uptime "$_MI_UP")${NC}"
     msg ''

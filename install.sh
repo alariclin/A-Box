@@ -11286,20 +11286,17 @@ _mi_cell() {
 # boxed by electric-blue double lines. Pixel = 2 foreground full blocks
 # (background-colored spaces vanish on terminals that skip cell backgrounds).
 _menu_banner() {
-    # FIGlet 'ANSI Shadow' line art (same style as A-Check): real letterform
-    # glyphs stay legible on any terminal, unlike block mosaics. Drawn as
-    # per-letter segments with a truecolor gradient; no per-char slicing
-    # (multibyte-safe under C locales).
+    # FIGlet 'ANSI Shadow' line art, A-Check palette, static segments.
     local _eq='════════════════════════════════════════════════════════════════════════════════'
-    local _cA=$'\033[38;2;0;95;215m' _cH=$'\033[38;2;0;95;255m' _cB=$'\033[38;2;0;135;255m' _cO=$'\033[38;2;0;175;255m' _cX=$'\033[38;2;0;170;255m'
-    local _pad='                 '
+    local _cA=$'\033[38;2;0;95;215m' _cH=$'\033[38;2;0;95;255m' _cB=$'\033[38;2;0;135;215m' _cO=$'\033[38;2;0;135;255m' _cX=$'\033[38;2;0;175;255m'
+    local _pad='         '
     printf '\033[38;2;0;170;255m%s\033[0m\n' "$_eq"
-    printf '%s' "${_pad}${_cA} █████╗  ${_cH}        ${_cB}██████╗  ${_cO} ██████╗  ${_cX}██╗  ██╗ ${NC}"; printf '\n'
-    printf '%s' "${_pad}${_cA}██╔══██╗ ${_cH}        ${_cB}██╔══██╗ ${_cO}██╔═══██╗ ${_cX}╚██╗██╔╝ ${NC}"; printf '\n'
-    printf '%s' "${_pad}${_cA}███████║ ${_cH}        ${_cB}██████╔╝ ${_cO}██║   ██║ ${_cX} ╚███╔╝  ${NC}"; printf '\n'
-    printf '%s' "${_pad}${_cA}██╔══██║ ${_cH}██████╗ ${_cB}██╔══██╗ ${_cO}██║   ██║ ${_cX} ██╔██╗  ${NC}"; printf '\n'
-    printf '%s' "${_pad}${_cA}██║  ██║ ${_cH}╚═════╝ ${_cB}██████╔╝ ${_cO}╚██████╔╝ ${_cX}██╔╝╚██╗ ${NC}"; printf '\n'
-    printf '%s' "${_pad}${_cA}╚═╝  ╚═╝ ${_cH}        ${_cB}╚═════╝  ${_cO} ╚═════╝  ${_cX}╚═╝  ╚═╝ ${NC}"; printf '\n'
+    printf '%s' "${_pad}${_cA} █████╗       ${_cH}             ${_cB}██████╗      ${_cO} ██████╗      ${_cX}██╗  ██╗${NC}"; printf '\n'
+    printf '%s' "${_pad}${_cA}██╔══██╗      ${_cH}             ${_cB}██╔══██╗     ${_cO}██╔═══██╗     ${_cX}╚██╗██╔╝${NC}"; printf '\n'
+    printf '%s' "${_pad}${_cA}███████║      ${_cH}             ${_cB}██████╔╝     ${_cO}██║   ██║     ${_cX} ╚███╔╝ ${NC}"; printf '\n'
+    printf '%s' "${_pad}${_cA}██╔══██║      ${_cH}██████╗      ${_cB}██╔══██╗     ${_cO}██║   ██║     ${_cX} ██╔██╗ ${NC}"; printf '\n'
+    printf '%s' "${_pad}${_cA}██║  ██║      ${_cH}╚═════╝      ${_cB}██████╔╝     ${_cO}╚██████╔╝     ${_cX}██╔╝╚██╗${NC}"; printf '\n'
+    printf '%s' "${_pad}${_cA}╚═╝  ╚═╝      ${_cH}             ${_cB}╚═════╝      ${_cO} ╚═════╝      ${_cX}╚═╝  ╚═╝${NC}"; printf '\n'
     printf '\033[38;2;0;170;255m%s\033[0m\n' "$_eq"
 }
 

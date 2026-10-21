@@ -592,6 +592,300 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:tl_no_owned) echo '没有 A-Box 托管的核心。' ;;
+        en:tl_no_owned) echo 'No owned cores.' ;;
+        ru:tl_no_owned) echo 'Нет ядер под управлением A-Box.' ;;
+        fa:tl_no_owned) echo 'هسته مدیریت‌شده‌ای نیست.' ;;
+        zh-tw:tl_no_owned) echo '沒有 A-Box 託管的核心。' ;;
+        ja:tl_no_owned) echo 'A-Box 管理下のコアがありません。' ;;
+        zh:tl_trying) echo '--- 正在尝试最新版 %s（独立事务）---' ;;
+        en:tl_trying) echo '--- Trying latest %s (independent transaction) ---' ;;
+        ru:tl_trying) echo '--- Пробуем последнюю версию %s (независимая транзакция) ---' ;;
+        fa:tl_trying) echo '--- تلاش آخرین نسخه %s (تراکنش مستقل) ---' ;;
+        zh-tw:tl_trying) echo '--- 正在嘗試最新版 %s（獨立事務）---' ;;
+        ja:tl_trying) echo '--- 最新版 %s を試行中（独立トランザクション）---' ;;
+        zh:tl_cand_xray) echo '无法解析 Xray 正式稳定候选或容灾版本。' ;;
+        en:tl_cand_xray) echo 'Could not resolve the Xray stable candidate or recovery version.' ;;
+        ru:tl_cand_xray) echo 'Не удалось определить стабильного кандидата или аварийную версию Xray.' ;;
+        fa:tl_cand_xray) echo 'تعیین نسخه پایدار کاندید یا بازیابی Xray ممکن نشد.' ;;
+        zh-tw:tl_cand_xray) echo '無法解析 Xray 正式穩定候選或容災版本。' ;;
+        ja:tl_cand_xray) echo 'Xray の安定候補または復旧バージョンを解決できませんでした。' ;;
+        zh:tl_cand_sb) echo '无法解析 sing-box 正式稳定候选或容灾版本。' ;;
+        en:tl_cand_sb) echo 'Could not resolve the sing-box stable candidate or recovery version.' ;;
+        ru:tl_cand_sb) echo 'Не удалось определить стабильного кандидата или аварийную версию sing-box.' ;;
+        fa:tl_cand_sb) echo 'تعیین نسخه پایدار کاندید یا بازیابی sing-box ممکن نشد.' ;;
+        zh-tw:tl_cand_sb) echo '無法解析 sing-box 正式穩定候選或容災版本。' ;;
+        ja:tl_cand_sb) echo 'sing-box の安定候補または復旧バージョンを解決できませんでした。' ;;
+        zh:tl_cand_hy) echo '无法解析 Hysteria 正式稳定候选或容灾版本。' ;;
+        en:tl_cand_hy) echo 'Could not resolve the Hysteria stable candidate or recovery version.' ;;
+        ru:tl_cand_hy) echo 'Не удалось определить стабильного кандидата или аварийную версию Hysteria.' ;;
+        fa:tl_cand_hy) echo 'تعیین نسخه پایدار کاندید یا بازیابی Hysteria ممکن نشد.' ;;
+        zh-tw:tl_cand_hy) echo '無法解析 Hysteria 正式穩定候選或容災版本。' ;;
+        ja:tl_cand_hy) echo 'Hysteria の安定候補または復旧バージョンを解決できませんでした。' ;;
+        zh:tl_try_xray) echo '正在尝试 Xray 稳定版/容灾候选 %s（安装时解析）' ;;
+        en:tl_try_xray) echo 'Trying Xray stable/recovery candidate %s (resolved at install time)' ;;
+        ru:tl_try_xray) echo 'Пробуем стабильного/аварийного кандидата Xray %s (определяется при установке)' ;;
+        fa:tl_try_xray) echo 'تلاش کاندید پایدار/بازیابی Xray ‏%s (هنگام نصب تعیین می‌شود)' ;;
+        zh-tw:tl_try_xray) echo '正在嘗試 Xray 穩定版/容災候選 %s（安裝時解析）' ;;
+        ja:tl_try_xray) echo 'Xray の安定/復旧候補 %s を試行中（インストール時に解決）' ;;
+        zh:tl_try_sb) echo '正在尝试 sing-box 稳定版/容灾候选 %s（安装时解析）' ;;
+        en:tl_try_sb) echo 'Trying sing-box stable/recovery candidate %s (resolved at install time)' ;;
+        ru:tl_try_sb) echo 'Пробуем стабильного/аварийного кандидата sing-box %s (определяется при установке)' ;;
+        fa:tl_try_sb) echo 'تلاش کاندید پایدار/بازیابی sing-box ‏%s (هنگام نصب تعیین می‌شود)' ;;
+        zh-tw:tl_try_sb) echo '正在嘗試 sing-box 穩定版/容災候選 %s（安裝時解析）' ;;
+        ja:tl_try_sb) echo 'sing-box の安定/復旧候補 %s を試行中（インストール時に解決）' ;;
+        zh:tl_try_hy) echo '正在尝试 Hysteria 稳定版/容灾候选 %s（安装时解析）' ;;
+        en:tl_try_hy) echo 'Trying Hysteria stable/recovery candidate %s (resolved at install time)' ;;
+        ru:tl_try_hy) echo 'Пробуем стабильного/аварийного кандидата Hysteria %s (определяется при установке)' ;;
+        fa:tl_try_hy) echo 'تلاش کاندید پایدار/بازیابی Hysteria ‏%s (هنگام نصب تعیین می‌شود)' ;;
+        zh-tw:tl_try_hy) echo '正在嘗試 Hysteria 穩定版/容災候選 %s（安裝時解析）' ;;
+        ja:tl_try_hy) echo 'Hysteria の安定/復旧候補 %s を試行中（インストール時に解決）' ;;
+        zh:tl_done_one) echo '[%s] 最新版尝试已完成。' ;;
+        en:tl_done_one) echo '[%s] latest attempt completed.' ;;
+        ru:tl_done_one) echo '[%s] попытка последней версии завершена.' ;;
+        fa:tl_done_one) echo '[%s] تلاش آخرین نسخه کامل شد.' ;;
+        zh-tw:tl_done_one) echo '[%s] 最新版嘗試已完成。' ;;
+        ja:tl_done_one) echo '[%s] 最新版の試行が完了しました。' ;;
+        zh:tl_failed_one) echo '[!] [%s] 最新版尝试失败，已独立回滚；继续处理其余核心。' ;;
+        en:tl_failed_one) echo '[!] [%s] latest attempt failed and was rolled back independently; continuing.' ;;
+        ru:tl_failed_one) echo '[!] [%s] попытка последней версии не удалась и была независимо откачена; продолжаем.' ;;
+        fa:tl_failed_one) echo '[!] [%s] تلاش آخرین نسخه ناموفق بود و مستقل بازگردانده شد؛ ادامه می‌دهیم.' ;;
+        zh-tw:tl_failed_one) echo '[!] [%s] 最新版嘗試失敗，已獨立回滾；繼續處理其餘核心。' ;;
+        ja:tl_failed_one) echo '[!] [%s] 最新版の試行に失敗し、独立してロールバックしました。続行します。' ;;
+        zh:tl_finished_fail) echo '[!] 已完成，但有失败（已回滚）：%s。请重新测试客户端。' ;;
+        en:tl_finished_fail) echo '[!] Finished with failures (rolled back): %s. Re-test clients.' ;;
+        ru:tl_finished_fail) echo '[!] Завершено с ошибками (откачено): %s. Перепроверьте клиенты.' ;;
+        fa:tl_finished_fail) echo '[!] با خطا پایان یافت (بازگردانده شد): %s. کلاینت‌ها را دوباره بیازمایید.' ;;
+        zh-tw:tl_finished_fail) echo '[!] 已完成，但有失敗（已回滾）：%s。請重新測試客戶端。' ;;
+        ja:tl_finished_fail) echo '[!] 失敗ありで終了しました（ロールバック済み）：%s。クライアントを再テストしてください。' ;;
+        zh:tl_finished_ok) echo '最新版尝试已完成。请重新测试客户端。' ;;
+        en:tl_finished_ok) echo 'Latest-core attempt finished. Re-test clients.' ;;
+        ru:tl_finished_ok) echo 'Попытка последних версий завершена. Перепроверьте клиенты.' ;;
+        fa:tl_finished_ok) echo 'تلاش آخرین نسخه‌ها پایان یافت. کلاینت‌ها را دوباره بیازمایید.' ;;
+        zh-tw:tl_finished_ok) echo '最新版嘗試已完成。請重新測試客戶端。' ;;
+        ja:tl_finished_ok) echo '最新コアの試行が終了しました。クライアントを再テストしてください。' ;;
+        zh:dh_backend) echo 'DoH 设定需要 systemd-resolved 后端处于活动状态。当前后端：%s。未修改 DNS。' ;;
+        en:dh_backend) echo 'DoH setup requires an active systemd-resolved backend. Current backend: %s. DNS was not changed.' ;;
+        ru:dh_backend) echo 'Для настройки DoH нужен активный бэкенд systemd-resolved. Текущий бэкенд: %s. DNS не изменён.' ;;
+        fa:dh_backend) echo 'راه‌اندازی DoH نیازمند بک‌اند فعال systemd-resolved است. بک‌اند فعلی: %s. ‏DNS تغییر نکرد.' ;;
+        zh-tw:dh_backend) echo 'DoH 設定需要 systemd-resolved 後端處於活動狀態。目前後端：%s。未修改 DNS。' ;;
+        ja:dh_backend) echo 'DoH の設定にはアクティブな systemd-resolved バックエンドが必要です。現在のバックエンド：%s。DNS は変更されていません。' ;;
+        zh:dh_unavailable) echo 'dnscrypt-proxy 不可用；未修改 DNS。' ;;
+        en:dh_unavailable) echo 'dnscrypt-proxy is unavailable; DNS was not changed.' ;;
+        ru:dh_unavailable) echo 'dnscrypt-proxy недоступен; DNS не изменён.' ;;
+        fa:dh_unavailable) echo 'dnscrypt-proxy در دسترس نیست؛ DNS تغییر نکرد.' ;;
+        zh-tw:dh_unavailable) echo 'dnscrypt-proxy 不可用；未修改 DNS。' ;;
+        ja:dh_unavailable) echo 'dnscrypt-proxy が利用できません。DNS は変更されていません。' ;;
+        zh:dh_cfg_missing) echo '未找到 dnscrypt-proxy 配置文件；未修改 DNS。' ;;
+        en:dh_cfg_missing) echo 'dnscrypt-proxy configuration file was not found; DNS was not changed.' ;;
+        ru:dh_cfg_missing) echo 'Файл конфигурации dnscrypt-proxy не найден; DNS не изменён.' ;;
+        fa:dh_cfg_missing) echo 'فایل پیکربندی dnscrypt-proxy یافت نشد؛ DNS تغییر نکرد.' ;;
+        zh-tw:dh_cfg_missing) echo '未找到 dnscrypt-proxy 設定檔；未修改 DNS。' ;;
+        ja:dh_cfg_missing) echo 'dnscrypt-proxy の設定ファイルが見つかりません。DNS は変更されていません。' ;;
+        zh:dh_snap_staging) echo 'DNS 快照暂存失败；未更改解析器。' ;;
+        en:dh_snap_staging) echo 'DNS snapshot staging failed; no resolver changes were made.' ;;
+        ru:dh_snap_staging) echo 'Не удалось подготовить снимок DNS;resolvers не изменён.' ;;
+        fa:dh_snap_staging) echo 'آماده‌سازی snapshot ‏DNS ناموفق بود؛ تغییری در resolvers داده نشد.' ;;
+        zh-tw:dh_snap_staging) echo 'DNS 快照暫存失敗；未更改解析器。' ;;
+        ja:dh_snap_staging) echo 'DNS スナップショットのステージングに失敗しました。リゾルバは変更されていません。' ;;
+        zh:dh_snap_rollback) echo 'DNS 回滚快照失败或不完整；已保留先前快照；未更改解析器。' ;;
+        en:dh_snap_rollback) echo 'DNS rollback snapshot failed or incomplete; previous snapshot preserved; no resolver changes were made.' ;;
+        ru:dh_snap_rollback) echo 'Снимок отката DNS не удался или неполон; предыдущий снимок сохранён; resolvers не изменены.' ;;
+        fa:dh_snap_rollback) echo 'snapshot بازگشت DNS ناموفق یا ناقص بود؛ snapshot قبلی حفظ شد؛ تغییری در resolvers داده نشد.' ;;
+        zh-tw:dh_snap_rollback) echo 'DNS 回滾快照失敗或不完整；已保留先前快照；未更改解析器。' ;;
+        ja:dh_snap_rollback) echo 'DNS ロールバック用スナップショットが失敗または不完全です。前のスナップショットは保持され、リゾルバは変更されていません。' ;;
+        zh:dh_snap_install) echo 'DNS 快照安装失败；已保留先前快照；未更改解析器。' ;;
+        en:dh_snap_install) echo 'DNS snapshot install failed; previous snapshot preserved; no resolver changes were made.' ;;
+        ru:dh_snap_install) echo 'Не удалось установить снимок DNS; предыдущий снимок сохранён; resolvers не изменены.' ;;
+        fa:dh_snap_install) echo 'نصب snapshot ‏DNS ناموفق بود؛ snapshot قبلی حفظ شد؛ تغییری در resolvers داده نشد.' ;;
+        zh-tw:dh_snap_install) echo 'DNS 快照安裝失敗；已保留先前快照；未更改解析器。' ;;
+        ja:dh_snap_install) echo 'DNS スナップショットのインストールに失敗しました。前のスナップショットは保持され、リゾルバは変更されていません。' ;;
+        zh:dh_cfg_check) echo 'dnscrypt-proxy 配置校验失败；已尽可能回滚。' ;;
+        en:dh_cfg_check) echo 'dnscrypt-proxy configuration check failed; rolled back where possible.' ;;
+        ru:dh_cfg_check) echo 'Проверка конфигурации dnscrypt-proxy не пройдена; откат выполнен, где возможно.' ;;
+        fa:dh_cfg_check) echo 'بررسی پیکربندی dnscrypt-proxy ناموفق بود؛ تا حد امکان بازگردانده شد.' ;;
+        zh-tw:dh_cfg_check) echo 'dnscrypt-proxy 設定驗證失敗；已盡可能回滾。' ;;
+        ja:dh_cfg_check) echo 'dnscrypt-proxy の設定チェックに失敗しました。可能な範囲でロールバックしました。' ;;
+        zh:dh_test_resolve) echo '本机 DoH 代理未能解析测试查询；已尝试 DNS 回滚。' ;;
+        en:dh_test_resolve) echo 'Local DoH proxy did not resolve a test query; DNS rollback was attempted.' ;;
+        ru:dh_test_resolve) echo 'Локальный прокси DoH не разрешил тестовый запрос; выполнен откат DNS.' ;;
+        fa:dh_test_resolve) echo 'پروکسی محلی DoH یک پرس‌وجوی آزمایشی را resolve نکرد؛ بازگشت DNS انجام شد.' ;;
+        zh-tw:dh_test_resolve) echo '本機 DoH 代理未能解析測試查詢；已嘗試 DNS 回滾。' ;;
+        ja:dh_test_resolve) echo 'ローカル DoH プロキシがテストクエリを解決できませんでした。DNS のロールバックを試みました。' ;;
+        zh:dh_meta_commit) echo 'DoH 状态元数据无法提交；已恢复之前的 DNS 配置。' ;;
+        en:dh_meta_commit) echo 'DoH state metadata could not be committed; the previous DNS configuration was restored.' ;;
+        ru:dh_meta_commit) echo 'Не удалось зафиксировать метаданные состояния DoH; прежняя конфигурация DNS восстановлена.' ;;
+        fa:dh_meta_commit) echo 'فراداده وضعیت DoH قابل ثبت نبود؛ پیکربندی قبلی DNS بازیابی شد.' ;;
+        zh-tw:dh_meta_commit) echo 'DoH 狀態後設資料無法提交；已還原之前的 DNS 設定。' ;;
+        ja:dh_meta_commit) echo 'DoH 状態メタデータをコミットできなかったため、以前の DNS 設定を復元しました。' ;;
+        zh:dh_meta_commit_fail) echo 'DoH 状态元数据无法提交且回滚失败。请从 %s 恢复 DNS 快照。' ;;
+        en:dh_meta_commit_fail) echo 'DoH state metadata could not be committed and rollback failed. Restore the DNS snapshot from %s.' ;;
+        ru:dh_meta_commit_fail) echo 'Не удалось зафиксировать метаданные DoH, и откат не удался. Восстановите снимок DNS из %s.' ;;
+        fa:dh_meta_commit_fail) echo 'فراداده DoH قابل ثبت نبود و بازگشت هم ناموفق بود. snapshot ‏DNS را از %s بازیابی کنید.' ;;
+        zh-tw:dh_meta_commit_fail) echo 'DoH 狀態後設資料無法提交且回滾失敗。請從 %s 還原 DNS 快照。' ;;
+        ja:dh_meta_commit_fail) echo 'DoH 状態メタデータをコミットできず、ロールバックにも失敗しました。%s から DNS スナップショットを復元してください。' ;;
+        zh:dh_ok) echo 'DoH 代理正在运行，系统解析器已通过健康检查。' ;;
+        en:dh_ok) echo 'DoH proxy is running and the system resolver passed its health check.' ;;
+        ru:dh_ok) echo 'Прокси DoH работает, системный resolver прошёл проверку состояния.' ;;
+        fa:dh_ok) echo 'پروکسی DoH در حال اجراست و resolver سیستم بررسی سلامت را گذراند.' ;;
+        zh-tw:dh_ok) echo 'DoH 代理正在執行，系統解析器已通過健康檢查。' ;;
+        ja:dh_ok) echo 'DoH プロキシが稼働し、システムリゾルバのヘルスチェックに合格しました。' ;;
+        zh:dh_note) echo 'DoH 只加密发往所选上游的 DNS 查询，不加密 VPS 的全部流量。' ;;
+        en:dh_note) echo 'DoH encrypts DNS queries to the selected upstream; it does not encrypt all VPS traffic.' ;;
+        ru:dh_note) echo 'DoH шифрует только DNS-запросы к выбранному апстриму; он не шифрует весь трафик VPS.' ;;
+        fa:dh_note) echo 'DoH فقط پرس‌وجوهای DNS به بالادست انتخاب‌شده را رمزنگاری می‌کند؛ همه ترافیک VPS را رمزنگاری نمی‌کند.' ;;
+        zh-tw:dh_note) echo 'DoH 只加密發往所選上游的 DNS 查詢，不加密 VPS 的全部流量。' ;;
+        ja:dh_note) echo 'DoH は選択したアップストリームへの DNS クエリのみを暗号化します。VPS の全トラフィックは暗号化しません。' ;;
+        zh:dh_resolved_health) echo 'systemd-resolved 健康检查失败；已尝试回滚。' ;;
+        en:dh_resolved_health) echo 'systemd-resolved health check failed; rollback was attempted.' ;;
+        ru:dh_resolved_health) echo 'Проверка состояния systemd-resolved не пройдена; выполнен откат.' ;;
+        fa:dh_resolved_health) echo 'بررسی سلامت systemd-resolved ناموفق بود؛ بازگشت انجام شد.' ;;
+        zh-tw:dh_resolved_health) echo 'systemd-resolved 健康檢查失敗；已嘗試回滾。' ;;
+        ja:dh_resolved_health) echo 'systemd-resolved のヘルスチェックに失敗しました。ロールバックを試みました。' ;;
+        zh:sn_tmp_fail) echo 'SNI 雷达临时目录创建失败。' ;;
+        en:sn_tmp_fail) echo 'SNI radar temporary directory creation failed.' ;;
+        ru:sn_tmp_fail) echo 'Не удалось создать временный каталог радара SNI.' ;;
+        fa:sn_tmp_fail) echo 'ایجاد پوشه موقت رادار SNI ناموفق بود.' ;;
+        zh-tw:sn_tmp_fail) echo 'SNI 雷達暫存目錄建立失敗。' ;;
+        ja:sn_tmp_fail) echo 'SNI レーダーの一時ディレクトリを作成できませんでした。' ;;
+        zh:sn_concurrency_range) echo 'SNI 并发数必须是 1..256 的整数。' ;;
+        en:sn_concurrency_range) echo 'SNI concurrency must be an integer in 1..256.' ;;
+        ru:sn_concurrency_range) echo 'Параллелизм SNI должен быть целым числом в диапазоне 1..256.' ;;
+        fa:sn_concurrency_range) echo 'همزمانی SNI باید عددی صحیح در بازه 1..256 باشد.' ;;
+        zh-tw:sn_concurrency_range) echo 'SNI 並發數必須是 1..256 的整數。' ;;
+        ja:sn_concurrency_range) echo 'SNI の同時実行数は 1..256 の整数でなければなりません。' ;;
+        zh:sn_concurrency_min) echo 'SNI 并发数必须 >= 1。' ;;
+        en:sn_concurrency_min) echo 'SNI concurrency must be >= 1.' ;;
+        ru:sn_concurrency_min) echo 'Параллелизм SNI должен быть >= 1.' ;;
+        fa:sn_concurrency_min) echo 'همزمانی SNI باید >= 1 باشد.' ;;
+        zh-tw:sn_concurrency_min) echo 'SNI 並發數必須 >= 1。' ;;
+        ja:sn_concurrency_min) echo 'SNI の同時実行数は >= 1 でなければなりません。' ;;
+        zh:sn_timeout_range) echo 'SNI 超时必须是 1..60 秒的整数。' ;;
+        en:sn_timeout_range) echo 'SNI timeout must be an integer in 1..60 seconds.' ;;
+        ru:sn_timeout_range) echo 'Тайм-аут SNI должен быть целым числом в диапазоне 1..60 секунд.' ;;
+        fa:sn_timeout_range) echo 'مهلت SNI باید عددی صحیح در بازه 1..60 ثانیه باشد.' ;;
+        zh-tw:sn_timeout_range) echo 'SNI 逾時必須是 1..60 秒的整數。' ;;
+        ja:sn_timeout_range) echo 'SNI のタイムアウトは 1..60 秒の整数でなければなりません。' ;;
+        zh:sn_timeout_min) echo 'SNI 超时必须 >= 1 秒。' ;;
+        en:sn_timeout_min) echo 'SNI timeout must be >= 1 second.' ;;
+        ru:sn_timeout_min) echo 'Тайм-аут SNI должен быть >= 1 секунды.' ;;
+        fa:sn_timeout_min) echo 'مهلت SNI باید >= 1 ثانیه باشد.' ;;
+        zh-tw:sn_timeout_min) echo 'SNI 逾時必須 >= 1 秒。' ;;
+        ja:sn_timeout_min) echo 'SNI のタイムアウトは >= 1 秒でなければなりません。' ;;
+        zh:sn_verify_range) echo 'SNI 深检上限必须是 1..2048 的整数。' ;;
+        en:sn_verify_range) echo 'SNI verify limit must be an integer in 1..2048.' ;;
+        ru:sn_verify_range) echo 'Лимит глубокой проверки SNI должен быть целым числом в диапазоне 1..2048.' ;;
+        fa:sn_verify_range) echo 'حد بررسی عمیق SNI باید عددی صحیح در بازه 1..2048 باشد.' ;;
+        zh-tw:sn_verify_range) echo 'SNI 深檢上限必須是 1..2048 的整數。' ;;
+        ja:sn_verify_range) echo 'SNI の詳細検証上限は 1..2048 の整数でなければなりません。' ;;
+        zh:sn_verify_min) echo 'SNI 深检上限必须 >= 1。' ;;
+        en:sn_verify_min) echo 'SNI verify limit must be >= 1.' ;;
+        ru:sn_verify_min) echo 'Лимит глубокой проверки SNI должен быть >= 1.' ;;
+        fa:sn_verify_min) echo 'حد بررسی عمیق SNI باید >= 1 باشد.' ;;
+        zh-tw:sn_verify_min) echo 'SNI 深檢上限必須 >= 1。' ;;
+        ja:sn_verify_min) echo 'SNI の詳細検証上限は >= 1 でなければなりません。' ;;
+        zh:sn_topn_range) echo 'SNI 显示数量必须是 1..200 的整数。' ;;
+        en:sn_topn_range) echo 'SNI display count must be an integer in 1..200.' ;;
+        ru:sn_topn_range) echo 'Количество отображаемых SNI должно быть целым числом в диапазоне 1..200.' ;;
+        fa:sn_topn_range) echo 'تعداد نمایش SNI باید عددی صحیح در بازه 1..200 باشد.' ;;
+        zh-tw:sn_topn_range) echo 'SNI 顯示數量必須是 1..200 的整數。' ;;
+        ja:sn_topn_range) echo 'SNI の表示件数は 1..200 の整数でなければなりません。' ;;
+        zh:sn_topn_min) echo 'SNI 显示数量必须 >= 1。' ;;
+        en:sn_topn_min) echo 'SNI display count must be >= 1.' ;;
+        ru:sn_topn_min) echo 'Количество отображаемых SNI должно быть >= 1.' ;;
+        fa:sn_topn_min) echo 'تعداد نمایش SNI باید >= 1 باشد.' ;;
+        zh-tw:sn_topn_min) echo 'SNI 顯示數量必須 >= 1。' ;;
+        ja:sn_topn_min) echo 'SNI の表示件数は >= 1 でなければなりません。' ;;
+        zh:sn_lib_line) echo '[*] 候选库：%s 个域名 | 场景=%s | 并发=%s | 深检=%s | 显示=%s' ;;
+        en:sn_lib_line) echo '[*] Candidate library: %s domains | profile=%s | concurrency=%s | deep-check=%s | display=%s' ;;
+        ru:sn_lib_line) echo '[*] Библиотека кандидатов: %s доменов | профиль=%s | параллелизм=%s | глубокая проверка=%s | показ=%s' ;;
+        fa:sn_lib_line) echo '[*] کتابخانه نامزدها: %s دامنه | پروفایل=%s | همزمانی=%s | بررسی عمیق=%s | نمایش=%s' ;;
+        zh-tw:sn_lib_line) echo '[*] 候選庫：%s 個網域 | 場景=%s | 並發=%s | 深檢=%s | 顯示=%s' ;;
+        ja:sn_lib_line) echo '[*] 候補ライブラリ：%s ドメイン | プロファイル=%s | 同時実行=%s | 詳細検証=%s | 表示=%s' ;;
+        zh:sn_stage_line) echo '[*] 第一阶段：HTTPS/TLS 1.3 的 curl 实测。第二阶段：OpenSSL TLS 1.3 + ALPN + SAN + ASN/拓扑评分。' ;;
+        en:sn_stage_line) echo '[*] Stage 1: HTTPS/TLSv1.3 curl metrics. Stage 2: OpenSSL TLS1.3 + ALPN + SAN + ASN/topology scoring.' ;;
+        ru:sn_stage_line) echo '[*] Этап 1: метрики curl по HTTPS/TLS 1.3. Этап 2: OpenSSL TLS 1.3 + ALPN + SAN + оценка ASN/топологии.' ;;
+        fa:sn_stage_line) echo '[*] مرحله ۱: سنجه‌های curl ‏HTTPS/TLS 1.3. مرحله ۲: ‏OpenSSL TLS 1.3 + ALPN + SAN + امتیاز ASN/توپولوژی.' ;;
+        zh-tw:sn_stage_line) echo '[*] 第一階段：HTTPS/TLS 1.3 的 curl 實測。第二階段：OpenSSL TLS 1.3 + ALPN + SAN + ASN/拓撲評分。' ;;
+        ja:sn_stage_line) echo '[*] ステージ 1：HTTPS/TLS 1.3 の curl 実測。ステージ 2：OpenSSL TLS 1.3 + ALPN + SAN + ASN/トポロジースコア。' ;;
+        zh:sn_asn_line) echo '[*] 同 ASN 加分在强制 TLS/SAN 评估之后应用；高 CDN 风险候选单独列出供复核。' ;;
+        en:sn_asn_line) echo '[*] Same-ASN bonus is applied after mandatory TLS/SAN evaluation; high CDN-risk candidates are separated for review.' ;;
+        ru:sn_asn_line) echo '[*] Бонус за тот же ASN применяется после обязательной оценки TLS/SAN; кандидаты с высоким CDN-риском выводятся отдельно на проверку.' ;;
+        fa:sn_asn_line) echo '[*] امتیاز هم‌ASN پس از ارزیابی اجباری TLS/SAN اعمال می‌شود؛ نامزدهای با ریسک CDN بالا جدا برای بازبینی فهرست می‌شوند.' ;;
+        zh-tw:sn_asn_line) echo '[*] 同 ASN 加分在強制 TLS/SAN 評估之後套用；高 CDN 風險候選單獨列出供複核。' ;;
+        ja:sn_asn_line) echo '[*] 同一 ASN ボーナスは必須の TLS/SAN 評価の後に適用されます。高 CDN リスク候補はレビュー用に分離されます。' ;;
+        zh:sn_internal_line) echo '[*] 完全内置的 SNI 库；不使用旧的远程 SNI 脚本或 gist 摘录。' ;;
+        en:sn_internal_line) echo '[*] Fully internal SNI library; no legacy remote SNI scripts or gist extraction are used.' ;;
+        ru:sn_internal_line) echo '[*] Полностью внутренняя библиотека SNI; устаревшие удалённые скрипты SNI и извлечение из gist не используются.' ;;
+        fa:sn_internal_line) echo '[*] کتابخانه SNI کاملاً داخلی؛ از اسکریپت‌های راه‌دور قدیمی SNI یا استخراج gist استفاده نمی‌شود.' ;;
+        zh-tw:sn_internal_line) echo '[*] 完全內置的 SNI 庫；不使用舊的遠端 SNI 腳本或 gist 摘錄。' ;;
+        ja:sn_internal_line) echo '[*] 完全に内蔵の SNI ライブラリ。旧式のリモート SNI スクリプトや gist 抽出は使用しません。' ;;
+        zh:sn_progress_line) echo '[*] 每批结束后打印进度；大库在低配 VPS 上可能需要几分钟。' ;;
+        en:sn_progress_line) echo '[*] Progress is printed after each batch; large libraries can take several minutes on low-end VPS.' ;;
+        ru:sn_progress_line) echo '[*] Прогресс печатается после каждого пакета; большие библиотеки на слабых VPS могут занять несколько минут.' ;;
+        fa:sn_progress_line) echo '[*] پس از هر دسته پیشرفت چاپ می‌شود؛ کتابخانه‌های بزرگ روی VPS ضعیف چند دقیقه طول می‌کشد.' ;;
+        zh-tw:sn_progress_line) echo '[*] 每批結束後列印進度；大庫在低配 VPS 上可能需要幾分鐘。' ;;
+        ja:sn_progress_line) echo '[*] バッチごとに進捗を表示します。大規模なライブラリは低スペック VPS で数分かかることがあります。' ;;
+        zh:sn_no_results) echo 'SNI 雷达没有产生有效的 HTTPS/TLS 结果。请检查 DNS、路由、防火墙与 curl/OpenSSL 支持。' ;;
+        en:sn_no_results) echo 'SNI radar produced no valid HTTPS/TLS results. Check DNS, routing, firewall, curl/OpenSSL support.' ;;
+        ru:sn_no_results) echo 'Радар SNI не дал валидных результатов HTTPS/TLS. Проверьте DNS, маршрутизацию, брандмауэр и поддержку curl/OpenSSL.' ;;
+        fa:sn_no_results) echo 'رادار SNI نتیجه معتبر HTTPS/TLS تولید نکرد. DNS، مسیریابی، دیوار آتش و پشتیبانی curl/OpenSSL را بررسی کنید.' ;;
+        zh-tw:sn_no_results) echo 'SNI 雷達沒有產生有效的 HTTPS/TLS 結果。請檢查 DNS、路由、防火牆與 curl/OpenSSL 支援。' ;;
+        ja:sn_no_results) echo 'SNI レーダーが有効な HTTPS/TLS 結果を生成しませんでした。DNS、ルーティング、ファイアウォール、curl/OpenSSL のサポートを確認してください。' ;;
+        zh:sn_dir_untrusted) echo 'SNI 记录目录不是可信的 A-Box 目录；拒绝报告虚假的已保存状态。' ;;
+        en:sn_dir_untrusted) echo 'SNI record directory is not a trusted A-Box directory; refusing to report a false Saved state.' ;;
+        ru:sn_dir_untrusted) echo 'Каталог записей SNI не является доверенным каталогом A-Box; отказ сообщать ложное состояние «сохранено».' ;;
+        fa:sn_dir_untrusted) echo 'پوشه سوابق SNI یک پوشه مورد اعتماد A-Box نیست؛ از گزارش وضعیت «ذخیره شد» کاذب خودداری شد.' ;;
+        zh-tw:sn_dir_untrusted) echo 'SNI 記錄目錄不是可信的 A-Box 目錄；拒絕回報虛假的已儲存狀態。' ;;
+        ja:sn_dir_untrusted) echo 'SNI 記録ディレクトリは信頼できる A-Box ディレクトリではないため、虚偽の保存済み報告を拒否します。' ;;
+        zh:sn_persist_fail) echo 'SNI 记录持久化失败。' ;;
+        en:sn_persist_fail) echo 'SNI record persistence failed.' ;;
+        ru:sn_persist_fail) echo 'Не удалось сохранить запись SNI.' ;;
+        fa:sn_persist_fail) echo 'ماندگاری رکورد SNI ناموفق بود.' ;;
+        zh-tw:sn_persist_fail) echo 'SNI 記錄持久化失敗。' ;;
+        ja:sn_persist_fail) echo 'SNI 記録の永続化に失敗しました。' ;;
+        zh:sn_persist_verify) echo 'SNI 记录持久化校验失败。' ;;
+        en:sn_persist_verify) echo 'SNI record persistence verification failed.' ;;
+        ru:sn_persist_verify) echo 'Проверка сохранения записи SNI не пройдена.' ;;
+        fa:sn_persist_verify) echo 'راستی‌آزمایی ماندگاری رکورد SNI ناموفق بود.' ;;
+        zh-tw:sn_persist_verify) echo 'SNI 記錄持久化驗證失敗。' ;;
+        ja:sn_persist_verify) echo 'SNI 記録の永続化検証に失敗しました。' ;;
+        zh:sn_owner_verify) echo 'SNI 记录归属校验失败。' ;;
+        en:sn_owner_verify) echo 'SNI record ownership verification failed.' ;;
+        ru:sn_owner_verify) echo 'Проверка владения записью SNI не пройдена.' ;;
+        fa:sn_owner_verify) echo 'راستی‌آزمایی مالکیت رکورد SNI ناموفق بود.' ;;
+        zh-tw:sn_owner_verify) echo 'SNI 記錄歸屬驗證失敗。' ;;
+        ja:sn_owner_verify) echo 'SNI 記録の所有権検証に失敗しました。' ;;
+        zh:sn_perm_verify) echo 'SNI 记录权限校验失败。' ;;
+        en:sn_perm_verify) echo 'SNI record permission verification failed.' ;;
+        ru:sn_perm_verify) echo 'Проверка прав записи SNI не пройдена.' ;;
+        fa:sn_perm_verify) echo 'راستی‌آزمایی مجوز رکورد SNI ناموفق بود.' ;;
+        zh-tw:sn_perm_verify) echo 'SNI 記錄權限驗證失敗。' ;;
+        ja:sn_perm_verify) echo 'SNI 記録の権限検証に失敗しました。' ;;
+        zh:sn_top_title) echo '优选 SNI 候选' ;;
+        en:sn_top_title) echo 'Top SNI Candidates' ;;
+        ru:sn_top_title) echo 'Лучшие кандидаты SNI' ;;
+        fa:sn_top_title) echo 'نامزدهای برتر SNI' ;;
+        zh-tw:sn_top_title) echo '優選 SNI 候選' ;;
+        ja:sn_top_title) echo '上位 SNI 候補' ;;
+        zh:sn_render_fail) echo '结果分级显示失败；完整 TSV 仍已保存。' ;;
+        en:sn_render_fail) echo 'The ranked report failed to render; the full TSV was still saved.' ;;
+        ru:sn_render_fail) echo 'Не удалось отобразить ранжированный отчёт; полный TSV сохранён.' ;;
+        fa:sn_render_fail) echo 'نمایش گزارش رتبه‌بندی ناموفق بود؛ TSV کامل همچنان ذخیره شد.' ;;
+        zh-tw:sn_render_fail) echo '結果分級顯示失敗；完整 TSV 仍已儲存。' ;;
+        ja:sn_render_fail) echo 'ランク付けレポートの表示に失敗しました。完全な TSV は保存されています。' ;;
+        zh:sn_saved) echo '已保存：%s' ;;
+        en:sn_saved) echo 'Saved: %s' ;;
+        ru:sn_saved) echo 'Сохранено: %s' ;;
+        fa:sn_saved) echo 'ذخیره شد: %s' ;;
+        zh-tw:sn_saved) echo '已儲存：%s' ;;
+        ja:sn_saved) echo '保存しました：%s' ;;
+        zh:sn_grade_note) echo 'A/B/C 等级仅表示本 VPS 的探测结果；风险复核和不合格项目不会因低延迟被标为优先推荐。' ;;
+        en:sn_grade_note) echo 'The A/B/C grades only reflect probe results from this VPS; candidates under risk review or failing checks are never marked as preferred just for low latency.' ;;
+        ru:sn_grade_note) echo 'Оценки A/B/C отражают только результаты зондирования с этого VPS; кандидаты на проверке риска или не прошедшие проверки никогда не помечаются предпочтительными только за низкую задержку.' ;;
+        fa:sn_grade_note) echo 'درجه‌های A/B/C فقط نتایج کاوش همین VPS را نشان می‌دهد؛ نامزدهای در بازبینی ریسک یا ردشده در بررسی‌ها هرگز صرفاً به‌خاطر تأخیر کم «ترجیحی» علامت نمی‌خورند.' ;;
+        zh-tw:sn_grade_note) echo 'A/B/C 等級僅表示本 VPS 的探測結果；風險複核和不合格項目不會因低延遲被標為優先推薦。' ;;
+        ja:sn_grade_note) echo 'A/B/C の等級はこの VPS での探査結果のみを表します。リスク審査中または不合格の候補が、低遅延だけを理由に優先としてマークされることはありません。' ;;
         zh:cl_nat) echo '旧的 A-Box HY2 NAT 规则无法完整删除。' ;;
         en:cl_nat) echo 'The old A-Box HY2 NAT rules could not be fully removed.' ;;
         ru:cl_nat) echo 'Не удалось полностью удалить старые правила NAT HY2 A-Box.' ;;
@@ -18660,37 +18954,37 @@ try_latest_cores_danger() {
     if abox_owns_service xray && [[ -x /usr/local/bin/xray ]]; then targets+=(xray); fi
     if abox_owns_service sing-box && [[ -x /usr/local/bin/sing-box ]]; then targets+=(singbox); fi
     if abox_owns_service hysteria && [[ -x /usr/local/bin/hysteria ]]; then targets+=(hysteria); fi
-    (( ${#targets[@]} > 0 )) || { msg "${YELLOW}No owned cores.${NC}"; pause_return; return 0; }
+    (( ${#targets[@]} > 0 )) || { msg "${YELLOW}$(tr_msg tl_no_owned)${NC}"; pause_return; return 0; }
     # Each core gets an independent transaction in a subshell.
     local failed_cores=()
     for t in "${targets[@]}"; do
-        msg "${CYAN}--- Trying latest $t (independent transaction) ---${NC}"
+        msg "${CYAN}$(tprintf tl_trying "$t")${NC}"
         if ( begin_core_upgrade_transaction "$t"
              case "$t" in
                  xray)
-                     latest=$(core_latest_stable_release_ref XTLS/Xray-core 2>/dev/null || core_release_mirror_version XTLS/Xray-core) || die '无法解析 Xray 正式稳定候选或容灾版本。'
-                     msg "${YELLOW}Trying Xray stable/recovery candidate ${latest} (resolved at install time)${NC}"
+                     latest=$(core_latest_stable_release_ref XTLS/Xray-core 2>/dev/null || core_release_mirror_version XTLS/Xray-core) || die "$(tr_msg tl_cand_xray)"
+                     msg "${YELLOW}$(tprintf tl_try_xray "$latest")${NC}"
                      ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_xray_core_only ;;
                  singbox)
-                     latest=$(core_latest_stable_release_ref SagerNet/sing-box 2>/dev/null || core_release_mirror_version SagerNet/sing-box) || die '无法解析 sing-box 正式稳定候选或容灾版本。'
-                     msg "${YELLOW}Trying sing-box stable/recovery candidate ${latest} (resolved at install time)${NC}"
+                     latest=$(core_latest_stable_release_ref SagerNet/sing-box 2>/dev/null || core_release_mirror_version SagerNet/sing-box) || die "$(tr_msg tl_cand_sb)"
+                     msg "${YELLOW}$(tprintf tl_try_sb "$latest")${NC}"
                      ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_singbox_core_only ;;
                  hysteria)
-                     latest=$(core_latest_stable_release_ref HyNetworks/hysteria 2>/dev/null || core_release_mirror_version HyNetworks/hysteria) || die '无法解析 Hysteria 正式稳定候选或容灾版本。'
-                     msg "${YELLOW}Trying Hysteria stable/recovery candidate ${latest} (resolved at install time)${NC}"
+                     latest=$(core_latest_stable_release_ref HyNetworks/hysteria 2>/dev/null || core_release_mirror_version HyNetworks/hysteria) || die "$(tr_msg tl_cand_hy)"
+                     msg "${YELLOW}$(tprintf tl_try_hy "$latest")${NC}"
                      ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_hysteria_core_only ;;
              esac
              commit_core_upgrade_transaction ); then
-            msg "${GREEN}[$t] latest attempt completed.${NC}"
+            msg "${GREEN}$(tprintf tl_done_one "$t")${NC}"
         else
-            msg "${YELLOW}[!] [$t] latest attempt failed and was rolled back independently; continuing.${NC}"
+            msg "${YELLOW}$(tprintf tl_failed_one "$t")${NC}"
             failed_cores+=("$t")
         fi
     done
     if (( ${#failed_cores[@]} > 0 )); then
-        msg "${YELLOW}[!] Finished with failures (rolled back): ${failed_cores[*]}. Re-test clients.${NC}"
+        msg "${YELLOW}$(tprintf tl_finished_fail "${failed_cores[*]}")${NC}"
     else
-        msg "${GREEN}Latest-core attempt finished. Re-test clients.${NC}"
+        msg "${GREEN}$(tr_msg tl_finished_ok)${NC}"
     fi
     pause_return
 }
@@ -20045,7 +20339,7 @@ dns_enable_doh() {
     local doh_server="${1:-cloudflare}" doh_label="${2:-Cloudflare}"
     backend=$(dns_backend_detect)
     [[ "$backend" == resolved ]] && command -v systemctl >/dev/null 2>&1 || {
-        msg "${YELLOW}DoH setup requires an active systemd-resolved backend. Current backend: $backend. DNS was not changed.${NC}"
+        msg "${YELLOW}$(tprintf dh_backend "$backend")${NC}"
         return 1
     }
     resolved_major=$(systemd_major_version 2>/dev/null || true)
@@ -20075,25 +20369,25 @@ dns_enable_doh() {
     is_yes "$answer" || return 0
     # X-04: install only after user confirmation; the pre-confirm install left
     # dnscrypt-proxy present even on "N", skewing the rollback snapshot.
-    dns_install_dnscrypt_proxy || { msg "${YELLOW}dnscrypt-proxy is unavailable; DNS was not changed.${NC}"; return 1; }
+    dns_install_dnscrypt_proxy || { msg "${YELLOW}$(tr_msg dh_unavailable)${NC}"; return 1; }
     config='/etc/dnscrypt-proxy/dnscrypt-proxy.toml'
-    [[ -f "$config" && ! -L "$config" ]] || { msg "${RED}dnscrypt-proxy configuration file was not found; DNS was not changed.${NC}"; return 1; }
+    [[ -f "$config" && ! -L "$config" ]] || { msg "${RED}$(tr_msg dh_cfg_missing)${NC}"; return 1; }
     # FINAL-AUDIT fix: stage the new snapshot in a temp dir and verify it
     # is COMPLETE before replacing the old one. The old code ran
     # `rm -rf $DNS_BACKUP_DIR` first, so a mkdir/snapshot failure destroyed
     # the previous rollback snapshot with no way to recover it.
     local _doh_snap_new=""
-    _doh_snap_new=$(mktemp -d "${DNS_BACKUP_DIR}.new.XXXXXX") || { msg "${RED}DNS snapshot staging failed; no resolver changes were made.${NC}"; return 1; }
-    chmod 700 "$_doh_snap_new" || { rm -rf -- "$_doh_snap_new"; msg "${RED}DNS snapshot staging failed; no resolver changes were made.${NC}"; return 1; }
+    _doh_snap_new=$(mktemp -d "${DNS_BACKUP_DIR}.new.XXXXXX") || { msg "${RED}$(tr_msg dh_snap_staging)${NC}"; return 1; }
+    chmod 700 "$_doh_snap_new" || { rm -rf -- "$_doh_snap_new"; msg "${RED}$(tr_msg dh_snap_staging)${NC}"; return 1; }
     if ! snapshot_dns_state "$_doh_snap_new" || [[ ! -f "$_doh_snap_new/COMPLETE" ]]; then
         rm -rf -- "$_doh_snap_new"
-        msg "${RED}DNS rollback snapshot failed or incomplete; previous snapshot preserved; no resolver changes were made.${NC}"
+        msg "${RED}$(tr_msg dh_snap_rollback)${NC}"
         return 1
     fi
     # TRAP-5: use the unified snapshot primitive (POSIX mv + pre-move-aside, idempotency,
     # crash-safe pending-swap). Preserves an existing COMPLETE baseline.
     if ! dns_snapshot_install_new "$_doh_snap_new"; then
-        msg "${RED}DNS snapshot install failed; previous snapshot preserved; no resolver changes were made.${NC}"
+        msg "${RED}$(tr_msg dh_snap_install)${NC}"
         return 1
     fi
     temp=$(umask 077; mktemp /tmp/A-Box-doh.XXXXXX) || return 1
@@ -20131,13 +20425,13 @@ PY_DOH_CONFIG
     rm -f -- "$temp"
     if ! dnscrypt-proxy -config "$config" -check >/dev/null 2>&1; then
         restore_dns_snapshot "$DNS_BACKUP_DIR" || true
-        msg "${RED}dnscrypt-proxy configuration check failed; rolled back where possible.${NC}"
+        msg "${RED}$(tr_msg dh_cfg_check)${NC}"
         return 1
     fi
     systemctl enable --now dnscrypt-proxy >/dev/null 2>&1 || systemctl restart dnscrypt-proxy >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
     if ! dns_probe_once 127.0.0.1 5353 example.com >/dev/null 2>&1; then
         restore_dns_snapshot "$DNS_BACKUP_DIR" || true
-        msg "${RED}Local DoH proxy did not resolve a test query; DNS rollback was attempted.${NC}"
+        msg "${RED}$(tr_msg dh_test_resolve)${NC}"
         return 1
     fi
     write_file_atomically_from_stdin /etc/systemd/resolved.conf.d/99-abox-dns.conf 644 <<'EOF_DOH' || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
@@ -20152,17 +20446,17 @@ EOF_DOH
         if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< 'backend=resolved;mode=doh;proxy=dnscrypt-proxy'; then
             if restore_dns_snapshot "$DNS_BACKUP_DIR"; then
                 systemctl restart systemd-resolved >/dev/null 2>&1 || true
-                msg "${RED}DoH state metadata could not be committed; the previous DNS configuration was restored.${NC}"
+                msg "${RED}$(tr_msg dh_meta_commit)${NC}"
             else
-                msg "${RED}DoH state metadata could not be committed and rollback failed. Restore the DNS snapshot from $DNS_BACKUP_DIR.${NC}"
+                msg "${RED}$(tprintf dh_meta_commit_fail "$DNS_BACKUP_DIR")${NC}"
             fi
             return 1
         fi
-        msg "${GREEN}DoH proxy is running and the system resolver passed its health check.${NC}"
-        msg "${YELLOW}DoH encrypts DNS queries to the selected upstream; it does not encrypt all VPS traffic.${NC}"
+        msg "${GREEN}$(tr_msg dh_ok)${NC}"
+        msg "${YELLOW}$(tr_msg dh_note)${NC}"
     else
         restore_dns_snapshot "$DNS_BACKUP_DIR" || true
-        msg "${RED}systemd-resolved health check failed; rollback was attempted.${NC}"
+        msg "${RED}$(tr_msg dh_resolved_health)${NC}"
         return 1
     fi
 }
@@ -21362,7 +21656,7 @@ sni_render_ranked_report() {
 
 run_builtin_sni_radar() {
     local profile="${1:-full}" title="${2:-Local SNI preference}" workdir candidates raw raw_sorted report total concurrency timeout_s running=0 domain topn verify_limit processed=0 valid_count=0 progress_every
-    workdir=$(mktemp -d /tmp/A-Box-sni-radar.XXXXXX) || die 'SNI radar temporary directory creation failed.'
+    workdir=$(mktemp -d /tmp/A-Box-sni-radar.XXXXXX) || die "$(tr_msg sn_tmp_fail)"
     candidates="$workdir/candidates.txt"
     raw="$workdir/results.raw.tsv"
     raw_sorted="$workdir/results.raw.sorted.tsv"
@@ -21394,24 +21688,24 @@ run_builtin_sni_radar() {
         topn="${ABOX_SNI_FULL_TOPN:-100}"
         verify_limit="${ABOX_SNI_FULL_VERIFY:-120}"
     fi
-    valid_decimal_upto "$concurrency" 256 || die 'SNI concurrency must be an integer in 1..256.'
-    (( 10#$concurrency >= 1 )) || die 'SNI concurrency must be >= 1.'
-    valid_decimal_upto "$timeout_s" 60 || die 'SNI timeout must be an integer in 1..60 seconds.'
-    (( 10#$timeout_s >= 1 )) || die 'SNI timeout must be >= 1 second.'
-    valid_decimal_upto "$verify_limit" 2048 || die 'SNI verify limit must be an integer in 1..2048.'
-    (( 10#$verify_limit >= 1 )) || die 'SNI verify limit must be >= 1.'
-    valid_decimal_upto "$topn" 200 || die 'SNI display count must be an integer in 1..200.'
-    (( 10#$topn >= 1 )) || die 'SNI display count must be >= 1.'
+    valid_decimal_upto "$concurrency" 256 || die "$(tr_msg sn_concurrency_range)"
+    (( 10#$concurrency >= 1 )) || die "$(tr_msg sn_concurrency_min)"
+    valid_decimal_upto "$timeout_s" 60 || die "$(tr_msg sn_timeout_range)"
+    (( 10#$timeout_s >= 1 )) || die "$(tr_msg sn_timeout_min)"
+    valid_decimal_upto "$verify_limit" 2048 || die "$(tr_msg sn_verify_range)"
+    (( 10#$verify_limit >= 1 )) || die "$(tr_msg sn_verify_min)"
+    valid_decimal_upto "$topn" 200 || die "$(tr_msg sn_topn_range)"
+    (( 10#$topn >= 1 )) || die "$(tr_msg sn_topn_min)"
     progress_every=$(( concurrency * 2 ))
     (( progress_every < 20 )) && progress_every=20
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}${title}${NC}"
     msg "${CYAN}======================================================================${NC}"
-    msg "${YELLOW}[*] Candidate library: ${total} domains | profile=${profile} | concurrency=${concurrency} | deep-check=${verify_limit} | display=${topn}${NC}"
-    msg "${YELLOW}[*] Stage 1: HTTPS/TLSv1.3 curl metrics. Stage 2: OpenSSL TLS1.3 + ALPN + SAN + ASN/topology scoring.${NC}"
-    msg "${YELLOW}[*] Same-ASN bonus is applied after mandatory TLS/SAN evaluation; high CDN-risk candidates are separated for review.${NC}"
-    msg "${YELLOW}[*] Fully internal SNI library; no legacy remote SNI scripts or gist extraction are used.${NC}"
-    msg "${YELLOW}[*] Progress is printed after each batch; large libraries can take several minutes on low-end VPS.${NC}"
+    msg "${YELLOW}$(tprintf sn_lib_line "$total" "$profile" "$concurrency" "$verify_limit" "$topn")${NC}"
+    msg "${YELLOW}$(tr_msg sn_stage_line)${NC}"
+    msg "${YELLOW}$(tr_msg sn_asn_line)${NC}"
+    msg "${YELLOW}$(tr_msg sn_internal_line)${NC}"
+    msg "${YELLOW}$(tr_msg sn_progress_line)${NC}"
     : > "$raw"
     while IFS= read -r domain; do
         sni_probe_domain "$domain" "$raw" "$timeout_s" </dev/null &
@@ -21432,25 +21726,25 @@ run_builtin_sni_radar() {
     printf '\r[*] Stage 1 progress: %d/%d tested | valid=%s\n' "$processed" "$total" "${valid_count:-0}" >&2
     if [[ ! -s "$raw" ]]; then
         rm -rf "$workdir"
-        die 'SNI radar produced no valid HTTPS/TLS results. Check DNS, routing, firewall, curl/OpenSSL support.'
+        die "$(tr_msg sn_no_results)"
     fi
     LC_ALL=C sort -t $'\t' -k1,1n -k2,2 "$raw" > "$raw_sorted"
     sni_verify_raw_report "$raw_sorted" "$report" "$verify_limit" "$timeout_s"
     if [[ ! -s "$report" ]]; then
         cp -f "$raw_sorted" "$report"
     fi
-    ensure_abox_dir_owned "$ABOX_DIR" || die 'SNI record directory is not a trusted A-Box directory; refusing to report a false Saved state.'
+    ensure_abox_dir_owned "$ABOX_DIR" || die "$(tr_msg sn_dir_untrusted)"
     local saved_report="$ABOX_DIR/A-Box-sni-${profile}.tsv"
-    install_file_atomically "$report" "$saved_report" 600 || die 'SNI record persistence failed.'
-    [[ -s "$saved_report" && ! -L "$saved_report" ]] || die 'SNI record persistence verification failed.'
-    path_owned_by_root "$saved_report" || die 'SNI record ownership verification failed.'
-    path_mode_has_no_group_other_write "$saved_report" || die 'SNI record permission verification failed.'
+    install_file_atomically "$report" "$saved_report" 600 || die "$(tr_msg sn_persist_fail)"
+    [[ -s "$saved_report" && ! -L "$saved_report" ]] || die "$(tr_msg sn_persist_verify)"
+    path_owned_by_root "$saved_report" || die "$(tr_msg sn_owner_verify)"
+    path_mode_has_no_group_other_write "$saved_report" || die "$(tr_msg sn_perm_verify)"
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
-    msg "${YELLOW}[ Top SNI Candidates / 优选 SNI 候选 ]${NC}"
-    sni_render_ranked_report "$report" "$topn" || msg "${YELLOW}[!] 结果分级显示失败；完整 TSV 仍已保存。${NC}"
+    msg "${YELLOW}[ $(tr_msg sn_top_title) ]${NC}"
+    sni_render_ranked_report "$report" "$topn" || msg "${YELLOW}[!] $(tr_msg sn_render_fail)${NC}"
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
-    msg "${GREEN}Saved: ${ABOX_DIR}/A-Box-sni-${profile}.tsv${NC}"
-    msg "${YELLOW}A/B/C 等级仅表示本 VPS 的探测结果；风险复核和不合格项目不会因低延迟被标为优先推荐。${NC}"
+    msg "${GREEN}$(tprintf sn_saved "${ABOX_DIR}/A-Box-sni-${profile}.tsv")${NC}"
+    msg "${YELLOW}$(tr_msg sn_grade_note)${NC}"
     rm -rf "$workdir"
     # Drain keystrokes typed during the long run; otherwise pause_return would
     # consume them instantly and the ranked results would flash by.

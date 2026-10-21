@@ -15312,6 +15312,26 @@ _remove_inbounds_from_config() {
 
 # Side effects after inbounds were removed from CORE: Argo tunnel units for
 # ws inbounds, and the standalone link registrations of the removed tags.
+# Remove one node's multi-user registry (single-delete path).
+users_registry_remove() { # $1 = core, $2 = tag
+    local _f="${ABOX_USERS_DIR:-/etc/ddr/users.d}/$1__$2.json"
+    [[ -f "$_f" && ! -L "$_f" ]] && rm -f -- "$_f"
+    return 0
+}
+
+# Remove every multi-user registry (clear-all / virgin reset):
+# once the inbounds are gone the registries are orphans and the
+# panel would keep listing ghost users from them.
+users_registries_wipe() {
+    local _dir="${ABOX_USERS_DIR:-/etc/ddr/users.d}" _f=''
+    [[ -d "$_dir" ]] || return 0
+    for _f in "$_dir"/*.json; do
+        [[ -f "$_f" && ! -L "$_f" ]] || continue
+        rm -f -- "$_f" || return 1
+    done
+    return 0
+}
+
 _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     local core="$1"; shift
     local tag='' cfg=''
@@ -15326,6 +15346,7 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             *socks*|*mixed*) rm -f -- /etc/ddr/standalone-links.d/socks5-sb.link /etc/ddr/standalone-links.d/socks5-xray.link 2>/dev/null || true ;;
         esac
         rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true
+        users_registry_remove "$core" "$tag"
     done
     # The shared Argo link registration goes only when no ws inbound remains.
     if [[ "$core" == 'sing-box' ]]; then
@@ -15353,6 +15374,7 @@ _remove_hy2_official() {
     fi
     rm -rf -- /etc/hysteria
     rm -f -- /etc/ddr/standalone-links.d/hy2.link /etc/ddr/standalone-links.d/hysteria.link 2>/dev/null || true
+    users_registry_remove hy2 hy2
     return 0
 }
 
@@ -15425,6 +15447,7 @@ clear_all_protocols() {
     done
     argo_remove_unit argo || true
     if [[ -f /etc/hysteria/config.yaml ]]; then _remove_hy2_official; fi
+    users_registries_wipe || msg "${YELLOW}[!] 用户注册表清理未完成，请手动检查 /etc/ddr/users.d。${NC}"
     rm -f -- /etc/ddr/standalone-links.d/*.link 2>/dev/null || true
     ( setup_active_defense ) >/dev/null 2>&1 || true
     msg "${GREEN}$(tr_msg cl_all_done)${NC}"
@@ -15493,6 +15516,16 @@ check_virgin_state() {
     argo_remove_unit argo-vmess || true
     argo_remove_unit argo-vless || true
     rm -f /usr/local/bin/cloudflared "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true; rm -rf -- /etc/ddr/standalone-links.d 2>/dev/null || true
+    users_registries_wipe || true
+    if [[ -x /usr/local/sbin/abox-zram ]]; then /usr/local/sbin/abox-zram stop >/dev/null 2>&1 || true; fi
+    if [[ "${INIT_SYS:-}" == systemd ]]; then
+        systemctl disable abox-zram.service >/dev/null 2>&1 || true
+        rm -f /etc/systemd/system/abox-zram.service 2>/dev/null || true
+    elif [[ "${INIT_SYS:-}" == openrc ]]; then
+        rc-update del abox-zram default >/dev/null 2>&1 || true
+        rm -f /etc/init.d/abox-zram 2>/dev/null || true
+    fi
+    rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf 2>/dev/null || true
     for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local; do
         if [[ -f "$_wf" ]] && grep -q 'A-Box-wallos' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
     done
@@ -28734,6 +28767,8 @@ N11EOF
     grep -q '2300000' "$0" || { echo 'FAIL: swap free-space safety check missing'; failures=$((failures + 1)); }
     grep -q 'created_by_abox == 1' "$0" || { echo 'FAIL: swap ownership must only be recorded for A-Box-created swap'; failures=$((failures + 1)); }
     grep -Fq 'setup_zram_swap()' "$0" || { echo 'FAIL: zram swap setup missing'; failures=$((failures + 1)); }
+    grep -Fq 'users_registries_wipe' "$0" || { echo 'FAIL: registry wipe missing from cleanup paths'; failures=$((failures + 1)); }
+    grep -Fq 'users_registry_remove "$core" "$tag"' "$0" || { echo 'FAIL: single-delete must drop the node registry'; failures=$((failures + 1)); }
     grep -Fq '6) swap_menu ;;' "$0" || { echo 'FAIL: toolbox 6 must open the swap submenu'; failures=$((failures + 1)); }
     grep -Fq '/usr/local/sbin/abox-zram' "$0" || { echo 'FAIL: zram helper path missing'; failures=$((failures + 1)); }
     grep -q '^swapfile_active_state() {' "$0" || { echo 'FAIL: Swap activity query must have explicit three-state error handling'; failures=$((failures + 1)); }

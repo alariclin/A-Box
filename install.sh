@@ -11117,16 +11117,20 @@ _menu_info_collect() {
     local cf_st=none
     if [[ -f /etc/ddr/.argo-state ]] || [[ "$(wallos_state_value MODE 2>/dev/null || true)" == cftunnel ]]; then cf_st=stop; fi
     if is_service_running argo 2>/dev/null || is_service_running argo-vmess 2>/dev/null || is_service_running argo-vless 2>/dev/null || is_service_running abox-wallos-cftunnel 2>/dev/null; then cf_st=run; fi
-    # --- variant-16 extra probes (comparison build only) ---
+    # --- extra probes: traffic / docker / bbr / firewall ---
     local traf='' dock='' bbr='' fwst=''
     # Toggle-type cells: on = run, off/absent = none (red is reserved
     # for installed-but-broken, per the legend).
     if [[ -s "${ABOX_TRAFFIC_PAIR_STATE:-/etc/ddr/.traffic-pair-state}" ]]; then traf=run; fi
     if command -v docker >/dev/null 2>&1; then dock=stop; docker info >/dev/null 2>&1 && dock=run; fi
-    local _cc=''; _cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
+    local _cc=''; _cc=$(cat /proc/sys/net/ipv4/tcp_congestion_control 2>/dev/null || sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null); _cc=${_cc//[[:space:]]/}
     [[ "$_cc" == "bbr" ]] && bbr=run
     if command -v ufw >/dev/null 2>&1; then fwst=stop; ufw status 2>/dev/null | grep -qi '^Status: active' && fwst=run
-    elif command -v nft >/dev/null 2>&1 && [[ -n "$(nft list ruleset 2>/dev/null)" ]]; then fwst=run; fi
+    else
+        local _ipt=''; _ipt=$(command -v iptables 2>/dev/null || true); [[ -z "$_ipt" && -x /sbin/iptables ]] && _ipt=/sbin/iptables
+        if [[ -n "$_ipt" ]] && (( $("$_ipt" -S 2>/dev/null | grep -c .) > 3 )); then fwst=run
+        elif command -v nft >/dev/null 2>&1 && [[ -n "$(nft list ruleset 2>/dev/null)" ]]; then fwst=run; fi
+    fi
     _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"; _MI_F2B="$f2st"; _MI_WALLOS="$dost"; _MI_TROJAN="$tjt"; _MI_TUIC="$tut"; _MI_ANYTLS="$ant"; _MI_STLS="$stt"; _MI_ARGO="$argo_st"; _MI_CF="$cf_st"; _MI_TRAFFIC="$traf"; _MI_DOCKER="$dock"; _MI_BBR="$bbr"; _MI_FW="$fwst"
 
     # --- system info ---
@@ -11348,14 +11352,22 @@ _menu_info_display() {
         local _lbl="$(tr_msg mi_nodes)" _seg _row='' _cnt=0 _first=1
         local _segs _rows=()
         IFS='|' read -r -a _segs <<< "$_MI_NODES"
+        # Fixed-column grid: pad every column to the widest segment
+        # (14..20) so node columns align vertically on every row.
+        local _w=14 _cell
+        for _seg in "${_segs[@]}"; do (( ${#_seg} > _w )) && _w=${#_seg}; done
+        (( _w > 20 )) && _w=20
+        local _rsegs=()
         for _seg in "${_segs[@]}"; do
             [[ -z "$_seg" ]] && continue
-            if (( _cnt >= 3 || ( ${#_row} > 0 && ${#_row} + 3 + ${#_seg} > 64 ) )); then
-                _rows+=("$_row"); _row=''; _cnt=0
+            _rsegs+=("$_seg")
+            if (( ${#_rsegs[@]} == 3 )); then
+                printf -v _row '%-*s | %-*s | %s' "$_w" "${_rsegs[0]}" "$_w" "${_rsegs[1]}" "${_rsegs[2]}"
+                _rows+=("$_row"); _rsegs=()
             fi
-            _row="${_row:+$_row | }${_seg}"; _cnt=$((_cnt + 1))
         done
-        [[ -n "$_row" ]] && _rows+=("$_row")
+        if (( ${#_rsegs[@]} == 2 )); then printf -v _row '%-*s | %s' "$_w" "${_rsegs[0]}" "${_rsegs[1]}"; _rows+=("$_row")
+        elif (( ${#_rsegs[@]} == 1 )); then _rows+=("${_rsegs[0]}"); fi
         local _i _n=${#_rows[@]}
         for (( _i=0; _i<_n; _i++ )); do
             _row="${_rows[$_i]}"
@@ -15698,6 +15710,138 @@ except Exception:
 PY_DNS_PROBE
 }
 
+dns_dot_probe_once() {
+    local server="$1" host="$2" name="${3:-example.com}"
+    command -v python3 >/dev/null 2>&1 || return 1
+    python3 - "$server" "$host" "$name" <<'PY_DOT_PROBE'
+import os, socket, ssl, struct, sys, time
+server, host, name = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    ident = int.from_bytes(os.urandom(2), 'big')
+    qname = b''.join(bytes([len(x)]) + x for x in name.rstrip('.').encode('ascii').split(b'.')) + b'\0'
+    query = struct.pack('!HHHHHH', ident, 0x0100, 1, 0, 0, 0) + qname + struct.pack('!HH', 1, 1)
+    ctx = ssl.create_default_context()
+    start = time.monotonic()
+    raw = socket.create_connection((server, 853), timeout=4)
+    conn = ctx.wrap_socket(raw, server_hostname=host)
+    conn.settimeout(4)
+    conn.sendall(struct.pack('!H', len(query)) + query)
+    def readn(n):
+        buf = b''
+        while len(buf) < n:
+            chunk = conn.recv(n - len(buf))
+            if not chunk: raise RuntimeError('eof')
+            buf += chunk
+        return buf
+    (rlen,) = struct.unpack('!H', readn(2))
+    response = readn(rlen)
+    elapsed = (time.monotonic() - start) * 1000
+    conn.close()
+    if len(response) < 12: raise RuntimeError('short response')
+    rid, flags, qd, an, ns, ar = struct.unpack('!HHHHHH', response[:12])
+    if rid != ident or not (flags & 0x8000) or (flags & 15) != 0 or an < 1: raise RuntimeError('query failed')
+    print(f'{elapsed:.1f}')
+except Exception:
+    raise SystemExit(1)
+PY_DOT_PROBE
+}
+
+dns_dot_prefer() {
+    local result successes median best='' best_ms=999999 best_success=0 round prompt canceled
+    local -a names=('Cloudflare' 'Google' 'Quad9' 'AdGuard')
+    local -a v4s=('1.1.1.1' '8.8.8.8' '9.9.9.9' '94.140.14.14')
+    local -a v6s=('2606:4700:4700::1111' '2001:4860:4860::8888' '2620:fe::fe' '2a10:50c0::ad1:ff')
+    local -a hosts=('cloudflare-dns.com' 'dns.google' 'dns.quad9.net' 'dns.adguard-dns.com')
+    local i name v4 v6 host label best_v4='' best_v6='' best_host=''
+    local -a timings=()
+    command -v python3 >/dev/null 2>&1 || { msg "${RED}DNS benchmark requires Python 3.${NC}"; pause_return; return 1; }
+    clear
+    case "${ABOX_LANG:-zh}" in
+        en) msg "${CYAN}DoT preference test: three real example.com queries per candidate (TLS handshake included)${NC}" ;;
+        ru) msg "${CYAN}Проверка DoT: три реальных запроса example.com к каждому серверу (включая TLS-рукопожатие)${NC}" ;;
+        fa) msg "${CYAN}آزمون DoT: سه پرس‌وجوی واقعی example.com برای هر سرور (شامل دست‌دهی TLS)${NC}" ;;
+        zh-tw) msg "${CYAN}DoT 自動測速：每個候選對 example.com 發起 3 次真實查詢（含 TLS 握手）${NC}" ;;
+        ja) msg "${CYAN}DoT 優先度テスト: 各候補について example.com への実際のクエリを 3 回（TLS ハンドシェイク込み）${NC}" ;;
+        *) msg "${CYAN}DoT 自动测速：每个候选对 example.com 发起 3 次真实查询（含 TLS 握手）${NC}" ;;
+    esac
+    for i in 0 1 2 3; do
+        name="${names[$i]}"; v4="${v4s[$i]}"; v6="${v6s[$i]}"; host="${hosts[$i]}"; label="$name ($v4)"
+        timings=(); successes=0
+        for round in 1 2 3; do
+            result=$(dns_dot_probe_once "$v4" "$host" example.com 2>/dev/null || true)
+            if [[ "$result" =~ ^[0-9]+([.][0-9]+)?$ ]]; then timings+=("$result"); successes=$((successes+1)); fi
+        done
+        if (( successes > 0 )); then
+            median=$(printf '%s\n' "${timings[@]}" | LC_ALL=C sort -n | awk '{v[NR]=$1} END {if (NR%2) print v[(NR+1)/2]; else printf "%.1f", (v[NR/2]+v[NR/2+1])/2}')
+            case "${ABOX_LANG:-zh}" in
+                en) msg "${YELLOW}$label${NC}: $successes/3 successful, median ${median} ms" ;;
+                ru) msg "${YELLOW}$label${NC}: успешно $successes/3, медиана ${median} мс" ;;
+                fa) msg "${YELLOW}$label${NC}: موفق $successes/3، میانه ${median} میلی‌ثانیه" ;;
+                zh-tw) msg "${YELLOW}$label${NC}: 成功 $successes/3，中位數 ${median} ms" ;;
+                ja) msg "${YELLOW}$label${NC}: 成功: $successes/3、中央値: ${median} ms" ;;
+                *) msg "${YELLOW}$label${NC}: 成功 $successes/3，中位数 ${median} ms" ;;
+            esac
+            if (( successes > best_success )) || { (( successes == best_success )) && awk -v a="$median" -v b="$best_ms" 'BEGIN{exit !(a+0 < b+0)}'; }; then best="$label"; best_ms="$median"; best_success=$successes; best_v4="$v4"; best_v6="$v6"; best_host="$host"; fi
+        else
+            case "${ABOX_LANG:-zh}" in
+                en) msg "${YELLOW}$label${NC}: 0/3 successful" ;;
+                ru) msg "${YELLOW}$label${NC}: успешно 0/3" ;;
+                fa) msg "${YELLOW}$label${NC}: موفق 0/3" ;;
+                zh-tw) msg "${YELLOW}$label${NC}: 成功 0/3" ;;
+                ja) msg "${YELLOW}$label${NC}: 成功: 0/3" ;;
+                *) msg "${YELLOW}$label${NC}: 成功 0/3" ;;
+            esac
+        fi
+    done
+    [[ -n "$best" && $best_success -ge 2 ]] || {
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${RED}No DoT resolver passed the availability threshold; DNS was not changed.${NC}" ;;
+            ru) msg "${RED}Ни один DoT-сервер не прошёл проверку доступности; DNS не изменён.${NC}" ;;
+            fa) msg "${RED}هیچ سرور DoT از آستانه دسترس‌په‌پذیری عبور نکرد؛ DNS تغییر نکرد.${NC}" ;;
+            zh-tw) msg "${RED}沒有 DoT 候選透過可用性門檻；未修改 DNS。${NC}" ;;
+            ja) msg "${RED}可用性のしきい値を満たす DoT リゾルバーがありません。DNS は変更されていません。${NC}" ;;
+            *) msg "${RED}没有 DoT 候选通过可用性门槛；未修改 DNS。${NC}" ;;
+        esac
+        pause_return; return 1;
+    }
+    case "${ABOX_LANG:-zh}" in
+        en)
+            msg "${GREEN}Best measured DoT candidate now: $best, ${best_success}/3 successful, median ${best_ms} ms.${NC}"
+            msg 'This result describes this VPS and this test window; timings include the TLS handshake. The winner is applied with its IPv4, IPv6 and TLS hostname.'
+            prompt='Apply this DoT resolver as host DNS? [Y/N]: '
+            canceled='Canceled; host DNS was not changed.' ;;
+        ru)
+            msg "${GREEN}Лучший DoT сейчас: $best; успешно ${best_success}/3, медиана ${best_ms} мс.${NC}"
+            msg 'Результат относится к этому VPS и времени проверки; время включает TLS-рукопожатие. Применяются IPv4, IPv6 и TLS-имя победителя.'
+            prompt='Применить этот DoT для системы? [Y/N]: '
+            canceled='Отменено; системный DNS не изменён.' ;;
+        fa)
+            msg "${GREEN}بهترین DoT فعلی: ${best}؛ موفق ${best_success}/3، میانه ${best_ms} میلی‌ثانیه.${NC}"
+            msg 'این نتیجه مربوط به همین VPS و همین زمان آزمون است؛ زمان شامل دست‌دهی TLS است. IPv4 و IPv6 و نام TLS برنده اعمال می‌شود.'
+            prompt='این DoT برای سیستم اعمال شود؟ [Y/N]: '
+            canceled='لغو شد؛ DNS سیستم تغییر نکرد.' ;;
+        zh-tw)
+            msg "${GREEN}本次測試最佳 DoT 候選：${best}，成功 ${best_success}/3，中位數 ${best_ms} ms。${NC}"
+            msg '結果僅適用於當前 VPS 和當前測試時段；延遲含 TLS 握手。將以勝出者的 IPv4、IPv6 與 TLS 主機名應用。'
+            prompt='將該 DoT 解析器應用為本機 DNS？[Y/N]: '
+            canceled='已取消，未修改本機 DNS。' ;;
+        ja)
+            msg "${GREEN}今回の測定で最良の DoT 候補: $best、成功: ${best_success}/3、中央値: ${best_ms} ms。${NC}"
+            msg 'この結果はこの VPS および今回の測定時間帯に限られます。時間には TLS ハンドシェイクを含みます。勝者の IPv4 / IPv6 / TLS ホスト名で適用します。'
+            prompt='この DoT リゾルバーをホストの DNS として適用しますか？ [Y/N]: '
+            canceled='キャンセルしました。ホストの DNS は変更されていません。' ;;
+        *)
+            msg "${GREEN}本次测试最佳 DoT 候选：${best}，成功 ${best_success}/3，中位数 ${best_ms} ms。${NC}"
+            msg '结果仅适用于当前 VPS 和当前测试时段；延迟含 TLS 握手。将以胜出者的 IPv4、IPv6 与 TLS 主机名应用。'
+            prompt='将该 DoT 解析器应用为本机 DNS？[Y/N]: '
+            canceled='已取消，未修改本机 DNS。' ;;
+    esac
+    read -r -p "$prompt" result
+    is_yes "$result" || { msg "$canceled"; pause_return; return 0; }
+    apply_host_dns dot "$best_v4" "$best_v6" "$best_host"
+    pause_return
+}
+
 dns_auto_prefer() {
     local server result successes median best='' best_ms=999999 best_success=0 round v6 prompt canceled
     local -a candidates=('1.1.1.1' '8.8.8.8' '9.9.9.9' '208.67.222.222') timings=()
@@ -16183,6 +16327,25 @@ dns_menu() {
             [[ -z "$v6" ]] || { valid_ipv6_cidr "$v6" && [[ "$v6" != */* ]]; } || { msg "${RED}Invalid IPv6 DNS${NC}"; pause_return; return 1; }
             apply_host_dns plain "$v4" "$v6"; pause_return ;;
         2)
+            local dot_preset dot_preset_prompt dot_custom_word
+            case "${ABOX_LANG:-zh}" in
+                en) dot_preset_prompt='DoT provider [1-4]: '; dot_custom_word='Custom' ;;
+                ru) dot_preset_prompt='Провайдер DoT [1-4]: '; dot_custom_word='Свой' ;;
+                fa) dot_preset_prompt='ارائه‌دهنده DoT [1-4]: '; dot_custom_word='سفارشی' ;;
+                zh-tw) dot_preset_prompt='DoT 服務商 [1-4]：'; dot_custom_word='自定義' ;;
+                ja) dot_preset_prompt='DoT プロバイダ [1-4]: '; dot_custom_word='カスタム' ;;
+                *) dot_preset_prompt='DoT 服务商 [1-4]：'; dot_custom_word='自定义' ;;
+            esac
+            msg "1. Cloudflare (1.1.1.1)"
+            msg "2. Google (8.8.8.8)"
+            msg "3. Quad9 (9.9.9.9)"
+            msg "4. $dot_custom_word"
+            read -r -p "$dot_preset_prompt" dot_preset
+            case "$dot_preset" in
+                1) apply_host_dns dot '1.1.1.1' '2606:4700:4700::1111' 'cloudflare-dns.com'; pause_return ;;
+                2) apply_host_dns dot '8.8.8.8' '2001:4860:4860::8888' 'dns.google'; pause_return ;;
+                3) apply_host_dns dot '9.9.9.9' '2620:fe::fe' 'dns.quad9.net'; pause_return ;;
+                *)
             local dot_name dot_ipv4_prompt dot_ipv6_prompt dot_host_prompt dot_host_error
             case "${ABOX_LANG:-zh}" in
                 en) dot_ipv4_prompt='DoT resolver IPv4: '; dot_ipv6_prompt='DoT resolver IPv6 (optional): '; dot_host_prompt='TLS authentication hostname (e.g. dns.google): '; dot_host_error='Invalid DoT TLS hostname.' ;;
@@ -16200,9 +16363,24 @@ dns_menu() {
             read -r -p "$dot_host_prompt" dot_name
             valid_domain "$dot_name" || { msg "${RED}$dot_host_error${NC}"; pause_return; return 1; }
             apply_host_dns dot "$v4" "$v6" "$dot_name"; pause_return ;;
+            esac ;;
         3) apply_host_dns plain '1.1.1.1' '2606:4700:4700::1111'; pause_return ;;
         4) apply_host_dns plain '9.9.9.9' '2620:fe::fe'; pause_return ;;
-        5) dns_auto_prefer ;;
+        5)
+            local bench_prompt bench_choice
+            case "${ABOX_LANG:-zh}" in
+                en) bench_prompt='Benchmark type [1=Plain 2=DoT]: ' ;;
+                ru) bench_prompt='Тип теста [1=Обычный 2=DoT]: ' ;;
+                fa) bench_prompt='نوع آزمون [1=ساده 2=DoT]: ' ;;
+                zh-tw) bench_prompt='測速類型 [1=明文 2=DoT]：' ;;
+                ja) bench_prompt='測定タイプ [1=平文 2=DoT]: ' ;;
+                *) bench_prompt='测速类型 [1=明文 2=DoT]：' ;;
+            esac
+            read -r -p "$bench_prompt" bench_choice
+            case "$bench_choice" in
+                2) dns_dot_prefer ;;
+                *) dns_auto_prefer ;;
+            esac ;;
         6) dns_enable_doh; pause_return ;;
         7) if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then restore_dns_snapshot "$DNS_BACKUP_DIR" && msg "${GREEN}DNS restored.${NC}" || msg "${RED}DNS rollback failed.${NC}"; else msg "${YELLOW}No DNS snapshot exists.${NC}"; fi; pause_return ;;
         8) dns_setup_tri_mode ;;

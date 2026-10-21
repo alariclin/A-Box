@@ -15271,6 +15271,796 @@ export_lightweight_subscription() {
     fi
 }
 
+# ================= Multi-user manager (fix47) =================
+# Per-inbound user registries live in /etc/ddr/users.d/<core>__<tag>.json
+# (600). The registry is the source of truth for who may connect;
+# users_sync rewrites the core config's user list from it inside the
+# usual transaction (validate -> atomic install -> restart -> rollback).
+# Xray-family users carry email "<tag>/<name>", which is what the
+# StatsService counters and `xray api rmu` key on.
+USERS_DIR='/etc/ddr/users.d'
+
+users_reg_file() { printf '%s/%s__%s.json' "${ABOX_USERS_DIR:-$USERS_DIR}" "$1" "$2"; }
+
+users_cfg_of() {
+    case "$1" in
+        xray) printf '%s' "${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" ;;
+        xray-latest) printf '%s' "${XRAY_LATEST_CFG:-/etc/ddr/xray-latest/config.json}" ;;
+        sing-box) printf '%s' '/etc/sing-box/config.json' ;;
+        hy2) printf '%s' '/etc/hysteria/config.yaml' ;;
+        *) return 1 ;;
+    esac
+}
+
+users_svc_of() {
+    case "$1" in
+        xray) printf '%s' 'xray' ;;
+        xray-latest) if [[ "$(_xl_state_get mode 2>/dev/null)" == 'coexist' ]]; then printf '%s' 'xray-latest'; else printf '%s' 'xray'; fi ;;
+        sing-box) printf '%s' 'sing-box' ;;
+        hy2) printf '%s' 'hysteria' ;;
+        *) return 1 ;;
+    esac
+}
+
+users_bin_of() {
+    case "$1" in
+        xray) printf '%s' '/usr/local/bin/xray' ;;
+        xray-latest) printf '%s' "${XRAY_LATEST_BIN:-/usr/local/bin/xray-latest}" ;;
+        sing-box) printf '%s' '/usr/local/bin/sing-box' ;;
+        hy2) printf '%s' '/usr/local/bin/hysteria' ;;
+        *) return 1 ;;
+    esac
+}
+
+users_api_port_of() {
+    case "$1" in
+        xray) printf '%s' '10085' ;;
+        xray-latest) printf '%s' '10086' ;;
+        *) printf '%s' '10085' ;;
+    esac
+}
+
+users_valid_name() { [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,23}$ ]]; }
+
+# Atomic registry write: $1=core $2=tag $3=json-content
+users_reg_write() { users_reg_write_path "$(users_reg_file "$1" "$2")" "$3"; }
+
+# Atomic registry write to an explicit path: $1=path $2=json-content
+users_reg_write_path() {
+    local dest="$1" content="$2" dir='' tmp=''
+    dir=$(dirname -- "$dest") || return 1
+    install -d -m 700 "$dir" 2>/dev/null || return 1
+    tmp=$(mktemp "$dir/.reg.XXXXXX") || return 1
+    printf '%s\n' "$content" > "$tmp" || { rm -f "$tmp"; return 1; }
+    jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+    chmod 600 "$tmp" || { rm -f "$tmp"; return 1; }
+    mv -f -- "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
+    return 0
+}
+
+# Validate + install a prepared config file with the core's own checker,
+# restart its service, roll back on any failure.
+# $1=core $2=cfg-path $3=new-file $4=backup-file
+users_commit_cfg() {
+    local core="$1" cfg="$2" newf="$3" bak="$4" bin='' svc=''
+    bin=$(users_bin_of "$core") || return 1
+    svc=$(users_svc_of "$core") || return 1
+    case "$core" in
+        xray|xray-latest)
+            [[ -x "$bin" ]] || return 1
+            XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$newf" >/dev/null 2>&1 || return 1 ;;
+        sing-box)
+            [[ -x "$bin" ]] || return 1
+            "$bin" check -c "$newf" >/dev/null 2>&1 || return 1 ;;
+        hy2) : ;; # no offline checker; service restart is the validation
+    esac
+    install_file_atomically "$newf" "$cfg" 600 || return 1
+    case "$core" in
+        xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || true ;;
+        xray-latest) prepare_abox_runtime_read_file "$cfg" xray >/dev/null 2>&1 || true ;;
+        sing-box) prepare_abox_runtime_permissions sing-box >/dev/null 2>&1 || true ;;
+    esac
+    if ! restart_service_soft "$svc"; then
+        if [[ -n "$bak" && -f "$bak" ]]; then
+            install_file_atomically "$bak" "$cfg" 600 >/dev/null 2>&1 || cp -f -- "$bak" "$cfg"
+            case "$core" in
+                xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || true ;;
+                xray-latest) prepare_abox_runtime_read_file "$cfg" xray >/dev/null 2>&1 || true ;;
+                sing-box) prepare_abox_runtime_permissions sing-box >/dev/null 2>&1 || true ;;
+            esac
+            restart_service_soft "$svc" >/dev/null 2>&1 || true
+        fi
+        return 1
+    fi
+    return 0
+}
+
+# Tag retrofit for combo inbounds built before fix47 (they had no tags,
+# which kept them invisible to per-tag management). Assigns tags by
+# protocol/network shape only when the tag is still free.
+users_xray_ensure_tags() {
+    local cfg="$1" bak='' tmp=''
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    jq -e '[.inbounds[]? | select(.tag == null or .tag == "")] | length > 0' "$cfg" >/dev/null 2>&1 || return 0
+    bak=$(mktemp /tmp/A-Box-utag-bak.XXXXXX) || return 1
+    cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
+    tmp=$(mktemp /tmp/A-Box-utag.XXXXXX) || { rm -f "$bak"; return 1; }
+    mv -- "$tmp" "$tmp.json" || { rm -f "$tmp" "$bak"; return 1; }; tmp="$tmp.json"
+    if ! jq '
+        ([.inbounds[]?.tag | select(. != null and . != "")]) as $used
+        | .inbounds |= map(
+            if (.tag != null and .tag != "") then .
+            elif .protocol == "vless" and ((.streamSettings.network // "tcp") == "xhttp") and ("xhttp" | IN($used[]) | not) then .tag = "xhttp"
+            elif .protocol == "vless" and ("vision" | IN($used[]) | not) then .tag = "vision"
+            elif .protocol == "shadowsocks" and ("ss" | IN($used[]) | not) then .tag = "ss"
+            else . end)
+    ' "$cfg" > "$tmp"; then rm -f "$tmp" "$bak"; return 1; fi
+    if users_commit_cfg xray "$cfg" "$tmp" "$bak"; then rm -f "$tmp" "$bak"; return 0; fi
+    rm -f "$tmp" "$bak"; return 1
+}
+
+users_sb_ensure_tags() {
+    local cfg="$1" bak='' tmp=''
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    jq -e '[.inbounds[]? | select(.tag == null or .tag == "")] | length > 0' "$cfg" >/dev/null 2>&1 || return 0
+    bak=$(mktemp /tmp/A-Box-utag-bak.XXXXXX) || return 1
+    cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
+    tmp=$(mktemp /tmp/A-Box-utag.XXXXXX) || { rm -f "$bak"; return 1; }
+    mv -- "$tmp" "$tmp.json" || { rm -f "$tmp" "$bak"; return 1; }; tmp="$tmp.json"
+    if ! jq '
+        ([.inbounds[]?.tag | select(. != null and . != "")]) as $used
+        | .inbounds |= map(
+            if (.tag != null and .tag != "") then .
+            elif .type == "vless" and ("vision" | IN($used[]) | not) then .tag = "vision"
+            elif .type == "hysteria2" and ("hy2" | IN($used[]) | not) then .tag = "hy2"
+            elif .type == "shadowsocks" and ("ss" | IN($used[]) | not) then .tag = "ss"
+            else . end)
+    ' "$cfg" > "$tmp"; then rm -f "$tmp" "$bak"; return 1; fi
+    if users_commit_cfg sing-box "$cfg" "$tmp" "$bak"; then rm -f "$tmp" "$bak"; return 0; fi
+    rm -f "$tmp" "$bak"; return 1
+}
+
+# ---- adoption: build a registry from the live config ----
+# Shared jq: turn a raw [{name,secret,...}] list into registry users,
+# sanitising/deduping names and stamping defaults.
+USERS_JQ_DEDUPE='
+def cleanname: (tostring | gsub("[^a-zA-Z0-9_-]"; "_") | .[0:24] | if . == "" then "main" end);
+def dedupe: reduce .[] as $u ({seen:{}, out:[]};
+    if .seen[$u.name] then .out += [$u + {name: ("u" + ((.out | length) + 1 | tostring))}] | .seen += {(("u" + ((.out | length) | tostring))): 1}
+    else .seen += {($u.name): 1} | .out += [$u] end) | .out;
+def mkusers($tag): map({
+    name: ((.name // "main") | cleanname),
+    secret: (.secret // ""),
+    uuid: (.uuid // ""),
+    flow: (.flow // ""),
+    email: (if $tag != "" then ($tag + "/" + ((.name // "main") | cleanname)) else "" end),
+    created: "",
+    expire_at: 0, quota_gb: 0, window: "",
+    disabled: false, blocked: "",
+    period: "", used_up: 0, used_down: 0, last_up: 0, last_down: 0
+}) | dedupe | map(.email = (if $tag != "" then ($tag + "/" + .name) else "" end))'
+
+users_adopt() {
+    local core="$1" tag="$2" outfile="${3:-}" cfg='' proto='' users='[]' ssecret='' raw=''
+    cfg=$(users_cfg_of "$core") || return 1
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    case "$core" in
+        xray|xray-latest)
+            proto=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .protocol // ""' "$cfg" 2>/dev/null | head -1)
+            [[ -n "$proto" ]] || return 1
+            raw=$(jq -c --arg t "$tag" '
+                .inbounds[]? | select(.tag == $t) | .settings as $st
+                | if .protocol == "vless" then [$st.clients[]? | {name: (if .email then (.email | split("/") | .[1] // "main") else "main" end), secret: .id, flow: (.flow // "")}]
+                  elif .protocol == "trojan" then [$st.clients[]? | {name: (if .email then (.email | split("/") | .[1] // "main") else "main" end), secret: .password}]
+                  elif .protocol == "shadowsocks" then
+                      (if (($st.clients // null) | type) == "array"
+                       then [$st.clients[] | {name: (if .email then (.email | split("/") | .[1] // "main") else "main" end), secret: .password}]
+                       else [{name: "main", secret: ($st.password // "")}] end)
+                  elif .protocol == "socks" then [$st.accounts[]? | {name: (.user // "main"), secret: (.pass // "")}]
+                  else [] end' "$cfg" 2>/dev/null) || return 1
+            if [[ "$proto" == 'shadowsocks' ]]; then
+                # clients-form SS keeps the server key separately.
+                if jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.settings.clients // null | type) == "array"' "$cfg" >/dev/null 2>&1; then
+                    ssecret=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.password // ""' "$cfg" 2>/dev/null | head -1)
+                fi
+            fi
+            ;;
+        sing-box)
+            proto=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .type // ""' "$cfg" 2>/dev/null | head -1)
+            [[ -n "$proto" ]] || return 1
+            raw=$(jq -c --arg t "$tag" '
+                .inbounds[]? | select(.tag == $t)
+                | if .type == "vless" or .type == "vmess" then [.users[]? | {name: (.name // "main"), secret: (.uuid // .password // ""), flow: (.flow // "")}]
+                  elif .type == "tuic" then [.users[]? | {name: (.name // "main"), secret: (.password // ""), uuid: (.uuid // "")}]
+                  elif .type == "shadowsocks" then
+                      (if ((.users // null) | type) == "array" and ((.users // []) | length) > 0
+                       then [.users[] | {name: (.name // "main"), secret: (.password // "")}]
+                       else [{name: "main", secret: (.password // "")}] end)
+                  elif .type == "mixed" or .type == "socks" then [.users[]? | {name: (.username // "main"), secret: (.password // "")}]
+                  else [.users[]? | {name: (.name // "main"), secret: (.password // "")}] end' "$cfg" 2>/dev/null) || return 1
+            if [[ "$proto" == 'shadowsocks' ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.users // []) | length) > 0' "$cfg" >/dev/null 2>&1; then
+                ssecret=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .password // ""' "$cfg" 2>/dev/null | head -1)
+            fi
+            ;;
+        hy2)
+            proto='hysteria2'
+            raw=$(users_hy2_read_users "$cfg") || return 1
+            ;;
+        *) return 1 ;;
+    esac
+    [[ -n "$raw" ]] || raw='[]'
+    users=$(printf '%s' "$raw" | jq -c --arg tag "$tag" "$USERS_JQ_DEDUPE; mkusers(\$tag)") || return 1
+    local now=''
+    now=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo '')
+    users=$(printf '%s' "$users" | jq -c --arg now "$now" 'map(.created = (if .created == "" then $now else .created end))') || return 1
+    local reg=''
+    reg=$(jq -cn --arg core "$core" --arg tag "$tag" --arg proto "$proto" --arg ss "$ssecret" --argjson users "$users" \
+        '{core: $core, tag: $tag, protocol: $proto, server_secret: $ss, users: $users}') || return 1
+    if [[ -n "$outfile" ]]; then users_reg_write_path "$outfile" "$reg"; else users_reg_write "$core" "$tag" "$reg"; fi
+}
+
+# Read the official Hy2 auth block into a raw users list [{name,secret}].
+users_hy2_read_users() {
+    local cfg="$1" block='' type='' pw='' out='[]'
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    block=$(awk '/^auth:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^auth:/) exit} f{print}' "$cfg" 2>/dev/null) || return 1
+    [[ -n "$block" ]] || return 1
+    type=$(printf '%s\n' "$block" | sed -n 's/^[[:space:]]*type:[[:space:]]*//p' | head -1 | tr -d '"'"'"' \r')
+    if [[ "$type" == 'userpass' ]]; then
+        out=$(printf '%s\n' "$block" | awk '
+            /^  userpass:/{u=1; next}
+            u && /^    [^[:space:]]/{line=$0; sub(/^    /, "", line);
+                i=index(line, ": "); name=substr(line, 1, i-1); val=substr(line, i+2);
+                printf "%s\t%s\n", name, val}
+            u && /^  [^[:space:]]/{exit}')
+        local list='[]' n='' v=''
+        while IFS=$'\t' read -r n v; do
+            [[ -n "$n" ]] || continue
+            # Values are written as JSON strings; decode escapes properly.
+            if [[ "$v" == '"'* ]]; then v=$(printf '%s' "$v" | jq -r . 2>/dev/null || printf '%s' "$v"); fi
+            list=$(printf '%s' "$list" | jq -c --arg n "$n" --arg v "$v" '. + [{name: $n, secret: $v}]') || return 1
+        done <<< "$out"
+        printf '%s' "$list"
+        return 0
+    fi
+    pw=$(printf '%s\n' "$block" | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
+    [[ -n "$pw" ]] || return 1
+    # The writer json-escapes the value; decode it as a JSON string when quoted.
+    if [[ "$pw" == '"'* ]]; then pw=$(printf '%s' "$pw" | jq -r . 2>/dev/null || printf '%s' "$pw"); fi
+    jq -cn --arg v "$pw" '[{name: "main", secret: $v}]'
+}
+
+# Ensure a registry exists for (core, tag): adopt from the live config
+# when missing, then merge in any config credentials the registry does
+# not know yet (out-of-band changes) as auto-named users.
+users_reg_ensure() {
+    local core="$1" tag="$2" reg=''
+    reg=$(users_reg_file "$core" "$tag")
+    if [[ ! -f "$reg" ]]; then
+        users_adopt "$core" "$tag" || return 1
+        return 0
+    fi
+    jq -e '.users | type == "array"' "$reg" >/dev/null 2>&1 || return 1
+    local scratch='' merged=''
+    scratch=$(mktemp /tmp/A-Box-ureg.XXXXXX) || return 0
+    if users_adopt "$core" "$tag" "$scratch" >/dev/null 2>&1 && jq -e '.users' "$scratch" >/dev/null 2>&1; then
+        merged=$(jq -c --slurpfile s "$scratch" '
+            . as $r | ($s[0].users // []) as $fresh
+            | .users = (.users + [$fresh[] | select(.secret as $sec | [$r.users[].secret] | index($sec) | not)])
+            | .server_secret = (if (.server_secret // "") == "" then ($s[0].server_secret // "") else .server_secret end)
+        ' "$reg" 2>/dev/null) && [[ -n "$merged" ]] && users_reg_write "$core" "$tag" "$merged" || true
+    fi
+    rm -f -- "$scratch"
+    return 0
+}
+
+# ---- sync: rewrite the core config's user list from the registry ----
+users_sync() {
+    local core="$1" tag="$2" cfg='' reg='' bak='' tmp='' enabled='' proto='' ssecret=''
+    cfg=$(users_cfg_of "$core") || return 1
+    reg=$(users_reg_file "$core" "$tag")
+    [[ -f "$cfg" && ! -L "$cfg" && -f "$reg" ]] || return 1
+    proto=$(jq -r '.protocol // ""' "$reg" 2>/dev/null) || return 1
+    [[ -n "$proto" ]] || return 1
+    ssecret=$(jq -r '.server_secret // ""' "$reg" 2>/dev/null)
+    enabled=$(jq -c '[.users[] | select(.disabled != true and ((.blocked // "") == ""))]' "$reg" 2>/dev/null) || return 1
+    bak=$(mktemp /tmp/A-Box-usync-bak.XXXXXX) || return 1
+    cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
+    tmp=$(mktemp /tmp/A-Box-usync.XXXXXX) || { rm -f "$bak"; return 1; }
+    mv -- "$tmp" "$tmp.json" || { rm -f "$tmp" "$bak"; return 1; }; tmp="$tmp.json"
+    # SS multi-user promotion: with no stored server_secret and >1
+    # enabled users, the CURRENT password becomes the server key and
+    # each user's secret becomes their uPSK (their link changes; the
+    # menu warns about this when the second user is added).
+    local eff_ss="$ssecret" promote=0 encount=0
+    encount=$(printf '%s' "$enabled" | jq 'length' 2>/dev/null || echo 0)
+    if [[ "$proto" == 'shadowsocks' && -z "$eff_ss" ]] && (( encount > 1 )); then
+        case "$core" in
+            xray|xray-latest) eff_ss=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.password // ""' "$cfg" 2>/dev/null | head -1) ;;
+            sing-box) eff_ss=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .password // ""' "$cfg" 2>/dev/null | head -1) ;;
+            hy2) : ;;
+        esac
+        [[ -n "$eff_ss" ]] && promote=1
+    fi
+    case "$core" in
+        xray|xray-latest)
+            xray_ensure_stats "$cfg" "$(users_api_port_of "$core")" >/dev/null 2>&1 || true
+            local flow=''
+            flow=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.settings.clients[0].flow // "")' "$cfg" 2>/dev/null | head -1)
+            if ! jq --arg t "$tag" --arg proto "$proto" --argjson users "$enabled" --arg flow "$flow" --arg ss "$eff_ss" '
+                .inbounds |= map(if .tag == $t then
+                    (if $proto == "vless" then
+                        .settings.clients = [$users[] | {id: .secret, email: .email} + (if $flow != "" then {flow: $flow} else {} end)]
+                     elif $proto == "trojan" then
+                        .settings.clients = [$users[] | {password: .secret, email: .email}]
+                     elif $proto == "shadowsocks" then
+                        (if $ss != "" then
+                            .settings.password = $ss
+                            | .settings.clients = [$users[] | {password: .secret, email: .email}]
+                         elif ($users | length) == 1 then
+                            .settings.password = $users[0].secret | .settings |= del(.clients)
+                         else
+                            .settings.password = "AAAAAAAAAAAAAAAAAAAAAA" | .settings |= del(.clients) end)
+                     elif $proto == "socks" then
+                        .settings.accounts = [$users[] | {user: .name, pass: .secret}]
+                     else . end)
+                else . end)
+            ' "$cfg" > "$tmp" 2>/dev/null; then
+                rm -f "$tmp" "$bak"; return 1
+            fi
+            ;;
+        sing-box)
+            if ! jq --arg t "$tag" --arg proto "$proto" --argjson users "$enabled" --arg ss "$eff_ss" '
+                .inbounds |= map(if .tag == $t then
+                    (if $proto == "vless" or $proto == "vmess" then
+                        .users = [$users[] | {name: .name, uuid: .secret} + (if (.flow // "") != "" then {flow: .flow} else {} end)]
+                     elif $proto == "tuic" then
+                        .users = [$users[] | {name: .name, uuid: .uuid, password: .secret}]
+                     elif $proto == "shadowsocks" then
+                        (if $ss != "" then
+                            .password = $ss | .users = [$users[] | {name: .name, password: .secret}]
+                         elif ($users | length) == 1 then
+                            .password = $users[0].secret | del(.users)
+                         else
+                            .password = "AAAAAAAAAAAAAAAAAAAAAA" | del(.users) end)
+                     elif $proto == "mixed" or $proto == "socks" then
+                        .users = [$users[] | {username: .name, password: .secret}]
+                     else
+                        .users = [$users[] | {name: .name, password: .secret}] end)
+                else . end)
+            ' "$cfg" > "$tmp" 2>/dev/null; then
+                rm -f "$tmp" "$bak"; return 1
+            fi
+            ;;
+        hy2)
+            users_hy2_write_users "$cfg" "$enabled" "$tmp" || { rm -f "$tmp" "$bak"; return 1; }
+            ;;
+        *) rm -f "$tmp" "$bak"; return 1 ;;
+    esac
+    if users_commit_cfg "$core" "$cfg" "$tmp" "$bak"; then
+        rm -f "$tmp" "$bak"
+        if (( promote == 1 )); then
+            local regj=''
+            regj=$(jq -c --arg ss "$eff_ss" '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || true
+        fi
+        return 0
+    fi
+    rm -f "$tmp" "$bak"; return 1
+}
+
+# Write a new hysteria config with the auth block replaced by $enabled
+# users (JSON array). One user -> password auth; more -> userpass.
+users_hy2_write_users() {
+    local cfg="$1" users_json="$2" out="$3" auth_block='' count=0
+    count=$(printf '%s' "$users_json" | jq 'length' 2>/dev/null || echo 0)
+    if (( count == 1 )); then
+        local sec=''
+        sec=$(printf '%s' "$users_json" | jq -r '.[0].secret' 2>/dev/null)
+        auth_block=$(printf 'auth:\n  type: password\n  password: %s' "$(json_escape "$sec")")
+    elif (( count == 0 )); then
+        auth_block=$(printf 'auth:\n  type: password\n  password: %s' "$(json_escape "$(openssl rand -hex 16 2>/dev/null || echo disabled)")")
+    else
+        local lines=''
+        lines=$(printf '%s' "$users_json" | jq -r '.[] | "    " + .name + ": " + (.secret | @json)' 2>/dev/null) || return 1
+        auth_block=$(printf 'auth:\n  type: userpass\n  userpass:\n%s' "$lines")
+    fi
+    awk -v block="$auth_block" '
+        /^auth:/ { print block; skip = 1; next }
+        skip && /^[^[:space:]#]/ { skip = 0 }
+        skip && /^  / { next }
+        skip && /^$/ { next }
+        { print }
+    ' "$cfg" > "$out" || return 1
+    grep -q '^auth:' "$out" || return 1
+    return 0
+}
+
+# ---- per-user links ----
+users_link_stem() {
+    local core="$1" tag="$2"
+    case "$core:$tag" in
+        xray:trojan-landing) printf '%s' 'trojan-xray' ;;
+        sing-box:trojan-landing) printf '%s' 'trojan-sb' ;;
+        xray:socks5-landing) printf '%s' 'socks5-xray' ;;
+        sing-box:socks5-landing) printf '%s' 'socks5-sb' ;;
+        sing-box:tuic-in) printf '%s' 'tuic' ;;
+        sing-box:anytls-in) printf '%s' 'anytls' ;;
+        sing-box:shadowtls-in) printf '%s' 'shadowtls' ;;
+        sing-box:mixed-in|sing-box:socks-in) printf '%s' 'socks5-sb' ;;
+        hy2:*) printf '%s' 'hy2' ;;
+        *) printf '%s' "$tag" ;;
+    esac
+}
+
+users_registered_link() {
+    local stem='' f=''
+    stem=$(users_link_stem "$1" "$2") || return 1
+    f="${ABOX_DIR:-/etc/ddr}/standalone-links.d/${stem}.link"
+    [[ -f "$f" && ! -L "$f" ]] || return 1
+    sed -n '2p' "$f" | tr -d '\r'
+}
+
+users_b64url_dec() { printf '%s' "$1" | tr '_-' '/+' | awk '{l=length($0); if (l%4==2) print $0"=="; else if (l%4==3) print $0"="; else print $0}' | base64 -d 2>/dev/null; }
+users_b64url_enc() { base64 -w0 2>/dev/null | tr '+/' '-_' | tr -d '='; }
+
+# Build the connection link for one registry user.
+# $1=core $2=tag $3=name -> prints link on stdout
+users_link() {
+    local core="$1" tag="$2" name="$3" reg='' user='' main='' proto='' ssecret=''
+    reg=$(users_reg_file "$core" "$tag")
+    [[ -f "$reg" ]] || return 1
+    user=$(jq -c --arg n "$name" '.users[] | select(.name == $n)' "$reg" 2>/dev/null) || return 1
+    [[ -n "$user" && "$user" != 'null' ]] || return 1
+    main=$(jq -c '.users[] | select(.name == "main")' "$reg" 2>/dev/null)
+    proto=$(jq -r '.protocol // ""' "$reg" 2>/dev/null)
+    ssecret=$(jq -r '.server_secret // ""' "$reg" 2>/dev/null)
+    local secret='' use_uuid=''
+    secret=$(printf '%s' "$user" | jq -r '.secret // ""')
+    use_uuid=$(printf '%s' "$user" | jq -r '.uuid // ""')
+    [[ -n "$secret" ]] || return 1
+    # Combo inbounds (either core) build from .env + live config values.
+    if [[ "$tag" == 'vision' || "$tag" == 'xhttp' || "$tag" == 'ss' || "$tag" == 'hy2' ]] && [[ "$core" == 'xray' || "$core" == 'sing-box' ]]; then
+        users_link_combo "$core" "$tag" "$name" "$secret" "$ssecret" "$proto"
+        return $?
+    fi
+    local link='' msecret=''
+    link=$(users_registered_link "$core" "$tag") || return 1
+    [[ -n "$link" ]] || return 1
+    msecret=$(printf '%s' "$main" | jq -r '.secret // ""')
+    local frag="#${tag}-${name}"
+    if [[ "$link" == ss://* ]]; then
+        # userinfo is base64(method:credential)
+        local rest="${link#ss://}" userinfo='' hostpart='' plain='' method='' eff=''
+        userinfo="${rest%%@*}"; hostpart="${rest#*@}"
+        hostpart="${hostpart%%#*}"
+        plain=$(users_b64url_dec "$userinfo") || return 1
+        method="${plain%%:*}"
+        if [[ -n "$ssecret" ]]; then eff="${ssecret}:${secret}"; else eff="$secret"; fi
+        printf 'ss://%s@%s%s' "$(printf '%s' "${method}:${eff}" | users_b64url_enc)" "$hostpart" "$frag"
+        return 0
+    fi
+    # Generic userinfo substitution: scheme://userinfo@rest
+    local scheme='' rest2='' userinfo2='' hostpart2=''
+    scheme="${link%%://*}"; rest2="${link#*://}"
+    userinfo2="${rest2%%@*}"; hostpart2="${rest2#*@}"
+    hostpart2="${hostpart2%%#*}"
+    local newinfo=''
+    if [[ "$proto" == 'tuic' ]]; then
+        local muuid=''
+        muuid=$(printf '%s' "$main" | jq -r '.uuid // ""')
+        if [[ "$userinfo2" == "$(urlencode "$muuid"):$(urlencode "$msecret")" || "$userinfo2" == "${muuid}:${msecret}" ]]; then
+            newinfo="$(urlencode "$use_uuid"):$(urlencode "$secret")"
+        else
+            return 1
+        fi
+    elif [[ "$core" == 'hy2' ]]; then
+        if [[ "$name" == 'main' ]]; then
+            newinfo="$(urlencode "$secret")"
+        else
+            newinfo="$(urlencode "$name"):$(urlencode "$secret")"
+        fi
+    else
+        if [[ "$userinfo2" == "$(urlencode "$msecret")" || "$userinfo2" == "$msecret" ]]; then
+            newinfo="$(urlencode "$secret")"
+        else
+            return 1
+        fi
+    fi
+    printf '%s://%s@%s%s' "$scheme" "$newinfo" "$hostpart2" "$frag"
+    return 0
+}
+
+# Combo link builder (vision / xhttp / ss / sing-box hy2) from .env for
+# shared REALITY parameters plus the live config for ports and method.
+users_link_combo() {
+    local core="$1" tag="$2" name="$3" secret="$4" ssecret="$5" proto="$6"
+    [[ -f "${ABOX_ENV:-/etc/ddr/.env}" ]] && load_abox_env "$ABOX_ENV" 2>/dev/null || true
+    local ip='' cfg='' port=''
+    ip="${LINK_IP:-}"
+    [[ -n "$ip" ]] || ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$ip" ]] || ip=$(get_public_ip 2>/dev/null || true)
+    [[ -n "$ip" ]] || ip='<server-ip>'
+    cfg=$(users_cfg_of "$core") || return 1
+    local pbk="${PUBLIC_KEY:-}" sid="${SHORT_ID:-}"
+    case "$tag" in
+        vision)
+            port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' "$cfg" 2>/dev/null | head -1)
+            local sni="${VISION_SNI:-${VLESS_SNI:-}}"
+            printf 'vless://%s@%s:%s?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=tcp#%s-%s' \
+                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-${VLESS_PORT:-443}}" "$sni" "$pbk" "$sid" "$tag" "$name" ;;
+        xhttp)
+            port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' "$cfg" 2>/dev/null | head -1)
+            local sni="${XHTTP_SNI:-${VLESS_SNI:-}}"
+            printf 'vless://%s@%s:%s?encryption=none&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=xhttp&host=%s&path=%%2Fxhttp&mode=auto#%s-%s' \
+                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-${XHTTP_PORT:-8443}}" "$sni" "$pbk" "$sid" "$sni" "$tag" "$name" ;;
+        ss)
+            port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' "$cfg" 2>/dev/null | head -1)
+            local eff=''
+            if [[ -n "$ssecret" ]]; then eff="${ssecret}:${secret}"; else eff="$secret"; fi
+            printf 'ss://%s@%s:%s#%s-%s' \
+                "$(printf '%s' "2022-blake3-aes-128-gcm:${eff}" | users_b64url_enc)" "$(uri_host "$ip")" "${port:-${SS_PORT:-2053}}" "$tag" "$name" ;;
+        hy2)
+            port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.listen_port // "")' "$cfg" 2>/dev/null | head -1)
+            local obfs='' sni=''
+            obfs=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .obfs.password // ""' "$cfg" 2>/dev/null | head -1)
+            sni=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.server_name // ""' "$cfg" 2>/dev/null | head -1)
+            printf 'hysteria2://%s@%s:%s?insecure=1&sni=%s&obfs=salamander&obfs-password=%s#%s-%s' \
+                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-443}" "$sni" "$(urlencode "$obfs")" "$tag" "$name" ;;
+        *) return 1 ;;
+    esac
+    return 0
+}
+
+# Export every enabled user's link (all registries) in the subscription
+# file formats the legacy exporter produced.
+users_export_all() {
+    local dir='' out='' count=0 reg='' core='' tag=''
+    dir="${SUBSCRIBE_DIR:-/etc/ddr/subscribe}"
+    mkdir -p "$dir" 2>/dev/null || return 1
+    chmod 700 "$dir" 2>/dev/null || true
+    local tmp=''
+    tmp=$(umask 077; mktemp "$dir/.uri-list.XXXXXX") || return 1
+    for reg in "${ABOX_USERS_DIR:-$USERS_DIR}"/*.json; do
+        [[ -f "$reg" ]] || continue
+        core=$(jq -r '.core // ""' "$reg" 2>/dev/null); tag=$(jq -r '.tag // ""' "$reg" 2>/dev/null)
+        [[ -n "$core" && -n "$tag" ]] || continue
+        local uname='' link=''
+        while IFS= read -r uname; do
+            [[ -n "$uname" ]] || continue
+            link=$(users_link "$core" "$tag" "$uname" 2>/dev/null || true)
+            [[ -n "$link" ]] || continue
+            printf '%s\n' "$link" >> "$tmp" && count=$((count + 1))
+        done < <(jq -r '.users[] | select(.disabled != true and ((.blocked // "") == "")) | .name' "$reg" 2>/dev/null)
+    done
+    if (( count == 0 )); then rm -f -- "$tmp"; return 1; fi
+    install_file_atomically "$tmp" "$dir/uri-list.txt" 600 || { rm -f -- "$tmp"; return 1; }
+    rm -f -- "$tmp"
+    if command -v base64 >/dev/null 2>&1; then
+        ( base64 -w0 < "$dir/uri-list.txt" 2>/dev/null || base64 < "$dir/uri-list.txt" | tr -d '\n' ) \
+            | write_file_atomically_from_stdin "$dir/subscription.base64" 600 || true
+    fi
+    printf '%s' "$count"
+    return 0
+}
+
+# ---- menu ----
+users_fmt_bytes() {
+    awk -v b="${1:-0}" 'BEGIN { if (b < 1024) printf "%dB", b; else if (b < 1048576) printf "%.1fK", b/1024; else if (b < 1073741824) printf "%.1fM", b/1048576; else printf "%.2fG", b/1073741824 }' 2>/dev/null || printf '%sB' "${1:-0}"
+}
+
+# Write a mutated registry and sync it; roll the registry back when the
+# sync fails. $1=core $2=tag $3=new-json $4=old-json
+users_apply_reg() {
+    users_reg_write "$1" "$2" "$3" || return 1
+    if ! users_sync "$1" "$2"; then
+        users_reg_write "$1" "$2" "$4" >/dev/null 2>&1 || true
+        return 1
+    fi
+    return 0
+}
+
+users_pick_user() {
+    # $1=reg-file $2=prompt -> echoes the chosen name
+    local reg="$1" names='' sel=''
+    names=$(jq -r '.users[].name' "$reg" 2>/dev/null) || return 1
+    [[ -n "$names" ]] || return 1
+    local i=0 n=''
+    while IFS= read -r n; do i=$((i + 1)); printf '%3d. %s\n' "$i" "$n" >&2; done <<< "$names"
+    read -r -p "$2" sel || return 1
+    [[ "$sel" =~ ^[0-9]+$ ]] || return 1
+    printf '%s\n' "$names" | sed -n "${sel}p"
+}
+
+users_inbound_menu() {
+    local core="$1" tag="$2" proto="$3" port="$4" reg=''
+    reg=$(users_reg_file "$core" "$tag")
+    users_reg_ensure "$core" "$tag" || { msg "${RED}无法读取该节点的用户名单。${NC}"; pause_return; return 1; }
+    while true; do
+        clear
+        msg "${BOLD}${GREEN}$(protocol_label "$core" "$tag" "$proto" 2>/dev/null || printf '%s' "$tag") · ${core} · :${port}${NC}"
+        if [[ "$core" == 'sing-box' ]]; then
+            msg "${YELLOW}注：sing-box 官方二进制无按用户流量统计，该核心的流量限额不生效（到期/时段仍生效）。${NC}"
+        fi
+        msg "--------------------------------------------------------------------------------"
+        local line='' name='' dis='' blk='' qu='' exp='' win='' used=''
+        local idx=0
+        while IFS= read -r line; do
+            idx=$((idx + 1))
+            name=$(printf '%s' "$line" | jq -r '.name')
+            dis=$(printf '%s' "$line" | jq -r '.disabled')
+            blk=$(printf '%s' "$line" | jq -r '.blocked // ""')
+            qu=$(printf '%s' "$line" | jq -r '.quota_gb // 0')
+            exp=$(printf '%s' "$line" | jq -r '.expire_at // 0')
+            win=$(printf '%s' "$line" | jq -r '.window // ""')
+            local st='正常'
+            [[ "$dis" == 'true' ]] && st='已停用'
+            [[ -n "$blk" ]] && st="已封锁($blk)"
+            local expd='永久'
+            if [[ "$exp" =~ ^[0-9]+$ ]] && (( exp > 0 )); then expd=$(date -d "@$exp" '+%Y-%m-%d' 2>/dev/null || printf '%s' "$exp"); fi
+            local usd='-'
+            if [[ "$core" == xray* ]]; then
+                local uu='' ud=''
+                uu=$(printf '%s' "$line" | jq -r '.used_up // 0'); ud=$(printf '%s' "$line" | jq -r '.used_down // 0')
+                usd="$(users_fmt_bytes $((uu + ud)))"
+                [[ "$qu" != '0' ]] && usd="${usd}/${qu}G"
+            fi
+            printf '%3d. %-18s %-12s 用量:%-14s 到期:%-12s 时段:%s\n' "$idx" "$name" "$st" "$usd" "$expd" "${win:-全天}"
+        done < <(jq -c '.users[]' "$reg" 2>/dev/null)
+        msg "--------------------------------------------------------------------------------"
+        msg "${YELLOW}1. 添加用户   2. 删除用户   3. 设置流量限额(GB)  4. 设置到期(天)  5. 设置可用时段${NC}"
+        msg "${YELLOW}6. 用量清零   7. 查看专属链接   8. 停用/启用   9. 从配置重新导入名单   0. 返回${NC}"
+        local c=''
+        read -r -p 'Select [0-9]: ' c || return 0
+        local old='' new='' nm='' now=''
+        old=$(cat "$reg" 2>/dev/null) || return 1
+        now=$(date +%s)
+        case "$c" in
+            1)
+                read -r -p '用户名 (字母/数字/_/-, 最长24): ' nm || continue
+                users_valid_name "$nm" || { msg "${RED}用户名不合法。${NC}"; pause_return; continue; }
+                jq -e --arg n "$nm" '.users[] | select(.name == $n)' "$reg" >/dev/null 2>&1 && { msg "${RED}用户名已存在。${NC}"; pause_return; continue; }
+                local secret='' nuuid='' flow='' email=''
+                flow=$(jq -r '.users[] | select(.name == "main") | .flow // ""' "$reg" 2>/dev/null | head -1)
+                case "$proto" in
+                    vless|vmess) secret=$(generate_robust_uuid) || continue ;;
+                    tuic) nuuid=$(generate_robust_uuid) || continue; secret=$(rand_alnum 16) || continue ;;
+                    shadowsocks) secret=$(openssl rand -base64 16 2>/dev/null | tr -d '\n\r'); [[ -n "$secret" ]] || continue ;;
+                    *) secret=$(rand_alnum 16) || continue ;;
+                esac
+                [[ "$core" == xray* ]] && email="${tag}/${nm}"
+                local created=''
+                created=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+                new=$(printf '%s' "$old" | jq -c --arg n "$nm" --arg s "$secret" --arg u "$nuuid" --arg f "$flow" --arg e "$email" --arg now "$created" '
+                    .users += [{name: $n, secret: $s, uuid: $u, flow: $f, email: $e, created: $now,
+                                expire_at: 0, quota_gb: 0, window: "", disabled: false, blocked: "",
+                                period: "", used_up: 0, used_down: 0, last_up: 0, last_down: 0}]') || continue
+                if users_apply_reg "$core" "$tag" "$new" "$old"; then
+                    msg "${GREEN}用户已添加: ${nm}${NC}"
+                    if [[ "$proto" == 'shadowsocks' ]] && (( $(printf '%s' "$new" | jq '.users | length') == 2 )) && [[ -z "$(printf '%s' "$old" | jq -r '.server_secret // ""')" ]]; then
+                        msg "${YELLOW}注意：SS 已切换为多用户模式（服务端密钥+每人密钥），所有人的链接都已变化，请重新下发。${NC}"
+                    fi
+                    local lk=''
+                    lk=$(users_link "$core" "$tag" "$nm" 2>/dev/null || true)
+                    [[ -n "$lk" ]] && { msg "$lk"; generate_qr "$lk"; }
+                else
+                    msg "${RED}添加失败，名单与配置均未改变。${NC}"
+                fi
+                pause_return ;;
+            2)
+                nm=$(users_pick_user "$reg" '选择要删除的用户编号: ') || { pause_return; continue; }
+                [[ -n "$nm" && "$nm" != 'main' ]] || { msg "${RED}主用户不可删除。${NC}"; pause_return; continue; }
+                is_yes "$(printf '删除用户 %s ? [Y/N]: ' "$nm")" || { msg '已取消。'; pause_return; continue; }
+                new=$(printf '%s' "$old" | jq -c --arg n "$nm" '.users |= map(select(.name != $n))') || continue
+                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}已删除: ${nm}${NC}"; else msg "${RED}删除失败，未做改变。${NC}"; fi
+                pause_return ;;
+            3)
+                nm=$(users_pick_user "$reg" '选择用户编号: ') || { pause_return; continue; }
+                local gb=''
+                read -r -p '流量限额 GB (0=不限): ' gb || continue
+                [[ "$gb" =~ ^[0-9]+$ ]] || { msg "${RED}请输入非负整数。${NC}"; pause_return; continue; }
+                new=$(printf '%s' "$old" | jq -c --arg n "$nm" --argjson g "$gb" '
+                    .users |= map(if .name == $n then .quota_gb = $g | (if .blocked == "quota" and $g == 0 then .blocked = "" else . end) else . end)') || continue
+                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}${nm} 的限额已设为 ${gb} GB。${NC}"; else msg "${RED}设置失败。${NC}"; fi
+                pause_return ;;
+            4)
+                nm=$(users_pick_user "$reg" '选择用户编号: ') || { pause_return; continue; }
+                local days=''
+                read -r -p '有效天数 (0=永久): ' days || continue
+                [[ "$days" =~ ^[0-9]+$ ]] || { msg "${RED}请输入非负整数。${NC}"; pause_return; continue; }
+                local expat=0
+                (( days > 0 )) && expat=$((now + days * 86400))
+                new=$(printf '%s' "$old" | jq -c --arg n "$nm" --argjson e "$expat" '
+                    .users |= map(if .name == $n then .expire_at = $e | (if .blocked == "expired" and $e > 0 then .blocked = "" else . end) else . end)') || continue
+                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}${nm} 的到期已更新。${NC}"; else msg "${RED}设置失败。${NC}"; fi
+                pause_return ;;
+            5)
+                nm=$(users_pick_user "$reg" '选择用户编号: ') || { pause_return; continue; }
+                local w=''
+                read -r -p '可用时段 HH:MM-HH:MM (留空=全天): ' w || continue
+                if [[ -n "$w" && ! "$w" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]-([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+                    msg "${RED}时段格式不对。${NC}"; pause_return; continue
+                fi
+                new=$(printf '%s' "$old" | jq -c --arg n "$nm" --arg w "$w" '
+                    .users |= map(if .name == $n then .window = $w | (if .blocked == "window" then .blocked = "" else . end) else . end)') || continue
+                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}${nm} 的时段已更新。${NC}"; else msg "${RED}设置失败。${NC}"; fi
+                pause_return ;;
+            6)
+                nm=$(users_pick_user "$reg" '选择用户编号: ') || { pause_return; continue; }
+                local per=''
+                per=$(date '+%Y-%m')
+                new=$(printf '%s' "$old" | jq -c --arg n "$nm" --arg p "$per" '
+                    .users |= map(if .name == $n then .used_up = 0 | .used_down = 0 | .period = $p | (if .blocked == "quota" then .blocked = "" else . end) else . end)') || continue
+                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}${nm} 的用量已清零。${NC}"; else msg "${RED}清零失败。${NC}"; fi
+                pause_return ;;
+            7)
+                nm=$(users_pick_user "$reg" '选择用户编号: ') || { pause_return; continue; }
+                local lk=''
+                lk=$(users_link "$core" "$tag" "$nm" 2>/dev/null || true)
+                if [[ -n "$lk" ]]; then msg "$lk"; generate_qr "$lk"; else msg "${RED}无法生成该用户的链接（登记链接缺失时请重跑该协议的部署）。${NC}"; fi
+                pause_return ;;
+            8)
+                nm=$(users_pick_user "$reg" '选择用户编号: ') || { pause_return; continue; }
+                new=$(printf '%s' "$old" | jq -c --arg n "$nm" '
+                    .users |= map(if .name == $n then .disabled = (.disabled != true) | (if .disabled == false then .blocked = "" else . end) else . end)') || continue
+                if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}${nm} 的启用状态已切换。${NC}"; else msg "${RED}操作失败。${NC}"; fi
+                pause_return ;;
+            9)
+                is_yes '从配置重新导入将覆盖当前名单（限额/到期等设置会丢失）? [Y/N]: ' || { msg '已取消。'; pause_return; continue; }
+                if users_adopt "$core" "$tag" && users_sync "$core" "$tag"; then msg "${GREEN}已按配置重新导入。${NC}"; else msg "${RED}导入失败。${NC}"; fi
+                pause_return ;;
+            0) return 0 ;;
+            *) msg "${RED}无效选择。${NC}"; sleep 1 ;;
+        esac
+    done
+}
+
+multi_user_menu() {
+    # Bring pre-fix47 combo inbounds into per-tag management (idempotent,
+    # no-op when everything is already tagged).
+    local slot_cfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}"
+    [[ -f "$slot_cfg" && ! -L "$slot_cfg" ]] && users_xray_ensure_tags "$slot_cfg" >/dev/null 2>&1 || true
+    [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json ]] && users_sb_ensure_tags /etc/sing-box/config.json >/dev/null 2>&1 || true
+    while true; do
+        clear
+        msg "${CYAN}======================================================================${NC}"
+        msg "${BOLD}${GREEN}多用户管理 / Multi-user${NC}"
+        msg "${CYAN}======================================================================${NC}"
+        local rows='' i=0 core='' tag='' proto='' port=''
+        rows=$(protocol_inventory 2>/dev/null || true)
+        local -a cores=() tags=() protos=() ports=()
+        while IFS=$'\t' read -r core tag proto port; do
+            [[ -n "$core" && -n "$tag" ]] || continue
+            [[ "$proto" == 'shadowtls' ]] && continue
+            users_reg_ensure "$core" "$tag" >/dev/null 2>&1 || continue
+            local cnt=0
+            cnt=$(jq '.users | length' "$(users_reg_file "$core" "$tag")" 2>/dev/null || echo 0)
+            i=$((i + 1))
+            cores+=("$core"); tags+=("$tag"); protos+=("$proto"); ports+=("$port")
+            printf '%3d. %-46s %-11s :%-6s 用户 %s\n' "$i" "$(protocol_label "$core" "$tag" "$proto" 2>/dev/null || printf '%s' "$tag")" "$core" "$port" "$cnt"
+        done <<< "$rows"
+        if (( i == 0 )); then msg "${YELLOW}暂无可管理的节点（先部署协议）。${NC}"; fi
+        msg "${YELLOW}E. 导出全部用户链接（订阅文件）${NC}"
+        msg "${CYAN}0. 返回${NC}"
+        local c=''
+        read -r -p "Select [0-${i}/E]: " c || return 0
+        case "$c" in
+            0) return 0 ;;
+            E|e)
+                local n=''
+                n=$(users_export_all 2>/dev/null || true)
+                if [[ -n "$n" ]]; then msg "${GREEN}已导出 ${n} 条用户链接到订阅目录（uri-list.txt / subscription.base64）。${NC}"; else msg "${RED}导出失败或无可用链接。${NC}"; fi
+                pause_return ;;
+            ''|*[!0-9]*) msg "${RED}无效选择。${NC}"; sleep 1 ;;
+            *)
+                if (( c >= 1 && c <= i )); then
+                    users_inbound_menu "${cores[$((c - 1))]}" "${tags[$((c - 1))]}" "${protos[$((c - 1))]}" "${ports[$((c - 1))]}"
+                else
+                    msg "${RED}无效选择。${NC}"; sleep 1
+                fi ;;
+        esac
+    done
+}
+
 multi_uuid_menu() {
     # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
     while true; do
@@ -23682,7 +24472,7 @@ vps_benchmark_menu() {
         10) run_local_sni_mini_benchmark ;;
         11) show_sni_preference_records ;;
         12) backup_restore_menu ;;
-        13) multi_uuid_menu ;;
+        13) multi_user_menu ;;
         14) wallos_menu ;;
         15) manage_ss_whitelist ;;
         0) return 0 ;;
@@ -26206,6 +26996,8 @@ PY_SELFTEST_TAR
     grep -Fq 'try_latest_cores_danger()' "$0" || { echo 'FAIL: try-latest cores missing'; failures=$((failures + 1)); }
     grep -Fq 'export_lightweight_subscription()' "$0" || { echo 'FAIL: lightweight subscription missing'; failures=$((failures + 1)); }
     grep -Fq 'xray_ensure_stats()' "$0" || { echo 'FAIL: xray_ensure_stats missing'; failures=$((failures + 1)); }
+    grep -Fq 'multi_user_menu()' "$0" || { echo 'FAIL: multi_user_menu missing'; failures=$((failures + 1)); }
+    grep -Fq 'users_sync()' "$0" || { echo 'FAIL: users_sync missing'; failures=$((failures + 1)); }
     grep -Fq 'statsUserUplink' "$0" || { echo 'FAIL: per-user stats policy missing'; failures=$((failures + 1)); }
     grep -Fq 'revoke one extra UUID from the Xray server' "$0" || grep -Fq 'Revoke one extra UUID from the Xray server' "$0" || { echo 'FAIL: server-side UUID revocation option missing'; failures=$((failures + 1)); }
     # Exercise multi-UUID validation/deduplication on a temporary fixture; never touch /etc/ddr.

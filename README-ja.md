@@ -80,6 +80,7 @@ Xray のオールインワンは Vision（TCP 443）、XHTTP（TCP 8443）、Sha
 | 4 | SOCKS5 / Mixed | 認証付き単体 SOCKS5。コアを選択可能 |
 | 5 | ShadowTLS | sing-box の ShadowTLS v3、内部の Shadowsocks-2022 インバウンドへ迂回 |
 | 6 | Argo (CDN) | VMess / VLESS を WebSocket で Cloudflare トンネル経由にし、サーバー側のインバウンドポートを開きません。一時トンネルはランダムな `*.trycloudflare.com` アドレスで再起動ごとに変わります。固定トンネルは自分のドメインとトンネルトークンを使用します |
+| 7 | 最新 Xray | 実験機能：upstream 最新の Xray コアをインストール（スロット乗っ取り、またはポート競合警告付きで xray-latest として並行）し、VLESS-Vision / XHTTP / Trojan-Reality / SS-2022 を個別に導入。失敗時は理由を表示して削除し、安定版の自動再インストールはしません |
 
 ## ステータスパネル
 

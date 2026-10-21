@@ -592,6 +592,240 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:xl_title) echo '最新 Xray（上游最新版 · 实验功能）' ;;
+        en:xl_title) echo 'Latest Xray (upstream latest · experimental)' ;;
+        ru:xl_title) echo 'Последний Xray (новейший upstream · эксперимент)' ;;
+        fa:xl_title) echo 'جدیدترین Xray (بالادستی · آزمایشی)' ;;
+        zh-tw:xl_title) echo '最新 Xray（上游最新版 · 實驗功能）' ;;
+        ja:xl_title) echo '最新 Xray（upstream 最新版・実験機能）' ;;
+        zh:xl_avail) echo '上游最新版' ;;
+        en:xl_avail) echo 'Upstream latest' ;;
+        ru:xl_avail) echo 'Последний upstream' ;;
+        fa:xl_avail) echo 'جدیدترین بالادستی' ;;
+        zh-tw:xl_avail) echo '上游最新版' ;;
+        ja:xl_avail) echo 'upstream 最新版' ;;
+        zh:xl_unknown) echo '未知' ;;
+        en:xl_unknown) echo 'unknown' ;;
+        ru:xl_unknown) echo 'неизвестно' ;;
+        fa:xl_unknown) echo 'نامشخص' ;;
+        zh-tw:xl_unknown) echo '未知' ;;
+        ja:xl_unknown) echo '不明' ;;
+        zh:xl_slot) echo '稳定槽位 Xray' ;;
+        en:xl_slot) echo 'Stable slot Xray' ;;
+        ru:xl_slot) echo 'Стабильный Xray (слот)' ;;
+        fa:xl_slot) echo 'Xray پایدار (جایگاه)' ;;
+        zh-tw:xl_slot) echo '穩定槽位 Xray' ;;
+        ja:xl_slot) echo '安定スロット Xray' ;;
+        zh:xl_latest_inst) echo '最新版 Xray' ;;
+        en:xl_latest_inst) echo 'Latest Xray' ;;
+        ru:xl_latest_inst) echo 'Последний Xray' ;;
+        fa:xl_latest_inst) echo 'جدیدترین Xray' ;;
+        zh-tw:xl_latest_inst) echo '最新版 Xray' ;;
+        ja:xl_latest_inst) echo '最新 Xray' ;;
+        zh:xl_not_installed) echo '未安装' ;;
+        en:xl_not_installed) echo 'not installed' ;;
+        ru:xl_not_installed) echo 'не установлен' ;;
+        fa:xl_not_installed) echo 'نصب نشده' ;;
+        zh-tw:xl_not_installed) echo '未安裝' ;;
+        ja:xl_not_installed) echo '未インストール' ;;
+        zh:xl_state_takeover) echo '已接管槽位' ;;
+        en:xl_state_takeover) echo 'takeover of slot active' ;;
+        ru:xl_state_takeover) echo 'слот занят последним ядром' ;;
+        fa:xl_state_takeover) echo 'جایگاه با هسته جدید اشغال شده' ;;
+        zh-tw:xl_state_takeover) echo '已接管槽位' ;;
+        ja:xl_state_takeover) echo 'スロットを乗っ取り中' ;;
+        zh:xl_state_coexist) echo '并存实例运行中' ;;
+        en:xl_state_coexist) echo 'coexisting instance running' ;;
+        ru:xl_state_coexist) echo 'параллельный экземпляр работает' ;;
+        fa:xl_state_coexist) echo 'نمونه موازی در حال اجرا' ;;
+        zh-tw:xl_state_coexist) echo '並存實例運行中' ;;
+        ja:xl_state_coexist) echo '並行インスタンス実行中' ;;
+        zh:xl_mlkem_warn) echo '警告：最新版 Xray 强制 ML-KEM 握手——sing-box 客户端无法连接、mihomo 需开启特殊开关、部分客户端不兼容。仅供有经验的用户测试。' ;;
+        en:xl_mlkem_warn) echo 'Warning: the latest Xray enforces ML-KEM handshakes — sing-box clients cannot connect, mihomo needs a special flag, and some clients are incompatible. For experienced users only.' ;;
+        ru:xl_mlkem_warn) echo 'Внимание: последний Xray требует ML-KEM рукопожатие — клиенты sing-box не подключатся, mihomo нужен специальный флаг, часть клиентов несовместима. Только для опытных пользователей.' ;;
+        fa:xl_mlkem_warn) echo 'هشدار: جدیدترین Xray دست‌دادن ML-KEM را اجباری می‌کند — کلاینت‌های sing-box وصل نمی‌شوند، mihomo به پرچم ویژه نیاز دارد و برخی کلاینت‌ها ناسازگارند. فقط برای کاربران باتجربه.' ;;
+        zh-tw:xl_mlkem_warn) echo '警告：最新版 Xray 強制 ML-KEM 握手——sing-box 用戶端無法連接、mihomo 需開啟特殊開關、部分用戶端不相容。僅供有經驗的使用者測試。' ;;
+        ja:xl_mlkem_warn) echo '警告：最新 Xray は ML-KEM ハンドシェイクを強制します。sing-box クライアントは接続できず、mihomo には特殊フラグが必要で、一部のクライアントは非対応です。経験者向けです。' ;;
+        zh:xl_m_install) echo '安装 / 更新最新版核心' ;;
+        en:xl_m_install) echo 'Install / update latest core' ;;
+        ru:xl_m_install) echo 'Установить / обновить последнее ядро' ;;
+        fa:xl_m_install) echo 'نصب / به‌روزرسانی جدیدترین هسته' ;;
+        zh-tw:xl_m_install) echo '安裝 / 更新最新版核心' ;;
+        ja:xl_m_install) echo '最新コアをインストール / 更新' ;;
+        zh:xl_m_ports) echo '查看端口占用（稳定版 / 最新版）' ;;
+        en:xl_m_ports) echo 'View ports (stable / latest)' ;;
+        ru:xl_m_ports) echo 'Порты (стабильный / последний)' ;;
+        fa:xl_m_ports) echo 'مشاهده پورت‌ها (پایدار / جدید)' ;;
+        zh-tw:xl_m_ports) echo '查看連接埠占用（穩定版 / 最新版）' ;;
+        ja:xl_m_ports) echo 'ポート使用状況（安定版 / 最新版）' ;;
+        zh:xl_m_remove) echo '删除最新版 Xray' ;;
+        en:xl_m_remove) echo 'Remove latest Xray' ;;
+        ru:xl_m_remove) echo 'Удалить последний Xray' ;;
+        fa:xl_m_remove) echo 'حذف جدیدترین Xray' ;;
+        zh-tw:xl_m_remove) echo '刪除最新版 Xray' ;;
+        ja:xl_m_remove) echo '最新 Xray を削除' ;;
+        zh:xl_back_main) echo '返回' ;;
+        en:xl_back_main) echo 'Back' ;;
+        ru:xl_back_main) echo 'Назад' ;;
+        fa:xl_back_main) echo 'بازگشت' ;;
+        zh-tw:xl_back_main) echo '返回' ;;
+        ja:xl_back_main) echo '戻る' ;;
+        zh:xl_select) echo '请选择 [0-7]：' ;;
+        en:xl_select) echo 'Select [0-7]: ' ;;
+        ru:xl_select) echo 'Выберите [0–7]: ' ;;
+        fa:xl_select) echo 'انتخاب [۰ تا ۷]: ' ;;
+        zh-tw:xl_select) echo '請選擇 [0-7]：' ;;
+        ja:xl_select) echo '選択してください [0-7]：' ;;
+        zh:xl_mode_ask) echo '请选择安装模式 [1-2，0 取消]：' ;;
+        en:xl_mode_ask) echo 'Install mode [1-2, 0 cancel]: ' ;;
+        ru:xl_mode_ask) echo 'Режим установки [1-2, 0 — отмена]: ' ;;
+        fa:xl_mode_ask) echo 'حالت نصب [۱-۲، ۰ لغو]: ' ;;
+        zh-tw:xl_mode_ask) echo '請選擇安裝模式 [1-2，0 取消]：' ;;
+        ja:xl_mode_ask) echo 'インストールモードを選択 [1-2、0 キャンセル]：' ;;
+        zh:xl_mode_1) echo '接管槽位（默认）：替换当前 Xray 核心' ;;
+        en:xl_mode_1) echo 'Take over the slot (default): replace the current Xray core' ;;
+        ru:xl_mode_1) echo 'Занять слот (по умолчанию): заменить текущее ядро Xray' ;;
+        fa:xl_mode_1) echo 'اشغال جایگاه (پیش‌فرض): جایگزینی هسته فعلی Xray' ;;
+        zh-tw:xl_mode_1) echo '接管槽位（預設）：替換目前 Xray 核心' ;;
+        ja:xl_mode_1) echo 'スロットを乗っ取る（デフォルト）：現在の Xray コアを置き換え' ;;
+        zh:xl_mode_2) echo '并存：独立安装 xray-latest，与稳定版同时运行' ;;
+        en:xl_mode_2) echo 'Coexist: install xray-latest alongside the stable core' ;;
+        ru:xl_mode_2) echo 'Параллельно: установить xray-latest рядом со стабильным ядром' ;;
+        fa:xl_mode_2) echo 'همزیستی: نصب xray-latest در کنار هسته پایدار' ;;
+        zh-tw:xl_mode_2) echo '並存：獨立安裝 xray-latest，與穩定版同時運行' ;;
+        ja:xl_mode_2) echo '並行：xray-latest を安定版と並行インストール' ;;
+        zh:xl_mode_switch) echo '已存在另一种模式的最新版实例，请先用菜单 7 删除后再切换模式。' ;;
+        en:xl_mode_switch) echo 'A latest instance in the other mode exists; remove it (menu 7) before switching modes.' ;;
+        ru:xl_mode_switch) echo 'Уже есть экземпляр последнего Xray в другом режиме; сначала удалите его (пункт 7), затем меняйте режим.' ;;
+        fa:xl_mode_switch) echo 'یک نمونه جدیدترین Xray در حالت دیگر وجود دارد؛ ابتدا آن را با گزینه ۷ حذف کنید و سپس حالت را عوض کنید.' ;;
+        zh-tw:xl_mode_switch) echo '已存在另一種模式的最新版實例，請先用選單 7 刪除後再切換模式。' ;;
+        ja:xl_mode_switch) echo '別モードの最新インスタンスが存在します。先にメニュー 7 で削除してからモードを切り替えてください。' ;;
+        zh:xl_takeover_warn) echo '接管模式将替换当前 Xray 核心与服务。安装失败会删除本次部署并告知原因，不会自动装回稳定版；原有 Xray 节点将由新核心接管，配置不兼容时可能无法启动。' ;;
+        en:xl_takeover_warn) echo 'Takeover replaces the current Xray core and service. On failure the attempt is deleted with the reason shown; the stable core is NOT auto-reinstalled. Existing Xray nodes will run on the new core and may fail to start if the config is incompatible.' ;;
+        ru:xl_takeover_warn) echo 'Режим замены заменяет текущее ядро и службу Xray. При сбое попытка удаляется с указанием причины; стабильное ядро автоматически НЕ переустанавливается. Существующие узлы Xray будут работать на новом ядре и могут не запуститься при несовместимой конфигурации.' ;;
+        fa:xl_takeover_warn) echo 'حالت اشغال، هسته و سرویس فعلی Xray را جایگزین می‌کند. در صورت شکست، تلاش حذف و دلیل نمایش داده می‌شود؛ هسته پایدار به‌صورت خودکار دوباره نصب نمی‌شود. گره‌های موجود Xray روی هسته جدید اجرا می‌شوند و اگر پیکربندی ناسازگار باشد ممکن است شروع نشوند.' ;;
+        zh-tw:xl_takeover_warn) echo '接管模式將替換目前 Xray 核心與服務。安裝失敗會刪除本次部署並告知原因，不會自動裝回穩定版；原有 Xray 節點將由新核心接管，設定不相容時可能無法啟動。' ;;
+        ja:xl_takeover_warn) echo '乗っ取りモードは現在の Xray コアとサービスを置き換えます。失敗時は今回の導入を削除して理由を表示します。安定版の自動再インストールはしません。既存の Xray ノードは新コアで動作し、設定が非互換だと起動しない場合があります。' ;;
+        zh:xl_coexist_warn) echo '并存模式将额外运行一个 Xray 实例（xray-latest），占用更多内存；新协议的端口必须与稳定版错开，下面是当前端口占用。' ;;
+        en:xl_coexist_warn) echo 'Coexist runs an extra Xray instance (xray-latest) and uses more memory; new protocol ports must not collide with the stable core. Current port usage:' ;;
+        ru:xl_coexist_warn) echo 'Параллельный режим запускает дополнительный экземпляр Xray (xray-latest) и использует больше памяти; порты новых протоколов не должны совпадать со стабильным ядром. Текущие порты:' ;;
+        fa:xl_coexist_warn) echo 'حالت همزیستی یک نمونه اضافی Xray (xray-latest) اجرا می‌کند و حافظه بیشتری مصرف می‌کند؛ پورت پروتکل‌های جدید نباید با هسته پایدار تداخل داشته باشد. پورت‌های فعلی:' ;;
+        zh-tw:xl_coexist_warn) echo '並存模式將額外運行一個 Xray 實例（xray-latest），占用更多記憶體；新協議的連接埠必須與穩定版錯開，下面是目前連接埠占用。' ;;
+        ja:xl_coexist_warn) echo '並行モードは追加の Xray インスタンス（xray-latest）を実行し、メモリを多く使います。新プロトコルのポートは安定版と重ならないようにしてください。現在のポート使用状況：' ;;
+        zh:xl_coexist_note) echo '并存模式：新协议装入 xray-latest 实例，端口不得与稳定版冲突。当前端口占用：' ;;
+        en:xl_coexist_note) echo 'Coexist mode: new protocols go into the xray-latest instance; ports must not collide with the stable core. Current port usage:' ;;
+        ru:xl_coexist_note) echo 'Параллельный режим: новые протоколы ставятся в экземпляр xray-latest; порты не должны конфликтовать со стабильным ядром. Текущие порты:' ;;
+        fa:xl_coexist_note) echo 'حالت همزیستی: پروتکل‌های جدید در نمونه xray-latest نصب می‌شوند؛ پورت‌ها نباید با هسته پایدار تداخل داشته باشند. پورت‌های فعلی:' ;;
+        zh-tw:xl_coexist_note) echo '並存模式：新協議裝入 xray-latest 實例，連接埠不得與穩定版衝突。目前連接埠占用：' ;;
+        ja:xl_coexist_note) echo '並行モード：新プロトコルは xray-latest インスタンスに入ります。ポートは安定版と競合させないでください。現在のポート使用状況：' ;;
+        zh:xl_confirm) echo '确认继续？ [Y/N]：' ;;
+        en:xl_confirm) echo 'Continue? [Y/N]: ' ;;
+        ru:xl_confirm) echo 'Продолжить? [Y/N]: ' ;;
+        fa:xl_confirm) echo 'ادامه می‌دهید؟ [Y/N]: ' ;;
+        zh-tw:xl_confirm) echo '確認繼續？ [Y/N]：' ;;
+        ja:xl_confirm) echo '続行しますか？ [Y/N]：' ;;
+        zh:xl_tag_fail) echo '无法获取上游最新版本（网络或 GitHub API 不可用），已取消。' ;;
+        en:xl_tag_fail) echo 'Could not fetch the latest upstream version (network or GitHub API unavailable). Cancelled.' ;;
+        ru:xl_tag_fail) echo 'Не удалось получить последнюю версию upstream (сеть или GitHub API недоступны). Отменено.' ;;
+        fa:xl_tag_fail) echo 'دریافت جدیدترین نسخه بالادستی ممکن نشد (شبکه یا GitHub API در دسترس نیست). لغو شد.' ;;
+        zh-tw:xl_tag_fail) echo '無法取得上游最新版本（網路或 GitHub API 不可用），已取消。' ;;
+        ja:xl_tag_fail) echo 'upstream の最新バージョンを取得できませんでした（ネットワークまたは GitHub API 不可）。キャンセルしました。' ;;
+        zh:xl_fetch_fail) echo '最新版核心下载或校验失败，已删除本次下载，未做任何更改。' ;;
+        en:xl_fetch_fail) echo 'Latest core download or verification failed; the download was deleted and nothing was changed.' ;;
+        ru:xl_fetch_fail) echo 'Загрузка или проверка последнего ядра не удалась; загрузка удалена, изменений нет.' ;;
+        fa:xl_fetch_fail) echo 'دانلود یا بررسی جدیدترین هسته ناموفق بود؛ دانلود حذف شد و هیچ تغییری اعمال نشد.' ;;
+        zh-tw:xl_fetch_fail) echo '最新版核心下載或校驗失敗，已刪除本次下載，未做任何更改。' ;;
+        ja:xl_fetch_fail) echo '最新コアのダウンロードまたは検証に失敗しました。ダウンロードは削除し、何も変更していません。' ;;
+        zh:xl_bin_mismatch) echo '下载的核心版本与上游 tag 不一致，已删除，未安装' ;;
+        en:xl_bin_mismatch) echo 'Downloaded core version does not match the upstream tag; deleted, not installed' ;;
+        ru:xl_bin_mismatch) echo 'Версия загруженного ядра не совпадает с тегом upstream; удалено, не установлено' ;;
+        fa:xl_bin_mismatch) echo 'نسخه هسته دانلودشده با برچسب بالادستی مطابقت ندارد؛ حذف شد و نصب نشد' ;;
+        zh-tw:xl_bin_mismatch) echo '下載的核心版本與上游 tag 不一致，已刪除，未安裝' ;;
+        ja:xl_bin_mismatch) echo 'ダウンロードしたコアのバージョンが upstream タグと一致しません。削除し、インストールしていません' ;;
+        zh:xl_need_core) echo '尚未安装最新版 Xray 核心，请先选 1 安装。' ;;
+        en:xl_need_core) echo 'Latest Xray core is not installed yet; choose 1 to install it first.' ;;
+        ru:xl_need_core) echo 'Последнее ядро Xray ещё не установлено; сначала выберите пункт 1.' ;;
+        fa:xl_need_core) echo 'جدیدترین هسته Xray هنوز نصب نشده است؛ ابتدا گزینه ۱ را انتخاب کنید.' ;;
+        zh-tw:xl_need_core) echo '尚未安裝最新版 Xray 核心，請先選 1 安裝。' ;;
+        ja:xl_need_core) echo '最新 Xray コアがまだインストールされていません。先に 1 を選んでください。' ;;
+        zh:xl_port_prompt) echo '端口' ;;
+        en:xl_port_prompt) echo 'Port' ;;
+        ru:xl_port_prompt) echo 'Порт' ;;
+        fa:xl_port_prompt) echo 'پورت' ;;
+        zh-tw:xl_port_prompt) echo '連接埠' ;;
+        ja:xl_port_prompt) echo 'ポート' ;;
+        zh:xl_port_conflict) echo '端口已被占用或与另一实例冲突，已取消本次部署' ;;
+        en:xl_port_conflict) echo 'Port already in use or conflicts with the other instance; deployment cancelled' ;;
+        ru:xl_port_conflict) echo 'Порт уже занят или конфликтует с другим экземпляром; развёртывание отменено' ;;
+        fa:xl_port_conflict) echo 'پورت قبلاً استفاده شده یا با نمونه دیگر تداخل دارد؛ استقرار لغو شد' ;;
+        zh-tw:xl_port_conflict) echo '連接埠已被占用或與另一實例衝突，已取消本次部署' ;;
+        ja:xl_port_conflict) echo 'ポートは使用中か、もう一方のインスタンスと競合します。導入をキャンセルしました' ;;
+        zh:xl_slot_ports) echo '稳定版 Xray 端口' ;;
+        en:xl_slot_ports) echo 'Stable Xray ports' ;;
+        ru:xl_slot_ports) echo 'Порты стабильного Xray' ;;
+        fa:xl_slot_ports) echo 'پورت‌های Xray پایدار' ;;
+        zh-tw:xl_slot_ports) echo '穩定版 Xray 連接埠' ;;
+        ja:xl_slot_ports) echo '安定版 Xray のポート' ;;
+        zh:xl_latest_ports) echo '最新版 Xray 端口' ;;
+        en:xl_latest_ports) echo 'Latest Xray ports' ;;
+        ru:xl_latest_ports) echo 'Порты последнего Xray' ;;
+        fa:xl_latest_ports) echo 'پورت‌های جدیدترین Xray' ;;
+        zh-tw:xl_latest_ports) echo '最新版 Xray 連接埠' ;;
+        ja:xl_latest_ports) echo '最新版 Xray のポート' ;;
+        zh:xl_ok_installed) echo '已完成' ;;
+        en:xl_ok_installed) echo 'Done' ;;
+        ru:xl_ok_installed) echo 'Готово' ;;
+        fa:xl_ok_installed) echo 'انجام شد' ;;
+        zh-tw:xl_ok_installed) echo '已完成' ;;
+        ja:xl_ok_installed) echo '完了' ;;
+        zh:xl_install_fail) echo '安装失败，已删除本次部署；未自动安装稳定版（需要稳定版请到主菜单 Xray 入口安装）。' ;;
+        en:xl_install_fail) echo 'Install failed; the attempt was deleted. The stable core was NOT auto-installed (use the main-menu Xray entry for the stable core).' ;;
+        ru:xl_install_fail) echo 'Установка не удалась; попытка удалена. Стабильное ядро автоматически НЕ установлено (для стабильного ядра используйте пункт Xray в главном меню).' ;;
+        fa:xl_install_fail) echo 'نصب ناموفق بود؛ تلاش حذف شد. هسته پایدار به‌صورت خودکار نصب نشد (برای هسته پایدار از ورودی Xray در منوی اصلی استفاده کنید).' ;;
+        zh-tw:xl_install_fail) echo '安裝失敗，已刪除本次部署；未自動安裝穩定版（需要穩定版請到主選單 Xray 入口安裝）。' ;;
+        ja:xl_install_fail) echo 'インストールに失敗しました。今回の試行は削除済みです。安定版は自動インストールしていません（安定版はメインメニューの Xray からどうぞ）。' ;;
+        zh:xl_restart_fail) echo '服务重启失败，已回滚本次更改并删除该部署。' ;;
+        en:xl_restart_fail) echo 'Service restart failed; this change was rolled back and the deployment removed.' ;;
+        ru:xl_restart_fail) echo 'Перезапуск службы не удался; изменение откачено, развёртывание удалено.' ;;
+        fa:xl_restart_fail) echo 'راه‌اندازی مجدد سرویس ناموفق بود؛ تغییر بازگردانده و استقرار حذف شد.' ;;
+        zh-tw:xl_restart_fail) echo '服務重啟失敗，已回滾本次更改並刪除該部署。' ;;
+        ja:xl_restart_fail) echo 'サービス再起動に失敗しました。変更をロールバックし、導入を削除しました。' ;;
+        zh:xl_cfg_invalid) echo '配置与最新版核心不兼容或校验失败，已取消并删除本次部署。' ;;
+        en:xl_cfg_invalid) echo 'Config is incompatible with the latest core or failed validation; cancelled and deleted.' ;;
+        ru:xl_cfg_invalid) echo 'Конфигурация несовместима с последним ядром или не прошла проверку; отменено и удалено.' ;;
+        fa:xl_cfg_invalid) echo 'پیکربندی با جدیدترین هسته ناسازگار است یا بررسی آن ناموفق بود؛ لغو و حذف شد.' ;;
+        zh-tw:xl_cfg_invalid) echo '設定與最新版核心不相容或校驗失敗，已取消並刪除本次部署。' ;;
+        ja:xl_cfg_invalid) echo '設定が最新コアと非互換か、検証に失敗しました。キャンセルして削除しました。' ;;
+        zh:xl_gen_fail) echo '操作失败，已取消。' ;;
+        en:xl_gen_fail) echo 'Operation failed; cancelled.' ;;
+        ru:xl_gen_fail) echo 'Операция не удалась; отменено.' ;;
+        fa:xl_gen_fail) echo 'عملیات ناموفق بود؛ لغو شد.' ;;
+        zh-tw:xl_gen_fail) echo '操作失敗，已取消。' ;;
+        ja:xl_gen_fail) echo '操作に失敗しました。キャンセルしました。' ;;
+        zh:xl_already) echo '已是最新版，无需重复安装' ;;
+        en:xl_already) echo 'Already on the latest version; nothing to do' ;;
+        ru:xl_already) echo 'Уже установлена последняя версия; делать нечего' ;;
+        fa:xl_already) echo 'از قبل جدیدترین نسخه نصب است؛ کاری لازم نیست' ;;
+        zh-tw:xl_already) echo '已是最新版，無需重複安裝' ;;
+        ja:xl_already) echo 'すでに最新版です。再インストール不要です' ;;
+        zh:xl_remove_warn_t) echo '这将删除槽位上的 Xray 核心、配置与服务（含原稳定版节点与 Trojan-Reality 独立节点），且不会自动重装稳定版。' ;;
+        en:xl_remove_warn_t) echo 'This deletes the slot Xray core, config and service (including previous stable nodes and the standalone Trojan-Reality node). The stable core will NOT be auto-reinstalled.' ;;
+        ru:xl_remove_warn_t) echo 'Это удалит ядро, конфигурацию и службу Xray в слоте (включая прежние стабильные узлы и отдельный узел Trojan-Reality). Стабильное ядро автоматически НЕ переустанавливается.' ;;
+        fa:xl_remove_warn_t) echo 'این کار هسته، پیکربندی و سرویس Xray جایگاه را حذف می‌کند (شامل گره‌های پایدار قبلی و گره مستقل Trojan-Reality). هسته پایدار به‌صورت خودکار دوباره نصب نمی‌شود.' ;;
+        zh-tw:xl_remove_warn_t) echo '這將刪除槽位上的 Xray 核心、設定與服務（含原穩定版節點與 Trojan-Reality 獨立節點），且不會自動重裝穩定版。' ;;
+        ja:xl_remove_warn_t) echo 'スロット上の Xray コア・設定・サービスを削除します（以前の安定版ノードと Trojan-Reality 単独ノードを含みます）。安定版の自動再インストールはしません。' ;;
+        zh:xl_remove_warn_c) echo '这将删除并存的 xray-latest 实例（核心、配置、服务），不影响稳定版 Xray。' ;;
+        en:xl_remove_warn_c) echo 'This deletes the coexisting xray-latest instance (core, config, service). The stable Xray is not affected.' ;;
+        ru:xl_remove_warn_c) echo 'Это удалит параллельный экземпляр xray-latest (ядро, конфигурацию, службу). Стабильный Xray не затрагивается.' ;;
+        fa:xl_remove_warn_c) echo 'این کار نمونه موازی xray-latest (هسته، پیکربندی، سرویس) را حذف می‌کند. Xray پایدار تحت تأثیر قرار نمی‌گیرد.' ;;
+        zh-tw:xl_remove_warn_c) echo '這將刪除並存的 xray-latest 實例（核心、設定、服務），不影響穩定版 Xray。' ;;
+        ja:xl_remove_warn_c) echo '並行インスタンス xray-latest（コア・設定・サービス）を削除します。安定版 Xray には影響しません。' ;;
+        zh:xl_removed_note) echo '已删除。未自动安装稳定版；需要时请到主菜单 Xray 入口安装。' ;;
+        en:xl_removed_note) echo 'Removed. The stable core was NOT auto-installed; use the main-menu Xray entry if you need it.' ;;
+        ru:xl_removed_note) echo 'Удалено. Стабильное ядро автоматически НЕ установлено; при необходимости используйте пункт Xray в главном меню.' ;;
+        fa:xl_removed_note) echo 'حذف شد. هسته پایدار به‌صورت خودکار نصب نشد؛ در صورت نیاز از ورودی Xray در منوی اصلی استفاده کنید.' ;;
+        zh-tw:xl_removed_note) echo '已刪除。未自動安裝穩定版；需要時請到主選單 Xray 入口安裝。' ;;
+        ja:xl_removed_note) echo '削除しました。安定版は自動インストールしていません。必要な場合はメインメニューの Xray からどうぞ。' ;;
         zh:press_return) echo '按回车返回...' ;;
         en:press_return) echo 'Press Enter to return...' ;;
         ru:press_return) echo 'Нажмите Enter, чтобы вернуться...' ;;
@@ -22086,6 +22320,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
+            msg "${YELLOW}7.  Latest Xray${NC}"
             msg "${CYAN}0. Back${NC}"
             ;;
         ru)
@@ -22096,6 +22331,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
+            msg "${YELLOW}7.  Latest Xray${NC}"
             msg "${CYAN}0. Назад${NC}"
             ;;
         fa)
@@ -22106,6 +22342,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
+            msg "${YELLOW}7.  Latest Xray${NC}"
             msg "${CYAN}0. بازگشت${NC}"
             ;;
         zh-tw)
@@ -22116,6 +22353,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
+            msg "${YELLOW}7.  Latest Xray${NC}"
             msg "${CYAN}0. 返回主選單${NC}"
             ;;
         ja)
@@ -22126,6 +22364,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
+            msg "${YELLOW}7.  Latest Xray${NC}"
             msg "${CYAN}0. メインメニューに戻る${NC}"
             ;;
         *)
@@ -22136,11 +22375,12 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
+            msg "${YELLOW}7.  Latest Xray${NC}"
             msg "${CYAN}0. 返回主菜单${NC}"
             ;;
     esac
     local op_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-6]: ' ;; ru) select_prompt='Выберите [0–6]: ' ;; fa) select_prompt='انتخاب [۰ تا ۶]: ' ;; ja) select_prompt='選択してください [0-6]: ' ;; zh-tw) select_prompt='請選擇 [0-6]：' ;; *) select_prompt='请选择 [0-6]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-7]: ' ;; ru) select_prompt='Выберите [0–7]: ' ;; fa) select_prompt='انتخاب [۰ تا ۷]: ' ;; ja) select_prompt='選択してください [0-7]: ' ;; zh-tw) select_prompt='請選擇 [0-7]：' ;; *) select_prompt='请选择 [0-7]：' ;; esac
     read -r -p "$select_prompt" op_choice || return 0
     case "$op_choice" in
         1) trojan_toolbox_entry; pause_return ;;
@@ -22149,9 +22389,544 @@ other_protocols_menu() {
         4) socks5_toolbox_entry; pause_return ;;
         5) deploy_singbox_shadowtls; pause_return ;;
         6) argo_menu ;;
+        7) xray_latest_menu ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $op_choice${NC}"; sleep 1 ;;
     esac
+    done
+}
+
+# ============ Latest upstream Xray (experimental; More Protocols) ============
+# Installs the NEWEST XTLS/Xray-core release into either the normal slot
+# (takeover, the default) or a parallel xray-latest instance (coexist).
+# Xray marks its normal releases as prerelease, so "latest" here means the
+# newest non-draft version tag, not the releases/latest endpoint.
+# Failure policy (explicit product decision): report the reason, delete the
+# attempt, and NEVER auto-reinstall the stable pinned core from here.
+XRAY_LATEST_BIN='/usr/local/bin/xray-latest'
+XRAY_LATEST_DIR='/etc/ddr/xray-latest'
+XRAY_LATEST_CFG='/etc/ddr/xray-latest/config.json'
+XRAY_LATEST_STATE='/etc/ddr/.xray-latest-state'
+XRAY_SLOT_BIN='/usr/local/bin/xray'
+XRAY_SLOT_CFG='/usr/local/etc/xray/config.json'
+XRAY_SLOT_DIR='/usr/local/etc/xray'
+
+_xl_state_get() {
+    [[ -f "$XRAY_LATEST_STATE" && ! -L "$XRAY_LATEST_STATE" ]] || return 0
+    awk -F= -v k="$1" '$1==k {sub(/^[^=]*=/,""); print; exit}' "$XRAY_LATEST_STATE" 2>/dev/null
+}
+
+_xl_state_write() { # $1=mode $2=version
+    mkdir -p /etc/ddr || return 1
+    local tmp_f
+    tmp_f=$(mktemp /tmp/A-Box-xl-state.XXXXXX) || return 1
+    printf 'mode=%s\nversion=%s\n' "$1" "$2" > "$tmp_f" || { rm -f "$tmp_f"; return 1; }
+    install_file_atomically "$tmp_f" "$XRAY_LATEST_STATE" 600 || { rm -f "$tmp_f"; return 1; }
+    rm -f "$tmp_f"
+}
+
+# Echo "cfg|bin|service" for the active latest instance; fail if none.
+_xl_target() {
+    local mode
+    mode=$(_xl_state_get mode)
+    case "$mode" in
+        takeover) printf '%s|%s|%s\n' "$XRAY_SLOT_CFG" "$XRAY_SLOT_BIN" 'xray' ;;
+        coexist) printf '%s|%s|%s\n' "$XRAY_LATEST_CFG" "$XRAY_LATEST_BIN" 'xray-latest' ;;
+        *) return 1 ;;
+    esac
+}
+
+xl_upstream_latest_tag() {
+    local json tag
+    json=$(github_api_get 'https://api.github.com/repos/XTLS/Xray-core/releases?per_page=10' 2>/dev/null) || return 1
+    tag=$(jq -r '[.[]? | select(.draft == false) | (.tag_name // "") | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0] // ""' <<< "$json" 2>/dev/null) || return 1
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    printf '%s\n' "$tag"
+}
+
+xl_binary_version() { # $1 = binary path -> v-prefixed version or nothing
+    local out ver
+    [[ -n "${1:-}" && -x "$1" ]] || return 0
+    out=$("$1" version 2>/dev/null | head -n 1 || true)
+    ver=$(core_version_from_output "$out" 2>/dev/null || true)
+    [[ -n "$ver" ]] || return 0
+    [[ "$ver" == v* ]] || ver="v$ver"
+    printf '%s\n' "$ver"
+}
+
+xl_config_ports() { # $1 = config path -> sorted unique public ports
+    local cfg="${1:-}"
+    [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]] || return 0
+    jq -r '.inbounds[]? | select(.port != null and .tag != "api") | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1")) | .port' "$cfg" 2>/dev/null | sort -un
+}
+
+xl_show_ports() {
+    local sp lp
+    sp=$(xl_config_ports "$XRAY_SLOT_CFG" | paste -sd, -)
+    lp=$(xl_config_ports "$XRAY_LATEST_CFG" | paste -sd, -)
+    msg "${CYAN}$(tr_msg xl_slot_ports): ${sp:-—}${NC}"
+    msg "${CYAN}$(tr_msg xl_latest_ports): ${lp:-—}${NC}"
+}
+
+# Conflict = port used by the OTHER Xray instance's config, or held by a
+# system listener that is not the target instance's own current config.
+xl_port_conflict() { # $1=port $2=target_cfg
+    local port="${1:-}" target_cfg="${2:-}" other_cfg='' p own=' '
+    [[ "$port" =~ ^[0-9]+$ ]] || return 1
+    if [[ "$target_cfg" == "$XRAY_SLOT_CFG" ]]; then other_cfg="$XRAY_LATEST_CFG"; else other_cfg="$XRAY_SLOT_CFG"; fi
+    while read -r p; do [[ "$p" == "$port" ]] && return 0; done < <(xl_config_ports "$other_cfg")
+    while read -r p; do own+="$p "; done < <(xl_config_ports "$target_cfg")
+    if ss -tuln 2>/dev/null | awk '{print $5}' | grep -qE "[:.]${port}\$"; then
+        [[ "$own" == *" $port "* ]] || return 0
+    fi
+    return 1
+}
+
+_xl_seed_config() { # $1 = cfg path, $2 = log tag (xray | xray-latest)
+    local tmp_json
+    tmp_json=$(mktemp /tmp/A-Box-xl-seed.XXXXXX) || return 1
+    jq -n --arg lt "$2" '{log:{loglevel:"warning",access:("/var/log/A-Box-" + $lt + "-access.log"),error:("/var/log/A-Box-" + $lt + "-error.log")},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
+    install_file_atomically "$tmp_json" "$1" 600 || { rm -f "$tmp_json"; return 1; }
+    rm -f "$tmp_json"
+}
+
+_xl_write_latest_unit() {
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        write_file_atomically_from_stdin /etc/systemd/system/xray-latest.service 644 <<'EOF_XLSVC' || return 1
+# Managed by A-Box
+[Unit]
+Description=A-Box Xray Latest Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-xray
+Group=abox-xray
+UMask=0077
+Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/local/bin/xray-latest run -config /etc/ddr/xray-latest/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_XLSVC
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable xray-latest >/dev/null 2>&1 || true
+    else
+        path_parent_chain_safe /etc/conf.d/xray-latest || return 1
+        mkdir -p /etc/conf.d || return 1
+        write_file_atomically_from_stdin /etc/conf.d/xray-latest 644 <<'EOF_XLCONFD' || return 1
+export XRAY_LOCATION_ASSET="/usr/local/share/xray"
+EOF_XLCONFD
+        write_file_atomically_from_stdin /etc/init.d/xray-latest 755 <<'EOF_XLSVC' || return 1
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Xray Latest Service"
+command="/usr/local/bin/xray-latest"
+command_args="run -config /etc/ddr/xray-latest/config.json"
+command_background="yes"
+command_user="abox-xray:abox-xray"
+capabilities="cap_net_bind_service"
+umask=077
+pidfile="/run/xray-latest.pid"
+depend() { need net; }
+EOF_XLSVC
+        chmod +x /etc/init.d/xray-latest || return 1
+    fi
+}
+
+_xl_write_slot_unit() {
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_XSSVC' || return 1
+# Managed by A-Box
+[Unit]
+Description=A-Box Xray Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-xray
+Group=abox-xray
+UMask=0077
+Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_XSSVC
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable xray >/dev/null 2>&1 || true
+    else
+        path_parent_chain_safe /etc/conf.d/xray || return 1
+        mkdir -p /etc/conf.d || return 1
+        write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XSCONFD' || return 1
+export XRAY_LOCATION_ASSET="/usr/local/share/xray"
+EOF_XSCONFD
+        write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_XSSVC' || return 1
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Xray Service"
+command="/usr/local/bin/xray"
+command_args="run -config /usr/local/etc/xray/config.json"
+command_background="yes"
+command_user="abox-xray:abox-xray"
+capabilities="cap_net_bind_service"
+umask=077
+pidfile="/run/xray.pid"
+depend() { need net; }
+EOF_XSSVC
+        chmod +x /etc/init.d/xray || return 1
+    fi
+}
+
+_xl_remove_coexist_files() {
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        systemctl disable --now xray-latest >/dev/null 2>&1 || true
+        rm -f -- /etc/systemd/system/xray-latest.service
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    else
+        rc-service xray-latest stop >/dev/null 2>&1 || true
+        rm -f -- /etc/init.d/xray-latest /etc/conf.d/xray-latest
+    fi
+    rm -f -- "$XRAY_LATEST_BIN"
+    rm -rf -- "$XRAY_LATEST_DIR"
+}
+
+_xl_install_takeover() { # $1 = staged binary, $2 = tag
+    local staged="$1" created_unit=0 created_cfg=0
+    install_binary_atomically "$staged" "$XRAY_SLOT_BIN" || return 1
+    if [[ ! -f "$XRAY_SLOT_CFG" || -L "$XRAY_SLOT_CFG" ]]; then
+        prepare_abox_runtime_config_dir xray "$XRAY_SLOT_DIR" || return 1
+        _xl_seed_config "$XRAY_SLOT_CFG" 'xray' || return 1
+        created_cfg=1
+    fi
+    if ! xray_owned; then
+        _xl_write_slot_unit || return 1
+        created_unit=1
+    fi
+    prepare_abox_runtime_permissions xray || return 1
+    if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$XRAY_SLOT_BIN" run -test -config "$XRAY_SLOT_CFG" >/dev/null 2>&1; then
+        msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
+        rm -f -- "$XRAY_SLOT_BIN"
+        [[ "$created_cfg" == '1' ]] && rm -f -- "$XRAY_SLOT_CFG"
+        if [[ "$created_unit" == '1' ]]; then
+            if [[ "${INIT_SYS:-}" == 'systemd' ]]; then rm -f -- /etc/systemd/system/xray.service; systemctl daemon-reload >/dev/null 2>&1 || true; else rm -f -- /etc/init.d/xray /etc/conf.d/xray; fi
+        fi
+        return 1
+    fi
+    if ! restart_service_soft xray; then
+        msg "${RED}$(tr_msg xl_restart_fail)${NC}"
+        rm -f -- "$XRAY_SLOT_BIN"
+        return 1
+    fi
+    return 0
+}
+
+_xl_install_coexist() { # $1 = staged binary, $2 = tag
+    local staged="$1"
+    install_binary_atomically "$staged" "$XRAY_LATEST_BIN" || { _xl_remove_coexist_files; return 1; }
+    prepare_abox_runtime_config_dir xray "$XRAY_LATEST_DIR" || { _xl_remove_coexist_files; return 1; }
+    if [[ ! -f "$XRAY_LATEST_CFG" || -L "$XRAY_LATEST_CFG" ]]; then
+        _xl_seed_config "$XRAY_LATEST_CFG" 'xray-latest' || { _xl_remove_coexist_files; return 1; }
+    fi
+    _xl_write_latest_unit || { _xl_remove_coexist_files; return 1; }
+    prepare_abox_runtime_read_file "$XRAY_LATEST_CFG" xray || { _xl_remove_coexist_files; return 1; }
+    if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$XRAY_LATEST_BIN" run -test -config "$XRAY_LATEST_CFG" >/dev/null 2>&1; then
+        msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
+        _xl_remove_coexist_files
+        return 1
+    fi
+    if ! restart_service_soft xray-latest; then
+        msg "${RED}$(tr_msg xl_restart_fail)${NC}"
+        _xl_remove_coexist_files
+        return 1
+    fi
+    return 0
+}
+
+xray_latest_install_core() {
+    local tag='' mode='' mchoice='' tmp='' zip='' ext='' staged_ver='' cur_mode='' cur_ver=''
+    init_system_environment || return 1
+    load_optional_abox_env_or_die
+    tag=$(xl_upstream_latest_tag) || { msg "${RED}$(tr_msg xl_tag_fail)${NC}"; return 1; }
+    cur_mode=$(_xl_state_get mode); cur_ver=$(_xl_state_get version)
+    msg "${CYAN}$(tr_msg xl_avail): ${tag}${NC}"
+    msg "${CYAN}$(tr_msg xl_slot): $(xl_binary_version "$XRAY_SLOT_BIN" || true)${NC}"
+    if ABOX_XRAY_VERSION="$tag" xray_reality_requires_mlkem 2>/dev/null; then
+        msg "${RED}${BOLD}$(tr_msg xl_mlkem_warn)${NC}"
+    fi
+    msg "${YELLOW}1. $(tr_msg xl_mode_1)${NC}"
+    msg "${YELLOW}2. $(tr_msg xl_mode_2)${NC}"
+    msg "${CYAN}0. $(tr_msg xl_back_main)${NC}"
+    read -r -p "$(tr_msg xl_mode_ask)" mchoice || return 0
+    case "$mchoice" in
+        2) mode='coexist' ;;
+        1|'') mode='takeover' ;;
+        0) return 0 ;;
+        *) msg "${RED}$(tr_msg invalid_input): $mchoice${NC}"; return 1 ;;
+    esac
+    if [[ -n "$cur_mode" && "$cur_mode" != "$mode" ]]; then
+        msg "${RED}$(tr_msg xl_mode_switch)${NC}"
+        return 1
+    fi
+    if [[ -n "$cur_mode" && "$cur_ver" == "$tag" ]]; then
+        msg "${GREEN}$(tr_msg xl_already): $tag ($cur_mode)${NC}"
+        return 0
+    fi
+    if [[ "$mode" == 'takeover' ]]; then
+        msg "${RED}${BOLD}$(tr_msg xl_takeover_warn)${NC}"
+    else
+        msg "${YELLOW}$(tr_msg xl_coexist_warn)${NC}"
+        xl_show_ports
+    fi
+    confirm_soft "$(tr_msg xl_confirm)" || return 0
+    tmp=$(mktemp -d /tmp/A-Box-xray-latest.XXXXXX) || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    zip="$tmp/xray_core.zip"; ext="$tmp/ext"; mkdir -p "$ext" || { rm -rf -- "$tmp"; return 1; }
+    if ! ( clear_core_release_resolution XTLS/Xray-core; ABOX_XRAY_VERSION="$tag" fetch_github_release XTLS/Xray-core xray_core.zip "$zip" ); then
+        rm -rf -- "$tmp"
+        msg "${RED}$(tr_msg xl_fetch_fail)${NC}"
+        return 1
+    fi
+    if ! extract_zip_member_safely "$zip" xray "$ext/xray"; then rm -rf -- "$tmp"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; fi
+    chmod 755 "$ext/xray" || { rm -rf -- "$tmp"; return 1; }
+    staged_ver=$(xl_binary_version "$ext/xray")
+    if [[ "$staged_ver" != "$tag" ]]; then
+        rm -rf -- "$tmp"
+        msg "${RED}$(tr_msg xl_bin_mismatch): ${staged_ver:-?} != ${tag}${NC}"
+        return 1
+    fi
+    if [[ "$mode" == 'takeover' ]]; then
+        _xl_install_takeover "$ext/xray" "$tag" || { rm -rf -- "$tmp"; msg "${RED}$(tr_msg xl_install_fail)${NC}"; return 1; }
+    else
+        _xl_install_coexist "$ext/xray" "$tag" || { rm -rf -- "$tmp"; msg "${RED}$(tr_msg xl_install_fail)${NC}"; return 1; }
+    fi
+    rm -rf -- "$tmp"
+    _xl_state_write "$mode" "$tag" || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    set_desired_state RUNNING 2>/dev/null || true
+    msg "${GREEN}$(tr_msg xl_ok_installed): ${tag} (${mode})${NC}"
+    xl_show_ports
+    return 0
+}
+
+# Deploy one protocol inbound into the active latest instance.
+xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
+    local kind="${1:-}" target='' cfg='' bin='' svc='' mode=''
+    local port='' defport='' tag='' uuid='' pass='' pk='' pbk='' sid='' sni='' tmp_json='' tmp_cfg='' bak=''
+    local pub_ip='' link='' label='' listen_addr=''
+    target=$(_xl_target) || { msg "${RED}$(tr_msg xl_need_core)${NC}"; return 1; }
+    IFS='|' read -r cfg bin svc <<< "$target"
+    mode=$(_xl_state_get mode)
+    init_system_environment || return 1
+    load_optional_abox_env_or_die
+    light_preflight_check
+    case "$kind" in
+        vision) defport='443'; tag='latest-vision'; label='VLESS-Vision-Reality (Latest Xray)' ;;
+        xhttp) defport='8443'; tag='latest-xhttp'; label='VLESS-XHTTP-Reality (Latest Xray)' ;;
+        trojan) defport='443'; tag='latest-trojan'; label='Trojan-Reality (Latest Xray)' ;;
+        ss) defport='2053'; tag='latest-ss'; label='SS-2022 (Latest Xray)' ;;
+        *) msg "${RED}$(tr_msg invalid_input): $kind${NC}"; return 1 ;;
+    esac
+    clear
+    msg "${BOLD}${GREEN}${label}${NC}"
+    if [[ "$mode" == 'coexist' ]]; then
+        msg "${YELLOW}$(tr_msg xl_coexist_note)${NC}"
+        xl_show_ports
+    fi
+    port=$(prompt_validated "$(tr_msg xl_port_prompt)" port "$defport") || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    if xl_port_conflict "$port" "$cfg"; then
+        msg "${RED}$(tr_msg xl_port_conflict): ${port}${NC}"
+        xl_show_ports
+        return 1
+    fi
+    listen_addr=$(wildcard_listen_address)
+    sni=$(sni_auto_select_default 2>/dev/null || echo 'www.amazon.com')
+    [[ -n "$sni" ]] || sni='www.amazon.com'
+    tmp_json=$(mktemp /tmp/A-Box-xl-inbound.XXXXXX) || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    case "$kind" in
+        vision|xhttp)
+            local keypair=''
+            keypair=$("$bin" x25519) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+            IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+            [[ -n "$pk" && -n "$pbk" ]] || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+            sid=$(openssl rand -hex 4 | tr -d '\n\r') || { rm -f "$tmp_json"; return 1; }
+            uuid=$(generate_robust_uuid) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+            if [[ "$kind" == 'vision' ]]; then
+                jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg uuid "$uuid" --arg sni "$sni" --arg pk "$pk" --arg sid "$sid" \
+                    '{tag:$tag,listen:$listen,port:$port,protocol:"vless",
+                      settings:{clients:[{id:$uuid,flow:"xtls-rprx-vision"}],decryption:"none"},
+                      streamSettings:{network:"tcp",security:"reality",realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}},
+                      sniffing:{enabled:true,destOverride:["http","tls","quic"]}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
+            else
+                jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg uuid "$uuid" --arg sni "$sni" --arg pk "$pk" --arg sid "$sid" \
+                    '{tag:$tag,listen:$listen,port:$port,protocol:"vless",
+                      settings:{clients:[{id:$uuid}],decryption:"none"},
+                      streamSettings:{network:"xhttp",security:"reality",xhttpSettings:{mode:"auto",path:"/xhttp"},realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}},
+                      sniffing:{enabled:true,destOverride:["http","tls","quic"]}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
+            fi
+            ;;
+        trojan)
+            local keypair=''
+            keypair=$("$bin" x25519) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+            IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+            [[ -n "$pk" && -n "$pbk" ]] || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+            sid=$(openssl rand -hex 4 | tr -d '\n\r') || { rm -f "$tmp_json"; return 1; }
+            pass=$(rand_alnum 16) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+            jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg pass "$pass" --arg sni "$sni" --arg pk "$pk" --arg sid "$sid" \
+                '{tag:$tag,listen:$listen,port:$port,protocol:"trojan",
+                  settings:{clients:[{password:$pass}]},
+                  streamSettings:{network:"tcp",security:"reality",realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
+            ;;
+        ss)
+            pass=$(openssl rand -base64 16 | tr -d '\n\r') || { rm -f "$tmp_json"; return 1; }
+            [[ -n "$pass" ]] || { rm -f "$tmp_json"; return 1; }
+            jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg pass "$pass" \
+                '{tag:$tag,listen:$listen,port:$port,protocol:"shadowsocks",
+                  settings:{method:"2022-blake3-aes-128-gcm",password:$pass,network:"tcp,udp"}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
+            ;;
+    esac
+    if [[ ! -f "$cfg" || -L "$cfg" ]]; then
+        rm -f "$tmp_json"
+        msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
+        return 1
+    fi
+    bak=$(mktemp /tmp/A-Box-xl-cfg-bak.XXXXXX) || { rm -f "$tmp_json"; return 1; }
+    cp -f -- "$cfg" "$bak" || { rm -f "$tmp_json" "$bak"; return 1; }
+    tmp_cfg=$(mktemp /tmp/A-Box-xl-cfg.XXXXXX) || { rm -f "$tmp_json" "$bak"; return 1; }
+    mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; return 1; }; tmp_cfg="$tmp_cfg.json"
+    if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" \
+            '.inbounds |= (map(select(.tag != $t)) + $nb)' "$cfg" > "$tmp_cfg" 2>/dev/null; then
+        rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1
+    fi
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$tmp_cfg" >/dev/null 2>&1; then
+        rm -f "$tmp_cfg" "$tmp_json" "$bak"
+        msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
+        return 1
+    fi
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    rm -f "$tmp_cfg" "$tmp_json"
+    if [[ "$svc" == 'xray' ]]; then prepare_abox_runtime_permissions xray 2>/dev/null || true; else prepare_abox_runtime_read_file "$cfg" xray 2>/dev/null || true; fi
+    if ! restart_service_soft "$svc"; then
+        # Roll back THIS deployment only: restore the previous config.
+        install_file_atomically "$bak" "$cfg" 600 2>/dev/null || cp -f -- "$bak" "$cfg"
+        restart_service_soft "$svc" >/dev/null 2>&1 || true
+        rm -f "$bak"
+        msg "${RED}$(tr_msg xl_restart_fail)${NC}"
+        return 1
+    fi
+    rm -f "$bak"
+    allowPort "$port" tcp || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    [[ "$kind" == 'ss' ]] && { allowPort "$port" udp || true; }
+    save_firewall_rules || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
+    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
+    case "$kind" in
+        vision) link="vless://$(urlencode "$uuid")@$(uri_host "$pub_ip"):${port}?security=reality&encryption=none&flow=xtls-rprx-vision&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Latest-Vision" ;;
+        xhttp) link="vless://$(urlencode "$uuid")@$(uri_host "$pub_ip"):${port}?security=reality&encryption=none&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=xhttp&path=%2Fxhttp&mode=auto#Latest-XHTTP" ;;
+        trojan) link="trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Latest-Trojan" ;;
+        ss) link="ss://$(printf '%s' "2022-blake3-aes-128-gcm:${pass}" | base64 -w0 2>/dev/null | tr '+/' '-_' | tr -d '=')@$(uri_host "$pub_ip"):${port}#Latest-SS2022" ;;
+    esac
+    msg "${GREEN}$(tr_msg xl_ok_installed): ${label} :${port}${NC}"
+    msg "$link"
+    generate_qr "$link"
+    register_standalone_link "latest-${kind}" "${label} · :${port}" "$link"
+    return 0
+}
+
+xray_latest_remove() {
+    local mode='' ver=''
+    mode=$(_xl_state_get mode)
+    ver=$(_xl_state_get version)
+    if [[ -z "$mode" ]]; then
+        msg "${YELLOW}$(tr_msg xl_not_installed)${NC}"
+        return 0
+    fi
+    init_system_environment || return 1
+    if [[ "$mode" == 'takeover' ]]; then
+        msg "${RED}${BOLD}$(tr_msg xl_remove_warn_t)${NC}"
+    else
+        msg "${YELLOW}$(tr_msg xl_remove_warn_c)${NC}"
+    fi
+    confirm_soft "$(tr_msg xl_confirm)" || return 0
+    if [[ "$mode" == 'coexist' ]]; then
+        _xl_remove_coexist_files
+    else
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            systemctl disable --now xray >/dev/null 2>&1 || true
+            rm -f -- /etc/systemd/system/xray.service
+            systemctl daemon-reload >/dev/null 2>&1 || true
+        else
+            rc-service xray stop >/dev/null 2>&1 || true
+            rm -f -- /etc/init.d/xray /etc/conf.d/xray
+        fi
+        rm -f -- "$XRAY_SLOT_BIN"
+        rm -rf -- "$XRAY_SLOT_DIR"
+        rm -f -- "${ABOX_DIR:-/etc/ddr}/standalone-links.d/trojan-xray.link"
+    fi
+    rm -f -- "${ABOX_DIR:-/etc/ddr}/standalone-links.d"/latest-*.link
+    rm -f -- "$XRAY_LATEST_STATE"
+    msg "${GREEN}$(tr_msg xl_removed_note)${NC}"
+    return 0
+}
+
+xray_latest_menu() {
+    local latest_tag='' choice='' state_mode='' state_ver=''
+    latest_tag=$(xl_upstream_latest_tag 2>/dev/null || echo '')
+    while true; do
+        clear
+        msg "${CYAN}======================================================================${NC}"
+        msg "${BOLD}${GREEN}$(tr_msg xl_title)${NC}"
+        state_mode=$(_xl_state_get mode); state_ver=$(_xl_state_get version)
+        msg "${CYAN}$(tr_msg xl_avail): ${latest_tag:-$(tr_msg xl_unknown)}${NC}"
+        msg "${CYAN}$(tr_msg xl_slot): $(xl_binary_version "$XRAY_SLOT_BIN")${NC}"
+        if [[ -n "$state_mode" ]]; then
+            if [[ "$state_mode" == 'takeover' ]]; then
+                msg "${CYAN}$(tr_msg xl_state_takeover): ${state_ver}${NC}"
+            else
+                msg "${CYAN}$(tr_msg xl_state_coexist): ${state_ver} ($(xl_binary_version "$XRAY_LATEST_BIN"))${NC}"
+            fi
+        else
+            msg "${CYAN}$(tr_msg xl_latest_inst): $(tr_msg xl_not_installed)${NC}"
+        fi
+        if [[ -n "$latest_tag" ]] && ABOX_XRAY_VERSION="$latest_tag" xray_reality_requires_mlkem 2>/dev/null; then
+            msg "${RED}${BOLD}$(tr_msg xl_mlkem_warn)${NC}"
+        fi
+        msg "${YELLOW}1.  $(tr_msg xl_m_install)${NC}"
+        msg "${YELLOW}2.  VLESS + Vision + REALITY${NC}"
+        msg "${YELLOW}3.  VLESS + XHTTP + REALITY${NC}"
+        msg "${YELLOW}4.  Trojan-Reality${NC}"
+        msg "${YELLOW}5.  Shadowsocks 2022${NC}"
+        msg "${YELLOW}6.  $(tr_msg xl_m_ports)${NC}"
+        msg "${YELLOW}7.  $(tr_msg xl_m_remove)${NC}"
+        msg "${CYAN}0.  $(tr_msg xl_back_main)${NC}"
+        read -r -p "$(tr_msg xl_select)" choice || return 0
+        case "$choice" in
+            1) xray_latest_install_core; pause_return ;;
+            2) xray_latest_deploy vision; pause_return ;;
+            3) xray_latest_deploy xhttp; pause_return ;;
+            4) xray_latest_deploy trojan; pause_return ;;
+            5) xray_latest_deploy ss; pause_return ;;
+            6) xl_show_ports; pause_return ;;
+            7) xray_latest_remove; pause_return ;;
+            0) return 0 ;;
+            *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
+        esac
     done
 }
 
@@ -24820,6 +25595,10 @@ PY_SELFTEST_TAR
     grep -Fq "ABOX_CORE_MIRROR_RELEASE='core-binaries'" "$0" || { echo 'FAIL: stable core mirror tag missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/A-Box/releases/download/core-binaries'" "$0" || { echo 'FAIL: stable core mirror URL missing'; failures=$((failures + 1)); }
     declare -F fetch_util_mirror_asset >/dev/null 2>&1 || { echo 'FAIL: pinned-utility mirror fetch missing'; failures=$((failures + 1)); }
+    declare -F xray_latest_menu >/dev/null 2>&1 || { echo 'FAIL: latest Xray menu missing'; failures=$((failures + 1)); }
+    declare -F xray_latest_install_core >/dev/null 2>&1 || { echo 'FAIL: latest Xray core installer missing'; failures=$((failures + 1)); }
+    declare -F xray_latest_deploy >/dev/null 2>&1 || { echo 'FAIL: latest Xray deployer missing'; failures=$((failures + 1)); }
+    grep -Fq "XRAY_LATEST_BIN='/usr/local/bin/xray-latest'" "$0" || { echo 'FAIL: xray-latest binary path missing'; failures=$((failures + 1)); }
     grep -Fq '每月流量管控 / Monthly Traffic' <<< "$source_body" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
     grep -Fq 'one_click_reality_deploy()' "$0" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
     grep -Fq 'abox_is_fast()' "$0" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }

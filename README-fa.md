@@ -80,6 +80,7 @@ curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alaricli
 | 4 | SOCKS5 / Mixed | ‏SOCKS5 مستقل با احراز هویت؛ هسته به انتخاب شما |
 | 5 | ShadowTLS | ‏ShadowTLS v3 روی sing-box، با عبور به یک ورودی داخلی Shadowsocks-2022 |
 | 6 | Argo (CDN) | ‏VMess / VLESS روی WebSocket از راه تونل Cloudflare — هیچ پورت ورودی روی سرور باز نمی‌شود. تونل‌های موقت یک نشانی تصادفی `*.trycloudflare.com` می‌گیرند که با هر راه‌اندازی مجدد عوض می‌شود؛ تونل‌های ثابت از دامنه و توکن تونل خودتان استفاده می‌کنند |
+| 7 | جدیدترین Xray | آزمایشی: نصب جدیدترین هسته Xray از بالادستی (اشغال جایگاه، یا همزیستی به‌صورت نمونه xray-latest با هشدار تداخل پورت) و استقرار یکی‌یکی VLESS-Vision / XHTTP / Trojan-Reality / SS-2022. در صورت شکست، دلیل نمایش و تلاش حذف می‌شود؛ هسته پایدار هرگز به‌صورت خودکار دوباره نصب نمی‌شود |
 
 ## پنل وضعیت
 

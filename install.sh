@@ -6402,6 +6402,372 @@ tr_msg() {
         ru:tf_verify_after_update) echo 'Невозможно проверить состояние после обновления лимита трафика; транзакция прервана.' ;;
         fa:tf_verify_after_update) echo 'تأیید وضعیت پس از به‌روزرسانی حد ترافیک ممکن نیست؛ تراکنش متوقف شد.' ;;
         ja:tf_verify_after_update) echo 'トラフィック制限の更新後に状態を確認できません。トランザクションは中止されました。' ;;
+        zh:ag_bad_domain) echo '域名格式无效。' ;;
+        zh-tw:ag_bad_domain) echo '網域格式無效。' ;;
+        en:ag_bad_domain) echo 'The domain format is invalid.' ;;
+        ru:ag_bad_domain) echo 'Недопустимый формат домена.' ;;
+        fa:ag_bad_domain) echo 'قالب دامنه نامعتبر است.' ;;
+        ja:ag_bad_domain) echo 'ドメイン形式が無効です。' ;;
+        zh:ag_orc_chmod) echo 'Argo OpenRC 权限设置失败。' ;;
+        zh-tw:ag_orc_chmod) echo 'Argo OpenRC 權限設定失敗。' ;;
+        en:ag_orc_chmod) echo 'Failed to set the Argo OpenRC permissions.' ;;
+        ru:ag_orc_chmod) echo 'Не удалось задать права OpenRC для Argo.' ;;
+        fa:ag_orc_chmod) echo 'تنظیم مجوزهای OpenRC ‏Argo ناموفق بود.' ;;
+        ja:ag_orc_chmod) echo 'Argo の OpenRC 権限設定に失敗しました。' ;;
+        zh:ag_reload) echo 'systemd daemon-reload 失败。' ;;
+        zh-tw:ag_reload) echo 'systemd daemon-reload 失敗。' ;;
+        en:ag_reload) echo 'The systemd daemon-reload failed.' ;;
+        ru:ag_reload) echo 'systemd daemon-reload не удался.' ;;
+        fa:ag_reload) echo '‏systemd daemon-reload ناموفق بود.' ;;
+        ja:ag_reload) echo 'systemd daemon-reload に失敗しました。' ;;
+        zh:ag_start) echo 'Argo 服务启动失败: %s' ;;
+        zh-tw:ag_start) echo 'Argo 服務啟動失敗: %s' ;;
+        en:ag_start) echo 'Failed to start the Argo service: %s' ;;
+        ru:ag_start) echo 'Не удалось запустить службу Argo: %s' ;;
+        fa:ag_start) echo 'شروع سرویس Argo ناموفق بود: %s' ;;
+        ja:ag_start) echo 'Argo サービスの開始に失敗しました: %s' ;;
+        zh:ag_state_atomic) echo 'Argo 状态原子写入失败。' ;;
+        zh-tw:ag_state_atomic) echo 'Argo 狀態原子寫入失敗。' ;;
+        en:ag_state_atomic) echo 'Failed to atomically write the Argo state.' ;;
+        ru:ag_state_atomic) echo 'Не удалось атомарно записать состояние Argo.' ;;
+        fa:ag_state_atomic) echo 'نوشتن اتمی وضعیت Argo ناموفق بود.' ;;
+        ja:ag_state_atomic) echo 'Argo の状態のアトミック書き込みに失敗しました。' ;;
+        zh:ag_state_dir) echo '/etc/ddr 创建失败。' ;;
+        zh-tw:ag_state_dir) echo '/etc/ddr 建立失敗。' ;;
+        en:ag_state_dir) echo 'Failed to create /etc/ddr.' ;;
+        ru:ag_state_dir) echo 'Не удалось создать /etc/ddr.' ;;
+        fa:ag_state_dir) echo 'ایجاد /etc/ddr ناموفق بود.' ;;
+        ja:ag_state_dir) echo '/etc/ddr を作成できませんでした。' ;;
+        zh:ag_state_write) echo 'Argo 状态写入失败。' ;;
+        zh-tw:ag_state_write) echo 'Argo 狀態寫入失敗。' ;;
+        en:ag_state_write) echo 'Failed to write the Argo state.' ;;
+        ru:ag_state_write) echo 'Не удалось записать состояние Argo.' ;;
+        fa:ag_state_write) echo 'نوشتن وضعیت Argo ناموفق بود.' ;;
+        ja:ag_state_write) echo 'Argo の状態を書き込めませんでした。' ;;
+        zh:ag_token_bad) echo 'Token 格式无效。' ;;
+        zh-tw:ag_token_bad) echo 'Token 格式無效。' ;;
+        en:ag_token_bad) echo 'The token format is invalid.' ;;
+        ru:ag_token_bad) echo 'Недопустимый формат токена.' ;;
+        fa:ag_token_bad) echo 'قالب توکن نامعتبر است.' ;;
+        ja:ag_token_bad) echo 'トークン形式が無効です。' ;;
+        zh:ag_token_empty) echo 'Token 为空。' ;;
+        zh-tw:ag_token_empty) echo 'Token 為空。' ;;
+        en:ag_token_empty) echo 'The token is empty.' ;;
+        ru:ag_token_empty) echo 'Токен пуст.' ;;
+        fa:ag_token_empty) echo 'توکن خالی است.' ;;
+        ja:ag_token_empty) echo 'トークンが空です。' ;;
+        zh:ag_token_write) echo 'Argo Token 文件写入失败。' ;;
+        zh-tw:ag_token_write) echo 'Argo Token 檔案寫入失敗。' ;;
+        en:ag_token_write) echo 'Failed to write the Argo token file.' ;;
+        ru:ag_token_write) echo 'Не удалось записать файл токена Argo.' ;;
+        fa:ag_token_write) echo 'نوشتن فایل توکن Argo ناموفق بود.' ;;
+        ja:ag_token_write) echo 'Argo トークンファイルを書き込めませんでした。' ;;
+        zh:ag_uuid) echo 'UUID 生成失败。' ;;
+        zh-tw:ag_uuid) echo 'UUID 產生失敗。' ;;
+        en:ag_uuid) echo 'Failed to generate the UUID.' ;;
+        ru:ag_uuid) echo 'Не удалось сгенерировать UUID.' ;;
+        fa:ag_uuid) echo 'ساخت UUID ناموفق بود.' ;;
+        ja:ag_uuid) echo 'UUID の生成に失敗しました。' ;;
+        zh:ag_vless_domain) echo 'VLESS 临时隧道域名获取超时, 请检查 cloudflared 日志 /etc/ddr/argo-vless.log。' ;;
+        zh-tw:ag_vless_domain) echo 'VLESS 臨時隧道網域獲取逾時, 請檢查 cloudflared 日誌 /etc/ddr/argo-vless.log。' ;;
+        en:ag_vless_domain) echo 'Timed out getting the VLESS temporary tunnel domain; check the cloudflared log /etc/ddr/argo-vless.log.' ;;
+        ru:ag_vless_domain) echo 'Истекло время получения домена временного туннеля VLESS; проверьте журнал cloudflared /etc/ddr/argo-vless.log.' ;;
+        fa:ag_vless_domain) echo 'دریافت دامنه تونل موقت VLESS زمان‌بر شد؛ لاگ cloudflared در /etc/ddr/argo-vless.log را بررسی کنید.' ;;
+        ja:ag_vless_domain) echo 'VLESS 一時トンネルのドメイン取得がタイムアウトしました。cloudflared ログ /etc/ddr/argo-vless.log を確認してください。' ;;
+        zh:ag_vless_port) echo 'VLESS-WS 端口选取失败。' ;;
+        zh-tw:ag_vless_port) echo 'VLESS-WS 埠選取失敗。' ;;
+        en:ag_vless_port) echo 'Failed to pick the VLESS-WS port.' ;;
+        ru:ag_vless_port) echo 'Не удалось выбрать порт VLESS-WS.' ;;
+        fa:ag_vless_port) echo 'انتخاب پورت VLESS-WS ناموفق بود.' ;;
+        ja:ag_vless_port) echo 'VLESS-WS ポートの選択に失敗しました。' ;;
+        zh:ag_vmess_domain) echo 'VMess 临时隧道域名获取超时, 请检查 cloudflared 日志 /etc/ddr/argo-vmess.log。' ;;
+        zh-tw:ag_vmess_domain) echo 'VMess 臨時隧道網域獲取逾時, 請檢查 cloudflared 日誌 /etc/ddr/argo-vmess.log。' ;;
+        en:ag_vmess_domain) echo 'Timed out getting the VMess temporary tunnel domain; check the cloudflared log /etc/ddr/argo-vmess.log.' ;;
+        ru:ag_vmess_domain) echo 'Истекло время получения домена временного туннеля VMess; проверьте журнал cloudflared /etc/ddr/argo-vmess.log.' ;;
+        fa:ag_vmess_domain) echo 'دریافت دامنه تونل موقت VMess زمان‌بر شد؛ لاگ cloudflared در /etc/ddr/argo-vmess.log را بررسی کنید.' ;;
+        ja:ag_vmess_domain) echo 'VMess 一時トンネルのドメイン取得がタイムアウトしました。cloudflared ログ /etc/ddr/argo-vmess.log を確認してください。' ;;
+        zh:ag_vmess_link) echo 'VMess 链接构造失败。' ;;
+        zh-tw:ag_vmess_link) echo 'VMess 連結構造失敗。' ;;
+        en:ag_vmess_link) echo 'Failed to construct the VMess link.' ;;
+        ru:ag_vmess_link) echo 'Не удалось построить ссылку VMess.' ;;
+        fa:ag_vmess_link) echo 'ساخت پیوند VMess ناموفق بود.' ;;
+        ja:ag_vmess_link) echo 'VMess リンクの構築に失敗しました。' ;;
+        zh:ag_vmess_port) echo 'VMess-WS 端口选取失败。' ;;
+        zh-tw:ag_vmess_port) echo 'VMess-WS 埠選取失敗。' ;;
+        en:ag_vmess_port) echo 'Failed to pick the VMess-WS port.' ;;
+        ru:ag_vmess_port) echo 'Не удалось выбрать порт VMess-WS.' ;;
+        fa:ag_vmess_port) echo 'انتخاب پورت VMess-WS ناموفق بود.' ;;
+        ja:ag_vmess_port) echo 'VMess-WS ポートの選択に失敗しました。' ;;
+        zh:ag_ws_json) echo 'Argo WS inbound JSON 生成失败。' ;;
+        zh-tw:ag_ws_json) echo 'Argo WS inbound JSON 產生失敗。' ;;
+        en:ag_ws_json) echo 'Failed to generate the Argo WS inbound JSON.' ;;
+        ru:ag_ws_json) echo 'Не удалось сгенерировать JSON входящего Argo WS.' ;;
+        fa:ag_ws_json) echo 'ساخت JSON ورودی Argo WS ناموفق بود.' ;;
+        ja:ag_ws_json) echo 'Argo WS インバウンド JSON の生成に失敗しました。' ;;
+        zh:ag_ws_update) echo 'Argo WS inbound 配置更新失败。' ;;
+        zh-tw:ag_ws_update) echo 'Argo WS inbound 設定更新失敗。' ;;
+        en:ag_ws_update) echo 'Failed to update the Argo WS inbound configuration.' ;;
+        ru:ag_ws_update) echo 'Не удалось обновить конфигурацию входящего Argo WS.' ;;
+        fa:ag_ws_update) echo 'به‌روزرسانی پیکربندی ورودی Argo WS ناموفق بود.' ;;
+        ja:ag_ws_update) echo 'Argo WS インバウンド設定の更新に失敗しました。' ;;
+        zh:bs2_cfgdir) echo 'Sing-box 配置目录权限准备失败。' ;;
+        zh-tw:bs2_cfgdir) echo 'Sing-box 設定目錄權限準備失敗。' ;;
+        en:bs2_cfgdir) echo 'Failed to prepare the Sing-box configuration directory permissions.' ;;
+        ru:bs2_cfgdir) echo 'Не удалось подготовить права каталога конфигурации Sing-box.' ;;
+        fa:bs2_cfgdir) echo 'آماده‌سازی مجوزهای پوشه پیکربندی Sing-box ناموفق بود.' ;;
+        ja:bs2_cfgdir) echo 'Sing-box 設定ディレクトリの権限の準備に失敗しました。' ;;
+        zh:bs2_chmod) echo 'Sing-box 配置权限设置失败。' ;;
+        zh-tw:bs2_chmod) echo 'Sing-box 設定權限設定失敗。' ;;
+        en:bs2_chmod) echo 'Failed to set the Sing-box configuration permissions.' ;;
+        ru:bs2_chmod) echo 'Не удалось задать права конфигурации Sing-box.' ;;
+        fa:bs2_chmod) echo 'تنظیم مجوزهای پیکربندی Sing-box ناموفق بود.' ;;
+        ja:bs2_chmod) echo 'Sing-box 設定の権限設定に失敗しました。' ;;
+        zh:bs2_commit) echo 'Sing-box 配置原子提交失败。' ;;
+        zh-tw:bs2_commit) echo 'Sing-box 設定原子提交失敗。' ;;
+        en:bs2_commit) echo 'Failed to atomically commit the Sing-box configuration.' ;;
+        ru:bs2_commit) echo 'Не удалось атомарно зафиксировать конфигурацию Sing-box.' ;;
+        fa:bs2_commit) echo 'ثبت اتمی پیکربندی Sing-box ناموفق بود.' ;;
+        ja:bs2_commit) echo 'Sing-box 設定のアトミックコミットに失敗しました。' ;;
+        zh:bs2_dir) echo 'Sing-box 配置目录创建失败。' ;;
+        zh-tw:bs2_dir) echo 'Sing-box 設定目錄建立失敗。' ;;
+        en:bs2_dir) echo 'Failed to create the Sing-box configuration directory.' ;;
+        ru:bs2_dir) echo 'Не удалось создать каталог конфигурации Sing-box.' ;;
+        fa:bs2_dir) echo 'ایجاد پوشه پیکربندی Sing-box ناموفق بود.' ;;
+        ja:bs2_dir) echo 'Sing-box 設定ディレクトリを作成できませんでした。' ;;
+        zh:bs2_inbounds) echo 'Sing-box inbounds JSON 构造失败。' ;;
+        zh-tw:bs2_inbounds) echo 'Sing-box inbounds JSON 構造失敗。' ;;
+        en:bs2_inbounds) echo 'Failed to construct the Sing-box inbounds JSON.' ;;
+        ru:bs2_inbounds) echo 'Не удалось построить JSON входящих подключений Sing-box.' ;;
+        fa:bs2_inbounds) echo 'ساخت JSON ورودی‌های Sing-box ناموفق بود.' ;;
+        ja:bs2_inbounds) echo 'Sing-box インバウンド JSON の構築に失敗しました。' ;;
+        zh:bs2_json) echo 'Sing-box JSON 生成失败。' ;;
+        zh-tw:bs2_json) echo 'Sing-box JSON 產生失敗。' ;;
+        en:bs2_json) echo 'Failed to generate the Sing-box JSON.' ;;
+        ru:bs2_json) echo 'Не удалось сгенерировать JSON Sing-box.' ;;
+        fa:bs2_json) echo 'ساخت JSON ‏Sing-box ناموفق بود.' ;;
+        ja:bs2_json) echo 'Sing-box JSON の生成に失敗しました。' ;;
+        zh:bs2_parent) echo 'Sing-box 配置父路径不是目录，拒绝写入。' ;;
+        zh-tw:bs2_parent) echo 'Sing-box 設定父路徑不是目錄，拒絕寫入。' ;;
+        en:bs2_parent) echo 'The Sing-box configuration parent path is not a directory; refusing to write.' ;;
+        ru:bs2_parent) echo 'Родительский путь конфигурации Sing-box не является каталогом; запись отклонена.' ;;
+        fa:bs2_parent) echo 'مسیر والد پیکربندی Sing-box یک پوشه نیست؛ نوشتن رد شد.' ;;
+        ja:bs2_parent) echo 'Sing-box 設定の親パスがディレクトリではないため、書き込みを拒否します。' ;;
+        zh:bs2_symlink) echo 'Sing-box 配置路径存在符号链接，拒绝写入。' ;;
+        zh-tw:bs2_symlink) echo 'Sing-box 設定路徑存在符號連結，拒絕寫入。' ;;
+        en:bs2_symlink) echo 'A symlink exists in the Sing-box configuration path; refusing to write.' ;;
+        ru:bs2_symlink) echo 'В пути конфигурации Sing-box есть символьная ссылка; запись отклонена.' ;;
+        fa:bs2_symlink) echo 'در مسیر پیکربندی Sing-box پیوند نمادین وجود دارد؛ نوشتن رد شد.' ;;
+        ja:bs2_symlink) echo 'Sing-box 設定パスにシンボリックリンクがあるため、書き込みを拒否します。' ;;
+        zh:bs2_tmp) echo 'Sing-box 配置临时文件创建失败。' ;;
+        zh-tw:bs2_tmp) echo 'Sing-box 設定臨時檔案建立失敗。' ;;
+        en:bs2_tmp) echo 'Failed to create the Sing-box configuration temp file.' ;;
+        ru:bs2_tmp) echo 'Не удалось создать временный файл конфигурации Sing-box.' ;;
+        fa:bs2_tmp) echo 'ایجاد فایل موقت پیکربندی Sing-box ناموفق بود.' ;;
+        ja:bs2_tmp) echo 'Sing-box 設定の一時ファイルを作成できませんでした。' ;;
+        zh:bx_chmod) echo 'Xray 配置权限设置失败。' ;;
+        zh-tw:bx_chmod) echo 'Xray 設定權限設定失敗。' ;;
+        en:bx_chmod) echo 'Failed to set the Xray configuration permissions.' ;;
+        ru:bx_chmod) echo 'Не удалось задать права конфигурации Xray.' ;;
+        fa:bx_chmod) echo 'تنظیم مجوزهای پیکربندی Xray ناموفق بود.' ;;
+        ja:bx_chmod) echo 'Xray 設定の権限設定に失敗しました。' ;;
+        zh:bx_commit) echo 'Xray 配置原子提交失败。' ;;
+        zh-tw:bx_commit) echo 'Xray 設定原子提交失敗。' ;;
+        en:bx_commit) echo 'Failed to atomically commit the Xray configuration.' ;;
+        ru:bx_commit) echo 'Не удалось атомарно зафиксировать конфигурацию Xray.' ;;
+        fa:bx_commit) echo 'ثبت اتمی پیکربندی Xray ناموفق بود.' ;;
+        ja:bx_commit) echo 'Xray 設定のアトミックコミットに失敗しました。' ;;
+        zh:bx_dir) echo 'Xray 配置目录创建失败。' ;;
+        zh-tw:bx_dir) echo 'Xray 設定目錄建立失敗。' ;;
+        en:bx_dir) echo 'Failed to create the Xray configuration directory.' ;;
+        ru:bx_dir) echo 'Не удалось создать каталог конфигурации Xray.' ;;
+        fa:bx_dir) echo 'ایجاد پوشه پیکربندی Xray ناموفق بود.' ;;
+        ja:bx_dir) echo 'Xray 設定ディレクトリを作成できませんでした。' ;;
+        zh:bx_inbounds) echo 'Xray inbounds JSON 构造失败。' ;;
+        zh-tw:bx_inbounds) echo 'Xray inbounds JSON 構造失敗。' ;;
+        en:bx_inbounds) echo 'Failed to construct the Xray inbounds JSON.' ;;
+        ru:bx_inbounds) echo 'Не удалось построить JSON входящих подключений Xray.' ;;
+        fa:bx_inbounds) echo 'ساخت JSON ورودی‌های Xray ناموفق بود.' ;;
+        ja:bx_inbounds) echo 'Xray インバウンド JSON の構築に失敗しました。' ;;
+        zh:bx_json) echo 'Xray JSON 生成失败。' ;;
+        zh-tw:bx_json) echo 'Xray JSON 產生失敗。' ;;
+        en:bx_json) echo 'Failed to generate the Xray JSON.' ;;
+        ru:bx_json) echo 'Не удалось сгенерировать JSON Xray.' ;;
+        fa:bx_json) echo 'ساخت JSON ‏Xray ناموفق بود.' ;;
+        ja:bx_json) echo 'Xray JSON の生成に失敗しました。' ;;
+        zh:bx_parent) echo 'Xray 配置父路径不是目录，拒绝写入。' ;;
+        zh-tw:bx_parent) echo 'Xray 設定父路徑不是目錄，拒絕寫入。' ;;
+        en:bx_parent) echo 'The Xray configuration parent path is not a directory; refusing to write.' ;;
+        ru:bx_parent) echo 'Родительский путь конфигурации Xray не является каталогом; запись отклонена.' ;;
+        fa:bx_parent) echo 'مسیر والد پیکربندی Xray یک پوشه نیست؛ نوشتن رد شد.' ;;
+        ja:bx_parent) echo 'Xray 設定の親パスがディレクトリではないため、書き込みを拒否します。' ;;
+        zh:bx_symlink) echo 'Xray 配置路径存在符号链接，拒绝写入。' ;;
+        zh-tw:bx_symlink) echo 'Xray 設定路徑存在符號連結，拒絕寫入。' ;;
+        en:bx_symlink) echo 'A symlink exists in the Xray configuration path; refusing to write.' ;;
+        ru:bx_symlink) echo 'В пути конфигурации Xray есть символьная ссылка; запись отклонена.' ;;
+        fa:bx_symlink) echo 'در مسیر پیکربندی Xray پیوند نمادین وجود دارد؛ نوشتن رد شد.' ;;
+        ja:bx_symlink) echo 'Xray 設定パスにシンボリックリンクがあるため、書き込みを拒否します。' ;;
+        zh:bx_tmp) echo 'Xray 配置临时文件创建失败。' ;;
+        zh-tw:bx_tmp) echo 'Xray 設定臨時檔案建立失敗。' ;;
+        en:bx_tmp) echo 'Failed to create the Xray configuration temp file.' ;;
+        ru:bx_tmp) echo 'Не удалось создать временный файл конфигурации Xray.' ;;
+        fa:bx_tmp) echo 'ایجاد فایل موقت پیکربندی Xray ناموفق بود.' ;;
+        ja:bx_tmp) echo 'Xray 設定の一時ファイルを作成できませんでした。' ;;
+        zh:cf_arch) echo 'cloudflared 不支持当前架构: %s' ;;
+        zh-tw:cf_arch) echo 'cloudflared 不支援目前架構: %s' ;;
+        en:cf_arch) echo 'cloudflared does not support the current architecture: %s' ;;
+        ru:cf_arch) echo 'cloudflared не поддерживает текущую архитектуру: %s' ;;
+        fa:cf_arch) echo '‏cloudflared از معماری فعلی پشتیبانی نمی‌کند: %s' ;;
+        ja:cf_arch) echo 'cloudflared は現在のアーキテクチャをサポートしていません: %s' ;;
+        zh:cf_chmod) echo 'cloudflared chmod 失败。' ;;
+        zh-tw:cf_chmod) echo 'cloudflared chmod 失敗。' ;;
+        en:cf_chmod) echo 'The cloudflared chmod failed.' ;;
+        ru:cf_chmod) echo 'chmod cloudflared не удался.' ;;
+        fa:cf_chmod) echo '‏chmod ‏cloudflared ناموفق بود.' ;;
+        ja:cf_chmod) echo 'cloudflared の chmod に失敗しました。' ;;
+        zh:cf_download) echo 'cloudflared 下载失败。' ;;
+        zh-tw:cf_download) echo 'cloudflared 下載失敗。' ;;
+        en:cf_download) echo 'Failed to download cloudflared.' ;;
+        ru:cf_download) echo 'Не удалось загрузить cloudflared.' ;;
+        fa:cf_download) echo 'دانلود cloudflared ناموفق بود.' ;;
+        ja:cf_download) echo 'cloudflared のダウンロードに失敗しました。' ;;
+        zh:cf_exec) echo 'cloudflared 执行校验失败。' ;;
+        zh-tw:cf_exec) echo 'cloudflared 執行校驗失敗。' ;;
+        en:cf_exec) echo 'The cloudflared execution check failed.' ;;
+        ru:cf_exec) echo 'Проверка запуска cloudflared не пройдена.' ;;
+        fa:cf_exec) echo 'بررسی اجرای cloudflared ناموفق بود.' ;;
+        ja:cf_exec) echo 'cloudflared の実行チェックに失敗しました。' ;;
+        zh:cf_install) echo 'cloudflared 原子安装失败。' ;;
+        zh-tw:cf_install) echo 'cloudflared 原子安裝失敗。' ;;
+        en:cf_install) echo 'Failed to atomically install cloudflared.' ;;
+        ru:cf_install) echo 'Не удалось атомарно установить cloudflared.' ;;
+        fa:cf_install) echo 'نصب اتمی cloudflared ناموفق بود.' ;;
+        ja:cf_install) echo 'cloudflared のアトミックインストールに失敗しました。' ;;
+        zh:cf_sha) echo 'cloudflared SHA256 校验失败 (供应链完整性保护)。' ;;
+        zh-tw:cf_sha) echo 'cloudflared SHA256 校驗失敗 (供應鏈完整性保護)。' ;;
+        en:cf_sha) echo 'The cloudflared SHA256 verification failed (supply-chain integrity protection).' ;;
+        ru:cf_sha) echo 'Проверка SHA256 cloudflared не пройдена (защита целостности цепочки поставок).' ;;
+        fa:cf_sha) echo 'بررسی SHA256 ‏cloudflared ناموفق بود (حفاظت از یکپارچگی زنجیره تأمین).' ;;
+        ja:cf_sha) echo 'cloudflared の SHA256 検証に失敗しました（サプライチェーン整合性保護）。' ;;
+        zh:cf_tmp) echo 'cloudflared 临时目录创建失败。' ;;
+        zh-tw:cf_tmp) echo 'cloudflared 臨時目錄建立失敗。' ;;
+        en:cf_tmp) echo 'Failed to create the cloudflared temp directory.' ;;
+        ru:cf_tmp) echo 'Не удалось создать временный каталог cloudflared.' ;;
+        fa:cf_tmp) echo 'ایجاد پوشه موقت cloudflared ناموفق بود.' ;;
+        ja:cf_tmp) echo 'cloudflared の一時ディレクトリを作成できませんでした。' ;;
+        zh:gc_dir) echo '无法创建 Geo 更新目录。' ;;
+        zh-tw:gc_dir) echo '無法建立 Geo 更新目錄。' ;;
+        en:gc_dir) echo 'Cannot create the Geo update directory.' ;;
+        ru:gc_dir) echo 'Невозможно создать каталог обновления Geo.' ;;
+        fa:gc_dir) echo 'ایجاد پوشه به‌روزرسانی Geo ممکن نیست.' ;;
+        ja:gc_dir) echo 'Geo 更新ディレクトリを作成できません。' ;;
+        zh:gc_rm_cron) echo '无法安全移除 A-Box Geo cron 任务；为避免留下指向不存在脚本的 cron，保留 geo_update.sh 并中止当前操作。' ;;
+        zh-tw:gc_rm_cron) echo '無法安全移除 A-Box Geo cron 任務；為避免留下指向不存在腳本的 cron，保留 geo_update.sh 並中止目前操作。' ;;
+        en:gc_rm_cron) echo 'Cannot safely remove the A-Box Geo cron job; to avoid leaving a cron pointing at a nonexistent script, geo_update.sh is kept and the current operation is aborted.' ;;
+        ru:gc_rm_cron) echo 'Невозможно безопасно удалить cron-задачу Geo A-Box; чтобы не оставить cron, указывающий на несуществующий скрипт, geo_update.sh сохранён, а текущая операция прервана.' ;;
+        fa:gc_rm_cron) echo 'حذف امن وظیفه cron ‏Geo ‏A-Box ممکن نیست؛ برای جلوگیری از باقی ماندن cron اشاره‌کننده به اسکریپت ناموجود، geo_update.sh نگه داشته شد و عملیات فعلی متوقف شد.' ;;
+        ja:gc_rm_cron) echo 'A-Box Geo の cron ジョブを安全に削除できません。存在しないスクリプトを指す cron を残さないため、geo_update.sh を保持し、現在の操作を中止します。' ;;
+        zh:gc_rm_script) echo 'Geo 更新脚本删除失败或文件不属于 A-Box。' ;;
+        zh-tw:gc_rm_script) echo 'Geo 更新腳本刪除失敗或檔案不屬於 A-Box。' ;;
+        en:gc_rm_script) echo 'Failed to delete the Geo update script, or the file does not belong to A-Box.' ;;
+        ru:gc_rm_script) echo 'Не удалось удалить скрипт обновления Geo, или файл не принадлежит A-Box.' ;;
+        fa:gc_rm_script) echo 'حذف اسکریپت به‌روزرسانی Geo ناموفق بود یا فایل متعلق به A-Box نیست.' ;;
+        ja:gc_rm_script) echo 'Geo 更新スクリプトの削除に失敗したか、ファイルが A-Box のものではありません。' ;;
+        zh:hp_chmod) echo '健康探针权限设置失败。' ;;
+        zh-tw:hp_chmod) echo '健康探針權限設定失敗。' ;;
+        en:hp_chmod) echo 'Failed to set permissions on the health probe.' ;;
+        ru:hp_chmod) echo 'Не удалось задать права зонда здоровья.' ;;
+        fa:hp_chmod) echo 'تنظیم مجوزهای کاوشگر سلامت ناموفق بود.' ;;
+        ja:hp_chmod) echo 'ヘルスプローブの権限設定に失敗しました。' ;;
+        zh:hp_mark) echo '健康探针运行环境标记写入失败。' ;;
+        zh-tw:hp_mark) echo '健康探針執行環境標記寫入失敗。' ;;
+        en:hp_mark) echo 'Failed to write the runtime marker into the health probe.' ;;
+        ru:hp_mark) echo 'Не удалось записать маркер среды выполнения в зонд здоровья.' ;;
+        fa:hp_mark) echo 'نوشتن نشان محیط اجرا در کاوشگر سلامت ناموفق بود.' ;;
+        ja:hp_mark) echo 'ヘルスプローブへのランタイムマーカー書き込みに失敗しました。' ;;
+        zh:hp_mark_verify) echo '健康探针运行环境标记后置校验失败。' ;;
+        zh-tw:hp_mark_verify) echo '健康探針執行環境標記後置校驗失敗。' ;;
+        en:hp_mark_verify) echo 'The post-write check of the health probe runtime marker failed.' ;;
+        ru:hp_mark_verify) echo 'Проверка маркера среды выполнения зонда здоровья после записи не пройдена.' ;;
+        fa:hp_mark_verify) echo 'بررسی پس از نوشتن نشان محیط اجرای کاوشگر سلامت ناموفق بود.' ;;
+        ja:hp_mark_verify) echo 'ヘルスプローブのランタイムマーカーの事後チェックに失敗しました。' ;;
+        zh:hy2b_acme) echo 'Hysteria ACME 目录已有非 A-Box 内容且无法安全确认归属，拒绝接管。' ;;
+        zh-tw:hy2b_acme) echo 'Hysteria ACME 目錄已有非 A-Box 內容且無法安全確認歸屬，拒絕接管。' ;;
+        en:hy2b_acme) echo 'The Hysteria ACME directory already contains non-A-Box content whose ownership cannot be safely confirmed; refusing to take it over.' ;;
+        ru:hy2b_acme) echo 'В каталоге ACME Hysteria уже есть содержимое не-A-Box, чью принадлежность нельзя безопасно подтвердить; захват отклонён.' ;;
+        fa:hy2b_acme) echo 'پوشه ACME ‏Hysteria از قبل شامل محتوای غیر A-Box است که مالکیت آن را نمی‌توان به‌صورت امن تأیید کرد؛ تصاحب رد شد.' ;;
+        ja:hy2b_acme) echo 'Hysteria ACME ディレクトリに非 A-Box の内容があり、所有を安全に確認できないため、引き継ぎを拒否します。' ;;
+        zh:hy2b_cert) echo 'Hysteria 自签证书生成或密钥配对验证失败。' ;;
+        zh-tw:hy2b_cert) echo 'Hysteria 自簽憑證產生或金鑰配對驗證失敗。' ;;
+        en:hy2b_cert) echo 'Failed to generate the Hysteria self-signed certificate or verify its key pair.' ;;
+        ru:hy2b_cert) echo 'Не удалось сгенерировать самоподписанный сертификат Hysteria или проверить пару ключей.' ;;
+        fa:hy2b_cert) echo 'ساخت گواهی خودامضا Hysteria یا بررسی جفت کلید آن ناموفق بود.' ;;
+        ja:hy2b_cert) echo 'Hysteria の自己署名証明書の生成または鍵ペアの検証に失敗しました。' ;;
+        zh:hy2b_cfg) echo 'Hysteria 配置原子生成失败。' ;;
+        zh-tw:hy2b_cfg) echo 'Hysteria 設定原子產生失敗。' ;;
+        en:hy2b_cfg) echo 'Failed to atomically generate the Hysteria configuration.' ;;
+        ru:hy2b_cfg) echo 'Не удалось атомарно сгенерировать конфигурацию Hysteria.' ;;
+        fa:hy2b_cfg) echo 'ساخت اتمی پیکربندی Hysteria ناموفق بود.' ;;
+        ja:hy2b_cfg) echo 'Hysteria 設定のアトミック生成に失敗しました。' ;;
+        zh:hy2b_chmod) echo 'Hysteria OpenRC 服务权限设置失败。' ;;
+        zh-tw:hy2b_chmod) echo 'Hysteria OpenRC 服務權限設定失敗。' ;;
+        en:hy2b_chmod) echo 'Failed to set permissions on the Hysteria OpenRC service.' ;;
+        ru:hy2b_chmod) echo 'Не удалось задать права службы OpenRC Hysteria.' ;;
+        fa:hy2b_chmod) echo 'تنظیم مجوزهای سرویس OpenRC ‏Hysteria ناموفق بود.' ;;
+        ja:hy2b_chmod) echo 'Hysteria の OpenRC サービスの権限設定に失敗しました。' ;;
+        zh:hy2b_desired) echo 'Hysteria 服务期望状态提交失败。' ;;
+        zh-tw:hy2b_desired) echo 'Hysteria 服務期望狀態提交失敗。' ;;
+        en:hy2b_desired) echo 'Failed to commit the desired Hysteria service state.' ;;
+        ru:hy2b_desired) echo 'Не удалось зафиксировать желаемое состояние службы Hysteria.' ;;
+        fa:hy2b_desired) echo 'ثبت وضعیت مطلوب سرویس Hysteria ناموفق بود.' ;;
+        ja:hy2b_desired) echo 'Hysteria サービスの望ましい状態のコミットに失敗しました。' ;;
+        zh:hy2b_exec) echo 'Hysteria 执行校验失败。' ;;
+        zh-tw:hy2b_exec) echo 'Hysteria 執行校驗失敗。' ;;
+        en:hy2b_exec) echo 'The Hysteria execution check failed.' ;;
+        ru:hy2b_exec) echo 'Проверка запуска Hysteria не пройдена.' ;;
+        fa:hy2b_exec) echo 'بررسی اجرای Hysteria ناموفق بود.' ;;
+        ja:hy2b_exec) echo 'Hysteria の実行チェックに失敗しました。' ;;
+        zh:hy2b_hop_missing) echo '官方 HY2 端口跳跃防火墙规则仍缺失，拒绝提交节点。' ;;
+        zh-tw:hy2b_hop_missing) echo '官方 HY2 埠跳躍防火牆規則仍缺失，拒絕提交節點。' ;;
+        en:hy2b_hop_missing) echo 'The official HY2 port hopping firewall rules are still missing; refusing to commit the node.' ;;
+        ru:hy2b_hop_missing) echo 'Официальные правила брандмауэра прыжков портов HY2 всё ещё отсутствуют; фиксация узла отклонена.' ;;
+        fa:hy2b_hop_missing) echo 'قوانین دیوار آتش رسمی پرش پورت HY2 هنوز وجود ندارد؛ ثبت گره رد شد.' ;;
+        ja:hy2b_hop_missing) echo '公式 HY2 ポートホッピングのファイアウォールルールがまだないため、ノードのコミットを拒否します。' ;;
+        zh:hy2b_hop_restart) echo '官方 HY2 端口跳跃规则缺失且 Hysteria 重启失败。' ;;
+        zh-tw:hy2b_hop_restart) echo '官方 HY2 埠跳躍規則缺失且 Hysteria 重啟失敗。' ;;
+        en:hy2b_hop_restart) echo 'The official HY2 port hopping rules are missing and the Hysteria restart failed.' ;;
+        ru:hy2b_hop_restart) echo 'Отсутствуют официальные правила прыжков портов HY2, и перезапуск Hysteria не удался.' ;;
+        fa:hy2b_hop_restart) echo 'قوانین رسمی پرش پورت HY2 وجود ندارد و راه‌اندازی مجدد Hysteria ناموفق بود.' ;;
+        ja:hy2b_hop_restart) echo '公式 HY2 ポートホッピングルールがなく、Hysteria の再起動に失敗しました。' ;;
+        zh:hy2b_runtime) echo 'Hysteria 运行时用户/文件权限准备失败。' ;;
+        zh-tw:hy2b_runtime) echo 'Hysteria 執行階段使用者/檔案權限準備失敗。' ;;
+        en:hy2b_runtime) echo 'Failed to prepare the Hysteria runtime user/file permissions.' ;;
+        ru:hy2b_runtime) echo 'Не удалось подготовить runtime-пользователя и права файлов Hysteria.' ;;
+        fa:hy2b_runtime) echo 'آماده‌سازی کاربر/مجوزهای فایل زمان اجرای Hysteria ناموفق بود.' ;;
+        ja:hy2b_runtime) echo 'Hysteria のランタイムユーザー/ファイル権限の準備に失敗しました。' ;;
+        zh:hy2b_tmp) echo 'Hysteria 临时目录创建失败。' ;;
+        zh-tw:hy2b_tmp) echo 'Hysteria 臨時目錄建立失敗。' ;;
+        en:hy2b_tmp) echo 'Failed to create the Hysteria temp directory.' ;;
+        ru:hy2b_tmp) echo 'Не удалось создать временный каталог Hysteria.' ;;
+        fa:hy2b_tmp) echo 'ایجاد پوشه موقت Hysteria ناموفق بود.' ;;
+        ja:hy2b_tmp) echo 'Hysteria の一時ディレクトリを作成できませんでした。' ;;
+        zh:wl_add_prompt) echo '请输入要放行的前置机 IP/CIDR: ' ;;
+        zh-tw:wl_add_prompt) echo '請輸入要放行的前置機 IP/CIDR: ' ;;
+        en:wl_add_prompt) echo 'Enter the frontend IP/CIDR to allow: ' ;;
+        ru:wl_add_prompt) echo 'Введите IP/CIDR внешнего узла для разрешения: ' ;;
+        fa:wl_add_prompt) echo '‏IP/CIDR گره جلویی موردنظر برای اجازه را وارد کنید: ' ;;
+        ja:wl_add_prompt) echo '許可するフロントエンド IP/CIDR を入力してください: ' ;;
+        zh:wl_del_prompt) echo '请输入要移除的 IP/CIDR: ' ;;
+        zh-tw:wl_del_prompt) echo '請輸入要移除的 IP/CIDR: ' ;;
+        en:wl_del_prompt) echo 'Enter the IP/CIDR to remove: ' ;;
+        ru:wl_del_prompt) echo 'Введите IP/CIDR для удаления: ' ;;
+        fa:wl_del_prompt) echo '‏IP/CIDR موردنظر برای حذف را وارد کنید: ' ;;
+        ja:wl_del_prompt) echo '削除する IP/CIDR を入力してください: ' ;;
+        zh:wl_pick_prompt) echo '请选择操作 [0-4]: ' ;;
+        zh-tw:wl_pick_prompt) echo '請選擇操作 [0-4]: ' ;;
+        en:wl_pick_prompt) echo 'Choose an action [0-4]: ' ;;
+        ru:wl_pick_prompt) echo 'Выберите действие [0-4]: ' ;;
+        fa:wl_pick_prompt) echo 'یک عملیات انتخاب کنید [0-4]: ' ;;
+        ja:wl_pick_prompt) echo '操作を選択してください [0-4]: ' ;;
         zh:fmt_unused) echo '未用' ;;
         en:fmt_unused) echo 'unused' ;;
         ru:fmt_unused) echo 'нет трафика' ;;
@@ -13360,12 +13726,12 @@ printf '%s %s\n' "$count" "$last" > "$STATE"
 if restart_owned "$failed_srv"; then printf '0 %s\n' "$now" > "$STATE"; else printf '%s %s\n' "$count" "$now" > "$STATE"; fi
 EOF_PROBE
     if [[ "${INIT_SYS:-}" == systemd ]]; then
-        sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='systemd'|" "$ABOX_DIR/socket_probe.sh" || die '健康探针运行环境标记写入失败。'
+        sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='systemd'|" "$ABOX_DIR/socket_probe.sh" || die "$(tr_msg hp_mark)"
     else
-        sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='openrc'|" "$ABOX_DIR/socket_probe.sh" || die '健康探针运行环境标记写入失败。'
+        sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='openrc'|" "$ABOX_DIR/socket_probe.sh" || die "$(tr_msg hp_mark)"
     fi
-    grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/socket_probe.sh" || die '健康探针运行环境标记后置校验失败。'
-    chmod 700 "$ABOX_DIR/socket_probe.sh" || die '健康探针权限设置失败。'
+    grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/socket_probe.sh" || die "$(tr_msg hp_mark_verify)"
+    chmod 700 "$ABOX_DIR/socket_probe.sh" || die "$(tr_msg hp_chmod)"
     # A-06-FIX: No outer flock (script has internal flock -n 9 under umask 077).
     # Outer flock created 0644 lock in /run (tmpfs, cleared on reboot) - removed.
     install_abox_cron_block PROBE '* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1'
@@ -13373,11 +13739,11 @@ EOF_PROBE
 
 setup_geo_cron() {
     if ! abox_owns_service xray; then
-        remove_abox_cron_block GEO || die '无法安全移除 A-Box Geo cron 任务；为避免留下指向不存在脚本的 cron，保留 geo_update.sh 并中止当前操作。'
-        remove_owned_runtime_helper "$ABOX_DIR/geo_update.sh" || die 'Geo 更新脚本删除失败或文件不属于 A-Box。'
+        remove_abox_cron_block GEO || die "$(tr_msg gc_rm_cron)"
+        remove_owned_runtime_helper "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gc_rm_script)"
         return 0
     fi
-    install -d -m 700 "$ABOX_DIR" || die '无法创建 Geo 更新目录。'
+    install -d -m 700 "$ABOX_DIR" || die "$(tr_msg gc_dir)"
     write_file_atomically_from_stdin "$ABOX_DIR/geo_update.sh" 700 <<'EOF_GEO' || die 'Geo 更新脚本原子写入失败。'
 #!/usr/bin/env bash
 # Managed by A-Box
@@ -13982,13 +14348,13 @@ build_xray_config() {
         | if ($mode|contains("VISION")) or ($mode|contains("ALL")) or $mode == "VLESS_SS" then . + [vision] else . end
         | if ($mode|contains("XHTTP")) or ($mode|contains("ALL")) then . + [xhttp] else . end
         | if ($mode|contains("SS")) or ($mode|contains("ALL")) or $mode == "VLESS_SS" then . + [ss] else . end
-    ') || die 'Xray inbounds JSON 构造失败。'
+    ') || die "$(tr_msg bx_inbounds)"
     local out_dir
     out_dir=$(dirname -- "$out")
-    [[ ! -L "$out_dir" && ! -L "$out" ]] || die 'Xray 配置路径存在符号链接，拒绝写入。'
-    [[ ! -e "$out_dir" || -d "$out_dir" ]] || die 'Xray 配置父路径不是目录，拒绝写入。'
-    [[ -d "$out_dir" ]] || install -d -m 755 -- "$out_dir" || die 'Xray 配置目录创建失败。'
-    tmp_out=$(mktemp "$out_dir/.A-Box-xray-config.XXXXXX") || die 'Xray 配置临时文件创建失败。'
+    [[ ! -L "$out_dir" && ! -L "$out" ]] || die "$(tr_msg bx_symlink)"
+    [[ ! -e "$out_dir" || -d "$out_dir" ]] || die "$(tr_msg bx_parent)"
+    [[ -d "$out_dir" ]] || install -d -m 755 -- "$out_dir" || die "$(tr_msg bx_dir)"
+    tmp_out=$(mktemp "$out_dir/.A-Box-xray-config.XXXXXX") || die "$(tr_msg bx_tmp)"
     umask 077
     # XRAY-API (Version A experiment): gRPC control plane for hot-reload.
     # SECURITY: the API has NO authentication. listen is hardcoded to 127.0.0.1
@@ -14012,10 +14378,10 @@ build_xray_config() {
         ] + $rs_rules) },
         inbounds:([{listen:"127.0.0.1", port:10085, protocol:"dokodemo-door", settings:{address:"127.0.0.1"}, tag:"api"}] + $inbounds),
         outbounds: ([{protocol:"freedom", tag:"direct"}, {protocol:"blackhole", tag:"block"}, {protocol:"freedom", tag:"api"}] + $rs_ob)
-    }' > "$tmp_out" || { rm -f "$tmp_out"; die 'Xray JSON 生成失败。'; }
-    chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die 'Xray 配置权限设置失败。'; }
+    }' > "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bx_json)"; }
+    chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bx_chmod)"; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
-    mv -f "$tmp_out" "$out" || { rm -f "$tmp_out"; die 'Xray 配置原子提交失败。'; }
+    mv -f "$tmp_out" "$out" || { rm -f "$tmp_out"; die "$(tr_msg bx_commit)"; }
 }
 
 # ============ Xray API hot-reload (Version A experiment, 233boy style) ============
@@ -14197,17 +14563,17 @@ build_singbox_config() {
         []
         | if ($mode|contains("VISION")) or ($mode|contains("ALL")) or $mode == "VLESS_SS" then . + [vision] else . end
         | if ($mode|contains("HY2")) or ($mode|contains("ALL")) then . + [hy2] else . end
-        | if ($mode|contains("SS")) or ($mode|contains("ALL")) or $mode == "VLESS_SS" then . + [ss] else . end') || die 'Sing-box inbounds JSON 构造失败。'
+        | if ($mode|contains("SS")) or ($mode|contains("ALL")) or $mode == "VLESS_SS" then . + [ss] else . end') || die "$(tr_msg bs2_inbounds)"
     local out_dir
     out_dir=$(dirname -- "$out")
-    [[ ! -L "$out_dir" && ! -L "$out" ]] || die 'Sing-box 配置路径存在符号链接，拒绝写入。'
-    [[ ! -e "$out_dir" || -d "$out_dir" ]] || die 'Sing-box 配置父路径不是目录，拒绝写入。'
+    [[ ! -L "$out_dir" && ! -L "$out" ]] || die "$(tr_msg bs2_symlink)"
+    [[ ! -e "$out_dir" || -d "$out_dir" ]] || die "$(tr_msg bs2_parent)"
     if [[ "$out" == /etc/sing-box/config.json ]]; then
-        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box 配置目录权限准备失败。'
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die "$(tr_msg bs2_cfgdir)"
     else
-        [[ -d "$out_dir" ]] || install -d -m 755 -- "$out_dir" || die 'Sing-box 配置目录创建失败。'
+        [[ -d "$out_dir" ]] || install -d -m 755 -- "$out_dir" || die "$(tr_msg bs2_dir)"
     fi
-    tmp_out=$(mktemp "$out_dir/.A-Box-singbox-config.XXXXXX") || die 'Sing-box 配置临时文件创建失败。'
+    tmp_out=$(mktemp "$out_dir/.A-Box-singbox-config.XXXXXX") || die "$(tr_msg bs2_tmp)"
     umask 077
     # Merge routing state (WARP / split-routing outbounds + rules); survives redeploys.
     local _rs_ob='[]' _rs_rules='[]'
@@ -14237,10 +14603,10 @@ build_singbox_config() {
                 download_detour:"direct"}))} else {} end)),
         inbounds:$inbounds,
         outbounds: ([{type:"direct", tag:"direct"}] + $obs)
-    } + (if ($eps | length) > 0 then {endpoints:$eps} else {} end)' > "$tmp_out" || { rm -f "$tmp_out"; die 'Sing-box JSON 生成失败。'; }
-    chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die 'Sing-box 配置权限设置失败。'; }
+    } + (if ($eps | length) > 0 then {endpoints:$eps} else {} end)' > "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_json)"; }
+    chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_chmod)"; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
-    mv -f "$tmp_out" "$out" || { rm -f "$tmp_out"; die 'Sing-box 配置原子提交失败。'; }
+    mv -f "$tmp_out" "$out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_commit)"; }
 }
 
 generate_self_signed_cert_atomically() {
@@ -14348,7 +14714,7 @@ deploy_official_hy2() {
         get_architecture
     fi
 
-    hy2_tmp=$(mktemp -d /tmp/A-Box-hysteria.XXXXXX) || die 'Hysteria 临时目录创建失败。'
+    hy2_tmp=$(mktemp -d /tmp/A-Box-hysteria.XXXXXX) || die "$(tr_msg hy2b_tmp)"
     ABOX_DEPLOY_TX_TMP="$hy2_tmp"
     hy2_bin="$hy2_tmp/hysteria_core"
     clear_core_release_resolution HyNetworks/hysteria
@@ -14358,13 +14724,13 @@ deploy_official_hy2() {
     install_binary_atomically "$hy2_bin" /usr/local/bin/hysteria || die 'Hysteria binary atomic install failed.'
     rm -rf -- "$hy2_tmp"
     ABOX_DEPLOY_TX_TMP=''
-    /usr/local/bin/hysteria version >/dev/null 2>&1 || die 'Hysteria 执行校验失败。'
+    /usr/local/bin/hysteria version >/dev/null 2>&1 || die "$(tr_msg hy2b_exec)"
 
     HY2_PASS=$(rand_alnum 20)
     HY2_OBFS=$(rand_alnum 16)
 
     if [[ -n "${HY2_DOMAIN:-}" ]]; then
-        prepare_hysteria_acme_dir_ownership || die 'Hysteria ACME 目录已有非 A-Box 内容且无法安全确认归属，拒绝接管。'
+        prepare_hysteria_acme_dir_ownership || die "$(tr_msg hy2b_acme)"
         if [[ "${HY2_ACME_TYPE:-http}" == 'dns' ]]; then
             [[ "${HY2_ACME_DNS_PROVIDER:-}" == 'cloudflare' ]] || die "$(tr_msg pi_acme_cf_only)"
             valid_single_line_secret "${HY2_ACME_DNS_CF_API_TOKEN:-}" 512 || die "$(tr_msg pi_acme_token_bad)"
@@ -14394,7 +14760,7 @@ deploy_official_hy2() {
         HY2_CERT_SHA256_FP=''
         HY2_CERT_PUBKEY_SHA256_B64=''
     else
-        generate_self_signed_cert_atomically /etc/hysteria/server.key /etc/hysteria/server.crt localhost || die 'Hysteria 自签证书生成或密钥配对验证失败。'
+        generate_self_signed_cert_atomically /etc/hysteria/server.key /etc/hysteria/server.crt localhost || die "$(tr_msg hy2b_cert)"
         HY2_CERT_SHA256_FP=$(pin_sha256_colon /etc/hysteria/server.crt | tr -d ':')
         HY2_CERT_PUBKEY_SHA256_B64=$(openssl x509 -in /etc/hysteria/server.crt -noout -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64 | tr -d '\n')
         TLS_CONFIG="tls:
@@ -14414,7 +14780,7 @@ deploy_official_hy2() {
     HY2_RC_CAPS='cap_net_bind_service'
     [[ "${HY2_HOP:-false}" == 'true' ]] && HY2_RC_CAPS='cap_net_admin,cap_net_bind_service'
 
-    build_hysteria_config /etc/hysteria/config.yaml "$TLS_CONFIG" "$HY2_LISTEN" || die 'Hysteria 配置原子生成失败。'
+    build_hysteria_config /etc/hysteria/config.yaml "$TLS_CONFIG" "$HY2_LISTEN" || die "$(tr_msg hy2b_cfg)"
 
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         write_file_atomically_from_stdin /etc/systemd/system/hysteria.service 644 <<EOF_SVC || die 'Hysteria systemd unit 原子写入失败。'
@@ -14463,23 +14829,23 @@ error_log="/var/log/A-Box-hysteria.log"
 pidfile="/run/hysteria.pid"
 depend() { need net; }
 EOF_SVC
-        chmod +x /etc/init.d/hysteria || die 'Hysteria OpenRC 服务权限设置失败。'
+        chmod +x /etc/init.d/hysteria || die "$(tr_msg hy2b_chmod)"
     fi
-    prepare_abox_runtime_permissions hysteria || die 'Hysteria 运行时用户/文件权限准备失败。'
+    prepare_abox_runtime_permissions hysteria || die "$(tr_msg hy2b_runtime)"
     service_manager start hysteria
     if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
         if ! hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT"; then
             msg "${YELLOW}[!] 官方 HY2 端口跳跃防火墙规则未在服务启动后出现；正在重新启动 Hysteria 以触发规则重建。${NC}"
-            restart_service_soft hysteria >/dev/null 2>&1 || die '官方 HY2 端口跳跃规则缺失且 Hysteria 重启失败。'
+            restart_service_soft hysteria >/dev/null 2>&1 || die "$(tr_msg hy2b_hop_restart)"
             sleep 1
-            hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT" || die '官方 HY2 端口跳跃防火墙规则仍缺失，拒绝提交节点。'
+            hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT" || die "$(tr_msg hy2b_hop_missing)"
         fi
     fi
     setup_active_defense
     setup_health_monitor
     if [[ "$IS_SILENT" != 'SILENT' ]]; then
         write_env hysteria HY2
-        set_desired_state RUNNING || die 'Hysteria 服务期望状态提交失败。'
+        set_desired_state RUNNING || die "$(tr_msg hy2b_desired)"
         prune_owned_core_families_except hysteria
         setup_geo_cron
         commit_deployment_transaction
@@ -15695,11 +16061,11 @@ _argo_state_get() {
 }
 
 _argo_state_write() { # $1 = full file content
-    mkdir -p /etc/ddr || die '/etc/ddr 创建失败。'
+    mkdir -p /etc/ddr || die "$(tr_msg ag_state_dir)"
     local tmp_f
     tmp_f=$(mktemp /tmp/A-Box-argo-state.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    printf '%s\n' "$1" > "$tmp_f" || { rm -f "$tmp_f"; die 'Argo 状态写入失败。'; }
-    install_file_atomically "$tmp_f" "$ARGO_STATE_FILE" 600 || { rm -f "$tmp_f"; die 'Argo 状态原子写入失败。'; }
+    printf '%s\n' "$1" > "$tmp_f" || { rm -f "$tmp_f"; die "$(tr_msg ag_state_write)"; }
+    install_file_atomically "$tmp_f" "$ARGO_STATE_FILE" 600 || { rm -f "$tmp_f"; die "$(tr_msg ag_state_atomic)"; }
     rm -f "$tmp_f"
 }
 
@@ -15712,24 +16078,24 @@ install_cloudflared() {
     case "$SB_ARCH" in
         amd64) want="$CLOUDFLARED_SHA256_AMD64" ;;
         arm64) want="$CLOUDFLARED_SHA256_ARM64" ;;
-        *) die "cloudflared 不支持当前架构: $SB_ARCH" ;;
+        *) die "$(tprintf cf_arch "$SB_ARCH")" ;;
     esac
     url="https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-${SB_ARCH}"
-    tmp=$(mktemp -d /tmp/A-Box-cloudflared.XXXXXX) || die 'cloudflared 临时目录创建失败。'
+    tmp=$(mktemp -d /tmp/A-Box-cloudflared.XXXXXX) || die "$(tr_msg cf_tmp)"
     msg "$(tr_msg argo_cf_installing)"
     if ! fetch_util_mirror_asset "cloudflared-${CLOUDFLARED_VERSION}-linux-${SB_ARCH}" "$tmp/cloudflared" \
         || [[ "$(sha256sum "$tmp/cloudflared" 2>/dev/null | awk '{print $1}')" != "$want" ]]; then
         if ! curl -fL --retry 2 --connect-timeout 15 -o "$tmp/cloudflared" "$url"; then
-            rm -rf "$tmp"; die 'cloudflared 下载失败。'
+            rm -rf "$tmp"; die "$(tr_msg cf_download)"
         fi
     fi
     got=$(sha256sum "$tmp/cloudflared" 2>/dev/null | awk '{print $1}')
     if [[ "$got" != "$want" ]]; then
-        rm -rf "$tmp"; die 'cloudflared SHA256 校验失败 (供应链完整性保护)。'
+        rm -rf "$tmp"; die "$(tr_msg cf_sha)"
     fi
-    chmod 755 "$tmp/cloudflared" || { rm -rf "$tmp"; die 'cloudflared chmod 失败。'; }
-    "$tmp/cloudflared" --version >/dev/null 2>&1 || { rm -rf "$tmp"; die 'cloudflared 执行校验失败。'; }
-    install_binary_atomically "$tmp/cloudflared" /usr/local/bin/cloudflared || { rm -rf "$tmp"; die 'cloudflared 原子安装失败。'; }
+    chmod 755 "$tmp/cloudflared" || { rm -rf "$tmp"; die "$(tr_msg cf_chmod)"; }
+    "$tmp/cloudflared" --version >/dev/null 2>&1 || { rm -rf "$tmp"; die "$(tr_msg cf_exec)"; }
+    install_binary_atomically "$tmp/cloudflared" /usr/local/bin/cloudflared || { rm -rf "$tmp"; die "$(tr_msg cf_install)"; }
     rm -rf "$tmp"
 }
 
@@ -15751,13 +16117,13 @@ argo_deploy_ws() {
     local cfg='/etc/sing-box/config.json' tmp_json tmp_cfg
     ARGO_UUID=$(_argo_state_get uuid)
     if [[ ! "$ARGO_UUID" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-4[0-9A-Fa-f]{3}-[89AaBb][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$ ]]; then
-        ARGO_UUID=$(generate_robust_uuid) || die 'UUID 生成失败。'
+        ARGO_UUID=$(generate_robust_uuid) || die "$(tr_msg ag_uuid)"
     fi
     ARGO_VMESS_PORT=$(_argo_state_get vmess_port)
-    [[ "$ARGO_VMESS_PORT" =~ ^[0-9]+$ ]] || ARGO_VMESS_PORT=$(_argo_pick_port) || die 'VMess-WS 端口选取失败。'
+    [[ "$ARGO_VMESS_PORT" =~ ^[0-9]+$ ]] || ARGO_VMESS_PORT=$(_argo_pick_port) || die "$(tr_msg ag_vmess_port)"
     ARGO_VLESS_PORT=$(_argo_state_get vless_port)
     if [[ ! "$ARGO_VLESS_PORT" =~ ^[0-9]+$ || "$ARGO_VLESS_PORT" == "$ARGO_VMESS_PORT" ]]; then
-        ARGO_VLESS_PORT=$(_argo_pick_port) || die 'VLESS-WS 端口选取失败。'
+        ARGO_VLESS_PORT=$(_argo_pick_port) || die "$(tr_msg ag_vless_port)"
         [[ "$ARGO_VLESS_PORT" != "$ARGO_VMESS_PORT" ]] || ARGO_VLESS_PORT=$((ARGO_VMESS_PORT + 1))
     fi
     tmp_json=$(mktemp /tmp/A-Box-sb-argo-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -15768,12 +16134,12 @@ argo_deploy_ws() {
          ({type:"vless",tag:"vless-ws-in",listen:"127.0.0.1",listen_port:$vlp,
            users:[{uuid:$uuid}],
            transport:{type:"ws",path:("/" + $uuid + "-vless"),max_early_data:2560,early_data_header_name:"Sec-WebSocket-Protocol"}})' \
-        > "$tmp_json" || die 'Argo WS inbound JSON 生成失败。'
+        > "$tmp_json" || die "$(tr_msg ag_ws_json)"
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --slurpfile nb "$tmp_json" \
             '.inbounds |= (map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in")) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
-        rm -f "$tmp_cfg" "$tmp_json"; die 'Argo WS inbound 配置更新失败。'
+        rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg ag_ws_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
@@ -15813,9 +16179,9 @@ StandardError=append:/etc/ddr/${name}.log
 [Install]
 WantedBy=multi-user.target
 EOF_UNIT
-        systemctl daemon-reload >/dev/null 2>&1 || die 'systemd daemon-reload 失败。'
+        systemctl daemon-reload >/dev/null 2>&1 || die "$(tr_msg ag_reload)"
         systemctl enable "${name}.service" >/dev/null 2>&1 || true
-        systemctl restart "${name}.service" >/dev/null 2>&1 || die "Argo 服务启动失败: ${name}"
+        systemctl restart "${name}.service" >/dev/null 2>&1 || die "$(tprintf ag_start "$name")"
     else
         write_file_atomically_from_stdin "/etc/init.d/${name}" 755 <<EOF_RC || die "Argo OpenRC unit 写入失败: ${name}"
 #!/sbin/openrc-run
@@ -15830,9 +16196,9 @@ output_log="/etc/ddr/${name}.log"
 error_log="/etc/ddr/${name}.log"
 depend() { need net; }
 EOF_RC
-        chmod +x "/etc/init.d/${name}" || die 'Argo OpenRC 权限设置失败。'
+        chmod +x "/etc/init.d/${name}" || die "$(tr_msg ag_orc_chmod)"
         rc-update add "$name" default >/dev/null 2>&1 || true
-        rc-service "$name" restart >/dev/null 2>&1 9>&- 10>&- || die "Argo 服务启动失败: ${name}"
+        rc-service "$name" restart >/dev/null 2>&1 9>&- 10>&- || die "$(tprintf ag_start "$name")"
     fi
 }
 
@@ -15873,7 +16239,7 @@ argo_links_for() { # $1 = vmess domain, $2 = vless domain
     local vm_json vm_b64 vless_link
     vm_json=$(jq -nc --arg d "$1" --arg id "$ARGO_UUID" \
         '{v:"2",ps:"VMess-Argo",add:$d,port:"443",id:$id,aid:"0",scy:"auto",net:"ws",type:"none",host:$d,path:("/" + $id + "-vmess"),tls:"tls",sni:$d,fp:"chrome"}') \
-        || die 'VMess 链接构造失败。'
+        || die "$(tr_msg ag_vmess_link)"
     vm_b64=$(printf '%s' "$vm_json" | base64 | tr -d '\n\r')
     vless_link="vless://${ARGO_UUID}@${2}:443?encryption=none&security=tls&sni=${2}&type=ws&host=${2}&path=%2F${ARGO_UUID}-vless%3Fed%3D2560#VLESS-Argo"
     msg "VMess: vmess://${vm_b64}"
@@ -15965,8 +16331,8 @@ EOF_SVC
     argo_write_unit argo-vmess "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 --url http://127.0.0.1:${ARGO_VMESS_PORT}"
     argo_write_unit argo-vless "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 --url http://127.0.0.1:${ARGO_VLESS_PORT}"
     local d1='' d2=''
-    d1=$(argo_capture_domain /etc/ddr/argo-vmess.log) || die 'VMess 临时隧道域名获取超时, 请检查 cloudflared 日志 /etc/ddr/argo-vmess.log。'
-    d2=$(argo_capture_domain /etc/ddr/argo-vless.log) || die 'VLESS 临时隧道域名获取超时, 请检查 cloudflared 日志 /etc/ddr/argo-vless.log。'
+    d1=$(argo_capture_domain /etc/ddr/argo-vmess.log) || die "$(tr_msg ag_vmess_domain)"
+    d2=$(argo_capture_domain /etc/ddr/argo-vless.log) || die "$(tr_msg ag_vless_domain)"
     _argo_state_write "mode=temp
 uuid=${ARGO_UUID}
 vmess_port=${ARGO_VMESS_PORT}
@@ -15985,13 +16351,13 @@ deploy_argo_fixed() {
     light_preflight_check
     local domain='' token=''
     read -r -p "$(tr_msg argo_domain_prompt)" domain || domain=''
-    [[ "$domain" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die '域名格式无效。'
+    [[ "$domain" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die "$(tr_msg ag_bad_domain)"
     read -r -s -p "$(tr_msg argo_token_prompt)" token || token=''
     msg ''
-    [[ -n "$token" ]] || die 'Token 为空。'
-    valid_single_line_secret "$token" 512 || die 'Token 格式无效。'
-    [[ "$token" =~ ^[A-Za-z0-9_-]+$ ]] || die 'Token 格式无效。'
-    write_file_atomically_from_stdin /etc/ddr/.argo-token 600 <<< "TUNNEL_TOKEN=${token}" || die 'Argo Token 文件写入失败。'
+    [[ -n "$token" ]] || die "$(tr_msg ag_token_empty)"
+    valid_single_line_secret "$token" 512 || die "$(tr_msg ag_token_bad)"
+    [[ "$token" =~ ^[A-Za-z0-9_-]+$ ]] || die "$(tr_msg ag_token_bad)"
+    write_file_atomically_from_stdin /etc/ddr/.argo-token 600 <<< "TUNNEL_TOKEN=${token}" || die "$(tr_msg ag_token_write)"
     install_cloudflared
     local cfg='/etc/sing-box/config.json' tmp_json
     # Minimal sing-box install when the binary is missing.
@@ -19004,7 +19370,7 @@ PY_TRAFFIC_DASH
                 traffic_service_pre="$traffic_tx_dir/pre-services.state"
                 traffic_service_changed_pre="$traffic_tx_dir/changed-services-pre.state"
                 traffic_service_changed_expected="$traffic_tx_dir/changed-services-expected.state"
-                capture_managed_service_state "$traffic_service_pre" || { rm -rf -- "$traffic_tx_dir"; _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook '无法保存解除流量封锁前的服务状态。'; continue; }
+                capture_managed_service_state "$traffic_service_pre" || { rm -rf -- "$traffic_tx_dir"; _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_unblock_presave)"; continue; }
                 : > "$traffic_service_changed_pre"; : > "$traffic_service_changed_expected"
             fi
             if [[ ${ABOX_DIE_HOOK+x} ]]; then old_die_hook="$ABOX_DIE_HOOK"; fi
@@ -19222,11 +19588,11 @@ manage_ss_whitelist() {
     msg "${YELLOW}3. 开启白名单模式 (TCP+UDP DROP)${NC}"
     msg "${YELLOW}4. 切换为全网开放 (移除 DROP 并放行 TCP+UDP)${NC}"
     msg "${CYAN}0. 返回主菜单${NC}"
-    read -r -p '请选择操作 [0-4]: ' wl_choice
+    read -r -p "$(tr_msg wl_pick_prompt)" wl_choice
     local add_ip del_ip rule found proto
     case "$wl_choice" in
         1)
-            read -r -p '请输入要放行的前置机 IP/CIDR: ' add_ip
+            read -r -p "$(tr_msg wl_add_prompt)" add_ip
             [[ -z "$add_ip" ]] && return
             if [[ "$add_ip" == *:* ]]; then
                 valid_ipv6_cidr "$add_ip" || { msg "${RED}[!] IPv6 白名单地址非法: $add_ip${NC}"; pause_return; return; }
@@ -19260,7 +19626,7 @@ manage_ss_whitelist() {
             pause_return
             ;;
         2)
-            read -r -p '请输入要移除的 IP/CIDR: ' del_ip
+            read -r -p "$(tr_msg wl_del_prompt)" del_ip
             [[ -z "$del_ip" ]] && return
             found=0
             if [[ "$del_ip" == *:* ]]; then

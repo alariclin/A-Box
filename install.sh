@@ -35,7 +35,7 @@ RED=$'\033[0;31m'
 GREEN=$'\033[0;32m'
 YELLOW=$'\033[0;33m'
 BLUE=$'\033[0;34m'
-CYAN=$'\033[0;36m'
+CYAN=$'\033[38;2;0;170;255m'
 GRAY=$'\033[0;37m'
 LBLW=$'\033[0;97m'
 LIGHTBLUE=$'\033[0;94m'
@@ -1595,7 +1595,7 @@ language_menu() {
     msg "${YELLOW}4. 日本語${NC}"
     msg "${YELLOW}5. Русский${NC}"
     msg "${YELLOW}6. فارسی${NC}"
-    msg "${GREEN}0. 返回 / Back${NC}"
+    msg "${CYAN}0. 返回 / Back${NC}"
     local c
     read -r -p 'Select [0-6]: ' c || return 0
     case "$c" in
@@ -11288,16 +11288,16 @@ _menu_banner() {
     # per-letter segments with a truecolor gradient; no per-char slicing
     # (multibyte-safe under C locales).
     local _eq='════════════════════════════════════════════════════════════════════════════════'
-    local _cA=$'\033[38;2;0;95;215m' _cH=$'\033[38;2;0;95;255m' _cB=$'\033[38;2;0;135;255m' _cO=$'\033[38;2;0;175;255m' _cX=$'\033[38;2;0;255;255m'
+    local _cA=$'\033[38;2;0;95;215m' _cH=$'\033[38;2;0;95;255m' _cB=$'\033[38;2;0;135;255m' _cO=$'\033[38;2;0;175;255m' _cX=$'\033[38;2;0;170;255m'
     local _pad='                 '
-    printf '\033[38;2;0;255;255m%s\033[0m\n' "$_eq"
+    printf '\033[38;2;0;170;255m%s\033[0m\n' "$_eq"
     printf '%s' "${_pad}${_cA} █████╗  ${_cH}        ${_cB}██████╗  ${_cO} ██████╗  ${_cX}██╗  ██╗ ${NC}"; printf '\n'
     printf '%s' "${_pad}${_cA}██╔══██╗ ${_cH}        ${_cB}██╔══██╗ ${_cO}██╔═══██╗ ${_cX}╚██╗██╔╝ ${NC}"; printf '\n'
     printf '%s' "${_pad}${_cA}███████║ ${_cH}        ${_cB}██████╔╝ ${_cO}██║   ██║ ${_cX} ╚███╔╝  ${NC}"; printf '\n'
     printf '%s' "${_pad}${_cA}██╔══██║ ${_cH}██████╗ ${_cB}██╔══██╗ ${_cO}██║   ██║ ${_cX} ██╔██╗  ${NC}"; printf '\n'
     printf '%s' "${_pad}${_cA}██║  ██║ ${_cH}╚═════╝ ${_cB}██████╔╝ ${_cO}╚██████╔╝ ${_cX}██╔╝╚██╗ ${NC}"; printf '\n'
     printf '%s' "${_pad}${_cA}╚═╝  ╚═╝ ${_cH}        ${_cB}╚═════╝  ${_cO} ╚═════╝  ${_cX}╚═╝  ╚═╝ ${NC}"; printf '\n'
-    printf '\033[38;2;0;255;255m%s\033[0m\n' "$_eq"
+    printf '\033[38;2;0;170;255m%s\033[0m\n' "$_eq"
 }
 
 # Display the info panel (v3: status matrix + spaced rows, two-color scheme).
@@ -11383,7 +11383,7 @@ _menu_info_display() {
     fi
     # --- legend ---
     msg "  ${CYAN}$(tr_msg mi_state)：  ${GREEN}●${NC} ${LBLW}$(tr_msg mi_run)  ·  ○ ${LBLW}$(tr_msg mi_off)${NC}  ·  ${RED}●${NC} ${LBLW}$(tr_msg mi_fault)${NC}        ${LBLW}$(tr_msg mi_quick_r)${NC}"
-    printf '\033[38;2;0;255;255m%s\033[0m\n' '════════════════════════════════════════════════════════════════════════════════'
+    printf '\033[38;2;0;170;255m%s\033[0m\n' '════════════════════════════════════════════════════════════════════════════════'
 }
 
 # ============ WARP 与分流管理 (routing state + WARP one-click) ============
@@ -13411,9 +13411,9 @@ PY_TRAFFIC_DASH
         msg "${YELLOW}[!] vnStat 未安装或暂无数据；设定上限时会按需安装。${NC}"
     fi
     msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-    msg "${GREEN}1.${NC}  设定/修改每月流量上限"
-    msg "${GREEN}2.${NC}  解除流量限制"
-    msg "${GREEN}0.${NC}  返回主菜单"
+    msg "${CYAN}1.${NC}  设定/修改每月流量上限"
+    msg "${CYAN}2.${NC}  解除流量限制"
+    msg "${CYAN}0.${NC}  返回主菜单"
     read -r -p '请选择 [0-2]: ' tr_choice || return 0
     case "$tr_choice" in
         1)
@@ -13646,7 +13646,7 @@ manage_ss_whitelist() {
     msg "${YELLOW}2. 移除白名单 IP/CIDR (TCP+UDP)${NC}"
     msg "${YELLOW}3. 开启白名单模式 (TCP+UDP DROP)${NC}"
     msg "${YELLOW}4. 切换为全网开放 (移除 DROP 并放行 TCP+UDP)${NC}"
-    msg "${GREEN}0. 返回主菜单${NC}"
+    msg "${CYAN}0. 返回主菜单${NC}"
     read -r -p '请选择操作 [0-4]: ' wl_choice
     local add_ip del_ip rule found proto
     case "$wl_choice" in
@@ -14324,7 +14324,7 @@ one_click_reality_deploy() {
             msg "${YELLOW}2. sing-box Vision REALITY${NC}"
             prompt='现在开始一键部署 Vision REALITY？[Y/N]: ' ;;
     esac
-    msg "${GREEN}0. Cancel / 返回${NC}"
+    msg "${CYAN}0. Cancel / 返回${NC}"
     read -r -p 'Select [0-2]: ' choice || return 0
     case "$choice" in 1|2) ;; *) return 0 ;; esac
     if ! confirm_soft "$prompt"; then
@@ -14355,42 +14355,42 @@ ux_mode_menu() {
             msg "${YELLOW}1. Strict mode${NC}"
             msg "${YELLOW}2. Fast mode (non-critical confirmations only)${NC}"
             msg "${YELLOW}3. Show stable version policy and recovery pins${NC}"
-            msg "${GREEN}0. Back${NC}" ;;
+            msg "${CYAN}0. Back${NC}" ;;
         ru)
             msg "${BOLD}${GREEN}Режим работы и политика версий ядер${NC}"
             msg "Режим: ${YELLOW}$(read_fast_mode_label)${NC} | Источник: стабильная upstream-версия → резервная копия"
             msg "${YELLOW}1. Строгий режим${NC}"
             msg "${YELLOW}2. Быстрый режим${NC}"
             msg "${YELLOW}3. Политика стабильных версий и резервные pins${NC}"
-            msg "${GREEN}0. Назад${NC}" ;;
+            msg "${CYAN}0. Назад${NC}" ;;
         fa)
             msg "${BOLD}${GREEN}حالت اجرا و سیاست نسخه هسته‌ها${NC}"
             msg "حالت: ${YELLOW}$(read_fast_mode_label)${NC} | منبع: نسخه پایدار upstream سپس نسخه بازیابی"
             msg "${YELLOW}1. حالت سخت‌گیرانه${NC}"
             msg "${YELLOW}2. حالت سریع${NC}"
             msg "${YELLOW}3. سیاست نسخه پایدار و نسخه‌های بازیابی${NC}"
-            msg "${GREEN}0. بازگشت${NC}" ;;
+            msg "${CYAN}0. بازگشت${NC}" ;;
         zh-tw)
             msg "${BOLD}${GREEN}執行模式與核心版本策略${NC}"
             msg "當前模式: ${YELLOW}$(read_fast_mode_label)${NC} | 核心來源：上游正式穩定版 → 固定容災映象"
             msg "${YELLOW}1. 嚴格模式${NC}"
             msg "${YELLOW}2. 快速模式（只跳過非關鍵確認）${NC}"
             msg "${YELLOW}3. 檢視正式穩定版策略與固定容災版本${NC}"
-            msg "${GREEN}0. 返回${NC}" ;;
+            msg "${CYAN}0. 返回${NC}" ;;
         ja)
             msg "${BOLD}${GREEN}実行モードとコアバージョンのポリシー${NC}"
             msg "現在のモード: ${YELLOW}$(read_fast_mode_label)${NC} | コアの取得順序: 公式の安定版 → 固定リカバリミラー"
             msg "${YELLOW}1. 厳格モード${NC}"
             msg "${YELLOW}2. 高速モード（重要でない確認のみをスキップ）${NC}"
             msg "${YELLOW}3. 公式安定版のポリシーと固定リカバリバージョンを表示${NC}"
-            msg "${GREEN}0. 戻る${NC}" ;;
+            msg "${CYAN}0. 戻る${NC}" ;;
         *)
             msg "${BOLD}${GREEN}运行模式与核心版本策略${NC}"
             msg "当前模式: ${YELLOW}$(read_fast_mode_label)${NC} | 核心来源：上游正式稳定版 → 固定容灾镜像"
             msg "${YELLOW}1. 严格模式${NC}"
             msg "${YELLOW}2. 快速模式（只跳过非关键确认）${NC}"
             msg "${YELLOW}3. 查看正式稳定版策略与固定容灾版本${NC}"
-            msg "${GREEN}0. 返回${NC}" ;;
+            msg "${CYAN}0. 返回${NC}" ;;
     esac
     read -r -p 'Select [0-3]: ' c || return 0
     case "$c" in
@@ -14579,7 +14579,7 @@ multi_uuid_menu() {
     msg "${YELLOW}2. Export Vision/XHTTP URI list, Base64 and Clash YAML${NC}"
     msg "${YELLOW}3. Revoke one extra UUID from the Xray server${NC}"
     msg "${YELLOW}4. Clear only the local extra-UUID file (does not revoke server access)${NC}"
-    msg "${GREEN}0. Back${NC}"
+    msg "${CYAN}0. Back${NC}"
     read -r -p 'Select [0-4]: ' c || return 0
     case "$c" in
         1)
@@ -14787,7 +14787,7 @@ ip_preference_menu() {
     msg "${YELLOW}1. $ipv4${NC}"
     msg "${YELLOW}2. $ipv6${NC}"
     msg "${YELLOW}3. $dual${NC}"
-    msg "${GREEN}0. $back${NC}"
+    msg "${CYAN}0. $back${NC}"
     read -r -p 'Select [0-3]: ' c || return 0
     case "$c" in
         1) save_ip_pref ipv4 ;;
@@ -14833,7 +14833,7 @@ host_network_menu() {
             msg "${YELLOW}2. Host DNS, DNS benchmark, DoT and DoH${NC}"
             msg "${YELLOW}3. Timezone, locale and NTP${NC}"
             msg "${YELLOW}4. Fast/strict mode and download source${NC}"
-            msg "${GREEN}0. Back${NC}"
+            msg "${CYAN}0. Back${NC}"
             ;;
         ru)
             msg "${BOLD}${GREEN}Сеть и региональные настройки${NC}"
@@ -14841,7 +14841,7 @@ host_network_menu() {
             msg "${YELLOW}2. DNS, тест задержки, DoT и DoH${NC}"
             msg "${YELLOW}3. Часовой пояс, локаль и NTP${NC}"
             msg "${YELLOW}4. Режим и источник загрузки${NC}"
-            msg "${GREEN}0. Назад${NC}"
+            msg "${CYAN}0. Назад${NC}"
             ;;
         fa)
             msg "${BOLD}${GREEN}تنظیمات شبکه و منطقه‌ای${NC}"
@@ -14849,7 +14849,7 @@ host_network_menu() {
             msg "${YELLOW}2. DNS، آزمون تأخیر، DoT و DoH${NC}"
             msg "${YELLOW}3. منطقه زمانی، locale و NTP${NC}"
             msg "${YELLOW}4. حالت و منبع دانلود${NC}"
-            msg "${GREEN}0. بازگشت${NC}"
+            msg "${CYAN}0. بازگشت${NC}"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}網路與地區設定${NC}"
@@ -14857,7 +14857,7 @@ host_network_menu() {
             msg "${YELLOW}2. 本機 DNS（自動測速 / DoT / DoH / 回滾）${NC}"
             msg "${YELLOW}3. 時區、Locale 與 NTP${NC}"
             msg "${YELLOW}4. 快速/嚴格模式與下載源${NC}"
-            msg "${GREEN}0. 返回${NC}"
+            msg "${CYAN}0. 返回${NC}"
             ;;
         ja)
             msg "${BOLD}${GREEN}ネットワークと地域の設定${NC}"
@@ -14865,7 +14865,7 @@ host_network_menu() {
             msg "${YELLOW}2. ホスト DNS（自動ベンチマーク / DoT / DoH / ロールバック）${NC}"
             msg "${YELLOW}3. タイムゾーン、Locale、NTP${NC}"
             msg "${YELLOW}4. 高速モード / 厳格モードとダウンロード元${NC}"
-            msg "${GREEN}0. 戻る${NC}"
+            msg "${CYAN}0. 戻る${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}网络与地区设置${NC}"
@@ -14873,7 +14873,7 @@ host_network_menu() {
             msg "${YELLOW}2. 本机 DNS（自动测速 / DoT / DoH / 回滚）${NC}"
             msg "${YELLOW}3. 时区、Locale 与 NTP${NC}"
             msg "${YELLOW}4. 快速/严格模式与下载源${NC}"
-            msg "${GREEN}0. 返回${NC}"
+            msg "${CYAN}0. 返回${NC}"
             ;;
     esac
     local c
@@ -15296,7 +15296,7 @@ timezone_locale_ntp_menu() {
             msg "${YELLOW}5. 回滚到时区修改前快照${NC}"
             ;;
     esac
-    msg "${GREEN}0. 返回${NC}"
+    msg "${CYAN}0. 返回${NC}"
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; ja) prompt='選択してください [0-5]: ' ;; zh-tw) prompt='請選擇 [0-5]：' ;; *) prompt='请选择 [0-5]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
@@ -16015,12 +16015,12 @@ dns_setup_tri_mode() {
     msg "Current: IPv4=${YELLOW}$(_dns_current_v4)${NC} IPv6=${YELLOW}$(_dns_current_v6)${NC}"
     msg ""
     case "${ABOX_LANG:-zh}" in
-        en) msg "${YELLOW}1. IPv4 only (IPv6 unchanged)${NC}"; msg "${YELLOW}2. IPv6 only (IPv4 unchanged)${NC}"; msg "${YELLOW}3. Dual-stack (both)${NC}"; msg "${GREEN}0. Back${NC}" ;;
-        ru) msg "${YELLOW}1. Только IPv4 (IPv6 без изменений)${NC}"; msg "${YELLOW}2. Только IPv6 (IPv4 без изменений)${NC}"; msg "${YELLOW}3. Dual-stack (оба)${NC}"; msg "${GREEN}0. Назад${NC}" ;;
-        fa) msg "${YELLOW}۱. فقط IPv4${NC}"; msg "${YELLOW}۲. فقط IPv6${NC}"; msg "${YELLOW}۳. دوگانه${NC}"; msg "${GREEN}۰. بازگشت${NC}" ;;
-        zh-tw) msg "${YELLOW}1. 僅 IPv4（IPv6 不變）${NC}"; msg "${YELLOW}2. 僅 IPv6（IPv4 不變）${NC}"; msg "${YELLOW}3. 雙棧（兩者都設）${NC}"; msg "${GREEN}0. 返回${NC}" ;;
-        ja) msg "${YELLOW}1. IPv4 のみ (IPv6 は変更なし)${NC}"; msg "${YELLOW}2. IPv6 のみ (IPv4 は変更なし)${NC}"; msg "${YELLOW}3. デュアルスタック (両方)${NC}"; msg "${GREEN}0. 戻る${NC}" ;;
-        *) msg "${YELLOW}1. 仅 IPv4（IPv6 不变）${NC}"; msg "${YELLOW}2. 仅 IPv6（IPv4 不变）${NC}"; msg "${YELLOW}3. 双栈（两者都设）${NC}"; msg "${GREEN}0. 返回${NC}" ;;
+        en) msg "${YELLOW}1. IPv4 only (IPv6 unchanged)${NC}"; msg "${YELLOW}2. IPv6 only (IPv4 unchanged)${NC}"; msg "${YELLOW}3. Dual-stack (both)${NC}"; msg "${CYAN}0. Back${NC}" ;;
+        ru) msg "${YELLOW}1. Только IPv4 (IPv6 без изменений)${NC}"; msg "${YELLOW}2. Только IPv6 (IPv4 без изменений)${NC}"; msg "${YELLOW}3. Dual-stack (оба)${NC}"; msg "${CYAN}0. Назад${NC}" ;;
+        fa) msg "${YELLOW}۱. فقط IPv4${NC}"; msg "${YELLOW}۲. فقط IPv6${NC}"; msg "${YELLOW}۳. دوگانه${NC}"; msg "${CYAN}۰. بازگشت${NC}" ;;
+        zh-tw) msg "${YELLOW}1. 僅 IPv4（IPv6 不變）${NC}"; msg "${YELLOW}2. 僅 IPv6（IPv4 不變）${NC}"; msg "${YELLOW}3. 雙棧（兩者都設）${NC}"; msg "${CYAN}0. 返回${NC}" ;;
+        ja) msg "${YELLOW}1. IPv4 のみ (IPv6 は変更なし)${NC}"; msg "${YELLOW}2. IPv6 のみ (IPv4 は変更なし)${NC}"; msg "${YELLOW}3. デュアルスタック (両方)${NC}"; msg "${CYAN}0. 戻る${NC}" ;;
+        *) msg "${YELLOW}1. 仅 IPv4（IPv6 不变）${NC}"; msg "${YELLOW}2. 仅 IPv6（IPv4 不变）${NC}"; msg "${YELLOW}3. 双栈（两者都设）${NC}"; msg "${CYAN}0. 返回${NC}" ;;
     esac
     read -r -p "Select [0-3]: " mode
     case "$mode" in
@@ -16172,7 +16172,7 @@ dns_menu() {
             msg "${YELLOW}8. DNS 三模式设置（v4/v6/双栈）${NC}"
             ;;
     esac
-    msg "${GREEN}0. Back / 返回${NC}"
+    msg "${CYAN}0. Back / 返回${NC}"
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-8]: ' ;; ru) prompt='Выберите [0–8]: ' ;; fa) prompt='انتخاب [۰ تا ۸]: ' ;; ja) prompt='選択してください [0-8]: ' ;; zh-tw) prompt='請選擇 [0-8]：' ;; *) prompt='请选择 [0-8]：' ;; esac
     read -r -p "$prompt" c || return 0
     case "$c" in
@@ -16221,37 +16221,37 @@ tune_vps() {
             msg "${BOLD}${GREEN}VPS one-click optimization${NC}"
             msg "${YELLOW}1. Apply supported BBR/FQ and system tuning${NC}"
             msg "${YELLOW}2. Restore the previous tuning snapshot${NC}"
-            msg "${GREEN}0. Back${NC}"
+            msg "${CYAN}0. Back${NC}"
             ;;
         ru)
             msg "${BOLD}${GREEN}Оптимизация VPS${NC}"
             msg "${YELLOW}1. Применить поддерживаемые BBR/FQ и системные настройки${NC}"
             msg "${YELLOW}2. Восстановить предыдущий снимок настроек${NC}"
-            msg "${GREEN}0. Назад${NC}"
+            msg "${CYAN}0. Назад${NC}"
             ;;
         fa)
             msg "${BOLD}${GREEN}بهینه‌سازی VPS${NC}"
             msg "${YELLOW}1. اعمال تنظیمات پشتیبانی‌شده BBR/FQ${NC}"
             msg "${YELLOW}2. بازگردانی وضعیت قبلی${NC}"
-            msg "${GREEN}0. بازگشت${NC}"
+            msg "${CYAN}0. بازگشت${NC}"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}VPS 一鍵最佳化${NC}"
             msg "${YELLOW}1. 應用當前核心支援的 BBR/FQ 與系統調優（可回滾）${NC}"
             msg "${YELLOW}2. 恢復調優前快照${NC}"
-            msg "${GREEN}0. 返回${NC}"
+            msg "${CYAN}0. 返回${NC}"
             ;;
         ja)
             msg "${BOLD}${GREEN}VPS ワンクリック最適化${NC}"
             msg "${YELLOW}1. 現在のカーネルがサポートする BBR/FQ とシステム最適化を適用（ロールバック可能）${NC}"
             msg "${YELLOW}2. 最適化前のスナップショットを復元${NC}"
-            msg "${GREEN}0. 戻る${NC}"
+            msg "${CYAN}0. 戻る${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}VPS 一键优化${NC}"
             msg "${YELLOW}1. 应用当前内核支持的 BBR/FQ 与系统调优（可回滚）${NC}"
             msg "${YELLOW}2. 恢复调优前快照${NC}"
-            msg "${GREEN}0. 返回${NC}"
+            msg "${CYAN}0. 返回${NC}"
             ;;
     esac
     local c
@@ -19244,42 +19244,42 @@ backup_restore_menu() {
         msg "${YELLOW}2. Restore from backup${NC}"
         msg "${YELLOW}3. Export recovery key to a separate medium${NC}"
         msg "${YELLOW}4. Convert a legacy backup to manifest v3${NC}"
-        msg "${GREEN}0. Back${NC}"
+        msg "${CYAN}0. Back${NC}"
             ;;
         ru)
         msg "${YELLOW}1. Резервное копирование текущей конфигурации A-Box${NC}"
         msg "${YELLOW}2. Восстановление из резервной копии${NC}"
         msg "${YELLOW}3. Экспорт ключа восстановления на отдельный носитель${NC}"
         msg "${YELLOW}4. Конвертация старой резервной копии в manifest v3${NC}"
-        msg "${GREEN}0. Назад${NC}"
+        msg "${CYAN}0. Назад${NC}"
             ;;
         fa)
         msg "${YELLOW}1. پشتیبان‌گیری از پیکربندی فعلی A-Box${NC}"
         msg "${YELLOW}2. بازیابی از پشتیبان${NC}"
         msg "${YELLOW}3. صدور کلید بازیابی به رسانه جداگانه${NC}"
         msg "${YELLOW}4. تبدیل پشتیبان قدیمی به manifest v3${NC}"
-        msg "${GREEN}0. بازگشت${NC}"
+        msg "${CYAN}0. بازگشت${NC}"
             ;;
         ja)
             msg "${YELLOW}1. 現在の A-Box 設定をバックアップ${NC}"
             msg "${YELLOW}2. バックアップから復元${NC}"
             msg "${YELLOW}3. 復旧キーを別の媒体にエクスポート${NC}"
             msg "${YELLOW}4. 旧バージョンのバックアップを manifest v3 に安全に変換${NC}"
-            msg "${GREEN}0. 戻る${NC}"
+            msg "${CYAN}0. 戻る${NC}"
             ;;
         zh-tw)
         msg "${YELLOW}1. 備份當前 A-Box 配置${NC}"
         msg "${YELLOW}2. 從備份恢復${NC}"
         msg "${YELLOW}3. 將恢復金鑰匯出到獨立介質${NC}"
         msg "${YELLOW}4. 將舊版備份安全轉換為 manifest v3${NC}"
-        msg "${GREEN}0. 返回${NC}"
+        msg "${CYAN}0. 返回${NC}"
             ;;
         *)
         msg "${YELLOW}1. 备份当前 A-Box 配置${NC}"
         msg "${YELLOW}2. 从备份恢复${NC}"
         msg "${YELLOW}3. 将恢复密钥导出到独立介质${NC}"
         msg "${YELLOW}4. 将旧版备份安全转换为 manifest v3${NC}"
-        msg "${GREEN}0. 返回${NC}"
+        msg "${CYAN}0. 返回${NC}"
             ;;
     esac
     local c
@@ -21609,7 +21609,7 @@ wallos_menu() {
             msg "${YELLOW}3. Back up database and uploaded logos${NC}"
             msg "${YELLOW}4. Remove container but keep data${NC}"
             msg "${YELLOW}5. Roll back to a previous version${NC}"
-            msg "${GREEN}0. Back${NC}"
+            msg "${CYAN}0. Back${NC}"
             ;;
         ru)
             msg "${BOLD}${GREEN}Управление подписками Wallos${NC}"
@@ -21618,7 +21618,7 @@ wallos_menu() {
             msg "${YELLOW}3. Резервная копия базы и загруженных логотипов${NC}"
             msg "${YELLOW}4. Удалить контейнер, сохранив данные${NC}"
             msg "${YELLOW}5. Откатить к предыдущей версии${NC}"
-            msg "${GREEN}0. Назад${NC}"
+            msg "${CYAN}0. Назад${NC}"
             ;;
         fa)
             msg "${BOLD}${GREEN}مدیریت اشتراک‌های Wallos${NC}"
@@ -21627,7 +21627,7 @@ wallos_menu() {
             msg "${YELLOW}3. پشتیبان‌گیری از پایگاه داده و تصاویر بارگذاری‌شده${NC}"
             msg "${YELLOW}4. حذف کانتینر با حفظ داده‌ها${NC}"
             msg "${YELLOW}5. بازگشت به نسخه قبلی${NC}"
-            msg "${GREEN}0. بازگشت${NC}"
+            msg "${CYAN}0. بازگشت${NC}"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}Wallos 訂閱管理${NC}"
@@ -21636,7 +21636,7 @@ wallos_menu() {
             msg "${YELLOW}3. 備份資料庫和上傳圖片${NC}"
             msg "${YELLOW}4. 刪除容器但保留資料${NC}"
             msg "${YELLOW}5. 回滾到歷史版本${NC}"
-            msg "${GREEN}0. 返回${NC}"
+            msg "${CYAN}0. 返回${NC}"
             ;;
         ja)
             msg "${BOLD}${GREEN}Wallos サブスクリプション管理${NC}"
@@ -21645,7 +21645,7 @@ wallos_menu() {
             msg "${YELLOW}3. データベースとアップロード画像をバックアップ${NC}"
             msg "${YELLOW}4. データを保持してコンテナを削除${NC}"
             msg "${YELLOW}5. 以前のバージョンにロールバック${NC}"
-            msg "${GREEN}0. 戻る${NC}"
+            msg "${CYAN}0. 戻る${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}Wallos 订阅管理${NC}"
@@ -21654,7 +21654,7 @@ wallos_menu() {
             msg "${YELLOW}3. 备份数据库和上传图片${NC}"
             msg "${YELLOW}4. 删除容器但保留数据${NC}"
             msg "${YELLOW}5. 回滚到历史版本${NC}"
-            msg "${GREEN}0. 返回${NC}"
+            msg "${CYAN}0. 返回${NC}"
             ;;
     esac
     local c prompt_confirm prompt_remove menu_prompt
@@ -21727,7 +21727,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${GREEN}0. Back${NC}"
+            msg "${CYAN}0. Back${NC}"
             ;;
         ru)
             msg "${BOLD}${GREEN}Ещё протоколы${NC}"
@@ -21737,7 +21737,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${GREEN}0. Назад${NC}"
+            msg "${CYAN}0. Назад${NC}"
             ;;
         fa)
             msg "${BOLD}${GREEN}پروتکل‌های بیشتر${NC}"
@@ -21747,7 +21747,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${GREEN}0. بازگشت${NC}"
+            msg "${CYAN}0. بازگشت${NC}"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}更多協議${NC}"
@@ -21757,7 +21757,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${GREEN}0. 返回主選單${NC}"
+            msg "${CYAN}0. 返回主選單${NC}"
             ;;
         ja)
             msg "${BOLD}${GREEN}追加のプロトコル${NC}"
@@ -21767,7 +21767,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${GREEN}0. メインメニューに戻る${NC}"
+            msg "${CYAN}0. メインメニューに戻る${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}更多协议${NC}"
@@ -21777,7 +21777,7 @@ other_protocols_menu() {
             msg "${YELLOW}4.  SOCKS5/Mixed${NC}"
             msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
             msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${GREEN}0. 返回主菜单${NC}"
+            msg "${CYAN}0. 返回主菜单${NC}"
             ;;
     esac
     local op_choice select_prompt
@@ -21818,7 +21818,7 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ Security ]${NC}"
             msg "${YELLOW}15.  SS-2022 IP whitelist${NC}"
-            msg "${GREEN}0. Back${NC}"
+            msg "${CYAN}0. Back${NC}"
             ;;
         ru)
             msg "${BOLD}${GREEN}Инструменты${NC}"
@@ -21835,7 +21835,7 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ Безопасность ]${NC}"
             msg "${YELLOW}15.  Белый список IP (SS-2022)${NC}"
-            msg "${GREEN}0. Назад${NC}"
+            msg "${CYAN}0. Назад${NC}"
             ;;
         fa)
             msg "${BOLD}${GREEN}جعبه ابزار${NC}"
@@ -21852,7 +21852,7 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ امنیت ]${NC}"
             msg "${YELLOW}15.  لیست سفید آی‌پی SS-2022${NC}"
-            msg "${GREEN}0. بازگشت${NC}"
+            msg "${CYAN}0. بازگشت${NC}"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}綜合工具箱${NC}"
@@ -21869,7 +21869,7 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ 安全 ]${NC}"
             msg "${YELLOW}15.  SS-2022 訪問白名單${NC}"
-            msg "${GREEN}0. 返回主選單${NC}"
+            msg "${CYAN}0. 返回主選單${NC}"
             ;;
         ja)
             msg "${BOLD}${GREEN}ツールボックス${NC}"
@@ -21886,7 +21886,7 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ セキュリティ ]${NC}"
             msg "${YELLOW}15.  SS-2022 IPホワイトリスト${NC}"
-            msg "${GREEN}0. メインメニューに戻る${NC}"
+            msg "${CYAN}0. メインメニューに戻る${NC}"
             ;;
         *)
             msg "${BOLD}${GREEN}综合工具箱${NC}"
@@ -21903,7 +21903,7 @@ vps_benchmark_menu() {
             msg ""
             msg "${CYAN}[ 安全 ]${NC}"
             msg "${YELLOW}15.  SS-2022 访问白名单${NC}"
-            msg "${GREEN}0. 返回主菜单${NC}"
+            msg "${CYAN}0. 返回主菜单${NC}"
             ;;
     esac
     local bench_choice select_prompt
@@ -21953,7 +21953,7 @@ clean_uninstall_menu() {
     msg "${CYAN}======================================================================${NC}"
     msg "${YELLOW}1. 完全物理清场 (销毁节点、配置、防火墙映射与 sb 入口)${NC}"
     msg "${YELLOW}2. 保留脚本与清场 (销毁节点配置，保留控制台与 sb 入口)${NC}"
-    msg "${GREEN}0. 取消并返回${NC}"
+    msg "${CYAN}0. 取消并返回${NC}"
     read -r -p '请输入执行代码 [0-2]: ' un_choice
     case "$un_choice" in
         1) auto_backup_prompt 'full uninstall' '/root/A-Box-backups'; do_cleanup full ;;
@@ -23597,7 +23597,7 @@ ota_and_geo_menu() {
         msg "${YELLOW}3. Upgrade current installed proxy cores only; preserve node parameters${NC}"
         msg "${YELLOW}4. Show compatibility pin docs [U3]${NC}"
         msg "${YELLOW}5. DANGER: try upstream latest cores (auto-rollback) [U3]${NC}"
-        msg "${GREEN}0. Back${NC}"
+        msg "${CYAN}0. Back${NC}"
         read -r -p 'Select [0-5]: ' ota_choice
             ;;
         ru)
@@ -23608,7 +23608,7 @@ ota_and_geo_menu() {
         msg "${YELLOW}3. Обновить только установленные ядра; сохранить параметры узлов${NC}"
         msg "${YELLOW}4. Показать документацию по фиксированным версиям [U3]${NC}"
         msg "${YELLOW}5. ОПАСНО: попробовать последние ядра upstream (автооткат) [U3]${NC}"
-        msg "${GREEN}0. Назад${NC}"
+        msg "${CYAN}0. Назад${NC}"
         read -r -p 'Выберите [0-5]: ' ota_choice
             ;;
         fa)
@@ -23619,7 +23619,7 @@ ota_and_geo_menu() {
         msg "${YELLOW}3. فقط هسته‌های نصب‌شده را ارتقا بده؛ پارامترهای نود حفظ شود${NC}"
         msg "${YELLOW}4. نمایش مستندات نسخه‌های ثابت [U3]${NC}"
         msg "${YELLOW}5. خطر: امتحان آخرین هسته‌های upstream (بازگشت خودکار) [U3]${NC}"
-        msg "${GREEN}0. بازگشت${NC}"
+        msg "${CYAN}0. بازگشت${NC}"
         read -r -p 'انتخاب [0-5]: ' ota_choice
             ;;
         ja)
@@ -23630,7 +23630,7 @@ ota_and_geo_menu() {
             msg "${YELLOW}3. インストール済みのプロトコルコアのみをアップグレード（ノードパラメーターはリセットしません）${NC}"
             msg "${YELLOW}4. 互換性のある固定バージョンの説明を表示 [U3]${NC}"
             msg "${YELLOW}5. 危険: upstream の latest コアを試します（失敗時は自動ロールバック）[U3]${NC}"
-            msg "${GREEN}0. メインメニューに戻る${NC}"
+            msg "${CYAN}0. メインメニューに戻る${NC}"
             read -r -p '0～5 を選択してください: ' ota_choice
             ;;
         zh-tw)
@@ -23641,7 +23641,7 @@ ota_and_geo_menu() {
         msg "${YELLOW}3. 僅升級當前已安裝協議核心，不重置節點引數${NC}"
         msg "${YELLOW}4. 檢視相容釘扎說明 [U3]${NC}"
         msg "${YELLOW}5. 危險：試用上游 latest 核心（失敗自動回滾）[U3]${NC}"
-        msg "${GREEN}0. 返回主選單${NC}"
+        msg "${CYAN}0. 返回主選單${NC}"
         read -r -p '請選擇 [0-5]: ' ota_choice
             ;;
         *)
@@ -23652,7 +23652,7 @@ ota_and_geo_menu() {
         msg "${YELLOW}3. 仅升级当前已安装协议核心，不重置节点参数${NC}"
         msg "${YELLOW}4. 查看兼容钉扎说明 [U3]${NC}"
         msg "${YELLOW}5. 危险：试用上游 latest 核心（失败自动回滚）[U3]${NC}"
-        msg "${GREEN}0. 返回主菜单${NC}"
+        msg "${CYAN}0. 返回主菜单${NC}"
         read -r -p '请选择 [0-5]: ' ota_choice || return 0
             ;;
     esac
@@ -25888,110 +25888,110 @@ main_loop() {
             en)
                 _menu_info_display
                 msg "${CYAN}[ Xray-core Deployment ]${NC}                ${CYAN}[ Sing-box Deployment ]${NC}"
-                msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
-                msg "${GREEN}4.${NC}  Hysteria 2 (Official)               ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
-                msg "${GREEN}5.${NC}  All-in-one (Xray+Hy2)               ${GREEN}10.${NC} All-in-one (Sing-box)"
+                msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
+                msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
+                msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
+                msg "${CYAN}4.${NC}  Hysteria 2 (Official)               ${CYAN}9.${NC}  Hysteria 2 (Sing-box)"
+                msg "${CYAN}5.${NC}  All-in-one (Xray+Hy2)               ${CYAN}10.${NC} All-in-one (Sing-box)"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ Tools & System ]${NC}                      ${CYAN}[ Ops & Policy ]${NC}"
-                msg "${GREEN}11.${NC}  Toolbox                            ${GREEN}16.${NC}  Wipe Nodes & Reset Env"
-                msg "${GREEN}12.${NC}  View Node Configs & Links          ${GREEN}17.${NC}  Monthly Traffic Quota"
-                msg "${GREEN}13.${NC}  User Guide & Manual                ${GREEN}18.${NC}  More Protocols"
-                msg "${GREEN}14.${NC}  Update Core & Script (OTA)         ${GREEN}19.${NC}  Language / 语言设置"
-                msg "${GREEN}15.${NC}  VPS Optimization                   ${YELLOW}20.  Uninstall Script & Cores${NC}"
+                msg "${CYAN}11.${NC}  Toolbox                            ${CYAN}16.${NC}  Wipe Nodes & Reset Env"
+                msg "${CYAN}12.${NC}  View Node Configs & Links          ${CYAN}17.${NC}  Monthly Traffic Quota"
+                msg "${CYAN}13.${NC}  User Guide & Manual                ${CYAN}18.${NC}  More Protocols"
+                msg "${CYAN}14.${NC}  Update Core & Script (OTA)         ${CYAN}19.${NC}  Language / 语言设置"
+                msg "${CYAN}15.${NC}  VPS Optimization                   ${CYAN}20.  Uninstall Script & Cores${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-                msg "${GREEN} 0.${NC}  Exit"
+                msg "${CYAN} 0.${NC}  Exit"
                 ;;
             ru)
                 _menu_info_display
                 msg "${CYAN}[ Развёртывание Xray ]${NC}                  ${CYAN}[ Развёртывание sing-box ]${NC}"
-                msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
-                msg "${GREEN}4.${NC}  Hysteria 2 (официальный)            ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
-                msg "${GREEN}5.${NC}  Комплексная установка               ${GREEN}10.${NC} Комплексная установка"
+                msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
+                msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
+                msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
+                msg "${CYAN}4.${NC}  Hysteria 2 (официальный)            ${CYAN}9.${NC}  Hysteria 2 (sing-box)"
+                msg "${CYAN}5.${NC}  Комплексная установка               ${CYAN}10.${NC} Комплексная установка"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ Инструменты и система ]${NC}               ${CYAN}[ Управление и политики ]${NC}"
-                msg "${GREEN}11.${NC}  Панель инструментов                ${GREEN}16.${NC}  Сброс узлов и окружения"
-                msg "${GREEN}12.${NC}  Просмотр параметров узлов          ${GREEN}17.${NC}  Лимит месячного трафика"
-                msg "${GREEN}13.${NC}  Справка и руководство              ${GREEN}18.${NC}  Ещё протоколы"
-                msg "${GREEN}14.${NC}  Обновление ядра и скрипта          ${GREEN}19.${NC}  Язык / Language"
-                msg "${GREEN}15.${NC}  Оптимизация VPS                    ${YELLOW}20.  Полное удаление скрипта${NC}"
+                msg "${CYAN}11.${NC}  Панель инструментов                ${CYAN}16.${NC}  Сброс узлов и окружения"
+                msg "${CYAN}12.${NC}  Просмотр параметров узлов          ${CYAN}17.${NC}  Лимит месячного трафика"
+                msg "${CYAN}13.${NC}  Справка и руководство              ${CYAN}18.${NC}  Ещё протоколы"
+                msg "${CYAN}14.${NC}  Обновление ядра и скрипта          ${CYAN}19.${NC}  Язык / Language"
+                msg "${CYAN}15.${NC}  Оптимизация VPS                    ${CYAN}20.  Полное удаление скрипта${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-                msg "${GREEN} 0.${NC}  Выход"
+                msg "${CYAN} 0.${NC}  Выход"
                 ;;
             fa)
                 _menu_info_display
                 msg "${CYAN}[ نصب Xray ]${NC}                            ${CYAN}[ نصب sing-box ]${NC}"
-                msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
-                msg "${GREEN}4.${NC}  Hysteria 2 (رسمی)                   ${GREEN}9.${NC}  Hysteria 2 (sing-box)"
-                msg "${GREEN}5.${NC}  نصب ترکیبی                          ${GREEN}10.${NC} نصب ترکیبی"
+                msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
+                msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
+                msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
+                msg "${CYAN}4.${NC}  Hysteria 2 (رسمی)                   ${CYAN}9.${NC}  Hysteria 2 (sing-box)"
+                msg "${CYAN}5.${NC}  نصب ترکیبی                          ${CYAN}10.${NC} نصب ترکیبی"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ ابزارها و سیستم ]${NC}                     ${CYAN}[ عملیات و سیاست‌ها ]${NC}"
-                msg "${GREEN}11.${NC}  جعبه ابزار                         ${GREEN}16.${NC}  پاکسازی نودها و بازنشانی محیط"
-                msg "${GREEN}12.${NC}  مشاهده تنظیمات و نودها             ${GREEN}17.${NC}  مدیریت و محدودیت ترافیک"
-                msg "${GREEN}13.${NC}  راهنمای استفاده                    ${GREEN}18.${NC}  پروتکل‌های بیشتر"
-                msg "${GREEN}14.${NC}  به‌روزرسانی هسته و اسکریپت         ${GREEN}19.${NC}  تنظیم زبان / Language"
-                msg "${GREEN}15.${NC}  بهینه‌سازی VPS                     ${YELLOW}20.  حذف کامل اسکریپت و هسته${NC}"
+                msg "${CYAN}11.${NC}  جعبه ابزار                         ${CYAN}16.${NC}  پاکسازی نودها و بازنشانی محیط"
+                msg "${CYAN}12.${NC}  مشاهده تنظیمات و نودها             ${CYAN}17.${NC}  مدیریت و محدودیت ترافیک"
+                msg "${CYAN}13.${NC}  راهنمای استفاده                    ${CYAN}18.${NC}  پروتکل‌های بیشتر"
+                msg "${CYAN}14.${NC}  به‌روزرسانی هسته و اسکریپت         ${CYAN}19.${NC}  تنظیم زبان / Language"
+                msg "${CYAN}15.${NC}  بهینه‌سازی VPS                     ${CYAN}20.  حذف کامل اسکریپت و هسته${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-                msg "${GREEN} 0.${NC}  خروج"
+                msg "${CYAN} 0.${NC}  خروج"
                 ;;
             zh-tw)
                 _menu_info_display
                 msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ Sing-box 部署 ]${NC}"
-                msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
-                msg "${GREEN}4.${NC}  Hysteria 2 (官方)                   ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
-                msg "${GREEN}5.${NC}  全協議四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全協議三合一 (Sing-box)"
+                msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
+                msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
+                msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
+                msg "${CYAN}4.${NC}  Hysteria 2 (官方)                   ${CYAN}9.${NC}  Hysteria 2 (Sing-box)"
+                msg "${CYAN}5.${NC}  全協議四合一 (Xray+Hy2)             ${CYAN}10.${NC} 全協議三合一 (Sing-box)"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ 工具與系統 ]${NC}                          ${CYAN}[ 運維與策略 ]${NC}"
-                msg "${GREEN}11.${NC}  綜合工具箱                         ${GREEN}16.${NC}  清空節點與重置環境"
-                msg "${GREEN}12.${NC}  查看節點配置與參數                 ${GREEN}17.${NC}  流量管控與額度限制"
-                msg "${GREEN}13.${NC}  使用幫助與說明書                   ${GREEN}18.${NC}  更多協議"
-                msg "${GREEN}14.${NC}  核心與腳本升級 (OTA)               ${GREEN}19.${NC}  多語言設置 / Language"
-                msg "${GREEN}15.${NC}  VPS 一鍵優化                       ${YELLOW}20.  徹底卸載腳本與核心${NC}"
+                msg "${CYAN}11.${NC}  綜合工具箱                         ${CYAN}16.${NC}  清空節點與重置環境"
+                msg "${CYAN}12.${NC}  查看節點配置與參數                 ${CYAN}17.${NC}  流量管控與額度限制"
+                msg "${CYAN}13.${NC}  使用幫助與說明書                   ${CYAN}18.${NC}  更多協議"
+                msg "${CYAN}14.${NC}  核心與腳本升級 (OTA)               ${CYAN}19.${NC}  多語言設置 / Language"
+                msg "${CYAN}15.${NC}  VPS 一鍵優化                       ${CYAN}20.  徹底卸載腳本與核心${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-                msg "${GREEN} 0.${NC}  退出指令碼"
+                msg "${CYAN} 0.${NC}  退出指令碼"
                 ;;
             ja)
                 _menu_info_display
                 msg "${CYAN}[ Xray-core 部署します ]${NC}                ${CYAN}[ Sing-box 部署します ]${NC}"
-                msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
-                msg "${GREEN}4.${NC}  Hysteria 2（公式）                  ${GREEN}9.${NC}  Hysteria 2（sing-box）"
-                msg "${GREEN}5.${NC}  全プロトコル統合（Xray+Hy2）        ${GREEN}10.${NC} 全プロトコル統合（Sing-box）"
+                msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
+                msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
+                msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
+                msg "${CYAN}4.${NC}  Hysteria 2（公式）                  ${CYAN}9.${NC}  Hysteria 2（sing-box）"
+                msg "${CYAN}5.${NC}  全プロトコル統合（Xray+Hy2）        ${CYAN}10.${NC} 全プロトコル統合（Sing-box）"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ ツールとシステム ]${NC}                    ${CYAN}[ 運用とポリシー ]${NC}"
-                msg "${GREEN}11.${NC}  総合ツールボックス                 ${GREEN}16.${NC}  全ノード削除と環境初期化"
-                msg "${GREEN}12.${NC}  ノード設定と情報の表示             ${GREEN}17.${NC}  月間通信量制限と管理"
-                msg "${GREEN}13.${NC}  ヘルプとマニュアル                 ${GREEN}18.${NC}  追加のプロトコル"
-                msg "${GREEN}14.${NC}  コアとスクリプト更新 (OTA)         ${GREEN}19.${NC}  言語設定 / Language"
-                msg "${GREEN}15.${NC}  VPS 最適化                         ${YELLOW}20.  スクリプトとコアの完全削除${NC}"
+                msg "${CYAN}11.${NC}  総合ツールボックス                 ${CYAN}16.${NC}  全ノード削除と環境初期化"
+                msg "${CYAN}12.${NC}  ノード設定と情報の表示             ${CYAN}17.${NC}  月間通信量制限と管理"
+                msg "${CYAN}13.${NC}  ヘルプとマニュアル                 ${CYAN}18.${NC}  追加のプロトコル"
+                msg "${CYAN}14.${NC}  コアとスクリプト更新 (OTA)         ${CYAN}19.${NC}  言語設定 / Language"
+                msg "${CYAN}15.${NC}  VPS 最適化                         ${CYAN}20.  スクリプトとコアの完全削除${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-                msg "${GREEN} 0.${NC}  スクリプトを終了します"
+                msg "${CYAN} 0.${NC}  スクリプトを終了します"
                 ;;
             *)
                 _menu_info_display
                 msg "${CYAN}[ Xray-core 部署 ]${NC}                      ${CYAN}[ Sing-box 部署 ]${NC}"
-                msg "${GREEN}1.${NC}  VLESS-Vision-Reality                ${GREEN}6.${NC}  VLESS-Vision-Reality"
-                msg "${GREEN}2.${NC}  VLESS-XHTTP-Reality                 ${GREEN}7.${NC}  VLESS + SS-2022"
-                msg "${GREEN}3.${NC}  Shadowsocks-2022                    ${GREEN}8.${NC}  Shadowsocks-2022"
-                msg "${GREEN}4.${NC}  Hysteria 2 (官方)                   ${GREEN}9.${NC}  Hysteria 2 (Sing-box)"
-                msg "${GREEN}5.${NC}  全协议四合一 (Xray+Hy2)             ${GREEN}10.${NC} 全协议三合一 (Sing-box)"
+                msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
+                msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
+                msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"
+                msg "${CYAN}4.${NC}  Hysteria 2 (官方)                   ${CYAN}9.${NC}  Hysteria 2 (Sing-box)"
+                msg "${CYAN}5.${NC}  全协议四合一 (Xray+Hy2)             ${CYAN}10.${NC} 全协议三合一 (Sing-box)"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
                 msg "${CYAN}[ 工具与系统 ]${NC}                          ${CYAN}[ 运维与策略 ]${NC}"
-                msg "${GREEN}11.${NC}  综合工具箱                         ${GREEN}16.${NC}  清空节点与重置环境"
-                msg "${GREEN}12.${NC}  查看节点配置与参数                 ${GREEN}17.${NC}  流量管控与额度限制"
-                msg "${GREEN}13.${NC}  使用帮助与说明书                   ${GREEN}18.${NC}  更多协议"
-                msg "${GREEN}14.${NC}  核心与脚本升级 (OTA)               ${GREEN}19.${NC}  多语言设置 / Language"
-                msg "${GREEN}15.${NC}  VPS 一键优化                       ${YELLOW}20.  彻底卸载脚本与核心${NC}"
+                msg "${CYAN}11.${NC}  综合工具箱                         ${CYAN}16.${NC}  清空节点与重置环境"
+                msg "${CYAN}12.${NC}  查看节点配置与参数                 ${CYAN}17.${NC}  流量管控与额度限制"
+                msg "${CYAN}13.${NC}  使用帮助与说明书                   ${CYAN}18.${NC}  更多协议"
+                msg "${CYAN}14.${NC}  核心与脚本升级 (OTA)               ${CYAN}19.${NC}  多语言设置 / Language"
+                msg "${CYAN}15.${NC}  VPS 一键优化                       ${CYAN}20.  彻底卸载脚本与核心${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-                msg "${GREEN} 0.${NC}  退出脚本"
+                msg "${CYAN} 0.${NC}  退出脚本"
                 ;;
         esac
         msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"

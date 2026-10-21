@@ -15201,6 +15201,7 @@ do_cleanup() {
     done
     wallos_https_teardown >/dev/null 2>&1 || true
     wallos_cftunnel_teardown >/dev/null 2>&1 || true
+    wallos_stack_teardown
     users_registries_wipe || msg "${YELLOW}[!] 用户注册表清理未完成，请手动检查 /etc/ddr/users.d。${NC}"
     abox_zram_teardown
     if [[ "${INIT_SYS:-}" == systemd ]]; then
@@ -15219,6 +15220,7 @@ do_cleanup() {
             msg "${YELLOW}[!] A-Box Swap 未能自动删除；保留 $ABOX_DIR 归属标记以便稍后安全重试。${NC}"
             die 'Swap 清理失败；已停止完全清场以避免遗留无归属状态。'
         fi
+        wallos_stack_teardown purge-data
         path_tree_has_mountpoint "$ABOX_DIR" && die '检测到 A-Box 数据目录或其子树存在挂载点；拒绝递归删除，以保留挂载内容。'
         # Keep the deployment transaction active until the final data-directory
         # deletion has been confirmed. If rm/race/permission errors occur, the
@@ -15583,6 +15585,9 @@ check_virgin_state() {
     for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local; do
         if [[ -f "$_wf" ]] && grep -q 'A-Box-wallos' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
     done
+    wallos_https_teardown >/dev/null 2>&1 || true
+    wallos_cftunnel_teardown >/dev/null 2>&1 || true
+    wallos_stack_teardown
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         if systemctl list-unit-files fail2ban.service >/dev/null 2>&1 && systemctl cat fail2ban.service >/dev/null 2>&1; then
             systemctl try-restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响环境初始化。${NC}"
@@ -24378,6 +24383,26 @@ wallos_cftunnel_teardown() { # best-effort
     rm -f "$WALLOS_CF_TOKEN_FILE" /etc/ddr/abox-wallos-cftunnel.log
     return 0
 }
+# Stop and remove the Wallos container itself. The container is
+# A-Box-managed only when it carries the managed label or the
+# /opt/wallos ownership state file exists; anything else is left
+# alone. With $1=purge-data the A-Box Wallos data dir is removed
+# too (full uninstall); other flows keep the subscription data.
+wallos_stack_teardown() {
+    local _purge="${1:-keep-data}"
+    if command -v docker >/dev/null 2>&1 && docker inspect wallos >/dev/null 2>&1; then
+        local _lbl=''
+        _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)
+        if [[ "$_lbl" == 'true' ]] || [[ -f "$WALLOS_DIR/.abox-state" ]]; then
+            docker rm -f wallos >/dev/null 2>&1 || true
+        fi
+    fi
+    if [[ "$_purge" == 'purge-data' && -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]]; then
+        rm -rf "$WALLOS_DIR" 2>/dev/null || true
+    fi
+    return 0
+}
+
 
 wallos_cftunnel_setup() { # $1 = public hostname (wallos.example.com)
     local host="$1" _t=0 _code='' _iport=''

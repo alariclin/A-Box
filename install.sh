@@ -6768,6 +6768,174 @@ tr_msg() {
         ru:wl_pick_prompt) echo 'Выберите действие [0-4]: ' ;;
         fa:wl_pick_prompt) echo 'یک عملیات انتخاب کنید [0-4]: ' ;;
         ja:wl_pick_prompt) echo '操作を選択してください [0-4]: ' ;;
+        zh:dom_cancelled) echo '已取消部署。' ;;
+        zh-tw:dom_cancelled) echo '已取消部署。' ;;
+        en:dom_cancelled) echo 'The deployment was cancelled.' ;;
+        ru:dom_cancelled) echo 'Развёртывание отменено.' ;;
+        fa:dom_cancelled) echo 'استقرار لغو شد.' ;;
+        ja:dom_cancelled) echo 'デプロイがキャンセルされました。' ;;
+        zh:dom_continue) echo '仍然继续？[Y/N]: ' ;;
+        zh-tw:dom_continue) echo '仍然繼續？[Y/N]: ' ;;
+        en:dom_continue) echo 'Continue anyway? [Y/N]: ' ;;
+        ru:dom_continue) echo 'Всё равно продолжить? [Y/N]: ' ;;
+        fa:dom_continue) echo 'با این حال ادامه می‌دهید؟ [Y/N]: ' ;;
+        ja:dom_continue) echo 'それでも続けますか？[Y/N]: ' ;;
+        zh:dom_resolved_label) echo '解析结果:' ;;
+        zh-tw:dom_resolved_label) echo '解析結果:' ;;
+        en:dom_resolved_label) echo 'Resolution result:' ;;
+        ru:dom_resolved_label) echo 'Результат разрешения:' ;;
+        fa:dom_resolved_label) echo 'نتیجه تجزیه:' ;;
+        ja:dom_resolved_label) echo '解決結果:' ;;
+        zh:dom_unresolved) echo '域名无法解析: %s' ;;
+        zh-tw:dom_unresolved) echo '網域無法解析: %s' ;;
+        en:dom_unresolved) echo 'The domain cannot be resolved: %s' ;;
+        ru:dom_unresolved) echo 'Домен не разрешается: %s' ;;
+        fa:dom_unresolved) echo 'دامنه قابل تجزیه نیست: %s' ;;
+        ja:dom_unresolved) echo 'ドメインを解決できません: %s' ;;
+        zh:env_bad) echo '现有 A-Box .env 校验失败或权限不安全；已中止操作。' ;;
+        zh-tw:env_bad) echo '現有 A-Box .env 校驗失敗或權限不安全；已中止操作。' ;;
+        en:env_bad) echo 'The existing A-Box .env failed validation or has unsafe permissions; the operation was aborted.' ;;
+        ru:env_bad) echo 'Существующий .env A-Box не прошёл проверку или имеет небезопасные права; операция прервана.' ;;
+        fa:env_bad) echo '‏.env موجود A-Box بررسی را رد نکرد یا مجوزهای ناامن دارد؛ عملیات متوقف شد.' ;;
+        ja:env_bad) echo '既存の A-Box .env の検証に失敗したか権限が安全でないため、操作を中止しました。' ;;
+        zh:fm_bad) echo '非法快速模式开关。' ;;
+        zh-tw:fm_bad) echo '非法快速模式開關。' ;;
+        en:fm_bad) echo 'The fast mode switch is invalid.' ;;
+        ru:fm_bad) echo 'Недопустимый переключатель быстрого режима.' ;;
+        fa:fm_bad) echo 'کلید حالت سریع نامعتبر است.' ;;
+        ja:fm_bad) echo '高速モードのスイッチが不正です。' ;;
+        zh:fm_write) echo '快速模式写入失败。' ;;
+        zh-tw:fm_write) echo '快速模式寫入失敗。' ;;
+        en:fm_write) echo 'Failed to write the fast mode.' ;;
+        ru:fm_write) echo 'Не удалось записать быстрый режим.' ;;
+        fa:fm_write) echo 'نوشتن حالت سریع ناموفق بود.' ;;
+        ja:fm_write) echo '高速モードを書き込めませんでした。' ;;
+        zh:hy2_bw_bad) echo '请输入正整数: %s' ;;
+        zh-tw:hy2_bw_bad) echo '請輸入正整數: %s' ;;
+        en:hy2_bw_bad) echo 'Enter a positive integer: %s' ;;
+        ru:hy2_bw_bad) echo 'Введите положительное целое число: %s' ;;
+        fa:hy2_bw_bad) echo 'یک عدد صحیح مثبت وارد کنید: %s' ;;
+        ja:hy2_bw_bad) echo '正の整数を入力してください: %s' ;;
+        zh:hy2_url_bad) echo 'HY2 伪装 URL 非法: %s' ;;
+        zh-tw:hy2_url_bad) echo 'HY2 偽裝 URL 不合法: %s' ;;
+        en:hy2_url_bad) echo 'Invalid HY2 masquerade URL: %s' ;;
+        ru:hy2_url_bad) echo 'Недопустимый маскировочный URL HY2: %s' ;;
+        fa:hy2_url_bad) echo 'نشانی ماسک HY2 نامعتبر است: %s' ;;
+        ja:hy2_url_bad) echo 'HY2 マスカレード URL が無効です: %s' ;;
+        zh:hy2_url_example) echo '正确示例: https://www.microsoft.com/' ;;
+        zh-tw:hy2_url_example) echo '正確範例: https://www.microsoft.com/' ;;
+        en:hy2_url_example) echo 'Correct example: https://www.microsoft.com/' ;;
+        ru:hy2_url_example) echo 'Правильный пример: https://www.microsoft.com/' ;;
+        fa:hy2_url_example) echo 'مثال صحیح: https://www.microsoft.com/' ;;
+        ja:hy2_url_example) echo '正しい例: https://www.microsoft.com/' ;;
+        zh:ip_pref_bad) echo '非法 IP 偏好设置。' ;;
+        zh-tw:ip_pref_bad) echo '非法 IP 偏好設定。' ;;
+        en:ip_pref_bad) echo 'The IP preference setting is invalid.' ;;
+        ru:ip_pref_bad) echo 'Недопустимая настройка предпочтения IP.' ;;
+        fa:ip_pref_bad) echo 'تنظیم ترجیح IP نامعتبر است.' ;;
+        ja:ip_pref_bad) echo 'IP 設定が不正です。' ;;
+        zh:ip_pref_write) echo 'IP 偏好写入失败。' ;;
+        zh-tw:ip_pref_write) echo 'IP 偏好寫入失敗。' ;;
+        en:ip_pref_write) echo 'Failed to write the IP preference.' ;;
+        ru:ip_pref_write) echo 'Не удалось записать предпочтение IP.' ;;
+        fa:ip_pref_write) echo 'نوشتن ترجیح IP ناموفق بود.' ;;
+        ja:ip_pref_write) echo 'IP 設定を書き込めませんでした。' ;;
+        zh:pt_reserved) echo '拒绝使用系统/管理保留端口 %s。' ;;
+        zh-tw:pt_reserved) echo '拒絕使用系統/管理保留埠 %s。' ;;
+        en:pt_reserved) echo 'Refusing to use the system/management reserved port %s.' ;;
+        ru:pt_reserved) echo 'Отказ от использования зарезервированного системного/управленческого порта %s.' ;;
+        fa:pt_reserved) echo 'استفاده از پورت رزروشده سیستم/مدیریت %s رد شد.' ;;
+        ja:pt_reserved) echo 'システム/管理予約ポート %s の使用を拒否します。' ;;
+        zh:rnd_len) echo '随机字符串长度非法。' ;;
+        zh-tw:rnd_len) echo '隨機字串長度不合法。' ;;
+        en:rnd_len) echo 'The random string length is invalid.' ;;
+        ru:rnd_len) echo 'Недопустимая длина случайной строки.' ;;
+        fa:rnd_len) echo 'طول رشته تصادفی نامعتبر است.' ;;
+        ja:rnd_len) echo 'ランダム文字列の長さが不正です。' ;;
+        zh:rnd_src) echo '加密随机源读取失败。' ;;
+        zh-tw:rnd_src) echo '加密隨機源讀取失敗。' ;;
+        en:rnd_src) echo 'Failed to read the cryptographic random source.' ;;
+        ru:rnd_src) echo 'Не удалось прочитать криптографический источник случайности.' ;;
+        fa:rnd_src) echo 'خواندن منبع تصادفی رمزنگاری ناموفق بود.' ;;
+        ja:rnd_src) echo '暗号学的乱数ソースの読み取りに失敗しました。' ;;
+        zh:rnd_uuid) echo 'UUID 随机源读取失败。' ;;
+        zh-tw:rnd_uuid) echo 'UUID 隨機源讀取失敗。' ;;
+        en:rnd_uuid) echo 'Failed to read the UUID random source.' ;;
+        ru:rnd_uuid) echo 'Не удалось прочитать источник случайности UUID.' ;;
+        fa:rnd_uuid) echo 'خواندن منبع تصادفی UUID ناموفق بود.' ;;
+        ja:rnd_uuid) echo 'UUID 乱数ソースの読み取りに失敗しました。' ;;
+        zh:sni_fail) echo '该域名未通过 TLS 1.3、h2 或证书 SAN 检查，可能造成连接失败。' ;;
+        zh-tw:sni_fail) echo '該網域未通過 TLS 1.3、h2 或憑證 SAN 檢查，可能造成連線失敗。' ;;
+        en:sni_fail) echo 'This domain did not pass the TLS 1.3, h2 or certificate SAN check; connections may fail.' ;;
+        ru:sni_fail) echo 'Этот домен не прошёл проверку TLS 1.3, h2 или SAN сертификата; подключения могут не удаться.' ;;
+        fa:sni_fail) echo 'این دامنه بررسی TLS 1.3، ‏h2 یا SAN گواهی را رد نکرد؛ اتصال‌ها ممکن است ناموفق شوند.' ;;
+        ja:sni_fail) echo 'このドメインは TLS 1.3、h2、または証明書 SAN チェックに合格しませんでした。接続に失敗する可能性があります。' ;;
+        zh:sni_ok_tier) echo '当前 VPS 实测通过 TLS 1.3、h2 和证书 SAN 检查；兼容档位 %s。' ;;
+        zh-tw:sni_ok_tier) echo '目前 VPS 實測通過 TLS 1.3、h2 和憑證 SAN 檢查；相容檔位 %s。' ;;
+        en:sni_ok_tier) echo 'This VPS passed the TLS 1.3, h2 and certificate SAN checks; compatibility tier %s.' ;;
+        ru:sni_ok_tier) echo 'Этот VPS прошёл проверки TLS 1.3, h2 и SAN сертификата; уровень совместимости %s.' ;;
+        fa:sni_ok_tier) echo 'این VPS بررسی‌های TLS 1.3، ‏h2 و SAN گواهی را رد کرد؛ رده سازگاری %s.' ;;
+        ja:sni_ok_tier) echo 'この VPS は TLS 1.3、h2、証明書 SAN チェックに合格しました。互換ティア %s。' ;;
+        zh:sni_risky) echo 'TLS 检查通过，但目标存在较高 CDN/共享边缘风险，不属于推荐档位。' ;;
+        zh-tw:sni_risky) echo 'TLS 檢查通過，但目標存在較高 CDN/共享邊緣風險，不屬於推薦檔位。' ;;
+        en:sni_risky) echo 'The TLS check passed, but the target has a high CDN/shared-edge risk and is not in a recommended tier.' ;;
+        ru:sni_risky) echo 'Проверка TLS пройдена, но у цели высокий риск CDN/общего края; уровень не рекомендуется.' ;;
+        fa:sni_risky) echo 'بررسی TLS رد شد، اما هدف ریسک بالای CDN/لبه مشترک دارد و در رده توصیه‌شده نیست.' ;;
+        ja:sni_risky) echo 'TLS チェックは合格しましたが、対象は CDN/共有エッジのリスクが高く、推奨ティアではありません。' ;;
+        zh:sni_untestable) echo '当前 VPS 无法完成可靠性检测；请确认该域名支持 TLS 1.3、h2 且证书 SAN 匹配。' ;;
+        zh-tw:sni_untestable) echo '目前 VPS 無法完成可靠性檢測；請確認該網域支援 TLS 1.3、h2 且憑證 SAN 符合。' ;;
+        en:sni_untestable) echo 'This VPS could not complete the reliability check; make sure the domain supports TLS 1.3 and h2 and that the certificate SAN matches.' ;;
+        ru:sni_untestable) echo 'Этот VPS не смог завершить проверку надёжности; убедитесь, что домен поддерживает TLS 1.3 и h2, а SAN сертификата совпадает.' ;;
+        fa:sni_untestable) echo 'این VPS نتوانست بررسی قابلیت اطمینان را کامل کند؛ مطمئن شوید دامنه از TLS 1.3 و h2 پشتیبانی می‌کند و SAN گواهی مطابقت دارد.' ;;
+        ja:sni_untestable) echo 'この VPS では信頼性チェックを完了できませんでした。ドメインが TLS 1.3 と h2 をサポートし、証明書 SAN が一致することを確認してください。' ;;
+        zh:state_dir_prep) echo '无法准备 A-Box 状态目录。' ;;
+        zh-tw:state_dir_prep) echo '無法準備 A-Box 狀態目錄。' ;;
+        en:state_dir_prep) echo 'Cannot prepare the A-Box state directory.' ;;
+        ru:state_dir_prep) echo 'Невозможно подготовить каталог состояния A-Box.' ;;
+        fa:state_dir_prep) echo 'آماده‌سازی پوشه وضعیت A-Box ممکن نیست.' ;;
+        ja:state_dir_prep) echo 'A-Box の状態ディレクトリを準備できません。' ;;
+        zh:tp_arg_mismatch) echo '翻译参数数量不匹配: %s (%s != %s)' ;;
+        zh-tw:tp_arg_mismatch) echo '翻譯參數數量不匹配: %s (%s != %s)' ;;
+        en:tp_arg_mismatch) echo 'Translation argument count mismatch: %s (%s != %s)' ;;
+        ru:tp_arg_mismatch) echo 'Несоответствие количества аргументов перевода: %s (%s != %s)' ;;
+        fa:tp_arg_mismatch) echo 'تعداد آرگومان‌های ترجمه مطابقت ندارد: %s (%s != %s)' ;;
+        ja:tp_arg_mismatch) echo '翻訳引数の数が一致しません: %s (%s != %s)' ;;
+        zh:tp_bad_fmt) echo '非法翻译格式串: %s' ;;
+        zh-tw:tp_bad_fmt) echo '非法翻譯格式串: %s' ;;
+        en:tp_bad_fmt) echo 'Invalid translation format string: %s' ;;
+        ru:tp_bad_fmt) echo 'Недопустимая строка формата перевода: %s' ;;
+        fa:tp_bad_fmt) echo 'رشته قالب ترجمه نامعتبر است: %s' ;;
+        ja:tp_bad_fmt) echo '翻訳フォーマット文字列が不正です: %s' ;;
+        zh:tp_lang_write) echo '语言状态写入失败。' ;;
+        zh-tw:tp_lang_write) echo '語言狀態寫入失敗。' ;;
+        en:tp_lang_write) echo 'Failed to write the language state.' ;;
+        ru:tp_lang_write) echo 'Не удалось записать состояние языка.' ;;
+        fa:tp_lang_write) echo 'نوشتن وضعیت زبان ناموفق بود.' ;;
+        ja:tp_lang_write) echo '言語状態を書き込めませんでした。' ;;
+        zh:tp_lock) echo '重新获取 A-Box 运行锁失败；可能另有实例已启动。请退出后重试。' ;;
+        zh-tw:tp_lock) echo '重新獲取 A-Box 執行鎖失敗；可能另有實例已啟動。請退出後重試。' ;;
+        en:tp_lock) echo 'Failed to re-acquire the A-Box run lock; another instance may already be running. Exit and retry.' ;;
+        ru:tp_lock) echo 'Не удалось повторно получить блокировку запуска A-Box; возможно, уже запущен другой экземпляр. Выйдите и повторите.' ;;
+        fa:tp_lock) echo 'دریافت مجدد قفل اجرای A-Box ناموفق بود؛ ممکن است نمونه دیگری در حال اجرا باشد. خارج شوید و دوباره تلاش کنید.' ;;
+        ja:tp_lock) echo 'A-Box 実行ロックの再取得に失敗しました。別のインスタンスが実行中の可能性があります。終了して再試行してください。' ;;
+        zh:tp_tty_menu) echo '当前环境无可交互 TTY，无法运行交互式菜单。' ;;
+        zh-tw:tp_tty_menu) echo '目前環境無可互動 TTY，無法運行互動式選單。' ;;
+        en:tp_tty_menu) echo 'There is no interactive TTY in the current environment; cannot run the interactive menu.' ;;
+        ru:tp_tty_menu) echo 'В текущей среде нет интерактивного TTY; невозможно запустить интерактивное меню.' ;;
+        fa:tp_tty_menu) echo 'در محیط فعلی TTY تعاملی وجود ندارد؛ اجرای منوی تعاملی ممکن نیست.' ;;
+        ja:tp_tty_menu) echo '現在の環境には対話型 TTY がなく、対話型メニューを実行できません。' ;;
+        zh:tp_tty_open) echo '当前环境无可交互 TTY，无法打开控制终端。' ;;
+        zh-tw:tp_tty_open) echo '目前環境無可互動 TTY，無法打開控制終端。' ;;
+        en:tp_tty_open) echo 'There is no interactive TTY in the current environment; cannot open the control terminal.' ;;
+        ru:tp_tty_open) echo 'В текущей среде нет интерактивного TTY; невозможно открыть управляющий терминал.' ;;
+        fa:tp_tty_open) echo 'در محیط فعلی TTY تعاملی وجود ندارد؛ باز کردن ترمینال کنترل ممکن نیست.' ;;
+        ja:tp_tty_open) echo '現在の環境には対話型 TTY がなく、制御端末を開けません。' ;;
+        zh:wl_v6_only) echo '当前偏好为仅 IPv6，但系统没有可用的全局 IPv6 地址/默认路由。' ;;
+        zh-tw:wl_v6_only) echo '目前偏好為僅 IPv6，但系統沒有可用的全域 IPv6 位址/預設路由。' ;;
+        en:wl_v6_only) echo 'The preference is IPv6-only, but the system has no usable global IPv6 address/default route.' ;;
+        ru:wl_v6_only) echo 'Предпочтение — только IPv6, но в системе нет доступного глобального адреса IPv6/маршрута по умолчанию.' ;;
+        fa:wl_v6_only) echo 'ترجیح فقط IPv6 است، اما سیستم هیچ آدرس IPv6 جهانی/مسیر پیش‌فرض قابل استفاده‌ای ندارد.' ;;
+        ja:wl_v6_only) echo '設定は IPv6 のみですが、システムに利用可能なグローバル IPv6 アドレス/デフォルトルートがありません。' ;;
         zh:fmt_unused) echo '未用' ;;
         en:fmt_unused) echo 'unused' ;;
         ru:fmt_unused) echo 'нет трафика' ;;
@@ -7031,22 +7199,22 @@ tprintf() {
     # Translation strings are internal, but validate their printf grammar before
     # passing them to printf. Only %s and %% are supported, with %% treated as
     # a literal percent and never counted as a placeholder.
-    [[ "$fmt" != *\\* ]] || die "非法翻译格式串: ${key}"
+    [[ "$fmt" != *\\* ]] || die "$(tprintf tp_bad_fmt "$key")"
     len=${#fmt}
     while (( i < len )); do
         if [[ "${fmt:i:1}" == '%' ]]; then
-            (( i + 1 < len )) || die "非法翻译格式串: ${key}"
+            (( i + 1 < len )) || die "$(tprintf tp_bad_fmt "$key")"
             next=${fmt:i+1:1}
             case "$next" in
                 '%') i=$((i + 2)) ;;
                 s) placeholder_count=$((placeholder_count + 1)); i=$((i + 2)) ;;
-                *) die "非法翻译格式串: ${key}" ;;
+                *) die "$(tprintf tp_bad_fmt "$key")" ;;
             esac
         else
             i=$((i + 1))
         fi
     done
-    (( placeholder_count == $# )) || die "翻译参数数量不匹配: ${key} (${placeholder_count} != $#)"
+    (( placeholder_count == $# )) || die "$(tprintf tp_arg_mismatch "$key" "$placeholder_count" "$#")"
     printf "$fmt" "$@"
 }
 
@@ -7065,7 +7233,7 @@ pause_return() {
         fi
         read -r -p "$(tr_msg press_return)" _ || true
         if (( released == 1 )); then
-            flock -w 15 9 || die '重新获取 A-Box 运行锁失败；可能另有实例已启动。请退出后重试。'
+            flock -w 15 9 || die "$(tr_msg tp_lock)"
         fi
     fi
 }
@@ -7092,7 +7260,7 @@ detect_lang() {
 
 save_lang() {
     ensure_abox_dir_owned "$ABOX_DIR"
-    write_file_atomically_from_stdin "$LANG_FILE" 600 <<< "${ABOX_LANG:-zh}" || die '语言状态写入失败。'
+    write_file_atomically_from_stdin "$LANG_FILE" 600 <<< "${ABOX_LANG:-zh}" || die "$(tr_msg tp_lang_write)"
 }
 
 initial_language_select() {
@@ -7154,9 +7322,9 @@ need_interactive_tty() {
         # Automation: set ABOX_PIPED=1 to explicitly enable piped-menu mode.
         [[ "${ABOX_PIPED:-0}" == 1 ]] && return 0
         if [[ -r /dev/tty ]] && ( : < /dev/tty ) 2>/dev/null; then
-            exec < /dev/tty || die '当前环境无可交互 TTY，无法打开控制终端。'
+            exec < /dev/tty || die "$(tr_msg tp_tty_open)"
         else
-            die '当前环境无可交互 TTY，无法运行交互式菜单。'
+            die "$(tr_msg tp_tty_menu)"
         fi
     fi
 }
@@ -7492,18 +7660,18 @@ prompt_reality_sni() {
             custom_tier=$(sni_probe_candidate_tier "$input" 2>/dev/null || printf 'N')
             case "$custom_tier" in
                 A|B|C)
-                    printf '%s\n' "${GREEN}[SNI custom] 当前 VPS 实测通过 TLS 1.3、h2 和证书 SAN 检查；兼容档位 ${custom_tier}。$NC" >&2
+                    printf '%s\n' "${GREEN}[SNI custom] $(tprintf sni_ok_tier "$custom_tier")$NC" >&2
                     ;;
                 R)
-                    printf '%s\n' "${YELLOW}[SNI custom] TLS 检查通过，但目标存在较高 CDN/共享边缘风险，不属于推荐档位。$NC" >&2
+                    printf '%s\n' "${YELLOW}[SNI custom] $(tr_msg sni_risky)$NC" >&2
                     warned=1
                     ;;
                 D)
-                    printf '%s\n' "${YELLOW}[SNI custom] 该域名未通过 TLS 1.3、h2 或证书 SAN 检查，可能造成连接失败。$NC" >&2
+                    printf '%s\n' "${YELLOW}[SNI custom] $(tr_msg sni_fail)$NC" >&2
                     warned=1
                     ;;
                 *)
-                    printf '%s\n' "${YELLOW}[SNI custom] 当前 VPS 无法完成可靠性检测；请确认该域名支持 TLS 1.3、h2 且证书 SAN 匹配。$NC" >&2
+                    printf '%s\n' "${YELLOW}[SNI custom] $(tr_msg sni_untestable)$NC" >&2
                     warned=1
                     ;;
             esac
@@ -7563,8 +7731,8 @@ prompt_https_url() {
             printf '%s\n' "$normalized"
             return 0
         fi
-        printf '%s\n' "${RED}[!] HY2 伪装 URL 非法 / Invalid HY2 masquerade URL: ${input}${NC}" >&2
-        printf '%s\n' "${YELLOW}    正确示例 / Example: https://www.microsoft.com/${NC}" >&2
+        printf '%s\n' "${RED}[!] $(tprintf hy2_url_bad "$input")${NC}" >&2
+        printf '%s\n' "${YELLOW}    $(tr_msg hy2_url_example)${NC}" >&2
     done
 }
 
@@ -7576,7 +7744,7 @@ prompt_port_input() {
         input="${input:-$default_port}"
         if valid_port "$input"; then
             case "$((10#$input))" in
-                22|53|68|123|161|323) printf '%s\n' "${RED}[!] 拒绝使用系统/管理保留端口 $((10#$input))。${NC}" >&2; continue ;;
+                22|53|68|123|161|323) printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue ;;
             esac
             printf '%s\n' "$((10#$input))"
             return 0
@@ -7593,7 +7761,7 @@ prompt_ss_port_input() {
         input="${input:-$default_port}"
         if valid_port "$input"; then
             case "$((10#$input))" in
-                22|53|68|123|161|323) printf '%s\n' "${RED}[!] 拒绝使用系统/管理保留端口 $((10#$input))。${NC}" >&2; continue ;;
+                22|53|68|123|161|323) printf '%s\n' "${RED}[!] $(tprintf pt_reserved "$((10#$input))")${NC}" >&2; continue ;;
             esac
             printf '%s\n' "$((10#$input))"
             return 0
@@ -7611,7 +7779,7 @@ prompt_hy2_bandwidth_mbps_input() {
             printf '%s\n' "$input"
             return 0
         fi
-        printf '%s\n' "${RED}[!] 请输入正整数 / Enter a positive integer: ${input}${NC}" >&2
+        printf '%s\n' "${RED}[!] $(tprintf hy2_bw_bad "$input")${NC}" >&2
     done
 }
 valid_ipv4_cidr() {
@@ -7867,7 +8035,7 @@ load_optional_abox_env_or_die() {
     # A missing .env is valid during first-time setup. An existing but invalid,
     # unsafe, or unreadable .env must never be treated as an empty installation.
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
-        load_abox_env "$ABOX_ENV" 2>/dev/null || die '现有 A-Box .env 校验失败或权限不安全；已中止操作。'
+        load_abox_env "$ABOX_ENV" 2>/dev/null || die "$(tr_msg env_bad)"
     else
         clear_abox_env_vars
     fi
@@ -7875,7 +8043,7 @@ load_optional_abox_env_or_die() {
 
 rand_alnum() {
     local len="$1" out='' chunk attempt target max_attempts
-    valid_positive_int "$len" && (( 10#$len <= 4096 )) || die '随机字符串长度非法。'
+    valid_positive_int "$len" && (( 10#$len <= 4096 )) || die "$(tr_msg rnd_len)"
     target=$((10#$len))
     # The previous fixed 16 rounds could never produce 4096 alphanumeric chars.
     max_attempts=$(( (target + 255) / 256 + 16 ))
@@ -7883,7 +8051,7 @@ rand_alnum() {
         chunk=$(openssl rand -base64 256 2>/dev/null | tr -dc 'a-zA-Z0-9') || chunk=''
         [[ -n "$chunk" ]] && out+="$chunk"
     done
-    (( ${#out} >= target )) || die '加密随机源读取失败。'
+    (( ${#out} >= target )) || die "$(tr_msg rnd_src)"
     printf '%s\n' "${out:0:target}"
 }
 
@@ -7906,7 +8074,7 @@ generate_robust_uuid() {
     {
         local u variant
         u=$(openssl rand -hex 16 2>/dev/null) || u=''
-        [[ ${#u} -eq 32 ]] || die 'UUID 随机源读取失败。'
+        [[ ${#u} -eq 32 ]] || die "$(tr_msg rnd_uuid)"
         case "${u:16:1}" in
             0|1|2|3) variant=8 ;;
             4|5|6|7) variant=9 ;;
@@ -8126,12 +8294,12 @@ resolve_domain_addresses() {
 
 verify_domain_points_to_self() {
     local domain="$1" pub_ip="$2" resolved continue_domain
-    resolved=$(resolve_domain_addresses "$domain") || die "域名无法解析: $domain"
+    resolved=$(resolve_domain_addresses "$domain") || die "$(tprintf dom_unresolved "$domain")"
     if [[ "$pub_ip" != 'N/A' ]] && ! grep -Fxq "$pub_ip" <<< "$resolved"; then
         msg "${YELLOW}[!] 域名已解析，但未发现解析到当前公网 IP: $pub_ip${NC}"
-        printf '%s\n\n%s\n' "${YELLOW}解析结果:${NC}" "$resolved"
-        read -r -p '仍然继续？[Y/N]: ' continue_domain
-        is_yes "$continue_domain" || die '已取消部署。'
+        printf '%s\n\n%s\n' "${YELLOW}$(tr_msg dom_resolved_label)${NC}" "$resolved"
+        read -r -p "$(tr_msg dom_continue)" continue_domain
+        is_yes "$continue_domain" || die "$(tr_msg dom_cancelled)"
     fi
 }
 
@@ -8405,7 +8573,7 @@ wildcard_listen_address() {
             return 0
             ;;
         ipv6)
-            has_ipv6 || die '当前偏好为仅 IPv6，但系统没有可用的全局 IPv6 地址/默认路由。'
+            has_ipv6 || die "$(tr_msg wl_v6_only)"
             printf '::'
             return 0
             ;;
@@ -20391,9 +20559,9 @@ read_fast_mode_label() {
 
 save_fast_mode() {
     local v="${1:-0}"
-    [[ "$v" =~ ^(0|1)$ ]] || die '非法快速模式开关。'
-    ensure_abox_dir_owned "$ABOX_DIR" || die '无法准备 A-Box 状态目录。'
-    write_file_atomically_from_stdin "$FAST_MODE_FILE" 600 <<< "$v" || die '快速模式写入失败。'
+    [[ "$v" =~ ^(0|1)$ ]] || die "$(tr_msg fm_bad)"
+    ensure_abox_dir_owned "$ABOX_DIR" || die "$(tr_msg state_dir_prep)"
+    write_file_atomically_from_stdin "$FAST_MODE_FILE" 600 <<< "$v" || die "$(tr_msg fm_write)"
 }
 
 abox_prefer_mirror() {
@@ -22067,9 +22235,9 @@ read_ip_pref() {
 
 save_ip_pref() {
     local v="${1:-}"
-    valid_ip_pref "$v" || die '非法 IP 偏好设置 / Invalid IP preference.'
-    ensure_abox_dir_owned "$ABOX_DIR" || die '无法准备 A-Box 状态目录。'
-    write_file_atomically_from_stdin "$IP_PREF_FILE" 600 <<< "$v" || die 'IP 偏好写入失败。'
+    valid_ip_pref "$v" || die "$(tr_msg ip_pref_bad)"
+    ensure_abox_dir_owned "$ABOX_DIR" || die "$(tr_msg state_dir_prep)"
+    write_file_atomically_from_stdin "$IP_PREF_FILE" 600 <<< "$v" || die "$(tr_msg ip_pref_write)"
 }
 
 ip_preference_menu() {

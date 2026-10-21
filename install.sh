@@ -4635,12 +4635,36 @@ assert_no_foreign_core_conflicts() {
     die '请先迁移或删除上述非 A-Box 安装。A-Box 不会覆盖未知归属的核心、配置或服务文件。'
 }
 
+# Legacy residue check: the core's unit file and config dir are
+# already gone (an earlier cleanup removed them together with the
+# ownership proof) and only the binary remains at the canonical
+# path. Such a binary is inert - no working foreign install keeps
+# its binary while losing both its unit and its config dir.
+core_family_binary_orphaned() {
+    local srv="$1" cfg_dir='' bin='' unit=''
+    case "$srv" in
+        xray) cfg_dir=/usr/local/etc/xray; bin=/usr/local/bin/xray ;;
+        sing-box) cfg_dir=/etc/sing-box; bin=/usr/local/bin/sing-box ;;
+        hysteria) cfg_dir=/etc/hysteria; bin=/usr/local/bin/hysteria ;;
+        *) return 1 ;;
+    esac
+    [[ -x "$bin" && ! -L "$bin" ]] || return 1
+    [[ ! -e "$cfg_dir" && ! -L "$cfg_dir" ]] || return 1
+    unit=$(service_unit_path "$srv" 2>/dev/null || true)
+    [[ -z "$unit" || ( ! -e "$unit" && ! -L "$unit" ) ]]
+}
+
 remove_owned_core_family() {
     # $2 force_heal: only explicit callers (menu 17 / full uninstall) may pass 1.
     # Ambient ABOX_HEAL_MISSING_MANIFEST from the environment is never consulted.
     local srv="$1" force_heal="${2:-0}" path rc core_paths=''
     if ! abox_owns_service "$srv"; then
         if abox_owns_config_only_core_dir "$srv"; then
+            remove_core_family_force "$srv" || return 1
+            return 0
+        fi
+        if [[ "$force_heal" == 1 ]] && core_family_binary_orphaned "$srv"; then
+            msg "${YELLOW}[!] ${srv} 仅剩无归属记录的二进制残留（旧版本安装、归属凭据已被先前清理删除），按显式清理流程强制移除。${NC}"
             remove_core_family_force "$srv" || return 1
             return 0
         fi

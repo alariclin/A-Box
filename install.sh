@@ -5134,7 +5134,7 @@ init_system_environment() {
                 msg "${YELLOW}[*] firewalld is inactive; A-Box will persist only its own rules through A-Box-firewall.service.${NC}"
             fi
         fi
-    else
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
         local cron_unit
         cron_unit=$(openrc_cron_service_name "$release")
         if [[ "$release" == 'alpine' && "$cron_unit" != 'crond' && -x /etc/init.d/crond ]]; then

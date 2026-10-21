@@ -34,13 +34,13 @@ A-Box は単一ファイルの Bash スクリプト（`install.sh`、約26,000�
 公式ソース（不変のコミットに固定）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/b2d8076b06851c1ce4203ee087a4878769ba9ea5/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/ffb5a7d0b93183645f4e170ef5d5c2e04e5904a7/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 サードパーティミラー（同じ固定ファイルの転送経路であり、公式の入口ではありません）：
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/b2d8076b06851c1ce4203ee087a4878769ba9ea5/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/ffb5a7d0b93183645f4e170ef5d5c2e04e5904a7/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 - 新規の Alpine では、先に `apk add --no-cache bash curl` を実行してください。

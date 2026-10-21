@@ -634,6 +634,78 @@ tr_msg() {
         fa:xl_quad_hy2_fail) echo 'استقرار Hy2 رسمی ناموفق بود (بالا را ببینید)؛ سه‌تایی Xray حفظ شد.' ;;
         zh-tw:xl_quad_hy2_fail) echo 'Hy2 官方版部署失敗（原因見上方），Xray 三合一已保留。' ;;
         ja:xl_quad_hy2_fail) echo '公式 Hy2 の導入に失敗しました（上記参照）。Xray 三点セットは保持されています。' ;;
+        zh:cl_title) echo '清空与重置' ;;
+        en:cl_title) echo 'Cleanup & reset' ;;
+        ru:cl_title) echo 'Очистка и сброс' ;;
+        fa:cl_title) echo 'پاک‌سازی و بازنشانی' ;;
+        zh-tw:cl_title) echo '清空與重置' ;;
+        ja:cl_title) echo 'クリーンアップとリセット' ;;
+        zh:cl_m_single) echo '删除单个协议' ;;
+        en:cl_m_single) echo 'Delete a single protocol' ;;
+        ru:cl_m_single) echo 'Удалить один протокол' ;;
+        fa:cl_m_single) echo 'حذف یک پروتکل' ;;
+        zh-tw:cl_m_single) echo '刪除單個協議' ;;
+        ja:cl_m_single) echo '単一プロトコルを削除' ;;
+        zh:cl_m_all) echo '清空全部节点协议（保留核心与脚本）' ;;
+        en:cl_m_all) echo 'Remove all node protocols (keep cores & script)' ;;
+        ru:cl_m_all) echo 'Удалить все протоколы узлов (ядра и скрипт сохраняются)' ;;
+        fa:cl_m_all) echo 'حذف همه پروتکل‌های نود (هسته‌ها و اسکریپت حفظ می‌شوند)' ;;
+        zh-tw:cl_m_all) echo '清空全部節點協議（保留核心與腳本）' ;;
+        ja:cl_m_all) echo '全ノードプロトコルを削除（コアとスクリプトは保持）' ;;
+        zh:cl_m_reset) echo '重置环境（原功能）' ;;
+        en:cl_m_reset) echo 'Reset environment (original function)' ;;
+        ru:cl_m_reset) echo 'Сброс окружения (исходная функция)' ;;
+        fa:cl_m_reset) echo 'بازنشانی محیط (عملکرد اصلی)' ;;
+        zh-tw:cl_m_reset) echo '重置環境（原功能）' ;;
+        ja:cl_m_reset) echo '環境リセット（従来機能）' ;;
+        zh:cl_none) echo '当前没有已部署的节点协议。' ;;
+        en:cl_none) echo 'No node protocols are currently deployed.' ;;
+        ru:cl_none) echo 'Сейчас нет развёрнутых протоколов узлов.' ;;
+        fa:cl_none) echo 'در حال حاضر هیچ پروتکل نودی مستقر نیست.' ;;
+        zh-tw:cl_none) echo '目前沒有已部署的節點協議。' ;;
+        ja:cl_none) echo '現在デプロイ済みのノードプロトコルはありません。' ;;
+        zh:cl_select) echo '请选择：' ;;
+        en:cl_select) echo 'Select: ' ;;
+        ru:cl_select) echo 'Выберите: ' ;;
+        fa:cl_select) echo 'انتخاب کنید: ' ;;
+        zh-tw:cl_select) echo '請選擇：' ;;
+        ja:cl_select) echo '選択してください：' ;;
+        zh:cl_confirm_one) echo '确认删除' ;;
+        en:cl_confirm_one) echo 'Confirm deletion of' ;;
+        ru:cl_confirm_one) echo 'Подтвердить удаление' ;;
+        fa:cl_confirm_one) echo 'تأیید حذف' ;;
+        zh-tw:cl_confirm_one) echo '確認刪除' ;;
+        ja:cl_confirm_one) echo '削除を確認' ;;
+        zh:cl_dep_warn) echo '以下协议依赖它、将一并删除' ;;
+        en:cl_dep_warn) echo 'The following depend on it and will also be removed' ;;
+        ru:cl_dep_warn) echo 'Следующие зависят от него и будут удалены тоже' ;;
+        fa:cl_dep_warn) echo 'موارد زیر به آن وابسته‌اند و حذف خواهند شد' ;;
+        zh-tw:cl_dep_warn) echo '以下協議依賴它、將一併刪除' ;;
+        ja:cl_dep_warn) echo '以下が依存しているため一緒に削除されます' ;;
+        zh:cl_fail) echo '删除失败，配置已回滚未改动。' ;;
+        en:cl_fail) echo 'Deletion failed; the configuration was rolled back unchanged.' ;;
+        ru:cl_fail) echo 'Удаление не удалось; конфигурация откатана без изменений.' ;;
+        fa:cl_fail) echo 'حذف ناموفق بود؛ پیکربندی بدون تغییر بازگردانده شد.' ;;
+        zh-tw:cl_fail) echo '刪除失敗，配置已回滾未改動。' ;;
+        ja:cl_fail) echo '削除に失敗しました。設定は変更されずロールバックされました。' ;;
+        zh:cl_done) echo '已删除' ;;
+        en:cl_done) echo 'Removed' ;;
+        ru:cl_done) echo 'Удалено' ;;
+        fa:cl_done) echo 'حذف شد' ;;
+        zh-tw:cl_done) echo '已刪除' ;;
+        ja:cl_done) echo '削除しました' ;;
+        zh:cl_confirm_all) echo '确认清空全部节点协议？核心与脚本保留。' ;;
+        en:cl_confirm_all) echo 'Remove ALL node protocols? Cores and the script are kept.' ;;
+        ru:cl_confirm_all) echo 'Удалить ВСЕ протоколы узлов? Ядра и скрипт сохраняются.' ;;
+        fa:cl_confirm_all) echo 'همه پروتکل‌های نود حذف شوند؟ هسته‌ها و اسکریپت حفظ می‌شوند.' ;;
+        zh-tw:cl_confirm_all) echo '確認清空全部節點協議？核心與腳本保留。' ;;
+        ja:cl_confirm_all) echo '全ノードプロトコルを削除しますか？コアとスクリプトは保持されます。' ;;
+        zh:cl_all_done) echo '全部节点协议已清空（核心与脚本保留）。' ;;
+        en:cl_all_done) echo 'All node protocols removed (cores & script kept).' ;;
+        ru:cl_all_done) echo 'Все протоколы узлов удалены (ядра и скрипт сохранены).' ;;
+        fa:cl_all_done) echo 'همه پروتکل‌های نود حذف شدند (هسته‌ها و اسکریپت حفظ شدند).' ;;
+        zh-tw:cl_all_done) echo '全部節點協議已清空（核心與腳本保留）。' ;;
+        ja:cl_all_done) echo '全ノードプロトコルを削除しました（コアとスクリプトは保持）。' ;;
         zh:xl_title) echo '最新 Xray（上游最新版 · 实验功能）' ;;
         en:xl_title) echo 'Latest Xray (upstream latest · experimental)' ;;
         ru:xl_title) echo 'Последний Xray (новейший upstream · эксперимент)' ;;
@@ -14256,6 +14328,250 @@ preflight_reset_ownership() {
     return 0
 }
 
+
+# ================= Protocol removal (menu 16) =================
+# Inbounds are enumerated from the live core configs (ground truth), and
+# removed per-tag with the same discipline as deployments: the new config
+# must pass the core's own check before it is installed atomically, and a
+# failed restart restores the snapshot.
+protocol_label() { # $1 = config tag, $2 = protocol/type (fallback display)
+    local tag="${1:-}" proto="${2:-}"
+    case "$tag" in
+        latest-vision) printf '%s' 'VLESS-Vision-Reality (Latest Xray)' ;;
+        latest-xhttp) printf '%s' 'VLESS-XHTTP-Reality (Latest Xray)' ;;
+        latest-ss) printf '%s' 'SS-2022 (Latest Xray)' ;;
+        vmess-ws-in) printf '%s' 'VMess-WS (Argo)' ;;
+        vless-ws-in) printf '%s' 'VLESS-WS (Argo)' ;;
+        *vision*) printf '%s' 'VLESS-Vision-Reality' ;;
+        *xhttp*) printf '%s' 'VLESS-XHTTP-Reality' ;;
+        *shadowtls*) printf '%s' 'ShadowTLS' ;;
+        *trojan*) printf '%s' 'Trojan-Reality' ;;
+        *tuic*) printf '%s' 'TUIC' ;;
+        *anytls*) printf '%s' 'AnyTLS' ;;
+        *socks*|*mixed*) printf '%s' 'SOCKS5/Mixed' ;;
+        *hysteria*|*hy2*) printf '%s' 'Hysteria 2' ;;
+        *ss*) printf '%s' 'Shadowsocks-2022' ;;
+        *) printf '%s' "${proto:-$tag}" ;;
+    esac
+}
+
+# One line per deployed inbound: core<TAB>tag<TAB>protocol<TAB>port
+# (the internal "api" inbound is infrastructure, never listed).
+protocol_inventory() {
+    local cfg=''
+    cfg="$XRAY_SLOT_CFG"
+    if [[ -f "$cfg" && ! -L "$cfg" ]]; then
+        jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "xray\t\(.tag)\t\(.protocol // "")\t\(.port // "")"' "$cfg" 2>/dev/null || true
+    fi
+    cfg='/etc/sing-box/config.json'
+    if [[ -f "$cfg" && ! -L "$cfg" ]]; then
+        jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "sing-box\t\(.tag)\t\(.type // "")\t\(.listen_port // "")"' "$cfg" 2>/dev/null || true
+    fi
+    if [[ -n "$(_xl_state_get mode)" && -f "$XRAY_LATEST_CFG" && ! -L "$XRAY_LATEST_CFG" ]]; then
+        jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "xray-latest\t\(.tag)\t\(.protocol // "")\t\(.port // "")"' "$XRAY_LATEST_CFG" 2>/dev/null || true
+    fi
+    if [[ -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
+        printf 'hy2\thy2-official\thysteria2\t%s\n' "$(xl_hy2_port)"
+    fi
+    return 0
+}
+
+_protocol_cfg_of() { # $1 = core -> cfg|bin|svc
+    case "$1" in
+        xray) printf '%s|%s|%s' "$XRAY_SLOT_CFG" '/usr/local/bin/xray' 'xray' ;;
+        sing-box) printf '%s|%s|%s' '/etc/sing-box/config.json' '/usr/local/bin/sing-box' 'sing-box' ;;
+        xray-latest) printf '%s|%s|%s' "$XRAY_LATEST_CFG" "$XRAY_LATEST_BIN" 'xray-latest' ;;
+        *) return 1 ;;
+    esac
+}
+
+# _remove_inbounds_from_config CORE TAG...   |   CORE --all
+_remove_inbounds_from_config() {
+    local core="$1"; shift
+    local info='' cfg='' bin='' svc='' bak='' tmp_cfg='' tags_json='' filter=''
+    info=$(_protocol_cfg_of "$core") || return 1
+    IFS='|' read -r cfg bin svc <<< "$info"
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    if [[ "${1:-}" == '--all' ]]; then
+        # Clear-all keeps the internal "api" inbound (traffic-stats
+        # infrastructure, not a node protocol) and drops everything else.
+        filter='.inbounds |= map(select(.tag == "api"))'
+        tags_json='[]'
+    else
+        (( $# >= 1 )) || return 1
+        tags_json=$(printf '%s\n' "$@" | jq -R . | jq -s .) || return 1
+        filter='.inbounds |= map(select(.tag as $t | ($tags | index($t)) == null))'
+    fi
+    bak=$(mktemp /tmp/A-Box-rm-bak.XXXXXX) || return 1
+    cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
+    tmp_cfg=$(mktemp /tmp/A-Box-rm-cfg.XXXXXX) || { rm -f "$bak"; return 1; }
+    mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$bak"; return 1; }
+    tmp_cfg="$tmp_cfg.json"
+    if ! jq --argjson tags "$tags_json" "$filter" "$cfg" > "$tmp_cfg" 2>/dev/null; then
+        rm -f "$tmp_cfg" "$bak"; return 1
+    fi
+    if [[ "$core" == 'sing-box' ]]; then
+        "$bin" check -c "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$bak"; return 1; }
+    else
+        XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$bak"; return 1; }
+    fi
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$bak"; return 1; }
+    rm -f "$tmp_cfg"
+    case "$core" in
+        xray) prepare_abox_runtime_permissions xray 2>/dev/null || true ;;
+        sing-box) prepare_abox_runtime_read_file "$cfg" sing-box 2>/dev/null || true ;;
+        xray-latest) prepare_abox_runtime_read_file "$cfg" xray 2>/dev/null || true ;;
+    esac
+    if ! restart_service_soft "$svc"; then
+        install_file_atomically "$bak" "$cfg" 600 2>/dev/null || cp -f -- "$bak" "$cfg"
+        restart_service_soft "$svc" >/dev/null 2>&1 || true
+        rm -f "$bak"; return 1
+    fi
+    rm -f "$bak"; return 0
+}
+
+# Side effects after inbounds were removed from CORE: Argo tunnel units for
+# ws inbounds, and the standalone link registrations of the removed tags.
+_protocol_removed_side_effects() { # $1 = core, rest = removed tags
+    local core="$1"; shift
+    local tag='' cfg=''
+    for tag in "$@"; do
+        case "$tag" in
+            vmess-ws-in) argo_remove_unit argo-vmess || true ;;
+            vless-ws-in) argo_remove_unit argo-vless || true ;;
+            *trojan*) rm -f -- /etc/ddr/standalone-links.d/trojan-xray.link /etc/ddr/standalone-links.d/trojan-sb.link 2>/dev/null || true ;;
+            *tuic*) rm -f -- /etc/ddr/standalone-links.d/tuic.link 2>/dev/null || true ;;
+            *anytls*) rm -f -- /etc/ddr/standalone-links.d/anytls.link 2>/dev/null || true ;;
+            *shadowtls*) rm -f -- /etc/ddr/standalone-links.d/shadowtls.link 2>/dev/null || true ;;
+            *socks*|*mixed*) rm -f -- /etc/ddr/standalone-links.d/socks5-sb.link /etc/ddr/standalone-links.d/socks5-xray.link 2>/dev/null || true ;;
+        esac
+        rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true
+    done
+    # The shared Argo link registration goes only when no ws inbound remains.
+    if [[ "$core" == 'sing-box' ]]; then
+        cfg='/etc/sing-box/config.json'
+        if [[ -f "$cfg" ]] && ! jq -e '.inbounds[]? | select(.tag == "vmess-ws-in" or .tag == "vless-ws-in")' "$cfg" >/dev/null 2>&1; then
+            rm -f -- /etc/ddr/standalone-links.d/argo.link 2>/dev/null || true
+            argo_remove_unit argo || true
+        fi
+    fi
+    return 0
+}
+
+_remove_hy2_official() {
+    stop_abox_service_soft hysteria >/dev/null 2>&1 || {
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl stop hysteria >/dev/null 2>&1 || true
+        elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then rc-service hysteria stop >/dev/null 2>&1 || true; fi
+    }
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        systemctl disable hysteria >/dev/null 2>&1 || true
+        rm -f -- /etc/systemd/system/hysteria.service
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
+        rc-update del hysteria default >/dev/null 2>&1 || true
+        rm -f -- /etc/init.d/hysteria /etc/conf.d/hysteria
+    fi
+    rm -rf -- /etc/hysteria
+    rm -f -- /etc/ddr/standalone-links.d/hy2.link /etc/ddr/standalone-links.d/hysteria.link 2>/dev/null || true
+    return 0
+}
+
+remove_single_protocol_menu() {
+    local -a rows=() tags=()
+    local row='' core='' tag='' proto='' port='' label='' idx=0 choice='' answer='' info='' cfg='' deps='' d=''
+    mapfile -t rows < <(protocol_inventory)
+    if (( ${#rows[@]} == 0 )); then
+        msg "${YELLOW}$(tr_msg cl_none)${NC}"
+        return 0
+    fi
+    msg "${BOLD}${GREEN}$(tr_msg cl_m_single)${NC}"
+    for row in "${rows[@]}"; do
+        idx=$((idx + 1))
+        IFS=$'\t' read -r core tag proto port <<< "$row"
+        label=$(protocol_label "$tag" "$proto")
+        msg "${YELLOW}${idx}.  ${label} · ${core} · :${port:-—}${NC}"
+    done
+    read -r -p "$(tr_msg cl_select)" choice || return 0
+    if [[ ! "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > ${#rows[@]} )); then
+        msg "${RED}$(tr_msg xl_invalid)${NC}"
+        return 0
+    fi
+    row="${rows[$((choice - 1))]}"
+    IFS=$'\t' read -r core tag proto port <<< "$row"
+    label=$(protocol_label "$tag" "$proto")
+    tags=("$tag")
+    if [[ "$core" != 'hy2' ]]; then
+        info=$(_protocol_cfg_of "$core")
+        IFS='|' read -r cfg _ _ <<< "$info"
+        deps=$(jq -r --arg t "$tag" '.inbounds[]? | select(.detour == $t) | .tag' "$cfg" 2>/dev/null || true)
+        if [[ -n "$deps" ]]; then
+            while IFS= read -r d; do [[ -n "$d" ]] && tags+=("$d"); done <<< "$deps"
+            msg "${YELLOW}$(tr_msg cl_dep_warn): ${deps//$'\n'/, }${NC}"
+        fi
+    fi
+    read -r -p "$(tr_msg cl_confirm_one) ${label} [Y/N]: " answer || return 0
+    is_yes "$answer" || { msg "${GREEN}$(tr_msg xl_remove_cancelled)${NC}"; return 0; }
+    if [[ "$core" == 'hy2' ]]; then
+        _remove_hy2_official
+    else
+        if ! _remove_inbounds_from_config "$core" "${tags[@]}"; then
+            msg "${RED}$(tr_msg cl_fail)${NC}"
+            return 1
+        fi
+        _protocol_removed_side_effects "$core" "${tags[@]}"
+    fi
+    ( setup_active_defense ) >/dev/null 2>&1 || true
+    msg "${GREEN}$(tr_msg cl_done): ${label}${NC}"
+    return 0
+}
+
+clear_all_protocols() {
+    local answer='' core='' info='' cfg=''
+    local -a all_tags=()
+    read -r -p "$(tr_msg cl_confirm_all) [Y/N]: " answer || return 0
+    is_yes "$answer" || { msg "${GREEN}$(tr_msg xl_remove_cancelled)${NC}"; return 0; }
+    for core in xray sing-box xray-latest; do
+        [[ "$core" == 'xray-latest' && -z "$(_xl_state_get mode)" ]] && continue
+        info=$(_protocol_cfg_of "$core") || continue
+        IFS='|' read -r cfg _ _ <<< "$info"
+        [[ -f "$cfg" && ! -L "$cfg" ]] || continue
+        mapfile -t all_tags < <(jq -r '.inbounds[]? | .tag // empty' "$cfg" 2>/dev/null)
+        if ! _remove_inbounds_from_config "$core" --all; then
+            msg "${YELLOW}[!] ${core}: $(tr_msg cl_fail)${NC}"
+            continue
+        fi
+        (( ${#all_tags[@]} )) && _protocol_removed_side_effects "$core" "${all_tags[@]}"
+    done
+    argo_remove_unit argo || true
+    if [[ -f /etc/hysteria/config.yaml ]]; then _remove_hy2_official; fi
+    rm -f -- /etc/ddr/standalone-links.d/*.link 2>/dev/null || true
+    ( setup_active_defense ) >/dev/null 2>&1 || true
+    msg "${GREEN}$(tr_msg cl_all_done)${NC}"
+    return 0
+}
+
+cleanup_protocols_menu() {
+    local c=''
+    while true; do
+        clear
+        msg "${CYAN}======================================================================${NC}"
+        msg "${BOLD}${GREEN}$(tr_msg cl_title)${NC}"
+        msg "${CYAN}======================================================================${NC}"
+        msg "${YELLOW}1.  $(tr_msg cl_m_single)${NC}"
+        msg "${YELLOW}2.  $(tr_msg cl_m_all)${NC}"
+        msg "${YELLOW}3.  $(tr_msg cl_m_reset)${NC}"
+        msg "${YELLOW}0.  $(tr_msg xl_back_main)${NC}"
+        read -r -p "$(tr_msg cl_select)" c || return 0
+        case "$c" in
+            1) remove_single_protocol_menu; pause_return ;;
+            2) clear_all_protocols; pause_return ;;
+            3) check_virgin_state ;;
+            0) return 0 ;;
+            *) msg "${RED}$(tr_msg xl_invalid)${NC}" ;;
+        esac
+    done
+}
+
 check_virgin_state() {
     if [[ -t 1 ]]; then
         command clear || true
@@ -25776,6 +26092,9 @@ PY_SELFTEST_TAR
     declare -F xray_latest_deploy >/dev/null 2>&1 || { echo 'FAIL: latest Xray deployer missing'; failures=$((failures + 1)); }
     declare -F xray_latest_deploy_trio >/dev/null 2>&1 || { echo 'FAIL: latest Xray trio deployer missing'; failures=$((failures + 1)); }
     declare -F xray_latest_deploy_quad >/dev/null 2>&1 || { echo 'FAIL: latest Xray quad deployer missing'; failures=$((failures + 1)); }
+    declare -F cleanup_protocols_menu >/dev/null 2>&1 || { echo 'FAIL: cleanup protocols menu missing'; failures=$((failures + 1)); }
+    declare -F remove_single_protocol_menu >/dev/null 2>&1 || { echo 'FAIL: single protocol remover missing'; failures=$((failures + 1)); }
+    declare -F clear_all_protocols >/dev/null 2>&1 || { echo 'FAIL: clear all protocols missing'; failures=$((failures + 1)); }
     grep -Fq "XRAY_LATEST_BIN='/usr/local/bin/xray-latest'" "$0" || { echo 'FAIL: xray-latest binary path missing'; failures=$((failures + 1)); }
     grep -Fq '每月流量管控 / Monthly Traffic' <<< "$source_body" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
     grep -Fq 'one_click_reality_deploy()' "$0" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
@@ -27357,7 +27676,7 @@ main_loop() {
             13) show_usage ;;
             14) ota_and_geo_menu ;;
             15) tune_vps ;;
-            16) check_virgin_state ;;
+            16) cleanup_protocols_menu ;;
             17) traffic_management_menu ;;
             18) other_protocols_menu ;;
             19) language_menu ;;

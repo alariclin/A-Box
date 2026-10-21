@@ -61,7 +61,7 @@ The Xray all-in-one combines Vision (TCP 443), XHTTP (TCP 8443), Shadowsocks-202
 
 | No. | Tools & system | No. | Operations |
 |---:|---|---:|---|
-| 11 | Toolbox | 16 | Wipe nodes & reset environment |
+| 11 | Toolbox | 16 | Wipe nodes & reset environment (delete one / wipe all / reset) |
 | 12 | View node configs & links | 17 | Monthly traffic quota |
 | 13 | User guide & manual | 18 | More protocols (submenu below) |
 | 14 | Update core & script (OTA) | 19 | Language settings |

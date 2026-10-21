@@ -592,6 +592,24 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:dp_existing) echo '已部署节点（见磁盘配置）' ;;
+        en:dp_existing) echo 'existing deployment (on disk)' ;;
+        ru:dp_existing) echo 'существующее развёртывание (на диске)' ;;
+        fa:dp_existing) echo 'استقرار موجود (روی دیسک)' ;;
+        zh-tw:dp_existing) echo '已部署節點（見磁碟設定）' ;;
+        ja:dp_existing) echo '導入済みノード（ディスク上の設定）' ;;
+        zh:oc_replace_warn) echo '本机已有部署（当前：%s）。继续将覆盖同核心的现有配置，只保留 Vision，其余协议节点会被清除！' ;;
+        en:oc_replace_warn) echo 'This host already has a deployment (current: %s). Continuing overwrites the existing configuration of that core and keeps only Vision; the other protocol nodes will be removed!' ;;
+        ru:oc_replace_warn) echo 'На этом хосте уже есть развёртывание (текущее: %s). Продолжение перезапишет существующую конфигурацию этого ядра и оставит только Vision; остальные узлы протоколов будут удалены!' ;;
+        fa:oc_replace_warn) echo 'این میزبان از قبل یک استقرار دارد (کنونی: %s). ادامه کار، پیکربندی موجود آن هسته را بازنویسی و فقط Vision را نگه می‌دارد؛ گره‌های سایر پروتکل‌ها حذف می‌شوند!' ;;
+        zh-tw:oc_replace_warn) echo '本機已有部署（目前：%s）。繼續將覆蓋同核心的現有設定，只保留 Vision，其餘協議節點會被清除！' ;;
+        ja:oc_replace_warn) echo 'このホストには導入済みの構成があります（現在: %s）。続行すると、そのコアの既存設定が上書きされ、Vision のみが残ります。他のプロトコルノードは削除されます！' ;;
+        zh:tf_vnstat_pending) echo 'vnStat 接口已注册，月度数据将在首个采集周期（约 5 分钟）后显示。' ;;
+        en:tf_vnstat_pending) echo 'The vnStat interface is registered; monthly data appears after the first collection cycle (about 5 minutes).' ;;
+        ru:tf_vnstat_pending) echo 'Интерфейс vnStat зарегистрирован; месячные данные появятся после первого цикла сбора (около 5 минут).' ;;
+        fa:tf_vnstat_pending) echo 'رابط vnStat ثبت شد؛ داده‌های ماهانه پس از نخستین چرخه گردآوری (حدود ۵ دقیقه) نمایش داده می‌شود.' ;;
+        zh-tw:tf_vnstat_pending) echo 'vnStat 介面已註冊，月度資料將在首個採集週期（約 5 分鐘）後顯示。' ;;
+        ja:tf_vnstat_pending) echo 'vnStat のインターフェースを登録しました。月次データは最初の収集サイクル（約5分）後に表示されます。' ;;
         zh:pi_input_closed) echo '交互输入已结束。' ;;
         en:pi_input_closed) echo 'Interactive input closed.' ;;
         ru:pi_input_closed) echo 'Ввод завершён.' ;;
@@ -5312,21 +5330,45 @@ managed_services_active() {
     return 2
 }
 
+
+deployment_evidence_exists() {
+    [[ -s /usr/local/etc/xray/config.json ]] && return 0
+    [[ -s /etc/sing-box/config.json ]] && return 0
+    [[ -s /etc/hysteria/config.yaml ]] && return 0
+    local _d="${ABOX_DIR:-/etc/ddr}"
+    [[ -d "$_d/standalone-links.d" ]] && [[ -n "$(ls -A "$_d/standalone-links.d" 2>/dev/null)" ]] && return 0
+    [[ -d "$_d/users.d" ]] && [[ -n "$(ls -A "$_d/users.d" 2>/dev/null)" ]] && return 0
+    return 1
+}
+
 confirm_deployment_replacement() {
     local next_core="$1" next_mode="$2" answer current="none" active_rc=1
     [[ -n "${CORE:-}" || -n "${MODE:-}" ]] && current="${CORE:-unknown}-${MODE:-unknown}"
+    if [[ "$current" == 'none' ]]; then
+        # Do not trust ambient globals alone: reload the recorded
+        # deployment from .env before deciding this host is fresh.
+        load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || true
+        [[ -n "${CORE:-}" || -n "${MODE:-}" ]] && current="${CORE:-unknown}-${MODE:-unknown}"
+    fi
     if [[ "$current" == 'none' ]]; then
         managed_services_active
         active_rc=$?
         case $active_rc in
             1)
-                # No managed services: soft skip in fast/one-click; otherwise no prompt needed either.
-                if abox_is_fast || [[ "${ABOX_QUICK_DEPLOY:-0}" == '1' ]]; then
-                    msg "${YELLOW}$(tr_msg dp_fast_skip)${NC}"
+                # No live services. Silent only when the disk also
+                # shows no deployment; existing configs, links or
+                # user registries always earn a prompt - a stopped
+                # or misprobed stack must never be wiped silently.
+                if deployment_evidence_exists; then
+                    current="$(tr_msg dp_existing)"
+                else
+                    if abox_is_fast || [[ "${ABOX_QUICK_DEPLOY:-0}" == '1' ]]; then
+                        msg "${YELLOW}$(tr_msg dp_fast_skip)${NC}"
+                    fi
+                    return 0
                 fi
-                return 0
                 ;;
-            0|2) : ;;
+            0|2) current="$(tr_msg dp_existing)" ;;
             *) return 1 ;;
         esac
     fi
@@ -14074,6 +14116,27 @@ ensure_vnstat_runtime() {
     else
         { msg "${RED}[!] 无法确认 vnStat 运行时环境；未启用流量限制。${NC}" >&2; return 1; }
     fi
+    # A long-running vnstatd only registers interfaces present at
+    # its own start; without this the dashboard stays empty until
+    # a reboot restarts the daemon. Verify and repair once here.
+    local _viface='' _vunit=''
+    _viface="${INGRESS_IF:-}"
+    [[ -n "$_viface" ]] || _viface=$(get_active_interface 2>/dev/null || true)
+    if [[ -n "$_viface" ]]; then
+        if ! vnstat -i "$_viface" --json m 2>/dev/null | grep -q "\"name\": *\"$_viface\""; then
+            if vnstat --version 2>/dev/null | grep -q 'vnStat 1\.'; then
+                vnstat --add -i "$_viface" >/dev/null 2>&1 || true
+            fi
+            if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+                if systemctl list-unit-files vnstat.service >/dev/null 2>&1; then _vunit=vnstat;
+                elif systemctl list-unit-files vnstatd.service >/dev/null 2>&1; then _vunit=vnstatd; fi
+                [[ -n "$_vunit" ]] && systemctl restart "$_vunit" >/dev/null 2>&1 || true
+            elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
+                rc-service vnstatd restart >/dev/null 2>&1 9>&- 10>&- || true
+            fi
+            vnstat -i "$_viface" --json m 2>/dev/null | grep -q "\"name\": *\"$_viface\"" || msg "${YELLOW}[!] $(tr_msg tf_vnstat_pending)${NC}"
+        fi
+    fi
 }
 
 setup_traffic_monitor() {
@@ -16328,6 +16391,12 @@ one_click_reality_deploy() {
     msg "${CYAN}0. Cancel / 返回${NC}"
     read -r -p 'Select [0-2]: ' choice || return 0
     case "$choice" in 1|2) ;; *) return 0 ;; esac
+    load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || true
+    if deployment_evidence_exists || [[ -n "${CORE:-}" || -n "${MODE:-}" ]]; then
+        local _oc_cur="${CORE:-?}-${MODE:-?}"
+        [[ -n "${CORE:-}" || -n "${MODE:-}" ]] || _oc_cur="$(tr_msg dp_existing)"
+        msg "${RED}[!] $(tprintf oc_replace_warn "$_oc_cur")${NC}"
+    fi
     if ! confirm_soft "$prompt"; then
         case "${ABOX_LANG:-zh}" in
             en) msg "${YELLOW}Cancelled.${NC}" ;;

@@ -14342,7 +14342,7 @@ _menu_info_collect() {
         if [[ -n "$_ipt" ]] && (( $("$_ipt" -S 2>/dev/null | grep -c .) > 3 )); then fwst=run
         elif command -v nft >/dev/null 2>&1 && [[ -n "$(nft list ruleset 2>/dev/null)" ]]; then fwst=run; fi
     fi
-    if [[ -z "$fwst" ]] && is_systemd && systemctl is-failed A-Box-firewall.service >/dev/null 2>&1; then fwst=stop; fi
+    if [[ -z "$fwst" ]] && [[ "${INIT_SYS:-}" == systemd ]] && systemctl is-failed A-Box-firewall.service >/dev/null 2>&1; then fwst=stop; fi
     _MI_XST="$xst"; _MI_SST="$sst"; _MI_HST="$hst"; _MI_F2B="$f2st"; _MI_WALLOS="$dost"; _MI_TROJAN="$tjt"; _MI_TUIC="$tut"; _MI_ANYTLS="$ant"; _MI_STLS="$stt"; _MI_ARGO="$argo_st"; _MI_CF="$cf_st"; _MI_TRAFFIC="$traf"; _MI_DOCKER="$dock"; _MI_BBR="$bbr"; _MI_FW="$fwst"
 
     # --- system info ---

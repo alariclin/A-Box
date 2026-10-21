@@ -12510,8 +12510,8 @@ _menu_info_display() {
         msg "          ${LBLW}DNS${NC}  ${LBLW}IPv4 ${_dnsv4} · IPv6 ${_dnsv6}${_MI_DNSMODE:+ · ${_MI_DNSMODE}}${NC}"
     fi
     msg ''
-    # --- nodes (fixed grid: max 3 per row, ASCII-exact lengths,
-    # continuations aligned at the value column like the IPv6 row) ---
+    # --- panel sections, scheme C stacking: users, then nodes
+    # (fixed grid), then SNI nested at the end of the nodes block ---
     if [[ -n "${_MI_USER_RECS:-}" || -n "$_MI_NODES" ]]; then
         if [[ -z "${_MI_USER_RECS:-}" ]]; then
             msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}$(tr_msg mi_users_none)${NC}"
@@ -12638,6 +12638,7 @@ _menu_info_display() {
             if (( _first )); then msg "  ${CYAN}${_lbl}：${NC}  ${LBLW}${_row}${NC}"; _first=0
             else msg "          ${LBLW}${_row}${NC}"; fi
         done
+        [[ -n "$_MI_SNI_LIST" ]] && msg ''
         if [[ -n "$_MI_SNI_LIST" ]]; then
             local _se='' _sents=() _sseg='' _ssni='' _sw=14
             IFS='|' read -r -a _sents <<< "$_MI_SNI_LIST"

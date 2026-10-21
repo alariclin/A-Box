@@ -21094,6 +21094,25 @@ wallos_public_urls() {
             return 0
         fi
     fi
+    if [[ "$_hmode" == http ]]; then
+        local _pip=''; _pip=$(get_public_ip 2>/dev/null || true); [[ -n "$_pip" ]] || _pip="${GLOBAL_PUBLIC_IP:-<VPS public IP>}"
+        if [[ "${ABOX_LANG:-zh}" == en ]]; then
+            msg "${GREEN}Wallos URL (HTTP, disaster recovery): http://$_pip:$port/${NC}"
+            msg ''
+            msg "${BOLD}-- Wallos quick guide (HTTP fallback) --${NC}"
+            msg "1) Open the URL above; on first visit create the admin account with a STRONG password - this mode has no encryption."
+            msg "2) If it does not open: allow inbound TCP $port in the cloud security group. The host firewall was already opened by the script."
+            msg "3) Fail2Ban watches login brute force. Once the certificate path works again, rerun install and choose [1] or [3] to return to an encrypted mode."
+        else
+            msg "${GREEN}Wallos 网址（HTTP 容灾）：http://$_pip:$port/${NC}"
+            msg ''
+            msg "${BOLD}── Wallos 使用教程（HTTP 容灾）──${NC}"
+            msg "1) 访问：浏览器打开上面的网址，首次打开先创建管理员账号并设强密码——本模式无加密，密码强度更重要。"
+            msg "2) 打不开：云安全组放行 TCP $port 即可；本机防火墙已由脚本自动放行。"
+            msg "3) Fail2Ban 已盯住登录爆破。证书通道恢复后建议重跑安装选 [1] 或 [3] 切回加密模式。"
+        fi
+        return 0
+    fi
     host_ip=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
     # P3-8: handle empty binding and LAN-specific IPs explicitly (was: fell through to public-IP URL).
     if [[ -z "$host_ip" ]]; then
@@ -21430,6 +21449,43 @@ wallos_write_state() {
     return 0
 }
 
+wallos_db_health() { # $1=quick skips the restart-stability sampling
+    docker container inspect wallos >/dev/null 2>&1 || return 1
+    [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)" == true ]] || return 1
+    [[ "$(docker inspect -f '{{.State.Restarting}}' wallos 2>/dev/null || true)" == false ]] || return 1
+    if [[ "${1:-}" != quick ]]; then
+        local _rc1 _rc2
+        _rc1=$(docker inspect -f '{{.RestartCount}}' wallos 2>/dev/null || echo '?')
+        sleep 6
+        _rc2=$(docker inspect -f '{{.RestartCount}}' wallos 2>/dev/null || echo '?')
+        [[ "$_rc1" == "$_rc2" ]] || return 1
+        [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)" == true ]] || return 1
+    fi
+    # Core-table check: a half-initialized db (missing user /
+    # subscriptions) crash-loops on migration 000013 while nginx and
+    # php-fpm still answer HTTP, so an HTTP probe cannot see it.
+    if command -v python3 >/dev/null 2>&1 && [[ -f "$WALLOS_DIR/db/wallos.db" ]]; then
+        python3 - "$WALLOS_DIR/db/wallos.db" <<'PY_WALLOS_HEALTH' || return 1
+import sqlite3, sys
+try:
+    tables = {r[0] for r in sqlite3.connect('file:%s?mode=ro' % sys.argv[1], uri=True).execute("select name from sqlite_master where type='table'")}
+except Exception:
+    raise SystemExit(1)
+raise SystemExit(0 if {'user', 'subscriptions'} <= tables else 1)
+PY_WALLOS_HEALTH
+    fi
+    return 0
+}
+
+wallos_http_rebind() { # $1=public port $2=image $3=tz: republish the container on 0.0.0.0 (HTTP fallback)
+    docker rm -f wallos >/dev/null 2>&1 || true
+    docker run -d --name wallos --label com.alariclin.abox.managed=true \
+        -v "$WALLOS_DIR/db:/var/www/html/db" \
+        -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
+        -e TZ="$3" -p "0.0.0.0:$1:80/tcp" --restart unless-stopped "$2" >/dev/null || return 1
+    wallos_wait_healthy "$1"
+}
+
 wallos_install_or_update() {
     local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
     (( EUID == 0 )) || { case "${ABOX_LANG:-zh}" in en) msg "${RED}Run Wallos setup as root.${NC}" ;; ru) msg "${RED}Для установки Wallos требуются права root.${NC}" ;; fa) msg "${RED}برای نصب Wallos دسترسی root لازم است.${NC}" ;; zh-tw) msg "${RED}安裝 Wallos 需要 root 權限。${NC}" ;; ja) msg "${RED}Wallos のセットアップは root 権限で実行してください。${NC}" ;; *) msg "${RED}安装 Wallos 需要 root 权限。${NC}" ;; esac; return 1; }
@@ -21504,16 +21560,16 @@ wallos_install_or_update() {
     fi
     # Access mode: [1] public HTTPS (Caddy + Let's Encrypt IP cert),
     # [2] localhost only (SSH tunnel), [3] Cloudflare Tunnel (needs a
-    # domain on Cloudflare; zero inbound ports). Plain public HTTP is
-    # not offered. An existing public-HTTP install migrates to HTTPS
-    # keeping its public port.
+    # domain on Cloudflare; zero inbound ports), [4] plain public
+    # HTTP (disaster recovery; also offered when HTTPS setup fails).
+    # An existing public-HTTP install keeps its public port.
     local _bind_chosen=0 wmode='local' pubport='' cfhost='' cftoken=''
     local _old_mode='' _old_pubport=''
     _old_mode=$(wallos_state_value MODE 2>/dev/null || true)
     _old_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
     if [[ -n "${WALLOS_ACCESS_MODE:-}" ]]; then
         _bind_chosen=1
-        case "$WALLOS_ACCESS_MODE" in https|cftunnel|local) wmode="$WALLOS_ACCESS_MODE" ;; *) wmode='local' ;; esac
+        case "$WALLOS_ACCESS_MODE" in https|cftunnel|local|http) wmode="$WALLOS_ACCESS_MODE" ;; *) wmode='local' ;; esac
         cfhost="${WALLOS_CF_HOSTNAME:-}"
     elif [[ -n "${WALLOS_BIND_ADDRESS:-}" ]]; then
         _bind_chosen=1
@@ -21521,12 +21577,12 @@ wallos_install_or_update() {
     elif [[ -t 0 ]]; then
         local _ans=''
         case "${ABOX_LANG:-zh}" in
-            en) msg 'Wallos access mode:'; msg '  [1] Public HTTPS (any device; encrypted, auto-renewed cert)'; msg '  [2] Localhost only (SSH tunnel)'; msg '  [3] Cloudflare Tunnel (needs your domain on Cloudflare; zero open ports)'; printf 'Choose [1]: ' ;;
-            *) msg 'Wallos 访问方式：'; msg '  [1] 公网直连 HTTPS（任意设备打开，全程加密、证书自动续期）'; msg '  [2] 仅本机（用 SSH 隧道访问）'; msg '  [3] CF 隧道（需自备 Cloudflare 域名，零开放端口）'; printf '请选择 [1]: ' ;;
+            en) msg 'Wallos access mode:'; msg '  [1] Public HTTPS (any device; encrypted, auto-renewed cert)'; msg '  [2] Localhost only (SSH tunnel)'; msg '  [3] Cloudflare Tunnel (needs your domain on Cloudflare; zero open ports)'; msg '  [4] Public HTTP (disaster recovery; no encryption)'; printf 'Choose [1]: ' ;;
+            *) msg 'Wallos 访问方式：'; msg '  [1] 公网直连 HTTPS（任意设备打开，全程加密、证书自动续期）'; msg '  [2] 仅本机（用 SSH 隧道访问）'; msg '  [3] CF 隧道（需自备 Cloudflare 域名，零开放端口）'; msg '  [4] 公网明文 HTTP（容灾用，无加密）'; printf '请选择 [1]: ' ;;
         esac
         read -r _ans || _ans=''
         _bind_chosen=1
-        case "$_ans" in 2) wmode='local' ;; 3) wmode='cftunnel' ;; *) wmode='https' ;; esac
+        case "$_ans" in 2) wmode='local' ;; 3) wmode='cftunnel' ;; 4) wmode='http' ;; *) wmode='https' ;; esac
     elif [[ "$_old_mode" == https && "$_old_pubport" =~ ^[0-9]+$ ]]; then
         # Non-interactive rerun of an HTTPS install: keep HTTPS.
         wmode='https'; pubport="$_old_pubport"; _bind_chosen=1
@@ -21534,6 +21590,9 @@ wallos_install_or_update() {
         # Non-interactive rerun of a tunnel install: keep the tunnel.
         wmode='cftunnel'; _bind_chosen=1
         cfhost=$(wallos_state_value CFHOST 2>/dev/null || true)
+    elif [[ "$_old_mode" == http ]]; then
+        # Non-interactive rerun of an HTTP fallback install: keep HTTP.
+        wmode='http'; _bind_chosen=1
     fi
     if [[ "$wmode" == cftunnel ]]; then
         bind_address='127.0.0.1'
@@ -21610,6 +21669,8 @@ wallos_install_or_update() {
             done
             [[ -n "$_ip2" ]] && port="$_ip2"
         fi
+    elif [[ "$wmode" == http ]]; then
+        bind_address='0.0.0.0'
     elif (( _bind_chosen )); then
         # An explicit localhost choice also unpublishes a legacy
         # public-HTTP install.
@@ -21641,6 +21702,11 @@ wallos_install_or_update() {
             case "${ABOX_LANG:-zh}" in
                 en) confirm_prompt='Wallos will be served over HTTPS (auto-renewed IP certificate); the app itself stays on localhost. Continue? [Y/N]: ' ;;
                 *) confirm_prompt='Wallos 将通过 HTTPS 对外提供服务（IP 证书自动续期），应用本身仍只绑定本机。是否继续？[Y/N]: ' ;;
+            esac
+        elif [[ "$wmode" == http ]]; then
+            case "${ABOX_LANG:-zh}" in
+                en) confirm_prompt='Wallos will be published over plain HTTP (no encryption; disaster-recovery mode). Continue? [Y/N]: ' ;;
+                *) confirm_prompt='Wallos 将以公网明文 HTTP 发布（无加密；容灾模式）。是否继续？[Y/N]: ' ;;
             esac
         else
             case "${ABOX_LANG:-zh}" in
@@ -21753,8 +21819,25 @@ wallos_install_or_update() {
     if [[ "$wmode" == https ]]; then
         wallos_cftunnel_teardown >/dev/null 2>&1 || true
         if ! wallos_https_setup "$pubport" "$port"; then
-            msg "${RED}HTTPS 配置未完成：Wallos 已在本机运行，但未对外暴露。修复后重跑安装即可重试。${NC}"
-            return 1
+            wallos_https_teardown >/dev/null 2>&1 || true
+            local _fb=0
+            if [[ -t 0 ]]; then
+                case "${ABOX_LANG:-zh}" in
+                    en) confirm_yes_no 'HTTPS setup failed. Fall back to plain public HTTP (disaster-recovery mode, no encryption)? [Y/N]: ' && _fb=1 ;;
+                    *) confirm_yes_no 'HTTPS 搭建失败。是否回退为公网明文 HTTP（容灾模式、无加密）？[Y/N]: ' && _fb=1 ;;
+                esac
+            fi
+            if (( _fb == 1 )) && wallos_http_rebind "$pubport" "$image" "$tz"; then
+                wmode='http'; port="$pubport"; bind_address='0.0.0.0'
+                wallos_write_state "$image" "$port" "$tz" "$bind_address" http '' "$cfhost" || msg "${YELLOW}Wallos 状态保存失败，重跑安装可修复元数据。${NC}"
+                case "${ABOX_LANG:-zh}" in
+                    en) security_note='Disaster-recovery mode: plain HTTP (no encryption). Use a strong admin password; Fail2Ban watches logins. Switch back to HTTPS or the CF Tunnel once the certificate path works again.' ;;
+                    *) security_note='容灾模式：公网明文 HTTP（无加密）。请设强管理员密码，Fail2Ban 会盯登录爆破；证书通道恢复后建议切回 HTTPS 或 CF 隧道。' ;;
+                esac
+            else
+                msg "${RED}HTTPS 配置未完成：Wallos 已在本机运行，但未对外暴露。修复后重跑安装即可重试。${NC}"
+                return 1
+            fi
         fi
         case "${ABOX_LANG:-zh}" in
             en) security_note='HTTPS is on: traffic is encrypted end to the server; the certificate renews automatically.' ;;
@@ -21777,6 +21860,12 @@ wallos_install_or_update() {
     elif [[ "$_old_mode" == https || "$_old_mode" == cftunnel ]]; then
         wallos_https_teardown >/dev/null 2>&1 || true
         wallos_cftunnel_teardown >/dev/null 2>&1 || true
+    fi
+    if ! wallos_db_health; then
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${RED}Wallos health check FAILED: the container is restart-looping or the database is incomplete (core tables missing). It is NOT actually usable - inspect: docker logs wallos${NC}" ;;
+            *) msg "${RED}Wallos 健康检查未通过：容器在重启循环或数据库不完整（核心表缺失），实际不可用。请检查：docker logs wallos${NC}" ;;
+        esac
     fi
     wallos_public_urls "$port"
     msg "${YELLOW}${security_note}${NC}"
@@ -21814,6 +21903,19 @@ wallos_status() {
         return 0
     fi
     docker ps -a --filter name='^/wallos$' --format 'Container: {{.Names}} | Status: {{.Status}} | Image: {{.Image}}'
+    if wallos_db_health quick; then
+        case "${ABOX_LANG:-zh}" in en) msg "${GREEN}Health: OK (container stable, database complete)${NC}" ;; *) msg "${GREEN}健康：正常（容器稳定、数据库完整）${NC}" ;; esac
+    else
+        case "${ABOX_LANG:-zh}" in en) msg "${RED}Health: ABNORMAL - container restart-looping or database incomplete; inspect: docker logs wallos${NC}" ;; *) msg "${RED}健康：异常——容器重启循环或数据库不完整，请检查：docker logs wallos${NC}" ;; esac
+    fi
+    if [[ "$(wallos_state_value MODE 2>/dev/null || true)" == https ]]; then
+        local _crt='' _exp=''
+        _crt=$(find /etc/ddr/wallos-caddy/data -name '*.crt' -type f 2>/dev/null | head -n 1 || true)
+        if [[ -n "$_crt" ]] && command -v openssl >/dev/null 2>&1; then
+            _exp=$(openssl x509 -enddate -noout -in "$_crt" 2>/dev/null | sed 's/^notAfter=//')
+            [[ -n "$_exp" ]] && msg "证书到期（UTC）：${_exp}（Caddy 自动续期；若到期仍未续上，重跑安装可回退 HTTP 容灾）"
+        fi
+    fi
     port=$(wallos_state_value PORT 2>/dev/null || true)
     if [[ "$port" =~ ^[0-9]+$ ]]; then wallos_public_urls "$port"; else
         case "${ABOX_LANG:-zh}" in en) msg "Wallos state file is missing; inspect the container port mapping." ;; ru) msg "Файл состояния Wallos отсутствует; проверьте публикацию портов контейнера." ;; fa) msg "فایل وضعیت Wallos وجود ندارد؛ نگاشت درگاه کانتینر را بررسی کنید." ;; zh-tw) msg "Wallos 狀態檔案缺失，請檢查容器連接埠映射。" ;; ja) msg "Wallos の状態ファイルが見つかりません。コンテナのポートマッピングを確認してください。" ;; *) msg "Wallos 状态文件缺失，请检查容器端口映射。" ;; esac

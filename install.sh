@@ -4860,6 +4860,102 @@ tr_msg() {
         ru:dp_xray_unit) echo 'Не удалось атомарно записать systemd-юнит Xray.' ;;
         fa:dp_xray_unit) echo 'نوشتن اتمی یونیت systemd ‏Xray ناموفق بود.' ;;
         ja:dp_xray_unit) echo 'Xray の systemd ユニットのアトミック書き込みに失敗しました。' ;;
+        zh:mw_drop4_check) echo '无法检查 IPv4 SS DROP 规则： %s' ;;
+        zh-tw:mw_drop4_check) echo '無法檢查 IPv4 SS DROP 規則： %s' ;;
+        en:mw_drop4_check) echo 'Cannot check the IPv4 SS DROP rule: %s' ;;
+        ru:mw_drop4_check) echo 'Невозможно проверить правило SS DROP IPv4: %s' ;;
+        fa:mw_drop4_check) echo 'بررسی قانون SS DROP ‏IPv4 ممکن نیست: %s' ;;
+        ja:mw_drop4_check) echo 'IPv4 SS DROP ルールを確認できません： %s' ;;
+        zh:mw_drop4_del) echo 'IPv4 SS DROP 规则删除失败： %s' ;;
+        zh-tw:mw_drop4_del) echo 'IPv4 SS DROP 規則刪除失敗： %s' ;;
+        en:mw_drop4_del) echo 'Failed to delete the IPv4 SS DROP rule: %s' ;;
+        ru:mw_drop4_del) echo 'Не удалось удалить правило SS DROP IPv4: %s' ;;
+        fa:mw_drop4_del) echo 'حذف قانون SS DROP ‏IPv4 ناموفق بود: %s' ;;
+        ja:mw_drop4_del) echo 'IPv4 SS DROP ルールの削除に失敗しました： %s' ;;
+        zh:mw_drop4_still) echo 'IPv4 SS DROP 规则仍然存在： %s' ;;
+        zh-tw:mw_drop4_still) echo 'IPv4 SS DROP 規則仍然存在： %s' ;;
+        en:mw_drop4_still) echo 'The IPv4 SS DROP rule still exists: %s' ;;
+        ru:mw_drop4_still) echo 'Правило SS DROP IPv4 всё ещё существует: %s' ;;
+        fa:mw_drop4_still) echo 'قانون SS DROP ‏IPv4 هنوز وجود دارد: %s' ;;
+        ja:mw_drop4_still) echo 'IPv4 SS DROP ルールがまだ存在します： %s' ;;
+        zh:mw_drop4_verify) echo '无法验证 IPv4 SS DROP 规则已删除： %s' ;;
+        zh-tw:mw_drop4_verify) echo '無法驗證 IPv4 SS DROP 規則已刪除： %s' ;;
+        en:mw_drop4_verify) echo 'Cannot verify that the IPv4 SS DROP rule was deleted: %s' ;;
+        ru:mw_drop4_verify) echo 'Невозможно подтвердить удаление правила SS DROP IPv4: %s' ;;
+        fa:mw_drop4_verify) echo 'تأیید حذف قانون SS DROP ‏IPv4 ممکن نیست: %s' ;;
+        ja:mw_drop4_verify) echo 'IPv4 SS DROP ルールが削除されたか確認できません： %s' ;;
+        zh:mw_drop6_check) echo '无法检查 IPv6 SS DROP 规则： %s' ;;
+        zh-tw:mw_drop6_check) echo '無法檢查 IPv6 SS DROP 規則： %s' ;;
+        en:mw_drop6_check) echo 'Cannot check the IPv6 SS DROP rule: %s' ;;
+        ru:mw_drop6_check) echo 'Невозможно проверить правило SS DROP IPv6: %s' ;;
+        fa:mw_drop6_check) echo 'بررسی قانون SS DROP ‏IPv6 ممکن نیست: %s' ;;
+        ja:mw_drop6_check) echo 'IPv6 SS DROP ルールを確認できません： %s' ;;
+        zh:mw_drop6_del) echo 'IPv6 SS DROP 规则删除失败： %s' ;;
+        zh-tw:mw_drop6_del) echo 'IPv6 SS DROP 規則刪除失敗： %s' ;;
+        en:mw_drop6_del) echo 'Failed to delete the IPv6 SS DROP rule: %s' ;;
+        ru:mw_drop6_del) echo 'Не удалось удалить правило SS DROP IPv6: %s' ;;
+        fa:mw_drop6_del) echo 'حذف قانون SS DROP ‏IPv6 ناموفق بود: %s' ;;
+        ja:mw_drop6_del) echo 'IPv6 SS DROP ルールの削除に失敗しました： %s' ;;
+        zh:mw_drop6_still) echo 'IPv6 SS DROP 规则仍然存在： %s' ;;
+        zh-tw:mw_drop6_still) echo 'IPv6 SS DROP 規則仍然存在： %s' ;;
+        en:mw_drop6_still) echo 'The IPv6 SS DROP rule still exists: %s' ;;
+        ru:mw_drop6_still) echo 'Правило SS DROP IPv6 всё ещё существует: %s' ;;
+        fa:mw_drop6_still) echo 'قانون SS DROP ‏IPv6 هنوز وجود دارد: %s' ;;
+        ja:mw_drop6_still) echo 'IPv6 SS DROP ルールがまだ存在します： %s' ;;
+        zh:mw_drop6_verify) echo '无法验证 IPv6 SS DROP 规则已删除： %s' ;;
+        zh-tw:mw_drop6_verify) echo '無法驗證 IPv6 SS DROP 規則已刪除： %s' ;;
+        en:mw_drop6_verify) echo 'Cannot verify that the IPv6 SS DROP rule was deleted: %s' ;;
+        ru:mw_drop6_verify) echo 'Невозможно подтвердить удаление правила SS DROP IPv6: %s' ;;
+        fa:mw_drop6_verify) echo 'تأیید حذف قانون SS DROP ‏IPv6 ممکن نیست: %s' ;;
+        ja:mw_drop6_verify) echo 'IPv6 SS DROP ルールが削除されたか確認できません： %s' ;;
+        zh:mw_env_sync) echo 'A-Box 白名单 .env 同步失败。' ;;
+        zh-tw:mw_env_sync) echo 'A-Box 白名單 .env 同步失敗。' ;;
+        en:mw_env_sync) echo 'Failed to sync the A-Box whitelist to .env.' ;;
+        ru:mw_env_sync) echo 'Не удалось синхронизировать белый список A-Box в .env.' ;;
+        fa:mw_env_sync) echo 'همگام‌سازی فهرست سفید A-Box با ‎.env ناموفق بود.' ;;
+        ja:mw_env_sync) echo 'A-Box のホワイトリストを .env に同期できませんでした。' ;;
+        zh:mw_no_v6fw) echo '系统无可用 IPv6 防火墙。' ;;
+        zh-tw:mw_no_v6fw) echo '系統無可用 IPv6 防火牆。' ;;
+        en:mw_no_v6fw) echo 'No usable IPv6 firewall is available on this system.' ;;
+        ru:mw_no_v6fw) echo 'В системе нет доступного брандмауэра IPv6.' ;;
+        fa:mw_no_v6fw) echo 'در این سیستم دیوار آتش IPv6 قابل استفاده‌ای وجود ندارد.' ;;
+        ja:mw_no_v6fw) echo 'このシステムで利用可能な IPv6 ファイアウォールがありません。' ;;
+        zh:mw_old_norb) echo '旧的 SS-2022 来源白名单规则无法完整删除；回滚失败，需人工处理。' ;;
+        zh-tw:mw_old_norb) echo '舊的 SS-2022 來源白名單規則無法完整刪除；回滾失敗，需人工處理。' ;;
+        en:mw_old_norb) echo 'The old SS-2022 source whitelist rules could not be fully removed; rollback failed, manual handling required.' ;;
+        ru:mw_old_norb) echo 'Не удалось полностью удалить старые правила белого списка источников SS-2022; откат не удался, требуется ручная обработка.' ;;
+        fa:mw_old_norb) echo 'قوانین قدیمی فهرست سفید منابع SS-2022 به‌طور کامل حذف نشد؛ بازگشت ناموفق بود و رسیدگی دستی لازم است.' ;;
+        ja:mw_old_norb) echo '古い SS-2022 ソースホワイトリストルールを完全に削除できず、ロールバックにも失敗しました。手動対応が必要です。' ;;
+        zh:mw_old_rb) echo '旧的 SS-2022 来源白名单规则无法完整删除；已回滚。' ;;
+        zh-tw:mw_old_rb) echo '舊的 SS-2022 來源白名單規則無法完整刪除；已回滾。' ;;
+        en:mw_old_rb) echo 'The old SS-2022 source whitelist rules could not be fully removed; rolled back.' ;;
+        ru:mw_old_rb) echo 'Не удалось полностью удалить старые правила белого списка источников SS-2022; выполнен откат.' ;;
+        fa:mw_old_rb) echo 'قوانین قدیمی فهرست سفید منابع SS-2022 به‌طور کامل حذف نشد؛ بازگشت انجام شد.' ;;
+        ja:mw_old_rb) echo '古い SS-2022 ソースホワイトリストルールを完全に削除できませんでした。ロールバックしました。' ;;
+        zh:mw_wl4_check) echo '无法检查 IPv4 白名单规则： %s' ;;
+        zh-tw:mw_wl4_check) echo '無法檢查 IPv4 白名單規則： %s' ;;
+        en:mw_wl4_check) echo 'Cannot check the IPv4 whitelist rule: %s' ;;
+        ru:mw_wl4_check) echo 'Невозможно проверить правило белого списка IPv4: %s' ;;
+        fa:mw_wl4_check) echo 'بررسی قانون فهرست سفید IPv4 ممکن نیست: %s' ;;
+        ja:mw_wl4_check) echo 'IPv4 ホワイトリストルールを確認できません： %s' ;;
+        zh:mw_wl4_del) echo 'IPv4 白名单规则删除失败： %s' ;;
+        zh-tw:mw_wl4_del) echo 'IPv4 白名單規則刪除失敗： %s' ;;
+        en:mw_wl4_del) echo 'Failed to delete the IPv4 whitelist rule: %s' ;;
+        ru:mw_wl4_del) echo 'Не удалось удалить правило белого списка IPv4: %s' ;;
+        fa:mw_wl4_del) echo 'حذف قانون فهرست سفید IPv4 ناموفق بود: %s' ;;
+        ja:mw_wl4_del) echo 'IPv4 ホワイトリストルールの削除に失敗しました： %s' ;;
+        zh:mw_wl6_check) echo '无法检查 IPv6 白名单规则： %s' ;;
+        zh-tw:mw_wl6_check) echo '無法檢查 IPv6 白名單規則： %s' ;;
+        en:mw_wl6_check) echo 'Cannot check the IPv6 whitelist rule: %s' ;;
+        ru:mw_wl6_check) echo 'Невозможно проверить правило белого списка IPv6: %s' ;;
+        fa:mw_wl6_check) echo 'بررسی قانون فهرست سفید IPv6 ممکن نیست: %s' ;;
+        ja:mw_wl6_check) echo 'IPv6 ホワイトリストルールを確認できません： %s' ;;
+        zh:mw_wl6_del) echo 'IPv6 白名单规则删除失败： %s' ;;
+        zh-tw:mw_wl6_del) echo 'IPv6 白名單規則刪除失敗： %s' ;;
+        en:mw_wl6_del) echo 'Failed to delete the IPv6 whitelist rule: %s' ;;
+        ru:mw_wl6_del) echo 'Не удалось удалить правило белого списка IPv6: %s' ;;
+        fa:mw_wl6_del) echo 'حذف قانون فهرست سفید IPv6 ناموفق بود: %s' ;;
+        ja:mw_wl6_del) echo 'IPv6 ホワイトリストルールの削除に失敗しました： %s' ;;
         zh:fmt_unused) echo '未用' ;;
         en:fmt_unused) echo 'unused' ;;
         ru:fmt_unused) echo 'нет трафика' ;;
@@ -17690,13 +17786,13 @@ manage_ss_whitelist() {
                 valid_ipv6_cidr "$add_ip" || { msg "${RED}[!] IPv6 白名单地址非法: $add_ip${NC}"; pause_return; return; }
                 # N-04: objective check (not preference-aware has_ipv6), consistent
                 # with option 2/3 and pre_install_setup.
-                host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1 || die '系统无可用 IPv6 防火墙。'
+                host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1 || die "$(tr_msg mw_no_v6fw)"
                 for proto in tcp udp; do
                     # F-06: check existence first (idempotent) — do not insert duplicates.
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则写入失败: $add_ip/$proto" ;;
+                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "$(tprintf pi_ss_wl6_fail "$add_ip/$proto")" ;;
                         *) die "$(tr_msg pi_ss_fw_check)" ;;
                     esac
                 done
@@ -17707,13 +17803,13 @@ manage_ss_whitelist() {
                     if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则写入失败: $add_ip/$proto" ;;
+                        1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "$(tprintf pi_ss_wl4_fail "$add_ip/$proto")" ;;
                         *) die "$(tr_msg pi_ss_fw_check)" ;;
                     esac
                 done
             fi
             save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
-            sync_ss_whitelist_ip_to_env || die 'A-Box 白名单 .env 同步失败。'
+            sync_ss_whitelist_ip_to_env || die "$(tr_msg mw_env_sync)"
             msg "${GREEN}已添加白名单: $add_ip (TCP+UDP)${NC}"
             pause_return
             ;;
@@ -17734,9 +17830,9 @@ manage_ss_whitelist() {
                         case "$check_rc" in
                             0) ;;
                             1) break ;;
-                            *) die "无法检查 IPv6 白名单规则: $del_ip/$proto" ;;
+                            *) die "$(tprintf mw_wl6_check "$del_ip/$proto")" ;;
                         esac
-                        _iptables_do "$IPT6" -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "IPv6 白名单规则删除失败: $del_ip/$proto"
+                        _iptables_do "$IPT6" -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "$(tprintf mw_wl6_del "$del_ip/$proto")"
                         found=1
                     done
                 done
@@ -17748,15 +17844,15 @@ manage_ss_whitelist() {
                         case "$check_rc" in
                             0) ;;
                             1) break ;;
-                            *) die "无法检查 IPv4 白名单规则: $del_ip/$proto" ;;
+                            *) die "$(tprintf mw_wl4_check "$del_ip/$proto")" ;;
                         esac
-                        _iptables_do "$IPT" -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "IPv4 白名单规则删除失败: $del_ip/$proto"
+                        _iptables_do "$IPT" -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "$(tprintf mw_wl4_del "$del_ip/$proto")"
                         found=1
                     done
                 done
             fi
             save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
-            sync_ss_whitelist_ip_to_env || die 'A-Box 白名单 .env 同步失败。'
+            sync_ss_whitelist_ip_to_env || die "$(tr_msg mw_env_sync)"
             [[ "$found" == 1 ]] && msg "${GREEN}已移除白名单: $del_ip${NC}" || msg "${YELLOW}未找到该白名单规则。${NC}"
             pause_return
             ;;
@@ -17791,36 +17887,36 @@ manage_ss_whitelist() {
             # (allowPort calls die directly, outer || cannot catch it)
             local _old_die_hook="${ABOX_DIE_HOOK:-}"
             ABOX_DIE_HOOK=_ss_wl_rollback_to_snapshot
-            remove_ss_source_whitelist_rules || { ABOX_DIE_HOOK="$_old_die_hook"; if _ss_wl_rollback_to_snapshot; then die '旧的 SS-2022 来源白名单规则无法完整删除；已回滚。'; else die '旧的 SS-2022 来源白名单规则无法完整删除；回滚失败，需人工处理。'; fi; }
+            remove_ss_source_whitelist_rules || { ABOX_DIE_HOOK="$_old_die_hook"; if _ss_wl_rollback_to_snapshot; then die "$(tr_msg mw_old_rb)"; else die "$(tr_msg mw_old_norb)"; fi; }
             for proto in tcp udp; do
                 while :; do
                     if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
                         1) break ;;
-                        *) die "无法检查 IPv4 SS DROP 规则: $proto" ;;
+                        *) die "$(tprintf mw_drop4_check "$proto")" ;;
                     esac
-                    _iptables_do "$IPT" -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "IPv4 SS DROP 规则删除失败: $proto"
+                    _iptables_do "$IPT" -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP >/dev/null 2>&1 || die "$(tprintf mw_drop4_del "$proto")"
                 done
                 if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP" -j DROP; then check_rc=0; else check_rc=$?; fi
-                case "$check_rc" in 1) ;; 0) die "IPv4 SS DROP 规则仍然存在: $proto" ;; *) die "无法验证 IPv4 SS DROP 规则已删除: $proto" ;; esac
+                case "$check_rc" in 1) ;; 0) die "$(tprintf mw_drop4_still "$proto")" ;; *) die "$(tprintf mw_drop4_verify "$proto")" ;; esac
                 if command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
                     while :; do
                         if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
                         case "$check_rc" in
                             0) ;;
                             1) break ;;
-                            *) die "无法检查 IPv6 SS DROP 规则: $proto" ;;
+                            *) die "$(tprintf mw_drop6_check "$proto")" ;;
                         esac
-                        _iptables_do "$IPT6" -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || die "IPv6 SS DROP 规则删除失败: $proto"
+                        _iptables_do "$IPT6" -D INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP >/dev/null 2>&1 || die "$(tprintf mw_drop6_del "$proto")"
                     done
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "A-Box-${SS_PORT}-${proto}-DROP6" -j DROP; then check_rc=0; else check_rc=$?; fi
-                    case "$check_rc" in 1) ;; 0) die "IPv6 SS DROP 规则仍然存在: $proto" ;; *) die "无法验证 IPv6 SS DROP 规则已删除: $proto" ;; esac
+                    case "$check_rc" in 1) ;; 0) die "$(tprintf mw_drop6_still "$proto")" ;; *) die "$(tprintf mw_drop6_verify "$proto")" ;; esac
                 fi
                 allowPort "$SS_PORT" "$proto"
             done
             save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
-            sync_ss_whitelist_ip_to_env || die 'A-Box 白名单 .env 同步失败。'
+            sync_ss_whitelist_ip_to_env || die "$(tr_msg mw_env_sync)"
             ABOX_DIE_HOOK="$_old_die_hook"
             msg "${GREEN}已切换为全网开放模式 (TCP+UDP)。${NC}"
             pause_return

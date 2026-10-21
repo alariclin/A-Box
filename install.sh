@@ -4458,6 +4458,408 @@ tr_msg() {
         fa:mi_users_none) echo 'هیچ‌کدام' ;;
         zh-tw:mi_users_none) echo '暫無' ;;
         ja:mi_users_none) echo 'なし' ;;
+        zh:dp_anytls_json) echo 'AnyTLS inbound JSON 生成失败。' ;;
+        zh-tw:dp_anytls_json) echo 'AnyTLS inbound JSON 產生失敗。' ;;
+        en:dp_anytls_json) echo 'Failed to generate the AnyTLS inbound JSON.' ;;
+        ru:dp_anytls_json) echo 'Не удалось сгенерировать JSON входящего AnyTLS.' ;;
+        fa:dp_anytls_json) echo 'ساخت JSON ورودی AnyTLS ناموفق بود.' ;;
+        ja:dp_anytls_json) echo 'AnyTLS インバウンド JSON を生成できませんでした。' ;;
+        zh:dp_anytls_update) echo 'AnyTLS inbound 配置更新失败。' ;;
+        zh-tw:dp_anytls_update) echo 'AnyTLS inbound 設定更新失敗。' ;;
+        en:dp_anytls_update) echo 'Failed to update the AnyTLS inbound configuration.' ;;
+        ru:dp_anytls_update) echo 'Не удалось обновить конфигурацию входящего AnyTLS.' ;;
+        fa:dp_anytls_update) echo 'به‌روزرسانی پیکربندی ورودی AnyTLS ناموفق بود.' ;;
+        ja:dp_anytls_update) echo 'AnyTLS インバウンド設定の更新に失敗しました。' ;;
+        zh:dp_desired_sb) echo 'sing-box 服务期望状态提交失败。' ;;
+        zh-tw:dp_desired_sb) echo 'sing-box 服務期望狀態提交失敗。' ;;
+        en:dp_desired_sb) echo 'Failed to commit the desired sing-box service state.' ;;
+        ru:dp_desired_sb) echo 'Не удалось зафиксировать желаемое состояние службы sing-box.' ;;
+        fa:dp_desired_sb) echo 'ثبت وضعیت مطلوب سرویس sing-box ناموفق بود.' ;;
+        ja:dp_desired_sb) echo 'sing-box サービスの望ましい状態のコミットに失敗しました。' ;;
+        zh:dp_desired_xray) echo 'Xray 服务期望状态提交失败。' ;;
+        zh-tw:dp_desired_xray) echo 'Xray 服務期望狀態提交失敗。' ;;
+        en:dp_desired_xray) echo 'Failed to commit the desired Xray service state.' ;;
+        ru:dp_desired_xray) echo 'Не удалось зафиксировать желаемое состояние службы Xray.' ;;
+        fa:dp_desired_xray) echo 'ثبت وضعیت مطلوب سرویس Xray ناموفق بود.' ;;
+        ja:dp_desired_xray) echo 'Xray サービスの望ましい状態のコミットに失敗しました。' ;;
+        zh:dp_fw_allow) echo '防火墙放行失败： %s' ;;
+        zh-tw:dp_fw_allow) echo '防火牆放行失敗： %s' ;;
+        en:dp_fw_allow) echo 'Failed to open the firewall port: %s' ;;
+        ru:dp_fw_allow) echo 'Не удалось открыть порт в брандмауэре: %s' ;;
+        fa:dp_fw_allow) echo 'باز کردن پورت دیوار آتش ناموفق بود: %s' ;;
+        ja:dp_fw_allow) echo 'ファイアウォールのポート開放に失敗しました： %s' ;;
+        zh:dp_geo_tmpdir) echo 'Xray Geo 临时目录创建失败。' ;;
+        zh-tw:dp_geo_tmpdir) echo 'Xray Geo 臨時目錄建立失敗。' ;;
+        en:dp_geo_tmpdir) echo 'Failed to create the Xray Geo temporary directory.' ;;
+        ru:dp_geo_tmpdir) echo 'Не удалось создать временный каталог Xray Geo.' ;;
+        fa:dp_geo_tmpdir) echo 'ایجاد پوشه موقت Xray Geo ناموفق بود.' ;;
+        ja:dp_geo_tmpdir) echo 'Xray Geo の一時ディレクトリを作成できませんでした。' ;;
+        zh:dp_geoip_write) echo 'geoip.dat 原子安装失败。' ;;
+        zh-tw:dp_geoip_write) echo 'geoip.dat 原子安裝失敗。' ;;
+        en:dp_geoip_write) echo 'Failed to atomically install geoip.dat.' ;;
+        ru:dp_geoip_write) echo 'Не удалось атомарно установить geoip.dat.' ;;
+        fa:dp_geoip_write) echo 'نصب اتمی geoip.dat ناموفق بود.' ;;
+        ja:dp_geoip_write) echo 'geoip.dat のアトミックインストールに失敗しました。' ;;
+        zh:dp_geosite_write) echo 'geosite.dat 原子安装失败。' ;;
+        zh-tw:dp_geosite_write) echo 'geosite.dat 原子安裝失敗。' ;;
+        en:dp_geosite_write) echo 'Failed to atomically install geosite.dat.' ;;
+        ru:dp_geosite_write) echo 'Не удалось атомарно установить geosite.dat.' ;;
+        fa:dp_geosite_write) echo 'نصب اتمی geosite.dat ناموفق بود.' ;;
+        ja:dp_geosite_write) echo 'geosite.dat のアトミックインストールに失敗しました。' ;;
+        zh:dp_orc_dir) echo 'OpenRC conf.d 目录创建失败。' ;;
+        zh-tw:dp_orc_dir) echo 'OpenRC conf.d 目錄建立失敗。' ;;
+        en:dp_orc_dir) echo 'Failed to create the OpenRC conf.d directory.' ;;
+        ru:dp_orc_dir) echo 'Не удалось создать каталог OpenRC conf.d.' ;;
+        fa:dp_orc_dir) echo 'ایجاد پوشه OpenRC conf.d ناموفق بود.' ;;
+        ja:dp_orc_dir) echo 'OpenRC conf.d ディレクトリを作成できませんでした。' ;;
+        zh:dp_orc_dir_unsafe) echo 'OpenRC conf.d 目录不安全。' ;;
+        zh-tw:dp_orc_dir_unsafe) echo 'OpenRC conf.d 目錄不安全。' ;;
+        en:dp_orc_dir_unsafe) echo 'The OpenRC conf.d directory is unsafe.' ;;
+        ru:dp_orc_dir_unsafe) echo 'Каталог OpenRC conf.d небезопасен.' ;;
+        fa:dp_orc_dir_unsafe) echo 'پوشه OpenRC conf.d امن نیست.' ;;
+        ja:dp_orc_dir_unsafe) echo 'OpenRC conf.d ディレクトリが安全ではありません。' ;;
+        zh:dp_orc_parent) echo 'OpenRC conf.d 父链不安全。' ;;
+        zh-tw:dp_orc_parent) echo 'OpenRC conf.d 父鏈不安全。' ;;
+        en:dp_orc_parent) echo 'The OpenRC conf.d parent chain is unsafe.' ;;
+        ru:dp_orc_parent) echo 'Родительская цепочка OpenRC conf.d небезопасна.' ;;
+        fa:dp_orc_parent) echo 'زنجیره والد OpenRC conf.d امن نیست.' ;;
+        ja:dp_orc_parent) echo 'OpenRC conf.d の親チェーンが安全ではありません。' ;;
+        zh:dp_sb_bin) echo '安全提取后未找到 sing-box 主程序。' ;;
+        zh-tw:dp_sb_bin) echo '安全提取後未找到 sing-box 主程式。' ;;
+        en:dp_sb_bin) echo 'The sing-box binary was not found after safe extraction.' ;;
+        ru:dp_sb_bin) echo 'После безопасной распаковки не найден бинарный файл sing-box.' ;;
+        fa:dp_sb_bin) echo 'پس از استخراج امن، برنامه اصلی sing-box یافت نشد.' ;;
+        ja:dp_sb_bin) echo '安全な展開後に sing-box 本体が見つかりませんでした。' ;;
+        zh:dp_sb_cfg) echo 'Sing-box config 原子写入失败。' ;;
+        zh-tw:dp_sb_cfg) echo 'Sing-box config 原子寫入失敗。' ;;
+        en:dp_sb_cfg) echo 'Failed to atomically write the Sing-box config.' ;;
+        ru:dp_sb_cfg) echo 'Не удалось атомарно записать конфигурацию Sing-box.' ;;
+        fa:dp_sb_cfg) echo 'نوشتن اتمی پیکربندی Sing-box ناموفق بود.' ;;
+        ja:dp_sb_cfg) echo 'Sing-box 設定のアトミック書き込みに失敗しました。' ;;
+        zh:dp_sb_check) echo 'Sing-box 配置校验失败。' ;;
+        zh-tw:dp_sb_check) echo 'Sing-box 設定校驗失敗。' ;;
+        en:dp_sb_check) echo 'The Sing-box configuration check failed.' ;;
+        ru:dp_sb_check) echo 'Проверка конфигурации Sing-box не пройдена.' ;;
+        fa:dp_sb_check) echo 'بررسی پیکربندی Sing-box ناموفق بود.' ;;
+        ja:dp_sb_check) echo 'Sing-box の設定チェックに失敗しました。' ;;
+        zh:dp_sb_chmod) echo 'Sing-box OpenRC 服务权限设置失败。' ;;
+        zh-tw:dp_sb_chmod) echo 'Sing-box OpenRC 服務權限設定失敗。' ;;
+        en:dp_sb_chmod) echo 'Failed to set permissions on the Sing-box OpenRC service.' ;;
+        ru:dp_sb_chmod) echo 'Не удалось задать права службы OpenRC для Sing-box.' ;;
+        fa:dp_sb_chmod) echo 'تنظیم مجوزهای سرویس OpenRC ‏Sing-box ناموفق بود.' ;;
+        ja:dp_sb_chmod) echo 'Sing-box の OpenRC サービスの権限設定に失敗しました。' ;;
+        zh:dp_sb_confd) echo 'Sing-box OpenRC conf.d 原子写入失败。' ;;
+        zh-tw:dp_sb_confd) echo 'Sing-box OpenRC conf.d 原子寫入失敗。' ;;
+        en:dp_sb_confd) echo 'Failed to atomically write the Sing-box OpenRC conf.d file.' ;;
+        ru:dp_sb_confd) echo 'Не удалось атомарно записать OpenRC conf.d для Sing-box.' ;;
+        fa:dp_sb_confd) echo 'نوشتن اتمی فایل OpenRC conf.d ‏Sing-box ناموفق بود.' ;;
+        ja:dp_sb_confd) echo 'Sing-box の OpenRC conf.d のアトミック書き込みに失敗しました。' ;;
+        zh:dp_sb_confd_lc) echo 'sing-box OpenRC conf.d 原子写入失败。' ;;
+        zh-tw:dp_sb_confd_lc) echo 'sing-box OpenRC conf.d 原子寫入失敗。' ;;
+        en:dp_sb_confd_lc) echo 'Failed to atomically write the sing-box OpenRC conf.d file.' ;;
+        ru:dp_sb_confd_lc) echo 'Не удалось атомарно записать OpenRC conf.d для sing-box.' ;;
+        fa:dp_sb_confd_lc) echo 'نوشتن اتمی فایل OpenRC conf.d ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_confd_lc) echo 'sing-box の OpenRC conf.d のアトミック書き込みに失敗しました。' ;;
+        zh:dp_sb_exec) echo 'Sing-box 执行校验失败。' ;;
+        zh-tw:dp_sb_exec) echo 'Sing-box 執行校驗失敗。' ;;
+        en:dp_sb_exec) echo 'The Sing-box execution check failed.' ;;
+        ru:dp_sb_exec) echo 'Проверка запуска Sing-box не пройдена.' ;;
+        fa:dp_sb_exec) echo 'بررسی اجرای Sing-box ناموفق بود.' ;;
+        ja:dp_sb_exec) echo 'Sing-box の実行チェックに失敗しました。' ;;
+        zh:dp_sb_extdir) echo 'Sing-box 提取目录创建失败。' ;;
+        zh-tw:dp_sb_extdir) echo 'Sing-box 提取目錄建立失敗。' ;;
+        en:dp_sb_extdir) echo 'Failed to create the Sing-box extraction directory.' ;;
+        ru:dp_sb_extdir) echo 'Не удалось создать каталог распаковки Sing-box.' ;;
+        fa:dp_sb_extdir) echo 'ایجاد پوشه استخراج Sing-box ناموفق بود.' ;;
+        ja:dp_sb_extdir) echo 'Sing-box の展開ディレクトリを作成できませんでした。' ;;
+        zh:dp_sb_extdir_tmp) echo 'Sing-box 临时提取目录创建失败。' ;;
+        zh-tw:dp_sb_extdir_tmp) echo 'Sing-box 臨時提取目錄建立失敗。' ;;
+        en:dp_sb_extdir_tmp) echo 'Failed to create the Sing-box temporary extraction directory.' ;;
+        ru:dp_sb_extdir_tmp) echo 'Не удалось создать временный каталог распаковки Sing-box.' ;;
+        fa:dp_sb_extdir_tmp) echo 'ایجاد پوشه استخراج موقت Sing-box ناموفق بود.' ;;
+        ja:dp_sb_extdir_tmp) echo 'Sing-box の一時展開ディレクトリを作成できませんでした。' ;;
+        zh:dp_sb_extract) echo 'Sing-box 压缩包安全提取失败。' ;;
+        zh-tw:dp_sb_extract) echo 'Sing-box 壓縮包安全提取失敗。' ;;
+        en:dp_sb_extract) echo 'Failed to safely extract the Sing-box archive.' ;;
+        ru:dp_sb_extract) echo 'Не удалось безопасно распаковать архив Sing-box.' ;;
+        fa:dp_sb_extract) echo 'استخراج امن آرشیو Sing-box ناموفق بود.' ;;
+        ja:dp_sb_extract) echo 'Sing-box アーカイブの安全な展開に失敗しました。' ;;
+        zh:dp_sb_hy2_cert) echo 'sing-box HY2 自签证书生成或密钥配对验证失败。' ;;
+        zh-tw:dp_sb_hy2_cert) echo 'sing-box HY2 自簽憑證產生或金鑰配對驗證失敗。' ;;
+        en:dp_sb_hy2_cert) echo 'Failed to generate the sing-box HY2 self-signed certificate or verify its key pair.' ;;
+        ru:dp_sb_hy2_cert) echo 'Не удалось сгенерировать самоподписанный сертификат HY2 sing-box или проверить пару ключей.' ;;
+        fa:dp_sb_hy2_cert) echo 'ساخت گواهی خودامضا HY2 ‏sing-box یا بررسی جفت کلید آن ناموفق بود.' ;;
+        ja:dp_sb_hy2_cert) echo 'sing-box HY2 の自己署名証明書の生成または鍵ペアの検証に失敗しました。' ;;
+        zh:dp_sb_initd) echo 'Sing-box OpenRC unit 原子写入失败。' ;;
+        zh-tw:dp_sb_initd) echo 'Sing-box OpenRC unit 原子寫入失敗。' ;;
+        en:dp_sb_initd) echo 'Failed to atomically write the Sing-box OpenRC unit.' ;;
+        ru:dp_sb_initd) echo 'Не удалось атомарно записать OpenRC-юнит Sing-box.' ;;
+        fa:dp_sb_initd) echo 'نوشتن اتمی یونیت OpenRC ‏Sing-box ناموفق بود.' ;;
+        ja:dp_sb_initd) echo 'Sing-box の OpenRC ユニットのアトミック書き込みに失敗しました。' ;;
+        zh:dp_sb_initd_lc) echo 'sing-box OpenRC unit 原子写入失败。' ;;
+        zh-tw:dp_sb_initd_lc) echo 'sing-box OpenRC unit 原子寫入失敗。' ;;
+        en:dp_sb_initd_lc) echo 'Failed to atomically write the sing-box OpenRC unit.' ;;
+        ru:dp_sb_initd_lc) echo 'Не удалось атомарно записать OpenRC-юнит sing-box.' ;;
+        fa:dp_sb_initd_lc) echo 'نوشتن اتمی یونیت OpenRC ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_initd_lc) echo 'sing-box の OpenRC ユニットのアトミック書き込みに失敗しました。' ;;
+        zh:dp_sb_json) echo 'Sing-box JSON 格式非法。' ;;
+        zh-tw:dp_sb_json) echo 'Sing-box JSON 格式不合法。' ;;
+        en:dp_sb_json) echo 'The Sing-box JSON is invalid.' ;;
+        ru:dp_sb_json) echo 'Недопустимый формат JSON Sing-box.' ;;
+        fa:dp_sb_json) echo 'قالب JSON ‏Sing-box نامعتبر است.' ;;
+        ja:dp_sb_json) echo 'Sing-box の JSON 形式が不正です。' ;;
+        zh:dp_sb_keyempty) echo 'Sing-box REALITY 密钥为空。' ;;
+        zh-tw:dp_sb_keyempty) echo 'Sing-box REALITY 金鑰為空。' ;;
+        en:dp_sb_keyempty) echo 'The Sing-box REALITY key is empty.' ;;
+        ru:dp_sb_keyempty) echo 'Ключ REALITY Sing-box пуст.' ;;
+        fa:dp_sb_keyempty) echo 'کلید REALITY ‏Sing-box خالی است.' ;;
+        ja:dp_sb_keyempty) echo 'Sing-box REALITY の鍵が空です。' ;;
+        zh:dp_sb_keypair) echo 'Sing-box REALITY 密钥对生成失败。' ;;
+        zh-tw:dp_sb_keypair) echo 'Sing-box REALITY 金鑰對產生失敗。' ;;
+        en:dp_sb_keypair) echo 'Failed to generate the Sing-box REALITY key pair.' ;;
+        ru:dp_sb_keypair) echo 'Не удалось сгенерировать пару ключей REALITY для Sing-box.' ;;
+        fa:dp_sb_keypair) echo 'ساخت جفت کلید REALITY ‏Sing-box ناموفق بود.' ;;
+        ja:dp_sb_keypair) echo 'Sing-box REALITY の鍵ペアを生成できませんでした。' ;;
+        zh:dp_sb_keyparse) echo 'Sing-box REALITY 密钥解析失败。' ;;
+        zh-tw:dp_sb_keyparse) echo 'Sing-box REALITY 金鑰解析失敗。' ;;
+        en:dp_sb_keyparse) echo 'Failed to parse the Sing-box REALITY key.' ;;
+        ru:dp_sb_keyparse) echo 'Не удалось разобрать ключ REALITY Sing-box.' ;;
+        fa:dp_sb_keyparse) echo 'تجزیه کلید REALITY ‏Sing-box ناموفق بود.' ;;
+        ja:dp_sb_keyparse) echo 'Sing-box REALITY の鍵を解析できませんでした。' ;;
+        zh:dp_sb_keyparse_empty) echo 'Sing-box REALITY 密钥解析失败：密钥为空。' ;;
+        zh-tw:dp_sb_keyparse_empty) echo 'Sing-box REALITY 金鑰解析失敗：金鑰為空。' ;;
+        en:dp_sb_keyparse_empty) echo 'Failed to parse the Sing-box REALITY key: the key is empty.' ;;
+        ru:dp_sb_keyparse_empty) echo 'Не удалось разобрать ключ REALITY Sing-box: ключ пуст.' ;;
+        fa:dp_sb_keyparse_empty) echo 'تجزیه کلید REALITY ‏Sing-box ناموفق بود: کلید خالی است.' ;;
+        ja:dp_sb_keyparse_empty) echo 'Sing-box REALITY の鍵を解析できませんでした：鍵が空です。' ;;
+        zh:dp_sb_restart) echo 'Sing-box 服务重启失败。' ;;
+        zh-tw:dp_sb_restart) echo 'Sing-box 服務重啟失敗。' ;;
+        en:dp_sb_restart) echo 'Failed to restart the Sing-box service.' ;;
+        ru:dp_sb_restart) echo 'Не удалось перезапустить службу Sing-box.' ;;
+        fa:dp_sb_restart) echo 'راه‌اندازی مجدد سرویس Sing-box ناموفق بود.' ;;
+        ja:dp_sb_restart) echo 'Sing-box サービスの再起動に失敗しました。' ;;
+        zh:dp_sb_runtime) echo 'Sing-box 运行时用户/文件权限准备失败。' ;;
+        zh-tw:dp_sb_runtime) echo 'Sing-box 執行階段使用者/檔案權限準備失敗。' ;;
+        en:dp_sb_runtime) echo 'Failed to prepare the Sing-box runtime user/file permissions.' ;;
+        ru:dp_sb_runtime) echo 'Не удалось подготовить runtime-пользователя и права файлов Sing-box.' ;;
+        fa:dp_sb_runtime) echo 'آماده‌سازی کاربر/مجوزهای فایل زمان اجرای Sing-box ناموفق بود.' ;;
+        ja:dp_sb_runtime) echo 'Sing-box のランタイムユーザー/ファイル権限の準備に失敗しました。' ;;
+        zh:dp_sb_seed) echo 'Sing-box 初始配置生成失败。' ;;
+        zh-tw:dp_sb_seed) echo 'Sing-box 初始設定產生失敗。' ;;
+        en:dp_sb_seed) echo 'Failed to generate the initial Sing-box configuration.' ;;
+        ru:dp_sb_seed) echo 'Не удалось сгенерировать начальную конфигурацию Sing-box.' ;;
+        fa:dp_sb_seed) echo 'ساخت پیکربندی اولیه Sing-box ناموفق بود.' ;;
+        ja:dp_sb_seed) echo 'Sing-box の初期設定を生成できませんでした。' ;;
+        zh:dp_sb_tmpdir) echo 'Sing-box 临时目录创建失败。' ;;
+        zh-tw:dp_sb_tmpdir) echo 'Sing-box 臨時目錄建立失敗。' ;;
+        en:dp_sb_tmpdir) echo 'Failed to create the Sing-box temporary directory.' ;;
+        ru:dp_sb_tmpdir) echo 'Не удалось создать временный каталог Sing-box.' ;;
+        fa:dp_sb_tmpdir) echo 'ایجاد پوشه موقت Sing-box ناموفق بود.' ;;
+        ja:dp_sb_tmpdir) echo 'Sing-box の一時ディレクトリを作成できませんでした。' ;;
+        zh:dp_sb_unit) echo 'Sing-box systemd unit 原子写入失败。' ;;
+        zh-tw:dp_sb_unit) echo 'Sing-box systemd unit 原子寫入失敗。' ;;
+        en:dp_sb_unit) echo 'Failed to atomically write the Sing-box systemd unit.' ;;
+        ru:dp_sb_unit) echo 'Не удалось атомарно записать systemd-юнит Sing-box.' ;;
+        fa:dp_sb_unit) echo 'نوشتن اتمی یونیت systemd ‏Sing-box ناموفق بود.' ;;
+        ja:dp_sb_unit) echo 'Sing-box の systemd ユニットのアトミック書き込みに失敗しました。' ;;
+        zh:dp_sb_unit_lc) echo 'sing-box systemd unit 原子写入失败。' ;;
+        zh-tw:dp_sb_unit_lc) echo 'sing-box systemd unit 原子寫入失敗。' ;;
+        en:dp_sb_unit_lc) echo 'Failed to atomically write the sing-box systemd unit.' ;;
+        ru:dp_sb_unit_lc) echo 'Не удалось атомарно записать systemd-юнит sing-box.' ;;
+        fa:dp_sb_unit_lc) echo 'نوشتن اتمی یونیت systemd ‏sing-box ناموفق بود.' ;;
+        ja:dp_sb_unit_lc) echo 'sing-box の systemd ユニットのアトミック書き込みに失敗しました。' ;;
+        zh:dp_shadowtls_json) echo 'ShadowTLS inbound JSON 生成失败。' ;;
+        zh-tw:dp_shadowtls_json) echo 'ShadowTLS inbound JSON 產生失敗。' ;;
+        en:dp_shadowtls_json) echo 'Failed to generate the ShadowTLS inbound JSON.' ;;
+        ru:dp_shadowtls_json) echo 'Не удалось сгенерировать JSON входящего ShadowTLS.' ;;
+        fa:dp_shadowtls_json) echo 'ساخت JSON ورودی ShadowTLS ناموفق بود.' ;;
+        ja:dp_shadowtls_json) echo 'ShadowTLS インバウンド JSON を生成できませんでした。' ;;
+        zh:dp_shadowtls_update) echo 'ShadowTLS inbound 配置更新失败。' ;;
+        zh-tw:dp_shadowtls_update) echo 'ShadowTLS inbound 設定更新失敗。' ;;
+        en:dp_shadowtls_update) echo 'Failed to update the ShadowTLS inbound configuration.' ;;
+        ru:dp_shadowtls_update) echo 'Не удалось обновить конфигурацию входящего ShadowTLS.' ;;
+        fa:dp_shadowtls_update) echo 'به‌روزرسانی پیکربندی ورودی ShadowTLS ناموفق بود.' ;;
+        ja:dp_shadowtls_update) echo 'ShadowTLS インバウンド設定の更新に失敗しました。' ;;
+        zh:dp_shortid) echo 'shortId 生成失败。' ;;
+        zh-tw:dp_shortid) echo 'shortId 產生失敗。' ;;
+        en:dp_shortid) echo 'Failed to generate the shortId.' ;;
+        ru:dp_shortid) echo 'Не удалось сгенерировать shortId.' ;;
+        fa:dp_shortid) echo 'ساخت shortId ناموفق بود.' ;;
+        ja:dp_shortid) echo 'shortId を生成できませんでした。' ;;
+        zh:dp_socks5_add) echo 'SOCKS5 inbound 添加失败。' ;;
+        zh-tw:dp_socks5_add) echo 'SOCKS5 inbound 新增失敗。' ;;
+        en:dp_socks5_add) echo 'Failed to add the SOCKS5 inbound.' ;;
+        ru:dp_socks5_add) echo 'Не удалось добавить входящий SOCKS5.' ;;
+        fa:dp_socks5_add) echo 'افزودن ورودی SOCKS5 ناموفق بود.' ;;
+        ja:dp_socks5_add) echo 'SOCKS5 インバウンドの追加に失敗しました。' ;;
+        zh:dp_socks5_json) echo 'SOCKS5 inbound JSON 生成失败。' ;;
+        zh-tw:dp_socks5_json) echo 'SOCKS5 inbound JSON 產生失敗。' ;;
+        en:dp_socks5_json) echo 'Failed to generate the SOCKS5 inbound JSON.' ;;
+        ru:dp_socks5_json) echo 'Не удалось сгенерировать JSON входящего SOCKS5.' ;;
+        fa:dp_socks5_json) echo 'ساخت JSON ورودی SOCKS5 ناموفق بود.' ;;
+        ja:dp_socks5_json) echo 'SOCKS5 インバウンド JSON を生成できませんでした。' ;;
+        zh:dp_socks5_update) echo 'SOCKS5 inbound 配置更新失败。' ;;
+        zh-tw:dp_socks5_update) echo 'SOCKS5 inbound 設定更新失敗。' ;;
+        en:dp_socks5_update) echo 'Failed to update the SOCKS5 inbound configuration.' ;;
+        ru:dp_socks5_update) echo 'Не удалось обновить конфигурацию входящего SOCKS5.' ;;
+        fa:dp_socks5_update) echo 'به‌روزرسانی پیکربندی ورودی SOCKS5 ناموفق بود.' ;;
+        ja:dp_socks5_update) echo 'SOCKS5 インバウンド設定の更新に失敗しました。' ;;
+        zh:dp_ss_keygen) echo 'SS-2022 密钥生成失败。' ;;
+        zh-tw:dp_ss_keygen) echo 'SS-2022 金鑰產生失敗。' ;;
+        en:dp_ss_keygen) echo 'Failed to generate the SS-2022 key.' ;;
+        ru:dp_ss_keygen) echo 'Не удалось сгенерировать ключ SS-2022.' ;;
+        fa:dp_ss_keygen) echo 'ساخت کلید SS-2022 ناموفق بود.' ;;
+        ja:dp_ss_keygen) echo 'SS-2022 の鍵を生成できませんでした。' ;;
+        zh:dp_tmpfile) echo '临时文件创建失败。' ;;
+        zh-tw:dp_tmpfile) echo '臨時檔案建立失敗。' ;;
+        en:dp_tmpfile) echo 'Failed to create a temporary file.' ;;
+        ru:dp_tmpfile) echo 'Не удалось создать временный файл.' ;;
+        fa:dp_tmpfile) echo 'ایجاد فایل موقت ناموفق بود.' ;;
+        ja:dp_tmpfile) echo '一時ファイルを作成できませんでした。' ;;
+        zh:dp_trojan_json) echo 'Trojan inbound JSON 生成失败。' ;;
+        zh-tw:dp_trojan_json) echo 'Trojan inbound JSON 產生失敗。' ;;
+        en:dp_trojan_json) echo 'Failed to generate the Trojan inbound JSON.' ;;
+        ru:dp_trojan_json) echo 'Не удалось сгенерировать JSON входящего Trojan.' ;;
+        fa:dp_trojan_json) echo 'ساخت JSON ورودی Trojan ناموفق بود.' ;;
+        ja:dp_trojan_json) echo 'Trojan インバウンド JSON を生成できませんでした。' ;;
+        zh:dp_trojan_update) echo 'Trojan inbound 配置更新失败。' ;;
+        zh-tw:dp_trojan_update) echo 'Trojan inbound 設定更新失敗。' ;;
+        en:dp_trojan_update) echo 'Failed to update the Trojan inbound configuration.' ;;
+        ru:dp_trojan_update) echo 'Не удалось обновить конфигурацию входящего Trojan.' ;;
+        fa:dp_trojan_update) echo 'به‌روزرسانی پیکربندی ورودی Trojan ناموفق بود.' ;;
+        ja:dp_trojan_update) echo 'Trojan インバウンド設定の更新に失敗しました。' ;;
+        zh:dp_tuic_cert) echo 'TUIC 自签证书生成失败。' ;;
+        zh-tw:dp_tuic_cert) echo 'TUIC 自簽憑證產生失敗。' ;;
+        en:dp_tuic_cert) echo 'Failed to generate the TUIC self-signed certificate.' ;;
+        ru:dp_tuic_cert) echo 'Не удалось сгенерировать самоподписанный сертификат TUIC.' ;;
+        fa:dp_tuic_cert) echo 'ساخت گواهی خودامضا TUIC ناموفق بود.' ;;
+        ja:dp_tuic_cert) echo 'TUIC の自己署名証明書を生成できませんでした。' ;;
+        zh:dp_tuic_json) echo 'TUIC inbound JSON 生成失败。' ;;
+        zh-tw:dp_tuic_json) echo 'TUIC inbound JSON 產生失敗。' ;;
+        en:dp_tuic_json) echo 'Failed to generate the TUIC inbound JSON.' ;;
+        ru:dp_tuic_json) echo 'Не удалось сгенерировать JSON входящего TUIC.' ;;
+        fa:dp_tuic_json) echo 'ساخت JSON ورودی TUIC ناموفق بود.' ;;
+        ja:dp_tuic_json) echo 'TUIC インバウンド JSON を生成できませんでした。' ;;
+        zh:dp_tuic_update) echo 'TUIC inbound 配置更新失败。' ;;
+        zh-tw:dp_tuic_update) echo 'TUIC inbound 設定更新失敗。' ;;
+        en:dp_tuic_update) echo 'Failed to update the TUIC inbound configuration.' ;;
+        ru:dp_tuic_update) echo 'Не удалось обновить конфигурацию входящего TUIC.' ;;
+        fa:dp_tuic_update) echo 'به‌روزرسانی پیکربندی ورودی TUIC ناموفق بود.' ;;
+        ja:dp_tuic_update) echo 'TUIC インバウンド設定の更新に失敗しました。' ;;
+        zh:dp_xray_bin) echo '安全提取后未找到 xray 主程序。' ;;
+        zh-tw:dp_xray_bin) echo '安全提取後未找到 xray 主程式。' ;;
+        en:dp_xray_bin) echo 'The xray binary was not found after safe extraction.' ;;
+        ru:dp_xray_bin) echo 'После безопасной распаковки не найден бинарный файл xray.' ;;
+        fa:dp_xray_bin) echo 'پس از استخراج امن، برنامه اصلی xray یافت نشد.' ;;
+        ja:dp_xray_bin) echo '安全な展開後に xray 本体が見つかりませんでした。' ;;
+        zh:dp_xray_cfg) echo 'Xray config 原子写入失败。' ;;
+        zh-tw:dp_xray_cfg) echo 'Xray config 原子寫入失敗。' ;;
+        en:dp_xray_cfg) echo 'Failed to atomically write the Xray config.' ;;
+        ru:dp_xray_cfg) echo 'Не удалось атомарно записать конфигурацию Xray.' ;;
+        fa:dp_xray_cfg) echo 'نوشتن اتمی پیکربندی Xray ناموفق بود.' ;;
+        ja:dp_xray_cfg) echo 'Xray 設定のアトミック書き込みに失敗しました。' ;;
+        zh:dp_xray_check) echo 'Xray 配置校验失败。' ;;
+        zh-tw:dp_xray_check) echo 'Xray 設定校驗失敗。' ;;
+        en:dp_xray_check) echo 'The Xray configuration check failed.' ;;
+        ru:dp_xray_check) echo 'Проверка конфигурации Xray не пройдена.' ;;
+        fa:dp_xray_check) echo 'بررسی پیکربندی Xray ناموفق بود.' ;;
+        ja:dp_xray_check) echo 'Xray の設定チェックに失敗しました。' ;;
+        zh:dp_xray_chmod) echo 'Xray OpenRC 服务权限设置失败。' ;;
+        zh-tw:dp_xray_chmod) echo 'Xray OpenRC 服務權限設定失敗。' ;;
+        en:dp_xray_chmod) echo 'Failed to set permissions on the Xray OpenRC service.' ;;
+        ru:dp_xray_chmod) echo 'Не удалось задать права службы OpenRC для Xray.' ;;
+        fa:dp_xray_chmod) echo 'تنظیم مجوزهای سرویس OpenRC ‏Xray ناموفق بود.' ;;
+        ja:dp_xray_chmod) echo 'Xray の OpenRC サービスの権限設定に失敗しました。' ;;
+        zh:dp_xray_confd) echo 'Xray OpenRC conf.d 原子写入失败。' ;;
+        zh-tw:dp_xray_confd) echo 'Xray OpenRC conf.d 原子寫入失敗。' ;;
+        en:dp_xray_confd) echo 'Failed to atomically write the Xray OpenRC conf.d file.' ;;
+        ru:dp_xray_confd) echo 'Не удалось атомарно записать OpenRC conf.d для Xray.' ;;
+        fa:dp_xray_confd) echo 'نوشتن اتمی فایل OpenRC conf.d ‏Xray ناموفق بود.' ;;
+        ja:dp_xray_confd) echo 'Xray の OpenRC conf.d のアトミック書き込みに失敗しました。' ;;
+        zh:dp_xray_exec) echo 'Xray 执行校验失败。' ;;
+        zh-tw:dp_xray_exec) echo 'Xray 執行校驗失敗。' ;;
+        en:dp_xray_exec) echo 'The Xray execution check failed.' ;;
+        ru:dp_xray_exec) echo 'Проверка запуска Xray не пройдена.' ;;
+        fa:dp_xray_exec) echo 'بررسی اجرای Xray ناموفق بود.' ;;
+        ja:dp_xray_exec) echo 'Xray の実行チェックに失敗しました。' ;;
+        zh:dp_xray_extract) echo 'Xray 压缩包安全提取失败。' ;;
+        zh-tw:dp_xray_extract) echo 'Xray 壓縮包安全提取失敗。' ;;
+        en:dp_xray_extract) echo 'Failed to safely extract the Xray archive.' ;;
+        ru:dp_xray_extract) echo 'Не удалось безопасно распаковать архив Xray.' ;;
+        fa:dp_xray_extract) echo 'استخراج امن آرشیو Xray ناموفق بود.' ;;
+        ja:dp_xray_extract) echo 'Xray アーカイブの安全な展開に失敗しました。' ;;
+        zh:dp_xray_initd) echo 'Xray OpenRC unit 原子写入失败。' ;;
+        zh-tw:dp_xray_initd) echo 'Xray OpenRC unit 原子寫入失敗。' ;;
+        en:dp_xray_initd) echo 'Failed to atomically write the Xray OpenRC unit.' ;;
+        ru:dp_xray_initd) echo 'Не удалось атомарно записать OpenRC-юнит Xray.' ;;
+        fa:dp_xray_initd) echo 'نوشتن اتمی یونیت OpenRC ‏Xray ناموفق بود.' ;;
+        ja:dp_xray_initd) echo 'Xray の OpenRC ユニットのアトミック書き込みに失敗しました。' ;;
+        zh:dp_xray_json) echo 'Xray JSON 格式非法。' ;;
+        zh-tw:dp_xray_json) echo 'Xray JSON 格式不合法。' ;;
+        en:dp_xray_json) echo 'The Xray JSON is invalid.' ;;
+        ru:dp_xray_json) echo 'Недопустимый формат JSON Xray.' ;;
+        fa:dp_xray_json) echo 'قالب JSON ‏Xray نامعتبر است.' ;;
+        ja:dp_xray_json) echo 'Xray の JSON 形式が不正です。' ;;
+        zh:dp_xray_keyempty) echo 'Xray REALITY 密钥为空。' ;;
+        zh-tw:dp_xray_keyempty) echo 'Xray REALITY 金鑰為空。' ;;
+        en:dp_xray_keyempty) echo 'The Xray REALITY key is empty.' ;;
+        ru:dp_xray_keyempty) echo 'Ключ REALITY Xray пуст.' ;;
+        fa:dp_xray_keyempty) echo 'کلید REALITY ‏Xray خالی است.' ;;
+        ja:dp_xray_keyempty) echo 'Xray REALITY の鍵が空です。' ;;
+        zh:dp_xray_keyempty2) echo 'Xray REALITY 密钥对为空。' ;;
+        zh-tw:dp_xray_keyempty2) echo 'Xray REALITY 金鑰對為空。' ;;
+        en:dp_xray_keyempty2) echo 'The Xray REALITY key pair is empty.' ;;
+        ru:dp_xray_keyempty2) echo 'Пара ключей REALITY Xray пуста.' ;;
+        fa:dp_xray_keyempty2) echo 'جفت کلید REALITY ‏Xray خالی است.' ;;
+        ja:dp_xray_keyempty2) echo 'Xray REALITY の鍵ペアが空です。' ;;
+        zh:dp_xray_keypair) echo 'Xray REALITY 密钥对生成失败。' ;;
+        zh-tw:dp_xray_keypair) echo 'Xray REALITY 金鑰對產生失敗。' ;;
+        en:dp_xray_keypair) echo 'Failed to generate the Xray REALITY key pair.' ;;
+        ru:dp_xray_keypair) echo 'Не удалось сгенерировать пару ключей REALITY для Xray.' ;;
+        fa:dp_xray_keypair) echo 'ساخت جفت کلید REALITY ‏Xray ناموفق بود.' ;;
+        ja:dp_xray_keypair) echo 'Xray REALITY の鍵ペアを生成できませんでした。' ;;
+        zh:dp_xray_keyparse) echo 'Xray REALITY 密钥解析失败。' ;;
+        zh-tw:dp_xray_keyparse) echo 'Xray REALITY 金鑰解析失敗。' ;;
+        en:dp_xray_keyparse) echo 'Failed to parse the Xray REALITY key.' ;;
+        ru:dp_xray_keyparse) echo 'Не удалось разобрать ключ REALITY Xray.' ;;
+        fa:dp_xray_keyparse) echo 'تجزیه کلید REALITY ‏Xray ناموفق بود.' ;;
+        ja:dp_xray_keyparse) echo 'Xray REALITY の鍵を解析できませんでした。' ;;
+        zh:dp_xray_keyparse2) echo '无法从 Xray x25519 输出解析私钥/公钥。' ;;
+        zh-tw:dp_xray_keyparse2) echo '無法從 Xray x25519 輸出解析私鑰/公鑰。' ;;
+        en:dp_xray_keyparse2) echo 'Could not parse the private/public key from the Xray x25519 output.' ;;
+        ru:dp_xray_keyparse2) echo 'Не удалось разобрать закрытый/открытый ключ из вывода Xray x25519.' ;;
+        fa:dp_xray_keyparse2) echo 'تجزیه کلید خصوصی/عمومی از خروجی x25519 ‏Xray ممکن نشد.' ;;
+        ja:dp_xray_keyparse2) echo 'Xray x25519 の出力から秘密鍵/公開鍵を解析できませんでした。' ;;
+        zh:dp_xray_restart) echo 'Xray 服务重启失败。' ;;
+        zh-tw:dp_xray_restart) echo 'Xray 服務重啟失敗。' ;;
+        en:dp_xray_restart) echo 'Failed to restart the Xray service.' ;;
+        ru:dp_xray_restart) echo 'Не удалось перезапустить службу Xray.' ;;
+        fa:dp_xray_restart) echo 'راه‌اندازی مجدد سرویس Xray ناموفق بود.' ;;
+        ja:dp_xray_restart) echo 'Xray サービスの再起動に失敗しました。' ;;
+        zh:dp_xray_runtime) echo 'Xray 运行时用户/文件权限准备失败。' ;;
+        zh-tw:dp_xray_runtime) echo 'Xray 執行階段使用者/檔案權限準備失敗。' ;;
+        en:dp_xray_runtime) echo 'Failed to prepare the Xray runtime user/file permissions.' ;;
+        ru:dp_xray_runtime) echo 'Не удалось подготовить runtime-пользователя и права файлов Xray.' ;;
+        fa:dp_xray_runtime) echo 'آماده‌سازی کاربر/مجوزهای فایل زمان اجرای Xray ناموفق بود.' ;;
+        ja:dp_xray_runtime) echo 'Xray のランタイムユーザー/ファイル権限の準備に失敗しました。' ;;
+        zh:dp_xray_seed) echo 'Xray 初始配置生成失败。' ;;
+        zh-tw:dp_xray_seed) echo 'Xray 初始設定產生失敗。' ;;
+        en:dp_xray_seed) echo 'Failed to generate the initial Xray configuration.' ;;
+        ru:dp_xray_seed) echo 'Не удалось сгенерировать начальную конфигурацию Xray.' ;;
+        fa:dp_xray_seed) echo 'ساخت پیکربندی اولیه Xray ناموفق بود.' ;;
+        ja:dp_xray_seed) echo 'Xray の初期設定を生成できませんでした。' ;;
+        zh:dp_xray_tmpdir) echo 'Xray 临时目录创建失败。' ;;
+        zh-tw:dp_xray_tmpdir) echo 'Xray 臨時目錄建立失敗。' ;;
+        en:dp_xray_tmpdir) echo 'Failed to create the Xray temporary directory.' ;;
+        ru:dp_xray_tmpdir) echo 'Не удалось создать временный каталог Xray.' ;;
+        fa:dp_xray_tmpdir) echo 'ایجاد پوشه موقت Xray ناموفق بود.' ;;
+        ja:dp_xray_tmpdir) echo 'Xray の一時ディレクトリを作成できませんでした。' ;;
+        zh:dp_xray_unit) echo 'Xray systemd unit 原子写入失败。' ;;
+        zh-tw:dp_xray_unit) echo 'Xray systemd unit 原子寫入失敗。' ;;
+        en:dp_xray_unit) echo 'Failed to atomically write the Xray systemd unit.' ;;
+        ru:dp_xray_unit) echo 'Не удалось атомарно записать systemd-юнит Xray.' ;;
+        fa:dp_xray_unit) echo 'نوشتن اتمی یونیت systemd ‏Xray ناموفق بود.' ;;
+        ja:dp_xray_unit) echo 'Xray の systemd ユニットのアトミック書き込みに失敗しました。' ;;
         zh:fmt_unused) echo '未用' ;;
         en:fmt_unused) echo 'unused' ;;
         ru:fmt_unused) echo 'нет трафика' ;;
@@ -12498,9 +12900,9 @@ LimitNPROC=1048576
 WantedBy=multi-user.target
 EOF_SVC
     else
-        path_parent_chain_safe /etc/conf.d/hysteria || die 'OpenRC conf.d 父链不安全。'
-        [[ ! -L /etc/conf.d && (! -e /etc/conf.d || -d /etc/conf.d) ]] || die 'OpenRC conf.d 目录不安全。'
-        mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
+        path_parent_chain_safe /etc/conf.d/hysteria || die "$(tr_msg dp_orc_parent)"
+        [[ ! -L /etc/conf.d && (! -e /etc/conf.d || -d /etc/conf.d) ]] || die "$(tr_msg dp_orc_dir_unsafe)"
+        mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
         write_file_atomically_from_stdin /etc/conf.d/hysteria 644 <<'EOF_HY2_CONFD' || die 'Hysteria OpenRC conf.d 原子写入失败。'
 rc_ulimit="-n 1048576"
 EOF_HY2_CONFD
@@ -12863,29 +13265,29 @@ deploy_singbox_socks5_landing() {
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
-        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-socks5.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-socks5.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
-        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
         clear_core_release_resolution SagerNet/sing-box
         fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
         SB_PATH="$sb_ext/sing-box"
-        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
-        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
         chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
         "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
         install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
-        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         # Seed a minimal config shell; the socks/mixed inbound is appended below.
-        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
-            || die 'Sing-box 初始配置生成失败。'
-        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+            || die "$(tr_msg dp_sb_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die "$(tr_msg dp_sb_unit)"
 # Managed by A-Box
 [Unit]
 Description=A-Box Sing-Box Service
@@ -12910,12 +13312,12 @@ LimitNPROC=1048576
 WantedBy=multi-user.target
 EOF_SVC
         else
-            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
-            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
-            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+            path_parent_chain_safe /etc/conf.d/sing-box || die "$(tr_msg dp_orc_parent)"
+            mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die "$(tr_msg dp_sb_confd)"
 rc_ulimit="-n 1048576"
 EOF_SB_CONFD
-            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die "$(tr_msg dp_sb_initd)"
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Sing-Box Service"
@@ -12928,41 +13330,41 @@ umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
 EOF_SVC
-            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+            chmod +x /etc/init.d/sing-box || die "$(tr_msg dp_sb_chmod)"
         fi
-        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+        prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
 
     # Build the socks/mixed inbound object.
-    tmp_json=$(mktemp /tmp/A-Box-singbox-socks5-inbound.XXXXXX) || die '临时文件创建失败。'
+    tmp_json=$(mktemp /tmp/A-Box-singbox-socks5-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --arg proto "$proto" --arg user "$user" --arg pass "$pass" --arg tag "$tag" \
         '{type:$proto,tag:$tag,listen:"0.0.0.0",listen_port:$port,
           users:[{username:$user,password:$pass}]}' \
-        > "$tmp_json" || die 'SOCKS5 inbound JSON 生成失败。'
+        > "$tmp_json" || die "$(tr_msg dp_socks5_json)"
 
     # Replace in place if the tag exists; otherwise append. No API: restart after check.
     local tmp_cfg
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
     fi
-    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --slurpfile nb "$tmp_json" \
             '(.inbounds | map(select(.tag==$t))) as $old
              | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
-        rm -f "$tmp_cfg" "$tmp_json"; die 'SOCKS5 inbound 配置更新失败。'
+        rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_socks5_update)"
     fi
-    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
-        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
-    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+        || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
-    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+    prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
+    restart_service_soft sing-box || die "$(tr_msg dp_sb_restart)"
 
     # Firewall: TCP + UDP.
-    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
-    allowPort "$port" udp || die "防火墙放行失败: ${port}/udp"
+    allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
+    allowPort "$port" udp || die "$(tprintf dp_fw_allow "${port}/udp")"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
 
     # Ensure the service is running (minimal-install path).
@@ -13010,27 +13412,27 @@ deploy_xray_trojan_landing() {
     if [[ ! -x /usr/local/bin/xray ]]; then
         local xray_tmp xray_zip xray_ext
         get_architecture
-        xray_tmp=$(mktemp -d /tmp/A-Box-xray-trojan.XXXXXX) || die 'Xray 临时目录创建失败。'
+        xray_tmp=$(mktemp -d /tmp/A-Box-xray-trojan.XXXXXX) || die "$(tr_msg dp_xray_tmpdir)"
         xray_zip="$xray_tmp/xray_core.zip"
         xray_ext="$xray_tmp/xray_ext"
         mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
         clear_core_release_resolution XTLS/Xray-core
         fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
-        extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die 'Xray 压缩包安全提取失败。'
-        [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die '安全提取后未找到 xray 主程序。'
+        extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die "$(tr_msg dp_xray_extract)"
+        [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die "$(tr_msg dp_xray_bin)"
         chmod 755 "$xray_ext/xray" || die 'Xray staged binary chmod failed.'
         "$xray_ext/xray" version >/dev/null 2>&1 || die 'Xray staged binary execution check failed.'
         install_binary_atomically "$xray_ext/xray" /usr/local/bin/xray || die 'Xray binary atomic install failed.'
-        /usr/local/bin/xray version >/dev/null 2>&1 || die 'Xray 执行校验失败。'
+        /usr/local/bin/xray version >/dev/null 2>&1 || die "$(tr_msg dp_xray_exec)"
         prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
         rm -rf -- "$xray_tmp"
-        tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die '临时文件创建失败。'
+        tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
-            || die 'Xray 初始配置生成失败。'
-        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Xray config 原子写入失败。'
+            || die "$(tr_msg dp_xray_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
         rm -f "$tmp_json"
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die 'Xray systemd unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die "$(tr_msg dp_xray_unit)"
 # Managed by A-Box
 [Unit]
 Description=A-Box Xray Service
@@ -13056,12 +13458,12 @@ LimitNPROC=1048576
 WantedBy=multi-user.target
 EOF_SVC
         else
-            path_parent_chain_safe /etc/conf.d/xray || die 'OpenRC conf.d 父链不安全。'
-            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
-            write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die 'Xray OpenRC conf.d 原子写入失败。'
+            path_parent_chain_safe /etc/conf.d/xray || die "$(tr_msg dp_orc_parent)"
+            mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
+            write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die "$(tr_msg dp_xray_confd)"
 export XRAY_LOCATION_ASSET="/usr/local/share/xray"
 EOF_XRAY_CONFD
-            write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die 'Xray OpenRC unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die "$(tr_msg dp_xray_initd)"
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Xray Service"
@@ -13074,35 +13476,35 @@ umask=077
 pidfile="/run/xray.pid"
 depend() { need net; }
 EOF_SVC
-            chmod +x /etc/init.d/xray || die 'Xray OpenRC 服务权限设置失败。'
+            chmod +x /etc/init.d/xray || die "$(tr_msg dp_xray_chmod)"
         fi
-        prepare_abox_runtime_permissions xray || die 'Xray 运行时用户/文件权限准备失败。'
+        prepare_abox_runtime_permissions xray || die "$(tr_msg dp_xray_runtime)"
     fi
 
     # Reality keypair + SNI (reuse A-Box flow).
     local keypair
-    keypair=$(/usr/local/bin/xray x25519) || die 'Xray REALITY 密钥对生成失败。'
-    IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die 'Xray REALITY 密钥解析失败。'
-    [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die 'Xray REALITY 密钥为空。'
-    sid=$(openssl rand -hex 4 | tr -d '\n\r') || die 'shortId 生成失败。'
+    keypair=$(/usr/local/bin/xray x25519) || die "$(tr_msg dp_xray_keypair)"
+    IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die "$(tr_msg dp_xray_keyparse)"
+    [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die "$(tr_msg dp_xray_keyempty)"
+    sid=$(openssl rand -hex 4 | tr -d '\n\r') || die "$(tr_msg dp_shortid)"
     sni=$(sni_prompt_or_auto)
 
     # Build the trojan+reality inbound object (A-Box realitySettings format).
-    tmp_json=$(mktemp /tmp/A-Box-trojan-inbound.XXXXXX) || die '临时文件创建失败。'
+    tmp_json=$(mktemp /tmp/A-Box-trojan-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" --arg tag "$tag" \
         --arg pk "$pk" --arg sid "$sid" \
         '{tag:$tag,port:$port,listen:"0.0.0.0",protocol:"trojan",
           settings:{clients:[{password:$pass,email:($tag + "/main")}]},
           streamSettings:{network:"tcp",security:"reality",
             realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}}}' \
-        > "$tmp_json" || die 'Trojan inbound JSON 生成失败。'
+        > "$tmp_json" || die "$(tr_msg dp_trojan_json)"
 
     if [[ ! -f "$cfg" || -L "$cfg" ]]; then
         local seed_json
-        seed_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die '临时文件创建失败。'
-        jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$seed_json" || { rm -f "$seed_json"; die 'Xray 初始配置生成失败。'; }
+        seed_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+        jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$seed_json" || { rm -f "$seed_json"; die "$(tr_msg dp_xray_seed)"; }
         prepare_abox_runtime_config_dir xray /usr/local/etc/xray || { rm -f "$seed_json"; die 'Xray config directory creation failed.'; }
-        install_file_atomically "$seed_json" "$cfg" 600 || { rm -f "$seed_json"; die 'Xray config 原子写入失败。'; }
+        install_file_atomically "$seed_json" "$cfg" 600 || { rm -f "$seed_json"; die "$(tr_msg dp_xray_cfg)"; }
         rm -f "$seed_json"
     fi
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
@@ -13110,28 +13512,28 @@ EOF_SVC
         if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
         fi
-        tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die '临时文件创建失败。'
-        mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json"; die '临时文件创建失败。'; }; tmp_cfg="$tmp_cfg.json"
+        tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+        mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_tmpfile)"; }; tmp_cfg="$tmp_cfg.json"
         if ! jq --slurpfile nb "$tmp_json" \
                 '(.inbounds | map(select(.tag==$t))) as $old
                  | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
                 "$cfg" > "$tmp_cfg" 2>/dev/null; then
-            rm -f "$tmp_cfg" "$tmp_json"; die 'Trojan inbound 配置更新失败。'
+            rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_trojan_update)"
         fi
-        jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray JSON 格式非法。'; }
+        jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_json)"; }
         if ! XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" >/dev/null 2>&1; then
             msg "${RED}Xray 配置校验失败，校验器输出:${NC}"
             XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" 2>&1 | tail -5
-            rm -f "$tmp_cfg" "$tmp_json"; die 'Xray 配置校验失败。'
+            rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_check)"
         fi
-        install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray config 原子写入失败。'; }
+        install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_cfg)"; }
         rm -f "$tmp_cfg"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
-        restart_service_soft xray || die 'Xray 服务重启失败。'
+        restart_service_soft xray || die "$(tr_msg dp_xray_restart)"
     fi
     rm -f "$tmp_json"
 
-    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     service_manager start xray 2>/dev/null || true
     set_desired_state RUNNING 2>/dev/null || true
@@ -13167,28 +13569,28 @@ deploy_singbox_trojan_landing() {
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
-        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-trojan.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-trojan.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
-        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
         clear_core_release_resolution SagerNet/sing-box
         fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
         SB_PATH="$sb_ext/sing-box"
-        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
-        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
         chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
         "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
         install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
-        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
-        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
-            || die 'Sing-box 初始配置生成失败。'
-        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+            || die "$(tr_msg dp_sb_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die "$(tr_msg dp_sb_unit)"
 # Managed by A-Box
 [Unit]
 Description=A-Box Sing-Box Service
@@ -13213,12 +13615,12 @@ LimitNPROC=1048576
 WantedBy=multi-user.target
 EOF_SVC
         else
-            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
-            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
-            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+            path_parent_chain_safe /etc/conf.d/sing-box || die "$(tr_msg dp_orc_parent)"
+            mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die "$(tr_msg dp_sb_confd)"
 rc_ulimit="-n 1048576"
 EOF_SB_CONFD
-            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die "$(tr_msg dp_sb_initd)"
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Sing-Box Service"
@@ -13231,49 +13633,49 @@ umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
 EOF_SVC
-            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+            chmod +x /etc/init.d/sing-box || die "$(tr_msg dp_sb_chmod)"
         fi
-        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+        prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
 
     # Reality keypair + SNI (reuse A-Box flow).
     local keypair
-    keypair=$(/usr/local/bin/sing-box generate reality-keypair) || die 'Sing-box REALITY 密钥对生成失败。'
-    IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die 'Sing-box REALITY 密钥解析失败。'
-    [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die 'Sing-box REALITY 密钥为空。'
-    sid=$(openssl rand -hex 4 | tr -d '\n\r') || die 'shortId 生成失败。'
+    keypair=$(/usr/local/bin/sing-box generate reality-keypair) || die "$(tr_msg dp_sb_keypair)"
+    IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die "$(tr_msg dp_sb_keyparse)"
+    [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die "$(tr_msg dp_sb_keyempty)"
+    sid=$(openssl rand -hex 4 | tr -d '\n\r') || die "$(tr_msg dp_shortid)"
     sni=$(sni_prompt_or_auto)
 
     # Build the trojan+reality inbound object.
-    tmp_json=$(mktemp /tmp/A-Box-sb-trojan-inbound.XXXXXX) || die '临时文件创建失败。'
+    tmp_json=$(mktemp /tmp/A-Box-sb-trojan-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" --arg tag "$tag" \
         --arg pk "$pk" --arg sid "$sid" \
         '{type:"trojan",tag:$tag,listen:"0.0.0.0",listen_port:$port,
           users:[{password:$pass}],
           tls:{enabled:true,server_name:$sni,
             reality:{enabled:true,handshake:{server:$sni,server_port:443},private_key:$pk,short_id:[$sid]}}}' \
-        > "$tmp_json" || die 'Trojan inbound JSON 生成失败。'
+        > "$tmp_json" || die "$(tr_msg dp_trojan_json)"
 
     local tmp_cfg
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
     fi
-    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --slurpfile nb "$tmp_json" \
             '(.inbounds | map(select(.tag==$t))) as $old
              | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
-        rm -f "$tmp_cfg" "$tmp_json"; die 'Trojan inbound 配置更新失败。'
+        rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_trojan_update)"
     fi
-    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
-        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
-    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+        || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
-    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+    prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
+    restart_service_soft sing-box || die "$(tr_msg dp_sb_restart)"
 
-    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING 2>/dev/null || true
@@ -13319,28 +13721,28 @@ deploy_singbox_tuic() {
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
-        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-tuic.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-tuic.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
-        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
         clear_core_release_resolution SagerNet/sing-box
         fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
         SB_PATH="$sb_ext/sing-box"
-        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
-        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
         chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
         "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
         install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
-        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
-        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
-            || die 'Sing-box 初始配置生成失败。'
-        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+            || die "$(tr_msg dp_sb_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die "$(tr_msg dp_sb_unit)"
 # Managed by A-Box
 [Unit]
 Description=A-Box Sing-Box Service
@@ -13365,12 +13767,12 @@ LimitNPROC=1048576
 WantedBy=multi-user.target
 EOF_SVC
         else
-            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
-            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
-            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+            path_parent_chain_safe /etc/conf.d/sing-box || die "$(tr_msg dp_orc_parent)"
+            mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die "$(tr_msg dp_sb_confd)"
 rc_ulimit="-n 1048576"
 EOF_SB_CONFD
-            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die "$(tr_msg dp_sb_initd)"
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Sing-Box Service"
@@ -13383,46 +13785,46 @@ umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
 EOF_SVC
-            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+            chmod +x /etc/init.d/sing-box || die "$(tr_msg dp_sb_chmod)"
         fi
-        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+        prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
 
     # Self-signed TLS cert (TUIC requires TLS; clients pin/skip-verify).
     sni=$(sni_prompt_or_auto)
     generate_self_signed_cert_atomically /etc/sing-box/tuic.key /etc/sing-box/tuic.crt "$sni" \
-        || die 'TUIC 自签证书生成失败。'
+        || die "$(tr_msg dp_tuic_cert)"
 
     # Build the TUIC inbound object.
-    tmp_json=$(mktemp /tmp/A-Box-sb-tuic-inbound.XXXXXX) || die '临时文件创建失败。'
+    tmp_json=$(mktemp /tmp/A-Box-sb-tuic-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --arg uuid "$uuid" --arg pass "$pass" --arg sni "$sni" --arg cc "$cc" --arg tag "$tag" \
         '{type:"tuic",tag:$tag,listen:"0.0.0.0",listen_port:$port,
           users:[{uuid:$uuid,password:$pass}],
           congestion_control:$cc,
           tls:{enabled:true,server_name:$sni,alpn:["h3"],
             certificate_path:"/etc/sing-box/tuic.crt",key_path:"/etc/sing-box/tuic.key"}}' \
-        > "$tmp_json" || die 'TUIC inbound JSON 生成失败。'
+        > "$tmp_json" || die "$(tr_msg dp_tuic_json)"
 
     local tmp_cfg
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         msg "${YELLOW}$(tr_msg tuic_exists)${NC}"
     fi
-    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" \
             '(.inbounds | map(select(.tag==$t))) as $old
              | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
-        rm -f "$tmp_cfg" "$tmp_json"; die 'TUIC inbound 配置更新失败。'
+        rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_tuic_update)"
     fi
-    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
-        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
-    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+        || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
-    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+    prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
+    restart_service_soft sing-box || die "$(tr_msg dp_sb_restart)"
 
-    allowPort "$port" udp || die "防火墙放行失败: ${port}/udp"
+    allowPort "$port" udp || die "$(tprintf dp_fw_allow "${port}/udp")"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING 2>/dev/null || true
@@ -13462,28 +13864,28 @@ deploy_singbox_anytls() {
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
-        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-anytls.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-anytls.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
-        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
         clear_core_release_resolution SagerNet/sing-box
         fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
         SB_PATH="$sb_ext/sing-box"
-        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
-        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
         chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
         "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
         install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
-        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
-        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
-            || die 'Sing-box 初始配置生成失败。'
-        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+            || die "$(tr_msg dp_sb_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die "$(tr_msg dp_sb_unit)"
 # Managed by A-Box
 [Unit]
 Description=A-Box Sing-Box Service
@@ -13508,12 +13910,12 @@ LimitNPROC=1048576
 WantedBy=multi-user.target
 EOF_SVC
         else
-            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
-            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
-            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+            path_parent_chain_safe /etc/conf.d/sing-box || die "$(tr_msg dp_orc_parent)"
+            mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die "$(tr_msg dp_sb_confd)"
 rc_ulimit="-n 1048576"
 EOF_SB_CONFD
-            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die "$(tr_msg dp_sb_initd)"
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Sing-Box Service"
@@ -13526,49 +13928,49 @@ umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
 EOF_SVC
-            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+            chmod +x /etc/init.d/sing-box || die "$(tr_msg dp_sb_chmod)"
         fi
-        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+        prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
 
     # Reality keypair + SNI (reuse A-Box flow).
     local keypair
-    keypair=$(/usr/local/bin/sing-box generate reality-keypair) || die 'Sing-box REALITY 密钥对生成失败。'
-    IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die 'Sing-box REALITY 密钥解析失败。'
-    [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die 'Sing-box REALITY 密钥为空。'
-    sid=$(openssl rand -hex 4 | tr -d '\n\r') || die 'shortId 生成失败。'
+    keypair=$(/usr/local/bin/sing-box generate reality-keypair) || die "$(tr_msg dp_sb_keypair)"
+    IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || die "$(tr_msg dp_sb_keyparse)"
+    [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die "$(tr_msg dp_sb_keyempty)"
+    sid=$(openssl rand -hex 4 | tr -d '\n\r') || die "$(tr_msg dp_shortid)"
     sni=$(sni_prompt_or_auto)
 
     # Build the anytls+reality inbound object.
-    tmp_json=$(mktemp /tmp/A-Box-sb-anytls-inbound.XXXXXX) || die '临时文件创建失败。'
+    tmp_json=$(mktemp /tmp/A-Box-sb-anytls-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" --arg tag "$tag" \
         --arg pk "$pk" --arg sid "$sid" \
         '{type:"anytls",tag:$tag,listen:"0.0.0.0",listen_port:$port,
           users:[{name:"main",password:$pass}],
           tls:{enabled:true,server_name:$sni,
             reality:{enabled:true,handshake:{server:$sni,server_port:443},private_key:$pk,short_id:[$sid]}}}' \
-        > "$tmp_json" || die 'AnyTLS inbound JSON 生成失败。'
+        > "$tmp_json" || die "$(tr_msg dp_anytls_json)"
 
     local tmp_cfg
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         msg "${YELLOW}$(tr_msg anytls_exists)${NC}"
     fi
-    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --slurpfile nb "$tmp_json" \
             '(.inbounds | map(select(.tag==$t))) as $old
              | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
-        rm -f "$tmp_cfg" "$tmp_json"; die 'AnyTLS inbound 配置更新失败。'
+        rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_anytls_update)"
     fi
-    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
-        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
-    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
+        || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
-    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+    prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
+    restart_service_soft sing-box || die "$(tr_msg dp_sb_restart)"
 
-    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING 2>/dev/null || true
@@ -13609,28 +14011,28 @@ deploy_singbox_shadowtls() {
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
-        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-shadowtls.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-shadowtls.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
-        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
         clear_core_release_resolution SagerNet/sing-box
         fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
         SB_PATH="$sb_ext/sing-box"
-        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
-        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
         chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
         "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
         install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
-        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
-        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
-            || die 'Sing-box 初始配置生成失败。'
-        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+            || die "$(tr_msg dp_sb_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die "$(tr_msg dp_sb_unit)"
 # Managed by A-Box
 [Unit]
 Description=A-Box Sing-Box Service
@@ -13655,12 +14057,12 @@ LimitNPROC=1048576
 WantedBy=multi-user.target
 EOF_SVC
         else
-            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
-            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
-            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+            path_parent_chain_safe /etc/conf.d/sing-box || die "$(tr_msg dp_orc_parent)"
+            mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die "$(tr_msg dp_sb_confd)"
 rc_ulimit="-n 1048576"
 EOF_SB_CONFD
-            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die "$(tr_msg dp_sb_initd)"
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Sing-Box Service"
@@ -13673,44 +14075,44 @@ umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
 EOF_SVC
-            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+            chmod +x /etc/init.d/sing-box || die "$(tr_msg dp_sb_chmod)"
         fi
-        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+        prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
 
     sni=$(sni_prompt_or_auto)
 
     # shadowtls v3 (strict) detouring to a loopback-only SS-2022 inbound that
     # has no listen_port of its own (reachable only through the detour).
-    tmp_json=$(mktemp /tmp/A-Box-sb-shadowtls-inbound.XXXXXX) || die '临时文件创建失败。'
+    tmp_json=$(mktemp /tmp/A-Box-sb-shadowtls-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --arg pass "$pass" --arg inner "$inner" --arg sni "$sni" --arg tag "$tag" --arg itag "$itag" \
         '({type:"shadowtls",tag:$tag,listen:"0.0.0.0",listen_port:$port,version:3,strict_mode:true,
            users:[{password:$pass}],handshake:{server:$sni,server_port:443},detour:$itag}),
          ({type:"shadowsocks",tag:$itag,listen:"127.0.0.1",network:"tcp",
            method:"2022-blake3-aes-128-gcm",password:$inner,multiplex:{enabled:true,padding:true}})' \
-        > "$tmp_json" || die 'ShadowTLS inbound JSON 生成失败。'
+        > "$tmp_json" || die "$(tr_msg dp_shadowtls_json)"
 
     local tmp_cfg
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         msg "${YELLOW}$(tr_msg shadowtls_exists)${NC}"
     fi
-    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" --arg it "$itag" \
             '(.inbounds | map(select(.tag==$t or .tag==$it))) as $old
              | .inbounds |= (map(select(.tag!=$t and .tag!=$it)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
-        rm -f "$tmp_cfg" "$tmp_json"; die 'ShadowTLS inbound 配置更新失败。'
+        rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_shadowtls_update)"
     fi
-    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
-        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
-    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
-    prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+        || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
+    prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     rm -f "$tmp_cfg" "$tmp_json"
 
-    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+    restart_service_soft sing-box || die "$(tr_msg dp_sb_restart)"
 
-    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
+    allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING 2>/dev/null || true
@@ -13753,7 +14155,7 @@ _argo_state_get() {
 _argo_state_write() { # $1 = full file content
     mkdir -p /etc/ddr || die '/etc/ddr 创建失败。'
     local tmp_f
-    tmp_f=$(mktemp /tmp/A-Box-argo-state.XXXXXX) || die '临时文件创建失败。'
+    tmp_f=$(mktemp /tmp/A-Box-argo-state.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     printf '%s\n' "$1" > "$tmp_f" || { rm -f "$tmp_f"; die 'Argo 状态写入失败。'; }
     install_file_atomically "$tmp_f" "$ARGO_STATE_FILE" 600 || { rm -f "$tmp_f"; die 'Argo 状态原子写入失败。'; }
     rm -f "$tmp_f"
@@ -13816,7 +14218,7 @@ argo_deploy_ws() {
         ARGO_VLESS_PORT=$(_argo_pick_port) || die 'VLESS-WS 端口选取失败。'
         [[ "$ARGO_VLESS_PORT" != "$ARGO_VMESS_PORT" ]] || ARGO_VLESS_PORT=$((ARGO_VMESS_PORT + 1))
     fi
-    tmp_json=$(mktemp /tmp/A-Box-sb-argo-inbound.XXXXXX) || die '临时文件创建失败。'
+    tmp_json=$(mktemp /tmp/A-Box-sb-argo-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --arg uuid "$ARGO_UUID" --argjson vp "$ARGO_VMESS_PORT" --argjson vlp "$ARGO_VLESS_PORT" \
         '({type:"vmess",tag:"vmess-ws-in",listen:"127.0.0.1",listen_port:$vp,
            users:[{uuid:$uuid,alterId:0}],
@@ -13825,19 +14227,19 @@ argo_deploy_ws() {
            users:[{uuid:$uuid}],
            transport:{type:"ws",path:("/" + $uuid + "-vless"),max_early_data:2560,early_data_header_name:"Sec-WebSocket-Protocol"}})' \
         > "$tmp_json" || die 'Argo WS inbound JSON 生成失败。'
-    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+    tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --slurpfile nb "$tmp_json" \
             '.inbounds |= (map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in")) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die 'Argo WS inbound 配置更新失败。'
     fi
-    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box JSON 格式非法。'; }
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
-        || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box 配置校验失败。'; }
-    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box config 原子写入失败。'; }
-    prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+        || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
+    prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     rm -f "$tmp_cfg" "$tmp_json"
-    restart_service_soft sing-box || die 'Sing-box 服务重启失败。'
+    restart_service_soft sing-box || die "$(tr_msg dp_sb_restart)"
     service_manager start sing-box 2>/dev/null || true
 }
 
@@ -13949,28 +14351,28 @@ deploy_argo_temp() {
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
-        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-argo.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-argo.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
-        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
         clear_core_release_resolution SagerNet/sing-box
         fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
         SB_PATH="$sb_ext/sing-box"
-        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
-        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
         chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
         "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
         install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
-        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
-        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
-            || die 'Sing-box 初始配置生成失败。'
-        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+            || die "$(tr_msg dp_sb_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die "$(tr_msg dp_sb_unit)"
 # Managed by A-Box
 [Unit]
 Description=A-Box Sing-Box Service
@@ -13995,12 +14397,12 @@ LimitNPROC=1048576
 WantedBy=multi-user.target
 EOF_SVC
         else
-            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
-            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
-            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+            path_parent_chain_safe /etc/conf.d/sing-box || die "$(tr_msg dp_orc_parent)"
+            mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die "$(tr_msg dp_sb_confd)"
 rc_ulimit="-n 1048576"
 EOF_SB_CONFD
-            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die "$(tr_msg dp_sb_initd)"
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Sing-Box Service"
@@ -14013,9 +14415,9 @@ umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
 EOF_SVC
-            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+            chmod +x /etc/init.d/sing-box || die "$(tr_msg dp_sb_chmod)"
         fi
-        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+        prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
     argo_deploy_ws
     argo_write_unit argo-vmess "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 --url http://127.0.0.1:${ARGO_VMESS_PORT}"
@@ -14054,28 +14456,28 @@ deploy_argo_fixed() {
     if [[ ! -x /usr/local/bin/sing-box ]]; then
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
-        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-argo.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-argo.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
-        mkdir -p "$sb_ext" || die 'Sing-box 提取目录创建失败。'
+        mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
         clear_core_release_resolution SagerNet/sing-box
         fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
         SB_PATH="$sb_ext/sing-box"
-        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
-        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+        extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
+        [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
         chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
         "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
         install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
-        /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+        /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
-        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die '临时文件创建失败。'
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
-            || die 'Sing-box 初始配置生成失败。'
-        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
+            || die "$(tr_msg dp_sb_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die 'Sing-box systemd unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die "$(tr_msg dp_sb_unit)"
 # Managed by A-Box
 [Unit]
 Description=A-Box Sing-Box Service
@@ -14100,12 +14502,12 @@ LimitNPROC=1048576
 WantedBy=multi-user.target
 EOF_SVC
         else
-            path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
-            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
-            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'Sing-box OpenRC conf.d 原子写入失败。'
+            path_parent_chain_safe /etc/conf.d/sing-box || die "$(tr_msg dp_orc_parent)"
+            mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
+            write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die "$(tr_msg dp_sb_confd)"
 rc_ulimit="-n 1048576"
 EOF_SB_CONFD
-            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die 'Sing-box OpenRC unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || die "$(tr_msg dp_sb_initd)"
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Sing-Box Service"
@@ -14118,9 +14520,9 @@ umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
 EOF_SVC
-            chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+            chmod +x /etc/init.d/sing-box || die "$(tr_msg dp_sb_chmod)"
         fi
-        prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+        prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
     argo_deploy_ws
     argo_remove_unit argo-vmess
@@ -14177,11 +14579,11 @@ argo_uninstall() {
     argo_remove_unit argo-vless
     local cfg='/etc/sing-box/config.json' tmp_cfg
     if [[ -f "$cfg" && ! -L "$cfg" ]] && command -v jq >/dev/null 2>&1; then
-        tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die '临时文件创建失败。'
+        tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         if jq '.inbounds |= map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in"))' "$cfg" > "$tmp_cfg" 2>/dev/null \
             && /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1; then
-            install_file_atomically "$tmp_cfg" "$cfg" 600 || die 'Sing-box config 原子写入失败。'
-            prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+            install_file_atomically "$tmp_cfg" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
+            prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
             restart_service_soft sing-box || true
         fi
         rm -f "$tmp_cfg"
@@ -15552,28 +15954,28 @@ deploy_socks5_landing() {
     if [[ ! -x /usr/local/bin/xray ]]; then
         local xray_tmp xray_zip xray_ext
         get_architecture
-        xray_tmp=$(mktemp -d /tmp/A-Box-xray-socks5.XXXXXX) || die 'Xray 临时目录创建失败。'
+        xray_tmp=$(mktemp -d /tmp/A-Box-xray-socks5.XXXXXX) || die "$(tr_msg dp_xray_tmpdir)"
         xray_zip="$xray_tmp/xray_core.zip"
         xray_ext="$xray_tmp/xray_ext"
         mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
         clear_core_release_resolution XTLS/Xray-core
         fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
-        extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die 'Xray 压缩包安全提取失败。'
-        [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die '安全提取后未找到 xray 主程序。'
+        extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die "$(tr_msg dp_xray_extract)"
+        [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die "$(tr_msg dp_xray_bin)"
         chmod 755 "$xray_ext/xray" || die 'Xray staged binary chmod failed.'
         "$xray_ext/xray" version >/dev/null 2>&1 || die 'Xray staged binary execution check failed.'
         install_binary_atomically "$xray_ext/xray" /usr/local/bin/xray || die 'Xray binary atomic install failed.'
-        /usr/local/bin/xray version >/dev/null 2>&1 || die 'Xray 执行校验失败。'
+        /usr/local/bin/xray version >/dev/null 2>&1 || die "$(tr_msg dp_xray_exec)"
         prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
         rm -rf -- "$xray_tmp"
         # Seed a minimal config shell; the socks inbound is appended below.
-        tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die '临时文件创建失败。'
+        tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
-            || die 'Xray 初始配置生成失败。'
-        install_file_atomically "$tmp_json" "$cfg" 600 || die 'Xray config 原子写入失败。'
+            || die "$(tr_msg dp_xray_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
         rm -f "$tmp_json"
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die 'Xray systemd unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die "$(tr_msg dp_xray_unit)"
 # Managed by A-Box
 [Unit]
 Description=A-Box Xray Service
@@ -15599,12 +16001,12 @@ LimitNPROC=1048576
 WantedBy=multi-user.target
 EOF_SVC
         else
-            path_parent_chain_safe /etc/conf.d/xray || die 'OpenRC conf.d 父链不安全。'
-            mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
-            write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die 'Xray OpenRC conf.d 原子写入失败。'
+            path_parent_chain_safe /etc/conf.d/xray || die "$(tr_msg dp_orc_parent)"
+            mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
+            write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die "$(tr_msg dp_xray_confd)"
 export XRAY_LOCATION_ASSET="/usr/local/share/xray"
 EOF_XRAY_CONFD
-            write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die 'Xray OpenRC unit 原子写入失败。'
+            write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die "$(tr_msg dp_xray_initd)"
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Xray Service"
@@ -15617,45 +16019,45 @@ umask=077
 pidfile="/run/xray.pid"
 depend() { need net; }
 EOF_SVC
-            chmod +x /etc/init.d/xray || die 'Xray OpenRC 服务权限设置失败。'
+            chmod +x /etc/init.d/xray || die "$(tr_msg dp_xray_chmod)"
         fi
-        prepare_abox_runtime_permissions xray || die 'Xray 运行时用户/文件权限准备失败。'
+        prepare_abox_runtime_permissions xray || die "$(tr_msg dp_xray_runtime)"
     fi
 
     # Build the socks inbound object.
-    tmp_json=$(mktemp /tmp/A-Box-socks5-inbound.XXXXXX) || die '临时文件创建失败。'
+    tmp_json=$(mktemp /tmp/A-Box-socks5-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --arg user "$user" --arg pass "$pass" --arg tag "$tag" \
         '{tag:$tag,port:$port,listen:"0.0.0.0",protocol:"socks",
           settings:{auth:"password",accounts:[{user:$user,pass:$pass}],udp:true,ip:"0.0.0.0"}}' \
-        > "$tmp_json" || die 'SOCKS5 inbound JSON 生成失败。'
+        > "$tmp_json" || die "$(tr_msg dp_socks5_json)"
 
     # If the tag already exists, replace it in place; otherwise hot-add.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         local tmp_cfg
         msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
-        tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die '临时文件创建失败。'
-        mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json"; die '临时文件创建失败。'; }; tmp_cfg="$tmp_cfg.json"
+        tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+        mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_tmpfile)"; }; tmp_cfg="$tmp_cfg.json"
         if ! jq --slurpfile nb "$tmp_json" \
                 '(.inbounds | map(select(.tag==$t))) as $old
                  | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
                 "$cfg" > "$tmp_cfg" 2>/dev/null; then
-            rm -f "$tmp_cfg" "$tmp_json"; die 'SOCKS5 inbound 配置更新失败。'
+            rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_socks5_update)"
         fi
-        jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray JSON 格式非法。'; }
+        jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_json)"; }
         XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" >/dev/null 2>&1 \
-            || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray 配置校验失败。'; }
-        install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray config 原子写入失败。'; }
+            || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_check)"; }
+        install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_cfg)"; }
         rm -f "$tmp_cfg"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
-        restart_service_soft xray || die 'Xray 服务重启失败。'
+        restart_service_soft xray || die "$(tr_msg dp_xray_restart)"
     else
-        xray_hot_add_inbound "$tmp_json" || die 'SOCKS5 inbound 添加失败。'
+        xray_hot_add_inbound "$tmp_json" || die "$(tr_msg dp_socks5_add)"
     fi
     rm -f "$tmp_json"
 
     # Firewall: TCP + UDP.
-    allowPort "$port" tcp || die "防火墙放行失败: ${port}/tcp"
-    allowPort "$port" udp || die "防火墙放行失败: ${port}/udp"
+    allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
+    allowPort "$port" udp || die "$(tprintf dp_fw_allow "${port}/udp")"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
 
     # Ensure the service is running (minimal-install path or API-unavailable hosts).
@@ -15691,48 +16093,48 @@ deploy_xray() {
     get_architecture
 
     local xray_tmp xray_zip xray_ext geo_tmp
-    xray_tmp=$(mktemp -d /tmp/A-Box-xray.XXXXXX) || die 'Xray 临时目录创建失败。'
+    xray_tmp=$(mktemp -d /tmp/A-Box-xray.XXXXXX) || die "$(tr_msg dp_xray_tmpdir)"
     ABOX_DEPLOY_TX_TMP="$xray_tmp"
     xray_zip="$xray_tmp/xray_core.zip"
     xray_ext="$xray_tmp/xray_ext"
     mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
     clear_core_release_resolution XTLS/Xray-core
     fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
-    extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die 'Xray 压缩包安全提取失败。'
-    [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die '安全提取后未找到 xray 主程序。'
+    extract_zip_member_safely "$xray_zip" xray "$xray_ext/xray" || die "$(tr_msg dp_xray_extract)"
+    [[ -f "$xray_ext/xray" && ! -L "$xray_ext/xray" ]] || die "$(tr_msg dp_xray_bin)"
     chmod 755 "$xray_ext/xray" || die 'Xray staged binary chmod failed.'
     "$xray_ext/xray" version >/dev/null 2>&1 || die 'Xray staged binary execution check failed.'
     install_binary_atomically "$xray_ext/xray" /usr/local/bin/xray || die 'Xray binary atomic install failed.'
-    /usr/local/bin/xray version >/dev/null 2>&1 || die 'Xray 执行校验失败。'
+    /usr/local/bin/xray version >/dev/null 2>&1 || die "$(tr_msg dp_xray_exec)"
     install -d -m 755 /usr/local/share/xray || die 'Xray data directory creation failed.'
     # B9-03: config dir 750 root:abox-xray like sing-box/hysteria (was 755).
     # P0-1: use prepare_abox_runtime_config_dir to ensure group exists first.
     prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
 
     geo_tmp="$xray_tmp/geo"
-    mkdir -p "$geo_tmp" || die 'Xray Geo 临时目录创建失败。'
+    mkdir -p "$geo_tmp" || die "$(tr_msg dp_geo_tmpdir)"
     fetch_geo_data geoip.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat' "$geo_tmp/geoip.dat"
     fetch_geo_data geosite.dat 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat' "$geo_tmp/geosite.dat"
-    install_file_atomically "$geo_tmp/geoip.dat" /usr/local/share/xray/geoip.dat 644 || die 'geoip.dat 原子安装失败。'
-    install_file_atomically "$geo_tmp/geosite.dat" /usr/local/share/xray/geosite.dat 644 || die 'geosite.dat 原子安装失败。'
+    install_file_atomically "$geo_tmp/geoip.dat" /usr/local/share/xray/geoip.dat 644 || die "$(tr_msg dp_geoip_write)"
+    install_file_atomically "$geo_tmp/geosite.dat" /usr/local/share/xray/geosite.dat 644 || die "$(tr_msg dp_geosite_write)"
     rm -rf -- "$xray_tmp"
     ABOX_DEPLOY_TX_TMP=''
 
-    KEYPAIR=$(/usr/local/bin/xray x25519) || die 'Xray REALITY 密钥对生成失败。'
-    IFS=$'\t' read -r PK PBK < <(parse_x25519_keypair_output "$KEYPAIR") || die '无法从 Xray x25519 输出解析私钥/公钥。'
-    [[ -n "$PK" && -n "$PBK" ]] || die 'Xray REALITY 密钥对为空。'
+    KEYPAIR=$(/usr/local/bin/xray x25519) || die "$(tr_msg dp_xray_keypair)"
+    IFS=$'\t' read -r PK PBK < <(parse_x25519_keypair_output "$KEYPAIR") || die "$(tr_msg dp_xray_keyparse2)"
+    [[ -n "$PK" && -n "$PBK" ]] || die "$(tr_msg dp_xray_keyempty2)"
     UUID=$(generate_robust_uuid)
     SHORT_ID=$(openssl rand -hex 4 | tr -d '\n\r')
     SS_PASS=$(openssl rand -base64 16 | tr -d '\n\r')
-    [[ -n "$SS_PASS" ]] || die 'SS-2022 密钥生成失败。'
+    [[ -n "$SS_PASS" ]] || die "$(tr_msg dp_ss_keygen)"
 
     build_xray_config "$MODE_IN"
     chmod 600 /usr/local/etc/xray/config.json || die 'Xray config permission hardening failed.'
-    jq empty /usr/local/etc/xray/config.json >/dev/null 2>&1 || die 'Xray JSON 格式非法。'
-    /usr/local/bin/xray run -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1 || die 'Xray 配置校验失败。'
+    jq empty /usr/local/etc/xray/config.json >/dev/null 2>&1 || die "$(tr_msg dp_xray_json)"
+    /usr/local/bin/xray run -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1 || die "$(tr_msg dp_xray_check)"
 
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die 'Xray systemd unit 原子写入失败。'
+        write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die "$(tr_msg dp_xray_unit)"
 # Managed by A-Box
 [Unit]
 Description=A-Box Xray Service
@@ -15758,14 +16160,14 @@ LimitNPROC=1048576
 WantedBy=multi-user.target
 EOF_SVC
     else
-        path_parent_chain_safe /etc/conf.d/xray || die 'OpenRC conf.d 父链不安全。'
-        [[ ! -L /etc/conf.d && (! -e /etc/conf.d || -d /etc/conf.d) ]] || die 'OpenRC conf.d 目录不安全。'
-        mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
-        write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die 'Xray OpenRC conf.d 原子写入失败。'
+        path_parent_chain_safe /etc/conf.d/xray || die "$(tr_msg dp_orc_parent)"
+        [[ ! -L /etc/conf.d && (! -e /etc/conf.d || -d /etc/conf.d) ]] || die "$(tr_msg dp_orc_dir_unsafe)"
+        mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
+        write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die "$(tr_msg dp_xray_confd)"
 rc_ulimit="-n 1048576"
 export XRAY_LOCATION_ASSET="/usr/local/share/xray"
 EOF_XRAY_CONFD
-        write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die 'Xray OpenRC unit 原子写入失败。'
+        write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die "$(tr_msg dp_xray_initd)"
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Xray Service"
@@ -15778,9 +16180,9 @@ umask=077
 pidfile="/run/xray.pid"
 depend() { need net; }
 EOF_SVC
-        chmod +x /etc/init.d/xray || die 'Xray OpenRC 服务权限设置失败。'
+        chmod +x /etc/init.d/xray || die "$(tr_msg dp_xray_chmod)"
     fi
-    prepare_abox_runtime_permissions xray || die 'Xray 运行时用户/文件权限准备失败。'
+    prepare_abox_runtime_permissions xray || die "$(tr_msg dp_xray_runtime)"
     service_manager start xray
     setup_geo_cron
     setup_active_defense
@@ -15790,7 +16192,7 @@ EOF_SVC
         deploy_official_hy2 SILENT || die 'HY2 deployment failed during Xray ALL.'
     fi
     write_env xray "$MODE_IN"
-    set_desired_state RUNNING || die 'Xray 服务期望状态提交失败。'
+    set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
     if [[ "$MODE_IN" == *ALL* ]]; then prune_owned_core_families_except xray hysteria; else prune_owned_core_families_except xray; fi
     commit_deployment_transaction
     view_config deploy
@@ -15819,45 +16221,45 @@ deploy_singbox() {
     get_architecture
 
     local sb_tmp sb_tar sb_ext
-    sb_tmp=$(mktemp -d /tmp/A-Box-singbox.XXXXXX) || die 'Sing-box 临时目录创建失败。'
+    sb_tmp=$(mktemp -d /tmp/A-Box-singbox.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
     ABOX_DEPLOY_TX_TMP="$sb_tmp"
     sb_tar="$sb_tmp/singbox_core.tar.gz"
     sb_ext="$sb_tmp/extract"
-    mkdir -p "$sb_ext" || die 'Sing-box 临时提取目录创建失败。'
+    mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir_tmp)"
     clear_core_release_resolution SagerNet/sing-box
     fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
     SB_PATH="$sb_ext/sing-box"
-    extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die 'Sing-box 压缩包安全提取失败。'
-    [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die '安全提取后未找到 sing-box 主程序。'
+    extract_tar_regular_basename_safely "$sb_tar" sing-box "$SB_PATH" || die "$(tr_msg dp_sb_extract)"
+    [[ -f "$SB_PATH" && ! -L "$SB_PATH" ]] || die "$(tr_msg dp_sb_bin)"
     chmod 755 "$SB_PATH" || die 'Sing-box staged binary chmod failed.'
     "$SB_PATH" version >/dev/null 2>&1 || die 'Sing-box staged binary execution check failed.'
     install_binary_atomically "$SB_PATH" /usr/local/bin/sing-box || die 'Sing-box binary atomic install failed.'
     rm -rf -- "$sb_tmp"
     ABOX_DEPLOY_TX_TMP=''
-    /usr/local/bin/sing-box version >/dev/null 2>&1 || die 'Sing-box 执行校验失败。'
+    /usr/local/bin/sing-box version >/dev/null 2>&1 || die "$(tr_msg dp_sb_exec)"
 
     prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
-    KEYPAIR=$(/usr/local/bin/sing-box generate reality-keypair) || die 'Sing-box REALITY 密钥对生成失败。'
-    IFS=$'\t' read -r PK PBK < <(parse_x25519_keypair_output "$KEYPAIR") || die 'Sing-box REALITY 密钥解析失败。'
-    [[ -n "${PK:-}" && -n "${PBK:-}" ]] || die 'Sing-box REALITY 密钥解析失败：密钥为空。'
+    KEYPAIR=$(/usr/local/bin/sing-box generate reality-keypair) || die "$(tr_msg dp_sb_keypair)"
+    IFS=$'\t' read -r PK PBK < <(parse_x25519_keypair_output "$KEYPAIR") || die "$(tr_msg dp_sb_keyparse)"
+    [[ -n "${PK:-}" && -n "${PBK:-}" ]] || die "$(tr_msg dp_sb_keyparse_empty)"
     UUID=$(generate_robust_uuid)
     SHORT_ID=$(openssl rand -hex 4 | tr -d '\n\r')
     SS_PASS=$(openssl rand -base64 16 | tr -d '\n\r')
-    [[ -n "$SS_PASS" ]] || die 'SS-2022 密钥生成失败。'
+    [[ -n "$SS_PASS" ]] || die "$(tr_msg dp_ss_keygen)"
 
     if [[ "$MODE_IN" == *'HY2'* || "$MODE_IN" == *'ALL'* ]]; then
         HY2_PASS=$(rand_alnum 20)
         HY2_OBFS=$(rand_alnum 16)
         [[ -n "${HY2_DOMAIN:-}" ]] && cert_cn="$HY2_DOMAIN"
-        generate_self_signed_cert_atomically /etc/sing-box/hy2.key /etc/sing-box/hy2.crt "$cert_cn" || die 'sing-box HY2 自签证书生成或密钥配对验证失败。'
+        generate_self_signed_cert_atomically /etc/sing-box/hy2.key /etc/sing-box/hy2.crt "$cert_cn" || die "$(tr_msg dp_sb_hy2_cert)"
         HY2_CERT_SHA256_FP=$(pin_sha256_colon /etc/sing-box/hy2.crt | tr -d ':')
         HY2_CERT_PUBKEY_SHA256_B64=$(openssl x509 -in /etc/sing-box/hy2.crt -noout -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64 | tr -d '\n')
     fi
 
     build_singbox_config "$MODE_IN"
     chmod 600 /etc/sing-box/config.json || die 'Sing-box config permission hardening failed.'
-    jq empty /etc/sing-box/config.json >/dev/null 2>&1 || die 'Sing-box JSON 格式非法。'
-    /usr/local/bin/sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1 || die 'Sing-box 配置校验失败。'
+    jq empty /etc/sing-box/config.json >/dev/null 2>&1 || die "$(tr_msg dp_sb_json)"
+    /usr/local/bin/sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1 || die "$(tr_msg dp_sb_check)"
 
     if [[ "$MODE_IN" == *'HY2'* || "$MODE_IN" == *'ALL'* ]] && [[ "${HY2_HOP:-}" == 'true' ]]; then
         # A-02: CAP_NET_ADMIN removed (see HY2_CAPS).
@@ -15891,7 +16293,7 @@ ExecStopPost=-+/bin/sh -c '$IPT6 ${IPT6_W_FLAG} -t nat -D PREROUTING -i $INGRESS
     fi
 
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<EOF_SVC || die 'sing-box systemd unit 原子写入失败。'
+        write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<EOF_SVC || die "$(tr_msg dp_sb_unit_lc)"
 # Managed by A-Box
 [Unit]
 Description=A-Box Sing-Box Service
@@ -15918,13 +16320,13 @@ LimitNPROC=1048576
 WantedBy=multi-user.target
 EOF_SVC
     else
-        path_parent_chain_safe /etc/conf.d/sing-box || die 'OpenRC conf.d 父链不安全。'
-        [[ ! -L /etc/conf.d && (! -e /etc/conf.d || -d /etc/conf.d) ]] || die 'OpenRC conf.d 目录不安全。'
-        mkdir -p /etc/conf.d || die 'OpenRC conf.d 目录创建失败。'
-        write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die 'sing-box OpenRC conf.d 原子写入失败。'
+        path_parent_chain_safe /etc/conf.d/sing-box || die "$(tr_msg dp_orc_parent)"
+        [[ ! -L /etc/conf.d && (! -e /etc/conf.d || -d /etc/conf.d) ]] || die "$(tr_msg dp_orc_dir_unsafe)"
+        mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
+        write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || die "$(tr_msg dp_sb_confd_lc)"
 rc_ulimit="-n 1048576"
 EOF_SB_CONFD
-        write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<EOF_SVC || die 'sing-box OpenRC unit 原子写入失败。'
+        write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<EOF_SVC || die "$(tr_msg dp_sb_initd_lc)"
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Sing-Box Service"
@@ -15939,14 +16341,14 @@ depend() { need net; }
 $SB_RC_PRE
 $SB_RC_POST
 EOF_SVC
-        chmod +x /etc/init.d/sing-box || die 'Sing-box OpenRC 服务权限设置失败。'
+        chmod +x /etc/init.d/sing-box || die "$(tr_msg dp_sb_chmod)"
     fi
-    prepare_abox_runtime_permissions sing-box || die 'Sing-box 运行时用户/文件权限准备失败。'
+    prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     service_manager start sing-box
     setup_active_defense
     setup_health_monitor
     write_env singbox "$MODE_IN"
-    set_desired_state RUNNING || die 'sing-box 服务期望状态提交失败。'
+    set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
     prune_owned_core_families_except sing-box
     setup_geo_cron
     commit_deployment_transaction

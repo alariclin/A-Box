@@ -1427,11 +1427,23 @@ tr_msg() {
         zh-tw:mi_disk) echo '硬碟' ;;
         ja:mi_disk) echo 'ディスク' ;;
         zh:mi_net) echo '网络' ;;
+        zh:mi_dns) echo 'DNS' ;;
+        zh:mi_dns_plain) echo '明文' ;;
         en:mi_net) echo 'Network' ;;
+        en:mi_dns) echo 'DNS' ;;
+        en:mi_dns_plain) echo 'Plain' ;;
         ru:mi_net) echo 'Сеть' ;;
+        ru:mi_dns) echo 'DNS' ;;
+        ru:mi_dns_plain) echo 'Обычный' ;;
         fa:mi_net) echo 'شبکه' ;;
+        fa:mi_dns) echo 'DNS' ;;
+        fa:mi_dns_plain) echo 'ساده' ;;
         zh-tw:mi_net) echo '網絡' ;;
+        zh-tw:mi_dns) echo 'DNS' ;;
+        zh-tw:mi_dns_plain) echo '明文' ;;
         ja:mi_net) echo 'ネットワーク' ;;
+        ja:mi_dns) echo 'DNS' ;;
+        ja:mi_dns_plain) echo '平文' ;;
         zh:mi_hy2_hop) echo '跳跃端口 %s' ;;
         en:mi_hy2_hop) echo 'hop ports %s' ;;
         ru:mi_hy2_hop) echo 'порты hop %s' ;;
@@ -11250,6 +11262,32 @@ _menu_info_collect() {
     fi
     _MI_WARP="$warp_st"; _MI_RULES="$rule_n"; _MI_EXITS="$exits"
 
+    # --- DNS (current resolvers + transport mode) ---
+    _MI_DNS4=''; _MI_DNS6=''; _MI_DNSMODE=''
+    _MI_DNS4=$(_dns_current_v4 2>/dev/null || true)
+    _MI_DNS6=$(_dns_current_v6 2>/dev/null || true)
+    local _dnsmode=''
+    if [[ -f "$DNS_STATE_FILE" && ! -L "$DNS_STATE_FILE" ]]; then
+        _dnsmode=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*mode=/){sub(/^[ \t]*mode=/, "", $i); gsub(/["'"'"'\r\t ]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
+    fi
+    if [[ -z "$_dnsmode" ]]; then
+        if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet dnscrypt-proxy 2>/dev/null && grep -qE '^[ \t]*nameserver[ \t]+127\.0\.0\.1' /etc/resolv.conf 2>/dev/null; then
+            _dnsmode='doh'
+        elif grep -qs '^DNSOverTLS=yes' /etc/systemd/resolved.conf /etc/systemd/resolved.conf.d/*.conf 2>/dev/null; then
+            _dnsmode='dot'
+        else
+            _dnsmode='plain'
+        fi
+    fi
+    case "$_dnsmode" in
+        dot) _MI_DNSMODE='DoT' ;;
+        doh) _MI_DNSMODE='DoH' ;;
+        *) _MI_DNSMODE="$(tr_msg mi_dns_plain)" ;;
+    esac
+    if [[ "$_dnsmode" == 'doh' && -z "$_MI_DNS4" && -z "$_MI_DNS6" && -r /etc/dnscrypt-proxy/dnscrypt-proxy.toml ]]; then
+        _MI_DNS4=$(grep -E '^server_names' /etc/dnscrypt-proxy/dnscrypt-proxy.toml 2>/dev/null | grep -oE "'[^']+'" | head -1 | tr -d "'")
+    fi
+
     # --- IP intelligence (flag / country / city / hosting type / origin) ---
     _MI_FLAG=''; _MI_BADGE=''; _MI_GEO_COUNTRY=''; _MI_GEO_CITY=''; _MI_GEO_KIND=''; _MI_GEO_ORIGIN=''
     _ip_geo_refresh || true
@@ -11352,6 +11390,10 @@ _menu_info_display() {
         msg "          ${LBLW}IPv6${NC} ${GREEN}●${NC} ${LBLW}${_MI_IPV6}${NC}"
     else
         msg "          ${LBLW}IPv6${NC} ○ ${GRAY}$(tr_msg mi_none)${NC}"
+    fi
+    if [[ -n "${_MI_DNS4:-}" || -n "${_MI_DNS6:-}" || -n "${_MI_DNSMODE:-}" ]]; then
+        local _dnsv4="${_MI_DNS4:-$(tr_msg mi_none)}" _dnsv6="${_MI_DNS6:-$(tr_msg mi_none)}"
+        msg "          ${LBLW}DNS${NC}  ${LBLW}IPv4 ${_dnsv4} · IPv6 ${_dnsv6}${_MI_DNSMODE:+ · ${_MI_DNSMODE}}${NC}"
     fi
     msg ''
     # --- nodes (fixed grid: max 3 per row, ASCII-exact lengths,
@@ -22328,10 +22370,10 @@ vps_benchmark_menu() {
         zh-tw)
             msg "${BOLD}${GREEN}綜合工具箱${NC}"
             msg "${CYAN}[ 測試診斷 ]                              [ 系統優化 ]${NC}"
-            msg "${YELLOW}1.  A-Check IP 純淨度檢測             6.  WARP 與分流管理${NC}"
-            msg "${YELLOW}2.  系統性能與下載測速                  7.  創建 2 GB Swap${NC}"
-            msg "${YELLOW}3.  IP 質量/流媒體解鎖/回程測試               8.  VPS 一鍵優化${NC}"
-            msg "${YELLOW}4.  導出脫敏診斷包                          9.  IP / DNS / 時區 / 下載源設置${NC}"
+            msg "${YELLOW}1.  A-Check IP 純淨度檢測                 6.  WARP 與分流管理${NC}"
+            msg "${YELLOW}2.  系統性能與下載測速                    7.  創建 2 GB Swap${NC}"
+            msg "${YELLOW}3.  IP 質量/流媒體解鎖/回程測試           8.  VPS 一鍵優化${NC}"
+            msg "${YELLOW}4.  導出脫敏診斷包                        9.  IP / DNS / 時區 / 下載源設置${NC}"
             msg "${YELLOW}5.  只讀預檢查${NC}"
             msg ""
             msg "${CYAN}[ SNI 優選 ]                              [ 配置管理 ]${NC}"
@@ -22346,10 +22388,10 @@ vps_benchmark_menu() {
         ja)
             msg "${BOLD}${GREEN}ツールボックス${NC}"
             msg "${CYAN}[ テストと診断 ]                          [ システム最適化 ]${NC}"
-            msg "${YELLOW}1.  A-Check IP 品質チェック      6.  WARP と振り分け管理${NC}"
+            msg "${YELLOW}1.  A-Check IP 品質チェック               6.  WARP と振り分け管理${NC}"
             msg "${YELLOW}2.  システムベンチマークと速度測定        7.  2GB Swap 作成${NC}"
-            msg "${YELLOW}3.  IP品質/ストリーミング/ルートテスト     8.  VPS ワンクリック最適化${NC}"
-            msg "${YELLOW}4.  診断パッケージのエクスポート            9.  IP / DNS / タイムゾーン設定${NC}"
+            msg "${YELLOW}3.  IP品質/ストリーミング/ルートテスト    8.  VPS ワンクリック最適化${NC}"
+            msg "${YELLOW}4.  診断パッケージのエクスポート          9.  IP / DNS / タイムゾーン設定${NC}"
             msg "${YELLOW}5.  読み取り専用事前チェック${NC}"
             msg ""
             msg "${CYAN}[ SNI 最適化 ]                            [ 構成管理 ]${NC}"
@@ -22364,10 +22406,10 @@ vps_benchmark_menu() {
         *)
             msg "${BOLD}${GREEN}综合工具箱${NC}"
             msg "${CYAN}[ 测试诊断 ]                              [ 系统优化 ]${NC}"
-            msg "${YELLOW}1.  A-Check IP 纯净度检测             6.  WARP 与分流管理${NC}"
-            msg "${YELLOW}2.  系统性能与下载测速                  7.  创建 2 GB Swap${NC}"
-            msg "${YELLOW}3.  IP 质量/流媒体解锁/回程测试               8.  VPS 一键优化${NC}"
-            msg "${YELLOW}4.  导出脱敏诊断包                          9.  IP / DNS / 时区 / 下载源设置${NC}"
+            msg "${YELLOW}1.  A-Check IP 纯净度检测                 6.  WARP 与分流管理${NC}"
+            msg "${YELLOW}2.  系统性能与下载测速                    7.  创建 2 GB Swap${NC}"
+            msg "${YELLOW}3.  IP 质量/流媒体解锁/回程测试           8.  VPS 一键优化${NC}"
+            msg "${YELLOW}4.  导出脱敏诊断包                        9.  IP / DNS / 时区 / 下载源设置${NC}"
             msg "${YELLOW}5.  只读预检查${NC}"
             msg ""
             msg "${CYAN}[ SNI 优选 ]                              [ 配置管理 ]${NC}"

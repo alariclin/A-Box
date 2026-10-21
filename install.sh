@@ -592,6 +592,150 @@ normalize_lang() {
 tr_msg() {
     local key="$1"
     case "${ABOX_LANG:-zh}:$key" in
+        zh:wl_rb_invalid_ver) echo '无效的 Wallos 版本：%s' ;;
+        en:wl_rb_invalid_ver) echo 'Invalid Wallos version: %s' ;;
+        ru:wl_rb_invalid_ver) echo 'Недопустимая версия Wallos: %s' ;;
+        fa:wl_rb_invalid_ver) echo 'نسخه نامعتبر Wallos: %s' ;;
+        zh-tw:wl_rb_invalid_ver) echo '無效的 Wallos 版本：%s' ;;
+        ja:wl_rb_invalid_ver) echo '無効な Wallos バージョンです: %s' ;;
+        zh:wl_rb_not_older) echo '回滚目标 %s 不比已安装的 %s 更旧，拒绝回滚。' ;;
+        en:wl_rb_not_older) echo 'Rollback target %s is not older than installed %s; refusing.' ;;
+        ru:wl_rb_not_older) echo 'Цель отката %s не старше установленной %s; отказ.' ;;
+        fa:wl_rb_not_older) echo 'هدف بازگشت %s قدیمی‌تر از نسخه نصب‌شده %s نیست؛ رد می‌شود.' ;;
+        zh-tw:wl_rb_not_older) echo '回滾目標 %s 不比已安裝的 %s 更舊，拒絕回滾。' ;;
+        ja:wl_rb_not_older) echo 'ロールバック先 %s はインストール済みの %s より古くないため、拒否します。' ;;
+        zh:wl_rb_fetching) echo '本地没有 Wallos 镜像 %s，正在从镜像源拉取…' ;;
+        en:wl_rb_fetching) echo 'Wallos image %s not present locally; fetching from mirror...' ;;
+        ru:wl_rb_fetching) echo 'Образ Wallos %s отсутствует локально; загрузка с зеркала...' ;;
+        fa:wl_rb_fetching) echo 'تصویر Wallos %s به‌صورت محلی موجود نیست؛ در حال دریافت از آینه...' ;;
+        zh-tw:wl_rb_fetching) echo '本機沒有 Wallos 映像 %s，正在從鏡像源拉取…' ;;
+        ja:wl_rb_fetching) echo 'Wallos イメージ %s がローカルにありません。ミラーから取得しています...' ;;
+        zh:wl_rb_fetch_fail) echo '无法从镜像源拉取 Wallos %s。' ;;
+        en:wl_rb_fetch_fail) echo 'Could not fetch Wallos %s from the mirror.' ;;
+        ru:wl_rb_fetch_fail) echo 'Не удалось загрузить Wallos %s с зеркала.' ;;
+        fa:wl_rb_fetch_fail) echo 'دریافت Wallos %s از آینه ممکن نشد.' ;;
+        zh-tw:wl_rb_fetch_fail) echo '無法從鏡像源拉取 Wallos %s。' ;;
+        ja:wl_rb_fetch_fail) echo 'ミラーから Wallos %s を取得できませんでした。' ;;
+        zh:wl_rb_bad_port) echo 'Wallos 保存的端口无效，拒绝回滚。' ;;
+        en:wl_rb_bad_port) echo 'Wallos persisted port is invalid; refusing rollback.' ;;
+        ru:wl_rb_bad_port) echo 'Сохранённый порт Wallos недопустим; откат отклонён.' ;;
+        fa:wl_rb_bad_port) echo 'درگاه ذخیره‌شده Wallos نامعتبر است؛ بازگشت رد می‌شود.' ;;
+        zh-tw:wl_rb_bad_port) echo 'Wallos 保存的連接埠無效，拒絕回滾。' ;;
+        ja:wl_rb_bad_port) echo '保存された Wallos ポートが無効です。ロールバックを拒否します。' ;;
+        zh:wl_rb_no_backup) echo '没有找到可用于回滚的 Wallos 备份。' ;;
+        en:wl_rb_no_backup) echo 'No Wallos backup found for rollback.' ;;
+        ru:wl_rb_no_backup) echo 'Резервная копия Wallos для отката не найдена.' ;;
+        fa:wl_rb_no_backup) echo 'نسخه پشتیبان Wallos برای بازگشت یافت نشد.' ;;
+        zh-tw:wl_rb_no_backup) echo '沒有找到可用於回滾的 Wallos 備份。' ;;
+        ja:wl_rb_no_backup) echo 'ロールバック用の Wallos バックアップが見つかりません。' ;;
+        zh:wl_rb_rm_fail) echo '无法删除当前 Wallos 容器，已重新启动原容器。' ;;
+        en:wl_rb_rm_fail) echo 'Could not remove current Wallos container; restarted existing container.' ;;
+        ru:wl_rb_rm_fail) echo 'Не удалось удалить текущий контейнер Wallos; существующий контейнер перезапущен.' ;;
+        fa:wl_rb_rm_fail) echo 'حذف کانتینر فعلی Wallos ممکن نشد؛ کانتینر موجود دوباره راه‌اندازی شد.' ;;
+        zh-tw:wl_rb_rm_fail) echo '無法刪除目前 Wallos 容器，已重新啟動原容器。' ;;
+        ja:wl_rb_rm_fail) echo '現在の Wallos コンテナを削除できませんでした。既存のコンテナを再起動しました。' ;;
+        zh:wl_rb_restore_fail) echo 'Wallos 备份恢复失败。' ;;
+        en:wl_rb_restore_fail) echo 'Wallos backup restore failed.' ;;
+        ru:wl_rb_restore_fail) echo 'Не удалось восстановить резервную копию Wallos.' ;;
+        fa:wl_rb_restore_fail) echo 'بازیابی نسخه پشتیبان Wallos ناموفق بود.' ;;
+        zh-tw:wl_rb_restore_fail) echo 'Wallos 備份還原失敗。' ;;
+        ja:wl_rb_restore_fail) echo 'Wallos バックアップの復元に失敗しました。' ;;
+        zh:wl_rb_recovered) echo '已通过重新启动上一个 Wallos 镜像恢复。' ;;
+        en:wl_rb_recovered) echo 'Recovered by restarting previous Wallos image.' ;;
+        ru:wl_rb_recovered) echo 'Восстановлено перезапуском предыдущего образа Wallos.' ;;
+        fa:wl_rb_recovered) echo 'با راه‌اندازی دوباره تصویر قبلی Wallos بازیابی شد.' ;;
+        zh-tw:wl_rb_recovered) echo '已透過重新啟動上一個 Wallos 映像恢復。' ;;
+        ja:wl_rb_recovered) echo '以前の Wallos イメージを再起動して復旧しました。' ;;
+        zh:wl_rb_start_fail) echo '启动 Wallos %s 失败。' ;;
+        en:wl_rb_start_fail) echo 'Failed to start Wallos %s.' ;;
+        ru:wl_rb_start_fail) echo 'Не удалось запустить Wallos %s.' ;;
+        fa:wl_rb_start_fail) echo 'راه‌اندازی Wallos %s ناموفق بود.' ;;
+        zh-tw:wl_rb_start_fail) echo '啟動 Wallos %s 失敗。' ;;
+        ja:wl_rb_start_fail) echo 'Wallos %s の起動に失敗しました。' ;;
+        zh:wl_rb_unhealthy) echo 'Wallos %s 未能通过健康检查。' ;;
+        en:wl_rb_unhealthy) echo 'Wallos %s did not become healthy.' ;;
+        ru:wl_rb_unhealthy) echo 'Wallos %s не прошёл проверку работоспособности.' ;;
+        fa:wl_rb_unhealthy) echo 'Wallos %s سالم نشد.' ;;
+        zh-tw:wl_rb_unhealthy) echo 'Wallos %s 未能通過健康檢查。' ;;
+        ja:wl_rb_unhealthy) echo 'Wallos %s が正常な状態になりませんでした。' ;;
+        zh:wl_rb_state_fail) echo '回滚后 Wallos 状态提交失败。' ;;
+        en:wl_rb_state_fail) echo 'Wallos state commit failed after rollback.' ;;
+        ru:wl_rb_state_fail) echo 'Не удалось зафиксировать состояние Wallos после отката.' ;;
+        fa:wl_rb_state_fail) echo 'ثبت وضعیت Wallos پس از بازگشت ناموفق بود.' ;;
+        zh-tw:wl_rb_state_fail) echo '回滾後 Wallos 狀態提交失敗。' ;;
+        ja:wl_rb_state_fail) echo 'ロールバック後の Wallos 状態の保存に失敗しました。' ;;
+        zh:wl_rb_done) echo 'Wallos 已回滚到 %s。' ;;
+        en:wl_rb_done) echo 'Wallos rolled back to %s.' ;;
+        ru:wl_rb_done) echo 'Wallos откачен до %s.' ;;
+        fa:wl_rb_done) echo 'Wallos به %s بازگردانده شد.' ;;
+        zh-tw:wl_rb_done) echo 'Wallos 已回滾到 %s。' ;;
+        ja:wl_rb_done) echo 'Wallos を %s にロールバックしました。' ;;
+        zh:wl_rc_journal_type) echo 'Wallos 升级事务日志不是普通文件，拒绝自动恢复。' ;;
+        en:wl_rc_journal_type) echo 'Wallos upgrade journal is not a regular file; refusing automatic recovery.' ;;
+        ru:wl_rc_journal_type) echo 'Журнал обновления Wallos не является обычным файлом; автоматическое восстановление отклонено.' ;;
+        fa:wl_rc_journal_type) echo 'ژورنال ارتقای Wallos یک فایل معمولی نیست؛ بازیابی خودکار رد می‌شود.' ;;
+        zh-tw:wl_rc_journal_type) echo 'Wallos 升級交易記錄不是普通檔案，拒絕自動還原。' ;;
+        ja:wl_rc_journal_type) echo 'Wallos アップグレードジャーナルが通常ファイルではありません。自動復旧を拒否します。' ;;
+        zh:wl_rc_journal_perm) echo 'Wallos 升级事务日志的所有权/权限不安全，拒绝自动恢复。' ;;
+        en:wl_rc_journal_perm) echo 'Wallos upgrade journal ownership/permissions are unsafe; refusing automatic recovery.' ;;
+        ru:wl_rc_journal_perm) echo 'Владелец/права журнала обновления Wallos небезопасны; автоматическое восстановление отклонено.' ;;
+        fa:wl_rc_journal_perm) echo 'مالکیت/مجوزهای ژورنال ارتقای Wallos ناامن است؛ بازیابی خودکار رد می‌شود.' ;;
+        zh-tw:wl_rc_journal_perm) echo 'Wallos 升級交易記錄的擁有權/權限不安全，拒絕自動還原。' ;;
+        ja:wl_rc_journal_perm) echo 'Wallos アップグレードジャーナルの所有権/権限が安全ではありません。自動復旧を拒否します。' ;;
+        zh:wl_rc_journal_incomplete) echo 'Wallos 升级事务日志不完整；请保留 %s 和最新备份以便手动恢复。' ;;
+        en:wl_rc_journal_incomplete) echo 'Wallos upgrade journal is incomplete; preserve %s and the latest backup for manual recovery.' ;;
+        ru:wl_rc_journal_incomplete) echo 'Журнал обновления Wallos неполон; сохраните %s и последнюю резервную копию для ручного восстановления.' ;;
+        fa:wl_rc_journal_incomplete) echo 'ژورنال ارتقای Wallos ناقص است؛ %s و آخرین نسخه پشتیبان را برای بازیابی دستی نگه دارید.' ;;
+        zh-tw:wl_rc_journal_incomplete) echo 'Wallos 升級交易記錄不完整；請保留 %s 和最新備份以便手動還原。' ;;
+        ja:wl_rc_journal_incomplete) echo 'Wallos アップグレードジャーナルが不完全です。手動復旧のため %s と最新のバックアップを保持してください。' ;;
+        zh:wl_rc_cleanup_done) echo '已完成 Wallos 升级事务日志清理。' ;;
+        en:wl_rc_cleanup_done) echo 'Completed Wallos upgrade journal cleanup.' ;;
+        ru:wl_rc_cleanup_done) echo 'Очистка журнала обновления Wallos завершена.' ;;
+        fa:wl_rc_cleanup_done) echo 'پاک‌سازی ژورنال ارتقای Wallos کامل شد.' ;;
+        zh-tw:wl_rc_cleanup_done) echo '已完成 Wallos 升級交易記錄清理。' ;;
+        ja:wl_rc_cleanup_done) echo 'Wallos アップグレードジャーナルのクリーンアップが完了しました。' ;;
+        zh:wl_rc_rm_fail) echo '无法删除被中断的 Wallos 容器，已重新启动原容器，事务日志已保留。' ;;
+        en:wl_rc_rm_fail) echo 'Could not remove the interrupted Wallos container; restarted existing container, journal retained.' ;;
+        ru:wl_rc_rm_fail) echo 'Не удалось удалить прерванный контейнер Wallos; существующий контейнер перезапущен, журнал сохранён.' ;;
+        fa:wl_rc_rm_fail) echo 'حذف کانتینر Wallos متوقف‌شده ممکن نشد؛ کانتینر موجود دوباره راه‌اندازی شد و ژورنال نگه داشته شد.' ;;
+        zh-tw:wl_rc_rm_fail) echo '無法刪除被中斷的 Wallos 容器，已重新啟動原容器，交易記錄已保留。' ;;
+        ja:wl_rc_rm_fail) echo '中断された Wallos コンテナを削除できませんでした。既存のコンテナを再起動し、ジャーナルは保持されています。' ;;
+        zh:wl_rc_fetched) echo 'N-11：已从镜像源拉取上一个 Wallos 版本 %s 用于恢复。' ;;
+        en:wl_rc_fetched) echo 'N-11: fetched previous Wallos version %s from mirror for recovery.' ;;
+        ru:wl_rc_fetched) echo 'N-11: предыдущая версия Wallos %s загружена с зеркала для восстановления.' ;;
+        fa:wl_rc_fetched) echo 'N-11: نسخه قبلی Wallos %s برای بازیابی از آینه دریافت شد.' ;;
+        zh-tw:wl_rc_fetched) echo 'N-11：已從鏡像源拉取上一個 Wallos 版本 %s 用於還原。' ;;
+        ja:wl_rc_fetched) echo 'N-11: 復旧用にミラーから以前の Wallos バージョン %s を取得しました。' ;;
+        zh:wl_rc_mismatch) echo '拉取的 Wallos 镜像 %s 与事务日志中的旧镜像 %s 不符；事务日志和备份已保留。' ;;
+        en:wl_rc_mismatch) echo 'Fetched Wallos image %s does not match journal old_image %s; journal and backup retained.' ;;
+        ru:wl_rc_mismatch) echo 'Загруженный образ Wallos %s не совпадает со старым образом %s из журнала; журнал и копия сохранены.' ;;
+        fa:wl_rc_mismatch) echo 'تصویر دریافت‌شده Wallos %s با تصویر قدیمی ژورنال %s مطابقت ندارد؛ ژورنال و نسخه پشتیبان نگه داشته شدند.' ;;
+        zh-tw:wl_rc_mismatch) echo '拉取的 Wallos 映像 %s 與交易記錄中的舊映像 %s 不符；交易記錄和備份已保留。' ;;
+        ja:wl_rc_mismatch) echo '取得した Wallos イメージ %s がジャーナルの旧イメージ %s と一致しません。ジャーナルとバックアップは保持されています。' ;;
+        zh:wl_rc_no_image) echo '上一个 Wallos 镜像 %s 本地不存在，且 N-1 拉取失败。拒绝拉取可变标签进行恢复；事务日志和备份已保留。' ;;
+        en:wl_rc_no_image) echo 'Previous Wallos image %s is not present locally and N-1 could not be fetched. Refusing to pull a mutable tag for recovery; journal and backup retained.' ;;
+        ru:wl_rc_no_image) echo 'Предыдущий образ Wallos %s отсутствует локально, а N-1 загрузить не удалось. Загрузка изменчивого тега для восстановления отклонена; журнал и копия сохранены.' ;;
+        fa:wl_rc_no_image) echo 'تصویر قبلی Wallos %s به‌صورت محلی موجود نیست و دریافت N-1 ناموفق بود. دریافت برچسب متغیر برای بازیابی رد می‌شود؛ ژورنال و نسخه پشتیبان نگه داشته شدند.' ;;
+        zh-tw:wl_rc_no_image) echo '上一個 Wallos 映像 %s 本機不存在，且 N-1 拉取失敗。拒絕拉取可變標籤進行還原；交易記錄和備份已保留。' ;;
+        ja:wl_rc_no_image) echo '以前の Wallos イメージ %s がローカルになく、N-1 も取得できませんでした。復旧用に可変タグの取得は拒否します。ジャーナルとバックアップは保持されています。' ;;
+        zh:wl_rc_restore_fail) echo '被中断的 Wallos 升级备份恢复失败。事务日志和备份保留在 %s 和 %s。' ;;
+        en:wl_rc_restore_fail) echo 'Interrupted Wallos upgrade backup restore failed. Journal and backup retained at %s and %s.' ;;
+        ru:wl_rc_restore_fail) echo 'Не удалось восстановить копию прерванного обновления Wallos. Журнал и копия сохранены: %s и %s.' ;;
+        fa:wl_rc_restore_fail) echo 'بازیابی نسخه پشتیبان ارتقای متوقف‌شده Wallos ناموفق بود. ژورنال و نسخه پشتیبان در %s و %s نگه داشته شدند.' ;;
+        zh-tw:wl_rc_restore_fail) echo '被中斷的 Wallos 升級備份還原失敗。交易記錄和備份保留在 %s 和 %s。' ;;
+        ja:wl_rc_restore_fail) echo '中断された Wallos アップグレードのバックアップ復元に失敗しました。ジャーナルとバックアップは %s と %s に保持されています。' ;;
+        zh:wl_rc_unhealthy) echo '恢复的上一个 Wallos 容器未能通过健康检查；事务日志已保留。' ;;
+        en:wl_rc_unhealthy) echo 'Restored previous Wallos container did not become healthy; transaction journal retained.' ;;
+        ru:wl_rc_unhealthy) echo 'Восстановленный предыдущий контейнер Wallos не прошёл проверку работоспособности; журнал транзакции сохранён.' ;;
+        fa:wl_rc_unhealthy) echo 'کانتینر قبلی بازیابی‌شده Wallos سالم نشد؛ ژورنال تراکنش نگه داشته شد.' ;;
+        zh-tw:wl_rc_unhealthy) echo '還原的上一個 Wallos 容器未能通過健康檢查；交易記錄已保留。' ;;
+        ja:wl_rc_unhealthy) echo '復元した以前の Wallos コンテナが正常な状態になりませんでした。トランザクションジャーナルは保持されています。' ;;
+        zh:wl_rc_done) echo '已通过恢复上一个镜像和经校验的数据备份，修复了一次被中断的 Wallos 升级。重试升级前请先检查日志。' ;;
+        en:wl_rc_done) echo 'Recovered an interrupted Wallos upgrade by restoring the previous image and validated data backup. Review logs before retrying the upgrade.' ;;
+        ru:wl_rc_done) echo 'Прерванное обновление Wallos восстановлено возвратом предыдущего образа и проверенной резервной копии данных. Перед повторной попыткой обновления проверьте журналы.' ;;
+        fa:wl_rc_done) echo 'ارتقای متوقف‌شده Wallos با بازیابی تصویر قبلی و نسخه پشتیبان داده تأییدشده ترمیم شد. پیش از تلاش دوباره برای ارتقا، گزارش‌ها را بررسی کنید.' ;;
+        zh-tw:wl_rc_done) echo '已透過還原上一個映像和經校驗的資料備份，修復了一次被中斷的 Wallos 升級。重試升級前請先檢查記錄。' ;;
+        ja:wl_rc_done) echo '以前のイメージと検証済みデータバックアップを復元し、中断された Wallos アップグレードから復旧しました。アップグレードを再試行する前にログを確認してください。' ;;
         zh:init_soft_warn) echo '未检测到受支持的初始化系统 (Systemd/OpenRC)，菜单以只读方式打开，部署类操作不可用。' ;;
         en:init_soft_warn) echo 'No supported init system (systemd/OpenRC) detected; the menu opens read-only and deployment operations are unavailable.' ;;
         ru:init_soft_warn) echo 'Поддерживаемая система инициализации (systemd/OpenRC) не обнаружена; меню открыто только для просмотра, операции развёртывания недоступны.' ;;
@@ -24709,7 +24853,7 @@ _wallos_rollback_recover() {
 
 wallos_rollback_to_version() {
     local target_tag="$1" arch image_tag port tz bind_address backup
-    [[ "$target_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { msg "${RED}Invalid Wallos version: $target_tag${NC}"; return 1; }
+    [[ "$target_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { msg "${RED}$(tprintf wl_rb_invalid_ver "$target_tag")${NC}"; return 1; }
     # X-04: rollback's purpose IS downgrade; do not reuse the install-path
     # anti-downgrade gate (wallos_candidate_version_allowed) here. Instead
     # require the target to be strictly older than the installed version.
@@ -24719,17 +24863,17 @@ wallos_rollback_to_version() {
     _installed_ver="${_installed_img##*:}"
     if [[ "$_installed_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         wallos_version_is_older "${target_tag#v}" "$_installed_ver" || {
-            msg "${RED}Rollback target ${target_tag} is not older than installed ${_installed_ver}; refusing.${NC}"; return 1; }
+            msg "${RED}$(tprintf wl_rb_not_older "$target_tag" "$_installed_ver")${NC}"; return 1; }
     fi
     image_tag="${target_tag#v}"
     # Try local image first; else pull the versioned image from the mirror.
     if ! docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1; then
-        msg "${YELLOW}Wallos image $image_tag not present locally; fetching from mirror...${NC}"
+        msg "${YELLOW}$(tprintf wl_rb_fetching "$image_tag")${NC}"
         # Use the versioned mirror path: temporarily override tag selection.
         local _saved_result="${WALLOS_IMAGE_RESULT:-}"
         if ! _wallos_pull_versioned_image "$target_tag"; then
             WALLOS_IMAGE_RESULT="$_saved_result"
-            msg "${RED}Could not fetch Wallos $target_tag from the mirror.${NC}"
+            msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"
             return 1
         fi
         WALLOS_IMAGE_RESULT="$_saved_result"
@@ -24738,10 +24882,10 @@ wallos_rollback_to_version() {
     port=$(wallos_state_value PORT 2>/dev/null || true)
     tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
     bind_address=$(wallos_state_value BIND 2>/dev/null || printf '127.0.0.1')
-    valid_canonical_port "$port" || { msg "${RED}Wallos persisted port is invalid; refusing rollback.${NC}"; return 1; }
+    valid_canonical_port "$port" || { msg "${RED}$(tr_msg wl_rb_bad_port)${NC}"; return 1; }
     # Find the latest backup.
     backup=$(ls -t "$WALLOS_DIR"/backups/wallos-*.tar.gz 2>/dev/null | head -n 1 || true)
-    [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || { msg "${RED}No Wallos backup found for rollback.${NC}"; return 1; }
+    [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || { msg "${RED}$(tr_msg wl_rb_no_backup)${NC}"; return 1; }
     docker stop wallos >/dev/null 2>&1 || true
     # N-11: capture the pre-rollback image BEFORE removing the container,
     # so the prune step can retain 2 images (new current + previous). (NEW-1)
@@ -24753,12 +24897,12 @@ wallos_rollback_to_version() {
         # A-04: rm failed after stop succeeded; try to restart the original
         # container instead of leaving it in Exited state.
         docker start wallos >/dev/null 2>&1 || true
-        msg "${RED}Could not remove current Wallos container; restarted existing container.${NC}"
+        msg "${RED}$(tr_msg wl_rb_rm_fail)${NC}"
         return 1
     }
-    wallos_restore_backup "$backup" || { msg "${RED}Wallos backup restore failed.${NC}"
+    wallos_restore_backup "$backup" || { msg "${RED}$(tr_msg wl_rb_restore_fail)${NC}"
         _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
-            msg "${YELLOW}Recovered by restarting previous Wallos image.${NC}"
+            msg "${YELLOW}$(tr_msg wl_rb_recovered)${NC}"
         return 1; }
     local -a _pub_args=()
     # X-03: explicit bind:port form (matches install path); bare "-p port:80"
@@ -24769,19 +24913,19 @@ wallos_rollback_to_version() {
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
         -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "bellamy/wallos:$image_tag" >/dev/null || {
-        msg "${RED}Failed to start Wallos $target_tag.${NC}"
+        msg "${RED}$(tprintf wl_rb_start_fail "$target_tag")${NC}"
         _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
-            msg "${YELLOW}Recovered by restarting previous Wallos image.${NC}"
+            msg "${YELLOW}$(tr_msg wl_rb_recovered)${NC}"
         return 1; }
-    wallos_wait_healthy "$port" || { msg "${RED}Wallos $target_tag did not become healthy.${NC}"
+    wallos_wait_healthy "$port" || { msg "${RED}$(tprintf wl_rb_unhealthy "$target_tag")${NC}"
         _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
-            msg "${YELLOW}Recovered by restarting previous Wallos image.${NC}"
+            msg "${YELLOW}$(tr_msg wl_rb_recovered)${NC}"
         return 1; }
     wallos_write_state "bellamy/wallos:$image_tag" "$port" "$tz" "$bind_address" || {
-        msg "${RED}Wallos state commit failed after rollback.${NC}"; return 1; }
+        msg "${RED}$(tr_msg wl_rb_state_fail)${NC}"; return 1; }
     # N-11: prune to 2 images (new current + previous).
     wallos_prune_local_images "bellamy/wallos:$image_tag" "$prev_image"
-    msg "${GREEN}Wallos rolled back to $target_tag.${NC}"
+    msg "${GREEN}$(tprintf wl_rb_done "$target_tag")${NC}"
     return 0
 }
 
@@ -25263,17 +25407,17 @@ wallos_recover_interrupted_upgrade() {
     local owner mode phase old_image old_port old_tz old_bind backup was_running
     [[ -e "$journal" || -L "$journal" ]] || return 0
     [[ -f "$journal" && ! -L "$journal" ]] || {
-        msg "${RED}Wallos upgrade journal is not a regular file; refusing automatic recovery.${NC}"
+        msg "${RED}$(tr_msg wl_rc_journal_type)${NC}"
         return 1
     }
     owner=$(stat -c %u:%g "$journal" 2>/dev/null) || return 1
     mode=$(stat -c %a "$journal" 2>/dev/null) || return 1
     [[ "$owner" == 0:0 && "$mode" == 600 ]] || {
-        msg "${RED}Wallos upgrade journal ownership/permissions are unsafe; refusing automatic recovery.${NC}"
+        msg "${RED}$(tr_msg wl_rc_journal_perm)${NC}"
         return 1
     }
     [[ "$(wc -l < "$journal" | tr -d '[:space:]')" == 7 ]] || {
-        msg "${RED}Wallos upgrade journal is incomplete; preserve $journal and the latest backup for manual recovery.${NC}"
+        msg "${RED}$(tprintf wl_rc_journal_incomplete "$journal")${NC}"
         return 1
     }
     phase=$(wallos_txn_value "$journal" phase) || return 1
@@ -25286,7 +25430,7 @@ wallos_recover_interrupted_upgrade() {
     was_running=$(wallos_txn_value "$journal" was_running) || return 1
     if [[ "$phase" == committed ]]; then
         rm -f -- "$journal" || return 1
-        msg "${YELLOW}Completed Wallos upgrade journal cleanup.${NC}"
+        msg "${YELLOW}$(tr_msg wl_rc_cleanup_done)${NC}"
         return 0
     fi
     [[ "$old_image" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ ]] || return 1
@@ -25301,7 +25445,7 @@ wallos_recover_interrupted_upgrade() {
         docker rm -f wallos >/dev/null 2>&1 || {
             # A-04: rm failed after stop; restart original instead of leaving Exited.
             docker start wallos >/dev/null 2>&1 || true
-            msg "${RED}Could not remove the interrupted Wallos container; restarted existing container, journal retained.${NC}"
+            msg "${RED}$(tr_msg wl_rc_rm_fail)${NC}"
             return 1
         }
     fi
@@ -25323,18 +25467,18 @@ wallos_recover_interrupted_upgrade() {
             # N-03: verify the fetched image matches the journal's old_image.
             if [[ "$WALLOS_IMAGE_RESULT" == "$old_image" || "$WALLOS_IMAGE_RESULT" == "bellamy/wallos:${_n1_tag#v}" ]]; then
                 old_image="$WALLOS_IMAGE_RESULT"
-                msg "${YELLOW}N-11: fetched previous Wallos version $_n1_tag from mirror for recovery.${NC}"
+                msg "${YELLOW}$(tprintf wl_rc_fetched "$_n1_tag")${NC}"
             else
-                msg "${RED}Fetched Wallos image $WALLOS_IMAGE_RESULT does not match journal old_image $old_image; journal and backup retained.${NC}"
+                msg "${RED}$(tprintf wl_rc_mismatch "$WALLOS_IMAGE_RESULT" "$old_image")${NC}"
                 return 1
             fi
         else
-            msg "${RED}Previous Wallos image $old_image is not present locally and N-1 could not be fetched. Refusing to pull a mutable tag for recovery; journal and backup retained.${NC}"
+            msg "${RED}$(tprintf wl_rc_no_image "$old_image")${NC}"
             return 1
         fi
     fi
     wallos_restore_backup "$backup" || {
-        msg "${RED}Interrupted Wallos upgrade backup restore failed. Journal and backup retained at $journal and $backup.${NC}"
+        msg "${RED}$(tprintf wl_rc_restore_fail "$journal" "$backup")${NC}"
         return 1
     }
     # FIX: When old_bind is empty (legacy containers had no IP binding),
@@ -25350,7 +25494,7 @@ wallos_recover_interrupted_upgrade() {
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
             -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$old_image" >/dev/null || return 1
         wallos_wait_healthy "$old_port" || {
-            msg "${RED}Restored previous Wallos container did not become healthy; transaction journal retained.${NC}"
+            msg "${RED}$(tr_msg wl_rc_unhealthy)${NC}"
             return 1
         }
     else
@@ -25360,7 +25504,7 @@ wallos_recover_interrupted_upgrade() {
             -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$old_image" >/dev/null || return 1
     fi
     rm -f -- "$journal" || return 1
-    msg "${YELLOW}Recovered an interrupted Wallos upgrade by restoring the previous image and validated data backup. Review logs before retrying the upgrade.${NC}"
+    msg "${YELLOW}$(tr_msg wl_rc_done)${NC}"
 }
 
 # ============ Wallos brute-force protection (fail2ban on nginx access log) ============

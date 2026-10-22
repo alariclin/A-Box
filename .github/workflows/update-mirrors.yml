@@ -9,7 +9,7 @@ on:
         required: false
         default: false
       known_good_sha256:
-        description: "Space-separated 'bench.sh=<sha256> Check.Place.sh=<sha256>' after manual review"
+        description: "Space-separated 'bench.sh=<sha256> Check.Place.sh=<sha256> acheck.py=<sha256>' after manual review"
         type: string
         required: false
         default: ""
@@ -185,7 +185,7 @@ jobs:
             echo "::notice::ABOX_SIGNING_PRIVKEY_B64 not set; skipping Wallos F-05 signing."
           fi
 
-      - name: Prepare benchmark and IP-quality tool mirror
+      - name: Prepare benchmark, IP-quality and A-Check tool mirror
         id: test_tool_assets
         if: github.event_name == 'workflow_dispatch' && inputs.refresh_test_tool_mirror
         shell: bash
@@ -206,7 +206,7 @@ jobs:
           # before publishing. Empty value aborts the build.
           KNOWN_GOOD_SHA256="${KNOWN_GOOD_SHA256:-${KNOWN_GOOD_SHA256_INPUT:-}}"
           [[ -n "$KNOWN_GOOD_SHA256" ]] || {
-            echo "::error::KNOWN_GOOD_SHA256 is required (bench.sh=<sha256> Check.Place.sh=<sha256>)"
+            echo "::error::KNOWN_GOOD_SHA256 is required (bench.sh=<sha256> Check.Place.sh=<sha256> acheck.py=<sha256>)"
             exit 1
           }
           # Argon: Validate each pin format (allowed file + 64-hex SHA) and
@@ -216,7 +216,7 @@ jobs:
           for entry in "${pinned_entries[@]}"; do
             pinned_file="${entry%%=*}"
             pinned_sha="${entry#*=}"
-            case "$pinned_file" in bench.sh|Check.Place.sh|YABS-LICENSE|IPQuality-LICENSE) ;; *)
+            case "$pinned_file" in bench.sh|Check.Place.sh|acheck.py|YABS-LICENSE|IPQuality-LICENSE) ;; *)
               echo "::error::Unexpected file in KNOWN_GOOD_SHA256: $pinned_file"; exit 1 ;;
             esac
             [[ "$pinned_sha" =~ ^[A-Fa-f0-9]{64}$ ]] || {
@@ -224,8 +224,8 @@ jobs:
             }
             seen_pins["$pinned_file"]=1
           done
-          [[ -n "${seen_pins[bench.sh]:-}" && -n "${seen_pins[Check.Place.sh]:-}" ]] || {
-            echo "::error::KNOWN_GOOD_SHA256 must pin both bench.sh and Check.Place.sh"
+          [[ -n "${seen_pins[bench.sh]:-}" && -n "${seen_pins[Check.Place.sh]:-}" && -n "${seen_pins[acheck.py]:-}" ]] || {
+            echo "::error::KNOWN_GOOD_SHA256 must pin bench.sh, Check.Place.sh and acheck.py"
             exit 1
           }
           out="$GITHUB_WORKSPACE/dist/test-tools"
@@ -236,11 +236,13 @@ jobs:
           ipquality_url='https://Check.Place'
           yabs_license_url='https://raw.githubusercontent.com/masonr/yet-another-bench-script/master/LICENSE'
           ipquality_license_url='https://raw.githubusercontent.com/xykt/ScriptMenu/main/LICENSE'
+          acheck_url='https://raw.githubusercontent.com/alariclin/A-Check/main/acheck.py'
 
           curl -fL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 180 "$bench_url" -o bench.sh
           curl -fL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 180 "$ipquality_url" -o Check.Place.sh
           curl -fL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 60 "$yabs_license_url" -o YABS-LICENSE
           curl -fL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 60 "$ipquality_license_url" -o IPQuality-LICENSE
+          curl -fL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 180 "$acheck_url" -o acheck.py
 
           validate_shell_script() {
             local file="$1" bytes first_line
@@ -259,6 +261,11 @@ jobs:
 
           validate_shell_script bench.sh
           validate_shell_script Check.Place.sh
+          # acheck.py is a Python tool: sizeable, python3 shebang, compiles.
+          (( $(wc -c < acheck.py) >= 100000 )) || { echo "::error::acheck.py unexpectedly small"; exit 1; }
+          head -n 1 acheck.py | grep -qx '#!/usr/bin/env python3' || { echo "::error::acheck.py shebang mismatch"; exit 1; }
+          grep -Eq '^VERSION = "[0-9]+\.[0-9]+\.[0-9]+"' acheck.py || { echo "::error::acheck.py VERSION marker missing"; exit 1; }
+          python3 -m py_compile acheck.py
           test "$(wc -c < YABS-LICENSE)" -gt 100
           grep -Fq 'DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE' YABS-LICENSE
           test "$(wc -c < IPQuality-LICENSE)" -gt 1000
@@ -286,9 +293,10 @@ jobs:
             printf 'Check.Place.sh.url=%s\n' "${ipquality_url}"
             printf 'YABS-LICENSE.url=%s\n' "${yabs_license_url}"
             printf 'IPQuality-LICENSE.url=%s\n' "${ipquality_license_url}"
+            printf 'acheck.py.url=%s\n' "${acheck_url}"
             printf 'validation=non-empty;size-bounds;shebang;no-html-signature;bash-n\n'
           } > test-tools-manifest.txt
-          sha256sum bench.sh Check.Place.sh YABS-LICENSE IPQuality-LICENSE test-tools-manifest.txt > SHA256SUMS
+          sha256sum bench.sh Check.Place.sh acheck.py YABS-LICENSE IPQuality-LICENSE test-tools-manifest.txt > SHA256SUMS
           sha256sum -c SHA256SUMS
           # P3-02: Sign SHA256SUMS for test-tools (Ed25519)
           if [[ -n "${ABOX_SIGNING_PRIVKEY_B64:-}" ]]; then
@@ -364,7 +372,7 @@ jobs:
           title='A-Box Test Tools Mirror'
           notes="$RUNNER_TEMP/test-tools-notes.md"
           {
-            printf 'Stable, fixed-name recovery copies of the benchmark and IP-quality scripts used by A-Box.\n'
+            printf 'Stable, fixed-name recovery copies of the benchmark, IP-quality and A-Check scripts used by A-Box.\n'
             printf 'Assets are downloaded from their upstream URLs, checked for shell syntax and non-HTML content, and accompanied by upstream license texts, a manifest, and SHA256SUMS.\n'
             printf 'The A-Box installer verifies the downloaded asset checksum and asks for explicit confirmation before executing third-party test scripts.\n'
           } > "$notes"

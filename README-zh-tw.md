@@ -23,15 +23,15 @@
 
 主選單（狀態矩陣、系統/網路資訊與部署選單）：
 
-![主選單](docs/showcase-menu.png)
+![主選單](docs/showcase-menu-zh-tw.png)
 
 綜合工具箱（選單 11）：
 
-![綜合工具箱](docs/showcase-toolbox.png)
+![綜合工具箱](docs/showcase-toolbox-zh-tw.png)
 
 更多協議（選單 18）：
 
-![更多協議](docs/showcase-more-protocols.png)
+![更多協議](docs/showcase-more-protocols-zh-tw.png)
 
 ## 這是什麼
 
@@ -42,13 +42,13 @@ A-Box 是一個單一檔案 Bash 腳本（`install.sh`，約 30,000 行），用
 官方來源，指令已鎖定到不可變的提交：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/cf8eb24147d41477f133c6ef359db00651fcc2a8/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/17fa2877766ef90abcfc062d6e70544a28e0c3be/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 第三方鏡像（與上面是同一個鎖定檔案，僅作傳輸通道，不是官方入口）：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/cf8eb24147d41477f133c6ef359db00651fcc2a8/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/17fa2877766ef90abcfc062d6e70544a28e0c3be/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 - 全新的 Alpine 系統請先執行 `apk add --no-cache bash curl`。
@@ -78,7 +78,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 ### 更多協議（選單 18）
 
-獨立部署，與上面的組合部署互不影響。每個協議都會詢問連接埠、產生或接受密碼、寫入前先用核心校驗設定、把分享連結登記到選單 12，並在結束時刷新 Fail2Ban 規則。涉及 SNI 的協定在部署時可選：Enter 自動優選，或手填網域；已部署節點的 SNI 可在工具箱 16 修改。
+獨立部署，與上面的組合部署互不影響。每個協議都會詢問連接埠、產生或接受密碼、寫入前先用核心校驗設定、把分享連結登記到選單 12，並在結束時刷新 Fail2Ban 規則。涉及 SNI 的協定在部署時可選：Enter 自動優選，或手填網域；已部署節點的 SNI 可在工具箱 12 修改。
 
 | 編號 | 協議 | 說明 |
 |---:|---|---|
@@ -92,7 +92,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 ## 狀態面板
 
-選單頂部是 16 格狀態矩陣（運行 / 未開啟 / 故障）：Xray、sing-box、Hy2、Trojan、TUIC、AnyTLS、ShadowTLS、SOCKS5、WARP、Cloudflare、Fail2ban、Wallos、Traffic、Docker、BBR、Firewall，其後是系統、硬體與網路資訊行。網路行會標註出口 IP 的位置與類型（機房 / 住宅 / 蜂窩、廣播或原生）。已部署節點會列出連接埠與 SNI。綠格只表示服務在運行或連接埠在監聽，不等於端到端連通，請以用戶端實測為準。其下是用戶區：按節點列出在用用戶各自的用量（只用 M/G 單位）、已設的限額與到期；封鎖或停用的用戶不在面板顯示，只在工具箱 13 裡管理。
+選單頂部是 16 格狀態矩陣（運行 / 未開啟 / 故障）：Xray、sing-box、Hy2、Trojan、TUIC、AnyTLS、ShadowTLS、SOCKS5、WARP、Cloudflare、Fail2ban、Wallos、Traffic、Docker、BBR、Firewall，其後是系統、硬體與網路資訊行。網路行會標註出口 IP 的位置與類型（機房 / 住宅 / 蜂窩、廣播或原生）。已部署節點會列出連接埠與 SNI。綠格只表示服務在運行或連接埠在監聽，不等於端到端連通，請以用戶端實測為準。其下是用戶區：按節點列出在用用戶各自的用量（只用 M/G 單位）、已設的限額與到期；封鎖或停用的用戶不在面板顯示，只在工具箱 14 裡管理。
 
 ## 綜合工具箱（選單 11）
 
@@ -101,18 +101,18 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 | 1 | A-Check IP 純淨度檢測 | 9 | 本地 SNI 優選 |
 | 2 | 系統效能與下載測速 | 10 | 微型主機 SNI 優選 |
 | 3 | IP 品質 / 串流解鎖 / 回程測試 | 11 | SNI 優選記錄 |
-| 4 | 匯出脫敏診斷包 | 12 | 配置備份 / 還原 |
-| 5 | WARP 與分流管理 | 13 | 多用戶 / 訂閱連結匯出 |
-| 6 | 交換記憶體（zram / Swap）| 14 | Wallos 安裝 / 升級 / 備份 |
-| 7 | VPS 一鍵優化 | 15 | SS-2022 存取白名單 |
-| 8 | IP / DNS / 時區 / 下載源設定 | 16 | 修改節點 SNI |
+| 4 | 匯出脫敏診斷包 | 12 | 修改節點 SNI |
+| 5 | WARP 與分流管理 | 13 | 配置備份 / 還原 |
+| 6 | 交換記憶體（zram / Swap）| 14 | 多用戶 / 訂閱連結匯出 |
+| 7 | VPS 一鍵優化 | 15 | Wallos 安裝 / 升級 / 備份 |
+| 8 | IP / DNS / 時區 / 下載源設定 | 16 | SS-2022 存取白名單 |
 | 0 | 返回主選單 | | |
 
-第 1、2 項的測試腳本從經校驗的 `test-tools-mirror` 發布中取得，SHA-256 與清單一致才執行。鏡像不可用或校驗不一致時，只有設定了 `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` 才會改用上游腳本，否則什麼都不執行。
+第 2、3 項的測試腳本預設拉取上游最新版並做結構校驗；拉取或校驗失敗時，回退到經校驗的 `test-tools-mirror` 發布中的釘版備份（Ed25519 簽名與 SHA-256 雙重校驗）；兩者都不可用時不執行任何腳本。第 1 項 A-Check 同樣即時拉取最新版，失敗時依序回退簽名鏡像釘版與本機已驗證快取。
 
-第 1 項 **A-Check** 是配套專案 [A-Check](https://github.com/alariclin/A-Check) 的 IP 純淨度檢測工具。腳本下載其鎖定版本檔案（`v4.13.4`），執行前校驗 SHA-256，並快取在 `/etc/ddr/tools`；校驗不一致的副本永不執行。需要 Python 3.8 或更高版本。
+第 1 項 **A-Check** 是配套專案 [A-Check](https://github.com/alariclin/A-Check) 的 IP 純淨度檢測工具。腳本從 A-Check 倉庫即時拉取最新版，運行前做結構校驗（shebang、VERSION 標記、大小、py_compile），並快取在 `/etc/ddr/tools`；即時拉取失敗時，依序回退到簽名校驗的鏡像釘版與本機已驗證快取。需要 Python 3.8 或更高版本。
 
-**多用戶管理（工具箱 13)。** 每個已部署的節點——組合與獨立協定均可，涵蓋 Xray、sing-box、Latest Xray 實例與 Hy2 官方版——都能新增多個命名用戶，每人獨立憑據、獨立分享連結與 QR 碼。可按用戶設定每月流量限額 (GB)、到期天數與可用時段；背景每 5 分鐘檢查一次並自動執行：到期、超限額或時段外的用戶會被自動撤銷（Xray 家族為熱撤銷、無需重啟）。按用戶流量統計與限額執行僅 Xray 家族可用 (StatsService)；sing-box 官方版無按用戶統計，該核心上僅到期與時段規則生效。全部用戶連結可一鍵匯出為訂閱檔案。
+**多用戶管理（工具箱 14)。** 每個已部署的節點——組合與獨立協定均可，涵蓋 Xray、sing-box、Latest Xray 實例與 Hy2 官方版——都能新增多個命名用戶，每人獨立憑據、獨立分享連結與 QR 碼。可按用戶設定每月流量限額 (GB)、到期天數與可用時段；背景每 5 分鐘檢查一次並自動執行：到期、超限額或時段外的用戶會被自動撤銷（Xray 家族為熱撤銷、無需重啟）。按用戶流量統計與限額執行僅 Xray 家族可用 (StatsService)；sing-box 官方版無按用戶統計，該核心上僅到期與時段規則生效。全部用戶連結可一鍵匯出為訂閱檔案。
 
 **同協定多實例。** 某獨立協定在某核心上已存在時，其部署入口會提供「新增一個實例」：新實例有獨立的埠、憑據與用戶名單（標籤後綴 -2、-3……），可獨立管理與刪除。
 

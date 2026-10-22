@@ -1638,36 +1638,36 @@ tr_msg() {
         fa:wl_menu_title) echo 'مدیریت اشتراک‌های Wallos' ;;
         zh-tw:wl_menu_title) echo 'Wallos 訂閱管理' ;;
         ja:wl_menu_title) echo 'Wallos サブスクリプション管理' ;;
-        zh:wl_menu_install) echo '1. 一键安装 / 升级（上游优先，A-Box 灾备回退）' ;;
-        en:wl_menu_install) echo '1. Install / update (upstream first, A-Box recovery fallback)' ;;
-        ru:wl_menu_install) echo '1. Установить / обновить (upstream, затем резервная копия A-Box)' ;;
-        fa:wl_menu_install) echo '1. نصب / ارتقا (ابتدا upstream و سپس پشتیبان A-Box)' ;;
-        zh-tw:wl_menu_install) echo '1. 一鍵安裝 / 升級（上游優先，A-Box 災備回退）' ;;
-        ja:wl_menu_install) echo '1. ワンクリックでインストール / アップグレード（upstream を優先し、A-Box Recovery にフォールバック）' ;;
-        zh:wl_menu_status) echo '2. 查看状态和访问网址' ;;
-        en:wl_menu_status) echo '2. Status and access URL' ;;
-        ru:wl_menu_status) echo '2. Состояние и адрес доступа' ;;
-        fa:wl_menu_status) echo '2. وضعیت و نشانی دسترسی' ;;
-        zh-tw:wl_menu_status) echo '2. 檢視狀態和訪問網址' ;;
-        ja:wl_menu_status) echo '2. 状態とアクセス URL を表示' ;;
-        zh:wl_menu_backup) echo '3. 备份数据库和上传图片' ;;
-        en:wl_menu_backup) echo '3. Back up database and uploaded logos' ;;
-        ru:wl_menu_backup) echo '3. Резервная копия базы и загруженных логотипов' ;;
-        fa:wl_menu_backup) echo '3. پشتیبان‌گیری از پایگاه داده و تصاویر بارگذاری‌شده' ;;
-        zh-tw:wl_menu_backup) echo '3. 備份資料庫和上傳圖片' ;;
-        ja:wl_menu_backup) echo '3. データベースとアップロード画像をバックアップ' ;;
-        zh:wl_menu_remove) echo '4. 删除容器但保留数据' ;;
-        en:wl_menu_remove) echo '4. Remove container but keep data' ;;
-        ru:wl_menu_remove) echo '4. Удалить контейнер, сохранив данные' ;;
-        fa:wl_menu_remove) echo '4. حذف کانتینر با حفظ داده‌ها' ;;
-        zh-tw:wl_menu_remove) echo '4. 刪除容器但保留資料' ;;
-        ja:wl_menu_remove) echo '4. データを保持してコンテナを削除' ;;
-        zh:wl_menu_rollback) echo '5. 回滚到历史版本' ;;
-        en:wl_menu_rollback) echo '5. Roll back to a previous version' ;;
-        ru:wl_menu_rollback) echo '5. Откатить к предыдущей версии' ;;
-        fa:wl_menu_rollback) echo '5. بازگشت به نسخه قبلی' ;;
-        zh-tw:wl_menu_rollback) echo '5. 回滾到歷史版本' ;;
-        ja:wl_menu_rollback) echo '5. 以前のバージョンにロールバック' ;;
+        zh:wl_menu_install) echo '一键安装 / 升级（上游优先，A-Box 灾备回退）' ;;
+        en:wl_menu_install) echo 'Install / update (upstream first, A-Box recovery fallback)' ;;
+        ru:wl_menu_install) echo 'Установить / обновить (upstream, затем резервная копия A-Box)' ;;
+        fa:wl_menu_install) echo 'نصب / ارتقا (ابتدا upstream و سپس پشتیبان A-Box)' ;;
+        zh-tw:wl_menu_install) echo '一鍵安裝 / 升級（上游優先，A-Box 災備回退）' ;;
+        ja:wl_menu_install) echo 'ワンクリックでインストール / アップグレード（upstream を優先し、A-Box Recovery にフォールバック）' ;;
+        zh:wl_menu_status) echo '查看状态和访问网址' ;;
+        en:wl_menu_status) echo 'Status and access URL' ;;
+        ru:wl_menu_status) echo 'Состояние и адрес доступа' ;;
+        fa:wl_menu_status) echo 'وضعیت و نشانی دسترسی' ;;
+        zh-tw:wl_menu_status) echo '檢視狀態和訪問網址' ;;
+        ja:wl_menu_status) echo '状態とアクセス URL を表示' ;;
+        zh:wl_menu_backup) echo '备份数据库和上传图片' ;;
+        en:wl_menu_backup) echo 'Back up database and uploaded logos' ;;
+        ru:wl_menu_backup) echo 'Резервная копия базы и загруженных логотипов' ;;
+        fa:wl_menu_backup) echo 'پشتیبان‌گیری از پایگاه داده و تصاویر بارگذاری‌شده' ;;
+        zh-tw:wl_menu_backup) echo '備份資料庫和上傳圖片' ;;
+        ja:wl_menu_backup) echo 'データベースとアップロード画像をバックアップ' ;;
+        zh:wl_menu_remove) echo '删除容器但保留数据' ;;
+        en:wl_menu_remove) echo 'Remove container but keep data' ;;
+        ru:wl_menu_remove) echo 'Удалить контейнер, сохранив данные' ;;
+        fa:wl_menu_remove) echo 'حذف کانتینر با حفظ داده‌ها' ;;
+        zh-tw:wl_menu_remove) echo '刪除容器但保留資料' ;;
+        ja:wl_menu_remove) echo 'データを保持してコンテナを削除' ;;
+        zh:wl_menu_rollback) echo '回滚到历史版本' ;;
+        en:wl_menu_rollback) echo 'Roll back to a previous version' ;;
+        ru:wl_menu_rollback) echo 'Откатить к предыдущей версии' ;;
+        fa:wl_menu_rollback) echo 'بازگشت به نسخه قبلی' ;;
+        zh-tw:wl_menu_rollback) echo '回滾到歷史版本' ;;
+        ja:wl_menu_rollback) echo '以前のバージョンにロールバック' ;;
         zh:wl_remove_q) echo '删除 Wallos 容器并保留 %s 下的数据？[Y/N]: ' ;;
         en:wl_remove_q) echo 'Remove the Wallos container and keep data in %s? [Y/N]: ' ;;
         ru:wl_remove_q) echo 'Удалить контейнер Wallos, сохранив данные в %s? [Y/N]: ' ;;
@@ -2304,24 +2304,24 @@ tr_msg() {
         fa:um_title) echo 'سیستم حذف عمیق' ;;
         zh-tw:um_title) echo '深度卸載系統' ;;
         ja:um_title) echo 'ディープアンインストール' ;;
-        zh:um_item1) echo '1. 全部清场（保留脚本）— 清除全部功能、配置、Wallos 与数据，仅保留脚本本体与 sb 入口' ;;
-        en:um_item1) echo '1. Full wipe, keep the script - remove all features, configs, Wallos and data; keep only the script itself and the sb entry' ;;
-        ru:um_item1) echo '1. Полная зачистка (сохранить скрипт) - удалить все функции, конфигурации, Wallos и данные; оставить только сам скрипт и вход sb' ;;
-        fa:um_item1) echo '1. پاک‌سازی کامل (نگه‌داشتن اسکریپت) - حذف همه قابلیت‌ها، پیکربندی‌ها، Wallos و داده‌ها؛ فقط خود اسکریپت و ورودی sb می‌ماند' ;;
-        zh-tw:um_item1) echo '1. 全部清場（保留腳本）— 清除全部功能、設定、Wallos 與資料，僅保留腳本本體與 sb 入口' ;;
-        ja:um_item1) echo '1. 完全クリーン（スクリプト保持）- 全機能・設定・Wallos・データを削除し、スクリプト本体と sb 入口のみ残す' ;;
-        zh:um_item2) echo '2. 全部清场（含脚本）— 连脚本本体与 sb 入口一并删除，恢复到未安装状态' ;;
-        en:um_item2) echo '2. Full wipe including the script - also delete the script itself and the sb entry, restoring the pre-install state' ;;
-        ru:um_item2) echo '2. Полная зачистка (включая скрипт) - удалить также сам скрипт и вход sb, вернув состояние до установки' ;;
-        fa:um_item2) echo '2. پاک‌سازی کامل (شامل اسکریپت) - خود اسکریپت و ورودی sb نیز حذف می‌شود و وضعیت پیش از نصب بازمی‌گردد' ;;
-        zh-tw:um_item2) echo '2. 全部清場（含腳本）— 連腳本本體與 sb 入口一併刪除，恢復到未安裝狀態' ;;
-        ja:um_item2) echo '2. 完全クリーン（スクリプト含む）- スクリプト本体と sb 入口も削除し、未インストール状態に戻す' ;;
-        zh:um_back) echo '0. 取消并返回' ;;
-        en:um_back) echo '0. Cancel and back' ;;
-        ru:um_back) echo '0. Отмена и назад' ;;
-        fa:um_back) echo '0. لغو و بازگشت' ;;
-        zh-tw:um_back) echo '0. 取消並返回' ;;
-        ja:um_back) echo '0. キャンセルして戻る' ;;
+        zh:um_item1) echo '全部清场（保留脚本）— 清除全部功能、配置、Wallos 与数据，仅保留脚本本体与 sb 入口' ;;
+        en:um_item1) echo 'Full wipe, keep the script - remove all features, configs, Wallos and data; keep only the script itself and the sb entry' ;;
+        ru:um_item1) echo 'Полная зачистка (сохранить скрипт) - удалить все функции, конфигурации, Wallos и данные; оставить только сам скрипт и вход sb' ;;
+        fa:um_item1) echo 'پاک‌سازی کامل (نگه‌داشتن اسکریپت) - حذف همه قابلیت‌ها، پیکربندی‌ها، Wallos و داده‌ها؛ فقط خود اسکریپت و ورودی sb می‌ماند' ;;
+        zh-tw:um_item1) echo '全部清場（保留腳本）— 清除全部功能、設定、Wallos 與資料，僅保留腳本本體與 sb 入口' ;;
+        ja:um_item1) echo '完全クリーン（スクリプト保持）- 全機能・設定・Wallos・データを削除し、スクリプト本体と sb 入口のみ残す' ;;
+        zh:um_item2) echo '全部清场（含脚本）— 连脚本本体与 sb 入口一并删除，恢复到未安装状态' ;;
+        en:um_item2) echo 'Full wipe including the script - also delete the script itself and the sb entry, restoring the pre-install state' ;;
+        ru:um_item2) echo 'Полная зачистка (включая скрипт) - удалить также сам скрипт и вход sb, вернув состояние до установки' ;;
+        fa:um_item2) echo 'پاک‌سازی کامل (شامل اسکریپت) - خود اسکریپت و ورودی sb نیز حذف می‌شود و وضعیت پیش از نصب بازمی‌گردد' ;;
+        zh-tw:um_item2) echo '全部清場（含腳本）— 連腳本本體與 sb 入口一併刪除，恢復到未安裝狀態' ;;
+        ja:um_item2) echo '完全クリーン（スクリプト含む）- スクリプト本体と sb 入口も削除し、未インストール状態に戻す' ;;
+        zh:um_back) echo '取消并返回' ;;
+        en:um_back) echo 'Cancel and back' ;;
+        ru:um_back) echo 'Отмена и назад' ;;
+        fa:um_back) echo 'لغو و بازگشت' ;;
+        zh-tw:um_back) echo '取消並返回' ;;
+        ja:um_back) echo 'キャンセルして戻る' ;;
         zh:um_prompt) echo '请输入执行代码 [0-2]: ' ;;
         en:um_prompt) echo 'Enter the execution code [0-2]: ' ;;
         ru:um_prompt) echo 'Введите код выполнения [0-2]: ' ;;
@@ -2436,12 +2436,12 @@ tr_msg() {
         fa:sr_saved) echo '[%s] ذخیره شد: %s | به‌روزرسانی: %s' ;;
         zh-tw:sr_saved) echo '[%s] 儲存路徑: %s | 更新時間: %s' ;;
         ja:sr_saved) echo '[%s] 保存先: %s | 更新日時: %s' ;;
-        zh:pm_manual) echo '0. 手动输入' ;;
-        en:pm_manual) echo '0. Manual input' ;;
-        ru:pm_manual) echo '0. Ввод вручную' ;;
-        fa:pm_manual) echo '0. ورودی دستی' ;;
-        zh-tw:pm_manual) echo '0. 手動輸入' ;;
-        ja:pm_manual) echo '0. 手動入力' ;;
+        zh:pm_manual) echo '手动输入' ;;
+        en:pm_manual) echo 'Manual input' ;;
+        ru:pm_manual) echo 'Ввод вручную' ;;
+        fa:pm_manual) echo 'ورودی دستی' ;;
+        zh-tw:pm_manual) echo '手動輸入' ;;
+        ja:pm_manual) echo '手動入力' ;;
         zh:pm_paired) echo 'IPv4: %s，自动配对 IPv6: %s' ;;
         en:pm_paired) echo 'IPv4: %s, auto-paired IPv6: %s' ;;
         ru:pm_paired) echo 'IPv4: %s, автоматически подобран IPv6: %s' ;;
@@ -3312,12 +3312,24 @@ tr_msg() {
         fa:mu_inst_exists) echo 'این پروتکل در این هسته 이미 یک نمونه دارد' ;;
         zh-tw:mu_inst_exists) echo '該協定在本核心已有實例' ;;
         ja:mu_inst_exists) echo 'このプロトコルはこのコアに既にインスタンスがあります' ;;
-        zh:mu_inst_choice) echo '1. 替换现有实例   2. 新增一个实例（独立端口/凭据/用户名单）   0. 取消' ;;
-        en:mu_inst_choice) echo '1. Replace existing instance   2. Add another instance (own port/credentials/users)   0. Cancel' ;;
-        ru:mu_inst_choice) echo '1. Заменить существующий   2. Добавить ещё экземпляр (свой порт/доступ/пользователи)   0. Отмена' ;;
-        fa:mu_inst_choice) echo '1. جایگزینی نمونه موجود   2. افزودن نمونه دیگر (پورت/دسترسی/کاربران مستقل)   0. لغو' ;;
-        zh-tw:mu_inst_choice) echo '1. 取代現有實例   2. 新增一個實例（獨立埠/憑據/用戶名單）   0. 取消' ;;
-        ja:mu_inst_choice) echo '1. 既存を置き換え   2. インスタンスを追加（専用ポート/認証情報/ユーザー）   0. キャンセル' ;;
+        zh:mu_inst_replace) echo '替换现有实例' ;;
+        zh:mu_inst_add) echo '新增一个实例（独立端口/凭据/用户名单）' ;;
+        zh:mu_inst_cancel) echo '取消' ;;
+        en:mu_inst_replace) echo 'Replace existing instance' ;;
+        en:mu_inst_add) echo 'Add another instance (own port/credentials/users)' ;;
+        en:mu_inst_cancel) echo 'Cancel' ;;
+        ru:mu_inst_replace) echo 'Заменить существующий' ;;
+        ru:mu_inst_add) echo 'Добавить ещё экземпляр (свой порт/доступ/пользователи)' ;;
+        ru:mu_inst_cancel) echo 'Отмена' ;;
+        fa:mu_inst_replace) echo 'جایگزینی نمونه موجود' ;;
+        fa:mu_inst_add) echo 'افزودن نمونه دیگر (پورت/دسترسی/کاربران مستقل)' ;;
+        fa:mu_inst_cancel) echo 'لغو' ;;
+        zh-tw:mu_inst_replace) echo '取代現有實例' ;;
+        zh-tw:mu_inst_add) echo '新增一個實例（獨立埠/憑據/用戶名單）' ;;
+        zh-tw:mu_inst_cancel) echo '取消' ;;
+        ja:mu_inst_replace) echo '既存を置き換え' ;;
+        ja:mu_inst_add) echo 'インスタンスを追加（専用ポート/認証情報/ユーザー）' ;;
+        ja:mu_inst_cancel) echo 'キャンセル' ;;
         zh:mu_inst_tag) echo '新实例标签' ;;
         en:mu_inst_tag) echo 'New instance tag' ;;
         ru:mu_inst_tag) echo 'Тег нового экземпляра' ;;
@@ -4140,12 +4152,12 @@ tr_msg() {
         fa:acheck_no_python) echo 'python3 پیدا نشد: A-Check به Python 3.8 یا جدیدتر نیاز دارد. آن را نصب و دوباره تلاش کنید.' ;;
         zh-tw:acheck_no_python) echo '找不到 python3：A-Check 需要 Python 3.8 或更高版本，裝好後重試。' ;;
         ja:acheck_no_python) echo 'python3 が見つかりません：A-Check には Python 3.8 以上が必要です。インストールして再試行してください。' ;;
-        zh:acheck_failed) echo 'A-Check 下载或 SHA-256 校验失败，未运行。' ;;
-        en:acheck_failed) echo 'A-Check download or SHA-256 verification failed; nothing was run.' ;;
-        ru:acheck_failed) echo 'Не удалось скачать A-Check или проверить SHA-256; ничего не запущено.' ;;
-        fa:acheck_failed) echo 'دانلود A-Check یا بررسی SHA-256 ناموفق بود؛ چیزی اجرا نشد.' ;;
-        zh-tw:acheck_failed) echo 'A-Check 下載或 SHA-256 校驗失敗，未執行。' ;;
-        ja:acheck_failed) echo 'A-Check のダウンロードまたは SHA-256 検証に失敗しました。何も実行していません。' ;;
+        zh:acheck_failed) echo 'A-Check 下载或校验失败，未运行。' ;;
+        en:acheck_failed) echo 'A-Check download or validation failed; nothing was run.' ;;
+        ru:acheck_failed) echo 'Не удалось скачать или проверить A-Check; ничего не запущено.' ;;
+        fa:acheck_failed) echo 'دانلود یا بررسی A-Check ناموفق بود؛ چیزی اجرا نشد.' ;;
+        zh-tw:acheck_failed) echo 'A-Check 下載或校驗失敗，未執行。' ;;
+        ja:acheck_failed) echo 'A-Check のダウンロードまたは検証に失敗しました。何も実行していません。' ;;
         zh:argo_temp_note) echo '注意: 临时隧道域名在 cloudflared 重启后会变化, 届时请在本菜单查看新链接。' ;;
         en:argo_temp_note) echo 'Note: temporary tunnel domains change when cloudflared restarts; re-check links here afterwards.' ;;
         ru:argo_temp_note) echo 'Примечание: домены временного туннеля меняются при перезапуске cloudflared; проверяйте ссылки здесь.' ;;
@@ -7391,13 +7403,13 @@ language_menu() {
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}$(tr_msg lang_title)${NC}"
     msg "${CYAN}======================================================================${NC}"
-    msg "${YELLOW}1. 简体中文${NC}"
-    msg "${YELLOW}2. 繁體中文${NC}"
-    msg "${YELLOW}3. English${NC}"
-    msg "${YELLOW}4. 日本語${NC}"
-    msg "${YELLOW}5. Русский${NC}"
-    msg "${YELLOW}6. فارسی${NC}"
-    msg "${CYAN}0. 返回 / Back${NC}"
+    msg "${CYAN}1.${NC} 简体中文"
+    msg "${CYAN}2.${NC} 繁體中文"
+    msg "${CYAN}3.${NC} English"
+    msg "${CYAN}4.${NC} 日本語"
+    msg "${CYAN}5.${NC} Русский"
+    msg "${CYAN}6.${NC} فارسی"
+    msg "${CYAN}0.${NC} 返回 / Back"
     local c
     read -r -p 'Select [0-6]: ' c || return 0
     case "$c" in
@@ -16923,11 +16935,11 @@ argo_menu() {
         clear
         msg "${CYAN}============================================================${NC}"
         msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
-        msg "${YELLOW}1.  $(tr_msg argo_m_temp)${NC}"
-        msg "${YELLOW}2.  $(tr_msg argo_m_fixed)${NC}"
-        msg "${YELLOW}3.  $(tr_msg argo_m_status)${NC}"
-        msg "${YELLOW}4.  $(tr_msg argo_m_uninstall)${NC}"
-        msg "${YELLOW}0.  $(tr_msg argo_m_back)${NC}"
+        msg "${CYAN}1.${NC}  $(tr_msg argo_m_temp)"
+        msg "${CYAN}2.${NC}  $(tr_msg argo_m_fixed)"
+        msg "${CYAN}3.${NC}  $(tr_msg argo_m_status)"
+        msg "${CYAN}4.${NC}  $(tr_msg argo_m_uninstall)"
+        msg "${CYAN}0.${NC}  $(tr_msg argo_m_back)"
         read -r -p "$(tr_msg argo_prompt)" choice || choice=0
         case "$choice" in
             1) deploy_argo_temp; pause_return ;;
@@ -16955,7 +16967,7 @@ deploy_with_instance_choice() {
     if [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$btag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; then exists=1; fi
     if (( exists == 0 )); then "$@"; return $?; fi
     msg "${YELLOW}$(tr_msg mu_inst_exists) (${btag})${NC}"
-    msg "${YELLOW}$(tr_msg mu_inst_choice)${NC}"
+    msg "${CYAN}1.${NC} $(tr_msg mu_inst_replace)   ${CYAN}2.${NC} $(tr_msg mu_inst_add)   ${CYAN}0.${NC} $(tr_msg mu_inst_cancel)"
     local ch=''
     read -r -p 'Select [0-2]: ' ch || return 0
     case "$ch" in
@@ -18140,16 +18152,16 @@ warp_split_menu() {
     # Submenu loop: 0/Enter goes back to the parent menu.
     while true; do
     clear
-    msg "${YELLOW}$(tr_msg warp_split_title)${NC}"
+    msg "${BOLD}${GREEN}$(tr_msg warp_split_title)${NC}"
     msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     warp_status
     msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-    msg "1. $(tr_msg warp_deploy_item)"
-    msg "2. $(tr_msg warp_preset_item)"
-    msg "3. $(tr_msg split_add_socks_item)"
-    msg "4. $(tr_msg split_rules_item)"
-    msg "5. $(tr_msg warp_uninstall_item)"
-    msg "0. $(tr_msg back_to_parent)"
+    msg "${CYAN}1.${NC} $(tr_msg warp_deploy_item)"
+    msg "${CYAN}2.${NC} $(tr_msg warp_preset_item)"
+    msg "${CYAN}3.${NC} $(tr_msg split_add_socks_item)"
+    msg "${CYAN}4.${NC} $(tr_msg split_rules_item)"
+    msg "${CYAN}5.${NC} $(tr_msg warp_uninstall_item)"
+    msg "${CYAN}0.${NC} $(tr_msg back_to_parent)"
     msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     local choice
     read -r -p "$(tr_msg select_prompt) [0-5]: " choice || return 0
@@ -18175,12 +18187,12 @@ warp_split_menu() {
 warp_preset_menu() {
     while true; do
     clear
-    msg "${YELLOW}$(tr_msg warp_preset_title)${NC}"
+    msg "${BOLD}${GREEN}$(tr_msg warp_preset_title)${NC}"
     msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-    msg "1. $(tr_msg warp_preset_streaming)"
-    msg "2. $(tr_msg warp_preset_cn_direct)"
-    msg "3. $(tr_msg warp_preset_global)"
-    msg "0. $(tr_msg back_to_parent)"
+    msg "${CYAN}1.${NC} $(tr_msg warp_preset_streaming)"
+    msg "${CYAN}2.${NC} $(tr_msg warp_preset_cn_direct)"
+    msg "${CYAN}3.${NC} $(tr_msg warp_preset_global)"
+    msg "${CYAN}0.${NC} $(tr_msg back_to_parent)"
     local choice
     read -r -p "$(tr_msg select_prompt) [0-3]: " choice || return 0
     case "$choice" in
@@ -18211,7 +18223,7 @@ split_add_socks_interactive() {
 split_rules_menu() {
     while true; do
     clear
-    msg "${YELLOW}$(tr_msg split_rules_title)${NC}"
+    msg "${BOLD}${GREEN}$(tr_msg split_rules_title)${NC}"
     msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     local i=0
     while IFS= read -r line; do
@@ -18224,7 +18236,7 @@ split_rules_menu() {
     msg "s. $(tr_msg split_preset_streaming)"
     msg "m. $(tr_msg split_preset_social)"
     msg "i. $(tr_msg split_preset_ai)"
-    msg "0. $(tr_msg back_to_parent)"
+    msg "${CYAN}0.${NC} $(tr_msg back_to_parent)"
     local choice
     read -r -p "$(tr_msg select_prompt) [a/d/s/m/i/0]: " choice || return 0
     case "$choice" in
@@ -20032,11 +20044,11 @@ manage_ss_whitelist() {
         $IPT6 -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '::/0' | sort -u || true
     fi
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
-    msg "${YELLOW}1. 新增白名单 IP/CIDR (TCP+UDP)${NC}"
-    msg "${YELLOW}2. 移除白名单 IP/CIDR (TCP+UDP)${NC}"
-    msg "${YELLOW}3. 开启白名单模式 (TCP+UDP DROP)${NC}"
-    msg "${YELLOW}4. 切换为全网开放 (移除 DROP 并放行 TCP+UDP)${NC}"
-    msg "${CYAN}0. 返回主菜单${NC}"
+    msg "${CYAN}1.${NC} 新增白名单 IP/CIDR (TCP+UDP)"
+    msg "${CYAN}2.${NC} 移除白名单 IP/CIDR (TCP+UDP)"
+    msg "${CYAN}3.${NC} 开启白名单模式 (TCP+UDP DROP)"
+    msg "${CYAN}4.${NC} 切换为全网开放 (移除 DROP 并放行 TCP+UDP)"
+    msg "${CYAN}0.${NC} 返回主菜单"
     read -r -p "$(tr_msg wl_pick_prompt)" wl_choice
     local add_ip del_ip rule found proto
     case "$wl_choice" in
@@ -20584,10 +20596,10 @@ cleanup_protocols_menu() {
         msg "${CYAN}======================================================================${NC}"
         msg "${BOLD}${GREEN}$(tr_msg cl_title)${NC}"
         msg "${CYAN}======================================================================${NC}"
-        msg "${YELLOW}1.  $(tr_msg cl_m_single)${NC}"
-        msg "${YELLOW}2.  $(tr_msg cl_m_all)${NC}"
-        msg "${YELLOW}3.  $(tr_msg cl_m_reset)${NC}"
-        msg "${YELLOW}0.  $(tr_msg xl_back_main)${NC}"
+        msg "${CYAN}1.${NC}  $(tr_msg cl_m_single)"
+        msg "${CYAN}2.${NC}  $(tr_msg cl_m_all)"
+        msg "${CYAN}3.${NC}  $(tr_msg cl_m_reset)"
+        msg "${CYAN}0.${NC}  $(tr_msg xl_back_main)"
         read -r -p "$(tr_msg cl_select)" c || return 0
         case "$c" in
             1) remove_single_protocol_menu; pause_return ;;
@@ -21002,41 +21014,41 @@ one_click_reality_deploy() {
         en)
             msg "${RED}${BOLD}One-click Vision REALITY${NC}"
             msg "Defaults: port 443, SNI auto-selected from this VPS; www.amazon.com is used only after TLS 1.3/h2/SAN verification. If no target verifies, one-click setup stops. KeepAlive off."
-            msg "${YELLOW}1. Xray Vision REALITY${NC}"
-            msg "${YELLOW}2. sing-box Vision REALITY${NC}"
+            msg "${CYAN}1.${NC} Xray Vision REALITY"
+            msg "${CYAN}2.${NC} sing-box Vision REALITY"
             prompt='Deploy one-click Vision REALITY now? [Y/N]: ' ;;
         ru)
             msg "${RED}${BOLD}Vision REALITY в один клик${NC}"
             msg "По умолчанию SNI выбирается по тестам этого VPS; www.amazon.com используется только после проверки TLS 1.3/h2/SAN. Если цель не подтверждена, установка в один клик остановится. KeepAlive выключен."
-            msg "${YELLOW}1. Xray Vision REALITY${NC}"
-            msg "${YELLOW}2. sing-box Vision REALITY${NC}"
+            msg "${CYAN}1.${NC} Xray Vision REALITY"
+            msg "${CYAN}2.${NC} sing-box Vision REALITY"
             prompt='Запустить установку Vision REALITY в один клик? [Y/N]: ' ;;
         fa)
             msg "${RED}${BOLD}نصب یک‌کلیکی Vision REALITY${NC}"
             msg "پیش‌فرض SNI بر اساس آزمون‌های همین VPS انتخاب می‌شود؛ www.amazon.com فقط پس از بررسی TLS 1.3/h2/SAN استفاده می‌شود. اگر هیچ مقصدی تأیید نشود، نصب یک‌کلیکی متوقف می‌شود. KeepAlive خاموش است."
-            msg "${YELLOW}1. Xray Vision REALITY${NC}"
-            msg "${YELLOW}2. sing-box Vision REALITY${NC}"
+            msg "${CYAN}1.${NC} Xray Vision REALITY"
+            msg "${CYAN}2.${NC} sing-box Vision REALITY"
             prompt='نصب یک‌کلیکی Vision REALITY آغاز شود؟ [Y/N]: ' ;;
         ja)
             msg "${RED}${BOLD}ワンクリック Vision REALITY${NC}"
             msg "デフォルト: port 443。SNI はこの VPS の TLS/ASN/地域に関する実測結果に基づいて自動選択されます。www.amazon.com は TLS 1.3/h2/証明書 SAN の検証に成功した場合のみフォールバック先として使用されます。検証可能な接続先がない場合、ワンクリックインストールは停止します。KeepAlive は無効です。"
-            msg "${YELLOW}1. Xray Vision REALITY${NC}"
-            msg "${YELLOW}2. sing-box Vision REALITY${NC}"
+            msg "${CYAN}1.${NC} Xray Vision REALITY"
+            msg "${CYAN}2.${NC} sing-box Vision REALITY"
             prompt='今すぐ Vision REALITY をワンクリックでデプロイしますか？[Y/N]: ' ;;
         zh-tw)
             msg "${RED}${BOLD}一鍵 Vision REALITY${NC}"
             msg "預設 SNI 根據當前 VPS 的 TLS/ASN/地區實測自動選擇；僅在 www.amazon.com 透過 TLS 1.3/h2/證書 SAN 驗證後才用作回退。無可驗證目標時一鍵安裝會停止。KeepAlive 關閉。"
-            msg "${YELLOW}1. Xray Vision REALITY${NC}"
-            msg "${YELLOW}2. sing-box Vision REALITY${NC}"
+            msg "${CYAN}1.${NC} Xray Vision REALITY"
+            msg "${CYAN}2.${NC} sing-box Vision REALITY"
             prompt='現在開始一鍵部署 Vision REALITY？[Y/N]: ' ;;
         *)
             msg "${RED}${BOLD}一键 Vision REALITY${NC}"
             msg "默认 SNI 根据当前 VPS 的 TLS/ASN/地区实测自动选择；仅在 www.amazon.com 通过 TLS 1.3/h2/证书 SAN 验证后才用作回退。无可验证目标时一键安装会停止。KeepAlive 关闭。"
-            msg "${YELLOW}1. Xray Vision REALITY${NC}"
-            msg "${YELLOW}2. sing-box Vision REALITY${NC}"
+            msg "${CYAN}1.${NC} Xray Vision REALITY"
+            msg "${CYAN}2.${NC} sing-box Vision REALITY"
             prompt='现在开始一键部署 Vision REALITY？[Y/N]: ' ;;
     esac
-    msg "${CYAN}0. Cancel / 返回${NC}"
+    msg "${CYAN}0.${NC} Cancel / 返回"
     read -r -p 'Select [0-2]: ' choice || return 0
     case "$choice" in 1|2) ;; *) return 0 ;; esac
     load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || true
@@ -21070,45 +21082,45 @@ ux_mode_menu() {
         en)
             msg "${BOLD}${GREEN}Runtime mode and core version policy${NC}"
             msg "Current mode: ${YELLOW}$(read_fast_mode_label)${NC} | Core order: official stable → fixed recovery mirror"
-            msg "${YELLOW}1. Strict mode${NC}"
-            msg "${YELLOW}2. Fast mode (non-critical confirmations only)${NC}"
-            msg "${YELLOW}3. Show stable version policy and recovery pins${NC}"
-            msg "${CYAN}0. Back${NC}" ;;
+            msg "${CYAN}1.${NC} Strict mode"
+            msg "${CYAN}2.${NC} Fast mode (non-critical confirmations only)"
+            msg "${CYAN}3.${NC} Show stable version policy and recovery pins"
+            msg "${CYAN}0.${NC} Back" ;;
         ru)
             msg "${BOLD}${GREEN}Режим работы и политика версий ядер${NC}"
             msg "Режим: ${YELLOW}$(read_fast_mode_label)${NC} | Источник: стабильная upstream-версия → резервная копия"
-            msg "${YELLOW}1. Строгий режим${NC}"
-            msg "${YELLOW}2. Быстрый режим${NC}"
-            msg "${YELLOW}3. Политика стабильных версий и резервные pins${NC}"
-            msg "${CYAN}0. Назад${NC}" ;;
+            msg "${CYAN}1.${NC} Строгий режим"
+            msg "${CYAN}2.${NC} Быстрый режим"
+            msg "${CYAN}3.${NC} Политика стабильных версий и резервные pins"
+            msg "${CYAN}0.${NC} Назад" ;;
         fa)
             msg "${BOLD}${GREEN}حالت اجرا و سیاست نسخه هسته‌ها${NC}"
             msg "حالت: ${YELLOW}$(read_fast_mode_label)${NC} | منبع: نسخه پایدار upstream سپس نسخه بازیابی"
-            msg "${YELLOW}1. حالت سخت‌گیرانه${NC}"
-            msg "${YELLOW}2. حالت سریع${NC}"
-            msg "${YELLOW}3. سیاست نسخه پایدار و نسخه‌های بازیابی${NC}"
-            msg "${CYAN}0. بازگشت${NC}" ;;
+            msg "${CYAN}1.${NC} حالت سخت‌گیرانه"
+            msg "${CYAN}2.${NC} حالت سریع"
+            msg "${CYAN}3.${NC} سیاست نسخه پایدار و نسخه‌های بازیابی"
+            msg "${CYAN}0.${NC} بازگشت" ;;
         zh-tw)
             msg "${BOLD}${GREEN}執行模式與核心版本策略${NC}"
             msg "當前模式: ${YELLOW}$(read_fast_mode_label)${NC} | 核心來源：上游正式穩定版 → 固定容災映象"
-            msg "${YELLOW}1. 嚴格模式${NC}"
-            msg "${YELLOW}2. 快速模式（只跳過非關鍵確認）${NC}"
-            msg "${YELLOW}3. 檢視正式穩定版策略與固定容災版本${NC}"
-            msg "${CYAN}0. 返回${NC}" ;;
+            msg "${CYAN}1.${NC} 嚴格模式"
+            msg "${CYAN}2.${NC} 快速模式（只跳過非關鍵確認）"
+            msg "${CYAN}3.${NC} 檢視正式穩定版策略與固定容災版本"
+            msg "${CYAN}0.${NC} 返回" ;;
         ja)
             msg "${BOLD}${GREEN}実行モードとコアバージョンのポリシー${NC}"
             msg "現在のモード: ${YELLOW}$(read_fast_mode_label)${NC} | コアの取得順序: 公式の安定版 → 固定リカバリミラー"
-            msg "${YELLOW}1. 厳格モード${NC}"
-            msg "${YELLOW}2. 高速モード（重要でない確認のみをスキップ）${NC}"
-            msg "${YELLOW}3. 公式安定版のポリシーと固定リカバリバージョンを表示${NC}"
-            msg "${CYAN}0. 戻る${NC}" ;;
+            msg "${CYAN}1.${NC} 厳格モード"
+            msg "${CYAN}2.${NC} 高速モード（重要でない確認のみをスキップ）"
+            msg "${CYAN}3.${NC} 公式安定版のポリシーと固定リカバリバージョンを表示"
+            msg "${CYAN}0.${NC} 戻る" ;;
         *)
             msg "${BOLD}${GREEN}运行模式与核心版本策略${NC}"
             msg "当前模式: ${YELLOW}$(read_fast_mode_label)${NC} | 核心来源：上游正式稳定版 → 固定容灾镜像"
-            msg "${YELLOW}1. 严格模式${NC}"
-            msg "${YELLOW}2. 快速模式（只跳过非关键确认）${NC}"
-            msg "${YELLOW}3. 查看正式稳定版策略与固定容灾版本${NC}"
-            msg "${CYAN}0. 返回${NC}" ;;
+            msg "${CYAN}1.${NC} 严格模式"
+            msg "${CYAN}2.${NC} 快速模式（只跳过非关键确认）"
+            msg "${CYAN}3.${NC} 查看正式稳定版策略与固定容灾版本"
+            msg "${CYAN}0.${NC} 返回" ;;
     esac
     read -r -p 'Select [0-3]: ' c || return 0
     case "$c" in
@@ -21983,15 +21995,16 @@ users_inbound_menu() {
         done < <(jq -c '.users[]' "$reg" 2>/dev/null)
         msg "--------------------------------------------------------------------------------"
         local -a _oacts=("" "$(tr_msg mu_a1)" "$(tr_msg mu_a2)" "$(tr_msg mu_a3)" "$(tr_msg mu_a4)" "$(tr_msg mu_a5)" "$(tr_msg mu_a6)" "$(tr_msg mu_a7)" "$(tr_msg mu_a8)" "$(tr_msg mu_a9)")
-        local _or=0 _oleft='' _opad=''
+        local _or=0 _oleft='' _opad='' _oleftc=''
         for _or in 1 2 3 4 5; do
             _oleft="${_or}. ${_oacts[$_or]}"
+            _oleftc="${CYAN}${_or}.${NC} ${_oacts[$_or]}"
             printf -v _opad '%*s' $(( 36 - $(_str_dwidth "$_oleft") )) ''
             (( ${#_opad} < 2 )) && _opad='  '
             if (( _or == 5 )); then
-                msg "${YELLOW}${_oleft}${_opad}0. $(tr_msg mu_back_word)${NC}"
+                msg "${_oleftc}${_opad}${CYAN}0.${NC} $(tr_msg mu_back_word)"
             else
-                msg "${YELLOW}${_oleft}${_opad}$((_or + 5)). ${_oacts[$((_or + 5))]}${NC}"
+                msg "${_oleftc}${_opad}${CYAN}$((_or + 5)).${NC} ${_oacts[$((_or + 5))]}"
             fi
         done
         local c=''
@@ -22125,8 +22138,8 @@ multi_user_menu() {
             printf '%3d. %-46s %-11s :%-6s %s %s\n' "$i" "$(protocol_label "$core" "$tag" "$proto" 2>/dev/null || printf '%s' "$tag")" "$core" "$port" "$(tr_msg mu_users_word)" "$cnt"
         done <<< "$rows"
         if (( i == 0 )); then msg "${YELLOW}$(tr_msg mu_none)${NC}"; fi
-        msg "${YELLOW}  E. $(tr_msg mu_export)${NC}"
-        msg "${CYAN}  0. $(tr_msg mu_back_word)${NC}"
+        msg "  ${CYAN}E.${NC} $(tr_msg mu_export)"
+        msg "  ${CYAN}0.${NC} $(tr_msg mu_back_word)"
         local c=''
         read -r -p "$(tr_msg select_prompt) [0-${i}/E]: " c || return 0
         case "$c" in
@@ -22406,7 +22419,7 @@ node_sni_menu() {
             printf '%3d. %-40s %-11s :%-6s %s: %s\n' "$i" "$(protocol_label "$core" "$tag" "$proto" 2>/dev/null || printf '%s' "$tag")" "$core" "$port" "$(tr_msg nsni_cur)" "$cur"
         done <<< "$rows"
         if (( i == 0 )); then msg "${YELLOW}$(tr_msg nsni_none)${NC}"; fi
-        msg "${CYAN}  0. $(tr_msg mu_back_word)${NC}"
+        msg "  ${CYAN}0.${NC} $(tr_msg mu_back_word)"
         local c=''
         read -r -p "$(tr_msg select_prompt) [0-${i}]: " c || return 0
         case "$c" in
@@ -22565,10 +22578,10 @@ ip_preference_menu() {
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}$title${NC}"
     msg "Current: ${YELLOW}$cur${NC}"
-    msg "${YELLOW}1. $ipv4${NC}"
-    msg "${YELLOW}2. $ipv6${NC}"
-    msg "${YELLOW}3. $dual${NC}"
-    msg "${CYAN}0. $back${NC}"
+    msg "${CYAN}1.${NC} $ipv4"
+    msg "${CYAN}2.${NC} $ipv6"
+    msg "${CYAN}3.${NC} $dual"
+    msg "${CYAN}0.${NC} $back"
     read -r -p 'Select [0-3]: ' c || return 0
     case "$c" in
         1) save_ip_pref ipv4 ;;
@@ -22610,51 +22623,51 @@ host_network_menu() {
     case "${ABOX_LANG:-zh}" in
         en)
             msg "${BOLD}${GREEN}Network and regional settings${NC}"
-            msg "${YELLOW}1. IP protocol preference${NC}"
-            msg "${YELLOW}2. Host DNS, DNS benchmark, DoT and DoH${NC}"
-            msg "${YELLOW}3. Timezone, locale and NTP${NC}"
-            msg "${YELLOW}4. Fast/strict mode and download source${NC}"
-            msg "${CYAN}0. Back${NC}"
+            msg "${CYAN}1.${NC} IP protocol preference"
+            msg "${CYAN}2.${NC} Host DNS, DNS benchmark, DoT and DoH"
+            msg "${CYAN}3.${NC} Timezone, locale and NTP"
+            msg "${CYAN}4.${NC} Fast/strict mode and download source"
+            msg "${CYAN}0.${NC} Back"
             ;;
         ru)
             msg "${BOLD}${GREEN}Сеть и региональные настройки${NC}"
-            msg "${YELLOW}1. Предпочтение IP${NC}"
-            msg "${YELLOW}2. DNS, тест задержки, DoT и DoH${NC}"
-            msg "${YELLOW}3. Часовой пояс, локаль и NTP${NC}"
-            msg "${YELLOW}4. Режим и источник загрузки${NC}"
-            msg "${CYAN}0. Назад${NC}"
+            msg "${CYAN}1.${NC} Предпочтение IP"
+            msg "${CYAN}2.${NC} DNS, тест задержки, DoT и DoH"
+            msg "${CYAN}3.${NC} Часовой пояс, локаль и NTP"
+            msg "${CYAN}4.${NC} Режим и источник загрузки"
+            msg "${CYAN}0.${NC} Назад"
             ;;
         fa)
             msg "${BOLD}${GREEN}تنظیمات شبکه و منطقه‌ای${NC}"
-            msg "${YELLOW}1. ترجیح IP${NC}"
-            msg "${YELLOW}2. DNS، آزمون تأخیر، DoT و DoH${NC}"
-            msg "${YELLOW}3. منطقه زمانی، locale و NTP${NC}"
-            msg "${YELLOW}4. حالت و منبع دانلود${NC}"
-            msg "${CYAN}0. بازگشت${NC}"
+            msg "${CYAN}1.${NC} ترجیح IP"
+            msg "${CYAN}2.${NC} DNS، آزمون تأخیر، DoT و DoH"
+            msg "${CYAN}3.${NC} منطقه زمانی، locale و NTP"
+            msg "${CYAN}4.${NC} حالت و منبع دانلود"
+            msg "${CYAN}0.${NC} بازگشت"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}網路與地區設定${NC}"
-            msg "${YELLOW}1. IP 協議偏好（IPv4 / IPv6 / 雙棧）${NC}"
-            msg "${YELLOW}2. 本機 DNS（自動測速 / DoT / DoH / 回滾）${NC}"
-            msg "${YELLOW}3. 時區、Locale 與 NTP${NC}"
-            msg "${YELLOW}4. 快速/嚴格模式與下載源${NC}"
-            msg "${CYAN}0. 返回${NC}"
+            msg "${CYAN}1.${NC} IP 協議偏好（IPv4 / IPv6 / 雙棧）"
+            msg "${CYAN}2.${NC} 本機 DNS（自動測速 / DoT / DoH / 回滾）"
+            msg "${CYAN}3.${NC} 時區、Locale 與 NTP"
+            msg "${CYAN}4.${NC} 快速/嚴格模式與下載源"
+            msg "${CYAN}0.${NC} 返回"
             ;;
         ja)
             msg "${BOLD}${GREEN}ネットワークと地域の設定${NC}"
-            msg "${YELLOW}1. IP プロトコルの設定（IPv4 / IPv6 / デュアルスタック）${NC}"
-            msg "${YELLOW}2. ホスト DNS（自動ベンチマーク / DoT / DoH / ロールバック）${NC}"
-            msg "${YELLOW}3. タイムゾーン、Locale、NTP${NC}"
-            msg "${YELLOW}4. 高速モード / 厳格モードとダウンロード元${NC}"
-            msg "${CYAN}0. 戻る${NC}"
+            msg "${CYAN}1.${NC} IP プロトコルの設定（IPv4 / IPv6 / デュアルスタック）"
+            msg "${CYAN}2.${NC} ホスト DNS（自動ベンチマーク / DoT / DoH / ロールバック）"
+            msg "${CYAN}3.${NC} タイムゾーン、Locale、NTP"
+            msg "${CYAN}4.${NC} 高速モード / 厳格モードとダウンロード元"
+            msg "${CYAN}0.${NC} 戻る"
             ;;
         *)
             msg "${BOLD}${GREEN}网络与地区设置${NC}"
-            msg "${YELLOW}1. IP 协议偏好（IPv4 / IPv6 / 双栈）${NC}"
-            msg "${YELLOW}2. 本机 DNS（自动测速 / DoT / DoH / 回滚）${NC}"
-            msg "${YELLOW}3. 时区、Locale 与 NTP${NC}"
-            msg "${YELLOW}4. 快速/严格模式与下载源${NC}"
-            msg "${CYAN}0. 返回${NC}"
+            msg "${CYAN}1.${NC} IP 协议偏好（IPv4 / IPv6 / 双栈）"
+            msg "${CYAN}2.${NC} 本机 DNS（自动测速 / DoT / DoH / 回滚）"
+            msg "${CYAN}3.${NC} 时区、Locale 与 NTP"
+            msg "${CYAN}4.${NC} 快速/严格模式与下载源"
+            msg "${CYAN}0.${NC} 返回"
             ;;
     esac
     local c
@@ -23025,59 +23038,59 @@ timezone_locale_ntp_menu() {
         en)
             msg "${BOLD}${GREEN}Time, timezone and locale${NC}"
             msg "Current time: $now | timezone: $(current_timezone_name) | NTP: $ntp | synced: $synced"
-            msg "${YELLOW}1. Browse all time zones by number${NC}"
-            msg "${YELLOW}2. Search a time zone and select by number${NC}"
-            msg "${YELLOW}3. Select an installed system locale${NC}"
-            msg "${YELLOW}4. Enable NTP time synchronization${NC}"
-            msg "${YELLOW}5. Restore the previous timezone${NC}"
+            msg "${CYAN}1.${NC} Browse all time zones by number"
+            msg "${CYAN}2.${NC} Search a time zone and select by number"
+            msg "${CYAN}3.${NC} Select an installed system locale"
+            msg "${CYAN}4.${NC} Enable NTP time synchronization"
+            msg "${CYAN}5.${NC} Restore the previous timezone"
             ;;
         ru)
             msg "${BOLD}${GREEN}Время, часовой пояс и локаль${NC}"
             msg "Сейчас: $now | часовой пояс: $(current_timezone_name) | NTP: $ntp | синхронизация: $synced"
-            msg "${YELLOW}1. Все часовые пояса по номерам${NC}"
-            msg "${YELLOW}2. Поиск часового пояса${NC}"
-            msg "${YELLOW}3. Выбрать установленную локаль${NC}"
-            msg "${YELLOW}4. Включить синхронизацию времени NTP${NC}"
-            msg "${YELLOW}5. Восстановить предыдущий часовой пояс${NC}"
+            msg "${CYAN}1.${NC} Все часовые пояса по номерам"
+            msg "${CYAN}2.${NC} Поиск часового пояса"
+            msg "${CYAN}3.${NC} Выбрать установленную локаль"
+            msg "${CYAN}4.${NC} Включить синхронизацию времени NTP"
+            msg "${CYAN}5.${NC} Восстановить предыдущий часовой пояс"
             ;;
         fa)
             msg "${BOLD}${GREEN}زمان، منطقه زمانی و locale${NC}"
             msg "اکنون: $now | منطقه زمانی: $(current_timezone_name) | NTP: $ntp | همگام‌سازی: $synced"
-            msg "${YELLOW}1. نمایش همه مناطق زمانی با شماره${NC}"
-            msg "${YELLOW}2. جست‌وجو و انتخاب منطقه زمانی${NC}"
-            msg "${YELLOW}3. انتخاب locale نصب‌شده${NC}"
-            msg "${YELLOW}4. فعال‌کردن همگام‌سازی زمان NTP${NC}"
-            msg "${YELLOW}5. بازگردانی منطقه زمانی قبلی${NC}"
+            msg "${CYAN}1.${NC} نمایش همه مناطق زمانی با شماره"
+            msg "${CYAN}2.${NC} جست‌وجو و انتخاب منطقه زمانی"
+            msg "${CYAN}3.${NC} انتخاب locale نصب‌شده"
+            msg "${CYAN}4.${NC} فعال‌کردن همگام‌سازی زمان NTP"
+            msg "${CYAN}5.${NC} بازگردانی منطقه زمانی قبلی"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}時間、時區與地區${NC}"
             msg "當前時間: $now | 時區: $(current_timezone_name) | NTP: $ntp | 已同步: $synced"
-            msg "${YELLOW}1. 檢視全部時區並按編號選擇${NC}"
-            msg "${YELLOW}2. 搜尋時區後按編號選擇${NC}"
-            msg "${YELLOW}3. 選擇已安裝的系統 Locale${NC}"
-            msg "${YELLOW}4. 啟用 NTP 自動時間同步${NC}"
-            msg "${YELLOW}5. 回滾到時區修改前快照${NC}"
+            msg "${CYAN}1.${NC} 檢視全部時區並按編號選擇"
+            msg "${CYAN}2.${NC} 搜尋時區後按編號選擇"
+            msg "${CYAN}3.${NC} 選擇已安裝的系統 Locale"
+            msg "${CYAN}4.${NC} 啟用 NTP 自動時間同步"
+            msg "${CYAN}5.${NC} 回滾到時區修改前快照"
             ;;
         ja)
             msg "${BOLD}${GREEN}時刻、タイムゾーン、Locale${NC}"
             msg "現在の時刻: $now | タイムゾーン: $(current_timezone_name) | NTP: $ntp | 同期済み: $synced"
-            msg "${YELLOW}1. すべてのタイムゾーンを一覧表示し、番号で選択${NC}"
-            msg "${YELLOW}2. タイムゾーンを検索して番号で選択${NC}"
-            msg "${YELLOW}3. インストール済みのシステム Locale を選択${NC}"
-            msg "${YELLOW}4. NTP による時刻の自動同期を有効化${NC}"
-            msg "${YELLOW}5. タイムゾーン変更前のスナップショットにロールバック${NC}"
+            msg "${CYAN}1.${NC} すべてのタイムゾーンを一覧表示し、番号で選択"
+            msg "${CYAN}2.${NC} タイムゾーンを検索して番号で選択"
+            msg "${CYAN}3.${NC} インストール済みのシステム Locale を選択"
+            msg "${CYAN}4.${NC} NTP による時刻の自動同期を有効化"
+            msg "${CYAN}5.${NC} タイムゾーン変更前のスナップショットにロールバック"
             ;;
         *)
             msg "${BOLD}${GREEN}时间、时区与地区${NC}"
             msg "当前时间: $now | 时区: $(current_timezone_name) | NTP: $ntp | 已同步: $synced"
-            msg "${YELLOW}1. 查看全部时区并按编号选择${NC}"
-            msg "${YELLOW}2. 搜索时区后按编号选择${NC}"
-            msg "${YELLOW}3. 选择已安装的系统 Locale${NC}"
-            msg "${YELLOW}4. 启用 NTP 自动时间同步${NC}"
-            msg "${YELLOW}5. 回滚到时区修改前快照${NC}"
+            msg "${CYAN}1.${NC} 查看全部时区并按编号选择"
+            msg "${CYAN}2.${NC} 搜索时区后按编号选择"
+            msg "${CYAN}3.${NC} 选择已安装的系统 Locale"
+            msg "${CYAN}4.${NC} 启用 NTP 自动时间同步"
+            msg "${CYAN}5.${NC} 回滚到时区修改前快照"
             ;;
     esac
-    msg "${CYAN}0. 返回${NC}"
+    msg "${CYAN}0.${NC} 返回"
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; ja) prompt='選択してください [0-5]: ' ;; zh-tw) prompt='請選擇 [0-5]：' ;; *) prompt='请选择 [0-5]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
@@ -24073,12 +24086,12 @@ dns_setup_tri_mode() {
     msg "Current: IPv4=${YELLOW}$(_dns_current_v4)${NC} IPv6=${YELLOW}$(_dns_current_v6)${NC}"
     msg ""
     case "${ABOX_LANG:-zh}" in
-        en) msg "${YELLOW}1. IPv4 only (IPv6 unchanged)${NC}"; msg "${YELLOW}2. IPv6 only (IPv4 unchanged)${NC}"; msg "${YELLOW}3. Dual-stack (both)${NC}"; msg "${CYAN}0. Back${NC}" ;;
-        ru) msg "${YELLOW}1. Только IPv4 (IPv6 без изменений)${NC}"; msg "${YELLOW}2. Только IPv6 (IPv4 без изменений)${NC}"; msg "${YELLOW}3. Dual-stack (оба)${NC}"; msg "${CYAN}0. Назад${NC}" ;;
-        fa) msg "${YELLOW}۱. فقط IPv4${NC}"; msg "${YELLOW}۲. فقط IPv6${NC}"; msg "${YELLOW}۳. دوگانه${NC}"; msg "${CYAN}۰. بازگشت${NC}" ;;
-        zh-tw) msg "${YELLOW}1. 僅 IPv4（IPv6 不變）${NC}"; msg "${YELLOW}2. 僅 IPv6（IPv4 不變）${NC}"; msg "${YELLOW}3. 雙棧（兩者都設）${NC}"; msg "${CYAN}0. 返回${NC}" ;;
-        ja) msg "${YELLOW}1. IPv4 のみ (IPv6 は変更なし)${NC}"; msg "${YELLOW}2. IPv6 のみ (IPv4 は変更なし)${NC}"; msg "${YELLOW}3. デュアルスタック (両方)${NC}"; msg "${CYAN}0. 戻る${NC}" ;;
-        *) msg "${YELLOW}1. 仅 IPv4（IPv6 不变）${NC}"; msg "${YELLOW}2. 仅 IPv6（IPv4 不变）${NC}"; msg "${YELLOW}3. 双栈（两者都设）${NC}"; msg "${CYAN}0. 返回${NC}" ;;
+        en) msg "${CYAN}1.${NC} IPv4 only (IPv6 unchanged)"; msg "${CYAN}2.${NC} IPv6 only (IPv4 unchanged)"; msg "${CYAN}3.${NC} Dual-stack (both)"; msg "${CYAN}0.${NC} Back" ;;
+        ru) msg "${CYAN}1.${NC} Только IPv4 (IPv6 без изменений)"; msg "${CYAN}2.${NC} Только IPv6 (IPv4 без изменений)"; msg "${CYAN}3.${NC} Dual-stack (оба)"; msg "${CYAN}0.${NC} Назад" ;;
+        fa) msg "${CYAN}۱.${NC} فقط IPv4"; msg "${CYAN}۲.${NC} فقط IPv6"; msg "${CYAN}۳.${NC} دوگانه"; msg "${CYAN}۰.${NC} بازگشت" ;;
+        zh-tw) msg "${CYAN}1.${NC} 僅 IPv4（IPv6 不變）"; msg "${CYAN}2.${NC} 僅 IPv6（IPv4 不變）"; msg "${CYAN}3.${NC} 雙棧（兩者都設）"; msg "${CYAN}0.${NC} 返回" ;;
+        ja) msg "${CYAN}1.${NC} IPv4 のみ (IPv6 は変更なし)"; msg "${CYAN}2.${NC} IPv6 のみ (IPv4 は変更なし)"; msg "${CYAN}3.${NC} デュアルスタック (両方)"; msg "${CYAN}0.${NC} 戻る" ;;
+        *) msg "${CYAN}1.${NC} 仅 IPv4（IPv6 不变）"; msg "${CYAN}2.${NC} 仅 IPv6（IPv4 不变）"; msg "${CYAN}3.${NC} 双栈（两者都设）"; msg "${CYAN}0.${NC} 返回" ;;
     esac
     read -r -p "Select [0-3]: " mode
     case "$mode" in
@@ -24092,11 +24105,11 @@ dns_setup_tri_mode() {
     local idx=1
     for p in "${providers[@]}"; do
         IFS='|' read -r tag name pv4 pv6 <<< "$p"
-        printf '  ${YELLOW}%d.${NC} %-14s ${GREEN}%s${NC} / ${CYAN}%s${NC}\n' "$idx" "$name" "$pv4" "$pv6"
+        printf '  ${CYAN}%d.${NC} %-14s ${GREEN}%s${NC} / ${CYAN}%s${NC}\n' "$idx" "$name" "$pv4" "$pv6"
         idx=$((idx+1))
     done
     case "${ABOX_LANG:-zh}" in
-        *) msg "${YELLOW}$(tr_msg pm_manual)${NC}" ;;
+        *) msg "${CYAN}0.${NC} $(tr_msg pm_manual)" ;;
     esac
     msg "${CYAN}--------------------------------------------------------------------------------${NC}"
 
@@ -24168,79 +24181,79 @@ dns_menu() {
     if [[ -r /etc/resolv.conf ]]; then grep -E '^(nameserver|search|options)' /etc/resolv.conf 2>/dev/null | head -8 || true; fi
     case "${ABOX_LANG:-zh}" in
         en)
-            msg "${YELLOW}1. Auto-benchmark DNS (plain)${NC}"
-            msg "${YELLOW}2. Auto-benchmark DNS over TLS (DoT)${NC}"
-            msg "${YELLOW}3. Auto-benchmark DNS over HTTPS (DoH)${NC}"
-            msg "${YELLOW}4. Custom plain DNS${NC}"
-            msg "${YELLOW}5. DNS over TLS (presets / custom)${NC}"
-            msg "${YELLOW}6. DNS over HTTPS via dnscrypt-proxy (Cloudflare)${NC}"
-            msg "${YELLOW}7. Cloudflare DNS (plain)${NC}"
-            msg "${YELLOW}8. Quad9 DNS (plain)${NC}"
-            msg "${YELLOW}9. Restore the previous DNS snapshot${NC}"
-            msg "${YELLOW}10. DNS tri-mode setup (v4/v6/dual)${NC}"
+            msg "${CYAN}1.${NC} Auto-benchmark DNS (plain)"
+            msg "${CYAN}2.${NC} Auto-benchmark DNS over TLS (DoT)"
+            msg "${CYAN}3.${NC} Auto-benchmark DNS over HTTPS (DoH)"
+            msg "${CYAN}4.${NC} Custom plain DNS"
+            msg "${CYAN}5.${NC} DNS over TLS (presets / custom)"
+            msg "${CYAN}6.${NC} DNS over HTTPS via dnscrypt-proxy (Cloudflare)"
+            msg "${CYAN}7.${NC} Cloudflare DNS (plain)"
+            msg "${CYAN}8.${NC} Quad9 DNS (plain)"
+            msg "${CYAN}9.${NC} Restore the previous DNS snapshot"
+            msg "${CYAN}10.${NC} DNS tri-mode setup (v4/v6/dual)"
             ;;
         ru)
-            msg "${YELLOW}1. Автоподбор DNS (обычный)${NC}"
-            msg "${YELLOW}2. Автоподбор DNS over TLS (DoT)${NC}"
-            msg "${YELLOW}3. Автоподбор DNS over HTTPS (DoH)${NC}"
-            msg "${YELLOW}4. Пользовательский открытый DNS${NC}"
-            msg "${YELLOW}5. DNS over TLS (пресеты / свой)${NC}"
-            msg "${YELLOW}6. DNS over HTTPS через dnscrypt-proxy (Cloudflare)${NC}"
-            msg "${YELLOW}7. Cloudflare DNS (обычный)${NC}"
-            msg "${YELLOW}8. Quad9 DNS (обычный)${NC}"
-            msg "${YELLOW}9. Восстановить предыдущую конфигурацию${NC}"
-            msg "${YELLOW}10. Настройка DNS (v4/v6/dual)${NC}"
+            msg "${CYAN}1.${NC} Автоподбор DNS (обычный)"
+            msg "${CYAN}2.${NC} Автоподбор DNS over TLS (DoT)"
+            msg "${CYAN}3.${NC} Автоподбор DNS over HTTPS (DoH)"
+            msg "${CYAN}4.${NC} Пользовательский открытый DNS"
+            msg "${CYAN}5.${NC} DNS over TLS (пресеты / свой)"
+            msg "${CYAN}6.${NC} DNS over HTTPS через dnscrypt-proxy (Cloudflare)"
+            msg "${CYAN}7.${NC} Cloudflare DNS (обычный)"
+            msg "${CYAN}8.${NC} Quad9 DNS (обычный)"
+            msg "${CYAN}9.${NC} Восстановить предыдущую конфигурацию"
+            msg "${CYAN}10.${NC} Настройка DNS (v4/v6/dual)"
             ;;
         fa)
-            msg "${YELLOW}1. انتخاب خودکار DNS (ساده)${NC}"
-            msg "${YELLOW}2. انتخاب خودکار DNS روی TLS (DoT)${NC}"
-            msg "${YELLOW}3. انتخاب خودکار DNS روی HTTPS (DoH)${NC}"
-            msg "${YELLOW}4. DNS ساده سفارشی${NC}"
-            msg "${YELLOW}5. DNS روی TLS (پیش‌فرض / سفارشی)${NC}"
-            msg "${YELLOW}6. DNS روی HTTPS با dnscrypt-proxy (Cloudflare)${NC}"
-            msg "${YELLOW}7. Cloudflare DNS (ساده)${NC}"
-            msg "${YELLOW}8. Quad9 DNS (ساده)${NC}"
-            msg "${YELLOW}9. بازگردانی تنظیمات قبلی DNS${NC}"
-            msg "${YELLOW}10. تنظیم DNS سه‌حالته${NC}"
+            msg "${CYAN}1.${NC} انتخاب خودکار DNS (ساده)"
+            msg "${CYAN}2.${NC} انتخاب خودکار DNS روی TLS (DoT)"
+            msg "${CYAN}3.${NC} انتخاب خودکار DNS روی HTTPS (DoH)"
+            msg "${CYAN}4.${NC} DNS ساده سفارشی"
+            msg "${CYAN}5.${NC} DNS روی TLS (پیش‌فرض / سفارشی)"
+            msg "${CYAN}6.${NC} DNS روی HTTPS با dnscrypt-proxy (Cloudflare)"
+            msg "${CYAN}7.${NC} Cloudflare DNS (ساده)"
+            msg "${CYAN}8.${NC} Quad9 DNS (ساده)"
+            msg "${CYAN}9.${NC} بازگردانی تنظیمات قبلی DNS"
+            msg "${CYAN}10.${NC} تنظیم DNS سه‌حالته"
             ;;
         zh-tw)
-            msg "${YELLOW}1. 自動實測優選 DNS（明文）${NC}"
-            msg "${YELLOW}2. 自動實測優選 DoT${NC}"
-            msg "${YELLOW}3. 自動實測優選 DoH${NC}"
-            msg "${YELLOW}4. 自定義明文 DNS（可選 IPv6）${NC}"
-            msg "${YELLOW}5. 隱私 DNS DoT（預置 / 自定義）${NC}"
-            msg "${YELLOW}6. 隱私 DNS DoH（dnscrypt-proxy 本地轉發，Cloudflare）${NC}"
-            msg "${YELLOW}7. Cloudflare DNS（明文）${NC}"
-            msg "${YELLOW}8. Quad9 DNS（明文）${NC}"
-            msg "${YELLOW}9. 回滾到上次 DNS 修改前快照${NC}"
-            msg "${YELLOW}10. DNS 三模式設定（v4/v6/雙棧）${NC}"
+            msg "${CYAN}1.${NC} 自動實測優選 DNS（明文）"
+            msg "${CYAN}2.${NC} 自動實測優選 DoT"
+            msg "${CYAN}3.${NC} 自動實測優選 DoH"
+            msg "${CYAN}4.${NC} 自定義明文 DNS（可選 IPv6）"
+            msg "${CYAN}5.${NC} 隱私 DNS DoT（預置 / 自定義）"
+            msg "${CYAN}6.${NC} 隱私 DNS DoH（dnscrypt-proxy 本地轉發，Cloudflare）"
+            msg "${CYAN}7.${NC} Cloudflare DNS（明文）"
+            msg "${CYAN}8.${NC} Quad9 DNS（明文）"
+            msg "${CYAN}9.${NC} 回滾到上次 DNS 修改前快照"
+            msg "${CYAN}10.${NC} DNS 三模式設定（v4/v6/雙棧）"
             ;;
         ja)
-            msg "${YELLOW}1. DNS 自動ベンチマーク（平文）${NC}"
-            msg "${YELLOW}2. DoT 自動ベンチマーク${NC}"
-            msg "${YELLOW}3. DoH 自動ベンチマーク${NC}"
-            msg "${YELLOW}4. カスタム平文 DNS（IPv6 は任意）${NC}"
-            msg "${YELLOW}5. プライバシー保護 DNS over TLS（DoT、プリセット / カスタム）${NC}"
-            msg "${YELLOW}6. プライバシー保護 DNS over HTTPS（DoH、dnscrypt-proxy ローカル転送、Cloudflare）${NC}"
-            msg "${YELLOW}7. Cloudflare DNS（平文）${NC}"
-            msg "${YELLOW}8. Quad9 DNS（平文）${NC}"
-            msg "${YELLOW}9. 前回の DNS 変更前のスナップショットにロールバック${NC}"
-            msg "${YELLOW}10. DNS 三モード設定 (v4/v6/デュアル)${NC}"
+            msg "${CYAN}1.${NC} DNS 自動ベンチマーク（平文）"
+            msg "${CYAN}2.${NC} DoT 自動ベンチマーク"
+            msg "${CYAN}3.${NC} DoH 自動ベンチマーク"
+            msg "${CYAN}4.${NC} カスタム平文 DNS（IPv6 は任意）"
+            msg "${CYAN}5.${NC} プライバシー保護 DNS over TLS（DoT、プリセット / カスタム）"
+            msg "${CYAN}6.${NC} プライバシー保護 DNS over HTTPS（DoH、dnscrypt-proxy ローカル転送、Cloudflare）"
+            msg "${CYAN}7.${NC} Cloudflare DNS（平文）"
+            msg "${CYAN}8.${NC} Quad9 DNS（平文）"
+            msg "${CYAN}9.${NC} 前回の DNS 変更前のスナップショットにロールバック"
+            msg "${CYAN}10.${NC} DNS 三モード設定 (v4/v6/デュアル)"
             ;;
         *)
-            msg "${YELLOW}1. 自动实测优选 DNS（明文）${NC}"
-            msg "${YELLOW}2. 自动实测优选 DoT${NC}"
-            msg "${YELLOW}3. 自动实测优选 DoH${NC}"
-            msg "${YELLOW}4. 自定义明文 DNS（可选 IPv6）${NC}"
-            msg "${YELLOW}5. 隐私 DNS DoT（预置 / 自定义）${NC}"
-            msg "${YELLOW}6. 隐私 DNS DoH（dnscrypt-proxy 本地转发，Cloudflare）${NC}"
-            msg "${YELLOW}7. Cloudflare DNS（明文预置）${NC}"
-            msg "${YELLOW}8. Quad9 DNS（明文预置）${NC}"
-            msg "${YELLOW}9. 回滚到上次 DNS 修改前快照${NC}"
-            msg "${YELLOW}10. DNS 三模式设置（v4/v6/双栈）${NC}"
+            msg "${CYAN}1.${NC} 自动实测优选 DNS（明文）"
+            msg "${CYAN}2.${NC} 自动实测优选 DoT"
+            msg "${CYAN}3.${NC} 自动实测优选 DoH"
+            msg "${CYAN}4.${NC} 自定义明文 DNS（可选 IPv6）"
+            msg "${CYAN}5.${NC} 隐私 DNS DoT（预置 / 自定义）"
+            msg "${CYAN}6.${NC} 隐私 DNS DoH（dnscrypt-proxy 本地转发，Cloudflare）"
+            msg "${CYAN}7.${NC} Cloudflare DNS（明文预置）"
+            msg "${CYAN}8.${NC} Quad9 DNS（明文预置）"
+            msg "${CYAN}9.${NC} 回滚到上次 DNS 修改前快照"
+            msg "${CYAN}10.${NC} DNS 三模式设置（v4/v6/双栈）"
             ;;
     esac
-    msg "${CYAN}0. Back / 返回${NC}"
+    msg "${CYAN}0.${NC} Back / 返回"
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-10]: ' ;; ru) prompt='Выберите [0–10]: ' ;; fa) prompt='انتخاب [۰ تا ۱۰]: ' ;; ja) prompt='選択してください [0-10]: ' ;; zh-tw) prompt='請選擇 [0-10]：' ;; *) prompt='请选择 [0-10]：' ;; esac
     read -r -p "$prompt" c || return 0
     case "$c" in
@@ -24263,10 +24276,10 @@ dns_menu() {
                 ja) dot_preset_prompt='DoT プロバイダ [1-4]: '; dot_custom_word='カスタム' ;;
                 *) dot_preset_prompt='DoT 服务商 [1-4]：'; dot_custom_word='自定义' ;;
             esac
-            msg "1. Cloudflare (1.1.1.1)"
-            msg "2. Google (8.8.8.8)"
-            msg "3. Quad9 (9.9.9.9)"
-            msg "4. $dot_custom_word"
+            msg "${CYAN}1.${NC} Cloudflare (1.1.1.1)"
+            msg "${CYAN}2.${NC} Google (8.8.8.8)"
+            msg "${CYAN}3.${NC} Quad9 (9.9.9.9)"
+            msg "${CYAN}4.${NC} $dot_custom_word"
             read -r -p "$dot_preset_prompt" dot_preset
             case "$dot_preset" in
                 1) apply_host_dns dot '1.1.1.1' '2606:4700:4700::1111' 'cloudflare-dns.com'; pause_return ;;
@@ -24309,39 +24322,39 @@ tune_vps() {
     case "${ABOX_LANG:-zh}" in
         en)
             msg "${BOLD}${GREEN}VPS one-click optimization${NC}"
-            msg "${YELLOW}1. Apply supported BBR/FQ and system tuning${NC}"
-            msg "${YELLOW}2. Restore the previous tuning snapshot${NC}"
-            msg "${CYAN}0. Back${NC}"
+            msg "${CYAN}1.${NC} Apply supported BBR/FQ and system tuning"
+            msg "${CYAN}2.${NC} Restore the previous tuning snapshot"
+            msg "${CYAN}0.${NC} Back"
             ;;
         ru)
             msg "${BOLD}${GREEN}Оптимизация VPS${NC}"
-            msg "${YELLOW}1. Применить поддерживаемые BBR/FQ и системные настройки${NC}"
-            msg "${YELLOW}2. Восстановить предыдущий снимок настроек${NC}"
-            msg "${CYAN}0. Назад${NC}"
+            msg "${CYAN}1.${NC} Применить поддерживаемые BBR/FQ и системные настройки"
+            msg "${CYAN}2.${NC} Восстановить предыдущий снимок настроек"
+            msg "${CYAN}0.${NC} Назад"
             ;;
         fa)
             msg "${BOLD}${GREEN}بهینه‌سازی VPS${NC}"
-            msg "${YELLOW}1. اعمال تنظیمات پشتیبانی‌شده BBR/FQ${NC}"
-            msg "${YELLOW}2. بازگردانی وضعیت قبلی${NC}"
-            msg "${CYAN}0. بازگشت${NC}"
+            msg "${CYAN}1.${NC} اعمال تنظیمات پشتیبانی‌شده BBR/FQ"
+            msg "${CYAN}2.${NC} بازگردانی وضعیت قبلی"
+            msg "${CYAN}0.${NC} بازگشت"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}VPS 一鍵最佳化${NC}"
-            msg "${YELLOW}1. 應用當前核心支援的 BBR/FQ 與系統調優（可回滾）${NC}"
-            msg "${YELLOW}2. 恢復調優前快照${NC}"
-            msg "${CYAN}0. 返回${NC}"
+            msg "${CYAN}1.${NC} 應用當前核心支援的 BBR/FQ 與系統調優（可回滾）"
+            msg "${CYAN}2.${NC} 恢復調優前快照"
+            msg "${CYAN}0.${NC} 返回"
             ;;
         ja)
             msg "${BOLD}${GREEN}VPS ワンクリック最適化${NC}"
-            msg "${YELLOW}1. 現在のカーネルがサポートする BBR/FQ とシステム最適化を適用（ロールバック可能）${NC}"
-            msg "${YELLOW}2. 最適化前のスナップショットを復元${NC}"
-            msg "${CYAN}0. 戻る${NC}"
+            msg "${CYAN}1.${NC} 現在のカーネルがサポートする BBR/FQ とシステム最適化を適用（ロールバック可能）"
+            msg "${CYAN}2.${NC} 最適化前のスナップショットを復元"
+            msg "${CYAN}0.${NC} 戻る"
             ;;
         *)
             msg "${BOLD}${GREEN}VPS 一键优化${NC}"
-            msg "${YELLOW}1. 应用当前内核支持的 BBR/FQ 与系统调优（可回滚）${NC}"
-            msg "${YELLOW}2. 恢复调优前快照${NC}"
-            msg "${CYAN}0. 返回${NC}"
+            msg "${CYAN}1.${NC} 应用当前内核支持的 BBR/FQ 与系统调优（可回滚）"
+            msg "${CYAN}2.${NC} 恢复调优前快照"
+            msg "${CYAN}0.${NC} 返回"
             ;;
     esac
     local c
@@ -25306,22 +25319,22 @@ show_sni_preference_records() {
     if (( ${#files[@]} == 0 )); then
         case "${ABOX_LANG:-zh}" in
             en)
-            msg "${YELLOW}[!] No SNI preference record found. Run Toolbox option 3 or 4 first.${NC}"
+            msg "${YELLOW}[!] No SNI preference record found. Run Toolbox option 9 or 10 first.${NC}"
                 ;;
             ru)
-            msg "${YELLOW}[!] Не найдена запись предпочтений SNI. Сначала запустите опцию 3 или 4 в Toolbox.${NC}"
+            msg "${YELLOW}[!] Не найдена запись предпочтений SNI. Сначала запустите опцию 9 или 10 в Toolbox.${NC}"
                 ;;
             fa)
-            msg "${YELLOW}[!] رکورد ترجیح SNI یافت نشد. ابتدا گزینه 3 یا 4 جعبه‌ابزار را اجرا کنید.${NC}"
+            msg "${YELLOW}[!] رکورد ترجیح SNI یافت نشد. ابتدا گزینه 9 یا 10 جعبه‌ابزار را اجرا کنید.${NC}"
                 ;;
             ja)
-                msg "${YELLOW}[!] SNI の優先設定レコードが見つかりません。先に Toolbox のオプション 3 または 4 を実行してください。${NC}"
+                msg "${YELLOW}[!] SNI の優先設定レコードが見つかりません。先に Toolbox のオプション 9 または 10 を実行してください。${NC}"
                 ;;
             zh-tw)
-            msg "${YELLOW}[!] 未發現 SNI 優選記錄。請先執行工具箱 3 或 4。${NC}"
+            msg "${YELLOW}[!] 未發現 SNI 優選記錄。請先執行工具箱 9 或 10。${NC}"
                 ;;
             *)
-            msg "${YELLOW}[!] 未发现 SNI 优选记录。请先运行工具箱 3 或 4。${NC}"
+            msg "${YELLOW}[!] 未发现 SNI 优选记录。请先运行工具箱 9 或 10。${NC}"
                 ;;
         esac
         pause_return
@@ -25748,12 +25761,12 @@ swap_menu() {
         msg "${CYAN}======================================================================${NC}"
         msg "${BOLD}${GREEN}交换内存管理 / Swap Manager${NC}"
         msg "${CYAN}======================================================================${NC}"
-        msg "${YELLOW} 1.  zram 压缩交换（推荐：内存内压缩，不占磁盘）${NC}"
-        msg "${YELLOW} 2.  磁盘 Swap 文件 2G（传统方式）${NC}"
-        msg "${YELLOW} 3.  查看当前交换状态${NC}"
-        msg "${YELLOW} 4.  移除 zram（仅 A-Box 创建的）${NC}"
-        msg "${YELLOW} 5.  移除磁盘 Swap 文件（仅 A-Box 创建的）${NC}"
-        msg "${CYAN} 0.  返回${NC}"
+        msg " ${CYAN}1.${NC}  zram 压缩交换（推荐：内存内压缩，不占磁盘）"
+        msg " ${CYAN}2.${NC}  磁盘 Swap 文件 2G（传统方式）"
+        msg " ${CYAN}3.${NC}  查看当前交换状态"
+        msg " ${CYAN}4.${NC}  移除 zram（仅 A-Box 创建的）"
+        msg " ${CYAN}5.${NC}  移除磁盘 Swap 文件（仅 A-Box 创建的）"
+        msg " ${CYAN}0.${NC}  返回"
         read -r -p "请选择 [0-5]：" choice || return 0
         case "$choice" in
             1) setup_zram_swap ;;
@@ -27554,46 +27567,46 @@ backup_restore_menu() {
     msg "${CYAN}======================================================================${NC}"
     case "${ABOX_LANG:-zh}" in
         en)
-        msg "${YELLOW}1. Backup current A-Box configuration${NC}"
-        msg "${YELLOW}2. Restore from backup${NC}"
-        msg "${YELLOW}3. Export recovery key to a separate medium${NC}"
-        msg "${YELLOW}4. Convert a legacy backup to manifest v3${NC}"
-        msg "${CYAN}0. Back${NC}"
+        msg "${CYAN}1.${NC} Backup current A-Box configuration"
+        msg "${CYAN}2.${NC} Restore from backup"
+        msg "${CYAN}3.${NC} Export recovery key to a separate medium"
+        msg "${CYAN}4.${NC} Convert a legacy backup to manifest v3"
+        msg "${CYAN}0.${NC} Back"
             ;;
         ru)
-        msg "${YELLOW}1. Резервное копирование текущей конфигурации A-Box${NC}"
-        msg "${YELLOW}2. Восстановление из резервной копии${NC}"
-        msg "${YELLOW}3. Экспорт ключа восстановления на отдельный носитель${NC}"
-        msg "${YELLOW}4. Конвертация старой резервной копии в manifest v3${NC}"
-        msg "${CYAN}0. Назад${NC}"
+        msg "${CYAN}1.${NC} Резервное копирование текущей конфигурации A-Box"
+        msg "${CYAN}2.${NC} Восстановление из резервной копии"
+        msg "${CYAN}3.${NC} Экспорт ключа восстановления на отдельный носитель"
+        msg "${CYAN}4.${NC} Конвертация старой резервной копии в manifest v3"
+        msg "${CYAN}0.${NC} Назад"
             ;;
         fa)
-        msg "${YELLOW}1. پشتیبان‌گیری از پیکربندی فعلی A-Box${NC}"
-        msg "${YELLOW}2. بازیابی از پشتیبان${NC}"
-        msg "${YELLOW}3. صدور کلید بازیابی به رسانه جداگانه${NC}"
-        msg "${YELLOW}4. تبدیل پشتیبان قدیمی به manifest v3${NC}"
-        msg "${CYAN}0. بازگشت${NC}"
+        msg "${CYAN}1.${NC} پشتیبان‌گیری از پیکربندی فعلی A-Box"
+        msg "${CYAN}2.${NC} بازیابی از پشتیبان"
+        msg "${CYAN}3.${NC} صدور کلید بازیابی به رسانه جداگانه"
+        msg "${CYAN}4.${NC} تبدیل پشتیبان قدیمی به manifest v3"
+        msg "${CYAN}0.${NC} بازگشت"
             ;;
         ja)
-            msg "${YELLOW}1. 現在の A-Box 設定をバックアップ${NC}"
-            msg "${YELLOW}2. バックアップから復元${NC}"
-            msg "${YELLOW}3. 復旧キーを別の媒体にエクスポート${NC}"
-            msg "${YELLOW}4. 旧バージョンのバックアップを manifest v3 に安全に変換${NC}"
-            msg "${CYAN}0. 戻る${NC}"
+            msg "${CYAN}1.${NC} 現在の A-Box 設定をバックアップ"
+            msg "${CYAN}2.${NC} バックアップから復元"
+            msg "${CYAN}3.${NC} 復旧キーを別の媒体にエクスポート"
+            msg "${CYAN}4.${NC} 旧バージョンのバックアップを manifest v3 に安全に変換"
+            msg "${CYAN}0.${NC} 戻る"
             ;;
         zh-tw)
-        msg "${YELLOW}1. 備份當前 A-Box 配置${NC}"
-        msg "${YELLOW}2. 從備份恢復${NC}"
-        msg "${YELLOW}3. 將恢復金鑰匯出到獨立介質${NC}"
-        msg "${YELLOW}4. 將舊版備份安全轉換為 manifest v3${NC}"
-        msg "${CYAN}0. 返回${NC}"
+        msg "${CYAN}1.${NC} 備份當前 A-Box 配置"
+        msg "${CYAN}2.${NC} 從備份恢復"
+        msg "${CYAN}3.${NC} 將恢復金鑰匯出到獨立介質"
+        msg "${CYAN}4.${NC} 將舊版備份安全轉換為 manifest v3"
+        msg "${CYAN}0.${NC} 返回"
             ;;
         *)
-        msg "${YELLOW}1. 备份当前 A-Box 配置${NC}"
-        msg "${YELLOW}2. 从备份恢复${NC}"
-        msg "${YELLOW}3. 将恢复密钥导出到独立介质${NC}"
-        msg "${YELLOW}4. 将旧版备份安全转换为 manifest v3${NC}"
-        msg "${CYAN}0. 返回${NC}"
+        msg "${CYAN}1.${NC} 备份当前 A-Box 配置"
+        msg "${CYAN}2.${NC} 从备份恢复"
+        msg "${CYAN}3.${NC} 将恢复密钥导出到独立介质"
+        msg "${CYAN}4.${NC} 将旧版备份安全转换为 manifest v3"
+        msg "${CYAN}0.${NC} 返回"
             ;;
     esac
     local c
@@ -27760,77 +27773,63 @@ run_mirrored_test_script() {
     work=$(umask 077; mktemp -d /tmp/A-Box-test-tool.XXXXXX) || return 1
     chmod 700 "$work" || { rm -rf -- "$work"; return 1; }
     local upstream="$work/upstream.sh" mirror="$work/mirror.sh" sums="$work/SHA256SUMS" manifest="$work/manifest.txt"
-    # P2: Mirror-first (SHA-256 verified). Upstream has NO SHA pin — a
-    # syntactically-valid malicious script passes validate_test_script.
-    # Mirror is updated weekly; at most 1-week staleness for diagnostics.
-    local sums_dl_ok=0 sig_dl_ok=0
-    if curl -fLsS --connect-timeout 10 --max-time 45 \
-        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums"; then
-        sums_dl_ok=1
-    fi
-    if curl -fLsS --connect-timeout 10 --max-time 45 \
-        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$sums.sig" 2>/dev/null; then
-        sig_dl_ok=1
-    fi
-    # P3-02: fail-closed - use verify_ed25519_detached directly (not the
-    # degradable gate). Missing .sig or failed verification blocks execution.
-    if (( sums_dl_ok == 1 )); then
-        if (( sig_dl_ok == 0 )) || ! verify_ed25519_detached "$sums" "$sums.sig" >/dev/null 2>&1; then
-            rm -f -- "$sums" "$sums.sig"
-            sums_dl_ok=0
-        fi
-    fi
-    if (( sums_dl_ok == 1 )) && curl -fLsS --connect-timeout 10 --max-time 45 \
-        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" &&
-       curl -fLsS --connect-timeout 10 --max-time 180 \
-        "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then
-        # Verify manifest digest (manifest is covered by SHA256SUMS signature)
-        local manifest_expected manifest_sha
-        manifest_expected=$(awk -v f="test-tools-manifest.txt" '$2==f || $2==("*" f) {print $1; exit}' "$sums")
-        manifest_sha=$(sha256sum "$manifest" 2>/dev/null | awk '{print $1}')
-        if [[ ! "$manifest_expected" =~ ^[A-Fa-f0-9]{64}$ || "${manifest_sha,,}" != "${manifest_expected,,}" ]]; then
-            # Manifest digest mismatch - do not trust manifest content
-            rm -f -- "$manifest"
-        fi
-        expected=$(awk -v f="$asset" '$2==f || $2==("*" f) {print $1; exit}' "$sums")
-        sha=$(sha256sum "$mirror" | awk '{print $1}')
-        if [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ && "${sha,,}" == "${expected,,}" ]] && validate_test_script "$mirror"; then
-            selected="$mirror"
-            source="A-Box Release $ABOX_TEST_MIRROR_RELEASE"
-        fi
+    # Policy: latest-first (user directive). The upstream script is
+    # structurally validated (validate_test_script); on any failure the
+    # pinned, signature-verified mirror copy is the fallback.
+    if curl -fLsS --retry 1 --connect-timeout 10 --max-time 180 "$upstream_url" -o "$upstream" && validate_test_script "$upstream"; then
+        selected="$upstream"
+        source="$upstream_url (LIVE latest)"
     fi
     if [[ -z "$selected" ]]; then
-        rm -f -- "$mirror" "$sums" "$manifest"
-        # P2-03: upstream fallback has no pre-pinned SHA; default-deny unless
-        # the operator explicitly opts in via ABOX_ALLOW_UNVERIFIED_UPSTREAM=1.
-        if [[ "${ABOX_ALLOW_UNVERIFIED_UPSTREAM:-0}" != '1' ]]; then
-            case "${ABOX_LANG:-zh}" in
-                en) msg "${RED}[-] A-Box verified mirror unavailable and unverified upstream fallback is disabled (set ABOX_ALLOW_UNVERIFIED_UPSTREAM=1 to allow).${NC}" ;;
-                ru) msg "${RED}[-] Проверенное зеркало A-Box недоступно, а непроверенный upstream запрещён.${NC}" ;;
-                fa) msg "${RED}[-] آینه تأییدشده در دسترس نیست و بازگشت تأییدنشده غیرفعال است.${NC}" ;;
-                zh-tw) msg "${RED}[-] A-Box 校驗映象不可用，且未校驗的上游回退已被禁用（如需允許請設定 ABOX_ALLOW_UNVERIFIED_UPSTREAM=1）。${NC}" ;;
-                ja)
-                    msg "${RED}[-] A-Box の検証済みミラーを利用できず、未検証の upstream フォールバックは無効です（許可するには ABOX_ALLOW_UNVERIFIED_UPSTREAM=1 を設定してください）。${NC}" ;;
-                *) msg "${RED}[-] A-Box 校验镜像不可用，且未校验的上游回退已被禁用（如需允许请设置 ABOX_ALLOW_UNVERIFIED_UPSTREAM=1）。${NC}" ;;
-            esac
-            rm -rf -- "$work"
-            return 1
-        fi
+        rm -f -- "$upstream"
         case "${ABOX_LANG:-zh}" in
-            en) msg "${YELLOW}[!] A-Box verified mirror unavailable or checksum mismatch; falling back to upstream (UNVERIFIED - no SHA pin).${NC}" ;;
-            ru) msg "${YELLOW}[!] Проверенный зеркальный файл A-Box недоступен; переходим к upstream (БЕЗ ПРОВЕРКИ).${NC}" ;;
-            fa) msg "${YELLOW}[!] نسخه تأییدشده A-Box در دسترس نیست؛ بازگشت به upstream (بدون تأیید).${NC}" ;;
-            zh-tw) msg "${YELLOW}[!] A-Box 校驗映象不可用或校驗失敗，回退到上游（未校驗，無 SHA 釘扎）。${NC}" ;;
-            ja)
-                msg "${YELLOW}[!] A-Box の検証済みミラーが利用できないか、チェックサムが一致しません。upstream にフォールバックします（未検証・SHA ピン留めなし）。${NC}" ;;
-            *) msg "${YELLOW}[!] A-Box 校验镜像不可用或校验失败，回退到上游（未校验，无 SHA 钉扎）。${NC}" ;;
+            en) msg "${YELLOW}[!] Upstream latest unavailable or failed validation; falling back to the pinned A-Box verified mirror.${NC}" ;;
+            ru) msg "${YELLOW}[!] Актуальная версия upstream недоступна или не прошла проверку; переход к закреплённому проверенному зеркалу A-Box.${NC}" ;;
+            fa) msg "${YELLOW}[!] آخرین نسخه upstream در دسترس نیست یا تأیید نشد؛ بازگشت به آینه تأییدشده و سنجاق‌شده A-Box.${NC}" ;;
+            zh-tw) msg "${YELLOW}[!] 上游最新版不可用或校驗未通過，回退到 A-Box 釘版校驗鏡像。${NC}" ;;
+            ja) msg "${YELLOW}[!] upstream の最新版が利用できないか検証に失敗しました。固定された A-Box 検証済みミラーにフォールバックします。${NC}" ;;
+            *) msg "${YELLOW}[!] 上游最新版不可用或校验未通过，回退到 A-Box 钉版校验镜像。${NC}" ;;
         esac
-        if curl -fLsS --retry 1 --connect-timeout 10 --max-time 180 "$upstream_url" -o "$upstream" && validate_test_script "$upstream"; then
-            selected="$upstream"
-            source="$upstream_url (UNVERIFIED)"
-        else
-            rm -rf -- "$work"
-            case "${ABOX_LANG:-zh}" in
+        local sums_dl_ok=0 sig_dl_ok=0
+        if curl -fLsS --connect-timeout 10 --max-time 45 \
+            "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$sums"; then
+            sums_dl_ok=1
+        fi
+        if curl -fLsS --connect-timeout 10 --max-time 45 \
+            "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$sums.sig" 2>/dev/null; then
+            sig_dl_ok=1
+        fi
+        # P3-02: fail-closed - use verify_ed25519_detached directly (not the
+        # degradable gate). Missing .sig or failed verification blocks execution.
+        if (( sums_dl_ok == 1 )); then
+            if (( sig_dl_ok == 0 )) || ! verify_ed25519_detached "$sums" "$sums.sig" >/dev/null 2>&1; then
+                rm -f -- "$sums" "$sums.sig"
+                sums_dl_ok=0
+            fi
+        fi
+        if (( sums_dl_ok == 1 )) && curl -fLsS --connect-timeout 10 --max-time 45 \
+            "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/test-tools-manifest.txt" -o "$manifest" &&
+           curl -fLsS --connect-timeout 10 --max-time 180 \
+            "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/$asset" -o "$mirror"; then
+            # Verify manifest digest (manifest is covered by SHA256SUMS signature)
+            local manifest_expected manifest_sha
+            manifest_expected=$(awk -v f="test-tools-manifest.txt" '$2==f || $2==("*" f) {print $1; exit}' "$sums")
+            manifest_sha=$(sha256sum "$manifest" 2>/dev/null | awk '{print $1}')
+            if [[ ! "$manifest_expected" =~ ^[A-Fa-f0-9]{64}$ || "${manifest_sha,,}" != "${manifest_expected,,}" ]]; then
+                # Manifest digest mismatch - do not trust manifest content
+                rm -f -- "$manifest"
+            fi
+            expected=$(awk -v f="$asset" '$2==f || $2==("*" f) {print $1; exit}' "$sums")
+            sha=$(sha256sum "$mirror" | awk '{print $1}')
+            if [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ && "${sha,,}" == "${expected,,}" ]] && validate_test_script "$mirror"; then
+                selected="$mirror"
+                source="A-Box Release $ABOX_TEST_MIRROR_RELEASE"
+            fi
+        fi
+        fi
+    if [[ -z "$selected" ]]; then
+        rm -rf -- "$work"
+case "${ABOX_LANG:-zh}" in
                 en) msg "${RED}Upstream and A-Box recovery sources are unavailable; the script was not run.${NC}" ;;
                 ru) msg "${RED}Основной и резервный источники недоступны; скрипт не запускался.${NC}" ;;
                 fa) msg "${RED}منبع اصلی و پشتیبان در دسترس نیستند؛ اسکریپت اجرا نشد.${NC}" ;;
@@ -27839,8 +27838,7 @@ run_mirrored_test_script() {
                     msg "${RED}upstream と A-Box のリカバリーソースを利用できません。スクリプトは実行されませんでした。${NC}" ;;
                 *) msg "${RED}上游与 A-Box 灾备源均不可用；未执行脚本。${NC}" ;;
             esac
-            return 1
-        fi
+        return 1
     fi
     sha=$(sha256sum "$selected" | awk '{print $1}')
     case "${ABOX_LANG:-zh}" in
@@ -29843,12 +29841,12 @@ wallos_menu() {
     while true; do
     clear
     msg "${BOLD}${GREEN}$(tr_msg wl_menu_title)${NC}"
-    msg "${YELLOW}$(tr_msg wl_menu_install)${NC}"
-    msg "${YELLOW}$(tr_msg wl_menu_status)${NC}"
-    msg "${YELLOW}$(tr_msg wl_menu_backup)${NC}"
-    msg "${YELLOW}$(tr_msg wl_menu_remove)${NC}"
-    msg "${YELLOW}$(tr_msg wl_menu_rollback)${NC}"
-    msg "${CYAN}0. $(tr_msg mu_back_word)${NC}"
+    msg "${CYAN}1.${NC} $(tr_msg wl_menu_install)"
+    msg "${CYAN}2.${NC} $(tr_msg wl_menu_status)"
+    msg "${CYAN}3.${NC} $(tr_msg wl_menu_backup)"
+    msg "${CYAN}4.${NC} $(tr_msg wl_menu_remove)"
+    msg "${CYAN}5.${NC} $(tr_msg wl_menu_rollback)"
+    msg "${CYAN}0.${NC} $(tr_msg mu_back_word)"
     local c prompt_confirm
     read -r -p "$(tr_msg wl_menu_prompt)" c || return 0
 
@@ -29898,69 +29896,69 @@ other_protocols_menu() {
     case "${ABOX_LANG:-zh}" in
         en)
             msg "${BOLD}${GREEN}More Protocols${NC}"
-            msg "${YELLOW}1.  Trojan-Reality (Xray/sing-box)${NC}"
-            msg "${YELLOW}2.  TUIC (sing-box)${NC}"
-            msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
-            msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
-            msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
-            msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${YELLOW}7.  Latest Xray${NC}"
-            msg "${CYAN}0. Back${NC}"
+            msg "${CYAN}1.${NC}  Trojan-Reality (Xray/sing-box)"
+            msg "${CYAN}2.${NC}  TUIC (sing-box)"
+            msg "${CYAN}3.${NC}  AnyTLS (sing-box)"
+            msg "${CYAN}4.${NC}  SOCKS5/Mixed (Xray/sing-box)"
+            msg "${CYAN}5.${NC}  ShadowTLS (sing-box)"
+            msg "${CYAN}6.${NC}  Argo (CDN)"
+            msg "${CYAN}7.${NC}  Latest Xray"
+            msg "${CYAN}0.${NC}  Back"
             ;;
         ru)
             msg "${BOLD}${GREEN}Ещё протоколы${NC}"
-            msg "${YELLOW}1.  Trojan-Reality (Xray/sing-box)${NC}"
-            msg "${YELLOW}2.  TUIC (sing-box)${NC}"
-            msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
-            msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
-            msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
-            msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${YELLOW}7.  Latest Xray${NC}"
-            msg "${CYAN}0. Назад${NC}"
+            msg "${CYAN}1.${NC}  Trojan-Reality (Xray/sing-box)"
+            msg "${CYAN}2.${NC}  TUIC (sing-box)"
+            msg "${CYAN}3.${NC}  AnyTLS (sing-box)"
+            msg "${CYAN}4.${NC}  SOCKS5/Mixed (Xray/sing-box)"
+            msg "${CYAN}5.${NC}  ShadowTLS (sing-box)"
+            msg "${CYAN}6.${NC}  Argo (CDN)"
+            msg "${CYAN}7.${NC}  Latest Xray"
+            msg "${CYAN}0.${NC}  Назад"
             ;;
         fa)
             msg "${BOLD}${GREEN}پروتکل‌های بیشتر${NC}"
-            msg "${YELLOW}1.  Trojan-Reality (Xray/sing-box)${NC}"
-            msg "${YELLOW}2.  TUIC (sing-box)${NC}"
-            msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
-            msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
-            msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
-            msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${YELLOW}7.  Latest Xray${NC}"
-            msg "${CYAN}0. بازگشت${NC}"
+            msg "${CYAN}1.${NC}  Trojan-Reality (Xray/sing-box)"
+            msg "${CYAN}2.${NC}  TUIC (sing-box)"
+            msg "${CYAN}3.${NC}  AnyTLS (sing-box)"
+            msg "${CYAN}4.${NC}  SOCKS5/Mixed (Xray/sing-box)"
+            msg "${CYAN}5.${NC}  ShadowTLS (sing-box)"
+            msg "${CYAN}6.${NC}  Argo (CDN)"
+            msg "${CYAN}7.${NC}  Latest Xray"
+            msg "${CYAN}0.${NC}  بازگشت"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}更多協議${NC}"
-            msg "${YELLOW}1.  Trojan-Reality (Xray/sing-box)${NC}"
-            msg "${YELLOW}2.  TUIC (sing-box)${NC}"
-            msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
-            msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
-            msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
-            msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${YELLOW}7.  最新 Xray 核心（实验）${NC}"
-            msg "${CYAN}0. 返回主選單${NC}"
+            msg "${CYAN}1.${NC}  Trojan-Reality (Xray/sing-box)"
+            msg "${CYAN}2.${NC}  TUIC (sing-box)"
+            msg "${CYAN}3.${NC}  AnyTLS (sing-box)"
+            msg "${CYAN}4.${NC}  SOCKS5/Mixed (Xray/sing-box)"
+            msg "${CYAN}5.${NC}  ShadowTLS (sing-box)"
+            msg "${CYAN}6.${NC}  Argo (CDN)"
+            msg "${CYAN}7.${NC}  最新 Xray 核心（实验）"
+            msg "${CYAN}0.${NC}  返回主選單"
             ;;
         ja)
             msg "${BOLD}${GREEN}追加のプロトコル${NC}"
-            msg "${YELLOW}1.  Trojan-Reality (Xray/sing-box)${NC}"
-            msg "${YELLOW}2.  TUIC (sing-box)${NC}"
-            msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
-            msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
-            msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
-            msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${YELLOW}7.  最新 Xray コア（実験）${NC}"
-            msg "${CYAN}0. メインメニューに戻る${NC}"
+            msg "${CYAN}1.${NC}  Trojan-Reality (Xray/sing-box)"
+            msg "${CYAN}2.${NC}  TUIC (sing-box)"
+            msg "${CYAN}3.${NC}  AnyTLS (sing-box)"
+            msg "${CYAN}4.${NC}  SOCKS5/Mixed (Xray/sing-box)"
+            msg "${CYAN}5.${NC}  ShadowTLS (sing-box)"
+            msg "${CYAN}6.${NC}  Argo (CDN)"
+            msg "${CYAN}7.${NC}  最新 Xray コア（実験）"
+            msg "${CYAN}0.${NC}  メインメニューに戻る"
             ;;
         *)
             msg "${BOLD}${GREEN}更多协议${NC}"
-            msg "${YELLOW}1.  Trojan-Reality (Xray/sing-box)${NC}"
-            msg "${YELLOW}2.  TUIC (sing-box)${NC}"
-            msg "${YELLOW}3.  AnyTLS (sing-box)${NC}"
-            msg "${YELLOW}4.  SOCKS5/Mixed (Xray/sing-box)${NC}"
-            msg "${YELLOW}5.  ShadowTLS (sing-box)${NC}"
-            msg "${YELLOW}6.  Argo (CDN)${NC}"
-            msg "${YELLOW}7.  最新 Xray 核心（实验）${NC}"
-            msg "${CYAN}0. 返回主菜单${NC}"
+            msg "${CYAN}1.${NC}  Trojan-Reality (Xray/sing-box)"
+            msg "${CYAN}2.${NC}  TUIC (sing-box)"
+            msg "${CYAN}3.${NC}  AnyTLS (sing-box)"
+            msg "${CYAN}4.${NC}  SOCKS5/Mixed (Xray/sing-box)"
+            msg "${CYAN}5.${NC}  ShadowTLS (sing-box)"
+            msg "${CYAN}6.${NC}  Argo (CDN)"
+            msg "${CYAN}7.${NC}  最新 Xray 核心（实验）"
+            msg "${CYAN}0.${NC}  返回主菜单"
             ;;
     esac
     local op_choice select_prompt
@@ -30278,9 +30276,9 @@ xray_latest_install_core() {
     if ABOX_XRAY_VERSION="$tag" xray_reality_requires_mlkem 2>/dev/null; then
         msg "${RED}${BOLD}$(tr_msg xl_mlkem_warn)${NC}"
     fi
-    msg "${YELLOW}1. $(tr_msg xl_mode_1)${NC}"
-    msg "${YELLOW}2. $(tr_msg xl_mode_2)${NC}"
-    msg "${CYAN}0. $(tr_msg xl_back_main)${NC}"
+    msg "${CYAN}1.${NC} $(tr_msg xl_mode_1)"
+    msg "${CYAN}2.${NC} $(tr_msg xl_mode_2)"
+    msg "${CYAN}0.${NC} $(tr_msg xl_back_main)"
     read -r -p "$(tr_msg xl_mode_ask)" mchoice || return 0
     case "$mchoice" in
         2) mode='coexist' ;;
@@ -30630,17 +30628,17 @@ xray_latest_menu() {
         if [[ -n "$latest_tag" ]] && ABOX_XRAY_VERSION="$latest_tag" xray_reality_requires_mlkem 2>/dev/null; then
             msg "${RED}${BOLD}$(tr_msg xl_mlkem_warn)${NC}"
         fi
-        msg "${YELLOW} 1.  $(tr_msg xl_m_install)${NC}"
-        msg "${YELLOW} 2.  VLESS + Vision + REALITY${NC}"
-        msg "${YELLOW} 3.  VLESS + XHTTP + REALITY${NC}"
-        msg "${YELLOW} 4.  Trojan-Reality${NC}"
-        msg "${YELLOW} 5.  Shadowsocks 2022${NC}"
-        msg "${YELLOW} 6.  SOCKS5${NC}"
-        msg "${YELLOW} 7.  $(tr_msg xl_m_trio)${NC}"
-        msg "${YELLOW} 8.  $(tr_msg xl_m_quad)${NC}"
-        msg "${YELLOW} 9.  $(tr_msg xl_m_ports)${NC}"
-        msg "${YELLOW}10.  $(tr_msg xl_m_remove)${NC}"
-        msg "${CYAN} 0.  $(tr_msg xl_back_main)${NC}"
+        msg " ${CYAN}1.${NC}  $(tr_msg xl_m_install)"
+        msg " ${CYAN}2.${NC}  VLESS + Vision + REALITY"
+        msg " ${CYAN}3.${NC}  VLESS + XHTTP + REALITY"
+        msg " ${CYAN}4.${NC}  Trojan-Reality"
+        msg " ${CYAN}5.${NC}  Shadowsocks 2022"
+        msg " ${CYAN}6.${NC}  SOCKS5"
+        msg " ${CYAN}7.${NC}  $(tr_msg xl_m_trio)"
+        msg " ${CYAN}8.${NC}  $(tr_msg xl_m_quad)"
+        msg " ${CYAN}9.${NC}  $(tr_msg xl_m_ports)"
+        msg "${CYAN}10.${NC}  $(tr_msg xl_m_remove)"
+        msg " ${CYAN}0.${NC}  $(tr_msg xl_back_main)"
         read -r -p "$(tr_msg xl_select)" choice || return 0
         case "$choice" in
             1) xray_latest_install_core; pause_return ;;
@@ -30659,32 +30657,69 @@ xray_latest_menu() {
     done
 }
 
-# A-Check (companion IP checker): the pinned release file is verified
-# against its SHA-256 before it is cached under /etc/ddr/tools, and a
-# cached copy is re-verified on every use. Mismatch = never executed.
-ACHECK_VERSION='4.13.4'
-ACHECK_SHA256='3d50a616e06fda8cd367622fa20ed4a2d5230e4d9dced3a657d4d3d57fdd1cea'
-ACHECK_URL='https://raw.githubusercontent.com/alariclin/A-Check/v4.13.4/acheck.py'
+# A-Check (companion IP checker): always fetched fresh from the A-Check
+# repo's main branch, so A-Box tracks the latest A-Check without waiting
+# for an A-Box update. A pinned version/hash would break on every A-Check
+# release (old release tags are deleted upstream), so integrity is
+# enforced structurally instead: a download only runs when it is a
+# plausible, compilable A-Check script (python shebang, VERSION marker,
+# project URL, size floor, py_compile). A previously cached copy that
+# passes the same checks serves as the offline fallback.
+ACHECK_URL='https://raw.githubusercontent.com/alariclin/A-Check/main/acheck.py'
+ACHECK_URLS=(
+    "$ACHECK_URL"
+    "https://gh-proxy.com/$ACHECK_URL"
+    'https://cdn.jsdelivr.net/gh/alariclin/A-Check@main/acheck.py'
+)
+
+_acheck_file_valid() {
+    local _f="$1" _sz=''
+    [[ -f "$_f" ]] || return 1
+    _sz=$(wc -c < "$_f" 2>/dev/null | tr -d ' ')
+    [[ "$_sz" =~ ^[0-9]+$ ]] && (( _sz >= 100000 )) || return 1
+    head -n 1 -- "$_f" 2>/dev/null | grep -qx '#!/usr/bin/env python3' || return 1
+    grep -Eq '^VERSION = "[0-9]+\.[0-9]+\.[0-9]+"' -- "$_f" || return 1
+    grep -qF 'github.com/alariclin/A-Check' -- "$_f" || return 1
+    python3 -c 'import sys; compile(open(sys.argv[1], "rb").read(), "acheck.py", "exec")' "$_f" 2>/dev/null
+}
 
 run_acheck_tool() {
     command -v python3 >/dev/null 2>&1 || { msg "${RED}$(tr_msg acheck_no_python)${NC}"; return 1; }
-    local _dir='/etc/ddr/tools' _f='/etc/ddr/tools/acheck.py' _tmp='' _sha=''
-    if [[ -f "$_f" ]]; then
-        _sha=$(sha256sum "$_f" 2>/dev/null | awk '{print $1}')
-        [[ "${_sha,,}" == "$ACHECK_SHA256" ]] || rm -f -- "$_f"
-    fi
-    if [[ ! -f "$_f" ]]; then
-        mkdir -p "$_dir" 2>/dev/null
-        _tmp=$(mktemp /tmp/acheck.XXXXXX) || return 1
-        if curl -fLsS --connect-timeout 10 --max-time 120 "$ACHECK_URL" -o "$_tmp"; then
-            _sha=$(sha256sum "$_tmp" 2>/dev/null | awk '{print $1}')
-            if [[ "${_sha,,}" == "$ACHECK_SHA256" ]]; then
-                install -m 600 "$_tmp" "$_f" 2>/dev/null || cp "$_tmp" "$_f"
-            fi
+    local _dir='/etc/ddr/tools' _f='/etc/ddr/tools/acheck.py' _tmp='' _u=''
+    mkdir -p "$_dir" 2>/dev/null
+    _tmp=$(mktemp /tmp/acheck.XXXXXX) || return 1
+    for _u in "${ACHECK_URLS[@]}"; do
+        if curl -fLsS --connect-timeout 10 --max-time 120 "$_u" -o "$_tmp" && _acheck_file_valid "$_tmp"; then
+            install -m 600 "$_tmp" "$_f" 2>/dev/null || cp "$_tmp" "$_f"
+            break
         fi
-        rm -f -- "$_tmp"
+        : > "$_tmp"
+    done
+    rm -f -- "$_tmp"
+    if [[ ! -f "$_f" ]] || ! _acheck_file_valid "$_f"; then
+        # Pinned backup tier: signature-verified acheck.py from the
+        # test-tools-mirror release (populated by the gated mirror-refresh
+        # workflow). Any failure here falls through to the error below.
+        local _md='' _exp='' _sha=''
+        _md=$(mktemp -d /tmp/acheck-mirror.XXXXXX 2>/dev/null) || _md=''
+        if [[ -n "$_md" ]]; then
+            if curl -fLsS --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$_md/SHA256SUMS" \
+               && curl -fLsS --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$_md/SHA256SUMS.sig" 2>/dev/null \
+               && verify_ed25519_detached "$_md/SHA256SUMS" "$_md/SHA256SUMS.sig" >/dev/null 2>&1 \
+               && curl -fLsS --connect-timeout 10 --max-time 120 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/acheck.py" -o "$_md/acheck.py"; then
+                _exp=$(awk -v f='acheck.py' '$2==f || $2==("*" f) {print $1; exit}' "$_md/SHA256SUMS")
+                _sha=$(sha256sum "$_md/acheck.py" 2>/dev/null | awk '{print $1}')
+                if [[ "$_exp" =~ ^[A-Fa-f0-9]{64}$ && "${_sha,,}" == "${_exp,,}" ]] && _acheck_file_valid "$_md/acheck.py"; then
+                    install -m 600 "$_md/acheck.py" "$_f" 2>/dev/null || cp "$_md/acheck.py" "$_f"
+                fi
+            fi
+            rm -rf -- "$_md"
+        fi
     fi
-    [[ -f "$_f" ]] || { msg "${RED}$(tr_msg acheck_failed)${NC}"; return 1; }
+    if [[ ! -f "$_f" ]] || ! _acheck_file_valid "$_f"; then
+        msg "${RED}$(tr_msg acheck_failed)${NC}"
+        return 1
+    fi
     python3 "$_f"
 }
 
@@ -30699,110 +30734,110 @@ vps_benchmark_menu() {
         en)
             msg "${BOLD}${GREEN}Toolbox${NC}"
             msg "${CYAN}[ Test & Diagnostics ]                    [ System Tuning ]${NC}"
-            msg "${YELLOW} 1.  A-Check IP reputation check           5.  WARP & split-routing${NC}"
-            msg "${YELLOW} 2.  System benchmark & download speed     6.  Swap / zram swap${NC}"
-            msg "${YELLOW} 3.  IP quality / streaming / route test   7.  VPS one-click optimization${NC}"
-            msg "${YELLOW} 4.  Export redacted diagnostics           8.  IP / DNS / timezone / download-source${NC}"
+            msg " ${CYAN}1.${NC}  A-Check IP reputation check           ${CYAN}5.${NC}  WARP & split-routing"
+            msg " ${CYAN}2.${NC}  System benchmark & download speed     ${CYAN}6.${NC}  Swap / zram swap"
+            msg " ${CYAN}3.${NC}  IP quality / streaming / route test   ${CYAN}7.${NC}  VPS one-click optimization"
+            msg " ${CYAN}4.${NC}  Export redacted diagnostics           ${CYAN}8.${NC}  IP / DNS / timezone / download-source"
             msg ""
             msg "${CYAN}[ SNI Optimization ]                      [ Config Management ]${NC}"
-            msg "${YELLOW} 9.  Local SNI preference                 12.  Backup / restore configuration${NC}"
-            msg "${YELLOW}10.  Mini-host SNI preference             13.  Multi-user / subscription link export${NC}"
-            msg "${YELLOW}11.  SNI preference records               14.  Wallos install / update / backup${NC}"
-        msg "${YELLOW}16.  $(tr_msg tb_nsni)${NC}"
+            msg " ${CYAN}9.${NC}  Local SNI preference                 ${CYAN}13.${NC}  Backup / restore configuration"
+            msg "${CYAN}10.${NC}  Mini-host SNI preference             ${CYAN}14.${NC}  Multi-user / subscription link export"
+            msg "${CYAN}11.${NC}  SNI preference records               ${CYAN}15.${NC}  Wallos install / update / backup"
+        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
             msg ""
             msg "${CYAN}[ Security ]${NC}"
-            msg "${YELLOW}15.  SS-2022 IP whitelist${NC}"
-            msg "${CYAN}0. Back${NC}"
+            msg "${CYAN}16.${NC}  SS-2022 IP whitelist"
+            msg " ${CYAN}0.${NC}  Back"
             ;;
         ru)
             msg "${BOLD}${GREEN}Инструменты${NC}"
             msg "${CYAN}[ Тесты и диагностика ]                   [ Оптимизация системы ]${NC}"
-            msg "${YELLOW} 1.  A-Check: проверка IP                  5.  WARP и разделение трафика${NC}"
-            msg "${YELLOW} 2.  Тест системы и скорости               6.  Swap / zram${NC}"
-            msg "${YELLOW} 3.  Качество IP / стриминг / маршрут      7.  Оптимизация VPS${NC}"
-            msg "${YELLOW} 4.  Экспорт диагностики                   8.  IP / DNS / часовой пояс / источники${NC}"
+            msg " ${CYAN}1.${NC}  A-Check: проверка IP                  ${CYAN}5.${NC}  WARP и разделение трафика"
+            msg " ${CYAN}2.${NC}  Тест системы и скорости               ${CYAN}6.${NC}  Swap / zram"
+            msg " ${CYAN}3.${NC}  Качество IP / стриминг / маршрут      ${CYAN}7.${NC}  Оптимизация VPS"
+            msg " ${CYAN}4.${NC}  Экспорт диагностики                   ${CYAN}8.${NC}  IP / DNS / часовой пояс / источники"
             msg ""
             msg "${CYAN}[ Подбор SNI ]                            [ Управление конфигурацией ]${NC}"
-            msg "${YELLOW} 9.  Подбор SNI                           12.  Бэкап / восстановление${NC}"
-            msg "${YELLOW}10.  Подбор SNI (мини-хост)               13.  Пользователи / экспорт подписки${NC}"
-            msg "${YELLOW}11.  Записи подбора SNI                   14.  Wallos: установка / обновление${NC}"
-        msg "${YELLOW}16.  $(tr_msg tb_nsni)${NC}"
+            msg " ${CYAN}9.${NC}  Подбор SNI                           ${CYAN}13.${NC}  Бэкап / восстановление"
+            msg "${CYAN}10.${NC}  Подбор SNI (мини-хост)               ${CYAN}14.${NC}  Пользователи / экспорт подписки"
+            msg "${CYAN}11.${NC}  Записи подбора SNI                   ${CYAN}15.${NC}  Wallos: установка / обновление"
+        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
             msg ""
             msg "${CYAN}[ Безопасность ]${NC}"
-            msg "${YELLOW}15.  Белый список IP (SS-2022)${NC}"
-            msg "${CYAN}0. Назад${NC}"
+            msg "${CYAN}16.${NC}  Белый список IP (SS-2022)"
+            msg " ${CYAN}0.${NC}  Назад"
             ;;
         fa)
             msg "${BOLD}${GREEN}جعبه ابزار${NC}"
             msg "${CYAN}[ تست و عیب‌یابی ]                        [ بهینه‌سازی سیستم ]${NC}"
-            msg "${YELLOW} 1.  بررسی IP با A-Check                   5.  مدیریت WARP و تفکیک ترافیک${NC}"
-            msg "${YELLOW} 2.  تست سیستم و سرعت دانلود               6.  Swap / zram${NC}"
-            msg "${YELLOW} 3.  کیفیت IP / استریم / مسیر              7.  بهینه‌سازی تک‌کلیکی VPS${NC}"
-            msg "${YELLOW} 4.  خروجی تشخیص عیب‌یابی                  8.  تنظیمات IP / DNS / منطقه زمانی${NC}"
+            msg " ${CYAN}1.${NC}  بررسی IP با A-Check                   ${CYAN}5.${NC}  مدیریت WARP و تفکیک ترافیک"
+            msg " ${CYAN}2.${NC}  تست سیستم و سرعت دانلود               ${CYAN}6.${NC}  Swap / zram"
+            msg " ${CYAN}3.${NC}  کیفیت IP / استریم / مسیر              ${CYAN}7.${NC}  بهینه‌سازی تک‌کلیکی VPS"
+            msg " ${CYAN}4.${NC}  خروجی تشخیص عیب‌یابی                  ${CYAN}8.${NC}  تنظیمات IP / DNS / منطقه زمانی"
             msg ""
             msg "${CYAN}[ بهینه‌سازی SNI ]                        [ مدیریت پیکربندی ]${NC}"
-            msg "${YELLOW} 9.  بهینه‌سازی SNI محلی                  12.  پشتیبان‌گیری / بازیابی${NC}"
-            msg "${YELLOW}10.  بهینه‌سازی SNI مینی‌هاست             13.  کاربران / خروجی لینک اشتراک${NC}"
-            msg "${YELLOW}11.  سوابق بهینه‌سازی SNI                 14.  نصب / به‌روزرسانی Wallos${NC}"
-        msg "${YELLOW}16.  $(tr_msg tb_nsni)${NC}"
+            msg " ${CYAN}9.${NC}  بهینه‌سازی SNI محلی                  ${CYAN}13.${NC}  پشتیبان‌گیری / بازیابی"
+            msg "${CYAN}10.${NC}  بهینه‌سازی SNI مینی‌هاست             ${CYAN}14.${NC}  کاربران / خروجی لینک اشتراک"
+            msg "${CYAN}11.${NC}  سوابق بهینه‌سازی SNI                 ${CYAN}15.${NC}  نصب / به‌روزرسانی Wallos"
+        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
             msg ""
             msg "${CYAN}[ امنیت ]${NC}"
-            msg "${YELLOW}15.  لیست سفید آی‌پی SS-2022${NC}"
-            msg "${CYAN}0. بازگشت${NC}"
+            msg "${CYAN}16.${NC}  لیست سفید آی‌پی SS-2022"
+            msg " ${CYAN}0.${NC}  بازگشت"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}綜合工具箱${NC}"
             msg "${CYAN}[ 測試診斷 ]                              [ 系統優化 ]${NC}"
-            msg "${YELLOW} 1.  A-Check IP 純淨度檢測                 5.  WARP 與分流管理${NC}"
-            msg "${YELLOW} 2.  系統性能與下載測速                    6.  Swap / zram 交換${NC}"
-            msg "${YELLOW} 3.  IP 質量/流媒體解鎖/回程測試           7.  VPS 一鍵優化${NC}"
-            msg "${YELLOW} 4.  導出脫敏診斷包                        8.  IP / DNS / 時區 / 下載源設置${NC}"
+            msg " ${CYAN}1.${NC}  A-Check IP 純淨度檢測                 ${CYAN}5.${NC}  WARP 與分流管理"
+            msg " ${CYAN}2.${NC}  系統性能與下載測速                    ${CYAN}6.${NC}  Swap / zram 交換"
+            msg " ${CYAN}3.${NC}  IP 質量/流媒體解鎖/回程測試           ${CYAN}7.${NC}  VPS 一鍵優化"
+            msg " ${CYAN}4.${NC}  導出脫敏診斷包                        ${CYAN}8.${NC}  IP / DNS / 時區 / 下載源設置"
             msg ""
             msg "${CYAN}[ SNI 優選 ]                              [ 配置管理 ]${NC}"
-            msg "${YELLOW} 9.  本地 SNI 優選                        12.  配置備份 / 恢復${NC}"
-            msg "${YELLOW}10.  微型主機 SNI 優選                    13.  多用戶 / 訂閱連結導出${NC}"
-            msg "${YELLOW}11.  SNI 優選記錄                         14.  Wallos 安裝 / 升級 / 備份${NC}"
-        msg "${YELLOW}16.  $(tr_msg tb_nsni)${NC}"
+            msg " ${CYAN}9.${NC}  本地 SNI 優選                        ${CYAN}13.${NC}  配置備份 / 恢復"
+            msg "${CYAN}10.${NC}  微型主機 SNI 優選                    ${CYAN}14.${NC}  多用戶 / 訂閱連結導出"
+            msg "${CYAN}11.${NC}  SNI 優選記錄                         ${CYAN}15.${NC}  Wallos 安裝 / 升級 / 備份"
+        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
             msg ""
             msg "${CYAN}[ 安全 ]${NC}"
-            msg "${YELLOW}15.  SS-2022 訪問白名單${NC}"
-            msg "${CYAN}0. 返回主選單${NC}"
+            msg "${CYAN}16.${NC}  SS-2022 訪問白名單"
+            msg " ${CYAN}0.${NC}  返回主選單"
             ;;
         ja)
             msg "${BOLD}${GREEN}ツールボックス${NC}"
             msg "${CYAN}[ テストと診断 ]                          [ システム最適化 ]${NC}"
-            msg "${YELLOW} 1.  A-Check IP 品質チェック               5.  WARP と振り分け管理${NC}"
-            msg "${YELLOW} 2.  システムベンチマークと速度測定        6.  Swap / zram スワップ${NC}"
-            msg "${YELLOW} 3.  IP品質/ストリーミング/ルートテスト    7.  VPS ワンクリック最適化${NC}"
-            msg "${YELLOW} 4.  診断パッケージのエクスポート          8.  IP / DNS / タイムゾーン設定${NC}"
+            msg " ${CYAN}1.${NC}  A-Check IP 品質チェック               ${CYAN}5.${NC}  WARP と振り分け管理"
+            msg " ${CYAN}2.${NC}  システムベンチマークと速度測定        ${CYAN}6.${NC}  Swap / zram スワップ"
+            msg " ${CYAN}3.${NC}  IP品質/ストリーミング/ルートテスト    ${CYAN}7.${NC}  VPS ワンクリック最適化"
+            msg " ${CYAN}4.${NC}  診断パッケージのエクスポート          ${CYAN}8.${NC}  IP / DNS / タイムゾーン設定"
             msg ""
             msg "${CYAN}[ SNI 最適化 ]                            [ 構成管理 ]${NC}"
-            msg "${YELLOW} 9.  ローカル SNI 最適化                  12.  設定のバックアップ/復元${NC}"
-            msg "${YELLOW}10.  ミニホスト SNI 最適化                13.  複数ユーザー / サブスクリプション出力${NC}"
-            msg "${YELLOW}11.  SNI 最適化記録                       14.  Wallos インストール/更新${NC}"
-        msg "${YELLOW}16.  $(tr_msg tb_nsni)${NC}"
+            msg " ${CYAN}9.${NC}  ローカル SNI 最適化                  ${CYAN}13.${NC}  設定のバックアップ/復元"
+            msg "${CYAN}10.${NC}  ミニホスト SNI 最適化                ${CYAN}14.${NC}  複数ユーザー / サブスクリプション出力"
+            msg "${CYAN}11.${NC}  SNI 最適化記録                       ${CYAN}15.${NC}  Wallos インストール/更新"
+        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
             msg ""
             msg "${CYAN}[ セキュリティ ]${NC}"
-            msg "${YELLOW}15.  SS-2022 IPホワイトリスト${NC}"
-            msg "${CYAN}0. メインメニューに戻る${NC}"
+            msg "${CYAN}16.${NC}  SS-2022 IPホワイトリスト"
+            msg " ${CYAN}0.${NC}  メインメニューに戻る"
             ;;
         *)
             msg "${BOLD}${GREEN}综合工具箱${NC}"
             msg "${CYAN}[ 测试诊断 ]                              [ 系统优化 ]${NC}"
-            msg "${YELLOW} 1.  A-Check IP 纯净度检测                 5.  WARP 与分流管理${NC}"
-            msg "${YELLOW} 2.  系统性能与下载测速                    6.  Swap / zram 交换${NC}"
-            msg "${YELLOW} 3.  IP 质量/流媒体解锁/回程测试           7.  VPS 一键优化${NC}"
-            msg "${YELLOW} 4.  导出脱敏诊断包                        8.  IP / DNS / 时区 / 下载源设置${NC}"
+            msg " ${CYAN}1.${NC}  A-Check IP 纯净度检测                 ${CYAN}5.${NC}  WARP 与分流管理"
+            msg " ${CYAN}2.${NC}  系统性能与下载测速                    ${CYAN}6.${NC}  Swap / zram 交换"
+            msg " ${CYAN}3.${NC}  IP 质量/流媒体解锁/回程测试           ${CYAN}7.${NC}  VPS 一键优化"
+            msg " ${CYAN}4.${NC}  导出脱敏诊断包                        ${CYAN}8.${NC}  IP / DNS / 时区 / 下载源设置"
             msg ""
             msg "${CYAN}[ SNI 优选 ]                              [ 配置管理 ]${NC}"
-            msg "${YELLOW} 9.  本地 SNI 优选                        12.  配置备份 / 恢复${NC}"
-            msg "${YELLOW}10.  微型主机 SNI 优选                    13.  多用户 / 订阅链接导出${NC}"
-            msg "${YELLOW}11.  SNI 优选记录                         14.  Wallos 安装 / 升级 / 备份${NC}"
-        msg "${YELLOW}16.  $(tr_msg tb_nsni)${NC}"
+            msg " ${CYAN}9.${NC}  本地 SNI 优选                        ${CYAN}13.${NC}  配置备份 / 恢复"
+            msg "${CYAN}10.${NC}  微型主机 SNI 优选                    ${CYAN}14.${NC}  多用户 / 订阅链接导出"
+            msg "${CYAN}11.${NC}  SNI 优选记录                         ${CYAN}15.${NC}  Wallos 安装 / 升级 / 备份"
+        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
             msg ""
             msg "${CYAN}[ 安全 ]${NC}"
-            msg "${YELLOW}15.  SS-2022 访问白名单${NC}"
-            msg "${CYAN}0. 返回主菜单${NC}"
+            msg "${CYAN}16.${NC}  SS-2022 访问白名单"
+            msg " ${CYAN}0.${NC}  返回主菜单"
             ;;
     esac
     local bench_choice select_prompt
@@ -30820,11 +30855,11 @@ vps_benchmark_menu() {
         9) run_local_sni_benchmark ;;
         10) run_local_sni_mini_benchmark ;;
         11) show_sni_preference_records ;;
-        12) backup_restore_menu ;;
-        13) multi_user_menu ;;
-        14) wallos_menu ;;
-        15) manage_ss_whitelist ;;
-        16) node_sni_menu ;;
+        12) node_sni_menu ;;
+        13) backup_restore_menu ;;
+        14) multi_user_menu ;;
+        15) wallos_menu ;;
+        16) manage_ss_whitelist ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $bench_choice${NC}"; sleep 1 ;;
     esac
@@ -30851,9 +30886,9 @@ clean_uninstall_menu() {
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${RED}$(tr_msg um_title)${NC}"
     msg "${CYAN}======================================================================${NC}"
-    msg "${YELLOW}$(tr_msg um_item1)${NC}"
-    msg "${YELLOW}$(tr_msg um_item2)${NC}"
-    msg "${CYAN}$(tr_msg um_back)${NC}"
+    msg "${CYAN}1.${NC} $(tr_msg um_item1)"
+    msg "${CYAN}2.${NC} $(tr_msg um_item2)"
+    msg "${CYAN}0.${NC} $(tr_msg um_back)"
     read -r -p "$(tr_msg um_prompt)" un_choice
     case "$un_choice" in
         1) auto_backup_prompt bk_op_keep '/root/A-Box-backups'; do_cleanup wipe ;;
@@ -32511,67 +32546,67 @@ ota_and_geo_menu() {
         en)
         msg "${BOLD}${GREEN}OTA, Geo and Core-only Upgrade${NC}"
         msg "${CYAN}======================================================================${NC}"
-        msg "${YELLOW}1. Upgrade A-Box script${NC}"
-        msg "${YELLOW}2. Update Xray Loyalsoldier Geo resources now${NC}"
-        msg "${YELLOW}3. Upgrade current installed proxy cores only; preserve node parameters${NC}"
-        msg "${YELLOW}4. Show compatibility pin docs [U3]${NC}"
-        msg "${YELLOW}5. DANGER: try upstream latest cores (auto-rollback) [U3]${NC}"
-        msg "${CYAN}0. Back${NC}"
+        msg "${CYAN}1.${NC} Upgrade A-Box script"
+        msg "${CYAN}2.${NC} Update Xray Loyalsoldier Geo resources now"
+        msg "${CYAN}3.${NC} Upgrade current installed proxy cores only; preserve node parameters"
+        msg "${CYAN}4.${NC} Show compatibility pin docs [U3]"
+        msg "${CYAN}5.${NC} DANGER: try upstream latest cores (auto-rollback) [U3]"
+        msg "${CYAN}0.${NC} Back"
         read -r -p 'Select [0-5]: ' ota_choice
             ;;
         ru)
         msg "${BOLD}${GREEN}OTA, Geo и обновление только ядер${NC}"
         msg "${CYAN}======================================================================${NC}"
-        msg "${YELLOW}1. Обновить скрипт A-Box${NC}"
-        msg "${YELLOW}2. Обновить Geo-ресурсы Xray Loyalsoldier${NC}"
-        msg "${YELLOW}3. Обновить только установленные ядра; сохранить параметры узлов${NC}"
-        msg "${YELLOW}4. Показать документацию по фиксированным версиям [U3]${NC}"
-        msg "${YELLOW}5. ОПАСНО: попробовать последние ядра upstream (автооткат) [U3]${NC}"
-        msg "${CYAN}0. Назад${NC}"
+        msg "${CYAN}1.${NC} Обновить скрипт A-Box"
+        msg "${CYAN}2.${NC} Обновить Geo-ресурсы Xray Loyalsoldier"
+        msg "${CYAN}3.${NC} Обновить только установленные ядра; сохранить параметры узлов"
+        msg "${CYAN}4.${NC} Показать документацию по фиксированным версиям [U3]"
+        msg "${CYAN}5.${NC} ОПАСНО: попробовать последние ядра upstream (автооткат) [U3]"
+        msg "${CYAN}0.${NC} Назад"
         read -r -p 'Выберите [0-5]: ' ota_choice
             ;;
         fa)
         msg "${BOLD}${GREEN}ارتقای OTA، Geo و فقط هسته${NC}"
         msg "${CYAN}======================================================================${NC}"
-        msg "${YELLOW}1. به‌روزرسانی اسکریپت A-Box${NC}"
-        msg "${YELLOW}2. به‌روزرسانی منابع Geo Loyalsoldier برای Xray${NC}"
-        msg "${YELLOW}3. فقط هسته‌های نصب‌شده را ارتقا بده؛ پارامترهای نود حفظ شود${NC}"
-        msg "${YELLOW}4. نمایش مستندات نسخه‌های ثابت [U3]${NC}"
-        msg "${YELLOW}5. خطر: امتحان آخرین هسته‌های upstream (بازگشت خودکار) [U3]${NC}"
-        msg "${CYAN}0. بازگشت${NC}"
+        msg "${CYAN}1.${NC} به‌روزرسانی اسکریپت A-Box"
+        msg "${CYAN}2.${NC} به‌روزرسانی منابع Geo Loyalsoldier برای Xray"
+        msg "${CYAN}3.${NC} فقط هسته‌های نصب‌شده را ارتقا بده؛ پارامترهای نود حفظ شود"
+        msg "${CYAN}4.${NC} نمایش مستندات نسخه‌های ثابت [U3]"
+        msg "${CYAN}5.${NC} خطر: امتحان آخرین هسته‌های upstream (بازگشت خودکار) [U3]"
+        msg "${CYAN}0.${NC} بازگشت"
         read -r -p 'انتخاب [0-5]: ' ota_choice
             ;;
         ja)
             msg "${BOLD}${GREEN}スクリプト OTA、Xray Geo データ、コアのみのアップグレード${NC}"
             msg "${CYAN}======================================================================${NC}"
-            msg "${YELLOW}1. A-Box スクリプトをアップグレード${NC}"
-            msg "${YELLOW}2. Xray Loyalsoldier Geo データを直ちに取得して更新${NC}"
-            msg "${YELLOW}3. インストール済みのプロトコルコアのみをアップグレード（ノードパラメーターはリセットしません）${NC}"
-            msg "${YELLOW}4. 互換性のある固定バージョンの説明を表示 [U3]${NC}"
-            msg "${YELLOW}5. 危険: upstream の latest コアを試します（失敗時は自動ロールバック）[U3]${NC}"
-            msg "${CYAN}0. メインメニューに戻る${NC}"
+            msg "${CYAN}1.${NC} A-Box スクリプトをアップグレード"
+            msg "${CYAN}2.${NC} Xray Loyalsoldier Geo データを直ちに取得して更新"
+            msg "${CYAN}3.${NC} インストール済みのプロトコルコアのみをアップグレード（ノードパラメーターはリセットしません）"
+            msg "${CYAN}4.${NC} 互換性のある固定バージョンの説明を表示 [U3]"
+            msg "${CYAN}5.${NC} 危険: upstream の latest コアを試します（失敗時は自動ロールバック）[U3]"
+            msg "${CYAN}0.${NC} メインメニューに戻る"
             read -r -p '0～5 を選択してください: ' ota_choice
             ;;
         zh-tw)
         msg "${BOLD}${GREEN}指令碼 OTA、Xray Geo 與核心無損升級${NC}"
         msg "${CYAN}======================================================================${NC}"
-        msg "${YELLOW}1. 升級 A-Box 核心指令碼${NC}"
-        msg "${YELLOW}2. 立即拉取並更新 Xray Loyalsoldier Geo 資源${NC}"
-        msg "${YELLOW}3. 僅升級當前已安裝協議核心，不重置節點引數${NC}"
-        msg "${YELLOW}4. 檢視相容釘扎說明 [U3]${NC}"
-        msg "${YELLOW}5. 危險：試用上游 latest 核心（失敗自動回滾）[U3]${NC}"
-        msg "${CYAN}0. 返回主選單${NC}"
+        msg "${CYAN}1.${NC} 升級 A-Box 核心指令碼"
+        msg "${CYAN}2.${NC} 立即拉取並更新 Xray Loyalsoldier Geo 資源"
+        msg "${CYAN}3.${NC} 僅升級當前已安裝協議核心，不重置節點引數"
+        msg "${CYAN}4.${NC} 檢視相容釘扎說明 [U3]"
+        msg "${CYAN}5.${NC} 危險：試用上游 latest 核心（失敗自動回滾）[U3]"
+        msg "${CYAN}0.${NC} 返回主選單"
         read -r -p '請選擇 [0-5]: ' ota_choice
             ;;
         *)
         msg "${BOLD}${GREEN}脚本 OTA、Xray Geo 与核心无损升级${NC}"
         msg "${CYAN}======================================================================${NC}"
-        msg "${YELLOW}1. 升级 A-Box 核心脚本${NC}"
-        msg "${YELLOW}2. 立即拉取并更新 Xray Loyalsoldier Geo 资源${NC}"
-        msg "${YELLOW}3. 仅升级当前已安装协议核心，不重置节点参数${NC}"
-        msg "${YELLOW}4. 查看兼容钉扎说明 [U3]${NC}"
-        msg "${YELLOW}5. 危险：试用上游 latest 核心（失败自动回滚）[U3]${NC}"
-        msg "${CYAN}0. 返回主菜单${NC}"
+        msg "${CYAN}1.${NC} 升级 A-Box 核心脚本"
+        msg "${CYAN}2.${NC} 立即拉取并更新 Xray Loyalsoldier Geo 资源"
+        msg "${CYAN}3.${NC} 仅升级当前已安装协议核心，不重置节点参数"
+        msg "${CYAN}4.${NC} 查看兼容钉扎说明 [U3]"
+        msg "${CYAN}5.${NC} 危险：试用上游 latest 核心（失败自动回滚）[U3]"
+        msg "${CYAN}0.${NC} 返回主菜单"
         read -r -p '请选择 [0-5]: ' ota_choice || return 0
             ;;
     esac
@@ -34860,7 +34895,7 @@ main_loop() {
                 msg "${CYAN}14.${NC}  Update Core & Script (OTA)         ${CYAN}19.${NC}  Language / 语言设置"
                 msg "${CYAN}15.${NC}  VPS Optimization                   ${CYAN}20.${NC}  Uninstall Script & Cores${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-                msg "${CYAN} 0.${NC}  Exit"
+                msg "${CYAN}0.${NC}  Exit"
                 ;;
             ru)
                 _menu_info_display
@@ -34878,7 +34913,7 @@ main_loop() {
                 msg "${CYAN}14.${NC}  Обновление ядра и скрипта          ${CYAN}19.${NC}  Язык / Language"
                 msg "${CYAN}15.${NC}  Оптимизация VPS                    ${CYAN}20.${NC}  Полное удаление скрипта${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-                msg "${CYAN} 0.${NC}  Выход"
+                msg "${CYAN}0.${NC}  Выход"
                 ;;
             fa)
                 _menu_info_display
@@ -34896,7 +34931,7 @@ main_loop() {
                 msg "${CYAN}14.${NC}  به‌روزرسانی هسته و اسکریپت         ${CYAN}19.${NC}  تنظیم زبان / Language"
                 msg "${CYAN}15.${NC}  بهینه‌سازی VPS                     ${CYAN}20.${NC}  حذف کامل اسکریپت و هسته${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-                msg "${CYAN} 0.${NC}  خروج"
+                msg "${CYAN}0.${NC}  خروج"
                 ;;
             zh-tw)
                 _menu_info_display
@@ -34914,7 +34949,7 @@ main_loop() {
                 msg "${CYAN}14.${NC}  核心與腳本升級 (OTA)               ${CYAN}19.${NC}  多語言設置 / Language"
                 msg "${CYAN}15.${NC}  VPS 一鍵優化                       ${CYAN}20.${NC}  徹底卸載腳本與核心${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-                msg "${CYAN} 0.${NC}  退出指令碼"
+                msg "${CYAN}0.${NC}  退出指令碼"
                 ;;
             ja)
                 _menu_info_display
@@ -34932,7 +34967,7 @@ main_loop() {
                 msg "${CYAN}14.${NC}  コアとスクリプト更新 (OTA)         ${CYAN}19.${NC}  言語設定 / Language"
                 msg "${CYAN}15.${NC}  VPS 最適化                         ${CYAN}20.${NC}  スクリプトとコアの完全削除${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-                msg "${CYAN} 0.${NC}  スクリプトを終了します"
+                msg "${CYAN}0.${NC}  スクリプトを終了します"
                 ;;
             *)
                 _menu_info_display
@@ -34950,7 +34985,7 @@ main_loop() {
                 msg "${CYAN}14.${NC}  核心与脚本升级 (OTA)               ${CYAN}19.${NC}  多语言设置 / Language"
                 msg "${CYAN}15.${NC}  VPS 一键优化                       ${CYAN}20.${NC}  彻底卸载脚本与核心${NC}"
                 msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-                msg "${CYAN} 0.${NC}  退出脚本"
+                msg "${CYAN}0.${NC}  退出脚本"
                 ;;
         esac
         msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"

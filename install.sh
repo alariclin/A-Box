@@ -2700,6 +2700,66 @@ tr_msg() {
         fa:dp_cancelled) echo 'استقرار لغو شد.' ;;
         zh-tw:dp_cancelled) echo '已取消部署。' ;;
         ja:dp_cancelled) echo '導入をキャンセルしました。' ;;
+        zh:dp_ports_title) echo '当前端口占用（端口 → 协议）：' ;;
+        en:dp_ports_title) echo 'Ports currently in use (port -> protocol):' ;;
+        ru:dp_ports_title) echo 'Занятые сейчас порты (порт -> протокол):' ;;
+        fa:dp_ports_title) echo 'پورت‌های در حال استفاده (پورت → پروتکل):' ;;
+        zh-tw:dp_ports_title) echo '目前連接埠占用（連接埠 → 協定）：' ;;
+        ja:dp_ports_title) echo '現在使用中のポート（ポート → プロトコル）:' ;;
+        zh:dp_ports_none) echo '（未检测到占用中的端口）' ;;
+        en:dp_ports_none) echo '(no ports in use detected)' ;;
+        ru:dp_ports_none) echo '(занятых портов не обнаружено)' ;;
+        fa:dp_ports_none) echo '(پورتی در حال استفاده یافت نشد)' ;;
+        zh-tw:dp_ports_none) echo '（未偵測到占用中的連接埠）' ;;
+        ja:dp_ports_none) echo '(使用中のポートは検出されませんでした)' ;;
+        zh:dp_ports_external) echo '外部进程/未知' ;;
+        en:dp_ports_external) echo 'external/unknown process' ;;
+        ru:dp_ports_external) echo 'внешний/неизвестный процесс' ;;
+        fa:dp_ports_external) echo 'فرایند خارجی/ناشناخته' ;;
+        zh-tw:dp_ports_external) echo '外部程序/未知' ;;
+        ja:dp_ports_external) echo '外部プロセス/不明' ;;
+        zh:dp_choice_overwrite) echo '1) 覆盖部署 — 清除现有部署后重新部署（现有独立协议将被删除）' ;;
+        en:dp_choice_overwrite) echo '1) Overwrite - wipe the current deployment and redeploy (existing standalone protocols will be removed)' ;;
+        ru:dp_choice_overwrite) echo '1) Перезапись - снести текущее развёртывание и развернуть заново (отдельные протоколы будут удалены)' ;;
+        fa:dp_choice_overwrite) echo '1) بازنویسی - حذف استقرار فعلی و استقرار دوباره (پروتکل‌های مستقل موجود حذف می‌شوند)' ;;
+        zh-tw:dp_choice_overwrite) echo '1) 覆蓋部署 — 清除現有部署後重新部署（現有獨立協定將被刪除）' ;;
+        ja:dp_choice_overwrite) echo '1) 上書き - 現在のデプロイを消去して再デプロイ（既存の独立プロトコルは削除されます）' ;;
+        zh:dp_choice_preserve) echo '2) 保留独立协议 — 仅部署所选内容，已有独立协议（TUIC/AnyTLS/ShadowTLS/Trojan/SOCKS5/Argo）保留并入新配置' ;;
+        en:dp_choice_preserve) echo '2) Keep standalone protocols - deploy only the selection; existing standalones (TUIC/AnyTLS/ShadowTLS/Trojan/SOCKS5/Argo) are kept and merged into the new config' ;;
+        ru:dp_choice_preserve) echo '2) Сохранить отдельные протоколы - развернуть только выбранное; существующие (TUIC/AnyTLS/ShadowTLS/Trojan/SOCKS5/Argo) сохраняются в новой конфигурации' ;;
+        fa:dp_choice_preserve) echo '2) نگه‌داشتن پروتکل‌های مستقل - فقط موارد انتخابی مستقر می‌شود؛ پروتکل‌های مستقل موجود (TUIC/AnyTLS/ShadowTLS/Trojan/SOCKS5/Argo) حفظ و در پیکربندی جدید ادغام می‌شوند' ;;
+        zh-tw:dp_choice_preserve) echo '2) 保留獨立協定 — 僅部署所選內容，已有獨立協定（TUIC/AnyTLS/ShadowTLS/Trojan/SOCKS5/Argo）保留並入新設定' ;;
+        ja:dp_choice_preserve) echo '2) 独立プロトコルを保持 - 選択分のみデプロイし、既存の独立プロトコル（TUIC/AnyTLS/ShadowTLS/Trojan/SOCKS5/Argo）を新設定に統合します' ;;
+        zh:dp_choice_prompt) echo '请选择 [1/2，N 取消]: ' ;;
+        en:dp_choice_prompt) echo 'Choose [1/2, N to cancel]: ' ;;
+        ru:dp_choice_prompt) echo 'Выберите [1/2, N - отмена]: ' ;;
+        fa:dp_choice_prompt) echo 'انتخاب کنید [1/2، N برای لغو]: ' ;;
+        zh-tw:dp_choice_prompt) echo '請選擇 [1/2，N 取消]: ' ;;
+        ja:dp_choice_prompt) echo '選択してください [1/2、N でキャンセル]: ' ;;
+        zh:dp_preserve_on) echo '已选择保留模式：现有独立协议将保留。' ;;
+        en:dp_preserve_on) echo 'Keep mode selected: existing standalone protocols will be preserved.' ;;
+        ru:dp_preserve_on) echo 'Выбран режим сохранения: существующие отдельные протоколы будут сохранены.' ;;
+        fa:dp_preserve_on) echo 'حالت نگه‌داشتن انتخاب شد: پروتکل‌های مستقل موجود حفظ می‌شوند.' ;;
+        zh-tw:dp_preserve_on) echo '已選擇保留模式：現有獨立協定將保留。' ;;
+        ja:dp_preserve_on) echo '保持モードを選択しました：既存の独立プロトコルは保持されます。' ;;
+        zh:dp_preserve_ok) echo '已保留 %s 个独立协议入站并入新配置。' ;;
+        en:dp_preserve_ok) echo 'Preserved %s standalone inbound(s) into the new config.' ;;
+        ru:dp_preserve_ok) echo 'Сохранено %s отдельных входящих в новую конфигурацию.' ;;
+        fa:dp_preserve_ok) echo '%s ورودی مستقل در پیکربندی جدید حفظ شد.' ;;
+        zh-tw:dp_preserve_ok) echo '已保留 %s 個獨立協定入站並入新設定。' ;;
+        ja:dp_preserve_ok) echo '独立インバウンド %s 件を新設定に保持しました。' ;;
+        zh:dp_preserve_conflict) echo '以下独立协议的端口与新部署冲突，已跳过保留：%s' ;;
+        en:dp_preserve_conflict) echo 'These standalone protocols were skipped (port conflicts with the new deployment): %s' ;;
+        ru:dp_preserve_conflict) echo 'Пропущены отдельные протоколы (конфликт портов с новым развёртыванием): %s' ;;
+        fa:dp_preserve_conflict) echo 'این پروتکل‌های مستقل رد شدند (تداخل پورت با استقرار جدید): %s' ;;
+        zh-tw:dp_preserve_conflict) echo '以下獨立協定的連接埠與新部署衝突，已跳過保留：%s' ;;
+        ja:dp_preserve_conflict) echo '次の独立プロトコルはポート競合のため保持をスキップしました: %s' ;;
+        zh:dp_preserve_fail) echo '独立协议保留失败（%s），已回退为仅新配置；独立协议可通过「更多协议」重新添加。' ;;
+        en:dp_preserve_fail) echo 'Standalone preservation failed (%s); continuing with the new config only. Standalones can be re-added from More Protocols.' ;;
+        ru:dp_preserve_fail) echo 'Сохранить отдельные протоколы не удалось (%s); продолжаю только с новой конфигурацией. Их можно добавить заново в разделе «Ещё протоколы».' ;;
+        fa:dp_preserve_fail) echo 'حفظ پروتکل‌های مستقل ناموفق بود (%s)؛ فقط با پیکربندی جدید ادامه داده می‌شود. پروتکل‌ها را می‌توان از «پروتکل‌های بیشتر» دوباره افزود.' ;;
+        zh-tw:dp_preserve_fail) echo '獨立協定保留失敗（%s），已回退為僅新設定；獨立協定可透過「更多協定」重新加入。' ;;
+        ja:dp_preserve_fail) echo '独立プロトコルの保持に失敗しました（%s）。新設定のみで続行します。独立プロトコルは「その他のプロトコル」から再追加できます。' ;;
         zh:pv_eof) echo '输入结束，未获得有效的 %s' ;;
         en:pv_eof) echo 'EOF reached without valid %s' ;;
         ru:pv_eof) echo 'ввод завершён без допустимого значения %s' ;;
@@ -9737,6 +9797,7 @@ deployment_evidence_exists() {
 
 confirm_deployment_replacement() {
     local next_core="$1" next_mode="$2" answer current="none" active_rc=1
+    ABOX_PRESERVE_STANDALONE=0
     [[ -n "${CORE:-}" || -n "${MODE:-}" ]] && current="${CORE:-unknown}-${MODE:-unknown}"
     if [[ "$current" == 'none' ]]; then
         # Do not trust ambient globals alone: reload the recorded
@@ -9769,8 +9830,139 @@ confirm_deployment_replacement() {
     msg "${YELLOW}[!] $(tr_msg dp_stop_warn)${NC}"
     msg "$(tprintf dp_current "$current" "${next_core}-${next_mode}")"
     # Critical when replacing existing config/services: never auto-yes in fast mode.
-    read -r -p "$(tr_msg dp_continue)" answer
-    is_yes "$answer" || die "$(tr_msg dp_cancelled)"
+    print_port_occupancy
+    msg "$(tr_msg dp_choice_overwrite)"
+    msg "$(tr_msg dp_choice_preserve)"
+    read -r -p "$(tr_msg dp_choice_prompt)" answer
+    case "$answer" in
+        2) ABOX_PRESERVE_STANDALONE=1; msg "${GREEN}$(tr_msg dp_preserve_on)${NC}" ;;
+        1) ;;
+        *) is_yes "$answer" || die "$(tr_msg dp_cancelled)" ;;
+    esac
+    export ABOX_PRESERVE_STANDALONE
+}
+
+standalone_tag_set() { # $1 = core -> standalone inbound tags, one per line
+    case "$1" in
+        sing-box) printf '%s\n' trojan-landing tuic-in anytls-in shadowtls-in socks5-landing mixed-in socks-in vmess-ws-in vless-ws-in ;;
+        xray) printf '%s\n' trojan-landing socks5-landing ;;
+        *) return 1 ;;
+    esac
+}
+
+print_port_occupancy() { # read-only: port -> protocol/owner map
+    local any=0 known='' seen_ext='' cfg='' port='' proto='' tag='' _netid='' _local=''
+    msg "${CYAN}$(tr_msg dp_ports_title)${NC}"
+    if command -v jq >/dev/null 2>&1; then
+        cfg='/etc/sing-box/config.json'
+        if [[ -f "$cfg" ]]; then
+            while IFS=$'\t' read -r port proto tag; do
+                [[ -n "$port" ]] || continue
+                msg "  ${port} -> ${proto} [${tag}] (sing-box)"
+                known+=" $port"; any=1
+            done < <(jq -r '.inbounds[]? | select(.listen_port != null) | [(.listen_port|tostring), (.type // "?"), (.tag // "-")] | @tsv' "$cfg" 2>/dev/null)
+        fi
+        cfg='/usr/local/etc/xray/config.json'
+        if [[ -f "$cfg" ]]; then
+            while IFS=$'\t' read -r port proto tag; do
+                [[ -n "$port" ]] || continue
+                msg "  ${port} -> ${proto} [${tag}] (xray)"
+                known+=" $port"; any=1
+            done < <(jq -r '.inbounds[]? | select(.port != null) | [(.port|tostring), (.protocol // "?"), (.tag // "-")] | @tsv' "$cfg" 2>/dev/null)
+        fi
+    fi
+    if [[ -n "${HY2_PORT:-}" ]]; then
+        msg "  ${HY2_PORT} -> hysteria2 [hy2-official] (hysteria)"
+        known+=" ${HY2_PORT}"; any=1
+    fi
+    if command -v ss >/dev/null 2>&1; then
+        while read -r _netid _local; do
+            port="${_local##*:}"
+            [[ "$port" =~ ^[0-9]+$ ]] || continue
+            case " $known " in *" $port "*) continue ;; esac
+            case " $seen_ext " in *" $port "*) continue ;; esac
+            seen_ext+=" $port"
+            msg "  ${port} -> $(tr_msg dp_ports_external)"
+            any=1
+        done < <(ss -tulnH 2>/dev/null | awk '{print $1, $5}')
+    fi
+    [[ "$any" == 1 ]] || msg "  $(tr_msg dp_ports_none)"
+    return 0
+}
+
+standalone_preserve_snapshot() { # $1 = core, $2 = config path
+    ABOX_PRESERVE_FILE=''
+    [[ "${ABOX_PRESERVE_STANDALONE:-0}" == '1' ]] || return 0
+    local cfg="$2" pat='' out='' n=0
+    [[ -f "$cfg" ]] || return 0
+    command -v jq >/dev/null 2>&1 || return 0
+    pat=$(standalone_tag_set "$1" | paste -sd'|' -) || return 0
+    [[ -n "$pat" ]] || return 0
+    out=$(mktemp /tmp/A-Box-preserve.XXXXXX.json) || return 0
+    if jq --arg pat "^(${pat})$" '[.inbounds[]? | select((.tag // "") | test($pat))]' "$cfg" > "$out" 2>/dev/null; then
+        n=$(jq 'length' "$out" 2>/dev/null || printf '0')
+        if [[ "$n" =~ ^[0-9]+$ ]] && (( n > 0 )); then
+            ABOX_PRESERVE_FILE="$out"
+            export ABOX_PRESERVE_FILE
+            return 0
+        fi
+    fi
+    rm -f -- "$out"
+    return 0
+}
+
+standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
+    [[ "${ABOX_PRESERVE_STANDALONE:-0}" == '1' ]] || return 0
+    [[ -n "${ABOX_PRESERVE_FILE:-}" && -f "${ABOX_PRESERVE_FILE:-}" ]] || return 0
+    local cfg="$2" bak='' merged='' keepf='' attempt='' ok=0 added=0 dropped='' before=0 after=0
+    if ! command -v jq >/dev/null 2>&1; then
+        rm -f -- "$ABOX_PRESERVE_FILE"; ABOX_PRESERVE_FILE=''
+        return 0
+    fi
+    bak=$(mktemp /tmp/A-Box-preserve-bak.XXXXXX.json) || return 0
+    merged=$(mktemp /tmp/A-Box-preserve-new.XXXXXX.json) || { rm -f -- "$bak"; return 0; }
+    keepf=$(mktemp /tmp/A-Box-preserve-keep.XXXXXX.json) || { rm -f -- "$bak" "$merged"; return 0; }
+    cp -- "$cfg" "$bak" 2>/dev/null || { rm -f -- "$bak" "$merged" "$keepf" "$ABOX_PRESERVE_FILE"; ABOX_PRESERVE_FILE=''; return 0; }
+    for attempt in full nost; do
+        if [[ "$attempt" == nost ]]; then
+            jq '[.[] | select(.tag != "shadowtls-in")]' "$ABOX_PRESERVE_FILE" > "$keepf" 2>/dev/null || continue
+        else
+            cp -- "$ABOX_PRESERVE_FILE" "$keepf" || continue
+        fi
+        jq --slurpfile keep "$keepf" '
+            (.inbounds // []) as $cur
+            | ($cur | map(.listen_port // .port) | map(select(. != null))) as $used
+            | [$keep[0][] | select(
+                (.tag as $t | ($cur | map(.tag) | index($t)) == null)
+                and (((.listen_port // .port) == null)
+                     or (((.listen_port // .port) as $p | ($used | index($p)) == null))))] as $add
+            | .inbounds = ($cur + $add)' "$bak" > "$merged" 2>/dev/null || continue
+        jq empty "$merged" >/dev/null 2>&1 || continue
+        install_file_atomically "$merged" "$cfg" 600 || continue
+        case "$1" in
+            xray) /usr/local/bin/xray run -test -config "$cfg" >/dev/null 2>&1 && ok=1 ;;
+            sing-box) /usr/local/bin/sing-box check -c "$cfg" >/dev/null 2>&1 && ok=1 ;;
+            *) ok=1 ;;
+        esac
+        if (( ok == 1 )); then break; fi
+        cp -- "$bak" "$cfg" 2>/dev/null || true
+        chmod 600 "$cfg" 2>/dev/null || true
+    done
+    if (( ok == 1 )); then
+        before=$(jq '.inbounds | length' "$bak" 2>/dev/null || printf '0')
+        after=$(jq '.inbounds | length' "$cfg" 2>/dev/null || printf '0')
+        added=$(( after - before ))
+        dropped=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag as $t | ($now[0].inbounds | map(.tag) | index($t)) == null) | .tag] | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
+        if (( added > 0 )); then msg "${GREEN}$(tprintf dp_preserve_ok "$added")${NC}"; fi
+        if [[ -n "$dropped" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict "$dropped")${NC}"; fi
+    else
+        cp -- "$bak" "$cfg" 2>/dev/null || true
+        chmod 600 "$cfg" 2>/dev/null || true
+        msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'check')${NC}"
+    fi
+    rm -f -- "$bak" "$merged" "$keepf" "$ABOX_PRESERVE_FILE"
+    ABOX_PRESERVE_FILE=''
+    return 0
 }
 
 service_report_state() {
@@ -16738,6 +16930,7 @@ deploy_with_instance_choice() {
     local core="$1" btag="$2"; shift 2
     local cfg='' exists=0
     cfg=$(users_cfg_of "$core" 2>/dev/null || true)
+    print_port_occupancy
     if [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$btag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; then exists=1; fi
     if (( exists == 0 )); then "$@"; return $?; fi
     msg "${YELLOW}$(tr_msg mu_inst_exists) (${btag})${NC}"
@@ -18223,6 +18416,7 @@ deploy_xray() {
     light_preflight_check
     if [[ "$MODE_IN" == *'ALL'* ]]; then assert_no_foreign_core_conflicts xray hysteria; else assert_no_foreign_core_conflicts xray; fi
     confirm_deployment_replacement xray "$MODE_IN"
+    standalone_preserve_snapshot xray /usr/local/etc/xray/config.json
     if [[ "$MODE_IN" == *'ALL'* ]]; then begin_deployment_transaction "xray ${MODE_IN} deployment" xray hysteria; else begin_deployment_transaction "xray ${MODE_IN} deployment" xray; fi
     release_ports
     clean_nat_rules || die "$(tr_msg cl_nat)"
@@ -18271,6 +18465,7 @@ deploy_xray() {
     chmod 600 /usr/local/etc/xray/config.json || die 'Xray config permission hardening failed.'
     jq empty /usr/local/etc/xray/config.json >/dev/null 2>&1 || die "$(tr_msg dp_xray_json)"
     /usr/local/bin/xray run -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1 || die "$(tr_msg dp_xray_check)"
+    standalone_preserve_restore xray /usr/local/etc/xray/config.json
 
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die "$(tr_msg dp_xray_unit)"
@@ -18351,6 +18546,7 @@ deploy_singbox() {
     light_preflight_check
     assert_no_foreign_core_conflicts sing-box
     confirm_deployment_replacement singbox "$MODE_IN"
+    standalone_preserve_snapshot sing-box /etc/sing-box/config.json
     begin_deployment_transaction "sing-box ${MODE_IN} deployment" sing-box
     release_ports
     clean_nat_rules || die "$(tr_msg cl_nat)"
@@ -18399,6 +18595,7 @@ deploy_singbox() {
     chmod 600 /etc/sing-box/config.json || die 'Sing-box config permission hardening failed.'
     jq empty /etc/sing-box/config.json >/dev/null 2>&1 || die "$(tr_msg dp_sb_json)"
     /usr/local/bin/sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1 || die "$(tr_msg dp_sb_check)"
+    standalone_preserve_restore sing-box /etc/sing-box/config.json
 
     if [[ "$MODE_IN" == *'HY2'* || "$MODE_IN" == *'ALL'* ]] && [[ "${HY2_HOP:-}" == 'true' ]]; then
         # A-02: CAP_NET_ADMIN removed (see HY2_CAPS).

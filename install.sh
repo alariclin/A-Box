@@ -31220,7 +31220,7 @@ ensure_qrencode() {
     elif command -v yum >/dev/null 2>&1; then
         yum -y install qrencode >/dev/null 2>&1 || true
     elif command -v apk >/dev/null 2>&1; then
-        apk add --no-cache qrencode >/dev/null 2>&1 || true
+        apk add --no-cache libqrencode-tools >/dev/null 2>&1 || true
     fi
     command -v qrencode >/dev/null 2>&1
 }

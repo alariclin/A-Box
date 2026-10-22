@@ -34800,9 +34800,14 @@ main_loop() {
     GLOBAL_PUBLIC_IP=$(get_public_ip_swr || true)
     while true; do
         local STATUS_STR='' CUR_MODE='' choice
-        if [[ -z "${_ABOX_STATUS_CACHE:-}" ]] || (( EPOCHSECONDS - ${_ABOX_STATUS_TS:-0} >= 5 )); then
+        # Portable epoch seconds: EPOCHSECONDS is Bash 5.0+ only and
+        # this script supports Bash 4.4 (Rocky/Alma 8) under set -u.
+        local _ml_now=0
+        _ml_now=$(date +%s 2>/dev/null || printf '0')
+        [[ "$_ml_now" =~ ^[0-9]+$ ]] || _ml_now=0
+        if [[ -z "${_ABOX_STATUS_CACHE:-}" ]] || (( _ml_now - ${_ABOX_STATUS_TS:-0} >= 5 )); then
             STATUS_STR=$(build_status_str)
-            _ABOX_STATUS_CACHE="$STATUS_STR"; _ABOX_STATUS_TS=$EPOCHSECONDS
+            _ABOX_STATUS_CACHE="$STATUS_STR"; _ABOX_STATUS_TS=$_ml_now
         else
             STATUS_STR="$_ABOX_STATUS_CACHE"
         fi

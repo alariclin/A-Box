@@ -7295,22 +7295,26 @@ tprintf() {
     # Translation strings are internal, but validate their printf grammar before
     # passing them to printf. Only %s and %% are supported, with %% treated as
     # a literal percent and never counted as a placeholder.
-    [[ "$fmt" != *\\* ]] || die "$(tprintf tp_bad_fmt "$key")"
+    # Error paths inside tprintf must never call tprintf itself: if the
+    # tp_bad_fmt/tp_arg_mismatch translations were the broken ones, the
+    # error report would recurse forever (found by the self-test stubs,
+    # which return a bad format for every key). Use literal fallbacks.
+    [[ "$fmt" != *\\* ]] || die "tprintf: invalid format in translation '$key'"
     len=${#fmt}
     while (( i < len )); do
         if [[ "${fmt:i:1}" == '%' ]]; then
-            (( i + 1 < len )) || die "$(tprintf tp_bad_fmt "$key")"
+            (( i + 1 < len )) || die "tprintf: invalid format in translation '$key'"
             next=${fmt:i+1:1}
             case "$next" in
                 '%') i=$((i + 2)) ;;
                 s) placeholder_count=$((placeholder_count + 1)); i=$((i + 2)) ;;
-                *) die "$(tprintf tp_bad_fmt "$key")" ;;
+                *) die "tprintf: invalid format in translation '$key'" ;;
             esac
         else
             i=$((i + 1))
         fi
     done
-    (( placeholder_count == $# )) || die "$(tprintf tp_arg_mismatch "$key" "$placeholder_count" "$#")"
+    (( placeholder_count == $# )) || die "tprintf: argument count mismatch in translation '$key'"
     printf "$fmt" "$@"
 }
 
@@ -9837,9 +9841,10 @@ confirm_deployment_replacement() {
     case "$answer" in
         2) ABOX_PRESERVE_STANDALONE=1; msg "${GREEN}$(tr_msg dp_preserve_on)${NC}" ;;
         1) ;;
-        *) is_yes "$answer" || die "$(tr_msg dp_cancelled)" ;;
+        *) is_yes "$answer" || { die "$(tr_msg dp_cancelled)"; return 1; } ;;
     esac
     export ABOX_PRESERVE_STANDALONE
+    return 0
 }
 
 standalone_tag_set() { # $1 = core -> standalone inbound tags, one per line
@@ -9853,22 +9858,34 @@ standalone_tag_set() { # $1 = core -> standalone inbound tags, one per line
 print_port_occupancy() { # read-only: port -> protocol/owner map
     local any=0 known='' seen_ext='' cfg='' port='' proto='' tag='' _netid='' _local=''
     msg "${CYAN}$(tr_msg dp_ports_title)${NC}"
+    # Rows are consumed via mapfile + field splitting, never the read
+    # builtin: a caller (or the self-test) may shadow read, and a
+    # while-read loop over process substitution would then never see
+    # EOF and spin forever (2026-10-22 self-test hang).
     if command -v jq >/dev/null 2>&1; then
         cfg='/etc/sing-box/config.json'
         if [[ -f "$cfg" ]]; then
-            while IFS=$'\t' read -r port proto tag; do
+            local -a _rows=()
+            mapfile -t _rows < <(jq -r '.inbounds[]? | select(.listen_port != null) | [(.listen_port|tostring), (.type // "?"), (.tag // "-")] | @tsv' "$cfg" 2>/dev/null)
+            local _row='' _rest=''
+            for _row in "${_rows[@]}"; do
+                port="${_row%%$'\t'*}"; _rest="${_row#*$'\t'}"; proto="${_rest%%$'\t'*}"; tag="${_rest#*$'\t'}"
                 [[ -n "$port" ]] || continue
                 msg "  ${port} -> ${proto} [${tag}] (sing-box)"
                 known+=" $port"; any=1
-            done < <(jq -r '.inbounds[]? | select(.listen_port != null) | [(.listen_port|tostring), (.type // "?"), (.tag // "-")] | @tsv' "$cfg" 2>/dev/null)
+            done
         fi
         cfg='/usr/local/etc/xray/config.json'
         if [[ -f "$cfg" ]]; then
-            while IFS=$'\t' read -r port proto tag; do
+            local -a _rows2=()
+            mapfile -t _rows2 < <(jq -r '.inbounds[]? | select(.port != null) | [(.port|tostring), (.protocol // "?"), (.tag // "-")] | @tsv' "$cfg" 2>/dev/null)
+            local _row='' _rest=''
+            for _row in "${_rows2[@]}"; do
+                port="${_row%%$'\t'*}"; _rest="${_row#*$'\t'}"; proto="${_rest%%$'\t'*}"; tag="${_rest#*$'\t'}"
                 [[ -n "$port" ]] || continue
                 msg "  ${port} -> ${proto} [${tag}] (xray)"
                 known+=" $port"; any=1
-            done < <(jq -r '.inbounds[]? | select(.port != null) | [(.port|tostring), (.protocol // "?"), (.tag // "-")] | @tsv' "$cfg" 2>/dev/null)
+            done
         fi
     fi
     if [[ -n "${HY2_PORT:-}" ]]; then
@@ -9876,7 +9893,11 @@ print_port_occupancy() { # read-only: port -> protocol/owner map
         known+=" ${HY2_PORT}"; any=1
     fi
     if command -v ss >/dev/null 2>&1; then
-        while read -r _netid _local; do
+        local -a _srows=()
+        mapfile -t _srows < <(ss -tulnH 2>/dev/null | awk '{print $1, $5}')
+        local _srow=''
+        for _srow in "${_srows[@]}"; do
+            _local="${_srow#* }"
             port="${_local##*:}"
             [[ "$port" =~ ^[0-9]+$ ]] || continue
             case " $known " in *" $port "*) continue ;; esac
@@ -9884,7 +9905,7 @@ print_port_occupancy() { # read-only: port -> protocol/owner map
             seen_ext+=" $port"
             msg "  ${port} -> $(tr_msg dp_ports_external)"
             any=1
-        done < <(ss -tulnH 2>/dev/null | awk '{print $1, $5}')
+        done
     fi
     [[ "$any" == 1 ]] || msg "  $(tr_msg dp_ports_none)"
     return 0

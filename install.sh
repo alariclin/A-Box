@@ -29478,7 +29478,7 @@ wallos_install_or_update() {
             if [[ "$bind_address" == 0.0.0.0 ]]; then confirm_prompt='警告：Wallos 将以明文 HTTP 绑定所有 IPv4 网卡。只有已配置防火墙/HTTPS 反向代理时才继续。[Y/N]: '
             else confirm_prompt='Wallos 存储个人财务数据，默认仅绑定 127.0.0.1；远程访问请配置 HTTPS 反向代理或 SSH 隧道。是否继续？[Y/N]: '; fi ;;
     esac
-    if [[ "$wmode" != local && (( ! _bind_chosen )) ]]; then
+    if [[ "$wmode" != local && "$_bind_chosen" != 1 ]]; then
         if [[ "$wmode" == https ]]; then
             case "${ABOX_LANG:-zh}" in
                 *) confirm_prompt="$(tr_msg wl_confirm_https)" ;;

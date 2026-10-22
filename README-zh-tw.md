@@ -1,139 +1,183 @@
-<p align="center">
-  <img width="300" alt="A-Box_github" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
-</p>
+<div align="center">
+  <img width="300" alt="A-Box" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
+  <h1>A-Box</h1>
+  <p><b>Linux 網路服務一鍵部署與管理工具箱</b> — 單一檔案 Bash 腳本 · Xray / sing-box / Hysteria 2 · 六種語言選單</p>
+  <p>
+    <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="license">
+    <img src="https://img.shields.io/badge/script-Bash-green" alt="bash">
+    <img src="https://img.shields.io/badge/platform-Linux-orange" alt="platform">
+  </p>
+  <p>
+    <a href="README.md">English</a> ·
+    <a href="README-zh.md">简体中文</a> ·
+    <a href="README-zh-tw.md">繁體中文</a> ·
+    <a href="README-ja.md">日本語</a> ·
+    <a href="README-ru.md">Русский</a> ·
+    <a href="README-fa.md">فارسی</a>
+  </p>
+</div>
 
-[English](README.md) | [简体中文](README-zh.md) | [日本語](README-ja.md) | [Русский](README-ru.md) | [فارسی](README-fa.md)
+---
 
-Linux 網路閘道一鍵工具箱。
+## 介面截圖
 
-A-Box 是一個獨立 Bash 腳本，用於部署和維護 Linux 網路閘道服務。當前相容性 pin 為 Xray `v26.7.28`（上游預發布版，因相容性需要而保留）、sing-box `v1.14.3` 和 Hysteria `app/v2.13.0`；選擇最新穩定版時不會靜默降級已安裝的較新核心。
+主選單（狀態矩陣、系統/網路資訊與部署選單）：
 
-支援 Xray-core、sing-box、官方 Hysteria 2 服務端、VLESS Vision REALITY、VLESS XHTTP REALITY、Shadowsocks-2022、客戶端配置匯出、本地 SNI 候選測試、備份恢復、防火牆管理、診斷、流量限制、健康檢查和核心軟體升級；最新穩定版下載失敗時先嘗試同版本的校驗映象，再回退到固定相容性 pin。
+![主選單](docs/showcase-menu.png)
 
-> 僅限在合法、授權、合規的環境中使用。使用者自行承擔所有法律、運維和安全後果。
+綜合工具箱（選單 11）：
 
-## 合規與免責聲明
+![綜合工具箱](docs/showcase-toolbox.png)
 
-本專案用於網路架構測試、網路安全研究、系統運維自動化，以及在完全授權環境中的合法隱私保護。請勿將本專案用於非法攻擊、未授權存取、規避審計、網路濫用、破壞基礎設施或任何違法活動。請僅在您擁有、管理或已獲得明確授權的伺服器、網路和系統中使用。
+更多協議（選單 18）：
 
-本專案按「現狀」提供，不提供任何擔保。執行前請審閱腳本及其可能造成的系統變更；維護或升級前應保留可恢復的備份。
+![更多協議](docs/showcase-more-protocols.png)
+
+## 這是什麼
+
+A-Box 是一個單一檔案 Bash 腳本（`install.sh`，約 30,000 行），用於在 Linux VPS 上部署和維護代理與網路服務。它負責安裝和設定 Xray、sing-box 與官方 Hysteria 2 伺服器端，產生用戶端設定，並把日常維運——防火牆規則、Fail2Ban 防護、DNS 設定、備份、升級與診斷——收進一個六種語言的互動選單。你在選單裡選定之前，腳本不會部署任何東西；破壞性操作都會先要求確認。
 
 ## 快速開始
 
-### GitHub 官方源
+官方來源，指令已鎖定到不可變的提交：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f8cdb5469471179f800017e78d6965cd965bd211/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/e2bdb6de70a81cc3e657529d1900c993be7ea214/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
-### 第三方備用映象
+第三方鏡像（與上面是同一個鎖定檔案，僅作傳輸通道，不是官方入口）：
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f8cdb5469471179f800017e78d6965cd965bd211/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/e2bdb6de70a81cc3e657529d1900c993be7ea214/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
-兩個命令均將安裝腳本固定到不可變提交 `a7cb193e6539cee6478648e766f5ce415ccd5d41`；代理網址仍屬於第三方傳輸服務，不是 A-Box 官方端點。生產環境建議透過獨立可信渠道核對提交與摘要。全新 Alpine 系統執行前先執行 `apk add --no-cache bash curl`。安裝後輸入 `sb` 開啟選單。
-
-## 主要功能
-
-- **協議部署：** Xray VLESS Vision REALITY、Xray VLESS XHTTP REALITY、Xray Shadowsocks-2022、官方 Hysteria 2，以及對應的 sing-box Vision、Shadowsocks-2022 和 Hysteria 2 選項。
-- **組合部署：** Xray + Hysteria 2 組合；sing-box Vision + Hysteria 2 + Shadowsocks-2022 組合。sing-box 組合按設計不包含 XHTTP。
-- **客戶端配置匯出：** 分享連結/URI、二維碼、Clash/Mihomo YAML、sing-box 出站模板、v2rayN/v2rayNG XHTTP JSON。
-- **運維和診斷：** 健康檢查、系統/下載測速、IP 品質與路由測試、BBR/FQ 調優和回滾、IP 偏好、DNS 實測優選與受支援後端的 DoT/DoH、時區編號選擇、Locale/NTP、Wallos 安裝與資料備份、Fail2Ban/logrotate、流量限制、備份恢復、脫敏診斷包和預檢查。
-- **運維增強：** 一鍵 Reality、快速/嚴格模式（`ABOX_FAST`）、核心固定版本與失敗回滾、多 UUID 服務端新增/撤銷、URI/Base64/Clash 匯出，以及真實下載源可用性探測。
-- **核心二進位映象：** 固定入口 Release [`A-Box Core Binary Mirrors`](https://github.com/alariclin/A-Box/releases/tag/core-binaries) 同時保留固定相容性版本資產和帶版本號的最新正式穩定版資產。每週工作流會排除 draft/prerelease，校驗官方 SHA-256 與資產架構；僅對 CI 執行器可執行的二進位進行版本探測，並保留舊版本資產供回滾。安裝器還會在目標環境校驗實際二進位版本。最新穩定版回退先嘗試完全匹配的版本化映象，再回退到固定相容性 pin。`SHA256SUMS` 是同一 Release 內的完整性清單，不是獨立簽名；詳見 [`mirrors/README.md`](mirrors/README.md)。
-- **SNI 候選工作流：** 本地完整和微型主機候選測試、已儲存結果檢視器、輸入校驗、檔案大小/行數上限、重複項清理，以及可用時回退到有效本地快取或同目錄資料檔案。
-- **維護：** 顯示 SHA-256 並要求明確確認的腳本 OTA、Xray Geo 資料更新，以及不重置節點參數的核心程式單獨升級。
-- **安全控制：** 部署前檢查、受控服務歸屬/狀態變更、防火牆處理，以及受支援操作的回滚路徑。
-- **WARP 一鍵出口與分流：** 一鍵部署 Cloudflare WARP 為原生 WireGuard 出站；流媒體/CN 直連/全局三檔預設；多機 SOCKS5 出站與基於域名的分流規則。
-- **DNS 三模式：** 僅 IPv4、僅 IPv6、雙棧三種模式，10 個 DNS 提供商，v4/v6 自動配對。
-
-倉庫內建候選種子檔案見 [`data/sni-candidates.txt`](data/sni-candidates.txt)。SNI 列表僅是候選項。域名出現在列表中，**不代表它從特定 VPS 當前可用，也不保證符合目標 REALITY 部署所需的 TLS/ALPN/SAN 條件**。使用前必須在目標網路實際驗證。無法取得有效列表或有效備用副本時，SNI 工作流會拒絕繼續，而不是使用未經驗證的資料。
+- 全新的 Alpine 系統請先執行 `apk add --no-cache bash curl`。
+- 首次執行後，輸入 `sb` 即可再次開啟選單。
+- 生產環境使用前，請透過獨立可信管道核對下載到的檔案。
 
 ## 主選單
 
-| 編號 | 功能 |
-|---:|---|
-| `1` | Xray VLESS Vision REALITY |
-| `2` | Xray VLESS XHTTP REALITY |
-| `3` | Xray Shadowsocks-2022 |
-| `4` | 官方 Hysteria 2 服務端 |
-| `5` | Xray + Hysteria 2 組合：Vision TCP 443、XHTTP TCP 8443、Hysteria 2 UDP 443、SS-2022 TCP/UDP 2053 |
-| `6` | sing-box VLESS Vision REALITY |
-| `7` | sing-box Shadowsocks-2022 |
-| `8` | sing-box VLESS + Shadowsocks-2022 |
-| `9` | sing-box Hysteria 2 |
-| `10` | sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP） |
-| `11` | 綜合工具箱：測速、診斷、WARP 與分流、Wallos 與系統設定 |
-| `12` | 查看節點配置與參數 |
-| `13` | 使用幫助與說明書 |
-| `14` | 核心與腳本升級（OTA） |
-| `15` | VPS 一鍵優化 |
-| `16` | 清空節點與重置環境 |
-| `17` | 流量管控與額度限制（含用量儀表盤和進度條） |
-| `18` | SS-2022 訪問白名單 |
-| `19` | 多語言設置：简体中文、繁體中文、English、日本語、Русский、فارسی |
-| `20` | 徹底卸載腳本與核心 |
-| `0` | 退出腳本 |
-| `r` | 一鍵 Reality 快捷鍵 |
+| 編號 | Xray 核心 | 編號 | sing-box |
+|---:|---|---:|---|
+| 1 | VLESS-Vision-Reality | 6 | VLESS-Vision-Reality |
+| 2 | VLESS-XHTTP-Reality | 7 | VLESS + SS-2022 |
+| 3 | Shadowsocks-2022 | 8 | Shadowsocks-2022 |
+| 4 | Hysteria 2（官方伺服器端） | 9 | Hysteria 2（Sing-box） |
+| 5 | 全協議四合一（Xray+Hy2） | 10 | 全協議三合一（Sing-box） |
 
-### 綜合工具箱
+Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-2022（TCP/UDP 2053）與 Hysteria 2（UDP 443）。sing-box 三合一包含 Vision、Shadowsocks-2022 與 Hysteria 2，不含 XHTTP。
 
-原有系統/下載測速、IP 品質、SNI 全量與微型主機優選、WARP 一鍵出口與分流、2 GB Swap、備份/恢復、脫敏診斷、預檢查和訂閱匯出功能均保留。新增/歸併的入口包括：BBR/FQ 調優子選單（僅應用與回滾）；主機設定（IP 偏好、明文 DNS、後端支援時的 DoT、實測 DNS 優選、受支援環境的 DoH、時區/Locale/NTP 與下載源偏好）；以及 Wallos 安裝、升級、狀態、備份和保留資料解除安裝容器功能。BBR 為手動選擇，不會在協議安裝後自動執行。
+| 編號 | 工具與系統 | 編號 | 維運與策略 |
+|---:|---|---:|---|
+| 11 | 綜合工具箱 | 16 | 清空節點與重置環境（刪單個/清空全部/重置環境） |
+| 12 | 查看節點配置與參數 | 17 | 流量管控與額度限制 |
+| 13 | 使用幫助與說明書 | 18 | 更多協議（子選單見下） |
+| 14 | 核心與腳本升級（OTA） | 19 | 多語言設定 |
+| 15 | VPS 一鍵優化 | 20 | 徹底卸載腳本與核心 |
+| 0 | 退出腳本 | R | 一鍵 Reality（快捷鍵） |
 
-測速和 IP 品質選項優先使用 A-Box 校驗鏡像（`test-tools-mirror` Release），只有 `SHA256SUMS` 校驗通過才會執行。鏡像不可用或校驗失敗時，僅在設定 `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` 的情況下回退到上游腳本（未校驗，無 SHA 釘扎）；否則不會執行腳本。
+### 更多協議（選單 18）
 
-Wallos 是可選的自託管訂閱管理工具。安裝器優先讀取 Wallos 穩定版與匹配的 Docker 映象；上游不可用時回退到 `wallos-mirror`。資料備份先寫入臨時檔案並驗證，再原子提交；升級失敗時會嘗試透過暫存恢復流程回滾。Wallos 預設只綁定 `127.0.0.1`；遠端存取應使用 HTTPS 反向代理或 SSH 隧道。只有明確設定 `WALLOS_BIND_ADDRESS=0.0.0.0` 並再次確認後，才會將未加密 HTTP 連接埠發佈到所有 IPv4 網卡。第三方測速腳本映象需要手動觸發工作流並確認重新整理。
+獨立部署，與上面的組合部署互不影響。每個協議都會詢問連接埠、產生或接受密碼、寫入前先用核心校驗設定、把分享連結登記到選單 12，並在結束時刷新 Fail2Ban 規則。涉及 SNI 的協定在部署時可選：Enter 自動優選，或手填網域；已部署節點的 SNI 可在工具箱 16 修改。
 
-BBR/FQ 不會靜默修改系統。DNS 優選根據當前 VPS 對候選解析器發起多輪真實查詢，延遲和可用率只代表本次測量，不是全球通用排名。DoT 僅在當前 DNS 後端支援時啟用，並要求輸入上游 TLS 認證主機名，讓 systemd-resolved 校驗解析器憑證（例如 `1.1.1.1#cloudflare-dns.com` 或 `8.8.8.8#dns.google`）；DoH 使用 `dnscrypt-proxy`，且限制在支援的軟體包和 systemd-resolved 環境。DNS 與時區設定均提供回滾路徑。
+| 編號 | 協議 | 說明 |
+|---:|---|---|
+| 1 | Trojan-Reality | 獨立 Trojan + REALITY，可選 Xray 或 sing-box 核心 |
+| 2 | TUIC | sing-box 的 TUIC v5，UDP，自簽憑證 |
+| 3 | AnyTLS | sing-box 的 AnyTLS，帶 REALITY |
+| 4 | SOCKS5 / Mixed | 獨立 SOCKS5，帶帳號密碼認證，可選核心 |
+| 5 | ShadowTLS | sing-box 的 ShadowTLS v3，轉接到內部 Shadowsocks-2022 入站 |
+| 6 | Argo (CDN) | VMess / VLESS 經 WebSocket 走 Cloudflare 隧道，伺服器不開任何入站連接埠。臨時隧道是隨機 `*.trycloudflare.com` 位址，重新啟動即變；固定隧道用你自己的網域和隧道權杖 |
+| 7 | 最新 Xray | 實驗功能：安裝上游最新版 Xray 核心（接管槽位，或以 xray-latest 實例並存並提示連接埠衝突），可逐個部署 VLESS-Vision / XHTTP / Trojan-Reality / SS-2022 / SOCKS5，也有一鍵三合一與一鍵四合一（+ 官方 Hy2），並提供整機連接埠衝突提醒。失敗會告知原因並刪除本次部署，絕不自動裝回穩定版核心。 |
 
-四種語言覆蓋主選單、運維選單及本次新增/調整的工具流程；少數舊協議嚮導和舊錯誤訊息仍可能混有中英文，不能據此宣稱所有歷史提示已完成百分之百的四語翻譯。
+## 狀態面板
 
-## 命令列用法
+選單頂部是 16 格狀態矩陣（運行 / 未開啟 / 故障）：Xray、sing-box、Hy2、Trojan、TUIC、AnyTLS、ShadowTLS、SOCKS5、WARP、Cloudflare、Fail2ban、Wallos、Traffic、Docker、BBR、Firewall，其後是系統、硬體與網路資訊行。網路行會標註出口 IP 的位置與類型（機房 / 住宅 / 蜂窩、廣播或原生）。已部署節點會列出連接埠與 SNI。綠格只表示服務在運行或連接埠在監聽，不等於端到端連通，請以用戶端實測為準。其下是用戶區：按節點列出在用用戶各自的用量（只用 M/G 單位）、已設的限額與到期；封鎖或停用的用戶不在面板顯示，只在工具箱 13 裡管理。
 
-倉庫中的腳本檔案名為 `install.sh`。下方 curl 範例會儲存為 `A-Box.sh`；只要內容是本腳本，兩種檔名均可。
+## 綜合工具箱（選單 11）
 
-在腳本所在目錄執行：
+| 編號 | 功能 | 編號 | 功能 |
+|---:|---|---:|---|
+| 1 | A-Check IP 純淨度檢測 | 9 | 本地 SNI 優選 |
+| 2 | 系統效能與下載測速 | 10 | 微型主機 SNI 優選 |
+| 3 | IP 品質 / 串流解鎖 / 回程測試 | 11 | SNI 優選記錄 |
+| 4 | 匯出脫敏診斷包 | 12 | 配置備份 / 還原 |
+| 5 | WARP 與分流管理 | 13 | 多用戶 / 訂閱連結匯出 |
+| 6 | 交換記憶體（zram / Swap）| 14 | Wallos 安裝 / 升級 / 備份 |
+| 7 | VPS 一鍵優化 | 15 | SS-2022 存取白名單 |
+| 8 | IP / DNS / 時區 / 下載源設定 | 16 | 修改節點 SNI |
+| 0 | 返回主選單 | | |
 
-| 命令 | 作用 |
+第 1、2 項的測試腳本從經校驗的 `test-tools-mirror` 發布中取得，SHA-256 與清單一致才執行。鏡像不可用或校驗不一致時，只有設定了 `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` 才會改用上游腳本，否則什麼都不執行。
+
+第 1 項 **A-Check** 是配套專案 [A-Check](https://github.com/alariclin/A-Check) 的 IP 純淨度檢測工具。腳本下載其鎖定版本檔案（`v4.13.4`），執行前校驗 SHA-256，並快取在 `/etc/ddr/tools`；校驗不一致的副本永不執行。需要 Python 3.8 或更高版本。
+
+**多用戶管理（工具箱 13)。** 每個已部署的節點——組合與獨立協定均可，涵蓋 Xray、sing-box、Latest Xray 實例與 Hy2 官方版——都能新增多個命名用戶，每人獨立憑據、獨立分享連結與 QR 碼。可按用戶設定每月流量限額 (GB)、到期天數與可用時段；背景每 5 分鐘檢查一次並自動執行：到期、超限額或時段外的用戶會被自動撤銷（Xray 家族為熱撤銷、無需重啟）。按用戶流量統計與限額執行僅 Xray 家族可用 (StatsService)；sing-box 官方版無按用戶統計，該核心上僅到期與時段規則生效。全部用戶連結可一鍵匯出為訂閱檔案。
+
+**同協定多實例。** 某獨立協定在某核心上已存在時，其部署入口會提供「新增一個實例」：新實例有獨立的埠、憑據與用戶名單（標籤後綴 -2、-3……），可獨立管理與刪除。
+
+## 子系統
+
+**用戶端配置。** 每次部署都會列印分享連結和 QR 碼。選單 12 隨時可重看全部節點參數與連結——包括選單 18 的獨立協議——並匯出 Clash / Mihomo YAML、sing-box JSON 與 v2rayN / v2rayNG 配置。支援在伺服器端新增或撤銷多個 UUID，並按用戶分別匯出。分享連結與匯出檔案中的節點名只用協定名（Vision、XHTTP、SS、Hy2、Trojan-Reality 等），不帶品牌前綴。
+
+**WARP 與分流。** 一鍵把 Cloudflare WARP 作為原生 WireGuard 出站部署，帶串流、CN 直連與全域三種預設，外加自訂網域分流規則和多主機 SOCKS5 出站。
+
+**DNS 設定。** 自動實測優選會用真實查詢分別測出最快的明文 DNS、DoT 與 DoH；另有自訂填寫、Cloudflare / Quad9 預置、改動前的配置快照還原，以及三模式設定（僅 IPv4 / 僅 IPv6 / 雙棧）。DoT 經 systemd-resolved 生效；DoH 經本地 dnscrypt-proxy 轉發。
+
+**Wallos。** 可選的自託管訂閱管理器（Docker）。安裝時選擇存取方式：公網 HTTPS（Caddy 終結 Let's Encrypt 的 IP 憑證，自動續期；失敗時經你確認才回退到下一種方式）、僅本機 + SSH 隧道、用自己網域的 Cloudflare 隧道，或公網明文 HTTP 容災。帶狀態頁、資料庫健康檢查與 tar 備份。
+
+**主動防禦。** 系統沒有 Fail2Ban 時自動安裝。它的 jail 除 SSH 外，還覆蓋從現行 Xray / sing-box 設定裡收割到的全部公網連接埠——不只是最近一次部署的連接埠——封禁時長遞增。Wallos 有盯住其登入入口的專屬 jail。
+
+**快速模式。** 設定 `ABOX_FAST=1` 後，部署過程中的重複確認提示會被跳過。
+
+**備份、升級與 OTA。** 配置備份/還原使用帶版本號的清單格式與還原金鑰（`--export-backup-key`）。核心升級保留現有節點參數；腳本自身的 OTA 更新會顯示 SHA-256 並要求明確確認。Xray Geo 資料可單獨更新。
+
+**核心版本。** Xray 鎖定在 `v26.7.28`：Xray ≥ v26.9.8 要求 X25519MLKEM768 金鑰交換，sing-box 用戶端目前無法完成該握手。sing-box 預設 `v1.14.3`，Hysteria 為 `app/v2.13.0`；Argo 用的 cloudflared 鎖定 `2026.10.2`，Wallos 的 HTTPS 前端 Caddy 鎖定 `2.11.7`，均帶 SHA-256 校驗。核心二進位按發布清單做 SHA-256 校驗，已發布簽名的強制 Ed25519 驗簽（見 `docs/SIGNING.md`）。固定版本與各版本最新穩定版都保存在 `core-binaries` 發布中以便回滾。
+
+**SNI 候選。** 倉庫自帶 4,158 條候選網域種子列表（`data/sni-candidates.txt`）。工具箱可在目標 VPS 上實測優選（完整版或微型版）並保存記錄。列表裡的網域只是候選，不保證在你的網路可用、也不保證適合某個具體的 REALITY 部署。拿不到有效列表時該流程直接失敗，不硬湊。
+
+## 命令行
+
+| 指令 | 用途 |
 |---|---|
-| `sudo bash A-Box.sh --help` | 顯示命令列說明 |
-| `sudo bash A-Box.sh --lang zh` / `--lang zh-tw` / `--lang en` / `--lang ja` / `--lang ru` / `--lang fa` | 設定介面語言並啟動選單 |
-| `sudo bash A-Box.sh --self-test` | 執行內建迴歸/自測 |
-| `sudo bash A-Box.sh --preflight` 或 `--dry-run` | 執行預檢查，不部署新節點 |
-| `sudo bash A-Box.sh --status` | 查看託管配置和服務狀態 |
-| `sudo bash A-Box.sh --start` / `--stop` | 啟動/停止託管服務 |
-| `sudo bash A-Box.sh --version` | 顯示腳本建構後設資料 |
-| `sudo bash A-Box.sh --export-backup-key /secure/path/A-Box-recovery.key` | 將恢復金鑰匯出到受保護路徑 |
-| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [OUTPUT_DIR]` | 將舊版備份轉換為 manifest v3 格式 |
+| `sudo bash A-Box.sh` | 開啟互動選單 |
+| `sudo bash A-Box.sh --help` | 顯示命令行幫助 |
+| `sudo bash A-Box.sh --lang zh` / `zh-tw` / `en` / `ja` / `ru` / `fa` | 指定介面語言啟動 |
+| `sudo bash A-Box.sh --self-test` | 執行內建自檢 |
+| `sudo bash A-Box.sh --status` | 顯示受管服務與配置狀態 |
+| `sudo bash A-Box.sh --start` / `--stop` | 啟動或停止受管服務 |
+| `sudo bash A-Box.sh --version` | 顯示腳本建置標識 |
+| `sudo bash A-Box.sh --export-backup-key /secure/path.key` | 匯出備份還原金鑰 |
+| `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [目錄]` | 把舊格式備份轉換為現行格式 |
 
-請妥善保護匯出的恢復金鑰和備份。`--self-test` 通過不能替代目標主機預檢查、真實安裝或客戶端互通測試。
+自檢通過不等於真實安裝或用戶端連通驗證都通過。
 
 ## 系統要求
 
-腳本包含對下列環境的相容處理；實際相容性還取決於系統版本、初始化系統、CPU 架構、依賴、服務商網路環境和上游下載可用性。
+已實測系統（14 個）：Debian 10 / 11 / 12 / 13、Ubuntu 20.04 / 22.04 / 24.04、Rocky Linux 8 / 9、AlmaLinux 8 / 9、Fedora 40、Alpine 3.18 / 3.19。
 
 | 項目 | 要求 |
 |---|---|
-| 系統系列 | Debian 10+、Ubuntu 20.04+、CentOS/RHEL/Rocky/AlmaLinux 8+ 或 Alpine Linux |
 | 初始化系統 | systemd 或 OpenRC |
-| CPU 架構 | amd64/x86_64 或 arm64/aarch64 |
-| 權限 | root 或 sudo |
-| 網路 | 可存取系統軟體源和所需上游/GitHub 發布端點 |
-| 腳本介面 | 中文、English、Русский、فارسی（部分舊協議嚮導仍含雙語提示） |
+| CPU | amd64 / x86_64 或 arm64 / aarch64 |
+| 權限 | root，或 sudo |
+| 網路 | 能存取系統套件來源與 GitHub / 上游發布端點；部署的連接埠必須可達（雲端廠商防火牆也要放行） |
 
-腳本語言選單支援中文、English、Русский、فارسی 的選擇；主選單與本次整理的運維選單已翻譯。部分較早的協議嚮導提示仍保留中英雙語文字。
+## 注意事項
 
-## 生產環境檢查清單
+- 面板的 IP 類型與位置資料來自公開 IP 情報服務，偶有誤判；多源比對只能減少、不能消除錯誤。
+- Let's Encrypt 的 IP 憑證（Wallos HTTPS 模式）有效期很短（約 160 小時），由 Caddy 自動續期；與所有憑證一樣，它們會出現在公開的憑證透明度日誌中。
+- Argo 臨時隧道位址在 cloudflared 每次重新啟動後都會變化；需要固定位址請使用自有網域的固定隧道。
+- BBR/FQ 調校、DNS 修改與 WARP 分流都只在你選用時才套用，DNS 與調校改動保留回滾路徑。
+- 備份與還原金鑰請存放在獨立且受保護的位置。
 
-1. 審閱腳本並選擇可信、固定版本的來源；不要盲目信任第三方映象。
-2. 在目標 VPS 上先執行 `--self-test` 和 `--preflight`。
-3. 確認雲服務商防火牆/安全群組規則，以及所選協議、連接埠和客戶端的相容性。
-4. 將恢復金鑰獨立儲存；執行破壞性維護前保留並驗證備份。
-5. 從實際使用節點的網路驗證 DNS、TLS、ALPN、SNI、連通性和客戶端行為。CI 通過本身不能證明所有 VPS 服務商、作業系統和客戶端都可正常使用。
+## 合規與免責
+
+請僅在你擁有、管理或已獲得明確授權的伺服器、網路與系統上使用本專案，並遵守適用於你的法律法規——包括當地關於加密、代理與網路存取的規定。本專案面向授權環境下的系統管理、網路測試與研究。不得用於未授權存取、攻擊、濫用或規避合法監管。
+
+本軟體按「現狀」提供，不附任何擔保。執行前請先審閱腳本內容，維護或升級前請保留可還原的備份。使用後果由你自行承擔法律、維運與安全責任。
 
 ## 回饋與授權
 
-- [GitHub Issues](https://github.com/alariclin/A-Box/issues)
-- 歡迎提交 Pull Request。
-- 本專案使用 [Apache License 2.0](LICENSE)。
+- 問題回饋：[GitHub Issues](https://github.com/alariclin/A-Box/issues)
+- 本專案以 [Apache License 2.0](LICENSE) 發布。

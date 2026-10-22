@@ -213,7 +213,9 @@ jobs:
           xray_tag="$(grep '^Xray=' verified/CORE-VERSIONS | cut -d= -f2)"
           singbox_tag="$(grep '^sing-box=' verified/CORE-VERSIONS | cut -d= -f2)"
           hysteria_tag="$(grep '^Hysteria=' verified/CORE-VERSIONS | cut -d= -f2)"
-          [[ -n "$xray_tag" && -n "$singbox_tag" && -n "$hysteria_tag" ]] || {
+          cloudflared_tag="$(grep '^cloudflared=' verified/CORE-VERSIONS | cut -d= -f2)"
+          wgcf_tag="$(grep '^wgcf=' verified/CORE-VERSIONS | cut -d= -f2)"
+          [[ -n "$xray_tag" && -n "$singbox_tag" && -n "$hysteria_tag" && -n "$cloudflared_tag" && -n "$wgcf_tag" ]] || {
             echo "ERROR: CORE-VERSIONS missing core tags; aborting"
             exit 1
           }
@@ -230,6 +232,14 @@ jobs:
           }
           [[ "$hysteria_tag" =~ ^app/v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
             echo "ERROR: invalid Hysteria tag format: $hysteria_tag; aborting"
+            exit 1
+          }
+          [[ "$cloudflared_tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "ERROR: invalid cloudflared tag format: $cloudflared_tag; aborting"
+            exit 1
+          }
+          [[ "$wgcf_tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "ERROR: invalid wgcf tag format: $wgcf_tag; aborting"
             exit 1
           }
           hysteria_leaf="$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')"
@@ -263,6 +273,12 @@ jobs:
                 ;;
               hysteria-*)
                 verify_upstream_digest "$name" "HyNetworks/hysteria" "$hysteria_tag" "hysteria-${name#hysteria-"$hysteria_leaf"-}"
+                ;;
+              cloudflared-*)
+                verify_upstream_digest "$name" "cloudflare/cloudflared" "$cloudflared_tag" "cloudflared-${name#cloudflared-"$cloudflared_tag"-}"
+                ;;
+              wgcf_*)
+                verify_upstream_digest "$name" "ViRb3/wgcf" "v$wgcf_tag" "$name"
                 ;;
               SHA256SUMS|SHA256SUMS.incoming|CORE-VERSIONS|CORE-VERSIONS.sig|SHA256SUMS.sig)
                 # Manifests/metadata: not upstream binaries, skip.
@@ -327,7 +343,7 @@ jobs:
             esac
             # Improvement 2026-10-14: whitelist known binary patterns.
             case "$name" in
-              Xray-*.zip|sing-box-*.tar.gz|hysteria-*) ;;
+              Xray-*.zip|sing-box-*.tar.gz|hysteria-*|cloudflared-*|wgcf_*) ;;
               *) echo "ERROR: unknown file in artifact: $name; aborting"; exit 1 ;;
             esac
             echo "Uploading binary: $name"

@@ -111,6 +111,20 @@ else
   hysteria_tag="$(validate_release_tag "$root/hysteria.json" '^app/v[0-9]+\.[0-9]+\.[0-9]+$')"
 fi
 
+# Pinned utilities (cloudflared for Argo, wgcf for WARP): versions are NOT
+# latest-tracked; the single source of truth is the pin in install.sh.
+[[ -f install.sh ]] || { echo "::error::install.sh not found (run from repo root)"; exit 1; }
+CLOUDFLARED_VERSION="$(sed -n "s/^CLOUDFLARED_VERSION='\([0-9.]*\)'$/\1/p" install.sh | head -1)"
+[[ "$CLOUDFLARED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Cannot parse CLOUDFLARED_VERSION pin from install.sh"; exit 1; }
+WGCF_VERSION="$(sed -n "s/^WGCF_VERSION='\([0-9.]*\)'$/\1/p" install.sh | head -1)"
+[[ "$WGCF_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Cannot parse WGCF_VERSION pin from install.sh"; exit 1; }
+gh api "repos/cloudflare/cloudflared/releases/tags/$CLOUDFLARED_VERSION" > "$root/cloudflared.json"
+jq -e --arg t "$CLOUDFLARED_VERSION" '.draft == false and .prerelease == false and .tag_name == $t' "$root/cloudflared.json" >/dev/null || {
+  echo "::error::cloudflared pinned release $CLOUDFLARED_VERSION invalid or not found"; exit 1; }
+gh api "repos/ViRb3/wgcf/releases/tags/v$WGCF_VERSION" > "$root/wgcf.json"
+jq -e --arg t "v$WGCF_VERSION" '.draft == false and .prerelease == false and .tag_name == $t' "$root/wgcf.json" >/dev/null || {
+  echo "::error::wgcf pinned release v$WGCF_VERSION invalid or not found"; exit 1; }
+
 declare -a mirror_names=()
 declare -a mirror_paths=()
 declare -a mirror_digests=()
@@ -251,6 +265,51 @@ download_verified_asset() {
         fi
       fi
       ;;
+    cloudflared)
+      chmod 700 "$path"
+      file_description="$(file -b "$path")"
+      if [[ "$arch_kind" == "arm64" ]]; then
+        grep -Eqi 'ARM aarch64|ARM64' <<< "$file_description" || {
+          echo "::error::cloudflared asset is not an AArch64 binary: $mirror_name"
+          return 1
+        }
+      else
+        grep -Eqi 'x86-64' <<< "$file_description" || {
+          echo "::error::cloudflared asset is not an x86-64 binary: $mirror_name"
+          return 1
+        }
+        version_output="$("$path" --version 2>&1)" || {
+          echo "::error::cloudflared binary failed its version probe: $mirror_name"
+          return 1
+        }
+        if [[ "$version_output" =~ cloudflared\ version\ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+          [[ "${BASH_REMATCH[1]}" == "$tag" ]] || {
+            echo "::error::cloudflared binary version does not match $tag (got ${BASH_REMATCH[1]})"
+            return 1
+          }
+        else
+          echo "::error::Could not parse cloudflared version from probe output"
+          return 1
+        fi
+      fi
+      ;;
+    wgcf)
+      # wgcf has no reliable version probe; the upstream-attested GitHub
+      # digest above (exact tag + asset name) is the verification anchor,
+      # plus the ELF architecture check here.
+      file_description="$(file -b "$path")"
+      if [[ "$arch_kind" == "arm64" ]]; then
+        grep -Eqi 'ARM aarch64|ARM64' <<< "$file_description" || {
+          echo "::error::wgcf asset is not an AArch64 binary: $mirror_name"
+          return 1
+        }
+      else
+        grep -Eqi 'x86-64' <<< "$file_description" || {
+          echo "::error::wgcf asset is not an x86-64 binary: $mirror_name"
+          return 1
+        }
+      fi
+      ;;
     *) echo "::error::Unknown asset validation type: $kind"; return 1 ;;
   esac
   mirror_names+=("$mirror_name")
@@ -300,6 +359,14 @@ else
   echo "::notice::Skipping Hysteria downloads (using existing mirror version)"
 fi
 
+# Pinned utilities: always fetched at the install.sh pin (no cooldown,
+# no skip). Already-mirrored identical bytes are not re-uploaded (the
+# immutability merge below handles that).
+download_verified_asset cloudflare/cloudflared "$root/cloudflared.json" cloudflared-linux-amd64 "cloudflared-$CLOUDFLARED_VERSION-linux-amd64" cloudflared
+download_verified_asset cloudflare/cloudflared "$root/cloudflared.json" cloudflared-linux-arm64 "cloudflared-$CLOUDFLARED_VERSION-linux-arm64" cloudflared
+download_verified_asset ViRb3/wgcf "$root/wgcf.json" "wgcf_${WGCF_VERSION}_linux_amd64" "wgcf_${WGCF_VERSION}_linux_amd64" wgcf
+download_verified_asset ViRb3/wgcf "$root/wgcf.json" "wgcf_${WGCF_VERSION}_linux_arm64" "wgcf_${WGCF_VERSION}_linux_arm64" wgcf
+
 cat > "$out/CORE-VERSIONS" <<EOF
 schema=1
 updated_at_utc=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
@@ -314,6 +381,12 @@ sing-box-arm64-musl=sing-box-$singbox_version-linux-arm64-musl.tar.gz
 Hysteria=$hysteria_tag
 Hysteria-amd64=hysteria-$hysteria_leaf-linux-amd64
 Hysteria-arm64=hysteria-$hysteria_leaf-linux-arm64
+cloudflared=$CLOUDFLARED_VERSION
+cloudflared-amd64=cloudflared-$CLOUDFLARED_VERSION-linux-amd64
+cloudflared-arm64=cloudflared-$CLOUDFLARED_VERSION-linux-arm64
+wgcf=$WGCF_VERSION
+wgcf-amd64=wgcf_${WGCF_VERSION}_linux_amd64
+wgcf-arm64=wgcf_${WGCF_VERSION}_linux_arm64
 EOF
 
 # Validate the previous manifest against GitHub's per-asset digest metadata.
@@ -393,7 +466,7 @@ sort -k2,2 "$out/SHA256SUMS.incoming" -o "$out/SHA256SUMS.incoming"
 # before any Release mutation.
 if [[ "${CORE_MIRROR_DRY_RUN:-0}" == '1' ]]; then
   echo "Dry-run complete; no Release assets were changed."
-  printf 'Verified latest tags: Xray=%s sing-box=%s Hysteria=%s\n' "$xray_tag" "$singbox_tag" "$hysteria_tag"
+  printf 'Verified tags: Xray=%s sing-box=%s Hysteria=%s cloudflared=%s wgcf=%s\n' "$xray_tag" "$singbox_tag" "$hysteria_tag" "$CLOUDFLARED_VERSION" "$WGCF_VERSION"
   if (( ${#upload_paths[@]} )); then
     printf 'Would upload new versioned asset: %s\n' "${upload_paths[@]}"
   else
@@ -412,6 +485,6 @@ gh release upload core-binaries "$out/CORE-VERSIONS" --clobber
 gh release upload core-binaries "$out/SHA256SUMS" --clobber
 
 echo "Published latest official stable mirror versions:"
-printf '  Xray: %s\n  sing-box: %s\n  Hysteria: %s\n' "$xray_tag" "$singbox_tag" "$hysteria_tag"
+printf '  Xray: %s\n  sing-box: %s\n  Hysteria: %s\n  cloudflared: %s\n  wgcf: %s\n' "$xray_tag" "$singbox_tag" "$hysteria_tag" "$CLOUDFLARED_VERSION" "$WGCF_VERSION"
 echo "Versioned assets are retained for rollback; fixed compatibility-pin assets are not replaced."
 

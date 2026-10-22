@@ -17,6 +17,10 @@ The compatibility pins configured in `install.sh` remain Xray `v26.7.28`, sing-b
 
 The Release retains versioned assets for the previous-version rollback candidates — Xray `v26.6.27`, Hysteria `app/v2.12.3` (published in `core-binaries`; use `scripts/upload-rollback-binaries.sh` for future backfills) — so a failed upgrade can roll back without depending on upstream availability. These are candidates, not validated rollback versions: they must pass A-Box config and client regression tests before being treated as approved. Versioned filenames are immutable; never overwrite an existing asset.
 
+### Pinned utilities (Argo / WARP)
+
+The mirror also carries the two version-pinned helper binaries used by standalone features: `cloudflared-<version>-linux-<arch>` (Argo tunnels) and `wgcf_<version>_linux_<arch>` (WARP provisioning), for amd64 and arm64. Unlike sing-box and Hysteria they are pinned, not latest-tracking: the mirror refresh reads the pins (`CLOUDFLARED_VERSION`, `WGCF_VERSION`) from `install.sh`, downloads exactly those upstream releases, and verifies them like core assets (official digest, architecture, version probe where available). The installer tries the mirror copy first and falls back to the pinned official URL; either way, the downloaded bytes must match the SHA-256 pin compiled into `install.sh`.
+
 ## Wallos recovery
 
 The stable Release name is `wallos-mirror`; asset names are fixed and contain no version suffix:

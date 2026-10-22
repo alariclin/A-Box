@@ -110,7 +110,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 第 2、3 项的测试脚本默认拉取上游最新版并做结构校验；拉取或校验失败时，回退到经校验的 `test-tools-mirror` 发布中的钉版备份（Ed25519 签名与 SHA-256 双重校验）；两者都不可用时不执行任何脚本。第 1 项 A-Check 同样实时拉取最新版，失败时依次回退签名镜像钉版与本机已验证缓存。
 
-第 1 项 **A-Check** 是配套项目 [A-Check](https://github.com/alariclin/A-Check) 的 IP 纯净度检测工具。脚本下载其锁定版本文件（`v4.13.4`），运行前校验 SHA-256，并缓存在 `/etc/ddr/tools`；校验不一致的副本永不执行。需要 Python 3.8 或更高版本。
+第 1 项 **A-Check** 是配套项目 [A-Check](https://github.com/alariclin/A-Check) 的 IP 纯净度检测工具。脚本从 A-Check 仓库实时拉取最新版，运行前做结构校验（shebang、VERSION 标记、大小、py_compile），并缓存在 `/etc/ddr/tools`；实时拉取失败时，依次回退到签名校验的镜像钉版与本机已验证缓存。需要 Python 3.8 或更高版本。
 
 **多用户管理（工具箱 14)。** 每个已部署的节点——组合与独立协议均可，覆盖 Xray、sing-box、Latest Xray 实例与 Hy2 官方版——都能添加多个命名用户，每人独立凭据、独立分享链接与二维码。可按用户设置每月流量限额 (GB)、到期天数与可用时段；后台每 5 分钟检查一次并自动执行：到期、超限额或时段外的用户会被自动吊销（Xray 家族为热吊销、无需重启）。按用户流量统计与限额执行仅 Xray 家族可用 (StatsService)；sing-box 官方二进制无按用户统计，该核心上仅到期与时段规则生效。全部用户链接可一键导出为订阅文件。
 

@@ -30680,7 +30680,7 @@ _acheck_file_valid() {
     head -n 1 -- "$_f" 2>/dev/null | grep -qx '#!/usr/bin/env python3' || return 1
     grep -Eq '^VERSION = "[0-9]+\.[0-9]+\.[0-9]+"' -- "$_f" || return 1
     grep -qF 'github.com/alariclin/A-Check' -- "$_f" || return 1
-    python3 -m py_compile "$_f" 2>/dev/null
+    python3 -c 'import sys; compile(open(sys.argv[1], "rb").read(), "acheck.py", "exec")' "$_f" 2>/dev/null
 }
 
 run_acheck_tool() {

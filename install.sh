@@ -2232,6 +2232,12 @@ tr_msg() {
         fa:cu_full_done) echo 'پاک‌سازی کامل انجام شد.' ;;
         zh-tw:cu_full_done) echo '完全清理完成。' ;;
         ja:cu_full_done) echo '完全クリーンアップが完了しました。' ;;
+        zh:cu_wipe_noscript) echo '未找到可保留的脚本副本，脚本本体未保留（可重新下载脚本恢复）。' ;;
+        en:cu_wipe_noscript) echo 'No script copy was found to keep; the script itself was not preserved (re-download it to restore).' ;;
+        ru:cu_wipe_noscript) echo 'Копия скрипта для сохранения не найдена; сам скрипт не сохранён (загрузите заново для восстановления).' ;;
+        fa:cu_wipe_noscript) echo 'نسخه‌ای از اسکریپت برای نگه‌داشتن یافت نشد؛ خود اسکریپت حفظ نشد (برای بازیابی دوباره دانلود کنید).' ;;
+        zh-tw:cu_wipe_noscript) echo '未找到可保留的腳本副本，腳本本體未保留（可重新下載腳本恢復）。' ;;
+        ja:cu_wipe_noscript) echo '保持するスクリプトのコピーが見つからず、スクリプト本体は保持されませんでした（再ダウンロードで復元できます）。' ;;
         zh:cu_proxy_done) echo '代理系统已销毁，保留 A-Box 托管的 sb 入口。' ;;
         en:cu_proxy_done) echo 'The proxy system was destroyed; the A-Box-managed sb entry was kept.' ;;
         ru:cu_proxy_done) echo 'Прокси-система уничтожена; точка входа sb под управлением A-Box сохранена.' ;;
@@ -2286,24 +2292,30 @@ tr_msg() {
         fa:vg_done) echo 'مقداردهی محیط کامل شد؛ نصب‌های هم‌نام غیر A-Box حذف نشدند.' ;;
         zh-tw:vg_done) echo '環境初始化完成；非 A-Box 同名安裝未被刪除。' ;;
         ja:vg_done) echo '環境の初期化が完了しました。同名の A-Box 以外のインストールは削除されていません。' ;;
+        zh:vg_wallos_kept) echo 'Wallos 不在重置范围内，保持不变。' ;;
+        en:vg_wallos_kept) echo 'Wallos is outside the reset scope and is left unchanged.' ;;
+        ru:vg_wallos_kept) echo 'Wallos не входит в область сброса и остаётся без изменений.' ;;
+        fa:vg_wallos_kept) echo 'Wallos خارج از محدودهٔ بازنشانی است و بدون تغییر می‌ماند.' ;;
+        zh-tw:vg_wallos_kept) echo 'Wallos 不在重置範圍內，保持不變。' ;;
+        ja:vg_wallos_kept) echo 'Wallos はリセット対象外のため、そのまま保持されます。' ;;
         zh:um_title) echo '深度卸载系统' ;;
         en:um_title) echo 'Deep Unloading System' ;;
         ru:um_title) echo 'Система глубокой деинсталляции' ;;
         fa:um_title) echo 'سیستم حذف عمیق' ;;
         zh-tw:um_title) echo '深度卸載系統' ;;
         ja:um_title) echo 'ディープアンインストール' ;;
-        zh:um_item1) echo '1. 完全物理清场 (销毁节点、配置、防火墙映射与 sb 入口)' ;;
-        en:um_item1) echo '1. Full physical wipe (destroy nodes, configs, firewall mappings and the sb entry)' ;;
-        ru:um_item1) echo '1. Полная физическая зачистка (узлы, конфигурации, правила брандмауэра и вход sb)' ;;
-        fa:um_item1) echo '1. پاک‌سازی فیزیکی کامل (نابودی گره‌ها، پیکربندی‌ها، نگاشت‌های دیوار آتش و ورودی sb)' ;;
-        zh-tw:um_item1) echo '1. 完全物理清場 (銷毀節點、設定、防火牆映射與 sb 入口)' ;;
-        ja:um_item1) echo '1. 完全物理クリーン (ノード、設定、ファイアウォールマッピング、sb 入口を破棄)' ;;
-        zh:um_item2) echo '2. 保留脚本与清场 (销毁节点配置，保留控制台与 sb 入口)' ;;
-        en:um_item2) echo '2. Keep the script and wipe (destroy node configs, keep the console and the sb entry)' ;;
-        ru:um_item2) echo '2. Сохранить скрипт и зачистить (уничтожить конфигурации узлов, сохранить консоль и вход sb)' ;;
-        fa:um_item2) echo '2. نگه‌داشتن اسکریپت و پاک‌سازی (نابودی پیکربندی گره‌ها، نگه‌داشتن کنسول و ورودی sb)' ;;
-        zh-tw:um_item2) echo '2. 保留腳本與清場 (銷毀節點設定，保留控制台與 sb 入口)' ;;
-        ja:um_item2) echo '2. スクリプトを保持してクリーン (ノード設定を破棄し、コンソールと sb 入口を保持)' ;;
+        zh:um_item1) echo '1. 全部清场（保留脚本）— 清除全部功能、配置、Wallos 与数据，仅保留脚本本体与 sb 入口' ;;
+        en:um_item1) echo '1. Full wipe, keep the script - remove all features, configs, Wallos and data; keep only the script itself and the sb entry' ;;
+        ru:um_item1) echo '1. Полная зачистка (сохранить скрипт) - удалить все функции, конфигурации, Wallos и данные; оставить только сам скрипт и вход sb' ;;
+        fa:um_item1) echo '1. پاک‌سازی کامل (نگه‌داشتن اسکریپت) - حذف همه قابلیت‌ها، پیکربندی‌ها، Wallos و داده‌ها؛ فقط خود اسکریپت و ورودی sb می‌ماند' ;;
+        zh-tw:um_item1) echo '1. 全部清場（保留腳本）— 清除全部功能、設定、Wallos 與資料，僅保留腳本本體與 sb 入口' ;;
+        ja:um_item1) echo '1. 完全クリーン（スクリプト保持）- 全機能・設定・Wallos・データを削除し、スクリプト本体と sb 入口のみ残す' ;;
+        zh:um_item2) echo '2. 全部清场（含脚本）— 连脚本本体与 sb 入口一并删除，恢复到未安装状态' ;;
+        en:um_item2) echo '2. Full wipe including the script - also delete the script itself and the sb entry, restoring the pre-install state' ;;
+        ru:um_item2) echo '2. Полная зачистка (включая скрипт) - удалить также сам скрипт и вход sb, вернув состояние до установки' ;;
+        fa:um_item2) echo '2. پاک‌سازی کامل (شامل اسکریپت) - خود اسکریپت و ورودی sb نیز حذف می‌شود و وضعیت پیش از نصب بازمی‌گردد' ;;
+        zh-tw:um_item2) echo '2. 全部清場（含腳本）— 連腳本本體與 sb 入口一併刪除，恢復到未安裝狀態' ;;
+        ja:um_item2) echo '2. 完全クリーン（スクリプト含む）- スクリプト本体と sb 入口も削除し、未インストール状態に戻す' ;;
         zh:um_back) echo '0. 取消并返回' ;;
         en:um_back) echo '0. Cancel and back' ;;
         ru:um_back) echo '0. Отмена и назад' ;;
@@ -19960,7 +19972,7 @@ do_cleanup() {
     clear; msg "${RED}$(tr_msg cu_running)${NC}"
     init_system_environment
     local uninstall_tx_dir='' uninstall_tx_key='' uninstall_tx_value=''
-    if [[ "${1:-}" == full ]]; then
+    if [[ "${1:-}" == full || "${1:-}" == wipe ]]; then
         uninstall_tx_dir=$(mktemp -d /run/A-Box-uninstall-tx.XXXXXX) || die "$(tr_msg cu_tx_dir)"
         chmod 700 "$uninstall_tx_dir" || { rm -rf -- "$uninstall_tx_dir"; die "$(tr_msg cu_tx_perm)"; }
         ABOX_DEPLOY_TX_BACKUP_DIR="$uninstall_tx_dir"
@@ -20014,8 +20026,26 @@ do_cleanup() {
     elif [[ "${INIT_SYS:-}" == openrc ]] && [[ -x /etc/init.d/fail2ban ]]; then
         { rc-service fail2ban status >/dev/null 2>&1 && rc-service fail2ban restart >/dev/null 2>&1 9>&- 10>&-; } || msg "${YELLOW}[!] $(tr_msg cl_f2b_restart_clean)${NC}"
     fi
-    if [[ "${1:-}" == full ]]; then
-        remove_abox_shortcut /usr/local/bin/sb || die "$(tr_msg cu_shortcut)"
+    if [[ "${1:-}" == full || "${1:-}" == wipe ]]; then
+        # Wipe tier (keep the script): stash the persisted script copy
+        # inside the transaction dir before ABOX_DIR is destroyed; it
+        # is restored below as the sole resident and sb is recreated.
+        # Full tier: the sb shortcut goes with everything else.
+        local _wipe_script_copy=''
+        if [[ "${1:-}" == wipe ]]; then
+            if [[ -f "$ABOX_DIR/A-Box.sh" && ! -L "$ABOX_DIR/A-Box.sh" ]]; then
+                _wipe_script_copy="$ABOX_DIR/A-Box.sh"
+            elif [[ -f "$0" && ! -L "$0" ]]; then
+                _wipe_script_copy="$0"
+            fi
+            if [[ -n "$_wipe_script_copy" && -n "$uninstall_tx_dir" ]]; then
+                cp -- "$_wipe_script_copy" "$uninstall_tx_dir/wipe-keep-A-Box.sh" 2>/dev/null || _wipe_script_copy=''
+            else
+                _wipe_script_copy=''
+            fi
+        else
+            remove_abox_shortcut /usr/local/bin/sb || die "$(tr_msg cu_shortcut)"
+        fi
         # Do not destroy ABOX_DIR until managed Swap has been removed successfully.
         # The ownership marker is required for a safe retry when /etc/fstab or swapoff fails.
         if ! remove_abox_swap; then
@@ -20029,6 +20059,15 @@ do_cleanup() {
         # transaction hook must still be able to restore the pre-uninstall backup.
         rm -rf -- "$ABOX_DIR" || die "$(tr_msg cu_datadir)"
         [[ ! -e "$ABOX_DIR" && ! -L "$ABOX_DIR" ]] || die "$(tr_msg cu_datadir_left)"
+        if [[ "${1:-}" == wipe ]]; then
+            install -d -m 755 "$ABOX_DIR" || die "$(tr_msg cu_datadir)"
+            if [[ -n "$_wipe_script_copy" ]]; then
+                install_file_atomically "$uninstall_tx_dir/wipe-keep-A-Box.sh" "$ABOX_DIR/A-Box.sh" 755 || die "$(tr_msg cu_datadir)"
+            else
+                msg "${YELLOW}[!] $(tr_msg cu_wipe_noscript)${NC}"
+            fi
+            setup_shortcut || die "$(tr_msg cu_shortcut)"
+        fi
         commit_deployment_transaction
         msg "${GREEN}$(tr_msg cu_full_done)${NC}"
         exit 0
@@ -20384,12 +20423,11 @@ check_virgin_state() {
     rm -f /usr/local/bin/cloudflared "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true; rm -rf -- /etc/ddr/standalone-links.d 2>/dev/null || true
     users_registries_wipe || true
     abox_zram_teardown
-    for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local; do
-        if [[ -f "$_wf" ]] && grep -q 'A-Box-wallos' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
-    done
-    wallos_https_teardown >/dev/null 2>&1 || true
-    wallos_cftunnel_teardown >/dev/null 2>&1 || true
-    wallos_stack_teardown
+    # Wallos is a standalone addon, not a protocol/core: environment
+    # resets and protocol removal never tear it down, and its
+    # fail2ban files stay with it. Only the deep uninstall tiers
+    # (do_cleanup) remove Wallos.
+    msg "${YELLOW}[!] $(tr_msg vg_wallos_kept)${NC}"
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         if systemctl list-unit-files fail2ban.service >/dev/null 2>&1 && systemctl cat fail2ban.service >/dev/null 2>&1; then
             systemctl try-restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] $(tr_msg cl_f2b_restart_reset)${NC}"
@@ -30600,8 +30638,8 @@ clean_uninstall_menu() {
     msg "${CYAN}$(tr_msg um_back)${NC}"
     read -r -p "$(tr_msg um_prompt)" un_choice
     case "$un_choice" in
-        1) auto_backup_prompt bk_op_full '/root/A-Box-backups'; do_cleanup full ;;
-        2) auto_backup_prompt bk_op_keep "$ABOX_DIR/backups"; do_cleanup keep ;;
+        1) auto_backup_prompt bk_op_keep '/root/A-Box-backups'; do_cleanup wipe ;;
+        2) auto_backup_prompt bk_op_full '/root/A-Box-backups'; do_cleanup full ;;
         *) return 0 ;;
     esac
 }

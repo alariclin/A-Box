@@ -23,15 +23,15 @@
 
 Main menu (status matrix, system / network information and the deployment menu):
 
-![Main menu](docs/showcase-menu.png)
+![Main menu](docs/showcase-menu-en.png)
 
 Toolbox (menu 11):
 
-![Toolbox](docs/showcase-toolbox.png)
+![Toolbox](docs/showcase-toolbox-en.png)
 
 More protocols (menu 18):
 
-![More protocols](docs/showcase-more-protocols.png)
+![More protocols](docs/showcase-more-protocols-en.png)
 
 ## What it is
 
@@ -78,7 +78,7 @@ The Xray all-in-one combines Vision (TCP 443), XHTTP (TCP 8443), Shadowsocks-202
 
 ### More protocols (menu 18)
 
-Standalone deployments, independent of the combined bundles above. Each one asks for a port, generates or accepts a password, verifies the configuration with the core before writing it, registers its share link under menu 12, and refreshes the Fail2Ban rules when it finishes. Where a protocol uses an SNI, deployment offers a choice: press Enter for automatic best-SNI selection or type a domain; the SNI of an already deployed node can be changed later in the toolbox (item 16).
+Standalone deployments, independent of the combined bundles above. Each one asks for a port, generates or accepts a password, verifies the configuration with the core before writing it, registers its share link under menu 12, and refreshes the Fail2Ban rules when it finishes. Where a protocol uses an SNI, deployment offers a choice: press Enter for automatic best-SNI selection or type a domain; the SNI of an already deployed node can be changed later in the toolbox (item 12).
 
 | No. | Protocol | Notes |
 |---:|---|---|
@@ -92,7 +92,7 @@ Standalone deployments, independent of the combined bundles above. Each one asks
 
 ## Status panel
 
-The top of the menu shows a 16-cell status matrix (running / stopped / not installed) for Xray, sing-box, Hy2, Trojan, TUIC, AnyTLS, ShadowTLS, SOCKS5, WARP, Cloudflare, Fail2Ban, Wallos, Traffic, Docker, BBR and Firewall, followed by system, hardware and network lines. The network line identifies the egress IP's location and type (datacentre / residential / mobile, broadcast or native). Deployed nodes are listed with their ports and SNI. A green cell means the service is running or listening; it is not an end-to-end connectivity test — verify with a client. The users section below lists, per node, the active users with their own traffic (shown in M/G units), quota and expiry when set; blocked or disabled users are not shown on the panel — they are managed in the toolbox (item 13).
+The top of the menu shows a 16-cell status matrix (running / stopped / not installed) for Xray, sing-box, Hy2, Trojan, TUIC, AnyTLS, ShadowTLS, SOCKS5, WARP, Cloudflare, Fail2Ban, Wallos, Traffic, Docker, BBR and Firewall, followed by system, hardware and network lines. The network line identifies the egress IP's location and type (datacentre / residential / mobile, broadcast or native). Deployed nodes are listed with their ports and SNI. A green cell means the service is running or listening; it is not an end-to-end connectivity test — verify with a client. The users section below lists, per node, the active users with their own traffic (shown in M/G units), quota and expiry when set; blocked or disabled users are not shown on the panel — they are managed in the toolbox (item 14).
 
 ## Toolbox (menu 11)
 
@@ -101,18 +101,18 @@ The top of the menu shows a 16-cell status matrix (running / stopped / not insta
 | 1 | A-Check IP reputation check | 9 | Local SNI selection test |
 | 2 | System benchmark & download speed test | 10 | Mini-host SNI selection test |
 | 3 | IP quality / streaming / route test | 11 | SNI test records |
-| 4 | Export redacted diagnostics | 12 | Configuration backup / restore |
-| 5 | WARP & split routing | 13 | Multi-user / subscription export |
-| 6 | Swap memory (zram / swap file) | 14 | Wallos install / upgrade / backup |
-| 7 | VPS one-click optimization | 15 | SS-2022 access allowlist |
-| 8 | IP / DNS / timezone / source settings | 16 | Edit node SNI |
+| 4 | Export redacted diagnostics | 12 | Edit node SNI |
+| 5 | WARP & split routing | 13 | Configuration backup / restore |
+| 6 | Swap memory (zram / swap file) | 14 | Multi-user / subscription export |
+| 7 | VPS one-click optimization | 15 | Wallos install / upgrade / backup |
+| 8 | IP / DNS / timezone / source settings | 16 | SS-2022 access allowlist |
 | 0 | Back to main menu | | |
 
-The two test scripts (items 1–2) are fetched from the verified `test-tools-mirror` release and run only when their SHA-256 matches the manifest. If the mirror is unavailable or the checksum differs, the upstream script is used only when `ABOX_ALLOW_UNVERIFIED_UPSTREAM=1` is set; otherwise nothing is executed.
+The test scripts (items 2–3) run the latest upstream version by default after a structural sanity check. If the upstream fetch or check fails, they fall back to the pinned copies in the verified `test-tools-mirror` release (Ed25519 signature + SHA-256 verified); if both are unavailable, nothing is executed. A-Check (item 1) likewise fetches the latest version live and falls back first to the signed mirror pin, then to the last verified local cache.
 
 Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](https://github.com/alariclin/A-Check) project. The script downloads its pinned release file (`v4.13.4`), verifies the SHA-256 before running it, and caches it under `/etc/ddr/tools`; a copy whose checksum does not match is never executed. It requires Python 3.8 or newer.
 
-**Multi-user management (toolbox item 13).** Every deployed node — combos and standalone protocols alike, on Xray, sing-box, the Latest Xray instance and the official Hysteria 2 — can carry multiple named users, each with an own credential and share link / QR code. Per user you can set a monthly traffic quota (GB), an expiry (in days) and an allowed time window. A background check runs every 5 minutes and enforces them: expired, over-quota or out-of-window users are revoked automatically (on Xray cores the revocation is hot, with no restart). Per-user traffic statistics and quota enforcement exist on the Xray family (StatsService); the official sing-box binary exposes no per-user statistics, so on sing-box only expiry and time-window rules apply. All user links can be exported at once as subscription files.
+**Multi-user management (toolbox item 14).** Every deployed node — combos and standalone protocols alike, on Xray, sing-box, the Latest Xray instance and the official Hysteria 2 — can carry multiple named users, each with an own credential and share link / QR code. Per user you can set a monthly traffic quota (GB), an expiry (in days) and an allowed time window. A background check runs every 5 minutes and enforces them: expired, over-quota or out-of-window users are revoked automatically (on Xray cores the revocation is hot, with no restart). Per-user traffic statistics and quota enforcement exist on the Xray family (StatsService); the official sing-box binary exposes no per-user statistics, so on sing-box only expiry and time-window rules apply. All user links can be exported at once as subscription files.
 
 **Multiple instances of one protocol.** When a standalone protocol already exists on a core, its deploy entry now offers "add another instance": the extra copy gets its own port, credentials and user list (tags suffixed -2, -3, ...) and is managed and deleted independently.
 

@@ -185,7 +185,7 @@ jobs:
             echo "::notice::ABOX_SIGNING_PRIVKEY_B64 not set; skipping Wallos F-05 signing."
           fi
 
-      - name: Prepare benchmark and IP-quality tool mirror
+      - name: Prepare benchmark, IP-quality and A-Check tool mirror
         id: test_tool_assets
         if: github.event_name == 'workflow_dispatch' && inputs.refresh_test_tool_mirror
         shell: bash
@@ -372,7 +372,7 @@ jobs:
           title='A-Box Test Tools Mirror'
           notes="$RUNNER_TEMP/test-tools-notes.md"
           {
-            printf 'Stable, fixed-name recovery copies of the benchmark and IP-quality scripts used by A-Box.\n'
+            printf 'Stable, fixed-name recovery copies of the benchmark, IP-quality and A-Check scripts used by A-Box.\n'
             printf 'Assets are downloaded from their upstream URLs, checked for shell syntax and non-HTML content, and accompanied by upstream license texts, a manifest, and SHA256SUMS.\n'
             printf 'The A-Box installer verifies the downloaded asset checksum and asks for explicit confirmation before executing third-party test scripts.\n'
           } > "$notes"

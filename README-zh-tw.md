@@ -48,7 +48,7 @@ curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f06c7d5da7b7a7452ff
 第三方鏡像（與上面是同一個鎖定檔案，僅作傳輸通道，不是官方入口）：
 
 ```bash
-curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f06c7d5da7b7a7452ff892fa1958583279aba6f7/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f06c7d5da7b7a7452ff892fa1958583279aba6f7/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 - 全新的 Alpine 系統請先執行 `apk add --no-cache bash curl`。

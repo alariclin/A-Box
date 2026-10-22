@@ -12946,7 +12946,7 @@ core_fetch_upstream_release_asset() {
     [[ -n "$asset_name" ]] || return 1
     valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { msg "${YELLOW}[!] 下载 URL 与官方仓库/tag/资产不匹配，拒绝该候选。${NC}" >&2; return 1; }
     [[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]] || { msg "${YELLOW}[!] 官方 Release 缺少有效 SHA-256 digest。${NC}" >&2; return 1; }
-    for mirror in '' 'https://ghp.ci/' 'https://mirror.ghproxy.com/'; do
+    for mirror in '' 'https://ghp.ci/' 'https://gh-proxy.com/'; do
         tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
         if abox_run_wait "下载 ${asset_name}" curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
             if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 下载归档格式校验失败，继续下一个通道。${NC}" >&2; continue; fi

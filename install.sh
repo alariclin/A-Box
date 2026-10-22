@@ -31220,7 +31220,9 @@ ensure_qrencode() {
     elif command -v yum >/dev/null 2>&1; then
         yum -y install qrencode >/dev/null 2>&1 || true
     elif command -v apk >/dev/null 2>&1; then
-        apk add --no-cache libqrencode-tools >/dev/null 2>&1 || true
+        # Alpine <=3.18 ships the qrencode CLI in libqrencode itself;
+        # >=3.19 splits it into libqrencode-tools. Try both.
+        apk add --no-cache libqrencode-tools >/dev/null 2>&1 || apk add --no-cache libqrencode >/dev/null 2>&1 || true
     fi
     command -v qrencode >/dev/null 2>&1
 }

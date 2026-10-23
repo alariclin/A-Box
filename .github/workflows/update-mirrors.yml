@@ -166,7 +166,8 @@ jobs:
           test "$(grep -cE '^[A-Fa-f0-9]{64}  ' SHA256SUMS)" -eq 5
           sha256sum -c SHA256SUMS
 
-          # F-05: Detached Ed25519 signature for wallos-manifest.txt.
+          # F-05: Detached Ed25519 signatures for wallos-manifest.txt and
+          # SHA256SUMS (same pattern as update-core-mirror.yml F-05).
           # Uses ABOX_SIGNING_PRIVKEY_B64 secret; skips if absent.
           # See docs/SIGNING.md.
           if [[ -n "${ABOX_SIGNING_PRIVKEY_B64:-}" ]]; then
@@ -180,6 +181,20 @@ jobs:
               -sigfile <(base64 -d wallos-manifest.txt.sig) \
               || { echo "ERROR: F-05 self-check failed for wallos-manifest.txt"; exit 1; }
             echo "Signed: wallos-manifest.txt.sig"
+            openssl pkeyutl -sign -inkey /tmp/abox-sign-priv.pem -rawin \
+              -in SHA256SUMS | base64 > SHA256SUMS.sig
+            openssl pkeyutl -verify -pubin \
+              -inkey <(openssl pkey -in /tmp/abox-sign-priv.pem -pubout) \
+              -rawin -in SHA256SUMS \
+              -sigfile <(base64 -d SHA256SUMS.sig) \
+              || { echo "ERROR: F-05 self-check failed for SHA256SUMS"; exit 1; }
+            # H6: verify derived public key matches install.sh trust anchor
+            derived_pub=$(openssl pkey -in /tmp/abox-sign-priv.pem -pubout 2>/dev/null | openssl pkey -pubin -outform DER 2>/dev/null | tail -c 32 | base64)
+            expected_pub="7V4PBUUVpnfYhKu5LBxACxywpYEtvnDpVpvFnSrOujQ="
+            if [[ "$derived_pub" != "$expected_pub" ]]; then
+              echo "ERROR: Derived public key does not match install.sh trust anchor"; exit 1
+            fi
+            echo "Signed: SHA256SUMS.sig"
             shred -u /tmp/abox-sign-priv.pem 2>/dev/null || rm -f /tmp/abox-sign-priv.pem
           else
             echo "::notice::ABOX_SIGNING_PRIVKEY_B64 not set; skipping Wallos F-05 signing."

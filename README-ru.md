@@ -1,6 +1,5 @@
 <div align="center">
   <img width="300" alt="A-Box" src="https://github.com/user-attachments/assets/4f51a6a1-5d1b-49db-90df-98ffae63d1ca" />
-  <h1>A-Box</h1>
   <p><b>Инструментарий для развёртывания и обслуживания сетевых служб Linux одной командой</b> — один Bash-скрипт · Xray / sing-box / Hysteria 2 · меню на шести языках</p>
   <p>
     <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="license">

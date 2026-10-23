@@ -42,13 +42,13 @@ A-Box یک اسکریپت Bash تک‌فایل است (`install.sh`، حدود �
 منبع رسمی، با دستور قفل‌شده روی یک کامیت تغییرناپذیر:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/e7f7d2c46963b906885921b8d0f166747ea301ba/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/2f7a8c9c085af5687f379d27695d53d26a592b14/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 آینه شخص ثالث همان فایل قفل‌شده (فقط مسیر انتقال است، نه یک درگاه رسمی):
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/e7f7d2c46963b906885921b8d0f166747ea301ba/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/2f7a8c9c085af5687f379d27695d53d26a592b14/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 - در سیستم Alpine تازه، ابتدا `apk add --no-cache bash curl` را اجرا کنید.

@@ -17005,16 +17005,22 @@ IP_GEO_FILE='/etc/ddr/.ip-geo'
 
 # Fetch IP intelligence into the 24h cache (line format, first line = the IP).
 # Source: ip-api.com (free, no key). Fields order = output order.
+# ip-api language for the current UI language (fa unsupported -> en).
+_geo_lang() {
+    case "${ABOX_LANG:-zh}" in
+        zh|zh-tw) printf 'zh-CN' ;;
+        ja) printf 'ja' ;;
+        ru) printf 'ru' ;;
+        *) printf 'en' ;;
+    esac
+}
+
 _ip_geo_refresh() {
     local ip="${GLOBAL_PUBLIC_IP:-}"
     [[ -z "$ip" ]] && return 1
     # Localized country/city names from ip-api (fa unsupported -> en).
-    local geo_lang='en'
-    case "${ABOX_LANG:-zh}" in
-        zh|zh-tw) geo_lang='zh-CN' ;;
-        ja) geo_lang='ja' ;;
-        ru) geo_lang='ru' ;;
-    esac
+    local geo_lang
+    geo_lang=$(_geo_lang)
     if [[ -f "$IP_GEO_FILE" && ! -L "$IP_GEO_FILE" ]]; then
         local _cip _clang _now _mt
         IFS= read -r _cip < "$IP_GEO_FILE" 2>/dev/null
@@ -17485,12 +17491,15 @@ _menu_info_collect() {
     _MI_FLAG=''; _MI_BADGE=''; _MI_GEO_COUNTRY=''; _MI_GEO_CITY=''; _MI_GEO_KIND=''; _MI_GEO_ORIGIN=''
     _ip_geo_refresh || true
     if [[ -f "$IP_GEO_FILE" ]]; then
-        local _gip _gst _gcountry _gcc _gcity _gmob _ghost _gas _gisp _gorg _gcc2
+        local _gip _gst _gcountry _gcc _gcity _gmob _ghost _gas _gisp _gorg _gcc2 _glang
         { IFS= read -r _gip; IFS= read -r _gst; IFS= read -r _gcountry; IFS= read -r _gcc
           IFS= read -r _gcity; IFS= read -r _gisp; IFS= read -r _gorg; IFS= read -r _gas
-          IFS= read -r _gmob; IFS= read -r _ghost; IFS= read -r _gcc2
+          IFS= read -r _gmob; IFS= read -r _ghost; IFS= read -r _gcc2; IFS= read -r _glang
         } < "$IP_GEO_FILE" 2>/dev/null
-        if [[ "$_gip" == "${GLOBAL_PUBLIC_IP:-}" && "$_gst" == 'success' ]]; then
+        # A cache written under another UI language holds foreign-language
+        # country/city names; skip the geo suffix for this panel open (a
+        # detached refresh is already running) instead of showing them.
+        if [[ "$_gip" == "${GLOBAL_PUBLIC_IP:-}" && "$_gst" == 'success' && "$_glang" == "$(_geo_lang)" ]]; then
             _MI_GEO_COUNTRY="$_gcountry"
             _MI_GEO_CITY="$_gcity"
             # Datacenter call (A-Check approach): vendor/hosting keywords in
@@ -17573,20 +17582,24 @@ _menu_info_display() {
     msg "  ${CYAN}$(tr_msg mi_hw)：${NC}  ${LBLW}${_MI_CPU_MODEL} (${_MI_CPU}$(tr_msg mi_cores)) · $(tr_msg mi_mem) ${_MI_MEM_USED}/${_MI_MEM}G · $(tr_msg mi_disk) ${_MI_DISK}${_MI_DISK_KIND:+ $_MI_DISK_KIND}${NC}"
     msg ''
     # --- network (IPv4 with geo, IPv6) ---
-    local _v4dot='○' _geo=''
+    local _v4dot='○' _geo='' _netpad=''
+    # Continuation rows (IPv6/DNS) start in the IPv4 column of the label
+    # row: 2 leading spaces + label display width + fullwidth colon (2)
+    # + 2 spaces. A fixed indent only aligns when the label is 4 wide.
+    printf -v _netpad '%*s' $(( $(_str_dwidth "$(tr_msg mi_net)") + 6 )) ''
     [[ -n "${GLOBAL_PUBLIC_IP:-}" ]] && _v4dot="${GREEN}●${NC}"
     if [[ -n "$_MI_GEO_COUNTRY" ]]; then
         _geo=" ${_MI_GEO_COUNTRY}${_MI_GEO_CITY:+ · ${_MI_GEO_CITY}} · ${_MI_GEO_KIND} · ${_MI_GEO_ORIGIN}"
     fi
     msg "  ${CYAN}$(tr_msg mi_net)：${NC}  ${LBLW}IPv4${NC} ${_v4dot} ${LBLW}${GLOBAL_PUBLIC_IP:-?}${_geo}${NC}"
     if [[ -n "$_MI_IPV6" ]]; then
-        msg "          ${LBLW}IPv6${NC} ${GREEN}●${NC} ${LBLW}${_MI_IPV6}${NC}"
+        msg "${_netpad}${LBLW}IPv6${NC} ${GREEN}●${NC} ${LBLW}${_MI_IPV6}${NC}"
     else
-        msg "          ${LBLW}IPv6${NC} ○ ${GRAY}$(tr_msg mi_none)${NC}"
+        msg "${_netpad}${LBLW}IPv6${NC} ○ ${GRAY}$(tr_msg mi_none)${NC}"
     fi
     if [[ -n "${_MI_DNS4:-}" || -n "${_MI_DNS6:-}" || -n "${_MI_DNSMODE:-}" ]]; then
         local _dnsv4="${_MI_DNS4:-$(tr_msg mi_none)}" _dnsv6="${_MI_DNS6:-$(tr_msg mi_none)}"
-        msg "          ${LBLW}DNS${NC}  ${LBLW}IPv4 ${_dnsv4} · IPv6 ${_dnsv6}${_MI_DNSMODE:+ · ${_MI_DNSMODE}}${NC}"
+        msg "${_netpad}${LBLW}DNS${NC}  ${LBLW}IPv4 ${_dnsv4} · IPv6 ${_dnsv6}${_MI_DNSMODE:+ · ${_MI_DNSMODE}}${NC}"
     fi
     msg ''
     # --- panel sections, scheme C stacking: users, then nodes
@@ -17681,11 +17694,12 @@ _menu_info_display() {
                 done
                 _uall+="${_line%"${_line##*[! ]}"}"$'\n'
             fi
-            local _ufirst=1 _upline=''
+            local _ufirst=1 _upline='' _upad=''
+            printf -v _upad '%*s' $(( $(_str_dwidth "$(tr_msg mi_users)") + 6 )) ''
             while IFS= read -r _upline; do
                 [[ -z "$_upline" ]] && continue
                 if (( _ufirst )); then msg "  ${CYAN}$(tr_msg mi_users)：${NC}  ${LBLW}${_upline}${NC}"; _ufirst=0
-                else msg "          ${LBLW}${_upline}${NC}"; fi
+                else msg "${_upad}${LBLW}${_upline}${NC}"; fi
             done <<< "$_uall"
         fi
         msg ''
@@ -17711,11 +17725,12 @@ _menu_info_display() {
         done
         if (( ${#_rsegs[@]} == 2 )); then printf -v _row '%-*s | %s' "$_w" "${_rsegs[0]}" "${_rsegs[1]}"; _rows+=("$_row")
         elif (( ${#_rsegs[@]} == 1 )); then _rows+=("${_rsegs[0]}"); fi
-        local _i _n=${#_rows[@]}
+        local _i _n=${#_rows[@]} _npad=''
+        printf -v _npad '%*s' $(( $(_str_dwidth "$_lbl") + 6 )) ''
         for (( _i=0; _i<_n; _i++ )); do
             _row="${_rows[$_i]}"
             if (( _first )); then msg "  ${CYAN}${_lbl}：${NC}  ${LBLW}${_row}${NC}"; _first=0
-            else msg "          ${LBLW}${_row}${NC}"; fi
+            else msg "${_npad}${LBLW}${_row}${NC}"; fi
         done
         [[ -n "$_MI_SNI_LIST" ]] && msg ''
         if [[ -n "$_MI_SNI_LIST" ]]; then
@@ -21925,11 +21940,22 @@ users_fmt_bytes() {
 }
 # Display width of a string: wide (CJK/fullwidth) codepoints count 2.
 _str_dwidth() {
-    local s="${1:-}" w=0 i=0 c='' cp=0
-    for (( i=0; i<${#s}; i++ )); do
-        c="${s:i:1}"
-        cp=$(printf '%d' "'$c" 2>/dev/null || echo 0)
-        if (( cp >= 4352 )); then w=$((w + 2)); else w=$((w + 1)); fi
+    # Locale-proof display-cell width: UTF-8 is decoded from od hex, so
+    # the result is identical even where the pinned LANG locale is not
+    # installed (minimal images ship only C.UTF-8; bash then counts
+    # bytes, not cells). Truncated or invalid sequences degrade to one
+    # cell per byte and never abort the caller.
+    local hex b i=0 n cp w=0
+    hex=$(printf '%s' "${1:-}" | od -An -tx1 -v | tr -d ' \n')
+    n=${#hex}
+    while (( i < n )); do
+        b=$((16#${hex:i:2}))
+        if (( b < 0x80 )); then cp=$b; i=$((i + 2))
+        elif (( b >= 0xC0 && b < 0xE0 && i + 3 < n )); then cp=$(( ((b & 0x1F) << 6) | (16#${hex:i+2:2} & 0x3F) )); i=$((i + 4))
+        elif (( b >= 0xE0 && b < 0xF0 && i + 5 < n )); then cp=$(( ((b & 0x0F) << 12) | ((16#${hex:i+2:2} & 0x3F) << 6) | (16#${hex:i+4:2} & 0x3F) )); i=$((i + 6))
+        elif (( b >= 0xF0 && i + 7 < n )); then cp=$(( ((b & 0x07) << 18) | ((16#${hex:i+2:2} & 0x3F) << 12) | ((16#${hex:i+4:2} & 0x3F) << 6) | (16#${hex:i+6:2} & 0x3F) )); i=$((i + 8))
+        else cp=0; i=$((i + 2)); fi
+        if (( (cp >= 0x1100 && cp <= 0x115F) || (cp >= 0x2E80 && cp <= 0x303E) || (cp >= 0x3041 && cp <= 0x33FF) || (cp >= 0x3400 && cp <= 0x4DBF) || (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0xA000 && cp <= 0xA4CF) || (cp >= 0xAC00 && cp <= 0xD7A3) || (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0xFE30 && cp <= 0xFE6F) || (cp >= 0xFF00 && cp <= 0xFF60) || (cp >= 0xFFE0 && cp <= 0xFFE6) || (cp >= 0x1F300 && cp <= 0x1FAFF) || cp >= 0x20000 )); then w=$((w + 2)); else w=$((w + 1)); fi
     done
     printf '%d' "$w"
 }

@@ -9672,6 +9672,22 @@ remove_all_owned_core_families() {
     (( failed == 0 ))
 }
 
+# Pre-restore cleanup for backup restore only: a config-only backup (config
+# dir present, no unit, no binary) must NOT lose the live binary/unit, so
+# its family is left untouched here and restore_core_family_from_backup
+# only overwrites paths the backup actually provides. A service absent
+# from the backup entirely keeps the old blanket-delete behavior.
+remove_owned_core_families_for_restore() {
+    local root="$1" srv failed=0
+    for srv in xray sing-box hysteria; do
+        if backup_root_contains_service "$root" "$srv" && backup_root_service_is_config_only "$root" "$srv"; then
+            continue
+        fi
+        remove_owned_core_family "$srv" 0 || failed=1
+    done
+    (( failed == 0 ))
+}
+
 
 shortcut_is_abox_managed() {
     local path="${1:-/usr/local/bin/sb}"
@@ -10984,11 +11000,18 @@ ufw_delete_owned_rules() {
     # as one logical rule; a concurrent insertion cannot redirect deletion to a
     # different numbered rule.
     if ! ufw --force delete allow proto "$proto" from any to any port "$spec" comment "A-Box-${spec}-${proto}" >/dev/null 2>&1 || ufw_owned_rule_exists "$spec" "$proto"; then
-        local _num
-        while IFS= read -r _num; do
-            [[ "$_num" =~ ^[0-9]+$ ]] || continue
-            ufw --force delete "$_num" >/dev/null 2>&1 || return 1
-        done < <(printf '%s\n' "$numbers" | LC_ALL=C sort -rn)
+        # Never reuse the pre-spec-delete snapshot: the spec delete shifts
+        # every remaining rule number, so stale numbers would delete other
+        # rules. Re-query before each delete and always take the largest
+        # current owned number (deleting it cannot shift lower numbers).
+        local _guard=0 _fresh _max
+        while ufw_owned_rule_exists "$spec" "$proto"; do
+            ((_guard++ < 50)) || return 1
+            _fresh=$(ufw_global_rule_numbers "$spec" "$proto" 1) || return 1
+            _max=$(printf '%s\n' "$_fresh" | LC_ALL=C sort -rn | sed -n '1p')
+            [[ "$_max" =~ ^[0-9]+$ ]] || return 1
+            ufw --force delete "$_max" >/dev/null 2>&1 || return 1
+        done
     fi
     ! ufw_owned_rule_exists "$spec" "$proto"
 }
@@ -27618,7 +27641,10 @@ restore_core_family_from_backup() {
         *) return 1 ;;
     esac
     # A-04: Config-only backups have no unit; skip init checks.
-    if ! backup_root_service_is_config_only "$root" "$srv"; then
+    local cfg_only=0
+    if backup_root_service_is_config_only "$root" "$srv"; then
+        cfg_only=1
+    else
         backup_root_service_is_managed "$root" "$srv" || return 1
         backup_init=$(backup_root_service_init "$root" "$srv") || return 1
         current_init=$(effective_init_system) || return 1
@@ -27631,6 +27657,11 @@ restore_core_family_from_backup() {
     [[ -n "$core_paths" ]] || return 1
     while IFS= read -r path; do
         [[ -n "$path" ]] || continue
+        # Config-only restore touches only what the backup provides; a
+        # missing binary/unit path must keep the live file, not delete it.
+        if (( cfg_only == 1 )) && [[ ! -e "$root$path" && ! -L "$root$path" ]]; then
+            continue
+        fi
         restore_tree_path "$root" "$path" || return 1
     done <<< "$core_paths"
     normalize_restored_runtime_ownership "$srv" || return 1
@@ -27815,7 +27846,7 @@ restore_latest_backup_silent() {
     stop_all_managed_services >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
     clean_nat_rules >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
     clean_input_rules >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
-    remove_all_owned_core_families || { rm -rf "$work"; return 1; }
+    remove_owned_core_families_for_restore "$root" || { rm -rf "$work"; return 1; }
     clear_abox_runtime_for_restore || { rm -rf "$work"; return 1; }
     restore_abox_directory "$root" || { rm -rf "$work"; return 1; }
     for srv in xray sing-box hysteria; do restore_core_family_from_backup "$root" "$srv" || { rm -rf "$work"; return 1; }; done
@@ -27902,7 +27933,7 @@ restore_from_backup() {
     stop_all_managed_services || die '恢复前无法停止全部 A-Box 托管服务。'
     clean_nat_rules || die '恢复前无法完整删除 A-Box HY2 NAT 规则。'
     clean_input_rules || die '恢复前无法完整删除 A-Box INPUT/原生防火墙规则。'
-    remove_all_owned_core_families || die '恢复前删除当前 A-Box 核心文件失败。'
+    remove_owned_core_families_for_restore "$root" || die '恢复前删除当前 A-Box 核心文件失败。'
     clear_abox_runtime_for_restore || die '恢复前清理 A-Box 运行目录失败。'
     restore_abox_directory "$root" || die 'Restore A-Box directory failed.'
     for srv in xray sing-box hysteria; do
@@ -30661,25 +30692,68 @@ _xl_install_takeover() { # $1 = staged binary, $2 = tag
     return 0
 }
 
-_xl_install_coexist() { # $1 = staged binary, $2 = tag
-    local staged="$1"
-    install_binary_atomically "$staged" "$XRAY_LATEST_BIN" || { _xl_remove_coexist_files; return 1; }
-    prepare_abox_runtime_config_dir xray "$XRAY_LATEST_DIR" || { _xl_remove_coexist_files; return 1; }
-    if [[ ! -f "$XRAY_LATEST_CFG" || -L "$XRAY_LATEST_CFG" ]]; then
-        _xl_seed_config "$XRAY_LATEST_CFG" 'xray-latest' || { _xl_remove_coexist_files; return 1; }
+# Failure cleanup for a partial coexist install: remove ONLY files this
+# install round created. A pre-existing binary/unit/config dir is never
+# deleted here (the deliberate uninstall path keeps using
+# _xl_remove_coexist_files for full removal).
+_xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_dir $5=old_bin_tmp $6=cfg_link_target
+    local had_bin="$1" created_cfg="$2" had_unit="$3" had_dir="$4" old_bin_tmp="$5" cfg_link_target="$6"
+    if [[ "$had_unit" == '0' ]]; then
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            systemctl disable --now xray-latest >/dev/null 2>&1 || true
+            rm -f -- /etc/systemd/system/xray-latest.service
+            systemctl daemon-reload >/dev/null 2>&1 || true
+        else
+            rc-service xray-latest stop >/dev/null 2>&1 || true
+            rm -f -- /etc/init.d/xray-latest /etc/conf.d/xray-latest
+        fi
     fi
-    _xl_write_latest_unit || { _xl_remove_coexist_files; return 1; }
-    prepare_abox_runtime_read_file "$XRAY_LATEST_CFG" xray || { _xl_remove_coexist_files; return 1; }
+    if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then
+        cp -f -- "$old_bin_tmp" "$XRAY_LATEST_BIN"
+    elif [[ "$had_bin" == '0' ]]; then
+        rm -f -- "$XRAY_LATEST_BIN"
+    fi
+    rm -f -- "$old_bin_tmp"
+    if [[ "$created_cfg" == '1' ]]; then
+        rm -f -- "$XRAY_LATEST_CFG"
+        [[ -n "$cfg_link_target" ]] && ln -s -- "$cfg_link_target" "$XRAY_LATEST_CFG"
+    fi
+    [[ "$had_dir" == '0' ]] && rm -rf -- "$XRAY_LATEST_DIR"
+}
+
+_xl_install_coexist() { # $1 = staged binary, $2 = tag
+    local staged="$1" had_bin=0 created_cfg=0 had_unit=0 had_dir=0 old_bin_tmp='' cfg_link_target=''
+    [[ -e "$XRAY_LATEST_BIN" || -L "$XRAY_LATEST_BIN" ]] && had_bin=1
+    [[ -d "$XRAY_LATEST_DIR" && ! -L "$XRAY_LATEST_DIR" ]] && had_dir=1
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        [[ -e /etc/systemd/system/xray-latest.service ]] && had_unit=1
+    else
+        [[ -e /etc/init.d/xray-latest ]] && had_unit=1
+    fi
+    if [[ -f "$XRAY_LATEST_BIN" && ! -L "$XRAY_LATEST_BIN" ]]; then
+        old_bin_tmp=$(mktemp /tmp/A-Box-xl-oldbin.XXXXXX) || return 1
+        cp -f -- "$XRAY_LATEST_BIN" "$old_bin_tmp" || { rm -f -- "$old_bin_tmp"; return 1; }
+    fi
+    install_binary_atomically "$staged" "$XRAY_LATEST_BIN" || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target"; return 1; }
+    prepare_abox_runtime_config_dir xray "$XRAY_LATEST_DIR" || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target"; return 1; }
+    if [[ ! -f "$XRAY_LATEST_CFG" || -L "$XRAY_LATEST_CFG" ]]; then
+        [[ -L "$XRAY_LATEST_CFG" ]] && cfg_link_target=$(readlink "$XRAY_LATEST_CFG")
+        _xl_seed_config "$XRAY_LATEST_CFG" 'xray-latest' || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target"; return 1; }
+        created_cfg=1
+    fi
+    _xl_write_latest_unit || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target"; return 1; }
+    prepare_abox_runtime_read_file "$XRAY_LATEST_CFG" xray || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target"; return 1; }
     if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$XRAY_LATEST_BIN" run -test -config "$XRAY_LATEST_CFG" >/dev/null 2>&1; then
         msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
-        _xl_remove_coexist_files
+        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target"
         return 1
     fi
     if ! restart_service_soft xray-latest; then
         msg "${RED}$(tr_msg xl_restart_fail)${NC}"
-        _xl_remove_coexist_files
+        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target"
         return 1
     fi
+    rm -f -- "$old_bin_tmp"
     return 0
 }
 
@@ -31083,13 +31157,6 @@ xray_latest_menu() {
 # plausible, compilable A-Check script (python shebang, VERSION marker,
 # project URL, size floor, py_compile). A previously cached copy that
 # passes the same checks serves as the offline fallback.
-ACHECK_URL='https://raw.githubusercontent.com/alariclin/A-Check/main/acheck.py'
-ACHECK_URLS=(
-    "$ACHECK_URL"
-    "https://gh-proxy.com/$ACHECK_URL"
-    'https://cdn.jsdelivr.net/gh/alariclin/A-Check@main/acheck.py'
-)
-
 _acheck_file_valid() {
     local _f="$1" _sz=''
     [[ -f "$_f" ]] || return 1
@@ -31103,41 +31170,31 @@ _acheck_file_valid() {
 
 run_acheck_tool() {
     command -v python3 >/dev/null 2>&1 || { msg "${RED}$(tr_msg acheck_no_python)${NC}"; return 1; }
-    local _dir='/etc/ddr/tools' _f='/etc/ddr/tools/acheck.py' _tmp='' _u=''
+    local _dir='/etc/ddr/tools' _f='/etc/ddr/tools/acheck.py' _md='' _exp='' _sha=''
     mkdir -p "$_dir" 2>/dev/null
-    _tmp=$(mktemp /tmp/acheck.XXXXXX) || return 1
-    for _u in "${ACHECK_URLS[@]}"; do
-        if curl -fLsS --connect-timeout 10 --max-time 120 "$_u" -o "$_tmp" && _acheck_file_valid "$_tmp"; then
-            install -m 600 "$_tmp" "$_f" 2>/dev/null || cp "$_tmp" "$_f"
-            break
-        fi
-        : > "$_tmp"
-    done
-    rm -f -- "$_tmp"
-    if [[ ! -f "$_f" ]] || ! _acheck_file_valid "$_f"; then
-        # Pinned backup tier: signature-verified acheck.py from the
-        # test-tools-mirror release (populated by the gated mirror-refresh
-        # workflow). Any failure here falls through to the error below.
-        local _md='' _exp='' _sha=''
-        _md=$(mktemp -d /tmp/acheck-mirror.XXXXXX 2>/dev/null) || _md=''
-        if [[ -n "$_md" ]]; then
-            if curl -fLsS --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$_md/SHA256SUMS" \
-               && curl -fLsS --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$_md/SHA256SUMS.sig" 2>/dev/null \
-               && verify_ed25519_detached "$_md/SHA256SUMS" "$_md/SHA256SUMS.sig" >/dev/null 2>&1 \
-               && curl -fLsS --connect-timeout 10 --max-time 120 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/acheck.py" -o "$_md/acheck.py"; then
-                _exp=$(awk -v f='acheck.py' '$2==f || $2==("*" f) {print $1; exit}' "$_md/SHA256SUMS")
-                _sha=$(sha256sum "$_md/acheck.py" 2>/dev/null | awk '{print $1}')
-                if [[ "$_exp" =~ ^[A-Fa-f0-9]{64}$ && "${_sha,,}" == "${_exp,,}" ]] && _acheck_file_valid "$_md/acheck.py"; then
-                    install -m 600 "$_md/acheck.py" "$_f" 2>/dev/null || cp "$_md/acheck.py" "$_f"
-                fi
-            fi
-            rm -rf -- "$_md"
-        fi
-    fi
-    if [[ ! -f "$_f" ]] || ! _acheck_file_valid "$_f"; then
+    # Signature gate (mandatory, not a fallback tier): only the pinned
+    # test-tools-mirror release is trusted. Every candidate must match the
+    # Ed25519-signed SHA256SUMS entry before it is installed or executed;
+    # an unsigned main/proxy download is never executed, and a stale cache
+    # is never trusted without fresh verification.
+    _md=$(mktemp -d /tmp/acheck-mirror.XXXXXX 2>/dev/null) || { msg "${RED}$(tr_msg acheck_failed)${NC}"; return 1; }
+    if ! curl -fLsS --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$_md/SHA256SUMS" \
+       || ! curl -fLsS --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$_md/SHA256SUMS.sig" 2>/dev/null \
+       || ! verify_ed25519_detached "$_md/SHA256SUMS" "$_md/SHA256SUMS.sig" >/dev/null 2>&1 \
+       || ! curl -fLsS --connect-timeout 10 --max-time 120 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/acheck.py" -o "$_md/acheck.py"; then
+        rm -rf -- "$_md"
         msg "${RED}$(tr_msg acheck_failed)${NC}"
         return 1
     fi
+    _exp=$(awk -v f='acheck.py' '$2==f || $2==("*" f) {print $1; exit}' "$_md/SHA256SUMS")
+    _sha=$(sha256sum "$_md/acheck.py" 2>/dev/null | awk '{print $1}')
+    if [[ ! "$_exp" =~ ^[A-Fa-f0-9]{64}$ || "${_sha,,}" != "${_exp,,}" ]] || ! _acheck_file_valid "$_md/acheck.py"; then
+        rm -rf -- "$_md"
+        msg "${RED}$(tr_msg acheck_failed)${NC}"
+        return 1
+    fi
+    install -m 600 "$_md/acheck.py" "$_f" 2>/dev/null || cp "$_md/acheck.py" "$_f"
+    rm -rf -- "$_md"
     python3 "$_f"
 }
 
@@ -32106,7 +32163,7 @@ extract_abox_build_metadata() {
     local file="$1" build epoch
     build=$(awk -F"'" '/^ABOX_BUILD=/{print $2; exit}' "$file")
     epoch=$(awk -F= '/^ABOX_BUILD_EPOCH=[0-9]+$/{print $2; exit}' "$file")
-    [[ -n "$build" && "$epoch" =~ ^[0-9]+$ && ${#epoch} -le 18 ]] || return 1
+    [[ -n "$build" && "$build" != *'|'* && "$epoch" =~ ^[0-9]+$ && ${#epoch} -le 18 ]] || return 1
     printf '%s|%s\n' "$build" "$epoch"
 }
 
@@ -32114,6 +32171,13 @@ validate_ota_version_direction() {
     local file="$1" metadata remote_build remote_epoch
     metadata=$(extract_abox_build_metadata "$file") || { printf '%s\n' 'OTA 脚本缺少可信的 ABOX_BUILD/ABOX_BUILD_EPOCH 元数据。' >&2; return 1; }
     IFS='|' read -r remote_build remote_epoch <<< "$metadata"
+    # The metadata travels as build|epoch; a '|' inside build would shift
+    # the epoch field, so re-validate it here before any arithmetic use
+    # (an invalid value must fail, never fall through as "not a downgrade").
+    if [[ -z "$remote_build" || ! "$remote_epoch" =~ ^[0-9]+$ || ${#remote_epoch} -gt 18 ]]; then
+        printf '%s\n' 'OTA 脚本元数据中的 epoch 非法，已拒绝。' >&2
+        return 1
+    fi
     if (( 10#$remote_epoch < 10#$ABOX_BUILD_EPOCH )); then
         [[ "${ABOX_ALLOW_DOWNGRADE:-0}" == 1 ]] || { printf '%s\n' "拒绝 OTA 降级: local=${ABOX_BUILD}(${ABOX_BUILD_EPOCH}) remote=${remote_build}(${remote_epoch})。如确需降级，显式设置 ABOX_ALLOW_DOWNGRADE=1 并配置 SHA256 allowlist。" >&2; return 1; }
         [[ -n "${ABOX_OTA_SHA256_ALLOWLIST:-}" ]] || { printf '%s\n' '允许降级时必须同时设置 ABOX_OTA_SHA256_ALLOWLIST。' >&2; return 1; }
@@ -32190,9 +32254,9 @@ update_script() {
     fi
     sha=$(sha256sum "$tmp_update" | awk '{print $1}')
     msg "${YELLOW}[*] OTA SHA256: ${sha}${NC}"
-    if ! validate_abox_script_file "$tmp_update" 'OTA A-Box 脚本' || ! validate_ota_version_direction "$tmp_update"; then
+    if ! validate_abox_script_file "$tmp_update" 'OTA A-Box 脚本'; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
-        msg "${RED}[!] 更新脚本语法、指纹或版本方向校验失败；当前版本未修改。${NC}"
+        msg "${RED}[!] 更新脚本语法或指纹校验失败；当前版本未修改。${NC}"
         pause_return
         return 1
     fi
@@ -32202,13 +32266,21 @@ update_script() {
         pause_return
         return 1
     fi
-    msg "${YELLOW}[*] OTA remote build: ${OTA_REMOTE_BUILD} (${OTA_REMOTE_EPOCH})${NC}"
     if ! confirm_ota_script_hash "$sha" "$OTA_URL"; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
         msg "${YELLOW}[*] OTA update canceled; script and SNI cache were not changed.${NC}"
         pause_return
         return 0
     fi
+    # Version direction is checked only after the script hash is confirmed,
+    # so unauthenticated metadata never influences a decision first.
+    if ! validate_ota_version_direction "$tmp_update"; then
+        rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
+        msg "${RED}[!] 更新脚本版本方向校验失败；当前版本未修改。${NC}"
+        pause_return
+        return 1
+    fi
+    msg "${YELLOW}[*] OTA remote build: ${OTA_REMOTE_BUILD} (${OTA_REMOTE_EPOCH})${NC}"
 
     # Snapshot both current files before changing either one. If a later write
     # or post-write validation fails, restore the old script/cache pair.

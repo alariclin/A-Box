@@ -16,6 +16,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          # U60: PR events check out the temporary merge commit by default;
+          # the README SHA gate below must see the real head commit, so pin
+          # the checkout to the PR head SHA (push events fall back to github.sha).
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - name: Bash syntax
         run: |
           bash -n install.sh

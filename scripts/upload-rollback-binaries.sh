@@ -151,6 +151,12 @@ echo "[*] Merging SHA256SUMS..."
 gh release download "$TAG" --repo "$REPO" -p "SHA256SUMS" -D "$tmp" 2>/dev/null \
     || { echo "SHA256SUMS not found in release; aborting (refusing to create from scratch)"; exit 1; }
 cp "$tmp/SHA256SUMS" "$tmp/SHA256SUMS.new"
+# U59: a remote manifest without trailing newline would glue the first
+# appended record onto its last line; terminate it first.
+if [[ -s "$tmp/SHA256SUMS.new" ]]; then
+    last_byte="$(tail -c 1 "$tmp/SHA256SUMS.new" | od -An -tx1 | tr -d ' \n')"
+    [[ "$last_byte" == "0a" ]] || printf '\n' >> "$tmp/SHA256SUMS.new"
+fi
 while read -r sum name _ || [[ -n "$sum" ]]; do
     [[ -n "${sum:-}" && -n "${name:-}" ]] || continue
     [[ "$sum" =~ ^[A-Fa-f0-9]{64}$ ]] || { echo "invalid hash for $name; aborting"; exit 1; }
@@ -169,6 +175,9 @@ while read -r sum name _ || [[ -n "$sum" ]]; do
     fi
 done < "$STAGE/SHA256SUMS.staging"
 
+# U59: validate the merged manifest before upload (a previously glued
+# line, or any malformed remote line, must not be published).
+awk 'NF != 2 || $1 !~ /^[A-Fa-f0-9]{64}$/ || $2 !~ /^[A-Za-z0-9._-]+$/ || seen[$2]++ { exit 1 }' "$tmp/SHA256SUMS.new" || { echo "merged SHA256SUMS failed format validation; aborting"; exit 1; }
 if cmp -s "$tmp/SHA256SUMS" "$tmp/SHA256SUMS.new"; then
     echo "[skip] SHA256SUMS already up to date"
 else

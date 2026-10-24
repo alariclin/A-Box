@@ -2795,6 +2795,24 @@ tr_msg() {
         fa:dp_preserve_fail) echo 'حفظ پروتکل‌های مستقل ناموفق بود (%s)؛ فقط با پیکربندی جدید ادامه داده می‌شود. پروتکل‌ها را می‌توان از «پروتکل‌های بیشتر» دوباره افزود.' ;;
         zh-tw:dp_preserve_fail) echo '獨立協定保留失敗（%s），已回退為僅新設定；獨立協定可透過「更多協定」重新加入。' ;;
         ja:dp_preserve_fail) echo '独立プロトコルの保持に失敗しました（%s）。新設定のみで続行します。独立プロトコルは「その他のプロトコル」から再追加できます。' ;;
+        zh:dp_preserve_snapshot_fail) echo '独立入站快照失败，保留未生效。' ;;
+        en:dp_preserve_snapshot_fail) echo 'Standalone inbound snapshot failed; preservation is not in effect.' ;;
+        ru:dp_preserve_snapshot_fail) echo 'Не удалось создать снимок отдельных входящих; сохранение не действует.' ;;
+        fa:dp_preserve_snapshot_fail) echo 'تهیه تصویر ورودی‌های مستقل ناموفق بود؛ حفظ اعمال نشد.' ;;
+        zh-tw:dp_preserve_snapshot_fail) echo '獨立入站快照失敗，保留未生效。' ;;
+        ja:dp_preserve_snapshot_fail) echo '独立インバウンドのスナップショットに失敗しました。保持は有効になっていません。' ;;
+        zh:dp_preserve_conflict_tag) echo '以下独立入站与新配置同 tag 但内容不同，已保留新配置：%s' ;;
+        en:dp_preserve_conflict_tag) echo 'These standalone inbounds share a tag with the new config but differ; the new config was kept: %s' ;;
+        ru:dp_preserve_conflict_tag) echo 'Эти отдельные входящие имеют тот же тег, что и новая конфигурация, но отличаются; сохранена новая конфигурация: %s' ;;
+        fa:dp_preserve_conflict_tag) echo 'این ورودی‌های مستقل برچسبی مشابه پیکربندی جدید دارند اما متفاوت‌اند؛ پیکربندی جدید حفظ شد: %s' ;;
+        zh-tw:dp_preserve_conflict_tag) echo '以下獨立入站與新設定同 tag 但內容不同，已保留新設定：%s' ;;
+        ja:dp_preserve_conflict_tag) echo '次の独立インバウンドは新設定と同じタグですが内容が異なります。新設定を保持しました: %s' ;;
+        zh:dp_argo_uninstall_fail) echo 'Argo 卸载失败，已保留原配置与状态。' ;;
+        en:dp_argo_uninstall_fail) echo 'Argo uninstall failed; the original config and state were kept.' ;;
+        ru:dp_argo_uninstall_fail) echo 'Не удалось удалить Argo; исходная конфигурация и состояние сохранены.' ;;
+        fa:dp_argo_uninstall_fail) echo 'حذف Argo ناموفق بود؛ پیکربندی و وضعیت اصلی حفظ شدند.' ;;
+        zh-tw:dp_argo_uninstall_fail) echo 'Argo 解除安裝失敗，已保留原設定與狀態。' ;;
+        ja:dp_argo_uninstall_fail) echo 'Argo のアンインストールに失敗しました。元の設定と状態は保持されています。' ;;
         zh:pv_eof) echo '输入结束，未获得有效的 %s' ;;
         en:pv_eof) echo 'EOF reached without valid %s' ;;
         ru:pv_eof) echo 'ввод завершён без допустимого значения %s' ;;
@@ -10006,17 +10024,26 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
     [[ "${ABOX_PRESERVE_STANDALONE:-0}" == '1' ]] || return 0
     local cfg="$2" pat='' out='' n=0
     [[ -f "$cfg" ]] || return 0
-    command -v jq >/dev/null 2>&1 || return 0
+    if ! command -v jq >/dev/null 2>&1; then
+        msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
+        return 1
+    fi
     pat=$(standalone_tag_set "$1" | paste -sd'|' -) || return 0
     [[ -n "$pat" ]] || return 0
-    out=$(mktemp /tmp/A-Box-preserve.XXXXXX.json) || return 0
-    if jq --arg pat "^(${pat})$" '[.inbounds[]? | select((.tag // "") | test($pat))]' "$cfg" > "$out" 2>/dev/null; then
-        n=$(jq 'length' "$out" 2>/dev/null || printf '0')
-        if [[ "$n" =~ ^[0-9]+$ ]] && (( n > 0 )); then
-            ABOX_PRESERVE_FILE="$out"
-            export ABOX_PRESERVE_FILE
-            return 0
-        fi
+    if ! out=$(mktemp /tmp/A-Box-preserve.XXXXXX.json); then
+        msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
+        return 1
+    fi
+    if ! jq --arg pat "^(${pat})$" '[.inbounds[]? | select((.tag // "") | test($pat))]' "$cfg" > "$out" 2>/dev/null; then
+        rm -f -- "$out"
+        msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
+        return 1
+    fi
+    n=$(jq 'length' "$out" 2>/dev/null || printf '0')
+    if [[ "$n" =~ ^[0-9]+$ ]] && (( n > 0 )); then
+        ABOX_PRESERVE_FILE="$out"
+        export ABOX_PRESERVE_FILE
+        return 0
     fi
     rm -f -- "$out"
     return 0
@@ -10025,7 +10052,7 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
 standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
     [[ "${ABOX_PRESERVE_STANDALONE:-0}" == '1' ]] || return 0
     [[ -n "${ABOX_PRESERVE_FILE:-}" && -f "${ABOX_PRESERVE_FILE:-}" ]] || return 0
-    local cfg="$2" bak='' merged='' keepf='' attempt='' ok=0 added=0 dropped='' before=0 after=0
+    local cfg="$2" bak='' merged='' keepf='' attempt='' ok=0 added=0 dropped='' conflict='' before=0 after=0
     if ! command -v jq >/dev/null 2>&1; then
         rm -f -- "$ABOX_PRESERVE_FILE"; ABOX_PRESERVE_FILE=''
         return 0
@@ -10066,6 +10093,8 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
         dropped=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag as $t | ($now[0].inbounds | map(.tag) | index($t)) == null) | .tag] | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
         if (( added > 0 )); then msg "${GREEN}$(tprintf dp_preserve_ok "$added")${NC}"; fi
         if [[ -n "$dropped" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict "$dropped")${NC}"; fi
+        conflict=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag != null) | .tag as $t | ($now[0].inbounds[] | select(.tag == $t)) as $cur | select($cur != null and . != $cur) | .tag] | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
+        if [[ -n "$conflict" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict_tag "$conflict")${NC}"; fi
     else
         cp -- "$bak" "$cfg" 2>/dev/null || true
         chmod 600 "$cfg" 2>/dev/null || true
@@ -17095,13 +17124,21 @@ argo_uninstall() {
     argo_remove_unit argo-vmess
     argo_remove_unit argo-vless
     local cfg='/etc/sing-box/config.json' tmp_cfg
-    if [[ -f "$cfg" && ! -L "$cfg" ]] && command -v jq >/dev/null 2>&1; then
+    if [[ -f "$cfg" && ! -L "$cfg" ]]; then
+        if ! command -v jq >/dev/null 2>&1; then
+            msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
+            return 1
+        fi
         tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        if jq '.inbounds |= map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in"))' "$cfg" > "$tmp_cfg" 2>/dev/null \
+        if jq '.inbounds |= map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in")) | if (.route.rules | type) == "array" then .route.rules |= map(select(((.inbound // []) | index("vmess-ws-in")) == null and ((.inbound // []) | index("vless-ws-in")) == null)) else . end' "$cfg" > "$tmp_cfg" 2>/dev/null \
             && /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1; then
             install_file_atomically "$tmp_cfg" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
             prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
             restart_service_soft sing-box || true
+        else
+            rm -f "$tmp_cfg"
+            msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
+            return 1
         fi
         rm -f "$tmp_cfg"
     fi
@@ -18671,7 +18708,7 @@ deploy_xray() {
     light_preflight_check
     if [[ "$MODE_IN" == *'ALL'* ]]; then assert_no_foreign_core_conflicts xray hysteria; else assert_no_foreign_core_conflicts xray; fi
     confirm_deployment_replacement xray "$MODE_IN"
-    standalone_preserve_snapshot xray /usr/local/etc/xray/config.json
+    standalone_preserve_snapshot xray /usr/local/etc/xray/config.json || return 1
     if [[ "$MODE_IN" == *'ALL'* ]]; then begin_deployment_transaction "xray ${MODE_IN} deployment" xray hysteria; else begin_deployment_transaction "xray ${MODE_IN} deployment" xray; fi
     release_ports
     clean_nat_rules || die "$(tr_msg cl_nat)"
@@ -18801,7 +18838,7 @@ deploy_singbox() {
     light_preflight_check
     assert_no_foreign_core_conflicts sing-box
     confirm_deployment_replacement singbox "$MODE_IN"
-    standalone_preserve_snapshot sing-box /etc/sing-box/config.json
+    standalone_preserve_snapshot sing-box /etc/sing-box/config.json || return 1
     begin_deployment_transaction "sing-box ${MODE_IN} deployment" sing-box
     release_ports
     clean_nat_rules || die "$(tr_msg cl_nat)"

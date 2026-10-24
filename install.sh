@@ -4537,6 +4537,12 @@ tr_msg() {
         fa:split_rule_fail) echo 'افزودن قانون ناموفق بود.' ;;
         zh-tw:split_rule_fail) echo '規則添加失敗。' ;;
         ja:split_rule_fail) echo 'ルールの追加に失敗しました。' ;;
+        zh:split_domains_empty) echo '域名不能为空（仅含逗号的输入无效）。' ;;
+        en:split_domains_empty) echo 'Domains must not be empty (a commas-only list is invalid).' ;;
+        ru:split_domains_empty) echo 'Список доменов не должен быть пустым (только запятые недопустимы).' ;;
+        fa:split_domains_empty) echo 'دامنه‌ها نمی‌توانند خالی باشند (ورودی فقط شامل ویرگول نامعتبر است).' ;;
+        zh-tw:split_domains_empty) echo '網域不能為空（僅含逗號的輸入無效）。' ;;
+        ja:split_domains_empty) echo 'ドメインを空にすることはできません（カンマのみの入力は無効です）。' ;;
         zh:split_rule_del_prompt) echo '请输入要删除的规则序号' ;;
         en:split_rule_del_prompt) echo 'Enter rule number to delete' ;;
         ru:split_rule_del_prompt) echo 'Введите номер правила для удаления' ;;
@@ -18217,6 +18223,9 @@ routing_outbound_del() {
 routing_rule_add() {
     local domains_csv="$1" outbound="$2" tmp rc
     [[ -n "$domains_csv" && -n "$outbound" ]] || return 1
+    # U41: a commas-only list parses to an empty domain array, which sing-box
+    # treats as an unconditional rule; reject it so no caller can create one.
+    [[ -n "${domains_csv//,/}" ]] || return 1
     routing_outbound_has "$outbound" || return 1
     routing_state_init || return 1
     tmp=$(mktemp) || return 1
@@ -18347,9 +18356,10 @@ routing_apply_live() {
                 | .outbounds |= (map(select(.tag as $t | ($managed + $retired) | index($t) | not)) + $obs)
                 | .endpoints = (((.endpoints // []) | map(select(.tag as $t | ($managed + $retired) | index($t) | not))) + $eps)
                 | .route.rules = (((.route.rules // []) | map(select((.outbound as $t | ($managed + $retired) | index($t) | not) and (. as $r | ($prevr | index($r)) | not)))) + $srules)
-                | .route.rule_set = ($tags | map({type:"remote", tag:., format:"binary",
+                | ($prevr | map(.rule_set[]?) | unique) as $prevtags
+                | .route.rule_set = (((.route.rule_set // []) | map(select(.tag as $t | (($tags + $prevtags) | index($t)) | not))) + ($tags | map({type:"remote", tag:., format:"binary",
                     url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
-                    download_detour:"direct"}))
+                    download_detour:"direct"})))
             ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
             jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
             if [[ -x /usr/local/bin/sing-box ]]; then
@@ -18605,6 +18615,9 @@ split_add_socks_outbound() {
     local ip="$1" port="$2" user="$3" pass="$4"
     local tag workdir n
     [[ -n "$ip" && -n "$port" ]] || return 1
+    # U43: jq --argjson alone only stops pure non-numeric strings; reject
+    # non-integers and out-of-range ports before anything is persisted.
+    [[ "$port" =~ ^[0-9]+$ && ${#port} -le 5 ]] && (( 10#$port >= 1 && 10#$port <= 65535 )) || return 1
     n=1
     while routing_outbound_has "socks-land$n"; do n=$((n+1)); done
     tag="socks-land$n"
@@ -18688,10 +18701,18 @@ split_add_socks_interactive() {
     port="${port:-1080}"
     read -r -p "$(tr_msg split_user_prompt): " user || return 0
     read -r -s -p "$(tr_msg split_pass_prompt): " pass; echo || return 0
-    tag=$(split_add_socks_outbound "$ip" "$port" "$user" "$pass") || { msg "${RED}$(tr_msg split_add_fail)${NC}"; return 1; }
-    msg "$(tprintf split_add_done "$tag")"
+    tag=$(split_add_socks_outbound "$ip" "$port" "$user" "$pass") || { msg "${RED}$(tr_msg split_add_fail)${NC}"; pause_return; return 1; }
     local core="${CORE:-}"; [[ -z "$core" ]] && { load_optional_abox_env_or_die 2>/dev/null || true; core="${CORE:-}"; }
-    [[ -n "$core" ]] && routing_apply_live "$core"
+    if [[ -n "$core" ]]; then
+        if routing_apply_live "$core"; then
+            msg "$(tprintf split_add_done "$tag")"
+        else
+            routing_outbound_del "$tag" || true
+            msg "${RED}$(tr_msg split_add_fail)${NC}"; pause_return; return 1
+        fi
+    else
+        msg "$(tprintf split_add_done "$tag")"
+    fi
     pause_return
 }
 
@@ -18731,6 +18752,7 @@ split_rule_add_interactive() {
     msg "$(tr_msg split_domains_hint)"
     read -r -p "$(tr_msg split_domains_prompt): " domains || return 0
     [[ -n "$domains" ]] || return 1
+    if [[ -z "${domains//,/}" ]]; then msg "${RED}$(tr_msg split_domains_empty)${NC}"; return 1; fi
     msg "$(tr_msg split_outbound_hint)"
     jq -r '.outbounds[]? | .tag' "$ROUTING_STATE_FILE" 2>/dev/null | while IFS= read -r t; do msg " - $t"; done
     read -r -p "$(tr_msg split_outbound_prompt): " outbound || return 0

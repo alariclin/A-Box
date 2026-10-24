@@ -21496,7 +21496,7 @@ one_click_reality_deploy() {
         pause_return; return 0
     fi
     export ABOX_QUICK_DEPLOY=1
-    case "$choice" in 1) deploy_xray VISION ;; 2) deploy_singbox VISION ;; esac
+    case "$choice" in 1) deploy_xray VISION || pause_return ;; 2) deploy_singbox VISION || pause_return ;; esac
     unset ABOX_QUICK_DEPLOY
 }
 ux_mode_menu() {
@@ -35695,16 +35695,16 @@ main_loop() {
         fi
         unset _menu_lock_released
         case "$choice" in
-            1) deploy_xray VISION ;;
-            2) deploy_xray XHTTP ;;
-            3) deploy_xray SS ;;
-            4) deploy_official_hy2 NORMAL ;;
-            5) deploy_xray ALL ;;
-            6) deploy_singbox VISION ;;
-            7) deploy_singbox VLESS_SS ;;
-            8) deploy_singbox SS ;;
-            9) deploy_singbox HY2 ;;
-            10) deploy_singbox ALL ;;
+            1) deploy_xray VISION || pause_return ;;
+            2) deploy_xray XHTTP || pause_return ;;
+            3) deploy_xray SS || pause_return ;;
+            4) deploy_official_hy2 NORMAL || pause_return ;;
+            5) deploy_xray ALL || pause_return ;;
+            6) deploy_singbox VISION || pause_return ;;
+            7) deploy_singbox VLESS_SS || pause_return ;;
+            8) deploy_singbox SS || pause_return ;;
+            9) deploy_singbox HY2 || pause_return ;;
+            10) deploy_singbox ALL || pause_return ;;
             11) vps_benchmark_menu ;;
             12) view_config manual ;;
             13) show_usage ;;

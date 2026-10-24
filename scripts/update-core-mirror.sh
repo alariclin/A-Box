@@ -322,17 +322,32 @@ xray_amd64_name="Xray-$xray_tag-linux-64.zip"
 xray_arm64_name="Xray-$xray_tag-linux-arm64-v8a.zip"
 singbox_version="${singbox_tag#v}"
 # B-13: constructed names for skipped cores must exist in the manifest (fail-closed).
-for _b13_name in "$xray_amd64_name" "$xray_arm64_name" \
-    "sing-box-$singbox_version-linux-amd64-glibc.tar.gz" "sing-box-$singbox_version-linux-amd64-musl.tar.gz" \
-    "sing-box-$singbox_version-linux-arm64-glibc.tar.gz" "sing-box-$singbox_version-linux-arm64-musl.tar.gz" \
-    "hysteria-$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')-linux-amd64" \
-    "hysteria-$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')-linux-arm64"; do
-  grep -q "  $_b13_name$" "$existing/SHA256SUMS" || {
-    echo "::error::B-13: constructed asset name not in SHA256SUMS manifest: $_b13_name"
-    exit 1
-  }
-done
-unset _b13_name
+# Only skipped cores are checked: their names are built from the
+# existing mirror tag, so they must already be in the manifest. A
+# non-skipped core's names carry the NEW upstream tag by definition
+# and only enter the manifest through this run's downloads — checking
+# them against the old manifest would fail every legitimate update.
+declare -a _b13_names=()
+if [[ -n "${SKIP_CORES[Xray]:-}" ]]; then
+  _b13_names+=("$xray_amd64_name" "$xray_arm64_name")
+fi
+if [[ -n "${SKIP_CORES[sing-box]:-}" ]]; then
+  _b13_names+=("sing-box-$singbox_version-linux-amd64-glibc.tar.gz" "sing-box-$singbox_version-linux-amd64-musl.tar.gz" \
+    "sing-box-$singbox_version-linux-arm64-glibc.tar.gz" "sing-box-$singbox_version-linux-arm64-musl.tar.gz")
+fi
+if [[ -n "${SKIP_CORES[Hysteria]:-}" ]]; then
+  _b13_names+=("hysteria-$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')-linux-amd64" \
+    "hysteria-$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')-linux-arm64")
+fi
+if (( ${#_b13_names[@]} > 0 )); then
+  for _b13_name in "${_b13_names[@]}"; do
+    grep -q "  $_b13_name$" "$existing/SHA256SUMS" || {
+      echo "::error::B-13: constructed asset name not in SHA256SUMS manifest: $_b13_name"
+      exit 1
+    }
+  done
+fi
+unset _b13_name _b13_names
 hysteria_leaf="$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')"
 
 # D-1-FIX: Skip downloads for skipped cores (assets already in mirror).

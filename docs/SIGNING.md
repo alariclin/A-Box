@@ -9,12 +9,15 @@ signature) are published alongside mirror metadata:
 |--------------------|-------------------------|------------------|
 | `CORE-VERSIONS`    | `CORE-VERSIONS.sig`     | `core-binaries`  |
 | `SHA256SUMS`       | `SHA256SUMS.sig`        | `core-binaries`  |
+| `SHA256SUMS`       | `SHA256SUMS.sig`        | `test-tools-mirror` |
 | `wallos-manifest.txt` | `wallos-manifest.txt.sig` | `wallos-mirror` |
 
-> **Note (H4):** `test-tools-mirror` Release assets are verified by SHA256
-> checksum only (not Ed25519). Test scripts are downloaded upstream-first
-> with explicit user confirmation; the mirror is a fallback. Adding
-> detached signatures to test-tools is tracked as future work.
+> **Note:** `test-tools-mirror` assets were originally verified by
+> SHA256 checksum only. Since the P3-02 hardening, the mirror
+> workflow also publishes a detached Ed25519 signature for its
+> `SHA256SUMS`, and `install.sh` verifies it fail-closed (a missing
+> or invalid signature blocks execution of the mirrored test
+> scripts; the upstream-first download path is unaffected).
 
 Verification uses **only `openssl` + `python3`** (both already in
 `install.sh`'s `ensure_commands`). No GPG / minisign / signify dependency —

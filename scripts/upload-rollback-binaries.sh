@@ -173,7 +173,13 @@ if cmp -s "$tmp/SHA256SUMS" "$tmp/SHA256SUMS.new"; then
     echo "[skip] SHA256SUMS already up to date"
 else
     echo "[upload] SHA256SUMS ($(wc -l < "$tmp/SHA256SUMS.new") lines)"
-    gh release upload "$TAG" "$tmp/SHA256SUMS.new#SHA256SUMS" --repo "$REPO" --clobber
+    # The asset name is the file's basename: upload a file actually
+    # named SHA256SUMS. (With "SHA256SUMS.new#SHA256SUMS" the part
+    # after # is only a display label; the asset would be stored as
+    # SHA256SUMS.new and the real SHA256SUMS would never update.)
+    mkdir -p "$tmp/upload"
+    cp -- "$tmp/SHA256SUMS.new" "$tmp/upload/SHA256SUMS"
+    gh release upload "$TAG" "$tmp/upload/SHA256SUMS" --repo "$REPO" --clobber
 fi
 
 echo "[done] Verify at: https://github.com/$REPO/releases/tag/$TAG"

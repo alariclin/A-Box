@@ -259,7 +259,7 @@ x25519_pub_from_priv() {
 
 # Unescape one jq @tsv field value (\\ -> \, \t -> TAB, \n -> LF, \r -> CR).
 _tsv_unescape() {
-    local _s="$1" _ph=$'\x01'
+    local _s="$1" _ph=$'\x01\x02'
     _s=${_s//\\\\/$_ph}
     _s=${_s//\\t/$'\t'}
     _s=${_s//\\n/$'\n'}
@@ -344,6 +344,8 @@ rebuild_standalone_links() {
                     _ub=$(printf '%s' "2022-blake3-aes-128-gcm:${_inner}@$(uri_host "$_ip"):${_port}" | base64 | tr -d '\n\r')
                     _pb=$(jq -cn --arg h "$_sni" --arg p "$_pass" '{version:"3", host:$h, password:$p}' | base64 | tr -d '\n\r')
                     register_standalone_link shadowtls "ShadowTLS · 端口 ${_port}" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
+                else
+                    printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
                 fi
             elif [[ -n "$_port$_pass$_sni$_inner" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
@@ -4219,6 +4221,12 @@ tr_msg() {
         ja:acheck_no_python) echo 'python3 が見つかりません：A-Check には Python 3.8 以上が必要です。インストールして再試行してください。' ;;
         zh:acheck_failed) echo 'A-Check 下载或校验失败，未运行。' ;;
         en:acheck_failed) echo 'A-Check download or validation failed; nothing was run.' ;;
+        zh:users_ss_no_server_key) echo 'shadowsocks %s：多用户同步需要 server key，但未存储且入站也没有；拒绝写入占位密码。' ;;
+        en:users_ss_no_server_key) echo 'shadowsocks %s: multi-user sync needs a server key, but none is stored and the inbound has none; refusing to write a placeholder password.' ;;
+        ru:users_ss_no_server_key) echo 'shadowsocks %s: для синхронизации нескольких пользователей нужен server key, но он не сохранён и во входящем подключении его нет; запись пароля-заполнителя отклонена.' ;;
+        fa:users_ss_no_server_key) echo 'shadowsocks %s: همگام‌سازی چندکاربره به server key نیاز دارد، اما هیچ‌کدام ذخیره نشده و ورودی هم ندارد؛ از نوشتن گذرواژه موقت خودداری شد.' ;;
+        zh-tw:users_ss_no_server_key) echo 'shadowsocks %s：多使用者同步需要 server key，但未儲存且入站也沒有；拒絕寫入佔位密碼。' ;;
+        ja:users_ss_no_server_key) echo 'shadowsocks %s：マルチユーザー同期には server key が必要ですが、保存されておらず、インバウンドにもありません。プレースホルダーパスワードの書き込みを拒否します。' ;;
         ru:acheck_failed) echo 'Не удалось скачать или проверить A-Check; ничего не запущено.' ;;
         fa:acheck_failed) echo 'دانلود یا بررسی A-Check ناموفق بود؛ چیزی اجرا نشد.' ;;
         zh-tw:acheck_failed) echo 'A-Check 下載或校驗失敗，未執行。' ;;
@@ -10057,7 +10065,7 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
         msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
         return 1
     fi
-    n=$(jq 'length' "$out" 2>/dev/null || printf '0')
+    n=$(jq 'length' "$out" 2>/dev/null) || { rm -f -- "$out"; msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"; return 1; }
     if [[ "$n" =~ ^[0-9]+$ ]] && (( n > 0 )); then
         ABOX_PRESERVE_FILE="$out"
         export ABOX_PRESERVE_FILE
@@ -10111,7 +10119,7 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
         dropped=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag as $t | ($now[0].inbounds | map(.tag) | index($t)) == null) | .tag] | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
         if (( added > 0 )); then msg "${GREEN}$(tprintf dp_preserve_ok "$added")${NC}"; fi
         if [[ -n "$dropped" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict "$dropped")${NC}"; fi
-        conflict=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag != null) | .tag as $t | ($now[0].inbounds[] | select(.tag == $t)) as $cur | select($cur != null and . != $cur) | .tag] | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
+        conflict=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag != null) | .tag as $t | (($now[0].inbounds // [])[] | select(.tag == $t)) as $cur | select($cur != null and . != $cur) | .tag] | unique | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
         if [[ -n "$conflict" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict_tag "$conflict")${NC}"; fi
     else
         cp -- "$bak" "$cfg" 2>/dev/null || true
@@ -11087,6 +11095,9 @@ ufw_delete_owned_rules() {
     # Only a confirmed absence (rc 1) is success: rules still present
     # (rc 0) and a failed verification query (rc 2) must both report
     # failure, so callers never clear ownership records on unknown state.
+    # Residual TOCTOU (accepted): ufw has no transaction lock, so a
+    # concurrent rule insertion between re-query and delete could shift
+    # numbers; the 50-round guard bounds this and any failure returns 1.
     (( _verify_rc == 1 ))
 }
 
@@ -22061,7 +22072,7 @@ users_sync() {
         [[ -n "$eff_ss" ]] && promote=1
     fi
     if [[ "$proto" == 'shadowsocks' ]] && (( encount > 1 )) && [[ -z "$eff_ss" ]]; then
-        msg "${RED}[!] shadowsocks ${tag}: multi-user sync needs a server key, but none is stored and the inbound has none; refusing to write a placeholder password.${NC}"
+        msg "${RED}[!] $(tprintf users_ss_no_server_key "$tag")${NC}"
         rm -f "$tmp" "$bak"; return 1
     fi
     # sing-box socks/mixed inbounds treat an empty users list as "no
@@ -32347,7 +32358,7 @@ validate_ota_version_direction() {
     # the epoch field, so re-validate it here before any arithmetic use
     # (an invalid value must fail, never fall through as "not a downgrade").
     if [[ -z "$remote_build" || ! "$remote_epoch" =~ ^[0-9]+$ || ${#remote_epoch} -gt 18 ]]; then
-        printf '%s\n' 'OTA 脚本元数据中的 epoch 非法，已拒绝。' >&2
+        printf '%s\n' 'OTA 脚本元数据非法（build/epoch），已拒绝。' >&2
         return 1
     fi
     if (( 10#$remote_epoch < 10#$ABOX_BUILD_EPOCH )); then

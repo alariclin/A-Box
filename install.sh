@@ -10434,20 +10434,24 @@ reorder_one() {
         current_rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
         current_target_lines=()
         current_foreign_lines=()
+        current_interleave=''
         while IFS= read -r item; do
             [[ "$item" =~ ^-A[[:space:]]+INPUT[[:space:]] ]] || continue
             if [[ "$item" =~ $wl_re || "$item" =~ $drop_re ]]; then
                 normalized=$(__abox_normalize_managed_rule_line "$item") || return 1
                 current_target_lines+=("$normalized")
+                current_interleave+='T'
             else
                 current_foreign_lines+=("$item")
+                current_interleave+='F'
             fi
         done <<< "$current_rules_output"
     }
     firewall_state_matches_expected() {
         capture_firewall_views || return 1
         [[ "$(printf '%s\n' "${current_target_lines[@]}")" == "$(printf '%s\n' "${expected_target_lines[@]}")" ]] || return 1
-        [[ "$(printf '%s\n' "${current_foreign_lines[@]}")" == "$(printf '%s\n' "${original_foreign_rules[@]}")" ]]
+        [[ "$(printf '%s\n' "${current_foreign_lines[@]}")" == "$(printf '%s\n' "${original_foreign_rules[@]}")" ]] || return 1
+        [[ "$current_interleave" == "$expected_interleave" ]]
     }
     firewall_rollback() {
         local rollback_line
@@ -10460,6 +10464,10 @@ reorder_one() {
         }
         [[ "$(printf '%s\n' "${current_foreign_lines[@]}")" == "$(printf '%s\n' "${original_foreign_rules[@]}")" ]] || {
             printf '%s\n' "A-Box firewall rollback conflict: non-A-Box INPUT rules changed outside this transaction; recovery snapshot preserved at $recovery_snapshot" >&2
+            return 2
+        }
+        [[ "$current_interleave" == "$expected_interleave" ]] || {
+            printf '%s\n' "A-Box firewall rollback conflict: INPUT rule order changed outside this transaction; recovery snapshot preserved at $recovery_snapshot" >&2
             return 2
         }
         rollback_lines=("${current_target_lines[@]}")
@@ -10496,6 +10504,8 @@ reorder_one() {
     original_target_lines=("${current_target_lines[@]}")
     original_foreign_rules=("${current_foreign_lines[@]}")
     expected_target_lines=("${original_target_lines[@]}")
+    original_interleave="$current_interleave"
+    expected_interleave="$current_interleave"
     for line in "${original_target_lines[@]}"; do
         if [[ "$line" =~ $wl_re ]]; then rules+=("$line"); fi
     done
@@ -10532,6 +10542,7 @@ reorder_one() {
         fi
         mutated=1
         expected_target_lines=("$expected_line" "${expected_target_lines[@]}")
+        expected_interleave="T$expected_interleave"
     done
     local expected_drop_line="-A INPUT -p ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
     firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
@@ -10541,6 +10552,7 @@ reorder_one() {
         return 1
     fi
     expected_target_lines=("${expected_target_lines[@]:0:n}" "$expected_drop_line" "${expected_target_lines[@]:n}")
+    expected_interleave="${expected_interleave:0:n}T${expected_interleave:n}"
 
     rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     current_lines=(); mapfile -t current_lines <<< "$rules_output"
@@ -10570,6 +10582,7 @@ reorder_one() {
         fi
         del_idx="${delete_target_indices[j]}"
         expected_target_lines=("${expected_target_lines[@]:0:del_idx}" "${expected_target_lines[@]:del_idx+1}")
+        expected_interleave="${expected_interleave:0:$((delete_rule_numbers[j] - 1))}${expected_interleave:$((delete_rule_numbers[j]))}"
     done
     if ! firewall_state_matches_expected; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
@@ -10713,7 +10726,7 @@ install_abox_firewall_persistence_service() {
 
     if ! write_abox_firewall_restore_script; then
         __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
-        rm -rf -- "$tx_dir"
+        if (( rollback_rc == 0 )); then rm -rf -- "$tx_dir"; else printf '%s\n' "A-Box firewall persistence rollback FAILED; recovery backup preserved at $tx_dir (restore firewall_restore.sh and the A-Box-firewall unit from it manually)" >&2; fi
         (( rollback_rc == 0 )) && return 1
         return 1
     fi
@@ -10737,12 +10750,12 @@ WantedBy=multi-user.target
 EOF_ABOX_FW_UNIT
         then
             __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
-            rm -rf -- "$tx_dir"
+            if (( rollback_rc == 0 )); then rm -rf -- "$tx_dir"; else printf '%s\n' "A-Box firewall persistence rollback FAILED; recovery backup preserved at $tx_dir (restore firewall_restore.sh and the A-Box-firewall unit from it manually)" >&2; fi
             return 1
         fi
         if ! systemctl daemon-reload >/dev/null 2>&1 || ! systemctl enable A-Box-firewall.service >/dev/null 2>&1; then
             __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
-            rm -rf -- "$tx_dir"
+            if (( rollback_rc == 0 )); then rm -rf -- "$tx_dir"; else printf '%s\n' "A-Box firewall persistence rollback FAILED; recovery backup preserved at $tx_dir (restore firewall_restore.sh and the A-Box-firewall unit from it manually)" >&2; fi
             return 1
         fi
     else
@@ -10756,12 +10769,12 @@ depend() { need net; after iptables ip6tables nftables ufw firewalld; before xra
 EOF_ABOX_FW_OPENRC
         then
             __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
-            rm -rf -- "$tx_dir"
+            if (( rollback_rc == 0 )); then rm -rf -- "$tx_dir"; else printf '%s\n' "A-Box firewall persistence rollback FAILED; recovery backup preserved at $tx_dir (restore firewall_restore.sh and the A-Box-firewall unit from it manually)" >&2; fi
             return 1
         fi
         if ! chmod 755 /etc/init.d/A-Box-firewall || ! rc-update add A-Box-firewall default >/dev/null 2>&1; then
             __abox_firewall_persistence_rollback "$old_restore" "$tx_dir" "$old_unit" "$old_unit_path" "$old_unit_enabled" || rollback_rc=1
-            rm -rf -- "$tx_dir"
+            if (( rollback_rc == 0 )); then rm -rf -- "$tx_dir"; else printf '%s\n' "A-Box firewall persistence rollback FAILED; recovery backup preserved at $tx_dir (restore firewall_restore.sh and the A-Box-firewall unit from it manually)" >&2; fi
             return 1
         fi
     fi
@@ -10846,14 +10859,15 @@ save_firewall_rules() {
     fi
     if ! mv -f -- "$tmp6" "$target6"; then
         if [[ -n "$backup4" ]]; then cp -a -- "$backup4" "$target4" || restore_failed=1; else rm -f -- "$target4" || restore_failed=1; fi
-        rm -f -- "$tmp6" "$backup4" "$backup6"
+        rm -f -- "$tmp6"
+        if (( restore_failed == 0 )); then rm -f -- "$backup4" "$backup6"; else printf '%s\n' "A-Box firewall restore FAILED; pre-change backup(s) preserved: ${backup4:-none} ${backup6:-none} (restore iptables.v4/v6 from them manually)" >&2; fi
         (( restore_failed == 0 )) || return 1
         return 1
     fi
     if ! install_abox_firewall_persistence_service; then
         if [[ -n "$backup4" ]]; then cp -a -- "$backup4" "$target4" || restore_failed=1; else rm -f -- "$target4" || restore_failed=1; fi
         if [[ -n "$backup6" ]]; then cp -a -- "$backup6" "$target6" || restore_failed=1; else rm -f -- "$target6" || restore_failed=1; fi
-        rm -f -- "$backup4" "$backup6"
+        if (( restore_failed == 0 )); then rm -f -- "$backup4" "$backup6"; else printf '%s\n' "A-Box firewall restore FAILED; pre-change backup(s) preserved: ${backup4:-none} ${backup6:-none} (restore iptables.v4/v6 from them manually)" >&2; fi
         (( restore_failed == 0 )) || return 1
         return 1
     fi
@@ -11524,20 +11538,24 @@ reorder_ss_whitelist_rules_one() {
         current_rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
         current_target_lines=()
         current_foreign_lines=()
+        current_interleave=''
         while IFS= read -r item; do
             [[ "$item" =~ ^-A[[:space:]]+INPUT[[:space:]] ]] || continue
             if [[ "$item" =~ $wl_re || "$item" =~ $drop_re ]]; then
                 normalized=$(__abox_normalize_managed_rule_line "$item") || return 1
                 current_target_lines+=("$normalized")
+                current_interleave+='T'
             else
                 current_foreign_lines+=("$item")
+                current_interleave+='F'
             fi
         done <<< "$current_rules_output"
     }
     firewall_state_matches_expected() {
         capture_firewall_views || return 1
         [[ "$(printf '%s\n' "${current_target_lines[@]}")" == "$(printf '%s\n' "${expected_target_lines[@]}")" ]] || return 1
-        [[ "$(printf '%s\n' "${current_foreign_lines[@]}")" == "$(printf '%s\n' "${original_foreign_rules[@]}")" ]]
+        [[ "$(printf '%s\n' "${current_foreign_lines[@]}")" == "$(printf '%s\n' "${original_foreign_rules[@]}")" ]] || return 1
+        [[ "$current_interleave" == "$expected_interleave" ]]
     }
     firewall_rollback() {
         local rollback_line
@@ -11550,6 +11568,10 @@ reorder_ss_whitelist_rules_one() {
         }
         [[ "$(printf '%s\n' "${current_foreign_lines[@]}")" == "$(printf '%s\n' "${original_foreign_rules[@]}")" ]] || {
             printf '%s\n' "A-Box firewall rollback conflict: non-A-Box INPUT rules changed outside this transaction; recovery snapshot preserved at $recovery_snapshot" >&2
+            return 2
+        }
+        [[ "$current_interleave" == "$expected_interleave" ]] || {
+            printf '%s\n' "A-Box firewall rollback conflict: INPUT rule order changed outside this transaction; recovery snapshot preserved at $recovery_snapshot" >&2
             return 2
         }
         rollback_lines=("${current_target_lines[@]}")
@@ -11586,6 +11608,8 @@ reorder_ss_whitelist_rules_one() {
     original_target_lines=("${current_target_lines[@]}")
     original_foreign_rules=("${current_foreign_lines[@]}")
     expected_target_lines=("${original_target_lines[@]}")
+    original_interleave="$current_interleave"
+    expected_interleave="$current_interleave"
     for line in "${original_target_lines[@]}"; do
         if [[ "$line" =~ $wl_re ]]; then rules+=("$line"); fi
     done
@@ -11622,6 +11646,7 @@ reorder_ss_whitelist_rules_one() {
         fi
         mutated=1
         expected_target_lines=("$expected_line" "${expected_target_lines[@]}")
+        expected_interleave="T$expected_interleave"
     done
     local expected_drop_line="-A INPUT -p ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
     firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
@@ -11631,6 +11656,7 @@ reorder_ss_whitelist_rules_one() {
         return 1
     fi
     expected_target_lines=("${expected_target_lines[@]:0:n}" "$expected_drop_line" "${expected_target_lines[@]:n}")
+    expected_interleave="${expected_interleave:0:n}T${expected_interleave:n}"
 
     rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     current_lines=(); mapfile -t current_lines <<< "$rules_output"
@@ -11660,6 +11686,7 @@ reorder_ss_whitelist_rules_one() {
         fi
         del_idx="${delete_target_indices[j]}"
         expected_target_lines=("${expected_target_lines[@]:0:del_idx}" "${expected_target_lines[@]:del_idx+1}")
+        expected_interleave="${expected_interleave:0:$((delete_rule_numbers[j] - 1))}${expected_interleave:$((delete_rule_numbers[j]))}"
     done
     if ! firewall_state_matches_expected; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
@@ -13768,6 +13795,13 @@ prepare_abox_runtime_config_dir() {
     path_parent_chain_safe "$dir/.A-Box-config" || return 1
     [[ ! -L "$dir" && (! -e "$dir" || -d "$dir") ]] || return 1
     install -d -o root -g "$group" -m 750 -- "$dir" || return 1
+    if [[ "$dir" == /etc/ddr/xray-latest ]]; then
+        # U28: /etc/ddr is root:root 0700, so the abox-xray service user
+        # cannot traverse to this directory. Traverse-only for others
+        # (no list/read); file contents stay gated by their own modes.
+        chmod o+x /etc/ddr 2>/dev/null || return 1
+        (( (8#$(stat -c %a /etc/ddr 2>/dev/null || echo 0) & 1) == 1 )) || return 1
+    fi
     gid=$(getent group "$group" 2>/dev/null | awk -F: '{print $3}')
     [[ "$gid" =~ ^[1-9][0-9]*$ ]] || return 1
     [[ "$(stat -c %u:%g "$dir" 2>/dev/null || true)" == "0:$gid" ]] || return 1

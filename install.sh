@@ -342,7 +342,7 @@ rebuild_standalone_links() {
                 if [[ -n "$_inner" ]]; then
                     local _ub _pb
                     _ub=$(printf '%s' "2022-blake3-aes-128-gcm:${_inner}@$(uri_host "$_ip"):${_port}" | base64 | tr -d '\n\r')
-                    _pb=$(jq -cn --arg h "$_sni" --arg p "$_pass" '{version:"3", host:$h, password:$p}' | base64 | tr -d '\n\r')
+                    _pb=$(jq -cn --arg h "$_sni" --rawfile p <(printf '%s' "$_pass") '{version:"3", host:$h, password:$p}' | base64 | tr -d '\n\r')
                     register_standalone_link shadowtls "ShadowTLS · 端口 ${_port}" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
                 else
                     printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
@@ -8058,7 +8058,7 @@ shell_quote() {
     q=${q//$'\r'/\\r}
     printf '\"%s\"' "$q"
 }
-json_escape() { jq -Rn --arg v "${1:-}" '$v'; }
+json_escape() { jq -n --rawfile v <(printf '%s' "${1:-}") '$v'; }
 
 clear_abox_env_vars() {
     unset CORE MODE UUID VLESS_SNI VISION_SNI XHTTP_SNI VLESS_PORT XHTTP_PORT HY2_BASE_PORT HY2_DOMAIN HY2_UP HY2_DOWN HY2_MASQ_URL
@@ -15064,15 +15064,15 @@ build_xray_config() {
     inbounds_json=$(jq -n \
         --arg mode "$mode" \
         --arg listen_addr "$listen_addr" \
-        --arg uuid "${UUID:-}" \
+        --rawfile uuid <(printf '%s' "${UUID:-}") \
         --arg v_sni "${VISION_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
         --arg x_sni "${XHTTP_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
-        --arg pk "${PK:-}" \
-        --arg sid "${SHORT_ID:-}" \
+        --rawfile pk <(printf '%s' "${PK:-}") \
+        --rawfile sid <(printf '%s' "${SHORT_ID:-}") \
         --argjson vport "${VLESS_PORT:-443}" \
         --argjson xport "${XHTTP_PORT:-8443}" \
         --argjson ssport "${SS_PORT:-2053}" \
-        --arg ss_pass "${SS_PASS:-}" \
+        --rawfile ss_pass <(printf '%s' "${SS_PASS:-}") \
         --argjson sock "$sockopt_json" '
         def maybe_sock: if $sock == null then {} else {sockopt:$sock} end;
         def vision:
@@ -15291,14 +15291,14 @@ build_singbox_config() {
     # server up == client download and server down == client upload, so the
     # values intentionally map to up_mbps=HY2_DOWN and down_mbps=HY2_UP.
     inbounds_json=$(jq -n \
-        --arg mode "$mode" --arg uuid "${UUID:-}" --arg listen_addr "$listen_addr" \
+        --arg mode "$mode" --rawfile uuid <(printf '%s' "${UUID:-}") --arg listen_addr "$listen_addr" \
         --arg v_sni "${VISION_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
         --arg x_sni "${XHTTP_SNI:-${VLESS_SNI:-${ABOX_AUTO_SNI_SELECTED:-}}}" \
-        --arg pk "${PK:-}" --arg sid "${SHORT_ID:-}" \
+        --rawfile pk <(printf '%s' "${PK:-}") --rawfile sid <(printf '%s' "${SHORT_ID:-}") \
         --argjson vport "${VLESS_PORT:-443}" --argjson hy2port "${HY2_BASE_PORT:-443}" --argjson ssport "${SS_PORT:-2053}" \
         --argjson hy2up "${HY2_DOWN:-1000}" --argjson hy2down "${HY2_UP:-100}" \
         --arg hy2pass "${HY2_PASS:-}" --arg hy2obfs "${HY2_OBFS:-}" --arg cert_cn "$cert_cn" \
-        --arg masq "${HY2_MASQ_URL:-https://www.samsung.com/}" --arg ss_pass "${SS_PASS:-}" --argjson ka "$ka_obj" '
+        --arg masq "${HY2_MASQ_URL:-https://www.samsung.com/}" --rawfile ss_pass <(printf '%s' "${SS_PASS:-}") --argjson ka "$ka_obj" '
         def vision($tag):
           ({tag:$tag, type:"vless", listen:$listen_addr, listen_port:$vport, tcp_fast_open:true,
             users:[{uuid:$uuid, flow:"xtls-rprx-vision"}],
@@ -15999,7 +15999,7 @@ EOF_SVC
 
     # Build the socks/mixed inbound object.
     tmp_json=$(mktemp /tmp/A-Box-singbox-socks5-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --arg proto "$proto" --arg user "$user" --arg pass "$pass" --arg tag "$tag" \
+    jq -n --argjson port "$port" --arg proto "$proto" --arg user "$user" --rawfile pass <(printf '%s' "$pass") --arg tag "$tag" \
         '{type:$proto,tag:$tag,listen:"0.0.0.0",listen_port:$port,
           users:[{username:$user,password:$pass}]}' \
         > "$tmp_json" || die "$(tr_msg dp_socks5_json)"
@@ -16157,8 +16157,8 @@ EOF_SVC
 
     # Build the trojan+reality inbound object (A-Box realitySettings format).
     tmp_json=$(mktemp /tmp/A-Box-trojan-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" --arg tag "$tag" \
-        --arg pk "$pk" --arg sid "$sid" \
+    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg tag "$tag" \
+        --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
         '{tag:$tag,port:$port,listen:"0.0.0.0",protocol:"trojan",
           settings:{clients:[{password:$pass,email:($tag + "/main")}]},
           streamSettings:{network:"tcp",security:"reality",
@@ -16314,8 +16314,8 @@ EOF_SVC
 
     # Build the trojan+reality inbound object.
     tmp_json=$(mktemp /tmp/A-Box-sb-trojan-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" --arg tag "$tag" \
-        --arg pk "$pk" --arg sid "$sid" \
+    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg tag "$tag" \
+        --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
         '{type:"trojan",tag:$tag,listen:"0.0.0.0",listen_port:$port,
           users:[{password:$pass}],
           tls:{enabled:true,server_name:$sni,
@@ -16463,7 +16463,7 @@ EOF_SVC
 
     # Build the TUIC inbound object.
     tmp_json=$(mktemp /tmp/A-Box-sb-tuic-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --arg uuid "$uuid" --arg pass "$pass" --arg sni "$sni" --arg cc "$cc" --arg tag "$tag" \
+    jq -n --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg cc "$cc" --arg tag "$tag" \
         '{type:"tuic",tag:$tag,listen:"0.0.0.0",listen_port:$port,
           users:[{uuid:$uuid,password:$pass}],
           congestion_control:$cc,
@@ -16609,8 +16609,8 @@ EOF_SVC
 
     # Build the anytls+reality inbound object.
     tmp_json=$(mktemp /tmp/A-Box-sb-anytls-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --arg pass "$pass" --arg sni "$sni" --arg tag "$tag" \
-        --arg pk "$pk" --arg sid "$sid" \
+    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg tag "$tag" \
+        --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
         '{type:"anytls",tag:$tag,listen:"0.0.0.0",listen_port:$port,
           users:[{name:"main",password:$pass}],
           tls:{enabled:true,server_name:$sni,
@@ -16751,7 +16751,7 @@ EOF_SVC
     # shadowtls v3 (strict) detouring to a loopback-only SS-2022 inbound that
     # has no listen_port of its own (reachable only through the detour).
     tmp_json=$(mktemp /tmp/A-Box-sb-shadowtls-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --arg pass "$pass" --arg inner "$inner" --arg sni "$sni" --arg tag "$tag" --arg itag "$itag" \
+    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg inner "$inner" --arg sni "$sni" --arg tag "$tag" --arg itag "$itag" \
         '({type:"shadowtls",tag:$tag,listen:"0.0.0.0",listen_port:$port,version:3,strict_mode:true,
            users:[{password:$pass}],handshake:{server:$sni,server_port:443},detour:$itag}),
          ({type:"shadowsocks",tag:$itag,listen:"127.0.0.1",network:"tcp",
@@ -16789,7 +16789,7 @@ EOF_SVC
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
     local user_b64 plugin_b64
     user_b64=$(printf '%s' "2022-blake3-aes-128-gcm:${inner}@$(uri_host "$pub_ip"):${port}" | base64 | tr -d '\n\r')
-    plugin_b64=$(jq -cn --arg h "$sni" --arg p "$pass" '{version:"3", host:$h, password:$p}' | base64 | tr -d '\n\r')
+    plugin_b64=$(jq -cn --arg h "$sni" --rawfile p <(printf '%s' "$pass") '{version:"3", host:$h, password:$p}' | base64 | tr -d '\n\r')
     local link="ss://${user_b64}?shadow-tls=${plugin_b64}#ShadowTLS"
     msg "${GREEN}$(tr_msg shadowtls_done)${NC}"
     msg "$link"
@@ -16887,7 +16887,7 @@ argo_deploy_ws() {
         [[ "$ARGO_VLESS_PORT" != "$ARGO_VMESS_PORT" ]] || ARGO_VLESS_PORT=$((ARGO_VMESS_PORT + 1))
     fi
     tmp_json=$(mktemp /tmp/A-Box-sb-argo-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --arg uuid "$ARGO_UUID" --argjson vp "$ARGO_VMESS_PORT" --argjson vlp "$ARGO_VLESS_PORT" \
+    jq -n --rawfile uuid <(printf '%s' "$ARGO_UUID") --argjson vp "$ARGO_VMESS_PORT" --argjson vlp "$ARGO_VLESS_PORT" \
         '({type:"vmess",tag:"vmess-ws-in",listen:"127.0.0.1",listen_port:$vp,
            users:[{uuid:$uuid,alterId:0}],
            transport:{type:"ws",path:("/" + $uuid + "-vmess"),max_early_data:2560,early_data_header_name:"Sec-WebSocket-Protocol"}}),
@@ -18406,13 +18406,13 @@ warp_build_outbound_json() {
     else
         addrs_json=$(jq -nc --arg a4 "$addr4" '[$a4]')
     fi
-    jq -n --arg priv "$priv" --arg peer "$peer" --arg ep "$endpoint" \
+    jq -n --rawfile priv <(printf '%s' "$priv") --arg peer "$peer" --arg ep "$endpoint" \
         --argjson addrs "$addrs_json" '{
         protocol:"wireguard", tag:"warp-out",
         settings:{secretKey:$priv, address:$addrs, mtu:1280,
             peers:[{publicKey:$peer, endpoint:$ep, keepAlive:25}]}
     }' > "$outdir/warp-xray.json" || return 1
-    jq -n --arg priv "$priv" --arg peer "$peer" --arg srv "$srv" --argjson sport "$sport" \
+    jq -n --rawfile priv <(printf '%s' "$priv") --arg peer "$peer" --arg srv "$srv" --argjson sport "$sport" \
         --argjson addrs "$addrs_json" '{
         type:"wireguard", tag:"warp-out",
         address:$addrs, private_key:$priv, mtu:1280,
@@ -18570,12 +18570,12 @@ split_add_socks_outbound() {
     tag="socks-land$n"
     workdir=$(mktemp -d) || return 1
     trap 'rm -rf -- "$workdir"' RETURN
-    jq -n --arg tag "$tag" --arg ip "$ip" --argjson port "$port" --arg u "$user" --arg p "$pass" '{
+    jq -n --arg tag "$tag" --arg ip "$ip" --argjson port "$port" --arg u "$user" --rawfile p <(printf '%s' "$pass") '{
         protocol:"socks", tag:$tag,
         settings:{servers:[{address:$ip, port:$port,
             users:((if $u != "" then [{user:$u, pass:$p}] else [] end))}]}
     }' > "$workdir/socks-xray.json" || return 1
-    jq -n --arg ip "$ip" --argjson port "$port" --arg u "$user" --arg p "$pass" --arg tag "$tag" '{
+    jq -n --arg ip "$ip" --argjson port "$port" --arg u "$user" --rawfile p <(printf '%s' "$pass") --arg tag "$tag" '{
         type:"socks", tag:$tag, server:$ip, server_port:$port
     } + (if $u != "" then {username:$u, password:$p} else {} end)' > "$workdir/socks-singbox.json" || return 1
     routing_outbound_add "$tag" "$workdir/socks-xray.json" "$workdir/socks-singbox.json" || return 1
@@ -18826,7 +18826,7 @@ EOF_SVC
 
     # Build the socks inbound object.
     tmp_json=$(mktemp /tmp/A-Box-socks5-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --arg user "$user" --arg pass "$pass" --arg tag "$tag" \
+    jq -n --argjson port "$port" --arg user "$user" --rawfile pass <(printf '%s' "$pass") --arg tag "$tag" \
         '{tag:$tag,port:$port,listen:"0.0.0.0",protocol:"socks",
           settings:{auth:"password",accounts:[{user:$user,pass:$pass}],udp:true,ip:"0.0.0.0"}}' \
         > "$tmp_json" || die "$(tr_msg dp_socks5_json)"
@@ -21678,14 +21678,14 @@ sync_uuids_into_xray_config() {
     fi
     [[ -n "$extras_json" ]] || extras_json='[]'
     tmp=$(mktemp /tmp/A-Box-uuid.XXXXXX) || return 1
-    if ! jq --arg p "$primary" --argjson extras "$extras_json" '
+    if ! jq --rawfile p <(printf '%s' "$primary") --slurpfile extras <(printf '%s' "$extras_json") '
         .inbounds |= map(
           if .protocol=="vless" then
             (.settings.clients[0].flow // "") as $flow |
             (.tag // "vless") as $itag |
             .settings.clients = (
               [({id:$p, email:($itag + "/main")} + (if $flow != "" then {flow:$flow} else {} end))]
-              + ($extras | map({id:., email:($itag + "/x-" + .[0:8])} + (if $flow != "" then {flow:$flow} else {} end)))
+              + ($extras[0] | map({id:., email:($itag + "/x-" + .[0:8])} + (if $flow != "" then {flow:$flow} else {} end)))
             )
           else . end
         )
@@ -22044,8 +22044,8 @@ users_adopt() {
     now=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo '')
     users=$(printf '%s' "$users" | jq -c --arg now "$now" 'map(.created = (if .created == "" then $now else .created end))') || return 1
     local reg=''
-    reg=$(jq -cn --arg core "$core" --arg tag "$tag" --arg proto "$proto" --arg ss "$ssecret" --argjson users "$users" \
-        '{core: $core, tag: $tag, protocol: $proto, server_secret: $ss, users: $users}') || return 1
+    reg=$(jq -cn --arg core "$core" --arg tag "$tag" --arg proto "$proto" --rawfile ss <(printf '%s' "$ssecret") --slurpfile users <(printf '%s' "$users") \
+        '{core: $core, tag: $tag, protocol: $proto, server_secret: $ss, users: $users[0]}') || return 1
     if [[ -n "$outfile" ]]; then users_reg_write_path "$outfile" "$reg"; else users_reg_write "$core" "$tag" "$reg"; fi
 }
 
@@ -22068,7 +22068,7 @@ users_hy2_read_users() {
             [[ -n "$n" ]] || continue
             # Values are written as JSON strings; decode escapes properly.
             if [[ "$v" == '"'* ]]; then v=$(printf '%s' "$v" | jq -r . 2>/dev/null || printf '%s' "$v"); fi
-            list=$(printf '%s' "$list" | jq -c --arg n "$n" --arg v "$v" '. + [{name: $n, secret: $v}]') || return 1
+            list=$(printf '%s' "$list" | jq -c --arg n "$n" --rawfile v <(printf '%s' "$v") '. + [{name: $n, secret: $v}]') || return 1
         done <<< "$out"
         printf '%s' "$list"
         return 0
@@ -22077,7 +22077,7 @@ users_hy2_read_users() {
     [[ -n "$pw" ]] || return 1
     # The writer json-escapes the value; decode it as a JSON string when quoted.
     if [[ "$pw" == '"'* ]]; then pw=$(printf '%s' "$pw" | jq -r . 2>/dev/null || printf '%s' "$pw"); fi
-    jq -cn --arg v "$pw" '[{name: "main", secret: $v}]'
+    jq -cn --rawfile v <(printf '%s' "$pw") '[{name: "main", secret: $v}]'
 }
 
 # Ensure a registry exists for (core, tag): adopt from the live config
@@ -22166,24 +22166,24 @@ users_sync() {
             xray_ensure_stats "$cfg" "$(users_api_port_of "$core")" >/dev/null 2>&1 || true
             local flow=''
             flow=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.settings.clients[0].flow // "")' "$cfg" 2>/dev/null | head -1)
-            if ! jq --arg t "$tag" --arg proto "$proto" --argjson users "$enabled" --arg flow "$flow" --arg ss "$eff_ss" --argjson snap "$sb_snap" '
-                (if $proto == "shadowsocks" and ($users | length) > 0 and $snap != null
+            if ! jq --arg t "$tag" --arg proto "$proto" --slurpfile users <(printf '%s' "$enabled") --arg flow "$flow" --rawfile ss <(printf '%s' "$eff_ss") --slurpfile snap <(printf '%s' "$sb_snap") '
+                (if $proto == "shadowsocks" and ($users[0] | length) > 0 and $snap[0] != null
                     and ((.inbounds | map(.tag == $t) | any) | not)
-                 then .inbounds += [$snap] else . end)
+                 then .inbounds += [$snap[0]] else . end)
                 | .inbounds |= map(if .tag == $t then
                     (if $proto == "vless" then
-                        .settings.clients = [$users[] | {id: .secret, email: .email} + (if $flow != "" then {flow: $flow} else {} end)]
+                        .settings.clients = [$users[0][] | {id: .secret, email: .email} + (if $flow != "" then {flow: $flow} else {} end)]
                      elif $proto == "trojan" then
-                        .settings.clients = [$users[] | {password: .secret, email: .email}]
+                        .settings.clients = [$users[0][] | {password: .secret, email: .email}]
                      elif $proto == "shadowsocks" then
-                        (if ($users | length) == 0 then empty
+                        (if ($users[0] | length) == 0 then empty
                          elif $ss != "" then
                             .settings.password = $ss
-                            | .settings.clients = [$users[] | {password: .secret, email: .email}]
+                            | .settings.clients = [$users[0][] | {password: .secret, email: .email}]
                          else
-                            .settings.password = $users[0].secret | .settings |= del(.clients) end)
+                            .settings.password = $users[0][0].secret | .settings |= del(.clients) end)
                      elif $proto == "socks" then
-                        .settings.accounts = [$users[] | {user: .name, pass: .secret}]
+                        .settings.accounts = [$users[0][] | {user: .name, pass: .secret}]
                      else . end)
                 else . end)
             ' "$cfg" > "$tmp" 2>/dev/null; then
@@ -22191,28 +22191,28 @@ users_sync() {
             fi
             ;;
         sing-box)
-            if ! jq --arg t "$tag" --arg proto "$proto" --argjson users "$enabled" --arg ss "$eff_ss" --argjson snap "$sb_snap" '
-                (if ($proto == "mixed" or $proto == "socks" or $proto == "shadowsocks") and ($users | length) > 0 and $snap != null
+            if ! jq --arg t "$tag" --arg proto "$proto" --slurpfile users <(printf '%s' "$enabled") --rawfile ss <(printf '%s' "$eff_ss") --slurpfile snap <(printf '%s' "$sb_snap") '
+                (if ($proto == "mixed" or $proto == "socks" or $proto == "shadowsocks") and ($users[0] | length) > 0 and $snap[0] != null
                     and ((.inbounds | map(.tag == $t) | any) | not)
-                 then .inbounds += [$snap] else . end)
+                 then .inbounds += [$snap[0]] else . end)
                 | .inbounds |= map(if .tag == $t then
                     (if $proto == "vless" or $proto == "vmess" then
-                        .users = [$users[] | {name: .name, uuid: .secret} + (if (.flow // "") != "" then {flow: .flow} else {} end)]
+                        .users = [$users[0][] | {name: .name, uuid: .secret} + (if (.flow // "") != "" then {flow: .flow} else {} end)]
                      elif $proto == "tuic" then
-                        .users = [$users[] | {name: .name, uuid: .uuid, password: .secret}]
+                        .users = [$users[0][] | {name: .name, uuid: .uuid, password: .secret}]
                      elif $proto == "shadowsocks" then
-                        (if ($users | length) == 0 then empty
+                        (if ($users[0] | length) == 0 then empty
                          elif $ss != "" then
-                            .password = $ss | .users = [$users[] | {name: .name, password: .secret}]
+                            .password = $ss | .users = [$users[0][] | {name: .name, password: .secret}]
                          else
-                            .password = $users[0].secret | del(.users) end)
+                            .password = $users[0][0].secret | del(.users) end)
                      elif $proto == "mixed" or $proto == "socks" then
-                        (if ($users | length) == 0 then empty
-                         else .users = [$users[] | {username: .name, password: .secret}] end)
+                        (if ($users[0] | length) == 0 then empty
+                         else .users = [$users[0][] | {username: .name, password: .secret}] end)
                      else
-                        .users = [$users[] | {name: .name, password: .secret}] end)
+                        .users = [$users[0][] | {name: .name, password: .secret}] end)
                 else . end)
-                | (if ($proto == "mixed" or $proto == "socks" or $proto == "shadowsocks") and ($users | length) == 0
+                | (if ($proto == "mixed" or $proto == "socks" or $proto == "shadowsocks") and ($users[0] | length) == 0
                       and (.route.rules | type) == "array"
                    then .route.rules |= map(if (.inbound | type) == "string" then select(.inbound != $t) elif (.inbound | type) == "array" then (if (.inbound | index($t) != null) then (.inbound |= map(select(. != $t)) | select(.inbound | length > 0)) else . end) else . end)
                    else . end)
@@ -22229,7 +22229,7 @@ users_sync() {
         rm -f "$tmp" "$bak"
         if (( promote == 1 )); then
             local regj=''
-            regj=$(jq -c --arg ss "$eff_ss" '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || true
+            regj=$(jq -c --rawfile ss <(printf '%s' "$eff_ss") '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || true
         fi
         if (( sb_will_delete == 1 )) && [[ -n "$sb_snap_obj" ]]; then
             local regj2=''
@@ -22580,7 +22580,7 @@ users_inbound_menu() {
                 [[ "$core" == xray* ]] && email="${tag}/${nm}"
                 local created=''
                 created=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-                new=$(printf '%s' "$old" | jq -c --arg n "$nm" --arg s "$secret" --arg u "$nuuid" --arg f "$flow" --arg e "$email" --arg now "$created" '
+                new=$(printf '%s' "$old" | jq -c --arg n "$nm" --rawfile s <(printf '%s' "$secret") --rawfile u <(printf '%s' "$nuuid") --arg f "$flow" --arg e "$email" --arg now "$created" '
                     .users += [{name: $n, secret: $s, uuid: $u, flow: $f, email: $e, created: $now,
                                 expire_at: 0, quota_gb: 0, window: "", disabled: false, blocked: "",
                                 period: "", used_up: 0, used_down: 0, last_up: 0, last_down: 0}]') || continue
@@ -31119,13 +31119,13 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
             sid=$(openssl rand -hex 4 | tr -d '\n\r') || { rm -f "$tmp_json"; return 1; }
             uuid=$(generate_robust_uuid) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
             if [[ "$kind" == 'vision' ]]; then
-                jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg uuid "$uuid" --arg sni "$sni" --arg pk "$pk" --arg sid "$sid" \
+                jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --arg sni "$sni" --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
                     '{tag:$tag,listen:$listen,port:$port,protocol:"vless",
                       settings:{clients:[{id:$uuid,flow:"xtls-rprx-vision",email:($tag + "/main")}],decryption:"none"},
                       streamSettings:{network:"tcp",security:"reality",realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}},
                       sniffing:{enabled:true,destOverride:["http","tls","quic"]}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
             else
-                jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg uuid "$uuid" --arg sni "$sni" --arg pk "$pk" --arg sid "$sid" \
+                jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --arg sni "$sni" --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
                     '{tag:$tag,listen:$listen,port:$port,protocol:"vless",
                       settings:{clients:[{id:$uuid,email:($tag + "/main")}],decryption:"none"},
                       streamSettings:{network:"xhttp",security:"reality",xhttpSettings:{mode:"auto",path:"/xhttp"},realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}},
@@ -31139,7 +31139,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
             [[ -n "$pk" && -n "$pbk" ]] || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
             sid=$(openssl rand -hex 4 | tr -d '\n\r') || { rm -f "$tmp_json"; return 1; }
             pass=$(rand_alnum 16) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-            jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg pass "$pass" --arg sni "$sni" --arg pk "$pk" --arg sid "$sid" \
+            jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
                 '{tag:$tag,listen:$listen,port:$port,protocol:"trojan",
                   settings:{clients:[{password:$pass,email:($tag + "/main")}]},
                   streamSettings:{network:"tcp",security:"reality",realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
@@ -31147,7 +31147,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
         ss)
             pass=$(openssl rand -base64 16 | tr -d '\n\r') || { rm -f "$tmp_json"; return 1; }
             [[ -n "$pass" ]] || { rm -f "$tmp_json"; return 1; }
-            jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg pass "$pass" \
+            jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --rawfile pass <(printf '%s' "$pass") \
                 '{tag:$tag,listen:$listen,port:$port,protocol:"shadowsocks",
                   settings:{method:"2022-blake3-aes-128-gcm",password:$pass,network:"tcp,udp"}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
             ;;
@@ -31156,7 +31156,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
             read -r -p "$(tr_msg socks5_user_prompt)" suser || suser=''
             suser="${suser:-main}"
             spass=$(rand_alnum 16) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-            jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg user "$suser" --arg pass "$spass" \
+            jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg user "$suser" --rawfile pass <(printf '%s' "$spass") \
                 '{tag:$tag,listen:$listen,port:$port,protocol:"socks",
                   settings:{auth:"password",accounts:[{user:$user,pass:$pass}],udp:true}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
             ;;
@@ -31246,7 +31246,7 @@ xray_latest_deploy_trio() {
     sspass=$(openssl rand -base64 16 | tr -d '\n\r') || return 1
     [[ -n "$sspass" ]] || return 1
     tmp_json=$(mktemp /tmp/A-Box-xl-trio.XXXXXX) || return 1
-    jq -n --arg listen "$listen_addr" --arg uuid "$uuid" --arg sni "$sni" --arg pk "$pk" --arg sid "$sid" --arg sspass "$sspass" \
+    jq -n --arg listen "$listen_addr" --rawfile uuid <(printf '%s' "$uuid") --arg sni "$sni" --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") --arg sspass "$sspass" \
         --argjson vp "$vp" --argjson xp "$xp" --argjson sp "$sp2" '
         [{tag:"latest-vision",listen:$listen,port:$vp,protocol:"vless",
           settings:{clients:[{id:$uuid,flow:"xtls-rprx-vision",email:"latest-vision/main"}],decryption:"none"},
@@ -31639,11 +31639,11 @@ uri_host() { if [[ "$1" == *:* ]]; then printf '[%s]' "$1"; else printf '%s' "$1
 urlencode() {
     local raw="${1:-}"
     if command -v jq >/dev/null 2>&1; then
-        jq -rn --arg v "$raw" '$v|@uri'
+        jq -rn --rawfile v <(printf '%s' "$raw") '$v|@uri'
         return $?
     fi
     if command -v python3 >/dev/null 2>&1; then
-        python3 -c 'import sys, urllib.parse; sys.stdout.write(urllib.parse.quote(sys.argv[1], safe=""))' "$raw"
+        printf '%s' "$raw" | python3 -c 'import sys, urllib.parse; sys.stdout.write(urllib.parse.quote(sys.stdin.read(), safe=""))'
         return $?
     fi
     # Last-resort RFC3986-ish encoder for environments missing jq/python3.

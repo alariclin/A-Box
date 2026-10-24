@@ -257,9 +257,20 @@ x25519_pub_from_priv() {
     printf '%s' "$_pub"
 }
 
+# Unescape one jq @tsv field value (\\ -> \, \t -> TAB, \n -> LF, \r -> CR).
+_tsv_unescape() {
+    local _s="$1" _ph=$'\x01'
+    _s=${_s//\\\\/$_ph}
+    _s=${_s//\\t/$'\t'}
+    _s=${_s//\\n/$'\n'}
+    _s=${_s//\\r/$'\r'}
+    _s=${_s//$_ph/\\}
+    printf '%s' "$_s"
+}
+
 # Rebuild missing standalone registry entries from the live core configs
 # (nodes deployed before the registry existed). Best-effort: a node with
-# any missing field is skipped silently. Argo is registry-only - its
+# no data at all for a link is skipped silently; partial data warns. Argo is registry-only - its
 # domains live in cloudflared logs, not in the core config.
 rebuild_standalone_links() {
     local _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ip="${F_IP:-}"
@@ -269,47 +280,63 @@ rebuild_standalone_links() {
     if [[ -f "$_xc" ]]; then
         if [[ ! -f "$_dir/trojan-xray.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''
-            IFS=$\'\t\' read -r _port _pass _pk _sni _sid < <(jq -r 'first(.inbounds[]? | select(.protocol=="trojan")) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // "")] | @tsv' "$_xc" 2>/dev/null)
+            IFS=$'\t' read -r _port _pass _pk _sni _sid < <(jq -r 'first(.inbounds[]? | select(.protocol=="trojan")) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // "")] | @tsv' "$_xc" 2>/dev/null)
+            _pass=$(_tsv_unescape "$_pass"); _pk=$(_tsv_unescape "$_pk"); _sni=$(_tsv_unescape "$_sni"); _sid=$(_tsv_unescape "$_sid")
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
                 register_standalone_link trojan-xray "Trojan-Reality (Xray) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&type=tcp#Trojan-Reality"
+            elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
+                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete trojan-xray)${NC}" >&2
             fi
         fi
         if [[ ! -f "$_dir/socks5-xray.link" ]]; then
             _port=''; _user=''; _pass=''
-            IFS=$\'\t\' read -r _port _user _pass < <(jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' "$_xc" 2>/dev/null)
+            IFS=$'\t' read -r _port _user _pass < <(jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' "$_xc" 2>/dev/null)
+            _user=$(_tsv_unescape "$_user"); _pass=$(_tsv_unescape "$_pass")
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
                 register_standalone_link socks5-xray "SOCKS5 (Xray) · 端口 ${_port}" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
+            elif [[ -n "$_port$_user$_pass" ]]; then
+                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete socks5-xray)${NC}" >&2
             fi
         fi
     fi
     if [[ -f "$_sc" ]]; then
         if [[ ! -f "$_dir/trojan-sb.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''
-            IFS=$\'\t\' read -r _port _pass _pk _sni _sid < <(jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), (.tls.reality.short_id[0] // "")] | @tsv' "$_sc" 2>/dev/null)
+            IFS=$'\t' read -r _port _pass _pk _sni _sid < <(jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), (.tls.reality.short_id[0] // "")] | @tsv' "$_sc" 2>/dev/null)
+            _pass=$(_tsv_unescape "$_pass"); _pk=$(_tsv_unescape "$_pk"); _sni=$(_tsv_unescape "$_sni"); _sid=$(_tsv_unescape "$_sid")
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
                 register_standalone_link trojan-sb "Trojan-Reality (sing-box) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&type=tcp#Trojan-Reality"
+            elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
+                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete trojan-sb)${NC}" >&2
             fi
         fi
         if [[ ! -f "$_dir/tuic.link" ]]; then
             _port=''; _uuid=''; _pass=''; _cc=''; _sni=''
-            IFS=$\'\t\' read -r _port _uuid _pass _cc _sni < <(jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // "")] | @tsv' "$_sc" 2>/dev/null)
+            IFS=$'\t' read -r _port _uuid _pass _cc _sni < <(jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // "")] | @tsv' "$_sc" 2>/dev/null)
+            _uuid=$(_tsv_unescape "$_uuid"); _pass=$(_tsv_unescape "$_pass"); _cc=$(_tsv_unescape "$_cc"); _sni=$(_tsv_unescape "$_sni")
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_uuid" && -n "$_pass" ]]; then
                 register_standalone_link tuic "TUIC · 端口 ${_port}" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=h3&sni=${_sni}&allow_insecure=1#TUIC"
+            elif [[ -n "$_port$_uuid$_pass$_cc$_sni" ]]; then
+                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete tuic)${NC}" >&2
             fi
         fi
         if [[ ! -f "$_dir/anytls.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''
-            IFS=$\'\t\' read -r _port _pass _pk _sni _sid < <(jq -r 'first(.inbounds[]? | select(.tag=="anytls-in")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), (.tls.reality.short_id[0] // "")] | @tsv' "$_sc" 2>/dev/null)
+            IFS=$'\t' read -r _port _pass _pk _sni _sid < <(jq -r 'first(.inbounds[]? | select(.tag=="anytls-in")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), (.tls.reality.short_id[0] // "")] | @tsv' "$_sc" 2>/dev/null)
+            _pass=$(_tsv_unescape "$_pass"); _pk=$(_tsv_unescape "$_pk"); _sni=$(_tsv_unescape "$_sni"); _sid=$(_tsv_unescape "$_sid")
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
                 register_standalone_link anytls "AnyTLS-Reality · 端口 ${_port}" "anytls://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}#AnyTLS-Reality"
+            elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
+                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete anytls)${NC}" >&2
             fi
         fi
         if [[ ! -f "$_dir/shadowtls.link" ]]; then
             _port=''; _pass=''; _sni=''; _inner=''
-            IFS=$\'\t\' read -r _port _pass _sni _inner < <(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-in")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // "")] | @tsv' "$_sc" 2>/dev/null)
+            IFS=$'\t' read -r _port _pass _sni _inner < <(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-in")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // "")] | @tsv' "$_sc" 2>/dev/null)
+            _pass=$(_tsv_unescape "$_pass"); _sni=$(_tsv_unescape "$_sni"); _inner=$(_tsv_unescape "$_inner")
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
                 _inner=$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-ss")) | .password // ""' "$_sc" 2>/dev/null)
                 if [[ -n "$_inner" ]]; then
@@ -318,13 +345,18 @@ rebuild_standalone_links() {
                     _pb=$(jq -cn --arg h "$_sni" --arg p "$_pass" '{version:"3", host:$h, password:$p}' | base64 | tr -d '\n\r')
                     register_standalone_link shadowtls "ShadowTLS · 端口 ${_port}" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
                 fi
+            elif [[ -n "$_port$_pass$_sni$_inner" ]]; then
+                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
             fi
         fi
         if [[ ! -f "$_dir/socks5-sb.link" ]]; then
             _port=''; _user=''; _pass=''
-            IFS=$\'\t\' read -r _port _user _pass < <(jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' "$_sc" 2>/dev/null)
+            IFS=$'\t' read -r _port _user _pass < <(jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' "$_sc" 2>/dev/null)
+            _user=$(_tsv_unescape "$_user"); _pass=$(_tsv_unescape "$_pass")
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
                 register_standalone_link socks5-sb "SOCKS5 (sing-box) · 端口 ${_port}" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
+            elif [[ -n "$_port$_user$_pass" ]]; then
+                printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete socks5-sb)${NC}" >&2
             fi
         fi
     fi
@@ -3567,6 +3599,12 @@ tr_msg() {
         fa:bk_skipped) echo 'پشتیبان‌گیری رد شد.' ;;
         zh-tw:bk_skipped) echo '已跳過備份。' ;;
         ja:bk_skipped) echo 'バックアップをスキップしました。' ;;
+        zh:standalone_link_incomplete) echo '独立链接 %s 数据不完整，已跳过回填。' ;;
+        en:standalone_link_incomplete) echo 'Standalone link %s has incomplete data, refill skipped.' ;;
+        ru:standalone_link_incomplete) echo 'У отдельной ссылки %s неполные данные, восстановление пропущено.' ;;
+        fa:standalone_link_incomplete) echo 'پیوند مستقل %s داده ناقص دارد، بازپر کردن رد شد.' ;;
+        zh-tw:standalone_link_incomplete) echo '獨立連結 %s 資料不完整，已跳過回填。' ;;
+        ja:standalone_link_incomplete) echo 'スタンドアロンリンク %s のデータが不完全なため、復元をスキップしました。' ;;
         zh:bk_creating) echo '正在创建 A-Box 配置备份…' ;;
         en:bk_creating) echo 'Creating A-Box configuration backup...' ;;
         ru:bk_creating) echo 'Создание резервной копии конфигурации A-Box...' ;;
@@ -8971,6 +9009,10 @@ core_family_paths() {
         hysteria)
             printf '%s\n' /usr/local/bin/hysteria /etc/hysteria
             case "$init" in systemd) printf '%s\n' /etc/systemd/system/hysteria.service ;; openrc) printf '%s\n' /etc/init.d/hysteria /etc/conf.d/hysteria ;; esac
+            ;;
+        xray-latest)
+            printf '%s\n' /usr/local/bin/xray-latest /etc/ddr/xray-latest
+            case "$init" in systemd) printf '%s\n' /etc/systemd/system/xray-latest.service ;; openrc) printf '%s\n' /etc/init.d/xray-latest /etc/conf.d/xray-latest ;; esac
             ;;
         *) return 1 ;;
     esac

@@ -140,10 +140,16 @@ download_verified_asset() {
   ' "$release_file")"
   url="$(jq -er '.browser_download_url | select(type == "string" and length > 0)' <<< "$asset_json")"
   digest="$(jq -er '.digest | select(type == "string")' <<< "$asset_json")"
-  [[ "$url" == "https://github.com/$repo/releases/download/$tag/$upstream_name" ]] || {
+  # GitHub may return the tag slash percent-encoded (app%2Fv... for
+  # Hysteria) or raw (app/v...). Accept exactly those two full-equality
+  # forms; anything else (wrong host/repo/tag/asset, prefix, extra
+  # segments) still fails. No substring/prefix matching.
+  url_slash_decoded="${url//%2F//}"
+  url_slash_decoded="${url_slash_decoded//%2f//}"
+  if [[ "$url" != "https://github.com/$repo/releases/download/$tag/$upstream_name" && "$url_slash_decoded" != "https://github.com/$repo/releases/download/$tag/$upstream_name" ]]; then
     echo "::error::Unexpected official asset URL for $repo:$tag/$upstream_name"
     return 1
-  }
+  fi
   [[ "$digest" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || {
     echo "::error::Official asset lacks a valid SHA-256 digest: $repo:$tag/$upstream_name"
     return 1

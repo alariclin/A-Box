@@ -21564,20 +21564,28 @@ fetch_abox_mirror_asset() {
     # N-16 fix: use fixed-string matching, not regex. The old $2~(f"$") treated
     # dots in filenames as regex wildcards.
     # DS-High-02: verify SHA256SUMS signature before trusting it (F-05 trust root).
-    local sum_file sum_sig
-    sum_file=$(mktemp) || { rm -f -- "$tmp_file"; return 1; }
-    sum_sig="${sum_file}.sig"
+    # U68: the old code derived the .sig path from a mktemp file name
+    # ("${sum_file}.sig") without creating it: the name is observable
+    # in /tmp and the second curl follows a planted symlink. Download
+    # both files into a fresh mktemp -d (random, 0700) instead, so no
+    # attacker-plantable path exists, and refuse symlinks before use.
+    local sum_dir sum_file sum_sig
+    sum_dir=$(mktemp -d) || { rm -f -- "$tmp_file"; return 1; }
+    sum_file="$sum_dir/SHA256SUMS"; sum_sig="$sum_dir/SHA256SUMS.sig"
     if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" -o "$sum_file" 2>/dev/null; then
-        rm -f -- "$tmp_file" "$sum_file"; return 1
+        rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1
     fi
     curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "${mirror_sum}.sig" -o "$sum_sig" 2>/dev/null || true
+    if [[ -L "$sum_file" || -L "$sum_sig" ]]; then
+        rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1
+    fi
     # DS-High-02: abox_verify_sig_gate 本身就是 (c) 语义 (默认 fail-closed,
     # ABOX_SIGNING_ENFORCE=0 为显式逃生门)。无需新造变量。
     if ! abox_verify_sig_gate "$sum_file" "$sum_sig" "recovery mirror SHA256SUMS"; then
-        rm -f -- "$tmp_file" "$sum_file" "$sum_sig"; return 1
+        rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1
     fi
     expect_sum=$(awk -v f="$asset_leaf" '{ n=length(f); if ($2==f || $2==("./" f) || (substr($2, length($2)-n+1)==f && (length($2)==n || substr($2, length($2)-n, 1)=="/"))) {print $1; exit} }' "$sum_file") || expect_sum=''
-    rm -f -- "$sum_file" "$sum_sig"
+    rm -rf -- "$sum_dir"
     got_sum=$(sha256sum "$tmp_file" 2>/dev/null | awk '{print $1}') || got_sum=''
     if [[ -z "$expect_sum" || ! "$expect_sum" =~ ^[A-Fa-f0-9]{64}$ || "${got_sum,,}" != "${expect_sum,,}" ]]; then msg "${YELLOW}[!] recovery mirror SHA-256 mismatch or missing SHA256SUMS${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
     if ! validate_core_asset_binary_version "$output_file" "$tmp_file" "$requested_version"; then msg "${YELLOW}[!] recovery binary version does not match requested version ${requested_version}${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
@@ -21730,7 +21738,7 @@ list_extra_uuids() {
             if ($0 !~ /^[0-9A-Fa-f-]+$/) next
             if (tolower($0) != tolower(primary) && !seen[tolower($0)]++) print $0
         }
-    ' "$EXTRA_UUID_FILE" 2>/dev/null || true
+    ' "$EXTRA_UUID_FILE" 2>/dev/null
 }
 
 # Write the full UUID list (primary UUID first, then extras) to $1.
@@ -34176,7 +34184,8 @@ PY_SELFTEST_TAR
     grep -Fq 'command_user="abox-xray:abox-xray"' <<< "$source_body" || { echo 'FAIL: Xray OpenRC service must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'capabilities="${HY2_RC_CAPS}"' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC capabilities missing'; failures=$((failures + 1)); }
     grep -Fq 'write_file_atomically_from_stdin /etc/init.d/hysteria 755 <<EOF_SVC' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC capabilities heredoc must expand deployment-time value'; failures=$((failures + 1)); }
-    [[ "$(grep -Fc 'capabilities="^cap_net_bind_service"' "$0")" -ge 2 ]] || { echo 'FAIL: Xray/Sing-box OpenRC capabilities missing'; failures=$((failures + 1)); }
+    # 13 real sites (U35 fix); source_body excludes this assertion line itself.
+    [[ "$(grep -Fc 'capabilities="^cap_net_bind_service"' <<< "$source_body")" -ge 13 ]] || { echo 'FAIL: Xray/Sing-box OpenRC capabilities missing'; failures=$((failures + 1)); }
     grep -Fq 'User=abox-singbox' <<< "$source_body" || { echo 'FAIL: Sing-box systemd unit must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'command_user="abox-singbox:abox-singbox"' <<< "$source_body" || { echo 'FAIL: Sing-box OpenRC service must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'User=abox-hysteria' <<< "$source_body" || { echo 'FAIL: Hysteria systemd unit must drop root UID'; failures=$((failures + 1)); }
@@ -34307,7 +34316,7 @@ PY_SELFTEST_TAR
     grep -Fq 'node_sni_menu' <<< "$source_body" || { echo 'FAIL: node_sni_menu missing'; failures=$((failures + 1)); }
     grep -Fq 'sni_prompt_or_auto' <<< "$source_body" || { echo 'FAIL: sni_prompt_or_auto missing'; failures=$((failures + 1)); }
     grep -Fq 'statsUserUplink' <<< "$source_body" || { echo 'FAIL: per-user stats policy missing'; failures=$((failures + 1)); }
-    grep -Fq 'revoke one extra UUID from the Xray server' <<< "$source_body" || grep -Fq 'Revoke one extra UUID from the Xray server' "$0" || { echo 'FAIL: server-side UUID revocation option missing'; failures=$((failures + 1)); }
+    grep -Fq 'write_full_uuid_list_to_file' <<< "$source_body" || { echo 'FAIL: extra-UUID full-list writer missing (server-side revocation path)'; failures=$((failures + 1)); }
     # Exercise multi-UUID validation/deduplication on a temporary fixture; never touch /etc/ddr.
     _saved_extra_uuid_file="$EXTRA_UUID_FILE"
     _saved_uuid_set="${UUID+x}"
@@ -34430,9 +34439,10 @@ N11EOF
     [[ "$(xray_version_compare v9223372036854775808.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray huge-version comparison overflow regression'; failures=$((failures + 1)); }
     [[ "$(xray_version_compare v18446744073709551616.0.0 v26.9.8)" == '1' ]] || { echo 'FAIL: Xray extra-large version comparison regression'; failures=$((failures + 1)); }
     grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" <<< "$source_body" || { echo 'FAIL: Xray REALITY ML-KEM threshold constant missing'; failures=$((failures + 1)); }
-    runtime_guard_impl_count=$(grep -Fc '( umask 077; set -C; : > "$RUNTIME_LOCK" )' "$0" || true)
+    # 3 real sites each; source_body excludes these assertion lines themselves.
+    runtime_guard_impl_count=$(grep -Fc '( umask 077; set -C; : > "$RUNTIME_LOCK" )' <<< "$source_body" || true)
     [[ "$runtime_guard_impl_count" =~ ^[0-9]+$ && "$runtime_guard_impl_count" -ge 3 ]] || { echo 'FAIL: all background helpers must recreate the runtime lock after /run recreation'; failures=$((failures + 1)); }
-    runtime_guard_count=$(grep -Fc 'RUNTIME_LOCK=/run/A-Box.lock' "$0" || true)
+    runtime_guard_count=$(grep -Fc 'RUNTIME_LOCK=/run/A-Box.lock' <<< "$source_body" || true)
     [[ "$runtime_guard_count" =~ ^[0-9]+$ && "$runtime_guard_count" -ge 3 ]] || { echo 'FAIL: all background helpers must honor the global A-Box runtime lock'; failures=$((failures + 1)); }
     grep -Fq 'systemctl disable "$srv"' <<< "$source_body" || { echo 'FAIL: traffic quota stop path must disable systemd autostart'; failures=$((failures + 1)); }
     grep -Fq 'rc-update del "$srv" default' <<< "$source_body" || { echo 'FAIL: traffic quota stop path must remove OpenRC autostart'; failures=$((failures + 1)); }
@@ -34529,7 +34539,7 @@ N11EOF
     grep -q '^    local -a pids=() exes=()' "$0" || { echo 'FAIL: parallel residual PID collection missing'; failures=$((failures + 1)); }
     grep -q 'pid_exe_matches "$pid" "$exe"' <<< "$source_body" || { echo 'FAIL: PID reuse executable recheck missing'; failures=$((failures + 1)); }
     declare -F selftest_abox_signature >/dev/null || { echo 'FAIL: live /etc/ddr side-effect regression guard missing'; failures=$((failures + 1)); }
-    grep -q -- '--config -' "$0" || { echo 'FAIL: GitHub token pipe config guard missing'; failures=$((failures + 1)); }
+    grep -q -- '--config -' <<< "$source_body" || { echo 'FAIL: GitHub token pipe config guard missing'; failures=$((failures + 1)); }
     grep -q '2300000' <<< "$source_body" || { echo 'FAIL: swap free-space safety check missing'; failures=$((failures + 1)); }
     grep -q 'created_by_abox == 1' <<< "$source_body" || { echo 'FAIL: swap ownership must only be recorded for A-Box-created swap'; failures=$((failures + 1)); }
     grep -Fq 'setup_zram_swap()' <<< "$source_body" || { echo 'FAIL: zram swap setup missing'; failures=$((failures + 1)); }
@@ -35178,7 +35188,7 @@ PY_SELFTEST_YAML
     else
         [[ "$(openrc_cron_service_name alpine)" == 'crond' ]] || { echo 'FAIL: Alpine OpenRC cron service name must be crond by default'; failures=$((failures + 1)); }
     fi
-    grep -Fq "apk-add cronie by" <<< "$source_body" || grep -Fq 'Do not apk-add cronie by default' "$0" || { echo 'FAIL: Alpine deps must not force-install cronie by default'; failures=$((failures + 1)); }
+    grep -Fq "apk-add cronie by" <<< "$source_body" || { echo 'FAIL: Alpine deps must not force-install cronie by default'; failures=$((failures + 1)); }
     grep -Fq 'curl-minimal' <<< "$source_body" || { echo 'FAIL: RHEL/Rocky curl-minimal conflict handling missing'; failures=$((failures + 1)); }
     release="$_saved_release"
     SB_ARCH="$_saved_sb_arch"

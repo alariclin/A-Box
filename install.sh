@@ -5095,6 +5095,12 @@ tr_msg() {
         ru:mw_env_sync) echo 'Не удалось синхронизировать белый список A-Box в .env.' ;;
         fa:mw_env_sync) echo 'همگام‌سازی فهرست سفید A-Box با ‎.env ناموفق بود.' ;;
         ja:mw_env_sync) echo 'A-Box のホワイトリストを .env に同期できませんでした。' ;;
+        zh:mw_env_sync_norb) echo 'A-Box 白名单 .env 同步失败，且回滚后持久化失败；运行态与落盘规则可能分叉。' ;;
+        zh-tw:mw_env_sync_norb) echo 'A-Box 白名單 .env 同步失敗，且回滾後持久化失敗；運行態與落盤規則可能分叉。' ;;
+        en:mw_env_sync_norb) echo 'Failed to sync the A-Box whitelist to .env, and rolled-back rules could not be persisted; live and saved rules may diverge.' ;;
+        ru:mw_env_sync_norb) echo 'Не удалось синхронизировать белый список A-Box в .env, и откаченные правила не удалось сохранить; текущие и сохранённые правила могут расходиться.' ;;
+        fa:mw_env_sync_norb) echo 'همگام‌سازی فهرست سفید A-Box با .env ناموفق بود و قوانین بازگردانده‌شده ذخیره نشد؛ ممکن است قوانین جاری و ذخیره‌شده متفاوت باشند.' ;;
+        ja:mw_env_sync_norb) echo 'A-Box のホワイトリストを .env に同期できず、ロールバックしたルールの保存にも失敗しました。実行時と保存済みのルールが異なる可能性があります。' ;;
         zh:mw_no_v6fw) echo '系统无可用 IPv6 防火墙。' ;;
         zh-tw:mw_no_v6fw) echo '系統無可用 IPv6 防火牆。' ;;
         en:mw_no_v6fw) echo 'No usable IPv6 firewall is available on this system.' ;;
@@ -20597,6 +20603,7 @@ manage_ss_whitelist() {
         1)
             read -r -p "$(tr_msg wl_add_prompt)" add_ip
             [[ -z "$add_ip" ]] && return
+            _ss_wl_snapshot_rules || die "$(tr_msg pi_ss_snapshot)"
             if [[ "$add_ip" == *:* ]]; then
                 valid_ipv6_cidr "$add_ip" || { msg "${RED}[!] IPv6 白名单地址非法: $add_ip${NC}"; pause_return; return; }
                 # N-04: objective check (not preference-aware has_ipv6), consistent
@@ -20607,8 +20614,8 @@ manage_ss_whitelist() {
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "$(tprintf pi_ss_wl6_fail "$add_ip/$proto")" ;;
-                        *) die "$(tr_msg pi_ss_fw_check)" ;;
+                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_wl6_fail "$add_ip/$proto")"; } ;;
+                        *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
                     esac
                 done
             else
@@ -20618,19 +20625,20 @@ manage_ss_whitelist() {
                     if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "$(tprintf pi_ss_wl4_fail "$add_ip/$proto")" ;;
-                        *) die "$(tr_msg pi_ss_fw_check)" ;;
+                        1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_wl4_fail "$add_ip/$proto")"; } ;;
+                        *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
                     esac
                 done
             fi
-            save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
-            sync_ss_whitelist_ip_to_env || die "$(tr_msg mw_env_sync)"
+            save_firewall_rules || { if _ss_wl_rollback_to_snapshot; then die "$(tr_msg pi_fw_persist_rb)"; else die "$(tr_msg pi_fw_persist_norb)"; fi; }
+            sync_ss_whitelist_ip_to_env || { if _ss_wl_rollback_to_snapshot && save_firewall_rules; then die "$(tr_msg mw_env_sync)"; else die "$(tr_msg mw_env_sync_norb)"; fi; }
             msg "${GREEN}已添加白名单: $add_ip (TCP+UDP)${NC}"
             pause_return
             ;;
         2)
             read -r -p "$(tr_msg wl_del_prompt)" del_ip
             [[ -z "$del_ip" ]] && return
+            _ss_wl_snapshot_rules || die "$(tr_msg pi_ss_snapshot)"
             found=0
             if [[ "$del_ip" == *:* ]]; then
                 valid_ipv6_cidr "$del_ip" || { msg "${RED}[!] IPv6 白名单地址非法: $del_ip${NC}"; pause_return; return; }
@@ -20645,9 +20653,9 @@ manage_ss_whitelist() {
                         case "$check_rc" in
                             0) ;;
                             1) break ;;
-                            *) die "$(tprintf mw_wl6_check "$del_ip/$proto")" ;;
+                            *) { _ss_wl_rollback_to_snapshot; die "$(tprintf mw_wl6_check "$del_ip/$proto")"; } ;;
                         esac
-                        _iptables_do "$IPT6" -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || die "$(tprintf mw_wl6_del "$del_ip/$proto")"
+                        _iptables_do "$IPT6" -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf mw_wl6_del "$del_ip/$proto")"; }
                         found=1
                     done
                 done
@@ -20659,15 +20667,15 @@ manage_ss_whitelist() {
                         case "$check_rc" in
                             0) ;;
                             1) break ;;
-                            *) die "$(tprintf mw_wl4_check "$del_ip/$proto")" ;;
+                            *) { _ss_wl_rollback_to_snapshot; die "$(tprintf mw_wl4_check "$del_ip/$proto")"; } ;;
                         esac
-                        _iptables_do "$IPT" -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || die "$(tprintf mw_wl4_del "$del_ip/$proto")"
+                        _iptables_do "$IPT" -D INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf mw_wl4_del "$del_ip/$proto")"; }
                         found=1
                     done
                 done
             fi
-            save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
-            sync_ss_whitelist_ip_to_env || die "$(tr_msg mw_env_sync)"
+            save_firewall_rules || { if _ss_wl_rollback_to_snapshot; then die "$(tr_msg pi_fw_persist_rb)"; else die "$(tr_msg pi_fw_persist_norb)"; fi; }
+            sync_ss_whitelist_ip_to_env || { if _ss_wl_rollback_to_snapshot && save_firewall_rules; then die "$(tr_msg mw_env_sync)"; else die "$(tr_msg mw_env_sync_norb)"; fi; }
             [[ "$found" == 1 ]] && msg "${GREEN}已移除白名单: $del_ip${NC}" || msg "${YELLOW}未找到该白名单规则。${NC}"
             pause_return
             ;;
@@ -20981,7 +20989,12 @@ _remove_inbounds_from_config() {
     esac
     if ! restart_service_soft "$svc"; then
         install_file_atomically "$bak" "$cfg" 600 2>/dev/null || cp -f -- "$bak" "$cfg"
-        restart_service_soft "$svc" >/dev/null 2>&1 || true
+        case "$core" in
+            xray) prepare_abox_runtime_permissions xray 2>/dev/null || true ;;
+            sing-box) prepare_abox_runtime_read_file "$cfg" sing-box 2>/dev/null || true ;;
+            xray-latest) prepare_abox_runtime_read_file "$cfg" xray 2>/dev/null || true ;;
+        esac
+        restart_service_soft "$svc" || { rm -f "$bak"; return 1; }
         rm -f "$bak"; return 1
     fi
     rm -f "$bak"; return 0
@@ -21130,16 +21143,16 @@ clear_all_protocols() {
         fi
         (( ${#all_tags[@]} )) && _protocol_removed_side_effects "$core" "${all_tags[@]}"
     done
-    argo_remove_unit argo || true
     if [[ -f /etc/hysteria/config.yaml ]]; then _remove_hy2_official; fi
-    # Wipe the user registries and standalone links only when every
-    # core was actually cleared; otherwise surviving nodes would lose
-    # their user policies and links.
+    # Wipe the user registries, standalone links and the shared Argo
+    # tunnel only when every core was actually cleared; otherwise
+    # surviving nodes would lose their user policies, links and tunnel.
     if (( wipe_ok == 1 )); then
+        argo_remove_unit argo || true
         users_registries_wipe || msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"
         rm -f -- /etc/ddr/standalone-links.d/*.link 2>/dev/null || true
     else
-        msg "${YELLOW}[!] 部分核心清理失败，已保留用户注册表与独立链接，未做整体擦除。${NC}"
+        msg "${YELLOW}[!] 部分核心清理失败，已保留用户注册表、独立链接与 Argo 隧道，未做整体擦除。${NC}"
     fi
     ( setup_active_defense ) >/dev/null 2>&1 || true
     msg "${GREEN}$(tr_msg cl_all_done)${NC}"

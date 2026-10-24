@@ -12493,9 +12493,17 @@ _openssl_has_ed25519() {
     fi
     # Probe: pkeyutl -rawin support. Note: -rawin requires file input,
     # not stdin pipe (oneshot operation needs file size).
-    if ! openssl pkeyutl -sign -inkey "$_t/priv.pem" -rawin -in "$_t/in.bin" -out "$_t/sig.bin" 2>/dev/null; then
-        # -rawin missing is a definitive capability gap; cache it.
-        _OPENSSL_ED25519_OK=1
+    if ! openssl pkeyutl -sign -inkey "$_t/priv.pem" -rawin -in "$_t/in.bin" -out "$_t/sig.bin" 2>"$_err"; then
+        # Only cache when the error definitively indicates -rawin is
+        # unsupported (mirrors the genpkey branch). Any other failure
+        # (disk, tmp, config) is transient: mark probe-failed, do NOT
+        # cache, so the gate fails closed under enforcement instead of
+        # permanently treating the platform as unverifiable.
+        if grep -qiE 'unknown option|invalid option|unrecogni[sz]ed|not supported|no such option' "$_err" 2>/dev/null; then
+            _OPENSSL_ED25519_OK=1
+        else
+            _OPENSSL_ED25519_PROBE_FAILED=1
+        fi
         rm -rf -- "$_t"
         return 1
     fi
@@ -22685,6 +22693,20 @@ users_hot_remove() {
     reg=$(users_reg_file "$core" "$tag")
     proto=$(jq -r '.protocol // ""' "$reg" 2>/dev/null) || return 1
     [[ -f "$cfg" && ! -L "$cfg" && -x "$bin" ]] || return 1
+    # Single-password SS: the jq below DELETES the whole inbound (no
+    # clients array to remove one user from). Snapshot it into the
+    # registry first, or a later re-enable sync can never rebuild it
+    # (users_sync only rebuilds from .inbound_snapshot, which only its
+    # own all-disabled path writes). Snapshot failure fails closed:
+    # keep the inbound rather than delete it unsnapshotted.
+    if [[ "$proto" == 'shadowsocks' ]]; then
+        local _snap_obj='' _snap_reg=''
+        _snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" 2>/dev/null)
+        if [[ -n "$_snap_obj" ]] && ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.settings.clients // null) | type) == "array"' "$cfg" >/dev/null 2>&1; then
+            _snap_reg=$(jq -c --argjson ib "$_snap_obj" '.inbound_snapshot = $ib' "$reg" 2>/dev/null) || return 1
+            users_reg_write "$core" "$tag" "$_snap_reg" || return 1
+        fi
+    fi
     tmp=$(mktemp /tmp/A-Box-uhot.XXXXXX) || return 1
     mv -- "$tmp" "$tmp.json" || { rm -f -- "$tmp"; return 1; }; tmp="$tmp.json"
     local ok=0
@@ -31324,7 +31346,7 @@ run_acheck_tool() {
     _md=$(mktemp -d /tmp/acheck-mirror.XXXXXX 2>/dev/null) || { msg "${RED}$(tr_msg acheck_failed)${NC}"; return 1; }
     if ! curl -fLsS --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$_md/SHA256SUMS" \
        || ! curl -fLsS --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$_md/SHA256SUMS.sig" 2>/dev/null \
-       || ! verify_ed25519_detached "$_md/SHA256SUMS" "$_md/SHA256SUMS.sig" >/dev/null 2>&1 \
+       || ! abox_verify_sig_gate "$_md/SHA256SUMS" "$_md/SHA256SUMS.sig" "A-Check SHA256SUMS" \
        || ! curl -fLsS --connect-timeout 10 --max-time 120 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/acheck.py" -o "$_md/acheck.py"; then
         rm -rf -- "$_md"
         msg "${RED}$(tr_msg acheck_failed)${NC}"
@@ -31337,7 +31359,13 @@ run_acheck_tool() {
         msg "${RED}$(tr_msg acheck_failed)${NC}"
         return 1
     fi
-    install -m 600 "$_md/acheck.py" "$_f" 2>/dev/null || cp "$_md/acheck.py" "$_f"
+    # Both installers failing must NOT fall through to executing the
+    # stale $_f (possibly a pre-gate unsigned cache).
+    if ! install -m 600 "$_md/acheck.py" "$_f" 2>/dev/null && ! cp "$_md/acheck.py" "$_f" 2>/dev/null; then
+        rm -rf -- "$_md"
+        msg "${RED}$(tr_msg acheck_failed)${NC}"
+        return 1
+    fi
     rm -rf -- "$_md"
     python3 "$_f"
 }

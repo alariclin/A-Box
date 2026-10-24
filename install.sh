@@ -17179,9 +17179,6 @@ argo_uninstall() {
         Y|y) ;;
         *) return 0 ;;
     esac
-    argo_remove_unit argo
-    argo_remove_unit argo-vmess
-    argo_remove_unit argo-vless
     local cfg='/etc/sing-box/config.json' tmp_cfg
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
         if ! command -v jq >/dev/null 2>&1; then
@@ -17189,7 +17186,7 @@ argo_uninstall() {
             return 1
         fi
         tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        if jq '.inbounds |= map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in")) | if (.route.rules | type) == "array" then .route.rules |= map(select(((.inbound // []) | index("vmess-ws-in")) == null and ((.inbound // []) | index("vless-ws-in")) == null)) else . end' "$cfg" > "$tmp_cfg" 2>/dev/null \
+        if jq '.inbounds |= map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in")) | if (.route.rules | type) == "array" then .route.rules |= map(if (.inbound | type) == "string" then select(.inbound != "vmess-ws-in" and .inbound != "vless-ws-in") elif (.inbound | type) == "array" then (if ((.inbound | index("vmess-ws-in")) != null or (.inbound | index("vless-ws-in")) != null) then (.inbound |= map(select(. != "vmess-ws-in" and . != "vless-ws-in")) | select(.inbound | length > 0)) else . end) else . end) else . end' "$cfg" > "$tmp_cfg" 2>/dev/null \
             && /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1; then
             install_file_atomically "$tmp_cfg" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
             prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
@@ -17201,6 +17198,9 @@ argo_uninstall() {
         fi
         rm -f "$tmp_cfg"
     fi
+    argo_remove_unit argo
+    argo_remove_unit argo-vmess
+    argo_remove_unit argo-vless
     rm -f "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/standalone-links.d/argo.link
     # /usr/local/bin/cloudflared is shared with the Wallos CF tunnel;
     # remove it only when that tunnel is not installed.
@@ -22151,7 +22151,7 @@ users_sync() {
                 else . end)
                 | (if ($proto == "mixed" or $proto == "socks" or $proto == "shadowsocks") and ($users | length) == 0
                       and (.route.rules | type) == "array"
-                   then .route.rules |= map(select(((.inbound // []) | index($t)) == null))
+                   then .route.rules |= map(if (.inbound | type) == "string" then select(.inbound != $t) elif (.inbound | type) == "array" then (if (.inbound | index($t) != null) then (.inbound |= map(select(. != $t)) | select(.inbound | length > 0)) else . end) else . end)
                    else . end)
             ' "$cfg" > "$tmp" 2>/dev/null; then
                 rm -f "$tmp" "$bak"; return 1
@@ -30828,25 +30828,26 @@ _xl_remove_coexist_files() {
 }
 
 _xl_install_takeover() { # $1 = staged binary, $2 = tag
-    local staged="$1" created_unit=0 created_cfg=0 old_bin_tmp=''
+    local staged="$1" created_unit=0 created_cfg=0 old_bin_tmp='' slot_link_target=''
+    [[ -L "$XRAY_SLOT_BIN" ]] && slot_link_target=$(readlink "$XRAY_SLOT_BIN")
     if [[ -f "$XRAY_SLOT_BIN" && ! -L "$XRAY_SLOT_BIN" ]]; then
         old_bin_tmp=$(mktemp /tmp/A-Box-xl-oldbin.XXXXXX) || return 1
         cp -f -- "$XRAY_SLOT_BIN" "$old_bin_tmp" || { rm -f -- "$old_bin_tmp"; return 1; }
     fi
     install_binary_atomically "$staged" "$XRAY_SLOT_BIN" || { rm -f -- "$old_bin_tmp"; return 1; }
     if [[ ! -f "$XRAY_SLOT_CFG" || -L "$XRAY_SLOT_CFG" ]]; then
-        prepare_abox_runtime_config_dir xray "$XRAY_SLOT_DIR" || { if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
-        _xl_seed_config "$XRAY_SLOT_CFG" 'xray' || { if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
+        prepare_abox_runtime_config_dir xray "$XRAY_SLOT_DIR" || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; else rm -f -- "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
+        _xl_seed_config "$XRAY_SLOT_CFG" 'xray' || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; else rm -f -- "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
         created_cfg=1
     fi
     if ! xray_owned; then
-        _xl_write_slot_unit || { if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
+        _xl_write_slot_unit || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; else rm -f -- "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
         created_unit=1
     fi
-    prepare_abox_runtime_permissions xray || { if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
+    prepare_abox_runtime_permissions xray || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; else rm -f -- "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
     if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$XRAY_SLOT_BIN" run -test -config "$XRAY_SLOT_CFG" >/dev/null 2>&1; then
         msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
-        if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; else rm -f -- "$XRAY_SLOT_BIN"; fi
+        if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; else rm -f -- "$XRAY_SLOT_BIN"; fi
         [[ "$created_cfg" == '1' ]] && rm -f -- "$XRAY_SLOT_CFG"
         if [[ "$created_unit" == '1' ]]; then
             if [[ "${INIT_SYS:-}" == 'systemd' ]]; then rm -f -- /etc/systemd/system/xray.service; systemctl daemon-reload >/dev/null 2>&1 || true; else rm -f -- /etc/init.d/xray /etc/conf.d/xray; fi
@@ -30860,7 +30861,15 @@ _xl_install_takeover() { # $1 = staged binary, $2 = tag
             cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"
             restart_service_soft xray >/dev/null 2>&1 || true
         else
-            rm -f -- "$XRAY_SLOT_BIN"
+            if [[ -n "$slot_link_target" ]]; then
+                ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"
+            else
+                rm -f -- "$XRAY_SLOT_BIN"
+            fi
+            [[ "$created_cfg" == '1' ]] && rm -f -- "$XRAY_SLOT_CFG"
+            if [[ "$created_unit" == '1' ]]; then
+                if [[ "${INIT_SYS:-}" == 'systemd' ]]; then rm -f -- /etc/systemd/system/xray.service; systemctl daemon-reload >/dev/null 2>&1 || true; else rm -f -- /etc/init.d/xray /etc/conf.d/xray; fi
+            fi
         fi
         rm -f -- "$old_bin_tmp"
         return 1
@@ -30873,8 +30882,8 @@ _xl_install_takeover() { # $1 = staged binary, $2 = tag
 # install round created. A pre-existing binary/unit/config dir is never
 # deleted here (the deliberate uninstall path keeps using
 # _xl_remove_coexist_files for full removal).
-_xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_dir $5=old_bin_tmp $6=cfg_link_target
-    local had_bin="$1" created_cfg="$2" had_unit="$3" had_dir="$4" old_bin_tmp="$5" cfg_link_target="$6"
+_xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_dir $5=old_bin_tmp $6=cfg_link_target $7=bin_link_target
+    local had_bin="$1" created_cfg="$2" had_unit="$3" had_dir="$4" old_bin_tmp="$5" cfg_link_target="$6" bin_link_target="$7"
     if [[ "$had_unit" == '0' ]]; then
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
             systemctl disable --now xray-latest >/dev/null 2>&1 || true
@@ -30887,6 +30896,8 @@ _xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_d
     fi
     if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then
         cp -f -- "$old_bin_tmp" "$XRAY_LATEST_BIN"
+    elif [[ -n "$bin_link_target" ]]; then
+        ln -sfn -- "$bin_link_target" "$XRAY_LATEST_BIN"
     elif [[ "$had_bin" == '0' ]]; then
         rm -f -- "$XRAY_LATEST_BIN"
     fi
@@ -30899,9 +30910,10 @@ _xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_d
 }
 
 _xl_install_coexist() { # $1 = staged binary, $2 = tag
-    local staged="$1" had_bin=0 created_cfg=0 had_unit=0 had_dir=0 old_bin_tmp='' cfg_link_target=''
+    local staged="$1" had_bin=0 created_cfg=0 had_unit=0 had_dir=0 old_bin_tmp='' cfg_link_target='' bin_link_target=''
     [[ -e "$XRAY_LATEST_BIN" || -L "$XRAY_LATEST_BIN" ]] && had_bin=1
-    [[ -d "$XRAY_LATEST_DIR" && ! -L "$XRAY_LATEST_DIR" ]] && had_dir=1
+    [[ -L "$XRAY_LATEST_BIN" ]] && bin_link_target=$(readlink "$XRAY_LATEST_BIN")
+    [[ -e "$XRAY_LATEST_DIR" ]] && had_dir=1
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         [[ -e /etc/systemd/system/xray-latest.service ]] && had_unit=1
     else
@@ -30911,23 +30923,26 @@ _xl_install_coexist() { # $1 = staged binary, $2 = tag
         old_bin_tmp=$(mktemp /tmp/A-Box-xl-oldbin.XXXXXX) || return 1
         cp -f -- "$XRAY_LATEST_BIN" "$old_bin_tmp" || { rm -f -- "$old_bin_tmp"; return 1; }
     fi
-    install_binary_atomically "$staged" "$XRAY_LATEST_BIN" || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target"; return 1; }
-    prepare_abox_runtime_config_dir xray "$XRAY_LATEST_DIR" || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target"; return 1; }
+    install_binary_atomically "$staged" "$XRAY_LATEST_BIN" || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target"; return 1; }
+    prepare_abox_runtime_config_dir xray "$XRAY_LATEST_DIR" || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target"; return 1; }
     if [[ ! -f "$XRAY_LATEST_CFG" || -L "$XRAY_LATEST_CFG" ]]; then
         [[ -L "$XRAY_LATEST_CFG" ]] && cfg_link_target=$(readlink "$XRAY_LATEST_CFG")
-        _xl_seed_config "$XRAY_LATEST_CFG" 'xray-latest' || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target"; return 1; }
+        _xl_seed_config "$XRAY_LATEST_CFG" 'xray-latest' || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target"; return 1; }
         created_cfg=1
     fi
-    _xl_write_latest_unit || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target"; return 1; }
-    prepare_abox_runtime_read_file "$XRAY_LATEST_CFG" xray || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target"; return 1; }
+    _xl_write_latest_unit || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target"; return 1; }
+    prepare_abox_runtime_read_file "$XRAY_LATEST_CFG" xray || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target"; return 1; }
     if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$XRAY_LATEST_BIN" run -test -config "$XRAY_LATEST_CFG" >/dev/null 2>&1; then
         msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
-        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target"
+        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target"
         return 1
     fi
     if ! restart_service_soft xray-latest; then
         msg "${RED}$(tr_msg xl_restart_fail)${NC}"
-        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target"
+        local _relaunch=0
+        [[ "$had_unit" == '1' && ( ( -n "$old_bin_tmp" && -f "$old_bin_tmp" ) || -n "$bin_link_target" ) ]] && _relaunch=1
+        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target"
+        (( _relaunch == 1 )) && restart_service_soft xray-latest >/dev/null 2>&1 || true
         return 1
     fi
     rm -f -- "$old_bin_tmp"

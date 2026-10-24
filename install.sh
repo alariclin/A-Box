@@ -22017,7 +22017,10 @@ users_commit_cfg() {
 
 # Tag retrofit for combo inbounds built before fix47 (they had no tags,
 # which kept them invisible to per-tag management). Assigns tags by
-# protocol/network shape only when the tag is still free.
+# protocol/network shape only when the tag is still free; VLESS gets
+# "vision" only with an xtls-rprx-vision flow (a plain VLESS-WS inbound
+# is not a vision node and stays untagged). Duplicate candidates get a
+# numeric suffix (vision-2, ...) so tags stay unique.
 users_xray_ensure_tags() {
     local cfg="$1" bak='' tmp=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
@@ -22027,15 +22030,25 @@ users_xray_ensure_tags() {
     tmp=$(mktemp /tmp/A-Box-utag.XXXXXX) || { rm -f "$bak"; return 1; }
     mv -- "$tmp" "$tmp.json" || { rm -f "$tmp" "$bak"; return 1; }; tmp="$tmp.json"
     if ! jq '
-        ([.inbounds[]?.tag | select(. != null and . != "")]) as $used
-        | .inbounds |= map(
-            if (.tag != null and .tag != "") then .
-            elif .protocol == "vless" and ((.streamSettings.network // "tcp") == "xhttp") and ("xhttp" | IN($used[]) | not) then .tag = "xhttp"
-            elif .protocol == "vless" and ("vision" | IN($used[]) | not) then .tag = "vision"
-            elif .protocol == "shadowsocks" and ("ss" | IN($used[]) | not) then .tag = "ss"
-            else . end)
+        def pick($base; $used): (first(range(0; 1000) | (if . == 0 then $base else ($base + "-" + ((. + 1) | tostring)) end) | select(. as $c | ($used | index($c) | not))) // null);
+        ([.inbounds[]?.tag | select(. != null and . != "")]) as $init
+        | .inbounds = (reduce .inbounds[] as $ib ({used: $init, out: []};
+            if ($ib.tag != null and $ib.tag != "") then {used: .used, out: (.out + [$ib])}
+            elif $ib.protocol == "vless" and (($ib.streamSettings.network // "tcp") == "xhttp") then
+                (pick("xhttp"; .used) as $c | if $c then {used: (.used + [$c]), out: (.out + [$ib + {tag: $c}])} else {used: .used, out: (.out + [$ib])} end)
+            elif $ib.protocol == "vless" and ([$ib.settings.clients[]? | select(.flow == "xtls-rprx-vision")] | length > 0) then
+                (pick("vision"; .used) as $c | if $c then {used: (.used + [$c]), out: (.out + [$ib + {tag: $c}])} else {used: .used, out: (.out + [$ib])} end)
+            elif $ib.protocol == "shadowsocks" then
+                (pick("ss"; .used) as $c | if $c then {used: (.used + [$c]), out: (.out + [$ib + {tag: $c}])} else {used: .used, out: (.out + [$ib])} end)
+            else {used: .used, out: (.out + [$ib])} end)
+          | .out)
     ' "$cfg" > "$tmp"; then rm -f "$tmp" "$bak"; return 1; fi
-    if users_commit_cfg xray "$cfg" "$tmp" "$bak"; then rm -f "$tmp" "$bak"; return 0; fi
+    if users_commit_cfg xray "$cfg" "$tmp" "$bak"; then
+        if jq -e '[.inbounds[]? | select((.tag == null or .tag == "") and .protocol == "vless")] | length > 0' "$cfg" >/dev/null 2>&1; then
+            msg "${RED}[!] xray: untagged VLESS inbound(s) left without a tag (no xtls-rprx-vision flow found); they stay invisible to per-tag management.${NC}"
+        fi
+        rm -f "$tmp" "$bak"; return 0
+    fi
     rm -f "$tmp" "$bak"; return 1
 }
 
@@ -22048,15 +22061,25 @@ users_sb_ensure_tags() {
     tmp=$(mktemp /tmp/A-Box-utag.XXXXXX) || { rm -f "$bak"; return 1; }
     mv -- "$tmp" "$tmp.json" || { rm -f "$tmp" "$bak"; return 1; }; tmp="$tmp.json"
     if ! jq '
-        ([.inbounds[]?.tag | select(. != null and . != "")]) as $used
-        | .inbounds |= map(
-            if (.tag != null and .tag != "") then .
-            elif .type == "vless" and ("vision" | IN($used[]) | not) then .tag = "vision"
-            elif .type == "hysteria2" and ("hy2" | IN($used[]) | not) then .tag = "hy2"
-            elif .type == "shadowsocks" and ("ss" | IN($used[]) | not) then .tag = "ss"
-            else . end)
+        def pick($base; $used): (first(range(0; 1000) | (if . == 0 then $base else ($base + "-" + ((. + 1) | tostring)) end) | select(. as $c | ($used | index($c) | not))) // null);
+        ([.inbounds[]?.tag | select(. != null and . != "")]) as $init
+        | .inbounds = (reduce .inbounds[] as $ib ({used: $init, out: []};
+            if ($ib.tag != null and $ib.tag != "") then {used: .used, out: (.out + [$ib])}
+            elif $ib.type == "vless" and ([$ib.users[]? | select(.flow == "xtls-rprx-vision")] | length > 0) then
+                (pick("vision"; .used) as $c | if $c then {used: (.used + [$c]), out: (.out + [$ib + {tag: $c}])} else {used: .used, out: (.out + [$ib])} end)
+            elif $ib.type == "hysteria2" then
+                (pick("hy2"; .used) as $c | if $c then {used: (.used + [$c]), out: (.out + [$ib + {tag: $c}])} else {used: .used, out: (.out + [$ib])} end)
+            elif $ib.type == "shadowsocks" then
+                (pick("ss"; .used) as $c | if $c then {used: (.used + [$c]), out: (.out + [$ib + {tag: $c}])} else {used: .used, out: (.out + [$ib])} end)
+            else {used: .used, out: (.out + [$ib])} end)
+          | .out)
     ' "$cfg" > "$tmp"; then rm -f "$tmp" "$bak"; return 1; fi
-    if users_commit_cfg sing-box "$cfg" "$tmp" "$bak"; then rm -f "$tmp" "$bak"; return 0; fi
+    if users_commit_cfg sing-box "$cfg" "$tmp" "$bak"; then
+        if jq -e '[.inbounds[]? | select((.tag == null or .tag == "") and .type == "vless")] | length > 0' "$cfg" >/dev/null 2>&1; then
+            msg "${RED}[!] sing-box: untagged VLESS inbound(s) left without a tag (no xtls-rprx-vision flow found); they stay invisible to per-tag management.${NC}"
+        fi
+        rm -f "$tmp" "$bak"; return 0
+    fi
     rm -f "$tmp" "$bak"; return 1
 }
 
@@ -22065,8 +22088,9 @@ users_sb_ensure_tags() {
 # sanitising/deduping names and stamping defaults.
 USERS_JQ_DEDUPE='
 def cleanname: (tostring | gsub("[^a-zA-Z0-9_-]"; "_") | .[0:24] | if . == "" then "main" end);
+def freshname($seen; $start): first(range($start; infinite) | ("u" + tostring) | select(. as $c | ($seen | has($c) | not)));
 def dedupe: reduce .[] as $u ({seen:{}, out:[]};
-    if .seen[$u.name] then .out += [$u + {name: ("u" + ((.out | length) + 1 | tostring))}] | .seen += {(("u" + ((.out | length) | tostring))): 1}
+    if .seen[$u.name] then (freshname(.seen; (.out | length) + 1) as $cand | .out += [$u + {name: $cand}] | .seen += {($cand): 1})
     else .seen += {($u.name): 1} | .out += [$u] end) | .out;
 def mkusers($tag): map({
     name: ((.name // "main") | cleanname),
@@ -22232,8 +22256,11 @@ users_sync() {
     # authentication required" (upstream docs), so syncing zero enabled
     # users must remove the inbound instead of leaving a public
     # unauthenticated relay. The removed inbound is snapshotted into
-    # the registry so a later sync with enabled users rebuilds it;
-    # route rules referencing it are dropped together with it.
+    # the registry so a later sync with enabled users rebuilds it.
+    # Route rules referencing it are KEPT: sing-box check accepts
+    # dangling inbound references (top-level and logical-nested, verified
+    # against 1.14.3), the rules go dead while disabled and revive on
+    # rebuild, so no routing policy is lost across a disable cycle.
     local sb_snap='null' sb_snap_obj='' sb_will_delete=0 sb_will_rebuild=0 sb_snap_eligible=0
     if [[ "$proto" == 'shadowsocks' ]]; then
         case "$core" in xray|xray-latest|sing-box) sb_snap_eligible=1 ;; esac
@@ -22249,7 +22276,20 @@ users_sync() {
             fi
         elif [[ "$sb_snap" != 'null' ]]; then
             jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1 || sb_will_rebuild=1
+        elif ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; then
+            # U65: enabled users, inbound gone, no snapshot to rebuild from.
+            # Syncing would silently do nothing; fail loudly instead.
+            msg "${RED}[!] ${core} ${proto} inbound ${tag} is missing and no registry snapshot exists; cannot rebuild. Re-deploy the node, then re-run sync.${NC}"
+            rm -f "$tmp" "$bak"; return 1
         fi
+    fi
+    # U65: persist the deletion snapshot BEFORE the commit, not after it.
+    # A write failure (or interruption) after commit left the registry
+    # without a snapshot while the inbound was already gone, and a later
+    # re-enable then silently succeeded without rebuilding.
+    if (( sb_will_delete == 1 )) && [[ -n "$sb_snap_obj" ]]; then
+        local regj_pre=''
+        regj_pre=$(jq -c --argjson ib "$sb_snap_obj" '.inbound_snapshot = $ib' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj_pre" || { rm -f "$tmp" "$bak"; return 1; }
     fi
     case "$core" in
         xray|xray-latest)
@@ -22302,10 +22342,6 @@ users_sync() {
                      else
                         .users = [$users[0][] | {name: .name, password: .secret}] end)
                 else . end)
-                | (if ($proto == "mixed" or $proto == "socks" or $proto == "shadowsocks") and ($users[0] | length) == 0
-                      and (.route.rules | type) == "array"
-                   then .route.rules |= map(if (.inbound | type) == "string" then select(.inbound != $t) elif (.inbound | type) == "array" then (if (.inbound | index($t) != null) then (.inbound |= map(select(. != $t)) | select(.inbound | length > 0)) else . end) else . end)
-                   else . end)
             ' "$cfg" > "$tmp" 2>/dev/null; then
                 rm -f "$tmp" "$bak"; return 1
             fi
@@ -22322,8 +22358,7 @@ users_sync() {
             regj=$(jq -c --rawfile ss <(printf '%s' "$eff_ss") '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || true
         fi
         if (( sb_will_delete == 1 )) && [[ -n "$sb_snap_obj" ]]; then
-            local regj2=''
-            regj2=$(jq -c --argjson ib "$sb_snap_obj" '.inbound_snapshot = $ib' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj2" || true
+            # Snapshot already persisted pre-commit (U65); only the notice remains here.
             if [[ "$proto" == 'shadowsocks' ]]; then
                 msg "${RED}[!] ${core} shadowsocks inbound ${tag}: all users are disabled, so the inbound was removed (a disabled SS inbound must not stay up with a shared password). Re-enable any user to rebuild it automatically.${NC}"
             else

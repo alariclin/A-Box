@@ -751,7 +751,7 @@ tr_msg() {
         zh-tw:wl_pu_guide_cf_2) echo '2) 打不開：去 CF 後台看隧道狀態是否為 Healthy、Public Hostname 的 Service 是否為 http://127.0.0.1:%s（不對就在後台改成這個）。' ;;
         ja:wl_pu_guide_cf_2) echo '2) 開けない場合: CF ダッシュボードでトンネルが Healthy か、Public Hostname の Service が http://127.0.0.1:%s かを確認してください（違えばそこで修正）。' ;;
         zh:wl_pu_guide_cf_3) echo '3) 安全：本机零入站端口、真实 IP 不暴露、全程走 CF 的 HTTPS；建议 Access 只放行你自己的邮箱。域名与 Access 策略都在 CF 后台管理。' ;;
-        en:wl_pu_guide_cf_3) echo '3) Security: zero inbound ports on this host, the real IP stays hidden, HTTPS is served by Cloudflare. Manage the hostname and Access policy in the CF dashboard.' ;;
+        en:wl_pu_guide_cf_3) echo '3) Security: zero inbound ports on this host, the real IP stays hidden, HTTPS is served by Cloudflare. Consider restricting Access to your own email only. Manage the hostname and Access policy in the CF dashboard.' ;;
         ru:wl_pu_guide_cf_3) echo '3) Безопасность: ноль входящих портов на хосте, реальный IP скрыт, HTTPS обеспечивает Cloudflare. Рекомендуется ограничить Access только вашим email. Имя и политики Access управляются в панели CF.' ;;
         fa:wl_pu_guide_cf_3) echo '۳) امنیت: روی این میزبان هیچ درگاه ورودی بازی نیست، IP واقعی پنهان می‌ماند و HTTPS را Cloudflare ارائه می‌کند. توصیه می‌شود Access فقط به ایمیل خودتان محدود شود. نام میزبان و سیاست‌های Access در داشبورد CF مدیریت می‌شوند.' ;;
         zh-tw:wl_pu_guide_cf_3) echo '3) 安全：本機零入站連接埠、真實 IP 不暴露、全程走 CF 的 HTTPS；建議 Access 只放行你自己的信箱。域名與 Access 策略都在 CF 後台管理。' ;;
@@ -836,8 +836,8 @@ tr_msg() {
         ja:wl_pu_local_url) echo 'Wallos のローカル URL: http://127.0.0.1:%s/' ;;
         zh:wl_pu_local_warn) echo '远程访问请使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端点。' ;;
         en:wl_pu_local_warn) echo 'Use an HTTPS reverse proxy or SSH tunnel for remote access; do not expose this HTTP endpoint directly.' ;;
-        ru:wl_pu_local_warn) echo 'Для доступа извне используйте HTTPS reverse proxy или SSH-туннель.' ;;
-        fa:wl_pu_local_warn) echo 'برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.' ;;
+        ru:wl_pu_local_warn) echo 'Для доступа извне используйте HTTPS reverse proxy или SSH-туннель. Не выставляйте этот HTTP-эндпоинт напрямую.' ;;
+        fa:wl_pu_local_warn) echo 'برای دسترسی راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید. این نقطه پایانی HTTP را مستقیماً در معرض قرار ندهید.' ;;
         zh-tw:wl_pu_local_warn) echo '遠端訪問請使用 HTTPS 反向代理或 SSH 隧道，不要直接暴露 HTTP 端點。' ;;
         ja:wl_pu_local_warn) echo 'リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。この HTTP エンドポイントを直接公開しないでください。' ;;
         zh:wl_pu_ssh_t) echo '远程用 SSH 隧道（在自己的电脑上执行）：' ;;
@@ -1081,11 +1081,11 @@ tr_msg() {
         zh-tw:wl_iu_running) echo 'Wallos 已啟動：%s' ;;
         ja:wl_iu_running) echo 'Wallos を起動しました：%s' ;;
         zh:wl_iu_note_local) echo '默认仅允许本机访问；远程访问请使用 HTTPS 反向代理或 SSH 隧道，不需要为该本机端口开放公网入站规则。' ;;
-        en:wl_iu_note_local) echo 'Access is local-only by default. Use an HTTPS reverse proxy or SSH tunnel for remote access.' ;;
-        ru:wl_iu_note_local) echo 'По умолчанию доступ разрешён только с этого хоста. Для удалённого доступа используйте HTTPS reverse proxy или SSH-туннель.' ;;
-        fa:wl_iu_note_local) echo 'دسترسی به‌طور پیش‌فرض فقط از همین میزبان است؛ برای راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید.' ;;
-        zh-tw:wl_iu_note_local) echo '預設僅允許本機存取；遠端存取請使用 HTTPS 反向代理或 SSH 隧道。' ;;
-        ja:wl_iu_note_local) echo 'デフォルトではローカルホストからのアクセスのみ許可されています。リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。' ;;
+        en:wl_iu_note_local) echo 'Access is local-only by default. Use an HTTPS reverse proxy or SSH tunnel for remote access; no public inbound rule needs to be opened for this local port.' ;;
+        ru:wl_iu_note_local) echo 'По умолчанию доступ разрешён только с этого хоста. Для удалённого доступа используйте HTTPS reverse proxy или SSH-туннель; открывать публичные входящие правила для этого локального порта не нужно.' ;;
+        fa:wl_iu_note_local) echo 'دسترسی به‌طور پیش‌فرض فقط از همین میزبان است؛ برای راه دور از HTTPS reverse proxy یا SSH tunnel استفاده کنید؛ نیازی نیست برای این درگاه محلی قانون ورودی عمومی باز کنید.' ;;
+        zh-tw:wl_iu_note_local) echo '預設僅允許本機存取；遠端存取請使用 HTTPS 反向代理或 SSH 隧道，不需要為該本機連接埠開放公網入站規則。' ;;
+        ja:wl_iu_note_local) echo 'デフォルトではローカルホストからのアクセスのみ許可されています。リモートアクセスには HTTPS リバースプロキシまたは SSH トンネルを使用してください。このローカルポート用にパブリックなインバウンド規則を開く必要はありません。' ;;
         zh:wl_iu_note_http_pub) echo '明文 HTTP 已绑定所有 IPv4 网卡；TCP %s 必须由 HTTPS 反向代理与防火墙保护。' ;;
         en:wl_iu_note_http_pub) echo 'Plain HTTP is published on all IPv4 interfaces; protect TCP %s with an HTTPS reverse proxy and firewall.' ;;
         ru:wl_iu_note_http_pub) echo 'HTTP без TLS опубликован на всех IPv4-интерфейсах и требует внешней защиты HTTPS reverse proxy/firewall на TCP %s.' ;;
@@ -1284,12 +1284,12 @@ tr_msg() {
         fa:wl_rs_oversized) echo '[!] نسخه پشتیبان Wallos دارای عضو بسیار بزرگ (>512MB) است؛ رد می‌شود.' ;;
         zh-tw:wl_rs_oversized) echo '[!] Wallos 備份包含超大成員（>512MB），拒絕處理。' ;;
         ja:wl_rs_oversized) echo '[!] Wallos バックアップに大きすぎるメンバー（>512MB）が含まれています。中止します。' ;;
-        zh:wl_rs_toomany) echo '[!] Wallos 备份成员过多（>%s > 10000），拒绝处理。' ;;
-        en:wl_rs_toomany) echo '[!] Wallos backup has too many members (>%s > 10000); refusing.' ;;
-        ru:wl_rs_toomany) echo '[!] В резервной копии Wallos слишком много элементов (>%s > 10000); отказ.' ;;
-        fa:wl_rs_toomany) echo '[!] نسخه پشتیبان Wallos اعضای بسیار زیادی دارد (>‎%s > 10000)؛ رد می‌شود.' ;;
-        zh-tw:wl_rs_toomany) echo '[!] Wallos 備份成員過多（>%s > 10000），拒絕處理。' ;;
-        ja:wl_rs_toomany) echo '[!] Wallos バックアップのメンバー数が多すぎます（>%s > 10000）。中止します。' ;;
+        zh:wl_rs_toomany) echo '[!] Wallos 备份成员过多（%s > 10000），拒绝处理。' ;;
+        en:wl_rs_toomany) echo '[!] Wallos backup has too many members (%s > 10000); refusing.' ;;
+        ru:wl_rs_toomany) echo '[!] В резервной копии Wallos слишком много элементов (%s > 10000); отказ.' ;;
+        fa:wl_rs_toomany) echo '[!] نسخه پشتیبان Wallos اعضای بسیار زیادی دارد (%s > 10000)؛ رد می‌شود.' ;;
+        zh-tw:wl_rs_toomany) echo '[!] Wallos 備份成員過多（%s > 10000），拒絕處理。' ;;
+        ja:wl_rs_toomany) echo '[!] Wallos バックアップのメンバー数が多すぎます（%s > 10000）。中止します。' ;;
         zh:wl_rs_toobig) echo '[!] Wallos 备份解压后总大小超过 1GB（%s 字节），拒绝处理。' ;;
         en:wl_rs_toobig) echo '[!] Wallos backup total decompressed size exceeds 1GB (%s bytes); refusing.' ;;
         ru:wl_rs_toobig) echo '[!] Общий размер резервной копии Wallos после распаковки превышает 1 ГБ (%s байт); отказ.' ;;
@@ -1331,7 +1331,7 @@ tr_msg() {
         ru:wl_st_cert_exp) echo 'Срок действия сертификата (UTC): %s (Caddy продлевает автоматически; если после истечения продления нет, повторный запуск установки вернёт HTTP-режим восстановления)' ;;
         fa:wl_st_cert_exp) echo 'انقضای گواهی (UTC): %s (Caddy به‌صورت خودکار تمدید می‌کند؛ اگر پس از انقضا تمدید نشد، نصب را دوباره اجرا کنید تا به حالت HTTP بازیابی برگردد)' ;;
         zh-tw:wl_st_cert_exp) echo '憑證到期（UTC）：%s（Caddy 自動續期；若到期仍未續上，重跑安裝可回退 HTTP 容災）' ;;
-        ja:wl_st_cert_exp) echo '証明書の有効期限（UTC）: %s（Caddy が自動更新します。期限後も更新されない場合は、インストールを再実行すると HTTP 容災モードに戻せます）' ;;
+        ja:wl_st_cert_exp) echo '証明書の有効期限（UTC）: %s（Caddy が自動更新します。期限後も更新されない場合は、インストールを再実行すると HTTP フォールバックモードに戻せます）' ;;
         zh:wl_st_tls_ok) echo 'TLS 握手：正常（SNI / 无 SNI 双路）' ;;
         en:wl_st_tls_ok) echo 'TLS handshake: OK (SNI / no-SNI)' ;;
         ru:wl_st_tls_ok) echo 'TLS-рукопожатие: OK (SNI / без SNI)' ;;
@@ -1808,8 +1808,8 @@ tr_msg() {
         ja:dh_cfg_check) echo 'dnscrypt-proxy の設定チェックに失敗しました。可能な範囲でロールバックしました。' ;;
         zh:dh_test_resolve) echo '本机 DoH 代理未能解析测试查询；已尝试 DNS 回滚。' ;;
         en:dh_test_resolve) echo 'Local DoH proxy did not resolve a test query; DNS rollback was attempted.' ;;
-        ru:dh_test_resolve) echo 'Локальный прокси DoH не разрешил тестовый запрос; выполнен откат DNS.' ;;
-        fa:dh_test_resolve) echo 'پروکسی محلی DoH یک پرس‌وجوی آزمایشی را resolve نکرد؛ بازگشت DNS انجام شد.' ;;
+        ru:dh_test_resolve) echo 'Локальный прокси DoH не разрешил тестовый запрос; была предпринята попытка отката DNS.' ;;
+        fa:dh_test_resolve) echo 'پروکسی محلی DoH یک پرس‌وجوی آزمایشی را resolve نکرد؛ تلاش برای بازگشت DNS انجام شد.' ;;
         zh-tw:dh_test_resolve) echo '本機 DoH 代理未能解析測試查詢；已嘗試 DNS 回滾。' ;;
         ja:dh_test_resolve) echo 'ローカル DoH プロキシがテストクエリを解決できませんでした。DNS のロールバックを試みました。' ;;
         zh:dh_meta_commit) echo 'DoH 状态元数据无法提交；已恢复之前的 DNS 配置。' ;;
@@ -1838,8 +1838,8 @@ tr_msg() {
         ja:dh_note) echo 'DoH は選択したアップストリームへの DNS クエリのみを暗号化します。VPS の全トラフィックは暗号化しません。' ;;
         zh:dh_resolved_health) echo 'systemd-resolved 健康检查失败；已尝试回滚。' ;;
         en:dh_resolved_health) echo 'systemd-resolved health check failed; rollback was attempted.' ;;
-        ru:dh_resolved_health) echo 'Проверка состояния systemd-resolved не пройдена; выполнен откат.' ;;
-        fa:dh_resolved_health) echo 'بررسی سلامت systemd-resolved ناموفق بود؛ بازگشت انجام شد.' ;;
+        ru:dh_resolved_health) echo 'Проверка состояния systemd-resolved не пройдена; была предпринята попытка отката.' ;;
+        fa:dh_resolved_health) echo 'بررسی سلامت systemd-resolved ناموفق بود؛ تلاش برای بازگشت انجام شد.' ;;
         zh-tw:dh_resolved_health) echo 'systemd-resolved 健康檢查失敗；已嘗試回滾。' ;;
         ja:dh_resolved_health) echo 'systemd-resolved のヘルスチェックに失敗しました。ロールバックを試みました。' ;;
         zh:sn_tmp_fail) echo 'SNI 雷达临时目录创建失败。' ;;
@@ -2299,7 +2299,7 @@ tr_msg() {
         zh-tw:vg_wallos_kept) echo 'Wallos 不在重置範圍內，保持不變。' ;;
         ja:vg_wallos_kept) echo 'Wallos はリセット対象外のため、そのまま保持されます。' ;;
         zh:um_title) echo '深度卸载系统' ;;
-        en:um_title) echo 'Deep Unloading System' ;;
+        en:um_title) echo 'Deep Uninstall System' ;;
         ru:um_title) echo 'Система глубокой деинсталляции' ;;
         fa:um_title) echo 'سیستم حذف عمیق' ;;
         zh-tw:um_title) echo '深度卸載系統' ;;
@@ -3309,7 +3309,7 @@ tr_msg() {
         zh:mu_inst_exists) echo '该协议在本核心已有实例' ;;
         en:mu_inst_exists) echo 'This protocol already has an instance on this core' ;;
         ru:mu_inst_exists) echo 'У этого протокола уже есть экземпляр на этом ядре' ;;
-        fa:mu_inst_exists) echo 'این پروتکل در این هسته 이미 یک نمونه دارد' ;;
+        fa:mu_inst_exists) echo 'این پروتکل در این هسته از قبل یک نمونه دارد' ;;
         zh-tw:mu_inst_exists) echo '該協定在本核心已有實例' ;;
         ja:mu_inst_exists) echo 'このプロトコルはこのコアに既にインスタンスがあります' ;;
         zh:mu_inst_replace) echo '替换现有实例' ;;
@@ -3609,7 +3609,7 @@ tr_msg() {
         zh:xl_select) echo '请选择 [0-10]：' ;;
         en:xl_select) echo 'Select [0-10]: ' ;;
         ru:xl_select) echo 'Выберите [0–10]: ' ;;
-        fa:xl_select) echo 'انتخاب [۰ تا ۹]: ' ;;
+        fa:xl_select) echo 'انتخاب [0-10]: ' ;;
         zh-tw:xl_select) echo '請選擇 [0-10]：' ;;
         ja:xl_select) echo '選択してください [0-10]：' ;;
         zh:xl_mode_ask) echo '请选择安装模式 [1-2，0 取消]：' ;;
@@ -5805,8 +5805,8 @@ tr_msg() {
         zh:fw2_ufw_record_rb) echo 'UFW 规则已添加但归属状态记录失败，已尝试精确回滚: %s' ;;
         zh-tw:fw2_ufw_record_rb) echo 'UFW 規則已新增但歸屬狀態記錄失敗，已嘗試精確回滾: %s' ;;
         en:fw2_ufw_record_rb) echo 'The UFW rule was added, but recording its ownership state failed; an exact rollback was attempted: %s' ;;
-        ru:fw2_ufw_record_rb) echo 'Правило UFW добавлено, но не удалось записать состояние принадлежности; выполнен точный откат: %s' ;;
-        fa:fw2_ufw_record_rb) echo 'قانون UFW افزوده شد، اما ثبت وضعیت مالکیت آن ناموفق بود؛ بازگشت دقیق انجام شد: %s' ;;
+        ru:fw2_ufw_record_rb) echo 'Правило UFW добавлено, но не удалось записать состояние принадлежности; была предпринята попытка точного отката: %s' ;;
+        fa:fw2_ufw_record_rb) echo 'قانون UFW افزوده شد، اما ثبت وضعیت مالکیت آن ناموفق بود؛ تلاش برای بازگشت دقیق انجام شد: %s' ;;
         ja:fw2_ufw_record_rb) echo 'UFW ルールは追加されましたが所有状態の記録に失敗し、正確なロールバックを試みました： %s' ;;
         zh:fw2_ufw_verify) echo 'UFW 规则后置归属验证失败: %s' ;;
         zh-tw:fw2_ufw_verify) echo 'UFW 規則後置歸屬驗證失敗: %s' ;;
@@ -6286,7 +6286,7 @@ tr_msg() {
         zh-tw:tf_finalize) echo '流量限制事務提交後校驗失敗。' ;;
         en:tf_finalize) echo 'The traffic limit transaction failed the post-commit check.' ;;
         ru:tf_finalize) echo 'Транзакция лимита трафика не прошла проверку после фиксации.' ;;
-        fa:tf_finalize) echo 'تراکنش حد ترافیک بررسی پس از ثبت را رد نکرد.' ;;
+        fa:tf_finalize) echo 'تراکنش حد ترافیک در بررسی پس از ثبت ناموفق بود.' ;;
         ja:tf_finalize) echo 'トラフィック制限トランザクションがコミット後チェックに失敗しました。' ;;
         zh:tf_limit_prompt) echo '请输入每月流量上限(GB)，纯数字: ' ;;
         zh-tw:tf_limit_prompt) echo '請輸入每月流量上限(GB)，純數字: ' ;;
@@ -6376,7 +6376,7 @@ tr_msg() {
         zh-tw:tf_unblock_finalize) echo '流量解除事務最終狀態校驗失敗。' ;;
         en:tf_unblock_finalize) echo 'The traffic unblock transaction failed the final state check.' ;;
         ru:tf_unblock_finalize) echo 'Транзакция снятия лимита трафика не прошла финальную проверку состояния.' ;;
-        fa:tf_unblock_finalize) echo 'تراکنش رفع حد ترافیک بررسی نهایی وضعیت را رد نکرد.' ;;
+        fa:tf_unblock_finalize) echo 'تراکنش رفع حد ترافیک در بررسی نهایی وضعیت ناموفق بود.' ;;
         ja:tf_unblock_finalize) echo 'トラフィック解除トランザクションが最終状態チェックに失敗しました。' ;;
         zh:tf_unblock_presave) echo '无法保存流量解除事务前态。' ;;
         zh-tw:tf_unblock_presave) echo '無法保存流量解除事務前態。' ;;
@@ -6412,7 +6412,7 @@ tr_msg() {
         zh-tw:tf_unblock_services) echo '流量封鎖解除後有託管服務未能啟動/啟用並通過狀態核驗。' ;;
         en:tf_unblock_services) echo 'After lifting the traffic block, some managed services failed to start/be enabled and pass the state check.' ;;
         ru:tf_unblock_services) echo 'После снятия блокировки трафика некоторые управляемые службы не удалось запустить/включить и пройти проверку состояния.' ;;
-        fa:tf_unblock_services) echo 'پس از رفع مسدودی ترافیک، برخی سرویس‌های مدیریت‌شده شروع/فعال نشدند و بررسی وضعیت را رد نکردند.' ;;
+        fa:tf_unblock_services) echo 'پس از رفع مسدودی ترافیک، برخی سرویس‌های مدیریت‌شده شروع/فعال نشدند و در بررسی وضعیت ناموفق بودند.' ;;
         ja:tf_unblock_services) echo 'トラフィックブロック解除後、一部の管理サービスが開始/有効化できず、状態確認に合格しませんでした。' ;;
         zh:tf_unblock_svc_presave) echo '无法保存流量解除前的服务状态。' ;;
         zh-tw:tf_unblock_svc_presave) echo '無法保存流量解除前的服務狀態。' ;;
@@ -6886,7 +6886,7 @@ tr_msg() {
         zh-tw:env_bad) echo '現有 A-Box .env 校驗失敗或權限不安全；已中止操作。' ;;
         en:env_bad) echo 'The existing A-Box .env failed validation or has unsafe permissions; the operation was aborted.' ;;
         ru:env_bad) echo 'Существующий .env A-Box не прошёл проверку или имеет небезопасные права; операция прервана.' ;;
-        fa:env_bad) echo '‏.env موجود A-Box بررسی را رد نکرد یا مجوزهای ناامن دارد؛ عملیات متوقف شد.' ;;
+        fa:env_bad) echo '.env موجود A-Box در بررسی ناموفق بود یا مجوزهای ناامن دارد؛ عملیات متوقف شد.' ;;
         ja:env_bad) echo '既存の A-Box .env の検証に失敗したか権限が安全でないため、操作を中止しました。' ;;
         zh:fm_bad) echo '非法快速模式开关。' ;;
         zh-tw:fm_bad) echo '非法快速模式開關。' ;;
@@ -6958,19 +6958,19 @@ tr_msg() {
         zh-tw:sni_fail) echo '該網域未通過 TLS 1.3、h2 或憑證 SAN 檢查，可能造成連線失敗。' ;;
         en:sni_fail) echo 'This domain did not pass the TLS 1.3, h2 or certificate SAN check; connections may fail.' ;;
         ru:sni_fail) echo 'Этот домен не прошёл проверку TLS 1.3, h2 или SAN сертификата; подключения могут не удаться.' ;;
-        fa:sni_fail) echo 'این دامنه بررسی TLS 1.3، ‏h2 یا SAN گواهی را رد نکرد؛ اتصال‌ها ممکن است ناموفق شوند.' ;;
+        fa:sni_fail) echo 'این دامنه بررسی TLS 1.3، h2 یا SAN گواهی را با موفقیت پشت سر نگذاشت؛ اتصال‌ها ممکن است ناموفق شوند.' ;;
         ja:sni_fail) echo 'このドメインは TLS 1.3、h2、または証明書 SAN チェックに合格しませんでした。接続に失敗する可能性があります。' ;;
         zh:sni_ok_tier) echo '当前 VPS 实测通过 TLS 1.3、h2 和证书 SAN 检查；兼容档位 %s。' ;;
         zh-tw:sni_ok_tier) echo '目前 VPS 實測通過 TLS 1.3、h2 和憑證 SAN 檢查；相容檔位 %s。' ;;
         en:sni_ok_tier) echo 'This VPS passed the TLS 1.3, h2 and certificate SAN checks; compatibility tier %s.' ;;
         ru:sni_ok_tier) echo 'Этот VPS прошёл проверки TLS 1.3, h2 и SAN сертификата; уровень совместимости %s.' ;;
-        fa:sni_ok_tier) echo 'این VPS بررسی‌های TLS 1.3، ‏h2 و SAN گواهی را رد کرد؛ رده سازگاری %s.' ;;
+        fa:sni_ok_tier) echo 'این VPS بررسی‌های TLS 1.3، h2 و SAN گواهی را با موفقیت پشت سر گذاشت؛ رده سازگاری %s.' ;;
         ja:sni_ok_tier) echo 'この VPS は TLS 1.3、h2、証明書 SAN チェックに合格しました。互換ティア %s。' ;;
         zh:sni_risky) echo 'TLS 检查通过，但目标存在较高 CDN/共享边缘风险，不属于推荐档位。' ;;
         zh-tw:sni_risky) echo 'TLS 檢查通過，但目標存在較高 CDN/共享邊緣風險，不屬於推薦檔位。' ;;
         en:sni_risky) echo 'The TLS check passed, but the target has a high CDN/shared-edge risk and is not in a recommended tier.' ;;
         ru:sni_risky) echo 'Проверка TLS пройдена, но у цели высокий риск CDN/общего края; уровень не рекомендуется.' ;;
-        fa:sni_risky) echo 'بررسی TLS رد شد، اما هدف ریسک بالای CDN/لبه مشترک دارد و در رده توصیه‌شده نیست.' ;;
+        fa:sni_risky) echo 'بررسی TLS موفق بود، اما هدف ریسک بالای CDN/لبه مشترک دارد و در رده توصیه‌شده نیست.' ;;
         ja:sni_risky) echo 'TLS チェックは合格しましたが、対象は CDN/共有エッジのリスクが高く、推奨ティアではありません。' ;;
         zh:sni_untestable) echo '当前 VPS 无法完成可靠性检测；请确认该域名支持 TLS 1.3、h2 且证书 SAN 匹配。' ;;
         zh-tw:sni_untestable) echo '目前 VPS 無法完成可靠性檢測；請確認該網域支援 TLS 1.3、h2 且憑證 SAN 符合。' ;;
@@ -7296,11 +7296,11 @@ tr_msg() {
         fa:mi_native) echo 'بومی' ;;
         zh-tw:mi_native) echo '原生' ;;
         ja:mi_native) echo 'ネイティブ' ;;
-        zh:mi_anycast) echo '广播' ;;
+        zh:mi_anycast) echo '任播' ;;
         en:mi_anycast) echo 'Anycast' ;;
         ru:mi_anycast) echo 'Anycast' ;;
         fa:mi_anycast) echo 'Anycast' ;;
-        zh-tw:mi_anycast) echo '廣播' ;;
+        zh-tw:mi_anycast) echo '任播' ;;
         ja:mi_anycast) echo 'Anycast' ;;
         *) echo "$key" ;;
     esac
@@ -7425,7 +7425,7 @@ language_menu() {
         4) ABOX_LANG='ja'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
         5) ABOX_LANG='ru'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
         6) ABOX_LANG='fa'; save_lang; msg "${GREEN}$(tr_msg lang_saved)${NC}"; pause_return ;;
-        0) return 0 ;;
+        0|'') return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
     done

@@ -13853,6 +13853,11 @@ prepare_abox_runtime_permissions() {
             [[ ! -e /etc/sing-box/hy2.key ]] || prepare_abox_runtime_read_file /etc/sing-box/hy2.key sing-box || return 1
             [[ ! -e /etc/sing-box/tuic.crt ]] || prepare_abox_runtime_read_file /etc/sing-box/tuic.crt sing-box || return 1
             [[ ! -e /etc/sing-box/tuic.key ]] || prepare_abox_runtime_read_file /etc/sing-box/tuic.key sing-box || return 1
+            local _tuic_cert
+            for _tuic_cert in /etc/sing-box/tuic-*.crt /etc/sing-box/tuic-*.key; do
+                [[ -e "$_tuic_cert" ]] || continue
+                prepare_abox_runtime_read_file "$_tuic_cert" sing-box || return 1
+            done
             prepare_abox_runtime_write_file /var/log/A-Box-singbox.log sing-box || return 1
             ;;
         hysteria)
@@ -15527,8 +15532,8 @@ deploy_official_hy2() {
     else
         HY2_LISTEN=":${HY2_BASE_PORT}"
     fi
-    HY2_RC_CAPS='cap_net_bind_service'
-    [[ "${HY2_HOP:-false}" == 'true' ]] && HY2_RC_CAPS='cap_net_admin,cap_net_bind_service'
+    HY2_RC_CAPS='^cap_net_bind_service'
+    [[ "${HY2_HOP:-false}" == 'true' ]] && HY2_RC_CAPS='^cap_net_admin,^cap_net_bind_service'
 
     build_hysteria_config /etc/hysteria/config.yaml "$TLS_CONFIG" "$HY2_LISTEN" || die "$(tr_msg hy2b_cfg)"
 
@@ -15987,7 +15992,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
-capabilities="cap_net_bind_service"
+capabilities="^cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -16137,7 +16142,7 @@ command="/usr/local/bin/xray"
 command_args="run -config /usr/local/etc/xray/config.json"
 command_background="yes"
 command_user="abox-xray:abox-xray"
-capabilities="cap_net_bind_service"
+capabilities="^cap_net_bind_service"
 umask=077
 pidfile="/run/xray.pid"
 depend() { need net; }
@@ -16298,7 +16303,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
-capabilities="cap_net_bind_service"
+capabilities="^cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -16454,7 +16459,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
-capabilities="cap_net_bind_service"
+capabilities="^cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -16465,18 +16470,29 @@ EOF_SVC
     fi
 
     # Self-signed TLS cert (TUIC requires TLS; clients pin/skip-verify).
+    # U37: per-tag cert files; deploying a new TUIC node must not overwrite
+    # the cert an existing node already pinned. Unsafe tag characters are
+    # sanitized, with a hash suffix when sanitization changed the tag, so
+    # distinct tags can never collide on one file.
     sni=$(sni_prompt_or_auto)
-    generate_self_signed_cert_atomically /etc/sing-box/tuic.key /etc/sing-box/tuic.crt "$sni" \
+    local _tuic_cert_tag _tuic_key _tuic_crt
+    _tuic_cert_tag=$(printf '%s' "$tag" | tr -c 'A-Za-z0-9_-' '_')
+    if [[ "$_tuic_cert_tag" != "$tag" ]]; then
+        _tuic_cert_tag="${_tuic_cert_tag}-$(printf '%s' "$tag" | sha256sum | cut -c1-8)"
+    fi
+    _tuic_key="/etc/sing-box/tuic-${_tuic_cert_tag}.key"
+    _tuic_crt="/etc/sing-box/tuic-${_tuic_cert_tag}.crt"
+    generate_self_signed_cert_atomically "$_tuic_key" "$_tuic_crt" "$sni" \
         || die "$(tr_msg dp_tuic_cert)"
 
     # Build the TUIC inbound object.
     tmp_json=$(mktemp /tmp/A-Box-sb-tuic-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg cc "$cc" --arg tag "$tag" \
+    jq -n --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg cc "$cc" --arg tag "$tag" --arg cert "$_tuic_crt" --arg key "$_tuic_key" \
         '{type:"tuic",tag:$tag,listen:"0.0.0.0",listen_port:$port,
           users:[{uuid:$uuid,password:$pass}],
           congestion_control:$cc,
           tls:{enabled:true,server_name:$sni,alpn:["h3"],
-            certificate_path:"/etc/sing-box/tuic.crt",key_path:"/etc/sing-box/tuic.key"}}' \
+            certificate_path:$cert,key_path:$key}}' \
         > "$tmp_json" || die "$(tr_msg dp_tuic_json)"
 
     local tmp_cfg
@@ -16601,7 +16617,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
-capabilities="cap_net_bind_service"
+capabilities="^cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -16752,7 +16768,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
-capabilities="cap_net_bind_service"
+capabilities="^cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -17098,7 +17114,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
-capabilities="cap_net_bind_service"
+capabilities="^cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -17136,7 +17152,7 @@ deploy_argo_fixed() {
     msg ''
     [[ -n "$token" ]] || die "$(tr_msg ag_token_empty)"
     valid_single_line_secret "$token" 512 || die "$(tr_msg ag_token_bad)"
-    [[ "$token" =~ ^[A-Za-z0-9_-]+$ ]] || die "$(tr_msg ag_token_bad)"
+    [[ "$token" =~ ^[A-Za-z0-9_+/=.-]+$ ]] || die "$(tr_msg ag_token_bad)"
     write_file_atomically_from_stdin /etc/ddr/.argo-token 600 <<< "TUNNEL_TOKEN=${token}" || die "$(tr_msg ag_token_write)"
     install_cloudflared
     local cfg='/etc/sing-box/config.json' tmp_json
@@ -17207,7 +17223,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
-capabilities="cap_net_bind_service"
+capabilities="^cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -18838,7 +18854,7 @@ command="/usr/local/bin/xray"
 command_args="run -config /usr/local/etc/xray/config.json"
 command_background="yes"
 command_user="abox-xray:abox-xray"
-capabilities="cap_net_bind_service"
+capabilities="^cap_net_bind_service"
 umask=077
 pidfile="/run/xray.pid"
 depend() { need net; }
@@ -19001,7 +19017,7 @@ command="/usr/local/bin/xray"
 command_args="run -config /usr/local/etc/xray/config.json"
 command_background="yes"
 command_user="abox-xray:abox-xray"
-capabilities="cap_net_bind_service"
+capabilities="^cap_net_bind_service"
 umask=077
 pidfile="/run/xray.pid"
 depend() { need net; }
@@ -19162,7 +19178,7 @@ command="/usr/local/bin/sing-box"
 command_args="run -c /etc/sing-box/config.json"
 command_background="yes"
 command_user="abox-singbox:abox-singbox"
-capabilities="cap_net_bind_service"
+capabilities="^cap_net_bind_service"
 umask=077
 pidfile="/run/sing-box.pid"
 depend() { need net; }
@@ -30840,7 +30856,7 @@ command="/usr/local/bin/xray-latest"
 command_args="run -config /etc/ddr/xray-latest/config.json"
 command_background="yes"
 command_user="abox-xray:abox-xray"
-capabilities="cap_net_bind_service"
+capabilities="^cap_net_bind_service"
 umask=077
 pidfile="/run/xray-latest.pid"
 depend() { need net; }
@@ -30892,7 +30908,7 @@ command="/usr/local/bin/xray"
 command_args="run -config /usr/local/etc/xray/config.json"
 command_background="yes"
 command_user="abox-xray:abox-xray"
-capabilities="cap_net_bind_service"
+capabilities="^cap_net_bind_service"
 umask=077
 pidfile="/run/xray.pid"
 depend() { need net; }
@@ -34075,7 +34091,7 @@ PY_SELFTEST_TAR
     grep -Fq 'command_user="abox-xray:abox-xray"' <<< "$source_body" || { echo 'FAIL: Xray OpenRC service must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'capabilities="${HY2_RC_CAPS}"' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC capabilities missing'; failures=$((failures + 1)); }
     grep -Fq 'write_file_atomically_from_stdin /etc/init.d/hysteria 755 <<EOF_SVC' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC capabilities heredoc must expand deployment-time value'; failures=$((failures + 1)); }
-    [[ "$(grep -Fc 'capabilities="cap_net_bind_service"' "$0")" -ge 2 ]] || { echo 'FAIL: Xray/Sing-box OpenRC capabilities missing'; failures=$((failures + 1)); }
+    [[ "$(grep -Fc 'capabilities="^cap_net_bind_service"' "$0")" -ge 2 ]] || { echo 'FAIL: Xray/Sing-box OpenRC capabilities missing'; failures=$((failures + 1)); }
     grep -Fq 'User=abox-singbox' <<< "$source_body" || { echo 'FAIL: Sing-box systemd unit must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'command_user="abox-singbox:abox-singbox"' <<< "$source_body" || { echo 'FAIL: Sing-box OpenRC service must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'User=abox-hysteria' <<< "$source_body" || { echo 'FAIL: Hysteria systemd unit must drop root UID'; failures=$((failures + 1)); }

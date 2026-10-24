@@ -21885,14 +21885,23 @@ users_sync() {
         esac
         [[ -n "$eff_ss" ]] && promote=1
     fi
+    if [[ "$proto" == 'shadowsocks' ]] && (( encount > 1 )) && [[ -z "$eff_ss" ]]; then
+        msg "${RED}[!] shadowsocks ${tag}: multi-user sync needs a server key, but none is stored and the inbound has none; refusing to write a placeholder password.${NC}"
+        rm -f "$tmp" "$bak"; return 1
+    fi
     # sing-box socks/mixed inbounds treat an empty users list as "no
     # authentication required" (upstream docs), so syncing zero enabled
     # users must remove the inbound instead of leaving a public
     # unauthenticated relay. The removed inbound is snapshotted into
     # the registry so a later sync with enabled users rebuilds it;
     # route rules referencing it are dropped together with it.
-    local sb_snap='null' sb_snap_obj='' sb_will_delete=0 sb_will_rebuild=0
-    if [[ "$core" == 'sing-box' ]] && [[ "$proto" == 'mixed' || "$proto" == 'socks' ]]; then
+    local sb_snap='null' sb_snap_obj='' sb_will_delete=0 sb_will_rebuild=0 sb_snap_eligible=0
+    if [[ "$proto" == 'shadowsocks' ]]; then
+        case "$core" in xray|xray-latest|sing-box) sb_snap_eligible=1 ;; esac
+    elif [[ "$core" == 'sing-box' ]] && [[ "$proto" == 'mixed' || "$proto" == 'socks' ]]; then
+        sb_snap_eligible=1
+    fi
+    if (( sb_snap_eligible == 1 )); then
         sb_snap=$(jq -c '.inbound_snapshot // null' "$reg" 2>/dev/null || echo null)
         if (( encount == 0 )); then
             if jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; then
@@ -21908,20 +21917,22 @@ users_sync() {
             xray_ensure_stats "$cfg" "$(users_api_port_of "$core")" >/dev/null 2>&1 || true
             local flow=''
             flow=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.settings.clients[0].flow // "")' "$cfg" 2>/dev/null | head -1)
-            if ! jq --arg t "$tag" --arg proto "$proto" --argjson users "$enabled" --arg flow "$flow" --arg ss "$eff_ss" '
-                .inbounds |= map(if .tag == $t then
+            if ! jq --arg t "$tag" --arg proto "$proto" --argjson users "$enabled" --arg flow "$flow" --arg ss "$eff_ss" --argjson snap "$sb_snap" '
+                (if $proto == "shadowsocks" and ($users | length) > 0 and $snap != null
+                    and ((.inbounds | map(.tag == $t) | any) | not)
+                 then .inbounds += [$snap] else . end)
+                | .inbounds |= map(if .tag == $t then
                     (if $proto == "vless" then
                         .settings.clients = [$users[] | {id: .secret, email: .email} + (if $flow != "" then {flow: $flow} else {} end)]
                      elif $proto == "trojan" then
                         .settings.clients = [$users[] | {password: .secret, email: .email}]
                      elif $proto == "shadowsocks" then
-                        (if $ss != "" then
+                        (if ($users | length) == 0 then empty
+                         elif $ss != "" then
                             .settings.password = $ss
                             | .settings.clients = [$users[] | {password: .secret, email: .email}]
-                         elif ($users | length) == 1 then
-                            .settings.password = $users[0].secret | .settings |= del(.clients)
                          else
-                            .settings.password = "AAAAAAAAAAAAAAAAAAAAAA" | .settings |= del(.clients) end)
+                            .settings.password = $users[0].secret | .settings |= del(.clients) end)
                      elif $proto == "socks" then
                         .settings.accounts = [$users[] | {user: .name, pass: .secret}]
                      else . end)
@@ -21932,7 +21943,7 @@ users_sync() {
             ;;
         sing-box)
             if ! jq --arg t "$tag" --arg proto "$proto" --argjson users "$enabled" --arg ss "$eff_ss" --argjson snap "$sb_snap" '
-                (if ($proto == "mixed" or $proto == "socks") and ($users | length) > 0 and $snap != null
+                (if ($proto == "mixed" or $proto == "socks" or $proto == "shadowsocks") and ($users | length) > 0 and $snap != null
                     and ((.inbounds | map(.tag == $t) | any) | not)
                  then .inbounds += [$snap] else . end)
                 | .inbounds |= map(if .tag == $t then
@@ -21941,19 +21952,18 @@ users_sync() {
                      elif $proto == "tuic" then
                         .users = [$users[] | {name: .name, uuid: .uuid, password: .secret}]
                      elif $proto == "shadowsocks" then
-                        (if $ss != "" then
+                        (if ($users | length) == 0 then empty
+                         elif $ss != "" then
                             .password = $ss | .users = [$users[] | {name: .name, password: .secret}]
-                         elif ($users | length) == 1 then
-                            .password = $users[0].secret | del(.users)
                          else
-                            .password = "AAAAAAAAAAAAAAAAAAAAAA" | del(.users) end)
+                            .password = $users[0].secret | del(.users) end)
                      elif $proto == "mixed" or $proto == "socks" then
                         (if ($users | length) == 0 then empty
                          else .users = [$users[] | {username: .name, password: .secret}] end)
                      else
                         .users = [$users[] | {name: .name, password: .secret}] end)
                 else . end)
-                | (if ($proto == "mixed" or $proto == "socks") and ($users | length) == 0
+                | (if ($proto == "mixed" or $proto == "socks" or $proto == "shadowsocks") and ($users | length) == 0
                       and (.route.rules | type) == "array"
                    then .route.rules |= map(select(((.inbound // []) | index($t)) == null))
                    else . end)
@@ -21975,12 +21985,16 @@ users_sync() {
         if (( sb_will_delete == 1 )) && [[ -n "$sb_snap_obj" ]]; then
             local regj2=''
             regj2=$(jq -c --argjson ib "$sb_snap_obj" '.inbound_snapshot = $ib' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj2" || true
-            msg "${RED}[!] sing-box ${proto} inbound ${tag}: all users are disabled, so the inbound was removed (an empty users list is an unauthenticated open relay in sing-box). Re-enable any user to rebuild it automatically.${NC}"
+            if [[ "$proto" == 'shadowsocks' ]]; then
+                msg "${RED}[!] ${core} shadowsocks inbound ${tag}: all users are disabled, so the inbound was removed (a disabled SS inbound must not stay up with a shared password). Re-enable any user to rebuild it automatically.${NC}"
+            else
+                msg "${RED}[!] sing-box ${proto} inbound ${tag}: all users are disabled, so the inbound was removed (an empty users list is an unauthenticated open relay in sing-box). Re-enable any user to rebuild it automatically.${NC}"
+            fi
         fi
         if (( sb_will_rebuild == 1 )); then
             local regj3=''
             regj3=$(jq -c 'del(.inbound_snapshot)' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj3" || true
-            msg "${GREEN}[+] sing-box ${proto} inbound ${tag} rebuilt from the registry snapshot.${NC}"
+            msg "${GREEN}[+] ${core} ${proto} inbound ${tag} rebuilt from the registry snapshot.${NC}"
         fi
         return 0
     fi
@@ -22517,7 +22531,7 @@ users_hot_remove() {
                 .inbounds |= map(if .tag == $t then
                     (if ((.settings.clients // null) | type) == "array"
                      then .settings.clients |= map(select(.email != $e))
-                     else .settings.password = "AAAAAAAAAAAAAAAAAAAAAA" end)
+                     else empty end)
                 else . end)
             ' "$cfg" > "$tmp" 2>/dev/null && ok=1 ;;
         *) : ;;
@@ -30606,32 +30620,44 @@ _xl_remove_coexist_files() {
 }
 
 _xl_install_takeover() { # $1 = staged binary, $2 = tag
-    local staged="$1" created_unit=0 created_cfg=0
-    install_binary_atomically "$staged" "$XRAY_SLOT_BIN" || return 1
+    local staged="$1" created_unit=0 created_cfg=0 old_bin_tmp=''
+    if [[ -f "$XRAY_SLOT_BIN" && ! -L "$XRAY_SLOT_BIN" ]]; then
+        old_bin_tmp=$(mktemp /tmp/A-Box-xl-oldbin.XXXXXX) || return 1
+        cp -f -- "$XRAY_SLOT_BIN" "$old_bin_tmp" || { rm -f -- "$old_bin_tmp"; return 1; }
+    fi
+    install_binary_atomically "$staged" "$XRAY_SLOT_BIN" || { rm -f -- "$old_bin_tmp"; return 1; }
     if [[ ! -f "$XRAY_SLOT_CFG" || -L "$XRAY_SLOT_CFG" ]]; then
-        prepare_abox_runtime_config_dir xray "$XRAY_SLOT_DIR" || return 1
-        _xl_seed_config "$XRAY_SLOT_CFG" 'xray' || return 1
+        prepare_abox_runtime_config_dir xray "$XRAY_SLOT_DIR" || { if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
+        _xl_seed_config "$XRAY_SLOT_CFG" 'xray' || { if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
         created_cfg=1
     fi
     if ! xray_owned; then
-        _xl_write_slot_unit || return 1
+        _xl_write_slot_unit || { if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
         created_unit=1
     fi
-    prepare_abox_runtime_permissions xray || return 1
+    prepare_abox_runtime_permissions xray || { if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
     if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$XRAY_SLOT_BIN" run -test -config "$XRAY_SLOT_CFG" >/dev/null 2>&1; then
         msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
-        rm -f -- "$XRAY_SLOT_BIN"
+        if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; else rm -f -- "$XRAY_SLOT_BIN"; fi
         [[ "$created_cfg" == '1' ]] && rm -f -- "$XRAY_SLOT_CFG"
         if [[ "$created_unit" == '1' ]]; then
             if [[ "${INIT_SYS:-}" == 'systemd' ]]; then rm -f -- /etc/systemd/system/xray.service; systemctl daemon-reload >/dev/null 2>&1 || true; else rm -f -- /etc/init.d/xray /etc/conf.d/xray; fi
         fi
+        rm -f -- "$old_bin_tmp"
         return 1
     fi
     if ! restart_service_soft xray; then
         msg "${RED}$(tr_msg xl_restart_fail)${NC}"
-        rm -f -- "$XRAY_SLOT_BIN"
+        if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then
+            cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"
+            restart_service_soft xray >/dev/null 2>&1 || true
+        else
+            rm -f -- "$XRAY_SLOT_BIN"
+        fi
+        rm -f -- "$old_bin_tmp"
         return 1
     fi
+    rm -f -- "$old_bin_tmp"
     return 0
 }
 

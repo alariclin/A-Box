@@ -4319,6 +4319,24 @@ tr_msg() {
         fa:warp_removed) echo 'WARP حذف شد.' ;;
         zh-tw:warp_removed) echo 'WARP 已卸載。' ;;
         ja:warp_removed) echo 'WARP をアンインストールしました。' ;;
+        zh:warp_applied_fail) echo '路由应用记录（.applied）写入失败，本次应用结果不可靠。' ;;
+        en:warp_applied_fail) echo 'Failed to write the routing applied record (.applied); this apply result is unreliable.' ;;
+        ru:warp_applied_fail) echo 'Не удалось записать журнал применённой маршрутизации (.applied); результат этого применения ненадёжен.' ;;
+        fa:warp_applied_fail) echo 'نوشتن سابقه مسیریابی اعمال‌شده (.applied) ناموفق بود؛ نتیجه این اعمال قابل اعتماد نیست.' ;;
+        zh-tw:warp_applied_fail) echo '路由應用記錄（.applied）寫入失敗，本次應用結果不可靠。' ;;
+        ja:warp_applied_fail) echo 'ルーティング適用記録（.applied）の書き込みに失敗しました。今回の適用結果は信頼できません。' ;;
+        zh:warp_undeploy_fail) echo 'WARP 卸载应用失败，运行配置仍可能含 WARP，请检查。' ;;
+        en:warp_undeploy_fail) echo 'WARP undeploy apply failed; the live config may still contain WARP. Please check.' ;;
+        ru:warp_undeploy_fail) echo 'Не удалось применить удаление WARP; в действующей конфигурации мог остаться WARP. Проверьте.' ;;
+        fa:warp_undeploy_fail) echo 'اعمال حذف WARP ناموفق بود؛ ممکن است پیکربندی فعال هنوز حاوی WARP باشد. لطفاً بررسی کنید.' ;;
+        zh-tw:warp_undeploy_fail) echo 'WARP 解除安裝應用失敗，運行設定仍可能含 WARP，請檢查。' ;;
+        ja:warp_undeploy_fail) echo 'WARP のアンインストール適用に失敗しました。実行中の設定に WARP が残っている可能性があります。確認してください。' ;;
+        zh:warp_preset_rollback_fail) echo '预设应用失败，且回滚旧规则失败，当前规则可能不完整，请检查。' ;;
+        en:warp_preset_rollback_fail) echo 'Preset apply failed and rolling back the old rules failed; the current rules may be incomplete. Please check.' ;;
+        ru:warp_preset_rollback_fail) echo 'Не удалось применить предустановку, и откат старых правил не удался; текущие правила могут быть неполными. Проверьте.' ;;
+        fa:warp_preset_rollback_fail) echo 'اعمال پیش‌تنظیم ناموفق بود و بازگردانی قوانین قدیمی نیز ناموفق بود؛ قوانین فعلی ممکن است ناقص باشند. لطفاً بررسی کنید.' ;;
+        zh-tw:warp_preset_rollback_fail) echo '預設應用失敗，且回滾舊規則失敗，目前規則可能不完整，請檢查。' ;;
+        ja:warp_preset_rollback_fail) echo 'プリセットの適用に失敗し、旧ルールのロールバックにも失敗しました。現在のルールが不完全な可能性があります。確認してください。' ;;
         zh:warp_status_on) echo 'WARP 状态：已部署' ;;
         en:warp_status_on) echo 'WARP status: deployed' ;;
         ru:warp_status_on) echo 'Статус WARP: развёрнут' ;;
@@ -18107,15 +18125,22 @@ routing_state_clear() {
 # Surgically merge routing state into the LIVE config file, validate, restart.
 # $1 = xray | singbox (defaults to $CORE)
 routing_apply_live() {
-    local core="${1:-${CORE:-}}" cfg tmp
+    local core='' cfg tmp force_json='[]'
+    if [[ $# -gt 0 ]]; then core="$1"; shift; fi
+    [[ -n "$core" ]] || core="${CORE:-}"
+    if (( $# > 0 )); then
+        force_json=$(jq -nc --args '$ARGS.positional' "$@" 2>/dev/null || printf '[]')
+    fi
     routing_state_init || return 1
     # Tags applied by the previous run: members dropped from the
     # state since then are retired from the live config instead of
     # lingering as orphans (e.g. warp-out after warp_undeploy, which
     # deletes the state entry before re-applying).
-    local prev_applied='[]'
+    local prev_applied='[]' prev_rules_xray='[]' prev_rules_singbox='[]'
     if [[ -f "${ROUTING_STATE_FILE}.applied" ]]; then
-        prev_applied=$(jq -c 'if type == "array" then map(select(type == "string")) else [] end' "${ROUTING_STATE_FILE}.applied" 2>/dev/null || printf '[]')
+        prev_applied=$(jq -c 'if type == "array" then map(select(type == "string")) elif type == "object" then (.outbounds // [] | map(select(type == "string"))) else [] end' "${ROUTING_STATE_FILE}.applied" 2>/dev/null || printf '[]')
+        prev_rules_xray=$(jq -c 'if type == "object" then (.rules_xray // []) else [] end' "${ROUTING_STATE_FILE}.applied" 2>/dev/null || printf '[]')
+        prev_rules_singbox=$(jq -c 'if type == "object" then (.rules_singbox // []) else [] end' "${ROUTING_STATE_FILE}.applied" 2>/dev/null || printf '[]')
     fi
     case "$core" in
         xray)
@@ -18123,12 +18148,12 @@ routing_apply_live() {
             [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
             tmp=$(mktemp) || return 1
             mv "$tmp" "$tmp.json" || { rm -f "$tmp"; return 1; }; tmp="$tmp.json"
-            jq --slurpfile st "$ROUTING_STATE_FILE" --argjson prev "$prev_applied" '
+            jq --slurpfile st "$ROUTING_STATE_FILE" --argjson prev "$prev_applied" --argjson force "$force_json" --argjson prevr "$prev_rules_xray" '
                 ($st[0].outbounds | map(.tag)) as $managed
-                | ($prev - $managed) as $retired
+                | ((($prev - $managed) + $force) | unique) as $retired
                 | .outbounds |= (map(select(.tag as $t | ($managed + $retired) | index($t) | not))
                     + [$st[0].outbounds[]?.xray])
-                | .routing.rules |= (map(select(.outboundTag as $t | ($managed + $retired) | index($t) | not))
+                | .routing.rules |= (map(select((.outboundTag as $t | ($managed + $retired) | index($t) | not) and (. as $r | ($prevr | index($r)) | not)))
                     + [$st[0].rules[]?.xray_rule])
             ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
             jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
@@ -18138,7 +18163,17 @@ routing_apply_live() {
             install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
             rm -f "$tmp"
             local atmp=''
-            atmp=$(mktemp) && { jq -c '[.outbounds[].tag]' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "${ROUTING_STATE_FILE}.applied" 2>/dev/null || rm -f "$atmp"; } || true
+            if ! atmp=$(mktemp); then
+                msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
+                return 1
+            fi
+            if jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "${ROUTING_STATE_FILE}.applied" 2>/dev/null; then
+                :
+            else
+                rm -f "$atmp"
+                msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
+                return 1
+            fi
             prepare_abox_runtime_permissions xray || return 1
             restart_service_soft xray
             ;;
@@ -18147,9 +18182,9 @@ routing_apply_live() {
             [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
             tmp=$(mktemp) || return 1
             mv "$tmp" "$tmp.json" || { rm -f "$tmp"; return 1; }; tmp="$tmp.json"
-            jq --slurpfile st "$ROUTING_STATE_FILE" --argjson prev "$prev_applied" '
+            jq --slurpfile st "$ROUTING_STATE_FILE" --argjson prev "$prev_applied" --argjson force "$force_json" --argjson prevr "$prev_rules_singbox" '
                 ($st[0].outbounds | map(.tag)) as $managed
-                | ($prev - $managed) as $retired
+                | ((($prev - $managed) + $force) | unique) as $retired
                 | ($st[0].outbounds | map(.singbox
                     | if (.type == "wireguard" and has("server")) then
                         {type:"wireguard", tag:.tag, address:.local_address, private_key:.private_key,
@@ -18167,7 +18202,7 @@ routing_apply_live() {
                 | ($srules | map(.rule_set[]?) | unique) as $tags
                 | .outbounds |= (map(select(.tag as $t | ($managed + $retired) | index($t) | not)) + $obs)
                 | .endpoints = (((.endpoints // []) | map(select(.tag as $t | ($managed + $retired) | index($t) | not))) + $eps)
-                | .route.rules = (((.route.rules // []) | map(select(.outbound as $t | ($managed + $retired) | index($t) | not))) + $srules)
+                | .route.rules = (((.route.rules // []) | map(select((.outbound as $t | ($managed + $retired) | index($t) | not) and (. as $r | ($prevr | index($r)) | not)))) + $srules)
                 | .route.rule_set = ($tags | map({type:"remote", tag:., format:"binary",
                     url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
                     download_detour:"direct"}))
@@ -18179,7 +18214,17 @@ routing_apply_live() {
             install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
             rm -f "$tmp"
             local atmp=''
-            atmp=$(mktemp) && { jq -c '[.outbounds[].tag]' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "${ROUTING_STATE_FILE}.applied" 2>/dev/null || rm -f "$atmp"; } || true
+            if ! atmp=$(mktemp); then
+                msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
+                return 1
+            fi
+            if jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "${ROUTING_STATE_FILE}.applied" 2>/dev/null; then
+                :
+            else
+                rm -f "$atmp"
+                msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
+                return 1
+            fi
             prepare_abox_runtime_permissions sing-box || return 1
             restart_service_soft sing-box
             ;;
@@ -18299,7 +18344,9 @@ warp_undeploy() {
         load_optional_abox_env_or_die 2>/dev/null || true
         core="${CORE:-}"
     fi
-    [[ -n "$core" ]] && routing_apply_live "$core" || true
+    if [[ -n "$core" ]]; then
+        routing_apply_live "$core" 'warp-out' || { msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}"; return 1; }
+    fi
     msg "$(tr_msg warp_removed)"
 }
 
@@ -18331,31 +18378,56 @@ warp_status() {
 warp_apply_preset() {
     local preset="$1"
     routing_outbound_has 'warp-out' || { msg "$(tr_msg warp_need_deploy)"; return 1; }
+    # Validate the preset name before touching state: an unknown preset
+    # must not wipe the current rules.
+    case "$preset" in
+        streaming|cn-direct|global) ;;
+        *) return 1 ;;
+    esac
     # Validate every outbound the preset needs before clearing the
     # current rules, so a preset can never half-apply.
     case "$preset" in
         cn-direct) routing_outbound_has 'direct' || return 1 ;;
     esac
-    routing_rules_clear || return 1
+    # Snapshot the whole state file: any failed add rolls back to this
+    # instead of leaving a half-applied rule set behind.
+    local snap='' _preset_rc=0
+    snap=$(mktemp) || return 1
+    cp -- "$ROUTING_STATE_FILE" "$snap" 2>/dev/null || { rm -f "$snap"; return 1; }
+    routing_rules_clear || { rm -f "$snap"; return 1; }
     case "$preset" in
         streaming)
-            routing_rule_add 'geosite:netflix,geosite:disney,geosite:youtube,geosite:primevideo,geosite:hbomax' 'warp-out' || return 1
+            routing_rule_add 'geosite:netflix,geosite:disney,geosite:youtube,geosite:primevideo,geosite:hbomax' 'warp-out' || _preset_rc=1
             ;;
         cn-direct)
-            routing_rule_add 'geosite:netflix,geosite:disney,geosite:youtube' 'warp-out' || return 1
-            routing_rule_add 'geosite:cn' 'direct' || return 1
+            routing_rule_add 'geosite:netflix,geosite:disney,geosite:youtube' 'warp-out' || _preset_rc=1
+            if (( _preset_rc == 0 )); then
+                routing_rule_add 'geosite:cn' 'direct' || _preset_rc=1
+            fi
             ;;
         global)
-            routing_rule_add 'all' 'warp-out' || return 1
+            routing_rule_add 'all' 'warp-out' || _preset_rc=1
             ;;
-        *) return 1 ;;
+        *) _preset_rc=1 ;;
     esac
+    if (( _preset_rc != 0 )); then
+        if routing_state_put < "$snap" > /dev/null 2>&1; then
+            rm -f "$snap"
+        else
+            rm -f "$snap"
+            msg "${YELLOW}[!] $(tr_msg warp_preset_rollback_fail)${NC}"
+        fi
+        return 1
+    fi
+    rm -f "$snap"
     local core="${CORE:-}"
     if [[ -z "$core" ]]; then
         load_optional_abox_env_or_die 2>/dev/null || true
         core="${CORE:-}"
     fi
-    [[ -n "$core" ]] && routing_apply_live "$core"
+    if [[ -n "$core" ]]; then
+        routing_apply_live "$core" || return 1
+    fi
     msg "$(tr_msg warp_preset_done)"
 }
 
@@ -18431,10 +18503,10 @@ warp_split_menu() {
         4) split_rules_menu ;;
         5)
             if confirm_yes_no "$(tr_msg warp_uninstall_confirm)"; then
-                warp_undeploy
-                routing_rules_clear 2>/dev/null || true
-                local core="${CORE:-}"; [[ -z "$core" ]] && { load_optional_abox_env_or_die 2>/dev/null || true; core="${CORE:-}"; }
-                [[ -n "$core" ]] && routing_apply_live "$core" || true
+                # warp_undeploy applies the removal itself and reports
+                # success/failure. Never blanket-clear rules here: that
+                # would delete non-WARP split rules as well.
+                warp_undeploy || true
             fi
             pause_return ;;
         0) return 0 ;;

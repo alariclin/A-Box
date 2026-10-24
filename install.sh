@@ -10861,6 +10861,29 @@ ufw_is_active() {
 nftables_native_rules_present() {
     command -v nft >/dev/null 2>&1 || return 1
     nft -nn list ruleset 2>/dev/null | awk '
+        # U24/U25 (2026-10-24): a chain name alone never proves native
+        # nftables. Only a BASE chain (its declaration block carries a
+        # "type ... hook ..." header) counts, and only when it cannot
+        # come from iptables-nft: a custom-named base chain anywhere, or
+        # a lowercase standard-named base chain outside the standard
+        # compat tables (ip/ip6 filter/nat/mangle/raw/security).
+        # iptables-nft base chains are UPPERCASE (INPUT/FORWARD/OUTPUT/
+        # PREROUTING/POSTROUTING); a lowercase user chain (no type/hook)
+        # inside a compat table is not native evidence either.
+        function is_std(c, lc) {
+            lc = tolower(c)
+            return (lc == "input" || lc == "forward" || lc == "output" || lc == "prerouting" || lc == "postrouting")
+        }
+        function is_lower_std(c) {
+            return (c == "input" || c == "forward" || c == "output" || c == "prerouting" || c == "postrouting")
+        }
+        function is_compat_table(f, n) {
+            return ((f == "ip" || f == "ip6") && (n == "filter" || n == "nat" || n == "mangle" || n == "raw" || n == "security"))
+        }
+        function eval_chain() {
+            if (!is_std(pend_cname)) { native = 1; return }
+            if (is_lower_std(pend_cname) && !is_compat_table(pend_family, pend_name)) { native = 1; return }
+        }
         /^[ \t\r]*table[ \t\r]+/ {
             family=$2
             name=$3
@@ -10870,31 +10893,30 @@ nftables_native_rules_present() {
             else if ((family == "ip" || family == "ip6") &&
                      name !~ /^(filter|nat|mangle|raw|security)$/)
                 native=1
+            pend = 0
+            next
         }
-        # FIX (P3-01 regression revert 2026-10-15): match chain names
-        # case-SENSITIVELY (lowercase only). Native nftables convention uses
-        # lowercase chain names (input/forward/output). iptables-nft compat
-        # tables use UPPERCASE (INPUT/FORWARD/OUTPUT). The case-insensitive
-        # match misidentified iptables-nft rulesets as native nftables on
-        # Debian/Ubuntu, breaking firewall_backend().
         /^[ \t\r]*chain[ \t\r]+/ {
             cname=$2
             gsub(/\{/, "", cname)
-            if (cname == "input" || cname == "forward" || cname == "output")
-                native=1
-            # G6: custom chain name in a STANDARD table whose declaration
-            # continues on the NEXT line with a base-chain header. nftables
-            # prints chain declarations as two lines (see src/rule.c
-            # chain_print_declaration()). A comment line may sit between.
-            # iptables-nft compat chains are UPPERCASE and excluded here.
-            pend = ((family == "ip" || family == "ip6") && \
-                    (cname != "INPUT" && cname != "FORWARD" && cname != "OUTPUT"))
+            pend = 1
+            pend_cname = cname
+            pend_family = family
+            pend_name = name
+            # Single-line declaration: base-chain header on the same line.
+            if ($0 ~ /type[ \t\r]+[A-Za-z]+[ \t\r]+hook[ \t\r]+[A-Za-z]+/) {
+                eval_chain()
+                pend = 0
+            }
             next
         }
-        # G6 (cont): check the line following a pending custom chain.
-        pend && /^[ \t\r]*(comment[ \t"\r]|type[ \t\r])/ {
-            if ($0 ~ /type[ \t\r]+filter[ \t\r]+hook[ \t\r]+input/)
-                native=1
+        # G6: a comment line may sit between the chain line and its
+        # base-chain header; skip it without judging its content.
+        pend && /^[ \t\r]*comment/ { next }
+        pend && /^[ \t\r]*type[ \t\r]+/ {
+            if ($0 ~ /type[ \t\r]+[A-Za-z]+[ \t\r]+hook[ \t\r]+[A-Za-z]+/)
+                eval_chain()
+            pend = 0
             next
         }
         { pend = 0 }

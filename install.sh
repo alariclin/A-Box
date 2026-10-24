@@ -14609,14 +14609,36 @@ xray_owned || exit 0
 # Recover if the previous process died between GeoDB renames or during restart.
 if [[ -e "$GEO_TXN" || -L "$GEO_TXN" ]]; then
     [[ -d "$GEO_TXN" && ! -L "$GEO_TXN" && "$(stat -c %u:%g "$GEO_TXN" 2>/dev/null)" == 0:0 ]] || exit 1
-    restore_geo_transaction || exit 1
-    # Recovery also restarts the service: if the interrupted run had already
-    # restarted Xray before dying, it may still hold the now-rolled-back data in memory.
-    if is_systemd; then
-        systemctl restart xray >/dev/null 2>&1 || exit 1
-    else
-        rc-service xray restart >/dev/null 2>&1 9>&- 10>&- || exit 1
+    # U29: recover under the shared runtime guard, and restart only when
+    # the desired state is confirmed RUNNING; an admin-stopped service
+    # must not be resurrected by recovery. The guard is released before
+    # downloads (A-07) and re-acquired for the file-modification phase.
+    acquire_abox_runtime_guard
+    desired=STOPPED
+    if [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] && [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]]; then
+        mode=$(stat -c %a "$PAIR_STATE" 2>/dev/null) || mode=''
+        if [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) && IFS= read -r _pair < "$PAIR_STATE"; then
+            desired=${_pair%%|*}
+        fi
+    elif [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
+        if [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] && [[ "$(stat -c %u:%g "$DESIRED" 2>/dev/null)" == 0:0 ]]; then
+            mode=$(stat -c %a "$DESIRED" 2>/dev/null) || mode=''
+            if [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) && IFS= read -r desired < "$DESIRED"; then
+                :
+            fi
+        fi
     fi
+    restore_geo_transaction || { exec 10>&-; exit 1; }
+    # A restart here only flushes data the interrupted run may have loaded
+    # into memory; it must never revive a service meant to stay down.
+    if [[ "$desired" == RUNNING ]]; then
+        if is_systemd; then
+            systemctl restart xray >/dev/null 2>&1 || { exec 10>&-; exit 1; }
+        else
+            rc-service xray restart >/dev/null 2>&1 9>&- 10>&- || { exec 10>&-; exit 1; }
+        fi
+    fi
+    exec 10>&-
 fi
 desired=RUNNING
 if [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] && [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]]; then
@@ -15917,10 +15939,14 @@ deploy_singbox_socks5_landing() {
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
         rm -rf -- "$sb_tmp"
         # Seed a minimal config shell; the socks/mixed inbound is appended below.
+        # U31: install the seed only when no usable config exists; an
+        # existing valid config is kept and merged in place below.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
-        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
+        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]] || ! jq -e . "$cfg" >/dev/null 2>&1; then
+            install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
+        fi
         rm -f "$tmp_json"
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
             write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || die "$(tr_msg dp_sb_unit)"
@@ -16066,7 +16092,10 @@ deploy_xray_trojan_landing() {
         tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_xray_seed)"
-        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
+        # U31: same guard as the sing-box landing seed above.
+        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]] || ! jq -e . "$cfg" >/dev/null 2>&1; then
+            install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
+        fi
         rm -f "$tmp_json"
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
             write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die "$(tr_msg dp_xray_unit)"

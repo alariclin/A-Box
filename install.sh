@@ -3660,6 +3660,12 @@ tr_msg() {
         fa:xl_confirm) echo 'ادامه می‌دهید؟ [Y/N]: ' ;;
         zh-tw:xl_confirm) echo '確認繼續？ [Y/N]：' ;;
         ja:xl_confirm) echo '続行しますか？ [Y/N]：' ;;
+        zh:xl_confirm_hard) echo '输入 UNINSTALL xray-latest 以确认卸载：' ;;
+        en:xl_confirm_hard) echo 'Type UNINSTALL xray-latest to confirm removal: ' ;;
+        ru:xl_confirm_hard) echo 'Введите UNINSTALL xray-latest для подтверждения удаления: ' ;;
+        fa:xl_confirm_hard) echo 'برای تأیید حذف، عبارت UNINSTALL xray-latest را وارد کنید: ' ;;
+        zh-tw:xl_confirm_hard) echo '輸入 UNINSTALL xray-latest 以確認卸載：' ;;
+        ja:xl_confirm_hard) echo '削除を確認するには UNINSTALL xray-latest と入力してください：' ;;
         zh:xl_tag_fail) echo '无法获取上游最新版本（网络或 GitHub API 不可用），已取消。' ;;
         en:xl_tag_fail) echo 'Could not fetch the latest upstream version (network or GitHub API unavailable). Cancelled.' ;;
         ru:xl_tag_fail) echo 'Не удалось получить последнюю версию upstream (сеть или GitHub API недоступны). Отменено.' ;;
@@ -13562,7 +13568,7 @@ ensure_abox_runtime_identity() {
 prepare_abox_runtime_config_dir() {
     local family="$1" dir="$2" user group gid mode nlink
     case "$family:$dir" in
-        sing-box:/etc/sing-box|hysteria:/etc/hysteria|xray:/usr/local/etc/xray) ;;
+        sing-box:/etc/sing-box|hysteria:/etc/hysteria|xray:/usr/local/etc/xray|xray:/etc/ddr/xray-latest) ;;
         *) return 1 ;;
     esac
     ensure_abox_runtime_identity "$family" || return 1
@@ -15685,7 +15691,7 @@ EOF_SVC
         msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    if ! jq --slurpfile nb "$tmp_json" \
+    if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
             '(.inbounds | map(select(.tag==$t))) as $old
              | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
@@ -15851,7 +15857,7 @@ EOF_SVC
         fi
         tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_tmpfile)"; }; tmp_cfg="$tmp_cfg.json"
-        if ! jq --slurpfile nb "$tmp_json" \
+        if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
                 '(.inbounds | map(select(.tag==$t))) as $old
                  | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
                 "$cfg" > "$tmp_cfg" 2>/dev/null; then
@@ -15998,7 +16004,7 @@ EOF_SVC
         msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    if ! jq --slurpfile nb "$tmp_json" \
+    if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
             '(.inbounds | map(select(.tag==$t))) as $old
              | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
@@ -16293,7 +16299,7 @@ EOF_SVC
         msg "${YELLOW}$(tr_msg anytls_exists)${NC}"
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    if ! jq --slurpfile nb "$tmp_json" \
+    if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
             '(.inbounds | map(select(.tag==$t))) as $old
              | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
@@ -18417,7 +18423,7 @@ EOF_SVC
         msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
         tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_tmpfile)"; }; tmp_cfg="$tmp_cfg.json"
-        if ! jq --slurpfile nb "$tmp_json" \
+        if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
                 '(.inbounds | map(select(.tag==$t))) as $old
                  | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
                 "$cfg" > "$tmp_cfg" 2>/dev/null; then
@@ -20920,6 +20926,15 @@ confirm_soft() {
     is_yes "$answer"
 }
 
+confirm_hard_xray_latest_uninstall() {
+    # Destructive-uninstall gate for xray-latest: exact-phrase confirmation
+    # read from /dev/tty. Never honours fast mode or any auto-yes switch;
+    # no TTY, EOF or a mismatched phrase cancels the removal.
+    local answer=''
+    read -r -p "$(tr_msg xl_confirm_hard)" answer </dev/tty || [[ -n "$answer" ]] || return 1
+    [[ "$answer" == 'UNINSTALL xray-latest' ]]
+}
+
 show_core_pin_docs() {
     clear
     msg "${CYAN}======================================================================${NC}"
@@ -21658,6 +21673,24 @@ users_sync() {
         esac
         [[ -n "$eff_ss" ]] && promote=1
     fi
+    # sing-box socks/mixed inbounds treat an empty users list as "no
+    # authentication required" (upstream docs), so syncing zero enabled
+    # users must remove the inbound instead of leaving a public
+    # unauthenticated relay. The removed inbound is snapshotted into
+    # the registry so a later sync with enabled users rebuilds it;
+    # route rules referencing it are dropped together with it.
+    local sb_snap='null' sb_snap_obj='' sb_will_delete=0 sb_will_rebuild=0
+    if [[ "$core" == 'sing-box' ]] && [[ "$proto" == 'mixed' || "$proto" == 'socks' ]]; then
+        sb_snap=$(jq -c '.inbound_snapshot // null' "$reg" 2>/dev/null || echo null)
+        if (( encount == 0 )); then
+            if jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; then
+                sb_will_delete=1
+                sb_snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" 2>/dev/null)
+            fi
+        elif [[ "$sb_snap" != 'null' ]]; then
+            jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1 || sb_will_rebuild=1
+        fi
+    fi
     case "$core" in
         xray|xray-latest)
             xray_ensure_stats "$cfg" "$(users_api_port_of "$core")" >/dev/null 2>&1 || true
@@ -21686,8 +21719,11 @@ users_sync() {
             fi
             ;;
         sing-box)
-            if ! jq --arg t "$tag" --arg proto "$proto" --argjson users "$enabled" --arg ss "$eff_ss" '
-                .inbounds |= map(if .tag == $t then
+            if ! jq --arg t "$tag" --arg proto "$proto" --argjson users "$enabled" --arg ss "$eff_ss" --argjson snap "$sb_snap" '
+                (if ($proto == "mixed" or $proto == "socks") and ($users | length) > 0 and $snap != null
+                    and ((.inbounds | map(.tag == $t) | any) | not)
+                 then .inbounds += [$snap] else . end)
+                | .inbounds |= map(if .tag == $t then
                     (if $proto == "vless" or $proto == "vmess" then
                         .users = [$users[] | {name: .name, uuid: .secret} + (if (.flow // "") != "" then {flow: .flow} else {} end)]
                      elif $proto == "tuic" then
@@ -21700,10 +21736,15 @@ users_sync() {
                          else
                             .password = "AAAAAAAAAAAAAAAAAAAAAA" | del(.users) end)
                      elif $proto == "mixed" or $proto == "socks" then
-                        .users = [$users[] | {username: .name, password: .secret}]
+                        (if ($users | length) == 0 then empty
+                         else .users = [$users[] | {username: .name, password: .secret}] end)
                      else
                         .users = [$users[] | {name: .name, password: .secret}] end)
                 else . end)
+                | (if ($proto == "mixed" or $proto == "socks") and ($users | length) == 0
+                      and (.route.rules | type) == "array"
+                   then .route.rules |= map(select(((.inbound // []) | index($t)) == null))
+                   else . end)
             ' "$cfg" > "$tmp" 2>/dev/null; then
                 rm -f "$tmp" "$bak"; return 1
             fi
@@ -21718,6 +21759,16 @@ users_sync() {
         if (( promote == 1 )); then
             local regj=''
             regj=$(jq -c --arg ss "$eff_ss" '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || true
+        fi
+        if (( sb_will_delete == 1 )) && [[ -n "$sb_snap_obj" ]]; then
+            local regj2=''
+            regj2=$(jq -c --argjson ib "$sb_snap_obj" '.inbound_snapshot = $ib' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj2" || true
+            msg "${RED}[!] sing-box ${proto} inbound ${tag}: all users are disabled, so the inbound was removed (an empty users list is an unauthenticated open relay in sing-box). Re-enable any user to rebuild it automatically.${NC}"
+        fi
+        if (( sb_will_rebuild == 1 )); then
+            local regj3=''
+            regj3=$(jq -c 'del(.inbound_snapshot)' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj3" || true
+            msg "${GREEN}[+] sing-box ${proto} inbound ${tag} rebuilt from the registry snapshot.${NC}"
         fi
         return 0
     fi
@@ -22073,7 +22124,9 @@ users_inbound_menu() {
             2)
                 nm=$(users_pick_user "$reg" "$(tr_msg mu_pick_del)") || { pause_return; continue; }
                 [[ -n "$nm" && "$nm" != 'main' ]] || { msg "${RED}$(tr_msg mu_main_keep)${NC}"; pause_return; continue; }
-                is_yes "$(printf '%s %s ? [Y/N]: ' "$(tr_msg mu_del_confirm)" "$nm")" || { msg "$(tr_msg mu_cancelled)"; pause_return; continue; }
+                local del_answer=''
+                read -r -p "$(printf '%s %s ? [Y/N]: ' "$(tr_msg mu_del_confirm)" "$nm")" del_answer || [[ -n "$del_answer" ]] || { msg "$(tr_msg mu_cancelled)"; pause_return; continue; }
+                is_yes "$del_answer" || { msg "$(tr_msg mu_cancelled)"; pause_return; continue; }
                 new=$(printf '%s' "$old" | jq -c --arg n "$nm" '.users |= map(select(.name != $n))') || continue
                 if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_deleted): ${nm}${NC}"; else msg "${RED}$(tr_msg mu_del_fail)${NC}"; fi
                 pause_return ;;
@@ -29163,7 +29216,7 @@ EOF_WCFT
         local _tok=''
         _tok=$(sed -n 's/^TUNNEL_TOKEN=//p' "$WALLOS_CF_TOKEN_FILE" 2>/dev/null | head -1)
         [[ -n "$_tok" ]] || return 1
-        write_file_atomically_from_stdin "/etc/init.d/abox-wallos-cftunnel" 755 <<EOF_WCFTRC || return 1
+        write_file_atomically_from_stdin "/etc/init.d/abox-wallos-cftunnel" 700 <<EOF_WCFTRC || return 1
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Wallos Cloudflare Tunnel"
@@ -30610,7 +30663,7 @@ xray_latest_remove() {
     else
         msg "${YELLOW}$(tr_msg xl_remove_warn_c)${NC}"
     fi
-    confirm_soft "$(tr_msg xl_confirm)" || return 0
+    confirm_hard_xray_latest_uninstall || return 0
     if [[ "$mode" == 'coexist' ]]; then
         _xl_remove_coexist_files
     else

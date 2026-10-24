@@ -13722,6 +13722,27 @@ ensure_fail2ban() {
     return 0
 }
 
+# Group a comma-separated port list into multiport-safe chunks: the
+# iptables multiport match accepts at most 15 slots and a port range
+# consumes 2 slots. Prints one comma-separated group per line.
+f2b_port_groups() {
+    local list="$1" item='' cost=0 slots=0 group='' old_ifs="$IFS"
+    IFS=','
+    for item in $list; do
+        [[ -n "$item" ]] || continue
+        if [[ "$item" == *:* ]]; then cost=2; else cost=1; fi
+        if (( slots > 0 && slots + cost > 15 )); then
+            printf '%s\n' "$group"
+            group=''; slots=0
+        fi
+        group+="${group:+,}$item"
+        slots=$((slots + cost))
+    done
+    IFS="$old_ifs"
+    [[ -n "$group" ]] && printf '%s\n' "$group"
+    return 0
+}
+
 setup_active_defense() {
     local log_file
     msg "${YELLOW}[*] 正在挂载私有日志与 Fail2Ban 主动防御矩阵...${NC}"
@@ -13759,7 +13780,7 @@ EOF_LOGROTATE
 [Definition]
 failregex = ^.*(?:authentication failed|message authentication failed).*?(?:from|client[=:])\s*\[?<HOST>\]?(?::[0-9]+)?(?:\s|:|$).*$
             ^.*(?:from|client[=:])\s*\[?<HOST>\]?(?::[0-9]+)?(?:\s|:).*?(?:authentication failed|message authentication failed).*$
-            ^.*invalid request from[[:space:]]+\[?<HOST>\]?(?::[0-9]+)?(?:[[:space:]]|>|:|$).*$
+            ^.*invalid request from\s+\[?<HOST>\]?(?::[0-9]+)?(?:\s|>|:|$).*$
 ignoreregex =
 EOF_F2B_FILTER
         [[ -n "${VLESS_PORT:-}" ]] && tcp_ports+="${VLESS_PORT},"
@@ -13818,22 +13839,29 @@ bantime.maxtime = 86400'
                 rm -f -- "$jail_tmp"
                 die "$(tprintf ad_action_missing "$f2b_action")"
             }
-            if [[ "$f2b_action" == 'ufw' ]]; then
-                # Stock Fail2Ban UFW action blocks the offending source host-wide;
-                # do not attach misleading port/protocol arguments to it.
-                f2b_tcp_action='ufw[name=A-Box-tcp]'
-                f2b_udp_action='ufw[name=A-Box-udp]'
-            else
-                f2b_tcp_action="${f2b_action}[name=A-Box-tcp, port=\"${tcp_ports}\", protocol=tcp]"
-                f2b_udp_action="${f2b_action}[name=A-Box-udp, port=\"${udp_ports}\", protocol=udp]"
-            fi
+            # Per-group action strings are built while emitting the jail
+            # sections below: multiport actions are slot-grouped (see
+            # f2b_port_groups); the stock ufw action blocks the offending
+            # source host-wide and takes no port/protocol arguments.
         fi
         printf '%s\n' '# Managed by A-Box' > "$jail_tmp" || { rm -f -- "$jail_tmp"; die 'Fail2Ban jail file initialization failed.'; }
-        if [[ -n "$tcp_ports" ]]; then cat >> "$jail_tmp" <<EOF_F2B_TCP
-[A-Box-tcp]
+        if [[ -n "$tcp_ports" ]]; then
+            local -a tcp_groups=()
+            if [[ "$f2b_action" == 'ufw' ]]; then tcp_groups=("$tcp_ports"); else mapfile -t tcp_groups < <(f2b_port_groups "$tcp_ports"); fi
+            local tcp_gi=0 tcp_grp='' tcp_jail=''
+            for tcp_grp in "${tcp_groups[@]}"; do
+                tcp_gi=$((tcp_gi + 1))
+                if (( ${#tcp_groups[@]} > 1 )); then tcp_jail="A-Box-tcp-${tcp_gi}"; else tcp_jail='A-Box-tcp'; fi
+                if [[ "$f2b_action" == 'ufw' ]]; then
+                    f2b_tcp_action="ufw[name=${tcp_jail}]"
+                else
+                    f2b_tcp_action="${f2b_action}[name=${tcp_jail}, port=\"${tcp_grp}\", protocol=tcp]"
+                fi
+                cat >> "$jail_tmp" <<EOF_F2B_TCP
+[${tcp_jail}]
 enabled = true
 ignoreip = 127.0.0.1/8 ::1
-port = ${tcp_ports}
+port = ${tcp_grp}
 filter = A-Box
 logpath = /var/log/A-Box-xray-error.log
           /var/log/A-Box-singbox.log
@@ -13845,12 +13873,25 @@ ${f2b_inc}
 action = ${f2b_tcp_action}
 
 EOF_F2B_TCP
+            done
         fi
-        if [[ -n "$udp_ports" ]]; then cat >> "$jail_tmp" <<EOF_F2B_UDP
-[A-Box-udp]
+        if [[ -n "$udp_ports" ]]; then
+            local -a udp_groups=()
+            if [[ "$f2b_action" == 'ufw' ]]; then udp_groups=("$udp_ports"); else mapfile -t udp_groups < <(f2b_port_groups "$udp_ports"); fi
+            local udp_gi=0 udp_grp='' udp_jail=''
+            for udp_grp in "${udp_groups[@]}"; do
+                udp_gi=$((udp_gi + 1))
+                if (( ${#udp_groups[@]} > 1 )); then udp_jail="A-Box-udp-${udp_gi}"; else udp_jail='A-Box-udp'; fi
+                if [[ "$f2b_action" == 'ufw' ]]; then
+                    f2b_udp_action="ufw[name=${udp_jail}]"
+                else
+                    f2b_udp_action="${f2b_action}[name=${udp_jail}, port=\"${udp_grp}\", protocol=udp]"
+                fi
+                cat >> "$jail_tmp" <<EOF_F2B_UDP
+[${udp_jail}]
 enabled = true
 ignoreip = 127.0.0.1/8 ::1
-port = ${udp_ports}
+port = ${udp_grp}
 filter = A-Box
 logpath = /var/log/A-Box-singbox.log
           /var/log/A-Box-hysteria.log
@@ -13860,6 +13901,7 @@ bantime = 3600
 ${f2b_inc}
 action = ${f2b_udp_action}
 EOF_F2B_UDP
+            done
         fi
         if [[ -n "$tcp_ports" || -n "$udp_ports" ]]; then
             chmod 644 "$jail_tmp" || { rm -f -- "$jail_tmp"; die "$(tr_msg ad_jail_chmod)"; }
@@ -14185,6 +14227,27 @@ setup_geo_cron() {
 # A-06: umask 077 ensures lock/temp files are 0600 (not world-readable 0644).
 umask 077
 set -o pipefail
+# Self-contained helpers: verbatim copies of the main script's msg and
+# abox_run_wait. This generated script runs standalone from cron and
+# must never source install.sh.
+msg() { printf '%s\n' "$*"; }
+abox_run_wait() {
+    local _label="$1"; shift
+    if [[ ! -t 2 ]]; then
+        msg "  [*] ${_label} ..."
+        "$@"
+        return $?
+    fi
+    "$@" &
+    local _pid=$! _i=0 _t0=$SECONDS _frames='|/-\\'
+    while kill -0 "$_pid" 2>/dev/null; do
+        printf '\r  [%s] %s ... %ds ' "${_frames:$((_i % 4)):1}" "$_label" "$((SECONDS - _t0))" >&2
+        _i=$((_i + 1)); sleep 0.2
+    done
+    wait "$_pid"; local _rc=$?
+    printf '\r\033[K' >&2
+    return "$_rc"
+}
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 GEO_REPO='Loyalsoldier/v2ray-rules-dat'
 DESIRED=/etc/ddr/.desired_state
@@ -14984,21 +15047,21 @@ build_singbox_config() {
         --argjson hy2up "${HY2_DOWN:-1000}" --argjson hy2down "${HY2_UP:-100}" \
         --arg hy2pass "${HY2_PASS:-}" --arg hy2obfs "${HY2_OBFS:-}" --arg cert_cn "$cert_cn" \
         --arg masq "${HY2_MASQ_URL:-https://www.samsung.com/}" --arg ss_pass "${SS_PASS:-}" --argjson ka "$ka_obj" '
-        def vision:
-          ({type:"vless", listen:$listen_addr, listen_port:$vport, tcp_fast_open:true,
+        def vision($tag):
+          ({tag:$tag, type:"vless", listen:$listen_addr, listen_port:$vport, tcp_fast_open:true,
             users:[{uuid:$uuid, flow:"xtls-rprx-vision"}],
             tls:{enabled:true, server_name:$v_sni, reality:{enabled:true, handshake:{server:$v_sni, server_port:443}, private_key:$pk, short_id:[$sid]}}} + $ka);
-        def hy2:
-          {type:"hysteria2", listen:$listen_addr, listen_port:$hy2port, up_mbps:$hy2up, down_mbps:$hy2down,
+        def hy2($tag):
+          {tag:$tag, type:"hysteria2", listen:$listen_addr, listen_port:$hy2port, up_mbps:$hy2up, down_mbps:$hy2down,
             obfs:{type:"salamander", password:$hy2obfs}, users:[{password:$hy2pass}],
             tls:{enabled:true, server_name:$cert_cn, alpn:["h3"], certificate_path:"/etc/sing-box/hy2.crt", key_path:"/etc/sing-box/hy2.key"}, masquerade:$masq};
-        def ss:
-          ({type:"shadowsocks", listen:$listen_addr, listen_port:$ssport, tcp_fast_open:true,
+        def ss($tag):
+          ({tag:$tag, type:"shadowsocks", listen:$listen_addr, listen_port:$ssport, tcp_fast_open:true,
             method:"2022-blake3-aes-128-gcm", password:$ss_pass} + $ka);
         []
-        | if ($mode|contains("VISION")) or ($mode|contains("ALL")) or $mode == "VLESS_SS" then . + [vision] else . end
-        | if ($mode|contains("HY2")) or ($mode|contains("ALL")) then . + [hy2] else . end
-        | if ($mode|contains("SS")) or ($mode|contains("ALL")) or $mode == "VLESS_SS" then . + [ss] else . end') || die "$(tr_msg bs2_inbounds)"
+        | if ($mode|contains("VISION")) or ($mode|contains("ALL")) or $mode == "VLESS_SS" then . + [vision("vision")] else . end
+        | if ($mode|contains("HY2")) or ($mode|contains("ALL")) then . + [hy2("hy2")] else . end
+        | if ($mode|contains("SS")) or ($mode|contains("ALL")) or $mode == "VLESS_SS" then . + [ss("ss")] else . end') || die "$(tr_msg bs2_inbounds)"
     local out_dir
     out_dir=$(dirname -- "$out")
     [[ ! -L "$out_dir" && ! -L "$out" ]] || die "$(tr_msg bs2_symlink)"
@@ -17801,6 +17864,9 @@ routing_state_put() {
 routing_outbound_has() {
     local tag="$1"
     [[ -n "$tag" ]] || return 1
+    # 'direct' is the cores' built-in outbound (xray freedom / sing-box
+    # direct); it is never registered in the routing state file.
+    [[ "$tag" == 'direct' ]] && return 0
     routing_state_init || return 1
     jq -e --arg t "$tag" '.outbounds[]? | select(.tag == $t)' \
         "$ROUTING_STATE_FILE" >/dev/null 2>&1
@@ -18098,6 +18164,11 @@ warp_status() {
 warp_apply_preset() {
     local preset="$1"
     routing_outbound_has 'warp-out' || { msg "$(tr_msg warp_need_deploy)"; return 1; }
+    # Validate every outbound the preset needs before clearing the
+    # current rules, so a preset can never half-apply.
+    case "$preset" in
+        cn-direct) routing_outbound_has 'direct' || return 1 ;;
+    esac
     routing_rules_clear || return 1
     case "$preset" in
         streaming)
@@ -21027,7 +21098,7 @@ fetch_abox_mirror_asset() {
     if ! abox_verify_sig_gate "$sum_file" "$sum_sig" "recovery mirror SHA256SUMS"; then
         rm -f -- "$tmp_file" "$sum_file" "$sum_sig"; return 1
     fi
-    expect_sum=$(awk -v f="$asset_leaf" '$2==f || $2==("./" f) || (n=length(f), substr($2, length($2)-n+1)==f && (length($2)==n || substr($2, length($2)-n, 1)=="/")) {print $1; exit}' "$sum_file")
+    expect_sum=$(awk -v f="$asset_leaf" '{ n=length(f); if ($2==f || $2==("./" f) || (substr($2, length($2)-n+1)==f && (length($2)==n || substr($2, length($2)-n, 1)=="/"))) {print $1; exit} }' "$sum_file") || expect_sum=''
     rm -f -- "$sum_file" "$sum_sig"
     got_sum=$(sha256sum "$tmp_file" 2>/dev/null | awk '{print $1}') || got_sum=''
     if [[ -z "$expect_sum" || ! "$expect_sum" =~ ^[A-Fa-f0-9]{64}$ || "${got_sum,,}" != "${expect_sum,,}" ]]; then msg "${YELLOW}[!] recovery mirror SHA-256 mismatch or missing SHA256SUMS${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
@@ -32875,6 +32946,7 @@ expected_managed_services() {
         hysteria) printf 'hysteria\n' ;;
         *) return 1 ;;
     esac
+    return 0
 }
 
 prepare_noninteractive_file_operation() {

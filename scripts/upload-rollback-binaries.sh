@@ -109,7 +109,7 @@ echo "[*] Upstream digest verification passed."
 echo "[*] Pre-checking remote SHA256SUMS for conflicts..."
 tmp2="$(mktemp -d)"; trap 'rm -rf "$tmp" "$tmp2"' EXIT
 gh release download "$TAG" --repo "$REPO" -p "SHA256SUMS" -D "$tmp2" 2>/dev/null     || { echo "SHA256SUMS not found in release; aborting (refusing to create from scratch)"; exit 1; }
-while read -r sum name _; do
+while read -r sum name _ || [[ -n "$sum" ]]; do
     [[ -n "${sum:-}" && -n "${name:-}" ]] || continue
     staging_sum=$(awk -v n="$name" '$2 == n { print $1; exit }' "$STAGE/SHA256SUMS.staging" || true)
     if [[ -n "$staging_sum" && "$staging_sum" != "$sum" ]]; then
@@ -126,7 +126,7 @@ done < "$tmp2/SHA256SUMS"
 for name in "${expected[@]}"; do
     f="$STAGE/$name"
     staging_sum=$(sha256sum "$f" | cut -d' ' -f1)
-    existing_line=$(grep -F -- "$name " <<< "$existing_json" || true)
+    existing_line=$(awk -v n="$name" '$1 == n' <<< "$existing_json")
     if [[ -n "$existing_line" ]]; then
         # GitHub digest is "sha256:<hex>"; extract hex part.
         remote_digest=$(awk '{print $2}' <<< "$existing_line" | sed 's/^sha256://')
@@ -151,7 +151,7 @@ echo "[*] Merging SHA256SUMS..."
 gh release download "$TAG" --repo "$REPO" -p "SHA256SUMS" -D "$tmp" 2>/dev/null \
     || { echo "SHA256SUMS not found in release; aborting (refusing to create from scratch)"; exit 1; }
 cp "$tmp/SHA256SUMS" "$tmp/SHA256SUMS.new"
-while read -r sum name _; do
+while read -r sum name _ || [[ -n "$sum" ]]; do
     [[ -n "${sum:-}" && -n "${name:-}" ]] || continue
     [[ "$sum" =~ ^[A-Fa-f0-9]{64}$ ]] || { echo "invalid hash for $name; aborting"; exit 1; }
     existing_sum=$(awk -v n="$name" '$2 == n { print $1; exit }' "$tmp/SHA256SUMS.new" || true)

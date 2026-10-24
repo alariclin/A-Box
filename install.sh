@@ -18604,7 +18604,9 @@ split_apply_preset() {
         load_optional_abox_env_or_die 2>/dev/null || true
         core="${CORE:-}"
     fi
-    [[ -n "$core" ]] && routing_apply_live "$core"
+    if [[ -n "$core" ]]; then
+        routing_apply_live "$core" || return 1
+    fi
     msg "$(tr_msg warp_preset_done)"
 }
 
@@ -18831,10 +18833,14 @@ deploy_socks5_landing() {
         prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
         rm -rf -- "$xray_tmp"
         # Seed a minimal config shell; the socks inbound is appended below.
+        # U31/U45: install the seed only when no usable config exists; an
+        # existing valid config is kept and merged in place below.
         tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_xray_seed)"
-        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
+        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]] || ! jq -e . "$cfg" >/dev/null 2>&1; then
+            install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
+        fi
         rm -f "$tmp_json"
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
             write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die "$(tr_msg dp_xray_unit)"
@@ -19262,10 +19268,12 @@ ensure_vnstat_runtime() {
                 if systemctl list-unit-files vnstat.service >/dev/null 2>&1; then _vunit=vnstat;
                 elif systemctl list-unit-files vnstatd.service >/dev/null 2>&1; then _vunit=vnstatd; fi
                 [[ -n "$_vunit" ]] && systemctl restart "$_vunit" >/dev/null 2>&1 || true
+                [[ -n "$_vunit" ]] && systemctl is-active --quiet "$_vunit" || { msg "${RED}[!] vnStat 接口修复后服务未处于 active 状态；未启用流量限制。${NC}" >&2; return 1; }
             elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
                 rc-service vnstatd restart >/dev/null 2>&1 9>&- 10>&- || true
+                rc-service vnstatd status >/dev/null 2>&1 || { msg "${RED}[!] vnStat 接口修复后服务未处于运行状态；未启用流量限制。${NC}" >&2; return 1; }
             fi
-            vnstat -i "$_viface" --json m 2>/dev/null | grep -q "\"name\": *\"$_viface\"" || msg "${YELLOW}[!] $(tr_msg tf_vnstat_pending)${NC}"
+            vnstat -i "$_viface" --json m 2>/dev/null | grep -q "\"name\": *\"$_viface\"" || { msg "${RED}[!] vnStat 接口修复后仍未注册；未启用流量限制。${NC}" >&2; return 1; }
         fi
     fi
 }
@@ -19656,9 +19664,11 @@ for_expected_services() {
         (( dup == 1 )) && continue
         owned "$srv" 2>/dev/null && svcs+=("$srv")
     done
+    local _rc=0
     for srv in "${svcs[@]}"; do
-        "$1" "$srv" || return 1
+        "$1" "$srv" || _rc=1
     done
+    return "$_rc"
 }
 traffic_error() {
     local log=/var/log/A-Box-traffic.log uid gid mode nlink
@@ -19677,12 +19687,12 @@ traffic_error() {
 }
 current_period=$(date +%Y-%m)
 stop_all_owned_services() {
-    local srv
+    local srv _rc=0
     for srv in xray sing-box hysteria; do
         owned "$srv" || continue
-        stop_owned "$srv" || return 1
+        stop_owned "$srv" || _rc=1
     done
-    return 0
+    return "$_rc"
 }
 traffic_fail_closed() {
     local reason="${1:-traffic accounting failed}" failed=0
@@ -19756,6 +19766,11 @@ iface="${INGRESS_IF:-}"
 if [[ -z "$iface" ]]; then
     traffic_fail_closed 'INGRESS_IF missing; refusing to switch traffic accounting to a newly inferred interface' || traffic_error 'missing ingress interface could not be fail-closed enforced'
     exit 1
+fi
+# U49: enforce an already-blocked state before the usage query, so a
+# vnStat query failure can never leave restarted services running.
+if [[ "$desired" == TRAFFIC_BLOCKED ]]; then
+    for_expected_services stop_owned || { traffic_error 'traffic-blocked state could not be fully enforced'; exit 1; }
 fi
 # Transient vnStat/metric blips must not flip desired state to TRAFFIC_BLOCKED.
 # Only validated over-quota (below) or corrupt persisted policy (above) fail-closed.
@@ -19902,18 +19917,18 @@ restore_vnstat_runtime_state() {
 # the transaction installed it (pre.vnstat.binary == 0). Never removes a
 # package that pre-existed, as other tools may depend on it.
 rollback_newly_installed_vnstat() {
-    local tx_dir="$1" svc_name=""
+    local tx_dir="$1" svc_name="" _rc=0
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         if systemctl list-unit-files vnstat.service >/dev/null 2>&1; then svc_name=vnstat
         elif systemctl list-unit-files vnstatd.service >/dev/null 2>&1; then svc_name=vnstatd
         fi
         [[ -n "$svc_name" ]] || return 0
-        systemctl stop "$svc_name" >/dev/null 2>&1 || true
-        systemctl disable "$svc_name" >/dev/null 2>&1 || true
+        systemctl stop "$svc_name" >/dev/null 2>&1 || _rc=1
+        systemctl disable "$svc_name" >/dev/null 2>&1 || _rc=1
     elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
         [[ -x /etc/init.d/vnstatd ]] || return 0
-        rc-service vnstatd stop >/dev/null 2>&1 || true
-        rc-update del vnstatd default >/dev/null 2>&1 || true
+        rc-service vnstatd stop >/dev/null 2>&1 || _rc=1
+        rc-update del vnstatd default >/dev/null 2>&1 || _rc=1
     else
         return 0
     fi
@@ -19921,9 +19936,9 @@ rollback_newly_installed_vnstat() {
     local pre_binary=1
     [[ -f "$tx_dir/pre.vnstat.binary" ]] && IFS= read -r pre_binary < "$tx_dir/pre.vnstat.binary" 2>/dev/null || pre_binary=1
     if [[ "$pre_binary" == 0 ]]; then
-        remove_optional_package vnstat 2>/dev/null || true
+        remove_optional_package vnstat 2>/dev/null || _rc=1
     fi
-    return 0
+    return "$_rc"
 }
 
 traffic_restore_cron_block() {

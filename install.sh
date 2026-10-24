@@ -11013,7 +11013,12 @@ ufw_delete_owned_rules() {
             ufw --force delete "$_max" >/dev/null 2>&1 || return 1
         done
     fi
-    ! ufw_owned_rule_exists "$spec" "$proto"
+    local _verify_rc
+    ufw_owned_rule_exists "$spec" "$proto"; _verify_rc=$?
+    # Only a confirmed absence (rc 1) is success: rules still present
+    # (rc 0) and a failed verification query (rc 2) must both report
+    # failure, so callers never clear ownership records on unknown state.
+    (( _verify_rc == 1 ))
 }
 
 firewalld_zone_for_abox() {
@@ -11091,9 +11096,9 @@ remove_native_firewall_rules() {
         esac
         if [[ "$record_failed" == 1 ]]; then
             if [[ -n "$zone" ]]; then
-                printf '%s|%s|%s|%s|%s\n' "$backend" "$spec" "$proto" "$scope" "$zone" >> "$tmp"
+                printf '%s|%s|%s|%s|%s\n' "$backend" "$spec" "$proto" "$scope" "$zone" >> "$tmp" || { rm -f -- "$tmp"; return 1; }
             else
-                printf '%s|%s|%s|%s\n' "$backend" "$spec" "$proto" "$scope" >> "$tmp"
+                printf '%s|%s|%s|%s\n' "$backend" "$spec" "$proto" "$scope" >> "$tmp" || { rm -f -- "$tmp"; return 1; }
             fi
             any_failed=1
         fi
@@ -11119,9 +11124,9 @@ forget_native_firewall_rule() {
     while IFS='|' read -r rec_backend rec_spec rec_proto rec_scope rec_zone _rec_extra; do
         [[ "$rec_backend" == "$target_backend" && "$rec_spec" == "$spec" && "$rec_proto" == "$proto" ]] && continue
         if [[ -n "$rec_zone" ]]; then
-            printf '%s|%s|%s|%s|%s\n' "$rec_backend" "$rec_spec" "$rec_proto" "$rec_scope" "$rec_zone" >> "$tmp"
+            printf '%s|%s|%s|%s|%s\n' "$rec_backend" "$rec_spec" "$rec_proto" "$rec_scope" "$rec_zone" >> "$tmp" || { rm -f -- "$tmp"; return 1; }
         else
-            printf '%s|%s|%s|%s\n' "$rec_backend" "$rec_spec" "$rec_proto" "$rec_scope" >> "$tmp"
+            printf '%s|%s|%s|%s\n' "$rec_backend" "$rec_spec" "$rec_proto" "$rec_scope" >> "$tmp" || { rm -f -- "$tmp"; return 1; }
         fi
         kept=1
     done < "$ABOX_FW_STATE"
@@ -12396,19 +12401,23 @@ verify_github_asset_digest() {
 # -rawin for pkeyutl needs 1.1.1+. Cache the result.
 _openssl_has_ed25519() {
     if [[ -n "${_OPENSSL_ED25519_OK:-}" ]]; then
+        _OPENSSL_ED25519_PROBE_FAILED=0
         return "$_OPENSSL_ED25519_OK"
     fi
+    _OPENSSL_ED25519_PROBE_FAILED=0
     # PROBE-ERROR must not be cached: only a DEFINITIVE "algorithm unsupported"
     # is a platform capability answer. Infrastructure failures (mktemp, ENOSPC)
     # are transient and must force fail-closed, not fail-open.
     local _t _err
-    _t=$(mktemp -d 2>/dev/null) || return 1
-    printf 'test' > "$_t/in.bin" 2>/dev/null || { rm -rf -- "$_t"; return 1; }
+    _t=$(mktemp -d 2>/dev/null) || { _OPENSSL_ED25519_PROBE_FAILED=1; return 1; }
+    printf 'test' > "$_t/in.bin" 2>/dev/null || { _OPENSSL_ED25519_PROBE_FAILED=1; rm -rf -- "$_t"; return 1; }
     _err="$_t/err"
     if ! openssl genpkey -algorithm ed25519 -out "$_t/priv.pem" 2>"$_err"; then
         # Only cache when the error definitively indicates unsupported algorithm.
         if grep -qiE 'unknown[ _]algorithm|not found|unsupported|no such' "$_err" 2>/dev/null; then
             _OPENSSL_ED25519_OK=1
+        else
+            _OPENSSL_ED25519_PROBE_FAILED=1
         fi
         rm -rf -- "$_t"
         return 1
@@ -12505,6 +12514,10 @@ abox_verify_sig_gate() {
     # the documented CentOS 7 support. Downgrade to LOUD warning instead of FATAL
     # on platforms that fundamentally cannot verify (vs. missing .sig file).
     if ! _openssl_has_ed25519; then
+        if [[ "${_OPENSSL_ED25519_PROBE_FAILED:-0}" == '1' && "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
+            printf '[A-Box][F-05] FATAL: Ed25519 capability probe failed (transient infrastructure error); refusing to skip verification while enforcement is ON.\n' >&2
+            return 1
+        fi
         printf '[A-Box][F-05] WARNING: OpenSSL lacks Ed25519/rawin support (e.g. CentOS 7); cannot verify %s. Integrity is TLS-only on this platform.\n' "$desc" >&2
         return 0
     fi

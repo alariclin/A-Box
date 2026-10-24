@@ -124,7 +124,7 @@ jobs:
           CJK = re.compile(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]')
           for m in re.finditer(r'\$\{([^}]*)\}', text):
               inner = m.group(1)
-              varname = re.split(r'[:#%/@,+\-=]', inner, 1)[0]
+              varname = re.split(r'[:#%/@,+\-=?^]', inner, 1)[0]
               if CJK.search(varname):
                   errors.append("Translated variable name: ${" + inner[:40] + "}")
 

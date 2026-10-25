@@ -294,7 +294,7 @@ rebuild_standalone_links() {
             IFS=$'\t' read -r _port _user _pass < <(jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' "$_xc" 2>/dev/null)
             _user=$(_tsv_unescape "$_user"); _pass=$(_tsv_unescape "$_pass")
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
-                register_standalone_link socks5-xray "SOCKS5 (Xray) · 端口 ${_port}" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
+                register_standalone_link socks5-xray "$(tprintf sl_node_port 'SOCKS5 (Xray)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
             elif [[ -n "$_port$_user$_pass" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete socks5-xray)${NC}" >&2
             fi
@@ -356,7 +356,7 @@ rebuild_standalone_links() {
             IFS=$'\t' read -r _port _user _pass < <(jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' "$_sc" 2>/dev/null)
             _user=$(_tsv_unescape "$_user"); _pass=$(_tsv_unescape "$_pass")
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
-                register_standalone_link socks5-sb "SOCKS5 (sing-box) · 端口 ${_port}" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
+                register_standalone_link socks5-sb "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
             elif [[ -n "$_port$_user$_pass" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete socks5-sb)${NC}" >&2
             fi
@@ -3535,6 +3535,12 @@ tr_msg() {
         fa:cl_dep_warn) echo 'موارد زیر به آن وابسته‌اند و حذف خواهند شد' ;;
         zh-tw:cl_dep_warn) echo '以下協議依賴它、將一併刪除' ;;
         ja:cl_dep_warn) echo '以下が依存しているため一緒に削除されます' ;;
+        zh:cl_wipe_partial) echo '部分核心清理失败，已保留用户注册表、独立链接与 Argo 隧道，未做整体擦除。' ;;
+        en:cl_wipe_partial) echo 'Some cores failed to clear; user registries, standalone links and the Argo tunnel were kept, no full wipe was done.' ;;
+        ru:cl_wipe_partial) echo 'Очистка некоторых ядер не удалась; реестры пользователей, отдельные ссылки и туннель Argo сохранены, полная очистка не выполнялась.' ;;
+        fa:cl_wipe_partial) echo 'پاک‌سازی برخی هسته‌ها ناموفق بود؛ رجیستری‌های کاربران، پیوندهای مستقل و تونل Argo حفظ شدند و پاک‌سازی کامل انجام نشد.' ;;
+        zh-tw:cl_wipe_partial) echo '部分核心清理失敗，已保留使用者註冊表、獨立連結與 Argo 隧道，未做整體清除。' ;;
+        ja:cl_wipe_partial) echo '一部のコアのクリアに失敗しました。ユーザーレジストリ、独立リンク、Argo トンネルは保持され、全体消去は行いませんでした。' ;;
         zh:cl_routes_cleaned) echo '已清理 %s 条引用已删除入站的路由规则。' ;;
         en:cl_routes_cleaned) echo 'Cleaned %s routing rule(s) referencing removed inbounds.' ;;
         ru:cl_routes_cleaned) echo 'Удалено правил маршрутизации, ссылавшихся на удалённые inbound: %s.' ;;
@@ -4351,6 +4357,24 @@ tr_msg() {
         fa:socks5_done) echo 'پروکسی لندینگ SOCKS5 مستقر شد.' ;;
         zh-tw:socks5_done) echo 'SOCKS5 落地代理部署完成。' ;;
         ja:socks5_done) echo 'SOCKS5 ランディングプロキシを展開しました。' ;;
+        zh:sl_node_port) echo '%s · 端口 %s' ;;
+        en:sl_node_port) echo '%s · Port %s' ;;
+        ru:sl_node_port) echo '%s · Порт %s' ;;
+        fa:sl_node_port) echo '%s · درگاه %s' ;;
+        zh-tw:sl_node_port) echo '%s · 連接埠 %s' ;;
+        ja:sl_node_port) echo '%s · ポート %s' ;;
+        zh:ag_unit_fail) echo 'Argo %s unit 写入失败：%s' ;;
+        en:ag_unit_fail) echo 'Failed to write Argo %s unit: %s' ;;
+        ru:ag_unit_fail) echo 'Не удалось записать unit Argo %s: %s' ;;
+        fa:ag_unit_fail) echo 'نوشتن واحد Argo %s ناموفق بود: %s' ;;
+        zh-tw:ag_unit_fail) echo 'Argo %s unit 寫入失敗：%s' ;;
+        ja:ag_unit_fail) echo 'Argo %s ユニットの書き込みに失敗しました：%s' ;;
+        zh:defense_mount_fail) echo '主动防御挂载失败，不影响已部署的节点。' ;;
+        en:defense_mount_fail) echo 'Active defense mount failed; already deployed nodes are unaffected.' ;;
+        ru:defense_mount_fail) echo 'Не удалось подключить активную защиту; уже развёрнутые узлы не затронуты.' ;;
+        fa:defense_mount_fail) echo 'نصب دفاع فعال ناموفق بود؛ گره‌های مستقرشده تحت تأثیر قرار نگرفتند.' ;;
+        zh-tw:defense_mount_fail) echo '主動防禦掛載失敗，不影響已部署的節點。' ;;
+        ja:defense_mount_fail) echo 'アクティブ防御のマウントに失敗しました。デプロイ済みのノードには影響しません。' ;;
         zh:warp_split_title) echo 'WARP 与分流管理' ;;
         en:warp_split_title) echo 'WARP & Split Routing' ;;
         ru:warp_split_title) echo 'WARP и разделение трафика' ;;
@@ -15365,7 +15389,7 @@ xray_api_add_inbound() {
     local tag
     tag=$(jq -r '.tag // empty' "$json_file" 2>/dev/null) || return 1
     [[ -n "$tag" && "$tag" != 'api' ]] || return 1
-    /usr/local/bin/xray api --server "$XRAY_API_SERVER" addinbound < "$json_file" >/dev/null 2>&1
+    /usr/local/bin/xray api adi --server="$XRAY_API_SERVER" "$json_file" >/dev/null 2>&1
 }
 
 # Low-level: remove an inbound from the running Xray by tag via gRPC API.
@@ -15374,7 +15398,7 @@ xray_api_remove_inbound() {
     local tag="$1"
     [[ -n "$tag" && "$tag" != 'api' ]] || return 1
     [[ -x /usr/local/bin/xray ]] || return 1
-    /usr/local/bin/xray api --server "$XRAY_API_SERVER" delinbound --tag "$tag" >/dev/null 2>&1
+    /usr/local/bin/xray api rmi --server="$XRAY_API_SERVER" "$tag" >/dev/null 2>&1
 }
 
 
@@ -15389,7 +15413,12 @@ xray_ensure_stats() {
     local cfg="$1" api_port="${2:-10085}" tmp=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     if jq -e '
-        (.stats != null) and (.policy != null)
+        (.stats != null)
+        and (.policy.levels."0".statsUserUplink == true)
+        and (.policy.levels."0".statsUserDownlink == true)
+        and ([(.policy.levels // {}) | to_entries[] | select(.value.statsUserUplink != true or .value.statsUserDownlink != true)] | length == 0)
+        and (.policy.system.statsInboundUplink == true)
+        and (.policy.system.statsInboundDownlink == true)
         and ((.api.services // []) | index("StatsService") != null)
         and ([.inbounds[]? | select(.tag == "api")] | length > 0)
         and ([.outbounds[]? | select(.tag == "api")] | length > 0)' "$cfg" >/dev/null 2>&1; then
@@ -15398,7 +15427,9 @@ xray_ensure_stats() {
     tmp=$(mktemp /tmp/A-Box-xstats.XXXXXX) || return 1
     if ! jq --argjson ap "$api_port" '
         .stats = (.stats // {})
-        | .policy = (.policy // {levels:{"0":{statsUserUplink:true, statsUserDownlink:true}}, system:{statsInboundUplink:true, statsInboundDownlink:true}})
+        | .policy.levels = (((.policy.levels // {}) | with_entries(.value.statsUserUplink = true | .value.statsUserDownlink = true)) * {"0": {statsUserUplink: true, statsUserDownlink: true}})
+        | .policy.system.statsInboundUplink = true
+        | .policy.system.statsInboundDownlink = true
         | .api = (.api // {tag:"api", services:["HandlerService","LoggerService","StatsService"]})
         | .api.services = (((.api.services // []) + ["StatsService"]) | unique)
         | (if ([.inbounds[]? | select(.tag == "api")] | length) == 0
@@ -15914,9 +15945,17 @@ deployment_transaction_signal_abort() {
 }
 
 deployment_transaction_exit_abort() {
-    local code=$?
+    local code=$? _tx_abort_old_exit="${ABOX_TX_PREV_TRAP_EXIT:-}" _tx_abort_old_cmd=''
     trap - EXIT
     if [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]]; then deployment_transaction_rollback "unexpected shell exit ${code}" || true; fi
+    # The old EXIT handler must run explicitly: restoring it here and
+    # then exiting does NOT re-trigger it (verified by experiment).
+    # The saved string is trap -p output ("trap -- 'cmd' SIGNAL");
+    # double eval executes the quoted command in this shell.
+    if [[ -n "$_tx_abort_old_exit" ]]; then
+        _tx_abort_old_cmd="${_tx_abort_old_exit#trap -- }"
+        eval "eval $_tx_abort_old_cmd" || true
+    fi
     restore_deployment_transaction_traps
     exit "$code"
 }
@@ -16236,18 +16275,24 @@ EOF_SVC
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
     msg "${GREEN}$(tr_msg socks5_done)${NC}"
     if [[ "$proto" == "mixed" ]]; then
-        msg "mixed://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port} (SOCKS5+HTTP)"
+        # mixed:// is a sing-box inbound type, not a client-importable
+        # URI scheme: share one link per protocol the port serves.
+        # The .link file holds both URIs (the panel shows each with
+        # its own QR); the stem is unchanged so removal still finds it.
+        msg "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
+        msg "http://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     else
         msg "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     fi
     if [[ "$proto" == "mixed" ]]; then
-        generate_qr "mixed://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
-        register_standalone_link "${ABOX_DEPLOY_STEM:-socks5-sb}" "Mixed (sing-box) · 端口 ${port}" "mixed://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
+        generate_qr "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
+        generate_qr "http://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
+        register_standalone_link "${ABOX_DEPLOY_STEM:-socks5-sb}" "$(tprintf sl_node_port 'Mixed (sing-box)' "$port")" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}" "http://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     else
         generate_qr "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
-        register_standalone_link "${ABOX_DEPLOY_STEM:-socks5-sb}" "SOCKS5 (sing-box) · 端口 ${port}" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
+        register_standalone_link "${ABOX_DEPLOY_STEM:-socks5-sb}" "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$port")" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     fi
-    ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
+    ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
 }
 
 # Standalone Trojan-Reality via Xray-core (toolbox entry).
@@ -16719,8 +16764,8 @@ EOF_SVC
     msg "${GREEN}$(tr_msg tuic_done)${NC}"
     msg "$link"
     generate_qr "$link"
-    register_standalone_link "${ABOX_DEPLOY_STEM:-tuic}" "TUIC · 端口 ${port}" "$link"
-    ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
+    register_standalone_link "${ABOX_DEPLOY_STEM:-tuic}" "$(tprintf sl_node_port 'TUIC' "$port")" "$link"
+    ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
 }
 
 
@@ -16869,8 +16914,8 @@ EOF_SVC
     msg "${GREEN}$(tr_msg anytls_done)${NC}"
     msg "$link"
     generate_qr "$link"
-    register_standalone_link "${ABOX_DEPLOY_STEM:-anytls}" "AnyTLS-Reality · 端口 ${port}" "$link"
-    ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
+    register_standalone_link "${ABOX_DEPLOY_STEM:-anytls}" "$(tprintf sl_node_port 'AnyTLS-Reality' "$port")" "$link"
+    ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
 }
 
 
@@ -17021,8 +17066,8 @@ EOF_SVC
     yq_inner="'${inner//\'/\'\'}'"; yq_sni="'${sni//\'/\'\'}'"; yq_pass="'${pass//\'/\'\'}'"
     msg "Clash: - {name: \"ShadowTLS\", type: ss, server: ${pub_ip}, port: ${port}, cipher: 2022-blake3-aes-128-gcm, password: ${yq_inner}, plugin: shadow-tls, client-fingerprint: chrome, plugin-opts: {host: ${yq_sni}, password: ${yq_pass}, version: 3}}"
     generate_qr "$link"
-    register_standalone_link "${ABOX_DEPLOY_STEM:-shadowtls}" "ShadowTLS · 端口 ${port}" "$link"
-    ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
+    register_standalone_link "${ABOX_DEPLOY_STEM:-shadowtls}" "$(tprintf sl_node_port 'ShadowTLS' "$port")" "$link"
+    ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
 }
 
 # ================= Argo / CDN front (sing-box WS + cloudflared) =================
@@ -17145,7 +17190,7 @@ argo_write_unit() {
     fi
     rm -f "/etc/ddr/${name}.log"
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        write_file_atomically_from_stdin "/etc/systemd/system/${name}.service" 600 <<EOF_UNIT || die "Argo systemd unit 写入失败: ${name}"
+        write_file_atomically_from_stdin "/etc/systemd/system/${name}.service" 600 <<EOF_UNIT || die "$(tprintf ag_unit_fail 'systemd' "$name")"
 # Managed by A-Box
 [Unit]
 Description=A-Box Argo Tunnel (${name})
@@ -17167,7 +17212,7 @@ EOF_UNIT
         systemctl enable "${name}.service" >/dev/null 2>&1 || true
         systemctl restart "${name}.service" >/dev/null 2>&1 || die "$(tprintf ag_start "$name")"
     else
-        write_file_atomically_from_stdin "/etc/init.d/${name}" 755 <<EOF_RC || die "Argo OpenRC unit 写入失败: ${name}"
+        write_file_atomically_from_stdin "/etc/init.d/${name}" 755 <<EOF_RC || die "$(tprintf ag_unit_fail 'OpenRC' "$name")"
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Argo Tunnel (${name})"
@@ -17569,7 +17614,7 @@ trojan_toolbox_entry() {
         2) deploy_with_instance_choice sing-box trojan-landing deploy_singbox_trojan_landing ;;
         *) deploy_with_instance_choice xray trojan-landing deploy_xray_trojan_landing ;;
     esac
-    ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
+    ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
 }
 # ============ Main menu info panel (versions / system / nodes / split) ============
 # Collected once per main_loop invocation (cached), not per redraw.
@@ -19125,8 +19170,8 @@ EOF_SVC
     msg "${GREEN}$(tr_msg socks5_done)${NC}"
     msg "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
     generate_qr "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
-    register_standalone_link "${ABOX_DEPLOY_STEM:-socks5-xray}" "SOCKS5 (Xray) · 端口 ${port}" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
-    ( setup_active_defense ) || msg "${YELLOW}[!] 主动防御挂载失败，不影响已部署的节点。${NC}"
+    register_standalone_link "${ABOX_DEPLOY_STEM:-socks5-xray}" "$(tprintf sl_node_port 'SOCKS5 (Xray)' "$port")" "socks5://$(urlencode "$user"):$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}"
+    ( setup_active_defense ) || msg "${YELLOW}[!] $(tr_msg defense_mount_fail)${NC}"
 }
 
 
@@ -20384,7 +20429,7 @@ start_services_for_traffic_unblock() {
         [[ -n "$srv" ]] || continue
         abox_owns_service "$srv" || return 1
         before=$(managed_service_state_value "$srv" 2>/dev/null) || return 1
-        [[ "$before" == "$srv|1|1" ]] && continue
+        [[ "$before" == "$srv|1|enabled" || "$before" == "$srv|1|enabled-runtime" ]] && continue
         IFS='|' read -r _ active enabled <<< "$before"
         append_managed_service_state_entry "$pre_state" "$changed_pre" "$srv" || return 1
         if [[ "$active" == 1 ]]; then
@@ -20398,15 +20443,15 @@ start_services_for_traffic_unblock() {
         else
             # Keep the expected post-state explicit; rollback will refuse to
             # mutate if the actual state cannot later be proven to match it.
-            printf '%s\n' "$srv|1|1" >> "$changed_expected" || return 1
+            printf '%s\n' "$srv|1|enabled" >> "$changed_expected" || return 1
         fi
         (( op_rc == 0 )) || return 1
-        [[ "$after" == "$srv|1|1" ]] || return 1
+        [[ "$after" == "$srv|1|enabled" ]] || return 1
     done <<< "$services"
     while IFS= read -r srv; do
         [[ -n "$srv" ]] || continue
         final_state=$(managed_service_state_value "$srv" 2>/dev/null) || return 1
-        [[ "$final_state" == "$srv|1|1" ]] || return 1
+        [[ "$final_state" == "$srv|1|enabled" ]] || return 1
     done <<< "$services"
 }
 
@@ -21400,7 +21445,7 @@ clear_all_protocols() {
         users_registries_wipe || msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"
         rm -f -- /etc/ddr/standalone-links.d/*.link 2>/dev/null || true
     else
-        msg "${YELLOW}[!] 部分核心清理失败，已保留用户注册表、独立链接与 Argo 隧道，未做整体擦除。${NC}"
+        msg "${YELLOW}[!] $(tr_msg cl_wipe_partial)${NC}"
     fi
     ( setup_active_defense ) >/dev/null 2>&1 || true
     msg "${GREEN}$(tr_msg cl_all_done)${NC}"
@@ -27424,8 +27469,9 @@ managed_service_state_value() {
         esac
         enabled_state=$(service_enabled_state_value "$srv") || return 1
         case "$enabled_state" in
-            enabled|enabled-runtime|indirect) enabled=1 ;;
-            disabled) enabled=0 ;;
+            enabled|indirect) enabled=enabled ;;
+            enabled-runtime) enabled=enabled-runtime ;;
+            disabled) enabled=disabled ;;
             *) return 1 ;;
         esac
     elif [[ "${INIT_SYS:-}" == openrc ]] && command -v rc-service >/dev/null 2>&1; then
@@ -27438,8 +27484,8 @@ managed_service_state_value() {
         esac
         enabled_state=$(service_enabled_state_value "$srv") || return 1
         case "$enabled_state" in
-            1) enabled=1 ;;
-            0) enabled=0 ;;
+            1) enabled=enabled ;;
+            0) enabled=disabled ;;
             *) return 1 ;;
         esac
     else
@@ -27503,7 +27549,7 @@ _apply_managed_service_state_file() {
             xray|sing-box|hysteria) ;;
             *) return 1 ;;
         esac
-        [[ "$active" =~ ^[01]$ && "$enabled" =~ ^[01]$ ]] || return 1
+        [[ "$active" =~ ^[01]$ && "$enabled" =~ ^(enabled|enabled-runtime|disabled)$ ]] || return 1
         case "$seen_srvs" in *"|$srv|"*) return 1 ;; esac
         seen_srvs+="$srv|"
         abox_owns_service "$srv" || return 1
@@ -27519,23 +27565,21 @@ _apply_managed_service_state_file() {
         local restored_state restored_srv restored_active restored_enabled restored_extra
         if [[ "${INIT_SYS:-}" == systemd ]]; then
             systemctl daemon-reload >/dev/null 2>&1 || return 1
-            if [[ "$enabled" == 1 ]]; then
-                systemctl enable "$srv" >/dev/null 2>&1 || return 1
-            else
-                systemctl disable "$srv" >/dev/null 2>&1 || return 1
-            fi
+            case "$enabled" in
+                enabled) systemctl enable "$srv" >/dev/null 2>&1 || return 1 ;;
+                enabled-runtime) systemctl enable --runtime "$srv" >/dev/null 2>&1 || return 1 ;;
+                disabled) systemctl disable "$srv" >/dev/null 2>&1 || return 1 ;;
+            esac
             if [[ "$active" == 1 ]]; then
                 systemctl start "$srv" >/dev/null 2>&1 || systemctl restart "$srv" >/dev/null 2>&1 || return 1
             else
                 systemctl stop "$srv" >/dev/null 2>&1 || return 1
             fi
         elif [[ "${INIT_SYS:-}" == openrc ]]; then
-            if [[ "$enabled" == 1 ]]; then
+            if [[ "$enabled" == enabled ]]; then
                 rc-update add "$srv" default >/dev/null 2>&1 || return 1
-            else
-                if rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)"; then
-                    rc-update del "$srv" default >/dev/null 2>&1 || return 1
-                fi
+            elif rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)"; then
+                rc-update del "$srv" default >/dev/null 2>&1 || return 1
             fi
             if [[ "$active" == 1 ]]; then
                 rc-service "$srv" start >/dev/null 2>&1 || rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&- || return 1
@@ -28306,7 +28350,7 @@ validate_services_state_file() {
     [[ -f "$file" && ! -L "$file" ]] || return 1
     awk -F'|' '
       NF==0 {next}
-      NF!=3 || $1 !~ /^(xray|sing-box|hysteria)$/ || $2 !~ /^[01]$/ || $3 !~ /^[01]$/ {bad=1; exit}
+      NF!=3 || $1 !~ /^(xray|sing-box|hysteria)$/ || $2 !~ /^[01]$/ || $3 !~ /^(enabled|enabled-runtime|disabled)$/ {bad=1; exit}
       seen[$1]++ {bad=1; exit}
       END {exit bad}
     ' "$file"
@@ -33636,7 +33680,7 @@ enable_abox_service_soft() {
         return 1
     fi
     state=$(managed_service_state_value "$srv") || return 1
-    [[ "$state" == "$srv|1|1" ]]
+    [[ "$state" == "$srv|1|enabled" ]]
 }
 
 start_abox_service_soft() {
@@ -34591,17 +34635,17 @@ manual_stop_managed_stack() {
         [[ -n "$srv" ]] || continue
         before=$(managed_service_state_value "$srv" 2>/dev/null) || { failed=1; break; }
         IFS='|' read -r _ active enabled <<< "$before"
-        [[ "$active" == 0 && "$enabled" == 0 ]] && continue
+        [[ "$active" == 0 && "$enabled" == disabled ]] && continue
         stop_abox_service "$srv" || failed=1
         after=$(managed_service_state_value "$srv" 2>/dev/null || true)
         if [[ -z "$after" ]]; then
             append_managed_service_state_entry "$pre_state" "$changed_pre" "$srv" || failed=1
-            printf '%s\n' "$srv|0|0" >> "$changed_expected" || failed=1
+            printf '%s\n' "$srv|0|disabled" >> "$changed_expected" || failed=1
         elif [[ "$after" != "$before" ]]; then
             append_managed_service_state_entry "$pre_state" "$changed_pre" "$srv" || failed=1
             printf '%s\n' "$after" >> "$changed_expected" || failed=1
         fi
-        [[ "$after" == "$srv|0|0" ]] || failed=1
+        [[ "$after" == "$srv|0|disabled" ]] || failed=1
         (( failed == 0 )) || break
     done <<< "$services"
 
@@ -34637,7 +34681,7 @@ manual_start_managed_stack() {
         abox_owns_service "$srv" || { failed=1; break; }
         before=$(managed_service_state_value "$srv" 2>/dev/null) || { failed=1; break; }
         IFS='|' read -r _ active enabled <<< "$before"
-        [[ "$active" == 1 && "$enabled" == 1 ]] && continue
+        { [[ "$active" == 1 && "$enabled" == enabled ]] || [[ "$active" == 1 && "$enabled" == enabled-runtime ]]; } && continue
         if [[ "$active" == 1 ]]; then
             enable_abox_service_soft "$srv" || failed=1
         else
@@ -34646,12 +34690,12 @@ manual_start_managed_stack() {
         after=$(managed_service_state_value "$srv" 2>/dev/null || true)
         if [[ -z "$after" ]]; then
             append_managed_service_state_entry "$pre_state" "$changed_pre" "$srv" || failed=1
-            printf '%s\n' "$srv|1|1" >> "$changed_expected" || failed=1
+            printf '%s\n' "$srv|1|enabled" >> "$changed_expected" || failed=1
         elif [[ "$after" != "$before" ]]; then
             append_managed_service_state_entry "$pre_state" "$changed_pre" "$srv" || failed=1
             printf '%s\n' "$after" >> "$changed_expected" || failed=1
         fi
-        [[ "$after" == "$srv|1|1" ]] || failed=1
+        [[ "$after" == "$srv|1|enabled" ]] || failed=1
         (( failed == 0 )) || break
     done <<< "$services"
 
@@ -36253,14 +36297,14 @@ EOF_SVC_TEST_SYSTEMCTL
     _svc_guard_pre="$tmp/service-guard-pre.state"
     _svc_guard_expected="$tmp/service-guard-expected.state"
     _svc_guard_log="$tmp/service-guard.log"
-    printf '%s\n' 'xray|0|0' > "$_svc_guard_pre"
-    printf '%s\n' 'xray|1|1' > "$_svc_guard_expected"
+    printf '%s\n' 'xray|0|disabled' > "$_svc_guard_pre"
+    printf '%s\n' 'xray|1|enabled' > "$_svc_guard_expected"
     chmod 600 "$_svc_guard_pre" "$_svc_guard_expected"
     if (( EUID == 0 )); then
         chown root:root "$_svc_guard_pre" "$_svc_guard_expected" || { echo 'FAIL: root service-state fixture ownership setup'; failures=$((failures + 1)); }
         _svc_guard_saved_state_fn=$(declare -f managed_service_state_value)
         _svc_guard_saved_owns_fn=$(declare -f abox_owns_service)
-        managed_service_state_value() { printf '%s\n' 'xray|1|0'; }
+        managed_service_state_value() { printf '%s\n' 'xray|1|disabled'; }
         abox_owns_service() { return 0; }
         : > "$_svc_guard_log"
         if restore_managed_service_state "$_svc_guard_pre" "$_svc_guard_expected" >/dev/null 2>&1; then

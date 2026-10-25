@@ -101,11 +101,12 @@ jobs:
           # Create fixture files mimicking a valid artifact.
           printf 'fixture-binary-content' > "$work/verified/Xray-test.zip"
           printf 'fixture-versions' > "$work/verified/CORE-VERSIONS"
+          printf 'fixture-manifest' > "$work/verified/SHA256SUMS"
           (cd "$work/verified" && sha256sum Xray-test.zip CORE-VERSIONS > SHA256SUMS.incoming)
           # Replicate publish job checks: sha256sum -c + exact set equality.
           (cd "$work/verified" && sha256sum -c SHA256SUMS.incoming) || { echo "FAIL: fixture checksum verification"; exit 1; }
           # Set equality: actual files must equal manifest-listed + control files.
-          expected="$(printf 'CORE-VERSIONS\nSHA256SUMS.incoming\nXray-test.zip\n' | sort)"
+          expected="$(printf 'CORE-VERSIONS\nSHA256SUMS\nSHA256SUMS.incoming\nXray-test.zip\n' | sort)"
           actual="$(cd "$work/verified" && find . -maxdepth 1 -mindepth 1 -printf '%f\n' | sort)"
           [[ "$actual" == "$expected" ]] || { echo "FAIL: set mismatch"; echo "actual: $actual"; echo "expected: $expected"; exit 1; }
           # Negative test: extra file must be rejected.

@@ -20856,10 +20856,10 @@ manage_ss_whitelist() {
     msg "${CYAN}======================================================================${NC}"
     msg "${YELLOW}当前 SS-2022 监听端口: $SS_PORT/TCP+UDP${NC}"
     msg "IPv4 白名单:"
-    $IPT -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '0.0.0.0/0' | sort -u || true
+    $IPT -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT([^0-9]|$)" | grep 'ACCEPT' | awk '{print $5}' | grep -v '0.0.0.0/0' | sort -u || true
     if command -v ip6tables >/dev/null 2>&1 && $IPT6 -nL INPUT >/dev/null 2>&1; then
         msg "IPv6 白名单:"
-        $IPT6 -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT" | grep 'ACCEPT' | awk '{print $5}' | grep -v '::/0' | sort -u || true
+        $IPT6 -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT([^0-9]|$)" | grep 'ACCEPT' | awk '{print $5}' | grep -v '::/0' | sort -u || true
     fi
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${CYAN}1.${NC} 新增白名单 IP/CIDR (TCP+UDP)"
@@ -21354,6 +21354,23 @@ sync_env_ports_after_removal() {
     return 0
 }
 
+# A protocol's .link file belongs to the core that serves it: deleting
+# one core's inbound must not delete the other core's still-valid link.
+# Returns 0 when the given core still serves that protocol.
+_standalone_link_survivor() {
+    local key="$1" xcfg='/usr/local/etc/xray/config.json' scfg='/etc/sing-box/config.json'
+    case "$key" in
+        trojan-xray) [[ -f "$xcfg" && ! -L "$xcfg" ]] && jq -e '.inbounds[]? | select(.protocol == "trojan")' "$xcfg" >/dev/null 2>&1 ;;
+        trojan-sb) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select(.tag | test("^trojan-landing(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
+        tuic) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select(.tag | test("^tuic-in(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
+        anytls) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select(.tag | test("^anytls-in(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
+        shadowtls) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select(.tag | test("^shadowtls-in(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
+        socks5-sb) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select(.type == "socks" or .type == "mixed")' "$scfg" >/dev/null 2>&1 ;;
+        socks5-xray) [[ -f "$xcfg" && ! -L "$xcfg" ]] && jq -e '.inbounds[]? | select(.protocol == "socks")' "$xcfg" >/dev/null 2>&1 ;;
+        *) return 1 ;;
+    esac
+}
+
 _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     local core="$1"; shift
     local tag='' cfg=''
@@ -21361,11 +21378,11 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
         case "$tag" in
             vmess-ws-in) argo_remove_unit argo-vmess || true ;;
             vless-ws-in) argo_remove_unit argo-vless || true ;;
-            *trojan*) rm -f -- /etc/ddr/standalone-links.d/trojan-xray.link /etc/ddr/standalone-links.d/trojan-sb.link 2>/dev/null || true ;;
-            *tuic*) rm -f -- /etc/ddr/standalone-links.d/tuic.link 2>/dev/null || true ;;
-            *anytls*) rm -f -- /etc/ddr/standalone-links.d/anytls.link 2>/dev/null || true ;;
-            *shadowtls*) rm -f -- /etc/ddr/standalone-links.d/shadowtls.link 2>/dev/null || true ;;
-            *socks*|*mixed*) rm -f -- /etc/ddr/standalone-links.d/socks5-sb.link /etc/ddr/standalone-links.d/socks5-xray.link 2>/dev/null || true ;;
+            *trojan*) _standalone_link_survivor trojan-xray || rm -f -- /etc/ddr/standalone-links.d/trojan-xray.link 2>/dev/null || true; _standalone_link_survivor trojan-sb || rm -f -- /etc/ddr/standalone-links.d/trojan-sb.link 2>/dev/null || true ;;
+            *tuic*) _standalone_link_survivor tuic || rm -f -- /etc/ddr/standalone-links.d/tuic.link 2>/dev/null || true ;;
+            *anytls*) _standalone_link_survivor anytls || rm -f -- /etc/ddr/standalone-links.d/anytls.link 2>/dev/null || true ;;
+            *shadowtls*) _standalone_link_survivor shadowtls || rm -f -- /etc/ddr/standalone-links.d/shadowtls.link 2>/dev/null || true ;;
+            *socks*|*mixed*) _standalone_link_survivor socks5-sb || rm -f -- /etc/ddr/standalone-links.d/socks5-sb.link 2>/dev/null || true; _standalone_link_survivor socks5-xray || rm -f -- /etc/ddr/standalone-links.d/socks5-xray.link 2>/dev/null || true ;;
         esac
         rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true
         users_registry_remove "$core" "$tag"
@@ -21427,7 +21444,14 @@ remove_single_protocol_menu() {
         msg "${YELLOW}${_idxf}.  ${label} · ${core} · :${port:-—}${NC}"
     done
     read -r -p "$(tr_msg cl_select)" choice || return 0
-    if [[ ! "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > ${#rows[@]} )); then
+    if [[ ! "$choice" =~ ^[0-9]+$ ]]; then
+        msg "${RED}$(tr_msg xl_invalid)${NC}"
+        return 0
+    fi
+    # Decimal first: 08/010 must not be parsed as octal (08 errors,
+    # 010 selects index 7 instead of 9). 10# is the codebase idiom.
+    choice=$((10#$choice))
+    if (( choice < 1 || choice > ${#rows[@]} )); then
         msg "${RED}$(tr_msg xl_invalid)${NC}"
         return 0
     fi
@@ -21605,7 +21629,10 @@ restore_vps_tune() {
     else
         rm -f -- "$bbr_module_file" || failed=1
     fi
-    sysctl --system >/dev/null 2>&1 || failed=1
+    # No sysctl --system here: it would reload the restored disk file
+    # over the runtime snapshot replayed above, clobbering pre-tune
+    # runtime values that only ever lived in memory. The disk files are
+    # restored for future boots; the replayed values are final.
     (( failed == 0 )) || return 1
     path_tree_has_mountpoint "$dir" && return 1
     rm -rf -- "$dir" || return 1
@@ -21626,7 +21653,14 @@ _tune_desired_sysctl() {
         'net.ipv4.tcp_mtu_probing 1' \
         'net.ipv4.tcp_notsent_lowat 16384' \
         'net.core.netdev_max_backlog 250000' \
-        'net.core.somaxconn 32768'
+        'net.core.somaxconn 32768' \
+        'net.core.rmem_max 16777216' \
+        'net.core.wmem_max 16777216' \
+        'net.ipv4.tcp_rmem 4096 87380 16777216' \
+        'net.ipv4.tcp_wmem 4096 65536 16777216' \
+        'net.ipv4.tcp_keepalive_time 600' \
+        'net.ipv4.tcp_slow_start_after_idle 0' \
+        'net.ipv4.ip_local_port_range 10240 65535'
     available=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
     if grep -qw bbr <<< "$available"; then
         printf '%s\n' 'net.core.default_qdisc fq' 'net.ipv4.tcp_congestion_control bbr'
@@ -21647,6 +21681,17 @@ _tune_missing_items() {
     if ! grep -q '^# Managed by A-Box' /etc/security/limits.d/A-Box.conf 2>/dev/null \
         || ! grep -q '^\* soft nofile 1048576' /etc/security/limits.d/A-Box.conf 2>/dev/null; then
         missing_list+='limits 配置（nofile 上限 1048576）'$'\n'
+    fi
+    # The persist file itself: a runtime value can be right while the
+    # file that reapplies it at boot is missing or drifted.
+    if [[ ! -f /etc/sysctl.d/99-A-Box-tune.conf ]]; then
+        missing_list+='sysctl 持久文件（/etc/sysctl.d/99-A-Box-tune.conf 缺失）'$'\n'
+    else
+        while read -r key want; do
+            [[ -n "$key" ]] || continue
+            grep -Fq "$key=$want" /etc/sysctl.d/99-A-Box-tune.conf 2>/dev/null \
+                || missing_list+="sysctl 持久文件缺失/不符：${key}（期望 $want）"$'\n'
+        done < <(_tune_desired_sysctl)
     fi
     available=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
     if grep -qw bbr <<< "$available" && modprobe tcp_bbr >/dev/null 2>&1; then
@@ -33088,10 +33133,32 @@ build_hy2_uri_endpoint() {
 }
 
 
+# Registered standalone links, shown with a QR per URI. Usable without
+# .env: the files are self-contained (title line + URI lines).
+show_standalone_links() {
+    if [[ -d "${ABOX_DIR:-/etc/ddr}/standalone-links.d" ]]; then
+        local _lf _lt _lu _shown_sa=0
+        for _lf in "${ABOX_DIR:-/etc/ddr}/standalone-links.d"/*.link; do
+            [[ -f "$_lf" ]] || continue
+            if (( ! _shown_sa )); then
+                msg "${YELLOW}[ 独立协议节点 / Standalone Protocols ]${NC}"
+                _shown_sa=1
+            fi
+            _lt=$(sed -n '1p' "$_lf")
+            msg "${BOLD}${CYAN}── ${_lt}${NC}"
+            while IFS= read -r _lu; do
+                [[ -n "$_lu" ]] || continue
+                msg "${GREEN}${_lu}${NC}"
+                generate_qr "$_lu"
+            done < <(sed -n '2,$p' "$_lf")
+        done
+    fi
+}
+
 view_config() {
     local CALLER=${1:-manual}
     clear
-    [[ ! -f "$ABOX_ENV" ]] && { msg "${RED}未检测到持久化配置变量。${NC}"; sleep 2; return 0; }
+    [[ ! -f "$ABOX_ENV" ]] && { msg "${RED}未检测到持久化配置变量。${NC}"; show_standalone_links; pause_return; return 0; }
     load_abox_env "$ABOX_ENV" || die 'A-Box 状态文件无效或权限不安全。'
     local refreshed_ip
     refreshed_ip=$(refresh_public_ip || true)
@@ -33249,23 +33316,7 @@ EOF_V2N
     fi
     rebuild_standalone_links || true
     # --- standalone protocols (links registered at deploy time) ---
-    if [[ -d "${ABOX_DIR:-/etc/ddr}/standalone-links.d" ]]; then
-        local _lf _lt _lu _shown_sa=0
-        for _lf in "${ABOX_DIR:-/etc/ddr}/standalone-links.d"/*.link; do
-            [[ -f "$_lf" ]] || continue
-            if (( ! _shown_sa )); then
-                msg "${YELLOW}[ 独立协议节点 / Standalone Protocols ]${NC}"
-                _shown_sa=1
-            fi
-            _lt=$(sed -n '1p' "$_lf")
-            msg "${BOLD}${CYAN}── ${_lt}${NC}"
-            while IFS= read -r _lu; do
-                [[ -n "$_lu" ]] || continue
-                msg "${GREEN}${_lu}${NC}"
-                generate_qr "$_lu"
-            done < <(sed -n '2,$p' "$_lf")
-        done
-    fi
+    show_standalone_links
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     [[ "$CALLER" == 'deploy' ]] && msg "${GREEN}服务池部署完成。${NC}"
     pause_return
@@ -36147,7 +36198,11 @@ PY_SELFTEST_YAML
     else
         [[ "$(openrc_cron_service_name alpine)" == 'crond' ]] || { echo 'FAIL: Alpine OpenRC cron service name must be crond by default'; failures=$((failures + 1)); }
     fi
-    grep -Fq "apk-add cronie by" <<< "$source_body" || { echo 'FAIL: Alpine deps must not force-install cronie by default'; failures=$((failures + 1)); }
+    # The old assertion grepped the policy comment itself, so it passed
+    # even if the Alpine deps array installed cronie. Check the logic:
+    # the alpine) branch's deps array must not contain cronie.
+    _alpine_deps=$(awk '/Use BusyBox crond/{f=1} f && /deps=\(/{print; exit}' <<< "$source_body")
+    [[ -n "$_alpine_deps" && "$_alpine_deps" != *'cronie'* ]] || { echo 'FAIL: Alpine deps must not force-install cronie by default'; failures=$((failures + 1)); }
     grep -Fq 'curl-minimal' <<< "$source_body" || { echo 'FAIL: RHEL/Rocky curl-minimal conflict handling missing'; failures=$((failures + 1)); }
     release="$_saved_release"
     SB_ARCH="$_saved_sb_arch"
@@ -36256,10 +36311,10 @@ PY_SELFTEST_YAML
     path_tree_has_mountpoint /proc || { echo 'FAIL: mountpoint guard does not detect /proc'; failures=$((failures + 1)); }
     ! path_tree_has_mountpoint "$tmp" || { echo 'FAIL: mountpoint guard falsely reports self-test temp directory'; failures=$((failures + 1)); }
     if command -v python3 >/dev/null 2>&1; then
-        python3 - <<'PY_MOUNTINFO_DECODE_TEST' || { echo 'FAIL: mountinfo path decoder must decode octal escapes in one pass'; failures=$((failures + 1)); }
-import re
-def decode(value):
-    return re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), value)
+        _prod_decode=$(sed -n "/^def decode_mountinfo_path(value):/,/return/p" "$0" | head -2)
+        python3 - "$_prod_decode" <<'PY_MOUNTINFO_DECODE_TEST' || { echo 'FAIL: mountinfo path decoder must decode octal escapes in one pass'; failures=$((failures + 1)); }
+import re, sys
+exec(sys.argv[1])
 checks = {
     r'/mnt/a\040b': '/mnt/a b',
     r'/mnt/a\011b': '/mnt/a\tb',
@@ -36267,7 +36322,7 @@ checks = {
     r'/mnt/a\134011b': r'/mnt/a\011b',
 }
 for raw, expected in checks.items():
-    if decode(raw) != expected:
+    if decode_mountinfo_path(raw) != expected:
         raise SystemExit(1)
 PY_MOUNTINFO_DECODE_TEST
     fi

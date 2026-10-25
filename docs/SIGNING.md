@@ -31,7 +31,15 @@ A key fetched from the Release being verified would prove nothing (attacker
 replaces metadata + sig + key together). `mirrors/SIGNING_PUBKEYS` mirrors
 the array for external audit; it is never read at runtime.
 
-## Maintainer setup (do this once)
+## Maintainer setup
+
+> **Current state:** initial provisioning is complete. `install.sh`'s
+> `ABOX_SIGNING_PUBKEYS` already ships the active production key
+> (`release-2026`, also mirrored in `mirrors/SIGNING_PUBKEYS` for
+> external audit), and signature enforcement is on by default
+> (`ABOX_SIGNING_ENFORCE` defaults to 1). A first-time installer takes
+> no key action. The steps below provision a **new** key (rotation),
+> not a first install.
 
 ### 1. Generate the production keypair
 
@@ -52,8 +60,10 @@ PY
 
 ### 2. Install the public key
 
-- Replace the `test-only:...` entry in `ABOX_SIGNING_PUBKEYS` (install.sh)
-  with `production:<base64-pubkey>`.
+- Append a new `name:<base64-pubkey>` entry (release-style name, e.g.
+  `release-2027`) to `ABOX_SIGNING_PUBKEYS` (install.sh). Keep the
+  active key listed until CI has re-signed with the new key; removal
+  of the old key follows the Rotation steps below.
 - Update `mirrors/SIGNING_PUBKEYS` identically.
 - Bump `ABOX_SIGNING_MIN_TIMESTAMP_UTC` to the rotation date.
 
@@ -78,13 +88,14 @@ this secret, signs with `openssl pkeyutl -sign -rawin`, and uploads
 `<file>.sig` next to each metadata file. The step skips gracefully when the
 secret is absent (so forks/CI without the key don't break).
 
-### 4. Enable enforcement
+### 4. Enforcement
 
-Set `ABOX_SIGNING_ENFORCE=1` (environment, or change the default in
-install.sh) **after** steps 1–3 are live and `.sig` files are published.
-With enforcement on: missing/invalid signature → the asset source is
-rejected (fail-closed); the client falls back to the next trusted source
-and dies if none remain. It never warn-and-continues.
+Enforcement is already on by default (`ABOX_SIGNING_ENFORCE` defaults
+to 1 in install.sh). With enforcement on: missing/invalid signature →
+the asset source is rejected (fail-closed); the client falls back to
+the next trusted source and dies if none remain. It never
+warn-and-continues. (`ABOX_SIGNING_ENFORCE=0` is an explicit escape
+hatch only.)
 
 ## Rotation
 

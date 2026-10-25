@@ -34214,8 +34214,19 @@ runtime_lock_cleanup() {
     fi
 }
 
+fallback_runtime_lock_held() { # 0 = a live process holds the fallback lock
+    local pid start actual
+    [[ -d "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" && -r "$LOCK_FALLBACK_DIR/pid" && -r "$LOCK_FALLBACK_DIR/starttime" ]] || return 1
+    [[ "$(stat -c %u:%g "$LOCK_FALLBACK_DIR" 2>/dev/null || true)" == 0:0 ]] || return 1
+    IFS= read -r pid < "$LOCK_FALLBACK_DIR/pid" || return 1
+    IFS= read -r start < "$LOCK_FALLBACK_DIR/starttime" || return 1
+    [[ "$pid" =~ ^[0-9]+$ && -d "/proc/$pid" ]] || return 1
+    actual=$(runtime_lock_proc_starttime "$pid" || true)
+    [[ -n "$actual" && "$actual" == "$start" ]]
+}
+
 acquire_fallback_runtime_lock() {
-    local existing_pid existing_start actual_start lock_dir_created=0 stale_away=''
+    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start=''
     if mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null; then
         lock_dir_created=1
         chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
@@ -34235,6 +34246,19 @@ acquire_fallback_runtime_lock() {
             # so a pre-check guarantees it does not exist as a directory.
             [[ ! -e "$stale_away" && ! -L "$stale_away" ]] || return 1
             mv -- "$LOCK_FALLBACK_DIR" "$stale_away" 2>/dev/null || return 1
+            # U132: revalidate what was moved. If another reclaimer already
+            # replaced the stale dir with a live lock, the moved pid/start
+            # differ from the captured stale ones. Never delete a live lock;
+            # restore it when the canonical name is still free, else leave
+            # the moved dir intact (an orphan is inert; deleting it is not).
+            IFS= read -r _moved_pid < "$stale_away/pid" 2>/dev/null || _moved_pid=''
+            IFS= read -r _moved_start < "$stale_away/starttime" 2>/dev/null || _moved_start=''
+            if [[ -z "$existing_pid" || -z "$existing_start" || "$_moved_pid" != "$existing_pid" || "$_moved_start" != "$existing_start" ]]; then
+                if [[ ! -e "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" ]]; then
+                    mv -- "$stale_away" "$LOCK_FALLBACK_DIR" 2>/dev/null || true
+                fi
+                return 1
+            fi
             rm -rf -- "$stale_away" 2>/dev/null || true
             mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null || return 1
             lock_dir_created=1
@@ -34279,6 +34303,9 @@ acquire_runtime_lock() {
         validate_owned_fallback_runtime_lock || die 'OTA 继承的 fallback 运行锁无效。'
         ABOX_RUNTIME_LOCK_MODE='fallback'
     elif command -v flock >/dev/null 2>&1; then
+        # U133: a live fallback lock means another instance is running even
+        # though the flock is free; never hold two lock objects at once.
+        if fallback_runtime_lock_held; then die '检测到另一个 A-Box 实例正在运行。'; fi
         open_runtime_flock_fd || die '运行锁路径不安全或无法打开。'
         flock -n 9 || die '检测到另一个 A-Box 实例正在运行。'
         ABOX_RUNTIME_LOCK_MODE='flock'
@@ -35731,6 +35758,11 @@ EOF_SELFTEST_IPT
     # Parent-directory traversal regression for the dedicated runtime user.
     if (( EUID == 0 )) && id nobody >/dev/null 2>&1 && getent group nogroup >/dev/null 2>&1 && command -v runuser >/dev/null 2>&1; then
         runtime_traverse=$(mktemp -d /tmp/A-Box-runtime-traverse.XXXXXX) || { echo 'FAIL: runtime traversal regression temp creation'; failures=$((failures + 1)); }
+        # U134: never operate on an empty or non-/tmp path; mktemp failure
+        # above must skip this block, not degrade to root paths. The body
+        # keeps its indentation; the guard's fi closes just before the
+        # outer fi below.
+        if [[ -n "${runtime_traverse:-}" && "$runtime_traverse" == /tmp/* && -d "$runtime_traverse" ]]; then
         chmod 755 "$runtime_traverse"
         mkdir -p "$runtime_traverse/sing-box" "$runtime_traverse/hysteria"
         printf '%s\n' runtime-readable > "$runtime_traverse/sing-box/config.json"
@@ -35745,8 +35777,9 @@ EOF_SELFTEST_IPT
         chmod 750 "$runtime_traverse/sing-box" "$runtime_traverse/hysteria"
         runuser -u nobody -- cat "$runtime_traverse/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: 0750 Sing-box parent directory blocked runtime user'; failures=$((failures + 1)); }
         runuser -u nobody -- cat "$runtime_traverse/hysteria/config.yaml" >/dev/null 2>&1 || { echo 'FAIL: 0750 Hysteria parent directory blocked runtime user'; failures=$((failures + 1)); }
+        fi
     fi
-    [[ -n "${runtime_traverse:-}" ]] && rm -rf -- "$runtime_traverse"
+    [[ "${runtime_traverse:-}" == /tmp/* ]] && rm -rf -- "$runtime_traverse"
     unset runtime_traverse
 
     if (( EUID == 0 )); then

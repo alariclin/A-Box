@@ -29142,6 +29142,15 @@ wallos_prune_local_images() {
     # it, while `docker images --format` never does) so keep-list comparison works.
     keep1="${keep1#docker.io/}"
     keep2="${keep2#docker.io/}"
+    # U115: keeps may now be digest refs or image IDs (not tags). Resolve
+    # each keep to its image ID so the tag list below can honor it.
+    local -a keep_ids=()
+    local _k _kid
+    for _k in "$keep1" "$keep2"; do
+        [[ -n "$_k" ]] || continue
+        _kid=$(docker image inspect -f '{{.Id}}' "$_k" 2>/dev/null || true)
+        [[ -n "$_kid" ]] && keep_ids+=("$_kid")
+    done
     local -a all_images=()
     while IFS= read -r img; do
         [[ -n "$img" ]] || continue
@@ -29151,7 +29160,14 @@ wallos_prune_local_images() {
     done < <(docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep '^bellamy/wallos:' || true)
     local removed=0
     for img in "${all_images[@]}"; do
-        if [[ "$img" != "$keep1" && "$img" != "$keep2" ]]; then
+        local _img_id='' _keep_by_id=0
+        _img_id=$(docker image inspect -f '{{.Id}}' "$img" 2>/dev/null || true)
+        if [[ -n "$_img_id" ]]; then
+            for _kid in "${keep_ids[@]}"; do
+                [[ "$_img_id" == "$_kid" ]] && _keep_by_id=1
+            done
+        fi
+        if [[ "$img" != "$keep1" && "$img" != "$keep2" && "$_keep_by_id" != 1 ]]; then
             # Keep at most 2: remove anything beyond keep1/keep2.
             # Count how many we would keep; if already 2 kept, remove the rest.
             if docker rmi "$img" >/dev/null 2>&1; then
@@ -29203,6 +29219,11 @@ wallos_rollback_to_version() {
     _installed_img=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
     _installed_img="${_installed_img#docker.io/}"
     _installed_ver="${_installed_img##*:}"
+    # U115: containers created by digest have no parseable version in
+    # Config.Image; fall back to the recorded state VERSION.
+    if [[ ! "$_installed_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        _installed_ver=$(wallos_state_value VERSION 2>/dev/null || true)
+    fi
     if [[ "$_installed_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         wallos_version_is_older "${target_tag#v}" "$_installed_ver" || {
             msg "${RED}$(tprintf wl_rb_not_older "$target_tag" "$_installed_ver")${NC}"; return 1; }
@@ -29236,9 +29257,14 @@ wallos_rollback_to_version() {
     for _rb_cand in "${_rb_list[@]}"; do
         [[ -f "$_rb_cand" && ! -L "$_rb_cand" ]] || continue
         _rb_state=$(tar -xzOf "$_rb_cand" .abox-state 2>/dev/null || true)
-        _rb_image=$(printf '%s\n' "$_rb_state" | awk -F= '$1=="IMAGE" {print $2; exit}' 2>/dev/null || true)
-        _rb_image="${_rb_image#docker.io/}"
-        _rb_ver="${_rb_image##*:}"
+        # U115: prefer the recorded VERSION (new backups carry a digest IMAGE
+        # with no parseable version); fall back to the IMAGE tag for old backups.
+        _rb_ver=$(printf '%s\n' "$_rb_state" | awk -F= '$1=="VERSION" {print $2; exit}' 2>/dev/null || true)
+        if [[ ! "$_rb_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            _rb_image=$(printf '%s\n' "$_rb_state" | awk -F= '$1=="IMAGE" {print $2; exit}' 2>/dev/null || true)
+            _rb_image="${_rb_image#docker.io/}"
+            _rb_ver="${_rb_image##*:}"
+        fi
         if [[ ! "$_rb_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             _rb_skipped+="$_rb_cand(unknown) "
             continue
@@ -29286,7 +29312,7 @@ wallos_rollback_to_version() {
         _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
             msg "${YELLOW}$(tr_msg wl_rb_recovered)${NC}"
         return 1; }
-    wallos_write_state "bellamy/wallos:$image_tag" "$port" "$tz" "$bind_address" || {
+    wallos_write_state "bellamy/wallos:$image_tag" "$port" "$tz" "$bind_address" "" "" "" "${target_tag#v}" || {
         msg "${RED}$(tr_msg wl_rb_state_fail)${NC}"; return 1; }
     # N-11: prune to 2 images (new current + previous).
     wallos_prune_local_images "bellamy/wallos:$image_tag" "$prev_image"
@@ -29347,6 +29373,7 @@ _wallos_pull_versioned_image() {
     rm -rf -- "$work"
     docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1 || return 1
     WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+    WALLOS_IMAGE_VERSION="$image_tag"
     return 0
 }
 
@@ -29361,6 +29388,7 @@ wallos_latest_stable_tag() {
 wallos_pull_or_restore_image() {
     local arch="$1" tag='' asset='' expected actual work manifest_url sum_url _w_ts=''
     WALLOS_IMAGE_RESULT=''
+    WALLOS_IMAGE_VERSION=''
     tag=$(wallos_latest_stable_tag 2>/dev/null || true)
     if [[ -n "$tag" ]] && wallos_candidate_version_allowed "$tag"; then
         local image_tag="${tag#v}"
@@ -29460,8 +29488,11 @@ wallos_pull_or_restore_image() {
             if [[ "$_manifest_tag" == "$tag" ]]; then
                 # N-2: docker pull by digest creates NO tag. Must docker tag
                 # for downstream checks (require ^bellamy/wallos:[A-Za-z0-9._-]+$).
+                # U115: the verified digest is the identity; the tag created
+                # alongside is a convenience alias only, never the run identity.
                 if abox_run_wait '拉取 Wallos 镜像' docker pull "$_mirror_digest" && docker tag "$_mirror_digest" "bellamy/wallos:$image_tag"; then
-                    WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+                    WALLOS_IMAGE_RESULT="$_mirror_digest"
+                    WALLOS_IMAGE_VERSION="$image_tag"
                     return 0
                 fi
                 msg "${YELLOW}$(tr_msg wl_pi_digest_fail)${NC}"
@@ -29478,7 +29509,15 @@ wallos_pull_or_restore_image() {
                 msg "${CYAN}$(tprintf wl_pi_digest "$_pulled_digest")${NC}"
                 docker tag "$_pulled_digest" "bellamy/wallos:$image_tag" >/dev/null 2>&1 || true
             fi
-            WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+            # U115: run by the exact digest just pulled, not the mutable tag.
+            # The digest here is observed (not manifest-verified); it still
+            # closes the pull-to-run TOCTOU window. No digest observed -> tag.
+            if [[ "$_pulled_digest" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]]; then
+                WALLOS_IMAGE_RESULT="$_pulled_digest"
+            else
+                WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+            fi
+            WALLOS_IMAGE_VERSION="$image_tag"
             return 0
         fi
     fi
@@ -29565,15 +29604,30 @@ wallos_pull_or_restore_image() {
     # Defense-in-depth: If RepoDigests is populated (e.g. image was pulled), verify it matches.
     local loaded_digest
     loaded_digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "bellamy/wallos:${tag#v}" 2>/dev/null || true)
-    if [[ -n "$loaded_digest" && "$loaded_digest" != "$expected_digest" ]]; then
+    # U116: normalize both sides (whitespace, docker.io/ prefix, case) before
+    # comparing; the format check above allows the prefix, so a raw string
+    # comparison would reject the same digest in a different spelling.
+    local _loaded_norm="${loaded_digest//[[:space:]]/}" _expected_norm="${expected_digest//[[:space:]]/}"
+    _loaded_norm="${_loaded_norm#docker.io/}"
+    _expected_norm="${_expected_norm#docker.io/}"
+    if [[ -n "$loaded_digest" && "${_loaded_norm,,}" != "${_expected_norm,,}" ]]; then
         rm -rf -- "$work"
         msg "${RED}$(tr_msg wl_pi_digest_mismatch)${NC}"
         return 1
     fi
     rm -rf -- "$work"
-    local image_tag="${tag#v}"
+    local image_tag="${tag#v}" _loaded_id
     docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1 || return 1
-    WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+    # U115: run by immutable image ID, not the mutable tag. The tarball is
+    # hash-verified, so its config ID is authentic; a manifest digest cannot
+    # be used here because docker load populates no RepoDigest.
+    _loaded_id=$(docker image inspect --format '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
+    if [[ "$_loaded_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]]; then
+        WALLOS_IMAGE_RESULT="$_loaded_id"
+    else
+        WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+    fi
+    WALLOS_IMAGE_VERSION="$image_tag"
     return 0
 }
 wallos_wait_healthy() {
@@ -30376,10 +30430,11 @@ wallos_write_state() {
     # Round 15: also persist MODE (local|https) + PUBPORT (the Caddy
     # public port in https mode). When $5/$6 are omitted, existing
     # values are carried over so restore/rollback paths keep them.
-    local image="$1" port="$2" tz="$3" bind="${4-127.0.0.1}" mode="${5:-}" pubport="${6:-}" cfhost="${7:-}" tmp
+    local image="$1" port="$2" tz="$3" bind="${4-127.0.0.1}" mode="${5:-}" pubport="${6:-}" cfhost="${7:-}" version="${8:-}" tmp
     if [[ -z "$mode" ]]; then mode=$(wallos_state_value MODE 2>/dev/null || true); fi
     if [[ -z "$pubport" ]]; then pubport=$(wallos_state_value PUBPORT 2>/dev/null || true); fi
     if [[ -z "$cfhost" ]]; then cfhost=$(wallos_state_value CFHOST 2>/dev/null || true); fi
+    if [[ -z "$version" ]]; then version=$(wallos_state_value VERSION 2>/dev/null || true); fi
     tmp=$(umask 077; mktemp "$WALLOS_DIR/.abox-state.new.XXXXXX") || return 1
     if ! printf 'IMAGE=%s\nPORT=%s\nTZ=%s\nBIND=%s\n' "$image" "$port" "$tz" "$bind" > "$tmp"; then
         rm -f -- "$tmp"; return 1
@@ -30387,6 +30442,7 @@ wallos_write_state() {
     if [[ "$mode" == https || "$mode" == cftunnel ]]; then printf 'MODE=%s\n' "$mode" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
     if [[ "$mode" == cftunnel && "$cfhost" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then printf 'CFHOST=%s\n' "$cfhost" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
     if [[ "$pubport" =~ ^[0-9]+$ ]]; then printf 'PUBPORT=%s\n' "$pubport" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
+    if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then printf 'VERSION=%s\n' "$version" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
     if ! chmod 600 "$tmp" || ! mv -f -- "$tmp" "$WALLOS_DIR/.abox-state"; then
         rm -f -- "$tmp"
         return 1
@@ -30647,6 +30703,7 @@ wallos_install_or_update() {
 
     wallos_pull_or_restore_image "$arch" || { msg "${RED}$(tr_msg wl_iu_src_unavail)${NC}"; return 1; }
     image="$WALLOS_IMAGE_RESULT"
+    image_version="$WALLOS_IMAGE_VERSION"
     mkdir -p "$WALLOS_DIR/db" "$WALLOS_DIR/logos" "$WALLOS_DIR/backups" || return 1
     chmod 750 "$WALLOS_DIR" "$WALLOS_DIR/db" "$WALLOS_DIR/logos" || return 1
     if [[ ! -f "$WALLOS_DIR/.A-Box-managed" ]]; then
@@ -30685,7 +30742,7 @@ wallos_install_or_update() {
     # The ownership marker was created and permission-checked before starting
     # the container. Commit the mutable image/port/timezone state atomically;
     # do not silently report a complete update if metadata cannot be saved.
-    if ! wallos_write_state "$image" "$port" "$tz" "$bind_address" "$wmode" "$pubport" "$cfhost"; then
+    if ! wallos_write_state "$image" "$port" "$tz" "$bind_address" "$wmode" "$pubport" "$cfhost" "$image_version"; then
         msg "${RED}$(tr_msg wl_iu_meta_fail)${NC}"
         if (( running == 1 )); then
             docker rm -f wallos >/dev/null 2>&1 || true
@@ -30714,7 +30771,7 @@ wallos_install_or_update() {
             wallos_prune_local_images "$image" || true
         fi
     fi
-    msg "${GREEN}$(tprintf wl_iu_running "$image")${NC}"
+    msg "${GREEN}$(tprintf wl_iu_running "${image_version:-$image}")${NC}"
     if [[ "$bind_address" == 127.0.0.1 ]]; then security_note=$(tr_msg wl_iu_note_local)
     else security_note=$(tprintf wl_iu_note_http_pub "$port"); fi
     if [[ "$wmode" == https ]]; then
@@ -30729,7 +30786,7 @@ wallos_install_or_update() {
             fi
             if (( _fb == 1 )) && wallos_http_rebind "$pubport" "$image" "$tz"; then
                 wmode='http'; port="$pubport"; bind_address='0.0.0.0'
-                wallos_write_state "$image" "$port" "$tz" "$bind_address" http '' "$cfhost" || msg "${YELLOW}$(tr_msg wl_iu_state_save_fail)${NC}"
+                wallos_write_state "$image" "$port" "$tz" "$bind_address" http '' "$cfhost" "$image_version" || msg "${YELLOW}$(tr_msg wl_iu_state_save_fail)${NC}"
                 case "${ABOX_LANG:-zh}" in
                     *) security_note="$(tr_msg wl_note_http)" ;;
                 esac

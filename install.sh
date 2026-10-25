@@ -27050,12 +27050,12 @@ strip_abox_cron_blocks_from_file() {
     local input="$1" output="$2" name="${3:-}"
     [[ -f "$input" && ! -L "$input" && -n "$output" ]] || return 1
     awk -v wanted="$name" '
-      BEGIN { skip=0; seen_wanted=0 }
+      BEGIN { skip=0; seen_wanted=0; open_name="" }
       {
-        if (wanted != "" && $0 == "# A-Box " wanted " BEGIN") { skip=1; seen_wanted=seen_wanted+1; next }
+        if (wanted != "" && $0 == "# A-Box " wanted " BEGIN") { if (skip) exit 1; skip=1; seen_wanted=seen_wanted+1; next }
         if (wanted != "" && $0 == "# A-Box " wanted " END") { if (!skip) exit 1; skip=0; next }
-        if (wanted == "" && $0 ~ /^# A-Box (PROBE|GEO|TRAFFIC) BEGIN$/) { skip=1; next }
-        if (wanted == "" && $0 ~ /^# A-Box (PROBE|GEO|TRAFFIC) END$/) { if (!skip) exit 1; skip=0; next }
+        if (wanted == "" && $0 ~ /^# A-Box (PROBE|GEO|TRAFFIC) BEGIN$/) { if (skip) exit 1; skip=1; open_name=$3; next }
+        if (wanted == "" && $0 ~ /^# A-Box (PROBE|GEO|TRAFFIC) END$/) { if (!skip || $3 != open_name) exit 1; skip=0; open_name=""; next }
         if (skip) next
         print
       }
@@ -27343,10 +27343,36 @@ restore_managed_service_state() {
         return "$rc"
     fi
 
-    # Roll back only if the live state still equals the captured intermediate state.
-    # _apply_managed_service_state_file performs this precondition check before mutation.
-    if ! _apply_managed_service_state_file "$before_file" "$post_file"; then
-        printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2
+    # Roll back ONLY the services this restore itself changed. A service whose
+    # live state now equals neither its pre-restore value nor this restore's
+    # target was changed by an outside actor mid-restore; rolling it back
+    # would silently destroy that change, so it is excluded and reported.
+    local rb_before rb_post excluded=''
+    rb_before="$tx_dir/rollback-before.state"; rb_post="$tx_dir/rollback-post.state"
+    : > "$rb_before" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
+    : > "$rb_post" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
+    while IFS='|' read -r srv _active _enabled extra; do
+        [[ -n "$srv" ]] || continue
+        local b_line t_line p_line
+        b_line=$(awk -F'|' -v target="$srv" '$1 == target {print; exit}' "$before_file") || b_line=''
+        t_line=$(awk -F'|' -v target="$srv" '$1 == target {print; exit}' "$state_file") || t_line=''
+        p_line=$(awk -F'|' -v target="$srv" '$1 == target {print; exit}' "$post_file") || p_line=''
+        if [[ "$p_line" == "$t_line" && "$t_line" != "$b_line" ]]; then
+            printf '%s\n' "$b_line" >> "$rb_before" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
+            printf '%s\n' "$p_line" >> "$rb_post" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
+        elif [[ "$p_line" != "$b_line" ]]; then
+            excluded+="$srv "
+        fi
+    done < "$state_file"
+    chmod 600 "$rb_before" "$rb_post" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
+    if [[ -s "$rb_before" ]]; then
+        if ! _apply_managed_service_state_file "$rb_before" "$rb_post"; then
+            printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2
+            return 1
+        fi
+    fi
+    if [[ -n "$excluded" ]]; then
+        printf '%s\n' "A-Box service restore rollback partial: services changed by an outside actor during restore were left untouched: ${excluded% }; recovery state preserved at $tx_dir" >&2
         return 1
     fi
     rm -rf -- "$tx_dir" || return 1
@@ -27727,7 +27753,11 @@ PY_LEGACY_EXTRACT
     printf '%s\n' 'A-Box backup manifest v3' > "$work/meta/manifest.version"
     printf '\nConverted by %s from legacy archive: %s\n' "$ABOX_BUILD" "$(basename "$selected")" >> "$work/meta/metadata.txt"
     create_backup_manifest "$work" "$work/meta/manifest.sha256" || { rm -rf "$work"; die 'Converted manifest creation failed.'; }
-    install -d -m 700 "$out_dir" || { rm -rf "$work"; die 'Legacy conversion output directory failed.'; }
+    if [[ -e "$out_dir" || -L "$out_dir" ]]; then
+        [[ -d "$out_dir" && ! -L "$out_dir" ]] || { rm -rf "$work"; die 'Legacy conversion output directory is not a safe directory.'; }
+    else
+        install -d -m 700 "$out_dir" || { rm -rf "$work"; die 'Legacy conversion output directory failed.'; }
+    fi
     out="$out_dir/$(basename "${selected%.tar.gz}")-v3-imported.tar.gz"
     [[ ! -e "$out" && ! -L "$out" ]] || { rm -rf "$work"; die "Converted backup already exists: $out"; }
     tar -C "$work" -czf "$out" root meta || { rm -rf "$work"; rm -f "$out"; die 'Converted backup archive creation failed.'; }
@@ -28322,6 +28352,12 @@ backup_current_config() {
         path_owned_by_root "$backup_dir" || die 'Backup directory is not root-owned.'
         path_mode_has_no_group_other_write "$backup_dir" || die 'Backup directory permissions are unsafe.'
     fi
+    local backup_extra_excludes=() _abox_noslash="${ABOX_DIR%/}" _backup_noslash="${backup_dir%/}"
+    if [[ "$_backup_noslash" == "$_abox_noslash" ]]; then
+        die 'Backup directory must not be the A-Box directory itself; choose a subdirectory or an external directory.'
+    elif [[ "$_backup_noslash" == "$_abox_noslash"/* ]]; then
+        backup_extra_excludes=(--exclude="./${_backup_noslash#"$_abox_noslash"/}")
+    fi
     work=$(mktemp -d /tmp/A-Box-backup.XXXXXX) || die 'Backup temp directory creation failed.'
     root="$work/root"; install -d -m 700 "$backup_dir" "$root" "$work/meta" || { rm -rf "$work"; die 'Backup directory creation failed.'; }
     path_owned_by_root "$backup_dir" || { rm -rf "$work"; die 'Backup directory ownership verification failed.'; }
@@ -28351,6 +28387,7 @@ backup_current_config() {
                 --exclude='./A-Box.sh' --exclude='./.backup-hmac.key' --exclude='./.runtime.lock' --exclude='./.runtime.lock.d' \
                 --exclude='./socket_probe.sh' --exclude='./geo_update.sh' --exclude='./traffic_monitor.sh' \
                 --exclude='./firewall_restore.sh' --exclude='./iptables.v4' --exclude='./iptables.v6' \
+                "${backup_extra_excludes[@]}" \
                 -cpf - . | tar -C "$root$ABOX_DIR" -xpf -) || backup_failed=1
         fi
     fi
@@ -28454,7 +28491,21 @@ restore_latest_backup_silent() {
     if [[ -n "$selected" ]]; then
         [[ -f "$selected" && "$(dirname "$selected")" == "$backup_dir" ]] || return 1
     else
-        selected=$(find "$backup_dir" -maxdepth 1 -type f -name 'A-Box-backup-*.tar.gz' -print | sort -r | sed -n '1p')
+        selected=$(python3 - "$backup_dir" <<'PY_LATEST_BACKUP'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+items = []
+for p in root.glob('A-Box-backup-*.tar.gz'):
+    try:
+        if p.is_file() and not p.is_symlink():
+            items.append((p.stat().st_mtime_ns, str(p)))
+    except OSError:
+        pass
+if items:
+    print(sorted(items, reverse=True)[0][1])
+PY_LATEST_BACKUP
+) || return 1
     fi
     [[ -n "$selected" ]] || return 1
     backup_checksum_verify "$selected" "${selected}.sha256" || return 1
@@ -29000,7 +29051,12 @@ wallos_install_runtime() {
             command -v rpm >/dev/null 2>&1 || return 1
             dnf -y install dnf-plugins-core ca-certificates curl jq || return 1
             case "$os_id" in
-                fedora) dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo || return 1 ;;
+                fedora)
+                    if [[ "$(dnf --version 2>/dev/null | head -1 | cut -d. -f1)" == '5' ]]; then
+                        dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/fedora/docker-ce.repo || return 1
+                    else
+                        dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo || return 1
+                    fi ;;
                 rhel) dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo || return 1 ;;
                 centos|rocky|almalinux) dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo || return 1 ;;
             esac

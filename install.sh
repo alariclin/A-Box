@@ -7790,13 +7790,24 @@ valid_path() {
 port_is_free() {
     local port="${1:-}" out=''
     [[ -n "$port" ]] || return 1
+    [[ "$port" =~ ^[0-9]+$ ]] || return 1
     if command -v ss >/dev/null 2>&1; then
         # A failed ss probe is "unknown", never "free" (fail closed).
         out=$(ss -tuln 2>/dev/null) || return 1
-        ! printf '%s\n' "$out" | awk 'NR>1 {print $5}' | grep -qE ":${port}$"
+        # awk reads the whole listing: no grep -q early exit, so no
+        # SIGPIPE under pipefail can flip a busy result into "free".
+        if printf '%s\n' "$out" | awk -v port="$port" 'NR>1 && $5 ~ (":" port "$") {found=1} END {exit !found}'; then
+            return 1
+        else
+            return 0
+        fi
     elif command -v netstat >/dev/null 2>&1; then
         out=$(netstat -tuln 2>/dev/null) || return 1
-        ! printf '%s\n' "$out" | awk 'NR>2 {print $4}' | grep -qE ":${port}$"
+        if printf '%s\n' "$out" | awk -v port="$port" 'NR>2 && $4 ~ (":" port "$") {found=1} END {exit !found}'; then
+            return 1
+        else
+            return 0
+        fi
     else
         ! (exec 3<>/dev/tcp/127.0.0.1/"$port") 2>/dev/null
     fi
@@ -10301,12 +10312,17 @@ service_report_state() {
 
 show_status_report() {
     local init='unknown' xray_state sing_state hy2_state shortcut_state='missing' desired='UNINITIALIZED' period='' config_loaded=0
-    local _status_lock_held=0
+    local _status_lock_held=0 _status_stderr_saved=''
     # Best-effort non-blocking exclusive snapshot lock; proceed unlocked if busy.
     if [[ ${EUID:-0} -eq 0 ]] && command -v flock >/dev/null 2>&1 && [[ -f "$LOCK_FILE" && ! -L "$LOCK_FILE" ]]; then
-        exec 8>>"$LOCK_FILE" 2>/dev/null || true
-        # Shared advisory snapshot; does not block writers that hold exclusive fd 9.
-        if flock -s -n 8 2>/dev/null; then _status_lock_held=1; fi
+        # Save stderr first: the bare exec below would otherwise
+        # redirect stderr to /dev/null for the rest of the process.
+        # If the save itself fails, skip the lock and stay unlocked.
+        if exec {_status_stderr_saved}>&2; then
+            exec 8>>"$LOCK_FILE" 2>/dev/null || true
+            # Shared advisory snapshot; does not block writers that hold exclusive fd 9.
+            if flock -s -n 8 2>/dev/null; then _status_lock_held=1; fi
+        fi
     fi
     clear_abox_env_vars
     if load_abox_env "$ABOX_ENV" 2>/dev/null; then config_loaded=1; fi
@@ -10332,9 +10348,15 @@ Services: xray=${xray_state} sing-box=${sing_state} hysteria=${hy2_state}
 Shortcut: /usr/local/bin/sb=${shortcut_state}
 Config file: ${ABOX_ENV}
 EOF_STATUS
-    if (( _status_lock_held == 1 )); then
-        flock -u 8 2>/dev/null || true
+    if [[ -n "$_status_stderr_saved" ]]; then
+        if (( _status_lock_held == 1 )); then
+            flock -u 8 2>/dev/null || true
+        fi
         eval "exec 8>&-" 2>/dev/null || true
+        # Restore the saved stderr (also covers the flock-failure
+        # path, where fd 8 was opened but never locked).
+        exec 2>&${_status_stderr_saved} || true
+        exec {_status_stderr_saved}>&- || true
     fi
 }
 
@@ -10805,7 +10827,8 @@ __abox_firewall_persistence_rollback() {
             systemctl daemon-reload >/dev/null 2>&1 || fail=1
             if [[ "$old_unit" == 1 ]]; then
                 case "$old_unit_enabled" in
-                    enabled|enabled-runtime|indirect) systemctl enable A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
+                    enabled|indirect) systemctl enable A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
+                    enabled-runtime) systemctl enable --runtime A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
                     *) systemctl disable A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
                 esac
             fi
@@ -11309,7 +11332,7 @@ remove_native_firewall_rules() {
     validate_native_firewall_state_file "$ABOX_FW_STATE" || return 1
     local backend spec proto scope zone extra fw_spec any_failed=0 record_failed tmp
     tmp=$(mktemp "$ABOX_DIR/.firewall-native.remaining.XXXXXX") || return 1
-    while IFS='|' read -r backend spec proto scope zone extra; do
+    while IFS='|' read -r backend spec proto scope zone extra || [[ -n "$backend$spec$proto$scope$zone$extra" ]]; do
         [[ -n "$backend" ]] || continue
         record_failed=0
         case "$backend" in
@@ -11365,7 +11388,11 @@ forget_native_firewall_rule() {
     [[ ! -e "$ABOX_FW_STATE" && ! -L "$ABOX_FW_STATE" ]] && return 0
     validate_native_firewall_state_file "$ABOX_FW_STATE" || return 1
     tmp=$(mktemp "$ABOX_DIR/.firewall-native.forget.XXXXXX") || return 1
-    while IFS='|' read -r rec_backend rec_spec rec_proto rec_scope rec_zone _rec_extra; do
+    while IFS='|' read -r rec_backend rec_spec rec_proto rec_scope rec_zone _rec_extra || [[ -n "$rec_backend$rec_spec$rec_proto$rec_scope$rec_zone$_rec_extra" ]]; do
+        # Empty lines are legal in the state file (the validator skips
+        # them); without this skip they would be rewritten as '|||'
+        # records and poison the whole file on the next validation.
+        [[ -n "$rec_backend$rec_spec$rec_proto$rec_scope$rec_zone$_rec_extra" ]] || continue
         [[ "$rec_backend" == "$target_backend" && "$rec_spec" == "$spec" && "$rec_proto" == "$proto" ]] && continue
         if [[ -n "$rec_zone" ]]; then
             printf '%s|%s|%s|%s|%s\n' "$rec_backend" "$rec_spec" "$rec_proto" "$rec_scope" "$rec_zone" >> "$tmp" || { rm -f -- "$tmp"; return 1; }
@@ -11393,7 +11420,7 @@ remove_abox_native_firewall_rule() {
         ufw)
             if [[ -e "$ABOX_FW_STATE" || -L "$ABOX_FW_STATE" ]]; then
                 validate_native_firewall_state_file "$ABOX_FW_STATE" || return 1
-                while IFS='|' read -r _backend _spec _proto _scope _zone _extra; do
+                while IFS='|' read -r _backend _spec _proto _scope _zone _extra || [[ -n "$_backend$_spec$_proto$_scope$_zone$_extra" ]]; do
                     [[ "$_spec" == "$spec" && "$_proto" == "$proto" && "$_backend" == ufw ]] || continue
                     [[ "$_scope" == rule && -z "$_zone" && -z "$_extra" ]] || return 1
                     ufw_delete_owned_rules "$spec" "$proto" || return 1
@@ -11407,7 +11434,7 @@ remove_abox_native_firewall_rule() {
             [[ -e "$ABOX_FW_STATE" || -L "$ABOX_FW_STATE" ]] || return 0
             validate_native_firewall_state_file "$ABOX_FW_STATE" || return 1
             fw_spec=$(port_spec_for_firewalld "$spec") || return 1
-            while IFS='|' read -r _backend _spec _proto _scope _zone _extra; do
+            while IFS='|' read -r _backend _spec _proto _scope _zone _extra || [[ -n "$_backend$_spec$_proto$_scope$_zone$_extra" ]]; do
                 [[ "$_spec" == "$spec" && "$_proto" == "$proto" && "$_backend" == firewalld ]] || continue
                 [[ "$_scope" == runtime || "$_scope" == permanent ]] || return 1
                 firewall-cmd --state >/dev/null 2>&1 || return 1
@@ -11462,7 +11489,7 @@ apply_native_firewall_rules_from_state() {
     validate_native_firewall_state_file "$ABOX_FW_STATE" || return 1
     [[ "$(firewall_backend 2>/dev/null)" != 'nftables-unsupported' ]] || return 1
     local backend spec proto scope zone extra fw_spec failed=0
-    while IFS='|' read -r backend spec proto scope zone extra; do
+    while IFS='|' read -r backend spec proto scope zone extra || [[ -n "$backend$spec$proto$scope$zone$extra" ]]; do
         [[ -n "$backend" ]] || continue
         case "$backend" in
             ufw)
@@ -12923,7 +12950,8 @@ core_version_compare() {
             if (( ${#norm_a} < ${#norm_b} )); then cmp=-1
             elif (( ${#norm_a} > ${#norm_b} )); then cmp=1
             elif [[ "$norm_a" < "$norm_b" ]]; then cmp=-1
-            else cmp=1
+            elif [[ "$norm_a" > "$norm_b" ]]; then cmp=1
+            else continue
             fi
         elif [[ "$id_a" =~ ^[0-9]+$ ]]; then
             cmp=-1
@@ -14457,7 +14485,11 @@ socket_owned_by_pid() {
     [[ "$port" =~ ^[0-9]+$ && "$pid" =~ ^[0-9]+$ ]] || return 1
     case "$proto" in tcp) flags='-H -nltp' ;; udp) flags='-H -nlup' ;; *) return 1 ;; esac
     # shellcheck disable=SC2086
-    ss $flags 2>/dev/null | awk -v p="$port" -v pid="$pid" '
+    # Capture first: a failed ss must return "unknown" (2), never be
+    # read as "not listening" (1) via an empty awk input.
+    local ss_out
+    ss_out=$(ss $flags 2>/dev/null) || return 2
+    printf '%s\n' "$ss_out" | awk -v p="$port" -v pid="$pid" '
         $4 ~ ("[:.]" p "$") && $0 ~ ("pid=" pid "([,)]|$)") { found=1 }
         END { exit(found ? 0 : 1) }
     '
@@ -15309,12 +15341,16 @@ xray_api_available() {
     pid=${pid%%$'\n'*}
     [[ -n "$pid" ]] || return 1
     if command -v ss >/dev/null 2>&1; then
-        ss -tlnp 2>/dev/null | grep -qE ":${XRAY_API_PORT}[[:space:]].*pid=${pid},"
+        # No -q: grep reads the whole listing, so no SIGPIPE under
+        # pipefail can turn a found api socket into a false negative.
+        ss -tlnp 2>/dev/null | grep -E ":${XRAY_API_PORT}[[:space:]].*pid=${pid}," >/dev/null
         return $?
     fi
-    # Loopback-only TCP probe; never touches the network.
+    # Loopback-only TCP probe; never touches the network. The probe
+    # runs in a subshell, so its fd 3 dies with it: nothing to close
+    # here, and a bare exec close would only redirect stderr to
+    # /dev/null for the rest of the process.
     (exec 3<>/dev/tcp/127.0.0.1/10085) >/dev/null 2>&1 || return 1
-    exec 3<&- 3>&- 2>/dev/null || true
     return 0
 }
 
@@ -23407,7 +23443,7 @@ user_guard_tick() {
     # fd 8 is used because fd 9 carries both this guard lock and,
     # in interactive processes, the runtime flock itself.
     if command -v flock >/dev/null 2>&1; then
-        exec 8>>"${LOCK_FILE:-/run/A-Box.lock}" 2>/dev/null || return 0
+        exec 8>>"${LOCK_FILE:-/run/A-Box.lock}" || return 0
         flock -n 8 || return 0
     fi
     local now_s='' period='' hhmm=''

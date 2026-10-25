@@ -22102,6 +22102,7 @@ def dedupe: reduce .[] as $u ({seen:{}, out:[]};
     else .seen += {($u.name): 1} | .out += [$u] end) | .out;
 def mkusers($tag): map({
     name: ((.name // "main") | cleanname),
+    login: (.name // "main"),
     secret: (.secret // ""),
     uuid: (.uuid // ""),
     flow: (.flow // ""),
@@ -22219,7 +22220,12 @@ users_reg_ensure() {
     if users_adopt "$core" "$tag" "$scratch" >/dev/null 2>&1 && jq -e '.users' "$scratch" >/dev/null 2>&1; then
         merged=$(jq -c --slurpfile s "$scratch" '
             . as $r | ($s[0].users // []) as $fresh
-            | .users = (.users + [$fresh[] | select(.secret as $sec | [$r.users[].secret] | index($sec) | not)])
+            | .users = (
+                [.users[] | . as $u
+                 | ([$fresh[] | select(.secret == $u.secret and .name == $u.name)] | .[0]) as $m
+                 | if $m == null then $u elif (.login // "") != "" then $u elif ($m.login // "") == "" then $u else $u + {login: $m.login} end]
+                + [$fresh[] | . as $f | select([$r.users[] | select(.secret == $f.secret and .name == $f.name)] | length == 0)]
+              )
             | .server_secret = (if (.server_secret // "") == "" then ($s[0].server_secret // "") else .server_secret end)
         ' "$reg" 2>/dev/null) && [[ -n "$merged" ]] && users_reg_write "$core" "$tag" "$merged" || true
     fi
@@ -22302,15 +22308,13 @@ users_sync() {
     case "$core" in
         xray|xray-latest)
             xray_ensure_stats "$cfg" "$(users_api_port_of "$core")" >/dev/null 2>&1 || true
-            local flow=''
-            flow=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.settings.clients[0].flow // "")' "$cfg" 2>/dev/null | head -1)
-            if ! jq --arg t "$tag" --arg proto "$proto" --slurpfile users <(printf '%s' "$enabled") --arg flow "$flow" --rawfile ss <(printf '%s' "$eff_ss") --slurpfile snap <(printf '%s' "$sb_snap") '
+            if ! jq --arg t "$tag" --arg proto "$proto" --slurpfile users <(printf '%s' "$enabled") --rawfile ss <(printf '%s' "$eff_ss") --slurpfile snap <(printf '%s' "$sb_snap") '
                 (if $proto == "shadowsocks" and ($users[0] | length) > 0 and $snap[0] != null
                     and ((.inbounds | map(.tag == $t) | any) | not)
                  then .inbounds += [$snap[0]] else . end)
                 | .inbounds |= map(if .tag == $t then
                     (if $proto == "vless" then
-                        .settings.clients = [$users[0][] | {id: .secret, email: .email} + (if $flow != "" then {flow: $flow} else {} end)]
+                        .settings.clients = [$users[0][] | {id: .secret, email: .email} + (if (.flow // "") != "" then {flow: .flow} else {} end)]
                      elif $proto == "trojan" then
                         .settings.clients = [$users[0][] | {password: .secret, email: .email}]
                      elif $proto == "shadowsocks" then
@@ -22321,7 +22325,7 @@ users_sync() {
                          else
                             .settings.password = $users[0][0].secret | .settings |= del(.clients) end)
                      elif $proto == "socks" then
-                        .settings.accounts = [$users[0][] | {user: .name, pass: .secret}]
+                        .settings.accounts = [$users[0][] | {user: (.login // .name), pass: .secret}]
                      else . end)
                 else . end)
             ' "$cfg" > "$tmp" 2>/dev/null; then
@@ -22346,7 +22350,7 @@ users_sync() {
                             .password = $users[0][0].secret | del(.users) end)
                      elif $proto == "mixed" or $proto == "socks" then
                         (if ($users[0] | length) == 0 then empty
-                         else .users = [$users[0][] | {username: .name, password: .secret}] end)
+                         else .users = [$users[0][] | {username: (.login // .name), password: .secret}] end)
                      else
                         .users = [$users[0][] | {name: .name, password: .secret}] end)
                 else . end)
@@ -22399,7 +22403,8 @@ users_hy2_write_users() {
         lines=$(printf '%s' "$users_json" | jq -r '.[] | "    " + .name + ": " + (.secret | @json)' 2>/dev/null) || return 1
         auth_block=$(printf 'auth:\n  type: userpass\n  userpass:\n%s' "$lines")
     fi
-    awk -v block="$auth_block" '
+    AUTH_BLOCK="$auth_block" awk '
+        BEGIN { block = ENVIRON["AUTH_BLOCK"] }
         /^auth:/ { print block; skip = 1; next }
         skip && /^[^[:space:]#]/ { skip = 0 }
         skip && /^  / { next }

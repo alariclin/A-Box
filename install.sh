@@ -1549,6 +1549,12 @@ tr_msg() {
         fa:wl_rb_no_backup) echo 'نسخه پشتیبان Wallos برای بازگشت یافت نشد.' ;;
         zh-tw:wl_rb_no_backup) echo '沒有找到可用於回滾的 Wallos 備份。' ;;
         ja:wl_rb_no_backup) echo 'ロールバック用の Wallos バックアップが見つかりません。' ;;
+        zh:wl_rb_bad_backup) echo '备份校验失败，已中止回滚，当前服务未动。' ;;
+        en:wl_rb_bad_backup) echo 'Backup validation failed; rollback aborted, running service untouched.' ;;
+        ru:wl_rb_bad_backup) echo 'Проверка резервной копии не пройдена; откат прерван, работающая служба не затронута.' ;;
+        fa:wl_rb_bad_backup) echo 'اعتبارسنجی پشتیبان ناموفق بود؛ بازگشت لغو شد و سرویس در حال اجرا دست نخورده باقی ماند.' ;;
+        zh-tw:wl_rb_bad_backup) echo '備份校驗失敗，已中止回滾，目前服務未動。' ;;
+        ja:wl_rb_bad_backup) echo 'バックアップ検証に失敗したため、ロールバックを中止しました。実行中のサービスは変更されていません。' ;;
         zh:wl_rb_rm_fail) echo '无法删除当前 Wallos 容器，已重新启动原容器。' ;;
         en:wl_rb_rm_fail) echo 'Could not remove current Wallos container; restarted existing container.' ;;
         ru:wl_rb_rm_fail) echo 'Не удалось удалить текущий контейнер Wallos; существующий контейнер перезапущен.' ;;
@@ -29206,7 +29212,13 @@ _wallos_rollback_recover() {
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$prev_image" >/dev/null 2>&1
+        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$prev_image" >/dev/null 2>&1 || return 1
+    # U118: the caller reports "recovered" only if this returns 0, so verify
+    # the old image and the old database are actually usable, and the
+    # container answers healthily, instead of trusting a started container.
+    docker image inspect "$prev_image" >/dev/null 2>&1 || return 1
+    [[ -s "$WALLOS_DIR/db/wallos.db" && ! -L "$WALLOS_DIR/db/wallos.db" ]] || return 1
+    wallos_wait_healthy "$port" || return 1
 }
 
 wallos_rollback_to_version() {
@@ -29277,6 +29289,9 @@ wallos_rollback_to_version() {
         break
     done
     [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || { msg "${RED}$(tr_msg wl_rb_no_backup)${NC}"; [[ -n "$_rb_skipped" ]] && msg "${YELLOW}Skipped backups newer than $target_tag or without a recorded version: ${_rb_skipped% }${NC}"; return 1; }
+    # U118: validate the backup fully BEFORE touching the running container;
+    # a bad backup must abort here, not after the service is already removed.
+    wallos_validate_backup "$backup" || { msg "${RED}$(tr_msg wl_rb_bad_backup)${NC}"; return 1; }
     docker stop wallos >/dev/null 2>&1 || true
     # N-11: capture the pre-rollback image BEFORE removing the container,
     # so the prune step can retain 2 images (new current + previous). (NEW-1)
@@ -29631,11 +29646,24 @@ wallos_pull_or_restore_image() {
     return 0
 }
 wallos_wait_healthy() {
-    local port="$1" i code state
+    # U117: a bare port check is not attribution. The container must exist
+    # and be running, and docker must publish this port from it; otherwise
+    # any local service holding the port would fake a healthy Wallos.
+    # Inspect failure means the container is gone -> fail fast (all callers
+    # invoke this right after docker run, so the container must exist).
+    # No body-marker check: docker's publication record is the attribution
+    # (only the container can serve its published port), and it needs no
+    # unverified Wallos HTML string that could false-negative every install.
+    local port="$1" i code state running pub
     for i in $(seq 1 60); do
         state=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' wallos 2>/dev/null || true)
+        [[ -z "$state" ]] && return 1
         [[ "$state" == healthy ]] && return 0
         [[ "$state" == unhealthy ]] && return 1
+        running=$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)
+        [[ "$running" == true ]] || { sleep 1; continue; }
+        pub=$(docker port wallos 2>/dev/null || true)
+        grep -Eq ":$port\$" <<< "$pub" || { sleep 1; continue; }
         code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 "http://127.0.0.1:$port/" 2>/dev/null || true)
         case "$code" in 200|301|302|303|307|308) return 0 ;; esac
         sleep 1
@@ -29695,20 +29723,23 @@ PY_WALLOS_ROTATE
     printf '%s\n' "$backup"
 }
 
-wallos_restore_backup() {
-    local backup="$1" stamp stage listing rescue name restore_name
+# U118: full backup validation WITHOUT touching live data. When $2 names a
+# variable, the stage directory is returned in it (caller-owned); otherwise
+# the stage is discarded. wallos_restore_backup reuses this so the
+# pre-removal check and the restore share one implementation (no drift).
+wallos_validate_backup() {
+    local backup="$1" stage_out="${2:-}" listing vlisting member_count=0 total_usize=0 _vstage
     [[ -f "$backup" && ! -L "$backup" ]] || return 1
     gzip -t "$backup" || return 1
     listing=$(tar -tzf "$backup" 2>/dev/null) || return 1
     grep -Eq '^db/?$' <<< "$listing" && grep -Eq '^logos/?$' <<< "$listing" &&
         grep -Fxq '.abox-state' <<< "$listing" || return 1
-    if grep -Eq '(^/|(^|/)\.\.(/|$))' <<< "$listing" ||
+    if grep -Eq '(^/|(^|/)\\.(/|$))' <<< "$listing" ||
        grep -Ev '^(db(/.*)?|logos(/.*)?|\.abox-state)$' <<< "$listing" >/dev/null; then
         return 1
     fi
     # N-02 fix: reject symlinks, hardlinks, and special files inside the archive.
     # N-07 fix: enforce member count and size limits (zip-bomb protection).
-    local vlisting member_count=0 total_usize=0
     vlisting=$(tar -tvzf "$backup" 2>/dev/null) || return 1
     while IFS= read -r line; do
         member_count=$((member_count + 1))
@@ -29740,14 +29771,25 @@ wallos_restore_backup() {
         msg "${RED}$(tprintf wl_rs_toobig "$total_usize")${NC}" >&2
         return 1
     fi
-    stage=$(umask 077; mktemp -d "$WALLOS_DIR/.restore-stage.XXXXXX") || return 1
-    if ! tar -xzf "$backup" -C "$stage" ||
-       [[ ! -d "$stage/db" || -L "$stage/db" ||
-          ! -d "$stage/logos" || -L "$stage/logos" ||
-          ! -f "$stage/.abox-state" || -L "$stage/.abox-state" ]]; then
-        rm -rf -- "$stage"
+    _vstage=$(umask 077; mktemp -d "$WALLOS_DIR/.restore-stage.XXXXXX") || return 1
+    if ! tar -xzf "$backup" -C "$_vstage" ||
+       [[ ! -d "$_vstage/db" || -L "$_vstage/db" ||
+          ! -d "$_vstage/logos" || -L "$_vstage/logos" ||
+          ! -f "$_vstage/.abox-state" || -L "$_vstage/.abox-state" ]]; then
+        rm -rf -- "$_vstage"
         return 1
     fi
+    if [[ -n "$stage_out" ]]; then
+        printf -v "$stage_out" '%s' "$_vstage"
+    else
+        rm -rf -- "$_vstage"
+    fi
+    return 0
+}
+
+wallos_restore_backup() {
+    local backup="$1" stamp stage rescue name restore_name
+    wallos_validate_backup "$backup" stage || return 1
     stamp=$(date -u '+%Y%m%dT%H%M%SZ')
     rescue="$WALLOS_DIR/.restore-preserve-$stamp-$$"
     mkdir -m 700 "$rescue" || { rm -rf -- "$stage"; return 1; }

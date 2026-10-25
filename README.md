@@ -93,7 +93,7 @@ Standalone deployments, independent of the combined bundles above. Each one asks
 
 ## Status panel
 
-The top of the menu shows a 16-cell status matrix (running / not started / fault) for Xray, sing-box, Hy2, Trojan, TUIC, AnyTLS, ShadowTLS, SOCKS5, WARP, Cloudflare, Fail2Ban, Wallos, Traffic, Docker, BBR and Firewall, followed by system, hardware and network lines. The network line identifies the egress IP's location and type (datacentre / residential / mobile, broadcast or native). Deployed nodes are listed with their ports and SNI. A green cell means the service is running or listening; it is not an end-to-end connectivity test — verify with a client. The users section below lists, per node, the active users with their own traffic (shown in M/G units), quota and expiry when set; blocked or disabled users are not shown on the panel — they are managed in the toolbox (item 14).
+The top of the menu shows a 16-cell status matrix (running / not started / fault) for Xray, sing-box, Hy2, Trojan, TUIC, AnyTLS, ShadowTLS, SOCKS5, WARP, Cloudflare, Fail2Ban, Wallos, Traffic, Docker, BBR and Firewall, followed by system, hardware and network lines. The network line identifies the egress IP's location and type (datacentre / residential / mobile, anycast or native). Deployed nodes are listed with their ports and SNI. A green cell means the service is running or listening; it is not an end-to-end connectivity test — verify with a client. The users section below lists, per node, the active users with their own traffic (shown in M/G units), quota and expiry when set; blocked or disabled users are not shown on the panel — they are managed in the toolbox (item 14).
 
 ## Toolbox (menu 11)
 
@@ -167,7 +167,7 @@ Tested systems (14): Debian 10 / 11 / 12 / 13, Ubuntu 20.04 / 22.04 / 24.04, Roc
 ## Notes
 
 - The panel's IP-type and location data comes from public IP-intelligence services and can occasionally be wrong; the multi-source check reduces, but does not eliminate, errors.
-- Let's Encrypt IP certificates (Wallos HTTPS mode) are short-lived (about 160 hours) and are renewed automatically by Caddy; like all certificates, they appear in public Certificate Transparency logs.
+- Let's Encrypt IP certificates (Wallos HTTPS mode) are short-lived (about 160 hours) and are renewed automatically by Caddy; they appear in public Certificate Transparency logs, as all publicly trusted certificates do.
 - Temporary Argo tunnel addresses change every time cloudflared restarts. Use a fixed tunnel with your own domain for a stable address.
 - BBR/FQ tuning, DNS changes and WARP routing are applied only when you select them, and DNS / tuning changes keep a rollback path.
 - Keep backups and the recovery key in a separate, protected location.

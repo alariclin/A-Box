@@ -93,7 +93,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 ## 状态面板
 
-菜单顶部是 16 格状态矩阵（运行 / 未开启 / 故障）：Xray、sing-box、Hy2、Trojan、TUIC、AnyTLS、ShadowTLS、SOCKS5、WARP、Cloudflare、Fail2ban、Wallos、Traffic、Docker、BBR、Firewall，其后是系统、硬件与网络信息行。网络行会标注出口 IP 的位置与类型（机房 / 住宅 / 蜂窝、广播或原生）。已部署节点会列出端口与 SNI。绿格只表示服务在运行或端口在监听，不等于端到端连通，请以客户端实测为准。其下是用户区：按节点列出在用用户各自的用量（只用 M/G 单位）、已设的限额与到期；封锁或停用的用户不在面板显示，只在工具箱 14 里管理。
+菜单顶部是 16 格状态矩阵（运行 / 未开启 / 故障）：Xray、sing-box、Hy2、Trojan、TUIC、AnyTLS、ShadowTLS、SOCKS5、WARP、Cloudflare、Fail2ban、Wallos、Traffic、Docker、BBR、Firewall，其后是系统、硬件与网络信息行。网络行会标注出口 IP 的位置与类型（机房 / 住宅 / 蜂窝、任播或原生）。已部署节点会列出端口与 SNI。绿格只表示服务在运行或端口在监听，不等于端到端连通，请以客户端实测为准。其下是用户区：按节点列出在用用户各自的用量（只用 M/G 单位）、已设的限额与到期；封锁或停用的用户不在面板显示，只在工具箱 14 里管理。
 
 ## 综合工具箱（菜单 11）
 
@@ -167,7 +167,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 ## 注意事项
 
 - 面板的 IP 类型与位置数据来自公开 IP 情报服务，偶有误判；多源比对只能减少、不能消除错误。
-- Let's Encrypt 的 IP 证书（Wallos HTTPS 模式）有效期很短（约 160 小时），由 Caddy 自动续期；与所有证书一样，它们会出现在公开的证书透明度日志中。
+- Let's Encrypt 的 IP 证书（Wallos HTTPS 模式）有效期很短（约 160 小时），由 Caddy 自动续期；它们会出现在公开的证书透明度日志中，与所有公开信任的证书一样。
 - Argo 临时隧道地址在 cloudflared 每次重启后都会变化；需要固定地址请使用自有域名的固定隧道。
 - BBR/FQ 调优、DNS 修改与 WARP 分流都只在你选用时才应用，DNS 与调优改动保留回滚路径。
 - 备份与恢复密钥请存放在独立且受保护的位置。

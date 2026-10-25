@@ -13517,6 +13517,21 @@ PY_ISO_TS
     printf '%s\n' $(( (now_ts - pub_ts) / 86400 ))
 }
 
+# U235: the production cooldown rule, extracted so the self-test can
+# exercise it directly. $1=latest stable age in days (may be empty when
+# undetermined), $2=raw ABOX_STABLE_COOLDOWN_DAYS value. Sets
+# CORE_COOLDOWN_DAYS_EFFECTIVE (invalid or 0 falls back to 7, per N-14)
+# and returns 0 when the cooldown is satisfied, 1 otherwise. An
+# undetermined age never satisfies the cooldown (fail-closed).
+core_cooldown_allows_age() {
+    local age="$1" raw="$2"
+    CORE_COOLDOWN_DAYS_EFFECTIVE=7
+    if [[ "$raw" =~ ^[0-9]{1,4}$ ]] && (( 10#$raw >= 1 && 10#$raw <= 3650 )); then
+        CORE_COOLDOWN_DAYS_EFFECTIVE="$raw"
+    fi
+    [[ "$age" =~ ^[0-9]+$ ]] && (( age >= 10#$CORE_COOLDOWN_DAYS_EFFECTIVE ))
+}
+
 resolve_core_release_target() {
     local repo="${1:-}" override='' latest='' latest_age='' target='' source='' resolved='' resolved_source='' default_ref=''
     case "$repo" in
@@ -13547,20 +13562,14 @@ resolve_core_release_target() {
                     target="$latest"; source='upstream'
                 else
                     latest_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
-                    # Validate cooldown is numeric to avoid set -u crash on bad input
-                    local cooldown_days="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
-                    # N-14 fix: 0 would silently disable the cooldown (latest_age >= 0
-                    # is always true). Require >= 1; invalid values fall back to 7.
-                    if [[ "$cooldown_days" =~ ^[0-9]{1,4}$ ]] && (( 10#$cooldown_days >= 1 && 10#$cooldown_days <= 3650 )); then
-                        :
-                    else
-                        [[ "$cooldown_days" == "0" ]] && msg "${YELLOW}[!] ABOX_STABLE_COOLDOWN_DAYS=0 is not allowed (would disable cooldown); using 7.${NC}" >&2
-                        cooldown_days=7
-                    fi
-                    if [[ "$latest_age" =~ ^[0-9]+$ ]] && (( latest_age >= 10#$cooldown_days )); then
+                    # U235: the rule lives in core_cooldown_allows_age
+                    # (effective-days fallback + age comparison); the
+                    # self-test exercises that helper directly.
+                    [[ "${ABOX_STABLE_COOLDOWN_DAYS:-7}" == "0" ]] && msg "${YELLOW}[!] ABOX_STABLE_COOLDOWN_DAYS=0 is not allowed (would disable cooldown); using 7.${NC}" >&2
+                    if core_cooldown_allows_age "$latest_age" "${ABOX_STABLE_COOLDOWN_DAYS:-7}"; then
                         target="$latest"; source='upstream'
                     else
-                        msg "${YELLOW}[!] $repo latest stable $latest is still in cooldown (${latest_age:-unknown} days < ${cooldown_days}); keeping pin $default_ref.${NC}" >&2
+                        msg "${YELLOW}[!] $repo latest stable $latest is still in cooldown (${latest_age:-unknown} days < ${CORE_COOLDOWN_DAYS_EFFECTIVE}); keeping pin $default_ref.${NC}" >&2
                         target="$default_ref"; source='pinned'
                     fi
                 fi
@@ -35206,6 +35215,13 @@ manual_stop_managed_stack() {
     pre_state="$tx_dir/pre.state"; changed_pre="$tx_dir/changed-pre.state"; changed_expected="$tx_dir/changed-expected.state"
     capture_managed_service_state "$pre_state" || { rm -rf -- "$tx_dir"; die '无法保存服务运行/启用状态快照。'; }
     : > "$changed_pre"; : > "$changed_expected"
+    # U232: a signal mid-transaction must roll the service changes
+    # back, not just clean the runtime lock. These replace
+    # acquire_runtime_lock's signal traps for the transaction window;
+    # they are restored after commit below.
+    trap '__abox_service_tx_rollback "$changed_pre" "$changed_expected" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 129' HUP
+    trap '__abox_service_tx_rollback "$changed_pre" "$changed_expected" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 130' INT
+    trap '__abox_service_tx_rollback "$changed_pre" "$changed_expected" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 143' TERM
 
     while IFS= read -r srv; do
         [[ -n "$srv" ]] || continue
@@ -35233,6 +35249,10 @@ manual_stop_managed_stack() {
         if ! __abox_service_tx_rollback "$changed_pre" "$changed_expected"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
         die '服务状态提交失败；已尝试恢复原运行/启用状态。'
     }
+    # U232: transaction committed; restore the lock traps exactly.
+    trap 'runtime_lock_cleanup; exit 129' HUP
+    trap 'runtime_lock_cleanup; exit 130' INT
+    trap 'runtime_lock_cleanup; exit 143' TERM
     rm -rf -- "$tx_dir" || die '服务状态事务清理失败；服务已按预期停止，但未能清理事务材料。'
     printf 'A-Box managed stack stopped; Intent=MANUAL_STOPPED\n'
 }
@@ -35251,6 +35271,13 @@ manual_start_managed_stack() {
     local pre_state="$tx_dir/pre.state" changed_pre="$tx_dir/changed-pre.state" changed_expected="$tx_dir/changed-expected.state"
     capture_managed_service_state "$pre_state" || { rm -rf -- "$tx_dir"; die '无法保存服务运行/启用状态快照。'; }
     : > "$changed_pre"; : > "$changed_expected"
+    # U232: a signal mid-transaction must roll the service changes
+    # back, not just clean the runtime lock. These replace
+    # acquire_runtime_lock's signal traps for the transaction window;
+    # they are restored after commit below.
+    trap '__abox_service_tx_rollback "$changed_pre" "$changed_expected" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 129' HUP
+    trap '__abox_service_tx_rollback "$changed_pre" "$changed_expected" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 130' INT
+    trap '__abox_service_tx_rollback "$changed_pre" "$changed_expected" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 143' TERM
 
     while IFS= read -r srv; do
         [[ -n "$srv" ]] || continue
@@ -35285,6 +35312,10 @@ manual_start_managed_stack() {
         if ! __abox_service_tx_rollback "$changed_pre" "$changed_expected"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
         die '至少一个托管服务启动/启用或状态提交失败；已尝试回滚本次操作。'
     fi
+    # U232: transaction committed; restore the lock traps exactly.
+    trap 'runtime_lock_cleanup; exit 129' HUP
+    trap 'runtime_lock_cleanup; exit 130' INT
+    trap 'runtime_lock_cleanup; exit 143' TERM
     rm -rf -- "$tx_dir" || die '服务状态事务清理失败；服务已按预期启动，但未能清理事务材料。'
     printf 'A-Box managed stack started; Intent=RUNNING\n'
 }
@@ -35485,12 +35516,12 @@ PY_SELFTEST_TAR
         msg() { :; }
         printf '%s\n' $'00001000\texample.org\tapp=0.04s\tttfb=0.1s\ttotal=0.11s\thttp=2\tcode=200\tip=1.1.1.1' > "$tmp/sni-stage1-valid.tsv"
         sni_verify_raw_report "$tmp/sni-stage1-valid.tsv" "$tmp/sni-stage2-valid.tsv" 1 2 >/dev/null 2>&1
-        [[ "$(cat "$tmp/sni-openssl-ip-capture")" == '1.1.1.1' ]]
-        grep -Fq 'tls13=1' "$tmp/sni-stage2-valid.tsv"
-        printf '%s\n' $'00001000\texample.org\tapp=0.04s\tttfb=0.1s\ttotal=0.11s\thttp=2\tcode=200\tip=127.0.0.1' > "$tmp/sni-stage1-private.tsv"
-        rm -f -- "$tmp/sni-openssl-ip-capture"
-        sni_verify_raw_report "$tmp/sni-stage1-private.tsv" "$tmp/sni-stage2-private.tsv" 1 2 >/dev/null 2>&1
-        [[ ! -e "$tmp/sni-openssl-ip-capture" ]]
+        [[ "$(cat "$tmp/sni-openssl-ip-capture")" == '1.1.1.1' ]] &&
+        grep -Fq 'tls13=1' "$tmp/sni-stage2-valid.tsv" &&
+        printf '%s\n' $'00001000\texample.org\tapp=0.04s\tttfb=0.1s\ttotal=0.11s\thttp=2\tcode=200\tip=127.0.0.1' > "$tmp/sni-stage1-private.tsv" &&
+        rm -f -- "$tmp/sni-openssl-ip-capture" &&
+        sni_verify_raw_report "$tmp/sni-stage1-private.tsv" "$tmp/sni-stage2-private.tsv" 1 2 >/dev/null 2>&1 &&
+        [[ ! -e "$tmp/sni-openssl-ip-capture" ]] &&
         grep -Fq 'tls13=0' "$tmp/sni-stage2-private.tsv"
     ); then echo 'FAIL: SNI stage-2 must pin to validated IP and reject non-public IP'; failures=$((failures + 1)); fi
     assert_ok valid_url_https https://example.com/path
@@ -35501,11 +35532,14 @@ PY_SELFTEST_TAR
     [[ "$(normalize_https_url_input https://www.microsoft.com)" == 'https://www.microsoft.com/' ]] || { echo 'FAIL: normalize HTTPS URL trailing slash'; failures=$((failures + 1)); }
     [[ "$(build_ss2022_uri 203.0.113.10 2053 'abc+/=')" == 'ss://2022-blake3-aes-128-gcm:abc%2B%2F%3D@203.0.113.10:2053#SS' ]] || { echo 'FAIL: SS-2022 SIP002/SIP022 URI percent encoding'; failures=$((failures + 1)); }
     # i18n parity guard: every tr_msg key needs all six language arms.
-    local _i18n_key _i18n_n
+    # U234: an empty enumeration must fail, not silently pass.
+    local _i18n_key _i18n_n _i18n_keys
+    _i18n_keys=$(grep -oE '^        (zh|en|ru|fa|zh-tw|ja):[a-z0-9_]+\)' "$0" | sed 's/^.*://; s/)$//' | sort -u)
+    [[ -n "$_i18n_keys" ]] || { echo 'FAIL: i18n key enumeration empty'; failures=$((failures + 1)); }
     while read -r _i18n_key; do
         _i18n_n=$(grep -cE "^        (zh|en|ru|fa|zh-tw|ja):${_i18n_key}\\)" "$0")
         [[ "$_i18n_n" == '6' ]] || { echo "FAIL: i18n key ${_i18n_key} has ${_i18n_n}/6 language arms"; failures=$((failures + 1)); }
-    done < <(grep -oE '^        (zh|en|ru|fa|zh-tw|ja):[a-z0-9_]+\\)' "$0" | sed 's/^.*://; s/)$//' | sort -u)
+    done <<< "$_i18n_keys"
 
     selftest_script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P) || selftest_script_dir=''
     if [[ -n "${ABOX_SNI_CANDIDATE_SOURCE_OVERRIDE:-}" && -f "$ABOX_SNI_CANDIDATE_SOURCE_OVERRIDE" && ! -L "$ABOX_SNI_CANDIDATE_SOURCE_OVERRIDE" ]]; then
@@ -35740,9 +35774,15 @@ PY_SELFTEST_TAR
     ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
       [[ "$(core_update_policy HyNetworks/hysteria)" == 'auto-stable' ]] ) || { echo 'FAIL: Hysteria update policy must default to auto-stable'; failures=$((failures + 1)); }
     ( ABOX_XRAY_UPDATE_POLICY='auto-stable'; [[ "$(core_update_policy XTLS/Xray-core)" == 'auto-stable' ]] ) || { echo 'FAIL: Xray policy override not honored'; failures=$((failures + 1)); }
-    ( unset ABOX_STABLE_COOLDOWN_DAYS
-      [[ "${ABOX_STABLE_COOLDOWN_DAYS:-7}" == '7' ]] ) || { echo 'FAIL: stable cooldown must default to 7 days'; failures=$((failures + 1)); }
-    ( ABOX_STABLE_COOLDOWN_DAYS='14'; [[ "${ABOX_STABLE_COOLDOWN_DAYS}" == '14' ]] ) || { echo 'FAIL: cooldown override not honored'; failures=$((failures + 1)); }
+    # U235: exercise the production cooldown helper, not shell expansions.
+    assert_ok core_cooldown_allows_age 10 7
+    assert_bad core_cooldown_allows_age 3 7
+    assert_ok core_cooldown_allows_age 14 14
+    assert_bad core_cooldown_allows_age 6 14
+    assert_ok core_cooldown_allows_age 7 0
+    assert_bad core_cooldown_allows_age 6 0
+    assert_bad core_cooldown_allows_age '' 7
+    assert_ok core_cooldown_allows_age 7 'not-a-number'
 
     (
         [[ "$ABOX_BUILD" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[A-Za-z0-9][A-Za-z0-9-]*-v[0-9]+$ ]] || exit 1
@@ -37253,7 +37293,10 @@ main_loop() {
         local _ml_now=0
         _ml_now=$(date +%s 2>/dev/null || printf '0')
         [[ "$_ml_now" =~ ^[0-9]+$ ]] || _ml_now=0
-        if [[ -z "${_ABOX_STATUS_CACHE:-}" ]] || (( _ml_now - ${_ABOX_STATUS_TS:-0} >= 5 )); then
+        # U237: a backwards clock jump makes the age negative (< 5),
+        # so the stale cache would be reused until the old timestamp
+        # plus five seconds; a negative age forces a rebuild instead.
+        if [[ -z "${_ABOX_STATUS_CACHE:-}" ]] || (( _ml_now - ${_ABOX_STATUS_TS:-0} >= 5 )) || (( _ml_now < ${_ABOX_STATUS_TS:-0} )); then
             STATUS_STR=$(build_status_str)
             _ABOX_STATUS_CACHE="$STATUS_STR"; _ABOX_STATUS_TS=$_ml_now
         else

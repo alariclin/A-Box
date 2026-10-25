@@ -22575,10 +22575,12 @@ users_export_all() {
     if (( count == 0 )); then rm -f -- "$tmp"; return 1; fi
     install_file_atomically "$tmp" "$dir/uri-list.txt" 600 || { rm -f -- "$tmp"; return 1; }
     rm -f -- "$tmp"
-    if command -v base64 >/dev/null 2>&1; then
-        ( base64 -w0 < "$dir/uri-list.txt" 2>/dev/null || base64 < "$dir/uri-list.txt" | tr -d '\n' ) \
-            | write_file_atomically_from_stdin "$dir/subscription.base64" 600 || true
-    fi
+    if ! command -v base64 >/dev/null 2>&1; then return 1; fi
+    local btmp=''
+    btmp=$(umask 077; mktemp "$dir/.sub-b64.XXXXXX") || return 1
+    if ! ( base64 -w0 < "$dir/uri-list.txt" > "$btmp" 2>/dev/null || base64 < "$dir/uri-list.txt" | tr -d '\n' > "$btmp" 2>/dev/null ) || [[ ! -s "$btmp" ]]; then rm -f -- "$btmp"; return 1; fi
+    install_file_atomically "$btmp" "$dir/subscription.base64" 600 || { rm -f -- "$btmp"; return 1; }
+    rm -f -- "$btmp"
     printf '%s' "$count"
     return 0
 }
@@ -22757,10 +22759,11 @@ users_inbound_menu() {
                 local days=''
                 read -r -p "$(tr_msg mu_days_prompt)" days || continue
                 [[ "$days" =~ ^[0-9]+$ ]] || { msg "${RED}$(tr_msg mu_int_err)${NC}"; pause_return; continue; }
+                days=$((10#$days))
                 local expat=0
                 (( days > 0 )) && expat=$((now + days * 86400))
                 new=$(printf '%s' "$old" | jq -c --arg n "$nm" --argjson e "$expat" '
-                    .users |= map(if .name == $n then .expire_at = $e | (if .blocked == "expired" and $e > 0 then .blocked = "" else . end) else . end)') || continue
+                    .users |= map(if .name == $n then .expire_at = $e | (if .blocked == "expired" then .blocked = "" else . end) else . end)') || continue
                 if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_expiry_set): ${nm}${NC}"; else msg "${RED}$(tr_msg mu_set_fail)${NC}"; fi
                 pause_return ;;
             5)
@@ -22795,7 +22798,7 @@ users_inbound_menu() {
                 if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_toggled): ${nm}${NC}"; else msg "${RED}$(tr_msg mu_op_fail)${NC}"; fi
                 pause_return ;;
             9)
-                is_yes "$(tr_msg mu_reimport_confirm) [Y/N]: " || { msg "$(tr_msg mu_cancelled)"; pause_return; continue; }
+                confirm_yes_no "$(tr_msg mu_reimport_confirm) [Y/N]: " || { msg "$(tr_msg mu_cancelled)"; pause_return; continue; }
                 if users_adopt "$core" "$tag" && users_sync "$core" "$tag"; then msg "${GREEN}$(tr_msg mu_reimported)${NC}"; else msg "${RED}$(tr_msg mu_import_fail)${NC}"; fi
                 pause_return ;;
             0) return 0 ;;
@@ -23011,15 +23014,19 @@ users_guard_eval() {
     if [[ "$core" == 'sing-box' || "$core" == 'hy2' ]]; then
         [[ -n "$new_blocked" || "$unblocked" != '0' ]] && need_sync=1
     else
-        # Xray family: hot-remove each newly blocked user; sync only
-        # when a hot removal fails or someone was unblocked.
+        # Xray family: hot-remove each newly blocked user, then sync
+        # anyway: rmu removes the user from the config but does not
+        # kill already-established connections, and only the sync's
+        # commit restart ends them. Skipping sync on success left
+        # live connections able to outlast expiry/quota/window blocks.
         if [[ -n "$new_blocked" ]]; then
             local nm='' em=''
             while IFS= read -r nm; do
                 [[ -n "$nm" ]] || continue
                 em=$(jq -r --arg n "$nm" '.users[] | select(.name == $n) | .email // ""' "$reg" 2>/dev/null)
-                users_hot_remove "$core" "$tag" "$em" || need_sync=1
+                users_hot_remove "$core" "$tag" "$em" || true
             done <<< "$new_blocked"
+            need_sync=1
         fi
         [[ "$unblocked" != '0' ]] && need_sync=1
     fi

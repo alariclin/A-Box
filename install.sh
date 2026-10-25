@@ -23963,6 +23963,13 @@ restore_dns_snapshot_body() {
     else
         rm -f /etc/systemd/resolved.conf.d/99-abox-dns.conf 2>/dev/null || true
     fi
+    if [[ -d "$dir/resolved-cleanup" ]]; then
+        local _cf=''
+        for _cf in "$dir"/resolved-cleanup/*.conf; do
+            [[ -f "$_cf" ]] || continue
+            cp -a "$_cf" "/etc/systemd/resolved.conf.d/$(basename "$_cf")" || return 1
+        done
+    fi
     dnscrypt_state=$(tr -d '[:space:]' < "$dir/dnscrypt-config-state" 2>/dev/null || true)
     if [[ "$dnscrypt_state" == present && -f "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" ]]; then
         install -d -m 755 /etc/dnscrypt-proxy || return 1
@@ -24025,7 +24032,9 @@ dns_snapshot_recover_pending_swap() {
         # snapshot is unrecoverable (e.g. kill -9 during staging write, old
         # renamed aside, staging cleaned externally). Preserve the pending
         # record for forensics and report loudly; do NOT silently discard it.
-        # Callers use `|| true`, so stderr is the visible signal.
+        # Callers must NOT swallow this: restore/install_new propagate
+        # the failure, so the FATAL stays visible and no new swap record
+        # can overwrite this pending record.
         printf '%s\n' "[A-Box][FATAL] DNS snapshot total loss: no COMPLETE snapshot in $DNS_BACKUP_DIR, $old_path, or $new_path. Pre-existing DNS rollback data is unrecoverable. Pending record preserved at $pending for forensics." >&2
         return 1
     fi
@@ -24048,7 +24057,7 @@ dns_snapshot_install_new() {
     local old_backup=""
     [[ -d "$staging" && -f "$staging/COMPLETE" ]] || return 1
     # Recover any interrupted previous swap first.
-    dns_snapshot_recover_pending_swap
+    dns_snapshot_recover_pending_swap || return 1
     # Idempotency: baseline already exists, preserve it.
     if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then
         rm -rf -- "$staging"
@@ -24076,7 +24085,7 @@ dns_snapshot_install_new() {
 
 restore_dns_snapshot() {
     # Recover from any interrupted swap before attempting restore.
-    dns_snapshot_recover_pending_swap 2>/dev/null || true
+    dns_snapshot_recover_pending_swap || return 1
     local dir="$1" immutable_state='0' rc=0
     [[ -f "$dir/COMPLETE" ]] || return 1
     immutable_state=$(tr -d '[:space:]' < "$dir/resolv-immutable" 2>/dev/null || printf '0')
@@ -24120,8 +24129,71 @@ nm_dns_verify_applied() {
     return 0
 }
 
+# Strip pre-existing global DNS sources (main resolved.conf + every
+# drop-in except our own 99-abox-dns.conf) so a new DNS= set REPLACES
+# rather than accumulates: systemd-resolved collects DNS= across all
+# files. Main resolved.conf is covered by the snapshot; other drop-ins
+# are backed up under $DNS_BACKUP_DIR/resolved-cleanup/ and restored by
+# restore_dns_snapshot_body. A symlinked DNS-bearing file is refused:
+# editing through a symlink would rewrite an unknown target.
+resolved_strip_global_dns_sources() {
+    local f='' tmp='' base=''
+    local -a files=()
+    if [[ -f /etc/systemd/resolved.conf ]]; then
+        if [[ -L /etc/systemd/resolved.conf ]]; then
+            grep -qiE '^[[:space:]]*(DNS|FallbackDNS)[[:space:]]*=' /etc/systemd/resolved.conf 2>/dev/null && return 1
+        else
+            files+=(/etc/systemd/resolved.conf)
+        fi
+    fi
+    for f in /etc/systemd/resolved.conf.d/*.conf; do
+        [[ -f "$f" ]] || continue
+        [[ "$f" == /etc/systemd/resolved.conf.d/99-abox-dns.conf ]] && continue
+        if [[ -L "$f" ]]; then
+            grep -qiE '^[[:space:]]*(DNS|FallbackDNS)[[:space:]]*=' "$f" 2>/dev/null && return 1
+            continue
+        fi
+        files+=("$f")
+    done
+    for f in "${files[@]}"; do
+        grep -qiE '^[[:space:]]*(DNS|FallbackDNS)[[:space:]]*=' "$f" 2>/dev/null || continue
+        if [[ "$f" != /etc/systemd/resolved.conf ]]; then
+            base=$(basename "$f")
+            mkdir -p "$DNS_BACKUP_DIR/resolved-cleanup" 2>/dev/null || return 1
+            [[ -f "$DNS_BACKUP_DIR/resolved-cleanup/$base" ]] || cp -a "$f" "$DNS_BACKUP_DIR/resolved-cleanup/$base" 2>/dev/null || return 1
+        fi
+        tmp=$(mktemp /tmp/A-Box-resolved-strip.XXXXXX 2>/dev/null || true)
+        [[ -n "$tmp" ]] || return 1
+        if ! awk '{ line = $0; k = line; sub(/^[ \t]+/, "", k); lk = tolower(k); if (lk ~ /^(dns|fallbackdns)[ \t]*=/) next; print line }' "$f" > "$tmp" 2>/dev/null; then rm -f "$tmp"; return 1; fi
+        cat "$tmp" > "$f" 2>/dev/null || { rm -f "$tmp"; return 1; }
+        rm -f "$tmp"
+    done
+    return 0
+}
+
+# Check the global server set reported by resolvectl equals exactly the
+# expected space-separated list. '#...' (DoT SNI) and ':port' (IPv4)
+# suffixes are ignored on both sides. resolvectl missing => no check
+# possible, treated as pass: the strip above is the actual fix, this is
+# defense in depth.
+resolved_global_dns_check() {
+    local expected="$1" line='' tok='' got=''
+    local -a exp=() gottok=() norm_exp=() norm_got=()
+    command -v resolvectl >/dev/null 2>&1 || return 0
+    line=$(resolvectl dns 2>/dev/null | awk '/^Global:/ {print; exit}' || true)
+    [[ -n "$line" ]] || return 1
+    line="${line#Global:}"
+    IFS=$' \t\n' read -ra exp <<< "$expected" || true
+    IFS=$' \t\n' read -ra gottok <<< "$line" || true
+    for tok in "${exp[@]}"; do tok="${tok%%#*}"; case "$tok" in *.*:*) tok="${tok%:*}";; esac; norm_exp+=("$tok"); done
+    for tok in "${gottok[@]}"; do tok="${tok%%#*}"; case "$tok" in *.*:*) tok="${tok%:*}";; esac; norm_got+=("$tok"); done
+    [[ "$(printf '%s\n' "${norm_exp[@]}" | sort -u | tr '\n' ' ')" == "$(printf '%s\n' "${norm_got[@]}" | sort -u | tr '\n' ' ')" ]]
+}
+
 apply_host_dns() {
     local mode="$1" v4="$2" v6="$3" tls_name="${4:-}" backend dropin answer confirm_prompt immutable_prompt dot_error dns_servers immutable_before=0 resolved_major=''
+    local _ns='' _tok=''
+    local -a _ns_list=()
     case "${ABOX_LANG:-zh}" in
         en) confirm_prompt='Apply this host DNS change? A rollback snapshot is kept. [Y/N]: '; immutable_prompt='/etc/resolv.conf has the immutable flag. Remove it and continue? [Y/N]: '; dot_error='The active DNS backend does not support DoT; DNS was not changed.' ;;
         ru) confirm_prompt='Применить DNS для системы? Снимок для отката будет сохранён. [Y/N]: '; immutable_prompt='/etc/resolv.conf имеет immutable-флаг. Снять флаг и продолжить? [Y/N]: '; dot_error='Текущий DNS backend не поддерживает DoT; DNS не изменён.' ;;
@@ -24163,8 +24235,9 @@ apply_host_dns() {
             esac
             return 1
         fi
-        dns_servers="${v4}#${tls_name}"
-        [[ -z "$v6" ]] || dns_servers+=" ${v6}#${tls_name}"
+        dns_servers=''
+        IFS=$' \t\n' read -ra _ns_list <<< "$v4 $v6" || true
+        for _tok in "${_ns_list[@]}"; do dns_servers+="${dns_servers:+ }${_tok}#${tls_name}"; done
     else
         dns_servers="$v4${v6:+ $v6}"
     fi
@@ -24196,6 +24269,7 @@ apply_host_dns() {
     case "$backend" in
         resolved)
             mkdir -p /etc/systemd/resolved.conf.d || die "$(tr_msg hd_resolved_dir)"
+            resolved_strip_global_dns_sources || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die '清除既有全局 DNS 来源失败，未修改 DNS。'; }
             dropin=/etc/systemd/resolved.conf.d/99-abox-dns.conf
             if [[ "$mode" == 'dot' ]]; then
                 write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'DoT drop-in 写入失败。'; }
@@ -24213,6 +24287,7 @@ DNSOverTLS=no
 EOF_DNS
             fi
             systemctl restart systemd-resolved >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "systemd-resolved restart failed; rollback was attempted."; }
+            resolved_global_dns_check "$v4${v6:+ $v6}" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die '应用后全局 DNS 集合与预期不符，已回滚。'; }
             ;;
         networkmanager)
             local iface connection
@@ -24232,8 +24307,8 @@ EOF_DNS
             # "nameserver 2001:db8::53options timeout:2 attempts:3".
             {
                 printf '# Managed by A-Box host DNS helper\n'
-                [[ -n "$v4" ]] && printf 'nameserver %s\n' "$v4"
-                [[ -n "$v6" ]] && printf 'nameserver %s\n' "$v6"
+                if [[ -n "$v4" ]]; then IFS=$' \t\n' read -ra _ns_list <<< "$v4" || true; for _ns in "${_ns_list[@]}"; do printf 'nameserver %s\n' "$_ns"; done; fi
+                if [[ -n "$v6" ]]; then IFS=$' \t\n' read -ra _ns_list <<< "$v6" || true; for _ns in "${_ns_list[@]}"; do printf 'nameserver %s\n' "$_ns"; done; fi
                 printf 'options timeout:2 attempts:3\n'
             } > "$DNS_BACKUP_DIR/resolv.conf.new" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_resolv_gen)"; }
             write_file_atomically_from_stdin /etc/resolv.conf 644 < "$DNS_BACKUP_DIR/resolv.conf.new" || { rm -f "$DNS_BACKUP_DIR/resolv.conf.new"; restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_resolv_write)"; }
@@ -24736,17 +24811,73 @@ server = sys.argv[3] if len(sys.argv) > 3 else 'cloudflare'
 with open(source, encoding='utf-8') as handle: text = handle.read()
 def set_option(name, value):
     global text
-    pattern = re.compile(r'(?m)^\s*(?:#\s*)?' + re.escape(name) + r'\s*=.*$')
-    found = list(pattern.finditer(text))
-    line = name + ' = ' + value
-    if found:
-        first = found[0]
-        text = text[:first.start()] + line + text[first.end():]
-        offset = first.start() + len(line)
-        remaining = pattern.sub('', text[offset:])
-        text = text[:offset] + remaining
-    else:
-        text += '\n' + line + '\n'
+    lines = text.splitlines(keepends=True)
+    # Top-level region ends at the first table header; options under a
+    # [table] are never touched (an option set there would not apply
+    # globally, and a commented example must not be uncommented).
+    top_end = len(lines)
+    for idx, raw in enumerate(lines):
+        if raw.lstrip().startswith('['):
+            top_end = idx
+            break
+
+    def is_assignment(raw):
+        stripped = raw.lstrip()
+        if stripped.startswith('#'):
+            return False
+        return re.match(re.escape(name) + r'\s*=', stripped) is not None
+
+    out = []
+    replaced = False
+    idx = 0
+    while idx < top_end:
+        raw = lines[idx]
+        if is_assignment(raw):
+            if not replaced:
+                out.append(name + ' = ' + value + '\n')
+                replaced = True
+            # Consume the whole value span: a multiline array keeps its
+            # continuation lines, which the old single-line regex left
+            # behind as broken TOML.
+            depth = 0
+            j = idx
+            while True:
+                segment = lines[j]
+                k = 0
+                in_s = in_d = False
+                while k < len(segment):
+                    ch = segment[k]
+                    if ch == '#' and not in_s and not in_d:
+                        break
+                    if ch == "'" and not in_d:
+                        in_s = not in_s
+                    elif ch == '"' and not in_s:
+                        in_d = not in_d
+                    elif not in_s and not in_d:
+                        if ch == '[':
+                            depth += 1
+                        elif ch == ']':
+                            depth -= 1
+                    k += 1
+                j += 1
+                if depth <= 0 or j >= top_end:
+                    break
+            idx = j
+            continue
+        out.append(raw)
+        idx += 1
+    out.extend(lines[top_end:])
+    text = ''.join(out)
+    if not replaced:
+        # Insert before the first table header: appending at end of file
+        # would land a top-level option inside the last [table].
+        if top_end < len(lines):
+            text = ''.join(lines[:top_end]) + name + ' = ' + value + '\n' + ''.join(lines[top_end:])
+        else:
+            if text and not text.endswith('\n'):
+                text += '\n'
+            text += name + ' = ' + value + '\n'
+
 set_option('server_names', "['%s']" % server)
 set_option('listen_addresses', "['127.0.0.1:5353']")
 set_option('dnscrypt_servers', 'false')
@@ -24779,6 +24910,7 @@ PY_DOH_CONFIG
         msg "${RED}$(tr_msg dh_test_resolve)${NC}"
         return 1
     fi
+    resolved_strip_global_dns_sources || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
     write_file_atomically_from_stdin /etc/systemd/resolved.conf.d/99-abox-dns.conf 644 <<'EOF_DOH' || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
 [Resolve]
 DNS=127.0.0.1:5353
@@ -24787,6 +24919,7 @@ Domains=~.
 DNSOverTLS=no
 EOF_DOH
     systemctl restart systemd-resolved >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
+    resolved_global_dns_check '127.0.0.1:5353' || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
     if resolvectl query example.com >/dev/null 2>&1; then
         if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< 'backend=resolved;mode=doh;proxy=dnscrypt-proxy'; then
             if restore_dns_snapshot "$DNS_BACKUP_DIR"; then
@@ -24823,44 +24956,79 @@ _dns_provider_list() {
 }
 
 # Get current DNS from resolv.conf or state file
+# Validate a whitespace-separated address group token by token and print
+# the valid tokens space-joined (empty if none). Groups must survive
+# intact: earlier code deleted spaces, fusing "1.1.1.1 8.8.8.8" into
+# "1.1.1.18.8.8.8" and then dropping the whole group.
+_dns_valid_v4_group() {
+    local -a parts=()
+    local tok='' out=''
+    IFS=$' \t\n' read -ra parts <<< "$1" || true
+    for tok in "${parts[@]}"; do
+        if [[ "$tok" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then out+="${out:+ }$tok"; fi
+    done
+    printf '%s' "$out"
+}
+
+_dns_valid_v6_group() {
+    local -a parts=()
+    local tok='' out=''
+    IFS=$' \t\n' read -ra parts <<< "$1" || true
+    for tok in "${parts[@]}"; do
+        tok="${tok%%%*}"
+        if [[ "$tok" == *:* && "$tok" =~ ^[0-9a-fA-F:]+$ ]]; then out+="${out:+ }$tok"; fi
+    done
+    printf '%s' "$out"
+}
+
 _dns_current_v4() {
-    local cur=''
+    local cur='' out=''
     if [[ -f "$DNS_STATE_FILE" ]]; then
-        cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*v4=/){sub(/^[ \t]*v4=/, "", $i); gsub(/["'"'"'\r\t ]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
+        cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*v4=/){sub(/^[ \t]*v4=/, "", $i); gsub(/["'"'"'\r\t]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
+        out=$(_dns_valid_v4_group "$cur")
+        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
-    if [[ -z "$cur" && -f "$ABOX_ENV" ]]; then
-        cur=$(awk -F= '/^DNS_V4=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t ]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
+    if [[ -f "$ABOX_ENV" ]]; then
+        cur=$(awk -F= '/^DNS_V4=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
+        out=$(_dns_valid_v4_group "$cur")
+        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
-    if [[ -z "$cur" && -r /etc/resolv.conf ]]; then
-        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\./ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
+    if [[ -r /etc/resolv.conf ]]; then
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\./ {print $2}' /etc/resolv.conf 2>/dev/null || true)
+        out=$(_dns_valid_v4_group "$cur")
+        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
-    # systemd-resolved fallback: /etc/resolv.conf 只有 127.0.0.53 stub 时查上游
-    if [[ -z "$cur" && -r /run/systemd/resolve/resolv.conf ]]; then
-        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\./ {print $2; exit}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
+    if [[ -r /run/systemd/resolve/resolv.conf ]]; then
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\./ {print $2}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
+        out=$(_dns_valid_v4_group "$cur")
+        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
-    if [[ "$cur" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-        printf '%s' "$cur"
-    fi
+    return 0
 }
 
 _dns_current_v6() {
-    local cur=''
+    local cur='' out=''
     if [[ -f "$DNS_STATE_FILE" ]]; then
-        cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*v6=/){sub(/^[ \t]*v6=/, "", $i); gsub(/["'"'"'\r\t ]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
+        cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*v6=/){sub(/^[ \t]*v6=/, "", $i); gsub(/["'"'"'\r\t]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
+        out=$(_dns_valid_v6_group "$cur")
+        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
-    if [[ -z "$cur" && -f "$ABOX_ENV" ]]; then
-        cur=$(awk -F= '/^DNS_V6=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t ]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
+    if [[ -f "$ABOX_ENV" ]]; then
+        cur=$(awk -F= '/^DNS_V6=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
+        out=$(_dns_valid_v6_group "$cur")
+        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
-    if [[ -z "$cur" && -r /etc/resolv.conf ]]; then
-        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 !~ /\\./ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
+    if [[ -r /etc/resolv.conf ]]; then
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 !~ /\./ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2}' /etc/resolv.conf 2>/dev/null || true)
+        out=$(_dns_valid_v6_group "$cur")
+        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
-    if [[ -z "$cur" && -r /run/systemd/resolve/resolv.conf ]]; then
-        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 !~ /\\./ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2; exit}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
+    if [[ -r /run/systemd/resolve/resolv.conf ]]; then
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 !~ /\./ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
+        out=$(_dns_valid_v6_group "$cur")
+        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
-    cur="${cur%%%*}"
-    if [[ "$cur" == *:* && "$cur" =~ ^[0-9a-fA-F:]+$ ]]; then
-        printf '%s' "$cur"
-    fi
+    return 0
 }
 
 # Tri-mode DNS setup wizard: v4-only / v6-only / dual-stack
@@ -25213,12 +25381,16 @@ try:
 except (OSError, ValueError):
     raise SystemExit(1)
 
+def _walk_fail(err):
+    raise SystemExit(1)
+
+
 entries = []
 for top_name in ("root", "meta"):
     top = base / top_name
     if not top.is_dir() or top.is_symlink():
         raise SystemExit(1)
-    for current, dirs, files in os.walk(top, topdown=True, followlinks=False):
+    for current, dirs, files in os.walk(top, topdown=True, followlinks=False, onerror=_walk_fail):
         current_path = Path(current)
         for name in list(dirs):
             candidate = current_path / name
@@ -25384,7 +25556,7 @@ sni_store_candidate_cache() {
 sni_load_candidate_seed() {
     local output="${1:-}" override="${ABOX_SNI_CANDIDATE_SOURCE_OVERRIDE:-}"
     local url="${ABOX_SNI_CANDIDATE_URL:-$ABOX_SNI_CANDIDATE_URL_DEFAULT}"
-    local downloaded normalized cache local_seed script_dir download_ok=0
+    local downloaded normalized cache local_seed script_dir download_ok=0 _curl_rc=0
     [[ -n "$output" && -f "$output" && ! -L "$output" ]] || return 1
     downloaded=$(umask 077; mktemp /tmp/A-Box-sni-download.XXXXXX) || return 1
     normalized=$(umask 077; mktemp /tmp/A-Box-sni-normalized.XXXXXX) || { rm -f -- "$downloaded"; return 1; }
@@ -25402,10 +25574,18 @@ sni_load_candidate_seed() {
 
     # This endpoint is data-only. Never execute downloaded content; accept HTTPS only.
     if [[ "$url" == https://* && "$url" != *$'\n'* && "$url" != *$'\r'* ]]; then
-        # curl supports the byte ceiling needed here. Do not fall back to wget:
-        # wget has no portable hard output-size cap and would defeat this guard.
-        if command -v curl >/dev/null 2>&1 && curl -fLsS --connect-timeout 8 --max-time 35 --max-filesize "$ABOX_SNI_CANDIDATE_MAX_BYTES" "$url" -o "$downloaded" 2>/dev/null; then
-            download_ok=1
+        # --proto-redir pins redirects to HTTPS. The head -c cap truncates
+        # in flight, so an unknown-length response cannot fill the disk even
+        # on curl versions whose --max-filesize only bites once the size is
+        # known (a version gate would disable downloads on every distro
+        # shipping curl < 8.4). Do not fall back to wget: it has no portable
+        # hard output-size cap and would defeat this guard.
+        if command -v curl >/dev/null 2>&1; then
+            curl -fLsS --proto-redir =https --connect-timeout 8 --max-time 35 --max-filesize "$ABOX_SNI_CANDIDATE_MAX_BYTES" "$url" 2>/dev/null | head -c $((ABOX_SNI_CANDIDATE_MAX_BYTES + 1)) > "$downloaded" 2>/dev/null
+            _curl_rc=${PIPESTATUS[0]}
+            if (( _curl_rc == 0 )) && [[ -f "$downloaded" ]] && (( $(wc -c < "$downloaded" 2>/dev/null || echo 0) <= ABOX_SNI_CANDIDATE_MAX_BYTES )); then
+                download_ok=1
+            fi
         fi
     fi
     if (( download_ok == 1 )) && sni_normalize_candidate_file "$downloaded" "$normalized"; then

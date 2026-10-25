@@ -2719,6 +2719,72 @@ tr_msg() {
         fa:bk_legacy_out) echo 'پوشه خروجی (پیش‌فرض: همان پوشه): ' ;;
         zh-tw:bk_legacy_out) echo '輸出目錄（預設：同目錄）：' ;;
         ja:bk_legacy_out) echo '出力ディレクトリ（既定値: 同じディレクトリ）: ' ;;
+        zh:wl_caddy_arch) echo 'Caddy 不支持当前架构：%s' ;;
+        en:wl_caddy_arch) echo 'Caddy does not support the current architecture: %s' ;;
+        ru:wl_caddy_arch) echo 'Caddy не поддерживает текущую архитектуру: %s' ;;
+        fa:wl_caddy_arch) echo 'Caddy از معماری فعلی پشتیبانی نمی‌کند: %s' ;;
+        zh-tw:wl_caddy_arch) echo 'Caddy 不支援目前架構：%s' ;;
+        ja:wl_caddy_arch) echo 'Caddy は現在の アーキテクチャに対応していません: %s' ;;
+        zh:wl_caddy_download) echo 'Caddy 下载失败。' ;;
+        en:wl_caddy_download) echo 'Caddy download failed.' ;;
+        ru:wl_caddy_download) echo 'Не удалось скачать Caddy.' ;;
+        fa:wl_caddy_download) echo 'دانلود Caddy ناموفق بود.' ;;
+        zh-tw:wl_caddy_download) echo 'Caddy 下載失敗。' ;;
+        ja:wl_caddy_download) echo 'Caddy のダウンロードに失敗しました。' ;;
+        zh:wl_caddy_sha) echo 'Caddy SHA256 校验失败（供应链完整性保护）。' ;;
+        en:wl_caddy_sha) echo 'Caddy SHA256 verification failed (supply-chain integrity protection).' ;;
+        ru:wl_caddy_sha) echo 'Проверка SHA256 Caddy не пройдена (защита целостности цепочки поставок).' ;;
+        fa:wl_caddy_sha) echo 'راستی‌آزمایی SHA256 مربوط به Caddy ناموفق بود (محافظت از یکپارچگی زنجیره تأمین).' ;;
+        zh-tw:wl_caddy_sha) echo 'Caddy SHA256 驗證失敗（供應鏈完整性保護）。' ;;
+        ja:wl_caddy_sha) echo 'Caddy の SHA256 検証に失敗しました（サプライチェーン完全性保護）。' ;;
+        zh:wl_caddy_unpack) echo 'Caddy 解包失败。' ;;
+        en:wl_caddy_unpack) echo 'Caddy extraction failed.' ;;
+        ru:wl_caddy_unpack) echo 'Не удалось распаковать Caddy.' ;;
+        fa:wl_caddy_unpack) echo 'استخراج Caddy ناموفق بود.' ;;
+        zh-tw:wl_caddy_unpack) echo 'Caddy 解包失敗。' ;;
+        ja:wl_caddy_unpack) echo 'Caddy の展開に失敗しました。' ;;
+        zh:wl_caddy_exec) echo 'Caddy 执行校验失败。' ;;
+        en:wl_caddy_exec) echo 'Caddy execution check failed.' ;;
+        ru:wl_caddy_exec) echo 'Проверка запуска Caddy не пройдена.' ;;
+        fa:wl_caddy_exec) echo 'بررسی اجرای Caddy ناموفق بود.' ;;
+        zh-tw:wl_caddy_exec) echo 'Caddy 執行驗證失敗。' ;;
+        ja:wl_caddy_exec) echo 'Caddy の実行チェックに失敗しました。' ;;
+        zh:wl_caddy_install) echo 'Caddy 原子安装失败。' ;;
+        en:wl_caddy_install) echo 'Caddy atomic install failed.' ;;
+        ru:wl_caddy_install) echo 'Атомарная установка Caddy не удалась.' ;;
+        fa:wl_caddy_install) echo 'نصب اتمی Caddy ناموفق بود.' ;;
+        zh-tw:wl_caddy_install) echo 'Caddy 原子安裝失敗。' ;;
+        ja:wl_caddy_install) echo 'Caddy のアトミックインストールに失敗しました。' ;;
+        zh:wl_fw_80_fail) echo '80/tcp 放行失败；若主机防火墙默认拒绝入站，ACME HTTP-01 申证可能超时。' ;;
+        en:wl_fw_80_fail) echo 'Failed to allow 80/tcp; if the host firewall denies inbound by default, ACME HTTP-01 issuance may time out.' ;;
+        ru:wl_fw_80_fail) echo 'Не удалось разрешить 80/tcp; если брандмауэр хоста по умолчанию отклоняет входящие соединения, выпуск ACME HTTP-01 может превысить время ожидания.' ;;
+        fa:wl_fw_80_fail) echo 'باز کردن 80/tcp ناموفق بود؛ اگر دیوار آتش میزبان به‌صورت پیش‌فرض ورودی را رد کند، صدور ACME HTTP-01 ممکن است به پایان مهلت برسد.' ;;
+        zh-tw:wl_fw_80_fail) echo '80/tcp 放行失敗；若主機防火牆預設拒絕入站，ACME HTTP-01 申證可能逾時。' ;;
+        ja:wl_fw_80_fail) echo '80/tcp の許可に失敗しました。ホストファイアウォールが既定で受信を拒否する場合、ACME HTTP-01 の発行がタイムアウトする可能性があります。' ;;
+        zh:wl_rb_bad_version) echo 'WALLOS_ROLLBACK_VERSION 不是有效版本：%s' ;;
+        en:wl_rb_bad_version) echo 'WALLOS_ROLLBACK_VERSION is not a valid version: %s' ;;
+        ru:wl_rb_bad_version) echo 'WALLOS_ROLLBACK_VERSION — недопустимая версия: %s' ;;
+        fa:wl_rb_bad_version) echo 'WALLOS_ROLLBACK_VERSION نسخه معتبری نیست: %s' ;;
+        zh-tw:wl_rb_bad_version) echo 'WALLOS_ROLLBACK_VERSION 不是有效版本：%s' ;;
+        ja:wl_rb_bad_version) echo 'WALLOS_ROLLBACK_VERSION は有効なバージョンではありません: %s' ;;
+        zh:wl_rb_none) echo '没有可用于回滚的上一个 Wallos 版本。' ;;
+        en:wl_rb_none) echo 'No previous Wallos versions available for rollback.' ;;
+        ru:wl_rb_none) echo 'Нет предыдущих версий Wallos для отката.' ;;
+        fa:wl_rb_none) echo 'نسخه قبلی Wallos برای بازگشت در دسترس نیست.' ;;
+        zh-tw:wl_rb_none) echo '沒有可用於回復的上一個 Wallos 版本。' ;;
+        ja:wl_rb_none) echo 'ロールバック可能な以前の Wallos バージョンがありません。' ;;
+        zh:wl_rb_no_other) echo '没有其他可用于回滚的 Wallos 版本。' ;;
+        en:wl_rb_no_other) echo 'No other Wallos versions available for rollback.' ;;
+        ru:wl_rb_no_other) echo 'Нет других версий Wallos для отката.' ;;
+        fa:wl_rb_no_other) echo 'نسخه دیگری از Wallos برای بازگشت در دسترس نیست.' ;;
+        zh-tw:wl_rb_no_other) echo '沒有其他可用於回復的 Wallos 版本。' ;;
+        ja:wl_rb_no_other) echo 'ロールバック可能な他の Wallos バージョンがありません。' ;;
+        zh:wl_rb_invalid) echo '选择无效。' ;;
+        en:wl_rb_invalid) echo 'Invalid selection.' ;;
+        ru:wl_rb_invalid) echo 'Неверный выбор.' ;;
+        fa:wl_rb_invalid) echo 'انتخاب نامعتبر است.' ;;
+        zh-tw:wl_rb_invalid) echo '選擇無效。' ;;
+        ja:wl_rb_invalid) echo '選択が無効です。' ;;
         zh:wl_mode_title) echo 'Wallos 访问方式：' ;;
         en:wl_mode_title) echo 'Wallos access mode:' ;;
         ru:wl_mode_title) echo 'Способ доступа к Wallos:' ;;
@@ -30102,9 +30168,20 @@ wallos_pull_or_restore_image() {
             # FIX: Save any pre-existing EXIT trap (e.g. runtime lock cleanup)
             # and restore it afterward, instead of discarding it with bare
             # "trap - EXIT" (follows the restore_saved_trap pattern).
-            local _n2_prev_trap_exit
+            local _n2_prev_trap_exit _n2_trap_cmd _n2_old_cmd
             _n2_prev_trap_exit=$(trap -p EXIT 2>/dev/null || true)
-            trap "rm -rf -- '$_n2_work' 2>/dev/null" EXIT
+            # Chain the saved handler into the temp trap: a bare temp
+            # trap would swallow the original handler on an abnormal
+            # exit inside this window. Both parts are expanded now
+            # (locals are gone when EXIT fires); the saved string is
+            # `trap -- 'cmd' EXIT`, so strip the wrapper and eval cmd.
+            _n2_trap_cmd="rm -rf -- '$_n2_work' 2>/dev/null"
+            if [[ -n "$_n2_prev_trap_exit" ]]; then
+                _n2_old_cmd="${_n2_prev_trap_exit#trap -- }"
+                _n2_old_cmd="${_n2_old_cmd% EXIT}"
+                _n2_trap_cmd="$_n2_trap_cmd; eval $_n2_old_cmd"
+            fi
+            trap "$_n2_trap_cmd" EXIT
             if curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_manifest_url" -o "$_n2_work/wallos-manifest.txt" 2>/dev/null &&
                curl -fLsS --connect-timeout 8 --max-time 30 "$_n2_sum_url" -o "$_n2_work/SHA256SUMS" 2>/dev/null; then
                 local _n2_expected _n2_actual
@@ -30328,7 +30405,12 @@ wallos_wait_healthy() {
     # No body-marker check: docker's publication record is the attribution
     # (only the container can serve its published port), and it needs no
     # unverified Wallos HTML string that could false-negative every install.
-    local port="$1" i code state running pub
+    # $2=mode: published (default) or unpublished. An unpublished
+    # container has no host port to attribute: requiring a publication
+    # would fail-closed forever, and curling the host port could
+    # fake-healthy off a foreign service (the U117 hazard), so running
+    # state is the only host-visible signal there.
+    local port="$1" _mode="${2:-published}" i code state running pub
     for i in $(seq 1 60); do
         state=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' wallos 2>/dev/null || true)
         [[ -z "$state" ]] && return 1
@@ -30336,6 +30418,7 @@ wallos_wait_healthy() {
         [[ "$state" == unhealthy ]] && return 1
         running=$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)
         [[ "$running" == true ]] || { sleep 1; continue; }
+        if [[ "$_mode" == unpublished ]]; then return 0; fi
         pub=$(docker port wallos 2>/dev/null || true)
         grep -Eq ":$port\$" <<< "$pub" || { sleep 1; continue; }
         code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 "http://127.0.0.1:$port/" 2>/dev/null || true)
@@ -30632,10 +30715,18 @@ wallos_recover_interrupted_upgrade() {
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
             -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$old_image" >/dev/null || return 1
-        wallos_wait_healthy "$old_port" || {
+        # Same U217 rule as the install path: an omitted -p means the
+        # recovered container is unpublished, so the health gate must
+        # not demand a publication it will never have.
+        if (( ${#wallos_pub_args[@]} == 0 )); then
+            wallos_wait_healthy "$old_port" unpublished || {
+                msg "${RED}$(tr_msg wl_rc_unhealthy)${NC}"
+                return 1
+            }
+        elif ! wallos_wait_healthy "$old_port"; then
             msg "${RED}$(tr_msg wl_rc_unhealthy)${NC}"
             return 1
-        }
+        fi
     else
         docker create --name wallos --label com.alariclin.abox.managed=true \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
@@ -30664,6 +30755,15 @@ wallos_bruteforce_protection() {
     # Localhost-only Wallos cannot be reached remotely; no jail needed.
     if [[ "$bind_address" == 127.0.0.1 && "$wmode" != https ]]; then
         rm -f -- "$jail" 2>/dev/null || true
+        # A running fail2ban keeps the removed jail (and its bans)
+        # until reloaded; reload, and restart only if the jail survives
+        # the reload, so the localhost-only switch takes effect now.
+        if command -v fail2ban-client >/dev/null 2>&1; then
+            fail2ban-client reload >/dev/null 2>&1 || true
+            if fail2ban-client status A-Box-wallos >/dev/null 2>&1; then
+                fail2ban-client restart >/dev/null 2>&1 || true
+            fi
+        fi
         return 0
     fi
     command -v fail2ban-client >/dev/null 2>&1 || return 0
@@ -30715,10 +30815,14 @@ failregex = "remote_ip":\s*"<HOST>".*"method":\s*"POST".*"uri":\s*"/login\.php".
 ignoreregex =
 EOF_WF2B_FILTER_HTTPS
     else
+        # Same login.php semantics as the HTTPS filter (verified
+        # against upstream login.php, 2026-10-20): a failed login is
+        # answered 200 (form re-rendered), a success redirects (302).
+        # Matching any status would ban ten successful logins in 10 min.
         write_file_atomically_from_stdin "$filter" 644 <<'EOF_WF2B_FILTER' || return 0
 # Managed by A-Box
 [Definition]
-failregex = ^<HOST> - \S+ \[[^\]]+\] "POST /login\.php HTTP/[0-9.]+" [0-9]{3} [0-9]+
+failregex = ^<HOST> - \S+ \[[^\]]+\] "POST /login\.php HTTP/[0-9.]+" 200 [0-9]+
 ignoreregex =
 EOF_WF2B_FILTER
     fi
@@ -30844,19 +30948,19 @@ install_wallos_caddy() {
     case "$SB_ARCH" in
         amd64) want="$WALLOS_CADDY_SHA256_AMD64" ;;
         arm64) want="$WALLOS_CADDY_SHA256_ARM64" ;;
-        *) msg "${RED}Caddy 不支持当前架构: $SB_ARCH${NC}"; return 1 ;;
+        *) msg "${RED}$(tprintf wl_caddy_arch "$SB_ARCH")${NC}"; return 1 ;;
     esac
     url="https://github.com/caddyserver/caddy/releases/download/v${WALLOS_CADDY_VERSION}/caddy_${WALLOS_CADDY_VERSION}_linux_${SB_ARCH}.tar.gz"
     tmp=$(mktemp -d /tmp/A-Box-caddy.XXXXXX) || return 1
-    abox_run_wait 'Caddy download' curl -fL --retry 2 --connect-timeout 15 -o "$tmp/caddy.tgz" "$url" || { rm -rf "$tmp"; msg "${RED}Caddy 下载失败。${NC}"; return 1; }
+    abox_run_wait 'Caddy download' curl -fL --retry 2 --connect-timeout 15 -o "$tmp/caddy.tgz" "$url" || { rm -rf "$tmp"; msg "${RED}$(tr_msg wl_caddy_download)${NC}"; return 1; }
     got=$(sha256sum "$tmp/caddy.tgz" 2>/dev/null | awk '{print $1}')
     if [[ "$got" != "$want" ]]; then
-        rm -rf "$tmp"; msg "${RED}Caddy SHA256 校验失败 (供应链完整性保护)。${NC}"; return 1
+        rm -rf "$tmp"; msg "${RED}$(tr_msg wl_caddy_sha)${NC}"; return 1
     fi
-    tar -xzf "$tmp/caddy.tgz" -C "$tmp" caddy 2>/dev/null || { rm -rf "$tmp"; msg "${RED}Caddy 解包失败。${NC}"; return 1; }
+    tar -xzf "$tmp/caddy.tgz" -C "$tmp" caddy 2>/dev/null || { rm -rf "$tmp"; msg "${RED}$(tr_msg wl_caddy_unpack)${NC}"; return 1; }
     chmod 755 "$tmp/caddy" || { rm -rf "$tmp"; return 1; }
-    "$tmp/caddy" version >/dev/null 2>&1 || { rm -rf "$tmp"; msg "${RED}Caddy 执行校验失败。${NC}"; return 1; }
-    install_binary_atomically "$tmp/caddy" /usr/local/bin/caddy || { rm -rf "$tmp"; msg "${RED}Caddy 原子安装失败。${NC}"; return 1; }
+    "$tmp/caddy" version >/dev/null 2>&1 || { rm -rf "$tmp"; msg "${RED}$(tr_msg wl_caddy_exec)${NC}"; return 1; }
+    install_binary_atomically "$tmp/caddy" /usr/local/bin/caddy || { rm -rf "$tmp"; msg "${RED}$(tr_msg wl_caddy_install)${NC}"; return 1; }
     rm -rf "$tmp"
 }
 
@@ -30942,16 +31046,23 @@ wallos_tls_probe() {
 }
 
 # Both handshake legs with a few retries while Caddy settles. On failure
-# echoes the failing leg names ("SNI" / "no-SNI") and returns 1.
+# echoes the failing leg names and returns 1. Loopback first: a host
+# without NAT loopback fails public-IP probes even when the local
+# listener is fine, so loopback success alone passes the check; the
+# public-IP legs run only as a fallback and their failure is reported,
+# not mistaken for a local failure.
 wallos_tls_handshake_check() { # $1=port $2=ip
     local port="$1" ip="$2" _try=0 legs=''
     command -v openssl >/dev/null 2>&1 || return 2
     while (( _try < 5 )); do
-        if wallos_tls_probe "$port" "$ip" "$ip" && wallos_tls_probe "$port" '' "$ip"; then return 0; fi
+        if wallos_tls_probe "$port" "$ip" '127.0.0.1' && wallos_tls_probe "$port" '' '127.0.0.1'; then return 0; fi
         sleep 3; _try=$((_try + 1))
     done
-    wallos_tls_probe "$port" "$ip" "$ip" || legs="${legs} SNI"
-    wallos_tls_probe "$port" '' "$ip" || legs="${legs} no-SNI"
+    if wallos_tls_probe "$port" "$ip" "$ip" && wallos_tls_probe "$port" '' "$ip"; then return 0; fi
+    wallos_tls_probe "$port" "$ip" '127.0.0.1' || legs="${legs} SNI(loopback)"
+    wallos_tls_probe "$port" '' '127.0.0.1' || legs="${legs} no-SNI(loopback)"
+    wallos_tls_probe "$port" "$ip" "$ip" || legs="${legs} SNI(public)"
+    wallos_tls_probe "$port" '' "$ip" || legs="${legs} no-SNI(public)"
     printf '%s' "${legs# }"
     return 1
 }
@@ -31010,7 +31121,7 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     # through the standard owned-rule path before starting Caddy;
     # failure only warns — issuance may still succeed where the
     # host firewall already permits 80.
-    ( allowPort 80 tcp ) >/dev/null 2>&1 || msg "${YELLOW}[!] 80/tcp 放行失败；若主机防火墙默认拒绝入站，ACME HTTP-01 申证可能超时。${NC}"
+    ( allowPort 80 tcp ) >/dev/null 2>&1 || msg "${YELLOW}[!] $(tr_msg wl_fw_80_fail)${NC}"
     wallos_https_write_unit || { msg "${RED}$(tr_msg wl_hs_unit_fail)${NC}"; return 1; }
     # Wait for the IP certificate (ACME HTTP-01 runs over port 80).
     while (( _t < 120 )); do
@@ -31383,7 +31494,8 @@ wallos_install_or_update() {
             else
                 printf '%s' "$(tr_msg wl_iu_token_paste)"
             fi
-            read -r cftoken || cftoken=''
+            read -rs cftoken || cftoken=''
+            printf '\n'
         fi
         if [[ ! "$cfhost" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
             case "${ABOX_LANG:-zh}" in
@@ -31497,12 +31609,29 @@ wallos_install_or_update() {
         }
     fi
 
+    # U217: in the fully non-interactive preserve path (_bind_chosen==0),
+    # an empty old_bind means the old container published nothing; do
+    # not invent a loopback publication from the 127.0.0.1 default.
+    # Any explicit mode choice (_bind_chosen==1) or a non-empty old_bind
+    # keeps the publication, and the health gate runs in unpublished
+    # mode when nothing is published.
+    local -a _pub_args=()
+    if [[ -n "$old_bind" || (( _bind_chosen == 1 )) ]]; then
+        _pub_args=(-p "$bind_address:$port:80/tcp")
+    fi
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-        -e TZ="$tz" -p "$bind_address:$port:80/tcp" --restart unless-stopped "$image" >/dev/null
+        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null
     code=$?
-    if (( code != 0 )) || ! wallos_wait_healthy "$port"; then
+    if (( code != 0 )); then
+        :
+    elif (( ${#_pub_args[@]} == 0 )); then
+        wallos_wait_healthy "$port" unpublished || code=1
+    elif ! wallos_wait_healthy "$port"; then
+        code=1
+    fi
+    if (( code != 0 )); then
         docker rm -f wallos >/dev/null 2>&1 || true
         if (( running == 1 )); then
             wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_incomplete "${WALLOS_DIR}/.upgrade-transaction" "${backup:-unavailable}")${NC}"
@@ -31780,7 +31909,7 @@ _wallos_manual_rollback() {
     if [[ -n "${WALLOS_ROLLBACK_VERSION:-}" ]]; then
         target="$WALLOS_ROLLBACK_VERSION"
         [[ "$target" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-            msg "${RED}WALLOS_ROLLBACK_VERSION is not a valid version: $target${NC}"
+            msg "${RED}$(tprintf wl_rb_bad_version "$target")${NC}"
             return 1
         }
         wallos_rollback_to_version "$target"
@@ -31794,7 +31923,7 @@ _wallos_manual_rollback() {
         mapfile -t versions < <(docker images --format '{{.Tag}}' 'bellamy/wallos' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | LC_ALL=C sort -t. -k1,1nr -k2,2nr -k3,3nr | uniq | sed 's/^/v/' || true)
     fi
     if ((${#versions[@]} == 0)); then
-        msg "${RED}No previous Wallos versions available for rollback.${NC}"
+        msg "${RED}$(tr_msg wl_rb_none)${NC}"
         return 1
     fi
     # U126: keep only versions strictly older than the installed one; a
@@ -31821,7 +31950,7 @@ _wallos_manual_rollback() {
         fi
     done
     if (( ${#_rb_versions[@]} == 0 )); then
-        msg "${YELLOW}No other Wallos versions available for rollback.${NC}"
+        msg "${YELLOW}$(tr_msg wl_rb_no_other)${NC}"
         return 1
     fi
     versions=("${_rb_versions[@]}")
@@ -31845,8 +31974,11 @@ _wallos_manual_rollback() {
         msg "${RED}$(tr_msg wl_rb_no_default)${NC}"; return 1
     fi
     [[ -z "$sel" ]] && sel=1
-    [[ "$sel" =~ ^[0-9]+$ ]] && (( sel >= 1 && sel <= ${#versions[@]} )) || {
-        msg "${RED}Invalid selection.${NC}"; return 1; }
+    [[ "$sel" =~ ^[0-9]+$ ]] || {
+        msg "${RED}$(tr_msg wl_rb_invalid)${NC}"; return 1; }
+    sel=$((10#$sel))
+    (( sel >= 1 && sel <= ${#versions[@]} )) || {
+        msg "${RED}$(tr_msg wl_rb_invalid)${NC}"; return 1; }
     target="${versions[$((sel - 1))]}"
     if (( _rb_no_default == 1 )); then
         confirm_yes_no "$(tprintf wl_rb_confirm_target "$target")" || return 1

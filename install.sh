@@ -29994,6 +29994,9 @@ wallos_bruteforce_protection() {
     fi
     command -v fail2ban-client >/dev/null 2>&1 || return 0
     command -v docker >/dev/null 2>&1 || return 0
+    # U119: container-mode bans are iptables DOCKER-USER rules (see below);
+    # without the iptables binary such a jail could never bite.
+    if [[ "$wmode" != https ]]; then command -v iptables >/dev/null 2>&1 || return 0; fi
     local upperdir logpath
     if [[ "$wmode" == https ]]; then
         logpath="$WALLOS_CADDY_LOG"
@@ -30015,7 +30018,14 @@ wallos_bruteforce_protection() {
         iptables) action='iptables-multiport' ;;
         *) return 0 ;;
     esac
-    [[ -r "/etc/fail2ban/action.d/${action}.conf" ]] || return 0
+    # U119: the backend-native action is only checked in https mode. In
+    # container mode the ban is always an iptables DOCKER-USER rule (below),
+    # so the iptables action config is the one that must exist.
+    if [[ "$wmode" != https ]]; then
+        [[ -r "/etc/fail2ban/action.d/iptables-multiport.conf" ]] || return 0
+    else
+        [[ -r "/etc/fail2ban/action.d/${action}.conf" ]] || return 0
+    fi
     mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d || return 0
     assert_abox_auxiliary_safe "$filter" 2>/dev/null || return 0
     assert_abox_auxiliary_safe "$jail" 2>/dev/null || return 0
@@ -30038,15 +30048,20 @@ failregex = ^<HOST> - \S+ \[[^\]]+\] "POST /login\.php HTTP/[0-9.]+" [0-9]{3} [0
 ignoreregex =
 EOF_WF2B_FILTER
     fi
-    if [[ "$action" == 'ufw' ]]; then
+    if [[ "$wmode" != https ]]; then
+        # U119+U120 container mode: the Wallos port is Docker-published, so
+        # traffic is DNAT'd and traverses FORWARD/DOCKER-USER, never INPUT.
+        # The backend-native actions cannot target DOCKER-USER (ufw has no
+        # chain parameter; firewalld does not manage docker's chains), so
+        # the ban is always an iptables-multiport DOCKER-USER rule,
+        # regardless of which backend was detected. (The https mode is
+        # different: Caddy is a host process, where INPUT is correct.)
+        # U120: after DNAT the destination port is the container's 80, not
+        # the published port, so the rule matches port 80. The jail's
+        # `port` line keeps the published port for display only.
+        action="iptables-multiport[name=A-Box-wallos, chain=DOCKER-USER, port=\"80\", protocol=tcp]"
+    elif [[ "$action" == 'ufw' ]]; then
         action="ufw[name=A-Box-wallos]"
-    elif [[ "$wmode" != https && "$action" == 'iptables-multiport' ]]; then
-        # Container mode: the Wallos port is Docker-published, so
-        # traffic is DNAT'd and traverses FORWARD/DOCKER-USER, never
-        # INPUT — an INPUT-chain ban could never bite. Ban in
-        # DOCKER-USER instead. (The https mode is different: Caddy is
-        # a host process, where INPUT is the correct chain.)
-        action="${action}[name=A-Box-wallos, chain=DOCKER-USER, port=\"${port}\", protocol=tcp]"
     else
         action="${action}[name=A-Box-wallos, port=\"${port}\", protocol=tcp]"
     fi

@@ -2611,6 +2611,114 @@ tr_msg() {
         fa:dns_v6_override) echo 'IPv6 [Enter=خودکار %s]: ' ;;
         zh-tw:dns_v6_override) echo 'IPv6 [Enter=自動 %s]：' ;;
         ja:dns_v6_override) echo 'IPv6 [Enter=自動 %s]: ' ;;
+        zh:sni_show_first) echo '显示前 %s 条已完成二阶段验证的结果（完整记录保存在 TSV 中）。' ;;
+        en:sni_show_first) echo 'Showing the first %s two-phase-verified results (full records are kept in TSV).' ;;
+        ru:sni_show_first) echo 'Показаны первые %s результатов, прошедших двухэтапную проверку (полные записи хранятся в TSV).' ;;
+        fa:sni_show_first) echo 'نمایش %s نتیجه نخست که راستی‌آزمایی دو مرحله‌ای را گذرانده‌اند (سوابق کامل در TSV نگهداری می‌شود).' ;;
+        zh-tw:sni_show_first) echo '顯示前 %s 條已完成二階段驗證的結果（完整記錄保存在 TSV 中）。' ;;
+        ja:sni_show_first) echo '二段階検証済みの結果のうち最初の %s 件を表示します（完全な記録は TSV に保存されます）。' ;;
+        zh:sni_tier_A) echo 'A级优先｜TLS1.3+H2+SAN合格、同ASN、风险分较低' ;;
+        en:sni_tier_A) echo 'A – Priority｜TLS 1.3 + H2 + SAN pass, same ASN, low risk score' ;;
+        ru:sni_tier_A) echo 'A – Приоритет｜TLS 1.3 + H2 + SAN пройдены, та же ASN, низкий риск' ;;
+        fa:sni_tier_A) echo 'A – اولویت｜TLS 1.3 + H2 + SAN قبول، همان ASN، امتیاز ریسک پایین' ;;
+        zh-tw:sni_tier_A) echo 'A級優先｜TLS1.3+H2+SAN合格、同ASN、風險分較低' ;;
+        ja:sni_tier_A) echo 'A – 優先｜TLS 1.3 + H2 + SAN 合格、同一 ASN、低リスクスコア' ;;
+        zh:sni_tier_R) echo '风险复核｜协议检查通过，但CDN/网络风险分较高；同ASN信息仍会显示' ;;
+        en:sni_tier_R) echo 'Risk review｜Protocol checks pass, but CDN/network risk score is high; same-ASN info is still shown' ;;
+        ru:sni_tier_R) echo 'Проверка риска｜Проверки протокола пройдены, но риск CDN/сети высок; информация о той же ASN всё равно показывается' ;;
+        fa:sni_tier_R) echo 'بازبینی ریسک｜بررسی‌های پروتکل قبول است، اما امتیاز ریسک CDN/شبکه بالاست؛ اطلاعات همان ASN همچنان نمایش داده می‌شود' ;;
+        zh-tw:sni_tier_R) echo '風險複核｜協議檢查通過，但CDN/網路風險分較高；同ASN資訊仍會顯示' ;;
+        ja:sni_tier_R) echo 'リスク再確認｜プロトコル検査は合格したが、CDN/ネットワークのリスクスコアが高い。同一 ASN 情報は引き続き表示される' ;;
+        zh:sni_tier_B) echo 'B级良好｜协议检查通过、同国家/地区、风险分较低' ;;
+        en:sni_tier_B) echo 'B – Good｜Protocol checks pass, same country/region, low risk score' ;;
+        ru:sni_tier_B) echo 'B – Хорошо｜Проверки протокола пройдены, та же страна/регион, низкий риск' ;;
+        fa:sni_tier_B) echo 'B – خوب｜بررسی‌های پروتکل قبول است، همان کشور/منطقه، امتیاز ریسک پایین' ;;
+        zh-tw:sni_tier_B) echo 'B級良好｜協議檢查通過、同國家/地區、風險分較低' ;;
+        ja:sni_tier_B) echo 'B – 良好｜プロトコル検査合格、同一国/地域、低リスクスコア' ;;
+        zh:sni_tier_C) echo 'C级可用候选｜协议检查通过，但未匹配同ASN/同地区' ;;
+        en:sni_tier_C) echo 'C – Usable candidate｜Protocol checks pass, but no same-ASN/region match' ;;
+        ru:sni_tier_C) echo 'C – Подходящий кандидат｜Проверки протокола пройдены, но совпадения по ASN/региону нет' ;;
+        fa:sni_tier_C) echo 'C – نامزد قابل استفاده｜بررسی‌های پروتکل قبول است، اما تطابق همان ASN/منطقه وجود ندارد' ;;
+        zh-tw:sni_tier_C) echo 'C級可用候選｜協議檢查通過，但未匹配同ASN/同地區' ;;
+        ja:sni_tier_C) echo 'C – 利用可能な候補｜プロトコル検査合格だが、同一 ASN/地域の一致なし' ;;
+        zh:sni_tier_D) echo '不合格/需复测｜TLS1.3、ALPN h2或SAN至少一项未通过' ;;
+        en:sni_tier_D) echo 'Fail / needs retest｜At least one of TLS 1.3, ALPN h2, SAN failed' ;;
+        ru:sni_tier_D) echo 'Не пройдено / нужен повторный тест｜Не пройден как минимум один из TLS 1.3, ALPN h2, SAN' ;;
+        fa:sni_tier_D) echo 'مردود / نیازمند بازآزمایی｜دست‌کم یکی از TLS 1.3، ALPN h2 یا SAN مردود است' ;;
+        zh-tw:sni_tier_D) echo '不合格/需複測｜TLS1.3、ALPN h2或SAN至少一項未通過' ;;
+        ja:sni_tier_D) echo '不合格/再測定要｜TLS 1.3、ALPN h2、SAN のいずれか一つ以上が不合格' ;;
+        zh:sni_count_unit) echo '条' ;;
+        en:sni_count_unit) echo 'entries' ;;
+        ru:sni_count_unit) echo 'записей' ;;
+        fa:sni_count_unit) echo 'مورد' ;;
+        zh-tw:sni_count_unit) echo '條' ;;
+        ja:sni_count_unit) echo '件' ;;
+        zh:swap_opt_1) echo 'zram 压缩交换（推荐：内存内压缩，不占磁盘）' ;;
+        en:swap_opt_1) echo 'zram compressed swap (recommended: in-memory compression, no disk use)' ;;
+        ru:swap_opt_1) echo 'zram-сжатый своп (рекомендуется: сжатие в памяти, без диска)' ;;
+        fa:swap_opt_1) echo 'سواپ فشرده zram (پیشنهاد می‌شود: فشرده‌سازی در حافظه، بدون مصرف دیسک)' ;;
+        zh-tw:swap_opt_1) echo 'zram 壓縮交換（推薦：記憶體內壓縮，不占磁碟）' ;;
+        ja:swap_opt_1) echo 'zram 圧縮スワップ（推奨：メモリ内圧縮、ディスク不使用）' ;;
+        zh:swap_opt_2) echo '磁盘 Swap 文件 2G（传统方式）' ;;
+        en:swap_opt_2) echo 'Disk swap file 2G (traditional)' ;;
+        ru:swap_opt_2) echo 'Файл подкачки на диске 2G (традиционный способ)' ;;
+        fa:swap_opt_2) echo 'فایل سواپ دیسکی 2G (روش سنتی)' ;;
+        zh-tw:swap_opt_2) echo '磁碟 Swap 檔案 2G（傳統方式）' ;;
+        ja:swap_opt_2) echo 'ディスクスワップファイル 2G（従来方式）' ;;
+        zh:swap_opt_3) echo '查看当前交换状态' ;;
+        en:swap_opt_3) echo 'Show current swap status' ;;
+        ru:swap_opt_3) echo 'Показать текущее состояние подкачки' ;;
+        fa:swap_opt_3) echo 'نمایش وضعیت فعلی سواپ' ;;
+        zh-tw:swap_opt_3) echo '查看目前交換狀態' ;;
+        ja:swap_opt_3) echo '現在のスワップ状態を表示' ;;
+        zh:swap_opt_4) echo '移除 zram（仅 A-Box 创建的）' ;;
+        en:swap_opt_4) echo 'Remove zram (only A-Box-created)' ;;
+        ru:swap_opt_4) echo 'Удалить zram (только созданный A-Box)' ;;
+        fa:swap_opt_4) echo 'حذف zram (فقط ساخته‌شده توسط A-Box)' ;;
+        zh-tw:swap_opt_4) echo '移除 zram（僅 A-Box 建立的）' ;;
+        ja:swap_opt_4) echo 'zram を削除（A-Box が作成したもののみ）' ;;
+        zh:swap_opt_5) echo '移除磁盘 Swap 文件（仅 A-Box 创建的）' ;;
+        en:swap_opt_5) echo 'Remove disk swap file (only A-Box-created)' ;;
+        ru:swap_opt_5) echo 'Удалить файл подкачки на диске (только созданный A-Box)' ;;
+        fa:swap_opt_5) echo 'حذف فایل سواپ دیسکی (فقط ساخته‌شده توسط A-Box)' ;;
+        zh-tw:swap_opt_5) echo '移除磁碟 Swap 檔案（僅 A-Box 建立的）' ;;
+        ja:swap_opt_5) echo 'ディスクスワップファイルを削除（A-Box が作成したもののみ）' ;;
+        zh:swap_opt_0) echo '返回' ;;
+        en:swap_opt_0) echo 'Back' ;;
+        ru:swap_opt_0) echo 'Назад' ;;
+        fa:swap_opt_0) echo 'بازگشت' ;;
+        zh-tw:swap_opt_0) echo '返回' ;;
+        ja:swap_opt_0) echo '戻る' ;;
+        zh:swap_select_0_5) echo '请选择 [0-5]：' ;;
+        en:swap_select_0_5) echo 'Select [0-5]: ' ;;
+        ru:swap_select_0_5) echo 'Выберите [0–5]: ' ;;
+        fa:swap_select_0_5) echo 'انتخاب [۰ تا ۵]: ' ;;
+        zh-tw:swap_select_0_5) echo '請選擇 [0-5]：' ;;
+        ja:swap_select_0_5) echo '選択してください [0-5]: ' ;;
+        zh:bk_select_0_4) echo '请选择 [0-4]：' ;;
+        en:bk_select_0_4) echo 'Select [0-4]: ' ;;
+        ru:bk_select_0_4) echo 'Выберите [0–4]: ' ;;
+        fa:bk_select_0_4) echo 'انتخاب [۰ تا ۴]: ' ;;
+        zh-tw:bk_select_0_4) echo '請選擇 [0-4]：' ;;
+        ja:bk_select_0_4) echo '選択してください [0-4]: ' ;;
+        zh:bk_key_dest) echo '独立介质上的绝对路径：' ;;
+        en:bk_key_dest) echo 'Absolute path on a separate trusted medium: ' ;;
+        ru:bk_key_dest) echo 'Абсолютный путь на отдельном доверенном носителе: ' ;;
+        fa:bk_key_dest) echo 'مسیر مطلق روی رسانه مطمئن جداگانه: ' ;;
+        zh-tw:bk_key_dest) echo '獨立媒體上的絕對路徑：' ;;
+        ja:bk_key_dest) echo '別の信頼できるメディア上の絶対パス: ' ;;
+        zh:bk_legacy_path) echo '旧版 .tar.gz 路径：' ;;
+        en:bk_legacy_path) echo 'Legacy .tar.gz path: ' ;;
+        ru:bk_legacy_path) echo 'Путь к устаревшему .tar.gz: ' ;;
+        fa:bk_legacy_path) echo 'مسیر .tar.gz قدیمی: ' ;;
+        zh-tw:bk_legacy_path) echo '舊版 .tar.gz 路徑：' ;;
+        ja:bk_legacy_path) echo '旧版 .tar.gz パス: ' ;;
+        zh:bk_legacy_out) echo '输出目录（默认：同目录）：' ;;
+        en:bk_legacy_out) echo 'Output directory (default: same directory): ' ;;
+        ru:bk_legacy_out) echo 'Выходной каталог (по умолчанию: тот же каталог): ' ;;
+        fa:bk_legacy_out) echo 'پوشه خروجی (پیش‌فرض: همان پوشه): ' ;;
+        zh-tw:bk_legacy_out) echo '輸出目錄（預設：同目錄）：' ;;
+        ja:bk_legacy_out) echo '出力ディレクトリ（既定値: 同じディレクトリ）: ' ;;
         zh:wl_mode_title) echo 'Wallos 访问方式：' ;;
         en:wl_mode_title) echo 'Wallos access mode:' ;;
         ru:wl_mode_title) echo 'Способ доступа к Wallos:' ;;
@@ -26242,10 +26350,15 @@ write_sni_candidate_library() {
     if ! [[ "$max_count" =~ ^[0-9]+$ ]]; then
         max_count="$ABOX_SNI_DEFAULT_MAX"
     fi
-    if (( max_count == 0 )); then
+    # Clamp by digit length before any arithmetic: values beyond int64
+    # wrap negative in (( )) and would pass the clamp, while awk would
+    # then treat the raw huge string as unbounded (NR<=n always true).
+    local _mc="$max_count"
+    while [[ "$_mc" == 0?* && ${#_mc} -gt 1 ]]; do _mc="${_mc#0}"; done
+    if [[ "$_mc" == '0' ]] || [[ ${#_mc} -gt ${#ABOX_SNI_HARD_MAX} ]] || { [[ ${#_mc} -eq ${#ABOX_SNI_HARD_MAX} ]] && [[ "$_mc" > "$ABOX_SNI_HARD_MAX" ]]; }; then
         max_count="$ABOX_SNI_HARD_MAX"
-    elif (( max_count > ABOX_SNI_HARD_MAX )); then
-        max_count="$ABOX_SNI_HARD_MAX"
+    else
+        max_count="$_mc"
     fi
     out_tmp=$(mktemp "${out}.A-Box-new.XXXXXX") || { rm -f "$raw" "$generated" "$tmp"; die 'SNI candidate output temporary file creation failed.'; }
     if ! awk -v n="$max_count" 'NR<=n {print}' "$tmp" > "$out_tmp"; then
@@ -26681,19 +26794,19 @@ sni_render_ranked_report() {
         tier=$(sni_report_fit_tier "$tls13" "$alpn" "$san" "$asnmatch" "$samecountry" "$cdnpenalty")
         printf '%s\n' "$row" >> "$display_dir/$tier.tsv"
     done < "$selected_file"
-    msg "${CYAN}显示前 ${requested_limit} 条已完成二阶段验证的结果（完整记录保存在 TSV 中）。${NC}"
+    msg "${CYAN}$(tprintf sni_show_first "$requested_limit")${NC}"
     for bucket in A R B C D; do
         local_bucket_file="$display_dir/$bucket.tsv"
         count=$(wc -l < "$local_bucket_file" | tr -d ' ')
         (( count > 0 )) || continue
         case "$bucket" in
-            A) color="$GREEN"; heading="A级优先｜TLS1.3+H2+SAN合格、同ASN、风险分较低" ;;
-            R) color="$YELLOW"; heading="风险复核｜协议检查通过，但CDN/网络风险分较高；同ASN信息仍会显示" ;;
-            B) color="$CYAN"; heading="B级良好｜协议检查通过、同国家/地区、风险分较低" ;;
-            C) color="$BLUE"; heading="C级可用候选｜协议检查通过，但未匹配同ASN/同地区" ;;
-            D) color="$RED"; heading="不合格/需复测｜TLS1.3、ALPN h2或SAN至少一项未通过" ;;
+            A) color="$GREEN"; heading="$(tr_msg sni_tier_A)" ;;
+            R) color="$YELLOW"; heading="$(tr_msg sni_tier_R)" ;;
+            B) color="$CYAN"; heading="$(tr_msg sni_tier_B)" ;;
+            C) color="$BLUE"; heading="$(tr_msg sni_tier_C)" ;;
+            D) color="$RED"; heading="$(tr_msg sni_tier_D)" ;;
         esac
-        msg "${color}[${heading}｜${count} 条]${NC}"
+        msg "${color}[${heading}｜${count} $(tr_msg sni_count_unit)]${NC}"
         rank=0
         while IFS= read -r row; do
             IFS=$'\t' read -r score domain app ttfb total http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty <<< "$row"
@@ -26898,7 +27011,14 @@ swapfile_active_state() {
     # /proc/swaps when swapon is missing (BusyBox swapon lacks --show).
     if command -v swapon >/dev/null 2>&1; then
         if ! output=$(swapon --show=NAME --noheadings 2>/dev/null); then
-            return 2
+            # BusyBox swapon lacks --show: fall back to /proc/swaps
+            # instead of reporting query failure (which callers treat
+            # as "not active" before destructive operations).
+            if [[ -r /proc/swaps ]]; then
+                output=$(awk 'NR>1 {print $1}' /proc/swaps 2>/dev/null || true)
+            else
+                return 2
+            fi
         fi
     elif [[ -r /proc/swaps ]]; then
         output=$(awk 'NR>1 {print $1}' /proc/swaps 2>/dev/null || true)
@@ -27031,7 +27151,30 @@ setup_swap_2g() {
                 rm -f "$fstab_backup" || true
                 die '/etc/fstab 临时文件创建失败；已回滚新建 Swap。'
             fi
-            if ! cat /etc/fstab > "$fstab_tmp" || ! printf '%s\n' '# A-Box swap BEGIN' '/swapfile none swap sw 0 0' '# A-Box swap END' >> "$fstab_tmp"; then
+            if ! cat /etc/fstab > "$fstab_tmp"; then
+                rm -f "$fstab_tmp"
+                if ! rollback_abox_new_swap "$fstab_backup"; then
+                    msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
+                    die '/etc/fstab 写入失败且 Swap 无法安全回滚；已保留恢复材料。'
+                fi
+                rm -f "$fstab_backup" || true
+                die '/etc/fstab 写入失败；已回滚新建 Swap。'
+            fi
+            # Trailing-newline guard: without it the BEGIN marker glues
+            # onto a newline-less last line, and the later removal (which
+            # looks for a standalone END marker) refuses to run.
+            if [[ -s "$fstab_tmp" ]] && [[ -n "$(tail -c 1 "$fstab_tmp" 2>/dev/null)" ]]; then
+                printf '\n' >> "$fstab_tmp" || {
+                    rm -f "$fstab_tmp"
+                    if ! rollback_abox_new_swap "$fstab_backup"; then
+                        msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
+                        die '/etc/fstab 写入失败且 Swap 无法安全回滚；已保留恢复材料。'
+                    fi
+                    rm -f "$fstab_backup" || true
+                    die '/etc/fstab 写入失败；已回滚新建 Swap。'
+                }
+            fi
+            if ! printf '%s\n' '# A-Box swap BEGIN' '/swapfile none swap sw 0 0' '# A-Box swap END' >> "$fstab_tmp"; then
                 rm -f "$fstab_tmp"
                 if ! rollback_abox_new_swap "$fstab_backup"; then
                     msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
@@ -27093,6 +27236,12 @@ if [[ -f "$CONF" ]]; then . "$CONF"; fi
 zram_active_devs() {
     swapon --show=NAME --noheadings 2>/dev/null | grep -E '^/dev/zram[0-9]+$' || true
 }
+# Reset a device we sized but failed to bring up: zramctl when present,
+# else the sysfs reset attribute (the same mechanism zramctl uses).
+_reset_dev() {
+    if command -v zramctl >/dev/null 2>&1; then zramctl --reset "$1" >/dev/null 2>&1 || true;
+    elif [[ -e "/sys/block/${1#/dev/}/reset" ]]; then echo 1 > "/sys/block/${1#/dev/}/reset" 2>/dev/null || true; fi
+}
 case "${1:-}" in
     start)
         [[ -z "$(zram_active_devs)" ]] || exit 0
@@ -27107,14 +27256,14 @@ case "${1:-}" in
             [[ "$id" =~ ^[0-9]+$ ]] || exit 1
             dev="/dev/zram${id}"
             echo "$ALGO" > "/sys/block/zram${id}/comp_algorithm" 2>/dev/null || true
-            echo "${SIZE_MB}M" > "/sys/block/zram${id}/disksize" || exit 1
+            echo "${SIZE_MB}M" > "/sys/block/zram${id}/disksize" || { _reset_dev "$dev"; exit 1; }
         fi
-        mkswap "$dev" >/dev/null 2>&1 || exit 1
-        swapon -p 100 "$dev" || exit 1
+        mkswap "$dev" >/dev/null 2>&1 || { _reset_dev "$dev"; exit 1; }
+        swapon -p 100 "$dev" || { swapoff "$dev" 2>/dev/null || true; _reset_dev "$dev"; exit 1; }
         # Record which device this helper activated so stop only
         # ever swaps off our own device, never a foreign zram swap
         # (distro zram-generator / zram-tools setups share the box).
-        printf 'DEV=%s\n' "$dev" > /etc/ddr/zram.state 2>/dev/null || { swapoff "$dev" 2>/dev/null || true; if command -v zramctl >/dev/null 2>&1; then zramctl --reset "$dev" >/dev/null 2>&1 || true; fi; exit 1; }
+        printf 'DEV=%s\n' "$dev" > /etc/ddr/zram.state 2>/dev/null || { swapoff "$dev" 2>/dev/null || true; _reset_dev "$dev"; exit 1; }
         ;;
     stop)
         if [[ -f /etc/ddr/zram.state ]]; then
@@ -27295,13 +27444,13 @@ swap_menu() {
         msg "${CYAN}======================================================================${NC}"
         msg "${BOLD}${GREEN}交换内存管理 / Swap Manager${NC}"
         msg "${CYAN}======================================================================${NC}"
-        msg " ${CYAN}1.${NC}  zram 压缩交换（推荐：内存内压缩，不占磁盘）"
-        msg " ${CYAN}2.${NC}  磁盘 Swap 文件 2G（传统方式）"
-        msg " ${CYAN}3.${NC}  查看当前交换状态"
-        msg " ${CYAN}4.${NC}  移除 zram（仅 A-Box 创建的）"
-        msg " ${CYAN}5.${NC}  移除磁盘 Swap 文件（仅 A-Box 创建的）"
-        msg " ${CYAN}0.${NC}  返回"
-        read -r -p "请选择 [0-5]：" choice || return 0
+        msg " ${CYAN}1.${NC}  $(tr_msg swap_opt_1)"
+        msg " ${CYAN}2.${NC}  $(tr_msg swap_opt_2)"
+        msg " ${CYAN}3.${NC}  $(tr_msg swap_opt_3)"
+        msg " ${CYAN}4.${NC}  $(tr_msg swap_opt_4)"
+        msg " ${CYAN}5.${NC}  $(tr_msg swap_opt_5)"
+        msg " ${CYAN}0.${NC}  $(tr_msg swap_opt_0)"
+        read -r -p "$(tr_msg swap_select_0_5)" choice || return 0
         case "$choice" in
             1) setup_zram_swap ;;
             2) setup_swap_2g ;;
@@ -27980,6 +28129,9 @@ write_private_sidecar() {
     [[ "$(stat -c %u:%g "$dir" 2>/dev/null || true)" == 0:0 ]] || return 1
     path_mode_has_no_group_other_write "$dir" || return 1
     [[ ! -L "$dest" ]] || return 1
+    # A directory dest would make mv install the tmp file INSIDE it and
+    # still report success, with no credential file at the target.
+    [[ ! -d "$dest" ]] || return 1
     if [[ -e "$dest" ]] && path_is_mountpoint "$dest"; then return 1; fi
     tmp=$(umask 077; mktemp "$dir/.A-Box-sidecar.XXXXXX") || return 1
     printf '%s\n' "$value" > "$tmp" || { rm -f -- "$tmp"; return 1; }
@@ -28168,9 +28320,10 @@ def allowed(n):
  return any(n==x or n.startswith(x+'/') for x in allowed_prefixes if x!='root/etc/ddr')
 try: tf=tarfile.open(fn,'r:gz')
 except Exception: raise SystemExit(1)
-members=tf.getmembers(); seen=set(); total=0
-if len(members)>max_members: raise SystemExit(1)
-for m in members:
+seen=set(); total=0; _count=0
+for m in tf:
+ _count+=1
+ if _count>max_members: raise SystemExit(1)
  raw=m.name
  while raw.startswith('./'): raw=raw[2:]
  n=posixpath.normpath(raw)
@@ -28321,10 +28474,10 @@ hy_gid=None
 xray_gid=None
 try: tf=tarfile.open(fn,'r:gz')
 except Exception: raise SystemExit(1)
-seen=set(); total=0
-members=tf.getmembers()
-if len(members)>MAX_MEMBERS: raise SystemExit(1)
-for m in members:
+seen=set(); total=0; _count=0
+for m in tf:
+    _count+=1
+    if _count>MAX_MEMBERS: raise SystemExit(1)
     raw=m.name
     if '\x00' in raw or raw.startswith('/'): raise SystemExit(1)
     while raw.startswith('./'): raw=raw[2:]
@@ -29230,22 +29383,22 @@ backup_restore_menu() {
             ;;
     esac
     local c
-    read -r -p 'Select [0-4]: ' c || return 0
+    read -r -p "$(tr_msg bk_select_0_4)" c || return 0
     case "$c" in
         1) backup_current_config; pause_return ;;
         2) restore_from_backup ;;
         3)
             local key_dest
-            read -r -p 'Absolute path on a separate trusted medium: ' key_dest
+            read -r -p "$(tr_msg bk_key_dest)" key_dest
             export_backup_recovery_key "$key_dest"; pause_return
             ;;
         4)
             local legacy_path legacy_out
-            read -r -p 'Legacy .tar.gz path: ' legacy_path
-            read -r -p 'Output directory (default: same directory): ' legacy_out
+            read -r -p "$(tr_msg bk_legacy_path)" legacy_path
+            read -r -p "$(tr_msg bk_legacy_out)" legacy_out
             convert_legacy_backup_archive "$legacy_path" "${legacy_out:-$(dirname "$legacy_path")}"; pause_return
             ;;
-        0) return 0 ;;
+        0|'') return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
     esac
     done

@@ -16241,7 +16241,11 @@ EOF_SVC
         > "$tmp_json" || die "$(tr_msg dp_socks5_json)"
 
     # Replace in place if the tag exists; otherwise append. No API: restart after check.
-    local tmp_cfg
+    # Capture the replaced port now: after the merge it is gone.
+    local tmp_cfg old_port=''
+    if [[ -f "$cfg" && ! -L "$cfg" ]]; then
+        old_port=$(jq -r --arg t "$tag" 'first(.inbounds[]? | select(.tag==$t)) | (.listen_port // empty)' "$cfg" 2>/dev/null || true)
+    fi
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
     fi
@@ -16264,6 +16268,18 @@ EOF_SVC
     allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
     allowPort "$port" udp || die "$(tprintf dp_fw_allow "${port}/udp")"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
+    # Recycle the replaced port's rules when no inbound still uses it.
+    # Either core's config counts: a port rule shared with another
+    # core's live inbound must survive. Cleanup failure never fails
+    # the deployment itself.
+    if [[ "$old_port" =~ ^[0-9]+$ && "$old_port" != "$port" ]]; then
+        if ! jq -e --argjson p "$old_port" '.inbounds[]? | select(.listen_port == $p)' "$cfg" >/dev/null 2>&1 \
+           && { [[ ! -f /usr/local/etc/xray/config.json || -L /usr/local/etc/xray/config.json ]] || ! jq -e --argjson p "$old_port" '.inbounds[]? | select(.port == $p)' /usr/local/etc/xray/config.json >/dev/null 2>&1; }; then
+            remove_abox_native_firewall_rule "$old_port" tcp 2>/dev/null || true
+            remove_abox_native_firewall_rule "$old_port" udp 2>/dev/null || true
+            save_firewall_rules 2>/dev/null || true
+        fi
+    fi
 
     # Ensure the service is running (minimal-install path).
     service_manager start sing-box 2>/dev/null || true
@@ -17679,8 +17695,9 @@ _ip_geo_fetch_now() {
     # multi-source country disagreement (broadcast/anycast heuristic).
     cc2=$(cat "$tmpd/cc2" 2>/dev/null || true)
     rm -rf "$tmpd"
-    local _tmpf="${IP_GEO_FILE}.tmp.$$"
-    printf '%s\n%s\n%s\n%s\n' "$ip" "$resp" "$cc2" "$geo_lang" > "$_tmpf" 2>/dev/null || return 1
+    local _tmpf
+    _tmpf=$(mktemp "${IP_GEO_FILE}.tmp.XXXXXX" 2>/dev/null) || return 1
+    printf '%s\n%s\n%s\n%s\n' "$ip" "$resp" "$cc2" "$geo_lang" > "$_tmpf" 2>/dev/null || { rm -f -- "$_tmpf"; return 1; }
     mv -f -- "$_tmpf" "$IP_GEO_FILE" 2>/dev/null || { rm -f -- "$_tmpf"; return 1; }
     return 0
 }
@@ -17792,14 +17809,17 @@ _menu_info_collect() {
     local tjt='' tut='' ant='' stt='' argo_st='' _ss='' _p='' _t='' _tags=''
     if command -v ss >/dev/null 2>&1; then _ss=$(ss -tuln 2>/dev/null); fi
     if [[ -r /etc/sing-box/config.json ]] && command -v jq >/dev/null 2>&1; then
-        _tags=$(jq -r '(.inbounds // [])[] | select(.tag=="tuic-in" or .tag=="anytls-in" or .tag=="shadowtls-in" or .tag=="trojan-landing") | "\(.tag) \(.listen_port // empty)"' /etc/sing-box/config.json 2>/dev/null)
+        _tags=$(jq -r '(.inbounds // [])[] | select(.tag | test("^(tuic-in|anytls-in|shadowtls-in|trojan-landing)(-[0-9]+)?$")) | "\(.tag) \(.listen_port // empty)"' /etc/sing-box/config.json 2>/dev/null)
         while read -r _t _p; do
             [[ -n "$_p" ]] || continue
+            # Any listening instance wins: a surviving tuic-in-2 must
+            # not be hidden by a deleted base instance, and a stopped
+            # instance must not mask a running one.
             case "$_t" in
-                tuic-in) tut=stop; _mi_port_listening "$_ss" "$_p" && tut=run ;;
-                anytls-in) ant=stop; _mi_port_listening "$_ss" "$_p" && ant=run ;;
-                shadowtls-in) stt=stop; _mi_port_listening "$_ss" "$_p" && stt=run ;;
-                trojan-landing) tjt=stop; _mi_port_listening "$_ss" "$_p" && tjt=run ;;
+                tuic-in|tuic-in-[0-9]*) _mi_port_listening "$_ss" "$_p" && tut=run || [[ -n "$tut" ]] || tut=stop ;;
+                anytls-in|anytls-in-[0-9]*) _mi_port_listening "$_ss" "$_p" && ant=run || [[ -n "$ant" ]] || ant=stop ;;
+                shadowtls-in|shadowtls-in-[0-9]*) _mi_port_listening "$_ss" "$_p" && stt=run || [[ -n "$stt" ]] || stt=stop ;;
+                trojan-landing|trojan-landing-[0-9]*) _mi_port_listening "$_ss" "$_p" && tjt=run || [[ -n "$tjt" ]] || tjt=stop ;;
             esac
         done <<< "$_tags"
     fi
@@ -17941,6 +17961,10 @@ _menu_info_collect() {
         [[ -n "$_MI_SNI_LIST" ]] && _MI_SNI_LIST=$(_panel_sort_cells "$_MI_SNI_LIST")
     fi
     # --- multi-user summary (registries of the toolbox manager) ---
+    # Reset up front: when the registry set becomes empty the branch
+    # below is skipped, and a stale global would keep showing deleted
+    # users across menu cycles.
+    _MI_USER_RECS=''
     _MI_USERS_N=0; _MI_USERS_BLOCKED=0; _MI_USERS_USED=0
     local _udir="${ABOX_USERS_DIR:-/etc/ddr/users.d}" _rf='' _us=''
     local -a _rfiles=()
@@ -17953,7 +17977,6 @@ _menu_info_collect() {
         read -r _MI_USERS_N _MI_USERS_BLOCKED _MI_USERS_USED <<< "${_us:-0 0 0}"
         # Per-node user records for the panel detail section:
         # SEG\t<segment> / USR\t<name>\t<used bytes>\t<mark>.
-        _MI_USER_RECS=''
         local _rcore='' _rtag='' _rseg='' _rcfg='' _ut='' _usegbuf='' _uhit=0
         # Order registries like the live configs (grid order):
         # per core, inbounds in config order; leftovers by filename.
@@ -18051,9 +18074,12 @@ _menu_info_collect() {
 
     fi
 
-    # SOCKS5 service state (inbound deployed on some core)
+    # SOCKS5 service state: config presence x service running state.
+    # (The old nodes gate only collected live configs while a core was
+    # running, so a stopped core read as "not deployed".)
     _MI_SOCKS_ST='none'
-    if [[ "$nodes" == *'SOCKS5:'* ]]; then
+    if { [[ -f /usr/local/etc/xray/config.json ]] && jq -e '.inbounds[]? | select(.protocol == "socks")' /usr/local/etc/xray/config.json >/dev/null 2>&1; } \
+       || { [[ -f /etc/sing-box/config.json ]] && jq -e '.inbounds[]? | select(.type == "socks" or .type == "mixed")' /etc/sing-box/config.json >/dev/null 2>&1; }; then
         _MI_SOCKS_ST='stop'
         if [[ "$_MI_XRUN" == "1" && -f /usr/local/etc/xray/config.json ]] \
            && jq -e '.inbounds[]? | select(.protocol == "socks")' /usr/local/etc/xray/config.json >/dev/null 2>&1; then
@@ -19493,7 +19519,7 @@ ensure_vnstat_runtime() {
     if [[ -n "$_viface" ]]; then
         if ! vnstat -i "$_viface" --json m 2>/dev/null | grep -q "\"name\": *\"$_viface\""; then
             if vnstat --version 2>/dev/null | grep -q 'vnStat 1\.'; then
-                vnstat --add -i "$_viface" >/dev/null 2>&1 || true
+                vnstat -u -i "$_viface" >/dev/null 2>&1 || true
             fi
             if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
                 if systemctl list-unit-files vnstat.service >/dev/null 2>&1; then _vunit=vnstat;
@@ -20487,9 +20513,9 @@ traffic_management_menu() {
         _tjson=$(vnstat -i "$INTERFACE" --json m 2>/dev/null) || _tjson=''
     fi
     if [[ -n "$_tjson" ]]; then
-        python3 - "$_tjson" "$INTERFACE" "$_tlimit" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
+        python3 - "$_tjson" "$INTERFACE" "$_tlimit" "${TRAFFIC_LIMIT_MODE:-total}" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
             msg "${YELLOW}[!] 流量数据解析失败。${NC}"
-import json, sys, unicodedata
+import datetime, json, sys, unicodedata
 
 def dw(s):
     return sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1 for c in s)
@@ -20508,6 +20534,9 @@ BAR = "─" * 80
 GIB = 1073741824
 
 raw, iface, limit_s = sys.argv[1], sys.argv[2], sys.argv[3]
+mode = sys.argv[4] if len(sys.argv) > 4 else 'total'
+if mode not in ('total', 'rx', 'tx'):
+    mode = 'total'
 try:
     limit_gb = float(limit_s)
 except (ValueError, TypeError):
@@ -20515,6 +20544,9 @@ except (ValueError, TypeError):
 
 def fmt_gb(n):
     return f"{n / GIB:,.1f} GB"
+
+def used_value(r, t):
+    return r if mode == 'rx' else t if mode == 'tx' else r + t
 
 def progress_bar(pct, width=60):
     pct = max(0.0, min(pct, 1.0))
@@ -20548,17 +20580,23 @@ out.append(f"{BLUE}{BAR}{NC}")
 if months:
     cur = months[0]
     rx = int(cur.get("rx", 0)); tx = int(cur.get("tx", 0)); total = rx + tx
+    used = used_value(rx, tx)
     d = cur.get("date", {})
     ym = f"{d.get('year', '--')}-{int(d.get('month', 0)):02d}" if d.get("year") else "本月"
-    out.append(f"本月已用 ({iface} \u00b7 {ym}):")
-    if limit_gb > 0:
-        cap = limit_gb * GIB
-        out.append(progress_bar(total / cap))
-        rem = cap - total
-        rem_s = f"{GREEN}剩余 {fmt_gb(rem)}{NC}" if rem >= 0 else f"{RED}超出 {fmt_gb(-rem)}{NC}"
-        out.append(f"{YELLOW}已用 {fmt_gb(total)}{NC} / 上限 {limit_gb:,.0f} GB / {rem_s}")
+    now = datetime.datetime.now()
+    is_current = (d.get("year") == now.year and d.get("month") == now.month)
+    if is_current:
+        out.append(f"本月已用 ({iface} \u00b7 {ym}):")
+        if limit_gb > 0:
+            cap = limit_gb * GIB
+            out.append(progress_bar(used / cap))
+            rem = cap - used
+            rem_s = f"{GREEN}剩余 {fmt_gb(rem)}{NC}" if rem >= 0 else f"{RED}超出 {fmt_gb(-rem)}{NC}"
+            out.append(f"{YELLOW}已用 {fmt_gb(used)}{NC} / 上限 {limit_gb:,.0f} GB / {rem_s}")
+        else:
+            out.append(f"{YELLOW}已用 {fmt_gb(used)}{NC} / 上限 未设定")
     else:
-        out.append(f"{YELLOW}已用 {fmt_gb(total)}{NC} / 上限 未设定")
+        out.append(f"{YELLOW}暂无本月数据（最新记录为 {ym}），vnStat 正在收集中。{NC}")
     out.append(f"{BLUE}{BAR}{NC}")
     out.append(f"{CYAN}{center('历史月度统计')}{NC}")
     out.append(f"{YELLOW}{pad('月份', 10)}{pad('总流量', 15, True)}"
@@ -20568,9 +20606,11 @@ if months:
         dd = m.get("date", {})
         yymm = f"{dd.get('year', '--')}-{int(dd.get('month', 0)):02d}"
         r = int(m.get("rx", 0)); t = int(m.get("tx", 0)); tot = r + t
-        if i == 0:
+        m_used = used_value(r, t)
+        m_current = (dd.get("year") == now.year and dd.get("month") == now.month)
+        if m_current:
             st = f"{YELLOW}进行中{NC}"
-        elif limit_gb > 0 and tot > limit_gb * GIB:
+        elif limit_gb > 0 and m_used > limit_gb * GIB:
             st = f"{RED}超限{NC}"
         else:
             st = f"{GREEN}正常{NC}"
@@ -20745,7 +20785,7 @@ remove_ss_source_whitelist_rules() {
     [[ -n "${SS_PORT:-}" ]] || return 0
     for cmd in "$IPT" "$IPT6"; do
         command -v "$cmd" >/dev/null 2>&1 || continue
-        _iptables_q "$cmd" -S INPUT >/dev/null 2>&1 || continue
+        _iptables_q "$cmd" -S INPUT >/dev/null 2>&1 || { failed=1; continue; }
         for proto in tcp udp; do
             while :; do
                 ipt_out=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { failed=1; break; }
@@ -20789,6 +20829,11 @@ sync_ss_whitelist_ip_to_env() {
                 }
             }
         ' <<< "$ip6_output" | LC_ALL=C sort -u | tr '\n' ' ')
+        ips+="$v6ips"
+    else
+        # IPv6 query unavailable: keep the IPv6 entries already in .env
+        # instead of silently dropping them from the whitelist.
+        v6ips=$(printf '%s' "${SS_WHITELIST_IP:-}" | tr ' ' '\n' | grep ':' | tr '\n' ' ' || true)
         ips+="$v6ips"
     fi
     SS_WHITELIST_IP=$(printf '%s' "$ips" | tr -s ' ' | sed 's/^ *//;s/ *$//')

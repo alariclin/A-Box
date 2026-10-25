@@ -2533,6 +2533,84 @@ tr_msg() {
         fa:pm_paired) echo 'IPv4: %s، IPv6 جفت‌شده خودکار: %s' ;;
         zh-tw:pm_paired) echo 'IPv4: %s，自動配對 IPv6: %s' ;;
         ja:pm_paired) echo 'IPv4: %s、自動ペアリング IPv6: %s' ;;
+        zh:ip_pref_current) echo '当前：%s' ;;
+        en:ip_pref_current) echo 'Current: %s' ;;
+        ru:ip_pref_current) echo 'Текущий: %s' ;;
+        fa:ip_pref_current) echo 'فعلی: %s' ;;
+        zh-tw:ip_pref_current) echo '目前：%s' ;;
+        ja:ip_pref_current) echo '現在: %s' ;;
+        zh:ip_select_0_3) echo '选择 [0-3]: ' ;;
+        en:ip_select_0_3) echo 'Select [0-3]: ' ;;
+        ru:ip_select_0_3) echo 'Выбор [0-3]: ' ;;
+        fa:ip_select_0_3) echo 'Select [0-3]: ' ;;
+        zh-tw:ip_select_0_3) echo '選擇 [0-3]: ' ;;
+        ja:ip_select_0_3) echo '選択 [0-3]: ' ;;
+        zh:tz_meta_fail) echo '[!] 时区已切换为 %s，但状态元数据写入失败；回滚信息可能不完整。' ;;
+        en:tz_meta_fail) echo '[!] Timezone switched to %s, but state metadata write failed; rollback information may be incomplete.' ;;
+        ru:tz_meta_fail) echo '[!] Часовой пояс переключён на %s, но запись метаданных состояния не удалась; информация для отката может быть неполной.' ;;
+        fa:tz_meta_fail) echo '[!] منطقه زمانی به %s تغییر کرد، اما نوشتن فراداده وضعیت ناموفق بود؛ اطلاعات بازگشت ممکن است ناقص باشد.' ;;
+        zh-tw:tz_meta_fail) echo '[!] 時區已切換為 %s，但狀態元資料寫入失敗；回滾資訊可能不完整。' ;;
+        ja:tz_meta_fail) echo '[!] タイムゾーンは %s に切り替わりましたが、状態メタデータの書き込みに失敗しました。ロールバック情報が不完全な可能性があります。' ;;
+        zh:dns_current) echo '当前：IPv4=%s IPv6=%s' ;;
+        en:dns_current) echo 'Current: IPv4=%s IPv6=%s' ;;
+        ru:dns_current) echo 'Текущий: IPv4=%s IPv6=%s' ;;
+        fa:dns_current) echo 'فعلی: IPv4=%s IPv6=%s' ;;
+        zh-tw:dns_current) echo '目前：IPv4=%s IPv6=%s' ;;
+        ja:dns_current) echo '現在: IPv4=%s IPv6=%s' ;;
+        zh:dns_select_mode) echo '选择 [0-3]: ' ;;
+        en:dns_select_mode) echo 'Select [0-3]: ' ;;
+        ru:dns_select_mode) echo 'Выбор [0-3]: ' ;;
+        fa:dns_select_mode) echo 'انتخاب [۰-۳]: ' ;;
+        zh-tw:dns_select_mode) echo '選擇 [0-3]: ' ;;
+        ja:dns_select_mode) echo '選択 [0-3]: ' ;;
+        zh:dns_select_provider) echo '选择服务商 [0-10]: ' ;;
+        en:dns_select_provider) echo 'Select provider [0-10]: ' ;;
+        ru:dns_select_provider) echo 'Выбор провайдера [0-10]: ' ;;
+        fa:dns_select_provider) echo 'انتخاب ارائه‌دهنده [۰-۱۰]: ' ;;
+        zh-tw:dns_select_provider) echo '選擇服務商 [0-10]: ' ;;
+        ja:dns_select_provider) echo 'プロバイダを選択 [0-10]: ' ;;
+        zh:dns_manual_v4) echo 'IPv4 DNS：' ;;
+        en:dns_manual_v4) echo 'IPv4 DNS: ' ;;
+        ru:dns_manual_v4) echo 'DNS IPv4: ' ;;
+        fa:dns_manual_v4) echo 'DNS نسخه ۴: ' ;;
+        zh-tw:dns_manual_v4) echo 'IPv4 DNS：' ;;
+        ja:dns_manual_v4) echo 'IPv4 DNS: ' ;;
+        zh:dns_manual_v6) echo 'IPv6 DNS：' ;;
+        en:dns_manual_v6) echo 'IPv6 DNS: ' ;;
+        ru:dns_manual_v6) echo 'DNS IPv6: ' ;;
+        fa:dns_manual_v6) echo 'DNS نسخه ۶: ' ;;
+        zh-tw:dns_manual_v6) echo 'IPv6 DNS：' ;;
+        ja:dns_manual_v6) echo 'IPv6 DNS: ' ;;
+        zh:dns_invalid_v4) echo 'IPv4 无效' ;;
+        en:dns_invalid_v4) echo 'Invalid IPv4' ;;
+        ru:dns_invalid_v4) echo 'Недопустимый IPv4' ;;
+        fa:dns_invalid_v4) echo 'IPv4 نامعتبر است' ;;
+        zh-tw:dns_invalid_v4) echo 'IPv4 無效' ;;
+        ja:dns_invalid_v4) echo 'IPv4 が無効です' ;;
+        zh:dns_invalid_v6) echo 'IPv6 无效' ;;
+        en:dns_invalid_v6) echo 'Invalid IPv6' ;;
+        ru:dns_invalid_v6) echo 'Недопустимый IPv6' ;;
+        fa:dns_invalid_v6) echo 'IPv6 نامعتبر است' ;;
+        zh-tw:dns_invalid_v6) echo 'IPv6 無效' ;;
+        ja:dns_invalid_v6) echo 'IPv6 が無効です' ;;
+        zh:dns_none_valid) echo '没有可用的 DNS，操作已中止。' ;;
+        en:dns_none_valid) echo 'No valid DNS to apply; aborted.' ;;
+        ru:dns_none_valid) echo 'Нет допустимых DNS для применения; прервано.' ;;
+        fa:dns_none_valid) echo 'DNS معتبری برای اعمال وجود ندارد؛ لغو شد.' ;;
+        zh-tw:dns_none_valid) echo '沒有可用的 DNS，操作已中止。' ;;
+        ja:dns_none_valid) echo '適用可能な有効な DNS がありません。中止しました。' ;;
+        zh:dns_apply) echo '应用：IPv4=%s IPv6=%s' ;;
+        en:dns_apply) echo 'Apply: IPv4=%s IPv6=%s' ;;
+        ru:dns_apply) echo 'Применить: IPv4=%s IPv6=%s' ;;
+        fa:dns_apply) echo 'اعمال: IPv4=%s IPv6=%s' ;;
+        zh-tw:dns_apply) echo '套用：IPv4=%s IPv6=%s' ;;
+        ja:dns_apply) echo '適用: IPv4=%s IPv6=%s' ;;
+        zh:dns_v6_override) echo 'IPv6 [回车=自动 %s]：' ;;
+        en:dns_v6_override) echo 'IPv6 [Enter=auto %s]: ' ;;
+        ru:dns_v6_override) echo 'IPv6 [Enter=авто %s]: ' ;;
+        fa:dns_v6_override) echo 'IPv6 [Enter=خودکار %s]: ' ;;
+        zh-tw:dns_v6_override) echo 'IPv6 [Enter=自動 %s]：' ;;
+        ja:dns_v6_override) echo 'IPv6 [Enter=自動 %s]: ' ;;
         zh:wl_mode_title) echo 'Wallos 访问方式：' ;;
         en:wl_mode_title) echo 'Wallos access mode:' ;;
         ru:wl_mode_title) echo 'Способ доступа к Wallos:' ;;
@@ -22281,8 +22359,16 @@ users_normalize_default_name() {
     jq -e '([.users[].name] | (index("abox") != null) and (index("main") == null))' "$reg" >/dev/null 2>&1 || return 0
     new=$(jq -c --arg tag "$tag" '.users |= map(if .name == "abox" then .name = "main" | (if .email == ($tag + "/abox") then .email = ($tag + "/main") else . end) else . end)' "$reg" 2>/dev/null) || return 0
     [[ -n "$new" ]] || return 0
+    # Keep the pre-migration registry: if the core sync fails, the
+    # registry must not keep 'main' while the core still has 'abox' —
+    # the abox-gone guard above would then skip every later retry and
+    # strand the user identity permanently.
+    local old_reg=''
+    old_reg=$(cat "$reg" 2>/dev/null) || return 0
     users_reg_write "$core" "$tag" "$new" >/dev/null 2>&1 || return 0
-    users_sync "$core" "$tag" >/dev/null 2>&1 || true
+    if ! users_sync "$core" "$tag" >/dev/null 2>&1; then
+        users_reg_write "$core" "$tag" "$old_reg" >/dev/null 2>&1 || true
+    fi
 }
 # Startup sweep: normalize every registry's default label without
 # waiting for the toolbox or the guard tick to visit it.
@@ -22304,11 +22390,14 @@ users_cfg_of() {
     case "$1" in
         xray) printf '%s' "${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" ;;
         xray-latest)
-            if [[ "$(_xl_state_get mode 2>/dev/null)" == 'takeover' ]]; then
-                printf '%s' "${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}"
-            else
-                printf '%s' "${XRAY_LATEST_CFG:-/etc/ddr/xray-latest/config.json}"
-            fi ;;
+            case "$(_xl_state_get mode 2>/dev/null)" in
+                takeover) printf '%s' "${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" ;;
+                coexist) printf '%s' "${XRAY_LATEST_CFG:-/etc/ddr/xray-latest/config.json}" ;;
+                # Unknown/missing mode: refuse. Falling back to one slot
+                # while another function falls back to the other splits
+                # config/binary/API away from the service.
+                *) return 1 ;;
+            esac ;;
         sing-box) printf '%s' '/etc/sing-box/config.json' ;;
         hy2) printf '%s' '/etc/hysteria/config.yaml' ;;
         *) return 1 ;;
@@ -22318,7 +22407,12 @@ users_cfg_of() {
 users_svc_of() {
     case "$1" in
         xray) printf '%s' 'xray' ;;
-        xray-latest) if [[ "$(_xl_state_get mode 2>/dev/null)" == 'coexist' ]]; then printf '%s' 'xray-latest'; else printf '%s' 'xray'; fi ;;
+        xray-latest)
+            case "$(_xl_state_get mode 2>/dev/null)" in
+                coexist) printf '%s' 'xray-latest' ;;
+                takeover) printf '%s' 'xray' ;;
+                *) return 1 ;;
+            esac ;;
         sing-box) printf '%s' 'sing-box' ;;
         hy2) printf '%s' 'hysteria' ;;
         *) return 1 ;;
@@ -22329,11 +22423,11 @@ users_bin_of() {
     case "$1" in
         xray) printf '%s' "${XRAY_SLOT_BIN:-/usr/local/bin/xray}" ;;
         xray-latest)
-            if [[ "$(_xl_state_get mode 2>/dev/null)" == 'takeover' ]]; then
-                printf '%s' "${XRAY_SLOT_BIN:-/usr/local/bin/xray}"
-            else
-                printf '%s' "${XRAY_LATEST_BIN:-/usr/local/bin/xray-latest}"
-            fi ;;
+            case "$(_xl_state_get mode 2>/dev/null)" in
+                takeover) printf '%s' "${XRAY_SLOT_BIN:-/usr/local/bin/xray}" ;;
+                coexist) printf '%s' "${XRAY_LATEST_BIN:-/usr/local/bin/xray-latest}" ;;
+                *) return 1 ;;
+            esac ;;
         sing-box) printf '%s' '/usr/local/bin/sing-box' ;;
         hy2) printf '%s' '/usr/local/bin/hysteria' ;;
         *) return 1 ;;
@@ -22344,7 +22438,11 @@ users_api_port_of() {
     case "$1" in
         xray) printf '%s' '10085' ;;
         xray-latest)
-            if [[ "$(_xl_state_get mode 2>/dev/null)" == 'takeover' ]]; then printf '%s' '10085'; else printf '%s' '10086'; fi ;;
+            case "$(_xl_state_get mode 2>/dev/null)" in
+                takeover) printf '%s' '10085' ;;
+                coexist) printf '%s' '10086' ;;
+                *) return 1 ;;
+            esac ;;
         *) printf '%s' '10085' ;;
     esac
 }
@@ -22955,7 +23053,19 @@ users_export_all() {
             printf '%s\n' "$link" >> "$tmp" && count=$((count + 1))
         done < <(jq -r '.users[] | select(.disabled != true and ((.blocked // "") == "")) | .name' "$reg" 2>/dev/null)
     done
-    if (( count == 0 )); then rm -f -- "$tmp"; return 1; fi
+    if (( count == 0 )); then
+        # No enabled users: stale links must not keep serving. Atomically
+        # replace both files with empty content (the old code left the
+        # previous users' links in place and only failed the export).
+        install_file_atomically "$tmp" "$dir/uri-list.txt" 600 || { rm -f -- "$tmp"; return 1; }
+        rm -f -- "$tmp"
+        local etmp=''
+        etmp=$(umask 077; mktemp "$dir/.sub-b64.XXXXXX") || return 1
+        install_file_atomically "$etmp" "$dir/subscription.base64" 600 || { rm -f -- "$etmp"; return 1; }
+        rm -f -- "$etmp"
+        printf '%s' '0'
+        return 0
+    fi
     install_file_atomically "$tmp" "$dir/uri-list.txt" 600 || { rm -f -- "$tmp"; return 1; }
     rm -f -- "$tmp"
     if ! command -v base64 >/dev/null 2>&1; then return 1; fi
@@ -22979,7 +23089,7 @@ users_fmt_bytes() {
             local _m10=$(( (b * 10 + 524288) / 1048576 ))
             printf '%d.%dM' $(( _m10 / 10 )) $(( _m10 % 10 ))
         else
-            local _g100=$(( (b * 100 + 5368709) / 1073741824 )) _frac
+            local _g100=$(( (b * 100 + 536870912) / 1073741824 )) _frac
             _frac=$(( _g100 % 100 ))
             if (( _frac == 0 )); then printf '%dG' $(( _g100 / 100 ));
             elif (( _frac % 10 == 0 )); then printf '%d.%dG' $(( _g100 / 100 )) $(( _frac / 10 ));
@@ -23023,13 +23133,19 @@ users_apply_reg() {
 
 users_pick_user() {
     # $1=reg-file $2=prompt -> echoes the chosen name
-    local reg="$1" names='' sel=''
+    local reg="$1" names='' sel='' total=0
     names=$(jq -r '.users[].name' "$reg" 2>/dev/null) || return 1
     [[ -n "$names" ]] || return 1
     local i=0 n=''
     while IFS= read -r n; do i=$((i + 1)); printf '%3d. %s\n' "$i" "$n" >&2; done <<< "$names"
     read -r -p "$2" sel || return 1
     [[ "$sel" =~ ^[0-9]+$ ]] || return 1
+    # Decimal first (08/010 must not parse as octal), then bound-check:
+    # an out-of-range pick used to print an empty name with rc 0, and
+    # the quota path then wrote back and reported success for nobody.
+    sel=$((10#$sel))
+    total=$(printf '%s\n' "$names" | wc -l)
+    (( sel >= 1 && sel <= total )) || return 1
     printf '%s\n' "$names" | sed -n "${sel}p"
 }
 
@@ -23705,12 +23821,12 @@ ip_preference_menu() {
     esac
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}$title${NC}"
-    msg "Current: ${YELLOW}$cur${NC}"
+    msg "$(tprintf ip_pref_current "${YELLOW}$cur${NC}")"
     msg "${CYAN}1.${NC} $ipv4"
     msg "${CYAN}2.${NC} $ipv6"
     msg "${CYAN}3.${NC} $dual"
     msg "${CYAN}0.${NC} $back"
-    read -r -p 'Select [0-3]: ' c || return 0
+    read -r -p "$(tr_msg ip_select_0_3)" c || return 0
     case "$c" in
         1) save_ip_pref ipv4 ;;
         2)
@@ -23933,9 +24049,9 @@ restore_timezone_snapshot() {
     local dir="$1" tz
     [[ -d "$dir" && -f "$dir/timezone" ]] || return 1
     tz=$(tr -d '[:space:]' < "$dir/timezone" 2>/dev/null || true)
-    if [[ -n "$tz" ]] && valid_timezone_name "$tz"; then
-        apply_timezone_name "$tz" || return 1
-    fi
+    # Files first, logical apply last: the old order returned early when
+    # the logical apply failed, leaving /etc/localtime and /etc/timezone
+    # unrestored even though the snapshot held them.
     # Restore the original filesystem representation as well as the logical
     # zone name. This also covers systems without timedatectl and localtime files
     # that have no discoverable IANA name.
@@ -23953,6 +24069,9 @@ restore_timezone_snapshot() {
         rm -f /etc/timezone || return 1
     else
         return 1
+    fi
+    if [[ -n "$tz" ]] && valid_timezone_name "$tz"; then
+        apply_timezone_name "$tz" || return 1
     fi
     return 0
 }
@@ -24040,7 +24159,7 @@ timezone_apply_with_rollback() {
     # loudly instead of claiming rollback state is available.
     if ! write_file_atomically_from_stdin "$TZ_STATE_FILE" 600 <<< "applied=$target"; then
         rm -rf -- "$snap"
-        msg "${RED}[!] 时区已切换为 ${target}，但状态元数据写入失败；回滚信息可能不完整。${NC}" >&2
+        msg "${RED}$(tprintf tz_meta_fail "$target")${NC}" >&2
         return 1
     fi
     rm -rf -- "$snap"
@@ -24095,6 +24214,7 @@ timezone_choose_from_list() {
             0|'') return 0 ;;
             *[!0-9]*) msg "${YELLOW}$invalid_prompt${NC}"; sleep 1 ;;
             *)
+                input=$((10#$input))
                 ((input>=1 && input<=${#filtered[@]})) || { msg "${YELLOW}$range_prompt${NC}"; sleep 1; continue; }
                 tz="${filtered[$((input-1))]}"
                 printf -v _formatted_prompt "$confirm_prompt" "$tz"
@@ -24138,17 +24258,27 @@ timezone_choose_locale() {
             0|'') return 0 ;;
             *[!0-9]*) msg "${YELLOW}$invalid_prompt${NC}"; sleep 1 ;;
             *)
+                value=$((10#$value))
                 ((value>=1 && value<=${#locales[@]})) || { msg "${YELLOW}$range_prompt${NC}"; sleep 1; continue; }
                 value="${locales[$((value-1))]}"
                 printf -v _formatted_prompt "$confirm_prompt" "$value"
                 read -r -p "$_formatted_prompt" answer
                 is_yes "$answer" || continue
+                # localectl may exist yet fail (e.g. non-systemd): fall
+                # back to update-locale instead of failing outright.
+                _locale_done=0
                 if command -v localectl >/dev/null 2>&1; then
-                    localectl set-locale "LANG=$value" || { msg "${RED}Locale update failed.${NC}"; pause_return; return 1; }
-                elif command -v update-locale >/dev/null 2>&1; then
-                    update-locale "LANG=$value" || { msg "${RED}Locale update failed.${NC}"; pause_return; return 1; }
-                else
-                    msg "${RED}Neither localectl nor update-locale is available; no locale was changed.${NC}"
+                    localectl set-locale "LANG=$value" && _locale_done=1
+                fi
+                if (( _locale_done == 0 )) && command -v update-locale >/dev/null 2>&1; then
+                    update-locale "LANG=$value" && _locale_done=1
+                fi
+                if (( _locale_done == 0 )); then
+                    if command -v localectl >/dev/null 2>&1 || command -v update-locale >/dev/null 2>&1; then
+                        msg "${RED}Locale update failed.${NC}"
+                    else
+                        msg "${RED}Neither localectl nor update-locale is available; no locale was changed.${NC}"
+                    fi
                     pause_return; return 1
                 fi
                 msg "${GREEN}Locale updated. Some running services may need a restart.${NC}"
@@ -25416,6 +25546,19 @@ _dns_current_v6() {
 
 # Tri-mode DNS setup wizard: v4-only / v6-only / dual-stack
 # Dual-stack auto-pairs v6 from v4 selection; single mode leaves the other unchanged
+# Normalize Persian (۰-۹) and Arabic-Indic (٠-٩) digits to ASCII before
+# any numeric match: the fa menu numbers its options in Persian digits,
+# but the case/regex below only matches ASCII. Byte-wise tr cannot do
+# this (multibyte UTF-8), so use explicit substitutions.
+normalize_fa_ar_digits() {
+    local v="$1"
+    v=${v//۰/0}; v=${v//۱/1}; v=${v//۲/2}; v=${v//۳/3}; v=${v//۴/4}
+    v=${v//۵/5}; v=${v//۶/6}; v=${v//۷/7}; v=${v//۸/8}; v=${v//۹/9}
+    v=${v//٠/0}; v=${v//١/1}; v=${v//٢/2}; v=${v//٣/3}; v=${v//٤/4}
+    v=${v//٥/5}; v=${v//٦/6}; v=${v//٧/7}; v=${v//٨/8}; v=${v//٩/9}
+    printf '%s' "$v"
+}
+
 dns_setup_tri_mode() {
     local mode='' choice='' v4='' v6='' v6_auto='' input
     local -a providers=()
@@ -25432,7 +25575,7 @@ dns_setup_tri_mode() {
         *) msg "${BOLD}${GREEN}DNS 设置：IPv4 / IPv6 / 双栈${NC}" ;;
     esac
     msg "${CYAN}======================================================================${NC}"
-    msg "Current: IPv4=${YELLOW}$(_dns_current_v4)${NC} IPv6=${YELLOW}$(_dns_current_v6)${NC}"
+    msg "$(tprintf dns_current "${YELLOW}$(_dns_current_v4)${NC}" "${YELLOW}$(_dns_current_v6)${NC}")"
     msg ""
     case "${ABOX_LANG:-zh}" in
         en) msg "${CYAN}1.${NC} IPv4 only (IPv6 unchanged)"; msg "${CYAN}2.${NC} IPv6 only (IPv4 unchanged)"; msg "${CYAN}3.${NC} Dual-stack (both)"; msg "${CYAN}0.${NC} Back" ;;
@@ -25442,7 +25585,8 @@ dns_setup_tri_mode() {
         ja) msg "${CYAN}1.${NC} IPv4 のみ (IPv6 は変更なし)"; msg "${CYAN}2.${NC} IPv6 のみ (IPv4 は変更なし)"; msg "${CYAN}3.${NC} デュアルスタック (両方)"; msg "${CYAN}0.${NC} 戻る" ;;
         *) msg "${CYAN}1.${NC} 仅 IPv4（IPv6 不变）"; msg "${CYAN}2.${NC} 仅 IPv6（IPv4 不变）"; msg "${CYAN}3.${NC} 双栈（两者都设）"; msg "${CYAN}0.${NC} 返回" ;;
     esac
-    read -r -p "Select [0-3]: " mode
+    read -r -p "$(tr_msg dns_select_mode)" mode
+    mode=$(normalize_fa_ar_digits "$mode")
     case "$mode" in
         1|2|3) ;;
         *) return 0 ;;
@@ -25462,16 +25606,17 @@ dns_setup_tri_mode() {
     esac
     msg "${CYAN}--------------------------------------------------------------------------------${NC}"
 
-    read -r -p "Select provider [0-10]: " choice
+    read -r -p "$(tr_msg dns_select_provider)" choice
+    choice=$(normalize_fa_ar_digits "$choice")
     if [[ "$choice" == "0" ]]; then
         # Manual input
         if [[ "$mode" == "1" || "$mode" == "3" ]]; then
-            read -r -p 'IPv4 DNS: ' v4
-            valid_ipv4_cidr "$v4" && [[ "$v4" != */* ]] || { msg "${RED}Invalid IPv4${NC}"; pause_return; return 1; }
+            read -r -p "$(tr_msg dns_manual_v4)" v4
+            valid_ipv4_cidr "$v4" && [[ "$v4" != */* ]] || { msg "${RED}$(tr_msg dns_invalid_v4)${NC}"; pause_return; return 1; }
         fi
         if [[ "$mode" == "2" || "$mode" == "3" ]]; then
-            read -r -p 'IPv6 DNS: ' v6
-            valid_ipv6_cidr "$v6" && [[ "$v6" != */* ]] || { msg "${RED}Invalid IPv6${NC}"; pause_return; return 1; }
+            read -r -p "$(tr_msg dns_manual_v6)" v6
+            valid_ipv6_cidr "$v6" && [[ "$v6" != */* ]] || { msg "${RED}$(tr_msg dns_invalid_v6)${NC}"; pause_return; return 1; }
         fi
     elif [[ "$choice" =~ ^([1-9]|10)$ ]]; then
         IFS='|' read -r tag name pv4 pv6 <<< "${providers[$((choice-1))]}"
@@ -25485,9 +25630,9 @@ dns_setup_tri_mode() {
                 case "${ABOX_LANG:-zh}" in
                     *) msg "$(tprintf pm_paired "${GREEN}$v4${NC}" "${CYAN}$v6_auto${NC}")" ;;
                 esac
-                read -r -p "IPv6 [Enter=auto $v6_auto]: " input
+                read -r -p "$(tprintf dns_v6_override "$v6_auto")" input
                 if [[ -n "$input" ]]; then
-                    valid_ipv6_cidr "$input" && [[ "$input" != */* ]] || { msg "${RED}Invalid IPv6${NC}"; pause_return; return 1; }
+                    valid_ipv6_cidr "$input" && [[ "$input" != */* ]] || { msg "${RED}$(tr_msg dns_invalid_v6)${NC}"; pause_return; return 1; }
                     v6="$input"
                 else
                     v6="$v6_auto"
@@ -25507,12 +25652,12 @@ dns_setup_tri_mode() {
 
     # Safety: refuse to apply if both are empty (would break DNS)
     if [[ -z "$v4" && -z "$v6" ]]; then
-        msg "${RED}No valid DNS to apply; aborted.${NC}"
+        msg "${RED}$(tr_msg dns_none_valid)${NC}"
         pause_return
         return 1
     fi
     msg ""
-    msg "Apply: IPv4=${GREEN}${v4:-none}${NC} IPv6=${CYAN}${v6:-none}${NC}"
+    msg "$(tprintf dns_apply "${GREEN}${v4:-none}${NC}" "${CYAN}${v6:-none}${NC}")"
     apply_host_dns plain "$v4" "$v6"
     pause_return
 }

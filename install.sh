@@ -3829,6 +3829,18 @@ tr_msg() {
         fa:xl_restart_fail) echo 'راه‌اندازی مجدد سرویس ناموفق بود؛ تغییر بازگردانده و استقرار حذف شد.' ;;
         zh-tw:xl_restart_fail) echo '服務重啟失敗，已回滾本次更改並刪除該部署。' ;;
         ja:xl_restart_fail) echo 'サービス再起動に失敗しました。変更をロールバックし、導入を削除しました。' ;;
+        zh:xl_rollback_fail) echo '部署失败，且回滚后服务仍无法启动，请手动检查配置与服务状态。' ;;
+        en:xl_rollback_fail) echo 'Deployment failed and the service still cannot start after rollback; check the config and service status manually.' ;;
+        ru:xl_rollback_fail) echo 'Развёртывание не удалось, и после отката служба всё ещё не запускается; проверьте конфигурацию и состояние службы вручную.' ;;
+        fa:xl_rollback_fail) echo 'استقرار ناموفق بود و سرویس پس از بازگشت هنوز راه‌اندازی نمی‌شود؛ پیکربندی و وضعیت سرویس را دستی بررسی کنید.' ;;
+        zh-tw:xl_rollback_fail) echo '部署失敗，且回滾後服務仍無法啟動，請手動檢查設定與服務狀態。' ;;
+        ja:xl_rollback_fail) echo '導入に失敗し、ロールバック後もサービスが起動しません。設定とサービスの状態を手動で確認してください。' ;;
+        zh:xl_fw_rollback) echo '防火墙放行或保存失败，已回滚到旧配置，旧链接仍有效。' ;;
+        en:xl_fw_rollback) echo 'Firewall allow/save failed; rolled back to the previous config, old links stay valid.' ;;
+        ru:xl_fw_rollback) echo 'Не удалось открыть порт или сохранить правила firewall; выполнен откат к предыдущей конфигурации, старые ссылки действуют.' ;;
+        fa:xl_fw_rollback) echo 'باز کردن پورت یا ذخیره قوانین فایروال ناموفق بود؛ به پیکربندی قبلی بازگشت شد و لینک‌های قدیمی معتبر می‌مانند.' ;;
+        zh-tw:xl_fw_rollback) echo '防火牆放行或儲存失敗，已回滾到舊設定，舊連結仍有效。' ;;
+        ja:xl_fw_rollback) echo 'ファイアウォールの許可または保存に失敗しました。以前の設定にロールバックしたため、古いリンクは有効なままです。' ;;
         zh:xl_cfg_invalid) echo '配置与最新版核心不兼容或校验失败，已取消并删除本次部署。' ;;
         en:xl_cfg_invalid) echo 'Config is incompatible with the latest core or failed validation; cancelled and deleted.' ;;
         ru:xl_cfg_invalid) echo 'Конфигурация несовместима с последним ядром или не прошла проверку; отменено и удалено.' ;;
@@ -31448,18 +31460,46 @@ xl_show_ports() {
 
 # Conflict = port used by the OTHER Xray instance's config, or held by a
 # system listener that is not the target instance's own current config.
-xl_port_conflict() { # $1=port $2=target_cfg
-    local port="${1:-}" target_cfg="${2:-}" other_cfg='' p own=' '
+xl_config_tag_ports() { # $1 = config path -> "tag port" lines, same filters as xl_config_ports
+    local cfg="${1:-}"
+    [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]] || return 0
+    jq -r '.inbounds[]? | select(.port != null and .tag != "api") | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1")) | "\(.tag) \(.port)"' "$cfg" 2>/dev/null | sort -u
+}
+
+xl_port_conflict() { # $1=port $2=target_cfg $3=tag being deployed (empty = no exemption)
+    local port="${1:-}" target_cfg="${2:-}" tag="${3:-}" other_cfg='' p t own=' '
     [[ "$port" =~ ^[0-9]+$ ]] || return 1
     if [[ "$target_cfg" == "$XRAY_SLOT_CFG" ]]; then other_cfg="$XRAY_LATEST_CFG"; else other_cfg="$XRAY_SLOT_CFG"; fi
     while read -r p; do [[ "$p" == "$port" ]] && return 0; done < <(xl_config_ports "$other_cfg")
     while read -r p; do [[ "$p" == "$port" ]] && return 0; done < <(xl_singbox_ports)
     [[ "$(xl_hy2_port)" == "$port" ]] && return 0
-    while read -r p; do own+="$p "; done < <(xl_config_ports "$target_cfg")
+    # U127: per-tag. A retained inbound (different tag) holding this port is
+    # a conflict even when nothing listens yet; only this tag's own ports
+    # are exempt (the merge replaces them), and only for the
+    # already-listening exemption below. An empty tag exempts nothing.
+    while read -r t p; do
+        if [[ "$p" == "$port" ]]; then
+            if [[ -n "$tag" && "$t" == "$tag" ]]; then own+="$p "; else return 0; fi
+        fi
+    done < <(xl_config_tag_ports "$target_cfg")
     if ss -tuln 2>/dev/null | awk '{print $5}' | grep -qE "[:.]${port}\$"; then
         [[ "$own" == *" $port "* ]] || return 0
     fi
     return 1
+}
+
+# U129+U130: restore a deploy backup, re-apply runtime read permissions,
+# verify the runtime user can read it, and restart. Returns 0 only if the
+# service is back up on the restored config.
+_xl_deploy_rollback() {
+    local bak="$1" cfg="$2" svc="$3" _rb_user _rb_group
+    install_file_atomically "$bak" "$cfg" 600 2>/dev/null || cp -f -- "$bak" "$cfg" || return 1
+    if [[ "$svc" == 'xray' ]]; then prepare_abox_runtime_permissions xray 2>/dev/null || return 1; else prepare_abox_runtime_read_file "$cfg" xray 2>/dev/null || return 1; fi
+    IFS=$'\t' read -r _rb_user _rb_group < <(abox_runtime_identity xray 2>/dev/null) || return 1
+    [[ "$(stat -c %a "$cfg" 2>/dev/null || true)" == 640 ]] || return 1
+    [[ "$(stat -c %G "$cfg" 2>/dev/null || true)" == "$_rb_group" ]] || return 1
+    restart_service_soft "$svc" >/dev/null 2>&1 || return 1
+    return 0
 }
 
 _xl_seed_config() { # $1 = cfg path, $2 = log tag (xray | xray-latest)
@@ -31799,7 +31839,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     fi
     xl_show_ports
     port=$(prompt_validated "$(tr_msg xl_port_prompt)" port "$defport") || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    if xl_port_conflict "$port" "$cfg"; then
+    if xl_port_conflict "$port" "$cfg" "$tag"; then
         msg "${RED}$(tr_msg xl_port_conflict): ${port}${NC}"
         xl_show_ports
         return 1
@@ -31881,15 +31921,33 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     rm -f "$tmp_cfg" "$tmp_json"
     if [[ "$svc" == 'xray' ]]; then prepare_abox_runtime_permissions xray 2>/dev/null || true; else prepare_abox_runtime_read_file "$cfg" xray 2>/dev/null || true; fi
     if ! restart_service_soft "$svc"; then
-        # Roll back THIS deployment only: restore the previous config.
-        install_file_atomically "$bak" "$cfg" 600 2>/dev/null || cp -f -- "$bak" "$cfg"
-        restart_service_soft "$svc" >/dev/null 2>&1 || true
+        # U129: roll back THIS deployment only, with permissions re-applied
+        # and readability verified; a failed rollback is reported distinctly.
+        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
+            msg "${RED}$(tr_msg xl_restart_fail)${NC}"
+        else
+            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
+        fi
         rm -f "$bak"
-        msg "${RED}$(tr_msg xl_restart_fail)${NC}"
+        return 1
+    fi
+    # U130: firewall steps run before the backup is deleted; on failure the
+    # deploy is rolled back (old config + old links stay valid) instead of
+    # leaving a live new config with no backup and no links.
+    if ! allowPort "$port" tcp; then
+        _xl_deploy_rollback "$bak" "$cfg" "$svc" >/dev/null 2>&1 || true
+        rm -f "$bak"
+        msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
+        return 1
+    fi
+    [[ "$kind" == 'ss' || "$kind" == 'socks' ]] && { allowPort "$port" udp || true; }
+    if ! save_firewall_rules; then
+        _xl_deploy_rollback "$bak" "$cfg" "$svc" >/dev/null 2>&1 || true
+        rm -f "$bak"
+        msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
         return 1
     fi
     rm -f "$bak"
-    allowPort "$port" tcp || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     [[ "$kind" == 'ss' || "$kind" == 'socks' ]] && { allowPort "$port" udp || true; }
     save_firewall_rules || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     pub_ip=$(read_cached_public_ip 2>/dev/null || true)
@@ -31928,11 +31986,11 @@ xray_latest_deploy_trio() {
     if [[ "$mode" == 'coexist' ]]; then msg "${YELLOW}$(tr_msg xl_coexist_note)${NC}"; fi
     xl_show_ports
     vp=$(prompt_validated "$(tr_msg xl_port_prompt)" port '443') || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    if xl_port_conflict "$vp" "$cfg"; then msg "${RED}$(tr_msg xl_port_conflict): ${vp}${NC}"; return 1; fi
+    if xl_port_conflict "$vp" "$cfg" 'latest-vision'; then msg "${RED}$(tr_msg xl_port_conflict): ${vp}${NC}"; return 1; fi
     xp=$(prompt_validated "$(tr_msg xl_port_prompt)" port '8443') || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    if [[ "$xp" == "$vp" ]] || xl_port_conflict "$xp" "$cfg"; then msg "${RED}$(tr_msg xl_port_conflict): ${xp}${NC}"; return 1; fi
+    if [[ "$xp" == "$vp" ]] || xl_port_conflict "$xp" "$cfg" 'latest-xhttp'; then msg "${RED}$(tr_msg xl_port_conflict): ${xp}${NC}"; return 1; fi
     sp2=$(prompt_validated "$(tr_msg xl_port_prompt)" port '2053') || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    if [[ "$sp2" == "$vp" || "$sp2" == "$xp" ]] || xl_port_conflict "$sp2" "$cfg"; then msg "${RED}$(tr_msg xl_port_conflict): ${sp2}${NC}"; return 1; fi
+    if [[ "$sp2" == "$vp" || "$sp2" == "$xp" ]] || xl_port_conflict "$sp2" "$cfg" 'latest-ss'; then msg "${RED}$(tr_msg xl_port_conflict): ${sp2}${NC}"; return 1; fi
     listen_addr=$(wildcard_listen_address)
     sni=$(sni_prompt_or_auto)
     keypair=$("$bin" x25519) || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
@@ -31973,18 +32031,33 @@ xray_latest_deploy_trio() {
     rm -f "$tmp_cfg" "$tmp_json"
     if [[ "$svc" == 'xray' ]]; then prepare_abox_runtime_permissions xray 2>/dev/null || true; else prepare_abox_runtime_read_file "$cfg" xray 2>/dev/null || true; fi
     if ! restart_service_soft "$svc"; then
-        install_file_atomically "$bak" "$cfg" 600 2>/dev/null || cp -f -- "$bak" "$cfg"
-        restart_service_soft "$svc" >/dev/null 2>&1 || true
+        # U129: roll back THIS deployment only, with permissions re-applied
+        # and readability verified; a failed rollback is reported distinctly.
+        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
+            msg "${RED}$(tr_msg xl_restart_fail)${NC}"
+        else
+            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
+        fi
         rm -f "$bak"
-        msg "${RED}$(tr_msg xl_restart_fail)${NC}"
+        return 1
+    fi
+    # U130: firewall steps run before the backup is deleted; on failure the
+    # deploy is rolled back (old config + old links stay valid) instead of
+    # leaving a live new config with no backup and no links.
+    if ! allowPort "$vp" tcp || ! allowPort "$xp" tcp || ! allowPort "$sp2" tcp; then
+        _xl_deploy_rollback "$bak" "$cfg" "$svc" >/dev/null 2>&1 || true
+        rm -f "$bak"
+        msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
+        return 1
+    fi
+    allowPort "$sp2" udp || true
+    if ! save_firewall_rules; then
+        _xl_deploy_rollback "$bak" "$cfg" "$svc" >/dev/null 2>&1 || true
+        rm -f "$bak"
+        msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
         return 1
     fi
     rm -f "$bak"
-    allowPort "$vp" tcp || return 1
-    allowPort "$xp" tcp || return 1
-    allowPort "$sp2" tcp || return 1
-    allowPort "$sp2" udp || true
-    save_firewall_rules || return 1
     pub_ip=$(read_cached_public_ip 2>/dev/null || true)
     [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'

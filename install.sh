@@ -12833,10 +12833,16 @@ created = False
 try:
     if os.path.lexists(dest): raise ValueError('destination exists')
     with tarfile.open(archive, 'r:gz') as tf:
-        members = tf.getmembers()
-        if len(members) > MAX_MEMBERS: raise ValueError('member count')
+        # Stream enumeration, bounded by MAX_MEMBERS: CPython caches
+        # iterated TarInfo objects, so this is bounded-by-cap, not
+        # constant memory. The count check runs before further
+        # enumeration, so a hostile archive cannot force unbounded
+        # member materialization (same discipline as the U209 validators).
         matches = []
-        for m in members:
+        _count = 0
+        for m in tf:
+            _count += 1
+            if _count > MAX_MEMBERS: raise ValueError('member count')
             raw = m.name
             if '\x00' in raw or raw.startswith('/'): raise ValueError('path')
             while raw.startswith('./'): raw = raw[2:]
@@ -28432,11 +28438,15 @@ convert_legacy_backup_archive() {
     validate_legacy_backup_archive "$selected" || die 'Legacy backup archive safety validation failed.'
     work=$(mktemp -d /tmp/A-Box-legacy-import.XXXXXX) || die 'Legacy conversion temp directory failed.'
     chmod 700 "$work"
-    python3 - "$selected" "$work" <<'PY_LEGACY_EXTRACT'
+    python3 - "$selected" "$work" <<'PY_LEGACY_EXTRACT' || { rm -rf "$work"; die 'Legacy backup extraction failed.'; }
 import os, pathlib, tarfile, sys
 src,dst=sys.argv[1:]; base=pathlib.Path(dst).resolve()
+max_members=10000; max_file=512*1024*1024; max_total=1024*1024*1024
+_count=0; total=0
 with tarfile.open(src,'r:gz') as tf:
- for m in tf.getmembers():
+ for m in tf:
+  _count+=1
+  if _count>max_members: raise SystemExit(1)
   name=m.name
   while name.startswith('./'): name=name[2:]
   if not name or name=='.': continue
@@ -28444,6 +28454,9 @@ with tarfile.open(src,'r:gz') as tf:
   if base not in target.parents and target!=base: raise SystemExit(1)
   if m.isdir(): target.mkdir(parents=True,exist_ok=True); os.chmod(target,m.mode & 0o777)
   elif m.isfile():
+   if m.size<0 or m.size>max_file: raise SystemExit(1)
+   total+=m.size
+   if total>max_total: raise SystemExit(1)
    target.parent.mkdir(parents=True,exist_ok=True)
    f=tf.extractfile(m)
    if f is None: raise SystemExit(1)

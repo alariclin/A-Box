@@ -7808,7 +7808,7 @@ sni_probe_candidate_tier() {
     ABOX_CURL_TLS13_SUPPORTED=0
     ABOX_CURL_HTTP2_SUPPORTED=0
     { curl --help all 2>/dev/null || curl --help 2>/dev/null; } | grep -F -- '--tlsv1.3' >/dev/null && ABOX_CURL_TLS13_SUPPORTED=1
-    { curl --help all 2>/dev/null || curl --help 2>/dev/null; } | grep -F -- '--http2' >/dev/null && ABOX_CURL_HTTP2_SUPPORTED=1
+    curl --version 2>/dev/null | grep -qw 'HTTP2' && ABOX_CURL_HTTP2_SUPPORTED=1
     sni_probe_domain "$domain" "$raw" "$timeout_s" >&2 || true
     if [[ ! -s "$raw" ]]; then
         rm -rf -- "$workdir"
@@ -25761,14 +25761,16 @@ asn_lookup_ip() {
     mode=$(stat -c %a "$cache_dir" 2>/dev/null) || return 1
     # C-05: stat -c %a outputs "700" (no leading 0), not "0700".
     [[ "$uid" == 0 && "$gid" == 0 && "$mode" =~ ^0?700$ ]] || return 1
+    cache_file="$cache_dir/$(printf '%s' "$ip" | tr -c 'A-Za-z0-9_.:-' '_')"
+    # Cache first: a 429 short-circuit must not shadow already-known
+    # ASN/org (including CDN marks) for cached IPs.
+    if [[ -s "$cache_file" ]]; then
+        cat "$cache_file"
+        return 0
+    fi
     # Global short-circuit after ipinfo.io rate-limit (429) for this SNI run.
     if [[ -f "$cache_dir/.rate_limited" ]]; then
         printf 'asn=unknown\tcountry=unknown\torg=unknown'
-        return 0
-    fi
-    cache_file="$cache_dir/$(printf '%s' "$ip" | tr -c 'A-Za-z0-9_.:-' '_')"
-    if [[ -s "$cache_file" ]]; then
-        cat "$cache_file"
         return 0
     fi
     body=$(curl -sS -w $'\n%{http_code}' --connect-timeout 2 -m 4 "https://ipinfo.io/${ip}/json" 2>/dev/null || true)
@@ -26067,7 +26069,7 @@ sni_auto_select_default() {
     ABOX_CURL_TLS13_SUPPORTED=0
     ABOX_CURL_HTTP2_SUPPORTED=0
     { curl --help all 2>/dev/null || curl --help 2>/dev/null; } | grep -F -- '--tlsv1.3' >/dev/null && ABOX_CURL_TLS13_SUPPORTED=1
-    { curl --help all 2>/dev/null || curl --help 2>/dev/null; } | grep -F -- '--http2' >/dev/null && ABOX_CURL_HTTP2_SUPPORTED=1
+    curl --version 2>/dev/null | grep -qw 'HTTP2' && ABOX_CURL_HTTP2_SUPPORTED=1
     : > "$raw"
     while IFS= read -r domain; do
         # Detach probe subshells from the terminal stdin so stray keystrokes
@@ -26192,7 +26194,7 @@ run_builtin_sni_radar() {
     else
         ABOX_CURL_TLS13_SUPPORTED=0
     fi
-    if { curl --help all 2>/dev/null || curl --help 2>/dev/null; } | grep -F -- '--http2' >/dev/null; then
+    if curl --version 2>/dev/null | grep -qw 'HTTP2'; then
         ABOX_CURL_HTTP2_SUPPORTED=1
     else
         ABOX_CURL_HTTP2_SUPPORTED=0
@@ -26522,16 +26524,20 @@ setup_swap_2g() {
                 die '/etc/fstab 原子提交失败；已回滚新建 Swap。'
             fi
         fi
-        if ! write_file_atomically_from_stdin "$ABOX_DIR/.swapfile.managed" 600 <<'EOF_SWAP_MARK'
+        if grep -q '# A-Box swap BEGIN' /etc/fstab 2>/dev/null; then
+            if ! write_file_atomically_from_stdin "$ABOX_DIR/.swapfile.managed" 600 <<'EOF_SWAP_MARK'
 A-Box managed swap v1
 EOF_SWAP_MARK
-        then
-            if ! rollback_abox_new_swap "$fstab_backup"; then
-                msg "${RED}[!] Swap ownership marker 写入失败，自动回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
-                die 'Swap 归属标记写入失败且自动回滚不完整；已保留恢复材料，请立即检查 /etc/fstab 与 /swapfile。'
+            then
+                if ! rollback_abox_new_swap "$fstab_backup"; then
+                    msg "${RED}[!] Swap ownership marker 写入失败，自动回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
+                    die 'Swap 归属标记写入失败且自动回滚不完整；已保留恢复材料，请立即检查 /etc/fstab 与 /swapfile。'
+                fi
+                rm -f "$fstab_backup" || true
+                die 'Swap 归属标记写入失败；已完整回滚 A-Box 新建 Swap。'
             fi
-            rm -f "$fstab_backup" || true
-            die 'Swap 归属标记写入失败；已完整回滚 A-Box 新建 Swap。'
+        else
+            msg "${YELLOW}[!] /etc/fstab 已有未标记的 /swapfile 条目；本次不写入托管区块、也不声明所有权。${NC}"
         fi
         rm -f "$fstab_backup" || die 'Swap 临时备份清理失败；Swap 已部署但安全备份残留，请检查 /etc/.fstab.A-Box-setup-backup.*。'
     elif ! grep -qE '^/swapfile[[:space:]]+none[[:space:]]+swap[[:space:]]+sw[[:space:]]+0[[:space:]]+0([[:space:]]|$)' /etc/fstab 2>/dev/null; then
@@ -26580,7 +26586,7 @@ case "${1:-}" in
         # Record which device this helper activated so stop only
         # ever swaps off our own device, never a foreign zram swap
         # (distro zram-generator / zram-tools setups share the box).
-        printf 'DEV=%s\n' "$dev" > /etc/ddr/zram.state 2>/dev/null || true
+        printf 'DEV=%s\n' "$dev" > /etc/ddr/zram.state 2>/dev/null || { swapoff "$dev" 2>/dev/null || true; if command -v zramctl >/dev/null 2>&1; then zramctl --reset "$dev" >/dev/null 2>&1 || true; fi; exit 1; }
         ;;
     stop)
         if [[ -f /etc/ddr/zram.state ]]; then
@@ -26588,18 +26594,18 @@ case "${1:-}" in
             if [[ "$sdev" =~ ^/dev/zram[0-9]+$ ]]; then
                 swapoff "$sdev" 2>/dev/null || exit 1
                 if command -v zramctl >/dev/null 2>&1; then zramctl --reset "$sdev" >/dev/null 2>&1 || true; fi
+                rm -f /etc/ddr/zram.state
+            else
+                echo "abox-zram: malformed device in /etc/ddr/zram.state; refusing to stop, state kept for inspection" >&2
+                exit 1
             fi
-            rm -f /etc/ddr/zram.state
         else
-            # Legacy installs (pre state tracking): fall back to
-            # stopping every active zram swap as before.
-            for d in $(zram_active_devs); do swapoff "$d" 2>/dev/null || exit 1; done
-            if command -v zramctl >/dev/null 2>&1; then
-                for b in /sys/block/zram[0-9]*; do
-                    [[ -e "$b" ]] || continue
-                    zramctl --reset "/dev/${b##*/}" >/dev/null 2>&1 || true
-                done
-            fi
+            # No state file: refuse to stop. The recorded device is the
+            # only proof a zram swap is ours; stopping every active zram
+            # swap here could kill distro/user swaps. Legacy installs
+            # without state must be stopped by hand.
+            echo "abox-zram: no /etc/ddr/zram.state; refusing to stop zram swaps not proven to be A-Box's" >&2
+            exit 1
         fi
         ;;
     status)
@@ -26853,8 +26859,11 @@ remove_abox_swap() {
         fi
     fi
     if ! rm -f "$ABOX_DIR/.swapfile.managed"; then
-        __abox_restore_fstab_from_swap_backup "$backup" || return 1
-        msg "${YELLOW}[!] Swap 所有权标记删除失败；已恢复 /etc/fstab，保留恢复状态。${NC}" >&2
+        # Do NOT restore the old fstab here: /swapfile is already deleted
+        # and the managed block is already stripped, so restoring would
+        # resurrect a reference to a deleted file. Keep the marker so a
+        # later uninstall can finish the cleanup, and say so loudly.
+        msg "${YELLOW}[!] Swap 所有权标记删除失败；/etc/fstab 托管区块已删、/swapfile 已删，保持标记以便下次卸载完成清理（也可手动删除标记）。${NC}" >&2
         rm -f "$backup" || true
         return 1
     fi
@@ -26880,7 +26889,7 @@ inline_authorization = re.compile(
 )
 inline_cookie = re.compile(r"(?i)(\b(?:cookie|set-cookie)\s*[:=]\s*)[^\r\n]+")
 inline_secret_assignment = re.compile(
-    r"(?i)([\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|ss_pass|hy2_pass|hy2_obfs)\b[\"']?\s*[:=]\s*)([\"']?)[^,;\s}\"']+\2"
+    r"(?i)([\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|ss_pass|hy2_pass|hy2_obfs)\b[\"']?\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|[^,;\s}\"']+)"
 )
 
 
@@ -26928,7 +26937,12 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie)[\"']?\s*[:=]\s*)([\"']?)[^,}\s\"']+\2",
+        r"(?i)(\bid\b[\"']?\s*[:=]\s*[\"']?)([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})",
+        r'\1***REDACTED***',
+        text,
+    )
+    text = re.sub(
+        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie)[\"']?\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|[^,}\s\"']+)",
         r'\1"***REDACTED***"',
         text,
     )
@@ -26945,6 +26959,9 @@ PY_REDACT
             -e 's/((Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*)[^,}[:cntrl:]"]+/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
+            -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortId|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*)(["'"'"'])([^"'"'"']*)\3/\1\3***REDACTED***\3/Ig' \
+            -e 's/^(id[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/\1***REDACTED***/Ig' \
+            -e 's/([^A-Za-z0-9_])(id[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/\1\2***REDACTED***/Ig' \
             -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortId|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)[^,}[:space:]["]+/\1***REDACTED***/Ig' \
             -e 's/(vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess):\/\/[^[:space:]]+/***CLIENT_LINK_REDACTED***/Ig'
     fi

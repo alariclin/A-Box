@@ -22470,7 +22470,7 @@ export_lightweight_subscription() {
     if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" ]] || continue
-            if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='Vision'; else proxy_name="Vision-${client_uuid:0:8}"; fi
+            if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='Vision'; else proxy_name="Vision-$client_uuid"; fi
             url="vless://$client_uuid@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#$proxy_name"
             printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp" "$_uuid_list_tmp"; return 1; }
         done < "$_uuid_list_tmp"
@@ -22478,7 +22478,7 @@ export_lightweight_subscription() {
     if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" ]] || continue
-            if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='XHTTP'; else proxy_name="XHTTP-${client_uuid:0:8}"; fi
+            if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='XHTTP'; else proxy_name="XHTTP-$client_uuid"; fi
             url="vless://$client_uuid@$F_IP:$XHTTP_PORT?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#$proxy_name"
             printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp" "$_uuid_list_tmp"; return 1; }
         done < "$_uuid_list_tmp"
@@ -33349,7 +33349,7 @@ EOF_CLASH
         if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
             while IFS= read -r client_uuid; do
                 [[ -n "$client_uuid" ]] || continue
-                if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='Vision'; else proxy_name="Vision-${client_uuid:0:8}"; fi
+                if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='Vision'; else proxy_name="Vision-$client_uuid"; fi
                 cat <<EOF_CLASH
   - name: "$proxy_name"
     type: vless
@@ -33376,7 +33376,7 @@ EOF_CLASH
         if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
             while IFS= read -r client_uuid; do
                 [[ -n "$client_uuid" ]] || continue
-                if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='XHTTP'; else proxy_name="XHTTP-${client_uuid:0:8}"; fi
+                if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='XHTTP'; else proxy_name="XHTTP-$client_uuid"; fi
                 cat <<EOF_CLASH
   - name: "$proxy_name"
     type: vless
@@ -33493,8 +33493,8 @@ EOF_CLASH
         [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo '      - XHTTP'
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" && "$client_uuid" != "${UUID:-}" ]] || continue
-            [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo "      - Vision-${client_uuid:0:8}"
-            [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo "      - XHTTP-${client_uuid:0:8}"
+            [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo "      - Vision-$client_uuid"
+            [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo "      - XHTTP-$client_uuid"
         done < "$_clash_uuid_list_tmp"
         [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]] && echo "      - $hy2_name"
         [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo '      - SS'
@@ -33543,7 +33543,7 @@ generate_qr() {
         msg "${YELLOW}[!] 未检测到 qrencode，跳过二维码显示。安装后进 12 号菜单重看即有：${NC}"
         msg "${YELLOW}    Debian/Ubuntu: sudo apt install -y qrencode${NC}"
         msg "${YELLOW}    Rocky/Alma/Fedora: sudo dnf install -y qrencode${NC}"
-        msg "${YELLOW}    Alpine: sudo apk add qrencode${NC}"
+        msg "${YELLOW}    Alpine: sudo apk add libqrencode-tools (<=3.18: libqrencode)${NC}"
     fi
 }
 
@@ -33598,8 +33598,12 @@ view_config() {
     fi
     VISION_SNI=${VISION_SNI:-${VLESS_SNI:-}}
     XHTTP_SNI=${XHTTP_SNI:-${VLESS_SNI:-}}
+    # U224: capture the global CLASH_SUB_URL before the local below
+    # shadows it; otherwise ${CLASH_SUB_URL:-} at assignment time reads
+    # the (empty) local and the global fallback never works.
+    local _clash_sub_global="${CLASH_SUB_URL:-}"
     local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME
-    local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX
+    local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json
     IFS=$'\t' read -r HY2_URI_PORT HY2_QUERY_PREFIX < <(build_hy2_uri_endpoint) || die 'Hysteria2 分享链接端口参数无效。'
     [[ "$LINK_IP" =~ : ]] && F_IP="[$LINK_IP]"
     [[ -z "$LINK_IP" || "$LINK_IP" == 'N/A' ]] && msg "${YELLOW}[!] 未能自动获取公网 IP，分享链接可能不可用。${NC}"
@@ -33653,7 +33657,7 @@ view_config() {
     fi
 
     CLASH_FILE=$(write_clash_yaml) || die 'Clash/Mihomo YAML 配置生成失败。'
-    CLASH_SUB_URL="${ABOX_CLASH_SUB_URL:-${CLASH_SUB_URL:-}}"
+    CLASH_SUB_URL="${ABOX_CLASH_SUB_URL:-${_clash_sub_global:-}}"
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ Clash / Mihomo 完整配置 ]${NC}"
     msg "${GREEN}Local YAML: ${CLASH_FILE}${NC}"
@@ -33679,6 +33683,11 @@ view_config() {
         [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="$HY2_DOMAIN"
         if [[ "${HY2_HOP:-}" == 'true' ]]; then
             if valid_hy2_sb_ports "${HY2_SB_PORTS:-}"; then
+                # U223: check the TLS fragment BEFORE embedding it; the
+                # old $(...) inside the heredoc silently produced a
+                # dangling comma and a missing tls block on failure.
+                _hy2_tls_json=$(singbox_hy2_tls_json) || msg "${RED}[!] Sing-box TLS 配置生成失败；已省略无效的出站示例。${NC}"
+                if [[ -n "$_hy2_tls_json" ]]; then
                 cat <<EOF_SB
     {
       "type": "hysteria2",
@@ -33686,30 +33695,34 @@ view_config() {
       "server_ports": ["$HY2_SB_PORTS"],
       "hop_interval": "30s",
       "password": $(json_escape "$HY2_PASS"),
-$(singbox_hy2_tls_json),
+${_hy2_tls_json},
       "obfs": {
         "type": "salamander",
         "password": $(json_escape "$HY2_OBFS")
       }
     }
 EOF_SB
+                fi
             else
                 msg "${YELLOW}[!] Hysteria 2 端口跳跃状态缺失或非法；已省略无效的 Sing-box 出站示例。${NC}"
             fi
         else
+            _hy2_tls_json=$(singbox_hy2_tls_json) || msg "${RED}[!] Sing-box TLS 配置生成失败；已省略无效的出站示例。${NC}"
+            if [[ -n "$_hy2_tls_json" ]]; then
             cat <<EOF_SB
     {
       "type": "hysteria2",
       "server": "$S_IP",
       "server_port": ${HY2_BASE_PORT:-443},
       "password": $(json_escape "$HY2_PASS"),
-$(singbox_hy2_tls_json),
+${_hy2_tls_json},
       "obfs": {
         "type": "salamander",
         "password": $(json_escape "$HY2_OBFS")
       }
     }
 EOF_SB
+            fi
         fi
     fi
     if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
@@ -34127,18 +34140,25 @@ update_script() {
     fi
     if ! install_binary_atomically "$tmp_update" "$ABOX_DIR/A-Box.sh"; then
         restore_sni_candidate_cache_snapshot "$tmp_old_sni_cache" "$old_cache_exists" || cache_restore_ok=0
-        rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized" "$tmp_old_script" "$tmp_old_sni_cache"
-        (( cache_restore_ok == 1 )) && die 'OTA 脚本原子写入失败；旧脚本保留，SNI 缓存已回滚。'
-        die 'OTA 脚本原子写入失败，且 SNI 缓存回滚不完整；请保留当前文件并检查 A-Box-sni-candidates.txt。'
+        if (( cache_restore_ok == 1 )); then
+            rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized" "$tmp_old_script" "$tmp_old_sni_cache"
+            die 'OTA 脚本原子写入失败；旧脚本保留，SNI 缓存已回滚。'
+        fi
+        # U226: incomplete rollback keeps the snapshots for manual
+        # recovery (only the throwaway downloads are removed here).
+        rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
+        die 'OTA 脚本原子写入失败，且 SNI 缓存回滚不完整；请勿重试，先检查 A-Box.sh 与 SNI 缓存。旧脚本快照与旧 SNI 缓存快照保留于 /tmp（A-Box-update-old-*）。'
     fi
     if ! validate_abox_script_file "$ABOX_DIR/A-Box.sh" "$(tr_msg ss2_ctx_persisted)"; then
         rollback_binary_install "$ABOX_DIR/A-Box.sh" "$tmp_old_script" || script_restore_ok=0
         restore_sni_candidate_cache_snapshot "$tmp_old_sni_cache" "$old_cache_exists" || cache_restore_ok=0
-        rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized" "$tmp_old_script" "$tmp_old_sni_cache"
         if (( script_restore_ok == 1 && cache_restore_ok == 1 )); then
+            rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized" "$tmp_old_script" "$tmp_old_sni_cache"
             die 'OTA 持久化校验失败；旧脚本和旧 SNI 缓存已恢复。'
         fi
-        die 'OTA 持久化校验失败且回滚不完整；请勿重试，先检查 A-Box.sh 与 SNI 缓存。'
+        # U226: incomplete rollback keeps the snapshots for manual recovery.
+        rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
+        die 'OTA 持久化校验失败且回滚不完整；请勿重试，先检查 A-Box.sh 与 SNI 缓存。旧脚本快照与旧 SNI 缓存快照保留于 /tmp（A-Box-update-old-*）。'
     fi
     rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized" "$tmp_old_script" "$tmp_old_sni_cache"
     msg "${GREEN}核心代码与同 commit 的 SNI 候选数据库已同步。${NC}"
@@ -34247,7 +34267,10 @@ core_expected_listen_ports() {
         xray)
             # XRAY-API: exclude the loopback-only gRPC control plane (tag "api")
             # from data-plane health checks; it is infrastructure, not a service port.
-            jq -r '.inbounds[]? | select(.port != null and .tag != "api") | (if .protocol == "shadowsocks" then "tcp/\(.port)\nudp/\(.port)" elif .protocol == "socks" then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end)' "$cfg" 2>/dev/null
+            # U228: xray socks listens on UDP only when settings.udp
+            # is true (absent/false means TCP-only); emitting udp/ for a
+            # TCP-only socks inbound failed the health check outright.
+            jq -r '.inbounds[]? | select(.port != null and .tag != "api") | (if .protocol == "shadowsocks" then "tcp/\(.port)\nudp/\(.port)" elif .protocol == "socks" then (if .settings.udp == true then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end) else "tcp/\(.port)" end)' "$cfg" 2>/dev/null
             ;;
         singbox)
             jq -r '.inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" or .type == "tuic" then "udp/\(.listen_port)" elif .type == "shadowsocks" then "tcp/\(.listen_port)\nudp/\(.listen_port)" elif .type == "socks" or .type == "mixed" then "tcp/\(.listen_port)\nudp/\(.listen_port)" else "tcp/\(.listen_port)" end)' "$cfg" 2>/dev/null
@@ -34609,7 +34632,12 @@ hysteria_binary_smoke_test() {
     # can return: enabled, disabled, masked, enabled-runtime, static,
     # indirect, generated, transient, etc. We must restore exactly.
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        was_enabled_state=$(systemctl is-enabled hysteria 2>/dev/null || printf 'unknown')
+        # U229: is-enabled prints the state word AND exits non-zero
+        # for disabled/masked, so $(... || printf 'unknown') produced
+        # "disabled\nunknown" and no case branch matched. Capture the
+        # output first; 'unknown' only when nothing was printed.
+        was_enabled_state=$(systemctl is-enabled hysteria 2>/dev/null || true)
+        [[ -n "$was_enabled_state" ]] || was_enabled_state='unknown'
         # A masked service cannot be started; skip rather than unmasking it.
         if [[ "$was_enabled_state" == 'masked' ]]; then
             msg "${YELLOW}[!] Hysteria service is masked; skipping smoke test.${NC}" >&2
@@ -34632,24 +34660,26 @@ hysteria_binary_smoke_test() {
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         if systemctl daemon-reload >/dev/null 2>&1; then
             if systemctl start hysteria >/dev/null 2>&1 || systemctl restart hysteria >/dev/null 2>&1; then
+                # U230: the port check joins the wait loop; a port that
+                # is not ready yet must retry while budget remains,
+                # not fail on a single post-active check.
                 while (( waited < 10 )); do
                     sleep 1; waited=$((waited + 1))
-                    is_service_running hysteria 2>/dev/null && break
+                    if is_service_running hysteria 2>/dev/null && core_ports_listening hysteria "$cfg" 2>/dev/null; then
+                        ok=1; break
+                    fi
                 done
-                if is_service_running hysteria 2>/dev/null && core_ports_listening hysteria "$cfg" 2>/dev/null; then
-                    ok=1
-                fi
             fi
         fi
     else
         if rc-service hysteria restart >/dev/null 2>&1 9>&- 10>&-; then
+            # U230: same loop-join as the systemd branch.
             while (( waited < 10 )); do
                 sleep 1; waited=$((waited + 1))
-                is_service_running hysteria 2>/dev/null && break
+                if is_service_running hysteria 2>/dev/null && core_ports_listening hysteria "$cfg" 2>/dev/null; then
+                    ok=1; break
+                fi
             done
-            if is_service_running hysteria 2>/dev/null && core_ports_listening hysteria "$cfg" 2>/dev/null; then
-                ok=1
-            fi
         fi
     fi
     (( ok == 1 )) && rc=0
@@ -34667,7 +34697,8 @@ hysteria_binary_smoke_test() {
     # Restore the exact original enablement state. A changed state here would
     # mean the temporary start leaked a state change; report loudly.
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        cur_state=$(systemctl is-enabled hysteria 2>/dev/null || printf 'unknown')
+        cur_state=$(systemctl is-enabled hysteria 2>/dev/null || true)
+        [[ -n "$cur_state" ]] || cur_state='unknown'
         if [[ "$cur_state" != "$was_enabled_state" ]]; then
             case "$was_enabled_state" in
                 enabled)
@@ -34996,7 +35027,7 @@ fallback_runtime_lock_held() { # 0 = a live process holds the fallback lock
 }
 
 acquire_fallback_runtime_lock() {
-    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start=''
+    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start='' _dir_age=0
     if mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null; then
         lock_dir_created=1
         chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
@@ -35029,6 +35060,25 @@ acquire_fallback_runtime_lock() {
                 fi
                 return 1
             fi
+            rm -rf -- "$stale_away" 2>/dev/null || true
+            mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null || return 1
+            lock_dir_created=1
+            chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
+        elif [[ -d "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" && "$(stat -c %u:%g "$LOCK_FALLBACK_DIR" 2>/dev/null || true)" == 0:0 ]]; then
+            # U231: a create interrupted between mkdir and the pid/
+            # starttime writes leaves a metadata-less residual dir that
+            # the complete-metadata branch above never matches, wedging
+            # the lock forever. Reclaim it once it is old enough that no
+            # live creator can still be mid-create (dir mtime gate, root
+            # ownership required); a fresh dir means a creator may still
+            # be writing, so it is left alone.
+            _dir_age=$(( $(date +%s) - $(stat -c %Y "$LOCK_FALLBACK_DIR" 2>/dev/null || echo 0) ))
+            if (( _dir_age <= 120 )); then
+                return 1
+            fi
+            stale_away="${LOCK_FALLBACK_DIR}.stale.$$.$RANDOM"
+            [[ ! -e "$stale_away" && ! -L "$stale_away" ]] || return 1
+            mv -- "$LOCK_FALLBACK_DIR" "$stale_away" 2>/dev/null || return 1
             rm -rf -- "$stale_away" 2>/dev/null || true
             mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null || return 1
             lock_dir_created=1
@@ -35774,7 +35824,7 @@ PY_SELFTEST_TAR
     if [[ "$_saved_uuid_set" == x ]]; then UUID="$_saved_uuid_value"; else unset UUID; fi
     unset _saved_extra_uuid_file _saved_uuid_set _saved_uuid_value _extra_uuid_actual _extra_uuid_expected
     grep -Fq 'type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one' <<< "$source_body" || { echo 'FAIL: lightweight XHTTP subscription URI missing'; failures=$((failures + 1)); }
-    grep -Fq 'XHTTP-${client_uuid:0:8}' <<< "$source_body" || { echo 'FAIL: Clash extra UUID XHTTP entries missing'; failures=$((failures + 1)); }
+    grep -Fq 'XHTTP-${client_uuid}' <<< "$source_body" || { echo 'FAIL: Clash extra UUID XHTTP entries missing'; failures=$((failures + 1)); }
     grep -Fq 'probe_core_sources_banner()' <<< "$source_body" || { echo 'FAIL: download source probe missing'; failures=$((failures + 1)); }
     grep -Fq 'fetch_abox_mirror_asset()' <<< "$source_body" || { echo 'FAIL: mirror asset helper missing'; failures=$((failures + 1)); }
 

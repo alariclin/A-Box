@@ -1141,6 +1141,12 @@ tr_msg() {
         fa:wl_iu_https_incomplete) echo 'تنظیم HTTPS کامل نشد: Wallos به‌صورت محلی در حال اجراست اما در معرض نیست. علت را رفع و نصب را دوباره اجرا کنید.' ;;
         zh-tw:wl_iu_https_incomplete) echo 'HTTPS 設定未完成：Wallos 已在本機運行，但未對外暴露。修復後重跑安裝即可重試。' ;;
         ja:wl_iu_https_incomplete) echo 'HTTPS の設定が完了しませんでした。Wallos はローカルで実行中ですが公開されていません。原因を修正してインストールを再実行してください。' ;;
+        zh:wl_iu_fb_restored) echo 'HTTP 降级失败，已恢复降级前的容器，安装仍未完成。' ;;
+        en:wl_iu_fb_restored) echo 'HTTP fallback failed; pre-fallback container restored, install still incomplete.' ;;
+        ru:wl_iu_fb_restored) echo 'Резервный переход на HTTP не удался; контейнер до перехода восстановлен, установка не завершена.' ;;
+        fa:wl_iu_fb_restored) echo 'بازگشت به HTTP ناموفق بود؛ کانتینر پیش از بازگشت بازیابی شد، اما نصب هنوز کامل نشده است.' ;;
+        zh-tw:wl_iu_fb_restored) echo 'HTTP 降級失敗，已恢復降級前的容器，安裝仍未完成。' ;;
+        ja:wl_iu_fb_restored) echo 'HTTP へのフォールバックに失敗しました。フォールバック前のコンテナを復旧しましたが、インストールは未完了です。' ;;
         zh:wl_iu_cf_incomplete) echo 'CF 隧道配置未完成：Wallos 已在本机运行，但未对外暴露。修复后重跑安装即可重试。' ;;
         en:wl_iu_cf_incomplete) echo 'CF tunnel setup did not complete: Wallos is running locally but not exposed. Fix the cause and re-run the install to retry.' ;;
         ru:wl_iu_cf_incomplete) echo 'Настройка туннеля CF не завершена: Wallos работает локально, но не опубликован. Устраните причину и повторите установку.' ;;
@@ -1549,6 +1555,18 @@ tr_msg() {
         fa:wl_rb_no_backup) echo 'نسخه پشتیبان Wallos برای بازگشت یافت نشد.' ;;
         zh-tw:wl_rb_no_backup) echo '沒有找到可用於回滾的 Wallos 備份。' ;;
         ja:wl_rb_no_backup) echo 'ロールバック用の Wallos バックアップが見つかりません。' ;;
+        zh:wl_rb_no_default) echo '无法确定当前 Wallos 版本，请输入序号显式选择，不接受回车默认。' ;;
+        en:wl_rb_no_default) echo 'Cannot determine the installed Wallos version; enter a number explicitly, Enter default is not accepted.' ;;
+        ru:wl_rb_no_default) echo 'Не удаётся определить установленную версию Wallos; введите номер явно, выбор по умолчанию по Enter не принимается.' ;;
+        fa:wl_rb_no_default) echo 'نمی‌توان نسخه نصب‌شده Wallos را مشخص کرد؛ شماره را صریح وارد کنید، انتخاب پیش‌فرض با Enter پذیرفته نمی‌شود.' ;;
+        zh-tw:wl_rb_no_default) echo '無法確定目前 Wallos 版本，請輸入序號明確選擇，不接受回車預設。' ;;
+        ja:wl_rb_no_default) echo 'インストール済みの Wallos バージョンを特定できないため、番号を明示的に入力してください。Enter の既定値は受け付けません。' ;;
+        zh:wl_rb_confirm_target) echo '确认回滚到 Wallos %s？' ;;
+        en:wl_rb_confirm_target) echo 'Confirm rollback to Wallos %s?' ;;
+        ru:wl_rb_confirm_target) echo 'Подтвердить откат к Wallos %s?' ;;
+        fa:wl_rb_confirm_target) echo 'بازگشت به Wallos %s را تأیید می‌کنید؟' ;;
+        zh-tw:wl_rb_confirm_target) echo '確認回滾到 Wallos %s？' ;;
+        ja:wl_rb_confirm_target) echo 'Wallos %s へのロールバックを確認しますか？' ;;
         zh:wl_rb_bad_backup) echo '备份校验失败，已中止回滚，当前服务未动。' ;;
         en:wl_rb_bad_backup) echo 'Backup validation failed; rollback aborted, running service untouched.' ;;
         ru:wl_rb_bad_backup) echo 'Проверка резервной копии не пройдена; откат прерван, работающая служба не затронута.' ;;
@@ -1561,6 +1579,18 @@ tr_msg() {
         fa:wl_rb_rm_fail) echo 'حذف کانتینر فعلی Wallos ممکن نشد؛ کانتینر موجود دوباره راه‌اندازی شد.' ;;
         zh-tw:wl_rb_rm_fail) echo '無法刪除目前 Wallos 容器，已重新啟動原容器。' ;;
         ja:wl_rb_rm_fail) echo '現在の Wallos コンテナを削除できませんでした。既存のコンテナを再起動しました。' ;;
+        zh:wl_td_rm_fail) echo '删除 Wallos 容器失败，数据目录未删除。' ;;
+        en:wl_td_rm_fail) echo 'Failed to remove the Wallos container; data directory kept.' ;;
+        ru:wl_td_rm_fail) echo 'Не удалось удалить контейнер Wallos; каталог данных сохранён.' ;;
+        fa:wl_td_rm_fail) echo 'حذف کانتینر Wallos ناموفق بود؛ پوشه داده حفظ شد.' ;;
+        zh-tw:wl_td_rm_fail) echo '刪除 Wallos 容器失敗，資料目錄未刪除。' ;;
+        ja:wl_td_rm_fail) echo 'Wallos コンテナの削除に失敗したため、データディレクトリは削除していません。' ;;
+        zh:wl_td_purge_refuse) echo '无法确认 Wallos 容器已不存在，数据目录未删除。' ;;
+        en:wl_td_purge_refuse) echo 'Cannot confirm the Wallos container is gone; data directory kept.' ;;
+        ru:wl_td_purge_refuse) echo 'Невозможно подтвердить отсутствие контейнера Wallos; каталог данных сохранён.' ;;
+        fa:wl_td_purge_refuse) echo 'نمی‌توان تأیید کرد کانتینر Wallos از بین رفته است؛ پوشه داده حفظ شد.' ;;
+        zh-tw:wl_td_purge_refuse) echo '無法確認 Wallos 容器已不存在，資料目錄未刪除。' ;;
+        ja:wl_td_purge_refuse) echo 'Wallos コンテナが存在しないことを確認できないため、データディレクトリは削除していません。' ;;
         zh:wl_rb_restore_fail) echo 'Wallos 备份恢复失败。' ;;
         en:wl_rb_restore_fail) echo 'Wallos backup restore failed.' ;;
         ru:wl_rb_restore_fail) echo 'Не удалось восстановить резервную копию Wallos.' ;;
@@ -30439,16 +30469,37 @@ wallos_cftunnel_teardown() { # best-effort
 # alone. With $1=purge-data the A-Box Wallos data dir is removed
 # too (full uninstall); other flows keep the subscription data.
 wallos_stack_teardown() {
-    local _purge="${1:-keep-data}"
-    if command -v docker >/dev/null 2>&1 && docker inspect wallos >/dev/null 2>&1; then
-        local _lbl=''
-        _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)
-        if [[ "$_lbl" == 'true' ]] || [[ -f "$WALLOS_DIR/.abox-state" ]]; then
-            docker rm -f wallos >/dev/null 2>&1 || true
+    local _purge="${1:-keep-data}" _rm_failed=0 _docker_ok=0 _gone=0
+    if command -v docker >/dev/null 2>&1; then
+        _docker_ok=1
+        if docker inspect wallos >/dev/null 2>&1; then
+            local _lbl=''
+            _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)
+            if [[ "$_lbl" == 'true' ]] || [[ -f "$WALLOS_DIR/.abox-state" ]]; then
+                if docker rm -f wallos >/dev/null 2>&1; then
+                    docker inspect wallos >/dev/null 2>&1 || _gone=1
+                else
+                    _rm_failed=1
+                fi
+            fi
+            # An unmanaged container is deliberately left running (as
+            # before); _gone stays 0 so purge below refuses.
+        else
+            _gone=1
         fi
     fi
     if [[ "$_purge" == 'purge-data' && -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]]; then
+        # U121: never delete data under a container that may still be alive.
+        if (( _rm_failed == 1 )); then
+            msg "${RED}$(tr_msg wl_td_rm_fail)${NC}"
+            return 1
+        fi
+        if (( _docker_ok == 0 )) || (( _gone == 0 )); then
+            msg "${RED}$(tr_msg wl_td_purge_refuse)${NC}"
+            return 1
+        fi
         rm -rf "$WALLOS_DIR" 2>/dev/null || true
+        [[ ! -e "$WALLOS_DIR" ]] || { msg "${RED}$(tr_msg wl_td_purge_refuse)${NC}"; return 1; }
     fi
     return 0
 }
@@ -30532,6 +30583,26 @@ except Exception:
 raise SystemExit(0 if {'user', 'subscriptions'} <= tables else 1)
 PY_WALLOS_HEALTH
     fi
+    return 0
+}
+
+# U122: rebuild the direct container after a failed HTTP fallback, from the
+# (still correct) install state params. Returns 0 only if the container is
+# recreated, healthy, and the state is corrected to the direct mode.
+# The journal is not involved: it holds the pre-upgrade image, while the
+# pre-fallback container is the just-installed one.
+wallos_restore_direct_container() {
+    local image="$1" port="$2" tz="$3" bind_address="$4" version="${5:-}" mode='http'
+    [[ "$bind_address" == 127.0.0.1 ]] && mode='local'
+    docker rm -f wallos >/dev/null 2>&1 || true
+    local -a _pub_args=()
+    [[ -n "$bind_address" ]] && _pub_args=(-p "${bind_address}:${port}:80/tcp")
+    docker run -d --name wallos --label com.alariclin.abox.managed=true \
+        -v "$WALLOS_DIR/db:/var/www/html/db" \
+        -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
+        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null || return 1
+    wallos_wait_healthy "$port" || return 1
+    wallos_write_state "$image" "$port" "$tz" "$bind_address" "$mode" '' '' "$version" || return 1
     return 0
 }
 
@@ -30841,20 +30912,37 @@ wallos_install_or_update() {
                     *) confirm_yes_no "$(tr_msg wl_fb_prompt)" && _fb=1 ;;
                 esac
             fi
-            if (( _fb == 1 )) && wallos_http_rebind "$pubport" "$image" "$tz"; then
+            local _rebind_ok=0
+            if (( _fb == 1 )) && wallos_http_rebind "$pubport" "$image" "$tz"; then _rebind_ok=1; fi
+            if (( _rebind_ok == 1 )); then
                 wmode='http'; port="$pubport"; bind_address='0.0.0.0'
                 wallos_write_state "$image" "$port" "$tz" "$bind_address" http '' "$cfhost" "$image_version" || msg "${YELLOW}$(tr_msg wl_iu_state_save_fail)${NC}"
                 case "${ABOX_LANG:-zh}" in
                     *) security_note="$(tr_msg wl_note_http)" ;;
                 esac
+            elif (( _fb == 1 )); then
+                # U122: rebind already removed the healthy container; rebuild
+                # the pre-fallback container instead of leaving no service.
+                # A declined fallback (_fb==0) never removed anything, so it
+                # takes the plain failure branch below.
+                if wallos_restore_direct_container "$image" "$port" "$tz" "$bind_address" "$image_version"; then
+                    msg "${YELLOW}$(tr_msg wl_iu_fb_restored)${NC}"
+                else
+                    msg "${RED}$(tr_msg wl_iu_https_incomplete)${NC}"
+                fi
+                return 1
             else
                 msg "${RED}$(tr_msg wl_iu_https_incomplete)${NC}"
                 return 1
             fi
         fi
-        case "${ABOX_LANG:-zh}" in
-            *) security_note="$(tr_msg wl_note_https)" ;;
-        esac
+        # U123: only when https is still the final mode; a downgrade to http
+        # above must keep its plaintext warning, not be overwritten here.
+        if [[ "$wmode" == https ]]; then
+            case "${ABOX_LANG:-zh}" in
+                *) security_note="$(tr_msg wl_note_https)" ;;
+            esac
+        fi
     elif [[ "$wmode" == cftunnel ]]; then
         if [[ -n "$cftoken" ]]; then
             write_file_atomically_from_stdin "$WALLOS_CF_TOKEN_FILE" 600 <<< "TUNNEL_TOKEN=${cftoken}" || { msg "${RED}CF 隧道令牌保存失败。${NC}"; return 1; }
@@ -30880,16 +30968,19 @@ wallos_install_or_update() {
     wallos_php_gate_warn || true
     wallos_public_urls "$port"
     msg "${YELLOW}${security_note}${NC}"
+    # U124: a refusal here is this install's firewall decision; the later
+    # unconditional allowPort block below must respect it.
+    local _fw_refused=0
     if [[ "$bind_address" == 0.0.0.0 ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
-        if confirm_yes_no "$(tprintf wl_iu_ufw_q "$port")"; then ufw allow "$port/tcp" || msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}"; fi
+        if confirm_yes_no "$(tprintf wl_iu_ufw_q "$port")"; then ufw allow "$port/tcp" || msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}"; else _fw_refused=1; fi
     elif [[ "$bind_address" == 0.0.0.0 ]] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-        if confirm_yes_no "$(tprintf wl_iu_fwd_q "$port")"; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}"; fi
+        if confirm_yes_no "$(tprintf wl_iu_fwd_q "$port")"; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}"; else _fw_refused=1; fi
     fi
-    if [[ "$wmode" == https ]]; then
+    if (( _fw_refused == 0 )) && [[ "$wmode" == https ]]; then
         allowPort "$pubport" tcp 2>/dev/null || true
         allowPort 80 tcp 2>/dev/null || true
         save_firewall_rules 2>/dev/null || true
-    elif [[ "$bind_address" == 0.0.0.0 ]]; then
+    elif (( _fw_refused == 0 )) && [[ "$bind_address" == 0.0.0.0 ]]; then
         allowPort "$port" tcp 2>/dev/null || true
         save_firewall_rules 2>/dev/null || true
     fi
@@ -31062,17 +31153,28 @@ _wallos_manual_rollback() {
         msg "${RED}No previous Wallos versions available for rollback.${NC}"
         return 1
     fi
-    # D-03: actually skip the current version so Enter never selects it.
-    # (The old code only marked it "(current)" but still listed it as item 1.)
+    # U126: keep only versions strictly older than the installed one; a
+    # newer version must never be offered as a "rollback" default.
+    # Installed version: container tag first, state VERSION for
+    # digest-created containers (their Config.Image has no version).
     local current_tag
     current_tag=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null | sed 's/.*://' || true)
+    local _inst_ver="${current_tag#v}"
+    if [[ ! "$_inst_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        _inst_ver=$(wallos_state_value VERSION 2>/dev/null || true)
+    fi
+    local _rb_no_default=0
+    if [[ ! "$_inst_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        _rb_no_default=1
+    fi
     local -a _rb_versions=()
     local v
     for v in "${versions[@]}"; do
-        if [[ "v${v#v}" == "v${current_tag#v}" || "${v#v}" == "${current_tag#v}" ]]; then
-            continue
+        if (( _rb_no_default == 1 )); then
+            _rb_versions+=("$v")
+        elif wallos_version_is_older "${v#v}" "$_inst_ver"; then
+            _rb_versions+=("$v")
         fi
-        _rb_versions+=("$v")
     done
     if (( ${#_rb_versions[@]} == 0 )); then
         msg "${YELLOW}No other Wallos versions available for rollback.${NC}"
@@ -31094,11 +31196,17 @@ _wallos_manual_rollback() {
             prompt="ロールバックするバージョンを選択してください [1-${#versions[@]}]（Enter=1）: " ;;
         *) prompt="选择要回滚的版本 [1-${#versions[@]}]（回车=1）： " ;;
     esac
-    read -r -p "$prompt" sel
+    read -r -p "$prompt" sel || return 1
+    if (( _rb_no_default == 1 )) && [[ -z "$sel" ]]; then
+        msg "${RED}$(tr_msg wl_rb_no_default)${NC}"; return 1
+    fi
     [[ -z "$sel" ]] && sel=1
     [[ "$sel" =~ ^[0-9]+$ ]] && (( sel >= 1 && sel <= ${#versions[@]} )) || {
         msg "${RED}Invalid selection.${NC}"; return 1; }
     target="${versions[$((sel - 1))]}"
+    if (( _rb_no_default == 1 )); then
+        confirm_yes_no "$(tprintf wl_rb_confirm_target "$target")" || return 1
+    fi
     wallos_rollback_to_version "$target"
 }
 

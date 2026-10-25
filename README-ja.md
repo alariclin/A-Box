@@ -44,13 +44,15 @@ A-Box は単一ファイルの Bash スクリプト（`install.sh`、約30,000�
 curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
-サードパーティミラー（同じ固定ファイルの転送経路であり、公式の入口ではありません）：
+サードパーティミラー（同じ固定ファイルの転送経路であり、公式の入口ではありません）。直接実行せず、ダウンロードして公式ソースとバイト単位で照合し、一致してから実行してください。ミラーはプロキシを信頼できる場合にのみ使用し、未検証のミラーファイルを本番で実行しないでください：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.official.sh
+cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
-- 新規の Alpine では、先に `apk add --no-cache bash curl` を実行してください。
+- 新規の Alpine では、先に `apk add --no-cache bash curl sudo` を実行してください。
 - 初回実行後は `sb` と入力すればメニューを再度開けます。
 - 本番利用の前に、ダウンロードしたファイルを独立した信頼できる経路で確認してください。
 

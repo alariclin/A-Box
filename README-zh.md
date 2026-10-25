@@ -44,13 +44,15 @@ A-Box 是一个单文件 Bash 脚本（`install.sh`，约 30,000 行），用于
 curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
-第三方镜像（与上面是同一个锁定文件，仅作传输通道，不是官方入口）：
+第三方镜像（与上面是同一个锁定文件，仅作传输通道，不是官方入口）。不要直接运行：先下载，再与官方来源逐字节比对，通过后才运行。仅在信任该代理时使用镜像；未经核对的镜像文件不得用于生产：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.official.sh
+cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
-- 全新的 Alpine 系统请先运行 `apk add --no-cache bash curl`。
+- 全新的 Alpine 系统请先运行 `apk add --no-cache bash curl sudo`。
 - 首次运行后，输入 `sb` 即可再次打开菜单。
 - 生产环境使用前，请通过独立可信渠道核对下载到的文件。
 

@@ -44,13 +44,15 @@ Official source, pinned to an immutable commit:
 curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
-Third-party mirror of the same pinned file (transport only, not an official endpoint):
+Third-party mirror of the same pinned file (transport only, not an official endpoint). Do not run it directly: download it, verify it byte-for-byte against the official source, then run it. Only use the mirror when you trust the proxy; never run an unverified mirror file in production:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.official.sh
+cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
-- On a fresh Alpine system, first run `apk add --no-cache bash curl`.
+- On a fresh Alpine system, first run `apk add --no-cache bash curl sudo`.
 - After the first run, type `sb` to reopen the menu.
 - For production use, verify the downloaded file through an independent trusted channel before running it.
 

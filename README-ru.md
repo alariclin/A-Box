@@ -44,13 +44,15 @@ A-Box — это один Bash-скрипт (`install.sh`, около 30 000 с�
 curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
-Стороннее зеркало того же закреплённого файла (только канал доставки, не официальный адрес):
+Стороннее зеркало того же закреплённого файла (только канал доставки, не официальный адрес). Не запускайте его напрямую: скачайте, побайтово сверьте с официальным источником и только потом запускайте. Используйте зеркало только если доверяете прокси; непроверенный файл из зеркала нельзя использовать в рабочей среде:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.official.sh
+cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
-- В новой системе Alpine сначала выполните `apk add --no-cache bash curl`.
+- В новой системе Alpine сначала выполните `apk add --no-cache bash curl sudo`.
 - После первого запуска меню снова открывается командой `sb`.
 - Перед использованием в рабочей среде проверьте загруженный файл по независимому доверенному каналу.
 

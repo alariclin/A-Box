@@ -631,6 +631,12 @@ tr_msg() {
         fa:pi_hy2_masq_prompt) echo 'URL استتار HTTP/3 را وارد کنید (پیش‌فرض: %s): ' ;;
         zh-tw:pi_hy2_masq_prompt) echo '請輸入 HTTP/3 偽裝站點 URL (回車預設: %s): ' ;;
         ja:pi_hy2_masq_prompt) echo 'HTTP/3 の偽装サイト URL を入力してください（既定値: %s）: ' ;;
+        zh:hy2_skip_foreign) echo '未检测到 A-Box 托管的 Hysteria 服务单元，跳过 HY2 删除（避免误删同名外来安装）。' ;;
+        en:hy2_skip_foreign) echo 'No A-Box-managed Hysteria service unit found; skipping HY2 removal (to avoid deleting a foreign same-name install).' ;;
+        ru:hy2_skip_foreign) echo 'Служебный юнит Hysteria под управлением A-Box не найден; удаление HY2 пропущено (чтобы не удалить чужую установку с тем же именем).' ;;
+        fa:hy2_skip_foreign) echo 'واحد سرویس Hysteria تحت مدیریت A-Box یافت نشد؛ حذف HY2 رد شد (تا از حذف نصب خارجی هم‌نام جلوگیری شود).' ;;
+        zh-tw:hy2_skip_foreign) echo '未檢測到 A-Box 託管的 Hysteria 服務單元，跳過 HY2 刪除（避免誤刪同名外來安裝）。' ;;
+        ja:hy2_skip_foreign) echo 'A-Box 管理下の Hysteria サービスユニットが見つかりません。同名の外部インストールを誤って削除しないよう、HY2 の削除をスキップします。' ;;
         zh:pi_hy2_masq_closed) echo 'HY2 伪装 URL 输入已结束。' ;;
         en:pi_hy2_masq_closed) echo 'HY2 masquerade URL input closed.' ;;
         ru:pi_hy2_masq_closed) echo 'Ввод URL маскировки HY2 завершён.' ;;
@@ -3025,12 +3031,12 @@ tr_msg() {
         fa:pi_acme_port_advice) echo 'ابتدا 80/tcp را آزاد کنید، یا پیش از استقرار گواهی دامنه HY2 به Cloudflare DNS-01 ACME تغییر دهید.' ;;
         zh-tw:pi_acme_port_advice) echo '請先釋放 80/tcp，或改用 Cloudflare DNS-01 ACME 後再部署 HY2 網域憑證。' ;;
         ja:pi_acme_port_advice) echo '先に 80/tcp を解放するか、Cloudflare DNS-01 ACME に切り替えてから HY2 のドメイン証明書を導入してください。' ;;
-        zh:tl_body) echo '日常部署与常规核心升级保留经测试的兼容锁定版本：%s / %s / %s。' ;;
-        en:tl_body) echo 'Routine deployment and normal core upgrades retain tested compatibility pins: %s / %s / %s.' ;;
-        ru:tl_body) echo 'Обычные развёртывания и обновления ядер сохраняют проверенные совместимые пины: %s / %s / %s.' ;;
-        fa:tl_body) echo 'استقرار معمول و به‌روزرسانی عادی هسته‌ها، پین‌های سازگاری آزمایش‌شده را نگه می‌دارد: %s / %s / %s.' ;;
-        zh-tw:tl_body) echo '日常部署與一般核心升級保留經測試的相容鎖定版本：%s / %s / %s。' ;;
-        ja:tl_body) echo '通常の導入とコアアップグレードでは、テスト済みの互換性ピンを維持します: %s / %s / %s。' ;;
+        zh:tl_body) echo '日常部署：Xray 保留经测试的兼容锁定版本，sing-box 与 Hysteria 默认跟随最新稳定版：%s / %s / %s。' ;;
+        en:tl_body) echo 'Routine deployment: Xray retains its tested compatibility pin, while sing-box and Hysteria track the latest stable release by default: %s / %s / %s.' ;;
+        ru:tl_body) echo 'Обычное развёртывание: Xray сохраняет проверенный совместимый пин, а sing-box и Hysteria по умолчанию следуют последнему стабильному выпуску: %s / %s / %s.' ;;
+        fa:tl_body) echo 'استقرار معمول: Xray پین سازگاری آزمایش‌شده خود را نگه می‌دارد، در حالی که sing-box و Hysteria به‌طور پیش‌فرض آخرین نسخه پایدار را دنبال می‌کنند: %s / %s / %s.' ;;
+        zh-tw:tl_body) echo '日常部署：Xray 保留經測試的相容鎖定版本，sing-box 與 Hysteria 預設跟隨最新穩定版：%s / %s / %s。' ;;
+        ja:tl_body) echo '通常の導入では、Xray はテスト済みの互換性ピンを維持し、sing-box と Hysteria は既定で最新の安定版を追従します: %s / %s / %s。' ;;
         zh:tl_risk) echo '这条自选路径可能破坏 Shadowrocket/Mihomo 的兼容性（例如 Xray ML-KEM）。失败会触发已有的核心升级事务回滚。' ;;
         en:tl_risk) echo 'This opt-in path may break Shadowrocket/Mihomo (e.g. Xray ML-KEM). Failure triggers the existing core-upgrade transaction rollback.' ;;
         ru:tl_risk) echo 'Этот необязательный путь может нарушить совместимость Shadowrocket/Mihomo (например, Xray ML-KEM). При сбое сработает существующий транзакционный откат обновления ядра.' ;;
@@ -3727,12 +3733,12 @@ tr_msg() {
         fa:xl_mode_2) echo 'همزیستی: نصب xray-latest در کنار هسته پایدار' ;;
         zh-tw:xl_mode_2) echo '並存：獨立安裝 xray-latest，與穩定版同時運行' ;;
         ja:xl_mode_2) echo '並行：xray-latest を安定版と並行インストール' ;;
-        zh:xl_mode_switch) echo '已存在另一种模式的最新版实例，请先用菜单 7 删除后再切换模式。' ;;
-        en:xl_mode_switch) echo 'A latest instance in the other mode exists; remove it (menu 7) before switching modes.' ;;
-        ru:xl_mode_switch) echo 'Уже есть экземпляр последнего Xray в другом режиме; сначала удалите его (пункт 7), затем меняйте режим.' ;;
-        fa:xl_mode_switch) echo 'یک نمونه جدیدترین Xray در حالت دیگر وجود دارد؛ ابتدا آن را با گزینه ۷ حذف کنید و سپس حالت را عوض کنید.' ;;
-        zh-tw:xl_mode_switch) echo '已存在另一種模式的最新版實例，請先用選單 7 刪除後再切換模式。' ;;
-        ja:xl_mode_switch) echo '別モードの最新インスタンスが存在します。先にメニュー 7 で削除してからモードを切り替えてください。' ;;
+        zh:xl_mode_switch) echo '已存在另一种模式的最新版实例，请先用菜单 10 删除后再切换模式。' ;;
+        en:xl_mode_switch) echo 'A latest instance in the other mode exists; remove it (menu 10) before switching modes.' ;;
+        ru:xl_mode_switch) echo 'Уже есть экземпляр последнего Xray в другом режиме; сначала удалите его (пункт 10), затем меняйте режим.' ;;
+        fa:xl_mode_switch) echo 'یک نمونه جدیدترین Xray در حالت دیگر وجود دارد؛ ابتدا آن را با گزینه ۱۰ حذف کنید و سپس حالت را عوض کنید.' ;;
+        zh-tw:xl_mode_switch) echo '已存在另一種模式的最新版實例，請先用選單 10 刪除後再切換模式。' ;;
+        ja:xl_mode_switch) echo '別モードの最新インスタンスが存在します。先にメニュー 10 で削除してからモードを切り替えてください。' ;;
         zh:xl_takeover_warn) echo '接管模式将替换当前 Xray 核心与服务。安装失败会删除本次部署并告知原因，不会自动装回稳定版；原有 Xray 节点将由新核心接管，配置不兼容时可能无法启动。' ;;
         en:xl_takeover_warn) echo 'Takeover replaces the current Xray core and service. On failure the attempt is deleted with the reason shown; the stable core is NOT auto-reinstalled. Existing Xray nodes will run on the new core and may fail to start if the config is incompatible.' ;;
         ru:xl_takeover_warn) echo 'Режим замены заменяет текущее ядро и службу Xray. При сбое попытка удаляется с указанием причины; стабильное ядро автоматически НЕ переустанавливается. Существующие узлы Xray будут работать на новом ядре и могут не запуститься при несовместимой конфигурации.' ;;
@@ -5531,7 +5537,7 @@ tr_msg() {
         zh-tw:vs_syntax) echo '%s 語法校驗失敗。' ;;
         en:vs_syntax) echo '%s failed the syntax check.' ;;
         ru:vs_syntax) echo '%s не прошёл проверку синтаксиса.' ;;
-        fa:vs_syntax) echo '‏%s بررسی نحوی را رد کرد.' ;;
+        fa:vs_syntax) echo '‏%s در بررسی نحوی ناموفق بود.' ;;
         ja:vs_syntax) echo '%s の構文チェックに失敗しました。' ;;
         zh:fb_regex_fail) echo 'Fail2Ban 正则测试执行失败。' ;;
         zh-tw:fb_regex_fail) echo 'Fail2Ban 正則測試執行失敗。' ;;
@@ -5579,7 +5585,7 @@ tr_msg() {
         zh-tw:fg_none_valid) echo '固定版本候選與最新穩定容災候選均未通過驗證；拒絕安裝版本不符的資產。' ;;
         en:fg_none_valid) echo 'Neither the pinned candidate nor the latest stable failover candidate passed verification; refusing to install a version-mismatched asset.' ;;
         ru:fg_none_valid) echo 'Ни закреплённый кандидат, ни последний стабильный резервный кандидат не прошли проверку; установка актива с несоответствующей версией отклонена.' ;;
-        fa:fg_none_valid) echo 'نه نامزد پین‌شده و نه آخرین نامزد پایدار پشتیبان بررسی را رد نکردند؛ نصب دارایی با نسخه ناهماهنگ رد شد.' ;;
+        fa:fg_none_valid) echo 'نه نامزد پین‌شده و نه آخرین نامزد پایدار پشتیبان از بررسی عبور نکردند؛ نصب دارایی با نسخه ناهماهنگ رد شد.' ;;
         ja:fg_none_valid) echo '固定候補も最新の安定フェイルオーバー候補も検証に合格しなかったため、バージョン不一致のアセットのインストールを拒否します。' ;;
         zh:fg_outdir) echo '核心资产输出目录创建失败。' ;;
         zh-tw:fg_outdir) echo '核心資產輸出目錄建立失敗。' ;;
@@ -21102,7 +21108,7 @@ _remove_hy2_official() {
     # unit is A-Box-managed. A foreign official install shares the
     # same name and paths and must not be deleted by name alone.
     if ! abox_owns_service hysteria; then
-        msg "${YELLOW}[!] 未检测到 A-Box 托管的 Hysteria 服务单元，跳过 HY2 删除（避免误删同名外来安装）。${NC}"
+        msg "${YELLOW}[!] $(tr_msg hy2_skip_foreign)${NC}"
         return 1
     fi
     stop_abox_service_soft hysteria >/dev/null 2>&1 || {

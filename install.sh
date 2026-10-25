@@ -23098,30 +23098,32 @@ _nsni_apply() {
             cp -a "$bak" "$cfg" 2>/dev/null; rm -f "$bak"; return 1
         fi
     fi
-    rm -f "$bak"
     if is_service_running "$core" 2>/dev/null; then
-        if is_systemd; then systemctl restart "$core" >/dev/null 2>&1 || true; else rc-service "$core" restart >/dev/null 2>&1 || true; fi
+        local _restart_ok=0
+        if is_systemd; then systemctl restart "$core" >/dev/null 2>&1 && _restart_ok=1; else rc-service "$core" restart >/dev/null 2>&1 && _restart_ok=1; fi
+        if (( _restart_ok == 0 )); then cp -a "$bak" "$cfg" 2>/dev/null; rm -f "$bak"; return 1; fi
     fi
-    local _ldir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _lf='' _shown=''
-    local -a _cands=("${tag}.link")
-    case "$tag" in
-        *trojan*) if [[ "$core" == 'sing-box' ]]; then _cands+=('trojan-sb.link'); else _cands+=('trojan-xray.link'); fi ;;
-        *tuic*) _cands+=('tuic.link') ;;
-        *anytls*) _cands+=('anytls.link') ;;
-        *shadowtls*) _cands+=('shadowtls.link') ;;
-    esac
-    for _lf in "${_cands[@]}"; do
-        [[ -f "$_ldir/$_lf" && ! -L "$_ldir/$_lf" ]] || continue
-        if grep -q 'sni=' "$_ldir/$_lf" 2>/dev/null; then
-            sed -i "s|\([?&]sni=\)[^&#]*|\1${new}|g" "$_ldir/$_lf" 2>/dev/null || true
-            _shown=$(cat "$_ldir/$_lf" 2>/dev/null)
-        fi
-    done
-    local _envf="${ABOX_ENV:-/etc/ddr/.env}" _var=''
+    rm -f "$bak"
+    local _ldir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _lf='' _shown='' _stem='' _esc_old='' _esc_new=''
+    _stem=$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag")
+    _lf="${_stem}.link"
+    if [[ -f "$_ldir/$_lf" && ! -L "$_ldir/$_lf" ]] && grep -qF "sni=${old}" "$_ldir/$_lf" 2>/dev/null; then
+        _esc_old=$(printf '%s' "$old" | sed 's/[][\\.|*^$]/\\&/g')
+        _esc_new=$(printf '%s' "$new" | sed 's/[\\|&]/\\&/g')
+        sed -i -e "s|\([?&]sni=\)${_esc_old}\([&#]\)|\1${_esc_new}\2|g" -e "s|\([?&]sni=\)${_esc_old}\$|\1${_esc_new}|g" "$_ldir/$_lf" 2>/dev/null || true
+        _shown=$(cat "$_ldir/$_lf" 2>/dev/null)
+    fi
+    local _envf="${ABOX_ENV:-/etc/ddr/.env}" _vars='' _etmp=''
     if [[ -f "$_envf" && ! -L "$_envf" ]]; then
-        while IFS= read -r _var; do
-            sed -i "s|^${_var}=${old}\$|${_var}=${new}|" "$_envf" 2>/dev/null || true
-        done < <(grep -oE '^[A-Z0-9_]*SNI[A-Z0-9_]*' "$_envf" 2>/dev/null | sort -u)
+        _vars=$(grep -oE '^[A-Z0-9_]*SNI[A-Z0-9_]*' "$_envf" 2>/dev/null | sort -u | tr '\n' ' ')
+        _etmp=$(mktemp /tmp/A-Box-nsni-env.XXXXXX 2>/dev/null || true)
+        if [[ -n "$_vars" && -n "$_etmp" ]]; then
+            if awk -v vars="$_vars" -v o="$old" -v n="$new" 'BEGIN { m = split(vars, a, " "); for (i = 1; i <= m; i++) ok[a[i]] = 1 }
+                { v = $0; sub(/=.*/, "", v); if ((v in ok) && (substr($0, length(v) + 2) == o)) $0 = v "=" n; print }' "$_envf" > "$_etmp" 2>/dev/null; then
+                cat "$_etmp" > "$_envf" 2>/dev/null || true
+            fi
+            rm -f "$_etmp"
+        fi
     fi
     [[ -n "$_shown" ]] && printf '%s' "$_shown"
     return 0
@@ -23478,9 +23480,14 @@ timezone_for_country() {
 }
 
 valid_timezone_name() {
-    local tz="${1:-}"
+    local tz="${1:-}" _zf=''
     [[ "$tz" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ ]] || return 1
-    [[ -e "/usr/share/zoneinfo/$tz" || -L "/usr/share/zoneinfo/$tz" || -e "/usr/share/zoneinfo/posix/$tz" ]]
+    for _zf in "/usr/share/zoneinfo/$tz" "/usr/share/zoneinfo/posix/$tz"; do
+        if [[ -f "$_zf" ]] && [[ "$(head -c 4 "$_zf" 2>/dev/null | od -An -tx1 | tr -d ' \n')" == '545a6966' ]]; then
+            return 0
+        fi
+    done
+    return 1
 }
 
 current_timezone_name() {
@@ -23575,7 +23582,7 @@ apply_timezone_name() {
         return 0
     fi
     # Alpine / BusyBox path
-    if [[ -e "/usr/share/zoneinfo/$tz" ]]; then
+    if [[ -f "/usr/share/zoneinfo/$tz" ]]; then
         ln -sf "/usr/share/zoneinfo/$tz" /etc/localtime || return 1
         printf '%s\n' "$tz" > /etc/timezone || true
         return 0
@@ -23862,15 +23869,19 @@ timezone_locale_ntp_menu() {
 
 timezone_menu() { timezone_locale_ntp_menu; }
 dns_backend_detect() {
-    # systemd-resolved only counts as the backend when resolv.conf
-    # actually routes through it (stub listener or resolved-managed
-    # file); on hosts with a static resolv.conf, resolved drop-ins
-    # would silently do nothing.
+    local _rc="${1:-/etc/resolv.conf}" _link=''
+    _link=$(readlink -f "$_rc" 2>/dev/null || true)
+    # systemd-resolved only counts when queries really flow through
+    # it: the stub file (NOT the upstream-list file
+    # /run/systemd/resolve/resolv.conf, which glibc reads directly
+    # and which bypasses resolved DoT) or a 127.0.0.53 entry.
     if command -v resolvectl >/dev/null 2>&1 && systemctl is-active --quiet systemd-resolved 2>/dev/null \
-        && { [[ "$(readlink -f /etc/resolv.conf 2>/dev/null)" == *'systemd/resolve'* ]] \
-             || grep -qE '^nameserver[[:space:]]+127\.0\.0\.53([[:space:]]|$)' /etc/resolv.conf 2>/dev/null; }; then
+        && { [[ "$_link" == */stub-resolv.conf ]] \
+             || grep -qE '^nameserver[[:space:]]+127\.0\.0\.53([[:space:]]|$)' "$_rc" 2>/dev/null; }; then
         printf 'resolved\n'
-    elif command -v nmcli >/dev/null 2>&1 && systemctl is-active --quiet NetworkManager 2>/dev/null; then
+    elif command -v nmcli >/dev/null 2>&1 && systemctl is-active --quiet NetworkManager 2>/dev/null \
+        && { [[ "$(readlink "$_rc" 2>/dev/null)" == *NetworkManager* ]] \
+             || grep -q 'Generated by NetworkManager' "$_rc" 2>/dev/null; }; then
         printf 'networkmanager\n'
     else
         printf 'resolvconf\n'
@@ -23918,6 +23929,19 @@ snapshot_dns_state() {
     fi
     printf ok > "$dir/COMPLETE" || return 1
 }
+# Reapply an NM connection on the device it is actually bound to
+# (not the first connected device); a failed reapply propagates and
+# the snapshot is preserved by the caller. An inactive connection
+# (no device) needs no reapply: stored settings apply on activation.
+nm_reapply_connection() {
+    local connection="$1" out='' iface=''
+    out=$(nmcli -g GENERAL.DEVICES connection show "$connection" 2>/dev/null) || return 1
+    iface=$(printf '%s\n' "$out" | head -1)
+    if [[ -z "$iface" || "$iface" == '--' ]]; then return 0; fi
+    nmcli device reapply "$iface" >/dev/null 2>&1 || return 1
+    return 0
+}
+
 restore_dns_snapshot_body() {
     local dir="$1" backend state key value connection iface dnscrypt_state
     [[ -f "$dir/COMPLETE" ]] || return 1
@@ -23953,8 +23977,7 @@ restore_dns_snapshot_body() {
             [[ "$value" == '--' ]] && value=''
             nmcli connection modify "$connection" "$key" "$value" || return 1
         done
-        iface=$(nmcli -t -f DEVICE,STATE device 2>/dev/null | awk -F: '$2=="connected" {print $1; exit}')
-        [[ -z "$iface" ]] || nmcli device reapply "$iface" >/dev/null 2>&1 || true
+        nm_reapply_connection "$connection" || return 1
     fi
     if [[ -f "$dir/dns-state" ]]; then cp -a "$dir/dns-state" "$DNS_STATE_FILE" || return 1
     elif [[ -f "$dir/dns-state.absent" ]]; then rm -f "$DNS_STATE_FILE" || return 1; fi
@@ -23989,13 +24012,13 @@ dns_snapshot_recover_pending_swap() {
     elif [[ -n "$old_path" && -f "$old_path/COMPLETE" ]]; then
         # Interrupted after rename, before new moved in: restore old FIRST
         # so a subsequent restore always finds a complete snapshot.
-        rm -rf -- "$DNS_BACKUP_DIR" 2>/dev/null || true
-        mv -- "$old_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
+        rm -rf -- "$DNS_BACKUP_DIR" 2>/dev/null || return 1
+        mv -- "$old_path" "$DNS_BACKUP_DIR" 2>/dev/null || return 1
         [[ -n "$new_path" ]] && rm -rf -- "$new_path" 2>/dev/null || true
     elif [[ -n "$new_path" && -f "$new_path/COMPLETE" ]]; then
         # Old renamed aside, new never moved: complete the swap.
-        rm -rf -- "$DNS_BACKUP_DIR" 2>/dev/null || true
-        mv -- "$new_path" "$DNS_BACKUP_DIR" 2>/dev/null || true
+        rm -rf -- "$DNS_BACKUP_DIR" 2>/dev/null || return 1
+        mv -- "$new_path" "$DNS_BACKUP_DIR" 2>/dev/null || return 1
         [[ -n "$old_path" ]] && rm -rf -- "$old_path" 2>/dev/null || true
     else
         # Total loss: none of target/old/new has COMPLETE. The pre-existing
@@ -24079,6 +24102,24 @@ restore_dns_snapshot() {
     fi
     return "$rc"
 }
+# Verify an NM DNS change actually landed: the connection's stored
+# servers must match, and the generated resolv.conf must carry the new
+# nameserver unless a local plugin (127.0.0.1/127.0.0.53) fronts it.
+# $4 (test-only): resolv.conf path; default /etc/resolv.conf.
+nm_dns_verify_applied() {
+    local connection="$1" v4="$2" v6="${3:-}" rc="${4:-/etc/resolv.conf}" v=''
+    v=$(nmcli -g ipv4.dns connection show "$connection" 2>/dev/null || true)
+    [[ "$v" == "$v4" ]] || return 1
+    if [[ -n "$v6" ]]; then
+        v=$(nmcli -g ipv6.dns connection show "$connection" 2>/dev/null || true)
+        [[ "$v" == "$v6" ]] || return 1
+    fi
+    if grep -qE '^nameserver[[:space:]]+(127\.0\.0\.1|127\.0\.0\.53)([[:space:]]|$)' "$rc" 2>/dev/null; then return 0; fi
+    grep -qF "nameserver $v4" "$rc" 2>/dev/null || return 1
+    [[ -z "$v6" ]] || grep -qF "nameserver $v6" "$rc" 2>/dev/null || return 1
+    return 0
+}
+
 apply_host_dns() {
     local mode="$1" v4="$2" v6="$3" tls_name="${4:-}" backend dropin answer confirm_prompt immutable_prompt dot_error dns_servers immutable_before=0 resolved_major=''
     case "${ABOX_LANG:-zh}" in
@@ -24182,6 +24223,7 @@ EOF_DNS
             nmcli connection modify "$connection" ipv4.ignore-auto-dns yes ipv4.dns "$v4" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_nm_v4)"; }
             nmcli connection modify "$connection" ipv6.ignore-auto-dns yes ipv6.dns "${v6:-}" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_nm_v6)"; }
             nmcli device reapply "$iface" >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_nm_apply)"; }
+            nm_dns_verify_applied "$connection" "$v4" "$v6" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_nm_apply)"; }
             ;;
         *)
             [[ ! -L /etc/resolv.conf ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_resolv_symlink)"; }

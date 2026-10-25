@@ -29225,9 +29225,32 @@ wallos_rollback_to_version() {
     tz=$(wallos_state_value TZ 2>/dev/null || printf 'UTC')
     bind_address=$(wallos_state_value BIND 2>/dev/null || printf '127.0.0.1')
     valid_canonical_port "$port" || { msg "${RED}$(tr_msg wl_rb_bad_port)${NC}"; return 1; }
-    # Find the latest backup.
-    backup=$(ls -t "$WALLOS_DIR"/backups/wallos-*.tar.gz 2>/dev/null | head -n 1 || true)
-    [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || { msg "${RED}$(tr_msg wl_rb_no_backup)${NC}"; return 1; }
+    # U112: select the newest backup whose recorded Wallos version is not
+    # newer than the rollback target. Each backup's .abox-state carries the
+    # IMAGE it was taken under; a backup from a newer Wallos may hold a
+    # migrated database the old image cannot load. Backups without a
+    # parseable recorded version are skipped, never assumed compatible.
+    local _rb_list=() _rb_cand _rb_state _rb_image _rb_ver _rb_skipped=''
+    local _target_ver="${target_tag#v}"
+    mapfile -t _rb_list < <(ls -t "$WALLOS_DIR"/backups/wallos-*.tar.gz 2>/dev/null || true)
+    for _rb_cand in "${_rb_list[@]}"; do
+        [[ -f "$_rb_cand" && ! -L "$_rb_cand" ]] || continue
+        _rb_state=$(tar -xzOf "$_rb_cand" .abox-state 2>/dev/null || true)
+        _rb_image=$(printf '%s\n' "$_rb_state" | awk -F= '$1=="IMAGE" {print $2; exit}' 2>/dev/null || true)
+        _rb_image="${_rb_image#docker.io/}"
+        _rb_ver="${_rb_image##*:}"
+        if [[ ! "$_rb_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            _rb_skipped+="$_rb_cand(unknown) "
+            continue
+        fi
+        if wallos_version_is_older "$_target_ver" "$_rb_ver"; then
+            _rb_skipped+="$_rb_cand($_rb_ver) "
+            continue
+        fi
+        backup="$_rb_cand"
+        break
+    done
+    [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || { msg "${RED}$(tr_msg wl_rb_no_backup)${NC}"; [[ -n "$_rb_skipped" ]] && msg "${YELLOW}Skipped backups newer than $target_tag or without a recorded version: ${_rb_skipped% }${NC}"; return 1; }
     docker stop wallos >/dev/null 2>&1 || true
     # N-11: capture the pre-rollback image BEFORE removing the container,
     # so the prune step can retain 2 images (new current + previous). (NEW-1)
@@ -29352,7 +29375,7 @@ wallos_pull_or_restore_image() {
         # Release as the manifest, so this check detects inconsistency and
         # corruption but is NOT an independent authenticity proof. A signature
         # trust root is still deferred (F-05).
-        local _n2_work="" _mirror_digest="" _manifest_tag="" _n2_ts=""
+        local _n2_work="" _mirror_digest="" _manifest_tag="" _n2_ts="" _n2_fail_reason=""
         local _n2_manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
         local _n2_sum_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
         _n2_work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-n2.XXXXXX 2>/dev/null) || true
@@ -29395,7 +29418,7 @@ wallos_pull_or_restore_image() {
                     else
                         # F-05 anti-replay on manifest timestamp.
                         _n2_ts=$(awk -F= '$1=="retrieved_at_utc" {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
-                        if [[ -n "$_n2_ts" ]] && ! abox_signing_timestamp_ok "$_n2_ts"; then
+                        if ! abox_signing_timestamp_ok "$_n2_ts"; then
                             printf '[A-Box][F-05] FATAL: Wallos manifest timestamp %s predates trust floor\n' "$_n2_ts" >&2
                             # X-02: under ENFORCE=1, a stale timestamp must fail hard
                             # like a bad signature (D-10); falling back to an
@@ -29414,12 +29437,24 @@ wallos_pull_or_restore_image() {
                         fi
                     fi
                 else
-                    msg "${YELLOW}$(tr_msg wl_pi_fp_mismatch)${NC}"
+                    _n2_fail_reason='hash'
                 fi
+            else
+                _n2_fail_reason='download'
             fi
             trap - EXIT
             restore_saved_trap EXIT "$_n2_prev_trap_exit"
             rm -rf -- "$_n2_work"
+        fi
+        if [[ -n "$_n2_fail_reason" ]]; then
+            if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
+                msg "${RED}Wallos manifest verification failed and signing enforcement is ON; refusing unsigned tag pull.${NC}"
+                return 1
+            elif [[ "$_n2_fail_reason" == 'hash' ]]; then
+                msg "${YELLOW}$(tr_msg wl_pi_fp_mismatch)${NC}"
+            else
+                msg "${YELLOW}Wallos mirror manifest unavailable; falling back to unsigned tag pull.${NC}"
+            fi
         fi
         if [[ "$_mirror_digest" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]]; then
             if [[ "$_manifest_tag" == "$tag" ]]; then
@@ -29478,7 +29513,7 @@ wallos_pull_or_restore_image() {
     fi
     # F-05 anti-replay on manifest timestamp.
     _w_ts=$(awk -F= '$1=="retrieved_at_utc" {print $2; exit}' "$work/wallos-manifest.txt" 2>/dev/null || true)
-    if [[ -n "$_w_ts" ]] && ! abox_signing_timestamp_ok "$_w_ts"; then
+    if ! abox_signing_timestamp_ok "$_w_ts"; then
         # X-10: gate on ENFORCE like the core path (L5297); unconditional
         # reject breaks the default ENFORCE=0 flow on a stale mirror.
         if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then

@@ -637,6 +637,12 @@ tr_msg() {
         fa:hy2_skip_foreign) echo 'واحد سرویس Hysteria تحت مدیریت A-Box یافت نشد؛ حذف HY2 رد شد (تا از حذف نصب خارجی هم‌نام جلوگیری شود).' ;;
         zh-tw:hy2_skip_foreign) echo '未檢測到 A-Box 託管的 Hysteria 服務單元，跳過 HY2 刪除（避免誤刪同名外來安裝）。' ;;
         ja:hy2_skip_foreign) echo 'A-Box 管理下の Hysteria サービスユニットが見つかりません。同名の外部インストールを誤って削除しないよう、HY2 の削除をスキップします。' ;;
+        zh:hy2_acme_tree_drift) echo 'Hysteria ACME 目录内容已偏离托管清单，未做修复；请手动核对 /etc/hysteria/acme 下的文件后重试。' ;;
+        en:hy2_acme_tree_drift) echo 'The Hysteria ACME directory has drifted from its managed manifest and was left untouched; manually review the files under /etc/hysteria/acme and retry.' ;;
+        ru:hy2_acme_tree_drift) echo 'Каталог Hysteria ACME отклонился от управляемого манифеста и не был изменён; вручную проверьте файлы в /etc/hysteria/acme и повторите попытку.' ;;
+        fa:hy2_acme_tree_drift) echo 'پوشه Hysteria ACME از فهرست مدیریت‌شده منحرف شده و بدون تغییر رها شد؛ پرونده‌های زیر /etc/hysteria/acme را به‌صورت دستی بررسی کنید و دوباره تلاش کنید.' ;;
+        zh-tw:hy2_acme_tree_drift) echo 'Hysteria ACME 目錄內容已偏離託管清單，未做修復；請手動核對 /etc/hysteria/acme 下的檔案後重試。' ;;
+        ja:hy2_acme_tree_drift) echo 'Hysteria ACME ディレクトリが管理マニフェストから逸脱しているため、変更せずに残しました。/etc/hysteria/acme 配下のファイルを手動で確認してから再試行してください。' ;;
         zh:pi_hy2_masq_closed) echo 'HY2 伪装 URL 输入已结束。' ;;
         en:pi_hy2_masq_closed) echo 'HY2 masquerade URL input closed.' ;;
         ru:pi_hy2_masq_closed) echo 'Ввод URL маскировки HY2 завершён.' ;;
@@ -3529,6 +3535,18 @@ tr_msg() {
         fa:cl_dep_warn) echo 'موارد زیر به آن وابسته‌اند و حذف خواهند شد' ;;
         zh-tw:cl_dep_warn) echo '以下協議依賴它、將一併刪除' ;;
         ja:cl_dep_warn) echo '以下が依存しているため一緒に削除されます' ;;
+        zh:cl_routes_cleaned) echo '已清理 %s 条引用已删除入站的路由规则。' ;;
+        en:cl_routes_cleaned) echo 'Cleaned %s routing rule(s) referencing removed inbounds.' ;;
+        ru:cl_routes_cleaned) echo 'Удалено правил маршрутизации, ссылавшихся на удалённые inbound: %s.' ;;
+        fa:cl_routes_cleaned) echo '%s قانون مسیریابی که به inboundهای حذف‌شده اشاره داشتند پاک شد.' ;;
+        zh-tw:cl_routes_cleaned) echo '已清理 %s 條引用已刪除入站的路由規則。' ;;
+        ja:cl_routes_cleaned) echo '削除されたインバウンドを参照していたルーティングルールを %s 件整理しました。' ;;
+        zh:cl_env_ports_cleared) echo '以下 .env 端口已无存活入站，已清空：%s。' ;;
+        en:cl_env_ports_cleared) echo 'The following .env ports have no surviving inbound and were cleared: %s.' ;;
+        ru:cl_env_ports_cleared) echo 'Следующие порты .env не имеют живых inbound и были очищены: %s.' ;;
+        fa:cl_env_ports_cleared) echo 'درگاه‌های زیر در .env هیچ inbound زنده‌ای ندارند و پاک شدند: %s.' ;;
+        zh-tw:cl_env_ports_cleared) echo '以下 .env 連接埠已無存活入站，已清空：%s。' ;;
+        ja:cl_env_ports_cleared) echo '次の .env ポートは存続するインバウンドがないためクリアしました：%s。' ;;
         zh:cl_fail) echo '删除失败，配置已回滚未改动。' ;;
         en:cl_fail) echo 'Deletion failed; the configuration was rolled back unchanged.' ;;
         ru:cl_fail) echo 'Удаление не удалось; конфигурация откатана без изменений.' ;;
@@ -7739,7 +7757,7 @@ valid_hy2_bandwidth_mbps() {
 valid_domain() {
     local domain="${1:-}"
     [[ ${#domain} -le 253 ]] || return 1
-    [[ "$domain" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+([A-Za-z]{2,63}|xn--[A-Za-z0-9-]{2,59})$ ]]
+    [[ "$domain" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+([A-Za-z]{2,63}|xn--[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)$ ]]
 }
 
 valid_sni() { valid_domain "$1"; }
@@ -8517,11 +8535,20 @@ get_public_ip_swr() {
         printf '%s\n' "$ip"; return 0
     fi
     if [[ -r "$PUBLIC_IP_CACHE" && -f "$PUBLIC_IP_CACHE" && ! -L "$PUBLIC_IP_CACHE" ]]; then
-        local _ip='' _now=0 _mt=0
+        local _ip='' _now=0 _mt=0 _pref='' _fam_ok=1
         _ip=$(head -n 1 "$PUBLIC_IP_CACHE" 2>/dev/null | tr -d '[:space:]')
         if valid_public_ip "$_ip"; then
+            # Same family gate as read_cached_public_ip: a cache entry
+            # written before a preference switch must not be served
+            # when its family no longer matches (it falls through to
+            # a fresh fetch below instead).
+            _pref=$(read_ip_pref 2>/dev/null || printf 'dual')
+            case "$_pref" in
+                ipv4) [[ "$_ip" == *:* ]] && _fam_ok=0 ;;
+                ipv6) [[ "$_ip" != *:* ]] && _fam_ok=0 ;;
+            esac
             _now=$(date +%s); _mt=$(stat -c %Y "$PUBLIC_IP_CACHE" 2>/dev/null || echo 0)
-            if (( _now - _mt >= 0 && _now - _mt <= 86400 )); then
+            if (( _fam_ok == 1 )) && (( _now - _mt >= 0 && _now - _mt <= 86400 )); then
                 refresh_public_ip_bg
                 printf '%s\n' "$_ip"; return 0
             fi
@@ -9445,6 +9472,51 @@ hysteria_acme_dir_runtime_permissions_valid() {
     return 0
 }
 
+hysteria_acme_repair_tree_ownership() {
+    # Manifest-guided ownership/mode repair for recorded ACME subtree
+    # paths (top dir excluded: the caller sets it to 1770). Content is
+    # never touched, so a hash/content drift or a foreign file still
+    # fails the manifest re-check and the caller refuses instead of
+    # proceeding on a half-fixed tree. Symlinks and unrecorded paths
+    # are skipped, never followed or modified.
+    local manifest="${1:-$ABOX_CORE_OWNERSHIP}" target="${2:-/etc/hysteria/acme}" group="${3:-}"
+    local gid=''
+    [[ -f "$manifest" && ! -L "$manifest" ]] || return 1
+    [[ -d "$target" && ! -L "$target" ]] || return 1
+    gid=$(getent group "$group" 2>/dev/null | awk -F: '{print $3}')
+    [[ "$gid" =~ ^[0-9]+$ ]] || return 1
+    python3 - "$manifest" "$target" "$gid" <<'PY_ACME_REPAIR'
+import os, stat, sys
+manifest, target, gid = sys.argv[1], sys.argv[2], int(sys.argv[3])
+rows = []
+with open(manifest, 'r', encoding='utf-8') as f:
+    for line in f:
+        p = line.rstrip('\n').split('\t')
+        if len(p) != 4 or p[0] not in {'F', 'D'} or p[1] != 'hysteria' or not p[2].startswith('/') or '\x00' in line:
+            continue
+        rows.append(p)
+for typ, _fam, path, _h in rows:
+    if path == target or not path.startswith(target + '/'):
+        continue
+    try:
+        st = os.lstat(path)
+    except FileNotFoundError:
+        continue
+    if stat.S_ISLNK(st.st_mode):
+        continue
+    if stat.S_ISDIR(st.st_mode):
+        if typ != 'D':
+            continue
+        os.chown(path, 0, gid)
+        os.chmod(path, 0o750)
+    elif stat.S_ISREG(st.st_mode):
+        if typ != 'F':
+            continue
+        os.chown(path, 0, gid)
+        os.chmod(path, 0o640)
+PY_ACME_REPAIR
+}
+
 prepare_hysteria_acme_dir_ownership() {
     local dir=/etc/hysteria/acme marker=$HY2_ACME_OWNER_MARKER user group
     IFS=$'\t' read -r user group < <(abox_runtime_identity hysteria) || return 1
@@ -9455,6 +9527,18 @@ prepare_hysteria_acme_dir_ownership() {
         [[ ! -L "$dir" && -d "$dir" ]] || return 1
         if ! hysteria_acme_owner_marker_valid "$marker" && ! hysteria_acme_current_tree_matches_manifest "$ABOX_CORE_OWNERSHIP" "$dir"; then
             return 1
+        fi
+        # U145: the gate above passes on a valid marker even when the
+        # subtree drifted, and the old top-only chown/chmod left the
+        # drifted subdirs broken. Repair recorded paths, then re-verify
+        # the whole tree; a content drift or foreign file still fails
+        # the manifest check and the migration refuses with a hint.
+        if [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]]; then
+            hysteria_acme_repair_tree_ownership "$ABOX_CORE_OWNERSHIP" "$dir" "$group" 2>/dev/null || true
+            if ! hysteria_acme_current_tree_matches_manifest "$ABOX_CORE_OWNERSHIP" "$dir"; then
+                msg "${RED}$(tr_msg hy2_acme_tree_drift)${NC}"
+                return 1
+            fi
         fi
         chown "root:$group" "$dir" || return 1
         # A-03: Sticky bit (1770) prevents group members from deleting/replacing others' files (TOCTOU).
@@ -12996,7 +13080,13 @@ core_latest_mirror_release_ref() {
     fi
     # F-05 anti-replay: CORE-VERSIONS timestamp must not predate trust floor.
     _f05_ts=$(awk -F= '$1=="updated_at_utc" {print $2; exit}' "$workdir/CORE-VERSIONS" 2>/dev/null || true)
-    if [[ -n "$_f05_ts" ]] && ! abox_signing_timestamp_ok "$_f05_ts"; then
+    if [[ -z "$_f05_ts" ]]; then
+        if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
+            printf '[A-Box][F-05] FATAL: CORE-VERSIONS missing updated_at_utc (anti-replay timestamp required)\n' >&2
+            rm -rf -- "$workdir"; return 1
+        fi
+        printf '[A-Box][F-05] WARNING: CORE-VERSIONS missing updated_at_utc (anti-replay check skipped, enforcement off)\n' >&2
+    elif ! abox_signing_timestamp_ok "$_f05_ts"; then
         if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
             printf '[A-Box][F-05] FATAL: CORE-VERSIONS timestamp %s is older than trust floor %s\n' "$_f05_ts" "$ABOX_SIGNING_MIN_TIMESTAMP_UTC" >&2
             rm -rf -- "$workdir"; return 1
@@ -21007,7 +21097,7 @@ _protocol_cfg_of() { # $1 = core -> cfg|bin|svc
 # _remove_inbounds_from_config CORE TAG...   |   CORE --all
 _remove_inbounds_from_config() {
     local core="$1"; shift
-    local info='' cfg='' bin='' svc='' bak='' tmp_cfg='' tags_json='' filter=''
+    local info='' cfg='' bin='' svc='' bak='' tmp_cfg='' tags_json='' filter='' route_filter='' routes_before=0 routes_after=0
     info=$(_protocol_cfg_of "$core") || return 1
     IFS='|' read -r cfg bin svc <<< "$info"
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
@@ -21015,12 +21105,36 @@ _remove_inbounds_from_config() {
         # Clear-all keeps the internal "api" inbound (traffic-stats
         # infrastructure, not a node protocol) and drops everything else.
         filter='.inbounds |= map(select(.tag == "api"))'
-        tags_json='[]'
+        # Routing cleanup needs the removed set: every non-api tag.
+        tags_json=$(jq -r '.inbounds[]? | .tag // empty | select(. != "api")' "$cfg" 2>/dev/null | jq -R . | jq -s .) || return 1
     else
         (( $# >= 1 )) || return 1
         tags_json=$(printf '%s\n' "$@" | jq -R . | jq -s .) || return 1
         filter='.inbounds |= map(select(.tag as $t | ($tags | index($t)) == null))'
     fi
+    # U147: drop/strip routing rules that reference a removed inbound.
+    # xray uses inboundTag, sing-box uses inbound; either may be a
+    # string or an array. A rule survives when at least one inbound
+    # reference survives; a rule left with no inbound reference at all
+    # is dropped (an emptied list would otherwise match all traffic).
+    # Rules without any inbound field are untouched.
+    route_filter='def strip_field(f):
+      if has(f) then
+        if (.[f] | type) == "string" then
+          if (.[f] as $t | ($tags | index($t)) != null) then del(.[f]) else . end
+        elif (.[f] | type) == "array" then
+          (.[f] |= map(select(. as $t | ($tags | index($t)) == null))) | if (.[f] | length) == 0 then del(.[f]) else . end
+        else . end
+      else . end;
+    def strip_rule:
+      (strip_field("inboundTag") | strip_field("inbound")) as $r
+      | if (has("inboundTag") or has("inbound")) then
+          if ($r | has("inboundTag") or has("inbound")) then $r else empty end
+        else . end;
+    (if .routing.rules then .routing.rules |= map(strip_rule) else . end)
+    | (if .route.rules then .route.rules |= map(strip_rule) else . end)'
+    filter="$filter | $route_filter"
+    routes_before=$(jq -r '[(.routing.rules // []), (.route.rules // [])] | map(length) | add' "$cfg" 2>/dev/null || echo 0)
     bak=$(mktemp /tmp/A-Box-rm-bak.XXXXXX) || return 1
     cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
     tmp_cfg=$(mktemp /tmp/A-Box-rm-cfg.XXXXXX) || { rm -f "$bak"; return 1; }
@@ -21029,6 +21143,7 @@ _remove_inbounds_from_config() {
     if ! jq --argjson tags "$tags_json" "$filter" "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$bak"; return 1
     fi
+    routes_after=$(jq -r '[(.routing.rules // []), (.route.rules // [])] | map(length) | add' "$tmp_cfg" 2>/dev/null || echo 0)
     if [[ "$core" == 'sing-box' ]]; then
         "$bin" check -c "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$bak"; return 1; }
     else
@@ -21050,6 +21165,9 @@ _remove_inbounds_from_config() {
         esac
         restart_service_soft "$svc" || { rm -f "$bak"; return 1; }
         rm -f "$bak"; return 1
+    fi
+    if (( routes_before - routes_after > 0 )); then
+        msg "${YELLOW}$(tprintf cl_routes_cleaned "$(( routes_before - routes_after ))")${NC}"
     fi
     rm -f "$bak"; return 0
 }
@@ -21076,6 +21194,40 @@ users_registries_wipe() {
     return 0
 }
 
+sync_env_ports_after_removal() {
+    # U148: after an inbound deletion, any .env listener port with no
+    # surviving inbound is stale (setup_active_defense rebuilds its
+    # fail2ban port list from .env, so a dead port would linger in the
+    # jail). Clear the var (file line emptied, shell var unset) only
+    # when no surviving inbound listens on it; a port shared by the
+    # main combo and an independent node survives while any listener
+    # remains. HY2 hop-range vars are not listener ports and are out
+    # of scope here.
+    local envf="${ABOX_ENV:-/etc/ddr/.env}" var='' val='' cleared='' info='' cfg='' hy2p='' core='' p=''
+    local -a live_ports=()
+    [[ -f "$envf" && ! -L "$envf" ]] || return 0
+    for core in xray sing-box xray-latest; do
+        info=$(_protocol_cfg_of "$core" 2>/dev/null) || continue
+        IFS='|' read -r cfg _ _ <<< "$info"
+        [[ -f "$cfg" && ! -L "$cfg" ]] || continue
+        while IFS= read -r p; do [[ -n "$p" ]] && live_ports+=("$p"); done < <(jq -r '.inbounds[]? | (.port // .listen_port // empty)' "$cfg" 2>/dev/null)
+    done
+    if [[ -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
+        hy2p=$(grep -m1 '^listen:' /etc/hysteria/config.yaml 2>/dev/null | grep -o '[0-9]\+' | tail -n 1 || true)
+        [[ -n "$hy2p" ]] && live_ports+=("$hy2p")
+    fi
+    for var in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT SOCKS_PORT HY2_MONITOR_PORT; do
+        val=$(sed -n "s/^${var}=//p" "$envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
+        [[ -n "$val" ]] || continue
+        [[ " ${live_ports[*]} " == *" $val "* ]] && continue
+        sed -i "s/^${var}=.*/${var}=''/" "$envf" 2>/dev/null || continue
+        unset "$var" 2>/dev/null || true
+        cleared+="${var} "
+    done
+    [[ -n "$cleared" ]] && msg "${YELLOW}$(tprintf cl_env_ports_cleared "${cleared% }")${NC}"
+    return 0
+}
+
 _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     local core="$1"; shift
     local tag='' cfg=''
@@ -21092,6 +21244,9 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
         rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true
         users_registry_remove "$core" "$tag"
     done
+    # U148: reconcile .env listener ports now, before the caller's
+    # defense refresh rebuilds the fail2ban port list from .env.
+    sync_env_ports_after_removal || true
     # The shared Argo link registration goes only when no ws inbound remains.
     if [[ "$core" == 'sing-box' ]]; then
         cfg='/etc/sing-box/config.json'
@@ -21166,7 +21321,10 @@ remove_single_protocol_menu() {
     read -r -p "$(tr_msg cl_confirm_one) ${label} [Y/N]: " answer || return 0
     is_yes "$answer" || { msg "${GREEN}$(tr_msg xl_remove_cancelled)${NC}"; return 0; }
     if [[ "$core" == 'hy2' ]]; then
-        _remove_hy2_official
+        if ! _remove_hy2_official; then
+            msg "${RED}$(tr_msg cl_fail)${NC}"
+            return 1
+        fi
     else
         if ! _remove_inbounds_from_config "$core" "${tags[@]}"; then
             msg "${RED}$(tr_msg cl_fail)${NC}"
@@ -21197,7 +21355,7 @@ clear_all_protocols() {
         fi
         (( ${#all_tags[@]} )) && _protocol_removed_side_effects "$core" "${all_tags[@]}"
     done
-    if [[ -f /etc/hysteria/config.yaml ]]; then _remove_hy2_official; fi
+    if [[ -f /etc/hysteria/config.yaml ]]; then _remove_hy2_official || wipe_ok=0; fi
     # Wipe the user registries, standalone links and the shared Argo
     # tunnel only when every core was actually cleared; otherwise
     # surviving nodes would lose their user policies, links and tunnel.

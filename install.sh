@@ -27015,7 +27015,7 @@ swapfile_active_state() {
             # instead of reporting query failure (which callers treat
             # as "not active" before destructive operations).
             if [[ -r /proc/swaps ]]; then
-                output=$(awk 'NR>1 {print $1}' /proc/swaps 2>/dev/null || true)
+                output=$(awk 'NR>1 {print $1}' /proc/swaps 2>/dev/null) || return 2
             else
                 return 2
             fi
@@ -28474,7 +28474,7 @@ hy_gid=None
 xray_gid=None
 try: tf=tarfile.open(fn,'r:gz')
 except Exception: raise SystemExit(1)
-seen=set(); total=0; _count=0
+seen=set(); total=0; _count=0; root_member=None
 for m in tf:
     _count+=1
     if _count>MAX_MEMBERS: raise SystemExit(1)
@@ -28482,6 +28482,7 @@ for m in tf:
     if '\x00' in raw or raw.startswith('/'): raise SystemExit(1)
     while raw.startswith('./'): raw=raw[2:]
     n=posixpath.normpath(raw)
+    if n=='root/etc/ddr': root_member=m
     if n in ('','.'): continue
     if n=='..' or n.startswith('../') or n.split('/',1)[0] not in ('root','meta'): raise SystemExit(1)
     if n in seen and not m.isdir(): raise SystemExit(1)
@@ -28581,7 +28582,6 @@ required_names={'root/etc/ddr','meta/manifest.version','meta/manifest.sha256','m
 if not required_names.issubset(seen): raise SystemExit(1)
 required_root='root/etc/ddr'
 if required_root not in seen: raise SystemExit(1)
-root_member=next((m for m in members if posixpath.normpath(m.name.lstrip('./'))==required_root),None)
 if root_member is None or not root_member.isdir(): raise SystemExit(1)
 raise SystemExit(0)
 PY_VALIDATE
@@ -35856,7 +35856,10 @@ N11EOF
     swapon() { :; }
     [[ "$(swapfile_active_state; echo "$?")" == '1' ]] || { echo 'FAIL: Swap activity query inactive state'; failures=$((failures + 1)); }
     swapon() { return 42; }
-    [[ "$(swapfile_active_state; echo "$?")" == '2' ]] || { echo 'FAIL: Swap activity query error state'; failures=$((failures + 1)); }
+    # U204: a swapon failure falls back to /proc/swaps instead of
+    # reporting query failure; the expectation follows /proc/swaps.
+    if grep -qE '^/swapfile[[:space:]]' /proc/swaps 2>/dev/null; then _swap_expect=0; else _swap_expect=1; fi
+    [[ "$(swapfile_active_state; echo "$?")" == "$_swap_expect" ]] || { echo 'FAIL: Swap activity query swapon-failure fallback'; failures=$((failures + 1)); }
     unset -f swapon
     grep -q '^fstab_path_is_safe() {' "$0" || { echo 'FAIL: swap fstab trust helper missing'; failures=$((failures + 1)); }
     grep -q 'fstab_path_is_safe || return 1' <<< "$source_body" || { echo 'FAIL: swap removal must validate trusted fstab before mutation'; failures=$((failures + 1)); }

@@ -11139,7 +11139,7 @@ __abox_firewall_persistence_rollback() {
             if [[ "$old_unit" == 1 ]]; then
                 case "$old_unit_enabled" in
                     enabled|indirect) systemctl enable A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
-                    enabled-runtime) systemctl enable --runtime A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
+                    enabled-runtime) systemctl disable A-Box-firewall.service >/dev/null 2>&1 || fail=1; systemctl enable --runtime A-Box-firewall.service >/dev/null 2>&1 || fail=1; [[ "$(systemctl is-enabled A-Box-firewall.service 2>/dev/null)" == enabled-runtime ]] || fail=1 ;;
                     *) systemctl disable A-Box-firewall.service >/dev/null 2>&1 || fail=1 ;;
                 esac
             fi
@@ -16274,10 +16274,14 @@ deployment_transaction_exit_abort() {
     if [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]]; then deployment_transaction_rollback "unexpected shell exit ${code}" || true; fi
     # The old EXIT handler must run explicitly: restoring it here and
     # then exiting does NOT re-trigger it (verified by experiment).
-    # The saved string is trap -p output ("trap -- 'cmd' SIGNAL");
-    # double eval executes the quoted command in this shell.
+    # The saved string is trap -p output ("trap -- 'cmd' SIGNAL").
+    # Strip the prefix and the trailing SIGNAL, then double-eval the
+    # quoted command (first eval unquotes it, second executes it).
+    # Without stripping, SIGNAL would become an extra argument to the
+    # handler (an rm handler would delete a target named EXIT).
     if [[ -n "$_tx_abort_old_exit" ]]; then
         _tx_abort_old_cmd="${_tx_abort_old_exit#trap -- }"
+        _tx_abort_old_cmd="${_tx_abort_old_cmd% *}"
         eval "eval $_tx_abort_old_cmd" || true
     fi
     restore_deployment_transaction_traps
@@ -16597,8 +16601,11 @@ EOF_SVC
     # core's live inbound must survive. Cleanup failure never fails
     # the deployment itself.
     if [[ "$old_port" =~ ^[0-9]+$ && "$old_port" != "$port" ]]; then
-        if ! jq -e --argjson p "$old_port" '.inbounds[]? | select(.listen_port == $p)' "$cfg" >/dev/null 2>&1 \
-           && { [[ ! -f /usr/local/etc/xray/config.json || -L /usr/local/etc/xray/config.json ]] || ! jq -e --argjson p "$old_port" '.inbounds[]? | select(.port == $p)' /usr/local/etc/xray/config.json >/dev/null 2>&1; }; then
+        # A corrupt config must fail closed: bare '! jq -e' conflates
+        # no-match with parse failure. A symlinked xray config is read
+        # through (jq follows it); only a missing one counts as free.
+        if jq -e . "$cfg" >/dev/null 2>&1 && ! jq -e --argjson p "$old_port" '.inbounds[]? | select(.listen_port == $p)' "$cfg" >/dev/null 2>&1 \
+           && { [[ ! -f /usr/local/etc/xray/config.json ]] || { jq -e . /usr/local/etc/xray/config.json >/dev/null 2>&1 && ! jq -e --argjson p "$old_port" '.inbounds[]? | select(.port == $p)' /usr/local/etc/xray/config.json >/dev/null 2>&1; }; }; then
             remove_abox_native_firewall_rule "$old_port" tcp 2>/dev/null || true
             remove_abox_native_firewall_rule "$old_port" udp 2>/dev/null || true
             save_firewall_rules 2>/dev/null || true
@@ -18131,7 +18138,7 @@ _menu_info_collect() {
     local tjt='' tut='' ant='' stt='' argo_st='' _ss='' _p='' _t='' _tags=''
     if command -v ss >/dev/null 2>&1; then _ss=$(ss -tuln 2>/dev/null); fi
     if [[ -r /etc/sing-box/config.json ]] && command -v jq >/dev/null 2>&1; then
-        _tags=$(jq -r '(.inbounds // [])[] | select(.tag | test("^(tuic-in|anytls-in|shadowtls-in|trojan-landing)(-[0-9]+)?$")) | "\(.tag) \(.listen_port // empty)"' /etc/sing-box/config.json 2>/dev/null)
+        _tags=$(jq -r '(.inbounds // [])[] | select((.tag // "") | test("^(tuic-in|anytls-in|shadowtls-in|trojan-landing)(-[0-9]+)?$")) | "\(.tag) \(.listen_port // empty)"' /etc/sing-box/config.json 2>/dev/null)
         while read -r _t _p; do
             [[ -n "$_p" ]] || continue
             # Any listening instance wins: a surviving tuic-in-2 must
@@ -20833,7 +20840,7 @@ start_services_for_traffic_unblock() {
     while IFS= read -r srv; do
         [[ -n "$srv" ]] || continue
         final_state=$(managed_service_state_value "$srv" 2>/dev/null) || return 1
-        [[ "$final_state" == "$srv|1|enabled" ]] || return 1
+        [[ "$final_state" == "$srv|1|enabled" || "$final_state" == "$srv|1|enabled-runtime" ]] || return 1
     done <<< "$services"
 }
 
@@ -21734,10 +21741,10 @@ _standalone_link_survivor() {
     local key="$1" xcfg='/usr/local/etc/xray/config.json' scfg='/etc/sing-box/config.json'
     case "$key" in
         trojan-xray) [[ -f "$xcfg" && ! -L "$xcfg" ]] && jq -e '.inbounds[]? | select(.protocol == "trojan")' "$xcfg" >/dev/null 2>&1 ;;
-        trojan-sb) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select(.tag | test("^trojan-landing(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
-        tuic) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select(.tag | test("^tuic-in(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
-        anytls) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select(.tag | test("^anytls-in(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
-        shadowtls) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select(.tag | test("^shadowtls-in(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
+        trojan-sb) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select((.tag // "") | test("^trojan-landing(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
+        tuic) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
+        anytls) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select((.tag // "") | test("^anytls-in(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
+        shadowtls) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
         socks5-sb) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select(.type == "socks" or .type == "mixed")' "$scfg" >/dev/null 2>&1 ;;
         socks5-xray) [[ -f "$xcfg" && ! -L "$xcfg" ]] && jq -e '.inbounds[]? | select(.protocol == "socks")' "$xcfg" >/dev/null 2>&1 ;;
         *) return 1 ;;
@@ -22062,7 +22069,9 @@ _tune_missing_items() {
     else
         while read -r key want; do
             [[ -n "$key" ]] || continue
-            grep -Fq "$key=$want" /etc/sysctl.d/99-A-Box-tune.conf 2>/dev/null \
+            # Exact, last-assignment-wins match: a commented line, a
+            # longer value, or an earlier line overridden later must not pass.
+            awk -v k="$key" -v w="$want" '{l=$0; sub(/^[ \t]+/,"",l); if(l==""||substr(l,1,1)=="#")next; e=index(l,"="); if(!e)next; kk=substr(l,1,e-1); vv=substr(l,e+1); sub(/[ \t]+$/,"",kk); sub(/^[ \t]+/,"",kk); sub(/^[ \t]+/,"",vv); sub(/[ \t]+$/,"",vv); sub(/[ \t]+#.*$/,"",vv); if(kk==k){v=vv; f=1} } END{exit !(f&&v==w)}' /etc/sysctl.d/99-A-Box-tune.conf 2>/dev/null \
                 || missing_list+="sysctl 持久文件缺失/不符：${key}（期望 $want）"$'\n'
         done < <(_tune_desired_sysctl)
     fi
@@ -28205,7 +28214,7 @@ _apply_managed_service_state_file() {
             systemctl daemon-reload >/dev/null 2>&1 || return 1
             case "$enabled" in
                 enabled) systemctl enable "$srv" >/dev/null 2>&1 || return 1 ;;
-                enabled-runtime) systemctl enable --runtime "$srv" >/dev/null 2>&1 || return 1 ;;
+                enabled-runtime) systemctl disable "$srv" >/dev/null 2>&1 || return 1; systemctl enable --runtime "$srv" >/dev/null 2>&1 || return 1; [[ "$(systemctl is-enabled "$srv" 2>/dev/null)" == enabled-runtime ]] || return 1 ;;
                 disabled) systemctl disable "$srv" >/dev/null 2>&1 || return 1 ;;
             esac
             if [[ "$active" == 1 ]]; then
@@ -34954,8 +34963,7 @@ hysteria_binary_smoke_test() {
             case "$was_enabled_state" in
                 enabled)
                     systemctl enable hysteria >/dev/null 2>&1 || restore_failed=1 ;;
-                enabled-runtime)
-                    systemctl enable --runtime hysteria >/dev/null 2>&1 || restore_failed=1 ;;
+                enabled-runtime) systemctl disable hysteria >/dev/null 2>&1 || restore_failed=1; systemctl enable --runtime hysteria >/dev/null 2>&1 || restore_failed=1; [[ "$(systemctl is-enabled hysteria 2>/dev/null)" == enabled-runtime ]] || restore_failed=1 ;;
                 masked)
                     systemctl mask hysteria >/dev/null 2>&1 || restore_failed=1 ;;
                 disabled)

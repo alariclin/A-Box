@@ -24741,6 +24741,20 @@ restore_dns_snapshot_body() {
             [[ -f "$_cf" ]] || continue
             cp -a "$_cf" "/etc/systemd/resolved.conf.d/$(basename "$_cf")" || return 1
         done
+        local _sub='' _dir=''
+        for _sub in etc run usr-lib usr-local-lib; do
+            case "$_sub" in
+                etc) _dir='/etc/systemd/resolved.conf.d' ;;
+                run) _dir='/run/systemd/resolved.conf.d' ;;
+                usr-lib) _dir='/usr/lib/systemd/resolved.conf.d' ;;
+                usr-local-lib) _dir='/usr/local/lib/systemd/resolved.conf.d' ;;
+            esac
+            install -d -m 755 "$_dir" 2>/dev/null || true
+            for _cf in "$dir"/resolved-cleanup/"$_sub"/*.conf; do
+                [[ -f "$_cf" ]] || continue
+                cp -a "$_cf" "$_dir/$(basename "$_cf")" || return 1
+            done
+        done
     fi
     dnscrypt_state=$(tr -d '[:space:]' < "$dir/dnscrypt-config-state" 2>/dev/null || true)
     if [[ "$dnscrypt_state" == present && -f "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" ]]; then
@@ -24896,8 +24910,20 @@ nm_dns_verify_applied() {
         [[ "$v" == "$v6" ]] || return 1
     fi
     if grep -qE '^nameserver[[:space:]]+(127\.0\.0\.1|127\.0\.0\.53)([[:space:]]|$)' "$rc" 2>/dev/null; then return 0; fi
-    grep -qF "nameserver $v4" "$rc" 2>/dev/null || return 1
-    [[ -z "$v6" ]] || grep -qF "nameserver $v6" "$rc" 2>/dev/null || return 1
+    local -a _nm_toks=()
+    local _nm_a='' _nm_esc=''
+    IFS=$', \t' read -ra _nm_toks <<< "$v4" || true
+    for _nm_a in "${_nm_toks[@]}"; do
+        _nm_esc=$(printf '%s' "$_nm_a" | sed 's/\./\\./g')
+        grep -qE "^nameserver[[:space:]]+${_nm_esc}([[:space:]]|$)" "$rc" 2>/dev/null || return 1
+    done
+    if [[ -n "$v6" ]]; then
+        IFS=$', \t' read -ra _nm_toks <<< "$v6" || true
+        for _nm_a in "${_nm_toks[@]}"; do
+            _nm_esc=$(printf '%s' "$_nm_a" | sed 's/\./\\./g')
+            grep -qE "^nameserver[[:space:]]+${_nm_esc}([[:space:]]|$)" "$rc" 2>/dev/null || return 1
+        done
+    fi
     return 0
 }
 
@@ -24909,7 +24935,7 @@ nm_dns_verify_applied() {
 # restore_dns_snapshot_body. A symlinked DNS-bearing file is refused:
 # editing through a symlink would rewrite an unknown target.
 resolved_strip_global_dns_sources() {
-    local f='' tmp='' base=''
+    local f='' tmp='' base='' sub=''
     local -a files=()
     if [[ -f /etc/systemd/resolved.conf ]]; then
         if [[ -L /etc/systemd/resolved.conf ]]; then
@@ -24918,7 +24944,7 @@ resolved_strip_global_dns_sources() {
             files+=(/etc/systemd/resolved.conf)
         fi
     fi
-    for f in /etc/systemd/resolved.conf.d/*.conf; do
+    for f in /etc/systemd/resolved.conf.d/*.conf /run/systemd/resolved.conf.d/*.conf /usr/lib/systemd/resolved.conf.d/*.conf /usr/local/lib/systemd/resolved.conf.d/*.conf; do
         [[ -f "$f" ]] || continue
         [[ "$f" == /etc/systemd/resolved.conf.d/99-abox-dns.conf ]] && continue
         if [[ -L "$f" ]]; then
@@ -24931,8 +24957,15 @@ resolved_strip_global_dns_sources() {
         grep -qiE '^[[:space:]]*(DNS|FallbackDNS)[[:space:]]*=' "$f" 2>/dev/null || continue
         if [[ "$f" != /etc/systemd/resolved.conf ]]; then
             base=$(basename "$f")
-            mkdir -p "$DNS_BACKUP_DIR/resolved-cleanup" 2>/dev/null || return 1
-            [[ -f "$DNS_BACKUP_DIR/resolved-cleanup/$base" ]] || cp -a "$f" "$DNS_BACKUP_DIR/resolved-cleanup/$base" 2>/dev/null || return 1
+            case "$f" in
+                /etc/systemd/resolved.conf.d/*) sub='etc' ;;
+                /run/systemd/resolved.conf.d/*) sub='run' ;;
+                /usr/lib/systemd/resolved.conf.d/*) sub='usr-lib' ;;
+                /usr/local/lib/systemd/resolved.conf.d/*) sub='usr-local-lib' ;;
+                *) return 1 ;;
+            esac
+            mkdir -p "$DNS_BACKUP_DIR/resolved-cleanup/$sub" 2>/dev/null || return 1
+            [[ -f "$DNS_BACKUP_DIR/resolved-cleanup/$sub/$base" ]] || cp -a "$f" "$DNS_BACKUP_DIR/resolved-cleanup/$sub/$base" 2>/dev/null || return 1
         fi
         tmp=$(mktemp /tmp/A-Box-resolved-strip.XXXXXX 2>/dev/null || true)
         [[ -n "$tmp" ]] || return 1
@@ -25735,7 +25768,10 @@ _dns_provider_list() {
 _dns_valid_v4_group() {
     local -a parts=()
     local tok='' out=''
-    IFS=$' \t\n' read -ra parts <<< "$1" || true
+    local -a line_parts=()
+    while IFS=$' \t\n' read -ra line_parts; do
+        parts+=("${line_parts[@]}")
+    done <<< "$1"
     for tok in "${parts[@]}"; do
         if [[ "$tok" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then out+="${out:+ }$tok"; fi
     done
@@ -25745,7 +25781,10 @@ _dns_valid_v4_group() {
 _dns_valid_v6_group() {
     local -a parts=()
     local tok='' out=''
-    IFS=$' \t\n' read -ra parts <<< "$1" || true
+    local -a line_parts=()
+    while IFS=$' \t\n' read -ra line_parts; do
+        parts+=("${line_parts[@]}")
+    done <<< "$1"
     for tok in "${parts[@]}"; do
         tok="${tok%%%*}"
         if [[ "$tok" == *:* && "$tok" =~ ^[0-9a-fA-F:]+$ ]]; then out+="${out:+ }$tok"; fi
@@ -27717,7 +27756,7 @@ inline_authorization = re.compile(
 )
 inline_cookie = re.compile(r"(?i)(\b(?:cookie|set-cookie)\s*[:=]\s*)[^\r\n]+")
 inline_secret_assignment = re.compile(
-    r"(?i)([\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|ss_pass|hy2_pass|hy2_obfs)\b[\"']?\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|[^,;\s}\"']+)"
+    r"(?i)([\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|ss_pass|hy2_pass|hy2_obfs)\b[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^,;\s}\"']+)"
 )
 
 
@@ -27770,7 +27809,7 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie)[\"']?\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|[^,}\s\"']+)",
+        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie)[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^,}\s\"']+)",
         r'\1"***REDACTED***"',
         text,
     )
@@ -27787,7 +27826,8 @@ PY_REDACT
             -e 's/((Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*)[^,}[:cntrl:]"]+/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
-            -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortId|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*)(["'"'"'])([^"'"'"']*)\3/\1\3***REDACTED***\3/Ig' \
+            -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortId|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
+            -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortId|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*)(\x27)([^\x27\\]|\\.)*\3/\1\3***REDACTED***\3/Ig' \
             -e 's/^(id[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/\1***REDACTED***/Ig' \
             -e 's/([^A-Za-z0-9_])(id[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/\1\2***REDACTED***/Ig' \
             -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortId|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)[^,}[:space:]["]+/\1***REDACTED***/Ig' \

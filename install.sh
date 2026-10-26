@@ -13303,6 +13303,7 @@ decimal_component_compare() {
     # Equal-length digit strings order identically lexicographically
     # and numerically; a string compare avoids int64 overflow on
     # absurdly large components that 10# arithmetic would wrap.
+    # shellcheck disable=SC2071
     if [[ "$a" == "$b" ]]; then printf '%s\n' 0; elif [[ "$a" < "$b" ]]; then printf '%s\n' -1; else printf '%s\n' 1; fi
 }
 
@@ -26718,6 +26719,7 @@ write_sni_candidate_library() {
     # then treat the raw huge string as unbounded (NR<=n always true).
     local _mc="$max_count"
     while [[ "$_mc" == 0?* && ${#_mc} -gt 1 ]]; do _mc="${_mc#0}"; done
+    # shellcheck disable=SC2071
     if [[ "$_mc" == '0' ]] || [[ ${#_mc} -gt ${#ABOX_SNI_HARD_MAX} ]] || { [[ ${#_mc} -eq ${#ABOX_SNI_HARD_MAX} ]] && [[ "$_mc" > "$ABOX_SNI_HARD_MAX" ]]; }; then
         max_count="$ABOX_SNI_HARD_MAX"
     else

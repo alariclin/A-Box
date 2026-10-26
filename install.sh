@@ -2581,7 +2581,7 @@ tr_msg() {
         zh:ip_select_0_3) echo '选择 [0-3]: ' ;;
         en:ip_select_0_3) echo 'Select [0-3]: ' ;;
         ru:ip_select_0_3) echo 'Выбор [0-3]: ' ;;
-        fa:ip_select_0_3) echo 'Select [0-3]: ' ;;
+        fa:ip_select_0_3) echo 'انتخاب [۰-۳]: ' ;;
         zh-tw:ip_select_0_3) echo '選擇 [0-3]: ' ;;
         ja:ip_select_0_3) echo '選択 [0-3]: ' ;;
         zh:tz_meta_fail) echo '[!] 时区已切换为 %s，但状态元数据写入失败；回滚信息可能不完整。' ;;

@@ -15784,7 +15784,7 @@ xray_hot_remove_inbound() {
         | if (.routing.rules // null) then
             .routing.rules |= map(
                 if (.inboundTag | type) == "array" then
-                    (.inboundTag |= map(select(. != $t)) | select(.inboundTag | length > 0))
+                    (if (.inboundTag | index($t)) then (.inboundTag |= map(select(. != $t)) | select(.inboundTag | length > 0)) else . end)
                 elif (.inboundTag | type) == "string" then
                     select(.inboundTag != $t)
                 else . end)
@@ -21570,14 +21570,19 @@ _remove_inbounds_from_config() {
         if (.[f] | type) == "string" then
           if (.[f] as $t | ($tags | index($t)) != null) then del(.[f]) else . end
         elif (.[f] | type) == "array" then
-          (.[f] |= map(select(. as $t | ($tags | index($t)) == null))) | if (.[f] | length) == 0 then del(.[f]) else . end
+          if (.[f] | length) > 0 then
+            (.[f] |= map(select(. as $t | ($tags | index($t)) == null))) | if (.[f] | length) == 0 then del(.[f]) else . end
+          else . end
         else . end
       else . end;
     def strip_rule:
       (strip_field("inboundTag") | strip_field("inbound")) as $r
-      | if (has("inboundTag") or has("inbound")) then
-          if ($r | has("inboundTag") or has("inbound")) then $r else empty end
-        else . end;
+      | (if ($r | has("rules") and ($r.rules | type) == "array") then
+           ($r | .rules |= map(strip_rule))
+         else $r end) as $r2
+      | if (($r2 | has("inboundTag") or has("inbound")) or ($r2 | has("rules") and ($r2.rules | length) > 0)) then $r2
+        elif (has("inboundTag") or has("inbound") or has("rules")) then empty
+        else $r2 end;
     (if .routing.rules then .routing.rules |= map(strip_rule) else . end)
     | (if .route.rules then .route.rules |= map(strip_rule) else . end)'
     filter="$filter | $route_filter"
@@ -21650,28 +21655,40 @@ sync_env_ports_after_removal() {
     # main combo and an independent node survives while any listener
     # remains. HY2 hop-range vars are not listener ports and are out
     # of scope here.
-    local envf="${ABOX_ENV:-/etc/ddr/.env}" var='' val='' cleared='' info='' cfg='' hy2p='' core='' p=''
+    local envf="${ABOX_ENV:-/etc/ddr/.env}" var='' val='' cleared='' info='' cfg='' hy2p='' core='' p='' _ports='' _read_failed=0 _write_failed=0
     local -a live_ports=()
     [[ -f "$envf" && ! -L "$envf" ]] || return 0
     for core in xray sing-box xray-latest; do
         info=$(_protocol_cfg_of "$core" 2>/dev/null) || continue
         IFS='|' read -r cfg _ _ <<< "$info"
         [[ -f "$cfg" && ! -L "$cfg" ]] || continue
-        while IFS= read -r p; do [[ -n "$p" ]] && live_ports+=("$p"); done < <(jq -r '.inbounds[]? | (.port // .listen_port // empty)' "$cfg" 2>/dev/null)
+        _ports=$(jq -r '.inbounds[]? | (.port // .listen_port // empty)' "$cfg" 2>/dev/null) || { _read_failed=1; continue; }
+        while IFS= read -r p; do [[ -n "$p" ]] && live_ports+=("$p"); done <<< "$_ports"
     done
     if [[ -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
         hy2p=$(grep -m1 '^listen:' /etc/hysteria/config.yaml 2>/dev/null | grep -o '[0-9]\+' | tail -n 1 || true)
         [[ -n "$hy2p" ]] && live_ports+=("$hy2p")
     fi
+    # A config that exists but fails to parse must fail closed: treating
+    # its ports as absent would clear live .env ports.
+    if (( _read_failed == 1 )); then
+        return 1
+    fi
     for var in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT SOCKS_PORT HY2_MONITOR_PORT; do
         val=$(sed -n "s/^${var}=//p" "$envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
         [[ -n "$val" ]] || continue
         [[ " ${live_ports[*]} " == *" $val "* ]] && continue
-        sed -i "s/^${var}=.*/${var}=''/" "$envf" 2>/dev/null || continue
+        if ! sed -i "s/^${var}=.*/${var}=''/" "$envf" 2>/dev/null; then
+            _write_failed=1
+            continue
+        fi
         unset "$var" 2>/dev/null || true
         cleared+="${var} "
     done
     [[ -n "$cleared" ]] && msg "${YELLOW}$(tprintf cl_env_ports_cleared "${cleared% }")${NC}"
+    if (( _write_failed == 1 )); then
+        return 1
+    fi
     return 0
 }
 
@@ -32872,21 +32889,33 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     # deploy is rolled back (old config + old links stay valid) instead of
     # leaving a live new config with no backup and no links.
     if ! allowPort "$port" tcp; then
-        _xl_deploy_rollback "$bak" "$cfg" "$svc" >/dev/null 2>&1 || true
-        rm -f "$bak"
-        msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
+        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
+            rm -f "$bak"
+            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
+        else
+            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
+        fi
         return 1
     fi
-    [[ "$kind" == 'ss' || "$kind" == 'socks' ]] && { allowPort "$port" udp || true; }
+    if [[ "$kind" == 'ss' || "$kind" == 'socks' ]] && ! allowPort "$port" udp; then
+        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
+            rm -f "$bak"
+            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
+        else
+            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
+        fi
+        return 1
+    fi
     if ! save_firewall_rules; then
-        _xl_deploy_rollback "$bak" "$cfg" "$svc" >/dev/null 2>&1 || true
-        rm -f "$bak"
-        msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
+        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
+            rm -f "$bak"
+            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
+        else
+            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
+        fi
         return 1
     fi
     rm -f "$bak"
-    [[ "$kind" == 'ss' || "$kind" == 'socks' ]] && { allowPort "$port" udp || true; }
-    save_firewall_rules || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     pub_ip=$(read_cached_public_ip 2>/dev/null || true)
     [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
     [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
@@ -32982,16 +33011,30 @@ xray_latest_deploy_trio() {
     # deploy is rolled back (old config + old links stay valid) instead of
     # leaving a live new config with no backup and no links.
     if ! allowPort "$vp" tcp || ! allowPort "$xp" tcp || ! allowPort "$sp2" tcp; then
-        _xl_deploy_rollback "$bak" "$cfg" "$svc" >/dev/null 2>&1 || true
-        rm -f "$bak"
-        msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
+        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
+            rm -f "$bak"
+            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
+        else
+            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
+        fi
         return 1
     fi
-    allowPort "$sp2" udp || true
+    if ! allowPort "$sp2" udp; then
+        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
+            rm -f "$bak"
+            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
+        else
+            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
+        fi
+        return 1
+    fi
     if ! save_firewall_rules; then
-        _xl_deploy_rollback "$bak" "$cfg" "$svc" >/dev/null 2>&1 || true
-        rm -f "$bak"
-        msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
+        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
+            rm -f "$bak"
+            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
+        else
+            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
+        fi
         return 1
     fi
     rm -f "$bak"

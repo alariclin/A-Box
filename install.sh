@@ -15761,7 +15761,17 @@ xray_hot_remove_inbound() {
     fi
     tmp=$(mktemp /tmp/A-Box-xray-hotdel.XXXXXX) || return 1
     mv "$tmp" "$tmp.json" || { rm -f "$tmp"; return 1; }; tmp="$tmp.json"
-    if ! jq --arg t "$tag" '.inbounds |= map(select(.tag != $t))' "$cfg" > "$tmp" 2>/dev/null; then
+    if ! jq --arg t "$tag" '
+        .inbounds |= map(select(.tag != $t))
+        | if (.routing.rules // null) then
+            .routing.rules |= map(
+                if (.inboundTag | type) == "array" then
+                    (.inboundTag |= map(select(. != $t)) | select(.inboundTag | length > 0))
+                elif (.inboundTag | type) == "string" then
+                    select(.inboundTag != $t)
+                else . end)
+          else . end
+    ' "$cfg" > "$tmp" 2>/dev/null; then
         rm -f "$tmp"; return 1
     fi
     jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }

@@ -22777,7 +22777,7 @@ users_xray_ensure_tags() {
     ' "$cfg" > "$tmp"; then rm -f "$tmp" "$bak"; return 1; fi
     if users_commit_cfg xray "$cfg" "$tmp" "$bak"; then
         if jq -e '[.inbounds[]? | select((.tag == null or .tag == "") and .protocol == "vless")] | length > 0' "$cfg" >/dev/null 2>&1; then
-            msg "${RED}[!] xray: untagged VLESS inbound(s) left without a tag (no xtls-rprx-vision flow found); they stay invisible to per-tag management.${NC}"
+            msg "${RED}[!] xray: untagged VLESS inbound(s) left without a tag; they stay invisible to per-tag management.${NC}"
         fi
         rm -f "$tmp" "$bak"; return 0
     fi
@@ -22808,7 +22808,7 @@ users_sb_ensure_tags() {
     ' "$cfg" > "$tmp"; then rm -f "$tmp" "$bak"; return 1; fi
     if users_commit_cfg sing-box "$cfg" "$tmp" "$bak"; then
         if jq -e '[.inbounds[]? | select((.tag == null or .tag == "") and .type == "vless")] | length > 0' "$cfg" >/dev/null 2>&1; then
-            msg "${RED}[!] sing-box: untagged VLESS inbound(s) left without a tag (no xtls-rprx-vision flow found); they stay invisible to per-tag management.${NC}"
+            msg "${RED}[!] sing-box: untagged VLESS inbound(s) left without a tag; they stay invisible to per-tag management.${NC}"
         fi
         rm -f "$tmp" "$bak"; return 0
     fi
@@ -35469,6 +35469,16 @@ Usage:
 EOF_HELP
 }
 
+check_i18n_parity_file() {
+    local _f="$1" _k _n _keys _bad=0
+    _keys=$(grep -oE '^        (zh|en|ru|fa|zh-tw|ja):[a-z0-9_]+\)' "$_f" | sed 's/^.*://; s/)$//' | sort -u)
+    [[ -n "$_keys" ]] || { echo 'FAIL: i18n key enumeration empty'; return 1; }
+    while read -r _k; do
+        _n=$(grep -cE "^        (zh|en|ru|fa|zh-tw|ja):${_k}\\)" "$_f")
+        [[ "$_n" == '6' ]] || { echo "FAIL: i18n key ${_k} has ${_n}/6 language arms"; _bad=$((_bad + 1)); }
+    done <<< "$_keys"
+    return "$_bad"
+}
 run_self_tests() {
     # E-2-FIX: Disable Xray binary version probe for all self-tests.
     # effective_xray_version() prefers installed /usr/local/bin/xray over ABOX_XRAY_VERSION,
@@ -35662,13 +35672,25 @@ PY_SELFTEST_TAR
     [[ "$(build_ss2022_uri 203.0.113.10 2053 'abc+/=')" == 'ss://2022-blake3-aes-128-gcm:abc%2B%2F%3D@203.0.113.10:2053#SS' ]] || { echo 'FAIL: SS-2022 SIP002/SIP022 URI percent encoding'; failures=$((failures + 1)); }
     # i18n parity guard: every tr_msg key needs all six language arms.
     # U234: an empty enumeration must fail, not silently pass.
-    local _i18n_key _i18n_n _i18n_keys
-    _i18n_keys=$(grep -oE '^        (zh|en|ru|fa|zh-tw|ja):[a-z0-9_]+\)' "$0" | sed 's/^.*://; s/)$//' | sort -u)
-    [[ -n "$_i18n_keys" ]] || { echo 'FAIL: i18n key enumeration empty'; failures=$((failures + 1)); }
-    while read -r _i18n_key; do
-        _i18n_n=$(grep -cE "^        (zh|en|ru|fa|zh-tw|ja):${_i18n_key}\\)" "$0")
-        [[ "$_i18n_n" == '6' ]] || { echo "FAIL: i18n key ${_i18n_key} has ${_i18n_n}/6 language arms"; failures=$((failures + 1)); }
-    done <<< "$_i18n_keys"
+    # Negative samples below prove the guard catches all five failure
+    # classes (empty enum, missing arm, duplicate arm, bad pattern,
+    # unreadable source) instead of only passing on clean input.
+    _i18n_rc=0
+    check_i18n_parity_file "$0" || _i18n_rc=$?
+    failures=$((failures + _i18n_rc))
+    _i18n_syn=$(mktemp -d /tmp/A-Box-i18n-neg.XXXXXX) || { echo 'FAIL: i18n negative sample setup'; failures=$((failures + 1)); }
+    if [[ -n "$_i18n_syn" && -d "$_i18n_syn" ]]; then
+        : > "$_i18n_syn/empty.txt"
+        printf '%s\n' '        zh:synkey) echo x ;;' '        en:synkey) echo x ;;' '        ru:synkey) echo x ;;' '        fa:synkey) echo x ;;' '        zh-tw:synkey) echo x ;;' > "$_i18n_syn/missing.txt"
+        { for _l in zh en ru fa zh-tw ja; do printf '        %s:synkey) echo x ;;\n' "$_l"; done; printf '        zh:synkey) echo x ;;\n'; } > "$_i18n_syn/dup.txt"
+        { for _l in en ru fa zh-tw ja; do printf '        %s:synkey) echo x ;;\n' "$_l"; done; printf '        zh:synkey echo x ;;\n'; } > "$_i18n_syn/badpat.txt"
+        for _s in empty missing dup badpat; do
+            check_i18n_parity_file "$_i18n_syn/$_s.txt" >/dev/null 2>&1 && { echo "FAIL: i18n negative sample $_s not caught"; failures=$((failures + 1)); }
+        done
+        check_i18n_parity_file "$_i18n_syn/nofile.txt" >/dev/null 2>&1 && { echo 'FAIL: i18n negative sample nofile not caught'; failures=$((failures + 1)); }
+        rm -rf -- "$_i18n_syn"
+    fi
+    unset _i18n_syn
 
     selftest_script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P) || selftest_script_dir=''
     if [[ -n "${ABOX_SNI_CANDIDATE_SOURCE_OVERRIDE:-}" && -f "$ABOX_SNI_CANDIDATE_SOURCE_OVERRIDE" && ! -L "$ABOX_SNI_CANDIDATE_SOURCE_OVERRIDE" ]]; then
@@ -36853,7 +36875,7 @@ PY_SELFTEST_YAML
     # The old assertion grepped the policy comment itself, so it passed
     # even if the Alpine deps array installed cronie. Check the logic:
     # the alpine) branch's deps array must not contain cronie.
-    _alpine_deps=$(awk '/Use BusyBox crond/{f=1} f && /deps=\(/{print; exit}' <<< "$source_body")
+    _alpine_deps=$(awk '/Use BusyBox crond/{f=1} f && /deps=\(/ {g=1} g{print} g && /\)/{exit}' <<< "$source_body")
     [[ -n "$_alpine_deps" && "$_alpine_deps" != *'cronie'* ]] || { echo 'FAIL: Alpine deps must not force-install cronie by default'; failures=$((failures + 1)); }
     grep -Fq 'curl-minimal' <<< "$source_body" || { echo 'FAIL: RHEL/Rocky curl-minimal conflict handling missing'; failures=$((failures + 1)); }
     release="$_saved_release"
@@ -36977,6 +36999,29 @@ for raw, expected in checks.items():
     if decode_mountinfo_path(raw) != expected:
         raise SystemExit(1)
 PY_MOUNTINFO_DECODE_TEST
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$0" <<'PY_MOUNTINFO_DECODE_CONSISTENCY' || { echo 'FAIL: mountinfo path decoder copies disagree'; failures=$((failures + 1)); }
+import re, sys
+src = open(sys.argv[1]).read().splitlines()
+blocks, cur = [], None
+for line in src:
+    if line.startswith('def decode_mountinfo_path(value):'):
+        cur = [line]
+    elif cur is not None:
+        cur.append(line)
+        if line.lstrip().startswith('return '):
+            blocks.append('\n'.join(cur))
+            cur = None
+assert len(blocks) == 2, 'expected 2 decode copies, got %d' % len(blocks)
+vecs = [r'/mnt/a\040b', r'/mnt/a\134011b', r'/mnt/plain', r'/x\011y']
+outs = []
+for b in blocks:
+    ns = {}
+    exec(b, {'re': re}, ns)
+    outs.append([ns['decode_mountinfo_path'](v) for v in vecs])
+assert outs[0] == outs[1], 'decode copies disagree'
+PY_MOUNTINFO_DECODE_CONSISTENCY
     fi
     if command -v python3 >/dev/null 2>&1; then
         _guard_fail_bin="$tmp/.A-Box-failing-python"

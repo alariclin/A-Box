@@ -21824,14 +21824,15 @@ remove_single_protocol_menu() {
         msg "${YELLOW}${_idxf}.  ${label} · ${core} · :${port:-—}${NC}"
     done
     read -r -p "$(tr_msg cl_select)" choice || return 0
-    if [[ ! "$choice" =~ ^[0-9]+$ ]]; then
+    # Length-gated first: an unbounded digit string wraps in bash
+    # arithmetic (2^64+1 becomes 1) and would select the first row.
+    # 10# stays for the octal rule (08 errors, 010 selects index 7).
+    if ! valid_decimal_upto "$choice" "${#rows[@]}"; then
         msg "${RED}$(tr_msg xl_invalid)${NC}"
         return 0
     fi
-    # Decimal first: 08/010 must not be parsed as octal (08 errors,
-    # 010 selects index 7 instead of 9). 10# is the codebase idiom.
     choice=$((10#$choice))
-    if (( choice < 1 || choice > ${#rows[@]} )); then
+    if (( choice < 1 )); then
         msg "${RED}$(tr_msg xl_invalid)${NC}"
         return 0
     fi
@@ -22671,7 +22672,10 @@ users_normalize_default_name() {
     old_reg=$(cat "$reg" 2>/dev/null) || return 0
     users_reg_write "$core" "$tag" "$new" >/dev/null 2>&1 || return 0
     if ! users_sync "$core" "$tag" >/dev/null 2>&1; then
-        users_reg_write "$core" "$tag" "$old_reg" >/dev/null 2>&1 || true
+        if ! users_reg_write "$core" "$tag" "$old_reg" >/dev/null 2>&1; then
+            msg "${RED}[!] 用户迁移同步失败，且注册表回滚写入失败：${core}/${tag} 仍为迁移后状态（main），核心仍为 abox，下次重试将被跳过，请手动检查注册表。${NC}" >&2
+            return 1
+        fi
     fi
 }
 # Startup sweep: normalize every registry's default label without
@@ -23365,8 +23369,12 @@ users_export_all() {
         install_file_atomically "$tmp" "$dir/uri-list.txt" 600 || { rm -f -- "$tmp"; return 1; }
         rm -f -- "$tmp"
         local etmp=''
-        etmp=$(umask 077; mktemp "$dir/.sub-b64.XXXXXX") || return 1
-        install_file_atomically "$etmp" "$dir/subscription.base64" 600 || { rm -f -- "$etmp"; return 1; }
+        # uri-list is already cleared above: if the empty base64 cannot
+        # be staged or installed, remove the stale file rather than
+        # leaving revoked users' links serving. A missing subscription
+        # fails closed; a stale one does not.
+        etmp=$(umask 077; mktemp "$dir/.sub-b64.XXXXXX") || { rm -f -- "$dir/subscription.base64"; return 1; }
+        install_file_atomically "$etmp" "$dir/subscription.base64" 600 || { rm -f -- "$etmp" "$dir/subscription.base64"; return 1; }
         rm -f -- "$etmp"
         printf '%s' '0'
         return 0
@@ -23444,13 +23452,13 @@ users_pick_user() {
     local i=0 n=''
     while IFS= read -r n; do i=$((i + 1)); printf '%3d. %s\n' "$i" "$n" >&2; done <<< "$names"
     read -r -p "$2" sel || return 1
-    [[ "$sel" =~ ^[0-9]+$ ]] || return 1
-    # Decimal first (08/010 must not parse as octal), then bound-check:
-    # an out-of-range pick used to print an empty name with rc 0, and
-    # the quota path then wrote back and reported success for nobody.
+    total=$(printf '%s\n' "$names" | wc -l | tr -d '[:space:]')
+    # Length-gated first: an unbounded digit string wraps in bash
+    # arithmetic (2^64+1 becomes 1) and would select the first user.
+    # 10# stays for the octal rule (08/010 must not parse as octal).
+    valid_decimal_upto "$sel" "$total" || return 1
     sel=$((10#$sel))
-    total=$(printf '%s\n' "$names" | wc -l)
-    (( sel >= 1 && sel <= total )) || return 1
+    (( sel >= 1 )) || return 1
     printf '%s\n' "$names" | sed -n "${sel}p"
 }
 
@@ -27272,7 +27280,7 @@ swapfile_active_state() {
             fi
         fi
     elif [[ -r /proc/swaps ]]; then
-        output=$(awk 'NR>1 {print $1}' /proc/swaps 2>/dev/null || true)
+        output=$(awk 'NR>1 {print $1}' /proc/swaps 2>/dev/null) || return 2
     else
         return 2
     fi
@@ -27349,7 +27357,7 @@ fstab_path_is_safe() {
 }
 
 setup_swap_2g() {
-    local fstab_tmp='' fstab_backup='' free_kib=0 created_by_abox=0
+    local fstab_tmp='' fstab_backup='' free_kib=0 created_by_abox=0 last_byte=""
     clear
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}Swap 虚拟内存一键划拨 / Allocate 2G Swap${NC}"
@@ -27414,7 +27422,19 @@ setup_swap_2g() {
             # Trailing-newline guard: without it the BEGIN marker glues
             # onto a newline-less last line, and the later removal (which
             # looks for a standalone END marker) refuses to run.
-            if [[ -s "$fstab_tmp" ]] && [[ -n "$(tail -c 1 "$fstab_tmp" 2>/dev/null)" ]]; then
+            # A failed tail must stop here: its empty output is
+            # indistinguishable from "already ends with newline", and
+            # skipping the newline would glue the BEGIN marker on.
+            if ! last_byte=$(tail -c 1 "$fstab_tmp" 2>/dev/null); then
+                rm -f "$fstab_tmp"
+                if ! rollback_abox_new_swap "$fstab_backup"; then
+                    msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
+                    die '/etc/fstab 写入失败且 Swap 无法安全回滚；已保留恢复材料。'
+                fi
+                rm -f "$fstab_backup" || true
+                die '/etc/fstab 写入失败；已回滚新建 Swap。'
+            fi
+            if [[ -s "$fstab_tmp" ]] && [[ -n "$last_byte" ]]; then
                 printf '\n' >> "$fstab_tmp" || {
                     rm -f "$fstab_tmp"
                     if ! rollback_abox_new_swap "$fstab_backup"; then

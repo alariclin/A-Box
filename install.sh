@@ -4117,6 +4117,12 @@ tr_msg() {
         fa:xl_rollback_fail) echo 'استقرار ناموفق بود و سرویس پس از بازگشت هنوز راه‌اندازی نمی‌شود؛ پیکربندی و وضعیت سرویس را دستی بررسی کنید.' ;;
         zh-tw:xl_rollback_fail) echo '部署失敗，且回滾後服務仍無法啟動，請手動檢查設定與服務狀態。' ;;
         ja:xl_rollback_fail) echo '導入に失敗し、ロールバック後もサービスが起動しません。設定とサービスの状態を手動で確認してください。' ;;
+        zh:xl_rollback_copy_fail) echo '回滚复制失败，旧备份已保留未删，请手动恢复并检查。' ;;
+        en:xl_rollback_copy_fail) echo 'Rollback copy failed; the old backup was kept, restore it manually and check.' ;;
+        ru:xl_rollback_copy_fail) echo 'Копирование при откате не удалось; старая резервная копия сохранена, восстановите её вручную и проверьте.' ;;
+        fa:xl_rollback_copy_fail) echo 'کپی بازگشت ناموفق بود؛ پشتیبان قدیمی نگه داشته شد، آن را دستی بازیابی و بررسی کنید.' ;;
+        zh-tw:xl_rollback_copy_fail) echo '回滾複製失敗，舊備份已保留未刪，請手動還原並檢查。' ;;
+        ja:xl_rollback_copy_fail) echo 'ロールバックのコピーに失敗しました。古いバックアップは削除せず残してあります。手動で復元し、確認してください。' ;;
         zh:xl_fw_rollback) echo '防火墙放行或保存失败，已回滚到旧配置，旧链接仍有效。' ;;
         en:xl_fw_rollback) echo 'Firewall allow/save failed; rolled back to the previous config, old links stay valid.' ;;
         ru:xl_fw_rollback) echo 'Не удалось открыть порт или сохранить правила firewall; выполнен откат к предыдущей конфигурации, старые ссылки действуют.' ;;
@@ -4663,6 +4669,12 @@ tr_msg() {
         fa:warp_apply_fail) echo 'اعمال پیکربندی ناموفق بود.' ;;
         zh-tw:warp_apply_fail) echo '配置應用失敗。' ;;
         ja:warp_apply_fail) echo '設定の適用に失敗しました。' ;;
+        zh:warp_applied_corrupt) echo '路由应用记录（.applied）已损坏，无法确认上次应用状态；本次应用已中止。' ;;
+        en:warp_applied_corrupt) echo 'Routing applied record (.applied) is corrupt; previous applied state cannot be confirmed, apply aborted.' ;;
+        ru:warp_applied_corrupt) echo 'Запись применённой маршрутизации (.applied) повреждена; предыдущее состояние подтвердить нельзя, применение прервано.' ;;
+        fa:warp_applied_corrupt) echo 'سابقه مسیریابی اعمال‌شده (.applied) خراب است؛ وضعیت قبلی را نمی‌توان تأیید کرد، اعمال متوقف شد.' ;;
+        zh-tw:warp_applied_corrupt) echo '路由應用記錄（.applied）已損壞，無法確認上次應用狀態；本次應用已中止。' ;;
+        ja:warp_applied_corrupt) echo 'ルーティング適用記録（.applied）が破損しています。前回の適用状態を確認できないため、適用を中止しました。' ;;
         zh:warp_done) echo 'WARP 出口部署完成。' ;;
         en:warp_done) echo 'WARP egress deployed.' ;;
         ru:warp_done) echo 'WARP-выход развёрнут.' ;;
@@ -4675,6 +4687,12 @@ tr_msg() {
         fa:warp_removed) echo 'WARP حذف شد.' ;;
         zh-tw:warp_removed) echo 'WARP 已卸載。' ;;
         ja:warp_removed) echo 'WARP をアンインストールしました。' ;;
+        zh:warp_no_core) echo '未检测到可用核心，无法应用 WARP 路由；本次操作已中止。' ;;
+        en:warp_no_core) echo 'No usable core detected; WARP routing cannot be applied, operation aborted.' ;;
+        ru:warp_no_core) echo 'Подходящее ядро не обнаружено; маршрутизацию WARP применить нельзя, операция прервана.' ;;
+        fa:warp_no_core) echo 'هسته قابل استفاده‌ای یافت نشد؛ مسیریابی WARP را نمی‌توان اعمال کرد، عملیات متوقف شد.' ;;
+        zh-tw:warp_no_core) echo '未檢測到可用核心，無法應用 WARP 路由；本次操作已中止。' ;;
+        ja:warp_no_core) echo '利用可能なコアが検出されませんでした。WARP ルーティングを適用できないため、操作を中止しました。' ;;
         zh:warp_applied_fail) echo '路由应用记录（.applied）写入失败，本次应用结果不可靠。' ;;
         en:warp_applied_fail) echo 'Failed to write the routing applied record (.applied); this apply result is unreliable.' ;;
         ru:warp_applied_fail) echo 'Не удалось записать журнал применённой маршрутизации (.applied); результат этого применения ненадёжен.' ;;
@@ -18825,6 +18843,10 @@ routing_apply_live() {
     # deletes the state entry before re-applying).
     local prev_applied='[]' prev_rules_xray='[]' prev_rules_singbox='[]'
     if [[ -f "${ROUTING_STATE_FILE}.applied" ]]; then
+        if ! jq empty "${ROUTING_STATE_FILE}.applied" >/dev/null 2>&1; then
+            msg "${RED}[!] $(tr_msg warp_applied_corrupt)${NC}"
+            return 1
+        fi
         prev_applied=$(jq -c 'if type == "array" then map(select(type == "string")) elif type == "object" then (.outbounds // [] | map(select(type == "string"))) else [] end' "${ROUTING_STATE_FILE}.applied" 2>/dev/null || printf '[]')
         prev_rules_xray=$(jq -c 'if type == "object" then (.rules_xray // []) else [] end' "${ROUTING_STATE_FILE}.applied" 2>/dev/null || printf '[]')
         prev_rules_singbox=$(jq -c 'if type == "object" then (.rules_singbox // []) else [] end' "${ROUTING_STATE_FILE}.applied" 2>/dev/null || printf '[]')
@@ -19019,9 +19041,11 @@ warp_deploy() {
         load_optional_abox_env_or_die 2>/dev/null || true
         core="${CORE:-}"
     fi
-    if [[ -n "$core" ]]; then
-        routing_apply_live "$core" || { msg "$(tr_msg warp_apply_fail)"; return 1; }
+    if [[ -z "$core" ]]; then
+        msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
+        return 1
     fi
+    routing_apply_live "$core" || { msg "$(tr_msg warp_apply_fail)"; return 1; }
     msg "$(tr_msg warp_done)"
 }
 
@@ -19032,9 +19056,11 @@ warp_undeploy() {
         load_optional_abox_env_or_die 2>/dev/null || true
         core="${CORE:-}"
     fi
-    if [[ -n "$core" ]]; then
-        routing_apply_live "$core" 'warp-out' || { msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}"; return 1; }
+    if [[ -z "$core" ]]; then
+        msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
+        return 1
     fi
+    routing_apply_live "$core" 'warp-out' || { msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}"; return 1; }
     msg "$(tr_msg warp_removed)"
 }
 
@@ -19113,9 +19139,11 @@ warp_apply_preset() {
         load_optional_abox_env_or_die 2>/dev/null || true
         core="${CORE:-}"
     fi
-    if [[ -n "$core" ]]; then
-        routing_apply_live "$core" || return 1
+    if [[ -z "$core" ]]; then
+        msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
+        return 1
     fi
+    routing_apply_live "$core" || return 1
     msg "$(tr_msg warp_preset_done)"
 }
 
@@ -19138,9 +19166,11 @@ split_apply_preset() {
         load_optional_abox_env_or_die 2>/dev/null || true
         core="${CORE:-}"
     fi
-    if [[ -n "$core" ]]; then
-        routing_apply_live "$core" || return 1
+    if [[ -z "$core" ]]; then
+        msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
+        return 1
     fi
+    routing_apply_live "$core" || return 1
     msg "$(tr_msg warp_preset_done)"
 }
 
@@ -23789,17 +23819,17 @@ _nsni_apply() {
         xray-latest) bin=$(users_bin_of xray-latest 2>/dev/null || echo /usr/local/bin/xray-latest); if [[ -x "$bin" ]]; then "$bin" run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
         sing-box) bin="${SB_PATH:-/usr/local/bin/sing-box}"; if [[ -x "$bin" ]]; then "$bin" check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
     esac
-    cat "$tmp" > "$cfg" || { cp -a "$bak" "$cfg" 2>/dev/null; rm -f "$tmp" "$bak"; return 1; }
+    cat "$tmp" > "$cfg" || { if cp -a "$bak" "$cfg" 2>/dev/null; then rm -f "$tmp" "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; rm -f "$tmp"; fi; return 1; }
     rm -f "$tmp"
     if [[ "$kind" == 'tuic' && -n "$key" && -n "$crt" ]]; then
         if ! generate_self_signed_cert_atomically "$key" "$crt" "$new" >/dev/null 2>&1; then
-            cp -a "$bak" "$cfg" 2>/dev/null; rm -f "$bak"; return 1
+            if cp -a "$bak" "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; fi; return 1
         fi
     fi
     if is_service_running "$core" 2>/dev/null; then
         local _restart_ok=0
         if is_systemd; then systemctl restart "$core" >/dev/null 2>&1 && _restart_ok=1; else rc-service "$core" restart >/dev/null 2>&1 && _restart_ok=1; fi
-        if (( _restart_ok == 0 )); then cp -a "$bak" "$cfg" 2>/dev/null; rm -f "$bak"; return 1; fi
+        if (( _restart_ok == 0 )); then if cp -a "$bak" "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; fi; return 1; fi
     fi
     rm -f "$bak"
     local _ldir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _lf='' _shown='' _stem='' _esc_old='' _esc_new=''
@@ -32432,18 +32462,18 @@ _xl_install_takeover() { # $1 = staged binary, $2 = tag
     fi
     install_binary_atomically "$staged" "$XRAY_SLOT_BIN" || { rm -f -- "$old_bin_tmp"; return 1; }
     if [[ ! -f "$XRAY_SLOT_CFG" || -L "$XRAY_SLOT_CFG" ]]; then
-        prepare_abox_runtime_config_dir xray "$XRAY_SLOT_DIR" || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; else rm -f -- "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
-        _xl_seed_config "$XRAY_SLOT_CFG" 'xray' || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; else rm -f -- "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
+        prepare_abox_runtime_config_dir xray "$XRAY_SLOT_DIR" || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN" || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; else rm -f -- "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
+        _xl_seed_config "$XRAY_SLOT_CFG" 'xray' || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN" || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; else rm -f -- "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
         created_cfg=1
     fi
     if ! xray_owned; then
-        _xl_write_slot_unit || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; else rm -f -- "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
+        _xl_write_slot_unit || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN" || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; else rm -f -- "$XRAY_SLOT_BIN"; fi; [[ "$created_cfg" == '1' ]] && rm -f -- "$XRAY_SLOT_CFG"; rm -f -- "$old_bin_tmp"; return 1; }
         created_unit=1
     fi
-    prepare_abox_runtime_permissions xray || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; else rm -f -- "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
+    prepare_abox_runtime_permissions xray || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN" || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; else rm -f -- "$XRAY_SLOT_BIN"; fi; [[ "$created_cfg" == '1' ]] && rm -f -- "$XRAY_SLOT_CFG"; if [[ "$created_unit" == '1' ]]; then if [[ "${INIT_SYS:-}" == 'systemd' ]]; then rm -f -- /etc/systemd/system/xray.service; systemctl daemon-reload >/dev/null 2>&1 || true; else rm -f -- /etc/init.d/xray /etc/conf.d/xray; fi; fi; rm -f -- "$old_bin_tmp"; return 1; }
     if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$XRAY_SLOT_BIN" run -test -config "$XRAY_SLOT_CFG" >/dev/null 2>&1; then
         msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
-        if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; else rm -f -- "$XRAY_SLOT_BIN"; fi
+        if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN" || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; else rm -f -- "$XRAY_SLOT_BIN"; fi
         [[ "$created_cfg" == '1' ]] && rm -f -- "$XRAY_SLOT_CFG"
         if [[ "$created_unit" == '1' ]]; then
             if [[ "${INIT_SYS:-}" == 'systemd' ]]; then rm -f -- /etc/systemd/system/xray.service; systemctl daemon-reload >/dev/null 2>&1 || true; else rm -f -- /etc/init.d/xray /etc/conf.d/xray; fi
@@ -32454,7 +32484,10 @@ _xl_install_takeover() { # $1 = staged binary, $2 = tag
     if ! restart_service_soft xray; then
         msg "${RED}$(tr_msg xl_restart_fail)${NC}"
         if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then
-            cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"
+            if ! cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; then
+                msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
+                return 1
+            fi
             restart_service_soft xray >/dev/null 2>&1 || true
         else
             if [[ -n "$slot_link_target" ]]; then
@@ -32491,13 +32524,16 @@ _xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_d
         fi
     fi
     if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then
-        cp -f -- "$old_bin_tmp" "$XRAY_LATEST_BIN"
+        if cp -f -- "$old_bin_tmp" "$XRAY_LATEST_BIN"; then
+            rm -f -- "$old_bin_tmp"
+        else
+            msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
+        fi
     elif [[ -n "$bin_link_target" ]]; then
         ln -sfn -- "$bin_link_target" "$XRAY_LATEST_BIN"
     elif [[ "$had_bin" == '0' ]]; then
         rm -f -- "$XRAY_LATEST_BIN"
     fi
-    rm -f -- "$old_bin_tmp"
     if [[ "$created_cfg" == '1' ]]; then
         rm -f -- "$XRAY_LATEST_CFG"
         [[ -n "$cfg_link_target" ]] && ln -s -- "$cfg_link_target" "$XRAY_LATEST_CFG"
@@ -32509,11 +32545,11 @@ _xl_install_coexist() { # $1 = staged binary, $2 = tag
     local staged="$1" had_bin=0 created_cfg=0 had_unit=0 had_dir=0 old_bin_tmp='' cfg_link_target='' bin_link_target=''
     [[ -e "$XRAY_LATEST_BIN" || -L "$XRAY_LATEST_BIN" ]] && had_bin=1
     [[ -L "$XRAY_LATEST_BIN" ]] && bin_link_target=$(readlink "$XRAY_LATEST_BIN")
-    [[ -e "$XRAY_LATEST_DIR" ]] && had_dir=1
+    [[ -e "$XRAY_LATEST_DIR" || -L "$XRAY_LATEST_DIR" ]] && had_dir=1
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        [[ -e /etc/systemd/system/xray-latest.service ]] && had_unit=1
+        [[ -e /etc/systemd/system/xray-latest.service || -L /etc/systemd/system/xray-latest.service ]] && had_unit=1
     else
-        [[ -e /etc/init.d/xray-latest ]] && had_unit=1
+        [[ -e /etc/init.d/xray-latest || -L /etc/init.d/xray-latest ]] && had_unit=1
     fi
     if [[ -f "$XRAY_LATEST_BIN" && ! -L "$XRAY_LATEST_BIN" ]]; then
         old_bin_tmp=$(mktemp /tmp/A-Box-xl-oldbin.XXXXXX) || return 1

@@ -10944,9 +10944,9 @@ clean_chain() {
 }
 restore_one() {
     local file="$1" cmd="$2"
-    [[ -s "$file" ]] || return 0
+    [[ -s "$file" ]] || return 1
     command -v "$cmd" >/dev/null 2>&1 || return 1
-    grep -q '^\*' "$file" || return 0
+    grep -q '^\*' "$file" || return 1
     "$cmd" -w --noflush < "$file" >/dev/null 2>&1 || "$cmd" --noflush < "$file" >/dev/null 2>&1
 }
 iptables_rule_check() {
@@ -11192,7 +11192,7 @@ reorder_policy() {
     command -v "$cmd" >/dev/null 2>&1 || return 0
     rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
     while IFS= read -r line; do
-        if [[ "$line" =~ --comment[[:space:]]+"?A-Box-([0-9]{1,5})-(tcp|udp)-${drop_suffix}"?([[:space:]]|$) ]]; then
+        if [[ "$line" =~ --comment[[:space:]]+\"?A-Box-([0-9]{1,5})-(tcp|udp)-${drop_suffix}\"?([[:space:]]|$) ]]; then
             port="${BASH_REMATCH[1]}"; proto="${BASH_REMATCH[2]}"; key="${port}|${proto}"
             [[ -n "${seen[$key]:-}" ]] && continue
             seen[$key]=1
@@ -11200,15 +11200,56 @@ reorder_policy() {
         fi
     done <<< "$rules_output"
 }
+# D1: whole-restore lock (separate from the per-port reorder lock).
+# flock -n fails loudly on overlap instead of duplicating rules via --noflush.
+restore_lock_file=/run/A-Box-firewall-restore.lock
+restore_lock_fd=''
+if [[ -e "$restore_lock_file" || -L "$restore_lock_file" ]]; then
+    [[ -f "$restore_lock_file" && ! -L "$restore_lock_file" ]] || exit 1
+    [[ "$(stat -c %u:%g "$restore_lock_file" 2>/dev/null || true)" == 0:0 ]] || exit 1
+    [[ "$(stat -c %a "$restore_lock_file" 2>/dev/null || true)" =~ ^0?600$ ]] || exit 1
+fi
+(umask 077; set -o noclobber; : > "$restore_lock_file") 2>/dev/null || exit 1
+exec {restore_lock_fd}>>"$restore_lock_file" || exit 1
+flock -n "$restore_lock_fd" || { eval "exec ${restore_lock_fd}>&-" 2>/dev/null || true; exit 1; }
+trap 'flock -u "${restore_lock_fd:-}" 2>/dev/null || true; eval "exec ${restore_lock_fd:-}>&-" 2>/dev/null || true' EXIT
+# D1: snapshot validity (exists + non-empty + table header).
+snapshot_valid() {
+    [[ -s "$1" ]] && grep -q '^\*' "$1"
+}
+# D1: validate before deleting (fail before clean when live A-Box rules
+# exist but the snapshot cannot restore them; proceed when nothing live
+# to lose, e.g. fresh boot or IPv4-only host with no live v6 rules).
+if ! snapshot_valid /etc/ddr/iptables.v4; then
+    if _iptables_q iptables -S INPUT 2>/dev/null | grep -q 'A-Box-'; then
+        echo 'A-Box firewall restore: IPv4 snapshot invalid but live A-Box rules exist; refusing to delete.' >&2
+        exit 1
+    fi
+fi
+# D1: preserve a manual-recovery backup before deleting (full save; kept
+# on failure with a loud message, not auto-restored, to avoid duplicating
+# foreign rules via --noflush).
+restore_backup4=$(mktemp) || exit 1
+iptables-save > "$restore_backup4" 2>/dev/null || { rm -f -- "$restore_backup4"; exit 1; }
 clean_chain iptables filter INPUT || exit 1
 clean_chain iptables nat PREROUTING || exit 1
-restore_one /etc/ddr/iptables.v4 iptables-restore || exit 1
+restore_one /etc/ddr/iptables.v4 iptables-restore || { echo "A-Box firewall restore FAILED; pre-delete backup preserved: $restore_backup4 (restore manually)" >&2; exit 1; }
 reorder_policy iptables WL DROP || exit 1
+rm -f -- "$restore_backup4"
 if command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -S INPUT >/dev/null 2>&1; then
+    if ! snapshot_valid /etc/ddr/iptables.v6; then
+        if _iptables_q ip6tables -S INPUT 2>/dev/null | grep -q 'A-Box-'; then
+            echo 'A-Box firewall restore: IPv6 snapshot invalid but live A-Box rules exist; refusing to delete.' >&2
+            exit 1
+        fi
+    fi
+    restore_backup6=$(mktemp) || exit 1
+    ip6tables-save > "$restore_backup6" 2>/dev/null || { rm -f -- "$restore_backup6"; exit 1; }
     clean_chain ip6tables filter INPUT || exit 1
     clean_chain ip6tables nat PREROUTING || exit 1
-    restore_one /etc/ddr/iptables.v6 ip6tables-restore || exit 1
+    restore_one /etc/ddr/iptables.v6 ip6tables-restore || { echo "A-Box firewall restore FAILED; pre-delete backup preserved: $restore_backup6 (restore manually)" >&2; exit 1; }
     reorder_policy ip6tables WL6 DROP6 || exit 1
+    rm -f -- "$restore_backup6"
 elif [[ -s /etc/ddr/iptables.v6 ]]; then
     # A v6 snapshot exists but ip6tables is unusable right now:
     # fail loudly instead of silently booting without v6 rules.
@@ -11612,7 +11653,16 @@ record_native_firewall_rule() {
     if [[ -f "$ABOX_FW_STATE" ]]; then
         cat "$ABOX_FW_STATE" > "$tmp" || { rm -f -- "$tmp"; return 1; }
     fi
+    # D1: ensure tmp ends with a newline before appending, so a previous
+    # no-trailing-newline state file cannot concatenate with the new record.
+    if [[ -s "$tmp" ]] && [[ -n "$(tail -c 1 "$tmp" | tr -d '\n')" ]]; then
+        printf '\n' >> "$tmp" || { rm -f -- "$tmp"; return 1; }
+    fi
     grep -qxF "$record" "$tmp" 2>/dev/null || printf '%s\n' "$record" >> "$tmp" || { rm -f -- "$tmp"; return 1; }
+    # D1: re-validate the complete new file before installing it, so a
+    # corrupted append can never become the formal state file.
+    validate_native_firewall_state_file "$tmp" || { rm -f -- "$tmp"; return 1; }
+
     chown root:root "$tmp" || { rm -f -- "$tmp"; return 1; }
     chmod 600 "$tmp" || { rm -f -- "$tmp"; return 1; }
     mv -f -- "$tmp" "$ABOX_FW_STATE" || { rm -f -- "$tmp"; return 1; }

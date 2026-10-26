@@ -27918,16 +27918,27 @@ strip_abox_cron_blocks_from_file() {
     local input="$1" output="$2" name="${3:-}"
     [[ -f "$input" && ! -L "$input" && -n "$output" ]] || return 1
     awk -v wanted="$name" '
-      BEGIN { skip=0; seen_wanted=0; open_name="" }
+      BEGIN { skip=0; seen_wanted=0; open_name=""; depth=0 }
       {
-        if (wanted != "" && $0 == "# A-Box " wanted " BEGIN") { if (skip) exit 1; skip=1; seen_wanted=seen_wanted+1; next }
-        if (wanted != "" && $0 == "# A-Box " wanted " END") { if (!skip) exit 1; skip=0; next }
+        if (wanted != "" && $0 ~ /^# A-Box [^ ]+ BEGIN$/) {
+          depth++; stack[depth]=$3
+          if ($3 == wanted) { if (skip) exit 1; skip=1; seen_wanted=seen_wanted+1; next }
+          if (skip) next
+          print; next
+      }
+        if (wanted != "" && $0 ~ /^# A-Box [^ ]+ END$/) {
+          if (depth == 0 || stack[depth] != $3) exit 1
+          depth--
+          if ($3 == wanted) { if (!skip) exit 1; skip=0; next }
+          if (skip) next
+          print; next
+      }
         if (wanted == "" && $0 ~ /^# A-Box (PROBE|GEO|TRAFFIC) BEGIN$/) { if (skip) exit 1; skip=1; open_name=$3; next }
         if (wanted == "" && $0 ~ /^# A-Box (PROBE|GEO|TRAFFIC) END$/) { if (!skip || $3 != open_name) exit 1; skip=0; open_name=""; next }
         if (skip) next
         print
       }
-      END { if (skip) exit 1; if (wanted != "" && seen_wanted > 1) exit 1 }
+      END { if (skip) exit 1; if (depth > 0) exit 1; if (wanted != "" && seen_wanted > 1) exit 1 }
     ' "$input" > "$output" || return 1
 }
 
@@ -29930,7 +29941,7 @@ wallos_install_runtime() {
             dnf -y install dnf-plugins-core ca-certificates curl jq || return 1
             case "$os_id" in
                 fedora)
-                    if [[ "$(dnf --version 2>/dev/null | head -1 | cut -d. -f1)" == '5' ]]; then
+                    if [[ "$(dnf --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1 | cut -d. -f1)" == '5' ]]; then
                         dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/fedora/docker-ce.repo || return 1
                     else
                         dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo || return 1
@@ -30027,7 +30038,17 @@ wallos_prune_local_images() {
     for _k in "$keep1" "$keep2"; do
         [[ -n "$_k" ]] || continue
         _kid=$(docker image inspect -f '{{.Id}}' "$_k" 2>/dev/null || true)
-        [[ -n "$_kid" ]] && keep_ids+=("$_kid")
+        if [[ -z "$_kid" ]]; then
+            # A digest/ID-form keep that fails to resolve must fail
+            # closed: silently dropping it would delete the kept image.
+            # A tag-form keep that fails to resolve is simply not
+            # present locally, so pruning proceeds as before.
+            case "$_k" in
+                *@*|sha256:*) return 1 ;;
+            esac
+            continue
+        fi
+        keep_ids+=("$_kid")
     done
     local -a all_images=()
     while IFS= read -r img; do
@@ -30140,7 +30161,11 @@ wallos_rollback_to_version() {
     mapfile -t _rb_list < <(ls -t "$WALLOS_DIR"/backups/wallos-*.tar.gz 2>/dev/null || true)
     for _rb_cand in "${_rb_list[@]}"; do
         [[ -f "$_rb_cand" && ! -L "$_rb_cand" ]] || continue
-        _rb_state=$(tar -xzOf "$_rb_cand" .abox-state 2>/dev/null || true)
+        _rb_state=$(tar -xzOf "$_rb_cand" .abox-state 2>/dev/null | head -c 65537 || true)
+        if (( ${#_rb_state} > 65536 )); then
+            _rb_skipped+="$_rb_cand(oversized-state) "
+            continue
+        fi
         # U115: prefer the recorded VERSION (new backups carry a digest IMAGE
         # with no parseable version); fall back to the IMAGE tag for old backups.
         _rb_ver=$(printf '%s\n' "$_rb_state" | awk -F= '$1=="VERSION" {print $2; exit}' 2>/dev/null || true)
@@ -30409,14 +30434,15 @@ wallos_pull_or_restore_image() {
             fi
             # U115: run by the exact digest just pulled, not the mutable tag.
             # The digest here is observed (not manifest-verified); it still
-            # closes the pull-to-run TOCTOU window. No digest observed -> tag.
+            # closes the pull-to-run TOCTOU window. No digest observed -> fall through to the manifest-verified recovery path below; running by mutable tag would reopen the TOCTOU window.
             if [[ "$_pulled_digest" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]]; then
+                msg "${CYAN}$(tprintf wl_pi_digest "$_pulled_digest")${NC}"
+                docker tag "$_pulled_digest" "bellamy/wallos:$image_tag" >/dev/null 2>&1 || true
                 WALLOS_IMAGE_RESULT="$_pulled_digest"
-            else
-                WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+                WALLOS_IMAGE_VERSION="$image_tag"
+                return 0
             fi
-            WALLOS_IMAGE_VERSION="$image_tag"
-            return 0
+            msg "${YELLOW}$(tr_msg wl_pi_digest_fail)${NC}"
         fi
     fi
     msg "${YELLOW}$(tr_msg wl_pi_recovery)${NC}"
@@ -30542,7 +30568,7 @@ wallos_wait_healthy() {
     # would fail-closed forever, and curling the host port could
     # fake-healthy off a foreign service (the U117 hazard), so running
     # state is the only host-visible signal there.
-    local port="$1" _mode="${2:-published}" i code state running pub
+    local port="$1" _mode="${2:-published}" i code state running pub _publine _pubhost
     for i in $(seq 1 60); do
         state=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' wallos 2>/dev/null || true)
         [[ -z "$state" ]] && return 1
@@ -30552,8 +30578,17 @@ wallos_wait_healthy() {
         [[ "$running" == true ]] || { sleep 1; continue; }
         if [[ "$_mode" == unpublished ]]; then return 0; fi
         pub=$(docker port wallos 2>/dev/null || true)
-        grep -Eq ":$port\$" <<< "$pub" || { sleep 1; continue; }
-        code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 "http://127.0.0.1:$port/" 2>/dev/null || true)
+        _publine=$(grep -E ":$port\$" <<< "$pub" | head -1 || true)
+        [[ -n "$_publine" ]] || { sleep 1; continue; }
+        _pubhost=${_publine##*-> }
+        _pubhost=${_pubhost%:*}
+        case "$_pubhost" in
+            '0.0.0.0') _pubhost='127.0.0.1' ;;
+            '::'|'[::]') _pubhost='[::1]' ;;
+            '['*']') ;;
+            *:* ) _pubhost="[$_pubhost]" ;;
+        esac
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 "http://$_pubhost:$port/" 2>/dev/null || true)
         case "$code" in 200|301|302|303|307|308) return 0 ;; esac
         sleep 1
     done
@@ -30623,7 +30658,7 @@ wallos_validate_backup() {
     listing=$(tar -tzf "$backup" 2>/dev/null) || return 1
     grep -Eq '^db/?$' <<< "$listing" && grep -Eq '^logos/?$' <<< "$listing" &&
         grep -Fxq '.abox-state' <<< "$listing" || return 1
-    if grep -Eq '(^/|(^|/)\\.(/|$))' <<< "$listing" ||
+    if grep -Eq '(^/|(^|/)\.+(/|$))' <<< "$listing" ||
        grep -Ev '^(db(/.*)?|logos(/.*)?|\.abox-state)$' <<< "$listing" >/dev/null; then
         return 1
     fi
@@ -31372,7 +31407,7 @@ wallos_stack_teardown() {
             # An unmanaged container is deliberately left running (as
             # before); _gone stays 0 so purge below refuses.
         else
-            _gone=1
+            docker info >/dev/null 2>&1 && _gone=1
         fi
     fi
     if [[ "$_purge" == 'purge-data' && -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]]; then

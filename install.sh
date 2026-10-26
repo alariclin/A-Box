@@ -537,6 +537,7 @@ import os, re, sys
 path = os.path.abspath(os.path.normpath(sys.argv[1]))
 if os.path.islink(path):
     raise SystemExit(1)
+path = os.path.realpath(path).rstrip('/') or '/'
 try:
     with open('/proc/self/mountinfo', 'r', encoding='utf-8', errors='strict') as f:
         for line in f:
@@ -545,7 +546,7 @@ try:
                 continue
             raw = fields[4]
             mp = re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), raw)
-            mp = os.path.abspath(os.path.normpath(mp))
+            mp = os.path.realpath(mp).rstrip('/') or '/'
             if mp == path:
                 raise SystemExit(0)
 except (OSError, UnicodeError):
@@ -615,6 +616,7 @@ import os, sys
 root = os.path.abspath(os.path.normpath(sys.argv[1]))
 if os.path.islink(root):
     raise SystemExit(1)
+root = os.path.realpath(root).rstrip('/') or '/'
 
 import re
 def decode_mountinfo_path(value):
@@ -629,7 +631,7 @@ try:
         for line in f:
             fields = line.rstrip('\n').split(' ')
             if len(fields) >= 5:
-                mp = os.path.abspath(os.path.normpath(decode_mountinfo_path(fields[4])))
+                mp = os.path.realpath(decode_mountinfo_path(fields[4])).rstrip('/') or '/'
                 mountpoints.append(mp)
 except (OSError, UnicodeError):
     # mountinfo is the authoritative source for Linux mount topology. If it
@@ -9616,6 +9618,7 @@ def path_is_mountpoint(path):
     path=os.path.abspath(os.path.normpath(path))
     if os.path.islink(path):
         return False
+    path=os.path.realpath(path).rstrip('/') or '/'
     try:
         with open('/proc/self/mountinfo','r',encoding='utf-8',errors='strict') as mf:
             for line in mf:
@@ -9623,7 +9626,7 @@ def path_is_mountpoint(path):
                 if len(fields) < 5:
                     continue
                 mp=__import__('re').sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1),8)), fields[4])
-                mp=os.path.abspath(os.path.normpath(mp))
+                mp=os.path.realpath(mp).rstrip('/') or '/'
                 if mp == path:
                     return True
     except (OSError, UnicodeError):

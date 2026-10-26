@@ -8051,7 +8051,7 @@ valid_hy2_bandwidth_mbps() {
 valid_domain() {
     local domain="${1:-}"
     [[ ${#domain} -le 253 ]] || return 1
-    [[ "$domain" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+([A-Za-z]{2,63}|xn--[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)$ ]]
+    [[ "$domain" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+([A-Za-z]{2,63}|xn--[A-Za-z0-9]([A-Za-z0-9-]{0,57}[A-Za-z0-9])?)$ ]]
 }
 
 valid_sni() { valid_domain "$1"; }
@@ -9808,6 +9808,23 @@ for typ, _fam, path, _h in rows:
     except FileNotFoundError:
         continue
     if stat.S_ISLNK(st.st_mode):
+        continue
+    # Intermediate components must be real directories: lstat() only pins
+    # the final component, so a symlinked ancestor would redirect the
+    # repair onto a file outside the tree.
+    parent = os.path.dirname(path)
+    ok = True
+    while parent != target and parent.startswith(target + '/'):
+        try:
+            ast = os.lstat(parent)
+        except FileNotFoundError:
+            ok = False
+            break
+        if stat.S_ISLNK(ast.st_mode) or not stat.S_ISDIR(ast.st_mode):
+            ok = False
+            break
+        parent = os.path.dirname(parent)
+    if not ok:
         continue
     if stat.S_ISDIR(st.st_mode):
         if typ != 'D':
@@ -14701,7 +14718,13 @@ acquire_abox_runtime_guard() {
     [[ -d /run && ! -L /run ]] || exit 0
     # If a live fallback lock is held by another A-Box process, yield. Helpers
     # must not treat an idle LOCK_FILE flock as free while main owns fallback.
-    if [[ -d "$FALLBACK_DIR" && ! -L "$FALLBACK_DIR" && -r "$FALLBACK_DIR/pid" && -r "$FALLBACK_DIR/starttime" ]]; then
+    if [[ -d "$FALLBACK_DIR" && ! -L "$FALLBACK_DIR" ]]; then
+        # Unknown/fresh fallback dir (metadata not yet written) counts as
+        # held: yielding is safe, taking the flock alongside an
+        # initializing owner is not.
+        if [[ ! -r "$FALLBACK_DIR/pid" || ! -r "$FALLBACK_DIR/starttime" ]]; then
+            exit 0
+        fi
         [[ "$(stat -c %u:%g "$FALLBACK_DIR" 2>/dev/null || true)" == 0:0 ]] || exit 0
         mode=$(stat -c %a "$FALLBACK_DIR" 2>/dev/null) || exit 0
         [[ "$mode" =~ ^[0-7]{3,4}$ ]] || exit 0
@@ -14994,7 +15017,13 @@ acquire_abox_runtime_guard() {
     [[ -d /run && ! -L /run ]] || exit 0
     # If a live fallback lock is held by another A-Box process, yield. Helpers
     # must not treat an idle LOCK_FILE flock as free while main owns fallback.
-    if [[ -d "$FALLBACK_DIR" && ! -L "$FALLBACK_DIR" && -r "$FALLBACK_DIR/pid" && -r "$FALLBACK_DIR/starttime" ]]; then
+    if [[ -d "$FALLBACK_DIR" && ! -L "$FALLBACK_DIR" ]]; then
+        # Unknown/fresh fallback dir (metadata not yet written) counts as
+        # held: yielding is safe, taking the flock alongside an
+        # initializing owner is not.
+        if [[ ! -r "$FALLBACK_DIR/pid" || ! -r "$FALLBACK_DIR/starttime" ]]; then
+            exit 0
+        fi
         [[ "$(stat -c %u:%g "$FALLBACK_DIR" 2>/dev/null || true)" == 0:0 ]] || exit 0
         mode=$(stat -c %a "$FALLBACK_DIR" 2>/dev/null) || exit 0
         [[ "$mode" =~ ^[0-7]{3,4}$ ]] || exit 0
@@ -19880,7 +19909,13 @@ acquire_abox_runtime_guard() {
     [[ -d /run && ! -L /run ]] || exit 0
     # If a live fallback lock is held by another A-Box process, yield. Helpers
     # must not treat an idle LOCK_FILE flock as free while main owns fallback.
-    if [[ -d "$FALLBACK_DIR" && ! -L "$FALLBACK_DIR" && -r "$FALLBACK_DIR/pid" && -r "$FALLBACK_DIR/starttime" ]]; then
+    if [[ -d "$FALLBACK_DIR" && ! -L "$FALLBACK_DIR" ]]; then
+        # Unknown/fresh fallback dir (metadata not yet written) counts as
+        # held: yielding is safe, taking the flock alongside an
+        # initializing owner is not.
+        if [[ ! -r "$FALLBACK_DIR/pid" || ! -r "$FALLBACK_DIR/starttime" ]]; then
+            exit 0
+        fi
         [[ "$(stat -c %u:%g "$FALLBACK_DIR" 2>/dev/null || true)" == 0:0 ]] || exit 0
         mode=$(stat -c %a "$FALLBACK_DIR" 2>/dev/null) || exit 0
         [[ "$mode" =~ ^[0-7]{3,4}$ ]] || exit 0

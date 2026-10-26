@@ -30649,7 +30649,7 @@ wallos_wait_healthy() {
     # would fail-closed forever, and curling the host port could
     # fake-healthy off a foreign service (the U117 hazard), so running
     # state is the only host-visible signal there.
-    local port="$1" _mode="${2:-published}" i code state running pub _publine _pubhost
+    local port="$1" _mode="${2:-published}" i code state running pub _publine _pubhost _cip
     for i in $(seq 1 60); do
         state=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' wallos 2>/dev/null || true)
         [[ -z "$state" ]] && return 1
@@ -30657,7 +30657,16 @@ wallos_wait_healthy() {
         [[ "$state" == unhealthy ]] && return 1
         running=$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)
         [[ "$running" == true ]] || { sleep 1; continue; }
-        if [[ "$_mode" == unpublished ]]; then return 0; fi
+        if [[ "$_mode" == unpublished ]]; then
+            # Running alone does not mean the app inside listens. Verify
+            # via the container IP (host-reachable on the docker bridge)
+            # instead of returning on Running state.
+            _cip=$(docker inspect -f '{{.NetworkSettings.IPAddress}}' wallos 2>/dev/null || true)
+            [[ -n "$_cip" ]] || { sleep 1; continue; }
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 "http://$_cip:80/" 2>/dev/null || true)
+            case "$code" in 200|301|302|303|307|308) return 0 ;; esac
+            sleep 1; continue
+        fi
         pub=$(docker port wallos 2>/dev/null || true)
         _publine=$(grep -E ":$port\$" <<< "$pub" | head -1 || true)
         [[ -n "$_publine" ]] || { sleep 1; continue; }
@@ -31864,7 +31873,7 @@ wallos_install_or_update() {
     # keeps the publication, and the health gate runs in unpublished
     # mode when nothing is published.
     local -a _pub_args=()
-    if [[ -n "$old_bind" || (( _bind_chosen == 1 )) ]]; then
+    if [[ -n "$old_bind" ]] || (( _bind_chosen == 1 )); then
         _pub_args=(-p "$bind_address:$port:80/tcp")
     fi
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
@@ -35306,7 +35315,7 @@ fallback_runtime_lock_held() { # 0 = a live process holds the fallback lock
 }
 
 acquire_fallback_runtime_lock() {
-    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start='' _dir_age=0
+    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start='' _dir_age=0 _dir_mtime=""
     if mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null; then
         lock_dir_created=1
         chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
@@ -35351,13 +35360,26 @@ acquire_fallback_runtime_lock() {
             # live creator can still be mid-create (dir mtime gate, root
             # ownership required); a fresh dir means a creator may still
             # be writing, so it is left alone.
-            _dir_age=$(( $(date +%s) - $(stat -c %Y "$LOCK_FALLBACK_DIR" 2>/dev/null || echo 0) ))
+            _dir_mtime=$(stat -c %Y "$LOCK_FALLBACK_DIR" 2>/dev/null) || return 1
+            _dir_age=$(( $(date +%s) - _dir_mtime ))
             if (( _dir_age <= 120 )); then
                 return 1
             fi
             stale_away="${LOCK_FALLBACK_DIR}.stale.$$.$RANDOM"
             [[ ! -e "$stale_away" && ! -L "$stale_away" ]] || return 1
             mv -- "$LOCK_FALLBACK_DIR" "$stale_away" 2>/dev/null || return 1
+            # U231-recheck: the moved dir must still be metadata-less. If
+            # another reclaimer replaced the stale dir with a live lock
+            # between the age gate and our mv, we moved the live lock;
+            # never delete it: restore it when the canonical name is
+            # free, else leave the moved dir intact (an orphan is inert,
+            # deleting it is not) — mirroring the U132 branch above.
+            if [[ -e "$stale_away/pid" || -L "$stale_away/pid" || -e "$stale_away/starttime" || -L "$stale_away/starttime" ]]; then
+                if [[ ! -e "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" ]]; then
+                    mv -- "$stale_away" "$LOCK_FALLBACK_DIR" 2>/dev/null || true
+                fi
+                return 1
+            fi
             rm -rf -- "$stale_away" 2>/dev/null || true
             mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null || return 1
             lock_dir_created=1

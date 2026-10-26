@@ -11371,7 +11371,7 @@ nftables_native_rules_present() {
         }
         function eval_chain() {
             if (!is_std(pend_cname)) { native = 1; return }
-            if (is_lower_std(pend_cname) && !is_compat_table(pend_family, pend_name)) { native = 1; return }
+            if (is_lower_std(pend_cname)) { native = 1; return }
         }
         /^[ \t\r]*table[ \t\r]+/ {
             family=$2
@@ -15125,8 +15125,8 @@ if [[ -e "$GEO_TXN" || -L "$GEO_TXN" ]]; then
     elif [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
         if [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] && [[ "$(stat -c %u:%g "$DESIRED" 2>/dev/null)" == 0:0 ]]; then
             mode=$(stat -c %a "$DESIRED" 2>/dev/null) || mode=''
-            if [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) && IFS= read -r desired < "$DESIRED"; then
-                :
+            if [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) && IFS= read -r _des < "$DESIRED"; then
+                desired="$_des"
             fi
         fi
     fi
@@ -15820,7 +15820,7 @@ build_singbox_config() {
         --rawfile pk <(printf '%s' "${PK:-}") --rawfile sid <(printf '%s' "${SHORT_ID:-}") \
         --argjson vport "${VLESS_PORT:-443}" --argjson hy2port "${HY2_BASE_PORT:-443}" --argjson ssport "${SS_PORT:-2053}" \
         --argjson hy2up "${HY2_DOWN:-1000}" --argjson hy2down "${HY2_UP:-100}" \
-        --arg hy2pass "${HY2_PASS:-}" --arg hy2obfs "${HY2_OBFS:-}" --arg cert_cn "$cert_cn" \
+        --rawfile hy2pass <(printf '%s' "${HY2_PASS:-}") --rawfile hy2obfs <(printf '%s' "${HY2_OBFS:-}") --arg cert_cn "$cert_cn" \
         --arg masq "${HY2_MASQ_URL:-https://www.samsung.com/}" --rawfile ss_pass <(printf '%s' "${SS_PASS:-}") --argjson ka "$ka_obj" '
         def vision($tag):
           ({tag:$tag, type:"vless", listen:$listen_addr, listen_port:$vport, tcp_fast_open:true,
@@ -17020,14 +17020,12 @@ EOF_SVC
     # Self-signed TLS cert (TUIC requires TLS; clients pin/skip-verify).
     # U37: per-tag cert files; deploying a new TUIC node must not overwrite
     # the cert an existing node already pinned. Unsafe tag characters are
-    # sanitized, with a hash suffix when sanitization changed the tag, so
+    # sanitized, with a hash suffix always appended, so
     # distinct tags can never collide on one file.
     sni=$(sni_prompt_or_auto)
     local _tuic_cert_tag _tuic_key _tuic_crt
     _tuic_cert_tag=$(printf '%s' "$tag" | tr -c 'A-Za-z0-9_-' '_')
-    if [[ "$_tuic_cert_tag" != "$tag" ]]; then
-        _tuic_cert_tag="${_tuic_cert_tag}-$(printf '%s' "$tag" | sha256sum | cut -c1-8)"
-    fi
+    _tuic_cert_tag="${_tuic_cert_tag}-$(printf '%s' "$tag" | sha256sum | cut -c1-8)"
     _tuic_key="/etc/sing-box/tuic-${_tuic_cert_tag}.key"
     _tuic_crt="/etc/sing-box/tuic-${_tuic_cert_tag}.crt"
     generate_self_signed_cert_atomically "$_tuic_key" "$_tuic_crt" "$sni" \
@@ -17331,7 +17329,7 @@ EOF_SVC
     # shadowtls v3 (strict) detouring to a loopback-only SS-2022 inbound that
     # has no listen_port of its own (reachable only through the detour).
     tmp_json=$(mktemp /tmp/A-Box-sb-shadowtls-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg inner "$inner" --arg sni "$sni" --arg tag "$tag" --arg itag "$itag" \
+    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --rawfile inner <(printf '%s' "$inner") --arg sni "$sni" --arg tag "$tag" --arg itag "$itag" \
         '({type:"shadowtls",tag:$tag,listen:"0.0.0.0",listen_port:$port,version:3,strict_mode:true,
            users:[{password:$pass}],handshake:{server:$sni,server_port:443},detour:$itag}),
          ({type:"shadowsocks",tag:$itag,listen:"127.0.0.1",network:"tcp",
@@ -19816,10 +19814,10 @@ ensure_vnstat_runtime() {
     fi
     command -v vnstat >/dev/null 2>&1 || { msg "${RED}[!] vnStat 安装后仍不可用，无法启用流量限制。${NC}" >&2; return 1; }
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        if systemctl list-unit-files vnstat.service >/dev/null 2>&1; then
+        if systemctl list-unit-files --type=service --no-legend vnstat.service 2>/dev/null | awk -v wanted="vnstat.service" '$1 == wanted { found=1 } END { exit !found }' ; then
             systemctl enable --now vnstat >/dev/null 2>&1 || { msg "${RED}[!] vnStat 服务无法启动；未启用流量限制。${NC}" >&2; return 1; }
             systemctl is-active --quiet vnstat || { msg "${RED}[!] vnStat 服务未处于 active 状态；未启用流量限制。${NC}" >&2; return 1; }
-        elif systemctl list-unit-files vnstatd.service >/dev/null 2>&1; then
+        elif systemctl list-unit-files --type=service --no-legend vnstatd.service 2>/dev/null | awk -v wanted="vnstatd.service" '$1 == wanted { found=1 } END { exit !found }' ; then
             systemctl enable --now vnstatd >/dev/null 2>&1 || { msg "${RED}[!] vnStat 服务无法启动；未启用流量限制。${NC}" >&2; return 1; }
             systemctl is-active --quiet vnstatd || { msg "${RED}[!] vnStat 服务未处于 active 状态；未启用流量限制。${NC}" >&2; return 1; }
         else
@@ -19845,8 +19843,8 @@ ensure_vnstat_runtime() {
                 vnstat -u -i "$_viface" >/dev/null 2>&1 || true
             fi
             if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-                if systemctl list-unit-files vnstat.service >/dev/null 2>&1; then _vunit=vnstat;
-                elif systemctl list-unit-files vnstatd.service >/dev/null 2>&1; then _vunit=vnstatd; fi
+                if systemctl list-unit-files --type=service --no-legend vnstat.service 2>/dev/null | awk -v wanted="vnstat.service" '$1 == wanted { found=1 } END { exit !found }' ; then _vunit=vnstat;
+                elif systemctl list-unit-files --type=service --no-legend vnstatd.service 2>/dev/null | awk -v wanted="vnstatd.service" '$1 == wanted { found=1 } END { exit !found }' ; then _vunit=vnstatd; fi
                 [[ -n "$_vunit" ]] && systemctl restart "$_vunit" >/dev/null 2>&1 || true
                 [[ -n "$_vunit" ]] && systemctl is-active --quiet "$_vunit" || { msg "${RED}[!] vnStat 接口修复后服务未处于 active 状态；未启用流量限制。${NC}" >&2; return 1; }
             elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
@@ -20448,9 +20446,9 @@ traffic_optional_state_matches_expected() {
 capture_vnstat_runtime_state() {
     local name='' active enabled
     if [[ "${INIT_SYS:-}" == systemd ]]; then
-        if systemctl list-unit-files vnstat.service >/dev/null 2>&1; then
+        if systemctl list-unit-files --type=service --no-legend vnstat.service 2>/dev/null | awk -v wanted="vnstat.service" '$1 == wanted { found=1 } END { exit !found }' ; then
             name=vnstat
-        elif systemctl list-unit-files vnstatd.service >/dev/null 2>&1; then
+        elif systemctl list-unit-files --type=service --no-legend vnstatd.service 2>/dev/null | awk -v wanted="vnstatd.service" '$1 == wanted { found=1 } END { exit !found }' ; then
             name=vnstatd
         else
             printf '%s\n' 'absent'
@@ -20499,8 +20497,8 @@ restore_vnstat_runtime_state() {
 rollback_newly_installed_vnstat() {
     local tx_dir="$1" svc_name="" _rc=0
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        if systemctl list-unit-files vnstat.service >/dev/null 2>&1; then svc_name=vnstat
-        elif systemctl list-unit-files vnstatd.service >/dev/null 2>&1; then svc_name=vnstatd
+        if systemctl list-unit-files --type=service --no-legend vnstat.service 2>/dev/null | awk -v wanted="vnstat.service" '$1 == wanted { found=1 } END { exit !found }' ; then svc_name=vnstat
+        elif systemctl list-unit-files --type=service --no-legend vnstatd.service 2>/dev/null | awk -v wanted="vnstatd.service" '$1 == wanted { found=1 } END { exit !found }' ; then svc_name=vnstatd
         fi
         [[ -n "$svc_name" ]] || return 0
         systemctl stop "$svc_name" >/dev/null 2>&1 || _rc=1
@@ -23030,7 +23028,7 @@ users_sync() {
     if (( sb_will_delete == 1 )); then
         [[ -n "$sb_snap_obj" ]] || { rm -f "$tmp" "$bak"; return 1; }
         local regj_pre=''
-        regj_pre=$(jq -c --argjson ib "$sb_snap_obj" '.inbound_snapshot = $ib' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj_pre" || { rm -f "$tmp" "$bak"; return 1; }
+        regj_pre=$(jq -c --slurpfile ib <(printf '%s' "$sb_snap_obj") '.inbound_snapshot = $ib[0]' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj_pre" || { rm -f "$tmp" "$bak"; return 1; }
     fi
     case "$core" in
         xray|xray-latest)
@@ -23663,7 +23661,7 @@ users_hot_remove() {
         local _snap_obj='' _snap_reg=''
         _snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" 2>/dev/null) || return 1
         if [[ -n "$_snap_obj" ]] && ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.settings.clients // null) | type) == "array"' "$cfg" >/dev/null 2>&1; then
-            _snap_reg=$(jq -c --argjson ib "$_snap_obj" '.inbound_snapshot = $ib' "$reg" 2>/dev/null) || return 1
+            _snap_reg=$(jq -c --slurpfile ib <(printf '%s' "$_snap_obj") '.inbound_snapshot = $ib[0]' "$reg" 2>/dev/null) || return 1
             users_reg_write "$core" "$tag" "$_snap_reg" || return 1
         fi
     fi
@@ -32865,7 +32863,7 @@ xray_latest_deploy_trio() {
     sspass=$(openssl rand -base64 16 | tr -d '\n\r') || return 1
     [[ -n "$sspass" ]] || return 1
     tmp_json=$(mktemp /tmp/A-Box-xl-trio.XXXXXX) || return 1
-    jq -n --arg listen "$listen_addr" --rawfile uuid <(printf '%s' "$uuid") --arg sni "$sni" --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") --arg sspass "$sspass" \
+    jq -n --arg listen "$listen_addr" --rawfile uuid <(printf '%s' "$uuid") --arg sni "$sni" --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") --rawfile sspass <(printf '%s' "$sspass") \
         --argjson vp "$vp" --argjson xp "$xp" --argjson sp "$sp2" '
         [{tag:"latest-vision",listen:$listen,port:$vp,protocol:"vless",
           settings:{clients:[{id:$uuid,flow:"xtls-rprx-vision",email:"latest-vision/main"}],decryption:"none"},

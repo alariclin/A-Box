@@ -18862,24 +18862,32 @@ routing_apply_live() {
                 | ((($prev - $managed) + $force) | unique) as $retired
                 | .outbounds |= (map(select(.tag as $t | ($managed + $retired) | index($t) | not))
                     + [$st[0].outbounds[]?.xray])
-                | .routing.rules |= (map(select((.outboundTag as $t | ($managed + $retired) | index($t) | not) and (. as $r | ($prevr | index($r)) | not)))
+                | .routing.rules |= (map(select((.outboundTag as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not)))
                     + [$st[0].rules[]?.xray_rule])
             ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
             jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
             if [[ -x /usr/local/bin/xray ]]; then
                 XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
             fi
-            install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
+            local live_bak=''
+            live_bak=$(mktemp) || { rm -f "$tmp"; return 1; }
+            cp -a "$cfg" "$live_bak" || { rm -f "$tmp" "$live_bak"; return 1; }
+            install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp" "$live_bak"; return 1; }
             rm -f "$tmp"
             local atmp=''
             if ! atmp=$(mktemp); then
+                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                rm -f -- "$live_bak"
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
             if jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "${ROUTING_STATE_FILE}.applied" 2>/dev/null; then
+                rm -f -- "$live_bak"
                 :
             else
                 rm -f "$atmp"
+                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                rm -f -- "$live_bak"
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
@@ -18911,7 +18919,7 @@ routing_apply_live() {
                 | ($srules | map(.rule_set[]?) | unique) as $tags
                 | .outbounds |= (map(select(.tag as $t | ($managed + $retired) | index($t) | not)) + $obs)
                 | .endpoints = (((.endpoints // []) | map(select(.tag as $t | ($managed + $retired) | index($t) | not))) + $eps)
-                | .route.rules = (((.route.rules // []) | map(select((.outbound as $t | ($managed + $retired) | index($t) | not) and (. as $r | ($prevr | index($r)) | not)))) + $srules)
+                | .route.rules = (((.route.rules // []) | map(select((.outbound as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + $srules) | index($r)) | not)))) + $srules)
                 | ($prevr | map(.rule_set[]?) | unique) as $prevtags
                 | .route.rule_set = (((.route.rule_set // []) | map(select(.tag as $t | (($tags + $prevtags) | index($t)) | not))) + ($tags | map({type:"remote", tag:., format:"binary",
                     url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
@@ -18921,17 +18929,25 @@ routing_apply_live() {
             if [[ -x /usr/local/bin/sing-box ]]; then
                 /usr/local/bin/sing-box check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
             fi
-            install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
+            local live_bak=''
+            live_bak=$(mktemp) || { rm -f "$tmp"; return 1; }
+            cp -a "$cfg" "$live_bak" || { rm -f "$tmp" "$live_bak"; return 1; }
+            install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp" "$live_bak"; return 1; }
             rm -f "$tmp"
             local atmp=''
             if ! atmp=$(mktemp); then
+                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                rm -f -- "$live_bak"
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
             if jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "${ROUTING_STATE_FILE}.applied" 2>/dev/null; then
+                rm -f -- "$live_bak"
                 :
             else
                 rm -f "$atmp"
+                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                rm -f -- "$live_bak"
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
@@ -22996,7 +23012,7 @@ users_sync() {
         if (( encount == 0 )); then
             if jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; then
                 sb_will_delete=1
-                sb_snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" 2>/dev/null)
+                sb_snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" 2>/dev/null) || { rm -f "$tmp" "$bak"; return 1; }
             fi
         elif [[ "$sb_snap" != 'null' ]]; then
             jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1 || sb_will_rebuild=1
@@ -23011,7 +23027,8 @@ users_sync() {
     # A write failure (or interruption) after commit left the registry
     # without a snapshot while the inbound was already gone, and a later
     # re-enable then silently succeeded without rebuilding.
-    if (( sb_will_delete == 1 )) && [[ -n "$sb_snap_obj" ]]; then
+    if (( sb_will_delete == 1 )); then
+        [[ -n "$sb_snap_obj" ]] || { rm -f "$tmp" "$bak"; return 1; }
         local regj_pre=''
         regj_pre=$(jq -c --argjson ib "$sb_snap_obj" '.inbound_snapshot = $ib' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj_pre" || { rm -f "$tmp" "$bak"; return 1; }
     fi
@@ -23644,7 +23661,7 @@ users_hot_remove() {
     # keep the inbound rather than delete it unsnapshotted.
     if [[ "$proto" == 'shadowsocks' ]]; then
         local _snap_obj='' _snap_reg=''
-        _snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" 2>/dev/null)
+        _snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" 2>/dev/null) || return 1
         if [[ -n "$_snap_obj" ]] && ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.settings.clients // null) | type) == "array"' "$cfg" >/dev/null 2>&1; then
             _snap_reg=$(jq -c --argjson ib "$_snap_obj" '.inbound_snapshot = $ib' "$reg" 2>/dev/null) || return 1
             users_reg_write "$core" "$tag" "$_snap_reg" || return 1
@@ -23841,14 +23858,29 @@ _nsni_apply() {
         sed -i -e "s|\([?&]sni=\)${_esc_old}\([&#]\)|\1${_esc_new}\2|g" -e "s|\([?&]sni=\)${_esc_old}\$|\1${_esc_new}|g" "$_ldir/$_lf" 2>/dev/null || true
         _shown=$(cat "$_ldir/$_lf" 2>/dev/null)
     fi
-    local _envf="${ABOX_ENV:-/etc/ddr/.env}" _vars='' _etmp=''
+    local _envf="${ABOX_ENV:-/etc/ddr/.env}" _vars='' _etmp='' _ebak=''
     if [[ -f "$_envf" && ! -L "$_envf" ]]; then
         _vars=$(grep -oE '^[A-Z0-9_]*SNI[A-Z0-9_]*' "$_envf" 2>/dev/null | sort -u | tr '\n' ' ')
         _etmp=$(mktemp /tmp/A-Box-nsni-env.XXXXXX 2>/dev/null || true)
         if [[ -n "$_vars" && -n "$_etmp" ]]; then
             if awk -v vars="$_vars" -v o="$old" -v n="$new" 'BEGIN { m = split(vars, a, " "); for (i = 1; i <= m; i++) ok[a[i]] = 1 }
                 { v = $0; sub(/=.*/, "", v); if ((v in ok) && (substr($0, length(v) + 2) == o)) $0 = v "=" n; print }' "$_envf" > "$_etmp" 2>/dev/null; then
-                cat "$_etmp" > "$_envf" 2>/dev/null || true
+                _ebak=$(mktemp /tmp/A-Box-nsni-envbak.XXXXXX 2>/dev/null || true)
+                if [[ -n "$_ebak" ]] && cp -a "$_envf" "$_ebak" 2>/dev/null; then
+                    if cat "$_etmp" > "$_envf" 2>/dev/null; then
+                        rm -f "$_ebak"
+                    elif cp -a "$_ebak" "$_envf" 2>/dev/null; then
+                        rm -f "$_etmp" "$_ebak"
+                        return 1
+                    else
+                        msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
+                        rm -f "$_etmp"
+                        return 1
+                    fi
+                else
+                    rm -f "$_etmp" "$_ebak"
+                    return 1
+                fi
             fi
             rm -f "$_etmp"
         fi

@@ -42,6 +42,68 @@ LIGHTBLUE=$'\033[0;94m'
 NC=$'\033[0m'
 BOLD=$'\033[1m'
 
+# jq < 1.6 lacks --rawfile (added in 1.6; e.g. Debian 10 ships jq 1.5).
+# This shim translates --rawfile NAME FILE pairs to --arg NAME CONTENT on
+# old jq, reading FILE (a process-substitution pipe or a real file) without
+# stripping trailing newlines (sentinel trick). On jq >= 1.6 it is a pure
+# pass-through (no arg parsing, no behavior change); the version decision is
+# cached in _ABOX_JQ_RAWFILE_SHIM so it is computed once per shell.
+# Caveat (documented, not silent): on jq < 1.6 the values pass through argv
+# and may be visible in the process list; jq 1.5 offers no argv-free way to
+# feed a raw string, so this is a degradation on old jq only, with a
+# one-time warning on stderr when the shim first activates. The shim assumes
+# --rawfile appears only as a flag (true for all current call sites); a value
+# literally equal to --rawfile would misparse (not a current case).
+_ABOX_JQ_RAWFILE_SHIM=''
+_ABOX_JQ_RAWFILE_WARNED=''
+jq() {
+    if [[ -z "${_ABOX_JQ_RAWFILE_SHIM:-}" ]]; then
+        local _ver _maj _min
+        _ver=$(command jq --version 2>/dev/null || echo '')
+        if [[ "$_ver" =~ ^jq-([0-9]+)\.([0-9]+) ]]; then
+            _maj="${BASH_REMATCH[1]}"
+            _min="${BASH_REMATCH[2]}"
+            if (( _maj > 1 || (_maj == 1 && _min >= 6) )); then
+                _ABOX_JQ_RAWFILE_SHIM=0
+            else
+                _ABOX_JQ_RAWFILE_SHIM=1
+            fi
+        else
+            _ABOX_JQ_RAWFILE_SHIM=0
+        fi
+    fi
+    if [[ "$_ABOX_JQ_RAWFILE_SHIM" == 0 ]]; then
+        command jq "$@"
+        return $?
+    fi
+    if [[ -z "${_ABOX_JQ_RAWFILE_WARNED:-}" ]]; then
+        _ABOX_JQ_RAWFILE_WARNED=1
+        printf '%s\n' "[!] Old jq (< 1.6) detected: --rawfile is emulated via --arg; values may appear in the process list." >&2
+    fi
+    local -a _args=()
+    local _a _name _file _content
+    while (( $# > 0 )); do
+        _a="$1"
+        shift
+        if [[ "$_a" == '--rawfile' && $# -ge 2 ]]; then
+            _name="$1"
+            _file="$2"
+            shift 2
+            if [[ ! -r "$_file" ]]; then
+                printf '%s\n' "[!] jq shim: cannot read --rawfile file: $_file" >&2
+                return 2
+            fi
+            _content=$(cat -- "$_file"; printf x)
+            _content=${_content%x}
+            _args+=(--arg "$_name" "$_content")
+        else
+            _args+=("$_a")
+        fi
+    done
+    command jq "${_args[@]}"
+}
+
+
 # Display width: accurate for CJK, symbols, 2-byte Latin/Cyrillic, emoji
 # 14-system safe: byte-based, no locale dependency
 # Optimized: single awk (was 2x grep + 3x wc = 5 subprocesses)

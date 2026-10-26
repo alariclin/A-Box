@@ -258,14 +258,53 @@ x25519_pub_from_priv() {
 }
 
 # Unescape one jq @tsv field value (\\ -> \, \t -> TAB, \n -> LF, \r -> CR).
+# Unescape one jq @tsv field value: double backslash -> backslash, \t -> TAB, \n -> LF, \r -> CR.
+# Single-pass scan: no placeholder, so no placeholder collision. Output via
+# nameref (not stdout) so a trailing LF in the value survives: command
+# substitution would strip it.
+# Split a jq @tsv line on tabs, preserving empty fields, and assign the fields
+# positionally to the caller's variables named after the line.
+# (Plain IFS-tab read collapses consecutive tabs, losing empty middle columns,
+# so it cannot be used for @tsv output.)
+_tsv_split() {
+    local _ts_line="$1" _ts_i=0 _ts_name
+    local -a _ts_parts=()
+    local _ts_rest="$_ts_line"
+    shift
+    while [[ "$_ts_rest" == *$'\t'* ]]; do
+        _ts_parts+=( "${_ts_rest%%$'\t'*}" )
+        _ts_rest="${_ts_rest#*$'\t'}"
+    done
+    _ts_parts+=( "$_ts_rest" )
+    for _ts_name in "$@"; do
+        local -n _ts_dst="$_ts_name"
+        _ts_dst="${_ts_parts[_ts_i]:-}"
+        _ts_i=$(( _ts_i + 1 ))
+    done
+}
+
 _tsv_unescape() {
-    local _s="$1" _ph=$'\x01\x02'
-    _s=${_s//\\\\/$_ph}
-    _s=${_s//\\t/$'\t'}
-    _s=${_s//\\n/$'\n'}
-    _s=${_s//\\r/$'\r'}
-    _s=${_s//$_ph/\\}
-    printf '%s' "$_s"
+    [[ $# -eq 2 ]] || return 2
+    local _tu_s="$1" _tu_out='' _tu_i=0 _tu_c='' _tu_n=''
+    local -n _tu_res="$2"
+    while (( _tu_i < ${#_tu_s} )); do
+        _tu_c="${_tu_s:_tu_i:1}"
+        if [[ "$_tu_c" == '\' && $(( _tu_i + 1 )) -lt ${#_tu_s} ]]; then
+            _tu_n="${_tu_s:_tu_i+1:1}"
+            case "$_tu_n" in
+                '\') _tu_out+='\' ;;
+                t) _tu_out+=$'\t' ;;
+                n) _tu_out+=$'\n' ;;
+                r) _tu_out+=$'\r' ;;
+                *) _tu_out+="\\$_tu_n" ;;
+            esac
+            _tu_i=$(( _tu_i + 2 ))
+        else
+            _tu_out+="$_tu_c"
+            _tu_i=$(( _tu_i + 1 ))
+        fi
+    done
+    _tu_res="$_tu_out"
 }
 
 # Rebuild missing standalone registry entries from the live core configs
@@ -280,8 +319,8 @@ rebuild_standalone_links() {
     if [[ -f "$_xc" ]]; then
         if [[ ! -f "$_dir/trojan-xray.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''
-            IFS=$'\t' read -r _port _pass _pk _sni _sid < <(jq -r 'first(.inbounds[]? | select(.protocol=="trojan")) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // "")] | @tsv' "$_xc" 2>/dev/null)
-            _pass=$(_tsv_unescape "$_pass"); _pk=$(_tsv_unescape "$_pk"); _sni=$(_tsv_unescape "$_sni"); _sid=$(_tsv_unescape "$_sid")
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.protocol=="trojan")) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // "")] | @tsv' "$_xc" 2>/dev/null)" _port _pass _pk _sni _sid
+            _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
                 register_standalone_link trojan-xray "Trojan-Reality (Xray) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&type=tcp#Trojan-Reality"
@@ -291,8 +330,8 @@ rebuild_standalone_links() {
         fi
         if [[ ! -f "$_dir/socks5-xray.link" ]]; then
             _port=''; _user=''; _pass=''
-            IFS=$'\t' read -r _port _user _pass < <(jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' "$_xc" 2>/dev/null)
-            _user=$(_tsv_unescape "$_user"); _pass=$(_tsv_unescape "$_pass")
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' "$_xc" 2>/dev/null)" _port _user _pass
+            _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
                 register_standalone_link socks5-xray "$(tprintf sl_node_port 'SOCKS5 (Xray)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
             elif [[ -n "$_port$_user$_pass" ]]; then
@@ -303,8 +342,8 @@ rebuild_standalone_links() {
     if [[ -f "$_sc" ]]; then
         if [[ ! -f "$_dir/trojan-sb.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''
-            IFS=$'\t' read -r _port _pass _pk _sni _sid < <(jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), (.tls.reality.short_id[0] // "")] | @tsv' "$_sc" 2>/dev/null)
-            _pass=$(_tsv_unescape "$_pass"); _pk=$(_tsv_unescape "$_pk"); _sni=$(_tsv_unescape "$_sni"); _sid=$(_tsv_unescape "$_sid")
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), (.tls.reality.short_id[0] // "")] | @tsv' "$_sc" 2>/dev/null)" _port _pass _pk _sni _sid
+            _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
                 register_standalone_link trojan-sb "Trojan-Reality (sing-box) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&type=tcp#Trojan-Reality"
@@ -314,8 +353,8 @@ rebuild_standalone_links() {
         fi
         if [[ ! -f "$_dir/tuic.link" ]]; then
             _port=''; _uuid=''; _pass=''; _cc=''; _sni=''
-            IFS=$'\t' read -r _port _uuid _pass _cc _sni < <(jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // "")] | @tsv' "$_sc" 2>/dev/null)
-            _uuid=$(_tsv_unescape "$_uuid"); _pass=$(_tsv_unescape "$_pass"); _cc=$(_tsv_unescape "$_cc"); _sni=$(_tsv_unescape "$_sni")
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // "")] | @tsv' "$_sc" 2>/dev/null)" _port _uuid _pass _cc _sni
+            _tsv_unescape "$_uuid" _uuid; _tsv_unescape "$_pass" _pass; _tsv_unescape "$_cc" _cc; _tsv_unescape "$_sni" _sni
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_uuid" && -n "$_pass" ]]; then
                 register_standalone_link tuic "TUIC · 端口 ${_port}" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=h3&sni=${_sni}&allow_insecure=1#TUIC"
             elif [[ -n "$_port$_uuid$_pass$_cc$_sni" ]]; then
@@ -324,8 +363,8 @@ rebuild_standalone_links() {
         fi
         if [[ ! -f "$_dir/anytls.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''
-            IFS=$'\t' read -r _port _pass _pk _sni _sid < <(jq -r 'first(.inbounds[]? | select(.tag=="anytls-in")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), (.tls.reality.short_id[0] // "")] | @tsv' "$_sc" 2>/dev/null)
-            _pass=$(_tsv_unescape "$_pass"); _pk=$(_tsv_unescape "$_pk"); _sni=$(_tsv_unescape "$_sni"); _sid=$(_tsv_unescape "$_sid")
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="anytls-in")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), (.tls.reality.short_id[0] // "")] | @tsv' "$_sc" 2>/dev/null)" _port _pass _pk _sni _sid
+            _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
                 register_standalone_link anytls "AnyTLS-Reality · 端口 ${_port}" "anytls://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}#AnyTLS-Reality"
@@ -335,8 +374,8 @@ rebuild_standalone_links() {
         fi
         if [[ ! -f "$_dir/shadowtls.link" ]]; then
             _port=''; _pass=''; _sni=''; _inner=''
-            IFS=$'\t' read -r _port _pass _sni _inner < <(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-in")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // "")] | @tsv' "$_sc" 2>/dev/null)
-            _pass=$(_tsv_unescape "$_pass"); _sni=$(_tsv_unescape "$_sni"); _inner=$(_tsv_unescape "$_inner")
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-in")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // "")] | @tsv' "$_sc" 2>/dev/null)" _port _pass _sni _inner
+            _tsv_unescape "$_pass" _pass; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_inner" _inner
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
                 _inner=$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-ss")) | .password // ""' "$_sc" 2>/dev/null)
                 if [[ -n "$_inner" ]]; then
@@ -353,8 +392,8 @@ rebuild_standalone_links() {
         fi
         if [[ ! -f "$_dir/socks5-sb.link" ]]; then
             _port=''; _user=''; _pass=''
-            IFS=$'\t' read -r _port _user _pass < <(jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' "$_sc" 2>/dev/null)
-            _user=$(_tsv_unescape "$_user"); _pass=$(_tsv_unescape "$_pass")
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' "$_sc" 2>/dev/null)" _port _user _pass
+            _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
                 register_standalone_link socks5-sb "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
             elif [[ -n "$_port$_user$_pass" ]]; then

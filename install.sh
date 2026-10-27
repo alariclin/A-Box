@@ -20588,12 +20588,12 @@ valid_hy2_bandwidth_mbps() {
 desired=$(read_desired) || { traffic_error 'desired state unreadable; leaving prior desired state unchanged'; exit 1; }
 blocked_period=$(read_block_period 2>/dev/null || true)
 if [[ "$desired" == TRAFFIC_BLOCKED && -z "$blocked_period" ]]; then
-    commit_traffic_pair TRAFFIC_BLOCKED "$current_period" || exit 1
+    commit_traffic_pair TRAFFIC_BLOCKED "$current_period" || { traffic_error 'traffic-blocked state migration commit failed; leaving prior desired state unchanged'; exit 1; }
     blocked_period="$current_period"
     traffic_error "migrated legacy traffic-blocked state into billing period ${current_period}"
 fi
 if [[ "$desired" == TRAFFIC_BLOCKED && "$blocked_period" != "$current_period" ]]; then
-    commit_traffic_pair MAINTENANCE "$blocked_period" || exit 1
+    commit_traffic_pair MAINTENANCE "$blocked_period" || { traffic_error 'monthly quota rollover state commit failed; leaving prior desired state unchanged'; exit 1; }
     if ! for_expected_services start_owned; then
         for_expected_services stop_owned >/dev/null 2>&1 || true
         commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || traffic_error 'CRITICAL: failed to restore TRAFFIC_BLOCKED state after service start failure; state may be inconsistent'
@@ -20648,6 +20648,7 @@ then
         # The state commit failed (e.g. disk full): still attempt the
         # stop, otherwise the quota protection fails open.
         for_expected_services stop_owned >/dev/null 2>&1 || true
+        traffic_error 'over-quota state commit failed; services stopped best-effort, state unchanged'
         exit 1
     fi
     for_expected_services stop_owned || { traffic_error 'traffic limit reached but at least one owned service could not be stopped'; exit 1; }

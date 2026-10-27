@@ -32449,7 +32449,7 @@ _wallos_manual_rollback() {
         msg "${RED}$(tr_msg wl_rb_no_default)${NC}"; return 1
     fi
     [[ -z "$sel" ]] && sel=1
-    [[ "$sel" =~ ^[0-9]+$ ]] || {
+    valid_decimal_upto "$sel" "${#versions[@]}" || {
         msg "${RED}$(tr_msg wl_rb_invalid)${NC}"; return 1; }
     sel=$((10#$sel))
     (( sel >= 1 && sel <= ${#versions[@]} )) || {

@@ -11233,7 +11233,9 @@ restore_backup4=$(mktemp) || exit 1
 iptables-save > "$restore_backup4" 2>/dev/null || { rm -f -- "$restore_backup4"; exit 1; }
 clean_chain iptables filter INPUT || exit 1
 clean_chain iptables nat PREROUTING || exit 1
-restore_one /etc/ddr/iptables.v4 iptables-restore || { echo "A-Box firewall restore FAILED; pre-delete backup preserved: $restore_backup4 (restore manually)" >&2; exit 1; }
+if snapshot_valid /etc/ddr/iptables.v4; then
+    restore_one /etc/ddr/iptables.v4 iptables-restore || { echo "A-Box firewall restore FAILED; pre-delete backup preserved: $restore_backup4 (restore manually)" >&2; exit 1; }
+fi
 reorder_policy iptables WL DROP || exit 1
 rm -f -- "$restore_backup4"
 if command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -S INPUT >/dev/null 2>&1; then
@@ -11247,7 +11249,9 @@ if command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -S INPUT >/dev/
     ip6tables-save > "$restore_backup6" 2>/dev/null || { rm -f -- "$restore_backup6"; exit 1; }
     clean_chain ip6tables filter INPUT || exit 1
     clean_chain ip6tables nat PREROUTING || exit 1
-    restore_one /etc/ddr/iptables.v6 ip6tables-restore || { echo "A-Box firewall restore FAILED; pre-delete backup preserved: $restore_backup6 (restore manually)" >&2; exit 1; }
+    if snapshot_valid /etc/ddr/iptables.v6; then
+        restore_one /etc/ddr/iptables.v6 ip6tables-restore || { echo "A-Box firewall restore FAILED; pre-delete backup preserved: $restore_backup6 (restore manually)" >&2; exit 1; }
+    fi
     reorder_policy ip6tables WL6 DROP6 || exit 1
     rm -f -- "$restore_backup6"
 elif [[ -s /etc/ddr/iptables.v6 ]]; then
@@ -11256,6 +11260,7 @@ elif [[ -s /etc/ddr/iptables.v6 ]]; then
     echo 'A-Box firewall restore: IPv6 snapshot exists but ip6tables is unusable; IPv6 rules were NOT restored.' >&2
     exit 1
 fi
+exit 0
 EOF_ABOX_FW_RESTORE
     [[ $? -eq 0 ]] || { rm -f "$tmp"; return 1; }
     chmod 700 "$tmp" || { rm -f "$tmp"; return 1; }
@@ -11458,7 +11463,7 @@ save_firewall_rules() {
         if ip6tables-save > "${tmp6}.all" 2>/dev/null; then
             extract_abox_iptables_rules "${tmp6}.all" all > "$tmp6" || { rm -f "$tmp4" "$tmp6" "${tmp6}.all" "$backup4" "$backup6"; return 1; }
             rm -f "${tmp6}.all"
-        elif ! has_ipv6; then
+        elif ! host_has_usable_ipv6; then
             # A present userspace binary does not prove that the kernel IPv6
             # firewall backend is enabled. Ignore only a failed v6 query when
             # no global IPv6 address/default route is available.
@@ -11469,7 +11474,7 @@ save_firewall_rules() {
             return 1
         fi
     else
-        if has_ipv6; then
+        if host_has_usable_ipv6; then
             rm -f -- "$tmp4" "$tmp6" "$backup4" "$backup6"
             return 1
         fi
@@ -11482,16 +11487,31 @@ save_firewall_rules() {
         return 0
     fi
 
-    if ! mv -f -- "$tmp4" "$target4"; then
-        rm -f -- "$tmp4" "$tmp6" "$backup4" "$backup6"
-        return 1
+    if grep -q '^\*' "$tmp4"; then
+        if ! mv -f -- "$tmp4" "$target4"; then
+            rm -f -- "$tmp4" "$tmp6" "$backup4" "$backup6"
+            return 1
+        fi
+    else
+        rm -f -- "$target4" || { rm -f -- "$tmp4" "$tmp6" "$backup4" "$backup6"; return 1; }
+        rm -f -- "$tmp4"
     fi
-    if ! mv -f -- "$tmp6" "$target6"; then
-        if [[ -n "$backup4" ]]; then cp -a -- "$backup4" "$target4" || restore_failed=1; else rm -f -- "$target4" || restore_failed=1; fi
+    if grep -q '^\*' "$tmp6"; then
+        if ! mv -f -- "$tmp6" "$target6"; then
+            if [[ -n "$backup4" ]]; then cp -a -- "$backup4" "$target4" || restore_failed=1; else rm -f -- "$target4" || restore_failed=1; fi
+            rm -f -- "$tmp6"
+            if (( restore_failed == 0 )); then rm -f -- "$backup4" "$backup6"; else printf '%s\n' "A-Box firewall restore FAILED; pre-change backup(s) preserved: ${backup4:-none} ${backup6:-none} (restore iptables.v4/v6 from them manually)" >&2; fi
+            (( restore_failed == 0 )) || return 1
+            return 1
+        fi
+    else
+        if ! rm -f -- "$target6"; then
+            if [[ -n "$backup4" ]]; then cp -a -- "$backup4" "$target4" || restore_failed=1; else rm -f -- "$target4" || restore_failed=1; fi
+            rm -f -- "$tmp6"
+            if (( restore_failed == 0 )); then rm -f -- "$backup4" "$backup6"; else echo "A-Box firewall save FAILED; pre-change backup(s) preserved: ${backup4:-none} ${backup6:-none} (restore iptables.v4/v6 from them manually)" >&2; fi
+            return 1
+        fi
         rm -f -- "$tmp6"
-        if (( restore_failed == 0 )); then rm -f -- "$backup4" "$backup6"; else printf '%s\n' "A-Box firewall restore FAILED; pre-change backup(s) preserved: ${backup4:-none} ${backup6:-none} (restore iptables.v4/v6 from them manually)" >&2; fi
-        (( restore_failed == 0 )) || return 1
-        return 1
     fi
     if ! install_abox_firewall_persistence_service; then
         if [[ -n "$backup4" ]]; then cp -a -- "$backup4" "$target4" || restore_failed=1; else rm -f -- "$target4" || restore_failed=1; fi
@@ -11506,12 +11526,18 @@ save_firewall_rules() {
 
 ufw_is_active() {
     command -v ufw >/dev/null 2>&1 || return 1
-    LC_ALL=C ufw status 2>/dev/null | awk 'tolower($0) ~ /^status:[ \t\r]*active/ { found=1 } END { exit !found }'
+    local out
+    out=$(LC_ALL=C ufw status 2>/dev/null || true)
+    [[ "$out" =~ Status: ]] || return 2
+    printf '%s\n' "$out" | awk 'tolower($0) ~ /^status:[ \t\r]*active/ { found=1 } END { exit !found }'
 }
 
 nftables_native_rules_present() {
     command -v nft >/dev/null 2>&1 || return 1
-    nft -nn list ruleset 2>/dev/null | awk '
+    local ruleset rc
+    ruleset=$(nft -nn list ruleset 2>/dev/null); rc=$?
+    (( rc == 0 )) || return 2
+    printf '%s\n' "$ruleset" | awk '
         # U24/U25 (2026-10-24): a chain name alone never proves native
         # nftables. Only a BASE chain (its declaration block carries a
         # "type ... hook ..." header) counts, and only when it cannot
@@ -11576,15 +11602,19 @@ nftables_native_rules_present() {
 }
 
 firewall_backend() {
-    if ufw_is_active; then
-        printf 'ufw\n'
-    elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-        printf 'firewalld\n'
-    elif nftables_native_rules_present; then
-        printf 'nftables-unsupported\n'
-    else
-        printf 'iptables\n'
+    local rc fw_state
+    ufw_is_active; rc=$?
+    if (( rc == 0 )); then printf 'ufw\n'; return 0; fi
+    if (( rc == 2 )); then return 1; fi
+    if command -v firewall-cmd >/dev/null 2>&1; then
+        fw_state=$(firewall-cmd --state 2>/dev/null || true)
+        if [[ "$fw_state" == running ]]; then printf 'firewalld\n'; return 0; fi
+        if [[ "$fw_state" != 'not running' ]]; then return 1; fi
     fi
+    nftables_native_rules_present; rc=$?
+    if (( rc == 0 )); then printf 'nftables-unsupported\n'; return 0; fi
+    if (( rc == 2 )); then return 1; fi
+    printf 'iptables\n'
 }
 
 native_firewall_record_valid() {

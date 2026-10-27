@@ -8942,7 +8942,9 @@ get_public_ip_swr() {
     if ip=$(read_cached_public_ip 2>/dev/null) && [[ -n "$ip" ]]; then
         printf '%s\n' "$ip"; return 0
     fi
-    if [[ -r "$PUBLIC_IP_CACHE" && -f "$PUBLIC_IP_CACHE" && ! -L "$PUBLIC_IP_CACHE" ]]; then
+    # Same owner gate as read_cached_public_ip: a non-root-owned cache
+    # must not be served through the SWR fallback either.
+    if [[ -r "$PUBLIC_IP_CACHE" && -f "$PUBLIC_IP_CACHE" && ! -L "$PUBLIC_IP_CACHE" && "$(stat -c %u:%g "$PUBLIC_IP_CACHE" 2>/dev/null || true)" == 0:0 ]]; then
         local _ip='' _now=0 _mt=0 _pref='' _fam_ok=1
         _ip=$(head -n 1 "$PUBLIC_IP_CACHE" 2>/dev/null | tr -d '[:space:]')
         if valid_public_ip "$_ip"; then

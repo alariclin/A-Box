@@ -10237,7 +10237,7 @@ core_family_binary_orphaned() {
     esac
     [[ -x "$bin" && ! -L "$bin" ]] || return 1
     [[ ! -e "$cfg_dir" && ! -L "$cfg_dir" ]] || return 1
-    unit=$(service_unit_path "$srv" 2>/dev/null || true)
+    unit=$(same_name_service_unit_path "$srv" 2>/dev/null || true)
     [[ -z "$unit" || ( ! -e "$unit" && ! -L "$unit" ) ]]
 }
 

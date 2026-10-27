@@ -27048,7 +27048,7 @@ sni_verify_raw_report() {
     vps_country=$(awk -F'\t|=' '{for(i=1;i<=NF;i++) if($i=="country"){print $(i+1); exit}}' <<< "$vps_meta")
     [[ -n "$vps_asn" ]] || vps_asn='unknown'
     [[ -n "$vps_country" ]] || vps_country='unknown'
-    msg "${YELLOW}[*] Stage 2: OpenSSL verification + ASN/topology scoring. VPS ${vps_ip:-N/A} ${vps_asn}/${vps_country}${NC}"
+    msg "${YELLOW}[*] Stage 2: OpenSSL verification + ASN/topology scoring. VPS ${vps_ip:-N/A} ${vps_asn}/${vps_country}${NC}" >&2
     while IFS=$'\t' read -r score domain c3 c4 c5 c6 c7 c8; do
         n=$((n + 1))
         (( n > verify_limit )) && break

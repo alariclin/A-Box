@@ -9886,8 +9886,8 @@ hysteria_acme_repair_tree_ownership() {
     # paths (top dir excluded: the caller sets it to 1770). Content is
     # never touched, so a hash/content drift or a foreign file still
     # fails the manifest re-check and the caller refuses instead of
-    # proceeding on a half-fixed tree. Symlinks and unrecorded paths
-    # are skipped, never followed or modified.
+    # proceeding on a half-fixed tree. Symlinks, hard-linked files and
+    # unrecorded paths are skipped, never followed or modified.
     local manifest="${1:-$ABOX_CORE_OWNERSHIP}" target="${2:-/etc/hysteria/acme}" group="${3:-}"
     local gid=''
     [[ -f "$manifest" && ! -L "$manifest" ]] || return 1
@@ -9937,6 +9937,8 @@ for typ, _fam, path, _h in rows:
         os.chmod(path, 0o750)
     elif stat.S_ISREG(st.st_mode):
         if typ != 'F':
+            continue
+        if st.st_nlink != 1:
             continue
         os.chown(path, 0, gid)
         os.chmod(path, 0o640)
@@ -10259,8 +10261,9 @@ remove_owned_core_family() {
     fi
     if [[ "$srv" == hysteria && -d /etc/hysteria/acme && ! -L /etc/hysteria/acme ]]; then
         if hysteria_acme_owner_marker_valid /etc/hysteria/acme/.A-Box-managed || hysteria_acme_current_tree_matches_manifest "$ABOX_CORE_OWNERSHIP" /etc/hysteria/acme; then
-            prepare_hysteria_acme_dir_ownership || return 1
+            prepare_hysteria_acme_dir_ownership || true
             refresh_dynamic_core_subtree_ownership hysteria /etc/hysteria/acme || return 1
+            prepare_hysteria_acme_dir_ownership || return 1
         fi
     fi
     remove_recorded_core_family "$srv"; rc=$?

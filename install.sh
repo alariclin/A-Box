@@ -24359,7 +24359,11 @@ ip_preference_menu() {
     case "$c" in
         1) save_ip_pref ipv4 ;;
         2)
-            if ! has_ipv6; then
+            # Objective check (not has_ipv6()): the gate must test what
+            # the host can do, not the current preference -- has_ipv6()
+            # is false in IPv4-preferred mode even with working global
+            # IPv6, which made IPv6-only unreachable directly from IPv4.
+            if ! ip -6 addr show scope global 2>/dev/null | awk '/inet6/ { found=1 } END { exit !found }' && ! ip -6 route show default 2>/dev/null | awk '/^default/ { found=1 } END { exit !found }'; then
                 case "${ABOX_LANG:-zh}" in
                     en) msg "${RED}No usable global IPv6 was detected; IPv6-only mode was not saved.${NC}" ;;
                     ru) msg "${RED}Рабочий глобальный IPv6 не обнаружен; режим IPv6-only не сохранён.${NC}" ;;

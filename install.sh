@@ -30617,6 +30617,7 @@ wallos_pull_or_restore_image() {
         local _n2_manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
         local _n2_sum_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
         _n2_work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-n2.XXXXXX 2>/dev/null) || true
+        [[ -n "$_n2_work" && -d "$_n2_work" ]] || _n2_fail_reason='download'
         if [[ -n "$_n2_work" && -d "$_n2_work" ]]; then
             # TRAP-3: EXIT trap ensures temp dir cleanup even on abnormal exit.
             # Expand $_n2_work now (double quotes); the local is gone when EXIT fires.

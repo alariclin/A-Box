@@ -27799,7 +27799,7 @@ abox_zram_teardown() {
         # stop can be retried instead of stranding an unmanaged swap.
         msg "${YELLOW}[!] zram 交换区未能停止，已保留 abox-zram 助手与配置以便重试。${NC}" >&2
     fi
-    return 0
+    return "$stop_rc"
 }
 
 
@@ -27907,8 +27907,11 @@ EOF_ZRAM_RC
 }
 
 remove_zram_swap() {
-    abox_zram_teardown
-    msg "${GREEN}zram 已移除（A-Box 创建的配置与自启已清理）。${NC}"
+    if abox_zram_teardown; then
+        msg "${GREEN}zram 已移除（A-Box 创建的配置与自启已清理）。${NC}"
+    else
+        msg "${RED}zram 停止失败，交换区仍在运行；助手与配置已保留以便重试。${NC}"
+    fi
     swapon --show || true
     pause_return
 }

@@ -23859,8 +23859,8 @@ multi_user_menu() {
                 pause_return ;;
             ''|*[!0-9]*) msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1 ;;
             *)
-                if (( c >= 1 && c <= i )); then
-                    users_inbound_menu "${cores[$((c - 1))]}" "${tags[$((c - 1))]}" "${protos[$((c - 1))]}" "${ports[$((c - 1))]}"
+                if valid_decimal_upto "$c" "$i" && (( 10#$c >= 1 && 10#$c <= i )); then
+                    users_inbound_menu "${cores[$((10#$c - 1))]}" "${tags[$((10#$c - 1))]}" "${protos[$((10#$c - 1))]}" "${ports[$((10#$c - 1))]}"
                 else
                     msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1
                 fi ;;
@@ -24186,8 +24186,8 @@ node_sni_menu() {
             0|'') return 0 ;;
             *[!0-9]*) msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1 ;;
             *)
-                if (( c >= 1 && c <= i )); then
-                    local _ix=$((c - 1)) _probe2='' _k2='' _c2='' _new='' _shown=''
+                if valid_decimal_upto "$c" "$i" && (( 10#$c >= 1 && 10#$c <= i )); then
+                    local _ix=$((10#$c - 1)) _probe2='' _k2='' _c2='' _new='' _shown=''
                     _probe2=$(_nsni_probe "${_cs[$_ix]}" "${_ts[$_ix]}")
                     IFS='|' read -r _ _ _k2 _c2 _ <<< "$_probe2"
                     printf '%s: %s\n' "$(tr_msg nsni_cur)" "${_os[$_ix]}"

@@ -33478,14 +33478,15 @@ xray_latest_menu() {
     done
 }
 
-# A-Check (companion IP checker): always fetched fresh from the A-Check
-# repo's main branch, so A-Box tracks the latest A-Check without waiting
-# for an A-Box update. A pinned version/hash would break on every A-Check
-# release (old release tags are deleted upstream), so integrity is
-# enforced structurally instead: a download only runs when it is a
-# plausible, compilable A-Check script (python shebang, VERSION marker,
-# project URL, size floor, py_compile). A previously cached copy that
-# passes the same checks serves as the offline fallback.
+# A-Check (companion IP checker): fetched from the pinned test-tools-mirror
+# release (see run_acheck_tool), so A-Box tracks the latest A-Check without
+# waiting for an A-Box update. Integrity is enforced by the Ed25519
+# signature gate: a download only runs when its SHA256 matches the signed
+# SHA256SUMS entry and it passes the structural checks (python shebang,
+# VERSION marker, project URL, size floor, py_compile). There is
+# deliberately NO offline fallback to a previously cached copy: a stale
+# cache may predate the signature gate and must never be executed
+# without fresh verification.
 _acheck_file_valid() {
     local _f="$1" _sz=''
     [[ -f "$_f" ]] || return 1

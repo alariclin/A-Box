@@ -29513,8 +29513,8 @@ restore_core_family_from_backup() {
 # Returns 0 on success/skip, 1 on failure (caller sets backup_failed=1).
 __abox_backup_copy_path() {
     local src="$1" root="$2" dst links
-    [[ -e "$src" ]] || return 0
     [[ ! -L "$src" ]] || return 1
+    [[ -e "$src" ]] || return 0
     # A managed path may acquire a nested mount after ownership was recorded.
     # Never let cp -a traverse into an external filesystem/bind mount during backup.
     path_tree_has_mountpoint "$src" && return 1
@@ -29596,7 +29596,8 @@ backup_current_config() {
     { echo 'A-Box backup'; echo "Created: $(now_iso)"; echo "Host: $(hostname 2>/dev/null || true)"; echo "Kernel: $(uname -a 2>/dev/null || true)"; echo "Init: ${INIT_SYS:-unknown}"; echo "Script SHA256: $(sha256sum "$0" 2>/dev/null | awk '{print $1}')"; } > "$work/meta/metadata.txt"
     collect_abox_cron > "$work/meta/cron.abox.txt" 2>/dev/null || backup_failed=1
     capture_managed_service_state "$work/meta/services.state" || backup_failed=1
-    backend=$(firewall_backend); printf '%s\n' "$backend" > "$work/meta/firewall.backend"
+    backend=$(firewall_backend) || backup_failed=1
+    printf '%s\n' "$backend" > "$work/meta/firewall.backend"
     [[ "$backend" != 'nftables-unsupported' ]] || backup_failed=1
     capture_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 || backup_failed=1
     capture_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 || backup_failed=1

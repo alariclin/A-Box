@@ -19421,6 +19421,8 @@ split_apply_preset() {
         *) return 1 ;;
     esac
     routing_rule_add "$domains" "$outbound" || return 1
+    local n_rules=0
+    n_rules=$(jq '.rules | length' "$ROUTING_STATE_FILE" 2>/dev/null || echo 0)
     local core="${CORE:-}"
     if [[ -z "$core" ]]; then
         load_optional_abox_env_or_die 2>/dev/null || true
@@ -19430,7 +19432,7 @@ split_apply_preset() {
         msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
         return 1
     fi
-    routing_apply_live "$core" || return 1
+    routing_apply_live "$core" || { routing_rule_del "$((n_rules - 1))" >/dev/null 2>&1 || true; return 1; }
     msg "$(tr_msg warp_preset_done)"
 }
 

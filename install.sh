@@ -24597,6 +24597,7 @@ restore_timezone_snapshot() {
         return 1
     fi
     if [[ -f "$dir/etc-timezone" ]]; then
+        rm -f /etc/timezone || return 1
         cp -a "$dir/etc-timezone" /etc/timezone || return 1
     elif [[ -f "$dir/etc-timezone.absent" ]]; then
         rm -f /etc/timezone || return 1
@@ -25003,10 +25004,11 @@ restore_dns_snapshot_body() {
         rm -f /etc/resolv.conf || return 1
         cp -a "$dir/resolv.conf" /etc/resolv.conf || return 1
     elif [[ -f "$dir/resolv.conf.absent" ]]; then rm -f /etc/resolv.conf || return 1; fi
-    if [[ -f "$dir/resolved.conf" ]]; then cp -a "$dir/resolved.conf" /etc/systemd/resolved.conf || return 1
+    if [[ -f "$dir/resolved.conf" ]]; then rm -f /etc/systemd/resolved.conf || return 1; cp -a "$dir/resolved.conf" /etc/systemd/resolved.conf || return 1
     elif [[ -f "$dir/resolved.conf.absent" ]]; then rm -f /etc/systemd/resolved.conf || return 1; fi
     if [[ -f "$dir/resolved.conf.d/99-abox-dns.conf" ]]; then
         install -d -m 755 /etc/systemd/resolved.conf.d || return 1
+        rm -f /etc/systemd/resolved.conf.d/99-abox-dns.conf || return 1
         cp -a "$dir/resolved.conf.d/99-abox-dns.conf" /etc/systemd/resolved.conf.d/99-abox-dns.conf || return 1
     else
         rm -f /etc/systemd/resolved.conf.d/99-abox-dns.conf 2>/dev/null || true
@@ -25015,6 +25017,7 @@ restore_dns_snapshot_body() {
         local _cf=''
         for _cf in "$dir"/resolved-cleanup/*.conf; do
             [[ -f "$_cf" ]] || continue
+            rm -f -- "/etc/systemd/resolved.conf.d/$(basename "$_cf")" || return 1
             cp -a "$_cf" "/etc/systemd/resolved.conf.d/$(basename "$_cf")" || return 1
         done
         local _sub='' _dir=''
@@ -25028,6 +25031,7 @@ restore_dns_snapshot_body() {
             install -d -m 755 "$_dir" 2>/dev/null || true
             for _cf in "$dir"/resolved-cleanup/"$_sub"/*.conf; do
                 [[ -f "$_cf" ]] || continue
+                rm -f -- "$_dir/$(basename "$_cf")" || return 1
                 cp -a "$_cf" "$_dir/$(basename "$_cf")" || return 1
             done
         done
@@ -25035,6 +25039,7 @@ restore_dns_snapshot_body() {
     dnscrypt_state=$(tr -d '[:space:]' < "$dir/dnscrypt-config-state" 2>/dev/null || true)
     if [[ "$dnscrypt_state" == present && -f "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" ]]; then
         install -d -m 755 /etc/dnscrypt-proxy || return 1
+        rm -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
         cp -a "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
     elif [[ "$dnscrypt_state" == absent ]]; then
         rm -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
@@ -25048,7 +25053,7 @@ restore_dns_snapshot_body() {
         done
         nm_reapply_connection "$connection" || return 1
     fi
-    if [[ -f "$dir/dns-state" ]]; then cp -a "$dir/dns-state" "$DNS_STATE_FILE" || return 1
+    if [[ -f "$dir/dns-state" ]]; then rm -f -- "$DNS_STATE_FILE" || return 1; cp -a "$dir/dns-state" "$DNS_STATE_FILE" || return 1
     elif [[ -f "$dir/dns-state.absent" ]]; then rm -f "$DNS_STATE_FILE" || return 1; fi
     if [[ "$backend" == resolved ]] && command -v systemctl >/dev/null 2>&1; then systemctl restart systemd-resolved >/dev/null 2>&1 || return 1; fi
     if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files dnscrypt-proxy.service >/dev/null 2>&1; then

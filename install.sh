@@ -19049,6 +19049,10 @@ routing_rule_del() {
     local idx="$1" tmp rc
     [[ "$idx" =~ ^[0-9]+$ ]] || return 1
     routing_state_init || return 1
+    # Out-of-range indices are a caller error, not a no-op success:
+    # jq del() silently keeps the array, which made the menu report
+    # a deletion that never happened.
+    jq -e --argjson i "$idx" '.rules | length > $i' "$ROUTING_STATE_FILE" >/dev/null 2>&1 || return 1
     tmp=$(mktemp) || return 1
     jq --argjson i "$idx" 'del(.rules[$i])' \
         "$ROUTING_STATE_FILE" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
@@ -19581,7 +19585,14 @@ split_rule_add_interactive() {
     [[ -n "$outbound" ]] || return 1
     if routing_rule_add "$domains" "$outbound"; then
         local core="${CORE:-}"; [[ -z "$core" ]] && { load_optional_abox_env_or_die 2>/dev/null || true; core="${CORE:-}"; }
-        [[ -n "$core" ]] && routing_apply_live "$core"
+        local n_rules=0
+        n_rules=$(jq '.rules | length' "$ROUTING_STATE_FILE" 2>/dev/null || echo 0)
+        if [[ -n "$core" ]] && ! routing_apply_live "$core"; then
+            # Roll back the just-appended rule (last index) so a retry
+            # cannot duplicate it; the state stays the source of truth.
+            routing_rule_del "$((n_rules - 1))" >/dev/null 2>&1 || true
+            msg "${RED}$(tr_msg warp_apply_fail)${NC}"; pause_return; return 1
+        fi
         msg "$(tr_msg split_rule_done)"
     else
         msg "${RED}$(tr_msg split_rule_fail)${NC}"
@@ -19606,9 +19617,24 @@ split_preset_interactive() {
 split_rule_del_interactive() {
     local idx
     read -r -p "$(tr_msg split_rule_del_prompt): " idx || return 0
+    # Snapshot for rollback: re-adding appends, which would move the rule
+    # and change first-match order, so the original object is kept to be
+    # re-inserted at this same index if the live apply fails.
+    local del_rule=''
+    del_rule=$(jq -c --argjson i "$idx" '.rules[$i] // empty' "$ROUTING_STATE_FILE" 2>/dev/null || true)
     if routing_rule_del "$idx"; then
         local core="${CORE:-}"; [[ -z "$core" ]] && { load_optional_abox_env_or_die 2>/dev/null || true; core="${CORE:-}"; }
-        [[ -n "$core" ]] && routing_apply_live "$core"
+        if [[ -n "$core" ]] && ! routing_apply_live "$core"; then
+            # Restore the deleted rule at its original index so a retry
+            # deletes the same rule; order is preserved (first match wins).
+            # If the restore itself fails, the state still holds the
+            # deletion intent and converges on the next apply; the
+            # failure below is reported either way.
+            if [[ -n "$del_rule" ]]; then
+                jq --argjson i "$idx" --argjson r "$del_rule" '.rules |= (.[0:$i] + [$r] + .[$i:])' "$ROUTING_STATE_FILE" 2>/dev/null | routing_state_put || true
+            fi
+            msg "${RED}$(tr_msg warp_apply_fail)${NC}"; pause_return; return 1
+        fi
         msg "$(tr_msg split_rule_del_done)"
     else
         msg "${RED}$(tr_msg invalid_input)${NC}"

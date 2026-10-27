@@ -24747,6 +24747,7 @@ timezone_choose_from_list() {
             0|'') return 0 ;;
             *[!0-9]*) msg "${YELLOW}$invalid_prompt${NC}"; sleep 1 ;;
             *)
+                valid_decimal_upto "$input" "${#filtered[@]}" || { msg "${YELLOW}$range_prompt${NC}"; sleep 1; continue; }
                 input=$((10#$input))
                 ((input>=1 && input<=${#filtered[@]})) || { msg "${YELLOW}$range_prompt${NC}"; sleep 1; continue; }
                 tz="${filtered[$((input-1))]}"
@@ -24791,6 +24792,7 @@ timezone_choose_locale() {
             0|'') return 0 ;;
             *[!0-9]*) msg "${YELLOW}$invalid_prompt${NC}"; sleep 1 ;;
             *)
+                valid_decimal_upto "$value" "${#locales[@]}" || { msg "${YELLOW}$range_prompt${NC}"; sleep 1; continue; }
                 value=$((10#$value))
                 ((value>=1 && value<=${#locales[@]})) || { msg "${YELLOW}$range_prompt${NC}"; sleep 1; continue; }
                 value="${locales[$((value-1))]}"

@@ -20583,7 +20583,7 @@ valid_hy2_bandwidth_mbps() {
     traffic_fail_closed 'persisted traffic limit is invalid' || traffic_error 'invalid persisted traffic limit could not be fail-closed enforced'
     exit 1
 }
-desired=$(read_desired) || exit 1
+desired=$(read_desired) || { traffic_error 'desired state unreadable; leaving prior desired state unchanged'; exit 1; }
 blocked_period=$(read_block_period 2>/dev/null || true)
 if [[ "$desired" == TRAFFIC_BLOCKED && -z "$blocked_period" ]]; then
     commit_traffic_pair TRAFFIC_BLOCKED "$current_period" || exit 1

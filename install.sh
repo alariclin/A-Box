@@ -10656,13 +10656,13 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
     [[ -n "${ABOX_PRESERVE_FILE:-}" && -f "${ABOX_PRESERVE_FILE:-}" ]] || return 0
     local cfg="$2" bak='' merged='' keepf='' attempt='' ok=0 added=0 dropped='' conflict='' before=0 after=0
     if ! command -v jq >/dev/null 2>&1; then
-        rm -f -- "$ABOX_PRESERVE_FILE"; ABOX_PRESERVE_FILE=''
-        return 0
+        msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'jq')${NC}"
+        return 1
     fi
-    bak=$(mktemp /tmp/A-Box-preserve-bak.XXXXXX.json) || return 0
-    merged=$(mktemp /tmp/A-Box-preserve-new.XXXXXX.json) || { rm -f -- "$bak"; return 0; }
-    keepf=$(mktemp /tmp/A-Box-preserve-keep.XXXXXX.json) || { rm -f -- "$bak" "$merged"; return 0; }
-    cp -- "$cfg" "$bak" 2>/dev/null || { rm -f -- "$bak" "$merged" "$keepf" "$ABOX_PRESERVE_FILE"; ABOX_PRESERVE_FILE=''; return 0; }
+    bak=$(mktemp /tmp/A-Box-preserve-bak.XXXXXX.json) || { msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'tmp')${NC}"; return 1; }
+    merged=$(mktemp /tmp/A-Box-preserve-new.XXXXXX.json) || { rm -f -- "$bak"; msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'tmp')${NC}"; return 1; }
+    keepf=$(mktemp /tmp/A-Box-preserve-keep.XXXXXX.json) || { rm -f -- "$bak" "$merged"; msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'tmp')${NC}"; return 1; }
+    cp -- "$cfg" "$bak" 2>/dev/null || { rm -f -- "$bak" "$merged" "$keepf"; msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'copy')${NC}"; return 1; }
     for attempt in full nost; do
         if [[ "$attempt" == nost ]]; then
             jq '[.[] | select(.tag != "shadowtls-in")]' "$ABOX_PRESERVE_FILE" > "$keepf" 2>/dev/null || continue
@@ -10698,9 +10698,15 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
         conflict=$(jq -r --slurpfile now "$cfg" '[.[] | select(.tag != null) | .tag as $t | (($now[0].inbounds // [])[] | select(.tag == $t)) as $cur | select($cur != null and . != $cur) | .tag] | unique | join(", ")' "$ABOX_PRESERVE_FILE" 2>/dev/null || printf '')
         if [[ -n "$conflict" ]]; then msg "${YELLOW}[!] $(tprintf dp_preserve_conflict_tag "$conflict")${NC}"; fi
     else
-        cp -- "$bak" "$cfg" 2>/dev/null || true
-        chmod 600 "$cfg" 2>/dev/null || true
-        msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'check')${NC}"
+        if cp -- "$bak" "$cfg" 2>/dev/null && chmod 600 "$cfg" 2>/dev/null; then
+            msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'check')${NC}"
+            rm -f -- "$bak" "$merged" "$keepf"
+            return 1
+        else
+            msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'rollback')${NC}"
+            msg "${YELLOW}[!] backup preserved: $bak ; preserve preserved: $ABOX_PRESERVE_FILE${NC}"
+            return 1
+        fi
     fi
     rm -f -- "$bak" "$merged" "$keepf" "$ABOX_PRESERVE_FILE"
     ABOX_PRESERVE_FILE=''

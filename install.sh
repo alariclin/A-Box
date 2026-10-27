@@ -12720,6 +12720,9 @@ clean_input_rules() {
         read -r -a argv <<< "$rule"
         _iptables_do "$IPT" "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
     done
+    # Objective v6 gate, not preference-aware has_ipv6: SS-whitelist
+    # v6 rules are created on objective reachability, so cleanup
+    # must not silently skip v6 on ipv4-preference hosts.
     if command -v ip6tables >/dev/null 2>&1; then
         if _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
             while :; do
@@ -12730,10 +12733,10 @@ clean_input_rules() {
                 read -r -a argv <<< "$rule"
                 _iptables_do "$IPT6" "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
             done
-        elif has_ipv6; then
+        elif host_has_usable_ipv6; then
             failed=1
         fi
-    elif has_ipv6; then
+    elif host_has_usable_ipv6; then
         failed=1
     fi
     (( failed == 0 ))

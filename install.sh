@@ -19847,7 +19847,7 @@ deploy_xray() {
     chmod 600 /usr/local/etc/xray/config.json || die 'Xray config permission hardening failed.'
     jq empty /usr/local/etc/xray/config.json >/dev/null 2>&1 || die "$(tr_msg dp_xray_json)"
     /usr/local/bin/xray run -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1 || die "$(tr_msg dp_xray_check)"
-    standalone_preserve_restore xray /usr/local/etc/xray/config.json
+    standalone_preserve_restore xray /usr/local/etc/xray/config.json || return 1
 
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die "$(tr_msg dp_xray_unit)"
@@ -19977,7 +19977,7 @@ deploy_singbox() {
     chmod 600 /etc/sing-box/config.json || die 'Sing-box config permission hardening failed.'
     jq empty /etc/sing-box/config.json >/dev/null 2>&1 || die "$(tr_msg dp_sb_json)"
     /usr/local/bin/sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1 || die "$(tr_msg dp_sb_check)"
-    standalone_preserve_restore sing-box /etc/sing-box/config.json
+    standalone_preserve_restore sing-box /etc/sing-box/config.json || return 1
 
     if [[ "$MODE_IN" == *'HY2'* || "$MODE_IN" == *'ALL'* ]] && [[ "${HY2_HOP:-}" == 'true' ]]; then
         # A-02: CAP_NET_ADMIN removed (see HY2_CAPS).

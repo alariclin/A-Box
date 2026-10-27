@@ -15841,8 +15841,9 @@ build_xray_config() {
     # Merge routing state (WARP / split-routing outbounds + rules); survives redeploys.
     local _rs_ob='[]' _rs_rules='[]'
     if [[ -f "$ROUTING_STATE_FILE" && ! -L "$ROUTING_STATE_FILE" ]]; then
-        _rs_ob=$(jq -c '[.outbounds[]?.xray] // []' "$ROUTING_STATE_FILE" 2>/dev/null || echo '[]')
-        _rs_rules=$(jq -c '[.rules[]?.xray_rule] // []' "$ROUTING_STATE_FILE" 2>/dev/null || echo '[]')
+        jq -e '.version == 1 and (.outbounds | type == "array") and (.rules | type == "array")' "$ROUTING_STATE_FILE" >/dev/null 2>&1 || die 'Routing state file is invalid; refusing to deploy without routing policy.'
+        _rs_ob=$(jq -c '[.outbounds[]?.xray]' "$ROUTING_STATE_FILE" 2>/dev/null) || die 'Routing state outbound merge failed.'
+        _rs_rules=$(jq -c '[.rules[]?.xray_rule]' "$ROUTING_STATE_FILE" 2>/dev/null) || die 'Routing state rule merge failed.'
     fi
     jq -n --argjson inbounds "$inbounds_json" --argjson rs_ob "$_rs_ob" --argjson rs_rules "$_rs_rules" '{
         log:{loglevel:"warning", access:"/var/log/A-Box-xray-access.log", error:"/var/log/A-Box-xray-error.log"},
@@ -16079,6 +16080,7 @@ build_singbox_config() {
     # Merge routing state (WARP / split-routing outbounds + rules); survives redeploys.
     local _rs_ob='[]' _rs_rules='[]'
     if [[ -f "$ROUTING_STATE_FILE" && ! -L "$ROUTING_STATE_FILE" ]]; then
+        jq -e '.version == 1 and (.outbounds | type == "array") and (.rules | type == "array")' "$ROUTING_STATE_FILE" >/dev/null 2>&1 || die 'Routing state file is invalid; refusing to deploy without routing policy.'
         _rs_ob=$(jq -c '[.outbounds[]?.singbox
             | if (.type == "wireguard" and has("server")) then
                 {type:"wireguard", tag:.tag, address:.local_address, private_key:.private_key,
@@ -16086,11 +16088,11 @@ build_singbox_config() {
                  peers:[{address:.server, port:.server_port, public_key:.peer_public_key,
                      persistent_keepalive_interval:(.keepalive // 25),
                      allowed_ips:["0.0.0.0/0","::/0"]}]}
-              else . end] // []' "$ROUTING_STATE_FILE" 2>/dev/null || echo '[]')
+              else . end]' "$ROUTING_STATE_FILE" 2>/dev/null) || die 'Routing state outbound merge failed.'
         _rs_rules=$(jq -c '[.rules[]?.singbox_rule
             | if has("geosite") then
                 (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite))
-              else . end] // []' "$ROUTING_STATE_FILE" 2>/dev/null || echo '[]')
+              else . end]' "$ROUTING_STATE_FILE" 2>/dev/null) || die 'Routing state rule merge failed.'
     fi
     jq -n --argjson inbounds "$inbounds_json" --argjson rs_ob "$_rs_ob" --argjson rs_rules "$_rs_rules" '
         ($rs_ob | map(select(.type == "wireguard"))) as $eps

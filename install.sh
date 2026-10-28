@@ -16944,7 +16944,7 @@ EOF_SVC
     [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die "$(tr_msg dp_xray_keyempty)"
     sid=$(openssl rand -hex 4 | tr -d '\n\r') || die "$(tr_msg dp_shortid)"
     sni=$(sni_prompt_or_auto)
-    [[ -n "$sni" ]] || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
+    valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
     # Build the trojan+reality inbound object (A-Box realitySettings format).
     tmp_json=$(mktemp /tmp/A-Box-trojan-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -17106,7 +17106,7 @@ EOF_SVC
     [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die "$(tr_msg dp_sb_keyempty)"
     sid=$(openssl rand -hex 4 | tr -d '\n\r') || die "$(tr_msg dp_shortid)"
     sni=$(sni_prompt_or_auto)
-    [[ -n "$sni" ]] || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
+    valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
     # Build the trojan+reality inbound object.
     tmp_json=$(mktemp /tmp/A-Box-sb-trojan-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -17262,7 +17262,7 @@ EOF_SVC
     # sanitized, with a hash suffix always appended, so
     # distinct tags can never collide on one file.
     sni=$(sni_prompt_or_auto)
-    [[ -n "$sni" ]] || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
+    valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
     local _tuic_cert_tag _tuic_key _tuic_crt
     _tuic_cert_tag=$(printf '%s' "$tag" | tr -c 'A-Za-z0-9_-' '_')
     _tuic_cert_tag="${_tuic_cert_tag}-$(printf '%s' "$tag" | sha256sum | cut -c1-8)"
@@ -17420,7 +17420,7 @@ EOF_SVC
     [[ -n "${pk:-}" && -n "${pbk:-}" ]] || die "$(tr_msg dp_sb_keyempty)"
     sid=$(openssl rand -hex 4 | tr -d '\n\r') || die "$(tr_msg dp_shortid)"
     sni=$(sni_prompt_or_auto)
-    [[ -n "$sni" ]] || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
+    valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
     # Build the anytls+reality inbound object.
     tmp_json=$(mktemp /tmp/A-Box-sb-anytls-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -17566,7 +17566,7 @@ EOF_SVC
     fi
 
     sni=$(sni_prompt_or_auto)
-    [[ -n "$sni" ]] || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
+    valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
     # shadowtls v3 (strict) detouring to a loopback-only SS-2022 inbound that
     # has no listen_port of its own (reachable only through the detour).
@@ -33125,7 +33125,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     fi
     listen_addr=$(wildcard_listen_address)
     [[ "$kind" == 'socks' ]] || sni=$(sni_prompt_or_auto)
-    [[ "$kind" == 'socks' || -n "$sni" ]] || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    [[ "$kind" == 'socks' ]] || valid_sni "$sni" || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     tmp_json=$(mktemp /tmp/A-Box-xl-inbound.XXXXXX) || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     case "$kind" in
         vision|xhttp)
@@ -33285,7 +33285,7 @@ xray_latest_deploy_trio() {
     if [[ "$sp2" == "$vp" || "$sp2" == "$xp" ]] || xl_port_conflict "$sp2" "$cfg" 'latest-ss'; then msg "${RED}$(tr_msg xl_port_conflict): ${sp2}${NC}"; return 1; fi
     listen_addr=$(wildcard_listen_address)
     sni=$(sni_prompt_or_auto)
-    [[ -n "$sni" ]] || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+    valid_sni "$sni" || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     keypair=$("$bin" x25519) || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     [[ -n "$pk" && -n "$pbk" ]] || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }

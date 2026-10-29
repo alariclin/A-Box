@@ -24616,7 +24616,11 @@ users_inbound_menu() {
                 pause_return ;;
             9)
                 confirm_yes_no "$(tr_msg mu_reimport_confirm) [Y/N]: " || { msg "$(tr_msg mu_cancelled)"; pause_return; continue; }
-                if users_adopt "$core" "$tag" && users_sync "$core" "$tag"; then msg "${GREEN}$(tr_msg mu_reimported)${NC}"; else msg "${RED}$(tr_msg mu_import_fail)${NC}"; fi
+                local re_old='' re_new='' re_tmp=''
+                re_old=$(cat "$reg" 2>/dev/null) || { msg "${RED}$(tr_msg mu_import_fail)${NC}"; pause_return; continue; }
+                re_tmp=$(mktemp /tmp/A-Box-reimport.XXXXXX) || { msg "${RED}$(tr_msg mu_import_fail)${NC}"; pause_return; continue; }
+                if users_adopt "$core" "$tag" "$re_tmp" && re_new=$(cat "$re_tmp" 2>/dev/null) && [[ -n "$re_new" ]] && users_apply_reg "$core" "$tag" "$re_new" "$re_old"; then msg "${GREEN}$(tr_msg mu_reimported)${NC}"; else msg "${RED}$(tr_msg mu_import_fail)${NC}"; fi
+                rm -f -- "$re_tmp"
                 pause_return ;;
             0) return 0 ;;
             *) msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1 ;;

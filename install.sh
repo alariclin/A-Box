@@ -18123,11 +18123,20 @@ install_cloudflared() {
 }
 
 _argo_pick_port() {
-    local p tries=0
+    # Optional $1: a port that must never be returned (the caller's
+    # already-picked peer port). An ss failure fails closed: a query
+    # error must never read as "port free" (the old pipeline yielded
+    # no output on ss errors, and grep's no-match meant "free").
+    local p tries=0 ss_out exclude="${1:-}"
     while (( tries < 40 )); do
         p=$(shuf -i 20000-55000 -n 1 2>/dev/null || echo 0)
         (( p >= 1024 )) || p=28080
-        if ! ss -lnt 2>/dev/null | awk '{print $4}' | grep -q ":${p}\$"; then
+        if [[ -n "$exclude" && "$exclude" =~ ^[0-9]+$ ]] && (( p == exclude )); then
+            tries=$((tries + 1))
+            continue
+        fi
+        ss_out=$(ss -lnt 2>/dev/null) || return 1
+        if ! printf '%s\n' "$ss_out" | awk '{print $4}' | grep -q ":${p}\$"; then
             printf '%s' "$p"; return 0
         fi
         tries=$((tries + 1))
@@ -18146,8 +18155,9 @@ argo_deploy_ws() {
     [[ "$ARGO_VMESS_PORT" =~ ^[0-9]+$ ]] || ARGO_VMESS_PORT=$(_argo_pick_port) || die "$(tr_msg ag_vmess_port)"
     ARGO_VLESS_PORT=$(_argo_state_get vless_port)
     if [[ ! "$ARGO_VLESS_PORT" =~ ^[0-9]+$ || "$ARGO_VLESS_PORT" == "$ARGO_VMESS_PORT" ]]; then
-        ARGO_VLESS_PORT=$(_argo_pick_port) || die "$(tr_msg ag_vless_port)"
-        [[ "$ARGO_VLESS_PORT" != "$ARGO_VMESS_PORT" ]] || ARGO_VLESS_PORT=$((ARGO_VMESS_PORT + 1))
+        # Re-pick with the VMESS port excluded: a +1 fallback would
+        # never be occupancy-checked, so it is deleted, not repaired.
+        ARGO_VLESS_PORT=$(_argo_pick_port "$ARGO_VMESS_PORT") || die "$(tr_msg ag_vless_port)"
     fi
     tmp_json=$(mktemp /tmp/A-Box-sb-argo-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --rawfile uuid <(printf '%s' "$ARGO_UUID") --argjson vp "$ARGO_VMESS_PORT" --argjson vlp "$ARGO_VLESS_PORT" \

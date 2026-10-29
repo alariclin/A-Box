@@ -12933,6 +12933,20 @@ release_ports() {
 write_if_changed() {
     local target="$1" tmp="$2" mode="${3:-700}"
     if [[ -f "$target" && ! -L "$target" ]] && cmp -s "$tmp" "$target"; then
+        # S36 (GPT-16): same content is not "already correct" -- the
+        # requested mode (and, when root, owner 0:0) must also hold,
+        # else fall through to the atomic install that enforces them.
+        local need_install=0 cur_mode cur_owner
+        cur_mode=$(stat -c '%a' "$target" 2>/dev/null || echo '')
+        if [[ -z "$cur_mode" || ! "$mode" =~ ^[0-7]{3,4}$ ]] || (( 8#$cur_mode != 8#$mode )); then
+            need_install=1
+        elif (( EUID == 0 )); then
+            cur_owner=$(stat -c '%u:%g' "$target" 2>/dev/null || echo '')
+            [[ "$cur_owner" == '0:0' ]] || need_install=1
+        fi
+        if (( need_install == 1 )); then
+            install_file_atomically "$tmp" "$target" "$mode" || { rm -f "$tmp"; return 1; }
+        fi
         rm -f "$tmp"
     else
         install_file_atomically "$tmp" "$target" "$mode" || { rm -f "$tmp"; return 1; }

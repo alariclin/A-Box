@@ -23963,7 +23963,12 @@ users_reg_ensure() {
                 [.users[] | . as $u
                  | ([$fresh[] | select(.secret == $u.secret and .name == $u.name)] | .[0]) as $m
                  | if $m == null then $u elif (.login // "") != "" then $u elif ($m.login // "") == "" then $u else $u + {login: $m.login} end]
-                + [$fresh[] | . as $f | select([$r.users[] | select(.secret == $f.secret and .name == $f.name)] | length == 0)]
+                + (reduce ([$fresh[] | . as $f | select([$r.users[] | select(.secret == $f.secret and .name == $f.name)] | length == 0)])[] as $f (
+                    {used: [.users[].name], out: []};
+                    (.used) as $used
+                    | (first(range(0; 1000) | (if . == 0 then $f.name else ($f.name + "-" + ((. + 1) | tostring)) end) | select(. as $c | ($used | index($c) | not))) // $f.name) as $c
+                    | {used: ($used + [$c]), out: (.out + [$f + (if ($f.email // "") == ($r.tag + "/" + $f.name) then {name: $c, email: ($r.tag + "/" + $c)} else {name: $c} end)])}
+                  ) | .out)
               )
             | .server_secret = (if (.server_secret // "") == "" then ($s[0].server_secret // "") else .server_secret end)
         ' "$reg" 2>/dev/null) || { rm -f -- "$scratch"; return 1; }

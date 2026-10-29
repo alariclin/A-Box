@@ -41,16 +41,18 @@ A-Box is a single-file Bash script (`install.sh`, about 30,000 lines) that deplo
 Official source, pinned to an immutable commit:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/a28e686aa6b4b9261b4b4d39784319c97c87ef5a/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
-Third-party mirror of the same pinned file (transport only, not an official endpoint):
+Third-party mirror of the same pinned file (transport only, not an official endpoint). Do not run it directly: download it, verify it byte-for-byte against the official source, then run it. Only use the mirror when you trust the proxy; never run an unverified mirror file in production:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/a28e686aa6b4b9261b4b4d39784319c97c87ef5a/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/a28e686aa6b4b9261b4b4d39784319c97c87ef5a/install.sh -o A-Box.official.sh &&
+cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
-- On a fresh Alpine system, first run `apk add --no-cache bash curl`.
+- On a fresh Alpine system, first run `apk add --no-cache bash curl sudo`.
 - After the first run, type `sb` to reopen the menu.
 - For production use, verify the downloaded file through an independent trusted channel before running it.
 
@@ -91,7 +93,7 @@ Standalone deployments, independent of the combined bundles above. Each one asks
 
 ## Status panel
 
-The top of the menu shows a 16-cell status matrix (running / stopped / not installed) for Xray, sing-box, Hy2, Trojan, TUIC, AnyTLS, ShadowTLS, SOCKS5, WARP, Cloudflare, Fail2Ban, Wallos, Traffic, Docker, BBR and Firewall, followed by system, hardware and network lines. The network line identifies the egress IP's location and type (datacentre / residential / mobile, broadcast or native). Deployed nodes are listed with their ports and SNI. A green cell means the service is running or listening; it is not an end-to-end connectivity test — verify with a client. The users section below lists, per node, the active users with their own traffic (shown in M/G units), quota and expiry when set; blocked or disabled users are not shown on the panel — they are managed in the toolbox (item 14).
+The top of the menu shows a 16-cell status matrix (running / not started / fault) for Xray, sing-box, Hy2, Trojan, TUIC, AnyTLS, ShadowTLS, SOCKS5, WARP, Cloudflare, Fail2Ban, Wallos, Traffic, Docker, BBR and Firewall, followed by system, hardware and network lines. The network line identifies the egress IP's location and type (datacentre / residential / mobile, anycast or native). Deployed nodes are listed with their ports and SNI. A green cell means the service is running or listening; it is not an end-to-end connectivity test — verify with a client. The users section below lists, per node, the active users with their own traffic (shown in M/G units), quota and expiry when set; blocked or disabled users are not shown on the panel — they are managed in the toolbox (item 14).
 
 ## Toolbox (menu 11)
 
@@ -131,7 +133,7 @@ Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](h
 
 **Backup, upgrades, OTA.** Configuration backup/restore uses a versioned manifest with a recovery key (`--export-backup-key`). Core upgrades keep existing node parameters; the script's own OTA update shows the SHA-256 and asks for explicit confirmation. Xray Geo data can be updated separately.
 
-**Core versions.** Xray is pinned to `v26.7.28`: Xray ≥ v26.9.8 requires an X25519MLKEM768 key exchange that sing-box clients cannot yet complete. sing-box defaults to `v1.14.3`, Hysteria to `app/v2.13.0`; Argo uses cloudflared `2026.10.2` and the Wallos HTTPS frontend uses Caddy `2.11.7`, both pinned with SHA-256 verification. Core binaries are checked against the release SHA-256 manifests, and Ed25519 signature verification is enforced where signatures are published (see `docs/SIGNING.md`). Fixed pins and versioned latest-stable builds are kept in the `core-binaries` release for rollback.
+**Core versions.** Xray is pinned to `v26.7.28`: Xray ≥ v26.9.8 requires an X25519MLKEM768 key exchange that sing-box clients cannot yet complete. sing-box and Hysteria default to the latest official stable release (7-day cooldown, verified before adoption), with the compatibility pins `v1.14.3` / `app/v2.13.0` kept as fallback; Argo uses cloudflared `2026.10.2` and the Wallos HTTPS frontend uses Caddy `2.11.7`, both pinned with SHA-256 verification. Core binaries are checked against the release SHA-256 manifests, and Ed25519 signature verification is enforced where signatures are published (see `docs/SIGNING.md`). Fixed pins and versioned latest-stable builds are kept in the `core-binaries` release for rollback.
 
 **SNI candidates.** The repository ships a seed list of 4,158 candidate hostnames (`data/sni-candidates.txt`). The toolbox can test them from the target VPS (full or mini test) and records the results. A listed hostname is only a candidate: it is not a guarantee that it works from your network or suits a specific REALITY deployment. The workflow fails closed when no valid list is available.
 
@@ -165,7 +167,7 @@ Tested systems (14): Debian 10 / 11 / 12 / 13, Ubuntu 20.04 / 22.04 / 24.04, Roc
 ## Notes
 
 - The panel's IP-type and location data comes from public IP-intelligence services and can occasionally be wrong; the multi-source check reduces, but does not eliminate, errors.
-- Let's Encrypt IP certificates (Wallos HTTPS mode) are short-lived (about 160 hours) and are renewed automatically by Caddy; like all certificates, they appear in public Certificate Transparency logs.
+- Let's Encrypt IP certificates (Wallos HTTPS mode) are short-lived (about 160 hours) and are renewed automatically by Caddy; they appear in public Certificate Transparency logs, as all publicly trusted certificates do.
 - Temporary Argo tunnel addresses change every time cloudflared restarts. Use a fixed tunnel with your own domain for a stable address.
 - BBR/FQ tuning, DNS changes and WARP routing are applied only when you select them, and DNS / tuning changes keep a rollback path.
 - Keep backups and the recovery key in a separate, protected location.

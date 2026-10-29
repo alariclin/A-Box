@@ -41,16 +41,18 @@ A-Box 是一个单文件 Bash 脚本（`install.sh`，约 30,000 行），用于
 官方来源，命令已锁定到不可变的提交：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/a28e686aa6b4b9261b4b4d39784319c97c87ef5a/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
-第三方镜像（与上面是同一个锁定文件，仅作传输通道，不是官方入口）：
+第三方镜像（与上面是同一个锁定文件，仅作传输通道，不是官方入口）。不要直接运行：先下载，再与官方来源逐字节比对，通过后才运行。仅在信任该代理时使用镜像；未经核对的镜像文件不得用于生产：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/a28e686aa6b4b9261b4b4d39784319c97c87ef5a/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/a28e686aa6b4b9261b4b4d39784319c97c87ef5a/install.sh -o A-Box.official.sh &&
+cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
-- 全新的 Alpine 系统请先运行 `apk add --no-cache bash curl`。
+- 全新的 Alpine 系统请先运行 `apk add --no-cache bash curl sudo`。
 - 首次运行后，输入 `sb` 即可再次打开菜单。
 - 生产环境使用前，请通过独立可信渠道核对下载到的文件。
 
@@ -91,7 +93,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 ## 状态面板
 
-菜单顶部是 16 格状态矩阵（运行 / 未开启 / 故障）：Xray、sing-box、Hy2、Trojan、TUIC、AnyTLS、ShadowTLS、SOCKS5、WARP、Cloudflare、Fail2ban、Wallos、Traffic、Docker、BBR、Firewall，其后是系统、硬件与网络信息行。网络行会标注出口 IP 的位置与类型（机房 / 住宅 / 蜂窝、广播或原生）。已部署节点会列出端口与 SNI。绿格只表示服务在运行或端口在监听，不等于端到端连通，请以客户端实测为准。其下是用户区：按节点列出在用用户各自的用量（只用 M/G 单位）、已设的限额与到期；封锁或停用的用户不在面板显示，只在工具箱 14 里管理。
+菜单顶部是 16 格状态矩阵（运行 / 未开启 / 故障）：Xray、sing-box、Hy2、Trojan、TUIC、AnyTLS、ShadowTLS、SOCKS5、WARP、Cloudflare、Fail2ban、Wallos、Traffic、Docker、BBR、Firewall，其后是系统、硬件与网络信息行。网络行会标注出口 IP 的位置与类型（机房 / 住宅 / 蜂窝、任播或原生）。已部署节点会列出端口与 SNI。绿格只表示服务在运行或端口在监听，不等于端到端连通，请以客户端实测为准。其下是用户区：按节点列出在用用户各自的用量（只用 M/G 单位）、已设的限额与到期；封锁或停用的用户不在面板显示，只在工具箱 14 里管理。
 
 ## 综合工具箱（菜单 11）
 
@@ -131,7 +133,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 **备份、升级与 OTA。** 配置备份/恢复使用带版本号的清单格式与恢复密钥（`--export-backup-key`）。核心升级保留现有节点参数；脚本自身的 OTA 更新会显示 SHA-256 并要求明确确认。Xray Geo 数据可单独更新。
 
-**核心版本。** Xray 锁定在 `v26.7.28`：Xray ≥ v26.9.8 要求 X25519MLKEM768 密钥交换，sing-box 客户端目前无法完成该握手。sing-box 默认 `v1.14.3`，Hysteria 为 `app/v2.13.0`；Argo 用的 cloudflared 锁定 `2026.10.2`，Wallos 的 HTTPS 前端 Caddy 锁定 `2.11.7`，均带 SHA-256 校验。核心二进制按发布清单做 SHA-256 校验，已发布签名的强制 Ed25519 验签（见 `docs/SIGNING.md`）。固定版本与各版本最新稳定版都保存在 `core-binaries` 发布中以便回滚。
+**核心版本。** Xray 锁定在 `v26.7.28`：Xray ≥ v26.9.8 要求 X25519MLKEM768 密钥交换，sing-box 客户端目前无法完成该握手。sing-box 与 Hysteria 默认自动跟随官方最新稳定版（7 天冷却、验证通过后才采用），兼容钉版 `v1.14.3` / `app/v2.13.0` 仅作兜底；Argo 用的 cloudflared 锁定 `2026.10.2`，Wallos 的 HTTPS 前端 Caddy 锁定 `2.11.7`，均带 SHA-256 校验。核心二进制按发布清单做 SHA-256 校验，已发布签名的强制 Ed25519 验签（见 `docs/SIGNING.md`）。固定版本与各版本最新稳定版都保存在 `core-binaries` 发布中以便回滚。
 
 **SNI 候选。** 仓库自带 4,158 条候选域名种子列表（`data/sni-candidates.txt`）。工具箱可在目标 VPS 上实测优选（完整版或微型版）并保存记录。列表里的域名只是候选，不保证在你的网络可用、也不保证适合某个具体的 REALITY 部署。拿不到有效列表时该流程直接失败，不硬凑。
 
@@ -165,7 +167,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 ## 注意事项
 
 - 面板的 IP 类型与位置数据来自公开 IP 情报服务，偶有误判；多源比对只能减少、不能消除错误。
-- Let's Encrypt 的 IP 证书（Wallos HTTPS 模式）有效期很短（约 160 小时），由 Caddy 自动续期；与所有证书一样，它们会出现在公开的证书透明度日志中。
+- Let's Encrypt 的 IP 证书（Wallos HTTPS 模式）有效期很短（约 160 小时），由 Caddy 自动续期；它们会出现在公开的证书透明度日志中，与所有公开信任的证书一样。
 - Argo 临时隧道地址在 cloudflared 每次重启后都会变化；需要固定地址请使用自有域名的固定隧道。
 - BBR/FQ 调优、DNS 修改与 WARP 分流都只在你选用时才应用，DNS 与调优改动保留回滚路径。
 - 备份与恢复密钥请存放在独立且受保护的位置。

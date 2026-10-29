@@ -41,16 +41,18 @@ A-Box は単一ファイルの Bash スクリプト（`install.sh`、約30,000�
 公式ソース（不変のコミットに固定）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/a28e686aa6b4b9261b4b4d39784319c97c87ef5a/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
-サードパーティミラー（同じ固定ファイルの転送経路であり、公式の入口ではありません）：
+サードパーティミラー（同じ固定ファイルの転送経路であり、公式の入口ではありません）。直接実行せず、ダウンロードして公式ソースとバイト単位で照合し、一致してから実行してください。ミラーはプロキシを信頼できる場合にのみ使用し、未検証のミラーファイルを本番で実行しないでください：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/f05371e1edb33fe843396d2f4ece1860d664a734/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/a28e686aa6b4b9261b4b4d39784319c97c87ef5a/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/a28e686aa6b4b9261b4b4d39784319c97c87ef5a/install.sh -o A-Box.official.sh &&
+cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
-- 新規の Alpine では、先に `apk add --no-cache bash curl` を実行してください。
+- 新規の Alpine では、先に `apk add --no-cache bash curl sudo` を実行してください。
 - 初回実行後は `sb` と入力すればメニューを再度開けます。
 - 本番利用の前に、ダウンロードしたファイルを独立した信頼できる経路で確認してください。
 
@@ -91,7 +93,7 @@ Xray のオールインワンは Vision（TCP 443）、XHTTP（TCP 8443）、Sha
 
 ## ステータスパネル
 
-メニュー上部には16セルのステータスマトリクス（実行中 / 未開始 / 異常）が表示されます：Xray、sing-box、Hy2、Trojan、TUIC、AnyTLS、ShadowTLS、SOCKS5、WARP、Cloudflare、Fail2ban、Wallos、Traffic、Docker、BBR、Firewall。その下にシステム、ハードウェア、ネットワークの情報行が続きます。ネットワーク行には出口 IP の位置と種別（データセンター / 住宅 / モバイル、ブロードキャストかネイティブか）が表示されます。導入済みノードはポートと SNI とともに一覧表示されます。緑のセルはサービスが動作中かポートがリッスン中であることを示すだけで、エンドツーエンドの接続性を保証するものではありません。クライアントで実測してください。その下のユーザー欄には、ノードごとにアクティブなユーザーの使用量（M/G 単位）と、設定済みの上限・有効期限が表示されます。ブロック済み・無効化済みのユーザーはパネルに表示されず、ツールボックス（14）でのみ管理します。
+メニュー上部には16セルのステータスマトリクス（実行中 / 未開始 / 異常）が表示されます：Xray、sing-box、Hy2、Trojan、TUIC、AnyTLS、ShadowTLS、SOCKS5、WARP、Cloudflare、Fail2ban、Wallos、Traffic、Docker、BBR、Firewall。その下にシステム、ハードウェア、ネットワークの情報行が続きます。ネットワーク行には出口 IP の位置と種別（データセンター / 住宅 / モバイル、エニーキャストかネイティブか）が表示されます。導入済みノードはポートと SNI とともに一覧表示されます。緑のセルはサービスが動作中かポートがリッスン中であることを示すだけで、エンドツーエンドの接続性を保証するものではありません。クライアントで実測してください。その下のユーザー欄には、ノードごとにアクティブなユーザーの使用量（M/G 単位）と、設定済みの上限・有効期限が表示されます。ブロック済み・無効化済みのユーザーはパネルに表示されず、ツールボックス（14）でのみ管理します。
 
 ## ツールボックス（メニュー 11）
 
@@ -131,7 +133,7 @@ Xray のオールインワンは Vision（TCP 443）、XHTTP（TCP 8443）、Sha
 
 **バックアップ、アップグレード、OTA。** 設定のバックアップ/復元は、バージョン付きマニフェスト形式と復旧キー（`--export-backup-key`）を使います。コアのアップグレードでは既存のノードパラメータが保持されます。スクリプト自体の OTA 更新は SHA-256 を表示し、明示的な確認を求めます。Xray の Geo データは個別に更新できます。
 
-**コアバージョン。** Xray は `v26.7.28` に固定されています：Xray ≥ v26.9.8 は X25519MLKEM768 鍵交換を要求し、sing-box クライアントは現時点ではそのハンドシェイクを完了できません。sing-box は既定で `v1.14.3`、Hysteria は `app/v2.13.0`。Argo 用の cloudflared は `2026.10.2`、Wallos の HTTPS フロントエンド Caddy は `2.11.7` に固定され、いずれも SHA-256 で検証します。コアバイナリはリリースのマニフェストで SHA-256 を照合し、署名が公開されているものは Ed25519 署名検証を強制します（`docs/SIGNING.md` 参照）。固定版と各バージョンの最新安定版は、ロールバック用に `core-binaries` リリースに保持されています。
+**コアバージョン。** Xray は `v26.7.28` に固定されています：Xray ≥ v26.9.8 は X25519MLKEM768 鍵交換を要求し、sing-box クライアントは現時点ではそのハンドシェイクを完了できません。sing-box と Hysteria は既定で最新の公式安定版に追随し（7 日間のクールダウン、検証後に採用）、互換ピン `v1.14.3` / `app/v2.13.0` はフォールバックです。Argo 用の cloudflared は `2026.10.2`、Wallos の HTTPS フロントエンド Caddy は `2.11.7` に固定され、いずれも SHA-256 で検証します。コアバイナリはリリースのマニフェストで SHA-256 を照合し、署名が公開されているものは Ed25519 署名検証を強制します（`docs/SIGNING.md` 参照）。固定版と各バージョンの最新安定版は、ロールバック用に `core-binaries` リリースに保持されています。
 
 **SNI 候補。** リポジトリには 4,158 件の候補ドメインのシードリスト（`data/sni-candidates.txt`）が含まれます。ツールボックスで対象 VPS から実測して選定（フル版またはミニ版）し、結果を記録できます。リストに載っていることは候補であるという意味にすぎず、そのネットワークで使えることや、特定の REALITY 導入に適することを保証しません。有効なリストが得られない場合、この処理は失敗として終了します。
 
@@ -165,7 +167,7 @@ Xray のオールインワンは Vision（TCP 443）、XHTTP（TCP 8443）、Sha
 ## 注意事項
 
 - パネルの IP 種別と位置データは公開の IP インテリジェンスサービス由来で、まれに誤ることがあります。複数ソースの照合で誤りは減りますが、完全にはなくなりません。
-- Let's Encrypt の IP 証明書（Wallos HTTPS モード）は有効期間が短く（約160時間）、Caddy が自動更新します。他のすべての証明書と同様、公開の Certificate Transparency ログに記録されます。
+- Let's Encrypt の IP 証明書（Wallos HTTPS モード）は有効期間が短く（約160時間）、Caddy が自動更新します。公開信頼された証明書と同様、公開の Certificate Transparency ログに記録されます。
 - Argo の一時トンネルアドレスは cloudflared の再起動ごとに変わります。固定アドレスが必要な場合は、自分のドメインで固定トンネルを使ってください。
 - BBR/FQ チューニング、DNS 変更、WARP の振り分けは、選択したときにのみ適用されます。DNS とチューニングの変更にはロールバック経路があります。
 - バックアップと復旧キーは、独立した保護された場所に保管してください。

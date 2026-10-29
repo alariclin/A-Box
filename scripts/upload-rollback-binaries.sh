@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Upload previous-version rollback binaries to the core-binaries Release.
 # Run this on a machine with `gh` authenticated (gh auth login).
-# It uploads the 4 staged files and appends their SHA256 lines to the
+# It uploads the 8 staged files and appends their SHA256 lines to the
 # Release's SHA256SUMS asset. Idempotent: skips files already present
 # with matching digest; aborts on any digest conflict.
 set -euo pipefail
@@ -109,7 +109,7 @@ echo "[*] Upstream digest verification passed."
 echo "[*] Pre-checking remote SHA256SUMS for conflicts..."
 tmp2="$(mktemp -d)"; trap 'rm -rf "$tmp" "$tmp2"' EXIT
 gh release download "$TAG" --repo "$REPO" -p "SHA256SUMS" -D "$tmp2" 2>/dev/null     || { echo "SHA256SUMS not found in release; aborting (refusing to create from scratch)"; exit 1; }
-while read -r sum name _; do
+while read -r sum name _ || [[ -n "$sum" ]]; do
     [[ -n "${sum:-}" && -n "${name:-}" ]] || continue
     staging_sum=$(awk -v n="$name" '$2 == n { print $1; exit }' "$STAGE/SHA256SUMS.staging" || true)
     if [[ -n "$staging_sum" && "$staging_sum" != "$sum" ]]; then
@@ -126,7 +126,7 @@ done < "$tmp2/SHA256SUMS"
 for name in "${expected[@]}"; do
     f="$STAGE/$name"
     staging_sum=$(sha256sum "$f" | cut -d' ' -f1)
-    existing_line=$(grep -F -- "$name " <<< "$existing_json" || true)
+    existing_line=$(awk -v n="$name" '$1 == n' <<< "$existing_json")
     if [[ -n "$existing_line" ]]; then
         # GitHub digest is "sha256:<hex>"; extract hex part.
         remote_digest=$(awk '{print $2}' <<< "$existing_line" | sed 's/^sha256://')
@@ -151,7 +151,13 @@ echo "[*] Merging SHA256SUMS..."
 gh release download "$TAG" --repo "$REPO" -p "SHA256SUMS" -D "$tmp" 2>/dev/null \
     || { echo "SHA256SUMS not found in release; aborting (refusing to create from scratch)"; exit 1; }
 cp "$tmp/SHA256SUMS" "$tmp/SHA256SUMS.new"
-while read -r sum name _; do
+# U59: a remote manifest without trailing newline would glue the first
+# appended record onto its last line; terminate it first.
+if [[ -s "$tmp/SHA256SUMS.new" ]]; then
+    last_byte="$(tail -c 1 "$tmp/SHA256SUMS.new" | od -An -tx1 | tr -d ' \n')"
+    [[ "$last_byte" == "0a" ]] || printf '\n' >> "$tmp/SHA256SUMS.new"
+fi
+while read -r sum name _ || [[ -n "$sum" ]]; do
     [[ -n "${sum:-}" && -n "${name:-}" ]] || continue
     [[ "$sum" =~ ^[A-Fa-f0-9]{64}$ ]] || { echo "invalid hash for $name; aborting"; exit 1; }
     existing_sum=$(awk -v n="$name" '$2 == n { print $1; exit }' "$tmp/SHA256SUMS.new" || true)
@@ -169,11 +175,20 @@ while read -r sum name _; do
     fi
 done < "$STAGE/SHA256SUMS.staging"
 
+# U59: validate the merged manifest before upload (a previously glued
+# line, or any malformed remote line, must not be published).
+awk 'NF != 2 || $1 !~ /^[A-Fa-f0-9]{64}$/ || $2 !~ /^[A-Za-z0-9._-]+$/ || seen[$2]++ { exit 1 }' "$tmp/SHA256SUMS.new" || { echo "merged SHA256SUMS failed format validation; aborting"; exit 1; }
 if cmp -s "$tmp/SHA256SUMS" "$tmp/SHA256SUMS.new"; then
     echo "[skip] SHA256SUMS already up to date"
 else
     echo "[upload] SHA256SUMS ($(wc -l < "$tmp/SHA256SUMS.new") lines)"
-    gh release upload "$TAG" "$tmp/SHA256SUMS.new#SHA256SUMS" --repo "$REPO" --clobber
+    # The asset name is the file's basename: upload a file actually
+    # named SHA256SUMS. (With "SHA256SUMS.new#SHA256SUMS" the part
+    # after # is only a display label; the asset would be stored as
+    # SHA256SUMS.new and the real SHA256SUMS would never update.)
+    mkdir -p "$tmp/upload"
+    cp -- "$tmp/SHA256SUMS.new" "$tmp/upload/SHA256SUMS"
+    gh release upload "$TAG" "$tmp/upload/SHA256SUMS" --repo "$REPO" --clobber
 fi
 
 echo "[done] Verify at: https://github.com/$REPO/releases/tag/$TAG"

@@ -15,9 +15,16 @@ gh release download core-binaries --pattern CORE-VERSIONS --dir "$existing"
 test -s "$existing/CORE-VERSIONS"
 # D-1-FIX: Verify CORE-VERSIONS against SHA256SUMS before trusting it for fallback.
 # Without this, a tampered mirror could inject a malicious prev_tag.
+# U56: a mismatch no longer deadlocks re-runs. It means either a previous
+# publish was interrupted (new CORE-VERSIONS, old SHA256SUMS) or the mirror
+# metadata was tampered with. Either way the existing file is untrusted:
+# it must not feed fallback/skip decisions (enforce_cooldown aborts if a
+# fallback would be needed). Fresh latest tags still validate normally,
+# so an interrupted publish self-heals on re-run.
+EXISTING_UNTRUSTED=0
 ( cd "$existing" && sha256sum -c --status --ignore-missing <(grep "CORE-VERSIONS" SHA256SUMS) ) || {
-  echo "::error::CORE-VERSIONS hash mismatch against SHA256SUMS; aborting"
-  exit 1
+  echo "::warning::CORE-VERSIONS hash mismatch against SHA256SUMS; existing mirror metadata will not be trusted for fallback"
+  EXISTING_UNTRUSTED=1
 }
 
 # D-1: 7-day cooldown. A release published < 7 days ago is not yet
@@ -38,8 +45,8 @@ validate_release_tag() {
     and .prerelease == false
     and ((.tag_name // "") | type == "string")
     and ((.tag_name // "") | test($regex))
-  ' "$file" >/dev/null
-  tag="$(jq -er '.tag_name' "$file")"
+  ' "$file" >/dev/null || return 1
+  tag="$(jq -er '.tag_name' "$file")" || return 1
   printf '%s\n' "$tag"
 }
 
@@ -65,6 +72,10 @@ enforce_cooldown() {
       return 0
     fi
   fi
+  if [[ "${EXISTING_UNTRUSTED:-0}" == 1 ]]; then
+    echo "::error::$core_key release $latest_tag is in cooldown but existing mirror metadata is untrusted; refusing to fall back (re-run after cooldown or repair the mirror manually)"
+    return 1
+  fi
   prev_tag="$(awk -F= -v k="$core_key" '$1 == k {sub(/^[^=]*=/, ""); print; exit}' "$existing/CORE-VERSIONS")"
   if [[ -z "$prev_tag" ]] || ! [[ "$prev_tag" =~ $tag_regex ]]; then
     echo "::warning::$core_key release $latest_tag is in cooldown and no valid previous tag exists; skipping $core_key"
@@ -77,18 +88,27 @@ enforce_cooldown() {
   fi
   echo "::warning::$core_key release $latest_tag is only $((age / 86400))d old (<7d); falling back to $prev_tag"
   if ! gh api "repos/$repo/releases/tags/$prev_tag" > "$json_file" 2>/dev/null ||
-     ! jq -e --arg regex "$tag_regex" 'type == "object" and .draft == false and ((.tag_name // "") | test($regex))' "$json_file" >/dev/null 2>&1; then
+     ! jq -e --arg regex "$tag_regex" 'type == "object" and .draft == false and .prerelease == false and ((.tag_name // "") | test($regex))' "$json_file" >/dev/null 2>&1; then
     echo "::warning::$core_key fallback release $prev_tag failed validation; skipping $core_key"
     SKIP_CORES["$core_key"]=1
     return 0
   fi
 }
 
-gh api repos/XTLS/Xray-core/releases/latest > "$root/xray.json"
+if ! gh api repos/XTLS/Xray-core/releases/latest > "$root/xray.json" 2>/dev/null; then
+  echo "::warning::Xray latest API request failed; using existing mirror tag"
+  SKIP_CORES["Xray"]=1
+fi
 enforce_cooldown "XTLS/Xray-core" "$root/xray.json" "Xray" '^v[0-9]+\.[0-9]+\.[0-9]+$'
-gh api repos/SagerNet/sing-box/releases/latest > "$root/sing-box.json"
+if ! gh api repos/SagerNet/sing-box/releases/latest > "$root/sing-box.json" 2>/dev/null; then
+  echo "::warning::sing-box latest API request failed; using existing mirror tag"
+  SKIP_CORES["sing-box"]=1
+fi
 enforce_cooldown "SagerNet/sing-box" "$root/sing-box.json" "sing-box" '^v[0-9]+\.[0-9]+\.[0-9]+$'
-gh api repos/HyNetworks/hysteria/releases/latest > "$root/hysteria.json"
+if ! gh api repos/HyNetworks/hysteria/releases/latest > "$root/hysteria.json" 2>/dev/null; then
+  echo "::warning::Hysteria latest API request failed; using existing mirror tag"
+  SKIP_CORES["Hysteria"]=1
+fi
 enforce_cooldown "HyNetworks/hysteria" "$root/hysteria.json" "Hysteria" '^app/v[0-9]+\.[0-9]+\.[0-9]+$'
 
 # D-1-FIX: For skipped cores, use existing mirror tag (not the too-new release).
@@ -96,19 +116,19 @@ if [[ -n "${SKIP_CORES[Xray]:-}" ]]; then
   xray_tag="$(grep '^Xray=' "$existing/CORE-VERSIONS" | cut -d= -f2)"
   echo "::notice::Using existing mirror Xray tag: $xray_tag (latest skipped)"
 else
-  xray_tag="$(validate_release_tag "$root/xray.json" '^v[0-9]+\.[0-9]+\.[0-9]+$')"
+  xray_tag="$(validate_release_tag "$root/xray.json" '^v[0-9]+\.[0-9]+\.[0-9]+$')" || { echo "::error::Xray release tag validation failed"; exit 1; }
 fi
 if [[ -n "${SKIP_CORES[sing-box]:-}" ]]; then
   singbox_tag="$(grep '^sing-box=' "$existing/CORE-VERSIONS" | cut -d= -f2)"
   echo "::notice::Using existing mirror sing-box tag: $singbox_tag (latest skipped)"
 else
-  singbox_tag="$(validate_release_tag "$root/sing-box.json" '^v[0-9]+\.[0-9]+\.[0-9]+$')"
+  singbox_tag="$(validate_release_tag "$root/sing-box.json" '^v[0-9]+\.[0-9]+\.[0-9]+$')" || { echo "::error::sing-box release tag validation failed"; exit 1; }
 fi
 if [[ -n "${SKIP_CORES[Hysteria]:-}" ]]; then
   hysteria_tag="$(grep '^Hysteria=' "$existing/CORE-VERSIONS" | cut -d= -f2)"
   echo "::notice::Using existing mirror Hysteria tag: $hysteria_tag (latest skipped)"
 else
-  hysteria_tag="$(validate_release_tag "$root/hysteria.json" '^app/v[0-9]+\.[0-9]+\.[0-9]+$')"
+  hysteria_tag="$(validate_release_tag "$root/hysteria.json" '^app/v[0-9]+\.[0-9]+\.[0-9]+$')" || { echo "::error::Hysteria release tag validation failed"; exit 1; }
 fi
 
 # Pinned utilities (cloudflared for Argo, wgcf for WARP): versions are NOT
@@ -140,10 +160,16 @@ download_verified_asset() {
   ' "$release_file")"
   url="$(jq -er '.browser_download_url | select(type == "string" and length > 0)' <<< "$asset_json")"
   digest="$(jq -er '.digest | select(type == "string")' <<< "$asset_json")"
-  [[ "$url" == "https://github.com/$repo/releases/download/$tag/$upstream_name" ]] || {
+  # GitHub may return the tag slash percent-encoded (app%2Fv... for
+  # Hysteria) or raw (app/v...). Accept exactly those two full-equality
+  # forms; anything else (wrong host/repo/tag/asset, prefix, extra
+  # segments) still fails. No substring/prefix matching.
+  url_slash_decoded="${url//%2F//}"
+  url_slash_decoded="${url_slash_decoded//%2f//}"
+  if [[ "$url" != "https://github.com/$repo/releases/download/$tag/$upstream_name" && "$url_slash_decoded" != "https://github.com/$repo/releases/download/$tag/$upstream_name" ]]; then
     echo "::error::Unexpected official asset URL for $repo:$tag/$upstream_name"
     return 1
-  }
+  fi
   [[ "$digest" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || {
     echo "::error::Official asset lacks a valid SHA-256 digest: $repo:$tag/$upstream_name"
     return 1
@@ -322,17 +348,32 @@ xray_amd64_name="Xray-$xray_tag-linux-64.zip"
 xray_arm64_name="Xray-$xray_tag-linux-arm64-v8a.zip"
 singbox_version="${singbox_tag#v}"
 # B-13: constructed names for skipped cores must exist in the manifest (fail-closed).
-for _b13_name in "$xray_amd64_name" "$xray_arm64_name" \
-    "sing-box-$singbox_version-linux-amd64-glibc.tar.gz" "sing-box-$singbox_version-linux-amd64-musl.tar.gz" \
-    "sing-box-$singbox_version-linux-arm64-glibc.tar.gz" "sing-box-$singbox_version-linux-arm64-musl.tar.gz" \
-    "hysteria-$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')-linux-amd64" \
-    "hysteria-$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')-linux-arm64"; do
-  grep -q "  $_b13_name$" "$existing/SHA256SUMS" || {
-    echo "::error::B-13: constructed asset name not in SHA256SUMS manifest: $_b13_name"
-    exit 1
-  }
-done
-unset _b13_name
+# Only skipped cores are checked: their names are built from the
+# existing mirror tag, so they must already be in the manifest. A
+# non-skipped core's names carry the NEW upstream tag by definition
+# and only enter the manifest through this run's downloads — checking
+# them against the old manifest would fail every legitimate update.
+declare -a _b13_names=()
+if [[ -n "${SKIP_CORES[Xray]:-}" ]]; then
+  _b13_names+=("$xray_amd64_name" "$xray_arm64_name")
+fi
+if [[ -n "${SKIP_CORES[sing-box]:-}" ]]; then
+  _b13_names+=("sing-box-$singbox_version-linux-amd64-glibc.tar.gz" "sing-box-$singbox_version-linux-amd64-musl.tar.gz" \
+    "sing-box-$singbox_version-linux-arm64-glibc.tar.gz" "sing-box-$singbox_version-linux-arm64-musl.tar.gz")
+fi
+if [[ -n "${SKIP_CORES[Hysteria]:-}" ]]; then
+  _b13_names+=("hysteria-$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')-linux-amd64" \
+    "hysteria-$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')-linux-arm64")
+fi
+if (( ${#_b13_names[@]} > 0 )); then
+  for _b13_name in "${_b13_names[@]}"; do
+    grep -q "  $_b13_name$" "$existing/SHA256SUMS" || {
+      echo "::error::B-13: constructed asset name not in SHA256SUMS manifest: $_b13_name"
+      exit 1
+    }
+  done
+fi
+unset _b13_name _b13_names
 hysteria_leaf="$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')"
 
 # D-1-FIX: Skip downloads for skipped cores (assets already in mirror).
@@ -481,8 +522,26 @@ for path in "${upload_paths[@]}"; do
 done
 # Publish metadata first and the manifest last. Until the new manifest is
 # visible, clients reject the new metadata and continue to fail closed.
-gh release upload core-binaries "$out/CORE-VERSIONS" --clobber
-gh release upload core-binaries "$out/SHA256SUMS" --clobber
+# U56: if either metadata upload fails, roll the pair back to the previous
+# files so the release never sits in new-metadata/old-manifest state; the
+# next run then re-enters the repair path instead of deadlocking.
+if ! gh release upload core-binaries "$out/CORE-VERSIONS" --clobber ||
+   ! gh release upload core-binaries "$out/SHA256SUMS" --clobber; then
+  echo "::error::metadata publish failed; rolling back to previous CORE-VERSIONS/SHA256SUMS"
+  gh release upload core-binaries "$existing/CORE-VERSIONS" --clobber || true
+  gh release upload core-binaries "$existing/SHA256SUMS" --clobber || true
+  exit 1
+fi
+# U56: re-verify the published pair; a mismatch here is loud, and the next
+# run recovers through the repair path above instead of deadlocking.
+verify_dir="$(mktemp -d)"
+gh release download core-binaries --pattern CORE-VERSIONS --pattern SHA256SUMS --dir "$verify_dir" 2>/dev/null
+( cd "$verify_dir" && sha256sum -c --status --ignore-missing <(grep "CORE-VERSIONS" SHA256SUMS) ) || {
+  echo "::error::post-publish verification failed: published CORE-VERSIONS does not match published SHA256SUMS"
+  rm -rf -- "$verify_dir"
+  exit 1
+}
+rm -rf -- "$verify_dir"
 
 echo "Published latest official stable mirror versions:"
 printf '  Xray: %s\n  sing-box: %s\n  Hysteria: %s\n  cloudflared: %s\n  wgcf: %s\n' "$xray_tag" "$singbox_tag" "$hysteria_tag" "$CLOUDFLARED_VERSION" "$WGCF_VERSION"

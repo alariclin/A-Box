@@ -101,11 +101,12 @@ jobs:
           # Create fixture files mimicking a valid artifact.
           printf 'fixture-binary-content' > "$work/verified/Xray-test.zip"
           printf 'fixture-versions' > "$work/verified/CORE-VERSIONS"
+          printf 'fixture-manifest' > "$work/verified/SHA256SUMS"
           (cd "$work/verified" && sha256sum Xray-test.zip CORE-VERSIONS > SHA256SUMS.incoming)
           # Replicate publish job checks: sha256sum -c + exact set equality.
           (cd "$work/verified" && sha256sum -c SHA256SUMS.incoming) || { echo "FAIL: fixture checksum verification"; exit 1; }
           # Set equality: actual files must equal manifest-listed + control files.
-          expected="$(printf 'CORE-VERSIONS\nSHA256SUMS.incoming\nXray-test.zip\n' | sort)"
+          expected="$(printf 'CORE-VERSIONS\nSHA256SUMS\nSHA256SUMS.incoming\nXray-test.zip\n' | sort)"
           actual="$(cd "$work/verified" && find . -maxdepth 1 -mindepth 1 -printf '%f\n' | sort)"
           [[ "$actual" == "$expected" ]] || { echo "FAIL: set mismatch"; echo "actual: $actual"; echo "expected: $expected"; exit 1; }
           # Negative test: extra file must be rejected.
@@ -248,8 +249,10 @@ jobs:
             local expected_digest actual
             # N-1-FIX: Use --arg to avoid jq program injection via $upstream (filename).
             # $name below is a jq variable (via --arg), not shell expansion.
+            # --arg belongs to jq, not to gh api (gh rejects it as an
+            # unknown flag), so fetch the JSON first and pipe it to jq.
             # shellcheck disable=SC2016
-            expected_digest="$(gh api "repos/$repo/releases/tags/$tag" --jq '.assets[] | select(.name == $name) | .digest' --arg name "$upstream")"
+            expected_digest="$(gh api "repos/$repo/releases/tags/$tag" | jq -r --arg name "$upstream" '.assets[] | select(.name == $name) | .digest')"
             [[ "$expected_digest" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || {
               echo "ERROR: upstream has no valid digest for $repo:$tag/$upstream"
               return 1
@@ -307,7 +310,7 @@ jobs:
           }
           release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/core-binaries")"
           cv_actual="$(sha256sum verified/CORE-VERSIONS | awk '{print $1}')"
-          while read -r sum name extra; do
+          while read -r sum name extra || [[ -n "$sum" ]]; do
             [[ -n "${sum:-}" ]] || continue
             [[ -z "${extra:-}" && "$sum" =~ ^[A-Fa-f0-9]{64}$ && "$name" =~ ^[A-Za-z0-9._-]+$ ]] || {
               echo "ERROR: malformed SHA256SUMS line: $sum $name $extra"
@@ -333,6 +336,22 @@ jobs:
             fi
           done < verified/SHA256SUMS
           echo "SHA256SUMS manifest verified (CORE-VERSIONS + incoming + historical)."
+          # U61: reverse coverage — every verified binary must appear exactly
+          # once in the full SHA256SUMS with a matching digest, or a binary
+          # dropped from the manifest during merge would still be uploaded
+          # and published without a manifest record.
+          echo "Reverse coverage check: every verified binary must be listed in SHA256SUMS."
+          for f in verified/*; do
+            [[ -f "$f" ]] || continue
+            name=$(basename "$f")
+            case "$name" in SHA256SUMS|SHA256SUMS.incoming|CORE-VERSIONS|CORE-VERSIONS.sig|SHA256SUMS.sig) continue ;; esac
+            case "$name" in Xray-*.zip|sing-box-*.tar.gz|hysteria-*|cloudflared-*|wgcf_*) ;; *) continue ;; esac
+            rec_count=$(awk -v n="$name" '$2 == n' verified/SHA256SUMS | wc -l)
+            [[ "$rec_count" -eq 1 ]] || { echo "ERROR: $name has $rec_count records in SHA256SUMS (expected exactly 1); aborting"; exit 1; }
+            rec_sum=$(awk -v n="$name" '$2 == n {print $1}' verified/SHA256SUMS)
+            f_actual=$(sha256sum "verified/$name" | awk '{print $1}')
+            [[ "${rec_sum,,}" == "${f_actual,,}" ]] || { echo "ERROR: SHA256SUMS digest mismatch for $name"; exit 1; }
+          done
           # Upload order is binaries -> CORE-VERSIONS -> SHA256SUMS (full) last.
           # SHA256SUMS.incoming is verification-only and is NOT uploaded.
           for f in verified/*; do

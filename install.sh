@@ -26068,13 +26068,23 @@ restore_dns_snapshot() {
 # servers must match, and the generated resolv.conf must carry the new
 # nameserver unless a local plugin (127.0.0.1/127.0.0.53) fronts it.
 # $4 (test-only): resolv.conf path; default /etc/resolv.conf.
+# Normalize a DNS list to a sorted-unique token set (one per line):
+# separators are comma, space, tab and newline; empty tokens dropped.
+_nm_dns_norm_set() {
+    local _raw="$1" _norm='' _tok=''
+    local -a _toks=()
+    _norm="${_raw//$'\n'/ }"
+    IFS=$', \t' read -ra _toks <<< "$_norm" || true
+    for _tok in "${_toks[@]}"; do [[ -n "$_tok" ]] && printf '%s\n' "$_tok"; done | sort -u
+}
+
 nm_dns_verify_applied() {
     local connection="$1" v4="$2" v6="${3:-}" rc="${4:-/etc/resolv.conf}" v=''
     v=$(nmcli -g ipv4.dns connection show "$connection" 2>/dev/null || true)
-    [[ "$v" == "$v4" ]] || return 1
+    [[ "$(_nm_dns_norm_set "$v")" == "$(_nm_dns_norm_set "$v4")" ]] || return 1
     if [[ -n "$v6" ]]; then
         v=$(nmcli -g ipv6.dns connection show "$connection" 2>/dev/null || true)
-        [[ "$v" == "$v6" ]] || return 1
+        [[ "$(_nm_dns_norm_set "$v")" == "$(_nm_dns_norm_set "$v6")" ]] || return 1
     fi
     if grep -qE '^nameserver[[:space:]]+(127\.0\.0\.1|127\.0\.0\.53)([[:space:]]|$)' "$rc" 2>/dev/null; then return 0; fi
     local -a _nm_toks=()

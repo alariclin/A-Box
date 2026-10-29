@@ -18650,6 +18650,14 @@ argo_uninstall() {
     argo_remove_unit argo
     argo_remove_unit argo-vmess
     argo_remove_unit argo-vless
+    # Strict stop check: a unit that refused to stop must not
+    # be papered over by deleting its state, token and link.
+    # State is kept so the uninstall can be retried or the
+    # leftover unit inspected; success is not reported.
+    if argo_unit_active argo || argo_unit_active argo-vmess || argo_unit_active argo-vless; then
+        msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
+        return 1
+    fi
     rm -f "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/standalone-links.d/argo.link
     # /usr/local/bin/cloudflared is shared with the Wallos CF tunnel;
     # remove it only when that tunnel is not installed.

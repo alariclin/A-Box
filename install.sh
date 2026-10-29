@@ -32184,7 +32184,7 @@ wallos_upgrade_journal_write() {
     local phase="$1" old_image="$2" old_port="$3" old_tz="$4" old_bind="$5" backup="$6" was_running="$7"
     local journal="$WALLOS_DIR/.upgrade-transaction"
     [[ "$phase" == active || "$phase" == committed ]] || return 1
-    [[ "$old_image" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ ]] || return 1
+    [[ "$old_image" =~ ^((docker\.io/)?bellamy/wallos:[A-Za-z0-9._-]+|(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}|sha256:[A-Fa-f0-9]{64})$ ]] || return 1
     valid_canonical_port "$old_port" || return 1
     valid_timezone_name "$old_tz" || return 1
     # F-08: accept any valid IP for rollback (was loopback/wildcard only, forcing coercion).
@@ -32247,7 +32247,7 @@ wallos_recover_interrupted_upgrade() {
         msg "${YELLOW}$(tr_msg wl_rc_cleanup_done)${NC}"
         return 0
     fi
-    [[ "$old_image" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ ]] || return 1
+    [[ "$old_image" =~ ^((docker\.io/)?bellamy/wallos:[A-Za-z0-9._-]+|(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}|sha256:[A-Fa-f0-9]{64})$ ]] || return 1
     valid_canonical_port "$old_port" || return 1
     valid_timezone_name "$old_tz" || return 1
     # F-08: accept any valid IP for rollback (was loopback/wildcard only).
@@ -32262,6 +32262,11 @@ wallos_recover_interrupted_upgrade() {
             msg "${RED}$(tr_msg wl_rc_rm_fail)${NC}"
             return 1
         }
+    fi
+    # S134: a digest-ref old image is fetchable by digest directly,
+    # without a version-list lookup (which only resolves tags).
+    if [[ "$old_image" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]] && ! docker image inspect "$old_image" >/dev/null 2>&1; then
+        docker pull "$old_image" >/dev/null 2>&1 || { msg "${RED}$(tprintf wl_rc_no_image "$old_image")${NC}"; return 1; }
     fi
     if ! docker image inspect "$old_image" >/dev/null 2>&1; then
         # N-11: old image not present locally. Try fetching the exact previous
@@ -33008,7 +33013,7 @@ wallos_install_or_update() {
         if [[ -z "${WALLOS_BIND_ADDRESS:-}" && -n "$old_bind" ]]; then
             bind_address="$old_bind"
         fi
-        [[ -n "$old_image" && "$old_image" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ && "$old_port" =~ ^[0-9]+$ ]] || {
+        [[ -n "$old_image" && "$old_image" =~ ^((docker\.io/)?bellamy/wallos:[A-Za-z0-9._-]+|(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}|sha256:[A-Fa-f0-9]{64})$ && "$old_port" =~ ^[0-9]+$ ]] || {
             msg "${RED}$(tr_msg wl_iu_state_incomplete)${NC}"; return 1;
         }
         port="$old_port"

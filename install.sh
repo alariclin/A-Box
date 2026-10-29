@@ -31371,6 +31371,12 @@ wallos_candidate_version_allowed() {
     docker container inspect wallos >/dev/null 2>&1 || return 0
     installed_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
     installed_version="${installed_image##*:}"
+    # U115: containers created by digest have no parseable version in
+    # Config.Image; fall back to the recorded state VERSION, as the
+    # rollback path already does.
+    if [[ ! "$installed_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        installed_version=$(wallos_state_value VERSION 2>/dev/null || true)
+    fi
     [[ "$installed_version" == "$candidate" ]] && return 0
     if [[ "$installed_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         wallos_version_is_older "$candidate" "$installed_version"

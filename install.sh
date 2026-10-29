@@ -17186,15 +17186,15 @@ deploy_singbox_socks5_landing() {
     light_preflight_check
 
     port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080') || die 'SOCKS5 port input failed.'
-    read -r -p "$(tr_msg socks5_user_prompt)" user || user=''
+    read -r -p "$(tr_msg socks5_user_prompt)" user || die "$(tr_msg pi_input_closed)"
     user="${user:-main}"
-    read -r -p "$(tr_msg socks5_pass_prompt)" pass || pass=''
+    read -r -p "$(tr_msg socks5_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'SOCKS5 password generation failed.'
         [[ -n "$pass" ]] || die 'SOCKS5 password generation failed.'
     fi
     local _proto_choice=''
-    read -r -p "$(tr_msg socks5_proto_prompt)" _proto_choice || _proto_choice=''
+    read -r -p "$(tr_msg socks5_proto_prompt)" _proto_choice || die "$(tr_msg pi_input_closed)"
     case "$_proto_choice" in
         2) proto='socks' ;;
         *) proto='mixed' ;;
@@ -20261,9 +20261,9 @@ deploy_socks5_landing() {
     light_preflight_check
 
     port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080') || die 'SOCKS5 port input failed.'
-    read -r -p "$(tr_msg socks5_user_prompt)" user || user=''
+    read -r -p "$(tr_msg socks5_user_prompt)" user || die "$(tr_msg pi_input_closed)"
     user="${user:-main}"
-    read -r -p "$(tr_msg socks5_pass_prompt)" pass || pass=''
+    read -r -p "$(tr_msg socks5_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'SOCKS5 password generation failed.'
         [[ -n "$pass" ]] || die 'SOCKS5 password generation failed.'

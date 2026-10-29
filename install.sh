@@ -39316,7 +39316,11 @@ PY_F05_TPUB
                             echo 'FAIL: F-05 verify accepted without Ed25519 support'; failures=$((failures + 1))
                         fi
                         # DS-Q4: OpenSSL无Ed25519时改为警告继续（CentOS 7兼容），不再fail-closed
-                        if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>/dev/null; then
+                        # S170: warn-and-continue means the LOUD warning
+                        # must actually be emitted, not just rc 0.
+                        if _f05_gate_err=$(ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>&1 >/dev/null); then
+                            grep -q 'WARNING: OpenSSL lacks Ed25519' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 gate warn-and-continue emitted no Ed25519 WARNING'; failures=$((failures + 1)); }
+                        else
                             echo 'FAIL: F-05 gate should warn-and-continue without Ed25519 support'; failures=$((failures + 1))
                         fi
                     fi
@@ -39343,7 +39347,11 @@ PY_F05_TPUB
                             echo 'FAIL: F-05 gate did not fail-closed on missing sig'; failures=$((failures + 1))
                         fi
                     else
-                        if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then
+                        # S170: warn-and-continue means the LOUD warning
+                        # must actually be emitted, not just rc 0.
+                        if _f05_gate_err=$(ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>&1 >/dev/null); then
+                            grep -q 'WARNING: OpenSSL lacks Ed25519' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 gate warn-and-continue emitted no Ed25519 WARNING'; failures=$((failures + 1)); }
+                        else
                             echo 'FAIL: F-05 gate should warn-and-continue without Ed25519 support'; failures=$((failures + 1))
                         fi
                     fi

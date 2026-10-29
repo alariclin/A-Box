@@ -24328,7 +24328,7 @@ users_link_combo() {
 # Export every enabled user's link (all registries) in the subscription
 # file formats the legacy exporter produced.
 users_export_all() {
-    local dir='' out='' count=0 reg='' core='' tag=''
+    local dir='' out='' count=0 reg='' core='' tag='' failed=0
     dir="${SUBSCRIBE_DIR:-/etc/ddr/subscribe}"
     mkdir -p "$dir" 2>/dev/null || return 1
     chmod 700 "$dir" 2>/dev/null || true
@@ -24336,16 +24336,19 @@ users_export_all() {
     tmp=$(umask 077; mktemp "$dir/.uri-list.XXXXXX") || return 1
     for reg in "${ABOX_USERS_DIR:-$USERS_DIR}"/*.json; do
         [[ -f "$reg" ]] || continue
-        core=$(jq -r '.core // ""' "$reg" 2>/dev/null); tag=$(jq -r '.tag // ""' "$reg" 2>/dev/null)
-        [[ -n "$core" && -n "$tag" ]] || continue
-        local uname='' link=''
+        core=$(jq -r '.core // ""' "$reg" 2>/dev/null) || failed=1
+        tag=$(jq -r '.tag // ""' "$reg" 2>/dev/null) || failed=1
+        [[ -n "$core" && -n "$tag" ]] || { failed=1; continue; }
+        local uname='' link='' ulist=''
+        ulist=$(jq -r '.users[] | select(.disabled != true and ((.blocked // "") == "")) | .name' "$reg" 2>/dev/null) || failed=1
         while IFS= read -r uname; do
             [[ -n "$uname" ]] || continue
-            link=$(users_link "$core" "$tag" "$uname" 2>/dev/null || true)
-            [[ -n "$link" ]] || continue
-            printf '%s\n' "$link" >> "$tmp" && count=$((count + 1))
-        done < <(jq -r '.users[] | select(.disabled != true and ((.blocked // "") == "")) | .name' "$reg" 2>/dev/null)
+            link=$(users_link "$core" "$tag" "$uname" 2>/dev/null) || { failed=1; continue; }
+            [[ -n "$link" ]] || { failed=1; continue; }
+            printf '%s\n' "$link" >> "$tmp" && count=$((count + 1)) || failed=1
+        done <<< "$ulist"
     done
+    if (( failed == 1 )); then rm -f -- "$tmp"; return 1; fi
     if (( count == 0 )); then
         # No enabled users: stale links must not keep serving. Atomically
         # replace both files with empty content (the old code left the
@@ -24363,14 +24366,32 @@ users_export_all() {
         printf '%s' '0'
         return 0
     fi
-    install_file_atomically "$tmp" "$dir/uri-list.txt" 600 || { rm -f -- "$tmp"; return 1; }
+    local old_list_bak='' old_existed=0
+    [[ -f "$dir/uri-list.txt" ]] && old_existed=1
+    old_list_bak=$(umask 077; mktemp "$dir/.uri-list-bak.XXXXXX") || { rm -f -- "$tmp"; return 1; }
+    if (( old_existed == 1 )); then
+        cp -f -- "$dir/uri-list.txt" "$old_list_bak" || { rm -f -- "$tmp" "$old_list_bak"; return 1; }
+    fi
+    install_file_atomically "$tmp" "$dir/uri-list.txt" 600 || { rm -f -- "$tmp" "$old_list_bak"; return 1; }
     rm -f -- "$tmp"
-    if ! command -v base64 >/dev/null 2>&1; then return 1; fi
-    local btmp=''
-    btmp=$(umask 077; mktemp "$dir/.sub-b64.XXXXXX") || return 1
-    if ! ( base64 -w0 < "$dir/uri-list.txt" > "$btmp" 2>/dev/null || base64 < "$dir/uri-list.txt" | tr -d '\n' > "$btmp" 2>/dev/null ) || [[ ! -s "$btmp" ]]; then rm -f -- "$btmp"; return 1; fi
-    install_file_atomically "$btmp" "$dir/subscription.base64" 600 || { rm -f -- "$btmp"; return 1; }
-    rm -f -- "$btmp"
+    local btmp='' b64_ok=0
+    if command -v base64 >/dev/null 2>&1; then
+        btmp=$(umask 077; mktemp "$dir/.sub-b64.XXXXXX") 2>/dev/null
+        if [[ -n "$btmp" ]] && ( base64 -w0 < "$dir/uri-list.txt" > "$btmp" 2>/dev/null || base64 < "$dir/uri-list.txt" | tr -d '\n' > "$btmp" 2>/dev/null ) && [[ -s "$btmp" ]] && install_file_atomically "$btmp" "$dir/subscription.base64" 600; then
+            b64_ok=1
+        fi
+        rm -f -- "$btmp"
+    fi
+    if (( b64_ok == 0 )); then
+        if (( old_existed == 1 )); then
+            install_file_atomically "$old_list_bak" "$dir/uri-list.txt" 600 || rm -f -- "$dir/uri-list.txt"
+        else
+            rm -f -- "$dir/uri-list.txt" "$dir/subscription.base64"
+        fi
+        rm -f -- "$old_list_bak"
+        return 1
+    fi
+    rm -f -- "$old_list_bak"
     printf '%s' "$count"
     return 0
 }

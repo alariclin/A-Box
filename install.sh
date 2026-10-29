@@ -12121,11 +12121,17 @@ allowPort() {
             if [[ "$permanent" == 0 ]]; then
                 if ! firewalld_cmd --permanent --add-port="${fw_spec}/${type}" >/dev/null 2>&1; then
                     [[ "$added_runtime" == 1 ]] && firewalld_cmd --remove-port="${fw_spec}/${type}" >/dev/null 2>&1 || true
+                    # S48 (argon P2-4): forget the runtime record too, or
+                    # the state file claims a rule that no longer exists.
+                    [[ "$added_runtime" == 1 ]] && forget_native_firewall_rule "$spec" "$type" firewalld >/dev/null 2>&1 || true
                     die "$(tprintf fw2_fwd_perm_add "${fw_spec}/${type}")"
                 fi
                 if ! record_native_firewall_rule firewalld "$spec" "$type" permanent; then
                     firewalld_cmd --permanent --remove-port="${fw_spec}/${type}" >/dev/null 2>&1 || true
                     [[ "$added_runtime" == 1 ]] && firewalld_cmd --remove-port="${fw_spec}/${type}" >/dev/null 2>&1 || true
+                    # S48 (argon P2-4): forget the runtime record too, or
+                    # the state file claims a rule that no longer exists.
+                    [[ "$added_runtime" == 1 ]] && forget_native_firewall_rule "$spec" "$type" firewalld >/dev/null 2>&1 || true
                     die "$(tr_msg fw2_fwd_perm_record)"
                 fi
             fi

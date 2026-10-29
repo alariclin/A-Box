@@ -33302,16 +33302,6 @@ wallos_install_or_update() {
         return 1
     fi
     if (( running == 1 )); then
-        if ! wallos_upgrade_journal_write committed "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id"; then
-            msg "${RED}$(tr_msg wl_iu_health_meta_fail)${NC}"
-            docker rm -f wallos >/dev/null 2>&1 || true
-            wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
-            return 1
-        fi
-        rm -f -- "$WALLOS_DIR/.upgrade-transaction" || {
-            msg "${YELLOW}$(tr_msg wl_iu_journal_pending)${NC}"
-            return 1
-        }
         # N-11: prune local images to current + previous (2 max, 500MB cap).
         # P2-3: skip old_image when same as image to avoid deleting N-1 rollback.
         if [[ "$image" != "$old_image" ]]; then
@@ -33386,6 +33376,25 @@ wallos_install_or_update() {
             *) msg "${RED}$(tr_msg wl_health_fail)${NC}" ;;
         esac
         return 1
+    fi
+    # S143: the upgrade journal is the rollback material. It must not be
+    # committed (phase=committed, which recover treats as "already done"
+    # and only deletes) or deleted before the post-deployment checks
+    # (HTTPS setup, tunnel setup, database health) have passed: a
+    # post-check failure after deletion left a half-deployed state with
+    # no journal to recover from. Commit and delete it only now, after
+    # all checks passed.
+    if (( running == 1 )); then
+        if ! wallos_upgrade_journal_write committed "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id"; then
+            msg "${RED}$(tr_msg wl_iu_health_meta_fail)${NC}"
+            docker rm -f wallos >/dev/null 2>&1 || true
+            wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+            return 1
+        fi
+        rm -f -- "$WALLOS_DIR/.upgrade-transaction" || {
+            msg "${YELLOW}$(tr_msg wl_iu_journal_pending)${NC}"
+            return 1
+        }
     fi
     wallos_php_gate_warn || true
     wallos_public_urls "$port"

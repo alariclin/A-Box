@@ -24939,13 +24939,15 @@ _nsni_apply() {
         sed -i -e "s|\([?&]sni=\)${_esc_old}\([&#]\)|\1${_esc_new}\2|g" -e "s|\([?&]sni=\)${_esc_old}\$|\1${_esc_new}|g" "$_ldir/$_lf" 2>/dev/null || true
         _shown=$(cat "$_ldir/$_lf" 2>/dev/null)
     fi
-    local _envf="${ABOX_ENV:-/etc/ddr/.env}" _vars='' _etmp='' _ebak=''
-    if [[ -f "$_envf" && ! -L "$_envf" ]]; then
-        _vars=$(grep -oE '^[A-Z0-9_]*SNI[A-Z0-9_]*' "$_envf" 2>/dev/null | sort -u | tr '\n' ' ')
+    local _envf="${ABOX_ENV:-/etc/ddr/.env}" _envvar='' _etmp='' _ebak=''
+    case "$tag" in
+        vision) _envvar='VISION_SNI' ;;
+        xhttp) _envvar='XHTTP_SNI' ;;
+    esac
+    if [[ -n "$_envvar" && -f "$_envf" && ! -L "$_envf" ]]; then
         _etmp=$(mktemp /tmp/A-Box-nsni-env.XXXXXX 2>/dev/null || true)
-        if [[ -n "$_vars" && -n "$_etmp" ]]; then
-            if awk -v vars="$_vars" -v o="$old" -v n="$new" 'BEGIN { m = split(vars, a, " "); for (i = 1; i <= m; i++) ok[a[i]] = 1 }
-                { v = $0; sub(/=.*/, "", v); if ((v in ok) && (substr($0, length(v) + 2) == o)) $0 = v "=" n; print }' "$_envf" > "$_etmp" 2>/dev/null; then
+        if [[ -n "$_etmp" ]]; then
+            if awk -v var="$_envvar" -v o="$old" -v n="$new" '{ v = $0; sub(/=.*/, "", v); if (v == var) { val = substr($0, length(v) + 2); q = ""; if (substr(val, 1, 1) == "\"" && substr(val, length(val), 1) == "\"") { q = "\""; val = substr(val, 2, length(val) - 2); } if (val == o) $0 = v "=" q n q; } print }' "$_envf" > "$_etmp" 2>/dev/null; then
                 _ebak=$(mktemp /tmp/A-Box-nsni-envbak.XXXXXX 2>/dev/null || true)
                 if [[ -n "$_ebak" ]] && cp -a "$_envf" "$_ebak" 2>/dev/null; then
                     if cat "$_etmp" > "$_envf" 2>/dev/null; then

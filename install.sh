@@ -13285,6 +13285,11 @@ verify_github_asset_digest() {
 # .sig files are base64 text of the raw 64-byte Ed25519 signature.
 # F8: probe OpenSSL Ed25519/rawin capability. Ed25519 needs OpenSSL 1.1.1+;
 # -rawin for pkeyutl needs 1.1.1+. Cache the result.
+# Contract (S41): a cached "unsupported" verdict (OK=1) is the DS-Q4
+# exemption signal -- the gate warns and continues even under ENFORCE
+# on platforms that fundamentally cannot verify (CentOS 7). Only a
+# definitive algorithm-unsupported error may set it; anything else is
+# PROBE_FAILED (gate FATAL under ENFORCE, retryable).
 _openssl_has_ed25519() {
     if [[ -n "${_OPENSSL_ED25519_OK:-}" ]]; then
         _OPENSSL_ED25519_PROBE_FAILED=0
@@ -13299,8 +13304,18 @@ _openssl_has_ed25519() {
     printf 'test' > "$_t/in.bin" 2>/dev/null || { _OPENSSL_ED25519_PROBE_FAILED=1; rm -rf -- "$_t"; return 1; }
     _err="$_t/err"
     if ! openssl genpkey -algorithm ed25519 -out "$_t/priv.pem" 2>"$_err"; then
-        # Only cache when the error definitively indicates unsupported algorithm.
-        if grep -qiE 'unknown[ _]algorithm|not found|unsupported|no such' "$_err" 2>/dev/null; then
+        # S41 (GPT-9 + argon P1-2): cache "unsupported" ONLY on
+        # algorithm-specific signals. The cached verdict is what the gate
+        # treats as the DS-Q4 exemption (CentOS 7 / OpenSSL 1.0.2, warn
+        # and continue even under ENFORCE), so a bare "not found" /
+        # "no such" must never reach it: "command not found" (openssl
+        # binary missing), a missing shared object, or a missing
+        # OPENSSL_CONF file are infrastructure failures, not platform
+        # capability answers. They set PROBE_FAILED, so the gate fails
+        # closed (FATAL under ENFORCE, retryable) instead of silently
+        # exempting. A genuine-but-unlisted message likewise fails
+        # closed via PROBE_FAILED; that is the safe direction.
+        if grep -qiE 'unknown[ _]algorithm|no such algorithm|unsupported algorithm|algorithm.*not found' "$_err" 2>/dev/null; then
             _OPENSSL_ED25519_OK=1
         else
             _OPENSSL_ED25519_PROBE_FAILED=1

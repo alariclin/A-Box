@@ -13551,10 +13551,21 @@ def _capable(cand):
     try:
         cand.OBJ_sn2nid.restype = ctypes.c_int
         cand.OBJ_sn2nid.argtypes = [ctypes.c_char_p]
-        if cand.OBJ_sn2nid(b'ED25519') == 0:
+        _nid = cand.OBJ_sn2nid(b'ED25519')
+        if _nid == 0:
             return False
         for _sym in ('EVP_MD_CTX_new', 'EVP_MD_CTX_free', 'EVP_PKEY_new_raw_public_key', 'EVP_PKEY_free', 'EVP_DigestVerifyInit', 'EVP_DigestVerify'):
             getattr(cand, _sym)
+        # Trial operation: a symbol-complete but algorithm-incapable lib
+        # (no-ec build, missing provider) answers the NID query yet cannot
+        # create an Ed25519 key. Only a working method passes this.
+        cand.EVP_PKEY_new_raw_public_key.restype = ctypes.c_void_p
+        cand.EVP_PKEY_new_raw_public_key.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
+        cand.EVP_PKEY_free.argtypes = [ctypes.c_void_p]
+        _trial = cand.EVP_PKEY_new_raw_public_key(_nid, None, bytes(32), 32)
+        if not _trial:
+            return False
+        cand.EVP_PKEY_free(_trial)
         return True
     except Exception:
         return False

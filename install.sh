@@ -13422,13 +13422,23 @@ open(sys.argv[2], 'w').write(pem)
 # or already-compact YYYYMMDDHHMMSS) must not be older than
 # ABOX_SIGNING_MIN_TIMESTAMP_UTC. Returns 0 iff acceptable.
 abox_signing_timestamp_ok() {
-    local ts compact min_ts
+    local ts compact min_ts min_compact
     ts="${1:-}"
     # Normalize: strip everything except digits.
     compact=$(printf '%s' "$ts" | tr -cd '0-9')
     [[ "$compact" =~ ^[0-9]{14}$ ]] || return 1
+    # S46 (argon P1-6a): normalize the floor the same way. A raw floor
+    # must never reach the lexicographic comparison: an ISO floor such
+    # as 2026-10-15T00:00:00Z compares SMALLER than any same-year stamp
+    # (character 5: '-'=45 < '0'=48), letting an earlier stamp slip past
+    # the anti-replay floor. The :-0 default stays its own valid case
+    # ("0" = no floor); any other non-14-digit normalized floor fails
+    # closed (including fractional-second ISO floors, which strip to
+    # more than 14 digits).
     min_ts="${ABOX_SIGNING_MIN_TIMESTAMP_UTC:-0}"
-    [[ "$compact" > "$min_ts" || "$compact" == "$min_ts" ]] || return 1
+    min_compact=$(printf '%s' "$min_ts" | tr -cd '0-9')
+    [[ "$min_compact" == "0" || "$min_compact" =~ ^[0-9]{14}$ ]] || return 1
+    [[ "$compact" > "$min_compact" || "$compact" == "$min_compact" ]] || return 1
     return 0
 }
 

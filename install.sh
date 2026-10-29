@@ -37147,6 +37147,44 @@ __abox_service_tx_rollback() {
     (( _rb_unchanged == 1 )) && return 0
     restore_managed_service_state "$changed_pre" "$changed_expected"
 }
+# S161: trap/failure-path wrapper: restore block period + desired state
+# + service state together, and report any step failure. The signal
+# trap previously restored services only, leaving a committed desired
+# state / cleared block period behind on a rolled-back stack.
+# $1=tx_dir (holds previous.state, block-present.state,
+# previous-block.state, changed-pre.state, changed-expected.state).
+# Never dies (trap context); returns nonzero if any step failed.
+__abox_service_tx_rollback_all() {
+    local tx_dir="$1" _w_rc=0 _w_prev='' _w_flag='' _w_block=''
+    if [[ -f "$tx_dir/block-present.state" && ! -L "$tx_dir/block-present.state" ]]; then
+        if IFS= read -r _w_flag < "$tx_dir/block-present.state" 2>/dev/null; then
+            if [[ "$_w_flag" == 1 ]]; then
+                if IFS= read -r _w_block < "$tx_dir/previous-block.state" 2>/dev/null; then
+                    set_traffic_block_period "$_w_block" >/dev/null 2>&1 || { msg "${RED}[!] service tx rollback: traffic block period restore failed.${NC}" >&2; _w_rc=1; }
+                else
+                    msg "${RED}[!] service tx rollback: previous block period unreadable.${NC}" >&2; _w_rc=1
+                fi
+            elif [[ "$_w_flag" == 0 ]]; then
+                clear_traffic_block_period >/dev/null 2>&1 || { msg "${RED}[!] service tx rollback: traffic block period clear failed.${NC}" >&2; _w_rc=1; }
+            else
+                msg "${RED}[!] service tx rollback: block-present state unreadable.${NC}" >&2; _w_rc=1
+            fi
+        else
+            msg "${RED}[!] service tx rollback: block-present state unreadable.${NC}" >&2; _w_rc=1
+        fi
+    fi
+    if [[ -f "$tx_dir/previous.state" && ! -L "$tx_dir/previous.state" ]]; then
+        if IFS= read -r _w_prev < "$tx_dir/previous.state" 2>/dev/null && [[ -n "$_w_prev" ]]; then
+            set_desired_state "$_w_prev" >/dev/null 2>&1 || { msg "${RED}[!] service tx rollback: desired state restore failed.${NC}" >&2; _w_rc=1; }
+        else
+            msg "${RED}[!] service tx rollback: previous desired state unreadable.${NC}" >&2; _w_rc=1
+        fi
+    else
+        msg "${RED}[!] service tx rollback: previous desired state missing.${NC}" >&2; _w_rc=1
+    fi
+    __abox_service_tx_rollback "$tx_dir/changed-pre.state" "$tx_dir/changed-expected.state" || { msg "${RED}[!] service tx rollback: service state restore failed.${NC}" >&2; _w_rc=1; }
+    return "$_w_rc"
+}
 manual_stop_managed_stack() {
     local srv failed=0 services previous_state pre_state changed_pre changed_expected tx_dir before after active enabled
     prepare_noninteractive_service_control
@@ -37157,13 +37195,17 @@ manual_stop_managed_stack() {
     pre_state="$tx_dir/pre.state"; changed_pre="$tx_dir/changed-pre.state"; changed_expected="$tx_dir/changed-expected.state"
     capture_managed_service_state "$pre_state" || { rm -rf -- "$tx_dir"; die '无法保存服务运行/启用状态快照。'; }
     : > "$changed_pre"; : > "$changed_expected"
+    # S161: persist the pre-transaction desired state for the trap
+    # wrapper: a signal after commit must restore it, not leave the
+    # committed value behind on a rolled-back stack.
+    printf '%s\n' "$previous_state" > "$tx_dir/previous.state" || { rm -rf -- "$tx_dir"; die '无法保存服务事务前置状态。'; }
     # U232: a signal mid-transaction must roll the service changes
     # back, not just clean the runtime lock. These replace
     # acquire_runtime_lock's signal traps for the transaction window;
     # they are restored after commit below.
-    trap '__abox_service_tx_rollback "$changed_pre" "$changed_expected" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 129' HUP
-    trap '__abox_service_tx_rollback "$changed_pre" "$changed_expected" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 130' INT
-    trap '__abox_service_tx_rollback "$changed_pre" "$changed_expected" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 143' TERM
+    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 129' HUP
+    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 130' INT
+    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 143' TERM
 
     while IFS= read -r srv; do
         [[ -n "$srv" ]] || continue
@@ -37211,13 +37253,18 @@ manual_start_managed_stack() {
     local pre_state="$tx_dir/pre.state" changed_pre="$tx_dir/changed-pre.state" changed_expected="$tx_dir/changed-expected.state"
     capture_managed_service_state "$pre_state" || { rm -rf -- "$tx_dir"; die '无法保存服务运行/启用状态快照。'; }
     : > "$changed_pre"; : > "$changed_expected"
+    # S161: persist pre-transaction desired state + block period for
+    # the trap wrapper (see stop flow).
+    printf '%s\n' "$previous_state" > "$tx_dir/previous.state" || { rm -rf -- "$tx_dir"; die '无法保存服务事务前置状态。'; }
+    printf '%s\n' "$block_state_present" > "$tx_dir/block-present.state" || { rm -rf -- "$tx_dir"; die '无法保存服务事务封禁标志。'; }
+    printf '%s\n' "$previous_block_period" > "$tx_dir/previous-block.state" || { rm -rf -- "$tx_dir"; die '无法保存服务事务封禁周期。'; }
     # U232: a signal mid-transaction must roll the service changes
     # back, not just clean the runtime lock. These replace
     # acquire_runtime_lock's signal traps for the transaction window;
     # they are restored after commit below.
-    trap '__abox_service_tx_rollback "$changed_pre" "$changed_expected" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 129' HUP
-    trap '__abox_service_tx_rollback "$changed_pre" "$changed_expected" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 130' INT
-    trap '__abox_service_tx_rollback "$changed_pre" "$changed_expected" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 143' TERM
+    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 129' HUP
+    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 130' INT
+    trap '__abox_service_tx_rollback_all "$tx_dir" >/dev/null 2>&1 || printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; runtime_lock_cleanup; exit 143' TERM
 
     while IFS= read -r srv; do
         [[ -n "$srv" ]] || continue

@@ -15756,7 +15756,11 @@ if [[ -f "$GEO_DIR/geosite.dat" && ! -L "$GEO_DIR/geosite.dat" ]]; then
 else
     printf '0\n' > "$txn_stage/had_geosite"
 fi
-chmod 600 "$txn_stage"/had_* "$txn_stage"/*.old 2>/dev/null || true
+# S43 (GPT-15 + argon P1-1): chmod 600 only had_*; the .old backups
+# keep their original mode (cp -p) so a rollback restores exactly
+# what was there (0644 for a fresh install). The txn dir itself is
+# 700 root-only, so the .old files are still protected at rest.
+chmod 600 "$txn_stage"/had_* 2>/dev/null || true
 chown -R root:root "$txn_stage" || { rm -rf -- "$txn_stage"; exit 1; }
 mv "$txn_stage" "$GEO_TXN" || { rm -rf -- "$txn_stage"; exit 1; }
 stage_ip=$(mktemp "$GEO_DIR/.geoip.A-Box-new.XXXXXX") || { restore_geo_transaction || true; exit 1; }

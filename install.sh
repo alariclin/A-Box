@@ -27174,7 +27174,13 @@ dns_menu() {
     # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
     while true; do
     # Recover from any interrupted DNS snapshot swap on menu entry.
-    dns_snapshot_recover_pending_swap 2>/dev/null || true
+    # Total loss must NOT be swallowed (see the recovery function's own
+    # comment): surface it, pause, and return to the parent menu
+    # instead of entering the DNS menu with no rollback snapshot.
+    if ! dns_snapshot_recover_pending_swap; then
+        pause_return
+        return 1
+    fi
     clear
     local c v4 v6 prompt
     msg "${CYAN}======================================================================${NC}"

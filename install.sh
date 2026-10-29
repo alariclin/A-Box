@@ -20957,6 +20957,12 @@ read_desired() {
         printf '%s\n' "$desired"
         return 0
     fi
+    # S22 (template copy): a pair file that exists but is unreadable
+    # or corrupt is an error, not a cue to fall back to legacy or the
+    # RUNNING default (a quota block must never be silently flipped).
+    if [[ -e "$PAIR_STATE" || -L "$PAIR_STATE" ]]; then
+        return 1
+    fi
     if [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
         [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] || return 1
         [[ "$(stat -c %u:%g "$DESIRED" 2>/dev/null)" == 0:0 ]] || return 1
@@ -21218,7 +21224,7 @@ valid_hy2_bandwidth_mbps() {
     traffic_fail_closed 'persisted traffic limit is invalid' || traffic_error 'invalid persisted traffic limit could not be fail-closed enforced'
     exit 1
 }
-desired=$(read_desired) || { traffic_error 'desired state unreadable; leaving prior desired state unchanged'; exit 1; }
+desired=$(read_desired) || { traffic_fail_closed 'desired state unreadable or invalid' || traffic_error 'desired state could not be fail-closed enforced'; exit 1; }
 blocked_period=$(read_block_period 2>/dev/null || true)
 if [[ "$desired" == TRAFFIC_BLOCKED && -z "$blocked_period" ]]; then
     commit_traffic_pair TRAFFIC_BLOCKED "$current_period" || { traffic_error 'traffic-blocked state migration commit failed; leaving prior desired state unchanged'; exit 1; }

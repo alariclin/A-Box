@@ -31007,6 +31007,7 @@ export_diagnostic_bundle() {
     ts=$(date +%Y%m%d-%H%M%S)
     diag_dir="$ABOX_DIR/diagnostics"
     work=$(mktemp -d /tmp/A-Box-diagnostic.XXXXXX) || die 'Diagnostic temp directory creation failed.'
+    if [[ -L "$diag_dir" ]]; then rm -rf -- "$work"; die '诊断目录是符号链接，拒绝生成诊断包。'; fi
     mkdir -p "$diag_dir" "$work/logs" || { rm -rf -- "$work"; die '诊断目录创建失败。'; }
     chmod 700 "$diag_dir" 2>/dev/null || { rm -rf -- "$work"; die '诊断目录权限设置失败。'; }
 
@@ -31040,7 +31041,12 @@ export_diagnostic_bundle() {
     done
 
     bundle="$diag_dir/A-Box-diagnostic-${ts}.tar.gz"
-    tar -C "$work" -czf "$bundle" . || { rm -rf "$work"; die 'Diagnostic bundle creation failed.'; }
+    # Re-check immediately before writing: a symlink swapped in after
+    # the first check (or a pre-placed bundle symlink) must not be
+    # followed. A swap between this check and tar is a residual window
+    # tar itself cannot close.
+    if [[ -L "$diag_dir" || -L "$bundle" ]]; then rm -rf -- "$work"; die '诊断目录或目标文件是符号链接，拒绝生成诊断包。'; fi
+    tar -C "$work" -czf "$bundle" . || { rm -rf -- "$work"; die 'Diagnostic bundle creation failed.'; }
     chmod 600 "$bundle" 2>/dev/null || { rm -rf "$work"; rm -f "$bundle"; die 'Diagnostic bundle permission hardening failed.'; }
     checksum="${bundle}.sha256"
     write_diagnostic_checksum "$bundle" "$checksum" || { rm -rf "$work"; rm -f "$bundle"; die 'Diagnostic bundle checksum generation failed.'; }

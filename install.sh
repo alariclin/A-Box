@@ -26105,7 +26105,7 @@ resolved_strip_global_dns_sources() {
     local -a files=()
     if [[ -f /etc/systemd/resolved.conf ]]; then
         if [[ -L /etc/systemd/resolved.conf ]]; then
-            grep -qiE '^[[:space:]]*(DNS|FallbackDNS)[[:space:]]*=' /etc/systemd/resolved.conf 2>/dev/null && return 1
+            grep -qiE '^[[:space:]]*(DNS|FallbackDNS|DNSOverTLS)[[:space:]]*=' /etc/systemd/resolved.conf 2>/dev/null && return 1
         else
             files+=(/etc/systemd/resolved.conf)
         fi
@@ -26114,13 +26114,13 @@ resolved_strip_global_dns_sources() {
         [[ -f "$f" ]] || continue
         [[ "$f" == /etc/systemd/resolved.conf.d/99-abox-dns.conf ]] && continue
         if [[ -L "$f" ]]; then
-            grep -qiE '^[[:space:]]*(DNS|FallbackDNS)[[:space:]]*=' "$f" 2>/dev/null && return 1
+            grep -qiE '^[[:space:]]*(DNS|FallbackDNS|DNSOverTLS)[[:space:]]*=' "$f" 2>/dev/null && return 1
             continue
         fi
         files+=("$f")
     done
     for f in "${files[@]}"; do
-        grep -qiE '^[[:space:]]*(DNS|FallbackDNS)[[:space:]]*=' "$f" 2>/dev/null || continue
+        grep -qiE '^[[:space:]]*(DNS|FallbackDNS|DNSOverTLS)[[:space:]]*=' "$f" 2>/dev/null || continue
         if [[ "$f" != /etc/systemd/resolved.conf ]]; then
             base=$(basename "$f")
             case "$f" in
@@ -26135,7 +26135,7 @@ resolved_strip_global_dns_sources() {
         fi
         tmp=$(mktemp /tmp/A-Box-resolved-strip.XXXXXX 2>/dev/null || true)
         [[ -n "$tmp" ]] || return 1
-        if ! awk '{ line = $0; k = line; sub(/^[ \t]+/, "", k); lk = tolower(k); if (lk ~ /^(dns|fallbackdns)[ \t]*=/) next; print line }' "$f" > "$tmp" 2>/dev/null; then rm -f "$tmp"; return 1; fi
+        if ! awk '{ line = $0; k = line; sub(/^[ \t]+/, "", k); lk = tolower(k); if (lk ~ /^(dns|fallbackdns|dnsovertls)[ \t]*=/) next; print line }' "$f" > "$tmp" 2>/dev/null; then rm -f "$tmp"; return 1; fi
         cat "$tmp" > "$f" 2>/dev/null || { rm -f "$tmp"; return 1; }
         rm -f "$tmp"
     done

@@ -29036,7 +29036,12 @@ remove_abox_swap() {
     fi
     if [[ -f /swapfile && ! -L /swapfile ]]; then
         if ! rm -f /swapfile; then
-            __abox_restore_fstab_from_swap_backup "$backup" || return 1
+            __abox_restore_fstab_from_swap_backup "$backup" || true
+            if (( swap_active == 1 )); then
+                # The swap was active before we turned it off: bring it
+                # back, or the failed removal leaves it inactive.
+                swapon /swapfile 2>/dev/null || msg "${RED}[!] /swapfile 删除失败，且重新激活亦失败；交换区目前未激活。${NC}" >&2
+            fi
             msg "${YELLOW}[!] /swapfile 删除失败；已恢复 /etc/fstab，保留现有 Swap 文件与所有权标记。${NC}" >&2
             rm -f "$backup" || true
             return 1

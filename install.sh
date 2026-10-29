@@ -12523,6 +12523,17 @@ _ss_wl_rollback_to_snapshot() {
                     command -v iptables-legacy-restore >/dev/null 2>&1 && restore_bin="iptables-legacy-restore"
                 fi
             fi
+            # S33 (GPT-12): re-verify the final binary. If the alternative
+            # was missing, restore_bin is still the KNOWN-mismatched default;
+            # executing it would write to the parallel ruleset, which the
+            # post-verify cannot undo. Fail this family instead of running.
+            if command -v "$restore_bin" >/dev/null 2>&1; then
+                restore_ver="$("$restore_bin" --version 2>/dev/null || echo "")"
+                if [[ "$ipt_ver" == *"nf_tables"* && "$restore_ver" != *"nf_tables"* ]] ||
+                   [[ "$ipt_ver" != *"nf_tables"* && "$restore_ver" == *"nf_tables"* ]]; then
+                    failed=1; continue
+                fi
+            fi
         else
             # Skip IPv6 if it was not snapshotted (unusable at snapshot time).
             [[ "$v6_needed" == 1 ]] || continue
@@ -12540,6 +12551,15 @@ _ss_wl_rollback_to_snapshot() {
                     command -v ip6tables-nft-restore >/dev/null 2>&1 && restore_bin="ip6tables-nft-restore"
                 elif [[ "$ipt6_ver" != *"nf_tables"* && "$restore6_ver" == *"nf_tables"* ]]; then
                     command -v ip6tables-legacy-restore >/dev/null 2>&1 && restore_bin="ip6tables-legacy-restore"
+                fi
+            fi
+            # S33 (GPT-12): same re-verify as v4 -- a missing alternative
+            # must not leave a known-mismatched default to be executed.
+            if command -v "$restore_bin" >/dev/null 2>&1; then
+                restore6_ver="$("$restore_bin" --version 2>/dev/null || echo "")"
+                if [[ "$ipt6_ver" == *"nf_tables"* && "$restore6_ver" != *"nf_tables"* ]] ||
+                   [[ "$ipt6_ver" != *"nf_tables"* && "$restore6_ver" == *"nf_tables"* ]]; then
+                    failed=1; continue
                 fi
             fi
         fi

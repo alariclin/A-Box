@@ -22698,6 +22698,20 @@ _remove_hy2_official() {
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl stop hysteria >/dev/null 2>&1 || true
         elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then rc-service hysteria stop >/dev/null 2>&1 || true; fi
     }
+    # Verify the service actually stopped before deleting anything:
+    # a failed stop must not be reported as a successful uninstall.
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        local hy2_state
+        hy2_state=$(systemctl show -p ActiveState --value hysteria 2>/dev/null) || return 1
+        [[ "$hy2_state" == active || "$hy2_state" == activating ]] && return 1
+    elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
+        local hy2_rc
+        rc-service hysteria status >/dev/null 2>&1; hy2_rc=$?
+        case "$hy2_rc" in
+            3|16|32) : ;;
+            *) return 1 ;;
+        esac
+    fi
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl disable hysteria >/dev/null 2>&1 || true
         rm -f -- /etc/systemd/system/hysteria.service
@@ -22706,7 +22720,7 @@ _remove_hy2_official() {
         rc-update del hysteria default >/dev/null 2>&1 || true
         rm -f -- /etc/init.d/hysteria /etc/conf.d/hysteria
     fi
-    rm -rf -- /etc/hysteria
+    rm -rf -- /etc/hysteria || return 1
     rm -f -- /etc/ddr/standalone-links.d/hy2.link /etc/ddr/standalone-links.d/hysteria.link 2>/dev/null || true
     users_registry_remove hy2 hy2
     return 0

@@ -37444,8 +37444,12 @@ run_self_tests() {
         fi
         [[ -d /etc/ddr && ! -L /etc/ddr ]] || return 1
         # D-07: BusyBox find (Alpine) lacks -printf; python3 is already a hard
-        # dependency. Emits the same NUL-separated sorted field stream as the
-        # find pipeline did (basename, type, uid, gid, mode, size, mtime).
+        # dependency. S168: recursive walk (no symlink following); each
+        # record is relpath + type + uid/gid/mode/size/mtime, plus a
+        # chunked content sha256 for regular files ('ERR' when unreadable)
+        # and the readlink target for symlinks; records sorted,
+        # NUL-joined, sha256. A nested same-size content change or a
+        # symlink retarget now changes the signature.
         python3 - <<'PY_ABOX_SIG' 2>/dev/null || return 1
 import os, stat, sys, hashlib
 def _ftype(m):
@@ -37457,22 +37461,45 @@ def _ftype(m):
     if stat.S_ISCHR(m): return 'c'
     if stat.S_ISBLK(m): return 'b'
     return '?'
+def _sha256_file(p):
+    try:
+        _h = hashlib.sha256()
+        with open(p, 'rb') as _fh:
+            while True:
+                _chunk = _fh.read(65536)
+                if not _chunk:
+                    break
+                _h.update(_chunk)
+        return _h.hexdigest()
+    except OSError:
+        return 'ERR'
+_records = []
+for _dirpath, _dirnames, _filenames in os.walk('/etc/ddr', topdown=True, followlinks=False):
+    for _name in _dirnames + _filenames:
+        _p = os.path.join(_dirpath, _name)
+        _rel = os.path.relpath(_p, '/etc/ddr')
+        try:
+            _st = os.lstat(_p)
+        except OSError:
+            continue
+        _t = _ftype(_st.st_mode)
+        _extra = ''
+        if _t == 'f':
+            _extra = _sha256_file(_p)
+        elif _t == 'l':
+            try:
+                _extra = os.readlink(_p)
+            except OSError:
+                _extra = 'ERR'
+        _records.append(repr((_rel, _t, _st.st_uid, _st.st_gid, oct(stat.S_IMODE(_st.st_mode))[2:], _st.st_size, repr(_st.st_mtime), _extra)))
 try:
-    _names = os.listdir('/etc/ddr')
+    _st = os.lstat('/etc/ddr')
+    _records.append(repr(('.', 'd', _st.st_uid, _st.st_gid, oct(stat.S_IMODE(_st.st_mode))[2:], _st.st_size, repr(_st.st_mtime), '')))
 except OSError:
     sys.exit(1)
-_fields = []
-for _n in _names:
-    _p = os.path.join('/etc/ddr', _n)
-    try:
-        _st = os.lstat(_p)
-    except OSError:
-        continue
-    _fields += [_n, _ftype(_st.st_mode), str(_st.st_uid), str(_st.st_gid),
-                oct(stat.S_IMODE(_st.st_mode))[2:], str(_st.st_size), repr(_st.st_mtime)]
-_fields.sort()
-_blob = ('\0'.join(_fields) + '\0') if _fields else ''
-sys.stdout.write(hashlib.sha256(_blob.encode()).hexdigest() + '\n')
+_records.sort()
+_blob = (chr(0).join(_records) + chr(0)) if _records else ''
+sys.stdout.write(hashlib.sha256(_blob.encode()).hexdigest() + chr(10))
 PY_ABOX_SIG
     }
     if (( EUID == 0 )); then

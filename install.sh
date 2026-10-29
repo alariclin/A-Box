@@ -24768,12 +24768,12 @@ users_guard_eval() {
     [[ -n "$updated" && "$updated" != "$old_json" ]] || return 0
     # Transitions, by name (emails only exist on the Xray family).
     local new_blocked='' unblocked=''
-    new_blocked=$(jq -rn --argjson old "$old_json" --argjson new "$updated" '
-        [$new.users[] | select((.blocked // "") != "" and .disabled != true) | .name
-         | select(. as $n | [$old.users[] | select(.name == $n) | (.blocked // "")] | .[0] == "")] | .[]' 2>/dev/null) || return 1
-    unblocked=$(jq -cn --argjson old "$old_json" --argjson new "$updated" '
-        [$old.users[] | select((.blocked // "") != "" and .disabled != true) | .name
-         | select(. as $n | [$new.users[] | select(.name == $n) | (.blocked // "")] | .[0] == "")] | length' 2>/dev/null) || return 1
+    new_blocked=$(jq -rn --slurpfile oldj <(printf '%s' "$old_json") --slurpfile newj <(printf '%s' "$updated") '
+        [$newj[0].users[] | select((.blocked // "") != "" and .disabled != true) | .name
+         | select(. as $n | [$oldj[0].users[] | select(.name == $n) | (.blocked // "")] | .[0] == "")] | .[]' 2>/dev/null) || return 1
+    unblocked=$(jq -cn --slurpfile oldj <(printf '%s' "$old_json") --slurpfile newj <(printf '%s' "$updated") '
+        [$oldj[0].users[] | select((.blocked // "") != "" and .disabled != true) | .name
+         | select(. as $n | [$newj[0].users[] | select(.name == $n) | (.blocked // "")] | .[0] == "")] | length' 2>/dev/null) || return 1
     # Fail-closed ordering: the sync need is decided from the transition
     # lists BEFORE committing, and the retry marker is planted BEFORE the
     # commit. A failed plant or a failed registry write aborts with the

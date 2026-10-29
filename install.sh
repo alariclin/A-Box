@@ -33532,7 +33532,7 @@ wallos_status() {
         # a present-but-unselectable certificate reports healthy here no
         # longer (2026-10-21 lesson).
         local _wport='' _wip='' _legs=''
-        _wport=$(wallos_state_value PORT 2>/dev/null || true)
+        _wport=$(wallos_state_value PUBPORT 2>/dev/null || true)
         _wip=$(get_public_ip 2>/dev/null || true)
         if [[ "$_wport" =~ ^[0-9]+$ && "$_wip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && command -v openssl >/dev/null 2>&1; then
             if _legs=$(wallos_tls_handshake_check "$_wport" "$_wip"); then

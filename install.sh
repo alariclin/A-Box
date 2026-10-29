@@ -16574,6 +16574,39 @@ restore_file_or_remove() {
     fi
 }
 
+# Restore a file from its pre-commit backup. $1=bak, $2=dest. Silent;
+# returns 1 when the backup is missing or the copy fails. On success
+# the backup is removed, so a later failure cannot restore stale data.
+restore_cfg_backup() {
+    local bak="${1:-}" dest="$2"
+    [[ -n "$bak" && -f "$bak" ]] || return 1
+    cp -f -- "$bak" "$dest" 2>/dev/null || return 1
+    rm -f -- "$bak"
+}
+
+# Restore a TUIC deploy's pre-commit backups: the old cert pair (from
+# sibling .A-Box-bak files, when present) and the old config (when a
+# cfg backup was taken). Silent per file; prints the rollback failure
+# note once when any restore fails. Returns 0 only if every attempted
+# restore succeeded.
+restore_tuic_backups() {
+    local key="$1" crt="$2" cfg_bak="${3:-}" cfg="$4" rc=0
+    if [[ -f "${key}.A-Box-bak" ]]; then
+        cp -f -- "${key}.A-Box-bak" "$key" 2>/dev/null && rm -f -- "${key}.A-Box-bak" || rc=1
+    fi
+    if [[ -f "${crt}.A-Box-bak" ]]; then
+        cp -f -- "${crt}.A-Box-bak" "$crt" 2>/dev/null && rm -f -- "${crt}.A-Box-bak" || rc=1
+    fi
+    if [[ -n "$cfg_bak" ]]; then
+        restore_cfg_backup "$cfg_bak" "$cfg" || rc=1
+    fi
+    if (( rc )); then
+        msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}" >&2
+        return 1
+    fi
+    return 0
+}
+
 generate_self_signed_cert_atomically() {
     local key="$1" cert="$2" cn="$3" dir tmp key_tmp cert_tmp pub1 pub2 key_bak='' cert_bak='' _cert_rb_fail=0
     dir=$(dirname "$key")
@@ -17254,7 +17287,7 @@ EOF_SVC
 
     # Replace in place if the tag exists; otherwise append. No API: restart after check.
     # Capture the replaced port now: after the merge it is gone.
-    local tmp_cfg old_port=''
+    local tmp_cfg old_port='' cfg_bak=''
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
         old_port=$(jq -r --arg t "$tag" 'first(.inbounds[]? | select(.tag==$t)) | (.listen_port // empty)' "$cfg" 2>/dev/null || true)
     fi
@@ -17271,15 +17304,18 @@ EOF_SVC
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
+    cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    cp -a -- "$cfg" "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
-    restart_service_soft sing-box || die "$(tr_msg dp_sb_restart)"
+    prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
+    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_restart)"; }
 
     # Firewall: TCP + UDP.
-    allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
-    allowPort "$port" udp || die "$(tprintf dp_fw_allow "${port}/udp")"
-    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
+    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    allowPort "$port" udp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
+    rm -f -- "$cfg_bak"
     # Recycle the replaced port's rules when no inbound still uses it.
     # Either core's config counts: a port rule shared with another
     # core's live inbound must survive. Cleanup failure never fails
@@ -17331,7 +17367,7 @@ EOF_SVC
 # Tag: trojan-landing. Hot-push via API when available, restart fallback.
 deploy_xray_trojan_landing() {
     local port pass sni pk pbk sid cfg='/usr/local/etc/xray/config.json'
-    local tag="${ABOX_DEPLOY_TAG:-trojan-landing}" tmp_json
+    local tag="${ABOX_DEPLOY_TAG:-trojan-landing}" tmp_json cfg_bak=''
     clear; msg "${BOLD}${GREEN}$(tr_msg trojan_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -17466,15 +17502,18 @@ EOF_SVC
             XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" 2>&1 | tail -5
             rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_check)"
         fi
+        cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+        cp -a -- "$cfg" "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
         install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_cfg)"; }
         rm -f "$tmp_cfg"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
-        restart_service_soft xray || die "$(tr_msg dp_xray_restart)"
+        restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_xray_restart)"; }
     fi
     rm -f "$tmp_json"
 
-    allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
-    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
+    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
+    rm -f -- "$cfg_bak"
     service_manager start xray 2>/dev/null || true
     set_desired_state RUNNING 2>/dev/null || true
 
@@ -17492,7 +17531,7 @@ EOF_SVC
 # Mirrors the Xray flow; no API hot-push: config rewrite + `sing-box check` + restart.
 deploy_singbox_trojan_landing() {
     local port pass sni pk pbk sid cfg='/etc/sing-box/config.json'
-    local tag="${ABOX_DEPLOY_TAG:-trojan-landing}" tmp_json
+    local tag="${ABOX_DEPLOY_TAG:-trojan-landing}" tmp_json cfg_bak=''
     clear; msg "${BOLD}${GREEN}$(tr_msg trojan_sb_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -17615,13 +17654,16 @@ EOF_SVC
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
+    cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    cp -a -- "$cfg" "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
-    restart_service_soft sing-box || die "$(tr_msg dp_sb_restart)"
+    prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
+    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_restart)"; }
 
-    allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
-    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
+    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
+    rm -f -- "$cfg_bak"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING 2>/dev/null || true
 
@@ -17641,7 +17683,7 @@ EOF_SVC
 # live sing-box config by tag, validated with `sing-box check` before install.
 deploy_singbox_tuic() {
     local port pass uuid sni cc cfg='/etc/sing-box/config.json'
-    local tag="${ABOX_DEPLOY_TAG:-tuic-in}" tmp_json
+    local tag="${ABOX_DEPLOY_TAG:-tuic-in}" tmp_json cfg_bak=''
     clear; msg "${BOLD}${GREEN}$(tr_msg tuic_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -17751,6 +17793,17 @@ EOF_SVC
     _tuic_cert_tag="${_tuic_cert_tag}-$(printf '%s' "$tag" | sha256sum | cut -c1-8)"
     _tuic_key="/etc/sing-box/tuic-${_tuic_cert_tag}.key"
     _tuic_crt="/etc/sing-box/tuic-${_tuic_cert_tag}.crt"
+    # Back up any existing cert pair before regenerating: sing-box
+    # check requires the new cert in place, so generation cannot be
+    # deferred past the commit point. An existing .bak is kept (it
+    # holds the last good cert from an earlier failed deploy); the
+    # backups are removed only after full success.
+    if [[ -f "$_tuic_key" && ! -f "${_tuic_key}.A-Box-bak" ]]; then
+        cp -a -- "$_tuic_key" "${_tuic_key}.A-Box-bak" || die 'TUIC key backup failed; refusing to overwrite the live key without a backup.'
+    fi
+    if [[ -f "$_tuic_crt" && ! -f "${_tuic_crt}.A-Box-bak" ]]; then
+        cp -a -- "$_tuic_crt" "${_tuic_crt}.A-Box-bak" || die 'TUIC cert backup failed; refusing to overwrite the live cert without a backup.'
+    fi
     generate_self_signed_cert_atomically "$_tuic_key" "$_tuic_crt" "$sni" \
         || die "$(tr_msg dp_tuic_cert)"
 
@@ -17773,18 +17826,21 @@ EOF_SVC
             '(.inbounds | map(select(.tag==$t))) as $old
              | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
-        rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_tuic_update)"
+        rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tuic_update)"
     fi
-    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
+    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_sb_json)"; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
-        || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
-    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
+        || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_sb_check)"; }
+    cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    cp -a -- "$cfg" "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
-    restart_service_soft sing-box || die "$(tr_msg dp_sb_restart)"
+    prepare_abox_runtime_permissions sing-box || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tr_msg dp_sb_runtime)"; }
+    restart_service_soft sing-box || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tr_msg dp_sb_restart)"; }
 
-    allowPort "$port" udp || die "$(tprintf dp_fw_allow "${port}/udp")"
-    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
+    allowPort "$port" udp || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    save_firewall_rules || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tr_msg pi_fw_persist_fail)"; }
+    rm -f -- "$cfg_bak" "${_tuic_key}.A-Box-bak" "${_tuic_crt}.A-Box-bak"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING 2>/dev/null || true
 
@@ -17806,7 +17862,7 @@ EOF_SVC
 # inbound merged into the live sing-box config by tag, `sing-box check` first.
 deploy_singbox_anytls() {
     local port pass sni pk pbk sid cfg='/etc/sing-box/config.json'
-    local tag="${ABOX_DEPLOY_TAG:-anytls-in}" tmp_json
+    local tag="${ABOX_DEPLOY_TAG:-anytls-in}" tmp_json cfg_bak=''
     clear; msg "${BOLD}${GREEN}$(tr_msg anytls_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -17929,13 +17985,16 @@ EOF_SVC
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
+    cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    cp -a -- "$cfg" "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
-    restart_service_soft sing-box || die "$(tr_msg dp_sb_restart)"
+    prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
+    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_restart)"; }
 
-    allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
-    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
+    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
+    rm -f -- "$cfg_bak"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING 2>/dev/null || true
 
@@ -20195,7 +20254,7 @@ split_rule_del_interactive() {
 
 deploy_socks5_landing() {
     local port user pass cfg='/usr/local/etc/xray/config.json'
-    local tag="${ABOX_DEPLOY_TAG:-socks5-landing}" tmp_json inbound_json
+    local tag="${ABOX_DEPLOY_TAG:-socks5-landing}" tmp_json inbound_json cfg_bak=''
     clear; msg "${BOLD}${GREEN}$(tr_msg socks5_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -20294,6 +20353,8 @@ EOF_SVC
         '{tag:$tag,port:$port,listen:"0.0.0.0",protocol:"socks",
           settings:{auth:"password",accounts:[{user:$user,pass:$pass}],udp:true,ip:"0.0.0.0"}}' \
         > "$tmp_json" || die "$(tr_msg dp_socks5_json)"
+    cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    cp -a -- "$cfg" "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
 
     # If the tag already exists, replace it in place; otherwise hot-add.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
@@ -20313,16 +20374,17 @@ EOF_SVC
         install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_cfg)"; }
         rm -f "$tmp_cfg"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
-        restart_service_soft xray || die "$(tr_msg dp_xray_restart)"
+        restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_xray_restart)"; }
     else
-        xray_hot_add_inbound "$tmp_json" || die "$(tr_msg dp_socks5_add)"
+        xray_hot_add_inbound "$tmp_json" || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_socks5_add)"; }
     fi
     rm -f "$tmp_json"
 
     # Firewall: TCP + UDP.
-    allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
-    allowPort "$port" udp || die "$(tprintf dp_fw_allow "${port}/udp")"
-    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
+    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    allowPort "$port" udp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
+    rm -f -- "$cfg_bak"
 
     # Ensure the service is running (minimal-install path or API-unavailable hosts).
     service_manager start xray 2>/dev/null || true

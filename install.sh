@@ -15057,11 +15057,17 @@ restart_owned() {
 load_state || exit 0
 [[ -n "${CORE:-}" ]] || exit 0
 desired=RUNNING
-if [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] && [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]]; then
+if [[ -e "$PAIR_STATE" || -L "$PAIR_STATE" ]]; then
+    # S23: a pair file that exists but fails safety checks is an error:
+    # exit here, never fall through to legacy/default RUNNING.
+    [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] || exit 0
+    [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]] || exit 0
     mode=$(stat -c %a "$PAIR_STATE" 2>/dev/null) || exit 0
     [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || exit 0
     IFS= read -r _pair < "$PAIR_STATE" || exit 0
+    [[ "$_pair" == *'|'* ]] || exit 0
     desired=${_pair%%|*}
+    case "$desired" in RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE) ;; *) exit 0 ;; esac
 elif [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
     [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] || exit 0
     [[ "$(stat -c %u:%g "$DESIRED" 2>/dev/null)" == 0:0 ]] || exit 0
@@ -15358,10 +15364,15 @@ if [[ -e "$GEO_TXN" || -L "$GEO_TXN" ]]; then
     # downloads (A-07) and re-acquired for the file-modification phase.
     acquire_abox_runtime_guard
     desired=STOPPED
-    if [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] && [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]]; then
-        mode=$(stat -c %a "$PAIR_STATE" 2>/dev/null) || mode=''
-        if [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) && IFS= read -r _pair < "$PAIR_STATE"; then
-            desired=${_pair%%|*}
+    if [[ -e "$PAIR_STATE" || -L "$PAIR_STATE" ]]; then
+        # S23: pair exists: never fall through to legacy; unsafe or
+        # malformed pair keeps the fail-closed STOPPED default.
+        if [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] && [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]]; then
+            mode=$(stat -c %a "$PAIR_STATE" 2>/dev/null) || mode=''
+            if [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) && IFS= read -r _pair < "$PAIR_STATE" && [[ "$_pair" == *'|'* ]]; then
+                desired=${_pair%%|*}
+                case "$desired" in RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE) ;; *) desired=STOPPED ;; esac
+            fi
         fi
     elif [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
         if [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] && [[ "$(stat -c %u:%g "$DESIRED" 2>/dev/null)" == 0:0 ]]; then
@@ -15384,11 +15395,17 @@ if [[ -e "$GEO_TXN" || -L "$GEO_TXN" ]]; then
     exec 10>&-
 fi
 desired=RUNNING
-if [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] && [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]]; then
+if [[ -e "$PAIR_STATE" || -L "$PAIR_STATE" ]]; then
+    # S23: a pair file that exists but fails safety checks is an error:
+    # exit here, never fall through to legacy/default RUNNING.
+    [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] || exit 0
+    [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]] || exit 0
     mode=$(stat -c %a "$PAIR_STATE" 2>/dev/null) || exit 0
     [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || exit 0
     IFS= read -r _pair < "$PAIR_STATE" || exit 0
+    [[ "$_pair" == *'|'* ]] || exit 0
     desired=${_pair%%|*}
+    case "$desired" in RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE) ;; *) exit 0 ;; esac
 elif [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
     [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] || exit 0
     [[ "$(stat -c %u:%g "$DESIRED" 2>/dev/null)" == 0:0 ]] || exit 0
@@ -15415,11 +15432,17 @@ acquire_abox_runtime_guard
 [[ -d "$GEO_DIR" && ! -L "$GEO_DIR" ]] || exit 0
 xray_owned || exit 0
 desired=RUNNING
-if [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] && [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]]; then
+if [[ -e "$PAIR_STATE" || -L "$PAIR_STATE" ]]; then
+    # S23: a pair file that exists but fails safety checks is an error:
+    # exit here, never fall through to legacy/default RUNNING.
+    [[ -r "$PAIR_STATE" && -f "$PAIR_STATE" && ! -L "$PAIR_STATE" ]] || exit 0
+    [[ "$(stat -c %u:%g "$PAIR_STATE" 2>/dev/null)" == 0:0 ]] || exit 0
     mode=$(stat -c %a "$PAIR_STATE" 2>/dev/null) || exit 0
     [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || exit 0
     IFS= read -r _pair < "$PAIR_STATE" || exit 0
+    [[ "$_pair" == *'|'* ]] || exit 0
     desired=${_pair%%|*}
+    case "$desired" in RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE) ;; *) exit 0 ;; esac
 elif [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
     [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] || exit 0
     [[ "$(stat -c %u:%g "$DESIRED" 2>/dev/null)" == 0:0 ]] || exit 0

@@ -2954,6 +2954,12 @@ tr_msg() {
         fa:wl_port_swap) echo 'HTTPS عمومی به‌طور خودکار به پورت بالای تصادفی %s ← %s تغییر کرد؛ از URL انتهای خروجی استفاده کنید.' ;;
         zh-tw:wl_port_swap) echo '公網 HTTPS 已自動換用隨機高位連接埠：%s → %s（新網址以結尾為準）。' ;;
         ja:wl_port_swap) echo '公開 HTTPS はランダムな高ポートへ自動切替しました: %s → %s（最後に表示される URL を使用してください）。' ;;
+        zh:wl_no_free_port) echo '50 次尝试内未找到空闲端口，安装已中止。' ;;
+        en:wl_no_free_port) echo 'No free port found within 50 attempts; installation aborted.' ;;
+        ru:wl_no_free_port) echo 'Свободный порт не найден за 50 попыток; установка прервана.' ;;
+        fa:wl_no_free_port) echo 'پورتی آزاد یافت نشد؛ نصب متوقف شد.' ;;
+        zh-tw:wl_no_free_port) echo '50 次嘗試內未找到空閒連接埠，安裝已中止。' ;;
+        ja:wl_no_free_port) echo '50 回の試行で空きポートが見つからず、インストールを中止しました。' ;;
         zh:wl_confirm_https) echo 'Wallos 将通过 HTTPS 对外提供服务（IP 证书自动续期），应用本身仍只绑定本机。是否继续？[Y/N]: ' ;;
         en:wl_confirm_https) echo 'Wallos will be served over HTTPS (auto-renewed IP certificate); the app itself stays on localhost. Continue? [Y/N]: ' ;;
         ru:wl_confirm_https) echo 'Wallos будет доступен по HTTPS (IP-сертификат с автопродлением); само приложение останется только на localhost. Продолжить? [Y/N]: ' ;;
@@ -33176,6 +33182,11 @@ wallos_install_or_update() {
                     esac
                 fi
                 pubport="$_np"
+            else
+                case "${ABOX_LANG:-zh}" in
+                    *) msg "${RED}$(tr_msg wl_no_free_port)${NC}" ;;
+                esac
+                return 1
             fi
         fi
         # The container port is internal in HTTPS mode and must differ
@@ -33186,7 +33197,14 @@ wallos_install_or_update() {
                 local _cand2=$(( (RANDOM * 32768 + RANDOM) % 40001 + 20000 ))
                 if [[ "$_cand2" != "$pubport" ]] && wallos_port_free "$_cand2"; then _ip2="$_cand2"; break; fi
             done
-            [[ -n "$_ip2" ]] && port="$_ip2"
+            if [[ -n "$_ip2" ]]; then
+                port="$_ip2"
+            else
+                case "${ABOX_LANG:-zh}" in
+                    *) msg "${RED}$(tr_msg wl_no_free_port)${NC}" ;;
+                esac
+                return 1
+            fi
         fi
     elif [[ "$wmode" == http ]]; then
         bind_address='0.0.0.0'

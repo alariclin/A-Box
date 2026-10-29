@@ -17493,7 +17493,8 @@ EOF_SVC
             msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
         fi
         tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_tmpfile)"; }; tmp_cfg="$tmp_cfg.json"
+        ( umask 077; set -o noclobber; : > "$tmp_cfg.json" ) 2>/dev/null || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_tmpfile)"; }
+        mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$tmp_cfg.json"; die "$(tr_msg dp_tmpfile)"; }; tmp_cfg="$tmp_cfg.json"
         if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
                 '(.inbounds | map(select(.tag==$t))) as $old
                  | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
@@ -20384,7 +20385,8 @@ EOF_SVC
         local tmp_cfg
         msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
         tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_tmpfile)"; }; tmp_cfg="$tmp_cfg.json"
+        ( umask 077; set -o noclobber; : > "$tmp_cfg.json" ) 2>/dev/null || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_tmpfile)"; }
+        mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$tmp_cfg.json"; die "$(tr_msg dp_tmpfile)"; }; tmp_cfg="$tmp_cfg.json"
         if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
                 '(.inbounds | map(select(.tag==$t))) as $old
                  | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
@@ -22512,7 +22514,8 @@ _remove_inbounds_from_config() {
     bak=$(mktemp /tmp/A-Box-rm-bak.XXXXXX) || return 1
     cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
     tmp_cfg=$(mktemp /tmp/A-Box-rm-cfg.XXXXXX) || { rm -f "$bak"; return 1; }
-    mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$bak"; return 1; }
+    ( umask 077; set -o noclobber; : > "$tmp_cfg.json" ) 2>/dev/null || { rm -f "$tmp_cfg" "$bak"; return 1; }
+    mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$bak" "$tmp_cfg.json"; return 1; }
     tmp_cfg="$tmp_cfg.json"
     if ! jq --argjson tags "$tags_json" "$filter" "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$bak"; return 1
@@ -33841,7 +33844,8 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     bak=$(mktemp /tmp/A-Box-xl-cfg-bak.XXXXXX) || { rm -f "$tmp_json"; return 1; }
     cp -f -- "$cfg" "$bak" || { rm -f "$tmp_json" "$bak"; return 1; }
     tmp_cfg=$(mktemp /tmp/A-Box-xl-cfg.XXXXXX) || { rm -f "$tmp_json" "$bak"; return 1; }
-    mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; return 1; }; tmp_cfg="$tmp_cfg.json"
+    ( umask 077; set -o noclobber; : > "$tmp_cfg.json" ) 2>/dev/null || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; return 1; }
+    mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$bak" "$tmp_cfg.json"; return 1; }; tmp_cfg="$tmp_cfg.json"
     if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" \
             '.inbounds |= (map(select(.tag != $t)) + $nb)' "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1
@@ -33965,7 +33969,8 @@ xray_latest_deploy_trio() {
     bak=$(mktemp /tmp/A-Box-xl-trio-bak.XXXXXX) || { rm -f "$tmp_json"; return 1; }
     cp -f -- "$cfg" "$bak" || { rm -f "$tmp_json" "$bak"; return 1; }
     tmp_cfg=$(mktemp /tmp/A-Box-xl-trio-cfg.XXXXXX) || { rm -f "$tmp_json" "$bak"; return 1; }
-    mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; return 1; }; tmp_cfg="$tmp_cfg.json"
+    ( umask 077; set -o noclobber; : > "$tmp_cfg.json" ) 2>/dev/null || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; return 1; }
+    mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$bak" "$tmp_cfg.json"; return 1; }; tmp_cfg="$tmp_cfg.json"
     if ! jq --slurpfile nb "$tmp_json" \
             '.inbounds |= (map(select(.tag != "latest-vision" and .tag != "latest-xhttp" and .tag != "latest-ss")) + $nb[0])' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then

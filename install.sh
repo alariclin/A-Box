@@ -25532,8 +25532,11 @@ timezone_apply_with_rollback() {
         return 1
     }
     if ! apply_timezone_name "$target"; then
-        restore_timezone_snapshot "$snap" || true
-        rm -rf -- "$snap"
+        if ! restore_timezone_snapshot "$snap"; then
+            msg "${RED}Timezone rollback failed; snapshot kept at $snap${NC}"
+        else
+            rm -rf -- "$snap"
+        fi
         case "${ABOX_LANG:-zh}" in
             en) msg "${RED}Timezone update failed; rollback was attempted.${NC}" ;;
             ru) msg "${RED}Не удалось изменить часовой пояс; выполнена попытка отката.${NC}" ;;
@@ -25545,10 +25548,31 @@ timezone_apply_with_rollback() {
         esac
         return 1
     fi
-    stage=$(mktemp -d /etc/ddr/.tz-rollback-new.XXXXXX) || { restore_timezone_snapshot "$snap" || true; rm -rf -- "$snap"; return 1; }
-    cp -a "$snap"/. "$stage"/ || { restore_timezone_snapshot "$snap" || true; rm -rf -- "$snap" "$stage"; return 1; }
+    stage=$(mktemp -d /etc/ddr/.tz-rollback-new.XXXXXX) || {
+        if ! restore_timezone_snapshot "$snap"; then
+            msg "${RED}Timezone rollback failed; snapshot kept at $snap${NC}"
+        else
+            rm -rf -- "$snap"
+        fi
+        return 1
+    }
+    cp -a "$snap"/. "$stage"/ || {
+        if ! restore_timezone_snapshot "$snap"; then
+            msg "${RED}Timezone rollback failed; snapshot kept at $snap${NC}"
+        else
+            rm -rf -- "$snap" "$stage"
+        fi
+        return 1
+    }
     rm -rf -- /etc/ddr/.tz-rollback
-    mv -- "$stage" /etc/ddr/.tz-rollback || { restore_timezone_snapshot "$snap" || true; rm -rf -- "$snap" "$stage"; return 1; }
+    mv -- "$stage" /etc/ddr/.tz-rollback || {
+        if ! restore_timezone_snapshot "$snap"; then
+            msg "${RED}Timezone rollback failed; snapshot kept at $snap${NC}"
+        else
+            rm -rf -- "$snap" "$stage"
+        fi
+        return 1
+    }
     # B-05 fix: timezone state metadata write failure is no longer ignored.
     # The system timezone was already changed at this point, so we warn
     # loudly instead of claiming rollback state is available.

@@ -35665,8 +35665,8 @@ show_usage() {
 4  Official Hysteria 2
 5  Xray + Hysteria 2 combined deployment
 6  sing-box VLESS Vision REALITY
-7  sing-box Shadowsocks-2022
-8  sing-box VLESS + Shadowsocks-2022
+8  sing-box Shadowsocks-2022
+7  sing-box VLESS + Shadowsocks-2022
 9  sing-box Hysteria 2
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022 (no XHTTP)
 
@@ -35675,12 +35675,13 @@ show_usage() {
 12 Display node parameters and client exports.
 13 This manual.
 14 Script OTA, Xray Geo data and core-only upgrade.
-15 Full/partial uninstall.
+15 One-click VPS optimization.
 16 Remove nodes and reinitialize the environment.
 17 Monthly vnStat traffic limits; opening the menu shows usage up to now.
-18 SS-2022 IP/CIDR allowlist.
+18 More protocols.
 19 Language selection: Simplified Chinese, Traditional Chinese, English, Japanese, Russian, Persian.
-20 One-click Reality; shortcut `r` is also accepted.
+20 Full uninstall of the script and cores.
+r/R One-click Reality.
 
 BBR/FQ does not run automatically after protocol deployment. Host DNS includes resolver benchmarking, supported DoT/DoH, and rollback. Timezone selection is based on the installed zone database and supports numbered paging/search; Locale and NTP are separate controls.
 
@@ -35698,8 +35699,8 @@ EOF_USAGE
 4  Официальный Hysteria 2
 5  Комбинированная установка Xray + Hysteria 2
 6  sing-box VLESS Vision REALITY
-7  sing-box Shadowsocks-2022
-8  sing-box VLESS + Shadowsocks-2022
+8  sing-box Shadowsocks-2022
+7  sing-box VLESS + Shadowsocks-2022
 9  sing-box Hysteria 2
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022 (без XHTTP)
 
@@ -35708,12 +35709,13 @@ EOF_USAGE
 12 Параметры узлов и экспорт клиентских конфигураций.
 13 Это руководство.
 14 OTA скрипта, Geo-данные Xray и отдельное обновление ядер.
-15 Полное/частичное удаление.
+15 Оптимизация VPS в один клик.
 16 Удаление узлов и повторная инициализация окружения.
 17 Месячный лимит трафика vnStat; меню показывает расход на текущий момент.
-18 Список IP/CIDR для SS-2022.
+18 Дополнительные протоколы.
 19 Выбор языка: упрощённый китайский, традиционный китайский, английский, японский, русский, персидский.
-20 Reality в один клик; также доступен псевдоним `r`.
+20 Полное удаление скрипта и ядер.
+r/R Reality в один клик.
 
 BBR/FQ не запускается автоматически после установки протокола. Настройки DNS включают проверку задержки, поддерживаемые DoT/DoH и откат. Часовой пояс выбирается по установленной базе часовых поясов с нумерацией, страницами и поиском; Locale и NTP — отдельные настройки.
 
@@ -35731,8 +35733,8 @@ EOF_USAGE
 4  Hysteria 2 رسمی
 5  نصب ترکیبی Xray + Hysteria 2
 6  sing-box VLESS Vision REALITY
-7  sing-box Shadowsocks-2022
-8  sing-box VLESS + Shadowsocks-2022
+8  sing-box Shadowsocks-2022
+7  sing-box VLESS + Shadowsocks-2022
 9  sing-box Hysteria 2
 10 ترکیب sing-box Vision + Hysteria 2 + Shadowsocks-2022 (بدون XHTTP)
 
@@ -35741,12 +35743,13 @@ EOF_USAGE
 12 نمایش پارامترهای نود و خروجی کلاینت.
 13 همین راهنما.
 14 OTA اسکریپت، داده Geo برای Xray و ارتقای مستقل هسته.
-15 حذف کامل/جزئی.
+15 بهینه‌سازی VPS با یک کلیک.
 16 حذف نودها و راه‌اندازی مجدد محیط.
 17 محدودیت ماهانه ترافیک vnStat؛ منو مصرف تا همین لحظه را نشان می‌دهد.
-18 فهرست مجاز IP/CIDR برای SS-2022.
+18 پروتکل‌های بیشتر.
 19 انتخاب زبان: چینی ساده‌شده، چینی سنتی، انگلیسی، ژاپنی، روسی، فارسی.
-20 Reality با یک کلیک؛ میان‌بر `r` نیز پذیرفته می‌شود.
+20 حذف کامل اسکریپت و هسته‌ها.
+r/R Reality با یک کلیک.
 
 BBR/FQ پس از نصب پروتکل به‌صورت خودکار اجرا نمی‌شود. تنظیم DNS شامل سنجش واقعی، DoT/DoH در backend پشتیبانی‌شده و بازگردانی است. منطقه زمانی از پایگاه نصب‌شده با انتخاب شماره‌ای، صفحه‌بندی و جست‌وجو انتخاب می‌شود؛ Locale و NTP گزینه‌های مستقل هستند.
 
@@ -35764,8 +35767,8 @@ EOF_USAGE
 4  官方 Hysteria 2
 5  Xray + 官方 Hysteria 2 組合部署
 6  sing-box VLESS Vision REALITY
-7  sing-box Shadowsocks-2022
-8  sing-box VLESS + Shadowsocks-2022
+8  sing-box Shadowsocks-2022
+7  sing-box VLESS + Shadowsocks-2022
 9  sing-box Hysteria 2
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP）
 
@@ -35774,12 +35777,13 @@ EOF_USAGE
 12 顯示節點引數與客戶端配置。
 13 當前說明書。
 14 指令碼 OTA、Xray Geo 資料與核心單獨升級。
-15 全部/部分解除安裝。
+15 VPS 一鍵優化。
 16 刪除節點並重新初始化環境。
 17 vnStat 月流量限制；開啟後顯示截至當前用量。
-18 SS-2022 IP/CIDR 白名單。
+18 更多協議。
 19 語言設定：簡體中文、繁體中文、English、日本語、Русский、فارسی。
-20 一鍵 Reality；也可輸入快捷鍵 `r`。
+20 徹底解除安裝指令碼與核心。
+r/R 一鍵 Reality。
 
 協議安裝後不會自動應用 BBR/FQ。主機設定包含 DNS 真實測速、受支援後端的 DoT/DoH 和回滾。時區列表來自本機已安裝時區資料庫，支援編號、分頁和搜尋；Locale 與 NTP 分開設定。
 
@@ -35797,8 +35801,8 @@ EOF_USAGE
 4  公式 Hysteria 2
 5  Xray + 公式 Hysteria 2 の組み合わせデプロイ
 6  sing-box VLESS Vision REALITY
-7  sing-box Shadowsocks-2022
-8  sing-box VLESS + Shadowsocks-2022
+8  sing-box Shadowsocks-2022
+7  sing-box VLESS + Shadowsocks-2022
 9  sing-box Hysteria 2
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（XHTTP を含まない）
 
@@ -35807,12 +35811,13 @@ EOF_USAGE
 12 ノードのパラメーターとクライアント設定を表示します。
 13 現在の説明書を表示します。
 14 A-Box スクリプト OTA、Xray Geo データ、コアの個別アップグレード。
-15 すべて、または一部をアンインストールします。
+15 VPS ワンクリック最適化。
 16 ノードを削除し、環境を再初期化します。
 17 vnStat 月間トラフィック制限；メニューを開くと現在の使用量が表示されます。
-18 SS-2022 IP/CIDR ホワイトリスト。
+18 その他のプロトコル。
 19 言語選択：簡体字中国語、繁体字中国語、English、日本語、Русский、فارسی。
-20 ワンクリック Reality；ショートカット `r` も使用できます。
+20 スクリプトとコアの完全アンインストール。
+r/R ワンクリック Reality。
 
 プロトコルのデプロイ後、BBR/FQ は自動的には適用されません。ホスト設定には DNS 実測、サポートされているバックエンドの DoT/DoH、ロールバックが含まれます。タイムゾーン一覧はホストにインストール済みのタイムゾーンデータベースに基づき、番号指定、ページング、検索に対応しています；Locale と NTP は別々に設定します。
 
@@ -35830,8 +35835,8 @@ EOF_USAGE
 4  官方 Hysteria 2
 5  Xray + 官方 Hysteria 2 组合部署
 6  sing-box VLESS Vision REALITY
-7  sing-box Shadowsocks-2022
-8  sing-box VLESS + Shadowsocks-2022
+8  sing-box Shadowsocks-2022
+7  sing-box VLESS + Shadowsocks-2022
 9  sing-box Hysteria 2
 10 sing-box Vision + Hysteria 2 + Shadowsocks-2022（不含 XHTTP）
 
@@ -35840,12 +35845,13 @@ EOF_USAGE
 12 显示节点参数与客户端配置。
 13 当前说明书。
 14 脚本 OTA、Xray Geo 数据与核心单独升级。
-15 全部/部分卸载。
+15 VPS 一键优化。
 16 删除节点并重新初始化环境。
 17 vnStat 月流量限制；打开后显示截至当前用量。
-18 SS-2022 IP/CIDR 白名单。
+18 更多协议。
 19 语言设置：简体中文、繁体中文、English、日本語、Русский、فارسی。
-20 一键 Reality；也可输入快捷键 `r`。
+20 彻底卸载脚本与核心。
+r/R 一键 Reality。
 
 协议安装后不会自动应用 BBR/FQ。主机设置包含 DNS 真实测速、受支持后端的 DoT/DoH 和回滚。时区列表来自本机已安装时区数据库，支持编号、分页和搜索；Locale 与 NTP 分开设置。
 

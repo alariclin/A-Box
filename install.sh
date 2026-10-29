@@ -38055,10 +38055,39 @@ N11EOF
         [[ "$(head -n 1 "$n11_tmp/SHA256SUMS" | awk '{print $2}')" == 'wallos-linux-amd64-v2.5.1.tar.gz' ]] || {
             echo 'FAIL: N-11 SHA256SUMS sort order'; failures=$((failures + 1)); }
         rm -rf -- "$n11_tmp"
-        # N-11: N-1 auto-select = second line of newest-first version list.
-        local _n1
-        _n1=$(printf 'v2.5.3\nv2.5.2\nv2.5.1\n' | sed -n '2p')
-        [[ "$_n1" == 'v2.5.2' ]] || { echo 'FAIL: N-11 N-1 auto-select'; failures=$((failures + 1)); }
+        # S169: N-1 auto-select must go through the production path,
+        # not a fixed-input sed check: build a 0:0/600 8-line journal
+        # whose old tag is absent from the stub list (forcing the N-1
+        # else branch), stub docker + version list + backup ops in a
+        # subshell (stubs do not leak), and assert the pulled tag is
+        # the stub list's second line.
+        if (( EUID == 0 )); then
+            ( _n1_tmp=$(mktemp -d /tmp/A-Box-n1.XXXXXX) || exit 1
+              trap 'rm -rf -- "$_n1_tmp"' EXIT
+              WALLOS_DIR="$_n1_tmp"
+              mkdir -p "$WALLOS_DIR/backups"
+              echo 'backup' > "$WALLOS_DIR/backups/wallos-test.tar.gz"
+              { echo 'phase=active'
+                echo 'old_image=bellamy/wallos:9.9.9'
+                echo 'old_port=8080'
+                echo 'old_tz=UTC'
+                echo 'old_bind='
+                echo "backup=$WALLOS_DIR/backups/wallos-test.tar.gz"
+                echo 'was_running=0'
+                echo 'old_image_id='; } > "$WALLOS_DIR/.upgrade-transaction"
+              chmod 600 "$WALLOS_DIR/.upgrade-transaction"
+              _n1_log="$_n1_tmp/pulled"
+              docker() { case "$1" in image|container) return 1 ;; *) return 0 ;; esac; }
+              wallos_mirror_version_list() { echo 'v9.9.1'; echo 'v9.9.0'; echo 'v8.8.8'; }
+              wallos_validate_backup() { return 0; }
+              wallos_restore_backup() { return 0; }
+              _wallos_pull_versioned_image() { echo "$1" > "$_n1_log"; WALLOS_IMAGE_RESULT='bellamy/wallos:9.9.9'; return 0; }
+              wallos_recover_interrupted_upgrade || exit 1
+              [[ "$(cat "$_n1_log")" == 'v9.9.0' ]] || exit 1
+            ) || { echo 'FAIL: N-11 N-1 auto-select via production path'; failures=$((failures + 1)); }
+        else
+            selftest_note 'N-11 N-1 auto-select production-path test skipped for non-root execution'
+        fi
         # N-11: rollback rejects invalid versions.
         assert_bad wallos_rollback_to_version 'not-a-version'
         assert_bad wallos_rollback_to_version 'v2.5'

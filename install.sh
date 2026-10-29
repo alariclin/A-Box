@@ -19024,7 +19024,7 @@ _menu_info_collect() {
             /usr/local/etc/xray/config.json 2>/dev/null)
     fi
     if [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]]; then
-        nodes_s=$(jq -r '.inbounds[]? | select(.tag != "shadowtls-ss" and .tag != "vmess-ws-in" and .tag != "vless-ws-in") |
+        nodes_s=$(jq -r '.inbounds[]? | select((.tag | test("^(shadowtls-ss|shadowtls-in(-[0-9]+)?-ss)$") | not) and .tag != "vmess-ws-in" and .tag != "vless-ws-in") |
             (if .type == "vless" then "VLESS" elif .type == "shadowsocks" then "SS"
              elif .type == "hysteria2" then "Hy2" elif .type == "mixed" then "SOCKS5"
              elif .type == "socks" then "SOCKS5" elif .type == "tuic" then "TUIC" elif .type == "anytls" then "AnyTLS" elif .type == "shadowtls" then "ShadowTLS" else .type end) as $n
@@ -19058,7 +19058,7 @@ _menu_info_collect() {
                  elif .protocol == "vmess" then "VMess:\(.port)" else empty end) + "\t" + $sn' /usr/local/etc/xray/config.json 2>/dev/null
         fi
         if [[ "$_MI_SRUN" == "1" && -f /etc/sing-box/config.json ]]; then
-            jq -r '.inbounds[]? | select(.tag != "shadowtls-ss") |
+            jq -r '.inbounds[]? | select((.tag | test("^(shadowtls-ss|shadowtls-in(-[0-9]+)?-ss)$") | not)) |
                 (if .type == "vless" then ((.tls.reality.handshake.server // .tls.server_name // empty)) as $sn | select($sn != "") | "VLESS:\(.listen_port)\t\($sn)"
                  elif .type == "anytls" then ((.tls.reality.handshake.server // .tls.server_name // empty)) as $sn | select($sn != "") | "AnyTLS:\(.listen_port)\t\($sn)"
                  elif .type == "tuic" then ((.tls.server_name // empty)) as $sn | select($sn != "") | "TUIC:\(.listen_port)\t\($sn)"

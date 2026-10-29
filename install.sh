@@ -36075,7 +36075,10 @@ force_update_geo() {
 service_unit_exists() {
     local srv="$1"
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        systemctl list-unit-files "${srv}.service" >/dev/null 2>&1 && return 0
+        # S166: exit code alone is not existence (a nonexistent
+        # name can list zero units successfully); require an exact
+        # first-column match, as __abox_reconcile_systemd_unit does.
+        systemctl list-unit-files "${srv}.service" 2>/dev/null | awk -v wanted="${srv}.service" '$1 == wanted { found=1 } END { exit !found }' && return 0
         [[ -f "/etc/systemd/system/${srv}.service" || -f "/lib/systemd/system/${srv}.service" || -f "/usr/lib/systemd/system/${srv}.service" ]] && return 0
     else
         [[ -x "/etc/init.d/${srv}" ]] && return 0

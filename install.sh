@@ -4010,12 +4010,6 @@ tr_msg() {
         fa:xl_mlkem_warn) echo 'هشدار: جدیدترین Xray دست‌دادن ML-KEM را اجباری می‌کند — کلاینت‌های sing-box وصل نمی‌شوند، mihomo به پرچم ویژه نیاز دارد و برخی کلاینت‌ها ناسازگارند. فقط برای کاربران باتجربه.' ;;
         zh-tw:xl_mlkem_warn) echo '警告：最新版 Xray 強制 ML-KEM 握手——sing-box 用戶端無法連接、mihomo 需開啟特殊開關、部分用戶端不相容。僅供有經驗的使用者測試。' ;;
         ja:xl_mlkem_warn) echo '警告：最新 Xray は ML-KEM ハンドシェイクを強制します。sing-box クライアントは接続できず、mihomo には特殊フラグが必要で、一部のクライアントは非対応です。経験者向けです。' ;;
-        zh:xl_m_install) echo '安装 / 更新最新版核心' ;;
-        en:xl_m_install) echo 'Install / update latest core' ;;
-        ru:xl_m_install) echo 'Установить / обновить последнее ядро' ;;
-        fa:xl_m_install) echo 'نصب / به‌روزرسانی جدیدترین هسته' ;;
-        zh-tw:xl_m_install) echo '安裝 / 更新最新版核心' ;;
-        ja:xl_m_install) echo '最新コアをインストール / 更新' ;;
         zh:xl_m_ports) echo '查看端口占用（稳定版 / 最新版）' ;;
         en:xl_m_ports) echo 'View ports (stable / latest)' ;;
         ru:xl_m_ports) echo 'Порты (стабильный / последний)' ;;
@@ -4190,12 +4184,12 @@ tr_msg() {
         fa:xl_bin_mismatch) echo 'نسخه هسته دانلودشده با برچسب بالادستی مطابقت ندارد؛ حذف شد و نصب نشد' ;;
         zh-tw:xl_bin_mismatch) echo '下載的核心版本與上游 tag 不一致，已刪除，未安裝' ;;
         ja:xl_bin_mismatch) echo 'ダウンロードしたコアのバージョンが upstream タグと一致しません。削除し、インストールしていません' ;;
-        zh:xl_need_core) echo '尚未安装最新版 Xray 核心，请先选 1 安装。' ;;
-        en:xl_need_core) echo 'Latest Xray core is not installed yet; choose 1 to install it first.' ;;
-        ru:xl_need_core) echo 'Последнее ядро Xray ещё не установлено; сначала выберите пункт 1.' ;;
-        fa:xl_need_core) echo 'جدیدترین هسته Xray هنوز نصب نشده است؛ ابتدا گزینه ۱ را انتخاب کنید.' ;;
-        zh-tw:xl_need_core) echo '尚未安裝最新版 Xray 核心，請先選 1 安裝。' ;;
-        ja:xl_need_core) echo '最新 Xray コアがまだインストールされていません。先に 1 を選んでください。' ;;
+        zh:xl_need_core) echo '尚未安装最新版 Xray 核心，选协议时会自动安装。' ;;
+        en:xl_need_core) echo 'Latest Xray core is not installed yet; it will be installed automatically when you choose a protocol.' ;;
+        ru:xl_need_core) echo 'Последнее ядро Xray ещё не установлено; оно будет установлено автоматически при выборе протокола.' ;;
+        fa:xl_need_core) echo 'جدیدترین هسته Xray هنوز نصب نشده است؛ هنگام انتخاب پروتکل به‌صورت خودکار نصب می‌شود.' ;;
+        zh-tw:xl_need_core) echo '尚未安裝最新版 Xray 核心，選協議時會自動安裝。' ;;
+        ja:xl_need_core) echo '最新 Xray コアがまだインストールされていません。プロトコルを選ぶと自動でインストールされます。' ;;
         zh:xl_port_prompt) echo '端口' ;;
         en:xl_port_prompt) echo 'Port' ;;
         ru:xl_port_prompt) echo 'Порт' ;;
@@ -34471,6 +34465,7 @@ xray_latest_install_core() {
     local tag='' mode='' mchoice='' tmp='' zip='' ext='' staged_ver='' cur_mode='' cur_ver='' _xl_tgt='' _xl_bin=''
     init_system_environment || return 1
     load_optional_abox_env_or_die
+    get_architecture
     tag=$(xl_upstream_latest_tag) || { msg "${RED}$(tr_msg xl_tag_fail)${NC}"; return 1; }
     cur_mode=$(_xl_state_get mode); cur_ver=$(_xl_state_get version)
     msg "${CYAN}$(tr_msg xl_avail): ${tag}${NC}"
@@ -34484,7 +34479,8 @@ xray_latest_install_core() {
     read -r -p "$(tr_msg xl_mode_ask)" mchoice || return 0
     case "$mchoice" in
         2) mode='coexist' ;;
-        1|'') mode='takeover' ;;
+        1) mode='takeover' ;;
+        '') mode="${cur_mode:-takeover}" ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $mchoice${NC}"; return 1 ;;
     esac
@@ -34931,6 +34927,33 @@ xray_latest_remove() {
     return 0
 }
 
+# Ensure a usable latest core before a protocol deploy: already at the
+# menu latest tag (or tag unknown) and binary present => no-op;
+# missing / outdated / binary gone => run the core installer.
+# install_core returns 0 on cancel too, so re-verify afterwards.
+xray_latest_ensure_core() { # $1 = latest upstream tag, or empty
+    local _latest="${1:-}" _mode='' _tgt='' _bin='' _ver=''
+    _mode=$(_xl_state_get mode)
+    if [[ -n "$_mode" ]]; then
+        _tgt=$(_xl_target 2>/dev/null || true)
+        if [[ -n "$_tgt" ]]; then
+            _bin="${_tgt#*|}"; _bin="${_bin%%|*}"
+            if [[ -n "$_bin" && -x "$_bin" ]]; then
+                _ver=$(xl_binary_version "$_bin" 2>/dev/null || true)
+                if [[ -n "$_ver" && ( -z "$_latest" || "$_ver" == "$_latest" ) ]]; then
+                    return 0
+                fi
+            fi
+        fi
+    fi
+    xray_latest_install_core || return 1
+    _tgt=$(_xl_target 2>/dev/null || true)
+    [[ -n "$_tgt" ]] || return 1
+    _bin="${_tgt#*|}"; _bin="${_bin%%|*}"
+    [[ -n "$_bin" && -x "$_bin" ]] || return 1
+    return 0
+}
+
 xray_latest_menu() {
     local latest_tag='' choice='' state_mode='' state_ver=''
     latest_tag=$(xl_upstream_latest_tag 2>/dev/null || echo '')
@@ -34953,29 +34976,27 @@ xray_latest_menu() {
         if [[ -n "$latest_tag" ]] && ABOX_XRAY_VERSION="$latest_tag" xray_reality_requires_mlkem 2>/dev/null; then
             msg "${RED}${BOLD}$(tr_msg xl_mlkem_warn)${NC}"
         fi
-        msg " ${CYAN}1.${NC}  $(tr_msg xl_m_install)"
-        msg " ${CYAN}2.${NC}  VLESS + Vision + REALITY"
-        msg " ${CYAN}3.${NC}  VLESS + XHTTP + REALITY"
-        msg " ${CYAN}4.${NC}  Trojan-Reality"
-        msg " ${CYAN}5.${NC}  Shadowsocks 2022"
-        msg " ${CYAN}6.${NC}  SOCKS5"
-        msg " ${CYAN}7.${NC}  $(tr_msg xl_m_trio)"
-        msg " ${CYAN}8.${NC}  $(tr_msg xl_m_quad)"
-        msg " ${CYAN}9.${NC}  $(tr_msg xl_m_ports)"
-        msg "${CYAN}10.${NC}  $(tr_msg xl_m_remove)"
+        msg " ${CYAN}1.${NC}  VLESS + Vision + REALITY"
+        msg " ${CYAN}2.${NC}  VLESS + XHTTP + REALITY"
+        msg " ${CYAN}3.${NC}  Trojan-Reality"
+        msg " ${CYAN}4.${NC}  Shadowsocks 2022"
+        msg " ${CYAN}5.${NC}  SOCKS5"
+        msg " ${CYAN}6.${NC}  $(tr_msg xl_m_trio)"
+        msg " ${CYAN}7.${NC}  $(tr_msg xl_m_quad)"
+        msg " ${CYAN}8.${NC}  $(tr_msg xl_m_ports)"
+        msg " ${CYAN}9.${NC}  $(tr_msg xl_m_remove)"
         msg " ${CYAN}0.${NC}  $(tr_msg xl_back_main)"
         read -r -p "$(tr_msg xl_select)" choice || return 0
         case "$choice" in
-            1) xray_latest_install_core; pause_return ;;
-            2) deploy_with_instance_choice xray-latest latest-vision xray_latest_deploy vision; pause_return ;;
-            3) deploy_with_instance_choice xray-latest latest-xhttp xray_latest_deploy xhttp; pause_return ;;
-            4) deploy_with_instance_choice xray-latest latest-trojan xray_latest_deploy trojan; pause_return ;;
-            5) deploy_with_instance_choice xray-latest latest-ss xray_latest_deploy ss; pause_return ;;
-            6) deploy_with_instance_choice xray-latest latest-socks xray_latest_deploy socks; pause_return ;;
-            7) xray_latest_deploy_trio; pause_return ;;
-            8) xray_latest_deploy_quad; pause_return ;;
-            9) xl_show_ports; pause_return ;;
-            10) xray_latest_remove; pause_return ;;
+            1) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-vision xray_latest_deploy vision; pause_return ;;
+            2) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-xhttp xray_latest_deploy xhttp; pause_return ;;
+            3) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-trojan xray_latest_deploy trojan; pause_return ;;
+            4) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-ss xray_latest_deploy ss; pause_return ;;
+            5) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-socks xray_latest_deploy socks; pause_return ;;
+            6) xray_latest_ensure_core "$latest_tag" && xray_latest_deploy_trio; pause_return ;;
+            7) xray_latest_ensure_core "$latest_tag" && xray_latest_deploy_quad; pause_return ;;
+            8) xl_show_ports; pause_return ;;
+            9) xray_latest_remove; pause_return ;;
             0) return 0 ;;
             *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
         esac
@@ -38106,6 +38127,7 @@ PY_SELFTEST_TAR
     declare -F xray_latest_deploy >/dev/null 2>&1 || { echo 'FAIL: latest Xray deployer missing'; failures=$((failures + 1)); }
     declare -F xray_latest_deploy_trio >/dev/null 2>&1 || { echo 'FAIL: latest Xray trio deployer missing'; failures=$((failures + 1)); }
     declare -F xray_latest_deploy_quad >/dev/null 2>&1 || { echo 'FAIL: latest Xray quad deployer missing'; failures=$((failures + 1)); }
+    declare -F xray_latest_ensure_core >/dev/null 2>&1 || { echo 'FAIL: latest Xray core ensure missing'; failures=$((failures + 1)); }
     declare -F cleanup_protocols_menu >/dev/null 2>&1 || { echo 'FAIL: cleanup protocols menu missing'; failures=$((failures + 1)); }
     declare -F remove_single_protocol_menu >/dev/null 2>&1 || { echo 'FAIL: single protocol remover missing'; failures=$((failures + 1)); }
     declare -F clear_all_protocols >/dev/null 2>&1 || { echo 'FAIL: clear all protocols missing'; failures=$((failures + 1)); }

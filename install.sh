@@ -22831,8 +22831,12 @@ clear_all_protocols() {
         msg "${YELLOW}[!] $(tr_msg cl_wipe_partial)${NC}"
     fi
     ( setup_active_defense ) >/dev/null 2>&1 || true
-    msg "${GREEN}$(tr_msg cl_all_done)${NC}"
-    return 0
+    if (( wipe_ok == 1 )); then
+        msg "${GREEN}$(tr_msg cl_all_done)${NC}"
+        return 0
+    else
+        return 1
+    fi
 }
 
 cleanup_protocols_menu() {

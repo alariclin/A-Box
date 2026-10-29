@@ -14775,7 +14775,15 @@ prepare_abox_runtime_write_file() {
         return 0
     fi
     [[ -f "$path" && ! -L "$path" ]] || return 1
-    [[ "$(stat -c %u:%g "$path" 2>/dev/null || true)" == 0:* ]] || return 1
+    # S47 (argon P2-5): accept uid 0 or this family's service user (gid
+    # unrestricted), matching what assert_abox_log_file_safe accepts;
+    # the file is still normalized to root:group + 660 below, so the
+    # end state is unchanged. A missing/empty service uid never matches
+    # (the -n guards), and a stat failure fails closed.
+    local _uid _svc_uid
+    _uid=$(stat -c %u "$path" 2>/dev/null || true)
+    _svc_uid=$(id -u "$user" 2>/dev/null || true)
+    [[ -n "$_uid" && ( "$_uid" == 0 || ( -n "$_svc_uid" && "$_uid" == "$_svc_uid" ) ) ]] || return 1
     [[ "$(stat -c %h "$path" 2>/dev/null || true)" == 1 ]] || return 1
     chown "root:$group" "$path" || return 1
     chmod 660 "$path" || return 1

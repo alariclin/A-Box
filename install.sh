@@ -32155,6 +32155,14 @@ wallos_validate_backup() {
 wallos_restore_backup() {
     local backup="$1" stamp stage rescue name restore_name
     wallos_validate_backup "$backup" stage || return 1
+    # S139: the archive's recorded owner/mode are attacker-controlled
+    # (validate checks type/size only) and root extraction preserves
+    # them. Normalize the stage before moving anything into place.
+    if [[ $EUID -eq 0 ]]; then
+        chown -R root:root -- "$stage" 2>/dev/null || { rm -rf -- "$stage"; return 1; }
+    fi
+    chmod -R a-s,go-w -- "$stage" 2>/dev/null || { rm -rf -- "$stage"; return 1; }
+    chmod 600 -- "$stage/.abox-state" 2>/dev/null || { rm -rf -- "$stage"; return 1; }
     stamp=$(date -u '+%Y%m%dT%H%M%SZ')
     rescue="$WALLOS_DIR/.restore-preserve-$stamp-$$"
     mkdir -m 700 "$rescue" || { rm -rf -- "$stage"; return 1; }

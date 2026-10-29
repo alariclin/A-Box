@@ -37224,11 +37224,11 @@ manual_stop_managed_stack() {
     done <<< "$services"
 
     if (( failed != 0 )); then
-        if ! __abox_service_tx_rollback "$changed_pre" "$changed_expected"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
+        if ! __abox_service_tx_rollback_all "$tx_dir"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
         die '至少一个托管服务停止/禁用失败；未提交 MANUAL_STOPPED 状态。'
     fi
     set_desired_state MANUAL_STOPPED || {
-        if ! __abox_service_tx_rollback "$changed_pre" "$changed_expected"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
+        if ! __abox_service_tx_rollback_all "$tx_dir"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
         die '服务状态提交失败；已尝试恢复原运行/启用状态。'
     }
     # U232: transaction committed; restore the lock traps exactly.
@@ -37290,9 +37290,10 @@ manual_start_managed_stack() {
         (( failed != 0 )) || set_desired_state RUNNING || failed=1
     fi
     if (( failed != 0 )); then
-        if (( block_state_present == 1 )); then set_traffic_block_period "$previous_block_period" >/dev/null 2>&1 || true; else clear_traffic_block_period >/dev/null 2>&1 || true; fi
-        set_desired_state "$previous_state" >/dev/null 2>&1 || true
-        if ! __abox_service_tx_rollback "$changed_pre" "$changed_expected"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
+        # S162: no more `|| true` file-state restores: the wrapper
+        # restores block period + desired state + services together,
+        # and tx_dir is deleted only when ALL steps report ok.
+        if ! __abox_service_tx_rollback_all "$tx_dir"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
         die '至少一个托管服务启动/启用或状态提交失败；已尝试回滚本次操作。'
     fi
     # U232: transaction committed; restore the lock traps exactly.

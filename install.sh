@@ -15071,13 +15071,18 @@ EOF_F2B_TCP
                 else
                     f2b_udp_action="${f2b_action}[name=${udp_jail}, port=\"${udp_grp}\", protocol=udp]"
                 fi
+                # S44 (GPT-19 + argon P1-5): the UDP jail reads xray-error.log
+                # too -- Xray SS/SOCKS dual-stack ports land here, but Xray UDP
+                # auth failures are only logged to xray-error.log (the TCP jail
+                # already reads it; without this, a TCP-jail ban leaves UDP open).
                 cat >> "$jail_tmp" <<EOF_F2B_UDP
 [${udp_jail}]
 enabled = true
 ignoreip = 127.0.0.1/8 ::1
 port = ${udp_grp}
 filter = A-Box
-logpath = /var/log/A-Box-singbox.log
+logpath = /var/log/A-Box-xray-error.log
+          /var/log/A-Box-singbox.log
           /var/log/A-Box-hysteria.log
 maxretry = 8
 findtime = 120

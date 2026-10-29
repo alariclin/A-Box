@@ -12998,7 +12998,17 @@ install_remote_abox_script_guarded() {
 
 setup_shortcut() {
     ensure_abox_dir_owned "$ABOX_DIR" || return 1
-    if [[ -f "$0" && -r "$0" && "$0" != 'bash' && "$0" != '-bash' ]]; then
+    # S49 (argon P2-3): compare basename($0), not $0 itself: under
+    # 'curl ... | /bin/bash', $0 is /bin/bash -- an existing readable
+    # file that is neither bare 'bash' nor '-bash' -- so the old test
+    # took the file branch and died validating the bash binary, while
+    # the pipe branch (which downloads the guarded remote script) was
+    # unreachable. Normal script paths are unaffected (their basename
+    # is the script name, never bash/-bash, unless the script itself is
+    # named bash -- a fail-safe misroute into re-downloading).
+    local _zero_base
+    _zero_base=$(basename -- "$0" 2>/dev/null || printf '%s' "$0")
+    if [[ -f "$0" && -r "$0" && "$_zero_base" != 'bash' && "$_zero_base" != '-bash' ]]; then
         validate_abox_script_file "$0" "$(tr_msg ss2_ctx_current)" || die "$(tr_msg ss2_self_verify)"
         if [[ -f "$ABOX_DIR/A-Box.sh" ]]; then
             local current_build_epoch remote_build_epoch

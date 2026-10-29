@@ -18469,6 +18469,12 @@ EOF_SVC
     local d1='' d2=''
     d1=$(argo_capture_domain /etc/ddr/argo-vmess.log) || die "$(tr_msg ag_vmess_domain)"
     d2=$(argo_capture_domain /etc/ddr/argo-vless.log) || die "$(tr_msg ag_vless_domain)"
+    # Switching to temp mode: tear down any fixed deployment.
+    # Placed after the temp domains are captured (temp proven
+    # working) so a failure above leaves the fixed unit and
+    # the fixed state intact.
+    argo_remove_unit argo
+    rm -f /etc/ddr/.argo-token
     _argo_state_write "mode=temp
 uuid=${ARGO_UUID}
 vmess_port=${ARGO_VMESS_PORT}

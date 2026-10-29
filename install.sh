@@ -19628,25 +19628,44 @@ routing_apply_live() {
             cp -a "$cfg" "$live_bak" || { rm -f "$tmp" "$live_bak"; return 1; }
             install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp" "$live_bak"; return 1; }
             rm -f "$tmp"
-            local atmp=''
+            local atmp='' applied_bak=''
+            if [[ -f "$applied_file" ]]; then
+                applied_bak=$(mktemp) || { rm -f -- "$live_bak"; return 1; }
+                cp -a -- "$applied_file" "$applied_bak" || { rm -f -- "$live_bak" "$applied_bak"; return 1; }
+            fi
             if ! atmp=$(mktemp); then
                 cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
-                rm -f -- "$live_bak"
+                rm -f -- "$live_bak" "$applied_bak"
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
             if jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "$applied_file" 2>/dev/null; then
-                rm -f -- "$live_bak"
                 :
             else
                 rm -f "$atmp"
                 cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
-                rm -f -- "$live_bak"
+                rm -f -- "$live_bak" "$applied_bak"
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
-            prepare_abox_runtime_permissions xray || return 1
-            restart_service_soft xray
+            # Commit point: the new .applied record and the new live
+            # config are only committed after permissions + restart
+            # both succeed. On failure both are rolled back (live
+            # config from live_bak, .applied from applied_bak or
+            # removed when there was none), so the next apply still
+            # sees the old record and re-pushes the policy.
+            if prepare_abox_runtime_permissions xray && restart_service_soft xray; then
+                rm -f -- "$live_bak" "$applied_bak"
+            else
+                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                if [[ -n "$applied_bak" ]]; then
+                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                else
+                    rm -f -- "$applied_file"
+                fi
+                rm -f -- "$live_bak" "$applied_bak"
+                return 1
+            fi
             ;;
         singbox|sing-box)
             cfg='/etc/sing-box/config.json'
@@ -19688,25 +19707,44 @@ routing_apply_live() {
             cp -a "$cfg" "$live_bak" || { rm -f "$tmp" "$live_bak"; return 1; }
             install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp" "$live_bak"; return 1; }
             rm -f "$tmp"
-            local atmp=''
+            local atmp='' applied_bak=''
+            if [[ -f "$applied_file" ]]; then
+                applied_bak=$(mktemp) || { rm -f -- "$live_bak"; return 1; }
+                cp -a -- "$applied_file" "$applied_bak" || { rm -f -- "$live_bak" "$applied_bak"; return 1; }
+            fi
             if ! atmp=$(mktemp); then
                 cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
-                rm -f -- "$live_bak"
+                rm -f -- "$live_bak" "$applied_bak"
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
             if jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "$applied_file" 2>/dev/null; then
-                rm -f -- "$live_bak"
                 :
             else
                 rm -f "$atmp"
                 cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
-                rm -f -- "$live_bak"
+                rm -f -- "$live_bak" "$applied_bak"
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
-            prepare_abox_runtime_permissions sing-box || return 1
-            restart_service_soft sing-box
+            # Commit point: the new .applied record and the new live
+            # config are only committed after permissions + restart
+            # both succeed. On failure both are rolled back (live
+            # config from live_bak, .applied from applied_bak or
+            # removed when there was none), so the next apply still
+            # sees the old record and re-pushes the policy.
+            if prepare_abox_runtime_permissions sing-box && restart_service_soft sing-box; then
+                rm -f -- "$live_bak" "$applied_bak"
+            else
+                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                if [[ -n "$applied_bak" ]]; then
+                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                else
+                    rm -f -- "$applied_file"
+                fi
+                rm -f -- "$live_bak" "$applied_bak"
+                return 1
+            fi
             ;;
         *) return 1 ;;
     esac

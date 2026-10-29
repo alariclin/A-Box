@@ -36225,13 +36225,19 @@ core_tls_smoke_probe() {
     while IFS= read -r port; do
         [[ "$port" =~ ^[0-9]+$ ]] || continue
         # Open TCP, send ClientHello, read up to 7 bytes (TLS record header).
-        # Any TLS response (ServerHello, Alert, or REALITY fallback bytes)
-        # proves the data plane is alive. Timeout 5s.
+        # Only a TLS record proves the data plane is alive: first byte
+        # 0x16 (ServerHello, incl. REALITY fallback to a TLS site) or
+        # 0x15 (Alert). A non-TLS target is a misconfiguration and fails.
+        # Timeout 5s.
         if ! timeout 5 bash -c '
             exec 3<>/dev/tcp/127.0.0.1/'"$port"' || exit 1
             printf "\x16\x03\x01\x00\x2d\x01\x00\x00\x29\x03\x03\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x00\x00\x02\x00\x2f\x01\x00" >&3 || exit 1
             IFS= read -r -d "" -n 7 -t 4 resp <&3 || exit 1
             [[ -n "$resp" ]] || exit 1
+            # S165: only a TLS record proves the data plane: first
+            # byte 0x16 (Handshake/ServerHello) or 0x15 (Alert).
+            # Plaintext (or any other record type) must fail.
+            [[ "${resp:0:1}" == "$(printf "\x16")" || "${resp:0:1}" == "$(printf "\x15")" ]] || exit 1
         ' 2>/dev/null; then
             msg "${RED}[!] ${core} 端口 ${port} 无 TLS 响应（数据面可能异常）。${NC}"
             return 1

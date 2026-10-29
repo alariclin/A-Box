@@ -22993,7 +22993,7 @@ _tune_missing_items() {
     while read -r key want; do
         [[ -n "$key" ]] || continue
         sysctl -n "$key" >/dev/null 2>&1 || continue
-        got=$(sysctl -n "$key" 2>/dev/null)
+        got=$(sysctl -n "$key" 2>/dev/null | tr -s ' \t' ' ')
         [[ "$got" == "$want" ]] || missing_list+="${key}（当前 ${got:-<空>}，期望 $want）"$'\n'
     done < <(_tune_desired_sysctl)
     if ! grep -q '^# Managed by A-Box' /etc/security/limits.d/A-Box.conf 2>/dev/null \
@@ -23009,7 +23009,7 @@ _tune_missing_items() {
             [[ -n "$key" ]] || continue
             # Exact, last-assignment-wins match: a commented line, a
             # longer value, or an earlier line overridden later must not pass.
-            awk -v k="$key" -v w="$want" '{l=$0; sub(/^[ \t]+/,"",l); if(l==""||substr(l,1,1)=="#")next; e=index(l,"="); if(!e)next; kk=substr(l,1,e-1); vv=substr(l,e+1); sub(/[ \t]+$/,"",kk); sub(/^[ \t]+/,"",kk); sub(/^[ \t]+/,"",vv); sub(/[ \t]+$/,"",vv); sub(/[ \t]+#.*$/,"",vv); if(kk==k){v=vv; f=1} } END{exit !(f&&v==w)}' /etc/sysctl.d/99-A-Box-tune.conf 2>/dev/null \
+            awk -v k="$key" -v w="$want" '{l=$0; sub(/^[ \t]+/,"",l); if(l==""||substr(l,1,1)=="#")next; e=index(l,"="); if(!e)next; kk=substr(l,1,e-1); vv=substr(l,e+1); sub(/[ \t]+$/,"",kk); sub(/^[ \t]+/,"",kk); sub(/^[ \t]+/,"",vv); sub(/[ \t]+$/,"",vv); sub(/[ \t]+#.*$/,"",vv); gsub(/[ \t]+/, " ", vv); if(kk==k){v=vv; f=1} } END{exit !(f&&v==w)}' /etc/sysctl.d/99-A-Box-tune.conf 2>/dev/null \
                 || missing_list+="sysctl 持久文件缺失/不符：${key}（期望 $want）"$'\n'
         done < <(_tune_desired_sysctl)
     fi

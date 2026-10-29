@@ -29201,8 +29201,31 @@ commit_crontab_if_unchanged() {
         printf '%s\n' 'A-Box cron update aborted: crontab changed concurrently; no overwrite was attempted.' >&2
         return 2
     fi
+    # Re-read immediately before installing: the first comparison only
+    # covers changes up to the first read, not the install itself.
+    if ! read_crontab_to_file "$live"; then rm -f -- "$live"; return 1; fi
+    if ! cmp -s -- "$snapshot" "$live"; then
+        rm -f -- "$live"
+        printf '%s\n' 'A-Box cron update aborted: crontab changed concurrently; no overwrite was attempted.' >&2
+        return 2
+    fi
     rm -f -- "$live"
     crontab "$candidate" >/dev/null 2>&1 || rc=1
+    if (( rc == 0 )); then
+        # Verify the install: a write interleaving after ours is
+        # detectable (installed content differs from the candidate).
+        # A write landing between the last check and the install cannot
+        # be detected through the crontab CLI, which offers no
+        # compare-and-swap; that residual window is inherent to crontab.
+        live=$(mktemp) || return 1
+        if ! read_crontab_to_file "$live"; then rm -f -- "$live"; return 1; fi
+        if ! cmp -s -- "$candidate" "$live"; then
+            rm -f -- "$live"
+            printf '%s\n' 'A-Box cron update verification failed: crontab changed during install; installed content differs from the candidate.' >&2
+            return 1
+        fi
+        rm -f -- "$live"
+    fi
     return "$rc"
 }
 

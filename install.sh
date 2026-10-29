@@ -14568,11 +14568,13 @@ validate_fail2ban_config_or_die() {
         if ! out=$(fail2ban-client -t 2>&1); then
             msg "${YELLOW}[!] Fail2Ban 全局配置校验失败；可能由系统其它 jail 引起，A-Box 不会因此覆盖或删除其它 jail。${NC}"
             printf '%s\n' "$out" >&2
+            return 1
         fi
     else
         if ! out=$(fail2ban-client -d 2>&1); then
             msg "${YELLOW}[!] Fail2Ban 全局配置 dump 失败；可能由系统其它 jail 引起。${NC}"
             printf '%s\n' "$out" >&2
+            return 1
         fi
     fi
     if command -v fail2ban-regex >/dev/null 2>&1 && [[ -r /etc/fail2ban/filter.d/A-Box.conf ]]; then
@@ -14831,6 +14833,39 @@ f2b_port_groups() {
     return 0
 }
 
+# S38 (GPT-18): back up a file before it is replaced, and restore it.
+# Paths are parameters so the behavior is fixture-testable. A missing
+# source backs up as "absent" (any stale backup removed), and restoring
+# an absent backup deletes the new file -- returning to the pre-commit
+# state in both directions. Symlinks are never followed.
+_f2b_backup_file() {
+    local src="$1" bak="$2"
+    if [[ -f "$src" && ! -L "$src" ]]; then
+        cp -p -- "$src" "$bak" || return 1
+    else
+        rm -f -- "$bak"
+    fi
+    return 0
+}
+_f2b_restore_file() {
+    local src="$1" bak="$2"
+    if [[ -f "$bak" && ! -L "$bak" ]]; then
+        cp -p -- "$bak" "$src" || return 1
+    else
+        rm -f -- "$src"
+    fi
+    return 0
+}
+# S38 (GPT-18): restart fail2ban, returning its status (unlike the
+# inline warn-only sites). Used by the backup/restore retry flow.
+_f2b_restart() {
+    if [[ "${INIT_SYS:-}" == systemd ]]; then
+        systemctl restart fail2ban >/dev/null 2>&1
+    else
+        rc-service fail2ban restart >/dev/null 2>&1 9>&- 10>&-
+    fi
+}
+
 setup_active_defense() {
     local log_file
     msg "${YELLOW}[*] 正在挂载私有日志与 Fail2Ban 主动防御矩阵...${NC}"
@@ -14856,14 +14891,23 @@ setup_active_defense() {
 EOF_LOGROTATE
     ensure_fail2ban || true
     if command -v fail2ban-client >/dev/null 2>&1; then
-        local tcp_ports='' udp_ports='' jail_tmp='' f2b_action='' f2b_backend='' f2b_tcp_action='' f2b_udp_action='' sb_harv='' xr_harv='' f2b_inc='' f2b_ver=''
+        local tcp_ports='' udp_ports='' jail_tmp='' f2b_action='' f2b_backend='' f2b_tcp_action='' f2b_udp_action='' sb_harv='' xr_harv='' f2b_inc='' f2b_ver='' filter_bak='' jail_bak=''
         path_parent_chain_safe /etc/fail2ban/filter.d/A-Box.conf || die "$(tr_msg ad_filter_chain)"
         path_parent_chain_safe /etc/fail2ban/jail.d/A-Box.local || die "$(tr_msg ad_jail_chain)"
         mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d || die "$(tr_msg ad_dirs)"
         assert_abox_auxiliary_safe /etc/fail2ban/filter.d/A-Box.conf || die "$(tprintf ax_refuse "/etc/fail2ban/filter.d/A-Box.conf")"
         assert_abox_auxiliary_safe /etc/fail2ban/jail.d/A-Box.local || die "$(tprintf ax_refuse "/etc/fail2ban/jail.d/A-Box.local")"
         jail_tmp=$(mktemp /etc/fail2ban/jail.d/.A-Box.local.A-Box-new.XXXXXX) || die "$(tr_msg ad_jail_tmp)"
-        write_file_atomically_from_stdin /etc/fail2ban/filter.d/A-Box.conf 644 <<'EOF_F2B_FILTER' || { rm -f -- "$jail_tmp"; die 'Fail2Ban filter 原子写入失败。'; }
+        # S38 (GPT-18): back up the live filter/jail BEFORE replacing
+        # them, so a broken new config can be rolled back instead of
+        # leaving fail2ban down with no way back. Backup names carry
+        # no .conf/.local suffix, so fail2ban ignores them even if a
+        # later die leaves them behind.
+        filter_bak=$(mktemp /etc/fail2ban/filter.d/.A-Box.conf.A-Box-bak.XXXXXX) || { rm -f -- "$jail_tmp"; die "$(tr_msg ad_jail_tmp)"; }
+        jail_bak=$(mktemp /etc/fail2ban/jail.d/.A-Box.local.A-Box-bak.XXXXXX) || { rm -f -- "$jail_tmp" "$filter_bak"; die "$(tr_msg ad_jail_tmp)"; }
+        _f2b_backup_file /etc/fail2ban/filter.d/A-Box.conf "$filter_bak" || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die 'Fail2Ban filter 备份失败。'; }
+        _f2b_backup_file /etc/fail2ban/jail.d/A-Box.local "$jail_bak" || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die 'Fail2Ban jail 备份失败。'; }
+        write_file_atomically_from_stdin /etc/fail2ban/filter.d/A-Box.conf 644 <<'EOF_F2B_FILTER' || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die 'Fail2Ban filter 原子写入失败。'; }
 # Managed by A-Box
 [Definition]
 failregex = ^.*(?:authentication failed|message authentication failed).*?(?:from|client[=:])\s*\[?<HOST>\]?(?::[0-9]+)?(?:\s|:|$).*$
@@ -14913,7 +14957,7 @@ bantime.maxtime = 86400'
         fi
         tcp_ports="${tcp_ports%,}"; udp_ports="${udp_ports%,}"
         if [[ -n "$tcp_ports" || -n "$udp_ports" ]]; then
-            f2b_backend=$(firewall_backend) || { rm -f -- "$jail_tmp"; die "$(tr_msg ad_backend_unknown)"; }
+            f2b_backend=$(firewall_backend) || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die "$(tr_msg ad_backend_unknown)"; }
             case "$f2b_backend" in
                 firewalld)
                     # firewallcmd-multiport invokes iptables -m multiport --dports (requires colon port ranges).
@@ -14921,10 +14965,10 @@ bantime.maxtime = 86400'
                     ;;
                 ufw) f2b_action='ufw' ;;
                 iptables) f2b_action='iptables-multiport' ;;
-                *) rm -f -- "$jail_tmp"; die "$(tprintf ad_backend_unsupported "$f2b_backend")" ;;
+                *) rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die "$(tprintf ad_backend_unsupported "$f2b_backend")" ;;
             esac
             [[ -r "/etc/fail2ban/action.d/${f2b_action}.conf" ]] || {
-                rm -f -- "$jail_tmp"
+                rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"
                 die "$(tprintf ad_action_missing "$f2b_action")"
             }
             # Per-group action strings are built while emitting the jail
@@ -14932,7 +14976,7 @@ bantime.maxtime = 86400'
             # f2b_port_groups); the stock ufw action blocks the offending
             # source host-wide and takes no port/protocol arguments.
         fi
-        printf '%s\n' '# Managed by A-Box' > "$jail_tmp" || { rm -f -- "$jail_tmp"; die 'Fail2Ban jail file initialization failed.'; }
+        printf '%s\n' '# Managed by A-Box' > "$jail_tmp" || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die 'Fail2Ban jail file initialization failed.'; }
         if [[ -n "$tcp_ports" ]]; then
             local -a tcp_groups=()
             if [[ "$f2b_action" == 'ufw' ]]; then tcp_groups=("$tcp_ports"); else mapfile -t tcp_groups < <(f2b_port_groups "$tcp_ports"); fi
@@ -14992,16 +15036,35 @@ EOF_F2B_UDP
             done
         fi
         if [[ -n "$tcp_ports" || -n "$udp_ports" ]]; then
-            chmod 644 "$jail_tmp" || { rm -f -- "$jail_tmp"; die "$(tr_msg ad_jail_chmod)"; }
-            mv -f -- "$jail_tmp" /etc/fail2ban/jail.d/A-Box.local || { rm -f -- "$jail_tmp"; die "$(tr_msg ad_jail_commit)"; }
-            validate_fail2ban_config_or_die
-            if [[ "${INIT_SYS:-}" == systemd ]]; then
-                systemctl restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响 A-Box 核心服务提交。${NC}"
+            chmod 644 "$jail_tmp" || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die "$(tr_msg ad_jail_chmod)"; }
+            mv -f -- "$jail_tmp" /etc/fail2ban/jail.d/A-Box.local || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die "$(tr_msg ad_jail_commit)"; }
+            # S38 (GPT-18): validate, then restart; on either failure
+            # restore the backed-up configs and retry the restart once.
+            # A retry that still fails is attributable to pre-existing
+            # other jails (ours are out of the picture), so warn only.
+            local f2b_restored=0
+            if ! validate_fail2ban_config_or_die; then
+                msg "${YELLOW}[!] Fail2Ban 新配置校验失败；已恢复提交前的 filter/jail，正在重试重启。${NC}"
+                f2b_restored=1
+            elif ! _f2b_restart; then
+                msg "${YELLOW}[!] Fail2Ban 重启失败；已恢复提交前的 filter/jail，正在重试重启。${NC}"
+                f2b_restored=1
+            fi
+            if (( f2b_restored == 1 )); then
+                local f2b_restore_ok=1
+                _f2b_restore_file /etc/fail2ban/filter.d/A-Box.conf "$filter_bak" || f2b_restore_ok=0
+                _f2b_restore_file /etc/fail2ban/jail.d/A-Box.local "$jail_bak" || f2b_restore_ok=0
+                if (( f2b_restore_ok == 1 )); then
+                    rm -f -- "$filter_bak" "$jail_bak"
+                else
+                    msg "${YELLOW}[!] Fail2Ban 旧配置恢复失败；备份保留在 ${filter_bak} 与 ${jail_bak}，请手动恢复后重启 fail2ban。${NC}"
+                fi
+                _f2b_restart || msg "${YELLOW}[!] Fail2Ban 重试重启失败；可能由系统其它 jail 引起，A-Box 不会因此覆盖或删除其它 jail。${NC}"
             else
-                rc-service fail2ban restart >/dev/null 2>&1 9>&- 10>&- || msg "${YELLOW}[!] Fail2Ban 重启失败；不影响 A-Box 核心服务提交。${NC}"
+                rm -f -- "$filter_bak" "$jail_bak"
             fi
         else
-            rm -f -- "$jail_tmp"
+            rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"
             remove_owned_auxiliary_path /etc/fail2ban/jail.d/A-Box.local || die "$(tr_msg ad_jail_remove)"
         fi
     fi

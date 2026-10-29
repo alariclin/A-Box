@@ -24209,13 +24209,15 @@ users_link() {
     main=$(jq -c '.users[] | select(.name == "main")' "$reg" 2>/dev/null)
     proto=$(jq -r '.protocol // ""' "$reg" 2>/dev/null)
     ssecret=$(jq -r '.server_secret // ""' "$reg" 2>/dev/null)
+    local enabled_count=0
+    enabled_count=$(jq -r '[.users[] | select(.disabled != true and ((.blocked // "") == ""))] | length' "$reg" 2>/dev/null) || return 1
     local secret='' use_uuid=''
     secret=$(printf '%s' "$user" | jq -r '.secret // ""')
     use_uuid=$(printf '%s' "$user" | jq -r '.uuid // ""')
     [[ -n "$secret" ]] || return 1
     # Combo inbounds (either core) build from .env + live config values.
     if [[ "$tag" == 'vision' || "$tag" == 'xhttp' || "$tag" == 'ss' || "$tag" == 'hy2' ]] && [[ "$core" == 'xray' || "$core" == 'sing-box' ]]; then
-        users_link_combo "$core" "$tag" "$name" "$secret" "$ssecret" "$proto"
+        users_link_combo "$core" "$tag" "$name" "$secret" "$ssecret" "$proto" "$enabled_count"
         return $?
     fi
     local link='' msecret=''
@@ -24249,10 +24251,10 @@ users_link() {
             return 1
         fi
     elif [[ "$core" == 'hy2' ]]; then
-        if [[ "$name" == 'main' ]]; then
-            newinfo="$(urlencode "$secret")"
-        else
+        if (( enabled_count >= 2 )); then
             newinfo="$(urlencode "$name"):$(urlencode "$secret")"
+        else
+            newinfo="$(urlencode "$secret")"
         fi
     else
         if [[ "$userinfo2" == "$(urlencode "$msecret")" || "$userinfo2" == "$msecret" ]]; then
@@ -24268,7 +24270,7 @@ users_link() {
 # Combo link builder (vision / xhttp / ss / sing-box hy2) from .env for
 # shared REALITY parameters plus the live config for ports and method.
 users_link_combo() {
-    local core="$1" tag="$2" name="$3" secret="$4" ssecret="$5" proto="$6"
+    local core="$1" tag="$2" name="$3" secret="$4" ssecret="$5" proto="$6" encount="${7:-1}"
     [[ -f "${ABOX_ENV:-/etc/ddr/.env}" ]] && load_abox_env "$ABOX_ENV" 2>/dev/null || true
     local ip='' cfg='' port=''
     ip="${LINK_IP:-}"
@@ -24299,8 +24301,13 @@ users_link_combo() {
             local obfs='' sni=''
             obfs=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .obfs.password // ""' "$cfg" 2>/dev/null | head -1)
             sni=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.server_name // ""' "$cfg" 2>/dev/null | head -1)
-            printf 'hysteria2://%s@%s:%s?insecure=1&sni=%s&obfs=salamander&obfs-password=%s#%s-%s' \
-                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-443}" "$sni" "$(urlencode "$obfs")" "$tag" "$name" ;;
+            if (( encount >= 2 )); then
+                printf 'hysteria2://%s:%s@%s:%s?insecure=1&sni=%s&obfs=salamander&obfs-password=%s#%s-%s' \
+                    "$(urlencode "$name")" "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-443}" "$sni" "$(urlencode "$obfs")" "$tag" "$name"
+            else
+                printf 'hysteria2://%s@%s:%s?insecure=1&sni=%s&obfs=salamander&obfs-password=%s#%s-%s' \
+                    "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-443}" "$sni" "$(urlencode "$obfs")" "$tag" "$name"
+            fi ;;
         *) return 1 ;;
     esac
     return 0

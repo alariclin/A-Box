@@ -37131,6 +37131,20 @@ __abox_service_tx_rollback() {
     local changed_pre="$1" changed_expected="$2"
     [[ ! -s "$changed_pre" ]] && return 0
     [[ -s "$changed_expected" ]] || return 1
+    # S160: if every registered service is still at its pre-state, the
+    # mutation never took effect (failed before changing anything);
+    # there is nothing to restore, so do not report incomplete. Without
+    # this, pre-registration below would turn a benign failed mutation
+    # into a preflight refusal (current == pre, not expected) with a
+    # scary message and a leftover tx_dir.
+    local _rb_srv _rb_pre _rb_cur _rb_unchanged=1
+    while IFS='|' read -r _rb_srv _ _ || [[ -n "$_rb_srv" ]]; do
+        [[ -n "$_rb_srv" ]] || continue
+        _rb_pre=$(awk -F'|' -v target="$_rb_srv" '$1 == target {print; found=1; exit} END {if (!found) exit 1}' "$changed_pre") || return 1
+        _rb_cur=$(managed_service_state_value "$_rb_srv" 2>/dev/null) || { _rb_unchanged=0; break; }
+        [[ "$_rb_cur" == "$_rb_pre" ]] || { _rb_unchanged=0; break; }
+    done < "$changed_pre"
+    (( _rb_unchanged == 1 )) && return 0
     restore_managed_service_state "$changed_pre" "$changed_expected"
 }
 manual_stop_managed_stack() {
@@ -37156,15 +37170,13 @@ manual_stop_managed_stack() {
         before=$(managed_service_state_value "$srv" 2>/dev/null) || { failed=1; break; }
         IFS='|' read -r _ active enabled <<< "$before"
         [[ "$active" == 0 && "$enabled" == disabled ]] && continue
+        # S160: register BEFORE mutating (traffic-flow precedent). A
+        # signal landing mid-mutation must find the service in the
+        # transaction record, or the trap rollback skips it entirely.
+        append_managed_service_state_entry "$pre_state" "$changed_pre" "$srv" || { failed=1; break; }
+        printf '%s\n' "$srv|0|disabled" >> "$changed_expected" || { failed=1; break; }
         stop_abox_service "$srv" || failed=1
         after=$(managed_service_state_value "$srv" 2>/dev/null || true)
-        if [[ -z "$after" ]]; then
-            append_managed_service_state_entry "$pre_state" "$changed_pre" "$srv" || failed=1
-            printf '%s\n' "$srv|0|disabled" >> "$changed_expected" || failed=1
-        elif [[ "$after" != "$before" ]]; then
-            append_managed_service_state_entry "$pre_state" "$changed_pre" "$srv" || failed=1
-            printf '%s\n' "$after" >> "$changed_expected" || failed=1
-        fi
         [[ "$after" == "$srv|0|disabled" ]] || failed=1
         (( failed == 0 )) || break
     done <<< "$services"
@@ -37213,19 +37225,15 @@ manual_start_managed_stack() {
         before=$(managed_service_state_value "$srv" 2>/dev/null) || { failed=1; break; }
         IFS='|' read -r _ active enabled <<< "$before"
         { [[ "$active" == 1 && "$enabled" == enabled ]] || [[ "$active" == 1 && "$enabled" == enabled-runtime ]]; } && continue
+        # S160: register BEFORE mutating (see stop flow).
+        append_managed_service_state_entry "$pre_state" "$changed_pre" "$srv" || { failed=1; break; }
+        printf '%s\n' "$srv|1|enabled" >> "$changed_expected" || { failed=1; break; }
         if [[ "$active" == 1 ]]; then
             enable_abox_service_soft "$srv" || failed=1
         else
             start_abox_service_soft "$srv" || failed=1
         fi
         after=$(managed_service_state_value "$srv" 2>/dev/null || true)
-        if [[ -z "$after" ]]; then
-            append_managed_service_state_entry "$pre_state" "$changed_pre" "$srv" || failed=1
-            printf '%s\n' "$srv|1|enabled" >> "$changed_expected" || failed=1
-        elif [[ "$after" != "$before" ]]; then
-            append_managed_service_state_entry "$pre_state" "$changed_pre" "$srv" || failed=1
-            printf '%s\n' "$after" >> "$changed_expected" || failed=1
-        fi
         [[ "$after" == "$srv|1|enabled" ]] || failed=1
         (( failed == 0 )) || break
     done <<< "$services"

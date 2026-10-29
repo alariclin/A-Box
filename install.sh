@@ -26973,9 +26973,11 @@ _dns_valid_v6_group() {
 _dns_current_v4() {
     local cur='' out=''
     if [[ -f "$DNS_STATE_FILE" ]]; then
-        cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*v4=/){sub(/^[ \t]*v4=/, "", $i); gsub(/["'"'"'\r\t]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
-        out=$(_dns_valid_v4_group "$cur")
-        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
+        if grep -qE '(^|;)[ \t]*v4=' "$DNS_STATE_FILE" 2>/dev/null; then
+            cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*v4=/){sub(/^[ \t]*v4=/, "", $i); gsub(/["'"'"'\r\t]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
+            out=$(_dns_valid_v4_group "$cur")
+            printf '%s' "$out"; return 0
+        fi
     fi
     if [[ -f "$ABOX_ENV" ]]; then
         cur=$(awk -F= '/^DNS_V4=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
@@ -26998,9 +27000,11 @@ _dns_current_v4() {
 _dns_current_v6() {
     local cur='' out=''
     if [[ -f "$DNS_STATE_FILE" ]]; then
-        cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*v6=/){sub(/^[ \t]*v6=/, "", $i); gsub(/["'"'"'\r\t]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
-        out=$(_dns_valid_v6_group "$cur")
-        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
+        if grep -qE '(^|;)[ \t]*v6=' "$DNS_STATE_FILE" 2>/dev/null; then
+            cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*v6=/){sub(/^[ \t]*v6=/, "", $i); gsub(/["'"'"'\r\t]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
+            out=$(_dns_valid_v6_group "$cur")
+            printf '%s' "$out"; return 0
+        fi
     fi
     if [[ -f "$ABOX_ENV" ]]; then
         cur=$(awk -F= '/^DNS_V6=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)

@@ -23955,7 +23955,7 @@ users_reg_ensure() {
     fi
     jq -e '.users | type == "array"' "$reg" >/dev/null 2>&1 || return 1
     local scratch='' merged=''
-    scratch=$(mktemp /tmp/A-Box-ureg.XXXXXX) || return 0
+    scratch=$(mktemp /tmp/A-Box-ureg.XXXXXX) || return 1
     if users_adopt "$core" "$tag" "$scratch" >/dev/null 2>&1 && jq -e '.users' "$scratch" >/dev/null 2>&1; then
         merged=$(jq -c --slurpfile s "$scratch" '
             . as $r | ($s[0].users // []) as $fresh
@@ -23966,10 +23966,15 @@ users_reg_ensure() {
                 + [$fresh[] | . as $f | select([$r.users[] | select(.secret == $f.secret and .name == $f.name)] | length == 0)]
               )
             | .server_secret = (if (.server_secret // "") == "" then ($s[0].server_secret // "") else .server_secret end)
-        ' "$reg" 2>/dev/null) && [[ -n "$merged" ]] && users_reg_write "$core" "$tag" "$merged" || true
+        ' "$reg" 2>/dev/null) || { rm -f -- "$scratch"; return 1; }
+        [[ -n "$merged" ]] || { rm -f -- "$scratch"; return 1; }
+        users_reg_write "$core" "$tag" "$merged" || { rm -f -- "$scratch"; return 1; }
+    else
+        rm -f -- "$scratch"
+        return 1
     fi
     rm -f -- "$scratch"
-    users_normalize_default_name "$core" "$tag"
+    users_normalize_default_name "$core" "$tag" || return 1
     return 0
 }
 

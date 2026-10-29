@@ -22545,14 +22545,20 @@ _remove_inbounds_from_config() {
         xray-latest) prepare_abox_runtime_read_file "$cfg" xray 2>/dev/null || true ;;
     esac
     if ! restart_service_soft "$svc"; then
-        install_file_atomically "$bak" "$cfg" 600 2>/dev/null || cp -f -- "$bak" "$cfg"
+        local restore_ok=0
+        if install_file_atomically "$bak" "$cfg" 600 2>/dev/null || cp -f -- "$bak" "$cfg"; then restore_ok=1; fi
         case "$core" in
             xray) prepare_abox_runtime_permissions xray 2>/dev/null || true ;;
             sing-box) prepare_abox_runtime_read_file "$cfg" sing-box 2>/dev/null || true ;;
             xray-latest) prepare_abox_runtime_read_file "$cfg" xray 2>/dev/null || true ;;
         esac
-        restart_service_soft "$svc" || { rm -f "$bak"; return 1; }
-        rm -f "$bak"; return 1
+        restart_service_soft "$svc" || true
+        if [[ "$restore_ok" == 1 ]]; then
+            rm -f "$bak"
+        else
+            msg "${RED}[!] 旧配置恢复失败，备份保留在 $bak，请手工恢复。${NC}" >&2
+        fi
+        return 1
     fi
     if (( routes_before - routes_after > 0 )); then
         msg "${YELLOW}$(tprintf cl_routes_cleaned "$(( routes_before - routes_after ))")${NC}"

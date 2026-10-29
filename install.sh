@@ -13817,7 +13817,7 @@ core_cooldown_allows_age() {
 }
 
 resolve_core_release_target() {
-    local repo="${1:-}" override='' latest='' latest_age='' target='' source='' resolved='' resolved_source='' default_ref=''
+    local repo="${1:-}" override='' latest='' latest_age='' target='' source='' resolved='' resolved_source='' default_ref='' _cd_raw='' _cd_eff=7 _mirror_age=''
     case "$repo" in
         XTLS/Xray-core) override="${ABOX_XRAY_VERSION:-}"; default_ref="$ABOX_XRAY_DEFAULT_VERSION" ;;
         SagerNet/sing-box) override="${ABOX_SINGBOX_VERSION:-}"; default_ref="$ABOX_SINGBOX_DEFAULT_VERSION" ;;
@@ -13866,12 +13866,39 @@ resolve_core_release_target() {
                 # fall back to pin (fail-closed per version policy).
                 latest=$(core_latest_mirror_release_ref "$repo" 2>/dev/null || true)
                 if core_release_ref_valid "$repo" "$latest" && [[ "$latest" != *-* ]]; then
-                    # BUG-04 fix (Option A): API already unavailable (we are in mirror branch).
-                    # Calling core_stable_release_age_days would fail again (it needs API).
-                    # Skip cooldown, trust mirror version with format validation.
-                    # Mirror is maintained by weekly workflow that enforces cooldown at build time.
+                    # S29 (GPT-7): mirror adoption vs local cooldown.
+                    # Default cooldown (7/unset/invalid->7): trust the mirror
+                    # as before; no LOCAL cooldown check is performed, and the
+                    # message says so (the mirror's build-time enforcement,
+                    # if any, is not verifiable from the data here).
+                    # Custom cooldown: enforce it -- attempt a targeted age
+                    # query; adopt only if the age is known and old enough,
+                    # otherwise fall back to the pin (fail-closed, matching
+                    # the upstream branch's unknown-age rule).
+                    # DANGER (TRY_LATEST=1) bypasses, matching the upstream
+                    # path: the operator explicitly asked for latest.
                     if [[ "$latest" =~ ^(app/)?v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z._-]+)?$ ]]; then
-                        target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；直接信任镜像版本 ${target}（跳过实时冷却期查询，镜像构建时已执行冷却校验）。${NC}" >&2
+                        if [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]]; then
+                            target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；ABOX_TRY_LATEST_CORE_STABLE=1 显式要求最新版，绕过冷却期，直接信任镜像版本 ${target}（未执行本地冷却校验）。${NC}" >&2
+                        else
+                            _cd_raw="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
+                            _cd_eff=7
+                            if [[ "$_cd_raw" =~ ^[0-9]{1,4}$ ]] && (( 10#$_cd_raw >= 1 && 10#$_cd_raw <= 3650 )); then
+                                _cd_eff="$_cd_raw"
+                            fi
+                            if (( 10#$_cd_eff == 7 )); then
+                                target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；直接信任镜像版本 ${target}（未执行本地冷却校验；本地冷却期为默认值）。${NC}" >&2
+                            else
+                                _mirror_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
+                                if core_cooldown_allows_age "$_mirror_age" "${ABOX_STABLE_COOLDOWN_DAYS:-7}"; then
+                                    target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；镜像版本 ${target} 已发布 ${_mirror_age} 天，满足本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天，采纳。${NC}" >&2
+                                elif [[ "$_mirror_age" =~ ^[0-9]+$ ]]; then
+                                    target="$default_ref"; source='pinned'; msg "${YELLOW}[!] 上游稳定版 API 不可用；镜像版本 ${latest} 仅发布 ${_mirror_age} 天，未满本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天，保持固定版本 ${default_ref}。${NC}" >&2
+                                else
+                                    target="$default_ref"; source='pinned'; msg "${YELLOW}[!] 上游稳定版 API 不可用；镜像版本 ${latest} 的发布年龄无法确定，本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天无法校验，保持固定版本 ${default_ref}。${NC}" >&2
+                                fi
+                            fi
+                        fi
                     else
                         target=$(core_release_mirror_version "$repo") || return 1; source='mirror'; msg "${YELLOW}[!] 镜像版本格式非法，回退到固定兼容版本 ${target}。${NC}" >&2
                     fi

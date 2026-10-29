@@ -14235,18 +14235,38 @@ __abox_traffic_state_rollback() {
     local desired_existed="$4" desired_backup="$5" desired_target="$6"
     local block_existed="$7" block_backup="$8" block_target="$9"
     local restore_failed=0
+    # S45 (argon P1-4): write-back never follows a symlink. If a target
+    # was swapped for a link after the snapshot, rm -f breaks the link
+    # first so cp creates a fresh regular file; if the break fails,
+    # that file is not written at all (cp would write through to the
+    # link's target).
     if (( pair_existed == 1 )); then
-        cp -p -- "$pair_backup" "$pair_target" 2>/dev/null || restore_failed=1
+        # S45: break a swapped-in link before cp (never follow).
+        if [[ -L "$pair_target" ]] && ! rm -f -- "$pair_target" 2>/dev/null; then
+            restore_failed=1
+        else
+            cp -p -- "$pair_backup" "$pair_target" 2>/dev/null || restore_failed=1
+        fi
     else
         rm -f -- "$pair_target" 2>/dev/null || restore_failed=1
     fi
     if (( desired_existed == 1 )); then
-        cp -p -- "$desired_backup" "$desired_target" 2>/dev/null || restore_failed=1
+        # S45: break a swapped-in link before cp (never follow).
+        if [[ -L "$desired_target" ]] && ! rm -f -- "$desired_target" 2>/dev/null; then
+            restore_failed=1
+        else
+            cp -p -- "$desired_backup" "$desired_target" 2>/dev/null || restore_failed=1
+        fi
     else
         rm -f -- "$desired_target" 2>/dev/null || restore_failed=1
     fi
     if (( block_existed == 1 )); then
-        cp -p -- "$block_backup" "$block_target" 2>/dev/null || restore_failed=1
+        # S45: break a swapped-in link before cp (never follow).
+        if [[ -L "$block_target" ]] && ! rm -f -- "$block_target" 2>/dev/null; then
+            restore_failed=1
+        else
+            cp -p -- "$block_backup" "$block_target" 2>/dev/null || restore_failed=1
+        fi
     else
         rm -f -- "$block_target" 2>/dev/null || restore_failed=1
     fi
@@ -14268,15 +14288,19 @@ commit_traffic_pair_state() {
     fi
     ensure_abox_dir_owned "$ABOX_DIR" >/dev/null 2>&1 || return 1
     # Snapshot all three files for full transactional rollback.
-    if [[ -f "$ABOX_TRAFFIC_PAIR_STATE" ]]; then
+    # S45 (argon P1-4): a symlink is damaged, not a file to snapshot
+    # (-f alone is true for a link to a regular file, so require ! -L).
+    # A linked state file then fails loudly at the atomic-write step
+    # (the writer refuses -L) and rollback removes the link itself.
+    if [[ -f "$ABOX_TRAFFIC_PAIR_STATE" && ! -L "$ABOX_TRAFFIC_PAIR_STATE" ]]; then
         pair_existed=1; pair_backup=$(mktemp) || return 1
         cp -p -- "$ABOX_TRAFFIC_PAIR_STATE" "$pair_backup" || { rm -f -- "$pair_backup"; return 1; }
     fi
-    if [[ -f "$ABOX_DESIRED_STATE" ]]; then
+    if [[ -f "$ABOX_DESIRED_STATE" && ! -L "$ABOX_DESIRED_STATE" ]]; then
         desired_existed=1; desired_backup=$(mktemp) || { rm -f -- "$pair_backup"; return 1; }
         cp -p -- "$ABOX_DESIRED_STATE" "$desired_backup" || { rm -f -- "$pair_backup" "$desired_backup"; return 1; }
     fi
-    if [[ -f "$ABOX_TRAFFIC_BLOCK_STATE" ]]; then
+    if [[ -f "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]]; then
         block_existed=1; block_backup=$(mktemp) || { rm -f -- "$pair_backup" "$desired_backup"; return 1; }
         cp -p -- "$ABOX_TRAFFIC_BLOCK_STATE" "$block_backup" || { rm -f -- "$pair_backup" "$desired_backup" "$block_backup"; return 1; }
     fi

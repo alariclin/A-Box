@@ -20024,17 +20024,31 @@ warp_apply_preset() {
         fi
         return 1
     fi
-    rm -f "$snap"
     local core="${CORE:-}"
     if [[ -z "$core" ]]; then
         load_optional_abox_env_or_die 2>/dev/null || true
         core="${CORE:-}"
     fi
     if [[ -z "$core" ]]; then
+        if routing_state_put < "$snap" > /dev/null 2>&1; then
+            rm -f "$snap"
+        else
+            rm -f "$snap"
+            msg "${YELLOW}[!] $(tr_msg warp_preset_rollback_fail)${NC}"
+        fi
         msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
         return 1
     fi
-    routing_apply_live "$core" || return 1
+    if ! routing_apply_live "$core"; then
+        if routing_state_put < "$snap" > /dev/null 2>&1; then
+            rm -f "$snap"
+        else
+            rm -f "$snap"
+            msg "${YELLOW}[!] $(tr_msg warp_preset_rollback_fail)${NC}"
+        fi
+        return 1
+    fi
+    rm -f "$snap"
     msg "$(tr_msg warp_preset_done)"
 }
 

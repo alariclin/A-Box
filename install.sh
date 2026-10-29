@@ -32828,18 +32828,25 @@ EOF_WCFT
         local _tok=''
         _tok=$(sed -n 's/^TUNNEL_TOKEN=//p' "$WALLOS_CF_TOKEN_FILE" 2>/dev/null | head -1)
         [[ -n "$_tok" ]] || return 1
-        write_file_atomically_from_stdin "/etc/init.d/abox-wallos-cftunnel" 700 <<EOF_WCFTRC || return 1
+        write_file_atomically_from_stdin "/etc/init.d/abox-wallos-cftunnel" 700 <<'EOF_WCFTRC' || return 1
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Wallos Cloudflare Tunnel"
 command="/usr/local/bin/cloudflared"
 command_args="tunnel --no-autoupdate run"
-command_env="TUNNEL_TOKEN=${_tok}"
 command_background="yes"
 pidfile="/run/abox-wallos-cftunnel.pid"
 output_log="/etc/ddr/abox-wallos-cftunnel.log"
 error_log="/etc/ddr/abox-wallos-cftunnel.log"
 depend() { need net; }
+start_pre() {
+    # Read the token at start time so the secret lives only in the
+    # 600 token file, never in this script (systemd parity).
+    local _tok=''
+    _tok=$(sed -n 's/^TUNNEL_TOKEN=//p' /etc/ddr/.wallos-cf-token 2>/dev/null | head -1)
+    [ -n "$_tok" ] || return 1
+    command_env="TUNNEL_TOKEN=$_tok"
+}
 EOF_WCFTRC
         chmod +x "/etc/init.d/abox-wallos-cftunnel" || return 1
         rc-update add abox-wallos-cftunnel default >/dev/null 2>&1 || true

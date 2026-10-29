@@ -15086,7 +15086,27 @@ hysteria_official_hop_firewall_ok() {
         fi
     fi
     if command -v nft >/dev/null 2>&1; then
-        nft list ruleset 2>/dev/null | grep -Eq -- "udp dport (${start}-${end}|${first_other}-${end}).*redirect to :${first}([[:space:]]|$)" && return 0
+        # S39 (GPT-20): the old whole-ruleset grep matched redirects in
+        # any chain/table/family. Scope it to nat PREROUTING, and when
+        # the host has IPv6 require both ip and ip6 (an inet table
+        # counts for both families, since its rules apply to both).
+        local _nft_need6=0
+        has_ipv6 && _nft_need6=1
+        if nft list ruleset 2>/dev/null | awk -v need6="$_nft_need6" -v pat="udp dport (${start}-${end}|${first_other}-${end}).*redirect to :${first}([[:space:]]|$)" '
+            BEGIN { depth = 0; fam = ""; tbl = ""; chain = ""; hit4 = 0; hit6 = 0 }
+            /^[[:space:]]*table[[:space:]]/ { fam = $2; tbl = $3 }
+            /^[[:space:]]*chain[[:space:]]/ { chain = $2 }
+            /\{[[:space:]]*$/ { depth++ }
+            /^[[:space:]]*\}/ { depth--; if (depth == 1) chain = ""; if (depth == 0) { fam = ""; tbl = ""; chain = "" } next }
+            chain == "PREROUTING" && tbl == "nat" && $0 ~ pat {
+                if (fam == "ip") hit4 = 1
+                if (fam == "ip6") hit6 = 1
+                if (fam == "inet") { hit4 = 1; hit6 = 1 }
+            }
+            END { if (hit4 && (need6 == 0 || hit6)) exit 0; exit 1 }
+        '; then
+            return 0
+        fi
     fi
     return 1
 }
@@ -15324,7 +15344,27 @@ hysteria_official_hop_firewall_ok() {
         return 0
     fi
     if command -v nft >/dev/null 2>&1; then
-        nft list ruleset 2>/dev/null | grep -Eq -- "udp dport (${start}-${end}|${first_other}-${end}).*redirect to :${first}([[:space:]]|$)" && return 0
+        # S39 (GPT-20): the old whole-ruleset grep matched redirects in
+        # any chain/table/family. Scope it to nat PREROUTING, and when
+        # the host has IPv6 require both ip and ip6 (an inet table
+        # counts for both families, since its rules apply to both).
+        local _nft_need6=0
+        has_ipv6 && _nft_need6=1
+        if nft list ruleset 2>/dev/null | awk -v need6="$_nft_need6" -v pat="udp dport (${start}-${end}|${first_other}-${end}).*redirect to :${first}([[:space:]]|$)" '
+            BEGIN { depth = 0; fam = ""; tbl = ""; chain = ""; hit4 = 0; hit6 = 0 }
+            /^[[:space:]]*table[[:space:]]/ { fam = $2; tbl = $3 }
+            /^[[:space:]]*chain[[:space:]]/ { chain = $2 }
+            /\{[[:space:]]*$/ { depth++ }
+            /^[[:space:]]*\}/ { depth--; if (depth == 1) chain = ""; if (depth == 0) { fam = ""; tbl = ""; chain = "" } next }
+            chain == "PREROUTING" && tbl == "nat" && $0 ~ pat {
+                if (fam == "ip") hit4 = 1
+                if (fam == "ip6") hit6 = 1
+                if (fam == "inet") { hit4 = 1; hit6 = 1 }
+            }
+            END { if (hit4 && (need6 == 0 || hit6)) exit 0; exit 1 }
+        '; then
+            return 0
+        fi
     fi
     return 1
 }

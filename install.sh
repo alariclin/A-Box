@@ -28670,7 +28670,9 @@ SIZE_MB=512
 ALGO=zstd
 if [[ -f "$CONF" ]]; then . "$CONF"; fi
 zram_active_devs() {
-    swapon --show=NAME --noheadings 2>/dev/null | grep -E '^/dev/zram[0-9]+$' || true
+    local out
+    out=$(swapon --show=NAME --noheadings 2>/dev/null) || return 1
+    printf '%s\n' "$out" | grep -E '^/dev/zram[0-9]+$' || true
 }
 # Reset a device we sized but failed to bring up: zramctl when present,
 # else the sysfs reset attribute (the same mechanism zramctl uses).
@@ -28680,7 +28682,8 @@ _reset_dev() {
 }
 case "${1:-}" in
     start)
-        [[ -z "$(zram_active_devs)" ]] || exit 0
+        active_devs=$(zram_active_devs) || exit 1
+        [[ -z "$active_devs" ]] || exit 0
         modprobe zram 2>/dev/null || true
         [[ -e /sys/class/zram-control ]] || exit 1
         dev=''
@@ -28760,7 +28763,13 @@ setup_zram_swap() {
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}zram 压缩交换 / zram Compressed Swap${NC}"
     msg "${CYAN}======================================================================${NC}"
-    if swapon --show=NAME --noheadings 2>/dev/null | grep -qE '^/dev/zram[0-9]+$'; then
+    local _swapon_out
+    if ! _swapon_out=$(swapon --show=NAME --noheadings 2>/dev/null); then
+        msg "${RED}zram 活动状态查询失败，无法确认是否已有交换设备；已中止以防重复创建。${NC}"
+        pause_return
+        return 0
+    fi
+    if printf '%s\n' "$_swapon_out" | grep -qE '^/dev/zram[0-9]+$'; then
         msg "${YELLOW}zram 交换已在运行：${NC}"
         swapon --show || true
         pause_return

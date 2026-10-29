@@ -21062,7 +21062,7 @@ force_stop_owned_openrc() {
 }
 
 stop_owned() {
-    local srv="$1" u rc enabled_state
+    local srv="$1" u rc enabled_state rc_show
     u=$(managed_unit_path "$srv") || return 1
     if ! owned "$srv"; then
         # An existing but unmarked unit is outside A-Box ownership and cannot be
@@ -21091,6 +21091,9 @@ stop_owned() {
         systemctl disable "$srv" >/dev/null 2>&1 || return 1
         enabled_state=$(systemctl show -p UnitFileState --value "$srv" 2>/dev/null) || return 1
         [[ "$enabled_state" == disabled ]] || return 1
+        # Hardening: a unit that was still activating may reach active
+        # after the first check; re-verify before reporting success.
+        systemctl is-active --quiet "$srv" && return 1
         return 0
     else
         rc-service "$srv" stop >/dev/null 2>&1 || true
@@ -21107,10 +21110,12 @@ stop_owned() {
             3|16|32) : ;;
             *) return 1 ;;
         esac
-        if rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)"; then
+        rc_show=$(rc-update show default 2>/dev/null) || return 1
+        if grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)" <<< "$rc_show"; then
             rc-update del "$srv" default >/dev/null 2>&1 || return 1
         fi
-        rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)" && return 1
+        rc_show=$(rc-update show default 2>/dev/null) || return 1
+        grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)" <<< "$rc_show" && return 1
         rc-service "$srv" status >/dev/null 2>&1; rc=$?
         case "$rc" in
             0) return 1 ;;

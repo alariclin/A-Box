@@ -22997,7 +22997,10 @@ _tune_missing_items() {
         [[ "$got" == "$want" ]] || missing_list+="${key}（当前 ${got:-<空>}，期望 $want）"$'\n'
     done < <(_tune_desired_sysctl)
     if ! grep -q '^# Managed by A-Box' /etc/security/limits.d/A-Box.conf 2>/dev/null \
-        || ! grep -q '^\* soft nofile 1048576' /etc/security/limits.d/A-Box.conf 2>/dev/null; then
+        || ! grep -qx '\* soft nofile 1048576' /etc/security/limits.d/A-Box.conf 2>/dev/null \
+        || ! grep -qx '\* hard nofile 1048576' /etc/security/limits.d/A-Box.conf 2>/dev/null \
+        || ! grep -qx 'root soft nofile 1048576' /etc/security/limits.d/A-Box.conf 2>/dev/null \
+        || ! grep -qx 'root hard nofile 1048576' /etc/security/limits.d/A-Box.conf 2>/dev/null; then
         missing_list+='limits 配置（nofile 上限 1048576）'$'\n'
     fi
     # The persist file itself: a runtime value can be right while the

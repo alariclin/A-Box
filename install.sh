@@ -28703,6 +28703,7 @@ case "${1:-}" in
         modprobe zram 2>/dev/null || true
         [[ -e /sys/class/zram-control ]] || exit 1
         dev=''
+        actual_algo="$ALGO"
         if command -v zramctl >/dev/null 2>&1; then
             dev=$(zramctl --find --size "${SIZE_MB}M" --algorithm "$ALGO" 2>/dev/null) || dev=''
         fi
@@ -28710,7 +28711,16 @@ case "${1:-}" in
             id=$(cat /sys/class/zram-control/hot_add 2>/dev/null) || exit 1
             [[ "$id" =~ ^[0-9]+$ ]] || exit 1
             dev="/dev/zram${id}"
-            echo "$ALGO" > "/sys/block/zram${id}/comp_algorithm" 2>/dev/null || true
+            echo "$ALGO" > "/sys/block/zram${id}/comp_algorithm" 2>/dev/null || { _reset_dev "$dev"; exit 1; }
+            # Read back what the kernel actually runs: the file marks
+            # the current algorithm in brackets ([zstd] lzo), or holds
+            # it plain. A mismatch means the requested algorithm is not
+            # in effect — fail instead of reporting the request as fact.
+            actual_algo=$(sed -n 's/.*\[\([^]]*\)\].*/\1/p' "/sys/block/zram${id}/comp_algorithm" 2>/dev/null | head -1)
+            if [[ -z "$actual_algo" ]]; then
+                actual_algo=$(tr -d '[:space:]' < "/sys/block/zram${id}/comp_algorithm" 2>/dev/null || true)
+            fi
+            if [[ "$actual_algo" != "$ALGO" ]]; then _reset_dev "$dev"; exit 1; fi
             echo "${SIZE_MB}M" > "/sys/block/zram${id}/disksize" || { _reset_dev "$dev"; exit 1; }
         fi
         mkswap "$dev" >/dev/null 2>&1 || { _reset_dev "$dev"; exit 1; }
@@ -28719,7 +28729,7 @@ case "${1:-}" in
         # boot: stop only ever swaps off our own device, never a
         # foreign zram swap (distro zram-generator / zram-tools setups
         # share the box, and device numbers are reused across reboots).
-        printf 'DEV=%s\nBOOT=%s\n' "$dev" "$(_abox_boot_id)" > /etc/ddr/zram.state 2>/dev/null || {
+        printf 'DEV=%s\nBOOT=%s\nALGO=%s\n' "$dev" "$(_abox_boot_id)" "$actual_algo" > /etc/ddr/zram.state 2>/dev/null || {
             # The swap is up but its record is not: only report plain
             # failure once the device is really down. If cleanup cannot
             # bring it down, exit 2 so the caller keeps the helper and
@@ -28909,7 +28919,9 @@ EOF_ZRAM_RC
             msg "${YELLOW}[!] 无法识别 init 系统：zram 本次已启用，但未设置开机自启。${NC}"
             ;;
     esac
-    msg "${GREEN}zram 已启用：大小 ${size_mb}M · 算法 ${algo} · 优先级 100（高于磁盘 Swap，内核优先使用）${NC}"
+    local _actual_algo=''
+    _actual_algo=$(sed -n 's/^ALGO=//p' /etc/ddr/zram.state 2>/dev/null | head -1)
+    msg "${GREEN}zram 已启用：大小 ${size_mb}M · 算法 ${_actual_algo:-$algo} · 优先级 100（高于磁盘 Swap，内核优先使用）${NC}"
     swapon --show || true
     pause_return
 }

@@ -34561,7 +34561,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
         vision) link="vless://$(urlencode "$uuid")@$(uri_host "$pub_ip"):${port}?security=reality&encryption=none&flow=xtls-rprx-vision&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Latest-Vision" ;;
         xhttp) link="vless://$(urlencode "$uuid")@$(uri_host "$pub_ip"):${port}?security=reality&encryption=none&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=xhttp&path=%2Fxhttp&mode=auto#Latest-XHTTP" ;;
         trojan) link="trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Latest-Trojan" ;;
-        ss) link="ss://$(printf '%s' "2022-blake3-aes-128-gcm:${pass}" | base64 -w0 2>/dev/null | tr '+/' '-_' | tr -d '=')@$(uri_host "$pub_ip"):${port}#Latest-SS2022" ;;
+        ss) link=$(build_ss2022_uri "$(uri_host "$pub_ip")" "$port" "$pass"); link="${link%#SS}#Latest-SS2022" ;;
         socks) link="socks5://$(urlencode "$suser"):$(urlencode "$spass")@$(uri_host "$pub_ip"):${port}#Latest-SOCKS5" ;;
     esac
     msg "${GREEN}$(tr_msg xl_ok_installed): ${label} :${port}${NC}"
@@ -34715,7 +34715,7 @@ xray_latest_deploy_trio() {
     link="vless://$(urlencode "$uuid")@$(uri_host "$pub_ip"):${xp}?security=reality&encryption=none&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=xhttp&path=%2Fxhttp&mode=auto#Latest-XHTTP"
     msg "${GREEN}$(tr_msg xl_ok_installed): VLESS-XHTTP-Reality :${xp}${NC}"; msg "$link"; generate_qr "$link"
     register_standalone_link latest-xhttp "VLESS-XHTTP-Reality (Latest Xray) · :${xp}" "$link"
-    link="ss://$(printf '%s' "2022-blake3-aes-128-gcm:${sspass}" | base64 -w0 2>/dev/null | tr '+/' '-_' | tr -d '=')@$(uri_host "$pub_ip"):${sp2}#Latest-SS2022"
+    link=$(build_ss2022_uri "$(uri_host "$pub_ip")" "$sp2" "$sspass"); link="${link%#SS}#Latest-SS2022"
     msg "${GREEN}$(tr_msg xl_ok_installed): SS-2022 :${sp2}${NC}"; msg "$link"; generate_qr "$link"
     register_standalone_link latest-ss "SS-2022 (Latest Xray) · :${sp2}" "$link"
     return 0

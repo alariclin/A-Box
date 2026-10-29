@@ -29131,7 +29131,12 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie)[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^,}\s\"']+)",
+        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]\s*\[)[^\]]*",
+        r'\1***REDACTED***',
+        text,
+    )
+    text = re.sub(
+        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^,}\s\"']+)",
         r'\1"***REDACTED***"',
         text,
     )
@@ -29148,11 +29153,12 @@ PY_REDACT
             -e 's/((Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*)[^,}[:cntrl:]"]+/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
-            -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortId|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
-            -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortId|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*)(\x27)([^\x27\\]|\\.)*\3/\1\3***REDACTED***\3/Ig' \
+            -e 's/([\" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[\" ]?[[:space:]]*[:=][[:space:]]*\[)[^]]*/\1***REDACTED***/Ig' \
+            -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
+            -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*)(\x27)([^\x27\\]|\\.)*\3/\1\3***REDACTED***\3/Ig' \
             -e 's/^(id[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/\1***REDACTED***/Ig' \
             -e 's/([^A-Za-z0-9_])(id[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/\1\2***REDACTED***/Ig' \
-            -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortId|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)[^,}[:space:]["]+/\1***REDACTED***/Ig' \
+            -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)[^,}[:space:]["]+/\1***REDACTED***/Ig' \
             -e 's/(vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess):\/\/[^[:space:]]+/***CLIENT_LINK_REDACTED***/Ig'
     fi
 }

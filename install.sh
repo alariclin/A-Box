@@ -27958,7 +27958,7 @@ sni_openssl_check() {
 sni_verify_raw_report() {
     local raw_sorted="$1" verified="$2" verify_limit="${3:-240}" timeout_s="${4:-5}" line score domain c3 c4 c5 c6 c7 c8 check tls13 alpn san add adj n=0
     local asn_cache vps_ip vps_meta vps_asn vps_country target_ip target_meta target_asn target_country target_org asn_match same_country cdn_penalty progress_every=20
-    : > "$verified"
+    : > "$verified" || return 1
     asn_cache=$(mktemp -d /tmp/A-Box-asn-cache.XXXXXX) || die 'SNI ASN cache directory creation failed; refusing to use a shared temporary directory.'
     vps_ip=$(get_public_ip 2>/dev/null || true)
     vps_meta=$(asn_lookup_ip "$vps_ip" "$asn_cache")
@@ -28011,10 +28011,10 @@ sni_verify_raw_report() {
         [[ "$asn_match" == '1' ]] && add=$((add - 1500))
         adj=$(sni_adjust_score "$score" "$add")
         printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\tasn=%s\tcountry=%s\tasnmatch=%s\tsamecountry=%s\torg=%s\tcdnpenalty=%s\n' \
-            "$adj" "$domain" "$c3" "$c4" "$c5" "$c6" "$c7" "$c8" "$check" "$target_asn" "$target_country" "$asn_match" "$same_country" "$target_org" "$cdn_penalty" >> "$verified"
-    done < "$raw_sorted"
+            "$adj" "$domain" "$c3" "$c4" "$c5" "$c6" "$c7" "$c8" "$check" "$target_asn" "$target_country" "$asn_match" "$same_country" "$target_org" "$cdn_penalty" >> "$verified" || return 1
+    done < "$raw_sorted" || return 1
     printf '\r[*] Stage 2 progress: %d/%d verified\n' "$(( n > verify_limit ? verify_limit : n ))" "$verify_limit" >&2
-    LC_ALL=C sort -t $'\t' -k1,1n -k2,2 "$verified" -o "$verified"
+    LC_ALL=C sort -t $'\t' -k1,1n -k2,2 "$verified" -o "$verified" || return 1
     rm -rf "$asn_cache" 2>/dev/null || true
 }
 
@@ -28321,7 +28321,9 @@ run_builtin_sni_radar() {
         die "$(tr_msg sn_no_results)"
     fi
     LC_ALL=C sort -t $'\t' -k1,1n -k2,2 "$raw" > "$raw_sorted"
-    sni_verify_raw_report "$raw_sorted" "$report" "$verify_limit" "$timeout_s"
+    if ! sni_verify_raw_report "$raw_sorted" "$report" "$verify_limit" "$timeout_s"; then
+        cp -f "$raw_sorted" "$report"
+    fi
     if [[ ! -s "$report" ]]; then
         cp -f "$raw_sorted" "$report"
     fi

@@ -32172,7 +32172,7 @@ wallos_restore_backup() {
                 # B-07 fix: verify each rollback move; report incomplete state.
                 local rb_failed=0
                 for restore_name in db logos .abox-state; do
-                    if [[ -e "$rescue/$restore_name" && ! -e "$WALLOS_DIR/$restore_name" ]]; then
+                    if [[ (-e "$rescue/$restore_name" || -L "$rescue/$restore_name") && ! -e "$WALLOS_DIR/$restore_name" ]]; then
                         mv -- "$rescue/$restore_name" "$WALLOS_DIR/$restore_name" 2>/dev/null || rb_failed=1
                     fi
                 done
@@ -32191,7 +32191,7 @@ wallos_restore_backup() {
                 fi
             done
             for restore_name in db logos .abox-state; do
-                if [[ -e "$rescue/$restore_name" && ! -e "$WALLOS_DIR/$restore_name" ]]; then
+                if [[ (-e "$rescue/$restore_name" || -L "$rescue/$restore_name") && ! -e "$WALLOS_DIR/$restore_name" ]]; then
                     mv -- "$rescue/$restore_name" "$WALLOS_DIR/$restore_name" 2>/dev/null || rb_failed=1
                 fi
             done

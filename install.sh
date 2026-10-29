@@ -13351,6 +13351,11 @@ verify_ed25519_detached() {
     command -v openssl >/dev/null 2>&1 || return 1
     command -v python3 >/dev/null 2>&1 || return 1
     command -v base64 >/dev/null 2>&1 || return 1
+    # S42 (GPT-10): sha256sum joins the front checks as dual insurance.
+    # The fingerprint below is Python-computed, but the environment
+    # contract stays fail-closed: a missing sha256sum must never again
+    # silently disable the revocation check.
+    command -v sha256sum >/dev/null 2>&1 || return 1
     keydir=$(umask 077; mktemp -d /tmp/A-Box-ed25519.XXXXXX 2>/dev/null) || return 1
     keypem="$keydir/pub.pem"
     sigbin="$keydir/sig.bin"
@@ -13364,14 +13369,29 @@ verify_ed25519_detached() {
         pubkey_b64="${entry#*:}"
         # Malformed entry (no colon) or empty key: skip.
         [[ -n "$label" && -n "$pubkey_b64" && "$pubkey_b64" != "$entry" ]] || continue
-        # Skip revoked keys: fingerprint = sha256 hex of raw pubkey bytes.
-        fp=$(printf '%s' "$pubkey_b64" | base64 -d 2>/dev/null | sha256sum 2>/dev/null | awk '{print $1}')
+        # S42 (GPT-10 + argon P1-6b): fingerprint = SHA-256 hex of the
+        # raw 32-byte pubkey, computed by Python (not the shell
+        # pipeline). A decode failure or a length other than 32 yields
+        # no fingerprint, and a key without a valid fingerprint is
+        # skipped -- never silently treated as unrevoked (the old
+        # pipeline hashed empty input to e3b0c442... on decode failure,
+        # and yielded empty -- hence "unrevoked" -- when sha256sum was
+        # missing). The 64-hex check states the invariant explicitly.
+        fp=$(python3 -c "
+import base64, hashlib, sys
+try:
+    raw = base64.b64decode(sys.argv[1], validate=True)
+except Exception:
+    sys.exit(1)
+if len(raw) != 32:
+    sys.exit(1)
+print(hashlib.sha256(raw).hexdigest())
+" "$pubkey_b64" 2>/dev/null)
+        [[ "$fp" =~ ^[0-9a-f]{64}$ ]] || continue
         revoked=0
-        if [[ -n "$fp" ]]; then
-            for r in "${ABOX_REVOKED_PUBKEY_FPS[@]}"; do
-                if [[ "${r,,}" == "${fp,,}" ]]; then revoked=1; break; fi
-            done
-        fi
+        for r in "${ABOX_REVOKED_PUBKEY_FPS[@]}"; do
+            if [[ "${r,,}" == "${fp,,}" ]]; then revoked=1; break; fi
+        done
         (( revoked == 0 )) || continue
         # Convert base64 raw 32-byte pubkey -> PEM (SubjectPublicKeyInfo).
         # Uses python3 -c (not heredoc) to avoid multi-level escaping fragility.

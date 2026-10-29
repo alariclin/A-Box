@@ -19555,8 +19555,7 @@ routing_apply_live() {
                 | ((($prev - $managed) + $force) | unique) as $retired
                 | .outbounds |= (map(select(.tag as $t | ($managed + $retired) | index($t) | not))
                     + [$st[0].outbounds[]?.xray])
-                | .routing.rules |= (map(select((.outboundTag as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not)))
-                    + [$st[0].rules[]?.xray_rule]))
+                | .routing.rules = (((.routing.rules // []) | map(select((.outboundTag as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not)))) + [$st[0].rules[]?.xray_rule]))
             ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
             jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
             if [[ -x /usr/local/bin/xray ]]; then

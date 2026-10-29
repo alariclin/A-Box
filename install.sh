@@ -25852,14 +25852,15 @@ snapshot_dns_state() {
     if [[ -f "$DNS_STATE_FILE" && ! -L "$DNS_STATE_FILE" ]]; then cp -a "$DNS_STATE_FILE" "$dir/dns-state" || return 1; else printf absent > "$dir/dns-state.absent"; fi
     if [[ "$backend" == networkmanager ]] && command -v nmcli >/dev/null 2>&1; then
         iface=$(nmcli -t -f DEVICE,STATE device 2>/dev/null | awk -F: '$2=="connected" {print $1; exit}')
-        connection=$(nmcli -g GENERAL.CONNECTION device show "$iface" 2>/dev/null || true)
-        if [[ -n "$iface" && -n "$connection" ]]; then
-            printf '%s\n' "$connection" > "$dir/nm-connection"
-            for key in ipv4.ignore-auto-dns ipv4.dns ipv6.ignore-auto-dns ipv6.dns; do
-                value=$(nmcli -g "$key" connection show "$connection" 2>/dev/null | head -1 || true)
-                printf '%s\n' "$value" > "$dir/nm-${key//./-}"
-            done
-        fi
+        [[ -n "$iface" ]] || return 1
+        connection=$(nmcli -g GENERAL.CONNECTION device show "$iface" 2>/dev/null) || return 1
+        [[ -n "$connection" && "$connection" != '--' ]] || return 1
+        printf '%s\n' "$connection" > "$dir/nm-connection" || return 1
+        for key in ipv4.ignore-auto-dns ipv4.dns ipv6.ignore-auto-dns ipv6.dns; do
+            value=$(nmcli -g "$key" connection show "$connection" 2>/dev/null) || return 1
+            value=${value%%$'\n'*}
+            printf '%s\n' "$value" > "$dir/nm-${key//./-}" || return 1
+        done
     fi
     printf ok > "$dir/COMPLETE" || return 1
 }

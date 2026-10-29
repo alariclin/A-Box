@@ -12192,6 +12192,7 @@ reorder_ss_whitelist_rules_one() {
     local wl_re="--comment[[:space:]]+\"?${wl_comment}\"?([[:space:]]|$)" drop_re="--comment[[:space:]]+\"?${drop_comment}\"?([[:space:]]|$)"
     local save_cmd="${cmd}-save" rules_output='' recovery_snapshot='' lock_file=/run/A-Box-firewall-reorder.lock lock_fd=''
     local original_rules_output='' current_rules_output='' current_line line i j n rule_no target_idx del_idx check_rc=0 mutated=0
+    local _recheck_output='' _recheck_line='' _recheck_norm='' _delete_norm=''
     local -a rules=() argv=() current_lines=() delete_lines=() delete_target_indices=() delete_rule_numbers=()
     local -a original_target_lines=() original_target_positions=() expected_target_lines=()
     local -a current_target_lines=() current_foreign_lines=() original_foreign_rules=()
@@ -12371,6 +12372,15 @@ reorder_ss_whitelist_rules_one() {
         line=${delete_lines[j]//\"/}
         read -r -a argv <<< "$line"
         [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        # S26: re-verify the rule currently at delete_rule_numbers[j]
+        # matches the snapshot line before deleting by number: an
+        # external change between the state check and the delete can
+        # shift numbers onto a foreign rule. On mismatch, abort and roll back.
+        _recheck_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        _recheck_line=$(printf '%s\n' "$_recheck_output" | awk -v _n="${delete_rule_numbers[j]}" '/^-A[[:space:]]+INPUT[[:space:]]/ { _c++ } _c == _n { print; exit }')
+        _recheck_norm=$(__abox_normalize_managed_rule_line "$_recheck_line")
+        _delete_norm=$(__abox_normalize_managed_rule_line "${delete_lines[j]}")
+        [[ -n "$_recheck_norm" && "$_recheck_norm" == "$_delete_norm" ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         if ! _iptables_do "$cmd" -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
             __abox_firewall_unlock "$lock_fd"; lock_fd=''

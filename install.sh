@@ -16433,9 +16433,14 @@ xray_hot_remove_inbound() {
     local cfg='/usr/local/etc/xray/config.json' tmp
     [[ -n "$tag" && "$tag" != 'api' ]] || return 1
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    # A corrupt config must never be reported as "nothing to delete":
+    # parse it first, then distinguish "tag absent" from "read failed".
+    jq empty "$cfg" >/dev/null 2>&1 || return 1
     # Skip if tag not in config (avoid unnecessary restart)
     if ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        xray_api_available && xray_api_remove_inbound "$tag" || true
+        if xray_api_available; then
+            xray_api_remove_inbound "$tag" || return 1
+        fi
         return 0
     fi
     tmp=$(mktemp /tmp/A-Box-xray-hotdel.XXXXXX) || return 1

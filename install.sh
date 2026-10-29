@@ -16271,6 +16271,9 @@ build_xray_config() {
     # Binding it to anything but loopback would expose full config control.
     # Merge routing state (WARP / split-routing outbounds + rules); survives redeploys.
     local _rs_ob='[]' _rs_rules='[]'
+    if [[ -L "$ROUTING_STATE_FILE" ]]; then
+        die 'Routing state file is a symbolic link; refusing to deploy without routing policy.'
+    fi
     if [[ -f "$ROUTING_STATE_FILE" && ! -L "$ROUTING_STATE_FILE" ]]; then
         jq -e '.version == 1 and (.outbounds | type == "array") and (.rules | type == "array")' "$ROUTING_STATE_FILE" >/dev/null 2>&1 || die 'Routing state file is invalid; refusing to deploy without routing policy.'
         _rs_ob=$(jq -c '[.outbounds[]?.xray]' "$ROUTING_STATE_FILE" 2>/dev/null) || die 'Routing state outbound merge failed.'
@@ -16516,6 +16519,9 @@ build_singbox_config() {
     umask 077
     # Merge routing state (WARP / split-routing outbounds + rules); survives redeploys.
     local _rs_ob='[]' _rs_rules='[]'
+    if [[ -L "$ROUTING_STATE_FILE" ]]; then
+        die 'Routing state file is a symbolic link; refusing to deploy without routing policy.'
+    fi
     if [[ -f "$ROUTING_STATE_FILE" && ! -L "$ROUTING_STATE_FILE" ]]; then
         jq -e '.version == 1 and (.outbounds | type == "array") and (.rules | type == "array")' "$ROUTING_STATE_FILE" >/dev/null 2>&1 || die 'Routing state file is invalid; refusing to deploy without routing policy.'
         _rs_ob=$(jq -c '[.outbounds[]?.singbox

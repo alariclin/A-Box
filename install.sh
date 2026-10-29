@@ -29488,7 +29488,23 @@ restore_managed_service_state() {
             printf '%s\n' "$b_line" >> "$rb_before" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
             printf '%s\n' "$p_line" >> "$rb_post" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
         elif [[ "$p_line" != "$b_line" ]]; then
-            excluded+="$srv "
+            # Reachable intermediate states of this restore itself: the
+            # applier changes enabled first, then active. If the second
+            # step failed, the service sits at (before_active,
+            # target_enabled) — or, for an enabled-runtime target, at
+            # (before_active, disabled) after the intermediate disable.
+            # Active never moved, so this state cannot be blamed on an
+            # outside actor; roll it back like a fully applied service.
+            local p_active p_enabled b_active t_enabled
+            IFS='|' read -r _ p_active p_enabled _ <<< "$p_line"
+            IFS='|' read -r _ b_active _ _ <<< "$b_line"
+            IFS='|' read -r _ _ t_enabled _ <<< "$t_line"
+            if [[ "$p_active" == "$b_active" && ( "$p_enabled" == "$t_enabled" || ( "$t_enabled" == 'enabled-runtime' && "$p_enabled" == 'disabled' ) ) ]]; then
+                printf '%s\n' "$b_line" >> "$rb_before" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
+                printf '%s\n' "$p_line" >> "$rb_post" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
+            else
+                excluded+="$srv "
+            fi
         fi
     done < "$state_file"
     chmod 600 "$rb_before" "$rb_post" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }

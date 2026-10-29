@@ -32181,7 +32181,7 @@ wallos_restore_backup() {
 }
 
 wallos_upgrade_journal_write() {
-    local phase="$1" old_image="$2" old_port="$3" old_tz="$4" old_bind="$5" backup="$6" was_running="$7"
+    local phase="$1" old_image="$2" old_port="$3" old_tz="$4" old_bind="$5" backup="$6" was_running="$7" old_image_id="${8:-}"
     local journal="$WALLOS_DIR/.upgrade-transaction"
     [[ "$phase" == active || "$phase" == committed ]] || return 1
     [[ "$old_image" =~ ^((docker\.io/)?bellamy/wallos:[A-Za-z0-9._-]+|(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}|sha256:[A-Fa-f0-9]{64})$ ]] || return 1
@@ -32190,6 +32190,7 @@ wallos_upgrade_journal_write() {
     # F-08: accept any valid IP for rollback (was loopback/wildcard only, forcing coercion).
     { [[ -z "$old_bind" ]] || valid_ip_address "$old_bind"; } || return 1
     [[ "$was_running" == 0 || "$was_running" == 1 ]] || return 1
+    { [[ -z "$old_image_id" ]] || [[ "$old_image_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]]; } || return 1
     [[ "$backup" == "$WALLOS_DIR/backups/wallos-"*.tar.gz && -f "$backup" && ! -L "$backup" ]] || return 1
     write_file_atomically_from_stdin "$journal" 600 <<EOF_WALLOS_TXN
 phase=$phase
@@ -32199,6 +32200,7 @@ old_tz=$old_tz
 old_bind=$old_bind
 backup=$backup
 was_running=$was_running
+old_image_id=$old_image_id
 EOF_WALLOS_TXN
 }
 
@@ -32218,7 +32220,7 @@ wallos_txn_value() {
 
 wallos_recover_interrupted_upgrade() {
     local journal="$WALLOS_DIR/.upgrade-transaction"
-    local owner mode phase old_image old_port old_tz old_bind backup was_running
+    local owner mode phase old_image old_port old_tz old_bind backup was_running old_image_id _run_image _lines
     [[ -e "$journal" || -L "$journal" ]] || return 0
     [[ -f "$journal" && ! -L "$journal" ]] || {
         msg "${RED}$(tr_msg wl_rc_journal_type)${NC}"
@@ -32230,7 +32232,8 @@ wallos_recover_interrupted_upgrade() {
         msg "${RED}$(tr_msg wl_rc_journal_perm)${NC}"
         return 1
     }
-    [[ "$(wc -l < "$journal" | tr -d '[:space:]')" == 7 ]] || {
+    _lines=$(wc -l < "$journal" | tr -d '[:space:]')
+    [[ "$_lines" == 7 || "$_lines" == 8 ]] || {
         msg "${RED}$(tprintf wl_rc_journal_incomplete "$journal")${NC}"
         return 1
     }
@@ -32248,6 +32251,10 @@ wallos_recover_interrupted_upgrade() {
         return 0
     fi
     [[ "$old_image" =~ ^((docker\.io/)?bellamy/wallos:[A-Za-z0-9._-]+|(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}|sha256:[A-Fa-f0-9]{64})$ ]] || return 1
+    # S135: the pinned image ID, when present, is the run identity.
+    old_image_id=$(wallos_txn_value "$journal" old_image_id 2>/dev/null || true)
+    { [[ -z "$old_image_id" ]] || [[ "$old_image_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]]; } || return 1
+    _run_image="${old_image_id:-$old_image}"
     valid_canonical_port "$old_port" || return 1
     valid_timezone_name "$old_tz" || return 1
     # F-08: accept any valid IP for rollback (was loopback/wildcard only).
@@ -32263,12 +32270,17 @@ wallos_recover_interrupted_upgrade() {
             return 1
         }
     fi
+    # S135: a missing pinned image must refuse, never substitute a tag fetch.
+    if [[ -n "$old_image_id" ]] && ! docker image inspect "$old_image_id" >/dev/null 2>&1; then
+        msg "${RED}$(tprintf wl_rc_no_image "$old_image_id")${NC}"
+        return 1
+    fi
     # S134: a digest-ref old image is fetchable by digest directly,
     # without a version-list lookup (which only resolves tags).
-    if [[ "$old_image" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]] && ! docker image inspect "$old_image" >/dev/null 2>&1; then
+    if [[ -z "$old_image_id" ]] && [[ "$old_image" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]] && ! docker image inspect "$old_image" >/dev/null 2>&1; then
         docker pull "$old_image" >/dev/null 2>&1 || { msg "${RED}$(tprintf wl_rc_no_image "$old_image")${NC}"; return 1; }
     fi
-    if ! docker image inspect "$old_image" >/dev/null 2>&1; then
+    if [[ -z "$old_image_id" ]] && ! docker image inspect "$old_image" >/dev/null 2>&1; then
         # N-11: old image not present locally. Try fetching the exact previous
         # version from the versioned mirror instead of refusing.
         # N-03: look up the journal's old_image tag in the version list;
@@ -32311,7 +32323,7 @@ wallos_recover_interrupted_upgrade() {
         docker run -d --name wallos --label com.alariclin.abox.managed=true \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-            -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$old_image" >/dev/null || return 1
+            -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || return 1
         # Same U217 rule as the install path: an omitted -p means the
         # recovered container is unpublished, so the health gate must
         # not demand a publication it will never have.
@@ -32328,7 +32340,7 @@ wallos_recover_interrupted_upgrade() {
         docker create --name wallos --label com.alariclin.abox.managed=true \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-            -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$old_image" >/dev/null || return 1
+            -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || return 1
     fi
     rm -f -- "$journal" || return 1
     msg "${YELLOW}$(tr_msg wl_rc_done)${NC}"
@@ -32968,7 +32980,7 @@ wallos_http_rebind() { # $1=public port $2=image $3=tz: republish the container 
 }
 
 wallos_install_or_update() {
-    local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
+    local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_image_id='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
     (( EUID == 0 )) || { msg "${RED}$(tr_msg wl_iu_need_root)${NC}"; return 1; }
     command -v jq >/dev/null 2>&1 || { msg "${RED}$(tr_msg wl_iu_need_jq)${NC}"; return 1; }
     wallos_print_host_info
@@ -32991,6 +33003,12 @@ wallos_install_or_update() {
         # X-09: normalize docker.io/ prefix (containerd image store / Podman
         # return docker.io/bellamy/wallos:tag); D-05 fixed the prune path only.
         old_image="${old_image#docker.io/}"
+        # S135: pin the immutable image ID at capture time; the tag in
+        # .Config.Image can be retagged before recovery runs.
+        old_image_id=$(docker inspect -f '{{.Image}}' wallos 2>/dev/null || true)
+        [[ "$old_image_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || {
+            msg "${RED}$(tr_msg wl_iu_state_incomplete)${NC}"; return 1;
+        }
         old_bind=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
         # F-08: preserve legitimate HostIp verbatim; do NOT coerce unknown IPs to 0.0.0.0.
         # Empty means no port binding — preserve empty (do not invent a publication).
@@ -33195,7 +33213,7 @@ wallos_install_or_update() {
         if (( was_running == 1 )); then docker stop wallos >/dev/null 2>&1 || return 1; fi
         stamp=$(date -u '+%Y%m%dT%H%M%SZ')
         backup=$(wallos_create_backup "$stamp") || { (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true; msg "${RED}$(tr_msg wl_iu_backup_fail)${NC}"; return 1; }
-        wallos_upgrade_journal_write active "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" || {
+        wallos_upgrade_journal_write active "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id" || {
             (( was_running == 0 )) || docker start wallos >/dev/null 2>&1 || true
             msg "${RED}$(tr_msg wl_iu_journal_fail)${NC}"
             return 1
@@ -33251,7 +33269,7 @@ wallos_install_or_update() {
         return 1
     fi
     if (( running == 1 )); then
-        if ! wallos_upgrade_journal_write committed "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running"; then
+        if ! wallos_upgrade_journal_write committed "$old_image" "$old_port" "$old_tz" "$old_bind" "$backup" "$was_running" "$old_image_id"; then
             msg "${RED}$(tr_msg wl_iu_health_meta_fail)${NC}"
             docker rm -f wallos >/dev/null 2>&1 || true
             wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"

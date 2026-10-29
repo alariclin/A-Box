@@ -1268,6 +1268,12 @@ tr_msg() {
         fa:wl_iu_cf_incomplete) echo 'تنظیم تونل CF کامل نشد: Wallos به‌صورت محلی در حال اجراست اما در معرض نیست. علت را رفع و نصب را دوباره اجرا کنید.' ;;
         zh-tw:wl_iu_cf_incomplete) echo 'CF 隧道設定未完成：Wallos 已在本機運行，但未對外暴露。修復後重跑安裝即可重試。' ;;
         ja:wl_iu_cf_incomplete) echo 'CF トンネルの設定が完了しませんでした。Wallos はローカルで実行中ですが公開されていません。原因を修正してインストールを再実行してください。' ;;
+        zh:wl_iu_teardown_fail) echo '旧公网入口未能停止，安装已中止：请手动停止残留的前端服务后再试。' ;;
+        en:wl_iu_teardown_fail) echo 'The old public entrance could not be stopped; installation aborted. Stop the leftover frontend service manually and retry.' ;;
+        ru:wl_iu_teardown_fail) echo 'Старый публичный вход не удалось остановить; установка прервана. Остановите оставшуюся службу вручную и повторите.' ;;
+        fa:wl_iu_teardown_fail) echo 'ورودی عمومی قدیمی متوقف نشد؛ نصب متوقف شد. سرویس باقی‌مانده را دستی متوقف و دوباره تلاش کنید.' ;;
+        zh-tw:wl_iu_teardown_fail) echo '舊公網入口未能停止，安裝已中止：請手動停止殘留的前端服務後再試。' ;;
+        ja:wl_iu_teardown_fail) echo '旧パブリック入口を停止できず、インストールを中止しました。残っているフロントエンドサービスを手動で停止して再試行してください。' ;;
         zh:wl_iu_ufw_q) echo '通过 UFW 放行 TCP %s？[Y/N]: ' ;;
         en:wl_iu_ufw_q) echo 'Allow TCP %s through UFW? [Y/N]: ' ;;
         ru:wl_iu_ufw_q) echo 'Разрешить TCP %s через UFW? [Y/N]: ' ;;
@@ -32650,14 +32656,23 @@ EOF_WCADDY_RC
     fi
 }
 
-wallos_https_teardown() { # best-effort: stop the HTTPS front, drop its config/data
+wallos_https_teardown() { # stop the HTTPS front, drop its config/data; returns 1 if the front is still running
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl stop abox-wallos-caddy.service >/dev/null 2>&1 || true
+        # S148: verify the stop before removing the unit: deleting the
+        # unit of a still-running front orphans it and leaves the
+        # public entrance live while the caller reports it closed.
+        if is_service_running abox-wallos-caddy 2>/dev/null; then
+            return 1
+        fi
         systemctl disable abox-wallos-caddy.service >/dev/null 2>&1 || true
         rm -f "/etc/systemd/system/abox-wallos-caddy.service"
         systemctl daemon-reload >/dev/null 2>&1 || true
     else
         rc-service abox-wallos-caddy stop >/dev/null 2>&1 || true
+        if is_service_running abox-wallos-caddy 2>/dev/null; then
+            return 1
+        fi
         rc-update del abox-wallos-caddy default >/dev/null 2>&1 || true
         rm -f "/etc/init.d/abox-wallos-caddy"
     fi
@@ -32854,14 +32869,20 @@ EOF_WCFTRC
     fi
 }
 
-wallos_cftunnel_teardown() { # best-effort
+wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still running (see S148)
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl stop abox-wallos-cftunnel.service >/dev/null 2>&1 || true
+        if is_service_running abox-wallos-cftunnel 2>/dev/null; then
+            return 1
+        fi
         systemctl disable abox-wallos-cftunnel.service >/dev/null 2>&1 || true
         rm -f "/etc/systemd/system/abox-wallos-cftunnel.service"
         systemctl daemon-reload >/dev/null 2>&1 || true
     else
         rc-service abox-wallos-cftunnel stop >/dev/null 2>&1 || true
+        if is_service_running abox-wallos-cftunnel 2>/dev/null; then
+            return 1
+        fi
         rc-update del abox-wallos-cftunnel default >/dev/null 2>&1 || true
         rm -f "/etc/init.d/abox-wallos-cftunnel"
     fi
@@ -33393,8 +33414,16 @@ wallos_install_or_update() {
             *) security_note="$(tr_msg wl_note_cf)" ;;
         esac
     elif [[ "$_old_mode" == https || "$_old_mode" == cftunnel ]]; then
-        wallos_https_teardown >/dev/null 2>&1 || true
-        wallos_cftunnel_teardown >/dev/null 2>&1 || true
+        # S148: refusing here is load-bearing: a front that will not
+        # stop must not be reported as closed by a local-only install.
+        # Both teardowns always run (no short-circuit) before judging.
+        local _td_ok=1
+        wallos_https_teardown >/dev/null 2>&1 || _td_ok=0
+        wallos_cftunnel_teardown >/dev/null 2>&1 || _td_ok=0
+        if (( _td_ok == 0 )); then
+            msg "${RED}$(tr_msg wl_iu_teardown_fail)${NC}"
+            return 1
+        fi
     fi
     if ! wallos_db_health; then
         case "${ABOX_LANG:-zh}" in

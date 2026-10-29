@@ -36889,7 +36889,7 @@ validate_owned_fallback_runtime_lock() {
     [[ -f "$LOCK_FALLBACK_DIR/pid" && ! -L "$LOCK_FALLBACK_DIR/pid" && -f "$LOCK_FALLBACK_DIR/starttime" && ! -L "$LOCK_FALLBACK_DIR/starttime" ]] || return 1
     IFS= read -r pid < "$LOCK_FALLBACK_DIR/pid" || return 1
     IFS= read -r start < "$LOCK_FALLBACK_DIR/starttime" || return 1
-    [[ "$pid" == "$$" && "$start" == "$(runtime_lock_proc_starttime $$)" ]] || return 1
+    [[ -n "$start" && "$pid" == "$$" && "$start" == "$(runtime_lock_proc_starttime $$)" ]] || return 1
 }
 
 runtime_lock_cleanup() {
@@ -36911,7 +36911,7 @@ fallback_runtime_lock_held() { # 0 = a live process holds the fallback lock
 }
 
 acquire_fallback_runtime_lock() {
-    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start='' _dir_age=0 _dir_mtime="" _remv_pid='' _remv_start='' _pre_has_pid=0 _pre_has_start=0 _pre_pid='' _pre_start='' _post_has_pid=0 _post_has_start=0 _post_pid='' _post_start=''
+    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start='' _dir_age=0 _dir_mtime="" _remv_pid='' _remv_start='' _pre_has_pid=0 _pre_has_start=0 _pre_pid='' _pre_start='' _post_has_pid=0 _post_has_start=0 _post_pid='' _post_start='' _self_start=''
     if mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null; then
         lock_dir_created=1
         chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
@@ -37019,7 +37019,14 @@ acquire_fallback_runtime_lock() {
     fi
     umask 077
     printf '%s\n' "$$" > "$LOCK_FALLBACK_DIR/pid" || { (( lock_dir_created )) && { rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true; rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true; }; return 1; }
-    printf '%s\n' "$(runtime_lock_proc_starttime $$)" > "$LOCK_FALLBACK_DIR/starttime" || { (( lock_dir_created )) && { rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true; rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true; }; return 1; }
+    # S159: capture starttime first and require it non-empty. The old
+    # `printf ... "$(...)" > file || ...` tested printf's status, not
+    # the /proc read's: a failed read wrote an empty line and the lock
+    # was still granted with an empty starttime (which validate then
+    # accepted, empty == empty, while liveness checks demand non-empty).
+    _self_start=$(runtime_lock_proc_starttime $$) || { (( lock_dir_created )) && { rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true; rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true; }; return 1; }
+    [[ -n "$_self_start" ]] || { (( lock_dir_created )) && { rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true; rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true; }; return 1; }
+    printf '%s\n' "$_self_start" > "$LOCK_FALLBACK_DIR/starttime" || { (( lock_dir_created )) && { rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true; rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true; }; return 1; }
     chmod 600 "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" || { (( lock_dir_created )) && { rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true; rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true; }; return 1; }
     chown root:root "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" || { (( lock_dir_created )) && { rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true; rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true; }; return 1; }
     ABOX_RUNTIME_LOCK_MODE='fallback'

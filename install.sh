@@ -16555,8 +16555,27 @@ build_singbox_config() {
     mv -f "$tmp_out" "$out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_commit)"; }
 }
 
+# Restore one file from backup and verify the result. $1=bak (may be
+# empty), $2=dest. Empty bak means dest was newly created: remove it.
+# Returns 0 only when the post-state is verified (byte-identical copy
+# when cmp exists, else cp success + non-empty dest).
+restore_file_or_remove() {
+    local bak="${1:-}" dest="$2"
+    if [[ -n "$bak" ]]; then
+        cp -a -- "$bak" "$dest" || return 1
+        if command -v cmp >/dev/null 2>&1; then
+            cmp -s -- "$bak" "$dest" || return 1
+        else
+            [[ -s "$dest" ]] || return 1
+        fi
+    else
+        rm -f -- "$dest" || return 1
+        [[ ! -e "$dest" ]] || return 1
+    fi
+}
+
 generate_self_signed_cert_atomically() {
-    local key="$1" cert="$2" cn="$3" dir tmp key_tmp cert_tmp pub1 pub2 key_bak='' cert_bak=''
+    local key="$1" cert="$2" cn="$3" dir tmp key_tmp cert_tmp pub1 pub2 key_bak='' cert_bak='' _cert_rb_fail=0
     dir=$(dirname "$key")
     [[ "$dir" == "$(dirname "$cert")" ]] || return 1
     path_parent_chain_safe "$key" || return 1
@@ -16589,15 +16608,25 @@ generate_self_signed_cert_atomically() {
     if [[ -e "$cert" ]]; then cert_bak="$tmp/cert.old"; cp -a -- "$cert" "$cert_bak" || { rm -rf "$tmp"; return 1; }; fi
     mv -f -- "$key_tmp" "$key" || { rm -rf "$tmp"; return 1; }
     if ! mv -f -- "$cert_tmp" "$cert"; then
-        if [[ -n "$key_bak" ]]; then cp -a -- "$key_bak" "$key"; else rm -f -- "$key"; fi
-        [[ -n "$cert_bak" ]] && cp -a -- "$cert_bak" "$cert"
-        rm -rf "$tmp"
+        _cert_rb_fail=0
+        restore_file_or_remove "$key_bak" "$key" || _cert_rb_fail=1
+        restore_file_or_remove "$cert_bak" "$cert" || _cert_rb_fail=1
+        if (( _cert_rb_fail )); then
+            msg "[!] Certificate rollback incomplete; old key/cert backups kept in ${tmp} (key.old/cert.old). Restore them manually." >&2
+        else
+            rm -rf "$tmp"
+        fi
         return 1
     fi
     chmod 600 "$key" "$cert" || {
-        if [[ -n "$key_bak" ]]; then cp -a -- "$key_bak" "$key"; else rm -f -- "$key"; fi
-        if [[ -n "$cert_bak" ]]; then cp -a -- "$cert_bak" "$cert"; else rm -f -- "$cert"; fi
-        rm -rf "$tmp"
+        _cert_rb_fail=0
+        restore_file_or_remove "$key_bak" "$key" || _cert_rb_fail=1
+        restore_file_or_remove "$cert_bak" "$cert" || _cert_rb_fail=1
+        if (( _cert_rb_fail )); then
+            msg "[!] Certificate rollback incomplete; old key/cert backups kept in ${tmp} (key.old/cert.old). Restore them manually." >&2
+        else
+            rm -rf "$tmp"
+        fi
         return 1
     }
     rm -rf "$tmp"

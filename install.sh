@@ -21590,7 +21590,9 @@ traffic_quota_transaction_rollback() {
     fi
 
     # Restore only A-Box-owned traffic state after the complete conflict preflight.
-    if [[ -f "$tx_dir/pre-traffic.env" ]]; then
+    if [[ -f "$tx_dir/pre.env.absent" ]]; then
+        rm -f -- "$ABOX_ENV" || rc=1
+    elif [[ -f "$tx_dir/pre-traffic.env" ]]; then
         local envtmp
         envtmp=$(mktemp "$ABOX_DIR/.env.A-Box-traffic-rollback.XXXXXX") || rc=1
         if (( rc == 0 )); then
@@ -21653,11 +21655,18 @@ traffic_quota_transaction_rollback() {
 }
 
 prepare_traffic_quota_transaction() {
-    local tx_dir="$1" traffic_env_tmp current
+    local tx_dir="$1" traffic_env_tmp current grep_rc
     mkdir -p "$tx_dir" || return 1
     chmod 700 "$tx_dir" || return 1
     traffic_env_tmp="$tx_dir/pre-traffic.env"
-    grep -E '^TRAFFIC_LIMIT_(GB|MODE)=' "$ABOX_ENV" > "$traffic_env_tmp" 2>/dev/null || :
+    if [[ ! -e "$ABOX_ENV" && ! -L "$ABOX_ENV" ]]; then
+        : > "$tx_dir/pre.env.absent" || return 1
+        : > "$traffic_env_tmp" || return 1
+    else
+        grep -E '^TRAFFIC_LIMIT_(GB|MODE)=' "$ABOX_ENV" > "$traffic_env_tmp" 2>/dev/null
+        grep_rc=$?
+        (( grep_rc == 0 || grep_rc == 1 )) || return 1
+    fi
     [[ -f "$ABOX_DESIRED_STATE" ]] && { cp -a -- "$ABOX_DESIRED_STATE" "$tx_dir/pre.desired" || return 1; } || :
     [[ -f "$ABOX_TRAFFIC_BLOCK_STATE" ]] && { cp -a -- "$ABOX_TRAFFIC_BLOCK_STATE" "$tx_dir/pre.block" || return 1; } || :
     # C-06: Backup authoritative pair-state (was missing). Reject symlinks.

@@ -22499,7 +22499,8 @@ _remove_inbounds_from_config() {
     def strip_rule:
       (strip_field("inboundTag") | strip_field("inbound")) as $r
       | (if ($r | has("rules") and ($r.rules | type) == "array") then
-           ($r | .rules |= map(strip_rule))
+           ($r | .rules |= map(strip_rule)
+                | if (.mode == "and" and (.rules | length) < ($r.rules | length)) then empty else . end)
          else $r end) as $r2
       | if (($r2 | has("inboundTag") or has("inbound")) or ($r2 | has("rules") and ($r2.rules | length) > 0)) then $r2
         elif (has("inboundTag") or has("inbound") or has("rules")) then empty

@@ -13085,6 +13085,11 @@ validate_downloaded_asset() {
 }
 
 
+# Return codes: 0 = version matches the tag; 1 = version mismatch (or
+# a setup failure: bad input, extract/chmod failure, unknown asset);
+# 2 = the binary could not be executed (e.g. a noexec workdir) or
+# produced no output -- NOT a version mismatch; callers must report
+# 2 separately (S50, argon P2-2).
 validate_core_asset_binary_version() {
     local asset_name="${1:-}" f="${2:-}" expected_ref="${3:-}" workdir='' binary='' output=''
     [[ -s "$f" && -n "$expected_ref" ]] || return 1
@@ -13094,17 +13099,20 @@ validate_core_asset_binary_version() {
             binary="$workdir/xray"
             if ! extract_zip_member_safely "$f" xray "$binary"; then rm -rf -- "$workdir"; return 1; fi
             chmod 700 "$binary" || { rm -rf -- "$workdir"; return 1; }
-            output=$("$binary" version 2>&1) || { rm -rf -- "$workdir"; return 1; }
+            output=$("$binary" version 2>&1) || { rm -rf -- "$workdir"; return 2; }
+            [[ -n "$output" ]] || { rm -rf -- "$workdir"; return 2; }
             ;;
         singbox_core.tar.gz)
             binary="$workdir/sing-box"
             if ! extract_tar_regular_basename_safely "$f" sing-box "$binary"; then rm -rf -- "$workdir"; return 1; fi
             chmod 700 "$binary" || { rm -rf -- "$workdir"; return 1; }
-            output=$("$binary" version 2>&1) || { rm -rf -- "$workdir"; return 1; }
+            output=$("$binary" version 2>&1) || { rm -rf -- "$workdir"; return 2; }
+            [[ -n "$output" ]] || { rm -rf -- "$workdir"; return 2; }
             ;;
         hysteria_core)
             chmod 700 "$f" 2>/dev/null || { rm -rf -- "$workdir"; return 1; }
-            output=$("$f" version 2>&1) || { rm -rf -- "$workdir"; return 1; }
+            output=$("$f" version 2>&1) || { rm -rf -- "$workdir"; return 2; }
+            [[ -n "$output" ]] || { rm -rf -- "$workdir"; return 2; }
             ;;
         *) rm -rf -- "$workdir"; return 1 ;;
     esac
@@ -14065,7 +14073,7 @@ singbox_asset_json_from_release() {
 
 core_fetch_upstream_release_asset() {
     local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" release_ref="${4:-}" asset_re="${5:-}" source="${6:-upstream}"
-    local api_url release_json asset_array count asset_json asset_name download_url digest mirror tmp_file require_stable=1
+    local api_url release_json asset_array count asset_json asset_name download_url digest mirror tmp_file require_stable=1 _core_ver_rc
     api_url="https://api.github.com/repos/${repo}/releases/tags/${release_ref//\//%2F}"
     release_json=$(github_api_get "$api_url" 2>/dev/null) || { msg "${YELLOW}[!] 上游 Release API 不可用: ${repo}:${release_ref}${NC}" >&2; return 1; }
     [[ "$source" == 'explicit' || "$source" == 'pinned' ]] && require_stable=0
@@ -14092,7 +14100,9 @@ core_fetch_upstream_release_asset() {
             # a bad archive before the expensive full-archive parse runs.
             if ! verify_github_asset_digest "$tmp_file" "$digest"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 资产 SHA-256 不匹配，继续下一个通道。${NC}" >&2; continue; fi
             if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 下载归档格式校验失败，继续下一个通道。${NC}" >&2; continue; fi
-            if ! validate_core_asset_binary_version "$output_file" "$tmp_file" "$release_ref"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 二进制版本与上游 tag 不一致，拒绝该候选。${NC}" >&2; continue; fi
+            validate_core_asset_binary_version "$output_file" "$tmp_file" "$release_ref"; _core_ver_rc=$?
+            if (( _core_ver_rc == 2 )); then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 二进制无法执行（非版本不符）；请检查工作目录挂载选项（/tmp noexec 常见）或 TMPDIR，拒绝该候选。${NC}" >&2; continue; fi
+            if (( _core_ver_rc != 0 )); then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 二进制版本与上游 tag 不一致，拒绝该候选。${NC}" >&2; continue; fi
             mv -f -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
             ABOX_LAST_CORE_RELEASE_REF="$release_ref"; ABOX_LAST_CORE_SOURCE="$source"
             core_set_resolved_target "$repo" "$release_ref" "$source" || return 1
@@ -22920,7 +22930,7 @@ fetch_util_mirror_asset() {
 
 fetch_abox_mirror_asset() {
     local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" requested_version="${4:-}" prefer_versioned="${5:-0}"
-    local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf tmp_file
+    local mirror_base mirror_url mirror_sum expect_sum got_sum asset_leaf tmp_file _core_ver_rc
     mirror_base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     [[ -n "$mirror_base" ]] || return 1
     # Integrity depends on TLS: a plaintext HTTP mirror lets a network attacker
@@ -22990,7 +23000,9 @@ fetch_abox_mirror_asset() {
     if [[ -z "$expect_sum" || ! "$expect_sum" =~ ^[A-Fa-f0-9]{64}$ || "${got_sum,,}" != "${expect_sum,,}" ]]; then msg "${YELLOW}[!] recovery mirror SHA-256 mismatch or missing SHA256SUMS${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
     # S32: digest first, format second (mirrors the upstream reorder).
     if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
-    if ! validate_core_asset_binary_version "$output_file" "$tmp_file" "$requested_version"; then msg "${YELLOW}[!] recovery binary version does not match requested version ${requested_version}${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
+    validate_core_asset_binary_version "$output_file" "$tmp_file" "$requested_version"; _core_ver_rc=$?
+    if (( _core_ver_rc == 2 )); then msg "${YELLOW}[!] recovery binary cannot be executed (not a version mismatch); check the workdir mount options (/tmp noexec is common) or TMPDIR${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
+    if (( _core_ver_rc != 0 )); then msg "${YELLOW}[!] recovery binary version does not match requested version ${requested_version}${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
     mv -f -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
     msg "${GREEN}   recovery SHA-256 and actual binary version verified: ${requested_version}${NC}"
     return 0

@@ -22553,6 +22553,11 @@ _remove_inbounds_from_config() {
 # ws inbounds, and the standalone link registrations of the removed tags.
 # Remove one node's multi-user registry (single-delete path).
 users_registry_remove() { # $1 = core, $2 = tag
+    # Hardening: $2 comes from the config inventory; reject anything
+    # but a single path component (the $1__ prefix already anchors
+    # the first component, so this is defense in depth, not a fix
+    # for a proven escape).
+    [[ "$2" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || return 0
     local _f="${ABOX_USERS_DIR:-/etc/ddr/users.d}/$1__$2.json"
     [[ -f "$_f" && ! -L "$_f" ]] && rm -f -- "$_f"
     return 0
@@ -22647,7 +22652,7 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             *shadowtls*) _standalone_link_survivor shadowtls || rm -f -- /etc/ddr/standalone-links.d/shadowtls.link 2>/dev/null || true ;;
             *socks*|*mixed*) _standalone_link_survivor socks5-sb || rm -f -- /etc/ddr/standalone-links.d/socks5-sb.link 2>/dev/null || true; _standalone_link_survivor socks5-xray || rm -f -- /etc/ddr/standalone-links.d/socks5-xray.link 2>/dev/null || true ;;
         esac
-        rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true
+        [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true
         users_registry_remove "$core" "$tag"
     done
     # U148: reconcile .env listener ports now, before the caller's

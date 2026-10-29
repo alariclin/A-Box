@@ -16826,9 +16826,20 @@ rollback_binary_install() {
     local bin="$1" backup="${2:-}"
     if [[ -n "$backup" && -f "$backup" ]]; then
         install_binary_atomically "$backup" "$bin"
+    elif [[ -n "$backup" ]]; then
+        # Backup was recorded but is gone: the current binary is the
+        # only working copy left. Never delete it to fake a rollback.
+        msg "[!] Rollback backup missing (${backup}); keeping current binary." >&2
+        return 1
     else
+        # First install: no backup ever existed. Removing the
+        # just-installed destination IS the rollback, but report
+        # failure (no backup restored) so callers never claim a
+        # successful restore they did not perform.
         path_tree_has_mountpoint "$bin" && return 1
         rm -f -- "$bin"
+        msg "[!] No rollback backup recorded; newly installed binary removed." >&2
+        return 1
     fi
 }
 

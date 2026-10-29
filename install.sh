@@ -24300,10 +24300,12 @@ users_link_combo() {
                 "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-${XHTTP_PORT:-8443}}" "$sni" "$pbk" "$sid" "$sni" "$tag" "$name" ;;
         ss)
             port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' "$cfg" 2>/dev/null | head -1)
-            local eff=''
+            local method='' eff=''
+            method=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.method // .settings.method // "")' "$cfg" 2>/dev/null | head -1)
+            [[ -n "$method" ]] || method='2022-blake3-aes-128-gcm'
             if [[ -n "$ssecret" ]]; then eff="${ssecret}:${secret}"; else eff="$secret"; fi
             printf 'ss://%s@%s:%s#%s-%s' \
-                "$(printf '%s' "2022-blake3-aes-128-gcm:${eff}" | users_b64url_enc)" "$(uri_host "$ip")" "${port:-${SS_PORT:-2053}}" "$tag" "$name" ;;
+                "$(printf '%s' "${method}:${eff}" | users_b64url_enc)" "$(uri_host "$ip")" "${port:-${SS_PORT:-2053}}" "$tag" "$name" ;;
         hy2)
             port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.listen_port // "")' "$cfg" 2>/dev/null | head -1)
             local obfs='' sni=''

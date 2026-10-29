@@ -13995,30 +13995,30 @@ resolve_core_release_target() {
                     # the upstream branch's unknown-age rule).
                     # DANGER (TRY_LATEST=1) bypasses, matching the upstream
                     # path: the operator explicitly asked for latest.
-                    if [[ "$latest" =~ ^(app/)?v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z._-]+)?$ ]]; then
-                        if [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]]; then
-                            target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；ABOX_TRY_LATEST_CORE_STABLE=1 显式要求最新版，绕过冷却期，直接信任镜像版本 ${target}（未执行本地冷却校验）。${NC}" >&2
+                    # S56 (argon P3-3b): the format check that used to guard
+                    # this block was subsumed by the outer gate (valid ref +
+                    # no hyphen), so its else was unreachable; folded away,
+                    # body unchanged apart from indentation.
+                    if [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]]; then
+                        target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；ABOX_TRY_LATEST_CORE_STABLE=1 显式要求最新版，绕过冷却期，直接信任镜像版本 ${target}（未执行本地冷却校验）。${NC}" >&2
+                    else
+                        _cd_raw="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
+                        _cd_eff=7
+                        if [[ "$_cd_raw" =~ ^[0-9]{1,4}$ ]] && (( 10#$_cd_raw >= 1 && 10#$_cd_raw <= 3650 )); then
+                            _cd_eff="$_cd_raw"
+                        fi
+                        if (( 10#$_cd_eff == 7 )); then
+                            target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；直接信任镜像版本 ${target}（未执行本地冷却校验；本地冷却期为默认值）。${NC}" >&2
                         else
-                            _cd_raw="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
-                            _cd_eff=7
-                            if [[ "$_cd_raw" =~ ^[0-9]{1,4}$ ]] && (( 10#$_cd_raw >= 1 && 10#$_cd_raw <= 3650 )); then
-                                _cd_eff="$_cd_raw"
-                            fi
-                            if (( 10#$_cd_eff == 7 )); then
-                                target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；直接信任镜像版本 ${target}（未执行本地冷却校验；本地冷却期为默认值）。${NC}" >&2
+                            _mirror_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
+                            if core_cooldown_allows_age "$_mirror_age" "${ABOX_STABLE_COOLDOWN_DAYS:-7}"; then
+                                target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；镜像版本 ${target} 已发布 ${_mirror_age} 天，满足本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天，采纳。${NC}" >&2
+                            elif [[ "$_mirror_age" =~ ^[0-9]+$ ]]; then
+                                target="$default_ref"; source='pinned'; msg "${YELLOW}[!] 上游稳定版 API 不可用；镜像版本 ${latest} 仅发布 ${_mirror_age} 天，未满本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天，保持固定版本 ${default_ref}。${NC}" >&2
                             else
-                                _mirror_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
-                                if core_cooldown_allows_age "$_mirror_age" "${ABOX_STABLE_COOLDOWN_DAYS:-7}"; then
-                                    target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；镜像版本 ${target} 已发布 ${_mirror_age} 天，满足本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天，采纳。${NC}" >&2
-                                elif [[ "$_mirror_age" =~ ^[0-9]+$ ]]; then
-                                    target="$default_ref"; source='pinned'; msg "${YELLOW}[!] 上游稳定版 API 不可用；镜像版本 ${latest} 仅发布 ${_mirror_age} 天，未满本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天，保持固定版本 ${default_ref}。${NC}" >&2
-                                else
-                                    target="$default_ref"; source='pinned'; msg "${YELLOW}[!] 上游稳定版 API 不可用；镜像版本 ${latest} 的发布年龄无法确定，本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天无法校验，保持固定版本 ${default_ref}。${NC}" >&2
-                                fi
+                                target="$default_ref"; source='pinned'; msg "${YELLOW}[!] 上游稳定版 API 不可用；镜像版本 ${latest} 的发布年龄无法确定，本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天无法校验，保持固定版本 ${default_ref}。${NC}" >&2
                             fi
                         fi
-                    else
-                        target=$(core_release_mirror_version "$repo") || return 1; source='mirror'; msg "${YELLOW}[!] 镜像版本格式非法，回退到固定兼容版本 ${target}。${NC}" >&2
                     fi
                 else target=$(core_release_mirror_version "$repo") || return 1; source='mirror'; msg "${YELLOW}[!] 上游与最新镜像元数据均不可用；本次尝试固定 A-Box 兼容性容灾版本 ${target}。${NC}" >&2; fi
             fi

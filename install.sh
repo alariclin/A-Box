@@ -32965,7 +32965,12 @@ wallos_db_health() { # $1=quick skips the restart-stability sampling
     # Core-table check: a half-initialized db (missing user /
     # subscriptions) crash-loops on migration 000013 while nginx and
     # php-fpm still answer HTTP, so an HTTP probe cannot see it.
-    if command -v python3 >/dev/null 2>&1 && [[ -f "$WALLOS_DIR/db/wallos.db" ]]; then
+    # S142: a missing python3 or a missing db file must fail, not skip
+    # to healthy: python3 is a declared install prerequisite, and a
+    # running Wallos at install-complete time must have created its db.
+    command -v python3 >/dev/null 2>&1 || return 1
+    [[ -f "$WALLOS_DIR/db/wallos.db" ]] || return 1
+    if true; then
         python3 - "$WALLOS_DIR/db/wallos.db" <<'PY_WALLOS_HEALTH' || return 1
 import sqlite3, sys
 try:
@@ -33380,6 +33385,7 @@ wallos_install_or_update() {
         case "${ABOX_LANG:-zh}" in
             *) msg "${RED}$(tr_msg wl_health_fail)${NC}" ;;
         esac
+        return 1
     fi
     wallos_php_gate_warn || true
     wallos_public_urls "$port"

@@ -31965,7 +31965,9 @@ wallos_pull_or_restore_image() {
     if [[ "$_loaded_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]]; then
         WALLOS_IMAGE_RESULT="$_loaded_id"
     else
-        WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+        # S136: never silently downgrade to the mutable tag here.
+        msg "${RED}Wallos loaded image ID could not be resolved; refusing mutable tag fallback.${NC}"
+        return 1
     fi
     WALLOS_IMAGE_VERSION="$image_tag"
     return 0

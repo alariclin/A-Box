@@ -21228,13 +21228,13 @@ fi
 if [[ "$desired" == TRAFFIC_BLOCKED && "$blocked_period" != "$current_period" ]]; then
     commit_traffic_pair MAINTENANCE "$blocked_period" || { traffic_error 'monthly quota rollover state commit failed; leaving prior desired state unchanged'; exit 1; }
     if ! for_expected_services start_owned; then
-        for_expected_services stop_owned >/dev/null 2>&1 || true
+        for_expected_services stop_owned >/dev/null 2>&1 || stop_all_owned_services >/dev/null 2>&1 || true
         commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || traffic_error 'CRITICAL: failed to restore TRAFFIC_BLOCKED state after service start failure; state may be inconsistent'
         traffic_error 'monthly quota period rolled over but at least one owned service could not be started; block remains active'
         exit 1
     fi
     if ! commit_traffic_pair RUNNING ""; then
-        for_expected_services stop_owned >/dev/null 2>&1 || true
+        for_expected_services stop_owned >/dev/null 2>&1 || stop_all_owned_services >/dev/null 2>&1 || true
         commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || traffic_error 'CRITICAL: failed to restore TRAFFIC_BLOCKED state after rollover commit failure; state may be inconsistent'
         traffic_error 'monthly quota rollover state commit failed; managed services were stopped and block restored'
         exit 1
@@ -21245,7 +21245,7 @@ fi
 [[ "$desired" == MANUAL_STOPPED || "$desired" == MAINTENANCE ]] && exit 0
 if [[ -z "${TRAFFIC_LIMIT_GB:-}" ]]; then
     if [[ "$desired" == TRAFFIC_BLOCKED ]]; then
-        for_expected_services stop_owned || { traffic_error 'traffic remains blocked but service stop could not be verified'; exit 1; }
+        for_expected_services stop_owned || stop_all_owned_services || { traffic_error 'traffic remains blocked but service stop could not be verified'; exit 1; }
     fi
     exit 0
 fi
@@ -21257,7 +21257,7 @@ fi
 # U49: enforce an already-blocked state before the usage query, so a
 # vnStat query failure can never leave restarted services running.
 if [[ "$desired" == TRAFFIC_BLOCKED ]]; then
-    for_expected_services stop_owned || { traffic_error 'traffic-blocked state could not be fully enforced'; exit 1; }
+    for_expected_services stop_owned || stop_all_owned_services || { traffic_error 'traffic-blocked state could not be fully enforced'; exit 1; }
 fi
 # Transient vnStat/metric blips must not flip desired state to TRAFFIC_BLOCKED.
 # Only validated over-quota (below) or corrupt persisted policy (above) fail-closed.
@@ -21280,14 +21280,14 @@ then
     if ! commit_traffic_pair TRAFFIC_BLOCKED "$current_period"; then
         # The state commit failed (e.g. disk full): still attempt the
         # stop, otherwise the quota protection fails open.
-        for_expected_services stop_owned >/dev/null 2>&1 || true
+        for_expected_services stop_owned >/dev/null 2>&1 || stop_all_owned_services >/dev/null 2>&1 || true
         traffic_error 'over-quota state commit failed; services stopped best-effort, state unchanged'
         exit 1
     fi
-    for_expected_services stop_owned || { traffic_error 'traffic limit reached but at least one owned service could not be stopped'; exit 1; }
+    for_expected_services stop_owned || stop_all_owned_services || { traffic_error 'traffic limit reached but at least one owned service could not be stopped'; exit 1; }
 elif [[ "$desired" == TRAFFIC_BLOCKED ]]; then
     # Same-period blocks remain fail-closed even if vnStat later reports a lower value.
-    for_expected_services stop_owned || { traffic_error 'traffic-blocked state could not be fully enforced'; exit 1; }
+    for_expected_services stop_owned || stop_all_owned_services || { traffic_error 'traffic-blocked state could not be fully enforced'; exit 1; }
 fi
 EOF_TRAFFIC
     if [[ "${INIT_SYS:-}" == systemd ]]; then

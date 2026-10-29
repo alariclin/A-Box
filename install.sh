@@ -28669,6 +28669,12 @@ CONF=/etc/ddr/zram.conf
 SIZE_MB=512
 ALGO=zstd
 if [[ -f "$CONF" ]]; then . "$CONF"; fi
+# Boot-cycle identity: a recorded device number is only meaningful
+# within the boot that created it. Another manager may own the same
+# number after a reboot, so the state file is bound to the boot id.
+_abox_boot_id() {
+    cat /proc/sys/kernel/random/boot_id 2>/dev/null || true
+}
 zram_active_devs() {
     local out
     out=$(swapon --show=NAME --noheadings 2>/dev/null) || return 1
@@ -28683,7 +28689,17 @@ _reset_dev() {
 case "${1:-}" in
     start)
         active_devs=$(zram_active_devs) || exit 1
-        [[ -z "$active_devs" ]] || exit 0
+        if [[ -n "$active_devs" ]]; then
+            # Claim success only if OUR recorded device from THIS boot
+            # is active. A stale record (previous boot) or a foreign
+            # device must not be claimed: fall through and create our
+            # own device instead of succeeding over someone else's swap.
+            sdev=$(sed -n 's/^DEV=//p' /etc/ddr/zram.state 2>/dev/null | head -1)
+            sboot=$(sed -n 's/^BOOT=//p' /etc/ddr/zram.state 2>/dev/null | head -1)
+            if [[ "$sdev" =~ ^/dev/zram[0-9]+$ && -n "$sboot" && "$sboot" == "$(_abox_boot_id)" ]] && printf '%s\n' "$active_devs" | grep -qxF "$sdev"; then
+                exit 0
+            fi
+        fi
         modprobe zram 2>/dev/null || true
         [[ -e /sys/class/zram-control ]] || exit 1
         dev=''
@@ -28699,20 +28715,22 @@ case "${1:-}" in
         fi
         mkswap "$dev" >/dev/null 2>&1 || { _reset_dev "$dev"; exit 1; }
         swapon -p 100 "$dev" || { swapoff "$dev" 2>/dev/null || true; _reset_dev "$dev"; exit 1; }
-        # Record which device this helper activated so stop only
-        # ever swaps off our own device, never a foreign zram swap
-        # (distro zram-generator / zram-tools setups share the box).
-        printf 'DEV=%s\n' "$dev" > /etc/ddr/zram.state 2>/dev/null || { swapoff "$dev" 2>/dev/null || true; _reset_dev "$dev"; exit 1; }
+        # Record which device this helper activated, bound to this
+        # boot: stop only ever swaps off our own device, never a
+        # foreign zram swap (distro zram-generator / zram-tools setups
+        # share the box, and device numbers are reused across reboots).
+        printf 'DEV=%s\nBOOT=%s\n' "$dev" "$(_abox_boot_id)" > /etc/ddr/zram.state 2>/dev/null || { swapoff "$dev" 2>/dev/null || true; _reset_dev "$dev"; exit 1; }
         ;;
     stop)
         if [[ -f /etc/ddr/zram.state ]]; then
             sdev=$(sed -n 's/^DEV=//p' /etc/ddr/zram.state 2>/dev/null | head -1)
-            if [[ "$sdev" =~ ^/dev/zram[0-9]+$ ]]; then
+            sboot=$(sed -n 's/^BOOT=//p' /etc/ddr/zram.state 2>/dev/null | head -1)
+            if [[ "$sdev" =~ ^/dev/zram[0-9]+$ && -n "$sboot" && "$sboot" == "$(_abox_boot_id)" ]]; then
                 swapoff "$sdev" 2>/dev/null || exit 1
                 if command -v zramctl >/dev/null 2>&1; then zramctl --reset "$sdev" >/dev/null 2>&1 || true; fi
                 rm -f /etc/ddr/zram.state
             else
-                echo "abox-zram: malformed device in /etc/ddr/zram.state; refusing to stop, state kept for inspection" >&2
+                echo "abox-zram: stale or unproven device record in /etc/ddr/zram.state (boot mismatch, missing boot id, or malformed device); refusing to stop, state kept for inspection" >&2
                 exit 1
             fi
         else

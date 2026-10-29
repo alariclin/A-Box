@@ -18933,7 +18933,7 @@ _menu_info_collect() {
             esac
         done <<< "$_tags"
     fi
-    if [[ -z "$tjt" && -r /usr/local/etc/xray/config.json ]] && command -v jq >/dev/null 2>&1; then
+    if [[ "$tjt" != 'run' && -r /usr/local/etc/xray/config.json ]] && command -v jq >/dev/null 2>&1; then
         _p=$(jq -r '(.inbounds // [])[] | select(.protocol=="trojan") | (.port // empty)' /usr/local/etc/xray/config.json 2>/dev/null | head -1)
         if [[ -n "$_p" ]]; then tjt=stop; _mi_port_listening "$_ss" "$_p" "tcp" && tjt=run; fi
     fi

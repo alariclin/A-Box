@@ -36622,6 +36622,15 @@ restore_core_upgrade_transaction_traps() {
     ABOX_CORE_TX_PREV_TRAP_EXIT=''; ABOX_CORE_TX_PREV_TRAP_INT=''; ABOX_CORE_TX_PREV_TRAP_TERM=''; ABOX_CORE_TX_PREV_TRAP_HUP=''
 }
 
+# S163: record a core-transaction rollback outcome for the parent
+# loop. No-op when the caller did not provide a status file (other
+# begin callers are unaffected). An unwritable file is removed so the
+# parent reads "unknown" and stops, rather than a stale state.
+core_upgrade_transaction_set_status() {
+    [[ -n "${ABOX_CORE_TX_RB_STATUS:-}" ]] || return 0
+    printf '%s\n' "$1" > "$ABOX_CORE_TX_RB_STATUS" 2>/dev/null || rm -f -- "$ABOX_CORE_TX_RB_STATUS"
+}
+
 core_upgrade_transaction_rollback() {
     [[ "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]] || return 0
     local backup="${ABOX_CORE_UPGRADE_BACKUP:-}" targets="${ABOX_CORE_UPGRADE_TARGETS:-}" srv core_tmp="${ABOX_CORE_UPGRADE_TMP:-}"
@@ -36633,25 +36642,29 @@ core_upgrade_transaction_rollback() {
     msg "${YELLOW}[!] Core upgrade failed or was interrupted; restoring the exact pre-upgrade snapshot.${NC}"
     if ! stop_all_managed_services >/dev/null 2>&1; then
         msg "${RED}[!] Core-upgrade rollback aborted: one or more managed services could not be confirmed stopped. Backup retained: ${backup:-missing}${NC}" >&2
+        core_upgrade_transaction_set_status failed
         return 1
     fi
     for srv in $targets; do
         case "$srv" in singbox) srv='sing-box' ;; esac
         if ! remove_core_family_force "$srv"; then
             msg "${RED}[!] Core-upgrade rollback aborted: unable to remove ${srv} safely. Backup retained: ${backup:-missing}${NC}" >&2
+            core_upgrade_transaction_set_status failed
             return 1
         fi
     done
     if ! restore_latest_backup_silent "$ABOX_DIR/backups" "$backup"; then
         msg "${RED}[!] Core upgrade rollback failed: ${backup:-missing}. Recovery context retained.${NC}" >&2
+        core_upgrade_transaction_set_status failed
         return 1
     fi
     if [[ -n "$core_tmp" ]]; then
-        rm -rf -- "$core_tmp" || { msg "${RED}[!] Prior core state restored, but upgrade staging cleanup failed: $core_tmp${NC}" >&2; return 1; }
+        rm -rf -- "$core_tmp" || { msg "${RED}[!] Prior core state restored, but upgrade staging cleanup failed: $core_tmp${NC}" >&2; core_upgrade_transaction_set_status failed; return 1; }
     fi
     ABOX_CORE_UPGRADE_BACKUP=''
     ABOX_CORE_UPGRADE_TARGETS=''
     ABOX_CORE_UPGRADE_TMP=''
+    core_upgrade_transaction_set_status ok
     return 0
 }
 
@@ -36687,6 +36700,8 @@ begin_core_upgrade_transaction() {
     ABOX_CORE_UPGRADE_ACTIVE=1
     ABOX_CORE_UPGRADE_BACKUP="$ABOX_LAST_BACKUP"
     ABOX_CORE_UPGRADE_TARGETS="$*"
+    # S163: mark the transaction active for the parent loop.
+    core_upgrade_transaction_set_status active
     ABOX_DIE_HOOK=core_upgrade_transaction_rollback
     install_core_upgrade_transaction_traps
 }
@@ -36721,23 +36736,52 @@ upgrade_current_cores_only() {
     is_yes "$answer" || { msg "${YELLOW}$(tr_msg tl_cancelled)${NC}"; pause_return; return 0; }
     # Each core gets an independent transaction (begin → upgrade → commit)
     # inside a subshell, so a failure rolls back only that core.
-    local failed_cores=()
+    local failed_cores=() stopped=0
     for t in "${targets[@]}"; do
         msg "${CYAN}--- Upgrading $t (independent transaction) ---${NC}"
-        # Each core runs in a subshell with its own transaction.
-        # If die() fires, only the subshell exits; the parent continues
-        # to the next core. The transaction rollback hook restores just
-        # this core's pre-upgrade snapshot.
+        # Each core runs in a subshell with its own transaction and
+        # reports its rollback outcome through a status file, so the
+        # parent never claims a rollback it did not observe.
+        # S163: not-started -> active -> ok/failed; a missing or
+        # unexpected state (e.g. SIGKILL mid-transaction) is unknown.
+        local rb_status rb_state
+        rb_status=$(mktemp) || { msg "${RED}[!] [$t] cannot create rollback status file; aborting core upgrades.${NC}"; return 1; }
+        printf 'not-started\n' > "$rb_status" || { rm -f -- "$rb_status"; msg "${RED}[!] [$t] cannot create rollback status file; aborting core upgrades.${NC}"; return 1; }
+        ABOX_CORE_TX_RB_STATUS="$rb_status"
         if ( begin_core_upgrade_transaction "$t"
              case "$t" in xray) upgrade_xray_core_only ;; singbox) upgrade_singbox_core_only ;; hysteria) upgrade_hysteria_core_only ;; esac
              commit_core_upgrade_transaction ); then
+            rm -f -- "$rb_status"
             msg "${GREEN}[$t] upgrade completed.${NC}"
         else
-            msg "${YELLOW}[!] [$t] upgrade failed and was rolled back independently; continuing.${NC}"
-            failed_cores+=("$t")
+            rb_state=$(cat "$rb_status" 2>/dev/null || echo unknown)
+            rm -f -- "$rb_status"
+            case "$rb_state" in
+                ok)
+                    msg "${YELLOW}[!] [$t] upgrade failed and was rolled back independently; continuing.${NC}"
+                    failed_cores+=("$t")
+                    ;;
+                not-started)
+                    msg "${YELLOW}[!] [$t] upgrade failed before any change was made; no rollback needed; continuing.${NC}"
+                    failed_cores+=("$t")
+                    ;;
+                failed)
+                    msg "${RED}[!] [$t] upgrade failed and its rollback FAILED; stopping further core upgrades.${NC}"
+                    failed_cores+=("$t"); stopped=1
+                    break
+                    ;;
+                *)
+                    msg "${RED}[!] [$t] upgrade failed with rollback state unknown (interrupted mid-transaction); stopping further core upgrades.${NC}"
+                    failed_cores+=("$t"); stopped=1
+                    break
+                    ;;
+            esac
         fi
     done
-    if (( ${#failed_cores[@]} > 0 )); then
+    ABOX_CORE_TX_RB_STATUS=''
+    if (( stopped == 1 )); then
+        msg "${YELLOW}[!] Core upgrade loop stopped early; remaining cores were not attempted: ${failed_cores[*]}${NC}"
+    elif (( ${#failed_cores[@]} > 0 )); then
         msg "${YELLOW}[!] Completed with failures (rolled back): ${failed_cores[*]}${NC}"
     else
         msg "${GREEN}All detected core-only upgrades completed. Node parameters were preserved.${NC}"

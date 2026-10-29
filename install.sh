@@ -24115,12 +24115,14 @@ users_sync() {
             ;;
         *) rm -f "$tmp" "$bak"; return 1 ;;
     esac
+    # SS promotion persistence BEFORE the commit (see U65 precedent above):
+    # the config below already uses eff_ss as the server key.
+    if (( promote == 1 )); then
+        local regj=''
+        regj=$(jq -c --rawfile ss <(printf '%s' "$eff_ss") '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || { rm -f "$tmp" "$bak"; return 1; }
+    fi
     if users_commit_cfg "$core" "$cfg" "$tmp" "$bak"; then
         rm -f "$tmp" "$bak"
-        if (( promote == 1 )); then
-            local regj=''
-            regj=$(jq -c --rawfile ss <(printf '%s' "$eff_ss") '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || true
-        fi
         if (( sb_will_delete == 1 )) && [[ -n "$sb_snap_obj" ]]; then
             # Snapshot already persisted pre-commit (U65); only the notice remains here.
             if [[ "$proto" == 'shadowsocks' ]]; then

@@ -4250,6 +4250,12 @@ tr_msg() {
         fa:xl_bak_kept) echo 'پشتیبان پیکربندی اصلی حفظ شده و حذف نشده است: %s' ;;
         zh-tw:xl_bak_kept) echo '原始設定備份已保留，未刪除：%s' ;;
         ja:xl_bak_kept) echo '元の設定バックアップは保持され、削除されていません：%s' ;;
+        zh:xl_fw_revoke_fail) echo '防火墙补偿失败，下列规则可能残留：%s' ;;
+        en:xl_fw_revoke_fail) echo 'Firewall compensation failed; these rules may remain: %s' ;;
+        ru:xl_fw_revoke_fail) echo 'Не удалось компенсировать правила брандмауэра; эти правила могут остаться: %s' ;;
+        fa:xl_fw_revoke_fail) echo 'جبران فایروال ناموفق بود؛ این قوانین ممکن است باقی بمانند: %s' ;;
+        zh-tw:xl_fw_revoke_fail) echo '防火牆補償失敗，下列規則可能殘留：%s' ;;
+        ja:xl_fw_revoke_fail) echo 'ファイアウォールの補償に失敗しました。次のルールが残っている可能性があります：%s' ;;
         zh:xl_rollback_copy_fail) echo '回滚复制失败，旧备份已保留未删，请手动恢复并检查。' ;;
         en:xl_rollback_copy_fail) echo 'Rollback copy failed; the old backup was kept, restore it manually and check.' ;;
         ru:xl_rollback_copy_fail) echo 'Копирование при откате не удалось; старая резервная копия сохранена, восстановите её вручную и проверьте.' ;;
@@ -34372,9 +34378,29 @@ xray_latest_install_core() {
 }
 
 # Deploy one protocol inbound into the active latest instance.
+# S155: revoke firewall allows this deploy already succeeded, one item
+# at a time ("port/proto" list). Best effort per item; leftovers are
+# reported, and a partial failure still returns 1. Called only after a
+# successful config rollback, so a live new config never loses its
+# ports here.
+_xl_revoke_deploy_allows() { # $1 = space-separated "port/proto" items
+    local item p pr rc=0 left=''
+    for item in $1; do
+        p="${item%/*}"; pr="${item#*/}"
+        if ! remove_abox_native_firewall_rule "$p" "$pr" 2>/dev/null; then
+            left="${left:+$left, }$item"; rc=1
+        fi
+    done
+    if (( rc )); then
+        msg "${RED}$(tprintf xl_fw_revoke_fail "$left")${NC}"
+        return 1
+    fi
+    return 0
+}
+
 xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     local kind="${1:-}" target='' cfg='' bin='' svc='' mode=''
-    local port='' defport='' tag='' uuid='' pass='' pk='' pbk='' sid='' sni='' tmp_json='' tmp_cfg='' bak=''
+    local port='' defport='' tag='' uuid='' pass='' pk='' pbk='' sid='' sni='' tmp_json='' tmp_cfg='' bak='' fw_done=''
     local pub_ip='' link='' label='' listen_addr=''
     target=$(_xl_target) || { msg "${RED}$(tr_msg xl_need_core)${NC}"; return 1; }
     IFS='|' read -r cfg bin svc <<< "$target"
@@ -34498,24 +34524,29 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     if ! allowPort "$port" tcp; then
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
             rm -f "$bak"
+            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
             msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
         else
             msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
         fi
         return 1
     fi
+    fw_done="$port/tcp"
     if [[ "$kind" == 'ss' || "$kind" == 'socks' ]] && ! allowPort "$port" udp; then
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
             rm -f "$bak"
+            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
             msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
         else
             msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
         fi
         return 1
     fi
+    [[ "$kind" == 'ss' || "$kind" == 'socks' ]] && fw_done="$fw_done $port/udp"
     if ! save_firewall_rules; then
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
             rm -f "$bak"
+            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
             msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
         else
             msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
@@ -34547,7 +34578,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
 xray_latest_deploy_trio() {
     local target='' cfg='' bin='' svc='' mode=''
     local vp='' xp='' sp2='' keypair='' pk='' pbk='' sid='' uuid='' sspass='' sni=''
-    local tmp_json='' tmp_cfg='' bak='' pub_ip='' link='' listen_addr=''
+    local tmp_json='' tmp_cfg='' bak='' pub_ip='' link='' listen_addr='' fw_done=''
     target=$(_xl_target) || { msg "${RED}$(tr_msg xl_need_core)${NC}"; return 1; }
     IFS='|' read -r cfg bin svc <<< "$target"
     mode=$(_xl_state_get mode)
@@ -34620,27 +34651,54 @@ xray_latest_deploy_trio() {
     # U130: firewall steps run before the backup is deleted; on failure the
     # deploy is rolled back (old config + old links stay valid) instead of
     # leaving a live new config with no backup and no links.
-    if ! allowPort "$vp" tcp || ! allowPort "$xp" tcp || ! allowPort "$sp2" tcp; then
+    if ! allowPort "$vp" tcp; then
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
             rm -f "$bak"
+            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
             msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
         else
             msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
         fi
         return 1
     fi
+    fw_done="$vp/tcp"
+    if ! allowPort "$xp" tcp; then
+        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
+            rm -f "$bak"
+            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
+            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
+        else
+            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
+        fi
+        return 1
+    fi
+    fw_done="$fw_done $xp/tcp"
+    if ! allowPort "$sp2" tcp; then
+        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
+            rm -f "$bak"
+            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
+            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
+        else
+            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
+        fi
+        return 1
+    fi
+    fw_done="$fw_done $sp2/tcp"
     if ! allowPort "$sp2" udp; then
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
             rm -f "$bak"
+            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
             msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
         else
             msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
         fi
         return 1
     fi
+    fw_done="$fw_done $sp2/udp"
     if ! save_firewall_rules; then
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
             rm -f "$bak"
+            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
             msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
         else
             msg "${RED}$(tr_msg xl_rollback_fail)${NC}"

@@ -34107,7 +34107,7 @@ _xl_remove_coexist_files() {
 }
 
 _xl_install_takeover() { # $1 = staged binary, $2 = tag
-    local staged="$1" created_unit=0 created_cfg=0 old_bin_tmp='' slot_link_target=''
+    local staged="$1" tag="$2" created_unit=0 created_cfg=0 old_bin_tmp='' slot_link_target=''
     [[ -L "$XRAY_SLOT_BIN" ]] && slot_link_target=$(readlink "$XRAY_SLOT_BIN")
     if [[ -f "$XRAY_SLOT_BIN" && ! -L "$XRAY_SLOT_BIN" ]]; then
         old_bin_tmp=$(mktemp /tmp/A-Box-xl-oldbin.XXXXXX) || return 1
@@ -34136,6 +34136,28 @@ _xl_install_takeover() { # $1 = staged binary, $2 = tag
     fi
     if ! restart_service_soft xray; then
         msg "${RED}$(tr_msg xl_restart_fail)${NC}"
+        if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then
+            if ! cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; then
+                msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
+                return 1
+            fi
+            restart_service_soft xray >/dev/null 2>&1 || true
+        else
+            if [[ -n "$slot_link_target" ]]; then
+                ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"
+            else
+                rm -f -- "$XRAY_SLOT_BIN"
+            fi
+            [[ "$created_cfg" == '1' ]] && rm -f -- "$XRAY_SLOT_CFG"
+            if [[ "$created_unit" == '1' ]]; then
+                if [[ "${INIT_SYS:-}" == 'systemd' ]]; then rm -f -- /etc/systemd/system/xray.service; systemctl daemon-reload >/dev/null 2>&1 || true; else rm -f -- /etc/init.d/xray /etc/conf.d/xray; fi
+            fi
+        fi
+        rm -f -- "$old_bin_tmp"
+        return 1
+    fi
+    if ! _xl_state_write takeover "$tag"; then
+        msg "${RED}$(tr_msg xl_gen_fail)${NC}"
         if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then
             if ! cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; then
                 msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
@@ -34213,7 +34235,7 @@ _xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_d
 }
 
 _xl_install_coexist() { # $1 = staged binary, $2 = tag
-    local staged="$1" had_bin=0 created_cfg=0 had_unit=0 had_dir=0 old_bin_tmp='' cfg_link_target='' bin_link_target='' old_unit_dir=''
+    local staged="$1" tag="$2" had_bin=0 created_cfg=0 had_unit=0 had_dir=0 old_bin_tmp='' cfg_link_target='' bin_link_target='' old_unit_dir=''
     [[ -e "$XRAY_LATEST_BIN" || -L "$XRAY_LATEST_BIN" ]] && had_bin=1
     [[ -L "$XRAY_LATEST_BIN" ]] && bin_link_target=$(readlink "$XRAY_LATEST_BIN")
     [[ -e "$XRAY_LATEST_DIR" || -L "$XRAY_LATEST_DIR" ]] && had_dir=1
@@ -34261,6 +34283,11 @@ _xl_install_coexist() { # $1 = staged binary, $2 = tag
         [[ "$had_unit" == '1' && ( ( -n "$old_bin_tmp" && -f "$old_bin_tmp" ) || -n "$bin_link_target" ) ]] && _relaunch=1
         _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"
         (( _relaunch == 1 )) && restart_service_soft xray-latest >/dev/null 2>&1 || true
+        return 1
+    fi
+    if ! _xl_state_write coexist "$tag"; then
+        msg "${RED}$(tr_msg xl_gen_fail)${NC}"
+        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"
         return 1
     fi
     rm -f -- "$old_bin_tmp"
@@ -34325,7 +34352,6 @@ xray_latest_install_core() {
         _xl_install_coexist "$ext/xray" "$tag" || { rm -rf -- "$tmp"; msg "${RED}$(tr_msg xl_install_fail)${NC}"; return 1; }
     fi
     rm -rf -- "$tmp"
-    _xl_state_write "$mode" "$tag" || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
     set_desired_state RUNNING || { msg "${RED}$(tr_msg dp_desired_xray)${NC}"; return 1; }
     msg "${GREEN}$(tr_msg xl_ok_installed): ${tag} (${mode})${NC}"
     xl_show_ports

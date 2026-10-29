@@ -37398,17 +37398,35 @@ EOF_HELP
 }
 
 check_i18n_parity_file() {
-    local _f="$1" _k _keys _bad=0 _lang _ln
+    local _f="$1" _keys _out _bad
     _keys=$(grep -oE '^        (zh|en|ru|fa|zh-tw|ja):[a-z0-9_]+\)' "$_f" | sed 's/^.*://; s/)$//' | sort -u)
     [[ -n "$_keys" ]] || { echo 'FAIL: i18n key enumeration empty'; return 1; }
-    while read -r _k; do
-        # S167: count PER language (a total of 6 can hide one missing
-        # arm cancelled by one duplicate arm); each language exactly 1.
-        for _lang in zh en ru fa zh-tw ja; do
-            _ln=$(grep -cE "^        ${_lang}:${_k}\)" "$_f")
-            [[ "$_ln" == '1' ]] || { echo "FAIL: i18n key ${_k} language ${_lang} has ${_ln} arm(s), expected 1"; _bad=$((_bad + 1)); }
-        done
-    done <<< "$_keys"
+    # S172: single-pass count. S167 counted PER language (a total of 6
+    # can hide one missing arm cancelled by one duplicate arm, so the
+    # per-language verdict stays), but with one full-file grep per key
+    # per language: 1192 keys x 6 = 7152 scans. On Alpine's BusyBox
+    # grep at ~43ms/scan that is ~300s and blows the 180s harness cap,
+    # while GNU grep at ~1ms hides it elsewhere. One grep extracts
+    # every lang:key arm, one awk counts per pair; verdicts unchanged.
+    _out=$(grep -oE '^        (zh|en|ru|fa|zh-tw|ja):[a-z0-9_]+\)' "$_f" | sed 's/^        //; s/)$//' | awk -v keys="$_keys" '
+        BEGIN { n = split(keys, ka, "\n"); }
+        { cnt[$0]++ }
+        END {
+            langs[1] = "zh"; langs[2] = "en"; langs[3] = "ru"; langs[4] = "fa"; langs[5] = "zh-tw"; langs[6] = "ja";
+            bad = 0;
+            for (i = 1; i <= n; i++) {
+                k = ka[i];
+                for (j = 1; j <= 6; j++) {
+                    c = cnt[langs[j] ":" k] + 0;
+                    if (c != 1) { printf "FAIL: i18n key %s language %s has %d arm(s), expected 1\n", k, langs[j], c; bad++; }
+                }
+            }
+            printf "BAD=%d\n", bad;
+        }')
+    _bad=${_out##*BAD=}
+    _out=${_out%BAD=*}
+    _out=${_out%$'\n'}
+    [[ -n "$_out" ]] && printf '%s\n' "$_out"
     return "$_bad"
 }
 run_self_tests() {

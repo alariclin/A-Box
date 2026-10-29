@@ -16999,6 +16999,10 @@ deployment_transaction_exit_abort() {
     if [[ -n "$_tx_abort_old_exit" ]]; then
         _tx_abort_old_cmd="${_tx_abort_old_exit#trap -- }"
         _tx_abort_old_cmd="${_tx_abort_old_cmd% *}"
+        # Restore the original exit status for the old handler:
+        # $? was clobbered to 0 by the commands above, so the
+        # handler would otherwise see success on a failed exit.
+        (exit "$code")
         eval "eval $_tx_abort_old_cmd" || true
     fi
     restore_deployment_transaction_traps

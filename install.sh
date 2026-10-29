@@ -11978,7 +11978,15 @@ remove_abox_native_firewall_rule() {
             local comment="A-Box-${spec}-${proto}" cmd check_rc
             for cmd in "$IPT" "$IPT6"; do
                 [[ "$cmd" == "$IPT" || -x "$cmd" || -n "$(command -v "$cmd" 2>/dev/null)" ]] || continue
-                [[ "$cmd" == "$IPT6" ]] && { command -v ip6tables >/dev/null 2>&1 || continue; _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1 || continue; }
+                if [[ "$cmd" == "$IPT6" ]]; then
+                    # S27: binary missing: this script could not have built
+                    # v6 rules; skip (accepted narrow residue: the binary
+                    # was removed after the rules were built).
+                    command -v ip6tables >/dev/null 2>&1 || continue
+                    # S27: query failure (permission/lock/module) means v6
+                    # rules may still be present; never report success.
+                    _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1 || return 1
+                fi
                 while :; do
                     if iptables_rule_check "$cmd" INPUT -p "$proto" --dport "$spec" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
@@ -12151,7 +12159,16 @@ remove_ss_open_accept_rules() {
         done
         if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
         [[ "$check_rc" == 1 ]] || failed=1
-        if command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
+        if ! command -v ip6tables >/dev/null 2>&1; then
+            # S27: binary missing: this script could not have built v6
+            # rules; skip the v6 segment (accepted narrow residue: the
+            # binary was removed after the rules were built).
+            :
+        elif ! _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
+            # S27: query failure (permission/lock/module) means v6 rules
+            # may still be present; never report the cleanup as done.
+            failed=1
+        else
             while :; do
                 if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                 case "$check_rc" in

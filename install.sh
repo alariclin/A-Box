@@ -23771,6 +23771,7 @@ users_commit_cfg() {
 users_xray_ensure_tags() {
     local cfg="$1" bak='' tmp=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    jq empty "$cfg" >/dev/null 2>&1 || return 1
     jq -e '[.inbounds[]? | select(.tag == null or .tag == "")] | length > 0' "$cfg" >/dev/null 2>&1 || return 0
     bak=$(mktemp /tmp/A-Box-utag-bak.XXXXXX) || return 1
     cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
@@ -23802,6 +23803,7 @@ users_xray_ensure_tags() {
 users_sb_ensure_tags() {
     local cfg="$1" bak='' tmp=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    jq empty "$cfg" >/dev/null 2>&1 || return 1
     jq -e '[.inbounds[]? | select(.tag == null or .tag == "")] | length > 0' "$cfg" >/dev/null 2>&1 || return 0
     bak=$(mktemp /tmp/A-Box-utag-bak.XXXXXX) || return 1
     cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }

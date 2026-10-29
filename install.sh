@@ -29438,7 +29438,7 @@ restore_managed_service_state() {
     chmod 700 "$tx_dir" || { rm -rf -- "$tx_dir"; return 1; }
     before_file="$tx_dir/before.state"; post_file="$tx_dir/post.state"
     : > "$before_file" || { rm -rf -- "$tx_dir"; return 1; }
-    while IFS='|' read -r srv _active _enabled extra; do
+    while IFS='|' read -r srv _active _enabled extra || [[ -n "$srv" ]]; do
         [[ -n "$srv" ]] || continue
         [[ -z "${extra:-}" ]] || { rm -rf -- "$tx_dir"; return 1; }
         before=$(managed_service_state_value "$srv" 2>/dev/null) || { rm -rf -- "$tx_dir"; return 1; }
@@ -29457,7 +29457,7 @@ restore_managed_service_state() {
     # command failed. Capture the exact observable intermediate state; if any
     # query fails, preserve the recovery snapshot instead of guessing.
     : > "$post_file" || { printf '%s\n' "A-Box service restore failed; recovery state preserved at $tx_dir" >&2; return 1; }
-    while IFS='|' read -r srv _active _enabled extra; do
+    while IFS='|' read -r srv _active _enabled extra || [[ -n "$srv" ]]; do
         [[ -n "$srv" ]] || continue
         after=$(managed_service_state_value "$srv" 2>/dev/null) || { printf '%s\n' "A-Box service restore failed; state query unavailable, recovery state preserved at $tx_dir" >&2; return 1; }
         printf '%s\n' "$after" >> "$post_file" || { printf '%s\n' "A-Box service restore failed; recovery state preserved at $tx_dir" >&2; return 1; }
@@ -29478,7 +29478,7 @@ restore_managed_service_state() {
     rb_before="$tx_dir/rollback-before.state"; rb_post="$tx_dir/rollback-post.state"
     : > "$rb_before" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
     : > "$rb_post" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
-    while IFS='|' read -r srv _active _enabled extra; do
+    while IFS='|' read -r srv _active _enabled extra || [[ -n "$srv" ]]; do
         [[ -n "$srv" ]] || continue
         local b_line t_line p_line
         b_line=$(awk -F'|' -v target="$srv" '$1 == target {print; exit}' "$before_file") || b_line=''

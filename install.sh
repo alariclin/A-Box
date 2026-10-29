@@ -34296,7 +34296,7 @@ _xl_install_coexist() { # $1 = staged binary, $2 = tag
 }
 
 xray_latest_install_core() {
-    local tag='' mode='' mchoice='' tmp='' zip='' ext='' staged_ver='' cur_mode='' cur_ver=''
+    local tag='' mode='' mchoice='' tmp='' zip='' ext='' staged_ver='' cur_mode='' cur_ver='' _xl_tgt='' _xl_bin=''
     init_system_environment || return 1
     load_optional_abox_env_or_die
     tag=$(xl_upstream_latest_tag) || { msg "${RED}$(tr_msg xl_tag_fail)${NC}"; return 1; }
@@ -34321,8 +34321,15 @@ xray_latest_install_core() {
         return 1
     fi
     if [[ -n "$cur_mode" && "$cur_ver" == "$tag" ]]; then
-        msg "${GREEN}$(tr_msg xl_already): $tag ($cur_mode)${NC}"
-        return 0
+        # S153: state alone is not proof. Verify the _xl_target binary
+        # for this mode exists and really reports the target version;
+        # otherwise fall through to a real install.
+        _xl_tgt=$(_xl_target 2>/dev/null || true)
+        _xl_bin="${_xl_tgt#*|}"; _xl_bin="${_xl_bin%%|*}"
+        if [[ -f "$_xl_bin" && "$(xl_binary_version "$_xl_bin" 2>/dev/null || true)" == "$tag" ]]; then
+            msg "${GREEN}$(tr_msg xl_already): $tag ($cur_mode)${NC}"
+            return 0
+        fi
     fi
     if [[ "$mode" == 'takeover' ]]; then
         msg "${RED}${BOLD}$(tr_msg xl_takeover_warn)${NC}"

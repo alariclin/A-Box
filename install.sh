@@ -31367,11 +31367,21 @@ wallos_version_is_older() {
     [[ "$older" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$newer" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 2
     IFS=. read -r -a old_parts <<< "$older"
     IFS=. read -r -a new_parts <<< "$newer"
+    # No arithmetic on the values: Bash integers wrap past 2^63-1 and
+    # invert the comparison. Strip leading zeros, compare by decimal
+    # length (longer is larger), then lexicographically on equal
+    # length (digit strings, so lexicographic == numeric). LC_ALL=C
+    # pins the lexicographic step to byte order regardless of the
+    # caller's locale.
+    local LC_ALL=C
     for i in 0 1 2; do
-        a=$((10#${old_parts[$i]}))
-        b=$((10#${new_parts[$i]}))
-        (( a < b )) && return 0
-        (( a > b )) && return 1
+        a=${old_parts[$i]}; b=${new_parts[$i]}
+        while [[ "$a" == 0?* ]]; do a=${a#0}; done
+        while [[ "$b" == 0?* ]]; do b=${b#0}; done
+        (( ${#a} < ${#b} )) && return 0
+        (( ${#a} > ${#b} )) && return 1
+        [[ "$a" < "$b" ]] && return 0
+        [[ "$a" > "$b" ]] && return 1
     done
     return 1
 }

@@ -15377,7 +15377,10 @@ socket_owned_by_pid() {
     local ss_out
     ss_out=$(ss $flags 2>/dev/null) || return 2
     printf '%s\n' "$ss_out" | awk -v p="$port" -v pid="$pid" '
-        $4 ~ ("[:.]" p "$") && $0 ~ ("pid=" pid "([,)]|$)") { found=1 }
+        # S51 (argon P2-6): also match $5 (Local under a Netid-column
+        # ss layout); Peer is '*' for LISTEN/UNCONN rows, so $5 can only
+        # match when it is the Local column -- no false positives.
+        ($4 ~ ("[:.]" p "$") || $5 ~ ("[:.]" p "$")) && $0 ~ ("pid=" pid "([,)]|$)") { found=1 }
         END { exit(found ? 0 : 1) }
     '
 }

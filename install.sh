@@ -1544,6 +1544,12 @@ tr_msg() {
         fa:wl_cv_compare) echo 'مقایسه Wallos نامزد %s با تصویر نصب‌شده %s ممکن نیست؛ بازگشت خودکار رد می‌شود.' ;;
         zh-tw:wl_cv_compare) echo '無法將候選 Wallos %s 與已安裝映像 %s 比較；拒絕自動回退。' ;;
         ja:wl_cv_compare) echo '候補 Wallos %s とインストール済みイメージ %s を比較できません。自動フォールバックを拒否します。' ;;
+        zh:wl_cv_inspect_fail) echo '无法检查已安装的 Wallos 容器（%s）；无降级保护时拒绝继续。' ;;
+        en:wl_cv_inspect_fail) echo 'Cannot inspect the installed Wallos container (%s); refusing to proceed without downgrade protection.' ;;
+        ru:wl_cv_inspect_fail) echo 'Невозможно проверить установленный контейнер Wallos (%s); продолжение без защиты от отката отклонено.' ;;
+        fa:wl_cv_inspect_fail) echo 'بررسی محفظه نصب‌شده Wallos ممکن نیست (%s)؛ ادامه بدون محافظت در برابر بازگشت رد می‌شود.' ;;
+        zh-tw:wl_cv_inspect_fail) echo '無法檢查已安裝的 Wallos 容器（%s）；無降級保護時拒絕繼續。' ;;
+        ja:wl_cv_inspect_fail) echo 'インストール済みの Wallos コンテナを検査できません（%s）。ダウングレード保護なしでの続行を拒否します。' ;;
         zh:wl_pr_rm_fail) echo '[!] 无法删除旧 Wallos 镜像 %s，它可能仍在使用中。' ;;
         en:wl_pr_rm_fail) echo '[!] Could not remove old Wallos image %s; it may still be in use.' ;;
         ru:wl_pr_rm_fail) echo '[!] Не удалось удалить старый образ Wallos %s; возможно, он всё ещё используется.' ;;
@@ -1646,6 +1652,12 @@ tr_msg() {
         fa:wl_rb_not_older) echo 'هدف بازگشت %s قدیمی‌تر از نسخه نصب‌شده %s نیست؛ رد می‌شود.' ;;
         zh-tw:wl_rb_not_older) echo '回滾目標 %s 不比已安裝的 %s 更舊，拒絕回滾。' ;;
         ja:wl_rb_not_older) echo 'ロールバック先 %s はインストール済みの %s より古くないため、拒否します。' ;;
+        zh:wl_rb_unknown_ver) echo '无法确定已安装的 Wallos 版本（%s）；无严格旧于检查时拒绝回滚。' ;;
+        en:wl_rb_unknown_ver) echo 'Cannot determine the installed Wallos version (%s); refusing rollback without the strictly-older check.' ;;
+        ru:wl_rb_unknown_ver) echo 'Невозможно определить установленную версию Wallos (%s); откат без проверки «строго старше» отклонён.' ;;
+        fa:wl_rb_unknown_ver) echo 'تعیین نسخه نصب‌شده Wallos ممکن نیست (%s)؛ بازگشت بدون بررسی «دقیقاً قدیمی‌تر» رد می‌شود.' ;;
+        zh-tw:wl_rb_unknown_ver) echo '無法確定已安裝的 Wallos 版本（%s）；無嚴格舊於檢查時拒絕回滾。' ;;
+        ja:wl_rb_unknown_ver) echo 'インストール済みの Wallos バージョンを特定できません（%s）。厳密に古いことの確認なしにロールバックを拒否します。' ;;
         zh:wl_rb_fetching) echo '本地没有 Wallos 镜像 %s，正在从镜像源拉取…' ;;
         en:wl_rb_fetching) echo 'Wallos image %s not present locally; fetching from mirror...' ;;
         ru:wl_rb_fetching) echo 'Образ Wallos %s отсутствует локально; загрузка с зеркала...' ;;
@@ -31365,10 +31377,14 @@ wallos_version_is_older() {
 }
 
 wallos_candidate_version_allowed() {
-    local candidate="${1#v}" installed_image installed_version rc
+    local candidate="${1#v}" installed_image installed_version rc inspect_err
     [[ "$candidate" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
     [[ "${ABOX_WALLOS_ALLOW_DOWNGRADE:-0}" == 1 ]] && return 0
-    docker container inspect wallos >/dev/null 2>&1 || return 0
+    inspect_err=$(docker container inspect wallos 2>&1 >/dev/null) || {
+        [[ "${inspect_err,,}" == *'no such container'* ]] && return 0
+        msg "${RED}$(tprintf wl_cv_inspect_fail "$inspect_err")${NC}"
+        return 1
+    }
     installed_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
     installed_version="${installed_image##*:}"
     # U115: containers created by digest have no parseable version in
@@ -31514,6 +31530,8 @@ wallos_rollback_to_version() {
     if [[ "$_installed_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         wallos_version_is_older "${target_tag#v}" "$_installed_ver" || {
             msg "${RED}$(tprintf wl_rb_not_older "$target_tag" "$_installed_ver")${NC}"; return 1; }
+    else
+        msg "${RED}$(tprintf wl_rb_unknown_ver "$_installed_img")${NC}"; return 1
     fi
     image_tag="${target_tag#v}"
     # Try local image first; else pull the versioned image from the mirror.

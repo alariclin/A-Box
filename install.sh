@@ -25711,7 +25711,7 @@ timezone_choose_locale() {
 }
 timezone_locale_ntp_menu() {
     clear
-    local c ntp synced now prompt
+    local c ntp synced now prompt back_word ntp_ok ntp_fail ntp_none rb_ok rb_fail rb_none
     now=$(date '+%Y-%m-%d %H:%M:%S %Z (%z)' 2>/dev/null || date)
     ntp='unknown'; synced='unknown'
     if command -v timedatectl >/dev/null 2>&1; then
@@ -25774,26 +25774,43 @@ timezone_locale_ntp_menu() {
             msg "${CYAN}5.${NC} 回滚到时区修改前快照"
             ;;
     esac
-    msg "${CYAN}0.${NC} 返回"
+    case "${ABOX_LANG:-zh}" in en) back_word='Back' ;; ru) back_word='Назад' ;; fa) back_word='بازگشت' ;; zh-tw) back_word='返回' ;; ja) back_word='戻る' ;; *) back_word='返回' ;; esac
+    msg "${CYAN}0.${NC} $back_word"
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; ja) prompt='選択してください [0-5]: ' ;; zh-tw) prompt='請選擇 [0-5]：' ;; *) prompt='请选择 [0-5]：' ;; esac
     read -r -p "$prompt" c
     case "$c" in
         1) timezone_choose_from_list '' ;;
-        2) local query; read -r -p 'Timezone search: ' query || return 0; timezone_choose_from_list "$query" ;;
+        2) local query search_prompt; case "${ABOX_LANG:-zh}" in en) search_prompt='Timezone search: ' ;; ru) search_prompt='Поиск часового пояса: ' ;; fa) search_prompt='جست‌وجوی منطقه زمانی: ' ;; zh-tw) search_prompt='時區關鍵詞: ' ;; ja) search_prompt='タイムゾーンを検索: ' ;; *) search_prompt='时区关键词: ' ;; esac; read -r -p "$search_prompt" query || return 0; timezone_choose_from_list "$query" ;;
         3) timezone_choose_locale ;;
         4)
+            case "${ABOX_LANG:-zh}" in
+                en) ntp_ok='NTP enable requested; check the sync status.'; ntp_fail='Failed to enable NTP; check the time sync service.'; ntp_none='This system has no timedatectl; use the chrony/openntpd method for your distro.' ;;
+                ru) ntp_ok='Включение NTP запрошено; проверьте состояние синхронизации.'; ntp_fail='Не удалось включить NTP; проверьте службу синхронизации времени.'; ntp_none='В системе нет timedatectl; используйте способ chrony/openntpd для вашего дистрибутива.' ;;
+                fa) ntp_ok='فعال‌سازی NTP درخواست شد؛ وضعیت همگام‌سازی را بررسی کنید.'; ntp_fail='فعال‌سازی NTP ناموفق بود؛ سرویس همگام‌سازی زمان را بررسی کنید.'; ntp_none='این سیستم timedatectl ندارد؛ از روش chrony/openntpd توزیع خود استفاده کنید.' ;;
+                zh-tw) ntp_ok='已請求啟用 NTP；請檢查同步狀態。'; ntp_fail='啟用 NTP 失敗，請檢查時間同步服務。'; ntp_none='目前系統沒有 timedatectl；請使用發行版對應的 chrony/openntpd 管理方式。' ;;
+                ja) ntp_ok='NTP の有効化を要求しました。同期状態を確認してください。'; ntp_fail='NTP の有効化に失敗しました。時刻同期サービスを確認してください。'; ntp_none='このシステムには timedatectl がありません。ディストリビューションに応じた chrony/openntpd の管理方法を使ってください。' ;;
+                *) ntp_ok='已请求启用 NTP；请检查同步状态。'; ntp_fail='启用 NTP 失败，请检查时间同步服务。'; ntp_none='当前系统没有 timedatectl；请使用发行版对应的 chrony/openntpd 管理方式。' ;;
+            esac
             if command -v timedatectl >/dev/null 2>&1; then
-                timedatectl set-ntp true && msg "${GREEN}已请求启用 NTP；请检查同步状态。${NC}" || msg "${RED}启用 NTP 失败，请检查时间同步服务。${NC}"
+                timedatectl set-ntp true && msg "${GREEN}$ntp_ok${NC}" || msg "${RED}$ntp_fail${NC}"
             else
-                msg "${YELLOW}当前系统没有 timedatectl；请使用发行版对应的 chrony/openntpd 管理方式。${NC}"
+                msg "${YELLOW}$ntp_none${NC}"
             fi
             pause_return
             ;;
         5)
+            case "${ABOX_LANG:-zh}" in
+                en) rb_ok='Previous timezone restored.'; rb_fail='Timezone rollback failed.'; rb_none='No timezone rollback snapshot available.' ;;
+                ru) rb_ok='Предыдущий часовой пояс восстановлен.'; rb_fail='Откат часового пояса не удался.'; rb_none='Снимок для отката часового пояса отсутствует.' ;;
+                fa) rb_ok='منطقه زمانی قبلی بازیابی شد.'; rb_fail='بازگشت منطقه زمانی ناموفق بود.'; rb_none='عکس فوری برای بازگشت منطقه زمانی موجود نیست.' ;;
+                zh-tw) rb_ok='已恢復修改前時區。'; rb_fail='時區回滾失敗。'; rb_none='沒有可用的時區回滾快照。' ;;
+                ja) rb_ok='変更前のタイムゾーンを復元しました。'; rb_fail='タイムゾーンのロールバックに失敗しました。'; rb_none='利用可能なタイムゾーンのロールバック用スナップショットがありません。' ;;
+                *) rb_ok='已恢复修改前时区。'; rb_fail='时区回滚失败。'; rb_none='没有可用的时区回滚快照。' ;;
+            esac
             if [[ -d /etc/ddr/.tz-rollback ]]; then
-                restore_timezone_snapshot /etc/ddr/.tz-rollback && msg "${GREEN}已恢复修改前时区。${NC}" || msg "${RED}时区回滚失败。${NC}"
+                restore_timezone_snapshot /etc/ddr/.tz-rollback && msg "${GREEN}$rb_ok${NC}" || msg "${RED}$rb_fail${NC}"
             else
-                msg "${YELLOW}没有可用的时区回滚快照。${NC}"
+                msg "${YELLOW}$rb_none${NC}"
             fi
             pause_return
             ;;

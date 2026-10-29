@@ -13350,12 +13350,16 @@ verify_github_asset_digest() {
 # Uses ONLY openssl + python3 (both guaranteed by ensure_commands).
 # .sig files are base64 text of the raw 64-byte Ed25519 signature.
 # F8: probe OpenSSL Ed25519/rawin capability. Ed25519 needs OpenSSL 1.1.1+;
-# -rawin for pkeyutl needs 1.1.1+. Cache the result.
-# Contract (S41): a cached "unsupported" verdict (OK=1) is the DS-Q4
-# exemption signal -- the gate warns and continues even under ENFORCE
-# on platforms that fundamentally cannot verify (CentOS 7). Only a
-# definitive algorithm-unsupported error may set it; anything else is
-# PROBE_FAILED (gate FATAL under ENFORCE, retryable).
+# -rawin for pkeyutl needs 3.0+. Cache the result.
+# Contract (S41-V-C): a cached "unsupported" verdict (OK=1) means the
+# platform OpenSSL CLI deterministically lacks Ed25519 or pkeyutl -rawin.
+# It does NOT mean verification is impossible: the gate first tries the
+# ctypes libcrypto verifier (verify_ed25519_detached_ctypes), which uses
+# the same libcrypto EVP one-shot API the CLI -rawin path uses internally.
+# Only when no verifier confirms the signature does the gate fail closed
+# under ABOX_SIGNING_ENFORCE=1 (FATAL, return 1); under ENFORCE=0 it warns
+# and returns 0. Only a definitive algorithm-unsupported error may set
+# the cached verdict; anything else is PROBE_FAILED (also fail-closed).
 _openssl_has_ed25519() {
     if [[ -n "${_OPENSSL_ED25519_OK:-}" ]]; then
         _OPENSSL_ED25519_PROBE_FAILED=0
@@ -13508,22 +13512,178 @@ abox_signing_timestamp_ok() {
     return 0
 }
 
+# V-C: Ed25519 detached verification via python3 ctypes calling libcrypto EVP.
+# Used ONLY when the OpenSSL CLI path is unavailable (no pkeyutl -rawin, i.e.
+# OpenSSL 1.1.1): the underlying libcrypto has the same one-shot EVP API in
+# 1.1.1 and 3.x; only the CLI flag is missing. Returns 0 = verified,
+# 1 = signature invalid (or malformed input), 2 = no verifier available
+# (python3/base64/sha256sum/mktemp missing, or libcrypto unloadable).
+# Front checks (file/sig existence, 64-byte sig, 32-byte pubkey, fingerprint,
+# revocation) mirror verify_ed25519_detached exactly.
+verify_ed25519_detached_ctypes() {
+    local file="$1" sigfile="$2"
+    local entry label pubkey_b64 fp keydir sigbin py r revoked rc
+    [[ -f "$file" && -f "$sigfile" ]] || return 1
+    command -v python3 >/dev/null 2>&1 || return 2
+    command -v base64 >/dev/null 2>&1 || return 2
+    command -v sha256sum >/dev/null 2>&1 || return 2
+    keydir=$(umask 077; mktemp -d /tmp/A-Box-ed25519ct.XXXXXX 2>/dev/null) || return 2
+    sigbin="$keydir/sig.bin"
+    if ! base64 -d "$sigfile" > "$sigbin" 2>/dev/null || [[ $(wc -c < "$sigbin") -ne 64 ]]; then
+        rm -rf -- "$keydir"
+        return 1
+    fi
+    py="$keydir/ctypes_verify.py"
+    cat > "$py" <<'PYEOF'
+import base64, ctypes, ctypes.util, sys
+pub_b64 = sys.argv[1]
+msg_path = sys.argv[2]
+sig_path = sys.argv[3]
+try:
+    pub = base64.b64decode(pub_b64, validate=True)
+    msg = open(msg_path, 'rb').read()
+    sig = open(sig_path, 'rb').read()
+except Exception:
+    sys.exit(1)
+if len(pub) != 32 or len(sig) != 64:
+    sys.exit(1)
+def _capable(cand):
+    try:
+        cand.OBJ_sn2nid.restype = ctypes.c_int
+        cand.OBJ_sn2nid.argtypes = [ctypes.c_char_p]
+        _nid = cand.OBJ_sn2nid(b'ED25519')
+        if _nid == 0:
+            return False
+        for _sym in ('EVP_MD_CTX_new', 'EVP_MD_CTX_free', 'EVP_PKEY_new_raw_public_key', 'EVP_PKEY_free', 'EVP_DigestVerifyInit', 'EVP_DigestVerify'):
+            getattr(cand, _sym)
+        # Trial operation: a symbol-complete but algorithm-incapable lib
+        # (no-ec build, missing provider) answers the NID query yet cannot
+        # create an Ed25519 key. Only a working method passes this.
+        cand.EVP_PKEY_new_raw_public_key.restype = ctypes.c_void_p
+        cand.EVP_PKEY_new_raw_public_key.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
+        cand.EVP_PKEY_free.argtypes = [ctypes.c_void_p]
+        _trial = cand.EVP_PKEY_new_raw_public_key(_nid, None, bytes(32), 32)
+        if not _trial:
+            return False
+        cand.EVP_PKEY_free(_trial)
+        return True
+    except Exception:
+        return False
+lib = None
+for name in ('libcrypto.so.1.1', 'libcrypto.so.3', 'libcrypto.so'):
+    try:
+        _cand = ctypes.CDLL(name)
+    except Exception:
+        continue
+    if _capable(_cand):
+        lib = _cand
+        break
+if lib is None:
+    try:
+        found = ctypes.util.find_library('crypto')
+        if found:
+            _cand = ctypes.CDLL(found)
+            if _capable(_cand):
+                lib = _cand
+    except Exception:
+        pass
+if lib is None:
+    sys.exit(2)
+ctx = None
+pkey = None
+try:
+    lib.OBJ_sn2nid.restype = ctypes.c_int
+    lib.OBJ_sn2nid.argtypes = [ctypes.c_char_p]
+    nid = lib.OBJ_sn2nid(b'ED25519')
+    if nid == 0:
+        sys.exit(1)
+    lib.EVP_MD_CTX_new.restype = ctypes.c_void_p
+    lib.EVP_MD_CTX_new.argtypes = []
+    lib.EVP_MD_CTX_free.argtypes = [ctypes.c_void_p]
+    lib.EVP_MD_CTX_free.restype = None
+    lib.EVP_PKEY_new_raw_public_key.restype = ctypes.c_void_p
+    lib.EVP_PKEY_new_raw_public_key.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
+    lib.EVP_PKEY_free.argtypes = [ctypes.c_void_p]
+    lib.EVP_PKEY_free.restype = None
+    lib.EVP_DigestVerifyInit.restype = ctypes.c_int
+    lib.EVP_DigestVerifyInit.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+    lib.EVP_DigestVerify.restype = ctypes.c_int
+    lib.EVP_DigestVerify.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t, ctypes.c_char_p, ctypes.c_size_t]
+    pkey = lib.EVP_PKEY_new_raw_public_key(nid, None, pub, len(pub))
+    if not pkey:
+        sys.exit(1)
+    ctx = lib.EVP_MD_CTX_new()
+    if not ctx:
+        sys.exit(1)
+    if lib.EVP_DigestVerifyInit(ctx, None, None, None, pkey) != 1:
+        sys.exit(1)
+    rc = lib.EVP_DigestVerify(ctx, sig, len(sig), msg, len(msg))
+    sys.exit(0 if rc == 1 else 1)
+finally:
+    if ctx:
+        lib.EVP_MD_CTX_free(ctx)
+    if pkey:
+        lib.EVP_PKEY_free(pkey)
+PYEOF
+    for entry in "${ABOX_SIGNING_PUBKEYS[@]}"; do
+        label="${entry%%:*}"
+        pubkey_b64="${entry#*:}"
+        [[ -n "$label" && -n "$pubkey_b64" && "$pubkey_b64" != "$entry" ]] || continue
+        fp=$(python3 -c "
+import base64, hashlib, sys
+try:
+    raw = base64.b64decode(sys.argv[1], validate=True)
+except Exception:
+    sys.exit(1)
+if len(raw) != 32:
+    sys.exit(1)
+print(hashlib.sha256(raw).hexdigest())
+" "$pubkey_b64" 2>/dev/null)
+        [[ "$fp" =~ ^[0-9a-f]{64}$ ]] || continue
+        revoked=0
+        for r in "${ABOX_REVOKED_PUBKEY_FPS[@]}"; do
+            if [[ "${r,,}" == "${fp,,}" ]]; then revoked=1; break; fi
+        done
+        (( revoked == 0 )) || continue
+        python3 "$py" "$pubkey_b64" "$file" "$sigbin" >/dev/null 2>&1
+        rc=$?
+        if [[ "$rc" == "0" ]]; then rm -rf -- "$keydir"; return 0; fi
+        if [[ "$rc" == "2" ]]; then rm -rf -- "$keydir"; return 2; fi
+    done
+    rm -rf -- "$keydir"
+    return 1
+}
+
 # F-05 enforcement gate for a downloaded metadata file + its .sig.
 #   $1 = metadata file path, $2 = .sig file path, $3 = description
-# Returns 0 if signature verifies, or if enforcement is off (warns).
-# Returns 1 (fail-closed) iff ABOX_SIGNING_ENFORCE=1 and sig missing/invalid.
+# Returns 0 if signature verifies (CLI or ctypes), or if enforcement is off (warns).
+# Returns 1 (fail-closed) iff ABOX_SIGNING_ENFORCE=1 and sig missing/invalid/unverifiable.
 abox_verify_sig_gate() {
     local file="$1" sigfile="$2" desc="${3:-metadata}"
-    # F8: if OpenSSL lacks Ed25519/rawin, we cannot verify.
-    # DS-Q4: CentOS 7 (OpenSSL 1.0.2) has no Ed25519. Fail-closed here would break
-    # the documented CentOS 7 support. Downgrade to LOUD warning instead of FATAL
-    # on platforms that fundamentally cannot verify (vs. missing .sig file).
+    # V-C: CLI path unavailable; try the ctypes libcrypto verifier first.
+    # ctypes rc: 0 = verified, 1 = signature invalid, 2 = no verifier.
     if ! _openssl_has_ed25519; then
-        if [[ "${_OPENSSL_ED25519_PROBE_FAILED:-0}" == '1' && "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
-            printf '[A-Box][F-05] FATAL: Ed25519 capability probe failed (transient infrastructure error); refusing to skip verification while enforcement is ON.\n' >&2
+        local _ct_rc=2
+        if [[ -f "$sigfile" ]]; then
+            verify_ed25519_detached_ctypes "$file" "$sigfile"
+            _ct_rc=$?
+            if [[ "$_ct_rc" == "0" ]]; then
+                return 0
+            fi
+        fi
+        if [[ ! -f "$sigfile" ]]; then
+            printf '[A-Box][F-05] WARNING: missing signature for %s (%s not found)\n' "$desc" "$sigfile" >&2
+        elif [[ "$_ct_rc" == "1" ]]; then
+            printf '[A-Box][F-05] WARNING: invalid Ed25519 signature for %s\n' "$desc" >&2
+        elif [[ "${_OPENSSL_ED25519_PROBE_FAILED:-0}" == '1' ]]; then
+            printf '[A-Box][F-05] WARNING: Ed25519 capability probe failed (transient infrastructure error); no ctypes verifier available for %s.\n' "$desc" >&2
+        else
+            printf '[A-Box][F-05] WARNING: OpenSSL lacks Ed25519/rawin support; no ctypes verifier available for %s.\n' "$desc" >&2
+        fi
+        if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
+            printf '[A-Box][F-05] FATAL: signature enforcement is ON; rejecting %s\n' "$desc" >&2
             return 1
         fi
-        printf '[A-Box][F-05] WARNING: OpenSSL lacks Ed25519/rawin support (e.g. CentOS 7); cannot verify %s. Integrity is TLS-only on this platform.\n' "$desc" >&2
         return 0
     fi
     if [[ -f "$sigfile" ]]; then
@@ -39330,23 +39490,44 @@ PY_F05_TPUB
                     # Swap in the throwaway pubkey (save/restore the real array).
                     _f05_saved_pubkeys=("${ABOX_SIGNING_PUBKEYS[@]}")
                     ABOX_SIGNING_PUBKEYS=("f05-selftest:$_f05_pub_b64")
+                    # V-C baked ctypes test vector (generated with OpenSSL 3.x;
+                    # Ed25519 signatures are deterministic, so this vector is stable).
+                    _f05_ct_pub_b64='H0fQSWPH2HDNqN3F6fFbu9Ye5XpY0H3228D3RgO7ixo='
+                    _f05_ct_msg_b64='QS1Cb3ggRFMtUTQgY3R5cGVzIHRlc3QgdmVjdG9yIG1lc3NhZ2U='
+                    _f05_ct_sig_b64='/4fy58kyo+tkmM1OT/Y2G88bdbKHsMmjsqgZWdH3Ey4koy6dSPelN/2VT2iBPUCr3L3NcxVJ287oimxF3gPxBg=='
                     if _openssl_has_ed25519; then
                         if ! verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/data.txt.sig"; then
                             echo 'FAIL: F-05 valid signature rejected'; failures=$((failures + 1))
                         fi
+                        if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/data.txt.sig" "f05-test" 2>/dev/null; then
+                            echo 'FAIL: F-05 gate rejected valid signature'; failures=$((failures + 1))
+                        fi
                     else
+                        # V-C: CLI path unavailable; exercise the ctypes verifier with the
+                        # baked vector, and assert the gate routes through it (fail-closed
+                        # on dummy sig, accepted on the valid vector).
                         printf 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\n' > "$_f05_tdir/dummy.sig"
-                        if verify_ed25519_detached "$_f05_tdir/data.txt" "$_f05_tdir/dummy.sig"; then
-                            echo 'FAIL: F-05 verify accepted without Ed25519 support'; failures=$((failures + 1))
+                        printf '%s' "$_f05_ct_msg_b64" | base64 -d > "$_f05_tdir/ct-msg.txt" 2>/dev/null || { echo 'FAIL: F-05 ctypes vector decode'; failures=$((failures + 1)); }
+                        printf '%s' "$_f05_ct_sig_b64" > "$_f05_tdir/ct-data.txt.sig"
+                        _f05_ct_saved_pubkeys=("${ABOX_SIGNING_PUBKEYS[@]}")
+                        ABOX_SIGNING_PUBKEYS=("f05-ct:$_f05_ct_pub_b64")
+                        if ! verify_ed25519_detached_ctypes "$_f05_tdir/ct-msg.txt" "$_f05_tdir/ct-data.txt.sig"; then
+                            echo 'FAIL: F-05 ctypes baked vector rejected'; failures=$((failures + 1))
                         fi
-                        # DS-Q4: OpenSSL无Ed25519时改为警告继续（CentOS 7兼容），不再fail-closed
-                        # S170: warn-and-continue means the LOUD warning
-                        # must actually be emitted, not just rc 0.
-                        if _f05_gate_err=$(ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>&1 >/dev/null); then
-                            grep -q 'WARNING: OpenSSL lacks Ed25519' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 gate warn-and-continue emitted no Ed25519 WARNING'; failures=$((failures + 1)); }
+                        printf 'F-05 CT TAMPERED\n' > "$_f05_tdir/ct-msg-bad.txt"
+                        if verify_ed25519_detached_ctypes "$_f05_tdir/ct-msg-bad.txt" "$_f05_tdir/ct-data.txt.sig"; then
+                            echo 'FAIL: F-05 ctypes tampered message accepted'; failures=$((failures + 1))
+                        fi
+                        if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/ct-msg.txt" "$_f05_tdir/ct-data.txt.sig" "f05-test" 2>/dev/null; then
+                            echo 'FAIL: F-05 gate rejected ctypes-valid signature'; failures=$((failures + 1))
+                        fi
+                        if _f05_gate_err=$(ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/ct-msg.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>&1 >/dev/null); then
+                            echo 'FAIL: F-05 gate did not fail-closed on dummy sig via ctypes'; failures=$((failures + 1))
                         else
-                            echo 'FAIL: F-05 gate should warn-and-continue without Ed25519 support'; failures=$((failures + 1))
+                            grep -q 'WARNING: invalid Ed25519 signature' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 gate dummy sig emitted no invalid WARNING'; failures=$((failures + 1)); }
+                            grep -q 'FATAL: signature enforcement is ON' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 gate dummy sig emitted no enforcement FATAL'; failures=$((failures + 1)); }
                         fi
+                        ABOX_SIGNING_PUBKEYS=("${_f05_ct_saved_pubkeys[@]}")
                     fi
                     # Tampered data must FAIL.
                     printf 'F-05 TAMPERED\n' > "$_f05_tdir/data-tampered.txt"
@@ -39363,7 +39544,7 @@ PY_F05_TPUB
                         echo 'FAIL: F-05 missing sig accepted'; failures=$((failures + 1))
                     fi
                     # Enforcement gate: with ENFORCE=1, missing sig must return 1
-                    # (unless OpenSSL lacks Ed25519, where DS-Q4 downgrades to warn-and-continue).
+                    # on every host (V-C: ctypes covers 1.1.1, so no DS-Q4 exemption).
                     if _openssl_has_ed25519; then
                         if ! ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then
                             : # expected: gate returns 1
@@ -39371,18 +39552,59 @@ PY_F05_TPUB
                             echo 'FAIL: F-05 gate did not fail-closed on missing sig'; failures=$((failures + 1))
                         fi
                     else
-                        # S170: warn-and-continue means the LOUD warning
-                        # must actually be emitted, not just rc 0.
                         if _f05_gate_err=$(ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>&1 >/dev/null); then
-                            grep -q 'WARNING: OpenSSL lacks Ed25519' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 gate warn-and-continue emitted no Ed25519 WARNING'; failures=$((failures + 1)); }
+                            echo 'FAIL: F-05 gate did not fail-closed on missing sig without Ed25519 CLI'; failures=$((failures + 1))
                         else
-                            echo 'FAIL: F-05 gate should warn-and-continue without Ed25519 support'; failures=$((failures + 1))
+                            grep -q 'WARNING: missing signature' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 missing-sig error message missing'; failures=$((failures + 1)); }
+                            grep -q 'FATAL: signature enforcement is ON' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 missing-sig enforcement message missing'; failures=$((failures + 1)); }
                         fi
                     fi
                     # Enforcement gate: with ENFORCE=0, missing sig warns but returns 0.
                     if ! ABOX_SIGNING_ENFORCE=0 abox_verify_sig_gate "$_f05_tdir/data.txt" "$_f05_tdir/nonexistent.sig" "f05-test" 2>/dev/null; then
                         echo 'FAIL: F-05 gate should warn-only when enforcement off'; failures=$((failures + 1))
                     fi
+                    # Unconditionally test the ctypes gate routing: injected
+                    # capability-missing forces the probe-false branch on every host,
+                    # so ctypes routing is covered even when all CI hosts are 3.0+.
+                    printf 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\n' > "$_f05_tdir/dummy.sig"
+                    printf '%s' "$_f05_ct_msg_b64" | base64 -d > "$_f05_tdir/ct-msg.txt" 2>/dev/null || { echo 'FAIL: F-05 ctypes vector decode'; failures=$((failures + 1)); }
+                    printf '%s' "$_f05_ct_sig_b64" > "$_f05_tdir/ct-data.txt.sig"
+                    _f05_ct_saved_pubkeys=("${ABOX_SIGNING_PUBKEYS[@]}")
+                    ABOX_SIGNING_PUBKEYS=("f05-ct:$_f05_ct_pub_b64")
+                    if ! _f05_gate_err=$(_OPENSSL_ED25519_OK=1 ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/ct-msg.txt" "$_f05_tdir/ct-data.txt.sig" "f05-test" 2>&1 >/dev/null); then
+                        echo 'FAIL: F-05 gate rejected ctypes-valid signature under injected incapable state'; failures=$((failures + 1))
+                    fi
+                    if _f05_gate_err=$(verify_ed25519_detached_ctypes() { return 2; }; _OPENSSL_ED25519_OK=1 ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/ct-msg.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>&1 >/dev/null); then
+                        echo 'FAIL: F-05 gate did not fail-closed on stubbed no-verifier'; failures=$((failures + 1))
+                    else
+                        grep -q 'lacks Ed25519/rawin support; no ctypes verifier available' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 stubbed no-verifier emitted no lacks-no-verifier WARNING'; failures=$((failures + 1)); }
+                        grep -q 'FATAL: signature enforcement is ON' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 stubbed no-verifier emitted no enforcement FATAL'; failures=$((failures + 1)); }
+                    fi
+                    if _f05_gate_err=$(_openssl_has_ed25519() { _OPENSSL_ED25519_PROBE_FAILED=1; return 1; }; verify_ed25519_detached_ctypes() { return 2; }; ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/ct-msg.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>&1 >/dev/null); then
+                        echo 'FAIL: F-05 gate did not fail-closed on stubbed no-verifier probe failure'; failures=$((failures + 1))
+                    else
+                        grep -q 'capability probe failed' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 stubbed probe failure emitted no probe-failed WARNING'; failures=$((failures + 1)); }
+                        grep -q 'no ctypes verifier available' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 stubbed probe failure emitted no no-verifier WARNING'; failures=$((failures + 1)); }
+                        grep -q 'FATAL: signature enforcement is ON' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 stubbed probe failure emitted no enforcement FATAL'; failures=$((failures + 1)); }
+                    fi
+                    printf 'F-05 CT TAMPERED\n' > "$_f05_tdir/ct-msg-bad.txt"
+                    if _f05_gate_err=$(_OPENSSL_ED25519_OK=1 ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/ct-msg-bad.txt" "$_f05_tdir/ct-data.txt.sig" "f05-test" 2>&1 >/dev/null); then
+                        echo 'FAIL: F-05 gate accepted ctypes-tampered signature under injected incapable state'; failures=$((failures + 1))
+                    else
+                        grep -q 'WARNING: invalid Ed25519 signature' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 injected tampered emitted no invalid WARNING'; failures=$((failures + 1)); }
+                        grep -q 'FATAL: signature enforcement is ON' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 injected tampered emitted no enforcement FATAL'; failures=$((failures + 1)); }
+                    fi
+                    if _f05_gate_err=$(_OPENSSL_ED25519_OK=1 ABOX_SIGNING_ENFORCE=0 abox_verify_sig_gate "$_f05_tdir/ct-msg-bad.txt" "$_f05_tdir/ct-data.txt.sig" "f05-test" 2>&1 >/dev/null); then
+                        grep -q 'WARNING: invalid Ed25519 signature' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 injected tampered ENFORCE=0 emitted no invalid WARNING'; failures=$((failures + 1)); }
+                    else
+                        echo 'FAIL: F-05 gate with ENFORCE=0 did not warn-and-continue on invalid sig'; failures=$((failures + 1))
+                    fi
+                    if _f05_gate_err=$(verify_ed25519_detached_ctypes() { return 2; }; _OPENSSL_ED25519_OK=1 ABOX_SIGNING_ENFORCE=0 abox_verify_sig_gate "$_f05_tdir/ct-msg.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>&1 >/dev/null); then
+                        grep -q 'no ctypes verifier available' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 stubbed no-verifier ENFORCE=0 emitted no no-verifier WARNING'; failures=$((failures + 1)); }
+                    else
+                        echo 'FAIL: F-05 gate with ENFORCE=0 did not warn-and-continue on stubbed no-verifier'; failures=$((failures + 1))
+                    fi
+                    ABOX_SIGNING_PUBKEYS=("${_f05_ct_saved_pubkeys[@]}")
                     # Anti-replay: old timestamp rejected, current accepted.
                     if abox_signing_timestamp_ok "20200101000000"; then
                         echo 'FAIL: F-05 stale timestamp accepted'; failures=$((failures + 1))

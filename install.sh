@@ -14153,7 +14153,13 @@ commit_traffic_pair_state() {
 
 get_desired_state() {
     local state='RUNNING' uid gid mode pair desired period
-    if pair=$(read_traffic_pair_fields); then
+    # S22: a pair file that exists but is unreadable/corrupt is an error,
+    # not a cue to fall back to legacy or the RUNNING default (a quota
+    # block or MANUAL_STOPPED state must never be silently flipped).
+    if traffic_pair_file_exists && ! pair=$(read_traffic_pair_fields); then
+        return 1
+    fi
+    if [[ -n "${pair:-}" ]]; then
         IFS= read -r desired <<< "$pair"
         printf '%s\n' "$desired"
         return 0
@@ -14187,6 +14193,13 @@ set_desired_state() {
         return 1
     fi
     period=$(get_traffic_block_period 2>/dev/null || true)
+    # S22: when no pair exists, the period must come from the legacy block
+    # file; a block file that exists but yields no period is corrupt, not
+    # "no block" -- refusing beats letting commit delete it as a side effect.
+    if ! traffic_pair_file_exists && [[ -e "$ABOX_TRAFFIC_BLOCK_STATE" || -L "$ABOX_TRAFFIC_BLOCK_STATE" ]] && [[ -z "$period" ]]; then
+        msg "${RED}[!] Traffic block state exists but its period is unreadable; refusing to overwrite. Manual repair required.${NC}" >&2
+        return 1
+    fi
     commit_traffic_pair_state "$state" "$period"
 }
 

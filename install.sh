@@ -14586,13 +14586,30 @@ validate_fail2ban_config_or_die() {
 2026-07-25T10:00:03Z client=198.51.100.8 rejected
 2026-07-25T10:00:04Z health check succeeded without authentication failure
 EOF_F2B_SAMPLE
-        out=$(fail2ban-regex "$sample" /etc/fail2ban/filter.d/A-Box.conf 2>&1) || { rm -f "$sample"; printf '%s\n' "$out" >&2; die "$(tr_msg fb_regex_fail)"; }
+        out=$(fail2ban-regex --print-all-matched --print-all-missed "$sample" /etc/fail2ban/filter.d/A-Box.conf 2>&1) || { rm -f "$sample"; printf '%s\n' "$out" >&2; die "$(tr_msg fb_regex_fail)"; }
         rm -f "$sample"
-        local summary matched_count missed_count
+        local summary matched_count missed_count matched_lines
         summary=$(grep -E '^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, [0-9]+ missed' <<< "$out" | tail -n 1)
         matched_count=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, ([0-9]+) matched, [0-9]+ missed.*/\1/p' <<< "$summary")
         missed_count=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, ([0-9]+) missed.*/\1/p' <<< "$summary")
         [[ "$matched_count" =~ ^[0-9]+$ && "$missed_count" =~ ^[0-9]+$ ]] && (( matched_count >= 1 && missed_count >= 1 )) || { printf '%s\n' "$out" >&2; die 'Fail2Ban must match a representative failure log and leave a benign log unmatched.'; }
+        # S40 (GPT-21): totals alone also pass a REVERSED filter (matches
+        # only the benign line: "1 matched, 4 missed"). Require per-line
+        # proof: at least one known failure line in the matched section,
+        # and the benign line absent from it. The matched section is the
+        # "|  "-prefixed lines after "Matched line(s):" up to the first
+        # line that is not such a line; if the format drifts so no
+        # section parses, this fails closed (die) rather than falling
+        # back to totals.
+        matched_lines=$(awk '/Matched line[(]s[)]:/ { m = 1; next } m && /^[|]  / { sub(/^[|]  /, ""); print; next } m { m = 0 }' <<< "$out")
+        grep -Fq -e '203.0.113.7' -e '2001:db8::7' -e '198.51.100.9' -e '198.51.100.8' <<< "$matched_lines" || { printf '%s\n' "$out" >&2; die 'Fail2Ban must match a representative failure log and leave a benign log unmatched.'; }
+        # NOTE: if-form, not "grep && { die; }": as the block's last
+        # statement the && form would leak grep's failing status (1)
+        # as the function's return code exactly when the check PASSES.
+        if grep -Fq 'health check succeeded' <<< "$matched_lines"; then
+            printf '%s\n' "$out" >&2
+            die 'Fail2Ban must match a representative failure log and leave a benign log unmatched.'
+        fi
     fi
 }
 

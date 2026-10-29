@@ -12224,9 +12224,16 @@ reorder_ss_whitelist_rules_one() {
     local save_cmd="${cmd}-save" rules_output='' recovery_snapshot='' lock_file=/run/A-Box-firewall-reorder.lock lock_fd=''
     local original_rules_output='' current_rules_output='' current_line line i j n rule_no target_idx del_idx check_rc=0 mutated=0
     local _recheck_output='' _recheck_line='' _recheck_norm='' _delete_norm=''
+    local current_interleave='' original_interleave='' expected_interleave=''
     local -a rules=() argv=() current_lines=() delete_lines=() delete_target_indices=() delete_rule_numbers=()
     local -a original_target_lines=() original_target_positions=() expected_target_lines=()
     local -a current_target_lines=() current_foreign_lines=() original_foreign_rules=()
+
+    # S54 (argon P3-2): unload the nested helpers on every return path
+    # (RETURN trap fires once, when this function returns -- not on
+    # nested calls -- and unset -f on an undefined name is harmless,
+    # so early returns before the definitions below are safe).
+    trap 'unset -f capture_firewall_views firewall_state_matches_expected firewall_rollback' RETURN
 
     command -v "$cmd" >/dev/null 2>&1 || return 0
     command -v "$save_cmd" >/dev/null 2>&1 || return 1

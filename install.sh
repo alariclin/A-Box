@@ -24257,7 +24257,15 @@ users_link() {
             newinfo="$(urlencode "$secret")"
         fi
     else
-        if [[ "$userinfo2" == "$(urlencode "$msecret")" || "$userinfo2" == "$msecret" ]]; then
+        if [[ "$scheme" == 'socks5' || "$scheme" == 'mixed' ]]; then
+            local mname=''
+            mname=$(printf '%s' "$main" | jq -r '.name // ""')
+            if [[ "$userinfo2" == "$(urlencode "$mname"):$(urlencode "$msecret")" || "$userinfo2" == "${mname}:${msecret}" ]]; then
+                newinfo="$(urlencode "$name"):$(urlencode "$secret")"
+            else
+                return 1
+            fi
+        elif [[ "$userinfo2" == "$(urlencode "$msecret")" || "$userinfo2" == "$msecret" ]]; then
             newinfo="$(urlencode "$secret")"
         else
             return 1

@@ -11774,12 +11774,18 @@ ufw_delete_owned_rules() {
         # every remaining rule number, so stale numbers would delete other
         # rules. Re-query before each delete and always take the largest
         # current owned number (deleting it cannot shift lower numbers).
-        local _guard=0 _fresh _max
+        local _guard=0 _fresh _max _verify
         while ufw_owned_rule_exists "$spec" "$proto"; do
             ((_guard++ < 50)) || return 1
             _fresh=$(ufw_global_rule_numbers "$spec" "$proto" 1) || return 1
             _max=$(printf '%s\n' "$_fresh" | LC_ALL=C sort -rn | sed -n '1p')
             [[ "$_max" =~ ^[0-9]+$ ]] || return 1
+            # S25: re-verify _max is still owned immediately before deleting:
+            # a concurrent insertion between query and delete can shift
+            # numbers onto a foreign rule. On mismatch, re-query instead
+            # of deleting blindly (the loop condition re-checks ownership).
+            _verify=$(ufw_global_rule_numbers "$spec" "$proto" 1) || return 1
+            printf '%s\n' "$_verify" | grep -qx "$_max" || continue
             ufw --force delete "$_max" >/dev/null 2>&1 || return 1
         done
     fi
@@ -11788,9 +11794,12 @@ ufw_delete_owned_rules() {
     # Only a confirmed absence (rc 1) is success: rules still present
     # (rc 0) and a failed verification query (rc 2) must both report
     # failure, so callers never clear ownership records on unknown state.
-    # Residual TOCTOU (accepted): ufw has no transaction lock, so a
-    # concurrent rule insertion between re-query and delete could shift
-    # numbers; the 50-round guard bounds this and any failure returns 1.
+    # Residual TOCTOU (narrowed, not eliminated): ufw has no transaction
+    # lock, so a concurrent insertion between the verify query and the
+    # delete can still shift numbers onto a foreign rule. The verify
+    # immediately before delete shrinks that window to a single ufw call
+    # pair, mismatches retry via the loop, and the 50-round guard bounds
+    # churn; any failure returns 1.
     (( _verify_rc == 1 ))
 }
 

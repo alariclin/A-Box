@@ -13988,13 +13988,16 @@ core_fetch_upstream_release_asset() {
     for mirror in '' 'https://ghp.ci/' 'https://gh-proxy.com/'; do
         tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
         if abox_run_wait "下载 ${asset_name}" curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
-            if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 下载归档格式校验失败，继续下一个通道。${NC}" >&2; continue; fi
+            # S31 (GPT-11): digest first -- the digest is already in hand
+            # from release metadata, so the cheap SHA-256 check must reject
+            # a bad archive before the expensive full-archive parse runs.
             if ! verify_github_asset_digest "$tmp_file" "$digest"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 资产 SHA-256 不匹配，继续下一个通道。${NC}" >&2; continue; fi
+            if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 下载归档格式校验失败，继续下一个通道。${NC}" >&2; continue; fi
             if ! validate_core_asset_binary_version "$output_file" "$tmp_file" "$release_ref"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 二进制版本与上游 tag 不一致，拒绝该候选。${NC}" >&2; continue; fi
             mv -f -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
             ABOX_LAST_CORE_RELEASE_REF="$release_ref"; ABOX_LAST_CORE_SOURCE="$source"
             core_set_resolved_target "$repo" "$release_ref" "$source" || return 1
-            msg "${GREEN}   上游候选通过归档、SHA-256 与二进制版本校验：${repo}:${release_ref}${NC}"
+            msg "${GREEN}   上游候选通过 SHA-256、归档与二进制版本校验：${repo}:${release_ref}${NC}"
             return 0
         fi
         rm -f -- "$tmp_file"

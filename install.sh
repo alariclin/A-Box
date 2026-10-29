@@ -32401,7 +32401,10 @@ wallos_bruteforce_protection() {
         [[ "$_pp" =~ ^[0-9]+$ ]] && port="$_pp"
     fi
     # Localhost-only Wallos cannot be reached remotely; no jail needed.
-    if [[ "$bind_address" == 127.0.0.1 && "$wmode" != https ]]; then
+    # S149: cftunnel also binds loopback but IS publicly reachable
+    # through the tunnel, so it keeps its jail; only a true local
+    # install drops it.
+    if [[ "$bind_address" == 127.0.0.1 && "$wmode" != https && "$wmode" != cftunnel ]]; then
         rm -f -- "$jail" 2>/dev/null || true
         # A running fail2ban keeps the removed jail (and its bans)
         # until reloaded; reload, and restart only if the jail survives

@@ -4244,6 +4244,12 @@ tr_msg() {
         fa:xl_rollback_fail) echo 'استقرار ناموفق بود و سرویس پس از بازگشت هنوز راه‌اندازی نمی‌شود؛ پیکربندی و وضعیت سرویس را دستی بررسی کنید.' ;;
         zh-tw:xl_rollback_fail) echo '部署失敗，且回滾後服務仍無法啟動，請手動檢查設定與服務狀態。' ;;
         ja:xl_rollback_fail) echo '導入に失敗し、ロールバック後もサービスが起動しません。設定とサービスの状態を手動で確認してください。' ;;
+        zh:xl_bak_kept) echo '原配置备份已保留，未删除：%s' ;;
+        en:xl_bak_kept) echo 'Original config backup kept, not deleted: %s' ;;
+        ru:xl_bak_kept) echo 'Резервная копия исходной конфигурации сохранена и не удалена: %s' ;;
+        fa:xl_bak_kept) echo 'پشتیبان پیکربندی اصلی حفظ شده و حذف نشده است: %s' ;;
+        zh-tw:xl_bak_kept) echo '原始設定備份已保留，未刪除：%s' ;;
+        ja:xl_bak_kept) echo '元の設定バックアップは保持され、削除されていません：%s' ;;
         zh:xl_rollback_copy_fail) echo '回滚复制失败，旧备份已保留未删，请手动恢复并检查。' ;;
         en:xl_rollback_copy_fail) echo 'Rollback copy failed; the old backup was kept, restore it manually and check.' ;;
         ru:xl_rollback_copy_fail) echo 'Копирование при откате не удалось; старая резервная копия сохранена, восстановите её вручную и проверьте.' ;;
@@ -34478,11 +34484,12 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
         # U129: roll back THIS deployment only, with permissions re-applied
         # and readability verified; a failed rollback is reported distinctly.
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
+            rm -f "$bak"
             msg "${RED}$(tr_msg xl_restart_fail)${NC}"
         else
             msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
+            msg "${RED}$(tprintf xl_bak_kept "$bak")${NC}"
         fi
-        rm -f "$bak"
         return 1
     fi
     # U130: firewall steps run before the backup is deleted; on failure the
@@ -34602,11 +34609,12 @@ xray_latest_deploy_trio() {
         # U129: roll back THIS deployment only, with permissions re-applied
         # and readability verified; a failed rollback is reported distinctly.
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
+            rm -f "$bak"
             msg "${RED}$(tr_msg xl_restart_fail)${NC}"
         else
             msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
+            msg "${RED}$(tprintf xl_bak_kept "$bak")${NC}"
         fi
-        rm -f "$bak"
         return 1
     fi
     # U130: firewall steps run before the backup is deleted; on failure the

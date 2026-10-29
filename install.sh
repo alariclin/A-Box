@@ -36911,7 +36911,7 @@ fallback_runtime_lock_held() { # 0 = a live process holds the fallback lock
 }
 
 acquire_fallback_runtime_lock() {
-    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start='' _dir_age=0 _dir_mtime="" _remv_pid='' _remv_start=''
+    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start='' _dir_age=0 _dir_mtime="" _remv_pid='' _remv_start='' _pre_has_pid=0 _pre_has_start=0 _pre_pid='' _pre_start='' _post_has_pid=0 _post_has_start=0 _post_pid='' _post_start=''
     if mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null; then
         lock_dir_created=1
         chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
@@ -36969,16 +36969,41 @@ acquire_fallback_runtime_lock() {
             if (( _dir_age <= 120 )); then
                 return 1
             fi
+            # S158: record pre-move metadata presence+content. A pid-only
+            # residual (create interrupted between the pid and starttime
+            # writes) is a dead residual once the age gate passed, not a
+            # live lock: restoring it on ANY metadata file wedges it
+            # forever. Only a changed set means a new holder moved in.
+            if [[ -e "$LOCK_FALLBACK_DIR/pid" || -L "$LOCK_FALLBACK_DIR/pid" ]]; then
+                _pre_has_pid=1; IFS= read -r _pre_pid < "$LOCK_FALLBACK_DIR/pid" 2>/dev/null || _pre_pid=''
+            fi
+            if [[ -e "$LOCK_FALLBACK_DIR/starttime" || -L "$LOCK_FALLBACK_DIR/starttime" ]]; then
+                _pre_has_start=1; IFS= read -r _pre_start < "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || _pre_start=''
+            fi
+            # S158: recheck age immediately before mv (a replacement dir
+            # is fresh; the age gate above may predate the replacement).
+            _dir_mtime=$(stat -c %Y "$LOCK_FALLBACK_DIR" 2>/dev/null) || return 1
+            _dir_age=$(( $(date +%s) - _dir_mtime ))
+            if (( _dir_age <= 120 )); then
+                return 1
+            fi
             stale_away="${LOCK_FALLBACK_DIR}.stale.$$.$RANDOM"
             [[ ! -e "$stale_away" && ! -L "$stale_away" ]] || return 1
             mv -- "$LOCK_FALLBACK_DIR" "$stale_away" 2>/dev/null || return 1
-            # U231-recheck: the moved dir must still be metadata-less. If
-            # another reclaimer replaced the stale dir with a live lock
-            # between the age gate and our mv, we moved the live lock;
-            # never delete it: restore it when the canonical name is
-            # free, else leave the moved dir intact (an orphan is inert,
-            # deleting it is not) — mirroring the U132 branch above.
-            if [[ -e "$stale_away/pid" || -L "$stale_away/pid" || -e "$stale_away/starttime" || -L "$stale_away/starttime" ]]; then
+            # U231-recheck: the moved dir must still match the recorded
+            # pre-move set exactly. If another reclaimer replaced the
+            # stale dir with a live lock between the age gate and our mv,
+            # the set differs; never delete it: restore it when the
+            # canonical name is free, else leave the moved dir intact
+            # (an orphan is inert, deleting it is not) — mirroring the
+            # U132 branch above.
+            if [[ -e "$stale_away/pid" || -L "$stale_away/pid" ]]; then
+                _post_has_pid=1; IFS= read -r _post_pid < "$stale_away/pid" 2>/dev/null || _post_pid=''
+            fi
+            if [[ -e "$stale_away/starttime" || -L "$stale_away/starttime" ]]; then
+                _post_has_start=1; IFS= read -r _post_start < "$stale_away/starttime" 2>/dev/null || _post_start=''
+            fi
+            if [[ "$_post_has_pid" != "$_pre_has_pid" || "$_post_has_start" != "$_pre_has_start" || "$_post_pid" != "$_pre_pid" || "$_post_start" != "$_pre_start" ]]; then
                 if [[ ! -e "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" ]]; then
                     mv -- "$stale_away" "$LOCK_FALLBACK_DIR" 2>/dev/null || true
                 fi

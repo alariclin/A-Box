@@ -13547,18 +13547,33 @@ except Exception:
     sys.exit(1)
 if len(pub) != 32 or len(sig) != 64:
     sys.exit(1)
+def _capable(cand):
+    try:
+        cand.OBJ_sn2nid.restype = ctypes.c_int
+        cand.OBJ_sn2nid.argtypes = [ctypes.c_char_p]
+        if cand.OBJ_sn2nid(b'ED25519') == 0:
+            return False
+        for _sym in ('EVP_MD_CTX_new', 'EVP_MD_CTX_free', 'EVP_PKEY_new_raw_public_key', 'EVP_PKEY_free', 'EVP_DigestVerifyInit', 'EVP_DigestVerify'):
+            getattr(cand, _sym)
+        return True
+    except Exception:
+        return False
 lib = None
 for name in ('libcrypto.so.1.1', 'libcrypto.so.3', 'libcrypto.so'):
     try:
-        lib = ctypes.CDLL(name)
-        break
+        _cand = ctypes.CDLL(name)
     except Exception:
         continue
+    if _capable(_cand):
+        lib = _cand
+        break
 if lib is None:
     try:
         found = ctypes.util.find_library('crypto')
         if found:
-            lib = ctypes.CDLL(found)
+            _cand = ctypes.CDLL(found)
+            if _capable(_cand):
+                lib = _cand
     except Exception:
         pass
 if lib is None:
@@ -13574,9 +13589,11 @@ try:
     lib.EVP_MD_CTX_new.restype = ctypes.c_void_p
     lib.EVP_MD_CTX_new.argtypes = []
     lib.EVP_MD_CTX_free.argtypes = [ctypes.c_void_p]
+    lib.EVP_MD_CTX_free.restype = None
     lib.EVP_PKEY_new_raw_public_key.restype = ctypes.c_void_p
     lib.EVP_PKEY_new_raw_public_key.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
     lib.EVP_PKEY_free.argtypes = [ctypes.c_void_p]
+    lib.EVP_PKEY_free.restype = None
     lib.EVP_DigestVerifyInit.restype = ctypes.c_int
     lib.EVP_DigestVerifyInit.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
     lib.EVP_DigestVerify.restype = ctypes.c_int
@@ -39558,6 +39575,23 @@ PY_F05_TPUB
                         grep -q 'capability probe failed' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 stubbed probe failure emitted no probe-failed WARNING'; failures=$((failures + 1)); }
                         grep -q 'no ctypes verifier available' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 stubbed probe failure emitted no no-verifier WARNING'; failures=$((failures + 1)); }
                         grep -q 'FATAL: signature enforcement is ON' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 stubbed probe failure emitted no enforcement FATAL'; failures=$((failures + 1)); }
+                    fi
+                    printf 'F-05 CT TAMPERED\n' > "$_f05_tdir/ct-msg-bad.txt"
+                    if _f05_gate_err=$(_OPENSSL_ED25519_OK=1 ABOX_SIGNING_ENFORCE=1 abox_verify_sig_gate "$_f05_tdir/ct-msg-bad.txt" "$_f05_tdir/ct-data.txt.sig" "f05-test" 2>&1 >/dev/null); then
+                        echo 'FAIL: F-05 gate accepted ctypes-tampered signature under injected incapable state'; failures=$((failures + 1))
+                    else
+                        grep -q 'WARNING: invalid Ed25519 signature' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 injected tampered emitted no invalid WARNING'; failures=$((failures + 1)); }
+                        grep -q 'FATAL: signature enforcement is ON' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 injected tampered emitted no enforcement FATAL'; failures=$((failures + 1)); }
+                    fi
+                    if _f05_gate_err=$(_OPENSSL_ED25519_OK=1 ABOX_SIGNING_ENFORCE=0 abox_verify_sig_gate "$_f05_tdir/ct-msg-bad.txt" "$_f05_tdir/ct-data.txt.sig" "f05-test" 2>&1 >/dev/null); then
+                        grep -q 'WARNING: invalid Ed25519 signature' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 injected tampered ENFORCE=0 emitted no invalid WARNING'; failures=$((failures + 1)); }
+                    else
+                        echo 'FAIL: F-05 gate with ENFORCE=0 did not warn-and-continue on invalid sig'; failures=$((failures + 1))
+                    fi
+                    if _f05_gate_err=$(verify_ed25519_detached_ctypes() { return 2; }; _OPENSSL_ED25519_OK=1 ABOX_SIGNING_ENFORCE=0 abox_verify_sig_gate "$_f05_tdir/ct-msg.txt" "$_f05_tdir/dummy.sig" "f05-test" 2>&1 >/dev/null); then
+                        grep -q 'no ctypes verifier available' <<< "$_f05_gate_err" || { echo 'FAIL: F-05 stubbed no-verifier ENFORCE=0 emitted no no-verifier WARNING'; failures=$((failures + 1)); }
+                    else
+                        echo 'FAIL: F-05 gate with ENFORCE=0 did not warn-and-continue on stubbed no-verifier'; failures=$((failures + 1))
                     fi
                     ABOX_SIGNING_PUBKEYS=("${_f05_ct_saved_pubkeys[@]}")
                     # Anti-replay: old timestamp rejected, current accepted.

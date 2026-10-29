@@ -14451,6 +14451,23 @@ path_parent_chain_safe() {
     done
 }
 
+# S37 (GPT-17): sync one file (or directory) to stable storage,
+# distinguishing "sync -f unsupported" from a real I/O failure.
+# Returns 0 on success or on an option error (busybox sync on Alpine
+# may not accept -f: that is "unsupported", not a failure, and stays
+# best-effort); returns 1 on a real I/O failure so callers never
+# report persistence they did not get.
+_abox_sync_file() {
+    local target="$1" err
+    err=$(sync -f "$target" 2>&1) || {
+        case "$err" in
+            *'invalid option'*|*'unrecognized option'*|*'illegal option'*) return 0 ;;
+            *) return 1 ;;
+        esac
+    }
+    return 0
+}
+
 write_file_atomically_from_stdin() {
     local dest="$1" mode="${2:-600}" dir tmp
     [[ "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
@@ -14469,9 +14486,9 @@ write_file_atomically_from_stdin() {
     cat > "$tmp" || { rm -f -- "$tmp"; return 1; }
     chmod "$mode" "$tmp" || { rm -f -- "$tmp"; return 1; }
     if [[ $EUID -eq 0 ]]; then chown root:root "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
-    sync -f "$tmp" 2>/dev/null || true
+    _abox_sync_file "$tmp" || { rm -f -- "$tmp"; return 1; }
     mv -f -- "$tmp" "$dest" || { rm -f -- "$tmp"; return 1; }
-    sync -f "$dir" 2>/dev/null || true
+    _abox_sync_file "$dir" || return 1
 }
 
 write_env() {

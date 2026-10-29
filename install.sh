@@ -14175,7 +14175,11 @@ fetch_github_release() {
         fi
     fi
 
-    if [[ "$target_source" == 'mirror-latest' || ( "$target_source" == 'upstream' && "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ) ]]; then
+    # S55 (argon P3-3a): the (upstream && TRY_LATEST) clause duplicated
+    # the mirror-exact fallback above with identical arguments (and
+    # mislabeled a second-attempt success as mirror-latest); upstream
+    # is already covered there, so this block is mirror-latest only.
+    if [[ "$target_source" == 'mirror-latest' ]]; then
         if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
             core_set_resolved_target "$repo" "$target_ref" mirror-latest || die "$(tr_msg fg_record_latest)"
             ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-latest'

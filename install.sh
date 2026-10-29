@@ -26883,6 +26883,7 @@ PY_DOH_CONFIG
     # would keep serving the old config; restart a live instance so
     # the new config is really loaded before probing it.
     if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
+        systemctl enable dnscrypt-proxy >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
         systemctl restart dnscrypt-proxy >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
     else
         systemctl enable --now dnscrypt-proxy >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }

@@ -19511,20 +19511,38 @@ routing_apply_live() {
     if (( $# > 0 )); then
         force_json=$(jq -nc --args '$ARGS.positional' "$@" 2>/dev/null || printf '[]')
     fi
+    # Per-core applied records (S57): xray and sing-box must not share
+    # one retirement record, or the second core's apply reads a $prev
+    # already rewritten by the first and misses retirements. Read and
+    # write targets are split on purpose: a missing per-core file
+    # reads the legacy shared record once (migration), but the write
+    # ALWAYS goes to the per-core file — otherwise the first apply
+    # would overwrite the legacy record with the current state and
+    # the second core would never see the old $prev (proven by the
+    # S57 fixture: single-variable design fails A2/A3/A4).
+    local applied_file="${ROUTING_STATE_FILE}.applied"
+    case "$core" in
+        xray) applied_file="${ROUTING_STATE_FILE}.applied-xray" ;;
+        singbox|sing-box) applied_file="${ROUTING_STATE_FILE}.applied-singbox" ;;
+    esac
+    local applied_src="$applied_file"
+    if [[ ! -f "$applied_src" && -f "${ROUTING_STATE_FILE}.applied" ]]; then
+        applied_src="${ROUTING_STATE_FILE}.applied"
+    fi
     routing_state_init || return 1
     # Tags applied by the previous run: members dropped from the
     # state since then are retired from the live config instead of
     # lingering as orphans (e.g. warp-out after warp_undeploy, which
     # deletes the state entry before re-applying).
     local prev_applied='[]' prev_rules_xray='[]' prev_rules_singbox='[]'
-    if [[ -f "${ROUTING_STATE_FILE}.applied" ]]; then
-        if ! jq empty "${ROUTING_STATE_FILE}.applied" >/dev/null 2>&1; then
+    if [[ -f "$applied_src" ]]; then
+        if ! jq empty "$applied_src" >/dev/null 2>&1; then
             msg "${RED}[!] $(tr_msg warp_applied_corrupt)${NC}"
             return 1
         fi
-        prev_applied=$(jq -c 'if type == "array" then map(select(type == "string")) elif type == "object" then (.outbounds // [] | map(select(type == "string"))) else [] end' "${ROUTING_STATE_FILE}.applied" 2>/dev/null || printf '[]')
-        prev_rules_xray=$(jq -c 'if type == "object" then (.rules_xray // []) else [] end' "${ROUTING_STATE_FILE}.applied" 2>/dev/null || printf '[]')
-        prev_rules_singbox=$(jq -c 'if type == "object" then (.rules_singbox // []) else [] end' "${ROUTING_STATE_FILE}.applied" 2>/dev/null || printf '[]')
+        prev_applied=$(jq -c 'if type == "array" then map(select(type == "string")) elif type == "object" then (.outbounds // [] | map(select(type == "string"))) else [] end' "$applied_src" 2>/dev/null || printf '[]')
+        prev_rules_xray=$(jq -c 'if type == "object" then (.rules_xray // []) else [] end' "$applied_src" 2>/dev/null || printf '[]')
+        prev_rules_singbox=$(jq -c 'if type == "object" then (.rules_singbox // []) else [] end' "$applied_src" 2>/dev/null || printf '[]')
     fi
     case "$core" in
         xray)
@@ -19538,7 +19556,7 @@ routing_apply_live() {
                 | .outbounds |= (map(select(.tag as $t | ($managed + $retired) | index($t) | not))
                     + [$st[0].outbounds[]?.xray])
                 | .routing.rules |= (map(select((.outboundTag as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not)))
-                    + [$st[0].rules[]?.xray_rule])
+                    + [$st[0].rules[]?.xray_rule]))
             ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
             jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
             if [[ -x /usr/local/bin/xray ]]; then
@@ -19556,7 +19574,7 @@ routing_apply_live() {
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
-            if jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "${ROUTING_STATE_FILE}.applied" 2>/dev/null; then
+            if jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "$applied_file" 2>/dev/null; then
                 rm -f -- "$live_bak"
                 :
             else
@@ -19594,7 +19612,7 @@ routing_apply_live() {
                 | ($srules | map(.rule_set[]?) | unique) as $tags
                 | .outbounds |= (map(select(.tag as $t | ($managed + $retired) | index($t) | not)) + $obs)
                 | .endpoints = (((.endpoints // []) | map(select(.tag as $t | ($managed + $retired) | index($t) | not))) + $eps)
-                | .route.rules = (((.route.rules // []) | map(select((.outbound as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + $srules) | index($r)) | not)))) + $srules)
+                | .route.rules = (((.route.rules // []) | map(select((.outbound as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + $srules) | index($r)) | not)))) + $srules))
                 | ($prevr | map(.rule_set[]?) | unique) as $prevtags
                 | .route.rule_set = (((.route.rule_set // []) | map(select(.tag as $t | (($tags + $prevtags) | index($t)) | not))) + ($tags | map({type:"remote", tag:., format:"binary",
                     url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
@@ -19616,7 +19634,7 @@ routing_apply_live() {
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
-            if jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "${ROUTING_STATE_FILE}.applied" 2>/dev/null; then
+            if jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "$applied_file" 2>/dev/null; then
                 rm -f -- "$live_bak"
                 :
             else

@@ -32263,15 +32263,6 @@ wallos_recover_interrupted_upgrade() {
     { [[ -z "$old_bind" ]] || valid_ip_address "$old_bind"; } || return 1
     [[ "$was_running" == 0 || "$was_running" == 1 ]] || return 1
     [[ "$backup" == "$WALLOS_DIR/backups/wallos-"*.tar.gz && -f "$backup" && ! -L "$backup" ]] || return 1
-    if docker container inspect wallos >/dev/null 2>&1; then
-        docker stop wallos >/dev/null 2>&1 || true
-        docker rm -f wallos >/dev/null 2>&1 || {
-            # A-04: rm failed after stop; restart original instead of leaving Exited.
-            docker start wallos >/dev/null 2>&1 || true
-            msg "${RED}$(tr_msg wl_rc_rm_fail)${NC}"
-            return 1
-        }
-    fi
     # S135: a missing pinned image must refuse, never substitute a tag fetch.
     if [[ -n "$old_image_id" ]] && ! docker image inspect "$old_image_id" >/dev/null 2>&1; then
         msg "${RED}$(tprintf wl_rc_no_image "$old_image_id")${NC}"
@@ -32309,6 +32300,18 @@ wallos_recover_interrupted_upgrade() {
             msg "${RED}$(tprintf wl_rc_no_image "$old_image")${NC}"
             return 1
         fi
+    fi
+    # S137: validate backup content BEFORE deleting the container; a
+    # corrupt backup must refuse while the old container still exists.
+    wallos_validate_backup "$backup" || return 1
+    if docker container inspect wallos >/dev/null 2>&1; then
+        docker stop wallos >/dev/null 2>&1 || true
+        docker rm -f wallos >/dev/null 2>&1 || {
+            # A-04: rm failed after stop; restart original instead of leaving Exited.
+            docker start wallos >/dev/null 2>&1 || true
+            msg "${RED}$(tr_msg wl_rc_rm_fail)${NC}"
+            return 1
+        }
     fi
     wallos_restore_backup "$backup" || {
         msg "${RED}$(tprintf wl_rc_restore_fail "$journal" "$backup")${NC}"

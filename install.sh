@@ -12804,6 +12804,11 @@ selected_port_pairs() {
     add_port_pair pairs tcp "${XHTTP_PORT:-}"
     add_port_pair pairs tcp "${SS_PORT:-}"
     add_port_pair pairs udp "${SS_PORT:-}"
+    # S30 (GPT-8): SOCKS was never listed, so check_selected_ports_free
+    # and release_ports both skipped it (XHTTP/80 dup, hopping-range and
+    # occupancy all uncaught). TCP+UDP, matching deploy + fail2ban.
+    add_port_pair pairs tcp "${SOCKS_PORT:-}"
+    add_port_pair pairs udp "${SOCKS_PORT:-}"
     if hy2_http01_enabled; then
         add_port_pair pairs tcp 80
     fi

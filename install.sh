@@ -18808,10 +18808,15 @@ _ip_geo_fetch_now() {
 }
 
 _mi_port_listening() {
-    # $1 = ss -tuln dump, $2 = port. Local-address column only in
-    # practice: listener rows carry a wildcard foreign address.
+    # $1 = ss -tuln dump, $2 = port, $3 = protocol (tcp|udp).
+    # The protocol column is anchored at line start: without
+    # it a TCP listener on the same port would mask a dead UDP
+    # service (TUIC) and vice versa. Local-address column only
+    # in practice: listener rows carry a wildcard foreign
+    # address. The 6? covers ss builds reporting tcp6/udp6.
     [[ -n "$1" && -n "$2" ]] || return 1
-    printf '%s\n' "$1" | grep -qE "[:.]$2[[:space:]]"
+    [[ "$3" == tcp || "$3" == udp ]] || return 1
+    printf '%s\n' "$1" | grep -qE "^${3}6?[[:space:]]+.*[:.]$2[[:space:]]"
 }
 
 # Canonical panel order (scheme B): every panel section (nodes, SNI,
@@ -18921,16 +18926,16 @@ _menu_info_collect() {
             # not be hidden by a deleted base instance, and a stopped
             # instance must not mask a running one.
             case "$_t" in
-                tuic-in|tuic-in-[0-9]*) _mi_port_listening "$_ss" "$_p" && tut=run || [[ -n "$tut" ]] || tut=stop ;;
-                anytls-in|anytls-in-[0-9]*) _mi_port_listening "$_ss" "$_p" && ant=run || [[ -n "$ant" ]] || ant=stop ;;
-                shadowtls-in|shadowtls-in-[0-9]*) _mi_port_listening "$_ss" "$_p" && stt=run || [[ -n "$stt" ]] || stt=stop ;;
-                trojan-landing|trojan-landing-[0-9]*) _mi_port_listening "$_ss" "$_p" && tjt=run || [[ -n "$tjt" ]] || tjt=stop ;;
+                tuic-in|tuic-in-[0-9]*) _mi_port_listening "$_ss" "$_p" "udp" && tut=run || [[ -n "$tut" ]] || tut=stop ;;
+                anytls-in|anytls-in-[0-9]*) _mi_port_listening "$_ss" "$_p" "tcp" && ant=run || [[ -n "$ant" ]] || ant=stop ;;
+                shadowtls-in|shadowtls-in-[0-9]*) _mi_port_listening "$_ss" "$_p" "tcp" && stt=run || [[ -n "$stt" ]] || stt=stop ;;
+                trojan-landing|trojan-landing-[0-9]*) _mi_port_listening "$_ss" "$_p" "tcp" && tjt=run || [[ -n "$tjt" ]] || tjt=stop ;;
             esac
         done <<< "$_tags"
     fi
     if [[ -z "$tjt" && -r /usr/local/etc/xray/config.json ]] && command -v jq >/dev/null 2>&1; then
         _p=$(jq -r '(.inbounds // [])[] | select(.protocol=="trojan") | (.port // empty)' /usr/local/etc/xray/config.json 2>/dev/null | head -1)
-        if [[ -n "$_p" ]]; then tjt=stop; _mi_port_listening "$_ss" "$_p" && tjt=run; fi
+        if [[ -n "$_p" ]]; then tjt=stop; _mi_port_listening "$_ss" "$_p" "tcp" && tjt=run; fi
     fi
     if [[ -f /etc/ddr/.argo-state ]]; then
         argo_st=stop

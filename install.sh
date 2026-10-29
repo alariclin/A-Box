@@ -32079,21 +32079,41 @@ PY_WALLOS_ROTATE
 # the stage is discarded. wallos_restore_backup reuses this so the
 # pre-removal check and the restore share one implementation (no drift).
 wallos_validate_backup() {
-    local backup="$1" stage_out="${2:-}" listing vlisting member_count=0 total_usize=0 _vstage
+    local backup="$1" stage_out="${2:-}" member_count=0 total_usize=0 _vstage
+    local seen_db=0 seen_logos=0 seen_state=0
     [[ -f "$backup" && ! -L "$backup" ]] || return 1
-    gzip -t "$backup" || return 1
-    listing=$(tar -tzf "$backup" 2>/dev/null) || return 1
-    grep -Eq '^db/?$' <<< "$listing" && grep -Eq '^logos/?$' <<< "$listing" &&
-        grep -Fxq '.abox-state' <<< "$listing" || return 1
-    if grep -Eq '(^/|(^|/)\.+(/|$))' <<< "$listing" ||
-       grep -Ev '^(db(/.*)?|logos(/.*)?|\.abox-state)$' <<< "$listing" >/dev/null; then
-        return 1
-    fi
-    # N-02 fix: reject symlinks, hardlinks, and special files inside the archive.
-    # N-07 fix: enforce member count and size limits (zip-bomb protection).
-    vlisting=$(tar -tvzf "$backup" 2>/dev/null) || return 1
-    while IFS= read -r line; do
+    # S138: stream, don't slurp. Both listings used to be read fully
+    # into shell variables (memory blowup) and limited only afterwards.
+    # Both passes below abort the moment a limit is crossed; the
+    # producer tar then dies on SIGPIPE. No standalone gzip -t pass:
+    # tar's own decompression plus the staged extraction below are the
+    # integrity gates (a corrupt stream fails the listing or the
+    # extraction; trailing gzip members past tar's EOF marker are inert
+    # for the restore).
+    while IFS= read -r member; do
         member_count=$((member_count + 1))
+        if (( member_count > 10000 )); then
+            msg "${RED}$(tprintf wl_rs_toomany "$member_count")${NC}" >&2
+            return 1
+        fi
+        # Traversal: absolute path or a dot-only path component.
+        if [[ "$member" == /* || "$member" =~ (^|/)\.+(/|$) ]]; then
+            return 1
+        fi
+        # Allowlist: only db/, logos/, .abox-state.
+        if ! [[ "$member" =~ ^(db(/.*)?|logos(/.*)?|\.abox-state)$ ]]; then
+            return 1
+        fi
+        case "$member" in
+            db|db/) seen_db=1 ;;
+            logos|logos/) seen_logos=1 ;;
+            .abox-state) seen_state=1 ;;
+        esac
+    done < <(tar -tzf "$backup" 2>/dev/null)
+    (( seen_db == 1 && seen_logos == 1 && seen_state == 1 )) || return 1
+    # N-02 fix: reject symlinks, hardlinks, and special files inside the archive.
+    # N-07 fix: enforce per-file and total size limits while streaming.
+    while IFS= read -r line; do
         # tar -tv output starts with file type char: - regular, d dir, l symlink, h hardlink, c/b/p/s/D special
         case "${line:0:1}" in
             -|d) ;;
@@ -32106,22 +32126,16 @@ wallos_validate_backup() {
             msg "${RED}$(tr_msg wl_rs_oversized)${NC}" >&2
             return 1
         fi
-        # Fix 2026-10-14: accumulate total decompressed size from tar listing.
-        # gzip -l underreports multi-member gzip streams (only shows last member).
+        # Total decompressed size guard uses summed tar member sizes.
+        # (gzip -l is unreliable for multi-member streams; it reports only the last member.)
         if [[ "$fsize" =~ ^[0-9]+$ ]]; then
             total_usize=$((total_usize + 10#$fsize))
+            if (( total_usize > 1073741824 )); then
+                msg "${RED}$(tprintf wl_rs_toobig "$total_usize")${NC}" >&2
+                return 1
+            fi
         fi
-    done <<< "$vlisting"
-    if (( member_count > 10000 )); then
-        msg "${RED}$(tprintf wl_rs_toomany "$member_count")${NC}" >&2
-        return 1
-    fi
-    # Fix 2026-10-14: total decompressed size guard uses summed tar member sizes.
-    # (gzip -l is unreliable for multi-member streams; it reports only the last member.)
-    if (( total_usize > 1073741824 )); then
-        msg "${RED}$(tprintf wl_rs_toobig "$total_usize")${NC}" >&2
-        return 1
-    fi
+    done < <(tar -tvzf "$backup" 2>/dev/null)
     _vstage=$(umask 077; mktemp -d "$WALLOS_DIR/.restore-stage.XXXXXX") || return 1
     if ! tar -xzf "$backup" -C "$_vstage" ||
        [[ ! -d "$_vstage/db" || -L "$_vstage/db" ||

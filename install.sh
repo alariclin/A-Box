@@ -20762,8 +20762,10 @@ ensure_vnstat_runtime() {
 }
 
 setup_traffic_monitor() {
-    ensure_vnstat_runtime || return 1
+    ensure_vnstat_runtime
+    local ensure_rc=$?
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] 流量限制事务状态快照失败。${NC}" >&2; return 1; }
+    (( ensure_rc == 0 )) || return 1
     install -d -m 700 "$ABOX_DIR" || { msg "${RED}[!] 无法创建流量监控目录。${NC}" >&2; return 1; }
     write_file_atomically_from_stdin "$ABOX_DIR/traffic_monitor.sh" 700 <<'EOF_TRAFFIC' || { msg "${RED}[!] 流量监控脚本原子写入失败。${NC}" >&2; return 1; }
 #!/usr/bin/env bash

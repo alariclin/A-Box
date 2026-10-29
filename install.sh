@@ -12478,7 +12478,11 @@ _ss_wl_snapshot_rules() {
     _SS_WL_SNAP_V4="$(printf '%s\n' "$out" | grep -F "A-Box-${port}-" | sed 's/^-A INPUT //')"
     _SS_WL_SNAP_V6=""
     _SS_WL_SNAP_V6_TAKEN=0
-    if host_has_usable_ipv6 && ip6tables_usable; then
+    # S34 (GPT-13): snapshot v6 gate is ip6tables_usable alone, aligned
+    # with the delete gate. The host check can go false between rule
+    # build and reorder (address lost) while ip6tables stays queryable;
+    # the old gate then left deleted v6 rules with no snapshot to restore.
+    if ip6tables_usable; then
         out="$(_iptables_q "$IPT6" -S INPUT 2>/dev/null)"; rc=$?
         (( rc == 0 )) || return 1
         _SS_WL_SNAP_V6="$(printf '%s\n' "$out" | grep -F "A-Box-${port}-" | sed 's/^-A INPUT //')"

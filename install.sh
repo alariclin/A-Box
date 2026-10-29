@@ -24897,11 +24897,30 @@ _nsni_probe() {
 
 # Apply a new SNI: validated config edit, TUIC cert re-issue, restart,
 # standalone-link and .env follow-through. Prints the updated link.
+# Restore config + TUIC certs after a failed _nsni_apply step, and retry
+# one restart with the old state when the service was running before.
+# Returns 0 only when the disk state is fully restored (and the retry
+# restart, when applicable, succeeded). Backups are left in place on
+# failure so the operator can recover by hand.
+_nsni_rollback() {
+    local _cfg="$1" _bak="$2" _key="$3" _crt="$4" _kebak="$5" _crtbak="$6" _core="$7" _was_running="$8"
+    local _ok=1
+    cp -a "$_bak" "$_cfg" 2>/dev/null || _ok=0
+    if [[ -n "$_kebak" && -f "$_kebak" ]]; then cp -a "$_kebak" "$_key" 2>/dev/null || _ok=0; fi
+    if [[ -n "$_crtbak" && -f "$_crtbak" ]]; then cp -a "$_crtbak" "$_crt" 2>/dev/null || _ok=0; fi
+    if (( _ok == 1 && _was_running == 1 )); then
+        if is_systemd; then systemctl restart "$_core" >/dev/null 2>&1 || _ok=0; else rc-service "$_core" restart >/dev/null 2>&1 || _ok=0; fi
+    fi
+    (( _ok == 1 ))
+}
+
 _nsni_apply() {
     local core="$1" tag="$2" kind="$3" cfg="$4" old="$5" new="$6" key="${7:-}" crt="${8:-}"
     local bak='' tmp='' bin='' filter=''
     bak=$(mktemp /tmp/A-Box-nsni-bak.XXXXXX) || return 1
     cp -a "$cfg" "$bak" || { rm -f "$bak"; return 1; }
+    local _was_running=0
+    is_service_running "$core" 2>/dev/null && _was_running=1
     tmp=$(mktemp /tmp/A-Box-nsni.XXXXXX) || { rm -f "$bak"; return 1; }
     mv "$tmp" "$tmp.json"; tmp="$tmp.json"
     case "$kind" in
@@ -24919,24 +24938,38 @@ _nsni_apply() {
     esac
     cat "$tmp" > "$cfg" || { if cp -a "$bak" "$cfg" 2>/dev/null; then rm -f "$tmp" "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; rm -f "$tmp"; fi; return 1; }
     rm -f "$tmp"
+    local _kebak='' _crtbak=''
     if [[ "$kind" == 'tuic' && -n "$key" && -n "$crt" ]]; then
+        _kebak=$(mktemp /tmp/A-Box-nsni-keybak.XXXXXX 2>/dev/null || true)
+        _crtbak=$(mktemp /tmp/A-Box-nsni-crtbak.XXXXXX 2>/dev/null || true)
+        if [[ -z "$_kebak" || -z "$_crtbak" ]] || ! cp -a "$key" "$_kebak" 2>/dev/null || ! cp -a "$crt" "$_crtbak" 2>/dev/null; then
+            if cp -a "$bak" "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; fi
+            rm -f "$_kebak" "$_crtbak"
+            return 1
+        fi
         if ! generate_self_signed_cert_atomically "$key" "$crt" "$new" >/dev/null 2>&1; then
-            if cp -a "$bak" "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; fi; return 1
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+            return 1
         fi
     fi
     if is_service_running "$core" 2>/dev/null; then
         local _restart_ok=0
         if is_systemd; then systemctl restart "$core" >/dev/null 2>&1 && _restart_ok=1; else rc-service "$core" restart >/dev/null 2>&1 && _restart_ok=1; fi
-        if (( _restart_ok == 0 )); then if cp -a "$bak" "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; fi; return 1; fi
+        if (( _restart_ok == 0 )); then
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+            return 1
+        fi
     fi
-    rm -f "$bak"
     local _ldir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _lf='' _shown='' _stem='' _esc_old='' _esc_new=''
     _stem=$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag")
     _lf="${_stem}.link"
     if [[ -f "$_ldir/$_lf" && ! -L "$_ldir/$_lf" ]] && grep -qF "sni=${old}" "$_ldir/$_lf" 2>/dev/null; then
         _esc_old=$(printf '%s' "$old" | sed 's/[][\\.|*^$]/\\&/g')
         _esc_new=$(printf '%s' "$new" | sed 's/[\\|&]/\\&/g')
-        sed -i -e "s|\([?&]sni=\)${_esc_old}\([&#]\)|\1${_esc_new}\2|g" -e "s|\([?&]sni=\)${_esc_old}\$|\1${_esc_new}|g" "$_ldir/$_lf" 2>/dev/null || true
+        if ! sed -i -e "s|\([?&]sni=\)${_esc_old}\([&#]\)|\1${_esc_new}\2|g" -e "s|\([?&]sni=\)${_esc_old}\$|\1${_esc_new}|g" "$_ldir/$_lf" 2>/dev/null; then
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+            return 1
+        fi
         _shown=$(cat "$_ldir/$_lf" 2>/dev/null)
     fi
     local _envf="${ABOX_ENV:-/etc/ddr/.env}" _envvar='' _etmp='' _ebak=''
@@ -24954,20 +24987,30 @@ _nsni_apply() {
                         rm -f "$_ebak"
                     elif cp -a "$_ebak" "$_envf" 2>/dev/null; then
                         rm -f "$_etmp" "$_ebak"
+                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
                         return 1
                     else
                         msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
                         rm -f "$_etmp"
+                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
                         return 1
                     fi
                 else
                     rm -f "$_etmp" "$_ebak"
+                    if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
                     return 1
                 fi
+            else
+                if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+                return 1
             fi
             rm -f "$_etmp"
+        else
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+            return 1
         fi
     fi
+    rm -f "$bak" "$_kebak" "$_crtbak"
     [[ -n "$_shown" ]] && printf '%s' "$_shown"
     return 0
 }

@@ -16366,7 +16366,8 @@ xray_ensure_stats() {
         and (.policy.system.statsInboundDownlink == true)
         and ((.api.services // []) | index("StatsService") != null)
         and ([.inbounds[]? | select(.tag == "api")] | length > 0)
-        and ([.outbounds[]? | select(.tag == "api")] | length > 0)' "$cfg" >/dev/null 2>&1; then
+        and ([.outbounds[]? | select(.tag == "api")] | length > 0)
+        and ([.routing.rules[]? | select(.outboundTag == "api")] | length > 0)' "$cfg" >/dev/null 2>&1; then
         return 0
     fi
     tmp=$(mktemp /tmp/A-Box-xstats.XXXXXX) || return 1

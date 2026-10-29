@@ -28719,7 +28719,20 @@ case "${1:-}" in
         # boot: stop only ever swaps off our own device, never a
         # foreign zram swap (distro zram-generator / zram-tools setups
         # share the box, and device numbers are reused across reboots).
-        printf 'DEV=%s\nBOOT=%s\n' "$dev" "$(_abox_boot_id)" > /etc/ddr/zram.state 2>/dev/null || { swapoff "$dev" 2>/dev/null || true; _reset_dev "$dev"; exit 1; }
+        printf 'DEV=%s\nBOOT=%s\n' "$dev" "$(_abox_boot_id)" > /etc/ddr/zram.state 2>/dev/null || {
+            # The swap is up but its record is not: only report plain
+            # failure once the device is really down. If cleanup cannot
+            # bring it down, exit 2 so the caller keeps the helper and
+            # config instead of deleting the only stop tool.
+            swapoff "$dev" 2>/dev/null || true
+            _reset_dev "$dev"
+            active_now=$(zram_active_devs) || active_now="$dev"
+            if printf '%s\n' "$active_now" | grep -qxF "$dev"; then
+                echo "abox-zram: failed to record and failed to stop $dev; leaving helper and config for manual recovery" >&2
+                exit 2
+            fi
+            exit 1
+        }
         ;;
     stop)
         if [[ -f /etc/ddr/zram.state ]]; then
@@ -28834,9 +28847,18 @@ EOF_ZRAM_CONF
         pause_return
         return 0
     fi
-    if ! /usr/local/sbin/abox-zram start; then
-        rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf
-        msg "${RED}zram 启用失败（设备创建/格式化/挂载任一环节未通过），已清理。请改用磁盘 Swap 文件。${NC}"
+    local _zram_start_rc=0
+    /usr/local/sbin/abox-zram start || _zram_start_rc=$?
+    if (( _zram_start_rc != 0 )); then
+        # Helper exit 2 means cleanup failed and the swap may still be
+        # active: keep the helper and config so it can still be stopped.
+        # (Plain 1 means failed with the device confirmed down.)
+        if (( _zram_start_rc == 2 )); then
+            msg "${RED}zram 启用失败，且失败清理未能停用已激活的交换区；已保留助手与配置，请手工 swapoff 后重试。${NC}"
+        else
+            rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf
+            msg "${RED}zram 启用失败（设备创建/格式化/挂载任一环节未通过），已清理。请改用磁盘 Swap 文件。${NC}"
+        fi
         pause_return
         return 0
     fi

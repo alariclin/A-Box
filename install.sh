@@ -14940,6 +14940,21 @@ f2b_port_groups() {
     IFS=','
     for item in $list; do
         [[ -n "$item" ]] || continue
+        # S52 (argon P2-7): only multiport-safe values reach the jail.
+        # A hyphen range (e.g. a hand-edited Xray string port
+        # "20000-20010") is converted to colon form, which multiport
+        # accepts; anything else is logged and skipped, never failing
+        # the whole jail. Whitespace is trimmed first so a space-padded
+        # valid port is not falsely dropped.
+        while [[ "$item" == ' '* || "$item" == *' ' ]]; do item="${item# }"; item="${item% }"; done
+        while [[ "$item" == $'\t'* || "$item" == *$'\t' ]]; do item="${item#$'\t'}"; item="${item%$'\t'}"; done
+        [[ -n "$item" ]] || continue
+        if [[ "$item" =~ ^[0-9]+-[0-9]+$ ]]; then
+            item="${item/-/:}"
+        elif [[ ! "$item" =~ ^[0-9]+(:[0-9]+)?$ ]]; then
+            printf '%s\n' "[!] Fail2Ban port group: skipping invalid port value: $item" >&2
+            continue
+        fi
         if [[ "$item" == *:* ]]; then cost=2; else cost=1; fi
         if (( slots > 0 && slots + cost > 15 )); then
             printf '%s\n' "$group"

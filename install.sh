@@ -11806,7 +11806,11 @@ ufw_delete_owned_rules() {
 firewalld_zone_for_abox() {
     local zone=''
     if [[ -n "${INGRESS_IF:-}" ]] && command -v firewall-cmd >/dev/null 2>&1; then
-        zone=$(firewall-cmd --get-zone-of-interface="$INGRESS_IF" 2>/dev/null || true)
+        # S28: daemon/transient error is not "no zone": the interface's
+        # real zone is unknown; never fall back to the default zone.
+        if ! zone=$(firewall-cmd --get-zone-of-interface="$INGRESS_IF" 2>/dev/null); then
+            return 1
+        fi
         [[ -n "$zone" && "$zone" != 'no zone' ]] && { printf '%s\n' "$zone"; return 0; }
     fi
     zone=$(firewall-cmd --get-default-zone 2>/dev/null || true)
@@ -11816,8 +11820,12 @@ firewalld_zone_for_abox() {
 
 firewalld_cmd() {
     local zone=''
-    zone=$(firewalld_zone_for_abox 2>/dev/null || true)
-    if [[ -n "$zone" ]]; then command firewall-cmd --zone="$zone" "$@"; else command firewall-cmd "$@"; fi
+    # S28: never run without --zone: an unresolved zone used to execute
+    # against the implicit default zone. Return 2 (error channel, not
+    # "absent") so firewalld_port_state maps it to error, never to absent.
+    zone=$(firewalld_zone_for_abox 2>/dev/null) || return 2
+    [[ -n "$zone" ]] || return 2
+    command firewall-cmd --zone="$zone" "$@"
 }
 
 firewalld_port_state() {

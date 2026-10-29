@@ -24757,7 +24757,7 @@ users_guard_eval() {
                  .blocked = (
                     if (.expire_at // 0) > 0 and $now >= .expire_at then "expired"
                     elif $have == 0 and .blocked == "quota" then "quota"
-                    elif $have == 1 and (.quota_gb // 0) > 0 and ((.used_up + .used_down) >= (.quota_gb * 1073741824)) then "quota"
+                    elif (.quota_gb // 0) > 0 and ((.used_up + .used_down) >= (.quota_gb * 1073741824)) then "quota"
                     elif (inwindow(.window // ""; $hhmm) | not) then "window"
                     else "" end)
                end)

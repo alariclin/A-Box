@@ -24523,7 +24523,7 @@ users_inbound_menu() {
                 nm=$(users_pick_user "$reg" "$(tr_msg mu_pick)") || { pause_return; continue; }
                 local days=''
                 read -r -p "$(tr_msg mu_days_prompt)" days || continue
-                [[ "$days" =~ ^[0-9]+$ ]] || { msg "${RED}$(tr_msg mu_int_err)${NC}"; pause_return; continue; }
+                valid_decimal_upto "$days" 36500 || { msg "${RED}$(tr_msg mu_int_err)${NC}"; pause_return; continue; }
                 days=$((10#$days))
                 local expat=0
                 (( days > 0 )) && expat=$((now + days * 86400))

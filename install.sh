@@ -31832,7 +31832,12 @@ wallos_pull_or_restore_image() {
                 msg "${YELLOW}$(tr_msg wl_pi_digest_fail)${NC}"
             fi
         fi
-        if abox_run_wait '拉取 Wallos 镜像' docker pull "bellamy/wallos:$image_tag"; then
+        # S133: under ENFORCE=1, never fall back to the unsigned tag pull:
+        # the observed RepoDigest is not the manifest-verified digest.
+        # Skip it and fall through to the manifest-verified recovery path.
+        if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
+            msg "${YELLOW}Wallos digest path failed and signing enforcement is ON; skipping unsigned tag pull.${NC}"
+        elif abox_run_wait '拉取 Wallos 镜像' docker pull "bellamy/wallos:$image_tag"; then
             # P2-1: record RepoDigest for auditability (mutable tag alone is not identity).
             # G11 FIX: Use digest reference instead of mutable tag to prevent TOCTOU.
             # After pull, immediately pin to digest so subsequent operations

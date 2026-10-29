@@ -36911,7 +36911,7 @@ fallback_runtime_lock_held() { # 0 = a live process holds the fallback lock
 }
 
 acquire_fallback_runtime_lock() {
-    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start='' _dir_age=0 _dir_mtime=""
+    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start='' _dir_age=0 _dir_mtime="" _remv_pid='' _remv_start=''
     if mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null; then
         lock_dir_created=1
         chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
@@ -36924,6 +36924,14 @@ acquire_fallback_runtime_lock() {
                 [[ -n "$actual_start" && "$actual_start" == "$existing_start" ]] && return 1
             fi
             [[ "$(stat -c %u:%g "$LOCK_FALLBACK_DIR" 2>/dev/null || true)" == 0:0 ]] || return 1
+            # S157: revalidate immediately before the move. The captured
+            # pid/starttime may be stale: another reclaimer may already
+            # have replaced this dir with a live lock since we read it.
+            # Moving on stale data would steal that live lock, so abort
+            # on any change instead of moving first and rechecking later.
+            IFS= read -r _remv_pid < "$LOCK_FALLBACK_DIR/pid" 2>/dev/null || _remv_pid=''
+            IFS= read -r _remv_start < "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || _remv_start=''
+            [[ "$_remv_pid" == "$existing_pid" && "$_remv_start" == "$existing_start" ]] || return 1
             # Rename-away stale dir as one visible step, then mkdir the canonical name.
             # Avoids the prior rmdir+mkdir TOCTOU window where two reclaimers could both win.
             stale_away="${LOCK_FALLBACK_DIR}.stale.$$.$RANDOM"

@@ -37392,12 +37392,16 @@ EOF_HELP
 }
 
 check_i18n_parity_file() {
-    local _f="$1" _k _n _keys _bad=0
+    local _f="$1" _k _keys _bad=0 _lang _ln
     _keys=$(grep -oE '^        (zh|en|ru|fa|zh-tw|ja):[a-z0-9_]+\)' "$_f" | sed 's/^.*://; s/)$//' | sort -u)
     [[ -n "$_keys" ]] || { echo 'FAIL: i18n key enumeration empty'; return 1; }
     while read -r _k; do
-        _n=$(grep -cE "^        (zh|en|ru|fa|zh-tw|ja):${_k}\\)" "$_f")
-        [[ "$_n" == '6' ]] || { echo "FAIL: i18n key ${_k} has ${_n}/6 language arms"; _bad=$((_bad + 1)); }
+        # S167: count PER language (a total of 6 can hide one missing
+        # arm cancelled by one duplicate arm); each language exactly 1.
+        for _lang in zh en ru fa zh-tw ja; do
+            _ln=$(grep -cE "^        ${_lang}:${_k}\)" "$_f")
+            [[ "$_ln" == '1' ]] || { echo "FAIL: i18n key ${_k} language ${_lang} has ${_ln} arm(s), expected 1"; _bad=$((_bad + 1)); }
+        done
     done <<< "$_keys"
     return "$_bad"
 }
@@ -37594,9 +37598,10 @@ PY_SELFTEST_TAR
     [[ "$(build_ss2022_uri 203.0.113.10 2053 'abc+/=')" == 'ss://2022-blake3-aes-128-gcm:abc%2B%2F%3D@203.0.113.10:2053#SS' ]] || { echo 'FAIL: SS-2022 SIP002/SIP022 URI percent encoding'; failures=$((failures + 1)); }
     # i18n parity guard: every tr_msg key needs all six language arms.
     # U234: an empty enumeration must fail, not silently pass.
-    # Negative samples below prove the guard catches all five failure
+    # Negative samples below prove the guard catches all six failure
     # classes (empty enum, missing arm, duplicate arm, bad pattern,
-    # unreadable source) instead of only passing on clean input.
+    # missing-plus-duplicate cancellation, unreadable source) instead
+    # of only passing on clean input.
     _i18n_rc=0
     check_i18n_parity_file "$0" || _i18n_rc=$?
     failures=$((failures + _i18n_rc))
@@ -37606,7 +37611,11 @@ PY_SELFTEST_TAR
         printf '%s\n' '        zh:synkey) echo x ;;' '        en:synkey) echo x ;;' '        ru:synkey) echo x ;;' '        fa:synkey) echo x ;;' '        zh-tw:synkey) echo x ;;' > "$_i18n_syn/missing.txt"
         { for _l in zh en ru fa zh-tw ja; do printf '        %s:synkey) echo x ;;\n' "$_l"; done; printf '        zh:synkey) echo x ;;\n'; } > "$_i18n_syn/dup.txt"
         { for _l in en ru fa zh-tw ja; do printf '        %s:synkey) echo x ;;\n' "$_l"; done; printf '        zh:synkey echo x ;;\n'; } > "$_i18n_syn/badpat.txt"
-        for _s in empty missing dup badpat; do
+        # S167: cancellation sample: zh twice, ja missing, total still
+        # 6 -- the old total-count guard passed this; per-language
+        # counting must fail it (on ja with 0 arms and zh with 2).
+        { for _l in zh en ru fa zh-tw; do printf '        %s:synkey) echo x ;;\n' "$_l"; done; printf '        zh:synkey) echo x ;;\n'; } > "$_i18n_syn/cancel.txt"
+        for _s in empty missing dup badpat cancel; do
             check_i18n_parity_file "$_i18n_syn/$_s.txt" >/dev/null 2>&1 && { echo "FAIL: i18n negative sample $_s not caught"; failures=$((failures + 1)); }
         done
         check_i18n_parity_file "$_i18n_syn/nofile.txt" >/dev/null 2>&1 && { echo 'FAIL: i18n negative sample nofile not caught'; failures=$((failures + 1)); }

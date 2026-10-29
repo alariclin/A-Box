@@ -36510,7 +36510,7 @@ upgrade_hysteria_core_only() {
 # error, not a silent pass.
 hysteria_binary_smoke_test() {
     local cfg='/etc/hysteria/config.yaml'
-    local was_enabled_state='' ok=0 waited=0 rc=1 restore_failed=0 cur_state=''
+    local was_enabled_state='' ok=0 waited=0 rc=1 restore_failed=0 cur_state='' rc_out='' rc_status=0
     [[ -x /usr/local/bin/hysteria && -f "$cfg" ]] || return 1
     abox_owns_service hysteria || return 1
     # Snapshot enablement state with full granularity. systemctl is-enabled
@@ -36530,7 +36530,12 @@ hysteria_binary_smoke_test() {
         fi
         [[ "$was_enabled_state" != 'unknown' ]] || return 1
     elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
-        if rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])hysteria([[:space:]]|$)'; then
+        # S164: a failed rc-update query must not be read as
+        # "disabled": capture output + status first; nonzero means the
+        # state is unknown, so fail instead of recording a lie.
+        rc_out=$(rc-update show default 2>/dev/null); rc_status=$?
+        (( rc_status == 0 )) || return 1
+        if printf '%s\n' "$rc_out" | grep -Eq '(^|[[:space:]])hysteria([[:space:]]|$)'; then
             was_enabled_state='enabled'
         else
             was_enabled_state='disabled'
@@ -36584,10 +36589,13 @@ hysteria_binary_smoke_test() {
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         cur_state=$(systemctl is-enabled hysteria 2>/dev/null || true)
         [[ -n "$cur_state" ]] || cur_state='unknown'
+        # S164: an unreadable current state cannot prove restoration.
+        [[ "$cur_state" != 'unknown' ]] || restore_failed=1
         if [[ "$cur_state" != "$was_enabled_state" ]]; then
             case "$was_enabled_state" in
                 enabled)
-                    systemctl enable hysteria >/dev/null 2>&1 || restore_failed=1 ;;
+                    systemctl enable hysteria >/dev/null 2>&1 || restore_failed=1
+                    [[ "$(systemctl is-enabled hysteria 2>/dev/null)" == enabled ]] || restore_failed=1 ;;
                 enabled-runtime) systemctl disable hysteria >/dev/null 2>&1 || restore_failed=1; systemctl enable --runtime hysteria >/dev/null 2>&1 || restore_failed=1; [[ "$(systemctl is-enabled hysteria 2>/dev/null)" == enabled-runtime ]] || restore_failed=1 ;;
                 masked)
                     systemctl mask hysteria >/dev/null 2>&1 || restore_failed=1 ;;
@@ -36601,10 +36609,16 @@ hysteria_binary_smoke_test() {
             esac
         fi
     else
-        if [[ "$was_enabled_state" == 'enabled' ]]; then
-            rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])hysteria([[:space:]]|$)' || { rc-update add hysteria default >/dev/null 2>&1 || restore_failed=1; }
+        # S164: a failed cleanup query must fail the restore, not
+        # be swallowed (the old `|| true` hid it and restore_failed
+        # stayed 0 while restoration was unverified).
+        rc_out=$(rc-update show default 2>/dev/null); rc_status=$?
+        if (( rc_status != 0 )); then
+            restore_failed=1
+        elif [[ "$was_enabled_state" == 'enabled' ]]; then
+            printf '%s\n' "$rc_out" | grep -Eq '(^|[[:space:]])hysteria([[:space:]]|$)' || { rc-update add hysteria default >/dev/null 2>&1 || restore_failed=1; }
         else
-            rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])hysteria([[:space:]]|$)' && { rc-update del hysteria default >/dev/null 2>&1 || restore_failed=1; } || true
+            printf '%s\n' "$rc_out" | grep -Eq '(^|[[:space:]])hysteria([[:space:]]|$)' && { rc-update del hysteria default >/dev/null 2>&1 || restore_failed=1; }
         fi
     fi
     if (( restore_failed == 1 )); then

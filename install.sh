@@ -12475,7 +12475,7 @@ _ss_wl_snapshot_rules() {
     local out rc
     out="$(_iptables_q "$IPT" -S INPUT 2>/dev/null)"; rc=$?
     (( rc == 0 )) || return 1
-    _SS_WL_SNAP_V4="$(printf '%s\n' "$out" | grep -F "A-Box-${port}-" | sed 's/^-A INPUT //')"
+    _SS_WL_SNAP_V4="$(printf '%s\n' "$out" | grep -E -- "--comment A-Box-${port}-(tcp|udp)([[:space:]]|$)" | sed 's/^-A INPUT //')"
     _SS_WL_SNAP_V6=""
     _SS_WL_SNAP_V6_TAKEN=0
     # S34 (GPT-13): snapshot v6 gate is ip6tables_usable alone, aligned
@@ -12485,7 +12485,7 @@ _ss_wl_snapshot_rules() {
     if ip6tables_usable; then
         out="$(_iptables_q "$IPT6" -S INPUT 2>/dev/null)"; rc=$?
         (( rc == 0 )) || return 1
-        _SS_WL_SNAP_V6="$(printf '%s\n' "$out" | grep -F "A-Box-${port}-" | sed 's/^-A INPUT //')"
+        _SS_WL_SNAP_V6="$(printf '%s\n' "$out" | grep -E -- "--comment A-Box-${port}-(tcp|udp)([[:space:]]|$)" | sed 's/^-A INPUT //')"
         _SS_WL_SNAP_V6_TAKEN=1
     fi
     _SS_WL_SNAP_TAKEN=1
@@ -12572,7 +12572,7 @@ _ss_wl_rollback_to_snapshot() {
         cur_out="$(_iptables_q "$ipt" -S INPUT 2>/dev/null)"; cur_rc=$?
         if (( cur_rc != 0 )); then failed=1; continue; fi
         local cur
-        cur="$(printf '%s\n' "$cur_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
+        cur="$(printf '%s\n' "$cur_out" | grep -E -- "--comment A-Box-${_SS_WL_SNAP_PORT}-(tcp|udp)([[:space:]]|$)" | sed 's/^-A INPUT //')"
         local restore_input="*filter"
         local line pos
         while IFS= read -r line; do
@@ -12664,7 +12664,7 @@ _ss_wl_rollback_to_snapshot() {
         # Compare normalized full sets (order-independent for this check,
         # as head-order was already verified above)
         local final normalized_final
-        final="$(printf '%s\n' "$final_out" | grep -F "A-Box-${_SS_WL_SNAP_PORT}-" | sed 's/^-A INPUT //')"
+        final="$(printf '%s\n' "$final_out" | grep -E -- "--comment A-Box-${_SS_WL_SNAP_PORT}-(tcp|udp)([[:space:]]|$)" | sed 's/^-A INPUT //')"
         normalized_final=""
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue

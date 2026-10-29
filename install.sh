@@ -12508,7 +12508,7 @@ _ss_wl_snapshot_rules() {
 # Even with --noflush, iptables-restore will flush any user-defined
 # chain explicitly declared in the input stream.
 _ss_wl_rollback_to_snapshot() {
-    local ipt snap failed=0 restore_bin v6_ok=0 v6_needed=0
+    local ipt snap failed=0 restore_bin v4_ok=0 v6_ok=0 v6_needed=0
     [[ "${_SS_WL_SNAP_TAKEN:-0}" == 1 ]] || return 1
     [[ -n "${_SS_WL_SNAP_PORT:-}" ]] || return 1
     # Check if IPv6 was snapshotted and needs recovery
@@ -12682,8 +12682,11 @@ _ss_wl_rollback_to_snapshot() {
             failed=1
             continue
         fi
-        # Mark IPv6 as successfully recovered (IPv4 success is tracked via failed==0)
-        if [[ "$ipt" != "$IPT" ]]; then v6_ok=1; fi
+        # S53 (argon P3-1): track each family directly; the error report
+        # below synthesizes fail_fams from these, never by reverse
+        # inference (the old "v4 failed iff v6 not needed or ok" logic
+        # dropped IPv4 when both families failed).
+        if [[ "$ipt" == "$IPT" ]]; then v4_ok=1; else v6_ok=1; fi
     done
     # Cross-family check: if IPv6 was needed but not recovered, fail overall
     if (( v6_needed == 1 && v6_ok == 0 )); then
@@ -12691,11 +12694,7 @@ _ss_wl_rollback_to_snapshot() {
     fi
     if (( failed != 0 )); then
         local fail_fams=""
-        # v4 failed if overall failed and v6 either not needed or succeeded
-        # (v6 failure is tracked separately via v6_ok)
-        if (( v6_needed == 0 || v6_ok == 1 )); then
-            fail_fams="IPv4"
-        fi
+        (( v4_ok == 0 )) && fail_fams="IPv4"
         (( v6_needed == 1 && v6_ok == 0 )) && fail_fams="${fail_fams:+$fail_fams,}IPv6"
         printf '%s\n' "ERROR: firewall rollback incomplete (${fail_fams:-unknown}); manual recovery required." >&2
         printf '%s\n' "Check: iptables -S INPUT / ip6tables -S INPUT against snapshot." >&2

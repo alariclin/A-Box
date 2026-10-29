@@ -16279,7 +16279,7 @@ build_xray_config() {
         _rs_ob=$(jq -c '[.outbounds[]?.xray]' "$ROUTING_STATE_FILE" 2>/dev/null) || die 'Routing state outbound merge failed.'
         _rs_rules=$(jq -c '[.rules[]?.xray_rule]' "$ROUTING_STATE_FILE" 2>/dev/null) || die 'Routing state rule merge failed.'
     fi
-    jq -n --argjson inbounds "$inbounds_json" --argjson rs_ob "$_rs_ob" --argjson rs_rules "$_rs_rules" '{
+    jq -n --slurpfile inbounds <(printf '%s' "$inbounds_json") --slurpfile rs_ob <(printf '%s' "$_rs_ob") --slurpfile rs_rules <(printf '%s' "$_rs_rules") '{
         log:{loglevel:"warning", access:"/var/log/A-Box-xray-access.log", error:"/var/log/A-Box-xray-error.log"},
         api:{tag:"api", services:["HandlerService","LoggerService","StatsService"]},
         stats:{},
@@ -16288,9 +16288,9 @@ build_xray_config() {
             {type:"field", inboundTag:["api"], outboundTag:"api"},
             {type:"field", protocol:["bittorrent"], outboundTag:"block"},
             {type:"field", domain:["geosite:category-ads-all"], outboundTag:"block"}
-        ] + $rs_rules) },
-        inbounds:([{listen:"127.0.0.1", port:10085, protocol:"dokodemo-door", settings:{address:"127.0.0.1"}, tag:"api"}] + $inbounds),
-        outbounds: ([{protocol:"freedom", tag:"direct"}, {protocol:"blackhole", tag:"block"}, {protocol:"freedom", tag:"api"}] + $rs_ob)
+        ] + $rs_rules[0]) },
+        inbounds:([{listen:"127.0.0.1", port:10085, protocol:"dokodemo-door", settings:{address:"127.0.0.1"}, tag:"api"}] + $inbounds[0]),
+        outbounds: ([{protocol:"freedom", tag:"direct"}, {protocol:"blackhole", tag:"block"}, {protocol:"freedom", tag:"api"}] + $rs_ob[0])
     }' > "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bx_json)"; }
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bx_chmod)"; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
@@ -16537,17 +16537,17 @@ build_singbox_config() {
                 (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite))
               else . end]' "$ROUTING_STATE_FILE" 2>/dev/null) || die 'Routing state rule merge failed.'
     fi
-    jq -n --argjson inbounds "$inbounds_json" --argjson rs_ob "$_rs_ob" --argjson rs_rules "$_rs_rules" '
-        ($rs_ob | map(select(.type == "wireguard"))) as $eps
-        | ($rs_ob | map(select(.type != "wireguard"))) as $obs
-        | ($rs_rules | map(.rule_set[]?) | unique) as $tags
+    jq -n --slurpfile inbounds <(printf '%s' "$inbounds_json") --slurpfile rs_ob <(printf '%s' "$_rs_ob") --slurpfile rs_rules <(printf '%s' "$_rs_rules") '
+        ($rs_ob[0] | map(select(.type == "wireguard"))) as $eps
+        | ($rs_ob[0] | map(select(.type != "wireguard"))) as $obs
+        | ($rs_rules[0] | map(.rule_set[]?) | unique) as $tags
         | {
         log:{level:"warn", output:"/var/log/A-Box-singbox.log"},
-        route: ({rules: (([{network:["tcp"], action:"sniff"},{protocol:"bittorrent", action:"reject"}] + $rs_rules)), auto_detect_interface:true}
+        route: ({rules: (([{network:["tcp"], action:"sniff"},{protocol:"bittorrent", action:"reject"}] + $rs_rules[0])), auto_detect_interface:true}
             + (if ($tags | length) > 0 then {rule_set: ($tags | map({type:"remote", tag:., format:"binary",
                 url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
                 download_detour:"direct"}))} else {} end)),
-        inbounds:$inbounds,
+        inbounds:$inbounds[0],
         outbounds: ([{type:"direct", tag:"direct"}] + $obs)
     } + (if ($eps | length) > 0 then {endpoints:$eps} else {} end)' > "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_json)"; }
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_chmod)"; }
@@ -18270,7 +18270,7 @@ argo_capture_domain() { # $1 = log file -> domain on stdout
 
 argo_links_for() { # $1 = vmess domain, $2 = vless domain
     local vm_json vm_b64 vless_link
-    vm_json=$(jq -nc --arg d "$1" --arg id "$ARGO_UUID" \
+    vm_json=$(jq -nc --arg d "$1" --rawfile id <(printf '%s' "$ARGO_UUID") \
         '{v:"2",ps:"VMess-Argo",add:$d,port:"443",id:$id,aid:"0",scy:"auto",net:"ws",type:"none",host:$d,path:("/" + $id + "-vmess"),tls:"tls",sni:$d,fp:"chrome"}') \
         || die "$(tr_msg ag_vmess_link)"
     vm_b64=$(printf '%s' "$vm_json" | base64 | tr -d '\n\r')

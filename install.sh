@@ -28754,7 +28754,13 @@ EOF_ZRAM_HELPER
 # virgin reset and the full uninstaller.
 abox_zram_teardown() {
     local stop_rc=0
-    if [[ -x /usr/local/sbin/abox-zram ]]; then /usr/local/sbin/abox-zram stop >/dev/null 2>&1 || stop_rc=1; fi
+    if [[ -x /usr/local/sbin/abox-zram ]]; then /usr/local/sbin/abox-zram stop >/dev/null 2>&1 || stop_rc=1;
+    elif [[ -f /etc/ddr/zram.state ]]; then
+        # No helper to stop with, but a state record claims a device
+        # may still be active: deleting the record would strand it
+        # with no stop tool left. This is a stop failure, not success.
+        stop_rc=1
+    fi
     local _init=''
     _init=$(effective_init_system)
     if [[ "$_init" == 'systemd' ]]; then

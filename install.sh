@@ -24767,15 +24767,24 @@ users_guard_eval() {
     local new_blocked='' unblocked=''
     new_blocked=$(jq -rn --argjson old "$old_json" --argjson new "$updated" '
         [$new.users[] | select((.blocked // "") != "" and .disabled != true) | .name
-         | select(. as $n | [$old.users[] | select(.name == $n) | (.blocked // "")] | .[0] == "")] | .[]' 2>/dev/null || true)
+         | select(. as $n | [$old.users[] | select(.name == $n) | (.blocked // "")] | .[0] == "")] | .[]' 2>/dev/null) || return 1
     unblocked=$(jq -cn --argjson old "$old_json" --argjson new "$updated" '
         [$old.users[] | select((.blocked // "") != "" and .disabled != true) | .name
-         | select(. as $n | [$new.users[] | select(.name == $n) | (.blocked // "")] | .[0] == "")] | length' 2>/dev/null || echo 0)
-    users_reg_write "$core" "$tag" "$updated" || return 0
+         | select(. as $n | [$new.users[] | select(.name == $n) | (.blocked // "")] | .[0] == "")] | length' 2>/dev/null) || return 1
+    # Fail-closed ordering: the sync need is decided from the transition
+    # lists BEFORE committing, and the retry marker is planted BEFORE the
+    # commit. A failed plant or a failed registry write aborts with the
+    # old registry intact, so the next tick re-evaluates the still-pending
+    # transition instead of losing it. A leftover marker from a failed
+    # write is harmless: the next tick syncs the unchanged registry (a
+    # no-op), clears the marker, and re-evaluates.
     local need_sync=0
-    if [[ "$core" == 'sing-box' || "$core" == 'hy2' ]]; then
-        [[ -n "$new_blocked" || "$unblocked" != '0' ]] && need_sync=1
-    else
+    [[ -n "$new_blocked" || "$unblocked" != '0' ]] && need_sync=1
+    if (( need_sync == 1 )); then
+        : > "${reg}.sync-pending" || return 1
+    fi
+    users_reg_write "$core" "$tag" "$updated" || return 1
+    if [[ "$core" != 'sing-box' && "$core" != 'hy2' ]]; then
         # Xray family: hot-remove each newly blocked user, then sync
         # anyway: rmu removes the user from the config but does not
         # kill already-established connections, and only the sync's
@@ -24788,15 +24797,11 @@ users_guard_eval() {
                 em=$(jq -r --arg n "$nm" '.users[] | select(.name == $n) | .email // ""' "$reg" 2>/dev/null)
                 users_hot_remove "$core" "$tag" "$em" || true
             done <<< "$new_blocked"
-            need_sync=1
         fi
-        [[ "$unblocked" != '0' ]] && need_sync=1
     fi
     if (( need_sync == 1 )); then
         if users_sync "$core" "$tag" >/dev/null 2>&1; then
             rm -f -- "${reg}.sync-pending"
-        else
-            : > "${reg}.sync-pending" || true
         fi
     fi
     return 0

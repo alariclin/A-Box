@@ -25462,7 +25462,10 @@ restore_timezone_snapshot() {
     else
         return 1
     fi
-    if [[ -n "$tz" ]] && valid_timezone_name "$tz"; then
+    # Only timedatectl may re-apply the zone name: without it the fallback
+    # would rewrite /etc/localtime as a symlink and recreate /etc/timezone,
+    # destroying the representation restored above.
+    if [[ -n "$tz" ]] && valid_timezone_name "$tz" && command -v timedatectl >/dev/null 2>&1; then
         apply_timezone_name "$tz" || return 1
     fi
     return 0

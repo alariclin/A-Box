@@ -26951,7 +26951,13 @@ _dns_valid_v4_group() {
         parts+=("${line_parts[@]}")
     done <<< "$1"
     for tok in "${parts[@]}"; do
-        if [[ "$tok" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then out+="${out:+ }$tok"; fi
+        if [[ "$tok" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+            local -a oct=()
+            local o='' ok=1
+            IFS='.' read -ra oct <<< "$tok"
+            for o in "${oct[@]}"; do (( 10#$o <= 255 )) || ok=0; done
+            (( ok )) && out+="${out:+ }$tok"
+        fi
     done
     printf '%s' "$out"
 }
@@ -26965,7 +26971,29 @@ _dns_valid_v6_group() {
     done <<< "$1"
     for tok in "${parts[@]}"; do
         tok="${tok%%%*}"
-        if [[ "$tok" == *:* && "$tok" =~ ^[0-9a-fA-F:]+$ ]]; then out+="${out:+ }$tok"; fi
+        [[ "$tok" == *:* ]] || continue
+        [[ "$tok" == *:::* ]] && continue
+        local n=0 t="$tok"
+        while [[ "$t" == *::* ]]; do t="${t#*::}"; n=$((n + 1)); done
+        local -a groups=()
+        local ok=1 g=''
+        if (( n == 1 )); then
+            local left="${tok%%::*}" right="${tok#*::}"
+            local -a lg=() rg=()
+            [[ -n "$left" ]] && IFS=':' read -ra lg <<< "$left"
+            [[ -n "$right" ]] && IFS=':' read -ra rg <<< "$right"
+            (( ${#lg[@]} + ${#rg[@]} <= 7 )) || continue
+            groups=("${lg[@]}" "${rg[@]}")
+        elif (( n == 0 )); then
+            IFS=':' read -ra groups <<< "$tok"
+            (( ${#groups[@]} == 8 )) || continue
+        else
+            continue
+        fi
+        for g in "${groups[@]}"; do
+            [[ "$g" =~ ^[0-9a-fA-F]{1,4}$ ]] || ok=0
+        done
+        (( ok )) && out+="${out:+ }$tok"
     done
     printf '%s' "$out"
 }

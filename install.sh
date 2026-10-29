@@ -32788,6 +32788,7 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
             msg "${GREEN}$(tr_msg wl_hs_tls_ok)${NC}"
         else
             msg "${RED}$(tprintf wl_hs_tls_fail "$_legs")${NC}"
+            return 1
         fi
     fi
     return 0

@@ -22657,27 +22657,11 @@ fetch_abox_mirror_asset() {
     asset_leaf=$(core_mirror_asset_leaf "$repo" "$output_file" "$requested_version" "$prefer_versioned") || return 1
     mirror_url="${mirror_base%/}/${asset_leaf}"; mirror_sum="${mirror_base%/}/SHA256SUMS"
     msg "${YELLOW} -> A-Box recovery mirror: ${mirror_url} [${requested_version}]${NC}"
-    tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
-    # F-02 fix: if fixed-name asset 404s, fall back to versioned filename.
-    if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then
-        rm -f -- "$tmp_file"
-        if [[ "$prefer_versioned" != '1' ]]; then
-            local versioned_leaf
-            versioned_leaf=$(core_mirror_asset_leaf "$repo" "$output_file" "$requested_version" 1) || return 1
-            if [[ "$versioned_leaf" != "$asset_leaf" ]]; then
-                msg "${YELLOW} -> Fixed-name asset not found, trying versioned: ${versioned_leaf}${NC}" >&2
-                asset_leaf="$versioned_leaf"
-                mirror_url="${mirror_base%/}/${asset_leaf}"
-                tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
-                if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
-            else
-                return 1
-            fi
-        else
-            return 1
-        fi
-    fi
-    if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
+    # S32 (GPT-11 mirror part): fetch + verify SHA256SUMS BEFORE downloading
+    # the asset, so a bad asset is rejected by digest before any full parse.
+    # The expected digest is extracted here for the initial leaf; if the
+    # F-02 fallback below switches the leaf, it is re-extracted for the
+    # new leaf (the sums file stays on disk until the leaf is final).
     # N-16 fix: use fixed-string matching, not regex. The old $2~(f"$") treated
     # dots in filenames as regex wildcards.
     # DS-High-02: verify SHA256SUMS signature before trusting it (F-05 trust root).
@@ -22687,24 +22671,48 @@ fetch_abox_mirror_asset() {
     # both files into a fresh mktemp -d (random, 0700) instead, so no
     # attacker-plantable path exists, and refuse symlinks before use.
     local sum_dir sum_file sum_sig
-    sum_dir=$(mktemp -d) || { rm -f -- "$tmp_file"; return 1; }
+    sum_dir=$(mktemp -d) || return 1
     sum_file="$sum_dir/SHA256SUMS"; sum_sig="$sum_dir/SHA256SUMS.sig"
     if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "$mirror_sum" -o "$sum_file" 2>/dev/null; then
-        rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1
+        rm -rf -- "$sum_dir"; return 1
     fi
     curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 8 -m 30 "${mirror_sum}.sig" -o "$sum_sig" 2>/dev/null || true
     if [[ -L "$sum_file" || -L "$sum_sig" ]]; then
-        rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1
+        rm -rf -- "$sum_dir"; return 1
     fi
     # DS-High-02: abox_verify_sig_gate 本身就是 (c) 语义 (默认 fail-closed,
     # ABOX_SIGNING_ENFORCE=0 为显式逃生门)。无需新造变量。
     if ! abox_verify_sig_gate "$sum_file" "$sum_sig" "recovery mirror SHA256SUMS"; then
-        rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1
+        rm -rf -- "$sum_dir"; return 1
     fi
     expect_sum=$(awk -v f="$asset_leaf" '{ n=length(f); if ($2==f || $2==("./" f) || (substr($2, length($2)-n+1)==f && (length($2)==n || substr($2, length($2)-n, 1)=="/"))) {print $1; exit} }' "$sum_file") || expect_sum=''
+    tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || { rm -rf -- "$sum_dir"; return 1; }
+    # F-02 fix: if fixed-name asset 404s, fall back to versioned filename.
+    if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then
+        rm -f -- "$tmp_file"
+        if [[ "$prefer_versioned" != '1' ]]; then
+            local versioned_leaf
+            versioned_leaf=$(core_mirror_asset_leaf "$repo" "$output_file" "$requested_version" 1) || { rm -rf -- "$sum_dir"; return 1; }
+            if [[ "$versioned_leaf" != "$asset_leaf" ]]; then
+                msg "${YELLOW} -> Fixed-name asset not found, trying versioned: ${versioned_leaf}${NC}" >&2
+                asset_leaf="$versioned_leaf"
+                mirror_url="${mirror_base%/}/${asset_leaf}"
+                # S32: leaf switched -- re-extract the expected digest for it.
+                expect_sum=$(awk -v f="$asset_leaf" '{ n=length(f); if ($2==f || $2==("./" f) || (substr($2, length($2)-n+1)==f && (length($2)==n || substr($2, length($2)-n, 1)=="/"))) {print $1; exit} }' "$sum_file") || expect_sum=''
+                tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || { rm -rf -- "$sum_dir"; return 1; }
+                if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; fi
+            else
+                rm -rf -- "$sum_dir"; return 1
+            fi
+        else
+            rm -rf -- "$sum_dir"; return 1
+        fi
+    fi
     rm -rf -- "$sum_dir"
     got_sum=$(sha256sum "$tmp_file" 2>/dev/null | awk '{print $1}') || got_sum=''
     if [[ -z "$expect_sum" || ! "$expect_sum" =~ ^[A-Fa-f0-9]{64}$ || "${got_sum,,}" != "${expect_sum,,}" ]]; then msg "${YELLOW}[!] recovery mirror SHA-256 mismatch or missing SHA256SUMS${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
+    # S32: digest first, format second (mirrors the upstream reorder).
+    if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
     if ! validate_core_asset_binary_version "$output_file" "$tmp_file" "$requested_version"; then msg "${YELLOW}[!] recovery binary version does not match requested version ${requested_version}${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
     mv -f -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
     msg "${GREEN}   recovery SHA-256 and actual binary version verified: ${requested_version}${NC}"

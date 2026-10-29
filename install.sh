@@ -17334,7 +17334,7 @@ EOF_SVC
 
     # Ensure the service is running (minimal-install path).
     service_manager start sing-box 2>/dev/null || true
-    set_desired_state RUNNING 2>/dev/null || true
+    set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
     pub_ip=$(read_cached_public_ip 2>/dev/null || true)
@@ -17515,7 +17515,7 @@ EOF_SVC
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     service_manager start xray 2>/dev/null || true
-    set_desired_state RUNNING 2>/dev/null || true
+    set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
 
     local pub_ip
     pub_ip=$(read_cached_public_ip 2>/dev/null || true)
@@ -17665,7 +17665,7 @@ EOF_SVC
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     service_manager start sing-box 2>/dev/null || true
-    set_desired_state RUNNING 2>/dev/null || true
+    set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
     pub_ip=$(read_cached_public_ip 2>/dev/null || true)
@@ -17842,7 +17842,7 @@ EOF_SVC
     save_firewall_rules || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak" "${_tuic_key}.A-Box-bak" "${_tuic_crt}.A-Box-bak"
     service_manager start sing-box 2>/dev/null || true
-    set_desired_state RUNNING 2>/dev/null || true
+    set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
     pub_ip=$(read_cached_public_ip 2>/dev/null || true)
@@ -17996,7 +17996,7 @@ EOF_SVC
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     service_manager start sing-box 2>/dev/null || true
-    set_desired_state RUNNING 2>/dev/null || true
+    set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
     pub_ip=$(read_cached_public_ip 2>/dev/null || true)
@@ -18143,7 +18143,7 @@ EOF_SVC
     allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     service_manager start sing-box 2>/dev/null || true
-    set_desired_state RUNNING 2>/dev/null || true
+    set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
     pub_ip=$(read_cached_public_ip 2>/dev/null || true)
@@ -20388,7 +20388,7 @@ EOF_SVC
 
     # Ensure the service is running (minimal-install path or API-unavailable hosts).
     service_manager start xray 2>/dev/null || true
-    set_desired_state RUNNING 2>/dev/null || true
+    set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
 
     local pub_ip
     pub_ip=$(read_cached_public_ip 2>/dev/null || true)
@@ -33706,7 +33706,7 @@ xray_latest_install_core() {
     fi
     rm -rf -- "$tmp"
     _xl_state_write "$mode" "$tag" || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    set_desired_state RUNNING 2>/dev/null || true
+    set_desired_state RUNNING || { msg "${RED}$(tr_msg dp_desired_xray)${NC}"; return 1; }
     msg "${GREEN}$(tr_msg xl_ok_installed): ${tag} (${mode})${NC}"
     xl_show_ports
     return 0

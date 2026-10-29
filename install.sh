@@ -24137,7 +24137,10 @@ users_hy2_write_users() {
         sec=$(printf '%s' "$users_json" | jq -r '.[0].secret' 2>/dev/null)
         auth_block=$(printf 'auth:\n  type: password\n  password: %s' "$(json_escape "$sec")")
     elif (( count == 0 )); then
-        auth_block=$(printf 'auth:\n  type: password\n  password: %s' "$(json_escape "$(openssl rand -hex 16 2>/dev/null || echo disabled)")")
+        local rnd=''
+        rnd=$(openssl rand -hex 16 2>/dev/null)
+        [[ -n "$rnd" ]] || return 1
+        auth_block=$(printf 'auth:\n  type: password\n  password: %s' "$(json_escape "$rnd")")
     else
         local lines=''
         lines=$(printf '%s' "$users_json" | jq -r '.[] | "    " + .name + ": " + (.secret | @json)' 2>/dev/null) || return 1

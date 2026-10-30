@@ -12930,9 +12930,31 @@ selected_port_pairs() {
     printf '%s' "$pairs"
 }
 
+# SYD-B E2: same-port reinstall tolerance. The old deployment still
+# listens while the wizard runs (the stop moved after the wizard),
+# so an A-Box-owned holder is not a conflict. Every holder line
+# must resolve to a standard core binary; anything else (foreign
+# process, unparseable pid, deleted-suffix aside) fails closed.
+ss_holder_is_abox_owned() {
+    local line pid exe
+    [[ -n "${1:-}" ]] || return 1
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -n "$line" ]] || continue
+        pid=$(printf '%s' "$line" | sed -nE 's/.*pid=([0-9]+).*/\1/p' | head -n 1)
+        [[ -n "$pid" ]] || return 1
+        exe=$(readlink "/proc/$pid/exe" 2>/dev/null || true)
+        exe=${exe%' (deleted)'}
+        case "$exe" in
+            /usr/local/bin/xray|/usr/local/bin/sing-box|/usr/local/bin/hysteria|/usr/local/bin/xray-latest) ;;
+            *) return 1 ;;
+        esac
+    done <<< "$1"
+    return 0
+}
+
 check_selected_ports_free() {
     msg "${YELLOW}[*] 正在检查新选择端口是否仍被任何进程占用...${NC}"
-    local pairs pair proto p holder dup line
+    local pairs pair proto p holder dup line _foreign_holder
     pairs=$(selected_port_pairs | awk 'NF')
     dup=$(printf '%s\n' "$pairs" | awk 'NF { seen[$0]++ } END { for (k in seen) if (seen[k] > 1) { print k; break } }')
     [[ -n "$dup" ]] && die "$(tprintf pt_dup "$dup")"
@@ -12954,6 +12976,13 @@ check_selected_ports_free() {
         fi
         holder=$(awk -v p="$p" '$4 ~ ("[:.]" p "$") || $5 ~ ("[:.]" p "$") { print }' <<< "$holder" || true)
         [[ -z "$holder" ]] && continue
+        # SYD-B E2: an A-Box-owned holder is the old deployment itself
+        # (still listening until release_ports runs after the wizard);
+        # same-port reinstall must not die on it.
+        if ss_holder_is_abox_owned "$holder"; then
+            msg "${YELLOW}[*] 端口 ${p}/${proto} 当前由 A-Box 自有进程占用（同端口重装容忍）。${NC}"
+            continue
+        fi
         msg "${RED}[!] 新选择端口 ${p}/${proto} 仍被进程占用：${NC}"
         printf '%s\n' "$holder"
         die "$(tprintf pt_release_manual "${p}/${proto}")"
@@ -12980,6 +13009,17 @@ check_selected_ports_free() {
                     holder+="$line"$'\n'
                 fi
             done <<< "$ss_udp_output"
+        fi
+        # SYD-B E2: same tolerance for the hop range: only foreign
+        # holders in range are a conflict; A-Box-owned ones are the
+        # old deployment still listening during the wizard.
+        if [[ -n "$holder" ]]; then
+            _foreign_holder=''
+            while IFS= read -r line || [[ -n "$line" ]]; do
+                [[ -n "$line" ]] || continue
+                ss_holder_is_abox_owned "$line" || _foreign_holder+="$line"$'\n'
+            done <<< "$holder"
+            holder="$_foreign_holder"
         fi
         if [[ -n "$holder" ]]; then
             msg "${RED}[!] HY2 UDP 跳跃区间 ${HY2_RANGE_START}-${HY2_RANGE_END} 仍被进程占用：${NC}"
@@ -16949,11 +16989,11 @@ deploy_official_hy2() {
         assert_no_foreign_core_conflicts hysteria
         [[ "$SKIP_REPLACE_AND_PRUNE" == '1' ]] || confirm_deployment_replacement hysteria HY2
         begin_deployment_transaction 'official Hysteria 2 deployment' hysteria || return 1
-        release_ports
         clean_nat_rules || die "$(tr_msg cl_nat)"
         clean_input_rules || die "$(tr_msg cl_input)"
         save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
-        pre_install_setup hysteria HY2
+        pre_install_setup hysteria HY2 || { deployment_transaction_rollback; return 1; }
+        release_ports
         get_architecture
     fi
 
@@ -20686,11 +20726,11 @@ deploy_xray() {
     confirm_deployment_replacement xray "$MODE_IN"
     standalone_preserve_snapshot xray /usr/local/etc/xray/config.json || return 1
     if [[ "$MODE_IN" == *'ALL'* ]]; then begin_deployment_transaction "xray ${MODE_IN} deployment" xray hysteria || return 1; else begin_deployment_transaction "xray ${MODE_IN} deployment" xray || return 1; fi
-    release_ports
     clean_nat_rules || die "$(tr_msg cl_nat)"
     clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
-    pre_install_setup xray "$MODE_IN"
+    pre_install_setup xray "$MODE_IN" || { deployment_transaction_rollback; return 1; }
+    release_ports
     get_architecture
 
     local xray_tmp xray_zip xray_ext geo_tmp
@@ -20816,11 +20856,11 @@ deploy_singbox() {
     confirm_deployment_replacement singbox "$MODE_IN"
     standalone_preserve_snapshot sing-box /etc/sing-box/config.json || return 1
     begin_deployment_transaction "sing-box ${MODE_IN} deployment" sing-box || return 1
-    release_ports
     clean_nat_rules || die "$(tr_msg cl_nat)"
     clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
-    pre_install_setup singbox "$MODE_IN"
+    pre_install_setup singbox "$MODE_IN" || { deployment_transaction_rollback; return 1; }
+    release_ports
     get_architecture
 
     local sb_tmp sb_tar sb_ext

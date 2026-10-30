@@ -3860,6 +3860,12 @@ tr_msg() {
         fa:xl_quad_note) echo 'در ادامه: استقرار Hy2 رسمی (فرایند جداگانه، طبق راهنما پیش بروید)' ;;
         zh-tw:xl_quad_note) echo '接下來部署官方版 Hysteria2（獨立流程，按提示操作）' ;;
         ja:xl_quad_note) echo '続いて公式 Hysteria2 を導入します（別フロー、案内に従ってください）' ;;
+        zh:xl_trio_kept) echo '三合一已部署，本次保留并直接部署 Hy2。' ;;
+        en:xl_trio_kept) echo 'Trio already deployed; keeping it and proceeding to Hysteria2.' ;;
+        ru:xl_trio_kept) echo 'Трио уже развёрнуто; сохраняю его и перехожу к Hysteria2.' ;;
+        fa:xl_trio_kept) echo 'سه‌تایی قبلاً نصب شده است؛ حفظ می‌شود و Hysteria2 نصب می‌شود.' ;;
+        zh-tw:xl_trio_kept) echo '三合一已部署，本次保留並直接部署 Hy2。' ;;
+        ja:xl_trio_kept) echo '三合一は既に導入済みのため、そのまま Hysteria2 を導入します。' ;;
         zh:xl_quad_hy2_fail) echo 'Hy2 官方版部署失败（原因见上方），Xray 三合一已保留。' ;;
         en:xl_quad_hy2_fail) echo 'Official Hy2 deployment failed (see above); the Xray trio was kept.' ;;
         ru:xl_quad_hy2_fail) echo 'Развёртывание официального Hy2 не удалось (см. выше); трио Xray сохранено.' ;;
@@ -4010,12 +4016,6 @@ tr_msg() {
         fa:xl_mlkem_warn) echo 'هشدار: جدیدترین Xray دست‌دادن ML-KEM را اجباری می‌کند — کلاینت‌های sing-box وصل نمی‌شوند، mihomo به پرچم ویژه نیاز دارد و برخی کلاینت‌ها ناسازگارند. فقط برای کاربران باتجربه.' ;;
         zh-tw:xl_mlkem_warn) echo '警告：最新版 Xray 強制 ML-KEM 握手——sing-box 用戶端無法連接、mihomo 需開啟特殊開關、部分用戶端不相容。僅供有經驗的使用者測試。' ;;
         ja:xl_mlkem_warn) echo '警告：最新 Xray は ML-KEM ハンドシェイクを強制します。sing-box クライアントは接続できず、mihomo には特殊フラグが必要で、一部のクライアントは非対応です。経験者向けです。' ;;
-        zh:xl_m_install) echo '安装 / 更新最新版核心' ;;
-        en:xl_m_install) echo 'Install / update latest core' ;;
-        ru:xl_m_install) echo 'Установить / обновить последнее ядро' ;;
-        fa:xl_m_install) echo 'نصب / به‌روزرسانی جدیدترین هسته' ;;
-        zh-tw:xl_m_install) echo '安裝 / 更新最新版核心' ;;
-        ja:xl_m_install) echo '最新コアをインストール / 更新' ;;
         zh:xl_m_ports) echo '查看端口占用（稳定版 / 最新版）' ;;
         en:xl_m_ports) echo 'View ports (stable / latest)' ;;
         ru:xl_m_ports) echo 'Порты (стабильный / последний)' ;;
@@ -4112,12 +4112,12 @@ tr_msg() {
         fa:xl_remove_cancelled) echo 'حذف لغو شد.' ;;
         zh-tw:xl_remove_cancelled) echo '已取消刪除。' ;;
         ja:xl_remove_cancelled) echo '削除をキャンセルしました。' ;;
-        zh:xl_select) echo '请选择 [0-10]：' ;;
-        en:xl_select) echo 'Select [0-10]: ' ;;
-        ru:xl_select) echo 'Выберите [0–10]: ' ;;
-        fa:xl_select) echo 'انتخاب [0-10]: ' ;;
-        zh-tw:xl_select) echo '請選擇 [0-10]：' ;;
-        ja:xl_select) echo '選択してください [0-10]：' ;;
+        zh:xl_select) echo '请选择 [0-9]：' ;;
+        en:xl_select) echo 'Select [0-9]: ' ;;
+        ru:xl_select) echo 'Выберите [0–9]: ' ;;
+        fa:xl_select) echo 'انتخاب [0-9]: ' ;;
+        zh-tw:xl_select) echo '請選擇 [0-9]：' ;;
+        ja:xl_select) echo '選択してください [0-9]：' ;;
         zh:xl_mode_ask) echo '请选择安装模式 [1-2，0 取消]：' ;;
         en:xl_mode_ask) echo 'Install mode [1-2, 0 cancel]: ' ;;
         ru:xl_mode_ask) echo 'Режим установки [1-2, 0 — отмена]: ' ;;
@@ -4190,12 +4190,12 @@ tr_msg() {
         fa:xl_bin_mismatch) echo 'نسخه هسته دانلودشده با برچسب بالادستی مطابقت ندارد؛ حذف شد و نصب نشد' ;;
         zh-tw:xl_bin_mismatch) echo '下載的核心版本與上游 tag 不一致，已刪除，未安裝' ;;
         ja:xl_bin_mismatch) echo 'ダウンロードしたコアのバージョンが upstream タグと一致しません。削除し、インストールしていません' ;;
-        zh:xl_need_core) echo '尚未安装最新版 Xray 核心，请先选 1 安装。' ;;
-        en:xl_need_core) echo 'Latest Xray core is not installed yet; choose 1 to install it first.' ;;
-        ru:xl_need_core) echo 'Последнее ядро Xray ещё не установлено; сначала выберите пункт 1.' ;;
-        fa:xl_need_core) echo 'جدیدترین هسته Xray هنوز نصب نشده است؛ ابتدا گزینه ۱ را انتخاب کنید.' ;;
-        zh-tw:xl_need_core) echo '尚未安裝最新版 Xray 核心，請先選 1 安裝。' ;;
-        ja:xl_need_core) echo '最新 Xray コアがまだインストールされていません。先に 1 を選んでください。' ;;
+        zh:xl_need_core) echo '尚未安装最新版 Xray 核心，选协议时会自动安装。' ;;
+        en:xl_need_core) echo 'Latest Xray core is not installed yet; it will be installed automatically when you choose a protocol.' ;;
+        ru:xl_need_core) echo 'Последнее ядро Xray ещё не установлено; оно будет установлено автоматически при выборе протокола.' ;;
+        fa:xl_need_core) echo 'جدیدترین هسته Xray هنوز نصب نشده است؛ هنگام انتخاب پروتکل به‌صورت خودکار نصب می‌شود.' ;;
+        zh-tw:xl_need_core) echo '尚未安裝最新版 Xray 核心，選協議時會自動安裝。' ;;
+        ja:xl_need_core) echo '最新 Xray コアがまだインストールされていません。プロトコルを選ぶと自動でインストールされます。' ;;
         zh:xl_port_prompt) echo '端口' ;;
         en:xl_port_prompt) echo 'Port' ;;
         ru:xl_port_prompt) echo 'Порт' ;;
@@ -14922,6 +14922,7 @@ abox_runtime_identity() {
     local family="$1"
     case "$family" in
         xray) printf '%s\t%s\n' "$ABOX_RUNTIME_XRAY_USER" "$ABOX_RUNTIME_XRAY_GROUP" ;;
+        xray-latest) printf '%s\t%s\n' "$ABOX_RUNTIME_XRAY_USER" "$ABOX_RUNTIME_XRAY_GROUP" ;;
         sing-box|singbox) printf '%s\t%s\n' "$ABOX_RUNTIME_SINGBOX_USER" "$ABOX_RUNTIME_SINGBOX_GROUP" ;;
         hysteria) printf '%s\t%s\n' "$ABOX_RUNTIME_HYSTERIA_USER" "$ABOX_RUNTIME_HYSTERIA_GROUP" ;;
         *) return 1 ;;
@@ -16901,14 +16902,14 @@ EOF_HY2
 }
 
 deploy_official_hy2() {
-    local IS_SILENT=${1:-NORMAL} TLS_CONFIG HY2_LISTEN cert_cn HY2_CAPS='CAP_NET_BIND_SERVICE' hy2_tmp hy2_bin domain_yaml token_yaml
+    local IS_SILENT=${1:-NORMAL} TLS_CONFIG HY2_LISTEN cert_cn HY2_CAPS='CAP_NET_BIND_SERVICE' hy2_tmp hy2_bin domain_yaml token_yaml SKIP_REPLACE_AND_PRUNE=${2:-0}
     if [[ "$IS_SILENT" != 'SILENT' ]]; then
         clear; msg "${BOLD}${GREEN}部署官方 Hysteria 2${NC}"
         init_system_environment
         load_optional_abox_env_or_die
         light_preflight_check
         assert_no_foreign_core_conflicts hysteria
-        confirm_deployment_replacement hysteria HY2
+        [[ "$SKIP_REPLACE_AND_PRUNE" == '1' ]] || confirm_deployment_replacement hysteria HY2
         begin_deployment_transaction 'official Hysteria 2 deployment' hysteria
         release_ports
         clean_nat_rules || die "$(tr_msg cl_nat)"
@@ -17050,7 +17051,7 @@ EOF_SVC
     if [[ "$IS_SILENT" != 'SILENT' ]]; then
         write_env hysteria HY2
         set_desired_state RUNNING || die "$(tr_msg hy2b_desired)"
-        prune_owned_core_families_except hysteria
+        [[ "$SKIP_REPLACE_AND_PRUNE" == '1' ]] || prune_owned_core_families_except hysteria
         setup_geo_cron
         commit_deployment_transaction
         view_config deploy
@@ -34213,6 +34214,12 @@ EOF_XLSVC
     fi
 }
 
+# XL-FIX2: is_systemd/xray_owned previously existed only inside generated-script
+# heredocs (probe/geo/traffic copies); the main script called xray_owned at
+# takeover install and got "command not found". Real top-level definitions.
+is_systemd() { [[ "$INIT_SYS_EXPECTED" == systemd ]]; }
+xray_owned() { local u; if is_systemd; then u=/etc/systemd/system/xray.service; else u=/etc/init.d/xray; fi; [[ -f "$u" && ! -L "$u" ]] && grep -Fxq '# Managed by A-Box' "$u"; }
+
 _xl_write_slot_unit() {
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_XSSVC' || return 1
@@ -34471,6 +34478,7 @@ xray_latest_install_core() {
     local tag='' mode='' mchoice='' tmp='' zip='' ext='' staged_ver='' cur_mode='' cur_ver='' _xl_tgt='' _xl_bin=''
     init_system_environment || return 1
     load_optional_abox_env_or_die
+    get_architecture
     tag=$(xl_upstream_latest_tag) || { msg "${RED}$(tr_msg xl_tag_fail)${NC}"; return 1; }
     cur_mode=$(_xl_state_get mode); cur_ver=$(_xl_state_get version)
     msg "${CYAN}$(tr_msg xl_avail): ${tag}${NC}"
@@ -34484,7 +34492,8 @@ xray_latest_install_core() {
     read -r -p "$(tr_msg xl_mode_ask)" mchoice || return 0
     case "$mchoice" in
         2) mode='coexist' ;;
-        1|'') mode='takeover' ;;
+        1) mode='takeover' ;;
+        '') mode="${cur_mode:-takeover}" ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $mchoice${NC}"; return 1 ;;
     esac
@@ -34884,10 +34893,26 @@ xray_latest_deploy_trio() {
 # One-click quad: the Xray trio above + the official Hysteria2 deployment
 # (its own established flow and transaction handling, run in a subshell so
 # its die paths cannot kill this menu).
+xray_latest_trio_deployed() {
+    local tgt='' cfg=''
+    tgt=$(_xl_target 2>/dev/null) || return 1
+    cfg="${tgt%%|*}"
+    [[ -f "$cfg" ]] || return 1
+    [[ -n "$(jq -r --arg t latest-vision '.inbounds[]? | select(.tag == $t) | .tag' "$cfg" 2>/dev/null)" ]] || return 1
+    [[ -n "$(jq -r --arg t latest-xhttp '.inbounds[]? | select(.tag == $t) | .tag' "$cfg" 2>/dev/null)" ]] || return 1
+    [[ -n "$(jq -r --arg t latest-ss '.inbounds[]? | select(.tag == $t) | .tag' "$cfg" 2>/dev/null)" ]] || return 1
+    return 0
+}
+
 xray_latest_deploy_quad() {
-    xray_latest_deploy_trio || return 1
+    msg "${BOLD}${GREEN}$(tr_msg xl_m_quad)${NC}"
+    if xray_latest_trio_deployed 2>/dev/null; then
+        msg "${GREEN}$(tr_msg xl_trio_kept)${NC}"
+    else
+        xray_latest_deploy_trio || return 1
+    fi
     msg "${CYAN}$(tr_msg xl_quad_note)${NC}"
-    if ( deploy_official_hy2 ); then
+    if ( deploy_official_hy2 NORMAL 1 ); then
         msg "${GREEN}$(tr_msg xl_ok_installed): Hysteria2${NC}"
         return 0
     fi
@@ -34931,6 +34956,33 @@ xray_latest_remove() {
     return 0
 }
 
+# Ensure a usable latest core before a protocol deploy: already at the
+# menu latest tag (or tag unknown) and binary present => no-op;
+# missing / outdated / binary gone => run the core installer.
+# install_core returns 0 on cancel too, so re-verify afterwards.
+xray_latest_ensure_core() { # $1 = latest upstream tag, or empty
+    local _latest="${1:-}" _mode='' _tgt='' _bin='' _ver=''
+    _mode=$(_xl_state_get mode)
+    if [[ -n "$_mode" ]]; then
+        _tgt=$(_xl_target 2>/dev/null || true)
+        if [[ -n "$_tgt" ]]; then
+            _bin="${_tgt#*|}"; _bin="${_bin%%|*}"
+            if [[ -n "$_bin" && -x "$_bin" ]]; then
+                _ver=$(xl_binary_version "$_bin" 2>/dev/null || true)
+                if [[ -n "$_ver" && ( -z "$_latest" || "$_ver" == "$_latest" ) ]]; then
+                    return 0
+                fi
+            fi
+        fi
+    fi
+    xray_latest_install_core || return 1
+    _tgt=$(_xl_target 2>/dev/null || true)
+    [[ -n "$_tgt" ]] || return 1
+    _bin="${_tgt#*|}"; _bin="${_bin%%|*}"
+    [[ -n "$_bin" && -x "$_bin" ]] || return 1
+    return 0
+}
+
 xray_latest_menu() {
     local latest_tag='' choice='' state_mode='' state_ver=''
     latest_tag=$(xl_upstream_latest_tag 2>/dev/null || echo '')
@@ -34953,29 +35005,27 @@ xray_latest_menu() {
         if [[ -n "$latest_tag" ]] && ABOX_XRAY_VERSION="$latest_tag" xray_reality_requires_mlkem 2>/dev/null; then
             msg "${RED}${BOLD}$(tr_msg xl_mlkem_warn)${NC}"
         fi
-        msg " ${CYAN}1.${NC}  $(tr_msg xl_m_install)"
-        msg " ${CYAN}2.${NC}  VLESS + Vision + REALITY"
-        msg " ${CYAN}3.${NC}  VLESS + XHTTP + REALITY"
-        msg " ${CYAN}4.${NC}  Trojan-Reality"
-        msg " ${CYAN}5.${NC}  Shadowsocks 2022"
-        msg " ${CYAN}6.${NC}  SOCKS5"
-        msg " ${CYAN}7.${NC}  $(tr_msg xl_m_trio)"
-        msg " ${CYAN}8.${NC}  $(tr_msg xl_m_quad)"
-        msg " ${CYAN}9.${NC}  $(tr_msg xl_m_ports)"
-        msg "${CYAN}10.${NC}  $(tr_msg xl_m_remove)"
+        msg " ${CYAN}1.${NC}  VLESS + Vision + REALITY"
+        msg " ${CYAN}2.${NC}  VLESS + XHTTP + REALITY"
+        msg " ${CYAN}3.${NC}  Trojan-Reality"
+        msg " ${CYAN}4.${NC}  Shadowsocks 2022"
+        msg " ${CYAN}5.${NC}  SOCKS5"
+        msg " ${CYAN}6.${NC}  $(tr_msg xl_m_trio)"
+        msg " ${CYAN}7.${NC}  $(tr_msg xl_m_quad)"
+        msg " ${CYAN}8.${NC}  $(tr_msg xl_m_ports)"
+        msg " ${CYAN}9.${NC}  $(tr_msg xl_m_remove)"
         msg " ${CYAN}0.${NC}  $(tr_msg xl_back_main)"
         read -r -p "$(tr_msg xl_select)" choice || return 0
         case "$choice" in
-            1) xray_latest_install_core; pause_return ;;
-            2) deploy_with_instance_choice xray-latest latest-vision xray_latest_deploy vision; pause_return ;;
-            3) deploy_with_instance_choice xray-latest latest-xhttp xray_latest_deploy xhttp; pause_return ;;
-            4) deploy_with_instance_choice xray-latest latest-trojan xray_latest_deploy trojan; pause_return ;;
-            5) deploy_with_instance_choice xray-latest latest-ss xray_latest_deploy ss; pause_return ;;
-            6) deploy_with_instance_choice xray-latest latest-socks xray_latest_deploy socks; pause_return ;;
-            7) xray_latest_deploy_trio; pause_return ;;
-            8) xray_latest_deploy_quad; pause_return ;;
-            9) xl_show_ports; pause_return ;;
-            10) xray_latest_remove; pause_return ;;
+            1) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-vision xray_latest_deploy vision; pause_return ;;
+            2) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-xhttp xray_latest_deploy xhttp; pause_return ;;
+            3) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-trojan xray_latest_deploy trojan; pause_return ;;
+            4) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-ss xray_latest_deploy ss; pause_return ;;
+            5) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-socks xray_latest_deploy socks; pause_return ;;
+            6) xray_latest_ensure_core "$latest_tag" && xray_latest_deploy_trio; pause_return ;;
+            7) xray_latest_ensure_core "$latest_tag" && xray_latest_deploy_quad; pause_return ;;
+            8) xl_show_ports; pause_return ;;
+            9) xray_latest_remove; pause_return ;;
             0) return 0 ;;
             *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
         esac
@@ -38106,6 +38156,9 @@ PY_SELFTEST_TAR
     declare -F xray_latest_deploy >/dev/null 2>&1 || { echo 'FAIL: latest Xray deployer missing'; failures=$((failures + 1)); }
     declare -F xray_latest_deploy_trio >/dev/null 2>&1 || { echo 'FAIL: latest Xray trio deployer missing'; failures=$((failures + 1)); }
     declare -F xray_latest_deploy_quad >/dev/null 2>&1 || { echo 'FAIL: latest Xray quad deployer missing'; failures=$((failures + 1)); }
+    declare -F xray_latest_ensure_core >/dev/null 2>&1 || { echo 'FAIL: latest Xray core ensure missing'; failures=$((failures + 1)); }
+    declare -F is_systemd >/dev/null 2>&1 || { echo 'FAIL: is_systemd missing'; failures=$((failures + 1)); }
+    declare -F xray_owned >/dev/null 2>&1 || { echo 'FAIL: xray_owned missing'; failures=$((failures + 1)); }
     declare -F cleanup_protocols_menu >/dev/null 2>&1 || { echo 'FAIL: cleanup protocols menu missing'; failures=$((failures + 1)); }
     declare -F remove_single_protocol_menu >/dev/null 2>&1 || { echo 'FAIL: single protocol remover missing'; failures=$((failures + 1)); }
     declare -F clear_all_protocols >/dev/null 2>&1 || { echo 'FAIL: clear all protocols missing'; failures=$((failures + 1)); }

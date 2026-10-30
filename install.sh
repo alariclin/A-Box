@@ -15202,6 +15202,7 @@ ensure_abox_runtime_identity() {
             return 1
         fi
     }
+    local _created=0
     if ! getent passwd "$user" >/dev/null 2>&1; then
         if command -v useradd >/dev/null 2>&1; then
             useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin --gid "$group" "$user" >/dev/null 2>&1 || return 1
@@ -15212,6 +15213,17 @@ ensure_abox_runtime_identity() {
         else
             return 1
         fi
+        _created=1
+    fi
+    # SYD-B E22: record proven self-created users (only the branch
+    # above sets _created); cleanup removes exactly these names.
+    if (( _created == 1 )) && [[ -n "${ABOX_DIR:-}" ]]; then
+        local _rec="${ABOX_DIR}/.created-service-users"
+        if [[ ! -f "$_rec" ]]; then ( umask 077; : > "$_rec" ) 2>/dev/null || true; fi
+        if [[ -f "$_rec" && ! -L "$_rec" ]] && ! grep -qxF "$user" "$_rec" 2>/dev/null; then
+            printf '%s\n' "$user" >> "$_rec" 2>/dev/null || true
+        fi
+        chmod 600 "$_rec" 2>/dev/null || true
     fi
     uid=$(id -u "$user" 2>/dev/null) || return 1
     gid=$(id -g "$user" 2>/dev/null) || return 1
@@ -19390,6 +19402,25 @@ _panel_sort_cells() {
     done | sort -t "$(printf '\t')" -k1,1n -s | cut -f2- | paste -sd'|' -
 }
 
+# SYD-B E18: is a registry entry live? Decided by CONFIG presence,
+# not service state: a stopped node still lists, but a registry whose
+# inbound is gone from its core config (deleted/pruned/never synced)
+# is stale and must not be listed as a node.
+users_reg_is_live() {
+    local core="$1" tag="$2" cfg=''
+    case "$core" in
+        xray) cfg=$(users_cfg_of xray 2>/dev/null || true) ;;
+        xray-latest) cfg='/etc/ddr/xray-latest/config.json' ;;
+        sing-box) cfg='/etc/sing-box/config.json' ;;
+        hy2|hysteria)
+            [[ -f '/etc/hysteria/config.yaml' && ! -L '/etc/hysteria/config.yaml' ]] && return 0
+            return 1 ;;
+        *) return 1 ;;
+    esac
+    [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]] || return 1
+    [[ -n "$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tag' "$cfg" 2>/dev/null | head -n 1)" ]]
+}
+
 _menu_info_collect() {
     [[ -n "${_MI_COLLECTED:-}" ]] && return 0
     _MI_COLLECTED=1
@@ -19655,6 +19686,11 @@ _menu_info_collect() {
             _rcore=$(jq -r '.core // ""' "$_rf" 2>/dev/null)
             _rtag=$(jq -r '.tag // ""' "$_rf" 2>/dev/null)
             _rseg="$_rtag"
+            # SYD-B E18: a registry whose inbound no longer exists
+            # in its core config is stale and must not be listed
+            # as a node. Config presence, not service state,
+            # decides: a stopped node still lists.
+            users_reg_is_live "$_rcore" "$_rtag" 2>/dev/null || continue
             case "$_rcore" in
                 xray|xray-latest)
                     _rcfg='/usr/local/etc/xray/config.json'
@@ -22831,6 +22867,43 @@ manage_ss_whitelist() {
     esac
 }
 
+# SYD-B E22: remove service users ONLY when this script provably
+# created them (recorded in .created-service-users by
+# ensure_abox_runtime_identity). A pre-existing abox-* user with no
+# record is kept, however it looks: appearance is not provenance.
+# Best-effort: a failure warns and never blocks cleanup. Groups are
+# not removed.
+remove_abox_created_service_users() {
+    local rec='' u='' shell=''
+    rec="${ABOX_DIR:-/etc/ddr}/.created-service-users"
+    if [[ ! -f "$rec" || -L "$rec" ]]; then
+        for u in abox-xray abox-singbox abox-hysteria; do
+            if getent passwd "$u" >/dev/null 2>&1; then
+                msg "${YELLOW}[!] Service user ${u} exists but is not recorded as created by this script; keeping it.${NC}" >&2
+            fi
+        done
+        return 0
+    fi
+    while IFS= read -r u; do
+        [[ -n "$u" ]] || continue
+        case "$u" in abox-xray|abox-singbox|abox-hysteria) ;; *) msg "${YELLOW}[!] Ignoring unexpected recorded service user ${u}.${NC}" >&2; continue ;; esac
+        if ! getent passwd "$u" >/dev/null 2>&1; then continue; fi
+        shell=$(getent passwd "$u" | awk -F: '{print $7}')
+        case "$shell" in /usr/sbin/nologin|/sbin/nologin|/bin/false) ;; *) msg "${YELLOW}[!] Service user ${u} has an interactive shell; keeping it.${NC}" >&2; continue ;; esac
+        if command -v pgrep >/dev/null 2>&1 && pgrep -u "$u" >/dev/null 2>&1; then
+            msg "${YELLOW}[!] Service user ${u} still has running processes; keeping it.${NC}" >&2
+            continue
+        fi
+        if command -v userdel >/dev/null 2>&1; then
+            userdel "$u" >/dev/null 2>&1 || msg "${YELLOW}[!] Could not remove service user ${u}; keeping it.${NC}" >&2
+        else
+            msg "${YELLOW}[!] userdel unavailable; keeping service user ${u}.${NC}" >&2
+        fi
+    done < "$rec"
+    rm -f -- "$rec" 2>/dev/null || true
+    return 0
+}
+
 do_cleanup() {
     clear; msg "${RED}$(tr_msg cu_running)${NC}"
     init_system_environment
@@ -22856,6 +22929,9 @@ do_cleanup() {
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     kill_managed_residual_pids || die "$(tr_msg cu_residual)"
     remove_all_owned_core_families 1 || die "$(tr_msg cl_cores_clean)"
+    # SYD-B E22: remove only provably self-created service users;
+    # best-effort, never blocks the cleanup itself.
+    remove_abox_created_service_users || true
     if [[ -d "$ABOX_DIR/tune-backup" ]]; then
         restore_vps_tune 1 >/dev/null 2>&1 || die "$(tr_msg cu_tune)"
     else
@@ -24571,17 +24647,17 @@ users_reg_ensure() {
 # ---- sync: rewrite the core config's user list from the registry ----
 users_sync() {
     local core="$1" tag="$2" cfg='' reg='' bak='' tmp='' enabled='' proto='' ssecret=''
-    cfg=$(users_cfg_of "$core") || return 1
+    cfg=$(users_cfg_of "$core") || { msg "users_sync stage SYNC-01: users_cfg_of failed" >&2; return 1; }
     reg=$(users_reg_file "$core" "$tag")
-    [[ -f "$cfg" && ! -L "$cfg" && -f "$reg" ]] || return 1
-    proto=$(jq -r '.protocol // ""' "$reg" 2>/dev/null) || return 1
-    [[ -n "$proto" ]] || return 1
+    [[ -f "$cfg" && ! -L "$cfg" && -f "$reg" ]] || { msg "users_sync stage SYNC-02: config or registry missing" >&2; return 1; }
+    proto=$(jq -r '.protocol // ""' "$reg" 2>/dev/null) || { msg "users_sync stage SYNC-03: registry protocol unreadable" >&2; return 1; }
+    [[ -n "$proto" ]] || { msg "users_sync stage SYNC-04: registry protocol empty" >&2; return 1; }
     ssecret=$(jq -r '.server_secret // ""' "$reg" 2>/dev/null)
-    enabled=$(jq -c '[.users[] | select(.disabled != true and ((.blocked // "") == ""))]' "$reg" 2>/dev/null) || return 1
-    bak=$(mktemp /tmp/A-Box-usync-bak.XXXXXX) || return 1
-    cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
-    tmp=$(mktemp /tmp/A-Box-usync.XXXXXX) || { rm -f "$bak"; return 1; }
-    mv -- "$tmp" "$tmp.json" || { rm -f "$tmp" "$bak"; return 1; }; tmp="$tmp.json"
+    enabled=$(jq -c '[.users[] | select(.disabled != true and ((.blocked // "") == ""))]' "$reg" 2>/dev/null) || { msg "users_sync stage SYNC-05: enabled-users filter failed" >&2; return 1; }
+    bak=$(mktemp /tmp/A-Box-usync-bak.XXXXXX) || { msg "users_sync stage SYNC-06: backup temp creation failed" >&2; return 1; }
+    cp -f -- "$cfg" "$bak" || { msg "users_sync stage SYNC-07: config backup copy failed" >&2; rm -f "$bak"; return 1; }
+    tmp=$(mktemp /tmp/A-Box-usync.XXXXXX) || { msg "users_sync stage SYNC-08: work temp creation failed" >&2; rm -f "$bak"; return 1; }
+    mv -- "$tmp" "$tmp.json" || { msg "users_sync stage SYNC-09: work temp rename failed" >&2; rm -f "$tmp" "$bak"; return 1; }; tmp="$tmp.json"
     # SS multi-user promotion: with no stored server_secret and >1
     # enabled users, the CURRENT password becomes the server key and
     # each user's secret becomes their uPSK (their link changes; the
@@ -24597,6 +24673,7 @@ users_sync() {
         [[ -n "$eff_ss" ]] && promote=1
     fi
     if [[ "$proto" == 'shadowsocks' ]] && (( encount > 1 )) && [[ -z "$eff_ss" ]]; then
+        msg "users_sync stage SYNC-10: shadowsocks multi-user without server key" >&2; 
         msg "${RED}[!] $(tprintf users_ss_no_server_key "$tag")${NC}"
         rm -f "$tmp" "$bak"; return 1
     fi
@@ -24620,13 +24697,14 @@ users_sync() {
         if (( encount == 0 )); then
             if jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; then
                 sb_will_delete=1
-                sb_snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" 2>/dev/null) || { rm -f "$tmp" "$bak"; return 1; }
+                sb_snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" 2>/dev/null) || { msg "users_sync stage SYNC-11: inbound snapshot read failed" >&2; rm -f "$tmp" "$bak"; return 1; }
             fi
         elif [[ "$sb_snap" != 'null' ]]; then
             jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1 || sb_will_rebuild=1
         elif ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; then
             # U65: enabled users, inbound gone, no snapshot to rebuild from.
             # Syncing would silently do nothing; fail loudly instead.
+            msg "users_sync stage SYNC-12: inbound missing with no snapshot" >&2; 
             msg "${RED}[!] ${core} ${proto} inbound ${tag} is missing and no registry snapshot exists; cannot rebuild. Re-deploy the node, then re-run sync.${NC}"
             rm -f "$tmp" "$bak"; return 1
         fi
@@ -24636,9 +24714,9 @@ users_sync() {
     # without a snapshot while the inbound was already gone, and a later
     # re-enable then silently succeeded without rebuilding.
     if (( sb_will_delete == 1 )); then
-        [[ -n "$sb_snap_obj" ]] || { rm -f "$tmp" "$bak"; return 1; }
+        [[ -n "$sb_snap_obj" ]] || { msg "users_sync stage SYNC-13: deletion snapshot empty" >&2; rm -f "$tmp" "$bak"; return 1; }
         local regj_pre=''
-        regj_pre=$(jq -c --slurpfile ib <(printf '%s' "$sb_snap_obj") '.inbound_snapshot = $ib[0]' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj_pre" || { rm -f "$tmp" "$bak"; return 1; }
+        regj_pre=$(jq -c --slurpfile ib <(printf '%s' "$sb_snap_obj") '.inbound_snapshot = $ib[0]' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj_pre" || { msg "users_sync stage SYNC-14: deletion snapshot persist failed" >&2; rm -f "$tmp" "$bak"; return 1; }
     fi
     case "$core" in
         xray|xray-latest)
@@ -24664,6 +24742,7 @@ users_sync() {
                      else . end)
                 else . end)
             ' "$cfg" > "$tmp" 2>/dev/null; then
+                msg "users_sync stage SYNC-15: xray config rewrite failed" >&2; 
                 rm -f "$tmp" "$bak"; return 1
             fi
             ;;
@@ -24690,19 +24769,20 @@ users_sync() {
                         .users = [$users[0][] | {name: .name, password: .secret}] end)
                 else . end)
             ' "$cfg" > "$tmp" 2>/dev/null; then
+                msg "users_sync stage SYNC-16: sing-box config rewrite failed" >&2; 
                 rm -f "$tmp" "$bak"; return 1
             fi
             ;;
         hy2)
-            users_hy2_write_users "$cfg" "$enabled" "$tmp" || { rm -f "$tmp" "$bak"; return 1; }
+            users_hy2_write_users "$cfg" "$enabled" "$tmp" || { msg "users_sync stage SYNC-17: hy2 users write failed" >&2; rm -f "$tmp" "$bak"; return 1; }
             ;;
-        *) rm -f "$tmp" "$bak"; return 1 ;;
+        *) msg "users_sync stage SYNC-18: unknown core" >&2; rm -f "$tmp" "$bak"; return 1 ;;
     esac
     # SS promotion persistence BEFORE the commit (see U65 precedent above):
     # the config below already uses eff_ss as the server key.
     if (( promote == 1 )); then
         local regj=''
-        regj=$(jq -c --rawfile ss <(printf '%s' "$eff_ss") '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || { rm -f "$tmp" "$bak"; return 1; }
+        regj=$(jq -c --rawfile ss <(printf '%s' "$eff_ss") '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || { msg "users_sync stage SYNC-19: server-secret promotion persist failed" >&2; rm -f "$tmp" "$bak"; return 1; }
     fi
     if users_commit_cfg "$core" "$cfg" "$tmp" "$bak"; then
         rm -f "$tmp" "$bak"
@@ -24721,6 +24801,7 @@ users_sync() {
         fi
         return 0
     fi
+    msg "users_sync stage SYNC-20: config commit failed" >&2; 
     rm -f "$tmp" "$bak"; return 1
 }
 
@@ -24911,7 +24992,7 @@ users_link_combo() {
 # Export every enabled user's link (all registries) in the subscription
 # file formats the legacy exporter produced.
 users_export_all() {
-    local dir='' out='' count=0 reg='' core='' tag='' failed=0
+    local dir='' out='' count=0 reg='' core='' tag='' failed=0 skipped=0
     dir="${SUBSCRIBE_DIR:-/etc/ddr/subscribe}"
     mkdir -p "$dir" 2>/dev/null || return 1
     chmod 700 "$dir" 2>/dev/null || true
@@ -24919,19 +25000,29 @@ users_export_all() {
     tmp=$(umask 077; mktemp "$dir/.uri-list.XXXXXX") || return 1
     for reg in "${ABOX_USERS_DIR:-$USERS_DIR}"/*.json; do
         [[ -f "$reg" ]] || continue
-        core=$(jq -r '.core // ""' "$reg" 2>/dev/null) || failed=1
-        tag=$(jq -r '.tag // ""' "$reg" 2>/dev/null) || failed=1
-        [[ -n "$core" && -n "$tag" ]] || { failed=1; continue; }
+        core=$(jq -r '.core // ""' "$reg" 2>/dev/null) || { msg "${YELLOW}[!] Skipped registry $reg: core unreadable.${NC}" >&2; skipped=$((skipped + 1)); continue; }
+        tag=$(jq -r '.tag // ""' "$reg" 2>/dev/null) || { msg "${YELLOW}[!] Skipped registry $reg: tag unreadable.${NC}" >&2; skipped=$((skipped + 1)); continue; }
+        [[ -n "$core" && -n "$tag" ]] || { msg "${YELLOW}[!] Skipped registry $reg: missing core or tag.${NC}" >&2; skipped=$((skipped + 1)); continue; }
         local uname='' link='' ulist=''
-        ulist=$(jq -r '.users[] | select(.disabled != true and ((.blocked // "") == "")) | .name' "$reg" 2>/dev/null) || failed=1
+        ulist=$(jq -r '.users[] | select(.disabled != true and ((.blocked // "") == "")) | .name' "$reg" 2>/dev/null) || { msg "${YELLOW}[!] Skipped registry $reg: users unreadable.${NC}" >&2; skipped=$((skipped + 1)); continue; }
         while IFS= read -r uname; do
             [[ -n "$uname" ]] || continue
-            link=$(users_link "$core" "$tag" "$uname" 2>/dev/null) || { failed=1; continue; }
-            [[ -n "$link" ]] || { failed=1; continue; }
+            link=$(users_link "$core" "$tag" "$uname" 2>/dev/null) || { msg "${YELLOW}[!] Skipped user ${uname} (${core}/${tag}): link build failed.${NC}" >&2; skipped=$((skipped + 1)); continue; }
+            [[ -n "$link" ]] || { msg "${YELLOW}[!] Skipped user ${uname} (${core}/${tag}): empty link.${NC}" >&2; skipped=$((skipped + 1)); continue; }
             printf '%s\n' "$link" >> "$tmp" && count=$((count + 1)) || failed=1
         done <<< "$ulist"
     done
     if (( failed == 1 )); then rm -f -- "$tmp"; return 1; fi
+    # SYD-B E19: skipped users no longer fail the whole export.
+    # With at least one success the export commits (partial
+    # success, explicitly reported); with zero successes the
+    # existing clear-out below still runs, so stale links never
+    # keep serving revoked users.
+    if (( skipped > 0 && count > 0 )); then
+        msg "${YELLOW}[!] Subscription export partially succeeded: ${skipped} user(s) skipped, ${count} link(s) exported.${NC}" >&2
+    elif (( skipped > 0 )); then
+        msg "${YELLOW}[!] Subscription export: ${skipped} user(s) skipped and no links exported; stale subscription will be cleared.${NC}" >&2
+    fi
     if (( count == 0 )); then
         # No enabled users: stale links must not keep serving. Atomically
         # replace both files with empty content (the old code left the
@@ -25024,7 +25115,14 @@ _str_dwidth() {
 # Write a mutated registry and sync it; roll the registry back when the
 # sync fails. $1=core $2=tag $3=new-json $4=old-json
 users_apply_reg() {
-    users_reg_write "$1" "$2" "$3" || return 1
+    # SYD-B E21: collapse duplicate names (keep the first) before
+    # writing; a duplicated registry must not reach sync. This is
+    # registry hygiene only, not a claim about the sync gate.
+    local _new="$3"
+    if command -v jq >/dev/null 2>&1; then
+        _new=$(printf '%s' "$3" | jq -c 'if (.users | type) == "array" then .users |= unique_by(.name) else . end' 2>/dev/null || printf '%s' "$3")
+    fi
+    users_reg_write "$1" "$2" "$_new" || return 1
     if ! users_sync "$1" "$2"; then
         users_reg_write "$1" "$2" "$4" >/dev/null 2>&1 || true
         return 1

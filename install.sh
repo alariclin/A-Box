@@ -3198,6 +3198,18 @@ tr_msg() {
         fa:dp_choice_preserve) echo '2) نگه‌داشتن پروتکل‌های مستقل - فقط موارد انتخابی مستقر می‌شود؛ پروتکل‌های مستقل موجود (TUIC/AnyTLS/ShadowTLS/Trojan/SOCKS5/Argo) حفظ و در پیکربندی جدید ادغام می‌شوند' ;;
         zh-tw:dp_choice_preserve) echo '2) 保留獨立協定 — 僅部署所選內容，已有獨立協定（TUIC/AnyTLS/ShadowTLS/Trojan/SOCKS5/Argo）保留並入新設定' ;;
         ja:dp_choice_preserve) echo '2) 独立プロトコルを保持 - 選択分のみデプロイし、既存の独立プロトコル（TUIC/AnyTLS/ShadowTLS/Trojan/SOCKS5/Argo）を新設定に統合します' ;;
+        zh:dp_prune_warn) echo '保留模式不会保留下列已部署主栈，部署 %s 后它们将被清理：%s' ;;
+        en:dp_prune_warn) echo 'Keep mode does not preserve the following deployed main stacks; they will be removed once %s is deployed: %s' ;;
+        ru:dp_prune_warn) echo 'Режим сохранения не сохраняет следующие развёрнутые основные стеки; после развёртывания %s они будут удалены: %s' ;;
+        fa:dp_prune_warn) echo 'حالت حفظ، پشته‌های اصلی مستقرشدهٔ زیر را حفظ نمی‌کند؛ پس از استقرار %s حذف می‌شوند: %s' ;;
+        zh-tw:dp_prune_warn) echo '保留模式不會保留下列已部署主堆疊，部署 %s 後它們將被清理：%s' ;;
+        ja:dp_prune_warn) echo '保持モードでは次のデプロイ済みメインスタックは保持されません。%s のデプロイ後に削除されます：%s' ;;
+        zh:dp_prune_confirm) echo '确认继续并清理上述主栈？[Y/N]: ' ;;
+        en:dp_prune_confirm) echo 'Confirm to continue and remove the stacks above? [Y/N]: ' ;;
+        ru:dp_prune_confirm) echo 'Подтвердить продолжение и удаление перечисленных стеков? [Y/N]: ' ;;
+        fa:dp_prune_confirm) echo 'ادامه و حذف پشته‌های بالا را تأیید می‌کنید؟ [Y/N]: ' ;;
+        zh-tw:dp_prune_confirm) echo '確認繼續並清理上述主堆疊？[Y/N]: ' ;;
+        ja:dp_prune_confirm) echo '続行し、上記のスタックを削除しますか？[Y/N]: ' ;;
         zh:dp_choice_prompt) echo '请选择 [1/2，N 取消]: ' ;;
         en:dp_choice_prompt) echo 'Choose [1/2, N to cancel]: ' ;;
         ru:dp_choice_prompt) echo 'Выберите [1/2, N - отмена]: ' ;;
@@ -10206,6 +10218,25 @@ remove_owned_auxiliary_path() {
 }
 
 
+# SYD-B E3: remove every user registry belonging to one core family.
+# Hysteria registries carry both hy2 and hysteria prefixes.
+users_registries_remove_core() {
+    local _dir="${ABOX_USERS_DIR:-/etc/ddr/users.d}" _f='' _prefix _prefixes=''
+    case "$1" in
+        hysteria) _prefixes='hy2 hysteria' ;;
+        xray|sing-box) _prefixes="$1" ;;
+        *) return 0 ;;
+    esac
+    [[ -d "$_dir" ]] || return 0
+    for _prefix in $_prefixes; do
+        for _f in "$_dir"/${_prefix}__*.json; do
+            [[ -f "$_f" && ! -L "$_f" ]] || continue
+            rm -f -- "$_f" || return 1
+        done
+    done
+    return 0
+}
+
 prune_owned_core_families_except() {
     local allowed=" $* " srv
     for srv in xray sing-box hysteria; do
@@ -10213,6 +10244,8 @@ prune_owned_core_families_except() {
         { abox_owns_service "$srv" || abox_owns_config_only_core_dir "$srv"; } || continue
         stop_abox_service "$srv" || die "$(tprintf pr_stop "$srv")"
         remove_owned_core_family "$srv" || die "$(tprintf pr_remove "$srv")"
+        # SYD-B E3: a pruned stack must not leave ghost panel entries.
+        users_registries_remove_core "$srv" || die "$(tprintf pr_remove "$srv")"
     done
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         systemctl daemon-reload >/dev/null 2>&1 || die "$(tr_msg pr_reload)"
@@ -10555,7 +10588,7 @@ deployment_evidence_exists() {
 }
 
 confirm_deployment_replacement() {
-    local next_core="$1" next_mode="$2" answer current="none" active_rc=1
+    local next_core="$1" next_mode="$2" answer current="none" active_rc=1 _other_stacks='' _next_norm='' _c='' _answer2=''
     ABOX_PRESERVE_STANDALONE=0
     [[ -n "${CORE:-}" || -n "${MODE:-}" ]] && current="${CORE:-unknown}-${MODE:-unknown}"
     if [[ "$current" == 'none' ]]; then
@@ -10594,7 +10627,27 @@ confirm_deployment_replacement() {
     msg "$(tr_msg dp_choice_preserve)"
     read -r -p "$(tr_msg dp_choice_prompt)" answer
     case "$answer" in
-        2) ABOX_PRESERVE_STANDALONE=1; msg "${GREEN}$(tr_msg dp_preserve_on)${NC}" ;;
+        2)
+            # SYD-B E3: preserve never covered the main stack itself.
+            # Choosing it while another main stack is alive used to
+            # silently continue into prune, which wipes that stack.
+            # List the living other stacks and require a second yes.
+            _other_stacks=''
+            _next_norm="$next_core"
+            [[ "$_next_norm" == singbox ]] && _next_norm='sing-box'
+            for _c in xray sing-box hysteria; do
+                [[ "$_c" == "$_next_norm" ]] && continue
+                if abox_owns_service "$_c" || abox_owns_config_only_core_dir "$_c"; then
+                    _other_stacks+="$_c "
+                fi
+            done
+            if [[ -n "$_other_stacks" ]]; then
+                msg "${YELLOW}$(tprintf dp_prune_warn "${next_core}-${next_mode}" "${_other_stacks% }")${NC}"
+                read -r -p "$(tr_msg dp_prune_confirm)" _answer2
+                is_yes "$_answer2" || { die "$(tr_msg dp_cancelled)"; return 1; }
+            fi
+            ABOX_PRESERVE_STANDALONE=1; msg "${GREEN}$(tr_msg dp_preserve_on)${NC}"
+            ;;
         1) ;;
         *) is_yes "$answer" || { die "$(tr_msg dp_cancelled)"; return 1; } ;;
     esac

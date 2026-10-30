@@ -15313,6 +15313,14 @@ prepare_abox_runtime_permissions() {
             [[ ! -e /etc/hysteria/server.key ]] || prepare_abox_runtime_read_file /etc/hysteria/server.key hysteria || return 1
             prepare_abox_runtime_write_file /var/log/A-Box-hysteria.log hysteria || return 1
             ;;
+        xray-latest)
+            # SYD-B E8: the coexist path seeds latest log paths but
+            # never prepared them, so the service could not start.
+            prepare_abox_runtime_config_dir xray /etc/ddr/xray-latest || return 1
+            prepare_abox_runtime_read_file /etc/ddr/xray-latest/config.json xray-latest || return 1
+            prepare_abox_runtime_write_file /var/log/A-Box-xray-latest-access.log xray-latest || return 1
+            prepare_abox_runtime_write_file /var/log/A-Box-xray-latest-error.log xray-latest || return 1
+            ;;
         *) return 1 ;;
     esac
 }
@@ -17827,6 +17835,73 @@ EOF_SVC
 # Standalone Trojan-Reality via Xray-core (toolbox entry).
 # Reuses A-Box Reality key/SNI flow: xray x25519 + sni_auto_select_default.
 # Tag: trojan-landing. Hot-push via API when available, restart fallback.
+# SYD-B E10: ensure the xray service unit exists and is A-Box-
+# managed. A unit that exists with the marker is left alone; a
+# missing unit is written (systemd reloads only on write;
+# OpenRC writes confd + initd and chmods); a foreign unit is
+# never overwritten (return 1).
+ensure_xray_service_unit() {
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        if [[ -f /etc/systemd/system/xray.service && ! -L /etc/systemd/system/xray.service ]]; then
+            grep -Fxq '# Managed by A-Box' /etc/systemd/system/xray.service && return 0 || return 1
+        fi
+    else
+        if [[ -f /etc/init.d/xray && ! -L /etc/init.d/xray ]]; then
+            grep -Fxq '# Managed by A-Box' /etc/init.d/xray && return 0 || return 1
+        fi
+    fi
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || return 1
+# Managed by A-Box
+[Unit]
+Description=A-Box Xray Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-xray
+Group=abox-xray
+UMask=0077
+Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        systemctl daemon-reload >/dev/null 2>&1 || return 1
+    else
+        path_parent_chain_safe /etc/conf.d/xray || return 1
+        mkdir -p /etc/conf.d || return 1
+        write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || return 1
+export XRAY_LOCATION_ASSET="/usr/local/share/xray"
+EOF_XRAY_CONFD
+        write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || return 1
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Xray Service"
+command="/usr/local/bin/xray"
+command_args="run -config /usr/local/etc/xray/config.json"
+command_background="yes"
+command_user="abox-xray:abox-xray"
+capabilities="^cap_net_bind_service"
+umask=077
+pidfile="/run/xray.pid"
+depend() { need net; }
+EOF_SVC
+        chmod +x /etc/init.d/xray || return 1
+    fi
+    prepare_abox_runtime_permissions xray || return 1
+    return 0
+}
+
 deploy_xray_trojan_landing() {
     local port pass sni pk pbk sid cfg='/usr/local/etc/xray/config.json'
     local tag="${ABOX_DEPLOY_TAG:-trojan-landing}" tmp_json cfg_bak=''
@@ -17868,55 +17943,8 @@ deploy_xray_trojan_landing() {
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
         fi
         rm -f "$tmp_json"
-        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die "$(tr_msg dp_xray_unit)"
-# Managed by A-Box
-[Unit]
-Description=A-Box Xray Service
-After=network-online.target nss-lookup.target
-Wants=network-online.target
-
-[Service]
-User=abox-xray
-Group=abox-xray
-UMask=0077
-Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
-NoNewPrivileges=true
-PrivateTmp=true
-Restart=always
-RestartSec=10
-LimitNOFILE=1048576
-LimitNPROC=1048576
-
-[Install]
-WantedBy=multi-user.target
-EOF_SVC
-        else
-            path_parent_chain_safe /etc/conf.d/xray || die "$(tr_msg dp_orc_parent)"
-            mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
-            write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die "$(tr_msg dp_xray_confd)"
-export XRAY_LOCATION_ASSET="/usr/local/share/xray"
-EOF_XRAY_CONFD
-            write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die "$(tr_msg dp_xray_initd)"
-#!/sbin/openrc-run
-# Managed by A-Box
-description="A-Box Xray Service"
-command="/usr/local/bin/xray"
-command_args="run -config /usr/local/etc/xray/config.json"
-command_background="yes"
-command_user="abox-xray:abox-xray"
-capabilities="^cap_net_bind_service"
-umask=077
-pidfile="/run/xray.pid"
-depend() { need net; }
-EOF_SVC
-            chmod +x /etc/init.d/xray || die "$(tr_msg dp_xray_chmod)"
-        fi
-        prepare_abox_runtime_permissions xray || die "$(tr_msg dp_xray_runtime)"
     fi
+    ensure_xray_service_unit || die "$(tr_msg dp_xray_unit)"
 
     # Reality keypair + SNI (reuse A-Box flow).
     local keypair
@@ -34762,6 +34790,7 @@ _xl_install_coexist() { # $1 = staged binary, $2 = tag
     fi
     _xl_write_latest_unit || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"; return 1; }
     prepare_abox_runtime_read_file "$XRAY_LATEST_CFG" xray || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"; return 1; }
+    prepare_abox_runtime_permissions xray-latest || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"; return 1; }
     if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$XRAY_LATEST_BIN" run -test -config "$XRAY_LATEST_CFG" >/dev/null 2>&1; then
         msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
         _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"

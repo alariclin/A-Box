@@ -674,6 +674,10 @@ assert_default_abox_parent_chain_trusted() {
 }
 
 ensure_abox_dir_owned() {
+    # SYD-B E9: ABOX_DIR is fixed at 0711 (traverse-only for others).
+    # The old 0700 here re-tightened the dir on every menu entry and
+    # revoked the o+x that prepare_abox_runtime_config_dir (U28) grants
+    # so the abox-xray service user can reach /etc/ddr/xray-latest.
     local dir="${1:-$ABOX_DIR}" owner tmp uid gid mode
     owner="$dir/.A-Box-owner"
     assert_default_abox_parent_chain_trusted "$dir"
@@ -688,7 +692,7 @@ ensure_abox_dir_owned() {
             path_owned_by_root "$owner" || die "$(tprintf do_mark_not_root "$owner")"
             mode=$(stat -c %a "$owner" 2>/dev/null) || die "$(tprintf do_mark_mode_read "$owner")"
             [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || die "$(tprintf do_mark_mode_unsafe "$owner")"
-            chmod 700 "$dir" || die "$(tprintf do_tighten_dir "$dir")"
+            chmod 711 "$dir" || die "$(tprintf do_tighten_dir "$dir")"
             chmod 600 "$owner" || die "$(tprintf do_tighten_mark "$owner")"
             return 0
         fi
@@ -697,7 +701,7 @@ ensure_abox_dir_owned() {
         mkdir -p "$dir" || die "$(tprintf do_mkdir "$dir")"
     fi
     chown root:root "$dir" || die "$(tprintf do_chown "$dir")"
-    chmod 700 "$dir" || die "$(tprintf do_chmod "$dir")"
+    chmod 711 "$dir" || die "$(tprintf do_chmod "$dir")"
     tmp=$(umask 077; mktemp "$dir/.A-Box-owner.XXXXXX") || die "$(tr_msg do_mark_tmp)"
     printf '%s\n' 'A-Box managed directory v1' > "$tmp" || { rm -f "$tmp"; die "$(tr_msg do_mark_write)"; }
     chown root:root "$tmp" || { rm -f "$tmp"; die "$(tr_msg do_mark_chown)"; }
@@ -34217,7 +34221,10 @@ EOF_XLSVC
 # XL-FIX2: is_systemd/xray_owned previously existed only inside generated-script
 # heredocs (probe/geo/traffic copies); the main script called xray_owned at
 # takeover install and got "command not found". Real top-level definitions.
-is_systemd() { [[ "$INIT_SYS_EXPECTED" == systemd ]]; }
+# SYD-B E7: INIT_SYS_EXPECTED is only ever assigned inside generated scripts;
+# in the main script it is unset, which killed takeover under set -u.
+# Fall back to INIT_SYS (set by init_system_environment in main flow).
+is_systemd() { [[ "${INIT_SYS_EXPECTED:-${INIT_SYS:-}}" == systemd ]]; }
 xray_owned() { local u; if is_systemd; then u=/etc/systemd/system/xray.service; else u=/etc/init.d/xray; fi; [[ -f "$u" && ! -L "$u" ]] && grep -Fxq '# Managed by A-Box' "$u"; }
 
 _xl_write_slot_unit() {
@@ -38159,6 +38166,9 @@ PY_SELFTEST_TAR
     declare -F xray_latest_ensure_core >/dev/null 2>&1 || { echo 'FAIL: latest Xray core ensure missing'; failures=$((failures + 1)); }
     declare -F is_systemd >/dev/null 2>&1 || { echo 'FAIL: is_systemd missing'; failures=$((failures + 1)); }
     declare -F xray_owned >/dev/null 2>&1 || { echo 'FAIL: xray_owned missing'; failures=$((failures + 1)); }
+    ( INIT_SYS_EXPECTED='' INIT_SYS='' is_systemd ) && { echo 'FAIL: is_systemd true with neither variable set'; failures=$((failures + 1)); } || true
+    ( INIT_SYS=systemd is_systemd ) || { echo 'FAIL: is_systemd false with INIT_SYS=systemd'; failures=$((failures + 1)); }
+    ( INIT_SYS_EXPECTED=systemd is_systemd ) || { echo 'FAIL: is_systemd false with INIT_SYS_EXPECTED=systemd'; failures=$((failures + 1)); }
     declare -F cleanup_protocols_menu >/dev/null 2>&1 || { echo 'FAIL: cleanup protocols menu missing'; failures=$((failures + 1)); }
     declare -F remove_single_protocol_menu >/dev/null 2>&1 || { echo 'FAIL: single protocol remover missing'; failures=$((failures + 1)); }
     declare -F clear_all_protocols >/dev/null 2>&1 || { echo 'FAIL: clear all protocols missing'; failures=$((failures + 1)); }
@@ -39927,6 +39937,15 @@ main_loop() {
         esac
         unset _MI_COLLECTED
     done
+}
+
+# SYD-B E0: dumb/unknown TERM or non-tty output makes ncurses clear emit
+# junk into logs. Shadow clear for the whole main script; a real terminal
+# still delegates to the system clear, everything else becomes a no-op.
+clear() {
+    [[ -t 1 ]] || return 0
+    case "${TERM:-}" in ''|dumb|unknown) return 0 ;; esac
+    command clear "$@" 2>/dev/null || :
 }
 
 main "$@"

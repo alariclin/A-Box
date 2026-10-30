@@ -25497,6 +25497,99 @@ _nsni_rollback() {
     (( _ok == 1 ))
 }
 
+# SYD-B E20: live handshake self-check for a reality SNI change.
+# Returns 0 when a real client handshake through the new SNI succeeds,
+# 1 when it deterministically fails, 2 when the check cannot be run
+# (missing binary/curl/python3/jq, unreadable config, or no public
+# key). A config-valid SNI can still fail the live handshake
+# (microsoft case); run -test / check -c alone cannot catch that.
+# The caller rolls back on 1 and only warns on 2. Live behaviour is
+# NOT provable in a sandbox (no server side); Sydney microsoft retest
+# is the proof.
+_nsni_handshake_check() {
+    local core="$1" tag="$2" cfg="$3" sni="$4"
+    local bin='' port='' listen='' dial='' uuid='' flow='' net='' xpath='' xhost='' xmode='' sid='' pbk=''
+    local lf='' sport='' cc='' pid='' code='' i=0 up=0 _try=0 _envf=''
+    case "$core" in
+        xray) bin='/usr/local/bin/xray' ;;
+        xray-latest) bin=$(users_bin_of xray-latest 2>/dev/null || echo /usr/local/bin/xray-latest) ;;
+        sing-box) bin="${SB_PATH:-/usr/local/bin/sing-box}" ;;
+        *) return 2 ;;
+    esac
+    [[ -x "$bin" ]] || return 2
+    command -v curl >/dev/null 2>&1 || return 2
+    command -v python3 >/dev/null 2>&1 || return 2
+    command -v jq >/dev/null 2>&1 || return 2
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 2
+    if [[ "$core" == 'sing-box' ]]; then
+        port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .listen_port // empty' "$cfg" 2>/dev/null | head -n 1)
+        listen=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .listen // empty' "$cfg" 2>/dev/null | head -n 1)
+        uuid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .users[0].uuid // empty' "$cfg" 2>/dev/null | head -n 1)
+        sid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | if (.tls.reality.short_id | type) == "array" then (.tls.reality.short_id[0] // "") else (.tls.reality.short_id // "") end' "$cfg" 2>/dev/null | head -n 1)
+    else
+        port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .port // empty' "$cfg" 2>/dev/null | head -n 1)
+        listen=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .listen // empty' "$cfg" 2>/dev/null | head -n 1)
+        uuid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.clients[0].id // empty' "$cfg" 2>/dev/null | head -n 1)
+        flow=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.clients[0].flow // ""' "$cfg" 2>/dev/null | head -n 1)
+        net=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.network // "tcp"' "$cfg" 2>/dev/null | head -n 1)
+        xpath=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.path // "/xhttp"' "$cfg" 2>/dev/null | head -n 1)
+        xhost=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.host // ""' "$cfg" 2>/dev/null | head -n 1)
+        xmode=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.mode // "stream-one"' "$cfg" 2>/dev/null | head -n 1)
+        sid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | if (.streamSettings.realitySettings.shortIds | type) == "array" then (.streamSettings.realitySettings.shortIds[0] // "") else (.streamSettings.realitySettings.shortIds // "") end' "$cfg" 2>/dev/null | head -n 1)
+    fi
+    [[ -n "$port" && -n "$uuid" ]] || return 2
+    case "$listen" in ''|0.0.0.0|::) dial='127.0.0.1' ;; *) dial="$listen" ;; esac
+    [[ -z "$xhost" ]] && xhost="$sni"
+    lf="${ABOX_DIR:-/etc/ddr}/standalone-links.d/$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag").link"
+    if [[ -f "$lf" && ! -L "$lf" ]]; then
+        pbk=$(grep -o 'pbk=[^&#]*' "$lf" 2>/dev/null | head -n 1 | cut -d= -f2-)
+    fi
+    if [[ -z "$pbk" ]]; then
+        _envf="${ABOX_ENV:-/etc/ddr/.env}"
+        if [[ -f "$_envf" && ! -L "$_envf" ]]; then
+            pbk=$(grep -E '^PUBLIC_KEY=' "$_envf" 2>/dev/null | head -n 1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//')
+        fi
+    fi
+    [[ -n "$pbk" ]] || return 2
+    sport=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()' 2>/dev/null) || return 2
+    [[ -n "$sport" ]] || return 2
+    cc=$(mktemp /tmp/A-Box-nsni-client.XXXXXX) || return 2
+    mv "$cc" "$cc.json" 2>/dev/null || { rm -f "$cc"; return 2; }
+    cc="$cc.json"
+    if [[ "$core" == 'sing-box' ]]; then
+        jq -n --arg dial "$dial" --argjson port "$port" --arg uuid "$uuid" --arg sni "$sni" --arg pbk "$pbk" --arg sid "$sid" --argjson sport "$sport" '{
+            log: {level: "warning"},
+            inbounds: [{type: "socks", tag: "socks-in", listen: "127.0.0.1", listen_port: $sport}],
+            outbounds: [{type: "vless", tag: "proxy", server: $dial, server_port: $port, uuid: $uuid,
+                tls: {enabled: true, server_name: $sni, reality: {enabled: true, public_key: $pbk, short_id: $sid}, utls: {enabled: true, fingerprint: "chrome"}}}]
+        }' > "$cc" 2>/dev/null || { rm -f "$cc"; return 2; }
+        "$bin" run -c "$cc" >/dev/null 2>&1 & pid=$!
+    else
+        jq -n --arg dial "$dial" --argjson port "$port" --arg uuid "$uuid" --arg flow "$flow" --arg net "$net" --arg sni "$sni" --arg pbk "$pbk" --arg sid "$sid" --arg xpath "$xpath" --arg xhost "$xhost" --arg xmode "$xmode" --argjson sport "$sport" '{
+            log: {loglevel: "warning"},
+            inbounds: [{port: $sport, listen: "127.0.0.1", protocol: "socks", settings: {auth: "noauth", udp: true}, tag: "socks-in"}],
+            outbounds: [{protocol: "vless", settings: {vnext: [{address: $dial, port: $port, users: [{id: $uuid, flow: $flow, encryption: "none"}]}]},
+                streamSettings: ({network: $net, security: "reality",
+                    realitySettings: {serverName: $sni, publicKey: $pbk, shortId: $sid, fingerprint: "chrome"}}
+                    + (if $net == "xhttp" then {xhttpSettings: {path: $xpath, host: $xhost, mode: $xmode}} else {} end))}]
+        }' > "$cc" 2>/dev/null || { rm -f "$cc"; return 2; }
+        "$bin" run -config "$cc" >/dev/null 2>&1 & pid=$!
+    fi
+    while (( i < 40 )); do
+        if (exec 3<>"/dev/tcp/127.0.0.1/$sport") 2>/dev/null; then up=1; break; fi
+        sleep 0.25; i=$((i + 1))
+    done
+    if (( up == 0 )); then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rm -f "$cc"; return 2; fi
+    code=''
+    for _try in 1 2; do
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --connect-timeout 3 --max-time 10 "https://$sni/" 2>/dev/null || printf '000')
+        [[ "$code" =~ ^[0-9][0-9][0-9]$ && "$code" != '000' ]] && break
+        sleep 1
+    done
+    kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rm -f "$cc"
+    [[ "$code" =~ ^[0-9][0-9][0-9]$ && "$code" != '000' ]]
+}
+
 _nsni_apply() {
     local core="$1" tag="$2" kind="$3" cfg="$4" old="$5" new="$6" key="${7:-}" crt="${8:-}"
     local bak='' tmp='' bin='' filter=''
@@ -25541,6 +25634,24 @@ _nsni_apply() {
         if (( _restart_ok == 0 )); then
             if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
             return 1
+        fi
+    fi
+    # SYD-B E20: a config-valid new SNI can still fail the live
+    # handshake (microsoft case); run -test / check -c cannot catch
+    # that. For reality kinds with a previously running service,
+    # verify the live handshake BEFORE links or .env move to the new
+    # SNI: failure (1) rolls back to the old SNI and returns 1;
+    # indeterminate (2) only warns and continues. The message goes to
+    # stderr so a caller capturing stdout cannot swallow it.
+    if [[ "$kind" == reality-xray || "$kind" == reality-sb ]] && (( _was_running == 1 )); then
+        _nsni_handshake_check "$core" "$tag" "$cfg" "$new"
+        local _hs_rc=$?
+        if (( _hs_rc == 1 )); then
+            msg "${RED}[!] New SNI handshake failed; rolling back to the previous SNI.${NC}" >&2
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+            return 1
+        elif (( _hs_rc == 2 )); then
+            msg "${YELLOW}[!] Handshake self-check unavailable; new SNI is unverified.${NC}" >&2
         fi
     fi
     local _ldir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _lf='' _shown='' _stem='' _esc_old='' _esc_new=''
@@ -36085,6 +36196,26 @@ show_standalone_links() {
     fi
 }
 
+# SYD-B E15: pinSHA256 is the SPKI SHA256 in base64, NOT the whole-
+# certificate fingerprint hex. Recompute it from the live certificate
+# (same pipeline the .env writer uses); the caller falls back to the
+# stored .env value only when the certificate is unreadable.
+hy2_spki_pin_b64() {
+    local crt='' tmpd='' out=''
+    case "${CORE:-}" in
+        singbox) crt='/etc/sing-box/hy2.crt' ;;
+        *) crt='/etc/hysteria/server.crt' ;;
+    esac
+    [[ -f "$crt" && ! -L "$crt" ]] || return 1
+    tmpd=$(mktemp -d /tmp/A-Box-pin.XXXXXX) || return 1
+    openssl x509 -in "$crt" -noout -pubkey > "$tmpd/pub.pem" 2>/dev/null || { rm -rf "$tmpd"; return 1; }
+    openssl pkey -pubin -in "$tmpd/pub.pem" -outform der -out "$tmpd/pub.der" 2>/dev/null || { rm -rf "$tmpd"; return 1; }
+    openssl dgst -sha256 -binary "$tmpd/pub.der" 2>/dev/null | base64 2>/dev/null | tr -d '\n' > "$tmpd/pin.txt" || { rm -rf "$tmpd"; return 1; }
+    out=$(cat "$tmpd/pin.txt" 2>/dev/null); rm -rf "$tmpd"
+    [[ -n "$out" ]] || return 1
+    printf '%s' "$out"
+}
+
 view_config() {
     local CALLER=${1:-manual}
     clear
@@ -36114,7 +36245,13 @@ view_config() {
     HY2_PASS_E=$(urlencode "${HY2_PASS:-}")
     HY2_OBFS_E=$(urlencode "${HY2_OBFS:-}")
     HY2_DOMAIN_E=$(urlencode "${HY2_DOMAIN:-}")
-    HY2_PIN_E=$(urlencode "${HY2_CERT_SHA256_FP:-}")
+    # SYD-B E15: pinSHA256 must be the SPKI SHA256 base64, never
+    # the whole-certificate fingerprint hex (wrong input AND wrong
+    # encoding). Recompute from the live certificate; fall back to
+    # the stored .env SPKI value only when it is unreadable.
+    HY2_PIN_E=$(hy2_spki_pin_b64 || printf '%s' "${HY2_CERT_PUBKEY_SHA256_B64:-}")
+    [[ -n "$HY2_PIN_E" ]] || msg "${YELLOW}[!] Hy2 certificate unreadable; pinSHA256 left empty.${NC}" >&2
+    HY2_PIN_E=$(urlencode "$HY2_PIN_E")
     msg "${BLUE}======================================================================${NC}"
     msg "${BOLD}${CYAN}全局拓扑网络参数 (${MODE}) / Network Parameters${NC}"
     msg "${BLUE}======================================================================${NC}"

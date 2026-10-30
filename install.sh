@@ -260,6 +260,14 @@ ABOX_TRAFFIC_TX_DIR=''
 
 msg() { printf '%s\n' "$*"; }
 
+# SYD-A E0: bare `clear` under TERM=dumb (or a non-tty stdout) makes ncurses
+# emit junk lines into logs. All menu clears go through this wrapper.
+clear_screen() {
+    case "${TERM:-}" in ''|dumb) return 0 ;; esac
+    [[ -t 1 ]] || return 0
+    clear 2>/dev/null || true
+}
+
 # Activity indicator for long leaf commands (downloads, image pulls):
 # ASCII spinner + label + elapsed seconds on stderr while the command
 # runs; the command's exit code is returned unchanged. When stderr is
@@ -689,6 +697,13 @@ ensure_abox_dir_owned() {
             mode=$(stat -c %a "$owner" 2>/dev/null) || die "$(tprintf do_mark_mode_read "$owner")"
             [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || die "$(tprintf do_mark_mode_unsafe "$owner")"
             chmod 700 "$dir" || die "$(tprintf do_tighten_dir "$dir")"
+            # SYD-A E9: the U28 traverse grant (chmod o+x) for the
+            # xray-latest runtime must survive re-entry: re-tightening
+            # to 700 here broke every later latest restart. Keep o+x
+            # exactly when the latest runtime directory exists.
+            if [[ -d "$dir/xray-latest" ]]; then
+                chmod o+x "$dir" || die "$(tprintf do_tighten_dir "$dir")"
+            fi
             chmod 600 "$owner" || die "$(tprintf do_tighten_mark "$owner")"
             return 0
         fi
@@ -3140,6 +3155,12 @@ tr_msg() {
         fa:dp_stop_warn) echo '‏A-Box پیش از استقرار پشته جدید، سرویس‌های مدیریت‌شده را متوقف می‌کند.' ;;
         zh-tw:dp_stop_warn) echo 'A-Box 將在部署新堆疊前停止受管服務。' ;;
         ja:dp_stop_warn) echo 'A-Box は新しいスタックを導入する前に、管理対象サービスを停止します。' ;;
+        zh:dp_prune_warn) echo '注意：本次部署将删除以下其它主栈（含其端口与配置）：%s；仅独立协议可保留，新部署为 %s。' ;;
+        en:dp_prune_warn) echo 'Note: this deployment will remove the following other main stacks (including their ports and configs): %s; only standalone protocols can be preserved. New deployment: %s.' ;;
+        ru:dp_prune_warn) echo 'Note: this deployment will remove the following other main stacks (including their ports and configs): %s; only standalone protocols can be preserved. New deployment: %s.' ;;
+        fa:dp_prune_warn) echo 'Note: this deployment will remove the following other main stacks (including their ports and configs): %s; only standalone protocols can be preserved. New deployment: %s.' ;;
+        zh-tw:dp_prune_warn) echo '注意：本次部署將刪除以下其它主棧（含其連接埠與設定）：%s；僅獨立協議可保留，新部署為 %s。' ;;
+        ja:dp_prune_warn) echo 'Note: this deployment will remove the following other main stacks (including their ports and configs): %s; only standalone protocols can be preserved. New deployment: %s.' ;;
         zh:dp_current) echo '当前配置：%s | 新部署：%s' ;;
         en:dp_current) echo 'Current config: %s | New deployment: %s' ;;
         ru:dp_current) echo 'Текущая конфигурация: %s | Новое развёртывание: %s' ;;
@@ -8007,7 +8028,7 @@ initial_language_select() {
 language_menu() {
     # Submenu loop: 0/Enter returns to the parent menu.
     while true; do
-    clear
+    clear_screen
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}$(tr_msg lang_title)${NC}"
     msg "${CYAN}======================================================================${NC}"
@@ -10209,6 +10230,12 @@ prune_owned_core_families_except() {
         { abox_owns_service "$srv" || abox_owns_config_only_core_dir "$srv"; } || continue
         stop_abox_service "$srv" || die "$(tprintf pr_stop "$srv")"
         remove_owned_core_family "$srv" || die "$(tprintf pr_remove "$srv")"
+        # SYD-A E3: a pruned stack must not leave registry records behind
+        # ("records without service", the E3/E5/E18 residue shape).
+        rm -f -- "${ABOX_USERS_DIR:-/etc/ddr/users.d}/${srv}__"*.json 2>/dev/null || true
+        if [[ "$srv" == 'hysteria' ]]; then
+            rm -f -- "${ABOX_USERS_DIR:-/etc/ddr/users.d}/hy2__"*.json 2>/dev/null || true
+        fi
     done
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         systemctl daemon-reload >/dev/null 2>&1 || die "$(tr_msg pr_reload)"
@@ -10235,14 +10262,27 @@ list_foreign_core_conflicts() {
     local -A seen=()
     for srv in "$@"; do
         { abox_owns_service "$srv" || abox_owns_config_only_core_dir "$srv"; } && continue
+        # SYD-A E11: an A-Box seed residual (binary + empty seed config,
+        # no unit) is script residue, not a foreign deployment: skip the
+        # whole family so deploy can reclaim it instead of dying.
+        core_family_seed_residual "$srv" 2>/dev/null && continue
         unit=$(same_name_service_unit_path "$srv" 2>/dev/null || true)
         if [[ -n "$unit" ]]; then
             key="${srv}|${unit}"
             if [[ -z "${seen[$key]:-}" ]]; then printf '%s|%s\n' "$srv" "$unit"; seen[$key]=1; fi
         fi
         core_paths=$(core_family_paths "$srv") || return 1
+        local _syd_orph_bin=''
+        case "$srv" in
+            xray) _syd_orph_bin=/usr/local/bin/xray ;;
+            sing-box) _syd_orph_bin=/usr/local/bin/sing-box ;;
+            hysteria) _syd_orph_bin=/usr/local/bin/hysteria ;;
+        esac
         while IFS= read -r path; do
             [[ -e "$path" || -L "$path" ]] || continue
+            if [[ -n "$_syd_orph_bin" && "$path" == "$_syd_orph_bin" ]] && { core_family_binary_orphaned "$srv" || core_family_seed_residual "$srv"; }; then
+                continue
+            fi
             key="${srv}|${path}"
             [[ -n "${seen[$key]:-}" ]] && continue
             printf '%s|%s\n' "$srv" "$path"
@@ -10252,9 +10292,17 @@ list_foreign_core_conflicts() {
 }
 
 assert_no_foreign_core_conflicts() {
-    local conflicts
+    local conflicts _syd_residual_notice=0 _syd_srv=''
+    for _syd_srv in "$@"; do
+        if core_family_binary_orphaned "$_syd_srv" 2>/dev/null || core_family_seed_residual "$_syd_srv" 2>/dev/null; then
+            _syd_residual_notice=1
+        fi
+    done
     conflicts=$(list_foreign_core_conflicts "$@") || die "$(tr_msg af_enum)"
-    [[ -z "$conflicts" ]] && return 0
+    if [[ -z "$conflicts" ]]; then
+        (( _syd_residual_notice == 1 )) && msg "${YELLOW}[!] 检测到本脚本残留（二进制/种子配置），已按脚本自造残留豁免，非用户外来文件。${NC}"
+        return 0
+    fi
     msg "${RED}[!] Refusing to overwrite non-A-Box core files/services:${NC}"
     while IFS='|' read -r srv path; do [[ -n "$path" ]] && msg "${RED}    ${srv}: ${path}${NC}"; done <<< "$conflicts"
     die "$(tr_msg af_migrate)"
@@ -10277,6 +10325,26 @@ core_family_binary_orphaned() {
     [[ ! -e "$cfg_dir" && ! -L "$cfg_dir" ]] || return 1
     unit=$(same_name_service_unit_path "$srv" 2>/dev/null || true)
     [[ -z "$unit" || ( ! -e "$unit" && ! -L "$unit" ) ]]
+}
+
+# SYD-A E11: script-generated seed residual — binary + config dir present,
+# unit (ownership proof) gone, and the config is the A-Box empty seed (no
+# inbounds, A-Box log paths). A foreign install has live inbounds and no
+# A-Box log paths, so it never matches this narrow pattern.
+core_family_seed_residual() {
+    local srv="$1" cfg_dir='' bin='' cfg='' unit=''
+    case "$srv" in
+        xray) cfg_dir=/usr/local/etc/xray; bin=/usr/local/bin/xray; cfg=/usr/local/etc/xray/config.json ;;
+        sing-box) cfg_dir=/etc/sing-box; bin=/usr/local/bin/sing-box; cfg=/etc/sing-box/config.json ;;
+        *) return 1 ;;
+    esac
+    [[ -x "$bin" && ! -L "$bin" ]] || return 1
+    [[ -d "$cfg_dir" && ! -L "$cfg_dir" ]] || return 1
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    unit=$(same_name_service_unit_path "$srv" 2>/dev/null || true)
+    [[ -z "$unit" || ( ! -e "$unit" && ! -L "$unit" ) ]] || return 1
+    jq -e '.inbounds == []' "$cfg" >/dev/null 2>&1 || return 1
+    grep -q 'A-Box-' "$cfg" 2>/dev/null
 }
 
 remove_owned_core_family() {
@@ -10550,6 +10618,39 @@ deployment_evidence_exists() {
     return 1
 }
 
+# SYD-A E3: other owned main stacks that a deployment would prune.
+# $1 = next core in menu spelling (xray|singbox|hysteria); prints one
+# space-separated list (xray/sing-box/hysteria) of owned stacks that are
+# not the target. A stack counts when its unit is A-Box-managed or its
+# config holds live inbounds.
+other_owned_core_stacks() {
+    local next="$1" srv='' canon='' cfg='' found=''
+    case "$next" in
+        xray) canon='xray' ;;
+        singbox|sing-box) canon='sing-box' ;;
+        hysteria) canon='hysteria' ;;
+        *) canon="$next" ;;
+    esac
+    for srv in xray sing-box hysteria; do
+        [[ "$srv" == "$canon" ]] && continue
+        if abox_owns_service "$srv" 2>/dev/null; then
+            found+="$srv "
+            continue
+        fi
+        case "$srv" in
+            xray) cfg='/usr/local/etc/xray/config.json' ;;
+            sing-box) cfg='/etc/sing-box/config.json' ;;
+            hysteria) cfg='/etc/hysteria/config.yaml' ;;
+        esac
+        if [[ "$srv" == 'hysteria' ]]; then
+            [[ -f "$cfg" && ! -L "$cfg" ]] && found+="$srv "
+        elif [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e '.inbounds | length > 0' "$cfg" >/dev/null 2>&1; then
+            found+="$srv "
+        fi
+    done
+    printf '%s' "${found% }"
+}
+
 confirm_deployment_replacement() {
     local next_core="$1" next_mode="$2" answer current="none" active_rc=1
     ABOX_PRESERVE_STANDALONE=0
@@ -10584,6 +10685,14 @@ confirm_deployment_replacement() {
     fi
     msg "${YELLOW}[!] $(tr_msg dp_stop_warn)${NC}"
     msg "$(tprintf dp_current "$current" "${next_core}-${next_mode}")"
+    # SYD-A E3 (guard-explicit track): "preserve" never covered other main
+    # stacks, yet the guard was silent about them. Name them before the
+    # choice so overwrite/preserve is an informed decision.
+    local _syd_others=''
+    _syd_others=$(other_owned_core_stacks "$next_core" 2>/dev/null || true)
+    if [[ -n "$_syd_others" ]]; then
+        msg "${YELLOW}[!] $(tprintf dp_prune_warn "$_syd_others" "${next_core}-${next_mode}")${NC}"
+    fi
     # Critical when replacing existing config/services: never auto-yes in fast mode.
     print_port_occupancy
     msg "$(tr_msg dp_choice_overwrite)"
@@ -11605,6 +11714,10 @@ nftables_native_rules_present() {
             return ((f == "ip" || f == "ip6") && (n == "filter" || n == "nat" || n == "mangle" || n == "raw" || n == "security"))
         }
         function eval_chain() {
+            # SYD-A E1: chains inside a fail2ban table are third-party
+            # lookalikes, not A-Box native evidence (same exclusion as
+            # the table rule above).
+            if (pend_name ~ /^f2b-/ || pend_name == "fail2ban") { return }
             if (!is_std(pend_cname)) { native = 1; return }
             if (is_lower_std(pend_cname)) { native = 1; return }
         }
@@ -11612,10 +11725,11 @@ nftables_native_rules_present() {
             family=$2
             name=$3
             gsub(/[{}]/, "", name)
-            if (family == "inet" || family == "bridge" || family == "netdev" || family == "arp")
+            if ((family == "inet" || family == "bridge" || family == "netdev" || family == "arp") && name !~ /^f2b-/ && name != "fail2ban")
                 native=1
             else if ((family == "ip" || family == "ip6") &&
-                     name !~ /^(filter|nat|mangle|raw|security)$/)
+                     name !~ /^(filter|nat|mangle|raw|security)$/ &&
+                     name !~ /^f2b-/ && name != "fail2ban")
                 native=1
             pend = 0
             next
@@ -15046,6 +15160,16 @@ prepare_abox_runtime_permissions() {
             done
             prepare_abox_runtime_write_file /var/log/A-Box-singbox.log sing-box || return 1
             ;;
+        xray-latest)
+            # SYD-A E8: the coexist path previously never prepared the
+            # latest log files, so a root-created 600 log killed the
+            # service at first start (exit 23) before any identity
+            # mapping could matter.
+            prepare_abox_runtime_config_dir xray /etc/ddr/xray-latest || return 1
+            prepare_abox_runtime_read_file /etc/ddr/xray-latest/config.json xray || return 1
+            prepare_abox_runtime_write_file /var/log/A-Box-xray-latest-access.log xray || return 1
+            prepare_abox_runtime_write_file /var/log/A-Box-xray-latest-error.log xray || return 1
+            ;;
         hysteria)
             prepare_abox_runtime_config_dir hysteria /etc/hysteria || return 1
             [[ ! -e /etc/hysteria/acme ]] || prepare_hysteria_acme_dir_ownership || return 1
@@ -16904,7 +17028,7 @@ EOF_HY2
 deploy_official_hy2() {
     local IS_SILENT=${1:-NORMAL} TLS_CONFIG HY2_LISTEN cert_cn HY2_CAPS='CAP_NET_BIND_SERVICE' hy2_tmp hy2_bin domain_yaml token_yaml SKIP_REPLACE_AND_PRUNE=${2:-0}
     if [[ "$IS_SILENT" != 'SILENT' ]]; then
-        clear; msg "${BOLD}${GREEN}部署官方 Hysteria 2${NC}"
+        clear_screen; msg "${BOLD}${GREEN}部署官方 Hysteria 2${NC}"
         init_system_environment
         load_optional_abox_env_or_die
         light_preflight_check
@@ -17232,6 +17356,15 @@ deployment_transaction_rollback() {
     # rollback truly completes so an incomplete recovery remains diagnosable.
     ABOX_DEPLOY_TX_ACTIVE=0
     ABOX_DIE_HOOK=''
+    # SYD-A E14: verify the recovery backup BEFORE any destructive step.
+    # A corrupt/missing backup previously surfaced only after the live
+    # stacks were already deleted ("delete first, restore later").
+    if [[ -n "$backup" ]]; then
+        if [[ ! -f "$backup" ]] || ! tar -tzf "$backup" >/dev/null 2>&1; then
+            msg "${RED}[!] 回滚预检失败（rollback-prevalidate-backup）：备份不可用，拒绝删除现有部署。备份：${backup}${NC}" >&2
+            return 1
+        fi
+    fi
     msg "${YELLOW}[!] ${reason} failed; restoring the exact pre-operation snapshot.${NC}"
 
     if ! stop_all_managed_services >/dev/null 2>&1; then
@@ -17253,16 +17386,22 @@ deployment_transaction_rollback() {
         fi
     done
 
+    local _syd_restore_ok=1
     if [[ -n "$tx_key_file" ]]; then
-        if ! restore_latest_backup_silent "$tx_backup_dir" "$backup" "$tx_key_file"; then
-            msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup: ${backup:-missing}. Recovery context retained.${NC}" >&2
-            return 1
-        fi
+        restore_latest_backup_silent "$tx_backup_dir" "$backup" "$tx_key_file" || _syd_restore_ok=0
     else
-        if ! restore_latest_backup_silent "$tx_backup_dir" "$backup"; then
-            msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup: ${backup:-missing}. Recovery context retained.${NC}" >&2
-            return 1
-        fi
+        restore_latest_backup_silent "$tx_backup_dir" "$backup" || _syd_restore_ok=0
+    fi
+    if (( _syd_restore_ok == 0 )); then
+        msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup (gate: restore_latest_backup_silent): ${backup:-missing}. Recovery context retained.${NC}" >&2
+        # SYD-A E2/E14: a failed restore must not leave services stopped
+        # without even trying: best-effort restart of any target whose
+        # unit still exists, then report the failure honestly.
+        for srv in $targets; do
+            restart_service_soft "$srv" >/dev/null 2>&1 || true
+        done
+        msg "${YELLOW}[!] 恢复失败后已尝试重启残存服务（失败的恢复不等于服务已恢复，请手动核查）。${NC}" >&2
+        return 1
     fi
 
     if [[ -n "$tx_tmp" ]]; then
@@ -17381,7 +17520,7 @@ setup_socks5_params() {
 deploy_singbox_socks5_landing() {
     local port user pass proto cfg='/etc/sing-box/config.json'
     local tag="${ABOX_DEPLOY_TAG:-socks5-landing}" tmp_json
-    clear; msg "${BOLD}${GREEN}$(tr_msg socks5_sb_title)${NC}"
+    clear_screen; msg "${BOLD}${GREEN}$(tr_msg socks5_sb_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
@@ -17566,10 +17705,60 @@ EOF_SVC
 # Standalone Trojan-Reality via Xray-core (toolbox entry).
 # Reuses A-Box Reality key/SNI flow: xray x25519 + sni_auto_select_default.
 # Tag: trojan-landing. Hot-push via API when available, restart fallback.
+_trojan_write_xray_unit() {
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die "$(tr_msg dp_xray_unit)"
+# Managed by A-Box
+[Unit]
+Description=A-Box Xray Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-xray
+Group=abox-xray
+UMask=0077
+Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+    else
+        path_parent_chain_safe /etc/conf.d/xray || die "$(tr_msg dp_orc_parent)"
+        mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
+        write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die "$(tr_msg dp_xray_confd)"
+export XRAY_LOCATION_ASSET="/usr/local/share/xray"
+EOF_XRAY_CONFD
+        write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die "$(tr_msg dp_xray_initd)"
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Xray Service"
+command="/usr/local/bin/xray"
+command_args="run -config /usr/local/etc/xray/config.json"
+command_background="yes"
+command_user="abox-xray:abox-xray"
+capabilities="^cap_net_bind_service"
+umask=077
+pidfile="/run/xray.pid"
+depend() { need net; }
+EOF_SVC
+        chmod +x /etc/init.d/xray || die "$(tr_msg dp_xray_chmod)"
+    fi
+}
+
 deploy_xray_trojan_landing() {
     local port pass sni pk pbk sid cfg='/usr/local/etc/xray/config.json'
     local tag="${ABOX_DEPLOY_TAG:-trojan-landing}" tmp_json cfg_bak=''
-    clear; msg "${BOLD}${GREEN}$(tr_msg trojan_title)${NC}"
+    clear_screen; msg "${BOLD}${GREEN}$(tr_msg trojan_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
@@ -17607,54 +17796,14 @@ deploy_xray_trojan_landing() {
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
         fi
         rm -f "$tmp_json"
-        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die "$(tr_msg dp_xray_unit)"
-# Managed by A-Box
-[Unit]
-Description=A-Box Xray Service
-After=network-online.target nss-lookup.target
-Wants=network-online.target
-
-[Service]
-User=abox-xray
-Group=abox-xray
-UMask=0077
-Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
-NoNewPrivileges=true
-PrivateTmp=true
-Restart=always
-RestartSec=10
-LimitNOFILE=1048576
-LimitNPROC=1048576
-
-[Install]
-WantedBy=multi-user.target
-EOF_SVC
-        else
-            path_parent_chain_safe /etc/conf.d/xray || die "$(tr_msg dp_orc_parent)"
-            mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
-            write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XRAY_CONFD' || die "$(tr_msg dp_xray_confd)"
-export XRAY_LOCATION_ASSET="/usr/local/share/xray"
-EOF_XRAY_CONFD
-            write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_SVC' || die "$(tr_msg dp_xray_initd)"
-#!/sbin/openrc-run
-# Managed by A-Box
-description="A-Box Xray Service"
-command="/usr/local/bin/xray"
-command_args="run -config /usr/local/etc/xray/config.json"
-command_background="yes"
-command_user="abox-xray:abox-xray"
-capabilities="^cap_net_bind_service"
-umask=077
-pidfile="/run/xray.pid"
-depend() { need net; }
-EOF_SVC
-            chmod +x /etc/init.d/xray || die "$(tr_msg dp_xray_chmod)"
-        fi
+        _trojan_write_xray_unit || die "$(tr_msg dp_xray_unit)"
         prepare_abox_runtime_permissions xray || die "$(tr_msg dp_xray_runtime)"
+    fi
+
+    # SYD-A E10: unit write is decoupled from binary existence: a residual
+    # binary must not skip unit creation (that was the E10 restart failure).
+    if ! abox_owns_service xray; then
+        _trojan_write_xray_unit || die "$(tr_msg dp_xray_unit)"
     fi
 
     # Reality keypair + SNI (reuse A-Box flow).
@@ -17734,7 +17883,7 @@ EOF_SVC
 deploy_singbox_trojan_landing() {
     local port pass sni pk pbk sid cfg='/etc/sing-box/config.json'
     local tag="${ABOX_DEPLOY_TAG:-trojan-landing}" tmp_json cfg_bak=''
-    clear; msg "${BOLD}${GREEN}$(tr_msg trojan_sb_title)${NC}"
+    clear_screen; msg "${BOLD}${GREEN}$(tr_msg trojan_sb_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
@@ -17886,7 +18035,7 @@ EOF_SVC
 deploy_singbox_tuic() {
     local port pass uuid sni cc cfg='/etc/sing-box/config.json'
     local tag="${ABOX_DEPLOY_TAG:-tuic-in}" tmp_json cfg_bak=''
-    clear; msg "${BOLD}${GREEN}$(tr_msg tuic_title)${NC}"
+    clear_screen; msg "${BOLD}${GREEN}$(tr_msg tuic_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
@@ -18065,7 +18214,7 @@ EOF_SVC
 deploy_singbox_anytls() {
     local port pass sni pk pbk sid cfg='/etc/sing-box/config.json'
     local tag="${ABOX_DEPLOY_TAG:-anytls-in}" tmp_json cfg_bak=''
-    clear; msg "${BOLD}${GREEN}$(tr_msg anytls_title)${NC}"
+    clear_screen; msg "${BOLD}${GREEN}$(tr_msg anytls_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
@@ -18218,7 +18367,7 @@ deploy_singbox_shadowtls() {
     local port pass inner sni cfg='/etc/sing-box/config.json'
     local tag="${ABOX_DEPLOY_TAG:-shadowtls-in}" tmp_json
     local itag='shadowtls-ss'; [[ "$tag" != 'shadowtls-in' ]] && itag="${tag}-ss"
-    clear; msg "${BOLD}${GREEN}$(tr_msg shadowtls_title)${NC}"
+    clear_screen; msg "${BOLD}${GREEN}$(tr_msg shadowtls_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
@@ -18583,7 +18732,7 @@ argo_links_for() { # $1 = vmess domain, $2 = vless domain
 }
 
 deploy_argo_temp() {
-    clear; msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
+    clear_screen; msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
@@ -18689,7 +18838,7 @@ vless_domain=${d2}"
 }
 
 deploy_argo_fixed() {
-    clear; msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
+    clear_screen; msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
@@ -18797,7 +18946,7 @@ domain=${domain}"
 }
 
 argo_status() {
-    clear; msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
+    clear_screen; msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
     local mode
     mode=$(_argo_state_get mode)
     if [[ -z "$mode" ]]; then
@@ -18872,7 +19021,7 @@ argo_uninstall() {
 argo_menu() {
     local choice
     while true; do
-        clear
+        clear_screen
         msg "${CYAN}============================================================${NC}"
         msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
         msg "${CYAN}1.${NC}  $(tr_msg argo_m_temp)"
@@ -20309,7 +20458,7 @@ split_add_socks_outbound() {
 warp_split_menu() {
     # Submenu loop: 0/Enter goes back to the parent menu.
     while true; do
-    clear
+    clear_screen
     msg "${BOLD}${GREEN}$(tr_msg warp_split_title)${NC}"
     msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     warp_status
@@ -20344,7 +20493,7 @@ warp_split_menu() {
 
 warp_preset_menu() {
     while true; do
-    clear
+    clear_screen
     msg "${BOLD}${GREEN}$(tr_msg warp_preset_title)${NC}"
     msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     msg "${CYAN}1.${NC} $(tr_msg warp_preset_streaming)"
@@ -20388,7 +20537,7 @@ split_add_socks_interactive() {
 
 split_rules_menu() {
     while true; do
-    clear
+    clear_screen
     msg "${BOLD}${GREEN}$(tr_msg split_rules_title)${NC}"
     msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
     local i=0
@@ -20490,7 +20639,7 @@ split_rule_del_interactive() {
 deploy_socks5_landing() {
     local port user pass cfg='/usr/local/etc/xray/config.json'
     local tag="${ABOX_DEPLOY_TAG:-socks5-landing}" tmp_json inbound_json cfg_bak=''
-    clear; msg "${BOLD}${GREEN}$(tr_msg socks5_title)${NC}"
+    clear_screen; msg "${BOLD}${GREEN}$(tr_msg socks5_title)${NC}"
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
@@ -20640,7 +20789,7 @@ EOF_SVC
 
 deploy_xray() {
     local MODE_IN=$1 KEYPAIR
-    clear; msg "${BOLD}${GREEN}部署 Xray-core [$MODE_IN]${NC}"
+    clear_screen; msg "${BOLD}${GREEN}部署 Xray-core [$MODE_IN]${NC}"
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
@@ -20770,7 +20919,7 @@ deploy_singbox() {
     local IPT_W_FLAG='' IPT6_W_FLAG=''
     $IPT -w --version >/dev/null 2>&1 && IPT_W_FLAG='-w'
     $IPT6 -w --version >/dev/null 2>&1 && IPT6_W_FLAG='-w'
-    clear; msg "${BOLD}${GREEN}部署 Sing-box 核心 [$MODE_IN]${NC}"
+    clear_screen; msg "${BOLD}${GREEN}部署 Sing-box 核心 [$MODE_IN]${NC}"
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
@@ -21968,7 +22117,7 @@ _traffic_txn_fail() {
 traffic_management_menu() {
     # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
     while true; do
-    clear
+    clear_screen
     local INTERFACE limit_gb mode_choice previous_state
     load_optional_abox_env_or_die
     INTERFACE="${INGRESS_IF:-$(get_active_interface)}"
@@ -22307,7 +22456,7 @@ sync_ss_whitelist_ip_to_env() {
 }
 manage_ss_whitelist() {
     local check_rc=0
-    clear
+    clear_screen
     local _wl_backend
     _wl_backend=$(firewall_backend)
     [[ "$_wl_backend" == 'iptables' ]] || {
@@ -22485,7 +22634,7 @@ manage_ss_whitelist() {
 }
 
 do_cleanup() {
-    clear; msg "${RED}$(tr_msg cu_running)${NC}"
+    clear_screen; msg "${RED}$(tr_msg cu_running)${NC}"
     init_system_environment
     local uninstall_tx_dir='' uninstall_tx_key='' uninstall_tx_value=''
     if [[ "${1:-}" == full || "${1:-}" == wipe ]]; then
@@ -22509,6 +22658,15 @@ do_cleanup() {
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     kill_managed_residual_pids || die "$(tr_msg cu_residual)"
     remove_all_owned_core_families 1 || die "$(tr_msg cl_cores_clean)"
+    # SYD-A E22: deep cleanup also removes the runtime service users, but
+    # only when idle (no running processes); a missing pgrep fails closed
+    # (no deletion without an idle proof).
+    for _syd_cu in abox-xray abox-singbox abox-hysteria; do
+        if getent passwd "$_syd_cu" >/dev/null 2>&1 && command -v pgrep >/dev/null 2>&1 && ! pgrep -u "$_syd_cu" >/dev/null 2>&1; then
+            if command -v userdel >/dev/null 2>&1; then userdel "$_syd_cu" 2>/dev/null || msg "${YELLOW}[!] 无法删除服务用户 ${_syd_cu}（已保留）。${NC}"
+            elif command -v deluser >/dev/null 2>&1; then deluser "$_syd_cu" 2>/dev/null || msg "${YELLOW}[!] 无法删除服务用户 ${_syd_cu}（已保留）。${NC}"; fi
+        fi
+    done
     if [[ -d "$ABOX_DIR/tune-backup" ]]; then
         restore_vps_tune 1 >/dev/null 2>&1 || die "$(tr_msg cu_tune)"
     else
@@ -22832,7 +22990,7 @@ sync_env_ports_after_removal() {
     if (( _read_failed == 1 )); then
         return 1
     fi
-    for var in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT SOCKS_PORT HY2_MONITOR_PORT; do
+    for var in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT SOCKS_PORT HY2_MONITOR_PORT HY2_URI_PORTS; do
         val=$(sed -n "s/^${var}=//p" "$envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
         [[ -n "$val" ]] || continue
         [[ " ${live_ports[*]} " == *" $val "* ]] && continue
@@ -22872,6 +23030,7 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     local tag='' cfg=''
     for tag in "$@"; do
         case "$tag" in
+            *hy2*) [[ "$core" == 'sing-box' ]] && rm -f -- /etc/sing-box/hy2.crt /etc/sing-box/hy2.key 2>/dev/null || true ;;
             vmess-ws-in) argo_remove_unit argo-vmess || true ;;
             vless-ws-in) argo_remove_unit argo-vless || true ;;
             *trojan*) _standalone_link_survivor trojan-xray || rm -f -- /etc/ddr/standalone-links.d/trojan-xray.link 2>/dev/null || true; _standalone_link_survivor trojan-sb || rm -f -- /etc/ddr/standalone-links.d/trojan-sb.link 2>/dev/null || true ;;
@@ -22933,6 +23092,7 @@ _remove_hy2_official() {
     fi
     rm -rf -- /etc/hysteria || return 1
     rm -f -- /etc/ddr/standalone-links.d/hy2.link /etc/ddr/standalone-links.d/hysteria.link 2>/dev/null || true
+    users_registry_remove hy2 hy2-official
     users_registry_remove hy2 hy2
     return 0
 }
@@ -22973,7 +23133,7 @@ remove_single_protocol_menu() {
     if [[ "$core" != 'hy2' ]]; then
         info=$(_protocol_cfg_of "$core")
         IFS='|' read -r cfg _ _ <<< "$info"
-        deps=$(jq -r --arg t "$tag" '.inbounds[]? | select(.detour == $t) | .tag' "$cfg" 2>/dev/null || true)
+        deps=$(jq -r --arg t "$tag" '([.inbounds[]? | select(.tag == $t) | .detour // empty] | .[0] // "") as $d | .inbounds[]? | select(.detour == $t or .tag == $d) | .tag' "$cfg" 2>/dev/null || true)
         if [[ -n "$deps" ]]; then
             while IFS= read -r d; do [[ -n "$d" ]] && tags+=("$d"); done <<< "$deps"
             msg "${YELLOW}$(tr_msg cl_dep_warn): ${deps//$'\n'/, }${NC}"
@@ -22986,6 +23146,7 @@ remove_single_protocol_menu() {
             msg "${RED}$(tr_msg cl_fail)${NC}"
             return 1
         fi
+        _protocol_removed_side_effects "$core" hy2-official
     else
         if ! _remove_inbounds_from_config "$core" "${tags[@]}"; then
             msg "${RED}$(tr_msg cl_fail)${NC}"
@@ -23039,7 +23200,7 @@ clear_all_protocols() {
 cleanup_protocols_menu() {
     local c=''
     while true; do
-        clear
+        clear_screen
         msg "${CYAN}======================================================================${NC}"
         msg "${BOLD}${GREEN}$(tr_msg cl_title)${NC}"
         msg "${CYAN}======================================================================${NC}"
@@ -23060,7 +23221,7 @@ cleanup_protocols_menu() {
 
 check_virgin_state() {
     if [[ -t 1 ]]; then
-        command clear || true
+        clear_screen || true
     fi
     init_system_environment || die "$(tr_msg vg_init_fail)"
     msg "${YELLOW}$(tr_msg vg_title)${NC}"
@@ -23388,7 +23549,7 @@ confirm_hard_xray_latest_uninstall() {
 }
 
 show_core_pin_docs() {
-    clear
+    clear_screen
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}核心版本选择与容灾说明 / Core release policy${NC}"
     msg "${CYAN}======================================================================${NC}"
@@ -23408,7 +23569,14 @@ probe_core_sources_banner() {
     local pref='compatibility-pin-first' api_code mirror_code base
     [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]] && pref='latest-official-stable-first'
     base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
+    # SYD-A E13/E17: a single transient 000 must not instantly report the
+    # upstream as unavailable; retry once after a short pause. The probe
+    # stays informational (it gates nothing) and never weakens ENFORCE=1.
     api_code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 'https://api.github.com/repos/XTLS/Xray-core/releases?per_page=100' 2>/dev/null || printf '000')
+    if [[ "$api_code" == '000' ]]; then
+        sleep 2
+        api_code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 'https://api.github.com/repos/XTLS/Xray-core/releases?per_page=100' 2>/dev/null || printf '000')
+    fi
     mirror_code=$(curl -sSL -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "${base%/}/SHA256SUMS" 2>/dev/null || printf '000')
     case "$api_code" in 200) api_code='available (HTTP 200)' ;; *) api_code="unavailable (HTTP ${api_code:-000})" ;; esac
     case "$mirror_code" in 200) mirror_code='available (HTTP 200)' ;; *) mirror_code="unavailable (HTTP ${mirror_code:-000})" ;; esac
@@ -23508,7 +23676,7 @@ fetch_abox_mirror_asset() {
 }
 one_click_reality_deploy() {
     local choice answer prompt
-    clear
+    clear_screen
     msg "${CYAN}======================================================================${NC}"
     case "${ABOX_LANG:-zh}" in
         en)
@@ -23576,7 +23744,7 @@ one_click_reality_deploy() {
 ux_mode_menu() {
     # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
     while true; do
-    clear
+    clear_screen
     local c
     case "${ABOX_LANG:-zh}" in
         en)
@@ -24525,7 +24693,7 @@ users_link_combo() {
 # Export every enabled user's link (all registries) in the subscription
 # file formats the legacy exporter produced.
 users_export_all() {
-    local dir='' out='' count=0 reg='' core='' tag='' failed=0
+    local dir='' out='' count=0 skipped=0 reg='' core='' tag='' failed=0
     dir="${SUBSCRIBE_DIR:-/etc/ddr/subscribe}"
     mkdir -p "$dir" 2>/dev/null || return 1
     chmod 700 "$dir" 2>/dev/null || true
@@ -24540,11 +24708,16 @@ users_export_all() {
         ulist=$(jq -r '.users[] | select(.disabled != true and ((.blocked // "") == "")) | .name' "$reg" 2>/dev/null) || failed=1
         while IFS= read -r uname; do
             [[ -n "$uname" ]] || continue
-            link=$(users_link "$core" "$tag" "$uname" 2>/dev/null) || { failed=1; continue; }
-            [[ -n "$link" ]] || { failed=1; continue; }
+            link=$(users_link "$core" "$tag" "$uname" 2>/dev/null) || { skipped=$((skipped + 1)); continue; }
+            [[ -n "$link" ]] || { skipped=$((skipped + 1)); continue; }
             printf '%s\n' "$link" >> "$tmp" && count=$((count + 1)) || failed=1
         done <<< "$ulist"
     done
+    # SYD-A E19: stale users must not veto valid users. Skipped users are
+    # reported; a wholly-empty export still fails, but only AFTER the
+    # count==0 path below clears stale links (revoked links must never
+    # keep serving).
+    if (( skipped > 0 )); then msg "${YELLOW}[!] 导出跳过 ${skipped} 个失效用户（仅导出有效用户）。${NC}"; fi
     if (( failed == 1 )); then rm -f -- "$tmp"; return 1; fi
     if (( count == 0 )); then
         # No enabled users: stale links must not keep serving. Atomically
@@ -24560,6 +24733,7 @@ users_export_all() {
         etmp=$(umask 077; mktemp "$dir/.sub-b64.XXXXXX") || { rm -f -- "$dir/subscription.base64"; return 1; }
         install_file_atomically "$etmp" "$dir/subscription.base64" 600 || { rm -f -- "$etmp" "$dir/subscription.base64"; return 1; }
         rm -f -- "$etmp"
+        if (( skipped > 0 )); then msg "${YELLOW}[!] 导出跳过 ${skipped} 个失效用户，且无有效用户，导出失败。${NC}"; return 1; fi
         printf '%s' '0'
         return 0
     fi
@@ -24635,6 +24809,35 @@ _str_dwidth() {
 }
 
 
+# SYD-A E21: normalize a registry that accumulated duplicate names
+# (e.g. repeated `main` from successive deploys). Keep one entry per name,
+# preferring the secret still present in the live config; otherwise keep
+# the first. Returns 0 when nothing needed changing.
+users_registry_dedupe_names() {
+    local core="$1" tag="$2" reg='' cfg='' live='' deduped=''
+    reg=$(users_reg_file "$core" "$tag") || return 1
+    [[ -f "$reg" && ! -L "$reg" ]] || return 0
+    cfg=$(users_cfg_of "$core" 2>/dev/null || true)
+    if [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]]; then
+        case "$core" in
+            xray|xray-latest) live=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.clients[]? | .id // ""' "$cfg" 2>/dev/null || true) ;;
+            sing-box) live=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .users[]? | (.uuid // .password // "")' "$cfg" 2>/dev/null || true) ;;
+            *) live='' ;;
+        esac
+    fi
+    # One entry per name, preferring the secret still live in config.
+    deduped=$(jq -c --arg live "$live" '
+        .users |= (
+            [group_by(.name)[] | (
+                (map(select(.secret as $s | ($live | split("\n") | map(select(. != "")) | index($s)) != null)) | .[0])
+                // .[0]
+            )]
+        )' "$reg" 2>/dev/null) || return 1
+    [[ -n "$deduped" ]] || return 1
+    users_reg_write "$core" "$tag" "$deduped" || return 1
+    return 0
+}
+
 # Write a mutated registry and sync it; roll the registry back when the
 # sync fails. $1=core $2=tag $3=new-json $4=old-json
 users_apply_reg() {
@@ -24669,7 +24872,7 @@ users_inbound_menu() {
     reg=$(users_reg_file "$core" "$tag")
     users_reg_ensure "$core" "$tag" || { msg "${RED}$(tr_msg mu_reg_bad)${NC}"; pause_return; return 1; }
     while true; do
-        clear
+        clear_screen
         msg "${BOLD}${GREEN}$(protocol_label "$core" "$tag" "$proto" 2>/dev/null || printf '%s' "$tag") · ${core} · :${port}${NC}"
         if [[ "$core" == 'sing-box' ]]; then
             msg "${YELLOW}$(tr_msg mu_note_sb)${NC}"
@@ -24722,6 +24925,10 @@ users_inbound_menu() {
             1)
                 read -r -p "$(tr_msg mu_name_prompt)" nm || continue
                 users_valid_name "$nm" || { msg "${RED}$(tr_msg mu_name_bad)${NC}"; pause_return; continue; }
+                # SYD-A E21: normalize duplicate registry names before
+                # appending, so a repeated-main registry cannot abort add.
+                users_registry_dedupe_names "$core" "$tag" >/dev/null 2>&1 || true
+                old=$(cat "$reg" 2>/dev/null || printf '%s' "$old")
                 jq -e --arg n "$nm" '.users[] | select(.name == $n)' "$reg" >/dev/null 2>&1 && { msg "${RED}$(tr_msg mu_name_dup)${NC}"; pause_return; continue; }
                 local secret='' nuuid='' flow='' email=''
                 flow=$(jq -r '.users[] | select(.name == "main") | .flow // ""' "$reg" 2>/dev/null | head -1)
@@ -24833,7 +25040,7 @@ multi_user_menu() {
     [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json ]] && users_sb_ensure_tags /etc/sing-box/config.json >/dev/null 2>&1 || true
     setup_user_guard >/dev/null 2>&1 || true
     while true; do
-        clear
+        clear_screen
         msg "${CYAN}======================================================================${NC}"
         msg "${BOLD}${GREEN}$(tr_msg mu_title)${NC}"
         msg "${CYAN}======================================================================${NC}"
@@ -25157,6 +25364,24 @@ _nsni_apply() {
             return 1
         fi
     fi
+    # SYD-A E20: post-restart verification. run -test only proves the
+    # config parses; a new SNI can still break the REALITY handshake
+    # silently (microsoft case). Liveness first, then an operator-supplied
+    # handshake checker when configured; any failure rolls back to the
+    # old SNI and says so explicitly instead of reporting success.
+    if is_service_running "$core" 2>/dev/null; then
+        local _syd_verify_ok=1
+        if [[ -n "${ABOX_NSNI_HANDSHAKE_CMD:-}" ]]; then
+            if ! ${ABOX_NSNI_HANDSHAKE_CMD} "$cfg" "$tag" "$new" >/dev/null 2>&1; then
+                _syd_verify_ok=0
+            fi
+        fi
+        if (( _syd_verify_ok == 0 )); then
+            msg "${RED}[!] 新 SNI 握手失败、已回滚旧 SNI：${old}（新 SNI ${new} 未生效）。${NC}"
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+            return 1
+        fi
+    fi
     local _ldir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _lf='' _shown='' _stem='' _esc_old='' _esc_new=''
     _stem=$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag")
     _lf="${_stem}.link"
@@ -25214,7 +25439,7 @@ _nsni_apply() {
 
 node_sni_menu() {
     while true; do
-        clear
+        clear_screen
         msg "${CYAN}======================================================================${NC}"
         msg "${BOLD}${GREEN}$(tr_msg tb_nsni)${NC}"
         msg "${CYAN}======================================================================${NC}"
@@ -25318,7 +25543,7 @@ user_guard_tick() {
 
 try_latest_cores_danger() {
     local answer targets=() t latest
-    clear
+    clear_screen
     msg "${RED}${BOLD}DANGER: 尝试上游最新正式稳定版 / Try latest upstream stable release${NC}"
     msg "$(tprintf tl_body "${ABOX_XRAY_DEFAULT_VERSION}" "${ABOX_SINGBOX_DEFAULT_VERSION}" "${ABOX_HYSTERIA_DEFAULT_VERSION}")"
     msg "$(tr_msg tl_risk)"
@@ -25391,7 +25616,7 @@ save_ip_pref() {
 ip_preference_menu() {
     # Submenu loop: 0/Enter returns to the parent menu.
     while true; do
-    clear
+    clear_screen
     local cur c title ipv4 ipv6 dual back
     cur=$(read_ip_pref)
     case "${ABOX_LANG:-zh}" in
@@ -25450,7 +25675,7 @@ ip_preference_menu() {
 host_network_menu() {
     # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
     while true; do
-    clear
+    clear_screen
     local prompt
     case "${ABOX_LANG:-zh}" in
         en)
@@ -25812,7 +26037,7 @@ timezone_choose_from_list() {
     done
     (( ${#filtered[@]} > 0 )) || { msg "${YELLOW}No matching time zones / 没有匹配的时区。${NC}"; return 1; }
     while true; do
-        clear
+        clear_screen
         msg "${CYAN}================ $title ================${NC}"
         printf "$page_label\n" "$(current_timezone_name)" "${query:-ALL}" "${#filtered[@]}"
         first=$((page*page_size)); last=$((first+page_size)); ((last>${#filtered[@]})) && last=${#filtered[@]}
@@ -25864,7 +26089,7 @@ timezone_choose_locale() {
     fi
     (( ${#locales[@]} > 0 )) || { msg "${YELLOW}No installed locales were found; install or generate a locale first.${NC}"; pause_return; return 1; }
     while true; do
-        clear
+        clear_screen
         msg "${CYAN}================ $title ================${NC}"
         first=$((page*page_size)); last=$((first+page_size)); ((last>${#locales[@]})) && last=${#locales[@]}
         for ((i=first; i<last; i++)); do printf '%4d. %s\n' "$((i+1))" "${locales[$i]}"; done
@@ -25907,7 +26132,7 @@ timezone_choose_locale() {
     done
 }
 timezone_locale_ntp_menu() {
-    clear
+    clear_screen
     local c ntp synced now prompt back_word ntp_ok ntp_fail ntp_none rb_ok rb_fail rb_none
     now=$(date '+%Y-%m-%d %H:%M:%S %Z (%z)' 2>/dev/null || date)
     ntp='unknown'; synced='unknown'
@@ -26599,7 +26824,7 @@ dns_dot_prefer() {
     local i name v4 v6 host label best_v4='' best_v6='' best_host=''
     local -a timings=()
     command -v python3 >/dev/null 2>&1 || { msg "${RED}DNS benchmark requires Python 3.${NC}"; pause_return; return 1; }
-    clear
+    clear_screen
     case "${ABOX_LANG:-zh}" in
         en) msg "${CYAN}DoT preference test: three real example.com queries per candidate (TLS handshake included)${NC}" ;;
         ru) msg "${CYAN}Проверка DoT: три реальных запроса example.com к каждому серверу (включая TLS-рукопожатие)${NC}" ;;
@@ -26741,7 +26966,7 @@ dns_doh_prefer() {
     local i name v4 host srv label best_srv=''
     local -a timings=()
     command -v python3 >/dev/null 2>&1 || { msg "${RED}DNS benchmark requires Python 3.${NC}"; pause_return; return 1; }
-    clear
+    clear_screen
     case "${ABOX_LANG:-zh}" in
         en) msg "${CYAN}DoH preference test: three real example.com queries per candidate (TLS handshake included). Quad9 is excluded: its DoH requires HTTP/2, which this probe cannot speak.${NC}" ;;
         ru) msg "${CYAN}Проверка DoH: три реальных запроса example.com к каждому серверу (включая TLS-рукопожатие). Quad9 исключён: его DoH требует HTTP/2.${NC}" ;;
@@ -26832,7 +27057,7 @@ dns_auto_prefer() {
     local server result successes median best='' best_ms=999999 best_success=0 round v6 prompt canceled
     local -a candidates=('1.1.1.1' '8.8.8.8' '9.9.9.9' '208.67.222.222') timings=()
     command -v python3 >/dev/null 2>&1 || { msg "${RED}DNS benchmark requires Python 3.${NC}"; pause_return; return 1; }
-    clear
+    clear_screen
     case "${ABOX_LANG:-zh}" in
         en) msg "${CYAN}DNS preference test: three real example.com queries per candidate${NC}" ;;
         ru) msg "${CYAN}Проверка DNS: три реальных запроса example.com к каждому серверу${NC}" ;;
@@ -27286,7 +27511,7 @@ dns_setup_tri_mode() {
     local -a providers=()
     while IFS= read -r line; do providers+=("$line"); done < <(_dns_provider_list)
 
-    clear
+    clear_screen
     msg "${CYAN}======================================================================${NC}"
     case "${ABOX_LANG:-zh}" in
         en) msg "${BOLD}${GREEN}DNS Setup: IPv4 / IPv6 / Dual-stack${NC}" ;;
@@ -27395,7 +27620,7 @@ dns_menu() {
         pause_return
         return 1
     fi
-    clear
+    clear_screen
     local c v4 v6 prompt
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}VPS host DNS${NC}"
@@ -27539,7 +27764,7 @@ dns_menu() {
 tune_vps() {
     # Submenu loop: sub-functions return here; 0 goes back to the parent menu.
     while true; do
-    clear
+    clear_screen
     local prompt
     case "${ABOX_LANG:-zh}" in
         en)
@@ -28546,7 +28771,7 @@ run_builtin_sni_radar() {
 }
 
 show_sni_preference_records() {
-    clear
+    clear_screen
     local files=() f profile topn="${ABOX_SNI_RECORDS_TOPN:-100}" shown=0 mtime
     msg "${CYAN}======================================================================${NC}"
     case "${ABOX_LANG:-zh}" in
@@ -28722,7 +28947,7 @@ fstab_path_is_safe() {
 
 setup_swap_2g() {
     local fstab_tmp='' fstab_backup='' free_kib=0 created_by_abox=0 last_byte=""
-    clear
+    clear_screen
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}Swap 虚拟内存一键划拨 / Allocate 2G Swap${NC}"
     msg "${CYAN}======================================================================${NC}"
@@ -29006,7 +29231,7 @@ abox_zram_teardown() {
 
 
 setup_zram_swap() {
-    clear
+    clear_screen
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}zram 压缩交换 / zram Compressed Swap${NC}"
     msg "${CYAN}======================================================================${NC}"
@@ -29146,7 +29371,7 @@ swap_status_show() {
 swap_menu() {
     local choice=''
     while true; do
-        clear
+        clear_screen
         msg "${CYAN}======================================================================${NC}"
         msg "${BOLD}${GREEN}交换内存管理 / Swap Manager${NC}"
         msg "${CYAN}======================================================================${NC}"
@@ -30796,7 +31021,7 @@ __abox_backup_copy_path() {
     cp -a -- "$src" "$dst"
 }
 backup_current_config() {
-    local ts unique backup_dir work root tarball backup_failed=0 backend srv path _abox_links _old_backups
+    local ts unique backup_dir work root tarball backup_failed=0 backup_failed_reason='' backend srv path _abox_links _old_backups
     valid_backup_retention_count "$BACKUP_RETENTION_COUNT" || die 'BACKUP_RETENTION_COUNT 无效；必须是 0-1000 的整数。'
     ts=$(date +%Y%m%d-%H%M%S); unique=$(openssl rand -hex 3 2>/dev/null || printf '%s' "$$")
     backup_dir="${1:-$ABOX_DIR/backups}"
@@ -30867,10 +31092,10 @@ backup_current_config() {
     capture_managed_service_state "$work/meta/services.state" || backup_failed=1
     backend=$(firewall_backend) || backup_failed=1
     printf '%s\n' "$backend" > "$work/meta/firewall.backend"
-    [[ "$backend" != 'nftables-unsupported' ]] || backup_failed=1
+    if [[ "$backend" == 'nftables-unsupported' ]]; then backup_failed=1; backup_failed_reason='firewall-backend-nftables-unsupported'; fi
     capture_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 || backup_failed=1
     capture_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 || backup_failed=1
-    (( backup_failed == 0 )) || { rm -rf "$work"; die 'Backup aborted because an existing A-Box path could not be copied.'; }
+    if (( backup_failed != 0 )); then rm -rf "$work"; if [[ -n "${backup_failed_reason:-}" ]]; then die "Backup aborted: firewall backend reported ${backend:-unknown} (native nftables ruleset present); backup cannot capture firewall state."; else die 'Backup aborted because an existing A-Box path could not be copied.'; fi; fi
     printf '%s\n' 'A-Box backup manifest v3' > "$work/meta/manifest.version"
     create_backup_manifest "$work" "$work/meta/manifest.sha256" || { rm -rf "$work"; die 'Backup manifest creation failed.'; }
     tarball="$backup_dir/A-Box-backup-${ts}-${unique}.tar.gz"
@@ -31021,7 +31246,7 @@ restore_from_backup() {
     backups=()
     [[ -z "$backups_output" ]] || mapfile -t backups <<< "$backups_output"
     (( ${#backups[@]} )) || { msg "${RED}[!] $(tprintf rb_none_found "$ABOX_DIR")${NC}"; pause_return; return; }
-    clear
+    clear_screen
     for i in "${!backups[@]}"; do printf '%2d. %s\n' "$((i+1))" "${backups[$i]}"; done
     read -r -p "$(tr_msg rb_select)" choice
     [[ "$choice" == 0 ]] && return
@@ -31110,7 +31335,7 @@ restore_from_backup() {
 backup_restore_menu() {
     # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
     while true; do
-    clear
+    clear_screen
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}Backup / Restore / 配置备份与恢复${NC}"
     msg "${CYAN}======================================================================${NC}"
@@ -33877,7 +34102,7 @@ _wallos_manual_rollback() {
 wallos_menu() {
     # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
     while true; do
-    clear
+    clear_screen
     msg "${BOLD}${GREEN}$(tr_msg wl_menu_title)${NC}"
     msg "${CYAN}1.${NC} $(tr_msg wl_menu_install)"
     msg "${CYAN}2.${NC} $(tr_msg wl_menu_status)"
@@ -33929,7 +34154,7 @@ other_protocols_menu() {
     # AnyTLS, SOCKS5) that used to live in the toolbox. Self-looping like the
     # other submenus; 0/Enter returns to the main menu.
     while true; do
-    clear
+    clear_screen
     msg "${CYAN}======================================================================${NC}"
     case "${ABOX_LANG:-zh}" in
         en)
@@ -34217,7 +34442,7 @@ EOF_XLSVC
 # XL-FIX2: is_systemd/xray_owned previously existed only inside generated-script
 # heredocs (probe/geo/traffic copies); the main script called xray_owned at
 # takeover install and got "command not found". Real top-level definitions.
-is_systemd() { [[ "$INIT_SYS_EXPECTED" == systemd ]]; }
+is_systemd() { [[ "${INIT_SYS_EXPECTED:-}" == systemd ]]; }
 xray_owned() { local u; if is_systemd; then u=/etc/systemd/system/xray.service; else u=/etc/init.d/xray; fi; [[ -f "$u" && ! -L "$u" ]] && grep -Fxq '# Managed by A-Box' "$u"; }
 
 _xl_write_slot_unit() {
@@ -34456,6 +34681,10 @@ _xl_install_coexist() { # $1 = staged binary, $2 = tag
         _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"
         return 1
     fi
+    # SYD-A E8: prepare the latest log files (group-write) before the
+    # restart, covering a pre-existing root-created 600 file.
+    prepare_abox_runtime_write_file /var/log/A-Box-xray-latest-access.log xray || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"; return 1; }
+    prepare_abox_runtime_write_file /var/log/A-Box-xray-latest-error.log xray || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"; return 1; }
     if ! restart_service_soft xray-latest; then
         msg "${RED}$(tr_msg xl_restart_fail)${NC}"
         local _relaunch=0
@@ -34585,7 +34814,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
         socks) defport='1080'; tag="${ABOX_DEPLOY_TAG:-latest-socks}"; label='SOCKS5 (Latest Xray)' ;;
         *) msg "${RED}$(tr_msg invalid_input): $kind${NC}"; return 1 ;;
     esac
-    clear
+    clear_screen
     msg "${BOLD}${GREEN}${label}${NC}"
     if [[ "$mode" == 'coexist' ]]; then
         msg "${YELLOW}$(tr_msg xl_coexist_note)${NC}"
@@ -34754,7 +34983,7 @@ xray_latest_deploy_trio() {
     init_system_environment || return 1
     load_optional_abox_env_or_die
     light_preflight_check
-    clear
+    clear_screen
     msg "${BOLD}${GREEN}$(tr_msg xl_m_trio)${NC}"
     if [[ "$mode" == 'coexist' ]]; then msg "${YELLOW}$(tr_msg xl_coexist_note)${NC}"; fi
     xl_show_ports
@@ -34987,7 +35216,7 @@ xray_latest_menu() {
     local latest_tag='' choice='' state_mode='' state_ver=''
     latest_tag=$(xl_upstream_latest_tag 2>/dev/null || echo '')
     while true; do
-        clear
+        clear_screen
         msg "${CYAN}======================================================================${NC}"
         msg "${BOLD}${GREEN}$(tr_msg xl_title)${NC}"
         state_mode=$(_xl_state_get mode); state_ver=$(_xl_state_get version)
@@ -35093,7 +35322,7 @@ vps_benchmark_menu() {
     # Toolbox is a submenu loop: sub-functions return here, 0/Enter goes back
     # to the main menu.
     while true; do
-    clear
+    clear_screen
     msg "${CYAN}======================================================================${NC}"
     case "${ABOX_LANG:-zh}" in
         en)
@@ -35247,7 +35476,7 @@ socks5_toolbox_entry() {
     esac
 }
 clean_uninstall_menu() {
-    clear
+    clear_screen
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${RED}$(tr_msg um_title)${NC}"
     msg "${CYAN}======================================================================${NC}"
@@ -35682,7 +35911,7 @@ show_standalone_links() {
 
 view_config() {
     local CALLER=${1:-manual}
-    clear
+    clear_screen
     [[ ! -f "$ABOX_ENV" ]] && { msg "${RED}未检测到持久化配置变量。${NC}"; show_standalone_links; pause_return; return 0; }
     load_abox_env "$ABOX_ENV" || die 'A-Box 状态文件无效或权限不安全。'
     local refreshed_ip
@@ -35698,7 +35927,7 @@ view_config() {
     # the (empty) local and the global fallback never works.
     local _clash_sub_global="${CLASH_SUB_URL:-}"
     local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME
-    local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json
+    local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_PIN_Q HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json
     IFS=$'\t' read -r HY2_URI_PORT HY2_QUERY_PREFIX < <(build_hy2_uri_endpoint) || die 'Hysteria2 分享链接端口参数无效。'
     [[ "$LINK_IP" =~ : ]] && F_IP="[$LINK_IP]"
     [[ -z "$LINK_IP" || "$LINK_IP" == 'N/A' ]] && msg "${YELLOW}[!] 未能自动获取公网 IP，分享链接可能不可用。${NC}"
@@ -35709,7 +35938,12 @@ view_config() {
     HY2_PASS_E=$(urlencode "${HY2_PASS:-}")
     HY2_OBFS_E=$(urlencode "${HY2_OBFS:-}")
     HY2_DOMAIN_E=$(urlencode "${HY2_DOMAIN:-}")
-    HY2_PIN_E=$(urlencode "${HY2_CERT_SHA256_FP:-}")
+    # SYD-A E15: pinSHA256 pins the SPKI SHA256 base64 (what a client
+    # checks), not the certificate fingerprint hex. An empty pubkey means
+    # no pin fragment at all (a fingerprint pin never validates).
+    HY2_PIN_E=$(urlencode "${HY2_CERT_PUBKEY_SHA256_B64:-}")
+    HY2_PIN_Q=''
+    [[ -n "${HY2_CERT_PUBKEY_SHA256_B64:-}" ]] && HY2_PIN_Q="pinSHA256=${HY2_PIN_E}&"
     msg "${BLUE}======================================================================${NC}"
     msg "${BOLD}${CYAN}全局拓扑网络参数 (${MODE}) / Network Parameters${NC}"
     msg "${BLUE}======================================================================${NC}"
@@ -35737,7 +35971,7 @@ view_config() {
         else
             S_IP="$F_IP"
             [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="$HY2_DOMAIN"
-            HY2_URL="hysteria2://$HY2_PASS_E@$S_IP:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}insecure=1&pinSHA256=$HY2_PIN_E&obfs=salamander&obfs-password=$HY2_OBFS_E#Hy2"
+            HY2_URL="hysteria2://$HY2_PASS_E@$S_IP:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}insecure=1&${HY2_PIN_Q}obfs=salamander&obfs-password=$HY2_OBFS_E#Hy2"
         fi
         msg "${BOLD}${CYAN}── Hysteria 2 · 端口 ${HY2_URI_PORT}${NC}"
         msg "${GREEN}${HY2_URL}${NC}"
@@ -35861,7 +36095,7 @@ EOF_V2N
 }
 
 show_usage() {
-    clear
+    clear_screen
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}A-Box / Full Manual / Полное руководство / راهنمای کامل${NC}"
     msg "${CYAN}======================================================================${NC}"
@@ -36151,7 +36385,7 @@ confirm_ota_script_hash() {
 }
 
 update_script() {
-    clear
+    clear_screen
     local OTA_URL OTA_SNI_URL tmp_update tmp_sni_download tmp_sni_normalized tmp_old_script='' tmp_old_sni_cache=''
     local sni_cache old_cache_exists=0 sha script_restore_ok=1 cache_restore_ok=1
     OTA_URL=$(resolve_abox_main_commit_url) || die '无法将 A-Box main 分支解析为不可变 commit；已拒绝 OTA。'
@@ -36269,7 +36503,7 @@ update_script() {
 }
 
 force_update_geo() {
-    clear
+    clear_screen
     init_system_environment
     load_optional_abox_env_or_die
     if ! abox_owns_service xray; then
@@ -36955,7 +37189,7 @@ commit_core_upgrade_transaction() {
 }
 
 upgrade_current_cores_only() {
-    clear
+    clear_screen
     init_system_environment
     load_optional_abox_env_or_die
     local targets=() answer t
@@ -37033,7 +37267,7 @@ ota_and_geo_menu() {
     while true; do
     # P3: Clear stale choice so EOF (Ctrl-D) does not re-execute previous selection.
     ota_choice=''
-    clear
+    clear_screen
     msg "${CYAN}======================================================================${NC}"
     case "${ABOX_LANG:-zh}" in
         en)
@@ -38159,6 +38393,7 @@ PY_SELFTEST_TAR
     declare -F xray_latest_ensure_core >/dev/null 2>&1 || { echo 'FAIL: latest Xray core ensure missing'; failures=$((failures + 1)); }
     declare -F is_systemd >/dev/null 2>&1 || { echo 'FAIL: is_systemd missing'; failures=$((failures + 1)); }
     declare -F xray_owned >/dev/null 2>&1 || { echo 'FAIL: xray_owned missing'; failures=$((failures + 1)); }
+    [[ "$( ( set -u; unset INIT_SYS_EXPECTED; is_systemd; echo SYD_OK ) 2>/dev/null )" == SYD_OK ]] || { echo 'FAIL: is_systemd real call under set -u'; failures=$((failures + 1)); }
     declare -F cleanup_protocols_menu >/dev/null 2>&1 || { echo 'FAIL: cleanup protocols menu missing'; failures=$((failures + 1)); }
     declare -F remove_single_protocol_menu >/dev/null 2>&1 || { echo 'FAIL: single protocol remover missing'; failures=$((failures + 1)); }
     declare -F clear_all_protocols >/dev/null 2>&1 || { echo 'FAIL: clear all protocols missing'; failures=$((failures + 1)); }
@@ -38420,7 +38655,7 @@ N11EOF
     grep -Fq -- "${_forget_call_prefix}${_ufw_call_suffix}" "$0" || { echo 'FAIL: UFW firewall-state removal must preserve backend ownership'; failures=$((failures + 1)); }
     grep -Fq -- "${_forget_call_prefix}${_fwd_call_suffix}" "$0" || { echo 'FAIL: firewalld firewall-state removal must preserve backend ownership'; failures=$((failures + 1)); }
     grep -q '^preflight_reset_ownership() {' "$0" || { echo 'FAIL: reset ownership preflight missing'; failures=$((failures + 1)); }
-    grep -Fq 'command clear || true' <<< "$source_body" || { echo 'FAIL: non-interactive clear guard missing'; failures=$((failures + 1)); }
+    grep -Fq 'clear_screen' <<< "$source_body" || { echo 'FAIL: clear_screen guard missing'; failures=$((failures + 1)); }
     grep -Fq 'if [[ -t 0 ]]; then' <<< "$source_body" || { echo 'FAIL: pause_return TTY guard missing'; failures=$((failures + 1)); }
     _http01_cleanup_call='remove_abox_native_firewall_rule'; _http01_cleanup_args=' 80 tcp'
     ! grep -Fq -- "${_http01_cleanup_call}${_http01_cleanup_args}" "$0" || { echo 'FAIL: HTTP-01 must keep 80/tcp reachable for CertMagic HTTP challenge and renewal'; failures=$((failures + 1)); }
@@ -39777,7 +40012,7 @@ main_loop() {
         else
             CUR_MODE=''
         fi
-        clear
+        clear_screen
         _menu_banner
         case "${ABOX_LANG:-zh}" in
             en)
@@ -39922,7 +40157,7 @@ main_loop() {
             19) language_menu ;;
             20) clean_uninstall_menu ;;
             r|R) one_click_reality_deploy ;;
-            0) clear; exit 0 ;;
+            0) clear_screen; exit 0 ;;
             *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
         esac
         unset _MI_COLLECTED

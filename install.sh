@@ -11588,6 +11588,40 @@ nftables_native_rules_present() {
     local ruleset rc
     ruleset=$(nft -nn list ruleset 2>/dev/null); rc=$?
     (( rc == 0 )) || return 2
+    # SYD-B E1a: a fail2ban-only ruleset is not native-nftables
+    # evidence. Drop fail2ban-namespace tables (name f2b, f2b-...,
+    # f2b_... whose chains are all f2b-named) before classifying,
+    # so the backend falls through to iptables instead of routing
+    # the backup into the nftables-unsupported dead end.
+    ruleset=$(printf '%s\n' "$ruleset" | awk '
+        function flush() {
+            if (buf != "" && !(f2b_table && f2b_only)) printf "%s", buf
+            buf=""; f2b_table=0; f2b_only=1
+        }
+        /^[ \t\r]*table[ \t\r]+/ {
+            flush()
+            nm=$3; gsub(/[{}]/, "", nm)
+            f2b_table = (nm == "f2b" || nm ~ /^f2b[-_]/)
+            f2b_only = 1
+            buf = buf $0 "\n"
+            in_table = 1
+            next
+        }
+        in_table && /^[ \t\r]*chain[ \t\r]+/ {
+            cn=$2; gsub(/\{/, "", cn)
+            if (!(cn == "f2b" || cn ~ /^f2b[-_]/)) f2b_only = 0
+            buf = buf $0 "\n"
+            next
+        }
+        in_table && /^}/ {
+            buf = buf $0 "\n"
+            flush()
+            in_table = 0
+            next
+        }
+        { if (in_table) buf = buf $0 "\n"; else print }
+        END { flush() }
+    ')
     printf '%s\n' "$ruleset" | awk '
         # U24/U25 (2026-10-24): a chain name alone never proves native
         # nftables. Only a BASE chain (its declaration block carries a
@@ -16914,7 +16948,7 @@ deploy_official_hy2() {
         light_preflight_check
         assert_no_foreign_core_conflicts hysteria
         [[ "$SKIP_REPLACE_AND_PRUNE" == '1' ]] || confirm_deployment_replacement hysteria HY2
-        begin_deployment_transaction 'official Hysteria 2 deployment' hysteria
+        begin_deployment_transaction 'official Hysteria 2 deployment' hysteria || return 1
         release_ports
         clean_nat_rules || die "$(tr_msg cl_nat)"
         clean_input_rules || die "$(tr_msg cl_input)"
@@ -17290,8 +17324,8 @@ begin_deployment_transaction() {
     [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] && die "$(tr_msg tx_nested)"
     ABOX_LAST_BACKUP=''
     local backup_dir="${ABOX_DEPLOY_TX_BACKUP_DIR:-$ABOX_DIR/backups}"
-    auto_backup_silent "$reason" "$backup_dir"
-    [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || die "$(tr_msg tx_backup)"
+    auto_backup_silent "$reason" "$backup_dir" || return 1
+    [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || return 1
     ABOX_DEPLOY_TX_BACKUP_DIR="$backup_dir"
     ABOX_DEPLOY_TX_ACTIVE=1
     ABOX_DEPLOY_TX_REASON="$reason"
@@ -20651,7 +20685,7 @@ deploy_xray() {
     if [[ "$MODE_IN" == *'ALL'* ]]; then assert_no_foreign_core_conflicts xray hysteria; else assert_no_foreign_core_conflicts xray; fi
     confirm_deployment_replacement xray "$MODE_IN"
     standalone_preserve_snapshot xray /usr/local/etc/xray/config.json || return 1
-    if [[ "$MODE_IN" == *'ALL'* ]]; then begin_deployment_transaction "xray ${MODE_IN} deployment" xray hysteria; else begin_deployment_transaction "xray ${MODE_IN} deployment" xray; fi
+    if [[ "$MODE_IN" == *'ALL'* ]]; then begin_deployment_transaction "xray ${MODE_IN} deployment" xray hysteria || return 1; else begin_deployment_transaction "xray ${MODE_IN} deployment" xray || return 1; fi
     release_ports
     clean_nat_rules || die "$(tr_msg cl_nat)"
     clean_input_rules || die "$(tr_msg cl_input)"
@@ -20781,7 +20815,7 @@ deploy_singbox() {
     assert_no_foreign_core_conflicts sing-box
     confirm_deployment_replacement singbox "$MODE_IN"
     standalone_preserve_snapshot sing-box /etc/sing-box/config.json || return 1
-    begin_deployment_transaction "sing-box ${MODE_IN} deployment" sing-box
+    begin_deployment_transaction "sing-box ${MODE_IN} deployment" sing-box || return 1
     release_ports
     clean_nat_rules || die "$(tr_msg cl_nat)"
     clean_input_rules || die "$(tr_msg cl_input)"
@@ -22499,7 +22533,7 @@ do_cleanup() {
         ABOX_DEPLOY_TX_EPHEMERAL_DIR="$uninstall_tx_dir"
         ABOX_DIE_HOOK='cleanup_ephemeral_deployment_transaction_dir'
     fi
-    begin_deployment_transaction 'full A-Box cleanup' xray sing-box hysteria
+    begin_deployment_transaction 'full A-Box cleanup' xray sing-box hysteria || die 'Cleanup aborted: could not open the backup transaction.'
     if [[ -n "$uninstall_tx_dir" ]]; then
         ensure_backup_auth_key || die "$(tr_msg cu_tx_key_new)"
         IFS= read -r uninstall_tx_value < "$ABOX_BACKUP_KEY" || die "$(tr_msg cu_tx_key_read)"
@@ -30800,7 +30834,7 @@ __abox_backup_copy_path() {
     cp -a -- "$src" "$dst"
 }
 backup_current_config() {
-    local ts unique backup_dir work root tarball backup_failed=0 backend srv path _abox_links _old_backups
+    local ts unique backup_dir work root tarball backup_failed=0 backup_fw_unsupported=0 backend srv path _abox_links _old_backups
     valid_backup_retention_count "$BACKUP_RETENTION_COUNT" || die 'BACKUP_RETENTION_COUNT 无效；必须是 0-1000 的整数。'
     ts=$(date +%Y%m%d-%H%M%S); unique=$(openssl rand -hex 3 2>/dev/null || printf '%s' "$$")
     backup_dir="${1:-$ABOX_DIR/backups}"
@@ -30869,12 +30903,19 @@ backup_current_config() {
     { echo 'A-Box backup'; echo "Created: $(now_iso)"; echo "Host: $(hostname 2>/dev/null || true)"; echo "Kernel: $(uname -a 2>/dev/null || true)"; echo "Init: ${INIT_SYS:-unknown}"; echo "Script SHA256: $(sha256sum "$0" 2>/dev/null | awk '{print $1}')"; } > "$work/meta/metadata.txt"
     collect_abox_cron > "$work/meta/cron.abox.txt" 2>/dev/null || backup_failed=1
     capture_managed_service_state "$work/meta/services.state" || backup_failed=1
-    backend=$(firewall_backend) || backup_failed=1
+    backend=$(firewall_backend) || { backup_failed=1; backup_fw_unsupported=1; }
     printf '%s\n' "$backend" > "$work/meta/firewall.backend"
-    [[ "$backend" != 'nftables-unsupported' ]] || backup_failed=1
-    capture_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 || backup_failed=1
-    capture_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 || backup_failed=1
-    (( backup_failed == 0 )) || { rm -rf "$work"; die 'Backup aborted because an existing A-Box path could not be copied.'; }
+    [[ "$backend" != 'nftables-unsupported' ]] || { backup_failed=1; backup_fw_unsupported=1; }
+    capture_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 || { backup_failed=1; backup_fw_unsupported=1; }
+    capture_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 || { backup_failed=1; backup_fw_unsupported=1; }
+    if (( backup_failed != 0 )); then
+        rm -rf "$work"
+        if (( backup_fw_unsupported == 1 )); then
+            die 'Backup aborted: firewall backend is unsupported or its firewall snapshot could not be captured; no A-Box paths were harmed.'
+        else
+            die 'Backup aborted because an existing A-Box path could not be copied.'
+        fi
+    fi
     printf '%s\n' 'A-Box backup manifest v3' > "$work/meta/manifest.version"
     create_backup_manifest "$work" "$work/meta/manifest.sha256" || { rm -rf "$work"; die 'Backup manifest creation failed.'; }
     tarball="$backup_dir/A-Box-backup-${ts}-${unique}.tar.gz"
@@ -30940,9 +30981,17 @@ auto_backup_prompt() {
 }
 
 auto_backup_silent() {
-    local reason="${1:-operation}" dest="${2:-$ABOX_DIR/backups}"
+    local reason="${1:-operation}" dest="${2:-$ABOX_DIR/backups}" newest
     msg "${YELLOW}[*] Auto backup before: ${reason}${NC}"
-    backup_current_config "$dest"
+    # SYD-B E1b: run the backup in a subshell with the die hook
+    # cleared, so a backup failure only fails this call (the caller
+    # returns to the menu) instead of exiting the whole script.
+    # The subshell's ABOX_LAST_BACKUP assignment is lost, so the
+    # parent recomputes it from the newest tarball on success.
+    ( ABOX_DIE_HOOK=''; backup_current_config "$dest" ) || return 1
+    newest=$(ls -t "$dest"/A-Box-backup-*.tar.gz 2>/dev/null | head -n 1)
+    [[ -n "$newest" && -f "$newest" ]] && ABOX_LAST_BACKUP="$newest"
+    [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || return 1
 }
 
 restore_latest_backup_silent() {

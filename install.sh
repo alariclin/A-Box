@@ -5676,6 +5676,30 @@ tr_msg() {
         ru:af_migrate) echo 'Сначала перенесите или удалите перечисленные выше установки не-A-Box. A-Box не будет перезаписывать файлы ядер, конфигурации или служб с неизвестной принадлежностью.' ;;
         fa:af_migrate) echo 'ابتدا نصب‌های غیر A-Box بالا را منتقل یا حذف کنید. A-Box فایل‌های هسته، پیکربندی یا سرویس با مالکیت نامشخص را بازنویسی نمی‌کند.' ;;
         ja:af_migrate) echo '上記の非 A-Box インストールを先に移行または削除してください。A-Box は所有者不明のコア、設定、サービスファイルを上書きしません。' ;;
+        zh:af_orphan_warn) echo '下列冲突全部是无归属的孤儿二进制（仅剩二进制、无 unit、无配置目录），可当场清理后继续：%s' ;;
+        en:af_orphan_warn) echo 'Every conflict below is an unowned orphan binary (binary only, no unit, no config dir); it can be cleaned up inline to continue: %s' ;;
+        ru:af_orphan_warn) echo 'Все конфликты ниже — осиротевшие бинарные файлы без владельца (только бинарный файл, без unit и каталога конфигурации); их можно удалить прямо здесь, чтобы продолжить: %s' ;;
+        fa:af_orphan_warn) echo 'همهٔ تداخل‌های زیر باینری‌های یتیم بدون مالک هستند (فقط باینری، بدون unit و بدون دایرکتوری پیکربندی)؛ می‌توان آن‌ها را همان‌جا پاک کرد تا ادامه یابد: %s' ;;
+        zh-tw:af_orphan_warn) echo '下列衝突全部是無歸屬的孤兒二進位（僅剩二進位、無 unit、無設定目錄），可當場清理後繼續：%s' ;;
+        ja:af_orphan_warn) echo '以下の競合はすべて所有者不明の孤立バイナリです（バイナリのみ、unit なし、設定ディレクトリなし）。その場で削除して続行できます：%s' ;;
+        zh:af_orphan_prompt) echo '清理上述孤儿二进制并继续？[Y/N]: ' ;;
+        en:af_orphan_prompt) echo 'Remove the orphan binaries above and continue? [Y/N]: ' ;;
+        ru:af_orphan_prompt) echo 'Удалить перечисленные выше осиротевшие бинарные файлы и продолжить? [Y/N]: ' ;;
+        fa:af_orphan_prompt) echo 'باینری‌های یتیم بالا حذف و ادامه داده شود؟ [Y/N]: ' ;;
+        zh-tw:af_orphan_prompt) echo '清理上述孤兒二進位並繼續？[Y/N]: ' ;;
+        ja:af_orphan_prompt) echo '上記の孤立バイナリを削除して続行しますか？[Y/N]: ' ;;
+        zh:rs_takeover_warn) echo '下列残留（脚本二进制＋配置目录俱在、无 unit、无所有权证明）可由本次部署接管，接管在备份完成后执行：%s' ;;
+        en:rs_takeover_warn) echo 'The residue below (script binary + config dir present, no unit, no ownership proof) can be taken over by this deployment; takeover runs after the backup is taken: %s' ;;
+        ru:rs_takeover_warn) echo 'Указанные ниже остатки (бинарный файл скрипта и каталог конфигурации присутствуют, unit отсутствует, доказательств владения нет) могут быть приняты этим развёртыванием; принятие выполняется после создания резервной копии: %s' ;;
+        fa:rs_takeover_warn) echo 'باقیمانده‌های زیر (باینری اسکریپت و دایرکتوری پیکربندی موجود، بدون unit و بدون مدرک مالکیت) می‌توانند توسط این استقرار تصاحب شوند؛ تصاحب پس از گرفتن پشتیبان انجام می‌شود: %s' ;;
+        zh-tw:rs_takeover_warn) echo '下列殘留（指令碼二進位＋設定目錄俱在、無 unit、無所有權證明）可由本次部署接管，接管在備份完成後執行：%s' ;;
+        ja:rs_takeover_warn) echo '以下の残留（スクリプトバイナリと設定ディレクトリが存在し、unit なし、所有権の証明なし）は今回のデプロイが引き継ぐことができます。引き継ぎはバックアップ取得後に実行されます：%s' ;;
+        zh:rs_takeover_prompt) echo '确认接管上述残留并继续？[Y/N]: ' ;;
+        en:rs_takeover_prompt) echo 'Confirm takeover of the residue above and continue? [Y/N]: ' ;;
+        ru:rs_takeover_prompt) echo 'Подтвердить принятие указанных выше остатков и продолжить? [Y/N]: ' ;;
+        fa:rs_takeover_prompt) echo 'تصاحب باقیمانده‌های بالا تأیید و ادامه داده شود؟ [Y/N]: ' ;;
+        zh-tw:rs_takeover_prompt) echo '確認接管上述殘留並繼續？[Y/N]: ' ;;
+        ja:rs_takeover_prompt) echo '上記の残留を引き継いで続行しますか？[Y/N]: ' ;;
         zh:do_chmod) echo '无法设置 A-Box 目录权限： %s' ;;
         zh-tw:do_chmod) echo '無法設定 A-Box 目錄權限： %s' ;;
         en:do_chmod) echo 'Cannot set the A-Box directory permissions: %s' ;;
@@ -10288,10 +10312,114 @@ list_foreign_core_conflicts() {
     done
 }
 
+# SYD-B E6: the canonical binary path of a core family (same
+# mapping as core_family_binary_orphaned, without the checks).
+core_family_binary_of() {
+    case "$1" in
+        xray) printf '%s\n' /usr/local/bin/xray ;;
+        sing-box) printf '%s\n' /usr/local/bin/sing-box ;;
+        hysteria) printf '%s\n' /usr/local/bin/hysteria ;;
+        *) return 1 ;;
+    esac
+}
+
+# SYD-B E11: the two paths a residue takeover may delete for one
+# family: its binary and its config dir. Shared data (e.g.
+# /usr/local/share/xray) is never in this list.
+core_family_residue_paths() {
+    case "$1" in
+        xray) printf '%s\n' /usr/local/bin/xray /usr/local/etc/xray ;;
+        sing-box) printf '%s\n' /usr/local/bin/sing-box /etc/sing-box ;;
+        hysteria) printf '%s\n' /usr/local/bin/hysteria /etc/hysteria ;;
+        *) return 1 ;;
+    esac
+}
+
+# SYD-B E11: plan a residue takeover. Runs BEFORE the assert and
+# BEFORE begin (no backup yet): it only lists residue-shaped
+# stacks (binary + config dir present, no unit, not owned) and
+# records an explicit yes in ABOX_RESIDUE_TAKEOVER (space-
+# separated srv|path pairs). Decline / EOF / non-Y aborts.
+residue_takeover_plan() {
+    local _srv='' _bin='' _cfg='' _unit='' _paths='' _ans=''
+    ABOX_RESIDUE_TAKEOVER=''
+    for _srv in "$@"; do
+        { abox_owns_service "$_srv" || abox_owns_config_only_core_dir "$_srv"; } && continue
+        _paths=$(core_family_residue_paths "$_srv") || continue
+        _bin=$(printf '%s' "$_paths" | sed -n '1p')
+        _cfg=$(printf '%s' "$_paths" | sed -n '2p')
+        [[ -e "$_bin" || -L "$_bin" ]] || continue
+        [[ -d "$_cfg" && ! -L "$_cfg" ]] || continue
+        _unit=$(same_name_service_unit_path "$_srv" 2>/dev/null || true)
+        [[ -z "$_unit" || ( ! -e "$_unit" && ! -L "$_unit" ) ]] || continue
+        ABOX_RESIDUE_TAKEOVER+="$_srv|$_bin $_srv|$_cfg "
+    done
+    [[ -n "$ABOX_RESIDUE_TAKEOVER" ]] || return 0
+    ABOX_RESIDUE_TAKEOVER="${ABOX_RESIDUE_TAKEOVER% }"
+    msg "${YELLOW}$(tprintf rs_takeover_warn "$ABOX_RESIDUE_TAKEOVER")${NC}"
+    read -r -p "$(tr_msg rs_takeover_prompt)" _ans || return 1
+    is_yes "$_ans" || return 1
+    return 0
+}
+
+# SYD-B E11: execute a planned takeover. Runs AFTER begin (backup
+# taken): re-verifies each path is still residue-shaped (listed
+# for its family, unit still absent) before deleting it. A path
+# that changed shape since the plan is left alone.
+residue_takeover_clear() {
+    local _item='' _srv='' _path='' _unit='' _rp=''
+    [[ -n "${ABOX_RESIDUE_TAKEOVER:-}" ]] || return 0
+    for _item in $ABOX_RESIDUE_TAKEOVER; do
+        _srv="${_item%%|*}"; _path="${_item#*|}"
+        _rp=$(core_family_residue_paths "$_srv" 2>/dev/null || true)
+        printf '%s\n' "$_rp" | grep -Fxq -- "$_path" || continue
+        _unit=$(same_name_service_unit_path "$_srv" 2>/dev/null || true)
+        if [[ -n "$_unit" && ( -e "$_unit" || -L "$_unit" ) ]]; then continue; fi
+        if [[ -d "$_path" && ! -L "$_path" ]]; then rm -rf -- "$_path" 2>/dev/null || true
+        elif [[ -e "$_path" || -L "$_path" ]]; then rm -f -- "$_path" 2>/dev/null || true
+        fi
+    done
+    ABOX_RESIDUE_TAKEOVER=''
+    return 0
+}
+
 assert_no_foreign_core_conflicts() {
-    local conflicts
+    local conflicts _kept='' _srv='' _path='' _bin='' _all_orphan=1 _ans=''
     conflicts=$(list_foreign_core_conflicts "$@") || die "$(tr_msg af_enum)"
     [[ -z "$conflicts" ]] && return 0
+    # SYD-B E11: paths the user already approved for residue
+    # takeover in this deployment are not conflicts.
+    if [[ -n "${ABOX_RESIDUE_TAKEOVER:-}" ]]; then
+        while IFS='|' read -r _srv _path; do
+            [[ -n "$_path" ]] || continue
+            case " ${ABOX_RESIDUE_TAKEOVER} " in *" ${_srv}|${_path} "*) continue ;; esac
+            _kept+="${_srv}|${_path}"$'\n'
+        done <<< "$conflicts"
+        conflicts="$_kept"
+        [[ -z "$conflicts" ]] && return 0
+    fi
+    # SYD-B E6: orphan shape alone proves nothing, so only when
+    # EVERY conflict is an orphan binary at its canonical path
+    # is an explicit inline cleanup offered; anything else keeps
+    # the hard refusal, and EOF/non-Y refuses as well.
+    while IFS='|' read -r _srv _path; do
+        [[ -n "$_path" ]] || continue
+        _bin=$(core_family_binary_of "$_srv" 2>/dev/null || true)
+        if [[ "$_path" != "$_bin" ]] || ! core_family_binary_orphaned "$_srv"; then
+            _all_orphan=0; break
+        fi
+    done <<< "$conflicts"
+    if (( _all_orphan == 1 )); then
+        msg "${YELLOW}$(tprintf af_orphan_warn "$conflicts")${NC}"
+        read -r -p "$(tr_msg af_orphan_prompt)" _ans || die "$(tr_msg af_migrate)"
+        if is_yes "$_ans"; then
+            while IFS='|' read -r _srv _path; do
+                [[ -n "$_path" ]] || continue
+                rm -f -- "$_path" || die "$(tr_msg af_migrate)"
+            done <<< "$conflicts"
+            return 0
+        fi
+    fi
     msg "${RED}[!] Refusing to overwrite non-A-Box core files/services:${NC}"
     while IFS='|' read -r srv path; do [[ -n "$path" ]] && msg "${RED}    ${srv}: ${path}${NC}"; done <<< "$conflicts"
     die "$(tr_msg af_migrate)"
@@ -17039,9 +17167,11 @@ deploy_official_hy2() {
         init_system_environment
         load_optional_abox_env_or_die
         light_preflight_check
+        residue_takeover_plan hysteria || return 1
         assert_no_foreign_core_conflicts hysteria
         [[ "$SKIP_REPLACE_AND_PRUNE" == '1' ]] || confirm_deployment_replacement hysteria HY2
         begin_deployment_transaction 'official Hysteria 2 deployment' hysteria || return 1
+        residue_takeover_clear
         clean_nat_rules || die "$(tr_msg cl_nat)"
         clean_input_rules || die "$(tr_msg cl_input)"
         save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
@@ -20775,10 +20905,11 @@ deploy_xray() {
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
-    if [[ "$MODE_IN" == *'ALL'* ]]; then assert_no_foreign_core_conflicts xray hysteria; else assert_no_foreign_core_conflicts xray; fi
+    if [[ "$MODE_IN" == *'ALL'* ]]; then residue_takeover_plan xray hysteria || return 1; assert_no_foreign_core_conflicts xray hysteria; else residue_takeover_plan xray || return 1; assert_no_foreign_core_conflicts xray; fi
     confirm_deployment_replacement xray "$MODE_IN"
     standalone_preserve_snapshot xray /usr/local/etc/xray/config.json || return 1
     if [[ "$MODE_IN" == *'ALL'* ]]; then begin_deployment_transaction "xray ${MODE_IN} deployment" xray hysteria || return 1; else begin_deployment_transaction "xray ${MODE_IN} deployment" xray || return 1; fi
+    residue_takeover_clear
     clean_nat_rules || die "$(tr_msg cl_nat)"
     clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
@@ -20905,10 +21036,12 @@ deploy_singbox() {
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
+    residue_takeover_plan sing-box || return 1
     assert_no_foreign_core_conflicts sing-box
     confirm_deployment_replacement singbox "$MODE_IN"
     standalone_preserve_snapshot sing-box /etc/sing-box/config.json || return 1
     begin_deployment_transaction "sing-box ${MODE_IN} deployment" sing-box || return 1
+    residue_takeover_clear
     clean_nat_rules || die "$(tr_msg cl_nat)"
     clean_input_rules || die "$(tr_msg cl_input)"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"

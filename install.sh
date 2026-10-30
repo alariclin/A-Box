@@ -3860,6 +3860,12 @@ tr_msg() {
         fa:xl_quad_note) echo 'در ادامه: استقرار Hy2 رسمی (فرایند جداگانه، طبق راهنما پیش بروید)' ;;
         zh-tw:xl_quad_note) echo '接下來部署官方版 Hysteria2（獨立流程，按提示操作）' ;;
         ja:xl_quad_note) echo '続いて公式 Hysteria2 を導入します（別フロー、案内に従ってください）' ;;
+        zh:xl_trio_kept) echo '三合一已部署，本次保留并直接部署 Hy2。' ;;
+        en:xl_trio_kept) echo 'Trio already deployed; keeping it and proceeding to Hysteria2.' ;;
+        ru:xl_trio_kept) echo 'Трио уже развёрнуто; сохраняю его и перехожу к Hysteria2.' ;;
+        fa:xl_trio_kept) echo 'سه‌تایی قبلاً نصب شده است؛ حفظ می‌شود و Hysteria2 نصب می‌شود.' ;;
+        zh-tw:xl_trio_kept) echo '三合一已部署，本次保留並直接部署 Hy2。' ;;
+        ja:xl_trio_kept) echo '三合一は既に導入済みのため、そのまま Hysteria2 を導入します。' ;;
         zh:xl_quad_hy2_fail) echo 'Hy2 官方版部署失败（原因见上方），Xray 三合一已保留。' ;;
         en:xl_quad_hy2_fail) echo 'Official Hy2 deployment failed (see above); the Xray trio was kept.' ;;
         ru:xl_quad_hy2_fail) echo 'Развёртывание официального Hy2 не удалось (см. выше); трио Xray сохранено.' ;;
@@ -4106,12 +4112,12 @@ tr_msg() {
         fa:xl_remove_cancelled) echo 'حذف لغو شد.' ;;
         zh-tw:xl_remove_cancelled) echo '已取消刪除。' ;;
         ja:xl_remove_cancelled) echo '削除をキャンセルしました。' ;;
-        zh:xl_select) echo '请选择 [0-10]：' ;;
-        en:xl_select) echo 'Select [0-10]: ' ;;
-        ru:xl_select) echo 'Выберите [0–10]: ' ;;
-        fa:xl_select) echo 'انتخاب [0-10]: ' ;;
-        zh-tw:xl_select) echo '請選擇 [0-10]：' ;;
-        ja:xl_select) echo '選択してください [0-10]：' ;;
+        zh:xl_select) echo '请选择 [0-9]：' ;;
+        en:xl_select) echo 'Select [0-9]: ' ;;
+        ru:xl_select) echo 'Выберите [0–9]: ' ;;
+        fa:xl_select) echo 'انتخاب [0-9]: ' ;;
+        zh-tw:xl_select) echo '請選擇 [0-9]：' ;;
+        ja:xl_select) echo '選択してください [0-9]：' ;;
         zh:xl_mode_ask) echo '请选择安装模式 [1-2，0 取消]：' ;;
         en:xl_mode_ask) echo 'Install mode [1-2, 0 cancel]: ' ;;
         ru:xl_mode_ask) echo 'Режим установки [1-2, 0 — отмена]: ' ;;
@@ -14916,6 +14922,7 @@ abox_runtime_identity() {
     local family="$1"
     case "$family" in
         xray) printf '%s\t%s\n' "$ABOX_RUNTIME_XRAY_USER" "$ABOX_RUNTIME_XRAY_GROUP" ;;
+        xray-latest) printf '%s\t%s\n' "$ABOX_RUNTIME_XRAY_USER" "$ABOX_RUNTIME_XRAY_GROUP" ;;
         sing-box|singbox) printf '%s\t%s\n' "$ABOX_RUNTIME_SINGBOX_USER" "$ABOX_RUNTIME_SINGBOX_GROUP" ;;
         hysteria) printf '%s\t%s\n' "$ABOX_RUNTIME_HYSTERIA_USER" "$ABOX_RUNTIME_HYSTERIA_GROUP" ;;
         *) return 1 ;;
@@ -16895,14 +16902,14 @@ EOF_HY2
 }
 
 deploy_official_hy2() {
-    local IS_SILENT=${1:-NORMAL} TLS_CONFIG HY2_LISTEN cert_cn HY2_CAPS='CAP_NET_BIND_SERVICE' hy2_tmp hy2_bin domain_yaml token_yaml
+    local IS_SILENT=${1:-NORMAL} TLS_CONFIG HY2_LISTEN cert_cn HY2_CAPS='CAP_NET_BIND_SERVICE' hy2_tmp hy2_bin domain_yaml token_yaml SKIP_REPLACE_AND_PRUNE=${2:-0}
     if [[ "$IS_SILENT" != 'SILENT' ]]; then
         clear; msg "${BOLD}${GREEN}部署官方 Hysteria 2${NC}"
         init_system_environment
         load_optional_abox_env_or_die
         light_preflight_check
         assert_no_foreign_core_conflicts hysteria
-        confirm_deployment_replacement hysteria HY2
+        [[ "$SKIP_REPLACE_AND_PRUNE" == '1' ]] || confirm_deployment_replacement hysteria HY2
         begin_deployment_transaction 'official Hysteria 2 deployment' hysteria
         release_ports
         clean_nat_rules || die "$(tr_msg cl_nat)"
@@ -17044,7 +17051,7 @@ EOF_SVC
     if [[ "$IS_SILENT" != 'SILENT' ]]; then
         write_env hysteria HY2
         set_desired_state RUNNING || die "$(tr_msg hy2b_desired)"
-        prune_owned_core_families_except hysteria
+        [[ "$SKIP_REPLACE_AND_PRUNE" == '1' ]] || prune_owned_core_families_except hysteria
         setup_geo_cron
         commit_deployment_transaction
         view_config deploy
@@ -34207,6 +34214,12 @@ EOF_XLSVC
     fi
 }
 
+# XL-FIX2: is_systemd/xray_owned previously existed only inside generated-script
+# heredocs (probe/geo/traffic copies); the main script called xray_owned at
+# takeover install and got "command not found". Real top-level definitions.
+is_systemd() { [[ "$INIT_SYS_EXPECTED" == systemd ]]; }
+xray_owned() { local u; if is_systemd; then u=/etc/systemd/system/xray.service; else u=/etc/init.d/xray; fi; [[ -f "$u" && ! -L "$u" ]] && grep -Fxq '# Managed by A-Box' "$u"; }
+
 _xl_write_slot_unit() {
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_XSSVC' || return 1
@@ -34880,10 +34893,26 @@ xray_latest_deploy_trio() {
 # One-click quad: the Xray trio above + the official Hysteria2 deployment
 # (its own established flow and transaction handling, run in a subshell so
 # its die paths cannot kill this menu).
+xray_latest_trio_deployed() {
+    local tgt='' cfg=''
+    tgt=$(_xl_target 2>/dev/null) || return 1
+    cfg="${tgt%%|*}"
+    [[ -f "$cfg" ]] || return 1
+    [[ -n "$(jq -r --arg t latest-vision '.inbounds[]? | select(.tag == $t) | .tag' "$cfg" 2>/dev/null)" ]] || return 1
+    [[ -n "$(jq -r --arg t latest-xhttp '.inbounds[]? | select(.tag == $t) | .tag' "$cfg" 2>/dev/null)" ]] || return 1
+    [[ -n "$(jq -r --arg t latest-ss '.inbounds[]? | select(.tag == $t) | .tag' "$cfg" 2>/dev/null)" ]] || return 1
+    return 0
+}
+
 xray_latest_deploy_quad() {
-    xray_latest_deploy_trio || return 1
+    msg "${BOLD}${GREEN}$(tr_msg xl_m_quad)${NC}"
+    if xray_latest_trio_deployed 2>/dev/null; then
+        msg "${GREEN}$(tr_msg xl_trio_kept)${NC}"
+    else
+        xray_latest_deploy_trio || return 1
+    fi
     msg "${CYAN}$(tr_msg xl_quad_note)${NC}"
-    if ( deploy_official_hy2 ); then
+    if ( deploy_official_hy2 NORMAL 1 ); then
         msg "${GREEN}$(tr_msg xl_ok_installed): Hysteria2${NC}"
         return 0
     fi
@@ -38128,6 +38157,8 @@ PY_SELFTEST_TAR
     declare -F xray_latest_deploy_trio >/dev/null 2>&1 || { echo 'FAIL: latest Xray trio deployer missing'; failures=$((failures + 1)); }
     declare -F xray_latest_deploy_quad >/dev/null 2>&1 || { echo 'FAIL: latest Xray quad deployer missing'; failures=$((failures + 1)); }
     declare -F xray_latest_ensure_core >/dev/null 2>&1 || { echo 'FAIL: latest Xray core ensure missing'; failures=$((failures + 1)); }
+    declare -F is_systemd >/dev/null 2>&1 || { echo 'FAIL: is_systemd missing'; failures=$((failures + 1)); }
+    declare -F xray_owned >/dev/null 2>&1 || { echo 'FAIL: xray_owned missing'; failures=$((failures + 1)); }
     declare -F cleanup_protocols_menu >/dev/null 2>&1 || { echo 'FAIL: cleanup protocols menu missing'; failures=$((failures + 1)); }
     declare -F remove_single_protocol_menu >/dev/null 2>&1 || { echo 'FAIL: single protocol remover missing'; failures=$((failures + 1)); }
     declare -F clear_all_protocols >/dev/null 2>&1 || { echo 'FAIL: clear all protocols missing'; failures=$((failures + 1)); }

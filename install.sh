@@ -17493,6 +17493,49 @@ cleanup_ephemeral_deployment_transaction_dir() {
     ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
 }
 
+# SYD-B E14: read-only pre-verification of a backup: the checksum,
+# hmac, archive, safety and init-compat gates of a restore, run
+# BEFORE any target is deleted. Returns 0 only when the backup
+# would pass the restore's own pre-destructive gates.
+verify_backup_restorable() {
+    local backup="${1:-}" key_file="${2:-}" work root
+    [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || return 1
+    backup_checksum_verify "$backup" "${backup}.sha256" || return 1
+    if [[ -n "$key_file" ]]; then
+        backup_auth_verify_with_key_file "$backup" "${backup}.hmac" "$key_file" || return 1
+    else
+        backup_auth_verify "$backup" "${backup}.hmac" || return 1
+    fi
+    validate_backup_archive "$backup" || return 1
+    work=$(mktemp -d /tmp/A-Box-verify.XXXXXX) || return 1
+    chmod 700 "$work" 2>/dev/null || true
+    tar -xzf "$backup" -C "$work" 2>/dev/null || { rm -rf "$work"; return 1; }
+    root="$work/root"
+    assert_restore_target_safe "$root" || { rm -rf "$work"; return 1; }
+    assert_restore_shortcut_safe "$root" || { rm -rf "$work"; return 1; }
+    validate_backup_core_init_compatibility "$root" || { rm -rf "$work"; return 1; }
+    rm -rf "$work"
+    return 0
+}
+
+# SYD-B E14: restart services from a backup's recorded state, used
+# when a rollback cannot restore the backup itself (or when the
+# backup fails pre-verification): the old deployment must not be
+# left stopped. Best-effort; never masks the caller's failure.
+rollback_restart_services_from_backup() {
+    local backup="${1:-}" work state rc=0
+    [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || return 1
+    work=$(mktemp -d /tmp/A-Box-rollback-state.XXXXXX) || return 1
+    if tar -xzf "$backup" -C "$work" meta/services.state 2>/dev/null && [[ -f "$work/meta/services.state" ]]; then
+        state="$work/meta/services.state"
+        restore_managed_service_state "$state"; rc=$?
+        rm -rf -- "$work"
+        return $rc
+    fi
+    rm -rf -- "$work"
+    return 1
+}
+
 deployment_transaction_rollback() {
     [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] || return 0
     local targets="${ABOX_DEPLOY_TX_TARGETS:-}" reason="${ABOX_DEPLOY_TX_REASON:-deployment}" backup="${ABOX_DEPLOY_TX_BACKUP:-}" tx_tmp="${ABOX_DEPLOY_TX_TMP:-}" tx_backup_dir="${ABOX_DEPLOY_TX_BACKUP_DIR:-$ABOX_DIR/backups}" tx_key_file="${ABOX_DEPLOY_TX_KEY_FILE:-}" tx_ephemeral_dir="${ABOX_DEPLOY_TX_EPHEMERAL_DIR:-}" srv cleanup_failed=0
@@ -17515,6 +17558,16 @@ deployment_transaction_rollback() {
         return 1
     fi
 
+    # SYD-B E14: pre-verify the backup BEFORE deleting anything.
+    # A backup that fails checksum/hmac/archive/safety/compat
+    # leaves the current targets untouched, with services
+    # restored from the snapshot instead of a deleted half-state.
+    if ! verify_backup_restorable "$backup" "$tx_key_file"; then
+        msg "${RED}[!] Rollback aborted before removing targets: backup failed pre-verification. Recovery backup retained: ${backup:-missing}${NC}" >&2
+        rollback_restart_services_from_backup "$backup" || true
+        return 1
+    fi
+
     for srv in $targets; do
         if ! remove_core_family_force "$srv"; then
             msg "${RED}[!] Rollback aborted: unable to remove the staged/current ${srv} core family. No backup restore was attempted; recovery backup retained: ${backup:-missing}${NC}" >&2
@@ -17525,11 +17578,13 @@ deployment_transaction_rollback() {
     if [[ -n "$tx_key_file" ]]; then
         if ! restore_latest_backup_silent "$tx_backup_dir" "$backup" "$tx_key_file"; then
             msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup: ${backup:-missing}. Recovery context retained.${NC}" >&2
+            rollback_restart_services_from_backup "$backup" || true
             return 1
         fi
     else
         if ! restore_latest_backup_silent "$tx_backup_dir" "$backup"; then
             msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup: ${backup:-missing}. Recovery context retained.${NC}" >&2
+            rollback_restart_services_from_backup "$backup" || true
             return 1
         fi
     fi
@@ -23729,7 +23784,17 @@ probe_core_sources_banner() {
     local pref='compatibility-pin-first' api_code mirror_code base
     [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]] && pref='latest-official-stable-first'
     base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
-    api_code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 'https://api.github.com/repos/XTLS/Xray-core/releases?per_page=100' 2>/dev/null || printf '000')
+    # SYD-B E13: the release-API probe was single-shot, so one
+    # transient blip reported the API dead. Retry it (max 3);
+    # the mirror probe stays single-shot by design.
+    api_code='000'
+    local _try=0
+    while (( _try < 3 )); do
+        api_code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 'https://api.github.com/repos/XTLS/Xray-core/releases?per_page=100' 2>/dev/null || printf '000')
+        [[ "$api_code" == 200 ]] && break
+        _try=$((_try + 1))
+        (( _try < 3 )) && sleep 1
+    done
     mirror_code=$(curl -sSL -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "${base%/}/SHA256SUMS" 2>/dev/null || printf '000')
     case "$api_code" in 200) api_code='available (HTTP 200)' ;; *) api_code="unavailable (HTTP ${api_code:-000})" ;; esac
     case "$mirror_code" in 200) mirror_code='available (HTTP 200)' ;; *) mirror_code="unavailable (HTTP ${mirror_code:-000})" ;; esac
@@ -31279,9 +31344,9 @@ auto_backup_silent() {
 
 restore_latest_backup_silent() {
     local backup_dir="${1:-$ABOX_DIR/backups}" selected="${2:-}" key_file="${3:-}" work root backend mode=all srv
-    [[ -d "$backup_dir" ]] || return 1
+    [[ -d "$backup_dir" ]] || { msg "restore gate failed: backup-dir" >&2; return 1; }
     if [[ -n "$selected" ]]; then
-        [[ -f "$selected" && "$(dirname "$selected")" == "$backup_dir" ]] || return 1
+        [[ -f "$selected" && "$(dirname "$selected")" == "$backup_dir" ]] || { msg "restore gate failed: selected-path" >&2; return 1; }
     else
         selected=$(python3 - "$backup_dir" <<'PY_LATEST_BACKUP'
 from pathlib import Path
@@ -31297,48 +31362,48 @@ for p in root.glob('A-Box-backup-*.tar.gz'):
 if items:
     print(sorted(items, reverse=True)[0][1])
 PY_LATEST_BACKUP
-) || return 1
+) || { msg "restore gate failed: latest-select" >&2; return 1; }
     fi
-    [[ -n "$selected" ]] || return 1
-    backup_checksum_verify "$selected" "${selected}.sha256" || return 1
+    [[ -n "$selected" ]] || { msg "restore gate failed: selected-empty" >&2; return 1; }
+    backup_checksum_verify "$selected" "${selected}.sha256" || { msg "restore gate failed: checksum" >&2; return 1; }
     if [[ -n "$key_file" ]]; then
-        backup_auth_verify_with_key_file "$selected" "${selected}.hmac" "$key_file" || return 1
+        backup_auth_verify_with_key_file "$selected" "${selected}.hmac" "$key_file" || { msg "restore gate failed: hmac-key" >&2; return 1; }
     else
-        backup_auth_verify "$selected" "${selected}.hmac" || return 1
+        backup_auth_verify "$selected" "${selected}.hmac" || { msg "restore gate failed: hmac" >&2; return 1; }
     fi
-    validate_backup_archive "$selected" || return 1
-    work=$(mktemp -d /tmp/A-Box-rollback.XXXXXX) || return 1; chmod 700 "$work"
-    tar -xzf "$selected" -C "$work" || { rm -rf "$work"; return 1; }
-    root="$work/root"; assert_restore_target_safe "$root" || { rm -rf "$work"; return 1; }; assert_restore_shortcut_safe "$root" || { rm -rf "$work"; return 1; }; validate_backup_core_init_compatibility "$root" || { rm -rf "$work"; return 1; }
-    stop_all_managed_services >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
-    clean_nat_rules >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
-    clean_input_rules >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
-    remove_owned_core_families_for_restore "$root" || { rm -rf "$work"; return 1; }
-    clear_abox_runtime_for_restore || { rm -rf "$work"; return 1; }
-    restore_abox_directory "$root" || { rm -rf "$work"; return 1; }
-    for srv in xray sing-box hysteria; do restore_core_family_from_backup "$root" "$srv" || { rm -rf "$work"; return 1; }; done
+    validate_backup_archive "$selected" || { msg "restore gate failed: archive" >&2; return 1; }
+    work=$(mktemp -d /tmp/A-Box-rollback.XXXXXX) || { msg "restore gate failed: workdir" >&2; return 1; }; chmod 700 "$work"
+    tar -xzf "$selected" -C "$work" || { msg "restore gate failed: unpack" >&2; rm -rf "$work"; return 1; }
+    root="$work/root"; assert_restore_target_safe "$root" || { msg "restore gate failed: target-safe" >&2; rm -rf "$work"; return 1; }; assert_restore_shortcut_safe "$root" || { msg "restore gate failed: shortcut-safe" >&2; rm -rf "$work"; return 1; }; validate_backup_core_init_compatibility "$root" || { msg "restore gate failed: init-compat" >&2; rm -rf "$work"; return 1; }
+    stop_all_managed_services >/dev/null 2>&1 || { msg "restore gate failed: stop-services" >&2; rm -rf "$work"; return 1; }
+    clean_nat_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-nat" >&2; rm -rf "$work"; return 1; }
+    clean_input_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-input" >&2; rm -rf "$work"; return 1; }
+    remove_owned_core_families_for_restore "$root" || { msg "restore gate failed: remove-families" >&2; rm -rf "$work"; return 1; }
+    clear_abox_runtime_for_restore || { msg "restore gate failed: clear-runtime" >&2; rm -rf "$work"; return 1; }
+    restore_abox_directory "$root" || { msg "restore gate failed: restore-dir" >&2; rm -rf "$work"; return 1; }
+    for srv in xray sing-box hysteria; do restore_core_family_from_backup "$root" "$srv" || { msg "restore gate failed: restore-family" >&2; rm -rf "$work"; return 1; }; done
     local aux_paths=''
-    aux_paths=$(managed_auxiliary_paths) || { rm -rf "$work"; return 1; }
+    aux_paths=$(managed_auxiliary_paths) || { msg "restore gate failed: aux-enum" >&2; rm -rf "$work"; return 1; }
     while IFS= read -r path; do
         [[ "$path" == /usr/local/bin/sb ]] && continue
-        restore_auxiliary_path_from_backup "$root" "$path" || { rm -rf "$work"; return 1; }
+        restore_auxiliary_path_from_backup "$root" "$path" || { msg "restore gate failed: restore-aux" >&2; rm -rf "$work"; return 1; }
     done <<< "$aux_paths"
-    regenerate_runtime_assets_after_restore >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
-    apply_native_firewall_rules_from_state >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
+    regenerate_runtime_assets_after_restore >/dev/null 2>&1 || { msg "restore gate failed: regen-assets" >&2; rm -rf "$work"; return 1; }
+    apply_native_firewall_rules_from_state >/dev/null 2>&1 || { msg "restore gate failed: native-fw" >&2; rm -rf "$work"; return 1; }
     backend=$(cat "$work/meta/firewall.backend" 2>/dev/null || echo iptables); [[ "$backend" == iptables ]] || mode=special
-    restore_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 "$mode" || { rm -rf "$work"; return 1; }
-    restore_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 "$mode" || { rm -rf "$work"; return 1; }
+    restore_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 "$mode" || { msg "restore gate failed: iptables4" >&2; rm -rf "$work"; return 1; }
+    restore_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 "$mode" || { msg "restore gate failed: iptables6" >&2; rm -rf "$work"; return 1; }
     # X-08: a pre-deployment backup on a fresh host legitimately has no .env;
     # guard like regenerate_runtime_assets_after_restore does (L13851).
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
-        load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
-        if [[ -n "${SS_PORT:-}" ]]; then enforce_ss_whitelist_order "$SS_PORT" || { rm -rf "$work"; return 1; }; fi
+        load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || { msg "restore gate failed: load-env" >&2; rm -rf "$work"; return 1; }
+        if [[ -n "${SS_PORT:-}" ]]; then enforce_ss_whitelist_order "$SS_PORT" || { msg "restore gate failed: ss-order" >&2; rm -rf "$work"; return 1; }; fi
     else
         clear_abox_env_vars
     fi
-    save_firewall_rules >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
-    if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || { rm -rf "$work"; return 1; }; fi
-    restore_managed_service_state "$work/meta/services.state" || { rm -rf "$work"; return 1; }
+    save_firewall_rules >/dev/null 2>&1 || { msg "restore gate failed: save-fw" >&2; rm -rf "$work"; return 1; }
+    if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || { msg "restore gate failed: daemon-reload" >&2; rm -rf "$work"; return 1; }; fi
+    restore_managed_service_state "$work/meta/services.state" || { msg "restore gate failed: service-state" >&2; rm -rf "$work"; return 1; }
     rm -rf "$work"; msg "${GREEN}[*] Rollback restored backup:${NC} $selected"
 }
 

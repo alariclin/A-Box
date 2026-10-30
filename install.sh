@@ -22963,11 +22963,11 @@ sync_env_ports_after_removal() {
     if (( _read_failed == 1 )); then
         return 1
     fi
-    for var in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT SOCKS_PORT HY2_MONITOR_PORT; do
+    for var in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT SOCKS_PORT HY2_MONITOR_PORT HY2_URI_PORTS; do
         val=$(sed -n "s/^${var}=//p" "$envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
         [[ -n "$val" ]] || continue
         [[ " ${live_ports[*]} " == *" $val "* ]] && continue
-        if ! sed -i "s/^${var}=.*/${var}=''/" "$envf" 2>/dev/null; then
+        if ! sed -i "s/^${var}=.*/${var}=\"\"/" "$envf" 2>/dev/null; then
             _write_failed=1
             continue
         fi
@@ -23014,6 +23014,16 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
         [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true
         users_registry_remove "$core" "$tag"
     done
+    # SYD-B E16: a removed sing-box Hy2 inbound owns its cert/key
+    # pair. Delete it only when no hysteria2 inbound remains and
+    # the pair is the script-managed /etc/sing-box/hy2.crt+key;
+    # anything else (shared, external path, still referenced) stays.
+    if [[ "$core" == 'sing-box' ]]; then
+        if [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json ]] && ! jq -e '.inbounds[]? | select(.type == "hysteria2")' /etc/sing-box/config.json >/dev/null 2>&1; then
+            [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]] && rm -f -- /etc/sing-box/hy2.crt 2>/dev/null || true
+            [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]] && rm -f -- /etc/sing-box/hy2.key 2>/dev/null || true
+        fi
+    fi
     # U148: reconcile .env listener ports now, before the caller's
     # defense refresh rebuilds the fail2ban port list from .env.
     sync_env_ports_after_removal || true
@@ -23064,13 +23074,13 @@ _remove_hy2_official() {
     fi
     rm -rf -- /etc/hysteria || return 1
     rm -f -- /etc/ddr/standalone-links.d/hy2.link /etc/ddr/standalone-links.d/hysteria.link 2>/dev/null || true
-    users_registry_remove hy2 hy2
+    users_registry_remove hy2 hy2-official
     return 0
 }
 
 remove_single_protocol_menu() {
     local -a rows=() tags=()
-    local row='' core='' tag='' proto='' port='' label='' idx=0 choice='' answer='' info='' cfg='' deps='' d=''
+    local row='' core='' tag='' proto='' port='' label='' idx=0 choice='' answer='' info='' cfg='' deps='' d='' _detour_target='' _refs=''
     mapfile -t rows < <(protocol_inventory)
     if (( ${#rows[@]} == 0 )); then
         msg "${YELLOW}$(tr_msg cl_none)${NC}"
@@ -23105,6 +23115,22 @@ remove_single_protocol_menu() {
         info=$(_protocol_cfg_of "$core")
         IFS='|' read -r cfg _ _ <<< "$info"
         deps=$(jq -r --arg t "$tag" '.inbounds[]? | select(.detour == $t) | .tag' "$cfg" 2>/dev/null || true)
+        # SYD-B E12: the reverse query above misses the case where
+        # the deleted inbound IS the detour source (ShadowTLS:
+        # shadowtls-in detours to shadowtls-ss; the ss inbound is
+        # the detour TARGET, not a referrer). Look the target up
+        # by the deleted tag itself and absorb it only when it is
+        # an inbound of this config and no other surviving inbound
+        # still detours to it.
+        _detour_target=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .detour // empty' "$cfg" 2>/dev/null || true)
+        if [[ -n "$_detour_target" ]]; then
+            if jq -e --arg dt "$_detour_target" '.inbounds[]? | select(.tag == $dt)' "$cfg" >/dev/null 2>&1; then
+                _refs=$(jq -r --arg dt "$_detour_target" --arg t "$tag" '.inbounds[]? | select(.detour == $dt and .tag != $t) | .tag' "$cfg" 2>/dev/null || true)
+                if [[ -z "$_refs" ]] && ! grep -qx "$_detour_target" <<< "${deps:-}"; then
+                    if [[ -n "$deps" ]]; then deps+=$'\n'"$_detour_target"; else deps="$_detour_target"; fi
+                fi
+            fi
+        fi
         if [[ -n "$deps" ]]; then
             while IFS= read -r d; do [[ -n "$d" ]] && tags+=("$d"); done <<< "$deps"
             msg "${YELLOW}$(tr_msg cl_dep_warn): ${deps//$'\n'/, }${NC}"
@@ -23117,6 +23143,9 @@ remove_single_protocol_menu() {
             msg "${RED}$(tr_msg cl_fail)${NC}"
             return 1
         fi
+        # SYD-B E4: the hy2 branch previously skipped side effects,
+        # so stale .env port keys (incl. HY2_URI_PORTS) survived.
+        _protocol_removed_side_effects hy2 hy2-official
     else
         if ! _remove_inbounds_from_config "$core" "${tags[@]}"; then
             msg "${RED}$(tr_msg cl_fail)${NC}"

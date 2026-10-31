@@ -30255,9 +30255,10 @@ strip_abox_cron_blocks_from_file() {
           if (skip) next
           print; next
       }
-        if (wanted == "" && $0 ~ /^# A-Box (PROBE|GEO|TRAFFIC) BEGIN$/) { if (skip) exit 1; skip=1; open_name=$3; next }
-        if (wanted == "" && $0 ~ /^# A-Box (PROBE|GEO|TRAFFIC) END$/) { if (!skip || $3 != open_name) exit 1; skip=0; open_name=""; next }
+        if (wanted == "" && $0 ~ /^# A-Box (PROBE|GEO|TRAFFIC|USERGUARD) BEGIN$/) { if (skip) exit 1; skip=1; open_name=$3; next }
+        if (wanted == "" && $0 ~ /^# A-Box (PROBE|GEO|TRAFFIC|USERGUARD) END$/) { if (!skip || $3 != open_name) exit 1; skip=0; open_name=""; next }
         if (skip) next
+        if (wanted == "" && ($0 == "* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1" || $0 == "* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1" || $0 == "*/5 * * * * /bin/bash /etc/ddr/user-guard-runner.sh --user-guard-tick >/dev/null 2>&1" || $0 == "0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1" || $0 == "0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1" || $0 == "* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1")) next
         print
       }
       END { if (skip) exit 1; if (depth > 0) exit 1; if (wanted != "" && seen_wanted > 1) exit 1 }

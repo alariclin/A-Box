@@ -30244,7 +30244,7 @@ strip_abox_cron_blocks_from_file() {
     local input="$1" output="$2" name="${3:-}"
     [[ -f "$input" && ! -L "$input" && -n "$output" ]] || return 1
     awk -v wanted="$name" '
-      function norm_line(s,   t) { t=s; if (substr(t, length(t), 1) == "\r") t=substr(t, 1, length(t)-1); gsub(/[ \t]+/, " ", t); sub(/^ /, "", t); sub(/ $/, "", t); return t }
+      function norm_line(s,   t) { t=s; if (substr(t, length(t), 1) == "\r") t=substr(t, 1, length(t)-1); if (substr(t, length(t)-1, 2) == "\\r") t=substr(t, 1, length(t)-2); gsub(/[ \t]+/, " ", t); sub(/^ /, "", t); sub(/ $/, "", t); return t }
       function bare_line_owner(n) {
         if (n == "* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1" || n == "* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1") return "PROBE"
         if (n == "0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1" || n == "0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1") return "GEO"

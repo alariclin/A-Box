@@ -10117,6 +10117,105 @@ if len({(r[0],r[1],r[2]) for r in all_rows}) != len(all_rows): raise SystemExit(
 files={r[2]:r[3] for r in rows if r[0]=='F'}
 dirs={r[2] for r in rows if r[0]=='D'}
 expected=set(files)|dirs
+def _repair_is_mountpoint(path):
+    path = os.path.abspath(os.path.normpath(path))
+    if os.path.islink(path):
+        return False
+    try:
+        with open('/proc/self/mountinfo', 'r', encoding='utf-8', errors='strict') as mf:
+            for line in mf:
+                fields = line.rstrip('\n').split(' ')
+                if len(fields) < 5:
+                    continue
+                mp = re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), fields[4])
+                mp = os.path.abspath(os.path.normpath(mp))
+                if mp == path:
+                    return True
+    except (OSError, UnicodeError):
+        raise SystemExit(4)
+    return False
+# SYD-B5e R1: repair product doubling artifacts before the strict preflight.
+# Backup used to nest <dir>/<basename(dir)>/ copies of recorded files; a
+# restore writes them back to live, and the strict rule below then refuses
+# the whole family. An unrecorded entry is an artifact only if stripping
+# repeated "<basename(dir)>/" insertions maps it onto a recorded file with
+# an identical hash (dirs: every descendant is an artifact), and it meets
+# the same regular-file/dir, ownership, mode, link and mountpoint bars as
+# recorded files. Anything else still fails closed with exit 3.
+def _artifact_target(path):
+    for d in sorted(dirs, key=len, reverse=True):
+        if path.startswith(d + os.sep):
+            rest = path[len(d) + 1:]
+            prefix = os.path.basename(d) + os.sep
+            while rest.startswith(prefix):
+                rest = rest[len(prefix):]
+            cand = d + os.sep + rest
+            if cand in files:
+                return cand
+    return None
+def _artifact_mode_ok(st):
+    return (not stat.S_ISLNK(st.st_mode)) and (not (st.st_mode & 0o002)) and (not (st.st_mode & 0o020))
+def _artifact_owner_ok(st):
+    return st.st_uid == 0 and st.st_gid in (0, runtime_gid)
+def _is_artifact_file(path):
+    if _repair_is_mountpoint(path):
+        return False
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or not _artifact_mode_ok(st) or not _artifact_owner_ok(st):
+        return False
+    tgt = _artifact_target(path)
+    if tgt is None:
+        return False
+    h = hashlib.sha256()
+    try:
+        with open(path, 'rb') as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                h.update(chunk)
+    except OSError:
+        return False
+    return h.hexdigest() == files[tgt]
+def _is_artifact_tree(path):
+    if _repair_is_mountpoint(path):
+        return False
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    if stat.S_ISDIR(st.st_mode):
+        if not _artifact_mode_ok(st) or not _artifact_owner_ok(st):
+            return False
+        try:
+            names = os.listdir(path)
+        except OSError:
+            return False
+        return all(_is_artifact_tree(os.path.join(path, n)) for n in names)
+    return _is_artifact_file(path)
+_repair = []
+for _d in sorted(dirs, key=os.fsencode):
+    try:
+        _names = os.listdir(_d)
+    except FileNotFoundError:
+        continue
+    except OSError:
+        raise SystemExit(3)
+    for _n in _names:
+        _child = os.path.join(_d, _n)
+        if _child not in expected:
+            _repair.append(_child)
+if _repair:
+    if all(_is_artifact_tree(_p) for _p in _repair):
+        import shutil
+        for _p in sorted(_repair, key=os.fsencode, reverse=True):
+            if os.path.isdir(_p) and not os.path.islink(_p):
+                shutil.rmtree(_p)
+            else:
+                os.unlink(_p)
+            print(f"[!] Removed doubling artifact: {_p}", file=sys.stderr)
+    else:
+        raise SystemExit(3)
 # Complete fail-closed preflight before deleting anything. Every actual entry
 # below a recorded directory must itself be recorded, correctly typed, root
 # owned, non-link, non-writable by group/other, and (for files) hash-identical.
@@ -31665,6 +31764,13 @@ __abox_backup_copy_path() {
     fi
     dst="$root$src"
     mkdir -p "$(dirname "$dst")" || return 1
+    # SYD-B5e R1: the ABOX_DIR tar branch already staged this dir; cp -a
+    # src dst would copy src INTO dst, nesting basename(src) and poisoning
+    # every backup with <dir>/<dir>/ copies that later fail the remove
+    # preflight. A pre-existing dir dst already holds the staged tree.
+    if [[ -d "$src" && -d "$dst" && ! -L "$dst" ]]; then
+        return 0
+    fi
     cp -a -- "$src" "$dst"
 }
 backup_current_config() {

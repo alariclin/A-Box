@@ -30516,19 +30516,25 @@ remove_abox_cron_block() {
 # accepted as-is; the regex is not stretched to cover them.
 report_unrecognized_abox_cron_lines() {
     local file="$1" line _abox_report_re='(^|[[:space:]\"'"'"';&|(`=])/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh([[:space:]"'"'"';<>&|)`]|$)'
-    local _abox_report_skip_re='^[[:space:]]*(([^[:space:]]+[[:space:]]+){5}|@[a-z]+[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=(\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh\\?|"\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh\\?"|'"'"'\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh\\?'"'"')([[:space:]]+#.*|[[:space:]]*)$'
+    local _abox_report_skip_re='^[[:space:]]*((([*0-9,/-]+|(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|SUN|MON|TUE|WED|THU|FRI|SAT)(-(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|SUN|MON|TUE|WED|THU|FRI|SAT))?(,(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|SUN|MON|TUE|WED|THU|FRI|SAT)(-(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|SUN|MON|TUE|WED|THU|FRI|SAT))?)*)[[:space:]]+){5}|@[a-z]+[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=((\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh|"\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh"|'"'"'\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh\\?'"'"')([[:space:]]+#.*|[[:space:]]*)|\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh\\[[:space:]]*)$'
     [[ -f "$file" && ! -L "$file" ]] || return 1
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ "$line" =~ $_abox_report_re ]] || continue
-        # SYD-B11: skip only when the whole line is a single assignment:
-        # prefix is empty, exactly 5 schedule fields, or exactly 1 @-field;
-        # the value is an unquoted, double-quoted, or single-quoted path
-        # (quotes must pair; a trailing backslash stays allowed per the
-        # B7 continuation limit); the tail is empty or whitespace plus a
-        # #-comment (a # glued to the value is NOT a comment). Anything
-        # else after the assignment must still be reported: a missed
-        # execution reference is worse than report noise, so on doubt,
-        # report.
+        # SYD-B12: skip only when the whole line is a single assignment:
+        # prefix is empty, exactly 5 schedule-validated fields, or exactly
+        # 1 @-field; schedule fields must match cron-field syntax (digits,
+        # *, /, -, comma, or JAN-DEC/SUN-SAT names); anything else after
+        # the assignment must still be reported: a missed execution
+        # reference is worse than report noise, so on doubt, report.
+        # The value is an unquoted, double-quoted, or single-quoted path
+        # (quotes must pair; the double-quoted closing quote must not be
+        # backslash-escaped). A trailing backslash pairs only with a blank
+        # tail (B7 continuation limit), never with a comment tail (an
+        # escaped space is not a comment start). Single-quoted trailing
+        # backslash stays allowed: inside single quotes a backslash is
+        # literal, so the closing quote is real. The tail is empty or
+        # whitespace plus a #-comment (a # glued to the value is NOT a
+        # comment).
         if [[ "$line" =~ $_abox_report_skip_re ]]; then continue; fi
         printf '%s\n' "[!] A-Box cron residual (保留的已知／疑似管理路径引用): $line" >&2
     done < "$file"

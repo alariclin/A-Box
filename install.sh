@@ -30515,7 +30515,7 @@ remove_abox_cron_block() {
 # SYD-B7: backslash-continued split paths are a line-scanner limit,
 # accepted as-is; the regex is not stretched to cover them.
 report_unrecognized_abox_cron_lines() {
-    local file="$1" line _abox_report_re='(^|[[:space:]"'"'"';&|(`])/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh([[:space:]"'"'"';>&|)`]|$)'
+    local file="$1" line _abox_report_re='(^|[[:space:]\"'"'"';&|(`])/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh([[:space:]"'"'"';<>&|)`]|$)'
     [[ -f "$file" && ! -L "$file" ]] || return 1
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ "$line" =~ $_abox_report_re ]] || continue
@@ -31645,18 +31645,34 @@ _manifest_rows_valid() {
 # only when the snapshot itself is valid (rows + size); an invalid snapshot
 # is never installed, and the caller preserves the work dir for forensics.
 merge_retained_manifest_rows() {
-    local root="$1" snapshot="$2"
+    # Returns: 0 merged; 1 merge failed but live restored from snapshot;
+    # 2 merge failed and rollback failed/unavailable (live NOT restored to
+    # pre-restore state; caller must preserve forensics).
+    # SYD-B8: rollback is atomic (same-dir temp copy + mode/owner + row
+    # validation + rename, every step checked), so a failed rollback never
+    # truncates or partially writes live; "undetermined" means not restored
+    # to pre-restore state, never a torn live file.
+    local root="$1" snapshot="$2" _rb_tmp="" _rb_ok=0
     if _merge_retained_manifest_rows_inner "$root" "$snapshot"; then return 0; fi
     if [[ -n "$snapshot" && -n "$ABOX_CORE_OWNERSHIP" && -f "$snapshot" && ! -L "$snapshot" ]] \
         && [[ "$(stat -c %s "$snapshot" 2>/dev/null || echo 99999999)" -le 4194304 ]] \
         && _manifest_rows_valid "$snapshot"; then
         if [[ ! -e "$ABOX_CORE_OWNERSHIP" || ( -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ) ]]; then
-            cp -a -- "$snapshot" "$ABOX_CORE_OWNERSHIP" 2>/dev/null || true
-            chmod 600 "$ABOX_CORE_OWNERSHIP" 2>/dev/null || true
-            if [[ $EUID -eq 0 ]]; then chown root:root "$ABOX_CORE_OWNERSHIP" 2>/dev/null || true; fi
+            _rb_tmp=$(umask 077; mktemp "$(dirname "$ABOX_CORE_OWNERSHIP")/.managed-core-files.rollback.XXXXXX") || _rb_tmp=""
+            if [[ -n "$_rb_tmp" ]] \
+                && cp -a -- "$snapshot" "$_rb_tmp" 2>/dev/null \
+                && chmod 600 "$_rb_tmp" 2>/dev/null \
+                && { [[ $EUID -ne 0 ]] || chown root:root "$_rb_tmp" 2>/dev/null; } \
+                && _manifest_rows_valid "$_rb_tmp" \
+                && mv -f -- "$_rb_tmp" "$ABOX_CORE_OWNERSHIP" 2>/dev/null; then
+                _rb_ok=1
+            elif [[ -n "$_rb_tmp" ]]; then
+                rm -f -- "$_rb_tmp" 2>/dev/null || true
+            fi
         fi
     fi
-    return 1
+    if [[ "$_rb_ok" == 1 ]]; then return 1; fi
+    return 2
 }
 
 _merge_retained_manifest_rows_inner() {
@@ -31675,7 +31691,6 @@ _merge_retained_manifest_rows_inner() {
         _manifest_rows_valid "$live" || return 1
     fi
     rows_file=$(mktemp) || return 1
-    : > "$rows_file"
     for srv in xray sing-box hysteria xray-latest; do
         # SYD-B7: containment is a trichotomy (0 contained / 1 absent /
         # anything else error), mirroring regen + manual-ownership loops;
@@ -31712,7 +31727,14 @@ _merge_retained_manifest_rows_inner() {
     # row with the first retained row into one bad row; normalize first.
     # (command substitution strips trailing newlines, so a non-empty tail
     # output means the last byte is not LF.)
-    if [[ -s "$tmp" && -n "$(tail -c 1 -- "$tmp")" ]]; then printf '\n' >> "$tmp" || { rm -f -- "$tmp" "$rows_file"; return 1; }; fi
+    if [[ -s "$tmp" ]]; then
+        # SYD-B8: tail failure must fail the merge, never be read as
+        # "already LF" (output and status are taken separately).
+        local _tail_out='' _tail_rc=0
+        _tail_out=$(tail -c 1 -- "$tmp" 2>/dev/null) || _tail_rc=$?
+        if [[ "$_tail_rc" -ne 0 ]]; then rm -f -- "$tmp" "$rows_file"; return 1; fi
+        if [[ -n "$_tail_out" ]]; then printf '\n' >> "$tmp" || { rm -f -- "$tmp" "$rows_file"; return 1; }; fi
+    fi
     cat -- "$rows_file" >> "$tmp" || { rm -f -- "$tmp" "$rows_file"; return 1; }
     awk '!seen[$0]++' "$tmp" > "$tmp.dedup" || { rm -f -- "$tmp" "$tmp.dedup" "$rows_file"; return 1; }
     LC_ALL=C sort -t "$TAB" -k2,2 -k3,3 -o "$tmp.dedup" "$tmp.dedup" || { rm -f -- "$tmp" "$tmp.dedup" "$rows_file"; return 1; }
@@ -32190,33 +32212,36 @@ PY_LATEST_BACKUP
     stop_managed_services_for_restore "$root" >/dev/null 2>&1 || { msg "restore gate failed: stop-services" >&2; rm -rf "$work"; return 1; }
     clean_nat_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-nat" >&2; rm -rf "$work"; return 1; }
     clean_input_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-input" >&2; rm -rf "$work"; return 1; }
-    remove_owned_core_families_for_restore "$root" || { msg "restore gate failed: remove-families" >&2; rm -rf "$work"; return 1; }
-    clear_abox_runtime_for_restore "$root" || { msg "restore gate failed: clear-runtime" >&2; rm -rf "$work"; return 1; }
-    restore_abox_directory "$root" || { msg "restore gate failed: restore-dir" >&2; rm -rf "$work"; return 1; }
-    merge_retained_manifest_rows "$root" "$_manifest_snapshot" || { msg "restore gate failed: manifest-merge (work preserved at $work; snapshot $_manifest_snapshot)" >&2; return 1; }
-    for srv in xray sing-box hysteria xray-latest; do restore_core_family_from_backup "$root" "$srv" || { msg "restore gate failed: restore-family" >&2; rm -rf "$work"; return 1; }; done
+    remove_owned_core_families_for_restore "$root" || { msg "restore gate failed: remove-families (work preserved at $work)" >&2; return 1; }
+    clear_abox_runtime_for_restore "$root" || { msg "restore gate failed: clear-runtime (work preserved at $work)" >&2; return 1; }
+    restore_abox_directory "$root" || { msg "restore gate failed: restore-dir (work preserved at $work)" >&2; return 1; }
+    local _mrc=0
+    merge_retained_manifest_rows "$root" "$_manifest_snapshot"; _mrc=$?
+    if [[ "$_mrc" == 1 ]]; then msg "restore gate failed: manifest-merge, rolled back (work preserved at $work; snapshot $_manifest_snapshot)" >&2; return 1; fi
+    if [[ "$_mrc" != 0 ]]; then msg "restore gate failed: manifest-merge, rollback ALSO failed, live state undetermined (work preserved at $work; snapshot $_manifest_snapshot)" >&2; return 1; fi
+    for srv in xray sing-box hysteria xray-latest; do restore_core_family_from_backup "$root" "$srv" || { msg "restore gate failed: restore-family (work preserved at $work)" >&2; return 1; }; done
     local aux_paths=''
-    aux_paths=$(managed_auxiliary_paths) || { msg "restore gate failed: aux-enum" >&2; rm -rf "$work"; return 1; }
+    aux_paths=$(managed_auxiliary_paths) || { msg "restore gate failed: aux-enum (work preserved at $work)" >&2; return 1; }
     while IFS= read -r path; do
         [[ "$path" == /usr/local/bin/sb ]] && continue
-        restore_auxiliary_path_from_backup "$root" "$path" || { msg "restore gate failed: restore-aux" >&2; rm -rf "$work"; return 1; }
+        restore_auxiliary_path_from_backup "$root" "$path" || { msg "restore gate failed: restore-aux (work preserved at $work)" >&2; return 1; }
     done <<< "$aux_paths"
-    regenerate_runtime_assets_after_restore "$root" >/dev/null 2>&1 || { msg "restore gate failed: regen-assets" >&2; rm -rf "$work"; return 1; }
-    apply_native_firewall_rules_from_state >/dev/null 2>&1 || { msg "restore gate failed: native-fw" >&2; rm -rf "$work"; return 1; }
+    regenerate_runtime_assets_after_restore "$root" >/dev/null 2>&1 || { msg "restore gate failed: regen-assets (work preserved at $work)" >&2; return 1; }
+    apply_native_firewall_rules_from_state >/dev/null 2>&1 || { msg "restore gate failed: native-fw (work preserved at $work)" >&2; return 1; }
     backend=$(cat "$work/meta/firewall.backend" 2>/dev/null || echo iptables); [[ "$backend" == iptables ]] || mode=special
-    restore_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 "$mode" || { msg "restore gate failed: iptables4" >&2; rm -rf "$work"; return 1; }
-    restore_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 "$mode" || { msg "restore gate failed: iptables6" >&2; rm -rf "$work"; return 1; }
+    restore_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 "$mode" || { msg "restore gate failed: iptables4 (work preserved at $work)" >&2; return 1; }
+    restore_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 "$mode" || { msg "restore gate failed: iptables6 (work preserved at $work)" >&2; return 1; }
     # X-08: a pre-deployment backup on a fresh host legitimately has no .env;
     # guard like regenerate_runtime_assets_after_restore does (L13851).
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
-        load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || { msg "restore gate failed: load-env" >&2; rm -rf "$work"; return 1; }
-        if [[ -n "${SS_PORT:-}" ]]; then enforce_ss_whitelist_order "$SS_PORT" || { msg "restore gate failed: ss-order" >&2; rm -rf "$work"; return 1; }; fi
+        load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || { msg "restore gate failed: load-env (work preserved at $work)" >&2; return 1; }
+        if [[ -n "${SS_PORT:-}" ]]; then enforce_ss_whitelist_order "$SS_PORT" || { msg "restore gate failed: ss-order (work preserved at $work)" >&2; return 1; }; fi
     else
         clear_abox_env_vars
     fi
-    save_firewall_rules >/dev/null 2>&1 || { msg "restore gate failed: save-fw" >&2; rm -rf "$work"; return 1; }
-    if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || { msg "restore gate failed: daemon-reload" >&2; rm -rf "$work"; return 1; }; fi
-    restore_managed_service_state "$work/meta/services.state" || { msg "restore gate failed: service-state" >&2; rm -rf "$work"; return 1; }
+    save_firewall_rules >/dev/null 2>&1 || { msg "restore gate failed: save-fw (work preserved at $work)" >&2; return 1; }
+    if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || { msg "restore gate failed: daemon-reload (work preserved at $work)" >&2; return 1; }; fi
+    restore_managed_service_state "$work/meta/services.state" || { msg "restore gate failed: service-state (work preserved at $work)" >&2; return 1; }
     local preserved_note='' _latest_in_backup_rc=0
     backup_root_contains_service "$root" xray-latest; _latest_in_backup_rc=$?
     if [[ "$_latest_in_backup_rc" == 1 ]] && abox_owns_service xray-latest; then
@@ -32297,7 +32322,10 @@ restore_from_backup() {
     remove_owned_core_families_for_restore "$root" || die '恢复前删除当前 A-Box 核心文件失败。'
     clear_abox_runtime_for_restore "$root" || die '恢复前清理 A-Box 运行目录失败。'
     restore_abox_directory "$root" || die 'Restore A-Box directory failed.'
-    merge_retained_manifest_rows "$root" "$_manifest_snapshot" || die 'Restore manifest merge for preserved families failed; restore was not committed.'
+    local _mrc=0
+    merge_retained_manifest_rows "$root" "$_manifest_snapshot"; _mrc=$?
+    if [[ "$_mrc" == 1 ]]; then die 'Restore manifest merge for preserved families failed; live manifest restored from snapshot, restore was not committed.'; fi
+    if [[ "$_mrc" != 0 ]]; then die "Restore manifest merge for preserved families failed AND rollback failed; live manifest state undetermined (snapshot $_manifest_snapshot), restore was not committed."; fi
     for srv in xray sing-box hysteria xray-latest; do
         restore_core_family_from_backup "$root" "$srv" || die "Restore failed for core family: $srv"
     done

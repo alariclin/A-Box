@@ -10069,8 +10069,31 @@ remove_recorded_core_family() {
     [[ "$(stat -c %s "$ABOX_CORE_OWNERSHIP" 2>/dev/null || echo 99999999)" -le 4194304 ]] || return 1
     local _u _g
     IFS=$'\t' read -r _u _g < <(abox_runtime_identity "$srv") || return 1
-    runtime_uid=$(id -u "$_u" 2>/dev/null) || return 1
+    runtime_uid=$(id -u "$_u" 2>/dev/null || true)
     runtime_gid=$(getent group "$_g" 2>/dev/null | awk -F: '{print $3}')
+    if [[ ! "$runtime_uid" =~ ^[0-9]+$ || ! "$runtime_gid" =~ ^[0-9]+$ ]]; then
+        # SYD-B3 E22: the recorded service user/group may already be gone
+        # (deleted outside a cleanup run, e.g. a prior partial cleanup).
+        # Derive the runtime identity from the surviving recorded files:
+        # the unique non-root uid/gid, else 0:0; ambiguous -> fail closed.
+        local _derived_uid='' _derived_gid='' _ambig=0 _fu='' _fg=''
+        while IFS=$'\t' read -r _t _s _p _h; do
+            [[ "$_s" == "$srv" ]] || continue
+            [[ -e "$_p" ]] || continue
+            _fu=$(stat -c %u "$_p" 2>/dev/null || true)
+            _fg=$(stat -c %g "$_p" 2>/dev/null || true)
+            [[ "$_fu" =~ ^[0-9]+$ && "$_fg" =~ ^[0-9]+$ ]] || { _ambig=1; break; }
+            if [[ "$_fu" != 0 ]]; then
+                if [[ -z "$_derived_uid" ]]; then _derived_uid="$_fu"; elif [[ "$_derived_uid" != "$_fu" ]]; then _ambig=1; break; fi
+            fi
+            if [[ "$_fg" != 0 ]]; then
+                if [[ -z "$_derived_gid" ]]; then _derived_gid="$_fg"; elif [[ "$_derived_gid" != "$_fg" ]]; then _ambig=1; break; fi
+            fi
+        done < "$ABOX_CORE_OWNERSHIP"
+        [[ "$_ambig" == 0 ]] || return 1
+        runtime_uid="${_derived_uid:-0}"
+        runtime_gid="${_derived_gid:-0}"
+    fi
     [[ "$runtime_uid" =~ ^[0-9]+$ && "$runtime_gid" =~ ^[0-9]+$ ]] || return 1
     python3 - "$srv" "$ABOX_CORE_OWNERSHIP" "$runtime_uid" "$runtime_gid" <<'PY_CORE_REMOVE'
 import hashlib, os, re, stat, sys, tempfile
@@ -10525,6 +10548,7 @@ remove_all_owned_core_families() {
     remove_owned_core_family xray "$force_heal" || failed=1
     remove_owned_core_family sing-box "$force_heal" || failed=1
     remove_owned_core_family hysteria "$force_heal" || failed=1
+    remove_owned_core_family xray-latest "$force_heal" || failed=1
     (( failed == 0 ))
 }
 
@@ -10583,6 +10607,7 @@ stop_all_managed_services() {
     stop_abox_service xray || failed=1
     stop_abox_service sing-box || failed=1
     stop_abox_service hysteria || failed=1
+    stop_abox_service xray-latest || failed=1
     kill_managed_residual_pids >/dev/null 2>&1 || failed=1
     (( failed == 0 ))
 }
@@ -10597,6 +10622,7 @@ managed_service_pid() {
             xray) pidfile=/run/xray.pid; exe=/usr/local/bin/xray ;;
             sing-box) pidfile=/run/sing-box.pid; exe=/usr/local/bin/sing-box ;;
             hysteria) pidfile=/run/hysteria.pid; exe=/usr/local/bin/hysteria ;;
+            xray-latest) pidfile=/run/xray-latest.pid; exe=/usr/local/bin/xray-latest ;;
             *) return 1 ;;
         esac
         [[ -f "$pidfile" && ! -L "$pidfile" ]] || return 1
@@ -10623,7 +10649,7 @@ pid_exe_matches() {
 kill_managed_residual_pids() {
     local srv pid exe failed=0 i
     local -a pids=() exes=()
-    for srv in xray sing-box hysteria; do
+    for srv in xray sing-box hysteria xray-latest; do
         abox_owns_service "$srv" || continue
         pid=$(managed_service_pid "$srv" 2>/dev/null || true)
         pid=${pid%%$'\n'*}
@@ -10632,6 +10658,7 @@ kill_managed_residual_pids() {
             xray) exe='/usr/local/bin/xray' ;;
             sing-box) exe='/usr/local/bin/sing-box' ;;
             hysteria) exe='/usr/local/bin/hysteria' ;;
+            xray-latest) exe='/usr/local/bin/xray-latest' ;;
             *) continue ;;
         esac
         pid_exe_matches "$pid" "$exe" || continue
@@ -15204,7 +15231,7 @@ EOF_F2B_SAMPLE
 }
 
 abox_log_files() {
-    printf '%s\n' /var/log/A-Box-xray-access.log /var/log/A-Box-xray-error.log /var/log/A-Box-singbox.log /var/log/A-Box-hysteria.log /var/log/A-Box-traffic.log
+    printf '%s\n' /var/log/A-Box-xray-access.log /var/log/A-Box-xray-error.log /var/log/A-Box-singbox.log /var/log/A-Box-hysteria.log /var/log/A-Box-traffic.log /var/log/A-Box-xray-latest-access.log /var/log/A-Box-xray-latest-error.log
 }
 
 abox_runtime_identity() {
@@ -23006,7 +23033,7 @@ do_cleanup() {
         ABOX_DEPLOY_TX_EPHEMERAL_DIR="$uninstall_tx_dir"
         ABOX_DIE_HOOK='cleanup_ephemeral_deployment_transaction_dir'
     fi
-    begin_deployment_transaction 'full A-Box cleanup' xray sing-box hysteria || die 'Cleanup aborted: could not open the backup transaction.'
+    begin_deployment_transaction 'full A-Box cleanup' xray sing-box hysteria xray-latest || die 'Cleanup aborted: could not open the backup transaction.'
     if [[ -n "$uninstall_tx_dir" ]]; then
         ensure_backup_auth_key || die "$(tr_msg cu_tx_key_new)"
         IFS= read -r uninstall_tx_value < "$ABOX_BACKUP_KEY" || die "$(tr_msg cu_tx_key_read)"
@@ -36493,24 +36520,26 @@ show_standalone_links() {
     fi
 }
 
-# SYD-B E15: pinSHA256 is the SPKI SHA256 in base64, NOT the whole-
-# certificate fingerprint hex. Recompute it from the live certificate
-# (same pipeline the .env writer uses); the caller falls back to the
-# stored .env value only when the certificate is unreadable.
-hy2_spki_pin_b64() {
-    local crt='' tmpd='' out=''
-    case "${CORE:-}" in
-        singbox) crt='/etc/sing-box/hy2.crt' ;;
-        *) crt='/etc/hysteria/server.crt' ;;
-    esac
+# SYD-B3 E15: hysteria pinSHA256 is the whole-certificate SHA256
+# fingerprint in colon-hex (the format hysteria validates), NOT the
+# SPKI SHA256 base64 (SYD-B's claim, falsified by box matrix 2026-10-31:
+# only DER-colon + insecure + SNI=localhost dials through). An explicit
+# path argument overrides the CORE-based certificate resolution; the
+# caller falls back to the stored .env fingerprint only when the
+# certificate is unreadable.
+hy2_cert_pin_colon() {
+    local crt="${1:-}"
+    if [[ -z "$crt" ]]; then
+        case "${CORE:-}" in
+            singbox) crt='/etc/sing-box/hy2.crt' ;;
+            *) crt='/etc/hysteria/server.crt' ;;
+        esac
+    fi
     [[ -f "$crt" && ! -L "$crt" ]] || return 1
-    tmpd=$(mktemp -d /tmp/A-Box-pin.XXXXXX) || return 1
-    openssl x509 -in "$crt" -noout -pubkey > "$tmpd/pub.pem" 2>/dev/null || { rm -rf "$tmpd"; return 1; }
-    openssl pkey -pubin -in "$tmpd/pub.pem" -outform der -out "$tmpd/pub.der" 2>/dev/null || { rm -rf "$tmpd"; return 1; }
-    openssl dgst -sha256 -binary "$tmpd/pub.der" 2>/dev/null | base64 2>/dev/null | tr -d '\n' > "$tmpd/pin.txt" || { rm -rf "$tmpd"; return 1; }
-    out=$(cat "$tmpd/pin.txt" 2>/dev/null); rm -rf "$tmpd"
-    [[ -n "$out" ]] || return 1
-    printf '%s' "$out"
+    local fp
+    fp=$(openssl x509 -in "$crt" -noout -fingerprint -sha256 2>/dev/null | sed 's/^[^=]*=//') || return 1
+    [[ "$fp" =~ ^([0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$ ]] || return 1
+    printf '%s' "$fp"
 }
 
 view_config() {
@@ -36542,11 +36571,15 @@ view_config() {
     HY2_PASS_E=$(urlencode "${HY2_PASS:-}")
     HY2_OBFS_E=$(urlencode "${HY2_OBFS:-}")
     HY2_DOMAIN_E=$(urlencode "${HY2_DOMAIN:-}")
-    # SYD-B E15: pinSHA256 must be the SPKI SHA256 base64, never
-    # the whole-certificate fingerprint hex (wrong input AND wrong
-    # encoding). Recompute from the live certificate; fall back to
-    # the stored .env SPKI value only when it is unreadable.
-    HY2_PIN_E=$(hy2_spki_pin_b64 || printf '%s' "${HY2_CERT_PUBKEY_SHA256_B64:-}")
+    # SYD-B3 E15: pinSHA256 is the whole-certificate fingerprint in
+    # colon-hex (box matrix 2026-10-31: only DER-colon + insecure=1 +
+    # SNI=localhost dials through; SPKI base64 never matches).
+    # Recompute from the live certificate; fall back to the stored
+    # .env fingerprint (re-colonized) only when it is unreadable.
+    HY2_PIN_E=$(hy2_cert_pin_colon 2>/dev/null || true)
+    if [[ -z "$HY2_PIN_E" && "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+        HY2_PIN_E=$(sed 's/\(..\)/\1:/g; s/:$//' <<< "${HY2_CERT_SHA256_FP}")
+    fi
     [[ -n "$HY2_PIN_E" ]] || msg "${YELLOW}[!] Hy2 certificate unreadable; pinSHA256 left empty.${NC}" >&2
     HY2_PIN_E=$(urlencode "$HY2_PIN_E")
     msg "${BLUE}======================================================================${NC}"
@@ -36573,10 +36606,10 @@ view_config() {
     if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
         if [[ -n "${HY2_DOMAIN:-}" && "$CORE" != 'singbox' ]]; then
             HY2_URL="hysteria2://$HY2_PASS_E@$HY2_DOMAIN:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}sni=$HY2_DOMAIN_E&obfs=salamander&obfs-password=$HY2_OBFS_E#Hy2"
+        elif [[ -n "${HY2_DOMAIN:-}" ]]; then
+            HY2_URL="hysteria2://$HY2_PASS_E@$HY2_DOMAIN:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}insecure=1&pinSHA256=$HY2_PIN_E&obfs=salamander&obfs-password=$HY2_OBFS_E#Hy2"
         else
-            S_IP="$F_IP"
-            [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="$HY2_DOMAIN"
-            HY2_URL="hysteria2://$HY2_PASS_E@$S_IP:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}insecure=1&pinSHA256=$HY2_PIN_E&obfs=salamander&obfs-password=$HY2_OBFS_E#Hy2"
+            HY2_URL="hysteria2://$HY2_PASS_E@$F_IP:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}sni=localhost&insecure=1&pinSHA256=$HY2_PIN_E&obfs=salamander&obfs-password=$HY2_OBFS_E#Hy2"
         fi
         msg "${BOLD}${CYAN}── Hysteria 2 · 端口 ${HY2_URI_PORT}${NC}"
         msg "${GREEN}${HY2_URL}${NC}"

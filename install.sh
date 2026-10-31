@@ -30516,9 +30516,18 @@ remove_abox_cron_block() {
 # accepted as-is; the regex is not stretched to cover them.
 report_unrecognized_abox_cron_lines() {
     local file="$1" line _abox_report_re='(^|[[:space:]\"'"'"';&|(`])/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh([[:space:]"'"'"';<>&|)`]|$)'
+    local _abox_report_assign_re='[A-Za-z_][A-Za-z0-9_]*=\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh' _rest='' _cnt=0
     [[ -f "$file" && ! -L "$file" ]] || return 1
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ "$line" =~ $_abox_report_re ]] || continue
+        # SYD-B9: a path reached only through an assignment (NAME=\?path) never executes the script; skip such lines, but only
+        # when the line holds a single managed path (a second, executed
+        # path must still be reported).
+        if [[ "$line" =~ $_abox_report_assign_re ]]; then
+            _rest="$line"; _cnt=0
+            while [[ "$_rest" == *'/etc/ddr/'* ]]; do _cnt=$(( _cnt + 1 )); _rest="${_rest#*'/etc/ddr/'}"; done
+            [[ "$_cnt" -eq 1 ]] && continue
+        fi
         printf '%s\n' "[!] A-Box cron residual (保留的已知／疑似管理路径引用): $line" >&2
     done < "$file"
     return 0

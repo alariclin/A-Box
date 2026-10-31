@@ -30515,17 +30515,20 @@ remove_abox_cron_block() {
 # SYD-B7: backslash-continued split paths are a line-scanner limit,
 # accepted as-is; the regex is not stretched to cover them.
 report_unrecognized_abox_cron_lines() {
-    local file="$1" line _abox_report_re='(^|[[:space:]\"'"'"';&|(`])/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh([[:space:]"'"'"';<>&|)`]|$)'
-    local _abox_report_skip_re='^[[:space:]]*([^[:space:]]+[[:space:]]+){0,5}[A-Za-z_][A-Za-z0-9_]*=\\?["'"'"']?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh\\?["'"'"']?[[:space:]]*(#.*)?$'
+    local file="$1" line _abox_report_re='(^|[[:space:]\"'"'"';&|(`=])/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh([[:space:]"'"'"';<>&|)`]|$)'
+    local _abox_report_skip_re='^[[:space:]]*(([^[:space:]]+[[:space:]]+){5}|@[a-z]+[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=(\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh\\?|"\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh\\?"|'"'"'\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh\\?'"'"')([[:space:]]+#.*|[[:space:]]*)$'
     [[ -f "$file" && ! -L "$file" ]] || return 1
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ "$line" =~ $_abox_report_re ]] || continue
-        # SYD-B10: skip only when the whole line (after an optional
-        # 5-field schedule prefix) is a single assignment (NAME=path,
-        # optional backslash/quotes) plus optional trailing comment.
-        # Anything else after the assignment (e.g. ; "$X", && cmd, a
-        # second path) must still be reported: a missed execution
-        # reference is worse than report noise, so on doubt, report.
+        # SYD-B11: skip only when the whole line is a single assignment:
+        # prefix is empty, exactly 5 schedule fields, or exactly 1 @-field;
+        # the value is an unquoted, double-quoted, or single-quoted path
+        # (quotes must pair; a trailing backslash stays allowed per the
+        # B7 continuation limit); the tail is empty or whitespace plus a
+        # #-comment (a # glued to the value is NOT a comment). Anything
+        # else after the assignment must still be reported: a missed
+        # execution reference is worse than report noise, so on doubt,
+        # report.
         if [[ "$line" =~ $_abox_report_skip_re ]]; then continue; fi
         printf '%s\n' "[!] A-Box cron residual (保留的已知／疑似管理路径引用): $line" >&2
     done < "$file"

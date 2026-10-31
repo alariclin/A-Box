@@ -10091,8 +10091,12 @@ remove_recorded_core_family() {
             fi
         done < "$ABOX_CORE_OWNERSHIP"
         [[ "$_ambig" == 0 ]] || return 1
-        runtime_uid="${_derived_uid:-0}"
-        runtime_gid="${_derived_gid:-0}"
+        # SYD-B4 B9: fill only the missing item. A resolved value must
+        # never be overwritten by derivation from recorded files, or the
+        # Python preflight (gid in {0, runtime_gid}) would bless a file
+        # owned by an unrelated orphan gid.
+        [[ "$runtime_uid" =~ ^[0-9]+$ ]] || runtime_uid="${_derived_uid:-0}"
+        [[ "$runtime_gid" =~ ^[0-9]+$ ]] || runtime_gid="${_derived_gid:-0}"
     fi
     [[ "$runtime_uid" =~ ^[0-9]+$ && "$runtime_gid" =~ ^[0-9]+$ ]] || return 1
     python3 - "$srv" "$ABOX_CORE_OWNERSHIP" "$runtime_uid" "$runtime_gid" <<'PY_CORE_REMOVE'
@@ -17626,7 +17630,7 @@ _rollback_start_snapshot_services() {
     while IFS='|' read -r _srv _active _enabled _extra || [[ -n "$_srv" ]]; do
         [[ -n "$_srv" ]] || continue
         [[ "$_active" == 1 ]] || continue
-        case "$_srv" in xray|sing-box|hysteria) ;; *) continue ;; esac
+        case "$_srv" in xray|sing-box|hysteria|xray-latest) ;; *) continue ;; esac
         if [[ "${INIT_SYS:-}" == systemd ]]; then
             systemctl start "$_srv" >/dev/null 2>&1 || true
         elif command -v rc-service >/dev/null 2>&1; then
@@ -30240,6 +30244,14 @@ strip_abox_cron_blocks_from_file() {
     local input="$1" output="$2" name="${3:-}"
     [[ -f "$input" && ! -L "$input" && -n "$output" ]] || return 1
     awk -v wanted="$name" '
+      function norm_line(s,   t) { t=s; if (substr(t, length(t), 1) == "\r") t=substr(t, 1, length(t)-1); gsub(/[ \t]+/, " ", t); sub(/^ /, "", t); sub(/ $/, "", t); return t }
+      function bare_line_owner(n) {
+        if (n == "* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1" || n == "* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1") return "PROBE"
+        if (n == "0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1" || n == "0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1") return "GEO"
+        if (n == "* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1") return "TRAFFIC"
+        if (n == "*/5 * * * * /bin/bash /etc/ddr/user-guard-runner.sh --user-guard-tick >/dev/null 2>&1") return "USERGUARD"
+        return ""
+      }
       BEGIN { skip=0; seen_wanted=0; open_name=""; depth=0 }
       {
         if (wanted != "" && $0 ~ /^# A-Box [^ ]+ BEGIN$/) {
@@ -30258,7 +30270,8 @@ strip_abox_cron_blocks_from_file() {
         if (wanted == "" && $0 ~ /^# A-Box (PROBE|GEO|TRAFFIC|USERGUARD) BEGIN$/) { if (skip) exit 1; skip=1; open_name=$3; next }
         if (wanted == "" && $0 ~ /^# A-Box (PROBE|GEO|TRAFFIC|USERGUARD) END$/) { if (!skip || $3 != open_name) exit 1; skip=0; open_name=""; next }
         if (skip) next
-        if (wanted == "" && ($0 == "* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1" || $0 == "* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1" || $0 == "*/5 * * * * /bin/bash /etc/ddr/user-guard-runner.sh --user-guard-tick >/dev/null 2>&1" || $0 == "0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1" || $0 == "0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1" || $0 == "* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1")) next
+        if (wanted == "" && bare_line_owner(norm_line($0)) != "") next
+        if (wanted != "" && bare_line_owner(norm_line($0)) == wanted) next
         print
       }
       END { if (skip) exit 1; if (depth > 0) exit 1; if (wanted != "" && seen_wanted > 1) exit 1 }
@@ -30349,6 +30362,20 @@ remove_abox_cron_block() {
     return "$rc"
 }
 
+# SYD-B4 D13: full-clear residual report. Lines that still reference a
+# known managed script after stripping are unknown variants, not silent
+# keeps; report them on stderr. Report only, never fail the clear, and
+# never report user scripts (unknown basenames are not matched).
+report_unrecognized_abox_cron_lines() {
+    local file="$1" line
+    [[ -f "$file" && ! -L "$file" ]] || return 1
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" =~ /etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh([[:space:]]|$) ]] || continue
+        printf '%s\n' "[!] A-Box cron residual (unrecognized managed-script line kept): $line" >&2
+    done < "$file"
+    return 0
+}
+
 remove_all_abox_cron_blocks() {
     local current tmp rc=0
     current=$(mktemp) || die 'crontab 当前内容临时文件创建失败。'
@@ -30361,6 +30388,7 @@ remove_all_abox_cron_blocks() {
         rm -f -- "$current" "$tmp"
         return 1
     fi
+    report_unrecognized_abox_cron_lines "$tmp" || true
     commit_crontab_if_unchanged "$current" "$tmp" || rc=$?
     rm -f -- "$current" "$tmp"
     return "$rc"
@@ -30429,7 +30457,7 @@ managed_service_state_value() {
 capture_managed_service_state() {
     local out="$1" srv
     : > "$out" || return 1
-    for srv in xray sing-box hysteria; do
+    for srv in xray sing-box hysteria xray-latest; do
         abox_owns_service "$srv" || continue
         managed_service_state_value "$srv" >> "$out" || return 1
     done
@@ -30483,7 +30511,7 @@ _apply_managed_service_state_file() {
         IFS='|' read -r srv active enabled extra <<< "$line"
         [[ -z "${extra:-}" ]] || return 1
         case "$srv" in
-            xray|sing-box|hysteria) ;;
+            xray|sing-box|hysteria|xray-latest) ;;
             *) return 1 ;;
         esac
         [[ "$active" =~ ^[01]$ && "$enabled" =~ ^(enabled|enabled-runtime|disabled)$ ]] || return 1
@@ -31335,7 +31363,7 @@ validate_services_state_file() {
     [[ -f "$file" && ! -L "$file" ]] || return 1
     awk -F'|' '
       NF==0 {next}
-      NF!=3 || $1 !~ /^(xray|sing-box|hysteria)$/ || $2 !~ /^[01]$/ || $3 !~ /^(enabled|enabled-runtime|disabled)$/ {bad=1; exit}
+      NF!=3 || $1 !~ /^(xray|sing-box|hysteria|xray-latest)$/ || $2 !~ /^[01]$/ || $3 !~ /^(enabled|enabled-runtime|disabled)$/ {bad=1; exit}
       seen[$1]++ {bad=1; exit}
       END {exit bad}
     ' "$file"
@@ -31641,7 +31669,7 @@ backup_current_config() {
     path_mode_has_no_group_other_write "$backup_dir" || { rm -rf "$work"; die 'Backup directory permissions verification failed.'; }
     local managed_paths='' core_paths=''
     managed_paths=$(managed_auxiliary_paths) || { rm -rf "$work"; die 'Managed path list creation failed.'; }
-    for srv in xray sing-box hysteria; do
+    for srv in xray sing-box hysteria xray-latest; do
         core_paths=$(core_family_paths "$srv") || { rm -rf "$work"; die "Core path enumeration failed: $srv"; }
         managed_paths+=$'\n'"$core_paths"
     done
@@ -31669,7 +31697,7 @@ backup_current_config() {
         fi
     fi
     shortcut_is_abox_managed /usr/local/bin/sb && { __abox_backup_copy_path /usr/local/bin/sb "$root" || backup_failed=1; }
-    for srv in xray sing-box hysteria; do
+    for srv in xray sing-box hysteria xray-latest; do
         if abox_owns_service "$srv"; then
             core_paths=$(core_family_paths "$srv") || { rm -rf "$work"; die "Core path enumeration failed during backup: $srv"; }
             while IFS= read -r path; do
@@ -36605,6 +36633,12 @@ view_config() {
         generate_qr "$XHTTP_URL"
     fi
     if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
+        # SYD-B4 A3: a pin branch with no usable pin refuses this link
+        # only; the rest of view_config continues. Never emit an insecure
+        # link with an empty pinSHA256.
+        if [[ -z "$HY2_PIN_E" ]] && [[ -z "${HY2_DOMAIN:-}" || "$CORE" == 'singbox' ]]; then
+            msg "${RED}[!] Hysteria 2 证书指纹不可用，已拒发该条分享链接（pin 分支无有效 pin 时不输出 insecure 空 pin 链接）；其余链接不受影响。${NC}"
+        else
         if [[ -n "${HY2_DOMAIN:-}" && "$CORE" != 'singbox' ]]; then
             HY2_URL="hysteria2://$HY2_PASS_E@$HY2_DOMAIN:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}sni=$HY2_DOMAIN_E&obfs=salamander&obfs-password=$HY2_OBFS_E#Hy2"
         elif [[ -n "${HY2_DOMAIN:-}" ]]; then
@@ -36616,6 +36650,7 @@ view_config() {
         msg "${GREEN}${HY2_URL}${NC}"
         [[ "${HY2_HOP:-}" == 'true' ]] && msg "${YELLOW}端口跳跃默认间隔 30s；不建议低于 5s。${NC}"
         generate_qr "$HY2_URL"
+        fi
     fi
     if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
         SS_URL=$(build_ss2022_uri "$F_IP" "$SS_PORT" "$SS_PASS")

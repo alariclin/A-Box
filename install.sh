@@ -31562,18 +31562,27 @@ abox_restore_preserved_name() {
 }
 
 clear_abox_runtime_for_restore() {
-    local child base failed=0
+    local child base failed=0 preserve_latest=0 _contains_rc=0
     [[ -d "$ABOX_DIR" && ! -L "$ABOX_DIR" ]] || return 0
+    # SYD-B5e R3: the B5 preserve rule (old backup keeps live latest) must
+    # hold across the clear step too, or the preserved family's config dir
+    # is wiped here and regen later fails on the missing config.
+    if [[ -n "${1:-}" && -d "$1" ]]; then
+        backup_root_contains_service "$1" xray-latest || _contains_rc=$?
+        [[ "$_contains_rc" == 1 ]] && preserve_latest=1
+    fi
     for child in "$ABOX_DIR"/* "$ABOX_DIR"/.[!.]* "$ABOX_DIR"/..?*; do
         [[ -e "$child" || -L "$child" ]] || continue
         base=${child##*/}
         abox_restore_preserved_name "$base" && continue
+        [[ "$preserve_latest" == 1 && "$base" == xray-latest ]] && continue
         path_tree_has_mountpoint "$child" && { msg "${RED}[!] Restore cleanup encountered a mountpoint; aborting before deletion: ${child}${NC}"; return 1; }
     done
     for child in "$ABOX_DIR"/* "$ABOX_DIR"/.[!.]* "$ABOX_DIR"/..?*; do
         [[ -e "$child" || -L "$child" ]] || continue
         base=${child##*/}
         abox_restore_preserved_name "$base" && continue
+        [[ "$preserve_latest" == 1 && "$base" == xray-latest ]] && continue
         rm -rf -- "$child" || failed=1
     done
     (( failed == 0 ))
@@ -31974,7 +31983,7 @@ PY_LATEST_BACKUP
     clean_nat_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-nat" >&2; rm -rf "$work"; return 1; }
     clean_input_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-input" >&2; rm -rf "$work"; return 1; }
     remove_owned_core_families_for_restore "$root" || { msg "restore gate failed: remove-families" >&2; rm -rf "$work"; return 1; }
-    clear_abox_runtime_for_restore || { msg "restore gate failed: clear-runtime" >&2; rm -rf "$work"; return 1; }
+    clear_abox_runtime_for_restore "$root" || { msg "restore gate failed: clear-runtime" >&2; rm -rf "$work"; return 1; }
     restore_abox_directory "$root" || { msg "restore gate failed: restore-dir" >&2; rm -rf "$work"; return 1; }
     for srv in xray sing-box hysteria xray-latest; do restore_core_family_from_backup "$root" "$srv" || { msg "restore gate failed: restore-family" >&2; rm -rf "$work"; return 1; }; done
     local aux_paths=''
@@ -32066,7 +32075,7 @@ restore_from_backup() {
     clean_nat_rules || die '恢复前无法完整删除 A-Box HY2 NAT 规则。'
     clean_input_rules || die '恢复前无法完整删除 A-Box INPUT/原生防火墙规则。'
     remove_owned_core_families_for_restore "$root" || die '恢复前删除当前 A-Box 核心文件失败。'
-    clear_abox_runtime_for_restore || die '恢复前清理 A-Box 运行目录失败。'
+    clear_abox_runtime_for_restore "$root" || die '恢复前清理 A-Box 运行目录失败。'
     restore_abox_directory "$root" || die 'Restore A-Box directory failed.'
     for srv in xray sing-box hysteria xray-latest; do
         restore_core_family_from_backup "$root" "$srv" || die "Restore failed for core family: $srv"

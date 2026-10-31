@@ -10261,6 +10261,34 @@ users_registries_remove_core() {
     return 0
 }
 
+# SYD-B2 E18: a pruned stack must not leave orphaned panel links.
+# Mirrors _protocol_removed_side_effects: remove a family's standalone
+# link files when no live inbound still references them. The Argo link
+# dies with the sing-box ws inbounds; the hysteria links are removed
+# unconditionally, mirroring _remove_hy2_official.
+_prune_standalone_links() {
+    local srv="$1" key='' dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d"
+    case "$srv" in
+        xray)
+            for key in trojan-xray socks5-xray; do
+                _standalone_link_survivor "$key" || rm -f -- "$dir/${key}.link" 2>/dev/null || true
+            done
+            ;;
+        sing-box)
+            for key in trojan-sb tuic anytls shadowtls socks5-sb; do
+                _standalone_link_survivor "$key" || rm -f -- "$dir/${key}.link" 2>/dev/null || true
+            done
+            if [[ ! -f /etc/sing-box/config.json ]] || ! jq -e '.inbounds[]? | select(.tag == "vmess-ws-in" or .tag == "vless-ws-in")' /etc/sing-box/config.json >/dev/null 2>&1; then
+                rm -f -- "$dir/argo.link" 2>/dev/null || true
+            fi
+            ;;
+        hysteria)
+            rm -f -- "$dir/hy2.link" "$dir/hysteria.link" 2>/dev/null || true
+            ;;
+    esac
+    return 0
+}
+
 prune_owned_core_families_except() {
     local allowed=" $* " srv
     for srv in xray sing-box hysteria; do
@@ -10270,6 +10298,8 @@ prune_owned_core_families_except() {
         remove_owned_core_family "$srv" || die "$(tprintf pr_remove "$srv")"
         # SYD-B E3: a pruned stack must not leave ghost panel entries.
         users_registries_remove_core "$srv" || die "$(tprintf pr_remove "$srv")"
+        # SYD-B2 E18: a pruned stack must not leave orphaned panel links.
+        _prune_standalone_links "$srv"
     done
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         systemctl daemon-reload >/dev/null 2>&1 || die "$(tr_msg pr_reload)"
@@ -11067,7 +11097,7 @@ remove_abox_firewall_persistence() {
 
 write_abox_firewall_restore_script() {
     local tmp target="$ABOX_DIR/firewall_restore.sh" uid gid mode
-    install -d -m 700 "$ABOX_DIR" || return 1
+    install -d -m 711 "$ABOX_DIR" || return 1
     if [[ -e "$target" || -L "$target" ]]; then
         [[ -f "$target" && ! -L "$target" ]] || return 1
         uid=$(stat -c %u "$target" 2>/dev/null) || return 1
@@ -11664,7 +11694,7 @@ save_firewall_rules() {
             ;;
     esac
     command -v iptables-save >/dev/null 2>&1 || return 1
-    install -d -m 700 "$ABOX_DIR" || return 1
+    install -d -m 711 "$ABOX_DIR" || return 1
 
     # Refuse unsafe existing persistence files, then snapshot them before the
     # two-file replacement so a later failure cannot leave a mixed v4/v6 state.
@@ -11941,7 +11971,7 @@ record_native_firewall_rule() {
         record="${backend}|${spec}|${proto}|${scope}"
     fi
     native_firewall_record_valid "$record" || return 1
-    install -d -o root -g root -m 700 "$ABOX_DIR" || return 1
+    install -d -o root -g root -m 711 "$ABOX_DIR" || return 1
     if [[ -e "$ABOX_FW_STATE" || -L "$ABOX_FW_STATE" ]]; then
         validate_native_firewall_state_file "$ABOX_FW_STATE" || return 1
     fi
@@ -15069,7 +15099,7 @@ write_env() {
         fi
     fi
     umask 077
-    install -d -m 700 "$ABOX_DIR" || die "$(tr_msg we_dir_create)"
+    install -d -m 711 "$ABOX_DIR" || die "$(tr_msg we_dir_create)"
     tmp=$(mktemp "$ABOX_DIR/.env.A-Box-new.XXXXXX") || die "$(tr_msg we_tmp)"
     {
         printf 'CORE=%s\n' "$(shell_quote "$env_core")"
@@ -15360,6 +15390,13 @@ assert_abox_log_file_safe() {
             return 0
         fi
     done
+    # SYD-B2 E22: an orphaned gid (group deleted by an earlier cleanup
+    # step, e.g. userdel removing its primary group) can only belong to
+    # a previously existing A-Box runtime group: the path is already
+    # pinned to /var/log/A-Box-*.log, the parent chain is safe, the
+    # file is a regular root-owned file with nlink 1 and a log-safe
+    # mode. Accept it so a half-finished cleanup can complete.
+    if [[ "$uid" == 0 ]] && [[ "$mode" =~ ^0?6[046]0$ ]] && ! getent group "$gid" >/dev/null 2>&1; then return 0; fi
     return 1
 }
 
@@ -15384,8 +15421,8 @@ remove_abox_log_files() {
     while IFS= read -r path; do
         [[ -n "$path" ]] || continue
         [[ -e "$path" || -L "$path" ]] || continue
-        assert_abox_log_file_safe "$path" || return 1
-        path_tree_has_mountpoint "$path" && return 1
+        assert_abox_log_file_safe "$path" || { msg "[!] Unsafe A-Box log file refused: $path" >&2; return 1; }
+        path_tree_has_mountpoint "$path" && { msg "[!] A-Box log file is on a mountpoint: $path" >&2; return 1; }
         rm -f -- "$path" || return 1
         [[ ! -e "$path" && ! -L "$path" ]] || return 1
     done < <(abox_log_files)
@@ -15740,7 +15777,7 @@ hysteria_official_hop_firewall_ok() {
 
 setup_health_monitor() {
     msg "${YELLOW}[*] 正在注入带锁、连续失败阈值与退避的 L4 健康探针...${NC}"
-    install -d -m 700 "$ABOX_DIR" || die "$(tr_msg hm_dir)"
+    install -d -m 711 "$ABOX_DIR" || die "$(tr_msg hm_dir)"
     write_file_atomically_from_stdin "$ABOX_DIR/socket_probe.sh" 700 <<'EOF_PROBE' || die '健康探针原子写入失败。'
 #!/usr/bin/env bash
 # Managed by A-Box
@@ -16056,7 +16093,7 @@ setup_geo_cron() {
         remove_owned_runtime_helper "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gc_rm_script)"
         return 0
     fi
-    install -d -m 700 "$ABOX_DIR" || die "$(tr_msg gc_dir)"
+    install -d -m 711 "$ABOX_DIR" || die "$(tr_msg gc_dir)"
     write_file_atomically_from_stdin "$ABOX_DIR/geo_update.sh" 700 <<'EOF_GEO' || die 'Geo 更新脚本原子写入失败。'
 #!/usr/bin/env bash
 # Managed by A-Box
@@ -17084,7 +17121,7 @@ restore_tuic_backups() {
 }
 
 generate_self_signed_cert_atomically() {
-    local key="$1" cert="$2" cn="$3" dir tmp key_tmp cert_tmp pub1 pub2 key_bak='' cert_bak='' _cert_rb_fail=0
+    local key="$1" cert="$2" cn="$3" extra_host="${4:-}" dir tmp key_tmp cert_tmp cnf san_list pub1 pub2 key_bak='' cert_bak='' _cert_rb_fail=0
     dir=$(dirname "$key")
     [[ "$dir" == "$(dirname "$cert")" ]] || return 1
     path_parent_chain_safe "$key" || return 1
@@ -17106,7 +17143,22 @@ generate_self_signed_cert_atomically() {
     tmp=$(mktemp -d "$dir/.A-Box-cert.XXXXXX") || return 1
     key_tmp="$tmp/key.pem"; cert_tmp="$tmp/cert.pem"
     openssl ecparam -genkey -name prime256v1 -out "$key_tmp" >/dev/null 2>&1 || { rm -rf "$tmp"; return 1; }
-    openssl req -new -x509 -days 3650 -key "$key_tmp" -out "$cert_tmp" -subj "/CN=${cn}" >/dev/null 2>&1 || { rm -rf "$tmp"; return 1; }
+    # SYD-B2 E15: always emit SANs (see header comment). Built via a
+    # config file, not -addext, so it works on OpenSSL and LibreSSL.
+    san_list="DNS:localhost,IP:127.0.0.1"
+    if [[ "$cn" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        [[ "$cn" != '127.0.0.1' ]] && san_list="${san_list},IP:${cn}"
+    elif [[ "$cn" != 'localhost' ]]; then
+        san_list="${san_list},DNS:${cn}"
+    fi
+    if [[ "$extra_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        case ",${san_list}," in *"IP:${extra_host},"*) ;; *) san_list="${san_list},IP:${extra_host}" ;; esac
+    elif [[ "$extra_host" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]; then
+        case ",${san_list}," in *"DNS:${extra_host},"*) ;; *) san_list="${san_list},DNS:${extra_host}" ;; esac
+    fi
+    cnf="$tmp/openssl.cnf"
+    { printf '[req]\n'; printf 'distinguished_name = dn\n'; printf 'x509_extensions = v3_req\n'; printf 'prompt = no\n'; printf '[dn]\n'; printf '[v3_req]\n'; printf 'subjectAltName = %s\n' "$san_list"; } > "$cnf" || { rm -rf "$tmp"; return 1; }
+    openssl req -new -x509 -days 3650 -key "$key_tmp" -out "$cert_tmp" -subj "/CN=${cn}" -config "$cnf" -extensions v3_req >/dev/null 2>&1 || { rm -rf "$tmp"; return 1; }
     openssl x509 -in "$cert_tmp" -noout >/dev/null 2>&1 || { rm -rf "$tmp"; return 1; }
     pub1=$(openssl pkey -in "$key_tmp" -pubout -outform der 2>/dev/null | openssl dgst -sha256 2>/dev/null | awk '{print $NF}')
     pub2=$(openssl x509 -in "$cert_tmp" -pubkey -noout 2>/dev/null | openssl pkey -pubin -outform der 2>/dev/null | openssl dgst -sha256 2>/dev/null | awk '{print $NF}')
@@ -17246,7 +17298,7 @@ deploy_official_hy2() {
         HY2_CERT_SHA256_FP=''
         HY2_CERT_PUBKEY_SHA256_B64=''
     else
-        generate_self_signed_cert_atomically /etc/hysteria/server.key /etc/hysteria/server.crt localhost || die "$(tr_msg hy2b_cert)"
+        generate_self_signed_cert_atomically /etc/hysteria/server.key /etc/hysteria/server.crt localhost "${LINK_IP:-}" || die "$(tr_msg hy2b_cert)"
         HY2_CERT_SHA256_FP=$(pin_sha256_colon /etc/hysteria/server.crt | tr -d ':')
         HY2_CERT_PUBKEY_SHA256_B64=$(openssl x509 -in /etc/hysteria/server.crt -noout -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64 | tr -d '\n')
         TLS_CONFIG="tls:
@@ -17534,13 +17586,45 @@ verify_backup_restorable() {
 # when a rollback cannot restore the backup itself (or when the
 # backup fails pre-verification): the old deployment must not be
 # left stopped. Best-effort; never masks the caller's failure.
+# SYD-B2 E13/E14: best-effort restart of snapshot-active services.
+# Used when the strict service-state restore fails (e.g. a stale 644
+# state file from an old backup): starting a service whose config is
+# intact restores availability; starting one whose config is broken
+# fails silently, no worse than leaving it down. Only services the
+# snapshot marks active=1 are started, and only the three managed
+# families; anything else is ignored.
+_rollback_start_snapshot_services() {
+    local state_file="$1" _srv _active _enabled _extra
+    [[ -r "$state_file" && -f "$state_file" && ! -L "$state_file" ]] || return 1
+    while IFS='|' read -r _srv _active _enabled _extra || [[ -n "$_srv" ]]; do
+        [[ -n "$_srv" ]] || continue
+        [[ "$_active" == 1 ]] || continue
+        case "$_srv" in xray|sing-box|hysteria) ;; *) continue ;; esac
+        if [[ "${INIT_SYS:-}" == systemd ]]; then
+            systemctl start "$_srv" >/dev/null 2>&1 || true
+        elif command -v rc-service >/dev/null 2>&1; then
+            rc-service "$_srv" start >/dev/null 2>&1 || true
+        fi
+        msg "[!] Rollback fallback: attempted to start ${_srv} from snapshot (strict service-state restore failed)."
+    done < "$state_file"
+    return 0
+}
+
 rollback_restart_services_from_backup() {
     local backup="${1:-}" work state rc=0
     [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || return 1
     work=$(mktemp -d /tmp/A-Box-rollback-state.XXXXXX) || return 1
     if tar -xzf "$backup" -C "$work" meta/services.state 2>/dev/null && [[ -f "$work/meta/services.state" ]]; then
         state="$work/meta/services.state"
-        restore_managed_service_state "$state"; rc=$?
+        if restore_managed_service_state "$state"; then
+            rc=0
+        else
+            rc=$?
+            # SYD-B2 E13/E14: strict restore failed; still bring back
+            # whatever the snapshot marks active, best-effort, so a
+            # failed deployment never leaves services down.
+            _rollback_start_snapshot_services "$state" || true
+        fi
         rm -rf -- "$work"
         return $rc
     fi
@@ -21199,7 +21283,7 @@ deploy_singbox() {
         HY2_PASS=$(rand_alnum 20)
         HY2_OBFS=$(rand_alnum 16)
         [[ -n "${HY2_DOMAIN:-}" ]] && cert_cn="$HY2_DOMAIN"
-        generate_self_signed_cert_atomically /etc/sing-box/hy2.key /etc/sing-box/hy2.crt "$cert_cn" || die "$(tr_msg dp_sb_hy2_cert)"
+        generate_self_signed_cert_atomically /etc/sing-box/hy2.key /etc/sing-box/hy2.crt "$cert_cn" "${LINK_IP:-}" || die "$(tr_msg dp_sb_hy2_cert)"
         HY2_CERT_SHA256_FP=$(pin_sha256_colon /etc/sing-box/hy2.crt | tr -d ':')
         HY2_CERT_PUBKEY_SHA256_B64=$(openssl x509 -in /etc/sing-box/hy2.crt -noout -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64 | tr -d '\n')
     fi
@@ -21360,7 +21444,7 @@ setup_traffic_monitor() {
     local ensure_rc=$?
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] 流量限制事务状态快照失败。${NC}" >&2; return 1; }
     (( ensure_rc == 0 )) || return 1
-    install -d -m 700 "$ABOX_DIR" || { msg "${RED}[!] 无法创建流量监控目录。${NC}" >&2; return 1; }
+    install -d -m 711 "$ABOX_DIR" || { msg "${RED}[!] 无法创建流量监控目录。${NC}" >&2; return 1; }
     write_file_atomically_from_stdin "$ABOX_DIR/traffic_monitor.sh" 700 <<'EOF_TRAFFIC' || { msg "${RED}[!] 流量监控脚本原子写入失败。${NC}" >&2; return 1; }
 #!/usr/bin/env bash
 # Managed by A-Box
@@ -22874,7 +22958,7 @@ manage_ss_whitelist() {
 # Best-effort: a failure warns and never blocks cleanup. Groups are
 # not removed.
 remove_abox_created_service_users() {
-    local rec='' u='' shell=''
+    local rec='' u='' shell='' _pu='' _rest=''
     rec="${ABOX_DIR:-/etc/ddr}/.created-service-users"
     if [[ ! -f "$rec" || -L "$rec" ]]; then
         for u in abox-xray abox-singbox abox-hysteria; do
@@ -22900,6 +22984,13 @@ remove_abox_created_service_users() {
             msg "${YELLOW}[!] userdel unavailable; keeping service user ${u}.${NC}" >&2
         fi
     done < "$rec"
+    # SYD-B2 E22: also list unrecorded abox-* users (kept, never
+    # deleted): a previous cleanup may have removed the record file
+    # but left users behind, or users may predate the record.
+    while IFS=: read -r _pu _rest || [[ -n "$_pu" ]]; do
+        [[ "$_pu" == abox-* ]] || continue
+        grep -qx -- "$_pu" "$rec" 2>/dev/null || msg "${YELLOW}[!] Service user ${_pu} exists but is not recorded as created by this script; keeping it.${NC}" >&2
+    done < <(getent passwd 2>/dev/null || true)
     rm -f -- "$rec" 2>/dev/null || true
     return 0
 }
@@ -22929,9 +23020,6 @@ do_cleanup() {
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     kill_managed_residual_pids || die "$(tr_msg cu_residual)"
     remove_all_owned_core_families 1 || die "$(tr_msg cl_cores_clean)"
-    # SYD-B E22: remove only provably self-created service users;
-    # best-effort, never blocks the cleanup itself.
-    remove_abox_created_service_users || true
     if [[ -d "$ABOX_DIR/tune-backup" ]]; then
         restore_vps_tune 1 >/dev/null 2>&1 || die "$(tr_msg cu_tune)"
     else
@@ -22943,6 +23031,12 @@ do_cleanup() {
     remove_owned_auxiliary_path /etc/fail2ban/filter.d/A-Box.conf || die "$(tr_msg cl_f2b_filter)"
     remove_owned_auxiliary_path /etc/logrotate.d/A-Box || die "$(tr_msg cl_logrotate)"
     remove_abox_log_files || die "$(tr_msg cl_log_files)"
+    # SYD-B2 E22: logs BEFORE users. userdel also deletes the user's
+    # primary group; deleting users first orphans the log files' gid
+    # and the safety gate below can never match it again.
+    # SYD-B E22: remove only provably self-created service users;
+    # best-effort, never blocks the cleanup itself.
+    remove_abox_created_service_users || true
     # Argo units/binary, WARP/Argo/traffic state and the Wallos fail2ban
     # pair are outside the managed-path lists; remove them best-effort.
     argo_remove_unit argo || true
@@ -25342,8 +25436,11 @@ multi_user_menu() {
         case "$c" in
             0) return 0 ;;
             E|e)
-                local n=''
-                n=$(users_export_all 2>/dev/null || true)
+                local n='' _ef=''
+                _ef=$(umask 077; mktemp /tmp/A-Box-export.XXXXXX 2>/dev/null || printf '/tmp/A-Box-export.%s.tmp' "$$")
+                n=$(users_export_all 2>"$_ef" || true)
+                if [[ -s "$_ef" ]]; then cat "$_ef"; fi
+                rm -f -- "$_ef"
                 if [[ -n "$n" ]]; then msg "${GREEN}$(tr_msg mu_exported): ${n} (uri-list.txt / subscription.base64)${NC}"; else msg "${RED}$(tr_msg mu_export_fail)${NC}"; fi
                 pause_return ;;
             ''|*[!0-9]*) msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1 ;;
@@ -25604,10 +25701,48 @@ _nsni_rollback() {
 # The caller rolls back on 1 and only warns on 2. Live behaviour is
 # NOT provable in a sandbox (no server side); Sydney microsoft retest
 # is the proof.
+# SYD-B2 E20: wait until host:port accepts TCP (default 60 x 0.25s).
+_wait_tcp_port() {
+    local host="$1" port="$2" tries="${3:-60}" i=0
+    [[ -n "$host" && -n "$port" ]] || return 1
+    while (( i < tries )); do
+        if (exec 3<>"/dev/tcp/$host/$port") 2>/dev/null; then return 0; fi
+        sleep 0.25; i=$((i + 1))
+    done
+    return 1
+}
+
+# SYD-B2 E20: derive a REALITY public key (base64url, unpadded) from a
+# raw 32-byte Curve25519 private key (base64url). openssl does the
+# scalar multiplication via a PKCS#8 DER wrapper; python3 only moves
+# bytes around. Proven against `sing-box generate reality-keypair`.
+_reality_pbk_from_private() {
+    local priv="$1"
+    [[ -n "$priv" ]] || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
+    command -v openssl >/dev/null 2>&1 || return 1
+    python3 - "$priv" <<'PYEOF' || return 1
+import base64, subprocess, sys
+priv = sys.argv[1].strip()
+try:
+    raw = base64.b64decode(priv.translate(str.maketrans("-_", "+/")) + "=" * (-len(priv) % 4))
+except Exception:
+    raise SystemExit(1)
+if len(raw) != 32:
+    raise SystemExit(1)
+der = bytes.fromhex("302e020100300506032b656e04220420") + raw
+p = subprocess.run(["openssl", "pkey", "-inform", "DER", "-in", "/dev/stdin", "-pubout", "-outform", "DER"],
+                   input=der, capture_output=True)
+if p.returncode != 0 or len(p.stdout) < 32:
+    raise SystemExit(1)
+print(base64.urlsafe_b64encode(p.stdout[-32:]).decode().rstrip("="))
+PYEOF
+}
+
 _nsni_handshake_check() {
     local core="$1" tag="$2" cfg="$3" sni="$4"
     local bin='' port='' listen='' dial='' uuid='' flow='' net='' xpath='' xhost='' xmode='' sid='' pbk=''
-    local lf='' sport='' cc='' pid='' code='' i=0 up=0 _try=0 _envf=''
+    local lf='' sport='' cc='' pid='' code='' i=0 up=0 _try=0 _envf='' pbk_src='' logf='' cerr='' curl_rc=0 ready=0 _priv=''
     case "$core" in
         xray) bin='/usr/local/bin/xray' ;;
         xray-latest) bin=$(users_bin_of xray-latest 2>/dev/null || echo /usr/local/bin/xray-latest) ;;
@@ -25624,6 +25759,7 @@ _nsni_handshake_check() {
         listen=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .listen // empty' "$cfg" 2>/dev/null | head -n 1)
         uuid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .users[0].uuid // empty' "$cfg" 2>/dev/null | head -n 1)
         sid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | if (.tls.reality.short_id | type) == "array" then (.tls.reality.short_id[0] // "") else (.tls.reality.short_id // "") end' "$cfg" 2>/dev/null | head -n 1)
+        flow=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .users[0].flow // ""' "$cfg" 2>/dev/null | head -n 1)
     else
         port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .port // empty' "$cfg" 2>/dev/null | head -n 1)
         listen=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .listen // empty' "$cfg" 2>/dev/null | head -n 1)
@@ -25639,13 +25775,27 @@ _nsni_handshake_check() {
     case "$listen" in ''|0.0.0.0|::) dial='127.0.0.1' ;; *) dial="$listen" ;; esac
     [[ -z "$xhost" ]] && xhost="$sni"
     lf="${ABOX_DIR:-/etc/ddr}/standalone-links.d/$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag").link"
-    if [[ -f "$lf" && ! -L "$lf" ]]; then
+    # SYD-B2 E20: derive the pbk from the LIVE server private key first.
+    # Link-file and .env copies go stale on redeploy (new keypair), and
+    # a stale pbk fails REALITY auth outright (proven: wrong pbk -> 000).
+    if [[ "$core" == 'sing-box' ]]; then
+        _priv=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.reality.private_key // ""' "$cfg" 2>/dev/null | head -n 1)
+    else
+        _priv=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.realitySettings.privateKey // ""' "$cfg" 2>/dev/null | head -n 1)
+    fi
+    if [[ -n "$_priv" ]]; then
+        pbk=$(_reality_pbk_from_private "$_priv" 2>/dev/null || true)
+        [[ -n "$pbk" ]] && pbk_src='live'
+    fi
+    if [[ -z "$pbk" && -f "$lf" && ! -L "$lf" ]]; then
         pbk=$(grep -o 'pbk=[^&#]*' "$lf" 2>/dev/null | head -n 1 | cut -d= -f2-)
+        [[ -n "$pbk" ]] && pbk_src='link'
     fi
     if [[ -z "$pbk" ]]; then
         _envf="${ABOX_ENV:-/etc/ddr/.env}"
         if [[ -f "$_envf" && ! -L "$_envf" ]]; then
             pbk=$(grep -E '^PUBLIC_KEY=' "$_envf" 2>/dev/null | head -n 1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//')
+            [[ -n "$pbk" ]] && pbk_src='env'
         fi
     fi
     [[ -n "$pbk" ]] || return 2
@@ -25654,14 +25804,25 @@ _nsni_handshake_check() {
     cc=$(mktemp /tmp/A-Box-nsni-client.XXXXXX) || return 2
     mv "$cc" "$cc.json" 2>/dev/null || { rm -f "$cc"; return 2; }
     cc="$cc.json"
+    cerr=$(mktemp /tmp/A-Box-nsni-client-err.XXXXXX) || { rm -f "$cc"; return 2; }
+    # SYD-B2 E20: the server was just restarted by the caller; systemctl
+    # restart returns before the new process listens. Without this wait
+    # the temp client dials a dead port and the check false-negatives.
+    # Diagnostics go to a fixed log (non-secret fields only: pbk length
+    # and sid presence, never values).
+    logf='/tmp/A-Box-nsni-check.log'
+    { printf 'nsni-check core=%s tag=%s sni=%s dial=%s port=%s pbk_src=%s pbk_len=%s sid_set=%s flow=%s\n' "$core" "$tag" "$sni" "$dial" "$port" "$pbk_src" "${#pbk}" "$([ -n "$sid" ] && printf yes || printf no)" "${flow:-}"; } >> "$logf" 2>/dev/null || true
+    if _wait_tcp_port "$dial" "$port" 60; then ready=1; else ready=0; fi
+    printf 'nsni-check server-ready=%s\n' "$ready" >> "$logf" 2>/dev/null || true
+    if [[ "$ready" != 1 ]]; then printf 'nsni-check verdict=FAIL server-not-ready\n' >> "$logf" 2>/dev/null || true; rm -f "$cc" "$cerr"; return 1; fi
     if [[ "$core" == 'sing-box' ]]; then
-        jq -n --arg dial "$dial" --argjson port "$port" --arg uuid "$uuid" --arg sni "$sni" --arg pbk "$pbk" --arg sid "$sid" --argjson sport "$sport" '{
+        jq -n --arg dial "$dial" --argjson port "$port" --arg uuid "$uuid" --arg sni "$sni" --arg pbk "$pbk" --arg sid "$sid" --arg flow "$flow" --argjson sport "$sport" '{
             log: {level: "warning"},
             inbounds: [{type: "socks", tag: "socks-in", listen: "127.0.0.1", listen_port: $sport}],
-            outbounds: [{type: "vless", tag: "proxy", server: $dial, server_port: $port, uuid: $uuid,
-                tls: {enabled: true, server_name: $sni, reality: {enabled: true, public_key: $pbk, short_id: $sid}, utls: {enabled: true, fingerprint: "chrome"}}}]
-        }' > "$cc" 2>/dev/null || { rm -f "$cc"; return 2; }
-        "$bin" run -c "$cc" >/dev/null 2>&1 & pid=$!
+            outbounds: [({type: "vless", tag: "proxy", server: $dial, server_port: $port, uuid: $uuid} + (if $flow != "" then {flow: $flow} else {} end) + {
+                tls: {enabled: true, server_name: $sni, reality: {enabled: true, public_key: $pbk, short_id: $sid}, utls: {enabled: true, fingerprint: "chrome"}}})]
+        }' > "$cc" 2>/dev/null || { rm -f "$cc" "$cerr"; return 2; }
+        "$bin" run -c "$cc" >"$cerr" 2>&1 & pid=$!
     else
         jq -n --arg dial "$dial" --argjson port "$port" --arg uuid "$uuid" --arg flow "$flow" --arg net "$net" --arg sni "$sni" --arg pbk "$pbk" --arg sid "$sid" --arg xpath "$xpath" --arg xhost "$xhost" --arg xmode "$xmode" --argjson sport "$sport" '{
             log: {loglevel: "warning"},
@@ -25670,22 +25831,34 @@ _nsni_handshake_check() {
                 streamSettings: ({network: $net, security: "reality",
                     realitySettings: {serverName: $sni, publicKey: $pbk, shortId: $sid, fingerprint: "chrome"}}
                     + (if $net == "xhttp" then {xhttpSettings: {path: $xpath, host: $xhost, mode: $xmode}} else {} end))}]
-        }' > "$cc" 2>/dev/null || { rm -f "$cc"; return 2; }
-        "$bin" run -config "$cc" >/dev/null 2>&1 & pid=$!
+        }' > "$cc" 2>/dev/null || { rm -f "$cc" "$cerr"; return 2; }
+        "$bin" run -config "$cc" >"$cerr" 2>&1 & pid=$!
     fi
     while (( i < 40 )); do
         if (exec 3<>"/dev/tcp/127.0.0.1/$sport") 2>/dev/null; then up=1; break; fi
         sleep 0.25; i=$((i + 1))
     done
-    if (( up == 0 )); then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rm -f "$cc"; return 2; fi
+    if (( up == 0 )); then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; { printf 'nsni-check temp-socks-down\n'; tail -n 20 "$cerr" 2>/dev/null; } >> "$logf" 2>/dev/null || true; rm -f "$cc" "$cerr"; return 2; fi
     code=''
     for _try in 1 2; do
-        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --connect-timeout 3 --max-time 10 "https://$sni/" 2>/dev/null || printf '000')
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --connect-timeout 3 --max-time 10 "https://$sni/" 2>"$cerr.curl")
+        curl_rc=$?
+        [[ "$curl_rc" != 0 ]] && code='000'
+        printf 'nsni-check try=%s curl-rc=%s http=%s\n' "$_try" "$curl_rc" "$code" >> "$logf" 2>/dev/null || true
         [[ "$code" =~ ^[0-9][0-9][0-9]$ && "$code" != '000' ]] && break
         sleep 1
     done
-    kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rm -f "$cc"
-    [[ "$code" =~ ^[0-9][0-9][0-9]$ && "$code" != '000' ]]
+    kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+    { printf 'nsni-check temp-client-stderr-tail:\n'; tail -n 20 "$cerr" 2>/dev/null; printf 'nsni-check curl-stderr-tail:\n'; tail -n 5 "$cerr.curl" 2>/dev/null; } >> "$logf" 2>/dev/null || true
+    rm -f "$cc" "$cerr" "$cerr.curl"
+    if [[ "$code" =~ ^[0-9][0-9][0-9]$ && "$code" != '000' ]]; then
+        printf 'nsni-check verdict=PASS\n' >> "$logf" 2>/dev/null || true
+        return 0
+    else
+        printf 'nsni-check verdict=FAIL\n' >> "$logf" 2>/dev/null || true
+        msg "[!] SNI handshake check failed; diagnostics: /tmp/A-Box-nsni-check.log"
+        return 1
+    fi
 }
 
 _nsni_apply() {
@@ -30232,6 +30405,11 @@ capture_managed_service_state() {
         abox_owns_service "$srv" || continue
         managed_service_state_value "$srv" >> "$out" || return 1
     done
+    # SYD-B2 E13/E14: the strict restore gate requires (mode & 077) == 0.
+    # Without this chmod the file inherits the menu's umask (typically
+    # 022 -> 644) and tar preserves 644, so every restore fails at the
+    # service-state gate and stopped services are never restarted.
+    chmod 600 "$out" || return 1
 }
 
 
@@ -30838,10 +31016,12 @@ HY_DIR='root/etc/hysteria'
 HY_ACME=HY_DIR + '/acme'
 XRAY_DIR='root/usr/local/etc/xray'
 XRAY_CFG='root/usr/local/etc/xray/config.json'
+XL_DIR='root/etc/ddr/xray-latest'
 sb_gid=None
 hy_uid=None
 hy_gid=None
 xray_gid=None
+xl_gid=None
 try: tf=tarfile.open(fn,'r:gz')
 except Exception: raise SystemExit(1)
 seen=set(); total=0; _count=0; root_member=None
@@ -30870,6 +31050,7 @@ for m in tf:
     in_hy_acme = n == HY_ACME or n.startswith(HY_ACME + '/')
     in_xray = n == XRAY_DIR or n.startswith(XRAY_DIR + '/')
     in_xray_cfg = (n == XRAY_CFG)
+    in_xl = n == XL_DIR or n.startswith(XL_DIR + '/')
     if in_xray_cfg:
         # Boundary 1: Xray config.json is root:abox-xray 0640 (gid != 0).
         # Allow non-root group with consistent gid, mode must not be group/other-writable.
@@ -30941,6 +31122,24 @@ for m in tf:
             if hy_gid is None: hy_gid=m.gid
             elif m.gid != hy_gid: raise SystemExit(1)
         if n == HY_DIR and not ((m.gid != 0 and mode == 0o750) or (m.gid == 0 and (mode & 0o077) == 0)): raise SystemExit(1)
+    elif in_xl:
+        # SYD-B2 E11: coexist xray-latest config mirrors the stable
+        # Xray shape (dir root:abox-xray 0750, files root:abox-xray
+        # 0640). Without this branch the subtree fell into the
+        # catch-all else branch (gid must be 0) and every backup taken
+        # while a coexist deployment existed was rejected, blocking
+        # any deploy_xray.
+        if m.uid != 0: raise SystemExit(1)
+        if m.gid == 0:
+            if m.isdir():
+                if mode & 0o022: raise SystemExit(1)
+            else:
+                if mode & 0o077: raise SystemExit(1)
+        else:
+            if mode & 0o027: raise SystemExit(1)
+            if xl_gid is None: xl_gid=m.gid
+            elif m.gid != xl_gid: raise SystemExit(1)
+        if n == XL_DIR and not ((m.gid != 0 and mode == 0o750) or (m.gid == 0 and (mode & 0o022) == 0)): raise SystemExit(1)
     else:
         if m.uid != 0 or m.gid != 0: raise SystemExit(1)
         if mode & 0o020: raise SystemExit(1)

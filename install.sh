@@ -10138,10 +10138,17 @@ def _repair_is_mountpoint(path):
 # Backup used to nest <dir>/<basename(dir)>/ copies of recorded files; a
 # restore writes them back to live, and the strict rule below then refuses
 # the whole family. An unrecorded entry is an artifact only if stripping
-# repeated "<basename(dir)>/" insertions maps it onto a recorded file with
-# an identical hash (dirs: every descendant is an artifact), and it meets
-# the same regular-file/dir, ownership, mode, link and mountpoint bars as
-# recorded files. Anything else still fails closed with exit 3.
+# repeated "<basename(dir)>/" insertions maps it onto a recorded entry: a
+# file must map onto a recorded file with an identical hash; a directory
+# must map onto a recorded directory (the doubling directory itself maps
+# onto its own recorded parent) and every descendant must itself be an
+# artifact. All entries must also meet the same regular-file/dir,
+# ownership, mode, link and mountpoint bars as recorded files. Anything
+# else still fails closed with exit 3.
+# Accepted identification boundary: a user-saved copy that is byte-identical
+# and follows the doubling path rule, or a user directory named exactly like
+# the doubling pattern, is indistinguishable from a product artifact and
+# will be removed. This layer never claims zero user-copy deletion.
 def _artifact_target(path):
     for d in sorted(dirs, key=len, reverse=True):
         if path.startswith(d + os.sep):
@@ -10151,6 +10158,19 @@ def _artifact_target(path):
                 rest = rest[len(prefix):]
             cand = d + os.sep + rest
             if cand in files:
+                return cand
+    return None
+def _artifact_dir_target(path):
+    for d in sorted(dirs, key=len, reverse=True):
+        if path.startswith(d + os.sep):
+            rest = path[len(d) + 1:]
+            prefix = os.path.basename(d) + os.sep
+            while rest.startswith(prefix):
+                rest = rest[len(prefix):]
+            if rest == os.path.basename(d):
+                return d
+            cand = d + os.sep + rest
+            if cand in dirs:
                 return cand
     return None
 def _artifact_mode_ok(st):
@@ -10187,6 +10207,8 @@ def _is_artifact_tree(path):
     if stat.S_ISDIR(st.st_mode):
         if not _artifact_mode_ok(st) or not _artifact_owner_ok(st):
             return False
+        if _artifact_dir_target(path) is None:
+            return False
         try:
             names = os.listdir(path)
         except OSError:
@@ -10195,6 +10217,8 @@ def _is_artifact_tree(path):
     return _is_artifact_file(path)
 _repair = []
 for _d in sorted(dirs, key=os.fsencode):
+    if os.path.islink(_d):
+        raise SystemExit(3)
     try:
         _names = os.listdir(_d)
     except FileNotFoundError:
@@ -30480,7 +30504,7 @@ remove_abox_cron_block() {
 # keeps; report them on stderr. Report only, never fail the clear, and
 # never report user scripts (unknown basenames are not matched).
 report_unrecognized_abox_cron_lines() {
-    local file="$1" line _abox_report_re='(^|[[:space:]"'"'"'])/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh([[:space:]"'"'"';>&|]|$)'
+    local file="$1" line _abox_report_re='(^|[[:space:]"'"'"';&|(])/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh([[:space:]"'"'"';>&|)]|$)'
     [[ -f "$file" && ! -L "$file" ]] || return 1
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ "$line" =~ $_abox_report_re ]] || continue
@@ -31668,13 +31692,20 @@ normalize_restored_runtime_ownership() {
 }
 
 regenerate_runtime_assets_after_restore() {
+    local _restore_root="${1:-}" _brc=0
+    [[ -n "$_restore_root" ]] || return 1
     clear_abox_env_vars
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
         load_abox_env "$ABOX_ENV" || return 1
     fi
     for srv in xray sing-box hysteria xray-latest; do
         abox_owns_service "$srv" || continue
-        prepare_abox_runtime_permissions "$srv" || return 1
+        backup_root_contains_service "$_restore_root" "$srv"; _brc=$?
+        if [[ "$_brc" == 0 ]]; then
+            prepare_abox_runtime_permissions "$srv" || return 1
+        elif [[ "$_brc" != 1 ]]; then
+            return 1
+        fi
     done
     setup_shortcut || return 1
     setup_health_monitor || return 1
@@ -32013,7 +32044,7 @@ PY_LATEST_BACKUP
         [[ "$path" == /usr/local/bin/sb ]] && continue
         restore_auxiliary_path_from_backup "$root" "$path" || { msg "restore gate failed: restore-aux" >&2; rm -rf "$work"; return 1; }
     done <<< "$aux_paths"
-    regenerate_runtime_assets_after_restore >/dev/null 2>&1 || { msg "restore gate failed: regen-assets" >&2; rm -rf "$work"; return 1; }
+    regenerate_runtime_assets_after_restore "$root" >/dev/null 2>&1 || { msg "restore gate failed: regen-assets" >&2; rm -rf "$work"; return 1; }
     apply_native_firewall_rules_from_state >/dev/null 2>&1 || { msg "restore gate failed: native-fw" >&2; rm -rf "$work"; return 1; }
     backend=$(cat "$work/meta/firewall.backend" 2>/dev/null || echo iptables); [[ "$backend" == iptables ]] || mode=special
     restore_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 "$mode" || { msg "restore gate failed: iptables4" >&2; rm -rf "$work"; return 1; }
@@ -32038,7 +32069,7 @@ PY_LATEST_BACKUP
 }
 
 restore_from_backup() {
-    local backup_dir="$ABOX_DIR/backups" backups i choice selected work root answer backend mode=all srv path targets='' backups_output=''
+    local backup_dir="$ABOX_DIR/backups" backups i choice selected work root answer backend mode=all srv path targets='' backups_output='' _own_brc=0
     if ! backups_output=$(
         for _dir in "$ABOX_DIR/backups" /root/A-Box-backups; do
             [[ -d "$_dir" && ! -L "$_dir" ]] || continue
@@ -32112,7 +32143,7 @@ restore_from_backup() {
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
         chmod 600 "$ABOX_ENV" 2>/dev/null || die '恢复后的 .env 权限加固失败。'
     fi
-    regenerate_runtime_assets_after_restore || die 'Regenerate trusted A-Box runtime helpers and cron blocks failed.'
+    regenerate_runtime_assets_after_restore "$root" || die 'Regenerate trusted A-Box runtime helpers and cron blocks failed.'
     apply_native_firewall_rules_from_state || die 'Restore native firewall rules failed.'
     backend=$(cat "$work/meta/firewall.backend" 2>/dev/null || echo iptables)
     [[ "$backend" == iptables ]] || mode=special
@@ -32129,7 +32160,12 @@ restore_from_backup() {
     restore_managed_service_state "$work/meta/services.state" || die 'Restored service state failed validation/startup.'
     for srv in xray sing-box hysteria xray-latest; do
         if abox_owns_service "$srv"; then
-            record_core_family_ownership "$srv" || die "Restored ${srv} ownership manifest update failed; restore was not committed."
+            backup_root_contains_service "$root" "$srv"; _own_brc=$?
+            if [[ "$_own_brc" == 0 ]]; then
+                record_core_family_ownership "$srv" || die "Restored ${srv} ownership manifest update failed; restore was not committed."
+            elif [[ "$_own_brc" != 1 ]]; then
+                die "Restored ${srv} backup containment check failed; restore was not committed."
+            fi
         fi
     done
     local preserved_note='' _latest_in_backup_rc=0

@@ -10562,10 +10562,20 @@ remove_all_owned_core_families() {
 # only overwrites paths the backup actually provides. A service absent
 # from the backup entirely keeps the old blanket-delete behavior.
 remove_owned_core_families_for_restore() {
-    local root="$1" srv failed=0
-    for srv in xray sing-box hysteria; do
+    local root="$1" srv failed=0 _latest_in_backup_rc=0
+    for srv in xray sing-box hysteria xray-latest; do
         if backup_root_contains_service "$root" "$srv" && backup_root_service_is_config_only "$root" "$srv"; then
             continue
+        fi
+        if [[ "$srv" == xray-latest ]]; then
+            backup_root_contains_service "$root" "$srv"; _latest_in_backup_rc=$?
+            if [[ "$_latest_in_backup_rc" == 1 ]]; then
+                # SYD-B5: an old backup predates latest: keep the live
+                # instance and report it; never silently delete it.
+                msg "${YELLOW}[!] Backup contains no xray-latest; current xray-latest instance preserved (not deleted).${NC}"
+                continue
+            fi
+            [[ "$_latest_in_backup_rc" == 0 ]] || { failed=1; continue; }
         fi
         remove_owned_core_family "$srv" 0 || failed=1
     done
@@ -30244,7 +30254,7 @@ strip_abox_cron_blocks_from_file() {
     local input="$1" output="$2" name="${3:-}"
     [[ -f "$input" && ! -L "$input" && -n "$output" ]] || return 1
     awk -v wanted="$name" '
-      function norm_line(s,   t) { t=s; if (substr(t, length(t), 1) == "\r") t=substr(t, 1, length(t)-1); if (substr(t, length(t)-1, 2) == "\\r") t=substr(t, 1, length(t)-2); gsub(/[ \t]+/, " ", t); sub(/^ /, "", t); sub(/ $/, "", t); return t }
+      function norm_line(s,   t, old) { t=s; do { old=t; sub(/[ \t]+$/, "", t); if (length(t) >= 1 && substr(t, length(t), 1) == "\r") t=substr(t, 1, length(t)-1); if (length(t) >= 2 && substr(t, length(t)-1, 2) == "\\r") t=substr(t, 1, length(t)-2); } while (t != old); gsub(/[ \t]+/, " ", t); sub(/^ /, "", t); sub(/ $/, "", t); return t }
       function bare_line_owner(n) {
         if (n == "* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1" || n == "* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1") return "PROBE"
         if (n == "0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1" || n == "0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1") return "GEO"
@@ -30367,11 +30377,11 @@ remove_abox_cron_block() {
 # keeps; report them on stderr. Report only, never fail the clear, and
 # never report user scripts (unknown basenames are not matched).
 report_unrecognized_abox_cron_lines() {
-    local file="$1" line
+    local file="$1" line _abox_report_re='(^|[[:space:]"'"'"'])/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh([[:space:]"'"'"';>&|]|$)'
     [[ -f "$file" && ! -L "$file" ]] || return 1
     while IFS= read -r line || [[ -n "$line" ]]; do
-        [[ "$line" =~ /etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh([[:space:]]|$) ]] || continue
-        printf '%s\n' "[!] A-Box cron residual (unrecognized managed-script line kept): $line" >&2
+        [[ "$line" =~ $_abox_report_re ]] || continue
+        printf '%s\n' "[!] A-Box cron residual (保留的已知／疑似管理路径引用): $line" >&2
     done < "$file"
     return 0
 }
@@ -31228,6 +31238,10 @@ backup_root_contains_service() {
             /usr/local/bin/hysteria /etc/hysteria
             /etc/systemd/system/hysteria.service /etc/init.d/hysteria /etc/conf.d/hysteria
         ) ;;
+        xray-latest) paths=(
+            /usr/local/bin/xray-latest /etc/ddr/xray-latest
+            /etc/systemd/system/xray-latest.service /etc/init.d/xray-latest /etc/conf.d/xray-latest
+        ) ;;
         *) return 2 ;;
     esac
     for path in "${paths[@]}"; do
@@ -31256,7 +31270,7 @@ validate_backup_core_init_compatibility() {
     local root="$1" srv backup_init current_init contains_rc
     current_init=$(effective_init_system) || return 1
     [[ "$current_init" == systemd || "$current_init" == openrc ]] || return 1
-    for srv in xray sing-box hysteria; do
+    for srv in xray sing-box hysteria xray-latest; do
         backup_root_contains_service "$root" "$srv"
         contains_rc=$?
         case "$contains_rc" in
@@ -31297,6 +31311,7 @@ backup_root_service_is_config_only() {
         xray) bin="$root/usr/local/bin/xray" ;;
         sing-box) bin="$root/usr/local/bin/sing-box" ;;
         hysteria) bin="$root/usr/local/bin/hysteria" ;;
+        xray-latest) bin="$root/usr/local/bin/xray-latest" ;;
         *) return 1 ;;
     esac
     [[ ! -e "$root/etc/systemd/system/${srv}.service" && ! -L "$root/etc/systemd/system/${srv}.service" ]] || return 1
@@ -31381,7 +31396,7 @@ validate_extracted_backup_content() {
     validate_services_state_file "$work/meta/services.state" || return 1
     [[ -f "$root$ABOX_DIR/.A-Box-owner" && ! -L "$root$ABOX_DIR/.A-Box-owner" ]] || return 1
     grep -Fxq 'A-Box managed directory v1' "$root$ABOX_DIR/.A-Box-owner" 2>/dev/null || return 1
-    for srv in xray sing-box hysteria; do
+    for srv in xray sing-box hysteria xray-latest; do
         backup_root_contains_service "$root" "$srv" || continue
         if backup_root_service_is_config_only "$root" "$srv"; then
             # A-04: Config-only backup must NOT declare service as running,
@@ -31391,6 +31406,7 @@ validate_extracted_backup_content() {
                 xray) [[ -f "$root/usr/local/etc/xray/config.json" ]] || return 1 ;;
                 sing-box) [[ -f "$root/etc/sing-box/config.json" ]] || return 1 ;;
                 hysteria) [[ -f "$root/etc/hysteria/config.yaml" ]] || return 1 ;;
+                xray-latest) [[ -f "$root/etc/ddr/xray-latest/config.json" ]] || return 1 ;;
             esac
         else
             backup_root_service_is_managed "$root" "$srv" || return 1
@@ -31398,6 +31414,7 @@ validate_extracted_backup_content() {
                 xray) [[ -f "$root/usr/local/bin/xray" && -f "$root/usr/local/etc/xray/config.json" ]] || return 1 ;;
                 sing-box) [[ -f "$root/usr/local/bin/sing-box" && -f "$root/etc/sing-box/config.json" ]] || return 1 ;;
                 hysteria) [[ -f "$root/usr/local/bin/hysteria" && -f "$root/etc/hysteria/config.yaml" ]] || return 1 ;;
+                xray-latest) [[ -f "$root/usr/local/bin/xray-latest" && -f "$root/etc/ddr/xray-latest/config.json" ]] || return 1 ;;
             esac
         fi
     done
@@ -31414,7 +31431,7 @@ assert_restore_target_safe() {
     local root="$1" srv path c=''
     validate_extracted_backup_content "$root" || { msg "${RED}[!] Backup content ownership markers are invalid.${NC}"; return 1; }
     local conflicts=''
-    for srv in xray sing-box hysteria; do
+    for srv in xray sing-box hysteria xray-latest; do
         backup_root_contains_service "$root" "$srv" || continue
         conflicts=$(list_foreign_core_conflicts "$srv") || return 1
         c+="$conflicts"$'\n'
@@ -31509,6 +31526,11 @@ normalize_restored_runtime_ownership() {
             chown -R "root:$group" /usr/local/etc/xray || return 1
             chmod 750 /usr/local/etc/xray || return 1
             ;;
+        xray-latest)
+            [[ -d /etc/ddr/xray-latest && ! -L /etc/ddr/xray-latest ]] || return 1
+            chown -R "root:$group" /etc/ddr/xray-latest || return 1
+            chmod 750 /etc/ddr/xray-latest || return 1
+            ;;
         *) return 1 ;;
     esac
 }
@@ -31518,7 +31540,7 @@ regenerate_runtime_assets_after_restore() {
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
         load_abox_env "$ABOX_ENV" || return 1
     fi
-    for srv in xray sing-box hysteria; do
+    for srv in xray sing-box hysteria xray-latest; do
         abox_owns_service "$srv" || continue
         prepare_abox_runtime_permissions "$srv" || return 1
     done
@@ -31845,7 +31867,7 @@ PY_LATEST_BACKUP
     remove_owned_core_families_for_restore "$root" || { msg "restore gate failed: remove-families" >&2; rm -rf "$work"; return 1; }
     clear_abox_runtime_for_restore || { msg "restore gate failed: clear-runtime" >&2; rm -rf "$work"; return 1; }
     restore_abox_directory "$root" || { msg "restore gate failed: restore-dir" >&2; rm -rf "$work"; return 1; }
-    for srv in xray sing-box hysteria; do restore_core_family_from_backup "$root" "$srv" || { msg "restore gate failed: restore-family" >&2; rm -rf "$work"; return 1; }; done
+    for srv in xray sing-box hysteria xray-latest; do restore_core_family_from_backup "$root" "$srv" || { msg "restore gate failed: restore-family" >&2; rm -rf "$work"; return 1; }; done
     local aux_paths=''
     aux_paths=$(managed_auxiliary_paths) || { msg "restore gate failed: aux-enum" >&2; rm -rf "$work"; return 1; }
     while IFS= read -r path; do
@@ -31868,7 +31890,12 @@ PY_LATEST_BACKUP
     save_firewall_rules >/dev/null 2>&1 || { msg "restore gate failed: save-fw" >&2; rm -rf "$work"; return 1; }
     if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || { msg "restore gate failed: daemon-reload" >&2; rm -rf "$work"; return 1; }; fi
     restore_managed_service_state "$work/meta/services.state" || { msg "restore gate failed: service-state" >&2; rm -rf "$work"; return 1; }
-    rm -rf "$work"; msg "${GREEN}[*] Rollback restored backup:${NC} $selected"
+    local preserved_note='' _latest_in_backup_rc=0
+    backup_root_contains_service "$root" xray-latest; _latest_in_backup_rc=$?
+    if [[ "$_latest_in_backup_rc" == 1 ]] && abox_owns_service xray-latest; then
+        preserved_note=' (preserved, not restored from backup: xray-latest; manual recovery: restore from a backup that contains xray-latest, or reinstall it from the menu)'
+    fi
+    rm -rf "$work"; msg "${GREEN}[*] Rollback restored backup:${NC} $selected$preserved_note"
 }
 
 restore_from_backup() {
@@ -31913,7 +31940,7 @@ restore_from_backup() {
     ABOX_LAST_BACKUP=''
     backup_current_config "$backup_dir"
     [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || { rm -rf "$work"; die "$(tr_msg rb_snapshot_fail)"; }
-    for srv in xray sing-box hysteria; do
+    for srv in xray sing-box hysteria xray-latest; do
         if abox_owns_service "$srv" || backup_root_contains_service "$root" "$srv"; then
             targets+=" ${srv}"
         fi
@@ -31932,7 +31959,7 @@ restore_from_backup() {
     remove_owned_core_families_for_restore "$root" || die '恢复前删除当前 A-Box 核心文件失败。'
     clear_abox_runtime_for_restore || die '恢复前清理 A-Box 运行目录失败。'
     restore_abox_directory "$root" || die 'Restore A-Box directory failed.'
-    for srv in xray sing-box hysteria; do
+    for srv in xray sing-box hysteria xray-latest; do
         restore_core_family_from_backup "$root" "$srv" || die "Restore failed for core family: $srv"
     done
     local aux_paths=''
@@ -31961,14 +31988,19 @@ restore_from_backup() {
     save_firewall_rules || die 'Restored A-Box firewall persistence failed.'
     if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || die 'systemd daemon-reload after restore failed.'; fi
     restore_managed_service_state "$work/meta/services.state" || die 'Restored service state failed validation/startup.'
-    for srv in xray sing-box hysteria; do
+    for srv in xray sing-box hysteria xray-latest; do
         if abox_owns_service "$srv"; then
             record_core_family_ownership "$srv" || die "Restored ${srv} ownership manifest update failed; restore was not committed."
         fi
     done
+    local preserved_note='' _latest_in_backup_rc=0
+    backup_root_contains_service "$root" xray-latest; _latest_in_backup_rc=$?
+    if [[ "$_latest_in_backup_rc" == 1 ]] && abox_owns_service xray-latest; then
+        preserved_note=' (preserved, not restored from backup: xray-latest; manual recovery: restore from a backup that contains xray-latest, or reinstall it from the menu)'
+    fi
     commit_deployment_transaction
     rm -rf "$work"
-    msg "${GREEN}[*] $(tr_msg rb_done)${NC}"
+    msg "${GREEN}[*] $(tr_msg rb_done)${NC}$preserved_note"
     pause_return
 }
 
@@ -36264,6 +36296,25 @@ PY_CLASH_REALPATH
     hy2_pass_yaml=$(json_escape "${HY2_PASS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     hy2_obfs_yaml=$(json_escape "${HY2_OBFS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
     ss_pass_yaml=$(json_escape "${SS_PASS:-}") || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
+    # SYD-B5 F3: reuse the view_config A3 pin gate for the YAML channel.
+    # Effective fingerprint: live-certificate fingerprint when readable,
+    # else the stored 64-hex fingerprint; empty means unusable.
+    local hy2_pin_colon hy2_fp_yaml hy2_yaml_emit=false
+    hy2_pin_colon=$(hy2_cert_pin_colon 2>/dev/null || true)
+    if [[ -n "$hy2_pin_colon" ]]; then
+        hy2_fp_yaml=$(tr -d ':' <<< "$hy2_pin_colon")
+    elif [[ "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+        hy2_fp_yaml="${HY2_CERT_SHA256_FP}"
+    else
+        hy2_fp_yaml=''
+    fi
+    if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
+        if [[ -n "${HY2_DOMAIN:-}" && "$CORE" != 'singbox' ]]; then
+            hy2_yaml_emit=true
+        elif [[ -n "$hy2_fp_yaml" ]]; then
+            hy2_yaml_emit=true
+        fi
+    fi
     # Bootstrap DNS by VPS geolocation; Chinese defaults only for CN VPS.
     clash_country=$(_detect_vps_country 2>/dev/null || true)
     clash_ns1=$(_clash_default_nameservers "$clash_country" 2>/dev/null | sed -n '1p')
@@ -36399,7 +36450,7 @@ EOF_CLASH
     obfs-password: ${hy2_obfs_yaml}
 EOF_CLASH
                 fi
-            else
+            elif [[ "$hy2_yaml_emit" == true ]]; then
                 if [[ "${HY2_HOP:-}" == 'true' ]]; then
                     cat <<EOF_CLASH
   - name: "$hy2_name"
@@ -36412,7 +36463,7 @@ EOF_CLASH
     alpn:
       - h3
     skip-cert-verify: true
-    fingerprint: "${HY2_CERT_SHA256_FP:-}"
+    fingerprint: "$hy2_fp_yaml"
     obfs: salamander
     obfs-password: ${hy2_obfs_yaml}
 EOF_CLASH
@@ -36426,11 +36477,13 @@ EOF_CLASH
     alpn:
       - h3
     skip-cert-verify: true
-    fingerprint: "${HY2_CERT_SHA256_FP:-}"
+    fingerprint: "$hy2_fp_yaml"
     obfs: salamander
     obfs-password: ${hy2_obfs_yaml}
 EOF_CLASH
                 fi
+            else
+                echo '  # Hy2 omitted: certificate fingerprint unavailable; refusing to emit an insecure node.'
             fi
         fi
         if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
@@ -36460,7 +36513,7 @@ EOF_CLASH
             [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo "      - Vision-$client_uuid"
             [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo "      - XHTTP-$client_uuid"
         done < "$_clash_uuid_list_tmp"
-        [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]] && echo "      - $hy2_name"
+        [[ "$hy2_yaml_emit" == true ]] && echo "      - $hy2_name"
         [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo '      - SS'
         cat <<EOF_CLASH
       - DIRECT

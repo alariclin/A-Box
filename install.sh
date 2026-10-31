@@ -31590,6 +31590,83 @@ abox_restore_preserved_name() {
 # blanket stop would leave the preserved family down (service-state restore
 # only touches services listed in the backup), and the residual sweep would
 # kill its live PID, so skip latest on both steps here.
+_manifest_rows_valid() {
+    local file="$1" line t f p h rest
+    [[ -f "$file" && ! -L "$file" ]] || return 1
+    if ! tr -d '\000' < "$file" | cmp -s - "$file"; then return 1; fi
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        IFS=$'\t' read -r t f p h rest <<< "$line"
+        [[ -z "${rest:-}" ]] || return 1
+        case "$t" in F|D) ;; *) return 1 ;; esac
+        case "$f" in xray|sing-box|hysteria|xray-latest) ;; *) return 1 ;; esac
+        [[ "$p" == /* ]] || return 1
+        case "$t" in
+            F) [[ "$h" =~ ^[0-9a-f]{64}$ ]] || return 1 ;;
+            D) [[ "$h" == '-' ]] || return 1 ;;
+        esac
+    done < "$file"
+    return 0
+}
+
+# SYD-B6m: manifest merge for preserved families. Directory restore copies
+# the backup's manifest over the live one, and the ownership loop only
+# re-records backup-contained families, so a preserved family's rows would
+# be lost permanently. Merge restores them: base = backup manifest rows,
+# plus live rows for families still owned but absent from the backup.
+# Backup-contained families keep backup rows (never live rows); families
+# owned in neither live nor backup gain no rows; a family that stopped
+# being owned before the merge (e.g. a rolled-back target) is never
+# merged. Malformed rows fail closed; a missing snapshot is a no-op
+# (fresh host that never had a manifest).
+merge_retained_manifest_rows() {
+    local root="$1" snapshot="$2" live tmp rows_file srv _brc=0
+    local TAB=$'\t'
+    [[ -n "$root" && -d "$root" && -n "$snapshot" ]] || return 1
+    [[ ! -e "$snapshot" && ! -L "$snapshot" ]] && return 0
+    [[ -f "$snapshot" && ! -L "$snapshot" ]] || return 1
+    [[ "$(stat -c %s "$snapshot" 2>/dev/null || echo 99999999)" -le 4194304 ]] || return 1
+    _manifest_rows_valid "$snapshot" || return 1
+    live="$ABOX_CORE_OWNERSHIP"
+    [[ -n "$live" ]] || return 1
+    if [[ -e "$live" || -L "$live" ]]; then
+        [[ -f "$live" && ! -L "$live" ]] || return 1
+        [[ "$(stat -c %s "$live" 2>/dev/null || echo 99999999)" -le 4194304 ]] || return 1
+        _manifest_rows_valid "$live" || return 1
+    fi
+    rows_file=$(mktemp) || return 1
+    : > "$rows_file"
+    for srv in xray sing-box hysteria xray-latest; do
+        backup_root_contains_service "$root" "$srv"; _brc=$?
+        [[ "$_brc" == 1 ]] || continue
+        abox_owns_service "$srv" || continue
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            IFS=$'\t' read -r t f p h rest <<< "$line"
+            [[ "$f" == "$srv" ]] && printf '%s\n' "$line" >> "$rows_file"
+        done < "$snapshot"
+    done
+    [[ -s "$rows_file" ]] || { rm -f -- "$rows_file"; return 0; }
+    tmp=$(umask 077; mktemp "$ABOX_DIR/.managed-core-files.merge.XXXXXX") || { rm -f -- "$rows_file"; return 1; }
+    if [[ -f "$live" ]]; then cat -- "$live" > "$tmp" || { rm -f -- "$tmp" "$rows_file"; return 1; }; fi
+    cat -- "$rows_file" >> "$tmp" || { rm -f -- "$tmp" "$rows_file"; return 1; }
+    awk '!seen[$0]++' "$tmp" > "$tmp.dedup" || { rm -f -- "$tmp" "$tmp.dedup" "$rows_file"; return 1; }
+    LC_ALL=C sort -t "$TAB" -k2,2 -k3,3 -o "$tmp.dedup" "$tmp.dedup" || { rm -f -- "$tmp" "$tmp.dedup" "$rows_file"; return 1; }
+    local prev_key='' prev_line='' key cur
+    while IFS= read -r cur || [[ -n "$cur" ]]; do
+        IFS=$'\t' read -r t f p h rest <<< "$cur"
+        key="$f$TAB$p"
+        if [[ "$key" == "$prev_key" && "$cur" != "$prev_line" ]]; then
+            rm -f -- "$tmp" "$tmp.dedup" "$rows_file"; return 1
+        fi
+        prev_key="$key"; prev_line="$cur"
+    done < "$tmp.dedup"
+    mv -f -- "$tmp.dedup" "$tmp" || { rm -f -- "$tmp" "$tmp.dedup" "$rows_file"; return 1; }
+    chmod 600 "$tmp" || { rm -f -- "$tmp" "$rows_file"; return 1; }
+    if [[ $EUID -eq 0 ]]; then chown root:root "$tmp" || { rm -f -- "$tmp" "$rows_file"; return 1; }; fi
+    mv -f -- "$tmp" "$live" || { rm -f -- "$tmp" "$rows_file"; return 1; }
+    rm -f -- "$rows_file"
+    return 0
+}
+
 stop_managed_services_for_restore() {
     local failed=0 _contains_rc=0
     if [[ -n "${1:-}" && -d "$1" ]]; then
@@ -32031,12 +32108,19 @@ PY_LATEST_BACKUP
     work=$(mktemp -d /tmp/A-Box-rollback.XXXXXX) || { msg "restore gate failed: workdir" >&2; return 1; }; chmod 700 "$work"
     tar -xzf "$selected" -C "$work" || { msg "restore gate failed: unpack" >&2; rm -rf "$work"; return 1; }
     root="$work/root"; assert_restore_target_safe "$root" || { msg "restore gate failed: target-safe" >&2; rm -rf "$work"; return 1; }; assert_restore_shortcut_safe "$root" || { msg "restore gate failed: shortcut-safe" >&2; rm -rf "$work"; return 1; }; validate_backup_core_init_compatibility "$root" || { msg "restore gate failed: init-compat" >&2; rm -rf "$work"; return 1; }
+    local _manifest_snapshot="$work/live-manifest.tsv"
+    if [[ -e "$ABOX_CORE_OWNERSHIP" || -L "$ABOX_CORE_OWNERSHIP" ]]; then
+        [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]] || { msg "restore gate failed: live-manifest" >&2; rm -rf "$work"; return 1; }
+        cp -a -- "$ABOX_CORE_OWNERSHIP" "$_manifest_snapshot" || { msg "restore gate failed: manifest-snapshot" >&2; rm -rf "$work"; return 1; }
+        chmod 600 "$_manifest_snapshot" || { msg "restore gate failed: manifest-snapshot" >&2; rm -rf "$work"; return 1; }
+    fi
     stop_managed_services_for_restore "$root" >/dev/null 2>&1 || { msg "restore gate failed: stop-services" >&2; rm -rf "$work"; return 1; }
     clean_nat_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-nat" >&2; rm -rf "$work"; return 1; }
     clean_input_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-input" >&2; rm -rf "$work"; return 1; }
     remove_owned_core_families_for_restore "$root" || { msg "restore gate failed: remove-families" >&2; rm -rf "$work"; return 1; }
     clear_abox_runtime_for_restore "$root" || { msg "restore gate failed: clear-runtime" >&2; rm -rf "$work"; return 1; }
     restore_abox_directory "$root" || { msg "restore gate failed: restore-dir" >&2; rm -rf "$work"; return 1; }
+    merge_retained_manifest_rows "$root" "$_manifest_snapshot" || { msg "restore gate failed: manifest-merge" >&2; rm -rf "$work"; return 1; }
     for srv in xray sing-box hysteria xray-latest; do restore_core_family_from_backup "$root" "$srv" || { msg "restore gate failed: restore-family" >&2; rm -rf "$work"; return 1; }; done
     local aux_paths=''
     aux_paths=$(managed_auxiliary_paths) || { msg "restore gate failed: aux-enum" >&2; rm -rf "$work"; return 1; }
@@ -32110,6 +32194,14 @@ restore_from_backup() {
     ABOX_LAST_BACKUP=''
     backup_current_config "$backup_dir"
     [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || { rm -rf "$work"; die "$(tr_msg rb_snapshot_fail)"; }
+    # SYD-B6m: snapshot the live manifest BEFORE any destructive step;
+    # clear + directory restore replace it with the backup manifest.
+    local _manifest_snapshot="$work/live-manifest.tsv"
+    if [[ -e "$ABOX_CORE_OWNERSHIP" || -L "$ABOX_CORE_OWNERSHIP" ]]; then
+        [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]] || { rm -rf "$work"; die 'Live ownership manifest is not a safe regular file; restore was not started.'; }
+        cp -a -- "$ABOX_CORE_OWNERSHIP" "$_manifest_snapshot" || { rm -rf "$work"; die 'Restore manifest snapshot failed; restore was not started.'; }
+        chmod 600 "$_manifest_snapshot" || { rm -rf "$work"; die 'Restore manifest snapshot failed; restore was not started.'; }
+    fi
     for srv in xray sing-box hysteria xray-latest; do
         if abox_owns_service "$srv" || backup_root_contains_service "$root" "$srv"; then
             targets+=" ${srv}"
@@ -32129,6 +32221,7 @@ restore_from_backup() {
     remove_owned_core_families_for_restore "$root" || die '恢复前删除当前 A-Box 核心文件失败。'
     clear_abox_runtime_for_restore "$root" || die '恢复前清理 A-Box 运行目录失败。'
     restore_abox_directory "$root" || die 'Restore A-Box directory failed.'
+    merge_retained_manifest_rows "$root" "$_manifest_snapshot" || die 'Restore manifest merge for preserved families failed; restore was not committed.'
     for srv in xray sing-box hysteria xray-latest; do
         restore_core_family_from_backup "$root" "$srv" || die "Restore failed for core family: $srv"
     done

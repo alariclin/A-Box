@@ -10099,9 +10099,9 @@ remove_recorded_core_family() {
         [[ "$runtime_gid" =~ ^[0-9]+$ ]] || runtime_gid="${_derived_gid:-0}"
     fi
     [[ "$runtime_uid" =~ ^[0-9]+$ && "$runtime_gid" =~ ^[0-9]+$ ]] || return 1
-    python3 - "$srv" "$ABOX_CORE_OWNERSHIP" "$runtime_uid" "$runtime_gid" <<'PY_CORE_REMOVE'
+    python3 - "$srv" "$ABOX_CORE_OWNERSHIP" "$runtime_uid" "$runtime_gid" "$ABOX_DIR" <<'PY_CORE_REMOVE'
 import hashlib, os, re, stat, sys, tempfile
-srv, manifest, runtime_uid, runtime_gid=sys.argv[1:]
+srv, manifest, runtime_uid, runtime_gid, abox_dir=sys.argv[1:]
 runtime_uid=int(runtime_uid)
 runtime_gid=int(runtime_gid)
 rows=[]; keep=[]; all_rows=[]
@@ -10215,6 +10215,15 @@ def _is_artifact_tree(path):
             return False
         return all(_is_artifact_tree(os.path.join(path, n)) for n in names)
     return _is_artifact_file(path)
+# SYD-B7: a symlinked ABOX_DIR would let listdir walk an external tree;
+# per-dir islink checks cannot see an ancestor symlink. Fail closed here.
+# (TOCTOU swap after this check is a root-race window, accepted as-is.)
+try:
+    _ad_st = os.lstat(abox_dir)
+except OSError:
+    raise SystemExit(3)
+if stat.S_ISLNK(_ad_st.st_mode) or not stat.S_ISDIR(_ad_st.st_mode):
+    raise SystemExit(3)
 _repair = []
 for _d in sorted(dirs, key=os.fsencode):
     if os.path.islink(_d):
@@ -30503,8 +30512,10 @@ remove_abox_cron_block() {
 # known managed script after stripping are unknown variants, not silent
 # keeps; report them on stderr. Report only, never fail the clear, and
 # never report user scripts (unknown basenames are not matched).
+# SYD-B7: backslash-continued split paths are a line-scanner limit,
+# accepted as-is; the regex is not stretched to cover them.
 report_unrecognized_abox_cron_lines() {
-    local file="$1" line _abox_report_re='(^|[[:space:]"'"'"';&|(])/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh([[:space:]"'"'"';>&|)]|$)'
+    local file="$1" line _abox_report_re='(^|[[:space:]"'"'"';&|(`])/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh([[:space:]"'"'"';>&|)`]|$)'
     [[ -f "$file" && ! -L "$file" ]] || return 1
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ "$line" =~ $_abox_report_re ]] || continue
@@ -31517,6 +31528,13 @@ validate_extracted_backup_content() {
     [[ -f "$work/meta/manifest.version" && -f "$work/meta/manifest.sha256" ]] || return 1
     grep -Fxq 'A-Box backup manifest v3' "$work/meta/manifest.version" || return 1
     validate_backup_manifest_tree "$work" || return 1
+    # SYD-B7: tree hashes prove the backup manifest file is intact, not that
+    # its rows are well-formed; validate row semantics when present (a missing
+    # manifest is left to the merge path, which handles it).
+    if [[ -e "$root$ABOX_DIR/.managed-core-files.tsv" || -L "$root$ABOX_DIR/.managed-core-files.tsv" ]]; then
+        [[ -f "$root$ABOX_DIR/.managed-core-files.tsv" && ! -L "$root$ABOX_DIR/.managed-core-files.tsv" ]] || return 1
+        _manifest_rows_valid "$root$ABOX_DIR/.managed-core-files.tsv" || return 1
+    fi
     validate_managed_paths_file "$work/meta/managed-paths.txt" || return 1
     validate_abox_cron_file "$work/meta/cron.abox.txt" || return 1
     grep -Eq '^(iptables|ufw|firewalld)$' "$work/meta/firewall.backend" || return 1
@@ -31591,10 +31609,14 @@ abox_restore_preserved_name() {
 # only touches services listed in the backup), and the residual sweep would
 # kill its live PID, so skip latest on both steps here.
 _manifest_rows_valid() {
-    local file="$1" line t f p h rest
+    local file="$1" line t f p h rest TAB=$'\t'
     [[ -f "$file" && ! -L "$file" ]] || return 1
     if ! tr -d '\000' < "$file" | cmp -s - "$file"; then return 1; fi
     while IFS= read -r line || [[ -n "$line" ]]; do
+        # SYD-B7: TAB is IFS whitespace, so a plain read folds empty fields
+        # away; require exactly 3 TABs (4 fields) before splitting.
+        local _notabs="${line//$TAB/}"
+        [[ "$(( ${#line} - ${#_notabs} ))" -eq 3 ]] || return 1
         IFS=$'\t' read -r t f p h rest <<< "$line"
         [[ -z "${rest:-}" ]] || return 1
         case "$t" in F|D) ;; *) return 1 ;; esac
@@ -31618,8 +31640,27 @@ _manifest_rows_valid() {
 # being owned before the merge (e.g. a rolled-back target) is never
 # merged. Malformed rows fail closed; a missing snapshot is a no-op
 # (fresh host that never had a manifest).
+# SYD-B7: merge failure must not leave the backup manifest in place.
+# The wrapper restores the pre-restore live manifest from the snapshot, but
+# only when the snapshot itself is valid (rows + size); an invalid snapshot
+# is never installed, and the caller preserves the work dir for forensics.
 merge_retained_manifest_rows() {
-    local root="$1" snapshot="$2" live tmp rows_file srv _brc=0
+    local root="$1" snapshot="$2"
+    if _merge_retained_manifest_rows_inner "$root" "$snapshot"; then return 0; fi
+    if [[ -n "$snapshot" && -n "$ABOX_CORE_OWNERSHIP" && -f "$snapshot" && ! -L "$snapshot" ]] \
+        && [[ "$(stat -c %s "$snapshot" 2>/dev/null || echo 99999999)" -le 4194304 ]] \
+        && _manifest_rows_valid "$snapshot"; then
+        if [[ ! -e "$ABOX_CORE_OWNERSHIP" || ( -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ) ]]; then
+            cp -a -- "$snapshot" "$ABOX_CORE_OWNERSHIP" 2>/dev/null || true
+            chmod 600 "$ABOX_CORE_OWNERSHIP" 2>/dev/null || true
+            if [[ $EUID -eq 0 ]]; then chown root:root "$ABOX_CORE_OWNERSHIP" 2>/dev/null || true; fi
+        fi
+    fi
+    return 1
+}
+
+_merge_retained_manifest_rows_inner() {
+    local root="$1" snapshot="$2" live tmp rows_file srv _brc=0 _orc=0
     local TAB=$'\t'
     [[ -n "$root" && -d "$root" && -n "$snapshot" ]] || return 1
     [[ ! -e "$snapshot" && ! -L "$snapshot" ]] && return 0
@@ -31636,20 +31677,48 @@ merge_retained_manifest_rows() {
     rows_file=$(mktemp) || return 1
     : > "$rows_file"
     for srv in xray sing-box hysteria xray-latest; do
+        # SYD-B7: containment is a trichotomy (0 contained / 1 absent /
+        # anything else error), mirroring regen + manual-ownership loops;
+        # a non-0/1 result must fail, never silently drop retained rows.
         backup_root_contains_service "$root" "$srv"; _brc=$?
-        [[ "$_brc" == 1 ]] || continue
-        abox_owns_service "$srv" || continue
+        if [[ "$_brc" == 1 ]]; then
+            :
+        elif [[ "$_brc" == 0 ]]; then
+            continue
+        else
+            rm -f -- "$rows_file"; return 1
+        fi
+        abox_owns_service "$srv"; _orc=$?
+        if [[ "$_orc" == 0 ]]; then
+            :
+        elif [[ "$_orc" == 1 ]]; then
+            continue
+        else
+            rm -f -- "$rows_file"; return 1
+        fi
         while IFS= read -r line || [[ -n "$line" ]]; do
             IFS=$'\t' read -r t f p h rest <<< "$line"
-            [[ "$f" == "$srv" ]] && printf '%s\n' "$line" >> "$rows_file"
+            if [[ "$f" == "$srv" ]]; then
+                # SYD-B7: an unchecked append lets ENOSPC silently lose
+                # retained rows and install a partial manifest as success.
+                printf '%s\n' "$line" >> "$rows_file" || { rm -f -- "$rows_file"; return 1; }
+            fi
         done < "$snapshot"
     done
     [[ -s "$rows_file" ]] || { rm -f -- "$rows_file"; return 0; }
     tmp=$(umask 077; mktemp "$ABOX_DIR/.managed-core-files.merge.XXXXXX") || { rm -f -- "$rows_file"; return 1; }
     if [[ -f "$live" ]]; then cat -- "$live" > "$tmp" || { rm -f -- "$tmp" "$rows_file"; return 1; }; fi
+    # SYD-B7: a base manifest without trailing LF would concatenate its last
+    # row with the first retained row into one bad row; normalize first.
+    # (command substitution strips trailing newlines, so a non-empty tail
+    # output means the last byte is not LF.)
+    if [[ -s "$tmp" && -n "$(tail -c 1 -- "$tmp")" ]]; then printf '\n' >> "$tmp" || { rm -f -- "$tmp" "$rows_file"; return 1; }; fi
     cat -- "$rows_file" >> "$tmp" || { rm -f -- "$tmp" "$rows_file"; return 1; }
     awk '!seen[$0]++' "$tmp" > "$tmp.dedup" || { rm -f -- "$tmp" "$tmp.dedup" "$rows_file"; return 1; }
     LC_ALL=C sort -t "$TAB" -k2,2 -k3,3 -o "$tmp.dedup" "$tmp.dedup" || { rm -f -- "$tmp" "$tmp.dedup" "$rows_file"; return 1; }
+    # SYD-B7: the key-conflict loop below never validates row shape, so
+    # re-validate the merged output before it can be installed.
+    _manifest_rows_valid "$tmp.dedup" || { rm -f -- "$tmp" "$tmp.dedup" "$rows_file"; return 1; }
     local prev_key='' prev_line='' key cur
     while IFS= read -r cur || [[ -n "$cur" ]]; do
         IFS=$'\t' read -r t f p h rest <<< "$cur"
@@ -32111,6 +32180,10 @@ PY_LATEST_BACKUP
     local _manifest_snapshot="$work/live-manifest.tsv"
     if [[ -e "$ABOX_CORE_OWNERSHIP" || -L "$ABOX_CORE_OWNERSHIP" ]]; then
         [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]] || { msg "restore gate failed: live-manifest" >&2; rm -rf "$work"; return 1; }
+        # SYD-B7: validate the live manifest BEFORE any destructive step;
+        # a corrupt live manifest must fail here, not after stop/remove/clear.
+        [[ "$(stat -c %s "$ABOX_CORE_OWNERSHIP" 2>/dev/null || echo 99999999)" -le 4194304 ]] || { msg "restore gate failed: live-manifest-size" >&2; rm -rf "$work"; return 1; }
+        _manifest_rows_valid "$ABOX_CORE_OWNERSHIP" || { msg "restore gate failed: live-manifest-rows" >&2; rm -rf "$work"; return 1; }
         cp -a -- "$ABOX_CORE_OWNERSHIP" "$_manifest_snapshot" || { msg "restore gate failed: manifest-snapshot" >&2; rm -rf "$work"; return 1; }
         chmod 600 "$_manifest_snapshot" || { msg "restore gate failed: manifest-snapshot" >&2; rm -rf "$work"; return 1; }
     fi
@@ -32120,7 +32193,7 @@ PY_LATEST_BACKUP
     remove_owned_core_families_for_restore "$root" || { msg "restore gate failed: remove-families" >&2; rm -rf "$work"; return 1; }
     clear_abox_runtime_for_restore "$root" || { msg "restore gate failed: clear-runtime" >&2; rm -rf "$work"; return 1; }
     restore_abox_directory "$root" || { msg "restore gate failed: restore-dir" >&2; rm -rf "$work"; return 1; }
-    merge_retained_manifest_rows "$root" "$_manifest_snapshot" || { msg "restore gate failed: manifest-merge" >&2; rm -rf "$work"; return 1; }
+    merge_retained_manifest_rows "$root" "$_manifest_snapshot" || { msg "restore gate failed: manifest-merge (work preserved at $work; snapshot $_manifest_snapshot)" >&2; return 1; }
     for srv in xray sing-box hysteria xray-latest; do restore_core_family_from_backup "$root" "$srv" || { msg "restore gate failed: restore-family" >&2; rm -rf "$work"; return 1; }; done
     local aux_paths=''
     aux_paths=$(managed_auxiliary_paths) || { msg "restore gate failed: aux-enum" >&2; rm -rf "$work"; return 1; }
@@ -32199,6 +32272,9 @@ restore_from_backup() {
     local _manifest_snapshot="$work/live-manifest.tsv"
     if [[ -e "$ABOX_CORE_OWNERSHIP" || -L "$ABOX_CORE_OWNERSHIP" ]]; then
         [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]] || { rm -rf "$work"; die 'Live ownership manifest is not a safe regular file; restore was not started.'; }
+        # SYD-B7: validate the live manifest BEFORE any destructive step.
+        [[ "$(stat -c %s "$ABOX_CORE_OWNERSHIP" 2>/dev/null || echo 99999999)" -le 4194304 ]] || { rm -rf "$work"; die 'Live ownership manifest exceeds size limit; restore was not started.'; }
+        _manifest_rows_valid "$ABOX_CORE_OWNERSHIP" || { rm -rf "$work"; die 'Live ownership manifest rows are invalid; restore was not started.'; }
         cp -a -- "$ABOX_CORE_OWNERSHIP" "$_manifest_snapshot" || { rm -rf "$work"; die 'Restore manifest snapshot failed; restore was not started.'; }
         chmod 600 "$_manifest_snapshot" || { rm -rf "$work"; die 'Restore manifest snapshot failed; restore was not started.'; }
     fi

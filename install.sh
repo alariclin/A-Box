@@ -10439,6 +10439,9 @@ abox_owns_config_only_core_dir() {
         xray) cfg_dir=/usr/local/etc/xray; bin=/usr/local/bin/xray ;;
         sing-box) cfg_dir=/etc/sing-box; bin=/usr/local/bin/sing-box ;;
         hysteria) cfg_dir=/etc/hysteria; bin=/usr/local/bin/hysteria ;;
+        # SYD-B5e R2: latest needs the same config-only branch, or a
+        # unit-deleted latest stack is judged foreign and unrestorable.
+        xray-latest) cfg_dir=/etc/ddr/xray-latest; bin=/usr/local/bin/xray-latest ;;
         *) return 1 ;;
     esac
     [[ ! -e "$bin" && ! -L "$bin" && -d "$cfg_dir" && ! -L "$cfg_dir" ]] || return 1

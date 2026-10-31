@@ -10763,9 +10763,10 @@ pid_exe_matches() {
 }
 
 kill_managed_residual_pids() {
-    local srv pid exe failed=0 i
+    local srv pid exe failed=0 i skip_srv="${1:-}"
     local -a pids=() exes=()
     for srv in xray sing-box hysteria xray-latest; do
+        [[ -n "$skip_srv" && "$srv" == "$skip_srv" ]] && continue
         abox_owns_service "$srv" || continue
         pid=$(managed_service_pid "$srv" 2>/dev/null || true)
         pid=${pid%%$'\n'*}
@@ -31561,6 +31562,26 @@ abox_restore_preserved_name() {
     esac
 }
 
+# SYD-B5e R3b: preserve means untouched. When the backup lacks latest, the
+# blanket stop would leave the preserved family down (service-state restore
+# only touches services listed in the backup), and the residual sweep would
+# kill its live PID, so skip latest on both steps here.
+stop_managed_services_for_restore() {
+    local failed=0 _contains_rc=0
+    if [[ -n "${1:-}" && -d "$1" ]]; then
+        backup_root_contains_service "$1" xray-latest || _contains_rc=$?
+    fi
+    if [[ "$_contains_rc" == 1 ]]; then
+        stop_abox_service xray || failed=1
+        stop_abox_service sing-box || failed=1
+        stop_abox_service hysteria || failed=1
+        kill_managed_residual_pids xray-latest >/dev/null 2>&1 || failed=1
+        (( failed == 0 ))
+    else
+        stop_all_managed_services
+    fi
+}
+
 clear_abox_runtime_for_restore() {
     local child base failed=0 preserve_latest=0 _contains_rc=0
     [[ -d "$ABOX_DIR" && ! -L "$ABOX_DIR" ]] || return 0
@@ -31979,7 +32000,7 @@ PY_LATEST_BACKUP
     work=$(mktemp -d /tmp/A-Box-rollback.XXXXXX) || { msg "restore gate failed: workdir" >&2; return 1; }; chmod 700 "$work"
     tar -xzf "$selected" -C "$work" || { msg "restore gate failed: unpack" >&2; rm -rf "$work"; return 1; }
     root="$work/root"; assert_restore_target_safe "$root" || { msg "restore gate failed: target-safe" >&2; rm -rf "$work"; return 1; }; assert_restore_shortcut_safe "$root" || { msg "restore gate failed: shortcut-safe" >&2; rm -rf "$work"; return 1; }; validate_backup_core_init_compatibility "$root" || { msg "restore gate failed: init-compat" >&2; rm -rf "$work"; return 1; }
-    stop_all_managed_services >/dev/null 2>&1 || { msg "restore gate failed: stop-services" >&2; rm -rf "$work"; return 1; }
+    stop_managed_services_for_restore "$root" >/dev/null 2>&1 || { msg "restore gate failed: stop-services" >&2; rm -rf "$work"; return 1; }
     clean_nat_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-nat" >&2; rm -rf "$work"; return 1; }
     clean_input_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-input" >&2; rm -rf "$work"; return 1; }
     remove_owned_core_families_for_restore "$root" || { msg "restore gate failed: remove-families" >&2; rm -rf "$work"; return 1; }
@@ -32071,7 +32092,7 @@ restore_from_backup() {
     ABOX_DIE_HOOK=deployment_transaction_rollback
     install_deployment_transaction_traps
 
-    stop_all_managed_services || die '恢复前无法停止全部 A-Box 托管服务。'
+    stop_managed_services_for_restore "$root" || die '恢复前无法停止全部 A-Box 托管服务。'
     clean_nat_rules || die '恢复前无法完整删除 A-Box HY2 NAT 规则。'
     clean_input_rules || die '恢复前无法完整删除 A-Box INPUT/原生防火墙规则。'
     remove_owned_core_families_for_restore "$root" || die '恢复前删除当前 A-Box 核心文件失败。'

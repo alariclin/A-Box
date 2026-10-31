@@ -31345,7 +31345,7 @@ validate_managed_paths_file() {
     local file="$1" allowed_paths='' srv core_paths
     [[ -f "$file" && ! -L "$file" ]] || return 1
     allowed_paths=$(managed_auxiliary_paths) || return 1
-    for srv in xray sing-box hysteria; do
+    for srv in xray sing-box hysteria xray-latest; do
         core_paths=$(core_family_paths "$srv") || return 1
         allowed_paths+=$'\n'"$core_paths"
     done

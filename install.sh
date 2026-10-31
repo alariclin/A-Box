@@ -30516,7 +30516,7 @@ remove_abox_cron_block() {
 # accepted as-is; the regex is not stretched to cover them.
 report_unrecognized_abox_cron_lines() {
     local file="$1" line _abox_report_re='(^|[[:space:]\"'"'"';&|(`=])/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh([[:space:]"'"'"';<>&|)`]|$)'
-    local _abox_report_skip_re='^[[:blank:]]*((([*0-9,/-]+|(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|SUN|MON|TUE|WED|THU|FRI|SAT)(-(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|SUN|MON|TUE|WED|THU|FRI|SAT))?(,(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|SUN|MON|TUE|WED|THU|FRI|SAT)(-(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|SUN|MON|TUE|WED|THU|FRI|SAT))?)*)[[:blank:]]+){5}|@[a-z]+[[:blank:]]+)?[A-Za-z_][A-Za-z0-9_]*=((\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh|"\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh"|'"'"'\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh\\?'"'"')([[:blank:]]+#.*|[[:blank:]]*)|\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh\\[[:blank:]]*)$'
+    local _abox_report_skip_re='^['' '$'\t'']*((([*0-9,/-]+|(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|SUN|MON|TUE|WED|THU|FRI|SAT)(-(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|SUN|MON|TUE|WED|THU|FRI|SAT))?(,(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|SUN|MON|TUE|WED|THU|FRI|SAT)(-(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|SUN|MON|TUE|WED|THU|FRI|SAT))?)*)['' '$'\t'']+){5}|@[a-z]+['' '$'\t'']+)?[A-Za-z_][A-Za-z0-9_]*=((\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh|"\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh"|'"'"'\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh\\?'"'"')(['' '$'\t'']+#.*|['' '$'\t'']*)|\\?/etc/ddr/(socket_probe|geo_update|traffic_monitor|user-guard-runner)\.sh\\['' '$'\t'']*)$'
     [[ -f "$file" && ! -L "$file" ]] || return 1
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ "$line" =~ $_abox_report_re ]] || continue
@@ -30535,11 +30535,13 @@ report_unrecognized_abox_cron_lines() {
         # literal, so the closing quote is real. The tail is empty or
         # whitespace plus a #-comment (a # glued to the value is NOT a
         # comment).
-        # SYD-B13: skip blanks are [[:blank:]] (space/tab only),
-        # never [[:space:]]: CR/VT/FF are shell word characters,
-        # not comment separators (GPT B12 review P2). Do NOT write
-        # [ \t] here: bash ERE reads it as {space, backslash, t},
-        # not tab (verified empirically).
+        # SYD-B14: skip blanks are literal ASCII space (0x20) + TAB
+        # (0x09) embedded as real bytes via single-quote concatenation.
+        # Never [[:blank:]]: it expands with locale (U+2003 etc. under
+        # UTF-8 locales count as blank, GPT B13 review P2). Never
+        # [ \t]: bash ERE reads it as {space, backslash, t}, not tab.
+        # Never pin LC_ALL=C here: it would also narrow the entry
+        # regex [[:space:]] match (under-match direction change).
         if [[ "$line" =~ $_abox_report_skip_re ]]; then continue; fi
         printf '%s\n' "[!] A-Box cron residual (保留的已知／疑似管理路径引用): $line" >&2
     done < "$file"

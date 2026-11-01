@@ -93,7 +93,7 @@ jq() {
                 printf '%s\n' "[!] jq shim: cannot read --rawfile file: $_file" >&2
                 return 2
             fi
-            _content=$(cat -- "$_file"; printf x)
+            _content=$(cat -- "$_file" && printf x) || { printf '%s\n' "[!] jq shim: cannot read --rawfile file: $_file" >&2; return 2; }
             _content=${_content%x}
             _args+=(--arg "$_name" "$_content")
         else
@@ -440,9 +440,11 @@ rebuild_standalone_links() {
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_inner" _inner
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
                 _inner=$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-ss")) | .password // ""' "$_sc" 2>/dev/null)
+                _inner_method=$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-ss")) | .method // ""' "$_sc" 2>/dev/null)
+                [[ -n "$_inner_method" ]] || _inner_method='2022-blake3-aes-128-gcm'
                 if [[ -n "$_inner" ]]; then
                     local _ub _pb
-                    _ub=$(printf '%s' "2022-blake3-aes-128-gcm:${_inner}@$(uri_host "$_ip"):${_port}" | base64 | tr -d '\n\r')
+                    _ub=$(printf '%s' "${_inner_method}:${_inner}@$(uri_host "$_ip"):${_port}" | base64 | tr -d '\n\r')
                     _pb=$(jq -cn --arg h "$_sni" --rawfile p <(printf '%s' "$_pass") '{version:"3", host:$h, password:$p}' | base64 | tr -d '\n\r')
                     register_standalone_link shadowtls "ShadowTLS · 端口 ${_port}" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
                 else

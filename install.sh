@@ -17548,11 +17548,13 @@ build_singbox_config() {
         jq -e '.version == 1 and (.outbounds | type == "array") and (.rules | type == "array")' "$ROUTING_STATE_FILE" >/dev/null 2>&1 || die 'Routing state file is invalid; refusing to deploy without routing policy.'
         _rs_ob=$(jq -c '[.outbounds[]?.singbox
             | if (.type == "wireguard" and has("server")) then
-                {type:"wireguard", tag:.tag, address:.local_address, private_key:.private_key,
-                 mtu:(.mtu // 1280),
-                 peers:[{address:.server, port:.server_port, public_key:.peer_public_key,
-                     persistent_keepalive_interval:(.keepalive // 25),
-                     allowed_ips:["0.0.0.0/0","::/0"]}]}
+                ((.pre_shared_key // null) as $psk
+                 | {type:"wireguard", tag:.tag, address:.local_address, private_key:.private_key,
+                    mtu:(.mtu // 1280),
+                    peers:[({address:.server, port:.server_port, public_key:.peer_public_key,
+                        persistent_keepalive_interval:(.keepalive // 25),
+                        allowed_ips:["0.0.0.0/0","::/0"]}
+                       + (if ($psk | type == "string" and . != "") then {pre_shared_key:$psk} else {} end))]})
               else . end]' "$ROUTING_STATE_FILE" 2>/dev/null) || die 'Routing state outbound merge failed.'
         _rs_rules=$(jq -c '[.rules[]?.singbox_rule
             | if has("geosite") then

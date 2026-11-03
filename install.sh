@@ -763,6 +763,12 @@ tr_msg() {
         fa:hy2_acme_tree_drift) echo 'پوشه Hysteria ACME از فهرست مدیریت‌شده منحرف شده و بدون تغییر رها شد؛ پرونده‌های زیر /etc/hysteria/acme را به‌صورت دستی بررسی کنید و دوباره تلاش کنید.' ;;
         zh-tw:hy2_acme_tree_drift) echo 'Hysteria ACME 目錄內容已偏離託管清單，未做修復；請手動核對 /etc/hysteria/acme 下的檔案後重試。' ;;
         ja:hy2_acme_tree_drift) echo 'Hysteria ACME ディレクトリが管理マニフェストから逸脱しているため、変更せずに残しました。/etc/hysteria/acme 配下のファイルを手動で確認してから再試行してください。' ;;
+        zh:hy2_acme_parent_untraversable) echo '父目录 /etc/hysteria 对 Hysteria 运行时身份不可遍历，且其属组不属于 A-Box，未改动父目录；请手动调整父目录权限后重试。' ;;
+        en:hy2_acme_parent_untraversable) echo 'Parent directory /etc/hysteria is not traversable by the Hysteria runtime identity and its group is not A-Box-managed; the parent was left untouched. Adjust the parent permissions manually and retry.' ;;
+        ru:hy2_acme_parent_untraversable) echo 'Родительский каталог /etc/hysteria недоступен для прохода идентификатору среды выполнения Hysteria, а его группа не управляется A-Box; родительский каталог не изменён. Настройте права родительского каталога вручную и повторите попытку.' ;;
+        fa:hy2_acme_parent_untraversable) echo 'پوشه والد /etc/hysteria برای هویت زمان اجرای Hysteria قابل عبور نیست و گروه آن تحت مدیریت A-Box نیست؛ پوشه والد بدون تغییر رها شد. مجوزهای پوشه والد را به‌صورت دستی تنظیم کنید و دوباره تلاش کنید.' ;;
+        zh-tw:hy2_acme_parent_untraversable) echo '父目錄 /etc/hysteria 對 Hysteria 執行階段身分不可遍歷，且其屬群不屬於 A-Box，未更動父目錄；請手動調整父目錄權限後重試。' ;;
+        ja:hy2_acme_parent_untraversable) echo '親ディレクトリ /etc/hysteria は Hysteria ランタイム ID から走査できず、そのグループは A-Box 管理下にありません。親ディレクトリは変更していません。親ディレクトリの権限を手動で調整してから再試行してください。' ;;
         zh:pi_hy2_masq_closed) echo 'HY2 伪装 URL 输入已结束。' ;;
         en:pi_hy2_masq_closed) echo 'HY2 masquerade URL input closed.' ;;
         ru:pi_hy2_masq_closed) echo 'Ввод URL маскировки HY2 завершён.' ;;
@@ -10131,12 +10137,87 @@ for typ, _fam, rawpath, _h in rows:
 PY_ACME_REPAIR
 }
 
+hysteria_acme_readopt_manifest() {
+    # R8: atomically append the D record for an ACME dir and the F
+    # record for its marker to the ownership manifest. Only for a
+    # marker-only tree (interrupted first setup); any other entry
+    # refuses without touching the manifest. The caller re-verifies
+    # the whole tree afterwards.
+    local manifest="${1:-$ABOX_CORE_OWNERSHIP}" target="${2:-/etc/hysteria/acme}" marker="${3:-$HY2_ACME_OWNER_MARKER}"
+    [[ "$target" == /etc/hysteria/acme ]] || return 1
+    [[ "$marker" == "$target/.A-Box-managed" ]] || return 1
+    python3 -I - "$manifest" "$target" "$marker" <<'PY_ACME_READOPT'
+import hashlib, os, stat, sys
+manifest, target, marker = sys.argv[1:]
+try:
+    st = os.lstat(manifest)
+    if not stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode) or st.st_uid != 0 or st.st_gid != 0 or (st.st_mode & 0o777) != 0o600 or st.st_size > 4 * 1024 * 1024:
+        raise SystemExit(1)
+    with open(manifest, 'r', encoding='utf-8') as f:
+        rows = []
+        for line in f:
+            p = line.rstrip('\n').split('\t')
+            if len(p) != 4 or p[0] not in {'F', 'D'} or not p[2].startswith('/') or '\x00' in line:
+                raise SystemExit(1)
+            rows.append(p)
+except OSError:
+    raise SystemExit(1)
+# Marker-only tree: every entry under the target must be the marker.
+try:
+    names = os.listdir(target)
+except OSError:
+    raise SystemExit(1)
+if any(n != '.A-Box-managed' for n in names):
+    raise SystemExit(1)
+try:
+    mst = os.lstat(marker)
+    if not stat.S_ISREG(mst.st_mode) or stat.S_ISLNK(mst.st_mode):
+        raise SystemExit(1)
+    h = hashlib.sha256()
+    with open(marker, 'rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(chunk)
+except OSError:
+    raise SystemExit(1)
+kept = [r for r in rows if not (r[1] == 'hysteria' and (r[2] == target or r[2].startswith(target + '/')))]
+new = kept + [['D', 'hysteria', target, '-'], ['F', 'hysteria', marker, h.hexdigest()]]
+seen = set()
+for r in new:
+    key = (r[0], r[1], r[2])
+    if key in seen:
+        raise SystemExit(1)
+    seen.add(key)
+new.sort(key=lambda r: (r[1], os.fsencode(r[2])))
+tmp = manifest + '.readopt.tmp'
+with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
+    for r in new:
+        f.write('\t'.join(r) + '\n')
+    f.flush()
+    os.fsync(f.fileno())
+os.chmod(tmp, 0o600)
+os.chown(tmp, 0, 0)
+os.replace(tmp, manifest)
+PY_ACME_READOPT
+}
+
 prepare_hysteria_acme_dir_ownership() {
-    local dir=/etc/hysteria/acme marker=$HY2_ACME_OWNER_MARKER user group
+    local dir=/etc/hysteria/acme marker=$HY2_ACME_OWNER_MARKER user group _pgroup _pmode
     IFS=$'\t' read -r user group < <(abox_runtime_identity hysteria) || return 1
     ensure_abox_runtime_identity hysteria || return 1
     path_parent_chain_safe "$dir/.A-Box-managed" || return 1
     [[ ! -L /etc/hysteria && (! -e /etc/hysteria || -d /etc/hysteria) ]] || return 1
+    if [[ -e /etc/hysteria ]]; then
+        # R12/R15: an existing parent must already be traversable by
+        # the runtime group; its group is never rewritten here.
+        _pgroup=$(stat -c %G /etc/hysteria 2>/dev/null || true)
+        _pmode=$(stat -c %a /etc/hysteria 2>/dev/null || true)
+        if [[ "$_pgroup" == "$group" ]]; then
+            chmod g+x /etc/hysteria 2>/dev/null || return 1
+        elif [[ "$(( 8#${_pmode:-0} & 1 ))" == "0" ]]; then
+            msg "${RED}$(tr_msg hy2_acme_parent_untraversable)${NC}" >&2
+            return 1
+        fi
+    fi
     if [[ -e "$dir" || -L "$dir" ]]; then
         [[ ! -L "$dir" && -d "$dir" ]] || return 1
         if ! hysteria_acme_owner_marker_valid "$marker" && ! hysteria_acme_current_tree_matches_manifest "$ABOX_CORE_OWNERSHIP" "$dir"; then
@@ -10150,8 +10231,17 @@ prepare_hysteria_acme_dir_ownership() {
         if [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]]; then
             hysteria_acme_repair_tree_ownership "$ABOX_CORE_OWNERSHIP" "$dir" "$group" 2>/dev/null || true
             if ! hysteria_acme_current_tree_matches_manifest "$ABOX_CORE_OWNERSHIP" "$dir"; then
-                msg "${RED}$(tr_msg hy2_acme_tree_drift)${NC}"
-                return 1
+                # R8: interrupted first setup leaves dir + valid marker
+                # but no D record; repair cannot add records, so retry
+                # deadlocked. Re-adopt only a marker-only tree (the
+                # empty interrupted case); any other content still
+                # fails closed below.
+                if ! hysteria_acme_owner_marker_valid "$marker" \
+                    || ! hysteria_acme_readopt_manifest "$ABOX_CORE_OWNERSHIP" "$dir" "$marker" \
+                    || ! hysteria_acme_current_tree_matches_manifest "$ABOX_CORE_OWNERSHIP" "$dir"; then
+                    msg "${RED}$(tr_msg hy2_acme_tree_drift)${NC}"
+                    return 1
+                fi
             fi
         fi
         chown "root:$group" "$dir" || return 1
@@ -10162,7 +10252,11 @@ prepare_hysteria_acme_dir_ownership() {
         return 0
     fi
     # R-01-FIX: Parent 750, acme dir 1770 (sticky). Fresh-dir was still 770.
-    install -d -o root -g "$group" -m 750 /etc/hysteria || return 1
+    # R15: only create a missing parent; an existing parent keeps its
+    # group (the top-of-function traversal check already validated it).
+    if [[ ! -e /etc/hysteria ]]; then
+        install -d -o root -g "$group" -m 750 /etc/hysteria || return 1
+    fi
     install -d -o root -g "$group" -m 1770 "$dir" || return 1
     hysteria_acme_dir_runtime_permissions_valid "$dir" || return 1
     mark_hysteria_acme_dir_managed "$dir" "$marker" || return 1

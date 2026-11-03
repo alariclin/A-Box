@@ -13294,6 +13294,8 @@ clean_input_rules() {
 add_port_pair() {
     local arr_name="$1" proto="$2" port="$3"
     [[ -n "$port" && "$port" =~ ^[0-9]+$ ]] || return 0
+    # Leading zeros normalized here: tcp/0443 and tcp/443 are the same port.
+    port=$((10#$port))
     printf -v "$arr_name" '%s%s/%s\n' "${!arr_name}" "$proto" "$port"
 }
 
@@ -13747,7 +13749,7 @@ github_api_get() {
     local -a args=()
     [[ -n "$url" ]] || return 1
     if [[ "${GITHUB_API_RETRY_DELAY:-1}" =~ ^[0-9]+$ ]]; then
-        delay="${GITHUB_API_RETRY_DELAY:-1}"
+        delay=$((10#${GITHUB_API_RETRY_DELAY:-1}))
     elif [[ -n "${GITHUB_API_RETRY_DELAY:-}" ]]; then
         return 1
     fi
@@ -13779,11 +13781,11 @@ github_api_get() {
             :
         elif (( rc == 0 )) && { [[ "$http_code" == 429 ]] || { [[ "$http_code" == 403 ]] && { [[ "$remaining" == 0 ]] || [[ -n "$retry_after" ]]; }; }; }; then
             if [[ "$retry_after" =~ ^[0-9]+$ ]]; then
-                delay=$retry_after
+                delay=$((10#$retry_after))
             elif [[ "$reset_epoch" =~ ^[0-9]+$ ]]; then
                 now=$(date +%s 2>/dev/null || printf '0')
-                if [[ "$now" =~ ^[0-9]+$ ]] && (( reset_epoch > now )); then
-                    delay=$((reset_epoch - now))
+                if [[ "$now" =~ ^[0-9]+$ ]] && (( 10#$reset_epoch > now )); then
+                    delay=$((10#$reset_epoch - now))
                 fi
             fi
             [[ -n "${GITHUB_TOKEN:-}" ]] || printf '%s\n' 'GitHub API rate limit detected; set GITHUB_TOKEN for a higher authenticated limit.' >&2
@@ -19018,7 +19020,9 @@ _argo_state_write() { # $1 = full file content
 }
 
 install_cloudflared() {
-    if [[ -x /usr/local/bin/cloudflared ]] && /usr/local/bin/cloudflared --version 2>/dev/null | grep -q "$CLOUDFLARED_VERSION"; then
+    local _cf_installed=''
+    _cf_installed=$(/usr/local/bin/cloudflared --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+    if [[ -x /usr/local/bin/cloudflared && "$_cf_installed" == "$CLOUDFLARED_VERSION" ]]; then
         return 0
     fi
     get_architecture
@@ -29042,6 +29046,9 @@ sni_adjust_score() {
 sni_probe_domain() {
     local domain="$1" raw="$2" timeout_s="${3:-6}" metrics code _t_connect t_app t_start t_total http_version remote_ip penalty score target_ip resolve_entry curl_args=()
     [[ "$domain" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$ ]] || return 0
+    [[ "$timeout_s" =~ ^[0-9]+$ ]] || return 0
+    timeout_s=$((10#$timeout_s))
+    (( timeout_s > 300 )) && timeout_s=300
     # Resolve once, reject non-public answers, and pin curl to the accepted IP.
     # This avoids mixing validation for one address with a request to another.
     target_ip=$(sni_resolve_public_ip "$domain") || return 0
@@ -36284,6 +36291,9 @@ xray_latest_ensure_core() { # $1 = latest upstream tag, or empty
     [[ -n "$_tgt" ]] || return 1
     _bin="${_tgt#*|}"; _bin="${_bin%%|*}"
     [[ -n "$_bin" && -x "$_bin" ]] || return 1
+    # An install (or a cancelled install) must not pass a stale binary through.
+    _ver=$(xl_binary_version "$_bin" 2>/dev/null || true)
+    [[ -n "$_ver" && ( -z "$_latest" || "$_ver" == "$_latest" ) ]] || return 1
     return 0
 }
 

@@ -18141,7 +18141,7 @@ rollback_restart_services_from_backup() {
     return 1
 }
 
-deployment_transaction_rollback() {
+deployment_transaction_rollback_inner() {
     [[ "${ABOX_DEPLOY_TX_ACTIVE:-0}" == 1 ]] || return 0
     local targets="${ABOX_DEPLOY_TX_TARGETS:-}" reason="${ABOX_DEPLOY_TX_REASON:-deployment}" backup="${ABOX_DEPLOY_TX_BACKUP:-}" tx_tmp="${ABOX_DEPLOY_TX_TMP:-}" tx_backup_dir="${ABOX_DEPLOY_TX_BACKUP_DIR:-$ABOX_DIR/backups}" tx_key_file="${ABOX_DEPLOY_TX_KEY_FILE:-}" tx_ephemeral_dir="${ABOX_DEPLOY_TX_EPHEMERAL_DIR:-}" srv cleanup_failed=0
     [[ -n "${1:-}" ]] && reason="${reason}; $1"
@@ -18208,6 +18208,19 @@ deployment_transaction_rollback() {
     ABOX_DEPLOY_TX_KEY_FILE=''
     ABOX_DEPLOY_TX_EPHEMERAL_DIR=''
     return 0
+}
+
+# R7C8-02: rollback must restore the pre-transaction traps on
+# EVERY exit (not just via exit/signal abort). Otherwise a
+# second begin captures exit_abort itself as PREV, and a normal
+# exit evals it forever (the global PREV never changes).
+# The wrapper guarantees the restore for all inner returns.
+deployment_transaction_rollback() {
+    local _rc
+    deployment_transaction_rollback_inner "$@"
+    _rc=$?
+    restore_deployment_transaction_traps
+    return "$_rc"
 }
 
 begin_deployment_transaction() {
@@ -21129,10 +21142,26 @@ warp_build_outbound_json() {
     }' > "$outdir/warp-singbox.json" || return 1
 }
 
+# R5C10-03: no RETURN trap here. RETURN traps are a single
+# global slot: an inner one clobbers the outer cleanup and
+# refires on outer/menu returns with out-of-scope locals
+# (set -u abort). The wrapper removes the workdir on every
+# inner exit path instead; no subshell, so globals set by
+# load_optional_abox_env_or_die are preserved.
 warp_deploy() {
+    local _rc
+    _warp_deploy_workdir=''
+    warp_deploy_inner "$@"
+    _rc=$?
+    [[ -n "$_warp_deploy_workdir" ]] && rm -rf -- "$_warp_deploy_workdir"
+    _warp_deploy_workdir=''
+    return "$_rc"
+}
+
+warp_deploy_inner() {
     local workdir xray_json singbox_json core
     workdir=$(mktemp -d) || return 1
-    trap 'rm -rf -- "$workdir"' RETURN
+    _warp_deploy_workdir="$workdir"
     msg "$(tr_msg warp_deploying)"
     [[ "$(warp_register_profile "$workdir")" == 'OK' ]] || { msg "$(tr_msg warp_register_fail)"; return 1; }
     warp_build_outbound_json "$workdir/wgcf-profile.conf" "$workdir" || { msg "$(tr_msg warp_profile_fail)"; return 1; }

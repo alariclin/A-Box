@@ -39717,7 +39717,7 @@ update_script() {
     OTA_URL=$(resolve_abox_main_commit_url) || die '无法将 A-Box main 分支解析为不可变 commit；已拒绝 OTA。'
     [[ "$OTA_URL" =~ ^https://raw\.githubusercontent\.com/alariclin/A-Box/[0-9a-f]{40}/install\.sh$ ]] || die 'OTA URL 未指向不可变的 A-Box commit；已拒绝更新。'
     OTA_SNI_URL="${OTA_URL%/install.sh}/data/sni-candidates.txt"
-    tmp_update=$(umask 077; mktemp /tmp/A-Box-update.XXXXXX.sh) || die '更新脚本临时文件创建失败。'
+    tmp_update=$(umask 077; mktemp /tmp/A-Box-update.XXXXXX) || die '更新脚本临时文件创建失败。'
     tmp_sni_download=$(umask 077; mktemp /tmp/A-Box-update-sni.XXXXXX) || { rm -f -- "$tmp_update"; die 'SNI 数据更新临时文件创建失败。'; }
     tmp_sni_normalized=$(umask 077; mktemp /tmp/A-Box-update-sni-normalized.XXXXXX) || { rm -f -- "$tmp_update" "$tmp_sni_download"; die 'SNI 数据校验临时文件创建失败。'; }
     msg "${YELLOW}[*] 正在同步固定 commit 的脚本和 SNI 数据...${NC}"
@@ -39769,7 +39769,7 @@ update_script() {
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
         die '当前 A-Box.sh 不存在或路径不安全；拒绝无法回滚的 OTA。'
     }
-    tmp_old_script=$(umask 077; mktemp /tmp/A-Box-update-old-script.XXXXXX.sh) || {
+    tmp_old_script=$(umask 077; mktemp /tmp/A-Box-update-old-script.XXXXXX) || {
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
         die '无法创建 OTA 脚本回滚快照。'
     }

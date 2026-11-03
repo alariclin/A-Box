@@ -19485,6 +19485,12 @@ install_cloudflared() {
     chmod 755 "$tmp/cloudflared" || { rm -rf "$tmp"; die "$(tr_msg cf_chmod)"; }
     "$tmp/cloudflared" --version >/dev/null 2>&1 || { rm -rf "$tmp"; die "$(tr_msg cf_exec)"; }
     install_binary_atomically "$tmp/cloudflared" /usr/local/bin/cloudflared || { rm -rf "$tmp"; die "$(tr_msg cf_install)"; }
+    # R7C9-01: record A-Box ownership so uninstall can tell an
+    # A-Box-installed binary from a foreign same-version one
+    # that install_cloudflared early-returned on. Best-effort:
+    # if the marker cannot be written, uninstall conservatively
+    # keeps the binary instead of deleting a possibly foreign one.
+    touch /etc/ddr/.abox-cloudflared-owned 2>/dev/null || true
     rm -rf "$tmp"
 }
 
@@ -19932,11 +19938,11 @@ argo_uninstall() {
             return 1
         fi
         tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        if jq '.inbounds |= map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in")) | if (.route.rules | type) == "array" then .route.rules |= map(if (.inbound | type) == "string" then select(.inbound != "vmess-ws-in" and .inbound != "vless-ws-in") elif (.inbound | type) == "array" then (if ((.inbound | index("vmess-ws-in")) != null or (.inbound | index("vless-ws-in")) != null) then (.inbound |= map(select(. != "vmess-ws-in" and . != "vless-ws-in")) | select(.inbound | length > 0)) else . end) else . end) else . end' "$cfg" > "$tmp_cfg" 2>/dev/null \
+        if jq '.inbounds |= map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in")) | if (.route.rules | type) == "array" then .route.rules |= map(if (.inbound | type) == "string" then select(.inbound != "vmess-ws-in" and .inbound != "vless-ws-in") elif (.inbound | type) == "array" then (if ((.inbound | index("vmess-ws-in")) != null or (.inbound | index("vless-ws-in")) != null) then (.inbound |= map(select(. != "vmess-ws-in" and . != "vless-ws-in")) | select((.invert // false) or (.inbound | length > 0))) else . end) else . end) else . end' "$cfg" > "$tmp_cfg" 2>/dev/null \
             && /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1; then
             install_file_atomically "$tmp_cfg" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
             prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
-            restart_service_soft sing-box || true
+            restart_service_soft sing-box || { msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"; return 1; }
         else
             rm -f "$tmp_cfg"
             msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
@@ -19944,6 +19950,23 @@ argo_uninstall() {
         fi
         rm -f "$tmp_cfg"
     fi
+    # R1-09-C05: verify the units actually stop BEFORE deleting
+    # their files. Checking after deletion is vacuous: a deleted
+    # unit reports inactive even when its process survives as
+    # an orphan, and uninstall would report success over it.
+    for _u in argo argo-vmess argo-vless; do
+        if argo_unit_active "$_u"; then
+            if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+                systemctl stop "$_u.service" >/dev/null 2>&1 || true
+            else
+                rc-service "$_u" stop >/dev/null 2>&1 || true
+            fi
+            if argo_unit_active "$_u"; then
+                msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
+                return 1
+            fi
+        fi
+    done
     argo_remove_unit argo
     argo_remove_unit argo-vmess
     argo_remove_unit argo-vless
@@ -19956,10 +19979,12 @@ argo_uninstall() {
         return 1
     fi
     rm -f "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/standalone-links.d/argo.link
-    # /usr/local/bin/cloudflared is shared with the Wallos CF tunnel;
-    # remove it only when that tunnel is not installed.
-    if [[ ! -e /etc/systemd/system/abox-wallos-cftunnel.service && ! -e /etc/init.d/abox-wallos-cftunnel ]]; then
-        rm -f /usr/local/bin/cloudflared
+    # /usr/local/bin/cloudflared is shared with the Wallos CF tunnel
+    # and may be a foreign binary install_cloudflared early-returned
+    # on (same version, no ownership recorded). Remove it only when
+    # A-Box ownership is recorded AND no Wallos tunnel needs it.
+    if [[ -f /etc/ddr/.abox-cloudflared-owned && ! -e /etc/systemd/system/abox-wallos-cftunnel.service && ! -e /etc/init.d/abox-wallos-cftunnel ]]; then
+        rm -f /usr/local/bin/cloudflared /etc/ddr/.abox-cloudflared-owned
     fi
     msg "${GREEN}$(tr_msg argo_uninstalled)${NC}"
 }

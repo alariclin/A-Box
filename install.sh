@@ -22076,16 +22076,6 @@ deploy_socks5_landing() {
         /usr/local/bin/xray version >/dev/null 2>&1 || die "$(tr_msg dp_xray_exec)"
         prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
         rm -rf -- "$xray_tmp"
-        # Seed a minimal config shell; the socks inbound is appended below.
-        # U31/U45: install the seed only when no usable config exists; an
-        # existing valid config is kept and merged in place below.
-        tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
-            || die "$(tr_msg dp_xray_seed)"
-        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]] || ! jq -e . "$cfg" >/dev/null 2>&1; then
-            install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
-        fi
-        rm -f "$tmp_json"
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
             write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die "$(tr_msg dp_xray_unit)"
 # Managed by A-Box
@@ -22137,11 +22127,24 @@ EOF_SVC
     fi
 
     # Build the socks inbound object.
+    # Seed a minimal config shell; the socks inbound is appended below.
+    # R1-10-F1: the seed is not tied to the binary-missing branch: a
+    # present binary with a missing config needs it just as much.
+    # R5C10-01: seed only when no config file exists (or it is empty
+    # or a symlink); an existing non-empty config is never overwritten,
+    # even if jq rejects it (it may carry comments Xray accepts).
+    tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
+        || die "$(tr_msg dp_xray_seed)"
+    if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
+    fi
+    rm -f "$tmp_json"
     local listen_addr=$(wildcard_listen_address)
     tmp_json=$(mktemp /tmp/A-Box-socks5-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --arg user "$user" --rawfile pass <(printf '%s' "$pass") --arg tag "$tag" --arg listen_addr "$listen_addr" \
         '{tag:$tag,port:$port,listen:$listen_addr,protocol:"socks",
-          settings:{auth:"password",accounts:[{user:$user,pass:$pass}],udp:true,ip:"0.0.0.0"}}' \
+          settings:{auth:"password",accounts:[{user:$user,pass:$pass}],udp:true,ip:$listen_addr}}' \
         > "$tmp_json" || die "$(tr_msg dp_socks5_json)"
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
@@ -22175,10 +22178,23 @@ EOF_SVC
     allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
     allowPort "$port" udp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/udp")"; }
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
-    rm -f -- "$cfg_bak"
-
     # Ensure the service is running (minimal-install path or API-unavailable hosts).
     service_manager start xray 2>/dev/null || true
+    # R2C10-02: verify liveness before claiming success. A swallowed start
+    # failure must not yield a RUNNING state and a usable link; the backup
+    # is kept until liveness is proven so a failed start can roll back.
+    local _socks5_live_pid='' _socks5_live_tries=0
+    while (( _socks5_live_tries < 20 )); do
+        _socks5_live_pid=$(managed_service_pid xray 2>/dev/null || true)
+        if [[ "$_socks5_live_pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$_socks5_live_pid" 2>/dev/null; then break; fi
+        _socks5_live_pid=''
+        sleep 0.25; _socks5_live_tries=$((_socks5_live_tries + 1))
+    done
+    if [[ -z "$_socks5_live_pid" ]]; then
+        restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
+        die "$(tr_msg dp_xray_restart)"
+    fi
+    rm -f -- "$cfg_bak"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
 
     local pub_ip

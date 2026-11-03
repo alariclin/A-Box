@@ -33946,9 +33946,53 @@ _wallos_rollback_recover() {
     wallos_wait_healthy "$port" || return 1
 }
 
+# Fetch the versioned Wallos manifest (signed-SHA256SUMS verified,
+# tag matched, mirroring _wallos_pull_versioned_image) and print
+# image_digest.<arch>. Used to authenticate a local image before
+# rollback trusts it. Returns 1 when unavailable.
+wallos_versioned_image_digest() {
+    local tag="$1" arch work ver_manifest manifest_url sum_url
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    arch=$(wallos_detect_arch) || return 1
+    work=$(umask 077; mktemp -d /tmp/A-Box-Wallos-digest.XXXXXX) || return 1
+    ver_manifest="wallos-manifest-${tag}.txt"
+    manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/$ver_manifest"
+    sum_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"
+    if ! curl -fLsS --connect-timeout 8 --max-time 30 "$manifest_url" -o "$work/$ver_manifest" ||
+       ! curl -fLsS --connect-timeout 8 --max-time 30 "$sum_url" -o "$work/SHA256SUMS"; then
+        rm -rf -- "$work"; return 1
+    fi
+    curl -fLsS --connect-timeout 8 --max-time 30 "${sum_url}.sig" -o "$work/SHA256SUMS.sig" 2>/dev/null || true
+    if ! abox_verify_sig_gate "$work/SHA256SUMS" "$work/SHA256SUMS.sig" "Wallos versioned SHA256SUMS"; then
+        rm -rf -- "$work"; return 1
+    fi
+    local manifest_expected manifest_actual mtag digest
+    manifest_expected=$(awk -v f="$ver_manifest" '$2==f || $2==("*" f) {print $1; exit}' "$work/SHA256SUMS" 2>/dev/null || true)
+    manifest_actual=$(sha256sum "$work/$ver_manifest" 2>/dev/null | awk '{print $1}' || true)
+    if [[ ! "$manifest_expected" =~ ^[A-Fa-f0-9]{64}$ || "${manifest_expected,,}" != "${manifest_actual,,}" ]]; then
+        rm -rf -- "$work"; return 1
+    fi
+    mtag=$(awk -F= '$1=="tag" {print $2; exit}' "$work/$ver_manifest" 2>/dev/null || true)
+    [[ "$mtag" == "$tag" ]] || { rm -rf -- "$work"; return 1; }
+    digest=$(awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' "$work/$ver_manifest" 2>/dev/null || true)
+    rm -rf -- "$work"
+    [[ -n "$digest" ]] || return 1
+    printf '%s' "$digest"
+}
+
 wallos_rollback_to_version() {
-    local target_tag="$1" arch image_tag port tz bind_address backup
+    local target_tag="$1" arch image_tag port tz bind_address backup=''
     [[ "$target_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { msg "${RED}$(tprintf wl_rb_invalid_ver "$target_tag")${NC}"; return 1; }
+    # R11C14-01: refuse a foreign container squatting on the
+    # 'wallos' name before any destructive step.
+    if docker inspect wallos >/dev/null 2>&1; then
+        local _wallos_managed=''
+        _wallos_managed=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)
+        if [[ "$_wallos_managed" != "true" ]]; then
+            msg "${RED}Refusing rollback: existing 'wallos' container is not A-Box-managed (missing com.alariclin.abox.managed label).${NC}"
+            return 1
+        fi
+    fi
     # X-04: rollback's purpose IS downgrade; do not reuse the install-path
     # anti-downgrade gate (wallos_candidate_version_allowed) here. Instead
     # require the target to be strictly older than the installed version.
@@ -33968,8 +34012,18 @@ wallos_rollback_to_version() {
         msg "${RED}$(tprintf wl_rb_unknown_ver "$_installed_img")${NC}"; return 1
     fi
     image_tag="${target_tag#v}"
-    # Try local image first; else pull the versioned image from the mirror.
-    if ! docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1; then
+    # R15C14-02: never trust a mutable local tag. Authenticate
+    # the local image against the versioned manifest digest; on
+    # match run by the immutable digest, else verified pull and
+    # run by the freshly loaded image ID.
+    local run_image='' _local_id='' _expected_digest='' _local_hex='' _expected_hex=''
+    _local_id=$(docker image inspect -f '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
+    _expected_digest=$(wallos_versioned_image_digest "$target_tag" 2>/dev/null || true)
+    _local_hex="${_local_id##*sha256:}"
+    _expected_hex="${_expected_digest##*sha256:}"
+    if [[ -n "$_local_id" && -n "$_expected_hex" && "$_local_hex" == "$_expected_hex" ]]; then
+        run_image="sha256:$_local_hex"
+    else
         msg "${YELLOW}$(tprintf wl_rb_fetching "$image_tag")${NC}"
         # Use the versioned mirror path: temporarily override tag selection.
         local _saved_result="${WALLOS_IMAGE_RESULT:-}"
@@ -33979,6 +34033,8 @@ wallos_rollback_to_version() {
             return 1
         fi
         WALLOS_IMAGE_RESULT="$_saved_result"
+        run_image=$(docker image inspect -f '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
+        [[ -n "$run_image" ]] || { msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"; return 1; }
     fi
     # Stop and remove current container, restore latest backup, recreate.
     port=$(wallos_state_value PORT 2>/dev/null || true)
@@ -34049,7 +34105,7 @@ wallos_rollback_to_version() {
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
-        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "bellamy/wallos:$image_tag" >/dev/null || {
+        -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$run_image" >/dev/null || {
         msg "${RED}$(tprintf wl_rb_start_fail "$target_tag")${NC}"
         _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
             msg "${YELLOW}$(tr_msg wl_rb_recovered)${NC}"
@@ -34058,10 +34114,10 @@ wallos_rollback_to_version() {
         _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
             msg "${YELLOW}$(tr_msg wl_rb_recovered)${NC}"
         return 1; }
-    wallos_write_state "bellamy/wallos:$image_tag" "$port" "$tz" "$bind_address" "" "" "" "${target_tag#v}" || {
+    wallos_write_state "$run_image" "$port" "$tz" "$bind_address" "" "" "" "${target_tag#v}" || {
         msg "${RED}$(tr_msg wl_rb_state_fail)${NC}"; return 1; }
     # N-11: prune to 2 images (new current + previous).
-    wallos_prune_local_images "bellamy/wallos:$image_tag" "$prev_image"
+    wallos_prune_local_images "$run_image" "$prev_image"
     msg "${GREEN}$(tprintf wl_rb_done "$target_tag")${NC}"
     return 0
 }

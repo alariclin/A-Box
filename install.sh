@@ -442,20 +442,24 @@ rebuild_standalone_links() {
         fi
         if [[ ! -f "$_dir/shadowtls.link" ]]; then
             _port=''; _pass=''; _sni=''; _inner=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-in")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // "")] | @tsv' "$_sc" 2>/dev/null)" _port _pass _sni _inner
-            _tsv_unescape "$_pass" _pass; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_inner" _inner
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-in")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // "")] | @tsv' "$_sc" 2>/dev/null)" _port _pass _sni _detour
+            _tsv_unescape "$_pass" _pass; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_detour" _detour
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
-                _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-ss")) | [.password // ""] | @tsv' "$_sc" 2>/dev/null)" _inner
-                _tsv_unescape "$_inner" _inner
-                _inner_method=$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-ss")) | .method // ""' "$_sc" 2>/dev/null)
-                [[ -n "$_inner_method" ]] || _inner_method='2022-blake3-aes-128-gcm'
-                if [[ -n "$_inner" ]]; then
-                    local _ub _pb
-                    _ub=$(printf '%s' "${_inner_method}:${_inner}@$(uri_host "$_ip"):${_port}" | base64 | tr -d '\n\r')
-                    _pb=$(jq -cn --arg h "$_sni" --rawfile p <(printf '%s' "$_pass") '{version:"3", host:$h, password:$p}' | base64 | tr -d '\n\r')
-                    register_standalone_link shadowtls "ShadowTLS · 端口 ${_port}" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
-                else
+                if [[ -z "$_detour" ]]; then
                     printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
+                else
+                    _tsv_split "$(jq -r --arg t "$_detour" 'first(.inbounds[]? | select(.tag == $t)) | [(.password // ""), (.method // ""), (.users[0].password // "")] | @tsv' "$_sc" 2>/dev/null)" _inner _inner_method _inner_user
+                    _tsv_unescape "$_inner" _inner; _tsv_unescape "$_inner_method" _inner_method; _tsv_unescape "$_inner_user" _inner_user
+                    [[ -n "$_inner_method" ]] || _inner_method='2022-blake3-aes-128-gcm'
+                    if [[ -n "$_inner" ]]; then
+                        local _ub _pb _cred
+                        if [[ -n "$_inner_user" ]]; then _cred="${_inner_method}:${_inner}:${_inner_user}"; else _cred="${_inner_method}:${_inner}"; fi
+                        _ub=$(printf '%s' "${_cred}@$(uri_host "$_ip"):${_port}" | base64 | tr -d '\n\r')
+                    _pb=$(jq -cn --arg h "$_sni" --rawfile p <(printf '%s' "$_pass") '{version:"3", host:$h, password:$p}' | base64 | tr -d '\n\r')
+                        register_standalone_link shadowtls "ShadowTLS · 端口 ${_port}" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
+                    else
+                        printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
+                    fi
                 fi
             elif [[ -n "$_port$_pass$_sni$_inner" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2

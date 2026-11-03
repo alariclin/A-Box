@@ -20003,8 +20003,30 @@ argo_deploy_ws() {
            transport:{type:"ws",path:("/" + $uuid + "-vless"),max_early_data:2560,early_data_header_name:"Sec-WebSocket-Protocol"}})' \
         > "$tmp_json" || die "$(tr_msg ag_ws_json)"
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    if ! jq --slurpfile nb "$tmp_json" \
-            '.inbounds |= (map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in")) + $nb)' \
+    # R14C9-02: refresh preserves existing users on the two argo inbounds
+    # (additional credentials are not wiped); the main UUID is prepended
+    # only when it is missing. A new inbound, or users that are not an
+    # array, falls back to the single-user array built above.
+    if ! jq --slurpfile nb "$tmp_json" --arg uuid "$ARGO_UUID" \
+            '(.inbounds | map(select(.tag=="vmess-ws-in" or .tag=="vless-ws-in"))) as $old
+             | .inbounds |= (
+                 map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in"))
+                 + [
+                     $nb[] as $new
+                     | (
+                         ($old | map(select(.tag==$new.tag)) | first) as $ex
+                         | if ($ex and ($ex.users | type == "array")) then
+                               $new | .users = (
+                                   if ($ex.users | map(.uuid?) | index($uuid)) then $ex.users
+                                   elif $new.type == "vmess" then [{uuid:$uuid,alterId:0}] + $ex.users
+                                   else [{uuid:$uuid}] + $ex.users
+                                   end
+                               )
+                           else $new
+                           end
+                       )
+                   ]
+               )' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg ag_ws_update)"
     fi

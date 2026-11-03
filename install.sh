@@ -26378,8 +26378,23 @@ users_hot_remove() {
 # write back, and apply transitions. All inputs are parameters so the
 # policy core is directly testable.
 # $1=reg $2=core $3=tag $4=now-epoch $5=period(YYYY-MM) $6=hh:mm $7=stats-json $8=have-stats(0/1)
+users_core_generation() { # $1 = core -> generation string, or empty if undeterminable
+    local core="$1" svc='' pid='' mono='' start=''
+    svc=$(users_svc_of "$core" 2>/dev/null) || return 0
+    if [[ "${INIT_SYS:-}" == 'systemd' ]] && systemd_available; then
+        mono=$(systemctl show -p ActiveEnterTimestampMonotonic --value "$svc" 2>/dev/null || true)
+        if [[ "$mono" =~ ^[0-9]+$ && "$mono" -gt 0 ]]; then printf 'sys:%s' "$mono"; return 0; fi
+    fi
+    pid=$(managed_service_pid "$svc" 2>/dev/null || true)
+    [[ -n "$pid" ]] || return 0
+    start=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true)
+    [[ "$start" =~ ^[0-9]+$ && "$start" -gt 0 ]] || return 0
+    printf 'proc:%s:%s' "$pid" "$start"
+}
+
 users_guard_eval() {
     local reg="$1" core="$2" tag="$3" now_s="$4" period="$5" hhmm="$6" stats="$7" have="$8"
+    local gen="${9:-}"
     local old_json='' updated=''
     # Retry a previously failed config sync: its registry transition
     # was already committed, so no new transition would ever re-fire
@@ -26393,16 +26408,34 @@ users_guard_eval() {
     fi
     old_json=$(jq -c . "$reg" 2>/dev/null) || return 0
     [[ -n "$old_json" ]] || return 0
-    updated=$(jq -c --arg per "$period" --argjson now "$now_s" --arg hhmm "$hhmm" --argjson stats "${stats:-{\}}" --argjson have "$have" '
+    updated=$(jq -c --arg per "$period" --argjson now "$now_s" --arg hhmm "$hhmm" --argjson stats "${stats:-{\}}" --argjson have "$have" --arg gen "$gen" '
         def inwindow($w; $t):
             if $w == "" then true
             else ($w | split("-")) as $r
                  | (if $r[0] <= $r[1] then ($t >= $r[0] and $t < $r[1]) else ($t >= $r[0] or $t < $r[1]) end)
             end;
-        .users |= map(
+        ([.users[] | select($have == 1 and (.email // "") != "" and ($stats[.email] != null))] | length) as $n_with
+        | ([.users[] | select($have == 1 and (.email // "") != "" and ($stats[.email] != null) and ((($stats[.email].up // 0) < (.last_up // 0)) or (($stats[.email].down // 0) < (.last_down // 0))))] | length) as $n_dec
+        | (($n_with > 0) and ($n_dec == $n_with)) as $restarted
+        | (($gen != "") and ((.core_gen // "") != "") and ($gen != .core_gen)) as $gen_changed
+        | (if $gen != "" then .core_gen = $gen else . end)
+        | .users |= map(
             (if $have == 1 and (.email // "") != "" and ($stats[.email] != null) then
                 (if .period != $per then
-                    .used_up = 0 | .used_down = 0 | .period = $per
+                    (if .period == "" then
+                        .period = $per | .last_up = $stats[.email].up | .last_down = $stats[.email].down | .baseline_stale = false
+                     else
+                        .used_up = 0 | .used_down = 0 | .period = $per
+                        | .last_up = $stats[.email].up | .last_down = $stats[.email].down | .baseline_stale = false
+                     end)
+                 elif (.baseline_stale // false) then
+                    .used_up = 0 | .used_down = 0
+                    | .last_up = $stats[.email].up | .last_down = $stats[.email].down | .baseline_stale = false
+                 elif $gen_changed then
+                    .used_up += $stats[.email].up | .used_down += $stats[.email].down
+                    | .last_up = $stats[.email].up | .last_down = $stats[.email].down | .baseline_stale = false
+                 elif $restarted then
+                    .used_up += $stats[.email].up | .used_down += $stats[.email].down
                     | .last_up = $stats[.email].up | .last_down = $stats[.email].down
                  else
                     .used_up += (if $stats[.email].up >= (.last_up // 0) then $stats[.email].up - (.last_up // 0) else $stats[.email].up end)
@@ -26410,7 +26443,11 @@ users_guard_eval() {
                     | .last_up = $stats[.email].up | .last_down = $stats[.email].down
                  end)
              elif .period != $per then
-                .used_up = 0 | .used_down = 0 | .period = $per
+                (if .period == "" then
+                    .period = $per
+                 else
+                    .used_up = 0 | .used_down = 0 | .period = $per | .baseline_stale = true
+                 end)
              else . end)
             | (if .disabled == true then .
                else
@@ -26894,8 +26931,10 @@ user_guard_tick() {
         users_reg_ensure "$core" "$tag" >/dev/null 2>&1 || true
     done < <(protocol_inventory 2>/dev/null || true)
     local stats_xray='' have_xray=0 stats_latest='' have_latest=0
+    local gen_xray='' gen_latest=''
     if is_service_running xray 2>/dev/null; then
         stats_xray=$(users_stats_snapshot /usr/local/bin/xray 10085) && have_xray=1
+        gen_xray=$(users_core_generation xray 2>/dev/null || true)
     fi
     if [[ -n "$(_xl_state_get mode 2>/dev/null)" ]]; then
         local lbin='' lport=''
@@ -26903,19 +26942,20 @@ user_guard_tick() {
         lport=$(users_api_port_of xray-latest 2>/dev/null || echo 10086)
         if [[ -n "$lbin" ]] && is_service_running "$(users_svc_of xray-latest 2>/dev/null || echo xray-latest)" 2>/dev/null; then
             stats_latest=$(users_stats_snapshot "$lbin" "$lport") && have_latest=1
+            gen_latest=$(users_core_generation xray-latest 2>/dev/null || true)
         fi
     fi
-    local reg='' rcore='' rtag='' stats='' have=0
+    local reg='' rcore='' rtag='' stats='' have=0 gen=''
     for reg in "${ABOX_USERS_DIR:-$USERS_DIR}"/*.json; do
         [[ -f "$reg" ]] || continue
         rcore=$(jq -r '.core // ""' "$reg" 2>/dev/null); rtag=$(jq -r '.tag // ""' "$reg" 2>/dev/null)
         [[ -n "$rcore" && -n "$rtag" ]] || continue
         case "$rcore" in
-            xray) stats="$stats_xray"; have=$have_xray ;;
-            xray-latest) stats="$stats_latest"; have=$have_latest ;;
-            *) stats=''; have=0 ;;
+            xray) stats="$stats_xray"; have=$have_xray; gen="$gen_xray" ;;
+            xray-latest) stats="$stats_latest"; have=$have_latest; gen="$gen_latest" ;;
+            *) stats=''; have=0; gen='' ;;
         esac
-        users_guard_eval "$reg" "$rcore" "$rtag" "$now_s" "$period" "$hhmm" "$stats" "$have"
+        users_guard_eval "$reg" "$rcore" "$rtag" "$now_s" "$period" "$hhmm" "$stats" "$have" "$gen"
     done
     return 0
 }

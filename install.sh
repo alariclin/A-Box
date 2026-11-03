@@ -8563,6 +8563,25 @@ prompt_hy2_bandwidth_mbps_input() {
         printf '%s\n' "${RED}[!] $(tprintf hy2_bw_bad "$input")${NC}" >&2
     done
 }
+normalize_ip_literal() {
+    # Canonicalize an IP literal for comparison (expanded vs compressed
+    # IPv6, etc.). Falls back to the input unchanged when python3 is
+    # missing or the input is not a valid literal, so callers degrade
+    # to literal comparison instead of failing.
+    local input="$1"
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -I - "$input" 2>/dev/null <<'PY' || printf '%s' "$input"
+import ipaddress, sys
+try:
+    print(ipaddress.ip_address(sys.argv[1]).compressed)
+except Exception:
+    print(sys.argv[1])
+PY
+    else
+        printf '%s' "$input"
+    fi
+}
+
 valid_ipv4_cidr() {
     local input="${1:-}" addr mask n
     addr="${input%/*}"
@@ -8573,7 +8592,6 @@ valid_ipv4_cidr() {
     fi
     if [[ -n "$mask" ]]; then
         valid_decimal_upto "$mask" 32 || return 1
-        (( 10#$mask > 0 )) || return 1
     fi
     [[ "$addr" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
     local IFS=.
@@ -8597,7 +8615,6 @@ valid_ipv6_cidr() {
     fi
     if [[ -n "$mask" ]]; then
         valid_decimal_upto "$mask" 128 || return 1
-        (( 10#$mask > 0 )) || return 1
     fi
     [[ "$addr" == *:* ]] || return 1
     [[ "$addr" =~ ^[0-9A-Fa-f:.]+$ ]] || return 1
@@ -9093,9 +9110,12 @@ resolve_domain_addresses() {
 }
 
 verify_domain_points_to_self() {
-    local domain="$1" pub_ip="$2" resolved continue_domain
+    local domain="$1" pub_ip="$2" resolved continue_domain _norm_pub='' _norm_resolved=''
     resolved=$(resolve_domain_addresses "$domain") || die "$(tprintf dom_unresolved "$domain")"
-    if [[ "$pub_ip" != 'N/A' ]] && ! grep -Fxq "$pub_ip" <<< "$resolved"; then
+    # Compare normalized forms (expanded vs compressed IPv6 must match).
+    _norm_pub=$(normalize_ip_literal "$pub_ip")
+    _norm_resolved=$(printf '%s\n' "$resolved" | while IFS= read -r _rl; do normalize_ip_literal "$_rl"; done)
+    if [[ "$pub_ip" != 'N/A' ]] && ! grep -Fxq "$_norm_pub" <<< "$_norm_resolved"; then
         msg "${YELLOW}[!] 域名已解析，但未发现解析到当前公网 IP: $pub_ip${NC}"
         printf '%s\n\n%s\n' "${YELLOW}$(tr_msg dom_resolved_label)${NC}" "$resolved"
         read -r -p "$(tr_msg dom_continue)" continue_domain
@@ -20872,6 +20892,9 @@ warp_build_outbound_json() {
     [[ -n "$priv" && -n "$peer" && -n "$endpoint" ]] || return 1
     local srv sport
     srv="${endpoint%:*}"; sport="${endpoint##*:}"
+    # R15C10-01: strip outer brackets for the sing-box peer address
+    # (Xray keeps the original endpoint, so this only affects srv).
+    if [[ "$srv" == \[*\] ]]; then srv="${srv:1:-1}"; fi
     [[ -n "$srv" && -n "$sport" ]] || return 1
     local addrs_json
     if [[ -n "$addr6" ]]; then
@@ -26210,7 +26233,7 @@ _nsni_apply() {
     tmp=$(mktemp /tmp/A-Box-nsni.XXXXXX) || { rm -f "$bak"; return 1; }
     mv "$tmp" "$tmp.json"; tmp="$tmp.json"
     case "$kind" in
-        reality-xray) filter='.inbounds |= map(if .tag == $t then (.streamSettings.realitySettings |= (.serverNames = [$s] | .target = (if .target then ($s + (.target | if contains(":") then sub("^[^:]*"; "") else "" end)) else .target end) | .dest = (if .dest then ($s + (.dest | if contains(":") then sub("^[^:]*"; "") else "" end)) else .dest end))) else . end)' ;;
+        reality-xray) filter='.inbounds |= map(if .tag == $t then (.streamSettings.realitySettings |= (.serverNames = [$s] | .target = (if .target then ($s + (.target | if contains(":") then (if test("^\\[.*\\]:") then sub("^\\[.*\\]"; "") elif test("^[^:]*:[^:]*$") then sub("^[^:]*"; "") else "" end) else "" end)) else .target end) | .dest = (if .dest then ($s + (.dest | if contains(":") then (if test("^\\[.*\\]:") then sub("^\\[.*\\]"; "") elif test("^[^:]*:[^:]*$") then sub("^[^:]*"; "") else "" end) else "" end)) else .dest end))) else . end)' ;;
         reality-sb) filter='.inbounds |= map(if .tag == $t then (.tls.reality.handshake.server = $s | if .tls.server_name then .tls.server_name = $s else . end) else . end)' ;;
         tuic) filter='.inbounds |= map(if .tag == $t then .tls.server_name = $s else . end)' ;;
         shadowtls) filter='.inbounds |= map(if .tag == $t then .handshake.server = $s else . end)' ;;
@@ -27404,7 +27427,7 @@ _nm_dns_norm_set() {
     local -a _toks=()
     _norm="${_raw//$'\n'/ }"
     IFS=$', \t' read -ra _toks <<< "$_norm" || true
-    for _tok in "${_toks[@]}"; do [[ -n "$_tok" ]] && printf '%s\n' "$_tok"; done | sort -u
+    for _tok in "${_toks[@]}"; do [[ -n "$_tok" ]] && printf '%s\n' "$(normalize_ip_literal "$_tok")"; done | sort -u
 }
 
 nm_dns_verify_applied() {
@@ -27496,8 +27519,8 @@ resolved_global_dns_check() {
     line="${line#Global:}"
     IFS=$' \t\n' read -ra exp <<< "$expected" || true
     IFS=$' \t\n' read -ra gottok <<< "$line" || true
-    for tok in "${exp[@]}"; do tok="${tok%%#*}"; case "$tok" in *.*:*) tok="${tok%:*}";; esac; norm_exp+=("$tok"); done
-    for tok in "${gottok[@]}"; do tok="${tok%%#*}"; case "$tok" in *.*:*) tok="${tok%:*}";; esac; norm_got+=("$tok"); done
+    for tok in "${exp[@]}"; do tok="${tok%%#*}"; case "$tok" in *.*:*) tok="${tok%:*}";; esac; norm_exp+=("$(normalize_ip_literal "$tok")"); done
+    for tok in "${gottok[@]}"; do tok="${tok%%#*}"; case "$tok" in *.*:*) tok="${tok%:*}";; esac; norm_got+=("$(normalize_ip_literal "$tok")"); done
     [[ "$(printf '%s\n' "${norm_exp[@]}" | sort -u | tr '\n' ' ')" == "$(printf '%s\n' "${norm_got[@]}" | sort -u | tr '\n' ' ')" ]]
 }
 
@@ -28293,12 +28316,13 @@ _dns_valid_v4_group() {
 
 _dns_valid_v6_group() {
     local -a parts=()
-    local tok='' out=''
+    local tok='' orig='' out=''
     local -a line_parts=()
     while IFS=$' \t\n' read -ra line_parts; do
         parts+=("${line_parts[@]}")
     done <<< "$1"
     for tok in "${parts[@]}"; do
+        orig="$tok"
         tok="${tok%%%*}"
         [[ "$tok" == *:* ]] || continue
         [[ "$tok" == *:::* ]] && continue
@@ -28308,12 +28332,18 @@ _dns_valid_v6_group() {
         local ok=1 g=''
         if (( n == 1 )); then
             local left="${tok%%::*}" right="${tok#*::}"
+            # F8: a stray single colon at either edge of the :: split
+            # is malformed (IFS splitting would silently drop it).
+            [[ "$left" != :* && "$left" != *: && "$right" != :* && "$right" != *: ]] || continue
             local -a lg=() rg=()
             [[ -n "$left" ]] && IFS=':' read -ra lg <<< "$left"
             [[ -n "$right" ]] && IFS=':' read -ra rg <<< "$right"
             (( ${#lg[@]} + ${#rg[@]} <= 7 )) || continue
             groups=("${lg[@]}" "${rg[@]}")
         elif (( n == 0 )); then
+            # F8: without ::, a leading or trailing colon is malformed
+            # (IFS splitting drops the trailing empty field).
+            [[ "$tok" != :* && "$tok" != *: ]] || continue
             IFS=':' read -ra groups <<< "$tok"
             (( ${#groups[@]} == 8 )) || continue
         else
@@ -28322,7 +28352,10 @@ _dns_valid_v6_group() {
         for g in "${groups[@]}"; do
             [[ "$g" =~ ^[0-9a-fA-F]{1,4}$ ]] || ok=0
         done
-        (( ok )) && out+="${out:+ }$tok"
+        # R7C12-03: output the ORIGINAL token, scope included; the
+        # stripped form is only for validation. Callers write the
+        # output back, and a stripped fe80::1%eth0 breaks link-local DNS.
+        (( ok )) && out+="${out:+ }$orig"
     done
     printf '%s' "$out"
 }
@@ -28345,11 +28378,23 @@ _dns_current_v4() {
         cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\./ {print $2}' /etc/resolv.conf 2>/dev/null || true)
         out=$(_dns_valid_v4_group "$cur")
         [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
+            # Sole-loopback fallback (R1-12-F9): if only 127.* nameservers
+            # exist (e.g. Unbound), return them instead of empty; empty
+            # makes the caller fall back to IPv6-only and rewrite away v4.
+            cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ {print $2}' /etc/resolv.conf 2>/dev/null || true)
+            out=$(_dns_valid_v4_group "$cur")
+            [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
     if [[ -r /run/systemd/resolve/resolv.conf ]]; then
         cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\./ {print $2}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
         out=$(_dns_valid_v4_group "$cur")
         [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
+            # Sole-loopback fallback (R1-12-F9): if only 127.* nameservers
+            # exist (e.g. Unbound), return them instead of empty; empty
+            # makes the caller fall back to IPv6-only and rewrite away v4.
+            cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ {print $2}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
+            out=$(_dns_valid_v4_group "$cur")
+            [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
     return 0
 }

@@ -11275,12 +11275,55 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
             cp -- "$ABOX_PRESERVE_FILE" "$keepf" || continue
         fi
         jq --slurpfile keep "$keepf" '
+            def parse_range:
+              if type == "number" then [., .]
+              elif type == "string" then
+                if test("^[0-9]+$") then [(tonumber), (tonumber)]
+                elif test("^[0-9]+-[0-9]+$") then
+                  (split("-") | map(tonumber) | if .[0] <= .[1] then . else [.[1], .[0]] end)
+                else null end
+              else null end;
+            def transport_set:
+              if (.network // null) != null then
+                (.network | split(",") | map(select(. == "tcp" or . == "udp")))
+              elif (.streamSettings.network // null) != null then
+                (.streamSettings.network
+                 | if . == "tcp" or . == "ws" or . == "http" or . == "grpc" then ["tcp"]
+                   elif . == "kcp" or . == "quic" then ["udp"]
+                   elif . == "tcp,udp" or . == "udp,tcp" then ["tcp", "udp"]
+                   else ["tcp"] end)
+              elif (.protocol // null) != null then
+                (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"] else ["tcp"] end)
+              elif (.type // null) != null then
+                (if .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"] else ["tcp"] end)
+              else ["tcp"] end;
+            def binding:
+              ((.listen_port // .port) as $ps
+               | if $ps == null then null
+                 else
+                   (($ps | parse_range) as $r
+                    | if $r == null then {addr: (.listen // "0.0.0.0"), transports: transport_set, range: null, unparseable: true}
+                      else {addr: (.listen // "0.0.0.0"), transports: transport_set, range: $r, unparseable: false} end)
+                 end);
+            def addr_overlap($a; $b):
+              ($a == $b) or ($a == "0.0.0.0") or ($a == "::") or ($b == "0.0.0.0") or ($b == "::");
+            def range_overlap($r1; $r2):
+              ($r1[0] <= $r2[1]) and ($r2[0] <= $r1[1]);
+            def bindings_conflict($x; $y):
+              if $x.unparseable then true
+              elif $y.unparseable then false
+              else
+                (addr_overlap($x.addr; $y.addr)
+                 and ([$x.transports[], $y.transports[]] | unique | length) < (($x.transports | length) + ($y.transports | length))
+                 and range_overlap($x.range; $y.range))
+              end;
             (.inbounds // []) as $cur
-            | ($cur | map(.listen_port // .port) | map(select(. != null))) as $used
+            | ($cur | map(binding) | map(select(. != null))) as $cur_bindings
+            | ($cur | map(.tag)) as $cur_tags
             | [$keep[0][] | select(
-                (.tag as $t | ($cur | map(.tag) | index($t)) == null)
-                and (((.listen_port // .port) == null)
-                     or (((.listen_port // .port) as $p | ($used | index($p)) == null))))] as $add
+                (.tag as $t | ($cur_tags | index($t)) == null)
+                and ((binding) as $b | $b == null or ([$cur_bindings[] | select(bindings_conflict($b; .))] | length == 0))
+              )] as $add
             | .inbounds = ($cur + $add)' "$bak" > "$merged" 2>/dev/null || continue
         jq empty "$merged" >/dev/null 2>&1 || continue
         install_file_atomically "$merged" "$cfg" 600 || continue

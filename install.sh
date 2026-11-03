@@ -11654,8 +11654,12 @@ if [[ -e "$restore_lock_file" || -L "$restore_lock_file" ]]; then
     [[ -f "$restore_lock_file" && ! -L "$restore_lock_file" ]] || exit 1
     [[ "$(stat -c %u:%g "$restore_lock_file" 2>/dev/null || true)" == 0:0 ]] || exit 1
     [[ "$(stat -c %a "$restore_lock_file" 2>/dev/null || true)" =~ ^0?600$ ]] || exit 1
+else
+    # R1-06-C01: this lock file is never unlinked on exit, so an
+    # unconditional noclobber create fails every second run even when
+    # no one holds the lock. Create only when missing.
+    (umask 077; set -o noclobber; : > "$restore_lock_file") 2>/dev/null || exit 1
 fi
-(umask 077; set -o noclobber; : > "$restore_lock_file") 2>/dev/null || exit 1
 exec {restore_lock_fd}>>"$restore_lock_file" || exit 1
 flock -n "$restore_lock_fd" || { eval "exec ${restore_lock_fd}>&-" 2>/dev/null || true; exit 1; }
 trap 'flock -u "${restore_lock_fd:-}" 2>/dev/null || true; eval "exec ${restore_lock_fd:-}>&-" 2>/dev/null || true' EXIT
@@ -38691,7 +38695,7 @@ fallback_runtime_lock_held() { # 0 = a live process holds the fallback lock
 }
 
 acquire_fallback_runtime_lock() {
-    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start='' _dir_age=0 _dir_mtime="" _remv_pid='' _remv_start='' _pre_has_pid=0 _pre_has_start=0 _pre_pid='' _pre_start='' _post_has_pid=0 _post_has_start=0 _post_pid='' _post_start='' _self_start=''
+    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start='' _moved_actual='' _dir_age=0 _dir_mtime="" _remv_pid='' _remv_start='' _pre_has_pid=0 _pre_has_start=0 _pre_pid='' _pre_start='' _post_has_pid=0 _post_has_start=0 _post_pid='' _post_start='' _self_start=''
     if mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null; then
         lock_dir_created=1
         chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
@@ -38733,6 +38737,17 @@ acquire_fallback_runtime_lock() {
             if [[ -z "$existing_pid" || -z "$existing_start" || "$_moved_pid" != "$existing_pid" || "$_moved_start" != "$existing_start" ]]; then
                 if [[ ! -e "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" ]]; then
                     mv -- "$stale_away" "$LOCK_FALLBACK_DIR" 2>/dev/null || true
+                fi
+                # 17-F2: if the moved dir is a LIVE lock, the
+                # revalidate-to-mv window stole it. It cannot be
+                # restored when canonical is occupied, and deleting it
+                # would destroy a live lock: leave it orphaned, but say
+                # so loudly instead of silently.
+                if [[ "$_moved_pid" =~ ^[0-9]+$ && -d "/proc/$_moved_pid" ]]; then
+                    _moved_actual=$(runtime_lock_proc_starttime "$_moved_pid" 2>/dev/null || true)
+                    if [[ -n "$_moved_actual" && "$_moved_actual" == "$_moved_start" ]]; then
+                        printf '%s\n' "A-Box WARNING: fallback lock dir moved aside appears LIVE (pid $_moved_pid); left orphaned at $stale_away, manual recovery may be needed." >&2
+                    fi
                 fi
                 return 1
             fi
@@ -38800,6 +38815,13 @@ acquire_fallback_runtime_lock() {
                 if [[ ! -e "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" ]]; then
                     mv -- "$stale_away" "$LOCK_FALLBACK_DIR" 2>/dev/null || true
                 fi
+                # 17-F2: same live-orphan signal as the U132 branch above.
+                if [[ "$_post_pid" =~ ^[0-9]+$ && -d "/proc/$_post_pid" ]]; then
+                    _moved_actual=$(runtime_lock_proc_starttime "$_post_pid" 2>/dev/null || true)
+                    if [[ -n "$_moved_actual" && "$_moved_actual" == "$_post_start" ]]; then
+                        printf '%s\n' "A-Box WARNING: fallback lock dir moved aside appears LIVE (pid $_post_pid); left orphaned at $stale_away, manual recovery may be needed." >&2
+                    fi
+                fi
                 return 1
             fi
             rm -rf -- "$stale_away" 2>/dev/null || true
@@ -38861,6 +38883,16 @@ acquire_runtime_lock() {
         ABOX_RUNTIME_LOCK_MODE='flock'
     else
         acquire_fallback_runtime_lock || die '检测到另一个 A-Box 实例正在运行，且当前系统缺少 flock。'
+        # R6C17-01: post-publish recheck. Another process may have
+        # promoted to flock while this one was scheduled out; holding
+        # fallback alongside its flock is double hold. If flock is now
+        # available, promotion must succeed; if it is contended, the
+        # flock holder is live: release our fallback and refuse. (The
+        # EXIT cleanup trap is only installed after this branch, so the
+        # release here must be explicit.)
+        if command -v flock >/dev/null 2>&1; then
+            upgrade_runtime_lock_to_flock_if_possible || { runtime_lock_cleanup; die '检测到另一个 A-Box 实例正在运行（回落锁发布后 flock 已被占用）。'; }
+        fi
     fi
     unset ABOX_INHERITED_LOCK_MODE
     trap 'runtime_lock_cleanup' EXIT

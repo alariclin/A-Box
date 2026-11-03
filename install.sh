@@ -16283,6 +16283,20 @@ _f2b_restore_file() {
     fi
     return 0
 }
+# Restore fail2ban filter/jail from backups taken by setup_active_defense.
+# Backups are deleted only if BOTH restores succeed; otherwise they are kept
+# with a warning so the old configs are not lost on a failed build.
+_f2b_restore_backups_or_keep() {
+    local filter_bak="$1" jail_bak="$2" ok=1
+    _f2b_restore_file /etc/fail2ban/filter.d/A-Box.conf "$filter_bak" || ok=0
+    _f2b_restore_file /etc/fail2ban/jail.d/A-Box.local "$jail_bak" || ok=0
+    if (( ok == 1 )); then
+        rm -f -- "$filter_bak" "$jail_bak"
+    else
+        msg "${YELLOW}[!] Fail2Ban 旧配置恢复失败；备份保留在 ${filter_bak} 与 ${jail_bak}，请手动恢复后重启 fail2ban。${NC}"
+    fi
+}
+
 # S38 (GPT-18): restart fail2ban, returning its status (unlike the
 # inline warn-only sites). Used by the backup/restore retry flow.
 _f2b_restart() {
@@ -16366,7 +16380,7 @@ EOF_F2B_FILTER
             fi
         fi
         if command -v jq >/dev/null 2>&1 && [[ -r /usr/local/etc/xray/config.json ]]; then
-            xr_harv=$(jq -r '.inbounds[]? | select(.port != null and .tag != "api") | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1")) | (if .protocol == "shadowsocks" or .protocol == "socks" then "tcp/\(.port),udp/\(.port)" else "tcp/\(.port)" end)' /usr/local/etc/xray/config.json 2>/dev/null | paste -sd, -)
+            xr_harv=$(jq -r '.inbounds[]? | select(.port != null and .tag != "api") | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1")) | (.port | tostring | split(",")) as $ports | (if .protocol == "shadowsocks" or .protocol == "socks" then ($ports[] | "tcp/\(.)"), ($ports[] | "udp/\(.)") else ($ports[] | "tcp/\(.)") end)' /usr/local/etc/xray/config.json 2>/dev/null | paste -sd, -)
             if [[ -n "$xr_harv" ]]; then
                 tcp_ports+=",$(printf '%s' "$xr_harv" | tr ',' '\n' | awk -F/ '$1=="tcp" {print $2}' | paste -sd, -)"
                 udp_ports+=",$(printf '%s' "$xr_harv" | tr ',' '\n' | awk -F/ '$1=="udp" {print $2}' | paste -sd, -)"
@@ -16384,7 +16398,7 @@ bantime.maxtime = 86400'
         fi
         tcp_ports="${tcp_ports%,}"; udp_ports="${udp_ports%,}"
         if [[ -n "$tcp_ports" || -n "$udp_ports" ]]; then
-            f2b_backend=$(firewall_backend) || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die "$(tr_msg ad_backend_unknown)"; }
+            f2b_backend=$(firewall_backend) || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die "$(tr_msg ad_backend_unknown)"; }
             case "$f2b_backend" in
                 firewalld)
                     # firewallcmd-multiport invokes iptables -m multiport --dports (requires colon port ranges).
@@ -16392,10 +16406,10 @@ bantime.maxtime = 86400'
                     ;;
                 ufw) f2b_action='ufw' ;;
                 iptables) f2b_action='iptables-multiport' ;;
-                *) rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die "$(tprintf ad_backend_unsupported "$f2b_backend")" ;;
+                *) _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die "$(tprintf ad_backend_unsupported "$f2b_backend")" ;;
             esac
             [[ -r "/etc/fail2ban/action.d/${f2b_action}.conf" ]] || {
-                rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"
+                _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"
                 die "$(tprintf ad_action_missing "$f2b_action")"
             }
             # Per-group action strings are built while emitting the jail
@@ -16403,7 +16417,7 @@ bantime.maxtime = 86400'
             # f2b_port_groups); the stock ufw action blocks the offending
             # source host-wide and takes no port/protocol arguments.
         fi
-        printf '%s\n' '# Managed by A-Box' > "$jail_tmp" || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die 'Fail2Ban jail file initialization failed.'; }
+        printf '%s\n' '# Managed by A-Box' > "$jail_tmp" || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die 'Fail2Ban jail file initialization failed.'; }
         if [[ -n "$tcp_ports" ]]; then
             local -a tcp_groups=()
             if [[ "$f2b_action" == 'ufw' ]]; then tcp_groups=("$tcp_ports"); else mapfile -t tcp_groups < <(f2b_port_groups "$tcp_ports"); fi
@@ -16468,8 +16482,8 @@ EOF_F2B_UDP
             done
         fi
         if [[ -n "$tcp_ports" || -n "$udp_ports" ]]; then
-            chmod 644 "$jail_tmp" || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die "$(tr_msg ad_jail_chmod)"; }
-            mv -f -- "$jail_tmp" /etc/fail2ban/jail.d/A-Box.local || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die "$(tr_msg ad_jail_commit)"; }
+            chmod 644 "$jail_tmp" || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die "$(tr_msg ad_jail_chmod)"; }
+            mv -f -- "$jail_tmp" /etc/fail2ban/jail.d/A-Box.local || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die "$(tr_msg ad_jail_commit)"; }
             # S38 (GPT-18): validate, then restart; on either failure
             # restore the backed-up configs and retry the restart once.
             # A retry that still fails is attributable to pre-existing
@@ -16496,8 +16510,17 @@ EOF_F2B_UDP
                 rm -f -- "$filter_bak" "$jail_bak"
             fi
         else
-            rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"
-            remove_owned_auxiliary_path /etc/fail2ban/jail.d/A-Box.local || die "$(tr_msg ad_jail_remove)"
+            # R6C8-02: deleting the jail config without unloading the running
+            # jail leaves old bans/actions live; restart and verify, keeping
+            # backups until the restart succeeds (mirror the S38 pattern).
+            rm -f -- "$jail_tmp"
+            remove_owned_auxiliary_path /etc/fail2ban/jail.d/A-Box.local || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; die "$(tr_msg ad_jail_remove)"; }
+            if _f2b_restart; then
+                rm -f -- "$filter_bak" "$jail_bak"
+            else
+                _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"
+                msg "${YELLOW}[!] Fail2Ban 重启失败；已恢复旧配置（恢复失败时备份保留待手动恢复）。${NC}"
+            fi
         fi
     fi
 }

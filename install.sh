@@ -15492,7 +15492,7 @@ _abox_sync_file() {
 }
 
 write_file_atomically_from_stdin() {
-    local dest="$1" mode="${2:-600}" dir tmp
+    local dest="$1" mode="${2:-600}" dir base
     [[ "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
     [[ ! -e "$dest" && ! -L "$dest" || -f "$dest" ]] || return 1
     [[ ! -L "$dest" && ! -d "$dest" ]] || return 1
@@ -15505,15 +15505,78 @@ write_file_atomically_from_stdin() {
         return 1
     fi
     [[ -d "$dir" ]] || mkdir -p "$dir" || return 1
-    tmp=$(mktemp "${dest}.A-Box-new.XXXXXX") || return 1
-    cat > "$tmp" || { rm -f -- "$tmp"; return 1; }
-    chmod "$mode" "$tmp" || { rm -f -- "$tmp"; return 1; }
-    if [[ $EUID -eq 0 ]]; then chown root:root "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
-    _abox_sync_file "$tmp" || { rm -f -- "$tmp"; return 1; }
-    mv -f -- "$tmp" "$dest" || { rm -f -- "$tmp"; return 1; }
-    _abox_sync_file "$dir" || return 1
-}
+    base=$(basename "$dest")
+    # R16C7-01: the temp file is created, written, chmodded, chowned,
+    # fsynced and renamed only through a held directory fd. Stdin is
+    # written to the creation fd itself, never to a reopened pathname,
+    # so a symlink swap in the destination directory cannot redirect
+    # the write (or the chmod/chown) onto another file.
+    python3 -I - "$dir" "$base" "$mode" 3<&0 <<'PY_ABOX_ATOMIC_WRITE'
+import os
+import secrets
+import stat
+import sys
 
+dirpath, basename, mode_s = sys.argv[1], sys.argv[2], sys.argv[3]
+mode = int(mode_s, 8)
+try:
+    dfd = os.open(dirpath, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+except OSError:
+    sys.exit(1)
+tmpname = None
+fd = None
+try:
+    for _ in range(100):
+        cand = ".A-Box-new." + secrets.token_hex(8)
+        try:
+            fd = os.open(cand, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=dfd)
+            tmpname = cand
+            break
+        except FileExistsError:
+            continue
+    if fd is None:
+        sys.exit(1)
+    while True:
+        chunk = os.read(3, 65536)  # fd 3 = caller stdin (fd 0 is the script heredoc)
+        if not chunk:
+            break
+        view = memoryview(chunk)
+        while view:
+            n = os.write(fd, view)
+            view = view[n:]
+    os.fchmod(fd, mode)
+    if os.geteuid() == 0:
+        os.fchown(fd, 0, 0)
+    os.fsync(fd)
+    st_fd = os.fstat(fd)
+    st_name = os.stat(tmpname, dir_fd=dfd, follow_symlinks=False)
+    if (st_fd.st_dev, st_fd.st_ino) != (st_name.st_dev, st_name.st_ino) or not stat.S_ISREG(st_name.st_mode):
+        sys.exit(1)
+    os.rename(tmpname, basename, src_dir_fd=dfd, dst_dir_fd=dfd)
+    os.fsync(dfd)
+except OSError:
+    try:
+        if tmpname is not None and fd is not None:
+            st = os.stat(tmpname, dir_fd=dfd, follow_symlinks=False)
+            fst = os.fstat(fd)
+            if (st.st_dev, st.st_ino) == (fst.st_dev, fst.st_ino):
+                os.unlink(tmpname, dir_fd=dfd)
+    except OSError:
+        pass
+    sys.exit(1)
+finally:
+    try:
+        if fd is not None:
+            os.close(fd)
+    except OSError:
+        pass
+    try:
+        os.close(dfd)
+    except OSError:
+        pass
+sys.exit(0)
+PY_ABOX_ATOMIC_WRITE
+}
 write_env() {
     local env_core="${1:-${CORE:-}}" env_mode="${2:-${MODE:-}}" old_traffic_limit_gb='' old_traffic_limit_mode='' tmp
     [[ -n "$env_core" && -n "$env_mode" ]] || die "$(tr_msg we_missing)"

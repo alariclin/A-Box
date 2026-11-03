@@ -15731,8 +15731,50 @@ write_env() {
         path_mode_has_no_group_other_write "$ABOX_ENV" || die "$(tr_msg we_file_mode)"
     fi
     if [[ -f "$ABOX_ENV" && ! -L "$ABOX_ENV" ]]; then
-        old_traffic_limit_gb=$(grep '^TRAFFIC_LIMIT_GB=' "$ABOX_ENV" | tail -n 1 | cut -d= -f2- | tr -d '"')
-        old_traffic_limit_mode=$(grep '^TRAFFIC_LIMIT_MODE=' "$ABOX_ENV" | tail -n 1 | cut -d= -f2- | tr -d '"')
+        # R3C7-04: decode with the verified shlex parser (as in
+        # load_abox_env), not by deleting '"' characters: a
+        # single-quoted old value must decode, not be cleared.
+        _old_parsed=$(python3 -I - "$ABOX_ENV" 2>/dev/null <<'PY_WRITE_ENV_OLD' || true
+import shlex, sys
+gb = mode = ""
+gb_ok = mode_ok = True
+try:
+    with open(sys.argv[1], "r", encoding="utf-8", errors="strict") as handle:
+        for raw in handle:
+            line = raw.rstrip("\n")
+            if line.startswith("TRAFFIC_LIMIT_GB="):
+                rawv = line.split("=", 1)[1]
+                if not rawv.strip():
+                    gb = ""; gb_ok = True
+                else:
+                    parts = shlex.split(rawv, posix=True)
+                    if len(parts) == 1:
+                        gb = parts[0]; gb_ok = True
+                    else:
+                        gb_ok = False
+            elif line.startswith("TRAFFIC_LIMIT_MODE="):
+                rawv = line.split("=", 1)[1]
+                if not rawv.strip():
+                    mode = ""; mode_ok = True
+                else:
+                    parts = shlex.split(rawv, posix=True)
+                    if len(parts) == 1:
+                        mode = parts[0]; mode_ok = True
+                    else:
+                        mode_ok = False
+except Exception:
+    gb_ok = mode_ok = False
+if gb_ok and mode_ok:
+    sys.stdout.write(gb + "\n" + mode + "\n")
+PY_WRITE_ENV_OLD
+)
+        if [[ -n "$_old_parsed" ]]; then
+            old_traffic_limit_gb=$(printf '%s\n' "$_old_parsed" | sed -n '1p')
+            old_traffic_limit_mode=$(printf '%s\n' "$_old_parsed" | sed -n '2p')
+        else
+            old_traffic_limit_gb=''
+            old_traffic_limit_mode=''
+        fi
         if [[ -z "$old_traffic_limit_gb" ]] || ! valid_traffic_limit_gb "$old_traffic_limit_gb" || [[ "$old_traffic_limit_mode" != total && "$old_traffic_limit_mode" != rx && "$old_traffic_limit_mode" != tx ]]; then
             old_traffic_limit_gb=''
             old_traffic_limit_mode=''
@@ -15741,7 +15783,13 @@ write_env() {
     umask 077
     install -d -m 711 "$ABOX_DIR" || die "$(tr_msg we_dir_create)"
     tmp=$(mktemp "$ABOX_DIR/.env.A-Box-new.XXXXXX") || die "$(tr_msg we_tmp)"
-    {
+    # R1-07-F2: run the write group under set -e so any printf
+    # failure aborts it (the tail ifs alone would mask failures
+    # with rc 0 when their conditions are false). The status is
+    # captured explicitly: a subshell inside an || list has its
+    # inner set -e suppressed by bash, so || die alone would not
+    # catch the failure.
+    ( set -e
         printf 'CORE=%s\n' "$(shell_quote "$env_core")"
         printf 'MODE=%s\n' "$(shell_quote "$env_mode")"
         printf 'UUID=%s\n' "$(shell_quote "${UUID:-}")"
@@ -15782,11 +15830,13 @@ write_env() {
         printf 'HY2_RANGE_END=%s\n' "$(shell_quote "${HY2_RANGE_END:-}")"
         printf 'INGRESS_IF=%s\n' "$(shell_quote "${INGRESS_IF:-}")"
         printf 'ENABLE_KEEPALIVE=%s\n' "$(shell_quote "${ENABLE_KEEPALIVE:-}")"
-        # S24: if-form (not &&) so empty limits yield rc 0 without the
-        # old ':' that masked real printf write failures.
+        # Empty limits still yield rc 0 via the false ifs; printf
+        # failures are caught by the set -e subshell (rc checked
+        # explicitly below), not by if-form.
         if [[ -n "$old_traffic_limit_gb" ]]; then printf 'TRAFFIC_LIMIT_GB=%s\n' "$(shell_quote "$old_traffic_limit_gb")"; fi
         if [[ -n "$old_traffic_limit_mode" ]]; then printf 'TRAFFIC_LIMIT_MODE=%s\n' "$(shell_quote "$old_traffic_limit_mode")"; fi
-    } > "$tmp" || { rm -f -- "$tmp"; die "$(tr_msg we_write)"; }
+    ) > "$tmp"; _write_rc=$?
+    if (( _write_rc != 0 )); then rm -f -- "$tmp"; die "$(tr_msg we_write)"; fi
     chmod 600 "$tmp" || { rm -f -- "$tmp"; die "$(tr_msg we_chmod)"; }
     mv -f -- "$tmp" "$ABOX_ENV" || { rm -f -- "$tmp"; die "$(tr_msg we_commit)"; }
 }

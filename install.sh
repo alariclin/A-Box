@@ -11073,13 +11073,31 @@ managed_service_pid() {
 pid_exe_matches() {
     local pid="$1" expect="$2" exe
     [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || return 1
-    exe=$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)
-    [[ "$exe" == "$expect" ]]
+    exe=$(readlink "/proc/$pid/exe" 2>/dev/null || true)
+    # The kernel reports a deleted executable as "<path> (deleted)".
+    # Accept the live path and the deleted form; the caller verifies
+    # the PID is the managed service's own PID (and, in
+    # kill_managed_residual_pids, its starttime), so a deleted suffix
+    # alone never authorises a kill.
+    [[ "$exe" == "$expect" || "$exe" == "$expect (deleted)" ]]
+}
+
+# Process starttime (field 22 of /proc/pid/stat), robust to a comm
+# containing spaces or parens: strip through the last ')' then take
+# position 20 (field 22 minus pid and comm). Empty output = unreadable.
+proc_starttime() {
+    local pid="$1" st
+    [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || return 1
+    st=$(cat "/proc/$pid/stat" 2>/dev/null) || return 1
+    st=${st##*) }
+    set -- $st
+    [[ -n "${20:-}" ]] || return 1
+    printf '%s\n' "${20}"
 }
 
 kill_managed_residual_pids() {
-    local srv pid exe failed=0 i skip_srv="${1:-}"
-    local -a pids=() exes=()
+    local srv pid exe failed=0 i skip_srv="${1:-}" start
+    local -a pids=() exes=() starts=()
     for srv in xray sing-box hysteria xray-latest; do
         [[ -n "$skip_srv" && "$srv" == "$skip_srv" ]] && continue
         abox_owns_service "$srv" || continue
@@ -11094,38 +11112,59 @@ kill_managed_residual_pids() {
             *) continue ;;
         esac
         pid_exe_matches "$pid" "$exe" || continue
+        start=$(proc_starttime "$pid" 2>/dev/null || true)
+        [[ -n "$start" ]] || continue
         pids+=("$pid")
         exes+=("$exe")
+        starts+=("$start")
     done
 
     (( ${#pids[@]} == 0 )) && return 0
 
-    # Broadcast TERM to the whole managed set before waiting. This avoids the
-    # previous serial 1s + optional 1s wait per process.
+    # Re-verify identity immediately before the first signal: a PID
+    # collected above may already have exited and been reused, and the
+    # old code's post-TERM re-check could not protect the first signal.
+    local -a live=() live_exes=() live_starts=()
+    for i in "${!pids[@]}"; do
+        pid="${pids[i]}"; exe="${exes[i]}"; start="${starts[i]}"
+        if kill -0 "$pid" 2>/dev/null && [[ "$(proc_starttime "$pid" 2>/dev/null || true)" == "$start" ]] && pid_exe_matches "$pid" "$exe"; then
+            live+=("$pid"); live_exes+=("$exe"); live_starts+=("$start")
+        fi
+    done
+    (( ${#live[@]} == 0 )) && return 0
+    pids=("${live[@]}"); exes=("${live_exes[@]}"); starts=("${live_starts[@]}")
+
+    # Broadcast TERM to the whole managed set before waiting.
     for pid in "${pids[@]}"; do
         kill -TERM "$pid" 2>/dev/null || true
     done
     sleep 1
 
-    # Re-check executable identity before escalating. Numeric PID reuse must
-    # never turn an A-Box cleanup into a kill of an unrelated process.
+    # Re-check identity before escalating (starttime + exe).
     for i in "${!pids[@]}"; do
-        pid="${pids[i]}"
-        exe="${exes[i]}"
-        if kill -0 "$pid" 2>/dev/null && pid_exe_matches "$pid" "$exe"; then
-            kill -KILL "$pid" 2>/dev/null || failed=1
+        pid="${pids[i]}"; exe="${exes[i]}"; start="${starts[i]}"
+        if kill -0 "$pid" 2>/dev/null && [[ "$(proc_starttime "$pid" 2>/dev/null || true)" == "$start" ]] && pid_exe_matches "$pid" "$exe"; then
+            kill -KILL "$pid" 2>/dev/null || true
         fi
     done
 
-    # Final fail-closed check: only a still-matching managed executable is a
-    # cleanup failure. A reused PID belonging to another process is ignored.
-    for i in "${!pids[@]}"; do
-        pid="${pids[i]}"
-        exe="${exes[i]}"
-        if kill -0 "$pid" 2>/dev/null && pid_exe_matches "$pid" "$exe"; then
-            failed=1
-        fi
+    # SIGKILL is asynchronous: poll (bounded) for the same instances to
+    # die instead of judging immediately. Only a same-instance survivor
+    # after the timeout is a cleanup failure; a reused PID is ignored.
+    local waited=0 still=1
+    while (( waited < 50 )); do
+        still=0
+        for i in "${!pids[@]}"; do
+            pid="${pids[i]}"; exe="${exes[i]}"; start="${starts[i]}"
+            if kill -0 "$pid" 2>/dev/null && [[ "$(proc_starttime "$pid" 2>/dev/null || true)" == "$start" ]] && pid_exe_matches "$pid" "$exe"; then
+                still=1; break
+            fi
+        done
+        (( still == 0 )) && break
+        sleep 0.1
+        waited=$((waited + 1))
     done
+    (( still == 1 )) && failed=1
     return "$failed"
 }
 

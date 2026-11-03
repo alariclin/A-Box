@@ -28067,7 +28067,7 @@ snapshot_dns_state() {
     if command -v systemctl >/dev/null 2>&1 && systemctl is-enabled --quiet dnscrypt-proxy 2>/dev/null; then printf enabled > "$dir/dnscrypt-service-enabled"; else printf disabled > "$dir/dnscrypt-service-enabled"; fi
     if [[ -f "$DNS_STATE_FILE" && ! -L "$DNS_STATE_FILE" ]]; then cp -a "$DNS_STATE_FILE" "$dir/dns-state" || return 1; else printf absent > "$dir/dns-state.absent"; fi
     if [[ "$backend" == networkmanager ]] && command -v nmcli >/dev/null 2>&1; then
-        iface=$(nmcli -t -f DEVICE,STATE device 2>/dev/null | awk -F: '$2=="connected" {print $1; exit}')
+        iface=$(nm_effective_device 2>/dev/null || true)
         [[ -n "$iface" ]] || return 1
         connection=$(nmcli -g GENERAL.CONNECTION device show "$iface" 2>/dev/null) || return 1
         [[ -n "$connection" && "$connection" != '--' ]] || return 1
@@ -28294,6 +28294,28 @@ _nm_dns_norm_set() {
     for _tok in "${_toks[@]}"; do [[ -n "$_tok" ]] && printf '%s\n' "$(normalize_ip_literal "$_tok")"; done | sort -u
 }
 
+# R6C12-02: the connection whose DNS is actually effective (the
+# one providing the first nameserver in /etc/resolv.conf).
+# apply_host_dns and snapshot_dns_state MUST agree on this device,
+# or rollback would restore a different connection than the one
+# modified. Falls back to the first connected device when no
+# device matches (loopback-only resolv.conf, or DNS from elsewhere).
+nm_effective_device() {
+    local first_ns='' dev='' _st='' d4='' d6='' tok=''
+    first_ns=$(awk '/^nameserver[[:space:]]/{print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
+    while IFS=: read -r dev _st; do
+        [[ "$_st" == "connected" ]] || continue
+        if [[ -n "$first_ns" ]]; then
+            d4=$(nmcli -g IP4.DNS device show "$dev" 2>/dev/null || true)
+            d6=$(nmcli -g IP6.DNS device show "$dev" 2>/dev/null || true)
+            for tok in ${d4//,/ } ${d6//,/ }; do
+                if [[ "$tok" == "$first_ns" ]]; then printf '%s\n' "$dev"; return 0; fi
+            done
+        fi
+    done < <(nmcli -t -f DEVICE,STATE device 2>/dev/null || true)
+    nmcli -t -f DEVICE,STATE device 2>/dev/null | awk -F: '$2=="connected"{print $1; exit}'
+}
+
 nm_dns_verify_applied() {
     local connection="$1" v4="$2" v6="${3:-}" rc="${4:-/etc/resolv.conf}" v=''
     v=$(nmcli -g ipv4.dns connection show "$connection" 2>/dev/null || true)
@@ -28302,22 +28324,21 @@ nm_dns_verify_applied() {
         v=$(nmcli -g ipv6.dns connection show "$connection" 2>/dev/null || true)
         [[ "$(_nm_dns_norm_set "$v")" == "$(_nm_dns_norm_set "$v6")" ]] || return 1
     fi
-    if grep -qE '^nameserver[[:space:]]+(127\.0\.0\.1|127\.0\.0\.53)([[:space:]]|$)' "$rc" 2>/dev/null; then return 0; fi
-    local -a _nm_toks=()
-    local _nm_a='' _nm_esc=''
-    IFS=$', \t' read -ra _nm_toks <<< "$v4" || true
-    for _nm_a in "${_nm_toks[@]}"; do
-        _nm_esc=$(printf '%s' "$_nm_a" | sed 's/\./\\./g')
-        grep -qE "^nameserver[[:space:]]+${_nm_esc}([[:space:]]|$)" "$rc" 2>/dev/null || return 1
+    # R6C12-02: the EFFECTIVE resolver is the FIRST nameserver.
+    # A loopback first entry is trusted (it forwards from the
+    # connection profile verified above); any other first entry
+    # must be one of the requested servers, or an old
+    # higher-priority resolver is still winning and this FAILS.
+    local _first_ns='' _req_tok=''
+    _first_ns=$(awk '/^nameserver[[:space:]]/{print $2; exit}' "$rc" 2>/dev/null || true)
+    [[ -n "$_first_ns" ]] || return 1
+    if [[ "$_first_ns" =~ ^127\.0\.0\.(1|53)$ ]]; then return 0; fi
+    local -a _req_toks=()
+    IFS=$', \t' read -ra _req_toks <<< "$v4${v6:+,$v6}" || true
+    for _req_tok in "${_req_toks[@]}"; do
+        [[ "$_req_tok" == "$_first_ns" ]] && return 0
     done
-    if [[ -n "$v6" ]]; then
-        IFS=$', \t' read -ra _nm_toks <<< "$v6" || true
-        for _nm_a in "${_nm_toks[@]}"; do
-            _nm_esc=$(printf '%s' "$_nm_a" | sed 's/\./\\./g')
-            grep -qE "^nameserver[[:space:]]+${_nm_esc}([[:space:]]|$)" "$rc" 2>/dev/null || return 1
-        done
-    fi
-    return 0
+    return 1
 }
 
 # Strip pre-existing global DNS sources (main resolved.conf + every
@@ -28489,7 +28510,7 @@ EOF_DNS
             ;;
         networkmanager)
             local iface connection
-            iface=$(nmcli -t -f DEVICE,STATE device 2>/dev/null | awk -F: '$2=="connected"{print $1; exit}')
+            iface=$(nm_effective_device 2>/dev/null || true)
             [[ -n "$iface" ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_no_iface)"; }
             connection=$(nmcli -g GENERAL.CONNECTION device show "$iface" 2>/dev/null || true)
             [[ -n "$connection" && "$connection" != '--' ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_no_conn)"; }
@@ -28500,6 +28521,13 @@ EOF_DNS
             ;;
         *)
             [[ ! -L /etc/resolv.conf ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_resolv_symlink)"; }
+            # R7C12-02: preserve search/domain/options from the
+            # existing resolv.conf; the old code dropped them.
+            local _pd_search_domain='' _pd_options=''
+            if [[ -f /etc/resolv.conf && ! -L /etc/resolv.conf ]]; then
+                _pd_search_domain=$(grep -E '^[[:space:]]*(search|domain)[[:space:]]' /etc/resolv.conf 2>/dev/null || true)
+                _pd_options=$(grep -E '^[[:space:]]*options[[:space:]]' /etc/resolv.conf 2>/dev/null || true)
+            fi
             # A-01 fix: build resolv.conf lines explicitly to avoid the
             # command-substitution newline-stripping bug that used to produce
             # "nameserver 2001:db8::53options timeout:2 attempts:3".
@@ -28507,7 +28535,8 @@ EOF_DNS
                 printf '# Managed by A-Box host DNS helper\n'
                 if [[ -n "$v4" ]]; then IFS=$' \t\n' read -ra _ns_list <<< "$v4" || true; for _ns in "${_ns_list[@]}"; do printf 'nameserver %s\n' "$_ns"; done; fi
                 if [[ -n "$v6" ]]; then IFS=$' \t\n' read -ra _ns_list <<< "$v6" || true; for _ns in "${_ns_list[@]}"; do printf 'nameserver %s\n' "$_ns"; done; fi
-                printf 'options timeout:2 attempts:3\n'
+                if [[ -n "$_pd_search_domain" ]]; then printf '%s\n' "$_pd_search_domain"; fi
+                if [[ -n "$_pd_options" ]]; then printf '%s\n' "$_pd_options"; else printf 'options timeout:2 attempts:3\n'; fi
             } > "$DNS_BACKUP_DIR/resolv.conf.new" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_resolv_gen)"; }
             write_file_atomically_from_stdin /etc/resolv.conf 644 < "$DNS_BACKUP_DIR/resolv.conf.new" || { rm -f "$DNS_BACKUP_DIR/resolv.conf.new"; restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_resolv_write)"; }
             rm -f "$DNS_BACKUP_DIR/resolv.conf.new"

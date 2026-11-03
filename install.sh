@@ -20919,9 +20919,14 @@ routing_apply_live() {
             jq --slurpfile st "$ROUTING_STATE_FILE" --argjson prev "$prev_applied" --argjson force "$force_json" --argjson prevr "$prev_rules_xray" '
                 ($st[0].outbounds | map(.tag)) as $managed
                 | ((($prev - $managed) + $force) | unique) as $retired
-                | .outbounds |= (map(select(.tag as $t | ($managed + $retired) | index($t) | not))
-                    + [$st[0].outbounds[]?.xray])
-                | .routing.rules = (((.routing.rules // []) | map(select((.outboundTag as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not)))) + [$st[0].rules[]?.xray_rule]))
+                | .outbounds |= (((. // []) as $orig
+                    | ($orig | map(.tag as $t | ($managed + $retired) | index($t) | . != null) | index(true) // ($orig | length)) as $splice
+                    | (($orig | map(select(.tag as $t | ($managed + $retired) | index($t) | not))) as $kept
+                        | $kept[0:$splice] + [$st[0].outbounds[]?.xray] + $kept[$splice:])))
+                | .routing.rules = (((.routing.rules // []) as $orig
+                    | ($orig | map((.outboundTag as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not)) | not) | index(true) // ($orig | length)) as $splice
+                    | (($orig | map(select((.outboundTag as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not))))) as $kept
+                        | $kept[0:$splice] + [$st[0].rules[]?.xray_rule] + $kept[$splice:])))
             ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
             jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
             if [[ -x /usr/local/bin/xray ]]; then
@@ -20994,9 +20999,15 @@ routing_apply_live() {
                         (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite))
                       else . end)) as $srules
                 | ($srules | map(.rule_set[]?) | unique) as $tags
-                | .outbounds |= (map(select(.tag as $t | ($managed + $retired) | index($t) | not)) + $obs)
+                | .outbounds |= (((. // []) as $orig
+                    | ($orig | map(.tag as $t | ($managed + $retired) | index($t) | . != null) | index(true) // ($orig | length)) as $splice
+                    | (($orig | map(select(.tag as $t | ($managed + $retired) | index($t) | not))) as $kept
+                        | $kept[0:$splice] + $obs + $kept[$splice:])))
                 | .endpoints = (((.endpoints // []) | map(select(.tag as $t | ($managed + $retired) | index($t) | not))) + $eps)
-                | .route.rules = (((.route.rules // []) | map(select((.outbound as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + $srules) | index($r)) | not)))) + $srules))
+                | .route.rules = (((.route.rules // []) as $orig
+                    | ($orig | map((.outbound as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + $srules) | index($r)) | not)) | not) | index(true) // ($orig | length)) as $splice
+                    | (($orig | map(select((.outbound as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + $srules) | index($r)) | not))))) as $kept
+                        | $kept[0:$splice] + $srules + $kept[$splice:])))
                 | ($prevr | map(.rule_set[]?) | unique) as $prevtags
                 | .route.rule_set = (((.route.rule_set // []) | map(select(.tag as $t | (($tags + $prevtags) | index($t)) | not))) + ($tags | map({type:"remote", tag:., format:"binary",
                     url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),

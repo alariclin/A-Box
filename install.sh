@@ -19645,6 +19645,25 @@ vless_domain=${d2}"
     msg "${YELLOW}$(tr_msg argo_temp_note)${NC}"
 }
 
+# Wait (bounded) for a fixed tunnel to show an authenticated connection.
+# Returns 0 when the log shows a registered tunnel connection and the
+# unit is still active; returns 1 on auth failure or timeout. A token
+# rejected by Cloudflare must fail the deploy, not commit mode=fixed.
+argo_wait_fixed_ready() { # $1=log $2=timeout(sec, default 60)
+    local log="$1" timeout="${2:-60}" i
+    for i in $(seq 1 "$timeout"); do
+        if grep -q 'Registered tunnel connection' "$log" 2>/dev/null; then
+            argo_unit_active argo || return 1
+            return 0
+        fi
+        if grep -qiE 'authentication failed|failed to authenticate|unable to authenticate' "$log" 2>/dev/null; then
+            return 1
+        fi
+        sleep 1
+    done
+    return 1
+}
+
 deploy_argo_fixed() {
     clear; msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
     init_system_environment
@@ -19741,6 +19760,10 @@ EOF_SVC
     argo_remove_unit argo-vmess
     argo_remove_unit argo-vless
     argo_write_unit argo "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 run"
+    # R13C9-01: restart succeeds before cloudflared authenticates;
+    # do not commit mode=fixed until an authenticated connection
+    # is seen, or fail the deploy (no state commit, no success).
+    argo_wait_fixed_ready /etc/ddr/argo.log 60 || die 'Fixed Argo tunnel did not become ready (authentication or connection failed); check /etc/ddr/argo.log.'
     _argo_state_write "mode=fixed
 uuid=${ARGO_UUID}
 vmess_port=${ARGO_VMESS_PORT}
@@ -19766,11 +19789,18 @@ argo_status() {
     ARGO_VLESS_PORT=$(_argo_state_get vless_port)
     msg "Mode: ${mode} | UUID: ${ARGO_UUID} | VMess-WS: 127.0.0.1:${ARGO_VMESS_PORT} | VLESS-WS: 127.0.0.1:${ARGO_VLESS_PORT}"
     if [[ "$mode" == 'temp' ]]; then
-        local u1='' u2=''
+        local u1='' u2='' live1='' live2=''
         argo_unit_active argo-vmess && u1='running' || u1='stopped'
         argo_unit_active argo-vless && u2='running' || u2='stopped'
         msg "argo-vmess: ${u1} | argo-vless: ${u2}"
-        argo_links_for "$(_argo_state_get vmess_domain)" "$(_argo_state_get vless_domain)"
+        # R1-09-C06: Quick Tunnel domains change on restart; the
+        # saved state goes stale. Prefer the live domains from
+        # the unit logs, falling back to saved state.
+        live1=$(grep -aoE '[a-z0-9-]+\.trycloudflare\.com' /etc/ddr/argo-vmess.log 2>/dev/null | grep -v '^api\.trycloudflare\.com$' | tail -1)
+        live2=$(grep -aoE '[a-z0-9-]+\.trycloudflare\.com' /etc/ddr/argo-vless.log 2>/dev/null | grep -v '^api\.trycloudflare\.com$' | tail -1)
+        [[ -n "$live1" ]] || live1="$(_argo_state_get vmess_domain)"
+        [[ -n "$live2" ]] || live2="$(_argo_state_get vless_domain)"
+        argo_links_for "$live1" "$live2"
         msg "${YELLOW}$(tr_msg argo_temp_note)${NC}"
     else
         local u=''

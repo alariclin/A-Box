@@ -28677,10 +28677,18 @@ dns_enable_doh() {
         return 1
     fi
     temp=$(umask 077; mktemp /tmp/A-Box-doh.XXXXXX) || return 1
-    python3 -I - "$config" "$temp" "$doh_server" <<'PY_DOH_CONFIG'
+    # R8C12-N02: under socket activation the socket unit binds
+    # the address; the service must inherit it (empty list).
+    local doh_listen="['127.0.0.1:5353']"
+    if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
+        doh_listen='[]'
+    fi
+    python3 -I - "$config" "$temp" "$doh_server" "$doh_listen" <<'PY_DOH_CONFIG'
 import re, sys
 source, target = sys.argv[1:3]
 server = sys.argv[3] if len(sys.argv) > 3 else 'cloudflare'
+listen = sys.argv[4] if len(sys.argv) > 4 else "['127.0.0.1:5353']"
+
 with open(source, encoding='utf-8') as handle: text = handle.read()
 def set_option(name, value):
     global text
@@ -28698,7 +28706,7 @@ def set_option(name, value):
         stripped = raw.lstrip()
         if stripped.startswith('#'):
             return False
-        return re.match(re.escape(name) + r'\s*=', stripped) is not None
+        return re.match(r"['\"]?" + re.escape(name) + r"['\"]?\s*=", stripped) is not None
 
     out = []
     replaced = False
@@ -28752,7 +28760,7 @@ def set_option(name, value):
             text += name + ' = ' + value + '\n'
 
 set_option('server_names', "['%s']" % server)
-set_option('listen_addresses', "['127.0.0.1:5353']")
+set_option('listen_addresses', listen)
 set_option('dnscrypt_servers', 'false')
 set_option('doh_servers', 'true')
 set_option('ipv4_servers', 'true')
@@ -28763,7 +28771,12 @@ with open(target, 'w', encoding='utf-8') as handle: handle.write(text)
 PY_DOH_CONFIG
     rc=$?
     if (( rc != 0 )); then rm -f -- "$temp"; restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; fi
-    install -m 644 "$temp" "$config" || { rm -f -- "$temp"; restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
+    # R1-12-F7: preserve the original mode (a 0640 credential
+    # file must not be loosened to 0644 by the rewrite).
+    local _cfg_mode=''
+    _cfg_mode=$(stat -c %a "$config" 2>/dev/null || true)
+    [[ "$_cfg_mode" =~ ^[0-7]{3,4}$ ]] || _cfg_mode='644'
+    install -m "$_cfg_mode" "$temp" "$config" || { rm -f -- "$temp"; restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
     rm -f -- "$temp"
     if ! dnscrypt-proxy -config "$config" -check >/dev/null 2>&1; then
         restore_dns_snapshot "$DNS_BACKUP_DIR" || true
@@ -28779,7 +28792,15 @@ PY_DOH_CONFIG
     else
         systemctl enable --now dnscrypt-proxy >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
     fi
-    if ! dns_probe_once 127.0.0.1 5353 example.com >/dev/null 2>&1; then
+    # R2C12-10: retry the probe (cold start needs a few
+    # seconds); rollback only if every attempt fails.
+    local _probe_ok=0 _probe_i=0
+    while (( _probe_i < 5 )); do
+        if dns_probe_once 127.0.0.1 5353 example.com >/dev/null 2>&1; then _probe_ok=1; break; fi
+        _probe_i=$(( _probe_i + 1 ))
+        (( _probe_i < 5 )) && sleep 2
+    done
+    if (( _probe_ok == 0 )); then
         restore_dns_snapshot "$DNS_BACKUP_DIR" || true
         msg "${RED}$(tr_msg dh_test_resolve)${NC}"
         return 1

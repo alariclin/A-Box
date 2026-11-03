@@ -36266,23 +36266,32 @@ _xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_d
             rm -f -- /etc/init.d/xray-latest /etc/conf.d/xray-latest
         fi
     fi
+    # R5C15-05: a failed unit restore must NOT delete the backup
+    # (the only copy of the pre-overwrite unit); keep it, report its
+    # path, and return 1. The xl_rollback_copy_fail text already
+    # promises the backup is kept; the code now matches it.
+    local _unit_restore_failed=0
     if [[ -n "$old_unit_dir" && -d "$old_unit_dir" ]]; then
         # S151: restore the pre-overwrite unit (and conf.d on openrc),
         # then drop the backup. A failure before the overwrite restores
         # identical content, which is a harmless no-op.
         if [[ -e "$old_unit_dir/unit" || -L "$old_unit_dir/unit" ]]; then
             if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-                cp -a -- "$old_unit_dir/unit" /etc/systemd/system/xray-latest.service || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
+                cp -a -- "$old_unit_dir/unit" /etc/systemd/system/xray-latest.service || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; _unit_restore_failed=1; }
                 systemctl daemon-reload >/dev/null 2>&1 || true
             else
-                cp -a -- "$old_unit_dir/unit" /etc/init.d/xray-latest || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
+                cp -a -- "$old_unit_dir/unit" /etc/init.d/xray-latest || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; _unit_restore_failed=1; }
                 chmod +x /etc/init.d/xray-latest 2>/dev/null || true
                 if [[ -e "$old_unit_dir/confd" || -L "$old_unit_dir/confd" ]]; then
-                    cp -a -- "$old_unit_dir/confd" /etc/conf.d/xray-latest || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
+                    cp -a -- "$old_unit_dir/confd" /etc/conf.d/xray-latest || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; _unit_restore_failed=1; }
                 fi
             fi
         fi
-        rm -rf -- "$old_unit_dir"
+        if [[ "$_unit_restore_failed" == 1 ]]; then
+            msg "${YELLOW}[!] xray-latest unit backup kept at: ${old_unit_dir}${NC}"
+        else
+            rm -rf -- "$old_unit_dir"
+        fi
     fi
     if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then
         if cp -f -- "$old_bin_tmp" "$XRAY_LATEST_BIN"; then
@@ -36300,6 +36309,7 @@ _xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_d
         [[ -n "$cfg_link_target" ]] && ln -s -- "$cfg_link_target" "$XRAY_LATEST_CFG"
     fi
     [[ "$had_dir" == '0' ]] && rm -rf -- "$XRAY_LATEST_DIR"
+    return "$_unit_restore_failed"
 }
 
 _xl_install_coexist() { # $1 = staged binary, $2 = tag

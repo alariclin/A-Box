@@ -25535,13 +25535,22 @@ users_reg_ensure() {
     local scratch='' merged=''
     scratch=$(mktemp /tmp/A-Box-ureg.XXXXXX) || return 1
     if users_adopt "$core" "$tag" "$scratch" >/dev/null 2>&1 && jq -e '.users' "$scratch" >/dev/null 2>&1; then
+        # R11C11-02: refuse a fresh-vs-registry server_secret
+        # mismatch instead of silently keeping incompatible keys.
+        local fresh_ss='' reg_ss=''
+        fresh_ss=$(jq -r '.server_secret // ""' "$scratch" 2>/dev/null)
+        reg_ss=$(jq -r '.server_secret // ""' "$reg" 2>/dev/null)
+        if [[ -n "$fresh_ss" && -n "$reg_ss" && "$fresh_ss" != "$reg_ss" ]]; then
+            msg "users_reg_ensure: server_secret mismatch between registry and live config; refusing to keep incompatible credentials. Reconcile manually." >&2
+            rm -f -- "$scratch"; return 1
+        fi
         merged=$(jq -c --slurpfile s "$scratch" '
             . as $r | ($s[0].users // []) as $fresh
             | .users = (
                 [.users[] | . as $u
-                 | ([$fresh[] | select(.secret == $u.secret and .name == $u.name)] | .[0]) as $m
+                 | ([$fresh[] | select(.secret == $u.secret and .name == $u.name and (.uuid // "") == ($u.uuid // ""))] | .[0]) as $m
                  | if $m == null then $u elif (.login // "") != "" then $u elif ($m.login // "") == "" then $u else $u + {login: $m.login} end]
-                + (reduce ([$fresh[] | . as $f | select([$r.users[] | select(.secret == $f.secret and .name == $f.name)] | length == 0)])[] as $f (
+                + (reduce ([$fresh[] | . as $f | select([$r.users[] | select(.secret == $f.secret and .name == $f.name and (.uuid // "") == ($f.uuid // ""))] | length == 0)])[] as $f (
                     {used: [.users[].name], out: []};
                     (.used) as $used
                     | (first(range(0; 1000) | (if . == 0 then $f.name else ($f.name + "-" + ((. + 1) | tostring)) end) | select(. as $c | ($used | index($c) | not))) // $f.name) as $c

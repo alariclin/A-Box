@@ -9809,6 +9809,11 @@ PY_CORE_RECORD
     local rc=$?
     if (( rc != 0 )); then rm -f -- "$tmp"; return 1; fi
     chown root:root "$tmp" || { rm -f -- "$tmp"; return 1; }
+    # R16C5-01: check the COMPLETED temp manifest against the
+    # same 4MiB limit before publishing. A published oversize
+    # manifest blocks all later recordings and cleanups for
+    # this family (entry gate rejects it, cleanup gate rejects it).
+    [[ "$(stat -c %s "$tmp" 2>/dev/null || echo 99999999)" -le 4194304 ]] || { rm -f -- "$tmp"; return 1; }
     mv -f -- "$tmp" "$ABOX_CORE_OWNERSHIP" || { rm -f -- "$tmp"; return 1; }
 }
 
@@ -9916,6 +9921,11 @@ PY_DYNAMIC_OWNER
     local rc=$?
     if (( rc != 0 )); then rm -f -- "$tmp"; return 1; fi
     chown root:root "$tmp" || { rm -f -- "$tmp"; return 1; }
+    # R16C5-01: check the COMPLETED temp manifest against the
+    # same 4MiB limit before publishing. A published oversize
+    # manifest blocks all later recordings and cleanups for
+    # this family (entry gate rejects it, cleanup gate rejects it).
+    [[ "$(stat -c %s "$tmp" 2>/dev/null || echo 99999999)" -le 4194304 ]] || { rm -f -- "$tmp"; return 1; }
     mv -f -- "$tmp" "$ABOX_CORE_OWNERSHIP" || { rm -f -- "$tmp"; return 1; }
 }
 
@@ -30852,7 +30862,16 @@ rollback_abox_new_swap() {
             rm -f "$rollback_tmp"
             return 1
         fi
-        chmod --reference=/etc/fstab "$rollback_tmp" 2>/dev/null || chmod 644 "$rollback_tmp"
+        # R6C13-01: preserve the original fstab mode
+        # explicitly. BusyBox chmod lacks --reference;
+        # falling back to 644 would loosen a 0600 fstab
+        # holding CIFS credentials. Abort if unpreservable.
+        _orig_mode=$(stat -c %a /etc/fstab 2>/dev/null) || { rm -f "$rollback_tmp";
+            return 1
+        }
+        chmod "$_orig_mode" "$rollback_tmp" || { rm -f "$rollback_tmp";
+            return 1
+        }
         chown --reference=/etc/fstab "$rollback_tmp" 2>/dev/null || true
         mv -f "$rollback_tmp" /etc/fstab || { rm -f "$rollback_tmp"; return 1; }
     fi
@@ -30983,7 +31002,26 @@ setup_swap_2g() {
                 rm -f "$fstab_backup" || true
                 die '/etc/fstab 写入失败；已回滚新建 Swap。'
             fi
-            chmod --reference=/etc/fstab "$fstab_tmp" 2>/dev/null || chmod 644 "$fstab_tmp"
+            # R6C13-01: preserve the original fstab mode
+            # explicitly. BusyBox chmod lacks --reference;
+            # falling back to 644 would loosen a 0600 fstab
+            # holding CIFS credentials. Abort if unpreservable.
+            _orig_mode=$(stat -c %a /etc/fstab 2>/dev/null) || { rm -f "$fstab_tmp";
+                if ! rollback_abox_new_swap "$fstab_backup"; then
+                    msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
+                    die '/etc/fstab 权限保留失败且 Swap 无法安全回滚；已保留恢复材料。'
+                fi
+                rm -f "$fstab_backup" || true
+                die '/etc/fstab 权限保留失败；已回滚新建 Swap。'
+            }
+            chmod "$_orig_mode" "$fstab_tmp" || { rm -f "$fstab_tmp";
+                if ! rollback_abox_new_swap "$fstab_backup"; then
+                    msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
+                    die '/etc/fstab 权限保留失败且 Swap 无法安全回滚；已保留恢复材料。'
+                fi
+                rm -f "$fstab_backup" || true
+                die '/etc/fstab 权限保留失败；已回滚新建 Swap。'
+            }
             chown --reference=/etc/fstab "$fstab_tmp" 2>/dev/null || true
             if ! mv -f "$fstab_tmp" /etc/fstab; then
                 rm -f "$fstab_tmp"
@@ -31419,7 +31457,16 @@ remove_abox_swap() {
         }
       }
     ' /etc/fstab > "$tmp" || { rm -f "$tmp" "$backup"; return 1; }
-    chmod --reference=/etc/fstab "$tmp" 2>/dev/null || chmod 644 "$tmp"
+    # R6C13-01: preserve the original fstab mode
+    # explicitly. BusyBox chmod lacks --reference;
+    # falling back to 644 would loosen a 0600 fstab
+    # holding CIFS credentials. Abort if unpreservable.
+    _orig_mode=$(stat -c %a /etc/fstab 2>/dev/null) || { rm -f "$tmp";
+        rm -f "$backup"; return 1
+    }
+    chmod "$_orig_mode" "$tmp" || { rm -f "$tmp";
+        rm -f "$backup"; return 1
+    }
     chown --reference=/etc/fstab "$tmp" 2>/dev/null || true
     mv -f "$tmp" /etc/fstab || { rm -f "$tmp" "$backup"; return 1; }
 

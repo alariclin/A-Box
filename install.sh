@@ -39919,6 +39919,56 @@ stop_abox_service_soft() {
     fi
 }
 
+jsonc_strip_comments() {
+    local file="$1"
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -I - "$file" <<'PY_JSONC_STRIP' 2>/dev/null || cat "$file"
+import sys
+data = open(sys.argv[1], 'r', encoding='utf-8', errors='replace').read()
+out = []
+i = 0
+n = len(data)
+in_str = False
+esc = False
+BS = chr(92)
+NL = chr(10)
+while i < n:
+    c = data[i]
+    if in_str:
+        out.append(c)
+        if esc:
+            esc = False
+        elif c == BS:
+            esc = True
+        elif c == '"':
+            in_str = False
+        i += 1
+        continue
+    if c == '"':
+        in_str = True
+        out.append(c)
+        i += 1
+        continue
+    if c == '/' and i + 1 < n and data[i+1] == '/':
+        while i < n and data[i] != NL:
+            i += 1
+        continue
+    if c == '/' and i + 1 < n and data[i+1] == '*':
+        j = data.find('*/', i + 2)
+        if j == -1:
+            break
+        out.append(' ')
+        i = j + 2
+        continue
+    out.append(c)
+    i += 1
+sys.stdout.write(''.join(out))
+PY_JSONC_STRIP
+    else
+        cat "$file"
+    fi
+}
+
 core_expected_listen_ports() {
     local core="$1" cfg="$2"
     case "$core" in
@@ -39928,10 +39978,10 @@ core_expected_listen_ports() {
             # U228: xray socks listens on UDP only when settings.udp
             # is true (absent/false means TCP-only); emitting udp/ for a
             # TCP-only socks inbound failed the health check outright.
-            jq -r '(.api.tag // "__no_api__") as $apit | .inbounds[]? | select(.port != null and .tag != $apit) | (if .protocol == "shadowsocks" then (if (.settings.network // "tcp,udp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp,udp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif .protocol == "socks" then (if .settings.udp == true then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end) elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp,udp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp,udp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif (.streamSettings.network // "tcp") == "kcp" or (.streamSettings.network // "tcp") == "quic" then "udp/\(.port)" else "tcp/\(.port)" end)' "$cfg" 2>/dev/null
+            jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '(.api.tag // "__no_api__") as $apit | .inbounds[]? | select(.port != null and .tag != $apit) | (if .protocol == "shadowsocks" then (if (.settings.network // "tcp,udp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp,udp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif .protocol == "socks" then (if .settings.udp == true then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end) elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp,udp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp,udp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif (.streamSettings.network // "tcp") == "kcp" or (.streamSettings.network // "tcp") == "quic" then "udp/\(.port)" else "tcp/\(.port)" end)' 2>/dev/null
             ;;
         singbox)
-            jq -r '.inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" or .type == "tuic" then "udp/\(.listen_port)" elif .type == "shadowsocks" then "tcp/\(.listen_port)\nudp/\(.listen_port)" elif .type == "socks" or .type == "mixed" then "tcp/\(.listen_port)\nudp/\(.listen_port)" else "tcp/\(.listen_port)" end)' "$cfg" 2>/dev/null
+            jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '.inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" or .type == "tuic" then "udp/\(.listen_port)" elif .type == "shadowsocks" then "tcp/\(.listen_port)\nudp/\(.listen_port)" elif .type == "socks" or .type == "mixed" then "tcp/\(.listen_port)\nudp/\(.listen_port)" else "tcp/\(.listen_port)" end)' 2>/dev/null
             ;;
         hysteria)
             # Hysteria 2 config uses listen: :PORT (or [::]:PORT).
@@ -39959,7 +40009,12 @@ core_expected_listen_ports() {
 core_ports_listening() {
     local core="$1" cfg="$2" spec proto port flags any=0
     local -a checks=()
-    local lo hi p
+    local lo hi p enum_out enum_rc
+    enum_out=$(core_expected_listen_ports "$core" "$cfg" 2>/dev/null); enum_rc=$?
+    if (( enum_rc != 0 )); then
+        msg "${RED}[!] ${core} 监听枚举失败（${cfg}）。${NC}"
+        return 1
+    fi
     while IFS= read -r spec; do
         if [[ "$spec" =~ ^(tcp|udp)/([0-9]+)-([0-9]+)$ ]]; then
             # R4C16-03: expand a range spec to single-port entries so it
@@ -39971,7 +40026,7 @@ core_ports_listening() {
         elif [[ "$spec" =~ ^(tcp|udp)/([0-9]+)$ ]]; then
             checks+=("$spec")
         fi
-    done < <(core_expected_listen_ports "$core" "$cfg" | awk '!seen[$0]++')
+    done < <(printf '%s\n' "$enum_out" | awk '!seen[$0]++')
     for spec in "${checks[@]}"; do
         proto="${spec%%/*}"; port="${spec##*/}"
         any=1
@@ -39983,7 +40038,11 @@ core_ports_listening() {
             return 1
         fi
     done
-    (( any == 1 ))
+    if (( any == 0 )); then
+        msg "${RED}[!] ${core} 无预期监听端口。${NC}"
+        return 1
+    fi
+    return 0
 }
 
 # F-01: data-plane smoke probe. Verifies the listening port actually speaks

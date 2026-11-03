@@ -15967,6 +15967,7 @@ hysteria_official_hop_firewall_ok() {
 
 
 setup_health_monitor() {
+    command -v flock >/dev/null 2>&1 || die 'flock 命令不可用：健康探针依赖 flock 锁，缺失时探针会静默退出、监控形同关闭，拒绝安装。'
     msg "${YELLOW}[*] 正在注入带锁、连续失败阈值与退避的 L4 健康探针...${NC}"
     install -d -m 711 "$ABOX_DIR" || die "$(tr_msg hm_dir)"
     write_file_atomically_from_stdin "$ABOX_DIR/socket_probe.sh" 700 <<'EOF_PROBE' || die '健康探针原子写入失败。'
@@ -15995,7 +15996,14 @@ DESIRED=/etc/ddr/.desired_state
 PAIR_STATE=/etc/ddr/.traffic-pair-state
 INIT_SYS_EXPECTED='unknown'
 exec 9>>"$LOCK" || exit 0
-flock -n 9 || exit 0
+flock -n 9; _flock_rc=$?
+if (( _flock_rc != 0 )); then
+    # rc 1 is contention: another run holds the lock, skip silently.
+    # Any other rc (127 = flock missing, ...) is a real failure: exiting
+    # 0 would silently disable this monitor, so fail loudly instead.
+    (( _flock_rc == 1 )) || { echo "A-Box: flock failed (rc=$_flock_rc), not contention" >&2; exit 1; }
+    exit 0
+fi
 RUNTIME_LOCK=/run/A-Box.lock
 acquire_abox_runtime_guard() {
     local FALLBACK_DIR=/run/A-Box.lock.d fb_pid fb_start fb_actual mode
@@ -16030,7 +16038,12 @@ acquire_abox_runtime_guard() {
     [[ "$mode" =~ ^[0-7]{3,4}$ ]] || exit 0
     (( (8#$mode & 8#077) == 0 )) || exit 0
     exec 10>>"$RUNTIME_LOCK" || exit 0
-    flock -n 10 || exit 0
+    flock -n 10; _flock_rc=$?
+    if (( _flock_rc != 0 )); then
+        # Same rc rule as the fd 9 block above.
+        (( _flock_rc == 1 )) || { echo "A-Box: flock failed (rc=$_flock_rc), not contention" >&2; exit 1; }
+        exit 0
+    fi
 }
 acquire_abox_runtime_guard
 load_state() {
@@ -16279,6 +16292,7 @@ EOF_PROBE
 }
 
 setup_geo_cron() {
+    command -v flock >/dev/null 2>&1 || die 'flock 命令不可用：Geo 更新脚本依赖 flock 锁，缺失时脚本会静默退出，拒绝安装。'
     if ! abox_owns_service xray; then
         remove_abox_cron_block GEO || die "$(tr_msg gc_rm_cron)"
         remove_owned_runtime_helper "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gc_rm_script)"
@@ -16323,7 +16337,14 @@ ABOX_CORE_OWNERSHIP=/etc/ddr/.managed-core-files.tsv
 GEO_DIR=/usr/local/share/xray
 GEO_TXN="$GEO_DIR/.A-Box-geo-transaction"
 exec 9>>/run/A-Box-geo-update.lock || exit 1
-flock -n 9 || exit 0
+flock -n 9; _flock_rc=$?
+if (( _flock_rc != 0 )); then
+    # rc 1 is contention: another run holds the lock, skip silently.
+    # Any other rc (127 = flock missing, ...) is a real failure: exiting
+    # 0 would silently disable this monitor, so fail loudly instead.
+    (( _flock_rc == 1 )) || { echo "A-Box: flock failed (rc=$_flock_rc), not contention" >&2; exit 1; }
+    exit 0
+fi
 RUNTIME_LOCK=/run/A-Box.lock
 acquire_abox_runtime_guard() {
     local FALLBACK_DIR=/run/A-Box.lock.d fb_pid fb_start fb_actual mode
@@ -16358,7 +16379,12 @@ acquire_abox_runtime_guard() {
     [[ "$mode" =~ ^[0-7]{3,4}$ ]] || exit 0
     (( (8#$mode & 8#077) == 0 )) || exit 0
     exec 10>>"$RUNTIME_LOCK" || exit 0
-    flock -n 10 || exit 0
+    flock -n 10; _flock_rc=$?
+    if (( _flock_rc != 0 )); then
+        # Same rc rule as the fd 9 block above.
+        (( _flock_rc == 1 )) || { echo "A-Box: flock failed (rc=$_flock_rc), not contention" >&2; exit 1; }
+        exit 0
+    fi
 }
 # A-07: Do NOT acquire the shared runtime lock here. Downloads below (up to
 # 60s + 90s + 90s = 240s) would hold /run/A-Box.lock and kill interactive
@@ -21633,6 +21659,7 @@ ensure_vnstat_runtime() {
 }
 
 setup_traffic_monitor() {
+    command -v flock >/dev/null 2>&1 || { msg "${RED}[!] flock 命令不可用：流量监控依赖 flock 锁，缺失时脚本会静默退出，拒绝安装。${NC}" >&2; return 1; }
     ensure_vnstat_runtime
     local ensure_rc=$?
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] 流量限制事务状态快照失败。${NC}" >&2; return 1; }
@@ -21651,7 +21678,14 @@ BLOCK_STATE=/etc/ddr/.traffic-block-state
 PAIR_STATE=/etc/ddr/.traffic-pair-state
 INIT_SYS_EXPECTED='unknown'
 exec 9>>/run/A-Box-traffic-monitor.lock || exit 1
-flock -n 9 || exit 0
+flock -n 9; _flock_rc=$?
+if (( _flock_rc != 0 )); then
+    # rc 1 is contention: another run holds the lock, skip silently.
+    # Any other rc (127 = flock missing, ...) is a real failure: exiting
+    # 0 would silently disable this monitor, so fail loudly instead.
+    (( _flock_rc == 1 )) || { echo "A-Box: flock failed (rc=$_flock_rc), not contention" >&2; exit 1; }
+    exit 0
+fi
 RUNTIME_LOCK=/run/A-Box.lock
 acquire_abox_runtime_guard() {
     local FALLBACK_DIR=/run/A-Box.lock.d fb_pid fb_start fb_actual mode
@@ -21686,7 +21720,12 @@ acquire_abox_runtime_guard() {
     [[ "$mode" =~ ^[0-7]{3,4}$ ]] || exit 0
     (( (8#$mode & 8#077) == 0 )) || exit 0
     exec 10>>"$RUNTIME_LOCK" || exit 0
-    flock -n 10 || exit 0
+    flock -n 10; _flock_rc=$?
+    if (( _flock_rc != 0 )); then
+        # Same rc rule as the fd 9 block above.
+        (( _flock_rc == 1 )) || { echo "A-Box: flock failed (rc=$_flock_rc), not contention" >&2; exit 1; }
+        exit 0
+    fi
 }
 acquire_abox_runtime_guard
 load_state() {
@@ -26238,7 +26277,15 @@ node_sni_menu() {
 
 user_guard_tick() {
     exec 9>>/run/A-Box-user-guard.lock 2>/dev/null || return 0
-    flock -n 9 || return 0
+    flock -n 9; _flock_rc=$?
+    if (( _flock_rc != 0 )); then
+        # rc 1 is contention: another tick holds the lock, skip silently.
+        # Any other rc (127 = flock missing, ...) must not masquerade as
+        # success: the quota enforcement after this point would be
+        # silently disabled (R10C12-01).
+        (( _flock_rc == 1 )) || { msg "${RED}A-Box: flock failed (rc=$_flock_rc), not contention.${NC}" >&2; return 1; }
+        return 0
+    fi
     # The tick entry point bypasses enter_runtime, so detect the
     # init system here: service-state helpers key off INIT_SYS and
     # would otherwise report every service as down (no stats would

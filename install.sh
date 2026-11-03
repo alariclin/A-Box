@@ -8930,7 +8930,7 @@ PY_PUBLIC_IP
 __abox_try_v4() {
     local api ip
     for api in 'https://api.ipify.org' 'https://ifconfig.me/ip' 'https://icanhazip.com'; do
-        ip=$(curl -fsS4 --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" "$api" 2>/dev/null | tr -d '[:space:]')
+        ip=$(curl -fsS4 --noproxy '*' --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" "$api" 2>/dev/null | tr -d '[:space:]')
         if valid_public_ip "$ip"; then
             printf '%s\n' "$ip"
             return 0
@@ -8942,7 +8942,7 @@ __abox_try_v4() {
 __abox_try_v6() {
     local api ip
     for api in 'https://api64.ipify.org' 'https://ifconfig.me/ip' 'https://icanhazip.com'; do
-        ip=$(curl -fsS6 --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" "$api" 2>/dev/null | tr -d '[:space:]')
+        ip=$(curl -fsS6 --noproxy '*' --connect-timeout "$PUBLIC_IP_CONNECT_TIMEOUT" -m "$PUBLIC_IP_MAX_TIME" "$api" 2>/dev/null | tr -d '[:space:]')
         if valid_public_ip "$ip"; then
             printf '%s\n' "$ip"
             return 0
@@ -26207,7 +26207,8 @@ _nsni_handshake_check() {
         sid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | if (.streamSettings.realitySettings.shortIds | type) == "array" then (.streamSettings.realitySettings.shortIds[0] // "") else (.streamSettings.realitySettings.shortIds // "") end' "$cfg" 2>/dev/null | head -n 1)
     fi
     [[ -n "$port" && -n "$uuid" ]] || return 2
-    case "$listen" in ''|0.0.0.0|::) dial='127.0.0.1' ;; *) dial="$listen" ;; esac
+    # R1-12-F2: ''/0.0.0.0 stay on IPv4 loopback; :: goes via ::1.
+    case "$listen" in ''|0.0.0.0) dial='127.0.0.1' ;; '::') dial='::1' ;; *) dial="$listen" ;; esac
     [[ -z "$xhost" ]] && xhost="$sni"
     lf="${ABOX_DIR:-/etc/ddr}/standalone-links.d/$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag").link"
     # SYD-B2 E20: derive the pbk from the LIVE server private key first.
@@ -26276,7 +26277,7 @@ _nsni_handshake_check() {
     if (( up == 0 )); then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; { printf 'nsni-check temp-socks-down\n'; tail -n 20 "$cerr" 2>/dev/null; } >> "$logf" 2>/dev/null || true; rm -f "$cc" "$cerr"; return 2; fi
     code=''
     for _try in 1 2; do
-        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --connect-timeout 3 --max-time 10 "https://$sni/" 2>"$cerr.curl")
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --noproxy '' --connect-timeout 3 --max-time 10 "https://$sni/" 2>"$cerr.curl")
         curl_rc=$?
         [[ "$curl_rc" != 0 ]] && code='000'
         printf 'nsni-check try=%s curl-rc=%s http=%s\n' "$_try" "$curl_rc" "$code" >> "$logf" 2>/dev/null || true
@@ -33860,7 +33861,7 @@ wallos_wait_healthy() {
             # instead of returning on Running state.
             _cip=$(docker inspect -f '{{.NetworkSettings.IPAddress}}' wallos 2>/dev/null || true)
             [[ -n "$_cip" ]] || { sleep 1; continue; }
-            code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 "http://$_cip:80/" 2>/dev/null || true)
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --noproxy '*' --connect-timeout 1 --max-time 2 "http://$_cip:80/" 2>/dev/null || true)
             case "$code" in 200|301|302|303|307|308) return 0 ;; esac
             sleep 1; continue
         fi
@@ -33875,7 +33876,7 @@ wallos_wait_healthy() {
             '['*']') ;;
             *:* ) _pubhost="[$_pubhost]" ;;
         esac
-        code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 "http://$_pubhost:$port/" 2>/dev/null || true)
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --noproxy '*' --connect-timeout 1 --max-time 2 "http://$_pubhost:$port/" 2>/dev/null || true)
         case "$code" in 200|301|302|303|307|308) return 0 ;; esac
         sleep 1
     done
@@ -34803,9 +34804,10 @@ wallos_cftunnel_setup() { # $1 = public hostname (wallos.example.com)
         return 1
     fi
     _code=$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' "https://${host}/" 2>/dev/null || true)
-    if [[ -z "$_code" || "$_code" == '000' ]]; then
+    if [[ -z "$_code" || "$_code" == '000' || "$_code" == '502' ]]; then
         _iport=$(wallos_state_value PORT 2>/dev/null || true)
-        msg "${YELLOW}$(tprintf wl_cf_no_resp "$host" "$_iport")${NC}"
+        msg "${RED}$(tprintf wl_cf_no_resp "$host" "$_iport")${NC}"
+        return 1
     fi
     return 0
 }
@@ -38180,7 +38182,11 @@ core_expected_tls_tcp_ports() {
 }
 
 core_tls_smoke_probe() {
-    local core="$1" cfg="$2" port
+    local core="$1" cfg="$2" port probe_host
+    # R1-16-F3: a :: listener is reached via ::1, a 0.0.0.0
+    # listener via 127.0.0.1; never hardcode 127.0.0.1.
+    probe_host='127.0.0.1'
+    [[ "$(wildcard_listen_address 2>/dev/null || printf '0.0.0.0')" == '::' ]] && probe_host='::1'
     # C-01 NUL: Do NOT store ClientHello in Bash var (Bash strips \x00). Send via printf in subshell.
     # Valid 50-byte TLS 1.2 ClientHello: Record len 0x002d (45), HandshakeType 0x01 (ClientHello), Handshake len 0x000029 (41).
     while IFS= read -r port; do
@@ -38191,7 +38197,7 @@ core_tls_smoke_probe() {
         # 0x15 (Alert). A non-TLS target is a misconfiguration and fails.
         # Timeout 5s.
         if ! timeout 5 bash -c '
-            exec 3<>/dev/tcp/127.0.0.1/'"$port"' || exit 1
+            exec 3<>/dev/tcp/'"$probe_host"'/'"$port"' || exit 1
             printf "\x16\x03\x01\x00\x2d\x01\x00\x00\x29\x03\x03\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x00\x00\x02\x00\x2f\x01\x00" >&3 || exit 1
             IFS= read -r -d "" -n 7 -t 4 resp <&3 || exit 1
             [[ -n "$resp" ]] || exit 1

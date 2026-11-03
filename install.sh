@@ -13776,7 +13776,14 @@ check_selected_ports_free() {
     command -v ss >/dev/null 2>&1 || die "$(tr_msg pt_no_ss)"
     for pair in $pairs; do
         proto=${pair%/*}; p=${pair#*/}
-        if ! holder=$(ss -H -n -l -p -A "$proto" 2>/dev/null); then
+        # R4C7-02: ss -l omits connected UDP sockets, whose local port is
+        # still bound (a new listener gets EADDRINUSE). Enumerate all UDP
+        # sockets; TCP keeps -l (only listeners block a new listener).
+        if [[ "$proto" == 'udp' ]]; then
+            if ! holder=$(ss -H -n -a -p -A udp 2>/dev/null); then
+                die "$(tprintf pt_ss_fail "${p}/${proto}")"
+            fi
+        elif ! holder=$(ss -H -n -l -p -A "$proto" 2>/dev/null); then
             die "$(tprintf pt_ss_fail "${p}/${proto}")"
         fi
         holder=$(awk -v p="$p" '$4 ~ ("[:.]" p "$") || $5 ~ ("[:.]" p "$") { print }' <<< "$holder" || true)
@@ -13795,7 +13802,8 @@ check_selected_ports_free() {
 
     if [[ "${HY2_HOP:-}" == 'true' && -n "${HY2_RANGE_START:-}" && -n "${HY2_RANGE_END:-}" ]]; then
         local ss_udp_output
-        if ! ss_udp_output=$(ss -H -n -l -p -A udp 2>/dev/null); then
+        # R4C7-02: same as above; connected UDP sockets must be enumerated.
+        if ! ss_udp_output=$(ss -H -n -a -p -A udp 2>/dev/null); then
             die "$(tr_msg pt_hy2_ss_fail)"
         fi
         holder=''

@@ -31750,12 +31750,34 @@ PY_LEGACY_EXTRACT
     else
         install -d -m 700 "$out_dir" || { rm -rf "$work"; die 'Legacy conversion output directory failed.'; }
     fi
+    # R1-14-F02: out_dir itself is not enough; its ancestors must not
+    # be links either (a swapped ancestor would redirect the output).
+    path_parent_chain_safe "$out_dir" || { rm -rf "$work"; die 'Legacy conversion output directory is not a safe directory.'; }
     out="$out_dir/$(basename "${selected%.tar.gz}")-v3-imported.tar.gz"
     [[ ! -e "$out" && ! -L "$out" ]] || { rm -rf "$work"; die "Converted backup already exists: $out"; }
-    tar -C "$work" -czf "$out" root meta || { rm -rf "$work"; rm -f "$out"; die 'Converted backup archive creation failed.'; }
-    chmod 600 "$out"
-    validate_backup_archive "$out" || { rm -rf "$work"; rm -f "$out"; die 'Converted backup failed v3 structure validation.'; }
-    backup_checksum_write "$out" && backup_auth_write "$out" || { rm -rf "$work"; rm -f "$out" "${out}.sha256" "${out}.hmac"; die 'Converted backup authentication failed.'; }
+    # R1-14-F02 + R2C14-02: never tar directly to $out (a swap between
+    # the existence check and tar would follow the link), and never
+    # let $out appear before its sidecars. Build in a private 600 temp
+    # file under umask 077, validate it, write both sidecars for the
+    # FINAL name, then publish the archive last via a hardlink (ln
+    # fails loudly if $out appeared in any form and never follows one).
+    local _c_tmp _c_hash _c_key _c_mac
+    _c_tmp=$(umask 077; mktemp "$out_dir/.A-Box-convert.XXXXXX") || { rm -rf "$work"; die 'Converted backup temp file failed.'; }
+    ( umask 077; tar -C "$work" -czf "$_c_tmp" root meta ) || { rm -rf "$work"; rm -f "$_c_tmp"; die 'Converted backup archive creation failed.'; }
+    chmod 600 "$_c_tmp"
+    validate_backup_archive "$_c_tmp" || { rm -rf "$work"; rm -f "$_c_tmp"; die 'Converted backup failed v3 structure validation.'; }
+    _c_hash=$(sha256sum < "$_c_tmp" 2>/dev/null | awk '{print $1}')
+    [[ "$_c_hash" =~ ^[A-Fa-f0-9]{64}$ ]] || { rm -rf "$work"; rm -f "$_c_tmp"; die 'Converted backup authentication failed.'; }
+    write_private_sidecar "${out}.sha256" "$_c_hash  $(basename "$out")" || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256"; die 'Converted backup authentication failed.'; }
+    ensure_backup_auth_key || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256"; die 'Converted backup authentication failed.'; }
+    IFS= read -r _c_key < "$ABOX_BACKUP_KEY" || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256"; die 'Converted backup authentication failed.'; }
+    _c_mac=$(backup_hmac_sha256 "$_c_key" "$_c_tmp" 2>/dev/null)
+    [[ "$_c_mac" =~ ^[A-Fa-f0-9]{64}$ ]] || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256"; die 'Converted backup authentication failed.'; }
+    write_private_sidecar "${out}.hmac" "$_c_mac  $(basename "$out")" || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256" "${out}.hmac"; die 'Converted backup authentication failed.'; }
+    # Archive appears last, only when both sidecars already exist.
+    ln -- "$_c_tmp" "$out" || { rm -rf "$work"; rm -f "$_c_tmp" "${out}.sha256" "${out}.hmac"; die 'Converted backup already exists.'; }
+    rm -f -- "$_c_tmp"
+    [[ -f "$out" && ! -L "$out" && "$(sha256sum < "$out" 2>/dev/null | awk '{print $1}')" == "${_c_hash,,}" ]] || { rm -rf "$work"; rm -f "$out" "${out}.sha256" "${out}.hmac"; die 'Converted backup authentication failed.'; }
     rm -rf "$work"
     msg "${GREEN}[*] Legacy backup converted safely:${NC} $out"
     msg "${YELLOW}[*] Services are imported as stopped; review configuration before starting them.${NC}"

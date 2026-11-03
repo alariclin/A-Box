@@ -37162,6 +37162,14 @@ EOF_XSSVC
 }
 
 _xl_remove_coexist_files() {
+    # R16C15-03: refuse if the coexist dir or anything under it
+    # is a mountpoint (a bind mount's shared backing would be
+    # deleted by the recursive rm). path_tree_has_mountpoint
+    # covers the dir itself and is fail-closed (0 on error).
+    if path_tree_has_mountpoint "$XRAY_LATEST_DIR"; then
+        msg "${RED}[!] 共存目录下有挂载点，拒绝递归删除以防删共享 backing：$XRAY_LATEST_DIR${NC}" >&2
+        return 1
+    fi
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl disable --now xray-latest >/dev/null 2>&1 || true
         rm -f -- /etc/systemd/system/xray-latest.service
@@ -37262,8 +37270,8 @@ _xl_install_takeover() { # $1 = staged binary, $2 = tag
 # install round created. A pre-existing binary/unit/config dir is never
 # deleted here (the deliberate uninstall path keeps using
 # _xl_remove_coexist_files for full removal).
-_xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_dir $5=old_bin_tmp $6=cfg_link_target $7=bin_link_target $8=old_unit_dir
-    local had_bin="$1" created_cfg="$2" had_unit="$3" had_dir="$4" old_bin_tmp="$5" cfg_link_target="$6" bin_link_target="$7" old_unit_dir="${8:-}"
+_xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_dir $5=old_bin_tmp $6=cfg_link_target $7=bin_link_target $8=old_unit_dir $9=had_enabled
+    local had_bin="$1" created_cfg="$2" had_unit="$3" had_dir="$4" old_bin_tmp="$5" cfg_link_target="$6" bin_link_target="$7" old_unit_dir="${8:-}" had_enabled="${9:-0}"
     if [[ "$had_unit" == '0' ]]; then
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
             systemctl disable --now xray-latest >/dev/null 2>&1 || true
@@ -37301,8 +37309,21 @@ _xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_d
             rm -rf -- "$old_unit_dir"
         fi
     fi
+    # R11C15-01: restore the pre-overwrite ENABLED state, not
+    # just the unit file content. A previously-disabled service
+    # must not be left enabled by a failed upgrade.
+    if [[ "$had_unit" == '1' ]]; then
+        if [[ "$had_enabled" == '1' ]]; then
+            if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl enable xray-latest >/dev/null 2>&1 || msg "${YELLOW}[!] xray-latest 启用态恢复失败（原为启用）。${NC}" >&2; else rc-update add xray-latest default >/dev/null 2>&1 || msg "${YELLOW}[!] xray-latest 启用态恢复失败（原为启用）。${NC}" >&2; fi
+        else
+            if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl disable xray-latest >/dev/null 2>&1 || msg "${YELLOW}[!] xray-latest 启用态恢复失败（原为禁用）。${NC}" >&2; else rc-update del xray-latest default >/dev/null 2>&1 || msg "${YELLOW}[!] xray-latest 启用态恢复失败（原为禁用）。${NC}" >&2; fi
+        fi
+    fi
     if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then
         if cp -f -- "$old_bin_tmp" "$XRAY_LATEST_BIN"; then
+            # R3C15-01: explicit executable bit (a cp that
+            # unlinks + recreates after ETXTBSY yields 0600).
+            chmod +x -- "$XRAY_LATEST_BIN" 2>/dev/null || true
             rm -f -- "$old_bin_tmp"
         else
             msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
@@ -37310,6 +37331,10 @@ _xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_d
     elif [[ -n "$bin_link_target" ]]; then
         ln -sfn -- "$bin_link_target" "$XRAY_LATEST_BIN"
     elif [[ "$had_bin" == '0' ]]; then
+        # R14C15-04: a new binary with no predecessor can only
+        # be running if this run started it; stop it before
+        # unlinking, else it keeps running on an unlinked binary.
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl stop xray-latest >/dev/null 2>&1 || true; else rc-service xray-latest stop >/dev/null 2>&1 || true; fi
         rm -f -- "$XRAY_LATEST_BIN"
     fi
     if [[ "$created_cfg" == '1' ]]; then
@@ -37321,7 +37346,7 @@ _xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_d
 }
 
 _xl_install_coexist() { # $1 = staged binary, $2 = tag
-    local staged="$1" tag="$2" had_bin=0 created_cfg=0 had_unit=0 had_dir=0 old_bin_tmp='' cfg_link_target='' bin_link_target='' old_unit_dir=''
+    local staged="$1" tag="$2" had_bin=0 created_cfg=0 had_unit=0 had_dir=0 old_bin_tmp='' cfg_link_target='' bin_link_target='' old_unit_dir='' had_enabled=0
     [[ -e "$XRAY_LATEST_BIN" || -L "$XRAY_LATEST_BIN" ]] && had_bin=1
     [[ -L "$XRAY_LATEST_BIN" ]] && bin_link_target=$(readlink "$XRAY_LATEST_BIN")
     [[ -e "$XRAY_LATEST_DIR" || -L "$XRAY_LATEST_DIR" ]] && had_dir=1
@@ -37333,6 +37358,15 @@ _xl_install_coexist() { # $1 = staged binary, $2 = tag
     if [[ -f "$XRAY_LATEST_BIN" && ! -L "$XRAY_LATEST_BIN" ]]; then
         old_bin_tmp=$(mktemp /tmp/A-Box-xl-oldbin.XXXXXX) || return 1
         cp -f -- "$XRAY_LATEST_BIN" "$old_bin_tmp" || { rm -f -- "$old_bin_tmp"; return 1; }
+    fi
+    # R11C15-01: capture the pre-overwrite enabled state now;
+    # _xl_write_latest_unit below may change it.
+    if [[ "$had_unit" == '1' ]]; then
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            [[ "$(systemctl is-enabled xray-latest 2>/dev/null || true)" == 'enabled' ]] && had_enabled=1
+        else
+            rc-update show 2>/dev/null | grep -q 'xray-latest' && had_enabled=1
+        fi
     fi
     if [[ "$had_unit" == '1' ]]; then
         # S151: the old unit is overwritten by _xl_write_latest_unit
@@ -37349,32 +37383,40 @@ _xl_install_coexist() { # $1 = staged binary, $2 = tag
             fi
         fi
     fi
-    install_binary_atomically "$staged" "$XRAY_LATEST_BIN" || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"; return 1; }
-    prepare_abox_runtime_config_dir xray "$XRAY_LATEST_DIR" || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"; return 1; }
+    install_binary_atomically "$staged" "$XRAY_LATEST_BIN" || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"; return 1; }
+    prepare_abox_runtime_config_dir xray "$XRAY_LATEST_DIR" || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"; return 1; }
     if [[ ! -f "$XRAY_LATEST_CFG" || -L "$XRAY_LATEST_CFG" ]]; then
         [[ -L "$XRAY_LATEST_CFG" ]] && cfg_link_target=$(readlink "$XRAY_LATEST_CFG")
-        _xl_seed_config "$XRAY_LATEST_CFG" 'xray-latest' || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"; return 1; }
+        _xl_seed_config "$XRAY_LATEST_CFG" 'xray-latest' || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"; return 1; }
         created_cfg=1
     fi
-    _xl_write_latest_unit || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"; return 1; }
-    prepare_abox_runtime_read_file "$XRAY_LATEST_CFG" xray || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"; return 1; }
-    prepare_abox_runtime_permissions xray-latest || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"; return 1; }
+    _xl_write_latest_unit || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"; return 1; }
+    prepare_abox_runtime_read_file "$XRAY_LATEST_CFG" xray || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"; return 1; }
+    prepare_abox_runtime_permissions xray-latest || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"; return 1; }
     if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$XRAY_LATEST_BIN" run -test -config "$XRAY_LATEST_CFG" >/dev/null 2>&1; then
         msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
-        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"
+        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"
         return 1
     fi
     if ! restart_service_soft xray-latest; then
         msg "${RED}$(tr_msg xl_restart_fail)${NC}"
         local _relaunch=0
         [[ "$had_unit" == '1' && ( ( -n "$old_bin_tmp" && -f "$old_bin_tmp" ) || -n "$bin_link_target" ) ]] && _relaunch=1
-        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"
+        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"
         (( _relaunch == 1 )) && restart_service_soft xray-latest >/dev/null 2>&1 || true
         return 1
     fi
     if ! _xl_state_write coexist "$tag"; then
         msg "${RED}$(tr_msg xl_gen_fail)${NC}"
-        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir"
+        # R3C15-01/R14C15-04: restart above succeeded, so the
+        # service now runs the NEW binary. Stop it before
+        # cleanup restores/removes the binary (else cp hits
+        # ETXTBSY and rm orphans a running instance).
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl stop xray-latest >/dev/null 2>&1 || true; else rc-service xray-latest stop >/dev/null 2>&1 || true; fi
+        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"
+        local _relaunch=0
+        [[ "$had_unit" == '1' && ( ( -n "$old_bin_tmp" && -f "$old_bin_tmp" ) || -n "$bin_link_target" ) ]] && _relaunch=1
+        (( _relaunch == 1 )) && restart_service_soft xray-latest >/dev/null 2>&1 || true
         return 1
     fi
     rm -f -- "$old_bin_tmp"

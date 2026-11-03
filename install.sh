@@ -39935,16 +39935,21 @@ core_expected_listen_ports() {
             ;;
         hysteria)
             # Hysteria 2 config uses listen: :PORT (or [::]:PORT).
+            # Top-level listen only (nested keys ignored); quoted keys accepted; default udp/443 when absent.
             awk '
-                $1 == "listen:" {
-                    v=$0; sub(/^[ \t\r]*listen:[ \t\r]*/, "", v)
-                    gsub(/["'"'"']/, "", v); sub(/[ \t\r#].*$/, "", v)
-                    sub(/^.*:/, "", v)
-                    # C-01: Port ranges like :20000-25000 must use FIRST port, not concat to 2000025000.
-                    sub(/-.*$/, "", v)
-                    gsub(/[^0-9]/, "", v)
-                    if (v != "") print "udp/" v
+                {
+                    k=$0; gsub(/["'"'"']/, "", k)
+                    if ($0 !~ /^[ \t]/ && k ~ /^listen:/) {
+                        found=1
+                        v=k; sub(/^listen:[ \t\r]*/, "", v); sub(/[ \t\r#].*$/, "", v)
+                        sub(/^.*:/, "", v)
+                        # C-01: Port ranges like :20000-25000 must use FIRST port, not concat to 2000025000.
+                        sub(/-.*$/, "", v)
+                        gsub(/[^0-9]/, "", v)
+                        if (v != "") print "udp/" v
+                    }
                 }
+                END { if (!found) print "udp/443" }
             ' "$cfg" 2>/dev/null
             ;;
         *) return 1 ;;

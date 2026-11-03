@@ -39978,7 +39978,7 @@ core_expected_listen_ports() {
             # U228: xray socks listens on UDP only when settings.udp
             # is true (absent/false means TCP-only); emitting udp/ for a
             # TCP-only socks inbound failed the health check outright.
-            jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '(.api.tag // "__no_api__") as $apit | .inbounds[]? | select(.port != null and .tag != $apit) | (if .protocol == "shadowsocks" then (if (.settings.network // "tcp,udp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp,udp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif .protocol == "socks" then (if .settings.udp == true then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end) elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp,udp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp,udp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif (.streamSettings.network // "tcp") == "kcp" or (.streamSettings.network // "tcp") == "quic" then "udp/\(.port)" else "tcp/\(.port)" end)' 2>/dev/null
+            jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '(.api.tag // "__no_api__") as $apit | ((.inbounds[]? | select(.port != null and .tag != $apit) | (if .protocol == "shadowsocks" then (if (.settings.network // "tcp,udp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp,udp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif .protocol == "socks" then (if .settings.udp == true then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end) elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp,udp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp,udp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif (.streamSettings.network // "tcp") == "kcp" or (.streamSettings.network // "tcp") == "quic" then "udp/\(.port)" else "tcp/\(.port)" end)) , (.inbounds[]? | select(.port == null and (.listen | type == "string") and (.listen | contains("/")) and .tag != $apit) | "unix/\(.listen)"))' 2>/dev/null
             ;;
         singbox)
             jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '.inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" or .type == "tuic" then "udp/\(.listen_port)" elif .type == "shadowsocks" then "tcp/\(.listen_port)\nudp/\(.listen_port)" elif .type == "socks" or .type == "mixed" then "tcp/\(.listen_port)\nudp/\(.listen_port)" else "tcp/\(.listen_port)" end)' 2>/dev/null
@@ -40016,7 +40016,9 @@ core_ports_listening() {
         return 1
     fi
     while IFS= read -r spec; do
-        if [[ "$spec" =~ ^(tcp|udp)/([0-9]+)-([0-9]+)$ ]]; then
+        if [[ "$spec" =~ ^unix/(.+)$ ]]; then
+            checks+=("$spec")
+        elif [[ "$spec" =~ ^(tcp|udp)/([0-9]+)-([0-9]+)$ ]]; then
             # R4C16-03: expand a range spec to single-port entries so it
             # is probed instead of skipped (a range-only inbound no longer
             # yields any=0, and a failing port inside a range is caught).
@@ -40028,6 +40030,15 @@ core_ports_listening() {
         fi
     done < <(printf '%s\n' "$enum_out" | awk '!seen[$0]++')
     for spec in "${checks[@]}"; do
+        if [[ "$spec" == unix/* ]]; then
+            sockpath="${spec#unix/}"
+            any=1
+            if ! ss -H -lnx 2>/dev/null | awk -v p="$sockpath" '$5 == p {found=1} END{exit !found}'; then
+                msg "${RED}[!] ${core} Unix 套接字 ${sockpath} 未处于监听状态。${NC}"
+                return 1
+            fi
+            continue
+        fi
         proto="${spec%%/*}"; port="${spec##*/}"
         any=1
         [[ "$proto" == tcp ]] && flags='-H -lntp' || flags='-H -lnup'

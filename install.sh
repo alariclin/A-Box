@@ -10278,6 +10278,21 @@ for _d in sorted(dirs, key=os.fsencode):
         _child = os.path.join(_d, _n)
         if _child not in expected:
             _repair.append(_child)
+# R3F03: mount pre-check on every recorded directory and its ancestors,
+# BEFORE any deletion. A recorded dir that is itself (or sits under) a
+# bind mount must refuse: nested copies inside it are foreign data even
+# when they are not themselves mountpoints and pass the artifact checks.
+# '/' itself is always a mountpoint and is excluded from the walk.
+def _path_or_ancestors_mounted(path):
+    cur = os.path.abspath(os.path.normpath(path))
+    while cur != '/':
+        if _repair_is_mountpoint(cur):
+            return True
+        cur = os.path.dirname(cur)
+    return False
+for _d in sorted(dirs):
+    if _path_or_ancestors_mounted(_d):
+        raise SystemExit(3)
 if _repair:
     if all(_is_artifact_tree(_p) for _p in _repair):
         import shutil
@@ -10599,7 +10614,7 @@ residue_takeover_plan() {
 # for its family, unit still absent) before deleting it. A path
 # that changed shape since the plan is left alone.
 residue_takeover_clear() {
-    local _item='' _srv='' _path='' _unit='' _rp=''
+    local _item='' _srv='' _path='' _unit='' _rp='' _failed=0
     [[ -n "${ABOX_RESIDUE_TAKEOVER:-}" ]] || return 0
     for _item in $ABOX_RESIDUE_TAKEOVER; do
         _srv="${_item%%|*}"; _path="${_item#*|}"
@@ -10607,10 +10622,14 @@ residue_takeover_clear() {
         printf '%s\n' "$_rp" | grep -Fxq -- "$_path" || continue
         _unit=$(same_name_service_unit_path "$_srv" 2>/dev/null || true)
         if [[ -n "$_unit" && ( -e "$_unit" || -L "$_unit" ) ]]; then continue; fi
-        if [[ -d "$_path" && ! -L "$_path" ]]; then rm -rf -- "$_path" 2>/dev/null || true
-        elif [[ -e "$_path" || -L "$_path" ]]; then rm -f -- "$_path" 2>/dev/null || true
+        # R6C6-01: refuse mounted trees before rm; a bind mount would
+        # delete shared foreign data. Failures propagate (no || true).
+        if path_tree_has_mountpoint "$_path"; then _failed=1; continue; fi
+        if [[ -d "$_path" && ! -L "$_path" ]]; then rm -rf -- "$_path" 2>/dev/null || _failed=1
+        elif [[ -e "$_path" || -L "$_path" ]]; then rm -f -- "$_path" 2>/dev/null || _failed=1
         fi
     done
+    (( _failed == 0 )) || return 1
     ABOX_RESIDUE_TAKEOVER=''
     return 0
 }
@@ -23810,6 +23829,9 @@ _remove_hy2_official() {
         rc-update del hysteria default >/dev/null 2>&1 || true
         rm -f -- /etc/init.d/hysteria /etc/conf.d/hysteria
     fi
+    # R6C11-01: refuse if /etc/hysteria (or anything under it) is a
+    # mountpoint; rm -rf would delete shared foreign data.
+    path_tree_has_mountpoint /etc/hysteria && return 1
     rm -rf -- /etc/hysteria || return 1
     rm -f -- /etc/ddr/standalone-links.d/hy2.link /etc/ddr/standalone-links.d/hysteria.link 2>/dev/null || true
     users_registry_remove hy2 hy2-official
@@ -32138,7 +32160,9 @@ restore_abox_directory() {
     else
         install -d -m 700 "$ABOX_DIR" || return 1
     fi
-    path_tree_has_mountpoint "$ABOX_DIR" && return 1
+    # R4C14-01: same criterion as backup (nested only); the data
+    # directory itself may live on a separate filesystem.
+    path_tree_has_nested_mountpoint "$ABOX_DIR" && return 1
     ensure_abox_dir_owned "$ABOX_DIR" || return 1
     for child in "$src"/* "$src"/.[!.]* "$src"/..?*; do
         [[ -e "$child" || -L "$child" ]] || continue
@@ -32539,6 +32563,8 @@ PY_LATEST_BACKUP
     stop_managed_services_for_restore "$root" >/dev/null 2>&1 || { msg "restore gate failed: stop-services" >&2; rm -rf "$work"; return 1; }
     clean_nat_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-nat" >&2; rm -rf "$work"; return 1; }
     clean_input_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-input" >&2; rm -rf "$work"; return 1; }
+    # R4C14-01: mount-compatibility check BEFORE any deletion.
+    path_tree_has_nested_mountpoint "$ABOX_DIR" && { msg "restore gate failed: abox-dir-nested-mount" >&2; return 1; }
     remove_owned_core_families_for_restore "$root" || { msg "restore gate failed: remove-families (work preserved at $work)" >&2; return 1; }
     clear_abox_runtime_for_restore "$root" || { msg "restore gate failed: clear-runtime (work preserved at $work)" >&2; return 1; }
     restore_abox_directory "$root" || { msg "restore gate failed: restore-dir (work preserved at $work)" >&2; return 1; }
@@ -32646,6 +32672,8 @@ restore_from_backup() {
     stop_managed_services_for_restore "$root" || die '恢复前无法停止全部 A-Box 托管服务。'
     clean_nat_rules || die '恢复前无法完整删除 A-Box HY2 NAT 规则。'
     clean_input_rules || die '恢复前无法完整删除 A-Box INPUT/原生防火墙规则。'
+    # R4C14-01: mount-compatibility check BEFORE any deletion.
+    path_tree_has_nested_mountpoint "$ABOX_DIR" && die 'Restore refused: nested mount under A-Box directory.'
     remove_owned_core_families_for_restore "$root" || die '恢复前删除当前 A-Box 核心文件失败。'
     clear_abox_runtime_for_restore "$root" || die '恢复前清理 A-Box 运行目录失败。'
     restore_abox_directory "$root" || die 'Restore A-Box directory failed.'

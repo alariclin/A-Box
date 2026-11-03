@@ -26898,7 +26898,11 @@ _wait_tcp_port() {
     local host="$1" port="$2" tries="${3:-60}" i=0
     [[ -n "$host" && -n "$port" ]] || return 1
     while (( i < tries )); do
-        if (exec 3<>"/dev/tcp/$host/$port") 2>/dev/null; then return 0; fi
+        if command -v timeout >/dev/null 2>&1; then
+            if timeout 2 bash -c 'exec 3<>"/dev/tcp/$1/$2"' _ "$host" "$port" 2>/dev/null; then return 0; fi
+        else
+            if (exec 3<>"/dev/tcp/$host/$port") 2>/dev/null; then return 0; fi
+        fi
         sleep 0.25; i=$((i + 1))
     done
     return 1
@@ -27673,7 +27677,9 @@ apply_timezone_name() {
     local tz="$1"
     valid_timezone_name "$tz" || return 1
     if command -v timedatectl >/dev/null 2>&1; then
-        timedatectl set-timezone "$tz" || return 1
+        if timedatectl set-timezone "$tz" 2>/dev/null; then return 0; fi
+        # timedatectl exists but cannot set (systemd not PID 1,
+        # container, etc.): fall through to zoneinfo below.
         return 0
     fi
     # Alpine / BusyBox path

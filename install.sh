@@ -19991,14 +19991,23 @@ deploy_argo_fixed() {
     light_preflight_check
     local domain='' token=''
     read -r -p "$(tr_msg argo_domain_prompt)" domain || domain=''
-    [[ "$domain" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die "$(tr_msg ag_bad_domain)"
+    valid_domain "$domain" || die "$(tr_msg ag_bad_domain)"
     read -r -s -p "$(tr_msg argo_token_prompt)" token || token=''
     msg ''
     [[ -n "$token" ]] || die "$(tr_msg ag_token_empty)"
     valid_single_line_secret "$token" 512 || die "$(tr_msg ag_token_bad)"
     [[ "$token" =~ ^[A-Za-z0-9_+/=.-]+$ ]] || die "$(tr_msg ag_token_bad)"
-    write_file_atomically_from_stdin /etc/ddr/.argo-token 600 <<< "TUNNEL_TOKEN=${token}" || die "$(tr_msg ag_token_write)"
     install_cloudflared
+    # R5C9-02: back up the existing token before overwriting; the
+    # EXIT trap restores it on any failure (die exits), and it is
+    # cleared only after the fixed tunnel is verified ready.
+    local _argo_token_bak='' _argo_token_ok=0
+    if [[ -f /etc/ddr/.argo-token ]]; then
+        _argo_token_bak=$(mktemp /etc/ddr/.argo-token.bak.XXXXXX) || die "Failed to back up the existing Argo token."
+        cp -a /etc/ddr/.argo-token "$_argo_token_bak" || die "Failed to back up the existing Argo token."
+        trap 'if [[ "${_argo_token_ok:-0}" != "1" && -n "${_argo_token_bak:-}" && -f "${_argo_token_bak:-}" ]]; then cp -a "${_argo_token_bak}" /etc/ddr/.argo-token 2>/dev/null || true; fi' EXIT
+    fi
+    write_file_atomically_from_stdin /etc/ddr/.argo-token 600 <<< "TUNNEL_TOKEN=${token}" || die "$(tr_msg ag_token_write)"
     local cfg='/etc/sing-box/config.json' tmp_json
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
@@ -20077,13 +20086,17 @@ EOF_SVC
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
     argo_deploy_ws
-    argo_remove_unit argo-vmess
-    argo_remove_unit argo-vless
     argo_write_unit argo "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 run"
     # R13C9-01: restart succeeds before cloudflared authenticates;
     # do not commit mode=fixed until an authenticated connection
     # is seen, or fail the deploy (no state commit, no success).
     argo_wait_fixed_ready /etc/ddr/argo.log 60 || die 'Fixed Argo tunnel did not become ready (authentication or connection failed); check /etc/ddr/argo.log.'
+    # R5C9-02: fixed tunnel verified; the new token is good, so
+    # clear the restore trap and drop the backup. R1-09-C04: only
+    # now (fixed ready) delete the temp units, then commit state.
+    _argo_token_ok=1; trap - EXIT; [[ -n "$_argo_token_bak" ]] && rm -f -- "$_argo_token_bak"
+    argo_remove_unit argo-vmess
+    argo_remove_unit argo-vless
     _argo_state_write "mode=fixed
 uuid=${ARGO_UUID}
 vmess_port=${ARGO_VMESS_PORT}

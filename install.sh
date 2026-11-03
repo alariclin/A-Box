@@ -19278,6 +19278,18 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    # R1-09-C01/R10C9-01: function-level seed: the in-branch seed only
+    # runs when the binary was missing; a present binary with a missing
+    # config must also be seeded before the merge below reads it.
+    # Missing/empty/symlink only; a jq-invalid existing config is kept
+    # and the merge fails closed, it is not silently seeded over.
+    if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die "$(tr_msg dp_sb_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
+        rm -f "$tmp_json"
+    fi
 
     # Reality keypair + SNI (reuse A-Box flow).
     local keypair
@@ -19438,6 +19450,18 @@ EOF_SVC
             chmod +x /etc/init.d/sing-box || die "$(tr_msg dp_sb_chmod)"
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
+    fi
+    # R1-09-C01/R10C9-01: function-level seed: the in-branch seed only
+    # runs when the binary was missing; a present binary with a missing
+    # config must also be seeded before the merge below reads it.
+    # Missing/empty/symlink only; a jq-invalid existing config is kept
+    # and the merge fails closed, it is not silently seeded over.
+    if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die "$(tr_msg dp_sb_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
+        rm -f "$tmp_json"
     fi
 
     # Self-signed TLS cert (TUIC requires TLS; clients pin/skip-verify).
@@ -19611,6 +19635,18 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    # R1-09-C01/R10C9-01: function-level seed: the in-branch seed only
+    # runs when the binary was missing; a present binary with a missing
+    # config must also be seeded before the merge below reads it.
+    # Missing/empty/symlink only; a jq-invalid existing config is kept
+    # and the merge fails closed, it is not silently seeded over.
+    if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die "$(tr_msg dp_sb_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
+        rm -f "$tmp_json"
+    fi
 
     # Reality keypair + SNI (reuse A-Box flow).
     local keypair
@@ -19766,6 +19802,18 @@ EOF_SVC
             chmod +x /etc/init.d/sing-box || die "$(tr_msg dp_sb_chmod)"
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
+    fi
+    # R1-09-C01/R10C9-01: function-level seed: the in-branch seed only
+    # runs when the binary was missing; a present binary with a missing
+    # config must also be seeded before the merge below reads it.
+    # Missing/empty/symlink only; a jq-invalid existing config is kept
+    # and the merge fails closed, it is not silently seeded over.
+    if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die "$(tr_msg dp_sb_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
+        rm -f "$tmp_json"
     fi
 
     sni=$(sni_prompt_or_auto)

@@ -26917,9 +26917,9 @@ _reality_pbk_from_private() {
     [[ -n "$priv" ]] || return 1
     command -v python3 >/dev/null 2>&1 || return 1
     command -v openssl >/dev/null 2>&1 || return 1
-    python3 -I - "$priv" <<'PYEOF' || return 1
-import base64, subprocess, sys
-priv = sys.argv[1].strip()
+    python3 -I - 3<<<"$priv" <<'PYEOF' || return 1
+import base64, subprocess, os
+priv = os.fdopen(3).read().strip()
 try:
     raw = base64.b64decode(priv.translate(str.maketrans("-_", "+/")) + "=" * (-len(priv) % 4))
 except Exception:

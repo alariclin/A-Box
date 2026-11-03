@@ -37095,7 +37095,12 @@ xray_owned() { local u; if is_systemd; then u=/etc/systemd/system/xray.service; 
 
 _xl_write_slot_unit() {
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_XSSVC' || return 1
+        local _unit_bak=''
+        if [[ -e /etc/systemd/system/xray.service || -L /etc/systemd/system/xray.service ]]; then
+            _unit_bak=$(mktemp /tmp/A-Box-xl-oldunit.XXXXXX) || return 1
+            cp -a -- /etc/systemd/system/xray.service "$_unit_bak" || { rm -f -- "$_unit_bak"; return 1; }
+        fi
+        write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_XSSVC' || { [[ -n "$_unit_bak" ]] && cp -a -- "$_unit_bak" /etc/systemd/system/xray.service 2>/dev/null; rm -f -- "$_unit_bak"; return 1; }
 # Managed by A-Box
 [Unit]
 Description=A-Box Xray Service
@@ -37120,15 +37125,25 @@ LimitNPROC=1048576
 [Install]
 WantedBy=multi-user.target
 EOF_XSSVC
+        rm -f -- "$_unit_bak"
         systemctl daemon-reload >/dev/null 2>&1 || true
         systemctl enable xray >/dev/null 2>&1 || true
     else
         path_parent_chain_safe /etc/conf.d/xray || return 1
         mkdir -p /etc/conf.d || return 1
-        write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XSCONFD' || return 1
+        local _confd_bak='' _init_bak=''
+        if [[ -e /etc/conf.d/xray || -L /etc/conf.d/xray ]]; then
+            _confd_bak=$(mktemp /tmp/A-Box-xl-oldunit.XXXXXX) || return 1
+            cp -a -- /etc/conf.d/xray "$_confd_bak" || { rm -f -- "$_confd_bak"; return 1; }
+        fi
+        if [[ -e /etc/init.d/xray || -L /etc/init.d/xray ]]; then
+            _init_bak=$(mktemp /tmp/A-Box-xl-oldunit.XXXXXX) || return 1
+            cp -a -- /etc/init.d/xray "$_init_bak" || { rm -f -- "$_init_bak"; return 1; }
+        fi
+        write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XSCONFD' || { [[ -n "$_confd_bak" ]] && cp -a -- "$_confd_bak" /etc/conf.d/xray 2>/dev/null; [[ -n "$_init_bak" ]] && cp -a -- "$_init_bak" /etc/init.d/xray 2>/dev/null; rm -f -- "$_confd_bak" "$_init_bak"; return 1; }
 export XRAY_LOCATION_ASSET="/usr/local/share/xray"
 EOF_XSCONFD
-        write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_XSSVC' || return 1
+        write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_XSSVC' || { [[ -n "$_confd_bak" ]] && cp -a -- "$_confd_bak" /etc/conf.d/xray 2>/dev/null; [[ -n "$_init_bak" ]] && cp -a -- "$_init_bak" /etc/init.d/xray 2>/dev/null; rm -f -- "$_confd_bak" "$_init_bak"; return 1; }
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Xray Service"
@@ -37141,6 +37156,7 @@ umask=077
 pidfile="/run/xray.pid"
 depend() { need net; }
 EOF_XSSVC
+        rm -f -- "$_confd_bak" "$_init_bak"
         chmod +x /etc/init.d/xray || return 1
     fi
 }
@@ -37197,6 +37213,10 @@ _xl_install_takeover() { # $1 = staged binary, $2 = tag
         else
             if [[ -n "$slot_link_target" ]]; then
                 ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"
+                # R9C15-03: the regular-file branch restarts after
+                # restore; the symlink branch must too, else the
+                # service stays stopped with the old binary back.
+                restart_service_soft xray >/dev/null 2>&1 || true
             else
                 rm -f -- "$XRAY_SLOT_BIN"
             fi
@@ -37219,6 +37239,10 @@ _xl_install_takeover() { # $1 = staged binary, $2 = tag
         else
             if [[ -n "$slot_link_target" ]]; then
                 ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"
+                # R9C15-03: the regular-file branch restarts after
+                # restore; the symlink branch must too, else the
+                # service stays stopped with the old binary back.
+                restart_service_soft xray >/dev/null 2>&1 || true
             else
                 rm -f -- "$XRAY_SLOT_BIN"
             fi

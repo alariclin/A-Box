@@ -10013,53 +10013,108 @@ hysteria_acme_repair_tree_ownership() {
     gid=$(getent group "$group" 2>/dev/null | awk -F: '{print $3}')
     [[ "$gid" =~ ^[0-9]+$ ]] || return 1
     python3 - "$manifest" "$target" "$gid" <<'PY_ACME_REPAIR'
-import os, stat, sys
+import os, re, stat, sys
 manifest, target, gid = sys.argv[1], sys.argv[2], int(sys.argv[3])
+target = os.path.normpath(target)
+# R15C5-01: manifest preconditions on the OPEN file, not a
+# re-resolved path. fstat pins the inode; lstat must agree (else the
+# path was swapped for a symlink between the bash check and the open).
+f = open(manifest, 'r', encoding='utf-8')
+fst = os.fstat(f.fileno())
+lst = os.lstat(manifest)
+if (fst.st_dev, fst.st_ino) != (lst.st_dev, lst.st_ino):
+    raise SystemExit(3)
+if fst.st_uid != 0 or fst.st_gid != 0 or (fst.st_mode & 0o777) != 0o600:
+    raise SystemExit(3)
+def _tree_has_mount(t, mountinfo='/proc/self/mountinfo'):
+    # R11C5-01: any mountpoint at or under the target means the tree
+    # holds foreign files; refuse the whole repair, change nothing.
+    try:
+        with open(mountinfo, 'r', encoding='utf-8', errors='strict') as mf:
+            for line in mf:
+                fields = line.rstrip('\n').split(' ')
+                if len(fields) < 5:
+                    continue
+                mp = re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), fields[4])
+                if os.path.normpath(mp) == t or os.path.normpath(mp).startswith(t + '/'):
+                    return True
+    except (OSError, UnicodeError):
+        raise SystemExit(4)
+    return False
+if _tree_has_mount(target):
+    raise SystemExit(3)
+def _open_parent_fd(path):
+    # R1-05-F01: pin every ancestor via O_NOFOLLOW fds (same pattern
+    # as the remove_recorded_core_family fd deletion). A swap before
+    # a step is refused (ELOOP); a swap after it cannot redirect the
+    # already-open fd.
+    parts = [p for p in os.path.abspath(os.path.normpath(path)).split(os.sep) if p]
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for comp in parts[:-1]:
+            nxt = os.open(comp, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nxt
+        return fd, parts[-1]
+    except BaseException:
+        os.close(fd)
+        raise
+try:
+    import pwd
+    runtime_uid = pwd.getpwnam('abox-hysteria').pw_uid
+except (ImportError, KeyError):
+    runtime_uid = None
 rows = []
-with open(manifest, 'r', encoding='utf-8') as f:
-    for line in f:
-        p = line.rstrip('\n').split('\t')
-        if len(p) != 4 or p[0] not in {'F', 'D'} or p[1] != 'hysteria' or not p[2].startswith('/') or '\x00' in line:
-            continue
-        rows.append(p)
-for typ, _fam, path, _h in rows:
+for line in f:
+    p = line.rstrip('\n').split('\t')
+    if len(p) != 4 or p[0] not in {'F', 'D'} or p[1] != 'hysteria' or not p[2].startswith('/') or '\x00' in line:
+        continue
+    rows.append(p)
+for typ, _fam, rawpath, _h in rows:
+    # R15C5-01: normalize lexically FIRST, then contain. A raw '..'
+    # row (acme/../../shadow) passes a text-prefix filter but
+    # normalizes outside the tree and must be rejected.
+    path = os.path.normpath(rawpath)
     if path == target or not path.startswith(target + '/'):
         continue
     try:
-        st = os.lstat(path)
-    except FileNotFoundError:
+        parent_fd, leaf = _open_parent_fd(path)
+    except OSError:
         continue
-    if stat.S_ISLNK(st.st_mode):
+    try:
+        fd = os.open(leaf, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)
+    except OSError:
+        os.close(parent_fd)
         continue
-    # Intermediate components must be real directories: lstat() only pins
-    # the final component, so a symlinked ancestor would redirect the
-    # repair onto a file outside the tree.
-    parent = os.path.dirname(path)
-    ok = True
-    while parent != target and parent.startswith(target + '/'):
-        try:
-            ast = os.lstat(parent)
-        except FileNotFoundError:
-            ok = False
-            break
-        if stat.S_ISLNK(ast.st_mode) or not stat.S_ISDIR(ast.st_mode):
-            ok = False
-            break
-        parent = os.path.dirname(parent)
-    if not ok:
-        continue
-    if stat.S_ISDIR(st.st_mode):
-        if typ != 'D':
+    os.close(parent_fd)
+    try:
+        st = os.fstat(fd)
+        if stat.S_ISLNK(st.st_mode):
             continue
-        os.chown(path, 0, gid)
-        os.chmod(path, 0o750)
-    elif stat.S_ISREG(st.st_mode):
-        if typ != 'F':
+        if stat.S_ISDIR(st.st_mode):
+            if typ != 'D':
+                continue
+            want_mode = 0o750
+        elif stat.S_ISREG(st.st_mode):
+            if typ != 'F' or st.st_nlink != 1:
+                continue
+            want_mode = 0o640
+        else:
             continue
-        if st.st_nlink != 1:
+        # R1-05-F02: leave check-compliant items alone. The manifest
+        # check allows uid {0, runtime} and gid {0, runtime} with no
+        # other/group write; forcing those to root:gid + 0640/0750
+        # would strip a compliant runtime owner's write (and, for a
+        # 0700 dir, add group read). Normalize only violators.
+        uid_ok = st.st_uid in ({0, runtime_uid} if runtime_uid is not None else {0})
+        gid_ok = st.st_gid in {0, gid}
+        mode_ok = (st.st_mode & 0o002) == 0 and (st.st_mode & 0o020) == 0
+        if uid_ok and gid_ok and mode_ok:
             continue
-        os.chown(path, 0, gid)
-        os.chmod(path, 0o640)
+        os.fchown(fd, 0, gid)
+        os.fchmod(fd, want_mode)
+    finally:
+        os.close(fd)
 PY_ACME_REPAIR
 }
 

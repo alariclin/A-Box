@@ -24641,7 +24641,15 @@ clear_all_protocols() {
         [[ "$core" == 'xray-latest' && -z "$(_xl_state_get mode)" ]] && continue
         info=$(_protocol_cfg_of "$core") || continue
         IFS='|' read -r cfg _ _ <<< "$info"
-        [[ -f "$cfg" && ! -L "$cfg" ]] || continue
+        if [[ -L "$cfg" ]]; then
+            # R12C11-01: an existing but refused (symlink) config counts as
+            # a clear failure; otherwise the global wipe below would delete
+            # registries/links while this core's inbounds survive.
+            msg "${YELLOW}[!] ${core}: $(tr_msg cl_fail)${NC}"
+            wipe_ok=0
+            continue
+        fi
+        [[ -f "$cfg" ]] || continue
         mapfile -t all_tags < <(jq -r '.inbounds[]? | .tag // empty' "$cfg" 2>/dev/null)
         if ! _remove_inbounds_from_config "$core" --all; then
             msg "${YELLOW}[!] ${core}: $(tr_msg cl_fail)${NC}"
@@ -24650,7 +24658,15 @@ clear_all_protocols() {
         fi
         (( ${#all_tags[@]} )) && _protocol_removed_side_effects "$core" "${all_tags[@]}"
     done
-    if [[ -f /etc/hysteria/config.yaml ]]; then _remove_hy2_official || wipe_ok=0; fi
+    if [[ -f /etc/hysteria/config.yaml ]]; then
+        if _remove_hy2_official; then
+            # R1-11-F09 (SYD-B E4 mirror): Hy2 removal must run side effects
+            # (notably .env port reconciliation) just like the JSON cores.
+            _protocol_removed_side_effects hy2 hy2-official
+        else
+            wipe_ok=0
+        fi
+    fi
     # Wipe the user registries, standalone links and the shared Argo
     # tunnel only when every core was actually cleared; otherwise
     # surviving nodes would lose their user policies, links and tunnel.

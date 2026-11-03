@@ -39928,7 +39928,7 @@ core_expected_listen_ports() {
             # U228: xray socks listens on UDP only when settings.udp
             # is true (absent/false means TCP-only); emitting udp/ for a
             # TCP-only socks inbound failed the health check outright.
-            jq -r '.inbounds[]? | select(.port != null and .tag != "api") | (if .protocol == "shadowsocks" then "tcp/\(.port)\nudp/\(.port)" elif .protocol == "socks" then (if .settings.udp == true then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end) else "tcp/\(.port)" end)' "$cfg" 2>/dev/null
+            jq -r '(.api.tag // "__no_api__") as $apit | .inbounds[]? | select(.port != null and .tag != $apit) | (if .protocol == "shadowsocks" then (if (.settings.network // "tcp,udp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp,udp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif .protocol == "socks" then (if .settings.udp == true then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end) elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp,udp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp,udp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif (.streamSettings.network // "tcp") == "kcp" or (.streamSettings.network // "tcp") == "quic" then "udp/\(.port)" else "tcp/\(.port)" end)' "$cfg" 2>/dev/null
             ;;
         singbox)
             jq -r '.inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" or .type == "tuic" then "udp/\(.listen_port)" elif .type == "shadowsocks" then "tcp/\(.listen_port)\nudp/\(.listen_port)" elif .type == "socks" or .type == "mixed" then "tcp/\(.listen_port)\nudp/\(.listen_port)" else "tcp/\(.listen_port)" end)' "$cfg" 2>/dev/null

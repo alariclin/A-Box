@@ -24547,7 +24547,17 @@ export_lightweight_subscription() {
 # StatsService counters and `xray api rmu` key on.
 USERS_DIR='/etc/ddr/users.d'
 
-users_reg_file() { printf '%s/%s__%s.json' "${ABOX_USERS_DIR:-$USERS_DIR}" "$1" "$2"; }
+# R11C11-01/R15C11-01: encode a registry component so it is always a
+# single filename component. Only '%' and '/' are escaped: '/' is the only
+# traversal character on Linux, and escaping '%' first keeps the mapping
+# injective. Safe tags are byte-identical, so legacy safe records need no
+# migration; readers take core/tag from JSON content, never the filename.
+users_reg_encode_component() {
+    local out="${1//%/%25}"
+    out="${out//\//%2F}"
+    printf '%s' "$out"
+}
+users_reg_file() { printf '%s/%s__%s.json' "${ABOX_USERS_DIR:-$USERS_DIR}" "$(users_reg_encode_component "$1")" "$(users_reg_encode_component "$2")"; }
 # Rename the historical default label 'abox' to 'main' so every
 # node's default user reads the same. SOCKS-type registries are
 # excluded: there the name IS the login username (a credential).

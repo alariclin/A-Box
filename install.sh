@@ -28602,7 +28602,29 @@ dns_auto_prefer() {
 }
 
 dns_install_dnscrypt_proxy() {
-    command -v dnscrypt-proxy >/dev/null 2>&1 && return 0
+    local _cfg="${DNSCRYPT_CONFIG:-/etc/dnscrypt-proxy/dnscrypt-proxy.toml}"
+    # R11C12-02: ready requires BOTH binary and config; a binary
+    # left behind by a config-deleting rollback is not ready.
+    if command -v dnscrypt-proxy >/dev/null 2>&1 && [[ -f "$_cfg" && ! -L "$_cfg" ]]; then return 0; fi
+    # Binary present but config missing: offer a confirmed
+    # reinstall to restore the default config.
+    if command -v dnscrypt-proxy >/dev/null 2>&1; then
+        case "${ABOX_LANG:-zh}" in
+            en) prompt='dnscrypt-proxy is installed but its config is missing. Reinstall to restore the default config? [Y/N]: ' ;;
+            ru) prompt='dnscrypt-proxy установлен, но его конфигурация отсутствует. Переустановить для восстановления конфигурации по умолчанию? [Y/N]: ' ;;
+            fa) prompt='dnscrypt-proxy نصب است اما پیکربندی آن موجود نیست. برای بازیابی پیکربندی پیش‌فرض دوباره نصب شود؟ [Y/N]: ' ;;
+            zh-tw) prompt='dnscrypt-proxy 已安裝但設定檔遺失。是否重新安裝以恢復預設設定？[Y/N]: ' ;;
+            ja) prompt='dnscrypt-proxy はインストール済みですが設定ファイルがありません。既定の設定を復元するため再インストールしますか？[Y/N]: ' ;;
+            *) prompt='dnscrypt-proxy 已安装但配置文件缺失。是否重新安装以恢复默认配置？[Y/N]: ' ;;
+        esac
+        read -r -p "$prompt" answer
+        is_yes "$answer" || { msg "${YELLOW}dnscrypt-proxy config missing and reinstall declined; DNS was not changed.${NC}"; return 1; }
+        if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y --reinstall dnscrypt-proxy || return 1
+        elif command -v apk >/dev/null 2>&1; then apk fix dnscrypt-proxy || return 1
+        else msg "${YELLOW}Automatic DoH setup is not enabled for this package manager; DNS was not changed.${NC}"; return 1; fi
+        [[ -f "$_cfg" && ! -L "$_cfg" ]] || { msg "${YELLOW}dnscrypt-proxy config still missing after reinstall; DNS was not changed.${NC}"; return 1; }
+        return 0
+    fi
     case "${ABOX_LANG:-zh}" in
         en) prompt='Install dnscrypt-proxy from the configured OS package repository to provide DoH? [Y/N]: ' ;;
         ru) prompt='Установить dnscrypt-proxy из системного репозитория для DoH? [Y/N]: ' ;;
@@ -28617,7 +28639,8 @@ dns_install_dnscrypt_proxy() {
     if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y dnscrypt-proxy || return 1
     elif command -v apk >/dev/null 2>&1; then apk add dnscrypt-proxy || return 1
     else msg "${YELLOW}Automatic DoH setup is not enabled for this package manager; DNS was not changed.${NC}"; return 1; fi
-    command -v dnscrypt-proxy >/dev/null 2>&1
+    command -v dnscrypt-proxy >/dev/null 2>&1 || return 1
+    [[ -f "$_cfg" && ! -L "$_cfg" ]] || { msg "${YELLOW}dnscrypt-proxy config missing after install; DNS was not changed.${NC}"; return 1; }
 }
 
 dns_enable_doh() {

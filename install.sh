@@ -23458,7 +23458,11 @@ try:
     data = json.loads(raw)
 except Exception:
     sys.exit(1)
-months = ((data.get("interfaces") or [{}])[0].get("traffic") or {}).get("month") or []
+_traffic = (data.get("interfaces") or [{}])[0].get("traffic") or {}
+months = _traffic.get("month") or _traffic.get("months") or []
+if not _traffic.get("month") and _traffic.get("months"):
+    # R6C10-02: vnStat 1.x months are KiB counts; normalize to bytes.
+    months = [{**m, "rx": int(m.get("rx", 0)) * 1024, "tx": int(m.get("tx", 0)) * 1024} for m in months]
 months = sorted(months,
                 key=lambda m: (m.get("date", {}).get("year", 0),
                                m.get("date", {}).get("month", 0)),

@@ -40658,7 +40658,7 @@ upgrade_current_cores_only() {
     is_yes "$answer" || { msg "${YELLOW}$(tr_msg tl_cancelled)${NC}"; pause_return; return 0; }
     # Each core gets an independent transaction (begin → upgrade → commit)
     # inside a subshell, so a failure rolls back only that core.
-    local failed_cores=() stopped=0
+    local failed_cores=() stopped=0 idx=0
     for t in "${targets[@]}"; do
         msg "${CYAN}--- Upgrading $t (independent transaction) ---${NC}"
         # Each core runs in a subshell with its own transaction and
@@ -40699,10 +40699,16 @@ upgrade_current_cores_only() {
                     ;;
             esac
         fi
+        idx=$((idx+1))
     done
     ABOX_CORE_TX_RB_STATUS=''
     if (( stopped == 1 )); then
-        msg "${YELLOW}[!] Core upgrade loop stopped early; remaining cores were not attempted: ${failed_cores[*]}${NC}"
+        # R16C16-02: the unattempted cores are the targets after the
+        # one that stopped the loop, not failed_cores (which holds
+        # attempted cores, including the stopping one).
+        local unattempted=() j
+        for (( j=idx+1; j<${#targets[@]}; j++ )); do unattempted+=("${targets[j]}"); done
+        msg "${YELLOW}[!] Core upgrade loop stopped early; failed cores: ${failed_cores[*]}; remaining cores not attempted: ${unattempted[*]}${NC}"
     elif (( ${#failed_cores[@]} > 0 )); then
         msg "${YELLOW}[!] Completed with failures (rolled back): ${failed_cores[*]}${NC}"
     else

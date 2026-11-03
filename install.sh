@@ -38243,6 +38243,14 @@ run_acheck_tool() {
         msg "${RED}$(tr_msg acheck_failed)${NC}"
         return 1
     fi
+    # R8C16-N01: dest must be a plain regular file (or absent). A
+    # directory (or symlink) dest would make install/cp drop the verified
+    # file inside it while execution later used the dest path.
+    if [[ ( -e "$_f" || -L "$_f" ) && ( ! -f "$_f" || -L "$_f" ) ]]; then
+        rm -rf -- "$_md"
+        msg "${RED}$(tr_msg acheck_failed)${NC}"
+        return 1
+    fi
     # Both installers failing must NOT fall through to executing the
     # stale $_f (possibly a pre-gate unsigned cache).
     if ! install -m 600 "$_md/acheck.py" "$_f" 2>/dev/null && ! cp "$_md/acheck.py" "$_f" 2>/dev/null; then
@@ -38250,8 +38258,12 @@ run_acheck_tool() {
         msg "${RED}$(tr_msg acheck_failed)${NC}"
         return 1
     fi
+    # R11C16-01: run the verified temp file, not the shared cache
+    # path, so no install-to-execute window in /etc/ddr/tools exists.
+    python3 "$_md/acheck.py"
+    local _rc=$?
     rm -rf -- "$_md"
-    python3 "$_f"
+    return $_rc
 }
 
 

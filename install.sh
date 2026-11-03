@@ -39958,9 +39958,22 @@ core_expected_listen_ports() {
 
 core_ports_listening() {
     local core="$1" cfg="$2" spec proto port flags any=0
+    local -a checks=()
+    local lo hi p
     while IFS= read -r spec; do
-        [[ "$spec" =~ ^(tcp|udp)/([0-9]+)$ ]] || continue
-        proto="${BASH_REMATCH[1]}"; port="${BASH_REMATCH[2]}"
+        if [[ "$spec" =~ ^(tcp|udp)/([0-9]+)-([0-9]+)$ ]]; then
+            # R4C16-03: expand a range spec to single-port entries so it
+            # is probed instead of skipped (a range-only inbound no longer
+            # yields any=0, and a failing port inside a range is caught).
+            # A reversed range yields no entries (the for loop is skipped).
+            proto="${BASH_REMATCH[1]}"; lo="${BASH_REMATCH[2]}"; hi="${BASH_REMATCH[3]}"
+            for ((p=lo; p<=hi; p++)); do checks+=("$proto/$p"); done
+        elif [[ "$spec" =~ ^(tcp|udp)/([0-9]+)$ ]]; then
+            checks+=("$spec")
+        fi
+    done < <(core_expected_listen_ports "$core" "$cfg" | awk '!seen[$0]++')
+    for spec in "${checks[@]}"; do
+        proto="${spec%%/*}"; port="${spec##*/}"
         any=1
         [[ "$proto" == tcp ]] && flags='-H -lntp' || flags='-H -lnup'
         # Single-protocol ss omits the Netid column, so Local Address:Port is $4.
@@ -39969,7 +39982,7 @@ core_ports_listening() {
             msg "${RED}[!] ${core} 端口 ${port}/${proto} 未处于监听状态。${NC}"
             return 1
         fi
-    done < <(core_expected_listen_ports "$core" "$cfg" | awk '!seen[$0]++')
+    done
     (( any == 1 ))
 }
 

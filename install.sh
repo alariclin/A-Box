@@ -25891,16 +25891,32 @@ users_link_combo() {
                 "$(printf '%s' "${method}:${eff}" | users_b64url_enc)" "$(uri_host "$ip")" "${port:-${SS_PORT:-2053}}" "$tag" "$name" ;;
         hy2)
             port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.listen_port // "")' "$cfg" 2>/dev/null | head -1)
-            local obfs='' sni=''
+            local obfs='' obfs_type='' sni='' cert_path='' acme_domain='' insecure=1 q=''
             obfs=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .obfs.password // ""' "$cfg" 2>/dev/null | head -1)
+            obfs_type=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .obfs.type // ""' "$cfg" 2>/dev/null | head -1)
             sni=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.server_name // ""' "$cfg" 2>/dev/null | head -1)
-            if (( encount >= 2 )); then
-                printf 'hysteria2://%s:%s@%s:%s?insecure=1&sni=%s&obfs=salamander&obfs-password=%s#%s-%s' \
-                    "$(urlencode "$name")" "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-443}" "$sni" "$(urlencode "$obfs")" "$tag" "$name"
+            # R15C11-03: keep certificate validation for trusted
+            # certificates; only self-signed (or undeterminable)
+            # keeps insecure=1. ACME implies publicly trusted.
+            acme_domain=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.acme.domain // ""' "$cfg" 2>/dev/null | head -1)
+            if [[ -n "$acme_domain" ]]; then
+                insecure=0
             else
-                printf 'hysteria2://%s@%s:%s?insecure=1&sni=%s&obfs=salamander&obfs-password=%s#%s-%s' \
-                    "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-443}" "$sni" "$(urlencode "$obfs")" "$tag" "$name"
-            fi ;;
+                cert_path=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.certificate_path // ""' "$cfg" 2>/dev/null | head -1)
+                if [[ -n "$cert_path" && -f "$cert_path" ]] && command -v openssl >/dev/null 2>&1; then
+                    local _iss='' _sub=''
+                    _iss=$(openssl x509 -in "$cert_path" -noout -issuer 2>/dev/null | sed 's/^issuer= *//')
+                    _sub=$(openssl x509 -in "$cert_path" -noout -subject 2>/dev/null | sed 's/^subject= *//')
+                    if [[ -n "$_iss" && -n "$_sub" && "$_iss" != "$_sub" ]]; then insecure=0; fi
+                fi
+            fi
+            if (( insecure == 1 )); then q='insecure=1'; fi
+            if [[ -n "$q" ]]; then q+="&sni=$sni"; else q="sni=$sni"; fi
+            if [[ -n "$obfs_type" ]]; then q+="&obfs=$obfs_type&obfs-password=$(urlencode "$obfs")"; fi
+            # R1-11-F05: sing-box Hy2 is password-only auth, even
+            # multi-user; the name:secret form fails authentication.
+            printf 'hysteria2://%s@%s:%s?%s#%s-%s' \
+                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-443}" "$q" "$tag" "$name" ;;
         *) return 1 ;;
     esac
     return 0

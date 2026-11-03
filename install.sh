@@ -32156,7 +32156,7 @@ append_managed_service_state_entry() {
 }
 
 _apply_managed_service_state_file() {
-    local state_file="${1:-}" expected_file="${2:-}" line srv active enabled extra seen_srvs="|"
+    local state_file="${1:-}" expected_file="${2:-}" changed_file="${3:-}" line srv active enabled extra seen_srvs="|"
     [[ -r "$state_file" && -f "$state_file" && ! -L "$state_file" ]] || return 1
     [[ "$(stat -c %u:%g "$state_file" 2>/dev/null || true)" == 0:0 ]] || return 1
     local mode
@@ -32198,49 +32198,72 @@ _apply_managed_service_state_file() {
         seen_srvs+="$srv|"
         abox_owns_service "$srv" || return 1
 
+        # R1-13-F5/R3C13-03: observe the applier's own before-state
+        # for every service (not only when a preflight file is given), so
+        # change tracking below does not depend on the preflight path.
+        local current_state_before
+        current_state_before=$(managed_service_state_value "$srv") || return 1
         if [[ -n "$expected_file" ]]; then
             local expected_state_before
             expected_state_before=$(awk -F'|' -v target="$srv" '$1 == target {print; found=1; exit} END {if (!found) exit 1}' "$expected_file") || return 2
-            local current_state_before
-            current_state_before=$(managed_service_state_value "$srv") || return 2
             [[ "$current_state_before" == "$expected_state_before" ]] || return 2
         fi
 
-        local restored_state restored_srv restored_active restored_enabled restored_extra
+        # Apply with a failure flag instead of immediate returns, so a
+        # partial mutation (e.g. enable ok, start failed) is still
+        # recorded below as an applier change to roll back.
+        local apply_rc=0 post_state
         if [[ "${INIT_SYS:-}" == systemd ]]; then
-            systemctl daemon-reload >/dev/null 2>&1 || return 1
-            case "$enabled" in
-                enabled) systemctl enable "$srv" >/dev/null 2>&1 || return 1 ;;
-                enabled-runtime) systemctl disable "$srv" >/dev/null 2>&1 || return 1; systemctl enable --runtime "$srv" >/dev/null 2>&1 || return 1; [[ "$(systemctl is-enabled "$srv" 2>/dev/null)" == enabled-runtime ]] || return 1 ;;
-                disabled) systemctl disable "$srv" >/dev/null 2>&1 || return 1 ;;
-            esac
-            if [[ "$active" == 1 ]]; then
-                systemctl start "$srv" >/dev/null 2>&1 || systemctl restart "$srv" >/dev/null 2>&1 || return 1
-            else
-                systemctl stop "$srv" >/dev/null 2>&1 || return 1
+            systemctl daemon-reload >/dev/null 2>&1 || apply_rc=1
+            if (( apply_rc == 0 )); then
+                case "$enabled" in
+                    enabled) systemctl enable "$srv" >/dev/null 2>&1 || apply_rc=1 ;;
+                    enabled-runtime) systemctl disable "$srv" >/dev/null 2>&1 || apply_rc=1; if (( apply_rc == 0 )); then systemctl enable --runtime "$srv" >/dev/null 2>&1 || apply_rc=1; fi; if (( apply_rc == 0 )); then [[ "$(systemctl is-enabled "$srv" 2>/dev/null)" == enabled-runtime ]] || apply_rc=1; fi ;;
+                    disabled) systemctl disable "$srv" >/dev/null 2>&1 || apply_rc=1 ;;
+                esac
+            fi
+            if (( apply_rc == 0 )); then
+                if [[ "$active" == 1 ]]; then
+                    systemctl start "$srv" >/dev/null 2>&1 || systemctl restart "$srv" >/dev/null 2>&1 || apply_rc=1
+                else
+                    systemctl stop "$srv" >/dev/null 2>&1 || apply_rc=1
+                fi
             fi
         elif [[ "${INIT_SYS:-}" == openrc ]]; then
-            if [[ "$enabled" == enabled ]]; then
-                rc-update add "$srv" default >/dev/null 2>&1 || return 1
-            elif rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)"; then
-                rc-update del "$srv" default >/dev/null 2>&1 || return 1
+            if (( apply_rc == 0 )); then
+                if [[ "$enabled" == enabled ]]; then
+                    rc-update add "$srv" default >/dev/null 2>&1 || apply_rc=1
+                elif rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)"; then
+                    rc-update del "$srv" default >/dev/null 2>&1 || apply_rc=1
+                fi
             fi
-            if [[ "$active" == 1 ]]; then
-                rc-service "$srv" start >/dev/null 2>&1 || rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&- || return 1
-            else
-                rc-service "$srv" stop >/dev/null 2>&1 || return 1
+            if (( apply_rc == 0 )); then
+                if [[ "$active" == 1 ]]; then
+                    rc-service "$srv" start >/dev/null 2>&1 || rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&- || apply_rc=1
+                else
+                    rc-service "$srv" stop >/dev/null 2>&1 || apply_rc=1
+                fi
             fi
         else
-            return 1
+            apply_rc=1
         fi
-        restored_state=$(managed_service_state_value "$srv") || return 1
-        IFS='|' read -r restored_srv restored_active restored_enabled restored_extra <<< "$restored_state"
+        # Record only an observable change by this applier: compare the
+        # post-attempt state with the applier's own before-state. A
+        # preflight failure (return 2 above) never reaches here, so a
+        # service the applier never touched is never recorded.
+        post_state=$(managed_service_state_value "$srv" 2>/dev/null) || post_state=''
+        if [[ -n "$changed_file" && -n "$post_state" && "$post_state" != "$current_state_before" ]]; then
+            printf '%s\n' "$srv" >> "$changed_file" || return 1
+        fi
+        (( apply_rc == 0 )) || return 1
+        local restored_srv restored_active restored_enabled restored_extra
+        IFS='|' read -r restored_srv restored_active restored_enabled restored_extra <<< "$post_state"
         [[ -z "${restored_extra:-}" && "$restored_srv" == "$srv" && "$restored_active" == "$active" && "$restored_enabled" == "$enabled" ]] || return 1
     done < "$state_file"
 }
 
 restore_managed_service_state() {
-    local state_file="${1:-}" expected_file="${2:-}" tx_dir before_file post_file line srv before after rc=0
+    local state_file="${1:-}" expected_file="${2:-}" tx_dir before_file post_file changed_file line srv before after rc=0
     [[ -r "$state_file" && -f "$state_file" && ! -L "$state_file" ]] || return 1
     validate_services_state_file "$state_file" || return 1
     tx_dir=$(mktemp -d /run/A-Box-service-restore.XXXXXX) || return 1
@@ -32254,17 +32277,33 @@ restore_managed_service_state() {
         printf '%s\n' "$before" >> "$before_file" || { rm -rf -- "$tx_dir"; return 1; }
     done < "$state_file"
     chmod 600 "$before_file" || { rm -rf -- "$tx_dir"; return 1; }
+    changed_file="$tx_dir/changed.services"
+    : > "$changed_file" || { rm -rf -- "$tx_dir"; return 1; }
+    chmod 600 "$changed_file" || { rm -rf -- "$tx_dir"; return 1; }
 
-    if _apply_managed_service_state_file "$state_file" "$expected_file"; then
+    if _apply_managed_service_state_file "$state_file" "$expected_file" "$changed_file"; then
         rm -rf -- "$tx_dir" || return 1
         return 0
     else
         rc=$?
     fi
 
-    # The low-level applier may have changed a prefix of services before a later
-    # command failed. Capture the exact observable intermediate state; if any
-    # query fails, preserve the recovery snapshot instead of guessing.
+    # Roll back ONLY services this restore itself changed (as recorded
+    # by the applier). A service the applier never touched is never
+    # rolled back, no matter what shape its live state has: F5's admin
+    # enable-only and R3C13-03's admin stop both produce states that the
+    # old shape matcher mistook for applier work.
+    if [[ ! -s "$changed_file" ]]; then
+        # The applier changed nothing (typically a preflight-only
+        # conflict): there is nothing to roll back. Outside changes
+        # observed here are left untouched.
+        rm -rf -- "$tx_dir" || return 1
+        return "$rc"
+    fi
+
+    # Capture the exact observable intermediate state for the rollback
+    # preflight and for reporting outside changes; if any query fails,
+    # preserve the recovery snapshot instead of guessing.
     : > "$post_file" || { printf '%s\n' "A-Box service restore failed; recovery state preserved at $tx_dir" >&2; return 1; }
     while IFS='|' read -r srv _active _enabled extra || [[ -n "$srv" ]]; do
         [[ -n "$srv" ]] || continue
@@ -32272,48 +32311,27 @@ restore_managed_service_state() {
         printf '%s\n' "$after" >> "$post_file" || { printf '%s\n' "A-Box service restore failed; recovery state preserved at $tx_dir" >&2; return 1; }
     done < "$state_file"
     chmod 600 "$post_file" || { printf '%s\n' "A-Box service restore failed; recovery state preserved at $tx_dir" >&2; return 1; }
-    if cmp -s -- "$before_file" "$post_file"; then
-        # No service state changed; avoid needlessly restarting/stopping a stack
-        # when the original operation failed before its first effective mutation.
-        rm -rf -- "$tx_dir" || return 1
-        return "$rc"
-    fi
 
-    # Roll back ONLY the services this restore itself changed. A service whose
-    # live state now equals neither its pre-restore value nor this restore's
-    # target was changed by an outside actor mid-restore; rolling it back
-    # would silently destroy that change, so it is excluded and reported.
+
+    # Roll back the recorded services only, to their pre-restore
+    # values; the rollback applier's own preflight (current == post)
+    # guards against rolling back over a newer outside change.
     local rb_before rb_post excluded=''
     rb_before="$tx_dir/rollback-before.state"; rb_post="$tx_dir/rollback-post.state"
     : > "$rb_before" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
     : > "$rb_post" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
     while IFS='|' read -r srv _active _enabled extra || [[ -n "$srv" ]]; do
         [[ -n "$srv" ]] || continue
-        local b_line t_line p_line
+        local b_line p_line
         b_line=$(awk -F'|' -v target="$srv" '$1 == target {print; exit}' "$before_file") || b_line=''
-        t_line=$(awk -F'|' -v target="$srv" '$1 == target {print; exit}' "$state_file") || t_line=''
         p_line=$(awk -F'|' -v target="$srv" '$1 == target {print; exit}' "$post_file") || p_line=''
-        if [[ "$p_line" == "$t_line" && "$t_line" != "$b_line" ]]; then
+        if grep -qxF "$srv" "$changed_file" 2>/dev/null; then
             printf '%s\n' "$b_line" >> "$rb_before" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
             printf '%s\n' "$p_line" >> "$rb_post" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
         elif [[ "$p_line" != "$b_line" ]]; then
-            # Reachable intermediate states of this restore itself: the
-            # applier changes enabled first, then active. If the second
-            # step failed, the service sits at (before_active,
-            # target_enabled) — or, for an enabled-runtime target, at
-            # (before_active, disabled) after the intermediate disable.
-            # Active never moved, so this state cannot be blamed on an
-            # outside actor; roll it back like a fully applied service.
-            local p_active p_enabled b_active t_enabled
-            IFS='|' read -r _ p_active p_enabled _ <<< "$p_line"
-            IFS='|' read -r _ b_active _ _ <<< "$b_line"
-            IFS='|' read -r _ _ t_enabled _ <<< "$t_line"
-            if [[ "$p_active" == "$b_active" && ( "$p_enabled" == "$t_enabled" || ( "$t_enabled" == 'enabled-runtime' && "$p_enabled" == 'disabled' ) ) ]]; then
-                printf '%s\n' "$b_line" >> "$rb_before" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
-                printf '%s\n' "$p_line" >> "$rb_post" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
-            else
-                excluded+="$srv "
-            fi
+            # Not changed by this restore but moved by an outside actor
+            # during the failure: leave it and report it.
+            excluded+="$srv "
         fi
     done < "$state_file"
     chmod 600 "$rb_before" "$rb_post" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }

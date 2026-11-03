@@ -12,6 +12,14 @@ TAG="core-binaries"
 STAGE="${1:-./mirror-staging}"
 
 [[ -d "$STAGE" ]] || { echo "staging dir not found: $STAGE"; exit 1; }
+# R5C19-03: resolve STAGE to an absolute path before any find
+# call: a STAGE of "-delete" would be parsed by find as its
+# own action (deleting files in the current directory).
+STAGE="$(cd "$STAGE" && pwd -P)"
+# R6C19-04: gh parses upload args as path#label; a '#' in
+# STAGE would mislabel the upload while the merge still
+# records the verified file.
+[[ "$STAGE" != *#* ]] || { echo "staging path must not contain '#': $STAGE"; exit 1; }
 command -v gh >/dev/null || { echo "gh CLI required"; exit 1; }
 
 # Expected exact file set (A-03 fix: refuse extras, N-10 fix: nullglob safe).
@@ -48,16 +56,40 @@ fi
 echo "[*] Existing assets in $TAG:"
 existing_json="$(gh release view "$TAG" --repo "$REPO" --json assets -q '.assets[] | "\(.name) \(.digest // "")"')"
 echo "$existing_json" | cut -d' ' -f1
+# R1-19-F04: this helper cannot sign. If the release manifest
+# is signed, updating SHA256SUMS here would leave a new
+# manifest with a stale signature; refuse and use the signed
+# publish path instead.
+if awk '$1 == "SHA256SUMS.sig" { found=1 } END { exit !found }' <<< "$existing_json"; then
+    echo "SHA256SUMS.sig exists in the release; refusing to update"
+    echo "an unsigned SHA256SUMS (use the signed publish workflow instead)"
+    exit 1
+fi
 
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 
+# R4N19-01: snapshot staging before any verification. Every
+# later read (manifest check, upstream digests, upload, merge)
+# uses ONLY the snapshot, so a staging swap after verification
+# cannot get unverified bytes uploaded or merged.
+snap="$tmp/staging-snapshot"
+mkdir -p -- "$snap"
+for name in "${expected[@]}"; do
+    cp -P -- "$STAGE/$name" "$snap/$name"
+done
+cp -P -- "$STAGE/SHA256SUMS.staging" "$snap/SHA256SUMS.staging"
+# A swapped-in symlink must abort, not be followed on read.
+for name in "${expected[@]}" SHA256SUMS.staging; do
+    [[ -f "$snap/$name" && ! -L "$snap/$name" ]] || { echo "snapshot file missing or symlink: $name; aborting"; exit 1; }
+done
+
 # Verify staging checksums BEFORE any upload.
 echo "[*] Verifying staged files against SHA256SUMS.staging..."
-awk 'NF { f2=$2; sub(/^\*/, "", f2); if ($1 !~ /^[A-Fa-f0-9]{64}$/ || f2 == "" || NF != 2 || seen[f2]++) exit 1 }' "$STAGE/SHA256SUMS.staging" || { echo "staging manifest syntax invalid; aborting (nothing uploaded)"; exit 1; }
-(cd "$STAGE" && sha256sum --check --strict SHA256SUMS.staging) || { echo "staging verification failed; aborting (nothing uploaded)"; exit 1; }
+awk 'NF { f2=$2; sub(/^\*/, "", f2); if ($1 !~ /^[A-Fa-f0-9]{64}$/ || f2 == "" || NF != 2 || seen[f2]++) exit 1 }' "$snap/SHA256SUMS.staging" || { echo "staging manifest syntax invalid; aborting (nothing uploaded)"; exit 1; }
+(cd "$snap" && sha256sum --check --strict SHA256SUMS.staging) || { echo "staging verification failed; aborting (nothing uploaded)"; exit 1; }
 # P1-04 fix 2026-10-14: manifest must list exactly the expected files, no more, no less.
 echo "[*] Verifying manifest covers exactly the expected file set..."
-manifest_files=$(awk '{ f=$2; sub(/^\*/, "", f); print f }' "$STAGE/SHA256SUMS.staging" | sort)
+manifest_files=$(awk '{ f=$2; sub(/^\*/, "", f); print f }' "$snap/SHA256SUMS.staging" | sort)
 expected_files=$(printf '%s\n' "${expected[@]}" | sort)
 if [[ "$manifest_files" != "$expected_files" ]]; then
     echo "manifest file set does not match expected set; aborting"
@@ -93,7 +125,7 @@ for name in "${expected[@]}"; do
     upstream_digest=$(gh api "repos/$up_repo/releases/tags/$up_tag" --jq ".assets[] | select(.name == \"$up_asset\") | .digest // empty" 2>/dev/null || true)
     [[ -n "$upstream_digest" ]] || { echo "upstream digest not found for $up_repo $up_tag $up_asset; aborting"; exit 1; }
     upstream_hex="${upstream_digest#sha256:}"
-    staging_sum=$(sha256sum < "$STAGE/$name" | cut -d' ' -f1)
+    staging_sum=$(sha256sum < "$snap/$name" | cut -d' ' -f1)
     if [[ "$upstream_hex" != "$staging_sum" ]]; then
         echo "[CONFLICT] $name does not match upstream official digest:"
         echo "  upstream ($up_repo $up_tag $up_asset): $upstream_hex"
@@ -113,7 +145,7 @@ gh release download "$TAG" --repo "$REPO" -p "SHA256SUMS" -D "$tmp2" 2>/dev/null
 while read -r sum name _ || [[ -n "$sum" ]]; do
     [[ -n "${sum:-}" && -n "${name:-}" ]] || continue
     name="${name#\*}"
-    staging_sum=$(awk -v n="$name" '{ g=$2; sub(/^\*/, "", g); if (g == n) { print $1; exit } }' "$STAGE/SHA256SUMS.staging" || true)
+    staging_sum=$(awk -v n="$name" '{ g=$2; sub(/^\*/, "", g); if (g == n) { print $1; exit } }' "$snap/SHA256SUMS.staging" || true)
     if [[ -n "$staging_sum" && "${staging_sum,,}" != "${sum,,}" ]]; then
         echo "[CONFLICT] Remote SHA256SUMS has $name with different hash:"
         echo "  remote:  $sum"
@@ -126,7 +158,7 @@ done < "$tmp2/SHA256SUMS"
 # 1. Upload binaries (skip if already present WITH MATCHING DIGEST).
 # F-03 fix: compare GitHub asset digest with staging SHA-256; conflict aborts.
 for name in "${expected[@]}"; do
-    f="$STAGE/$name"
+    f="$snap/$name"
     staging_sum=$(sha256sum "$f" | cut -d' ' -f1)
     existing_line=$(awk -v n="$name" '$1 == n' <<< "$existing_json")
     if [[ -n "$existing_line" ]]; then
@@ -175,7 +207,7 @@ while read -r sum name _ || [[ -n "$sum" ]]; do
     else
         echo "$sum  $name" >> "$tmp/SHA256SUMS.new"
     fi
-done < "$STAGE/SHA256SUMS.staging"
+done < "$snap/SHA256SUMS.staging"
 
 # U59: validate the merged manifest before upload (a previously glued
 # line, or any malformed remote line, must not be published).

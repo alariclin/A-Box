@@ -12103,7 +12103,8 @@ snapshot_valid() {
 # exist but the snapshot cannot restore them; proceed when nothing live
 # to lose, e.g. fresh boot or IPv4-only host with no live v6 rules).
 if ! snapshot_valid /etc/ddr/iptables.v4; then
-    if _iptables_q iptables -S INPUT 2>/dev/null | grep -q 'A-Box-'; then
+    _fw_input_v4=$(_iptables_q iptables -S INPUT 2>/dev/null) || { echo 'A-Box firewall restore: IPv4 INPUT query failed; refusing to delete.' >&2; exit 1; }
+    if [[ "$_fw_input_v4" == *'A-Box-'* ]]; then
         echo 'A-Box firewall restore: IPv4 snapshot invalid but live A-Box rules exist; refusing to delete.' >&2
         exit 1
     fi
@@ -12122,7 +12123,8 @@ reorder_policy iptables WL DROP || exit 1
 rm -f -- "$restore_backup4"
 if command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -S INPUT >/dev/null 2>&1; then
     if ! snapshot_valid /etc/ddr/iptables.v6; then
-        if _iptables_q ip6tables -S INPUT 2>/dev/null | grep -q 'A-Box-'; then
+        _fw_input_v6=$(_iptables_q ip6tables -S INPUT 2>/dev/null) || { echo 'A-Box firewall restore: IPv6 INPUT query failed; refusing to delete.' >&2; exit 1; }
+        if [[ "$_fw_input_v6" == *'A-Box-'* ]]; then
             echo 'A-Box firewall restore: IPv6 snapshot invalid but live A-Box rules exist; refusing to delete.' >&2
             exit 1
         fi

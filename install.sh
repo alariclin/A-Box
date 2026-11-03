@@ -13523,7 +13523,7 @@ _ss_wl_rollback_to_snapshot() {
         cur_out="$(_iptables_q "$ipt" -S INPUT 2>/dev/null)"; cur_rc=$?
         if (( cur_rc != 0 )); then failed=1; continue; fi
         local cur
-        cur="$(printf '%s\n' "$cur_out" | grep -E -- "--comment A-Box-${_SS_WL_SNAP_PORT}-(tcp|udp)([[:space:]]|$)" | sed 's/^-A INPUT //')"
+        cur="$(printf '%s\n' "$cur_out" | grep -E -- "--comment \"?A-Box-${_SS_WL_SNAP_PORT}-(tcp|udp)(-(WL6?|DROP6?))?\"?([[:space:]]|$)" | sed 's/^-A INPUT //')"
         local restore_input="*filter"
         local line pos
         while IFS= read -r line; do
@@ -13615,7 +13615,7 @@ _ss_wl_rollback_to_snapshot() {
         # Compare normalized full sets (order-independent for this check,
         # as head-order was already verified above)
         local final normalized_final
-        final="$(printf '%s\n' "$final_out" | grep -E -- "--comment A-Box-${_SS_WL_SNAP_PORT}-(tcp|udp)([[:space:]]|$)" | sed 's/^-A INPUT //')"
+        final="$(printf '%s\n' "$final_out" | grep -E -- "--comment \"?A-Box-${_SS_WL_SNAP_PORT}-(tcp|udp)(-(WL6?|DROP6?))?\"?([[:space:]]|$)" | sed 's/^-A INPUT //')"
         normalized_final=""
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue

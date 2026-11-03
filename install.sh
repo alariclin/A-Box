@@ -39890,7 +39890,7 @@ enable_abox_service_soft() {
         return 1
     fi
     state=$(managed_service_state_value "$srv") || return 1
-    [[ "$state" == "$srv|1|enabled" ]]
+    [[ "$state" == "$srv|1|enabled" || "$state" == "$srv|0|enabled" ]]
 }
 
 start_abox_service_soft() {

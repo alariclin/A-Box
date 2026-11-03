@@ -31653,16 +31653,41 @@ PY_LEGACY_VALIDATE
 convert_legacy_backup_archive() {
     local selected="$1" out_dir="${2:-$(dirname "$1")}" work root out answer unit srv path
     [[ -f "$selected" && ! -L "$selected" ]] || die 'Legacy backup path is invalid.'
-    if [[ -f "${selected}.sha256" && ! -L "${selected}.sha256" ]]; then
-        backup_checksum_verify "$selected" "${selected}.sha256" || die 'Legacy backup SHA256 verification failed.'
-    else
-        [[ -t 0 ]] || die 'Legacy backup has no checksum and conversion is non-interactive.'
-        confirm_yes_no 'Legacy backup has no trusted checksum. Import anyway? [Y/N]: ' || return 130
-    fi
-    validate_legacy_backup_archive "$selected" || die 'Legacy backup archive safety validation failed.'
+    # R6C14-01: private root-only copy BEFORE any validation; every
+    # later read uses the copy, so a swap of $selected afterwards
+    # cannot smuggle unvalidated content into the conversion.
     work=$(mktemp -d /tmp/A-Box-legacy-import.XXXXXX) || die 'Legacy conversion temp directory failed.'
     chmod 700 "$work"
-    python3 -I - "$selected" "$work" <<'PY_LEGACY_EXTRACT' || { rm -rf "$work"; die 'Legacy backup extraction failed.'; }
+    local _c_input="$work/.legacy-input.tar.gz"
+    python3 -I - "$selected" "$_c_input" <<'PY_LEGACY_COPY' || { rm -rf "$work"; die 'Legacy backup copy failed.'; }
+import os, sys
+src, dst = sys.argv[1], sys.argv[2]
+# O_NOFOLLOW on both ends: a symlink at open time fails, and a swap
+# after open cannot redirect an already-open fd.
+sfd = os.open(src, os.O_RDONLY | os.O_NOFOLLOW)
+try:
+    dfd = os.open(dst, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
+    try:
+        while True:
+            chunk = os.read(sfd, 1024 * 1024)
+            if not chunk:
+                break
+            view = memoryview(chunk)
+            while view:
+                view = view[os.write(dfd, view):]
+    finally:
+        os.close(dfd)
+finally:
+    os.close(sfd)
+PY_LEGACY_COPY
+    if [[ -f "${selected}.sha256" && ! -L "${selected}.sha256" ]]; then
+        backup_checksum_verify "$_c_input" "${selected}.sha256" || { rm -rf "$work"; die 'Legacy backup SHA256 verification failed.'; }
+    else
+        [[ -t 0 ]] || { rm -rf "$work"; die 'Legacy backup has no checksum and conversion is non-interactive.'; }
+        confirm_yes_no 'Legacy backup has no trusted checksum. Import anyway? [Y/N]: ' || { rm -rf "$work"; return 130; }
+    fi
+    validate_legacy_backup_archive "$_c_input" || { rm -rf "$work"; die 'Legacy backup archive safety validation failed.'; }
+    python3 -I - "$_c_input" "$work" <<'PY_LEGACY_EXTRACT' || { rm -rf "$work"; die 'Legacy backup extraction failed.'; }
 import os, pathlib, tarfile, sys
 src,dst=sys.argv[1:]; base=pathlib.Path(dst).resolve()
 max_members=10000; max_file=512*1024*1024; max_total=1024*1024*1024

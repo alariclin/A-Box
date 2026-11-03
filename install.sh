@@ -26847,7 +26847,7 @@ _nsni_probe() {
     if [[ "$core" == 'sing-box' ]]; then
         j=$(jq -r --arg t "$tag" '
             .inbounds[]? | select(.tag == $t) |
-            if (.tls.reality.handshake.server // "") != "" then "reality-sb|" + .tls.reality.handshake.server + "||"
+            if (.tls.reality.handshake.server // "") != "" then "reality-sb|" + (if (.tls.server_name // "") != "" then .tls.server_name else .tls.reality.handshake.server end) + "||"
             elif .type == "tuic" then "tuic|" + (.tls.server_name // "") + "|" + (.tls.key_path // "") + "|" + (.tls.certificate_path // "")
             elif .type == "shadowtls" then "shadowtls|" + (.handshake.server // "") + "||"
             else "" end' "$cfg" 2>/dev/null)
@@ -26934,7 +26934,7 @@ PYEOF
 _nsni_handshake_check() {
     local core="$1" tag="$2" cfg="$3" sni="$4"
     local bin='' port='' listen='' dial='' uuid='' flow='' net='' xpath='' xhost='' xmode='' grpc_service='' sid='' pbk=''
-    local lf='' sport='' cc='' pid='' code='' i=0 up=0 _try=0 _envf='' pbk_src='' logf='' cerr='' curl_rc=0 ready=0 _priv=''
+    local lf='' sport='' cc='' pid='' code='' i=0 up=0 _try=0 _envf='' pbk_src='' logf='' cerr='' cerr_curl='' curl_rc=0 ready=0 _priv=''
     case "$core" in
         xray) bin='/usr/local/bin/xray' ;;
         xray-latest) bin=$(users_bin_of xray-latest 2>/dev/null || echo /usr/local/bin/xray-latest) ;;
@@ -27001,6 +27001,7 @@ _nsni_handshake_check() {
     [[ -n "$sport" ]] || return 2
     cc=$(mktemp /tmp/A-Box-nsni-client.XXXXXX.json) || return 2
     cerr=$(mktemp /tmp/A-Box-nsni-client-err.XXXXXX) || { rm -f "$cc"; return 2; }
+    cerr_curl=$(mktemp /tmp/A-Box-nsni-curl-err.XXXXXX) || { rm -f "$cc" "$cerr"; return 2; }
     # SYD-B2 E20: the server was just restarted by the caller; systemctl
     # restart returns before the new process listens. Without this wait
     # the temp client dials a dead port and the check false-negatives.
@@ -27026,13 +27027,13 @@ _nsni_handshake_check() {
     { printf 'nsni-check core=%s tag=%s sni=%s dial=%s port=%s pbk_src=%s pbk_len=%s sid_set=%s flow=%s\n' "$core" "$tag" "$sni" "$dial" "$port" "$pbk_src" "${#pbk}" "$([ -n "$sid" ] && printf yes || printf no)" "${flow:-}"; } >> "$logf" 2>/dev/null || true
     if _wait_tcp_port "$dial" "$port" 60; then ready=1; else ready=0; fi
     printf 'nsni-check server-ready=%s\n' "$ready" >> "$logf" 2>/dev/null || true
-    if [[ "$ready" != 1 ]]; then printf 'nsni-check verdict=FAIL server-not-ready\n' >> "$logf" 2>/dev/null || true; rm -f "$cc" "$cerr"; return 1; fi
+    if [[ "$ready" != 1 ]]; then printf 'nsni-check verdict=FAIL server-not-ready\n' >> "$logf" 2>/dev/null || true; rm -f "$cc" "$cerr" "$cerr_curl"; return 1; fi
     if [[ "$core" != 'sing-box' && "$net" == 'grpc' && -z "$grpc_service" ]]; then
         # R4C12-02: a grpc inbound without a serviceName cannot be
         # reproduced; report unavailable (2, warn-and-continue),
         # not a definitive handshake failure (1, rollback).
         { printf 'nsni-check verdict=UNAVAILABLE grpc-no-service\n'; } >> "$logf" 2>/dev/null || true
-        rm -f "$cc" "$cerr"
+        rm -f "$cc" "$cerr" "$cerr_curl"
         return 2
     fi
     if [[ "$core" == 'sing-box' ]]; then
@@ -27041,7 +27042,7 @@ _nsni_handshake_check() {
             inbounds: [{type: "socks", tag: "socks-in", listen: "127.0.0.1", listen_port: $sport}],
             outbounds: [({type: "vless", tag: "proxy", server: $dial, server_port: $port, uuid: $uuid} + (if $flow != "" then {flow: $flow} else {} end) + {
                 tls: {enabled: true, server_name: $sni, reality: {enabled: true, public_key: $pbk, short_id: $sid}, utls: {enabled: true, fingerprint: "chrome"}}})]
-        }' > "$cc" 2>/dev/null || { rm -f "$cc" "$cerr"; return 2; }
+        }' > "$cc" 2>/dev/null || { rm -f "$cc" "$cerr" "$cerr_curl"; return 2; }
         "$bin" run -c "$cc" >"$cerr" 2>&1 & pid=$!
     else
         jq -n --arg dial "$dial" --argjson port "$port" --arg uuid "$uuid" --arg flow "$flow" --arg net "$net" --arg sni "$sni" --arg pbk "$pbk" --arg sid "$sid" --arg xpath "$xpath" --arg xhost "$xhost" --arg xmode "$xmode" --arg grpc_service "$grpc_service" --argjson sport "$sport" '{
@@ -27051,17 +27052,17 @@ _nsni_handshake_check() {
                 streamSettings: ({network: $net, security: "reality",
                     realitySettings: {serverName: $sni, publicKey: $pbk, shortId: $sid, fingerprint: "chrome"}}
                     + (if $net == "xhttp" then {xhttpSettings: {path: $xpath, host: $xhost, mode: $xmode}} elif $net == "grpc" then {grpcSettings: {serviceName: $grpc_service}} else {} end))}]
-        }' > "$cc" 2>/dev/null || { rm -f "$cc" "$cerr"; return 2; }
+        }' > "$cc" 2>/dev/null || { rm -f "$cc" "$cerr" "$cerr_curl"; return 2; }
         "$bin" run -config "$cc" >"$cerr" 2>&1 & pid=$!
     fi
     while (( i < 40 )); do
         if (exec 3<>"/dev/tcp/127.0.0.1/$sport") 2>/dev/null; then up=1; break; fi
         sleep 0.25; i=$((i + 1))
     done
-    if (( up == 0 )); then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; { printf 'nsni-check temp-socks-down\n'; tail -n 20 "$cerr" 2>/dev/null; } >> "$logf" 2>/dev/null || true; rm -f "$cc" "$cerr"; return 2; fi
+    if (( up == 0 )); then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; { printf 'nsni-check temp-socks-down\n'; tail -n 20 "$cerr" 2>/dev/null; } >> "$logf" 2>/dev/null || true; rm -f "$cc" "$cerr" "$cerr_curl"; return 2; fi
     code=''
     for _try in 1 2; do
-        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --noproxy '' --connect-timeout 3 --max-time 10 "https://$sni:$port/" 2>"$cerr.curl")
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --noproxy '' --connect-timeout 3 --max-time 10 "https://$sni:$port/" 2>"$cerr_curl")
         curl_rc=$?
         [[ "$curl_rc" != 0 ]] && code='000'
         printf 'nsni-check try=%s curl-rc=%s http=%s\n' "$_try" "$curl_rc" "$code" >> "$logf" 2>/dev/null || true
@@ -27069,8 +27070,8 @@ _nsni_handshake_check() {
         sleep 1
     done
     kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
-    { printf 'nsni-check temp-client-stderr-tail:\n'; tail -n 20 "$cerr" 2>/dev/null; printf 'nsni-check curl-stderr-tail:\n'; tail -n 5 "$cerr.curl" 2>/dev/null; } >> "$logf" 2>/dev/null || true
-    rm -f "$cc" "$cerr" "$cerr.curl"
+    { printf 'nsni-check temp-client-stderr-tail:\n'; tail -n 20 "$cerr" 2>/dev/null; printf 'nsni-check curl-stderr-tail:\n'; tail -n 5 "$cerr_curl" 2>/dev/null; } >> "$logf" 2>/dev/null || true
+    rm -f "$cc" "$cerr" "$cerr_curl"
     if [[ "$code" =~ ^[0-9][0-9][0-9]$ && "$code" != '000' ]]; then
         printf 'nsni-check verdict=PASS\n' >> "$logf" 2>/dev/null || true
         return 0

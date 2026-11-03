@@ -19019,7 +19019,7 @@ EOF_SVC
         # no-match with parse failure. A symlinked xray config is read
         # through (jq follows it); only a missing one counts as free.
         if jq -e . "$cfg" >/dev/null 2>&1 && ! jq -e --argjson p "$old_port" '.inbounds[]? | select(.listen_port == $p)' "$cfg" >/dev/null 2>&1 \
-           && { [[ ! -f /usr/local/etc/xray/config.json ]] || { jq -e . /usr/local/etc/xray/config.json >/dev/null 2>&1 && ! jq -e --argjson p "$old_port" '.inbounds[]? | select(.port == $p)' /usr/local/etc/xray/config.json >/dev/null 2>&1; }; }; then
+           && { [[ ! -f /usr/local/etc/xray/config.json ]] || { jq -e . /usr/local/etc/xray/config.json >/dev/null 2>&1 && ! jq -e --argjson p "$old_port" 'def covers($p): (.port as $v | if ($v|type)=="number" then $v==$p elif ($v|type)=="string" then ((($v|gsub(" ";"")) as $s | if ($s|test("^[0-9]+$")) then ($s|tonumber)==$p elif ($s|test("^[0-9]+-[0-9]+$")) then (($s|split("-")|map(tonumber)) as [$a,$b] | if $a>$b then true else ($a<=$p and $p<=$b) end) elif ($s|test("^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$")) then (([$s|split(",")[] | ((split("-")|map(tonumber)) as $r | if ($r|length)==1 then $r[0]==$p elif $r[0]>$r[1] then true else ($r[0]<=$p and $p<=$r[1]) end)] | index(true) != null)) else true end)) else true end); .inbounds[]? | select(covers($p))' /usr/local/etc/xray/config.json >/dev/null 2>&1; }; }; then
             remove_abox_native_firewall_rule "$old_port" tcp 2>/dev/null || true
             remove_abox_native_firewall_rule "$old_port" udp 2>/dev/null || true
             save_firewall_rules 2>/dev/null || true

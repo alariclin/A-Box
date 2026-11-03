@@ -22441,7 +22441,7 @@ ensure_vnstat_runtime() {
     _viface="${INGRESS_IF:-}"
     [[ -n "$_viface" ]] || _viface=$(get_active_interface 2>/dev/null || true)
     if [[ -n "$_viface" ]]; then
-        if ! vnstat -i "$_viface" --json m 2>/dev/null | grep -q "\"name\": *\"$_viface\""; then
+        if [[ "$(vnstat -i "$_viface" --json m 2>/dev/null | jq -r --arg iface "$_viface" '.interfaces // [] | any(.[]; (.name // .id) == $iface)' 2>/dev/null)" != "true" ]]; then
             if vnstat --version 2>/dev/null | grep -q 'vnStat 1\.'; then
                 vnstat -u -i "$_viface" >/dev/null 2>&1 || true
             fi
@@ -22454,7 +22454,7 @@ ensure_vnstat_runtime() {
                 rc-service vnstatd restart >/dev/null 2>&1 9>&- 10>&- || true
                 rc-service vnstatd status >/dev/null 2>&1 || { msg "${RED}[!] vnStat 接口修复后服务未处于运行状态；未启用流量限制。${NC}" >&2; return 1; }
             fi
-            vnstat -i "$_viface" --json m 2>/dev/null | grep -q "\"name\": *\"$_viface\"" || { msg "${RED}[!] vnStat 接口修复后仍未注册；未启用流量限制。${NC}" >&2; return 1; }
+            [[ "$(vnstat -i "$_viface" --json m 2>/dev/null | jq -r --arg iface "$_viface" '.interfaces // [] | any(.[]; (.name // .id) == $iface)' 2>/dev/null)" == "true" ]] || { msg "${RED}[!] vnStat 接口修复后仍未注册；未启用流量限制。${NC}" >&2; return 1; }
         fi
     fi
 }
@@ -22466,7 +22466,9 @@ setup_traffic_monitor() {
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] 流量限制事务状态快照失败。${NC}" >&2; return 1; }
     (( ensure_rc == 0 )) || return 1
     install -d -m 711 "$ABOX_DIR" || { msg "${RED}[!] 无法创建流量监控目录。${NC}" >&2; return 1; }
-    write_file_atomically_from_stdin "$ABOX_DIR/traffic_monitor.sh" 700 <<'EOF_TRAFFIC' || { msg "${RED}[!] 流量监控脚本原子写入失败。${NC}" >&2; return 1; }
+    local _tm_tmp='' _ab_esc=''
+    _tm_tmp=$(mktemp) || { msg "${RED}[!] 流量监控脚本临时文件创建失败。${NC}" >&2; return 1; }
+    cat > "$_tm_tmp" <<'EOF_TRAFFIC' || { rm -f -- "$_tm_tmp"; msg "${RED}[!] 流量监控脚本临时写入失败。${NC}" >&2; return 1; }
 #!/usr/bin/env bash
 # Managed by A-Box
 # A-06: umask 077 ensures lock/temp files are 0600 (not world-readable 0644).
@@ -23016,15 +23018,22 @@ elif [[ "$desired" == TRAFFIC_BLOCKED ]]; then
     for_expected_services stop_owned || stop_all_owned_services || { traffic_error 'traffic-blocked state could not be fully enforced'; exit 1; }
 fi
 EOF_TRAFFIC
-    if [[ "${INIT_SYS:-}" == systemd ]]; then
-        sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='systemd'|" "$ABOX_DIR/traffic_monitor.sh" || { msg "${RED}[!] 流量监控脚本运行环境标记写入失败。${NC}" >&2; return 1; }
-    else
-        sed -i "s|^INIT_SYS_EXPECTED=.*|INIT_SYS_EXPECTED='openrc'|" "$ABOX_DIR/traffic_monitor.sh" || { msg "${RED}[!] 流量监控脚本运行环境标记写入失败。${NC}" >&2; return 1; }
-    fi
+    # R11C10-01 + R4N10-03: bake state paths and the init marker into
+    # the temp copy, then publish atomically (no post-publish sed, so a
+    # failed marker write can never leave a published 'unknown' file for
+    # rollback to misread as external modification).
+    _ab_esc="${ABOX_DIR//\\/\\\\}"
+    _ab_esc="${_ab_esc//&/\\&}"
+    _ab_esc="${_ab_esc//#/\\#}"
+    sed -i -e "s#/etc/ddr#${_ab_esc}#g" -e "s#^INIT_SYS_EXPECTED=.*#INIT_SYS_EXPECTED='${INIT_SYS}'#" "$_tm_tmp" || { rm -f -- "$_tm_tmp"; msg "${RED}[!] 流量监控脚本运行环境标记写入失败。${NC}" >&2; return 1; }
+    write_file_atomically_from_stdin "$ABOX_DIR/traffic_monitor.sh" 700 < "$_tm_tmp" || { rm -f -- "$_tm_tmp"; msg "${RED}[!] 流量监控脚本原子写入失败。${NC}" >&2; return 1; }
+    rm -f -- "$_tm_tmp"
     grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/traffic_monitor.sh" || { msg "${RED}[!] 流量监控脚本运行环境标记后置校验失败。${NC}" >&2; return 1; }
     chmod 700 "$ABOX_DIR/traffic_monitor.sh" || { msg "${RED}[!] 流量监控脚本权限设置失败。${NC}" >&2; return 1; }
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] 流量限制监控脚本事务快照失败。${NC}" >&2; return 1; }
-    ( ABOX_DIE_HOOK=''; install_abox_cron_block TRAFFIC '* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1' ) || { msg "${RED}[!] 流量限制 cron 写入失败。${NC}" >&2; return 1; }
+    local _tm_script="$ABOX_DIR/traffic_monitor.sh"
+    if [[ "$_tm_script" == *[[:space:]]* ]]; then _tm_script=$(shell_quote "$_tm_script"); fi
+    ( ABOX_DIE_HOOK=''; install_abox_cron_block TRAFFIC "* * * * * /bin/bash $_tm_script >/dev/null 2>&1" ) || { msg "${RED}[!] 流量限制 cron 写入失败。${NC}" >&2; return 1; }
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] 流量限制 cron 事务快照失败。${NC}" >&2; return 1; }
 }
 
@@ -42401,7 +42410,7 @@ PY_SELFTEST_YAML
     ! grep -Eq 'mktemp -d /tmp/A-Box-asn-cache\.XXXXXX.*\|\|[[:space:]]*asn_cache=.*/tmp' <<< "$source_body" || { echo 'FAIL: ASN cache mktemp failure must not fall back to shared /tmp'; failures=$((failures + 1)); }
     ! grep -Fq 'used=$(month_bytes "$iface" "${TRAFFIC_LIMIT_MODE:-total}") || exit 0' <<< "$source_body" || { echo 'FAIL: traffic measurement failure must not fail open'; failures=$((failures + 1)); }
     grep -q '^traffic_fail_closed() {' <<< "$source_body" || { echo 'FAIL: traffic monitor fail-closed enforcement helper missing'; failures=$((failures + 1)); }
-    traffic_body=$(sed -n '/write_file_atomically_from_stdin "$ABOX_DIR\/traffic_monitor.sh" 700 <<'"'"'EOF_TRAFFIC'"'"'/,/^EOF_TRAFFIC$/p' "$0") || traffic_body=''
+    traffic_body=$(sed -n '/cat > \"\$_tm_tmp\" <<'"'"'EOF_TRAFFIC'"'"'/,/^EOF_TRAFFIC$/p' "$0") || traffic_body=''
     ! grep -Fq 'load_state || exit 0' <<< "$traffic_body" || { echo 'FAIL: traffic monitor must not silently exit on persisted state load failure'; failures=$((failures + 1)); }
     grep -Fq 'state_load_failed=0' <<< "$traffic_body" || { echo 'FAIL: traffic monitor persisted-state failure handling missing'; failures=$((failures + 1)); }
     grep -Fq 'stop_all_owned_services() {' <<< "$traffic_body" || { echo 'FAIL: traffic monitor fail-closed stop path missing'; failures=$((failures + 1)); }

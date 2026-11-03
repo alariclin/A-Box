@@ -37662,15 +37662,35 @@ xray_latest_remove() {
         _xl_remove_coexist_files
     else
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            systemctl disable --now xray >/dev/null 2>&1 || true
+            # R4C16-01: stop must succeed AND the service must be
+            # inactive before any deletion; still active => abort
+            # with files/state kept (no orphan running instance).
+            systemctl stop xray >/dev/null 2>&1 || true
+            if systemctl is-active --quiet xray >/dev/null 2>&1; then
+                msg "${RED}[!] xray-latest stop failed, service still active; refusing to delete files.${NC}"
+                return 1
+            fi
+            systemctl disable xray >/dev/null 2>&1 || true
             rm -f -- /etc/systemd/system/xray.service
             systemctl daemon-reload >/dev/null 2>&1 || true
         else
             rc-service xray stop >/dev/null 2>&1 || true
+            if rc-service xray status >/dev/null 2>&1; then
+                msg "${RED}[!] xray-latest stop failed, service still active; refusing to delete files.${NC}"
+                return 1
+            fi
             rm -f -- /etc/init.d/xray /etc/conf.d/xray
         fi
+        # R7C16-01: refuse to rm -rf through a mount, and abort
+        # (state kept, no success report) when removal fails.
+        # The mount check precedes ALL deletions so an abort
+        # leaves bin, slot dir and state intact.
+        if path_tree_has_mountpoint "$XRAY_SLOT_DIR"; then
+            msg "${RED}[!] xray-latest slot dir contains a mountpoint; refusing to delete.${NC}"
+            return 1
+        fi
         rm -f -- "$XRAY_SLOT_BIN"
-        rm -rf -- "$XRAY_SLOT_DIR"
+        rm -rf -- "$XRAY_SLOT_DIR" || { msg "${RED}[!] failed to remove xray-latest slot dir; state kept.${NC}"; return 1; }
         rm -f -- "${ABOX_DIR:-/etc/ddr}/standalone-links.d/trojan-xray.link"
     fi
     rm -f -- "${ABOX_DIR:-/etc/ddr}/standalone-links.d"/latest-*.link

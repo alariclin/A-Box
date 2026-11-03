@@ -30593,6 +30593,14 @@ strip_abox_cron_blocks_from_file() {
 
 commit_crontab_if_unchanged() {
     local snapshot="$1" candidate="$2" live rc=0
+    # R15C13-01 (A-Box side): refuse outside a session. Every legitimate
+    # caller runs under enter_runtime, which sets ABOX_RUNTIME_LOCK_MODE;
+    # without it, this read-modify-write could silently lose a concurrent
+    # change. rc 2 is the existing "aborted, do not overwrite" signal.
+    if [[ -z "${ABOX_RUNTIME_LOCK_MODE:-}" ]]; then
+        printf '%s\n' 'A-Box cron update refused: no A-Box runtime lock held; refusing to modify crontab outside a session.' >&2
+        return 2
+    fi
     [[ -f "$snapshot" && ! -L "$snapshot" && -f "$candidate" && ! -L "$candidate" ]] || return 1
     live=$(mktemp) || return 1
     if ! read_crontab_to_file "$live"; then rm -f -- "$live"; return 1; fi

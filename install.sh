@@ -35387,7 +35387,9 @@ wallos_stack_teardown() {
         if docker inspect wallos >/dev/null 2>&1; then
             local _lbl=''
             _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)
-            if [[ "$_lbl" == 'true' ]] || [[ -f "$WALLOS_DIR/.abox-state" ]]; then
+            # R16C15-01: only the managed label authorizes removal;
+            # a leftover state file alone is not proof of ownership.
+            if [[ "$_lbl" == 'true' ]]; then
                 if docker rm -f wallos >/dev/null 2>&1; then
                     docker inspect wallos >/dev/null 2>&1 || _gone=1
                 else
@@ -35410,8 +35412,21 @@ wallos_stack_teardown() {
             msg "${RED}$(tr_msg wl_td_purge_refuse)${NC}"
             return 1
         fi
+        # R8C15-01: refuse before deleting when a mount sits at
+        # or under the data dir; rm -rf would cross it and destroy
+        # backing data before the post-check could report failure.
+        if path_tree_has_mountpoint "$WALLOS_DIR"; then
+            msg "${RED}$(tr_msg wl_td_purge_refuse)${NC}"
+            return 1
+        fi
         rm -rf "$WALLOS_DIR" 2>/dev/null || true
         [[ ! -e "$WALLOS_DIR" ]] || { msg "${RED}$(tr_msg wl_td_purge_refuse)${NC}"; return 1; }
+    fi
+    # R1-15-06: a failed container removal must fail teardown in
+    # keep-data mode too, not report success while it still runs.
+    if (( _rm_failed == 1 )); then
+        msg "${RED}$(tr_msg wl_td_rm_fail)${NC}"
+        return 1
     fi
     return 0
 }

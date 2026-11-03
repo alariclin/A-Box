@@ -17445,34 +17445,47 @@ xray_api_remove_inbound() {
 xray_ensure_stats() {
     local cfg="$1" api_port="${2:-10085}" tmp=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
-    if jq -e '
-        (.stats != null)
-        and (.policy.levels."0".statsUserUplink == true)
-        and (.policy.levels."0".statsUserDownlink == true)
-        and ([(.policy.levels // {}) | to_entries[] | select(.value.statsUserUplink != true or .value.statsUserDownlink != true)] | length == 0)
-        and (.policy.system.statsInboundUplink == true)
-        and (.policy.system.statsInboundDownlink == true)
-        and ((.api.services // []) | index("StatsService") != null)
-        and ([.inbounds[]? | select(.tag == "api")] | length > 0)
-        and ([.outbounds[]? | select(.tag == "api")] | length > 0)
-        and ([.routing.rules[]? | select(.outboundTag == "api")] | length > 0)' "$cfg" >/dev/null 2>&1; then
+    if jq -e --argjson ap "$api_port" '
+        (.api.tag // "api") as $t
+        | (([.. | objects | .level? // empty] | unique) as $reflevels
+           | (.stats != null)
+           and (.policy.levels."0".statsUserUplink == true)
+           and (.policy.levels."0".statsUserDownlink == true)
+           and ([(.policy.levels // {}) | to_entries[] | select(.value.statsUserUplink != true or .value.statsUserDownlink != true)] | length == 0)
+           and ([$reflevels[] | select((.policy.levels[(. | tostring)] // {}).statsUserUplink != true or (.policy.levels[(. | tostring)] // {}).statsUserDownlink != true)] | length == 0)
+           and (.policy.system.statsInboundUplink == true)
+           and (.policy.system.statsInboundDownlink == true)
+           and ((.api.services // []) | index("StatsService") != null)
+           and ( ( ([.inbounds[]? | select(.tag == $t and .port == $ap and .protocol == "dokodemo-door" and .listen == "127.0.0.1")] | length > 0)
+                   and ([.outbounds[]? | select(.tag == $t)] | length > 0)
+                   and ([.routing.rules[]? | select(.outboundTag == $t)] | length > 0) )
+                 or (.api.listen == ("127.0.0.1:" + ($ap | tostring))) ))
+    ' "$cfg" >/dev/null 2>&1; then
         return 0
     fi
     tmp=$(mktemp /tmp/A-Box-xstats.XXXXXX) || return 1
     if ! jq --argjson ap "$api_port" '
-        .stats = (.stats // {})
-        | .policy.levels = (((.policy.levels // {}) | with_entries(.value.statsUserUplink = true | .value.statsUserDownlink = true)) * {"0": {statsUserUplink: true, statsUserDownlink: true}})
+        (.api.tag // "api") as $t
+        | ([.. | objects | .level? // empty] | unique) as $reflevels
+        | .stats = (.stats // {})
+        | .policy.levels = (((.policy.levels // {}) | with_entries(.value.statsUserUplink = true | .value.statsUserDownlink = true))
+            * (reduce $reflevels[] as $lv ({}; .[($lv | tostring)] = {statsUserUplink: true, statsUserDownlink: true}))
+            * {"0": {statsUserUplink: true, statsUserDownlink: true}})
         | .policy.system.statsInboundUplink = true
         | .policy.system.statsInboundDownlink = true
         | .api = (.api // {tag:"api", services:["HandlerService","LoggerService","StatsService"]})
         | .api.services = (((.api.services // []) + ["StatsService"]) | unique)
-        | (if ([.inbounds[]? | select(.tag == "api")] | length) == 0
-           then .inbounds = ([{listen:"127.0.0.1", port:$ap, protocol:"dokodemo-door", settings:{address:"127.0.0.1"}, tag:"api"}] + (.inbounds // [])) else . end)
-        | (if ([.outbounds[]? | select(.tag == "api")] | length) == 0
-           then .outbounds = ((.outbounds // []) + [{protocol:"freedom", tag:"api"}]) else . end)
-        | .routing = (.routing // {domainStrategy:"IPIfNonMatch", rules:[]})
-        | (if ([.routing.rules[]? | select(.outboundTag == "api")] | length) == 0
-           then .routing.rules = ([{type:"field", inboundTag:["api"], outboundTag:"api"}] + (.routing.rules // [])) else . end)
+        | (if .api.listen != null then
+               .api.listen = ("127.0.0.1:" + ($ap | tostring))
+               | .inbounds = ((.inbounds // []) | map(select(.tag != $t or .port != $ap)))
+           else
+               .inbounds = (([.inbounds[]? | select(.tag == $t)] | if length == 0 then [{listen:"127.0.0.1", port:$ap, protocol:"dokodemo-door", settings:{address:"127.0.0.1"}, tag:$t}] else [.[0] | .listen = "127.0.0.1" | .port = $ap | .protocol = "dokodemo-door"] end) + ([.inbounds[]? | select(.tag != $t)]))
+               | (if ([.outbounds[]? | select(.tag == $t)] | length) == 0
+                  then .outbounds = ((.outbounds // []) + [{protocol:"freedom", tag:$t}]) else . end)
+               | .routing = (.routing // {domainStrategy:"IPIfNonMatch", rules:[]})
+               | (if ([.routing.rules[]? | select(.outboundTag == $t)] | length) == 0
+                  then .routing.rules = ([{type:"field", inboundTag:[$t], outboundTag:$t}] + (.routing.rules // [])) else . end)
+           end)
     ' "$cfg" > "$tmp"; then rm -f "$tmp"; return 1; fi
     jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
     install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
@@ -17480,10 +17493,6 @@ xray_ensure_stats() {
     return 0
 }
 
-# High-level: persist a new inbound to disk config AND hot-push it via API.
-# $1 = path to a JSON file with one inbound object.
-# Fallback: if the API push fails, restart_service_soft picks up the persisted
-# config, so the change is never lost and existing behavior is preserved.
 xray_hot_add_inbound() {
     local json_file="$1" cfg='/usr/local/etc/xray/config.json' tmp tag
     [[ -n "$json_file" && -f "$json_file" && ! -L "$json_file" ]] || return 1

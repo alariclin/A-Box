@@ -35216,7 +35216,14 @@ wallos_recover_interrupted_upgrade() {
             wallos_cftunnel_teardown || return 1
             ;;
     esac
+    # R15C15-01: restore the pre-replacement tunnel token (if the
+    # upgrade overwrote it) so the recovered tunnel can authenticate.
+    if [[ -f "$WALLOS_DIR/.upgrade-transaction.cftoken" && ! -L "$WALLOS_DIR/.upgrade-transaction.cftoken" ]]; then
+        cp -a "$WALLOS_DIR/.upgrade-transaction.cftoken" "$WALLOS_CF_TOKEN_FILE" 2>/dev/null || true
+        chmod 600 "$WALLOS_CF_TOKEN_FILE" 2>/dev/null || true
+    fi
     rm -f -- "$journal" || return 1
+    rm -f -- "$WALLOS_DIR/.upgrade-transaction.cftoken" 2>/dev/null || true
     msg "${YELLOW}$(tr_msg wl_rc_done)${NC}"
 }
 
@@ -36180,7 +36187,12 @@ wallos_install_or_update() {
         code=1
     fi
     if (( code != 0 )); then
-        docker rm -f wallos >/dev/null 2>&1 || true
+        # R10C15-01: only remove a container carrying the A-Box
+        # ownership label; a foreign name-conflict container must
+        # not be deleted by failure cleanup.
+        if [[ "$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)" == "true" ]]; then
+            docker rm -f wallos >/dev/null 2>&1 || true
+        fi
         if (( running == 1 )); then
             wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_incomplete "${WALLOS_DIR}/.upgrade-transaction" "${backup:-unavailable}")${NC}"
         fi
@@ -36256,12 +36268,25 @@ wallos_install_or_update() {
         fi
     elif [[ "$wmode" == cftunnel ]]; then
         if [[ -n "$cftoken" ]]; then
+        # R15C15-01: back up the existing token into the upgrade
+        # transaction before overwriting; restored on setup
+        # failure and by interrupted-upgrade recovery.
+        if [[ -f "$WALLOS_CF_TOKEN_FILE" && ! -L "$WALLOS_CF_TOKEN_FILE" ]]; then
+            cp -a "$WALLOS_CF_TOKEN_FILE" "$WALLOS_DIR/.upgrade-transaction.cftoken" || { msg "${RED}[!] Failed to back up the existing tunnel token; refusing to overwrite it.${NC}"; return 1; }
+            chmod 600 "$WALLOS_DIR/.upgrade-transaction.cftoken" || { msg "${RED}[!] Failed to secure the tunnel token backup; refusing to overwrite it.${NC}"; return 1; }
+        fi
             write_file_atomically_from_stdin "$WALLOS_CF_TOKEN_FILE" 600 <<< "TUNNEL_TOKEN=${cftoken}" || { msg "${RED}CF 隧道令牌保存失败。${NC}"; return 1; }
             cftoken=''
         fi
         wallos_https_teardown >/dev/null 2>&1 || true
         if ! wallos_cftunnel_setup "$cfhost"; then
             msg "${RED}$(tr_msg wl_iu_cf_incomplete)${NC}"
+        # R15C15-01: restore the pre-replacement token so the
+        # original tunnel can be rebuilt.
+        if [[ -f "$WALLOS_DIR/.upgrade-transaction.cftoken" && ! -L "$WALLOS_DIR/.upgrade-transaction.cftoken" ]]; then
+            cp -a "$WALLOS_DIR/.upgrade-transaction.cftoken" "$WALLOS_CF_TOKEN_FILE" 2>/dev/null || true
+            chmod 600 "$WALLOS_CF_TOKEN_FILE" 2>/dev/null || true
+        fi
             return 1
         fi
         case "${ABOX_LANG:-zh}" in
@@ -36330,6 +36355,9 @@ wallos_install_or_update() {
         msg "  $(tr_msg wl_iu_check_2)"
         msg "  $(tr_msg wl_iu_check_3)"
     fi
+    # R15C15-01: success (all checks passed); the new token is
+    # verified, so the pre-replacement backup is no longer needed.
+    rm -f -- "$WALLOS_DIR/.upgrade-transaction.cftoken" 2>/dev/null || true
     [[ -z "$backup" ]] || msg "$(tprintf wl_backup "$backup")"
 }
 

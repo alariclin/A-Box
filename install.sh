@@ -40522,6 +40522,29 @@ core_upgrade_transaction_set_status() {
     printf '%s\n' "$1" > "$ABOX_CORE_TX_RB_STATUS" 2>/dev/null || rm -f -- "$ABOX_CORE_TX_RB_STATUS"
 }
 
+core_upgrade_rollback_backup_valid() {
+    local selected="${1:-}" backup_dir="${ABOX_DIR}/backups" _cand=''
+    [[ -d "$backup_dir" ]] || return 1
+    if [[ -n "$selected" ]]; then
+        [[ -f "$selected" && "$(dirname "$selected")" == "$backup_dir" ]] || return 1
+    else
+        # No specific backup: at least one candidate must exist; the
+        # restore itself picks and validates the latest.
+        for _cand in "$backup_dir"/A-Box-backup-*.tar.gz; do
+            if [[ -f "$_cand" && ! -L "$_cand" ]]; then
+                break
+            fi
+            _cand=''
+        done
+        [[ -n "$_cand" ]] || return 1
+        return 0
+    fi
+    backup_checksum_verify "$selected" "${selected}.sha256" || return 1
+    backup_auth_verify "$selected" "${selected}.hmac" || return 1
+    validate_backup_archive "$selected" || return 1
+    return 0
+}
+
 core_upgrade_transaction_rollback() {
     [[ "${ABOX_CORE_UPGRADE_ACTIVE:-0}" == 1 ]] || return 0
     local backup="${ABOX_CORE_UPGRADE_BACKUP:-}" targets="${ABOX_CORE_UPGRADE_TARGETS:-}" srv core_tmp="${ABOX_CORE_UPGRADE_TMP:-}"
@@ -40531,6 +40554,14 @@ core_upgrade_transaction_rollback() {
     ABOX_DIE_HOOK=''
     restore_core_upgrade_transaction_traps
     msg "${YELLOW}[!] Core upgrade failed or was interrupted; restoring the exact pre-upgrade snapshot.${NC}"
+    # R5C16-03: verify the restore archive BEFORE any destructive step.
+    # A missing or invalid backup must abort here, not after services
+    # are stopped and core families force-removed (unrecoverable).
+    if ! core_upgrade_rollback_backup_valid "$backup"; then
+        msg "${RED}[!] Core-upgrade rollback aborted: restore backup missing or invalid: ${backup:-missing}. No services stopped, no core families removed.${NC}" >&2
+        core_upgrade_transaction_set_status failed
+        return 1
+    fi
     if ! stop_all_managed_services >/dev/null 2>&1; then
         msg "${RED}[!] Core-upgrade rollback aborted: one or more managed services could not be confirmed stopped. Backup retained: ${backup:-missing}${NC}" >&2
         core_upgrade_transaction_set_status failed

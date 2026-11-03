@@ -15784,16 +15784,19 @@ ensure_abox_runtime_identity() {
         fi
         _created=1
     fi
-    # SYD-B E22: record proven self-created users (only the branch
-    # above sets _created); cleanup removes exactly these names.
+    # SYD-B E22: record proven self-created users as name:uid (only
+    # the branch above sets _created); cleanup removes exactly
+    # these name+uid pairs.
     if (( _created == 1 )) && [[ -n "${ABOX_DIR:-}" ]]; then
         local _rec="${ABOX_DIR}/.created-service-users"
         # R8C7-01: never chmod through a symlink; a linked
         # record is a tamper signal, fail closed.
         if [[ -L "$_rec" ]]; then return 1; fi
         if [[ ! -f "$_rec" ]]; then ( umask 077; : > "$_rec" ) 2>/dev/null || true; fi
-        if [[ -f "$_rec" && ! -L "$_rec" ]] && ! grep -qxF "$user" "$_rec" 2>/dev/null; then
-            printf '%s\n' "$user" >> "$_rec" 2>/dev/null || true
+        if [[ -f "$_rec" && ! -L "$_rec" ]] && ! grep -qxF "$user" "$_rec" 2>/dev/null && ! grep -q "^$user:" "$_rec" 2>/dev/null; then
+            local _new_uid=''
+            _new_uid=$(id -u "$user" 2>/dev/null || true)
+            if [[ "$_new_uid" =~ ^[0-9]+$ ]]; then printf '%s:%s\n' "$user" "$_new_uid" >> "$_rec" 2>/dev/null || true; else printf '%s\n' "$user" >> "$_rec" 2>/dev/null || true; fi
         fi
         if [[ -L "$_rec" ]]; then return 1; fi
         chmod 600 "$_rec" 2>/dev/null || true
@@ -23762,7 +23765,7 @@ manage_ss_whitelist() {
 # Best-effort: a failure warns and never blocks cleanup. Groups are
 # not removed.
 remove_abox_created_service_users() {
-    local rec='' u='' shell='' _pu='' _rest=''
+    local rec='' u='' shell='' _pu='' _rest='' _line='' _rec_uid='' _uid='' _gid='' _members='' _others='' _other_primary='' _safe_grp='' _g='' _kept=''
     rec="${ABOX_DIR:-/etc/ddr}/.created-service-users"
     if [[ ! -f "$rec" || -L "$rec" ]]; then
         for u in abox-xray abox-singbox abox-hysteria; do
@@ -23772,20 +23775,67 @@ remove_abox_created_service_users() {
         done
         return 0
     fi
-    while IFS= read -r u; do
-        [[ -n "$u" ]] || continue
-        case "$u" in abox-xray|abox-singbox|abox-hysteria) ;; *) msg "${YELLOW}[!] Ignoring unexpected recorded service user ${u}.${NC}" >&2; continue ;; esac
+    _kept=$(mktemp /tmp/A-Box-kept-users.XXXXXX) || return 1
+    while IFS= read -r _line; do
+        [[ -n "$_line" ]] || continue
+        case "$_line" in
+            *:* ) u="${_line%%:*}"; _rec_uid="${_line#*:}" ;;
+            * ) u="$_line"; _rec_uid='' ;;
+        esac
+        case "$u" in abox-xray|abox-singbox|abox-hysteria) ;; *) msg "${YELLOW}[!] Ignoring unexpected recorded service user ${u}.${NC}" >&2; printf '%s\n' "$_line" >> "$_kept"; continue ;; esac
         if ! getent passwd "$u" >/dev/null 2>&1; then continue; fi
-        shell=$(getent passwd "$u" | awk -F: '{print $7}')
-        case "$shell" in /usr/sbin/nologin|/sbin/nologin|/bin/false) ;; *) msg "${YELLOW}[!] Service user ${u} has an interactive shell; keeping it.${NC}" >&2; continue ;; esac
-        if command -v pgrep >/dev/null 2>&1 && pgrep -u "$u" >/dev/null 2>&1; then
-            msg "${YELLOW}[!] Service user ${u} still has running processes; keeping it.${NC}" >&2
+        # R14C10-02: an old name-only record cannot verify the UID;
+        # keep it conservatively instead of deleting by name alone.
+        if [[ -z "$_rec_uid" ]]; then
+            msg "${YELLOW}[!] Service user ${u} has an old name-only record; UID cannot be verified, keeping it (manual cleanup required).${NC}" >&2
+            printf '%s\n' "$_line" >> "$_kept"
             continue
         fi
+        _uid=$(getent passwd "$u" | awk -F: '{print $3}')
+        if [[ "$_uid" != "$_rec_uid" ]]; then
+            msg "${YELLOW}[!] Service user ${u} UID changed (recorded ${_rec_uid}, now ${_uid}); name may have been reused, keeping it.${NC}" >&2
+            printf '%s\n' "$_line" >> "$_kept"
+            continue
+        fi
+        shell=$(getent passwd "$u" | awk -F: '{print $7}')
+        case "$shell" in /usr/sbin/nologin|/sbin/nologin|/bin/false) ;; *) msg "${YELLOW}[!] Service user ${u} has an interactive shell; keeping it.${NC}" >&2; printf '%s\n' "$_line" >> "$_kept"; continue ;; esac
+        if command -v pgrep >/dev/null 2>&1 && pgrep -u "$u" >/dev/null 2>&1; then
+            msg "${YELLOW}[!] Service user ${u} still has running processes; keeping it.${NC}" >&2
+            printf '%s\n' "$_line" >> "$_kept"
+            continue
+        fi
+        # R10C10-01: protect a pre-existing same-name group from
+        # userdel (USERGROUPS_ENAB deletes the primary group). A
+        # clean A-Box user-private group has GID == UID, no other
+        # primary user and no other members; anything else is moved
+        # off the group first, and refusal keeps the entry.
+        if getent group "$u" >/dev/null 2>&1; then
+            _gid=$(getent group "$u" | awk -F: '{print $3}')
+            _members=$(getent group "$u" | awk -F: '{print $4}')
+            _others=$(printf '%s' "$_members" | tr ',' '\n' | grep -vx -- "$u" 2>/dev/null | head -1 || true)
+            _other_primary=$(getent passwd 2>/dev/null | awk -F: -v g="$_gid" -v u="$u" '$4 == g && $1 != u {print $1; exit}')
+            if [[ "$_gid" != "$_uid" || -n "$_other_primary" || -n "$_others" ]]; then
+                _safe_grp=''
+                for _g in nogroup nobody; do
+                    if getent group "$_g" >/dev/null 2>&1; then _safe_grp="$_g"; break; fi
+                done
+                if [[ -z "$_safe_grp" ]] || ! usermod -g "$_safe_grp" "$u" >/dev/null 2>&1; then
+                    msg "${YELLOW}[!] Service user ${u} has a pre-existing group that cannot be protected; keeping it.${NC}" >&2
+                    printf '%s\n' "$_line" >> "$_kept"
+                    continue
+                fi
+            fi
+        fi
         if command -v userdel >/dev/null 2>&1; then
-            userdel "$u" >/dev/null 2>&1 || msg "${YELLOW}[!] Could not remove service user ${u}; keeping it.${NC}" >&2
+            if userdel "$u" >/dev/null 2>&1; then
+                : # deleted: drop the entry
+            else
+                msg "${YELLOW}[!] Could not remove service user ${u}; keeping it.${NC}" >&2
+                printf '%s\n' "$_line" >> "$_kept"
+            fi
         else
             msg "${YELLOW}[!] userdel unavailable; keeping service user ${u}.${NC}" >&2
+            printf '%s\n' "$_line" >> "$_kept"
         fi
     done < "$rec"
     # SYD-B2 E22: also list unrecorded abox-* users (kept, never
@@ -23793,9 +23843,18 @@ remove_abox_created_service_users() {
     # but left users behind, or users may predate the record.
     while IFS=: read -r _pu _rest || [[ -n "$_pu" ]]; do
         [[ "$_pu" == abox-* ]] || continue
-        grep -qx -- "$_pu" "$rec" 2>/dev/null || msg "${YELLOW}[!] Service user ${_pu} exists but is not recorded as created by this script; keeping it.${NC}" >&2
+        grep -Eq "^${_pu}(:.*)?$" "$rec" 2>/dev/null || msg "${YELLOW}[!] Service user ${_pu} exists but is not recorded as created by this script; keeping it.${NC}" >&2
     done < <(getent passwd 2>/dev/null || true)
-    rm -f -- "$rec" 2>/dev/null || true
+    # R3F06: drop the registry only when nothing was kept; otherwise
+    # rewrite it with exactly the kept entries so a transient
+    # failure keeps its retry basis.
+    if [[ -s "$_kept" ]]; then
+        cat -- "$_kept" > "$rec" 2>/dev/null || true
+        chmod 600 "$rec" 2>/dev/null || true
+    else
+        rm -f -- "$rec" 2>/dev/null || true
+    fi
+    rm -f -- "$_kept" 2>/dev/null || true
     return 0
 }
 

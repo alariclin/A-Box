@@ -18436,7 +18436,7 @@ EOF_SVC
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    cp -a -- "$cfg" "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
+    cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
     prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
@@ -18656,7 +18656,7 @@ deploy_xray_trojan_landing() {
             rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_check)"
         fi
         cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        cp -a -- "$cfg" "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
+        cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
         install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_cfg)"; }
         rm -f "$tmp_cfg"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
@@ -18809,7 +18809,7 @@ EOF_SVC
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    cp -a -- "$cfg" "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
+    cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
     prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
@@ -18987,7 +18987,7 @@ EOF_SVC
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    cp -a -- "$cfg" "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
+    cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
     prepare_abox_runtime_permissions sing-box || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tr_msg dp_sb_runtime)"; }
@@ -19142,7 +19142,7 @@ EOF_SVC
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    cp -a -- "$cfg" "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
+    cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
     prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
@@ -20916,13 +20916,13 @@ routing_apply_live() {
             fi
             local live_bak=''
             live_bak=$(mktemp) || { rm -f "$tmp"; return 1; }
-            cp -a "$cfg" "$live_bak" || { rm -f "$tmp" "$live_bak"; return 1; }
+            cp -a "$cfg" "$live_bak" && chmod 600 -- "$live_bak" || { rm -f "$tmp" "$live_bak"; return 1; }
             install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp" "$live_bak"; return 1; }
             rm -f "$tmp"
             local atmp='' applied_bak=''
             if [[ -f "$applied_file" ]]; then
                 applied_bak=$(mktemp) || { rm -f -- "$live_bak"; return 1; }
-                cp -a -- "$applied_file" "$applied_bak" || { rm -f -- "$live_bak" "$applied_bak"; return 1; }
+                cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { rm -f -- "$live_bak" "$applied_bak"; return 1; }
             fi
             if ! atmp=$(mktemp); then
                 cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
@@ -20995,13 +20995,13 @@ routing_apply_live() {
             fi
             local live_bak=''
             live_bak=$(mktemp) || { rm -f "$tmp"; return 1; }
-            cp -a "$cfg" "$live_bak" || { rm -f "$tmp" "$live_bak"; return 1; }
+            cp -a "$cfg" "$live_bak" && chmod 600 -- "$live_bak" || { rm -f "$tmp" "$live_bak"; return 1; }
             install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp" "$live_bak"; return 1; }
             rm -f "$tmp"
             local atmp='' applied_bak=''
             if [[ -f "$applied_file" ]]; then
                 applied_bak=$(mktemp) || { rm -f -- "$live_bak"; return 1; }
-                cp -a -- "$applied_file" "$applied_bak" || { rm -f -- "$live_bak" "$applied_bak"; return 1; }
+                cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { rm -f -- "$live_bak" "$applied_bak"; return 1; }
             fi
             if ! atmp=$(mktemp); then
                 cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
@@ -21604,7 +21604,7 @@ EOF_SVC
           settings:{auth:"password",accounts:[{user:$user,pass:$pass}],udp:true,ip:"0.0.0.0"}}' \
         > "$tmp_json" || die "$(tr_msg dp_socks5_json)"
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    cp -a -- "$cfg" "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
+    cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
 
     # If the tag already exists, replace it in place; otherwise hot-add.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then

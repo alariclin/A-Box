@@ -42284,6 +42284,9 @@ EOF_SELFTEST_IPT
     jq -e 'all(.outbounds[]; .type != "block")' "$tmp/sing-box/config.json" >/dev/null 2>&1 || { echo 'FAIL: Sing-box legacy block outbound remains'; failures=$((failures + 1)); }
     fi
     # Parent-directory traversal regression for the dedicated runtime user.
+    # R15C17-01: local init so an inherited environment value can never
+    # reach the cleanup below (which previously deleted it).
+    local runtime_traverse=''
     if (( EUID == 0 )) && id nobody >/dev/null 2>&1 && getent group nogroup >/dev/null 2>&1 && command -v runuser >/dev/null 2>&1; then
         runtime_traverse=$(mktemp -d /tmp/A-Box-runtime-traverse.XXXXXX) || { echo 'FAIL: runtime traversal regression temp creation'; failures=$((failures + 1)); }
         # U134: never operate on an empty or non-/tmp path; mktemp failure
@@ -42307,7 +42310,7 @@ EOF_SELFTEST_IPT
         runuser -u nobody -- cat "$runtime_traverse/hysteria/config.yaml" >/dev/null 2>&1 || { echo 'FAIL: 0750 Hysteria parent directory blocked runtime user'; failures=$((failures + 1)); }
         fi
     fi
-    [[ "${runtime_traverse:-}" == /tmp/* ]] && rm -rf -- "$runtime_traverse"
+    [[ -n "$runtime_traverse" && "$runtime_traverse" == /tmp/A-Box-runtime-traverse.* && -d "$runtime_traverse" ]] && rm -rf -- "$runtime_traverse"
     unset runtime_traverse
 
     if (( EUID == 0 )); then

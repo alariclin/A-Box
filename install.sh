@@ -20875,7 +20875,7 @@ routing_apply_live() {
     if [[ $# -gt 0 ]]; then core="$1"; shift; fi
     [[ -n "$core" ]] || core="${CORE:-}"
     if (( $# > 0 )); then
-        force_json=$(jq -nc --args '$ARGS.positional' "$@" 2>/dev/null || printf '[]')
+        force_json=$(jq -nc --args '$ARGS.positional' -- "$@" 2>/dev/null) || return 1
     fi
     # Per-core applied records (S57): xray and sing-box must not share
     # one retirement record, or the second core's apply reads a $prev
@@ -20914,8 +20914,7 @@ routing_apply_live() {
         xray)
             cfg='/usr/local/etc/xray/config.json'
             [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
-            tmp=$(mktemp) || return 1
-            mv "$tmp" "$tmp.json" || { rm -f "$tmp"; return 1; }; tmp="$tmp.json"
+            tmp=$(mktemp /tmp/A-Box-routing.XXXXXX.json) || return 1
             jq --slurpfile st "$ROUTING_STATE_FILE" --argjson prev "$prev_applied" --argjson force "$force_json" --argjson prevr "$prev_rules_xray" '
                 ($st[0].outbounds | map(.tag)) as $managed
                 | ((($prev - $managed) + $force) | unique) as $retired
@@ -20979,8 +20978,7 @@ routing_apply_live() {
         singbox|sing-box)
             cfg='/etc/sing-box/config.json'
             [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
-            tmp=$(mktemp) || return 1
-            mv "$tmp" "$tmp.json" || { rm -f "$tmp"; return 1; }; tmp="$tmp.json"
+            tmp=$(mktemp /tmp/A-Box-routing.XXXXXX.json) || return 1
             jq --slurpfile st "$ROUTING_STATE_FILE" --argjson prev "$prev_applied" --argjson force "$force_json" --argjson prevr "$prev_rules_singbox" '
                 ($st[0].outbounds | map(.tag)) as $managed
                 | ((($prev - $managed) + $force) | unique) as $retired

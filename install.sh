@@ -28076,7 +28076,7 @@ snapshot_dns_state() {
         [[ -n "$connection" && "$connection" != '--' ]] || return 1
         printf '%s\n' "$connection" > "$dir/nm-connection" || return 1
         for key in ipv4.ignore-auto-dns ipv4.dns ipv6.ignore-auto-dns ipv6.dns; do
-            value=$(nmcli -g "$key" connection show "$connection" 2>/dev/null) || return 1
+            value=$(nmcli --escape no -g "$key" connection show "$connection" 2>/dev/null) || return 1
             value=${value%%$'\n'*}
             printf '%s\n' "$value" > "$dir/nm-${key//./-}" || return 1
         done
@@ -28809,7 +28809,7 @@ dns_doh_prefer() {
     local -a names=('Cloudflare' 'Google' 'AdGuard')
     local -a v4s=('1.1.1.1' '8.8.8.8' '94.140.14.14')
     local -a hosts=('cloudflare-dns.com' 'dns.google' 'dns.adguard-dns.com')
-    local -a srvs=('cloudflare' 'google' 'adguard-dns')
+    local -a srvs=('cloudflare' 'google' 'adguard-dns-doh')
     local i name v4 host srv label best_srv=''
     local -a timings=()
     command -v python3 >/dev/null 2>&1 || { msg "${RED}DNS benchmark requires Python 3.${NC}"; pause_return; return 1; }
@@ -29340,18 +29340,6 @@ _dns_valid_v6_group() {
 
 _dns_current_v4() {
     local cur='' out=''
-    if [[ -f "$DNS_STATE_FILE" ]]; then
-        if grep -qE '(^|;)[ \t]*v4=' "$DNS_STATE_FILE" 2>/dev/null; then
-            cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*v4=/){sub(/^[ \t]*v4=/, "", $i); gsub(/["'"'"'\r\t]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
-            out=$(_dns_valid_v4_group "$cur")
-            printf '%s' "$out"; return 0
-        fi
-    fi
-    if [[ -f "$ABOX_ENV" ]]; then
-        cur=$(awk -F= '/^DNS_V4=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
-        out=$(_dns_valid_v4_group "$cur")
-        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
-    fi
     if [[ -r /etc/resolv.conf ]]; then
         cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\./ {print $2}' /etc/resolv.conf 2>/dev/null || true)
         out=$(_dns_valid_v4_group "$cur")
@@ -29374,11 +29362,33 @@ _dns_current_v4() {
             out=$(_dns_valid_v4_group "$cur")
             [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
+    if [[ -f "$DNS_STATE_FILE" ]]; then
+        if grep -qE '(^|;)[ \t]*v4=' "$DNS_STATE_FILE" 2>/dev/null; then
+            cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*v4=/){sub(/^[ \t]*v4=/, "", $i); gsub(/["'"'"'\r\t]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
+            out=$(_dns_valid_v4_group "$cur")
+            printf '%s' "$out"; return 0
+        fi
+    fi
+    if [[ -f "$ABOX_ENV" ]]; then
+        cur=$(awk -F= '/^DNS_V4=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
+        out=$(_dns_valid_v4_group "$cur")
+        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
+    fi
     return 0
 }
 
 _dns_current_v6() {
     local cur='' out=''
+    if [[ -r /etc/resolv.conf ]]; then
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 !~ /\./ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2}' /etc/resolv.conf 2>/dev/null || true)
+        out=$(_dns_valid_v6_group "$cur")
+        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
+    fi
+    if [[ -r /run/systemd/resolve/resolv.conf ]]; then
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 !~ /\./ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
+        out=$(_dns_valid_v6_group "$cur")
+        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
+    fi
     if [[ -f "$DNS_STATE_FILE" ]]; then
         if grep -qE '(^|;)[ \t]*v6=' "$DNS_STATE_FILE" 2>/dev/null; then
             cur=$(awk -F';' '{for(i=1;i<=NF;i++){if($i ~ /^[ \t]*v6=/){sub(/^[ \t]*v6=/, "", $i); gsub(/["'"'"'\r\t]/, "", $i); print $i; exit}}}' "$DNS_STATE_FILE" 2>/dev/null || true)
@@ -29388,16 +29398,6 @@ _dns_current_v6() {
     fi
     if [[ -f "$ABOX_ENV" ]]; then
         cur=$(awk -F= '/^DNS_V6=/ {val=$2; sub(/#.*$/, "", val); gsub(/["'"'"'\r\t]/, "", val); a=val} END {print a}' "$ABOX_ENV" 2>/dev/null || true)
-        out=$(_dns_valid_v6_group "$cur")
-        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
-    fi
-    if [[ -r /etc/resolv.conf ]]; then
-        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 !~ /\./ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2}' /etc/resolv.conf 2>/dev/null || true)
-        out=$(_dns_valid_v6_group "$cur")
-        [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
-    fi
-    if [[ -r /run/systemd/resolve/resolv.conf ]]; then
-        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 !~ /\./ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
         out=$(_dns_valid_v6_group "$cur")
         [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi

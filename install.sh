@@ -36772,6 +36772,20 @@ wallos_install_or_update() {
         }
     fi
 
+    # R8C15-02: ask before docker run publishes the port. A refusal must
+    # not leave a public Docker DNAT publication: DNAT bypasses UFW INPUT,
+    # so skipping allowPort alone does not honor the refusal. When a
+    # refused public bind would otherwise be published, force loopback.
+    local _fw_refused=0
+    if [[ "$bind_address" == 0.0.0.0 ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
+        if confirm_yes_no "$(tprintf wl_iu_ufw_q "$port")"; then ufw allow "$port/tcp" || msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}"; else _fw_refused=1; fi
+    elif [[ "$bind_address" == 0.0.0.0 ]] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+        if confirm_yes_no "$(tprintf wl_iu_fwd_q "$port")"; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}"; else _fw_refused=1; fi
+    fi
+    if (( _fw_refused == 1 )) && { [[ -n "$old_bind" ]] || (( _bind_chosen == 1 )); }; then
+        bind_address='127.0.0.1'
+    fi
+
     # U217: in the fully non-interactive preserve path (_bind_chosen==0),
     # an empty old_bind means the old container published nothing; do
     # not invent a loopback publication from the 127.0.0.1 default.
@@ -36940,14 +36954,6 @@ wallos_install_or_update() {
     wallos_php_gate_warn || true
     wallos_public_urls "$port"
     msg "${YELLOW}${security_note}${NC}"
-    # U124: a refusal here is this install's firewall decision; the later
-    # unconditional allowPort block below must respect it.
-    local _fw_refused=0
-    if [[ "$bind_address" == 0.0.0.0 ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
-        if confirm_yes_no "$(tprintf wl_iu_ufw_q "$port")"; then ufw allow "$port/tcp" || msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}"; else _fw_refused=1; fi
-    elif [[ "$bind_address" == 0.0.0.0 ]] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-        if confirm_yes_no "$(tprintf wl_iu_fwd_q "$port")"; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}"; else _fw_refused=1; fi
-    fi
     if (( _fw_refused == 0 )) && [[ "$wmode" == https ]]; then
         allowPort "$pubport" tcp 2>/dev/null || true
         allowPort 80 tcp 2>/dev/null || true

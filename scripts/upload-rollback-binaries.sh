@@ -53,10 +53,11 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 
 # Verify staging checksums BEFORE any upload.
 echo "[*] Verifying staged files against SHA256SUMS.staging..."
-(cd "$STAGE" && sha256sum -c SHA256SUMS.staging) || { echo "staging verification failed; aborting (nothing uploaded)"; exit 1; }
+awk 'NF { f2=$2; sub(/^\*/, "", f2); if ($1 !~ /^[A-Fa-f0-9]{64}$/ || f2 == "" || NF != 2 || seen[f2]++) exit 1 }' "$STAGE/SHA256SUMS.staging" || { echo "staging manifest syntax invalid; aborting (nothing uploaded)"; exit 1; }
+(cd "$STAGE" && sha256sum --check --strict SHA256SUMS.staging) || { echo "staging verification failed; aborting (nothing uploaded)"; exit 1; }
 # P1-04 fix 2026-10-14: manifest must list exactly the expected files, no more, no less.
 echo "[*] Verifying manifest covers exactly the expected file set..."
-manifest_files=$(awk '{print $2}' "$STAGE/SHA256SUMS.staging" | sort)
+manifest_files=$(awk '{ f=$2; sub(/^\*/, "", f); print f }' "$STAGE/SHA256SUMS.staging" | sort)
 expected_files=$(printf '%s\n' "${expected[@]}" | sort)
 if [[ "$manifest_files" != "$expected_files" ]]; then
     echo "manifest file set does not match expected set; aborting"
@@ -92,7 +93,7 @@ for name in "${expected[@]}"; do
     upstream_digest=$(gh api "repos/$up_repo/releases/tags/$up_tag" --jq ".assets[] | select(.name == \"$up_asset\") | .digest // empty" 2>/dev/null || true)
     [[ -n "$upstream_digest" ]] || { echo "upstream digest not found for $up_repo $up_tag $up_asset; aborting"; exit 1; }
     upstream_hex="${upstream_digest#sha256:}"
-    staging_sum=$(sha256sum "$STAGE/$name" | cut -d' ' -f1)
+    staging_sum=$(sha256sum < "$STAGE/$name" | cut -d' ' -f1)
     if [[ "$upstream_hex" != "$staging_sum" ]]; then
         echo "[CONFLICT] $name does not match upstream official digest:"
         echo "  upstream ($up_repo $up_tag $up_asset): $upstream_hex"
@@ -111,8 +112,9 @@ tmp2="$(mktemp -d)"; trap 'rm -rf "$tmp" "$tmp2"' EXIT
 gh release download "$TAG" --repo "$REPO" -p "SHA256SUMS" -D "$tmp2" 2>/dev/null     || { echo "SHA256SUMS not found in release; aborting (refusing to create from scratch)"; exit 1; }
 while read -r sum name _ || [[ -n "$sum" ]]; do
     [[ -n "${sum:-}" && -n "${name:-}" ]] || continue
-    staging_sum=$(awk -v n="$name" '$2 == n { print $1; exit }' "$STAGE/SHA256SUMS.staging" || true)
-    if [[ -n "$staging_sum" && "$staging_sum" != "$sum" ]]; then
+    name="${name#\*}"
+    staging_sum=$(awk -v n="$name" '{ g=$2; sub(/^\*/, "", g); if (g == n) { print $1; exit } }' "$STAGE/SHA256SUMS.staging" || true)
+    if [[ -n "$staging_sum" && "${staging_sum,,}" != "${sum,,}" ]]; then
         echo "[CONFLICT] Remote SHA256SUMS has $name with different hash:"
         echo "  remote:  $sum"
         echo "  staging: $staging_sum"

@@ -380,10 +380,12 @@ rebuild_standalone_links() {
     local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user=''
     if [[ -f "$_xc" ]]; then
         if [[ ! -f "$_dir/trojan-xray.link" ]]; then
-            _port=''; _pass=''; _pk=''; _sni=''; _sid=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.protocol=="trojan")) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // "")] | @tsv' "$_xc" 2>/dev/null)" _port _pass _pk _sni _sid
+            _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.protocol=="trojan")) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000"))] | @tsv' "$_xc" 2>/dev/null)" _port _pass _pk _sni _sid _nul
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
-            if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
+            if [[ "$_nul" == 'true' ]]; then
+                printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (trojan-xray)${NC}" >&2
+            elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
                 register_standalone_link trojan-xray "Trojan-Reality (Xray) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&type=tcp#Trojan-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
@@ -403,10 +405,12 @@ rebuild_standalone_links() {
     fi
     if [[ -f "$_sc" ]]; then
         if [[ ! -f "$_dir/trojan-sb.link" ]]; then
-            _port=''; _pass=''; _pk=''; _sni=''; _sid=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), (.tls.reality.short_id[0] // "")] | @tsv' "$_sc" 2>/dev/null)" _port _pass _pk _sni _sid
+            _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), (.tls.reality.short_id[0] // ""), ((.password // .users[0].password // "") | contains("\u0000"))] | @tsv' "$_sc" 2>/dev/null)" _port _pass _pk _sni _sid _nul
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
-            if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
+            if [[ "$_nul" == 'true' ]]; then
+                printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (trojan-sb)${NC}" >&2
+            elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
                 register_standalone_link trojan-sb "Trojan-Reality (sing-box) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&type=tcp#Trojan-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
@@ -439,7 +443,8 @@ rebuild_standalone_links() {
             _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-in")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // "")] | @tsv' "$_sc" 2>/dev/null)" _port _pass _sni _inner
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_inner" _inner
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
-                _inner=$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-ss")) | .password // ""' "$_sc" 2>/dev/null)
+                _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-ss")) | [.password // ""] | @tsv' "$_sc" 2>/dev/null)" _inner
+                _tsv_unescape "$_inner" _inner
                 _inner_method=$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-ss")) | .method // ""' "$_sc" 2>/dev/null)
                 [[ -n "$_inner_method" ]] || _inner_method='2022-blake3-aes-128-gcm'
                 if [[ -n "$_inner" ]]; then
@@ -13810,7 +13815,7 @@ verify_github_asset_digest() {
     [[ "$digest" == sha256:* ]] || { printf '%s\n' "$(tr_msg vg_not_sha)" >&2; return 1; }
     expected="${digest#sha256:}"
     [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ ]] || { printf '%s\n' "$(tr_msg vg_bad_format)" >&2; return 1; }
-    actual=$(sha256sum "$file" 2>/dev/null | awk '{print $1}') || actual=''
+    actual=$(sha256sum < "$file" 2>/dev/null | awk '{print $1}') || actual=''
     [[ "${actual,,}" == "${expected,,}" ]] || { printf '%s\n' "$(tr_msg vg_mismatch)" >&2; return 1; }
 }
 
@@ -17986,9 +17991,9 @@ deploy_singbox_socks5_landing() {
     light_preflight_check
 
     port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080') || die 'SOCKS5 port input failed.'
-    read -r -p "$(tr_msg socks5_user_prompt)" user || die "$(tr_msg pi_input_closed)"
+    IFS= read -r -p "$(tr_msg socks5_user_prompt)" user || die "$(tr_msg pi_input_closed)"
     user="${user:-main}"
-    read -r -p "$(tr_msg socks5_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
+    IFS= read -r -p "$(tr_msg socks5_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'SOCKS5 password generation failed.'
         [[ -n "$pass" ]] || die 'SOCKS5 password generation failed.'
@@ -18241,7 +18246,7 @@ deploy_xray_trojan_landing() {
     light_preflight_check
 
     port=$(prompt_validated "$(tr_msg trojan_port_prompt)" port '443') || die 'Trojan port input failed.'
-    read -r -p "$(tr_msg trojan_pass_prompt)" pass || pass=''
+    IFS= read -r -p "$(tr_msg trojan_pass_prompt)" pass || pass=''
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'Trojan password generation failed.'
         [[ -n "$pass" ]] || die 'Trojan password generation failed.'
@@ -18359,7 +18364,7 @@ deploy_singbox_trojan_landing() {
     light_preflight_check
 
     port=$(prompt_validated "$(tr_msg trojan_port_prompt)" port '443') || die 'Trojan port input failed.'
-    read -r -p "$(tr_msg trojan_pass_prompt)" pass || pass=''
+    IFS= read -r -p "$(tr_msg trojan_pass_prompt)" pass || pass=''
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'Trojan password generation failed.'
         [[ -n "$pass" ]] || die 'Trojan password generation failed.'
@@ -18511,7 +18516,7 @@ deploy_singbox_tuic() {
     light_preflight_check
 
     port=$(prompt_validated "$(tr_msg tuic_port_prompt)" port '443') || die 'TUIC port input failed.'
-    read -r -p "$(tr_msg tuic_pass_prompt)" pass || pass=''
+    IFS= read -r -p "$(tr_msg tuic_pass_prompt)" pass || pass=''
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'TUIC password generation failed.'
         [[ -n "$pass" ]] || die 'TUIC password generation failed.'
@@ -18690,7 +18695,7 @@ deploy_singbox_anytls() {
     light_preflight_check
 
     port=$(prompt_validated "$(tr_msg anytls_port_prompt)" port '443') || die 'AnyTLS port input failed.'
-    read -r -p "$(tr_msg anytls_pass_prompt)" pass || pass=''
+    IFS= read -r -p "$(tr_msg anytls_pass_prompt)" pass || pass=''
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'AnyTLS password generation failed.'
         [[ -n "$pass" ]] || die 'AnyTLS password generation failed.'
@@ -18843,7 +18848,7 @@ deploy_singbox_shadowtls() {
     light_preflight_check
 
     port=$(prompt_validated "$(tr_msg shadowtls_port_prompt)" port '443') || die 'ShadowTLS port input failed.'
-    read -r -p "$(tr_msg shadowtls_pass_prompt)" pass || pass=''
+    IFS= read -r -p "$(tr_msg shadowtls_pass_prompt)" pass || pass=''
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'ShadowTLS password generation failed.'
         [[ -n "$pass" ]] || die 'ShadowTLS password generation failed.'
@@ -21012,8 +21017,8 @@ split_add_socks_interactive() {
     [[ -n "$ip" ]] || { msg "${RED}$(tr_msg invalid_input)${NC}"; return 1; }
     read -r -p "$(tprintf split_port_prompt '1080'): " port || return 0
     port="${port:-1080}"
-    read -r -p "$(tr_msg split_user_prompt): " user || return 0
-    read -r -s -p "$(tr_msg split_pass_prompt): " pass; echo || return 0
+    IFS= read -r -p "$(tr_msg split_user_prompt): " user || return 0
+    IFS= read -r -s -p "$(tr_msg split_pass_prompt): " pass || return 0; echo
     tag=$(split_add_socks_outbound "$ip" "$port" "$user" "$pass") || { msg "${RED}$(tr_msg split_add_fail)${NC}"; pause_return; return 1; }
     local core="${CORE:-}"; [[ -z "$core" ]] && { load_optional_abox_env_or_die 2>/dev/null || true; core="${CORE:-}"; }
     if [[ -n "$core" ]]; then
@@ -21139,9 +21144,9 @@ deploy_socks5_landing() {
     light_preflight_check
 
     port=$(prompt_validated "$(tr_msg socks5_port_prompt)" port '1080') || die 'SOCKS5 port input failed.'
-    read -r -p "$(tr_msg socks5_user_prompt)" user || die "$(tr_msg pi_input_closed)"
+    IFS= read -r -p "$(tr_msg socks5_user_prompt)" user || die "$(tr_msg pi_input_closed)"
     user="${user:-main}"
-    read -r -p "$(tr_msg socks5_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
+    IFS= read -r -p "$(tr_msg socks5_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'SOCKS5 password generation failed.'
         [[ -n "$pass" ]] || die 'SOCKS5 password generation failed.'
@@ -24206,7 +24211,7 @@ fetch_abox_mirror_asset() {
     if ! abox_verify_sig_gate "$sum_file" "$sum_sig" "recovery mirror SHA256SUMS"; then
         rm -rf -- "$sum_dir"; return 1
     fi
-    expect_sum=$(awk -v f="$asset_leaf" '{ n=length(f); if ($2==f || $2==("./" f) || (substr($2, length($2)-n+1)==f && (length($2)==n || substr($2, length($2)-n, 1)=="/"))) {print $1; exit} }' "$sum_file") || expect_sum=''
+    expect_sum=$(awk -v f="$asset_leaf" '{ g=$2; sub(/^\*/, "", g); n=length(f); if (g==f || g==("./" f) || (substr(g, length(g)-n+1)==f && (length(g)==n || substr(g, length(g)-n, 1)=="/"))) {print $1; exit} }' "$sum_file") || expect_sum=''
     tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || { rm -rf -- "$sum_dir"; return 1; }
     # F-02 fix: if fixed-name asset 404s, fall back to versioned filename.
     if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then
@@ -24219,7 +24224,7 @@ fetch_abox_mirror_asset() {
                 asset_leaf="$versioned_leaf"
                 mirror_url="${mirror_base%/}/${asset_leaf}"
                 # S32: leaf switched -- re-extract the expected digest for it.
-                expect_sum=$(awk -v f="$asset_leaf" '{ n=length(f); if ($2==f || $2==("./" f) || (substr($2, length($2)-n+1)==f && (length($2)==n || substr($2, length($2)-n, 1)=="/"))) {print $1; exit} }' "$sum_file") || expect_sum=''
+                expect_sum=$(awk -v f="$asset_leaf" '{ g=$2; sub(/^\*/, "", g); n=length(f); if (g==f || g==("./" f) || (substr(g, length(g)-n+1)==f && (length(g)==n || substr(g, length(g)-n, 1)=="/"))) {print $1; exit} }' "$sum_file") || expect_sum=''
                 tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || { rm -rf -- "$sum_dir"; return 1; }
                 if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "$mirror_url" -o "$tmp_file"; then rm -f -- "$tmp_file"; rm -rf -- "$sum_dir"; return 1; fi
             else
@@ -24230,7 +24235,7 @@ fetch_abox_mirror_asset() {
         fi
     fi
     rm -rf -- "$sum_dir"
-    got_sum=$(sha256sum "$tmp_file" 2>/dev/null | awk '{print $1}') || got_sum=''
+    got_sum=$(sha256sum < "$tmp_file" 2>/dev/null | awk '{print $1}') || got_sum=''
     if [[ -z "$expect_sum" || ! "$expect_sum" =~ ^[A-Fa-f0-9]{64}$ || "${got_sum,,}" != "${expect_sum,,}" ]]; then msg "${YELLOW}[!] recovery mirror SHA-256 mismatch or missing SHA256SUMS${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
     # S32: digest first, format second (mirrors the upstream reorder).
     if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; return 1; fi
@@ -24863,7 +24868,7 @@ users_hy2_read_users() {
         while IFS=$'\t' read -r n v; do
             [[ -n "$n" ]] || continue
             # Values are written as JSON strings; decode escapes properly.
-            if [[ "$v" == '"'* ]]; then v=$(printf '%s' "$v" | jq -r . 2>/dev/null || printf '%s' "$v"); fi
+            if [[ "$v" == '"'* ]]; then v=$(printf '%s' "$v" | jq -r '. + "__ABOX_TRAILING_NL_KEEP__"' 2>/dev/null || printf '%s' "$v"); v=${v%"__ABOX_TRAILING_NL_KEEP__"}; fi
             list=$(printf '%s' "$list" | jq -c --arg n "$n" --rawfile v <(printf '%s' "$v") '. + [{name: $n, secret: $v}]') || return 1
         done <<< "$out"
         printf '%s' "$list"
@@ -24872,7 +24877,7 @@ users_hy2_read_users() {
     pw=$(printf '%s\n' "$block" | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
     [[ -n "$pw" ]] || return 1
     # The writer json-escapes the value; decode it as a JSON string when quoted.
-    if [[ "$pw" == '"'* ]]; then pw=$(printf '%s' "$pw" | jq -r . 2>/dev/null || printf '%s' "$pw"); fi
+    if [[ "$pw" == '"'* ]]; then pw=$(printf '%s' "$pw" | jq -r '. + "__ABOX_TRAILING_NL_KEEP__"' 2>/dev/null || printf '%s' "$pw"); pw=${pw%"__ABOX_TRAILING_NL_KEEP__"}; fi
     jq -cn --rawfile v <(printf '%s' "$pw") '[{name: "main", secret: $v}]'
 }
 
@@ -30932,7 +30937,7 @@ ensure_backup_auth_key() {
 backup_checksum_write() {
     local archive="$1" hash
     [[ -f "$archive" && ! -L "$archive" ]] || return 1
-    hash=$(sha256sum "$archive" 2>/dev/null | awk '{print $1}')
+    hash=$(sha256sum < "$archive" 2>/dev/null | awk '{print $1}')
     [[ "$hash" =~ ^[A-Fa-f0-9]{64}$ ]] || return 1
     write_private_sidecar "${archive}.sha256" "$hash  $(basename "$archive")"
 }
@@ -30943,7 +30948,7 @@ backup_checksum_verify() {
     backup_sidecar_safe "$sidecar" || return 2
     read -r expected extra < "$sidecar" || return 1
     [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ ]] || return 1
-    actual=$(sha256sum "$archive" 2>/dev/null | awk '{print $1}')
+    actual=$(sha256sum < "$archive" 2>/dev/null | awk '{print $1}')
     [[ "${actual,,}" == "${expected,,}" ]]
 }
 

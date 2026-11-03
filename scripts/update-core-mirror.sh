@@ -441,7 +441,7 @@ while read -r old_sum old_name extra; do
     [.assets[]? | select(.name == $name)]
     | if length == 1 then .[0].digest // empty else empty end
   ' <<< "$release_json")"
-  [[ "${actual_digest#sha256:}" == "$old_sum" ]] || {
+  [[ "${actual_digest,,}" == "sha256:${old_sum,,}" ]] || {
     echo "::error::Existing manifest digest does not match GitHub asset metadata: $old_name"
     exit 1
   }

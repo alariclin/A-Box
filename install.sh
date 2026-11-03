@@ -15412,7 +15412,19 @@ fetch_geo_data() {
         rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"
         die "$(tprintf gd_html "$file_name")"
     fi
+    # R9C7-01: re-check the target just before commit: $out may have
+    # been swapped for a directory during the (up to 90s) download, and a
+    # plain mv would silently move the validated file INTO it and report
+    # success while the expected file path never materializes.
+    [[ ! -L "$out" && ! -d "$out" ]] || { rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"; die "$(tprintf gd_commit "$file_name")"; }
     mv -f -- "$tmp_out" "$out" || { rm -f -- "$tmp_out"; (( out_created == 1 )) && rm -f -- "$out"; die "$(tprintf gd_commit "$file_name")"; }
+    # Post-commit verification: even a final-microsecond swap must not
+    # pass silently. If $out is now a directory, the file landed inside
+    # it; remove the misplaced file and fail loudly.
+    if [[ ! -f "$out" ]]; then
+        [[ -d "$out" ]] && rm -f -- "$out/$(basename "$tmp_out")" 2>/dev/null
+        die "$(tprintf gd_commit "$file_name")"
+    fi
 }
 
 desired_state_valid() { [[ "${1:-}" =~ ^(RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE)$ ]]; }
@@ -16662,10 +16674,14 @@ setup_health_monitor() {
 umask 077
 set -o pipefail
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-ENV=/etc/ddr/.env
+# R11C8-02: derive the runtime dir from this script's own location so a
+# non-default ABOX_DIR still finds its state files (cron invokes by
+# absolute path, so $0's dir is the runtime dir).
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd 2>/dev/null || echo /etc/ddr)"
+ENV="$SCRIPT_DIR/.env"
 read_ip_pref() {
     local pref='dual' mode
-    local pref_file='/etc/ddr/.ip-pref'
+    local pref_file="$SCRIPT_DIR/.ip-pref"
     if [[ -r "$pref_file" && -f "$pref_file" && ! -L "$pref_file" && "$(stat -c %u:%g "$pref_file" 2>/dev/null || true)" == '0:0' ]]; then
         mode=$(stat -c %a "$pref_file" 2>/dev/null) || mode='777'
         if [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#022) == 0 )); then
@@ -16677,8 +16693,8 @@ read_ip_pref() {
 }
 LOCK=/run/A-Box-socket-probe.lock
 STATE=/run/A-Box-socket-probe.fail
-DESIRED=/etc/ddr/.desired_state
-PAIR_STATE=/etc/ddr/.traffic-pair-state
+DESIRED="$SCRIPT_DIR/.desired_state"
+PAIR_STATE="$SCRIPT_DIR/.traffic-pair-state"
 INIT_SYS_EXPECTED='unknown'
 exec 9>>"$LOCK" || exit 0
 flock -n 9; _flock_rc=$?
@@ -16973,7 +16989,7 @@ EOF_PROBE
     chmod 700 "$ABOX_DIR/socket_probe.sh" || die "$(tr_msg hp_chmod)"
     # A-06-FIX: No outer flock (script has internal flock -n 9 under umask 077).
     # Outer flock created 0644 lock in /run (tmpfs, cleared on reboot) - removed.
-    install_abox_cron_block PROBE '* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1'
+    install_abox_cron_block PROBE "* * * * * /bin/bash $ABOX_DIR/socket_probe.sh >/dev/null 2>&1"
 }
 
 setup_geo_cron() {
@@ -17014,11 +17030,14 @@ abox_run_wait() {
     return "$_rc"
 }
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+# R11C8-02: derive the runtime dir from this script's own location (see
+# socket_probe.sh); GEO_DIR itself is fixed (/usr/local/share/xray).
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd 2>/dev/null || echo /etc/ddr)"
 GEO_REPO='Loyalsoldier/v2ray-rules-dat'
-DESIRED=/etc/ddr/.desired_state
-PAIR_STATE=/etc/ddr/.traffic-pair-state
+DESIRED="$SCRIPT_DIR/.desired_state"
+PAIR_STATE="$SCRIPT_DIR/.traffic-pair-state"
 INIT_SYS_EXPECTED='unknown'
-ABOX_CORE_OWNERSHIP=/etc/ddr/.managed-core-files.tsv
+ABOX_CORE_OWNERSHIP="$SCRIPT_DIR/.managed-core-files.tsv"
 GEO_DIR=/usr/local/share/xray
 GEO_TXN="$GEO_DIR/.A-Box-geo-transaction"
 exec 9>>/run/A-Box-geo-update.lock || exit 1
@@ -17133,6 +17152,13 @@ restore_geo_transaction() {
                 fi
                 ;;
             0) rm -f -- "$base/$name.dat" || return 1 ;;
+            2)
+                # R13C8-01: recreate the recorded symlink.
+                link_target=$(cat "$txn/$name.link" 2>/dev/null) || return 1
+                [[ -n "$link_target" ]] || return 1
+                rm -f -- "$base/$name.dat" || return 1
+                ln -s "$link_target" "$base/$name.dat" || return 1
+                ;;
             *) return 1 ;;
         esac
     done
@@ -17260,24 +17286,50 @@ fi
 if is_systemd; then systemctl is-active --quiet xray || exit 0; else rc-service xray status >/dev/null 2>&1 || exit 0; fi
 txn_stage=$(umask 077; mktemp -d "$GEO_DIR/.A-Box-geo-txn-new.XXXXXX") || exit 1
 chmod 700 "$txn_stage" || { rm -rf -- "$txn_stage"; exit 1; }
-if [[ -f "$GEO_DIR/geoip.dat" && ! -L "$GEO_DIR/geoip.dat" ]]; then
+if [[ -L "$GEO_DIR/geoip.dat" ]]; then
+    # R13C8-01: a symlink is a third state, not "nonexistent": record its
+    # target so rollback recreates the link instead of deleting it.
+    link_target=$(readlink "$GEO_DIR/geoip.dat" 2>/dev/null) || { rm -rf -- "$txn_stage"; exit 1; }
+    [[ -n "$link_target" ]] || { rm -rf -- "$txn_stage"; exit 1; }
+    printf '%s\n' "$link_target" > "$txn_stage/geoip.link" || { rm -rf -- "$txn_stage"; exit 1; }
+    printf '2\n' > "$txn_stage/had_geoip" || { rm -rf -- "$txn_stage"; exit 1; }
+elif [[ -f "$GEO_DIR/geoip.dat" ]]; then
     cp -p "$GEO_DIR/geoip.dat" "$txn_stage/geoip.old" || { rm -rf -- "$txn_stage"; exit 1; }
-    printf '1\n' > "$txn_stage/had_geoip"
+    printf '1\n' > "$txn_stage/had_geoip" || { rm -rf -- "$txn_stage"; exit 1; }
 else
-    printf '0\n' > "$txn_stage/had_geoip"
+    printf '0\n' > "$txn_stage/had_geoip" || { rm -rf -- "$txn_stage"; exit 1; }
 fi
-if [[ -f "$GEO_DIR/geosite.dat" && ! -L "$GEO_DIR/geosite.dat" ]]; then
+if [[ -L "$GEO_DIR/geosite.dat" ]]; then
+    # R13C8-01: a symlink is a third state, not "nonexistent": record its
+    # target so rollback recreates the link instead of deleting it.
+    link_target=$(readlink "$GEO_DIR/geosite.dat" 2>/dev/null) || { rm -rf -- "$txn_stage"; exit 1; }
+    [[ -n "$link_target" ]] || { rm -rf -- "$txn_stage"; exit 1; }
+    printf '%s\n' "$link_target" > "$txn_stage/geosite.link" || { rm -rf -- "$txn_stage"; exit 1; }
+    printf '2\n' > "$txn_stage/had_geosite" || { rm -rf -- "$txn_stage"; exit 1; }
+elif [[ -f "$GEO_DIR/geosite.dat" ]]; then
     cp -p "$GEO_DIR/geosite.dat" "$txn_stage/geosite.old" || { rm -rf -- "$txn_stage"; exit 1; }
-    printf '1\n' > "$txn_stage/had_geosite"
+    printf '1\n' > "$txn_stage/had_geosite" || { rm -rf -- "$txn_stage"; exit 1; }
 else
-    printf '0\n' > "$txn_stage/had_geosite"
+    printf '0\n' > "$txn_stage/had_geosite" || { rm -rf -- "$txn_stage"; exit 1; }
 fi
 # S43 (GPT-15 + argon P1-1): chmod 600 only had_*; the .old backups
 # keep their original mode (cp -p) so a rollback restores exactly
 # what was there (0644 for a fresh install). The txn dir itself is
 # 700 root-only, so the .old files are still protected at rest.
 chmod 600 "$txn_stage"/had_* 2>/dev/null || true
-chown -R root:root "$txn_stage" || { rm -rf -- "$txn_stage"; exit 1; }
+# R15C8-02: chown only the txn dir itself, NOT the .old backups: cp -p
+# already preserved their original UID/GID/mode, and a recursive chown
+# would make a restored DB root:root 0640, unreadable by a
+# non-privileged runtime service. The 700 root-only txn dir still
+# protects the backups at rest.
+chown root:root "$txn_stage" || { rm -rf -- "$txn_stage"; exit 1; }
+# R8C8-01: validate markers before publish: an empty or malformed had_*
+# must never reach GEO_TXN, or every later restore fails and updates
+# stall permanently.
+for _m in geoip geosite; do
+    _hv=$(cat "$txn_stage/had_$_m" 2>/dev/null) || { rm -rf -- "$txn_stage"; exit 1; }
+    case "$_hv" in 0|1|2) ;; *) rm -rf -- "$txn_stage"; exit 1 ;; esac
+done
 mv "$txn_stage" "$GEO_TXN" || { rm -rf -- "$txn_stage"; exit 1; }
 stage_ip=$(mktemp "$GEO_DIR/.geoip.A-Box-new.XXXXXX") || { restore_geo_transaction || true; exit 1; }
 stage_site=$(mktemp "$GEO_DIR/.geosite.A-Box-new.XXXXXX") || { rm -f "$stage_ip"; restore_geo_transaction || true; exit 1; }
@@ -17311,7 +17363,7 @@ EOF_GEO
     grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gu_mark_verify)"
     chmod 700 "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gu_chmod)"
     # A-06-FIX: No outer flock (see PROBE above).
-    install_abox_cron_block GEO '0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1'
+    install_abox_cron_block GEO "0 3 * * 1 /bin/bash $ABOX_DIR/geo_update.sh >/dev/null 2>&1"
 }
 
 pre_install_setup() {
@@ -41818,7 +41870,9 @@ N11EOF
     traffic_writer_body=$(sed -n '/write_private_line() {/,/^read_desired() {/p' "$0") || { echo 'FAIL: traffic helper writer static extraction'; failures=$((failures + 1)); }
     ! grep -q 'path_parent_chain_safe "\$dest"' <<< "$traffic_writer_body" || { echo 'FAIL: traffic helper calls main-only function'; failures=$((failures + 1)); }
     grep -q 'export XRAY_LOCATION_ASSET="/usr/local/share/xray"' <<< "$source_body" || { echo 'FAIL: OpenRC Xray asset path is not exported'; failures=$((failures + 1)); }
-    grep -q '^ABOX_CORE_OWNERSHIP=/etc/ddr/.managed-core-files.tsv$' "$0" || { echo 'FAIL: Geo updater ownership manifest path missing'; failures=$((failures + 1)); }
+    # R11C8-02: the geo updater now resolves the manifest via SCRIPT_DIR
+    # (its own location), not a hardcoded /etc/ddr literal.
+    grep -q '^ABOX_CORE_OWNERSHIP="$SCRIPT_DIR/.managed-core-files.tsv"$' "$0" || { echo 'FAIL: Geo updater ownership manifest path missing'; failures=$((failures + 1)); }
     grep -q '^update_geo_ownership() {' "$0" || { echo 'FAIL: Geo updater ownership refresh helper missing'; failures=$((failures + 1)); }
     grep -q 'if ! update_geo_ownership; then' <<< "$source_body" || { echo 'FAIL: Geo updater does not roll back when ownership refresh fails'; failures=$((failures + 1)); }
     grep -q 'write_file_atomically_from_stdin "$ABOX_DIR/.swapfile.managed"' <<< "$source_body" || { echo 'FAIL: managed swap marker missing'; failures=$((failures + 1)); }

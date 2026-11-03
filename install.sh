@@ -30477,10 +30477,16 @@ allowed={
  'TRAFFIC':{
   '* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1',
  },
+ 'USERGUARD':{
+  '*/5 * * * * /bin/bash /etc/ddr/user-guard-runner.sh --user-guard-tick >/dev/null 2>&1',
+ },
 }
 i=0; seen=set()
+bare=set()
+for _v in allowed.values(): bare.update(_v)
 while i < len(lines):
     if not lines[i]: i+=1; continue
+    if lines[i] in bare: i+=1; continue
     if not (lines[i].startswith('# A-Box ') and lines[i].endswith(' BEGIN')): raise SystemExit(1)
     name=lines[i][8:-6]
     if name not in allowed or name in seen or i+2 >= len(lines): raise SystemExit(1)
@@ -30495,13 +30501,22 @@ collect_abox_cron() {
     err=$(umask 077; mktemp /tmp/A-Box-cron-err.XXXXXX) || { rm -f "$all"; return 1; }
     extracted=$(umask 077; mktemp /tmp/A-Box-cron-extract.XXXXXX) || { rm -f "$all" "$err"; return 1; }
     if LC_ALL=C crontab -l > "$all" 2> "$err"; then :
-    elif grep -Eqi 'no crontab|no crontab for' "$err"; then : > "$all"
+    elif grep -Eqi "no crontab|no crontab for|can't open '[^']*': No such file" "$err"; then : > "$all"
     else rm -f "$all" "$err" "$extracted"; return 1
     fi
     awk '
-      /^# A-Box (PROBE|GEO|TRAFFIC) BEGIN$/ {inblock=1}
+      function norm_line(s,   t, old) { t=s; do { old=t; sub(/[ \t]+$/, "", t); if (length(t) >= 1 && substr(t, length(t), 1) == "\r") t=substr(t, 1, length(t)-1); if (length(t) >= 2 && substr(t, length(t)-1, 2) == "\\r") t=substr(t, 1, length(t)-2); } while (t != old); gsub(/[ \t]+/, " ", t); sub(/^ /, "", t); sub(/ $/, "", t); return t }
+      function bare_line_owner(n) {
+        if (n == "* * * * * /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1" || n == "* * * * * /usr/bin/flock -n /run/A-Box-probe-cron.lock /bin/bash /etc/ddr/socket_probe.sh >/dev/null 2>&1") return "PROBE"
+        if (n == "0 3 * * 1 /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1" || n == "0 3 * * 1 /usr/bin/flock -n /run/A-Box-geo-cron.lock /bin/bash /etc/ddr/geo_update.sh >/dev/null 2>&1") return "GEO"
+        if (n == "* * * * * /bin/bash /etc/ddr/traffic_monitor.sh >/dev/null 2>&1") return "TRAFFIC"
+        if (n == "*/5 * * * * /bin/bash /etc/ddr/user-guard-runner.sh --user-guard-tick >/dev/null 2>&1") return "USERGUARD"
+        return ""
+      }
+      /^# A-Box (PROBE|GEO|TRAFFIC|USERGUARD) BEGIN$/ {inblock=1}
       inblock {print}
-      /^# A-Box (PROBE|GEO|TRAFFIC) END$/ {inblock=0}
+      /^# A-Box (PROBE|GEO|TRAFFIC|USERGUARD) END$/ {inblock=0}
+      !inblock && bare_line_owner(norm_line($0)) != "" {print}
       END {if (inblock) exit 1}
     ' "$all" > "$extracted" || { rm -f "$all" "$err" "$extracted"; return 1; }
     validate_abox_cron_file "$extracted" || { rm -f "$all" "$err" "$extracted"; return 1; }
@@ -30518,7 +30533,7 @@ read_crontab_to_file() {
     if LC_ALL=C crontab -l > "$out" 2> "$err"; then
         rm -f -- "$err"
         return 0
-    elif grep -Eqi 'no crontab|no crontab for' "$err"; then
+    elif grep -Eqi "no crontab|no crontab for|can't open '[^']*': No such file" "$err"; then
         : > "$out"
         rm -f -- "$err"
         return 0
@@ -30542,6 +30557,7 @@ strip_abox_cron_blocks_from_file() {
       BEGIN { skip=0; seen_wanted=0; open_name=""; depth=0 }
       {
         if (wanted != "" && $0 ~ /^# A-Box [^ ]+ BEGIN$/) {
+          if (depth > 0) exit 1
           depth++; stack[depth]=$3
           if ($3 == wanted) { if (skip) exit 1; skip=1; seen_wanted=seen_wanted+1; next }
           if (skip) next

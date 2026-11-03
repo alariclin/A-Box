@@ -19,6 +19,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: stable-recovery-mirrors
+  cancel-in-progress: false
+
 jobs:
   sign:
     name: Sign and publish SHA256SUMS.sig
@@ -40,6 +44,52 @@ jobs:
             -o SHA256SUMS
           grep -qE '^[A-Fa-f0-9]{64}  ' SHA256SUMS
           echo "SHA256SUMS entries: $(grep -cE '^[A-Fa-f0-9]{64}  ' SHA256SUMS)"
+
+      - name: Authenticate wallos-manifest and verify SHA256SUMS records (R11C19-01)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # R11C19-01: authenticate the existing manifest signature and require
+          # SHA256SUMS records to match both the authenticated hashes and the
+          # actual assets before signing. A Release-write holder must not be
+          # able to launder a tampered SHA256SUMS into a trusted signature.
+          curl -fLsS --connect-timeout 10 --max-time 60 \
+            "https://github.com/${{ github.repository }}/releases/download/wallos-mirror/wallos-manifest.txt" \
+            -o wallos-manifest.txt
+          curl -fLsS --connect-timeout 10 --max-time 60 \
+            "https://github.com/${{ github.repository }}/releases/download/wallos-mirror/wallos-manifest.txt.sig" \
+            -o wallos-manifest.txt.sig
+          # Rebuild the release-2026 public key PEM from its raw 32 bytes
+          # (same DER prefix as install.sh signature verification).
+          python3 -c 'import base64,sys;raw=base64.b64decode(sys.argv[1],validate=True);assert len(raw)==32;der=bytes.fromhex("302a300506032b6570032100")+raw;sys.stdout.write("-----BEGIN PUBLIC KEY-----\n"+base64.encodebytes(der).decode().strip()+"\n-----END PUBLIC KEY-----\n")' \
+            "$ABOX_SIGNING_PUBKEY_B64" > /tmp/abox-verify-pub.pem
+          openssl pkeyutl -verify -pubin -inkey /tmp/abox-verify-pub.pem \
+            -rawin -in wallos-manifest.txt \
+            -sigfile <(base64 -d wallos-manifest.txt.sig) \
+            || { echo "::error::wallos-manifest.txt signature does not verify with release-2026 pubkey; refusing to sign SHA256SUMS."; exit 1; }
+          echo "Manifest signature verified."
+          # SHA256SUMS records must match the authenticated manifest hashes.
+          for spec in "source_sha256:wallos-source.tar.gz" "amd64_sha256:wallos-linux-amd64.tar.gz" "arm64_sha256:wallos-linux-arm64.tar.gz" "armv7_sha256:wallos-linux-armv7.tar.gz"; do
+            key="${spec%%:*}"; file="${spec#*:}"
+            want="$(awk -F= -v k="$key" '$1==k {print $2}' wallos-manifest.txt)"
+            [[ -n "$want" ]] || { echo "::error::manifest lacks $key."; exit 1; }
+            got="$(awk -v f="$file" '$2==f {print $1}' SHA256SUMS)"
+            [[ "$got" == "$want" ]] || { echo "::error::SHA256SUMS record for $file ($got) does not match authenticated manifest hash ($want)."; exit 1; }
+          done
+          # The manifest's own SHA256SUMS record must match the fetched bytes.
+          manifest_sum="$(sha256sum wallos-manifest.txt | awk '{print $1}')"
+          manifest_record="$(awk '$2=="wallos-manifest.txt" {print $1}' SHA256SUMS)"
+          [[ "$manifest_record" == "$manifest_sum" ]] || { echo "::error::SHA256SUMS record for wallos-manifest.txt does not match fetched manifest bytes."; exit 1; }
+          # SHA256SUMS records must match the actual assets.
+          for file in wallos-source.tar.gz wallos-linux-amd64.tar.gz wallos-linux-arm64.tar.gz wallos-linux-armv7.tar.gz; do
+            curl -fLsS --connect-timeout 10 --max-time 120 \
+              "https://github.com/${{ github.repository }}/releases/download/wallos-mirror/$file" \
+              -o "$file"
+            actual="$(sha256sum "$file" | awk '{print $1}')"
+            record="$(awk -v f="$file" '$2==f {print $1}' SHA256SUMS)"
+            [[ "$actual" == "$record" ]] || { echo "::error::asset $file hash ($actual) does not match SHA256SUMS record ($record)."; exit 1; }
+          done
+          echo "All SHA256SUMS records match authenticated manifest hashes and actual assets."
 
       - name: Sign SHA256SUMS (F-05 detached Ed25519)
         shell: bash

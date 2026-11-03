@@ -15170,6 +15170,10 @@ core_fetch_upstream_release_asset() {
     [[ -n "$asset_name" ]] || return 1
     valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { msg "${YELLOW}[!] 下载 URL 与官方仓库/tag/资产不匹配，拒绝该候选。${NC}" >&2; return 1; }
     [[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]] || { msg "${YELLOW}[!] 官方 Release 缺少有效 SHA-256 digest。${NC}" >&2; return 1; }
+    # R10C7-01: refuse a directory target before any download; mv would
+    # otherwise move the verified asset INTO the directory, report success,
+    # and update resolved state while the requested path holds no file.
+    if [[ -e "$dest_file" && -d "$dest_file" ]]; then msg "${YELLOW}[!] 目标路径为目录，拒绝写入: ${dest_file}${NC}" >&2; return 1; fi
     for mirror in '' 'https://ghp.ci/' 'https://gh-proxy.com/'; do
         tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
         if abox_run_wait "下载 ${asset_name}" curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
@@ -24712,7 +24716,12 @@ check_virgin_state() {
     argo_remove_unit argo || true
     argo_remove_unit argo-vmess || true
     argo_remove_unit argo-vless || true
-    rm -f /usr/local/bin/cloudflared "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true; rm -rf -- /etc/ddr/standalone-links.d 2>/dev/null || true
+    # R12C11-02: cloudflared is deleted only when A-Box ownership is recorded
+    # and no Wallos cftunnel consumer remains; a foreign binary is kept.
+    if [[ -f /etc/ddr/.abox-cloudflared-owned && ! -e /etc/systemd/system/abox-wallos-cftunnel.service && ! -e /etc/init.d/abox-wallos-cftunnel ]]; then
+        rm -f /usr/local/bin/cloudflared /etc/ddr/.abox-cloudflared-owned || true
+    fi
+    rm -f "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true; rm -rf -- /etc/ddr/standalone-links.d 2>/dev/null || true
     users_registries_wipe || true
     abox_zram_teardown
     # Wallos is a standalone addon, not a protocol/core: environment

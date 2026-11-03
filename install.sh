@@ -15961,6 +15961,11 @@ ensure_abox_runtime_identity() {
         fi
         _created=1
     fi
+    # R5C7-03: a pre-existing user must actually belong to the requested
+    # group; otherwise root:$group 750/640 runtime files are unreadable.
+    if ! id -nG "$user" 2>/dev/null | tr ' ' '\n' | grep -qxF "$group"; then
+        return 1
+    fi
     # SYD-B E22: record proven self-created users as name:uid (only
     # the branch above sets _created); cleanup removes exactly
     # these name+uid pairs.
@@ -15969,14 +15974,14 @@ ensure_abox_runtime_identity() {
         # R8C7-01: never chmod through a symlink; a linked
         # record is a tamper signal, fail closed.
         if [[ -L "$_rec" ]]; then return 1; fi
-        if [[ ! -f "$_rec" ]]; then ( umask 077; : > "$_rec" ) 2>/dev/null || true; fi
+        if [[ ! -f "$_rec" ]]; then ( umask 077; : > "$_rec" ) 2>/dev/null || return 1; fi
         if [[ -f "$_rec" && ! -L "$_rec" ]] && ! grep -qxF "$user" "$_rec" 2>/dev/null && ! grep -q "^$user:" "$_rec" 2>/dev/null; then
             local _new_uid=''
             _new_uid=$(id -u "$user" 2>/dev/null || true)
-            if [[ "$_new_uid" =~ ^[0-9]+$ ]]; then printf '%s:%s\n' "$user" "$_new_uid" >> "$_rec" 2>/dev/null || true; else printf '%s\n' "$user" >> "$_rec" 2>/dev/null || true; fi
+            if [[ "$_new_uid" =~ ^[0-9]+$ ]]; then printf '%s:%s\n' "$user" "$_new_uid" >> "$_rec" 2>/dev/null || return 1; else printf '%s\n' "$user" >> "$_rec" 2>/dev/null || return 1; fi
         fi
         if [[ -L "$_rec" ]]; then return 1; fi
-        chmod 600 "$_rec" 2>/dev/null || true
+        chmod 600 "$_rec" 2>/dev/null || return 1
     fi
     uid=$(id -u "$user" 2>/dev/null) || return 1
     gid=$(id -g "$user" 2>/dev/null) || return 1

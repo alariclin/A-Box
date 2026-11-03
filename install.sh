@@ -24592,7 +24592,7 @@ protocol_inventory() {
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
         jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "sing-box\t\(.tag)\t\(.type // "")\t\(.listen_port // "")"' "$cfg" 2>/dev/null || true
     fi
-    if [[ -n "$(_xl_state_get mode)" && -f "$XRAY_LATEST_CFG" && ! -L "$XRAY_LATEST_CFG" ]]; then
+    if [[ "$(_xl_state_get mode)" == 'coexist' && -f "$XRAY_LATEST_CFG" && ! -L "$XRAY_LATEST_CFG" ]]; then
         jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "xray-latest\t\(.tag)\t\(.protocol // "")\t\(.port // "")"' "$XRAY_LATEST_CFG" 2>/dev/null || true
     fi
     if [[ -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
@@ -24873,7 +24873,7 @@ _remove_hy2_official() {
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         local hy2_state
         hy2_state=$(systemctl show -p ActiveState --value hysteria 2>/dev/null) || return 1
-        [[ "$hy2_state" == active || "$hy2_state" == activating ]] && return 1
+        [[ "$hy2_state" == inactive || "$hy2_state" == failed ]] || return 1
     elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
         local hy2_rc
         rc-service hysteria status >/dev/null 2>&1; hy2_rc=$?
@@ -24882,6 +24882,14 @@ _remove_hy2_official() {
             *) return 1 ;;
         esac
     fi
+    # R16C11-02: refuse while any hysteria process remains: the
+    # service MainPID (if any) or any process named hysteria.
+    local _hy2_main_pid=''
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        _hy2_main_pid=$(systemctl show -p MainPID --value hysteria 2>/dev/null || echo 0)
+        if [[ "$_hy2_main_pid" =~ ^[0-9]+$ ]] && (( _hy2_main_pid > 0 )) && [[ -d /proc/$_hy2_main_pid ]]; then return 1; fi
+    fi
+    if command -v pgrep >/dev/null 2>&1 && pgrep -x hysteria >/dev/null 2>&1; then return 1; fi
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl disable hysteria >/dev/null 2>&1 || true
         rm -f -- /etc/systemd/system/hysteria.service

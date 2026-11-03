@@ -25555,7 +25555,9 @@ export_lightweight_subscription() {
         msg "${RED}UUID list unreadable or untrusted; refusing to generate incomplete subscription.${NC}" >&2
         return 1
     fi
-    if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
+    # R9C11-03: a stale MODE (e.g. ALL after Vision deletion) with a
+    # cleared VLESS_PORT must not emit vless://...@host:? malformed URLs.
+    if [[ -n "$VLESS_PORT" && "$VLESS_PORT" =~ ^[0-9]+$ ]] && [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" ]] || continue
             if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='Vision'; else proxy_name="Vision-$client_uuid"; fi
@@ -25563,7 +25565,8 @@ export_lightweight_subscription() {
             printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp" "$_uuid_list_tmp"; return 1; }
         done < "$_uuid_list_tmp"
     fi
-    if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
+    # R9C11-03 (same mechanism): skip XHTTP when its port is gone.
+    if [[ -n "$XHTTP_PORT" && "$XHTTP_PORT" =~ ^[0-9]+$ ]] && [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" ]] || continue
             if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='XHTTP'; else proxy_name="XHTTP-$client_uuid"; fi
@@ -25627,7 +25630,9 @@ users_normalize_default_name() {
     reg=$(users_reg_file "$core" "$tag")
     [[ -f "$reg" && ! -L "$reg" ]] || return 0
     proto=$(jq -r '.protocol // ""' "$reg" 2>/dev/null) || return 0
-    case "$proto" in *socks*|mixed) return 0 ;; esac
+    # R9C11-02: Hy2 userpass names are credentials (like SOCKS
+    # logins), not display labels; renaming would break auth.
+    case "$proto" in *socks*|mixed|*hysteria*|*hy2*) return 0 ;; esac
     jq -e '([.users[].name] | (index("abox") != null) and (index("main") == null))' "$reg" >/dev/null 2>&1 || return 0
     new=$(jq -c --arg tag "$tag" '.users |= map(if .name == "abox" then .name = "main" | (if .email == ($tag + "/abox") then .email = ($tag + "/main") else . end) else . end)' "$reg" 2>/dev/null) || return 0
     [[ -n "$new" ]] || return 0
@@ -26006,6 +26011,13 @@ users_hy2_read_users() {
     pw=$(printf '%s\n' "$block" | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
     [[ -n "$pw" ]] || return 1
     pw=$(users_hy2_yaml_scalar "$pw")
+    # R3C11-04: a deny password is not a user; returning [] keeps the
+    # registry's (disabled) users intact without resurrecting the deny
+    # as an enabled user on the next menu visit.
+    if [[ "$pw" =~ ^ABOX-DENY-[0-9a-f]{32}$ ]]; then
+        printf '[]'
+        return 0
+    fi
     jq -cn --rawfile v <(printf '%s' "$pw") '[{name: "main", secret: $v}]'
 }
 
@@ -26231,9 +26243,13 @@ users_hy2_write_users() {
         sec=$(printf '%s' "$users_json" | jq -r '.[0].secret' 2>/dev/null)
         auth_block=$(printf 'auth:\n  type: password\n  password: %s' "$(json_escape "$sec")")
     elif (( count == 0 )); then
+        # R3C11-04: mark the deny credential persistently so adoption
+        # can exclude it. The prefix + 32 hex can never collide with a
+        # generated user secret (rand_alnum/base64 have no such form).
         local rnd=''
         rnd=$(openssl rand -hex 16 2>/dev/null)
         [[ -n "$rnd" ]] || return 1
+        rnd="ABOX-DENY-$rnd"
         auth_block=$(printf 'auth:\n  type: password\n  password: %s' "$(json_escape "$rnd")")
     else
         local lines=''

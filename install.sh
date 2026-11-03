@@ -38696,12 +38696,16 @@ acquire_fallback_runtime_lock() {
         lock_dir_created=1
         chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
     else
-        if [[ -d "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" && -r "$LOCK_FALLBACK_DIR/pid" && -r "$LOCK_FALLBACK_DIR/starttime" ]]; then
+        if [[ -d "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" && -s "$LOCK_FALLBACK_DIR/pid" && -s "$LOCK_FALLBACK_DIR/starttime" ]]; then
             IFS= read -r existing_pid < "$LOCK_FALLBACK_DIR/pid" || existing_pid=''
             IFS= read -r existing_start < "$LOCK_FALLBACK_DIR/starttime" || existing_start=''
             if [[ "$existing_pid" =~ ^[0-9]+$ && -d "/proc/$existing_pid" ]]; then
                 actual_start=$(runtime_lock_proc_starttime "$existing_pid" || true)
-                [[ -n "$actual_start" && "$actual_start" == "$existing_start" ]] && return 1
+                # R16C17-01: an empty probe result means the holder's
+                # liveness is unknown, not that the lock is stale.
+                # Reclaiming on it deletes a live lock's dir.
+                [[ -n "$actual_start" ]] || return 1
+                [[ "$actual_start" == "$existing_start" ]] && return 1
             fi
             [[ "$(stat -c %u:%g "$LOCK_FALLBACK_DIR" 2>/dev/null || true)" == 0:0 ]] || return 1
             # S157: revalidate immediately before the move. The captured
@@ -38759,6 +38763,15 @@ acquire_fallback_runtime_lock() {
             fi
             if [[ -e "$LOCK_FALLBACK_DIR/starttime" || -L "$LOCK_FALLBACK_DIR/starttime" ]]; then
                 _pre_has_start=1; IFS= read -r _pre_start < "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || _pre_start=''
+            fi
+            # R4C17-01: a pid-only residual whose pid is still alive
+            # is a live creator (SIGSTOP between the pid and starttime
+            # writes), not a dead residual: reclaiming it double-holds
+            # on resume. Only a dead or invalid pid may be reclaimed.
+            if (( _pre_has_pid && !_pre_has_start )); then
+                if [[ "$_pre_pid" =~ ^[0-9]+$ && -d "/proc/$_pre_pid" ]]; then
+                    return 1
+                fi
             fi
             # S158: recheck age immediately before mv (a replacement dir
             # is fresh; the age gate above may predate the replacement).

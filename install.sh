@@ -21705,6 +21705,15 @@ deploy_socks5_landing() {
         pass=$(rand_alnum 16) || die 'SOCKS5 password generation failed.'
         [[ -n "$pass" ]] || die 'SOCKS5 password generation failed.'
     fi
+    # R8C10-F2: SOCKS5 (RFC 1929) username/password lengths are
+    # single-byte (max 255); longer credentials deploy but can
+    # never authenticate. Byte count, not character count.
+    local _socks5_user_len _socks5_pass_len
+    _socks5_user_len=$(printf '%s' "$user" | wc -c)
+    _socks5_pass_len=$(printf '%s' "$pass" | wc -c)
+    if (( _socks5_user_len > 255 || _socks5_pass_len > 255 )); then
+        die 'SOCKS5 username/password must be at most 255 bytes (RFC 1929).'
+    fi
 
     # Minimal Xray install when the binary is missing.
     if [[ ! -x /usr/local/bin/xray ]]; then
@@ -36777,6 +36786,13 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
             read -r -p "$(tr_msg socks5_user_prompt)" suser || suser=''
             suser="${suser:-main}"
             spass=$(rand_alnum 16) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
+            # R10C15-02: SOCKS5 (RFC 1929) username length is
+            # single-byte (max 255); a longer username deploys
+            # but can never authenticate. Byte count, not
+            # character count. (spass is auto 16 bytes.)
+            local _socks5_user_len
+            _socks5_user_len=$(printf '%s' "$suser" | wc -c)
+            if (( _socks5_user_len > 255 )); then rm -f "$tmp_json"; msg "${RED}SOCKS5 username must be at most 255 bytes (RFC 1929).${NC}"; return 1; fi
             jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg user "$suser" --rawfile pass <(printf '%s' "$spass") \
                 '{tag:$tag,listen:$listen,port:$port,protocol:"socks",
                   settings:{auth:"password",accounts:[{user:$user,pass:$pass}],udp:true}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }

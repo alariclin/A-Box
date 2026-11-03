@@ -19836,6 +19836,16 @@ EOF_SVC
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         msg "${YELLOW}$(tr_msg shadowtls_exists)${NC}"
     fi
+    # R14C9-01: refuse if the companion tag is already used by an inbound
+    # that is not part of the existing ShadowTLS pair with $tag; the merge
+    # below would otherwise silently destroy that independent inbound.
+    # A jq read failure (invalid config) skips the check and lets the
+    # merge fail closed as before; only a confirmed conflict refuses.
+    if jq -e --arg it "$itag" '.inbounds[]? | select(.tag==$it)' "$cfg" >/dev/null 2>&1; then
+        if ! jq -e --arg t "$tag" --arg it "$itag" '.inbounds[]? | select(.tag==$t and .type=="shadowtls" and .detour==$it)' "$cfg" >/dev/null 2>&1; then
+            die "Companion tag '$itag' is already used by an independent inbound (not part of a ShadowTLS pair with '$tag'); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+        fi
+    fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" --arg it "$itag" \
             '(.inbounds | map(select(.tag==$t or .tag==$it))) as $old

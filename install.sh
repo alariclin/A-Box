@@ -14235,16 +14235,21 @@ decimal_component_compare() {
 }
 
 xray_version_at_least() {
-    local version="${1:-}" min_major="${2:-0}" min_minor="${3:-0}" min_patch="${4:-0}" major minor patch cmp
+    local version="${1:-}" min_major="${2:-0}" min_minor="${3:-0}" min_patch="${4:-0}" major minor patch cmp pre=''
     version="${version#v}"
-    [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || return 2
-    major="${BASH_REMATCH[1]}"; minor="${BASH_REMATCH[2]}"; patch="${BASH_REMATCH[3]}"
+    [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$ ]] || return 2
+    major="${BASH_REMATCH[1]}"; minor="${BASH_REMATCH[2]}"; patch="${BASH_REMATCH[3]}"; pre="${BASH_REMATCH[5]:-}"
     cmp=$(decimal_component_compare "$major" "$min_major") || return 2
     (( cmp > 0 )) && return 0; (( cmp < 0 )) && return 1
     cmp=$(decimal_component_compare "$minor" "$min_minor") || return 2
     (( cmp > 0 )) && return 0; (( cmp < 0 )) && return 1
     cmp=$(decimal_component_compare "$patch" "$min_patch") || return 2
-    (( cmp >= 0 ))
+    (( cmp > 0 )) && return 0; (( cmp < 0 )) && return 1
+    # Equal numeric triple: a prerelease precedes its own release (SemVer),
+    # so it is NOT at least the release version. Malformed input still
+    # returns 2, so the explicit ML-KEM path keeps dying on real garbage.
+    [[ -n "$pre" ]] && return 1
+    return 0
 }
 
 xray_version_compare() {
@@ -39477,6 +39482,8 @@ PY_SELFTEST_TAR
     ( unset ABOX_SINGBOX_VERSION; ABOX_TRY_LATEST_CORE_STABLE=1; ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE=''; core_latest_stable_release_ref() { return 1; }; core_latest_mirror_release_ref() { printf '%s\n' 'v1.14.3'; }; resolve_core_release_target SagerNet/sing-box || exit 1; [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.3|mirror-latest' ]] ) || { echo 'FAIL: latest mirror metadata must be used when upstream API fails'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9.8 xray_reality_requires_mlkem ) || { echo 'FAIL: Xray 26.9.8 must require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.7.28 xray_reality_requires_mlkem ) && { echo 'FAIL: Xray 26.7.28 must not require REALITY ML-KEM'; failures=$((failures + 1)); }
+    ( ABOX_XRAY_VERSION=v26.9.8-rc.1 xray_reality_requires_mlkem ) && { echo 'FAIL: Xray 26.9.8 prerelease must not require REALITY ML-KEM'; failures=$((failures + 1)); }
+    ( ABOX_XRAY_VERSION=v26.9.9-rc.1 xray_reality_requires_mlkem ) || { echo 'FAIL: Xray 26.9.9 prerelease must require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( unset ABOX_XRAY_VERSION ABOX_RESOLVED_XRAY_VERSION; ABOX_XRAY_VERSION_PROBE_SKIP=1
       [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] ) || { echo 'FAIL: effective Xray compatibility default'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9 xray_reality_requires_mlkem ) >/dev/null 2>&1 && { echo 'FAIL: malformed Xray version accepted'; failures=$((failures + 1)); }

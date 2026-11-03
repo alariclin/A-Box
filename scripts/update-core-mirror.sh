@@ -308,7 +308,7 @@ download_verified_asset() {
           echo "::error::cloudflared binary failed its version probe: $mirror_name"
           return 1
         }
-        if [[ "$version_output" =~ cloudflared\ version\ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+        if [[ "$version_output" =~ cloudflared\ version\ ([0-9]+\.[0-9]+\.[0-9]+)([[:space:]]|$) ]]; then
           [[ "${BASH_REMATCH[1]}" == "$tag" ]] || {
             echo "::error::cloudflared binary version does not match $tag (got ${BASH_REMATCH[1]})"
             return 1

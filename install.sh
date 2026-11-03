@@ -19099,7 +19099,12 @@ deploy_xray_trojan_landing() {
         jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_xray_seed)"
         # U31: same guard as the sing-box landing seed above.
-        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]] || ! jq -e . "$cfg" >/dev/null 2>&1; then
+        # R2C9-01: do NOT treat jq-reject as "needs seed": Xray accepts
+        # // comments that jq rejects, and seeding here would overwrite a
+        # live commented config with an empty seed and no backup. Only a
+        # missing/empty/symlink config is seeded; a jq-invalid existing
+        # config is preserved and the merge below fails closed.
+        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
         fi
         rm -f "$tmp_json"
@@ -19143,7 +19148,8 @@ deploy_xray_trojan_landing() {
         ( umask 077; set -o noclobber; : > "$tmp_cfg.json" ) 2>/dev/null || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_tmpfile)"; }
         mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$tmp_cfg.json"; die "$(tr_msg dp_tmpfile)"; }; tmp_cfg="$tmp_cfg.json"
         if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
-                '(.inbounds | map(select(.tag==$t))) as $old
+                '.inbounds = (.inbounds // [])
+                 | (.inbounds | map(select(.tag==$t))) as $old
                  | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
                 "$cfg" > "$tmp_cfg" 2>/dev/null; then
             rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_trojan_update)"

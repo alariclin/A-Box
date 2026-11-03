@@ -15710,8 +15710,9 @@ update_traffic_state_atomically() {
     fi
     chmod 600 "$tmp" || { rm -f "$tmp"; return 1; }
     if [[ $EUID -eq 0 ]]; then chown root:root "$tmp" || { rm -f "$tmp"; return 1; }; fi
-    sync -f "$tmp" 2>/dev/null || true
+    _abox_sync_file "$tmp" || { rm -f "$tmp"; return 1; }
     mv -f "$tmp" "$ABOX_ENV" || { rm -f "$tmp"; return 1; }
+    _abox_sync_file "$ABOX_DIR" || return 1
 }
 
 reset_protocol_vars() {

@@ -11487,7 +11487,7 @@ reorder_one() {
         [[ "$(printf '%s\n' "${current_foreign_lines[@]}")" == "$(printf '%s\n' "${original_foreign_rules[@]}")" ]] || return 1
         [[ "$current_interleave" == "$expected_interleave" ]]
     }
-    firewall_rollback() {
+    firewall_rollback_inner() {
         local rollback_line
         local -a rollback_lines=() rollback_argv_arr=()
         [[ -n "$recovery_snapshot" && -s "$recovery_snapshot" ]] || return 1
@@ -11525,6 +11525,32 @@ reorder_one() {
         rm -f -- "$recovery_snapshot" || return 1
         recovery_snapshot=''
         return 0
+    }
+    firewall_rollback() {
+        # R6C6-02: clamp INPUT policy to DROP while the inner rollback
+        # deletes and re-inserts managed rules: with an ACCEPT policy
+        # the gap would leave the port unfiltered. DROP makes "no rule"
+        # fail closed instead of fail open.
+        local _saved_policy='' _clamped=0 _inner_rc=0
+        _saved_policy=$("$save_cmd" -t filter 2>/dev/null | awk '/^:INPUT /{print $2; exit}') || _saved_policy=''
+        if [[ "$_saved_policy" == ACCEPT ]]; then
+            if _iptables_do "$cmd" -P INPUT DROP >/dev/null 2>&1; then
+                _clamped=1
+            else
+                printf '%s\n' 'A-Box firewall rollback: could not clamp INPUT policy to DROP; proceeding with the unprotected window.' >&2
+            fi
+        elif [[ -z "$_saved_policy" ]]; then
+            printf '%s\n' 'A-Box firewall rollback: could not read INPUT policy; proceeding without a policy clamp.' >&2
+        fi
+        firewall_rollback_inner
+        _inner_rc=$?
+        if (( _clamped )); then
+            if ! _iptables_do "$cmd" -P INPUT "$_saved_policy" >/dev/null 2>&1; then
+                printf '%s\n' 'A-Box firewall rollback: could not restore INPUT policy; left at DROP (fail-closed).' >&2
+                (( _inner_rc == 0 )) && _inner_rc=1
+            fi
+        fi
+        return "$_inner_rc"
     }
 
     recovery_snapshot=$(mktemp /run/A-Box-firewall-recovery.XXXXXX) || { __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
@@ -12771,7 +12797,7 @@ reorder_ss_whitelist_rules_one() {
         [[ "$(printf '%s\n' "${current_foreign_lines[@]}")" == "$(printf '%s\n' "${original_foreign_rules[@]}")" ]] || return 1
         [[ "$current_interleave" == "$expected_interleave" ]]
     }
-    firewall_rollback() {
+    firewall_rollback_inner() {
         local rollback_line
         local -a rollback_lines=() rollback_argv_arr=()
         [[ -n "$recovery_snapshot" && -s "$recovery_snapshot" ]] || return 1
@@ -12809,6 +12835,32 @@ reorder_ss_whitelist_rules_one() {
         rm -f -- "$recovery_snapshot" || return 1
         recovery_snapshot=''
         return 0
+    }
+    firewall_rollback() {
+        # R6C6-02: clamp INPUT policy to DROP while the inner rollback
+        # deletes and re-inserts managed rules: with an ACCEPT policy
+        # the gap would leave the port unfiltered. DROP makes "no rule"
+        # fail closed instead of fail open.
+        local _saved_policy='' _clamped=0 _inner_rc=0
+        _saved_policy=$("$save_cmd" -t filter 2>/dev/null | awk '/^:INPUT /{print $2; exit}') || _saved_policy=''
+        if [[ "$_saved_policy" == ACCEPT ]]; then
+            if _iptables_do "$cmd" -P INPUT DROP >/dev/null 2>&1; then
+                _clamped=1
+            else
+                printf '%s\n' 'A-Box firewall rollback: could not clamp INPUT policy to DROP; proceeding with the unprotected window.' >&2
+            fi
+        elif [[ -z "$_saved_policy" ]]; then
+            printf '%s\n' 'A-Box firewall rollback: could not read INPUT policy; proceeding without a policy clamp.' >&2
+        fi
+        firewall_rollback_inner
+        _inner_rc=$?
+        if (( _clamped )); then
+            if ! _iptables_do "$cmd" -P INPUT "$_saved_policy" >/dev/null 2>&1; then
+                printf '%s\n' 'A-Box firewall rollback: could not restore INPUT policy; left at DROP (fail-closed).' >&2
+                (( _inner_rc == 0 )) && _inner_rc=1
+            fi
+        fi
+        return "$_inner_rc"
     }
 
     recovery_snapshot=$(mktemp /run/A-Box-firewall-recovery.XXXXXX) || { __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }

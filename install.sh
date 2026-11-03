@@ -12587,32 +12587,33 @@ ufw_delete_owned_rules() {
     local spec proto="$2" numbers
     spec=$(normalize_port_spec "$1") || return 1
     [[ "$proto" == tcp || "$proto" == udp ]] || return 1
+    # R11C6-01: an inactive UFW lists no rules, so an empty result
+    # cannot prove the persistent rules are gone; treat it as unknown
+    # state and fail, keeping the ownership record.
+    if LC_ALL=C ufw status 2>/dev/null | head -n 1 | grep -q 'inactive'; then
+        return 1
+    fi
     numbers=$(ufw_global_rule_numbers "$spec" "$proto" 1) || return 1
     [[ -n "$numbers" ]] || return 0
-    # Delete by the full rule specification rather than mutable display indices.
-    # UFW can match the original comment and removes the generic v4/v6 rule pair
-    # as one logical rule; a concurrent insertion cannot redirect deletion to a
-    # different numbered rule.
-    if ! ufw --force delete allow proto "$proto" from any to any port "$spec" comment "A-Box-${spec}-${proto}" >/dev/null 2>&1 || ufw_owned_rule_exists "$spec" "$proto"; then
-        # Never reuse the pre-spec-delete snapshot: the spec delete shifts
-        # every remaining rule number, so stale numbers would delete other
-        # rules. Re-query before each delete and always take the largest
-        # current owned number (deleting it cannot shift lower numbers).
-        local _guard=0 _fresh _max _verify
-        while ufw_owned_rule_exists "$spec" "$proto"; do
-            ((_guard++ < 50)) || return 1
-            _fresh=$(ufw_global_rule_numbers "$spec" "$proto" 1) || return 1
-            _max=$(printf '%s\n' "$_fresh" | LC_ALL=C sort -rn | sed -n '1p')
-            [[ "$_max" =~ ^[0-9]+$ ]] || return 1
-            # S25: re-verify _max is still owned immediately before deleting:
-            # a concurrent insertion between query and delete can shift
-            # numbers onto a foreign rule. On mismatch, re-query instead
-            # of deleting blindly (the loop condition re-checks ownership).
-            _verify=$(ufw_global_rule_numbers "$spec" "$proto" 1) || return 1
-            printf '%s\n' "$_verify" | grep -qx "$_max" || continue
-            ufw --force delete "$_max" >/dev/null 2>&1 || return 1
-        done
-    fi
+    # R2C6-02: never delete by spec -- UFW matches by spec regardless
+    # of comment, so a foreign same-spec rule would be deleted too.
+    # Delete owned rules by number only: re-query before each delete
+    # and always take the largest current owned number (deleting it
+    # cannot shift lower numbers).
+    local _guard=0 _fresh _max _verify
+    while ufw_owned_rule_exists "$spec" "$proto"; do
+        ((_guard++ < 50)) || return 1
+        _fresh=$(ufw_global_rule_numbers "$spec" "$proto" 1) || return 1
+        _max=$(printf '%s\n' "$_fresh" | LC_ALL=C sort -rn | sed -n '1p')
+        [[ "$_max" =~ ^[0-9]+$ ]] || return 1
+        # S25: re-verify _max is still owned immediately before deleting:
+        # a concurrent insertion between query and delete can shift
+        # numbers onto a foreign rule. On mismatch, re-query instead
+        # of deleting blindly (the loop condition re-checks ownership).
+        _verify=$(ufw_global_rule_numbers "$spec" "$proto" 1) || return 1
+        printf '%s\n' "$_verify" | grep -qx "$_max" || continue
+        ufw --force delete "$_max" >/dev/null 2>&1 || return 1
+    done
     local _verify_rc
     ufw_owned_rule_exists "$spec" "$proto"; _verify_rc=$?
     # Only a confirmed absence (rc 1) is success: rules still present

@@ -28342,8 +28342,8 @@ nm_effective_device() {
                 if [[ "$tok" == "$first_ns" ]]; then printf '%s\n' "$dev"; return 0; fi
             done
         fi
-    done < <(nmcli -t -f DEVICE,STATE device 2>/dev/null || true)
-    nmcli -t -f DEVICE,STATE device 2>/dev/null | awk -F: '$2=="connected"{print $1; exit}'
+    done < <(LC_ALL=C nmcli -t -f DEVICE,STATE device 2>/dev/null || true)
+    LC_ALL=C nmcli -t -f DEVICE,STATE device 2>/dev/null | awk -F: '$2=="connected"{print $1; exit}'
 }
 
 nm_dns_verify_applied() {

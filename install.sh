@@ -30242,39 +30242,85 @@ import sys
 
 text = os.fdopen(3, "r", encoding="utf-8", errors="replace").read()
 secret = re.compile(
-    r"(?:^|[_-])(uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)(?:$|[_-])",
+    r"(?:^|[_-])(uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)(?:$|[_-])",
     re.I,
 )
 link = re.compile(r"(?i)\b(?:vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess)://\S+")
+pem_span = re.compile(r"-----BEGIN [^-]*KEY-----.*?-----END [^-]*KEY-----", re.S)
+url_userinfo = re.compile(r"(?i)(\b(?:https?|ftp)://)[^\s/@]+@")
 inline_authorization = re.compile(
     r"(?i)(\b(?:authorization|proxy-authorization)\s*[:=]\s*)(?:Bearer\s+\S+|Basic\s+\S+|\S+)"
 )
 inline_cookie = re.compile(r"(?i)(\b(?:cookie|set-cookie)\s*[:=]\s*)[^\r\n]+")
 inline_secret_assignment = re.compile(
-    r"(?i)([\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|ss_pass|hy2_pass|hy2_obfs)\b[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^,;\s}\"']+)"
+    r"(?i)([\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|ss_pass|hy2_pass|hy2_obfs)\b[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|[^,;\r\n}\"]+)"
 )
 
 
 def redact_text(value):
+    value = pem_span.sub("***REDACTED-PEM***", value)
+    value = redact_block_scalars(value)
     value = link.sub("***CLIENT_LINK_REDACTED***", value)
+    value = url_userinfo.sub(r"\1***REDACTED***@", value)
     value = inline_authorization.sub(r"\1***REDACTED***", value)
     value = inline_cookie.sub(r"\1***REDACTED***", value)
     value = inline_secret_assignment.sub(r'\1"***REDACTED***"', value)
     return value
 
 
+_block_scalar_key = r"(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)"
+_block_scalar_re = re.compile(
+    r"(?i)^(\s*[\"']?" + _block_scalar_key + r"[\"']?\s*:\s*)[|>][+-]?\s*(#.*)?$"
+)
+
+
+def redact_block_scalars(text):
+    # A sensitive key with | or > puts the secret on the following
+    # more-indented lines, which same-line regexes never see (R12C13-01).
+    # Blank lines inside the block carry no secret and pass through.
+    lines = text.split("\n")
+    out = []
+    block_indent = None
+    for line in lines:
+        if block_indent is not None:
+            stripped = line.strip()
+            indent = len(line) - len(line.lstrip())
+            if stripped == "" or indent > block_indent:
+                out.append(" " * indent + "***REDACTED***" if stripped != "" else line)
+                continue
+            block_indent = None
+        m = _block_scalar_re.match(line)
+        if m:
+            out.append(m.group(1) + "***REDACTED***")
+            block_indent = len(line) - len(line.lstrip())
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
 # A-05b-FIX: UUID regex for "id" key check (Xray clients[].id holds UUIDs).
 uuid_val = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
 
 
-def walk(value):
+def walk(value, in_clients=False):
     if isinstance(value, dict):
-        return {
-            key: ("***REDACTED***" if (secret.search(str(key)) or (str(key).lower() == "id" and isinstance(item, str) and uuid_val.match(item))) else walk(item))
-            for key, item in value.items()
-        }
+        result = {}
+        for key, item in value.items():
+            lk = str(key).lower()
+            if lk == "userpass":
+                if isinstance(item, dict):
+                    result[key] = {k: "***REDACTED***" for k in item}
+                else:
+                    result[key] = "***REDACTED***"
+            elif secret.search(str(key)) or (lk == "id" and isinstance(item, str) and (uuid_val.match(item) or in_clients)):
+                result[key] = "***REDACTED***"
+            elif lk == "clients" and isinstance(item, list):
+                result[key] = [walk(element, True) for element in item]
+            else:
+                result[key] = walk(item, in_clients)
+        return result
     if isinstance(value, list):
-        return [walk(item) for item in value]
+        return [walk(item, in_clients) for item in value]
     if isinstance(value, str):
         return redact_text(value)
     return value
@@ -30283,6 +30329,9 @@ def walk(value):
 try:
     parsed = json.loads(text)
 except Exception:
+    text = pem_span.sub("***REDACTED-PEM***", text)
+    text = redact_block_scalars(text)
+    text = url_userinfo.sub(r"\1***REDACTED***@", text)
     text = re.sub(
         r"(?im)^(UUID|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|SS_PASS|HY2_PASS|HY2_OBFS|HY2_ACME_DNS_CF_API_TOKEN)=.*$",
         r"\1=***REDACTED***",
@@ -30304,12 +30353,12 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]\s*\[)[^\]]*",
+        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]\s*\[)[^\]]*",
         r'\1***REDACTED***',
         text,
     )
     text = re.sub(
-        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^,}\s\"']+)",
+        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|[^,\r\n}\"]+)",
         r'\1"***REDACTED***"',
         text,
     )
@@ -30319,20 +30368,32 @@ else:
     sys.stdout.write("\n")
 PY_REDACT
     else
-        sed -E \
+        # No Python: the line-based sed fallback cannot verify
+        # multi-line constructs (PEM spans, YAML block scalars,
+        # cross-line values). Buffer stdin, pre-scan for those
+        # shapes, and refuse/suppress when they appear: no output
+        # (mine) or a notice-only output (gpt) is safer than a
+        # "redacted" file that still holds the secret.
+        _redact_input=$(cat) || return 1
+        if printf '%s\n' "$_redact_input" | grep -qE -- $'-----BEGIN [^-]*KEY-----|^[[:space:]]*["\x27]?(uuid|private[_-]?key|public[_-]?key|short[_-]?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)["\x27]?[[:space:]]*:[[:space:]]*([|>][+-]?[[:space:]]*(#.*)?)?$'; then
+            printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, or a cross-line value that the fallback redactor cannot verify; it was suppressed in full and no original content is included.]'
+            return 0
+        fi
+        printf '%s\n' "$_redact_input" | sed -E \
             -e 's/(UUID|SS_PASS|HY2_PASS|HY2_OBFS|HY2_ACME_DNS_CF_API_TOKEN|PUBLIC_KEY|SHORT_ID)=.*/\1=***REDACTED***/Ig' \
             -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)(Bearer|Basic)[[:space:]]+[^,;[:space:]}"]+/\1\3 ***REDACTED***/Ig' \
             -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)[^,;[:space:]}"]+/\1***REDACTED***/Ig' \
             -e 's/((Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*)[^,}[:cntrl:]"]+/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
-            -e 's/([\" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[\" ]?[[:space:]]*[:=][[:space:]]*\[)[^]]*/\1***REDACTED***/Ig' \
-            -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
-            -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*)(\x27)([^\x27\\]|\\.)*\3/\1\3***REDACTED***\3/Ig' \
+            -e 's/([\"\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)[\"\x27 ]?[[:space:]]*[:=][[:space:]]*\[)[^]]*/\1***REDACTED***/Ig' \
+            -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
+            -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*)(\x27)([^\x27]|\x27\x27)*\3/\1\3***REDACTED***\3/Ig' \
             -e 's/^(id[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/\1***REDACTED***/Ig' \
             -e 's/([^A-Za-z0-9_])(id[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/\1\2***REDACTED***/Ig' \
-            -e 's/([" ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|token|secret|api[_-]?key|authorization|cookie)[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)[^,}[:space:]["]+/\1***REDACTED***/Ig' \
-            -e 's/(vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess):\/\/[^[:space:]]+/***CLIENT_LINK_REDACTED***/Ig'
+            -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*[" ]?)[^,}[:space:]["]+/\1***REDACTED***/Ig' \
+            -e 's/(vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess):\/\/[^[:space:]]+/***CLIENT_LINK_REDACTED***/Ig' \
+        -e 's/(https?|ftp):\/\/[^\/[:space:]@]+@/\1***REDACTED***@/Ig'
     fi
 }
 

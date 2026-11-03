@@ -533,7 +533,7 @@ path_mode_has_no_group_other_write() {
 path_is_mountpoint() {
     local path="$1" rc
     [[ -e "$path" || -L "$path" ]] || return 1
-    if python3 - "$path" <<'PY_EXACT_MOUNT' >/dev/null 2>&1
+    if python3 -I - "$path" <<'PY_EXACT_MOUNT' >/dev/null 2>&1
 import os, re, sys
 
 path = os.path.abspath(os.path.normpath(sys.argv[1]))
@@ -576,7 +576,7 @@ path_tree_has_nested_mountpoint() {
     local path="${1:-}" rc
     [[ -n "$path" && ( -d "$path" || -f "$path" ) && ! -L "$path" ]] || return 1
     command -v python3 >/dev/null 2>&1 || return 0
-    python3 - "$path" <<'PY_TREE_NESTED_MOUNT'
+    python3 -I - "$path" <<'PY_TREE_NESTED_MOUNT'
 import os, re, sys
 def decode_mountinfo_path(value):
     return re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), value)
@@ -609,7 +609,7 @@ PY_TREE_NESTED_MOUNT
 path_tree_has_mountpoint() {
     local path="$1" rc
     [[ -e "$path" || -L "$path" ]] || return 1
-    if python3 - "$path" <<'PY_TREE_MOUNT' >/dev/null 2>&1
+    if python3 -I - "$path" <<'PY_TREE_MOUNT' >/dev/null 2>&1
 import os, sys
 
 # Linux os.path.ismount() can miss bind mounts when the mount and parent
@@ -8598,7 +8598,7 @@ valid_ipv6_cidr() {
     [[ "$addr" =~ ^[0-9A-Fa-f:.]+$ ]] || return 1
     [[ "$addr" != *':::'* ]] || return 1
     if command -v python3 >/dev/null 2>&1; then
-        python3 - "$input" <<'PY' >/dev/null 2>&1
+        python3 -I - "$input" <<'PY' >/dev/null 2>&1
 import ipaddress, sys
 ipaddress.ip_network(sys.argv[1], strict=False)
 PY
@@ -8740,7 +8740,7 @@ load_abox_env() {
     (( (8#$mode & 8#077) == 0 )) || return 1
     command -v python3 >/dev/null 2>&1 || return 1
     parsed=$(umask 077; mktemp /tmp/A-Box-env.XXXXXX) || return 1
-    if ! python3 - "$file" > "$parsed" <<'PY_ABOX_ENV'; then
+    if ! python3 -I - "$file" > "$parsed" <<'PY_ABOX_ENV'; then
 import os
 import shlex
 import sys
@@ -8868,7 +8868,7 @@ pin_sha256_colon() {
 valid_public_ip() {
     local ip="${1:-}"
     valid_ip_address "$ip" || return 1
-    python3 - "$ip" <<'PY_PUBLIC_IP'
+    python3 -I - "$ip" <<'PY_PUBLIC_IP'
 import ipaddress, sys
 try:
     addr = ipaddress.ip_address(sys.argv[1])
@@ -9671,7 +9671,7 @@ record_core_family_ownership() {
     runtime_uid=$(id -u "$_u" 2>/dev/null) || { rm -f -- "$tmp"; return 1; }
     runtime_gid=$(getent group "$_g" 2>/dev/null | awk -F: '{print $3}')
     [[ "$runtime_uid" =~ ^[0-9]+$ && "$runtime_gid" =~ ^[0-9]+$ ]] || { rm -f -- "$tmp"; return 1; }
-    python3 - "$srv" "$ABOX_CORE_OWNERSHIP" "$tmp" "$runtime_uid" "$runtime_gid" "${owned_roots[@]}" <<'PY_CORE_RECORD'
+    python3 -I - "$srv" "$ABOX_CORE_OWNERSHIP" "$tmp" "$runtime_uid" "$runtime_gid" "${owned_roots[@]}" <<'PY_CORE_RECORD'
 import hashlib, os, stat, sys
 srv, old_name, out_name, runtime_uid, runtime_gid, *roots = sys.argv[1:]
 runtime_uid=int(runtime_uid)
@@ -9768,7 +9768,7 @@ refresh_dynamic_core_subtree_ownership() {
     [[ "$(stat -c %u:%g "$ABOX_CORE_OWNERSHIP" 2>/dev/null || true)" == 0:0 ]] || return 1
     [[ "$(stat -c %a "$ABOX_CORE_OWNERSHIP" 2>/dev/null || true)" =~ ^0?600$ ]] || return 1
     tmp=$(umask 077; mktemp "$ABOX_DIR/.managed-core-files.dynamic.XXXXXX") || return 1
-    python3 - "$srv" "$ABOX_CORE_OWNERSHIP" "$target" "$tmp" <<'PY_DYNAMIC_OWNER'
+    python3 -I - "$srv" "$ABOX_CORE_OWNERSHIP" "$target" "$tmp" <<'PY_DYNAMIC_OWNER'
 import hashlib, os, stat, sys
 srv, manifest, target, out_name = sys.argv[1:]
 try:
@@ -9893,7 +9893,7 @@ hysteria_acme_current_tree_matches_manifest() {
     [[ "$target" == /etc/hysteria/acme ]] || return 1
     path_tree_has_mountpoint "$target" && return 1
     [[ -f "$manifest" && ! -L "$manifest" ]] || return 1
-    python3 - "$manifest" "$target" <<'PY_ACME_MATCH'
+    python3 -I - "$manifest" "$target" <<'PY_ACME_MATCH'
 import hashlib, os, stat, sys
 manifest, target = sys.argv[1:]
 try:
@@ -10101,7 +10101,7 @@ remove_recorded_core_family() {
         [[ "$runtime_gid" =~ ^[0-9]+$ ]] || runtime_gid="${_derived_gid:-0}"
     fi
     [[ "$runtime_uid" =~ ^[0-9]+$ && "$runtime_gid" =~ ^[0-9]+$ ]] || return 1
-    python3 - "$srv" "$ABOX_CORE_OWNERSHIP" "$runtime_uid" "$runtime_gid" "$ABOX_DIR" <<'PY_CORE_REMOVE'
+    python3 -I - "$srv" "$ABOX_CORE_OWNERSHIP" "$runtime_uid" "$runtime_gid" "$ABOX_DIR" <<'PY_CORE_REMOVE'
 import hashlib, os, re, stat, sys, tempfile
 srv, manifest, runtime_uid, runtime_gid, abox_dir=sys.argv[1:]
 runtime_uid=int(runtime_uid)
@@ -13638,7 +13638,7 @@ validate_core_asset_binary_version() {
 extract_zip_member_safely() {
     local archive="$1" member="$2" dest="$3"
     [[ -s "$archive" && -n "$member" && -n "$dest" ]] || return 1
-    python3 - "$archive" "$member" "$dest" <<'PY_ZIP_EXTRACT'
+    python3 -I - "$archive" "$member" "$dest" <<'PY_ZIP_EXTRACT'
 import os, shutil, stat, sys, zipfile
 archive, member, dest = sys.argv[1:]
 MAX_FILE = 512 * 1024 * 1024
@@ -13678,7 +13678,7 @@ PY_ZIP_EXTRACT
 extract_tar_regular_basename_safely() {
     local archive="$1" basename="$2" dest="$3"
     [[ -s "$archive" && "$basename" =~ ^[A-Za-z0-9._-]+$ && -n "$dest" ]] || return 1
-    python3 - "$archive" "$basename" "$dest" <<'PY_TAR_EXTRACT'
+    python3 -I - "$archive" "$basename" "$dest" <<'PY_TAR_EXTRACT'
 import os, posixpath, sys, tarfile
 archive, wanted, dest = sys.argv[1:]
 MAX_MEMBERS = 10000
@@ -13915,7 +13915,7 @@ verify_ed25519_detached() {
         # pipeline hashed empty input to e3b0c442... on decode failure,
         # and yielded empty -- hence "unrevoked" -- when sha256sum was
         # missing). The 64-hex check states the invariant explicitly.
-        fp=$(python3 -c "
+        fp=$(python3 -I -c "
 import base64, hashlib, sys
 try:
     raw = base64.b64decode(sys.argv[1], validate=True)
@@ -13933,7 +13933,7 @@ print(hashlib.sha256(raw).hexdigest())
         (( revoked == 0 )) || continue
         # Convert base64 raw 32-byte pubkey -> PEM (SubjectPublicKeyInfo).
         # Uses python3 -c (not heredoc) to avoid multi-level escaping fragility.
-        if ! python3 -c "
+        if ! python3 -I -c "
 import base64, sys
 try:
     raw = base64.b64decode(sys.argv[1], validate=True)
@@ -14097,7 +14097,7 @@ PYEOF
         label="${entry%%:*}"
         pubkey_b64="${entry#*:}"
         [[ -n "$label" && -n "$pubkey_b64" && "$pubkey_b64" != "$entry" ]] || continue
-        fp=$(python3 -c "
+        fp=$(python3 -I -c "
 import base64, hashlib, sys
 try:
     raw = base64.b64decode(sys.argv[1], validate=True)
@@ -14178,7 +14178,7 @@ valid_github_download_url() {
     if [[ -n "$expected_ref" ]]; then
         [[ "$expected_ref" =~ ^[A-Za-z0-9._/-]+$ ]] || return 1
         if [[ -n "$expected_asset" ]]; then
-            python3 - "$url" "$repo" "$expected_ref" "$expected_asset" <<'PY_GITHUB_URL'
+            python3 -I - "$url" "$repo" "$expected_ref" "$expected_asset" <<'PY_GITHUB_URL'
 from urllib.parse import urlsplit
 import sys
 url, repo, ref, asset = sys.argv[1:]
@@ -14568,7 +14568,7 @@ core_stable_release_age_days() {
     ' <<< "$json") || return 1
     [[ -n "$published" ]] || return 1
     now_ts=$(date +%s) || return 1
-    pub_ts=$(date -d "$published" +%s 2>/dev/null || python3 - "$published" <<'PY_ISO_TS' 2>/dev/null
+    pub_ts=$(date -d "$published" +%s 2>/dev/null || python3 -I - "$published" <<'PY_ISO_TS' 2>/dev/null
 import datetime, sys
 s = sys.argv[1].strip()
 if s.endswith('Z'):
@@ -16031,7 +16031,7 @@ load_state() {
     (( (8#$mode & 8#077) == 0 )) || return 1
     command -v python3 >/dev/null 2>&1 || return 1
     parsed=$(umask 077; mktemp /tmp/A-Box-helper-env.XXXXXX) || return 1
-    if ! python3 - "$ENV" > "$parsed" <<'PY_HELPER_ENV'; then
+    if ! python3 -I - "$ENV" > "$parsed" <<'PY_HELPER_ENV'; then
 import shlex,sys
 allowed={"CORE","MODE","VLESS_PORT","XHTTP_PORT","HY2_BASE_PORT","HY2_MONITOR_PORT","HY2_HOP","HY2_HOP_IMPL","HY2_RANGE_START","HY2_RANGE_END","INGRESS_IF","SS_PORT","TRAFFIC_LIMIT_GB","TRAFFIC_LIMIT_MODE","SOCKS_PORT"}
 seen=set()
@@ -16354,7 +16354,7 @@ acquire_abox_runtime_guard() {
 is_systemd() { [[ "$INIT_SYS_EXPECTED" == systemd ]]; }
 xray_owned() { local u; if is_systemd; then u=/etc/systemd/system/xray.service; else u=/etc/init.d/xray; fi; [[ -f "$u" && ! -L "$u" ]] && grep -Fxq '# Managed by A-Box' "$u"; }
 update_geo_ownership() {
-    python3 - "$ABOX_CORE_OWNERSHIP" /usr/local/share/xray/geoip.dat /usr/local/share/xray/geosite.dat <<'PY_GEO_OWNER'
+    python3 -I - "$ABOX_CORE_OWNERSHIP" /usr/local/share/xray/geoip.dat /usr/local/share/xray/geosite.dat <<'PY_GEO_OWNER'
 import hashlib, os, stat, sys, tempfile
 manifest, *targets = sys.argv[1:]
 st = os.lstat(manifest)
@@ -21685,7 +21685,7 @@ load_state() {
     (( (8#$mode & 8#077) == 0 )) || return 1
     command -v python3 >/dev/null 2>&1 || return 1
     parsed=$(umask 077; mktemp /tmp/A-Box-helper-env.XXXXXX) || return 1
-    if ! python3 - "$ENV" > "$parsed" <<'PY_HELPER_ENV'; then
+    if ! python3 -I - "$ENV" > "$parsed" <<'PY_HELPER_ENV'; then
 import shlex
 import sys
 allowed = {"CORE", "MODE", "VLESS_PORT", "XHTTP_PORT", "HY2_MONITOR_PORT", "HY2_HOP", "HY2_HOP_IMPL", "HY2_RANGE_START", "HY2_RANGE_END", "SS_PORT", "TRAFFIC_LIMIT_GB", "TRAFFIC_LIMIT_MODE", "INGRESS_IF", "SOCKS_PORT"}
@@ -22625,7 +22625,7 @@ traffic_management_menu() {
         _tjson=$(vnstat -i "$INTERFACE" --json m 2>/dev/null) || _tjson=''
     fi
     if [[ -n "$_tjson" ]]; then
-        python3 - "$_tjson" "$INTERFACE" "$_tlimit" "${TRAFFIC_LIMIT_MODE:-total}" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
+        python3 -I - "$_tjson" "$INTERFACE" "$_tlimit" "${TRAFFIC_LIMIT_MODE:-total}" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
             msg "${YELLOW}[!] 流量数据解析失败。${NC}"
 import datetime, json, sys, unicodedata
 
@@ -25900,7 +25900,7 @@ _reality_pbk_from_private() {
     [[ -n "$priv" ]] || return 1
     command -v python3 >/dev/null 2>&1 || return 1
     command -v openssl >/dev/null 2>&1 || return 1
-    python3 - "$priv" <<'PYEOF' || return 1
+    python3 -I - "$priv" <<'PYEOF' || return 1
 import base64, subprocess, sys
 priv = sys.argv[1].strip()
 try:
@@ -25978,7 +25978,7 @@ _nsni_handshake_check() {
         fi
     fi
     [[ -n "$pbk" ]] || return 2
-    sport=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()' 2>/dev/null) || return 2
+    sport=$(python3 -I -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()' 2>/dev/null) || return 2
     [[ -n "$sport" ]] || return 2
     cc=$(mktemp /tmp/A-Box-nsni-client.XXXXXX) || return 2
     mv "$cc" "$cc.json" 2>/dev/null || { rm -f "$cc"; return 2; }
@@ -27480,7 +27480,7 @@ EOF_DNS
 dns_probe_once() {
     local server="$1" port="${2:-53}" name="${3:-example.com}"
     command -v python3 >/dev/null 2>&1 || return 1
-    python3 - "$server" "$port" "$name" <<'PY_DNS_PROBE'
+    python3 -I - "$server" "$port" "$name" <<'PY_DNS_PROBE'
 import ipaddress, os, socket, struct, sys, time
 server, port, name = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 try:
@@ -27504,7 +27504,7 @@ PY_DNS_PROBE
 dns_dot_probe_once() {
     local server="$1" host="$2" name="${3:-example.com}"
     command -v python3 >/dev/null 2>&1 || return 1
-    python3 - "$server" "$host" "$name" <<'PY_DOT_PROBE'
+    python3 -I - "$server" "$host" "$name" <<'PY_DOT_PROBE'
 import os, socket, ssl, struct, sys, time
 server, host, name = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
@@ -27636,7 +27636,7 @@ dns_dot_prefer() {
 dns_doh_probe_once() {
     local server="$1" host="$2" name="${3:-example.com}"
     command -v python3 >/dev/null 2>&1 || return 1
-    python3 - "$server" "$host" "$name" <<'PY_DOH_PROBE'
+    python3 -I - "$server" "$host" "$name" <<'PY_DOH_PROBE'
 import os, socket, ssl, struct, sys, time
 server, host, name = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
@@ -27947,7 +27947,7 @@ dns_enable_doh() {
         return 1
     fi
     temp=$(umask 077; mktemp /tmp/A-Box-doh.XXXXXX) || return 1
-    python3 - "$config" "$temp" "$doh_server" <<'PY_DOH_CONFIG'
+    python3 -I - "$config" "$temp" "$doh_server" <<'PY_DOH_CONFIG'
 import re, sys
 source, target = sys.argv[1:3]
 server = sys.argv[3] if len(sys.argv) > 3 else 'cloudflare'
@@ -28569,7 +28569,7 @@ create_backup_manifest() {
     local tree="${1:-}" output="${2:-}"
     [[ -d "$tree/root" && -d "$tree/meta" && -n "$output" ]] || return 1
     command -v python3 >/dev/null 2>&1 || return 1
-    python3 - "$tree" "$output" <<'PY_BACKUP_MANIFEST'
+    python3 -I - "$tree" "$output" <<'PY_BACKUP_MANIFEST'
 import hashlib
 import os
 import stat
@@ -30207,7 +30207,7 @@ remove_abox_swap() {
 
 redact_secrets_stream() {
     if command -v python3 >/dev/null 2>&1; then
-        python3 - 3<&0 <<'PY_REDACT'
+        python3 -I - 3<&0 <<'PY_REDACT'
 import json
 import os
 import re
@@ -30320,7 +30320,7 @@ write_redacted_file() {
 validate_abox_cron_file() {
     local file="$1"
     [[ -f "$file" && ! -L "$file" ]] || return 1
-    python3 - "$file" <<'PY_ABOX_CRON'
+    python3 -I - "$file" <<'PY_ABOX_CRON'
 import sys
 from pathlib import Path
 lines=Path(sys.argv[1]).read_text(encoding='utf-8',errors='strict').splitlines()
@@ -30950,7 +30950,7 @@ backup_checksum_verify() {
 backup_hmac_sha256() {
     # $1 = hex key, $2 = file. The key travels via the environment,
     # never argv: `openssl -macopt hexkey:...` exposes it in `ps`.
-    ABOX_HMAC_KEY="$1" ABOX_HMAC_FILE="$2" python3 - <<'PY_ABOX_HMAC'
+    ABOX_HMAC_KEY="$1" ABOX_HMAC_FILE="$2" python3 -I - <<'PY_ABOX_HMAC'
 import hashlib, hmac, os, sys
 try:
     key = bytes.fromhex(os.environ["ABOX_HMAC_KEY"])
@@ -31071,7 +31071,7 @@ export_backup_recovery_key() {
 validate_legacy_backup_archive() {
     local archive="$1"
     [[ -s "$archive" ]] || return 1
-    python3 - "$archive" <<'PY_LEGACY_VALIDATE'
+    python3 -I - "$archive" <<'PY_LEGACY_VALIDATE'
 import posixpath, stat, sys, tarfile
 fn=sys.argv[1]; max_members=10000; max_file=512*1024*1024; max_total=1024*1024*1024
 allowed_prefixes=(
@@ -31128,7 +31128,7 @@ convert_legacy_backup_archive() {
     validate_legacy_backup_archive "$selected" || die 'Legacy backup archive safety validation failed.'
     work=$(mktemp -d /tmp/A-Box-legacy-import.XXXXXX) || die 'Legacy conversion temp directory failed.'
     chmod 700 "$work"
-    python3 - "$selected" "$work" <<'PY_LEGACY_EXTRACT' || { rm -rf "$work"; die 'Legacy backup extraction failed.'; }
+    python3 -I - "$selected" "$work" <<'PY_LEGACY_EXTRACT' || { rm -rf "$work"; die 'Legacy backup extraction failed.'; }
 import os, pathlib, tarfile, sys
 src,dst=sys.argv[1:]; base=pathlib.Path(dst).resolve()
 max_members=10000; max_file=512*1024*1024; max_total=1024*1024*1024
@@ -31235,7 +31235,7 @@ validate_backup_archive() {
     # UID/GID numbers stored in a backup are source-host metadata. The archive
     # is authenticated separately; restore-time ownership is normalized to the
     # target host's dedicated runtime accounts before any service starts.
-    python3 - "$archive" <<'PY_VALIDATE'
+    python3 -I - "$archive" <<'PY_VALIDATE'
 import posixpath,stat,sys,tarfile
 fn=sys.argv[1]
 MAX_MEMBERS=10000
@@ -31485,7 +31485,7 @@ backup_root_service_is_config_only() {
 
 validate_backup_manifest_tree() {
     local work="$1"
-    python3 - "$work" <<'PY_BACKUP_MANIFEST'
+    python3 -I - "$work" <<'PY_BACKUP_MANIFEST'
 import hashlib
 import os
 import re
@@ -31528,7 +31528,7 @@ validate_managed_paths_file() {
         core_paths=$(core_family_paths "$srv") || return 1
         allowed_paths+=$'\n'"$core_paths"
     done
-    python3 - "$file" "$allowed_paths" <<'PY_MANAGED_PATHS'
+    python3 -I - "$file" "$allowed_paths" <<'PY_MANAGED_PATHS'
 import sys
 from pathlib import Path
 allowed={x for x in sys.argv[2].splitlines() if x}
@@ -32144,7 +32144,7 @@ backup_current_config() {
     ABOX_LAST_BACKUP="$tarball"
     _old_backups=()
     local _old_backups_output=''
-    if _old_backups_output=$(python3 - "$backup_dir" "$BACKUP_RETENTION_COUNT" <<'PY_BACKUP_RETENTION'
+    if _old_backups_output=$(python3 -I - "$backup_dir" "$BACKUP_RETENTION_COUNT" <<'PY_BACKUP_RETENTION'
 from pathlib import Path
 import sys
 root=Path(sys.argv[1]); keep=int(sys.argv[2])
@@ -32198,7 +32198,7 @@ restore_latest_backup_silent() {
     if [[ -n "$selected" ]]; then
         [[ -f "$selected" && "$(dirname "$selected")" == "$backup_dir" ]] || { msg "restore gate failed: selected-path" >&2; return 1; }
     else
-        selected=$(python3 - "$backup_dir" <<'PY_LATEST_BACKUP'
+        selected=$(python3 -I - "$backup_dir" <<'PY_LATEST_BACKUP'
 from pathlib import Path
 import sys
 root = Path(sys.argv[1])
@@ -34476,7 +34476,7 @@ wallos_db_health() { # $1=quick skips the restart-stability sampling
     command -v python3 >/dev/null 2>&1 || return 1
     [[ -f "$WALLOS_DIR/db/wallos.db" ]] || return 1
     if true; then
-        python3 - "$WALLOS_DIR/db/wallos.db" <<'PY_WALLOS_HEALTH' || return 1
+        python3 -I - "$WALLOS_DIR/db/wallos.db" <<'PY_WALLOS_HEALTH' || return 1
 import sqlite3, sys
 try:
     tables = {r[0] for r in sqlite3.connect('file:%s?mode=ro' % sys.argv[1], uri=True).execute("select name from sqlite_master where type='table'")}
@@ -36571,7 +36571,7 @@ urlencode() {
         return $?
     fi
     if command -v python3 >/dev/null 2>&1; then
-        printf '%s' "$raw" | python3 -c 'import sys, urllib.parse; sys.stdout.write(urllib.parse.quote(sys.stdin.read(), safe=""))'
+        printf '%s' "$raw" | python3 -I -c 'import sys, urllib.parse; sys.stdout.write(urllib.parse.quote(sys.stdin.read(), safe=""))'
         return $?
     fi
     # Last-resort RFC3986-ish encoder for environments missing jq/python3.
@@ -39043,7 +39043,7 @@ run_self_tests() {
         # and the readlink target for symlinks; records sorted,
         # NUL-joined, sha256. A nested same-size content change or a
         # symlink retarget now changes the signature.
-        python3 - <<'PY_ABOX_SIG' 2>/dev/null || return 1
+        python3 -I - <<'PY_ABOX_SIG' 2>/dev/null || return 1
 import os, stat, sys, hashlib
 def _ftype(m):
     if stat.S_ISREG(m): return 'f'
@@ -39117,7 +39117,7 @@ PY_ABOX_SIG
                 tar -C "$src_dir" --numeric-owner -czf "$out" root meta || return 1
             fi
         elif selftest_has python3; then
-            python3 - "$src_dir" "$out" "$force_root" <<'PY_SELFTEST_TAR' || return 1
+            python3 -I - "$src_dir" "$out" "$force_root" <<'PY_SELFTEST_TAR' || return 1
 import os, sys, tarfile
 src, out, force_root = sys.argv[1], sys.argv[2], sys.argv[3]
 with tarfile.open(out, 'w:gz') as tf:
@@ -40564,7 +40564,7 @@ PY_SELFTEST_YAML
     grep -Fq 'core_paths=$(core_family_paths "$srv") || { rm -rf "$work"; die "Core path enumeration failed during backup: $srv"; }' <<< "$source_body" || { echo 'FAIL: backup core path enumeration must fail closed'; failures=$((failures + 1)); }
     grep -Fq 'def path_is_mountpoint(path):' <<< "$source_body" || { echo 'FAIL: core ownership recording must use mountinfo-aware mount detection'; failures=$((failures + 1)); }
     grep -Fq 'fail closed instead of using the weaker ismount()' <<< "$source_body" || { echo 'FAIL: destructive manifest removal must not fall back to weak mount detection'; failures=$((failures + 1)); }
-    if sed -n "/^python3 - \"\$srv\" \"\$ABOX_CORE_OWNERSHIP\" <<'PY_CORE_REMOVE'$/,/^PY_CORE_REMOVE$/p" "$0" | grep -Fq 'return os.path.ismount(path)'; then
+    if sed -n "/^python3 -I - \"\$srv\" \"\$ABOX_CORE_OWNERSHIP\" <<'PY_CORE_REMOVE'$/,/^PY_CORE_REMOVE$/p" "$0" | grep -Fq 'return os.path.ismount(path)'; then
         echo 'FAIL: destructive manifest removal still contains fail-open mountinfo fallback'
         failures=$((failures + 1))
     fi
@@ -40882,7 +40882,7 @@ EOF_SVC_TEST_RCUPDATE
             # Throwaway keypair (never the production key).
             if openssl genpkey -algorithm ed25519 -out "$_f05_tdir/priv.pem" 2>/dev/null && \
                openssl pkey -in "$_f05_tdir/priv.pem" -pubout -out "$_f05_tdir/pub.pem" 2>/dev/null; then
-                _f05_pub_b64=$(python3 - "$_f05_tdir/pub.pem" <<'PY_F05_TPUB' 2>/dev/null
+                _f05_pub_b64=$(python3 -I - "$_f05_tdir/pub.pem" <<'PY_F05_TPUB' 2>/dev/null
 import base64, sys
 pem = open(sys.argv[1]).read()
 der = base64.b64decode(''.join(l for l in pem.splitlines() if '---' not in l))

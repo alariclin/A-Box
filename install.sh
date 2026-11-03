@@ -26840,7 +26840,7 @@ PYEOF
 
 _nsni_handshake_check() {
     local core="$1" tag="$2" cfg="$3" sni="$4"
-    local bin='' port='' listen='' dial='' uuid='' flow='' net='' xpath='' xhost='' xmode='' sid='' pbk=''
+    local bin='' port='' listen='' dial='' uuid='' flow='' net='' xpath='' xhost='' xmode='' grpc_service='' sid='' pbk=''
     local lf='' sport='' cc='' pid='' code='' i=0 up=0 _try=0 _envf='' pbk_src='' logf='' cerr='' curl_rc=0 ready=0 _priv=''
     case "$core" in
         xray) bin='/usr/local/bin/xray' ;;
@@ -26868,9 +26868,14 @@ _nsni_handshake_check() {
         xpath=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.path // "/xhttp"' "$cfg" 2>/dev/null | head -n 1)
         xhost=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.host // ""' "$cfg" 2>/dev/null | head -n 1)
         xmode=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.mode // "stream-one"' "$cfg" 2>/dev/null | head -n 1)
+        grpc_service=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.grpcSettings.serviceName // ""' "$cfg" 2>/dev/null | head -n 1)
         sid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | if (.streamSettings.realitySettings.shortIds | type) == "array" then (.streamSettings.realitySettings.shortIds[0] // "") else (.streamSettings.realitySettings.shortIds // "") end' "$cfg" 2>/dev/null | head -n 1)
     fi
     [[ -n "$port" && -n "$uuid" ]] || return 2
+    # R9C12-01: a range port ("443-445") is not dialable; probe the
+    # range start (the inbound listens there) instead of failing
+    # every /dev/tcp attempt and rolling back a healthy inbound.
+    if [[ "$port" == *-* ]]; then port="${port%%-*}"; fi
     # R1-12-F2: ''/0.0.0.0 stay on IPv4 loopback; :: goes via ::1.
     case "$listen" in ''|0.0.0.0) dial='127.0.0.1' ;; '::') dial='::1' ;; *) dial="$listen" ;; esac
     [[ -z "$xhost" ]] && xhost="$sni"
@@ -26901,9 +26906,7 @@ _nsni_handshake_check() {
     [[ -n "$pbk" ]] || return 2
     sport=$(python3 -I -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()' 2>/dev/null) || return 2
     [[ -n "$sport" ]] || return 2
-    cc=$(mktemp /tmp/A-Box-nsni-client.XXXXXX) || return 2
-    mv "$cc" "$cc.json" 2>/dev/null || { rm -f "$cc"; return 2; }
-    cc="$cc.json"
+    cc=$(mktemp /tmp/A-Box-nsni-client.XXXXXX.json) || return 2
     cerr=$(mktemp /tmp/A-Box-nsni-client-err.XXXXXX) || { rm -f "$cc"; return 2; }
     # SYD-B2 E20: the server was just restarted by the caller; systemctl
     # restart returns before the new process listens. Without this wait
@@ -26911,10 +26914,34 @@ _nsni_handshake_check() {
     # Diagnostics go to a fixed log (non-secret fields only: pbk length
     # and sid presence, never values).
     logf='/tmp/A-Box-nsni-check.log'
+    # R1-12-F1: never append through a pre-planted symlink or a
+    # foreign-owned file. A symlink is removed and the file is
+    # recreated exclusively (noclobber), so a re-plant fails instead
+    # of being followed; otherwise logging is disabled (/dev/null).
+    if [[ -L "$logf" ]]; then rm -f -- "$logf"; fi
+    if [[ -e "$logf" ]]; then
+        if [[ ! -f "$logf" ]] || [[ -L "$logf" ]] || [[ "$(stat -c %u "$logf" 2>/dev/null)" != "0" ]]; then
+            logf='/dev/null'
+        fi
+    else
+        if ! (set -o noclobber; : > "$logf") 2>/dev/null; then
+            logf='/dev/null'
+        else
+            chmod 600 "$logf" 2>/dev/null || true
+        fi
+    fi
     { printf 'nsni-check core=%s tag=%s sni=%s dial=%s port=%s pbk_src=%s pbk_len=%s sid_set=%s flow=%s\n' "$core" "$tag" "$sni" "$dial" "$port" "$pbk_src" "${#pbk}" "$([ -n "$sid" ] && printf yes || printf no)" "${flow:-}"; } >> "$logf" 2>/dev/null || true
     if _wait_tcp_port "$dial" "$port" 60; then ready=1; else ready=0; fi
     printf 'nsni-check server-ready=%s\n' "$ready" >> "$logf" 2>/dev/null || true
     if [[ "$ready" != 1 ]]; then printf 'nsni-check verdict=FAIL server-not-ready\n' >> "$logf" 2>/dev/null || true; rm -f "$cc" "$cerr"; return 1; fi
+    if [[ "$core" != 'sing-box' && "$net" == 'grpc' && -z "$grpc_service" ]]; then
+        # R4C12-02: a grpc inbound without a serviceName cannot be
+        # reproduced; report unavailable (2, warn-and-continue),
+        # not a definitive handshake failure (1, rollback).
+        { printf 'nsni-check verdict=UNAVAILABLE grpc-no-service\n'; } >> "$logf" 2>/dev/null || true
+        rm -f "$cc" "$cerr"
+        return 2
+    fi
     if [[ "$core" == 'sing-box' ]]; then
         jq -n --arg dial "$dial" --argjson port "$port" --arg uuid "$uuid" --arg sni "$sni" --arg pbk "$pbk" --arg sid "$sid" --arg flow "$flow" --argjson sport "$sport" '{
             log: {level: "warning"},
@@ -26924,13 +26951,13 @@ _nsni_handshake_check() {
         }' > "$cc" 2>/dev/null || { rm -f "$cc" "$cerr"; return 2; }
         "$bin" run -c "$cc" >"$cerr" 2>&1 & pid=$!
     else
-        jq -n --arg dial "$dial" --argjson port "$port" --arg uuid "$uuid" --arg flow "$flow" --arg net "$net" --arg sni "$sni" --arg pbk "$pbk" --arg sid "$sid" --arg xpath "$xpath" --arg xhost "$xhost" --arg xmode "$xmode" --argjson sport "$sport" '{
+        jq -n --arg dial "$dial" --argjson port "$port" --arg uuid "$uuid" --arg flow "$flow" --arg net "$net" --arg sni "$sni" --arg pbk "$pbk" --arg sid "$sid" --arg xpath "$xpath" --arg xhost "$xhost" --arg xmode "$xmode" --arg grpc_service "$grpc_service" --argjson sport "$sport" '{
             log: {loglevel: "warning"},
             inbounds: [{port: $sport, listen: "127.0.0.1", protocol: "socks", settings: {auth: "noauth", udp: true}, tag: "socks-in"}],
             outbounds: [{protocol: "vless", settings: {vnext: [{address: $dial, port: $port, users: [{id: $uuid, flow: $flow, encryption: "none"}]}]},
                 streamSettings: ({network: $net, security: "reality",
                     realitySettings: {serverName: $sni, publicKey: $pbk, shortId: $sid, fingerprint: "chrome"}}
-                    + (if $net == "xhttp" then {xhttpSettings: {path: $xpath, host: $xhost, mode: $xmode}} else {} end))}]
+                    + (if $net == "xhttp" then {xhttpSettings: {path: $xpath, host: $xhost, mode: $xmode}} elif $net == "grpc" then {grpcSettings: {serviceName: $grpc_service}} else {} end))}]
         }' > "$cc" 2>/dev/null || { rm -f "$cc" "$cerr"; return 2; }
         "$bin" run -config "$cc" >"$cerr" 2>&1 & pid=$!
     fi
@@ -26941,7 +26968,7 @@ _nsni_handshake_check() {
     if (( up == 0 )); then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; { printf 'nsni-check temp-socks-down\n'; tail -n 20 "$cerr" 2>/dev/null; } >> "$logf" 2>/dev/null || true; rm -f "$cc" "$cerr"; return 2; fi
     code=''
     for _try in 1 2; do
-        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --noproxy '' --connect-timeout 3 --max-time 10 "https://$sni/" 2>"$cerr.curl")
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --noproxy '' --connect-timeout 3 --max-time 10 "https://$sni:$port/" 2>"$cerr.curl")
         curl_rc=$?
         [[ "$curl_rc" != 0 ]] && code='000'
         printf 'nsni-check try=%s curl-rc=%s http=%s\n' "$_try" "$curl_rc" "$code" >> "$logf" 2>/dev/null || true
@@ -26956,7 +26983,7 @@ _nsni_handshake_check() {
         return 0
     else
         printf 'nsni-check verdict=FAIL\n' >> "$logf" 2>/dev/null || true
-        msg "[!] SNI handshake check failed; diagnostics: /tmp/A-Box-nsni-check.log"
+        msg "[!] SNI handshake check failed; diagnostics: $logf"
         return 1
     fi
 }

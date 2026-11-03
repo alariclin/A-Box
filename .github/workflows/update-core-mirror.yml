@@ -135,6 +135,13 @@ jobs:
         with:
           name: verified-core-mirror
           path: verified/
+      # R1-19-F02: CORE-VERSIONS completeness gate. Runs BEFORE signing:
+      # the publish job previously checked only the 5 version tags, so a
+      # list missing an asset record (or with a dangling record, or an
+      # unreferenced file) was still signed and published.
+      - name: Verify CORE-VERSIONS completeness (R1-19-F02)
+        shell: bash
+        run: bash scripts/verify-core-versions-gate.sh verified
       # F-05: Detached Ed25519 signatures for mirror metadata.
       # Signs CORE-VERSIONS and SHA256SUMS with the maintainer private key
       # (GitHub Secret ABOX_SIGNING_PRIVKEY_B64 = base64 of raw 32-byte seed).

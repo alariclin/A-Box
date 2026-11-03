@@ -13729,18 +13729,30 @@ selected_port_pairs() {
 # must resolve to a standard core binary; anything else (foreign
 # process, unparseable pid, deleted-suffix aside) fails closed.
 ss_holder_is_abox_owned() {
-    local line pid exe
+    local line pid exe srv pids
     [[ -n "${1:-}" ]] || return 1
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -n "$line" ]] || continue
-        pid=$(printf '%s' "$line" | sed -nE 's/.*pid=([0-9]+).*/\1/p' | head -n 1)
-        [[ -n "$pid" ]] || return 1
-        exe=$(readlink "/proc/$pid/exe" 2>/dev/null || true)
-        exe=${exe%' (deleted)'}
-        case "$exe" in
-            /usr/local/bin/xray|/usr/local/bin/sing-box|/usr/local/bin/hysteria|/usr/local/bin/xray-latest) ;;
-            *) return 1 ;;
-        esac
+        # R2C7-F06: validate EVERY pid on the line; the old greedy sed took
+        # only the last pid, letting earlier foreign holders pass unchecked.
+        pids=$(printf '%s' "$line" | grep -oE 'pid=[0-9]+' | sed 's/^pid=//' || true)
+        [[ -n "$pids" ]] || return 1
+        while IFS= read -r pid || [[ -n "$pid" ]]; do
+            [[ -n "$pid" ]] || continue
+            exe=$(readlink "/proc/$pid/exe" 2>/dev/null || true)
+            exe=${exe%' (deleted)'}
+            case "$exe" in
+                /usr/local/bin/xray) srv=xray ;;
+                /usr/local/bin/sing-box) srv=sing-box ;;
+                /usr/local/bin/hysteria) srv=hysteria ;;
+                /usr/local/bin/xray-latest) srv=xray-latest ;;
+                *) return 1 ;;
+            esac
+            # R4C7-01: the exe path alone does not prove an A-Box instance
+            # (an independent install at a standard path shares it); the pid
+            # must be that managed service's own pid.
+            [[ "$(managed_service_pid "$srv" 2>/dev/null || true)" == "$pid" ]] || return 1
+        done <<< "$pids"
     done <<< "$1"
     return 0
 }

@@ -18401,12 +18401,28 @@ deploy_singbox_socks5_landing() {
         pass=$(rand_alnum 16) || die 'SOCKS5 password generation failed.'
         [[ -n "$pass" ]] || die 'SOCKS5 password generation failed.'
     fi
+    # R7C8-03: SOCKS5 (RFC 1929) username/password lengths are
+    # single-byte (max 255); longer credentials deploy but can
+    # never authenticate. Byte count, not character count.
+    local _socks5_user_len _socks5_pass_len
+    _socks5_user_len=$(printf '%s' "$user" | wc -c)
+    _socks5_pass_len=$(printf '%s' "$pass" | wc -c)
+    if (( _socks5_user_len > 255 || _socks5_pass_len > 255 )); then
+        die 'SOCKS5 username/password must be at most 255 bytes (RFC 1929).'
+    fi
     local _proto_choice=''
     read -r -p "$(tr_msg socks5_proto_prompt)" _proto_choice || die "$(tr_msg pi_input_closed)"
     case "$_proto_choice" in
         2) proto='socks' ;;
         *) proto='mixed' ;;
     esac
+    # R8C8-02: mixed emits an http:// link; HTTP Basic splits on
+    # the first ':', so a colon in the username misaligns
+    # user/password (URI percent-encoding does not change Basic
+    # split semantics). SOCKS5 alone is length-prefixed and fine.
+    if [[ "$proto" == 'mixed' && "$user" == *:* ]]; then
+        die 'Mixed (HTTP) username must not contain ":"; pick a username without a colon.'
+    fi
 
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
@@ -18433,7 +18449,7 @@ deploy_singbox_socks5_landing() {
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
-        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]] || ! jq -e . "$cfg" >/dev/null 2>&1; then
+        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         fi
         rm -f "$tmp_json"
@@ -18503,6 +18519,20 @@ EOF_SVC
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
     fi
+    # R4C8-04: the seed above only runs when the binary was
+    # missing. If the binary exists but the config is missing /
+    # empty / a symlink, seed a minimal config here instead of
+    # letting the unconditional jq merge below abort on a
+    # missing file. An existing non-empty config is never
+    # overwritten, even if jq rejects it (see R5C8-02).
+    if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
+        local _seed2_json
+        _seed2_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$_seed2_json" \
+            || { rm -f "$_seed2_json"; die "$(tr_msg dp_sb_seed)"; }
+        install_file_atomically "$_seed2_json" "$cfg" 600 || { rm -f "$_seed2_json"; die "$(tr_msg dp_sb_cfg)"; }
+        rm -f "$_seed2_json"
+    fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
             '(.inbounds | map(select(.tag==$t))) as $old
@@ -18517,13 +18547,13 @@ EOF_SVC
     cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
-    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_restart)"; }
+    prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_runtime)"; }
+    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_restart)"; }
 
     # Firewall: TCP + UDP.
-    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    allowPort "$port" udp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/udp")"; }
-    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
+    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    allowPort "$port" udp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     # Recycle the replaced port's rules when no inbound still uses it.
     # Either core's config counts: a port rule shared with another

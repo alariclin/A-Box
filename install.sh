@@ -26587,6 +26587,7 @@ users_inbound_menu() {
                 if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_deleted): ${nm}${NC}"; else msg "${RED}$(tr_msg mu_del_fail)${NC}"; fi
                 pause_return ;;
             3)
+                user_guard_installed || { msg "${RED}$(tr_msg mu_set_fail)${NC}"; pause_return; continue; }
                 nm=$(users_pick_user "$reg" "$(tr_msg mu_pick)") || { pause_return; continue; }
                 local gb=''
                 read -r -p "$(tr_msg mu_gb_prompt)" gb || continue
@@ -26596,6 +26597,7 @@ users_inbound_menu() {
                 if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_quota_set): ${nm} = ${gb} GB${NC}"; else msg "${RED}$(tr_msg mu_set_fail)${NC}"; fi
                 pause_return ;;
             4)
+                user_guard_installed || { msg "${RED}$(tr_msg mu_set_fail)${NC}"; pause_return; continue; }
                 nm=$(users_pick_user "$reg" "$(tr_msg mu_pick)") || { pause_return; continue; }
                 local days=''
                 read -r -p "$(tr_msg mu_days_prompt)" days || continue
@@ -26608,6 +26610,7 @@ users_inbound_menu() {
                 if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_expiry_set): ${nm}${NC}"; else msg "${RED}$(tr_msg mu_set_fail)${NC}"; fi
                 pause_return ;;
             5)
+                user_guard_installed || { msg "${RED}$(tr_msg mu_set_fail)${NC}"; pause_return; continue; }
                 nm=$(users_pick_user "$reg" "$(tr_msg mu_pick)") || { pause_return; continue; }
                 local w=''
                 read -r -p "$(tr_msg mu_win_prompt)" w || continue
@@ -26619,6 +26622,7 @@ users_inbound_menu() {
                 if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_win_set): ${nm}${NC}"; else msg "${RED}$(tr_msg mu_set_fail)${NC}"; fi
                 pause_return ;;
             6)
+                user_guard_installed || { msg "${RED}$(tr_msg mu_set_fail)${NC}"; pause_return; continue; }
                 nm=$(users_pick_user "$reg" "$(tr_msg mu_pick)") || { pause_return; continue; }
                 local per=''
                 per=$(date '+%Y-%m')
@@ -26658,7 +26662,9 @@ multi_user_menu() {
     local slot_cfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}"
     [[ -f "$slot_cfg" && ! -L "$slot_cfg" ]] && users_xray_ensure_tags "$slot_cfg" >/dev/null 2>&1 || true
     [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json ]] && users_sb_ensure_tags /etc/sing-box/config.json >/dev/null 2>&1 || true
-    setup_user_guard >/dev/null 2>&1 || true
+    if ! setup_user_guard >/dev/null 2>&1; then
+        msg "${RED}$(tr_msg mu_set_fail)${NC}"
+    fi
     while true; do
         clear
         msg "${CYAN}======================================================================${NC}"
@@ -26711,6 +26717,15 @@ multi_user_menu() {
 # transitions. Xray blocks go through the hot path (config edit + API
 # rmu, no restart); unblocks and sing-box/Hy2 changes use users_sync.
 
+# R4C11-03: guard is installed only when both the runner copy and the
+# USERGUARD cron block exist; policy saves must refuse otherwise.
+user_guard_installed() {
+    local runner="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh"
+    [[ -f "$runner" && ! -L "$runner" && -x "$runner" ]] || return 1
+    crontab -l 2>/dev/null | grep -q '# A-Box USERGUARD BEGIN' || return 1
+    return 0
+}
+
 setup_user_guard() {
     local runner="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh"
     [[ -f "$0" && ! -L "$0" ]] || return 1
@@ -26725,7 +26740,12 @@ setup_user_guard() {
         chmod 700 "$tmp" || { rm -f -- "$tmp"; return 1; }
         mv -f -- "$tmp" "$runner" || { rm -f -- "$tmp"; return 1; }
     fi
-    ( ABOX_DIE_HOOK=''; install_abox_cron_block USERGUARD "*/5 * * * * /bin/bash $runner --user-guard-tick >/dev/null 2>&1" ) || return 1
+    # R10C11-03: quote the runner path only when it contains whitespace;
+    # the default path must stay byte-identical (collect_abox_cron
+    # matches the unquoted USERGUARD line exactly).
+    local _runner_q="$runner"
+    if [[ "$runner" == *[[:space:]]* ]]; then _runner_q=$(shell_quote "$runner"); fi
+    ( ABOX_DIE_HOOK=''; install_abox_cron_block USERGUARD "*/5 * * * * /bin/bash $_runner_q --user-guard-tick >/dev/null 2>&1" ) || return 1
     return 0
 }
 

@@ -25380,35 +25380,72 @@ users_adopt() {
 }
 
 # Read the official Hy2 auth block into a raw users list [{name,secret}].
+# Decode one YAML scalar value (plain / single-quoted / double-quoted).
+# Double-quoted keeps the existing jq decode (escapes + trailing-newline
+# sentinel). Single-quoted strips the quotes and unescapes '' -> '.
+# Plain strips the first ' #' inline comment and trailing whitespace.
+users_hy2_yaml_scalar() {
+    local v="$1"
+    if [[ "$v" == '"'* ]]; then
+        v=$(printf '%s' "$v" | jq -r '. + "__ABOX_TRAILING_NL_KEEP__"' 2>/dev/null || printf '%s' "$v")
+        v=${v%"__ABOX_TRAILING_NL_KEEP__"}
+        printf '%s' "$v"
+        return 0
+    fi
+    local q="'"
+    if [[ "$v" == "$q"* ]]; then
+        v=${v#"$q"}
+        v=${v%"$q"}
+        v=${v//"$q$q"/"$q"}
+        printf '%s' "$v"
+        return 0
+    fi
+    # Plain: cut at the first ' #' (YAML comment) and trim trailing space.
+    case "$v" in
+        *' #'*) v=${v%%' #'*} ;;
+    esac
+    while [[ "$v" == *' ' || "$v" == *$'\t' ]]; do v=${v%?}; done
+    printf '%s' "$v"
+}
+
 users_hy2_read_users() {
     local cfg="$1" block='' type='' pw='' out='[]'
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     block=$(awk '/^auth:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^auth:/) exit} f{print}' "$cfg" 2>/dev/null) || return 1
     [[ -n "$block" ]] || return 1
-    type=$(printf '%s\n' "$block" | sed -n 's/^[[:space:]]*type:[[:space:]]*//p' | head -1 | tr -d '"'"'"' \r')
+        type=$(printf '%s\n' "$block" | sed -n 's/^[[:space:]]*type:[[:space:]]*//p' | head -1 | tr -d '"'"'"' \r')
     if [[ "$type" == 'userpass' ]]; then
+        # Indent-relative: userpass at any indent, entries at +2.
         out=$(printf '%s\n' "$block" | awk '
-            /^  userpass:/{u=1; next}
-            u && /^    [^[:space:]]/{line=$0; sub(/^    /, "", line);
-                i=index(line, ": "); name=substr(line, 1, i-1); val=substr(line, i+2);
-                printf "%s\t%s\n", name, val}
-            u && /^  [^[:space:]]/{exit}')
+            /^[[:space:]]*userpass:/{match($0, /^ */); u=RLENGTH; next}
+            u != "" && $0 ~ /^[[:space:]]*$/{next}
+            u != "" {
+                match($0, /^ */); ind=RLENGTH
+                if (ind == u + 2) {
+                    line=$0; sub(/^ */, "", line);
+                    i=index(line, ": "); name=substr(line, 1, i-1); val=substr(line, i+2);
+                    printf "%s\t%s\n", name, val
+                } else if (ind <= u) { exit }
+            }')
         local list='[]' n='' v=''
         while IFS=$'\t' read -r n v; do
             [[ -n "$n" ]] || continue
-            # Values are written as JSON strings; decode escapes properly.
-            if [[ "$v" == '"'* ]]; then v=$(printf '%s' "$v" | jq -r '. + "__ABOX_TRAILING_NL_KEEP__"' 2>/dev/null || printf '%s' "$v"); v=${v%"__ABOX_TRAILING_NL_KEEP__"}; fi
+            v=$(users_hy2_yaml_scalar "$v")
             list=$(printf '%s' "$list" | jq -c --arg n "$n" --rawfile v <(printf '%s' "$v") '. + [{name: $n, secret: $v}]') || return 1
         done <<< "$out"
+        # R6C11-03 fail-closed: a userpass section that yields nothing is
+        # an unrecognized mapping, not an empty user list. Returning []
+        # would let adoption revoke the live credentials.
+        if [[ "$list" == '[]' ]]; then return 1; fi
         printf '%s' "$list"
         return 0
     fi
     pw=$(printf '%s\n' "$block" | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
     [[ -n "$pw" ]] || return 1
-    # The writer json-escapes the value; decode it as a JSON string when quoted.
-    if [[ "$pw" == '"'* ]]; then pw=$(printf '%s' "$pw" | jq -r '. + "__ABOX_TRAILING_NL_KEEP__"' 2>/dev/null || printf '%s' "$pw"); pw=${pw%"__ABOX_TRAILING_NL_KEEP__"}; fi
+    pw=$(users_hy2_yaml_scalar "$pw")
     jq -cn --rawfile v <(printf '%s' "$pw") '[{name: "main", secret: $v}]'
 }
+
 
 # Ensure a registry exists for (core, tag): adopt from the live config
 # when missing, then merge in any config credentials the registry does

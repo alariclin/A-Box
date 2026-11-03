@@ -18778,6 +18778,57 @@ setup_socks5_params() {
 # Otherwise a minimal Xray install (binary + config + systemd unit) is performed.
 # sing-box variant: uses type "mixed" (default, SOCKS5+HTTP auto-detect) or "socks".
 # No API hot-push on sing-box: config rewrite + `sing-box check` + service restart.
+singbox_vendor_takeover_gate() {
+    local vendor_unit='' state_enabled='unknown' state_active='unknown' backup='' answer='' _orc_rc='' _u=''
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        for _u in /etc/systemd/system/sing-box.service /usr/lib/systemd/system/sing-box.service /lib/systemd/system/sing-box.service; do
+            if [[ -f "$_u" ]]; then vendor_unit="$_u"; break; fi
+        done
+        if [[ -n "$vendor_unit" ]] && grep -q 'Managed by A-Box' "$vendor_unit" 2>/dev/null; then return 0; fi
+        if [[ -z "$vendor_unit" ]]; then
+            if [[ -x /usr/bin/sing-box ]] && { systemctl is-enabled --quiet sing-box.service 2>/dev/null || systemctl is-active --quiet sing-box.service 2>/dev/null; }; then
+                vendor_unit='(service without unit file)'
+            else
+                return 0
+            fi
+        fi
+        state_enabled=$(systemctl is-enabled sing-box.service 2>/dev/null || echo unknown)
+        state_active=$(systemctl is-active sing-box.service 2>/dev/null || echo unknown)
+        msg "Existing non-A-Box sing-box service detected: unit=$vendor_unit, enabled=$state_enabled, active=$state_active. Takeover will replace its unit with the A-Box unit."
+        read -r -p "Continue takeover and replace the existing sing-box service? [Y/N]: " answer || return 1
+        case "$answer" in
+            Y|y|Yes|YES|yes) ;;
+            *) return 1 ;;
+        esac
+        backup='/etc/systemd/system/sing-box.service.abox-vendor-backup'
+        if [[ -f "$vendor_unit" ]]; then
+            cp -a -- "$vendor_unit" "$backup" || return 1
+        fi
+        echo "unit=$vendor_unit" > "${backup}.state" || return 1
+        echo "enabled=$state_enabled" >> "${backup}.state" || return 1
+        echo "active=$state_active" >> "${backup}.state" || return 1
+        return 0
+    fi
+    if [[ -f /etc/init.d/sing-box ]] && grep -q 'Managed by A-Box' /etc/init.d/sing-box 2>/dev/null; then return 0; fi
+    if [[ ! -f /etc/init.d/sing-box ]]; then return 0; fi
+    vendor_unit='/etc/init.d/sing-box'
+    rc-service sing-box status >/dev/null 2>&1; _orc_rc=$?
+    msg "Existing non-A-Box sing-box service detected: unit=$vendor_unit, rc-status=$_orc_rc. Takeover will replace its init script with the A-Box one."
+    read -r -p "Continue takeover and replace the existing sing-box service? [Y/N]: " answer || return 1
+    case "$answer" in
+        Y|y|Yes|YES|yes) ;;
+        *) return 1 ;;
+    esac
+    backup='/etc/init.d/sing-box.abox-vendor-backup'
+    cp -a -- "$vendor_unit" "$backup" || return 1
+    if [[ -f /etc/conf.d/sing-box ]]; then
+        cp -a -- /etc/conf.d/sing-box /etc/conf.d/sing-box.abox-vendor-backup || return 1
+    fi
+    echo "unit=$vendor_unit" > "${backup}.state" || return 1
+    echo "rc-status=$_orc_rc" >> "${backup}.state" || return 1
+    return 0
+}
+
 deploy_singbox_socks5_landing() {
     local port user pass proto cfg='/etc/sing-box/config.json'
     local tag="${ABOX_DEPLOY_TAG:-socks5-landing}" tmp_json
@@ -18819,6 +18870,7 @@ deploy_singbox_socks5_landing() {
 
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
+        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(mktemp -d /tmp/A-Box-singbox-socks5.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
@@ -19206,6 +19258,7 @@ deploy_singbox_trojan_landing() {
 
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
+        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(mktemp -d /tmp/A-Box-singbox-trojan.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
@@ -19379,6 +19432,7 @@ deploy_singbox_tuic() {
 
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
+        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(mktemp -d /tmp/A-Box-singbox-tuic.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
@@ -19563,6 +19617,7 @@ deploy_singbox_anytls() {
 
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
+        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(mktemp -d /tmp/A-Box-singbox-anytls.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
@@ -19731,6 +19786,7 @@ deploy_singbox_shadowtls() {
 
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
+        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(mktemp -d /tmp/A-Box-singbox-shadowtls.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
@@ -20146,6 +20202,7 @@ deploy_argo_temp() {
     local cfg='/etc/sing-box/config.json' tmp_json
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
+        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(mktemp -d /tmp/A-Box-singbox-argo.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
@@ -20289,6 +20346,7 @@ deploy_argo_fixed() {
     local cfg='/etc/sing-box/config.json' tmp_json
     # Minimal sing-box install when the binary is missing.
     if [[ ! -x /usr/local/bin/sing-box ]]; then
+        singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
         sb_tmp=$(mktemp -d /tmp/A-Box-singbox-argo.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"

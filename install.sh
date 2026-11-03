@@ -30873,7 +30873,7 @@ fstab_path_is_safe() {
 }
 
 setup_swap_2g() {
-    local fstab_tmp='' fstab_backup='' free_kib=0 created_by_abox=0 last_byte=""
+    local fstab_tmp='' fstab_backup='' free_kib=0 created_by_abox=0 last_byte="" _swap_nocow=0
     clear
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}Swap 虚拟内存一键划拨 / Allocate 2G Swap${NC}"
@@ -30888,9 +30888,22 @@ setup_swap_2g() {
     else
         free_kib=$(df -Pk / | awk 'NR==2{print $4}')
         [[ "$free_kib" =~ ^[0-9]+$ && "$free_kib" -ge 2300000 ]] || die "根文件系统剩余空间不足 2G Swap 安全创建阈值。当前=${free_kib:-unknown}KiB。"
+        # R5C13-02: Btrfs COW swapfiles are rejected by swapon;
+        # set NOCOW on the empty file before any extents exist.
+        if [[ "$(stat -f -c %T / 2>/dev/null || echo unknown)" == "btrfs" ]]; then
+            _swap_nocow=1
+        fi
+        if (( _swap_nocow == 1 )); then
+            : > /swapfile || die 'Swap 文件创建失败。'
+            chattr +C /swapfile 2>/dev/null || { rm -f /swapfile; die 'Btrfs Swap 需 NOCOW 属性，chattr +C 失败。'; }
+        fi
         if ! fallocate -l 2G /swapfile 2>/dev/null; then
             rm -f /swapfile
-            dd if=/dev/zero of=/swapfile bs=1M count=2048 status=progress || { rm -f /swapfile; die 'Swap 文件创建失败。'; }
+            if (( _swap_nocow == 1 )); then
+                : > /swapfile || die 'Swap 文件创建失败。'
+                chattr +C /swapfile 2>/dev/null || { rm -f /swapfile; die 'Btrfs Swap 需 NOCOW 属性，chattr +C 失败。'; }
+            fi
+            dd if=/dev/zero of=/swapfile bs=1M count=2048 || { rm -f /swapfile; die 'Swap 文件创建失败。'; }
         fi
         created_by_abox=1
         chmod 600 /swapfile || { rm -f /swapfile; die 'Swap 文件权限设置失败。'; }
@@ -30917,7 +30930,7 @@ setup_swap_2g() {
             fi
             die '/etc/fstab 备份失败；已回滚新建 Swap，且未修改 /etc/fstab。'
         fi
-        if ! grep -qE '^/swapfile[[:space:]]+none[[:space:]]+swap[[:space:]]+sw[[:space:]]+0[[:space:]]+0([[:space:]]|$)' /etc/fstab 2>/dev/null; then
+        if ! grep -qE '^/swapfile[[:space:]]+[^[:space:]]+[[:space:]]+swap([[:space:]]|$)' /etc/fstab 2>/dev/null; then
             if ! fstab_tmp=$(mktemp /etc/.fstab.A-Box.XXXXXX); then
                 if ! rollback_abox_new_swap "$fstab_backup"; then
                     msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
@@ -30998,7 +31011,7 @@ EOF_SWAP_MARK
             msg "${YELLOW}[!] /etc/fstab 已有未标记的 /swapfile 条目；本次不写入托管区块、也不声明所有权。${NC}"
         fi
         rm -f "$fstab_backup" || die 'Swap 临时备份清理失败；Swap 已部署但安全备份残留，请检查 /etc/.fstab.A-Box-setup-backup.*。'
-    elif ! grep -qE '^/swapfile[[:space:]]+none[[:space:]]+swap[[:space:]]+sw[[:space:]]+0[[:space:]]+0([[:space:]]|$)' /etc/fstab 2>/dev/null; then
+    elif ! grep -qE '^/swapfile[[:space:]]+[^[:space:]]+[[:space:]]+swap([[:space:]]|$)' /etc/fstab 2>/dev/null; then
         msg "${YELLOW}[!] 已存在的 /swapfile 非 A-Box 创建文件；已启用但不修改 /etc/fstab，也不会声明所有权。${NC}"
     fi
     swapon --show || true
@@ -31315,7 +31328,7 @@ swap_menu() {
             3) swap_status_show ;;
             4) remove_zram_swap ;;
             5)
-                if [[ -f /etc/ddr/.swapfile.managed ]]; then
+                if [[ -f "$ABOX_DIR/.swapfile.managed" ]]; then
                     remove_abox_swap && msg "${GREEN}磁盘 Swap 文件已移除。${NC}" || msg "${RED}移除失败，请检查 /swapfile 与 /etc/fstab。${NC}"
                 else
                     msg "${YELLOW}没有 A-Box 创建的磁盘 Swap 文件。${NC}"
@@ -31387,7 +31400,12 @@ remove_abox_swap() {
     fi
     if [[ -f /swapfile && ! -L /swapfile ]]; then
         if ! rm -f /swapfile; then
-            __abox_restore_fstab_from_swap_backup "$backup" || true
+            # R1-13-F2: a failed restore must not be swallowed
+            # with the backup deleted and fstab claimed restored.
+            if ! __abox_restore_fstab_from_swap_backup "$backup"; then
+                msg "${RED}[!] /swapfile 删除失败，且 /etc/fstab 恢复失败；已保留 fstab 备份：${backup}，请手动恢复。${NC}" >&2
+                return 1
+            fi
             if (( swap_active == 1 )); then
                 # The swap was active before we turned it off: bring it
                 # back, or the failed removal leaves it inactive.

@@ -37212,11 +37212,21 @@ _xl_install_takeover() { # $1 = staged binary, $2 = tag
     fi
     if ! restart_service_soft xray; then
         msg "${RED}$(tr_msg xl_restart_fail)${NC}"
+        # R1-15-03/R2C15-F5: a restart was attempted above, so
+        # the service may now run the NEW binary. Stop it before
+        # restoring/deleting the binary path (else cp hits ETXTBSY
+        # and rm/ln orphans a running instance). Early paths need
+        # no stop: the service there still runs the pre-overwrite
+        # binary via its old inode.
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl stop xray >/dev/null 2>&1 || true; else rc-service xray stop >/dev/null 2>&1 || true; fi
         if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then
             if ! cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; then
                 msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
                 return 1
             fi
+            # R1-15-03: explicit executable bit (a cp that
+            # unlinks + recreates after ETXTBSY yields 0600).
+            chmod +x -- "$XRAY_SLOT_BIN" 2>/dev/null || true
             restart_service_soft xray >/dev/null 2>&1 || true
         else
             if [[ -n "$slot_link_target" ]]; then
@@ -37238,11 +37248,21 @@ _xl_install_takeover() { # $1 = staged binary, $2 = tag
     fi
     if ! _xl_state_write takeover "$tag"; then
         msg "${RED}$(tr_msg xl_gen_fail)${NC}"
+        # R1-15-03/R2C15-F5: a restart was attempted above, so
+        # the service may now run the NEW binary. Stop it before
+        # restoring/deleting the binary path (else cp hits ETXTBSY
+        # and rm/ln orphans a running instance). Early paths need
+        # no stop: the service there still runs the pre-overwrite
+        # binary via its old inode.
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl stop xray >/dev/null 2>&1 || true; else rc-service xray stop >/dev/null 2>&1 || true; fi
         if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then
             if ! cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; then
                 msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
                 return 1
             fi
+            # R1-15-03: explicit executable bit (a cp that
+            # unlinks + recreates after ETXTBSY yields 0600).
+            chmod +x -- "$XRAY_SLOT_BIN" 2>/dev/null || true
             restart_service_soft xray >/dev/null 2>&1 || true
         else
             if [[ -n "$slot_link_target" ]]; then

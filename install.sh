@@ -36199,6 +36199,18 @@ xl_binary_version() { # $1 = binary path -> v-prefixed version or nothing
     printf '%s\n' "$ver"
 }
 
+_xl_port_in_spec() { # $1 = spec (number or lo-hi), $2 = target -> 0 if in
+    local spec="$1" target="$2" lo hi
+    if [[ "$spec" =~ ^[0-9]+$ ]]; then
+        [[ "$spec" == "$target" ]]
+    elif [[ "$spec" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+        lo="${BASH_REMATCH[1]}"; hi="${BASH_REMATCH[2]}"
+        (( target >= lo && target <= hi ))
+    else
+        return 1
+    fi
+}
+
 xl_config_ports() { # $1 = config path -> sorted unique public ports
     local cfg="${1:-}"
     [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]] || return 0
@@ -36212,9 +36224,27 @@ xl_singbox_ports() {
 }
 
 xl_hy2_port() {
-    local cfg='/etc/hysteria/config.yaml'
+    local cfg='/etc/hysteria/config.yaml' line val q
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 0
-    grep -E '^[[:space:]]*listen:' "$cfg" 2>/dev/null | head -1 | grep -oE '[0-9]+[[:space:]]*$' | tr -d ' '
+    line=$(grep -E '^[[:space:]]*listen:' "$cfg" 2>/dev/null | head -1) || return 0
+    [[ -n "$line" ]] || return 0
+    val="${line#*:}"
+    val="${val#"${val%%[![:space:]]*}"}"
+    val="${val%"${val##*[![:space:]]}"}"
+    [[ -n "$val" ]] || return 0
+    q="${val:0:1}"
+    if [[ "$q" == '"' || "$q" == "'" ]]; then
+        val="${val:1}"
+        val="${val%%"$q"*}"
+    else
+        val="${val%%#*}"
+        val="${val%"${val##*[![:space:]]}"}"
+    fi
+    [[ -n "$val" ]] || return 0
+    if [[ "$val" == *:* ]]; then val="${val##*:}"; fi
+    val="${val//[[:space:]]/}"
+    [[ "$val" =~ ^[0-9]+$ ]] || return 0
+    printf '%s' "$val"
 }
 
 xl_listen_ports() {
@@ -36237,37 +36267,43 @@ xl_show_ports() {
 
 # Conflict = port used by the OTHER Xray instance's config, or held by a
 # system listener that is not the target instance's own current config.
-xl_config_tag_ports() { # $1 = config path -> "tag port" lines, same filters as xl_config_ports
-    local cfg="${1:-}"
-    [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]] || return 0
-    jq -r '.inbounds[]? | select(.port != null and .tag != "api") | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1")) | "\(.tag) \(.port)"' "$cfg" 2>/dev/null | sort -u
-}
-
-xl_port_conflict() { # $1=port $2=target_cfg $3=tag being deployed (empty = no exemption)
-    local port="${1:-}" target_cfg="${2:-}" tag="${3:-}" other_cfg='' p t own=' '
+xl_port_conflict() { # $1=port $2=target_cfg $3=tag (empty = no exemption) $4=new transports (default tcp,udp)
+    local port="${1:-}" target_cfg="${2:-}" tag="${3:-}" transports="${4:-tcp,udp}" other_cfg='' p own=0 svc=''
     [[ "$port" =~ ^[0-9]+$ ]] || return 1
     if [[ "$target_cfg" == "$XRAY_SLOT_CFG" ]]; then other_cfg="$XRAY_LATEST_CFG"; else other_cfg="$XRAY_SLOT_CFG"; fi
-    while read -r p; do [[ "$p" == "$port" ]] && return 0; done < <(xl_config_ports "$other_cfg")
-    while read -r p; do [[ "$p" == "$port" ]] && return 0; done < <(xl_singbox_ports)
-    [[ "$(xl_hy2_port)" == "$port" ]] && return 0
-    # U127: per-tag. A retained inbound (different tag) holding this port is
-    # a conflict even when nothing listens yet; only this tag's own ports
-    # are exempt (the merge replaces them), and only for the
-    # already-listening exemption below. An empty tag exempts nothing.
-    while read -r t p; do
-        if [[ "$p" == "$port" ]]; then
-            if [[ -n "$tag" && "$t" == "$tag" ]]; then own+="$p "; else return 0; fi
+    # Other instance's config: unfiltered (loopback counts for
+    # wildcard overlap) and range-aware.
+    while read -r p; do _xl_port_in_spec "$p" "$port" && return 0; done < <(jq -r '.inbounds[]? | select(.port != null and .tag != "api") | .port' "$other_cfg" 2>/dev/null | sort -u)
+    while read -r p; do _xl_port_in_spec "$p" "$port" && return 0; done < <(jq -r '.inbounds[]? | select(.listen_port != null) | .listen_port' '/etc/sing-box/config.json' 2>/dev/null | sort -u)
+    # Hy2 is UDP-only: only a UDP deployment can conflict with it.
+    if [[ "$transports" == *udp* ]]; then
+        [[ "$(xl_hy2_port)" == "$port" ]] && return 0
+    fi
+    # Target config: tag comparison inside jq via --arg (blank tags
+    # safe), unfiltered for loopback, range-aware. Non-exempt ports
+    # conflict outright; same-tag ports are only candidates for own.
+    if [[ -n "$tag" ]]; then
+        while read -r p; do _xl_port_in_spec "$p" "$port" && return 0; done < <(jq -r --arg t "$tag" '.inbounds[]? | select(.port != null and .tag != "api" and .tag != $t) | .port' "$target_cfg" 2>/dev/null | sort -u)
+        while read -r p; do _xl_port_in_spec "$p" "$port" && own=1; done < <(jq -r --arg t "$tag" '.inbounds[]? | select(.port != null and .tag != "api" and .tag == $t) | .port' "$target_cfg" 2>/dev/null | sort -u)
+    else
+        while read -r p; do _xl_port_in_spec "$p" "$port" && return 0; done < <(jq -r '.inbounds[]? | select(.port != null and .tag != "api") | .port' "$target_cfg" 2>/dev/null | sort -u)
+    fi
+    # Live listener: conflicts unless it is the target instance's own
+    # (same-tag config entry AND the socket held by its process).
+    # An unconfirmable holder fails closed (conflict).
+    if ss -tuln 2>/dev/null | awk '{print $5}' | grep -qE "[:.]${port}$"; then
+        if (( own == 1 )); then
+            svc='xray'
+            [[ "$target_cfg" == "$XRAY_LATEST_CFG" ]] && svc='xray-latest'
+            if ss -tulnp 2>/dev/null | grep -E "[:.]${port}[[:space:]]" | grep -q "\"${svc}\""; then
+                return 1
+            fi
         fi
-    done < <(xl_config_tag_ports "$target_cfg")
-    if ss -tuln 2>/dev/null | awk '{print $5}' | grep -qE "[:.]${port}\$"; then
-        [[ "$own" == *" $port "* ]] || return 0
+        return 0
     fi
     return 1
 }
 
-# U129+U130: restore a deploy backup, re-apply runtime read permissions,
-# verify the runtime user can read it, and restart. Returns 0 only if the
-# service is back up on the restored config.
 _xl_deploy_rollback() {
     local bak="$1" cfg="$2" svc="$3" _rb_user _rb_group
     install_file_atomically "$bak" "$cfg" 600 2>/dev/null || cp -f -- "$bak" "$cfg" || return 1
@@ -36731,7 +36767,9 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     fi
     xl_show_ports
     port=$(prompt_validated "$(tr_msg xl_port_prompt)" port "$defport") || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    if xl_port_conflict "$port" "$cfg" "$tag"; then
+    local _xl_trans='tcp'
+    case "$kind" in ss|socks) _xl_trans='tcp,udp' ;; esac
+    if xl_port_conflict "$port" "$cfg" "$tag" "$_xl_trans"; then
         msg "${RED}$(tr_msg xl_port_conflict): ${port}${NC}"
         xl_show_ports
         return 1
@@ -36905,11 +36943,11 @@ xray_latest_deploy_trio() {
     if [[ "$mode" == 'coexist' ]]; then msg "${YELLOW}$(tr_msg xl_coexist_note)${NC}"; fi
     xl_show_ports
     vp=$(prompt_validated "$(tr_msg xl_port_prompt)" port '443') || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    if xl_port_conflict "$vp" "$cfg" 'latest-vision'; then msg "${RED}$(tr_msg xl_port_conflict): ${vp}${NC}"; return 1; fi
+    if xl_port_conflict "$vp" "$cfg" 'latest-vision' 'tcp'; then msg "${RED}$(tr_msg xl_port_conflict): ${vp}${NC}"; return 1; fi
     xp=$(prompt_validated "$(tr_msg xl_port_prompt)" port '8443') || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    if [[ "$xp" == "$vp" ]] || xl_port_conflict "$xp" "$cfg" 'latest-xhttp'; then msg "${RED}$(tr_msg xl_port_conflict): ${xp}${NC}"; return 1; fi
+    if [[ "$xp" == "$vp" ]] || xl_port_conflict "$xp" "$cfg" 'latest-xhttp' 'tcp'; then msg "${RED}$(tr_msg xl_port_conflict): ${xp}${NC}"; return 1; fi
     sp2=$(prompt_validated "$(tr_msg xl_port_prompt)" port '2053') || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    if [[ "$sp2" == "$vp" || "$sp2" == "$xp" ]] || xl_port_conflict "$sp2" "$cfg" 'latest-ss'; then msg "${RED}$(tr_msg xl_port_conflict): ${sp2}${NC}"; return 1; fi
+    if [[ "$sp2" == "$vp" || "$sp2" == "$xp" ]] || xl_port_conflict "$sp2" "$cfg" 'latest-ss' 'tcp,udp'; then msg "${RED}$(tr_msg xl_port_conflict): ${sp2}${NC}"; return 1; fi
     listen_addr=$(wildcard_listen_address)
     sni=$(sni_prompt_or_auto)
     valid_sni "$sni" || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }

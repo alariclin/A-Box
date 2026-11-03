@@ -34523,15 +34523,29 @@ wallos_create_backup() {
     }
     rm -f -- "$temp.list"
     chmod 600 "$temp" || { rm -f -- "$temp"; return 1; }
-    sync -f "$temp" 2>/dev/null || true
+    # R9C15-01: full validation before publishing; a backup with
+    # links must fail here, not at restore after rotation.
+    wallos_validate_backup "$temp" || { rm -f -- "$temp"; return 1; }
+    sync -f "$temp" || { rm -f -- "$temp"; return 1; }
     mv -f "$temp" "$backup" || { rm -f -- "$temp"; return 1; }
-    sync -f "$WALLOS_DIR/backups" 2>/dev/null || true
+    sync -f "$WALLOS_DIR/backups" || { rm -f -- "$backup"; return 1; }
     # D-07: BusyBox find (Alpine) lacks -printf; python3 is already a hard
     # dependency, so rotate by mtime in python. Keeps the newest 5 backups.
     # Rotation is best-effort: the backup itself already succeeded above.
-    python3 - "$WALLOS_DIR/backups" "$backup" <<'PY_WALLOS_ROTATE' 2>/dev/null || true
+    # R5C15-01: never rotate away the backup an active upgrade
+    # journal references; recovery depends on it.
+    local _journal_ref=''
+    if [[ -f "$WALLOS_DIR/.upgrade-transaction" && ! -L "$WALLOS_DIR/.upgrade-transaction" ]]; then
+        local _jphase _jbackup
+        _jphase=$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" phase 2>/dev/null || true)
+        _jbackup=$(wallos_txn_value "$WALLOS_DIR/.upgrade-transaction" backup 2>/dev/null || true)
+        if [[ "$_jphase" == "active" && -n "$_jbackup" ]]; then
+            _journal_ref="$_jbackup"
+        fi
+    fi
+    python3 - "$WALLOS_DIR/backups" "$backup" "$_journal_ref" <<'PY_WALLOS_ROTATE' 2>/dev/null || true
 import os, sys
-_d, _keep = sys.argv[1], sys.argv[2]
+_d, _keep, _jref = sys.argv[1], sys.argv[2], sys.argv[3]
 _ents = []
 try:
     _names = os.listdir(_d)
@@ -34546,7 +34560,7 @@ for _n in _names:
             continue
 _ents.sort(key=lambda e: e[0], reverse=True)
 for _, _p in _ents[5:]:
-    if _p != _keep:
+    if _p != _keep and _p != _jref:
         try:
             os.unlink(_p)
         except OSError:

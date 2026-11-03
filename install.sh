@@ -19830,7 +19830,7 @@ EOF_SVC
            method:"2022-blake3-aes-128-gcm",password:$inner,multiplex:{enabled:true,padding:true}})' \
         > "$tmp_json" || die "$(tr_msg dp_shadowtls_json)"
 
-    local tmp_cfg
+    local tmp_cfg cfg_bak=''
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         msg "${YELLOW}$(tr_msg shadowtls_exists)${NC}"
     fi
@@ -19844,11 +19844,16 @@ EOF_SVC
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
-    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
-    prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
+    if [[ -f "$cfg" && ! -L "$cfg" ]]; then
+        cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+        cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; cfg_bak=''; die 'Config backup failed; refusing to replace the live config without a backup.'; }
+    fi
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; [[ -n "$cfg_bak" ]] && rm -f -- "$cfg_bak"; die "$(tr_msg dp_sb_cfg)"; }
+    prepare_abox_runtime_permissions sing-box || { if [[ -n "$cfg_bak" ]]; then restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; fi; die "$(tr_msg dp_sb_runtime)"; }
     rm -f "$tmp_cfg" "$tmp_json"
 
-    restart_service_soft sing-box || die "$(tr_msg dp_sb_restart)"
+    restart_service_soft sing-box || { if [[ -n "$cfg_bak" ]]; then restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; fi; die "$(tr_msg dp_sb_restart)"; }
+    [[ -n "$cfg_bak" ]] && rm -f -- "$cfg_bak"
 
     allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"

@@ -10295,12 +10295,11 @@ for _d in sorted(dirs):
         raise SystemExit(3)
 if _repair:
     if all(_is_artifact_tree(_p) for _p in _repair):
-        import shutil
         for _p in sorted(_repair, key=os.fsencode, reverse=True):
             if os.path.isdir(_p) and not os.path.islink(_p):
-                shutil.rmtree(_p)
+                _rmtree_fd(_p)
             else:
-                os.unlink(_p)
+                _unlink_fd(_p)
             print(f"[!] Removed doubling artifact: {_p}", file=sys.stderr)
     else:
         raise SystemExit(3)
@@ -10353,13 +10352,65 @@ for path in sorted(expected, key=os.fsencode):
         for name in names:
             child=os.path.join(path,name)
             if child not in expected: raise SystemExit(3)
+# R4C5-01: delete via dir_fd + O_NOFOLLOW relative operations, not
+# absolute paths. Walking down from a pinned '/' fd with O_NOFOLLOW at
+# each step pins every ancestor: a swap before the step is refused
+# (ELOOP), a swap after it cannot redirect the already-open fd. The
+# leaf itself is safe: unlink/rmdir never follow the final component.
+def _open_parent_fd(path):
+    parts = [p for p in os.path.abspath(os.path.normpath(path)).split(os.sep) if p]
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for comp in parts[:-1]:
+            nxt = os.open(comp, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nxt
+        return fd, parts[-1]
+    except BaseException:
+        os.close(fd)
+        raise
+def _unlink_fd(path):
+    fd, leaf = _open_parent_fd(path)
+    try:
+        os.unlink(leaf, dir_fd=fd)
+    finally:
+        os.close(fd)
+def _rmdir_fd(path):
+    fd, leaf = _open_parent_fd(path)
+    try:
+        os.rmdir(leaf, dir_fd=fd)
+    finally:
+        os.close(fd)
+def _clear_fd_tree(dfd):
+    for name in os.listdir(dfd):
+        st = os.lstat(name, dir_fd=dfd)
+        if stat.S_ISDIR(st.st_mode):
+            cfd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=dfd)
+            try:
+                _clear_fd_tree(cfd)
+            finally:
+                os.close(cfd)
+            os.rmdir(name, dir_fd=dfd)
+        else:
+            os.unlink(name, dir_fd=dfd)
+def _rmtree_fd(path):
+    parent_fd, leaf = _open_parent_fd(path)
+    try:
+        dfd = os.open(leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+        try:
+            _clear_fd_tree(dfd)
+        finally:
+            os.close(dfd)
+        os.rmdir(leaf, dir_fd=parent_fd)
+    finally:
+        os.close(parent_fd)
 # Only after the complete tree is proven exact may deletion begin.
 for path in sorted(files, key=lambda p:(p.count(os.sep),len(p)), reverse=True):
-    try: os.unlink(path)
+    try: _unlink_fd(path)
     except FileNotFoundError: pass
     except OSError: raise SystemExit(1)
 for path in sorted(dirs, key=lambda p:(p.count(os.sep),len(p)), reverse=True):
-    try: os.rmdir(path)
+    try: _rmdir_fd(path)
     except FileNotFoundError: pass
     except OSError: raise SystemExit(1)
 dirname=os.path.dirname(manifest)

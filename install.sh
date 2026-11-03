@@ -25819,6 +25819,19 @@ users_link() {
         printf 'ss://%s@%s%s' "$(printf '%s' "${method}:${eff}" | users_b64url_enc)" "$hostpart" "$frag"
         return 0
     fi
+    # R5C11-04: vmess://BASE64 has no userinfo@host; decode the
+    # JSON, replace id (target uuid) and ps (target name),
+    # re-encode. Standard base64 first, url-safe fallback.
+    if [[ "$link" == vmess://* ]]; then
+        [[ -n "$use_uuid" ]] || return 1
+        local vblob='' vjson='' vnew=''
+        vblob="${link#vmess://}"
+        vjson=$(printf '%s' "$vblob" | base64 -d 2>/dev/null || users_b64url_dec "$vblob") || return 1
+        [[ -n "$vjson" ]] || return 1
+        vnew=$(printf '%s' "$vjson" | jq -c --arg id "$use_uuid" --arg ps "$name" '.id = $id | .ps = $ps' 2>/dev/null) || return 1
+        printf 'vmess://%s' "$(printf '%s' "$vnew" | base64 -w0 2>/dev/null | tr -d '\n')"
+        return 0
+    fi
     # Generic userinfo substitution: scheme://userinfo@rest
     local scheme='' rest2='' userinfo2='' hostpart2=''
     scheme="${link%%://*}"; rest2="${link#*://}"
@@ -25826,13 +25839,9 @@ users_link() {
     hostpart2="${hostpart2%%#*}"
     local newinfo=''
     if [[ "$proto" == 'tuic' ]]; then
-        local muuid=''
-        muuid=$(printf '%s' "$main" | jq -r '.uuid // ""')
-        if [[ "$userinfo2" == "$(urlencode "$muuid"):$(urlencode "$msecret")" || "$userinfo2" == "${muuid}:${msecret}" ]]; then
-            newinfo="$(urlencode "$use_uuid"):$(urlencode "$secret")"
-        else
-            return 1
-        fi
+        # R10C11-02: a stale template (old uuid/secret) must not
+        # lose the whole inbound; substitute current credentials.
+        newinfo="$(urlencode "$use_uuid"):$(urlencode "$secret")" 
     elif [[ "$core" == 'hy2' ]]; then
         if (( enabled_count >= 2 )); then
             newinfo="$(urlencode "$name"):$(urlencode "$secret")"
@@ -25841,17 +25850,15 @@ users_link() {
         fi
     else
         if [[ "$scheme" == 'socks5' || "$scheme" == 'mixed' ]]; then
-            local mname=''
-            mname=$(printf '%s' "$main" | jq -r '.name // ""')
-            if [[ "$userinfo2" == "$(urlencode "$mname"):$(urlencode "$msecret")" || "$userinfo2" == "${mname}:${msecret}" ]]; then
-                newinfo="$(urlencode "$name"):$(urlencode "$secret")"
-            else
-                return 1
-            fi
-        elif [[ "$userinfo2" == "$(urlencode "$msecret")" || "$userinfo2" == "$msecret" ]]; then
-            newinfo="$(urlencode "$secret")"
+            # R1-11-F07: server authenticates by .login // .name;
+            # use the login for the target userinfo. R10C11-02:
+            # a stale template must not fail the link.
+            local ulogin=''
+            ulogin=$(printf '%s' "$user" | jq -r '(.login // .name) // ""')
+            newinfo="$(urlencode "$ulogin"):$(urlencode "$secret")"
         else
-            return 1
+            # R10C11-02: stale template -> substitute anyway.
+            newinfo="$(urlencode "$secret")"
         fi
     fi
     printf '%s://%s@%s%s' "$scheme" "$newinfo" "$hostpart2" "$frag"

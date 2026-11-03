@@ -36095,8 +36095,51 @@ wallos_tls_handshake_check() { # $1=port $2=ip
     return 1
 }
 
+# R14C15-02: true (0) iff an A-Box-owned 80/tcp rule already exists;
+# 1 iff certainly absent; 2 iff the state cannot be determined.
+wallos_https_80_owned() {
+    local backend rc rc6
+    backend=$(firewall_backend 2>/dev/null) || return 2
+    case "$backend" in
+        ufw)
+            ufw_owned_rule_exists "80" "tcp"
+            ;;
+        firewalld)
+            [[ -e "$ABOX_FW_STATE" || -L "$ABOX_FW_STATE" ]] || return 1
+            validate_native_firewall_state_file "$ABOX_FW_STATE" 2>/dev/null || return 2
+            if grep -qF 'firewalld|80|tcp|runtime' "$ABOX_FW_STATE" 2>/dev/null || grep -qF 'firewalld|80|tcp|permanent' "$ABOX_FW_STATE" 2>/dev/null; then
+                return 0
+            fi
+            return 1
+            ;;
+        iptables)
+            # NOTE: never capture rc after a bare if without else: such an
+            # if returns 0 when the condition is false, masking the real rc.
+            iptables_rule_check "$IPT" INPUT -p tcp --dport 80 -m comment --comment "A-Box-80-tcp" -j ACCEPT
+            rc=$?
+            [[ "$rc" == 0 ]] && return 0
+            [[ "$rc" == 1 ]] || return 2
+            if command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
+                iptables_rule_check "$IPT6" INPUT -p tcp --dport 80 -m comment --comment "A-Box-80-tcp" -j ACCEPT
+                rc6=$?
+                [[ "$rc6" == 0 ]] && return 0
+                [[ "$rc6" == 1 ]] || return 2
+            fi
+            return 1
+            ;;
+        *) return 2 ;;
+    esac
+}
+
+# R14C15-02: revoke a newly added 80/tcp allow on setup failure.
+# $1 = 1 iff this setup newly added the rule; otherwise a no-op.
+wallos_https_80_rollback() {
+    [[ "${1:-0}" == 1 ]] || return 0
+    remove_abox_native_firewall_rule "80" "tcp" >/dev/null 2>&1 || msg "${YELLOW}[!] Failed to revoke the newly added 80/tcp allow; remove it manually.${NC}"
+}
+
 wallos_https_setup() { # $1 = public port, $2 = internal container port
-    local pubport="$1" internal="$2" pub_ip='' tmp_json='' _t=0 _cert='' _code=''
+    local pubport="$1" internal="$2" pub_ip='' tmp_json='' _t=0 _cert='' _code='' _http80_new=0 _http80_pre=2 _http80_post=2
     pub_ip=$(get_public_ip 2>/dev/null || true)
     if [[ ! "$pub_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         msg "${RED}$(tr_msg wl_hs_no_ipv4)${NC}"
@@ -36149,8 +36192,13 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     # through the standard owned-rule path before starting Caddy;
     # failure only warns — issuance may still succeed where the
     # host firewall already permits 80.
+    # R14C15-02: record whether 80/tcp is already owned before opening it,
+    # so a later failure revokes only a rule this setup newly added.
+    wallos_https_80_owned; _http80_pre=$?
     ( allowPort 80 tcp ) >/dev/null 2>&1 || msg "${YELLOW}[!] $(tr_msg wl_fw_80_fail)${NC}"
-    wallos_https_write_unit || { msg "${RED}$(tr_msg wl_hs_unit_fail)${NC}"; return 1; }
+    wallos_https_80_owned; _http80_post=$?
+    if [[ "$_http80_pre" == 1 && "$_http80_post" == 0 ]]; then _http80_new=1; fi
+    wallos_https_write_unit || { msg "${RED}$(tr_msg wl_hs_unit_fail)${NC}"; wallos_https_80_rollback "$_http80_new"; return 1; }
     # Wait for the IP certificate (ACME HTTP-01 runs over port 80).
     while (( _t < 120 )); do
         _cert=$(find /etc/ddr/wallos-caddy/data/caddy/certificates -name "${pub_ip}.crt" 2>/dev/null | head -1)
@@ -36160,6 +36208,7 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     done
     if [[ -z "$_cert" ]]; then
         msg "${RED}$(tr_msg wl_hs_cert_timeout)${NC}"
+        wallos_https_80_rollback "$_http80_new"
         return 1
     fi
     # Readiness probe via loopback with SNI pinning: dialing the
@@ -36180,6 +36229,7 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
             msg "${GREEN}$(tr_msg wl_hs_tls_ok)${NC}"
         else
             msg "${RED}$(tprintf wl_hs_tls_fail "$_legs")${NC}"
+            wallos_https_80_rollback "$_http80_new"
             return 1
         fi
     fi

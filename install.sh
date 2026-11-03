@@ -25024,7 +25024,8 @@ fetch_abox_mirror_asset() {
     validate_core_asset_binary_version "$output_file" "$tmp_file" "$requested_version"; _core_ver_rc=$?
     if (( _core_ver_rc == 2 )); then msg "${YELLOW}[!] recovery binary cannot be executed (not a version mismatch); check the workdir mount options (/tmp noexec is common) or TMPDIR${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
     if (( _core_ver_rc != 0 )); then msg "${YELLOW}[!] recovery binary version does not match requested version ${requested_version}${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
-    mv -f -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
+    if [[ -d "$dest_file" ]]; then msg "${YELLOW}[!] recovery destination is a directory, refusing to move asset into it${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
+    mv -f -T -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
     msg "${GREEN}   recovery SHA-256 and actual binary version verified: ${requested_version}${NC}"
     return 0
 }

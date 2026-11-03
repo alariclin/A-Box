@@ -24344,8 +24344,9 @@ sync_env_ports_after_removal() {
     # main combo and an independent node survives while any listener
     # remains. HY2 hop-range vars are not listener ports and are out
     # of scope here.
-    local envf="${ABOX_ENV:-/etc/ddr/.env}" var='' val='' cleared='' info='' cfg='' hy2p='' core='' p='' _ports='' _read_failed=0 _write_failed=0
+    local envf="${ABOX_ENV:-/etc/ddr/.env}" var='' val='' cleared='' info='' cfg='' hy2p='' core='' p='' _ports='' _read_failed=0 _write_failed=0 _keep=0 _vp='' _lp='' _rlo='' _rhi='' _hy2line=''
     local -a live_ports=()
+    local -a _val_parts=()
     [[ -f "$envf" && ! -L "$envf" ]] || return 0
     for core in xray sing-box xray-latest; do
         info=$(_protocol_cfg_of "$core" 2>/dev/null) || continue
@@ -24355,8 +24356,12 @@ sync_env_ports_after_removal() {
         while IFS= read -r p; do [[ -n "$p" ]] && live_ports+=("$p"); done <<< "$_ports"
     done
     if [[ -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
-        hy2p=$(grep -m1 '^listen:' /etc/hysteria/config.yaml 2>/dev/null | grep -o '[0-9]\+' | tail -n 1 || true)
-        [[ -n "$hy2p" ]] && live_ports+=("$hy2p")
+        # R7C11-02: collect every listen port (top-level and
+        # trafficStats.listen), not just the first top-level one.
+        while IFS= read -r _hy2line; do
+            hy2p=$(printf '%s\n' "$_hy2line" | grep -o '[0-9]\+' | tail -n 1 || true)
+            [[ -n "$hy2p" ]] && live_ports+=("$hy2p")
+        done < <(grep -E '^[[:space:]]*listen:' /etc/hysteria/config.yaml 2>/dev/null || true)
     fi
     # A config that exists but fails to parse must fail closed: treating
     # its ports as absent would clear live .env ports.
@@ -24366,7 +24371,27 @@ sync_env_ports_after_removal() {
     for var in VLESS_PORT XHTTP_PORT HY2_BASE_PORT SS_PORT SOCKS_PORT HY2_MONITOR_PORT HY2_URI_PORTS; do
         val=$(sed -n "s/^${var}=//p" "$envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
         [[ -n "$val" ]] || continue
-        [[ " ${live_ports[*]} " == *" $val "* ]] && continue
+        # R6C11-02: evaluate numeric/range/list specs, not literal
+        # membership. Keep if any element is covered (exact or
+        # within a range), or if any live entry is unparseable
+        # (cannot prove the port is dead).
+        _keep=0
+        IFS=',' read -r -a _val_parts <<< "$val"
+        for _vp in "${_val_parts[@]}"; do
+            _vp="${_vp#"${_vp%%[![:space:]]*}"}"; _vp="${_vp%"${_vp##*[![:space:]]}"}"
+            [[ -n "$_vp" ]] || continue
+            for _lp in "${live_ports[@]}"; do
+                if [[ "$_lp" == "$_vp" ]]; then _keep=1; break; fi
+                if [[ "$_lp" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+                    _rlo="${BASH_REMATCH[1]}"; _rhi="${BASH_REMATCH[2]}"
+                    if [[ "$_vp" =~ ^[0-9]+$ ]] && (( 10#$_rlo <= 10#$_vp && 10#$_vp <= 10#$_rhi )); then _keep=1; break; fi
+                elif [[ ! "$_lp" =~ ^[0-9]+$ ]]; then
+                    _keep=1; break
+                fi
+            done
+            (( _keep == 1 )) && break
+        done
+        (( _keep == 1 )) && continue
         if ! sed -i "s/^${var}=.*/${var}=\"\"/" "$envf" 2>/dev/null; then
             _write_failed=1
             continue

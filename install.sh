@@ -21008,8 +21008,9 @@ routing_apply_live() {
                     | ($orig | map((.outbound as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + $srules) | index($r)) | not)) | not) | index(true) // ($orig | length)) as $splice
                     | (($orig | map(select((.outbound as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + $srules) | index($r)) | not))))) as $kept
                         | $kept[0:$splice] + $srules + $kept[$splice:])))
-                | ($prevr | map(.rule_set[]?) | unique) as $prevtags
-                | .route.rule_set = (((.route.rule_set // []) | map(select(.tag as $t | (($tags + $prevtags) | index($t)) | not))) + ($tags | map({type:"remote", tag:., format:"binary",
+                | ($prevr | [.. | objects | .rule_set[]? | select(type == "string")] | unique) as $prevtags
+                | (.route.rules | [.. | objects | .rule_set[]? | select(type == "string")] | unique) as $refd
+                | .route.rule_set = (((.route.rule_set // []) | map(select(.tag as $t | (($tags | index($t)) | not) and ((($prevtags | index($t)) | not) or (($refd | index($t)) | . != null))))) + ($tags | map({type:"remote", tag:., format:"binary",
                     url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
                     download_detour:"direct"})))
             ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }

@@ -9752,6 +9752,10 @@ def path_is_mountpoint(path):
     return False
 
 def add_path(path):
+    # R5C5-02: a TSV separator in a path corrupts the manifest;
+    # refuse before commit (bash drops tmp, old manifest kept).
+    if '\t' in path or '\n' in path or '\r' in path:
+        raise SystemExit(1)
     try: st=os.lstat(path)
     except FileNotFoundError: return
     if path_is_mountpoint(path):
@@ -9867,6 +9871,9 @@ if st is not None:
     if not stat.S_ISDIR(st.st_mode) or is_mountpoint(target):
         raise SystemExit(1)
     def add(path):
+        # R5C5-02: same TSV separator refusal as add_path.
+        if '\t' in path or '\n' in path or '\r' in path:
+            raise SystemExit(1)
         st=safe_stat(path)
         if st is None: raise SystemExit(1)
         if stat.S_ISREG(st.st_mode):
@@ -28964,6 +28971,11 @@ for top_name in ("root", "meta"):
         for name in files:
             candidate = current_path / name
             relative = candidate.relative_to(base)
+            # R8C13-N01: a newline in a relative path splits one
+            # record into two lines; refuse instead of writing
+            # an invalid manifest while reporting success.
+            if '\n' in relative.as_posix() or '\r' in relative.as_posix():
+                raise SystemExit(1)
             if relative == out_relative:
                 continue
             try:

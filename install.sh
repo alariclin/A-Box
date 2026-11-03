@@ -24087,7 +24087,18 @@ do_cleanup() {
     argo_remove_unit argo || true
     argo_remove_unit argo-vmess || true
     argo_remove_unit argo-vless || true
-    rm -f /usr/local/bin/cloudflared "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true; rm -rf -- /etc/ddr/standalone-links.d 2>/dev/null || true
+    # R1-10-F4: cloudflared is deleted only when A-Box ownership is recorded;
+    # a foreign binary is kept. (do_cleanup tears Wallos down below, so no
+    # remaining-consumer gate is needed here, unlike check_virgin_state.)
+    if [[ -f /etc/ddr/.abox-cloudflared-owned ]]; then
+        rm -f /usr/local/bin/cloudflared /etc/ddr/.abox-cloudflared-owned || true
+    fi
+    rm -f "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true
+    # R12C10-01: refuse a mountpoint at or under standalone-links.d before
+    # deleting, and propagate deletion failures instead of suppressing them.
+    path_tree_has_mountpoint /etc/ddr/standalone-links.d && die 'Refusing to delete /etc/ddr/standalone-links.d: mountpoint present in its tree.'
+    rm -rf -- /etc/ddr/standalone-links.d || die 'Failed to delete /etc/ddr/standalone-links.d.'
+
     for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local; do
         if [[ -f "$_wf" ]] && grep -q 'A-Box-wallos' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
     done
@@ -24110,6 +24121,7 @@ do_cleanup() {
         # is restored below as the sole resident and sb is recreated.
         # Full tier: the sb shortcut goes with everything else.
         local _wipe_script_copy=''
+        local _wipe_copy_failed=0
         if [[ "${1:-}" == wipe ]]; then
             if [[ -f "$ABOX_DIR/A-Box.sh" && ! -L "$ABOX_DIR/A-Box.sh" ]]; then
                 _wipe_script_copy="$ABOX_DIR/A-Box.sh"
@@ -24117,13 +24129,16 @@ do_cleanup() {
                 _wipe_script_copy="$0"
             fi
             if [[ -n "$_wipe_script_copy" && -n "$uninstall_tx_dir" ]]; then
-                cp -- "$_wipe_script_copy" "$uninstall_tx_dir/wipe-keep-A-Box.sh" 2>/dev/null || _wipe_script_copy=''
+                cp -- "$_wipe_script_copy" "$uninstall_tx_dir/wipe-keep-A-Box.sh" 2>/dev/null || { _wipe_copy_failed=1; _wipe_script_copy=''; }
             else
                 _wipe_script_copy=''
             fi
         else
             remove_abox_shortcut /usr/local/bin/sb || die "$(tr_msg cu_shortcut)"
         fi
+        # R12C10-02: a selected keep-script whose copy failed must abort
+        # before ABOX_DIR is destroyed; otherwise the wipe promise is lost.
+        if (( _wipe_copy_failed == 1 )); then die 'Wipe keep-script copy failed; aborting before ABOX_DIR is destroyed.'; fi
         # Do not destroy ABOX_DIR until managed Swap has been removed successfully.
         # The ownership marker is required for a safe retry when /etc/fstab or swapoff fails.
         if ! remove_abox_swap; then

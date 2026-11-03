@@ -142,6 +142,16 @@ jobs:
       - name: Verify CORE-VERSIONS completeness (R1-19-F02)
         shell: bash
         run: bash scripts/verify-core-versions-gate.sh verified
+      # Publish-side gate (R4N19-02, R5C19-01, R5C19-02, R9C19-N2,
+      # R11C19-02, R14C19-01): independently re-checks version tags,
+      # per-arch mapping, baseline signature, history preservation,
+      # monotonicity, and no-clobber BEFORE anything is signed. The
+      # publish job previously trusted the verify job's artifacts for
+      # all six; a compromised verify job could substitute old genuine
+      # versions, swap arch mappings, or truncate history.
+      - name: Verify publish gate (independent re-check)
+        shell: bash
+        run: bash scripts/verify-publish-gate.sh verified
       # F-05: Detached Ed25519 signatures for mirror metadata.
       # Signs CORE-VERSIONS and SHA256SUMS with the maintainer private key
       # (GitHub Secret ABOX_SIGNING_PRIVKEY_B64 = base64 of raw 32-byte seed).

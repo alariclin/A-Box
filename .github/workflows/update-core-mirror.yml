@@ -145,16 +145,20 @@ jobs:
       # F-05: Detached Ed25519 signatures for mirror metadata.
       # Signs CORE-VERSIONS and SHA256SUMS with the maintainer private key
       # (GitHub Secret ABOX_SIGNING_PRIVKEY_B64 = base64 of raw 32-byte seed).
-      # Skips gracefully when the secret is absent (forks / key-less CI).
+      # Fails when the secret is absent (R6C19-02): publishing
+      # unsigned manifests over signed ones is a mismatch.
       # See docs/SIGNING.md for key generation and rotation.
       - name: Sign mirror metadata (F-05)
         env:
           ABOX_SIGNING_PRIVKEY_B64: ${{ secrets.ABOX_SIGNING_PRIVKEY_B64 }}
         run: |
           set -euo pipefail
+          # R6C19-02: a missing key must FAIL, not skip. Skipping
+          # let the upload step publish new manifests while the
+          # old .sig assets stayed in the Release (mismatch).
           if [[ -z "${ABOX_SIGNING_PRIVKEY_B64:-}" ]]; then
-            echo "::notice::ABOX_SIGNING_PRIVKEY_B64 not set; skipping F-05 signing."
-            exit 0
+            echo "::error::ABOX_SIGNING_PRIVKEY_B64 not set; refusing to publish unsigned manifests."
+            exit 1
           fi
           umask 077
           # Reconstruct PKCS#8 PEM from raw 32-byte seed (no new deps).
@@ -196,6 +200,13 @@ jobs:
             echo "ERROR: verified/CORE-VERSIONS missing; aborting"
             exit 1
           fi
+          # R6C19-02: last gate before publish: both signatures
+          # must exist. If signing was skipped for any reason,
+          # uploading new manifests would leave stale .sig
+          # assets in the Release.
+          for _sig in verified/CORE-VERSIONS.sig verified/SHA256SUMS.sig; do
+            [[ -f "$_sig" ]] || { echo "ERROR: $_sig missing; refusing to publish unsigned manifests"; exit 1; }
+          done
           echo "Verifying artifact checksums against incoming manifest..."
           (cd verified && sha256sum -c SHA256SUMS.incoming) || {
             echo "ERROR: artifact checksum verification failed; aborting"

@@ -28046,7 +28046,7 @@ systemd_major_version() {
 }
 
 snapshot_dns_state() {
-    local dir="$1" backend iface connection key value
+    local dir="$1" backend iface connection key value _ens
     mkdir -p "$dir" || return 1
     chmod 700 "$dir" || return 1
     backend=$(dns_backend_detect) || return 1
@@ -28064,7 +28064,10 @@ snapshot_dns_state() {
         printf present > "$dir/dnscrypt-config-state"
     else printf absent > "$dir/dnscrypt-config-state"; fi
     if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then printf active > "$dir/dnscrypt-service-state"; else printf inactive > "$dir/dnscrypt-service-state"; fi
-    if command -v systemctl >/dev/null 2>&1 && systemctl is-enabled --quiet dnscrypt-proxy 2>/dev/null; then printf enabled > "$dir/dnscrypt-service-enabled"; else printf disabled > "$dir/dnscrypt-service-enabled"; fi
+    if command -v systemctl >/dev/null 2>&1; then
+        _ens=$(systemctl is-enabled dnscrypt-proxy 2>/dev/null || true)
+        printf '%s\n' "${_ens:-disabled}" > "$dir/dnscrypt-service-enabled" || return 1
+    else printf disabled > "$dir/dnscrypt-service-enabled" || return 1; fi
     if [[ -f "$DNS_STATE_FILE" && ! -L "$DNS_STATE_FILE" ]]; then cp -a "$DNS_STATE_FILE" "$dir/dns-state" || return 1; else printf absent > "$dir/dns-state.absent"; fi
     if [[ "$backend" == networkmanager ]] && command -v nmcli >/dev/null 2>&1; then
         iface=$(nm_effective_device 2>/dev/null || true)
@@ -28103,8 +28106,19 @@ restore_dns_snapshot_body() {
         # while the snapshot is never applied. Remove destination first
         # (mirrors restore_timezone_snapshot's rm -f /etc/localtime), so a
         # symlinked snapshot can replace a regular file and vice versa.
-        rm -f /etc/resolv.conf || return 1
-        cp -a "$dir/resolv.conf" /etc/resolv.conf || return 1
+        # R11C12-01: a bind-mounted resolv.conf cannot be unlinked
+        # (rm fails EBUSY); restore its content in place instead
+        # of aborting the whole rollback (which would leave
+        # resolved.conf, drop-ins and service states unrestored).
+        if ! rm -f /etc/resolv.conf 2>/dev/null; then
+            if [[ -f /etc/resolv.conf && ! -L /etc/resolv.conf && -f "$dir/resolv.conf" && ! -L "$dir/resolv.conf" ]]; then
+                cat "$dir/resolv.conf" > /etc/resolv.conf || return 1
+            else
+                return 1
+            fi
+        else
+            cp -a "$dir/resolv.conf" /etc/resolv.conf || return 1
+        fi
     elif [[ -f "$dir/resolv.conf.absent" ]]; then rm -f /etc/resolv.conf || return 1; fi
     if [[ -f "$dir/resolved.conf" ]]; then rm -f /etc/systemd/resolved.conf || return 1; cp -a "$dir/resolved.conf" /etc/systemd/resolved.conf || return 1
     elif [[ -f "$dir/resolved.conf.absent" ]]; then rm -f /etc/systemd/resolved.conf || return 1; fi
@@ -28160,11 +28174,27 @@ restore_dns_snapshot_body() {
     if [[ "$backend" == resolved ]] && command -v systemctl >/dev/null 2>&1; then systemctl restart systemd-resolved >/dev/null 2>&1 || return 1; fi
     if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files dnscrypt-proxy.service >/dev/null 2>&1; then
         state=$(tr -d '[:space:]' < "$dir/dnscrypt-service-state" 2>/dev/null || printf inactive)
-        local enabled_state
+        local enabled_state _got_ens
         enabled_state=$(tr -d '[:space:]' < "$dir/dnscrypt-service-enabled" 2>/dev/null || printf disabled)
+        # R13C12-03: enabled-runtime restores as runtime-only,
+        # not as a persistent enablement that never existed.
         if [[ "$enabled_state" == enabled ]]; then systemctl enable dnscrypt-proxy >/dev/null 2>&1 || return 1
-        else systemctl disable dnscrypt-proxy >/dev/null 2>&1 || true; fi
-        if [[ "$state" == active ]]; then systemctl restart dnscrypt-proxy >/dev/null 2>&1 || return 1; else systemctl stop dnscrypt-proxy >/dev/null 2>&1 || true; fi
+        elif [[ "$enabled_state" == enabled-runtime ]]; then systemctl enable --runtime dnscrypt-proxy >/dev/null 2>&1 || return 1
+        # R14C12-02: disable/stop failures propagate (no || true).
+        else systemctl disable dnscrypt-proxy >/dev/null 2>&1 || return 1; fi
+        if [[ "$state" == active ]]; then systemctl restart dnscrypt-proxy >/dev/null 2>&1 || return 1; else systemctl stop dnscrypt-proxy >/dev/null 2>&1 || return 1; fi
+        # R14C12-02: verify the requested states before success.
+        if [[ "$state" == active ]]; then
+            systemctl is-active --quiet dnscrypt-proxy 2>/dev/null || return 1
+        else
+            systemctl is-active --quiet dnscrypt-proxy 2>/dev/null && return 1 || true
+        fi
+        _got_ens=$(systemctl is-enabled dnscrypt-proxy 2>/dev/null || true)
+        case "$enabled_state" in
+            enabled) [[ "$_got_ens" == enabled ]] || return 1 ;;
+            enabled-runtime) [[ "$_got_ens" == enabled-runtime ]] || return 1 ;;
+            *) [[ "$_got_ens" != enabled && "$_got_ens" != enabled-runtime ]] || return 1 ;;
+        esac
     fi
     return 0
 }
@@ -28379,7 +28409,18 @@ resolved_strip_global_dns_sources() {
                 *) return 1 ;;
             esac
             mkdir -p "$DNS_BACKUP_DIR/resolved-cleanup/$sub" 2>/dev/null || return 1
-            [[ -f "$DNS_BACKUP_DIR/resolved-cleanup/$sub/$base" ]] || cp -a "$f" "$DNS_BACKUP_DIR/resolved-cleanup/$sub/$base" 2>/dev/null || return 1
+            if [[ ! -f "$DNS_BACKUP_DIR/resolved-cleanup/$sub/$base" ]]; then
+                # R16C12-01: write to a temp name (no .conf suffix,
+                # so the restore glob never sees it), verify, then
+                # publish by rename. A failed copy leaves no
+                # partial final file for a later run to trust.
+                local _btmp=''
+                _btmp=$(mktemp "$DNS_BACKUP_DIR/resolved-cleanup/$sub/.tmp.XXXXXX" 2>/dev/null || true)
+                [[ -n "$_btmp" ]] || return 1
+                if ! cp -a "$f" "$_btmp" 2>/dev/null; then rm -f -- "$_btmp"; return 1; fi
+                if ! cmp -s "$f" "$_btmp"; then rm -f -- "$_btmp"; return 1; fi
+                mv -- "$_btmp" "$DNS_BACKUP_DIR/resolved-cleanup/$sub/$base" 2>/dev/null || { rm -f -- "$_btmp"; return 1; }
+            fi
         fi
         tmp=$(mktemp /tmp/A-Box-resolved-strip.XXXXXX 2>/dev/null || true)
         [[ -n "$tmp" ]] || return 1

@@ -9364,6 +9364,15 @@ has_ipv6() {
     return 1
 }
 
+has_ipv4() {
+    local _pref
+    _pref=$(read_ip_pref 2>/dev/null || printf 'dual')
+    [[ "$_pref" == 'ipv6' ]] && return 1
+    ip -4 addr show scope global 2>/dev/null | awk '/inet / { found=1 } END { exit !found }' && return 0
+    ip -4 route show default 2>/dev/null | awk '/^default/ { found=1 } END { exit !found }' && return 0
+    return 1
+}
+
 wildcard_listen_address() {
     local bindv6only='0' pref
     pref=$(read_ip_pref 2>/dev/null || printf 'dual')
@@ -9382,8 +9391,12 @@ wildcard_listen_address() {
     bindv6only=$(cat /proc/sys/net/ipv6/bindv6only 2>/dev/null || printf '0')
     if has_ipv6 && [[ "$bindv6only" == '0' ]]; then
         printf '::'
+    elif has_ipv6 && ! has_ipv4; then
+        # IPv6-only host: 0.0.0.0 binds nothing usable, so :: is the
+        # only reachable wildcard even with bindv6only=1 (R7C5-01).
+        printf '::'
     else
-        # Preserve IPv4 reachability on IPv4-only or v6-only-wildcard hosts.
+        # Preserve IPv4 reachability on IPv4-only or dual-stack hosts.
         printf '0.0.0.0'
     fi
 }
@@ -11322,10 +11335,17 @@ has_ipv6() {
 # Objective IPv6 usability check (not preference-aware).
 # Used by clean_chain for N-04 "never silently skip IPv6" intent.
 host_has_usable_ipv6() {
-    [[ -s /proc/net/if_inet6 ]] && return 0
+    # Usable only when IPv6 is enabled AND an address exists. R1-12-F4:
+    # OR-ing the "not disabled" sysctl probe with address probes let
+    # "not disabled" alone count as usable, so an enabled-but-
+    # unaddressed host was treated as IPv6-capable.
     local _d6
     _d6=$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null || printf '1')
-    [[ "$_d6" != '1' ]] && return 0
+    [[ "$_d6" != '1' ]] || return 1
+    # Address evidence (any scope, incl. link-local). R10C6-03:
+    # /proc/net/if_inet6 is procfs and reports st_size 0, so -s is
+    # always false; test content, not size.
+    grep -qs . /proc/net/if_inet6 2>/dev/null && return 0
     ip -6 addr show scope global 2>/dev/null | grep -q 'inet6 ' && return 0
     ip -6 addr show scope link 2>/dev/null | grep -q 'inet6 ' && return 0
     return 1
@@ -12991,13 +13011,17 @@ reorder_ss_whitelist_rules_one() {
 # (fe80::/10) even with no global address, so we check broadly. Returns 0
 # if IPv6 traffic can plausibly reach the host.
 host_has_usable_ipv6() {
-    # (1) Kernel has IPv6 addresses (any scope, incl. link-local).
-    [[ -s /proc/net/if_inet6 ]] && return 0
-    # (2) IPv6 not disabled at the kernel level.
+    # Usable only when IPv6 is enabled AND an address exists. R1-12-F4:
+    # OR-ing the "not disabled" sysctl probe with address probes let
+    # "not disabled" alone count as usable, so an enabled-but-
+    # unaddressed host was treated as IPv6-capable.
     local _d6
     _d6=$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null || printf '1')
-    [[ "$_d6" != '1' ]] && return 0
-    # (3) Global or link-local address visible via iproute2.
+    [[ "$_d6" != '1' ]] || return 1
+    # Address evidence (any scope, incl. link-local). R10C6-03:
+    # /proc/net/if_inet6 is procfs and reports st_size 0, so -s is
+    # always false; test content, not size.
+    grep -qs . /proc/net/if_inet6 2>/dev/null && return 0
     ip -6 addr show scope global 2>/dev/null | grep -q 'inet6 ' && return 0
     ip -6 addr show scope link 2>/dev/null | grep -q 'inet6 ' && return 0
     return 1
@@ -18183,9 +18207,10 @@ EOF_SVC
     fi
 
     # Build the socks/mixed inbound object.
+    local listen_addr=$(wildcard_listen_address)
     tmp_json=$(mktemp /tmp/A-Box-singbox-socks5-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --arg proto "$proto" --arg user "$user" --rawfile pass <(printf '%s' "$pass") --arg tag "$tag" \
-        '{type:$proto,tag:$tag,listen:"0.0.0.0",listen_port:$port,
+    jq -n --argjson port "$port" --arg proto "$proto" --arg user "$user" --rawfile pass <(printf '%s' "$pass") --arg tag "$tag" --arg listen_addr "$listen_addr" \
+        '{type:$proto,tag:$tag,listen:$listen_addr,listen_port:$port,
           users:[{username:$user,password:$pass}]}' \
         > "$tmp_json" || die "$(tr_msg dp_socks5_json)"
 
@@ -18390,10 +18415,11 @@ deploy_xray_trojan_landing() {
     valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
     # Build the trojan+reality inbound object (A-Box realitySettings format).
+    local listen_addr=$(wildcard_listen_address)
     tmp_json=$(mktemp /tmp/A-Box-trojan-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg tag "$tag" \
+    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg tag "$tag" --arg listen_addr "$listen_addr" \
         --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
-        '{tag:$tag,port:$port,listen:"0.0.0.0",protocol:"trojan",
+        '{tag:$tag,port:$port,listen:$listen_addr,protocol:"trojan",
           settings:{clients:[{password:$pass,email:($tag + "/main")}]},
           streamSettings:{network:"tcp",security:"reality",
             realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}}}' \
@@ -18556,10 +18582,11 @@ EOF_SVC
     valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
     # Build the trojan+reality inbound object.
+    local listen_addr=$(wildcard_listen_address)
     tmp_json=$(mktemp /tmp/A-Box-sb-trojan-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg tag "$tag" \
+    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg tag "$tag" --arg listen_addr "$listen_addr" \
         --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
-        '{type:"trojan",tag:$tag,listen:"0.0.0.0",listen_port:$port,
+        '{type:"trojan",tag:$tag,listen:$listen_addr,listen_port:$port,
           users:[{password:$pass}],
           tls:{enabled:true,server_name:$sni,
             reality:{enabled:true,handshake:{server:$sni,server_port:443},private_key:$pk,short_id:[$sid]}}}' \
@@ -18733,9 +18760,10 @@ EOF_SVC
         || die "$(tr_msg dp_tuic_cert)"
 
     # Build the TUIC inbound object.
+    local listen_addr=$(wildcard_listen_address)
     tmp_json=$(mktemp /tmp/A-Box-sb-tuic-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg cc "$cc" --arg tag "$tag" --arg cert "$_tuic_crt" --arg key "$_tuic_key" \
-        '{type:"tuic",tag:$tag,listen:"0.0.0.0",listen_port:$port,
+    jq -n --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg cc "$cc" --arg tag "$tag" --arg cert "$_tuic_crt" --arg key "$_tuic_key" --arg listen_addr "$listen_addr" \
+        '{type:"tuic",tag:$tag,listen:$listen_addr,listen_port:$port,
           users:[{uuid:$uuid,password:$pass}],
           congestion_control:$cc,
           tls:{enabled:true,server_name:$sni,alpn:["h3"],
@@ -18887,10 +18915,11 @@ EOF_SVC
     valid_sni "$sni" || die "No verified SNI candidate available; refusing to deploy with an empty SNI."
 
     # Build the anytls+reality inbound object.
+    local listen_addr=$(wildcard_listen_address)
     tmp_json=$(mktemp /tmp/A-Box-sb-anytls-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg tag "$tag" \
+    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --arg tag "$tag" --arg listen_addr "$listen_addr" \
         --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
-        '{type:"anytls",tag:$tag,listen:"0.0.0.0",listen_port:$port,
+        '{type:"anytls",tag:$tag,listen:$listen_addr,listen_port:$port,
           users:[{name:"main",password:$pass}],
           tls:{enabled:true,server_name:$sni,
             reality:{enabled:true,handshake:{server:$sni,server_port:443},private_key:$pk,short_id:[$sid]}}}' \
@@ -19037,9 +19066,10 @@ EOF_SVC
 
     # shadowtls v3 (strict) detouring to a loopback-only SS-2022 inbound that
     # has no listen_port of its own (reachable only through the detour).
+    local listen_addr=$(wildcard_listen_address)
     tmp_json=$(mktemp /tmp/A-Box-sb-shadowtls-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --rawfile inner <(printf '%s' "$inner") --arg sni "$sni" --arg tag "$tag" --arg itag "$itag" \
-        '({type:"shadowtls",tag:$tag,listen:"0.0.0.0",listen_port:$port,version:3,strict_mode:true,
+    jq -n --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --rawfile inner <(printf '%s' "$inner") --arg sni "$sni" --arg tag "$tag" --arg itag "$itag" --arg listen_addr "$listen_addr" \
+        '({type:"shadowtls",tag:$tag,listen:$listen_addr,listen_port:$port,version:3,strict_mode:true,
            users:[{password:$pass}],handshake:{server:$sni,server_port:443},detour:$itag}),
          ({type:"shadowsocks",tag:$itag,listen:"127.0.0.1",network:"tcp",
            method:"2022-blake3-aes-128-gcm",password:$inner,multiplex:{enabled:true,padding:true}})' \
@@ -21332,9 +21362,10 @@ EOF_SVC
     fi
 
     # Build the socks inbound object.
+    local listen_addr=$(wildcard_listen_address)
     tmp_json=$(mktemp /tmp/A-Box-socks5-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n --argjson port "$port" --arg user "$user" --rawfile pass <(printf '%s' "$pass") --arg tag "$tag" \
-        '{tag:$tag,port:$port,listen:"0.0.0.0",protocol:"socks",
+    jq -n --argjson port "$port" --arg user "$user" --rawfile pass <(printf '%s' "$pass") --arg tag "$tag" --arg listen_addr "$listen_addr" \
+        '{tag:$tag,port:$port,listen:$listen_addr,protocol:"socks",
           settings:{auth:"password",accounts:[{user:$user,pass:$pass}],udp:true,ip:"0.0.0.0"}}' \
         > "$tmp_json" || die "$(tr_msg dp_socks5_json)"
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"

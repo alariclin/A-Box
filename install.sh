@@ -10465,6 +10465,85 @@ def _path_or_ancestors_mounted(path):
 for _d in sorted(dirs):
     if _path_or_ancestors_mounted(_d):
         raise SystemExit(3)
+def _open_parent_fd(path):
+    parts = [p for p in os.path.abspath(os.path.normpath(path)).split(os.sep) if p]
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for comp in parts[:-1]:
+            nxt = os.open(comp, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nxt
+        return fd, parts[-1]
+    except BaseException:
+        os.close(fd)
+        raise
+def _unlink_fd(path):
+    fd, leaf = _open_parent_fd(path)
+    try:
+        os.unlink(leaf, dir_fd=fd)
+    finally:
+        os.close(fd)
+def _rmdir_fd(path):
+    fd, leaf = _open_parent_fd(path)
+    try:
+        os.rmdir(leaf, dir_fd=fd)
+    finally:
+        os.close(fd)
+def _clear_fd_tree(dfd):
+    for name in os.listdir(dfd):
+        st = os.lstat(name, dir_fd=dfd)
+        if stat.S_ISDIR(st.st_mode):
+            cfd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=dfd)
+            try:
+                _clear_fd_tree(cfd)
+            finally:
+                os.close(cfd)
+            os.rmdir(name, dir_fd=dfd)
+        else:
+            os.unlink(name, dir_fd=dfd)
+def _rmtree_fd(path):
+    parent_fd, leaf = _open_parent_fd(path)
+    try:
+        dfd = os.open(leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+        try:
+            _clear_fd_tree(dfd)
+        finally:
+            os.close(dfd)
+        os.rmdir(leaf, dir_fd=parent_fd)
+    finally:
+        os.close(parent_fd)
+
+# R1-05-F03: verify live recorded hashes BEFORE deleting any doubling
+# artifact. The artifact test below compares an unrecorded file's hash
+# to the manifest hash; if the live recorded file were tampered, an
+# artifact matching the manifest would be deleted while the live tree
+# is untrusted, and the later strict preflight would fail only after
+# that destructive change. No deletion may happen before the live tree
+# is proven. This loop checks recorded entries only (no children
+# enumeration: doubling artifacts are still present); the full strict
+# preflight after artifact removal re-checks everything including
+# children.
+for path in sorted(expected, key=os.fsencode):
+    try: st=os.lstat(path)
+    except FileNotFoundError: continue
+    if _repair_is_mountpoint(path):
+        raise SystemExit(3)
+    acme = srv == 'hysteria' and (path == '/etc/hysteria/acme' or path.startswith('/etc/hysteria/acme/'))
+    uid_ok = st.st_uid in ({0} if not acme else {0, runtime_uid})
+    gid_ok = st.st_gid in ({0, runtime_gid})
+    group_write_ok = acme and path == '/etc/hysteria/acme' and st.st_uid == 0 and st.st_gid == runtime_gid and stat.S_ISDIR(st.st_mode)
+    if not uid_ok or not gid_ok or stat.S_ISLNK(st.st_mode) or (st.st_mode & 0o002) or ((st.st_mode & 0o020) and not group_write_ok):
+        raise SystemExit(3)
+    if path in files:
+        if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1: raise SystemExit(3)
+        h=hashlib.sha256()
+        try:
+            with open(path,'rb') as f:
+                for chunk in iter(lambda:f.read(1024*1024),b''): h.update(chunk)
+        except OSError: raise SystemExit(3)
+        if h.hexdigest()!=files[path]: raise SystemExit(3)
+    else:
+        if not stat.S_ISDIR(st.st_mode): raise SystemExit(3)
 if _repair:
     if all(_is_artifact_tree(_p) for _p in _repair):
         for _p in sorted(_repair, key=os.fsencode, reverse=True):
@@ -10529,53 +10608,6 @@ for path in sorted(expected, key=os.fsencode):
 # each step pins every ancestor: a swap before the step is refused
 # (ELOOP), a swap after it cannot redirect the already-open fd. The
 # leaf itself is safe: unlink/rmdir never follow the final component.
-def _open_parent_fd(path):
-    parts = [p for p in os.path.abspath(os.path.normpath(path)).split(os.sep) if p]
-    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try:
-        for comp in parts[:-1]:
-            nxt = os.open(comp, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
-            os.close(fd)
-            fd = nxt
-        return fd, parts[-1]
-    except BaseException:
-        os.close(fd)
-        raise
-def _unlink_fd(path):
-    fd, leaf = _open_parent_fd(path)
-    try:
-        os.unlink(leaf, dir_fd=fd)
-    finally:
-        os.close(fd)
-def _rmdir_fd(path):
-    fd, leaf = _open_parent_fd(path)
-    try:
-        os.rmdir(leaf, dir_fd=fd)
-    finally:
-        os.close(fd)
-def _clear_fd_tree(dfd):
-    for name in os.listdir(dfd):
-        st = os.lstat(name, dir_fd=dfd)
-        if stat.S_ISDIR(st.st_mode):
-            cfd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=dfd)
-            try:
-                _clear_fd_tree(cfd)
-            finally:
-                os.close(cfd)
-            os.rmdir(name, dir_fd=dfd)
-        else:
-            os.unlink(name, dir_fd=dfd)
-def _rmtree_fd(path):
-    parent_fd, leaf = _open_parent_fd(path)
-    try:
-        dfd = os.open(leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
-        try:
-            _clear_fd_tree(dfd)
-        finally:
-            os.close(dfd)
-        os.rmdir(leaf, dir_fd=parent_fd)
-    finally:
-        os.close(parent_fd)
 # Only after the complete tree is proven exact may deletion begin.
 for path in sorted(files, key=lambda p:(p.count(os.sep),len(p)), reverse=True):
     try: _unlink_fd(path)

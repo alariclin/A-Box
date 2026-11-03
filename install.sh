@@ -17807,7 +17807,16 @@ xray_api_add_inbound() {
     local tag
     tag=$(jq -r '.tag // empty' "$json_file" 2>/dev/null) || return 1
     [[ -n "$tag" && "$tag" != 'api' ]] || return 1
-    /usr/local/bin/xray api adi --server="$XRAY_API_SERVER" "$json_file" >/dev/null 2>&1
+    # adi loads a config document (inbounds array), not a bare object:
+    # a bare object adds zero inbounds yet can exit 0, so wrap it.
+    local doc
+    doc=$(mktemp /tmp/A-Box-xray-adi.XXXXXX) || return 1
+    mv "$doc" "$doc.json" || { rm -f "$doc"; return 1; }; doc="$doc.json"
+    if ! jq -s '{inbounds: .}' "$json_file" > "$doc" 2>/dev/null; then rm -f "$doc"; return 1; fi
+    if ! jq -e '.inbounds | length == 1' "$doc" >/dev/null 2>&1; then rm -f "$doc"; return 1; fi
+    if ! /usr/local/bin/xray api adi --server="$XRAY_API_SERVER" "$doc" >/dev/null 2>&1; then rm -f "$doc"; return 1; fi
+    rm -f "$doc"
+    return 0
 }
 
 # Low-level: remove an inbound from the running Xray by tag via gRPC API.

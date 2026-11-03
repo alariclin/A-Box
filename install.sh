@@ -20938,8 +20938,8 @@ routing_apply_live() {
             rm -f "$tmp"
             local atmp='' applied_bak=''
             if [[ -f "$applied_file" ]]; then
-                applied_bak=$(mktemp) || { rm -f -- "$live_bak"; return 1; }
-                cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { rm -f -- "$live_bak" "$applied_bak"; return 1; }
+                applied_bak=$(mktemp) || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
+                cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak" "$applied_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
             fi
             if ! atmp=$(mktemp); then
                 cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
@@ -20952,6 +20952,11 @@ routing_apply_live() {
             else
                 rm -f "$atmp"
                 cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                if [[ -n "$applied_bak" ]]; then
+                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                else
+                    rm -f -- "$applied_file"
+                fi
                 rm -f -- "$live_bak" "$applied_bak"
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
@@ -20971,7 +20976,11 @@ routing_apply_live() {
                 else
                     rm -f -- "$applied_file"
                 fi
-                rm -f -- "$live_bak" "$applied_bak"
+                if prepare_abox_runtime_permissions xray && restart_service_soft xray; then
+                    rm -f -- "$live_bak" "$applied_bak"
+                else
+                    return 1
+                fi
                 return 1
             fi
             ;;
@@ -21025,8 +21034,8 @@ routing_apply_live() {
             rm -f "$tmp"
             local atmp='' applied_bak=''
             if [[ -f "$applied_file" ]]; then
-                applied_bak=$(mktemp) || { rm -f -- "$live_bak"; return 1; }
-                cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { rm -f -- "$live_bak" "$applied_bak"; return 1; }
+                applied_bak=$(mktemp) || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
+                cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak" "$applied_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
             fi
             if ! atmp=$(mktemp); then
                 cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
@@ -21039,6 +21048,11 @@ routing_apply_live() {
             else
                 rm -f "$atmp"
                 cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                if [[ -n "$applied_bak" ]]; then
+                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                else
+                    rm -f -- "$applied_file"
+                fi
                 rm -f -- "$live_bak" "$applied_bak"
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
@@ -21058,7 +21072,11 @@ routing_apply_live() {
                 else
                     rm -f -- "$applied_file"
                 fi
-                rm -f -- "$live_bak" "$applied_bak"
+                if prepare_abox_runtime_permissions sing-box && restart_service_soft sing-box; then
+                    rm -f -- "$live_bak" "$applied_bak"
+                else
+                    return 1
+                fi
                 return 1
             fi
             ;;

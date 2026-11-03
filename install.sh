@@ -31041,7 +31041,11 @@ _abox_boot_id() {
 }
 zram_active_devs() {
     local out
-    out=$(swapon --show=NAME --noheadings 2>/dev/null) || return 1
+    if ! out=$(swapon --show=NAME --noheadings 2>/dev/null); then
+        # BusyBox/Alpine swapon lacks --show: fall back to /proc/swaps.
+        [[ -r /proc/swaps ]] || return 1
+        out=$(awk 'NR>1{print $1}' /proc/swaps 2>/dev/null || true)
+    fi
     printf '%s\n' "$out" | grep -E '^/dev/zram[0-9]+$' || true
 }
 # Reset a device we sized but failed to bring up: zramctl when present,
@@ -31141,7 +31145,7 @@ EOF_ZRAM_HELPER
 # helper, config). Best-effort; used by the toolbox remover, the
 # virgin reset and the full uninstaller.
 abox_zram_teardown() {
-    local stop_rc=0
+    local stop_rc=0 persist_rc=0
     if [[ -x /usr/local/sbin/abox-zram ]]; then /usr/local/sbin/abox-zram stop >/dev/null 2>&1 || stop_rc=1;
     elif [[ -f /etc/ddr/zram.state ]]; then
         # No helper to stop with, but a state record claims a device
@@ -31152,21 +31156,42 @@ abox_zram_teardown() {
     local _init=''
     _init=$(effective_init_system)
     if [[ "$_init" == 'systemd' ]]; then
-        systemctl disable abox-zram.service >/dev/null 2>&1 || true
-        rm -f /etc/systemd/system/abox-zram.service 2>/dev/null || true
-        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl disable abox-zram.service >/dev/null 2>&1 || persist_rc=1
+        rm -f /etc/systemd/system/abox-zram.service 2>/dev/null || persist_rc=1
+        systemctl daemon-reload >/dev/null 2>&1 || persist_rc=1
     elif [[ "$_init" == 'openrc' ]]; then
-        rc-update del abox-zram default >/dev/null 2>&1 || true
-        rm -f /etc/init.d/abox-zram 2>/dev/null || true
+        rc-update del abox-zram default >/dev/null 2>&1 || persist_rc=1
+        rm -f /etc/init.d/abox-zram 2>/dev/null || persist_rc=1
+    fi
+    # R5C13-04: a persistence failure must not be swallowed while
+    # the helper is deleted (that orphans a still-enabled boot unit).
+    if (( persist_rc != 0 )); then
+        msg "${YELLOW}[!] zram 开机持久化删除失败，已保留 abox-zram 助手与配置以便重试。${NC}" >&2
+        return 1
     fi
     if (( stop_rc == 0 )); then
         rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state 2>/dev/null || true
-    else
-        # The swap is still active; keep the helper and config so the
-        # stop can be retried instead of stranding an unmanaged swap.
-        msg "${YELLOW}[!] zram 交换区未能停止，已保留 abox-zram 助手与配置以便重试。${NC}" >&2
+        return 0
     fi
-    return "$stop_rc"
+    # R1-13-F4: stop failed but persistence is gone. If no zram
+    # device is actually active, the failure is a stale record
+    # (previous boot), not a stranded swap: clean up instead of
+    # pinning the helper/config forever. If a device IS active,
+    # keep the helper so it can still be stopped.
+    local _any_active=0
+    if [[ -r /proc/swaps ]]; then
+        grep -qE '^/dev/zram[0-9]+[[:space:]]' /proc/swaps 2>/dev/null && _any_active=1
+    else
+        # Cannot verify: fail closed, keep helper/config.
+        _any_active=1
+    fi
+    if (( _any_active == 0 )); then
+        rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state 2>/dev/null || true
+        msg "${YELLOW}[!] zram 停止时无活动设备（陈旧状态记录），已清理助手与配置。${NC}" >&2
+        return 0
+    fi
+    msg "${YELLOW}[!] zram 交换区未能停止，已保留 abox-zram 助手与配置以便重试。${NC}" >&2
+    return 1
 }
 
 
@@ -31177,9 +31202,14 @@ setup_zram_swap() {
     msg "${CYAN}======================================================================${NC}"
     local _swapon_out
     if ! _swapon_out=$(swapon --show=NAME --noheadings 2>/dev/null); then
-        msg "${RED}zram 活动状态查询失败，无法确认是否已有交换设备；已中止以防重复创建。${NC}"
-        pause_return
-        return 0
+        # BusyBox/Alpine swapon lacks --show: fall back to /proc/swaps.
+        if [[ -r /proc/swaps ]]; then
+            _swapon_out=$(awk 'NR>1{print $1}' /proc/swaps 2>/dev/null || true)
+        else
+            msg "${RED}zram 活动状态查询失败，无法确认是否已有交换设备；已中止以防重复创建。${NC}"
+            pause_return
+            return 0
+        fi
     fi
     if printf '%s\n' "$_swapon_out" | grep -qE '^/dev/zram[0-9]+$'; then
         msg "${YELLOW}zram 交换已在运行：${NC}"
@@ -31231,8 +31261,11 @@ EOF_ZRAM_CONF
         if (( _zram_start_rc == 2 )); then
             msg "${RED}zram 启用失败，且失败清理未能停用已激活的交换区；已保留助手与配置，请手工 swapoff 后重试。${NC}"
         else
-            rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf
-            msg "${RED}zram 启用失败（设备创建/格式化/挂载任一环节未通过），已清理。请改用磁盘 Swap 文件。${NC}"
+            # R10C13-02: do not delete helper/config on failure:
+            # a pre-existing boot unit points at the helper, and
+            # deleting it would orphan that unit. Keep them (a
+            # retry overwrites; a first-time failure leaves inert files).
+            msg "${RED}zram 启用失败（设备创建/格式化/挂载任一环节未通过），已保留助手与配置（既有开机建置不受影响）。请改用磁盘 Swap 文件。${NC}"
         fi
         pause_return
         return 0

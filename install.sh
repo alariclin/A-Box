@@ -15620,10 +15620,14 @@ ensure_abox_runtime_identity() {
     # above sets _created); cleanup removes exactly these names.
     if (( _created == 1 )) && [[ -n "${ABOX_DIR:-}" ]]; then
         local _rec="${ABOX_DIR}/.created-service-users"
+        # R8C7-01: never chmod through a symlink; a linked
+        # record is a tamper signal, fail closed.
+        if [[ -L "$_rec" ]]; then return 1; fi
         if [[ ! -f "$_rec" ]]; then ( umask 077; : > "$_rec" ) 2>/dev/null || true; fi
         if [[ -f "$_rec" && ! -L "$_rec" ]] && ! grep -qxF "$user" "$_rec" 2>/dev/null; then
             printf '%s\n' "$user" >> "$_rec" 2>/dev/null || true
         fi
+        if [[ -L "$_rec" ]]; then return 1; fi
         chmod 600 "$_rec" 2>/dev/null || true
     fi
     uid=$(id -u "$user" 2>/dev/null) || return 1
@@ -24899,10 +24903,22 @@ users_valid_name() { [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,23}$ ]]; }
 users_reg_write() { users_reg_write_path "$(users_reg_file "$1" "$2")" "$3"; }
 
 # Atomic registry write to an explicit path: $1=path $2=json-content
+# mkdir_private: create a directory with 700 ONLY if it does not exist.
+# Never change the mode of an existing directory (it may be shared),
+# and never follow a symlink. Returns 1 on symlink / non-dir / failure.
+mkdir_private() {
+    local _d="$1"
+    [[ -n "$_d" ]] || return 1
+    if [[ -L "$_d" ]]; then return 1; fi
+    if [[ -d "$_d" ]]; then return 0; fi
+    if [[ -e "$_d" ]]; then return 1; fi
+    mkdir -p -m 700 "$_d"
+}
+
 users_reg_write_path() {
     local dest="$1" content="$2" dir='' tmp=''
     dir=$(dirname -- "$dest") || return 1
-    install -d -m 700 "$dir" 2>/dev/null || return 1
+    mkdir_private "$dir" 2>/dev/null || return 1
     tmp=$(mktemp "$dir/.reg.XXXXXX") || return 1
     printf '%s\n' "$content" > "$tmp" || { rm -f "$tmp"; return 1; }
     jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
@@ -25900,7 +25916,7 @@ multi_user_menu() {
 setup_user_guard() {
     local runner="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh"
     [[ -f "$0" && ! -L "$0" ]] || return 1
-    install -d -m 700 "$(dirname -- "$runner")" 2>/dev/null || return 1
+    mkdir_private "$(dirname -- "$runner")" 2>/dev/null || return 1
     local sha_new='' sha_old=''
     sha_new=$(sha256sum -- "$0" 2>/dev/null | awk '{print $1}')
     sha_old=$(sha256sum -- "$runner" 2>/dev/null | awk '{print $1}')
@@ -32427,7 +32443,8 @@ backup_current_config() {
         backup_extra_excludes=(--exclude="./${_backup_noslash#"$_abox_noslash"/}")
     fi
     work=$(mktemp -d /tmp/A-Box-backup.XXXXXX) || die 'Backup temp directory creation failed.'
-    root="$work/root"; install -d -m 700 "$backup_dir" "$root" "$work/meta" || { rm -rf "$work"; die 'Backup directory creation failed.'; }
+    root="$work/root"; mkdir_private "$backup_dir" || { rm -rf "$work"; die 'Backup directory creation failed.'; }
+    install -d -m 700 "$root" "$work/meta" || { rm -rf "$work"; die 'Backup directory creation failed.'; }
     path_owned_by_root "$backup_dir" || { rm -rf "$work"; die 'Backup directory ownership verification failed.'; }
     path_mode_has_no_group_other_write "$backup_dir" || { rm -rf "$work"; die 'Backup directory permissions verification failed.'; }
     local managed_paths='' core_paths=''
@@ -33885,11 +33902,12 @@ wallos_wait_healthy() {
 
 wallos_create_backup() {
     local stamp="$1" backup="$WALLOS_DIR/backups/wallos-$1.tar.gz" temp list old
-    mkdir -p "$WALLOS_DIR/backups" || return 1
-    chmod 700 "$WALLOS_DIR/backups" || return 1
     [[ -d "$WALLOS_DIR/db" && ! -L "$WALLOS_DIR/db" &&
        -d "$WALLOS_DIR/logos" && ! -L "$WALLOS_DIR/logos" &&
        -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]] || return 1
+    # R6C15-02: only create (at 700) when missing; an existing
+    # backups dir keeps its mode, a symlink target is refused.
+    mkdir_private "$WALLOS_DIR/backups" || return 1
     temp=$(umask 077; mktemp "$backup.tmp.XXXXXX") || return 1
     if ! tar -czf "$temp" -C "$WALLOS_DIR" db logos .abox-state ||
        ! gzip -t "$temp" ||

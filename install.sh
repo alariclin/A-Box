@@ -39683,8 +39683,10 @@ PY_SELFTEST_TAR
         assert_bad valid_ipv6_cidr 2001:::1/64
         assert_bad valid_ipv6_cidr 2001:db8::1/999999999999999999999999999
         assert_bad valid_ipv6_cidr '2001:db8::1/'
-        assert_bad valid_ipv6_cidr ::/0
-        assert_bad valid_ipv6_cidr 2001:db8::/0
+        # R12C5-02: /0 is a legal prefix (WireGuard itself uses ::/0
+        # as allow-all); the old assert_bad encoded the rejected behavior.
+        assert_ok valid_ipv6_cidr ::/0
+        assert_ok valid_ipv6_cidr 2001:db8::/0
         assert_ok valid_ip_address 2001:db8::1
         assert_bad valid_ip_address 2001:db8::1/64
     else

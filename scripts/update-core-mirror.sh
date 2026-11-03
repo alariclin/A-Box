@@ -150,6 +150,19 @@ declare -a mirror_paths=()
 declare -a mirror_digests=()
 declare -a upload_paths=()
 
+# R9C19-N1 / R6C19-01: file(1) text greps alone accept Mach-O
+# binaries (a Mach-O arm64 description contains "arm64"). Require
+# ELF magic plus the e_machine field, as little-endian hex bytes:
+# 3e00 = 62 (x86-64), b700 = 183 (AArch64). Endian-explicit, so
+# the host od endianness does not matter.
+assert_elf_arch() {
+  local path="$1" kind="$2" want magic machine
+  if [[ "$kind" == "arm64" ]]; then want="b700"; else want="3e00"; fi
+  magic="$(head -c 4 -- "$path" 2>/dev/null | od -An -tx1 | tr -d ' \n')"
+  [[ "$magic" == "7f454c46" ]] || { echo "::error::Not an ELF binary: $path"; return 1; }
+  machine="$(od -An -tx1 -j 18 -N 2 -- "$path" 2>/dev/null | tr -d ' \n')"
+  [[ "$machine" == "$want" ]] || { echo "::error::ELF machine $machine != $want: $path"; return 1; }
+}
 download_verified_asset() {
   local repo="$1" release_file="$2" upstream_name="$3" mirror_name="$4" kind="$5"
   local tag asset_json url digest expected actual path bin member version_output arch_kind file_description expected_version libc_kind
@@ -193,6 +206,7 @@ download_verified_asset() {
       unzip -p "$path" "$member" > "$bin"
       chmod 700 "$bin"
       file_description="$(file -b "$bin")"
+      assert_elf_arch "$bin" "$arch_kind" || return 1
       if [[ "$arch_kind" == "arm64" ]]; then
         grep -Eqi 'ARM aarch64|ARM64' <<< "$file_description" || {
           echo "::error::Xray archive does not contain an AArch64 binary: $mirror_name"
@@ -228,6 +242,7 @@ download_verified_asset() {
       tar -xOzf "$path" "$member" > "$bin"
       chmod 700 "$bin"
       file_description="$(file -b "$bin")"
+      assert_elf_arch "$bin" "$arch_kind" || return 1
       if [[ "$arch_kind" == "arm64" ]]; then
         grep -Eqi 'ARM aarch64|ARM64' <<< "$file_description" || {
           echo "::error::sing-box archive does not contain an AArch64 binary: $mirror_name"
@@ -261,6 +276,7 @@ download_verified_asset() {
     hysteria)
       chmod 700 "$path"
       file_description="$(file -b "$path")"
+      assert_elf_arch "$path" "$arch_kind" || return 1
       if [[ "$arch_kind" == "arm64" ]]; then
         grep -Eqi 'ARM aarch64|ARM64' <<< "$file_description" || {
           echo "::error::Hysteria asset is not an AArch64 binary: $mirror_name"
@@ -294,6 +310,7 @@ download_verified_asset() {
     cloudflared)
       chmod 700 "$path"
       file_description="$(file -b "$path")"
+      assert_elf_arch "$path" "$arch_kind" || return 1
       if [[ "$arch_kind" == "arm64" ]]; then
         grep -Eqi 'ARM aarch64|ARM64' <<< "$file_description" || {
           echo "::error::cloudflared asset is not an AArch64 binary: $mirror_name"
@@ -324,6 +341,7 @@ download_verified_asset() {
       # digest above (exact tag + asset name) is the verification anchor,
       # plus the ELF architecture check here.
       file_description="$(file -b "$path")"
+      assert_elf_arch "$path" "$arch_kind" || return 1
       if [[ "$arch_kind" == "arm64" ]]; then
         grep -Eqi 'ARM aarch64|ARM64' <<< "$file_description" || {
           echo "::error::wgcf asset is not an AArch64 binary: $mirror_name"
@@ -434,8 +452,14 @@ EOF
 # No old asset is deleted or overwritten; versioned filenames are immutable.
 release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/core-binaries")"
 awk 'NF { if (NF != 2 || $1 !~ /^[A-Fa-f0-9]{64}$/ || $2 !~ /^[A-Za-z0-9._-]+$/ || seen[$2]++) exit 1 }' "$existing/SHA256SUMS"
-while read -r old_sum old_name extra; do
+while read -r old_sum old_name extra || [[ -n "${old_sum:-}" ]]; do
   [[ -n "${old_sum:-}" ]] || continue
+  # F03: CORE-VERSIONS is a mutable pointer (regenerated every run
+  # with a new updated_at_utc). After an interrupted publish its
+  # digest legitimately differs; requiring a match would deadlock
+  # every re-run. Skip it here (the rebuild below replaces its
+  # line anyway); immutable versioned assets stay strictly checked.
+  [[ "$old_name" == "CORE-VERSIONS" ]] && continue
   [[ -z "${extra:-}" ]] || { echo "::error::Malformed existing SHA256SUMS line"; exit 1; }
   actual_digest="$(jq -er --arg name "$old_name" '
     [.assets[]? | select(.name == $name)]
@@ -449,7 +473,7 @@ done < "$existing/SHA256SUMS"
 
 cp "$existing/SHA256SUMS" "$out/SHA256SUMS"
 # CORE-VERSIONS is a mutable pointer; replace only its checksum line.
-awk '$2 != "CORE-VERSIONS" {print}' "$out/SHA256SUMS" > "$root/SHA256SUMS.next"
+awk 'NF && $2 != "CORE-VERSIONS" {print}' "$out/SHA256SUMS" > "$root/SHA256SUMS.next"
 mv "$root/SHA256SUMS.next" "$out/SHA256SUMS"
 
 release_asset_digest() {
@@ -474,7 +498,7 @@ for i in "${!mirror_names[@]}"; do
 
   manifest_sum="$(awk -v name="$name" '$2 == name {print $1}' "$out/SHA256SUMS")"
   if [[ -n "$manifest_sum" ]]; then
-    [[ "$manifest_sum" == "$digest" ]] || {
+    [[ "${manifest_sum,,}" == "${digest,,}" ]] || {
       echo "::error::Existing manifest entry conflicts with verified asset: $name"
       exit 1
     }
@@ -486,6 +510,13 @@ done
 versions_digest="$(sha256sum "$out/CORE-VERSIONS" | awk '{print $1}')"
 printf '%s  CORE-VERSIONS\n' "$versions_digest" >> "$out/SHA256SUMS"
 sort -k2,2 "$out/SHA256SUMS" -o "$out/SHA256SUMS"
+# R15C19-01: the publish job rejects malformed manifests; catch
+# them here (both dry-run and publish) instead of deadlocking
+# the refresh after the merge.
+awk 'NF==0 || /\r$/ || NF != 2 || $1 !~ /^[A-Fa-f0-9]{64}$/ || $2 !~ /^[A-Za-z0-9._-]+$/ || seen[$2]++ { exit 1 }' "$out/SHA256SUMS" || {
+  echo "::error::Generated SHA256SUMS fails the publish-side format check"
+  exit 1
+}
 
 # F-01 fix: the full SHA256SUMS above lists historical assets that are NOT
 # present in out/. Generate a separate incoming manifest listing ONLY the
@@ -517,6 +548,14 @@ if [[ "${CORE_MIRROR_DRY_RUN:-0}" == '1' ]]; then
   exit 0
 fi
 
+# F05: direct publish cannot sign (no private key here). If the
+# Release still carries .sig assets, uploading new unsigned
+# manifests would leave stale signatures mismatching the new
+# manifests. Refuse; use the signed workflow publish path.
+if jq -e '[.assets[]? | select(.name == "CORE-VERSIONS.sig" or .name == "SHA256SUMS.sig")] | length > 0' <<< "$release_json" >/dev/null; then
+  echo "::error::Release still carries manifest signatures; direct publish would leave stale .sig files. Use the signed workflow publish path."
+  exit 1
+fi
 for path in "${upload_paths[@]}"; do
   gh release upload core-binaries "$path"
 done

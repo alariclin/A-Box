@@ -20923,8 +20923,8 @@ routing_apply_live() {
                     | (($orig | map(select(.tag as $t | ($managed + $retired) | index($t) | not))) as $kept
                         | $kept[0:$splice] + [$st[0].outbounds[]?.xray] + $kept[$splice:])))
                 | .routing.rules = (((.routing.rules // []) as $orig
-                    | ($orig | map((.outboundTag as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not)) | not) | index(true) // ($orig | length)) as $splice
-                    | (($orig | map(select((.outboundTag as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not))))) as $kept
+                    | ($orig | map((.outboundTag as $t | $retired | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not)) | not) | index(true) // ($orig | length)) as $splice
+                    | (($orig | map(select((.outboundTag as $t | $retired | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not))))) as $kept
                         | $kept[0:$splice] + [$st[0].rules[]?.xray_rule] + $kept[$splice:])))
             ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
             jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
@@ -20984,11 +20984,13 @@ routing_apply_live() {
                 | ((($prev - $managed) + $force) | unique) as $retired
                 | ($st[0].outbounds | map(.singbox
                     | if (.type == "wireguard" and has("server")) then
-                        {type:"wireguard", tag:.tag, address:.local_address, private_key:.private_key,
-                         mtu:(.mtu // 1280),
-                         peers:[{address:.server, port:.server_port, public_key:.peer_public_key,
-                             persistent_keepalive_interval:(.keepalive // 25),
-                             allowed_ips:["0.0.0.0/0","::/0"]}]}
+                        ((.pre_shared_key // null) as $psk
+                         | {type:"wireguard", tag:.tag, address:.local_address, private_key:.private_key,
+                            mtu:(.mtu // 1280),
+                            peers:[({address:.server, port:.server_port, public_key:.peer_public_key,
+                                persistent_keepalive_interval:(.keepalive // 25),
+                                allowed_ips:["0.0.0.0/0","::/0"]}
+                               + (if ($psk | type == "string" and . != "") then {pre_shared_key:$psk} else {} end))]})
                       else . end)) as $frag
                 | ($frag | map(select(.type == "wireguard"))) as $eps
                 | ($frag | map(select(.type != "wireguard"))) as $obs
@@ -21003,8 +21005,8 @@ routing_apply_live() {
                         | $kept[0:$splice] + $obs + $kept[$splice:])))
                 | .endpoints = (((.endpoints // []) | map(select(.tag as $t | ($managed + $retired) | index($t) | not))) + $eps)
                 | .route.rules = (((.route.rules // []) as $orig
-                    | ($orig | map((.outbound as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + $srules) | index($r)) | not)) | not) | index(true) // ($orig | length)) as $splice
-                    | (($orig | map(select((.outbound as $t | ($managed + $retired) | index($t) | not) and (. as $r | ((($prevr + $srules) | index($r)) | not))))) as $kept
+                    | ($orig | map((.outbound as $t | $retired | index($t) | not) and (. as $r | ((($prevr + $srules) | index($r)) | not)) | not) | index(true) // ($orig | length)) as $splice
+                    | (($orig | map(select((.outbound as $t | $retired | index($t) | not) and (. as $r | ((($prevr + $srules) | index($r)) | not))))) as $kept
                         | $kept[0:$splice] + $srules + $kept[$splice:])))
                 | ($prevr | [.. | objects | .rule_set[]? | select(type == "string")] | unique) as $prevtags
                 | (.route.rules | [.. | objects | .rule_set[]? | select(type == "string")] | unique) as $refd

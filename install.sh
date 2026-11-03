@@ -20157,8 +20157,18 @@ EOF_RC
     fi
 }
 
-argo_remove_unit() { # $1 = unit name; best-effort
-    local name="$1"
+argo_remove_unit() { # $1 = unit name; best-effort, refuses foreign units
+    local name="$1" unit
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        unit="/etc/systemd/system/${name}.service"
+    else
+        unit="/etc/init.d/${name}"
+    fi
+    # Only A-Box-managed units (written by argo_write_unit with the
+    # marker) may be removed; a foreign service sharing the name
+    # must survive, as must a service with no /etc unit at all.
+    [[ -f "$unit" && ! -L "$unit" ]] || return 1
+    grep -Fxq '# Managed by A-Box' "$unit" 2>/dev/null || return 1
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl stop "${name}.service" >/dev/null 2>&1 || true
         systemctl disable "${name}.service" >/dev/null 2>&1 || true

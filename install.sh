@@ -15726,6 +15726,48 @@ prepare_abox_runtime_config_dir() {
     [[ "$nlink" =~ ^[1-9][0-9]*$ && "$mode" =~ ^0?750$ ]] || return 1
 }
 
+# fd_secure_chown_chmod: chown/chmod a single file via a pinned fd.
+# $1=path $2=uid $3=gid $4=mode(octal string) [$5=required uid or -1]
+# [$6=required nlink or -1]. Opens with O_NOFOLLOW through a pinned
+# ancestor walk, verifies the opened fd with fstat (regular file,
+# optional uid/nlink), then fchown/fchmod on the same fd. Returns 1
+# on any failure (missing, symlink, wrong type/uid/nlink, chown/chmod
+# error); a swapped path is refused, never followed.
+fd_secure_chown_chmod() {
+    local _path="$1" _uid="$2" _gid="$3" _mode="$4" _req_uid="${5:--1}" _req_nlink="${6:--1}"
+    python3 -I - "$_path" "$_uid" "$_gid" "$_mode" "$_req_uid" "$_req_nlink" <<'PY_FD_CHOWN'
+import os, stat, sys
+path, uid, gid, mode, req_uid, req_nlink = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4], 8), int(sys.argv[5]), int(sys.argv[6])
+parts = [p for p in os.path.abspath(os.path.normpath(path)).split(os.sep) if p]
+if not parts:
+    raise SystemExit(1)
+parent_fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+try:
+    for comp in parts[:-1]:
+        nxt = os.open(comp, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+        os.close(parent_fd)
+        parent_fd = nxt
+    try:
+        ffd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)
+    finally:
+        os.close(parent_fd)
+except OSError:
+    raise SystemExit(1)
+try:
+    st = os.fstat(ffd)
+    if not stat.S_ISREG(st.st_mode):
+        raise SystemExit(1)
+    if req_uid >= 0 and st.st_uid != req_uid:
+        raise SystemExit(1)
+    if req_nlink >= 0 and st.st_nlink != req_nlink:
+        raise SystemExit(1)
+    os.fchown(ffd, uid, gid)
+    os.fchmod(ffd, mode)
+finally:
+    os.close(ffd)
+PY_FD_CHOWN
+}
+
 prepare_abox_runtime_read_file() {
     local path="$1" family="$2" user group
     IFS=$'\t' read -r user group < <(abox_runtime_identity "$family") || return 1
@@ -15733,8 +15775,12 @@ prepare_abox_runtime_read_file() {
     path_parent_chain_safe "$path" || return 1
     [[ "$(stat -c %u:%g "$path" 2>/dev/null || true)" == 0:* ]] || return 1
     [[ "$(stat -c %h "$path" 2>/dev/null || true)" == 1 ]] || return 1
-    chown "root:$group" "$path" || return 1
-    chmod 640 "$path" || return 1
+    # R15C7-01: fd-pinned fchown/fchmod; a post-stat symlink
+    # swap is refused, never followed to /etc/shadow.
+    local _gid
+    _gid=$(getent group "$group" 2>/dev/null | awk -F: '{print $3}')
+    [[ "$_gid" =~ ^[0-9]+$ ]] || return 1
+    fd_secure_chown_chmod "$path" 0 "$_gid" 640 0 1 || return 1
 }
 
 prepare_abox_runtime_write_file() {
@@ -32324,9 +32370,10 @@ normalize_restored_runtime_ownership() {
             if [[ -d /etc/hysteria/acme ]]; then
                 [[ ! -L /etc/hysteria/acme ]] || return 1
                 chown -R "$user:$group" /etc/hysteria/acme || return 1
-                if [[ -f /etc/hysteria/acme/.A-Box-managed ]]; then
-                    chown root:root /etc/hysteria/acme/.A-Box-managed || return 1
-                    chmod 600 /etc/hysteria/acme/.A-Box-managed || return 1
+                # R10C14-01: marker via pinned fd; a symlink
+                # swap is refused, never followed to /etc/passwd.
+                if [[ -e /etc/hysteria/acme/.A-Box-managed || -L /etc/hysteria/acme/.A-Box-managed ]]; then
+                    fd_secure_chown_chmod /etc/hysteria/acme/.A-Box-managed 0 0 600 || return 1
                 fi
                 chown "root:$group" /etc/hysteria/acme || return 1
             fi

@@ -26496,10 +26496,14 @@ _nsni_probe() {
 # failure so the operator can recover by hand.
 _nsni_rollback() {
     local _cfg="$1" _bak="$2" _key="$3" _crt="$4" _kebak="$5" _crtbak="$6" _core="$7" _was_running="$8"
+    local _link="${9:-}" _linkbak="${10:-}"
     local _ok=1
     cp -a "$_bak" "$_cfg" 2>/dev/null || _ok=0
     if [[ -n "$_kebak" && -f "$_kebak" ]]; then cp -a "$_kebak" "$_key" 2>/dev/null || _ok=0; fi
     if [[ -n "$_crtbak" && -f "$_crtbak" ]]; then cp -a "$_crtbak" "$_crt" 2>/dev/null || _ok=0; fi
+    if [[ -n "$_link" && -n "$_linkbak" && -f "$_linkbak" ]]; then
+        if cp -a "$_linkbak" "$_link" 2>/dev/null; then rm -f "$_linkbak"; else _ok=0; fi
+    fi
     if (( _ok == 1 && _was_running == 1 )); then
         if is_systemd; then systemctl restart "$_core" >/dev/null 2>&1 || _ok=0; else rc-service "$_core" restart >/dev/null 2>&1 || _ok=0; fi
     fi
@@ -26680,13 +26684,12 @@ _nsni_apply() {
     local core="$1" tag="$2" kind="$3" cfg="$4" old="$5" new="$6" key="${7:-}" crt="${8:-}"
     local bak='' tmp='' bin='' filter=''
     bak=$(mktemp /tmp/A-Box-nsni-bak.XXXXXX) || return 1
-    cp -a "$cfg" "$bak" || { rm -f "$bak"; return 1; }
+    cp -a "$cfg" "$bak" && chmod 600 "$bak" || { rm -f "$bak"; return 1; }
     local _was_running=0
     is_service_running "$core" 2>/dev/null && _was_running=1
-    tmp=$(mktemp /tmp/A-Box-nsni.XXXXXX) || { rm -f "$bak"; return 1; }
-    mv "$tmp" "$tmp.json"; tmp="$tmp.json"
+    tmp=$(mktemp /tmp/A-Box-nsni.XXXXXX.json) || { rm -f "$bak"; return 1; }
     case "$kind" in
-        reality-xray) filter='.inbounds |= map(if .tag == $t then (.streamSettings.realitySettings |= (.serverNames = [$s] | .target = (if .target then ($s + (.target | if contains(":") then (if test("^\\[.*\\]:") then sub("^\\[.*\\]"; "") elif test("^[^:]*:[^:]*$") then sub("^[^:]*"; "") else "" end) else "" end)) else .target end) | .dest = (if .dest then ($s + (.dest | if contains(":") then (if test("^\\[.*\\]:") then sub("^\\[.*\\]"; "") elif test("^[^:]*:[^:]*$") then sub("^[^:]*"; "") else "" end) else "" end)) else .dest end))) else . end)' ;;
+        reality-xray) filter='.inbounds |= map(if .tag == $t then (.streamSettings.realitySettings |= (.serverNames = [$s] | .target = (if .target then (if (.target | type) == "string" then (if (.target | test("^[/@]")) then .target else ($s + (.target | if contains(":") then (if test("^\\[.*\\]:") then sub("^\\[.*\\]"; "") elif test("^[^:]*:[^:]*$") then sub("^[^:]*"; "") else "" end) else "" end)) end) else .target end) else .target end) | .dest = (if .dest then (if (.dest | type) == "string" then (if (.dest | test("^[/@]")) then .dest else ($s + (.dest | if contains(":") then (if test("^\\[.*\\]:") then sub("^\\[.*\\]"; "") elif test("^[^:]*:[^:]*$") then sub("^[^:]*"; "") else "" end) else "" end)) end) else .dest end) else .dest end))) else . end)' ;;
         reality-sb) filter='.inbounds |= map(if .tag == $t then (.tls.reality.handshake.server = $s | if .tls.server_name then .tls.server_name = $s else . end) else . end)' ;;
         tuic) filter='.inbounds |= map(if .tag == $t then .tls.server_name = $s else . end)' ;;
         shadowtls) filter='.inbounds |= map(if .tag == $t then .handshake.server = $s else . end)' ;;
@@ -26704,7 +26707,7 @@ _nsni_apply() {
     if [[ "$kind" == 'tuic' && -n "$key" && -n "$crt" ]]; then
         _kebak=$(mktemp /tmp/A-Box-nsni-keybak.XXXXXX 2>/dev/null || true)
         _crtbak=$(mktemp /tmp/A-Box-nsni-crtbak.XXXXXX 2>/dev/null || true)
-        if [[ -z "$_kebak" || -z "$_crtbak" ]] || ! cp -a "$key" "$_kebak" 2>/dev/null || ! cp -a "$crt" "$_crtbak" 2>/dev/null; then
+        if [[ -z "$_kebak" || -z "$_crtbak" ]] || ! cp -a "$key" "$_kebak" 2>/dev/null || ! chmod 600 "$_kebak" 2>/dev/null || ! cp -a "$crt" "$_crtbak" 2>/dev/null || ! chmod 600 "$_crtbak" 2>/dev/null; then
             if cp -a "$bak" "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; fi
             rm -f "$_kebak" "$_crtbak"
             return 1
@@ -26740,12 +26743,14 @@ _nsni_apply() {
             msg "${YELLOW}[!] Handshake self-check unavailable; new SNI is unverified.${NC}" >&2
         fi
     fi
-    local _ldir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _lf='' _shown='' _stem='' _esc_old='' _esc_new=''
+    local _ldir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _lf='' _shown='' _stem='' _esc_old='' _esc_new='' _lbak=''
     _stem=$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag")
     _lf="${_stem}.link"
     if [[ -f "$_ldir/$_lf" && ! -L "$_ldir/$_lf" ]] && grep -qF "sni=${old}" "$_ldir/$_lf" 2>/dev/null; then
         _esc_old=$(printf '%s' "$old" | sed 's/[][\\.|*^$]/\\&/g')
         _esc_new=$(printf '%s' "$new" | sed 's/[\\|&]/\\&/g')
+        _lbak=$(mktemp /tmp/A-Box-nsni-linkbak.XXXXXX 2>/dev/null || true)
+        if [[ -n "$_lbak" ]] && ! cp -a "$_ldir/$_lf" "$_lbak" 2>/dev/null; then rm -f "$_lbak"; _lbak=''; fi
         if ! sed -i -e "s|\([?&]sni=\)${_esc_old}\([&#]\)|\1${_esc_new}\2|g" -e "s|\([?&]sni=\)${_esc_old}\$|\1${_esc_new}|g" "$_ldir/$_lf" 2>/dev/null; then
             if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
             return 1
@@ -26760,37 +26765,37 @@ _nsni_apply() {
     if [[ -n "$_envvar" && -f "$_envf" && ! -L "$_envf" ]]; then
         _etmp=$(mktemp /tmp/A-Box-nsni-env.XXXXXX 2>/dev/null || true)
         if [[ -n "$_etmp" ]]; then
-            if awk -v var="$_envvar" -v o="$old" -v n="$new" '{ v = $0; sub(/=.*/, "", v); if (v == var) { val = substr($0, length(v) + 2); q = ""; if (substr(val, 1, 1) == "\"" && substr(val, length(val), 1) == "\"") { q = "\""; val = substr(val, 2, length(val) - 2); } if (val == o) $0 = v "=" q n q; } print }' "$_envf" > "$_etmp" 2>/dev/null; then
+            if awk -v var="$_envvar" -v o="$old" -v n="$new" '{ v = $0; sub(/=.*/, "", v); if (v == var) { val = substr($0, length(v) + 2); q = ""; if (substr(val, 1, 1) == "\"" && substr(val, length(val), 1) == "\"") { q = "\""; val = substr(val, 2, length(val) - 2); } else if (substr(val, 1, 1) == "\047" && substr(val, length(val), 1) == "\047") { q = "\047"; val = substr(val, 2, length(val) - 2); } if (val == o) $0 = v "=" q n q; } print }' "$_envf" > "$_etmp" 2>/dev/null; then
                 _ebak=$(mktemp /tmp/A-Box-nsni-envbak.XXXXXX 2>/dev/null || true)
-                if [[ -n "$_ebak" ]] && cp -a "$_envf" "$_ebak" 2>/dev/null; then
+                if [[ -n "$_ebak" ]] && cp -a "$_envf" "$_ebak" 2>/dev/null && chmod 600 "$_ebak" 2>/dev/null; then
                     if cat "$_etmp" > "$_envf" 2>/dev/null; then
                         rm -f "$_ebak"
                     elif cp -a "$_ebak" "$_envf" 2>/dev/null; then
                         rm -f "$_etmp" "$_ebak"
-                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
                         return 1
                     else
                         msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
                         rm -f "$_etmp"
-                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
                         return 1
                     fi
                 else
                     rm -f "$_etmp" "$_ebak"
-                    if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+                    if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
                     return 1
                 fi
             else
-                if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+                if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
                 return 1
             fi
             rm -f "$_etmp"
         else
-            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
             return 1
         fi
     fi
-    rm -f "$bak" "$_kebak" "$_crtbak"
+    rm -f "$bak" "$_kebak" "$_crtbak" "$_lbak"
     [[ -n "$_shown" ]] && printf '%s' "$_shown"
     return 0
 }

@@ -126,6 +126,8 @@ for name in "${expected[@]}"; do
     [[ -n "$upstream_digest" ]] || { echo "upstream digest not found for $up_repo $up_tag $up_asset; aborting"; exit 1; }
     upstream_hex="${upstream_digest#sha256:}"
     staging_sum=$(sha256sum < "$snap/$name" | cut -d' ' -f1)
+    # R10C19-01: strip a GNU backslash prefix (backslash path).
+    staging_sum="${staging_sum#\\}"
     if [[ "$upstream_hex" != "$staging_sum" ]]; then
         echo "[CONFLICT] $name does not match upstream official digest:"
         echo "  upstream ($up_repo $up_tag $up_asset): $upstream_hex"
@@ -160,11 +162,13 @@ done < "$tmp2/SHA256SUMS"
 for name in "${expected[@]}"; do
     f="$snap/$name"
     staging_sum=$(sha256sum "$f" | cut -d' ' -f1)
+    # R10C19-01: strip a GNU backslash prefix (backslash path).
+    staging_sum="${staging_sum#\\}"
     existing_line=$(awk -v n="$name" '$1 == n' <<< "$existing_json")
     if [[ -n "$existing_line" ]]; then
         # GitHub digest is "sha256:<hex>"; extract hex part.
         remote_digest=$(awk '{print $2}' <<< "$existing_line" | sed 's/^sha256://')
-        if [[ "$remote_digest" == "$staging_sum" ]]; then
+        if [[ "${remote_digest,,}" == "${staging_sum,,}" ]]; then
             echo "[skip] $name already in release with matching digest"
             continue
         else
@@ -193,11 +197,14 @@ if [[ -s "$tmp/SHA256SUMS.new" ]]; then
 fi
 while read -r sum name _ || [[ -n "$sum" ]]; do
     [[ -n "${sum:-}" && -n "${name:-}" ]] || continue
+    # R7C19-01: a --binary manifest names files "*file"; strip
+    # the marker so the lookup and the append use plain names.
+    name="${name#\*}"
     [[ "$sum" =~ ^[A-Fa-f0-9]{64}$ ]] || { echo "invalid hash for $name; aborting"; exit 1; }
     existing_sum=$(awk -v n="$name" '$2 == n { print $1; exit }' "$tmp/SHA256SUMS.new" || true)
     if [[ -n "$existing_sum" ]]; then
         # F-03 fix: same name must have same hash, else conflict.
-        if [[ "$existing_sum" != "$sum" ]]; then
+        if [[ "${existing_sum,,}" != "${sum,,}" ]]; then
             echo "[CONFLICT] SHA256SUMS already has $name with different hash:"
             echo "  release: $existing_sum"
             echo "  staging: $sum"

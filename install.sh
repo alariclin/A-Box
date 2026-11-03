@@ -34822,6 +34822,15 @@ wallos_recover_interrupted_upgrade() {
     # corrupt backup must refuse while the old container still exists.
     wallos_validate_backup "$backup" || return 1
     if docker container inspect wallos >/dev/null 2>&1; then
+        # R13C15-01: verify ownership before stop/rm: managed label
+        # AND both expected Wallos bind mounts; refuse on mismatch.
+        local _rc_lbl='' _rc_mounts=''
+        _rc_lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)
+        _rc_mounts=$(docker inspect -f '{{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}' wallos 2>/dev/null || true)
+        if [[ "$_rc_lbl" != "true" ]] || [[ "$_rc_mounts" != *"$WALLOS_DIR/db:/var/www/html/db"* ]] || [[ "$_rc_mounts" != *"$WALLOS_DIR/logos:/var/www/html/images/uploads/logos"* ]]; then
+            msg "${RED}Refusing recovery: existing 'wallos' container is not A-Box-managed (label or bind mounts mismatch).${NC}"
+            return 1
+        fi
         docker stop wallos >/dev/null 2>&1 || true
         docker rm -f wallos >/dev/null 2>&1 || {
             # A-04: rm failed after stop; restart original instead of leaving Exited.
@@ -34864,6 +34873,25 @@ wallos_recover_interrupted_upgrade() {
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
             -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || return 1
     fi
+    # R1-15-01: align both frontends with the recovered mode before
+    # deleting the journal; never report success on a misaligned
+    # frontend (leftover exposure, or a missing required front).
+    local _rec_mode=''
+    _rec_mode=$(wallos_state_value MODE 2>/dev/null || true)
+    case "$_rec_mode" in
+        https)
+            wallos_cftunnel_teardown || return 1
+            is_service_running abox-wallos-caddy 2>/dev/null || { msg "${RED}Recovery restored Wallos but its Caddy frontend is not running; refusing to report success, journal kept.${NC}"; return 1; }
+            ;;
+        cftunnel)
+            wallos_https_teardown || return 1
+            is_service_running abox-wallos-cftunnel 2>/dev/null || { msg "${RED}Recovery restored Wallos but its tunnel frontend is not running; refusing to report success, journal kept.${NC}"; return 1; }
+            ;;
+        *)
+            wallos_https_teardown || return 1
+            wallos_cftunnel_teardown || return 1
+            ;;
+    esac
     rm -f -- "$journal" || return 1
     msg "${YELLOW}$(tr_msg wl_rc_done)${NC}"
 }

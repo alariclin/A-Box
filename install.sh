@@ -381,13 +381,15 @@ rebuild_standalone_links() {
     if [[ -f "$_xc" ]]; then
         if [[ ! -f "$_dir/trojan-xray.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.protocol=="trojan")) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000"))] | @tsv' "$_xc" 2>/dev/null)" _port _pass _pk _sni _sid _nul
-            _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != ""))) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // "")] | @tsv' "$_xc" 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _svc
+            _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_svc" _svc
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (trojan-xray)${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
+                _ttype='type=tcp'
+                if [[ "$_net" == 'grpc' && -n "$_svc" ]]; then _ttype="type=grpc&serviceName=$(urlencode "$_svc")"; fi
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
-                register_standalone_link trojan-xray "Trojan-Reality (Xray) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&type=tcp#Trojan-Reality"
+                register_standalone_link trojan-xray "Trojan-Reality (Xray) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete trojan-xray)${NC}" >&2
             fi
@@ -406,7 +408,7 @@ rebuild_standalone_links() {
     if [[ -f "$_sc" ]]; then
         if [[ ! -f "$_dir/trojan-sb.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), (.tls.reality.short_id[0] // ""), ((.password // .users[0].password // "") | contains("\u0000"))] | @tsv' "$_sc" 2>/dev/null)" _port _pass _pk _sni _sid _nul
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.password // .users[0].password // "") | contains("\u0000"))] | @tsv' "$_sc" 2>/dev/null)" _port _pass _pk _sni _sid _nul
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (trojan-sb)${NC}" >&2
@@ -429,7 +431,7 @@ rebuild_standalone_links() {
         fi
         if [[ ! -f "$_dir/anytls.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="anytls-in")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), (.tls.reality.short_id[0] // "")] | @tsv' "$_sc" 2>/dev/null)" _port _pass _pk _sni _sid
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="anytls-in")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // "")] | @tsv' "$_sc" 2>/dev/null)" _port _pass _pk _sni _sid
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \

@@ -18037,7 +18037,7 @@ xray_ensure_stats() {
 }
 
 xray_hot_add_inbound() {
-    local json_file="$1" cfg='/usr/local/etc/xray/config.json' tmp tag
+    local json_file="$1" cfg='/usr/local/etc/xray/config.json' tmp tmpd tag
     [[ -n "$json_file" && -f "$json_file" && ! -L "$json_file" ]] || return 1
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     tag=$(jq -r '.tag // empty' "$json_file" 2>/dev/null) || return 1
@@ -18045,18 +18045,18 @@ xray_hot_add_inbound() {
     if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         return 1  # duplicate tag already persisted
     fi
-    tmp=$(mktemp /tmp/A-Box-xray-hotadd.XXXXXX) || return 1
-    mv "$tmp" "$tmp.json" || { rm -f "$tmp"; return 1; }; tmp="$tmp.json"
+    tmpd=$(mktemp -d /tmp/A-Box-xray-hotadd.XXXXXX) || return 1
+    tmp="$tmpd/config.json"
     if ! jq --slurpfile nb "$json_file" '.inbounds += $nb' "$cfg" > "$tmp" 2>/dev/null; then
-        rm -f "$tmp"; return 1
+        rm -f "$tmp"; rm -rf "$tmpd"; return 1
     fi
-    jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+    jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
     if [[ -x /usr/local/bin/xray ]]; then
-        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
     fi
-    install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
+    install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
     prepare_abox_runtime_permissions xray 2>/dev/null || true
-    rm -f "$tmp"
+    rm -f "$tmp"; rm -rf "$tmpd"
     # Hot path first: no connection drop. Fallback: restart (old behavior).
     if xray_api_available && xray_api_add_inbound "$json_file"; then
         return 0
@@ -18070,7 +18070,7 @@ xray_hot_add_inbound() {
 # config, so the change is never lost and existing behavior is preserved.
 xray_hot_remove_inbound() {
     local tag="$1"
-    local cfg='/usr/local/etc/xray/config.json' tmp
+    local cfg='/usr/local/etc/xray/config.json' tmp tmpd
     [[ -n "$tag" && "$tag" != 'api' ]] || return 1
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     # A corrupt config must never be reported as "nothing to delete":
@@ -18083,8 +18083,8 @@ xray_hot_remove_inbound() {
         fi
         return 0
     fi
-    tmp=$(mktemp /tmp/A-Box-xray-hotdel.XXXXXX) || return 1
-    mv "$tmp" "$tmp.json" || { rm -f "$tmp"; return 1; }; tmp="$tmp.json"
+    tmpd=$(mktemp -d /tmp/A-Box-xray-hotdel.XXXXXX) || return 1
+    tmp="$tmpd/config.json"
     if ! jq --arg t "$tag" '
         .inbounds |= map(select(.tag != $t))
         | if (.routing.rules // null) then
@@ -18096,15 +18096,15 @@ xray_hot_remove_inbound() {
                 else . end)
           else . end
     ' "$cfg" > "$tmp" 2>/dev/null; then
-        rm -f "$tmp"; return 1
+        rm -f "$tmp"; rm -rf "$tmpd"; return 1
     fi
-    jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+    jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
     if [[ -x /usr/local/bin/xray ]]; then
-        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+        XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
     fi
-    install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
+    install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
     prepare_abox_runtime_permissions xray 2>/dev/null || true
-    rm -f "$tmp"
+    rm -f "$tmp"; rm -rf "$tmpd"
     if xray_api_available && xray_api_remove_inbound "$tag"; then
         return 0
     fi

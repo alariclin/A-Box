@@ -27286,10 +27286,12 @@ multi_user_menu() {
             0) return 0 ;;
             E|e)
                 local n='' _ef=''
-                _ef=$(umask 077; mktemp /tmp/A-Box-export.XXXXXX 2>/dev/null || printf '/tmp/A-Box-export.%s.tmp' "$$")
-                n=$(users_export_all 2>"$_ef" || true)
-                if [[ -s "$_ef" ]]; then cat "$_ef"; fi
-                rm -f -- "$_ef"
+                _ef=$(umask 077; mktemp /tmp/A-Box-export.XXXXXX 2>/dev/null) || _ef=''
+                if [[ -n "$_ef" ]]; then
+                    n=$(users_export_all 2>"$_ef" || true)
+                    if [[ -s "$_ef" ]]; then cat "$_ef"; fi
+                    rm -f -- "$_ef"
+                fi
                 if [[ -n "$n" ]]; then msg "${GREEN}$(tr_msg mu_exported): ${n} (uri-list.txt / subscription.base64)${NC}"; else msg "${RED}$(tr_msg mu_export_fail)${NC}"; fi
                 pause_return ;;
             ''|*[!0-9]*) msg "${RED}$(tr_msg invalid_input)${NC}"; sleep 1 ;;

@@ -27238,11 +27238,29 @@ users_apply_reg() {
     if command -v jq >/dev/null 2>&1; then
         _new=$(printf '%s' "$3" | jq -c 'if (.users | type) == "array" then .users |= unique_by(.name) else . end' 2>/dev/null || printf '%s' "$3")
     fi
-    users_reg_write "$1" "$2" "$_new" || return 1
+    # R5C11-01: plant the sync-pending marker BEFORE the registry
+    # rename, so a SIGKILL between registry write and core sync
+    # leaves a durable debt the guard retries instead of a
+    # fail-open nothing ever repairs. The marker path matches
+    # the guard's "${reg}.sync-pending" sidecar.
+    local _reg=''
+    _reg=$(users_reg_file "$1" "$2") || return 1
+    [[ -n "$_reg" ]] || return 1
+    : > "${_reg}.sync-pending" || return 1
+    users_reg_write "$1" "$2" "$_new" || { rm -f -- "${_reg}.sync-pending"; return 1; }
     if ! users_sync "$1" "$2"; then
-        users_reg_write "$1" "$2" "$4" >/dev/null 2>&1 || true
+        # Roll back, and clear the marker only after verifying
+        # the rollback landed (re-read matches the old content).
+        # If the rollback or its verification fails, the marker
+        # stays so the guard retries the sync.
+        if users_reg_write "$1" "$2" "$4" >/dev/null 2>&1; then
+            if [[ "$(jq -c . "$_reg" 2>/dev/null)" == "$(printf '%s' "$4" | jq -c . 2>/dev/null)" ]]; then
+                rm -f -- "${_reg}.sync-pending"
+            fi
+        fi
         return 1
     fi
+    rm -f -- "${_reg}.sync-pending"
     return 0
 }
 

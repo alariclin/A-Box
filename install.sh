@@ -20854,6 +20854,25 @@ argo_links_for() { # $1 = vmess domain, $2 = vless domain
     register_standalone_link argo "Argo (CDN)" "vmess://${vm_b64}" "${vless_link}"
 }
 
+# R15C9-01: temp tunnels must prove edge connections before the fixed
+# deployment is torn down; a bare trycloudflare.com domain in the log
+# does not prove the tunnel can serve traffic. Mirrors
+# argo_wait_fixed_ready, parameterized by unit + log.
+argo_wait_temp_ready() { # $1=unit $2=log $3=timeout(sec, default 60)
+    local unit="$1" log="$2" timeout="${3:-60}" i
+    for i in $(seq 1 "$timeout"); do
+        if grep -q 'Registered tunnel connection' "$log" 2>/dev/null; then
+            argo_unit_active "$unit" || return 1
+            return 0
+        fi
+        if grep -qiE 'authentication failed|failed to authenticate|unable to authenticate' "$log" 2>/dev/null; then
+            return 1
+        fi
+        sleep 1
+    done
+    return 1
+}
+
 deploy_argo_temp() {
     clear; msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
     init_system_environment
@@ -20961,10 +20980,13 @@ EOF_SVC
     local d1='' d2=''
     d1=$(argo_capture_domain /etc/ddr/argo-vmess.log) || die "$(tr_msg ag_vmess_domain)"
     d2=$(argo_capture_domain /etc/ddr/argo-vless.log) || die "$(tr_msg ag_vless_domain)"
+    # R15C9-01: both temp tunnels must prove edge connections BEFORE
+    # the fixed deployment is torn down. A domain in the log alone
+    # does not prove usability; on failure die here so the fixed
+    # unit, token and state stay intact (no dead links published).
+    argo_wait_temp_ready argo-vmess /etc/ddr/argo-vmess.log 60 || die 'Temp Argo VMess tunnel did not establish an edge connection; fixed deployment kept.'
+    argo_wait_temp_ready argo-vless /etc/ddr/argo-vless.log 60 || die 'Temp Argo VLESS tunnel did not establish an edge connection; fixed deployment kept.'
     # Switching to temp mode: tear down any fixed deployment.
-    # Placed after the temp domains are captured (temp proven
-    # working) so a failure above leaves the fixed unit and
-    # the fixed state intact.
     argo_remove_unit argo
     rm -f /etc/ddr/.argo-token
     _argo_state_write "mode=temp

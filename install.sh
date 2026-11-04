@@ -8359,6 +8359,7 @@ valid_path() {
 }
 
 # port_is_free: true when nothing is listening on the TCP port locally.
+# Without ss/netstat the answer is unknown, so it returns false (fail closed).
 port_is_free() {
     local port="${1:-}" out=''
     [[ -n "$port" ]] || return 1
@@ -8381,7 +8382,11 @@ port_is_free() {
             return 0
         fi
     else
-        ! (exec 3<>/dev/tcp/127.0.0.1/"$port") 2>/dev/null
+        # R6C5-01: no reliable listener listing tool. The old
+        # /dev/tcp loopback probe missed non-loopback binds and
+        # misreported them as free (a later 0.0.0.0 bind then
+        # collided with EADDRINUSE). Unknown is never free.
+        return 1
     fi
 }
 

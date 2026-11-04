@@ -35117,10 +35117,13 @@ wallos_install_runtime() {
                 command -v rc-service >/dev/null 2>&1 && rc-service docker start >/dev/null 2>&1 9>&- 10>&- || true
                 ;;
             *)
-                if command -v systemctl >/dev/null 2>&1 && systemctl cat docker.service >/dev/null 2>&1; then
+                if systemd_available; then
                     systemctl enable --now docker >/dev/null 2>&1 || true
+                elif command -v rc-service >/dev/null 2>&1; then
+                    rc-service docker start >/dev/null 2>&1 9>&- 10>&- || true
+                elif command -v service >/dev/null 2>&1; then
+                    service docker start >/dev/null 2>&1 || true
                 fi
-                if command -v service >/dev/null 2>&1; then service docker start >/dev/null 2>&1 || true; fi
                 ;;
         esac
         if docker info >/dev/null 2>&1; then return 0; fi

@@ -613,7 +613,9 @@ try:
     prefix='/' if target == '/' else target + '/'
     with open('/proc/self/mountinfo','r',encoding='utf-8',errors='strict') as f:
         for raw in f:
-            parts=raw.split()
+            # R10C1-02: ASCII space only. Bare split() also splits
+            # U+00A0 (unescaped in mountinfo), shifting parts[4].
+            parts=raw.rstrip('\n').split(' ')
             if len(parts) < 5:
                 raise RuntimeError('malformed mountinfo')
             mountpoint=decode_mountinfo_path(parts[4])

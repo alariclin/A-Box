@@ -9936,7 +9936,7 @@ rows=[]
 with open(manifest, 'r', encoding='utf-8') as f:
     for line in f:
         p=line.rstrip('\n').split('\t')
-        if len(p)!=4 or p[0] not in {'F','D'} or p[1] not in {'xray','sing-box','hysteria'} or not p[2].startswith('/') or '\x00' in line:
+        if len(p)!=4 or p[0] not in {'F','D'} or p[1] not in {'xray','sing-box','hysteria','xray-latest'} or not p[2].startswith('/') or '\x00' in line:
             raise SystemExit(1)
         rows.append(p)
 if len({(r[0],r[1],r[2]) for r in rows}) != len(rows):

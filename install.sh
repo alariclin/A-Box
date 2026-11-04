@@ -35320,13 +35320,25 @@ wallos_detect_arch() {
 }
 
 wallos_port_free() {
-    local port="$1" out=''
+    local port="$1" out='' _dp=''
+    [[ "$port" =~ ^[0-9]+$ ]] || return 1
     # P3-9: fail closed when ss is missing (was fail-open returning "free").
     command -v ss >/dev/null 2>&1 || return 1
     # Fail closed when ss itself errors, too: an empty result caused
     # by a failed probe is not proof that the port is free.
     out=$(ss -H -ltn "sport = :$port" 2>/dev/null) || return 1
-    [[ -z "$out" ]]
+    [[ -z "$out" ]] || return 1
+    # R6C14-02: with userland-proxy off, a Docker NAT publication
+    # creates no host listening socket, so ss alone misjudges the
+    # port as free and the later publish collides. Also consult
+    # Docker's published-port allocations; fail closed if the
+    # query itself fails. Only running containers hold ports, so
+    # plain `docker ps` (no -a) is the right source.
+    if command -v docker >/dev/null 2>&1; then
+        _dp=$(docker ps --format '{{.Ports}}' 2>/dev/null) || return 1
+        if printf '%s\n' "$_dp" | grep -qE "(^|[^0-9])${port}->"; then return 1; fi
+    fi
+    return 0
 }
 
 wallos_print_host_info() {

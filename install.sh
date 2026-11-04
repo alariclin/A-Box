@@ -41156,7 +41156,13 @@ ota_and_geo_menu() {
 
 runtime_lock_proc_starttime() {
     local pid="$1"
-    awk '{print $22}' "/proc/${pid}/stat" 2>/dev/null
+    # F4: comm (field 2, in parentheses) may contain spaces, which
+    # shifts whitespace-split fields so $22 is itrealvalue, not
+    # starttime. Strip the pid and the whole parenthesized comm
+    # (greedy .* reaches the LAST close paren, so a comm containing
+    # parens is handled) and take field 20 of the remainder, i.e.
+    # original field 22. No parenthesized comm -> no output.
+    awk '{ if (sub(/^[^ ]+ \(.*\) /, "") == 0) exit 1; print $20 }' "/proc/${pid}/stat" 2>/dev/null
 }
 
 open_runtime_flock_fd() {

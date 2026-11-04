@@ -27581,7 +27581,10 @@ users_inbound_menu() {
                 users_valid_name "$nm" || { msg "${RED}$(tr_msg mu_name_bad)${NC}"; pause_return; continue; }
                 jq -e --arg n "$nm" '.users[] | select(.name == $n)' "$reg" >/dev/null 2>&1 && { msg "${RED}$(tr_msg mu_name_dup)${NC}"; pause_return; continue; }
                 local secret='' nuuid='' flow='' email=''
-                flow=$(jq -r '.users[] | select(.name == "main") | .flow // ""' "$reg" 2>/dev/null | head -1)
+                # R7C11-03: inherit main's flow when non-empty, else the first
+                # non-empty flow among existing users (main-only lookup left a
+                # new user flowless on a vision inbound with no main).
+                flow=$(jq -r '([.users[] | select(.name == "main" and (.flow // "") != "") | .flow] + [.users[] | select(.flow != null and .flow != "") | .flow] | first) // ""' "$reg" 2>/dev/null)
                 case "$proto" in
                     vless|vmess) secret=$(generate_robust_uuid) || continue ;;
                     tuic) nuuid=$(generate_robust_uuid) || continue; secret=$(rand_alnum 16) || continue ;;

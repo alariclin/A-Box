@@ -26945,6 +26945,19 @@ users_pick_user() {
     printf '%s\n' "$names" | sed -n "${sel}p"
 }
 
+# F08: SS-2022 key length follows the inbound method: any 256
+# method needs 32 bytes; 128-gcm and legacy passphrase methods
+# use 16. An unreadable method keeps the historical 16-byte
+# default (sync rollback protects a wrong guess).
+users_ss_new_secret() {
+    local core="$1" tag="$2" method='' keylen=16 cfg=''
+    cfg=$(users_cfg_of "$core" 2>/dev/null || echo "")
+    if [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]]; then
+        method=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.settings.method // .method // "")' "$cfg" 2>/dev/null | head -1)
+    fi
+    [[ "$method" == *256* ]] && keylen=32
+    openssl rand -base64 "$keylen" 2>/dev/null | tr -d '\n\r'
+}
 users_inbound_menu() {
     local core="$1" tag="$2" proto="$3" port="$4" reg=''
     reg=$(users_reg_file "$core" "$tag")
@@ -27009,7 +27022,7 @@ users_inbound_menu() {
                 case "$proto" in
                     vless|vmess) secret=$(generate_robust_uuid) || continue ;;
                     tuic) nuuid=$(generate_robust_uuid) || continue; secret=$(rand_alnum 16) || continue ;;
-                    shadowsocks) secret=$(openssl rand -base64 16 2>/dev/null | tr -d '\n\r'); [[ -n "$secret" ]] || continue ;;
+                    shadowsocks) secret=$(users_ss_new_secret "$core" "$tag"); [[ -n "$secret" ]] || continue ;;
                     *) secret=$(rand_alnum 16) || continue ;;
                 esac
                 [[ "$core" == xray* ]] && email="${tag}/${nm}"

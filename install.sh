@@ -34460,11 +34460,15 @@ backup_current_config() {
         path_owned_by_root "$backup_dir" || die 'Backup directory is not root-owned.'
         path_mode_has_no_group_other_write "$backup_dir" || die 'Backup directory permissions are unsafe.'
     fi
-    local backup_extra_excludes=() _abox_noslash="${ABOX_DIR%/}" _backup_noslash="${backup_dir%/}"
+    local backup_extra_excludes=() backup_find_prune=() _abox_noslash="${ABOX_DIR%/}" _backup_noslash="${backup_dir%/}"
     if [[ "$_backup_noslash" == "$_abox_noslash" ]]; then
         die 'Backup directory must not be the A-Box directory itself; choose a subdirectory or an external directory.'
     elif [[ "$_backup_noslash" == "$_abox_noslash"/* ]]; then
         backup_extra_excludes=(--exclude="./${_backup_noslash#"$_abox_noslash"/}")
+        # R5C14-03: prune the custom backup target from the link
+        # scan too; tar excludes it, so a symlink inside it must
+        # not abort the backup.
+        backup_find_prune=(-path "$_backup_noslash" -prune -o)
     fi
     work=$(mktemp -d /tmp/A-Box-backup.XXXXXX) || die 'Backup temp directory creation failed.'
     root="$work/root"; mkdir_private "$backup_dir" || { rm -rf "$work"; die 'Backup directory creation failed.'; }
@@ -34485,7 +34489,7 @@ backup_current_config() {
         # catches same-device bind mounts that --one-file-system cannot detect.
         path_tree_has_nested_mountpoint "$ABOX_DIR" && backup_failed=1
         # C-04: Exclude .tz-rollback/.dns-backup (contain symlinks from cp -a of /etc/localtime, /etc/resolv.conf).
-        _abox_links=$(find "$ABOX_DIR" -path "$ABOX_DIR/backups" -prune -o -path "$ABOX_DIR/diagnostics" -prune -o -path "$ABOX_DIR/preflight" -prune -o -path "$ABOX_DIR/.tz-rollback" -prune -o -path "$ABOX_DIR/.dns-backup" -prune -o -type l -print 2>/dev/null) || backup_failed=1
+        _abox_links=$(find "$ABOX_DIR" -path "$ABOX_DIR/backups" -prune -o -path "$ABOX_DIR/diagnostics" -prune -o -path "$ABOX_DIR/preflight" -prune -o -path "$ABOX_DIR/.tz-rollback" -prune -o -path "$ABOX_DIR/.dns-backup" -prune -o "${backup_find_prune[@]}" -type l -print 2>/dev/null) || backup_failed=1
         if [[ -n "${_abox_links:-}" ]]; then
             backup_failed=1
         else

@@ -31017,7 +31017,7 @@ sni_domain_penalty() {
 }
 
 asn_lookup_ip() {
-    local ip="${1:-}" cache_dir="${2:-}" cache_file body asn country org uid gid mode http_code
+    local ip="${1:-}" cache_dir="${2:-}" cache_file body asn='' country='' org='' uid gid mode http_code
     [[ -n "$ip" && "$ip" != 'N/A' ]] || { printf 'asn=unknown\tcountry=unknown\torg=unknown'; return 0; }
     [[ -n "$cache_dir" && -d "$cache_dir" && ! -L "$cache_dir" ]] || return 1
     uid=$(stat -c %u "$cache_dir" 2>/dev/null) || return 1

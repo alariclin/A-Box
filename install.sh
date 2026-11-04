@@ -16944,9 +16944,12 @@ hysteria_official_hop_firewall_ok() {
     (( 10#$start <= 10#$end && 10#$first <= 10#$end )) || return 1
     first_other=$((10#$start + 1))
     if command -v iptables >/dev/null 2>&1; then
-        if _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
+        # R6C8-03: no -q: grep reads the whole listing, so no
+        # SIGPIPE under pipefail can turn a found rule into
+        # a false negative (healthy Hysteria restarted).
+        if _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -E -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" >/dev/null; then
             if has_ipv6; then
-                command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
+                command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -t nat -S PREROUTING 2>/dev/null | grep -E -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" >/dev/null || return 1
             fi
             return 0
         fi
@@ -17223,9 +17226,12 @@ hysteria_official_hop_firewall_ok() {
     [[ "$start" =~ ^[0-9]+$ && "$end" =~ ^[0-9]+$ && "$first" =~ ^[0-9]+$ ]] || return 1
     (( 10#$start <= 10#$end && 10#$first <= 10#$end )) || return 1
     first_other=$((10#$start + 1))
-    if command -v iptables >/dev/null 2>&1 && _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)"; then
+    # R6C8-03: no -q: grep reads the whole listing, so no
+    # SIGPIPE under pipefail can turn a found rule into
+    # a false negative (healthy Hysteria restarted).
+    if command -v iptables >/dev/null 2>&1 && _iptables_q iptables -t nat -S PREROUTING 2>/dev/null | grep -E -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" >/dev/null; then
         if has_ipv6; then
-            command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -t nat -S PREROUTING 2>/dev/null | grep -Eq -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" || return 1
+            command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -t nat -S PREROUTING 2>/dev/null | grep -E -- "-p udp[[:space:]].*--dport (${start}:${end}|${first_other}:${end}) .*REDIRECT --to-ports ${first}([[:space:]]|$)" >/dev/null || return 1
         fi
         return 0
     fi

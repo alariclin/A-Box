@@ -26345,14 +26345,14 @@ users_commit_cfg() {
 # is not a vision node and stays untagged). Duplicate candidates get a
 # numeric suffix (vision-2, ...) so tags stay unique.
 users_xray_ensure_tags() {
-    local cfg="$1" bak='' tmp='' _commit_rc=''
+    local cfg="$1" bak='' tmp='' tmpd='' _commit_rc=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     jq empty "$cfg" >/dev/null 2>&1 || return 1
     jq -e '[.inbounds[]? | select(.tag == null or .tag == "")] | length > 0' "$cfg" >/dev/null 2>&1 || return 0
     bak=$(mktemp /tmp/A-Box-utag-bak.XXXXXX) || return 1
     cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
-    tmp=$(mktemp /tmp/A-Box-utag.XXXXXX) || { rm -f "$bak"; return 1; }
-    mv -- "$tmp" "$tmp.json" || { rm -f "$tmp" "$bak"; return 1; }; tmp="$tmp.json"
+    tmpd=$(mktemp -d /tmp/A-Box-utag.XXXXXX) || { rm -f "$bak"; return 1; }
+    tmp="$tmpd/config.json"
     if ! jq '
         def pick($base; $used): (first(range(0; 1000) | (if . == 0 then $base else ($base + "-" + ((. + 1) | tostring)) end) | select(. as $c | ($used | index($c) | not))) // null);
         ([.inbounds[]?.tag | select(. != null and . != "")]) as $init
@@ -26366,30 +26366,30 @@ users_xray_ensure_tags() {
                 (pick("ss"; .used) as $c | if $c then {used: (.used + [$c]), out: (.out + [$ib + {tag: $c}])} else {used: .used, out: (.out + [$ib])} end)
             else {used: .used, out: (.out + [$ib])} end)
           | .out)
-    ' "$cfg" > "$tmp"; then rm -f "$tmp" "$bak"; return 1; fi
+    ' "$cfg" > "$tmp"; then rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; fi
     users_commit_cfg xray "$cfg" "$tmp" "$bak"; _commit_rc=$?
     if (( _commit_rc == 0 )); then
         if jq -e '[.inbounds[]? | select((.tag == null or .tag == "") and .protocol == "vless")] | length > 0' "$cfg" >/dev/null 2>&1; then
             msg "${RED}[!] xray: untagged VLESS inbound(s) left without a tag; they stay invisible to per-tag management.${NC}"
         fi
-        rm -f "$tmp" "$bak"; return 0
+        rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 0
     fi
     if (( _commit_rc == 2 )); then
         msg "${RED}[!] config commit failed and restore failed; backup kept at $bak for manual recovery.${NC}"
-        rm -f "$tmp"; return 1
+        rm -f "$tmp"; rm -rf "$tmpd"; return 1
     fi
-    rm -f "$tmp" "$bak"; return 1
+    rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
 }
 
 users_sb_ensure_tags() {
-    local cfg="$1" bak='' tmp='' _commit_rc=''
+    local cfg="$1" bak='' tmp='' tmpd='' _commit_rc=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     jq empty "$cfg" >/dev/null 2>&1 || return 1
     jq -e '[.inbounds[]? | select(.tag == null or .tag == "")] | length > 0' "$cfg" >/dev/null 2>&1 || return 0
     bak=$(mktemp /tmp/A-Box-utag-bak.XXXXXX) || return 1
     cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
-    tmp=$(mktemp /tmp/A-Box-utag.XXXXXX) || { rm -f "$bak"; return 1; }
-    mv -- "$tmp" "$tmp.json" || { rm -f "$tmp" "$bak"; return 1; }; tmp="$tmp.json"
+    tmpd=$(mktemp -d /tmp/A-Box-utag.XXXXXX) || { rm -f "$bak"; return 1; }
+    tmp="$tmpd/config.json"
     if ! jq '
         def pick($base; $used): (first(range(0; 1000) | (if . == 0 then $base else ($base + "-" + ((. + 1) | tostring)) end) | select(. as $c | ($used | index($c) | not))) // null);
         ([.inbounds[]?.tag | select(. != null and . != "")]) as $init
@@ -26403,19 +26403,19 @@ users_sb_ensure_tags() {
                 (pick("ss"; .used) as $c | if $c then {used: (.used + [$c]), out: (.out + [$ib + {tag: $c}])} else {used: .used, out: (.out + [$ib])} end)
             else {used: .used, out: (.out + [$ib])} end)
           | .out)
-    ' "$cfg" > "$tmp"; then rm -f "$tmp" "$bak"; return 1; fi
+    ' "$cfg" > "$tmp"; then rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; fi
     users_commit_cfg sing-box "$cfg" "$tmp" "$bak"; _commit_rc=$?
     if (( _commit_rc == 0 )); then
         if jq -e '[.inbounds[]? | select((.tag == null or .tag == "") and .type == "vless")] | length > 0' "$cfg" >/dev/null 2>&1; then
             msg "${RED}[!] sing-box: untagged VLESS inbound(s) left without a tag; they stay invisible to per-tag management.${NC}"
         fi
-        rm -f "$tmp" "$bak"; return 0
+        rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 0
     fi
     if (( _commit_rc == 2 )); then
         msg "${RED}[!] config commit failed and restore failed; backup kept at $bak for manual recovery.${NC}"
-        rm -f "$tmp"; return 1
+        rm -f "$tmp"; rm -rf "$tmpd"; return 1
     fi
-    rm -f "$tmp" "$bak"; return 1
+    rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
 }
 
 # ---- adoption: build a registry from the live config ----
@@ -26628,7 +26628,7 @@ users_reg_ensure() {
 
 # ---- sync: rewrite the core config's user list from the registry ----
 users_sync() {
-    local core="$1" tag="$2" cfg='' reg='' bak='' tmp='' enabled='' proto='' ssecret='' _commit_rc=''
+    local core="$1" tag="$2" cfg='' reg='' bak='' tmp='' tmpd='' enabled='' proto='' ssecret='' _commit_rc=''
     cfg=$(users_cfg_of "$core") || { msg "users_sync stage SYNC-01: users_cfg_of failed" >&2; return 1; }
     reg=$(users_reg_file "$core" "$tag")
     [[ -f "$cfg" && ! -L "$cfg" && -f "$reg" ]] || { msg "users_sync stage SYNC-02: config or registry missing" >&2; return 1; }
@@ -26638,8 +26638,8 @@ users_sync() {
     enabled=$(jq -c '[.users[] | select(.disabled != true and ((.blocked // "") == ""))]' "$reg" 2>/dev/null) || { msg "users_sync stage SYNC-05: enabled-users filter failed" >&2; return 1; }
     bak=$(mktemp /tmp/A-Box-usync-bak.XXXXXX) || { msg "users_sync stage SYNC-06: backup temp creation failed" >&2; return 1; }
     cp -f -- "$cfg" "$bak" || { msg "users_sync stage SYNC-07: config backup copy failed" >&2; rm -f "$bak"; return 1; }
-    tmp=$(mktemp /tmp/A-Box-usync.XXXXXX) || { msg "users_sync stage SYNC-08: work temp creation failed" >&2; rm -f "$bak"; return 1; }
-    mv -- "$tmp" "$tmp.json" || { msg "users_sync stage SYNC-09: work temp rename failed" >&2; rm -f "$tmp" "$bak"; return 1; }; tmp="$tmp.json"
+    tmpd=$(mktemp -d /tmp/A-Box-usync.XXXXXX) || { msg "users_sync stage SYNC-08: work temp creation failed" >&2; rm -f "$bak"; return 1; }
+    tmp="$tmpd/config.json"
     # SS multi-user promotion: with no stored server_secret and >1
     # enabled users, the CURRENT password becomes the server key and
     # each user's secret becomes their uPSK (their link changes; the
@@ -26657,7 +26657,7 @@ users_sync() {
     if [[ "$proto" == 'shadowsocks' ]] && (( encount > 1 )) && [[ -z "$eff_ss" ]]; then
         msg "users_sync stage SYNC-10: shadowsocks multi-user without server key" >&2; 
         msg "${RED}[!] $(tprintf users_ss_no_server_key "$tag")${NC}"
-        rm -f "$tmp" "$bak"; return 1
+        rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
     fi
     # sing-box socks/mixed inbounds treat an empty users list as "no
     # authentication required" (upstream docs), so syncing zero enabled
@@ -26679,7 +26679,7 @@ users_sync() {
         if (( encount == 0 )); then
             if jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; then
                 sb_will_delete=1
-                sb_snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" 2>/dev/null) || { msg "users_sync stage SYNC-11: inbound snapshot read failed" >&2; rm -f "$tmp" "$bak"; return 1; }
+                sb_snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" 2>/dev/null) || { msg "users_sync stage SYNC-11: inbound snapshot read failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
             fi
         elif [[ "$sb_snap" != 'null' ]]; then
             jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1 || sb_will_rebuild=1
@@ -26688,7 +26688,7 @@ users_sync() {
             # Syncing would silently do nothing; fail loudly instead.
             msg "users_sync stage SYNC-12: inbound missing with no snapshot" >&2; 
             msg "${RED}[!] ${core} ${proto} inbound ${tag} is missing and no registry snapshot exists; cannot rebuild. Re-deploy the node, then re-run sync.${NC}"
-            rm -f "$tmp" "$bak"; return 1
+            rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
         fi
     fi
     # U65: persist the deletion snapshot BEFORE the commit, not after it.
@@ -26696,9 +26696,9 @@ users_sync() {
     # without a snapshot while the inbound was already gone, and a later
     # re-enable then silently succeeded without rebuilding.
     if (( sb_will_delete == 1 )); then
-        [[ -n "$sb_snap_obj" ]] || { msg "users_sync stage SYNC-13: deletion snapshot empty" >&2; rm -f "$tmp" "$bak"; return 1; }
+        [[ -n "$sb_snap_obj" ]] || { msg "users_sync stage SYNC-13: deletion snapshot empty" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
         local regj_pre=''
-        regj_pre=$(jq -c --slurpfile ib <(printf '%s' "$sb_snap_obj") '.inbound_snapshot = $ib[0]' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj_pre" || { msg "users_sync stage SYNC-14: deletion snapshot persist failed" >&2; rm -f "$tmp" "$bak"; return 1; }
+        regj_pre=$(jq -c --slurpfile ib <(printf '%s' "$sb_snap_obj") '.inbound_snapshot = $ib[0]' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj_pre" || { msg "users_sync stage SYNC-14: deletion snapshot persist failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
     fi
     case "$core" in
         xray|xray-latest)
@@ -26727,7 +26727,7 @@ users_sync() {
                 else . end)
             ' "$cfg" > "$tmp" 2>/dev/null; then
                 msg "users_sync stage SYNC-15: xray config rewrite failed" >&2; 
-                rm -f "$tmp" "$bak"; return 1
+                rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
             fi
             ;;
         sing-box)
@@ -26754,23 +26754,23 @@ users_sync() {
                 else . end)
             ' "$cfg" > "$tmp" 2>/dev/null; then
                 msg "users_sync stage SYNC-16: sing-box config rewrite failed" >&2; 
-                rm -f "$tmp" "$bak"; return 1
+                rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
             fi
             ;;
         hy2)
-            users_hy2_write_users "$cfg" "$enabled" "$tmp" || { msg "users_sync stage SYNC-17: hy2 users write failed" >&2; rm -f "$tmp" "$bak"; return 1; }
+            users_hy2_write_users "$cfg" "$enabled" "$tmp" || { msg "users_sync stage SYNC-17: hy2 users write failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
             ;;
-        *) msg "users_sync stage SYNC-18: unknown core" >&2; rm -f "$tmp" "$bak"; return 1 ;;
+        *) msg "users_sync stage SYNC-18: unknown core" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1 ;;
     esac
     # SS promotion persistence BEFORE the commit (see U65 precedent above):
     # the config below already uses eff_ss as the server key.
     if (( promote == 1 )); then
         local regj=''
-        regj=$(jq -c --rawfile ss <(printf '%s' "$eff_ss") '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || { msg "users_sync stage SYNC-19: server-secret promotion persist failed" >&2; rm -f "$tmp" "$bak"; return 1; }
+        regj=$(jq -c --rawfile ss <(printf '%s' "$eff_ss") '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || { msg "users_sync stage SYNC-19: server-secret promotion persist failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
     fi
     users_commit_cfg "$core" "$cfg" "$tmp" "$bak"; _commit_rc=$?
     if (( _commit_rc == 0 )); then
-        rm -f "$tmp" "$bak"
+        rm -f "$tmp" "$bak"; rm -rf "$tmpd"
         if (( sb_will_delete == 1 )) && [[ -n "$sb_snap_obj" ]]; then
             # Snapshot already persisted pre-commit (U65); only the notice remains here.
             if [[ "$proto" == 'shadowsocks' ]]; then
@@ -26788,10 +26788,10 @@ users_sync() {
     fi
     if (( _commit_rc == 2 )); then
         msg "users_sync stage SYNC-20: config commit failed and restore failed; backup kept at $bak for manual recovery" >&2
-        rm -f "$tmp"; return 1
+        rm -f "$tmp"; rm -rf "$tmpd"; return 1
     fi
     msg "users_sync stage SYNC-20: config commit failed" >&2; 
-    rm -f "$tmp" "$bak"; return 1
+    rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
 }
 
 # Write a new hysteria config with the auth block replaced by $enabled
@@ -27484,7 +27484,7 @@ users_stats_snapshot() {
 # then rmu it from the live process. No restart. rc 1 -> caller falls
 # back to a full users_sync.
 users_hot_remove() {
-    local core="$1" tag="$2" email="$3" cfg='' bin='' reg='' proto='' tmp=''
+    local core="$1" tag="$2" email="$3" cfg='' bin='' reg='' proto='' tmp='' tmpd=''
     [[ -n "$email" ]] || return 1
     cfg=$(users_cfg_of "$core") || return 1
     bin=$(users_bin_of "$core") || return 1
@@ -27505,8 +27505,8 @@ users_hot_remove() {
             users_reg_write "$core" "$tag" "$_snap_reg" || return 1
         fi
     fi
-    tmp=$(mktemp /tmp/A-Box-uhot.XXXXXX) || return 1
-    mv -- "$tmp" "$tmp.json" || { rm -f -- "$tmp"; return 1; }; tmp="$tmp.json"
+    tmpd=$(mktemp -d /tmp/A-Box-uhot.XXXXXX) || return 1
+    tmp="$tmpd/config.json"
     local ok=0
     case "$proto" in
         vless|trojan)
@@ -27523,10 +27523,10 @@ users_hot_remove() {
             ' "$cfg" > "$tmp" 2>/dev/null && ok=1 ;;
         *) : ;;
     esac
-    (( ok == 1 )) || { rm -f -- "$tmp"; return 1; }
-    jq empty "$tmp" >/dev/null 2>&1 || { rm -f -- "$tmp"; return 1; }
-    install_file_atomically "$tmp" "$cfg" 600 || { rm -f -- "$tmp"; return 1; }
-    rm -f -- "$tmp"
+    (( ok == 1 )) || { rm -f -- "$tmp"; rm -rf "$tmpd"; return 1; }
+    jq empty "$tmp" >/dev/null 2>&1 || { rm -f -- "$tmp"; rm -rf "$tmpd"; return 1; }
+    install_file_atomically "$tmp" "$cfg" 600 || { rm -f -- "$tmp"; rm -rf "$tmpd"; return 1; }
+    rm -f -- "$tmp"; rm -rf "$tmpd"
     case "$core" in
         xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || true ;;
         xray-latest) prepare_abox_runtime_read_file "$cfg" xray >/dev/null 2>&1 || true ;;

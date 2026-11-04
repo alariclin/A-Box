@@ -7557,6 +7557,12 @@ tr_msg() {
         ru:hy2b_hop_missing) echo 'Официальные правила брандмауэра прыжков портов HY2 всё ещё отсутствуют; фиксация узла отклонена.' ;;
         fa:hy2b_hop_missing) echo 'قوانین دیوار آتش رسمی پرش پورت HY2 هنوز وجود ندارد؛ ثبت گره رد شد.' ;;
         ja:hy2b_hop_missing) echo '公式 HY2 ポートホッピングのファイアウォールルールがまだないため、ノードのコミットを拒否します。' ;;
+        zh:hy2b_hop_lock) echo '官方 HY2 端口跳跃需放行 xtables 锁给服务组，授权失败。' ;;
+        zh-tw:hy2b_hop_lock) echo '官方 HY2 埠跳躍需放行 xtables 鎖給服務組，授權失敗。' ;;
+        en:hy2b_hop_lock) echo 'Official HY2 port hopping needs the xtables lock opened to the service group, and that grant failed.' ;;
+        ru:hy2b_hop_lock) echo 'Официальным прыжкам портов HY2 требуется доступ к блокировке xtables для сервисной группы, и это разрешение не удалось выдать.' ;;
+        fa:hy2b_hop_lock) echo 'پرش پورت رسمی HY2 نیاز دارد قفل xtables برای گروه سرویس باز شود، و این اعطا ناموفق بود.' ;;
+        ja:hy2b_hop_lock) echo '公式 HY2 ポートホッピングにはサービスグループへの xtables ロック開放が必要ですが、その付与に失敗しました。' ;;
         zh:hy2b_hop_restart) echo '官方 HY2 端口跳跃规则缺失且 Hysteria 重启失败。' ;;
         zh-tw:hy2b_hop_restart) echo '官方 HY2 埠跳躍規則缺失且 Hysteria 重啟失敗。' ;;
         en:hy2b_hop_restart) echo 'The official HY2 port hopping rules are missing and the Hysteria restart failed.' ;;
@@ -18413,6 +18419,35 @@ EOF_HY2
     [[ -s "$out" && ! -L "$out" ]]
 }
 
+# R3C8-03: official HY2 port hopping runs as abox-hysteria with
+# CAP_NET_ADMIN only. When nft is missing, Hysteria falls back to
+# iptables-legacy, which must open /run/xtables.lock; a pre-existing
+# root:root 0600 lock is unopenable by the service user (CAP_NET_ADMIN
+# does not bypass file permissions), so the hop rules are never built.
+# Grant the service group narrow access now, and persist it across
+# reboots via tmpfiles.d (systemd only; /run is tmpfs). No-op when
+# nft exists (the fallback is never used). No world access is added.
+hy2_hop_xtables_lock_grant() {
+    command -v nft >/dev/null 2>&1 && return 0
+    local lock
+    for lock in /run/xtables.lock /var/run/xtables.lock; do
+        [[ -e "$lock" || -L "$lock" ]] || continue
+        chgrp abox-hysteria "$lock" 2>/dev/null || return 1
+        chmod g+rw "$lock" 2>/dev/null || return 1
+    done
+    if is_systemd; then
+        mkdir -p /etc/tmpfiles.d || return 1
+        write_file_atomically_from_stdin /etc/tmpfiles.d/abox-xtables-lock.conf 644 <<'EOF_XTABLES_TMPFILES' || return 1
+# A-Box: official HY2 port hopping (nft missing, iptables-legacy
+# fallback) needs the abox-hysteria service user to open the xtables
+# lock. Narrow: group access only, no world access. /run is tmpfs, so
+# this entry recreates the lock with these permissions at every boot.
+f /run/xtables.lock 0660 root abox-hysteria - -
+EOF_XTABLES_TMPFILES
+    fi
+    return 0
+}
+
 deploy_official_hy2() {
     local IS_SILENT=${1:-NORMAL} TLS_CONFIG HY2_LISTEN cert_cn HY2_CAPS='CAP_NET_BIND_SERVICE' hy2_tmp hy2_bin domain_yaml token_yaml SKIP_REPLACE_AND_PRUNE=${2:-0}
     if [[ "$IS_SILENT" != 'SILENT' ]]; then
@@ -18551,6 +18586,9 @@ EOF_SVC
         chmod +x /etc/init.d/hysteria || die "$(tr_msg hy2b_chmod)"
     fi
     prepare_abox_runtime_permissions hysteria || die "$(tr_msg hy2b_runtime)"
+    if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
+        hy2_hop_xtables_lock_grant || die "$(tprintf hy2b_hop_lock)"
+    fi
     service_manager start hysteria
     if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
         if ! hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT"; then

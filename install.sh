@@ -41238,12 +41238,21 @@ fallback_runtime_lock_held() { # 0 = a live process holds the fallback lock
 }
 
 acquire_fallback_runtime_lock() {
-    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start='' _moved_actual='' _dir_age=0 _dir_mtime="" _remv_pid='' _remv_start='' _pre_has_pid=0 _pre_has_start=0 _pre_pid='' _pre_start='' _post_has_pid=0 _post_has_start=0 _post_pid='' _post_start='' _self_start=''
+    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start='' _moved_actual='' _dir_age=0 _dir_mtime="" _remv_pid='' _remv_start='' _pre_has_pid=0 _pre_has_start=0 _pre_pid='' _pre_start='' _post_has_pid=0 _post_has_start=0 _post_pid='' _post_start='' _self_start='' _br_pid='' _br_start=''
     if mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null; then
         lock_dir_created=1
         chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
     else
-        if [[ -d "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" && -s "$LOCK_FALLBACK_DIR/pid" && -s "$LOCK_FALLBACK_DIR/starttime" ]]; then
+        # F1 (R1C17-F1): branch on READ values, not file size. A
+        # blank-line file passes -s (size 1) but reads empty, and the
+        # complete branch then restores + returns 1 on every call
+        # (U132 empty check), wedging forever. Empty metadata must
+        # take the incomplete (age-gate) path instead, with its S158
+        # pre/post change detection intact. (0-byte files already
+        # took that path via -s; this closes the blank-line variant.)
+        [[ -f "$LOCK_FALLBACK_DIR/pid" ]] && IFS= read -r _br_pid < "$LOCK_FALLBACK_DIR/pid" 2>/dev/null || _br_pid=''
+        [[ -f "$LOCK_FALLBACK_DIR/starttime" ]] && IFS= read -r _br_start < "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || _br_start=''
+        if [[ -d "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" && -n "$_br_pid" && -n "$_br_start" ]]; then
             IFS= read -r existing_pid < "$LOCK_FALLBACK_DIR/pid" || existing_pid=''
             IFS= read -r existing_start < "$LOCK_FALLBACK_DIR/starttime" || existing_start=''
             if [[ "$existing_pid" =~ ^[0-9]+$ && -d "/proc/$existing_pid" ]]; then

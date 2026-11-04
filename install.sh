@@ -36736,7 +36736,7 @@ wallos_https_80_rollback() {
 }
 
 wallos_https_setup() { # $1 = public port, $2 = internal container port
-    local pubport="$1" internal="$2" pub_ip='' tmp_json='' _t=0 _cert='' _code='' _http80_new=0 _http80_pre=2 _http80_post=2
+    local pubport="$1" internal="$2" pub_ip='' tmp_json='' tmpd='' _t=0 _cert='' _code='' _http80_new=0 _http80_pre=2 _http80_post=2
     pub_ip=$(get_public_ip 2>/dev/null || true)
     if [[ ! "$pub_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         msg "${RED}$(tr_msg wl_hs_no_ipv4)${NC}"
@@ -36744,7 +36744,8 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     fi
     install_wallos_caddy || return 1
     mkdir -p /etc/ddr/wallos-caddy/data /etc/ddr/wallos-caddy/conf || return 1
-    tmp_json=$(mktemp /tmp/wallos-caddy.XXXXXX.json) || return 1
+    tmpd=$(mktemp -d /tmp/wallos-caddy.XXXXXX) || return 1
+    tmp_json="$tmpd/wallos-caddy.json"
     # Explicit automation policy is REQUIRED: with a plain Caddyfile,
     # IP subjects silently fall back to Caddy's internal CA (verified
     # locally 2026-10-20). The JSON policy pins subject + shortlived.
@@ -36780,10 +36781,10 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
             }}}
           }
         }' > "$tmp_json"; then
-        rm -f "$tmp_json"; msg "${RED}$(tr_msg wl_hs_cfg_fail)${NC}"; return 1
+        rm -f "$tmp_json"; rm -rf "$tmpd"; msg "${RED}$(tr_msg wl_hs_cfg_fail)${NC}"; return 1
     fi
-    install_file_atomically "$tmp_json" /etc/ddr/wallos-caddy.json 600 || { rm -f "$tmp_json"; return 1; }
-    rm -f "$tmp_json"
+    install_file_atomically "$tmp_json" /etc/ddr/wallos-caddy.json 600 || { rm -f "$tmp_json"; rm -rf "$tmpd"; return 1; }
+    rm -f "$tmp_json"; rm -rf "$tmpd"
     # ACME HTTP-01 for the IP certificate needs inbound 80/tcp on
     # the host (certmagic listens there during issuance). Open it
     # through the standard owned-rule path before starting Caddy;

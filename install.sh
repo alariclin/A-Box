@@ -6537,6 +6537,12 @@ tr_msg() {
         ru:fw2_ufw_verify) echo 'Проверка принадлежности правила UFW после добавления не пройдена: %s' ;;
         fa:fw2_ufw_verify) echo 'بررسی مالکیت قانون UFW پس از افزودن ناموفق بود: %s' ;;
         ja:fw2_ufw_verify) echo 'UFW ルール追加後の所有確認に失敗しました： %s' ;;
+        zh:fw2_ufw_unknown) echo 'UFW 状态未知（未启用或查询失败），拒绝在盲态下放行: %s' ;;
+        zh-tw:fw2_ufw_unknown) echo 'UFW 狀態未知（未啟用或查詢失敗），拒絕在盲態下放行: %s' ;;
+        en:fw2_ufw_unknown) echo 'UFW state is unknown (inactive or query failed); refusing to open blindly: %s' ;;
+        ru:fw2_ufw_unknown) echo 'Состояние UFW неизвестно (неактивен или запрос не удался); отказ от открытия вслепую: %s' ;;
+        fa:fw2_ufw_unknown) echo 'وضعیت UFW نامشخص است (غیرفعال یا پرسمان ناموفق)؛ از باز کردن کورکورانه خودداری شد: %s' ;;
+        ja:fw2_ufw_unknown) echo 'UFW の状態が不明です（無効または照会失敗）。盲目的な開放を拒否します： %s' ;;
         zh:fw2_v4_allow) echo 'IPv4 防火墙放行失败: %s' ;;
         zh-tw:fw2_v4_allow) echo 'IPv4 防火牆放行失敗: %s' ;;
         en:fw2_v4_allow) echo 'The IPv4 firewall open failed: %s' ;;
@@ -12761,6 +12767,12 @@ ufw_global_rule_numbers() {
     target="${spec}/${proto}"
     expected_comment="# A-Box-${spec}-${proto}"
     command -v ufw >/dev/null 2>&1 || return 2
+    # R3C6-06: an inactive UFW lists no rules, so an empty parse cannot
+    # prove absence; return 2 (unknown) so callers do not mutate on a
+    # blind "absent". Mirrors the R11C6-01 guard in ufw_delete_owned_rules.
+    if LC_ALL=C ufw status 2>/dev/null | head -n 1 | grep -q 'inactive'; then
+        return 2
+    fi
     output=$(LC_ALL=C ufw status numbered 2>/dev/null) || return 2
     while IFS= read -r line; do
         [[ "$line" =~ ^[[:space:]]*\[[[:space:]]*([0-9]+)\][[:space:]]+(.*)$ ]] || continue
@@ -13065,21 +13077,30 @@ apply_native_firewall_rules_from_state() {
     [[ ! -e "$ABOX_FW_STATE" && ! -L "$ABOX_FW_STATE" ]] && return 0
     validate_native_firewall_state_file "$ABOX_FW_STATE" || return 1
     [[ "$(firewall_backend 2>/dev/null)" != 'nftables-unsupported' ]] || return 1
-    local backend spec proto scope zone extra fw_spec failed=0
+    local backend spec proto scope zone extra fw_spec failed=0 _orc=0 _rrc=0
     while IFS='|' read -r backend spec proto scope zone extra || [[ -n "$backend$spec$proto$scope$zone$extra" ]]; do
         [[ -n "$backend" ]] || continue
         case "$backend" in
             ufw)
                 if ! command -v ufw >/dev/null 2>&1; then failed=1; continue; fi
-                if ufw_owned_rule_exists "$spec" "$proto"; then
+                ufw_owned_rule_exists "$spec" "$proto"; _orc=$?
+                if (( _orc == 0 )); then
                     :
-                elif ufw_rule_exists "$spec" "$proto"; then
-                    # A foreign equivalent rule must never be adopted as A-Box-owned.
-                    failed=1
-                    continue
+                elif (( _orc == 2 )); then
+                    # R3C6-06: unknown UFW state; never mutate on a blind "absent".
+                    failed=1; continue
                 else
-                    ufw allow proto "$proto" from any to any port "$spec" comment "A-Box-${spec}-${proto}" >/dev/null 2>&1 || { failed=1; continue; }
-                    ufw_owned_rule_exists "$spec" "$proto" || { failed=1; continue; }
+                    ufw_rule_exists "$spec" "$proto"; _rrc=$?
+                    if (( _rrc == 0 )); then
+                        # A foreign equivalent rule must never be adopted as A-Box-owned.
+                        failed=1
+                        continue
+                    elif (( _rrc == 2 )); then
+                        failed=1; continue
+                    else
+                        ufw allow proto "$proto" from any to any port "$spec" comment "A-Box-${spec}-${proto}" >/dev/null 2>&1 || { failed=1; continue; }
+                        ufw_owned_rule_exists "$spec" "$proto" || { failed=1; continue; }
+                    fi
                 fi
                 ;;
             firewalld)
@@ -13126,7 +13147,7 @@ iptables_rule_check() {
 # F12: removed zero-call restore_iptables_saved_snapshot (duplicate dead code)
 
 allowPort() {
-    local raw_port="$1" type="${2:-tcp}" backend spec fw_spec runtime=0 permanent=0 added_runtime=0
+    local raw_port="$1" type="${2:-tcp}" backend spec fw_spec runtime=0 permanent=0 added_runtime=0 _orc=0 _rrc=0
     spec=$(normalize_port_spec "$raw_port") || die "$(tprintf fw2_bad_port "$raw_port")"
     [[ "$type" == tcp || "$type" == udp ]] || die "$(tprintf fw2_bad_proto "$type")"
     backend=$(firewall_backend)
@@ -13136,19 +13157,27 @@ allowPort() {
     esac
     case "$backend" in
         ufw)
-            if ufw_owned_rule_exists "$spec" "$type"; then
+            ufw_owned_rule_exists "$spec" "$type"; _orc=$?
+            if (( _orc == 0 )); then
                 record_native_firewall_rule ufw "$spec" "$type" rule || die "$(tr_msg fw2_ufw_record)"
-            elif ufw_rule_exists "$spec" "$type"; then
-                msg "${YELLOW}[!] ${spec}/${type} 已由非 A-Box UFW 全局规则放行；保留该规则且不声明所有权。${NC}"
+            elif (( _orc == 2 )); then
+                die "$(tprintf fw2_ufw_unknown "${spec}/${type}")"
             else
-                ufw allow proto "$type" from any to any port "$spec" comment "A-Box-${spec}-${type}" >/dev/null 2>&1 || die "$(tprintf fw2_ufw_allow "${spec}/${type}")"
-                if ! ufw_owned_rule_exists "$spec" "$type"; then
-                    ufw_delete_owned_rules "$spec" "$type" >/dev/null 2>&1 || true
-                    die "$(tprintf fw2_ufw_verify "${spec}/${type}")"
-                fi
-                if ! record_native_firewall_rule ufw "$spec" "$type" rule; then
-                    ufw_delete_owned_rules "$spec" "$type" >/dev/null 2>&1 || true
-                    die "$(tprintf fw2_ufw_record_rb "${spec}/${type}")"
+                ufw_rule_exists "$spec" "$type"; _rrc=$?
+                if (( _rrc == 0 )); then
+                    msg "${YELLOW}[!] ${spec}/${type} 已由非 A-Box UFW 全局规则放行；保留该规则且不声明所有权。${NC}"
+                elif (( _rrc == 2 )); then
+                    die "$(tprintf fw2_ufw_unknown "${spec}/${type}")"
+                else
+                    ufw allow proto "$type" from any to any port "$spec" comment "A-Box-${spec}-${type}" >/dev/null 2>&1 || die "$(tprintf fw2_ufw_allow "${spec}/${type}")"
+                    if ! ufw_owned_rule_exists "$spec" "$type"; then
+                        ufw_delete_owned_rules "$spec" "$type" >/dev/null 2>&1 || true
+                        die "$(tprintf fw2_ufw_verify "${spec}/${type}")"
+                    fi
+                    if ! record_native_firewall_rule ufw "$spec" "$type" rule; then
+                        ufw_delete_owned_rules "$spec" "$type" >/dev/null 2>&1 || true
+                        die "$(tprintf fw2_ufw_record_rb "${spec}/${type}")"
+                    fi
                 fi
             fi
             return 0

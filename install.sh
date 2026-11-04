@@ -23224,6 +23224,8 @@ ENV=/etc/ddr/.env
 DESIRED=/etc/ddr/.desired_state
 BLOCK_STATE=/etc/ddr/.traffic-block-state
 PAIR_STATE=/etc/ddr/.traffic-pair-state
+# R6C10-01: rollover-in-progress marker (see recovery below).
+ROLLOVER_MARKER=/etc/ddr/.traffic-rollover-in-progress
 INIT_SYS_EXPECTED='unknown'
 exec 9>>/run/A-Box-traffic-monitor.lock || exit 1
 flock -n 9; _flock_rc=$?
@@ -23712,6 +23714,9 @@ if [[ "$desired" == TRAFFIC_BLOCKED && -z "$blocked_period" ]]; then
     traffic_error "migrated legacy traffic-blocked state into billing period ${current_period}"
 fi
 if [[ "$desired" == TRAFFIC_BLOCKED && "$blocked_period" != "$current_period" ]]; then
+    # R6C10-01: mark the rollover before the MAINTENANCE commit so
+    # a kill in the window below is recoverable, not permanent.
+    printf '%s\n' "$blocked_period" > "$ROLLOVER_MARKER" && chmod 600 -- "$ROLLOVER_MARKER" || { traffic_error 'monthly quota rollover marker write failed; leaving prior desired state unchanged'; exit 1; }
     commit_traffic_pair MAINTENANCE "$blocked_period" || { traffic_error 'monthly quota rollover state commit failed; leaving prior desired state unchanged'; exit 1; }
     if ! for_expected_services start_owned; then
         for_expected_services stop_owned >/dev/null 2>&1 || stop_all_owned_services >/dev/null 2>&1 || true
@@ -23726,7 +23731,35 @@ if [[ "$desired" == TRAFFIC_BLOCKED && "$blocked_period" != "$current_period" ]]
         exit 1
     fi
     desired=RUNNING
+    rm -f -- "$ROLLOVER_MARKER"
     traffic_error "monthly quota period rolled over from ${blocked_period} to ${current_period}; managed services resumed"
+fi
+# R6C10-01: recover an interrupted rollover. A kill after the
+# MAINTENANCE commit left a persistent MAINTENANCE state that this
+# monitor would otherwise exit on forever; the marker is what
+# distinguishes rollover-in-progress from manual maintenance.
+if [[ -f "$ROLLOVER_MARKER" && "$desired" == MAINTENANCE ]]; then
+    if ! for_expected_services start_owned; then
+        for_expected_services stop_owned >/dev/null 2>&1 || stop_all_owned_services >/dev/null 2>&1 || true
+        commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || traffic_error 'CRITICAL: failed to restore TRAFFIC_BLOCKED state after interrupted rollover recovery failure; state may be inconsistent'
+        rm -f -- "$ROLLOVER_MARKER"
+        traffic_error 'interrupted monthly quota rollover recovery failed; block remains active'
+        exit 1
+    fi
+    if ! commit_traffic_pair RUNNING ""; then
+        for_expected_services stop_owned >/dev/null 2>&1 || stop_all_owned_services >/dev/null 2>&1 || true
+        commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || traffic_error 'CRITICAL: failed to restore TRAFFIC_BLOCKED state after interrupted rollover recovery failure; state may be inconsistent'
+        rm -f -- "$ROLLOVER_MARKER"
+        traffic_error 'interrupted monthly quota rollover recovery commit failed; block restored'
+        exit 1
+    fi
+    rm -f -- "$ROLLOVER_MARKER"
+    desired=RUNNING
+    traffic_error "recovered interrupted monthly quota rollover from ${blocked_period} to ${current_period}; managed services resumed"
+elif [[ -f "$ROLLOVER_MARKER" ]]; then
+    # Stale marker: the state was changed manually out from under the
+    # rollover; drop it so it never blocks normal operation.
+    rm -f -- "$ROLLOVER_MARKER"
 fi
 [[ "$desired" == MANUAL_STOPPED || "$desired" == MAINTENANCE ]] && exit 0
 if [[ -z "${TRAFFIC_LIMIT_GB:-}" ]]; then

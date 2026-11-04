@@ -686,6 +686,35 @@ assert_default_abox_parent_chain_trusted() {
     done
 }
 
+abox_dir_tighten_secrets() {
+    # F01 (R2C1-01): /etc/ddr is 711 (traverse-only), so file
+    # contents are gated only by their own modes. Tightening the
+    # marker alone left a loose secret file readable by every local
+    # user who knows its predictable name. Tighten the known
+    # top-level secret files to root-owned 600 before the dir is
+    # opened to traversal; a symlinked secret is refused, never
+    # followed. Subdirectories are not recursed into: service
+    # config dirs keep their own 750/group gating, and the link
+    # dir (standalone-links.d, 700) already gates its files.
+    local dir="$1" f
+    for f in "$dir/.env" "$dir/.env".* "$dir"/*.tar.gz; do
+        [[ -e "$f" || -L "$f" ]] || continue
+        [[ ! -L "$f" ]] || die "$(tprintf do_secret_symlink "$f")"
+        [[ -f "$f" ]] || continue
+        chown root:root "$f" || die "$(tprintf do_secret_chown "$f")"
+        chmod 600 "$f" || die "$(tprintf do_secret_chmod "$f")"
+    done
+    if [[ -d "$dir/backups" && ! -L "$dir/backups" ]]; then
+        for f in "$dir/backups"/*.tar.gz; do
+            [[ -e "$f" || -L "$f" ]] || continue
+            [[ ! -L "$f" ]] || die "$(tprintf do_secret_symlink "$f")"
+            [[ -f "$f" ]] || continue
+            chown root:root "$f" || die "$(tprintf do_secret_chown "$f")"
+            chmod 600 "$f" || die "$(tprintf do_secret_chmod "$f")"
+        done
+    fi
+}
+
 ensure_abox_dir_owned() {
     # SYD-B E9: ABOX_DIR is fixed at 0711 (traverse-only for others).
     # The old 0700 here re-tightened the dir on every menu entry and
@@ -705,6 +734,7 @@ ensure_abox_dir_owned() {
             path_owned_by_root "$owner" || die "$(tprintf do_mark_not_root "$owner")"
             mode=$(stat -c %a "$owner" 2>/dev/null) || die "$(tprintf do_mark_mode_read "$owner")"
             [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) || die "$(tprintf do_mark_mode_unsafe "$owner")"
+            abox_dir_tighten_secrets "$dir"
             chmod 711 "$dir" || die "$(tprintf do_tighten_dir "$dir")"
             chmod 600 "$owner" || die "$(tprintf do_tighten_mark "$owner")"
             return 0
@@ -714,6 +744,7 @@ ensure_abox_dir_owned() {
         mkdir -p "$dir" || die "$(tprintf do_mkdir "$dir")"
     fi
     chown root:root "$dir" || die "$(tprintf do_chown "$dir")"
+    abox_dir_tighten_secrets "$dir"
     chmod 711 "$dir" || die "$(tprintf do_chmod "$dir")"
     tmp=$(umask 077; mktemp "$dir/.A-Box-owner.XXXXXX") || die "$(tr_msg do_mark_tmp)"
     printf '%s\n' 'A-Box managed directory v1' > "$tmp" || { rm -f "$tmp"; die "$(tr_msg do_mark_write)"; }
@@ -5827,6 +5858,24 @@ tr_msg() {
         ru:do_tighten_mark) echo 'Невозможно ужесточить права маркера каталога A-Box: %s' ;;
         fa:do_tighten_mark) echo 'سفت کردن مجوزهای نشان پوشه A-Box ممکن نیست: %s' ;;
         ja:do_tighten_mark) echo 'A-Box ディレクトリマーカーの権限を厳格化できません： %s' ;;
+        zh:do_secret_symlink) echo '拒绝使用符号链接形式的 A-Box 密钥文件： %s' ;;
+        zh-tw:do_secret_symlink) echo '拒絕使用符號連結形式的 A-Box 密鑰檔案： %s' ;;
+        en:do_secret_symlink) echo 'Refusing to use a symlinked A-Box secret file: %s' ;;
+        ru:do_secret_symlink) echo 'Отказ от использования секретного файла A-Box в виде символьной ссылки: %s' ;;
+        fa:do_secret_symlink) echo 'استفاده از پرونده محرمانه A-Box به‌صورت پیوند نمادین رد شد: %s' ;;
+        ja:do_secret_symlink) echo 'シンボリックリンク形式の A-Box 秘密ファイルの使用を拒否します： %s' ;;
+        zh:do_secret_chown) echo '无法收紧 A-Box 密钥文件属主： %s' ;;
+        zh-tw:do_secret_chown) echo '無法收緊 A-Box 密鑰檔案擁有者： %s' ;;
+        en:do_secret_chown) echo 'Cannot tighten the A-Box secret file owner: %s' ;;
+        ru:do_secret_chown) echo 'Невозможно ужесточить владельца секретного файла A-Box: %s' ;;
+        fa:do_secret_chown) echo 'سفت کردن مالک پرونده محرمانه A-Box ممکن نیست: %s' ;;
+        ja:do_secret_chown) echo 'A-Box 秘密ファイルの所有者を厳格化できません： %s' ;;
+        zh:do_secret_chmod) echo '无法收紧 A-Box 密钥文件权限： %s' ;;
+        zh-tw:do_secret_chmod) echo '無法收緊 A-Box 密鑰檔案權限： %s' ;;
+        en:do_secret_chmod) echo 'Cannot tighten the A-Box secret file permissions: %s' ;;
+        ru:do_secret_chmod) echo 'Невозможно ужесточить права секретного файла A-Box: %s' ;;
+        fa:do_secret_chmod) echo 'سفت کردن مجوزهای پرونده محرمانه A-Box ممکن نیست: %s' ;;
+        ja:do_secret_chmod) echo 'A-Box 秘密ファイルの権限を厳格化できません： %s' ;;
         zh:do_writable) echo '拒绝使用可被组/其他用户写入的 A-Box 目录： %s' ;;
         zh-tw:do_writable) echo '拒絕使用可被組/其他使用者寫入的 A-Box 目錄： %s' ;;
         en:do_writable) echo 'Refusing to use an A-Box directory writable by group/others: %s' ;;

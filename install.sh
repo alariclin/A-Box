@@ -8567,6 +8567,8 @@ valid_url_https() {
     [[ "$url" =~ [[:space:]] ]] && return 1
     rest="${url#https://}"
     host="${rest%%/*}"
+    host="${host%%\?*}"
+    host="${host%%#*}"
     [[ -n "$host" ]] || return 1
     if [[ "$host" == *:* ]]; then
         # This parser intentionally accepts DNS host[:port] only. Reject
@@ -8581,7 +8583,7 @@ valid_url_https() {
 }
 
 normalize_https_url_input() {
-    local input="${1:-}" rest
+    local input="${1:-}" rest auth tail
     input="$(printf '%s' "$input" | tr -d '\r' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
     [[ -n "$input" ]] || return 1
     if [[ "$input" != http://* && "$input" != https://* ]]; then
@@ -8589,7 +8591,18 @@ normalize_https_url_input() {
     fi
     if [[ "$input" == https://* ]]; then
         rest="${input#https://}"
-        [[ "$rest" != */* ]] && input="${input}/"
+        auth="${rest%%/*}"
+        auth="${auth%%\?*}"
+        auth="${auth%%#*}"
+        if [[ "$rest" == "$auth" ]]; then
+            input="${input}/"
+        elif [[ -n "$auth" ]]; then
+            tail="${rest:${#auth}}"
+            case "$tail" in
+                /*) ;;
+                *) input="https://${auth}/${tail}" ;;
+            esac
+        fi
     fi
     printf '%s\n' "$input"
 }

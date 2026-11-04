@@ -1665,6 +1665,18 @@ tr_msg() {
         fa:wl_pr_done) echo 'N-11: %s تصویر قدیمی Wallos پاک شد؛ نگه داشته شد: %s %s' ;;
         zh-tw:wl_pr_done) echo 'N-11：已清理 %s 個舊 Wallos 映像；保留：%s %s' ;;
         ja:wl_pr_done) echo 'N-11: 古い Wallos イメージ %s 件を削除しました。保持: %s %s' ;;
+        zh:wl_pr_confirm_unrecorded) echo 'Wallos 镜像 %s 未由 A-Box 记录，确认删除？[y/N] ' ;;
+        en:wl_pr_confirm_unrecorded) echo 'Wallos image %s was not recorded by A-Box. Delete it? [y/N] ' ;;
+        ru:wl_pr_confirm_unrecorded) echo 'Образ Wallos %s не записан A-Box. Удалить его? [y/N] ' ;;
+        fa:wl_pr_confirm_unrecorded) echo 'تصویر Wallos %s توسط A-Box ثبت نشده است. حذف شود؟ [y/N] ' ;;
+        zh-tw:wl_pr_confirm_unrecorded) echo 'Wallos 映像 %s 未由 A-Box 記錄，確認刪除？[y/N] ' ;;
+        ja:wl_pr_confirm_unrecorded) echo 'Wallos イメージ %s は A-Box に記録されていません。削除しますか？[y/N] ' ;;
+        zh:wl_pr_skip_unrecorded) echo '[!] 跳过未记录的 Wallos 镜像 %s（非交互运行，未经确认不删除）。' ;;
+        en:wl_pr_skip_unrecorded) echo '[!] Skipping unrecorded Wallos image %s (non-interactive run; not deleted without confirmation).' ;;
+        ru:wl_pr_skip_unrecorded) echo '[!] Пропуск незаписанного образа Wallos %s (неинтерактивный запуск; без подтверждения не удаляется).' ;;
+        fa:wl_pr_skip_unrecorded) echo '[!] رد شدن از تصویر ثبت‌نشده Wallos %s (اجرای غیرتعاملی؛ بدون تأیید حذف نمی‌شود).' ;;
+        zh-tw:wl_pr_skip_unrecorded) echo '[!] 略過未記錄的 Wallos 映像 %s（非互動執行，未經確認不刪除）。' ;;
+        ja:wl_pr_skip_unrecorded) echo '[!] 未記録の Wallos イメージ %s をスキップします（非対話実行のため、確認なしでは削除しません）。' ;;
         zh:wl_pi_sig_sums) echo '[!] N-2 SHA256SUMS 签名被拒绝且签名强制已开启；拒绝继续。' ;;
         en:wl_pi_sig_sums) echo '[!] N-2 SHA256SUMS signature rejected and signing enforcement is ON; refusing.' ;;
         ru:wl_pi_sig_sums) echo '[!] N-2: подпись SHA256SUMS отклонена, а принудительная проверка подписи включена; отказ.' ;;
@@ -35879,6 +35891,19 @@ wallos_mirror_version_list() {
 # (current + previous verified-good). Enforces the 500MB local cache cap
 # by count (2 images). (N-06: removed stale "reports total size" claim.)
 # Args: $1 = image tag to always keep (current), $2 = image tag to keep (previous, may be empty).
+# R14C14-02: record every wallos image A-Box itself pulls or loads.
+# wallos_prune_local_images deletes only recorded images silently;
+# an unrecorded same-name image (e.g. the user's own build) is never
+# deleted without an explicit confirmation.
+wallos_record_image() {
+    local img="${1:-}"
+    img="${img#docker.io/}"
+    [[ "$img" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ || "$img" =~ ^bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]] || return 0
+    { touch "${ABOX_DIR}/wallos-images.txt" 2>/dev/null && chmod 600 "${ABOX_DIR}/wallos-images.txt" 2>/dev/null; } || true
+    grep -Fqx "$img" "${ABOX_DIR}/wallos-images.txt" 2>/dev/null || printf '%s\n' "$img" >> "${ABOX_DIR}/wallos-images.txt" 2>/dev/null || true
+    return 0
+}
+
 wallos_prune_local_images() {
     local keep1="${1:-}" keep2="${2:-}" img tag
     # D-05: normalize docker.io/ prefix (docker inspect .Config.Image may include
@@ -35923,6 +35948,17 @@ wallos_prune_local_images() {
         if [[ "$img" != "$keep1" && "$img" != "$keep2" && "$_keep_by_id" != 1 ]]; then
             # Keep at most 2: remove anything beyond keep1/keep2.
             # Count how many we would keep; if already 2 kept, remove the rest.
+            # R14C14-02: only A-Box-recorded images may be pruned
+            # silently. An unrecorded same-name image may be the
+            # user's own build: ask on a terminal, else skip.
+            if ! grep -Fqx "$img" "${ABOX_DIR}/wallos-images.txt" 2>/dev/null; then
+                if [[ -t 0 ]]; then
+                    confirm_yes_no "$(tprintf wl_pr_confirm_unrecorded "$img")" || continue
+                else
+                    msg "${YELLOW}$(tprintf wl_pr_skip_unrecorded "$img")${NC}"
+                    continue
+                fi
+            fi
             if docker rmi "$img" >/dev/null 2>&1; then
                 removed=$((removed + 1))
             else
@@ -36201,6 +36237,7 @@ _wallos_pull_versioned_image() {
     fi
     rm -rf -- "$work"
     docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1 || return 1
+    wallos_record_image "bellamy/wallos:$image_tag"
     WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
     WALLOS_IMAGE_VERSION="$image_tag"
     return 0
@@ -36332,6 +36369,7 @@ wallos_pull_or_restore_image() {
                 # U115: the verified digest is the identity; the tag created
                 # alongside is a convenience alias only, never the run identity.
                 if abox_run_wait '拉取 Wallos 镜像' docker pull "$_mirror_digest" && docker tag "$_mirror_digest" "bellamy/wallos:$image_tag"; then
+                    wallos_record_image "bellamy/wallos:$image_tag"
                     WALLOS_IMAGE_RESULT="$_mirror_digest"
                     WALLOS_IMAGE_VERSION="$image_tag"
                     return 0
@@ -36345,6 +36383,7 @@ wallos_pull_or_restore_image() {
         if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
             msg "${YELLOW}Wallos digest path failed and signing enforcement is ON; skipping unsigned tag pull.${NC}"
         elif abox_run_wait '拉取 Wallos 镜像' docker pull "bellamy/wallos:$image_tag"; then
+            wallos_record_image "bellamy/wallos:$image_tag"
             # P2-1: record RepoDigest for auditability (mutable tag alone is not identity).
             # G11 FIX: Use digest reference instead of mutable tag to prevent TOCTOU.
             # After pull, immediately pin to digest so subsequent operations
@@ -36484,6 +36523,7 @@ wallos_pull_or_restore_image() {
     _loaded_id=$(docker image inspect --format '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
     if [[ "$_loaded_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]]; then
         WALLOS_IMAGE_RESULT="$_loaded_id"
+        wallos_record_image "bellamy/wallos:$image_tag"
     else
         # S136: never silently downgrade to the mutable tag here.
         msg "${RED}Wallos loaded image ID could not be resolved; refusing mutable tag fallback.${NC}"
@@ -36850,6 +36890,7 @@ wallos_recover_interrupted_upgrade() {
     # without a version-list lookup (which only resolves tags).
     if [[ -z "$old_image_id" ]] && [[ "$old_image" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]] && ! docker image inspect "$old_image" >/dev/null 2>&1; then
         docker pull "$old_image" >/dev/null 2>&1 || { msg "${RED}$(tprintf wl_rc_no_image "$old_image")${NC}"; return 1; }
+        wallos_record_image "$old_image"
     fi
     if [[ -z "$old_image_id" ]] && ! docker image inspect "$old_image" >/dev/null 2>&1; then
         # N-11: old image not present locally. Try fetching the exact previous

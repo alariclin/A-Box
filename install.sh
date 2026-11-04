@@ -6567,6 +6567,12 @@ tr_msg() {
         ru:fw2_v6_check) echo 'Невозможно проверить правило брандмауэра IPv6: %s' ;;
         fa:fw2_v6_check) echo 'بررسی قانون دیوار آتش IPv6 ممکن نیست: %s' ;;
         ja:fw2_v6_check) echo 'IPv6 ファイアウォールルールを確認できません： %s' ;;
+        zh:fw2_v6_missing) echo '主机有 IPv6 但缺少 ip6tables，无法放行 IPv6 规则: %s' ;;
+        zh-tw:fw2_v6_missing) echo '主機有 IPv6 但缺少 ip6tables，無法放行 IPv6 規則: %s' ;;
+        en:fw2_v6_missing) echo 'The host has IPv6 but ip6tables is missing, so the IPv6 rule cannot be opened: %s' ;;
+        ru:fw2_v6_missing) echo 'У хоста есть IPv6, но ip6tables отсутствует, поэтому правило IPv6 нельзя открыть: %s' ;;
+        fa:fw2_v6_missing) echo 'میزبان IPv6 دارد اما ip6tables وجود ندارد، بنابراین قانون IPv6 را نمی‌توان باز کرد: %s' ;;
+        ja:fw2_v6_missing) echo 'ホストに IPv6 がありますが ip6tables がないため、IPv6 ルールを開放できません： %s' ;;
         zh:hd_nm_apply) echo 'NetworkManager DNS 应用失败，已回滚。' ;;
         zh-tw:hd_nm_apply) echo 'NetworkManager DNS 應用失敗，已回滾。' ;;
         en:hd_nm_apply) echo 'Failed to apply the NetworkManager DNS; rolled back.' ;;
@@ -13227,6 +13233,14 @@ allowPort() {
             return 0
             ;;
     esac
+    # R3C6-08: when the host has IPv6, the v6 rule is required, not
+    # optional. Fail BEFORE touching IPv4 if ip6tables is missing or
+    # the v6 table cannot be queried, instead of silently skipping v6
+    # and reporting success with the port still unreachable over v6.
+    if has_ipv6; then
+        command -v ip6tables >/dev/null 2>&1 || die "$(tprintf fw2_v6_missing "${spec}/${type}")"
+        _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1 || die "$(tprintf fw2_v6_check "${spec}/${type}")"
+    fi
     local check_rc=0
     if iptables_rule_check "$IPT" INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
     case "$check_rc" in

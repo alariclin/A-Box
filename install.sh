@@ -10816,7 +10816,7 @@ users_registries_remove_core() {
 # dies with the sing-box ws inbounds; the hysteria links are removed
 # unconditionally, mirroring _remove_hy2_official.
 _prune_standalone_links() {
-    local srv="$1" key='' dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d"
+    local srv="$1" key='' dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ws_out=''
     case "$srv" in
         xray)
             for key in trojan-xray socks5-xray; do
@@ -10827,8 +10827,15 @@ _prune_standalone_links() {
             for key in trojan-sb tuic anytls shadowtls socks5-sb; do
                 _standalone_link_survivor "$key" || rm -f -- "$dir/${key}.link" 2>/dev/null || true
             done
-            if [[ ! -f /etc/sing-box/config.json ]] || ! jq -e '.inbounds[]? | select(.tag == "vmess-ws-in" or .tag == "vless-ws-in")' /etc/sing-box/config.json >/dev/null 2>&1; then
+            if [[ ! -f /etc/sing-box/config.json ]]; then
                 rm -f -- "$dir/argo.link" 2>/dev/null || true
+            else
+                if ! _ws_out=$(jq -r '.inbounds[]? | select(.tag == "vmess-ws-in" or .tag == "vless-ws-in")' /etc/sing-box/config.json 2>/dev/null); then
+                    return 1
+                fi
+                if [[ -z "$_ws_out" ]]; then
+                    rm -f -- "$dir/argo.link" 2>/dev/null || true
+                fi
             fi
             ;;
         hysteria)

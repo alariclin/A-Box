@@ -18870,6 +18870,20 @@ deployment_transaction_rollback_inner() {
     ABOX_DIE_HOOK=''
     msg "${YELLOW}[!] ${reason} failed; restoring the exact pre-operation snapshot.${NC}"
 
+    # SYD-B E14 + R4C8-03: pre-verify the backup BEFORE stopping
+    # services or clearing firewall rules (not just before deleting
+    # targets). A backup that fails checksum/hmac/archive/safety/
+    # compat must abort while services still run and rules still
+    # stand; discovering a missing archive after stop + firewall
+    # clear leaves every service down with no usable restore
+    # (rollback_restart_services_from_backup is a no-op for a
+    # missing archive).
+    if ! verify_backup_restorable "$backup" "$tx_key_file"; then
+        msg "${RED}[!] Rollback aborted before stopping services: backup failed pre-verification. Recovery backup retained: ${backup:-missing}${NC}" >&2
+        rollback_restart_services_from_backup "$backup" || true
+        return 1
+    fi
+
     if ! stop_all_managed_services >/dev/null 2>&1; then
         msg "${RED}[!] Rollback aborted before destructive cleanup: one or more managed services could not be confirmed stopped. Pre-operation backup retained: ${backup:-missing}${NC}" >&2
         return 1
@@ -18882,15 +18896,8 @@ deployment_transaction_rollback_inner() {
         return 1
     fi
 
-    # SYD-B E14: pre-verify the backup BEFORE deleting anything.
-    # A backup that fails checksum/hmac/archive/safety/compat
-    # leaves the current targets untouched, with services
-    # restored from the snapshot instead of a deleted half-state.
-    if ! verify_backup_restorable "$backup" "$tx_key_file"; then
-        msg "${RED}[!] Rollback aborted before removing targets: backup failed pre-verification. Recovery backup retained: ${backup:-missing}${NC}" >&2
-        rollback_restart_services_from_backup "$backup" || true
-        return 1
-    fi
+    # (Backup pre-verified above, before any service stop or
+    # firewall clear; see R4C8-03.)
 
     for srv in $targets; do
         if ! remove_core_family_force "$srv"; then

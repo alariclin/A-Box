@@ -12246,7 +12246,7 @@ fi
 # D1: preserve a manual-recovery backup before deleting (full save; kept
 # on failure with a loud message, not auto-restored, to avoid duplicating
 # foreign rules via --noflush).
-restore_backup4=$(mktemp) || exit 1
+restore_backup4=$(mktemp /run/A-Box-firewall-restore-backup4.XXXXXX) || exit 1
 iptables-save > "$restore_backup4" 2>/dev/null || { rm -f -- "$restore_backup4"; exit 1; }
 clean_chain iptables filter INPUT || exit 1
 clean_chain iptables nat PREROUTING || exit 1
@@ -12267,7 +12267,7 @@ if command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -S INPUT >/dev/
         echo 'A-Box firewall restore: IPv6 snapshot failed full validation (--test); refusing to delete live rules.' >&2
         exit 1
     fi
-    restore_backup6=$(mktemp) || exit 1
+    restore_backup6=$(mktemp /run/A-Box-firewall-restore-backup6.XXXXXX) || exit 1
     ip6tables-save > "$restore_backup6" 2>/dev/null || { rm -f -- "$restore_backup6"; exit 1; }
     clean_chain ip6tables filter INPUT || exit 1
     clean_chain ip6tables nat PREROUTING || exit 1

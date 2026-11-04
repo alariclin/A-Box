@@ -21775,7 +21775,7 @@ routing_rule_add() {
             | ($doms | map(select(startswith("geosite:") | not))) as $plain
             | .rules += [{
                 domains: $doms, outbound: $o,
-                xray_rule: {type:"field", domain:$doms, outboundTag:$o},
+                xray_rule: {type:"field", domain: ($doms | map(if startswith("geosite:") then . else "domain:" + . end)), outboundTag:$o},
                 singbox_rule: ({outbound:$o}
                     + (if ($geo|length) > 0 then {rule_set: ($geo | map("geosite-" + .))} else {} end)
                     + (if ($plain|length) > 0 then {domain_suffix:$plain} else {} end))

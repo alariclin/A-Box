@@ -39310,7 +39310,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     ( umask 077; set -o noclobber; : > "$tmp_cfg.json" ) 2>/dev/null || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; return 1; }
     mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$bak" "$tmp_cfg.json"; return 1; }; tmp_cfg="$tmp_cfg.json"
     if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" \
-            '.inbounds |= (map(select(.tag != $t)) + $nb)' "$cfg" > "$tmp_cfg" 2>/dev/null; then
+            '.inbounds |= ((. // []) | map(select(.tag != $t)) + $nb)' "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }

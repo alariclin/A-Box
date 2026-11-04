@@ -20453,8 +20453,11 @@ _argo_pick_port() {
     # no output on ss errors, and grep's no-match meant "free").
     local p tries=0 ss_out exclude="${1:-}"
     while (( tries < 40 )); do
-        p=$(shuf -i 20000-55000 -n 1 2>/dev/null || echo 0)
-        (( p >= 1024 )) || p=28080
+        # R7C9-04: when shuf is missing/broken the old constant
+        # fallback (28080) retried the same port 40 times: abort
+        # whenever 28080 was occupied or excluded. Fall back to
+        # $RANDOM picks in range instead.
+        p=$(shuf -i 20000-55000 -n 1 2>/dev/null || printf '%s' $((20000 + RANDOM % 35001)))
         if [[ -n "$exclude" && "$exclude" =~ ^[0-9]+$ ]] && (( p == exclude )); then
             tries=$((tries + 1))
             continue

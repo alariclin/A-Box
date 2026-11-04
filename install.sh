@@ -19181,6 +19181,20 @@ singbox_vendor_takeover_gate() {
     return 0
 }
 
+# R5C8-04: Hysteria listeners count for port recycling; a
+# port still used by Hysteria must keep its UDP rule. Listen
+# extraction mirrors the live-ports collector (top-level and
+# trafficStats.listen both match the indented listen pattern).
+_hysteria_listens_on_port() {
+    local port="$1" line hy2p
+    [[ -f /etc/hysteria/config.yaml ]] || return 1
+    while IFS= read -r line; do
+        hy2p=$(printf '%s\n' "$line" | grep -o '[0-9]\+' | tail -n 1 || true)
+        [[ -n "$hy2p" && "$hy2p" == "$port" ]] && return 0
+    done < <(grep -E '^[[:space:]]*listen:' /etc/hysteria/config.yaml 2>/dev/null || true)
+    return 1
+}
+
 deploy_singbox_socks5_landing() {
     local port user pass proto cfg='/etc/sing-box/config.json'
     local tag="${ABOX_DEPLOY_TAG:-socks5-landing}" tmp_json
@@ -19362,7 +19376,8 @@ EOF_SVC
         # no-match with parse failure. A symlinked xray config is read
         # through (jq follows it); only a missing one counts as free.
         if jq -e . "$cfg" >/dev/null 2>&1 && ! jq -e --argjson p "$old_port" '.inbounds[]? | select(.listen_port == $p)' "$cfg" >/dev/null 2>&1 \
-           && { [[ ! -f /usr/local/etc/xray/config.json ]] || { jq -e . /usr/local/etc/xray/config.json >/dev/null 2>&1 && ! jq -e --argjson p "$old_port" 'def covers($p): (.port as $v | if ($v|type)=="number" then $v==$p elif ($v|type)=="string" then ((($v|gsub(" ";"")) as $s | if ($s|test("^[0-9]+$")) then ($s|tonumber)==$p elif ($s|test("^[0-9]+-[0-9]+$")) then (($s|split("-")|map(tonumber)) as [$a,$b] | if $a>$b then true else ($a<=$p and $p<=$b) end) elif ($s|test("^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$")) then (([$s|split(",")[] | ((split("-")|map(tonumber)) as $r | if ($r|length)==1 then $r[0]==$p elif $r[0]>$r[1] then true else ($r[0]<=$p and $p<=$r[1]) end)] | index(true) != null)) else true end)) else true end); .inbounds[]? | select(covers($p))' /usr/local/etc/xray/config.json >/dev/null 2>&1; }; }; then
+           && { [[ ! -f /usr/local/etc/xray/config.json ]] || { jq -e . /usr/local/etc/xray/config.json >/dev/null 2>&1 && ! jq -e --argjson p "$old_port" 'def covers($p): (.port as $v | if ($v|type)=="number" then $v==$p elif ($v|type)=="string" then ((($v|gsub(" ";"")) as $s | if ($s|test("^[0-9]+$")) then ($s|tonumber)==$p elif ($s|test("^[0-9]+-[0-9]+$")) then (($s|split("-")|map(tonumber)) as [$a,$b] | if $a>$b then true else ($a<=$p and $p<=$b) end) elif ($s|test("^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$")) then (([$s|split(",")[] | ((split("-")|map(tonumber)) as $r | if ($r|length)==1 then $r[0]==$p elif $r[0]>$r[1] then true else ($r[0]<=$p and $p<=$r[1]) end)] | index(true) != null)) else true end)) else true end); .inbounds[]? | select(covers($p))' /usr/local/etc/xray/config.json >/dev/null 2>&1; }; } \
+           && ! _hysteria_listens_on_port "$old_port"; then
             remove_abox_native_firewall_rule "$old_port" tcp 2>/dev/null || true
             remove_abox_native_firewall_rule "$old_port" udp 2>/dev/null || true
             save_firewall_rules 2>/dev/null || true

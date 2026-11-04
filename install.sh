@@ -25419,22 +25419,22 @@ protocol_label() { # $1 = config tag, $2 = protocol/type (fallback display)
 # One line per deployed inbound: core<TAB>tag<TAB>protocol<TAB>port
 # (the internal "api" inbound is infrastructure, never listed).
 protocol_inventory() {
-    local cfg=''
+    local cfg='' failed=0
     cfg="$XRAY_SLOT_CFG"
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
-        jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "xray\t\(.tag)\t\(.protocol // "")\t\(.port // "")"' "$cfg" 2>/dev/null || true
+        jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "xray\t\(.tag)\t\(.protocol // "")\t\(.port // "")"' || { echo "A-Box: protocol_inventory: cannot parse $cfg" >&2; failed=1; }
     fi
     cfg='/etc/sing-box/config.json'
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
-        jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "sing-box\t\(.tag)\t\(.type // "")\t\(.listen_port // "")"' "$cfg" 2>/dev/null || true
+        jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "sing-box\t\(.tag)\t\(.type // "")\t\(.listen_port // "")"' || { echo "A-Box: protocol_inventory: cannot parse $cfg" >&2; failed=1; }
     fi
     if [[ "$(_xl_state_get mode)" == 'coexist' && -f "$XRAY_LATEST_CFG" && ! -L "$XRAY_LATEST_CFG" ]]; then
-        jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "xray-latest\t\(.tag)\t\(.protocol // "")\t\(.port // "")"' "$XRAY_LATEST_CFG" 2>/dev/null || true
+        jsonc_strip_comments "$XRAY_LATEST_CFG" 2>/dev/null | jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "xray-latest\t\(.tag)\t\(.protocol // "")\t\(.port // "")"' || { echo "A-Box: protocol_inventory: cannot parse $XRAY_LATEST_CFG" >&2; failed=1; }
     fi
     if [[ -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
         printf 'hy2\thy2-official\thysteria2\t%s\n' "$(xl_hy2_port)"
     fi
-    return 0
+    return "$failed"
 }
 
 _protocol_cfg_of() { # $1 = core -> cfg|bin|svc
@@ -25746,7 +25746,14 @@ _remove_hy2_official() {
 remove_single_protocol_menu() {
     local -a rows=() tags=()
     local row='' core='' tag='' proto='' port='' label='' idx=0 choice='' answer='' info='' cfg='' deps='' d='' _detour_target='' _refs=''
-    mapfile -t rows < <(protocol_inventory)
+    local _inv_tmp='' _inv_rc=0
+    _inv_tmp=$(mktemp /tmp/A-Box-inventory.XXXXXX) || return 1
+    protocol_inventory > "$_inv_tmp"; _inv_rc=$?
+    mapfile -t rows < "$_inv_tmp"
+    rm -f -- "$_inv_tmp"
+    if (( _inv_rc != 0 )); then
+        return 1
+    fi
     if (( ${#rows[@]} == 0 )); then
         msg "${YELLOW}$(tr_msg cl_none)${NC}"
         return 0

@@ -27137,6 +27137,33 @@ multi_user_menu() {
             cores+=("$core"); tags+=("$tag"); protos+=("$proto"); ports+=("$port")
             printf '%3d. %-46s %-11s :%-6s %s %s\n' "$i" "$(protocol_label "$core" "$tag" "$proto" 2>/dev/null || printf '%s' "$tag")" "$core" "$port" "$(tr_msg mu_users_word)" "$cnt"
         done <<< "$rows"
+        # F06: registries whose inbound was deleted (all users
+        # disabled) vanish from protocol_inventory, stranding
+        # their intact inbound_snapshot: the node cannot be
+        # re-enabled from the menu. List every registry with a
+        # valid snapshot that is not already live.
+        local _sudir="${ABOX_USERS_DIR:-${USERS_DIR:-/etc/ddr/users.d}}" _srf='' _sc='' _st='' _sp='' _sport='' _sfound=0 _sj=0 _scnt=0
+        if [[ -d "$_sudir" ]]; then
+            for _srf in "$_sudir"/*.json; do
+                [[ -f "$_srf" && ! -L "$_srf" ]] || continue
+                _sc=$(jq -r '.core // ""' "$_srf" 2>/dev/null || echo "")
+                _st=$(jq -r '.tag // ""' "$_srf" 2>/dev/null || echo "")
+                [[ -n "$_sc" && -n "$_st" ]] || continue
+                _sp=$(jq -r '.protocol // ""' "$_srf" 2>/dev/null || echo "")
+                [[ "$_sp" == 'shadowtls' ]] && continue
+                jq -e --arg t "$_st" '.inbound_snapshot | type == "object" and .tag == $t' "$_srf" >/dev/null 2>&1 || continue
+                _sfound=0
+                for (( _sj=0; _sj<${#cores[@]}; _sj++ )); do
+                    if [[ "${cores[$_sj]}" == "$_sc" && "${tags[$_sj]}" == "$_st" ]]; then _sfound=1; break; fi
+                done
+                (( _sfound == 1 )) && continue
+                _sport=$(jq -r '.inbound_snapshot.port // .inbound_snapshot.listen_port // 0' "$_srf" 2>/dev/null || echo 0)
+                _scnt=$(jq '.users | length' "$_srf" 2>/dev/null || echo 0)
+                i=$((i + 1))
+                cores+=("$_sc"); tags+=("$_st"); protos+=("$_sp"); ports+=("$_sport")
+                printf '%3d. %-46s %-11s :%-6s %s %s\n' "$i" "$(protocol_label "$_sc" "$_st" "$_sp" 2>/dev/null || printf '%s' "$_st")" "$_sc" "$_sport" "$(tr_msg mu_users_word)" "$_scnt"
+            done
+        fi
         if (( i == 0 )); then msg "${YELLOW}$(tr_msg mu_none)${NC}"; fi
         msg "  ${CYAN}E.${NC} $(tr_msg mu_export)"
         msg "  ${CYAN}0.${NC} $(tr_msg mu_back_word)"

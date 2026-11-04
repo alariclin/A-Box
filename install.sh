@@ -2,9 +2,17 @@
 # Best-effort UTF-8 locale (v2ray-agent pattern): harmless if locale missing,
 # makes [[ =~ ]], wc -m and case patterns UTF-8 correct; byte fallback remains.
 export LANG=en_US.UTF-8 2>/dev/null || true
+# Pin PATH before any external command (R12C1-01): a caller-controlled
+# PATH could otherwise redirect the first external command (stty below)
+# to a planted program run as root.
+export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 # Fix backspace/delete key: some terminals (FinalShell) send ^H but tty expects ^?
-# This makes the delete key work correctly in menu input
-stty erase '^H' 2>/dev/null || true
+# Only adjust on explicit opt-in (ABOX_STTY_ERASE_H=1): standard terminals
+# send ^? for Backspace, so rewriting erase breaks their Backspace — and
+# the change persists on the pty after the script exits (R2C1-03).
+if [[ -n "${ABOX_STTY_ERASE_H:-}" ]]; then
+    stty erase '^H' 2>/dev/null || true
+fi
 # ==============================A-Box===============================
 # SNI profile: built-in candidate library plus per-VPS automatic REALITY target selection; no remote script execution.
 # Hardened build: stricter GitHub digest trust, guarded shortcut persistence, Fail2Ban validation, and Sing-box HY2 ACME semantics.
@@ -28,7 +36,6 @@ if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) ))
     exit 1
 fi
 export DEBIAN_FRONTEND=noninteractive
-export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 export LANG=${LANG:-en_US.UTF-8}
 
 RED=$'\033[0;31m'

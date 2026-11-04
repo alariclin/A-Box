@@ -8838,7 +8838,8 @@ validate_abox_env_semantics() {
     done
     [[ -z "${HY2_MASQ_URL:-}" ]] || valid_url_https "$HY2_MASQ_URL" || return 1
     [[ -z "${UUID:-}" || "${UUID:-}" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || return 1
-    [[ -z "${SHORT_ID:-}" || "${SHORT_ID:-}" =~ ^[0-9A-Fa-f]{2,32}$ ]] || return 1
+    # R10C5-01: Reality shortId caps at 8 bytes / 16 hex.
+    [[ -z "${SHORT_ID:-}" || "${SHORT_ID:-}" =~ ^[0-9A-Fa-f]{2,16}$ ]] || return 1
     [[ -z "${SHORT_ID:-}" || $(( ${#SHORT_ID} % 2 )) -eq 0 ]] || return 1
     [[ -z "${HY2_CERT_SHA256_FP:-}" || "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]] || return 1
     [[ -z "${LINK_IP:-}" || "${LINK_IP:-}" == N/A ]] || valid_ip_address "$LINK_IP" || return 1

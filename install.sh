@@ -29055,7 +29055,7 @@ resolved_strip_global_dns_sources() {
 # possible, treated as pass: the strip above is the actual fix, this is
 # defense in depth.
 resolved_global_dns_check() {
-    local expected="$1" line='' tok='' got=''
+    local expected="$1" line='' tok='' got='' dline=''
     local -a exp=() gottok=() norm_exp=() norm_got=()
     command -v resolvectl >/dev/null 2>&1 || return 0
     line=$(resolvectl dns 2>/dev/null | awk '/^Global:/ {print; exit}' || true)
@@ -29065,7 +29065,13 @@ resolved_global_dns_check() {
     IFS=$' \t\n' read -ra gottok <<< "$line" || true
     for tok in "${exp[@]}"; do tok="${tok%%#*}"; case "$tok" in *.*:*) tok="${tok%:*}";; esac; norm_exp+=("$(normalize_ip_literal "$tok")"); done
     for tok in "${gottok[@]}"; do tok="${tok%%#*}"; case "$tok" in *.*:*) tok="${tok%:*}";; esac; norm_got+=("$(normalize_ip_literal "$tok")"); done
-    [[ "$(printf '%s\n' "${norm_exp[@]}" | sort -u | tr '\n' ' ')" == "$(printf '%s\n' "${norm_got[@]}" | sort -u | tr '\n' ' ')" ]]
+    [[ "$(printf '%s\n' "${norm_exp[@]}" | sort -u | tr '\n' ' ')" == "$(printf '%s\n' "${norm_got[@]}" | sort -u | tr '\n' ' ')" ]] || return 1
+    # F06: a global DNS list alone does not keep link DHCP
+    # resolvers out of the query path; only a global route
+    # domain of ~. does. Require it, else roll back.
+    dline=$(resolvectl domain 2>/dev/null | awk '/^Global:/ {print; exit}' || true)
+    [[ -n "$dline" ]] || return 1
+    [[ " $dline " == *' ~. '* ]] || return 1
 }
 
 apply_host_dns() {
@@ -29154,6 +29160,7 @@ apply_host_dns() {
 [Resolve]
 DNS=${dns_servers}
 FallbackDNS=
+Domains=~.
 DNSOverTLS=yes
 EOF_DNS
             else
@@ -29161,6 +29168,7 @@ EOF_DNS
 [Resolve]
 DNS=${v4}${v6:+ $v6}
 FallbackDNS=
+Domains=~.
 DNSOverTLS=no
 EOF_DNS
             fi

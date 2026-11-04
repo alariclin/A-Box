@@ -23997,19 +23997,31 @@ restore_or_start_owned() {
     fi
 }
 traffic_error() {
-    local log=/var/log/A-Box-traffic.log uid gid mode nlink
+    local log=/var/log/A-Box-traffic.log
     [[ -d /var/log && ! -L /var/log ]] || return 0
-    if [[ -L "$log" || -e "$log" && ! -f "$log" ]]; then return 0; fi
-    if [[ ! -e "$log" ]]; then
-        install -o root -g root -m 600 /dev/null "$log" 2>/dev/null || return 0
-    fi
-    uid=$(stat -c %u "$log" 2>/dev/null) || return 0
-    gid=$(stat -c %g "$log" 2>/dev/null) || return 0
-    mode=$(stat -c %a "$log" 2>/dev/null) || return 0
-    nlink=$(stat -c %h "$log" 2>/dev/null) || return 0
-    [[ "$uid" == 0 && "$gid" == 0 && "$mode" =~ ^0?600$ && "$nlink" == 1 ]] || return 0
+    # R15C10-02: never write by pathname after metadata checks: a
+    # symlink swapped in between would be followed by the redirect.
+    # Open once with O_NOFOLLOW, re-validate the opened descriptor
+    # with fstat, and write through that descriptor only. O_CREAT
+    # replaces the old install step (which itself could truncate a
+    # swapped-in target); the path-stat block is subsumed by fstat.
     umask 077
-    printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$1" >> "$log" 2>/dev/null || true
+    python3 -I - "$log" "$1" <<'PY_TRAFFIC' 2>/dev/null || true
+import os, stat as _stat, sys
+from datetime import datetime
+try:
+    fd = os.open(sys.argv[1], os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+except OSError:
+    sys.exit(1)
+try:
+    st = os.fstat(fd)
+    if not _stat.S_ISREG(st.st_mode) or st.st_uid != 0 or st.st_gid != 0 or _stat.S_IMODE(st.st_mode) != 0o600 or st.st_nlink != 1:
+        sys.exit(1)
+    ts = datetime.now().astimezone().strftime('%Y-%m-%dT%H:%M:%S%z')
+    os.write(fd, (ts + ' ' + sys.argv[2] + '\n').encode('utf-8', 'surrogateescape'))
+finally:
+    os.close(fd)
+PY_TRAFFIC
 }
 current_period=$(date +%Y-%m)
 stop_all_owned_services() {

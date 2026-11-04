@@ -40134,6 +40134,11 @@ PY_CLASH_REALPATH
 ) || return 1
     [[ "$out_real" == "$base_real"/* ]] || return 1
     [[ ! -L "$out" ]] || return 1
+    # R9C16-01: refuse a pre-existing non-regular output target. Without
+    # this, mv below moves the generated YAML inside an existing
+    # directory, chmod 600 then strips the directory's traverse bit,
+    # and the function still reports success with no file at $out.
+    [[ ! -e "$out" || -f "$out" ]] || { msg "${RED}Refusing to write Clash config: output path exists and is not a regular file: $out${NC}" >&2; return 1; }
     tmp_out=$(mktemp "$base_real/.A-Box-clash-new.XXXXXX") || return 1
     # TRAP-7: UUID list temp file with explicit status check (no process substitution).
     local _clash_uuid_list_tmp
@@ -40376,7 +40381,7 @@ EOF_CLASH
     rm -f -- "$_clash_uuid_list_tmp"
     chmod 600 "$tmp_out" || { rm -f -- "$tmp_out"; return 1; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
-    mv -f -- "$tmp_out" "$out" || { rm -f -- "$tmp_out"; return 1; }
+    mv -f -T -- "$tmp_out" "$out" || { rm -f -- "$tmp_out"; return 1; }
     chmod 600 "$out" || return 1
     printf '%s\n' "$out"
 }

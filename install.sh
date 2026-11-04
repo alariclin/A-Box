@@ -34282,15 +34282,29 @@ PY_LATEST_BACKUP
 ) || { msg "restore gate failed: latest-select" >&2; return 1; }
     fi
     [[ -n "$selected" ]] || { msg "restore gate failed: selected-empty" >&2; return 1; }
-    backup_checksum_verify "$selected" "${selected}.sha256" || { msg "restore gate failed: checksum" >&2; return 1; }
-    if [[ -n "$key_file" ]]; then
-        backup_auth_verify_with_key_file "$selected" "${selected}.hmac" "$key_file" || { msg "restore gate failed: hmac-key" >&2; return 1; }
-    else
-        backup_auth_verify "$selected" "${selected}.hmac" || { msg "restore gate failed: hmac" >&2; return 1; }
-    fi
-    validate_backup_archive "$selected" || { msg "restore gate failed: archive" >&2; return 1; }
+    # F01: verify-and-extract must use one pinned copy, not the
+    # shared $selected path (a writer on the backup dir could
+    # swap it between verify and tar). Copy the archive plus
+    # its sidecars (same basenames, so every derived sidecar
+    # and key path stays correct) into the private work dir
+    # first; every later step uses the copy.
     work=$(mktemp -d /tmp/A-Box-rollback.XXXXXX) || { msg "restore gate failed: workdir" >&2; return 1; }; chmod 700 "$work"
-    tar -xzf "$selected" -C "$work" || { msg "restore gate failed: unpack" >&2; rm -rf "$work"; return 1; }
+    local _rbc="$work/$(basename "$selected")" _rbs=''
+    cp -- "$selected" "$_rbc" || { rm -rf "$work"; msg "restore gate failed: private-copy" >&2; return 1; }
+    chmod 600 "$_rbc" || { rm -rf "$work"; msg "restore gate failed: private-copy" >&2; return 1; }
+    for _rbs in "${selected}.sha256" "${selected}.hmac" "${selected}.key"; do
+        if [[ -e "$_rbs" ]]; then
+            cp -- "$_rbs" "$work/$(basename "$_rbs")" || { rm -rf "$work"; msg "restore gate failed: private-copy" >&2; return 1; }
+        fi
+    done
+    backup_checksum_verify "$_rbc" "${_rbc}.sha256" || { msg "restore gate failed: checksum" >&2; return 1; }
+    if [[ -n "$key_file" ]]; then
+        backup_auth_verify_with_key_file "$_rbc" "${_rbc}.hmac" "$key_file" || { msg "restore gate failed: hmac-key" >&2; return 1; }
+    else
+        backup_auth_verify "$_rbc" "${_rbc}.hmac" || { msg "restore gate failed: hmac" >&2; return 1; }
+    fi
+    validate_backup_archive "$_rbc" || { msg "restore gate failed: archive" >&2; return 1; }
+    tar -xzf "$_rbc" -C "$work" || { msg "restore gate failed: unpack" >&2; rm -rf "$work"; return 1; }
     root="$work/root"; assert_restore_target_safe "$root" || { msg "restore gate failed: target-safe" >&2; rm -rf "$work"; return 1; }; assert_restore_shortcut_safe "$root" || { msg "restore gate failed: shortcut-safe" >&2; rm -rf "$work"; return 1; }; validate_backup_core_init_compatibility "$root" || { msg "restore gate failed: init-compat" >&2; rm -rf "$work"; return 1; }
     local _manifest_snapshot="$work/live-manifest.tsv"
     if [[ -e "$ABOX_CORE_OWNERSHIP" || -L "$ABOX_CORE_OWNERSHIP" ]]; then
@@ -34370,12 +34384,26 @@ restore_from_backup() {
         return
     fi
     selected="${backups[$((10#$choice-1))]}"
-    backup_checksum_verify "$selected" "${selected}.sha256" || die "$(tr_msg rb_sha_bad)"
-    prepare_backup_auth_for_manual_restore "$selected" || die "$(tr_msg rb_auth_fail)"
-    validate_backup_archive "$selected" || die "$(tr_msg rb_structure_fail)"
+    # F01: verify-and-extract must use one pinned copy, not the
+    # shared $selected path (a writer on the backup dir could
+    # swap it between verify and tar). Copy the archive plus
+    # its sidecars (same basenames, so every derived sidecar
+    # and key path stays correct) into the private work dir
+    # first; every later step uses the copy.
     work=$(mktemp -d /tmp/A-Box-restore.XXXXXX) || die "$(tr_msg rb_tmp_fail)"
     chmod 700 "$work"
-    tar -xzf "$selected" -C "$work" || { rm -rf "$work"; die "$(tr_msg rb_extract_fail)"; }
+    local _rbc="$work/$(basename "$selected")" _rbs=''
+    cp -- "$selected" "$_rbc" || { rm -rf "$work"; die "$(tr_msg rb_tmp_fail)"; }
+    chmod 600 "$_rbc" || { rm -rf "$work"; die "$(tr_msg rb_tmp_fail)"; }
+    for _rbs in "${selected}.sha256" "${selected}.hmac" "${selected}.key"; do
+        if [[ -e "$_rbs" ]]; then
+            cp -- "$_rbs" "$work/$(basename "$_rbs")" || { rm -rf "$work"; die "$(tr_msg rb_tmp_fail)"; }
+        fi
+    done
+    backup_checksum_verify "$_rbc" "${_rbc}.sha256" || die "$(tr_msg rb_sha_bad)"
+    prepare_backup_auth_for_manual_restore "$_rbc" || die "$(tr_msg rb_auth_fail)"
+    validate_backup_archive "$_rbc" || die "$(tr_msg rb_structure_fail)"
+    tar -xzf "$_rbc" -C "$work" || { rm -rf "$work"; die "$(tr_msg rb_extract_fail)"; }
     root="$work/root"
     assert_restore_target_safe "$root" || { rm -rf "$work"; die "$(tr_msg rb_target_fail)"; }
     assert_restore_shortcut_safe "$root" || { rm -rf "$work"; die "$(tr_msg rb_shortcut_fail)"; }
@@ -43104,7 +43132,7 @@ PY_SELFTEST_YAML
     grep -Fq 'rm -rf -- "$ABOX_DIR" || die' <<< "$source_body" || { echo 'FAIL: full uninstall must verify A-Box directory removal'; failures=$((failures + 1)); }
     ! grep -Eq 'mapfile -t rules < <\(\"\$cmd\" -w -S INPUT|done < <\(\"\$cmd\" -w -S INPUT' "$0" || { echo 'FAIL: firewall reorder must propagate iptables -S failure'; failures=$((failures + 1)); }
     grep -Fq 'ABOX_DEPLOY_TX_BACKUP_DIR="$uninstall_tx_dir"' <<< "$source_body" || { echo 'FAIL: full uninstall rollback must use an external transaction backup'; failures=$((failures + 1)); }
-    grep -Fq 'backup_auth_verify_with_key_file "$selected" "${selected}.hmac" "$key_file"' <<< "$source_body" || { echo 'FAIL: rollback external transaction key verification missing'; failures=$((failures + 1)); }
+    grep -Fq 'backup_auth_verify_with_key_file "$_rbc" "${_rbc}.hmac" "$key_file"' <<< "$source_body" || { echo 'FAIL: rollback external transaction key verification missing'; failures=$((failures + 1)); }
     if (( EUID == 0 )); then
         local post_abox_sig='' post_abox_exists=0
         if [[ -e /etc/ddr || -L /etc/ddr ]]; then post_abox_exists=1; fi

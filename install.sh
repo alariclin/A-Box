@@ -23993,7 +23993,14 @@ capture_vnstat_runtime_state() {
             return 0
         fi
         systemctl is-active --quiet "$name" && active=1 || active=0
-        systemctl is-enabled --quiet "$name" && enabled=1 || enabled=0
+        # R7C10-02: is-enabled --quiet is 0 for enabled-runtime
+        # too, so it cannot distinguish runtime-only from
+        # persistent enablement. Read the verbatim UnitFileState.
+        case "$(systemctl show -p UnitFileState --value "$name" 2>/dev/null)" in
+            enabled) enabled=1 ;;
+            enabled-runtime) enabled=2 ;;
+            *) enabled=0 ;;
+        esac
         printf 'systemd|%s|%s|%s\n' "$name" "$active" "$enabled"
     elif [[ "${INIT_SYS:-}" == openrc ]] && command -v rc-service >/dev/null 2>&1; then
         [[ -x /etc/init.d/vnstatd ]] || { printf '%s\n' 'absent'; return 0; }
@@ -24016,7 +24023,9 @@ restore_vnstat_runtime_state() {
     case "$kind" in
         absent) return 0 ;;
         systemd)
-            if [[ "$enabled" == 1 ]]; then systemctl enable "$name" >/dev/null 2>&1 || return 1; else systemctl disable "$name" >/dev/null 2>&1 || return 1; fi
+            if [[ "$enabled" == 1 ]]; then systemctl enable "$name" >/dev/null 2>&1 || return 1;
+            elif [[ "$enabled" == 2 ]]; then systemctl disable "$name" >/dev/null 2>&1 || return 1; systemctl enable --runtime "$name" >/dev/null 2>&1 || return 1;
+            else systemctl disable "$name" >/dev/null 2>&1 || return 1; fi
             if [[ "$active" == 1 ]]; then systemctl start "$name" >/dev/null 2>&1 || systemctl restart "$name" >/dev/null 2>&1 || return 1; else systemctl stop "$name" >/dev/null 2>&1 || return 1; fi
             ;;
         openrc)

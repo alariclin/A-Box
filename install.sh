@@ -18180,6 +18180,10 @@ build_xray_config() {
     out_dir=$(dirname -- "$out")
     [[ ! -L "$out_dir" && ! -L "$out" ]] || die "$(tr_msg bx_symlink)"
     [[ ! -e "$out_dir" || -d "$out_dir" ]] || die "$(tr_msg bx_parent)"
+    # R9C8-01: $out itself must be a regular file (or absent).
+    # Without this, mv installs the generated config INSIDE a
+    # pre-existing directory and still reports success.
+    [[ ! -e "$out" || -f "$out" ]] || die "Refusing to install build_xray_config config: output path exists and is not a regular file: $out"
     [[ -d "$out_dir" ]] || install -d -m 755 -- "$out_dir" || die "$(tr_msg bx_dir)"
     tmp_out=$(mktemp "$out_dir/.A-Box-xray-config.XXXXXX") || die "$(tr_msg bx_tmp)"
     umask 077
@@ -18217,7 +18221,7 @@ build_xray_config() {
     }' > "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bx_json)"; }
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bx_chmod)"; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
-    mv -f "$tmp_out" "$out" || { rm -f "$tmp_out"; die "$(tr_msg bx_commit)"; }
+    mv -f -T "$tmp_out" "$out" || { rm -f "$tmp_out"; die "$(tr_msg bx_commit)"; }
 }
 
 # ============ Xray API hot-reload (Version A experiment, 233boy style) ============
@@ -18457,6 +18461,10 @@ build_singbox_config() {
     out_dir=$(dirname -- "$out")
     [[ ! -L "$out_dir" && ! -L "$out" ]] || die "$(tr_msg bs2_symlink)"
     [[ ! -e "$out_dir" || -d "$out_dir" ]] || die "$(tr_msg bs2_parent)"
+    # R9C8-01: $out itself must be a regular file (or absent).
+    # Without this, mv installs the generated config INSIDE a
+    # pre-existing directory and still reports success.
+    [[ ! -e "$out" || -f "$out" ]] || die "Refusing to install build_singbox_config config: output path exists and is not a regular file: $out"
     if [[ "$out" == /etc/sing-box/config.json ]]; then
         prepare_abox_runtime_config_dir sing-box /etc/sing-box || die "$(tr_msg bs2_cfgdir)"
     else
@@ -18501,7 +18509,7 @@ build_singbox_config() {
     } + (if ($eps | length) > 0 then {endpoints:$eps} else {} end)' > "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_json)"; }
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_chmod)"; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
-    mv -f "$tmp_out" "$out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_commit)"; }
+    mv -f -T "$tmp_out" "$out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_commit)"; }
 }
 
 # Restore one file from backup and verify the result. $1=bak (may be

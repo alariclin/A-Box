@@ -16743,6 +16743,7 @@ filter = A-Box
 logpath = /var/log/A-Box-xray-error.log
           /var/log/A-Box-singbox.log
           /var/log/A-Box-hysteria.log
+backend = polling
 maxretry = 8
 findtime = 120
 bantime = 3600
@@ -16777,6 +16778,7 @@ filter = A-Box
 logpath = /var/log/A-Box-xray-error.log
           /var/log/A-Box-singbox.log
           /var/log/A-Box-hysteria.log
+backend = polling
 maxretry = 8
 findtime = 120
 bantime = 3600
@@ -36428,6 +36430,7 @@ ignoreip = 127.0.0.1/8 ::1
 port = ${port}
 filter = A-Box-wallos
 logpath = ${logpath}
+backend = polling
 maxretry = 10
 findtime = 600
 bantime = 86400

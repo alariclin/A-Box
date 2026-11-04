@@ -33615,7 +33615,7 @@ src, dst = sys.argv[1], sys.argv[2]
 # after open cannot redirect an already-open fd.
 sfd = os.open(src, os.O_RDONLY | os.O_NOFOLLOW)
 try:
-    dfd = os.open(dst, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
+    dfd = os.open(dst, os.O_WRONLY | os.O_TRUNC | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
         while True:
             chunk = os.read(sfd, 1024 * 1024)

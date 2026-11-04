@@ -12945,7 +12945,7 @@ remove_native_firewall_rules() {
         mv -f -- "$tmp" "$ABOX_FW_STATE" || { rm -f -- "$tmp"; return 1; }
         return 1
     fi
-    rm -f -- "$tmp" "$ABOX_FW_STATE"
+    rm -f -- "$tmp" "$ABOX_FW_STATE" || return 1
     return 0
 }
 

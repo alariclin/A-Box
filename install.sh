@@ -6519,6 +6519,12 @@ tr_msg() {
         ru:fw2_fwd_perm_record) echo 'Не удалось записать принадлежность permanent-правила firewalld.' ;;
         fa:fw2_fwd_perm_record) echo 'ثبت مالکیت قانون permanent ‏firewalld ناموفق بود.' ;;
         ja:fw2_fwd_perm_record) echo 'firewalld の permanent ルール所有記録に失敗しました。' ;;
+        zh:fw2_fwd_rb_fail) echo 'firewalld 回滚删除失败，保留 %s 的归属记录（规则可能仍在，需手动核查）。' ;;
+        zh-tw:fw2_fwd_rb_fail) echo 'firewalld 回滾刪除失敗，保留 %s 的歸屬記錄（規則可能仍在，需手動核查）。' ;;
+        en:fw2_fwd_rb_fail) echo 'firewalld rollback removal failed; ownership record for %s retained (rule may still be present; check manually).' ;;
+        ru:fw2_fwd_rb_fail) echo 'Не удалось откатить удаление в firewalld; запись принадлежности %s сохранена (правило может оставаться; проверьте вручную).' ;;
+        fa:fw2_fwd_rb_fail) echo 'حذف بازگشتی firewalld ناموفق بود؛ رکورد مالکیت %s حفظ شد (قانون ممکن است هنوز موجود باشد؛ به‌صورت دستی بررسی کنید).' ;;
+        ja:fw2_fwd_rb_fail) echo 'firewalld のロールバック削除に失敗しました。%s の所有記録を保持します（ルールが残っている可能性があります。手動で確認してください）。' ;;
         zh:fw2_fwd_perm_verify) echo 'firewalld permanent 后置验证失败。' ;;
         zh-tw:fw2_fwd_perm_verify) echo 'firewalld permanent 後置驗證失敗。' ;;
         en:fw2_fwd_perm_verify) echo 'The firewalld permanent post-check failed.' ;;
@@ -13386,7 +13392,7 @@ iptables_rule_check() {
 # F12: removed zero-call restore_iptables_saved_snapshot (duplicate dead code)
 
 allowPort() {
-    local raw_port="$1" type="${2:-tcp}" backend spec fw_spec runtime=0 permanent=0 added_runtime=0 _orc=0 _rrc=0 _zone='' _uncovered_out='' _sub='' _rec_failed=0
+    local raw_port="$1" type="${2:-tcp}" backend spec fw_spec runtime=0 permanent=0 added_runtime=0 _orc=0 _rrc=0 _zone='' _uncovered_out='' _sub='' _rec_failed=0 _rb_failed=0 _sirc=0
     local -a _uncovered_runtime=() _uncovered_permanent=()
     spec=$(normalize_port_spec "$raw_port") || die "$(tprintf fw2_bad_port "$raw_port")"
     [[ "$type" == tcp || "$type" == udp ]] || die "$(tprintf fw2_bad_proto "$type")"
@@ -13461,10 +13467,24 @@ allowPort() {
                 if (( ${#_uncovered_permanent[@]} == 0 )); then die "$(tr_msg fw2_fwd_perm_q)"; fi
                 if ! firewalld_cmd_zone "$_zone" --permanent --add-port="${fw_spec}/${type}" >/dev/null 2>&1; then
                     if [[ "$added_runtime" == 1 ]]; then
-                        for _sub in "${_uncovered_runtime[@]}"; do firewalld_cmd_zone "$_zone" --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || true; done
-                        # S48 (argon P2-4): forget the runtime records too, or
-                        # the state file claims rules that no longer exist.
-                        for _sub in "${_uncovered_runtime[@]}"; do forget_native_firewall_rule "$_sub" "$type" firewalld "$_zone" "runtime" >/dev/null 2>&1 || true; done
+                        # R15C6-02: forget a runtime record only after its
+                        # removal succeeded AND absence is confirmed
+                        # (state query == 1). A failed removal keeps its
+                        # record, or the still-open port becomes untracked.
+                        _rb_failed=0
+                        for _sub in "${_uncovered_runtime[@]}"; do
+                            _rrc=0
+                            firewalld_cmd_zone "$_zone" --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || _rrc=1
+                            firewalld_port_state "$_sub" "$type" runtime "$_zone"; _sirc=$?
+                            if (( _rrc == 0 && _sirc == 1 )); then
+                                forget_native_firewall_rule "$_sub" "$type" firewalld "$_zone" "runtime" >/dev/null 2>&1 || true
+                            else
+                                _rb_failed=1
+                            fi
+                        done
+                        if (( _rb_failed == 1 )); then
+                            msg "${YELLOW}$(tprintf fw2_fwd_rb_fail "${fw_spec}/${type}")${NC}"
+                        fi
                     fi
                     die "$(tprintf fw2_fwd_perm_add "${fw_spec}/${type}")"
                 fi
@@ -13475,8 +13495,24 @@ allowPort() {
                 if (( _rec_failed == 1 )); then
                     for _sub in "${_uncovered_permanent[@]}"; do firewalld_cmd_zone "$_zone" --permanent --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || true; done
                     if [[ "$added_runtime" == 1 ]]; then
-                        for _sub in "${_uncovered_runtime[@]}"; do firewalld_cmd_zone "$_zone" --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || true; done
-                        for _sub in "${_uncovered_runtime[@]}"; do forget_native_firewall_rule "$_sub" "$type" firewalld "$_zone" "runtime" >/dev/null 2>&1 || true; done
+                        # R15C6-02: forget a runtime record only after its
+                        # removal succeeded AND absence is confirmed
+                        # (state query == 1). A failed removal keeps its
+                        # record, or the still-open port becomes untracked.
+                        _rb_failed=0
+                        for _sub in "${_uncovered_runtime[@]}"; do
+                            _rrc=0
+                            firewalld_cmd_zone "$_zone" --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || _rrc=1
+                            firewalld_port_state "$_sub" "$type" runtime "$_zone"; _sirc=$?
+                            if (( _rrc == 0 && _sirc == 1 )); then
+                                forget_native_firewall_rule "$_sub" "$type" firewalld "$_zone" "runtime" >/dev/null 2>&1 || true
+                            else
+                                _rb_failed=1
+                            fi
+                        done
+                        if (( _rb_failed == 1 )); then
+                            msg "${YELLOW}$(tprintf fw2_fwd_rb_fail "${fw_spec}/${type}")${NC}"
+                        fi
                     fi
                     die "$(tr_msg fw2_fwd_perm_record)"
                 fi

@@ -18762,9 +18762,12 @@ install_file_atomically() {
     [[ -d "$dir" ]] || install -d -m 755 "$dir" || return 1
     staged=$(mktemp "${dest}.A-Box-new.XXXXXX") || return 1
     command install -m "$mode" "$src" "$staged" || { rm -f -- "$staged"; return 1; }
-    sync -f "$staged" 2>/dev/null || true
+    # R7C8-01: a real sync failure must fail the install, not be
+    # swallowed; _abox_sync_file still tolerates "option
+    # unsupported" (busybox) as best-effort.
+    _abox_sync_file "$staged" || { rm -f -- "$staged"; return 1; }
     mv -f -- "$staged" "$dest" || { rm -f -- "$staged"; return 1; }
-    sync -f "$dir" 2>/dev/null || true
+    _abox_sync_file "$dir" || return 1
 }
 
 install_binary_atomically() { install_file_atomically "$1" "$2" 755; }

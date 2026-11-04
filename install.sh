@@ -19234,7 +19234,8 @@ EOF_SVC
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
-            '(.inbounds | map(select(.tag==$t))) as $old
+            '.inbounds = (.inbounds // [])
+             | (.inbounds | map(select(.tag==$t))) as $old
              | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_socks5_update)"
@@ -19626,7 +19627,8 @@ EOF_SVC
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
-            '(.inbounds | map(select(.tag==$t))) as $old
+            '.inbounds = (.inbounds // [])
+             | (.inbounds | map(select(.tag==$t))) as $old
              | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_trojan_update)"
@@ -19817,7 +19819,8 @@ EOF_SVC
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" \
-            '(.inbounds | map(select(.tag==$t))) as $old
+            '.inbounds = (.inbounds // [])
+             | (.inbounds | map(select(.tag==$t))) as $old
              | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tuic_update)"
@@ -19985,7 +19988,8 @@ EOF_SVC
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
-            '(.inbounds | map(select(.tag==$t))) as $old
+            '.inbounds = (.inbounds // [])
+             | (.inbounds | map(select(.tag==$t))) as $old
              | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_anytls_update)"
@@ -20158,7 +20162,8 @@ EOF_SVC
     fi
     tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" --arg it "$itag" \
-            '(.inbounds | map(select(.tag==$t or .tag==$it))) as $old
+            '.inbounds = (.inbounds // [])
+             | (.inbounds | map(select(.tag==$t or .tag==$it))) as $old
              | .inbounds |= (map(select(.tag!=$t and .tag!=$it)) + $nb)' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_shadowtls_update)"
@@ -22624,7 +22629,8 @@ EOF_SVC
         ( umask 077; set -o noclobber; : > "$tmp_cfg.json" ) 2>/dev/null || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_tmpfile)"; }
         mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$tmp_cfg.json"; die "$(tr_msg dp_tmpfile)"; }; tmp_cfg="$tmp_cfg.json"
         if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
-                '(.inbounds | map(select(.tag==$t))) as $old
+                '.inbounds = (.inbounds // [])
+                 | (.inbounds | map(select(.tag==$t))) as $old
                  | .inbounds |= (map(select(.tag!=$t)) + $nb)' \
                 "$cfg" > "$tmp_cfg" 2>/dev/null; then
             rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_socks5_update)"

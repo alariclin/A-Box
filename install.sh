@@ -35514,7 +35514,9 @@ wallos_install_runtime() {
             ;;
         alpine)
             apk add --no-cache docker curl jq ca-certificates || return 1
-            rc-update add docker default >/dev/null 2>&1 || true
+            # R7C14-01: boot-enable failure must fail the install, not swallow
+            # (else Docker, and hence Wallos, stays dead after reboot).
+            rc-update add docker default >/dev/null 2>&1 || return 1
             rc-service docker start || return 1
             ;;
         centos|rhel|rocky|almalinux|fedora)

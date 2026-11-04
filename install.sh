@@ -37127,7 +37127,8 @@ StandardError=append:/etc/ddr/abox-wallos-caddy.log
 WantedBy=multi-user.target
 EOF_WCADDY
         systemctl daemon-reload >/dev/null 2>&1 || return 1
-        systemctl enable abox-wallos-caddy.service >/dev/null 2>&1 || true
+        # R8C15-03: a failed boot registration must fail setup, not be swallowed.
+        systemctl enable abox-wallos-caddy.service >/dev/null 2>&1 || return 1
         systemctl restart abox-wallos-caddy.service >/dev/null 2>&1 || return 1
     else
         write_file_atomically_from_stdin "/etc/init.d/abox-wallos-caddy" 755 <<'EOF_WCADDY_RC' || return 1
@@ -37144,7 +37145,8 @@ error_log="/etc/ddr/abox-wallos-caddy.log"
 depend() { need net; }
 EOF_WCADDY_RC
         chmod +x "/etc/init.d/abox-wallos-caddy" || return 1
-        rc-update add abox-wallos-caddy default >/dev/null 2>&1 || true
+        # R8C15-03: a failed boot registration must fail setup, not be swallowed.
+        rc-update add abox-wallos-caddy default >/dev/null 2>&1 || return 1
         rc-service abox-wallos-caddy restart >/dev/null 2>&1 9>&- 10>&- || return 1
     fi
 }
@@ -37381,7 +37383,8 @@ StandardError=append:/etc/ddr/abox-wallos-cftunnel.log
 WantedBy=multi-user.target
 EOF_WCFT
         systemctl daemon-reload >/dev/null 2>&1 || return 1
-        systemctl enable abox-wallos-cftunnel.service >/dev/null 2>&1 || true
+        # R8C15-03: a failed boot registration must fail setup, not be swallowed.
+        systemctl enable abox-wallos-cftunnel.service >/dev/null 2>&1 || return 1
         systemctl restart abox-wallos-cftunnel.service >/dev/null 2>&1 || return 1
     else
         local _tok=''
@@ -37408,7 +37411,8 @@ start_pre() {
 }
 EOF_WCFTRC
         chmod +x "/etc/init.d/abox-wallos-cftunnel" || return 1
-        rc-update add abox-wallos-cftunnel default >/dev/null 2>&1 || true
+        # R8C15-03: a failed boot registration must fail setup, not be swallowed.
+        rc-update add abox-wallos-cftunnel default >/dev/null 2>&1 || return 1
         rc-service abox-wallos-cftunnel restart >/dev/null 2>&1 9>&- 10>&- || return 1
     fi
 }

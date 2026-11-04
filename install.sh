@@ -34209,6 +34209,9 @@ backup_current_config() {
     fi
     rm -rf "$work"
     ABOX_LAST_BACKUP="$tarball"
+    if [[ -n "${ABOX_BACKUP_RESULT_FILE:-}" ]]; then
+        printf '%s\n' "$tarball" > "$ABOX_BACKUP_RESULT_FILE" || return 1
+    fi
     _old_backups=()
     local _old_backups_output=''
     if _old_backups_output=$(python3 -I - "$backup_dir" "$BACKUP_RETENTION_COUNT" <<'PY_BACKUP_RETENTION'
@@ -34251,12 +34254,19 @@ auto_backup_silent() {
     # SYD-B E1b: run the backup in a subshell with the die hook
     # cleared, so a backup failure only fails this call (the caller
     # returns to the menu) instead of exiting the whole script.
-    # The subshell's ABOX_LAST_BACKUP assignment is lost, so the
-    # parent recomputes it from the newest tarball on success.
-    ( ABOX_DIE_HOOK=''; backup_current_config "$dest" ) || return 1
-    newest=$(ls -t "$dest"/A-Box-backup-*.tar.gz 2>/dev/null | head -n 1)
-    [[ -n "$newest" && -f "$newest" ]] && ABOX_LAST_BACKUP="$newest"
-    [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || return 1
+    # F03: the subshell's ABOX_LAST_BACKUP assignment is lost, so
+    # the exact path comes back through a protected result file.
+    # Recomputing it with ls -t can pick an older backup (clock
+    # skew, same-second ties) or keep a stale value when no new
+    # file appears; an empty result now fails closed.
+    local result_file=''
+    result_file=$(mktemp /tmp/A-Box-backup-result.XXXXXX) || return 1
+    chmod 600 "$result_file" || { rm -f "$result_file"; return 1; }
+    ( ABOX_DIE_HOOK=''; ABOX_BACKUP_RESULT_FILE="$result_file"; backup_current_config "$dest" ) || { rm -f "$result_file"; return 1; }
+    newest=$(cat "$result_file" 2>/dev/null || true)
+    rm -f "$result_file"
+    [[ -n "$newest" && -f "$newest" ]] || return 1
+    ABOX_LAST_BACKUP="$newest"
 }
 
 restore_latest_backup_silent() {

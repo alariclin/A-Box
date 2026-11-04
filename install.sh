@@ -17900,6 +17900,11 @@ build_xray_config() {
         policy:{levels:{"0":{statsUserUplink:true, statsUserDownlink:true}}, system:{statsInboundUplink:true, statsInboundDownlink:true}},
         routing:{domainStrategy:"IPIfNonMatch", rules: ([
             {type:"field", inboundTag:["api"], outboundTag:"api"},
+            # R2C8-01: proxy clients must not reach loopback (the API has
+            # no auth); the api-inbound rule above matches first, so the
+            # legitimate control plane is unaffected. IP-based, so it also
+            # covers the xray-latest API port and any other local service.
+            {type:"field", ip:["127.0.0.0/8", "::1/128"], outboundTag:"block"},
             {type:"field", protocol:["bittorrent"], outboundTag:"block"},
             {type:"field", domain:["geosite:category-ads-all"], outboundTag:"block"}
         ] + $rs_rules[0]) },

@@ -27229,7 +27229,7 @@ users_sync() {
                             .settings.password = $ss
                             | .settings.clients = [$users[0][] | {password: .secret, email: .email}]
                          else
-                            .settings.password = $users[0][0].secret | .settings |= del(.clients) end)
+                            .settings.password = $users[0][0].secret | .settings.email = $users[0][0].email | .settings |= del(.clients) end)
                      elif $proto == "socks" then
                         .settings.auth = "password"
                         | .settings.accounts = [$users[0][] | {user: (.login // .name), pass: .secret}]

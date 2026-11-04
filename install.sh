@@ -28006,7 +28006,18 @@ users_hot_remove() {
     if [[ "$proto" == 'shadowsocks' ]]; then
         local _snap_obj='' _snap_reg=''
         _snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" 2>/dev/null) || return 1
-        if [[ -n "$_snap_obj" ]] && ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.settings.clients // null) | type) == "array"' "$cfg" >/dev/null 2>&1; then
+        # R10C11-01: also snapshot when removing the last client: the
+        # removal below deletes the whole inbound (an empty clients
+        # array plus the retained password would fall back to
+        # single-password mode), and the snapshot lets a later sync
+        # rebuild it.
+        local _snap_needed=0
+        if ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.settings.clients // null) | type) == "array"' "$cfg" >/dev/null 2>&1; then
+            _snap_needed=1
+        elif jq -e --arg t "$tag" --arg e "$email" '.inbounds[]? | select(.tag == $t) | ((.settings.clients // null) | type) == "array" and ((.settings.clients | map(select(.email != $e)) | length) == 0)' "$cfg" >/dev/null 2>&1; then
+            _snap_needed=1
+        fi
+        if [[ -n "$_snap_obj" && "$_snap_needed" == 1 ]]; then
             _snap_reg=$(jq -c --slurpfile ib <(printf '%s' "$_snap_obj") '.inbound_snapshot = $ib[0]' "$reg" 2>/dev/null) || return 1
             users_reg_write "$core" "$tag" "$_snap_reg" || return 1
         fi
@@ -28023,7 +28034,9 @@ users_hot_remove() {
             jq --arg t "$tag" --arg e "$email" '
                 .inbounds |= map(if .tag == $t then
                     (if ((.settings.clients // null) | type) == "array"
-                     then .settings.clients |= map(select(.email != $e))
+                     then (if (.settings.clients | map(select(.email != $e)) | length) == 0
+                           then empty
+                           else .settings.clients |= map(select(.email != $e)) end)
                      else empty end)
                 else . end)
             ' "$cfg" > "$tmp" 2>/dev/null && ok=1 ;;

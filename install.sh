@@ -38218,14 +38218,24 @@ xl_show_ports() {
 
 # Conflict = port used by the OTHER Xray instance's config, or held by a
 # system listener that is not the target instance's own current config.
+# R5C15-04: transport-set intersection (csv, e.g. tcp,udp).
+_xl_transports_overlap() { # $1=new transports $2=existing transports
+    local n e
+    for n in ${1//,/ }; do
+        for e in ${2//,/ }; do
+            [[ "$n" == "$e" ]] && return 0
+        done
+    done
+    return 1
+}
 xl_port_conflict() { # $1=port $2=target_cfg $3=tag (empty = no exemption) $4=new transports (default tcp,udp)
-    local port="${1:-}" target_cfg="${2:-}" tag="${3:-}" transports="${4:-tcp,udp}" other_cfg='' p own=0 svc=''
+    local port="${1:-}" target_cfg="${2:-}" tag="${3:-}" transports="${4:-tcp,udp}" other_cfg='' p own=0 svc='' _et='' _lt=''
     [[ "$port" =~ ^[0-9]+$ ]] || return 1
     if [[ "$target_cfg" == "$XRAY_SLOT_CFG" ]]; then other_cfg="$XRAY_LATEST_CFG"; else other_cfg="$XRAY_SLOT_CFG"; fi
     # Other instance's config: unfiltered (loopback counts for
     # wildcard overlap) and range-aware.
-    while read -r p; do _xl_port_in_spec "$p" "$port" && return 0; done < <(jq -r '.inbounds[]? | select(.port != null and .tag != "api") | .port' "$other_cfg" 2>/dev/null | sort -u)
-    while read -r p; do _xl_port_in_spec "$p" "$port" && return 0; done < <(jq -r '.inbounds[]? | select(.listen_port != null) | .listen_port' '/etc/sing-box/config.json' 2>/dev/null | sort -u)
+    while IFS='|' read -r p _et; do _xl_port_in_spec "$p" "$port" && _xl_transports_overlap "$transports" "$_et" && return 0; done < <(jq -r '.inbounds[]? | select(.port != null and .tag != "api") | "\(.port)|\(if .settings.network then .settings.network else (if .protocol == "socks" or .protocol == "shadowsocks" then "tcp,udp" else "tcp" end) end)"' "$other_cfg" 2>/dev/null | sort -u)
+    while IFS='|' read -r p _et; do _xl_port_in_spec "$p" "$port" && _xl_transports_overlap "$transports" "$_et" && return 0; done < <(jq -r '.inbounds[]? | select(.listen_port != null) | "\(.listen_port)|\(if (.network | type) == "array" then (.network | join(",")) elif .network then .network elif .type == "hysteria2" or .type == "tuic" then "udp" elif .type == "socks" or .type == "mixed" or .type == "shadowsocks" then "tcp,udp" else "tcp" end)"' '/etc/sing-box/config.json' 2>/dev/null | sort -u)
     # Hy2 is UDP-only: only a UDP deployment can conflict with it.
     if [[ "$transports" == *udp* ]]; then
         [[ "$(xl_hy2_port)" == "$port" ]] && return 0
@@ -38234,24 +38244,31 @@ xl_port_conflict() { # $1=port $2=target_cfg $3=tag (empty = no exemption) $4=ne
     # safe), unfiltered for loopback, range-aware. Non-exempt ports
     # conflict outright; same-tag ports are only candidates for own.
     if [[ -n "$tag" ]]; then
-        while read -r p; do _xl_port_in_spec "$p" "$port" && return 0; done < <(jq -r --arg t "$tag" '.inbounds[]? | select(.port != null and .tag != "api" and .tag != $t) | .port' "$target_cfg" 2>/dev/null | sort -u)
-        while read -r p; do _xl_port_in_spec "$p" "$port" && own=1; done < <(jq -r --arg t "$tag" '.inbounds[]? | select(.port != null and .tag != "api" and .tag == $t) | .port' "$target_cfg" 2>/dev/null | sort -u)
+        while IFS='|' read -r p _et; do _xl_port_in_spec "$p" "$port" && _xl_transports_overlap "$transports" "$_et" && return 0; done < <(jq -r --arg t "$tag" '.inbounds[]? | select(.port != null and .tag != "api" and .tag != $t) | "\(.port)|\(if .settings.network then .settings.network else (if .protocol == "socks" or .protocol == "shadowsocks" then "tcp,udp" else "tcp" end) end)"' "$target_cfg" 2>/dev/null | sort -u)
+        while IFS='|' read -r p _et; do _xl_port_in_spec "$p" "$port" && _xl_transports_overlap "$transports" "$_et" && own=1; done < <(jq -r --arg t "$tag" '.inbounds[]? | select(.port != null and .tag != "api" and .tag == $t) | "\(.port)|\(if .settings.network then .settings.network else (if .protocol == "socks" or .protocol == "shadowsocks" then "tcp,udp" else "tcp" end) end)"' "$target_cfg" 2>/dev/null | sort -u)
     else
-        while read -r p; do _xl_port_in_spec "$p" "$port" && return 0; done < <(jq -r '.inbounds[]? | select(.port != null and .tag != "api") | .port' "$target_cfg" 2>/dev/null | sort -u)
+        while IFS='|' read -r p _et; do _xl_port_in_spec "$p" "$port" && _xl_transports_overlap "$transports" "$_et" && return 0; done < <(jq -r '.inbounds[]? | select(.port != null and .tag != "api") | "\(.port)|\(if .settings.network then .settings.network else (if .protocol == "socks" or .protocol == "shadowsocks" then "tcp,udp" else "tcp" end) end)"' "$target_cfg" 2>/dev/null | sort -u)
     fi
     # Live listener: conflicts unless it is the target instance's own
     # (same-tag config entry AND the socket held by its process).
     # An unconfirmable holder fails closed (conflict).
-    if ss -tuln 2>/dev/null | awk '{print $5}' | grep -qE "[:.]${port}$"; then
-        if (( own == 1 )); then
-            svc='xray'
-            [[ "$target_cfg" == "$XRAY_LATEST_CFG" ]] && svc='xray-latest'
-            if ss -tulnp 2>/dev/null | grep -E "[:.]${port}[[:space:]]" | grep -q "\"${svc}\""; then
-                return 1
+    # R5C15-04: live listeners are transport-aware too: a UDP
+    # listener must not block a TCP-only deployment (and vice
+    # versa). Each transport keeps the own-exemption; only a
+    # foreign listener on a relevant transport is a conflict.
+    for _lt in tcp udp; do
+        [[ "$transports" == *"$_lt"* ]] || continue
+        if ss -"${_lt:0:1}"ln 2>/dev/null | awk '{print $5}' | grep -qE "[:.]${port}$"; then
+            if (( own == 1 )); then
+                svc='xray'
+                [[ "$target_cfg" == "$XRAY_LATEST_CFG" ]] && svc='xray-latest'
+                if ss -"${_lt:0:1}"lnp 2>/dev/null | grep -E "[:.]${port}[[:space:]]" | grep -q "\"${svc}\""; then
+                    continue
+                fi
             fi
+            return 0
         fi
-        return 0
-    fi
+    done
     return 1
 }
 

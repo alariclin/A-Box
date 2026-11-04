@@ -14965,7 +14965,7 @@ valid_github_download_url() {
         [[ "$expected_ref" =~ ^[A-Za-z0-9._/-]+$ ]] || return 1
         if [[ -n "$expected_asset" ]]; then
             python3 -I - "$url" "$repo" "$expected_ref" "$expected_asset" <<'PY_GITHUB_URL'
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, unquote
 import sys
 url, repo, ref, asset = sys.argv[1:]
 try:
@@ -14974,7 +14974,12 @@ except ValueError:
     raise SystemExit(1)
 if u.scheme != 'https' or u.hostname != 'github.com' or u.username or u.password or u.query or u.fragment:
     raise SystemExit(1)
-if u.path != f'/{repo}/releases/download/{ref}/{asset}':
+# R6C7-01: normalize percent-encoding before comparison:
+# a namespaced tag URL may carry %2F where the expected
+# ref has a literal slash. Single unquote + exact match
+# keeps encoded traversal rejected (it cannot equal the
+# expected path).
+if unquote(u.path) != f'/{repo}/releases/download/{ref}/{asset}':
     raise SystemExit(1)
 raise SystemExit(0)
 PY_GITHUB_URL

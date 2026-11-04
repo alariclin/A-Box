@@ -17099,7 +17099,7 @@ hysteria_official_hop_firewall_ok() {
         # S39 (GPT-20): the old whole-ruleset grep matched redirects in
         # any chain/table/family. Scope it to nat PREROUTING, and when
         # the host has IPv6 require both ip and ip6 (an inet table
-        # counts for both families, since its rules apply to both).
+        # counts per its rules' meta nfproto (unrestricted counts for both)).
         local _nft_need6=0
         has_ipv6 && _nft_need6=1
         if nft list ruleset 2>/dev/null | awk -v need6="$_nft_need6" -v pat="udp dport (${start}-${end}|${first_other}-${end}).*redirect to :${first}([[:space:]]|$)" '
@@ -17111,7 +17111,17 @@ hysteria_official_hop_firewall_ok() {
             chain == "PREROUTING" && tbl == "nat" && $0 ~ pat {
                 if (fam == "ip") hit4 = 1
                 if (fam == "ip6") hit6 = 1
-                if (fam == "inet") { hit4 = 1; hit6 = 1 }
+                if (fam == "inet") {
+                    # R10C8-02: an inet rule covers only the families
+                    # its meta nfproto selects; an unrestricted rule
+                    # covers both. Without this, a pure-IPv4 inet
+                    # redirect counted as dual-stack coverage.
+                    v4 = ($0 ~ /meta nfproto ipv4/ || $0 ~ /meta nfproto != ipv6/)
+                    v6 = ($0 ~ /meta nfproto ipv6/ || $0 ~ /meta nfproto != ipv4/)
+                    if (!v4 && !v6) { v4 = 1; v6 = 1 }
+                    if (v4) hit4 = 1
+                    if (v6) hit6 = 1
+                }
             }
             END { if (hit4 && (need6 == 0 || hit6)) exit 0; exit 1 }
         '; then
@@ -17380,7 +17390,7 @@ hysteria_official_hop_firewall_ok() {
         # S39 (GPT-20): the old whole-ruleset grep matched redirects in
         # any chain/table/family. Scope it to nat PREROUTING, and when
         # the host has IPv6 require both ip and ip6 (an inet table
-        # counts for both families, since its rules apply to both).
+        # counts per its rules' meta nfproto (unrestricted counts for both)).
         local _nft_need6=0
         has_ipv6 && _nft_need6=1
         if nft list ruleset 2>/dev/null | awk -v need6="$_nft_need6" -v pat="udp dport (${start}-${end}|${first_other}-${end}).*redirect to :${first}([[:space:]]|$)" '
@@ -17392,7 +17402,17 @@ hysteria_official_hop_firewall_ok() {
             chain == "PREROUTING" && tbl == "nat" && $0 ~ pat {
                 if (fam == "ip") hit4 = 1
                 if (fam == "ip6") hit6 = 1
-                if (fam == "inet") { hit4 = 1; hit6 = 1 }
+                if (fam == "inet") {
+                    # R10C8-02: an inet rule covers only the families
+                    # its meta nfproto selects; an unrestricted rule
+                    # covers both. Without this, a pure-IPv4 inet
+                    # redirect counted as dual-stack coverage.
+                    v4 = ($0 ~ /meta nfproto ipv4/ || $0 ~ /meta nfproto != ipv6/)
+                    v6 = ($0 ~ /meta nfproto ipv6/ || $0 ~ /meta nfproto != ipv4/)
+                    if (!v4 && !v6) { v4 = 1; v6 = 1 }
+                    if (v4) hit4 = 1
+                    if (v6) hit6 = 1
+                }
             }
             END { if (hit4 && (need6 == 0 || hit6)) exit 0; exit 1 }
         '; then

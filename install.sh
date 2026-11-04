@@ -23173,7 +23173,7 @@ read_block_period() {
     printf '%s\n' "$period"
 }
 month_bytes() {
-    local i="$1" mode="${2:-total}" json rx tx line month_count
+    local i="$1" mode="${2:-total}" json rx tx line month_count ol_month
     if command -v jq >/dev/null 2>&1 && json=$(vnstat -i "$i" --json m 1 2>/dev/null); then
         # A newly initialized vnStat database may have an interface entry but no
         # monthly sample yet. Treat an empty monthly series as 0 for quota purposes.
@@ -23199,6 +23199,12 @@ PY_VNSTAT_TOTAL_MONITOR
         fi
     fi
     line=$(vnstat -i "$i" --oneline b 2>/dev/null) || return 1
+    # R2C10-03: field 8 is the oneline month timestamp (yyyy-mm). It must
+    # match the current billing cycle; a stalled daemon reports last
+    # month's total as current, and the sticky-block logic would turn one
+    # stale read into a new-month block. Refuse on mismatch or malformed.
+    ol_month=$(awk -F';' '{print $8}' <<< "$line")
+    [[ "$ol_month" == "$(date +%Y-%m)" ]] || return 1
     case "$mode" in rx) awk -F';' '{print $9}' <<< "$line";; tx) awk -F';' '{print $10}' <<< "$line";; total) awk -F';' '{print $11}' <<< "$line";; *) return 1;; esac
 }
 is_systemd() { [[ "$INIT_SYS_EXPECTED" == systemd ]]; }

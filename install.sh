@@ -21053,7 +21053,7 @@ argo_uninstall() {
             return 1
         fi
         tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        if jq '.inbounds |= map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in")) | if (.route.rules | type) == "array" then .route.rules |= map(if (.inbound | type) == "string" then select(.inbound != "vmess-ws-in" and .inbound != "vless-ws-in") elif (.inbound | type) == "array" then (if ((.inbound | index("vmess-ws-in")) != null or (.inbound | index("vless-ws-in")) != null) then (.inbound |= map(select(. != "vmess-ws-in" and . != "vless-ws-in")) | select((.invert // false) or (.inbound | length > 0))) else . end) else . end) else . end' "$cfg" > "$tmp_cfg" 2>/dev/null \
+        if jq '.inbounds |= map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in")) | if (.route.rules | type) == "array" then .route.rules |= map(if (.inbound | type) == "string" then (if (.inbound == "vmess-ws-in" or .inbound == "vless-ws-in") then (if (.invert // false) then del(.inbound) else empty end) else . end) elif (.inbound | type) == "array" then (if ((.inbound | index("vmess-ws-in")) != null or (.inbound | index("vless-ws-in")) != null) then (.inbound |= map(select(. != "vmess-ws-in" and . != "vless-ws-in")) | select((.invert // false) or (.inbound | length > 0))) else . end) else . end) else . end' "$cfg" > "$tmp_cfg" 2>/dev/null \
             && /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1; then
             install_file_atomically "$tmp_cfg" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
             prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"

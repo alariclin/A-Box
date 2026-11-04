@@ -38595,6 +38595,38 @@ xray_latest_install_core() {
 # reported, and a partial failure still returns 1. Called only after a
 # successful config rollback, so a live new config never loses its
 # ports here.
+# R4C15-02: true (0) when port/proto is already A-Box-owned
+# BEFORE this deploy's allowPort. Unknown/error states are
+# treated as owned (conservative): excluding an allowance from
+# rollback can only leave a redundant allow rule, while revoking
+# a pre-existing rule can cut off the restored inbound.
+_xl_fw_owned() {
+    local spec backend rc
+    spec=$(normalize_port_spec "$1") || return 0
+    [[ "$2" == tcp || "$2" == udp ]] || return 0
+    backend=$(firewall_backend) || return 0
+    case "$backend" in
+        ufw)
+            ufw_owned_rule_exists "$spec" "$2"; rc=$?
+            (( rc == 1 )) && return 1 || return 0
+            ;;
+        firewalld)
+            [[ -f "$ABOX_FW_STATE" ]] && grep -qF "firewalld|${spec}|${2}|" "$ABOX_FW_STATE" && return 0
+            return 1
+            ;;
+        iptables)
+            iptables_rule_check "$IPT" INPUT -p "$2" --dport "$spec" -m comment --comment "A-Box-${spec}-${2}" -j ACCEPT; rc=$?
+            (( rc == 1 )) || return 0
+            if command -v ip6tables >/dev/null 2>&1; then
+                iptables_rule_check "$IPT6" INPUT -p "$2" --dport "$spec" -m comment --comment "A-Box-${spec}-${2}" -j ACCEPT; rc=$?
+                (( rc == 1 )) || return 0
+            fi
+            return 1
+            ;;
+        *) return 0 ;;
+    esac
+}
+
 _xl_revoke_deploy_allows() { # $1 = space-separated "port/proto" items
     local item p pr rc=0 left=''
     for item in $1; do
@@ -38742,6 +38774,8 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
     # U130: firewall steps run before the backup is deleted; on failure the
     # deploy is rolled back (old config + old links stay valid) instead of
     # leaving a live new config with no backup and no links.
+    local tcp_preowned=0 udp_preowned=0
+    _xl_fw_owned "$port" tcp && tcp_preowned=1
     if ! allowPort "$port" tcp; then
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
             rm -f "$bak"
@@ -38752,7 +38786,8 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
         fi
         return 1
     fi
-    fw_done="$port/tcp"
+    (( tcp_preowned == 0 )) && fw_done="$port/tcp"
+    if [[ "$kind" == 'ss' || "$kind" == 'socks' ]]; then _xl_fw_owned "$port" udp && udp_preowned=1; fi
     if [[ "$kind" == 'ss' || "$kind" == 'socks' ]] && ! allowPort "$port" udp; then
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
             rm -f "$bak"
@@ -38763,7 +38798,7 @@ xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
         fi
         return 1
     fi
-    [[ "$kind" == 'ss' || "$kind" == 'socks' ]] && fw_done="$fw_done $port/udp"
+    [[ "$kind" == 'ss' || "$kind" == 'socks' ]] && (( udp_preowned == 0 )) && fw_done="$fw_done $port/udp"
     if ! save_firewall_rules; then
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
             rm -f "$bak"

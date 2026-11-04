@@ -26342,6 +26342,7 @@ users_adopt() {
                        then [$st.clients[] | {name: (if .email then (.email | split("/") | .[1] // "main") else "main" end), secret: .password}]
                        else [{name: "main", secret: ($st.password // "")}] end)
                   elif .protocol == "socks" then [$st.accounts[]? | {name: (.user // "main"), secret: (.pass // "")}]
+                  elif .protocol == "vmess" then [$st.clients[]? | {name: (if .email then (.email | split("/") | .[1] // "main") else "main" end), secret: .id, uuid: .id}]
                   else [] end' "$cfg" 2>/dev/null) || return 1
             if [[ "$proto" == 'shadowsocks' ]]; then
                 # clients-form SS keeps the server key separately.
@@ -26604,6 +26605,8 @@ users_sync() {
                             .settings.password = $users[0][0].secret | .settings |= del(.clients) end)
                      elif $proto == "socks" then
                         .settings.accounts = [$users[0][] | {user: (.login // .name), pass: .secret}]
+                     elif $proto == "vmess" then
+                        .settings.clients = [$users[0][] | {id: .secret, email: .email}]
                      else . end)
                 else . end)
             ' "$cfg" > "$tmp" 2>/dev/null; then

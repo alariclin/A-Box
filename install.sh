@@ -24487,7 +24487,7 @@ start_services_for_traffic_unblock() {
         [[ -n "$srv" ]] || continue
         abox_owns_service "$srv" || return 1
         before=$(managed_service_state_value "$srv" 2>/dev/null) || return 1
-        [[ "$before" == "$srv|1|enabled" || "$before" == "$srv|1|enabled-runtime" ]] && continue
+        [[ "$before" == "$srv|1|enabled" || "$before" == "$srv|1|enabled-runtime" || "$before" == "$srv|1|indirect" ]] && continue
         IFS='|' read -r _ active enabled <<< "$before"
         append_managed_service_state_entry "$pre_state" "$changed_pre" "$srv" || return 1
         if [[ "$active" == 1 ]]; then
@@ -24509,7 +24509,7 @@ start_services_for_traffic_unblock() {
     while IFS= read -r srv; do
         [[ -n "$srv" ]] || continue
         final_state=$(managed_service_state_value "$srv" 2>/dev/null) || return 1
-        [[ "$final_state" == "$srv|1|enabled" || "$final_state" == "$srv|1|enabled-runtime" ]] || return 1
+        [[ "$final_state" == "$srv|1|enabled" || "$final_state" == "$srv|1|enabled-runtime" || "$final_state" == "$srv|1|indirect" ]] || return 1
     done <<< "$services"
 }
 
@@ -33309,7 +33309,8 @@ managed_service_state_value() {
         esac
         enabled_state=$(service_enabled_state_value "$srv") || return 1
         case "$enabled_state" in
-            enabled|indirect) enabled=enabled ;;
+            enabled) enabled=enabled ;;
+            indirect) enabled=indirect ;;
             enabled-runtime) enabled=enabled-runtime ;;
             disabled) enabled=disabled ;;
             *) return 1 ;;
@@ -33394,7 +33395,7 @@ _apply_managed_service_state_file() {
             xray|sing-box|hysteria|xray-latest) ;;
             *) return 1 ;;
         esac
-        [[ "$active" =~ ^[01]$ && "$enabled" =~ ^(enabled|enabled-runtime|disabled)$ ]] || return 1
+        [[ "$active" =~ ^[01]$ && "$enabled" =~ ^(enabled|enabled-runtime|indirect|disabled)$ ]] || return 1
         case "$seen_srvs" in *"|$srv|"*) return 1 ;; esac
         seen_srvs+="$srv|"
         abox_owns_service "$srv" || return 1
@@ -33421,6 +33422,16 @@ _apply_managed_service_state_file() {
                     enabled) systemctl enable "$srv" >/dev/null 2>&1 || apply_rc=1 ;;
                     enabled-runtime) systemctl disable "$srv" >/dev/null 2>&1 || apply_rc=1; if (( apply_rc == 0 )); then systemctl enable --runtime "$srv" >/dev/null 2>&1 || apply_rc=1; fi; if (( apply_rc == 0 )); then [[ "$(systemctl is-enabled "$srv" 2>/dev/null)" == enabled-runtime ]] || apply_rc=1; fi ;;
                     disabled) systemctl disable "$srv" >/dev/null 2>&1 || apply_rc=1; if (( apply_rc == 0 )); then systemctl disable --runtime "$srv" >/dev/null 2>&1 || apply_rc=1; fi; if (( apply_rc == 0 )); then [[ "$(systemctl is-enabled "$srv" 2>/dev/null)" == disabled ]] || apply_rc=1; fi ;;
+                    indirect)
+                        # R9C13-03: snapshot state is indirect (enabled only
+                        # via another unit's Also=/wants link). Never create
+                        # a direct enablement: drop one only if it appeared
+                        # after the snapshot; otherwise leave enablement
+                        # alone (post-state check below accepts indirect or
+                        # disabled, i.e. "not directly enabled").
+                        if [[ "$(systemctl show -p UnitFileState --value "$srv" 2>/dev/null)" == enabled ]]; then
+                            systemctl disable "$srv" >/dev/null 2>&1 || apply_rc=1
+                        fi ;;
                 esac
             fi
             if (( apply_rc == 0 )); then
@@ -33459,7 +33470,15 @@ _apply_managed_service_state_file() {
         (( apply_rc == 0 )) || return 1
         local restored_srv restored_active restored_enabled restored_extra
         IFS='|' read -r restored_srv restored_active restored_enabled restored_extra <<< "$post_state"
-        [[ -z "${restored_extra:-}" && "$restored_srv" == "$srv" && "$restored_active" == "$active" && "$restored_enabled" == "$enabled" ]] || return 1
+        if [[ "$enabled" == indirect ]]; then
+            # R9C13-03: indirect restores to "not directly enabled". The
+            # Also= source link is outside A-Box control: if it survives,
+            # post-state is indirect; if it is gone, disabled. Both are
+            # accepted; a direct enablement is never accepted.
+            [[ -z "${restored_extra:-}" && "$restored_srv" == "$srv" && "$restored_active" == "$active" && ( "$restored_enabled" == indirect || "$restored_enabled" == disabled ) ]] || return 1
+        else
+            [[ -z "${restored_extra:-}" && "$restored_srv" == "$srv" && "$restored_active" == "$active" && "$restored_enabled" == "$enabled" ]] || return 1
+        fi
     done < "$state_file"
 }
 
@@ -34313,7 +34332,7 @@ validate_services_state_file() {
     [[ -f "$file" && ! -L "$file" ]] || return 1
     awk -F'|' '
       NF==0 {next}
-      NF!=3 || $1 !~ /^(xray|sing-box|hysteria|xray-latest)$/ || $2 !~ /^[01]$/ || $3 !~ /^(enabled|enabled-runtime|disabled)$/ {bad=1; exit}
+      NF!=3 || $1 !~ /^(xray|sing-box|hysteria|xray-latest)$/ || $2 !~ /^[01]$/ || $3 !~ /^(enabled|enabled-runtime|indirect|disabled)$/ {bad=1; exit}
       seen[$1]++ {bad=1; exit}
       END {exit bad}
     ' "$file"
@@ -42509,7 +42528,7 @@ manual_start_managed_stack() {
         abox_owns_service "$srv" || { failed=1; break; }
         before=$(managed_service_state_value "$srv" 2>/dev/null) || { failed=1; break; }
         IFS='|' read -r _ active enabled <<< "$before"
-        { [[ "$active" == 1 && "$enabled" == enabled ]] || [[ "$active" == 1 && "$enabled" == enabled-runtime ]]; } && continue
+        { [[ "$active" == 1 && "$enabled" == enabled ]] || [[ "$active" == 1 && "$enabled" == enabled-runtime ]] || [[ "$active" == 1 && "$enabled" == indirect ]]; } && continue
         # S160: register BEFORE mutating (see stop flow).
         append_managed_service_state_entry "$pre_state" "$changed_pre" "$srv" || { failed=1; break; }
         printf '%s\n' "$srv|1|enabled" >> "$changed_expected" || { failed=1; break; }

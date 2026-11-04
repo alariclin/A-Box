@@ -29102,7 +29102,7 @@ timezone_apply_with_rollback() {
         esac
         return 1
     }
-    snap=$(mktemp -d /etc/ddr/.tz-snap.XXXXXX) || return 1
+    snap=$(mktemp -d "$ABOX_DIR/.tz-snap.XXXXXX") || return 1
     chmod 700 "$snap" && snapshot_timezone_state "$snap" || {
         rm -rf -- "$snap"
         case "${ABOX_LANG:-zh}" in
@@ -29133,7 +29133,7 @@ timezone_apply_with_rollback() {
         esac
         return 1
     fi
-    stage=$(mktemp -d /etc/ddr/.tz-rollback-new.XXXXXX) || {
+    stage=$(mktemp -d "$ABOX_DIR/.tz-rollback-new.XXXXXX") || {
         if ! restore_timezone_snapshot "$snap"; then
             msg "${RED}Timezone rollback failed; snapshot kept at $snap${NC}"
         else
@@ -29149,8 +29149,8 @@ timezone_apply_with_rollback() {
         fi
         return 1
     }
-    rm -rf -- /etc/ddr/.tz-rollback
-    mv -- "$stage" /etc/ddr/.tz-rollback || {
+    rm -rf -- "$ABOX_DIR/.tz-rollback"
+    mv -- "$stage" "$ABOX_DIR/.tz-rollback" || {
         if ! restore_timezone_snapshot "$snap"; then
             msg "${RED}Timezone rollback failed; snapshot kept at $snap${NC}"
         else
@@ -29392,8 +29392,8 @@ timezone_locale_ntp_menu() {
                 ja) rb_ok='変更前のタイムゾーンを復元しました。'; rb_fail='タイムゾーンのロールバックに失敗しました。'; rb_none='利用可能なタイムゾーンのロールバック用スナップショットがありません。' ;;
                 *) rb_ok='已恢复修改前时区。'; rb_fail='时区回滚失败。'; rb_none='没有可用的时区回滚快照。' ;;
             esac
-            if [[ -d /etc/ddr/.tz-rollback ]]; then
-                restore_timezone_snapshot /etc/ddr/.tz-rollback && msg "${GREEN}$rb_ok${NC}" || msg "${RED}$rb_fail${NC}"
+            if [[ -d "$ABOX_DIR/.tz-rollback" ]]; then
+                restore_timezone_snapshot "$ABOX_DIR/.tz-rollback" && msg "${GREEN}$rb_ok${NC}" || msg "${RED}$rb_fail${NC}"
             else
                 msg "${YELLOW}$rb_none${NC}"
             fi

@@ -35649,6 +35649,11 @@ wallos_rollback_to_version() {
         msg "${RED}$(tr_msg wl_rb_state_fail)${NC}"; return 1; }
     # N-11: prune to 2 images (new current + previous).
     wallos_prune_local_images "$run_image" "$prev_image"
+    # R5C15-02: refresh the fail2ban jail after rebuild; the
+    # container UpperDir changed, so a stale jail guards a
+    # deleted log path and never bans. Best-effort: the
+    # restore itself already succeeded.
+    wallos_bruteforce_protection "$port" "$bind_address" 2>/dev/null || true
     msg "${GREEN}$(tprintf wl_rb_done "$target_tag")${NC}"
     return 0
 }
@@ -36455,6 +36460,9 @@ wallos_recover_interrupted_upgrade() {
     fi
     rm -f -- "$journal" || return 1
     rm -f -- "$WALLOS_DIR/.upgrade-transaction.cftoken" 2>/dev/null || true
+    # R5C15-02: refresh the fail2ban jail after rebuild; see
+    # the rollback path. _rec_mode is the recovered mode.
+    wallos_bruteforce_protection "$old_port" "$old_bind" "$_rec_mode" 2>/dev/null || true
     msg "${YELLOW}$(tr_msg wl_rc_done)${NC}"
 }
 

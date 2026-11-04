@@ -36550,10 +36550,14 @@ wallos_wait_healthy() {
     for i in $(seq 1 60); do
         state=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' wallos 2>/dev/null || true)
         [[ -z "$state" ]] && return 1
-        [[ "$state" == healthy ]] && return 0
-        [[ "$state" == unhealthy ]] && return 1
+        # R14C15-01: never accept a stale healthy status from a stopped
+        # container; Running is verified before any health acceptance,
+        # and published mode additionally verifies the requested
+        # publication below instead of returning on healthy alone.
         running=$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)
         [[ "$running" == true ]] || { sleep 1; continue; }
+        [[ "$state" == unhealthy ]] && return 1
+        if [[ "$state" == healthy && "$_mode" == unpublished ]]; then return 0; fi
         if [[ "$_mode" == unpublished ]]; then
             # Running alone does not mean the app inside listens. Verify
             # via the container IP (host-reachable on the docker bridge)

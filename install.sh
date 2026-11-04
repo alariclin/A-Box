@@ -13909,7 +13909,7 @@ _ss_wl_snapshot_rules() {
     local out rc
     out="$(_iptables_q "$IPT" -S INPUT 2>/dev/null)"; rc=$?
     (( rc == 0 )) || return 1
-    _SS_WL_SNAP_V4="$(printf '%s\n' "$out" | grep -E -- "--comment A-Box-${port}-(tcp|udp)([[:space:]]|$)" | sed 's/^-A INPUT //')"
+    _SS_WL_SNAP_V4="$(printf '%s\n' "$out" | grep -E -- "--comment \"?A-Box-${port}-(tcp|udp)(-(WL6?|DROP6?))?\"?([[:space:]]|$)" | sed 's/^-A INPUT //')"
     _SS_WL_SNAP_V6=""
     _SS_WL_SNAP_V6_TAKEN=0
     # S34 (GPT-13): snapshot v6 gate is ip6tables_usable alone, aligned
@@ -13919,7 +13919,7 @@ _ss_wl_snapshot_rules() {
     if ip6tables_usable; then
         out="$(_iptables_q "$IPT6" -S INPUT 2>/dev/null)"; rc=$?
         (( rc == 0 )) || return 1
-        _SS_WL_SNAP_V6="$(printf '%s\n' "$out" | grep -E -- "--comment A-Box-${port}-(tcp|udp)([[:space:]]|$)" | sed 's/^-A INPUT //')"
+        _SS_WL_SNAP_V6="$(printf '%s\n' "$out" | grep -E -- "--comment \"?A-Box-${port}-(tcp|udp)(-(WL6?|DROP6?))?\"?([[:space:]]|$)" | sed 's/^-A INPUT //')"
         _SS_WL_SNAP_V6_TAKEN=1
     fi
     _SS_WL_SNAP_TAKEN=1

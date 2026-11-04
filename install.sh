@@ -25639,7 +25639,7 @@ sync_env_ports_after_removal() {
 # one core's inbound must not delete the other core's still-valid link.
 # Returns 0 when the given core still serves that protocol.
 _standalone_link_survivor() {
-    local key="$1" xcfg='/usr/local/etc/xray/config.json' scfg='/etc/sing-box/config.json'
+    local key="$1" xcfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" scfg='/etc/sing-box/config.json'
     case "$key" in
         trojan-xray) [[ -f "$xcfg" && ! -L "$xcfg" ]] && jq -e '.inbounds[]? | select(.protocol == "trojan")' "$xcfg" >/dev/null 2>&1 ;;
         trojan-sb) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select((.tag // "") | test("^trojan-landing(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;

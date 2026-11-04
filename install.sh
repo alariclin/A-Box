@@ -12474,7 +12474,7 @@ install_abox_firewall_persistence_service() {
         return 1
     fi
     if [[ "${INIT_SYS:-}" == systemd ]]; then
-        if ! write_file_atomically_from_stdin /etc/systemd/system/A-Box-firewall.service 644 <<'EOF_ABOX_FW_UNIT'
+        if ! write_file_atomically_from_stdin /etc/systemd/system/A-Box-firewall.service 644 <<EOF_ABOX_FW_UNIT
 # Managed by A-Box
 [Unit]
 Description=A-Box isolated firewall rule restore
@@ -12483,7 +12483,7 @@ Before=xray.service sing-box.service hysteria.service
 
 [Service]
 Type=oneshot
-ExecStart=/etc/ddr/firewall_restore.sh
+ExecStart="$ABOX_DIR/firewall_restore.sh"
 NoNewPrivileges=true
 PrivateTmp=true
 RemainAfterExit=yes
@@ -12502,11 +12502,11 @@ EOF_ABOX_FW_UNIT
             return 1
         fi
     else
-        if ! write_file_atomically_from_stdin /etc/init.d/A-Box-firewall 755 <<'EOF_ABOX_FW_OPENRC'
+        if ! write_file_atomically_from_stdin /etc/init.d/A-Box-firewall 755 <<EOF_ABOX_FW_OPENRC
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box isolated firewall rule restore"
-command="/etc/ddr/firewall_restore.sh"
+command="$ABOX_DIR/firewall_restore.sh"
 command_background="no"
 depend() { need net; after iptables ip6tables nftables ufw firewalld; before xray sing-box hysteria; }
 EOF_ABOX_FW_OPENRC

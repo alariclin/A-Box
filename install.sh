@@ -14274,7 +14274,7 @@ install_remote_abox_script_guarded() {
         resolved_url=$(resolve_abox_main_commit_url) || die "$(tr_msg ir_resolve)"
         url="$resolved_url"
     fi
-    tmp=$(umask 077; mktemp /tmp/A-Box-script.XXXXXX.sh) || die "$(tr_msg ir_tmp)"
+    tmp=$(umask 077; mktemp /tmp/A-Box-script.XXXXXX) || die "$(tr_msg ir_tmp)"
     abox_run_wait "$(tr_msg ir_dl_label)" curl -fLs --connect-timeout 10 -m 60 "$url" -o "$tmp" || { rm -f -- "$tmp"; die "$(tr_msg ir_download)"; }
     if ! ( validate_abox_script_file "$tmp" '远端 A-Box 脚本' && validate_ota_version_direction "$tmp" ); then
         rm -f -- "$tmp"

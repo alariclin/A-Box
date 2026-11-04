@@ -13075,7 +13075,13 @@ remove_abox_native_firewall_rule() {
                     command -v ip6tables >/dev/null 2>&1 || continue
                     # S27: query failure (permission/lock/module) means v6
                     # rules may still be present; never report success.
-                    _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1 || return 1
+                    # R4C6-03: excuse only when IPv6 is confirmed
+                    # unusable (kernel-disabled): then no v6 rules can
+                    # exist to delete.
+                    if ! _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
+                        if host_has_usable_ipv6; then return 1; fi
+                        continue
+                    fi
                 fi
                 while :; do
                     if iptables_rule_check "$cmd" INPUT -p "$proto" --dport "$spec" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
@@ -13288,7 +13294,8 @@ remove_ss_open_accept_rules() {
         elif ! _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
             # S27: query failure (permission/lock/module) means v6 rules
             # may still be present; never report the cleanup as done.
-            failed=1
+            # R4C6-03: excuse only when IPv6 is confirmed unusable.
+            if host_has_usable_ipv6; then failed=1; fi
         else
             while :; do
                 if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi

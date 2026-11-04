@@ -560,10 +560,13 @@ path_is_mountpoint() {
     if python3 -I - "$path" <<'PY_EXACT_MOUNT' >/dev/null 2>&1
 import os, re, sys
 
-path = os.path.abspath(os.path.normpath(sys.argv[1]))
-if os.path.islink(path):
+# R8C1-01: never collapse link/.. lexically before resolving:
+# normpath turns link/../live into a sibling path and misses the real mount.
+# Check the final component on the raw argument, then realpath it.
+arg = sys.argv[1].rstrip('/') or '/'
+if os.path.islink(arg):
     raise SystemExit(3)
-path = os.path.realpath(path).rstrip('/') or '/'
+path = os.path.realpath(arg).rstrip('/') or '/'
 try:
     with open('/proc/self/mountinfo', 'r', encoding='utf-8', errors='strict') as f:
         for line in f:
@@ -643,10 +646,12 @@ import os, sys
 # Linux os.path.ismount() can miss bind mounts when the mount and parent
 # reside on the same device. /proc/self/mountinfo is authoritative for the
 # current mount namespace and also catches nested bind mounts.
-root = os.path.abspath(os.path.normpath(sys.argv[1]))
-if os.path.islink(root):
+# R8C1-01: same as path_is_mountpoint: resolve the raw argument,
+# do not let normpath collapse link/.. before symlink resolution.
+arg = sys.argv[1].rstrip('/') or '/'
+if os.path.islink(arg):
     raise SystemExit(3)
-root = os.path.realpath(root).rstrip('/') or '/'
+root = os.path.realpath(arg).rstrip('/') or '/'
 
 import re
 def decode_mountinfo_path(value):

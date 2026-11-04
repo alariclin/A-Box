@@ -19672,10 +19672,14 @@ deploy_singbox_trojan_landing() {
         rm -rf -- "$sb_tmp"
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
+        # R6C9-02: do NOT treat jq-reject as "needs seed": sing-box
+        # accepts JSONC comments that jq rejects; seeding here would
+        # overwrite a live commented config. A jq-invalid existing
+        # config is kept and the merge below fails closed.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
-        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]] || ! jq -e . "$cfg" >/dev/null 2>&1; then
+        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         fi
         rm -f "$tmp_json"
@@ -19847,10 +19851,14 @@ deploy_singbox_tuic() {
         rm -rf -- "$sb_tmp"
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
+        # R6C9-02: do NOT treat jq-reject as "needs seed": sing-box
+        # accepts JSONC comments that jq rejects; seeding here would
+        # overwrite a live commented config. A jq-invalid existing
+        # config is kept and the merge below fails closed.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
-        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]] || ! jq -e . "$cfg" >/dev/null 2>&1; then
+        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         fi
         rm -f "$tmp_json"
@@ -20033,10 +20041,14 @@ deploy_singbox_anytls() {
         rm -rf -- "$sb_tmp"
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
+        # R6C9-02: do NOT treat jq-reject as "needs seed": sing-box
+        # accepts JSONC comments that jq rejects; seeding here would
+        # overwrite a live commented config. A jq-invalid existing
+        # config is kept and the merge below fails closed.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
-        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]] || ! jq -e . "$cfg" >/dev/null 2>&1; then
+        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         fi
         rm -f "$tmp_json"
@@ -20203,10 +20215,14 @@ deploy_singbox_shadowtls() {
         rm -rf -- "$sb_tmp"
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
+        # R6C9-02: do NOT treat jq-reject as "needs seed": sing-box
+        # accepts JSONC comments that jq rejects; seeding here would
+        # overwrite a live commented config. A jq-invalid existing
+        # config is kept and the merge below fails closed.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
-        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]] || ! jq -e . "$cfg" >/dev/null 2>&1; then
+        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         fi
         rm -f "$tmp_json"
@@ -20630,10 +20646,14 @@ deploy_argo_temp() {
         rm -rf -- "$sb_tmp"
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
+        # R6C9-02: do NOT treat jq-reject as "needs seed": sing-box
+        # accepts JSONC comments that jq rejects; seeding here would
+        # overwrite a live commented config. A jq-invalid existing
+        # config is kept and the merge below fails closed.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
-        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]] || ! jq -e . "$cfg" >/dev/null 2>&1; then
+        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         fi
         rm -f "$tmp_json"
@@ -20774,10 +20794,14 @@ deploy_argo_fixed() {
         rm -rf -- "$sb_tmp"
         # U31/U34: install the seed only when no usable config exists; an
         # existing valid config is kept and merged in place below.
+        # R6C9-02: do NOT treat jq-reject as "needs seed": sing-box
+        # accepts JSONC comments that jq rejects; seeding here would
+        # overwrite a live commented config. A jq-invalid existing
+        # config is kept and the merge below fails closed.
         tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_sb_seed)"
-        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]] || ! jq -e . "$cfg" >/dev/null 2>&1; then
+        if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
             install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         fi
         rm -f "$tmp_json"

@@ -16588,7 +16588,9 @@ remove_abox_log_files() {
 }
 
 ensure_fail2ban() {
-    command -v fail2ban-client >/dev/null 2>&1 && return 0
+    # R5C8-01: a pre-installed binary must not skip enablement;
+    # only the install step is skippable, enablement is verified.
+    if ! command -v fail2ban-client >/dev/null 2>&1; then
     msg "${YELLOW}[*] 未检测到 Fail2Ban, 正在自动安装 (主动防御需要)...${NC}"
     if command -v apt-get >/dev/null 2>&1; then
         apt-get update -y -q >/dev/null 2>&1 || true
@@ -16604,11 +16606,14 @@ ensure_fail2ban() {
         msg "${RED}[!] Fail2Ban 自动安装失败, 主动防御 (日志封禁) 本次不生效; 节点本身不受影响。${NC}"
         return 1
     fi
+    fi
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        systemctl enable fail2ban >/dev/null 2>&1 || true
+        systemctl enable fail2ban >/dev/null 2>&1 || return 1
+        systemctl is-enabled --quiet fail2ban >/dev/null 2>&1 || return 1
         systemctl start fail2ban >/dev/null 2>&1 || true
     elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
-        rc-update add fail2ban default >/dev/null 2>&1 || true
+        rc-update add fail2ban default >/dev/null 2>&1 || return 1
+        rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])fail2ban([[:space:]]|$)' || return 1
         rc-service fail2ban start >/dev/null 2>&1 9>&- 10>&- || true
     fi
     return 0

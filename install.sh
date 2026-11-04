@@ -30746,7 +30746,7 @@ confirm_remote_script_hash() {
 run_remote_bash_script() {
     local label="$1" url="$2" tmp sha
     shift 2 || true
-    tmp=$(umask 077; mktemp /tmp/A-Box-remote.XXXXXX.sh) || die '远程脚本临时文件创建失败。'
+    tmp=$(umask 077; mktemp /tmp/A-Box-remote.XXXXXX) || die '远程脚本临时文件创建失败。'
     if ! curl -fLsS --connect-timeout 10 -m 120 "$url" -o "$tmp"; then
         rm -f "$tmp"
         die "远程脚本下载失败: $label"
@@ -43481,7 +43481,8 @@ PY_SELFTEST_YAML
     grep -Fq 'exec {lock_fd}>>"$lock_file"' <<< "$source_body" || { echo 'FAIL: firewall reorder transaction lock missing'; failures=$((failures + 1)); }
     grep -Fq '[[ "$lock_fd" =~ ^[0-9]+$ ]]' <<< "$source_body" || { echo 'FAIL: __abox_firewall_unlock "$lock_fd"; lock_fd='' must guard empty lock_fd'; failures=$((failures + 1)); }
     grep -Fq 'flock -s -n 8' <<< "$source_body" || { echo 'FAIL: status/preflight must use shared non-blocking flock'; failures=$((failures + 1)); }
-    grep -Fq 'umask 077; mktemp /tmp/A-Box-remote.XXXXXX.sh' <<< "$source_body" || { echo 'FAIL: remote script temp must use umask 077'; failures=$((failures + 1)); }
+    grep -Fq 'umask 077; mktemp /tmp/A-Box-remote.XXXXXX' <<< "$source_body" || { echo 'FAIL: remote script temp must use umask 077'; failures=$((failures + 1)); }
+    ! grep -Fq 'mktemp /tmp/A-Box-remote.XXXXXX.sh' <<< "$source_body" || { echo 'FAIL: remote script temp must not use .sh suffix (BusyBox mktemp requires template to end with XXXXXX)'; failures=$((failures + 1)); }
     grep -Fq 'unset ABOX_DIE_HOOK' <<< "$source_body" || { echo 'FAIL: enter_runtime must ignore ambient ABOX_DIE_HOOK'; failures=$((failures + 1)); }
 
     grep -Fq 'firewall_rollback() {' <<< "$source_body" || { echo 'FAIL: firewall reorder rollback helper missing'; failures=$((failures + 1)); }

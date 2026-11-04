@@ -32945,7 +32945,7 @@ _apply_managed_service_state_file() {
                 case "$enabled" in
                     enabled) systemctl enable "$srv" >/dev/null 2>&1 || apply_rc=1 ;;
                     enabled-runtime) systemctl disable "$srv" >/dev/null 2>&1 || apply_rc=1; if (( apply_rc == 0 )); then systemctl enable --runtime "$srv" >/dev/null 2>&1 || apply_rc=1; fi; if (( apply_rc == 0 )); then [[ "$(systemctl is-enabled "$srv" 2>/dev/null)" == enabled-runtime ]] || apply_rc=1; fi ;;
-                    disabled) systemctl disable "$srv" >/dev/null 2>&1 || apply_rc=1 ;;
+                    disabled) systemctl disable "$srv" >/dev/null 2>&1 || apply_rc=1; if (( apply_rc == 0 )); then systemctl disable --runtime "$srv" >/dev/null 2>&1 || apply_rc=1; fi; if (( apply_rc == 0 )); then [[ "$(systemctl is-enabled "$srv" 2>/dev/null)" == disabled ]] || apply_rc=1; fi ;;
                 esac
             fi
             if (( apply_rc == 0 )); then

@@ -26076,7 +26076,10 @@ _tune_missing_items() {
 
 # BUG-28: hoisted from apply_vps_tune(). $3 = destination file.
 __abox_add_sysctl() {
-    sysctl -n "$1" >/dev/null 2>&1 && printf '%s = %s\n' "$1" "$2" >> "$3"
+    # Unsupported key: explicit skip-success, not an error.
+    sysctl -n "$1" >/dev/null 2>&1 || return 0
+    # Append error (e.g. /tmp full) must propagate to the caller.
+    printf '%s = %s\n' "$1" "$2" >> "$3" || return 1
 }
 apply_vps_tune() {
     local dir="$ABOX_DIR/tune-backup" tmp key value available bbr_loaded=0
@@ -26133,28 +26136,28 @@ root hard nofile 1048576
 EOF_LIMITS
     tmp=$(umask 077; mktemp /tmp/A-Box-sysctl.XXXXXX) || { restore_vps_tune 1 || true; die "$(tr_msg tn_tmp)"; }
     printf '%s\n' '# Managed by A-Box' > "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg tn_tmp_init)"; }
-    __abox_add_sysctl fs.file-max 1048576 "$tmp"
-    __abox_add_sysctl fs.inotify.max_user_instances 8192 "$tmp"
-    __abox_add_sysctl net.ipv4.tcp_syncookies 1 "$tmp"
-    __abox_add_sysctl net.ipv4.tcp_fin_timeout 30 "$tmp"
-    __abox_add_sysctl net.ipv4.tcp_max_syn_backlog 8192 "$tmp"
-    __abox_add_sysctl net.ipv4.tcp_fastopen 3 "$tmp"
-    __abox_add_sysctl net.ipv4.tcp_mtu_probing 1 "$tmp"
-    __abox_add_sysctl net.ipv4.tcp_notsent_lowat 16384 "$tmp"
-    __abox_add_sysctl net.core.netdev_max_backlog 250000 "$tmp"
-    __abox_add_sysctl net.core.somaxconn 32768 "$tmp"
-    __abox_add_sysctl net.core.rmem_max 16777216 "$tmp"
-    __abox_add_sysctl net.core.wmem_max 16777216 "$tmp"
-    __abox_add_sysctl net.ipv4.tcp_rmem '4096 87380 16777216' "$tmp"
-    __abox_add_sysctl net.ipv4.tcp_wmem '4096 65536 16777216' "$tmp"
-    __abox_add_sysctl net.ipv4.tcp_keepalive_time 600 "$tmp"
-    __abox_add_sysctl net.ipv4.tcp_slow_start_after_idle 0 "$tmp"
-    __abox_add_sysctl net.ipv4.ip_local_port_range '10240 65535' "$tmp"
+    __abox_add_sysctl fs.file-max 1048576 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl fs.inotify.max_user_instances 8192 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.ipv4.tcp_syncookies 1 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.ipv4.tcp_fin_timeout 30 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.ipv4.tcp_max_syn_backlog 8192 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.ipv4.tcp_fastopen 3 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.ipv4.tcp_mtu_probing 1 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.ipv4.tcp_notsent_lowat 16384 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.core.netdev_max_backlog 250000 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.core.somaxconn 32768 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.core.rmem_max 16777216 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.core.wmem_max 16777216 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.ipv4.tcp_rmem '4096 87380 16777216' "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.ipv4.tcp_wmem '4096 65536 16777216' "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.ipv4.tcp_keepalive_time 600 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.ipv4.tcp_slow_start_after_idle 0 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl net.ipv4.ip_local_port_range '10240 65535' "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
     if modprobe tcp_bbr >/dev/null 2>&1; then bbr_loaded=1; fi
     available=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
     if grep -qw bbr <<< "$available"; then
-        __abox_add_sysctl net.core.default_qdisc fq "$tmp"
-        __abox_add_sysctl net.ipv4.tcp_congestion_control bbr "$tmp"
+        __abox_add_sysctl net.core.default_qdisc fq "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+        __abox_add_sysctl net.ipv4.tcp_congestion_control bbr "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
         if (( bbr_loaded == 1 )); then
             path_parent_chain_safe "$bbr_module_file" || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg tn_bbr_chain)"; }
             [[ ! -L /etc/modules-load.d && (! -e /etc/modules-load.d || -d /etc/modules-load.d) ]] || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg tn_moddir_unsafe)"; }

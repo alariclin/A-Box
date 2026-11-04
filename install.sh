@@ -23256,6 +23256,13 @@ valid_hy2_bandwidth_mbps() {
     traffic_fail_closed 'persisted traffic limit is invalid' || traffic_error 'invalid persisted traffic limit could not be fail-closed enforced'
     exit 1
 }
+case "${TRAFFIC_LIMIT_MODE:-}" in
+    ''|total|rx|tx) ;;
+    *)
+        traffic_fail_closed 'persisted traffic limit mode is invalid' || traffic_error 'invalid persisted traffic limit mode could not be fail-closed enforced'
+        exit 1
+        ;;
+esac
 desired=$(read_desired) || { traffic_fail_closed 'desired state unreadable or invalid' || traffic_error 'desired state could not be fail-closed enforced'; exit 1; }
 blocked_period=$(read_block_period 2>/dev/null || true)
 if [[ "$desired" == TRAFFIC_BLOCKED && -z "$blocked_period" ]]; then

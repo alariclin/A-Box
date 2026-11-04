@@ -11510,7 +11510,7 @@ print_port_occupancy() { # read-only: port -> protocol/owner map
 standalone_preserve_snapshot() { # $1 = core, $2 = config path
     ABOX_PRESERVE_FILE=''
     [[ "${ABOX_PRESERVE_STANDALONE:-0}" == '1' ]] || return 0
-    local cfg="$2" pat='' out='' n=0
+    local cfg="$2" pat='' out='' n=0 tmpd=''
     [[ -f "$cfg" ]] || return 0
     if ! command -v jq >/dev/null 2>&1; then
         msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
@@ -11518,37 +11518,41 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
     fi
     pat=$(standalone_tag_set "$1" | paste -sd'|' -) || return 0
     [[ -n "$pat" ]] || return 0
-    if ! out=$(mktemp /tmp/A-Box-preserve.XXXXXX.json); then
+    if ! tmpd=$(mktemp -d /tmp/A-Box-preserve.XXXXXX); then
         msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
         return 1
     fi
+    out="$tmpd/preserve.json"
     if ! jq --arg pat "^(${pat})$" '[.inbounds[]? | select((.tag // "") | test($pat))]' "$cfg" > "$out" 2>/dev/null; then
-        rm -f -- "$out"
+        rm -f -- "$out"; rm -rf -- "$tmpd"
         msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
         return 1
     fi
-    n=$(jq 'length' "$out" 2>/dev/null) || { rm -f -- "$out"; msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"; return 1; }
+    n=$(jq 'length' "$out" 2>/dev/null) || { rm -f -- "$out"; rm -rf -- "$tmpd"; msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"; return 1; }
     if [[ "$n" =~ ^[0-9]+$ ]] && (( n > 0 )); then
         ABOX_PRESERVE_FILE="$out"
         export ABOX_PRESERVE_FILE
+        ABOX_PRESERVE_DIR="$tmpd"
+        export ABOX_PRESERVE_DIR
         return 0
     fi
-    rm -f -- "$out"
+    rm -f -- "$out"; rm -rf -- "$tmpd"
     return 0
 }
 
 standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
     [[ "${ABOX_PRESERVE_STANDALONE:-0}" == '1' ]] || return 0
     [[ -n "${ABOX_PRESERVE_FILE:-}" && -f "${ABOX_PRESERVE_FILE:-}" ]] || return 0
-    local cfg="$2" bak='' merged='' keepf='' attempt='' ok=0 added=0 dropped='' conflict='' before=0 after=0
+    local cfg="$2" bak='' merged='' keepf='' attempt='' ok=0 added=0 dropped='' conflict='' before=0 after=0 tmpd=''
     if ! command -v jq >/dev/null 2>&1; then
         msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'jq')${NC}"
         return 1
     fi
-    bak=$(mktemp /tmp/A-Box-preserve-bak.XXXXXX.json) || { msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'tmp')${NC}"; return 1; }
-    merged=$(mktemp /tmp/A-Box-preserve-new.XXXXXX.json) || { rm -f -- "$bak"; msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'tmp')${NC}"; return 1; }
-    keepf=$(mktemp /tmp/A-Box-preserve-keep.XXXXXX.json) || { rm -f -- "$bak" "$merged"; msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'tmp')${NC}"; return 1; }
-    cp -- "$cfg" "$bak" 2>/dev/null || { rm -f -- "$bak" "$merged" "$keepf"; msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'copy')${NC}"; return 1; }
+    tmpd=$(mktemp -d /tmp/A-Box-preserve.XXXXXX) || { msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'tmp')${NC}"; return 1; }
+    bak="$tmpd/bak.json"
+    merged="$tmpd/new.json"
+    keepf="$tmpd/keep.json"
+    cp -- "$cfg" "$bak" 2>/dev/null || { rm -f -- "$bak" "$merged" "$keepf"; rm -rf -- "$tmpd"; msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'copy')${NC}"; return 1; }
     for attempt in full nost; do
         if [[ "$attempt" == nost ]]; then
             jq '[.[] | select(.tag != "shadowtls-in")]' "$ABOX_PRESERVE_FILE" > "$keepf" 2>/dev/null || continue
@@ -11629,7 +11633,7 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
     else
         if cp -- "$bak" "$cfg" 2>/dev/null && chmod 600 "$cfg" 2>/dev/null; then
             msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'check')${NC}"
-            rm -f -- "$bak" "$merged" "$keepf"
+            rm -f -- "$bak" "$merged" "$keepf"; rm -rf -- "$tmpd"
             return 1
         else
             msg "${YELLOW}[!] $(tprintf dp_preserve_fail 'rollback')${NC}"
@@ -11638,7 +11642,10 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
         fi
     fi
     rm -f -- "$bak" "$merged" "$keepf" "$ABOX_PRESERVE_FILE"
+    rm -rf -- "$tmpd"
+    [[ -n "${ABOX_PRESERVE_DIR:-}" ]] && rm -rf -- "$ABOX_PRESERVE_DIR"
     ABOX_PRESERVE_FILE=''
+    ABOX_PRESERVE_DIR=''
     return 0
 }
 

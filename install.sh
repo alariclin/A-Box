@@ -1605,6 +1605,12 @@ tr_msg() {
         fa:wl_bn_restart_fail) echo 'پس از تلاش برای پشتیبان‌گیری، Wallos دوباره راه‌اندازی نشد. مسیر نسخه پشتیبان: %s. docker logs wallos را بررسی و کانتینر را دستی راه‌اندازی کنید.' ;;
         zh-tw:wl_bn_restart_fail) echo '備份嘗試後 Wallos 無法重新啟動。備份路徑：%s。請檢查 docker logs wallos 並手動啟動容器。' ;;
         ja:wl_bn_restart_fail) echo 'バックアップ試行後に Wallos を再起動できませんでした。バックアップパス: %s。docker logs wallos を確認し、コンテナを手動で起動してください。' ;;
+        zh:wl_bn_docker_unknown) echo '无法确认 Wallos 容器状态（Docker 不可达或查询失败），已中止备份，避免对运行中的数据库做带电快照。' ;;
+        en:wl_bn_docker_unknown) echo 'Cannot determine the Wallos container state (Docker unreachable or query failed); backup aborted to avoid a live snapshot of a running database.' ;;
+        ru:wl_bn_docker_unknown) echo 'Не удаётся определить состояние контейнера Wallos (Docker недоступен или запрос не выполнен); резервное копирование прервано, чтобы не снимать живой снимок работающей базы данных.' ;;
+        fa:wl_bn_docker_unknown) echo 'نمی‌توان وضعیت کانتینر Wallos را تعیین کرد (Docker در دسترس نیست یا پرسمان ناموفق بود)؛ پشتیبان‌گیری متوقف شد تا از گرفتن تصویر زنده از پایگاه داده در حال اجرا جلوگیری شود.' ;;
+        zh-tw:wl_bn_docker_unknown) echo '無法確認 Wallos 容器狀態（Docker 不可達或查詢失敗），已中止備份，避免對執行中的資料庫做帶電快照。' ;;
+        ja:wl_bn_docker_unknown) echo 'Wallos コンテナの状態を確認できません（Docker に到達できないかクエリが失敗しました）。稼働中のデータベースのライブスナップショットを避けるため、バックアップを中止しました。' ;;
         zh:wl_cv_downgrade) echo '拒绝 Wallos 降级：候选版本 %s，已安装 %s。只有在确认 schema 兼容性后才可设置 ABOX_WALLOS_ALLOW_DOWNGRADE=1。' ;;
         en:wl_cv_downgrade) echo 'Refusing Wallos downgrade: candidate %s, installed %s. Set ABOX_WALLOS_ALLOW_DOWNGRADE=1 only after reviewing schema compatibility.' ;;
         ru:wl_cv_downgrade) echo 'Откат Wallos запрещён: кандидат %s, установлено %s. Устанавливайте ABOX_WALLOS_ALLOW_DOWNGRADE=1 только после проверки совместимости схемы.' ;;
@@ -37974,11 +37980,28 @@ wallos_resume_after_backup() {
 }
 
 wallos_backup_now() {
-    local stamp backup was_running=0
+    local stamp backup was_running=0 _inspect_err _running
     [[ -f "$WALLOS_DIR/.A-Box-managed" && ! -L "$WALLOS_DIR/.A-Box-managed" ]] || { msg "$(tr_msg wl_bn_none)"; return 1; }
-    if docker container inspect wallos >/dev/null 2>&1 && [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null)" == true ]]; then
-        docker stop wallos >/dev/null 2>&1 || return 1
-        was_running=1
+    # R6C15-03: an inspect failure is NOT "stopped". Only a daemon-confirmed
+    # absence ("No such container/object") allows an offline backup; any other
+    # failure (daemon unreachable, state query failure, unexpected state)
+    # leaves the running state unknown, and a live tar of a WAL-mode database
+    # can silently drop committed records at checkpoint timing while gzip/tar
+    # checks still pass. Fail closed instead.
+    if _inspect_err=$(docker container inspect wallos 2>&1 >/dev/null); then
+        _running=$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null) || { msg "${RED}$(tr_msg wl_bn_docker_unknown)${NC}" >&2; return 1; }
+        if [[ "$_running" == true ]]; then
+            docker stop wallos >/dev/null 2>&1 || return 1
+            was_running=1
+        elif [[ "$_running" != false ]]; then
+            msg "${RED}$(tr_msg wl_bn_docker_unknown)${NC}" >&2
+            return 1
+        fi
+    elif [[ "$_inspect_err" == *"No such container"* || "$_inspect_err" == *"No such object"* ]]; then
+        : # daemon confirmed the container is absent: offline backup is safe
+    else
+        msg "${RED}$(tr_msg wl_bn_docker_unknown)${NC}" >&2
+        return 1
     fi
     stamp=$(date -u '+%Y%m%dT%H%M%SZ')
     if ! backup=$(wallos_create_backup "$stamp"); then

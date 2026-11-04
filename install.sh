@@ -34825,7 +34825,7 @@ __abox_backup_copy_path() {
     cp -a -- "$src" "$dst"
 }
 backup_current_config() {
-    local ts unique backup_dir work root tarball backup_failed=0 backup_fw_unsupported=0 backend srv path _abox_links _old_backups
+    local ts unique backup_dir work root tarball backup_failed=0 backup_fw_unsupported=0 backend srv path _abox_links
     valid_backup_retention_count "$BACKUP_RETENTION_COUNT" || die 'BACKUP_RETENTION_COUNT 无效；必须是 0-1000 的整数。'
     ts=$(date +%Y%m%d-%H%M%S); unique=$(openssl rand -hex 3 2>/dev/null || printf '%s' "$$")
     backup_dir="${1:-$ABOX_DIR/backups}"
@@ -34943,22 +34943,33 @@ backup_current_config() {
     if [[ -n "${ABOX_BACKUP_RESULT_FILE:-}" ]]; then
         printf '%s\n' "$tarball" > "$ABOX_BACKUP_RESULT_FILE" || return 1
     fi
-    _old_backups=()
-    local _old_backups_output=''
-    if _old_backups_output=$(python3 -I - "$backup_dir" "$BACKUP_RETENTION_COUNT" <<'PY_BACKUP_RETENTION'
+    # R9C14-01: retention deletion lives inside the Python program below
+    # (exact Path objects, no name round-trip through bash).
+    if python3 -I - "$backup_dir" "$BACKUP_RETENTION_COUNT" "$tarball" <<'PY_BACKUP_RETENTION'
 from pathlib import Path
 import sys
-root=Path(sys.argv[1]); keep=int(sys.argv[2])
-items=[]
+root = Path(sys.argv[1]); keep = int(sys.argv[2])
+last = Path(sys.argv[3]) if len(sys.argv) > 3 else None
+items = []
 for p in root.glob('A-Box-backup-*.tar.gz'):
     try:
-        if p.is_file() and not p.is_symlink(): items.append((p.stat().st_mtime_ns, str(p)))
+        if p.is_file() and not p.is_symlink(): items.append((p.stat().st_mtime_ns, p))
     except OSError: pass
-for _, name in sorted(items, reverse=True)[keep:]: print(name)
+for _, p in sorted(items, reverse=True)[keep:]:
+    # The old code printed names to bash and split them with mapfile: a
+    # newline inside an archive name split into a bare tail piece, and rm
+    # then deleted same-named unrelated files in the caller's CWD as root
+    # while the real archive survived. NUL-delimited output is no fix:
+    # bash command substitution cannot carry NUL bytes.
+    if last is not None and p == last: continue
+    try: p.unlink()
+    except OSError: pass
+    for suffix in ('.sha256', '.hmac', '.key'):
+        try: Path(str(p) + suffix).unlink()
+        except OSError: pass
 PY_BACKUP_RETENTION
-); then
-        [[ -z "$_old_backups_output" ]] || mapfile -t _old_backups <<< "$_old_backups_output"
-        for _old in "${_old_backups[@]}"; do [[ "$_old" == "$ABOX_LAST_BACKUP" ]] || rm -f -- "$_old" "${_old}.sha256" "${_old}.hmac" "${_old}.key"; done
+    then
+        :
     else
         msg "${YELLOW}[!] $(tr_msg bk_retention_fail)${NC}"
     fi

@@ -21891,9 +21891,21 @@ routing_state_put() {
 routing_outbound_has() {
     local tag="$1"
     [[ -n "$tag" ]] || return 1
-    # 'direct' is the cores' built-in outbound (xray freedom / sing-box
-    # direct); it is never registered in the routing state file.
-    [[ "$tag" == 'direct' ]] && return 0
+    # R6C9-04: 'direct' is sing-box's built-in outbound, but Xray
+    # requires it declared in its config, and it is never registered
+    # in the routing state file. Do not hardcode it as present: when
+    # an Xray config exists, verify it actually declares direct
+    # (JSONC-aware, since Xray accepts comments); a missing direct
+    # means the rule would fail core validation at apply time.
+    # No Xray config means sing-box-only, where direct is built-in.
+    if [[ "$tag" == 'direct' ]]; then
+        if [[ -f /usr/local/etc/xray/config.json && ! -L /usr/local/etc/xray/config.json ]]; then
+            # jq -e zero-output exits 4, not 1: normalize to 0/1.
+            jsonc_strip_comments /usr/local/etc/xray/config.json 2>/dev/null | jq -e --arg t 'direct' '.outbounds[]? | select(.tag == $t)' >/dev/null 2>&1 && return 0 || return 1
+        else
+            return 0
+        fi
+    fi
     routing_state_init || return 1
     jq -e --arg t "$tag" '.outbounds[]? | select(.tag == $t)' \
         "$ROUTING_STATE_FILE" >/dev/null 2>&1

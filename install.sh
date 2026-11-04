@@ -23470,8 +23470,9 @@ month_bytes() {
         if [[ "$month_count" == '0' ]]; then
             case "$mode" in rx|tx|total) printf '0\n'; return 0 ;; *) return 1 ;; esac
         fi
-        rx=$(jq -r --argjson y "$(date +%Y)" --argjson m "$(date +%-m)" '([.interfaces[0].traffic.month[]?, .interfaces[0].traffic.months[]?] | map(select(((.year // .date.year // 0) == $y) and ((.month // .date.month // 0) == $m))) | last | .rx) // empty' <<< "$json" 2>/dev/null)
-        tx=$(jq -r --argjson y "$(date +%Y)" --argjson m "$(date +%-m)" '([.interfaces[0].traffic.month[]?, .interfaces[0].traffic.months[]?] | map(select(((.year // .date.year // 0) == $y) and ((.month // .date.month // 0) == $m))) | last | .tx) // empty' <<< "$json" 2>/dev/null)
+        # R6C10-02: 1.x months entries are KiB; normalize to bytes.
+        rx=$(jq -r --argjson y "$(date +%Y)" --argjson m "$(date +%-m)" '([.interfaces[0].traffic.month[]? | . + {__unit: "B"}] + [.interfaces[0].traffic.months[]? | . + {__unit: "KiB"}] | map(select(((.year // .date.year // 0) == $y) and ((.month // .date.month // 0) == $m))) | last | if . == null then empty elif .__unit == "KiB" then (.rx * 1024) else .rx end)' <<< "$json" 2>/dev/null)
+        tx=$(jq -r --argjson y "$(date +%Y)" --argjson m "$(date +%-m)" '([.interfaces[0].traffic.month[]? | . + {__unit: "B"}] + [.interfaces[0].traffic.months[]? | . + {__unit: "KiB"}] | map(select(((.year // .date.year // 0) == $y) and ((.month // .date.month // 0) == $m))) | last | if . == null then empty elif .__unit == "KiB" then (.tx * 1024) else .tx end)' <<< "$json" 2>/dev/null)
         if [[ "$rx" =~ ^[0-9]+$ && "$tx" =~ ^[0-9]+$ ]]; then
             case "$mode" in
                 rx) echo "$rx" ;;

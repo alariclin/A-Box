@@ -12113,6 +12113,26 @@ snapshot_test_valid() {
     command -v "$cmd" >/dev/null 2>&1 || return 1
     "$cmd" -w --test < "$file" >/dev/null 2>&1 || "$cmd" --test < "$file" >/dev/null 2>&1
 }
+# C03: NAT PREROUTING guard (HY2-HOP lives here, not in INPUT).
+# Exits 1 on surviving owned rules or on an unexplainable query
+# failure; returns 0 when clean or when the NAT table does not
+# exist (same tolerance as clean_chain).
+_fw_nat_guard() {
+    local cmd="$1" label="$2" out err
+    out=$(_iptables_q "$cmd" -t nat -S PREROUTING 2>/dev/null) || {
+        err=$(_iptables_q "$cmd" -t nat -S PREROUTING 2>&1 >/dev/null || true)
+        if printf '%s' "$err" | grep -qiE "table .* does not exist|table does not exist|table nat is not supported|protocol not supported|can't initialize|cannot initialize"; then
+            return 0
+        fi
+        echo "A-Box firewall restore: $label NAT query failed; refusing to delete." >&2
+        exit 1
+    }
+    if [[ "$out" == *'A-Box-'* ]]; then
+        echo "A-Box firewall restore: $label snapshot invalid but live A-Box NAT rules exist; refusing to delete." >&2
+        exit 1
+    fi
+    return 0
+}
 # D1: validate before deleting (fail before clean when live A-Box rules
 # exist but the snapshot cannot restore them; proceed when nothing live
 # to lose, e.g. fresh boot or IPv4-only host with no live v6 rules).
@@ -12122,6 +12142,7 @@ if ! snapshot_valid /etc/ddr/iptables.v4; then
         echo 'A-Box firewall restore: IPv4 snapshot invalid but live A-Box rules exist; refusing to delete.' >&2
         exit 1
     fi
+    _fw_nat_guard iptables IPv4
 elif ! snapshot_test_valid /etc/ddr/iptables.v4 iptables-restore; then
     echo 'A-Box firewall restore: IPv4 snapshot failed full validation (--test); refusing to delete live rules.' >&2
     exit 1
@@ -12145,6 +12166,7 @@ if command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -S INPUT >/dev/
             echo 'A-Box firewall restore: IPv6 snapshot invalid but live A-Box rules exist; refusing to delete.' >&2
             exit 1
         fi
+        _fw_nat_guard ip6tables IPv6
     elif ! snapshot_test_valid /etc/ddr/iptables.v6 ip6tables-restore; then
         echo 'A-Box firewall restore: IPv6 snapshot failed full validation (--test); refusing to delete live rules.' >&2
         exit 1

@@ -21236,6 +21236,7 @@ _menu_info_collect() {
             jq -r '.inbounds[]? | select(((.tag // "") | test("^(shadowtls-ss|shadowtls-in(-[0-9]+)?-ss)$") | not)) |
                 (if .type == "vless" then ((.tls.reality.handshake.server // .tls.server_name // empty)) as $sn | select($sn != "") | "VLESS:\(.listen_port)\t\($sn)"
                  elif .type == "anytls" then ((.tls.reality.handshake.server // .tls.server_name // empty)) as $sn | select($sn != "") | "AnyTLS:\(.listen_port)\t\($sn)"
+             elif .type == "trojan" then ((.tls.reality.handshake.server // .tls.server_name // empty)) as $sn | select($sn != "") | "Trojan:\(.listen_port)\t\($sn)"
                  elif .type == "tuic" then ((.tls.server_name // empty)) as $sn | select($sn != "") | "TUIC:\(.listen_port)\t\($sn)"
                  elif .type == "shadowtls" then ((.handshake.server // empty)) as $sn | select($sn != "") | "ShadowTLS:\(.listen_port)\t\($sn)"
                  else empty end)' /etc/sing-box/config.json 2>/dev/null

@@ -12064,6 +12064,39 @@ reorder_one() {
     return 0
 }
 
+# C04: plain ACCEPT rules (allowPort comments without a suffix)
+# are invisible to reorder_policy's DROP-pair scan. When a
+# foreign unconditional DROP/REJECT terminates INPUT, a
+# --noflush-appended plain ACCEPT lands after it and is
+# unreachable, yet restore reports success. Move each such
+# ACCEPT before the first terminal rule.
+reorder_plain_accepts() {
+    local cmd="$1" line terminal_idx accept_idx i spec
+    local -a lines=() argv=()
+    command -v "$cmd" >/dev/null 2>&1 || return 0
+    while :; do
+        lines=()
+        while IFS= read -r line; do lines+=("$line"); done < <(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
+        terminal_idx=0; accept_idx=0
+        for (( i=0; i<${#lines[@]}; i++ )); do
+            line="${lines[$i]}"
+            if [[ "$line" =~ ^-A[[:space:]]+INPUT[[:space:]]+(-m[[:space:]]+comment[[:space:]]+--comment[[:space:]]+\"?[^\"]+\"?[[:space:]]+)?-j[[:space:]]+(DROP|REJECT)([[:space:]]|$) ]]; then
+                [[ "$terminal_idx" == 0 ]] && terminal_idx=$((i+1))
+                continue
+            fi
+            if [[ "$terminal_idx" != 0 && "$line" =~ --comment[[:space:]]+\"?A-Box-[0-9]{1,5}-(tcp|udp)\"?([[:space:]]|$) && "$line" =~ [[:space:]]-j[[:space:]]+ACCEPT([[:space:]]|$) ]]; then
+                accept_idx=$((i+1)); break
+            fi
+        done
+        [[ "$accept_idx" == 0 ]] && return 0
+        line="${lines[$((accept_idx-1))]}"
+        _iptables_do "$cmd" -D INPUT "$accept_idx" >/dev/null 2>&1 || return 1
+        spec="${line#-A INPUT }"
+        spec=$(printf '%s' "$spec" | tr -d '"')
+        read -r -a argv <<< "$spec"
+        _iptables_do "$cmd" -I INPUT "$terminal_idx" "${argv[@]}" >/dev/null 2>&1 || return 1
+    done
+}
 reorder_policy() {
     local cmd="$1" wl_suffix="$2" drop_suffix="$3" line key port proto rules_output=''
     local -A seen=()
@@ -12077,6 +12110,7 @@ reorder_policy() {
             reorder_one "$cmd" "$port" "$proto" "$wl_suffix" "$drop_suffix" || return 1
         fi
     done <<< "$rules_output"
+    reorder_plain_accepts "$cmd" || return 1
 }
 # D1: whole-restore lock (separate from the per-port reorder lock).
 # flock -n fails loudly on overlap instead of duplicating rules via --noflush.

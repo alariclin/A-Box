@@ -18254,6 +18254,12 @@ xray_hot_remove_inbound() {
     if ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         if xray_api_available; then
             xray_api_remove_inbound "$tag" || return 1
+        else
+            # R6C8-04: tag absent from disk but the running Xray may
+            # still serve it (config edited without reload); with no
+            # API to remove it live, restart so disk config wins, and
+            # report a failed restart instead of false success.
+            restart_service_soft xray || return 1
         fi
         return 0
     fi

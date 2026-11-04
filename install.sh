@@ -12848,6 +12848,50 @@ ufw_rule_state() {
 
 ufw_rule_exists() { ufw_rule_state "$1" "$2"; }
 
+# R5C6-03: true when the A-Box-owned rule exists for every
+# applicable family (v4 always; v6 only when the host has
+# IPv6). A single surviving family must not count as fully
+# owned, or restore would skip replenishing the deleted
+# counterpart. Parse mirrors ufw_global_rule_numbers
+# (owned_only=1) but tracks families instead of numbers.
+_ufw_owned_families_complete() {
+    local spec proto output line number body rest is6 has4=0 has6=0 target expected_comment
+    spec=$(normalize_port_spec "$1") || return 1
+    [[ "$2" == tcp || "$2" == udp ]] || return 1
+    proto="$2"
+    target="${spec}/${proto}"
+    expected_comment="# A-Box-${spec}-${proto}"
+    command -v ufw >/dev/null 2>&1 || return 1
+    if LC_ALL=C ufw status 2>/dev/null | head -n 1 | grep -q 'inactive'; then
+        return 1
+    fi
+    output=$(LC_ALL=C ufw status numbered 2>/dev/null) || return 1
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[[:space:]]*\[[[:space:]]*([0-9]+)\][[:space:]]+(.*)$ ]] || continue
+        number="${BASH_REMATCH[1]}"
+        body="${BASH_REMATCH[2]}"
+        [[ "$body" == "$target"* ]] || continue
+        rest="${body#"$target"}"
+        is6=0
+        [[ "$rest" == " (v6)"* ]] && is6=1
+        rest="${rest# (v6)}"
+        rest="${rest#${rest%%[![:space:]]*}}"
+        case "$rest" in
+            'ALLOW IN '*) rest="${rest#ALLOW IN }" ;;
+            'LIMIT IN '*) rest="${rest#LIMIT IN }" ;;
+            *) continue ;;
+        esac
+        rest="${rest#${rest%%[![:space:]]*}}"
+        [[ "$rest" =~ ^Anywhere([[:space:]]+\(v6\))?([[:space:]]+#.*)?$ ]] || continue
+        [[ "$rest" == *"$expected_comment" ]] || continue
+        [[ "${rest##*# }" == "A-Box-${spec}-${proto}" ]] || continue
+        if (( is6 )); then has6=1; else has4=1; fi
+    done <<< "$output"
+    (( has4 == 1 )) || return 1
+    if has_ipv6; then (( has6 == 1 )) || return 1; fi
+    return 0
+}
+
 ufw_owned_rule_exists() {
     local numbers rc
     numbers=$(ufw_global_rule_numbers "$1" "$2" 1); rc=$?
@@ -13142,7 +13186,15 @@ apply_native_firewall_rules_from_state() {
                 if ! command -v ufw >/dev/null 2>&1; then failed=1; continue; fi
                 ufw_owned_rule_exists "$spec" "$proto"; _orc=$?
                 if (( _orc == 0 )); then
-                    :
+                    # R5C6-03: owned means ANY family survives; a
+                    # deleted v6 counterpart must still be restored.
+                    # Only skip when every applicable family is present.
+                    if _ufw_owned_families_complete "$spec" "$proto"; then
+                        :
+                    else
+                        ufw allow proto "$proto" from any to any port "$spec" comment "A-Box-${spec}-${proto}" >/dev/null 2>&1 || { failed=1; continue; }
+                        ufw_owned_rule_exists "$spec" "$proto" || { failed=1; continue; }
+                    fi
                 elif (( _orc == 2 )); then
                     # R3C6-06: unknown UFW state; never mutate on a blind "absent".
                     failed=1; continue

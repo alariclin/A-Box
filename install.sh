@@ -562,7 +562,7 @@ import os, re, sys
 
 path = os.path.abspath(os.path.normpath(sys.argv[1]))
 if os.path.islink(path):
-    raise SystemExit(1)
+    raise SystemExit(3)
 path = os.path.realpath(path).rstrip('/') or '/'
 try:
     with open('/proc/self/mountinfo', 'r', encoding='utf-8', errors='strict') as f:
@@ -580,18 +580,19 @@ except (OSError, UnicodeError):
     # cannot be read, the caller cannot safely prove that the path is not a
     # mountpoint; fail closed rather than falling back to ismount().
     raise SystemExit(0)
-raise SystemExit(1)
+raise SystemExit(3)
 PY_EXACT_MOUNT
     then
         rc=0
     else
         rc=$?
     fi
-    # Only rc=1 is a definitive "not a mountpoint" result. Any other
-    # helper failure is treated as a mountpoint so callers fail closed rather
-    # than deleting/restoring through an unknown mount boundary.
+    # R7C1-02: only rc=3 is a definitive "not a mountpoint" verdict. A
+    # Python interpreter/init failure also exits 1, so 1 must fail closed
+    # like any other helper failure, not pass as "not a mountpoint".
     case "$rc" in
-        0|1) return "$rc" ;;
+        0) return 0 ;;
+        3) return 1 ;;
         *) return 0 ;;
     esac
 }
@@ -620,12 +621,15 @@ except SystemExit:
     raise
 except Exception:
     raise SystemExit(2)
-raise SystemExit(1)
+raise SystemExit(3)
 PY_TREE_NESTED_MOUNT
     rc=$?
+    # R7C1-02: only rc=3 is a definitive "no nested mountpoint" verdict.
+    # A Python interpreter/init failure also exits 1, so 1 must fail closed
+    # like any other helper failure.
     case "$rc" in
         0) return 0 ;;
-        1) return 1 ;;
+        3) return 1 ;;
         *) return 0 ;;
     esac
 }
@@ -641,7 +645,7 @@ import os, sys
 # current mount namespace and also catches nested bind mounts.
 root = os.path.abspath(os.path.normpath(sys.argv[1]))
 if os.path.islink(root):
-    raise SystemExit(1)
+    raise SystemExit(3)
 root = os.path.realpath(root).rstrip('/') or '/'
 
 import re
@@ -670,18 +674,19 @@ if root == '/':
 for mp in mountpoints:
     if mp == root or mp.startswith(root + os.sep):
         raise SystemExit(0)
-raise SystemExit(1)
+raise SystemExit(3)
 PY_TREE_MOUNT
     then
         rc=0
     else
         rc=$?
     fi
-    # Only rc=1 is a definitive "not a mountpoint" result. Any other
-    # helper failure is treated as a mountpoint so destructive/restore paths
-    # fail closed instead of crossing an unknown mount boundary.
+    # R7C1-02: only rc=3 is a definitive "not a mountpoint" verdict. A
+    # Python interpreter/init failure also exits 1, so 1 must fail closed
+    # like any other helper failure, not pass as "not a mountpoint".
     case "$rc" in
-        0|1) return "$rc" ;;
+        0) return 0 ;;
+        3) return 1 ;;
         *) return 0 ;;
     esac
 }

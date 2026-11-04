@@ -1544,6 +1544,12 @@ tr_msg() {
         fa:wl_rs_incomplete_at) echo '[!] بازگشت بازیابی Wallos ناقص است؛ نسخه‌های اصلی در %s نگه داشته شدند.' ;;
         zh-tw:wl_rs_incomplete_at) echo '[!] Wallos 還原回滾未完成；原始檔案保留在 %s。' ;;
         ja:wl_rs_incomplete_at) echo '[!] Wallos 復元のロールバックが不完全です。原本は %s に保持されています。' ;;
+        zh:wl_rs_mount) echo '[!] Wallos 恢复拒绝：%s 含挂载点；原始文件未动，恢复已中止。' ;;
+        en:wl_rs_mount) echo '[!] Wallos restore refused: %s contains a mountpoint; originals were not moved, restore aborted.' ;;
+        ru:wl_rs_mount) echo '[!] Восстановление Wallos отклонено: %s содержит точку монтирования; оригиналы не перемещены, восстановление прервано.' ;;
+        fa:wl_rs_mount) echo '[!] بازیابی Wallos رد شد: %s نقطه اتصال دارد؛ فایل‌های اصلی جابه‌جا نشدند و بازیابی متوقف شد.' ;;
+        zh-tw:wl_rs_mount) echo '[!] Wallos 還原拒絕：%s 含掛載點；原始檔案未動，還原已中止。' ;;
+        ja:wl_rs_mount) echo '[!] Wallos の復元を拒否しました：%s にマウントポイントがあります。原本は移動されず、復元を中止しました。' ;;
         zh:wl_st_not_installed) echo 'Wallos 尚未安装。' ;;
         en:wl_st_not_installed) echo 'Wallos is not installed.' ;;
         ru:wl_st_not_installed) echo 'Wallos не установлен.' ;;
@@ -36464,6 +36470,16 @@ wallos_restore_backup() {
     stamp=$(date -u '+%Y%m%dT%H%M%SZ')
     rescue="$WALLOS_DIR/.restore-preserve-$stamp-$$"
     mkdir -m 700 "$rescue" || { rm -rf -- "$stage"; return 1; }
+    # R7C15-01: refuse live trees that contain a mountpoint before moving
+    # them into rescue; mv would carry a nested bind mount along and the
+    # final rm -rf would delete shared backing data while reporting success.
+    for name in db logos .abox-state; do
+        if [[ (-e "$WALLOS_DIR/$name" || -L "$WALLOS_DIR/$name") ]] && path_tree_has_mountpoint "$WALLOS_DIR/$name"; then
+            msg "${RED}$(tprintf wl_rs_mount "$WALLOS_DIR/$name")${NC}" >&2
+            rm -rf -- "$stage" "$rescue"
+            return 1
+        fi
+    done
     for name in db logos .abox-state; do
         if [[ -e "$WALLOS_DIR/$name" || -L "$WALLOS_DIR/$name" ]]; then
             mv -- "$WALLOS_DIR/$name" "$rescue/$name" || {

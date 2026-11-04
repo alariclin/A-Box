@@ -23628,7 +23628,34 @@ traffic_quota_transaction_rollback() {
 
     # Restore only A-Box-owned traffic state after the complete conflict preflight.
     if [[ -f "$tx_dir/pre.env.absent" ]]; then
-        rm -f -- "$ABOX_ENV" || rc=1
+        # F3: the quota preflight above only compares quota fields,
+        # so non-quota lines added externally after provisioning are
+        # invisible to it. Deleting the whole file would destroy
+        # them; strip only the transaction's quota lines, and remove
+        # the file only when nothing remains (true absent state).
+        if [[ -f "$ABOX_ENV" && ! -L "$ABOX_ENV" ]]; then
+            local envtmp
+            envtmp=$(mktemp "$ABOX_DIR/.env.A-Box-traffic-rollback.XXXXXX") || rc=1
+            if (( rc == 0 )); then
+                awk '!/^TRAFFIC_LIMIT_(GB|MODE)=/' "$ABOX_ENV" > "$envtmp" || rc=1
+                if (( rc == 0 )); then
+                    if [[ -s "$envtmp" ]]; then
+                        chmod 600 "$envtmp" || rc=1
+                        if (( rc == 0 )); then
+                            mv -f -- "$envtmp" "$ABOX_ENV" || { rc=1; rm -f -- "$envtmp"; }
+                        else
+                            rm -f -- "$envtmp"
+                        fi
+                    else
+                        rm -f -- "$envtmp" "$ABOX_ENV" || rc=1
+                    fi
+                else
+                    rm -f -- "$envtmp"
+                fi
+            fi
+        else
+            rm -f -- "$ABOX_ENV" 2>/dev/null || rc=1
+        fi
     elif [[ -f "$tx_dir/pre-traffic.env" ]]; then
         local envtmp
         envtmp=$(mktemp "$ABOX_DIR/.env.A-Box-traffic-rollback.XXXXXX") || rc=1

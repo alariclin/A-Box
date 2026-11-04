@@ -39444,7 +39444,7 @@ xray_latest_deploy_trio() {
     ( umask 077; set -o noclobber; : > "$tmp_cfg.json" ) 2>/dev/null || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; return 1; }
     mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$bak" "$tmp_cfg.json"; return 1; }; tmp_cfg="$tmp_cfg.json"
     if ! jq --slurpfile nb "$tmp_json" \
-            '.inbounds |= (map(select(.tag != "latest-vision" and .tag != "latest-xhttp" and .tag != "latest-ss")) + $nb[0])' \
+            '.inbounds |= ((. // []) | map(select(.tag != "latest-vision" and .tag != "latest-xhttp" and .tag != "latest-ss")) + $nb[0])' \
             "$cfg" > "$tmp_cfg" 2>/dev/null; then
         rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1
     fi

@@ -12962,7 +12962,13 @@ remove_native_firewall_rules() {
 }
 
 forget_native_firewall_rule() {
-    local raw_spec="$1" proto="$2" target_backend="$3" spec tmp kept=0 rec_backend rec_spec rec_proto rec_scope rec_zone _rec_extra
+    local raw_spec="$1" proto="$2" target_backend="$3" target_zone target_scope spec tmp kept=0 rec_backend rec_spec rec_proto rec_scope rec_zone _rec_extra zone_given=0 scope_given=0
+    # R3C6-07: a 4th/5th argument, when provided (even empty), restricts
+    # the match to that exact zone/scope; when omitted, that dimension
+    # matches all. A caller that rolled back one record must pass that
+    # record's zone and scope, or it would also forget other live rules.
+    if [[ $# -ge 4 ]]; then target_zone="$4"; zone_given=1; fi
+    if [[ $# -ge 5 ]]; then target_scope="$5"; scope_given=1; fi
     spec=$(normalize_port_spec "$raw_spec") || return 1
     [[ "$proto" == tcp || "$proto" == udp ]] || return 1
     [[ "$target_backend" == ufw || "$target_backend" == firewalld || "$target_backend" == iptables ]] || return 1
@@ -12974,7 +12980,13 @@ forget_native_firewall_rule() {
         # them); without this skip they would be rewritten as '|||'
         # records and poison the whole file on the next validation.
         [[ -n "$rec_backend$rec_spec$rec_proto$rec_scope$rec_zone$_rec_extra" ]] || continue
-        [[ "$rec_backend" == "$target_backend" && "$rec_spec" == "$spec" && "$rec_proto" == "$proto" ]] && continue
+        if [[ "$rec_backend" == "$target_backend" && "$rec_spec" == "$spec" && "$rec_proto" == "$proto" ]]; then
+            if (( zone_given == 0 )) || [[ "$rec_zone" == "$target_zone" ]]; then
+                if (( scope_given == 0 )) || [[ "$rec_scope" == "$target_scope" ]]; then
+                    continue
+                fi
+            fi
+        fi
         if [[ -n "$rec_zone" ]]; then
             printf '%s|%s|%s|%s|%s\n' "$rec_backend" "$rec_spec" "$rec_proto" "$rec_scope" "$rec_zone" >> "$tmp" || { rm -f -- "$tmp"; return 1; }
         else
@@ -13007,7 +13019,7 @@ remove_abox_native_firewall_rule() {
                     ufw_delete_owned_rules "$spec" "$proto" || return 1
                     break
                 done < "$ABOX_FW_STATE"
-                forget_native_firewall_rule "$spec" "$proto" ufw || return 1
+                forget_native_firewall_rule "$spec" "$proto" ufw "" "rule" || return 1
             fi
             return 0
             ;;
@@ -13147,7 +13159,7 @@ iptables_rule_check() {
 # F12: removed zero-call restore_iptables_saved_snapshot (duplicate dead code)
 
 allowPort() {
-    local raw_port="$1" type="${2:-tcp}" backend spec fw_spec runtime=0 permanent=0 added_runtime=0 _orc=0 _rrc=0
+    local raw_port="$1" type="${2:-tcp}" backend spec fw_spec runtime=0 permanent=0 added_runtime=0 _orc=0 _rrc=0 _fz=''
     spec=$(normalize_port_spec "$raw_port") || die "$(tprintf fw2_bad_port "$raw_port")"
     [[ "$type" == tcp || "$type" == udp ]] || die "$(tprintf fw2_bad_proto "$type")"
     backend=$(firewall_backend)
@@ -13198,7 +13210,7 @@ allowPort() {
                     [[ "$added_runtime" == 1 ]] && firewalld_cmd --remove-port="${fw_spec}/${type}" >/dev/null 2>&1 || true
                     # S48 (argon P2-4): forget the runtime record too, or
                     # the state file claims a rule that no longer exists.
-                    [[ "$added_runtime" == 1 ]] && forget_native_firewall_rule "$spec" "$type" firewalld >/dev/null 2>&1 || true
+                    [[ "$added_runtime" == 1 ]] && _fz=$(firewalld_zone_for_abox) && forget_native_firewall_rule "$spec" "$type" firewalld "$_fz" "runtime" >/dev/null 2>&1 || true
                     die "$(tprintf fw2_fwd_perm_add "${fw_spec}/${type}")"
                 fi
                 if ! record_native_firewall_rule firewalld "$spec" "$type" permanent; then
@@ -13206,7 +13218,7 @@ allowPort() {
                     [[ "$added_runtime" == 1 ]] && firewalld_cmd --remove-port="${fw_spec}/${type}" >/dev/null 2>&1 || true
                     # S48 (argon P2-4): forget the runtime record too, or
                     # the state file claims a rule that no longer exists.
-                    [[ "$added_runtime" == 1 ]] && forget_native_firewall_rule "$spec" "$type" firewalld >/dev/null 2>&1 || true
+                    [[ "$added_runtime" == 1 ]] && _fz=$(firewalld_zone_for_abox) && forget_native_firewall_rule "$spec" "$type" firewalld "$_fz" "runtime" >/dev/null 2>&1 || true
                     die "$(tr_msg fw2_fwd_perm_record)"
                 fi
             fi

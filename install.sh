@@ -35587,15 +35587,28 @@ wallos_pull_or_restore_image() {
         return 1
     fi
     # Defense-in-depth: If RepoDigests is populated (e.g. image was pulled), verify it matches.
-    local loaded_digest
-    loaded_digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "bellamy/wallos:${tag#v}" 2>/dev/null || true)
+    # F04: RepoDigests can hold several entries (multi-platform
+    # plus platform-specific pulls of the same image); checking
+    # only index 0 rejects a qualified image whose expected
+    # digest is present but not first. Check full-list
+    # membership instead. An empty list still skips the check
+    # (docker load populates no RepoDigest; see the NOTE above).
+    local loaded_digests
+    loaded_digests=$(docker image inspect --format '{{join .RepoDigests "\n"}}' "bellamy/wallos:${tag#v}" 2>/dev/null || true)
     # U116: normalize both sides (whitespace, docker.io/ prefix, case) before
     # comparing; the format check above allows the prefix, so a raw string
     # comparison would reject the same digest in a different spelling.
-    local _loaded_norm="${loaded_digest//[[:space:]]/}" _expected_norm="${expected_digest//[[:space:]]/}"
-    _loaded_norm="${_loaded_norm#docker.io/}"
+    local _expected_norm="${expected_digest//[[:space:]]/}"
     _expected_norm="${_expected_norm#docker.io/}"
-    if [[ -n "$loaded_digest" && "${_loaded_norm,,}" != "${_expected_norm,,}" ]]; then
+    _expected_norm="${_expected_norm,,}"
+    local _found=0 _one='' _one_norm=''
+    while IFS= read -r _one; do
+        [[ -n "$_one" ]] || continue
+        _one_norm="${_one//[[:space:]]/}"
+        _one_norm="${_one_norm#docker.io/}"
+        if [[ "${_one_norm,,}" == "$_expected_norm" ]]; then _found=1; break; fi
+    done <<< "$loaded_digests"
+    if [[ -n "${loaded_digests//[[:space:]]/}" && "$_found" == 0 ]]; then
         rm -rf -- "$work"
         msg "${RED}$(tr_msg wl_pi_digest_mismatch)${NC}"
         return 1

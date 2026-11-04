@@ -29366,19 +29366,28 @@ apply_host_dns() {
         die "Failed to snapshot DNS state; previous rollback snapshot preserved."
     fi
     printf '%s\n' "$immutable_before" > "$dns_snap_tmp/resolv-immutable" || { rm -rf -- "$dns_snap_tmp"; die "Failed to save DNS immutable-flag state."; }
+    # R4C12-03: the per-attempt snapshot must survive for failure
+    # rollback. install_new consumes its argument (moves it as the
+    # baseline, or discards it when a COMPLETE baseline already
+    # exists), so hand it a COPY and keep the original as this
+    # attempt's rollback source. Otherwise a v4-ok/v6-fail attempt
+    # rolls back to the old baseline, leaving the new profile's v4
+    # changes as residue.
     # TRAP-5: use the unified snapshot primitive (POSIX mv + pre-move-aside, idempotency,
     # crash-safe pending-swap). Preserves an existing COMPLETE baseline.
-    dns_snapshot_install_new "$dns_snap_tmp" || die "Failed to install new DNS rollback snapshot."
+    local dns_snap_install="${dns_snap_tmp}.install"
+    cp -a -- "$dns_snap_tmp" "$dns_snap_install" || { rm -rf -- "$dns_snap_tmp"; die "Failed to copy DNS snapshot for baseline install."; }
+    dns_snapshot_install_new "$dns_snap_install" || { rm -rf -- "$dns_snap_tmp"; die "Failed to install new DNS rollback snapshot."; }
     if (( immutable_before == 1 )); then
         chattr -i /etc/resolv.conf 2>/dev/null || die "Failed to clear immutable flag on /etc/resolv.conf."
     fi
     case "$backend" in
         resolved)
             mkdir -p /etc/systemd/resolved.conf.d || die "$(tr_msg hd_resolved_dir)"
-            resolved_strip_global_dns_sources || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die '清除既有全局 DNS 来源失败，未修改 DNS。'; }
+            resolved_strip_global_dns_sources || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die '清除既有全局 DNS 来源失败，未修改 DNS。'; }
             dropin=/etc/systemd/resolved.conf.d/99-abox-dns.conf
             if [[ "$mode" == 'dot' ]]; then
-                write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'DoT drop-in 写入失败。'; }
+                write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die 'DoT drop-in 写入失败。'; }
 [Resolve]
 DNS=${dns_servers}
 FallbackDNS=
@@ -29386,7 +29395,7 @@ Domains=~.
 DNSOverTLS=yes
 EOF_DNS
             else
-                write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die 'DNS drop-in 写入失败。'; }
+                write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die 'DNS drop-in 写入失败。'; }
 [Resolve]
 DNS=${v4}${v6:+ $v6}
 FallbackDNS=
@@ -29394,22 +29403,22 @@ Domains=~.
 DNSOverTLS=no
 EOF_DNS
             fi
-            systemctl restart systemd-resolved >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "systemd-resolved restart failed; rollback was attempted."; }
-            resolved_global_dns_check "$v4${v6:+ $v6}" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die '应用后全局 DNS 集合与预期不符，已回滚。'; }
+            systemctl restart systemd-resolved >/dev/null 2>&1 || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "systemd-resolved restart failed; rollback was attempted."; }
+            resolved_global_dns_check "$v4${v6:+ $v6}" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die '应用后全局 DNS 集合与预期不符，已回滚。'; }
             ;;
         networkmanager)
             local iface connection
             iface=$(nm_effective_device 2>/dev/null || true)
-            [[ -n "$iface" ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_no_iface)"; }
+            [[ -n "$iface" ]] || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_no_iface)"; }
             connection=$(nmcli -g GENERAL.CONNECTION device show "$iface" 2>/dev/null || true)
-            [[ -n "$connection" && "$connection" != '--' ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_no_conn)"; }
-            nmcli connection modify "$connection" ipv4.ignore-auto-dns yes ipv4.dns "$v4" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_nm_v4)"; }
-            nmcli connection modify "$connection" ipv6.ignore-auto-dns yes ipv6.dns "${v6:-}" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_nm_v6)"; }
-            nmcli device reapply "$iface" >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_nm_apply)"; }
-            nm_dns_verify_applied "$connection" "$v4" "$v6" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_nm_apply)"; }
+            [[ -n "$connection" && "$connection" != '--' ]] || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_no_conn)"; }
+            nmcli connection modify "$connection" ipv4.ignore-auto-dns yes ipv4.dns "$v4" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_nm_v4)"; }
+            nmcli connection modify "$connection" ipv6.ignore-auto-dns yes ipv6.dns "${v6:-}" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_nm_v6)"; }
+            nmcli device reapply "$iface" >/dev/null 2>&1 || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_nm_apply)"; }
+            nm_dns_verify_applied "$connection" "$v4" "$v6" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_nm_apply)"; }
             ;;
         *)
-            [[ ! -L /etc/resolv.conf ]] || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_resolv_symlink)"; }
+            [[ ! -L /etc/resolv.conf ]] || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_resolv_symlink)"; }
             # R7C12-02: preserve search/domain/options from the
             # existing resolv.conf; the old code dropped them.
             local _pd_search_domain='' _pd_options=''
@@ -29426,17 +29435,18 @@ EOF_DNS
                 if [[ -n "$v6" ]]; then IFS=$' \t\n' read -ra _ns_list <<< "$v6" || true; for _ns in "${_ns_list[@]}"; do printf 'nameserver %s\n' "$_ns"; done; fi
                 if [[ -n "$_pd_search_domain" ]]; then printf '%s\n' "$_pd_search_domain"; fi
                 if [[ -n "$_pd_options" ]]; then printf '%s\n' "$_pd_options"; else printf 'options timeout:2 attempts:3\n'; fi
-            } > "$DNS_BACKUP_DIR/resolv.conf.new" || { restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_resolv_gen)"; }
-            write_file_atomically_from_stdin /etc/resolv.conf 644 < "$DNS_BACKUP_DIR/resolv.conf.new" || { rm -f "$DNS_BACKUP_DIR/resolv.conf.new"; restore_dns_snapshot "$DNS_BACKUP_DIR"; die "$(tr_msg hd_resolv_write)"; }
+            } > "$DNS_BACKUP_DIR/resolv.conf.new" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_resolv_gen)"; }
+            write_file_atomically_from_stdin /etc/resolv.conf 644 < "$DNS_BACKUP_DIR/resolv.conf.new" || { rm -f "$DNS_BACKUP_DIR/resolv.conf.new"; restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_resolv_write)"; }
             rm -f "$DNS_BACKUP_DIR/resolv.conf.new"
             ;;
     esac
     if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< "backend=${backend};mode=${mode};v4=${v4};v6=${v6}"; then
-        if restore_dns_snapshot "$DNS_BACKUP_DIR"; then
+        if restore_dns_snapshot "$dns_snap_tmp"; then
             msg "${RED}DNS state metadata could not be committed; the previous DNS configuration was restored.${NC}"
         else
             msg "${RED}DNS state metadata could not be committed and automatic rollback failed. Use the DNS menu's restore option and inspect $DNS_BACKUP_DIR.${NC}"
         fi
+        rm -rf -- "$dns_snap_tmp"
         return 1
     fi
     case "${ABOX_LANG:-zh}" in
@@ -29448,6 +29458,7 @@ EOF_DNS
             msg "${GREEN}ホストの DNS を更新しました。ロールバックするには DNS メニューを使用してください。${NC}" ;;
         *) msg "${GREEN}本机 DNS 已更新。可用菜单回滚。${NC}" ;;
     esac
+    rm -rf -- "$dns_snap_tmp"
 }
 
 dns_probe_once() {

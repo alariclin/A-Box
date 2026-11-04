@@ -36097,14 +36097,35 @@ wallos_bruteforce_protection() {
         [[ "$_pp" =~ ^[0-9]+$ ]] && port="$_pp"
     fi
     # Localhost-only Wallos cannot be reached remotely; no jail needed.
-    # S149: cftunnel also binds loopback but IS publicly reachable
-    # through the tunnel, so it keeps its jail; only a true local
-    # install drops it.
+    # S149 (amended by F05): cftunnel also binds loopback but IS
+    # publicly reachable through the tunnel, so it is NOT dropped
+    # here — it gets its own handling below (no DOCKER-USER jail can
+    # bite tunneled traffic); only a true local install drops it here.
     if [[ "$bind_address" == 127.0.0.1 && "$wmode" != https && "$wmode" != cftunnel ]]; then
         rm -f -- "$jail" 2>/dev/null || true
         # A running fail2ban keeps the removed jail (and its bans)
         # until reloaded; reload, and restart only if the jail survives
         # the reload, so the localhost-only switch takes effect now.
+        if command -v fail2ban-client >/dev/null 2>&1; then
+            fail2ban-client reload >/dev/null 2>&1 || true
+            if fail2ban-client status A-Box-wallos >/dev/null 2>&1; then
+                fail2ban-client restart >/dev/null 2>&1 || true
+            fi
+        fi
+        return 0
+    fi
+    # F05 (R1C15-05): cftunnel mode gets no DOCKER-USER jail. The
+    # tunnel daemon runs on the host and reaches the container
+    # through loopback, so that traffic traverses OUTPUT, never
+    # FORWARD/DOCKER-USER — a DOCKER-USER ban can never match it.
+    # The container-side log also sees only the local proxy, never
+    # the real client (visible only at Cloudflare's edge), so there
+    # is no host-visible client IP to ban at all. Installing the
+    # jail would pretend protection that cannot bite; drop any
+    # stale jail instead and leave edge/app-layer protection to
+    # Cloudflare and Wallos itself.
+    if [[ "$wmode" == cftunnel ]]; then
+        rm -f -- "$jail" 2>/dev/null || true
         if command -v fail2ban-client >/dev/null 2>&1; then
             fail2ban-client reload >/dev/null 2>&1 || true
             if fail2ban-client status A-Box-wallos >/dev/null 2>&1; then

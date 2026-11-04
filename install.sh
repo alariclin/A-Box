@@ -20890,6 +20890,19 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    # R12C9-01: seed a missing config independent of the binary
+    # install above: with the binary already present the in-branch
+    # seed is skipped, and argo_deploy_ws below dies reading the
+    # missing config. An existing config (even jq-invalid JSONC,
+    # per R6C9-02) is never overwritten.
+    if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die "$(tr_msg dp_sb_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
+        rm -f "$tmp_json"
+    fi
     argo_deploy_ws
     argo_write_unit argo-vmess "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 --url http://127.0.0.1:${ARGO_VMESS_PORT}"
     argo_write_unit argo-vless "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 --url http://127.0.0.1:${ARGO_VLESS_PORT}"
@@ -21037,6 +21050,19 @@ EOF_SVC
             chmod +x /etc/init.d/sing-box || die "$(tr_msg dp_sb_chmod)"
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
+    fi
+    # R12C9-01: seed a missing config independent of the binary
+    # install above: with the binary already present the in-branch
+    # seed is skipped, and argo_deploy_ws below dies reading the
+    # missing config. An existing config (even jq-invalid JSONC,
+    # per R6C9-02) is never overwritten.
+    if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
+        prepare_abox_runtime_config_dir sing-box /etc/sing-box || die 'Sing-box config directory preparation failed.'
+        tmp_json=$(mktemp /tmp/A-Box-singbox-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+        jq -n '{log:{level:"warn",output:"/var/log/A-Box-singbox.log"},inbounds:[],outbounds:[{type:"direct",tag:"direct"}]}' > "$tmp_json" \
+            || die "$(tr_msg dp_sb_seed)"
+        install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
+        rm -f "$tmp_json"
     fi
     argo_deploy_ws
     argo_write_unit argo "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 run"

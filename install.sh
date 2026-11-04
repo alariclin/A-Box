@@ -36474,6 +36474,7 @@ wallos_bruteforce_protection() {
     local port="$1" bind_address="$2" wmode="${3:-}"
     local filter='/etc/fail2ban/filter.d/A-Box-wallos.conf'
     local jail='/etc/fail2ban/jail.d/A-Box-wallos.local'
+    local dockeruser_action='/etc/fail2ban/action.d/A-Box-wallos-dockeruser.conf'
     [[ -n "$wmode" ]] || wmode=$(wallos_state_value MODE 2>/dev/null || true)
     if [[ "$wmode" == https ]]; then
         # The jail watches Caddy's access log and bans on the public
@@ -36548,14 +36549,16 @@ wallos_bruteforce_protection() {
     # U119: the backend-native action is only checked in https mode. In
     # container mode the ban is always an iptables DOCKER-USER rule (below),
     # so the iptables action config is the one that must exist.
-    if [[ "$wmode" != https ]]; then
-        [[ -r "/etc/fail2ban/action.d/iptables-multiport.conf" ]] || return 0
-    else
+    # R5C15-03: container mode no longer uses a stock action
+    # (the custom dockeruser action below is written by us);
+    # only https mode still needs its stock action file.
+    if [[ "$wmode" == https ]]; then
         [[ -r "/etc/fail2ban/action.d/${action}.conf" ]] || return 0
     fi
-    mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d || return 0
+    mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d /etc/fail2ban/action.d || return 0
     assert_abox_auxiliary_safe "$filter" 2>/dev/null || return 0
     assert_abox_auxiliary_safe "$jail" 2>/dev/null || return 0
+    assert_abox_auxiliary_safe "$dockeruser_action" 2>/dev/null || return 0
     if [[ "$wmode" == https ]]; then
         # Caddy JSON access log: remote_ip comes first in the line.
         # Failed Wallos logins are POST /login.php answered 200; a
@@ -36590,11 +36593,39 @@ EOF_WF2B_FILTER
         # U120: after DNAT the destination port is the container's 80, not
         # the published port, so the rule matches port 80. The jail's
         # `port` line keeps the published port for display only.
-        action="iptables-multiport[name=A-Box-wallos, chain=DOCKER-USER, port=\"80\", protocol=tcp]"
+        # R5C15-03: the stock iptables-multiport DOCKER-USER
+        # rule matches post-DNAT port 80, so a Wallos ban also
+        # blocks other containers' HTTP. The custom dockeruser
+        # action (written below) additionally matches the
+        # conntrack original destination port, i.e. only
+        # traffic originally destined for the published
+        # Wallos port is banned.
+        action="A-Box-wallos-dockeruser[name=A-Box-wallos, port=\"${port}\"]"
     elif [[ "$action" == 'ufw' ]]; then
         action="ufw[name=A-Box-wallos]"
     else
         action="${action}[name=A-Box-wallos, port=\"${port}\", protocol=tcp]"
+    fi
+    if [[ "$wmode" != https ]]; then
+        # R5C15-03: custom DOCKER-USER action. ban/unban are
+        # exact inverses (only -I vs -D differs) so unban
+        # removes precisely what ban added. actioncheck only
+        # verifies the chain exists; DOCKER-USER is owned by
+        # Docker and must never be created or flushed here.
+        # Quoted heredoc: <port>/<ip> stay literal for
+        # fail2ban to substitute from the jail action line.
+        write_file_atomically_from_stdin "$dockeruser_action" 644 <<'EOF_WF2B_ACTION' || return 0
+# Managed by A-Box
+[Definition]
+actionstart =
+actionstop =
+actioncheck = iptables -n -L DOCKER-USER >/dev/null 2>&1
+actionban = iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport <port> --dport 80 -s <ip> -j REJECT --reject-with icmp-port-unreachable
+actionunban = iptables -D DOCKER-USER -p tcp -m conntrack --ctorigdstport <port> --dport 80 -s <ip> -j REJECT --reject-with icmp-port-unreachable
+
+[Init]
+port = 80
+EOF_WF2B_ACTION
     fi
     write_file_atomically_from_stdin "$jail" 644 <<EOF_WF2B_JAIL || return 0
 # Managed by A-Box

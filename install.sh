@@ -27210,7 +27210,7 @@ users_stats_snapshot() {
     out=$("$bin" api statsquery --server "127.0.0.1:$port" -pattern 'user>>>' 2>/dev/null) || return 1
     [[ -n "$out" ]] || return 1
     printf '%s' "$out" | jq -c '
-        [(.stat[]? | (.name | split(">>>")) as $p | select($p[0] == "user") | {e: $p[1], d: $p[3], v: (.value // 0)})]
+        [(.stat[]? | (.name | split(">>>")) as $p | select($p[0] == "user") | {e: $p[1], d: $p[3], v: ((.value // 0) | tonumber)})]
         | group_by(.e)
         | map({(.[0].e): {up: ([.[] | select(.d == "uplink") | .v] | add // 0),
                           down: ([.[] | select(.d == "downlink") | .v] | add // 0)}})

@@ -12099,6 +12099,20 @@ trap 'flock -u "${restore_lock_fd:-}" 2>/dev/null || true; eval "exec ${restore_
 snapshot_valid() {
     [[ -s "$1" ]] && grep -q '^\*' "$1"
 }
+# C02: full validation before any deletion. --test parses the
+# snapshot against the kernel without committing; a rule-invalid
+# snapshot must be rejected here, not after live rules are gone.
+# The restore-failure backup + loud message remains the net for the
+# residual test/apply race window; auto-restoring the backup with
+# --noflush would duplicate partially restored rules, and restoring
+# without --noflush would drop foreign rules, so no auto-rollback
+# is added.
+snapshot_test_valid() {
+    local file="$1" cmd="$2"
+    [[ -s "$file" ]] || return 1
+    command -v "$cmd" >/dev/null 2>&1 || return 1
+    "$cmd" -w --test < "$file" >/dev/null 2>&1 || "$cmd" --test < "$file" >/dev/null 2>&1
+}
 # D1: validate before deleting (fail before clean when live A-Box rules
 # exist but the snapshot cannot restore them; proceed when nothing live
 # to lose, e.g. fresh boot or IPv4-only host with no live v6 rules).
@@ -12108,6 +12122,9 @@ if ! snapshot_valid /etc/ddr/iptables.v4; then
         echo 'A-Box firewall restore: IPv4 snapshot invalid but live A-Box rules exist; refusing to delete.' >&2
         exit 1
     fi
+elif ! snapshot_test_valid /etc/ddr/iptables.v4 iptables-restore; then
+    echo 'A-Box firewall restore: IPv4 snapshot failed full validation (--test); refusing to delete live rules.' >&2
+    exit 1
 fi
 # D1: preserve a manual-recovery backup before deleting (full save; kept
 # on failure with a loud message, not auto-restored, to avoid duplicating
@@ -12128,6 +12145,9 @@ if command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -S INPUT >/dev/
             echo 'A-Box firewall restore: IPv6 snapshot invalid but live A-Box rules exist; refusing to delete.' >&2
             exit 1
         fi
+    elif ! snapshot_test_valid /etc/ddr/iptables.v6 ip6tables-restore; then
+        echo 'A-Box firewall restore: IPv6 snapshot failed full validation (--test); refusing to delete live rules.' >&2
+        exit 1
     fi
     restore_backup6=$(mktemp) || exit 1
     ip6tables-save > "$restore_backup6" 2>/dev/null || { rm -f -- "$restore_backup6"; exit 1; }

@@ -27020,8 +27020,7 @@ users_adopt() {
 users_hy2_yaml_scalar() {
     local v="$1"
     if [[ "$v" == '"'* ]]; then
-        v=$(printf '%s' "$v" | jq -r '. + "__ABOX_TRAILING_NL_KEEP__"' 2>/dev/null || printf '%s' "$v")
-        v=${v%"__ABOX_TRAILING_NL_KEEP__"}
+        v=$(printf '%s' "$v" | jq -r '. + "__ABOX_TRAILING_NL_KEEP__"' 2>/dev/null || printf '%s__ABOX_TRAILING_NL_KEEP__' "$v")
         printf '%s' "$v"
         return 0
     fi
@@ -27030,7 +27029,7 @@ users_hy2_yaml_scalar() {
         v=${v#"$q"}
         v=${v%"$q"}
         v=${v//"$q$q"/"$q"}
-        printf '%s' "$v"
+        printf '%s__ABOX_TRAILING_NL_KEEP__' "$v"
         return 0
     fi
     # Plain: cut at the first ' #' (YAML comment) and trim trailing space.
@@ -27038,7 +27037,7 @@ users_hy2_yaml_scalar() {
         *' #'*) v=${v%%' #'*} ;;
     esac
     while [[ "$v" == *' ' || "$v" == *$'\t' ]]; do v=${v%?}; done
-    printf '%s' "$v"
+    printf '%s__ABOX_TRAILING_NL_KEEP__' "$v"
 }
 
 users_hy2_read_users() {
@@ -27064,6 +27063,7 @@ users_hy2_read_users() {
         while IFS=$'\t' read -r n v; do
             [[ -n "$n" ]] || continue
             v=$(users_hy2_yaml_scalar "$v")
+            v=${v%__ABOX_TRAILING_NL_KEEP__}
             list=$(printf '%s' "$list" | jq -c --arg n "$n" --rawfile v <(printf '%s' "$v") '. + [{name: $n, secret: $v}]') || return 1
         done <<< "$out"
         # R6C11-03 fail-closed: a userpass section that yields nothing is
@@ -27076,6 +27076,7 @@ users_hy2_read_users() {
     pw=$(printf '%s\n' "$block" | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
     [[ -n "$pw" ]] || return 1
     pw=$(users_hy2_yaml_scalar "$pw")
+    pw=${pw%__ABOX_TRAILING_NL_KEEP__}
     # R3C11-04: a deny password is not a user; returning [] keeps the
     # registry's (disabled) users intact without resurrecting the deny
     # as an enabled user on the next menu visit.

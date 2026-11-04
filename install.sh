@@ -26202,14 +26202,20 @@ users_commit_cfg() {
     esac
     if ! restart_service_soft "$svc"; then
         if [[ -n "$bak" && -f "$bak" ]]; then
-            install_file_atomically "$bak" "$cfg" 600 >/dev/null 2>&1 || cp -f -- "$bak" "$cfg"
-            case "$core" in
-                xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || true ;;
-                xray-latest) prepare_abox_runtime_read_file "$cfg" xray >/dev/null 2>&1 || true ;;
-                sing-box) prepare_abox_runtime_permissions sing-box >/dev/null 2>&1 || true ;;
-        hy2) prepare_abox_runtime_permissions hysteria >/dev/null 2>&1 || true ;;
-            esac
-            restart_service_soft "$svc" >/dev/null 2>&1 || true
+            if install_file_atomically "$bak" "$cfg" 600 >/dev/null 2>&1 || cp -f -- "$bak" "$cfg"; then
+                case "$core" in
+                    xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || true ;;
+                    xray-latest) prepare_abox_runtime_read_file "$cfg" xray >/dev/null 2>&1 || true ;;
+                    sing-box) prepare_abox_runtime_permissions sing-box >/dev/null 2>&1 || true ;;
+                    hy2) prepare_abox_runtime_permissions hysteria >/dev/null 2>&1 || true ;;
+                esac
+                restart_service_soft "$svc" >/dev/null 2>&1 || true
+                return 1
+            fi
+            # Restore failed: $cfg still holds the failed replacement and
+            # $bak is the only good copy. Distinct code so the caller keeps
+            # $bak for manual recovery instead of deleting it.
+            return 2
         fi
         return 1
     fi
@@ -26223,7 +26229,7 @@ users_commit_cfg() {
 # is not a vision node and stays untagged). Duplicate candidates get a
 # numeric suffix (vision-2, ...) so tags stay unique.
 users_xray_ensure_tags() {
-    local cfg="$1" bak='' tmp=''
+    local cfg="$1" bak='' tmp='' _commit_rc=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     jq empty "$cfg" >/dev/null 2>&1 || return 1
     jq -e '[.inbounds[]? | select(.tag == null or .tag == "")] | length > 0' "$cfg" >/dev/null 2>&1 || return 0
@@ -26245,17 +26251,22 @@ users_xray_ensure_tags() {
             else {used: .used, out: (.out + [$ib])} end)
           | .out)
     ' "$cfg" > "$tmp"; then rm -f "$tmp" "$bak"; return 1; fi
-    if users_commit_cfg xray "$cfg" "$tmp" "$bak"; then
+    users_commit_cfg xray "$cfg" "$tmp" "$bak"; _commit_rc=$?
+    if (( _commit_rc == 0 )); then
         if jq -e '[.inbounds[]? | select((.tag == null or .tag == "") and .protocol == "vless")] | length > 0' "$cfg" >/dev/null 2>&1; then
             msg "${RED}[!] xray: untagged VLESS inbound(s) left without a tag; they stay invisible to per-tag management.${NC}"
         fi
         rm -f "$tmp" "$bak"; return 0
     fi
+    if (( _commit_rc == 2 )); then
+        msg "${RED}[!] config commit failed and restore failed; backup kept at $bak for manual recovery.${NC}"
+        rm -f "$tmp"; return 1
+    fi
     rm -f "$tmp" "$bak"; return 1
 }
 
 users_sb_ensure_tags() {
-    local cfg="$1" bak='' tmp=''
+    local cfg="$1" bak='' tmp='' _commit_rc=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     jq empty "$cfg" >/dev/null 2>&1 || return 1
     jq -e '[.inbounds[]? | select(.tag == null or .tag == "")] | length > 0' "$cfg" >/dev/null 2>&1 || return 0
@@ -26277,11 +26288,16 @@ users_sb_ensure_tags() {
             else {used: .used, out: (.out + [$ib])} end)
           | .out)
     ' "$cfg" > "$tmp"; then rm -f "$tmp" "$bak"; return 1; fi
-    if users_commit_cfg sing-box "$cfg" "$tmp" "$bak"; then
+    users_commit_cfg sing-box "$cfg" "$tmp" "$bak"; _commit_rc=$?
+    if (( _commit_rc == 0 )); then
         if jq -e '[.inbounds[]? | select((.tag == null or .tag == "") and .type == "vless")] | length > 0' "$cfg" >/dev/null 2>&1; then
             msg "${RED}[!] sing-box: untagged VLESS inbound(s) left without a tag; they stay invisible to per-tag management.${NC}"
         fi
         rm -f "$tmp" "$bak"; return 0
+    fi
+    if (( _commit_rc == 2 )); then
+        msg "${RED}[!] config commit failed and restore failed; backup kept at $bak for manual recovery.${NC}"
+        rm -f "$tmp"; return 1
     fi
     rm -f "$tmp" "$bak"; return 1
 }
@@ -26495,7 +26511,7 @@ users_reg_ensure() {
 
 # ---- sync: rewrite the core config's user list from the registry ----
 users_sync() {
-    local core="$1" tag="$2" cfg='' reg='' bak='' tmp='' enabled='' proto='' ssecret=''
+    local core="$1" tag="$2" cfg='' reg='' bak='' tmp='' enabled='' proto='' ssecret='' _commit_rc=''
     cfg=$(users_cfg_of "$core") || { msg "users_sync stage SYNC-01: users_cfg_of failed" >&2; return 1; }
     reg=$(users_reg_file "$core" "$tag")
     [[ -f "$cfg" && ! -L "$cfg" && -f "$reg" ]] || { msg "users_sync stage SYNC-02: config or registry missing" >&2; return 1; }
@@ -26633,7 +26649,8 @@ users_sync() {
         local regj=''
         regj=$(jq -c --rawfile ss <(printf '%s' "$eff_ss") '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || { msg "users_sync stage SYNC-19: server-secret promotion persist failed" >&2; rm -f "$tmp" "$bak"; return 1; }
     fi
-    if users_commit_cfg "$core" "$cfg" "$tmp" "$bak"; then
+    users_commit_cfg "$core" "$cfg" "$tmp" "$bak"; _commit_rc=$?
+    if (( _commit_rc == 0 )); then
         rm -f "$tmp" "$bak"
         if (( sb_will_delete == 1 )) && [[ -n "$sb_snap_obj" ]]; then
             # Snapshot already persisted pre-commit (U65); only the notice remains here.
@@ -26649,6 +26666,10 @@ users_sync() {
             msg "${GREEN}[+] ${core} ${proto} inbound ${tag} rebuilt from the registry snapshot.${NC}"
         fi
         return 0
+    fi
+    if (( _commit_rc == 2 )); then
+        msg "users_sync stage SYNC-20: config commit failed and restore failed; backup kept at $bak for manual recovery" >&2
+        rm -f "$tmp"; return 1
     fi
     msg "users_sync stage SYNC-20: config commit failed" >&2; 
     rm -f "$tmp" "$bak"; return 1

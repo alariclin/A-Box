@@ -34064,15 +34064,21 @@ PY_LEGACY_EXTRACT
 
 
 validate_backup_archive() {
-    local archive="$1"
+    # R11C14-02: the expected archive root follows the config dir:
+    # backups stage $root$ABOX_DIR, so a non-default ABOX_DIR yields
+    # root/opt/abox, not root/etc/ddr. Callers may pass the config
+    # dir explicitly; default is the current ABOX_DIR.
+    local archive="$1" _cfg_dir="${2:-$ABOX_DIR}"
     [[ -s "$archive" ]] || return 1
     command -v python3 >/dev/null 2>&1 || return 1
     # UID/GID numbers stored in a backup are source-host metadata. The archive
     # is authenticated separately; restore-time ownership is normalized to the
     # target host's dedicated runtime accounts before any service starts.
-    python3 -I - "$archive" <<'PY_VALIDATE'
+    python3 -I - "$archive" "$_cfg_dir" <<'PY_VALIDATE'
 import posixpath,stat,sys,tarfile
 fn=sys.argv[1]
+_cfg=sys.argv[2].rstrip('/') if len(sys.argv) > 2 else '/etc/ddr'
+REQ_ROOT='root' + _cfg if _cfg.startswith('/') else 'root/' + _cfg
 MAX_MEMBERS=10000
 MAX_FILE=512*1024*1024
 MAX_TOTAL=1024*1024*1024
@@ -34097,7 +34103,7 @@ for m in tf:
     if '\x00' in raw or raw.startswith('/'): raise SystemExit(1)
     while raw.startswith('./'): raw=raw[2:]
     n=posixpath.normpath(raw)
-    if n=='root/etc/ddr': root_member=m
+    if n==REQ_ROOT: root_member=m
     if n in ('','.'): continue
     if n=='..' or n.startswith('../') or n.split('/',1)[0] not in ('root','meta'): raise SystemExit(1)
     if n in seen and not m.isdir(): raise SystemExit(1)
@@ -34212,9 +34218,9 @@ for m in tf:
         if m.size < 0 or m.size > MAX_FILE: raise SystemExit(1)
         total += m.size
         if total > MAX_TOTAL: raise SystemExit(1)
-required_names={'root/etc/ddr','meta/manifest.version','meta/manifest.sha256','meta/managed-paths.txt','meta/services.state','meta/firewall.backend','meta/iptables.snapshot','meta/ip6tables.snapshot','meta/cron.abox.txt'}
+required_names={REQ_ROOT,'meta/manifest.version','meta/manifest.sha256','meta/managed-paths.txt','meta/services.state','meta/firewall.backend','meta/iptables.snapshot','meta/ip6tables.snapshot','meta/cron.abox.txt'}
 if not required_names.issubset(seen): raise SystemExit(1)
-required_root='root/etc/ddr'
+required_root=REQ_ROOT
 if required_root not in seen: raise SystemExit(1)
 if root_member is None or not root_member.isdir(): raise SystemExit(1)
 raise SystemExit(0)

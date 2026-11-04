@@ -12836,12 +12836,14 @@ record_native_firewall_rule() {
         printf '\n' >> "$tmp" || { rm -f -- "$tmp"; return 1; }
     fi
     grep -qxF "$record" "$tmp" 2>/dev/null || printf '%s\n' "$record" >> "$tmp" || { rm -f -- "$tmp"; return 1; }
-    # D1: re-validate the complete new file before installing it, so a
-    # corrupted append can never become the formal state file.
-    validate_native_firewall_state_file "$tmp" || { rm -f -- "$tmp"; return 1; }
-
+    # R10C6-02: normalize ownership/mode BEFORE re-validating. Under
+    # sudo -g <non-root-group> mktemp inherits the non-root egid, so
+    # validating first rejects a file chown would have fixed. The
+    # re-check still gates the mv below, so a corrupted append can
+    # never become the formal state file.
     chown root:root "$tmp" || { rm -f -- "$tmp"; return 1; }
     chmod 600 "$tmp" || { rm -f -- "$tmp"; return 1; }
+    validate_native_firewall_state_file "$tmp" || { rm -f -- "$tmp"; return 1; }
     mv -f -- "$tmp" "$ABOX_FW_STATE" || { rm -f -- "$tmp"; return 1; }
 }
 

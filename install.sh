@@ -37118,6 +37118,40 @@ wallos_install_or_update() {
         return 1
     fi
 
+    # F02-GATE-START (R1C15-02): the old public frontend must be gone
+    # BEFORE the new mode is committed. The old order committed first
+    # and discarded teardown failure (|| true), so a stuck old Caddy /
+    # tunnel kept serving publicly under a new-mode record. Any
+    # teardown failure fails the switch here, before any commit.
+    # Teardown returns 0 when the front is absent (nothing to stop),
+    # so a fresh install or a switch from a frontless mode is unaffected.
+    # NOTE: on a later write_state failure the already-torn-down old
+    # front is not rebuilt by rollback (the journal carries no old
+    # mode/front record); re-running install restores it. That rare
+    # disk-failure path is fail-closed for exposure (no orphan entry),
+    # unlike the committed-but-still-serving defect fixed here.
+    if [[ "$wmode" == https ]]; then
+        if ! wallos_cftunnel_teardown >/dev/null 2>&1; then
+            msg "${RED}$(tr_msg wl_iu_teardown_fail)${NC}"
+            return 1
+        fi
+    elif [[ "$wmode" == cftunnel ]]; then
+        if ! wallos_https_teardown >/dev/null 2>&1; then
+            msg "${RED}$(tr_msg wl_iu_teardown_fail)${NC}"
+            return 1
+        fi
+    elif [[ "$_old_mode" == https || "$_old_mode" == cftunnel ]]; then
+        # S148 (moved here from the post-commit branch): both fronts
+        # always run (no short-circuit) before judging.
+        local _td_ok=1
+        wallos_https_teardown >/dev/null 2>&1 || _td_ok=0
+        wallos_cftunnel_teardown >/dev/null 2>&1 || _td_ok=0
+        if (( _td_ok == 0 )); then
+            msg "${RED}$(tr_msg wl_iu_teardown_fail)${NC}"
+            return 1
+        fi
+    fi
+    # F02-GATE-END
     # The ownership marker was created and permission-checked before starting
     # the container. Commit the mutable image/port/timezone state atomically;
     # do not silently report a complete update if metadata cannot be saved.
@@ -37144,7 +37178,6 @@ wallos_install_or_update() {
     if [[ "$bind_address" == 127.0.0.1 ]]; then security_note=$(tr_msg wl_iu_note_local)
     else security_note=$(tprintf wl_iu_note_http_pub "$port"); fi
     if [[ "$wmode" == https ]]; then
-        wallos_cftunnel_teardown >/dev/null 2>&1 || true
         if ! wallos_https_setup "$pubport" "$port"; then
             wallos_https_teardown >/dev/null 2>&1 || true
             local _fb=0
@@ -37196,7 +37229,6 @@ wallos_install_or_update() {
             write_file_atomically_from_stdin "$WALLOS_CF_TOKEN_FILE" 600 <<< "TUNNEL_TOKEN=${cftoken}" || { msg "${RED}CF 隧道令牌保存失败。${NC}"; return 1; }
             cftoken=''
         fi
-        wallos_https_teardown >/dev/null 2>&1 || true
         if ! wallos_cftunnel_setup "$cfhost"; then
             msg "${RED}$(tr_msg wl_iu_cf_incomplete)${NC}"
         # R15C15-01: restore the pre-replacement token so the
@@ -37210,17 +37242,6 @@ wallos_install_or_update() {
         case "${ABOX_LANG:-zh}" in
             *) security_note="$(tr_msg wl_note_cf)" ;;
         esac
-    elif [[ "$_old_mode" == https || "$_old_mode" == cftunnel ]]; then
-        # S148: refusing here is load-bearing: a front that will not
-        # stop must not be reported as closed by a local-only install.
-        # Both teardowns always run (no short-circuit) before judging.
-        local _td_ok=1
-        wallos_https_teardown >/dev/null 2>&1 || _td_ok=0
-        wallos_cftunnel_teardown >/dev/null 2>&1 || _td_ok=0
-        if (( _td_ok == 0 )); then
-            msg "${RED}$(tr_msg wl_iu_teardown_fail)${NC}"
-            return 1
-        fi
     fi
     if ! wallos_db_health; then
         case "${ABOX_LANG:-zh}" in

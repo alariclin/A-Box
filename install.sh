@@ -27250,7 +27250,7 @@ users_hy2_write_users() {
         BEGIN { block = ENVIRON["AUTH_BLOCK"] }
         /^auth:/ { print block; skip = 1; next }
         skip && /^[^[:space:]#]/ { skip = 0 }
-        skip && /^  / { next }
+        skip && /^[[:space:]]/ { next }
         skip && /^$/ { next }
         { print }
     ' "$cfg" > "$out" || return 1

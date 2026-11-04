@@ -14476,15 +14476,16 @@ setup_shortcut() {
     validate_abox_script_file "$ABOX_DIR/A-Box.sh" "$(tr_msg ss2_ctx_persisted)" || die "$(tr_msg ss2_persist_verify)"
     chmod +x "$ABOX_DIR/A-Box.sh" || die "$(tr_msg ss2_chmod)"
 
-    local shortcut_tmp
+    local shortcut_tmp _sb_target
+    _sb_target=$(printf '%q' "$ABOX_DIR/A-Box.sh")
     shortcut_tmp=$(umask 077; mktemp /tmp/A-Box-sb.XXXXXX) || die "$(tr_msg ss2_tmp)"
-    cat > "$shortcut_tmp" <<'EOS' || { rm -f -- "$shortcut_tmp"; die '快捷入口临时文件写入失败。'; }
+    cat > "$shortcut_tmp" <<EOS || { rm -f -- "$shortcut_tmp"; die '快捷入口临时文件写入失败。'; }
 #!/usr/bin/env bash
 # Managed by A-Box
-if [[ $EUID -eq 0 ]]; then
-    exec bash /etc/ddr/A-Box.sh "$@"
+if [[ \$EUID -eq 0 ]]; then
+    exec bash $_sb_target "\$@"
 elif command -v sudo >/dev/null 2>&1; then
-    exec sudo bash /etc/ddr/A-Box.sh "$@"
+    exec sudo bash $_sb_target "\$@"
 else
     echo 'Root privileges required. Please run: su -'
     exit 1

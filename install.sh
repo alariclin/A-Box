@@ -1375,6 +1375,12 @@ tr_msg() {
         fa:wl_iu_fwd_fail) echo 'به‌روزرسانی firewalld ممکن نشد؛ قانون را دستی اضافه کنید.' ;;
         zh-tw:wl_iu_fwd_fail) echo '無法更新 firewalld；請手動新增規則。' ;;
         ja:wl_iu_fwd_fail) echo 'firewalld を更新できませんでした。手動でルールを追加してください。' ;;
+        zh:wl_iu_fw_save_fail) echo '防火墙规则保存失败，安装已中止；升级事务未提交，修复防火墙后可重跑安装。' ;;
+        en:wl_iu_fw_save_fail) echo 'Firewall rules could not be saved; installation aborted. The upgrade transaction is not committed; fix the firewall and re-run the install.' ;;
+        ru:wl_iu_fw_save_fail) echo 'Не удалось сохранить правила брандмауэра; установка прервана. Транзакция обновления не зафиксирована; исправьте брандмауэр и запустите установку повторно.' ;;
+        fa:wl_iu_fw_save_fail) echo 'ذخیره قوانین دیوار آتش ممکن نشد؛ نصب متوقف شد. تراکنش ارتقا ثبت نشده است؛ دیوار آتش را اصلاح کنید و نصب را دوباره اجرا کنید.' ;;
+        zh-tw:wl_iu_fw_save_fail) echo '防火牆規則儲存失敗，安裝已中止；升級交易未提交，修復防火牆後可重跑安裝。' ;;
+        ja:wl_iu_fw_save_fail) echo 'ファイアウォールルールの保存に失敗しました。インストールを中止しました。アップグレードトランザクションはコミットされていません。ファイアウォールを修正してインストールを再実行してください。' ;;
         zh:wl_iu_check_t) echo '直连安全清单：' ;;
         en:wl_iu_check_t) echo 'Direct-access security checklist:' ;;
         ru:wl_iu_check_t) echo 'Чек-лист безопасности прямого доступа:' ;;
@@ -38103,6 +38109,20 @@ wallos_install_or_update() {
         esac
         return 1
     fi
+    # R9C15-02: firewall opens are a post-deployment check, not a
+    # best-effort epilogue. They must pass BEFORE the journal is
+    # committed below (S143): a persistence failure swallowed after
+    # commit left the public port unreachable (and unrecoverable after
+    # reboot) while the install reported success. On failure the
+    # journal stays active, so the next run recovers.
+    if (( _fw_refused == 0 )) && [[ "$wmode" == https ]]; then
+        allowPort "$pubport" tcp || return 1
+        allowPort 80 tcp || return 1
+        save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; return 1; }
+    elif (( _fw_refused == 0 )) && [[ "$bind_address" == 0.0.0.0 ]]; then
+        allowPort "$port" tcp || return 1
+        save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; return 1; }
+    fi
     # S143: the upgrade journal is the rollback material. It must not be
     # committed (phase=committed, which recover treats as "already done"
     # and only deletes) or deleted before the post-deployment checks
@@ -38125,14 +38145,6 @@ wallos_install_or_update() {
     wallos_php_gate_warn || true
     wallos_public_urls "$port"
     msg "${YELLOW}${security_note}${NC}"
-    if (( _fw_refused == 0 )) && [[ "$wmode" == https ]]; then
-        allowPort "$pubport" tcp 2>/dev/null || true
-        allowPort 80 tcp 2>/dev/null || true
-        save_firewall_rules 2>/dev/null || true
-    elif (( _fw_refused == 0 )) && [[ "$bind_address" == 0.0.0.0 ]]; then
-        allowPort "$port" tcp 2>/dev/null || true
-        save_firewall_rules 2>/dev/null || true
-    fi
     wallos_bruteforce_protection "$port" "$bind_address" "$wmode"
     if [[ "$bind_address" == 0.0.0.0 ]]; then
         msg "${CYAN}$(tr_msg wl_iu_check_t)${NC}"

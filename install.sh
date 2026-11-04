@@ -15762,6 +15762,12 @@ get_traffic_block_period() {
         printf '%s\n' "$period"
         return 0
     fi
+    # R2F05: a present-but-unreadable/corrupt pair must fail, not
+    # silently fall back to a stale legacy period; legacy is only a
+    # migration path when no pair ever existed.
+    if traffic_pair_file_exists; then
+        return 1
+    fi
     [[ -r "$ABOX_TRAFFIC_BLOCK_STATE" && -f "$ABOX_TRAFFIC_BLOCK_STATE" && ! -L "$ABOX_TRAFFIC_BLOCK_STATE" ]] || return 1
     uid=$(stat -c %u "$ABOX_TRAFFIC_BLOCK_STATE" 2>/dev/null) || return 1
     gid=$(stat -c %g "$ABOX_TRAFFIC_BLOCK_STATE" 2>/dev/null) || return 1

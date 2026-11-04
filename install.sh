@@ -7245,6 +7245,12 @@ tr_msg() {
         ru:ag_reload) echo 'systemd daemon-reload не удался.' ;;
         fa:ag_reload) echo '‏systemd daemon-reload ناموفق بود.' ;;
         ja:ag_reload) echo 'systemd daemon-reload に失敗しました。' ;;
+        zh:ag_enable) echo 'Argo 服务开机自启注册失败。' ;;
+        zh-tw:ag_enable) echo 'Argo 服務開機自啟註冊失敗。' ;;
+        en:ag_enable) echo 'Failed to register the Argo service for autostart.' ;;
+        ru:ag_enable) echo 'Не удалось зарегистрировать службу Argo для автозапуска.' ;;
+        fa:ag_enable) echo 'ثبت سرویس Argo برای شروع خودکار ناموفق بود.' ;;
+        ja:ag_enable) echo 'Argo サービスの自動起動登録に失敗しました。' ;;
         zh:ag_start) echo 'Argo 服务启动失败: %s' ;;
         zh-tw:ag_start) echo 'Argo 服務啟動失敗: %s' ;;
         en:ag_start) echo 'Failed to start the Argo service: %s' ;;
@@ -20539,7 +20545,9 @@ StandardError=append:/etc/ddr/${name}.log
 WantedBy=multi-user.target
 EOF_UNIT
         systemctl daemon-reload >/dev/null 2>&1 || die "$(tr_msg ag_reload)"
-        systemctl enable "${name}.service" >/dev/null 2>&1 || true
+        # R6C9-03: do not swallow enable failure: restart can
+        # succeed now while the tunnel is missing after reboot.
+        systemctl enable "${name}.service" >/dev/null 2>&1 || die "$(tr_msg ag_enable)"
         systemctl restart "${name}.service" >/dev/null 2>&1 || die "$(tprintf ag_start "$name")"
     else
         write_file_atomically_from_stdin "/etc/init.d/${name}" 755 <<EOF_RC || die "$(tprintf ag_unit_fail 'OpenRC' "$name")"
@@ -20556,7 +20564,8 @@ error_log="/etc/ddr/${name}.log"
 depend() { need net; }
 EOF_RC
         chmod +x "/etc/init.d/${name}" || die "$(tr_msg ag_orc_chmod)"
-        rc-update add "$name" default >/dev/null 2>&1 || true
+        # R6C9-03: do not swallow runlevel registration failure.
+        rc-update add "$name" default >/dev/null 2>&1 || die "$(tr_msg ag_enable)"
         rc-service "$name" restart >/dev/null 2>&1 9>&- 10>&- || die "$(tprintf ag_start "$name")"
     fi
 }

@@ -16047,7 +16047,11 @@ path_parent_chain_safe() {
 # report persistence they did not get.
 _abox_sync_file() {
     local target="$1" err
-    err=$(sync -f "$target" 2>&1) || {
+    # R6C7-02: capture diagnostics under LC_ALL=C before
+    # classifying: under a translated locale an old sync
+    # option error would not match the English patterns
+    # and be misjudged as an IO failure.
+    err=$(LC_ALL=C sync -f "$target" 2>&1) || {
         case "$err" in
             *'invalid option'*|*'unrecognized option'*|*'illegal option'*) return 0 ;;
             *) return 1 ;;

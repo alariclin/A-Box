@@ -20569,7 +20569,7 @@ _argo_pick_port() {
 
 # Build/refresh the two loopback WS inbounds in the sing-box config.
 argo_deploy_ws() {
-    local cfg='/etc/sing-box/config.json' tmp_json tmp_cfg
+    local cfg='/etc/sing-box/config.json' tmp_json tmp_cfg cfg_bak=''
     ARGO_UUID=$(_argo_state_get uuid)
     if [[ ! "$ARGO_UUID" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-4[0-9A-Fa-f]{3}-[89AaBb][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$ ]]; then
         ARGO_UUID=$(generate_robust_uuid) || die "$(tr_msg ag_uuid)"
@@ -20622,10 +20622,16 @@ argo_deploy_ws() {
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
-    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
-    prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
+    # R8C9-01: back up the live config before replacing it; without
+    # a backup a later restart failure leaves the new config in place
+    # with no way back and the existing nodes stalled.
+    cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+    cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
+    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json" "$cfg_bak"; die "$(tr_msg dp_sb_cfg)"; }
+    prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_runtime)"; }
     rm -f "$tmp_cfg" "$tmp_json"
-    restart_service_soft sing-box || die "$(tr_msg dp_sb_restart)"
+    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_restart)"; }
+    rm -f -- "$cfg_bak"
     service_manager start sing-box 2>/dev/null || true
 }
 

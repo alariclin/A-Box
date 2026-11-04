@@ -27630,7 +27630,7 @@ users_inbound_menu() {
     users_reg_ensure "$core" "$tag" || { msg "${RED}$(tr_msg mu_reg_bad)${NC}"; pause_return; return 1; }
     while true; do
         clear
-        msg "${BOLD}${GREEN}$(protocol_label "$core" "$tag" "$proto" 2>/dev/null || printf '%s' "$tag") · ${core} · :${port}${NC}"
+        msg "${BOLD}${GREEN}$(protocol_label "$tag" "$proto" 2>/dev/null || printf '%s' "$tag") · ${core} · :${port}${NC}"
         if [[ "$core" == 'sing-box' ]]; then
             msg "${YELLOW}$(tr_msg mu_note_sb)${NC}"
         fi
@@ -27817,7 +27817,7 @@ multi_user_menu() {
             cnt=$(jq '.users | length' "$(users_reg_file "$core" "$tag")" 2>/dev/null || echo 0)
             i=$((i + 1))
             cores+=("$core"); tags+=("$tag"); protos+=("$proto"); ports+=("$port")
-            printf '%3d. %-46s %-11s :%-6s %s %s\n' "$i" "$(protocol_label "$core" "$tag" "$proto" 2>/dev/null || printf '%s' "$tag")" "$core" "$port" "$(tr_msg mu_users_word)" "$cnt"
+            printf '%3d. %-46s %-11s :%-6s %s %s\n' "$i" "$(protocol_label "$tag" "$proto" 2>/dev/null || printf '%s' "$tag")" "$core" "$port" "$(tr_msg mu_users_word)" "$cnt"
         done <<< "$rows"
         # F06: registries whose inbound was deleted (all users
         # disabled) vanish from protocol_inventory, stranding
@@ -27843,7 +27843,7 @@ multi_user_menu() {
                 _scnt=$(jq '.users | length' "$_srf" 2>/dev/null || echo 0)
                 i=$((i + 1))
                 cores+=("$_sc"); tags+=("$_st"); protos+=("$_sp"); ports+=("$_sport")
-                printf '%3d. %-46s %-11s :%-6s %s %s\n' "$i" "$(protocol_label "$_sc" "$_st" "$_sp" 2>/dev/null || printf '%s' "$_st")" "$_sc" "$_sport" "$(tr_msg mu_users_word)" "$_scnt"
+                printf '%3d. %-46s %-11s :%-6s %s %s\n' "$i" "$(protocol_label "$_st" "$_sp" 2>/dev/null || printf '%s' "$_st")" "$_sc" "$_sport" "$(tr_msg mu_users_word)" "$_scnt"
             done
         fi
         if (( i == 0 )); then msg "${YELLOW}$(tr_msg mu_none)${NC}"; fi
@@ -28509,7 +28509,7 @@ node_sni_menu() {
             [[ -n "$cur" ]] || continue
             i=$((i + 1))
             _cs+=("$core"); _ts+=("$tag"); _ks+=("$kind"); _os+=("$cur"); _cfgs+=("$cfg")
-            printf '%3d. %-40s %-11s :%-6s %s: %s\n' "$i" "$(protocol_label "$core" "$tag" "$proto" 2>/dev/null || printf '%s' "$tag")" "$core" "$port" "$(tr_msg nsni_cur)" "$cur"
+            printf '%3d. %-40s %-11s :%-6s %s: %s\n' "$i" "$(protocol_label "$tag" "$proto" 2>/dev/null || printf '%s' "$tag")" "$core" "$port" "$(tr_msg nsni_cur)" "$cur"
         done <<< "$rows"
         if (( i == 0 )); then msg "${YELLOW}$(tr_msg nsni_none)${NC}"; fi
         msg "  ${CYAN}0.${NC} $(tr_msg mu_back_word)"

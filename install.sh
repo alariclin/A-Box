@@ -34957,13 +34957,16 @@ write_diagnostic_checksum() {
 }
 
 export_diagnostic_bundle() {
-    local ts diag_dir work bundle checksum
+    local ts diag_dir work bundle checksum tmp_bundle
     ts=$(date +%Y%m%d-%H%M%S)
     diag_dir="$ABOX_DIR/diagnostics"
     work=$(mktemp -d /tmp/A-Box-diagnostic.XXXXXX) || die 'Diagnostic temp directory creation failed.'
     if [[ -L "$diag_dir" ]]; then rm -rf -- "$work"; die '诊断目录是符号链接，拒绝生成诊断包。'; fi
     mkdir -p "$diag_dir" "$work/logs" || { rm -rf -- "$work"; die '诊断目录创建失败。'; }
     chmod 700 "$diag_dir" 2>/dev/null || { rm -rf -- "$work"; die '诊断目录权限设置失败。'; }
+    # R5C14-01: refuse a diagnostic directory not owned by root;
+    # an attacker-owned directory lets its owner swap symlinks in.
+    [[ "$(stat -c %u "$diag_dir" 2>/dev/null || echo -1)" == 0 ]] || { rm -rf -- "$work"; die '诊断目录非 root 属主，拒绝生成诊断包。'; }
 
     msg "${YELLOW}[*] Collecting diagnostic information with secret redaction...${NC}"
     {
@@ -34996,12 +34999,17 @@ export_diagnostic_bundle() {
 
     bundle="$diag_dir/A-Box-diagnostic-${ts}.tar.gz"
     # Re-check immediately before writing: a symlink swapped in after
-    # the first check (or a pre-placed bundle symlink) must not be
-    # followed. A swap between this check and tar is a residual window
-    # tar itself cannot close.
+    # the first check (or a pre-placed bundle symlink) is refused
+    # here. R5C14-01: tar no longer writes the predictable path
+    # directly; it writes a private mktemp file in the same
+    # directory and renames it over the bundle, so even a swap
+    # between this check and the rename cannot be followed:
+    # rename replaces the symlink entry instead of its target.
     if [[ -L "$diag_dir" || -L "$bundle" ]]; then rm -rf -- "$work"; die '诊断目录或目标文件是符号链接，拒绝生成诊断包。'; fi
-    tar -C "$work" -czf "$bundle" . || { rm -rf -- "$work"; die 'Diagnostic bundle creation failed.'; }
-    chmod 600 "$bundle" 2>/dev/null || { rm -rf "$work"; rm -f "$bundle"; die 'Diagnostic bundle permission hardening failed.'; }
+    tmp_bundle=$(mktemp "$diag_dir/.A-Box-diagnostic-${ts}.XXXXXX") || { rm -rf -- "$work"; die 'Diagnostic bundle temp file creation failed.'; }
+    tar -C "$work" -czf "$tmp_bundle" . || { rm -rf -- "$work"; rm -f "$tmp_bundle"; die 'Diagnostic bundle creation failed.'; }
+    chmod 600 "$tmp_bundle" 2>/dev/null || { rm -rf -- "$work"; rm -f "$tmp_bundle"; die 'Diagnostic bundle permission hardening failed.'; }
+    mv -f "$tmp_bundle" "$bundle" || { rm -rf -- "$work"; rm -f "$tmp_bundle"; die 'Diagnostic bundle atomic rename failed.'; }
     checksum="${bundle}.sha256"
     write_diagnostic_checksum "$bundle" "$checksum" || { rm -rf "$work"; rm -f "$bundle"; die 'Diagnostic bundle checksum generation failed.'; }
     rm -rf "$work"

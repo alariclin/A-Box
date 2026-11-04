@@ -23243,6 +23243,8 @@ BLOCK_STATE=/etc/ddr/.traffic-block-state
 PAIR_STATE=/etc/ddr/.traffic-pair-state
 # R6C10-01: rollover-in-progress marker (see recovery below).
 ROLLOVER_MARKER=/etc/ddr/.traffic-rollover-in-progress
+# R7C10-01: pre-block service-state snapshot prefix (see capture/restore below).
+PRE_BLOCK_STATES_PREFIX=/etc/ddr/.traffic-pre-block-states
 INIT_SYS_EXPECTED='unknown'
 exec 9>>/run/A-Box-traffic-monitor.lock || exit 1
 flock -n 9; _flock_rc=$?
@@ -23626,7 +23628,9 @@ start_owned() {
         rc-service "$srv" status >/dev/null 2>&1
     fi
 }
-for_expected_services() {
+# R7C10-01: the service set for_expected_services enforces, shared by
+# the pre-block snapshot and the rollover restore so all three agree.
+expected_service_list() {
     local -a svcs=()
     case "${CORE:-}" in
         xray)
@@ -23650,11 +23654,87 @@ for_expected_services() {
         (( dup == 1 )) && continue
         owned "$srv" 2>/dev/null && svcs+=("$srv")
     done
-    local _rc=0
-    for srv in "${svcs[@]}"; do
+    printf '%s\n' "${svcs[@]}"
+}
+for_expected_services() {
+    local list _rc=0 srv
+    list=$(expected_service_list) || return 1
+    while IFS= read -r srv; do
+        [[ -n "$srv" ]] || continue
         "$1" "$srv" || _rc=1
-    done
+    done <<< "$list"
     return "$_rc"
+}
+# R7C10-01: snapshot each expected service's active/enabled state
+# BEFORE a quota block stops and disables it, so rollover restores
+# exactly what the block took down. Written atomically (tmp+mv) and
+# first-write-wins per period: a failed commit's best-effort stop must
+# not let a later successful commit overwrite pre-stop states with
+# all-stopped. A missing/failed snapshot is not fatal: rollover then
+# falls back to the legacy start-all behavior.
+capture_pre_block_states() {
+    local period="$1" tmp list srv active enabled_state
+    local file="${PRE_BLOCK_STATES_PREFIX}-${period}"
+    list=$(expected_service_list) || return 1
+    tmp=$(mktemp /tmp/A-Box-pre-block-states.XXXXXX) || return 1
+    while IFS= read -r srv; do
+        [[ -n "$srv" ]] || continue
+        active=0
+        if is_systemd; then
+            systemctl is-active --quiet "$srv" 2>/dev/null && active=1
+            enabled_state=$(systemctl show -p UnitFileState --value "$srv" 2>/dev/null || printf 'unknown')
+        else
+            rc-service "$srv" status >/dev/null 2>&1 && active=1
+            enabled_state='disabled'
+            if rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)"; then enabled_state='enabled'; fi
+        fi
+        printf '%s %s %s\n' "$srv" "$active" "$enabled_state" >> "$tmp"
+    done <<< "$list"
+    chmod 600 -- "$tmp" 2>/dev/null || { rm -f -- "$tmp"; return 1; }
+    mv -f -- "$tmp" "$file" || { rm -f -- "$tmp"; return 1; }
+}
+capture_pre_block_states_once() {
+    local file="${PRE_BLOCK_STATES_PREFIX}-${1:-}"
+    [[ -f "$file" ]] || capture_pre_block_states "$1"
+}
+# R7C10-01: restore the snapshot. Enablement is restored independently
+# of activity (a service enabled-but-stopped before the block keeps its
+# boot state but stays stopped), and only previously-active services
+# are started. Never enables or starts a deliberately disabled/stopped
+# service. Services no longer owned are skipped, mirroring start_owned.
+restore_pre_block_states() {
+    local period="$1" srv active enabled_state _rc=0
+    local file="${PRE_BLOCK_STATES_PREFIX}-${period}"
+    [[ -f "$file" && ! -L "$file" ]] || return 1
+    while read -r srv active enabled_state; do
+        [[ -n "$srv" ]] || continue
+        owned "$srv" 2>/dev/null || continue
+        case "$enabled_state" in
+            enabled)
+                if is_systemd; then systemctl enable "$srv" >/dev/null 2>&1 || _rc=1;
+                else rc-update add "$srv" default >/dev/null 2>&1 || _rc=1; fi
+                ;;
+            enabled-runtime)
+                if is_systemd; then systemctl enable --runtime "$srv" >/dev/null 2>&1 || _rc=1; fi
+                ;;
+        esac
+        if [[ "$active" == 1 ]]; then
+            if is_systemd; then systemctl restart "$srv" >/dev/null 2>&1 || _rc=1;
+            else rc-service "$srv" restart >/dev/null 2>&1 || _rc=1; fi
+        fi
+    done < "$file"
+    return "$_rc"
+}
+# R7C10-01: rollover entry point. With a snapshot for the blocked
+# period, restore exactly that; without one (legacy blocks, snapshot
+# failure), keep the old start-everything-owned behavior.
+restore_or_start_owned() {
+    local file="${PRE_BLOCK_STATES_PREFIX}-${1:-}"
+    if [[ -f "$file" && ! -L "$file" ]]; then
+        restore_pre_block_states "$1"
+    else
+        for_expected_services start_owned
+    fi
 }
 traffic_error() {
     local log=/var/log/A-Box-traffic.log uid gid mode nlink
@@ -23736,7 +23816,7 @@ if [[ "$desired" == TRAFFIC_BLOCKED && "$blocked_period" != "$current_period" ]]
     # a kill in the window below is recoverable, not permanent.
     printf '%s\n' "$blocked_period" > "$ROLLOVER_MARKER" && chmod 600 -- "$ROLLOVER_MARKER" || { traffic_error 'monthly quota rollover marker write failed; leaving prior desired state unchanged'; exit 1; }
     commit_traffic_pair MAINTENANCE "$blocked_period" || { traffic_error 'monthly quota rollover state commit failed; leaving prior desired state unchanged'; exit 1; }
-    if ! for_expected_services start_owned; then
+    if ! restore_or_start_owned "$blocked_period"; then
         for_expected_services stop_owned >/dev/null 2>&1 || stop_all_owned_services >/dev/null 2>&1 || true
         commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || traffic_error 'CRITICAL: failed to restore TRAFFIC_BLOCKED state after service start failure; state may be inconsistent'
         traffic_error 'monthly quota period rolled over but at least one owned service could not be started; block remains active'
@@ -23750,6 +23830,7 @@ if [[ "$desired" == TRAFFIC_BLOCKED && "$blocked_period" != "$current_period" ]]
     fi
     desired=RUNNING
     rm -f -- "$ROLLOVER_MARKER"
+    rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}"
     traffic_error "monthly quota period rolled over from ${blocked_period} to ${current_period}; managed services resumed"
 fi
 # R6C10-01: recover an interrupted rollover. A kill after the
@@ -23757,7 +23838,7 @@ fi
 # monitor would otherwise exit on forever; the marker is what
 # distinguishes rollover-in-progress from manual maintenance.
 if [[ -f "$ROLLOVER_MARKER" && "$desired" == MAINTENANCE ]]; then
-    if ! for_expected_services start_owned; then
+    if ! restore_or_start_owned "$blocked_period"; then
         for_expected_services stop_owned >/dev/null 2>&1 || stop_all_owned_services >/dev/null 2>&1 || true
         commit_traffic_pair TRAFFIC_BLOCKED "$blocked_period" || traffic_error 'CRITICAL: failed to restore TRAFFIC_BLOCKED state after interrupted rollover recovery failure; state may be inconsistent'
         rm -f -- "$ROLLOVER_MARKER"
@@ -23773,6 +23854,7 @@ if [[ -f "$ROLLOVER_MARKER" && "$desired" == MAINTENANCE ]]; then
     fi
     rm -f -- "$ROLLOVER_MARKER"
     desired=RUNNING
+    rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}"
     traffic_error "recovered interrupted monthly quota rollover from ${blocked_period} to ${current_period}; managed services resumed"
 elif [[ -f "$ROLLOVER_MARKER" ]]; then
     # Stale marker: the state was changed manually out from under the
@@ -23814,6 +23896,8 @@ import sys
 raise SystemExit(0 if int(sys.argv[1]) >= int(sys.argv[2]) else 1)
 PY_TRAFFIC_COMPARE
 then
+    # R7C10-01: snapshot pre-block states before the first stop (see capture).
+    capture_pre_block_states_once "$current_period" || traffic_error 'pre-block service state snapshot failed; rollover will fall back to starting all owned services'
     if ! commit_traffic_pair TRAFFIC_BLOCKED "$current_period"; then
         # The state commit failed (e.g. disk full): still attempt the
         # stop, otherwise the quota protection fails open.

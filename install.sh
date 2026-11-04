@@ -26036,7 +26036,7 @@ check_virgin_state() {
     if [[ -f /etc/ddr/.abox-cloudflared-owned && ! -e /etc/systemd/system/abox-wallos-cftunnel.service && ! -e /etc/init.d/abox-wallos-cftunnel ]]; then
         rm -f /usr/local/bin/cloudflared /etc/ddr/.abox-cloudflared-owned || true
     fi
-    rm -f "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true; rm -rf -- /etc/ddr/standalone-links.d 2>/dev/null || true
+    rm -f "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true; path_tree_has_mountpoint /etc/ddr/standalone-links.d && die 'Refusing to delete /etc/ddr/standalone-links.d: mountpoint present in its tree.'; rm -rf -- /etc/ddr/standalone-links.d || die 'Failed to delete /etc/ddr/standalone-links.d.'
     users_registries_wipe || true
     abox_zram_teardown
     # Wallos is a standalone addon, not a protocol/core: environment

@@ -22593,6 +22593,7 @@ split_apply_preset() {
     fi
     if [[ -z "$core" ]]; then
         msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
+        routing_rule_del "$((n_rules - 1))" >/dev/null 2>&1 || true
         return 1
     fi
     routing_apply_live "$core" || { routing_rule_del "$((n_rules - 1))" >/dev/null 2>&1 || true; return 1; }

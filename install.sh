@@ -35786,29 +35786,40 @@ wallos_validate_backup() {
     (( seen_db == 1 && seen_logos == 1 && seen_state == 1 )) || return 1
     # N-02 fix: reject symlinks, hardlinks, and special files inside the archive.
     # N-07 fix: enforce per-file and total size limits while streaming.
+    # F07: list with --numeric-owner so the owner field is a single
+    # numeric token and $3 is always the size (a space-bearing owner
+    # used to shift fields and make $3 non-numeric, silently skipping
+    # both guards below). A non-numeric $3 is unparseable and is
+    # rejected, never skipped; zero lines means tar failed and also
+    # rejects (fail closed).
+    local _vseen=0
     while IFS= read -r line; do
+        _vseen=1
         # tar -tv output starts with file type char: - regular, d dir, l symlink, h hardlink, c/b/p/s/D special
         case "${line:0:1}" in
             -|d) ;;
             *) msg "${RED}$(tr_msg wl_rs_nonregular)${NC}" >&2; return 1 ;;
         esac
-        # Size is the 3rd field in tar -tv output.
+        # Size is the 3rd field in tar -tv output (guaranteed by
+        # --numeric-owner above; see the F07 comment at the loop head).
         local fsize
         fsize=$(awk '{print $3}' <<< "$line" 2>/dev/null || true)
-        if [[ "$fsize" =~ ^[0-9]+$ ]] && (( 10#$fsize > 536870912 )); then
+        if ! [[ "$fsize" =~ ^[0-9]+$ ]]; then
+            return 1
+        fi
+        if (( 10#$fsize > 536870912 )); then
             msg "${RED}$(tr_msg wl_rs_oversized)${NC}" >&2
             return 1
         fi
         # Total decompressed size guard uses summed tar member sizes.
         # (gzip -l is unreliable for multi-member streams; it reports only the last member.)
-        if [[ "$fsize" =~ ^[0-9]+$ ]]; then
-            total_usize=$((total_usize + 10#$fsize))
-            if (( total_usize > 1073741824 )); then
-                msg "${RED}$(tprintf wl_rs_toobig "$total_usize")${NC}" >&2
-                return 1
-            fi
+        total_usize=$((total_usize + 10#$fsize))
+        if (( total_usize > 1073741824 )); then
+            msg "${RED}$(tprintf wl_rs_toobig "$total_usize")${NC}" >&2
+            return 1
         fi
-    done < <(tar -tvzf "$backup" 2>/dev/null)
+    done < <(tar --numeric-owner -tvzf "$backup" 2>/dev/null)
+    (( _vseen == 1 )) || return 1
     _vstage=$(umask 077; mktemp -d "$WALLOS_DIR/.restore-stage.XXXXXX") || return 1
     if ! tar -xzf "$backup" -C "$_vstage" ||
        [[ ! -d "$_vstage/db" || -L "$_vstage/db" ||

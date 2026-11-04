@@ -12793,13 +12793,17 @@ validate_native_firewall_state_file() {
 }
 
 record_native_firewall_rule() {
-    local backend="$1" spec proto="$3" scope="${4:-}" record tmp zone=''
+    local backend="$1" spec proto="$3" scope="${4:-}" record tmp zone='' zone_override="${5:-}"
     spec=$(normalize_port_spec "$2") || return 1
     [[ "$proto" == tcp || "$proto" == udp ]] || return 1
     case "$backend:$scope" in
         ufw:rule) ;;
         firewalld:runtime|firewalld:permanent)
-            zone=$(firewalld_zone_for_abox) || return 1
+            if [[ -n "$zone_override" ]]; then
+                zone="$zone_override"
+            else
+                zone=$(firewalld_zone_for_abox) || return 1
+            fi
             ;;
         *) return 1 ;;
     esac
@@ -12992,6 +12996,12 @@ firewalld_zone_for_abox() {
     printf '%s\n' "$zone"
 }
 
+firewalld_cmd_zone() {
+    local zone="$1"
+    [[ -n "$zone" ]] || return 2
+    shift
+    command firewall-cmd --zone="$zone" "$@"
+}
 firewalld_cmd() {
     local zone=''
     # S28: never run without --zone: an unresolved zone used to execute
@@ -12999,7 +13009,7 @@ firewalld_cmd() {
     # "absent") so firewalld_port_state maps it to error, never to absent.
     zone=$(firewalld_zone_for_abox 2>/dev/null) || return 2
     [[ -n "$zone" ]] || return 2
-    command firewall-cmd --zone="$zone" "$@"
+    firewalld_cmd_zone "$zone" "$@"
 }
 
 firewalld_port_state() {
@@ -13029,13 +13039,21 @@ firewalld_port_state() {
 # whole spec is already allowed. Returns 2 when the current port list
 # cannot be determined, so callers die instead of recording blindly.
 firewalld_uncovered_port_specs() {
-    local spec proto="$2" scope="$3" lo hi out item pfx a b line
+    local spec proto="$2" scope="$3" zone="${4:-}" lo hi out item pfx a b line
     local -a covered=() merged=()
     local cur_lo cur_hi m_lo m_hi c_lo c_hi cursor u_hi
     spec=$(normalize_port_spec "$1") || return 2
     [[ "$proto" == tcp || "$proto" == udp ]] || return 2
     if [[ "$spec" == *:* ]]; then lo="${spec%%:*}"; hi="${spec##*:}"; else lo="$spec"; hi="$spec"; fi
-    if [[ "$scope" == permanent ]]; then
+    if [[ -n "$zone" ]]; then
+        if [[ "$scope" == permanent ]]; then
+            out=$(firewalld_cmd_zone "$zone" --permanent --list-ports 2>/dev/null) || return 2
+        elif [[ "$scope" == runtime ]]; then
+            out=$(firewalld_cmd_zone "$zone" --list-ports 2>/dev/null) || return 2
+        else
+            return 2
+        fi
+    elif [[ "$scope" == permanent ]]; then
         out=$(firewalld_cmd --permanent --list-ports 2>/dev/null) || return 2
     elif [[ "$scope" == runtime ]]; then
         out=$(firewalld_cmd --list-ports 2>/dev/null) || return 2
@@ -13341,7 +13359,7 @@ iptables_rule_check() {
 # F12: removed zero-call restore_iptables_saved_snapshot (duplicate dead code)
 
 allowPort() {
-    local raw_port="$1" type="${2:-tcp}" backend spec fw_spec runtime=0 permanent=0 added_runtime=0 _orc=0 _rrc=0 _fz='' _uncovered_out='' _sub='' _rec_failed=0
+    local raw_port="$1" type="${2:-tcp}" backend spec fw_spec runtime=0 permanent=0 added_runtime=0 _orc=0 _rrc=0 _zone='' _uncovered_out='' _sub='' _rec_failed=0
     local -a _uncovered_runtime=() _uncovered_permanent=()
     spec=$(normalize_port_spec "$raw_port") || die "$(tprintf fw2_bad_port "$raw_port")"
     [[ "$type" == tcp || "$type" == udp ]] || die "$(tprintf fw2_bad_proto "$type")"
@@ -13379,9 +13397,14 @@ allowPort() {
             ;;
         firewalld)
             fw_spec=$(port_spec_for_firewalld "$spec") || die "$(tprintf fw2_fwd_convert "$spec")"
-            firewalld_port_state "$spec" "$type" runtime
+            # R9C6-01: pin the zone once for the whole operation.
+            # Resolving it per call lets a mid-operation default-zone
+            # change record an A-zone add as B-zone owned (and later
+            # delete B's foreign rule while leaving the A opening).
+            _zone=$(firewalld_zone_for_abox) || die "$(tr_msg fw2_fwd_runtime_q)"
+            firewalld_port_state "$spec" "$type" runtime "$_zone"
             case $? in 0) runtime=1 ;; 1) runtime=0 ;; *) die "$(tr_msg fw2_fwd_runtime_q)" ;; esac
-            firewalld_port_state "$spec" "$type" permanent
+            firewalld_port_state "$spec" "$type" permanent "$_zone"
             case $? in 0) permanent=1 ;; 1) permanent=0 ;; *) die "$(tr_msg fw2_fwd_perm_q)" ;; esac
             if [[ "$runtime" == 0 ]]; then
                 # R8C6-02: firewalld coalesces an added range with
@@ -13389,56 +13412,50 @@ allowPort() {
                 # would claim (and later delete) foreign allowances.
                 # Snapshot the not-yet-allowed subranges first; only
                 # those are recorded and, on rollback, removed.
-                _uncovered_out=$(firewalld_uncovered_port_specs "$spec" "$type" runtime) || die "$(tr_msg fw2_fwd_runtime_q)"
+                _uncovered_out=$(firewalld_uncovered_port_specs "$spec" "$type" runtime "$_zone") || die "$(tr_msg fw2_fwd_runtime_q)"
                 _uncovered_runtime=()
                 while IFS= read -r _sub; do [[ -n "$_sub" ]] && _uncovered_runtime+=("$_sub"); done <<< "$_uncovered_out"
                 if (( ${#_uncovered_runtime[@]} == 0 )); then die "$(tr_msg fw2_fwd_runtime_q)"; fi
-                firewalld_cmd --add-port="${fw_spec}/${type}" >/dev/null 2>&1 || die "$(tprintf fw2_fwd_runtime_add "${fw_spec}/${type}")"
+                firewalld_cmd_zone "$_zone" --add-port="${fw_spec}/${type}" >/dev/null 2>&1 || die "$(tprintf fw2_fwd_runtime_add "${fw_spec}/${type}")"
                 added_runtime=1
                 _rec_failed=0
                 for _sub in "${_uncovered_runtime[@]}"; do
-                    record_native_firewall_rule firewalld "$_sub" "$type" runtime || { _rec_failed=1; break; }
+                    record_native_firewall_rule firewalld "$_sub" "$type" runtime "$_zone" || { _rec_failed=1; break; }
                 done
                 if (( _rec_failed == 1 )); then
-                    for _sub in "${_uncovered_runtime[@]}"; do firewalld_cmd --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || true; done
+                    for _sub in "${_uncovered_runtime[@]}"; do firewalld_cmd_zone "$_zone" --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || true; done
                     die "$(tr_msg fw2_fwd_runtime_record)"
                 fi
             fi
             if [[ "$permanent" == 0 ]]; then
-                _uncovered_out=$(firewalld_uncovered_port_specs "$spec" "$type" permanent) || die "$(tr_msg fw2_fwd_perm_q)"
+                _uncovered_out=$(firewalld_uncovered_port_specs "$spec" "$type" permanent "$_zone") || die "$(tr_msg fw2_fwd_perm_q)"
                 _uncovered_permanent=()
                 while IFS= read -r _sub; do [[ -n "$_sub" ]] && _uncovered_permanent+=("$_sub"); done <<< "$_uncovered_out"
                 if (( ${#_uncovered_permanent[@]} == 0 )); then die "$(tr_msg fw2_fwd_perm_q)"; fi
-                if ! firewalld_cmd --permanent --add-port="${fw_spec}/${type}" >/dev/null 2>&1; then
+                if ! firewalld_cmd_zone "$_zone" --permanent --add-port="${fw_spec}/${type}" >/dev/null 2>&1; then
                     if [[ "$added_runtime" == 1 ]]; then
-                        for _sub in "${_uncovered_runtime[@]}"; do firewalld_cmd --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || true; done
+                        for _sub in "${_uncovered_runtime[@]}"; do firewalld_cmd_zone "$_zone" --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || true; done
                         # S48 (argon P2-4): forget the runtime records too, or
                         # the state file claims rules that no longer exist.
-                        _fz=$(firewalld_zone_for_abox) || true
-                        if [[ -n "$_fz" ]]; then
-                            for _sub in "${_uncovered_runtime[@]}"; do forget_native_firewall_rule "$_sub" "$type" firewalld "$_fz" "runtime" >/dev/null 2>&1 || true; done
-                        fi
+                        for _sub in "${_uncovered_runtime[@]}"; do forget_native_firewall_rule "$_sub" "$type" firewalld "$_zone" "runtime" >/dev/null 2>&1 || true; done
                     fi
                     die "$(tprintf fw2_fwd_perm_add "${fw_spec}/${type}")"
                 fi
                 _rec_failed=0
                 for _sub in "${_uncovered_permanent[@]}"; do
-                    record_native_firewall_rule firewalld "$_sub" "$type" permanent || { _rec_failed=1; break; }
+                    record_native_firewall_rule firewalld "$_sub" "$type" permanent "$_zone" || { _rec_failed=1; break; }
                 done
                 if (( _rec_failed == 1 )); then
-                    for _sub in "${_uncovered_permanent[@]}"; do firewalld_cmd --permanent --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || true; done
+                    for _sub in "${_uncovered_permanent[@]}"; do firewalld_cmd_zone "$_zone" --permanent --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || true; done
                     if [[ "$added_runtime" == 1 ]]; then
-                        for _sub in "${_uncovered_runtime[@]}"; do firewalld_cmd --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || true; done
-                        _fz=$(firewalld_zone_for_abox) || true
-                        if [[ -n "$_fz" ]]; then
-                            for _sub in "${_uncovered_runtime[@]}"; do forget_native_firewall_rule "$_sub" "$type" firewalld "$_fz" "runtime" >/dev/null 2>&1 || true; done
-                        fi
+                        for _sub in "${_uncovered_runtime[@]}"; do firewalld_cmd_zone "$_zone" --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || true; done
+                        for _sub in "${_uncovered_runtime[@]}"; do forget_native_firewall_rule "$_sub" "$type" firewalld "$_zone" "runtime" >/dev/null 2>&1 || true; done
                     fi
                     die "$(tr_msg fw2_fwd_perm_record)"
                 fi
             fi
-            firewalld_port_state "$spec" "$type" runtime || die "$(tr_msg fw2_fwd_runtime_verify)"
-            firewalld_port_state "$spec" "$type" permanent || die "$(tr_msg fw2_fwd_perm_verify)"
+            firewalld_port_state "$spec" "$type" runtime "$_zone" || die "$(tr_msg fw2_fwd_runtime_verify)"
+            firewalld_port_state "$spec" "$type" permanent "$_zone" || die "$(tr_msg fw2_fwd_perm_verify)"
             return 0
             ;;
     esac

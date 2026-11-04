@@ -42156,25 +42156,35 @@ open_runtime_flock_fd() {
         gid=$(stat -c %g "$LOCK_FILE" 2>/dev/null) || return 1
         mode=$(stat -c %a "$LOCK_FILE" 2>/dev/null) || return 1
         [[ "$uid" == 0 && "$gid" == 0 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
-        # Upgrade compatibility: older A-Box builds created the root-owned
-        # regular lock file with the caller's default umask (commonly 0644).
-        # Tightening that exact safe legacy case does not replace the inode or
-        # bypass flock; an active older process is still detected below.
-        if (( (8#$mode & 8#077) != 0 )); then
-            chmod 600 "$LOCK_FILE" || return 1
-            mode=$(stat -c %a "$LOCK_FILE" 2>/dev/null) || return 1
-        fi
-        (( (8#$mode & 8#077) == 0 )) || return 1
+        # No permission check here: the legacy 0644 case is normalized
+        # below by fchmod on the held fd, never by a path-based chmod
+        # (a path chmod in the pre-open window follows a swapped link).
     else
         ( umask 077; set -o noclobber; : > "$LOCK_FILE" ) 2>/dev/null || return 1
     fi
     exec 9>>"$LOCK_FILE" || return 1
-    # Hold the fd before permission hardening so reclaimers cannot swap the inode unseen.
-    chown root:root "$LOCK_FILE" || return 1
-    chmod 600 "$LOCK_FILE" || return 1
-    fd_id=$(stat -Lc '%d:%i' /proc/$$/fd/9 2>/dev/null) || return 1
-    path_id=$(stat -Lc '%d:%i' "$LOCK_FILE" 2>/dev/null) || return 1
-    [[ "$fd_id" == "$path_id" ]] || return 1
+    # Post-open, pre-harden identity: the path must still name the very
+    # inode fd 9 holds. stat WITHOUT -L reports a swapped-in symlink's
+    # own inode, never its target's, so any swap is seen before
+    # anything is hardened. No path is touched after this point.
+    fd_id=$(stat -Lc '%d:%i' /proc/$$/fd/9 2>/dev/null) || { exec 9>&-; return 1; }
+    path_id=$(stat -c '%d:%i' "$LOCK_FILE" 2>/dev/null) || { exec 9>&-; return 1; }
+    [[ "$fd_id" == "$path_id" ]] || { exec 9>&-; return 1; }
+    # Harden the HELD fd: fstat re-validates (regular file, root:root,
+    # catching a pre-open regular-file swap), then fchown/fchmod on fd
+    # 9 itself. A later swap cannot redirect this hardening anywhere.
+    # Upgrade compatibility: older A-Box builds created the root-owned
+    # regular lock file with the caller's default umask (commonly
+    # 0644); the fchmod below normalizes that exact safe legacy case,
+    # and an active older process is still detected by flock.
+    python3 -I - <<'PY_FLOCK_HARDEN' || { exec 9>&-; return 1; }
+import os, stat
+st = os.fstat(9)
+if not stat.S_ISREG(st.st_mode) or st.st_uid != 0 or st.st_gid != 0:
+    raise SystemExit(1)
+os.fchown(9, 0, 0)
+os.fchmod(9, 0o600)
+PY_FLOCK_HARDEN
 }
 
 validate_inherited_flock_lock() {

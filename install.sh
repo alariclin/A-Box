@@ -11577,7 +11577,11 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
         return 1
     fi
     out="$tmpd/preserve.json"
-    if ! jq --arg pat "^(${pat})$" '[.inbounds[]? | select((.tag // "") | test($pat))]' "$cfg" > "$out" 2>/dev/null; then
+    # R15C6-01: also capture each preserved inbound's detour target
+    # (e.g. shadowtls-in -> shadowtls-ss); snapshotting only the outer
+    # inbound makes full restore fail validation on the missing target
+    # and the nost retry then drops the node.
+    if ! jq --arg pat "^(${pat})$" '([.inbounds[]? | select((.tag // "") | test($pat))] | map(.detour // empty)) as $detours | [.inbounds[]? | ((.tag // "") as $t | select(($t | test($pat)) or ($detours | index($t) != null)))]' "$cfg" > "$out" 2>/dev/null; then
         rm -f -- "$out"; rm -rf -- "$tmpd"
         msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
         return 1

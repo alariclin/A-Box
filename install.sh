@@ -26219,6 +26219,7 @@ def dedupe: reduce .[] as $u ({seen:{}, out:[]};
 def mkusers($tag): map({
     name: ((.name // "main") | cleanname),
     login: (.name // "main"),
+    password_only: (.password_only // false),
     secret: (.secret // ""),
     uuid: (.uuid // ""),
     flow: (.flow // ""),
@@ -26359,7 +26360,7 @@ users_hy2_read_users() {
         printf '[]'
         return 0
     fi
-    jq -cn --rawfile v <(printf '%s' "$pw") '[{name: "main", secret: $v}]'
+    jq -cn --rawfile v <(printf '%s' "$pw") '[{name: "main", secret: $v, password_only: true}]'
 }
 
 
@@ -26391,9 +26392,9 @@ users_reg_ensure() {
             . as $r | ($s[0].users // []) as $fresh
             | .users = (
                 [.users[] | . as $u
-                 | ([$fresh[] | select(.secret == $u.secret and .name == $u.name and (.uuid // "") == ($u.uuid // ""))] | .[0]) as $m
-                 | if $m == null then $u elif (.login // "") != "" then $u elif ($m.login // "") == "" then $u else $u + {login: $m.login} end]
-                + (reduce ([$fresh[] | . as $f | select([$r.users[] | select(.secret == $f.secret and .name == $f.name and (.uuid // "") == ($f.uuid // ""))] | length == 0)])[] as $f (
+                 | ([$fresh[] | select(.secret == $u.secret and (if (.password_only // false) then true else (.name == $u.name) end) and (.uuid // "") == ($u.uuid // ""))] | .[0]) as $m
+                 | if $m == null then $u elif ($m.password_only // false) then $u elif (.login // "") != "" then $u elif ($m.login // "") == "" then $u else $u + {login: $m.login} end]
+                + (reduce ([$fresh[] | . as $f | select([$r.users[] | select(.secret == $f.secret and (if ($f.password_only // false) then true else (.name == $f.name) end) and (.uuid // "") == ($f.uuid // ""))] | length == 0)])[] as $f (
                     {used: [.users[].name], out: []};
                     (.used) as $used
                     | (first(range(0; 1000) | (if . == 0 then $f.name else ($f.name + "-" + ((. + 1) | tostring)) end) | select(. as $c | ($used | index($c) | not))) // $f.name) as $c

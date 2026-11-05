@@ -10194,7 +10194,7 @@ hysteria_acme_repair_tree_ownership() {
     [[ -d "$target" && ! -L "$target" ]] || return 1
     gid=$(getent group "$group" 2>/dev/null | awk -F: '{print $3}')
     [[ "$gid" =~ ^[0-9]+$ ]] || return 1
-    python3 - "$manifest" "$target" "$gid" <<'PY_ACME_REPAIR'
+    python3 -I - "$manifest" "$target" "$gid" <<'PY_ACME_REPAIR'
 import os, re, stat, sys
 manifest, target, gid = sys.argv[1], sys.argv[2], int(sys.argv[3])
 target = os.path.normpath(target)
@@ -18037,7 +18037,7 @@ pre_install_setup() {
                     if is_yes "$INPUT_ACME_DNS"; then
                         HY2_ACME_TYPE='dns'
                         HY2_ACME_DNS_PROVIDER='cloudflare'
-                        read -r -s -p "   ${L_HY2} Cloudflare API Token: " INPUT_CF_TOKEN || die "$(tr_msg pi_input_closed)"
+                        IFS= read -r -s -p "   ${L_HY2} Cloudflare API Token: " INPUT_CF_TOKEN || die "$(tr_msg pi_input_closed)"
                         echo
                         HY2_ACME_DNS_CF_API_TOKEN="$INPUT_CF_TOKEN"
                     fi
@@ -21027,7 +21027,7 @@ deploy_argo_fixed() {
     local domain='' token=''
     read -r -p "$(tr_msg argo_domain_prompt)" domain || domain=''
     valid_domain "$domain" || die "$(tr_msg ag_bad_domain)"
-    read -r -s -p "$(tr_msg argo_token_prompt)" token || token=''
+    IFS= read -r -s -p "$(tr_msg argo_token_prompt)" token || token=''
     msg ''
     [[ -n "$token" ]] || die "$(tr_msg ag_token_empty)"
     valid_single_line_secret "$token" 512 || die "$(tr_msg ag_token_bad)"
@@ -23756,7 +23756,7 @@ month_bytes() {
             case "$mode" in
                 rx) echo "$rx" ;;
                 tx) echo "$tx" ;;
-                total) python3 - "$rx" "$tx" <<'PY_VNSTAT_TOTAL_MONITOR'
+                total) python3 -I - "$rx" "$tx" <<'PY_VNSTAT_TOTAL_MONITOR'
 import sys
 print(int(sys.argv[1]) + int(sys.argv[2]))
 PY_VNSTAT_TOTAL_MONITOR
@@ -24153,7 +24153,7 @@ fi
 # Transient vnStat/metric blips must not flip desired state to TRAFFIC_BLOCKED.
 # Only validated over-quota (below) or corrupt persisted policy (above) fail-closed.
 used=$(month_bytes "$iface" "${TRAFFIC_LIMIT_MODE:-total}") || { traffic_error 'traffic accounting query failed; leaving prior desired state unchanged'; exit 1; }
-limit=$(python3 - "$TRAFFIC_LIMIT_GB" <<'PY_TRAFFIC_LIMIT'
+limit=$(python3 -I - "$TRAFFIC_LIMIT_GB" <<'PY_TRAFFIC_LIMIT'
 import sys
 gb = int(sys.argv[1])
 limit = gb * 1024 * 1024 * 1024
@@ -24163,7 +24163,7 @@ print(limit)
 PY_TRAFFIC_LIMIT
 ) || { traffic_error 'traffic limit conversion failed; leaving prior desired state unchanged'; exit 1; }
 [[ "$used" =~ ^[0-9]+$ && "$limit" =~ ^[0-9]+$ ]] || { traffic_error 'traffic accounting result was invalid; leaving prior desired state unchanged'; exit 1; }
-if python3 - "$used" "$limit" <<PY_TRAFFIC_COMPARE
+if python3 -I - "$used" "$limit" <<PY_TRAFFIC_COMPARE
 import sys
 raise SystemExit(0 if int(sys.argv[1]) >= int(sys.argv[2]) else 1)
 PY_TRAFFIC_COMPARE
@@ -31252,7 +31252,7 @@ canonical_path() {
     local input="${1:-}"
     [[ -n "$input" ]] || return 1
     command -v python3 >/dev/null 2>&1 || return 1
-    python3 - "$input" <<'PY_CANONICAL_PATH'
+    python3 -I - "$input" <<'PY_CANONICAL_PATH'
 import os
 import sys
 print(os.path.realpath(sys.argv[1]))
@@ -34029,7 +34029,7 @@ PY_LEGACY_VALIDATE
 }
 
 convert_legacy_backup_archive() {
-    local selected="$1" out_dir="${2:-$(dirname "$1")}" work root out answer unit srv path
+    local selected="$1" out_dir="${2:-$(dirname -- "$1")}" work root out answer unit srv path
     [[ -f "$selected" && ! -L "$selected" ]] || die 'Legacy backup path is invalid.'
     # R6C14-01: private root-only copy BEFORE any validation; every
     # later read uses the copy, so a swap of $selected afterwards
@@ -36701,7 +36701,7 @@ wallos_create_backup() {
             _journal_ref="$_jbackup"
         fi
     fi
-    python3 - "$WALLOS_DIR/backups" "$backup" "$_journal_ref" <<'PY_WALLOS_ROTATE' 2>/dev/null || true
+    python3 -I - "$WALLOS_DIR/backups" "$backup" "$_journal_ref" <<'PY_WALLOS_ROTATE' 2>/dev/null || true
 import os, sys
 _d, _keep, _jref = sys.argv[1], sys.argv[2], sys.argv[3]
 _ents = []
@@ -39992,7 +39992,7 @@ _acheck_file_valid() {
     head -n 1 -- "$_f" 2>/dev/null | grep -qx '#!/usr/bin/env python3' || return 1
     grep -Eq '^VERSION = "[0-9]+\.[0-9]+\.[0-9]+"' -- "$_f" || return 1
     grep -qF 'github.com/alariclin/A-Check' -- "$_f" || return 1
-    python3 -c 'import sys; compile(open(sys.argv[1], "rb").read(), "acheck.py", "exec")' "$_f" 2>/dev/null
+    python3 -I -c 'import sys; compile(open(sys.argv[1], "rb").read(), "acheck.py", "exec")' "$_f" 2>/dev/null
 }
 
 run_acheck_tool() {
@@ -40325,12 +40325,12 @@ write_clash_yaml() {
     [[ -n "${HY2_DOMAIN:-}" && "${CORE:-}" != 'singbox' ]] && hy2_name='Hy2'
     ensure_abox_dir_owned "$ABOX_DIR" || return 1
     command -v python3 >/dev/null 2>&1 || return 1
-    base_real=$(python3 - "$ABOX_DIR" <<'PY_CLASH_REALPATH'
+    base_real=$(python3 -I - "$ABOX_DIR" <<'PY_CLASH_REALPATH'
 import os, sys
 print(os.path.realpath(sys.argv[1]))
 PY_CLASH_REALPATH
 ) || return 1
-    out_real=$(python3 - "$out" <<'PY_CLASH_REALPATH'
+    out_real=$(python3 -I - "$out" <<'PY_CLASH_REALPATH'
 import os, sys
 print(os.path.realpath(sys.argv[1]))
 PY_CLASH_REALPATH
@@ -43959,7 +43959,7 @@ N11EOF
     # Archive extractors must never remove a caller-owned pre-existing destination
     # when rejecting an extraction. This is a regression test for a destructive
     # cleanup bug found during the independent v70/v71 archive audit.
-    python3 - "$tmp" <<'PY_SELFTEST_ARCHIVE_CREATE' >/dev/null 2>&1 || { echo 'FAIL: archive regression fixture creation'; failures=$((failures + 1)); }
+    python3 -I - "$tmp" <<'PY_SELFTEST_ARCHIVE_CREATE' >/dev/null 2>&1 || { echo 'FAIL: archive regression fixture creation'; failures=$((failures + 1)); }
 import io, os, sys, tarfile, zipfile
 base=sys.argv[1]
 with zipfile.ZipFile(os.path.join(base, 'extract-regress.zip'), 'w') as z:
@@ -43978,7 +43978,7 @@ PY_SELFTEST_ARCHIVE_CREATE
     printf '%s\n' 'preserve-me' > "$tmp/extract-preexisting"
     assert_bad extract_tar_regular_basename_safely "$tmp/extract-regress.tar" target.txt "$tmp/extract-preexisting"
     [[ -f "$tmp/extract-preexisting" && "$(cat "$tmp/extract-preexisting")" == 'preserve-me' ]] || { echo 'FAIL: TAR rejection removed pre-existing destination'; failures=$((failures + 1)); }
-    python3 - "$tmp" <<'PY_SELFTEST_TAR_GZ_CREATE' >/dev/null 2>&1 || { echo 'FAIL: tar.gz fixture creation'; failures=$((failures + 1)); }
+    python3 -I - "$tmp" <<'PY_SELFTEST_TAR_GZ_CREATE' >/dev/null 2>&1 || { echo 'FAIL: tar.gz fixture creation'; failures=$((failures + 1)); }
 import io, os, sys, tarfile
 base=sys.argv[1]
 with tarfile.open(os.path.join(base, 'extract-regress.tar.gz'), 'w:gz') as t:
@@ -44056,7 +44056,7 @@ PY_SELFTEST_TAR_GZ_CREATE
             create_backup_manifest "$acme_runtime_fixture" "$acme_runtime_fixture/meta/manifest.sha256" || { echo 'FAIL: ACME 1770 fixture manifest creation'; failures=$((failures + 1)); }
             selftest_pack_tar_gz "$acme_runtime_fixture" "$tmp/acme-1770-good.tar.gz" || { echo 'FAIL: ACME 1770 fixture tar creation'; failures=$((failures + 1)); }
             assert_ok validate_backup_archive "$tmp/acme-1770-good.tar.gz" || { echo 'FAIL: Hysteria ACME 1770 backup rejected (R-01 regression)'; failures=$((failures + 1)); }
-            python3 - "$tmp/acme-runtime-good.tar.gz" <<'PY_TAMPER_ACME' >/dev/null 2>&1
+            python3 -I - "$tmp/acme-runtime-good.tar.gz" <<'PY_TAMPER_ACME' >/dev/null 2>&1
 import os,sys,tarfile
 arc=sys.argv[1]; out=arc+'.bad'
 with tarfile.open(arc,'r:gz') as inp, tarfile.open(out,'w:gz') as outfp:
@@ -44084,7 +44084,7 @@ PY_TAMPER_ACME
     fi
 
     if selftest_has python3; then
-        python3 - "$tmp" <<'PY_SELFTEST_LEGACY_STATE' >/dev/null 2>&1 || { echo 'FAIL: legacy-state backup fixture creation'; failures=$((failures + 1)); }
+        python3 -I - "$tmp" <<'PY_SELFTEST_LEGACY_STATE' >/dev/null 2>&1 || { echo 'FAIL: legacy-state backup fixture creation'; failures=$((failures + 1)); }
 import io, os, sys, tarfile
 base=sys.argv[1]
 names=['.ip-pref','.dns-state','.timezone-state','.fast-mode','.mirror-prefer','.extra-uuids']
@@ -44271,7 +44271,7 @@ EOF_SELFTEST_IPT
         [[ "$(grep -Fc 'support-x25519mlkem768: true' "$clash_dir/A-Box-clash-mlkem.yaml")" -eq 2 ]] || { echo 'FAIL: Xray >= ML-KEM threshold must enable REALITY ML-KEM flags'; failures=$((failures + 1)); }
         grep -Fq '较新的 REALITY ML-KEM ClientHello 门槛' <<< "$source_body" || { echo 'FAIL: Xray ML-KEM compatibility warning missing'; failures=$((failures + 1)); }
         ABOX_DIR="$clash_dir" CORE=xray MODE=SS LINK_IP=203.0.113.10 SS_PORT=2053 SS_PASS='a"b\c' HY2_PASS='h"p' HY2_OBFS='o\b' CLASH_YAML_PATH="$clash_dir/A-Box-clash-escaped.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash YAML escaped secret generation'; failures=$((failures + 1)); }
-        python3 - "$clash_dir/A-Box-clash-escaped.yaml" <<'PY_SELFTEST_YAML' >/dev/null 2>&1 || { echo 'FAIL: Clash YAML secret escaping'; failures=$((failures + 1)); }
+        python3 -I - "$clash_dir/A-Box-clash-escaped.yaml" <<'PY_SELFTEST_YAML' >/dev/null 2>&1 || { echo 'FAIL: Clash YAML secret escaping'; failures=$((failures + 1)); }
 import json, sys
 from pathlib import Path
 text=Path(sys.argv[1]).read_text()
@@ -44438,7 +44438,7 @@ PY_SELFTEST_YAML
     ! path_tree_has_mountpoint "$tmp" || { echo 'FAIL: mountpoint guard falsely reports self-test temp directory'; failures=$((failures + 1)); }
     if command -v python3 >/dev/null 2>&1; then
         _prod_decode=$(sed -n "/^def decode_mountinfo_path(value):/,/return/p" "$0" | head -2)
-        python3 - "$_prod_decode" <<'PY_MOUNTINFO_DECODE_TEST' || { echo 'FAIL: mountinfo path decoder must decode octal escapes in one pass'; failures=$((failures + 1)); }
+        python3 -I - "$_prod_decode" <<'PY_MOUNTINFO_DECODE_TEST' || { echo 'FAIL: mountinfo path decoder must decode octal escapes in one pass'; failures=$((failures + 1)); }
 import re, sys
 exec(sys.argv[1])
 checks = {
@@ -44453,7 +44453,7 @@ for raw, expected in checks.items():
 PY_MOUNTINFO_DECODE_TEST
     fi
     if command -v python3 >/dev/null 2>&1; then
-        python3 - "$0" <<'PY_MOUNTINFO_DECODE_CONSISTENCY' || { echo 'FAIL: mountinfo path decoder copies disagree'; failures=$((failures + 1)); }
+        python3 -I - "$0" <<'PY_MOUNTINFO_DECODE_CONSISTENCY' || { echo 'FAIL: mountinfo path decoder copies disagree'; failures=$((failures + 1)); }
 import re, sys
 src = open(sys.argv[1]).read().splitlines()
 blocks, cur = [], None
@@ -44930,7 +44930,7 @@ main() {
     case "${1:-}" in
         --version|-V) printf 'A-Box %s (%s)\n' "$ABOX_BUILD" "$ABOX_BUILD_EPOCH"; exit 0 ;;
         --export-backup-key) shift; prepare_noninteractive_file_operation; export_backup_recovery_key "${1:-}"; exit 0 ;;
-        --convert-legacy-backup) shift; prepare_noninteractive_file_operation; convert_legacy_backup_archive "${1:-}" "${2:-$(dirname "${1:-.}")}"; exit $? ;;
+        --convert-legacy-backup) shift; prepare_noninteractive_file_operation; convert_legacy_backup_archive "${1:-}" "${2:-$(dirname -- "${1:-.}")}"; exit $? ;;
         --help|-h) show_cli_help; exit 0 ;;
         --self-test) run_self_tests; exit $? ;;
         --user-guard-tick) user_guard_tick; exit $? ;;

@@ -1281,6 +1281,12 @@ tr_msg() {
         fa:wl_iu_health_kept) echo 'Wallos بررسی سلامت را نگذراند. بازگشت تلاش شد.' ;;
         zh-tw:wl_iu_health_kept) echo 'Wallos 未通過健康檢查。已嘗試回滾。' ;;
         ja:wl_iu_health_kept) echo 'Wallos がヘルスチェックに合格しませんでした。ロールバックを試みました。' ;;
+        zh:wl_iu_preseed_fail) echo 'Wallos 全新数据库预置失败，已中止安装（未启动容器）。' ;;
+        en:wl_iu_preseed_fail) echo 'Wallos fresh database pre-seed failed; installation aborted (container not started).' ;;
+        ru:wl_iu_preseed_fail) echo 'Не удалось подготовить новую базу данных Wallos; установка прервана (контейнер не запущен).' ;;
+        fa:wl_iu_preseed_fail) echo 'آماده‌سازی پایگاه داده تازه Wallos ناموفق بود؛ نصب متوقف شد (کانتینر شروع نشد).' ;;
+        zh-tw:wl_iu_preseed_fail) echo 'Wallos 全新資料庫預置失敗，已中止安裝（未啟動容器）。' ;;
+        ja:wl_iu_preseed_fail) echo 'Wallos の新規データベース事前準備に失敗しました。インストールを中止しました（コンテナは起動していません）。' ;;
         zh:wl_iu_meta_fail) echo 'Wallos 状态元数据提交失败。正在尽可能回滚未完成的升级。' ;;
         en:wl_iu_meta_fail) echo 'Wallos state metadata failed to commit. Rolling back the incomplete upgrade where possible.' ;;
         ru:wl_iu_meta_fail) echo 'Не удалось зафиксировать метаданные состояния Wallos. Выполняется откат незавершённого обновления, где возможно.' ;;
@@ -37874,6 +37880,38 @@ wallos_http_rebind() { # $1=public port $2=image $3=tz: republish the container 
     wallos_wait_healthy "$1"
 }
 
+# W1: pre-seed a fresh Wallos database from the image's own template.
+# Wallos startup launches nginx/php-fpm before createdatabase.php, so any
+# HTTP request inside that window makes the app auto-create an empty
+# wallos.db; createdatabase.php then sees the file and skips base-table
+# creation, and migration 000013 dies on the missing user table. The
+# container then restart-loops forever because the empty file persists.
+# Seeding the image's wallos.empty.db (all base tables, zero users) before
+# the first docker run closes that window. Only acts when wallos.db is
+# absent: existing databases (including already-poisoned ones) are left
+# untouched. Any extraction failure aborts the install instead of
+# starting a container that is guaranteed to crash-loop.
+wallos_preseed_db() { # $1=image
+    local image="$1" _cid="" _tmp=""
+    [[ -f "$WALLOS_DIR/db/wallos.db" ]] && return 0
+    _cid=$(docker create "$image" 2>/dev/null) || return 1
+    _tmp=$(mktemp -d) || { docker rm "$_cid" >/dev/null 2>&1 || true; return 1; }
+    if ! docker cp "$_cid:/var/www/html/db/wallos.empty.db" "$_tmp/wallos.db" >/dev/null 2>&1; then
+        docker rm "$_cid" >/dev/null 2>&1 || true
+        rm -rf "$_tmp"
+        return 1
+    fi
+    docker rm "$_cid" >/dev/null 2>&1 || true
+    cp "$_tmp/wallos.db" "$WALLOS_DIR/db/wallos.db" || { rm -rf "$_tmp"; return 1; }
+    rm -rf "$_tmp"
+    [[ -s "$WALLOS_DIR/db/wallos.db" ]] || return 1
+    # The installer passes no PUID/PGID, so the container runs as the
+    # image default www-data (82:82); a root-owned seed would leave
+    # migrations unable to write.
+    chown 82:82 "$WALLOS_DIR/db/wallos.db" || return 1
+    return 0
+}
+
 wallos_install_or_update() {
     local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_image_id='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
     (( EUID == 0 )) || { msg "${RED}$(tr_msg wl_iu_need_root)${NC}"; return 1; }
@@ -38154,6 +38192,17 @@ wallos_install_or_update() {
     local -a _pub_args=()
     if [[ -n "$old_bind" ]] || (( _bind_chosen == 1 )); then
         _pub_args=(-p "$bind_address:$port:80/tcp")
+    fi
+    # W1: pre-seed a fresh database before the first docker run (see
+    # wallos_preseed_db). A failed seed aborts here, before any container
+    # exists; on the upgrade path an interrupted-upgrade recovery is
+    # attempted instead of starting a doomed container.
+    if ! wallos_preseed_db "$image"; then
+        if (( running == 1 )); then
+            wallos_recover_interrupted_upgrade >/dev/null 2>&1 || true
+        fi
+        msg "${RED}$(tr_msg wl_iu_preseed_fail)${NC}"
+        return 1
     fi
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
         -v "$WALLOS_DIR/db:/var/www/html/db" \

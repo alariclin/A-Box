@@ -168,7 +168,9 @@ jobs:
 
           # F-05: Detached Ed25519 signatures for wallos-manifest.txt and
           # SHA256SUMS (same pattern as update-core-mirror.yml F-05).
-          # Uses ABOX_SIGNING_PRIVKEY_B64 secret; skips if absent.
+          # Uses ABOX_SIGNING_PRIVKEY_B64 secret; fails if absent
+          # (R6C19-03): skipping let the publish step upload a
+          # new SHA256SUMS with the old .sig left behind.
           # See docs/SIGNING.md.
           if [[ -n "${ABOX_SIGNING_PRIVKEY_B64:-}" ]]; then
             umask 077
@@ -197,7 +199,8 @@ jobs:
             echo "Signed: SHA256SUMS.sig"
             shred -u /tmp/abox-sign-priv.pem 2>/dev/null || rm -f /tmp/abox-sign-priv.pem
           else
-            echo "::notice::ABOX_SIGNING_PRIVKEY_B64 not set; skipping Wallos F-05 signing."
+            echo "::error::ABOX_SIGNING_PRIVKEY_B64 not set; refusing to publish unsigned Wallos manifests."
+            exit 1
           fi
 
       - name: Prepare benchmark, IP-quality and A-Check tool mirror
@@ -376,6 +379,11 @@ jobs:
             printf 'Assets include Docker image archives for amd64, arm64, and armv7, the upstream source archive, a manifest, and SHA256SUMS.\n'
             printf 'The publishing workflow verifies archive integrity, platform identity, and SHA-256 before upload.\n'
           } > "$notes"
+          # R6C19-03: last gate before publish: both signatures
+          # must exist in the asset dir.
+          for _sig in "$GITHUB_WORKSPACE/dist/wallos/SHA256SUMS.sig" "$GITHUB_WORKSPACE/dist/wallos/wallos-manifest.txt.sig"; do
+            [[ -f "$_sig" ]] || { echo "::error::$_sig missing; refusing to publish unsigned manifests"; exit 1; }
+          done
           publish_release wallos-mirror "Wallos Recovery Mirror" "$notes" "$GITHUB_WORKSPACE/dist/wallos"
 
       - name: Publish test-tool stable recovery Release

@@ -22178,6 +22178,38 @@ argo_wait_temp_ready() { # $1=unit $2=log $3=timeout(sec, default 60)
     return 1
 }
 
+# 2qu: probe a temp tunnel's public origin WebSocket endpoint. A bare
+# HTTP/1.1 Upgrade request to the exact ws path must return 101 from
+# the sing-box ws inbound (early data is optional: no
+# Sec-WebSocket-Protocol header is sent, and ServeHTTP proceeds to
+# the upgrade without it; a wrong path returns 404, a dead origin
+# surfaces as 502/503/1033 or no response). Curl receives 101 and
+# then stays connected until --max-time, so success is judged ONLY
+# by the observed 101 in the response headers -- curl's exit code is
+# ignored (rc 28 after a 101 is still success). Bounded retries:
+# 6 attempts, 2s apart, 10s max / 5s connect-timeout each.
+# $1 = domain, $2 = ws path (e.g. /<UUID>-vmess). Returns 0 on 101.
+argo_origin_probe() {
+    local domain="$1" path="$2" tmpd='' hdr='' i
+    tmpd=$(mktemp -d /tmp/A-Box-argo-probe.XXXXXX) || return 1
+    hdr="$tmpd/headers"
+    for i in 1 2 3 4 5 6; do
+        : > "$hdr"
+        curl -s -D "$hdr" --http1.1 --connect-timeout 5 --max-time 10 \
+            -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+            -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+            -H 'Sec-WebSocket-Version: 13' \
+            "https://${domain}${path}" -o /dev/null 2>/dev/null || true
+        if head -1 "$hdr" 2>/dev/null | grep -q '^HTTP/[^ ]* 101'; then
+            rm -rf -- "$tmpd"
+            return 0
+        fi
+        [[ "$i" == 6 ]] || sleep 2
+    done
+    rm -rf -- "$tmpd"
+    return 1
+}
+
 deploy_argo_temp() {
     clear; msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
     init_system_environment
@@ -22291,6 +22323,13 @@ EOF_SVC
     # unit, token and state stay intact (no dead links published).
     argo_wait_temp_ready argo-vmess /etc/ddr/argo-vmess.log 60 || die 'Temp Argo VMess tunnel did not establish an edge connection; fixed deployment kept.'
     argo_wait_temp_ready argo-vless /etc/ddr/argo-vless.log 60 || die 'Temp Argo VLESS tunnel did not establish an edge connection; fixed deployment kept.'
+    # 2qu: edge registration does not prove the origin answers. Probe
+    # each temp tunnel's public WebSocket endpoint (expect HTTP 101
+    # from the sing-box ws inbound) before tearing down the fixed
+    # deployment; a dead origin dies here with the fixed unit, token
+    # and state intact (no dead links published).
+    argo_origin_probe "$d1" "/${ARGO_UUID}-vmess" || die 'Temp Argo VMess tunnel origin did not answer the WebSocket probe; fixed deployment kept.'
+    argo_origin_probe "$d2" "/${ARGO_UUID}-vless" || die 'Temp Argo VLESS tunnel origin did not answer the WebSocket probe; fixed deployment kept.'
     # Switching to temp mode: tear down any fixed deployment.
     argo_remove_unit argo
     rm -f /etc/ddr/.argo-token

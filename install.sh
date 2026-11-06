@@ -10640,7 +10640,7 @@ remove_recorded_core_family() {
         # Derive the runtime identity from the surviving recorded files:
         # the unique non-root uid/gid, else 0:0; ambiguous -> fail closed.
         local _derived_uid='' _derived_gid='' _ambig=0 _fu='' _fg=''
-        while IFS=$'\t' read -r _t _s _p _h; do
+        while IFS=$'\t' read -r _t _s _p _h || [[ -n "$_t$_s$_p$_h" ]]; do
             [[ "$_s" == "$srv" ]] || continue
             [[ -e "$_p" ]] || continue
             _fu=$(stat -c %u "$_p" 2>/dev/null || true)

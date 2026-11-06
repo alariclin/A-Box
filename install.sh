@@ -34396,6 +34396,15 @@ report_unrecognized_abox_cron_lines() {
         if [[ "$line" =~ $_abox_report_skip_re ]]; then continue; fi
         printf '%s\n' "[!] A-Box cron residual (保留的已知／疑似管理路径引用): $line" >&2
     done < "$file"
+    # D14: unknown A-Box blocks survive a full clear by design (never
+    # deleted); report them so a kept block is never silent.
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" =~ ^#\ A-Box\ ([A-Z0-9_-]+)\ BEGIN$ ]] || continue
+        case "${BASH_REMATCH[1]}" in
+            PROBE|GEO|TRAFFIC|USERGUARD) ;;
+            *) printf '%s\n' "[!] A-Box cron residual: unknown block ${BASH_REMATCH[1]} kept" >&2 ;;
+        esac
+    done < "$file"
     return 0
 }
 

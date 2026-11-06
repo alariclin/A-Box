@@ -20011,6 +20011,38 @@ EOF_XTABLES_TMPFILES
     return 0
 }
 
+# 2fv: the xtables-lock grant as a standalone script, run at every
+# hysteria service start (systemd ExecStartPre, OpenRC start_pre).
+# tmpfiles.d persists the grant across reboots on systemd only; on
+# OpenRC /run is tmpfs and the lock is recreated root:root 0600, so
+# the grant must be re-applied when the service starts. The script is
+# strict (non-zero on failure); service-start callers treat it as
+# best-effort (ExecStartPre=-, start_pre || true) — the deploy-time
+# grant in hy2_hop_xtables_lock_grant is the real gate.
+write_hy2_xtables_lock_grant_script() {
+    write_file_atomically_from_stdin /usr/local/bin/abox-hy2-xtables-lock-grant 755 <<'EOF_XTABLES_GRANT' || return 1
+#!/bin/sh
+# A-Box: grant the abox-hysteria group access to the xtables lock.
+# Official HY2 port hopping runs as abox-hysteria with CAP_NET_ADMIN
+# only; when nft is missing, Hysteria falls back to iptables-legacy,
+# which must open /run/xtables.lock. A pre-existing root:root 0600
+# lock is unopenable by the service user, so the hop rules are never
+# built. This script is run at every hysteria service start so the
+# grant survives reboots on init systems without tmpfiles.d (OpenRC:
+# /run is tmpfs, the lock is recreated root:root 0600 at boot).
+# No-op when nft exists (the fallback is never used). Narrow: group
+# access only, no world access. Exits non-zero on failure; callers at
+# service start treat it as best-effort.
+command -v nft >/dev/null 2>&1 && exit 0
+for lock in ${ABOX_XTABLES_LOCK_PATHS:-/run/xtables.lock /var/run/xtables.lock}; do
+    [ -e "$lock" ] || [ -L "$lock" ] || continue
+    chgrp abox-hysteria "$lock" || exit 1
+    chmod g+rw "$lock" || exit 1
+done
+exit 0
+EOF_XTABLES_GRANT
+}
+
 deploy_official_hy2() {
     local IS_SILENT=${1:-NORMAL} TLS_CONFIG HY2_LISTEN cert_cn HY2_CAPS='CAP_NET_BIND_SERVICE' hy2_tmp hy2_bin domain_yaml token_yaml SKIP_REPLACE_AND_PRUNE=${2:-0} _hy2_url='' _hy2_port=''
     if [[ "$IS_SILENT" != 'SILENT' ]]; then
@@ -20099,6 +20131,18 @@ deploy_official_hy2() {
 
     build_hysteria_config /etc/hysteria/config.yaml "$TLS_CONFIG" "$HY2_LISTEN" || die "$(tr_msg hy2b_cfg)"
 
+    # 2fv: when official hop is enabled, write the standalone grant
+    # script and reference it from the service units below, so the
+    # xtables-lock grant is re-applied at every service start (the
+    # tmpfiles.d entry only persists it on systemd; OpenRC recreates
+    # the lock root:root 0600 at every boot).
+    local _hy2_lock_grant_pre='' _hy2_lock_grant_start_pre=''
+    if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
+        write_hy2_xtables_lock_grant_script || die "$(tprintf hy2b_hop_lock)"
+        _hy2_lock_grant_pre='ExecStartPre=-+/usr/local/bin/abox-hy2-xtables-lock-grant'
+        _hy2_lock_grant_start_pre='start_pre() { /usr/local/bin/abox-hy2-xtables-lock-grant || true; }'
+    fi
+
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         write_file_atomically_from_stdin /etc/systemd/system/hysteria.service 644 <<EOF_SVC || die 'Hysteria systemd unit 原子写入失败。'
 # Managed by A-Box
@@ -20113,6 +20157,7 @@ Group=abox-hysteria
 CapabilityBoundingSet=${HY2_CAPS}
 AmbientCapabilities=${HY2_CAPS}
 UMask=0077
+${_hy2_lock_grant_pre}
 ExecStart=/bin/sh -c 'exec /usr/local/bin/hysteria server -c /etc/hysteria/config.yaml >>/var/log/A-Box-hysteria.log 2>&1'
 NoNewPrivileges=true
 PrivateTmp=true
@@ -20144,6 +20189,7 @@ umask=077
 output_log="/var/log/A-Box-hysteria.log"
 error_log="/var/log/A-Box-hysteria.log"
 pidfile="/run/hysteria.pid"
+${_hy2_lock_grant_start_pre}
 depend() { need net; }
 EOF_SVC
         chmod +x /etc/init.d/hysteria || die "$(tr_msg hy2b_chmod)"
@@ -27169,6 +27215,9 @@ _remove_hy2_official() {
         rc-update del hysteria default >/dev/null 2>&1 || true
         rm -f -- /etc/init.d/hysteria /etc/conf.d/hysteria
     fi
+    # 2fv: remove the grant script and the tmpfiles.d persistence
+    # entry (both are deploy artifacts of the official-hop grant).
+    rm -f -- /usr/local/bin/abox-hy2-xtables-lock-grant /etc/tmpfiles.d/abox-xtables-lock.conf
     # R6C11-01: refuse if /etc/hysteria (or anything under it) is a
     # mountpoint; rm -rf would delete shared foreign data.
     path_tree_has_mountpoint /etc/hysteria && return 1

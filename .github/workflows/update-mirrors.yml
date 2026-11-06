@@ -38,7 +38,7 @@ jobs:
     # N-13 fix: write permission scoped to this job only, not the whole workflow.
     permissions:
       contents: write
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -94,36 +94,48 @@ jobs:
             exit 1
           }
 
+          # Digest pin (Wallos arm64 failure, 2026-11-06): resolve the
+          # multi-arch index ONCE and pin each platform's child manifest
+          # digest. Tag-based pulls are ambiguous across Docker image
+          # stores: on a containerd-backed store (ubuntu-26.04 runners)
+          # an unqualified `docker image inspect <tag>` resolves the index
+          # to the daemon's default platform (amd64), so the architecture
+          # check failed even though the arm64 content exists upstream.
+          # A digest reference identifies exactly one platform manifest
+          # on every store. Never fall back to RepoDigests[0]: on a
+          # multi-arch store it is the shared index digest, not the
+          # platform digest.
+          index_json="$(docker buildx imagetools inspect "bellamy/wallos:${image_tag}" --raw)"
+          for spec in "amd64:linux/amd64" "arm64:linux/arm64" "armv7:linux/arm/v7"; do
+            arch="${spec%%:*}"; platform="${spec#*:}"
+            child_digest="$(jq -r --arg p "$platform" '.manifests[] | select(.platform and ((.platform.os + "/" + .platform.architecture + (if .platform.variant then "/" + .platform.variant else "" end)) == $p)) | .digest' <<<"$index_json")"
+            [[ "$child_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+              echo "::error::Could not resolve $platform child digest for bellamy/wallos:${image_tag}"
+              exit 1
+            }
+            printf -v "digest_${arch}" '%s' "$child_digest"
+          done
+
           pull_save_image() {
-            local arch="$1" platform="$2" image="bellamy/wallos:${image_tag}"
-            local asset="wallos-linux-${arch}.tar.gz" actual
-            echo "Pulling ${image} for ${platform}"
-            docker pull --platform "$platform" "$image"
-            actual="$(docker image inspect --format '{{.Os}}/{{.Architecture}}{{if .Variant}}/{{.Variant}}{{end}}' "$image")"
+            local arch="$1" platform="$2" image_digest="$3"
+            local image="bellamy/wallos:${image_tag}"
+            local asset="wallos-linux-${arch}.tar.gz" actual image_ref
+            image_ref="${image}@${image_digest}"
+            echo "Pulling ${image_ref} for ${platform}"
+            docker pull --platform "$platform" "$image_ref"
+            actual="$(docker image inspect --platform "$platform" --format '{{.Os}}/{{.Architecture}}{{if .Variant}}/{{.Variant}}{{end}}' "$image_ref")"
             if [[ "$actual" != "$platform" ]]; then
               echo "::error::Expected ${platform}, but Docker inspected ${actual}"
               exit 1
             fi
-            # P2-1 fix: record the image digest for consumer-side verification.
-            # Tags are mutable; the digest pins the exact image pulled here.
-            # If Docker Hub doesn't return digest info (rate limit/network),
-            # fall back to "unknown" with a warning instead of failing the
-            # whole workflow -- the tar.gz SHA256 still guarantees integrity.
-            local digest
-            digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$image" 2>/dev/null || true)"
-            if [[ -z "$digest" || "$digest" == '<no value>' ]]; then
-              echo "::warning::Could not determine RepoDigest for $image, using 'unknown'"
-              digest="unknown"
-            fi
-            printf -v "digest_${arch}" '%s' "$digest"
-            docker save "$image" | gzip -1 > "$asset"
+            docker save "$image_ref" | gzip -1 > "$asset"
             gzip -t "$asset"
             test -s "$asset"
           }
 
-          pull_save_image amd64 linux/amd64
-          pull_save_image arm64 linux/arm64
-          pull_save_image armv7 linux/arm/v7
+          pull_save_image amd64 linux/amd64 "${digest_amd64}"
+          pull_save_image arm64 linux/arm64 "${digest_arm64}"
+          pull_save_image armv7 linux/arm/v7 "${digest_armv7}"
 
           retrieved_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           {

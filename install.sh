@@ -387,14 +387,25 @@ rebuild_standalone_links() {
     local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub=''
     if [[ -f "$_xc" ]]; then
         if [[ ! -f "$_dir/trojan-xray.link" ]]; then
-            _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != ""))) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // "")] | @tsv' "$_xc" 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _svc
-            _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_svc" _svc
+            _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _svc=''; _wspath=''; _wshost=''; _xpath=''
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != ""))) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // ""), (.streamSettings.wsSettings.path // ""), (.streamSettings.wsSettings.headers.Host // ""), (.streamSettings.xhttpSettings.path // "")] | @tsv' "$_xc" 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _svc _wspath _wshost _xpath
+            _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_svc" _svc; _tsv_unescape "$_wspath" _wspath; _tsv_unescape "$_wshost" _wshost; _tsv_unescape "$_xpath" _xpath
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (trojan-xray)${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
+                # 2bf: emit the real transport instead of a wrong
+                # type=tcp — ws/xhttp clients dial the wrong transport
+                # on a tcp link. Unknown networks stay type=tcp.
                 _ttype='type=tcp'
-                if [[ "$_net" == 'grpc' && -n "$_svc" ]]; then _ttype="type=grpc&serviceName=$(urlencode "$_svc")"; fi
+                if [[ "$_net" == 'grpc' && -n "$_svc" ]]; then _ttype="type=grpc&serviceName=$(urlencode "$_svc")";
+                elif [[ "$_net" == 'ws' ]]; then
+                    _ttype='type=ws'
+                    [[ -n "$_wspath" ]] && _ttype="${_ttype}&path=$(urlencode "$_wspath")"
+                    [[ -n "$_wshost" ]] && _ttype="${_ttype}&host=$(urlencode "$_wshost")"
+                elif [[ "$_net" == 'xhttp' ]]; then
+                    _ttype='type=xhttp'
+                    [[ -n "$_xpath" ]] && _ttype="${_ttype}&path=$(urlencode "$_xpath")"
+                fi
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
                 register_standalone_link trojan-xray "Trojan-Reality (Xray) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
@@ -414,14 +425,26 @@ rebuild_standalone_links() {
     fi
     if [[ -f "$_sc" ]]; then
         if [[ ! -f "$_dir/trojan-sb.link" ]]; then
-            _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.password // .users[0].password // "") | contains("\u0000"))] | @tsv' "$_sc" 2>/dev/null)" _port _pass _pk _sni _sid _nul
-            _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
+            _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _wspath=''; _wshost=''; _svc=''
+            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.password // .users[0].password // "") | contains("\u0000")), (.transport.type // "tcp"), (.transport.path // ""), (((.transport.headers.Host // "") | if type == "array" then .[0] else . end)), (.transport.service_name // "")] | @tsv' "$_sc" 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _wspath _wshost _svc
+            _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_wspath" _wspath; _tsv_unescape "$_wshost" _wshost; _tsv_unescape "$_svc" _svc
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (trojan-sb)${NC}" >&2
             elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
+                # 2bf: same transport mapping as the Xray arm — a ws /
+                # xhttp / grpc trojan must not be emitted as type=tcp.
+                _ttype='type=tcp'
+                if [[ "$_net" == 'grpc' && -n "$_svc" ]]; then _ttype="type=grpc&serviceName=$(urlencode "$_svc")";
+                elif [[ "$_net" == 'ws' ]]; then
+                    _ttype='type=ws'
+                    [[ -n "$_wspath" ]] && _ttype="${_ttype}&path=$(urlencode "$_wspath")"
+                    [[ -n "$_wshost" ]] && _ttype="${_ttype}&host=$(urlencode "$_wshost")"
+                elif [[ "$_net" == 'xhttp' ]]; then
+                    _ttype='type=xhttp'
+                    [[ -n "$_wspath" ]] && _ttype="${_ttype}&path=$(urlencode "$_wspath")"
+                fi
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
-                register_standalone_link trojan-sb "Trojan-Reality (sing-box) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&type=tcp#Trojan-Reality"
+                register_standalone_link trojan-sb "Trojan-Reality (sing-box) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete trojan-sb)${NC}" >&2
             fi

@@ -25043,7 +25043,9 @@ if [[ "$desired" == TRAFFIC_BLOCKED && "$blocked_period" != "$current_period" ]]
     fi
     desired=RUNNING
     rm -f -- "$ROLLOVER_MARKER"
-    rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}"
+    # 2jx: verify the snapshot removal — a stale snapshot would make the
+    # next period restore stale pre-block states. Retry once, then log.
+    rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}" || { sleep 1; rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}" || traffic_error "stale pre-block snapshot for ${blocked_period} could not be removed; next period may restore stale service states"; }
     traffic_error "monthly quota period rolled over from ${blocked_period} to ${current_period}; managed services resumed"
 fi
 # R6C10-01: recover an interrupted rollover. A kill after the
@@ -25067,7 +25069,9 @@ if [[ -f "$ROLLOVER_MARKER" && "$desired" == MAINTENANCE ]]; then
     fi
     rm -f -- "$ROLLOVER_MARKER"
     desired=RUNNING
-    rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}"
+    # 2jx: verify the snapshot removal — a stale snapshot would make the
+    # next period restore stale pre-block states. Retry once, then log.
+    rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}" || { sleep 1; rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}" || traffic_error "stale pre-block snapshot for ${blocked_period} could not be removed; next period may restore stale service states"; }
     traffic_error "recovered interrupted monthly quota rollover from ${blocked_period} to ${current_period}; managed services resumed"
 elif [[ -f "$ROLLOVER_MARKER" ]]; then
     # Stale marker: the state was changed manually out from under the

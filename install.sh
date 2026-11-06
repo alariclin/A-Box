@@ -50,19 +50,62 @@ NC=$'\033[0m'
 BOLD=$'\033[1m'
 
 # jq < 1.6 lacks --rawfile (added in 1.6; e.g. Debian 10 ships jq 1.5).
-# This shim translates --rawfile NAME FILE pairs to --arg NAME CONTENT on
-# old jq, reading FILE (a process-substitution pipe or a real file) without
-# stripping trailing newlines (sentinel trick). On jq >= 1.6 it is a pure
-# pass-through (no arg parsing, no behavior change); the version decision is
-# cached in _ABOX_JQ_RAWFILE_SHIM so it is computed once per shell.
-# Caveat (documented, not silent): on jq < 1.6 the values pass through argv
-# and may be visible in the process list; jq 1.5 offers no argv-free way to
-# feed a raw string, so this is a degradation on old jq only, with a
-# one-time warning on stderr when the shim first activates. The shim assumes
-# --rawfile appears only as a flag (true for all current call sites); a value
-# literally equal to --rawfile would misparse (not a current case).
+# This shim translates --rawfile NAME FILE pairs to --slurpfile NAME FILE
+# on old jq, so secret values never pass through argv: the raw content is
+# JSON-encoded with `command jq -Rs.` (secret via stdin, never argv) and
+# handed to the real jq as --slurpfile NAME <(printf '%s' "$json") (only
+# a /dev/fd/N path in argv). --slurpfile binds an array, so the program
+# is rewritten, replacing bare $NAME with $NAME[0]. On jq >= 1.6 it is a
+# pure pass-through (no arg parsing, no behavior change); the version
+# decision is cached in _ABOX_JQ_RAWFILE_SHIM so it is computed once per
+# shell. --slurpfile exists since jq 1.4 (jq 1.5 manual, "Invoking jq"),
+# so this is safe on the oldest supported jq. ($ENV is NOT an option
+# here: it arrived in jq 1.6, the very version that already has --rawfile.)
+# Rewrite guard: a program that uses $NAME as literal text inside a
+# double-quoted jq string (outside \(...\) interpolation) cannot be
+# rewritten safely — that name falls back to the old --arg path with a
+# one-time warning (the value is then visible in the process list, as
+# before). The same fallback applies when the name is not a plain
+# identifier or the program comes from a file (-f/--from-file). The shim
+# assumes --rawfile appears only as a flag or as the value of
+# --arg/--argjson/--slurpfile (all current call sites); a value literally
+# equal to --rawfile anywhere else would misparse (not a current case).
 _ABOX_JQ_RAWFILE_SHIM=''
 _ABOX_JQ_RAWFILE_WARNED=''
+_ABOX_JQ_SLURP_FALLBACK_WARNED=''
+# _jq_prog_has_literal_name PROGRAM NAME: return 0 if $NAME occurs as
+# literal text inside a double-quoted jq string (outside \(...\)
+# interpolation). Such a program must NOT be rewritten ($NAME[0] would
+# change the emitted text). Nested strings inside interpolation are not
+# tracked (no current call site interpolates these names); a missed
+# literal there would rewrite string text — the fallback only covers the
+# plain-literal case, which is what exists today.
+_jq_prog_has_literal_name() {
+    local _prog="$1" _name="$2" _i=0 _len=${#1} _c='' _in_str=0 _interp=0 _after=''
+    while (( _i < _len )); do
+        _c=${_prog:_i:1}
+        if (( _in_str )); then
+            if [[ "$_c" == '\' ]]; then
+                if [[ "${_prog:_i+1:1}" == '(' ]]; then _interp=1; _i=$(( _i + 2 )); continue; fi
+                _i=$(( _i + 2 )); continue
+            fi
+            if (( _interp > 0 )); then
+                if [[ "$_c" == '(' ]]; then _interp=$(( _interp + 1 ));
+                elif [[ "$_c" == ')' ]]; then _interp=$(( _interp - 1 )); fi
+                _i=$(( _i + 1 )); continue
+            fi
+            if [[ "$_c" == '"' ]]; then _in_str=0; _i=$(( _i + 1 )); continue; fi
+            if [[ "$_c" == '$' && "${_prog:_i+1:${#_name}}" == "$_name" ]]; then
+                _after=${_prog:_i+1+${#_name}:1}
+                if [[ "$_after" != [A-Za-z0-9_] ]]; then return 0; fi
+            fi
+            _i=$(( _i + 1 )); continue
+        fi
+        if [[ "$_c" == '"' ]]; then _in_str=1; fi
+        _i=$(( _i + 1 ))
+    done
+    return 1
+}
 jq() {
     if [[ -z "${_ABOX_JQ_RAWFILE_SHIM:-}" ]]; then
         local _ver _maj _min
@@ -85,27 +128,101 @@ jq() {
     fi
     if [[ -z "${_ABOX_JQ_RAWFILE_WARNED:-}" ]]; then
         _ABOX_JQ_RAWFILE_WARNED=1
-        printf '%s\n' "[!] Old jq (< 1.6) detected: --rawfile is emulated via --arg; values may appear in the process list." >&2
+        printf '%s\n' "[!] Old jq (< 1.6) detected: --rawfile is emulated via --slurpfile; values no longer pass through argv." >&2
     fi
-    local -a _args=()
-    local _a _name _file _content
-    while (( $# > 0 )); do
-        _a="$1"
-        shift
-        if [[ "$_a" == '--rawfile' && $# -ge 2 ]]; then
-            _name="$1"
-            _file="$2"
-            shift 2
-            if [[ ! -r "$_file" ]]; then
-                printf '%s\n' "[!] jq shim: cannot read --rawfile file: $_file" >&2
-                return 2
+    local -a _all=( "$@" ) _args=() _raw_names=() _raw_files=() _raw_slurp=() _slurp_names=() _slurp_fds=()
+    local _n=${#_all[@]} _i=0 _a='' _prog_idx=-1 _ri=0 _rn='' _rf='' _json='' _content='' _prog='' _prog_new='' _fd='' _newfd=''
+    # Pass 1: collect --rawfile pairs and find the program (first
+    # non-flag arg). Value-taking flags consume their values so a value
+    # literally equal to --rawfile is not mistaken for a flag.
+    while (( _i < _n )); do
+        _a=${_all[_i]}
+        case "$_a" in
+            --rawfile)
+                if (( _i + 2 < _n )); then _raw_names+=("${_all[_i+1]}"); _raw_files+=("${_all[_i+2]}"); _i=$(( _i + 3 )); else _i=$(( _i + 1 )); fi ;;
+            --arg|--argjson|--slurpfile|--argfile) _i=$(( _i + 3 )) ;;
+            -f|--from-file) _prog_idx=-2; _i=$(( _i + 2 )) ;;
+            --indent|-L) _i=$(( _i + 2 )) ;;
+            --)
+                if (( _prog_idx == -1 && _i + 1 < _n )); then _prog_idx=$(( _i + 1 )); fi
+                _i=$(( _i + 1 )) ;;
+            -*)
+                _i=$(( _i + 1 )) ;;
+            *)
+                if (( _prog_idx == -1 )); then _prog_idx=$_i; fi
+                _i=$(( _i + 1 )) ;;
+        esac
+    done
+    # Decide per name: slurpfile + rewrite, or --arg fallback.
+    if (( ${#_raw_names[@]} > 0 )); then
+        _prog=''
+        if (( _prog_idx >= 0 )); then _prog=${_all[_prog_idx]}; fi
+        for _rn in "${_raw_names[@]}"; do
+            if (( _prog_idx >= 0 )) && [[ "$_rn" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] && ! _jq_prog_has_literal_name "$_prog" "$_rn"; then
+                _raw_slurp+=(1); _slurp_names+=("$_rn")
+            else
+                _raw_slurp+=(0)
+                if [[ -z "${_ABOX_JQ_SLURP_FALLBACK_WARNED:-}" ]]; then
+                    _ABOX_JQ_SLURP_FALLBACK_WARNED=1
+                    printf '%s\n' "[!] jq shim: --rawfile '$_rn' cannot use --slurpfile here; falling back to --arg (value visible in the process list)." >&2
+                fi
             fi
-            _content=$(cat -- "$_file" && printf x) || { printf '%s\n' "[!] jq shim: cannot read --rawfile file: $_file" >&2; return 2; }
-            _content=${_content%x}
-            _args+=(--arg "$_name" "$_content")
-        else
-            _args+=("$_a")
-        fi
+        done
+        # Rewrite the program for every slurpfile name: bare $NAME (not
+        # followed by an identifier char or '[') becomes $NAME[0].
+        _prog_new="$_prog"
+        for _rn in "${_slurp_names[@]}"; do
+            _prog_new=$(printf '%s' "$_prog_new" | sed -E "s/\\\$${_rn}([^A-Za-z0-9_\[]|\$)/\\\$${_rn}[0]\\1/g")
+        done
+    fi
+    # Slurpfile pipes are opened below as named fds so they survive
+    # until the real jq runs (a plain <(...) in an assignment is closed
+    # when the statement ends); close them on every return path.
+    trap 'for _fd in "${_slurp_fds[@]}"; do exec {_fd}<&- 2>/dev/null || true; done' RETURN
+    # Pass 2: rebuild argv, reading each --rawfile source exactly once.
+    _i=0; _ri=0
+    while (( _i < _n )); do
+        _a=${_all[_i]}
+        case "$_a" in
+            --rawfile)
+                if (( _i + 2 < _n )); then
+                    _rn=${_all[_i+1]}; _rf=${_all[_i+2]}; _i=$(( _i + 3 ))
+                    if [[ ! -r "$_rf" ]]; then
+                        printf '%s\n' "[!] jq shim: cannot read --rawfile file: $_rf" >&2
+                        return 2
+                    fi
+                    if [[ "${_raw_slurp[_ri]:-0}" == 1 ]]; then
+                        _json=$(command jq -R -s . < "$_rf" 2>/dev/null) || { printf '%s\n' "[!] jq shim: cannot encode --rawfile file: $_rf" >&2; return 2; }
+                        # Duplicate the pipe into a named fd: the fd
+                        # from a plain <(...) would be closed when this
+                        # statement ends, before the real jq runs. A
+                        # fresh variable per pipe: reusing one would
+                        # close the previous pipe.
+                        exec {_newfd}< <(printf '%s' "$_json") || { printf '%s\n' "[!] jq shim: cannot open --slurpfile pipe for: $_rn" >&2; return 2; }
+                        _slurp_fds+=("$_newfd")
+                        _args+=(--slurpfile "$_rn" "/dev/fd/$_newfd")
+                    else
+                        _content=$(cat -- "$_rf" && printf x) || { printf '%s\n' "[!] jq shim: cannot read --rawfile file: $_rf" >&2; return 2; }
+                        _content=${_content%x}
+                        _args+=(--arg "$_rn" "$_content")
+                    fi
+                    _ri=$(( _ri + 1 ))
+                else
+                    _args+=("$_a"); _i=$(( _i + 1 ))
+                fi ;;
+            --arg|--argjson|--slurpfile|--argfile)
+                _args+=("$_a")
+                if (( _i + 1 < _n )); then _args+=("${_all[_i+1]}"); fi
+                if (( _i + 2 < _n )); then _args+=("${_all[_i+2]}"); fi
+                _i=$(( _i + 3 )) ;;
+            -f|--from-file|--indent|-L)
+                _args+=("$_a")
+                if (( _i + 1 < _n )); then _args+=("${_all[_i+1]}"); fi
+                _i=$(( _i + 2 )) ;;
+            *)
+                if (( _i == _prog_idx && ${#_slurp_names[@]} > 0 )); then _args+=("$_prog_new"); else _args+=("$_a"); fi
+                _i=$(( _i + 1 )) ;;
+        esac
     done
     command jq "${_args[@]}"
 }

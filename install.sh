@@ -14449,7 +14449,26 @@ allowPort() {
                     record_native_firewall_rule firewalld "$_sub" "$type" permanent "$_zone" || { _rec_failed=1; break; }
                 done
                 if (( _rec_failed == 1 )); then
-                    for _sub in "${_uncovered_permanent[@]}"; do firewalld_cmd_zone "$_zone" --permanent --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || true; done
+                    # 2qp: mirror the R15C6-02 runtime gate for the
+                    # permanent records — forget a permanent record only
+                    # after its removal succeeded AND absence is
+                    # confirmed (state query == 1). A failed removal
+                    # keeps its record; a later cleanup finds the port
+                    # already absent and forgets the stale record.
+                    _rb_failed=0
+                    for _sub in "${_uncovered_permanent[@]}"; do
+                        _rrc=0
+                        firewalld_cmd_zone "$_zone" --permanent --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || _rrc=1
+                        firewalld_port_state "$_sub" "$type" permanent "$_zone"; _sirc=$?
+                        if (( _rrc == 0 && _sirc == 1 )); then
+                            forget_native_firewall_rule "$_sub" "$type" firewalld "$_zone" "permanent" >/dev/null 2>&1 || true
+                        else
+                            _rb_failed=1
+                        fi
+                    done
+                    if (( _rb_failed == 1 )); then
+                        msg "${YELLOW}$(tprintf fw2_fwd_rb_fail "${fw_spec}/${type}")${NC}"
+                    fi
                     if [[ "$added_runtime" == 1 ]]; then
                         # R15C6-02: forget a runtime record only after its
                         # removal succeeded AND absence is confirmed

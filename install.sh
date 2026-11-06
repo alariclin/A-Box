@@ -43884,27 +43884,80 @@ core_upgrade_transaction_set_status() {
     printf '%s\n' "$1" > "$ABOX_CORE_TX_RB_STATUS" 2>/dev/null || rm -f -- "$ABOX_CORE_TX_RB_STATUS"
 }
 
-core_upgrade_rollback_backup_valid() {
-    local selected="${1:-}" backup_dir="${ABOX_DIR}/backups" _cand=''
-    [[ -d "$backup_dir" ]] || return 1
+# 2ds residual: shared pure-validation gate for a restore archive.
+# Mirrors the pure-validation prefix of restore_latest_backup_silent
+# (selection, F01 private copy, checksum, HMAC, structure, unpack,
+# target-safe, shortcut-safe, init-compatibility, live-manifest) and
+# stops BEFORE any destructive step. The core-upgrade rollback calls
+# it so a backup that passes checksum/HMAC/structure but fails a
+# deeper check aborts BEFORE services are stopped and core families
+# force-removed. Pure validation only: the private work dir is
+# removed on every return path; the restore itself re-validates
+# independently when it runs (the double unpack is deliberate and
+# cheap against destroying a live system on a bad backup).
+restore_backup_prevalidate() {
+    local backup_dir="${1:-$ABOX_DIR/backups}" selected="${2:-}" work root
+    [[ -d "$backup_dir" ]] || { msg "prevalidate gate failed: backup-dir" >&2; return 1; }
     if [[ -n "$selected" ]]; then
-        [[ -f "$selected" && "$(dirname "$selected")" == "$backup_dir" ]] || return 1
+        [[ -f "$selected" && "$(dirname "$selected")" == "$backup_dir" ]] || { msg "prevalidate gate failed: selected-path" >&2; return 1; }
     else
-        # No specific backup: at least one candidate must exist; the
-        # restore itself picks and validates the latest.
-        for _cand in "$backup_dir"/A-Box-backup-*.tar.gz; do
-            if [[ -f "$_cand" && ! -L "$_cand" ]]; then
-                break
-            fi
-            _cand=''
-        done
-        [[ -n "$_cand" ]] || return 1
-        return 0
+        selected=$(python3 -I - "$backup_dir" <<'PY_LATEST_BACKUP'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+items = []
+for p in root.glob('A-Box-backup-*.tar.gz'):
+    try:
+        if p.is_file() and not p.is_symlink():
+            items.append((p.stat().st_mtime_ns, str(p)))
+    except OSError:
+        pass
+if items:
+    print(sorted(items, reverse=True)[0][1])
+PY_LATEST_BACKUP
+) || { msg "prevalidate gate failed: latest-select" >&2; return 1; }
     fi
-    backup_checksum_verify "$selected" "${selected}.sha256" || return 1
-    backup_auth_verify "$selected" "${selected}.hmac" || return 1
-    validate_backup_archive "$selected" || return 1
+    [[ -n "$selected" ]] || { msg "prevalidate gate failed: selected-empty" >&2; return 1; }
+    # F01: verify-and-extract must use one pinned copy, not the
+    # shared $selected path (a writer on the backup dir could
+    # swap it between verify and tar). Copy the archive plus
+    # its sidecars (same basenames, so every derived sidecar
+    # and key path stays correct) into the private work dir
+    # first; every later step uses the copy.
+    work=$(mktemp -d /tmp/A-Box-prevalidate.XXXXXX) || { msg "prevalidate gate failed: workdir" >&2; return 1; }; chmod 700 "$work"
+    local _rbc="$work/$(basename "$selected")" _rbs=''
+    cp -- "$selected" "$_rbc" || { rm -rf "$work"; msg "prevalidate gate failed: private-copy" >&2; return 1; }
+    chmod 600 "$_rbc" || { rm -rf "$work"; msg "prevalidate gate failed: private-copy" >&2; return 1; }
+    for _rbs in "${selected}.sha256" "${selected}.hmac" "${selected}.key"; do
+        if [[ -e "$_rbs" ]]; then
+            cp -- "$_rbs" "$work/$(basename "$_rbs")" || { rm -rf "$work"; msg "prevalidate gate failed: private-copy" >&2; return 1; }
+        fi
+    done
+    backup_checksum_verify "$_rbc" "${_rbc}.sha256" || { rm -rf "$work"; msg "prevalidate gate failed: checksum" >&2; return 1; }
+    backup_auth_verify "$_rbc" "${_rbc}.hmac" || { rm -rf "$work"; msg "prevalidate gate failed: hmac" >&2; return 1; }
+    validate_backup_archive "$_rbc" || { rm -rf "$work"; msg "prevalidate gate failed: archive" >&2; return 1; }
+    tar -xzf "$_rbc" -C "$work" || { rm -rf "$work"; msg "prevalidate gate failed: unpack" >&2; return 1; }
+    root="$work/root"; assert_restore_target_safe "$root" || { rm -rf "$work"; msg "prevalidate gate failed: target-safe" >&2; return 1; }; assert_restore_shortcut_safe "$root" || { rm -rf "$work"; msg "prevalidate gate failed: shortcut-safe" >&2; return 1; }; validate_backup_core_init_compatibility "$root" || { rm -rf "$work"; msg "prevalidate gate failed: init-compat" >&2; return 1; }
+    if [[ -e "$ABOX_CORE_OWNERSHIP" || -L "$ABOX_CORE_OWNERSHIP" ]]; then
+        [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]] || { rm -rf "$work"; msg "prevalidate gate failed: live-manifest" >&2; return 1; }
+        # SYD-B7: validate the live manifest BEFORE any destructive step;
+        # a corrupt live manifest must fail here, not after stop/remove/clear.
+        [[ "$(stat -c %s "$ABOX_CORE_OWNERSHIP" 2>/dev/null || echo 99999999)" -le 4194304 ]] || { rm -rf "$work"; msg "prevalidate gate failed: live-manifest-size" >&2; return 1; }
+        _manifest_rows_valid "$ABOX_CORE_OWNERSHIP" || { rm -rf "$work"; msg "prevalidate gate failed: live-manifest-rows" >&2; return 1; }
+    fi
+    rm -rf "$work"
     return 0
+}
+
+core_upgrade_rollback_backup_valid() {
+    # 2ds residual: the shallow checks below used to live here
+    # (checksum/HMAC/structure on the shared path, candidate-exists
+    # for the no-selected case). They are subsumed by the shared
+    # deep gate, which additionally covers unpack, target-safe,
+    # shortcut-safe, init-compat and the live manifest, all on an
+    # F01 private copy. A non-backup candidate no longer passes.
+    local selected="${1:-}"
+    restore_backup_prevalidate "${ABOX_DIR}/backups" "$selected"
 }
 
 core_upgrade_transaction_rollback() {

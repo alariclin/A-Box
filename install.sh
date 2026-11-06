@@ -29393,8 +29393,13 @@ _nsni_handshake_check() {
     # range start (the inbound listens there) instead of failing
     # every /dev/tcp attempt and rolling back a healthy inbound.
     if [[ "$port" == *-* ]]; then port="${port%%-*}"; fi
-    # R1-12-F2: ''/0.0.0.0 stay on IPv4 loopback; :: goes via ::1.
-    case "$listen" in ''|0.0.0.0) dial='127.0.0.1' ;; '::') dial='::1' ;; *) dial="$listen" ;; esac
+    # TB12: ''/0.0.0.0 stay on IPv4 loopback (R1-12-F2); :: also goes
+    # via IPv4 loopback. A `::` bind is dual-stack, so 127.0.0.1 reaches
+    # the same inbound -- but the REALITY/Vision handshake breaks over
+    # the IPv6 loopback (::1 dial fails with reset/timeout on the test
+    # host while the identical client over IPv4 succeeds; the sing-box
+    # path already dials 127.0.0.1 and passes).
+    case "$listen" in ''|0.0.0.0|'::') dial='127.0.0.1' ;; *) dial="$listen" ;; esac
     [[ -z "$xhost" ]] && xhost="$sni"
     lf="${ABOX_DIR:-/etc/ddr}/standalone-links.d/$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag").link"
     # SYD-B2 E20: derive the pbk from the LIVE server private key first.

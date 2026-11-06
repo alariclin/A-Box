@@ -21104,10 +21104,10 @@ EOF_SVC
     # holds the last good cert from an earlier failed deploy); the
     # backups are removed only after full success.
     if [[ -f "$_tuic_key" && ! -f "${_tuic_key}.A-Box-bak" ]]; then
-        cp -a -- "$_tuic_key" "${_tuic_key}.A-Box-bak" || die 'TUIC key backup failed; refusing to overwrite the live key without a backup.'
+        cp -a -- "$_tuic_key" "${_tuic_key}.A-Box-bak" && chmod 600 -- "${_tuic_key}.A-Box-bak" || die 'TUIC key backup failed; refusing to overwrite the live key without a backup.'
     fi
     if [[ -f "$_tuic_crt" && ! -f "${_tuic_crt}.A-Box-bak" ]]; then
-        cp -a -- "$_tuic_crt" "${_tuic_crt}.A-Box-bak" || die 'TUIC cert backup failed; refusing to overwrite the live cert without a backup.'
+        cp -a -- "$_tuic_crt" "${_tuic_crt}.A-Box-bak" && chmod 600 -- "${_tuic_crt}.A-Box-bak" || die 'TUIC cert backup failed; refusing to overwrite the live cert without a backup.'
     fi
     generate_self_signed_cert_atomically "$_tuic_key" "$_tuic_crt" "$sni" \
         || die "$(tr_msg dp_tuic_cert)"

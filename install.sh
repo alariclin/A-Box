@@ -22469,7 +22469,40 @@ argo_uninstall() {
             return 1
         fi
         tmp_cfg=$(mktemp /tmp/A-Box-singbox-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        if jq '.inbounds |= map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in")) | if (.route.rules | type) == "array" then .route.rules |= map(if (.inbound | type) == "string" then (if (.inbound == "vmess-ws-in" or .inbound == "vless-ws-in") then (if (.invert // false) then del(.inbound) else empty end) else . end) elif (.inbound | type) == "array" then (if ((.inbound | index("vmess-ws-in")) != null or (.inbound | index("vless-ws-in")) != null) then (.inbound |= map(select(. != "vmess-ws-in" and . != "vless-ws-in")) | select((.invert // false) or (.inbound | length > 0))) else . end) else . end) else . end' "$cfg" > "$tmp_cfg" 2>/dev/null \
+        if jq '
+            # 2ku residual: an inverted rule whose ONLY inbound condition
+            # was argo must become FULL-HIT (strip ALL conditions), not
+            # NOT(remaining conditions). invert flips the whole match, so
+            # once the argo condition is gone the rule matches everything.
+            # _strip_conditions keeps only effect fields (sing-box
+            # rule_action doc): any condition field, present or future,
+            # is dropped by construction (allowlist, not denylist).
+            # Logical rules recurse: the transform is compositional, so
+            # AND/OR over transformed sub-rules stays faithful. A logical
+            # rule whose sub-rules all empty out is dropped (it could
+            # never match post-uninstall).
+            def _keep_fields: ["type","invert","action","outbound","method","no_drop","override_address","override_port","network_strategy","network_type","fallback_network_type","fallback_delay","udp_disable_domain_unmapping","udp_connect","udp_timeout","tls_fragment","tls_fragment_fallback_delay","tls_record_fragment","tls_spoof","tls_spoof_method","sniffer","timeout","server","strategy","disable_cache","disable_optimistic_cache","rewrite_ttl","client_subnet","mode","rules"];
+            def _strip_conditions: with_entries(select(.key as $k | _keep_fields | index($k)));
+            def _fixrule:
+              if (.type // "default") == "logical" then
+                if (.rules | type) == "array" then
+                  (.rules |= map(_fixrule)) | select((.rules | length) > 0)
+                else . end
+              elif (.inbound | type) == "string" then
+                if (.inbound == "vmess-ws-in" or .inbound == "vless-ws-in") then
+                  if (.invert // false) then _strip_conditions else empty end
+                else . end
+              elif (.inbound | type) == "array" then
+                if ((.inbound | index("vmess-ws-in")) != null or (.inbound | index("vless-ws-in")) != null) then
+                  (.inbound |= map(select(. != "vmess-ws-in" and . != "vless-ws-in")))
+                  | if (.inbound | length) == 0 then
+                      if (.invert // false) then _strip_conditions else empty end
+                    else . end
+                else . end
+              else . end;
+            .inbounds |= map(select(.tag != "vmess-ws-in" and .tag != "vless-ws-in"))
+            | if (.route.rules | type) == "array" then .route.rules |= map(_fixrule) else . end
+        ' "$cfg" > "$tmp_cfg" 2>/dev/null \
             && /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1; then
             install_file_atomically "$tmp_cfg" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
             prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"

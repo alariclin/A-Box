@@ -23063,7 +23063,6 @@ depend() { need net; }
 EOF_SVC
             chmod +x /etc/init.d/xray || die "$(tr_msg dp_xray_chmod)"
         fi
-        prepare_abox_runtime_permissions xray || die "$(tr_msg dp_xray_runtime)"
     fi
 
     # Build the socks inbound object.
@@ -23080,6 +23079,10 @@ EOF_SVC
         install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
     fi
     rm -f "$tmp_json"
+    # S-SOCKS5-01: prep must run AFTER the seed: it requires
+    # /usr/local/etc/xray/config.json to exist, and the seed is what
+    # creates it when both the binary and the config are missing.
+    prepare_abox_runtime_permissions xray || die "$(tr_msg dp_xray_runtime)"
     local listen_addr=$(wildcard_listen_address)
     tmp_json=$(mktemp /tmp/A-Box-socks5-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --arg user "$user" --rawfile pass <(printf '%s' "$pass") --arg tag "$tag" --arg listen_addr "$listen_addr" \

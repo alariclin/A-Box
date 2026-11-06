@@ -29395,13 +29395,8 @@ _nsni_handshake_check() {
     # range start (the inbound listens there) instead of failing
     # every /dev/tcp attempt and rolling back a healthy inbound.
     if [[ "$port" == *-* ]]; then port="${port%%-*}"; fi
-    # TB12: ''/0.0.0.0 stay on IPv4 loopback (R1-12-F2); :: also goes
-    # via IPv4 loopback. A `::` bind is dual-stack, so 127.0.0.1 reaches
-    # the same inbound -- but the REALITY/Vision handshake breaks over
-    # the IPv6 loopback (::1 dial fails with reset/timeout on the test
-    # host while the identical client over IPv4 succeeds; the sing-box
-    # path already dials 127.0.0.1 and passes).
-    case "$listen" in ''|0.0.0.0|'::') dial='127.0.0.1' ;; *) dial="$listen" ;; esac
+    # R1-12-F2: ''/0.0.0.0 stay on IPv4 loopback; :: goes via ::1.
+    case "$listen" in ''|0.0.0.0) dial='127.0.0.1' ;; '::') dial='::1' ;; *) dial="$listen" ;; esac
     [[ -z "$xhost" ]] && xhost="$sni"
     lf="${ABOX_DIR:-/etc/ddr}/standalone-links.d/$(users_link_stem "$core" "$tag" 2>/dev/null || printf '%s' "$tag").link"
     # SYD-B2 E20: derive the pbk from the LIVE server private key first.
@@ -29493,8 +29488,18 @@ _nsni_handshake_check() {
     done
     if (( up == 0 )); then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; { printf 'nsni-check temp-socks-down\n'; tail -n 20 "$cerr" 2>/dev/null; } >> "$logf" 2>/dev/null || true; rm -f "$cerr" "$cerr_curl"; rm -rf "$tmpd"; return 2; fi
     code=''
+    # TB12: the first handshake after an xray restart takes ~5s (the
+    # server loads its geo/routing data on first use: box measured 5.02s
+    # twice, server-side; sandbox geo rig 5.75s), while steady state is
+    # ~0.04s. A 3s connect-timeout kills that first handshake, and the
+    # second try fails the same way (the slow step never completes
+    # because the first attempt was killed), so the check ALWAYS
+    # false-negatives right after the SNI-apply restart and rolls back
+    # a healthy rename. 10s gives ~2x headroom over the measured ~5s;
+    # the dial address is irrelevant (both ::1 and 127.0.0.1 need the
+    # same ~5s on the first handshake and pass with room to spare).
     for _try in 1 2; do
-        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --noproxy '' --connect-timeout 3 --max-time 10 "https://$sni:$port/" 2>"$cerr_curl")
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --noproxy '' --connect-timeout 10 --max-time 30 "https://$sni:$port/" 2>"$cerr_curl")
         curl_rc=$?
         [[ "$curl_rc" != 0 ]] && code='000'
         printf 'nsni-check try=%s curl-rc=%s http=%s\n' "$_try" "$curl_rc" "$code" >> "$logf" 2>/dev/null || true

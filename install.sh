@@ -29576,6 +29576,25 @@ users_hot_remove() {
         xray-latest) prepare_abox_runtime_read_file "$cfg" xray >/dev/null 2>&1 || true ;;
     esac
     "$bin" api rmu --server "127.0.0.1:$(users_api_port_of "$core")" -tag "$tag" "$email" >/dev/null 2>&1 || return 1
+    # 2mv residual: rmu removes the user from the live daemon, but a
+    # zero-client SS handler still serves the inbound password until
+    # the sync's commit restart reloads the file (where this inbound
+    # is already deleted). Close that window now by removing the
+    # whole inbound from the live daemon when the file no longer has
+    # it. Best-effort: the sync restart is the backstop, so an rmi
+    # failure never changes this function's return. Per-core API port
+    # (not xray_api_remove_inbound's hardcoded 10085): xray-latest
+    # in coexist mode listens on 10086. jq -e rc 1 (jq <= 1.6) or 4
+    # (jq >= 1.7) means "no output", i.e. the tag is absent (same rc
+    # semantics as 2gq); any other non-zero rc is a read error, not a
+    # deletion.
+    if [[ "$proto" == 'shadowsocks' ]]; then
+        local _rmi_rc=0
+        jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1 || _rmi_rc=$?
+        if [[ "$_rmi_rc" == 1 || "$_rmi_rc" == 4 ]]; then
+            "$bin" api rmi --server "127.0.0.1:$(users_api_port_of "$core")" "$tag" >/dev/null 2>&1 || true
+        fi
+    fi
     return 0
 }
 

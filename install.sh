@@ -29498,21 +29498,26 @@ _nsni_handshake_check() {
     # after an xray restart takes ~5s (the server loads its geo/
     # routing data on first use: box measured 5.02s twice, server-side;
     # sandbox geo rig 5.75s), while steady state is ~0.04s. A minimal
-    # server WITHOUT the geo rule serves its first handshake in <3s,
-    # so the 3s connect-timeout only false-negatives on the geo-enabled
-    # path -- but that is the path this check always runs on. A 3s
-    # connect-timeout kills that first handshake, and the second try
-    # fails the same way (the slow step never completes because the
-    # first attempt was killed), so the check false-negatives right
-    # after the SNI-apply restart and rolls back a healthy rename.
-    # 10s gives ~2x headroom over the measured ~5s; the dial address
-    # is irrelevant for the listen addresses tested (both ::1 and
-    # 127.0.0.1 need the same ~5s on the first handshake and pass with
-    # room to spare). A cold path slower than 10s still false-negatives
-    # (12s probe: both tries killed at 10s) -- a known boundary, not a
-    # regression.
+    # server WITHOUT the geo rule serves its first handshake in <3s.
+    # The killing matters: a handshake killed mid-load aborts the
+    # server-side geo-load step, so the next try restarts it and is
+    # killed again -- retries at the SAME timeout can never win. Only
+    # a single attempt longer than the slow step can. A 12s cold-path
+    # probe failed both tries at the old 10s connect-timeout.
+    # Per-try timeouts therefore grow: try 1 (20s connect / 30s max)
+    # already exceeds the measured cold path (5.02s box, 5.75s
+    # sandbox, 12s probe); try 2 (40s / 60s) is the fallback for
+    # slower machines. Loop budget 30+1+60 = 91s worst case. The
+    # boundary is now 40s: a cold path slower than that still
+    # false-negatives -- no finite timeout eliminates it. The dial
+    # address is irrelevant (both ::1 and 127.0.0.1 need the same
+    # ~5s on the first handshake).
     for _try in 1 2; do
-        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --noproxy '' --connect-timeout 10 --max-time 30 "https://$sni:$port/" 2>"$cerr_curl")
+        case "$_try" in
+            1) _ct=20; _mt=30 ;;
+            *) _ct=40; _mt=60 ;;
+        esac
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --noproxy '' --connect-timeout "$_ct" --max-time "$_mt" "https://$sni:$port/" 2>"$cerr_curl")
         curl_rc=$?
         [[ "$curl_rc" != 0 ]] && code='000'
         printf 'nsni-check try=%s curl-rc=%s http=%s\n' "$_try" "$curl_rc" "$code" >> "$logf" 2>/dev/null || true

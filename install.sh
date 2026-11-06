@@ -1388,6 +1388,12 @@ tr_msg() {
         fa:wl_iu_ufw_q) echo 'TCP %s از UFW مجاز شود؟ [Y/N]: ' ;;
         zh-tw:wl_iu_ufw_q) echo '透過 UFW 放行 TCP %s？[Y/N]: ' ;;
         ja:wl_iu_ufw_q) echo 'UFW で TCP %s を許可しますか？[Y/N]: ' ;;
+        zh:wl_iu_ufw_q_https) echo 'HTTPS 模式将通过 Caddy 公开 TCP %s（证书签发另需 80/tcp）；通过 UFW 放行吗？[Y/N]: ' ;;
+        en:wl_iu_ufw_q_https) echo 'HTTPS mode will publish Wallos via Caddy on TCP %s (certificate issuance also needs 80/tcp). Allow it through UFW? [Y/N]: ' ;;
+        ru:wl_iu_ufw_q_https) echo 'В режиме HTTPS Wallos будет опубликован через Caddy на TCP %s (для выпуска сертификата также нужен 80/tcp). Разрешить через UFW? [Y/N]: ' ;;
+        fa:wl_iu_ufw_q_https) echo 'در حالت HTTPS، Wallos از طریق Caddy روی TCP %s منتشر می‌شود (صدور گواهی به 80/tcp هم نیاز دارد). از UFW مجاز شود؟ [Y/N]: ' ;;
+        zh-tw:wl_iu_ufw_q_https) echo 'HTTPS 模式將透過 Caddy 公開 TCP %s（憑證簽發另需 80/tcp）；透過 UFW 放行嗎？[Y/N]: ' ;;
+        ja:wl_iu_ufw_q_https) echo 'HTTPS モードでは Caddy 経由で TCP %s に Wallos を公開します（証明書発行には 80/tcp も必要です）。UFW で許可しますか？[Y/N]: ' ;;
         zh:wl_iu_ufw_fail) echo '无法更新 UFW；请手动添加规则。' ;;
         en:wl_iu_ufw_fail) echo 'Could not update UFW; add the rule manually.' ;;
         ru:wl_iu_ufw_fail) echo 'Не удалось обновить UFW; добавьте правило вручную.' ;;
@@ -1400,6 +1406,18 @@ tr_msg() {
         fa:wl_iu_fwd_q) echo 'TCP %s از firewalld مجاز شود؟ [Y/N]: ' ;;
         zh-tw:wl_iu_fwd_q) echo '透過 firewalld 放行 TCP %s？[Y/N]: ' ;;
         ja:wl_iu_fwd_q) echo 'firewalld で TCP %s を許可しますか？[Y/N]: ' ;;
+        zh:wl_iu_fwd_q_https) echo 'HTTPS 模式将通过 Caddy 公开 TCP %s（证书签发另需 80/tcp）；通过 firewalld 放行吗？[Y/N]: ' ;;
+        en:wl_iu_fwd_q_https) echo 'HTTPS mode will publish Wallos via Caddy on TCP %s (certificate issuance also needs 80/tcp). Allow it through firewalld? [Y/N]: ' ;;
+        ru:wl_iu_fwd_q_https) echo 'В режиме HTTPS Wallos будет опубликован через Caddy на TCP %s (для выпуска сертификата также нужен 80/tcp). Разрешить через firewalld? [Y/N]: ' ;;
+        fa:wl_iu_fwd_q_https) echo 'در حالت HTTPS، Wallos از طریق Caddy روی TCP %s منتشر می‌شود (صدور گواهی به 80/tcp هم نیاز دارد). از firewalld مجاز شود؟ [Y/N]: ' ;;
+        zh-tw:wl_iu_fwd_q_https) echo 'HTTPS 模式將透過 Caddy 公開 TCP %s（憑證簽發另需 80/tcp）；透過 firewalld 放行嗎？[Y/N]: ' ;;
+        ja:wl_iu_fwd_q_https) echo 'HTTPS モードでは Caddy 経由で TCP %s に Wallos を公開します（証明書発行には 80/tcp も必要です）。firewalld で許可しますか？[Y/N]: ' ;;
+        zh:wl_iu_https_fw_abort) echo '已拒绝为 HTTPS 公网入口放行防火墙；本次 HTTPS 切换已中止。' ;;
+        en:wl_iu_https_fw_abort) echo 'Firewall opening for the HTTPS public entry refused; the HTTPS switch is aborted.' ;;
+        ru:wl_iu_https_fw_abort) echo 'Открытие firewall для публичного HTTPS-входа отклонено; переключение на HTTPS прервано.' ;;
+        fa:wl_iu_https_fw_abort) echo 'باز کردن فایروال برای ورودی عمومی HTTPS رد شد؛ تغییر به HTTPS لغو شد.' ;;
+        zh-tw:wl_iu_https_fw_abort) echo '已拒絕為 HTTPS 公網入口放行防火牆；本次 HTTPS 切換已中止。' ;;
+        ja:wl_iu_https_fw_abort) echo 'HTTPS 公開入口のファイアウォール開放が拒否されました。HTTPS への切り替えを中止しました。' ;;
         zh:wl_iu_fwd_fail) echo '无法更新 firewalld；请手动添加规则。' ;;
         en:wl_iu_fwd_fail) echo 'Could not update firewalld; add the rule manually.' ;;
         ru:wl_iu_fwd_fail) echo 'Не удалось обновить firewalld; добавьте правило вручную.' ;;
@@ -39285,6 +39303,31 @@ wallos_install_or_update() {
     fi
     if (( _fw_refused == 1 )) && { [[ -n "$old_bind" ]] || (( _bind_chosen == 1 )); }; then
         bind_address='127.0.0.1'
+    fi
+
+    # 2do: the https front (Caddy on $pubport, plus 80/tcp for ACME
+    # issuance) publishes just like the http front, but the prompt
+    # above only ever fires for a 0.0.0.0 container bind — https mode
+    # sets bind_address=127.0.0.1, so no firewall question was ever
+    # asked and the front went public unasked. Refusal cannot mean
+    # "loopback Caddy" (that defeats https mode), so it aborts the
+    # switch instead: the old container is restored from the upgrade
+    # journal, like the other failure paths at this stage. The
+    # question is interactive-only: confirm_yes_no reads EOF as a
+    # refusal, so an unguarded prompt would abort every automated
+    # https upgrade on a firewalled host.
+    local _fw_https_refused=0
+    if [[ "$wmode" == https ]] && [[ -t 0 ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
+        if confirm_yes_no "$(tprintf wl_iu_ufw_q_https "$pubport")"; then ufw allow "$pubport/tcp" || msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}"; else _fw_https_refused=1; fi
+    elif [[ "$wmode" == https ]] && [[ -t 0 ]] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+        if confirm_yes_no "$(tprintf wl_iu_fwd_q_https "$pubport")"; then firewall-cmd --permanent --add-port="$pubport/tcp" && firewall-cmd --reload || msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}"; else _fw_https_refused=1; fi
+    fi
+    if (( _fw_https_refused == 1 )); then
+        msg "${RED}$(tr_msg wl_iu_https_fw_abort)${NC}"
+        if (( running == 1 )); then
+            wallos_recover_interrupted_upgrade >/dev/null 2>&1 || true
+        fi
+        return 1
     fi
 
     # U217: in the fully non-interactive preserve path (_bind_chosen==0),

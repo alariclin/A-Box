@@ -2170,6 +2170,72 @@ tr_msg() {
         fa:wl_menu_rollback) echo 'بازگشت به نسخه قبلی' ;;
         zh-tw:wl_menu_rollback) echo '回滾到歷史版本' ;;
         ja:wl_menu_rollback) echo '以前のバージョンにロールバック' ;;
+        zh:wl_menu_repair) echo '修复损坏的数据库（空库中毒）' ;;
+        en:wl_menu_repair) echo 'Repair poisoned database (empty-DB race)' ;;
+        ru:wl_menu_repair) echo 'Восстановить повреждённую базу данных (пустая БД)' ;;
+        fa:wl_menu_repair) echo 'تعمیر پایگاه داده آسیب‌دیده (پایگاه خالی)' ;;
+        zh-tw:wl_menu_repair) echo '修復損壞的資料庫（空庫中毒）' ;;
+        ja:wl_menu_repair) echo '破損したデータベースを修復する（空 DB）' ;;
+        zh:wl_repair_healthy) echo '数据库正常，无需修复。' ;;
+        en:wl_repair_healthy) echo 'Database is healthy; no repair needed.' ;;
+        ru:wl_repair_healthy) echo 'База данных исправна; ремонт не требуется.' ;;
+        fa:wl_repair_healthy) echo 'پایگاه داده سالم است؛ نیازی به تعمیر نیست.' ;;
+        zh-tw:wl_repair_healthy) echo '資料庫正常，無需修復。' ;;
+        ja:wl_repair_healthy) echo 'データベースは正常です。修復は不要です。' ;;
+        zh:wl_repair_unknown) echo '数据库不是已知的空库中毒状态，未做任何改动：%s' ;;
+        en:wl_repair_unknown) echo 'Database is not the known poisoned (empty-DB) condition; left untouched: %s' ;;
+        ru:wl_repair_unknown) echo 'База данных не соответствует известному повреждённому состоянию (пустая БД); изменений не внесено: %s' ;;
+        fa:wl_repair_unknown) echo 'پایگاه داده در وضعیت شناخته‌شده آسیب‌دیده (پایگاه خالی) نیست؛ بدون تغییر باقی ماند: %s' ;;
+        zh-tw:wl_repair_unknown) echo '資料庫不是已知的空庫中毒狀態，未做任何更動：%s' ;;
+        ja:wl_repair_unknown) echo 'データベースは既知の破損状態（空 DB）ではありません。変更していません：%s' ;;
+        zh:wl_repair_confirm) echo '将用全新空库模板替换 %s 中的损坏数据库，原数据库会备份到 %s。继续？[Y/N]: ' ;;
+        en:wl_repair_confirm) echo 'Replace the poisoned database in %s with a fresh empty template? The current database will be backed up to %s. Continue? [Y/N]: ' ;;
+        ru:wl_repair_confirm) echo 'Заменить повреждённую базу данных в %s свежим пустым шаблоном? Текущая база будет сохранена в %s. Продолжить? [Y/N]: ' ;;
+        fa:wl_repair_confirm) echo 'پایگاه داده آسیب‌دیده در %s با یک قالب خالی جدید جایگزین شود؟ پایگاه فعلی در %s پشتیبان‌گیری می‌شود. ادامه؟ [Y/N]: ' ;;
+        zh-tw:wl_repair_confirm) echo '將用全新空庫範本替換 %s 中的損壞資料庫，原資料庫會備份到 %s。繼續？[Y/N]: ' ;;
+        ja:wl_repair_confirm) echo '%s 内の破損したデータベースを新しい空テンプレートで置き換えますか？現在のデータベースは %s にバックアップされます。続行しますか？[Y/N]: ' ;;
+        zh:wl_repair_done) echo '数据库已修复并通过健康检查。原数据库已备份到 %s。' ;;
+        en:wl_repair_done) echo 'Database repaired and verified healthy. Original database backed up to %s.' ;;
+        ru:wl_repair_done) echo 'База данных восстановлена, проверка пройдена. Исходная база сохранена в %s.' ;;
+        fa:wl_repair_done) echo 'پایگاه داده تعمیر و سلامت آن تأیید شد. پایگاه اصلی در %s پشتیبان‌گیری شد.' ;;
+        zh-tw:wl_repair_done) echo '資料庫已修復並通過健康檢查。原資料庫已備份到 %s。' ;;
+        ja:wl_repair_done) echo 'データベースを修復し、ヘルスチェックに合格しました。元のデータベースは %s にバックアップされています。' ;;
+        zh:wl_repair_done_nocontainer) echo '数据库已修复（无容器可重启）。原数据库已备份到 %s；重新运行安装即可重建容器。' ;;
+        en:wl_repair_done_nocontainer) echo 'Database repaired (no container to restart). Original database backed up to %s; run the install again to recreate the container.' ;;
+        ru:wl_repair_done_nocontainer) echo 'База данных восстановлена (контейнера для перезапуска нет). Исходная база сохранена в %s; запустите установку ещё раз, чтобы пересоздать контейнер.' ;;
+        fa:wl_repair_done_nocontainer) echo 'پایگاه داده تعمیر شد (کانتینری برای راه‌اندازی مجدد نیست). پایگاه اصلی در %s پشتیبان‌گیری شد؛ برای بازسازی کانتینر، نصب را دوباره اجرا کنید.' ;;
+        zh-tw:wl_repair_done_nocontainer) echo '資料庫已修復（無容器可重啟）。原資料庫已備份到 %s；重新執行安裝即可重建容器。' ;;
+        ja:wl_repair_done_nocontainer) echo 'データベースを修復しました（再起動するコンテナはありません）。元のデータベースは %s にバックアップされています。インストールを再実行してコンテナを再作成してください。' ;;
+        zh:wl_repair_fail) echo '修复后健康检查未通过，容器已保持停止。原数据库保留在 %s，请重试修复或手动恢复。' ;;
+        en:wl_repair_fail) echo 'Post-repair health check failed; container left stopped. Original database preserved at %s; retry the repair or restore manually.' ;;
+        ru:wl_repair_fail) echo 'Проверка после восстановления не пройдена; контейнер оставлен остановленным. Исходная база сохранена в %s; повторите восстановление или восстановите вручную.' ;;
+        fa:wl_repair_fail) echo 'بررسی سلامت پس از تعمیر ناموفق بود؛ کانتینر متوقف باقی ماند. پایگاه اصلی در %s حفظ شده است؛ تعمیر را دوباره امتحان کنید یا به‌صورت دستی بازیابی کنید.' ;;
+        zh-tw:wl_repair_fail) echo '修復後健康檢查未通過，容器已保持停止。原資料庫保留在 %s，請重試修復或手動恢復。' ;;
+        ja:wl_repair_fail) echo '修復後のヘルスチェックに失敗しました。コンテナは停止したままです。元のデータベースは %s に保存されています。修復を再試行するか、手動で復旧してください。' ;;
+        zh:wl_repair_need_confirm) echo '非交互运行：请设置 WALLOS_DB_REPAIR_CONFIRM=1 以确认执行修复。' ;;
+        en:wl_repair_need_confirm) echo 'Non-interactive run: set WALLOS_DB_REPAIR_CONFIRM=1 to authorize the repair.' ;;
+        ru:wl_repair_need_confirm) echo 'Неинтерактивный запуск: установите WALLOS_DB_REPAIR_CONFIRM=1, чтобы разрешить восстановление.' ;;
+        fa:wl_repair_need_confirm) echo 'اجرای غیرتعاملی: برای تأیید تعمیر، WALLOS_DB_REPAIR_CONFIRM=1 را تنظیم کنید.' ;;
+        zh-tw:wl_repair_need_confirm) echo '非互動執行：請設定 WALLOS_DB_REPAIR_CONFIRM=1 以確認執行修復。' ;;
+        ja:wl_repair_need_confirm) echo '非対話実行です。修復を承認するには WALLOS_DB_REPAIR_CONFIRM=1 を設定してください。' ;;
+        zh:wl_repair_abort) echo '修复已中止，未做任何改动：%s' ;;
+        en:wl_repair_abort) echo 'Repair aborted, nothing changed: %s' ;;
+        ru:wl_repair_abort) echo 'Восстановление прервано, изменений не внесено: %s' ;;
+        fa:wl_repair_abort) echo 'تعمیر متوقف شد، هیچ تغییری اعمال نشد: %s' ;;
+        zh-tw:wl_repair_abort) echo '修復已中止，未做任何更動：%s' ;;
+        ja:wl_repair_abort) echo '修復を中止しました。変更はありません：%s' ;;
+        zh:wl_repair_start_fail) echo '数据库已替换，但容器无法重启，容器保持停止。原数据库已备份到 %s。' ;;
+        en:wl_repair_start_fail) echo 'Database replaced, but the container could not be restarted; container left stopped. Original database backed up to %s.' ;;
+        ru:wl_repair_start_fail) echo 'База данных заменена, но контейнер не удалось запустить; контейнер оставлен остановленным. Исходная база сохранена в %s.' ;;
+        fa:wl_repair_start_fail) echo 'پایگاه داده جایگزین شد، اما کانتینر راه‌اندازی مجدد نشد؛ کانتینر متوقف باقی ماند. پایگاه اصلی در %s پشتیبان‌گیری شد.' ;;
+        zh-tw:wl_repair_start_fail) echo '資料庫已替換，但容器無法重啟，容器保持停止。原資料庫已備份到 %s。' ;;
+        ja:wl_repair_start_fail) echo 'データベースは置き換えられましたが、コンテナを再起動できませんでした。コンテナは停止したままです。元のデータベースは %s にバックアップされています。' ;;
+        zh:wl_health_fail_repair_hint) echo '若是空库中毒（首次启动时 1 秒竞态产生的空数据库），请用 Wallos 菜单第 6 项“修复损坏的数据库”进行诊断与修复。' ;;
+        en:wl_health_fail_repair_hint) echo 'If this is the empty-DB poisoning (empty database created in the 1s first-start race), use Wallos menu item 6 "Repair poisoned database" to diagnose and repair it.' ;;
+        ru:wl_health_fail_repair_hint) echo 'Если это повреждение пустой БД (пустая база, созданная в гонке при первом запуске), используйте пункт 6 меню Wallos «Восстановить повреждённую базу данных» для диагностики и восстановления.' ;;
+        fa:wl_health_fail_repair_hint) echo 'اگر این آسیب پایگاه خالی است (پایگاه خالی ایجادشده در رقابت یک‌ثانیه‌ای اولین راه‌اندازی)، برای تشخیص و تعمیر از گزینه ۶ منوی Wallos «تعمیر پایگاه داده آسیب‌دیده» استفاده کنید.' ;;
+        zh-tw:wl_health_fail_repair_hint) echo '若是空庫中毒（首次啟動時 1 秒競態產生的空資料庫），請用 Wallos 選單第 6 項「修復損壞的資料庫」進行診斷與修復。' ;;
+        ja:wl_health_fail_repair_hint) echo 'これが空 DB の破損（初回起動時の 1 秒間の競合で作成された空データベース）である場合は、Wallos メニューの項目 6「破損したデータベースを修復する」で診断と修復を行ってください。' ;;
         zh:wl_remove_q) echo '删除 Wallos 容器并保留 %s 下的数据？[Y/N]: ' ;;
         en:wl_remove_q) echo 'Remove the Wallos container and keep data in %s? [Y/N]: ' ;;
         ru:wl_remove_q) echo 'Удалить контейнер Wallos, сохранив данные в %s? [Y/N]: ' ;;
@@ -39360,6 +39426,264 @@ wallos_preseed_db() { # $1=image
     return 0
 }
 
+# Wallos poisoned-DB diagnosis (read-only) and repair.
+# The 1s first-start race can leave an empty database file: the web
+# service starts before the database is built, a request creates an
+# empty db, the build then skips creating tables, and migration fails
+# on the missing user table. Preseed only prevents new cases; this
+# repairs installs that are already poisoned (GPT-arbitrated design A:
+# explicit submenu action, strict detection (ii), diagnosed/journaled
+# flow, verified backup, atomic replacement, full-health verification).
+
+# Extract the empty-database template from the image into $2 (staged
+# file), validating it independently before the caller may use it.
+# $1 = image, $2 = destination path (parent dir must exist).
+# Returns 0 with a validated template at $2, else 1.
+wallos_db_template_extract() {
+    local image="$1" dest="$2" _cid='' _tmp=''
+    [[ -n "$image" && -n "$dest" ]] || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
+    _cid=$(docker create "$image" 2>/dev/null) || return 1
+    _tmp=$(mktemp -d) || { docker rm "$_cid" >/dev/null 2>&1 || true; return 1; }
+    if ! docker cp "$_cid:/var/www/html/db/wallos.empty.db" "$_tmp/wallos.db" >/dev/null 2>&1; then
+        docker rm "$_cid" >/dev/null 2>&1 || true
+        rm -rf "$_tmp"
+        return 1
+    fi
+    docker rm "$_cid" >/dev/null 2>&1 || true
+    # Validate the template independently: readable SQLite, integrity
+    # ok, base tables present, zero users. A template with users or a
+    # damaged schema must never seed a live database.
+    if true; then
+        python3 -I - "$_tmp/wallos.db" <<'PY_WALLOS_TEMPLATE' 2>/dev/null || { rm -rf "$_tmp"; return 1; }
+import sqlite3, sys
+con = sqlite3.connect('file:%s?mode=ro' % sys.argv[1], uri=True)
+try:
+    ok = con.execute("PRAGMA integrity_check").fetchone()
+    if ok is None or ok[0] != 'ok':
+        raise SystemExit(1)
+    tables = {r[0] for r in con.execute("select name from sqlite_master where type='table'")}
+    if not {'user', 'subscriptions'} <= tables:
+        raise SystemExit(1)
+    if con.execute("select count(*) from user").fetchone()[0] != 0:
+        raise SystemExit(1)
+finally:
+    con.close()
+PY_WALLOS_TEMPLATE
+    fi
+    cp "$_tmp/wallos.db" "$dest" || { rm -rf "$_tmp"; return 1; }
+    rm -rf "$_tmp"
+    [[ -s "$dest" ]] || return 1
+    return 0
+}
+
+# Classify the live database without mutating anything.
+# Prints one word to stdout: poisoned | healthy | unknown:<reason>.
+# Returns 0 = poisoned (repair applicable), 1 = healthy (nothing to
+# do), 2 = unknown (refuse; left untouched).
+# $1 = image to extract the template from (for the schema reference;
+# only needed when the core tables are missing).
+wallos_db_diagnose() {
+    local image="$1" _db="$WALLOS_DIR/db/wallos.db" _tmp='' _cls='' _side=''
+    [[ -f "$_db" && ! -L "$_db" ]] || { printf 'unknown:database file missing or not a regular file\n'; return 2; }
+    command -v python3 >/dev/null 2>&1 || { printf 'unknown:python3 unavailable\n'; return 2; }
+    _tmp=$(mktemp -d) || { printf 'unknown:temp directory creation failed\n'; return 2; }
+    # Classify a COPY, never the live file: opening a SQLite database
+    # (even read-only) can delete its -wal sidecar during recovery, so
+    # diagnosing the live file would destroy the very sidecars the
+    # repair must back up. The copy carries the sidecars along, so
+    # WAL-resident rows are still visible to the classifier.
+    cp -a "$_db" "$_tmp/live.db" || { rm -rf "$_tmp"; printf 'unknown:database copy failed\n'; return 2; }
+    for _side in wallos.db-wal wallos.db-shm wallos.db-journal; do
+        [[ -e "$WALLOS_DIR/db/$_side" ]] && cp -a "$WALLOS_DIR/db/$_side" "$_tmp/live.db-${_side#wallos.db-}" 2>/dev/null || true
+    done
+    # Phase 1: integrity + core tables + rows (no template needed).
+    # A database with both core tables is complete; one with rows in
+    # any table holds user data. Only a rowless database missing a
+    # core table needs the template schema comparison.
+    _cls=$(python3 -I - "$_tmp/live.db" <<'PY_WALLOS_DIAGNOSE1' 2>/dev/null || echo "unknown:inspection failed"
+import sqlite3, sys
+try:
+    con = sqlite3.connect('file:%s?mode=ro' % sys.argv[1], uri=True)
+    try:
+        ok = con.execute("PRAGMA integrity_check").fetchone()
+        if ok is None or ok[0] != 'ok':
+            print("unknown:inspection failed"); sys.exit(0)
+        counts = {}
+        for (t,) in con.execute("select name from sqlite_master where type='table'"):
+            counts[t] = con.execute('select count(*) from "%s"' % t.replace('"', '""')).fetchone()[0]
+    finally:
+        con.close()
+    if 'user' in counts and 'subscriptions' in counts:
+        print("healthy"); sys.exit(0)
+    if any(n > 0 for n in counts.values()):
+        print("unknown:a table contains rows; not the known empty poison"); sys.exit(0)
+    print("need-template")
+except Exception:
+    print("unknown:inspection failed")
+PY_WALLOS_DIAGNOSE1
+)
+    case "$_cls" in
+        healthy) rm -rf "$_tmp"; printf 'healthy\n'; return 1 ;;
+        need-template) : ;;
+        *) rm -rf "$_tmp"; printf '%s\n' "$_cls"; return 2 ;;
+    esac
+    # Phase 2: every schema object must belong to the known template.
+    [[ -n "$image" ]] || { rm -rf "$_tmp"; printf 'unknown:cannot determine the deployed image\n'; return 2; }
+    if ! wallos_db_template_extract "$image" "$_tmp/template.db"; then
+        rm -rf "$_tmp"
+        printf 'unknown:template extraction or validation failed\n'; return 2
+    fi
+    _cls=$(python3 -I - "$_tmp/live.db" "$_tmp/template.db" <<'PY_WALLOS_DIAGNOSE2' 2>/dev/null || echo "unknown:inspection failed"
+import sqlite3, sys
+live, tpl = sys.argv[1], sys.argv[2]
+try:
+    def _objs(path):
+        con = sqlite3.connect('file:%s?mode=ro' % path, uri=True)
+        try:
+            ok = con.execute("PRAGMA integrity_check").fetchone()
+            if ok is None or ok[0] != 'ok':
+                return None
+            return {(r[0], r[1]) for r in con.execute("select type, name from sqlite_master")}
+        finally:
+            con.close()
+    l = _objs(live)
+    t = _objs(tpl)
+    if l is None or t is None:
+        print("unknown:inspection failed"); sys.exit(0)
+    if not l <= t:
+        print("unknown:schema contains objects outside the known template"); sys.exit(0)
+    print("poisoned")
+except Exception:
+    print("unknown:inspection failed")
+PY_WALLOS_DIAGNOSE2
+)
+    rm -rf "$_tmp"
+    case "$_cls" in
+        poisoned) printf 'poisoned\n'; return 0 ;;
+        *) printf '%s\n' "$_cls"; return 2 ;;
+    esac
+}
+
+# Explicit repair of a poisoned Wallos database (menu item 6).
+# Sequence: diagnose (no mutation) -> confirm -> stop container
+# (quiesce writers) -> revalidate (hash + re-diagnose) -> verified
+# backup (db + sidecars) -> stage + validate template in the db dir
+# -> atomic rename over the live db -> start -> full health check.
+# On verification failure the container is left stopped and the
+# backup location is reported; the original (poisoned) database is
+# NOT restored, because restoring it restores a known-broken state.
+# Returns 0 on success (or when no repair was needed), 1 otherwise.
+wallos_db_repair_poisoned() {
+    local _db="$WALLOS_DIR/db/wallos.db" _image='' _diag='' _drc=0
+    local _had_container=0 _was_running=0 _backup_dir='' _journal=''
+    local _staged='' _hash_before='' _hash_after='' _staged_hash='' _ts=''
+    local _side=''
+    (( EUID == 0 )) || { msg "${RED}$(tr_msg wl_iu_need_root)${NC}"; return 1; }
+    if docker container inspect wallos >/dev/null 2>&1; then
+        _had_container=1
+        [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)" == true ]] && _was_running=1
+        _image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+        _image="${_image#docker.io/}"
+    fi
+    if [[ -z "$_image" ]]; then
+        _image=$(wallos_state_value IMAGE 2>/dev/null || true)
+    fi
+    # Same image-reference gate as the upgrade path; a repair must
+    # never become an implicit upgrade by pulling a latest image.
+    [[ "$_image" =~ ^((docker\.io/)?bellamy/wallos:[A-Za-z0-9._-]+|(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}|sha256:[A-Fa-f0-9]{64})$ ]] || _image=''
+    _diag=$(wallos_db_diagnose "$_image"); _drc=$?
+    case "$_drc" in
+        1) msg "${GREEN}$(tr_msg wl_repair_healthy)${NC}"; return 0 ;;
+        0) : ;; # poisoned, continue
+        *) msg "${RED}$(tprintf wl_repair_unknown "$_diag")${NC}"; return 1 ;;
+    esac
+    _hash_before=$(sha256sum "$_db" 2>/dev/null | awk '{print $1}')
+    _ts=$(date +%Y%m%d-%H%M%S)
+    _backup_dir="$WALLOS_DIR/backups/db-repair-$_ts-$$"
+    if [[ -t 0 ]]; then
+        confirm_yes_no "$(tprintf wl_repair_confirm "$_db" "$_backup_dir")" || return 1
+    elif [[ "${WALLOS_DB_REPAIR_CONFIRM:-0}" != 1 ]]; then
+        msg "${RED}$(tr_msg wl_repair_need_confirm)${NC}"; return 1
+    fi
+    # Quiesce writers before any mutation: a running container (or a
+    # restart) writing to the db or its sidecars during the replace
+    # would corrupt the new template or resurrect the poison.
+    if (( _had_container == 1 )) && (( _was_running == 1 )); then
+        docker stop wallos >/dev/null 2>&1 || { msg "${RED}$(tprintf wl_repair_abort 'container stop failed')${NC}"; return 1; }
+    fi
+    # Revalidate after quiescing: the database must still be the same
+    # poisoned file (hash) and still classify as poisoned. A dry-run
+    # diagnosis is not an authorization token.
+    _hash_after=$(sha256sum "$_db" 2>/dev/null | awk '{print $1}')
+    if [[ -z "$_hash_after" || "$_hash_after" != "$_hash_before" ]]; then
+        msg "${RED}$(tprintf wl_repair_abort 'database changed during preparation')${NC}"; return 1
+    fi
+    _diag=$(wallos_db_diagnose "$_image"); _drc=$?
+    if [[ "$_drc" != 0 || "$_diag" != poisoned ]]; then
+        msg "${RED}$(tprintf wl_repair_abort 'database no longer classifies as poisoned')${NC}"; return 1
+    fi
+    # Verified backup (db + SQLite sidecars) before any replacement.
+    # wallos_create_backup is not used here: it requires .abox-state
+    # and logos, which a poisoned install may not have yet.
+    mkdir_private "$WALLOS_DIR/backups" || { msg "${RED}$(tprintf wl_repair_abort 'backup directory creation failed')${NC}"; return 1; }
+    mkdir -m 700 "$_backup_dir" || { msg "${RED}$(tprintf wl_repair_abort 'backup directory creation failed')${NC}"; return 1; }
+    for _side in wallos.db wallos.db-wal wallos.db-shm wallos.db-journal; do
+        [[ -e "$WALLOS_DIR/db/$_side" ]] || continue
+        cp -a "$WALLOS_DIR/db/$_side" "$_backup_dir/$_side" || { msg "${RED}$(tprintf wl_repair_abort 'backup copy failed')${NC}"; return 1; }
+        chmod 600 "$_backup_dir/$_side" || { msg "${RED}$(tprintf wl_repair_abort 'backup permission failed')${NC}"; return 1; }
+    done
+    [[ "$(sha256sum "$_backup_dir/wallos.db" 2>/dev/null | awk '{print $1}')" == "$_hash_after" ]] || { msg "${RED}$(tprintf wl_repair_abort 'backup verification failed')${NC}"; return 1; }
+    # Journal the repair before the destructive step, so an interrupted
+    # run leaves a record of what was backed up.
+    _journal="$WALLOS_DIR/.db-repair-journal"
+    {
+        echo "phase=active"
+        echo "db=$_db"
+        echo "backup=$_backup_dir"
+        echo "image=$_image"
+        echo "started=$(now_iso)"
+    } > "$_journal" || { msg "${RED}$(tprintf wl_repair_abort 'journal write failed')${NC}"; return 1; }
+    chmod 600 "$_journal" || { msg "${RED}$(tprintf wl_repair_abort 'journal permission failed')${NC}"; return 1; }
+    # Stage the validated template in the db directory itself so the
+    # final rename is atomic (same filesystem); never copy over the
+    # live file in place. Move the old sidecars aside first (they are
+    # preserved in the backup) so they cannot attach to the new db.
+    _staged="$WALLOS_DIR/db/.wallos.db.repair-$$"
+    if ! wallos_db_template_extract "$_image" "$_staged"; then
+        rm -f -- "$_journal"
+        msg "${RED}$(tprintf wl_repair_abort 'template extraction/validation failed')${NC}"; return 1
+    fi
+    chown 82:82 "$_staged" || { rm -f -- "$_staged" "$_journal"; msg "${RED}$(tprintf wl_repair_abort 'template ownership failed')${NC}"; return 1; }
+    chmod 600 "$_staged" || { rm -f -- "$_staged" "$_journal"; msg "${RED}$(tprintf wl_repair_abort 'template permission failed')${NC}"; return 1; }
+    _staged_hash=$(sha256sum "$_staged" 2>/dev/null | awk '{print $1}')
+    for _side in wallos.db-wal wallos.db-shm wallos.db-journal; do
+        rm -f -- "$WALLOS_DIR/db/$_side" || { rm -f -- "$_staged" "$_journal"; msg "${RED}$(tprintf wl_repair_abort 'sidecar removal failed')${NC}"; return 1; }
+    done
+    mv -f -- "$_staged" "$_db" || { rm -f -- "$_staged" "$_journal"; msg "${RED}$(tprintf wl_repair_abort 'replacement install failed')${NC}"; return 1; }
+    [[ "$(sha256sum "$_db" 2>/dev/null | awk '{print $1}')" == "$_staged_hash" ]] || { printf '%s\n' "phase=failed" >> "$_journal" 2>/dev/null || true; msg "${RED}$(tprintf wl_repair_fail "$_backup_dir")${NC}"; return 1; }
+    if (( _had_container == 1 )); then
+        docker start wallos >/dev/null 2>&1 || { printf '%s\n' "phase=failed" >> "$_journal" 2>/dev/null || true; msg "${RED}$(tprintf wl_repair_start_fail "$_backup_dir")${NC}"; return 1; }
+        if ! wallos_db_health; then
+            printf '%s\n' "phase=failed" >> "$_journal" 2>/dev/null || true
+            msg "${RED}$(tprintf wl_repair_fail "$_backup_dir")${NC}"; return 1
+        fi
+        rm -f -- "$_journal"
+        msg "${GREEN}$(tprintf wl_repair_done "$_backup_dir")${NC}"
+        return 0
+    fi
+    # No container: the database is repaired; the install recreates
+    # the container. Verify by classification only.
+    _diag=$(wallos_db_diagnose "$_image"); _drc=$?
+    if [[ "$_drc" != 1 || "$_diag" != healthy ]]; then
+        printf '%s\n' "phase=failed" >> "$_journal" 2>/dev/null || true
+        msg "${RED}$(tprintf wl_repair_fail "$_backup_dir")${NC}"; return 1
+    fi
+    rm -f -- "$_journal"
+    msg "${GREEN}$(tprintf wl_repair_done_nocontainer "$_backup_dir")${NC}"
+    return 0
+}
+
 wallos_install_or_update() {
     local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_image_id='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
     (( EUID == 0 )) || { msg "${RED}$(tr_msg wl_iu_need_root)${NC}"; return 1; }
@@ -39830,7 +40154,7 @@ wallos_install_or_update() {
     fi
     if ! wallos_db_health; then
         case "${ABOX_LANG:-zh}" in
-            *) msg "${RED}$(tr_msg wl_health_fail)${NC}" ;;
+            *) msg "${RED}$(tr_msg wl_health_fail)${NC}" ; msg "$(tr_msg wl_health_fail_repair_hint)" ;;
         esac
         return 1
     fi
@@ -40129,6 +40453,7 @@ wallos_menu() {
     msg "${CYAN}3.${NC} $(tr_msg wl_menu_backup)"
     msg "${CYAN}4.${NC} $(tr_msg wl_menu_remove)"
     msg "${CYAN}5.${NC} $(tr_msg wl_menu_rollback)"
+    msg "${CYAN}6.${NC} $(tr_msg wl_menu_repair)"
     msg "${CYAN}0.${NC} $(tr_msg mu_back_word)"
     local c prompt_confirm
     read -r -p "$(tr_msg wl_menu_prompt)" c || return 0
@@ -40163,6 +40488,9 @@ wallos_menu() {
             # Non-interactive: WALLOS_ROLLBACK_VERSION=vX.Y.Z selects directly.
             # Interactive: show retained versions, Enter defaults to 1 (previous).
             _wallos_manual_rollback
+            pause_return ;;
+        6)
+            wallos_db_repair_poisoned
             pause_return ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;

@@ -1522,6 +1522,12 @@ tr_msg() {
         fa:wl_iu_teardown_fail) echo 'ورودی عمومی قدیمی متوقف نشد؛ نصب متوقف شد. سرویس باقی‌مانده را دستی متوقف و دوباره تلاش کنید.' ;;
         zh-tw:wl_iu_teardown_fail) echo '舊公網入口未能停止，安裝已中止：請手動停止殘留的前端服務後再試。' ;;
         ja:wl_iu_teardown_fail) echo '旧パブリック入口を停止できず、インストールを中止しました。残っているフロントエンドサービスを手動で停止して再試行してください。' ;;
+        zh:wl_iu_cftoken_backup_fail) echo '无法备份现有隧道令牌；拒绝拆除旧前端。' ;;
+        en:wl_iu_cftoken_backup_fail) echo 'Failed to back up the existing tunnel token; refusing to tear down the old frontend.' ;;
+        ru:wl_iu_cftoken_backup_fail) echo 'Не удалось сохранить существующий токен туннеля; демонтаж старого фронтенда отменён.' ;;
+        fa:wl_iu_cftoken_backup_fail) echo 'پشتیبان‌گیری از توکن فعلی تونل ممکن نشد؛ حذف فرانت‌اند قدیمی لغو شد.' ;;
+        zh-tw:wl_iu_cftoken_backup_fail) echo '無法備份現有隧道令牌；拒絕拆除舊前端。' ;;
+        ja:wl_iu_cftoken_backup_fail) echo '既存のトンネルトークンをバックアップできませんでした。旧フロントエンドの削除を中止します。' ;;
         zh:wl_iu_ufw_q) echo '通过 UFW 放行 TCP %s？[Y/N]: ' ;;
         en:wl_iu_ufw_q) echo 'Allow TCP %s through UFW? [Y/N]: ' ;;
         ru:wl_iu_ufw_q) echo 'Разрешить TCP %s через UFW? [Y/N]: ' ;;
@@ -38770,31 +38776,54 @@ wallos_recover_interrupted_upgrade() {
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
             -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || return 1
     fi
+    # R15C15-01: restore the pre-replacement tunnel token (if the
+    # upgrade overwrote it) so the recovered tunnel can authenticate.
+    # 2ez follow-up: this MUST precede the R1-15-01 block below — the
+    # cftunnel rebuild calls wallos_cftunnel_setup, which requires a
+    # non-empty token file.
+    if [[ -f "$WALLOS_DIR/.upgrade-transaction.cftoken" && ! -L "$WALLOS_DIR/.upgrade-transaction.cftoken" ]]; then
+        cp -a "$WALLOS_DIR/.upgrade-transaction.cftoken" "$WALLOS_CF_TOKEN_FILE" 2>/dev/null || true
+        chmod 600 "$WALLOS_CF_TOKEN_FILE" 2>/dev/null || true
+    fi
     # R1-15-01: align both frontends with the recovered mode before
     # deleting the journal; never report success on a misaligned
     # frontend (leftover exposure, or a missing required front).
-    local _rec_mode=''
+    # 2ez follow-up: when the required frontend is missing (e.g. the
+    # F02-GATE teardown removed it before a later write_state failure),
+    # rebuild it from the state file — which still holds the old mode /
+    # pubport / cfhost because the failed commit never overwrote it —
+    # instead of refusing and wedging on the kept journal. A failed
+    # rebuild still refuses exactly as before.
+    local _rec_mode='' _rec_pubport='' _rec_cfhost=''
     _rec_mode=$(wallos_state_value MODE 2>/dev/null || true)
     case "$_rec_mode" in
         https)
             wallos_cftunnel_teardown || return 1
-            is_service_running abox-wallos-caddy 2>/dev/null || { msg "${RED}Recovery restored Wallos but its Caddy frontend is not running; refusing to report success, journal kept.${NC}"; return 1; }
+            if ! is_service_running abox-wallos-caddy 2>/dev/null; then
+                _rec_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
+                if [[ ! "$_rec_pubport" =~ ^[0-9]+$ ]] || ! wallos_https_setup "$_rec_pubport" "$old_port"; then
+                    msg "${RED}Recovery restored Wallos but its Caddy frontend is not running; refusing to report success, journal kept.${NC}"
+                    return 1
+                fi
+                is_service_running abox-wallos-caddy 2>/dev/null || { msg "${RED}Recovery restored Wallos but its Caddy frontend is not running; refusing to report success, journal kept.${NC}"; return 1; }
+            fi
             ;;
         cftunnel)
             wallos_https_teardown || return 1
-            is_service_running abox-wallos-cftunnel 2>/dev/null || { msg "${RED}Recovery restored Wallos but its tunnel frontend is not running; refusing to report success, journal kept.${NC}"; return 1; }
+            if ! is_service_running abox-wallos-cftunnel 2>/dev/null; then
+                _rec_cfhost=$(wallos_state_value CFHOST 2>/dev/null || true)
+                if [[ ! "$_rec_cfhost" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || ! wallos_cftunnel_setup "$_rec_cfhost"; then
+                    msg "${RED}Recovery restored Wallos but its tunnel frontend is not running; refusing to report success, journal kept.${NC}"
+                    return 1
+                fi
+                is_service_running abox-wallos-cftunnel 2>/dev/null || { msg "${RED}Recovery restored Wallos but its tunnel frontend is not running; refusing to report success, journal kept.${NC}"; return 1; }
+            fi
             ;;
         *)
             wallos_https_teardown || return 1
             wallos_cftunnel_teardown || return 1
             ;;
     esac
-    # R15C15-01: restore the pre-replacement tunnel token (if the
-    # upgrade overwrote it) so the recovered tunnel can authenticate.
-    if [[ -f "$WALLOS_DIR/.upgrade-transaction.cftoken" && ! -L "$WALLOS_DIR/.upgrade-transaction.cftoken" ]]; then
-        cp -a "$WALLOS_DIR/.upgrade-transaction.cftoken" "$WALLOS_CF_TOKEN_FILE" 2>/dev/null || true
-        chmod 600 "$WALLOS_CF_TOKEN_FILE" 2>/dev/null || true
-    fi
     rm -f -- "$journal" || return 1
     rm -f -- "$WALLOS_DIR/.upgrade-transaction.cftoken" 2>/dev/null || true
     # R5C15-02: refresh the fail2ban jail after rebuild; see
@@ -39399,6 +39428,19 @@ EOF_WCFTRC
         rc-update add abox-wallos-cftunnel default >/dev/null 2>&1 || return 1
         rc-service abox-wallos-cftunnel restart >/dev/null 2>&1 9>&- 10>&- || return 1
     fi
+}
+
+# 2ez follow-up: preserve the tunnel token before the F02-GATE teardown
+# destroys it (wallos_cftunnel_teardown rm -f's the token file). The token
+# is a secret with no other copy: without this backup, a torn-down tunnel
+# could never be rebuilt by recovery. Mirrors the R15C15-01 setup-path
+# backup (same file, same 600). Returns 0 when there is nothing to
+# preserve; a failed backup refuses the switch (caller checks).
+wallos_preserve_cftoken() {
+    [[ -f "$WALLOS_CF_TOKEN_FILE" && ! -L "$WALLOS_CF_TOKEN_FILE" ]] || return 0
+    cp -a "$WALLOS_CF_TOKEN_FILE" "$WALLOS_DIR/.upgrade-transaction.cftoken" || return 1
+    chmod 600 "$WALLOS_DIR/.upgrade-transaction.cftoken" || return 1
+    return 0
 }
 
 wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still running (see S148)
@@ -40227,6 +40269,16 @@ wallos_install_or_update() {
         return 1
     fi
 
+    # 2ez follow-up: back up the tunnel token BEFORE the gate tears the
+    # old frontend down — wallos_cftunnel_teardown deletes the token
+    # file, and without this copy a torn-down tunnel could never be
+    # rebuilt by recovery. A failed backup refuses the switch here,
+    # with the old frontend still serving (fail-closed).
+    if ! wallos_preserve_cftoken; then
+        msg "${RED}$(tr_msg wl_iu_cftoken_backup_fail)${NC}"
+        return 1
+    fi
+
     # F02-GATE-START (R1C15-02): the old public frontend must be gone
     # BEFORE the new mode is committed. The old order committed first
     # and discarded teardown failure (|| true), so a stuck old Caddy /
@@ -40234,11 +40286,12 @@ wallos_install_or_update() {
     # teardown failure fails the switch here, before any commit.
     # Teardown returns 0 when the front is absent (nothing to stop),
     # so a fresh install or a switch from a frontless mode is unaffected.
-    # NOTE: on a later write_state failure the already-torn-down old
-    # front is not rebuilt by rollback (the journal carries no old
-    # mode/front record); re-running install restores it. That rare
-    # disk-failure path is fail-closed for exposure (no orphan entry),
-    # unlike the committed-but-still-serving defect fixed here.
+    # NOTE (2ez follow-up): on a later write_state failure the torn-down
+    # old front IS rebuilt by recovery from the state file, which still
+    # holds the old mode/pubport/cfhost because the failed commit never
+    # overwrote it; the tunnel token is preserved by wallos_preserve_cftoken
+    # above so a torn-down tunnel can authenticate again. A failed
+    # rebuild still refuses and keeps the journal (fail-closed).
     if [[ "$wmode" == https ]]; then
         if ! wallos_cftunnel_teardown >/dev/null 2>&1; then
             msg "${RED}$(tr_msg wl_iu_teardown_fail)${NC}"

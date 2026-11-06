@@ -26700,19 +26700,43 @@ sync_env_ports_after_removal() {
 
 # A protocol's .link file belongs to the core that serves it: deleting
 # one core's inbound must not delete the other core's still-valid link.
-# Returns 0 when the given core still serves that protocol.
+# Returns 0 when the given core still serves that protocol, 1 when it
+# confirmedly does not, 2 when survivorship is unverifiable (jq failed
+# or is missing) — callers must only delete on rc 1.
 _standalone_link_survivor() {
     local key="$1" xcfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" scfg='/etc/sing-box/config.json'
+    local _cfg='' _prog='' _jq_rc=0
     case "$key" in
-        trojan-xray) [[ -f "$xcfg" && ! -L "$xcfg" ]] && jq -e '.inbounds[]? | select(.protocol == "trojan")' "$xcfg" >/dev/null 2>&1 ;;
-        trojan-sb) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select((.tag // "") | test("^trojan-landing(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
-        tuic) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
-        anytls) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select((.tag // "") | test("^anytls-in(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
-        shadowtls) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$"))' "$scfg" >/dev/null 2>&1 ;;
-        socks5-sb) [[ -f "$scfg" && ! -L "$scfg" ]] && jq -e '.inbounds[]? | select(.type == "socks" or .type == "mixed")' "$scfg" >/dev/null 2>&1 ;;
-        socks5-xray) [[ -f "$xcfg" && ! -L "$xcfg" ]] && jq -e '.inbounds[]? | select(.protocol == "socks")' "$xcfg" >/dev/null 2>&1 ;;
+        trojan-xray) _cfg="$xcfg"; _prog='.inbounds[]? | select(.protocol == "trojan")' ;;
+        trojan-sb) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") | test("^trojan-landing(-[0-9]+)?$"))' ;;
+        tuic) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") | test("^tuic-in(-[0-9]+)?$"))' ;;
+        anytls) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") | test("^anytls-in(-[0-9]+)?$"))' ;;
+        shadowtls) _cfg="$scfg"; _prog='.inbounds[]? | select((.tag // "") | test("^shadowtls-in(-[0-9]+)?$"))' ;;
+        socks5-sb) _cfg="$scfg"; _prog='.inbounds[]? | select(.type == "socks" or .type == "mixed")' ;;
+        socks5-xray) _cfg="$xcfg"; _prog='.inbounds[]? | select(.protocol == "socks")' ;;
         *) return 1 ;;
     esac
+    # 2gq: a missing config is a confirmed "not served" (as before); a
+    # jq failure is NOT — it must never be read as "no survivor".
+    # jq -e rc: 0 match; 1 no match (jq <= 1.6); 4 no match (jq >= 1.7);
+    # anything else (2/3/5/127/...) means the check itself failed.
+    [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
+    jq -e "$_prog" "$_cfg" >/dev/null 2>&1 || _jq_rc=$?
+    case "$_jq_rc" in
+        0) return 0 ;;
+        1|4) return 1 ;;
+        *) msg "${YELLOW}[!] standalone link '$key': survivorship unverifiable (jq rc ${_jq_rc}); keeping the link.${NC}" >&2; return 2 ;;
+    esac
+}
+
+# 2gq: delete a standalone link only on confirmed rc 1. An unverifiable
+# check (rc 2) keeps the link: deleting a possibly-live link breaks
+# clients, while a stale leftover is cleaned by rebuild/prune.
+_standalone_link_prune_if_gone() {
+    local key="$1" link="$2" _rc=0
+    _standalone_link_survivor "$key" || _rc=$?
+    if [[ "$_rc" == 1 ]]; then rm -f -- "$link" 2>/dev/null || true; fi
+    return 0
 }
 
 _protocol_removed_side_effects() { # $1 = core, rest = removed tags
@@ -26722,11 +26746,11 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
         case "$tag" in
             vmess-ws-in) argo_remove_unit argo-vmess || true ;;
             vless-ws-in) argo_remove_unit argo-vless || true ;;
-            *trojan*) _standalone_link_survivor trojan-xray || rm -f -- /etc/ddr/standalone-links.d/trojan-xray.link 2>/dev/null || true; _standalone_link_survivor trojan-sb || rm -f -- /etc/ddr/standalone-links.d/trojan-sb.link 2>/dev/null || true ;;
-            *tuic*) _standalone_link_survivor tuic || rm -f -- /etc/ddr/standalone-links.d/tuic.link 2>/dev/null || true ;;
-            *anytls*) _standalone_link_survivor anytls || rm -f -- /etc/ddr/standalone-links.d/anytls.link 2>/dev/null || true ;;
-            *shadowtls*) _standalone_link_survivor shadowtls || rm -f -- /etc/ddr/standalone-links.d/shadowtls.link 2>/dev/null || true ;;
-            *socks*|*mixed*) _standalone_link_survivor socks5-sb || rm -f -- /etc/ddr/standalone-links.d/socks5-sb.link 2>/dev/null || true; _standalone_link_survivor socks5-xray || rm -f -- /etc/ddr/standalone-links.d/socks5-xray.link 2>/dev/null || true ;;
+            *trojan*) _standalone_link_prune_if_gone trojan-xray /etc/ddr/standalone-links.d/trojan-xray.link; _standalone_link_prune_if_gone trojan-sb /etc/ddr/standalone-links.d/trojan-sb.link ;;
+            *tuic*) _standalone_link_prune_if_gone tuic /etc/ddr/standalone-links.d/tuic.link ;;
+            *anytls*) _standalone_link_prune_if_gone anytls /etc/ddr/standalone-links.d/anytls.link ;;
+            *shadowtls*) _standalone_link_prune_if_gone shadowtls /etc/ddr/standalone-links.d/shadowtls.link ;;
+            *socks*|*mixed*) _standalone_link_prune_if_gone socks5-sb /etc/ddr/standalone-links.d/socks5-sb.link; _standalone_link_prune_if_gone socks5-xray /etc/ddr/standalone-links.d/socks5-xray.link ;;
         esac
         [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true
         users_registry_remove "$core" "$tag"
@@ -26736,9 +26760,15 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     # the pair is the script-managed /etc/sing-box/hy2.crt+key;
     # anything else (shared, external path, still referenced) stays.
     if [[ "$core" == 'sing-box' ]]; then
-        if [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json ]] && ! jq -e '.inbounds[]? | select(.type == "hysteria2")' /etc/sing-box/config.json >/dev/null 2>&1; then
-            [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]] && rm -f -- /etc/sing-box/hy2.crt 2>/dev/null || true
-            [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]] && rm -f -- /etc/sing-box/hy2.key 2>/dev/null || true
+        if [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json ]]; then
+            # 2gq: delete the cert pair only when jq confirms no
+            # hysteria2 inbound remains (rc 1/4); a jq failure keeps it.
+            local _hy2_jq_rc=0
+            jq -e '.inbounds[]? | select(.type == "hysteria2")' /etc/sing-box/config.json >/dev/null 2>&1 || _hy2_jq_rc=$?
+            if [[ "$_hy2_jq_rc" == 1 || "$_hy2_jq_rc" == 4 ]]; then
+                [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]] && rm -f -- /etc/sing-box/hy2.crt 2>/dev/null || true
+                [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]] && rm -f -- /etc/sing-box/hy2.key 2>/dev/null || true
+            fi
         fi
     fi
     # U148: reconcile .env listener ports now, before the caller's
@@ -26747,9 +26777,15 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     # The shared Argo link registration goes only when no ws inbound remains.
     if [[ "$core" == 'sing-box' ]]; then
         cfg='/etc/sing-box/config.json'
-        if [[ -f "$cfg" ]] && ! jq -e '.inbounds[]? | select(.tag == "vmess-ws-in" or .tag == "vless-ws-in")' "$cfg" >/dev/null 2>&1; then
-            rm -f -- /etc/ddr/standalone-links.d/argo.link 2>/dev/null || true
-            argo_remove_unit argo || true
+        if [[ -f "$cfg" && ! -L "$cfg" ]]; then
+            # 2gq: remove the shared Argo link only when jq confirms no
+            # ws inbound remains (rc 1/4); a jq failure keeps it.
+            local _argo_jq_rc=0
+            jq -e '.inbounds[]? | select(.tag == "vmess-ws-in" or .tag == "vless-ws-in")' "$cfg" >/dev/null 2>&1 || _argo_jq_rc=$?
+            if [[ "$_argo_jq_rc" == 1 || "$_argo_jq_rc" == 4 ]]; then
+                rm -f -- /etc/ddr/standalone-links.d/argo.link 2>/dev/null || true
+                argo_remove_unit argo || true
+            fi
         fi
     fi
     return 0

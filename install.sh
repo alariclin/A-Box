@@ -21465,8 +21465,17 @@ EOF_SVC
         > "$tmp_json" || die "$(tr_msg dp_shadowtls_json)"
 
     local tmp_cfg cfg_bak=''
+    # 2dh: same guard as R14C9-01, for the outer tag. An independent
+    # inbound that merely shares $tag must not be silently replaced by
+    # the merge below; only the existing ShadowTLS pair (or an unoccupied
+    # tag) proceeds. The "updating its config" notice is shown only for
+    # the genuine pair.
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        msg "${YELLOW}$(tr_msg shadowtls_exists)${NC}"
+        if jq -e --arg t "$tag" --arg it "$itag" '.inbounds[]? | select(.tag==$t and .type=="shadowtls" and .detour==$it)' "$cfg" >/dev/null 2>&1; then
+            msg "${YELLOW}$(tr_msg shadowtls_exists)${NC}"
+        else
+            die "Tag '$tag' is already used by an independent inbound (not part of a ShadowTLS pair with '$itag'); refusing to replace it. Remove or rename that inbound, or deploy with a different tag."
+        fi
     fi
     # R14C9-01: refuse if the companion tag is already used by an inbound
     # that is not part of the existing ShadowTLS pair with $tag; the merge

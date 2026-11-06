@@ -40789,6 +40789,11 @@ xray_latest_deploy_trio() {
     # U130: firewall steps run before the backup is deleted; on failure the
     # deploy is rolled back (old config + old links stay valid) instead of
     # leaving a live new config with no backup and no links.
+    # 2gp: gate fw_done like the single deployer — record only rules this
+    # deploy newly created; a pre-owned rule must never be revoked by a
+    # later rollback.
+    local vp_preowned=0 xp_preowned=0 sp2_tcp_preowned=0 sp2_udp_preowned=0
+    _xl_fw_owned "$vp" tcp && vp_preowned=1
     if ! allowPort "$vp" tcp; then
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
             rm -f "$bak"
@@ -40799,7 +40804,8 @@ xray_latest_deploy_trio() {
         fi
         return 1
     fi
-    fw_done="$vp/tcp"
+    (( vp_preowned == 0 )) && fw_done="$vp/tcp"
+    _xl_fw_owned "$xp" tcp && xp_preowned=1
     if ! allowPort "$xp" tcp; then
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
             rm -f "$bak"
@@ -40810,7 +40816,8 @@ xray_latest_deploy_trio() {
         fi
         return 1
     fi
-    fw_done="$fw_done $xp/tcp"
+    (( xp_preowned == 0 )) && fw_done="$fw_done $xp/tcp"
+    _xl_fw_owned "$sp2" tcp && sp2_tcp_preowned=1
     if ! allowPort "$sp2" tcp; then
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
             rm -f "$bak"
@@ -40821,7 +40828,8 @@ xray_latest_deploy_trio() {
         fi
         return 1
     fi
-    fw_done="$fw_done $sp2/tcp"
+    (( sp2_tcp_preowned == 0 )) && fw_done="$fw_done $sp2/tcp"
+    _xl_fw_owned "$sp2" udp && sp2_udp_preowned=1
     if ! allowPort "$sp2" udp; then
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
             rm -f "$bak"
@@ -40832,7 +40840,7 @@ xray_latest_deploy_trio() {
         fi
         return 1
     fi
-    fw_done="$fw_done $sp2/udp"
+    (( sp2_udp_preowned == 0 )) && fw_done="$fw_done $sp2/udp"
     if ! save_firewall_rules; then
         if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
             rm -f "$bak"

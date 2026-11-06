@@ -2559,12 +2559,12 @@ tr_msg() {
         fa:cu_wipe_noscript) echo 'نسخه‌ای از اسکریپت برای نگه‌داشتن یافت نشد؛ خود اسکریپت حفظ نشد (برای بازیابی دوباره دانلود کنید).' ;;
         zh-tw:cu_wipe_noscript) echo '未找到可保留的腳本副本，腳本本體未保留（可重新下載腳本恢復）。' ;;
         ja:cu_wipe_noscript) echo '保持するスクリプトのコピーが見つからず、スクリプト本体は保持されませんでした（再ダウンロードで復元できます）。' ;;
-        zh:cu_proxy_done) echo '代理系统已销毁，保留 A-Box 托管的 sb 入口。' ;;
-        en:cu_proxy_done) echo 'The proxy system was destroyed; the A-Box-managed sb entry was kept.' ;;
-        ru:cu_proxy_done) echo 'Прокси-система уничтожена; точка входа sb под управлением A-Box сохранена.' ;;
-        fa:cu_proxy_done) echo 'سیستم پروکسی نابود شد؛ ورودی sb مدیریت‌شده A-Box نگه داشته شد.' ;;
-        zh-tw:cu_proxy_done) echo '代理系統已銷毀，保留 A-Box 託管的 sb 入口。' ;;
-        ja:cu_proxy_done) echo 'プロキシシステムを破棄しました。A-Box 管理の sb 入口は保持されます。' ;;
+        zh:cu_proxy_done) echo '代理系统已销毁，保留快捷键入口（ab / abox）。' ;;
+        en:cu_proxy_done) echo 'The proxy system was destroyed; the shortcut entries (ab / abox) were kept.' ;;
+        ru:cu_proxy_done) echo 'Прокси-система уничтожена; точки входа ab / abox сохранены.' ;;
+        fa:cu_proxy_done) echo 'سیستم پروکسی نابود شد؛ ورودی‌های ab / abox نگه داشته شدند.' ;;
+        zh-tw:cu_proxy_done) echo '代理系統已銷毀，保留快捷鍵入口（ab / abox）。' ;;
+        ja:cu_proxy_done) echo 'プロキシシステムを破棄しました。ショートカット入口（ab / abox）は保持されます。' ;;
         zh:vg_init_fail) echo '初始化系统环境失败。' ;;
         en:vg_init_fail) echo 'Failed to initialize the system environment.' ;;
         ru:vg_init_fail) echo 'Не удалось инициализировать системное окружение.' ;;
@@ -2625,18 +2625,18 @@ tr_msg() {
         fa:um_title) echo 'سیستم حذف عمیق' ;;
         zh-tw:um_title) echo '深度卸載系統' ;;
         ja:um_title) echo 'ディープアンインストール' ;;
-        zh:um_item1) echo '全部清场（保留脚本）— 清除全部功能、配置、Wallos 与数据，仅保留脚本本体与 sb 入口' ;;
-        en:um_item1) echo 'Full wipe, keep the script - remove all features, configs, Wallos and data; keep only the script itself and the sb entry' ;;
-        ru:um_item1) echo 'Полная зачистка (сохранить скрипт) - удалить все функции, конфигурации, Wallos и данные; оставить только сам скрипт и вход sb' ;;
-        fa:um_item1) echo 'پاک‌سازی کامل (نگه‌داشتن اسکریپت) - حذف همه قابلیت‌ها، پیکربندی‌ها، Wallos و داده‌ها؛ فقط خود اسکریپت و ورودی sb می‌ماند' ;;
-        zh-tw:um_item1) echo '全部清場（保留腳本）— 清除全部功能、設定、Wallos 與資料，僅保留腳本本體與 sb 入口' ;;
-        ja:um_item1) echo '完全クリーン（スクリプト保持）- 全機能・設定・Wallos・データを削除し、スクリプト本体と sb 入口のみ残す' ;;
-        zh:um_item2) echo '全部清场（含脚本）— 连脚本本体与 sb 入口一并删除，恢复到未安装状态' ;;
-        en:um_item2) echo 'Full wipe including the script - also delete the script itself and the sb entry, restoring the pre-install state' ;;
-        ru:um_item2) echo 'Полная зачистка (включая скрипт) - удалить также сам скрипт и вход sb, вернув состояние до установки' ;;
-        fa:um_item2) echo 'پاک‌سازی کامل (شامل اسکریپت) - خود اسکریپت و ورودی sb نیز حذف می‌شود و وضعیت پیش از نصب بازمی‌گردد' ;;
-        zh-tw:um_item2) echo '全部清場（含腳本）— 連腳本本體與 sb 入口一併刪除，恢復到未安裝狀態' ;;
-        ja:um_item2) echo '完全クリーン（スクリプト含む）- スクリプト本体と sb 入口も削除し、未インストール状態に戻す' ;;
+        zh:um_item1) echo '全部清场（保留脚本）— 清除全部功能、配置、Wallos 与数据，仅保留脚本本体与快捷键入口（ab / abox）' ;;
+        en:um_item1) echo 'Full wipe, keep the script - remove all features, configs, Wallos and data; keep only the script itself and the shortcut entries (ab / abox)' ;;
+        ru:um_item1) echo 'Полная зачистка (сохранить скрипт) - удалить все функции, конфигурации, Wallos и данные; оставить только сам скрипт и входы ab / abox' ;;
+        fa:um_item1) echo 'پاک‌سازی کامل (نگه‌داشتن اسکریپت) - حذف همه قابلیت‌ها، پیکربندی‌ها، Wallos و داده‌ها؛ فقط خود اسکریپت و ورودی‌های ab / abox می‌ماند' ;;
+        zh-tw:um_item1) echo '全部清場（保留腳本）— 清除全部功能、設定、Wallos 與資料，僅保留腳本本體與快捷鍵入口（ab / abox）' ;;
+        ja:um_item1) echo '完全クリーン（スクリプト保持）- 全機能・設定・Wallos・データを削除し、スクリプト本体とショートカット入口（ab / abox）のみ残す' ;;
+        zh:um_item2) echo '全部清场（含脚本）— 连脚本本体与快捷键入口（ab / abox）一并删除，恢复到未安装状态' ;;
+        en:um_item2) echo 'Full wipe including the script - also delete the script itself and the shortcut entries (ab / abox), restoring the pre-install state' ;;
+        ru:um_item2) echo 'Полная зачистка (включая скрипт) - удалить также сам скрипт и входы ab / abox, вернув состояние до установки' ;;
+        fa:um_item2) echo 'پاک‌سازی کامل (شامل اسکریپت) - خود اسکریپت و ورودی‌های ab / abox نیز حذف می‌شود و وضعیت پیش از نصب بازمی‌گردد' ;;
+        zh-tw:um_item2) echo '全部清場（含腳本）— 連腳本本體與快捷鍵入口（ab / abox）一併刪除，恢復到未安裝狀態' ;;
+        ja:um_item2) echo '完全クリーン（スクリプト含む）- スクリプト本体とショートカット入口（ab / abox）も削除し、未インストール状態に戻す' ;;
         zh:um_back) echo '取消并返回' ;;
         en:um_back) echo 'Cancel and back' ;;
         ru:um_back) echo 'Отмена и назад' ;;
@@ -11758,7 +11758,7 @@ shortcut_migrate_clear() {
 }
 
 # shortcut_build_wrapper <tmpfile>
-# Writes the wrapper content (same semantics as the current sb wrapper:
+# Writes the wrapper content (same semantics as the current ab/abox wrapper:
 # managed marker, root direct exec, sudo fallback, "$@" passthrough).
 # Returns 0 on success.
 shortcut_build_wrapper() {
@@ -26322,8 +26322,10 @@ do_cleanup() {
     if [[ "${1:-}" == full || "${1:-}" == wipe ]]; then
         # Wipe tier (keep the script): stash the persisted script copy
         # inside the transaction dir before ABOX_DIR is destroyed; it
-        # is restored below as the sole resident and sb is recreated.
-        # Full tier: the sb shortcut goes with everything else.
+        # is restored below as the sole resident and the managed
+        # shortcuts (ab / abox) are re-installed by setup_shortcut.
+        # Full tier: the managed shortcuts go with everything else;
+        # a pre-existing /usr/local/bin/sb is out of scope and left alone.
         local _wipe_script_copy=''
         local _wipe_copy_failed=0
         if [[ "${1:-}" == wipe ]]; then
@@ -41786,7 +41788,7 @@ view_config() {
         generate_qr "$CLASH_SCHEME"
     else
         msg "${YELLOW}未设置 ABOX_CLASH_SUB_URL。若需要 Clash 扫码导入，请把 ${CLASH_FILE} 发布到 HTTPS 后执行：${NC}"
-        msg "${CYAN}ABOX_CLASH_SUB_URL='https://example.com/A-Box-clash.yaml' sb${NC}"
+        msg "${CYAN}ABOX_CLASH_SUB_URL='https://example.com/A-Box-clash.yaml' ab${NC}"
     fi
 
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"

@@ -53,7 +53,7 @@ cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
 - 新規の Alpine では、先に `apk add --no-cache bash curl sudo` を実行してください。
-- 初回実行後は `sb` と入力すればメニューを再度開けます。
+- 初回実行後は `ab`（または `abox`）と入力すればメニューを再度開けます。
 - 本番利用の前に、ダウンロードしたファイルを独立した信頼できる経路で確認してください。
 
 ## メインメニュー

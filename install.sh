@@ -21921,7 +21921,11 @@ argo_write_unit() {
     fi
     if [[ "$name" == 'argo' ]]; then
         env_file_line='EnvironmentFile=/etc/ddr/.argo-token'
-        rc_env_line='command_env="TUNNEL_TOKEN=$(cut -d= -f2- /etc/ddr/.argo-token 2>/dev/null)"'
+        # C9-N02: command_env is not an OpenRC runscript variable
+        # (openrc-run(8) lists no such entry) — a plain assignment
+        # never reaches the daemon. export does: the runscript shell's
+        # exported variables are inherited by start-stop-daemon's child.
+        rc_env_line='export TUNNEL_TOKEN="$(cut -d= -f2- /etc/ddr/.argo-token 2>/dev/null)"'
     fi
     rm -f "/etc/ddr/${name}.log"
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
@@ -38728,7 +38732,9 @@ EOF_WCADDY
 description="A-Box Wallos HTTPS front (Caddy)"
 command="/usr/local/bin/caddy"
 command_args="run --config /etc/ddr/wallos-caddy.json"
-command_env="XDG_DATA_HOME=/etc/ddr/wallos-caddy/data XDG_CONFIG_HOME=/etc/ddr/wallos-caddy/conf"
+# C9-N02: command_env is not an OpenRC runscript variable; export the
+# daemon's environment instead (see argo_write_unit).
+export XDG_DATA_HOME=/etc/ddr/wallos-caddy/data XDG_CONFIG_HOME=/etc/ddr/wallos-caddy/conf
 command_background="yes"
 pidfile="/run/abox-wallos-caddy.pid"
 output_log="/etc/ddr/abox-wallos-caddy.log"
@@ -38995,10 +39001,11 @@ depend() { need net; }
 start_pre() {
     # Read the token at start time so the secret lives only in the
     # 600 token file, never in this script (systemd parity).
+    # C9-N02: export, not command_env (not an OpenRC variable).
     local _tok=''
     _tok=$(sed -n 's/^TUNNEL_TOKEN=//p' /etc/ddr/.wallos-cf-token 2>/dev/null | head -1)
     [ -n "$_tok" ] || return 1
-    command_env="TUNNEL_TOKEN=$_tok"
+    export TUNNEL_TOKEN="$_tok"
 }
 EOF_WCFTRC
         chmod +x "/etc/init.d/abox-wallos-cftunnel" || return 1

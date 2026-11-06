@@ -2559,12 +2559,12 @@ tr_msg() {
         fa:cu_wipe_noscript) echo 'نسخه‌ای از اسکریپت برای نگه‌داشتن یافت نشد؛ خود اسکریپت حفظ نشد (برای بازیابی دوباره دانلود کنید).' ;;
         zh-tw:cu_wipe_noscript) echo '未找到可保留的腳本副本，腳本本體未保留（可重新下載腳本恢復）。' ;;
         ja:cu_wipe_noscript) echo '保持するスクリプトのコピーが見つからず、スクリプト本体は保持されませんでした（再ダウンロードで復元できます）。' ;;
-        zh:cu_proxy_done) echo '代理系统已销毁，保留 A-Box 托管的 sb 入口。' ;;
-        en:cu_proxy_done) echo 'The proxy system was destroyed; the A-Box-managed sb entry was kept.' ;;
-        ru:cu_proxy_done) echo 'Прокси-система уничтожена; точка входа sb под управлением A-Box сохранена.' ;;
-        fa:cu_proxy_done) echo 'سیستم پروکسی نابود شد؛ ورودی sb مدیریت‌شده A-Box نگه داشته شد.' ;;
-        zh-tw:cu_proxy_done) echo '代理系統已銷毀，保留 A-Box 託管的 sb 入口。' ;;
-        ja:cu_proxy_done) echo 'プロキシシステムを破棄しました。A-Box 管理の sb 入口は保持されます。' ;;
+        zh:cu_proxy_done) echo '代理系统已销毁，保留 A-Box 托管的快捷键入口。' ;;
+        en:cu_proxy_done) echo 'The proxy system was destroyed; the A-Box-managed shortcut entries were kept.' ;;
+        ru:cu_proxy_done) echo 'Прокси-система уничтожена; точки входа под управлением A-Box сохранены.' ;;
+        fa:cu_proxy_done) echo 'سیستم پروکسی نابود شد؛ ورودی‌های مدیریت‌شده A-Box نگه داشته شدند.' ;;
+        zh-tw:cu_proxy_done) echo '代理系統已銷毀，保留 A-Box 託管的快捷鍵入口。' ;;
+        ja:cu_proxy_done) echo 'プロキシシステムを破棄しました。A-Box 管理のショートカット入口は保持されます。' ;;
         zh:vg_init_fail) echo '初始化系统环境失败。' ;;
         en:vg_init_fail) echo 'Failed to initialize the system environment.' ;;
         ru:vg_init_fail) echo 'Не удалось инициализировать системное окружение.' ;;
@@ -2625,18 +2625,18 @@ tr_msg() {
         fa:um_title) echo 'سیستم حذف عمیق' ;;
         zh-tw:um_title) echo '深度卸載系統' ;;
         ja:um_title) echo 'ディープアンインストール' ;;
-        zh:um_item1) echo '全部清场（保留脚本）— 清除全部功能、配置、Wallos 与数据，仅保留脚本本体与 sb 入口' ;;
-        en:um_item1) echo 'Full wipe, keep the script - remove all features, configs, Wallos and data; keep only the script itself and the sb entry' ;;
-        ru:um_item1) echo 'Полная зачистка (сохранить скрипт) - удалить все функции, конфигурации, Wallos и данные; оставить только сам скрипт и вход sb' ;;
-        fa:um_item1) echo 'پاک‌سازی کامل (نگه‌داشتن اسکریپت) - حذف همه قابلیت‌ها، پیکربندی‌ها، Wallos و داده‌ها؛ فقط خود اسکریپت و ورودی sb می‌ماند' ;;
-        zh-tw:um_item1) echo '全部清場（保留腳本）— 清除全部功能、設定、Wallos 與資料，僅保留腳本本體與 sb 入口' ;;
-        ja:um_item1) echo '完全クリーン（スクリプト保持）- 全機能・設定・Wallos・データを削除し、スクリプト本体と sb 入口のみ残す' ;;
-        zh:um_item2) echo '全部清场（含脚本）— 连脚本本体与 sb 入口一并删除，恢复到未安装状态' ;;
-        en:um_item2) echo 'Full wipe including the script - also delete the script itself and the sb entry, restoring the pre-install state' ;;
-        ru:um_item2) echo 'Полная зачистка (включая скрипт) - удалить также сам скрипт и вход sb, вернув состояние до установки' ;;
-        fa:um_item2) echo 'پاک‌سازی کامل (شامل اسکریپت) - خود اسکریپت و ورودی sb نیز حذف می‌شود و وضعیت پیش از نصب بازمی‌گردد' ;;
-        zh-tw:um_item2) echo '全部清場（含腳本）— 連腳本本體與 sb 入口一併刪除，恢復到未安裝狀態' ;;
-        ja:um_item2) echo '完全クリーン（スクリプト含む）- スクリプト本体と sb 入口も削除し、未インストール状態に戻す' ;;
+        zh:um_item1) echo '全部清场（保留脚本）— 清除全部功能、配置、Wallos 与数据，仅保留脚本本体与 A-Box 托管的快捷键入口' ;;
+        en:um_item1) echo 'Full wipe, keep the script - remove all features, configs, Wallos and data; keep only the script itself and the A-Box-managed shortcut entries' ;;
+        ru:um_item1) echo 'Полная зачистка (сохранить скрипт) - удалить все функции, конфигурации, Wallos и данные; оставить только сам скрипт и точки входа под управлением A-Box' ;;
+        fa:um_item1) echo 'پاک‌سازی کامل (نگه‌داشتن اسکریپت) - حذف همه قابلیت‌ها، پیکربندی‌ها، Wallos و داده‌ها؛ فقط خود اسکریپت و ورودی‌های مدیریت‌شده A-Box می‌ماند' ;;
+        zh-tw:um_item1) echo '全部清場（保留腳本）— 清除全部功能、設定、Wallos 與資料，僅保留腳本本體與 A-Box 託管的快捷鍵入口' ;;
+        ja:um_item1) echo '完全クリーン（スクリプト保持）- 全機能・設定・Wallos・データを削除し、スクリプト本体と A-Box 管理のショートカット入口のみ残す' ;;
+        zh:um_item2) echo '全部清场（含脚本）— 连脚本本体与 A-Box 托管的快捷键入口一并删除，恢复到未安装状态' ;;
+        en:um_item2) echo 'Full wipe including the script - also delete the script itself and the A-Box-managed shortcut entries, restoring the pre-install state' ;;
+        ru:um_item2) echo 'Полная зачистка (включая скрипт) - удалить также сам скрипт и точки входа под управлением A-Box, вернув состояние до установки' ;;
+        fa:um_item2) echo 'پاک‌سازی کامل (شامل اسکریپت) - خود اسکریپت و ورودی‌های مدیریت‌شده A-Box نیز حذف می‌شود و وضعیت پیش از نصب بازمی‌گردد' ;;
+        zh-tw:um_item2) echo '全部清場（含腳本）— 連腳本本體與 A-Box 託管的快捷鍵入口一併刪除，恢復到未安裝狀態' ;;
+        ja:um_item2) echo '完全クリーン（スクリプト含む）- スクリプト本体と A-Box 管理のショートカット入口も削除し、未インストール状態に戻す' ;;
         zh:um_back) echo '取消并返回' ;;
         en:um_back) echo 'Cancel and back' ;;
         ru:um_back) echo 'Отмена и назад' ;;
@@ -6135,6 +6135,198 @@ tr_msg() {
         ru:sc_refuse) echo 'Отказ от перезаписи ярлыка, не принадлежащего A-Box: %s' ;;
         fa:sc_refuse) echo 'بازنویسی میانبر غیر A-Box رد شد: %s' ;;
         ja:sc_refuse) echo 'A-Box でないショートカットの上書きを拒否します： %s' ;;
+        zh:sc_prompt_head) echo '快捷键 %s 冲突：%s' ;;
+        en:sc_prompt_head) echo 'Shortcut %s conflicts: %s' ;;
+        ru:sc_prompt_head) echo 'Конфликт ярлыка %s: %s' ;;
+        fa:sc_prompt_head) echo 'تداخل میانبر %s: %s' ;;
+        zh-tw:sc_prompt_head) echo '快捷鍵 %s 衝突：%s' ;;
+        ja:sc_prompt_head) echo 'ショートカット %s が競合しています：%s' ;;
+        zh:sc_prompt_opt1) echo '  [1] 改用 %s' ;;
+        en:sc_prompt_opt1) echo '  [1] Use %s instead' ;;
+        ru:sc_prompt_opt1) echo '  [1] Использовать %s' ;;
+        fa:sc_prompt_opt1) echo '  [1] استفاده از %s' ;;
+        zh-tw:sc_prompt_opt1) echo '  [1] 改用 %s' ;;
+        ja:sc_prompt_opt1) echo '  [1] %s を使う' ;;
+        zh:sc_prompt_opt2) echo '  [2] 输入自定义名称' ;;
+        en:sc_prompt_opt2) echo '  [2] Enter a custom name' ;;
+        ru:sc_prompt_opt2) echo '  [2] Ввести своё имя' ;;
+        fa:sc_prompt_opt2) echo '  [2] وارد کردن نام دلخواه' ;;
+        zh-tw:sc_prompt_opt2) echo '  [2] 輸入自訂名稱' ;;
+        ja:sc_prompt_opt2) echo '  [2] カスタム名を入力' ;;
+        zh:sc_prompt_opt0) echo '  [0] 跳过该名称（保留现有启动方式）' ;;
+        en:sc_prompt_opt0) echo '  [0] Skip this name (keep the current way to start)' ;;
+        ru:sc_prompt_opt0) echo '  [0] Пропустить это имя (сохранить текущий способ запуска)' ;;
+        fa:sc_prompt_opt0) echo '  [0] رد شدن از این نام (حفظ روش فعلی راه‌اندازی)' ;;
+        zh-tw:sc_prompt_opt0) echo '  [0] 跳過該名稱（保留現有啟動方式）' ;;
+        ja:sc_prompt_opt0) echo '  [0] この名前をスキップ（現在の起動方法を維持）' ;;
+        zh:sc_prompt_choice) echo '请选择 [0/1/2]：' ;;
+        en:sc_prompt_choice) echo 'Choose [0/1/2]: ' ;;
+        ru:sc_prompt_choice) echo 'Выберите [0/1/2]: ' ;;
+        fa:sc_prompt_choice) echo 'انتخاب کنید [0/1/2]: ' ;;
+        zh-tw:sc_prompt_choice) echo '請選擇 [0/1/2]：' ;;
+        ja:sc_prompt_choice) echo '選択してください [0/1/2]：' ;;
+        zh:sc_custom_prompt) echo '请输入自定义快捷键名称：' ;;
+        en:sc_custom_prompt) echo 'Enter a custom shortcut name: ' ;;
+        ru:sc_custom_prompt) echo 'Введите своё имя ярлыка: ' ;;
+        fa:sc_custom_prompt) echo 'نام دلخواه میانبر را وارد کنید: ' ;;
+        zh-tw:sc_custom_prompt) echo '請輸入自訂快捷鍵名稱：' ;;
+        ja:sc_custom_prompt) echo 'カスタムショートカット名を入力してください：' ;;
+        zh:sc_invalid_name) echo '名称无效：%s（须以字母开头，仅含字母/数字/_/-，长度 1-32）' ;;
+        en:sc_invalid_name) echo 'Invalid name: %s (must start with a letter, only letters/digits/_/-, length 1-32)' ;;
+        ru:sc_invalid_name) echo 'Недопустимое имя: %s (должно начинаться с буквы; только буквы/цифры/_/-, длина 1–32)' ;;
+        fa:sc_invalid_name) echo 'نام نامعتبر است: %s (باید با حرف شروع شود؛ فقط حروف/ارقام/_/-، طول ۱ تا ۳۲)' ;;
+        zh-tw:sc_invalid_name) echo '名稱無效：%s（須以字母開頭，僅含字母/數字/_/-，長度 1-32）' ;;
+        ja:sc_invalid_name) echo '無効な名前です：%s（英字で始まり、英数字/_/-のみ、長さ1〜32）' ;;
+        zh:sc_conflict_detail) echo '冲突：%s' ;;
+        en:sc_conflict_detail) echo 'Conflict: %s' ;;
+        ru:sc_conflict_detail) echo 'Конфликт: %s' ;;
+        fa:sc_conflict_detail) echo 'تداخل: %s' ;;
+        zh-tw:sc_conflict_detail) echo '衝突：%s' ;;
+        ja:sc_conflict_detail) echo '競合：%s' ;;
+        zh:sc_installed) echo '快捷键已安装：%s' ;;
+        en:sc_installed) echo 'Shortcuts installed: %s' ;;
+        ru:sc_installed) echo 'Ярлыки установлены: %s' ;;
+        fa:sc_installed) echo 'میانبرها نصب شدند: %s' ;;
+        zh-tw:sc_installed) echo '快捷鍵已安裝：%s' ;;
+        ja:sc_installed) echo 'ショートカットをインストールしました：%s' ;;
+        zh:sc_none_installed) echo '未安装任何快捷键。请直接运行：bash /etc/ddr/A-Box.sh' ;;
+        en:sc_none_installed) echo 'No shortcut installed. Run directly: bash /etc/ddr/A-Box.sh' ;;
+        ru:sc_none_installed) echo 'Ярлык не установлен. Запустите напрямую: bash /etc/ddr/A-Box.sh' ;;
+        fa:sc_none_installed) echo 'هیچ میانبری نصب نشد. مستقیم اجرا کنید: bash /etc/ddr/A-Box.sh' ;;
+        zh-tw:sc_none_installed) echo '未安裝任何快捷鍵。請直接執行：bash /etc/ddr/A-Box.sh' ;;
+        ja:sc_none_installed) echo 'ショートカットはインストールされていません。直接実行してください：bash /etc/ddr/A-Box.sh' ;;
+        zh:sc_state_corrupt) echo '快捷键状态文件已损坏（%s），无法继续。' ;;
+        en:sc_state_corrupt) echo 'Shortcut state file is corrupt (%s); cannot continue.' ;;
+        ru:sc_state_corrupt) echo 'Файл состояния ярлыков повреждён (%s); продолжение невозможно.' ;;
+        fa:sc_state_corrupt) echo 'پرونده وضعیت میانبر خراب است (%s)؛ ادامه ممکن نیست.' ;;
+        zh-tw:sc_state_corrupt) echo '快捷鍵狀態檔已損壞（%s），無法繼續。' ;;
+        ja:sc_state_corrupt) echo 'ショートカットの状態ファイルが壊れています（%s）。続行できません。' ;;
+        zh:sc_state_reset_prompt) echo '是否重置为默认快捷键（ab abox）？[y/N]：' ;;
+        en:sc_state_reset_prompt) echo 'Reset to the default shortcuts (ab abox)? [y/N]: ' ;;
+        ru:sc_state_reset_prompt) echo 'Сбросить к ярлыкам по умолчанию (ab abox)? [y/N]: ' ;;
+        fa:sc_state_reset_prompt) echo 'بازنشانی به میانبرهای پیش‌فرض (ab abox)؟ [y/N]: ' ;;
+        zh-tw:sc_state_reset_prompt) echo '是否重設為預設快捷鍵（ab abox）？[y/N]：' ;;
+        ja:sc_state_reset_prompt) echo '既定のショートカット（ab abox）にリセットしますか？[y/N]：' ;;
+        zh:sc_cleanup_blocked) echo '以下旧快捷键未能清理（路径已被外来文件占用，已保留记录）：%s' ;;
+        en:sc_cleanup_blocked) echo 'The following old shortcuts could not be cleaned up (path taken by a foreign file; record kept): %s' ;;
+        ru:sc_cleanup_blocked) echo 'Не удалось удалить старые ярлыки (путь занят чужим файлом; запись сохранена): %s' ;;
+        fa:sc_cleanup_blocked) echo 'میانبرهای قدیمی زیر پاک نشدند (مسیر توسط پرونده خارجی اشغال شده؛ رکورد حفظ شد): %s' ;;
+        zh-tw:sc_cleanup_blocked) echo '以下舊快捷鍵未能清理（路徑已被外來檔案佔用，已保留記錄）：%s' ;;
+        ja:sc_cleanup_blocked) echo '次の古いショートカットをクリーンアップできませんでした（パスが外部ファイルに占有されています。記録は保持）：%s' ;;
+        zh:sc_st_managed) echo '已托管' ;;
+        en:sc_st_managed) echo 'managed' ;;
+        ru:sc_st_managed) echo 'управляется' ;;
+        fa:sc_st_managed) echo 'مدیریت‌شده' ;;
+        zh-tw:sc_st_managed) echo '已託管' ;;
+        ja:sc_st_managed) echo '管理下' ;;
+        zh:sc_st_foreign) echo '外来/未托管' ;;
+        en:sc_st_foreign) echo 'foreign/unmanaged' ;;
+        ru:sc_st_foreign) echo 'чужой/неуправляемый' ;;
+        fa:sc_st_foreign) echo 'خارجی/مدیریت‌نشده' ;;
+        zh-tw:sc_st_foreign) echo '外來/未託管' ;;
+        ja:sc_st_foreign) echo '外部/管理外' ;;
+        zh:sc_st_missing) echo '缺失' ;;
+        en:sc_st_missing) echo 'missing' ;;
+        ru:sc_st_missing) echo 'отсутствует' ;;
+        fa:sc_st_missing) echo 'موجود نیست' ;;
+        zh-tw:sc_st_missing) echo '缺失' ;;
+        ja:sc_st_missing) echo 'なし' ;;
+        zh:sc_tb_title) echo '自定义快捷键' ;;
+        en:sc_tb_title) echo 'Custom shortcut' ;;
+        ru:sc_tb_title) echo 'Свой ярлык' ;;
+        fa:sc_tb_title) echo 'میانبر دلخواه' ;;
+        zh-tw:sc_tb_title) echo '自訂快捷鍵' ;;
+        ja:sc_tb_title) echo 'カスタムショートカット' ;;
+        zh:sc_tb_current) echo '当前快捷键：%s' ;;
+        en:sc_tb_current) echo 'Current shortcuts: %s' ;;
+        ru:sc_tb_current) echo 'Текущие ярлыки: %s' ;;
+        fa:sc_tb_current) echo 'میانبرهای فعلی: %s' ;;
+        zh-tw:sc_tb_current) echo '目前快捷鍵：%s' ;;
+        ja:sc_tb_current) echo '現在のショートカット：%s' ;;
+        zh:sc_tb_opt1) echo '  [1] 设置自定义名称' ;;
+        en:sc_tb_opt1) echo '  [1] Set a custom name' ;;
+        ru:sc_tb_opt1) echo '  [1] Задать своё имя' ;;
+        fa:sc_tb_opt1) echo '  [1] تنظیم نام دلخواه' ;;
+        zh-tw:sc_tb_opt1) echo '  [1] 設定自訂名稱' ;;
+        ja:sc_tb_opt1) echo '  [1] カスタム名を設定' ;;
+        zh:sc_tb_opt2) echo '  [2] 恢复默认（ab abox）' ;;
+        en:sc_tb_opt2) echo '  [2] Reset to defaults (ab abox)' ;;
+        ru:sc_tb_opt2) echo '  [2] Сбросить к значениям по умолчанию (ab abox)' ;;
+        fa:sc_tb_opt2) echo '  [2] بازنشانی به پیش‌فرض (ab abox)' ;;
+        zh-tw:sc_tb_opt2) echo '  [2] 恢復預設（ab abox）' ;;
+        ja:sc_tb_opt2) echo '  [2] 既定値に戻す（ab abox）' ;;
+        zh:sc_tb_opt3) echo '  [3] 删除一个快捷键' ;;
+        en:sc_tb_opt3) echo '  [3] Remove one shortcut' ;;
+        ru:sc_tb_opt3) echo '  [3] Удалить один ярлык' ;;
+        fa:sc_tb_opt3) echo '  [3] حذف یک میانبر' ;;
+        zh-tw:sc_tb_opt3) echo '  [3] 刪除一個快捷鍵' ;;
+        ja:sc_tb_opt3) echo '  [3] ショートカットを1つ削除' ;;
+        zh:sc_tb_opt0) echo '  [0] 返回' ;;
+        en:sc_tb_opt0) echo '  [0] Back' ;;
+        ru:sc_tb_opt0) echo '  [0] Назад' ;;
+        fa:sc_tb_opt0) echo '  [0] بازگشت' ;;
+        zh-tw:sc_tb_opt0) echo '  [0] 返回' ;;
+        ja:sc_tb_opt0) echo '  [0] 戻る' ;;
+        zh:sc_tb_choice) echo '请选择 [0-3]：' ;;
+        en:sc_tb_choice) echo 'Choose [0-3]: ' ;;
+        ru:sc_tb_choice) echo 'Выберите [0-3]: ' ;;
+        fa:sc_tb_choice) echo 'انتخاب کنید [0-3]: ' ;;
+        zh-tw:sc_tb_choice) echo '請選擇 [0-3]：' ;;
+        ja:sc_tb_choice) echo '選択してください [0-3]：' ;;
+        zh:sc_tb_remove_prompt) echo '请输入要删除的快捷键名称：' ;;
+        en:sc_tb_remove_prompt) echo 'Enter the shortcut name to remove: ' ;;
+        ru:sc_tb_remove_prompt) echo 'Введите имя удаляемого ярлыка: ' ;;
+        fa:sc_tb_remove_prompt) echo 'نام میانبری که باید حذف شود را وارد کنید: ' ;;
+        zh-tw:sc_tb_remove_prompt) echo '請輸入要刪除的快捷鍵名稱：' ;;
+        ja:sc_tb_remove_prompt) echo '削除するショートカット名を入力してください：' ;;
+        zh:sc_tb_done) echo '完成：当前快捷键为 %s' ;;
+        en:sc_tb_done) echo 'Done: current shortcuts are %s' ;;
+        ru:sc_tb_done) echo 'Готово: текущие ярлыки — %s' ;;
+        fa:sc_tb_done) echo 'انجام شد: میانبرهای فعلی %s هستند' ;;
+        zh-tw:sc_tb_done) echo '完成：目前快捷鍵為 %s' ;;
+        ja:sc_tb_done) echo '完了：現在のショートカットは %s です' ;;
+        zh:sc_tb_noop) echo '未做任何更改。' ;;
+        en:sc_tb_noop) echo 'No changes made.' ;;
+        ru:sc_tb_noop) echo 'Изменений нет.' ;;
+        fa:sc_tb_noop) echo 'تغییری انجام نشد.' ;;
+        zh-tw:sc_tb_noop) echo '未做任何變更。' ;;
+        ja:sc_tb_noop) echo '変更はありませんでした。' ;;
+        zh:sc_tb_fail) echo '快捷键更改失败：%s' ;;
+        en:sc_tb_fail) echo 'Shortcut change failed: %s' ;;
+        ru:sc_tb_fail) echo 'Не удалось изменить ярлык: %s' ;;
+        fa:sc_tb_fail) echo 'تغییر میانبر ناموفق بود: %s' ;;
+        zh-tw:sc_tb_fail) echo '快捷鍵變更失敗：%s' ;;
+        ja:sc_tb_fail) echo 'ショートカットの変更に失敗しました：%s' ;;
+        zh:sc_tb_last) echo '至少保留一个快捷键。' ;;
+        en:sc_tb_last) echo 'At least one shortcut must remain.' ;;
+        ru:sc_tb_last) echo 'Должен остаться хотя бы один ярлык.' ;;
+        fa:sc_tb_last) echo 'دست‌کم یک میانبر باید باقی بماند.' ;;
+        zh-tw:sc_tb_last) echo '至少保留一個快捷鍵。' ;;
+        ja:sc_tb_last) echo '少なくとも1つのショートカットが必要です。' ;;
+        zh:sc_tb_notfound) echo '未找到快捷键：%s' ;;
+        en:sc_tb_notfound) echo 'Shortcut not found: %s' ;;
+        ru:sc_tb_notfound) echo 'Ярлык не найден: %s' ;;
+        fa:sc_tb_notfound) echo 'میانبر یافت نشد: %s' ;;
+        zh-tw:sc_tb_notfound) echo '未找到快捷鍵：%s' ;;
+        ja:sc_tb_notfound) echo 'ショートカットが見つかりません：%s' ;;
+        zh:tb_shortcut) echo '自定义快捷键' ;;
+        en:tb_shortcut) echo 'Custom shortcut' ;;
+        ru:tb_shortcut) echo 'Свой ярлык' ;;
+        fa:tb_shortcut) echo 'میانبر دلخواه' ;;
+        zh-tw:tb_shortcut) echo '自訂快捷鍵' ;;
+        ja:tb_shortcut) echo 'カスタムショートカット' ;;
+        zh:cu_shortcut_path) echo '删除 A-Box 快捷入口失败：%s；清理未完成。' ;;
+        en:cu_shortcut_path) echo 'Failed to remove the A-Box shortcut: %s; cleanup is incomplete.' ;;
+        ru:cu_shortcut_path) echo 'Не удалось удалить ярлык A-Box: %s; очистка не завершена.' ;;
+        fa:cu_shortcut_path) echo 'حذف میانبر A-Box ناموفق بود: %s؛ پاک‌سازی ناتمام ماند.' ;;
+        zh-tw:cu_shortcut_path) echo '刪除 A-Box 快捷入口失敗：%s；清理未完成。' ;;
+        ja:cu_shortcut_path) echo 'A-Box のショートカットを削除できませんでした：%s。クリーンアップは未完了です。' ;;
+        zh:cu_shortcut_state_bad) echo '快捷键状态文件已损坏（%s），无法定位自定义入口；已删除可验证的默认入口，未定位的入口可能残留。' ;;
+        en:cu_shortcut_state_bad) echo 'Shortcut state file is corrupt (%s); custom entries cannot be located. Verifiable default entries were removed; unlocated entries may remain.' ;;
+        ru:cu_shortcut_state_bad) echo 'Файл состояния ярлыков повреждён (%s); свои записи найти нельзя. Проверяемые записи по умолчанию удалены; ненайденные записи могут остаться.' ;;
+        fa:cu_shortcut_state_bad) echo 'پرونده وضعیت میانبر خراب است (%s)؛ ورودی‌های دلخواه قابل مکان‌یابی نیستند. ورودی‌های پیش‌فرض قابل تأیید حذف شدند؛ ورودی‌های مکان‌یابی‌نشده ممکن است باقی بمانند.' ;;
+        zh-tw:cu_shortcut_state_bad) echo '快捷鍵狀態檔已損壞（%s），無法定位自訂入口；已刪除可驗證的預設入口，未定位的入口可能殘留。' ;;
+        ja:cu_shortcut_state_bad) echo 'ショートカットの状態ファイルが壊れています（%s）。カスタムエントリを特定できません。検証可能な既定エントリは削除しました。特定できないエントリが残っている可能性があります。' ;;
         zh:vs_empty) echo '%s 为空或不存在。' ;;
         zh-tw:vs_empty) echo '%s 為空或不存在。' ;;
         en:vs_empty) echo '%s is empty or does not exist.' ;;
@@ -6783,12 +6975,6 @@ tr_msg() {
         ru:ss2_refuse_downgrade) echo 'Понижение скрипта A-Box отклонено.' ;;
         fa:ss2_refuse_downgrade) echo 'کاهش نسخه اسکریپت A-Box رد شد.' ;;
         ja:ss2_refuse_downgrade) echo 'A-Box スクリプトのダウングレードを拒否しました。' ;;
-        zh:ss2_sb_unsafe) echo '现有 /usr/local/bin/sb 归属/内容不安全，拒绝覆盖。' ;;
-        zh-tw:ss2_sb_unsafe) echo '現有 /usr/local/bin/sb 歸屬/內容不安全，拒絕覆寫。' ;;
-        en:ss2_sb_unsafe) echo 'The existing /usr/local/bin/sb has unsafe ownership/content; refusing to overwrite.' ;;
-        ru:ss2_sb_unsafe) echo 'Существующий /usr/local/bin/sb имеет небезопасную принадлежность/содержимое; перезапись отклонена.' ;;
-        fa:ss2_sb_unsafe) echo '‏/usr/local/bin/sb موجود مالکیت/محتوای ناامن دارد؛ بازنویسی رد شد.' ;;
-        ja:ss2_sb_unsafe) echo '既存の /usr/local/bin/sb の所有/内容が安全でないため、上書きを拒否します。' ;;
         zh:ss2_self_verify) echo '当前 A-Box 脚本校验失败。' ;;
         zh-tw:ss2_self_verify) echo '目前 A-Box 腳本校驗失敗。' ;;
         en:ss2_self_verify) echo 'The current A-Box script verification failed.' ;;
@@ -7917,6 +8103,12 @@ tr_msg() {
         fa:nsni_warn) echo 'توجه: کلاینت‌ها باید پیوند جدید را دوباره وارد کنند؛ SNI قدیمی دیگر کار نمی‌کند.' ;;
         zh-tw:nsni_warn) echo '注意：用戶端必須用新連結重新導入，舊連結的 SNI 已失效。' ;;
         ja:nsni_warn) echo '注意：クライアントは新しいリンクを再インポートする必要があります。旧 SNI は無効です。' ;;
+        zh:nsni_checking) echo '正在验证新 SNI（冷启动可能需要数秒，请稍候）…' ;;
+        en:nsni_checking) echo 'Verifying the new SNI (a cold start may take a few seconds, please wait)…' ;;
+        ru:nsni_checking) echo 'Проверка нового SNI (холодный запуск может занять несколько секунд, подождите)…' ;;
+        fa:nsni_checking) echo 'در حال بررسی SNI جدید (شروع سرد ممکن است چند ثانیه طول بکشد، لطفاً صبر کنید)…' ;;
+        zh-tw:nsni_checking) echo '正在驗證新 SNI（冷啟動可能需要數秒，請稍候）…' ;;
+        ja:nsni_checking) echo '新しい SNI を確認中です（コールドスタートは数秒かかる場合があります。しばらくお待ちください）…' ;;
         zh:mi_u_forever) echo '永久' ;;
         en:mi_u_forever) echo 'forever' ;;
         ru:mi_u_forever) echo 'навсегда' ;;
@@ -10791,8 +10983,11 @@ PY_CORE_REMOVE
 }
 
 managed_auxiliary_paths() {
+    # Shortcut entries come from the resolver (the active name set in
+    # /etc/ddr/.shortcut, default "ab abox"); the old /usr/local/bin/sb
+    # is out of scope and is never listed here.
+    shortcut_primary_paths
     printf '%s\n' \
-        /usr/local/bin/sb \
         /etc/logrotate.d/A-Box \
         /etc/fail2ban/filter.d/A-Box.conf \
         /etc/fail2ban/jail.d/A-Box.local \
@@ -11200,7 +11395,7 @@ remove_owned_core_families_for_restore() {
 
 shortcut_is_abox_managed() {
     local path="${1:-/usr/local/bin/sb}"
-    auxiliary_content_is_abox_managed "$path" /usr/local/bin/sb
+    auxiliary_content_is_abox_managed "$path" "$path"
 }
 
 assert_abox_shortcut_safe() {
@@ -11219,6 +11414,753 @@ remove_abox_shortcut() {
     else
         msg "${YELLOW}[!] Skip non-A-Box shortcut: ${path}${NC}"
     fi
+}
+
+# =====================================================================
+# Shortcut subsystem (ab/abox rename + custom names).
+# Design: central resolver + /etc/ddr/.shortcut state file (F1-B),
+# unified change transaction shared by install/upgrade/Toolbox/restore.
+# State file format (strict, never sourced/evaluated):
+#   # comment lines allowed
+#   version=1
+#   names=ab abox
+#   - version: format version, must be 1.
+#   - names: space-separated SET of managed shortcut names
+#     (default "ab abox" when no state file exists).
+#   - Missing file = no persisted setting yet (defaults apply).
+#   - The file is root-owned mode 600, updated atomically.
+#   - A migration record ($ABOX_DIR/.shortcut-migrate) tracks an
+#     in-flight change: old names, new names, stage, pending cleanup.
+#   - The old /usr/local/bin/sb is OUT OF SCOPE for this code: it is
+#     never deleted, migrated, tracked, listed, or reported (user
+#     decision 2026-11-05; nobody uses it, leaving it is harmless).
+# All functions in this block return status instead of dying, so callers
+# decide explicitly (install tolerates a shortcut failure; uninstall dies).
+# =====================================================================
+
+# Paths derived from ABOX_DIR (default /etc/ddr).
+shortcut_state_path() { printf '%s/.shortcut' "${ABOX_DIR:-/etc/ddr}"; }
+shortcut_migrate_path() { printf '%s/.shortcut-migrate' "${ABOX_DIR:-/etc/ddr}"; }
+shortcut_lock_path() { printf '%s/.shortcut.lock' "${ABOX_DIR:-/etc/ddr}"; }
+
+# Reserved names: core binaries (refused even when not installed, so a
+# later core install can never collide) and commands the wrapper itself
+# depends on. ab/abox/sb are NOT reserved; they must pass the real
+# conflict checks below.
+SHORTCUT_RESERVED_NAMES='xray sing-box hysteria bash sh sudo env'
+
+# SHORTCUT_ERR: machine-readable reason set by the validators/checkers.
+SHORTCUT_ERR=''
+
+# shortcut_validate_name <name>
+# Name rule: [A-Za-z][A-Za-z0-9_-]{0,31} (1-32 ASCII chars, first char a
+# letter, case-sensitive, no auto-lowercasing), plus the reserved list.
+# Returns 0 when valid, 1 otherwise (SHORTCUT_ERR = invalid_syntax /
+# reserved / empty).
+shortcut_validate_name() {
+    local name="${1:-}"
+    SHORTCUT_ERR=''
+    if [[ -z "$name" ]]; then SHORTCUT_ERR='empty'; return 1; fi
+    local _lc_all="${LC_ALL:-}"
+    LC_ALL=C
+    if [[ ! "$name" =~ ^[A-Za-z][A-Za-z0-9_-]{0,31}$ ]]; then
+        LC_ALL="$_lc_all"; SHORTCUT_ERR='invalid_syntax'; return 1
+    fi
+    LC_ALL="$_lc_all"
+    local _r
+    for _r in $SHORTCUT_RESERVED_NAMES; do
+        if [[ "$name" == "$_r" ]]; then SHORTCUT_ERR='reserved'; return 1; fi
+    done
+    return 0
+}
+
+# shortcut_parse_state_file <file>
+# Strictly parses a state file into global SHORTCUT_NAMES. Never sources
+# or evaluates file content. Returns 0 on success, 1 when corrupt
+# (SHORTCUT_ERR set: bad_type / dup_version / bad_version / dup_names /
+# unknown_key / missing_field / empty_names / bad_name:<name> /
+# dup_name:<name>). A CRLF-edited file fails cleanly (the CR becomes part
+# of the last name and fails validation).
+shortcut_parse_state_file() {
+    local _file="$1" _version='' _names='' _seen_version=0 _seen_names=0
+    SHORTCUT_ERR=''
+    # Abnormal file type (symlink, directory, FIFO, ...) is corrupt.
+    [[ -f "$_file" && ! -L "$_file" ]] || { SHORTCUT_ERR='bad_type'; return 1; }
+    local _line _val
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        case "$_line" in
+            ''|'#'*) continue ;;
+        esac
+        case "$_line" in
+            version=*)
+                (( _seen_version == 0 )) || { SHORTCUT_ERR='dup_version'; return 1; }
+                _seen_version=1; _val="${_line#version=}"
+                [[ "$_val" == '1' ]] || { SHORTCUT_ERR='bad_version'; return 1; }
+                _version="$_val" ;;
+            names=*)
+                (( _seen_names == 0 )) || { SHORTCUT_ERR='dup_names'; return 1; }
+                _seen_names=1; _val="${_line#names=}"
+                _names="$_val" ;;
+            *) SHORTCUT_ERR='unknown_key'; return 1 ;;
+        esac
+    done < "$_file"
+    (( _seen_version == 1 && _seen_names == 1 )) || { SHORTCUT_ERR='missing_field'; return 1; }
+    # Validate every name in the set; also reject duplicates in the set.
+    local _n _seen
+    [[ -n "$_names" ]] || { SHORTCUT_ERR='empty_names'; return 1; }
+    _seen=' '
+    for _n in $_names; do
+        shortcut_validate_name "$_n" || { SHORTCUT_ERR="bad_name:$_n"; return 1; }
+        case "$_seen" in *" $_n "*) SHORTCUT_ERR="dup_name:$_n"; return 1 ;; esac
+        _seen="$_seen$_n "
+    done
+    SHORTCUT_NAMES="$_names"
+    return 0
+}
+
+# shortcut_read_state
+# Parses the live state file into global SHORTCUT_NAMES.
+# Returns: 0 = file read (global set); 2 = no file (global = default
+# "ab abox"); 1 = corrupt (SHORTCUT_ERR set, global untouched).
+shortcut_read_state() {
+    local _file
+    _file=$(shortcut_state_path)
+    SHORTCUT_ERR=''
+    if [[ ! -e "$_file" && ! -L "$_file" ]]; then
+        SHORTCUT_NAMES='ab abox'; return 2
+    fi
+    shortcut_parse_state_file "$_file"
+}
+
+# shortcut_write_state <names>
+# Validates the name set, then atomically writes the state file
+# (temp file in the same directory, mode 600, root:root, rename).
+# Returns 0 on success, 1 on failure (SHORTCUT_ERR set).
+shortcut_write_state() {
+    local _names="${1:-}" _file _tmp _n
+    SHORTCUT_ERR=''
+    [[ -n "$_names" ]] || { SHORTCUT_ERR='empty_names'; return 1; }
+    for _n in $_names; do
+        shortcut_validate_name "$_n" || { SHORTCUT_ERR="bad_name:$_n"; return 1; }
+    done
+    _file=$(shortcut_state_path)
+    _tmp=$(umask 077; mktemp "${_file}.XXXXXX" 2>/dev/null) || { SHORTCUT_ERR='mktemp'; return 1; }
+    {
+        printf '%s\n' '# A-Box shortcut state v1 (do not edit by hand)'
+        printf 'version=1\n'
+        printf 'names=%s\n' "$_names"
+    } > "$_tmp" || { rm -f -- "$_tmp"; SHORTCUT_ERR='write'; return 1; }
+    chmod 600 -- "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; SHORTCUT_ERR='chmod'; return 1; }
+    chown root:root -- "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; SHORTCUT_ERR='chown'; return 1; }
+    mv -f -- "$_tmp" "$_file" || { rm -f -- "$_tmp"; SHORTCUT_ERR='rename'; return 1; }
+    return 0
+}
+
+# shortcut_primary_names
+# Prints the active name set (state file, or the default "ab abox").
+# Never fails on a missing file; on a corrupt file prints the default
+# and returns 1 (SHORTCUT_ERR set) so the caller can decide.
+shortcut_primary_names() {
+    local _rc=0
+    shortcut_read_state || _rc=$?
+    if (( _rc == 1 )); then printf '%s\n' 'ab abox'; return 1; fi
+    printf '%s\n' "$SHORTCUT_NAMES"
+    return 0
+}
+
+# shortcut_primary_paths
+# Prints one /usr/local/bin/<name> line per active name.
+shortcut_primary_paths() {
+    local _names _n
+    _names=$(shortcut_primary_names) || true
+    for _n in $_names; do printf '%s\n' "/usr/local/bin/$_n"; done
+    return 0
+}
+
+# shortcut_managed_paths
+# Enumerator for everything this code manages: the primary paths plus
+# any names pending cleanup in the migration record (if present and
+# parseable). The old /usr/local/bin/sb is deliberately NOT listed.
+shortcut_managed_paths() {
+    local _p _seen=' '
+    while IFS= read -r _p; do
+        [[ -n "$_p" ]] || continue
+        case "$_seen" in *" $_p "*) continue ;; esac
+        _seen="$_seen$_p "
+        printf '%s\n' "$_p"
+    done < <(shortcut_primary_paths)
+    local _mfile _line _val
+    _mfile=$(shortcut_migrate_path)
+    if [[ -f "$_mfile" && ! -L "$_mfile" ]]; then
+        while IFS= read -r _line || [[ -n "$_line" ]]; do
+            case "$_line" in pending=*) _val="${_line#pending=}" ;; *) continue ;; esac
+            local _n
+            for _n in $_val; do
+                shortcut_validate_name "$_n" 2>/dev/null || continue
+                _p="/usr/local/bin/$_n"
+                case "$_seen" in *" $_p "*) continue ;; esac
+                _seen="$_seen$_p "
+                printf '%s\n' "$_p"
+            done
+        done < "$_mfile"
+    fi
+    return 0
+}
+
+# shortcut_is_managed_path <path>
+# Returns 0 when the path is one of the currently managed shortcut paths
+# (primary set plus any names pending cleanup in the migration record).
+shortcut_is_managed_path() {
+    local _p _q="$1"
+    while IFS= read -r _p; do [[ "$_p" == "$_q" ]] && return 0; done < <(shortcut_managed_paths)
+    return 1
+}
+
+# shortcut_check_candidate <name>
+# The unified 7-step candidate check. Returns 0 = usable, 1 = conflict,
+# 2 = invalid. SHORTCUT_ERR carries the machine reason; SHORTCUT_DETAIL
+# carries the conflicting path or value for messages.
+#   1. name syntax; 2. reserved names; 3. build target /usr/local/bin/<name>;
+#   4. target directory entry (absent ok; managed regular file ok; foreign
+#      file/dir/FIFO conflict; symlink incl. dangling conflict, never followed);
+#   5. command -v + type (resolves to the target managed file itself: ok;
+#      anything else: conflict); 6. other same-name executables in PATH,
+#      plus explicit /usr/bin/<name> even when /usr/bin is not in PATH;
+#   7. (in-lock re-check) is done by the transaction caller, not here.
+shortcut_check_candidate() {
+    local _name="${1:-}" _target _t _p _dir
+    SHORTCUT_ERR=''; SHORTCUT_DETAIL=''
+    # Step 1: syntax.
+    if ! shortcut_validate_name "$_name"; then
+        SHORTCUT_DETAIL="$_name"; return 2
+    fi
+    # Step 2 is inside shortcut_validate_name (reserved).
+    # Step 3: target.
+    _target="/usr/local/bin/$_name"
+    # Step 4: target directory entry.
+    if [[ -L "$_target" ]]; then
+        SHORTCUT_ERR='target_symlink'; SHORTCUT_DETAIL="$_target"; return 1
+    fi
+    if [[ -e "$_target" ]]; then
+        if [[ -f "$_target" ]] && shortcut_is_abox_managed "$_target"; then
+            : # managed regular file: usable, continue to steps 5-6.
+        else
+            SHORTCUT_ERR='target_foreign'; SHORTCUT_DETAIL="$_target"; return 1
+        fi
+    fi
+    # Step 5: command resolution in this shell.
+    _t=$(type -t "$_name" 2>/dev/null || true)
+    case "$_t" in
+        '')
+            : # not found: continue to step 6.
+            ;;
+        file)
+            _p=$(command -v "$_name" 2>/dev/null || true)
+            if [[ "$_p" != "$_target" ]]; then
+                SHORTCUT_ERR='cmd_shadow'; SHORTCUT_DETAIL="$_p"; return 1
+            fi
+            ;;
+        *)
+            # alias / function / builtin / keyword would shadow the name.
+            SHORTCUT_ERR='cmd_shadow'; SHORTCUT_DETAIL="$(_t) $_name"; return 1
+            ;;
+    esac
+    # Step 6: other same-name executables in PATH (+ explicit /usr/bin).
+    local _seen_dirs=' '
+    local _path="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+    _path="$_path:/usr/bin"
+    local _old_ifs="$IFS"
+    IFS=':'
+    for _dir in $_path; do
+        IFS="$_old_ifs"
+        [[ -n "$_dir" ]] || _dir='.'
+        case "$_seen_dirs" in *" $_dir "*) continue ;; esac
+        _seen_dirs="$_seen_dirs$_dir "
+        [[ "$_dir" == '/usr/local/bin' ]] && continue
+        if [[ -f "$_dir/$_name" && -x "$_dir/$_name" && ! -L "$_dir/$_name" ]]; then
+            SHORTCUT_ERR='path_shadow'; SHORTCUT_DETAIL="$_dir/$_name"; return 1
+        fi
+        IFS=':'
+    done
+    IFS="$_old_ifs"
+    return 0
+}
+
+# shortcut_lock_acquire / shortcut_lock_release
+# mkdir-type lock (no new flock dependency). The lock directory holds a
+# pid file; a lock whose pid is dead or older than 120 seconds is stale
+# and may be stolen. Waits up to 30 seconds, then fails (never infinite).
+# Sets SHORTCUT_LOCK_HELD=1 while held. Release removes only a lock this
+# process owns (pid file matches $$).
+shortcut_lock_acquire() {
+    local _lock _wait=0 _pid _age _now
+    _lock=$(shortcut_lock_path)
+    SHORTCUT_ERR=''
+    while true; do
+        if mkdir -- "$_lock" 2>/dev/null; then
+            printf '%s\n' "$$" > "$_lock/pid" 2>/dev/null || true
+            SHORTCUT_LOCK_HELD=1
+            return 0
+        fi
+        # Lock exists: stale?
+        _pid=$(cat "$_lock/pid" 2>/dev/null || true)
+        _now=$(date +%s 2>/dev/null || echo 0)
+        if [[ "$_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$_pid" 2>/dev/null; then
+            rm -rf -- "$_lock" 2>/dev/null || true
+            continue
+        fi
+        _age=0
+        if [[ -n "$_now" && "$_now" =~ ^[0-9]+$ ]]; then
+            local _mtime
+            _mtime=$(stat -c %Y "$_lock" 2>/dev/null || echo "$_now")
+            [[ "$_mtime" =~ ^[0-9]+$ ]] && _age=$(( _now - _mtime ))
+        fi
+        if (( _age > 120 )); then
+            rm -rf -- "$_lock" 2>/dev/null || true
+            continue
+        fi
+        if (( _wait >= 60 )); then SHORTCUT_ERR='lock_timeout'; return 1; fi
+        sleep 0.5
+        _wait=$(( _wait + 1 ))
+    done
+}
+
+shortcut_lock_release() {
+    local _lock _pid
+    _lock=$(shortcut_lock_path)
+    if [[ "${SHORTCUT_LOCK_HELD:-0}" == 1 ]]; then
+        _pid=$(cat "$_lock/pid" 2>/dev/null || true)
+        if [[ "$_pid" == "$$" ]]; then rm -rf -- "$_lock" 2>/dev/null || true; fi
+        SHORTCUT_LOCK_HELD=0
+    fi
+    return 0
+}
+
+# shortcut_migrate_write <old_names> <new_names> <stage> <pending>
+# Writes the migration record (same strict style as the state file).
+# Fields: version=1, old=<space names>, new=<space names>, stage=<text>,
+# pending=<space names to clean up>. Atomic via temp + rename, 600.
+shortcut_migrate_write() {
+    local _old="${1:-}" _new="${2:-}" _stage="${3:-}" _pending="${4:-}" _file _tmp
+    _file=$(shortcut_migrate_path)
+    _tmp=$(umask 077; mktemp "${_file}.XXXXXX" 2>/dev/null) || return 1
+    {
+        printf '%s\n' '# A-Box shortcut migration record v1 (do not edit by hand)'
+        printf 'version=1\n'
+        printf 'old=%s\n' "$_old"
+        printf 'new=%s\n' "$_new"
+        printf 'stage=%s\n' "$_stage"
+        printf 'pending=%s\n' "$_pending"
+    } > "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    chmod 600 -- "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
+    chown root:root -- "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
+    mv -f -- "$_tmp" "$_file" || { rm -f -- "$_tmp"; return 1; }
+    return 0
+}
+
+shortcut_migrate_clear() {
+    rm -f -- "$(shortcut_migrate_path)" 2>/dev/null || true
+    return 0
+}
+
+# shortcut_build_wrapper <tmpfile>
+# Writes the wrapper content (same semantics as the current ab/abox wrapper:
+# managed marker, root direct exec, sudo fallback, "$@" passthrough).
+# Returns 0 on success.
+shortcut_build_wrapper() {
+    local _tmp="$1" _target
+    _target=$(printf '%q' "${ABOX_DIR:-/etc/ddr}/A-Box.sh")
+    cat > "$_tmp" <<EOS || return 1
+#!/usr/bin/env bash
+# Managed by A-Box
+if [[ \$EUID -eq 0 ]]; then
+    exec bash $_target "\$@"
+elif command -v sudo >/dev/null 2>&1; then
+    exec sudo bash $_target "\$@"
+else
+    echo 'Root privileges required. Please run: su -'
+    exit 1
+fi
+EOS
+    chmod 755 -- "$_tmp" || return 1
+    return 0
+}
+
+# shortcut_change_transaction <new-names...>
+# The unified change transaction (install / upgrade / Toolbox / restore).
+# Steps: read old state -> (caller already interacted, outside the lock)
+# -> take lock -> re-read state + re-check candidates -> prepare wrapper
+# + new-state temp files -> write migration record -> atomically install
+# new wrappers (skip identical content) -> atomically commit new state ->
+# clean old managed entries per policy -> clear migration record.
+# /usr/local/bin and /etc/ddr are NOT one atomic operation; the rules are:
+#  - before state commit: only roll back files THIS transaction created
+#    and can still confirm belong to it; old entries stay valid.
+#  - after state commit: keep the new entries, keep cleaning up.
+#  - cleanup finds an old path replaced by a foreign file: do NOT delete,
+#    report it, keep the migration record (pending) and return 2.
+# Returns: 0 = full success; 2 = installed + state committed but cleanup
+# pending (migration record kept, SHORTCUT_ERR set); 1 = failed.
+shortcut_change_transaction() {
+    local _new_names="$*" _old_names='' _rc=0 _stage='init'
+    local _old_paths='' _n _p _tmp _new_state_tmp
+    SHORTCUT_ERR=''
+    [[ -n "$_new_names" ]] || { SHORTCUT_ERR='empty_names'; return 1; }
+    for _n in $_new_names; do
+        shortcut_validate_name "$_n" || { SHORTCUT_ERR="bad_name:$_n"; return 1; }
+    done
+    # 1. Read old state (corrupt -> fail closed, never guess).
+    shortcut_read_state
+    _rc=$?
+    if (( _rc == 1 )); then return 1; fi
+    _old_names="$SHORTCUT_NAMES"
+    # 2-3. Take the lock (interaction already happened outside it).
+    shortcut_lock_acquire || return 1
+    # 4. Re-read state + re-check candidates inside the lock.
+    shortcut_read_state
+    _rc=$?
+    if (( _rc == 1 )); then shortcut_lock_release; return 1; fi
+    if [[ "$SHORTCUT_NAMES" != "$_old_names" ]]; then
+        # State moved under us; re-derive the old set and continue with
+        # the caller's (already confirmed) new set.
+        _old_names="$SHORTCUT_NAMES"
+    fi
+    for _n in $_new_names; do
+        if ! shortcut_check_candidate "$_n"; then
+            _rc=$?
+            shortcut_lock_release
+            SHORTCUT_ERR="recheck:$_n:$SHORTCUT_ERR"
+            return 1
+        fi
+    done
+    # 5. Prepare the wrapper temp file (one content for all names).
+    _tmp=$(umask 077; mktemp /tmp/A-Box-shortcut.XXXXXX 2>/dev/null) || { shortcut_lock_release; SHORTCUT_ERR='mktemp'; return 1; }
+    shortcut_build_wrapper "$_tmp" || { rm -f -- "$_tmp"; shortcut_lock_release; SHORTCUT_ERR='wrapper'; return 1; }
+    # 6. Migration record: old names, new names, stage, pending cleanup.
+    local _pending=''
+    for _n in $_old_names; do
+        case " $_new_names " in *" $_n "*) : ;; *) _pending="$_pending$_n " ;; esac
+    done
+    _pending="${_pending% }"
+    shortcut_migrate_write "$_old_names" "$_new_names" 'installing' "$_pending" || { rm -f -- "$_tmp"; shortcut_lock_release; SHORTCUT_ERR='migrate_write'; return 1; }
+    # 7. Atomically install new wrappers (skip identical content).
+    # Track which targets this transaction CREATED (did not exist before).
+    local _created=''
+    for _n in $_new_names; do
+        _p="/usr/local/bin/$_n"
+        if [[ ! -e "$_p" && ! -L "$_p" ]]; then _created="$_created$_n "; fi
+        if [[ -f "$_p" ]] && cmp -s "$_tmp" "$_p"; then continue; fi
+        if ! install_binary_atomically "$_tmp" "$_p"; then
+            # Roll back ONLY files this transaction created and can still
+            # confirm belong to it (content matches what we just built).
+            local _c _cp
+            for _c in $_created; do
+                _cp="/usr/local/bin/$_c"
+                if [[ -f "$_cp" ]] && cmp -s "$_tmp" "$_cp"; then rm -f -- "$_cp" 2>/dev/null || true; fi
+            done
+            rm -f -- "$_tmp"
+            shortcut_migrate_write "$_old_names" "$_new_names" 'rolled-back' "$_pending" 2>/dev/null || true
+            shortcut_lock_release
+            SHORTCUT_ERR="install:$_n"; return 1
+        fi
+    done
+    rm -f -- "$_tmp"
+    # Verify every new entry before touching the old ones: it must exist,
+    # be a managed regular file, and match the wrapper we just built.
+    local _vtmp
+    _vtmp=$(umask 077; mktemp /tmp/A-Box-shortcut.XXXXXX 2>/dev/null) || { shortcut_lock_release; SHORTCUT_ERR='mktemp'; return 1; }
+    if ! shortcut_build_wrapper "$_vtmp"; then
+        rm -f -- "$_vtmp"; shortcut_lock_release; SHORTCUT_ERR='wrapper'; return 1
+    fi
+    for _n in $_new_names; do
+        _p="/usr/local/bin/$_n"
+        if [[ ! -f "$_p" ]] || ! shortcut_is_abox_managed "$_p" || ! cmp -s "$_vtmp" "$_p"; then
+            rm -f -- "$_vtmp"
+            shortcut_lock_release
+            SHORTCUT_ERR="verify:$_n"; return 1
+        fi
+    done
+    rm -f -- "$_vtmp"
+    # 8. Atomically commit the new state.
+    shortcut_migrate_write "$_old_names" "$_new_names" 'committed' "$_pending" || { shortcut_lock_release; SHORTCUT_ERR='migrate_write'; return 1; }
+    if ! shortcut_write_state "$_new_names"; then
+        # State commit failed AFTER wrappers installed: keep the new
+        # entries (they are valid), keep the migration record so the
+        # next run can reconcile, and report.
+        shortcut_lock_release
+        SHORTCUT_ERR='state_commit'; return 1
+    fi
+    # 9. Clean old managed entries that are no longer in the new set.
+    local _blocked=''
+    for _n in $_pending; do
+        _p="/usr/local/bin/$_n"
+        if [[ ! -e "$_p" && ! -L "$_p" ]]; then continue; fi
+        if shortcut_is_abox_managed "$_p"; then
+            if ! remove_abox_shortcut "$_p"; then
+                _blocked="$_blocked$_n "
+            fi
+        else
+            # Old path was replaced by a foreign file: never delete.
+            _blocked="$_blocked$_n "
+        fi
+    done
+    _blocked="${_blocked% }"
+    if [[ -n "$_blocked" ]]; then
+        shortcut_migrate_write "$_old_names" "$_new_names" 'cleanup-blocked' "$_blocked" 2>/dev/null || true
+        shortcut_lock_release
+        # rc 2 already means "cleanup blocked"; SHORTCUT_ERR carries just
+        # the blocked names for the message.
+        SHORTCUT_ERR="$_blocked"; return 2
+    fi
+    # 10. Clear the migration record.
+    shortcut_migrate_clear
+    shortcut_lock_release
+    return 0
+}
+
+# shortcut_tty_available
+# Returns 0 only when /dev/tty can actually be OPENED for read+write.
+# (-r/-w tests are not enough: they are true even with no controlling
+# terminal, while opening then fails with ENXIO. The open runs in a
+# subshell so it can never disturb the caller's file descriptors --
+# notably fd 9/10, which the runtime guard uses.)
+shortcut_tty_available() {
+    ( exec 9<> /dev/tty ) 2>/dev/null
+}
+
+# shortcut_resolve_desired <name...>
+# Resolves a desired name set to an installable set: each name passes the
+# 7-step check; on conflict an interactive session is prompted via /dev/tty
+# (replacement or skip), a non-interactive session just skips the name.
+# Sets SHORTCUT_RESOLVED (space-separated, deduplicated). Returns 0 when
+# the resolved set is non-empty, 1 when empty.
+shortcut_resolve_desired() {
+    local _name
+    SHORTCUT_RESOLVED=''
+    for _name in "$@"; do
+        if shortcut_check_candidate "$_name"; then
+            case " $SHORTCUT_RESOLVED " in *" $_name "*) : ;; *) SHORTCUT_RESOLVED="$SHORTCUT_RESOLVED$_name " ;; esac
+        else
+            if shortcut_tty_available && shortcut_prompt_conflict "$_name"; then
+                if [[ -n "$SHORTCUT_PROMPT_RESULT" ]]; then
+                    case " $SHORTCUT_RESOLVED " in *" $SHORTCUT_PROMPT_RESULT "*) : ;; *) SHORTCUT_RESOLVED="$SHORTCUT_RESOLVED$SHORTCUT_PROMPT_RESULT " ;; esac
+                fi
+                # Empty result = skip this name; keep the existing startup.
+            else
+                # Non-interactive or input closed: skip, never fail here.
+                printf '%s\n' "$(tprintf sc_conflict_detail "$SHORTCUT_DETAIL")" >&2
+            fi
+        fi
+    done
+    SHORTCUT_RESOLVED="${SHORTCUT_RESOLVED% }"
+    [[ -n "$SHORTCUT_RESOLVED" ]]
+}
+
+# shortcut_prompt_conflict <name>
+# Interactive conflict resolution for ONE desired name, via /dev/tty
+# (never the script's stdin, so piped installs are not disturbed).
+# Sets SHORTCUT_PROMPT_RESULT: the other default name, a validated custom
+# name, or "" (skip this name). Returns 0 on a decision, 1 when there is
+# no usable TTY or the input closed.
+shortcut_prompt_conflict() {
+    local _name="$1" _alt='abox' _choice _custom
+    SHORTCUT_PROMPT_RESULT=''
+    shortcut_tty_available || return 1
+    [[ "$_name" == 'abox' ]] && _alt='ab'
+    printf '%s\n' "$(tprintf sc_prompt_head "$_name" "$SHORTCUT_DETAIL")" > /dev/tty 2>/dev/null || return 1
+    printf '%s\n' "$(tprintf sc_prompt_opt1 "$_alt")" > /dev/tty 2>/dev/null || return 1
+    printf '%s\n' "$(tr_msg sc_prompt_opt2)" > /dev/tty 2>/dev/null || return 1
+    printf '%s\n' "$(tr_msg sc_prompt_opt0)" > /dev/tty 2>/dev/null || return 1
+    while true; do
+        printf '%s' "$(tr_msg sc_prompt_choice)" > /dev/tty 2>/dev/null || return 1
+        IFS= read -r _choice < /dev/tty || return 1
+        case "$_choice" in
+            1)
+                if shortcut_check_candidate "$_alt"; then
+                    SHORTCUT_PROMPT_RESULT="$_alt"; return 0
+                fi
+                printf '%s\n' "$(tprintf sc_conflict_detail "$SHORTCUT_DETAIL")" > /dev/tty
+                ;;
+            2)
+                printf '%s' "$(tr_msg sc_custom_prompt)" > /dev/tty 2>/dev/null || return 1
+                IFS= read -r _custom < /dev/tty || return 1
+                if ! shortcut_validate_name "$_custom"; then
+                    printf '%s\n' "$(tprintf sc_invalid_name "$_custom")" > /dev/tty
+                    continue
+                fi
+                if ! shortcut_check_candidate "$_custom"; then
+                    printf '%s\n' "$(tprintf sc_conflict_detail "$SHORTCUT_DETAIL")" > /dev/tty 2>/dev/null || true
+                    continue
+                fi
+                SHORTCUT_PROMPT_RESULT="$_custom"; return 0
+                ;;
+            0|'')
+                SHORTCUT_PROMPT_RESULT=''; return 0
+                ;;
+            *) continue ;;
+        esac
+    done
+}
+
+# shortcut_ensure
+# Ensures the desired shortcut set (state file, or the default "ab abox")
+# is installed. Interactive conflicts go through the /dev/tty prompt;
+# non-interactive conflicts are skipped (the install never fails over a
+# shortcut). A corrupt state file fails closed unless an interactive user
+# confirms resetting it to the defaults.
+# Returns 0 when at least one shortcut is installed, 1 otherwise. On
+# failure it prints the direct launch path; the caller decides whether to
+# die (wipe) or continue (menu refresh).
+# NOTE on the "keep sb" fallback: the old /usr/local/bin/sb is out of
+# scope for this code (user decision 2026-11-05) — it is never installed,
+# tracked, or recorded. "Keep sb" in the prompt means "skip the
+# conflicting name and leave whatever exists alone"; the state records
+# only names this code actually installed. When nothing is installed the
+# state file is left unwritten, so the next run prompts again.
+shortcut_ensure() {
+    local _desired='' _rc=0
+    SHORTCUT_ERR=''
+    shortcut_read_state
+    _rc=$?
+    if (( _rc == 1 )); then
+        printf '%s\n' "$(tprintf sc_state_corrupt "$SHORTCUT_ERR")" >&2
+        if shortcut_tty_available; then
+            local _ans
+            printf '%s' "$(tr_msg sc_state_reset_prompt)" > /dev/tty 2>/dev/null || { printf '%s\n' "$(tr_msg sc_none_installed)" >&2; return 1; }
+            IFS= read -r _ans < /dev/tty || { printf '%s\n' "$(tr_msg sc_none_installed)" >&2; return 1; }
+            case "$_ans" in
+                y|Y|yes|YES) _desired='ab abox' ;;
+                *) printf '%s\n' "$(tr_msg sc_none_installed)" >&2; return 1 ;;
+            esac
+        else
+            printf '%s\n' "$(tr_msg sc_none_installed)" >&2
+            return 1
+        fi
+    elif (( _rc == 2 )); then
+        _desired='ab abox'
+    else
+        _desired="$SHORTCUT_NAMES"
+    fi
+    if ! shortcut_resolve_desired $_desired; then
+        printf '%s\n' "$(tr_msg sc_none_installed)" >&2
+        return 1
+    fi
+    shortcut_change_transaction $SHORTCUT_RESOLVED
+    _rc=$?
+    if (( _rc == 0 )); then
+        printf '%s\n' "$(tprintf sc_installed "$SHORTCUT_RESOLVED")" >&2
+        return 0
+    elif (( _rc == 2 )); then
+        printf '%s\n' "$(tprintf sc_cleanup_blocked "$SHORTCUT_ERR")" >&2
+        printf '%s\n' "$(tprintf sc_installed "$SHORTCUT_RESOLVED")" >&2
+        return 0
+    fi
+    printf '%s\n' "$(tr_msg sc_none_installed)" >&2
+    return 1
+}
+
+# shortcut_custom_menu
+# Toolbox 17: view the current managed shortcuts, set a custom name
+# (replaces the set), reset to the defaults (ab abox, conflicts still go
+# through the unified prompt), or remove one managed shortcut (at least
+# one must remain). All changes go through shortcut_change_transaction.
+# Returns 0 when the user exits normally (0 / EOF).
+shortcut_custom_menu() {
+    local _names _choice _custom _rc _n _p _i _sel _new
+    while true; do
+        _names=$(shortcut_primary_names) || true
+        printf '%s\n' "$(tr_msg sc_tb_title)" >&2
+        printf '%s\n' "$(tprintf sc_tb_current "$_names")" >&2
+        for _n in $_names; do
+            _p="/usr/local/bin/$_n"
+            if [[ -f "$_p" ]] && shortcut_is_abox_managed "$_p"; then
+                printf '  %s = %s\n' "$_p" "$(tr_msg sc_st_managed)" >&2
+            elif [[ -e "$_p" || -L "$_p" ]]; then
+                printf '  %s = %s\n' "$_p" "$(tr_msg sc_st_foreign)" >&2
+            else
+                printf '  %s = %s\n' "$_p" "$(tr_msg sc_st_missing)" >&2
+            fi
+        done
+        printf '%s\n' "$(tr_msg sc_tb_opt1)" >&2
+        printf '%s\n' "$(tr_msg sc_tb_opt2)" >&2
+        printf '%s\n' "$(tr_msg sc_tb_opt3)" >&2
+        printf '%s\n' "$(tr_msg sc_tb_opt0)" >&2
+        printf '%s' "$(tr_msg sc_tb_choice)" >&2
+        IFS= read -r _choice || return 0
+        case "$_choice" in
+            1)
+                printf '%s' "$(tr_msg sc_custom_prompt)" >&2
+                IFS= read -r _custom || continue
+                if ! shortcut_validate_name "$_custom"; then
+                    printf '%s\n' "$(tprintf sc_invalid_name "$_custom")" >&2; continue
+                fi
+                if ! shortcut_check_candidate "$_custom"; then
+                    printf '%s\n' "$(tprintf sc_conflict_detail "$SHORTCUT_DETAIL")" >&2; continue
+                fi
+                shortcut_change_transaction "$_custom"
+                _rc=$?
+                if (( _rc == 0 )); then
+                    printf '%s\n' "$(tprintf sc_tb_done "$_custom")" >&2
+                elif (( _rc == 2 )); then
+                    printf '%s\n' "$(tprintf sc_cleanup_blocked "$SHORTCUT_ERR")" >&2
+                    printf '%s\n' "$(tprintf sc_tb_done "$_custom")" >&2
+                else
+                    printf '%s\n' "$(tprintf sc_tb_fail "$SHORTCUT_ERR")" >&2
+                fi
+                ;;
+            2)
+                if ! shortcut_resolve_desired ab abox; then
+                    printf '%s\n' "$(tr_msg sc_tb_noop)" >&2; continue
+                fi
+                shortcut_change_transaction $SHORTCUT_RESOLVED
+                _rc=$?
+                if (( _rc == 0 )); then
+                    printf '%s\n' "$(tprintf sc_tb_done "$SHORTCUT_RESOLVED")" >&2
+                elif (( _rc == 2 )); then
+                    printf '%s\n' "$(tprintf sc_cleanup_blocked "$SHORTCUT_ERR")" >&2
+                    printf '%s\n' "$(tprintf sc_tb_done "$SHORTCUT_RESOLVED")" >&2
+                else
+                    printf '%s\n' "$(tprintf sc_tb_fail "$SHORTCUT_ERR")" >&2
+                fi
+                ;;
+            3)
+                _names=$(shortcut_primary_names) || true
+                # At least one shortcut must remain.
+                _i=0
+                for _n in $_names; do _i=$(( _i + 1 )); done
+                if (( _i <= 1 )); then
+                    printf '%s\n' "$(tr_msg sc_tb_last)" >&2; continue
+                fi
+                printf '%s' "$(tr_msg sc_tb_remove_prompt)" >&2
+                IFS= read -r _sel || continue
+                _new=''
+                for _n in $_names; do
+                    [[ "$_n" == "$_sel" ]] && continue
+                    _new="$_new$_n "
+                done
+                _new="${_new% }"
+                if [[ "$_new" == "$_names" ]]; then
+                    printf '%s\n' "$(tprintf sc_tb_notfound "$_sel")" >&2; continue
+                fi
+                shortcut_change_transaction $_new
+                _rc=$?
+                if (( _rc == 0 )); then
+                    printf '%s\n' "$(tprintf sc_tb_done "$_new")" >&2
+                elif (( _rc == 2 )); then
+                    printf '%s\n' "$(tprintf sc_cleanup_blocked "$SHORTCUT_ERR")" >&2
+                    printf '%s\n' "$(tprintf sc_tb_done "$_new")" >&2
+                else
+                    printf '%s\n' "$(tprintf sc_tb_fail "$SHORTCUT_ERR")" >&2
+                fi
+                ;;
+            0|'')
+                return 0
+                ;;
+            *)
+                continue
+                ;;
+        esac
+    done
 }
 
 stop_abox_service() {
@@ -11757,9 +12699,17 @@ show_status_report() {
     xray_state=$(service_report_state xray)
     sing_state=$(service_report_state sing-box)
     hy2_state=$(service_report_state hysteria)
-    if [[ -e /usr/local/bin/sb || -L /usr/local/bin/sb ]]; then
-        if shortcut_is_abox_managed /usr/local/bin/sb; then shortcut_state='managed'; else shortcut_state='foreign/unmanaged'; fi
-    fi
+    local _sc_path='' _sc_state=''
+    while IFS= read -r _sc_path; do
+        if [[ -e "$_sc_path" || -L "$_sc_path" ]]; then
+            if shortcut_is_abox_managed "$_sc_path"; then _sc_state='managed'; else _sc_state='foreign/unmanaged'; fi
+        else
+            _sc_state='missing'
+        fi
+        shortcut_state+="$_sc_path=$_sc_state "
+    done < <(shortcut_primary_paths)
+    shortcut_state="${shortcut_state% }"
+    [[ -n "$shortcut_state" ]] || shortcut_state='missing'
     if (( config_loaded == 1 )) || [[ -e "$ABOX_DESIRED_STATE" || -L "$ABOX_DESIRED_STATE" ]] || abox_owns_service xray || abox_owns_service sing-box || abox_owns_service hysteria; then
         desired=$(get_desired_state 2>/dev/null || printf 'invalid')
     fi
@@ -11772,7 +12722,7 @@ Init: ${init}
 Config: CORE=${CORE:-} MODE=${MODE:-}
 Desired state: ${desired}${period:+ (traffic period ${period})}
 Services: xray=${xray_state} sing-box=${sing_state} hysteria=${hy2_state}
-Shortcut: /usr/local/bin/sb=${shortcut_state}
+Shortcut: ${shortcut_state}
 Config file: ${ABOX_ENV}
 EOF_STATUS
     if [[ -n "$_status_stderr_saved" ]]; then
@@ -14534,30 +15484,12 @@ setup_shortcut() {
     validate_abox_script_file "$ABOX_DIR/A-Box.sh" "$(tr_msg ss2_ctx_persisted)" || die "$(tr_msg ss2_persist_verify)"
     chmod +x "$ABOX_DIR/A-Box.sh" || die "$(tr_msg ss2_chmod)"
 
-    local shortcut_tmp _sb_target
-    _sb_target=$(printf '%q' "$ABOX_DIR/A-Box.sh")
-    shortcut_tmp=$(umask 077; mktemp /tmp/A-Box-sb.XXXXXX) || die "$(tr_msg ss2_tmp)"
-    cat > "$shortcut_tmp" <<EOS || { rm -f -- "$shortcut_tmp"; die '快捷入口临时文件写入失败。'; }
-#!/usr/bin/env bash
-# Managed by A-Box
-if [[ \$EUID -eq 0 ]]; then
-    exec bash $_sb_target "\$@"
-elif command -v sudo >/dev/null 2>&1; then
-    exec sudo bash $_sb_target "\$@"
-else
-    echo 'Root privileges required. Please run: su -'
-    exit 1
-fi
-EOS
-    chmod 755 "$shortcut_tmp" || { rm -f -- "$shortcut_tmp"; die "$(tr_msg ss2_tmp_chmod)"; }
-    if ! assert_abox_shortcut_safe /usr/local/bin/sb; then
-        rm -f -- "$shortcut_tmp"
-        die "$(tr_msg ss2_sb_unsafe)"
-    fi
-    if [[ ! -f /usr/local/bin/sb ]] || ! cmp -s "$shortcut_tmp" /usr/local/bin/sb; then
-        install_binary_atomically "$shortcut_tmp" /usr/local/bin/sb || { rm -f -- "$shortcut_tmp"; die "$(tr_msg ss2_write)"; }
-    fi
-    rm -f -- "$shortcut_tmp"
+    # Shortcut entries are managed centrally (shortcut_ensure): the active
+    # name set lives in /etc/ddr/.shortcut (default "ab abox"); the old
+    # /usr/local/bin/sb is out of scope and is never touched here. A
+    # shortcut failure never fails the install: shortcut_ensure already
+    # reports the direct launch path (bash /etc/ddr/A-Box.sh).
+    shortcut_ensure || true
 }
 validate_downloaded_asset() {
     local asset_name="$1" f="${2:-/tmp/$1}" magic=''
@@ -23063,7 +23995,6 @@ depend() { need net; }
 EOF_SVC
             chmod +x /etc/init.d/xray || die "$(tr_msg dp_xray_chmod)"
         fi
-        prepare_abox_runtime_permissions xray || die "$(tr_msg dp_xray_runtime)"
     fi
 
     # Build the socks inbound object.
@@ -23080,6 +24011,10 @@ EOF_SVC
         install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
     fi
     rm -f "$tmp_json"
+    # S-SOCKS5-01: prep must run AFTER the seed: it requires
+    # /usr/local/etc/xray/config.json to exist, and the seed is what
+    # creates it when both the binary and the config are missing.
+    prepare_abox_runtime_permissions xray || die "$(tr_msg dp_xray_runtime)"
     local listen_addr=$(wildcard_listen_address)
     tmp_json=$(mktemp /tmp/A-Box-socks5-inbound.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     jq -n --argjson port "$port" --arg user "$user" --rawfile pass <(printf '%s' "$pass") --arg tag "$tag" --arg listen_addr "$listen_addr" \
@@ -25393,8 +26328,10 @@ do_cleanup() {
     if [[ "${1:-}" == full || "${1:-}" == wipe ]]; then
         # Wipe tier (keep the script): stash the persisted script copy
         # inside the transaction dir before ABOX_DIR is destroyed; it
-        # is restored below as the sole resident and sb is recreated.
-        # Full tier: the sb shortcut goes with everything else.
+        # is restored below as the sole resident and the managed
+        # shortcuts (the current .shortcut state names) are re-installed by setup_shortcut.
+        # Full tier: the managed shortcuts go with everything else;
+        # a pre-existing /usr/local/bin/sb is out of scope and left alone.
         local _wipe_script_copy=''
         local _wipe_copy_failed=0
         if [[ "${1:-}" == wipe ]]; then
@@ -25409,7 +26346,15 @@ do_cleanup() {
                 _wipe_script_copy=''
             fi
         else
-            remove_abox_shortcut /usr/local/bin/sb || die "$(tr_msg cu_shortcut)"
+            local _sc_path='' _sc_rc=0
+            shortcut_read_state || _sc_rc=$?
+            if (( _sc_rc == 1 )); then
+                msg "${YELLOW}[!] $(tprintf cu_shortcut_state_bad "$SHORTCUT_ERR")${NC}"
+            fi
+            while IFS= read -r _sc_path; do
+                remove_abox_shortcut "$_sc_path" || die "$(tprintf cu_shortcut_path "$_sc_path")"
+            done < <(shortcut_managed_paths)
+            rm -f -- "$(shortcut_state_path)" "$(shortcut_migrate_path)" 2>/dev/null || die "$(tr_msg cu_shortcut)"
         fi
         # R12C10-02: a selected keep-script whose copy failed must abort
         # before ABOX_DIR is destroyed; otherwise the wipe promise is lost.
@@ -28355,7 +29300,7 @@ _nsni_rollback() {
     local _cfg="$1" _bak="$2" _key="$3" _crt="$4" _kebak="$5" _crtbak="$6" _core="$7" _was_running="$8"
     local _link="${9:-}" _linkbak="${10:-}"
     local _ok=1
-    cp -a "$_bak" "$_cfg" 2>/dev/null || _ok=0
+    [[ -f "$_bak" && -r "$_bak" ]] && cat "$_bak" > "$_cfg" 2>/dev/null || _ok=0
     if [[ -n "$_kebak" && -f "$_kebak" ]]; then cp -a "$_kebak" "$_key" 2>/dev/null || _ok=0; fi
     if [[ -n "$_crtbak" && -f "$_crtbak" ]]; then cp -a "$_crtbak" "$_crt" 2>/dev/null || _ok=0; fi
     if [[ -n "$_link" && -n "$_linkbak" && -f "$_linkbak" ]]; then
@@ -28549,8 +29494,25 @@ _nsni_handshake_check() {
     done
     if (( up == 0 )); then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; { printf 'nsni-check temp-socks-down\n'; tail -n 20 "$cerr" 2>/dev/null; } >> "$logf" 2>/dev/null || true; rm -f "$cerr" "$cerr_curl"; rm -rf "$tmpd"; return 2; fi
     code=''
+    # TB12: on the geo-enabled production path, the first handshake
+    # after an xray restart takes ~5s (the server loads its geo/
+    # routing data on first use: box measured 5.02s twice, server-side;
+    # sandbox geo rig 5.75s), while steady state is ~0.04s. A minimal
+    # server WITHOUT the geo rule serves its first handshake in <3s,
+    # so the 3s connect-timeout only false-negatives on the geo-enabled
+    # path -- but that is the path this check always runs on. A 3s
+    # connect-timeout kills that first handshake, and the second try
+    # fails the same way (the slow step never completes because the
+    # first attempt was killed), so the check false-negatives right
+    # after the SNI-apply restart and rolls back a healthy rename.
+    # 10s gives ~2x headroom over the measured ~5s; the dial address
+    # is irrelevant for the listen addresses tested (both ::1 and
+    # 127.0.0.1 need the same ~5s on the first handshake and pass with
+    # room to spare). A cold path slower than 10s still false-negatives
+    # (12s probe: both tries killed at 10s) -- a known boundary, not a
+    # regression.
     for _try in 1 2; do
-        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --noproxy '' --connect-timeout 3 --max-time 10 "https://$sni:$port/" 2>"$cerr_curl")
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --noproxy '' --connect-timeout 10 --max-time 30 "https://$sni:$port/" 2>"$cerr_curl")
         curl_rc=$?
         [[ "$curl_rc" != 0 ]] && code='000'
         printf 'nsni-check try=%s curl-rc=%s http=%s\n' "$_try" "$curl_rc" "$code" >> "$logf" 2>/dev/null || true
@@ -28591,14 +29553,14 @@ _nsni_apply() {
         xray-latest) bin=$(users_bin_of xray-latest 2>/dev/null || echo /usr/local/bin/xray-latest); if [[ -x "$bin" ]]; then "$bin" run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
         sing-box) bin="${SB_PATH:-/usr/local/bin/sing-box}"; if [[ -x "$bin" ]]; then "$bin" check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
     esac
-    cat "$tmp" > "$cfg" || { if cp -a "$bak" "$cfg" 2>/dev/null; then rm -f "$tmp" "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; rm -f "$tmp"; fi; return 1; }
+    cat "$tmp" > "$cfg" || { if [[ -f "$bak" && -r "$bak" ]] && cat "$bak" > "$cfg" 2>/dev/null; then rm -f "$tmp" "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; rm -f "$tmp"; fi; return 1; }
     rm -f "$tmp"
     local _kebak='' _crtbak=''
     if [[ "$kind" == 'tuic' && -n "$key" && -n "$crt" ]]; then
         _kebak=$(mktemp /tmp/A-Box-nsni-keybak.XXXXXX 2>/dev/null || true)
         _crtbak=$(mktemp /tmp/A-Box-nsni-crtbak.XXXXXX 2>/dev/null || true)
         if [[ -z "$_kebak" || -z "$_crtbak" ]] || ! cp -a "$key" "$_kebak" 2>/dev/null || ! chmod 600 "$_kebak" 2>/dev/null || ! cp -a "$crt" "$_crtbak" 2>/dev/null || ! chmod 600 "$_crtbak" 2>/dev/null; then
-            if cp -a "$bak" "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; fi
+            if [[ -f "$bak" && -r "$bak" ]] && cat "$bak" > "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; fi
             rm -f "$_kebak" "$_crtbak"
             return 1
         fi
@@ -28623,6 +29585,7 @@ _nsni_apply() {
     # indeterminate (2) only warns and continues. The message goes to
     # stderr so a caller capturing stdout cannot swallow it.
     if [[ "$kind" == reality-xray || "$kind" == reality-sb ]] && (( _was_running == 1 )); then
+        msg "${CYAN}$(tr_msg nsni_checking)${NC}"
         _nsni_handshake_check "$core" "$tag" "$cfg" "$new"
         local _hs_rc=$?
         if (( _hs_rc == 1 )); then
@@ -34495,6 +35458,10 @@ validate_managed_paths_file() {
     local file="$1" allowed_paths='' srv core_paths
     [[ -f "$file" && ! -L "$file" ]] || return 1
     allowed_paths=$(managed_auxiliary_paths) || return 1
+    # Legacy: backups made before the rename list /usr/local/bin/sb in
+    # their manifest. It is only tolerated here for validation of old
+    # backups; it is never installed, managed, or restored.
+    allowed_paths+=$'\n/usr/local/bin/sb'
     for srv in xray sing-box hysteria xray-latest; do
         core_paths=$(core_family_paths "$srv") || return 1
         allowed_paths+=$'\n'"$core_paths"
@@ -34538,6 +35505,10 @@ validate_extracted_backup_content() {
     validate_services_state_file "$work/meta/services.state" || return 1
     [[ -f "$root$ABOX_DIR/.A-Box-owner" && ! -L "$root$ABOX_DIR/.A-Box-owner" ]] || return 1
     grep -Fxq 'A-Box managed directory v1' "$root$ABOX_DIR/.A-Box-owner" 2>/dev/null || return 1
+    if [[ -e "$root$ABOX_DIR/.shortcut" || -L "$root$ABOX_DIR/.shortcut" ]]; then
+        [[ -f "$root$ABOX_DIR/.shortcut" && ! -L "$root$ABOX_DIR/.shortcut" ]] || return 1
+        shortcut_parse_state_file "$root$ABOX_DIR/.shortcut" || return 1
+    fi
     for srv in xray sing-box hysteria xray-latest; do
         backup_root_contains_service "$root" "$srv" || continue
         if backup_root_service_is_config_only "$root" "$srv"; then
@@ -34590,8 +35561,16 @@ assert_restore_target_safe() {
 
 assert_restore_shortcut_safe() {
     local root="$1"
-    [[ -e "$root/usr/local/bin/sb" || -L "$root/usr/local/bin/sb" ]] || return 0
-    assert_abox_shortcut_safe /usr/local/bin/sb
+    # Wrappers are regenerable products: they are never restored by
+    # copying the archived files. Only the state file is restored, and
+    # only when it parses strictly. (An old backup has no .shortcut at
+    # all; the live state is then left alone.)
+    local _sc="$root$ABOX_DIR/.shortcut"
+    if [[ -e "$_sc" || -L "$_sc" ]]; then
+        [[ -f "$_sc" && ! -L "$_sc" ]] || return 1
+        shortcut_parse_state_file "$_sc" || return 1
+    fi
+    return 0
 }
 
 abox_restore_preserved_name() {
@@ -34919,21 +35898,18 @@ restore_tree_path() {
 }
 
 restore_shortcut_from_backup() {
-    local root="$1" src
-    src="$root/usr/local/bin/sb"
-    if [[ -e "$src" || -L "$src" ]]; then
-        auxiliary_content_is_abox_managed "$src" /usr/local/bin/sb || return 1
-        assert_abox_shortcut_safe /usr/local/bin/sb
-        restore_tree_path "$root" /usr/local/bin/sb
-    else
-        remove_abox_shortcut /usr/local/bin/sb
-    fi
+    # No-op by design: shortcut wrappers are regenerable and are
+    # re-created on the target by regenerate_runtime_assets_after_restore
+    # (setup_shortcut -> shortcut_ensure) after the restored state file
+    # is validated. Copying archived wrappers here would bypass the
+    # conflict checks and the transaction.
+    return 0
 }
 
 restore_auxiliary_path_from_backup() {
     local root="$1" path="$2" src
     src="$root$path"
-    [[ "$path" != /usr/local/bin/sb ]] || { restore_shortcut_from_backup "$root"; return; }
+    shortcut_is_managed_path "$path" && { restore_shortcut_from_backup "$root"; return; }
     if [[ -e "$src" || -L "$src" ]]; then
         auxiliary_content_is_abox_managed "$src" "$path" || return 1
         [[ ! -e "$path" && ! -L "$path" ]] || auxiliary_path_is_abox_managed "$path" || return 1
@@ -35057,11 +36033,14 @@ backup_current_config() {
                 --exclude='./A-Box.sh' --exclude='./.backup-hmac.key' --exclude='./.runtime.lock' --exclude='./.runtime.lock.d' \
                 --exclude='./socket_probe.sh' --exclude='./geo_update.sh' --exclude='./traffic_monitor.sh' \
                 --exclude='./firewall_restore.sh' --exclude='./iptables.v4' --exclude='./iptables.v6' \
+                --exclude='./.shortcut-migrate' --exclude='./.shortcut.lock' \
                 "${backup_extra_excludes[@]}" \
                 -cpf - . | tar -C "$root$ABOX_DIR" -xpf -) || backup_failed=1
         fi
     fi
-    shortcut_is_abox_managed /usr/local/bin/sb && { __abox_backup_copy_path /usr/local/bin/sb "$root" || backup_failed=1; }
+    while IFS= read -r _sc_path; do
+        shortcut_is_abox_managed "$_sc_path" && { __abox_backup_copy_path "$_sc_path" "$root" || backup_failed=1; }
+    done < <(shortcut_primary_paths)
     for srv in xray sing-box hysteria xray-latest; do
         if abox_owns_service "$srv"; then
             core_paths=$(core_family_paths "$srv") || { rm -rf "$work"; die "Core path enumeration failed during backup: $srv"; }
@@ -35074,7 +36053,7 @@ backup_current_config() {
     local aux_paths=''
     aux_paths=$(managed_auxiliary_paths) || { rm -rf "$work"; die 'Managed auxiliary path enumeration failed during backup.'; }
     while IFS= read -r path; do
-        [[ "$path" == /usr/local/bin/sb ]] && continue
+        shortcut_is_managed_path "$path" && continue
         auxiliary_path_is_abox_managed "$path" && { __abox_backup_copy_path "$path" "$root" || backup_failed=1; }
     done <<< "$aux_paths"
     { echo 'A-Box backup'; echo "Created: $(now_iso)"; echo "Host: $(hostname 2>/dev/null || true)"; echo "Kernel: $(uname -a 2>/dev/null || true)"; echo "Init: ${INIT_SYS:-unknown}"; echo "Script SHA256: $(sha256sum "$0" 2>/dev/null | awk '{print $1}')"; } > "$work/meta/metadata.txt"
@@ -35266,7 +36245,7 @@ PY_LATEST_BACKUP
     local aux_paths=''
     aux_paths=$(managed_auxiliary_paths) || { msg "restore gate failed: aux-enum (work preserved at $work)" >&2; return 1; }
     while IFS= read -r path; do
-        [[ "$path" == /usr/local/bin/sb ]] && continue
+        shortcut_is_managed_path "$path" && continue
         restore_auxiliary_path_from_backup "$root" "$path" || { msg "restore gate failed: restore-aux (work preserved at $work)" >&2; return 1; }
     done <<< "$aux_paths"
     regenerate_runtime_assets_after_restore "$root" >/dev/null 2>&1 || { msg "restore gate failed: regen-assets (work preserved at $work)" >&2; return 1; }
@@ -35391,13 +36370,18 @@ restore_from_backup() {
     local aux_paths=''
     aux_paths=$(managed_auxiliary_paths) || die '无法枚举 A-Box 辅助文件，恢复已中止。'
     while IFS= read -r path; do
-        [[ "$path" == /usr/local/bin/sb ]] && continue
+        shortcut_is_managed_path "$path" && continue
         restore_auxiliary_path_from_backup "$root" "$path" || die "Restore failed: $path"
     done <<< "$aux_paths"
     chmod 700 "$ABOX_DIR" 2>/dev/null || die '恢复后的 A-Box 目录权限加固失败。'
     # X-08: restoring an initial backup (no .env) must not die here.
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
         chmod 600 "$ABOX_ENV" 2>/dev/null || die '恢复后的 .env 权限加固失败。'
+    fi
+    if [[ -e "$ABOX_DIR/.shortcut" || -L "$ABOX_DIR/.shortcut" ]]; then
+        [[ -f "$ABOX_DIR/.shortcut" && ! -L "$ABOX_DIR/.shortcut" ]] || die '恢复后的快捷键状态文件类型异常。'
+        chown root:root "$ABOX_DIR/.shortcut" 2>/dev/null || die '恢复后的快捷键状态文件属主加固失败。'
+        chmod 600 "$ABOX_DIR/.shortcut" 2>/dev/null || die '恢复后的快捷键状态文件权限加固失败。'
     fi
     regenerate_runtime_assets_after_restore "$root" || die 'Regenerate trusted A-Box runtime helpers and cron blocks failed.'
     apply_native_firewall_rules_from_state || die 'Restore native firewall rules failed.'
@@ -40112,11 +41096,9 @@ vps_benchmark_menu() {
             msg " ${CYAN}9.${NC}  Local SNI preference                 ${CYAN}13.${NC}  Backup / restore configuration"
             msg "${CYAN}10.${NC}  Mini-host SNI preference             ${CYAN}14.${NC}  Multi-user / subscription link export"
             msg "${CYAN}11.${NC}  SNI preference records               ${CYAN}15.${NC}  Wallos install / update / backup"
-        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
+        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                      ${CYAN}16.${NC}  SS-2022 IP whitelist"
             msg ""
-            msg "${CYAN}[ Security ]${NC}"
-            msg "${CYAN}16.${NC}  SS-2022 IP whitelist"
-            msg " ${CYAN}0.${NC}  Back"
+            msg " ${CYAN}0.${NC}  Back                                 ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             ;;
         ru)
             msg "${BOLD}${GREEN}Инструменты${NC}"
@@ -40130,11 +41112,9 @@ vps_benchmark_menu() {
             msg " ${CYAN}9.${NC}  Подбор SNI                           ${CYAN}13.${NC}  Бэкап / восстановление"
             msg "${CYAN}10.${NC}  Подбор SNI (мини-хост)               ${CYAN}14.${NC}  Пользователи / экспорт подписки"
             msg "${CYAN}11.${NC}  Записи подбора SNI                   ${CYAN}15.${NC}  Wallos: установка / обновление"
-        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
+        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                    ${CYAN}16.${NC}  Белый список IP (SS-2022)"
             msg ""
-            msg "${CYAN}[ Безопасность ]${NC}"
-            msg "${CYAN}16.${NC}  Белый список IP (SS-2022)"
-            msg " ${CYAN}0.${NC}  Назад"
+            msg " ${CYAN}0.${NC}  Назад                                ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             ;;
         fa)
             msg "${BOLD}${GREEN}جعبه ابزار${NC}"
@@ -40148,11 +41128,9 @@ vps_benchmark_menu() {
             msg " ${CYAN}9.${NC}  بهینه‌سازی SNI محلی                  ${CYAN}13.${NC}  پشتیبان‌گیری / بازیابی"
             msg "${CYAN}10.${NC}  بهینه‌سازی SNI مینی‌هاست             ${CYAN}14.${NC}  کاربران / خروجی لینک اشتراک"
             msg "${CYAN}11.${NC}  سوابق بهینه‌سازی SNI                 ${CYAN}15.${NC}  نصب / به‌روزرسانی Wallos"
-        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
+        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                        ${CYAN}16.${NC}  لیست سفید آی‌پی SS-2022"
             msg ""
-            msg "${CYAN}[ امنیت ]${NC}"
-            msg "${CYAN}16.${NC}  لیست سفید آی‌پی SS-2022"
-            msg " ${CYAN}0.${NC}  بازگشت"
+            msg " ${CYAN}0.${NC}  بازگشت                               ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}綜合工具箱${NC}"
@@ -40166,11 +41144,9 @@ vps_benchmark_menu() {
             msg " ${CYAN}9.${NC}  本地 SNI 優選                        ${CYAN}13.${NC}  配置備份 / 恢復"
             msg "${CYAN}10.${NC}  微型主機 SNI 優選                    ${CYAN}14.${NC}  多用戶 / 訂閱連結導出"
             msg "${CYAN}11.${NC}  SNI 優選記錄                         ${CYAN}15.${NC}  Wallos 安裝 / 升級 / 備份"
-        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
+        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                         ${CYAN}16.${NC}  SS-2022 訪問白名單"
             msg ""
-            msg "${CYAN}[ 安全 ]${NC}"
-            msg "${CYAN}16.${NC}  SS-2022 訪問白名單"
-            msg " ${CYAN}0.${NC}  返回主選單"
+            msg " ${CYAN}0.${NC}  返回主選單                           ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             ;;
         ja)
             msg "${BOLD}${GREEN}ツールボックス${NC}"
@@ -40184,11 +41160,9 @@ vps_benchmark_menu() {
             msg " ${CYAN}9.${NC}  ローカル SNI 最適化                  ${CYAN}13.${NC}  設定のバックアップ/復元"
             msg "${CYAN}10.${NC}  ミニホスト SNI 最適化                ${CYAN}14.${NC}  複数ユーザー / サブスクリプション出力"
             msg "${CYAN}11.${NC}  SNI 最適化記録                       ${CYAN}15.${NC}  Wallos インストール/更新"
-        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
+        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                  ${CYAN}16.${NC}  SS-2022 IPホワイトリスト"
             msg ""
-            msg "${CYAN}[ セキュリティ ]${NC}"
-            msg "${CYAN}16.${NC}  SS-2022 IPホワイトリスト"
-            msg " ${CYAN}0.${NC}  メインメニューに戻る"
+            msg " ${CYAN}0.${NC}  メインメニューに戻る                 ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             ;;
         *)
             msg "${BOLD}${GREEN}综合工具箱${NC}"
@@ -40202,15 +41176,13 @@ vps_benchmark_menu() {
             msg " ${CYAN}9.${NC}  本地 SNI 优选                        ${CYAN}13.${NC}  配置备份 / 恢复"
             msg "${CYAN}10.${NC}  微型主机 SNI 优选                    ${CYAN}14.${NC}  多用户 / 订阅链接导出"
             msg "${CYAN}11.${NC}  SNI 优选记录                         ${CYAN}15.${NC}  Wallos 安装 / 升级 / 备份"
-        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
+        msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                         ${CYAN}16.${NC}  SS-2022 访问白名单"
             msg ""
-            msg "${CYAN}[ 安全 ]${NC}"
-            msg "${CYAN}16.${NC}  SS-2022 访问白名单"
-            msg " ${CYAN}0.${NC}  返回主菜单"
+            msg " ${CYAN}0.${NC}  返回主菜单                           ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             ;;
     esac
     local bench_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-16]: ' ;; ru) select_prompt='Выберите [0–16]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۶]: ' ;; ja) select_prompt='選択してください [0-16]: ' ;; zh-tw) select_prompt='請選擇 [0-16]：' ;; *) select_prompt='请选择 [0-16]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-17]: ' ;; ru) select_prompt='Выберите [0–17]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۷]: ' ;; ja) select_prompt='選択してください [0-17]: ' ;; zh-tw) select_prompt='請選擇 [0-17]：' ;; *) select_prompt='请选择 [0-17]：' ;; esac
     read -r -p "$select_prompt" bench_choice || return 0
     case "$bench_choice" in
         1) run_acheck_tool; pause_return ;;
@@ -40229,6 +41201,7 @@ vps_benchmark_menu() {
         14) multi_user_menu ;;
         15) wallos_menu ;;
         16) manage_ss_whitelist ;;
+        17) shortcut_custom_menu ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $bench_choice${NC}"; sleep 1 ;;
     esac
@@ -40833,8 +41806,11 @@ view_config() {
         msg "${GREEN}Clash Verge Rev URL Scheme: ${CLASH_SCHEME}${NC}"
         generate_qr "$CLASH_SCHEME"
     else
+        local _clash_launch=''
+        _clash_launch=$(shortcut_primary_names 2>/dev/null | awk '{print $1; exit}' 2>/dev/null || true)
+        _clash_launch=${_clash_launch:-ab}
         msg "${YELLOW}未设置 ABOX_CLASH_SUB_URL。若需要 Clash 扫码导入，请把 ${CLASH_FILE} 发布到 HTTPS 后执行：${NC}"
-        msg "${CYAN}ABOX_CLASH_SUB_URL='https://example.com/A-Box-clash.yaml' sb${NC}"
+        msg "${CYAN}ABOX_CLASH_SUB_URL='https://example.com/A-Box-clash.yaml' ${_clash_launch}${NC}"
     fi
 
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
@@ -43728,7 +44704,8 @@ N11EOF
     swapon() { return 42; }
     # U204: a swapon failure falls back to /proc/swaps instead of
     # reporting query failure; the expectation follows /proc/swaps.
-    if grep -qE '^/swapfile[[:space:]]' /proc/swaps 2>/dev/null; then _swap_expect=0; else _swap_expect=1; fi
+    # When /proc/swaps is unreadable the query fails closed (2).
+    if [[ ! -r /proc/swaps ]]; then _swap_expect=2; elif grep -qE '^/swapfile[[:space:]]' /proc/swaps 2>/dev/null; then _swap_expect=0; else _swap_expect=1; fi
     [[ "$(swapfile_active_state; echo "$?")" == "$_swap_expect" ]] || { echo 'FAIL: Swap activity query swapon-failure fallback'; failures=$((failures + 1)); }
     unset -f swapon
     grep -q '^fstab_path_is_safe() {' "$0" || { echo 'FAIL: swap fstab trust helper missing'; failures=$((failures + 1)); }

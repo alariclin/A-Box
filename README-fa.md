@@ -41,19 +41,20 @@ A-Box یک اسکریپت Bash تک‌فایل است (`install.sh`، حدود �
 منبع رسمی، با دستور قفل‌شده روی یک کامیت تغییرناپذیر:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e059b0ee275a5d211819a77b1ad2acfd5ac358f/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e465240a51fda47d705c1c70a7ac727caa59a14/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 آینه شخص ثالث همان فایل قفل‌شده (فقط مسیر انتقال است، نه یک درگاه رسمی). آن را مستقیم اجرا نکنید: ابتدا دانلود کنید، سپس بایت‌به‌بایت با منبع رسمی مقایسه کنید و تنها پس از تطابق اجرا کنید. آینه را فقط زمانی به کار ببرید که به پروکسی اعتماد دارید؛ فایل آینه بررسی‌نشده را هرگز در محیط واقعی اجرا نکنید:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9e059b0ee275a5d211819a77b1ad2acfd5ac358f/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e059b0ee275a5d211819a77b1ad2acfd5ac358f/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9e465240a51fda47d705c1c70a7ac727caa59a14/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e465240a51fda47d705c1c70a7ac727caa59a14/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
 - در سیستم Alpine تازه، ابتدا `apk add --no-cache bash curl sudo` را اجرا کنید.
-- پس از اولین اجرا، با وارد کردن `sb` منو دوباره باز می‌شود.
+- پس از اولین اجرا، با وارد کردن `ab` (یا `abox`) منو دوباره باز می‌شود؛ هر دو میانبر کار می‌کنند و میانبر قدیمی `sb`، در صورت وجود، دست‌نخورده باقی می‌ماند.
+- اگر `ab` قبلاً توسط برنامه دیگری گرفته شده باشد، نصب‌کننده می‌پرسد که از `abox` استفاده شود، نام دلخواه وارد شود یا `sb` حفظ شود؛ بعداً می‌توانید میانبر راه‌اندازی را از مورد 17 جعبه‌ابزار (میانبر دلخواه) تغییر دهید.
 - پیش از استفاده در محیط واقعی، فایل دانلودشده را از یک کانال مستقل و قابل اعتماد بررسی کنید.
 
 ## منوی اصلی

@@ -41,19 +41,20 @@ A-Box 是一個單一檔案 Bash 腳本（`install.sh`，約 30,000 行），用
 官方來源，指令已鎖定到不可變的提交：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e059b0ee275a5d211819a77b1ad2acfd5ac358f/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e465240a51fda47d705c1c70a7ac727caa59a14/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 第三方鏡像（與上面是同一個鎖定檔案，僅作傳輸通道，不是官方入口）。不要直接執行：先下載，再與官方來源逐位元組比對，通過後才執行。僅在信任該代理時使用鏡像；未經核對的鏡像檔案不得用於生產：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9e059b0ee275a5d211819a77b1ad2acfd5ac358f/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e059b0ee275a5d211819a77b1ad2acfd5ac358f/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9e465240a51fda47d705c1c70a7ac727caa59a14/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e465240a51fda47d705c1c70a7ac727caa59a14/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
 - 全新的 Alpine 系統請先執行 `apk add --no-cache bash curl sudo`。
-- 首次執行後，輸入 `sb` 即可再次開啟選單。
+- 首次執行後，輸入 `ab`（或 `abox`）即可再次開啟選單，兩個快捷鍵都可用；已有的舊 `sb` 快捷鍵（如有）保持不動。
+- 如果 `ab` 已被其他程式佔用，安裝時會提示選擇改用 `abox`、輸入自訂名稱或保留 `sb`；之後可在綜合工具箱 17 號（自訂快捷鍵）裡變更啟動快捷鍵。
 - 生產環境使用前，請透過獨立可信管道核對下載到的檔案。
 
 ## 主選單

@@ -41,19 +41,20 @@ A-Box is a single-file Bash script (`install.sh`, about 30,000 lines) that deplo
 Official source, pinned to an immutable commit:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e059b0ee275a5d211819a77b1ad2acfd5ac358f/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e465240a51fda47d705c1c70a7ac727caa59a14/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 Third-party mirror of the same pinned file (transport only, not an official endpoint). Do not run it directly: download it, verify it byte-for-byte against the official source, then run it. Only use the mirror when you trust the proxy; never run an unverified mirror file in production:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9e059b0ee275a5d211819a77b1ad2acfd5ac358f/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e059b0ee275a5d211819a77b1ad2acfd5ac358f/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9e465240a51fda47d705c1c70a7ac727caa59a14/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e465240a51fda47d705c1c70a7ac727caa59a14/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
 - On a fresh Alpine system, first run `apk add --no-cache bash curl sudo`.
-- After the first run, type `sb` to reopen the menu.
+- After the first run, type `ab` (or `abox`) to reopen the menu; both shortcuts work, and an older `sb` shortcut, if present, is left untouched.
+- If `ab` is already taken by another program, the installer asks whether to use `abox`, enter a custom name, or keep `sb`. You can change the launch shortcut later from Toolbox item 17 (Custom shortcut).
 - For production use, verify the downloaded file through an independent trusted channel before running it.
 
 ## Main menu

@@ -41,19 +41,20 @@ A-Box は単一ファイルの Bash スクリプト（`install.sh`、約30,000�
 公式ソース（不変のコミットに固定）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e059b0ee275a5d211819a77b1ad2acfd5ac358f/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e465240a51fda47d705c1c70a7ac727caa59a14/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 サードパーティミラー（同じ固定ファイルの転送経路であり、公式の入口ではありません）。直接実行せず、ダウンロードして公式ソースとバイト単位で照合し、一致してから実行してください。ミラーはプロキシを信頼できる場合にのみ使用し、未検証のミラーファイルを本番で実行しないでください：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9e059b0ee275a5d211819a77b1ad2acfd5ac358f/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e059b0ee275a5d211819a77b1ad2acfd5ac358f/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/9e465240a51fda47d705c1c70a7ac727caa59a14/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/9e465240a51fda47d705c1c70a7ac727caa59a14/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
 - 新規の Alpine では、先に `apk add --no-cache bash curl sudo` を実行してください。
-- 初回実行後は `sb` と入力すればメニューを再度開けます。
+- 初回実行後は `ab`（または `abox`）と入力すればメニューを再度開けます。どちらのショートカットも使え、既存の古い `sb` ショートカットがあってもそのまま残ります。
+- `ab` が他のプログラムに既に使われている場合、インストーラーは `abox` を使うか、カスタム名を入力するか、`sb` を残すかを尋ねます。起動ショートカットは後からツールボックスの 17 番（カスタムショートカット）で変更できます。
 - 本番利用の前に、ダウンロードしたファイルを独立した信頼できる経路で確認してください。
 
 ## メインメニュー

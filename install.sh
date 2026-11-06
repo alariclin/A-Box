@@ -34937,6 +34937,48 @@ service_enabled_state_value() {
     return 1
 }
 
+# 2mb residual: list the unit(s) whose [Install] Also= names $1.
+# Best-effort discovery for the indirect-restore warning: the Also=
+# source link lives outside A-Box control, so a restore that lands on
+# disabled (snapshot was indirect) names the candidate source(s) it
+# can still find, or nothing when the source unit itself is gone.
+# Prints one unit name per line; never fails the caller (rc 0 even
+# when nothing is found). Search roots are overridable for tests via
+# ABOX_SYSTEMD_UNIT_DIRS (space-separated).
+managed_service_also_sources() {
+    local srv="$1" root='' f='' base=''
+    local -a roots=()
+    if [[ -n "${ABOX_SYSTEMD_UNIT_DIRS:-}" ]]; then
+        read -r -a roots <<< "$ABOX_SYSTEMD_UNIT_DIRS"
+    else
+        roots=(/etc/systemd/system /run/systemd/system /usr/lib/systemd/system /lib/systemd/system)
+    fi
+    for root in "${roots[@]}"; do
+        [[ -d "$root" ]] || continue
+        while IFS= read -r -d '' f; do
+            awk -v srv="$srv" '
+                /^\[Install\]/ { in_install = 1; next }
+                /^\[/ { in_install = 0 }
+                in_install && /^[[:space:]]*Also=/ {
+                    sub(/^[[:space:]]*Also=/, "")
+                    n = split($0, toks, /[[:space:]]+/)
+                    for (i = 1; i <= n; i++) {
+                        if (toks[i] == srv || toks[i] == srv ".service") { print FILENAME; exit }
+                    }
+                }' "$f"
+        done < <(find "$root" -type f \( -name '*.service' -o -path '*.service.d/*.conf' \) -print0 2>/dev/null)
+    done | while IFS= read -r f; do
+        if [[ "$f" == *.service.d/* ]]; then
+            base=$(basename "$(dirname "$f")")
+            base=${base%.d}
+        else
+            base=$(basename "$f")
+        fi
+        printf '%s\n' "${base%.service}"
+    done | sort -u
+    return 0
+}
+
 managed_service_state_value() {
     local srv="$1" active=0 enabled_state enabled=0 output active_state rc
     if [[ "${INIT_SYS:-}" == systemd ]] && systemd_available; then
@@ -35116,6 +35158,17 @@ _apply_managed_service_state_file() {
             # post-state is indirect; if it is gone, disabled. Both are
             # accepted; a direct enablement is never accepted.
             [[ -z "${restored_extra:-}" && "$restored_srv" == "$srv" && "$restored_active" == "$active" && ( "$restored_enabled" == indirect || "$restored_enabled" == disabled ) ]] || return 1
+            # 2mb residual: indirect restored as disabled means the Also=
+            # source link is gone (boot policy silently differs from the
+            # snapshot). Never re-enable directly and never recreate the
+            # foreign link — warn loudly, naming the candidate Also=
+            # source(s) still discoverable, so the operator can act.
+            if [[ "$restored_enabled" == disabled ]]; then
+                local _also_sources=''
+                _also_sources=$(managed_service_also_sources "$srv" 2>/dev/null | tr '\n' ' ' || true)
+                _also_sources=${_also_sources% }
+                msg "${YELLOW}[!] ${srv}: snapshot was indirect but restore left it disabled — the Also= source link is gone, so ${srv} will no longer start at boot via that link. Also= source candidate(s): ${_also_sources:-unknown}. Re-enable the source unit, or enable ${srv} directly, if boot-start is still wanted.${NC}" || true
+            fi
         else
             [[ -z "${restored_extra:-}" && "$restored_srv" == "$srv" && "$restored_active" == "$active" && "$restored_enabled" == "$enabled" ]] || return 1
         fi

@@ -21695,6 +21695,19 @@ argo_deploy_ws() {
 argo_write_unit() {
     local name="$1" args="$2"
     local env_file_line='' rc_env_line=''
+    local unit
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        unit="/etc/systemd/system/${name}.service"
+    else
+        unit="/etc/init.d/${name}"
+    fi
+    # 2ei: refuse to overwrite a foreign unit sharing the name — only
+    # A-Box-managed units (written by this function with the marker)
+    # may be replaced; same gate as argo_remove_unit. A symlink is
+    # refused as well: writing through it would follow the link.
+    if [[ -f "$unit" ]]; then
+        [[ ! -L "$unit" ]] && grep -Fxq '# Managed by A-Box' "$unit" 2>/dev/null || die "Refusing to overwrite foreign service unit ${unit} (not managed by A-Box). Remove or rename it, or deploy with a different name."
+    fi
     if [[ "$name" == 'argo' ]]; then
         env_file_line='EnvironmentFile=/etc/ddr/.argo-token'
         rc_env_line='command_env="TUNNEL_TOKEN=$(cut -d= -f2- /etc/ddr/.argo-token 2>/dev/null)"'

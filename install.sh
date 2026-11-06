@@ -12817,7 +12817,7 @@ set -o pipefail
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 read_ip_pref() {
     local pref='dual' mode
-    local pref_file='/etc/ddr/.ip-pref'
+    local pref_file="$(dirname "$0")/.ip-pref"
     if [[ -r "$pref_file" && -f "$pref_file" && ! -L "$pref_file" && "$(stat -c %u:%g "$pref_file" 2>/dev/null || true)" == '0:0' ]]; then
         mode=$(stat -c %a "$pref_file" 2>/dev/null) || mode='777'
         if [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#022) == 0 )); then

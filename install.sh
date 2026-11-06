@@ -2559,12 +2559,12 @@ tr_msg() {
         fa:cu_wipe_noscript) echo 'نسخه‌ای از اسکریپت برای نگه‌داشتن یافت نشد؛ خود اسکریپت حفظ نشد (برای بازیابی دوباره دانلود کنید).' ;;
         zh-tw:cu_wipe_noscript) echo '未找到可保留的腳本副本，腳本本體未保留（可重新下載腳本恢復）。' ;;
         ja:cu_wipe_noscript) echo '保持するスクリプトのコピーが見つからず、スクリプト本体は保持されませんでした（再ダウンロードで復元できます）。' ;;
-        zh:cu_proxy_done) echo '代理系统已销毁，保留快捷键入口（ab / abox）。' ;;
-        en:cu_proxy_done) echo 'The proxy system was destroyed; the shortcut entries (ab / abox) were kept.' ;;
-        ru:cu_proxy_done) echo 'Прокси-система уничтожена; точки входа ab / abox сохранены.' ;;
-        fa:cu_proxy_done) echo 'سیستم پروکسی نابود شد؛ ورودی‌های ab / abox نگه داشته شدند.' ;;
-        zh-tw:cu_proxy_done) echo '代理系統已銷毀，保留快捷鍵入口（ab / abox）。' ;;
-        ja:cu_proxy_done) echo 'プロキシシステムを破棄しました。ショートカット入口（ab / abox）は保持されます。' ;;
+        zh:cu_proxy_done) echo '代理系统已销毁，保留 A-Box 托管的快捷键入口。' ;;
+        en:cu_proxy_done) echo 'The proxy system was destroyed; the A-Box-managed shortcut entries were kept.' ;;
+        ru:cu_proxy_done) echo 'Прокси-система уничтожена; точки входа под управлением A-Box сохранены.' ;;
+        fa:cu_proxy_done) echo 'سیستم پروکسی نابود شد؛ ورودی‌های مدیریت‌شده A-Box نگه داشته شدند.' ;;
+        zh-tw:cu_proxy_done) echo '代理系統已銷毀，保留 A-Box 託管的快捷鍵入口。' ;;
+        ja:cu_proxy_done) echo 'プロキシシステムを破棄しました。A-Box 管理のショートカット入口は保持されます。' ;;
         zh:vg_init_fail) echo '初始化系统环境失败。' ;;
         en:vg_init_fail) echo 'Failed to initialize the system environment.' ;;
         ru:vg_init_fail) echo 'Не удалось инициализировать системное окружение.' ;;
@@ -2625,18 +2625,18 @@ tr_msg() {
         fa:um_title) echo 'سیستم حذف عمیق' ;;
         zh-tw:um_title) echo '深度卸載系統' ;;
         ja:um_title) echo 'ディープアンインストール' ;;
-        zh:um_item1) echo '全部清场（保留脚本）— 清除全部功能、配置、Wallos 与数据，仅保留脚本本体与快捷键入口（ab / abox）' ;;
-        en:um_item1) echo 'Full wipe, keep the script - remove all features, configs, Wallos and data; keep only the script itself and the shortcut entries (ab / abox)' ;;
-        ru:um_item1) echo 'Полная зачистка (сохранить скрипт) - удалить все функции, конфигурации, Wallos и данные; оставить только сам скрипт и входы ab / abox' ;;
-        fa:um_item1) echo 'پاک‌سازی کامل (نگه‌داشتن اسکریپت) - حذف همه قابلیت‌ها، پیکربندی‌ها، Wallos و داده‌ها؛ فقط خود اسکریپت و ورودی‌های ab / abox می‌ماند' ;;
-        zh-tw:um_item1) echo '全部清場（保留腳本）— 清除全部功能、設定、Wallos 與資料，僅保留腳本本體與快捷鍵入口（ab / abox）' ;;
-        ja:um_item1) echo '完全クリーン（スクリプト保持）- 全機能・設定・Wallos・データを削除し、スクリプト本体とショートカット入口（ab / abox）のみ残す' ;;
-        zh:um_item2) echo '全部清场（含脚本）— 连脚本本体与快捷键入口（ab / abox）一并删除，恢复到未安装状态' ;;
-        en:um_item2) echo 'Full wipe including the script - also delete the script itself and the shortcut entries (ab / abox), restoring the pre-install state' ;;
-        ru:um_item2) echo 'Полная зачистка (включая скрипт) - удалить также сам скрипт и входы ab / abox, вернув состояние до установки' ;;
-        fa:um_item2) echo 'پاک‌سازی کامل (شامل اسکریپت) - خود اسکریپت و ورودی‌های ab / abox نیز حذف می‌شود و وضعیت پیش از نصب بازمی‌گردد' ;;
-        zh-tw:um_item2) echo '全部清場（含腳本）— 連腳本本體與快捷鍵入口（ab / abox）一併刪除，恢復到未安裝狀態' ;;
-        ja:um_item2) echo '完全クリーン（スクリプト含む）- スクリプト本体とショートカット入口（ab / abox）も削除し、未インストール状態に戻す' ;;
+        zh:um_item1) echo '全部清场（保留脚本）— 清除全部功能、配置、Wallos 与数据，仅保留脚本本体与 A-Box 托管的快捷键入口' ;;
+        en:um_item1) echo 'Full wipe, keep the script - remove all features, configs, Wallos and data; keep only the script itself and the A-Box-managed shortcut entries' ;;
+        ru:um_item1) echo 'Полная зачистка (сохранить скрипт) - удалить все функции, конфигурации, Wallos и данные; оставить только сам скрипт и точки входа под управлением A-Box' ;;
+        fa:um_item1) echo 'پاک‌سازی کامل (نگه‌داشتن اسکریپت) - حذف همه قابلیت‌ها، پیکربندی‌ها، Wallos و داده‌ها؛ فقط خود اسکریپت و ورودی‌های مدیریت‌شده A-Box می‌ماند' ;;
+        zh-tw:um_item1) echo '全部清場（保留腳本）— 清除全部功能、設定、Wallos 與資料，僅保留腳本本體與 A-Box 託管的快捷鍵入口' ;;
+        ja:um_item1) echo '完全クリーン（スクリプト保持）- 全機能・設定・Wallos・データを削除し、スクリプト本体と A-Box 管理のショートカット入口のみ残す' ;;
+        zh:um_item2) echo '全部清场（含脚本）— 连脚本本体与 A-Box 托管的快捷键入口一并删除，恢复到未安装状态' ;;
+        en:um_item2) echo 'Full wipe including the script - also delete the script itself and the A-Box-managed shortcut entries, restoring the pre-install state' ;;
+        ru:um_item2) echo 'Полная зачистка (включая скрипт) - удалить также сам скрипт и точки входа под управлением A-Box, вернув состояние до установки' ;;
+        fa:um_item2) echo 'پاک‌سازی کامل (شامل اسکریپت) - خود اسکریپت و ورودی‌های مدیریت‌شده A-Box نیز حذف می‌شود و وضعیت پیش از نصب بازمی‌گردد' ;;
+        zh-tw:um_item2) echo '全部清場（含腳本）— 連腳本本體與 A-Box 託管的快捷鍵入口一併刪除，恢復到未安裝狀態' ;;
+        ja:um_item2) echo '完全クリーン（スクリプト含む）- スクリプト本体と A-Box 管理のショートカット入口も削除し、未インストール状態に戻す' ;;
         zh:um_back) echo '取消并返回' ;;
         en:um_back) echo 'Cancel and back' ;;
         ru:um_back) echo 'Отмена и назад' ;;
@@ -8103,6 +8103,12 @@ tr_msg() {
         fa:nsni_warn) echo 'توجه: کلاینت‌ها باید پیوند جدید را دوباره وارد کنند؛ SNI قدیمی دیگر کار نمی‌کند.' ;;
         zh-tw:nsni_warn) echo '注意：用戶端必須用新連結重新導入，舊連結的 SNI 已失效。' ;;
         ja:nsni_warn) echo '注意：クライアントは新しいリンクを再インポートする必要があります。旧 SNI は無効です。' ;;
+        zh:nsni_checking) echo '正在验证新 SNI（冷启动可能需要数秒，请稍候）…' ;;
+        en:nsni_checking) echo 'Verifying the new SNI (a cold start may take a few seconds, please wait)…' ;;
+        ru:nsni_checking) echo 'Проверка нового SNI (холодный запуск может занять несколько секунд, подождите)…' ;;
+        fa:nsni_checking) echo 'در حال بررسی SNI جدید (شروع سرد ممکن است چند ثانیه طول بکشد، لطفاً صبر کنید)…' ;;
+        zh-tw:nsni_checking) echo '正在驗證新 SNI（冷啟動可能需要數秒，請稍候）…' ;;
+        ja:nsni_checking) echo '新しい SNI を確認中です（コールドスタートは数秒かかる場合があります。しばらくお待ちください）…' ;;
         zh:mi_u_forever) echo '永久' ;;
         en:mi_u_forever) echo 'forever' ;;
         ru:mi_u_forever) echo 'навсегда' ;;
@@ -26323,7 +26329,7 @@ do_cleanup() {
         # Wipe tier (keep the script): stash the persisted script copy
         # inside the transaction dir before ABOX_DIR is destroyed; it
         # is restored below as the sole resident and the managed
-        # shortcuts (ab / abox) are re-installed by setup_shortcut.
+        # shortcuts (the current .shortcut state names) are re-installed by setup_shortcut.
         # Full tier: the managed shortcuts go with everything else;
         # a pre-existing /usr/local/bin/sb is out of scope and left alone.
         local _wipe_script_copy=''
@@ -29488,16 +29494,23 @@ _nsni_handshake_check() {
     done
     if (( up == 0 )); then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; { printf 'nsni-check temp-socks-down\n'; tail -n 20 "$cerr" 2>/dev/null; } >> "$logf" 2>/dev/null || true; rm -f "$cerr" "$cerr_curl"; rm -rf "$tmpd"; return 2; fi
     code=''
-    # TB12: the first handshake after an xray restart takes ~5s (the
-    # server loads its geo/routing data on first use: box measured 5.02s
-    # twice, server-side; sandbox geo rig 5.75s), while steady state is
-    # ~0.04s. A 3s connect-timeout kills that first handshake, and the
-    # second try fails the same way (the slow step never completes
-    # because the first attempt was killed), so the check ALWAYS
-    # false-negatives right after the SNI-apply restart and rolls back
-    # a healthy rename. 10s gives ~2x headroom over the measured ~5s;
-    # the dial address is irrelevant (both ::1 and 127.0.0.1 need the
-    # same ~5s on the first handshake and pass with room to spare).
+    # TB12: on the geo-enabled production path, the first handshake
+    # after an xray restart takes ~5s (the server loads its geo/
+    # routing data on first use: box measured 5.02s twice, server-side;
+    # sandbox geo rig 5.75s), while steady state is ~0.04s. A minimal
+    # server WITHOUT the geo rule serves its first handshake in <3s,
+    # so the 3s connect-timeout only false-negatives on the geo-enabled
+    # path -- but that is the path this check always runs on. A 3s
+    # connect-timeout kills that first handshake, and the second try
+    # fails the same way (the slow step never completes because the
+    # first attempt was killed), so the check false-negatives right
+    # after the SNI-apply restart and rolls back a healthy rename.
+    # 10s gives ~2x headroom over the measured ~5s; the dial address
+    # is irrelevant for the listen addresses tested (both ::1 and
+    # 127.0.0.1 need the same ~5s on the first handshake and pass with
+    # room to spare). A cold path slower than 10s still false-negatives
+    # (12s probe: both tries killed at 10s) -- a known boundary, not a
+    # regression.
     for _try in 1 2; do
         code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --noproxy '' --connect-timeout 10 --max-time 30 "https://$sni:$port/" 2>"$cerr_curl")
         curl_rc=$?
@@ -29572,6 +29585,7 @@ _nsni_apply() {
     # indeterminate (2) only warns and continues. The message goes to
     # stderr so a caller capturing stdout cannot swallow it.
     if [[ "$kind" == reality-xray || "$kind" == reality-sb ]] && (( _was_running == 1 )); then
+        msg "${CYAN}$(tr_msg nsni_checking)${NC}"
         _nsni_handshake_check "$core" "$tag" "$cfg" "$new"
         local _hs_rc=$?
         if (( _hs_rc == 1 )); then
@@ -41792,8 +41806,11 @@ view_config() {
         msg "${GREEN}Clash Verge Rev URL Scheme: ${CLASH_SCHEME}${NC}"
         generate_qr "$CLASH_SCHEME"
     else
+        local _clash_launch=''
+        _clash_launch=$(shortcut_primary_names 2>/dev/null | awk '{print $1; exit}' 2>/dev/null || true)
+        _clash_launch=${_clash_launch:-ab}
         msg "${YELLOW}未设置 ABOX_CLASH_SUB_URL。若需要 Clash 扫码导入，请把 ${CLASH_FILE} 发布到 HTTPS 后执行：${NC}"
-        msg "${CYAN}ABOX_CLASH_SUB_URL='https://example.com/A-Box-clash.yaml' ab${NC}"
+        msg "${CYAN}ABOX_CLASH_SUB_URL='https://example.com/A-Box-clash.yaml' ${_clash_launch}${NC}"
     fi
 
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"

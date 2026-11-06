@@ -44704,7 +44704,8 @@ N11EOF
     swapon() { return 42; }
     # U204: a swapon failure falls back to /proc/swaps instead of
     # reporting query failure; the expectation follows /proc/swaps.
-    if grep -qE '^/swapfile[[:space:]]' /proc/swaps 2>/dev/null; then _swap_expect=0; else _swap_expect=1; fi
+    # When /proc/swaps is unreadable the query fails closed (2).
+    if [[ ! -r /proc/swaps ]]; then _swap_expect=2; elif grep -qE '^/swapfile[[:space:]]' /proc/swaps 2>/dev/null; then _swap_expect=0; else _swap_expect=1; fi
     [[ "$(swapfile_active_state; echo "$?")" == "$_swap_expect" ]] || { echo 'FAIL: Swap activity query swapon-failure fallback'; failures=$((failures + 1)); }
     unset -f swapon
     grep -q '^fstab_path_is_safe() {' "$0" || { echo 'FAIL: swap fstab trust helper missing'; failures=$((failures + 1)); }

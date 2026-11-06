@@ -41073,8 +41073,7 @@ vps_benchmark_menu() {
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
             msg ""
             msg "${CYAN}[ Security ]${NC}"
-            msg "${CYAN}16.${NC}  SS-2022 IP whitelist"
-            msg "${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
+            msg "${CYAN}16.${NC}  SS-2022 IP whitelist                 ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             msg " ${CYAN}0.${NC}  Back"
             ;;
         ru)
@@ -41092,8 +41091,7 @@ vps_benchmark_menu() {
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
             msg ""
             msg "${CYAN}[ Безопасность ]${NC}"
-            msg "${CYAN}16.${NC}  Белый список IP (SS-2022)"
-            msg "${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
+            msg "${CYAN}16.${NC}  Белый список IP (SS-2022)            ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             msg " ${CYAN}0.${NC}  Назад"
             ;;
         fa)
@@ -41111,8 +41109,7 @@ vps_benchmark_menu() {
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
             msg ""
             msg "${CYAN}[ امنیت ]${NC}"
-            msg "${CYAN}16.${NC}  لیست سفید آی‌پی SS-2022"
-            msg "${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
+            msg "${CYAN}16.${NC}  لیست سفید آی‌پی SS-2022              ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             msg " ${CYAN}0.${NC}  بازگشت"
             ;;
         zh-tw)
@@ -41130,8 +41127,7 @@ vps_benchmark_menu() {
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
             msg ""
             msg "${CYAN}[ 安全 ]${NC}"
-            msg "${CYAN}16.${NC}  SS-2022 訪問白名單"
-            msg "${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
+            msg "${CYAN}16.${NC}  SS-2022 訪問白名單                   ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             msg " ${CYAN}0.${NC}  返回主選單"
             ;;
         ja)
@@ -41149,8 +41145,7 @@ vps_benchmark_menu() {
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
             msg ""
             msg "${CYAN}[ セキュリティ ]${NC}"
-            msg "${CYAN}16.${NC}  SS-2022 IPホワイトリスト"
-            msg "${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
+            msg "${CYAN}16.${NC}  SS-2022 IPホワイトリスト             ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             msg " ${CYAN}0.${NC}  メインメニューに戻る"
             ;;
         *)
@@ -41168,8 +41163,7 @@ vps_benchmark_menu() {
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)"
             msg ""
             msg "${CYAN}[ 安全 ]${NC}"
-            msg "${CYAN}16.${NC}  SS-2022 访问白名单"
-            msg "${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
+            msg "${CYAN}16.${NC}  SS-2022 访问白名单                   ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             msg " ${CYAN}0.${NC}  返回主菜单"
             ;;
     esac

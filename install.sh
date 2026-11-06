@@ -22721,7 +22721,7 @@ _menu_info_collect() {
         # Order registries like the live configs (grid order):
         # per core, inbounds in config order; leftovers by filename.
         local -a _ordered_rf=()
-        local _ocore='' _otags='' _ot=''
+        local _ocore='' _otags='' _ot='' _orf=''
         for _ocore in xray xray-latest sing-box hy2; do
             case "$_ocore" in
                 xray) _otags=$(jq -r '.inbounds[]?.tag' /usr/local/etc/xray/config.json 2>/dev/null) ;;
@@ -22730,7 +22730,10 @@ _menu_info_collect() {
                 hy2) _otags='hy2' ;;
             esac
             for _ot in $_otags; do
-                [[ -f "$_udir/${_ocore}__${_ot}.json" && ! -L "$_udir/${_ocore}__${_ot}.json" ]] && _ordered_rf+=("$_udir/${_ocore}__${_ot}.json")
+                # D1: tags go through the encoder — a raw build never
+                # matches an encoded filename for a '/' or '%' tag.
+                _orf="$_udir/$(users_reg_encode_component "$_ocore")__$(users_reg_encode_component "$_ot").json"
+                [[ -f "$_orf" && ! -L "$_orf" ]] && _ordered_rf+=("$_orf")
             done
         done
         local _seen_rf=0 _of=''
@@ -26664,12 +26667,13 @@ _remove_inbounds_from_config() {
 # ws inbounds, and the standalone link registrations of the removed tags.
 # Remove one node's multi-user registry (single-delete path).
 users_registry_remove() { # $1 = core, $2 = tag
-    # Hardening: $2 comes from the config inventory; reject anything
-    # but a single path component (the $1__ prefix already anchors
-    # the first component, so this is defense in depth, not a fix
-    # for a proven escape).
-    [[ "$2" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || return 0
-    local _f="${ABOX_USERS_DIR:-/etc/ddr/users.d}/$1__$2.json"
+    # D1: build the path through the encoder (users_reg_file), never
+    # raw. The old regex guard rejected '%' and '/' — the very
+    # characters the encoder exists to handle — so registries for
+    # such tags were silently never removed. The encoder output is
+    # always a single filename component, so no guard is needed.
+    local _f=''
+    _f=$(users_reg_file "$1" "$2") || return 0
     [[ -f "$_f" && ! -L "$_f" ]] && rm -f -- "$_f"
     return 0
 }
@@ -27947,7 +27951,51 @@ users_api_port_of() {
 users_valid_name() { [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,23}$ ]]; }
 
 # Atomic registry write: $1=core $2=tag $3=json-content
-users_reg_write() { users_reg_write_path "$(users_reg_file "$1" "$2")" "$3"; }
+# D1 (S0 + core allowlist): the filename encoder is injective, but a
+# pre-encoder raw file can still occupy the encoded name of a different
+# tag (literal tag a%2Fb vs encoded a/b), and a core containing __ would
+# collide with the __ separator. So before any write can overwrite:
+# - the core must be one of the known cores (a __-bearing core can never
+#   create a file here);
+# - a symlink at the destination is refused outright (never followed);
+# - a regular file already there must belong to this (core, tag) by its
+#   JSON content (.core/.tag — readers already trust content, never the
+#   filename). A file belonging to another identity is a misplaced /
+#   legacy file: it is moved aside to its own encoded home (non-
+#   overwriting, only when that home is free) and the write proceeds.
+#   If the home is occupied, or the file carries no readable identity,
+#   the write fails closed — the existing file is never overwritten.
+users_reg_write() {
+    local core="$1" tag="$2" content="$3" dest='' ec='' et='' home=''
+    case "$core" in xray|xray-latest|sing-box|hy2) ;; *) return 1 ;; esac
+    dest=$(users_reg_file "$core" "$tag") || return 1
+    if [[ -L "$dest" ]]; then
+        msg "${RED}[!] 注册表拒绝写入：$dest 是符号链接。${NC}" >&2
+        return 1
+    fi
+    if [[ -f "$dest" ]]; then
+        ec=$(jq -r '.core // ""' "$dest" 2>/dev/null || true)
+        et=$(jq -r '.tag // ""' "$dest" 2>/dev/null || true)
+        if [[ "$ec" == "$core" && "$et" == "$tag" ]]; then
+            : # owned by this identity: overwrite below
+        elif [[ -n "$ec" && -n "$et" ]]; then
+            home=$(users_reg_file "$ec" "$et") || return 1
+            if [[ -e "$home" || -L "$home" ]]; then
+                msg "${RED}[!] 注册表拒绝写入：$dest 已属于 ${ec}/${et}，其归属位置 $home 已被占用，请手工处理。${NC}" >&2
+                return 1
+            fi
+            mv -n -- "$dest" "$home" 2>/dev/null && [[ ! -e "$dest" && -f "$home" ]] || {
+                msg "${RED}[!] 注册表归位失败：无法将 $dest 移至 $home。${NC}" >&2
+                return 1
+            }
+            msg "${YELLOW}[!] 注册表归位：${ec}/${et} 的旧文件已从 $dest 移至 $home。${NC}" >&2
+        else
+            msg "${RED}[!] 注册表拒绝写入：$dest 身份无法读取（非注册表文件或已损坏），请手工处理。${NC}" >&2
+            return 1
+        fi
+    fi
+    users_reg_write_path "$dest" "$content"
+}
 
 # Atomic registry write to an explicit path: $1=path $2=json-content
 # mkdir_private: create a directory with 700 ONLY if it does not exist.

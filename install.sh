@@ -37068,6 +37068,49 @@ _wallos_rollback_recover() {
     wallos_wait_healthy "$port" || return 1
 }
 
+# Normalize a Wallos image digest to canonical form
+# bellamy/wallos@sha256:<hex>. The mirror manifest carries bare digests
+# (sha256:<hex>) since PR #161; older manifests and docker RepoDigests
+# use bellamy/wallos@sha256:<hex>, optionally docker.io/-prefixed.
+# Anything else is rejected (fail-closed). Hex is lowercased so the
+# canonical form compares equal across spellings.
+wallos_normalize_digest() {
+    local d="${1:-}" hex
+    d="${d//[[:space:]]/}"
+    d="${d#docker.io/}"
+    case "$d" in
+        bellamy/wallos@sha256:*) hex="${d#bellamy/wallos@sha256:}" ;;
+        sha256:*) hex="${d#sha256:}" ;;
+        *) return 1 ;;
+    esac
+    [[ "$hex" =~ ^[A-Fa-f0-9]{64}$ ]] || return 1
+    printf 'bellamy/wallos@sha256:%s' "${hex,,}"
+}
+
+# Validate `docker load` output for a Wallos archive. Accepts exactly one
+# loaded image, either tag-form ("Loaded image: bellamy/wallos:<tag>",
+# what `docker save` of a tag produces) or digest-form ("Loaded image ID:
+# sha256:<hex>", what `docker save` of a digest reference produces, as
+# the mirror archives have been since PR #161). A digest-form load
+# carries no tag, so the image is re-tagged by ID for the downstream
+# `docker image inspect bellamy/wallos:<tag>` checks.
+# Args: $1 = load output, $2 = expected tag (e.g. 5.10.4).
+wallos_check_loaded_image() {
+    local load_out="${1:-}" image_tag="${2:-}" loaded_id
+    if [[ "$(grep -c '^Loaded image:' <<< "$load_out")" == 1 ]] &&
+       grep -Fqx "Loaded image: bellamy/wallos:$image_tag" <<< "$load_out"; then
+        return 0
+    fi
+    if [[ "$(grep -c '^Loaded image ID:' <<< "$load_out")" == 1 ]]; then
+        loaded_id=$(grep '^Loaded image ID:' <<< "$load_out" | awk '{print $NF}')
+        [[ "$loaded_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || return 1
+        docker tag "$loaded_id" "bellamy/wallos:$image_tag" >/dev/null 2>&1 || return 1
+        docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1 || return 1
+        return 0
+    fi
+    return 1
+}
+
 # Fetch the versioned Wallos manifest (signed-SHA256SUMS verified,
 # tag matched, mirroring _wallos_pull_versioned_image) and print
 # image_digest.<arch>. Used to authenticate a local image before
@@ -37295,8 +37338,7 @@ _wallos_pull_versioned_image() {
     fi
     local load_out image_tag="${tag#v}"
     load_out=$(gzip -dc "$work/$asset" | docker load 2>&1) || { rm -rf -- "$work"; return 1; }
-    if [[ "$(grep -c '^Loaded image:' <<< "$load_out")" -ne 1 ]] ||
-       ! grep -Fqx "Loaded image: bellamy/wallos:$image_tag" <<< "$load_out"; then
+    if ! wallos_check_loaded_image "$load_out" "$image_tag"; then
         rm -rf -- "$work"; return 1
     fi
     rm -rf -- "$work"
@@ -37403,6 +37445,10 @@ wallos_pull_or_restore_image() {
                             msg "${YELLOW}$(tr_msg wl_pi_ts_reject_off)${NC}"
                         else
                             _mirror_digest=$(awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
+                            # PR #161: the manifest carries bare digests
+                            # (sha256:<hex>); normalize to the canonical
+                            # prefixed form the checks and docker pull need.
+                            _mirror_digest=$(wallos_normalize_digest "$_mirror_digest" 2>/dev/null || true)
                             _manifest_tag=$(awk -F= '$1=="tag" {print $2; exit}' "$_n2_work/wallos-manifest.txt" 2>/dev/null || true)
                         fi
                     fi
@@ -37454,6 +37500,8 @@ wallos_pull_or_restore_image() {
             # cannot be affected by tag mutation.
             local _pulled_digest
             _pulled_digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
+            # Normalize to the same canonical form as manifest digests.
+            _pulled_digest=$(wallos_normalize_digest "$_pulled_digest" 2>/dev/null || true)
             if [[ "$_pulled_digest" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]]; then
                 msg "${CYAN}$(tprintf wl_pi_digest "$_pulled_digest")${NC}"
                 docker tag "$_pulled_digest" "bellamy/wallos:$image_tag" >/dev/null 2>&1 || true
@@ -37532,8 +37580,7 @@ wallos_pull_or_restore_image() {
     # Do NOT docker rmi beforehand (would destroy rollback image on load failure).
     local load_out
     load_out=$(gzip -dc "$work/$asset" | docker load 2>&1) || { rm -rf -- "$work"; return 1; }
-    if [[ "$(grep -c '^Loaded image:' <<< "$load_out")" -ne 1 ]] ||
-       ! grep -Fqx "Loaded image: bellamy/wallos:${tag#v}" <<< "$load_out"; then
+    if ! wallos_check_loaded_image "$load_out" "${tag#v}"; then
         rm -rf -- "$work"
         msg "${RED}$(tprintf wl_pi_archive "${tag#v}")${NC}"
         return 1
@@ -37544,6 +37591,9 @@ wallos_pull_or_restore_image() {
     # (verified above) + verified manifest together authenticate the image.
     local expected_digest
     expected_digest=$(awk -F= -v a="$arch" '$1==("image_digest." a) {print $2; exit}' "$work/wallos-manifest.txt")
+    # PR #161: the manifest carries bare digests (sha256:<hex>); normalize
+    # to the canonical prefixed form before the format check below.
+    expected_digest=$(wallos_normalize_digest "$expected_digest" 2>/dev/null || true)
     # Require digest present and format-valid (fail-closed if missing/malformed).
     # Allow optional docker.io/ prefix (containerd image store).
     if [[ ! "$expected_digest" =~ ^(docker\.io/)?bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]]; then

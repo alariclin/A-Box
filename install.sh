@@ -28402,6 +28402,7 @@ def mkusers($tag): map({
     secret: (.secret // ""),
     uuid: (.uuid // ""),
     flow: (.flow // ""),
+    alterId: (.alterId // 0),
     email: (if $tag != "" then ($tag + "/" + ((.name // "main") | cleanname)) else "" end),
     created: "",
     expire_at: 0, quota_gb: 0, window: "",
@@ -28426,7 +28427,7 @@ users_adopt() {
                        then [$st.clients[] | {name: (if .email then (.email | split("/") | .[1] // "main") else "main" end), secret: .password}]
                        else [{name: "main", secret: ($st.password // "")}] end)
                   elif .protocol == "socks" then [$st.accounts[]? | {name: (.user // "main"), secret: (.pass // "")}]
-                  elif .protocol == "vmess" then [$st.clients[]? | {name: (if .email then (.email | split("/") | .[1] // "main") else "main" end), secret: .id, uuid: .id}]
+                  elif .protocol == "vmess" then [$st.clients[]? | {name: (if .email then (.email | split("/") | .[1] // "main") else "main" end), secret: .id, uuid: .id, alterId: (.alterId // 0)}]
                   else [] end' "$cfg" 2>/dev/null) || return 1
             if [[ "$proto" == 'shadowsocks' ]]; then
                 # clients-form SS keeps the server key separately.
@@ -28440,7 +28441,7 @@ users_adopt() {
             [[ -n "$proto" ]] || return 1
             raw=$(jq -c --arg t "$tag" '
                 .inbounds[]? | select(.tag == $t)
-                | if .type == "vless" or .type == "vmess" then [.users[]? | {name: (.name // "main"), secret: (.uuid // .password // ""), flow: (.flow // "")}]
+                | if .type == "vless" or .type == "vmess" then [.users[]? | {name: (.name // "main"), secret: (.uuid // .password // ""), flow: (.flow // ""), alterId: (.alterId // 0)}]
                   elif .type == "tuic" then [.users[]? | {name: (.name // "main"), secret: (.password // ""), uuid: (.uuid // "")}]
                   elif .type == "shadowsocks" then
                       (if ((.users // null) | type) == "array" and ((.users // []) | length) > 0
@@ -28692,7 +28693,7 @@ users_sync() {
                         .settings.auth = "password"
                         | .settings.accounts = [$users[0][] | {user: (.login // .name), pass: .secret}]
                      elif $proto == "vmess" then
-                        .settings.clients = [$users[0][] | {id: .secret, email: .email}]
+                        .settings.clients = [$users[0][] | {id: .secret, email: .email} + (if (.alterId // 0) > 0 then {alterId: .alterId} else {} end)]
                      else . end)
                 else . end)
             ' "$cfg" > "$tmp" 2>/dev/null; then
@@ -28707,7 +28708,7 @@ users_sync() {
                  then .inbounds += [$snap[0]] else . end)
                 | .inbounds |= map(if .tag == $t then
                     (if $proto == "vless" or $proto == "vmess" then
-                        .users = [$users[0][] | {name: .name, uuid: .secret} + (if (.flow // "") != "" then {flow: .flow} else {} end)]
+                        .users = [$users[0][] | {name: .name, uuid: .secret} + (if (.flow // "") != "" then {flow: .flow} else {} end) + (if $proto == "vmess" and (.alterId // 0) > 0 then {alterId: .alterId} else {} end)]
                      elif $proto == "tuic" then
                         .users = [$users[0][] | {name: .name, uuid: .uuid, password: .secret}]
                      elif $proto == "shadowsocks" then
@@ -28874,7 +28875,13 @@ users_link() {
         vblob="${link#vmess://}"
         vjson=$(printf '%s' "$vblob" | base64 -d 2>/dev/null || users_b64url_dec "$vblob") || return 1
         [[ -n "$vjson" ]] || return 1
-        vnew=$(printf '%s' "$vjson" | jq -c --arg id "$use_uuid" --arg ps "$name" '.id = $id | .ps = $ps' 2>/dev/null) || return 1
+        # 2fp: the template link's aid is the deploy-time default (0);
+        # follow the registry user's preserved alterId so the link
+        # agrees with the server config.
+        local _aid=''
+        _aid=$(printf '%s' "$user" | jq -r '.alterId // 0' 2>/dev/null)
+        [[ "$_aid" =~ ^[0-9]+$ ]] || _aid=0
+        vnew=$(printf '%s' "$vjson" | jq -c --arg id "$use_uuid" --arg ps "$name" --arg aid "$_aid" '.id = $id | .ps = $ps | .aid = $aid' 2>/dev/null) || return 1
         printf 'vmess://%s' "$(printf '%s' "$vnew" | base64 -w0 2>/dev/null | tr -d '\n')"
         return 0
     fi

@@ -384,7 +384,7 @@ rebuild_standalone_links() {
     local _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ip="${F_IP:-}"
     [[ -n "$_ip" && "$_ip" != 'N/A' ]] || return 0
     local _xc='/usr/local/etc/xray/config.json' _sc='/etc/sing-box/config.json'
-    local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub=''
+    local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url=''
     if [[ -f "$_xc" ]]; then
         if [[ ! -f "$_dir/trojan-xray.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _svc=''; _wspath=''; _wshost=''; _xpath=''
@@ -509,6 +509,29 @@ rebuild_standalone_links() {
                 register_standalone_link socks5-sb "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
             elif [[ -n "$_port$_user$_pass" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete socks5-sb)${NC}" >&2
+            fi
+        fi
+    fi
+    # E19: official Hy2 never registered a standalone link, so menu 12 /
+    # export showed no Hy2 node even though view_config prints the URL.
+    # Rebuild it from the live config when the file is missing (the
+    # deploy-time call below is the primary path; this is the safety net
+    # that also heals installs predating the fix). Secrets come from
+    # config.yaml itself, the port list from the environment (same source
+    # view_config uses); a missing/unusable pin refuses the link.
+    if [[ ! -f "$_dir/hy2.link" && -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
+        _pass=''; _obfs=''; _url=''; _port=''
+        _pass=$(users_hy2_read_users /etc/hysteria/config.yaml 2>/dev/null | jq -r '.[0].secret // ""' 2>/dev/null || true)
+        _obfs_raw=$(awk '/^obfs:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^obfs:/) exit} f{print}' /etc/hysteria/config.yaml 2>/dev/null | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
+        if [[ -n "${_obfs_raw:-}" ]]; then
+            _obfs=$(users_hy2_yaml_scalar "$_obfs_raw")
+            _obfs=${_obfs%__ABOX_TRAILING_NL_KEEP__}
+        fi
+        if [[ -n "$_pass" && -n "${_obfs:-}" ]]; then
+            _url=$(hy2_standalone_url "$_pass" "$_obfs" "$_ip" 2>/dev/null || true)
+            if [[ -n "$_url" ]]; then
+                IFS=$'\t' read -r _port _ < <(build_hy2_uri_endpoint 2>/dev/null || true)
+                [[ -n "$_port" ]] && register_standalone_link hy2 "Hysteria 2 · 端口 ${_port}" "$_url"
             fi
         fi
     fi
@@ -19788,7 +19811,7 @@ EOF_XTABLES_TMPFILES
 }
 
 deploy_official_hy2() {
-    local IS_SILENT=${1:-NORMAL} TLS_CONFIG HY2_LISTEN cert_cn HY2_CAPS='CAP_NET_BIND_SERVICE' hy2_tmp hy2_bin domain_yaml token_yaml SKIP_REPLACE_AND_PRUNE=${2:-0}
+    local IS_SILENT=${1:-NORMAL} TLS_CONFIG HY2_LISTEN cert_cn HY2_CAPS='CAP_NET_BIND_SERVICE' hy2_tmp hy2_bin domain_yaml token_yaml SKIP_REPLACE_AND_PRUNE=${2:-0} _hy2_url='' _hy2_port=''
     if [[ "$IS_SILENT" != 'SILENT' ]]; then
         clear; msg "${BOLD}${GREEN}部署官方 Hysteria 2${NC}"
         init_system_environment
@@ -19945,6 +19968,17 @@ EOF_SVC
         [[ "$SKIP_REPLACE_AND_PRUNE" == '1' ]] || prune_owned_core_families_except hysteria
         setup_geo_cron
         commit_deployment_transaction
+        # E19: register the standalone Hy2 link at deploy time, like
+        # every other deployer does. Without this, hy2.link is never
+        # generated and menu 12 / export show no Hy2 node. A failure
+        # here is non-fatal (the link is best-effort at deploy; the
+        # rebuild branch in rebuild_standalone_links regenerates it
+        # on the next menu 12 visit).
+        _hy2_url=$(hy2_standalone_url "${HY2_PASS:-}" "${HY2_OBFS:-}" "${LINK_IP:-}" 2>/dev/null || true)
+        if [[ -n "$_hy2_url" ]]; then
+            IFS=$'\t' read -r _hy2_port _ < <(build_hy2_uri_endpoint 2>/dev/null || true)
+            [[ -n "$_hy2_port" ]] && register_standalone_link "${ABOX_DEPLOY_STEM:-hy2}" "Hysteria 2 · 端口 ${_hy2_port}" "$_hy2_url"
+        fi
         view_config deploy
     fi
 }
@@ -41880,6 +41914,45 @@ build_hy2_uri_endpoint() {
     fi
     valid_hy2_uri_ports "$raw" || return 1
     printf '%s\t%s\n' "$raw" ''
+}
+
+# E19: build the hysteria2:// standalone URL from live state — the same
+# shape view_config emits (same pin rule, same branch order). $1 = auth
+# password (raw), $2 = obfs password (raw), $3 = host override (IP or
+# domain; default HY2_DOMAIN, else LINK_IP/F_IP). Prints the URL on
+# stdout; returns 1 when no usable link can be built (missing secrets,
+# bad port endpoint, or the SYD-B4 A3 pin refusal: no pin and (no domain
+# or sing-box core)). Callers register the result with
+# register_standalone_link; the link file is 600 and may carry the real
+# obfs password, like the other standalone links carry real secrets.
+hy2_standalone_url() {
+    local _pass="${1:-}" _obfs="${2:-}" _host="${3:-}" _port='' _qp='' _pin='' _pe='' _he='' _oe='' _de=''
+    [[ -n "$_pass" && -n "$_obfs" ]] || return 1
+    IFS=$'\t' read -r _port _qp < <(build_hy2_uri_endpoint 2>/dev/null || true) || return 1
+    [[ -n "$_port" ]] || return 1
+    if [[ -z "$_host" ]]; then
+        if [[ -n "${HY2_DOMAIN:-}" ]]; then _host="$HY2_DOMAIN";
+        elif [[ -n "${LINK_IP:-}" ]]; then _host="$LINK_IP";
+        else _host="${F_IP:-}"; fi
+    fi
+    [[ -n "$_host" && "$_host" != 'N/A' ]] || return 1
+    if [[ "$_host" == *:* && "$_host" != \[*\] ]]; then _host="[$_host]"; fi
+    _pin=$(hy2_cert_pin_colon 2>/dev/null || true)
+    if [[ -z "$_pin" && "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+        _pin=$(sed 's/\(..\)/\1:/g; s/:$//' <<< "${HY2_CERT_SHA256_FP}")
+    fi
+    _pe=$(urlencode "$_pin")
+    # SYD-B4 A3 (same rule as view_config): a pin branch with no usable
+    # pin refuses this link only.
+    if [[ -z "$_pe" ]] && [[ -z "${HY2_DOMAIN:-}" || "${CORE:-}" == 'singbox' ]]; then return 1; fi
+    _he=$(urlencode "$_pass"); _oe=$(urlencode "$_obfs"); _de=$(urlencode "${HY2_DOMAIN:-}")
+    if [[ -n "${HY2_DOMAIN:-}" && "${CORE:-}" != 'singbox' ]]; then
+        printf 'hysteria2://%s@%s:%s/?%ssni=%s&obfs=salamander&obfs-password=%s#Hy2' "$_he" "$_host" "$_port" "$_qp" "$_de" "$_oe"
+    elif [[ -n "${HY2_DOMAIN:-}" ]]; then
+        printf 'hysteria2://%s@%s:%s/?%sinsecure=1&pinSHA256=%s&obfs=salamander&obfs-password=%s#Hy2' "$_he" "$_host" "$_port" "$_qp" "$_pe" "$_oe"
+    else
+        printf 'hysteria2://%s@%s:%s/?%ssni=localhost&insecure=1&pinSHA256=%s&obfs=salamander&obfs-password=%s#Hy2' "$_he" "$_host" "$_port" "$_qp" "$_pe" "$_oe"
+    fi
 }
 
 

@@ -1665,24 +1665,24 @@ tr_msg() {
         fa:wl_pr_rm_fail) echo '[!] حذف تصویر قدیمی Wallos %s ممکن نشد؛ ممکن است هنوز در حال استفاده باشد.' ;;
         zh-tw:wl_pr_rm_fail) echo '[!] 無法刪除舊 Wallos 映像 %s，它可能仍在使用中。' ;;
         ja:wl_pr_rm_fail) echo '[!] 古い Wallos イメージ %s を削除できませんでした。まだ使用中の可能性があります。' ;;
-        zh:wl_pr_done) echo 'N-11：已清理 %s 个旧 Wallos 镜像；保留：%s %s' ;;
-        en:wl_pr_done) echo 'N-11: pruned %s old Wallos image(s); retained: %s %s' ;;
-        ru:wl_pr_done) echo 'N-11: удалено старых образов Wallos: %s; сохранены: %s %s' ;;
-        fa:wl_pr_done) echo 'N-11: %s تصویر قدیمی Wallos پاک شد؛ نگه داشته شد: %s %s' ;;
-        zh-tw:wl_pr_done) echo 'N-11：已清理 %s 個舊 Wallos 映像；保留：%s %s' ;;
-        ja:wl_pr_done) echo 'N-11: 古い Wallos イメージ %s 件を削除しました。保持: %s %s' ;;
+        zh:wl_pr_done) echo 'N-11：已清理 %s 个旧 Wallos 镜像；保留：%s' ;;
+        en:wl_pr_done) echo 'N-11: pruned %s old Wallos image(s); retained: %s' ;;
+        ru:wl_pr_done) echo 'N-11: удалено старых образов Wallos: %s; сохранены: %s' ;;
+        fa:wl_pr_done) echo 'N-11: %s تصویر قدیمی Wallos پاک شد؛ نگه داشته شد: %s' ;;
+        zh-tw:wl_pr_done) echo 'N-11：已清理 %s 個舊 Wallos 映像；保留：%s' ;;
+        ja:wl_pr_done) echo 'N-11: 古い Wallos イメージ %s 件を削除しました。保持: %s' ;;
         zh:wl_pr_confirm_unrecorded) echo 'Wallos 镜像 %s 未由 A-Box 记录，确认删除？[y/N] ' ;;
         en:wl_pr_confirm_unrecorded) echo 'Wallos image %s was not recorded by A-Box. Delete it? [y/N] ' ;;
         ru:wl_pr_confirm_unrecorded) echo 'Образ Wallos %s не записан A-Box. Удалить его? [y/N] ' ;;
         fa:wl_pr_confirm_unrecorded) echo 'تصویر Wallos %s توسط A-Box ثبت نشده است. حذف شود؟ [y/N] ' ;;
         zh-tw:wl_pr_confirm_unrecorded) echo 'Wallos 映像 %s 未由 A-Box 記錄，確認刪除？[y/N] ' ;;
         ja:wl_pr_confirm_unrecorded) echo 'Wallos イメージ %s は A-Box に記録されていません。削除しますか？[y/N] ' ;;
-        zh:wl_pr_skip_unrecorded) echo '[!] 跳过未记录的 Wallos 镜像 %s（非交互运行，未经确认不删除）。' ;;
-        en:wl_pr_skip_unrecorded) echo '[!] Skipping unrecorded Wallos image %s (non-interactive run; not deleted without confirmation).' ;;
-        ru:wl_pr_skip_unrecorded) echo '[!] Пропуск незаписанного образа Wallos %s (неинтерактивный запуск; без подтверждения не удаляется).' ;;
-        fa:wl_pr_skip_unrecorded) echo '[!] رد شدن از تصویر ثبت‌نشده Wallos %s (اجرای غیرتعاملی؛ بدون تأیید حذف نمی‌شود).' ;;
-        zh-tw:wl_pr_skip_unrecorded) echo '[!] 略過未記錄的 Wallos 映像 %s（非互動執行，未經確認不刪除）。' ;;
-        ja:wl_pr_skip_unrecorded) echo '[!] 未記録の Wallos イメージ %s をスキップします（非対話実行のため、確認なしでは削除しません）。' ;;
+        zh:wl_pr_skip_unrecorded) echo '[!] 跳过未记录的 Wallos 镜像 %s（stdin 不是终端，未经确认不删除）。' ;;
+        en:wl_pr_skip_unrecorded) echo '[!] Skipping unrecorded Wallos image %s (stdin is not a terminal; not deleted without confirmation).' ;;
+        ru:wl_pr_skip_unrecorded) echo '[!] Пропуск незаписанного образа Wallos %s (stdin — не терминал; без подтверждения не удаляется).' ;;
+        fa:wl_pr_skip_unrecorded) echo '[!] رد شدن از تصویر ثبت‌نشده Wallos %s (ورودی استاندارد ترمینال نیست؛ بدون تأیید حذف نمی‌شود).' ;;
+        zh-tw:wl_pr_skip_unrecorded) echo '[!] 略過未記錄的 Wallos 映像 %s（stdin 不是終端，未經確認不刪除）。' ;;
+        ja:wl_pr_skip_unrecorded) echo '[!] 未記録の Wallos イメージ %s をスキップします（stdin が端末ではないため、確認なしでは削除しません）。' ;;
         zh:wl_pi_sig_sums) echo '[!] N-2 SHA256SUMS 签名被拒绝且签名强制已开启；拒绝继续。' ;;
         en:wl_pi_sig_sums) echo '[!] N-2 SHA256SUMS signature rejected and signing enforcement is ON; refusing.' ;;
         ru:wl_pi_sig_sums) echo '[!] N-2: подпись SHA256SUMS отклонена, а принудительная проверка подписи включена; отказ.' ;;
@@ -37039,7 +37039,9 @@ wallos_prune_local_images() {
     # D-08: removed dead 500MB-cap computation (total was calculated but never
     # used for enforcement or warning). Pruning is count-based (keep 2).
     if (( removed > 0 )); then
-        msg "${CYAN}$(tprintf wl_pr_done "$removed" "${keep1:-none}" "${keep2:-}")${NC}"
+        local _keeps="${keep1:-none}"
+        [[ -n "${keep2:-}" ]] && _keeps="$_keeps, $keep2"
+        msg "${CYAN}$(tprintf wl_pr_done "$removed" "$_keeps")${NC}"
     fi
     return 0
 }

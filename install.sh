@@ -41072,7 +41072,7 @@ vps_benchmark_menu() {
             msg "${CYAN}11.${NC}  SNI preference records               ${CYAN}15.${NC}  Wallos install / update / backup"
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                      ${CYAN}16.${NC}  SS-2022 IP whitelist"
             msg ""
-            msg "${CYAN}17.${NC}  $(tr_msg tb_shortcut)                      ${CYAN}0.${NC}  Back"
+            msg " ${CYAN}0.${NC}  Back                                 ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             ;;
         ru)
             msg "${BOLD}${GREEN}Инструменты${NC}"
@@ -41088,7 +41088,7 @@ vps_benchmark_menu() {
             msg "${CYAN}11.${NC}  Записи подбора SNI                   ${CYAN}15.${NC}  Wallos: установка / обновление"
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                    ${CYAN}16.${NC}  Белый список IP (SS-2022)"
             msg ""
-            msg "${CYAN}17.${NC}  $(tr_msg tb_shortcut)                           ${CYAN}0.${NC}  Назад"
+            msg " ${CYAN}0.${NC}  Назад                                ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             ;;
         fa)
             msg "${BOLD}${GREEN}جعبه ابزار${NC}"
@@ -41104,7 +41104,7 @@ vps_benchmark_menu() {
             msg "${CYAN}11.${NC}  سوابق بهینه‌سازی SNI                 ${CYAN}15.${NC}  نصب / به‌روزرسانی Wallos"
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                        ${CYAN}16.${NC}  لیست سفید آی‌پی SS-2022"
             msg ""
-            msg "${CYAN}17.${NC}  $(tr_msg tb_shortcut)                        ${CYAN}0.${NC}  بازگشت"
+            msg " ${CYAN}0.${NC}  بازگشت                               ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             ;;
         zh-tw)
             msg "${BOLD}${GREEN}綜合工具箱${NC}"
@@ -41120,7 +41120,7 @@ vps_benchmark_menu() {
             msg "${CYAN}11.${NC}  SNI 優選記錄                         ${CYAN}15.${NC}  Wallos 安裝 / 升級 / 備份"
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                         ${CYAN}16.${NC}  SS-2022 訪問白名單"
             msg ""
-            msg "${CYAN}17.${NC}  $(tr_msg tb_shortcut)                           ${CYAN}0.${NC}  返回主選單"
+            msg " ${CYAN}0.${NC}  返回主選單                           ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             ;;
         ja)
             msg "${BOLD}${GREEN}ツールボックス${NC}"
@@ -41136,7 +41136,7 @@ vps_benchmark_menu() {
             msg "${CYAN}11.${NC}  SNI 最適化記録                       ${CYAN}15.${NC}  Wallos インストール/更新"
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                  ${CYAN}16.${NC}  SS-2022 IPホワイトリスト"
             msg ""
-            msg "${CYAN}17.${NC}  $(tr_msg tb_shortcut)               ${CYAN}0.${NC}  メインメニューに戻る"
+            msg " ${CYAN}0.${NC}  メインメニューに戻る                 ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             ;;
         *)
             msg "${BOLD}${GREEN}综合工具箱${NC}"
@@ -41152,7 +41152,7 @@ vps_benchmark_menu() {
             msg "${CYAN}11.${NC}  SNI 优选记录                         ${CYAN}15.${NC}  Wallos 安装 / 升级 / 备份"
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                         ${CYAN}16.${NC}  SS-2022 访问白名单"
             msg ""
-            msg "${CYAN}17.${NC}  $(tr_msg tb_shortcut)                         ${CYAN}0.${NC}  返回主菜单"
+            msg " ${CYAN}0.${NC}  返回主菜单                           ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
             ;;
     esac
     local bench_choice select_prompt

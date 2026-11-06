@@ -53,7 +53,8 @@ cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
 - On a fresh Alpine system, first run `apk add --no-cache bash curl sudo`.
-- After the first run, type `ab` (or `abox`) to reopen the menu.
+- After the first run, type `ab` (or `abox`) to reopen the menu; both shortcuts work, and an older `sb` shortcut, if present, is left untouched.
+- If `ab` is already taken by another program, the installer asks whether to use `abox`, enter a custom name, or keep `sb`. You can change the launch shortcut later from Toolbox item 17 (Custom shortcut).
 - For production use, verify the downloaded file through an independent trusted channel before running it.
 
 ## Main menu

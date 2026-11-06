@@ -10891,8 +10891,11 @@ def _repair_is_mountpoint(path):
 # else still fails closed with exit 3.
 # Accepted identification boundary: a user-saved copy that is byte-identical
 # and follows the doubling path rule, or a user directory named exactly like
-# the doubling pattern, is indistinguishable from a product artifact and
-# will be removed. This layer never claims zero user-copy deletion.
+# the doubling pattern, is indistinguishable from a product artifact. Block 5
+# F03: that is exactly why it is NOT deleted by default — deletion of an
+# unrecorded entry requires the explicit opt-in
+# ABOX_ALLOW_DELETE_UNRECORDED=1; without it the family removal refuses and
+# reports the paths. This layer never claims zero user-copy deletion.
 def _artifact_target(path):
     for d in sorted(dirs, key=len, reverse=True):
         if path.startswith(d + os.sep):
@@ -11078,13 +11081,28 @@ for path in sorted(expected, key=os.fsencode):
         if not stat.S_ISDIR(st.st_mode): raise SystemExit(3)
 if _repair:
     if all(_is_artifact_tree(_p) for _p in _repair):
+        # Block 5 F03: an unrecorded entry classified as a doubling
+        # artifact is still not a recorded file. A user-saved copy that
+        # is byte-identical and follows the doubling path rule is
+        # indistinguishable from a product artifact; deleting it without
+        # authorization has destroyed user data. Default: refuse and
+        # report the paths. Deletion requires the explicit opt-in
+        # ABOX_ALLOW_DELETE_UNRECORDED=1 (same opt-in pattern as
+        # ABOX_ALLOW_CORE_DOWNGRADE).
+        if os.environ.get('ABOX_ALLOW_DELETE_UNRECORDED') != '1':
+            for _p in sorted(_repair, key=os.fsencode):
+                print(f"[!] Refusing to delete unrecorded entry (doubling artifact?): {_p}", file=sys.stderr)
+            print("[!] Set ABOX_ALLOW_DELETE_UNRECORDED=1 to authorize deleting these unrecorded entries.", file=sys.stderr)
+            raise SystemExit(3)
         for _p in sorted(_repair, key=os.fsencode, reverse=True):
             if os.path.isdir(_p) and not os.path.islink(_p):
                 _rmtree_fd(_p)
             else:
                 _unlink_fd(_p)
-            print(f"[!] Removed doubling artifact: {_p}", file=sys.stderr)
+            print(f"[!] Removed doubling artifact (authorized by ABOX_ALLOW_DELETE_UNRECORDED=1): {_p}", file=sys.stderr)
     else:
+        for _p in sorted(_repair, key=os.fsencode):
+            print(f"[!] Refusing to delete unrecorded entry (not a doubling artifact): {_p}", file=sys.stderr)
         raise SystemExit(3)
 # Complete fail-closed preflight before deleting anything. Every actual entry
 # below a recorded directory must itself be recorded, correctly typed, root

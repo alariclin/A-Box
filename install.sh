@@ -28358,7 +28358,7 @@ _nsni_rollback() {
     local _cfg="$1" _bak="$2" _key="$3" _crt="$4" _kebak="$5" _crtbak="$6" _core="$7" _was_running="$8"
     local _link="${9:-}" _linkbak="${10:-}"
     local _ok=1
-    cp -a "$_bak" "$_cfg" 2>/dev/null || _ok=0
+    [[ -f "$_bak" && -r "$_bak" ]] && cat "$_bak" > "$_cfg" 2>/dev/null || _ok=0
     if [[ -n "$_kebak" && -f "$_kebak" ]]; then cp -a "$_kebak" "$_key" 2>/dev/null || _ok=0; fi
     if [[ -n "$_crtbak" && -f "$_crtbak" ]]; then cp -a "$_crtbak" "$_crt" 2>/dev/null || _ok=0; fi
     if [[ -n "$_link" && -n "$_linkbak" && -f "$_linkbak" ]]; then
@@ -28594,14 +28594,14 @@ _nsni_apply() {
         xray-latest) bin=$(users_bin_of xray-latest 2>/dev/null || echo /usr/local/bin/xray-latest); if [[ -x "$bin" ]]; then "$bin" run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
         sing-box) bin="${SB_PATH:-/usr/local/bin/sing-box}"; if [[ -x "$bin" ]]; then "$bin" check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
     esac
-    cat "$tmp" > "$cfg" || { if cp -a "$bak" "$cfg" 2>/dev/null; then rm -f "$tmp" "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; rm -f "$tmp"; fi; return 1; }
+    cat "$tmp" > "$cfg" || { if [[ -f "$bak" && -r "$bak" ]] && cat "$bak" > "$cfg" 2>/dev/null; then rm -f "$tmp" "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; rm -f "$tmp"; fi; return 1; }
     rm -f "$tmp"
     local _kebak='' _crtbak=''
     if [[ "$kind" == 'tuic' && -n "$key" && -n "$crt" ]]; then
         _kebak=$(mktemp /tmp/A-Box-nsni-keybak.XXXXXX 2>/dev/null || true)
         _crtbak=$(mktemp /tmp/A-Box-nsni-crtbak.XXXXXX 2>/dev/null || true)
         if [[ -z "$_kebak" || -z "$_crtbak" ]] || ! cp -a "$key" "$_kebak" 2>/dev/null || ! chmod 600 "$_kebak" 2>/dev/null || ! cp -a "$crt" "$_crtbak" 2>/dev/null || ! chmod 600 "$_crtbak" 2>/dev/null; then
-            if cp -a "$bak" "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; fi
+            if [[ -f "$bak" && -r "$bak" ]] && cat "$bak" > "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; fi
             rm -f "$_kebak" "$_crtbak"
             return 1
         fi

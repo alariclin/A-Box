@@ -34313,6 +34313,10 @@ remove_abox_swap() {
 }
 
 redact_secrets_stream() {
+    # Return contract (D2): 0 = redacted output written; 2 = the whole
+    # document was suppressed (no-Python fallback found PEM/block-scalar
+    # material it cannot verify; the OMITTED notice is the output);
+    # any other non-zero value = redaction error, output unusable.
     if command -v python3 >/dev/null 2>&1; then
         python3 -I - 3<&0 <<'PY_REDACT'
 import json
@@ -34457,7 +34461,11 @@ PY_REDACT
         _redact_input=$(cat) || return 1
         if printf '%s\n' "$_redact_input" | grep -qE -- $'-----BEGIN [^-]*KEY-----|^[[:space:]]*["\x27]?(uuid|private[_-]?key|public[_-]?key|short[_-]?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)["\x27]?[[:space:]]*:[[:space:]]*([|>][+-]?[[:space:]]*(#.*)?)?$'; then
             printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, or a cross-line value that the fallback redactor cannot verify; it was suppressed in full and no original content is included.]'
-            return 0
+            # D2: suppression is a distinct outcome, not a redaction.
+            # The notice above is the whole output; callers must record
+            # the file as omitted, not as redacted (see
+            # write_redacted_file / export_diagnostic_bundle).
+            return 2
         fi
         printf '%s\n' "$_redact_input" | sed -E \
             -e 's/(UUID|SS_PASS|HY2_PASS|HY2_OBFS|HY2_ACME_DNS_CF_API_TOKEN|PUBLIC_KEY|SHORT_ID)=.*/\1=***REDACTED***/Ig' \
@@ -34477,12 +34485,43 @@ PY_REDACT
     fi
 }
 
+# Status of the last write_redacted_file call (D2): redacted | omitted |
+# absent | failed. Callers (export_diagnostic_bundle) record it in the
+# bundle's omissions manifest; a suppressed document must never be
+# reported as a redacted one.
+WRITE_REDACTED_FILE_STATUS=''
 write_redacted_file() {
-    local src="$1" dst="$2"
-    [[ -r "$src" ]] || return 0
+    local src="$1" dst="$2" _rc
+    WRITE_REDACTED_FILE_STATUS='failed'
+    [[ -r "$src" ]] || { WRITE_REDACTED_FILE_STATUS='absent'; return 0; }
     mkdir -p "$(dirname "$dst")" || return 1
-    redact_secrets_stream < "$src" > "$dst" 2>/dev/null || { rm -f -- "$dst"; return 1; }
+    redact_secrets_stream < "$src" > "$dst" 2>/dev/null; _rc=$?
+    if [[ "$_rc" == 2 ]]; then
+        # Whole document suppressed by the no-Python fallback: the
+        # notice-only file is kept (it says so), but it is an omission,
+        # not a redacted copy.
+        [[ -s "$dst" ]] || { rm -f -- "$dst"; return 1; }
+        WRITE_REDACTED_FILE_STATUS='omitted'
+        return 0
+    fi
+    [[ "$_rc" == 0 ]] || { rm -f -- "$dst"; return 1; }
     [[ -s "$dst" ]] || { rm -f -- "$dst"; return 1; }
+    WRITE_REDACTED_FILE_STATUS='redacted'
+}
+
+# Append one per-file collection outcome to the diagnostic bundle's
+# omissions manifest and bump the matching _diag_n_* counter (D2).
+# $1 manifest file, $2 bundle-relative path, $3 status
+# (generated|redacted|omitted|absent|failed), $4 reason.
+_diagnostic_record() {
+    printf '%s: %s (%s)\n' "$2" "$3" "$4" >> "$1"
+    case "$3" in
+        generated) _diag_n_generated=$(( ${_diag_n_generated:-0} + 1)) ;;
+        redacted) _diag_n_redacted=$(( ${_diag_n_redacted:-0} + 1)) ;;
+        omitted) _diag_n_omitted=$(( ${_diag_n_omitted:-0} + 1)) ;;
+        absent) _diag_n_absent=$(( ${_diag_n_absent:-0} + 1)) ;;
+        failed) _diag_n_failed=$(( ${_diag_n_failed:-0} + 1)) ;;
+    esac
 }
 
 validate_abox_cron_file() {
@@ -36872,6 +36911,8 @@ write_diagnostic_checksum() {
 
 export_diagnostic_bundle() {
     local ts diag_dir work bundle checksum tmp_bundle
+    local _diag_n_generated _diag_n_redacted _diag_n_omitted _diag_n_absent _diag_n_failed
+    local _unit _rel _red_rcs _red_rc _jrc _trc _jnote _tnote _gf
     ts=$(date +%Y%m%d-%H%M%S)
     diag_dir="$ABOX_DIR/diagnostics"
     work=$(mktemp -d /tmp/A-Box-diagnostic.XXXXXX) || die 'Diagnostic temp directory creation failed.'
@@ -36883,6 +36924,20 @@ export_diagnostic_bundle() {
     [[ "$(stat -c %u "$diag_dir" 2>/dev/null || echo -1)" == 0 ]] || { rm -rf -- "$work"; die '诊断目录非 root 属主，拒绝生成诊断包。'; }
 
     msg "${YELLOW}[*] Collecting diagnostic information with secret redaction...${NC}"
+    # D2: per-file redaction/omission manifest. Every file in the bundle
+    # is listed with what happened to it during collection, so a reader
+    # can tell a redacted copy from a suppressed (notice-only) document,
+    # a missing source, or a file removed after a redaction failure.
+    _diag_n_generated=0 _diag_n_redacted=0 _diag_n_omitted=0 _diag_n_absent=0 _diag_n_failed=0
+    {
+        echo 'A-Box diagnostic bundle - per-file redaction record'
+        echo 'Statuses: generated = command output, not passed through the redactor;'
+        echo 'redacted = secrets redacted, original values not included;'
+        echo 'omitted = whole document suppressed (redactor could not verify its content), notice only;'
+        echo 'absent = source not available, file not in the bundle (or placeholder only);'
+        echo 'failed = redaction failed, file removed from the bundle.'
+        echo
+    } > "$work/omissions.txt"
     {
         echo "A-Box diagnostic bundle"
         echo "Created: $(now_iso)"
@@ -36896,20 +36951,67 @@ export_diagnostic_bundle() {
     { show_status_report 2>/dev/null || true; echo; for c in xray sing-box hysteria; do command -v "$c" >/dev/null 2>&1 && "$c" version 2>/dev/null | head -n 5; done; } > "$work/status.txt"
     { iptables -S 2>/dev/null | grep 'A-Box' || true; echo; iptables -t nat -S 2>/dev/null | grep 'A-Box' || true; echo; ip6tables -S 2>/dev/null | grep 'A-Box' || true; echo; ip6tables -t nat -S 2>/dev/null | grep 'A-Box' || true; } > "$work/firewall.txt"
     collect_abox_cron > "$work/cron.txt" 2>/dev/null || true
+    for _gf in summary.txt system.txt network.txt status.txt firewall.txt cron.txt; do
+        _diagnostic_record "$work/omissions.txt" "$_gf" 'generated' 'command output, not passed through the redactor'
+    done
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
         write_redacted_file "$ABOX_ENV" "$work/env.redacted" || { rm -rf "$work"; die 'Diagnostic secret redaction failed; refusing to create a misleading bundle.'; }
+        case "$WRITE_REDACTED_FILE_STATUS" in
+            redacted) _diagnostic_record "$work/omissions.txt" 'env.redacted' 'redacted' 'secrets redacted' ;;
+            omitted) _diagnostic_record "$work/omissions.txt" 'env.redacted' 'omitted' 'whole document suppressed: no-Python fallback could not verify PEM/block-scalar content; notice only' ;;
+            absent) _diagnostic_record "$work/omissions.txt" 'env.redacted' 'absent' 'source became unreadable during collection' ;;
+        esac
     else
         printf '%s\n' 'A-Box environment file is not present.' > "$work/env.redacted" || { rm -rf "$work"; die 'Diagnostic environment placeholder creation failed.'; }
+        _diagnostic_record "$work/omissions.txt" 'env.redacted' 'absent' 'source file not present; placeholder only'
     fi
 
     if command -v journalctl >/dev/null 2>&1; then
-        journalctl -u xray --no-pager -n 120 2>/dev/null | redact_secrets_stream > "$work/logs/xray.journal.txt" || true
-        journalctl -u sing-box --no-pager -n 120 2>/dev/null | redact_secrets_stream > "$work/logs/sing-box.journal.txt" || true
-        journalctl -u hysteria --no-pager -n 120 2>/dev/null | redact_secrets_stream > "$work/logs/hysteria.journal.txt" || true
+        for _unit in xray sing-box hysteria; do
+            journalctl -u "$_unit" --no-pager -n 120 2>/dev/null | redact_secrets_stream > "$work/logs/${_unit}.journal.txt"
+            _red_rcs=("${PIPESTATUS[@]}")
+            _red_rc=${_red_rcs[1]:-1} _jrc=${_red_rcs[0]:-1}
+            if [[ "$_red_rc" == 0 ]]; then
+                _jnote="journalctl -u ${_unit} -n 120"
+                [[ "$_jrc" != 0 ]] && _jnote="${_jnote}; journalctl exited ${_jrc}, output may be empty"
+                _diagnostic_record "$work/omissions.txt" "logs/${_unit}.journal.txt" 'redacted' "$_jnote"
+            elif [[ "$_red_rc" == 2 ]]; then
+                _diagnostic_record "$work/omissions.txt" "logs/${_unit}.journal.txt" 'omitted' 'whole document suppressed: no-Python fallback could not verify its content; notice only'
+            else
+                rm -f -- "$work/logs/${_unit}.journal.txt"
+                _diagnostic_record "$work/omissions.txt" "logs/${_unit}.journal.txt" 'failed' "redaction failed (rc=${_red_rc}); file removed"
+            fi
+        done
+    else
+        for _unit in xray sing-box hysteria; do
+            _diagnostic_record "$work/omissions.txt" "logs/${_unit}.journal.txt" 'absent' 'journalctl not available'
+        done
     fi
     for f in /var/log/A-Box-xray-error.log /var/log/A-Box-xray-access.log /var/log/A-Box-singbox.log /var/log/A-Box-hysteria.log; do
-        [[ -r "$f" ]] && tail -n 200 "$f" 2>/dev/null | redact_secrets_stream > "$work/logs/$(basename "$f").tail.txt" || true
+        _rel="logs/$(basename "$f").tail.txt"
+        if [[ -r "$f" ]]; then
+            tail -n 200 "$f" 2>/dev/null | redact_secrets_stream > "$work/${_rel}"
+            _red_rcs=("${PIPESTATUS[@]}")
+            _red_rc=${_red_rcs[1]:-1} _trc=${_red_rcs[0]:-1}
+            if [[ "$_red_rc" == 0 ]]; then
+                _tnote="tail -n 200 $f"
+                [[ "$_trc" != 0 ]] && _tnote="${_tnote}; tail exited ${_trc}, output may be empty"
+                _diagnostic_record "$work/omissions.txt" "$_rel" 'redacted' "$_tnote"
+            elif [[ "$_red_rc" == 2 ]]; then
+                _diagnostic_record "$work/omissions.txt" "$_rel" 'omitted' 'whole document suppressed: no-Python fallback could not verify its content; notice only'
+            else
+                rm -f -- "$work/${_rel}"
+                _diagnostic_record "$work/omissions.txt" "$_rel" 'failed' "redaction failed (rc=${_red_rc}); file removed"
+            fi
+        else
+            _diagnostic_record "$work/omissions.txt" "$_rel" 'absent' 'source log not readable'
+        fi
     done
+
+    printf 'Counts: %s files: %s generated, %s redacted, %s omitted, %s absent, %s failed\n' \
+        "$(( _diag_n_generated + _diag_n_redacted + _diag_n_omitted + _diag_n_absent + _diag_n_failed ))" \
+        "$_diag_n_generated" "$_diag_n_redacted" "$_diag_n_omitted" "$_diag_n_absent" "$_diag_n_failed" \
+        >> "$work/omissions.txt"
 
     bundle="$diag_dir/A-Box-diagnostic-${ts}.tar.gz"
     # Re-check immediately before writing: a symlink swapped in after

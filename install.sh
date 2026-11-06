@@ -41402,6 +41402,9 @@ PY_CLASH_REALPATH
         hy2_fp_yaml=$(tr -d ':' <<< "$hy2_pin_colon")
     elif [[ "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
         hy2_fp_yaml="${HY2_CERT_SHA256_FP}"
+        # A4: cached fingerprint in use — the live cert could not be read,
+        # so this pin was NOT verified against the current certificate.
+        msg "${YELLOW}[!] Hy2 pin from cached fingerprint; not verified against the current certificate.${NC}" >&2
     else
         hy2_fp_yaml=''
     fi
@@ -41758,6 +41761,9 @@ view_config() {
     HY2_PIN_E=$(hy2_cert_pin_colon 2>/dev/null || true)
     if [[ -z "$HY2_PIN_E" && "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
         HY2_PIN_E=$(sed 's/\(..\)/\1:/g; s/:$//' <<< "${HY2_CERT_SHA256_FP}")
+        # A4: cached fingerprint in use — the live cert could not be read,
+        # so this pin was NOT verified against the current certificate.
+        msg "${YELLOW}[!] Hy2 pin from cached fingerprint; not verified against the current certificate.${NC}" >&2
     fi
     [[ -n "$HY2_PIN_E" ]] || msg "${YELLOW}[!] Hy2 certificate unreadable; pinSHA256 left empty.${NC}" >&2
     HY2_PIN_E=$(urlencode "$HY2_PIN_E")

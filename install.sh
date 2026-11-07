@@ -2184,6 +2184,12 @@ tr_msg() {
         fa:wl_rc_done) echo 'ارتقای متوقف‌شده Wallos با بازیابی تصویر قبلی و نسخه پشتیبان داده تأییدشده ترمیم شد. پیش از تلاش دوباره برای ارتقا، گزارش‌ها را بررسی کنید.' ;;
         zh-tw:wl_rc_done) echo '已透過還原上一個映像和經校驗的資料備份，修復了一次被中斷的 Wallos 升級。重試升級前請先檢查記錄。' ;;
         ja:wl_rc_done) echo '以前のイメージと検証済みデータバックアップを復元し、中断された Wallos アップグレードから復旧しました。アップグレードを再試行する前にログを確認してください。' ;;
+        zh:wl_rc_caddy_teardown_fail) echo '恢复重建失败，且残留的 Caddy 前端未能停止：80 端口可能仍被占用，请手动停止 abox-wallos-caddy 并检查。' ;;
+        en:wl_rc_caddy_teardown_fail) echo 'Recovery rebuild failed and the orphan Caddy frontend could not be stopped: port 80 may still be held — stop abox-wallos-caddy manually and check.' ;;
+        ru:wl_rc_caddy_teardown_fail) echo 'Восстановление не удалось, и осиротевший фронтенд Caddy не удалось остановить: порт 80 может оставаться занятым — остановите abox-wallos-caddy вручную и проверьте.' ;;
+        fa:wl_rc_caddy_teardown_fail) echo 'بازسازی بازیابی ناموفق بود و فرانت‌اند یتیم Caddy متوقف نشد: ممکن است پورت 80 همچنان اشغال باشد — abox-wallos-caddy را به‌صورت دستی متوقف کنید و بررسی کنید.' ;;
+        zh-tw:wl_rc_caddy_teardown_fail) echo '恢復重建失敗，且殘留的 Caddy 前端未能停止：80 連接埠可能仍被佔用，請手動停止 abox-wallos-caddy 並檢查。' ;;
+        ja:wl_rc_caddy_teardown_fail) echo '復旧の再構築に失敗し、残存した Caddy フロントエンドを停止できませんでした。ポート 80 が占有されたままの可能性があります。abox-wallos-caddy を手動で停止して確認してください。' ;;
         zh:init_soft_warn) echo '未检测到受支持的初始化系统 (Systemd/OpenRC)，菜单以只读方式打开，部署类操作不可用。' ;;
         en:init_soft_warn) echo 'No supported init system (systemd/OpenRC) detected; the menu opens read-only and deployment operations are unavailable.' ;;
         ru:init_soft_warn) echo 'Поддерживаемая система инициализации (systemd/OpenRC) не обнаружена; меню открыто только для просмотра, операции развёртывания недоступны.' ;;
@@ -39016,10 +39022,26 @@ wallos_recover_interrupted_upgrade() {
             if ! is_service_running abox-wallos-caddy 2>/dev/null; then
                 _rec_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
                 if [[ ! "$_rec_pubport" =~ ^[0-9]+$ ]] || ! wallos_https_setup "$_rec_pubport" "$old_port"; then
+                    # 429 follow-up: a failed setup can leave Caddy
+                    # running on :80 with no usable config (crash-loop
+                    # after reboot); tear the orphan front down so the
+                    # refused rebuild leaves nothing behind. The
+                    # teardown never touches the cert store, so a later
+                    # retry can still reuse a certificate.
+                    if ! wallos_https_teardown >/dev/null 2>&1; then
+                        msg "${RED}$(tr_msg wl_rc_caddy_teardown_fail)${NC}"
+                    fi
                     msg "${RED}Recovery restored Wallos but its Caddy frontend is not running; refusing to report success, journal kept.${NC}"
                     return 1
                 fi
-                is_service_running abox-wallos-caddy 2>/dev/null || { msg "${RED}Recovery restored Wallos but its Caddy frontend is not running; refusing to report success, journal kept.${NC}"; return 1; }
+                if ! is_service_running abox-wallos-caddy 2>/dev/null; then
+                    # Same orphan rule: setup reported success but the
+                    # front is already down — drop the stale unit and
+                    # config instead of leaving a crash-loop behind.
+                    wallos_https_teardown >/dev/null 2>&1 || msg "${RED}$(tr_msg wl_rc_caddy_teardown_fail)${NC}"
+                    msg "${RED}Recovery restored Wallos but its Caddy frontend is not running; refusing to report success, journal kept.${NC}"
+                    return 1
+                fi
             fi
             ;;
         cftunnel)

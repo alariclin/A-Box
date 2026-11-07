@@ -1710,12 +1710,18 @@ tr_msg() {
         fa:wl_hs_unit_fail) echo 'راه‌اندازی سرویس HTTPS Wallos ناموفق بود؛ /etc/ddr/abox-wallos-caddy.log را ببینید.' ;;
         zh-tw:wl_hs_unit_fail) echo 'Wallos HTTPS 服務啟動失敗，見 /etc/ddr/abox-wallos-caddy.log。' ;;
         ja:wl_hs_unit_fail) echo 'Wallos HTTPS サービスの起動に失敗しました。/etc/ddr/abox-wallos-caddy.log を確認してください。' ;;
-        zh:wl_hs_cert_timeout) echo 'HTTPS 证书未在 120 秒内签发（常见原因：云安全组未放行 TCP 80、或 80 端口被占用）。Wallos 保持仅本机访问，修复后重跑安装即可。日志：/etc/ddr/abox-wallos-caddy.log' ;;
-        en:wl_hs_cert_timeout) echo 'The HTTPS certificate was not issued within 120 seconds (common causes: the cloud security group does not allow TCP 80, or port 80 is taken). Wallos stays local-only; fix the cause and re-run the install. Log: /etc/ddr/abox-wallos-caddy.log' ;;
-        ru:wl_hs_cert_timeout) echo 'HTTPS-сертификат не был выпущен за 120 секунд (частые причины: группа безопасности не разрешает TCP 80 или порт 80 занят). Wallos остаётся локальным; устраните причину и повторите установку. Журнал: /etc/ddr/abox-wallos-caddy.log' ;;
-        fa:wl_hs_cert_timeout) echo 'گواهی HTTPS در ۱۲۰ ثانیه صادر نشد (دلایل رایج: گروه امنیتی ابری TCP 80 را اجازه نمی‌دهد یا درگاه ۸۰ اشغال است). Wallos فقط محلی می‌ماند؛ علت را رفع و نصب را دوباره اجرا کنید. گزارش: /etc/ddr/abox-wallos-caddy.log' ;;
-        zh-tw:wl_hs_cert_timeout) echo 'HTTPS 憑證未在 120 秒內簽發（常見原因：雲安全組未放行 TCP 80、或 80 連接埠被占用）。Wallos 保持僅本機訪問，修復後重跑安裝即可。日誌：/etc/ddr/abox-wallos-caddy.log' ;;
-        ja:wl_hs_cert_timeout) echo 'HTTPS 証明書が 120 秒以内に発行されませんでした（よくある原因: クラウドのセキュリティグループで TCP 80 が許可されていない、または 80 番ポートが使用中）。Wallos はローカル専用のままです。原因を修正してインストールを再実行してください。ログ: /etc/ddr/abox-wallos-caddy.log' ;;
+        zh:wl_hs_cert_timeout) echo 'HTTPS 证书未在 120 秒内签发（常见原因：云安全组未放行 TCP 80、或 80 端口被占用）。Wallos 保持仅本机访问，修复后重跑安装即可。日志：%s' ;;
+        en:wl_hs_cert_timeout) echo 'The HTTPS certificate was not issued within 120 seconds (common causes: the cloud security group does not allow TCP 80, or port 80 is taken). Wallos stays local-only; fix the cause and re-run the install. Log: %s' ;;
+        ru:wl_hs_cert_timeout) echo 'HTTPS-сертификат не был выпущен за 120 секунд (частые причины: группа безопасности не разрешает TCP 80 или порт 80 занят). Wallos остаётся локальным; устраните причину и повторите установку. Журнал: %s' ;;
+        fa:wl_hs_cert_timeout) echo 'گواهی HTTPS در ۱۲۰ ثانیه صادر نشد (دلایل رایج: گروه امنیتی ابری TCP 80 را اجازه نمی‌دهد یا درگاه ۸۰ اشغال است). Wallos فقط محلی می‌ماند؛ علت را رفع و نصب را دوباره اجرا کنید. گزارش: %s' ;;
+        zh-tw:wl_hs_cert_timeout) echo 'HTTPS 憑證未在 120 秒內簽發（常見原因：雲安全組未放行 TCP 80、或 80 連接埠被占用）。Wallos 保持僅本機訪問，修復後重跑安裝即可。日誌：%s' ;;
+        ja:wl_hs_cert_timeout) echo 'HTTPS 証明書が 120 秒以内に発行されませんでした（よくある原因: クラウドのセキュリティグループで TCP 80 が許可されていない、または 80 番ポートが使用中）。Wallos はローカル専用のままです。原因を修正してインストールを再実行してください。ログ: %s' ;;
+        zh:wl_hs_cert_ratelimit) echo '签发被 Let'\''s Encrypt 限流拒绝：同一 IP 7 天内已签发 5 张证书，最早 %s 后可重试；届时重跑安装即可，证书库与 ACME 账号已保留。' ;;
+        en:wl_hs_cert_ratelimit) echo 'Issuance was refused by Let'\''s Encrypt rate limiting: 5 certificates already issued for this IP in 7 days; earliest retry is after %s. Re-run the install then; the certificate store and ACME account are kept.' ;;
+        ru:wl_hs_cert_ratelimit) echo 'Выдача отклонена ограничением скорости Let'\''s Encrypt: 5 сертификатов для этого IP уже выпущено за 7 дней; повторить можно после %s. Повторите установку тогда; хранилище сертификатов и учётная запись ACME сохранены.' ;;
+        fa:wl_hs_cert_ratelimit) echo 'صدور گواهی به دلیل محدودیت نرخ Let'\''s Encrypt رد شد: ۵ گواهی برای این IP در ۷ روز صادر شده است؛ زودترین تلاش مجدد پس از %s است. آن زمان نصب را دوباره اجرا کنید؛ مخزن گواهی و حساب ACME حفظ شده است.' ;;
+        zh-tw:wl_hs_cert_ratelimit) echo '簽發被 Let'\''s Encrypt 限流拒絕：同一 IP 7 天內已簽發 5 張憑證，最早 %s 後可重試；屆時重跑安裝即可，憑證庫與 ACME 帳號已保留。' ;;
+        ja:wl_hs_cert_ratelimit) echo '発行は Let'\''s Encrypt のレート制限で拒否されました。この IP は 7 日以内に 5 件の証明書を発行済みです。再試行は %s 以降に可能です。そのときにインストールを再実行してください。証明書ストアと ACME アカウントは保持されています。' ;;
         zh:wl_hs_probe_warn) echo '证书已签发，但本机回环探测 Caddy 未通（服务可能尚在启动）：稍后打开网址确认；若仍不通，请看 /etc/ddr/abox-wallos-caddy.log。外网可达性取决于云安全组是否放行 TCP %s 与 TCP 80。' ;;
         en:wl_hs_probe_warn) echo 'The certificate was issued, but the local loopback probe to Caddy did not pass (the service may still be starting): open the URL shortly to confirm; if it still fails, see /etc/ddr/abox-wallos-caddy.log. External reachability depends on the cloud security group allowing TCP %s and TCP 80.' ;;
         ru:wl_hs_probe_warn) echo 'Сертификат выпущен, но локальная проверка Caddy через loopback не прошла (служба, возможно, ещё запускается): откройте адрес чуть позже для подтверждения; если не работает, см. /etc/ddr/abox-wallos-caddy.log. Внешняя доступность зависит от того, разрешены ли в группе безопасности TCP %s и TCP 80.' ;;
@@ -39498,7 +39504,14 @@ wallos_https_teardown() { # stop the HTTPS front, drop its config/data; returns 
         rm -f "/etc/init.d/abox-wallos-caddy"
     fi
     rm -f /etc/ddr/wallos-caddy.json /etc/ddr/abox-wallos-caddy.log "$WALLOS_CADDY_LOG"
-    rm -rf /etc/ddr/wallos-caddy
+    # Keep /etc/ddr/wallos-caddy (certificates + ACME account): a
+    # reinstall reuses the stored certificate instead of issuing a
+    # new one, so repeated installs stop burning the Let's Encrypt
+    # budget of 5 certificates per exact identifier set per week
+    # (2026-11-07: five https installs in seven days hit HTTP 429
+    # and no certificate could be issued until the window reopened).
+    # Full uninstall still wipes it: do_cleanup destroys /etc/ddr
+    # wholesale after this teardown returns.
     return 0
 }
 
@@ -39653,15 +39666,38 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
     # Wait for the IP certificate (ACME HTTP-01 runs over port 80).
     while (( _t < 120 )); do
         _cert=$(find /etc/ddr/wallos-caddy/data/caddy/certificates -name "${pub_ip}.crt" 2>/dev/null | head -1)
-        [[ -n "$_cert" ]] && break
+        if [[ -n "$_cert" ]]; then
+            # A preserved store may hold an expired shortlived cert
+            # (6-day validity): accept only a still-valid one, so
+            # Caddy gets the window to renew instead of the TLS
+            # check failing on a dead certificate. Without openssl,
+            # accept the file as before.
+            if ! command -v openssl >/dev/null 2>&1 || openssl x509 -in "$_cert" -noout -checkend 0 2>/dev/null; then
+                break
+            fi
+            _cert=''
+        fi
         is_service_running abox-wallos-caddy 2>/dev/null || break
         sleep 3; _t=$((_t + 3))
     done
     if [[ -z "$_cert" ]]; then
-        msg "${RED}$(tr_msg wl_hs_cert_timeout)${NC}"
+        # Preserve the ACME evidence before the caller's teardown
+        # deletes the live log: the timeout message cites this
+        # preserved copy, which the teardown never removes.
+        local _hs_log='/etc/ddr/abox-wallos-caddy.log' _hs_rl=''
+        if [[ -f "$_hs_log" ]] && cp "$_hs_log" /etc/ddr/abox-wallos-caddy.failed.log 2>/dev/null; then
+            _hs_log='/etc/ddr/abox-wallos-caddy.failed.log'
+        fi
+        _hs_rl=$(grep -o 'retry after [0-9][0-9-]* [0-9:]* UTC' "$_hs_log" 2>/dev/null | tail -1 || true)
+        msg "${RED}$(tprintf wl_hs_cert_timeout "$_hs_log")${NC}"
+        if [[ -n "$_hs_rl" ]]; then
+            msg "${RED}$(tprintf wl_hs_cert_ratelimit "${_hs_rl#retry after }")${NC}"
+        fi
         wallos_https_80_rollback "$_http80_new"
         return 1
     fi
+    # A successful issuance supersedes any earlier failure record.
+    rm -f /etc/ddr/abox-wallos-caddy.failed.log 2>/dev/null || true
     # Readiness probe via loopback with SNI pinning: dialing the
     # public IP from the host itself fails on NAT-hairpin clouds
     # (e.g. Lightsail) even when external access is perfectly fine.

@@ -241,7 +241,7 @@ download_verified_asset() {
       tar -tzf "$path" >/dev/null
       member="$(tar -tzf "$path" | awk '/(^|\/)sing-box$/ {print; n++} END {if (n != 1) exit 1}')"
       bin="$root/sing-box-check"
-      tar -xOzf "$path" "$member" > "$bin"
+      tar -xOzf "$path" -- "$member" > "$bin"
       chmod 700 "$bin"
       file_description="$(file -b "$bin")"
       assert_elf_arch "$bin" "$arch_kind" || return 1

@@ -53,13 +53,20 @@ BOLD=$'\033[1m'
 # This shim translates --rawfile NAME FILE pairs to --slurpfile NAME FILE
 # on old jq, so secret values never pass through argv: the raw content is
 # JSON-encoded with `command jq -Rs.` (secret via stdin, never argv) and
-# handed to the real jq as --slurpfile NAME <(printf '%s' "$json") (only
-# a /dev/fd/N path in argv). --slurpfile binds an array, so the program
-# is rewritten, replacing bare $NAME with $NAME[0]. On jq >= 1.6 it is a
-# pure pass-through (no arg parsing, no behavior change); the version
-# decision is cached in _ABOX_JQ_RAWFILE_SHIM so it is computed once per
-# shell. --slurpfile exists since jq 1.4 (jq 1.5 manual, "Invoking jq"),
-# so this is safe on the oldest supported jq. ($ENV is NOT an option
+# materialized to a 0600 temp file in a 0700 dir (removed explicitly
+# after the final `command jq`, RETURN trap as backstop),
+# which is handed to the real jq as --slurpfile NAME FILE (only a temp
+# path in argv). A temp file (not a /dev/fd/N pipe) is required: bash 5.0
+# (Debian 10) closes sibling process-substitution fds when a new one is
+# created via `exec {fd}< <(...)`, so a pipe handoff breaks with 2+
+# --rawfile pipes ("cannot read --rawfile file: /dev/fd/62", Debian 10
+# self-test rc=1 with no verdict line). --slurpfile binds an array, so
+# the program is rewritten, replacing bare $NAME with $NAME[0]. On jq >=
+# 1.6 it is a pure pass-through (no arg parsing, no behavior change); the
+# version decision is cached in _ABOX_JQ_RAWFILE_SHIM so it is computed
+# once per shell. --slurpfile exists since jq 1.4 (jq 1.5 manual,
+# "Invoking jq"), so this is safe on the oldest supported jq. ($ENV is
+# NOT an option
 # here: it arrived in jq 1.6, the very version that already has --rawfile.)
 # Rewrite guard: a program that uses $NAME as literal text inside a
 # double-quoted jq string (outside \(...\) interpolation) cannot be
@@ -130,8 +137,8 @@ jq() {
         _ABOX_JQ_RAWFILE_WARNED=1
         printf '%s\n' "[!] Old jq (< 1.6) detected: --rawfile is emulated via --slurpfile; values no longer pass through argv." >&2
     fi
-    local -a _all=( "$@" ) _args=() _raw_names=() _raw_files=() _raw_slurp=() _slurp_names=() _slurp_fds=()
-    local _n=${#_all[@]} _i=0 _a='' _prog_idx=-1 _ri=0 _rn='' _rf='' _json='' _content='' _prog='' _prog_new='' _fd='' _newfd=''
+    local -a _all=( "$@" ) _args=() _raw_names=() _raw_files=() _raw_slurp=() _slurp_names=()
+    local _n=${#_all[@]} _i=0 _a='' _prog_idx=-1 _ri=0 _rn='' _rf='' _tmpf='' _content='' _prog='' _prog_new='' _jq_tmpdir=''
     # Pass 1: collect --rawfile pairs and find the program (first
     # non-flag arg). Value-taking flags consume their values so a value
     # literally equal to --rawfile is not mistaken for a flag.
@@ -175,10 +182,10 @@ jq() {
             _prog_new=$(printf '%s' "$_prog_new" | sed -E "s/\\\$${_rn}([^A-Za-z0-9_\[]|\$)/\\\$${_rn}[0]\\1/g")
         done
     fi
-    # Slurpfile pipes are opened below as named fds so they survive
-    # until the real jq runs (a plain <(...) in an assignment is closed
-    # when the statement ends); close them on every return path.
-    trap 'for _fd in "${_slurp_fds[@]}"; do exec {_fd}<&- 2>/dev/null || true; done' RETURN
+    # Temp files created below hold secrets briefly; remove the whole
+    # temp dir on every return path (including early return 2). The guard
+    # only removes dirs this function created (basename abox-jq.*).
+    trap '[[ -n "${_jq_tmpdir:-}" && "${_jq_tmpdir##*/}" == abox-jq.* ]] && rm -rf -- "$_jq_tmpdir" 2>/dev/null; true' RETURN
     # Pass 2: rebuild argv, reading each --rawfile source exactly once.
     _i=0; _ri=0
     while (( _i < _n )); do
@@ -192,15 +199,20 @@ jq() {
                         return 2
                     fi
                     if [[ "${_raw_slurp[_ri]:-0}" == 1 ]]; then
-                        _json=$(command jq -R -s . < "$_rf" 2>/dev/null) || { printf '%s\n' "[!] jq shim: cannot encode --rawfile file: $_rf" >&2; return 2; }
-                        # Duplicate the pipe into a named fd: the fd
-                        # from a plain <(...) would be closed when this
-                        # statement ends, before the real jq runs. A
-                        # fresh variable per pipe: reusing one would
-                        # close the previous pipe.
-                        exec {_newfd}< <(printf '%s' "$_json") || { printf '%s\n' "[!] jq shim: cannot open --slurpfile pipe for: $_rn" >&2; return 2; }
-                        _slurp_fds+=("$_newfd")
-                        _args+=(--slurpfile "$_rn" "/dev/fd/$_newfd")
+                        # Materialize to a real temp file (see header):
+                        # a /dev/fd/N pipe handoff breaks on bash 5.0
+                        # with 2+ pipes. Encode straight to the file
+                        # with redirections only (no nested $(...) while
+                        # pipe fds are still open). mktemp makes the
+                        # file 0600; the dir is 0700; both are removed
+                        # explicitly after the final `command jq`
+                        # (RETURN trap as backstop for early returns).
+                        if [[ -z "${_jq_tmpdir:-}" ]]; then
+                            _jq_tmpdir=$(umask 077; mktemp -d "${TMPDIR:-/tmp}/abox-jq.XXXXXX") || { printf '%s\n' "[!] jq shim: cannot create temp dir" >&2; return 2; }
+                        fi
+                        _tmpf=$(umask 077; mktemp "$_jq_tmpdir/raw.XXXXXX") || { printf '%s\n' "[!] jq shim: cannot create temp file for: $_rn" >&2; return 2; }
+                        command jq -R -s . < "$_rf" > "$_tmpf" 2>/dev/null || { printf '%s\n' "[!] jq shim: cannot encode --rawfile file: $_rf" >&2; return 2; }
+                        _args+=(--slurpfile "$_rn" "$_tmpf")
                     else
                         _content=$(cat -- "$_rf" && printf x) || { printf '%s\n' "[!] jq shim: cannot read --rawfile file: $_rf" >&2; return 2; }
                         _content=${_content%x}
@@ -225,6 +237,14 @@ jq() {
         esac
     done
     command jq "${_args[@]}"
+    local _rc=$?
+    # Explicit cleanup (see group 6): the RETURN trap alone is not enough
+    # -- a trailing `command` in a command-substitution subshell is
+    # exec-optimized, so the function may never return and the trap may
+    # never fire. Removing the temp dir here (guarded basename) is the
+    # primary path; the trap stays as backstop for early returns.
+    [[ -n "${_jq_tmpdir:-}" && "${_jq_tmpdir##*/}" == abox-jq.* ]] && rm -rf -- "$_jq_tmpdir" 2>/dev/null
+    return "$_rc"
 }
 
 
@@ -46764,7 +46784,7 @@ EOF_SELFTEST_IPT
     mkdir -p "$tmp/xray" "$tmp/sing-box"
     printf '%s\n' 'sentinel' > "$tmp/xray/sentinel.txt"
     ln -s "$tmp/xray/sentinel.txt" "$tmp/xray/config.json.tmp.$$"
-    build_xray_config ALL "$tmp/xray/config.json"
+    ( build_xray_config ALL "$tmp/xray/config.json" ) || { echo 'FAIL: build_xray_config ALL'; failures=$((failures + 1)); }
     [[ "$(cat "$tmp/xray/sentinel.txt" 2>/dev/null)" == 'sentinel' ]] || { echo 'FAIL: Xray config generation followed a predictable temp-file symlink'; failures=$((failures + 1)); }
     [[ -L "$tmp/xray/config.json.tmp.$$" ]] || { echo 'FAIL: Xray config generation touched the predictable temp symlink'; failures=$((failures + 1)); }
     rm -f "$tmp/xray/config.json.tmp.$$"
@@ -46773,7 +46793,7 @@ EOF_SELFTEST_IPT
     local saved_vision_sni="$VISION_SNI" saved_vless_sni="$VLESS_SNI" saved_auto_sni="${ABOX_AUTO_SNI_SELECTED:-}"
     unset VISION_SNI VLESS_SNI
     ABOX_AUTO_SNI_SELECTED='www.amazon.com'
-    build_xray_config VISION "$tmp/xray/default-sni.json"
+    ( build_xray_config VISION "$tmp/xray/default-sni.json" ) || { echo 'FAIL: build_xray_config VISION'; failures=$((failures + 1)); }
     jq -e '.inbounds[] | select(.protocol=="vless" and .streamSettings.realitySettings.serverNames[0]=="www.amazon.com")' "$tmp/xray/default-sni.json" >/dev/null 2>&1 || { echo 'FAIL: explicitly selected fallback REALITY SNI must be preserved'; failures=$((failures + 1)); }
     ( ABOX_AUTO_SNI_SELECTED='www.recommended.example'; sni_probe_candidate_tier() { printf 'A\n'; }; result=$(printf '\n' | prompt_reality_sni 'Vision test' 443); [[ "$result" == 'www.recommended.example' ]] ) || { echo 'FAIL: pressing Enter must accept the recommended SNI'; failures=$((failures + 1)); }
     ( ABOX_AUTO_SNI_SELECTED='www.recommended.example'; sni_probe_candidate_tier() { printf 'A\n'; }; result=$(printf 'www.custom.example\n' | prompt_reality_sni 'Vision test' 443); [[ "$result" == 'www.custom.example' ]] ) || { echo 'FAIL: a valid custom SNI must override the recommendation'; failures=$((failures + 1)); }
@@ -46787,7 +46807,7 @@ EOF_SELFTEST_IPT
     assert_bad valid_github_download_url HyNetworks/hysteria https://example.com/HyNetworks/hysteria/releases/download/app/v2.12.2/hysteria-linux-amd64
     printf '%s\n' 'sentinel' > "$tmp/sing-box/sentinel.txt"
     ln -s "$tmp/sing-box/sentinel.txt" "$tmp/sing-box/config.json.tmp.$$"
-    build_singbox_config ALL "$tmp/sing-box/config.json"
+    ( build_singbox_config ALL "$tmp/sing-box/config.json" ) || { echo 'FAIL: build_singbox_config ALL'; failures=$((failures + 1)); }
     [[ "$(cat "$tmp/sing-box/sentinel.txt" 2>/dev/null)" == 'sentinel' ]] || { echo 'FAIL: Sing-box config generation followed a predictable temp-file symlink'; failures=$((failures + 1)); }
     [[ -L "$tmp/sing-box/config.json.tmp.$$" ]] || { echo 'FAIL: Sing-box config generation touched the predictable temp symlink'; failures=$((failures + 1)); }
     rm -f "$tmp/sing-box/config.json.tmp.$$"

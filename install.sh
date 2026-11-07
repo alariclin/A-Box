@@ -1582,6 +1582,12 @@ tr_msg() {
         fa:wl_iu_https_fw_abort) echo 'باز کردن فایروال برای ورودی عمومی HTTPS رد شد؛ تغییر به HTTPS لغو شد.' ;;
         zh-tw:wl_iu_https_fw_abort) echo '已拒絕為 HTTPS 公網入口放行防火牆；本次 HTTPS 切換已中止。' ;;
         ja:wl_iu_https_fw_abort) echo 'HTTPS 公開入口のファイアウォール開放が拒否されました。HTTPS への切り替えを中止しました。' ;;
+        zh:wl_iu_https_fw_refuse_cleanup_fail) echo '拒绝后清理防火墙规则失败：HTTPS 公网入口端口可能仍对外开放，请手动检查并关闭。' ;;
+        en:wl_iu_https_fw_refuse_cleanup_fail) echo 'Firewall cleanup after the refusal failed: the HTTPS public entry ports may still be reachable from outside; check and close them manually.' ;;
+        ru:wl_iu_https_fw_refuse_cleanup_fail) echo 'Не удалось очистить правила firewall после отказа: порты публичного HTTPS-входа могут оставаться доступными извне; проверьте и закройте их вручную.' ;;
+        fa:wl_iu_https_fw_refuse_cleanup_fail) echo 'پاک‌سازی قوانین فایروال پس از رد درخواست ناموفق بود: ممکن است پورت‌های ورودی عمومی HTTPS همچنان از بیرون قابل دسترسی باشند؛ به‌صورت دستی بررسی و ببندید.' ;;
+        zh-tw:wl_iu_https_fw_refuse_cleanup_fail) echo '拒絕後清理防火牆規則失敗：HTTPS 公網入口連接埠可能仍對外開放，請手動檢查並關閉。' ;;
+        ja:wl_iu_https_fw_refuse_cleanup_fail) echo '拒否後のファイアウォール規則のクリーンアップに失敗しました。HTTPS 公開入口のポートが外部から到達可能なままの可能性があります。手動で確認し、閉じてください。' ;;
         zh:wl_iu_fwd_fail) echo '无法更新 firewalld；请手动添加规则。' ;;
         en:wl_iu_fwd_fail) echo 'Could not update firewalld; add the rule manually.' ;;
         ru:wl_iu_fwd_fail) echo 'Не удалось обновить firewalld; добавьте правило вручную.' ;;
@@ -26883,7 +26889,7 @@ do_cleanup() {
     rm -rf -- /etc/ddr/standalone-links.d || die 'Failed to delete /etc/ddr/standalone-links.d.'
 
     for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local; do
-        if [[ -f "$_wf" ]] && grep -q 'A-Box-wallos' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
+        if [[ -f "$_wf" ]] && grep -Fxq '# Managed by A-Box' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
     done
     # S-UNINSTALL-01: decide caddy ownership BEFORE wallos_https_teardown
     # deletes the front unit the legacy rule needs as evidence. The
@@ -40214,6 +40220,53 @@ wallos_db_repair_poisoned() {
     return 0
 }
 
+# 2do-refusal: on a refused HTTPS firewall opening, pre-existing
+# A-Box ACCEPT rules for the front ports must go too. The rules were
+# added by an earlier successful install (allowPort) and sit at the
+# head of INPUT, ahead of the ufw jump, so they bypass UFW entirely;
+# leaving them means the refusal is silently ineffective -- the front
+# stays reachable while the user believes they refused. This removes
+# the raw iptables ACCEPT rules (v4+v6) with the A-Box-<port>-<proto>
+# comment, using the same check/delete/verify loop as
+# remove_abox_native_firewall_rule's iptables branch and
+# remove_ss_open_accept_rules. Returns 1 if a rule survives or a
+# query fails (fail closed: the caller must shout).
+wallos_remove_abox_iptables_accept() {
+    local spec="$1" proto="${2:-tcp}" comment cmd check_rc failed=0
+    spec=$(normalize_port_spec "$spec") || return 1
+    [[ "$proto" == tcp || "$proto" == udp ]] || return 1
+    comment="A-Box-${spec}-${proto}"
+    for cmd in "$IPT" "$IPT6"; do
+        [[ "$cmd" == "$IPT" || -x "$cmd" || -n "$(command -v "$cmd" 2>/dev/null)" ]] || continue
+        if [[ "$cmd" == "$IPT6" ]]; then
+            # S27: binary missing: this script could not have built
+            # v6 rules; skip (accepted narrow residue: the binary
+            # was removed after the rules were built).
+            command -v ip6tables >/dev/null 2>&1 || continue
+            if ! _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
+                # S27: query failure (permission/lock/module) means
+                # v6 rules may still be present; never report success.
+                # R4C6-03: excuse only when IPv6 is confirmed
+                # unusable (kernel-disabled): then no v6 rules can
+                # exist to delete.
+                if host_has_usable_ipv6; then failed=1; fi
+                continue
+            fi
+        fi
+        while :; do
+            if iptables_rule_check "$cmd" INPUT -p "$proto" --dport "$spec" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
+            case "$check_rc" in
+                0) _iptables_do "$cmd" -D INPUT -p "$proto" --dport "$spec" -m comment --comment "$comment" -j ACCEPT >/dev/null 2>&1 || { failed=1; break; } ;;
+                1) break ;;
+                *) failed=1; break ;;
+            esac
+        done
+        if iptables_rule_check "$cmd" INPUT -p "$proto" --dport "$spec" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
+        [[ "$check_rc" == 1 ]] || failed=1
+    done
+    (( failed == 0 ))
+}
+
 wallos_install_or_update() {
     local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_image_id='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
     (( EUID == 0 )) || { msg "${RED}$(tr_msg wl_iu_need_root)${NC}"; return 1; }
@@ -40506,6 +40559,26 @@ wallos_install_or_update() {
         msg "${RED}$(tr_msg wl_iu_https_fw_abort)${NC}"
         if (( running == 1 )); then
             wallos_recover_interrupted_upgrade >/dev/null 2>&1 || true
+        fi
+        # 2do-refusal: the abort above does not close the front. The
+        # A-Box ACCEPT rules for the front ports were added by an
+        # earlier successful install (allowPort) and sit at the head
+        # of INPUT, ahead of the ufw jump, so they bypass UFW
+        # entirely -- the front stays reachable while the user
+        # believes they refused. Remove the raw iptables ACCEPT
+        # rules (v4+v6) for the public port and 80, plus any
+        # UFW/firewalld-owned form of the same ports, and persist
+        # the removal so a reboot cannot bring the rules back. A
+        # removal failure is LOUD: never report the refusal as
+        # honored while a port may still be open.
+        local _refuse_cleanup_failed=0 _rp=''
+        for _rp in "$pubport" 80; do
+            wallos_remove_abox_iptables_accept "$_rp" tcp || _refuse_cleanup_failed=1
+            remove_abox_native_firewall_rule "$_rp" tcp || _refuse_cleanup_failed=1
+        done
+        save_firewall_rules || _refuse_cleanup_failed=1
+        if (( _refuse_cleanup_failed == 1 )); then
+            msg "${RED}$(tr_msg wl_iu_https_fw_refuse_cleanup_fail)${NC}"
         fi
         return 1
     fi

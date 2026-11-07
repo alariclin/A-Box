@@ -26274,6 +26274,64 @@ remove_abox_created_service_users() {
     return 0
 }
 
+# S-UNINSTALL-01: is /usr/local/bin/caddy an A-Box install?
+# Authoritative proof is the install-time marker
+# /etc/ddr/.abox-caddy-owned, written by install_wallos_caddy after its
+# own atomic install (cf. R7C9-01 for cloudflared). A foreign
+# same-version binary that install_wallos_caddy early-returned on gets
+# no marker. Legacy (pre-marker) installs are removed only when every
+# conjunct below holds; any doubt keeps the binary. Fail closed.
+abox_caddy_owned() {
+    local _unit='' _unit_found=0 _ref='' _dpkg_err='' _dpkg_rc=0 _rpm_err='' _rpm_rc=0
+    [[ -f /usr/local/bin/caddy && ! -L /usr/local/bin/caddy ]] || return 1
+    if [[ -f /etc/ddr/.abox-caddy-owned ]]; then
+        return 0
+    fi
+    # Legacy: pinned version only. A-Box installs exactly
+    # WALLOS_CADDY_VERSION; any other version was not put here by us.
+    # A binary that cannot even report a version fails closed here.
+    [[ "$(/usr/local/bin/caddy version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)" == "v${WALLOS_CADDY_VERSION}" ]] || return 1
+    # Legacy: an A-Box-managed caddy front unit must exist, proving
+    # A-Box set up the front that uses this binary.
+    for _unit in /etc/systemd/system/abox-wallos-caddy.service /etc/init.d/abox-wallos-caddy; do
+        if [[ -f "$_unit" ]] && grep -q 'Managed by A-Box' "$_unit" 2>/dev/null; then
+            _unit_found=1
+            break
+        fi
+    done
+    (( _unit_found == 1 )) || return 1
+    # Legacy: a package-owned path is foreign. dpkg -S / rpm -qf exit 0
+    # only when a package owns the path; their explicit "not owned"
+    # verdicts mean proceed, anything else (e.g. a database error)
+    # means unknown, so keep the binary.
+    if command -v dpkg >/dev/null 2>&1; then
+        _dpkg_err="$(dpkg -S /usr/local/bin/caddy 2>&1 >/dev/null)" || _dpkg_rc=$?
+        if (( _dpkg_rc == 0 )); then
+            return 1
+        fi
+        grep -q 'no path found matching pattern' <<< "$_dpkg_err" 2>/dev/null || return 1
+    fi
+    if command -v rpm >/dev/null 2>&1; then
+        _rpm_err="$(rpm -qf /usr/local/bin/caddy 2>&1 >/dev/null)" || _rpm_rc=$?
+        if (( _rpm_rc == 0 )); then
+            return 1
+        fi
+        grep -q 'is not owned by any package' <<< "$_rpm_err" 2>/dev/null || return 1
+    fi
+    # Legacy: any non-A-Box unit/script referencing the binary means
+    # something else uses it; keep it.
+    for _ref in /etc/systemd/system/*.service /etc/init.d/*; do
+        [[ -f "$_ref" ]] || continue
+        case "$_ref" in
+            */abox-wallos-caddy.service|*/abox-wallos-caddy) continue ;;
+        esac
+        if grep -qF '/usr/local/bin/caddy' "$_ref" 2>/dev/null; then
+            return 1
+        fi
+    done
+    return 0
+}
+
 do_cleanup() {
     clear; msg "${RED}$(tr_msg cu_running)${NC}"
     init_system_environment
@@ -26336,9 +26394,20 @@ do_cleanup() {
     for _wf in /etc/fail2ban/filter.d/A-Box-wallos.conf /etc/fail2ban/jail.d/A-Box-wallos.local; do
         if [[ -f "$_wf" ]] && grep -q 'A-Box-wallos' "$_wf" 2>/dev/null; then rm -f "$_wf" || true; fi
     done
+    # S-UNINSTALL-01: decide caddy ownership BEFORE wallos_https_teardown
+    # deletes the front unit the legacy rule needs as evidence. The
+    # binary itself is removed below, after the front is down.
+    local _caddy_owned=0
+    abox_caddy_owned && _caddy_owned=1
     wallos_https_teardown >/dev/null 2>&1 || true
     wallos_cftunnel_teardown >/dev/null 2>&1 || true
     wallos_stack_teardown
+    # S-UNINSTALL-01: remove the caddy binary only when ownership was
+    # proven above AND the front is confirmed stopped; a still-running
+    # front, or any doubt in the ownership verdict, keeps the binary.
+    if (( _caddy_owned == 1 )) && ! is_service_running abox-wallos-caddy 2>/dev/null; then
+        rm -f /usr/local/bin/caddy /etc/ddr/.abox-caddy-owned || true
+    fi
     users_registries_wipe || msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"
     abox_zram_teardown
     if [[ "${INIT_SYS:-}" == systemd ]]; then
@@ -38528,6 +38597,14 @@ install_wallos_caddy() {
     chmod 755 "$tmp/caddy" || { rm -rf "$tmp"; return 1; }
     "$tmp/caddy" version >/dev/null 2>&1 || { rm -rf "$tmp"; msg "${RED}$(tr_msg wl_caddy_exec)${NC}"; return 1; }
     install_binary_atomically "$tmp/caddy" /usr/local/bin/caddy || { rm -rf "$tmp"; msg "${RED}$(tr_msg wl_caddy_install)${NC}"; return 1; }
+    # S-UNINSTALL-01 (cf. R7C9-01 for cloudflared): record A-Box
+    # ownership so uninstall can tell an A-Box-installed binary from
+    # a foreign same-version one that install_wallos_caddy
+    # early-returned on. Best-effort: if the marker cannot be written,
+    # uninstall conservatively keeps the binary instead of deleting a
+    # possibly foreign one. The early return above deliberately
+    # writes no marker.
+    touch /etc/ddr/.abox-caddy-owned 2>/dev/null || true
     rm -rf "$tmp"
 }
 

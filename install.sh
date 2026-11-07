@@ -23098,7 +23098,6 @@ _menu_info_display() {
 # State file persists custom outbounds + routing rules across redeploys.
 # Builders (build_xray_config / build_singbox_config) merge this state in.
 ROUTING_STATE_FILE='/etc/ddr/.routing-state'
-WGCF_VERSION='2.2.29'
 WGCF_BIN='/usr/local/bin/wgcf'
 
 routing_state_init() {
@@ -23453,32 +23452,72 @@ routing_apply_live() {
 
 # ---------------- WARP one-click ----------------
 
+# wgcf tracks the upstream latest release at runtime (no version pin).
+# Prints "<version> <sha256:hex>" for the latest ViRb3/wgcf release, bound
+# to a single resolution snapshot. Verification policy (A'): prefer the
+# GitHub API asset digest; fall back to the release's checksums.txt when
+# the digest is absent. No usable verification metadata => fail closed.
+# NOTE: the [[ -x $WGCF_BIN ]] early return in warp_fetch_wgcf is kept on
+# purpose: latest is resolved when a missing binary is fetched, not as a
+# background upgrade of an existing installation.
+wgcf_resolve_latest() {
+    local arch="${1:-}" release_json tag ver asset digest sums_url sums_tmp hex sums_size
+    [[ "$arch" == 'amd64' || "$arch" == 'arm64' ]] || return 1
+    release_json=$(github_api_get "https://api.github.com/repos/ViRb3/wgcf/releases/latest" 2>/dev/null) || return 1
+    tag=$(jq -er '.tag_name // empty' <<< "$release_json" 2>/dev/null) || return 1
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    jq -e '.draft == false and .prerelease == false' <<< "$release_json" >/dev/null 2>&1 || return 1
+    ver="${tag#v}"
+    asset="wgcf_${ver}_linux_${arch}"
+    digest=$(jq -er --arg name "$asset" '[.assets[]? | select(.name == $name) | .digest] | if length == 1 then .[0] else empty end' <<< "$release_json" 2>/dev/null) || digest=''
+    if [[ -z "$digest" || "$digest" == 'null' ]]; then
+        sums_url="https://github.com/ViRb3/wgcf/releases/download/${tag}/checksums.txt"
+        sums_tmp=$(umask 077; mktemp /tmp/A-Box-wgcf-sums.XXXXXX) || return 1
+        if ! curl -fLsS --connect-timeout 10 -m 30 "$sums_url" -o "$sums_tmp" 2>/dev/null; then rm -f -- "$sums_tmp"; return 1; fi
+        sums_size=$(wc -c < "$sums_tmp" 2>/dev/null | tr -d ' ') || sums_size=''
+        [[ "$sums_size" =~ ^[0-9]+$ ]] && (( sums_size <= 65536 )) || { rm -f -- "$sums_tmp"; return 1; }
+        hex=$(awk -v f="$asset" '{ g=$2; sub(/^\*/, "", g); if (g == f) { print $1; n++ } } END { if (n != 1) exit 1 }' "$sums_tmp" 2>/dev/null) || { rm -f -- "$sums_tmp"; return 1; }
+        rm -f -- "$sums_tmp"
+        [[ "$hex" =~ ^[0-9a-f]{64}$ ]] || return 1
+        digest="sha256:$hex"
+    fi
+    [[ "$digest" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || return 1
+    printf '%s %s\n' "$ver" "$digest"
+}
+
 warp_fetch_wgcf() {
-    local arch url tmp
+    local arch resolved ver digest url tmp
     [[ -x "$WGCF_BIN" ]] && return 0
     case "$(uname -m)" in
         x86_64|amd64) arch='amd64' ;;
         aarch64|arm64) arch='arm64' ;;
         *) return 1 ;;
     esac
-    url="https://github.com/ViRb3/wgcf/releases/download/v${WGCF_VERSION}/wgcf_${WGCF_VERSION}_linux_${arch}"
+    # Resolve latest once and bind every step to that release.
+    resolved=$(wgcf_resolve_latest "$arch") || return 1
+    ver="${resolved%% *}"; digest="${resolved#* }"
+    [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    [[ "$digest" =~ ^sha256:[A-Fa-f0-9]{64}$ ]] || return 1
     tmp=$(mktemp) || return 1
-    # Supply-chain pin (official v2.2.29 release binaries).
-    local want=''
-    case "$arch" in
-        amd64) want='572d102720ee39a6a0a6a22a0b4689fdf92b8974ede927111e3daf8d2ed5dec1' ;;
-        arm64) want='6228ae03ce2004edb24888aa119d7bd3978004964113f9f1e00841db1b01313c' ;;
-    esac
-    if ! fetch_util_mirror_asset "wgcf_${WGCF_VERSION}_linux_${arch}" "$tmp" \
-        || [[ "$(sha256sum "$tmp" 2>/dev/null | awk '{print $1}')" != "$want" ]]; then
-        if ! curl -sSL --max-time 60 -o "$tmp" "$url"; then rm -f "$tmp"; return 1; fi
+    # Mirror first (best effort: the mirror only hosts the version its own
+    # refresh resolved). A mirror miss or hash mismatch falls through to
+    # upstream against the SAME expected hash -- never a downgrade, and the
+    # mirror never supplies its own verification anchor.
+    if fetch_util_mirror_asset "wgcf_${ver}_linux_${arch}" "$tmp" 2>/dev/null \
+        && verify_github_asset_digest "$tmp" "$digest" 2>/dev/null; then
+        :
+    else
+        rm -f -- "$tmp"
+        tmp=$(mktemp) || return 1
+        url="https://github.com/ViRb3/wgcf/releases/download/v${ver}/wgcf_${ver}_linux_${arch}"
+        if ! curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 120 "$url" -o "$tmp" 2>/dev/null; then rm -f -- "$tmp"; return 1; fi
     fi
-    [[ -s "$tmp" ]] || { rm -f "$tmp"; return 1; }
+    [[ -s "$tmp" ]] || { rm -f -- "$tmp"; return 1; }
     # sanity: must be an ELF binary
-    head -c 4 "$tmp" | grep -q $'\x7fELF' || { rm -f "$tmp"; return 1; }
-    [[ "$(sha256sum "$tmp" 2>/dev/null | awk '{print $1}')" == "$want" ]] || { rm -f "$tmp"; return 1; }
-    install -m 755 "$tmp" "$WGCF_BIN" || { rm -f "$tmp"; return 1; }
-    rm -f "$tmp"
+    head -c 4 "$tmp" | grep -q $'\x7fELF' || { rm -f -- "$tmp"; return 1; }
+    verify_github_asset_digest "$tmp" "$digest" || { rm -f -- "$tmp"; return 1; }
+    install -m 755 "$tmp" "$WGCF_BIN" || { rm -f -- "$tmp"; return 1; }
+    rm -f -- "$tmp"
 }
 
 # $1 = work dir. Outputs "OK" on success. Registers WARP account and generates profile.
@@ -44650,6 +44689,19 @@ PY_SELFTEST_TAR
     grep -Fq "ABOX_CORE_MIRROR_RELEASE='core-binaries'" <<< "$source_body" || { echo 'FAIL: stable core mirror tag missing'; failures=$((failures + 1)); }
     grep -Fq "ABOX_CORE_MIRROR_BASE_DEFAULT='https://github.com/alariclin/A-Box/releases/download/core-binaries'" <<< "$source_body" || { echo 'FAIL: stable core mirror URL missing'; failures=$((failures + 1)); }
     declare -F fetch_util_mirror_asset >/dev/null 2>&1 || { echo 'FAIL: pinned-utility mirror fetch missing'; failures=$((failures + 1)); }
+    # wgcf latest-tracking: the resolver binds one release (version + digest).
+    _wgcf_api_json='{"tag_name":"v2.3.1","draft":false,"prerelease":false,"assets":[{"name":"wgcf_2.3.1_linux_amd64","digest":"sha256:4fb7a136aa470ece11d17949c7db07b040ec9c604742dc8680bcf1889f85d0c8"},{"name":"wgcf_2.3.1_linux_arm64","digest":"sha256:710ab2d8ac145d81a4cf0c11bdb0e05914f77ae2a45f67b87e718d84b4cb7301"},{"name":"checksums.txt","digest":"sha256:15ab012ba30009ca2183483b246fc3b805318a91be9f35db89dfd85e7ca635ad"}]}'
+    _wgcf_sums='4fb7a136aa470ece11d17949c7db07b040ec9c604742dc8680bcf1889f85d0c8  wgcf_2.3.1_linux_amd64
+710ab2d8ac145d81a4cf0c11bdb0e05914f77ae2a45f67b87e718d84b4cb7301  wgcf_2.3.1_linux_arm64'
+    ( github_api_get() { printf '%s' "$_wgcf_api_json"; }
+      [[ "$(wgcf_resolve_latest amd64)" == '2.3.1 sha256:4fb7a136aa470ece11d17949c7db07b040ec9c604742dc8680bcf1889f85d0c8' ]] ) || { echo 'FAIL: wgcf resolver API-digest path'; failures=$((failures + 1)); }
+    ( github_api_get() { printf '%s' '{"tag_name":"v2.3.1","draft":false,"prerelease":false,"assets":[{"name":"wgcf_2.3.1_linux_amd64","digest":null}]}'; }
+      curl() { local a u='' o='' prev=''; for a in "$@"; do [[ "$prev" == '-o' ]] && o="$a"; [[ "$a" == *checksums.txt ]] && u="$a"; prev="$a"; done; [[ -n "$u" && -n "$o" ]] || return 1; printf '%s\n' "$_wgcf_sums" > "$o"; }
+      [[ "$(wgcf_resolve_latest amd64)" == '2.3.1 sha256:4fb7a136aa470ece11d17949c7db07b040ec9c604742dc8680bcf1889f85d0c8' ]] ) || { echo 'FAIL: wgcf resolver checksums fallback path'; failures=$((failures + 1)); }
+    ( github_api_get() { return 1; }
+      ! wgcf_resolve_latest amd64 >/dev/null 2>&1 ) || { echo 'FAIL: wgcf resolver must fail closed on API failure'; failures=$((failures + 1)); }
+    ( github_api_get() { printf '%s' '{"tag_name":"v2.3.1","draft":true,"prerelease":false,"assets":[]}'; }
+      ! wgcf_resolve_latest amd64 >/dev/null 2>&1 ) || { echo 'FAIL: wgcf resolver must reject draft releases'; failures=$((failures + 1)); }
     declare -F xray_latest_menu >/dev/null 2>&1 || { echo 'FAIL: latest Xray menu missing'; failures=$((failures + 1)); }
     declare -F xray_latest_install_core >/dev/null 2>&1 || { echo 'FAIL: latest Xray core installer missing'; failures=$((failures + 1)); }
     declare -F xray_latest_deploy >/dev/null 2>&1 || { echo 'FAIL: latest Xray deployer missing'; failures=$((failures + 1)); }

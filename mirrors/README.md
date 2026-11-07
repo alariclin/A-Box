@@ -19,7 +19,7 @@ The Release retains versioned assets for the previous-version rollback candidate
 
 ### Pinned utilities (Argo / WARP)
 
-The mirror also carries the two version-pinned helper binaries used by standalone features: `cloudflared-<version>-linux-<arch>` (Argo tunnels) and `wgcf_<version>_linux_<arch>` (WARP provisioning), for amd64 and arm64. Unlike sing-box and Hysteria they are pinned, not latest-tracking: the mirror refresh reads the pins (`CLOUDFLARED_VERSION`, `WGCF_VERSION`) from `install.sh`, downloads exactly those upstream releases, and verifies them like core assets (official digest, architecture, version probe where available). The installer tries the mirror copy first and falls back to the pinned official URL; either way, the downloaded bytes must match the SHA-256 pin compiled into `install.sh`.
+The mirror also carries the two versioned helper binaries used by standalone features: `cloudflared-<version>-linux-<arch>` (Argo tunnels) and `wgcf_<version>_linux_<arch>` (WARP provisioning), for amd64 and arm64. cloudflared is pinned (the mirror refresh reads `CLOUDFLARED_VERSION` from `install.sh`), while wgcf tracks the upstream latest release: the mirror refresh resolves the latest ViRb3/wgcf release and the installer resolves it at runtime too. Both are verified like core assets (official digest, architecture, version probe where available). The installer tries the mirror copy first and falls back to the official release URL for the resolved version; either way, the downloaded bytes must match the SHA-256 digest from that release (API asset digest, or the release's checksums.txt).
 
 ## Wallos recovery
 

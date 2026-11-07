@@ -131,19 +131,21 @@ else
   hysteria_tag="$(validate_release_tag "$root/hysteria.json" '^app/v[0-9]+\.[0-9]+\.[0-9]+$')" || { echo "::error::Hysteria release tag validation failed"; exit 1; }
 fi
 
-# Pinned utilities (cloudflared for Argo, wgcf for WARP): versions are NOT
-# latest-tracked; the single source of truth is the pin in install.sh.
+# Pinned utilities: cloudflared (Argo) is pinned; the single source of
+# truth is the pin in install.sh. wgcf (WARP) tracks the upstream latest
+# release (install.sh resolves it at runtime), so the mirror refresh
+# resolves it here too and hosts the same version.
 [[ -f install.sh ]] || { echo "::error::install.sh not found (run from repo root)"; exit 1; }
 CLOUDFLARED_VERSION="$(sed -n "s/^CLOUDFLARED_VERSION='\([0-9.]*\)'$/\1/p" install.sh | head -1)"
 [[ "$CLOUDFLARED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Cannot parse CLOUDFLARED_VERSION pin from install.sh"; exit 1; }
-WGCF_VERSION="$(sed -n "s/^WGCF_VERSION='\([0-9.]*\)'$/\1/p" install.sh | head -1)"
-[[ "$WGCF_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Cannot parse WGCF_VERSION pin from install.sh"; exit 1; }
 gh api "repos/cloudflare/cloudflared/releases/tags/$CLOUDFLARED_VERSION" > "$root/cloudflared.json"
 jq -e --arg t "$CLOUDFLARED_VERSION" '.draft == false and .prerelease == false and .tag_name == $t' "$root/cloudflared.json" >/dev/null || {
   echo "::error::cloudflared pinned release $CLOUDFLARED_VERSION invalid or not found"; exit 1; }
-gh api "repos/ViRb3/wgcf/releases/tags/v$WGCF_VERSION" > "$root/wgcf.json"
-jq -e --arg t "v$WGCF_VERSION" '.draft == false and .prerelease == false and .tag_name == $t' "$root/wgcf.json" >/dev/null || {
-  echo "::error::wgcf pinned release v$WGCF_VERSION invalid or not found"; exit 1; }
+gh api "repos/ViRb3/wgcf/releases/latest" > "$root/wgcf.json"
+jq -e '.draft == false and .prerelease == false and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))' "$root/wgcf.json" >/dev/null || {
+  echo "::error::wgcf latest release invalid or not found"; exit 1; }
+WGCF_VERSION="$(jq -er '.tag_name | ltrimstr("v")' "$root/wgcf.json")"
+[[ "$WGCF_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Cannot parse wgcf latest version"; exit 1; }
 
 declare -a mirror_names=()
 declare -a mirror_paths=()
@@ -418,7 +420,8 @@ else
   echo "::notice::Skipping Hysteria downloads (using existing mirror version)"
 fi
 
-# Pinned utilities: always fetched at the install.sh pin (no cooldown,
+# Pinned utilities: cloudflared is always fetched at the install.sh pin;
+# wgcf is always fetched at the resolved latest release (no cooldown,
 # no skip). Already-mirrored identical bytes are not re-uploaded (the
 # immutability merge below handles that).
 download_verified_asset cloudflare/cloudflared "$root/cloudflared.json" cloudflared-linux-amd64 "cloudflared-$CLOUDFLARED_VERSION-linux-amd64" cloudflared

@@ -1017,6 +1017,12 @@ tr_msg() {
         fa:wl_pu_guide_https_3) echo '۳) امنیت: HTTPS کامل؛ گواهی Let'\''s Encrypt را Caddy هر ۶ روز به‌صورت خودکار تمدید می‌کند؛ Fail2Ban مراقب حملات حدس گذرواژه است. اگر IP عمومی VPS عوض شد، نصب را دوباره اجرا کنید تا گواهی از نو صادر شود.' ;;
         zh-tw:wl_pu_guide_https_3) echo '3) 安全：全程 HTTPS 加密；憑證由 Let'\''s Encrypt 簽發、Caddy 每 6 天自動續期；Fail2Ban 已盯住登入爆破。若以後 VPS 公網 IP 更換，重新執行一次安裝即可換證。' ;;
         ja:wl_pu_guide_https_3) echo '3) セキュリティ: 全経路 HTTPS。証明書は Let'\''s Encrypt が発行し、Caddy が 6 日周期で自動更新します。Fail2Ban がログイン総当たりを監視しています。VPS のパブリック IP が変わったら、インストールを再実行すれば再発行できます。' ;;
+        zh:wl_pu_guide_https_3_off) echo '3) 安全：全程 HTTPS 加密；证书由 Let'\''s Encrypt 签发、Caddy 每 6 天自动续期；Fail2Ban 未启用（登录爆破暂无封禁保护）。若以后 VPS 公网 IP 更换，重新运行一次安装即可换证。' ;;
+        en:wl_pu_guide_https_3_off) echo '3) Security: full HTTPS, a Let'\''s Encrypt IP certificate renewed automatically by Caddy (6-day cycle), and Fail2Ban is NOT active (no ban protection against login brute force yet). If the VPS public IP ever changes, re-run the install to re-issue.' ;;
+        ru:wl_pu_guide_https_3_off) echo '3) Безопасность: полное HTTPS; сертификат Let'\''s Encrypt автоматически продлевается Caddy каждые 6 дней; Fail2Ban НЕ включён (защиты от перебора паролей пока нет). Если публичный IP VPS изменится, просто повторите установку для перевыпуска.' ;;
+        fa:wl_pu_guide_https_3_off) echo '۳) امنیت: HTTPS کامل؛ گواهی Let'\''s Encrypt را Caddy هر ۶ روز به‌صورت خودکار تمدید می‌کند؛ Fail2Ban فعال نیست (هنوز حفاظتی در برابر حملات حدس گذرواژه وجود ندارد). اگر IP عمومی VPS عوض شد، نصب را دوباره اجرا کنید تا گواهی از نو صادر شود.' ;;
+        zh-tw:wl_pu_guide_https_3_off) echo '3) 安全：全程 HTTPS 加密；憑證由 Let'\''s Encrypt 簽發、Caddy 每 6 天自動續期；Fail2Ban 未啟用（登入爆破暫無封禁保護）。若以後 VPS 公網 IP 更換，重新執行一次安裝即可換證。' ;;
+        ja:wl_pu_guide_https_3_off) echo '3) セキュリティ: 全経路 HTTPS。証明書は Let'\''s Encrypt が発行し、Caddy が 6 日周期で自動更新します。Fail2Ban は無効です（ログイン総当たりに対する保護はまだありません）。VPS のパブリック IP が変わったら、インストールを再実行すれば再発行できます。' ;;
         zh:wl_pu_url_http) echo 'Wallos 网址（HTTP 容灾）：http://%s:%s/' ;;
         en:wl_pu_url_http) echo 'Wallos URL (HTTP, disaster recovery): http://%s:%s/' ;;
         ru:wl_pu_url_http) echo 'Адрес Wallos (HTTP, аварийный режим): http://%s:%s/' ;;
@@ -1047,6 +1053,12 @@ tr_msg() {
         fa:wl_pu_guide_http_3) echo '۳) Fail2Ban مراقب حدس گذرواژه است. وقتی مسیر گواهی دوباره کار کرد، نصب را از نو اجرا و [۱] یا [۳] را انتخاب کنید تا به حالت رمزگذاری‌شده برگردید.' ;;
         zh-tw:wl_pu_guide_http_3) echo '3) Fail2Ban 已盯住登入爆破。憑證通道恢復後建議重跑安裝選 [1] 或 [3] 切回加密模式。' ;;
         ja:wl_pu_guide_http_3) echo '3) Fail2Ban がログイン総当たりを監視しています。証明書の経路が復旧したら、インストールを再実行して [1] または [3] を選び、暗号化モードに戻してください。' ;;
+        zh:wl_pu_guide_http_3_off) echo '3) Fail2Ban 未启用：登录爆破暂无封禁保护。证书通道恢复后建议重跑安装选 [1] 或 [3] 切回加密模式。' ;;
+        en:wl_pu_guide_http_3_off) echo '3) Fail2Ban is NOT watching login brute force. Once the certificate path works again, rerun install and choose [1] or [3] to return to an encrypted mode.' ;;
+        ru:wl_pu_guide_http_3_off) echo '3) Fail2Ban НЕ следит за перебором паролей. Когда путь сертификата снова заработает, повторите установку и выберите [1] или [3], чтобы вернуться в зашифрованный режим.' ;;
+        fa:wl_pu_guide_http_3_off) echo '۳) Fail2Ban مراقب حملات حدس گذرواژه نیست. وقتی مسیر گواهی دوباره کار کرد، نصب را از نو اجرا و [۱] یا [۳] را انتخاب کنید تا به حالت رمزگذاری‌شده برگردید.' ;;
+        zh-tw:wl_pu_guide_http_3_off) echo '3) Fail2Ban 未啟用：登入爆破暫無封禁保護。憑證通道恢復後建議重跑安裝選 [1] 或 [3] 切回加密模式。' ;;
+        ja:wl_pu_guide_http_3_off) echo '3) Fail2Ban はログイン総当たりを監視していません。証明書の経路が復旧したら、インストールを再実行して [1] または [3] を選び、暗号化モードに戻してください。' ;;
         zh:wl_pu_no_bind) echo 'Wallos 容器没有 80/tcp 端口绑定；请用 docker inspect wallos 检查。' ;;
         en:wl_pu_no_bind) echo 'Wallos container has no 80/tcp port binding; inspect with: docker inspect wallos' ;;
         ru:wl_pu_no_bind) echo 'У контейнера Wallos нет привязки порта 80/tcp; проверьте: docker inspect wallos' ;;
@@ -1125,6 +1137,12 @@ tr_msg() {
         fa:wl_pu_guide_3) echo '۳) امنیت: درگاه بالای تصادفی + زندان اختصاصی Fail2Ban از قبل فعال است (حدس گذرواژه را مسدود می‌کند)؛ این نشانی HTTP ساده است، در Wi-Fi عمومی وارد نشوید و برای استفاده بلندمدت یک HTTPS reverse proxy در نظر بگیرید.' ;;
         zh-tw:wl_pu_guide_3) echo '3) 安全：隨機高位連接埠 + Fail2Ban 專用防護已自動啟用（攔截暴力登入）；該網址是 HTTP 明文，不要在公用 Wi-Fi 下登入，長期使用建議再套一層 HTTPS 反向代理。' ;;
         ja:wl_pu_guide_3) echo '3) セキュリティ: ランダムな高ポート + Fail2Ban の専用 jail が既に有効で、ログイン総当たりをブロックします。この URL は平文 HTTP なので、公共 Wi-Fi でのログインは避け、長期利用では HTTPS リバースプロキシの追加を検討してください。' ;;
+        zh:wl_pu_guide_3_off) echo '3) 安全：随机高位端口 + Fail2Ban 未启用（登录爆破暂无封禁保护）；该网址是 HTTP 明文，不要在公共 Wi-Fi 下登录，长期使用建议再套一层 HTTPS 反向代理。' ;;
+        en:wl_pu_guide_3_off) echo '3) Security: a random high port + Fail2Ban is NOT active (no ban protection against login brute force yet); the URL is plain HTTP, so avoid logging in on public Wi-Fi and consider an HTTPS reverse proxy for long-term use.' ;;
+        ru:wl_pu_guide_3_off) echo '3) Безопасность: случайный высокий порт и Fail2Ban НЕ включён (защиты от перебора паролей пока нет); адрес - обычный HTTP, не входите с публичного Wi-Fi и рассмотрите HTTPS reverse proxy для постоянного использования.' ;;
+        fa:wl_pu_guide_3_off) echo '۳) امنیت: درگاه بالای تصادفی + Fail2Ban فعال نیست (هنوز حفاظتی در برابر حملات حدس گذرواژه وجود ندارد)؛ این نشانی HTTP ساده است، در Wi-Fi عمومی وارد نشوید و برای استفاده بلندمدت یک HTTPS reverse proxy در نظر بگیرید.' ;;
+        zh-tw:wl_pu_guide_3_off) echo '3) 安全：隨機高位連接埠 + Fail2Ban 未啟用（登入爆破暫無封禁保護）；該網址是 HTTP 明文，不要在公用 Wi-Fi 下登入，長期使用建議再套一層 HTTPS 反向代理。' ;;
+        ja:wl_pu_guide_3_off) echo '3) セキュリティ: ランダムな高ポート + Fail2Ban は無効です（ログイン総当たりに対する保護はまだありません）。この URL は平文 HTTP なので、公共 Wi-Fi でのログインは避け、長期利用では HTTPS リバースプロキシの追加を検討してください。' ;;
         zh:wl_iu_need_root) echo '安装 Wallos 需要 root 权限。' ;;
         en:wl_iu_need_root) echo 'Run Wallos setup as root.' ;;
         ru:wl_iu_need_root) echo 'Для установки Wallos требуются права root.' ;;
@@ -1413,6 +1431,12 @@ tr_msg() {
         fa:wl_iu_check_3) echo 'Fail2ban فعال است: ۱۰ ورود ناموفق در ۱۰ دقیقه = ۲۴ ساعت مسدودی.' ;;
         zh-tw:wl_iu_check_3) echo 'fail2ban 已啟用：10 分鐘內 10 次登錄失敗 = 封 24 小時。' ;;
         ja:wl_iu_check_3) echo 'fail2ban 有効：10 分で 10 回失敗 = 24 時間 BAN。' ;;
+        zh:wl_iu_check_3_off) echo 'fail2ban 未启用：登录爆破暂无封禁保护，请检查 fail2ban 状态。' ;;
+        en:wl_iu_check_3_off) echo 'Fail2ban is NOT active on this port: no ban protection against login brute force yet; check the fail2ban status.' ;;
+        ru:wl_iu_check_3_off) echo 'Fail2ban НЕ активен: защиты от перебора паролей пока нет; проверьте состояние fail2ban.' ;;
+        fa:wl_iu_check_3_off) echo 'Fail2ban فعال نیست: هنوز حفاظتی در برابر حملات حدس گذرواژه وجود ندارد؛ وضعیت fail2ban را بررسی کنید.' ;;
+        zh-tw:wl_iu_check_3_off) echo 'fail2ban 未啟用：登入爆破暫無封禁保護，請檢查 fail2ban 狀態。' ;;
+        ja:wl_iu_check_3_off) echo 'fail2ban は無効です：ログイン総当たりに対する保護はまだありません。fail2ban の状態を確認してください。' ;;
         zh:wl_rt_daemon_down) echo '已检测到 Docker 命令，但守护进程不可用。为避免覆盖/冲突，A-Box 未安装第二套 Docker；请先修复现有 Docker 服务后重试。' ;;
         en:wl_rt_daemon_down) echo 'Docker CLI exists, but its daemon is unavailable. A-Box did not install another Docker package to avoid conflicts; fix the existing Docker service and retry.' ;;
         ru:wl_rt_daemon_down) echo 'Docker CLI установлен, но демон недоступен. A-Box не устанавливал другой пакет Docker во избежание конфликтов; исправьте существующую службу и повторите.' ;;
@@ -38080,6 +38104,64 @@ wallos_recover_interrupted_upgrade() {
 # Wallos keeps nginx access log inside the container's writable layer; fail2ban
 # reads it from the host at <UpperDir>/var/log/nginx/access.log.
 # Re-run after every (re)create of the container (install / upgrade / rollback).
+# Prints the Wallos container's merged rootfs dir (the live union view
+# of its filesystem), or nothing. Docker 29 with the containerd
+# snapshotter exposes no GraphDriver, so the merged view is found by
+# container ID under Docker's rootfs mount; the classic GraphDriver
+# MergedDir covers older Docker.
+wallos_container_mergeddir() {
+    local _md=''
+    _md=$(docker inspect -f '{{.GraphDriver.Data.MergedDir}}' wallos 2>/dev/null || true)
+    if [[ -n "$_md" && -d "$_md" ]]; then printf '%s\n' "$_md"; return 0; fi
+    local _id=''
+    _id=$(docker inspect -f '{{.Id}}' wallos 2>/dev/null || true)
+    [[ "$_id" =~ ^[0-9a-f]{64}$ ]] || return 1
+    _md="/var/lib/docker/rootfs/overlayfs/$_id"
+    [[ -d "$_md" ]] || return 1
+    printf '%s\n' "$_md"; return 0
+}
+
+# Prints the upperdir= value of the root (/) overlay mount in a
+# mountinfo file ($1), or nothing. Docker 29 with the containerd
+# snapshotter exposes no GraphDriver, so this is how the writable
+# layer is located (the snapshot number is containerd-assigned and
+# cannot be derived from the container ID).
+wallos_upperdir_from_mountinfo() {
+    local _mi="${1:-}" _line='' _opts=''
+    [[ -r "$_mi" ]] || return 1
+    _line=$(awk '$5 == "/" && / - overlay / { print; exit }' "$_mi" 2>/dev/null || true)
+    [[ -n "$_line" ]] || return 1
+    _opts="${_line##* }"
+    [[ "$_opts" == *upperdir=* ]] || return 1
+    _opts="${_opts##*upperdir=}"
+    _opts="${_opts%%,*}"
+    [[ -n "$_opts" ]] || return 1
+    printf '%s\n' "$_opts"; return 0
+}
+
+# Prints the Wallos container's writable-layer dir (UpperDir), or
+# nothing. Tries the classic GraphDriver inspect first, then the
+# containerd snapshotter upperdir from the container init's mountinfo.
+wallos_container_upperdir() {
+    local _ud=''
+    _ud=$(docker inspect -f '{{.GraphDriver.Data.UpperDir}}' wallos 2>/dev/null || true)
+    if [[ -n "$_ud" && -d "$_ud" ]]; then printf '%s\n' "$_ud"; return 0; fi
+    local _pid=''
+    _pid=$(docker inspect -f '{{.State.Pid}}' wallos 2>/dev/null || true)
+    [[ "$_pid" =~ ^[0-9]+$ ]] || return 1
+    _ud=$(wallos_upperdir_from_mountinfo "/proc/$_pid/mountinfo" 2>/dev/null || true)
+    [[ -n "$_ud" ]] || return 1
+    printf '%s\n' "$_ud"; return 0
+}
+
+# True (0) iff the A-Box-wallos fail2ban jail is live in the running
+# daemon. This is the ground truth for every user-facing claim that
+# login brute force is being watched.
+wallos_fail2ban_jail_active() {
+    command -v fail2ban-client >/dev/null 2>&1 || return 1
+    fail2ban-client status A-Box-wallos >/dev/null 2>&1
+}
+
 wallos_bruteforce_protection() {
     local port="$1" bind_address="$2" wmode="${3:-}"
     local filter='/etc/fail2ban/filter.d/A-Box-wallos.conf'
@@ -38142,11 +38224,36 @@ wallos_bruteforce_protection() {
         # start, but make sure an idle system still gets a jail.
         [[ -e "$logpath" ]] || : > "$logpath" 2>/dev/null || return 0
     else
-        upperdir=$(docker inspect -f '{{.GraphDriver.Data.UpperDir}}' wallos 2>/dev/null || true)
-        [[ -n "$upperdir" && -d "$upperdir" ]] || return 0
-        logpath="$upperdir/var/log/nginx/access.log"
-        # The log file appears on first HTTP request; create empty placeholder dir-wise only (file is created by nginx).
-        [[ -e "$logpath" ]] || return 0
+        # 2hp: Docker 29 with the containerd snapshotter exposes no
+        # GraphDriver, so the old inspect-only lookup always came back
+        # empty and the jail was silently skipped. Resolve the log
+        # through the merged view first (stable across restarts), then
+        # the writable layer. If nothing resolves, fail LOUDLY: a
+        # missing jail must never again look like protection.
+        local _mroot=''
+        _mroot=$(wallos_container_mergeddir 2>/dev/null || true)
+        if [[ -n "$_mroot" ]]; then
+            logpath="$_mroot/var/log/nginx/access.log"
+        else
+            upperdir=$(wallos_container_upperdir 2>/dev/null || true)
+            if [[ -z "$upperdir" || ! -d "$upperdir" ]]; then
+                msg "${YELLOW}[!] Wallos fail2ban jail NOT created: cannot locate the container log path (Docker exposes no GraphDriver UpperDir and no containerd snapshotter path). Login brute-force protection is OFF.${NC}"
+                return 1
+            fi
+            logpath="$upperdir/var/log/nginx/access.log"
+        fi
+        # The log file appears at nginx start; create the empty file
+        # if missing so the jail is built even before the first
+        # request (creating through the merged view lets the overlay
+        # do a proper copy-up; through the upperdir it lands in the
+        # writable layer directly).
+        if [[ ! -e "$logpath" ]]; then
+            mkdir -p -- "$(dirname -- "$logpath")" 2>/dev/null || true
+            : > "$logpath" 2>/dev/null || {
+                msg "${YELLOW}[!] Wallos fail2ban jail NOT created: cannot create $logpath. Login brute-force protection is OFF.${NC}"
+                return 1
+            }
+        fi
     fi
     local backend action
     backend=$(firewall_backend 2>/dev/null || true)
@@ -38188,9 +38295,24 @@ EOF_WF2B_FILTER_HTTPS
         write_file_atomically_from_stdin "$filter" 644 <<'EOF_WF2B_FILTER' || return 0
 # Managed by A-Box
 [Definition]
-failregex = ^<HOST> - \S+ \[[^\]]+\] "POST /login\.php(\?\S*)? HTTP/[0-9.]+" 200 [0-9]+
+failregex = ^<HOST> - \S+ \[[^\]]*\] "POST /login\.php(\?\S*)? HTTP/[0-9.]+" 200 [0-9]+
 ignoreregex =
 EOF_WF2B_FILTER
+    fi
+    if [[ "$wmode" != https ]] && command -v fail2ban-regex >/dev/null 2>&1; then
+        # 2hp: prove the filter matches a real failed-login line before
+        # the jail goes live; a filter that matches nothing (e.g. the
+        # old \[[^\]]+\] after DateDetector strips the date) must never
+        # again ship as protection. Fail closed: no jail, loud warning.
+        local _sample=''
+        _sample=$(umask 077; mktemp /tmp/A-Box-wallos-f2b-sample.XXXXXX) || return 1
+        printf '%s\n' '203.0.113.7 - - [06/Nov/2026:10:00:00 +0000] "POST /login.php HTTP/1.1" 200 1234' > "$_sample" || { rm -f -- "$_sample"; return 1; }
+        if ! fail2ban-regex --print-all-matched "$_sample" A-Box-wallos 2>&1 | grep -q '203.0.113.7'; then
+            rm -f -- "$_sample" "$jail" "$filter"
+            msg "${YELLOW}[!] Wallos fail2ban jail NOT created: the login filter matches no failed-login line. Login brute-force protection is OFF.${NC}"
+            return 1
+        fi
+        rm -f -- "$_sample"
     fi
     if [[ "$wmode" != https ]]; then
         # U119+U120 container mode: the Wallos port is Docker-published, so
@@ -38286,7 +38408,7 @@ wallos_public_urls() {
             msg "${BOLD}$(tr_msg wl_pu_guide_https_t)${NC}"
             msg "$(tr_msg wl_pu_guide_https_1)"
             msg "$(tprintf wl_pu_guide_https_2 "$_hp")"
-            msg "$(tr_msg wl_pu_guide_https_3)"
+            if wallos_fail2ban_jail_active 2>/dev/null; then msg "$(tr_msg wl_pu_guide_https_3)"; else msg "$(tr_msg wl_pu_guide_https_3_off)"; fi
             return 0
         fi
     fi
@@ -38297,7 +38419,7 @@ wallos_public_urls() {
         msg "${BOLD}$(tr_msg wl_pu_guide_http_t)${NC}"
         msg "$(tr_msg wl_pu_guide_http_1)"
         msg "$(tprintf wl_pu_guide_http_2 "$port")"
-        msg "$(tr_msg wl_pu_guide_http_3)"
+        if wallos_fail2ban_jail_active 2>/dev/null; then msg "$(tr_msg wl_pu_guide_http_3)"; else msg "$(tr_msg wl_pu_guide_http_3_off)"; fi
         return 0
     fi
     host_ip=$(docker inspect -f '{{(index (index .HostConfig.PortBindings "80/tcp") 0).HostIp}}' wallos 2>/dev/null || true)
@@ -38329,7 +38451,7 @@ wallos_public_urls() {
         msg "${BOLD}$(tr_msg wl_pu_guide_t)${NC}"
         msg "$(tr_msg wl_pu_guide_1)"
         msg "$(tprintf wl_pu_guide_2 "$port" "$port")"
-        msg "$(tr_msg wl_pu_guide_3)"
+        if wallos_fail2ban_jail_active 2>/dev/null; then msg "$(tr_msg wl_pu_guide_3)"; else msg "$(tr_msg wl_pu_guide_3_off)"; fi
     fi
 }
 
@@ -39379,14 +39501,20 @@ wallos_install_or_update() {
         }
     fi
     wallos_php_gate_warn || true
+    # 2hp: build the jail BEFORE printing URLs/checklist, so the
+    # fail2ban claims below reflect the live jail state.
+    wallos_bruteforce_protection "$port" "$bind_address" "$wmode" || true
     wallos_public_urls "$port"
     msg "${YELLOW}${security_note}${NC}"
-    wallos_bruteforce_protection "$port" "$bind_address" "$wmode"
     if [[ "$bind_address" == 0.0.0.0 ]]; then
         msg "${CYAN}$(tr_msg wl_iu_check_t)${NC}"
         msg "  $(tprintf wl_iu_check_1 "$port")"
         msg "  $(tr_msg wl_iu_check_2)"
-        msg "  $(tr_msg wl_iu_check_3)"
+        if wallos_fail2ban_jail_active 2>/dev/null; then
+            msg "  $(tr_msg wl_iu_check_3)"
+        else
+            msg "  $(tr_msg wl_iu_check_3_off)"
+        fi
     fi
     # R15C15-01: success (all checks passed); the new token is
     # verified, so the pre-replacement backup is no longer needed.

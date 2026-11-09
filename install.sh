@@ -7394,6 +7394,12 @@ tr_msg() {
         ru:we_write) echo 'Не удалось записать состояние A-Box.' ;;
         fa:we_write) echo 'نوشتن وضعیت A-Box ناموفق بود.' ;;
         ja:we_write) echo 'A-Box の状態を書き込めませんでした。' ;;
+        zh:we_old_quota) echo '无法读取或解析现有流量限额；拒绝覆盖 .env。' ;;
+        zh-tw:we_old_quota) echo '無法讀取或解析現有流量限額；拒絕覆寫 .env。' ;;
+        en:we_old_quota) echo 'Cannot read or parse the existing traffic quota; refusing to overwrite .env.' ;;
+        ru:we_old_quota) echo 'Не удаётся прочитать или разобрать существующий лимит трафика; перезапись .env отклонена.' ;;
+        fa:we_old_quota) echo 'خواندن یا تجزیه سهمیه ترافیک موجود ممکن نیست؛ از بازنویسی .env خودداری می‌شود.' ;;
+        ja:we_old_quota) echo '既存のトラフィック制限を読み取るか解析できないため、.env の上書きを拒否します。' ;;
         zh:tf_commit) echo '流量限制状态原子提交失败。' ;;
         zh-tw:tf_commit) echo '流量限制狀態原子提交失敗。' ;;
         en:tf_commit) echo 'Failed to atomically commit the traffic limit state.' ;;
@@ -13199,13 +13205,11 @@ has_ipv6() {
 # Objective IPv6 usability check (not preference-aware).
 # Used by clean_chain for N-04 "never silently skip IPv6" intent.
 host_has_usable_ipv6() {
-    # Usable only when IPv6 is enabled AND an address exists. R1-12-F4:
-    # OR-ing the "not disabled" sysctl probe with address probes let
-    # "not disabled" alone count as usable, so an enabled-but-
-    # unaddressed host was treated as IPv6-capable.
-    local _d6
-    _d6=$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null || printf '1')
-    [[ "$_d6" != '1' ]] || return 1
+    # R6-02: address evidence is required, and no sysctl gate may veto
+    # it: net.ipv6.conf.all.disable_ipv6=1 can still be overridden
+    # per-interface back to 0 with a real IPv6 address, and a failed
+    # sysctl query is not evidence that addresses are absent. Enabled-
+    # but-unaddressed is still not usable (R1-12-F4).
     # Address evidence (any scope, incl. link-local). R10C6-03:
     # /proc/net/if_inet6 is procfs and reports st_size 0, so -s is
     # always false; test content, not size.
@@ -15466,13 +15470,11 @@ reorder_ss_whitelist_rules_one() {
 # (fe80::/10) even with no global address, so we check broadly. Returns 0
 # if IPv6 traffic can plausibly reach the host.
 host_has_usable_ipv6() {
-    # Usable only when IPv6 is enabled AND an address exists. R1-12-F4:
-    # OR-ing the "not disabled" sysctl probe with address probes let
-    # "not disabled" alone count as usable, so an enabled-but-
-    # unaddressed host was treated as IPv6-capable.
-    local _d6
-    _d6=$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null || printf '1')
-    [[ "$_d6" != '1' ]] || return 1
+    # R6-02: address evidence is required, and no sysctl gate may veto
+    # it: net.ipv6.conf.all.disable_ipv6=1 can still be overridden
+    # per-interface back to 0 with a real IPv6 address, and a failed
+    # sysctl query is not evidence that addresses are absent. Enabled-
+    # but-unaddressed is still not usable (R1-12-F4).
     # Address evidence (any scope, incl. link-local). R10C6-03:
     # /proc/net/if_inet6 is procfs and reports st_size 0, so -s is
     # always false; test content, not size.
@@ -15935,7 +15937,16 @@ check_selected_ports_free() {
         elif ! holder=$(ss -H -n -l -p -A "$proto" 2>/dev/null); then
             die "$(tprintf pt_ss_fail "${p}/${proto}")"
         fi
-        holder=$(awk -v p="$p" '$4 ~ ("[:.]" p "$") || $5 ~ ("[:.]" p "$") { print }' <<< "$holder" || true)
+        holder=$(awk -v p="$p" '
+            {
+                # R6-03: ss -A omits Netid, so $4 is Local and $5 is
+                # Peer; with Netid, $4 is Send-Q and $5 is Local.
+                # Select the Local column by layout; never match Peer.
+                local_addr = ($4 ~ /:/ ? $4 : $5)
+                if (local_addr ~ ("[:.]" p "$"))
+                    print
+            }
+        ' <<< "$holder" || true)
         [[ -z "$holder" ]] && continue
         # SYD-B E2: an A-Box-owned holder is the old deployment itself
         # (still listening until release_ports runs after the wizard);
@@ -15958,14 +15969,11 @@ check_selected_ports_free() {
         holder=''
         if [[ -n "$ss_udp_output" ]]; then
             while IFS= read -r line; do
-                # FIX: ss UDP columns are Netid/State/Recv-Q/Send-Q/Local/Peer/Process,
-                # so $5 is the Local address and $4 is Send-Q (a bare number like "0").
-                # Using $4 always yields empty p (dead check). Use $5, falling back
-                # to $4 for ss variants with different column layouts.
-                p=$(awk '{print $5}' <<< "$line" | sed -nE 's/.*[:.]([0-9]+)$/\1/p')
-                if [[ -z "$p" ]]; then
-                    p=$(awk '{print $4}' <<< "$line" | sed -nE 's/.*[:.]([0-9]+)$/\1/p')
-                fi
+                # R6-03: ss -A omits Netid, so $4 is Local and $5 is
+                # Peer; with Netid, $4 is Send-Q and $5 is Local. Select
+                # the Local column once by layout; never fall back to
+                # Peer when port extraction fails.
+                p=$(awk '{ print ($4 ~ /:/ ? $4 : $5) }' <<< "$line" | sed -nE 's/.*[:.]([0-9]+)$/\1/p')
                 [[ "$p" =~ ^[0-9]+$ ]] || continue
                 if (( 10#$p >= 10#$HY2_RANGE_START && 10#$p <= 10#$HY2_RANGE_END )); then
                     holder+="$line"$'\n'
@@ -16011,7 +16019,16 @@ release_ports() {
         if ! holder=$(ss -H -n -l -p -A "$proto" 2>/dev/null); then
             die "$(tprintf pt_ss_fail "${p}/${proto}")"
         fi
-        holder=$(awk -v p="$p" '$4 ~ ("[:.]" p "$") || $5 ~ ("[:.]" p "$") { print }' <<< "$holder" || true)
+        holder=$(awk -v p="$p" '
+            {
+                # R6-03: ss -A omits Netid, so $4 is Local and $5 is
+                # Peer; with Netid, $4 is Send-Q and $5 is Local.
+                # Select the Local column by layout; never match Peer.
+                local_addr = ($4 ~ /:/ ? $4 : $5)
+                if (local_addr ~ ("[:.]" p "$"))
+                    print
+            }
+        ' <<< "$holder" || true)
         [[ -z "$holder" ]] && continue
         msg "${YELLOW}[!] 旧配置端口 ${p}/${proto} 当前被非 A-Box 进程占用；若向导中继续选择该端口需先手动释放，改选其它新端口则不受影响。${NC}"
     done
@@ -16117,9 +16134,16 @@ setup_shortcut() {
             install_remote_abox_script_guarded "$SCRIPT_URL" "$ABOX_DIR/A-Box.sh"
         fi
     fi
-    [[ -f "$ABOX_DIR/A-Box.sh" ]] || die "$(tr_msg ss2_persist_missing)"
+    # R6-04: a content-identical install must not preserve dangerous
+    # write perms on the persisted script: strip group/other write
+    # (go-w only -- never force 755, which would loosen 0700/0750),
+    # and refuse a symlinked destination instead of chmod-following it.
+    [[ -f "$ABOX_DIR/A-Box.sh" && ! -L "$ABOX_DIR/A-Box.sh" ]] || die "$(tr_msg ss2_persist_missing)"
     validate_abox_script_file "$ABOX_DIR/A-Box.sh" "$(tr_msg ss2_ctx_persisted)" || die "$(tr_msg ss2_persist_verify)"
-    chmod +x "$ABOX_DIR/A-Box.sh" || die "$(tr_msg ss2_chmod)"
+    if ! path_mode_has_no_group_other_write "$ABOX_DIR/A-Box.sh"; then
+        chmod go-w -- "$ABOX_DIR/A-Box.sh" || die "$(tr_msg ss2_chmod)"
+    fi
+    chmod +x -- "$ABOX_DIR/A-Box.sh" || die "$(tr_msg ss2_chmod)"
 
     # Shortcut entries are managed centrally (shortcut_ensure): the active
     # name set lives in /etc/ddr/.shortcut (default "ab abox"); the old
@@ -16175,6 +16199,9 @@ validate_core_asset_binary_version() {
             [[ -n "$output" ]] || { rm -rf -- "$workdir"; return 2; }
             ;;
         hysteria_core)
+            # R6-06: a bare $f with no '/' would resolve through PATH
+            # instead of the downloaded file; pin it to this directory.
+            [[ "$f" == */* ]] || f="./$f"
             chmod 700 "$f" 2>/dev/null || { rm -rf -- "$workdir"; return 1; }
             output=$("$f" version 2>&1) || { rm -rf -- "$workdir"; return 2; }
             [[ -n "$output" ]] || { rm -rf -- "$workdir"; return 2; }
@@ -16545,7 +16572,7 @@ abox_signing_timestamp_ok() {
 # revocation) mirror verify_ed25519_detached exactly.
 verify_ed25519_detached_ctypes() {
     local file="$1" sigfile="$2"
-    local entry label pubkey_b64 fp keydir sigbin py r revoked rc
+    local entry label pubkey_b64 fp keydir sigbin py r revoked rc _py_write_rc
     [[ -f "$file" && -f "$sigfile" ]] || return 1
     command -v python3 >/dev/null 2>&1 || return 2
     command -v base64 >/dev/null 2>&1 || return 2
@@ -16648,6 +16675,15 @@ finally:
     if pkey:
         lib.EVP_PKEY_free(pkey)
 PYEOF
+    # R6-01: a failed/empty script write must never read as "verified":
+    # python3 exits 0 on an empty script, and a truncated-but-complete
+    # prefix can execute and exit 0 without verifying anything. The cat
+    # status (not just -s) is the guard for partial writes.
+    _py_write_rc=$?
+    if (( _py_write_rc != 0 )) || [[ ! -s "$py" ]]; then
+        rm -rf -- "$keydir"
+        return 2
+    fi
     for entry in "${ABOX_SIGNING_PUBKEYS[@]}"; do
         label="${entry%%:*}"
         pubkey_b64="${entry#*:}"
@@ -17901,7 +17937,8 @@ write_env() {
         # R3C7-04: decode with the verified shlex parser (as in
         # load_abox_env), not by deleting '"' characters: a
         # single-quoted old value must decode, not be cleared.
-        _old_parsed=$(python3 -I - "$ABOX_ENV" 2>/dev/null <<'PY_WRITE_ENV_OLD' || true
+        local _old_parsed=''
+        if ! _old_parsed=$(python3 -I - "$ABOX_ENV" 2>/dev/null <<'PY_WRITE_ENV_OLD'
 import shlex, sys
 gb = mode = ""
 gb_ok = mode_ok = True
@@ -17931,10 +17968,13 @@ try:
                         mode_ok = False
 except Exception:
     gb_ok = mode_ok = False
-if gb_ok and mode_ok:
-    sys.stdout.write(gb + "\n" + mode + "\n")
+if not (gb_ok and mode_ok):
+    sys.exit(1)
+sys.stdout.write(gb + "\n" + mode + "\n")
 PY_WRITE_ENV_OLD
-)
+        ); then
+            die "$(tr_msg we_old_quota)"
+        fi
         if [[ -n "$_old_parsed" ]]; then
             old_traffic_limit_gb=$(printf '%s\n' "$_old_parsed" | sed -n '1p')
             old_traffic_limit_mode=$(printf '%s\n' "$_old_parsed" | sed -n '2p')
@@ -17942,7 +17982,22 @@ PY_WRITE_ENV_OLD
             old_traffic_limit_gb=''
             old_traffic_limit_mode=''
         fi
-        if [[ -z "$old_traffic_limit_gb" ]] || ! valid_traffic_limit_gb "$old_traffic_limit_gb" || [[ "$old_traffic_limit_mode" != total && "$old_traffic_limit_mode" != rx && "$old_traffic_limit_mode" != tx ]]; then
+        # R6-05: a valid quota survives a missing mode (default total);
+        # an explicit invalid mode aborts instead of silently cancelling
+        # the quota; an invalid/empty GB keeps the old clear-both path.
+        if [[ -n "$old_traffic_limit_gb" ]] &&
+            valid_traffic_limit_gb "$old_traffic_limit_gb"; then
+            case "$old_traffic_limit_mode" in
+                '')
+                    old_traffic_limit_mode='total'
+                    ;;
+                total|rx|tx)
+                    ;;
+                *)
+                    die "$(tr_msg we_old_quota)"
+                    ;;
+            esac
+        else
             old_traffic_limit_gb=''
             old_traffic_limit_mode=''
         fi
@@ -45163,6 +45218,7 @@ PY_SELFTEST_TAR
     grep -Fq 'en:reality_mlkem_notice_xhttp)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_xhttp translation missing'; failures=$((failures + 1)); }
     grep -Fq 'en:reality_mlkem_notice_unverified)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_unverified translation missing'; failures=$((failures + 1)); }
     grep -Fq 'en:reality_mlkem_notice_mihomo_trojan)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_mihomo_trojan translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:we_old_quota)' <<< "$source_body" || { echo 'FAIL: English write_env we_old_quota translation missing'; failures=$((failures + 1)); }
     declare -F sni_domain_public_dns >/dev/null 2>&1 || { echo 'FAIL: SNI public-DNS guard missing'; failures=$((failures + 1)); }
     grep -Fq '__abox_missing_pkg_for "$release" groupadd passwd shadow-utils shadow' <<< "$source_body" || { echo 'FAIL: group management dependency mapping missing'; failures=$((failures + 1)); }
     grep -Fq '__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow' <<< "$source_body" || { echo 'FAIL: user management dependency mapping missing'; failures=$((failures + 1)); }
@@ -46235,6 +46291,13 @@ EOF_SELFTEST_IPT
         grep -Fq 'PUBLIC_KEY="loaded-public"' "$env_tmp/.env" || { echo 'FAIL: write_env used stale PBK instead of loaded PUBLIC_KEY'; failures=$((failures + 1)); }
         ln -s "$env_tmp/.env" "$env_tmp/.env-symlink-target"
         ( ABOX_ENV="$env_tmp/.env-symlink-target" ABOX_DIR="$env_tmp" CORE=xray MODE=ALL write_env >/dev/null 2>&1 ) && { echo 'FAIL: write_env must reject symlink state targets'; failures=$((failures + 1)); }
+        # R6-05: a corrupt old quota must abort the rewrite, not silently
+        # cancel the limit: the old file must survive byte-identical.
+        printf '%s\n' 'TRAFFIC_LIMIT_GB="100' 'TRAFFIC_LIMIT_MODE=total' > "$env_tmp/.env-corrupt"
+        chmod 600 "$env_tmp/.env-corrupt"
+        _corrupt_before=$(sha256sum "$env_tmp/.env-corrupt" | awk '{print $1}')
+        ( ABOX_ENV="$env_tmp/.env-corrupt" ABOX_DIR="$env_tmp" CORE=xray MODE=ALL write_env xray ALL >/dev/null 2>&1 ) && { echo 'FAIL: write_env must refuse corrupt old quota'; failures=$((failures + 1)); }
+        [[ "$(sha256sum "$env_tmp/.env-corrupt" | awk '{print $1}')" == "$_corrupt_before" ]] || { echo 'FAIL: write_env changed .env despite corrupt old quota'; failures=$((failures + 1)); }
         [[ -L "$env_tmp/.env-symlink-target" ]] || { echo 'FAIL: write_env symlink rejection must not replace the symlink'; failures=$((failures + 1)); }
     fi
 

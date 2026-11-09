@@ -155,14 +155,42 @@ else
 fi
 
 if [[ "$BASELINE_AUTH" -eq 1 ]]; then
-  # R14C19-01: no silent truncation -- every current record must survive unchanged.
+  # R14C19-01 (C2): no silent truncation -- but superseded old-version
+  # records may be dropped, exactly when the prune script plans to
+  # delete them. CORE-VERSIONS is a mutable pointer: exactly one entry
+  # must remain, digest may change (covered by the dedicated new-file
+  # digest check). Any other dropped record must be in the prune plan;
+  # any planned deletion the manifest kept is also a failure (manifest
+  # and prune plan must agree). Deleting a current-version record, an
+  # unknown record, or substituting another arch/core fails here.
+  cv_count="$(awk '$2 == "CORE-VERSIONS"' "$VERIFIED/SHA256SUMS" | wc -l)"
+  [[ "$cv_count" -eq 1 ]] || { echo "ERROR: new manifest must contain exactly one CORE-VERSIONS record (found $cv_count)"; exit 1; }
+  # --ignore-retention: the plan must list every superseded record
+  # even if the new manifest wrongly retained it, so the set comparison
+  # below catches an untrimmed manifest too (not just over-deletion).
+  bash "$(dirname "$0")/prune-core-mirror.sh" --repo "$GITHUB_REPOSITORY" --tag core-binaries \
+    --core-versions "$VERIFIED/CORE-VERSIONS" --new-manifest "$VERIFIED/SHA256SUMS" \
+    --old-manifest "$TMPD/SHA256SUMS" --dry-run --ignore-retention > "$TMPD/prune-plan.txt" || {
+    echo "ERROR: prune plan failed; refusing to trust the new manifest"; exit 1; }
+  awk '$1 == "DELETE" {print $2}' "$TMPD/prune-plan.txt" | sort -u > "$TMPD/planned.txt"
+  : > "$TMPD/dropped.txt"
   while read -r sum name extra || [[ -n "$sum" ]]; do
     [[ -n "${sum:-}" ]] || continue
-    new_sum="$(awk -v n="$name" '$2 == n {print $1; exit}' "$VERIFIED/SHA256SUMS")"
-    [[ -n "$new_sum" ]] || { echo "ERROR: historical record dropped from new manifest: $name"; exit 1; }
-    [[ "${new_sum,,}" == "${sum,,}" ]] || { echo "ERROR: historical record digest changed: $name"; exit 1; }
+    [[ "$name" == "CORE-VERSIONS" ]] && continue
+    if ! awk -v n="$name" '$2 == n {found=1; exit} END {exit !found}' "$VERIFIED/SHA256SUMS"; then
+      printf '%s\n' "$name" >> "$TMPD/dropped.txt"
+    else
+      new_sum="$(awk -v n="$name" '$2 == n {print $1; exit}' "$VERIFIED/SHA256SUMS")"
+      [[ "${new_sum,,}" == "${sum,,}" ]] || { echo "ERROR: retained record digest changed: $name"; exit 1; }
+    fi
   done < "$TMPD/SHA256SUMS"
-  echo "History preservation OK (no truncation, no digest change)."
+  sort -u "$TMPD/dropped.txt" -o "$TMPD/dropped.txt"
+  if ! cmp -s "$TMPD/dropped.txt" "$TMPD/planned.txt"; then
+    echo "ERROR: dropped manifest records do not match the prune plan:"
+    comm -3 "$TMPD/dropped.txt" "$TMPD/planned.txt" | sed 's/^/  /'
+    exit 1
+  fi
+  echo "History preservation OK (only prune-planned superseded records dropped; CORE-VERSIONS present once)."
   # R9C19-N2: no downgrade vs the authenticated current pins.
   if [[ -f "$TMPD/CORE-VERSIONS" ]]; then
     cur() { grep "^$1=" "$TMPD/CORE-VERSIONS" | cut -d= -f2; }

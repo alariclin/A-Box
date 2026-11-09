@@ -451,8 +451,50 @@ wgcf-amd64=wgcf_${WGCF_VERSION}_linux_amd64
 wgcf-arm64=wgcf_${WGCF_VERSION}_linux_arm64
 EOF
 
+# C2 (Q6): locally trimmed manifest. The new manifest lists only
+# current-version assets, retained assets that were not superseded, and
+# the new CORE-VERSIONS -- never the full merged history. An old row is
+# dropped only when it is a known versioned asset whose version differs
+# from the new CORE-VERSIONS version for the same core, the new
+# CORE-VERSIONS gives a replacement file for the same core+slot, and
+# that replacement was downloaded and verified in this run
+# (mirror_names). Unknown rows are always kept. The filename grammar
+# must stay in sync with scripts/prune-core-mirror.sh (authoritative
+# for deletion) and scripts/verify-publish-gate.sh (R14).
+manifest_row_superseded() {
+  local name="$1" core='' slot='' ver='' new_ver='' repl='' _m
+  if [[ "$name" =~ ^Xray-(v[0-9]+\.[0-9]+\.[0-9]+)-linux-(64|arm64-v8a)\.zip$ ]]; then
+    core='Xray'; ver="${BASH_REMATCH[1]}"
+    [[ "${BASH_REMATCH[2]}" == '64' ]] && slot='amd64' || slot='arm64'
+    repl="$(awk -F= -v k="Xray-$slot" '$1 == k {sub(/^[^=]*=/, ""); print; exit}' "$out/CORE-VERSIONS")"
+  elif [[ "$name" =~ ^sing-box-([0-9]+\.[0-9]+\.[0-9]+)-linux-(amd64|arm64)-(glibc|musl)\.tar\.gz$ ]]; then
+    core='sing-box'; ver="v${BASH_REMATCH[1]}"; slot="${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
+    repl="$(awk -F= -v k="sing-box-$slot" '$1 == k {sub(/^[^=]*=/, ""); print; exit}' "$out/CORE-VERSIONS")"
+  elif [[ "$name" =~ ^hysteria-app-(v[0-9]+\.[0-9]+\.[0-9]+)-linux-(amd64|arm64)$ ]]; then
+    core='Hysteria'; ver="app/${BASH_REMATCH[1]}"; slot="${BASH_REMATCH[2]}"
+    repl="$(awk -F= -v k="Hysteria-$slot" '$1 == k {sub(/^[^=]*=/, ""); print; exit}' "$out/CORE-VERSIONS")"
+  elif [[ "$name" =~ ^cloudflared-([0-9]+\.[0-9]+\.[0-9]+)-linux-(amd64|arm64)$ ]]; then
+    core='cloudflared'; ver="${BASH_REMATCH[1]}"; slot="${BASH_REMATCH[2]}"
+    repl="$(awk -F= -v k="cloudflared-$slot" '$1 == k {sub(/^[^=]*=/, ""); print; exit}' "$out/CORE-VERSIONS")"
+  elif [[ "$name" =~ ^wgcf_([0-9]+\.[0-9]+\.[0-9]+)_linux_(amd64|arm64)$ ]]; then
+    core='wgcf'; ver="${BASH_REMATCH[1]}"; slot="${BASH_REMATCH[2]}"
+    repl="$(awk -F= -v k="wgcf-$slot" '$1 == k {sub(/^[^=]*=/, ""); print; exit}' "$out/CORE-VERSIONS")"
+  else
+    return 1
+  fi
+  new_ver="$(awk -F= -v k="$core" '$1 == k {sub(/^[^=]*=/, ""); print; exit}' "$out/CORE-VERSIONS")"
+  [[ -n "$new_ver" && "$ver" != "$new_ver" ]] || return 1
+  [[ -n "$repl" ]] || return 1
+  for _m in "${mirror_names[@]}"; do
+    [[ "$_m" == "$repl" ]] && return 0
+  done
+  return 1
+}
+
+
 # Validate the previous manifest against GitHub's per-asset digest metadata.
-# No old asset is deleted or overwritten; versioned filenames are immutable.
+# The new manifest is built trimmed below (superseded rows dropped);
+# versioned filenames are immutable, never overwritten with other bytes.
 release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/core-binaries")"
 awk 'NF { if (NF != 2 || $1 !~ /^[A-Fa-f0-9]{64}$/ || $2 !~ /^[A-Za-z0-9._-]+$/ || seen[$2]++) exit 1 }' "$existing/SHA256SUMS"
 while read -r old_sum old_name extra || [[ -n "${old_sum:-}" ]]; do
@@ -474,10 +516,20 @@ while read -r old_sum old_name extra || [[ -n "${old_sum:-}" ]]; do
   }
 done < "$existing/SHA256SUMS"
 
-cp "$existing/SHA256SUMS" "$out/SHA256SUMS"
-# CORE-VERSIONS is a mutable pointer; replace only its checksum line.
-awk 'NF && $2 != "CORE-VERSIONS" {print}' "$out/SHA256SUMS" > "$root/SHA256SUMS.next"
-mv "$root/SHA256SUMS.next" "$out/SHA256SUMS"
+# C2 (Q6): build the new manifest TRIMMED -- keep every old row except
+# superseded versioned assets (manifest_row_superseded) and the old
+# CORE-VERSIONS pointer row (replaced below with the new digest).
+: > "$out/SHA256SUMS"
+while read -r old_sum old_name extra || [[ -n "${old_sum:-}" ]]; do
+  [[ -n "${old_sum:-}" ]] || continue
+  [[ -z "${extra:-}" ]] || { echo "::error::Malformed existing SHA256SUMS line"; exit 1; }
+  [[ "$old_name" == "CORE-VERSIONS" ]] && continue
+  if manifest_row_superseded "$old_name"; then
+    echo "::notice::Dropping superseded manifest record: $old_name"
+    continue
+  fi
+  printf '%s  %s\n' "$old_sum" "$old_name" >> "$out/SHA256SUMS"
+done < "$existing/SHA256SUMS"
 
 release_asset_digest() {
   jq -r --arg name "$1" '
@@ -548,6 +600,11 @@ if [[ "${CORE_MIRROR_DRY_RUN:-0}" == '1' ]]; then
     echo "No new versioned binary assets need uploading."
   fi
   echo "Would update CORE-VERSIONS and publish SHA256SUMS last."
+  echo "Prune plan for the publish (superseded assets deleted after publish + verification):"
+  bash scripts/prune-core-mirror.sh --repo "$GITHUB_REPOSITORY" --tag core-binaries \
+    --core-versions "$out/CORE-VERSIONS" --new-manifest "$out/SHA256SUMS" \
+    --old-manifest "$existing/SHA256SUMS" --dry-run || \
+    echo "::warning::Could not compute the prune plan in dry-run; the post-publish prune will report it."
   exit 0
 fi
 
@@ -585,7 +642,18 @@ gh release download core-binaries --pattern CORE-VERSIONS --pattern SHA256SUMS -
 }
 rm -rf -- "$verify_dir"
 
+# C2 (Q6): prune superseded old-version assets AFTER the new metadata
+# pair is published and verified. A prune failure does NOT roll the
+# manifest back: the new version stays current; re-run to finish cleanup.
+if ! bash scripts/prune-core-mirror.sh --repo "$GITHUB_REPOSITORY" --tag core-binaries \
+    --core-versions "$out/CORE-VERSIONS" --new-manifest "$out/SHA256SUMS" \
+    --old-manifest "$existing/SHA256SUMS" \
+    --expected-core-versions-digest "$versions_digest"; then
+  echo "::error::New mirror version published, but cleanup of superseded assets is incomplete; re-run to finish pruning."
+  exit 1
+fi
+
 echo "Published latest official stable mirror versions:"
 printf '  Xray: %s\n  sing-box: %s\n  Hysteria: %s\n  cloudflared: %s\n  wgcf: %s\n' "$xray_tag" "$singbox_tag" "$hysteria_tag" "$CLOUDFLARED_VERSION" "$WGCF_VERSION"
-echo "Versioned assets are retained for rollback; fixed compatibility-pin assets are not replaced."
+echo "Superseded old-version assets pruned after the new metadata was verified; no historical rollback assets are retained."
 

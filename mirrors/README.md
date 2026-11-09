@@ -15,7 +15,7 @@ The compatibility pins configured in `install.sh` remain Xray `v26.7.28`, sing-b
 
 ### Rollback assets
 
-The Release retains versioned assets for the previous-version rollback candidates — Xray `v26.6.27`, Hysteria `app/v2.12.3` (published in `core-binaries`; use `scripts/upload-rollback-binaries.sh` for future backfills) — so a failed upgrade can roll back without depending on upstream availability. These are candidates, not validated rollback versions: they must pass A-Box config and client regression tests before being treated as approved. Versioned filenames are immutable; never overwrite an existing asset.
+The Release retains versioned assets for the previous-version rollback candidates — Xray `v26.6.27`, Hysteria `app/v2.12.3` (published in `core-binaries`) — so a failed upgrade can roll back without depending on upstream availability. These are candidates, not validated rollback versions: they must pass A-Box config and client regression tests before being treated as approved. Versioned filenames are immutable; never overwrite an existing asset.
 
 ### Pinned utilities (Argo / WARP)
 

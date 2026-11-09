@@ -303,40 +303,55 @@ WALLOS_DIR='/opt/wallos'
 WALLOS_IMAGE_RESULT=''
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
-# Cross-client compatibility pin for Shadowrocket + Mihomo/Clash Verge + sing-box
-# with VLESS/REALITY and XHTTP as of 2026-10-08.
-# Xray 26.9.8/26.9.9 introduces the newer REALITY ML-KEM ClientHello gate;
-# public interoperability reports show breakage with common non-PQ clients.
-# Keep 26.7.28 as the compatibility baseline; explicit ABOX_XRAY_VERSION overrides
-# remain available for operators who intentionally test a newer build.
+# Fallback version for Xray when no newer version can be resolved or probed.
+# It is NOT the default install target: Xray now tracks the latest stable
+# release by default (auto-stable, 7-day cooling, draft/prerelease excluded),
+# like sing-box and Hysteria. Xray 26.9.8/26.9.9 introduces the newer REALITY
+# ML-KEM ClientHello gate; public interoperability reports show breakage with
+# common non-PQ clients, so the ML-KEM threshold is still enforced separately
+# (ABOX_XRAY_REALITY_MLKEM_MIN_VERSION). Explicit ABOX_XRAY_VERSION overrides
+# remain available for operators who intentionally pin a version.
 ABOX_XRAY_DEFAULT_VERSION='v26.7.28'
 # Stable sing-box compatibility pin included in the core-binaries mirror; refresh and
 # validate client/config compatibility before changing the pinned mirror version.
 ABOX_SINGBOX_DEFAULT_VERSION='v1.14.3'
-# Versions actually contained in the stable core-binaries Release. Recovery is refused for other pins.
+# Historical mirror asset mapping, NOT a promise that the version is still in
+# the mirror: superseded mirror assets are pruned on update. Automatic
+# disaster recovery reads the current verified mirror version instead
+# (core_latest_mirror_release_ref). Recovery is refused for other pins.
 ABOX_XRAY_MIRROR_VERSION='v26.7.28'
 ABOX_SINGBOX_MIRROR_VERSION='v1.14.3'
 ABOX_HYSTERIA_MIRROR_VERSION='app/v2.13.0'
 ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'
-# Per-core update policy (2026-10-13):
-#   xray:     pinned      - manual updates only; Xray >=v26.9.8 requires
-#                           ML-KEM key share and breaks sing-box/mihomo/Karing
-#                           clients (see sing-box#4520, mihomo#3193). Do NOT
-#                           auto-track latest.
+# Per-core update policy (2026-11-09, latest-first):
+#   xray:     auto-stable - track latest official stable release after the
+#                           7-day cooling period (draft/prerelease excluded).
+#                           Xray >=v26.9.8 requires an ML-KEM key share and
+#                           breaks sing-box/mihomo/Karing clients (see
+#                           sing-box#4520, mihomo#3193); the ML-KEM threshold
+#                           is enforced separately (see
+#                           ABOX_XRAY_REALITY_MLKEM_MIN_VERSION).
 #   sing-box: auto-stable - track latest official stable release; verify
 #                           generated config with the new binary before switch;
-#                           rollback to mirror pin on any failure.
+#                           rollback to the current mirror version on failure.
 #   hysteria: auto-stable - track latest official stable release; Hy2 protocol
 #                           guarantees old/new client interop; rollback on failure.
 # Override via environment: ABOX_XRAY_UPDATE_POLICY / ABOX_SINGBOX_UPDATE_POLICY /
 # ABOX_HYSTERIA_UPDATE_POLICY. Explicit ABOX_*_VERSION always wins over policy.
-ABOX_XRAY_UPDATE_POLICY="${ABOX_XRAY_UPDATE_POLICY:-pinned}"
+# Explicit ABOX_*_UPDATE_POLICY=pinned keeps the fallback version below as
+# the install target; it is not a promise that the mirror still holds it.
+ABOX_XRAY_UPDATE_POLICY="${ABOX_XRAY_UPDATE_POLICY:-auto-stable}"
 ABOX_SINGBOX_UPDATE_POLICY="${ABOX_SINGBOX_UPDATE_POLICY:-auto-stable}"
 ABOX_HYSTERIA_UPDATE_POLICY="${ABOX_HYSTERIA_UPDATE_POLICY:-auto-stable}"
 # Minimum age (days) before an auto-stable policy accepts a newly published
 # stable release. Cooling is necessary but not sufficient: a cooled release
 # still goes through binary verification, config check, and health gate.
 ABOX_STABLE_COOLDOWN_DAYS="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
+# Normal Xray slot paths. Moved here when the xray-latest coexistence block
+# was deleted (2026-11-09); generic code still addresses the slot through
+# these names. XRAY_SLOT_DIR was XL-only and is gone with the block.
+XRAY_SLOT_BIN='/usr/local/bin/xray'
+XRAY_SLOT_CFG='/usr/local/etc/xray/config.json'
 # ============ F-05: Ed25519 detached-signature trust root ============
 # Mirror metadata (CORE-VERSIONS, SHA256SUMS, wallos-manifest.txt) is
 # published as detached-signed files (<name>.sig, base64 of raw 64-byte
@@ -947,7 +962,7 @@ ensure_abox_dir_owned() {
     # SYD-B E9: ABOX_DIR is fixed at 0711 (traverse-only for others).
     # The old 0700 here re-tightened the dir on every menu entry and
     # revoked the o+x that prepare_abox_runtime_config_dir (U28) grants
-    # so the abox-xray service user can reach /etc/ddr/xray-latest.
+    # so the abox-xray service user can traverse config directories.
     local dir="${1:-$ABOX_DIR}" owner tmp uid gid mode
     owner="$dir/.A-Box-owner"
     assert_default_abox_parent_chain_trusted "$dir"
@@ -3878,12 +3893,12 @@ tr_msg() {
         fa:pi_acme_port_advice) echo 'ابتدا 80/tcp را آزاد کنید، یا پیش از استقرار گواهی دامنه HY2 به Cloudflare DNS-01 ACME تغییر دهید.' ;;
         zh-tw:pi_acme_port_advice) echo '請先釋放 80/tcp，或改用 Cloudflare DNS-01 ACME 後再部署 HY2 網域憑證。' ;;
         ja:pi_acme_port_advice) echo '先に 80/tcp を解放するか、Cloudflare DNS-01 ACME に切り替えてから HY2 のドメイン証明書を導入してください。' ;;
-        zh:tl_body) echo '日常部署：Xray 保留经测试的兼容锁定版本，sing-box 与 Hysteria 默认跟随最新稳定版：%s / %s / %s。' ;;
-        en:tl_body) echo 'Routine deployment: Xray retains its tested compatibility pin, while sing-box and Hysteria track the latest stable release by default: %s / %s / %s.' ;;
-        ru:tl_body) echo 'Обычное развёртывание: Xray сохраняет проверенный совместимый пин, а sing-box и Hysteria по умолчанию следуют последнему стабильному выпуску: %s / %s / %s.' ;;
-        fa:tl_body) echo 'استقرار معمول: Xray پین سازگاری آزمایش‌شده خود را نگه می‌دارد، در حالی که sing-box و Hysteria به‌طور پیش‌فرض آخرین نسخه پایدار را دنبال می‌کنند: %s / %s / %s.' ;;
-        zh-tw:tl_body) echo '日常部署：Xray 保留經測試的相容鎖定版本，sing-box 與 Hysteria 預設跟隨最新穩定版：%s / %s / %s。' ;;
-        ja:tl_body) echo '通常の導入では、Xray はテスト済みの互換性ピンを維持し、sing-box と Hysteria は既定で最新の安定版を追従します: %s / %s / %s。' ;;
+        zh:tl_body) echo '日常部署：Xray、sing-box 与 Hysteria 默认跟随冷却期后的最新正式稳定版（默认冷却期为 7 天）。显式选择 pinned 策略时，三者的固定目标依次为：%s / %s / %s。' ;;
+        en:tl_body) echo 'Routine deployment: Xray, sing-box and Hysteria default to the latest official stable release after the cooldown (7 days by default). When the pinned policy is explicitly selected, their fixed targets, in the same order, are: %s / %s / %s.' ;;
+        ru:tl_body) echo 'При обычном развёртывании Xray, sing-box и Hysteria по умолчанию используют последний официальный стабильный выпуск после периода ожидания (по умолчанию 7 дней). При явном выборе политики pinned фиксированные версии в том же порядке: %s / %s / %s.' ;;
+        fa:tl_body) echo 'در استقرار عادی، Xray، sing-box و Hysteria به‌طور پیش‌فرض پس از دوره انتظار، آخرین نسخه پایدار رسمی را انتخاب می‌کنند (مدت پیش‌فرض: ۷ روز). با انتخاب صریح سیاست pinned، نسخه‌های ثابت به همان ترتیب عبارت‌اند از: %s / %s / %s.' ;;
+        zh-tw:tl_body) echo '日常部署：Xray、sing-box 與 Hysteria 預設跟隨冷卻期後的最新正式穩定版（預設冷卻期為 7 天）。明確選擇 pinned 策略時，三者的固定目標依序為：%s / %s / %s。' ;;
+        ja:tl_body) echo '通常の導入では、Xray、sing-box、Hysteria は既定で待機期間（既定は 7 日）を経た最新の正式安定版を選択します。pinned ポリシーを明示的に選択した場合、固定対象は同じ順で %s / %s / %s です。' ;;
         zh:tl_risk) echo '这条自选路径可能破坏 Shadowrocket/Mihomo 的兼容性（例如 Xray ML-KEM）。失败会触发已有的核心升级事务回滚。' ;;
         en:tl_risk) echo 'This opt-in path may break Shadowrocket/Mihomo (e.g. Xray ML-KEM). Failure triggers the existing core-upgrade transaction rollback.' ;;
         ru:tl_risk) echo 'Этот необязательный путь может нарушить совместимость Shadowrocket/Mihomo (например, Xray ML-KEM). При сбое сработает существующий транзакционный откат обновления ядра.' ;;
@@ -4286,54 +4301,6 @@ tr_msg() {
         fa:mu_inst_port_note) echo 'هنگام نصب یک پورت آزاد انتخاب کنید' ;;
         zh-tw:mu_inst_port_note) echo '部署時請選一個未被佔用的埠' ;;
         ja:mu_inst_port_note) echo 'デプロイ時に空いているポートを選んでください' ;;
-        zh:xl_m_trio) echo '一键三合一（Xray：Vision + XHTTP + SS-2022）' ;;
-        en:xl_m_trio) echo 'One-click trio (Xray: Vision + XHTTP + SS-2022)' ;;
-        ru:xl_m_trio) echo 'Трио в один клик (Xray: Vision + XHTTP + SS-2022)' ;;
-        fa:xl_m_trio) echo 'سه‌تایی با یک کلیک (Xray: Vision + XHTTP + SS-2022)' ;;
-        zh-tw:xl_m_trio) echo '一鍵三合一（Xray：Vision + XHTTP + SS-2022）' ;;
-        ja:xl_m_trio) echo 'ワンクリック三点セット（Xray：Vision + XHTTP + SS-2022）' ;;
-        zh:xl_m_quad) echo '一键四合一（Xray 三合一 + Hy2 官方版）' ;;
-        en:xl_m_quad) echo 'One-click quad (Xray trio + official Hy2)' ;;
-        ru:xl_m_quad) echo 'Четыре в один клик (трио Xray + официальный Hy2)' ;;
-        fa:xl_m_quad) echo 'چهارتایی با یک کلیک (سه‌تایی Xray + Hy2 رسمی)' ;;
-        zh-tw:xl_m_quad) echo '一鍵四合一（Xray 三合一 + Hy2 官方版）' ;;
-        ja:xl_m_quad) echo 'ワンクリック四点セット（Xray 三点セット + 公式 Hy2）' ;;
-        zh:xl_sb_ports) echo 'sing-box 端口' ;;
-        en:xl_sb_ports) echo 'sing-box ports' ;;
-        ru:xl_sb_ports) echo 'Порты sing-box' ;;
-        fa:xl_sb_ports) echo 'پورت‌های sing-box' ;;
-        zh-tw:xl_sb_ports) echo 'sing-box 連接埠' ;;
-        ja:xl_sb_ports) echo 'sing-box ポート' ;;
-        zh:xl_hy2_port_l) echo 'Hy2 官方版端口' ;;
-        en:xl_hy2_port_l) echo 'Official Hy2 port' ;;
-        ru:xl_hy2_port_l) echo 'Порт официального Hy2' ;;
-        fa:xl_hy2_port_l) echo 'پورت Hy2 رسمی' ;;
-        zh-tw:xl_hy2_port_l) echo 'Hy2 官方版連接埠' ;;
-        ja:xl_hy2_port_l) echo '公式 Hy2 ポート' ;;
-        zh:xl_sys_ports) echo '本机全部监听端口（TCP/UDP）' ;;
-        en:xl_sys_ports) echo 'All listening ports on this machine (TCP/UDP)' ;;
-        ru:xl_sys_ports) echo 'Все слушающие порты машины (TCP/UDP)' ;;
-        fa:xl_sys_ports) echo 'همه پورت‌های در حال گوش‌دادن این ماشین (TCP/UDP)' ;;
-        zh-tw:xl_sys_ports) echo '本機全部監聽連接埠（TCP/UDP）' ;;
-        ja:xl_sys_ports) echo 'このマシンの全リッスンポート（TCP/UDP）' ;;
-        zh:xl_quad_note) echo '接下来部署官方版 Hysteria2（独立流程，按提示操作）' ;;
-        en:xl_quad_note) echo 'Next: deploy official Hysteria2 (separate flow, follow its prompts)' ;;
-        ru:xl_quad_note) echo 'Далее: развёртывание официального Hysteria2 (отдельный процесс, следуйте подсказкам)' ;;
-        fa:xl_quad_note) echo 'در ادامه: استقرار Hy2 رسمی (فرایند جداگانه، طبق راهنما پیش بروید)' ;;
-        zh-tw:xl_quad_note) echo '接下來部署官方版 Hysteria2（獨立流程，按提示操作）' ;;
-        ja:xl_quad_note) echo '続いて公式 Hysteria2 を導入します（別フロー、案内に従ってください）' ;;
-        zh:xl_trio_kept) echo '三合一已部署，本次保留并直接部署 Hy2。' ;;
-        en:xl_trio_kept) echo 'Trio already deployed; keeping it and proceeding to Hysteria2.' ;;
-        ru:xl_trio_kept) echo 'Трио уже развёрнуто; сохраняю его и перехожу к Hysteria2.' ;;
-        fa:xl_trio_kept) echo 'سه‌تایی قبلاً نصب شده است؛ حفظ می‌شود و Hysteria2 نصب می‌شود.' ;;
-        zh-tw:xl_trio_kept) echo '三合一已部署，本次保留並直接部署 Hy2。' ;;
-        ja:xl_trio_kept) echo '三合一は既に導入済みのため、そのまま Hysteria2 を導入します。' ;;
-        zh:xl_quad_hy2_fail) echo 'Hy2 官方版部署失败（原因见上方），Xray 三合一已保留。' ;;
-        en:xl_quad_hy2_fail) echo 'Official Hy2 deployment failed (see above); the Xray trio was kept.' ;;
-        ru:xl_quad_hy2_fail) echo 'Развёртывание официального Hy2 не удалось (см. выше); трио Xray сохранено.' ;;
-        fa:xl_quad_hy2_fail) echo 'استقرار Hy2 رسمی ناموفق بود (بالا را ببینید)؛ سه‌تایی Xray حفظ شد.' ;;
-        zh-tw:xl_quad_hy2_fail) echo 'Hy2 官方版部署失敗（原因見上方），Xray 三合一已保留。' ;;
-        ja:xl_quad_hy2_fail) echo '公式 Hy2 の導入に失敗しました（上記参照）。Xray 三点セットは保持されています。' ;;
         zh:cl_title) echo '清空与重置' ;;
         en:cl_title) echo 'Cleanup & reset' ;;
         ru:cl_title) echo 'Очистка и сброс' ;;
@@ -4424,78 +4391,12 @@ tr_msg() {
         fa:cl_all_done) echo 'همه پروتکل‌های نود حذف شدند (هسته‌ها و اسکریپت حفظ شدند).' ;;
         zh-tw:cl_all_done) echo '全部節點協議已清空（核心與腳本保留）。' ;;
         ja:cl_all_done) echo '全ノードプロトコルを削除しました（コアとスクリプトは保持）。' ;;
-        zh:xl_title) echo '最新 Xray（上游最新版 · 实验功能）' ;;
-        en:xl_title) echo 'Latest Xray (upstream latest · experimental)' ;;
-        ru:xl_title) echo 'Последний Xray (новейший upstream · эксперимент)' ;;
-        fa:xl_title) echo 'جدیدترین Xray (بالادستی · آزمایشی)' ;;
-        zh-tw:xl_title) echo '最新 Xray（上游最新版 · 實驗功能）' ;;
-        ja:xl_title) echo '最新 Xray（upstream 最新版・実験機能）' ;;
-        zh:xl_avail) echo '上游最新版' ;;
-        en:xl_avail) echo 'Upstream latest' ;;
-        ru:xl_avail) echo 'Последний upstream' ;;
-        fa:xl_avail) echo 'جدیدترین بالادستی' ;;
-        zh-tw:xl_avail) echo '上游最新版' ;;
-        ja:xl_avail) echo 'upstream 最新版' ;;
-        zh:xl_unknown) echo '未知' ;;
-        en:xl_unknown) echo 'unknown' ;;
-        ru:xl_unknown) echo 'неизвестно' ;;
-        fa:xl_unknown) echo 'نامشخص' ;;
-        zh-tw:xl_unknown) echo '未知' ;;
-        ja:xl_unknown) echo '不明' ;;
-        zh:xl_slot) echo '稳定槽位 Xray' ;;
-        en:xl_slot) echo 'Stable slot Xray' ;;
-        ru:xl_slot) echo 'Стабильный Xray (слот)' ;;
-        fa:xl_slot) echo 'Xray پایدار (جایگاه)' ;;
-        zh-tw:xl_slot) echo '穩定槽位 Xray' ;;
-        ja:xl_slot) echo '安定スロット Xray' ;;
-        zh:xl_latest_inst) echo '最新版 Xray' ;;
-        en:xl_latest_inst) echo 'Latest Xray' ;;
-        ru:xl_latest_inst) echo 'Последний Xray' ;;
-        fa:xl_latest_inst) echo 'جدیدترین Xray' ;;
-        zh-tw:xl_latest_inst) echo '最新版 Xray' ;;
-        ja:xl_latest_inst) echo '最新 Xray' ;;
-        zh:xl_not_installed) echo '未安装' ;;
-        en:xl_not_installed) echo 'not installed' ;;
-        ru:xl_not_installed) echo 'не установлен' ;;
-        fa:xl_not_installed) echo 'نصب نشده' ;;
-        zh-tw:xl_not_installed) echo '未安裝' ;;
-        ja:xl_not_installed) echo '未インストール' ;;
-        zh:xl_state_takeover) echo '已接管槽位' ;;
-        en:xl_state_takeover) echo 'takeover of slot active' ;;
-        ru:xl_state_takeover) echo 'слот занят последним ядром' ;;
-        fa:xl_state_takeover) echo 'جایگاه با هسته جدید اشغال شده' ;;
-        zh-tw:xl_state_takeover) echo '已接管槽位' ;;
-        ja:xl_state_takeover) echo 'スロットを乗っ取り中' ;;
-        zh:xl_state_coexist) echo '并存实例运行中' ;;
-        en:xl_state_coexist) echo 'coexisting instance running' ;;
-        ru:xl_state_coexist) echo 'параллельный экземпляр работает' ;;
-        fa:xl_state_coexist) echo 'نمونه موازی در حال اجرا' ;;
-        zh-tw:xl_state_coexist) echo '並存實例運行中' ;;
-        ja:xl_state_coexist) echo '並行インスタンス実行中' ;;
-        zh:xl_mlkem_warn) echo '警告：最新版 Xray 强制 ML-KEM 握手——sing-box 客户端无法连接、mihomo 需开启特殊开关、部分客户端不兼容。仅供有经验的用户测试。' ;;
-        en:xl_mlkem_warn) echo 'Warning: the latest Xray enforces ML-KEM handshakes — sing-box clients cannot connect, mihomo needs a special flag, and some clients are incompatible. For experienced users only.' ;;
-        ru:xl_mlkem_warn) echo 'Внимание: последний Xray требует ML-KEM рукопожатие — клиенты sing-box не подключатся, mihomo нужен специальный флаг, часть клиентов несовместима. Только для опытных пользователей.' ;;
-        fa:xl_mlkem_warn) echo 'هشدار: جدیدترین Xray دست‌دادن ML-KEM را اجباری می‌کند — کلاینت‌های sing-box وصل نمی‌شوند، mihomo به پرچم ویژه نیاز دارد و برخی کلاینت‌ها ناسازگارند. فقط برای کاربران باتجربه.' ;;
-        zh-tw:xl_mlkem_warn) echo '警告：最新版 Xray 強制 ML-KEM 握手——sing-box 用戶端無法連接、mihomo 需開啟特殊開關、部分用戶端不相容。僅供有經驗的使用者測試。' ;;
-        ja:xl_mlkem_warn) echo '警告：最新 Xray は ML-KEM ハンドシェイクを強制します。sing-box クライアントは接続できず、mihomo には特殊フラグが必要で、一部のクライアントは非対応です。経験者向けです。' ;;
-        zh:xl_m_ports) echo '查看端口占用（稳定版 / 最新版）' ;;
-        en:xl_m_ports) echo 'View ports (stable / latest)' ;;
-        ru:xl_m_ports) echo 'Порты (стабильный / последний)' ;;
-        fa:xl_m_ports) echo 'مشاهده پورت‌ها (پایدار / جدید)' ;;
-        zh-tw:xl_m_ports) echo '查看連接埠占用（穩定版 / 最新版）' ;;
-        ja:xl_m_ports) echo 'ポート使用状況（安定版 / 最新版）' ;;
-        zh:xl_m_remove) echo '删除最新版 Xray' ;;
-        en:xl_m_remove) echo 'Remove latest Xray' ;;
-        ru:xl_m_remove) echo 'Удалить последний Xray' ;;
-        fa:xl_m_remove) echo 'حذف جدیدترین Xray' ;;
-        zh-tw:xl_m_remove) echo '刪除最新版 Xray' ;;
-        ja:xl_m_remove) echo '最新 Xray を削除' ;;
-        zh:xl_back_main) echo '返回' ;;
-        en:xl_back_main) echo 'Back' ;;
-        ru:xl_back_main) echo 'Назад' ;;
-        fa:xl_back_main) echo 'بازگشت' ;;
-        zh-tw:xl_back_main) echo '返回' ;;
-        ja:xl_back_main) echo '戻る' ;;
+        zh:back_main) echo '返回' ;;
+        en:back_main) echo 'Back' ;;
+        ru:back_main) echo 'Назад' ;;
+        fa:back_main) echo 'بازگشت' ;;
+        zh-tw:back_main) echo '返回' ;;
+        ja:back_main) echo '戻る' ;;
         zh:bk_recommend) echo '建议先备份——即将执行：%s' ;;
         en:bk_recommend) echo 'Backup recommended before: %s' ;;
         ru:bk_recommend) echo 'Рекомендуется резервная копия перед: %s' ;;
@@ -4562,210 +4463,18 @@ tr_msg() {
         fa:bk_created) echo 'پشتیبان ایجاد شد:' ;;
         zh-tw:bk_created) echo '備份已建立：' ;;
         ja:bk_created) echo 'バックアップを作成しました:' ;;
-        zh:xl_invalid) echo '输入无效。' ;;
-        en:xl_invalid) echo 'Invalid input.' ;;
-        ru:xl_invalid) echo 'Неверный ввод.' ;;
-        fa:xl_invalid) echo 'ورودی نامعتبر است.' ;;
-        zh-tw:xl_invalid) echo '輸入無效。' ;;
-        ja:xl_invalid) echo '入力が無効です。' ;;
-        zh:xl_remove_cancelled) echo '已取消删除。' ;;
-        en:xl_remove_cancelled) echo 'Removal cancelled.' ;;
-        ru:xl_remove_cancelled) echo 'Удаление отменено.' ;;
-        fa:xl_remove_cancelled) echo 'حذف لغو شد.' ;;
-        zh-tw:xl_remove_cancelled) echo '已取消刪除。' ;;
-        ja:xl_remove_cancelled) echo '削除をキャンセルしました。' ;;
-        zh:xl_select) echo '请选择 [0-9]：' ;;
-        en:xl_select) echo 'Select [0-9]: ' ;;
-        ru:xl_select) echo 'Выберите [0–9]: ' ;;
-        fa:xl_select) echo 'انتخاب [0-9]: ' ;;
-        zh-tw:xl_select) echo '請選擇 [0-9]：' ;;
-        ja:xl_select) echo '選択してください [0-9]：' ;;
-        zh:xl_mode_ask) echo '请选择安装模式 [1-2，0 取消]：' ;;
-        en:xl_mode_ask) echo 'Install mode [1-2, 0 cancel]: ' ;;
-        ru:xl_mode_ask) echo 'Режим установки [1-2, 0 — отмена]: ' ;;
-        fa:xl_mode_ask) echo 'حالت نصب [۱-۲، ۰ لغو]: ' ;;
-        zh-tw:xl_mode_ask) echo '請選擇安裝模式 [1-2，0 取消]：' ;;
-        ja:xl_mode_ask) echo 'インストールモードを選択 [1-2、0 キャンセル]：' ;;
-        zh:xl_mode_1) echo '接管槽位（默认）：替换当前 Xray 核心' ;;
-        en:xl_mode_1) echo 'Take over the slot (default): replace the current Xray core' ;;
-        ru:xl_mode_1) echo 'Занять слот (по умолчанию): заменить текущее ядро Xray' ;;
-        fa:xl_mode_1) echo 'اشغال جایگاه (پیش‌فرض): جایگزینی هسته فعلی Xray' ;;
-        zh-tw:xl_mode_1) echo '接管槽位（預設）：替換目前 Xray 核心' ;;
-        ja:xl_mode_1) echo 'スロットを乗っ取る（デフォルト）：現在の Xray コアを置き換え' ;;
-        zh:xl_mode_2) echo '并存：独立安装 xray-latest，与稳定版同时运行' ;;
-        en:xl_mode_2) echo 'Coexist: install xray-latest alongside the stable core' ;;
-        ru:xl_mode_2) echo 'Параллельно: установить xray-latest рядом со стабильным ядром' ;;
-        fa:xl_mode_2) echo 'همزیستی: نصب xray-latest در کنار هسته پایدار' ;;
-        zh-tw:xl_mode_2) echo '並存：獨立安裝 xray-latest，與穩定版同時運行' ;;
-        ja:xl_mode_2) echo '並行：xray-latest を安定版と並行インストール' ;;
-        zh:xl_mode_switch) echo '已存在另一种模式的最新版实例，请先用菜单 10 删除后再切换模式。' ;;
-        en:xl_mode_switch) echo 'A latest instance in the other mode exists; remove it (menu 10) before switching modes.' ;;
-        ru:xl_mode_switch) echo 'Уже есть экземпляр последнего Xray в другом режиме; сначала удалите его (пункт 10), затем меняйте режим.' ;;
-        fa:xl_mode_switch) echo 'یک نمونه جدیدترین Xray در حالت دیگر وجود دارد؛ ابتدا آن را با گزینه ۱۰ حذف کنید و سپس حالت را عوض کنید.' ;;
-        zh-tw:xl_mode_switch) echo '已存在另一種模式的最新版實例，請先用選單 10 刪除後再切換模式。' ;;
-        ja:xl_mode_switch) echo '別モードの最新インスタンスが存在します。先にメニュー 10 で削除してからモードを切り替えてください。' ;;
-        zh:xl_takeover_warn) echo '接管模式将替换当前 Xray 核心与服务。安装失败会删除本次部署并告知原因，不会自动装回稳定版；原有 Xray 节点将由新核心接管，配置不兼容时可能无法启动。' ;;
-        en:xl_takeover_warn) echo 'Takeover replaces the current Xray core and service. On failure the attempt is deleted with the reason shown; the stable core is NOT auto-reinstalled. Existing Xray nodes will run on the new core and may fail to start if the config is incompatible.' ;;
-        ru:xl_takeover_warn) echo 'Режим замены заменяет текущее ядро и службу Xray. При сбое попытка удаляется с указанием причины; стабильное ядро автоматически НЕ переустанавливается. Существующие узлы Xray будут работать на новом ядре и могут не запуститься при несовместимой конфигурации.' ;;
-        fa:xl_takeover_warn) echo 'حالت اشغال، هسته و سرویس فعلی Xray را جایگزین می‌کند. در صورت شکست، تلاش حذف و دلیل نمایش داده می‌شود؛ هسته پایدار به‌صورت خودکار دوباره نصب نمی‌شود. گره‌های موجود Xray روی هسته جدید اجرا می‌شوند و اگر پیکربندی ناسازگار باشد ممکن است شروع نشوند.' ;;
-        zh-tw:xl_takeover_warn) echo '接管模式將替換目前 Xray 核心與服務。安裝失敗會刪除本次部署並告知原因，不會自動裝回穩定版；原有 Xray 節點將由新核心接管，設定不相容時可能無法啟動。' ;;
-        ja:xl_takeover_warn) echo '乗っ取りモードは現在の Xray コアとサービスを置き換えます。失敗時は今回の導入を削除して理由を表示します。安定版の自動再インストールはしません。既存の Xray ノードは新コアで動作し、設定が非互換だと起動しない場合があります。' ;;
-        zh:xl_coexist_warn) echo '并存模式将额外运行一个 Xray 实例（xray-latest），占用更多内存；新协议的端口必须与稳定版错开，下面是当前端口占用。' ;;
-        en:xl_coexist_warn) echo 'Coexist runs an extra Xray instance (xray-latest) and uses more memory; new protocol ports must not collide with the stable core. Current port usage:' ;;
-        ru:xl_coexist_warn) echo 'Параллельный режим запускает дополнительный экземпляр Xray (xray-latest) и использует больше памяти; порты новых протоколов не должны совпадать со стабильным ядром. Текущие порты:' ;;
-        fa:xl_coexist_warn) echo 'حالت همزیستی یک نمونه اضافی Xray (xray-latest) اجرا می‌کند و حافظه بیشتری مصرف می‌کند؛ پورت پروتکل‌های جدید نباید با هسته پایدار تداخل داشته باشد. پورت‌های فعلی:' ;;
-        zh-tw:xl_coexist_warn) echo '並存模式將額外運行一個 Xray 實例（xray-latest），占用更多記憶體；新協議的連接埠必須與穩定版錯開，下面是目前連接埠占用。' ;;
-        ja:xl_coexist_warn) echo '並行モードは追加の Xray インスタンス（xray-latest）を実行し、メモリを多く使います。新プロトコルのポートは安定版と重ならないようにしてください。現在のポート使用状況：' ;;
-        zh:xl_coexist_note) echo '并存模式：新协议装入 xray-latest 实例，端口不得与稳定版冲突。当前端口占用：' ;;
-        en:xl_coexist_note) echo 'Coexist mode: new protocols go into the xray-latest instance; ports must not collide with the stable core. Current port usage:' ;;
-        ru:xl_coexist_note) echo 'Параллельный режим: новые протоколы ставятся в экземпляр xray-latest; порты не должны конфликтовать со стабильным ядром. Текущие порты:' ;;
-        fa:xl_coexist_note) echo 'حالت همزیستی: پروتکل‌های جدید در نمونه xray-latest نصب می‌شوند؛ پورت‌ها نباید با هسته پایدار تداخل داشته باشند. پورت‌های فعلی:' ;;
-        zh-tw:xl_coexist_note) echo '並存模式：新協議裝入 xray-latest 實例，連接埠不得與穩定版衝突。目前連接埠占用：' ;;
-        ja:xl_coexist_note) echo '並行モード：新プロトコルは xray-latest インスタンスに入ります。ポートは安定版と競合させないでください。現在のポート使用状況：' ;;
-        zh:xl_confirm) echo '确认继续？ [Y/N]：' ;;
-        en:xl_confirm) echo 'Continue? [Y/N]: ' ;;
-        ru:xl_confirm) echo 'Продолжить? [Y/N]: ' ;;
-        fa:xl_confirm) echo 'ادامه می‌دهید؟ [Y/N]: ' ;;
-        zh-tw:xl_confirm) echo '確認繼續？ [Y/N]：' ;;
-        ja:xl_confirm) echo '続行しますか？ [Y/N]：' ;;
-        zh:xl_confirm_hard) echo '输入 UNINSTALL xray-latest 以确认卸载：' ;;
-        en:xl_confirm_hard) echo 'Type UNINSTALL xray-latest to confirm removal: ' ;;
-        ru:xl_confirm_hard) echo 'Введите UNINSTALL xray-latest для подтверждения удаления: ' ;;
-        fa:xl_confirm_hard) echo 'برای تأیید حذف، عبارت UNINSTALL xray-latest را وارد کنید: ' ;;
-        zh-tw:xl_confirm_hard) echo '輸入 UNINSTALL xray-latest 以確認卸載：' ;;
-        ja:xl_confirm_hard) echo '削除を確認するには UNINSTALL xray-latest と入力してください：' ;;
-        zh:xl_tag_fail) echo '无法获取上游最新版本（网络或 GitHub API 不可用），已取消。' ;;
-        en:xl_tag_fail) echo 'Could not fetch the latest upstream version (network or GitHub API unavailable). Cancelled.' ;;
-        ru:xl_tag_fail) echo 'Не удалось получить последнюю версию upstream (сеть или GitHub API недоступны). Отменено.' ;;
-        fa:xl_tag_fail) echo 'دریافت جدیدترین نسخه بالادستی ممکن نشد (شبکه یا GitHub API در دسترس نیست). لغو شد.' ;;
-        zh-tw:xl_tag_fail) echo '無法取得上游最新版本（網路或 GitHub API 不可用），已取消。' ;;
-        ja:xl_tag_fail) echo 'upstream の最新バージョンを取得できませんでした（ネットワークまたは GitHub API 不可）。キャンセルしました。' ;;
-        zh:xl_fetch_fail) echo '最新版核心下载或校验失败，已删除本次下载，未做任何更改。' ;;
-        en:xl_fetch_fail) echo 'Latest core download or verification failed; the download was deleted and nothing was changed.' ;;
-        ru:xl_fetch_fail) echo 'Загрузка или проверка последнего ядра не удалась; загрузка удалена, изменений нет.' ;;
-        fa:xl_fetch_fail) echo 'دانلود یا بررسی جدیدترین هسته ناموفق بود؛ دانلود حذف شد و هیچ تغییری اعمال نشد.' ;;
-        zh-tw:xl_fetch_fail) echo '最新版核心下載或校驗失敗，已刪除本次下載，未做任何更改。' ;;
-        ja:xl_fetch_fail) echo '最新コアのダウンロードまたは検証に失敗しました。ダウンロードは削除し、何も変更していません。' ;;
-        zh:xl_bin_mismatch) echo '下载的核心版本与上游 tag 不一致，已删除，未安装' ;;
-        en:xl_bin_mismatch) echo 'Downloaded core version does not match the upstream tag; deleted, not installed' ;;
-        ru:xl_bin_mismatch) echo 'Версия загруженного ядра не совпадает с тегом upstream; удалено, не установлено' ;;
-        fa:xl_bin_mismatch) echo 'نسخه هسته دانلودشده با برچسب بالادستی مطابقت ندارد؛ حذف شد و نصب نشد' ;;
-        zh-tw:xl_bin_mismatch) echo '下載的核心版本與上游 tag 不一致，已刪除，未安裝' ;;
-        ja:xl_bin_mismatch) echo 'ダウンロードしたコアのバージョンが upstream タグと一致しません。削除し、インストールしていません' ;;
-        zh:xl_need_core) echo '尚未安装最新版 Xray 核心，选协议时会自动安装。' ;;
-        en:xl_need_core) echo 'Latest Xray core is not installed yet; it will be installed automatically when you choose a protocol.' ;;
-        ru:xl_need_core) echo 'Последнее ядро Xray ещё не установлено; оно будет установлено автоматически при выборе протокола.' ;;
-        fa:xl_need_core) echo 'جدیدترین هسته Xray هنوز نصب نشده است؛ هنگام انتخاب پروتکل به‌صورت خودکار نصب می‌شود.' ;;
-        zh-tw:xl_need_core) echo '尚未安裝最新版 Xray 核心，選協議時會自動安裝。' ;;
-        ja:xl_need_core) echo '最新 Xray コアがまだインストールされていません。プロトコルを選ぶと自動でインストールされます。' ;;
-        zh:xl_port_prompt) echo '端口' ;;
-        en:xl_port_prompt) echo 'Port' ;;
-        ru:xl_port_prompt) echo 'Порт' ;;
-        fa:xl_port_prompt) echo 'پورت' ;;
-        zh-tw:xl_port_prompt) echo '連接埠' ;;
-        ja:xl_port_prompt) echo 'ポート' ;;
-        zh:xl_port_conflict) echo '端口已被占用或与另一实例冲突，已取消本次部署' ;;
-        en:xl_port_conflict) echo 'Port already in use or conflicts with the other instance; deployment cancelled' ;;
-        ru:xl_port_conflict) echo 'Порт уже занят или конфликтует с другим экземпляром; развёртывание отменено' ;;
-        fa:xl_port_conflict) echo 'پورت قبلاً استفاده شده یا با نمونه دیگر تداخل دارد؛ استقرار لغو شد' ;;
-        zh-tw:xl_port_conflict) echo '連接埠已被占用或與另一實例衝突，已取消本次部署' ;;
-        ja:xl_port_conflict) echo 'ポートは使用中か、もう一方のインスタンスと競合します。導入をキャンセルしました' ;;
-        zh:xl_slot_ports) echo '稳定版 Xray 端口' ;;
-        en:xl_slot_ports) echo 'Stable Xray ports' ;;
-        ru:xl_slot_ports) echo 'Порты стабильного Xray' ;;
-        fa:xl_slot_ports) echo 'پورت‌های Xray پایدار' ;;
-        zh-tw:xl_slot_ports) echo '穩定版 Xray 連接埠' ;;
-        ja:xl_slot_ports) echo '安定版 Xray のポート' ;;
-        zh:xl_latest_ports) echo '最新版 Xray 端口' ;;
-        en:xl_latest_ports) echo 'Latest Xray ports' ;;
-        ru:xl_latest_ports) echo 'Порты последнего Xray' ;;
-        fa:xl_latest_ports) echo 'پورت‌های جدیدترین Xray' ;;
-        zh-tw:xl_latest_ports) echo '最新版 Xray 連接埠' ;;
-        ja:xl_latest_ports) echo '最新版 Xray のポート' ;;
-        zh:xl_ok_installed) echo '已完成' ;;
-        en:xl_ok_installed) echo 'Done' ;;
-        ru:xl_ok_installed) echo 'Готово' ;;
-        fa:xl_ok_installed) echo 'انجام شد' ;;
-        zh-tw:xl_ok_installed) echo '已完成' ;;
-        ja:xl_ok_installed) echo '完了' ;;
-        zh:xl_install_fail) echo '安装失败，已删除本次部署；未自动安装稳定版（需要稳定版请到主菜单 Xray 入口安装）。' ;;
-        en:xl_install_fail) echo 'Install failed; the attempt was deleted. The stable core was NOT auto-installed (use the main-menu Xray entry for the stable core).' ;;
-        ru:xl_install_fail) echo 'Установка не удалась; попытка удалена. Стабильное ядро автоматически НЕ установлено (для стабильного ядра используйте пункт Xray в главном меню).' ;;
-        fa:xl_install_fail) echo 'نصب ناموفق بود؛ تلاش حذف شد. هسته پایدار به‌صورت خودکار نصب نشد (برای هسته پایدار از ورودی Xray در منوی اصلی استفاده کنید).' ;;
-        zh-tw:xl_install_fail) echo '安裝失敗，已刪除本次部署；未自動安裝穩定版（需要穩定版請到主選單 Xray 入口安裝）。' ;;
-        ja:xl_install_fail) echo 'インストールに失敗しました。今回の試行は削除済みです。安定版は自動インストールしていません（安定版はメインメニューの Xray からどうぞ）。' ;;
-        zh:xl_restart_fail) echo '服务重启失败，已回滚本次更改并删除该部署。' ;;
-        en:xl_restart_fail) echo 'Service restart failed; this change was rolled back and the deployment removed.' ;;
-        ru:xl_restart_fail) echo 'Перезапуск службы не удался; изменение откачено, развёртывание удалено.' ;;
-        fa:xl_restart_fail) echo 'راه‌اندازی مجدد سرویس ناموفق بود؛ تغییر بازگردانده و استقرار حذف شد.' ;;
-        zh-tw:xl_restart_fail) echo '服務重啟失敗，已回滾本次更改並刪除該部署。' ;;
-        ja:xl_restart_fail) echo 'サービス再起動に失敗しました。変更をロールバックし、導入を削除しました。' ;;
-        zh:xl_rollback_fail) echo '部署失败，且回滚后服务仍无法启动，请手动检查配置与服务状态。' ;;
-        en:xl_rollback_fail) echo 'Deployment failed and the service still cannot start after rollback; check the config and service status manually.' ;;
-        ru:xl_rollback_fail) echo 'Развёртывание не удалось, и после отката служба всё ещё не запускается; проверьте конфигурацию и состояние службы вручную.' ;;
-        fa:xl_rollback_fail) echo 'استقرار ناموفق بود و سرویس پس از بازگشت هنوز راه‌اندازی نمی‌شود؛ پیکربندی و وضعیت سرویس را دستی بررسی کنید.' ;;
-        zh-tw:xl_rollback_fail) echo '部署失敗，且回滾後服務仍無法啟動，請手動檢查設定與服務狀態。' ;;
-        ja:xl_rollback_fail) echo '導入に失敗し、ロールバック後もサービスが起動しません。設定とサービスの状態を手動で確認してください。' ;;
-        zh:xl_bak_kept) echo '原配置备份已保留，未删除：%s' ;;
-        en:xl_bak_kept) echo 'Original config backup kept, not deleted: %s' ;;
-        ru:xl_bak_kept) echo 'Резервная копия исходной конфигурации сохранена и не удалена: %s' ;;
-        fa:xl_bak_kept) echo 'پشتیبان پیکربندی اصلی حفظ شده و حذف نشده است: %s' ;;
-        zh-tw:xl_bak_kept) echo '原始設定備份已保留，未刪除：%s' ;;
-        ja:xl_bak_kept) echo '元の設定バックアップは保持され、削除されていません：%s' ;;
-        zh:xl_fw_revoke_fail) echo '防火墙补偿失败，下列规则可能残留：%s' ;;
-        en:xl_fw_revoke_fail) echo 'Firewall compensation failed; these rules may remain: %s' ;;
-        ru:xl_fw_revoke_fail) echo 'Не удалось компенсировать правила брандмауэра; эти правила могут остаться: %s' ;;
-        fa:xl_fw_revoke_fail) echo 'جبران فایروال ناموفق بود؛ این قوانین ممکن است باقی بمانند: %s' ;;
-        zh-tw:xl_fw_revoke_fail) echo '防火牆補償失敗，下列規則可能殘留：%s' ;;
-        ja:xl_fw_revoke_fail) echo 'ファイアウォールの補償に失敗しました。次のルールが残っている可能性があります：%s' ;;
-        zh:xl_rollback_copy_fail) echo '回滚复制失败，旧备份已保留未删，请手动恢复并检查。' ;;
-        en:xl_rollback_copy_fail) echo 'Rollback copy failed; the old backup was kept, restore it manually and check.' ;;
-        ru:xl_rollback_copy_fail) echo 'Копирование при откате не удалось; старая резервная копия сохранена, восстановите её вручную и проверьте.' ;;
-        fa:xl_rollback_copy_fail) echo 'کپی بازگشت ناموفق بود؛ پشتیبان قدیمی نگه داشته شد، آن را دستی بازیابی و بررسی کنید.' ;;
-        zh-tw:xl_rollback_copy_fail) echo '回滾複製失敗，舊備份已保留未刪，請手動還原並檢查。' ;;
-        ja:xl_rollback_copy_fail) echo 'ロールバックのコピーに失敗しました。古いバックアップは削除せず残してあります。手動で復元し、確認してください。' ;;
-        zh:xl_fw_rollback) echo '防火墙放行或保存失败，已回滚到旧配置，旧链接仍有效。' ;;
-        en:xl_fw_rollback) echo 'Firewall allow/save failed; rolled back to the previous config, old links stay valid.' ;;
-        ru:xl_fw_rollback) echo 'Не удалось открыть порт или сохранить правила firewall; выполнен откат к предыдущей конфигурации, старые ссылки действуют.' ;;
-        fa:xl_fw_rollback) echo 'باز کردن پورت یا ذخیره قوانین فایروال ناموفق بود؛ به پیکربندی قبلی بازگشت شد و لینک‌های قدیمی معتبر می‌مانند.' ;;
-        zh-tw:xl_fw_rollback) echo '防火牆放行或儲存失敗，已回滾到舊設定，舊連結仍有效。' ;;
-        ja:xl_fw_rollback) echo 'ファイアウォールの許可または保存に失敗しました。以前の設定にロールバックしたため、古いリンクは有効なままです。' ;;
-        zh:xl_cfg_invalid) echo '配置与最新版核心不兼容或校验失败，已取消并删除本次部署。' ;;
-        en:xl_cfg_invalid) echo 'Config is incompatible with the latest core or failed validation; cancelled and deleted.' ;;
-        ru:xl_cfg_invalid) echo 'Конфигурация несовместима с последним ядром или не прошла проверку; отменено и удалено.' ;;
-        fa:xl_cfg_invalid) echo 'پیکربندی با جدیدترین هسته ناسازگار است یا بررسی آن ناموفق بود؛ لغو و حذف شد.' ;;
-        zh-tw:xl_cfg_invalid) echo '設定與最新版核心不相容或校驗失敗，已取消並刪除本次部署。' ;;
-        ja:xl_cfg_invalid) echo '設定が最新コアと非互換か、検証に失敗しました。キャンセルして削除しました。' ;;
-        zh:xl_gen_fail) echo '操作失败，已取消。' ;;
-        en:xl_gen_fail) echo 'Operation failed; cancelled.' ;;
-        ru:xl_gen_fail) echo 'Операция не удалась; отменено.' ;;
-        fa:xl_gen_fail) echo 'عملیات ناموفق بود؛ لغو شد.' ;;
-        zh-tw:xl_gen_fail) echo '操作失敗，已取消。' ;;
-        ja:xl_gen_fail) echo '操作に失敗しました。キャンセルしました。' ;;
-        zh:xl_already) echo '已是最新版，无需重复安装' ;;
-        en:xl_already) echo 'Already on the latest version; nothing to do' ;;
-        ru:xl_already) echo 'Уже установлена последняя версия; делать нечего' ;;
-        fa:xl_already) echo 'از قبل جدیدترین نسخه نصب است؛ کاری لازم نیست' ;;
-        zh-tw:xl_already) echo '已是最新版，無需重複安裝' ;;
-        ja:xl_already) echo 'すでに最新版です。再インストール不要です' ;;
-        zh:xl_remove_warn_t) echo '这将删除槽位上的 Xray 核心、配置与服务（含原稳定版节点与 Trojan-Reality 独立节点），且不会自动重装稳定版。' ;;
-        en:xl_remove_warn_t) echo 'This deletes the slot Xray core, config and service (including previous stable nodes and the standalone Trojan-Reality node). The stable core will NOT be auto-reinstalled.' ;;
-        ru:xl_remove_warn_t) echo 'Это удалит ядро, конфигурацию и службу Xray в слоте (включая прежние стабильные узлы и отдельный узел Trojan-Reality). Стабильное ядро автоматически НЕ переустанавливается.' ;;
-        fa:xl_remove_warn_t) echo 'این کار هسته، پیکربندی و سرویس Xray جایگاه را حذف می‌کند (شامل گره‌های پایدار قبلی و گره مستقل Trojan-Reality). هسته پایدار به‌صورت خودکار دوباره نصب نمی‌شود.' ;;
-        zh-tw:xl_remove_warn_t) echo '這將刪除槽位上的 Xray 核心、設定與服務（含原穩定版節點與 Trojan-Reality 獨立節點），且不會自動重裝穩定版。' ;;
-        ja:xl_remove_warn_t) echo 'スロット上の Xray コア・設定・サービスを削除します（以前の安定版ノードと Trojan-Reality 単独ノードを含みます）。安定版の自動再インストールはしません。' ;;
-        zh:xl_remove_warn_c) echo '这将删除并存的 xray-latest 实例（核心、配置、服务），不影响稳定版 Xray。' ;;
-        en:xl_remove_warn_c) echo 'This deletes the coexisting xray-latest instance (core, config, service). The stable Xray is not affected.' ;;
-        ru:xl_remove_warn_c) echo 'Это удалит параллельный экземпляр xray-latest (ядро, конфигурацию, службу). Стабильный Xray не затрагивается.' ;;
-        fa:xl_remove_warn_c) echo 'این کار نمونه موازی xray-latest (هسته، پیکربندی، سرویس) را حذف می‌کند. Xray پایدار تحت تأثیر قرار نمی‌گیرد.' ;;
-        zh-tw:xl_remove_warn_c) echo '這將刪除並存的 xray-latest 實例（核心、設定、服務），不影響穩定版 Xray。' ;;
-        ja:xl_remove_warn_c) echo '並行インスタンス xray-latest（コア・設定・サービス）を削除します。安定版 Xray には影響しません。' ;;
-        zh:xl_removed_note) echo '已删除。未自动安装稳定版；需要时请到主菜单 Xray 入口安装。' ;;
-        en:xl_removed_note) echo 'Removed. The stable core was NOT auto-installed; use the main-menu Xray entry if you need it.' ;;
-        ru:xl_removed_note) echo 'Удалено. Стабильное ядро автоматически НЕ установлено; при необходимости используйте пункт Xray в главном меню.' ;;
-        fa:xl_removed_note) echo 'حذف شد. هسته پایدار به‌صورت خودکار نصب نشد؛ در صورت نیاز از ورودی Xray در منوی اصلی استفاده کنید.' ;;
-        zh-tw:xl_removed_note) echo '已刪除。未自動安裝穩定版；需要時請到主選單 Xray 入口安裝。' ;;
-        ja:xl_removed_note) echo '削除しました。安定版は自動インストールしていません。必要な場合はメインメニューの Xray からどうぞ。' ;;
+        zh:remove_cancelled) echo '已取消删除。' ;;
+        en:remove_cancelled) echo 'Removal cancelled.' ;;
+        ru:remove_cancelled) echo 'Удаление отменено.' ;;
+        fa:remove_cancelled) echo 'حذف لغو شد.' ;;
+        zh-tw:remove_cancelled) echo '已取消刪除。' ;;
+        ja:remove_cancelled) echo '削除をキャンセルしました。' ;;
+        zh:rollback_copy_fail) echo '回滚复制失败，旧备份已保留未删，请手动恢复并检查。' ;;
+        en:rollback_copy_fail) echo 'Rollback copy failed; the old backup was kept, restore it manually and check.' ;;
+        ru:rollback_copy_fail) echo 'Копирование при откате не удалось; старая резервная копия сохранена, восстановите её вручную и проверьте.' ;;
+        fa:rollback_copy_fail) echo 'کپی بازگشت ناموفق بود؛ پشتیبان قدیمی نگه داشته شد، آن را دستی بازیابی و بررسی کنید.' ;;
+        zh-tw:rollback_copy_fail) echo '回滾複製失敗，舊備份已保留未刪，請手動還原並檢查。' ;;
+        ja:rollback_copy_fail) echo 'ロールバックのコピーに失敗しました。古いバックアップは削除せず残してあります。手動で復元し、確認してください。' ;;
         zh:press_return) echo '按回车返回...' ;;
         en:press_return) echo 'Press Enter to return...' ;;
         ru:press_return) echo 'Нажмите Enter, чтобы вернуться...' ;;
@@ -6536,6 +6245,42 @@ tr_msg() {
         fa:sc_state_corrupt) echo 'پرونده وضعیت میانبر خراب است (%s)؛ ادامه ممکن نیست.' ;;
         zh-tw:sc_state_corrupt) echo '快捷鍵狀態檔已損壞（%s），無法繼續。' ;;
         ja:sc_state_corrupt) echo 'ショートカットの状態ファイルが壊れています（%s）。続行できません。' ;;
+        zh:sc_legacy_xl_migrated) echo '已从快捷方式列表中移除退役名称 xray-latest，其余名称不变；若没有其他名称，则使用默认名称 ab abox。' ;;
+        zh-tw:sc_legacy_xl_migrated) echo '已從捷徑列表中移除退役名稱 xray-latest，其餘名稱不變；若沒有其他名稱，則使用預設名稱 ab abox。' ;;
+        en:sc_legacy_xl_migrated) echo 'Removed the retired name xray-latest from the shortcut list. Other names are unchanged; if none remain, the defaults ab abox are used.' ;;
+        ru:sc_legacy_xl_migrated) echo 'Устаревшее имя ярлыка xray-latest удалено из списка. Остальные имена не изменены; если других имён нет, используются стандартные ab abox.' ;;
+        fa:sc_legacy_xl_migrated) echo 'نام کنارگذاشته‌شدهٔ xray-latest از فهرست میانبرها حذف شد. نام‌های دیگر بدون تغییر می‌مانند؛ اگر نام دیگری باقی نماند، از نام‌های پیش‌فرض ab abox استفاده می‌شود.' ;;
+        ja:sc_legacy_xl_migrated) echo '廃止されたショートカット名 xray-latest を一覧から削除しました。他の名前は変更しません。他に名前がない場合は、既定の ab abox を使用します。' ;;
+        zh:legacy_xl_detected) echo '检测到已退役的 xray-latest 实例（模式：%s），须先处理再继续。' ;;
+        zh-tw:legacy_xl_detected) echo '偵測到已退役的 xray-latest 實例（模式：%s），須先處理再繼續。' ;;
+        en:legacy_xl_detected) echo 'Retired xray-latest instance detected (mode: %s); it must be handled before continuing.' ;;
+        ru:legacy_xl_detected) echo 'Обнаружен устаревший экземпляр xray-latest (режим: %s); перед продолжением необходимо принять решение о его дальнейшей обработке.' ;;
+        fa:legacy_xl_detected) echo 'نمونهٔ قدیمی xray-latest شناسایی شد (حالت: %s)؛ پیش از ادامه باید به آن رسیدگی شود.' ;;
+        ja:legacy_xl_detected) echo '廃止済みの xray-latest インスタンスを検出しました（モード：%s）。続行する前に処理が必要です。' ;;
+        zh:legacy_xl_retired) echo '已退役的 xray-latest 实例已移除（模式：%s）。' ;;
+        zh-tw:legacy_xl_retired) echo '已退役的 xray-latest 實例已移除（模式：%s）。' ;;
+        en:legacy_xl_retired) echo 'Retired xray-latest instance removed (mode: %s).' ;;
+        ru:legacy_xl_retired) echo 'Устаревший экземпляр xray-latest удалён (режим: %s).' ;;
+        fa:legacy_xl_retired) echo 'نمونهٔ قدیمی xray-latest حذف شد (حالت: %s).' ;;
+        ja:legacy_xl_retired) echo '廃止済みの xray-latest インスタンスを削除しました（モード：%s）。' ;;
+        zh:legacy_xl_adopted) echo '接管模式的 xray-latest 已验证并接纳为正常 Xray 槽位（版本：%s）。' ;;
+        zh-tw:legacy_xl_adopted) echo '接管模式的 xray-latest 已驗證並接納為正常 Xray 槽位（版本：%s）。' ;;
+        en:legacy_xl_adopted) echo 'Takeover xray-latest verified and adopted as the normal Xray slot (version: %s).' ;;
+        ru:legacy_xl_adopted) echo 'Экземпляр xray-latest в режиме takeover проверен и принят в качестве штатного экземпляра Xray (версия: %s).' ;;
+        fa:legacy_xl_adopted) echo 'نمونهٔ xray-latest در حالت takeover اعتبارسنجی شد و به‌عنوان نصب استاندارد Xray پذیرفته شد (نسخه: %s).' ;;
+        ja:legacy_xl_adopted) echo 'takeover モードの xray-latest を検証し、通常の Xray スロットとして採用しました（バージョン：%s）。' ;;
+        zh:legacy_xl_retire_prompt) echo '检测到已退役的 xray-latest 共存实例。删除该实例及其配置吗？[y/N]：' ;;
+        zh-tw:legacy_xl_retire_prompt) echo '偵測到已退役的 xray-latest 共存實例。刪除該實例及其設定嗎？[y/N]：' ;;
+        en:legacy_xl_retire_prompt) echo 'Retired xray-latest coexist instance detected. Remove the instance and its config? [y/N]: ' ;;
+        ru:legacy_xl_retire_prompt) echo 'Обнаружен устаревший экземпляр xray-latest (coexist). Удалить экземпляр и его конфигурацию? [y/N]: ' ;;
+        fa:legacy_xl_retire_prompt) echo 'نمونهٔ قدیمی xray-latest (coexist) شناسایی شد. نمونه و پیکربندی آن حذف شود؟ [y/N]: ' ;;
+        ja:legacy_xl_retire_prompt) echo '廃止済みの xray-latest coexist インスタンスを検出しました。インスタンスとその設定を削除しますか？[y/N]：' ;;
+        zh:inst_retired_xl) echo 'xray-latest 已退役，不再支持部署该类实例。' ;;
+        zh-tw:inst_retired_xl) echo 'xray-latest 已退役，不再支援部署該類實例。' ;;
+        en:inst_retired_xl) echo 'xray-latest is retired; deploying this type of instance is no longer supported.' ;;
+        ru:inst_retired_xl) echo 'xray-latest больше не поддерживается; развёртывание экземпляров этого типа недоступно.' ;;
+        fa:inst_retired_xl) echo 'xray-latest کنار گذاشته شده است؛ استقرار این نوع نمونه دیگر پشتیبانی نمی‌شود.' ;;
+        ja:inst_retired_xl) echo 'xray-latest は廃止されました。この種類のインスタンスの導入には対応していません。' ;;
         zh:sc_state_reset_prompt) echo '是否重置为默认快捷键（ab abox）？[y/N]：' ;;
         en:sc_state_reset_prompt) echo 'Reset to the default shortcuts (ab abox)? [y/N]: ' ;;
         ru:sc_state_reset_prompt) echo 'Сбросить к ярлыкам по умолчанию (ab abox)? [y/N]: ' ;;
@@ -6716,6 +6461,12 @@ tr_msg() {
         ru:fg_mlkem) echo 'Xray %s использует новый порог REALITY ML-KEM ClientHello; некоторые старые клиенты могут не подключиться.' ;;
         fa:fg_mlkem) echo '‏Xray %s از آستانه جدیدتر REALITY ML-KEM ClientHello استفاده می‌کند؛ برخی کلاینت‌های قدیمی ممکن است نتوانند متصل شوند.' ;;
         ja:fg_mlkem) echo 'Xray %s は新しい REALITY ML-KEM ClientHello しきい値を使用します。一部の旧クライアントは接続できない場合があります。' ;;
+        zh:vc_xray_mlkem_compat) echo '当前 Xray %s 的 REALITY 服务端有较新的兼容性要求；Mihomo 请使用下方完整 YAML。部分 Shadowrocket / sing-box 版本可能无法连接。' ;;
+        zh-tw:vc_xray_mlkem_compat) echo '目前 Xray %s 的 REALITY 伺服器有較新的相容性要求；Mihomo 請使用下方完整 YAML。部分 Shadowrocket / sing-box 版本可能無法連線。' ;;
+        en:vc_xray_mlkem_compat) echo 'The REALITY server in Xray %s has newer compatibility requirements. For Mihomo, use the complete YAML below. Some Shadowrocket / sing-box versions may be unable to connect.' ;;
+        ru:vc_xray_mlkem_compat) echo 'Для сервера REALITY в Xray %s действуют новые требования к совместимости. Для Mihomo используйте полный YAML ниже. Некоторые версии Shadowrocket / sing-box могут не подключаться.' ;;
+        fa:vc_xray_mlkem_compat) echo 'سرور REALITY در Xray %s الزامات سازگاری جدیدتری دارد؛ برای Mihomo از پیکربندی کامل YAML در پایین استفاده کنید. ممکن است برخی نسخه‌های Shadowrocket / sing-box نتوانند متصل شوند.' ;;
+        ja:vc_xray_mlkem_compat) echo 'Xray %s の REALITY サーバーには、より新しい互換性要件があります。Mihomo では下記の完全な YAML を使用してください。Shadowrocket / sing-box の一部のバージョンでは接続できない場合があります。' ;;
         zh:fg_no_pin) echo '缺少 %s 的固定容灾版本 pin。' ;;
         zh-tw:fg_no_pin) echo '缺少 %s 的固定容災版本 pin。' ;;
         en:fg_no_pin) echo 'Missing the pinned failover version for %s.' ;;
@@ -6728,12 +6479,12 @@ tr_msg() {
         ru:fg_no_rule) echo 'Не определено правило сопоставления активов ядра: %s:%s' ;;
         fa:fg_no_rule) echo 'قانون تطبیق دارایی هسته تعریف نشده است: %s:%s' ;;
         ja:fg_no_rule) echo '未定義のコアアセット一致ルール： %s:%s' ;;
-        zh:fg_none_valid) echo '固定版本候选与最新稳定容灾候选均未通过验证；拒绝安装版本不匹配的资产。' ;;
-        zh-tw:fg_none_valid) echo '固定版本候選與最新穩定容災候選均未通過驗證；拒絕安裝版本不符的資產。' ;;
-        en:fg_none_valid) echo 'Neither the pinned candidate nor the latest stable failover candidate passed verification; refusing to install a version-mismatched asset.' ;;
-        ru:fg_none_valid) echo 'Ни закреплённый кандидат, ни последний стабильный резервный кандидат не прошли проверку; установка актива с несоответствующей версией отклонена.' ;;
-        fa:fg_none_valid) echo 'نه نامزد پین‌شده و نه آخرین نامزد پایدار پشتیبان از بررسی عبور نکردند؛ نصب دارایی با نسخه ناهماهنگ رد شد.' ;;
-        ja:fg_none_valid) echo '固定候補も最新の安定フェイルオーバー候補も検証に合格しなかったため、バージョン不一致のアセットのインストールを拒否します。' ;;
+        zh:fg_none_valid) echo '上游、同标签镜像与当前镜像版本均未通过验证；拒绝安装版本不匹配的资产。' ;;
+        zh-tw:fg_none_valid) echo '上游、同標籤鏡像與目前鏡像版本均未通過驗證；拒絕安裝版本不符的資產。' ;;
+        en:fg_none_valid) echo 'Neither the upstream target, the same-tag mirror, nor the current mirror version passed verification; refusing to install a version-mismatched asset.' ;;
+        ru:fg_none_valid) echo 'Ни целевой выпуск источника, ни зеркало с тем же тегом, ни текущая версия зеркала не прошли проверку; установка актива с несоответствующей версией отклонена.' ;;
+        fa:fg_none_valid) echo 'نه نسخه هدف بالادست، نه آینه با همان برچسب و نه نسخه فعلی آینه از بررسی عبور نکردند؛ نصب دارایی با نسخه ناهماهنگ رد شد.' ;;
+        ja:fg_none_valid) echo 'アップストリームの対象、同タグのミラー、現在のミラーバージョンのいずれも検証に合格しなかったため、バージョン不一致のアセットのインストールを拒否します。' ;;
         zh:fg_outdir) echo '核心资产输出目录创建失败。' ;;
         zh-tw:fg_outdir) echo '核心資產輸出目錄建立失敗。' ;;
         en:fg_outdir) echo 'Failed to create the core asset output directory.' ;;
@@ -6764,12 +6515,12 @@ tr_msg() {
         ru:fg_record_latest) echo 'Невозможно записать проверенную последнюю версию зеркала.' ;;
         fa:fg_record_latest) echo 'ثبت آخرین نسخه آینه تأییدشده ممکن نیست.' ;;
         ja:fg_record_latest) echo '検証済みの最新ミラーバージョンを記録できません。' ;;
-        zh:fg_record_pin) echo '无法记录已验证的固定容灾版本。' ;;
-        zh-tw:fg_record_pin) echo '無法記錄已驗證的固定容災版本。' ;;
-        en:fg_record_pin) echo 'Cannot record the verified pinned failover version.' ;;
-        ru:fg_record_pin) echo 'Невозможно записать проверенную закреплённую резервную версию.' ;;
-        fa:fg_record_pin) echo 'ثبت نسخه پشتیبان پین‌شده تأییدشده ممکن نیست.' ;;
-        ja:fg_record_pin) echo '検証済みの固定フェイルオーバーバージョンを記録できません。' ;;
+        zh:fg_record_pin) echo '无法记录已验证的当前镜像版本。' ;;
+        zh-tw:fg_record_pin) echo '無法記錄已驗證的目前鏡像版本。' ;;
+        en:fg_record_pin) echo 'Cannot record the verified current mirror version.' ;;
+        ru:fg_record_pin) echo 'Невозможно записать проверенную текущую версию зеркала.' ;;
+        fa:fg_record_pin) echo 'ثبت نسخه فعلی تأییدشده آینه ممکن نیست.' ;;
+        ja:fg_record_pin) echo '検証済みの現在のミラーバージョンを記録できません。' ;;
         zh:fg_resolve) echo '无法解析核心目标版本： %s' ;;
         zh-tw:fg_resolve) echo '無法解析核心目標版本： %s' ;;
         en:fg_resolve) echo 'Cannot resolve the core target version: %s' ;;
@@ -6896,6 +6647,24 @@ tr_msg() {
         ru:rc_bad_override) echo 'Явно указанная версия ядра недопустима: %s:%s' ;;
         fa:rc_bad_override) echo 'نسخه هسته صراحتاً مشخص‌شده نامعتبر است: %s:%s' ;;
         ja:rc_bad_override) echo '明示指定されたコアバージョンが不正です： %s:%s' ;;
+        zh:rc_upstream_unavailable) echo '上游 API 不可用：%s。' ;;
+        zh-tw:rc_upstream_unavailable) echo '上游 API 無法使用：%s。' ;;
+        en:rc_upstream_unavailable) echo 'Upstream API unavailable for %s.' ;;
+        ru:rc_upstream_unavailable) echo 'API источника %s недоступен.' ;;
+        fa:rc_upstream_unavailable) echo 'API بالادستی برای %s در دسترس نیست.' ;;
+        ja:rc_upstream_unavailable) echo '%s の上流 API を利用できません。' ;;
+        zh:rc_no_stable_candidate) echo '上游发布列表中没有合格的稳定版候选：%s。' ;;
+        zh-tw:rc_no_stable_candidate) echo '上游發行列表中沒有合格的穩定版候選：%s。' ;;
+        en:rc_no_stable_candidate) echo 'No qualified stable candidate in the upstream release list for %s.' ;;
+        ru:rc_no_stable_candidate) echo 'В списке выпусков источника %s нет подходящего стабильного кандидата.' ;;
+        fa:rc_no_stable_candidate) echo 'در فهرست انتشارهای بالادستی %s هیچ نسخه پایدار واجد شرایطی وجود ندارد.' ;;
+        ja:rc_no_stable_candidate) echo '%s の上流リリース一覧に、条件を満たす安定版候補がありません。' ;;
+        zh:rc_upstream_bad_response) echo '上游发布 API 返回了无效响应：%s。' ;;
+        zh-tw:rc_upstream_bad_response) echo '上游發行 API 傳回無效回應：%s。' ;;
+        en:rc_upstream_bad_response) echo 'Invalid upstream release API response for %s.' ;;
+        ru:rc_upstream_bad_response) echo 'API выпусков источника %s вернул некорректный ответ.' ;;
+        fa:rc_upstream_bad_response) echo 'API انتشارهای بالادستی برای %s پاسخ نامعتبری برگرداند.' ;;
+        ja:rc_upstream_bad_response) echo '%s の上流リリース API から無効な応答が返されました。' ;;
         zh:va_empty) echo '下载资产为空： %s' ;;
         zh-tw:va_empty) echo '下載資產為空： %s' ;;
         en:va_empty) echo 'The downloaded asset is empty: %s' ;;
@@ -11777,19 +11546,9 @@ remove_all_owned_core_families() {
 # from the backup entirely keeps the old blanket-delete behavior.
 remove_owned_core_families_for_restore() {
     local root="$1" srv failed=0 _latest_in_backup_rc=0
-    for srv in xray sing-box hysteria xray-latest; do
+    for srv in xray sing-box hysteria; do
         if backup_root_contains_service "$root" "$srv" && backup_root_service_is_config_only "$root" "$srv"; then
             continue
-        fi
-        if [[ "$srv" == xray-latest ]]; then
-            backup_root_contains_service "$root" "$srv"; _latest_in_backup_rc=$?
-            if [[ "$_latest_in_backup_rc" == 1 ]]; then
-                # SYD-B5: an old backup predates latest: keep the live
-                # instance and report it; never silently delete it.
-                msg "${YELLOW}[!] Backup contains no xray-latest; current xray-latest instance preserved (not deleted).${NC}"
-                continue
-            fi
-            [[ "$_latest_in_backup_rc" == 0 ]] || { failed=1; continue; }
         fi
         remove_owned_core_family "$srv" 0 || failed=1
     done
@@ -12220,6 +11979,8 @@ shortcut_change_transaction() {
     for _n in "${_arr[@]}"; do
         shortcut_validate_name "$_n" || { SHORTCUT_ERR="bad_name:$_n"; return 1; }
     done
+    # C2 (D5): migrate the retired xray-latest name before the strict read.
+    shortcut_migrate_legacy_xray_latest || true
     # 1. Read old state (corrupt -> fail closed, never guess).
     shortcut_read_state
     _rc=$?
@@ -12459,9 +12220,123 @@ shortcut_reset_corrupt_state_confirmed() {
     return "$_rc"
 }
 
+# shortcut_migrate_legacy_file <file>
+# Strictly parse a shortcut state file, allowing exactly one retired
+# token (xray-latest) which is removed; every other rule is the normal
+# strict parser's (file type, complete fields, version must be 1,
+# unknown keys refused, no duplicate fields, names validated, no
+# duplicate names). Returns 0 = migrated (file rewritten), 2 = valid
+# and no migration needed (file untouched), 1 = failure (file untouched,
+# SHORTCUT_ERR set). The caller must hold the shortcut lock for live
+# files; a staged backup copy owned exclusively by the current operation
+# needs no live lock.
+shortcut_migrate_legacy_file() {
+    local _file="${1:-}" _version='' _names='' _seen_version=0 _seen_names=0
+    SHORTCUT_ERR=''
+    [[ -n "$_file" ]] || { SHORTCUT_ERR='no_file'; return 1; }
+    if [[ ! -e "$_file" && ! -L "$_file" ]]; then return 2; fi
+    [[ -f "$_file" && ! -L "$_file" ]] || { SHORTCUT_ERR='bad_type'; return 1; }
+    # Parent chain must be trusted (no symlink jumps above the file).
+    path_parent_chain_safe "$_file" || { SHORTCUT_ERR='bad_parent'; return 1; }
+    local _orig
+    _orig=$(cat -- "$_file" 2>/dev/null) || { SHORTCUT_ERR='read'; return 1; }
+    local _line _val
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        case "$_line" in
+            ''|'#'*) continue ;;
+        esac
+        case "$_line" in
+            version=*)
+                (( _seen_version == 0 )) || { SHORTCUT_ERR='dup_version'; return 1; }
+                _seen_version=1; _val="${_line#version=}"
+                [[ "$_val" == '1' ]] || { SHORTCUT_ERR='bad_version'; return 1; }
+                _version="$_val" ;;
+            names=*)
+                (( _seen_names == 0 )) || { SHORTCUT_ERR='dup_names'; return 1; }
+                _seen_names=1; _val="${_line#names=}"
+                _names="$_val" ;;
+            *) SHORTCUT_ERR='unknown_key'; return 1 ;;
+        esac
+    done <<< "$_orig"
+    (( _seen_version == 1 && _seen_names == 1 )) || { SHORTCUT_ERR='missing_field'; return 1; }
+    [[ "$_names" != *$'\n'* ]] || { SHORTCUT_ERR='bad_name:<newline>'; return 1; }
+    local -a _arr=()
+    IFS=$' \t' read -r -a _arr <<< "$_names"
+    ((${#_arr[@]} > 0)) || { SHORTCUT_ERR='empty_names'; return 1; }
+    # Duplicate check FIRST (a duplicated legacy token must not mask
+    # corruption by being silently deleted).
+    local _n _seen=' ' _legacy=0
+    for _n in "${_arr[@]}"; do
+        case "$_seen" in *" $_n "*) SHORTCUT_ERR="dup_name:$_n"; return 1 ;; esac
+        _seen="$_seen$_n "
+    done
+    # Validate each name; exactly one token, 'xray-latest', may bypass
+    # the reserved-name check and is removed instead.
+    local -a _kept=()
+    for _n in "${_arr[@]}"; do
+        if [[ "$_n" == 'xray-latest' ]]; then _legacy=1; continue; fi
+        shortcut_validate_name "$_n" || { SHORTCUT_ERR="bad_name:$_n"; return 1; }
+        _kept+=("$_n")
+    done
+    if (( _legacy == 0 )); then return 2; fi
+    # Build the migrated set. A legally non-empty set that becomes empty
+    # falls back to the default names; an originally empty set is
+    # corrupt (already rejected above).
+    local _new=''
+    if (( ${#_kept[@]} == 0 )); then _new='ab abox'; else _new="${_kept[*]}"; fi
+    # Validate the migrated result with the normal strict validator.
+    local _chk
+    for _chk in $_new; do
+        shortcut_validate_name "$_chk" || { SHORTCUT_ERR="bad_name:$_chk"; return 1; }
+    done
+    # Re-read before commit: if the file changed since the first read,
+    # abort without writing (a concurrent writer owns the new content).
+    local _now
+    _now=$(cat -- "$_file" 2>/dev/null) || { SHORTCUT_ERR='read'; return 1; }
+    [[ "$_now" == "$_orig" ]] || { SHORTCUT_ERR='changed'; return 1; }
+    # Atomic commit: temp file in the same directory, mode 600,
+    # root:root, rename. Clean up the temp file on any failure.
+    local _tmp
+    _tmp=$(umask 077; mktemp "${_file}.XXXXXX" 2>/dev/null) || { SHORTCUT_ERR='mktemp'; return 1; }
+    {
+        printf '%s\n' '# A-Box shortcut state v1 (do not edit by hand)'
+        printf 'version=1\n'
+        printf 'names=%s\n' "$_new"
+    } > "$_tmp" || { rm -f -- "$_tmp"; SHORTCUT_ERR='write'; return 1; }
+    chmod 600 -- "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; SHORTCUT_ERR='chmod'; return 1; }
+    chown root:root -- "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; SHORTCUT_ERR='chown'; return 1; }
+    mv -f -- "$_tmp" "$_file" || { rm -f -- "$_tmp"; SHORTCUT_ERR='rename'; return 1; }
+    return 0
+}
+
+# shortcut_migrate_legacy_xray_latest
+# Live-path wrapper: migrate the retired name out of the live shortcut
+# state file. Holds the shortcut lock across read + migrate + commit
+# (unless the caller already holds it). Prints the migration notice on
+# stderr only when a migration actually happened. Returns 0 = migrated,
+# 2 = no migration needed, 1 = failure. Never deletes /usr/local/bin/xray-latest
+# (it may be a core binary, not a shortcut wrapper).
+shortcut_migrate_legacy_xray_latest() {
+    local _file _rc=0 _mine=0
+    _file=$(shortcut_state_path)
+    if [[ "${SHORTCUT_LOCK_HELD:-0}" != 1 ]]; then
+        shortcut_lock_acquire || return 1
+        _mine=1
+    fi
+    shortcut_migrate_legacy_file "$_file"; _rc=$?
+    if (( _mine == 1 )); then shortcut_lock_release; fi
+    if (( _rc == 0 )); then
+        printf '%s\n' "$(tr_msg sc_legacy_xl_migrated)" >&2
+    fi
+    return "$_rc"
+}
+
+
 shortcut_ensure() {
     local _desired='' _rc=0 _reset_confirmed=0
     SHORTCUT_ERR=''
+    # C2 (D5): migrate the retired xray-latest name before the strict read.
+    shortcut_migrate_legacy_xray_latest || true
     shortcut_read_state
     _rc=$?
     if (( _rc == 1 )); then
@@ -12626,7 +12501,6 @@ stop_all_managed_services() {
     stop_abox_service xray || failed=1
     stop_abox_service sing-box || failed=1
     stop_abox_service hysteria || failed=1
-    stop_abox_service xray-latest || failed=1
     kill_managed_residual_pids >/dev/null 2>&1 || failed=1
     (( failed == 0 ))
 }
@@ -17050,13 +16924,26 @@ core_latest_stable_tag_from_json() {
 }
 
 core_latest_stable_release_ref() {
-    local repo="${1:-}" json
+    # Return codes: 0 = qualified stable tag printed; 1 = bad repo/call;
+    # 2 = upstream API request failed; 3 = API worked but the release list
+    # has no qualified stable candidate; 4 = API returned a response that
+    # is not a valid release list. Callers must not collapse these codes.
+    local repo="${1:-}" json tag
     case "$repo" in
         XTLS/Xray-core|SagerNet/sing-box|HyNetworks/hysteria) ;;
         *) return 1 ;;
     esac
-    json=$(github_api_get "https://api.github.com/repos/$repo/releases?per_page=100") || return 1
-    core_latest_stable_tag_from_json "$repo" "$json"
+    json=$(github_api_get "https://api.github.com/repos/$repo/releases?per_page=100") || return 2
+    # A successful request with a corrupt response must not be
+    # misreported as "no stable candidate".
+    jq -e '
+        if type == "array"
+        then all(.[]; type == "object")
+        else false
+        end
+    ' <<< "$json" >/dev/null 2>&1 || return 4
+    tag=$(core_latest_stable_tag_from_json "$repo" "$json") || return 3
+    printf '%s\n' "$tag"
 }
 
 core_release_mirror_version() {
@@ -17196,10 +17083,11 @@ clear_core_release_resolution() {
 
 core_update_policy() {
     # Returns the update policy for a core repo: 'pinned' or 'auto-stable'.
-    # Xray defaults to pinned (ML-KEM compat risk); sing-box/Hysteria default
-    # to auto-stable. Explicit ABOX_*_VERSION overrides always win.
+    # All three cores default to auto-stable (latest stable after cooling);
+    # the ML-KEM compat risk is handled by the version threshold, not by
+    # pinning. Explicit ABOX_*_VERSION overrides always win.
     case "${1:-}" in
-        XTLS/Xray-core) printf '%s\n' "${ABOX_XRAY_UPDATE_POLICY:-pinned}" ;;
+        XTLS/Xray-core) printf '%s\n' "${ABOX_XRAY_UPDATE_POLICY:-auto-stable}" ;;
         SagerNet/sing-box) printf '%s\n' "${ABOX_SINGBOX_UPDATE_POLICY:-auto-stable}" ;;
         HyNetworks/hysteria) printf '%s\n' "${ABOX_HYSTERIA_UPDATE_POLICY:-auto-stable}" ;;
         *) return 1 ;;
@@ -17251,7 +17139,7 @@ core_cooldown_allows_age() {
 }
 
 resolve_core_release_target() {
-    local repo="${1:-}" override='' latest='' latest_age='' target='' source='' resolved='' resolved_source='' default_ref='' _cd_raw='' _cd_eff=7 _mirror_age=''
+    local repo="${1:-}" override='' latest='' latest_age='' target='' source='' resolved='' resolved_source='' default_ref='' _cd_raw='' _cd_eff=7 _mirror_age='' latest_rc=0 _mirror_candidate=''
     case "$repo" in
         XTLS/Xray-core) override="${ABOX_XRAY_VERSION:-}"; default_ref="$ABOX_XRAY_DEFAULT_VERSION" ;;
         SagerNet/sing-box) override="${ABOX_SINGBOX_VERSION:-}"; default_ref="$ABOX_SINGBOX_DEFAULT_VERSION" ;;
@@ -17267,8 +17155,12 @@ resolve_core_release_target() {
         if core_release_ref_valid "$repo" "$resolved" && [[ "$resolved_source" == 'upstream' || "$resolved_source" == 'mirror' || "$resolved_source" == 'mirror-latest' || "$resolved_source" == 'mirror-exact' || "$resolved_source" == 'pinned' ]]; then
             target="$resolved"; source="$resolved_source"
         elif [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]] || [[ "$(core_update_policy "$repo" 2>/dev/null || true)" == 'auto-stable' ]]; then
-            latest=$(core_latest_stable_release_ref "$repo" 2>/dev/null || true)
-            if core_release_ref_valid "$repo" "$latest" && [[ "$latest" != *-* ]]; then
+            if latest=$(core_latest_stable_release_ref "$repo" 2>/dev/null); then
+                latest_rc=0
+            else
+                latest_rc=$?
+            fi
+            if (( latest_rc == 0 )) && core_release_ref_valid "$repo" "$latest" && [[ "$latest" != *-* ]]; then
                 # Cooldown: a stable release must be published for at least
                 # ABOX_STABLE_COOLDOWN_DAYS before auto-stable accepts it.
                 # Cooling is necessary, not sufficient. When the age cannot be
@@ -17287,17 +17179,57 @@ resolve_core_release_target() {
                     if core_cooldown_allows_age "$latest_age" "${ABOX_STABLE_COOLDOWN_DAYS:-7}"; then
                         target="$latest"; source='upstream'
                     else
-                        msg "${YELLOW}[!] $repo latest stable $latest is still in cooldown (${latest_age:-unknown} days < ${CORE_COOLDOWN_DAYS_EFFECTIVE}); keeping pin $default_ref.${NC}" >&2
-                        target="$default_ref"; source='pinned'
+                        # C2 (latest-first): no fixed-pin fallback. Try the
+                        # current verified mirror candidate, but never adopt
+                        # the same version that was just rejected for
+                        # cooldown (that would bypass the rejection), and
+                        # never adopt a mirror candidate whose age is
+                        # unknown or below a custom cooldown.
+                        _mirror_candidate=$(core_latest_mirror_release_ref "$repo" 2>/dev/null || true)
+                        if core_release_ref_valid "$repo" "$_mirror_candidate" && [[ "$_mirror_candidate" != *-* ]] && [[ "$_mirror_candidate" != "$latest" ]]; then
+                            _cd_raw="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
+                            _cd_eff=7
+                            if [[ "$_cd_raw" =~ ^[0-9]{1,4}$ ]] && (( 10#$_cd_raw >= 1 && 10#$_cd_raw <= 3650 )); then
+                                _cd_eff="$_cd_raw"
+                            fi
+                            if (( 10#$_cd_eff == 7 )); then
+                                msg "${YELLOW}[!] $repo latest stable $latest is still in cooldown (${latest_age:-unknown} days < ${CORE_COOLDOWN_DAYS_EFFECTIVE}); using current mirror version ${_mirror_candidate}.${NC}" >&2
+                                target="$_mirror_candidate"; source='mirror-latest'
+                            else
+                                _mirror_age=$(core_stable_release_age_days "$repo" "$_mirror_candidate" 2>/dev/null || true)
+                                if core_cooldown_allows_age "$_mirror_age" "${ABOX_STABLE_COOLDOWN_DAYS:-7}"; then
+                                    msg "${YELLOW}[!] $repo latest stable $latest is still in cooldown (${latest_age:-unknown} days < ${CORE_COOLDOWN_DAYS_EFFECTIVE}); mirror version ${_mirror_candidate} is ${_mirror_age} days old and satisfies the custom cooldown; using it.${NC}" >&2
+                                    target="$_mirror_candidate"; source='mirror-latest'
+                                else
+                                    msg "${RED}[!] $repo latest stable $latest is still in cooldown and the current mirror version ${_mirror_candidate} does not satisfy the custom cooldown (${_mirror_age:-unknown} days); refusing to install.${NC}" >&2
+                                    return 1
+                                fi
+                            fi
+                        else
+                            msg "${RED}[!] $repo latest stable $latest is still in cooldown (${latest_age:-unknown} days < ${CORE_COOLDOWN_DAYS_EFFECTIVE}) and no usable current mirror version is available; refusing to install.${NC}" >&2
+                            return 1
+                        fi
                     fi
                 fi
             else
-                # Upstream API unavailable: try mirror-latest.
+                # C2 (D2): distinguish why there is no upstream candidate
+                # before entering the mirror branch. Return codes from
+                # core_latest_stable_release_ref: 2 = API request failed,
+                # 3 = no qualified stable candidate, 4 = invalid response.
+                # A 0 return with an invalid tag is an internal
+                # inconsistency, not an API failure.
+                case "$latest_rc" in
+                    2) msg "${YELLOW}[!] $(tprintf rc_upstream_unavailable "$repo")${NC}" >&2 ;;
+                    3) msg "${YELLOW}[!] $(tprintf rc_no_stable_candidate "$repo")${NC}" >&2 ;;
+                    4) msg "${YELLOW}[!] $(tprintf rc_upstream_bad_response "$repo")${NC}" >&2 ;;
+                    *) msg "${RED}[!] $(tprintf fg_resolve "$repo")${NC}" >&2; return 1 ;;
+                esac
+                # No usable upstream candidate: try mirror-latest.
                 # DANGER mode (ABOX_TRY_LATEST_CORE_STABLE=1) bypasses cooldown,
                 # matching the upstream-success path. Otherwise enforce cooldown;
                 # CORE-VERSIONS has no published_at, so we attempt a targeted API
                 # query for this specific tag's date. If age cannot be determined,
-                # fall back to pin (fail-closed per version policy).
+                # fail explicitly (no fixed-pin fallback).
                 latest=$(core_latest_mirror_release_ref "$repo" 2>/dev/null || true)
                 if core_release_ref_valid "$repo" "$latest" && [[ "$latest" != *-* ]]; then
                     # S29 (GPT-7): mirror adoption vs local cooldown.
@@ -17316,7 +17248,7 @@ resolve_core_release_target() {
                     # no hyphen), so its else was unreachable; folded away,
                     # body unchanged apart from indentation.
                     if [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]]; then
-                        target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；ABOX_TRY_LATEST_CORE_STABLE=1 显式要求最新版，绕过冷却期，直接信任镜像版本 ${target}（未执行本地冷却校验）。${NC}" >&2
+                        target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游无可用稳定版候选；ABOX_TRY_LATEST_CORE_STABLE=1 显式要求最新版，绕过冷却期，直接信任镜像版本 ${target}（未执行本地冷却校验）。${NC}" >&2
                     else
                         _cd_raw="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
                         _cd_eff=7
@@ -17324,19 +17256,21 @@ resolve_core_release_target() {
                             _cd_eff="$_cd_raw"
                         fi
                         if (( 10#$_cd_eff == 7 )); then
-                            target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；直接信任镜像版本 ${target}（未执行本地冷却校验；本地冷却期为默认值）。${NC}" >&2
+                            target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游无可用稳定版候选；直接信任镜像版本 ${target}（未执行本地冷却校验；本地冷却期为默认值）。${NC}" >&2
                         else
                             _mirror_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
                             if core_cooldown_allows_age "$_mirror_age" "${ABOX_STABLE_COOLDOWN_DAYS:-7}"; then
-                                target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游稳定版 API 不可用；镜像版本 ${target} 已发布 ${_mirror_age} 天，满足本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天，采纳。${NC}" >&2
+                                target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游无可用稳定版候选；镜像版本 ${target} 已发布 ${_mirror_age} 天，满足本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天，采纳。${NC}" >&2
                             elif [[ "$_mirror_age" =~ ^[0-9]+$ ]]; then
-                                target="$default_ref"; source='pinned'; msg "${YELLOW}[!] 上游稳定版 API 不可用；镜像版本 ${latest} 仅发布 ${_mirror_age} 天，未满本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天，保持固定版本 ${default_ref}。${NC}" >&2
+                                msg "${RED}[!] 上游无可用稳定版候选；镜像版本 ${latest} 仅发布 ${_mirror_age} 天，未满本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天；拒绝安装。${NC}" >&2
+                                return 1
                             else
-                                target="$default_ref"; source='pinned'; msg "${YELLOW}[!] 上游稳定版 API 不可用；镜像版本 ${latest} 的发布年龄无法确定，本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天无法校验，保持固定版本 ${default_ref}。${NC}" >&2
+                                msg "${RED}[!] 上游无可用稳定版候选；镜像版本 ${latest} 的发布年龄无法确定，本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天无法校验；拒绝安装。${NC}" >&2
+                                return 1
                             fi
                         fi
                     fi
-                else target=$(core_release_mirror_version "$repo") || return 1; source='mirror'; msg "${YELLOW}[!] 上游与最新镜像元数据均不可用；本次尝试固定 A-Box 兼容性容灾版本 ${target}。${NC}" >&2; fi
+                else msg "${RED}[!] 上游与最新镜像元数据均不可用；拒绝安装。${NC}" >&2; return 1; fi
             fi
         else core_release_ref_valid "$repo" "$default_ref" || return 1; target="$default_ref"; source='pinned'
         fi
@@ -17475,9 +17409,9 @@ fetch_github_release() {
                 msg "${GREEN}   上游失败，从同标签版本化镜像恢复 ${target_ref}；未替换版本号。${NC}"
                 return 0
             fi
-            msg "${YELLOW}[!] 同标签版本化镜像也不可用，继续尝试固定兼容版本。${NC}" >&2
+            msg "${YELLOW}[!] 同标签版本化镜像也不可用，继续尝试当前镜像版本。${NC}" >&2
         fi
-        if [[ "$target_source" == 'explicit' ]]; then
+        if [[ "$target_source" == 'explicit' || "$target_source" == 'pinned' ]]; then
             if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
                 core_set_resolved_target "$repo" "$target_ref" mirror-exact || die "$(tr_msg fg_record_exact)"
                 ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-exact'
@@ -17499,23 +17433,29 @@ fetch_github_release() {
     # the mirror-exact fallback above with identical arguments (and
     # mislabeled a second-attempt success as mirror-latest); upstream
     # is already covered there, so this block is mirror-latest only.
-    if [[ "$target_source" == 'mirror-latest' ]]; then
+    if [[ "$target_source" == 'mirror-latest' || "$target_source" == 'mirror' ]]; then
         if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
-            core_set_resolved_target "$repo" "$target_ref" mirror-latest || die "$(tr_msg fg_record_latest)"
-            ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-latest'
+            core_set_resolved_target "$repo" "$target_ref" "$target_source" || die "$(tr_msg fg_record_latest)"
+            ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE="$target_source"
             msg "${GREEN}   最新稳定镜像候选通过 SHA-256 与实际二进制版本校验：${target_ref}${NC}"
             return 0
         fi
-        msg "${YELLOW}[!] 与目标版本一致的最新稳定镜像资产不可用；继续尝试固定兼容性容灾版本。${NC}" >&2
+        msg "${YELLOW}[!] 与目标版本一致的最新稳定镜像资产不可用；继续尝试当前镜像版本。${NC}" >&2
     fi
 
-    mirror_ref=$(core_release_mirror_version "$repo") || die "$(tprintf fg_no_pin "$repo")"
-    msg "${YELLOW}[!] 使用固定 A-Box 兼容性容灾版本 ${mirror_ref}，独立于失败的目标 ${target_ref}。${NC}" >&2
-    if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$mirror_ref"; then
-        core_set_resolved_target "$repo" "$mirror_ref" mirror || die "$(tr_msg fg_record_pin)"
-        ABOX_LAST_CORE_RELEASE_REF="$mirror_ref"; ABOX_LAST_CORE_SOURCE='mirror'
-        msg "${GREEN}   固定容灾候选通过 SHA-256 与实际二进制版本校验：${mirror_ref}${NC}"
-        return 0
+    # C2 (latest-first): no fixed-pin fallback. Auto-stable sources may
+    # fall back to the current verified mirror version (source 'mirror');
+    # explicit/pinned/mirror-exact sources must fail instead of silently
+    # switching to a different version. A mirror candidate equal to the
+    # failed target was already tried as the same-tag mirror above.
+    if [[ "$target_source" == 'upstream' || "$target_source" == 'mirror-latest' ]]; then
+        mirror_ref=$(core_latest_mirror_release_ref "$repo" 2>/dev/null || true)
+        if core_release_ref_valid "$repo" "$mirror_ref" && [[ "$mirror_ref" != *-* ]] && [[ "$mirror_ref" != "$target_ref" ]] && fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$mirror_ref"; then
+            core_set_resolved_target "$repo" "$mirror_ref" mirror || die "$(tr_msg fg_record_pin)"
+            ABOX_LAST_CORE_RELEASE_REF="$mirror_ref"; ABOX_LAST_CORE_SOURCE='mirror'
+            msg "${GREEN}   当前镜像版本通过 SHA-256 与实际二进制版本校验：${mirror_ref}${NC}"
+            return 0
+        fi
     fi
     die "$(tr_msg fg_none_valid)"
 }
@@ -18175,7 +18115,7 @@ EOF_F2B_SAMPLE
 }
 
 abox_log_files() {
-    printf '%s\n' /var/log/A-Box-xray-access.log /var/log/A-Box-xray-error.log /var/log/A-Box-singbox.log /var/log/A-Box-hysteria.log /var/log/A-Box-traffic.log /var/log/A-Box-xray-latest-access.log /var/log/A-Box-xray-latest-error.log
+    printf '%s\n' /var/log/A-Box-xray-access.log /var/log/A-Box-xray-error.log /var/log/A-Box-singbox.log /var/log/A-Box-hysteria.log /var/log/A-Box-traffic.log
 }
 
 abox_runtime_identity() {
@@ -18249,7 +18189,7 @@ ensure_abox_runtime_identity() {
 prepare_abox_runtime_config_dir() {
     local family="$1" dir="$2" user group gid mode nlink
     case "$family:$dir" in
-        sing-box:/etc/sing-box|hysteria:/etc/hysteria|xray:/usr/local/etc/xray|xray:/etc/ddr/xray-latest) ;;
+        sing-box:/etc/sing-box|hysteria:/etc/hysteria|xray:/usr/local/etc/xray) ;;
         *) return 1 ;;
     esac
     ensure_abox_runtime_identity "$family" || return 1
@@ -18257,13 +18197,6 @@ prepare_abox_runtime_config_dir() {
     path_parent_chain_safe "$dir/.A-Box-config" || return 1
     [[ ! -L "$dir" && (! -e "$dir" || -d "$dir") ]] || return 1
     install -d -o root -g "$group" -m 750 -- "$dir" || return 1
-    if [[ "$dir" == /etc/ddr/xray-latest ]]; then
-        # U28: /etc/ddr is root:root 0700, so the abox-xray service user
-        # cannot traverse to this directory. Traverse-only for others
-        # (no list/read); file contents stay gated by their own modes.
-        chmod o+x /etc/ddr 2>/dev/null || return 1
-        (( (8#$(stat -c %a /etc/ddr 2>/dev/null || echo 0) & 1) == 1 )) || return 1
-    fi
     gid=$(getent group "$group" 2>/dev/null | awk -F: '{print $3}')
     [[ "$gid" =~ ^[1-9][0-9]*$ ]] || return 1
     [[ "$(stat -c %u:%g "$dir" 2>/dev/null || true)" == "0:$gid" ]] || return 1
@@ -18383,14 +18316,6 @@ prepare_abox_runtime_permissions() {
             [[ ! -e /etc/hysteria/server.crt ]] || prepare_abox_runtime_read_file /etc/hysteria/server.crt hysteria || return 1
             [[ ! -e /etc/hysteria/server.key ]] || prepare_abox_runtime_read_file /etc/hysteria/server.key hysteria || return 1
             prepare_abox_runtime_write_file /var/log/A-Box-hysteria.log hysteria || return 1
-            ;;
-        xray-latest)
-            # SYD-B E8: the coexist path seeds latest log paths but
-            # never prepared them, so the service could not start.
-            prepare_abox_runtime_config_dir xray /etc/ddr/xray-latest || return 1
-            prepare_abox_runtime_read_file /etc/ddr/xray-latest/config.json xray-latest || return 1
-            prepare_abox_runtime_write_file /var/log/A-Box-xray-latest-access.log xray-latest || return 1
-            prepare_abox_runtime_write_file /var/log/A-Box-xray-latest-error.log xray-latest || return 1
             ;;
         *) return 1 ;;
     esac
@@ -18969,7 +18894,10 @@ PY_HELPER_ENV
     while IFS= read -r -d '' key && IFS= read -r -d '' value; do printf -v "$key" '%s' "$value"; done < "$parsed"
     rm -f "$parsed"
 }
-is_systemd() { [[ "$INIT_SYS_EXPECTED" == systemd ]]; }
+# XL-FIX2 (moved): INIT_SYS_EXPECTED is only ever assigned inside generated
+# scripts; in the main script it is unset, which killed takeover under set -u.
+# Fall back to INIT_SYS (set by init_system_environment in main flow).
+is_systemd() { [[ "${INIT_SYS_EXPECTED:-${INIT_SYS:-}}" == systemd ]]; }
 service_is_abox_managed() {
     local srv="$1" unit
     if is_systemd; then unit="/etc/systemd/system/${srv}.service"; else unit="/etc/init.d/${srv}"; fi
@@ -19290,7 +19218,6 @@ acquire_abox_runtime_guard() {
 # A-07: Do NOT acquire the shared runtime lock here. Downloads below (up to
 # 60s + 90s + 90s = 240s) would hold /run/A-Box.lock and kill interactive
 # sessions via flock -w 15. Acquired just before txn_stage instead.
-is_systemd() { [[ "$INIT_SYS_EXPECTED" == systemd ]]; }
 xray_owned() { local u; if is_systemd; then u=/etc/systemd/system/xray.service; else u=/etc/init.d/xray; fi; [[ -f "$u" && ! -L "$u" ]] && grep -Fxq '# Managed by A-Box' "$u"; }
 update_geo_ownership() {
     python3 -I - "$ABOX_CORE_OWNERSHIP" /usr/local/share/xray/geoip.dat /usr/local/share/xray/geosite.dat <<'PY_GEO_OWNER'
@@ -19562,6 +19489,15 @@ EOF_GEO
     # A-06-FIX: No outer flock (see PROBE above).
     install_abox_cron_block GEO "0 3 * * 1 /bin/bash $ABOX_DIR/geo_update.sh >/dev/null 2>&1"
 }
+
+# C2 (fix2c): single canonical top-level is_systemd + xray_owned.
+# WARNING: copies of these one-liners also exist inside the
+# socket_probe.sh (EOF_PROBE) and geo_update.sh (EOF_GEO) heredocs --
+# those are different programs' copies. Never "deduplicate" them away:
+# fix2 deleted the only real definitions (HEAD 25640 + XL 41920/41921)
+# and kept only heredoc copies; the self-test caught it.
+is_systemd() { [[ "${INIT_SYS_EXPECTED:-${INIT_SYS:-}}" == systemd ]]; }
+xray_owned() { local u; if is_systemd; then u=/etc/systemd/system/xray.service; else u=/etc/init.d/xray; fi; [[ -f "$u" && ! -L "$u" ]] && grep -Fxq '# Managed by A-Box' "$u"; }
 
 pre_install_setup() {
     local CORE_IN=$1 MODE_IN=$2
@@ -19957,7 +19893,7 @@ build_xray_config() {
             # R2C8-01: proxy clients must not reach loopback (the API has
             # no auth); the api-inbound rule above matches first, so the
             # legitimate control plane is unaffected. IP-based, so it also
-            # covers the xray-latest API port and any other local service.
+            # covers the normal Xray API port and any other local service.
             {type:"field", ip:["127.0.0.0/8", "::1/128"], outboundTag:"block"},
             {type:"field", protocol:["bittorrent"], outboundTag:"block"},
             {type:"field", domain:["geosite:category-ads-all"], outboundTag:"block"}
@@ -20035,10 +19971,10 @@ xray_api_remove_inbound() {
 # Ensure an Xray-family config carries the stats/policy blocks and the
 # loopback API inbound that per-user accounting (fix47) relies on.
 # Idempotent. Used when the multi-user manager first touches a config
-# that predates fix47 (standalone-only slot configs, xray-latest
-# configs). Callers snapshot first and validate with the core's -test
+# that predates fix47 (standalone-only slot configs). Callers
+# snapshot first and validate with the core's -test
 # afterwards; this helper only transforms and atomically installs.
-# $1 = config path, $2 = api port (10085 slot / 10086 latest).
+# $1 = config path, $2 = api port (10085 normal slot).
 xray_ensure_stats() {
     local cfg="$1" api_port="${2:-10085}" tmp=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
@@ -20304,7 +20240,7 @@ restore_tuic_backups() {
         restore_cfg_backup "$cfg_bak" "$cfg" || rc=1
     fi
     if (( rc )); then
-        msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}" >&2
+        msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}" >&2
         return 1
     fi
     return 0
@@ -21329,13 +21265,13 @@ EOF_SVC
     cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_runtime)"; }
-    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_restart)"; }
+    prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_runtime)"; }
+    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_restart)"; }
 
     # Firewall: TCP + UDP.
-    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    allowPort "$port" udp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
-    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
+    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    allowPort "$port" udp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     # Recycle the replaced port's rules when no inbound still uses it.
     # Either core's config counts: a port rule shared with another
@@ -21557,12 +21493,12 @@ deploy_xray_trojan_landing() {
         install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_cfg)"; }
         rm -f "$tmp_cfg"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
-        restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_xray_restart)"; }
+        restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_xray_restart)"; }
     fi
     rm -f "$tmp_json"
 
-    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
+    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     service_manager start xray 2>/dev/null || true
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
@@ -21727,11 +21663,11 @@ EOF_SVC
     cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
-    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_restart)"; }
+    prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
+    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_restart)"; }
 
-    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
+    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
@@ -22096,11 +22032,11 @@ EOF_SVC
     cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
-    prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
-    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_restart)"; }
+    prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
+    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_restart)"; }
 
-    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
+    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
@@ -22284,10 +22220,10 @@ EOF_SVC
         cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; cfg_bak=''; die 'Config backup failed; refusing to replace the live config without a backup.'; }
     fi
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; [[ -n "$cfg_bak" ]] && rm -f -- "$cfg_bak"; die "$(tr_msg dp_sb_cfg)"; }
-    prepare_abox_runtime_permissions sing-box || { if [[ -n "$cfg_bak" ]]; then restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; fi; die "$(tr_msg dp_sb_runtime)"; }
+    prepare_abox_runtime_permissions sing-box || { if [[ -n "$cfg_bak" ]]; then restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; fi; die "$(tr_msg dp_sb_runtime)"; }
     rm -f "$tmp_cfg" "$tmp_json"
 
-    restart_service_soft sing-box || { if [[ -n "$cfg_bak" ]]; then restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; fi; die "$(tr_msg dp_sb_restart)"; }
+    restart_service_soft sing-box || { if [[ -n "$cfg_bak" ]]; then restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; fi; die "$(tr_msg dp_sb_restart)"; }
     [[ -n "$cfg_bak" ]] && rm -f -- "$cfg_bak"
 
     allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
@@ -22465,9 +22401,9 @@ argo_deploy_ws() {
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
     cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; die 'Config backup failed; refusing to replace the live config without a backup.'; }
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json" "$cfg_bak"; die "$(tr_msg dp_sb_cfg)"; }
-    prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_runtime)"; }
+    prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_runtime)"; }
     rm -f "$tmp_cfg" "$tmp_json"
-    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_restart)"; }
+    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_restart)"; }
     rm -f -- "$cfg_bak"
     service_manager start sing-box 2>/dev/null || true
 }
@@ -23110,6 +23046,16 @@ argo_menu() {
 # $1=core $2=base-tag, rest = deploy command
 deploy_with_instance_choice() {
     local core="$1" btag="$2"; shift 2
+    # xray-latest is retired: refuse before reading config or offering
+    # replace/add for a core that no longer exists.
+    case "$core" in
+        xray-latest) msg "${RED}[!] $(tr_msg inst_retired_xl)${NC}" >&2; return 1 ;;
+    esac
+    # C2 (Q8): a retired xray-latest instance must be handled before
+    # deploying a normal Xray instance (config/choice depends on it).
+    if [[ "$core" == 'xray' ]]; then
+        xray_latest_legacy_retire || return 1
+    fi
     local cfg='' exists=0
     cfg=$(users_cfg_of "$core" 2>/dev/null || true)
     print_port_occupancy
@@ -23263,7 +23209,6 @@ users_reg_is_live() {
     local core="$1" tag="$2" cfg=''
     case "$core" in
         xray) cfg=$(users_cfg_of xray 2>/dev/null || true) ;;
-        xray-latest) cfg='/etc/ddr/xray-latest/config.json' ;;
         sing-box) cfg='/etc/sing-box/config.json' ;;
         hy2|hysteria)
             [[ -f '/etc/hysteria/config.yaml' && ! -L '/etc/hysteria/config.yaml' ]] && return 0
@@ -23506,7 +23451,7 @@ _menu_info_collect() {
     local _udir="${ABOX_USERS_DIR:-/etc/ddr/users.d}" _rf='' _us=''
     local -a _rfiles=()
     local _oc
-    for _oc in xray xray-latest sing-box hy2; do
+    for _oc in xray sing-box hy2; do
         for _rf in "$_udir/${_oc}__"*.json; do [[ -f "$_rf" && ! -L "$_rf" ]] && _rfiles+=("$_rf"); done
     done
     if (( ${#_rfiles[@]} > 0 )); then
@@ -23519,10 +23464,9 @@ _menu_info_collect() {
         # per core, inbounds in config order; leftovers by filename.
         local -a _ordered_rf=()
         local _ocore='' _otags='' _ot='' _orf=''
-        for _ocore in xray xray-latest sing-box hy2; do
+        for _ocore in xray sing-box hy2; do
             case "$_ocore" in
                 xray) _otags=$(jq -r '.inbounds[]?.tag' /usr/local/etc/xray/config.json 2>/dev/null) ;;
-                xray-latest) _otags=$(jq -r '.inbounds[]?.tag' /etc/ddr/xray-latest/config.json 2>/dev/null) ;;
                 sing-box) _otags=$(jq -r '.inbounds[]?.tag' /etc/sing-box/config.json 2>/dev/null) ;;
                 hy2) _otags='hy2' ;;
             esac
@@ -23549,9 +23493,8 @@ _menu_info_collect() {
             # decides: a stopped node still lists.
             users_reg_is_live "$_rcore" "$_rtag" 2>/dev/null || continue
             case "$_rcore" in
-                xray|xray-latest)
+                xray)
                     _rcfg='/usr/local/etc/xray/config.json'
-                    [[ "$_rcore" == 'xray-latest' ]] && _rcfg='/etc/ddr/xray-latest/config.json'
                     if [[ -f "$_rcfg" ]]; then
                         _rseg=$(jq -r --arg t "$_rtag" '.inbounds[]? | select(.tag == $t) | select(.port != null) |
                             (if .protocol == "vless" and (.settings.clients[0].flow // "" | startswith("xtls")) then "Vision:\(.port)"
@@ -24162,11 +24105,11 @@ routing_apply_live() {
             rm -f "$tmp"
             local atmp='' applied_bak=''
             if [[ -f "$applied_file" ]]; then
-                applied_bak=$(mktemp) || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
-                cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak" "$applied_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
+                applied_bak=$(mktemp) || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
+                cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak" "$applied_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
             fi
             if ! atmp=$(mktemp); then
-                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
                 rm -f -- "$live_bak" "$applied_bak"
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
@@ -24175,9 +24118,9 @@ routing_apply_live() {
                 :
             else
                 rm -f "$atmp"
-                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
                 if [[ -n "$applied_bak" ]]; then
-                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
                 else
                     rm -f -- "$applied_file"
                 fi
@@ -24194,9 +24137,9 @@ routing_apply_live() {
             if prepare_abox_runtime_permissions xray && restart_service_soft xray; then
                 rm -f -- "$live_bak" "$applied_bak"
             else
-                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
                 if [[ -n "$applied_bak" ]]; then
-                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
                 else
                     rm -f -- "$applied_file"
                 fi
@@ -24258,11 +24201,11 @@ routing_apply_live() {
             rm -f "$tmp"
             local atmp='' applied_bak=''
             if [[ -f "$applied_file" ]]; then
-                applied_bak=$(mktemp) || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
-                cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak" "$applied_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
+                applied_bak=$(mktemp) || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
+                cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak" "$applied_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
             fi
             if ! atmp=$(mktemp); then
-                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
                 rm -f -- "$live_bak" "$applied_bak"
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
@@ -24271,9 +24214,9 @@ routing_apply_live() {
                 :
             else
                 rm -f "$atmp"
-                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
                 if [[ -n "$applied_bak" ]]; then
-                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
                 else
                     rm -f -- "$applied_file"
                 fi
@@ -24290,9 +24233,9 @@ routing_apply_live() {
             if prepare_abox_runtime_permissions sing-box && restart_service_soft sing-box; then
                 rm -f -- "$live_bak" "$applied_bak"
             else
-                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
                 if [[ -n "$applied_bak" ]]; then
-                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }
+                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
                 else
                     rm -f -- "$applied_file"
                 fi
@@ -24965,16 +24908,16 @@ EOF_SVC
         install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_cfg)"; }
         rm -f "$tmp_cfg"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
-        restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_xray_restart)"; }
+        restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_xray_restart)"; }
     else
-        xray_hot_add_inbound "$tmp_json" || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg dp_socks5_add)"; }
+        xray_hot_add_inbound "$tmp_json" || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_socks5_add)"; }
     fi
     rm -f "$tmp_json"
 
     # Firewall: TCP + UDP.
-    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    allowPort "$port" udp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/udp")"; }
-    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
+    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    allowPort "$port" udp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
     # Ensure the service is running (minimal-install path or API-unavailable hosts).
     service_manager start xray 2>/dev/null || true
     # R2C10-02: verify liveness before claiming success. A swallowed start
@@ -24988,7 +24931,7 @@ EOF_SVC
         sleep 0.25; _socks5_live_tries=$((_socks5_live_tries + 1))
     done
     if [[ -z "$_socks5_live_pid" ]]; then
-        restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
+        restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
         die "$(tr_msg dp_xray_restart)"
     fi
     rm -f -- "$cfg_bak"
@@ -25006,8 +24949,370 @@ EOF_SVC
 }
 
 
+# ============ Retired xray-latest legacy handling (C2, 2026-11-09) ============
+# xray-latest is retired: no new instance may be deployed. A host may still
+# carry one installed by an older A-Box. Detection is read-only and never
+# deletes anything; retirement runs only on an explicit decision
+# (interactive confirmation or ABOX_LEGACY_XL_RETIRE=1) and is re-runnable.
+# Detector modes are diagnostic values, never a promise: takeover = the old
+# install already occupies the normal xray slot; coexist = a separate
+# xray-latest service/binary/dir exists; unknown = legacy evidence exists
+# but no state file names a mode; mixed = evidence contradicts the state
+# file (unclassifiable); none = definitely no legacy evidence.
+# Path roots follow the usual env-override conventions so fixtures can
+# redirect them (ABOX_DIR, ABOX_USERS_DIR, ABOX_CORE_OWNERSHIP,
+# XL_LEGACY_BIN / XL_LEGACY_SYSTEMD_DIR / XL_LEGACY_INITD_DIR /
+# XL_LEGACY_CONFD_DIR / XL_LEGACY_SNAPSHOT_DIR); production defaults are
+# the real system paths.
+
+xray_latest_legacy_detect() {
+    # Prints the mode on stdout. Returns 0 = legacy evidence exists,
+    # 1 = definitely none, 2 = detection failed / layout unclassifiable.
+    local _abox_dir="${ABOX_DIR:-/etc/ddr}"
+    local _state="$_abox_dir/.xray-latest-state"
+    local _bin="${XL_LEGACY_BIN:-/usr/local/bin/xray-latest}"
+    local _dir="$_abox_dir/xray-latest"
+    local _cfg="$_dir/config.json"
+    local _sysdir="${XL_LEGACY_SYSTEMD_DIR:-/etc/systemd/system}"
+    local _initd="${XL_LEGACY_INITD_DIR:-/etc/init.d}"
+    local _confd="${XL_LEGACY_CONFD_DIR:-/etc/conf.d}"
+    local _mode='' _have=0 _xl_paths=0 _slot=0 _line _v _seen_mode=0 _seen_ver=0
+    # 1. State file: strict parse, never source. A present-but-malformed
+    # file is unclassifiable (rc 2), never "none".
+    if [[ -e "$_state" || -L "$_state" ]]; then
+        [[ -f "$_state" && ! -L "$_state" ]] || { printf 'mixed\n'; return 2; }
+        while IFS= read -r _line || [[ -n "$_line" ]]; do
+            case "$_line" in
+                ''|'#'*) continue ;;
+                mode=*)
+                    (( _seen_mode == 0 )) || { printf 'mixed\n'; return 2; }
+                    _seen_mode=1; _v="${_line#mode=}"
+                    case "$_v" in takeover|coexist) _mode="$_v" ;; *) printf 'mixed\n'; return 2 ;; esac ;;
+                version=*)
+                    (( _seen_ver == 0 )) || { printf 'mixed\n'; return 2; }
+                    _seen_ver=1; _v="${_line#version=}"
+                    [[ "$_v" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { printf 'mixed\n'; return 2; } ;;
+                *) printf 'mixed\n'; return 2 ;;
+            esac
+        done < "$_state"
+        (( _seen_mode == 1 )) || { printf 'mixed\n'; return 2; }
+        _have=1
+    fi
+    # 2. XL-specific paths (binary / dir / config / units / enable links).
+    if [[ -e "$_bin" || -L "$_bin" ]]; then _have=1; _xl_paths=1; fi
+    if [[ -e "$_dir" || -L "$_dir" ]]; then _have=1; _xl_paths=1; fi
+    if [[ -e "$_cfg" || -L "$_cfg" ]]; then _have=1; _xl_paths=1; fi
+    if [[ -e "$_sysdir/xray-latest.service" || -L "$_sysdir/xray-latest.service" ]]; then _have=1; _xl_paths=1; fi
+    local _w
+    for _w in "$_sysdir"/*.wants/xray-latest.service "$_sysdir/xray-latest.service.d"; do
+        [[ -e "$_w" || -L "$_w" ]] && { _have=1; _xl_paths=1; }
+    done
+    if [[ -e "$_initd/xray-latest" || -L "$_initd/xray-latest" ]]; then _have=1; _xl_paths=1; fi
+    if [[ -e "$_confd/xray-latest" || -L "$_confd/xray-latest" ]]; then _have=1; _xl_paths=1; fi
+    abox_owns_service xray-latest 2>/dev/null && { _have=1; _xl_paths=1; }
+    # 3. Manifest rows, registry files, link indexes, live processes.
+    # NOTE: managed_service_state_value is NOT usable here: systemctl
+    # reports "inactive" even for a unit that does not exist.
+    local _manifest="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}"
+    if [[ -f "$_manifest" && ! -L "$_manifest" ]]; then
+        awk -F'\t' '$2 == "xray-latest" {found=1; exit} END {exit !found}' "$_manifest" 2>/dev/null && _have=1
+    fi
+    local _udir="${ABOX_USERS_DIR:-$_abox_dir/users.d}"
+    local _rf
+    for _rf in "$_udir"/xray-latest__*.json; do
+        [[ -f "$_rf" && ! -L "$_rf" ]] && _have=1
+    done
+    local _lf
+    for _lf in "$_abox_dir/standalone-links.d"/latest-*.link; do
+        [[ -f "$_lf" && ! -L "$_lf" ]] && _have=1
+    done
+    if command -v pgrep >/dev/null 2>&1; then
+        pgrep -f "$_bin" >/dev/null 2>&1 && _have=1
+    fi
+    # 4. Decide.
+    if (( _have == 0 )); then printf 'none\n'; return 1; fi
+    if [[ -n "$_mode" ]]; then
+        case "$_mode" in
+            coexist)
+                if (( _xl_paths == 1 )); then printf 'coexist\n'; return 0; fi
+                printf 'mixed\n'; return 2 ;;
+            takeover)
+                # Clean takeover: normal slot occupied, no XL paths.
+                # Classification only; adoption verifies strictly.
+                local _slot_bin="${XRAY_SLOT_BIN:-/usr/local/bin/xray}"
+                local _slot_cfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}"
+                if [[ -e "$_slot_bin" || -L "$_slot_bin" ]]; then _slot=1; fi
+                if [[ -e "$_slot_cfg" || -L "$_slot_cfg" ]]; then _slot=1; fi
+                abox_owns_service xray 2>/dev/null && _slot=1
+                if (( _slot == 1 && _xl_paths == 0 )); then printf 'takeover\n'; return 0; fi
+                printf 'mixed\n'; return 2 ;;
+        esac
+    fi
+    printf 'unknown\n'; return 0
+}
+
+_xl_legacy_drop_manifest_rows() {
+    # Remove xray-latest rows (field 2) from the ownership manifest.
+    # Records only, never the file itself; best-effort -- the re-detect
+    # after adoption/retirement is the gate that catches leftovers.
+    local _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}"
+    [[ -f "$_mf" && ! -L "$_mf" ]] || return 0
+    local _tmp="$_mf.legacy.tmp"
+    awk -F'\t' '$2 != "xray-latest"' "$_mf" > "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 0; }
+    chmod 600 -- "$_tmp" 2>/dev/null || true
+    chown root:root -- "$_tmp" 2>/dev/null || true
+    mv -f -- "$_tmp" "$_mf" 2>/dev/null || rm -f -- "$_tmp"
+    return 0
+}
+
+_xl_legacy_adopt() {
+    # Adopt a takeover that already occupies the normal xray slot.
+    # Verifies everything BEFORE touching anything; deletes only the
+    # legacy state file, last. A stopped service is never started.
+    local _abox_dir="${ABOX_DIR:-/etc/ddr}"
+    local _state="$_abox_dir/.xray-latest-state"
+    local _bin="${XL_LEGACY_BIN:-/usr/local/bin/xray-latest}"
+    local _dir="$_abox_dir/xray-latest"
+    local _sysdir="${XL_LEGACY_SYSTEMD_DIR:-/etc/systemd/system}"
+    local _initd="${XL_LEGACY_INITD_DIR:-/etc/init.d}"
+    local _confd="${XL_LEGACY_CONFD_DIR:-/etc/conf.d}"
+    local _slot_bin="${XRAY_SLOT_BIN:-/usr/local/bin/xray}"
+    local _slot_cfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}"
+    local _ver='' _unit='' _pid='' _cmd='' _m2='' _r2=0
+    # No XL-specific paths may survive in a clean takeover.
+    if [[ -e "$_bin" || -L "$_bin" || -e "$_dir" || -L "$_dir" || -e "$_sysdir/xray-latest.service" || -L "$_sysdir/xray-latest.service" || -e "$_initd/xray-latest" || -L "$_initd/xray-latest" || -e "$_confd/xray-latest" || -L "$_confd/xray-latest" ]]; then
+        msg "${RED}[!] Takeover adoption refused: xray-latest paths still exist; manual migration required.${NC}" >&2
+        return 1
+    fi
+    # Normal slot: binary + config, root-owned, correct types.
+    [[ -f "$_slot_bin" && ! -L "$_slot_bin" && -x "$_slot_bin" ]] || { msg "${RED}[!] Takeover adoption refused: normal Xray binary is missing or not executable.${NC}" >&2; return 1; }
+    # Root-owned user is the security gate (group is not security-relevant:
+    # a root-owned file is writable only by root regardless of its group).
+    [[ "$(stat -c %u "$_slot_bin" 2>/dev/null || true)" == '0' ]] || { msg "${RED}[!] Takeover adoption refused: normal Xray binary is not root-owned.${NC}" >&2; return 1; }
+    [[ -f "$_slot_cfg" && ! -L "$_slot_cfg" ]] || { msg "${RED}[!] Takeover adoption refused: normal Xray config is missing.${NC}" >&2; return 1; }
+    jq empty "$_slot_cfg" >/dev/null 2>&1 || { msg "${RED}[!] Takeover adoption refused: normal Xray config is not valid JSON.${NC}" >&2; return 1; }
+    # Config test with the normal Xray runtime identity.
+    XRAY_LOCATION_ASSET=/usr/local/share/xray "$_slot_bin" run -test -config "$_slot_cfg" >/dev/null 2>&1 || { msg "${RED}[!] Takeover adoption refused: normal Xray config fails the core self-test.${NC}" >&2; return 1; }
+    # Service: A-Box-owned, ExecStart points at the normal slot.
+    abox_owns_service xray 2>/dev/null || { msg "${RED}[!] Takeover adoption refused: xray is not an A-Box-managed service.${NC}" >&2; return 1; }
+    _unit=$(service_unit_path xray 2>/dev/null || true)
+    [[ -n "$_unit" && -f "$_unit" && ! -L "$_unit" ]] || { msg "${RED}[!] Takeover adoption refused: xray unit file is missing.${NC}" >&2; return 1; }
+    if grep -Fq 'xray-latest' "$_unit" 2>/dev/null; then
+        msg "${RED}[!] Takeover adoption refused: xray unit still references xray-latest.${NC}" >&2; return 1
+    fi
+    grep -Fq "$_slot_bin" "$_unit" 2>/dev/null || { msg "${RED}[!] Takeover adoption refused: xray unit does not reference the normal Xray binary.${NC}" >&2; return 1; }
+    # Live check: if the service runs, it must run the verified binary+config.
+    if is_service_running xray 2>/dev/null; then
+        _pid=$(managed_service_pid xray 2>/dev/null || true)
+        [[ -n "$_pid" && "$_pid" =~ ^[0-9]+$ ]] || { msg "${RED}[!] Takeover adoption refused: xray is running but its PID cannot be determined.${NC}" >&2; return 1; }
+        _cmd=$(tr '\0' ' ' < "/proc/$_pid/cmdline" 2>/dev/null || true)
+        case "$_cmd" in
+            *"$_slot_bin"*"$_slot_cfg"*) : ;;
+            *) msg "${RED}[!] Takeover adoption refused: running xray does not use the verified binary+config.${NC}" >&2; return 1 ;;
+        esac
+    fi
+    # Version for the adoption notice.
+    _ver=$(core_version_from_output "$("$_slot_bin" version 2>/dev/null | head -n 1 || true)" 2>/dev/null || true)
+    [[ -n "$_ver" ]] || _ver='unknown'
+    # Adopt: delete only the legacy state file, last, and drop any
+    # stale xray-latest rows from the ownership manifest (the adopted
+    # instance's rows are field-2 == xray and stay untouched).
+    rm -f -- "$_state" || { msg "${RED}[!] Takeover adoption failed: could not remove the legacy state file.${NC}" >&2; return 1; }
+    _xl_legacy_drop_manifest_rows
+    # Re-detect: must now report none.
+    _m2=$(xray_latest_legacy_detect 2>/dev/null); _r2=$?
+    if (( _r2 != 1 )); then
+        msg "${RED}[!] Takeover adopted, but legacy evidence remains (mode: ${_m2:-unknown}); manual cleanup required.${NC}" >&2
+        return 1
+    fi
+    msg "${GREEN}$(tprintf legacy_xl_adopted "$_ver")${NC}" >&2
+    return 0
+}
+
+_xl_legacy_retire_coexist() {
+    # Retire a separate coexist instance. Explicit authorisation only:
+    # ABOX_LEGACY_XL_RETIRE=1, or an interactive confirmation on a tty.
+    # Non-interactive default is abort. Re-runnable.
+    local _abox_dir="${ABOX_DIR:-/etc/ddr}"
+    local _state="$_abox_dir/.xray-latest-state"
+    local _bin="${XL_LEGACY_BIN:-/usr/local/bin/xray-latest}"
+    local _dir="$_abox_dir/xray-latest"
+    local _cfg="$_dir/config.json"
+    local _sysdir="${XL_LEGACY_SYSTEMD_DIR:-/etc/systemd/system}"
+    local _initd="${XL_LEGACY_INITD_DIR:-/etc/init.d}"
+    local _confd="${XL_LEGACY_CONFD_DIR:-/etc/conf.d}"
+    local _mode='coexist' _snapfile='' _ans=''
+    # 1. Authorisation.
+    if [[ "${ABOX_LEGACY_XL_RETIRE:-0}" != '1' ]]; then
+        [[ -t 0 ]] || { msg "${RED}[!] Retired xray-latest instance found, but this run is not interactive; set ABOX_LEGACY_XL_RETIRE=1 to retire it explicitly.${NC}" >&2; return 1; }
+        printf '%s' "$(tr_msg legacy_xl_retire_prompt)" || return 1
+        IFS= read -r _ans || return 1
+        case "$_ans" in y|Y|yes|YES) : ;; *) msg "${YELLOW}[!] Retire cancelled; xray-latest instance left untouched.${NC}" >&2; return 1 ;; esac
+    fi
+    # 2. Pre-checks (before stopping or deleting anything).
+    if [[ -e "$_dir" || -L "$_dir" ]]; then
+        [[ ! -L "$_dir" ]] || { msg "${RED}[!] Refusing to retire: /etc/ddr/xray-latest is a symlink.${NC}" >&2; return 1; }
+        path_tree_has_nested_mountpoint "$_dir" && { msg "${RED}[!] Refusing to retire: mountpoint under the xray-latest directory.${NC}" >&2; return 1; }
+        path_parent_chain_safe "$_dir" || { msg "${RED}[!] Refusing to retire: unsafe parent path for the xray-latest directory.${NC}" >&2; return 1; }
+    fi
+    if [[ -e "$_bin" || -L "$_bin" ]]; then
+        [[ ! -L "$_bin" ]] || { msg "${RED}[!] Refusing to retire: xray-latest binary is a symlink.${NC}" >&2; return 1; }
+        path_tree_has_mountpoint "$_bin" && { msg "${RED}[!] Refusing to retire: xray-latest binary is a mountpoint.${NC}" >&2; return 1; }
+        path_parent_chain_safe "$_bin" || { msg "${RED}[!] Refusing to retire: unsafe parent path for the xray-latest binary.${NC}" >&2; return 1; }
+    fi
+    # 3. Snapshot (recoverable copy) before any change.
+    local _snapdir="${XL_LEGACY_SNAPSHOT_DIR:-$_abox_dir/backups}"
+    mkdir -p "$_snapdir" 2>/dev/null || { msg "${RED}[!] Could not create the retire snapshot directory; refusing to retire.${NC}" >&2; return 1; }
+    chmod 700 "$_snapdir" 2>/dev/null || true
+    _snapfile="$_snapdir/xray-latest-retired-$(date +%Y%m%d-%H%M%S).tar.gz"
+    local -a _snap_paths=()
+    [[ -e "$_bin" || -L "$_bin" ]] && _snap_paths+=("$_bin")
+    [[ -e "$_dir" || -L "$_dir" ]] && _snap_paths+=("$_dir")
+    [[ -e "$_state" || -L "$_state" ]] && _snap_paths+=("$_state")
+    [[ -e "$_sysdir/xray-latest.service" || -L "$_sysdir/xray-latest.service" ]] && _snap_paths+=("$_sysdir/xray-latest.service")
+    [[ -e "$_initd/xray-latest" || -L "$_initd/xray-latest" ]] && _snap_paths+=("$_initd/xray-latest")
+    [[ -e "$_confd/xray-latest" || -L "$_confd/xray-latest" ]] && _snap_paths+=("$_confd/xray-latest")
+    local _sp
+    for _sp in "$_abox_dir/users.d"/xray-latest__*.json "$_abox_dir/standalone-links.d"/latest-*.link; do
+        [[ -f "$_sp" && ! -L "$_sp" ]] && _snap_paths+=("$_sp")
+    done
+    if (( ${#_snap_paths[@]} > 0 )); then
+        tar -czf "$_snapfile" -- "${_snap_paths[@]}" 2>/dev/null || { msg "${RED}[!] Could not snapshot the xray-latest instance; refusing to retire.${NC}" >&2; return 1; }
+        chmod 600 "$_snapfile" 2>/dev/null || true
+    fi
+    # 4. Stop the service and verify it stopped; on failure delete nothing.
+    stop_abox_service xray-latest 2>/dev/null || true
+    if is_service_running xray-latest 2>/dev/null; then
+        msg "${RED}[!] xray-latest is still running; refusing to delete its files.${NC}" >&2
+        return 1
+    fi
+    if command -v pgrep >/dev/null 2>&1 && pgrep -f "$_bin" >/dev/null 2>&1; then
+        msg "${RED}[!] A process is still running the xray-latest binary; refusing to delete its files.${NC}" >&2
+        return 1
+    fi
+    # 5. Delete the core family (manifest-verified first; force path for
+    # manifest-less old installs, after the service is verified stopped).
+    # The owned removal may fail when no manifest exists; the force pass
+    # below is what matters, so its failure is not fatal here.
+    remove_owned_core_family xray-latest 0 2>/dev/null || true
+    # 6. Verify the files are actually gone; if the manifest path left
+    # unrecorded files behind (or failed outright), take the force path.
+    if [[ -e "$_bin" || -L "$_bin" || -e "$_dir" || -L "$_dir" || -e "$_cfg" || -L "$_cfg" || -e "$_sysdir/xray-latest.service" || -L "$_sysdir/xray-latest.service" || -e "$_initd/xray-latest" || -L "$_initd/xray-latest" || -e "$_confd/xray-latest" || -L "$_confd/xray-latest" ]]; then
+        remove_core_family_force xray-latest 2>/dev/null || { msg "${RED}[!] Could not remove the xray-latest core family; state file kept, re-run after fixing the cause.${NC}" >&2; return 1; }
+    fi
+    if [[ -e "$_bin" || -L "$_bin" || -e "$_dir" || -L "$_dir" || -e "$_cfg" || -L "$_cfg" || -e "$_sysdir/xray-latest.service" || -L "$_sysdir/xray-latest.service" || -e "$_initd/xray-latest" || -L "$_initd/xray-latest" || -e "$_confd/xray-latest" || -L "$_confd/xray-latest" ]]; then
+        msg "${RED}[!] xray-latest files remain after removal; state file kept.${NC}" >&2
+        return 1
+    fi
+    # 6b. Manifest: drop stale xray-latest rows (records only). The
+    # manifest-verified path already removes its own rows; the force
+    # path does not, so this covers manifest-less old installs.
+    _xl_legacy_drop_manifest_rows
+    # 7. Shared indexes: remove records only, per item, never whole files.
+    # Enable links (symlinks at the XL unit) and drop-ins go here too.
+    local _lf2 _wl
+    for _lf2 in "$_abox_dir/standalone-links.d"/latest-*.link; do
+        [[ -f "$_lf2" && ! -L "$_lf2" ]] || continue
+        rm -f -- "$_lf2" || { msg "${RED}[!] Could not remove link index $_lf2; state file kept.${NC}" >&2; return 1; }
+    done
+    for _wl in "$_sysdir"/*.wants/xray-latest.service; do
+        [[ -L "$_wl" ]] || continue
+        case "$(readlink -- "$_wl" 2>/dev/null || true)" in
+            *xray-latest*) rm -f -- "$_wl" || { msg "${RED}[!] Could not remove enable link $_wl; state file kept.${NC}" >&2; return 1; } ;;
+        esac
+    done
+    if [[ -d "$_sysdir/xray-latest.service.d" && ! -L "$_sysdir/xray-latest.service.d" ]]; then
+        path_tree_has_nested_mountpoint "$_sysdir/xray-latest.service.d" || rm -rf -- "$_sysdir/xray-latest.service.d" || { msg "${RED}[!] Could not remove unit drop-ins; state file kept.${NC}" >&2; return 1; }
+    fi
+    local _rg2
+    for _rg2 in "$_abox_dir/users.d"/xray-latest__*.json; do
+        [[ -f "$_rg2" && ! -L "$_rg2" ]] || continue
+        rm -f -- "$_rg2" || { msg "${RED}[!] Could not remove registry $_rg2; state file kept.${NC}" >&2; return 1; }
+    done
+    if systemd_available; then systemctl daemon-reload >/dev/null 2>&1 || true; fi
+    # 8. State file LAST.
+    rm -f -- "$_state" || { msg "${RED}[!] Could not remove the legacy state file.${NC}" >&2; return 1; }
+    # 9. Re-detect: must now report none.
+    local _m2='' _r2=0
+    _m2=$(xray_latest_legacy_detect 2>/dev/null); _r2=$?
+    if (( _r2 != 1 )); then
+        msg "${RED}[!] xray-latest files removed, but legacy evidence remains (mode: ${_m2:-unknown}); manual cleanup required.${NC}" >&2
+        return 1
+    fi
+    msg "${GREEN}$(tprintf legacy_xl_retired "$_mode")${NC}" >&2
+    [[ -n "${_snapfile:-}" && -f "$_snapfile" ]] && msg "${CYAN}[*] Retired instance snapshot: $_snapfile${NC}" >&2
+    return 0
+}
+
+xray_latest_legacy_retire() {
+    # Detect, then adopt (takeover) or retire (coexist) the legacy
+    # instance. Returns 0 when there is nothing to do or the legacy
+    # instance was handled; 1 when handling was aborted or failed.
+    # Never deletes anything without an explicit decision, and never
+    # prints a success message on a failed run.
+    local _mode='' _rc=0
+    _mode=$(xray_latest_legacy_detect 2>/dev/null); _rc=$?
+    if (( _rc == 1 )); then return 0; fi
+    if (( _rc == 2 )); then
+        msg "${RED}[!] $(tprintf legacy_xl_detected "${_mode:-mixed}")${NC}" >&2
+        msg "${YELLOW}[!] Legacy xray-latest layout is unclassifiable; resolve it manually before continuing (verify the instance is really gone, then remove ${ABOX_DIR:-/etc/ddr}/.xray-latest-state if it is stale).${NC}" >&2
+        return 1
+    fi
+    msg "${YELLOW}[!] $(tprintf legacy_xl_detected "$_mode")${NC}" >&2
+    case "$_mode" in
+        takeover) _xl_legacy_adopt ;;
+        coexist) _xl_legacy_retire_coexist ;;
+        *) msg "${RED}[!] Legacy xray-latest mode '$_mode' needs manual handling; refusing to proceed.${NC}" >&2; return 1 ;;
+    esac
+}
+
+restore_filter_legacy_xray_latest() {
+    # $1 = staged backup root ($work/root), $2 = work dir ($work).
+    # Strip retired xray-latest content from the STAGED backup only;
+    # live files are never touched. A takeover backup's normal Xray
+    # paths stay in the xray set. Returns 0 on success, 1 on failure.
+    local _root="${1:-}" _work="${2:-}"
+    [[ -n "$_root" && -n "$_work" && -d "$_root" && -d "$_work/meta" ]] || return 1
+    local _p=''
+    for _p in \
+        "$_root/usr/local/bin/xray-latest" \
+        "$_root/etc/ddr/xray-latest" \
+        "$_root/etc/ddr/.xray-latest-state" \
+        "$_root/etc/systemd/system/xray-latest.service" \
+        "$_root/etc/init.d/xray-latest" \
+        "$_root/etc/conf.d/xray-latest"; do
+        if [[ -L "$_p" ]]; then rm -f -- "$_p" || return 1;
+        elif [[ -d "$_p" ]]; then rm -rf -- "$_p" || return 1;
+        elif [[ -e "$_p" ]]; then rm -f -- "$_p" || return 1; fi
+    done
+    local _g
+    for _g in "$_root/etc/ddr/users.d"/xray-latest__*.json "$_root/etc/ddr/standalone-links.d"/latest-*.link; do
+        [[ -e "$_g" || -L "$_g" ]] || continue
+        rm -f -- "$_g" || return 1
+    done
+    # services.state: drop xray-latest lines (3-field format).
+    local _ss="$_work/meta/services.state"
+    if [[ -f "$_ss" && ! -L "$_ss" ]]; then
+        local _tmp="$_ss.filter.tmp"
+        awk -F'\t' '$1 != "xray-latest"' "$_ss" > "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
+        mv -f -- "$_tmp" "$_ss" || { rm -f -- "$_tmp"; return 1; }
+    fi
+    # Ownership manifest: drop field-2 == xray-latest rows.
+    local _mf="$_root/etc/ddr/.managed-core-files.tsv"
+    if [[ -f "$_mf" && ! -L "$_mf" ]]; then
+        local _tmp2="$_mf.filter.tmp"
+        awk -F'\t' '$2 != "xray-latest"' "$_mf" > "$_tmp2" 2>/dev/null || { rm -f -- "$_tmp2"; return 1; }
+        mv -f -- "$_tmp2" "$_mf" || { rm -f -- "$_tmp2"; return 1; }
+    fi
+    return 0
+}
+
+
 deploy_xray() {
     local MODE_IN=$1 KEYPAIR
+    # C2 (Q8): handle any retired xray-latest instance before any
+    # backup or modification. Aborts the deploy until it is handled.
+    xray_latest_legacy_retire || return 1
     clear; msg "${BOLD}${GREEN}部署 Xray-core [$MODE_IN]${NC}"
     init_system_environment
     load_optional_abox_env_or_die
@@ -25128,6 +25433,12 @@ EOF_SVC
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
     if [[ "$MODE_IN" == *ALL* ]]; then prune_owned_core_families_except xray hysteria; else prune_owned_core_families_except xray; fi
     commit_deployment_transaction
+    # N1-HOOK: deploy-time compatibility prompt goes here (N1's job):
+    # after successful commit, config and health check, at the unified
+    # success exit. Must use the finally installed Xray version, the
+    # real protocol/transport and whether Reality is actually enabled
+    # in the config -- not MODE alone. Cancel/failure paths must not
+    # print an "install complete" prompt.
     view_config deploy
 }
 
@@ -25637,7 +25948,6 @@ PY_VNSTAT_TOTAL_MONITOR
     [[ "$ol_month" == "$(date +%Y-%m)" ]] || return 1
     case "$mode" in rx) awk -F';' '{print $9}' <<< "$line";; tx) awk -F';' '{print $10}' <<< "$line";; total) awk -F';' '{print $11}' <<< "$line";; *) return 1;; esac
 }
-is_systemd() { [[ "$INIT_SYS_EXPECTED" == systemd ]]; }
 managed_unit_path() {
     case "$1" in
         xray|sing-box|hysteria)
@@ -27244,7 +27554,7 @@ do_cleanup() {
         ABOX_DEPLOY_TX_EPHEMERAL_DIR="$uninstall_tx_dir"
         ABOX_DIE_HOOK='cleanup_ephemeral_deployment_transaction_dir'
     fi
-    begin_deployment_transaction 'full A-Box cleanup' xray sing-box hysteria xray-latest || die 'Cleanup aborted: could not open the backup transaction.'
+    begin_deployment_transaction 'full A-Box cleanup' xray sing-box hysteria || die 'Cleanup aborted: could not open the backup transaction.'
     if [[ -n "$uninstall_tx_dir" ]]; then
         ensure_backup_auth_key || die "$(tr_msg cu_tx_key_new)"
         IFS= read -r uninstall_tx_value < "$ABOX_BACKUP_KEY" || die "$(tr_msg cu_tx_key_read)"
@@ -27449,6 +27759,32 @@ protocol_label() { # $1 = config tag, $2 = protocol/type (fallback display)
 
 # One line per deployed inbound: core<TAB>tag<TAB>protocol<TAB>port
 # (the internal "api" inbound is infrastructure, never listed).
+# Moved out of the deleted xray-latest block (2026-11-09): reads the
+# Hysteria listen port for protocol_inventory.
+xl_hy2_port() {
+    local cfg='/etc/hysteria/config.yaml' line val q
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 0
+    line=$(grep -E '^[[:space:]]*listen:' "$cfg" 2>/dev/null | head -1) || return 0
+    [[ -n "$line" ]] || return 0
+    val="${line#*:}"
+    val="${val#"${val%%[![:space:]]*}"}"
+    val="${val%"${val##*[![:space:]]}"}"
+    [[ -n "$val" ]] || return 0
+    q="${val:0:1}"
+    if [[ "$q" == '"' || "$q" == "'" ]]; then
+        val="${val:1}"
+        val="${val%%"$q"*}"
+    else
+        val="${val%%#*}"
+        val="${val%"${val##*[![:space:]]}"}"
+    fi
+    [[ -n "$val" ]] || return 0
+    if [[ "$val" == *:* ]]; then val="${val##*:}"; fi
+    val="${val//[[:space:]]/}"
+    [[ "$val" =~ ^[0-9]+$ ]] || return 0
+    printf '%s' "$val"
+}
+
 protocol_inventory() {
     local cfg='' failed=0
     cfg="$XRAY_SLOT_CFG"
@@ -27458,9 +27794,6 @@ protocol_inventory() {
     cfg='/etc/sing-box/config.json'
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
         jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "sing-box\t\(.tag)\t\(.type // "")\t\(.listen_port // "")"' || { echo "A-Box: protocol_inventory: cannot parse $cfg" >&2; failed=1; }
-    fi
-    if [[ "$(_xl_state_get mode)" == 'coexist' && -f "$XRAY_LATEST_CFG" && ! -L "$XRAY_LATEST_CFG" ]]; then
-        jsonc_strip_comments "$XRAY_LATEST_CFG" 2>/dev/null | jq -r '.inbounds[]? | select(.tag != null and .tag != "" and .tag != "api") | "xray-latest\t\(.tag)\t\(.protocol // "")\t\(.port // "")"' || { echo "A-Box: protocol_inventory: cannot parse $XRAY_LATEST_CFG" >&2; failed=1; }
     fi
     if [[ -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
         printf 'hy2\thy2-official\thysteria2\t%s\n' "$(xl_hy2_port)"
@@ -27472,7 +27805,6 @@ _protocol_cfg_of() { # $1 = core -> cfg|bin|svc
     case "$1" in
         xray) printf '%s|%s|%s' "$XRAY_SLOT_CFG" '/usr/local/bin/xray' 'xray' ;;
         sing-box) printf '%s|%s|%s' '/etc/sing-box/config.json' '/usr/local/bin/sing-box' 'sing-box' ;;
-        xray-latest) printf '%s|%s|%s' "$XRAY_LATEST_CFG" "$XRAY_LATEST_BIN" 'xray-latest' ;;
         *) return 1 ;;
     esac
 }
@@ -27544,7 +27876,6 @@ _remove_inbounds_from_config() {
     case "$core" in
         xray) prepare_abox_runtime_permissions xray 2>/dev/null || true ;;
         sing-box) prepare_abox_runtime_read_file "$cfg" sing-box 2>/dev/null || true ;;
-        xray-latest) prepare_abox_runtime_read_file "$cfg" xray 2>/dev/null || true ;;
     esac
     if ! restart_service_soft "$svc"; then
         local restore_ok=0
@@ -27552,7 +27883,6 @@ _remove_inbounds_from_config() {
         case "$core" in
             xray) prepare_abox_runtime_permissions xray 2>/dev/null || true ;;
             sing-box) prepare_abox_runtime_read_file "$cfg" sing-box 2>/dev/null || true ;;
-            xray-latest) prepare_abox_runtime_read_file "$cfg" xray 2>/dev/null || true ;;
         esac
         restart_service_soft "$svc" || true
         if [[ "$restore_ok" == 1 ]]; then
@@ -27609,7 +27939,7 @@ sync_env_ports_after_removal() {
     local -a live_ports=()
     local -a _val_parts=()
     [[ -f "$envf" && ! -L "$envf" ]] || return 0
-    for core in xray sing-box xray-latest; do
+    for core in xray sing-box; do
         info=$(_protocol_cfg_of "$core" 2>/dev/null) || continue
         IFS='|' read -r cfg _ _ <<< "$info"
         [[ -f "$cfg" && ! -L "$cfg" ]] || continue
@@ -27842,12 +28172,12 @@ remove_single_protocol_menu() {
     # arithmetic (2^64+1 becomes 1) and would select the first row.
     # 10# stays for the octal rule (08 errors, 010 selects index 7).
     if ! valid_decimal_upto "$choice" "${#rows[@]}"; then
-        msg "${RED}$(tr_msg xl_invalid)${NC}"
+        msg "${RED}$(tr_msg invalid_input)${NC}"
         return 0
     fi
     choice=$((10#$choice))
     if (( choice < 1 )); then
-        msg "${RED}$(tr_msg xl_invalid)${NC}"
+        msg "${RED}$(tr_msg invalid_input)${NC}"
         return 0
     fi
     row="${rows[$((choice - 1))]}"
@@ -27880,7 +28210,7 @@ remove_single_protocol_menu() {
         fi
     fi
     read -r -p "$(tr_msg cl_confirm_one) ${label} [Y/N]: " answer || return 0
-    is_yes "$answer" || { msg "${GREEN}$(tr_msg xl_remove_cancelled)${NC}"; return 0; }
+    is_yes "$answer" || { msg "${GREEN}$(tr_msg remove_cancelled)${NC}"; return 0; }
     if [[ "$core" == 'hy2' ]]; then
         if ! _remove_hy2_official; then
             msg "${RED}$(tr_msg cl_fail)${NC}"
@@ -27905,9 +28235,8 @@ clear_all_protocols() {
     local answer='' core='' info='' cfg='' wipe_ok=1
     local -a all_tags=()
     read -r -p "$(tr_msg cl_confirm_all) [Y/N]: " answer || return 0
-    is_yes "$answer" || { msg "${GREEN}$(tr_msg xl_remove_cancelled)${NC}"; return 0; }
-    for core in xray sing-box xray-latest; do
-        [[ "$core" == 'xray-latest' && -z "$(_xl_state_get mode)" ]] && continue
+    is_yes "$answer" || { msg "${GREEN}$(tr_msg remove_cancelled)${NC}"; return 0; }
+    for core in xray sing-box; do
         info=$(_protocol_cfg_of "$core") || continue
         IFS='|' read -r cfg _ _ <<< "$info"
         if [[ -L "$cfg" ]]; then
@@ -27965,14 +28294,14 @@ cleanup_protocols_menu() {
         msg "${CYAN}1.${NC}  $(tr_msg cl_m_single)"
         msg "${CYAN}2.${NC}  $(tr_msg cl_m_all)"
         msg "${CYAN}3.${NC}  $(tr_msg cl_m_reset)"
-        msg "${CYAN}0.${NC}  $(tr_msg xl_back_main)"
+        msg "${CYAN}0.${NC}  $(tr_msg back_main)"
         read -r -p "$(tr_msg cl_select)" c || return 0
         case "$c" in
             1) remove_single_protocol_menu; pause_return ;;
             2) clear_all_protocols; pause_return ;;
             3) check_virgin_state ;;
             0) return 0 ;;
-            *) msg "${RED}$(tr_msg xl_invalid)${NC}" ;;
+            *) msg "${RED}$(tr_msg invalid_input)${NC}" ;;
         esac
     done
 }
@@ -28306,26 +28635,18 @@ confirm_soft() {
     is_yes "$answer"
 }
 
-confirm_hard_xray_latest_uninstall() {
-    # Destructive-uninstall gate for xray-latest: exact-phrase confirmation
-    # read from /dev/tty. Never honours fast mode or any auto-yes switch;
-    # no TTY, EOF or a mismatched phrase cancels the removal.
-    local answer=''
-    read -r -p "$(tr_msg xl_confirm_hard)" answer </dev/tty || [[ -n "$answer" ]] || return 1
-    [[ "$answer" == 'UNINSTALL xray-latest' ]]
-}
 
 show_core_pin_docs() {
     clear
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}核心版本选择与容灾说明 / Core release policy${NC}"
     msg "${CYAN}======================================================================${NC}"
-    # F-10 fix: do not imply routine upgrades always use compat pins.
-    # Xray defaults to pinned; sing-box/Hysteria default to auto-stable.
-    msg "Update policy per core: Xray ${YELLOW}pinned${NC} (${ABOX_XRAY_DEFAULT_VERSION}); sing-box ${YELLOW}auto-stable${NC} (compat pin ${ABOX_SINGBOX_DEFAULT_VERSION}); Hysteria ${YELLOW}auto-stable${NC} (compat pin ${ABOX_HYSTERIA_DEFAULT_VERSION})."
-    msg "Auto-stable follows the latest official stable tag after a ${YELLOW}${ABOX_STABLE_COOLDOWN_DAYS:-7}-day${NC} cooling period (draft/prerelease excluded); config, client compatibility, and post-upgrade health gates still apply."
-    msg "Fixed compatibility recovery assets remain in Release: ${YELLOW}${ABOX_CORE_MIRROR_RELEASE}${NC}. Latest-stable attempts try an exact-tag versioned mirror first, then these fixed pins."
-    msg "CORE-VERSIONS is accepted only when its digest matches SHA256SUMS; older versioned mirror assets are retained for rollback."
+    # C2 (latest-first): all three cores default to auto-stable; the
+    # fallback constants are the explicit pinned-policy targets only.
+    msg "Update policy per core: Xray ${YELLOW}auto-stable${NC}; sing-box ${YELLOW}auto-stable${NC}; Hysteria ${YELLOW}auto-stable${NC}. Fallback versions (explicit pinned policy only): Xray ${ABOX_XRAY_DEFAULT_VERSION}, sing-box ${ABOX_SINGBOX_DEFAULT_VERSION}, Hysteria ${ABOX_HYSTERIA_DEFAULT_VERSION}."
+    msg "Auto-stable follows the latest official stable tag after a cooling period (7 days by default, configurable via ABOX_STABLE_COOLDOWN_DAYS; draft/prerelease excluded); config, client compatibility, and post-upgrade health gates still apply."
+    msg "Disaster recovery: an upstream failure first tries the exact-tag versioned mirror, then the current verified mirror version from ${YELLOW}${ABOX_CORE_MIRROR_RELEASE}${NC}; explicit/pinned targets never switch versions."
+    msg "CORE-VERSIONS is accepted only when its digest matches SHA256SUMS; superseded versioned assets are pruned after the replacement assets and metadata are verified (no multi-version rollback)."
     msg "Explicit version overrides: ABOX_XRAY_VERSION / ABOX_SINGBOX_VERSION / ABOX_HYSTERIA_APP_VERSION; failed explicit pins do not silently switch versions."
     msg "Every candidate must pass tag/URL, SHA-256, archive structure and actual binary-version checks."
     msg "Mode: ${YELLOW}$(read_fast_mode_label)${NC} (ABOX_FAST=1 or ${FAST_MODE_FILE})"
@@ -28333,7 +28654,7 @@ show_core_pin_docs() {
 }
 
 probe_core_sources_banner() {
-    local pref='compatibility-pin-first' api_code mirror_code base
+    local pref='latest-stable-first' api_code mirror_code base
     [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]] && pref='latest-official-stable-first'
     base="${ABOX_CORE_MIRROR_BASE:-$ABOX_CORE_MIRROR_BASE_DEFAULT}"
     # SYD-B E13: the release-API probe was single-shot, so one
@@ -28350,7 +28671,7 @@ probe_core_sources_banner() {
     mirror_code=$(curl -sSL -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "${base%/}/SHA256SUMS" 2>/dev/null || printf '000')
     case "$api_code" in 200) api_code='available (HTTP 200)' ;; *) api_code="unavailable (HTTP ${api_code:-000})" ;; esac
     case "$mirror_code" in 200) mirror_code='available (HTTP 200)' ;; *) mirror_code="unavailable (HTTP ${mirror_code:-000})" ;; esac
-    msg "${CYAN}[download sources] order=${pref} → fixed recovery mirror; release API: ${api_code}; recovery SHA256SUMS: ${mirror_code}; custom base=${ABOX_CORE_MIRROR_BASE:-<unset>}${NC}"
+    msg "${CYAN}[download sources] order=${pref} → current mirror recovery; release API: ${api_code}; recovery SHA256SUMS: ${mirror_code}; custom base=${ABOX_CORE_MIRROR_BASE:-<unset>}${NC}"
 }
 
 # Pinned-utility mirror fetch (cloudflared / wgcf). The caller's in-script
@@ -28798,15 +29119,6 @@ users_normalize_all_default_names() {
 users_cfg_of() {
     case "$1" in
         xray) printf '%s' "${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" ;;
-        xray-latest)
-            case "$(_xl_state_get mode 2>/dev/null)" in
-                takeover) printf '%s' "${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" ;;
-                coexist) printf '%s' "${XRAY_LATEST_CFG:-/etc/ddr/xray-latest/config.json}" ;;
-                # Unknown/missing mode: refuse. Falling back to one slot
-                # while another function falls back to the other splits
-                # config/binary/API away from the service.
-                *) return 1 ;;
-            esac ;;
         sing-box) printf '%s' '/etc/sing-box/config.json' ;;
         hy2) printf '%s' '/etc/hysteria/config.yaml' ;;
         *) return 1 ;;
@@ -28816,12 +29128,6 @@ users_cfg_of() {
 users_svc_of() {
     case "$1" in
         xray) printf '%s' 'xray' ;;
-        xray-latest)
-            case "$(_xl_state_get mode 2>/dev/null)" in
-                coexist) printf '%s' 'xray-latest' ;;
-                takeover) printf '%s' 'xray' ;;
-                *) return 1 ;;
-            esac ;;
         sing-box) printf '%s' 'sing-box' ;;
         hy2) printf '%s' 'hysteria' ;;
         *) return 1 ;;
@@ -28831,12 +29137,6 @@ users_svc_of() {
 users_bin_of() {
     case "$1" in
         xray) printf '%s' "${XRAY_SLOT_BIN:-/usr/local/bin/xray}" ;;
-        xray-latest)
-            case "$(_xl_state_get mode 2>/dev/null)" in
-                takeover) printf '%s' "${XRAY_SLOT_BIN:-/usr/local/bin/xray}" ;;
-                coexist) printf '%s' "${XRAY_LATEST_BIN:-/usr/local/bin/xray-latest}" ;;
-                *) return 1 ;;
-            esac ;;
         sing-box) printf '%s' '/usr/local/bin/sing-box' ;;
         hy2) printf '%s' '/usr/local/bin/hysteria' ;;
         *) return 1 ;;
@@ -28846,12 +29146,9 @@ users_bin_of() {
 users_api_port_of() {
     case "$1" in
         xray) printf '%s' '10085' ;;
-        xray-latest)
-            case "$(_xl_state_get mode 2>/dev/null)" in
-                takeover) printf '%s' '10085' ;;
-                coexist) printf '%s' '10086' ;;
-                *) return 1 ;;
-            esac ;;
+        # xray-latest is retired: never fall through to the default
+        # 10085 arm, which would point callers at the normal Xray API.
+        xray-latest) return 1 ;;
         *) printf '%s' '10085' ;;
     esac
 }
@@ -28875,7 +29172,7 @@ users_valid_name() { [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,23}$ ]]; }
 #   the write fails closed — the existing file is never overwritten.
 users_reg_write() {
     local core="$1" tag="$2" content="$3" dest='' ec='' et='' home=''
-    case "$core" in xray|xray-latest|sing-box|hy2) ;; *) return 1 ;; esac
+    case "$core" in xray|sing-box|hy2) ;; *) return 1 ;; esac
     dest=$(users_reg_file "$core" "$tag") || return 1
     if [[ -L "$dest" ]]; then
         msg "${RED}[!] 注册表拒绝写入：$dest 是符号链接。${NC}" >&2
@@ -28938,7 +29235,7 @@ users_commit_cfg() {
     bin=$(users_bin_of "$core") || return 1
     svc=$(users_svc_of "$core") || return 1
     case "$core" in
-        xray|xray-latest)
+        xray)
             [[ -x "$bin" ]] || return 1
             XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$newf" >/dev/null 2>&1 || return 1 ;;
         sing-box)
@@ -28949,7 +29246,6 @@ users_commit_cfg() {
     install_file_atomically "$newf" "$cfg" 600 || return 1
     case "$core" in
         xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || true ;;
-        xray-latest) prepare_abox_runtime_read_file "$cfg" xray >/dev/null 2>&1 || true ;;
         sing-box) prepare_abox_runtime_permissions sing-box >/dev/null 2>&1 || true ;;
         hy2) prepare_abox_runtime_permissions hysteria >/dev/null 2>&1 || true ;;
     esac
@@ -28958,7 +29254,6 @@ users_commit_cfg() {
             if install_file_atomically "$bak" "$cfg" 600 >/dev/null 2>&1 || cp -f -- "$bak" "$cfg"; then
                 case "$core" in
                     xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || true ;;
-                    xray-latest) prepare_abox_runtime_read_file "$cfg" xray >/dev/null 2>&1 || true ;;
                     sing-box) prepare_abox_runtime_permissions sing-box >/dev/null 2>&1 || true ;;
                     hy2) prepare_abox_runtime_permissions hysteria >/dev/null 2>&1 || true ;;
                 esac
@@ -29084,7 +29379,7 @@ users_adopt() {
     cfg=$(users_cfg_of "$core") || return 1
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     case "$core" in
-        xray|xray-latest)
+        xray)
             proto=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .protocol // ""' "$cfg" 2>/dev/null | head -1)
             [[ -n "$proto" ]] || return 1
             raw=$(jq -c --arg t "$tag" '
@@ -29287,7 +29582,7 @@ users_sync() {
     encount=$(printf '%s' "$enabled" | jq 'length' 2>/dev/null || echo 0)
     if [[ "$proto" == 'shadowsocks' && -z "$eff_ss" ]] && (( encount > 1 )); then
         case "$core" in
-            xray|xray-latest) eff_ss=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.password // ""' "$cfg" 2>/dev/null | head -1) ;;
+            xray) eff_ss=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.password // ""' "$cfg" 2>/dev/null | head -1) ;;
             sing-box) eff_ss=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .password // ""' "$cfg" 2>/dev/null | head -1) ;;
             hy2) : ;;
         esac
@@ -29309,7 +29604,7 @@ users_sync() {
     # rebuild, so no routing policy is lost across a disable cycle.
     local sb_snap='null' sb_snap_obj='' sb_will_delete=0 sb_will_rebuild=0 sb_snap_eligible=0
     if [[ "$proto" == 'shadowsocks' ]]; then
-        case "$core" in xray|xray-latest|sing-box) sb_snap_eligible=1 ;; esac
+        case "$core" in xray|sing-box) sb_snap_eligible=1 ;; esac
     elif [[ "$core" == 'sing-box' ]] && [[ "$proto" == 'mixed' || "$proto" == 'socks' ]]; then
         sb_snap_eligible=1
     fi
@@ -29340,7 +29635,7 @@ users_sync() {
         regj_pre=$(jq -c --slurpfile ib <(printf '%s' "$sb_snap_obj") '.inbound_snapshot = $ib[0]' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj_pre" || { msg "users_sync stage SYNC-14: deletion snapshot persist failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
     fi
     case "$core" in
-        xray|xray-latest)
+        xray)
             xray_ensure_stats "$cfg" "$(users_api_port_of "$core")" >/dev/null 2>&1 || true
             if ! jq --arg t "$tag" --arg proto "$proto" --slurpfile users <(printf '%s' "$enabled") --rawfile ss <(printf '%s' "$eff_ss") --slurpfile snap <(printf '%s' "$sb_snap") '
                 (if $proto == "shadowsocks" and ($users[0] | length) > 0 and $snap[0] != null
@@ -30209,7 +30504,6 @@ users_hot_remove() {
     rm -f -- "$tmp"; rm -rf "$tmpd"
     case "$core" in
         xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || true ;;
-        xray-latest) prepare_abox_runtime_read_file "$cfg" xray >/dev/null 2>&1 || true ;;
     esac
     "$bin" api rmu --server "127.0.0.1:$(users_api_port_of "$core")" -tag "$tag" "$email" >/dev/null 2>&1 || return 1
     # 2mv residual: rmu removes the user from the live daemon, but a
@@ -30219,8 +30513,8 @@ users_hot_remove() {
     # whole inbound from the live daemon when the file no longer has
     # it. Best-effort: the sync restart is the backstop, so an rmi
     # failure never changes this function's return. Per-core API port
-    # (not xray_api_remove_inbound's hardcoded 10085): xray-latest
-    # in coexist mode listens on 10086. jq -e rc 1 (jq <= 1.6) or 4
+    # (not xray_api_remove_inbound's hardcoded 10085): the normal Xray
+    # slot listens on 10085. jq -e rc 1 (jq <= 1.6) or 4
     # (jq >= 1.7) means "no output", i.e. the tag is absent (same rc
     # semantics as 2gq); any other non-zero rc is a read error, not a
     # deletion.
@@ -30371,7 +30665,6 @@ _nsni_probe() {
     local core="$1" tag="$2" cfg='' j=''
     case "$core" in
         xray) cfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}" ;;
-        xray-latest) cfg='/etc/ddr/xray-latest/config.json' ;;
         sing-box) cfg='/etc/sing-box/config.json' ;;
         *) return 0 ;;
     esac
@@ -30473,7 +30766,6 @@ _nsni_handshake_check() {
     local lf='' sport='' cc='' tmpd='' pid='' code='' i=0 up=0 _try=0 _envf='' pbk_src='' logf='' cerr='' cerr_curl='' curl_rc=0 ready=0 _priv=''
     case "$core" in
         xray) bin='/usr/local/bin/xray' ;;
-        xray-latest) bin=$(users_bin_of xray-latest 2>/dev/null || echo /usr/local/bin/xray-latest) ;;
         sing-box) bin="${SB_PATH:-/usr/local/bin/sing-box}" ;;
         *) return 2 ;;
     esac
@@ -30659,22 +30951,22 @@ _nsni_apply() {
     if ! jq --arg t "$tag" --arg s "$new" "$filter" "$cfg" > "$tmp" 2>/dev/null; then rm -f "$tmp" "$bak"; return 1; fi
     case "$core" in
         xray) bin='/usr/local/bin/xray'; if [[ -x "$bin" ]]; then "$bin" run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
-        xray-latest) bin=$(users_bin_of xray-latest 2>/dev/null || echo /usr/local/bin/xray-latest); if [[ -x "$bin" ]]; then "$bin" run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
         sing-box) bin="${SB_PATH:-/usr/local/bin/sing-box}"; if [[ -x "$bin" ]]; then "$bin" check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp" "$bak"; return 1; }; fi ;;
+        *) rm -f "$tmp" "$bak"; return 1 ;;
     esac
-    cat "$tmp" > "$cfg" || { if [[ -f "$bak" && -r "$bak" ]] && cat "$bak" > "$cfg" 2>/dev/null; then rm -f "$tmp" "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; rm -f "$tmp"; fi; return 1; }
+    cat "$tmp" > "$cfg" || { if [[ -f "$bak" && -r "$bak" ]] && cat "$bak" > "$cfg" 2>/dev/null; then rm -f "$tmp" "$bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; rm -f "$tmp"; fi; return 1; }
     rm -f "$tmp"
     local _kebak='' _crtbak=''
     if [[ "$kind" == 'tuic' && -n "$key" && -n "$crt" ]]; then
         _kebak=$(mktemp /tmp/A-Box-nsni-keybak.XXXXXX 2>/dev/null || true)
         _crtbak=$(mktemp /tmp/A-Box-nsni-crtbak.XXXXXX 2>/dev/null || true)
         if [[ -z "$_kebak" || -z "$_crtbak" ]] || ! cp -a "$key" "$_kebak" 2>/dev/null || ! chmod 600 "$_kebak" 2>/dev/null || ! cp -a "$crt" "$_crtbak" 2>/dev/null || ! chmod 600 "$_crtbak" 2>/dev/null; then
-            if [[ -f "$bak" && -r "$bak" ]] && cat "$bak" > "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; fi
+            if [[ -f "$bak" && -r "$bak" ]] && cat "$bak" > "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi
             rm -f "$_kebak" "$_crtbak"
             return 1
         fi
         if ! generate_self_signed_cert_atomically "$key" "$crt" "$new" >/dev/null 2>&1; then
-            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
             return 1
         fi
     fi
@@ -30682,7 +30974,7 @@ _nsni_apply() {
         local _restart_ok=0
         if is_systemd; then systemctl restart "$core" >/dev/null 2>&1 && _restart_ok=1; else rc-service "$core" restart >/dev/null 2>&1 && _restart_ok=1; fi
         if (( _restart_ok == 0 )); then
-            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
             return 1
         fi
     fi
@@ -30699,7 +30991,7 @@ _nsni_apply() {
         local _hs_rc=$?
         if (( _hs_rc == 1 )); then
             msg "${RED}[!] New SNI handshake failed; rolling back to the previous SNI.${NC}" >&2
-            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
             return 1
         elif (( _hs_rc == 2 )); then
             msg "${YELLOW}[!] Handshake self-check unavailable; new SNI is unverified.${NC}" >&2
@@ -30714,7 +31006,7 @@ _nsni_apply() {
         _lbak=$(mktemp /tmp/A-Box-nsni-linkbak.XXXXXX 2>/dev/null || true)
         if [[ -n "$_lbak" ]] && ! cp -a "$_ldir/$_lf" "$_lbak" 2>/dev/null; then rm -f "$_lbak"; _lbak=''; fi
         if ! sed -i -e "s|\([?&]sni=\)${_esc_old}\([&#]\)|\1${_esc_new}\2|g" -e "s|\([?&]sni=\)${_esc_old}\$|\1${_esc_new}|g" "$_ldir/$_lf" 2>/dev/null; then
-            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
             return 1
         fi
         _shown=$(cat "$_ldir/$_lf" 2>/dev/null)
@@ -30734,26 +31026,26 @@ _nsni_apply() {
                         rm -f "$_ebak"
                     elif cp -a "$_ebak" "$_envf" 2>/dev/null; then
                         rm -f "$_etmp" "$_ebak"
-                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
                         return 1
                     else
-                        msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
+                        msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
                         rm -f "$_etmp"
-                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
                         return 1
                     fi
                 else
                     rm -f "$_etmp" "$_ebak"
-                    if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+                    if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
                     return 1
                 fi
             else
-                if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+                if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
                 return 1
             fi
             rm -f "$_etmp"
         else
-            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg xl_rollback_copy_fail): $bak${NC}"; fi
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
             return 1
         fi
     fi
@@ -30846,20 +31138,11 @@ user_guard_tick() {
         [[ -n "$core" && -n "$tag" && "$proto" != 'shadowtls' ]] || continue
         users_reg_ensure "$core" "$tag" >/dev/null 2>&1 || true
     done < <(protocol_inventory 2>/dev/null || true)
-    local stats_xray='' have_xray=0 stats_latest='' have_latest=0
-    local gen_xray='' gen_latest=''
+    local stats_xray='' have_xray=0
+    local gen_xray=''
     if is_service_running xray 2>/dev/null; then
         stats_xray=$(users_stats_snapshot /usr/local/bin/xray 10085) && have_xray=1
         gen_xray=$(users_core_generation xray 2>/dev/null || true)
-    fi
-    if [[ -n "$(_xl_state_get mode 2>/dev/null)" ]]; then
-        local lbin='' lport=''
-        lbin=$(users_bin_of xray-latest 2>/dev/null || true)
-        lport=$(users_api_port_of xray-latest 2>/dev/null || echo 10086)
-        if [[ -n "$lbin" ]] && is_service_running "$(users_svc_of xray-latest 2>/dev/null || echo xray-latest)" 2>/dev/null; then
-            stats_latest=$(users_stats_snapshot "$lbin" "$lport") && have_latest=1
-            gen_latest=$(users_core_generation xray-latest 2>/dev/null || true)
-        fi
     fi
     local reg='' rcore='' rtag='' stats='' have=0 gen=''
     for reg in "${ABOX_USERS_DIR:-$USERS_DIR}"/*.json; do
@@ -30868,7 +31151,6 @@ user_guard_tick() {
         [[ -n "$rcore" && -n "$rtag" ]] || continue
         case "$rcore" in
             xray) stats="$stats_xray"; have=$have_xray; gen="$gen_xray" ;;
-            xray-latest) stats="$stats_latest"; have=$have_latest; gen="$gen_latest" ;;
             *) stats=''; have=0; gen='' ;;
         esac
         users_guard_eval "$reg" "$rcore" "$rtag" "$now_s" "$period" "$hhmm" "$stats" "$have" "$gen"
@@ -37055,7 +37337,7 @@ regenerate_runtime_assets_after_restore() {
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
         load_abox_env "$ABOX_ENV" || return 1
     fi
-    for srv in xray sing-box hysteria xray-latest; do
+    for srv in xray sing-box hysteria; do
         abox_owns_service "$srv" || continue
         backup_root_contains_service "$_restore_root" "$srv"; _brc=$?
         if [[ "$_brc" == 0 ]]; then
@@ -37428,7 +37710,7 @@ PY_LATEST_BACKUP
     fi
     validate_backup_archive "$_rbc" || { msg "restore gate failed: archive" >&2; return 1; }
     tar -xzf "$_rbc" -C "$work" || { msg "restore gate failed: unpack" >&2; rm -rf "$work"; return 1; }
-    root="$work/root"; assert_restore_target_safe "$root" || { msg "restore gate failed: target-safe" >&2; rm -rf "$work"; return 1; }; assert_restore_shortcut_safe "$root" || { msg "restore gate failed: shortcut-safe" >&2; rm -rf "$work"; return 1; }; validate_backup_core_init_compatibility "$root" || { msg "restore gate failed: init-compat" >&2; rm -rf "$work"; return 1; }
+    root="$work/root"; shortcut_migrate_legacy_file "$root/etc/ddr/.shortcut" || true; assert_restore_target_safe "$root" || { msg "restore gate failed: target-safe" >&2; rm -rf "$work"; return 1; }; assert_restore_shortcut_safe "$root" || { msg "restore gate failed: shortcut-safe" >&2; rm -rf "$work"; return 1; }; validate_backup_core_init_compatibility "$root" || { msg "restore gate failed: init-compat" >&2; rm -rf "$work"; return 1; }
     local _manifest_snapshot="$work/live-manifest.tsv"
     if [[ -e "$ABOX_CORE_OWNERSHIP" || -L "$ABOX_CORE_OWNERSHIP" ]]; then
         [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]] || { msg "restore gate failed: live-manifest" >&2; rm -rf "$work"; return 1; }
@@ -37439,6 +37721,12 @@ PY_LATEST_BACKUP
         cp -a -- "$ABOX_CORE_OWNERSHIP" "$_manifest_snapshot" || { msg "restore gate failed: manifest-snapshot" >&2; rm -rf "$work"; return 1; }
         chmod 600 "$_manifest_snapshot" || { msg "restore gate failed: manifest-snapshot" >&2; rm -rf "$work"; return 1; }
     fi
+    # C2 (D3/D4): detection only here -- restore never prompts or retires
+    # a live instance. An unclassifiable live layout fails the restore.
+    _c2_xl_detect_rc=0
+    xray_latest_legacy_detect >/dev/null 2>&1 || _c2_xl_detect_rc=$?
+    if (( _c2_xl_detect_rc == 2 )); then msg "restore gate failed: legacy xray-latest layout unclassifiable (work preserved at $work)" >&2; rm -rf "$work"; return 1; fi
+    restore_filter_legacy_xray_latest "$root" "$work" || { msg "restore gate failed: legacy-filter (work preserved at $work)" >&2; rm -rf "$work"; return 1; }
     stop_managed_services_for_restore "$root" >/dev/null 2>&1 || { msg "restore gate failed: stop-services" >&2; rm -rf "$work"; return 1; }
     clean_nat_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-nat" >&2; rm -rf "$work"; return 1; }
     clean_input_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-input" >&2; rm -rf "$work"; return 1; }
@@ -37451,7 +37739,7 @@ PY_LATEST_BACKUP
     merge_retained_manifest_rows "$root" "$_manifest_snapshot"; _mrc=$?
     if [[ "$_mrc" == 1 ]]; then msg "restore gate failed: manifest-merge, rolled back (work preserved at $work; snapshot $_manifest_snapshot)" >&2; return 1; fi
     if [[ "$_mrc" != 0 ]]; then msg "restore gate failed: manifest-merge, rollback ALSO failed, live state undetermined (work preserved at $work; snapshot $_manifest_snapshot)" >&2; return 1; fi
-    for srv in xray sing-box hysteria xray-latest; do restore_core_family_from_backup "$root" "$srv" || { msg "restore gate failed: restore-family (work preserved at $work)" >&2; return 1; }; done
+    for srv in xray sing-box hysteria; do restore_core_family_from_backup "$root" "$srv" || { msg "restore gate failed: restore-family (work preserved at $work)" >&2; return 1; }; done
     local aux_paths=''
     aux_paths=$(managed_auxiliary_paths) || { msg "restore gate failed: aux-enum (work preserved at $work)" >&2; return 1; }
     while IFS= read -r path; do
@@ -37477,7 +37765,7 @@ PY_LATEST_BACKUP
     local preserved_note='' _latest_in_backup_rc=0
     backup_root_contains_service "$root" xray-latest; _latest_in_backup_rc=$?
     if [[ "$_latest_in_backup_rc" == 1 ]] && abox_owns_service xray-latest; then
-        preserved_note=' (preserved, not restored from backup: xray-latest; manual recovery: restore from a backup that contains xray-latest, or reinstall it from the menu)'
+        preserved_note=' (preserved: retired xray-latest instance left untouched)'
     fi
     rm -rf "$work"; msg "${GREEN}[*] Rollback restored backup:${NC} $selected$preserved_note"
 }
@@ -37528,6 +37816,7 @@ restore_from_backup() {
     validate_backup_archive "$_rbc" || die "$(tr_msg rb_structure_fail)"
     tar -xzf "$_rbc" -C "$work" || { rm -rf "$work"; die "$(tr_msg rb_extract_fail)"; }
     root="$work/root"
+    shortcut_migrate_legacy_file "$root/etc/ddr/.shortcut" || true
     assert_restore_target_safe "$root" || { rm -rf "$work"; die "$(tr_msg rb_target_fail)"; }
     assert_restore_shortcut_safe "$root" || { rm -rf "$work"; die "$(tr_msg rb_shortcut_fail)"; }
     validate_backup_core_init_compatibility "$root" || { rm -rf "$work"; die "$(tr_msg rb_init_incompat)"; }
@@ -37549,7 +37838,7 @@ restore_from_backup() {
         cp -a -- "$ABOX_CORE_OWNERSHIP" "$_manifest_snapshot" || { rm -rf "$work"; die 'Restore manifest snapshot failed; restore was not started.'; }
         chmod 600 "$_manifest_snapshot" || { rm -rf "$work"; die 'Restore manifest snapshot failed; restore was not started.'; }
     fi
-    for srv in xray sing-box hysteria xray-latest; do
+    for srv in xray sing-box hysteria; do
         if abox_owns_service "$srv" || backup_root_contains_service "$root" "$srv"; then
             targets+=" ${srv}"
         fi
@@ -37562,6 +37851,12 @@ restore_from_backup() {
     ABOX_DIE_HOOK=deployment_transaction_rollback
     install_deployment_transaction_traps
 
+    # C2 (D3/D4): detection only here -- restore never prompts or retires
+    # a live instance. An unclassifiable live layout fails the restore.
+    _c2_xl_detect_rc=0
+    xray_latest_legacy_detect >/dev/null 2>&1 || _c2_xl_detect_rc=$?
+    if (( _c2_xl_detect_rc == 2 )); then rm -rf "$work"; die '恢复前检测到无法分类的 xray-latest 遗留布局，恢复已中止。'; fi
+    restore_filter_legacy_xray_latest "$root" "$work" || { rm -rf "$work"; die '恢复前过滤退役 xray-latest 备份内容失败。'; }
     stop_managed_services_for_restore "$root" || die '恢复前无法停止全部 A-Box 托管服务。'
     clean_nat_rules || die '恢复前无法完整删除 A-Box HY2 NAT 规则。'
     clean_input_rules || die '恢复前无法完整删除 A-Box INPUT/原生防火墙规则。'
@@ -37574,7 +37869,7 @@ restore_from_backup() {
     merge_retained_manifest_rows "$root" "$_manifest_snapshot"; _mrc=$?
     if [[ "$_mrc" == 1 ]]; then die 'Restore manifest merge for preserved families failed; live manifest restored from snapshot, restore was not committed.'; fi
     if [[ "$_mrc" != 0 ]]; then die "Restore manifest merge for preserved families failed AND rollback failed; live manifest state undetermined (snapshot $_manifest_snapshot), restore was not committed."; fi
-    for srv in xray sing-box hysteria xray-latest; do
+    for srv in xray sing-box hysteria; do
         restore_core_family_from_backup "$root" "$srv" || die "Restore failed for core family: $srv"
     done
     local aux_paths=''
@@ -37608,7 +37903,7 @@ restore_from_backup() {
     save_firewall_rules || die 'Restored A-Box firewall persistence failed.'
     if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || die 'systemd daemon-reload after restore failed.'; fi
     restore_managed_service_state "$work/meta/services.state" || die 'Restored service state failed validation/startup.'
-    for srv in xray sing-box hysteria xray-latest; do
+    for srv in xray sing-box hysteria; do
         if abox_owns_service "$srv"; then
             backup_root_contains_service "$root" "$srv"; _own_brc=$?
             if [[ "$_own_brc" == 0 ]]; then
@@ -37621,7 +37916,7 @@ restore_from_backup() {
     local preserved_note='' _latest_in_backup_rc=0
     backup_root_contains_service "$root" xray-latest; _latest_in_backup_rc=$?
     if [[ "$_latest_in_backup_rc" == 1 ]] && abox_owns_service xray-latest; then
-        preserved_note=' (preserved, not restored from backup: xray-latest; manual recovery: restore from a backup that contains xray-latest, or reinstall it from the menu)'
+        preserved_note=' (preserved: retired xray-latest instance left untouched)'
     fi
     commit_deployment_transaction
     rm -rf "$work"
@@ -41584,7 +41879,6 @@ other_protocols_menu() {
             msg "${CYAN}4.${NC}  SOCKS5/Mixed (Xray/sing-box)"
             msg "${CYAN}5.${NC}  ShadowTLS (sing-box)"
             msg "${CYAN}6.${NC}  Argo (CDN)"
-            msg "${CYAN}7.${NC}  Latest Xray"
             msg "${CYAN}0.${NC}  Back"
             ;;
         ru)
@@ -41595,7 +41889,6 @@ other_protocols_menu() {
             msg "${CYAN}4.${NC}  SOCKS5/Mixed (Xray/sing-box)"
             msg "${CYAN}5.${NC}  ShadowTLS (sing-box)"
             msg "${CYAN}6.${NC}  Argo (CDN)"
-            msg "${CYAN}7.${NC}  Latest Xray"
             msg "${CYAN}0.${NC}  Назад"
             ;;
         fa)
@@ -41606,7 +41899,6 @@ other_protocols_menu() {
             msg "${CYAN}4.${NC}  SOCKS5/Mixed (Xray/sing-box)"
             msg "${CYAN}5.${NC}  ShadowTLS (sing-box)"
             msg "${CYAN}6.${NC}  Argo (CDN)"
-            msg "${CYAN}7.${NC}  Latest Xray"
             msg "${CYAN}0.${NC}  بازگشت"
             ;;
         zh-tw)
@@ -41617,7 +41909,6 @@ other_protocols_menu() {
             msg "${CYAN}4.${NC}  SOCKS5/Mixed (Xray/sing-box)"
             msg "${CYAN}5.${NC}  ShadowTLS (sing-box)"
             msg "${CYAN}6.${NC}  Argo (CDN)"
-            msg "${CYAN}7.${NC}  最新 Xray 核心（实验）"
             msg "${CYAN}0.${NC}  返回主選單"
             ;;
         ja)
@@ -41628,7 +41919,6 @@ other_protocols_menu() {
             msg "${CYAN}4.${NC}  SOCKS5/Mixed (Xray/sing-box)"
             msg "${CYAN}5.${NC}  ShadowTLS (sing-box)"
             msg "${CYAN}6.${NC}  Argo (CDN)"
-            msg "${CYAN}7.${NC}  最新 Xray コア（実験）"
             msg "${CYAN}0.${NC}  メインメニューに戻る"
             ;;
         *)
@@ -41639,12 +41929,11 @@ other_protocols_menu() {
             msg "${CYAN}4.${NC}  SOCKS5/Mixed (Xray/sing-box)"
             msg "${CYAN}5.${NC}  ShadowTLS (sing-box)"
             msg "${CYAN}6.${NC}  Argo (CDN)"
-            msg "${CYAN}7.${NC}  最新 Xray 核心（实验）"
             msg "${CYAN}0.${NC}  返回主菜单"
             ;;
     esac
     local op_choice select_prompt
-    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-7]: ' ;; ru) select_prompt='Выберите [0–7]: ' ;; fa) select_prompt='انتخاب [۰ تا ۷]: ' ;; ja) select_prompt='選択してください [0-7]: ' ;; zh-tw) select_prompt='請選擇 [0-7]：' ;; *) select_prompt='请选择 [0-7]：' ;; esac
+    case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-6]: ' ;; ru) select_prompt='Выберите [0–6]: ' ;; fa) select_prompt='انتخاب [۰ تا ۶]: ' ;; ja) select_prompt='選択してください [0-6]: ' ;; zh-tw) select_prompt='請選擇 [0-6]：' ;; *) select_prompt='请选择 [0-6]：' ;; esac
     read -r -p "$select_prompt" op_choice || return 0
     case "$op_choice" in
         1) trojan_toolbox_entry; pause_return ;;
@@ -41653,1256 +41942,12 @@ other_protocols_menu() {
         4) socks5_toolbox_entry; pause_return ;;
         5) deploy_with_instance_choice sing-box shadowtls-in deploy_singbox_shadowtls; pause_return ;;
         6) argo_menu ;;
-        7) xray_latest_menu ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $op_choice${NC}"; sleep 1 ;;
     esac
     done
 }
 
-# ============ Latest upstream Xray (experimental; More Protocols) ============
-# Installs the NEWEST XTLS/Xray-core release into either the normal slot
-# (takeover, the default) or a parallel xray-latest instance (coexist).
-# Xray marks its normal releases as prerelease, so "latest" here means the
-# newest non-draft version tag, not the releases/latest endpoint.
-# Failure policy (explicit product decision): report the reason, delete the
-# attempt, and NEVER auto-reinstall the stable pinned core from here.
-XRAY_LATEST_BIN='/usr/local/bin/xray-latest'
-XRAY_LATEST_DIR='/etc/ddr/xray-latest'
-XRAY_LATEST_CFG='/etc/ddr/xray-latest/config.json'
-XRAY_LATEST_STATE='/etc/ddr/.xray-latest-state'
-XRAY_SLOT_BIN='/usr/local/bin/xray'
-XRAY_SLOT_CFG='/usr/local/etc/xray/config.json'
-XRAY_SLOT_DIR='/usr/local/etc/xray'
-
-_xl_state_get() {
-    [[ -f "$XRAY_LATEST_STATE" && ! -L "$XRAY_LATEST_STATE" ]] || return 0
-    awk -F= -v k="$1" '$1==k {sub(/^[^=]*=/,""); print; exit}' "$XRAY_LATEST_STATE" 2>/dev/null
-}
-
-_xl_state_write() { # $1=mode $2=version
-    mkdir -p /etc/ddr || return 1
-    local tmp_f
-    tmp_f=$(mktemp /tmp/A-Box-xl-state.XXXXXX) || return 1
-    printf 'mode=%s\nversion=%s\n' "$1" "$2" > "$tmp_f" || { rm -f "$tmp_f"; return 1; }
-    install_file_atomically "$tmp_f" "$XRAY_LATEST_STATE" 600 || { rm -f "$tmp_f"; return 1; }
-    rm -f "$tmp_f"
-}
-
-# Echo "cfg|bin|service" for the active latest instance; fail if none.
-_xl_target() {
-    local mode
-    mode=$(_xl_state_get mode)
-    case "$mode" in
-        takeover) printf '%s|%s|%s\n' "$XRAY_SLOT_CFG" "$XRAY_SLOT_BIN" 'xray' ;;
-        coexist) printf '%s|%s|%s\n' "$XRAY_LATEST_CFG" "$XRAY_LATEST_BIN" 'xray-latest' ;;
-        *) return 1 ;;
-    esac
-}
-
-xl_upstream_latest_tag() {
-    local json tag
-    json=$(github_api_get 'https://api.github.com/repos/XTLS/Xray-core/releases?per_page=10' 2>/dev/null) || return 1
-    tag=$(jq -r '[.[]? | select(.draft == false) | (.tag_name // "") | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0] // ""' <<< "$json" 2>/dev/null) || return 1
-    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
-    printf '%s\n' "$tag"
-}
-
-xl_binary_version() { # $1 = binary path -> v-prefixed version or nothing
-    local out ver
-    [[ -n "${1:-}" && -x "$1" ]] || return 0
-    out=$("$1" version 2>/dev/null | head -n 1 || true)
-    ver=$(core_version_from_output "$out" 2>/dev/null || true)
-    [[ -n "$ver" ]] || return 0
-    [[ "$ver" == v* ]] || ver="v$ver"
-    printf '%s\n' "$ver"
-}
-
-_xl_port_in_spec() { # $1 = spec (number or lo-hi), $2 = target -> 0 if in
-    local spec="$1" target="$2" lo hi
-    if [[ "$spec" =~ ^[0-9]+$ ]]; then
-        [[ "$spec" == "$target" ]]
-    elif [[ "$spec" =~ ^([0-9]+)-([0-9]+)$ ]]; then
-        lo="${BASH_REMATCH[1]}"; hi="${BASH_REMATCH[2]}"
-        (( target >= lo && target <= hi ))
-    else
-        return 1
-    fi
-}
-
-xl_config_ports() { # $1 = config path -> sorted unique public ports
-    local cfg="${1:-}"
-    [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]] || return 0
-    jq -r '.inbounds[]? | select(.port != null and .tag != "api") | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1")) | .port' "$cfg" 2>/dev/null | sort -un
-}
-
-xl_singbox_ports() {
-    local cfg='/etc/sing-box/config.json'
-    [[ -f "$cfg" && ! -L "$cfg" ]] || return 0
-    jq -r '.inbounds[]? | select(.listen_port != null) | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1")) | .listen_port' "$cfg" 2>/dev/null | sort -un
-}
-
-xl_hy2_port() {
-    local cfg='/etc/hysteria/config.yaml' line val q
-    [[ -f "$cfg" && ! -L "$cfg" ]] || return 0
-    line=$(grep -E '^[[:space:]]*listen:' "$cfg" 2>/dev/null | head -1) || return 0
-    [[ -n "$line" ]] || return 0
-    val="${line#*:}"
-    val="${val#"${val%%[![:space:]]*}"}"
-    val="${val%"${val##*[![:space:]]}"}"
-    [[ -n "$val" ]] || return 0
-    q="${val:0:1}"
-    if [[ "$q" == '"' || "$q" == "'" ]]; then
-        val="${val:1}"
-        val="${val%%"$q"*}"
-    else
-        val="${val%%#*}"
-        val="${val%"${val##*[![:space:]]}"}"
-    fi
-    [[ -n "$val" ]] || return 0
-    if [[ "$val" == *:* ]]; then val="${val##*:}"; fi
-    val="${val//[[:space:]]/}"
-    [[ "$val" =~ ^[0-9]+$ ]] || return 0
-    printf '%s' "$val"
-}
-
-xl_listen_ports() {
-    ss -tuln 2>/dev/null | awk 'NR>1 {print $5}' | sed -E 's/.*[:.]([0-9]+)$/\1/' | grep -E '^[0-9]+$' | sort -un
-}
-
-xl_show_ports() {
-    local sp lp sb hy sy
-    sp=$(xl_config_ports "$XRAY_SLOT_CFG" | paste -sd, -)
-    lp=$(xl_config_ports "$XRAY_LATEST_CFG" | paste -sd, -)
-    sb=$(xl_singbox_ports | paste -sd, -)
-    hy=$(xl_hy2_port)
-    sy=$(xl_listen_ports | paste -sd, -)
-    msg "${CYAN}$(tr_msg xl_slot_ports): ${sp:-—}${NC}"
-    msg "${CYAN}$(tr_msg xl_latest_ports): ${lp:-—}${NC}"
-    msg "${CYAN}$(tr_msg xl_sb_ports): ${sb:-—}${NC}"
-    msg "${CYAN}$(tr_msg xl_hy2_port_l): ${hy:-—}${NC}"
-    msg "${CYAN}$(tr_msg xl_sys_ports): ${sy:-—}${NC}"
-}
-
-# Conflict = port used by the OTHER Xray instance's config, or held by a
-# system listener that is not the target instance's own current config.
-# R5C15-04: transport-set intersection (csv, e.g. tcp,udp).
-_xl_transports_overlap() { # $1=new transports $2=existing transports
-    local n e
-    for n in ${1//,/ }; do
-        for e in ${2//,/ }; do
-            [[ "$n" == "$e" ]] && return 0
-        done
-    done
-    return 1
-}
-xl_port_conflict() { # $1=port $2=target_cfg $3=tag (empty = no exemption) $4=new transports (default tcp,udp)
-    local port="${1:-}" target_cfg="${2:-}" tag="${3:-}" transports="${4:-tcp,udp}" other_cfg='' p own=0 svc='' _et='' _lt=''
-    [[ "$port" =~ ^[0-9]+$ ]] || return 1
-    if [[ "$target_cfg" == "$XRAY_SLOT_CFG" ]]; then other_cfg="$XRAY_LATEST_CFG"; else other_cfg="$XRAY_SLOT_CFG"; fi
-    # Other instance's config: unfiltered (loopback counts for
-    # wildcard overlap) and range-aware.
-    while IFS='|' read -r p _et; do _xl_port_in_spec "$p" "$port" && _xl_transports_overlap "$transports" "$_et" && return 0; done < <(jq -r '.inbounds[]? | select(.port != null and .tag != "api") | "\(.port)|\(if .settings.network then .settings.network else (if .protocol == "socks" or .protocol == "shadowsocks" then "tcp,udp" else "tcp" end) end)"' "$other_cfg" 2>/dev/null | sort -u)
-    while IFS='|' read -r p _et; do _xl_port_in_spec "$p" "$port" && _xl_transports_overlap "$transports" "$_et" && return 0; done < <(jq -r '.inbounds[]? | select(.listen_port != null) | "\(.listen_port)|\(if (.network | type) == "array" then (.network | join(",")) elif .network then .network elif .type == "hysteria2" or .type == "tuic" then "udp" elif .type == "socks" or .type == "mixed" or .type == "shadowsocks" then "tcp,udp" else "tcp" end)"' '/etc/sing-box/config.json' 2>/dev/null | sort -u)
-    # Hy2 is UDP-only: only a UDP deployment can conflict with it.
-    if [[ "$transports" == *udp* ]]; then
-        [[ "$(xl_hy2_port)" == "$port" ]] && return 0
-    fi
-    # Target config: tag comparison inside jq via --arg (blank tags
-    # safe), unfiltered for loopback, range-aware. Non-exempt ports
-    # conflict outright; same-tag ports are only candidates for own.
-    if [[ -n "$tag" ]]; then
-        while IFS='|' read -r p _et; do _xl_port_in_spec "$p" "$port" && _xl_transports_overlap "$transports" "$_et" && return 0; done < <(jq -r --arg t "$tag" '.inbounds[]? | select(.port != null and .tag != "api" and .tag != $t) | "\(.port)|\(if .settings.network then .settings.network else (if .protocol == "socks" or .protocol == "shadowsocks" then "tcp,udp" else "tcp" end) end)"' "$target_cfg" 2>/dev/null | sort -u)
-        while IFS='|' read -r p _et; do _xl_port_in_spec "$p" "$port" && _xl_transports_overlap "$transports" "$_et" && own=1; done < <(jq -r --arg t "$tag" '.inbounds[]? | select(.port != null and .tag != "api" and .tag == $t) | "\(.port)|\(if .settings.network then .settings.network else (if .protocol == "socks" or .protocol == "shadowsocks" then "tcp,udp" else "tcp" end) end)"' "$target_cfg" 2>/dev/null | sort -u)
-    else
-        while IFS='|' read -r p _et; do _xl_port_in_spec "$p" "$port" && _xl_transports_overlap "$transports" "$_et" && return 0; done < <(jq -r '.inbounds[]? | select(.port != null and .tag != "api") | "\(.port)|\(if .settings.network then .settings.network else (if .protocol == "socks" or .protocol == "shadowsocks" then "tcp,udp" else "tcp" end) end)"' "$target_cfg" 2>/dev/null | sort -u)
-    fi
-    # Live listener: conflicts unless it is the target instance's own
-    # (same-tag config entry AND the socket held by its process).
-    # An unconfirmable holder fails closed (conflict).
-    # R5C15-04: live listeners are transport-aware too: a UDP
-    # listener must not block a TCP-only deployment (and vice
-    # versa). Each transport keeps the own-exemption; only a
-    # foreign listener on a relevant transport is a conflict.
-    for _lt in tcp udp; do
-        [[ "$transports" == *"$_lt"* ]] || continue
-        if ss -"${_lt:0:1}"ln 2>/dev/null | awk '{print $5}' | grep -qE "[:.]${port}$"; then
-            if (( own == 1 )); then
-                svc='xray'
-                [[ "$target_cfg" == "$XRAY_LATEST_CFG" ]] && svc='xray-latest'
-                if ss -"${_lt:0:1}"lnp 2>/dev/null | grep -E "[:.]${port}[[:space:]]" | grep -q "\"${svc}\""; then
-                    continue
-                fi
-            fi
-            return 0
-        fi
-    done
-    return 1
-}
-
-_xl_deploy_rollback() {
-    local bak="$1" cfg="$2" svc="$3" _rb_user _rb_group
-    install_file_atomically "$bak" "$cfg" 600 2>/dev/null || cp -f -- "$bak" "$cfg" || return 1
-    if [[ "$svc" == 'xray' ]]; then prepare_abox_runtime_permissions xray 2>/dev/null || return 1; else prepare_abox_runtime_read_file "$cfg" xray 2>/dev/null || return 1; fi
-    IFS=$'\t' read -r _rb_user _rb_group < <(abox_runtime_identity xray 2>/dev/null) || return 1
-    [[ "$(stat -c %a "$cfg" 2>/dev/null || true)" == 640 ]] || return 1
-    [[ "$(stat -c %G "$cfg" 2>/dev/null || true)" == "$_rb_group" ]] || return 1
-    restart_service_soft "$svc" >/dev/null 2>&1 || return 1
-    return 0
-}
-
-_xl_seed_config() { # $1 = cfg path, $2 = log tag (xray | xray-latest)
-    local tmp_json
-    tmp_json=$(mktemp /tmp/A-Box-xl-seed.XXXXXX) || return 1
-    jq -n --arg lt "$2" '{log:{loglevel:"warning",access:("/var/log/A-Box-" + $lt + "-access.log"),error:("/var/log/A-Box-" + $lt + "-error.log")},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
-    install_file_atomically "$tmp_json" "$1" 600 || { rm -f "$tmp_json"; return 1; }
-    rm -f "$tmp_json"
-}
-
-_xl_write_latest_unit() {
-    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        write_file_atomically_from_stdin /etc/systemd/system/xray-latest.service 644 <<'EOF_XLSVC' || return 1
-# Managed by A-Box
-[Unit]
-Description=A-Box Xray Latest Service
-After=network-online.target nss-lookup.target
-Wants=network-online.target
-
-[Service]
-User=abox-xray
-Group=abox-xray
-UMask=0077
-Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-ExecStart=/usr/local/bin/xray-latest run -config /etc/ddr/xray-latest/config.json
-NoNewPrivileges=true
-PrivateTmp=true
-Restart=always
-RestartSec=10
-LimitNOFILE=1048576
-LimitNPROC=1048576
-
-[Install]
-WantedBy=multi-user.target
-EOF_XLSVC
-        systemctl daemon-reload >/dev/null 2>&1 || true
-        systemctl enable xray-latest >/dev/null 2>&1 || true
-    else
-        path_parent_chain_safe /etc/conf.d/xray-latest || return 1
-        mkdir -p /etc/conf.d || return 1
-        write_file_atomically_from_stdin /etc/conf.d/xray-latest 644 <<'EOF_XLCONFD' || return 1
-export XRAY_LOCATION_ASSET="/usr/local/share/xray"
-EOF_XLCONFD
-        write_file_atomically_from_stdin /etc/init.d/xray-latest 755 <<'EOF_XLSVC' || return 1
-#!/sbin/openrc-run
-# Managed by A-Box
-description="A-Box Xray Latest Service"
-command="/usr/local/bin/xray-latest"
-command_args="run -config /etc/ddr/xray-latest/config.json"
-command_background="yes"
-command_user="abox-xray:abox-xray"
-capabilities="^cap_net_bind_service"
-umask=077
-pidfile="/run/xray-latest.pid"
-depend() { need net; }
-EOF_XLSVC
-        chmod +x /etc/init.d/xray-latest || return 1
-    fi
-}
-
-# XL-FIX2: is_systemd/xray_owned previously existed only inside generated-script
-# heredocs (probe/geo/traffic copies); the main script called xray_owned at
-# takeover install and got "command not found". Real top-level definitions.
-# SYD-B E7: INIT_SYS_EXPECTED is only ever assigned inside generated scripts;
-# in the main script it is unset, which killed takeover under set -u.
-# Fall back to INIT_SYS (set by init_system_environment in main flow).
-is_systemd() { [[ "${INIT_SYS_EXPECTED:-${INIT_SYS:-}}" == systemd ]]; }
-xray_owned() { local u; if is_systemd; then u=/etc/systemd/system/xray.service; else u=/etc/init.d/xray; fi; [[ -f "$u" && ! -L "$u" ]] && grep -Fxq '# Managed by A-Box' "$u"; }
-
-_xl_write_slot_unit() {
-    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        local _unit_bak=''
-        if [[ -e /etc/systemd/system/xray.service || -L /etc/systemd/system/xray.service ]]; then
-            _unit_bak=$(mktemp /tmp/A-Box-xl-oldunit.XXXXXX) || return 1
-            cp -a -- /etc/systemd/system/xray.service "$_unit_bak" || { rm -f -- "$_unit_bak"; return 1; }
-        fi
-        write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_XSSVC' || { [[ -n "$_unit_bak" ]] && cp -a -- "$_unit_bak" /etc/systemd/system/xray.service 2>/dev/null; rm -f -- "$_unit_bak"; return 1; }
-# Managed by A-Box
-[Unit]
-Description=A-Box Xray Service
-After=network-online.target nss-lookup.target
-Wants=network-online.target
-
-[Service]
-User=abox-xray
-Group=abox-xray
-UMask=0077
-Environment="XRAY_LOCATION_ASSET=/usr/local/share/xray"
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
-NoNewPrivileges=true
-PrivateTmp=true
-Restart=always
-RestartSec=10
-LimitNOFILE=1048576
-LimitNPROC=1048576
-
-[Install]
-WantedBy=multi-user.target
-EOF_XSSVC
-        rm -f -- "$_unit_bak"
-        systemctl daemon-reload >/dev/null 2>&1 || true
-        systemctl enable xray >/dev/null 2>&1 || true
-    else
-        path_parent_chain_safe /etc/conf.d/xray || return 1
-        mkdir -p /etc/conf.d || return 1
-        local _confd_bak='' _init_bak=''
-        if [[ -e /etc/conf.d/xray || -L /etc/conf.d/xray ]]; then
-            _confd_bak=$(mktemp /tmp/A-Box-xl-oldunit.XXXXXX) || return 1
-            cp -a -- /etc/conf.d/xray "$_confd_bak" || { rm -f -- "$_confd_bak"; return 1; }
-        fi
-        if [[ -e /etc/init.d/xray || -L /etc/init.d/xray ]]; then
-            _init_bak=$(mktemp /tmp/A-Box-xl-oldunit.XXXXXX) || return 1
-            cp -a -- /etc/init.d/xray "$_init_bak" || { rm -f -- "$_init_bak"; return 1; }
-        fi
-        write_file_atomically_from_stdin /etc/conf.d/xray 644 <<'EOF_XSCONFD' || { [[ -n "$_confd_bak" ]] && cp -a -- "$_confd_bak" /etc/conf.d/xray 2>/dev/null; [[ -n "$_init_bak" ]] && cp -a -- "$_init_bak" /etc/init.d/xray 2>/dev/null; rm -f -- "$_confd_bak" "$_init_bak"; return 1; }
-export XRAY_LOCATION_ASSET="/usr/local/share/xray"
-EOF_XSCONFD
-        write_file_atomically_from_stdin /etc/init.d/xray 755 <<'EOF_XSSVC' || { [[ -n "$_confd_bak" ]] && cp -a -- "$_confd_bak" /etc/conf.d/xray 2>/dev/null; [[ -n "$_init_bak" ]] && cp -a -- "$_init_bak" /etc/init.d/xray 2>/dev/null; rm -f -- "$_confd_bak" "$_init_bak"; return 1; }
-#!/sbin/openrc-run
-# Managed by A-Box
-description="A-Box Xray Service"
-command="/usr/local/bin/xray"
-command_args="run -config /usr/local/etc/xray/config.json"
-command_background="yes"
-command_user="abox-xray:abox-xray"
-capabilities="^cap_net_bind_service"
-umask=077
-pidfile="/run/xray.pid"
-depend() { need net; }
-EOF_XSSVC
-        rm -f -- "$_confd_bak" "$_init_bak"
-        chmod +x /etc/init.d/xray || return 1
-    fi
-}
-
-_xl_remove_coexist_files() {
-    # R16C15-03: refuse if the coexist dir or anything under it
-    # is a mountpoint (a bind mount's shared backing would be
-    # deleted by the recursive rm). path_tree_has_mountpoint
-    # covers the dir itself and is fail-closed (0 on error).
-    if path_tree_has_mountpoint "$XRAY_LATEST_DIR"; then
-        msg "${RED}[!] 共存目录下有挂载点，拒绝递归删除以防删共享 backing：$XRAY_LATEST_DIR${NC}" >&2
-        return 1
-    fi
-    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        systemctl disable --now xray-latest >/dev/null 2>&1 || true
-        rm -f -- /etc/systemd/system/xray-latest.service
-        systemctl daemon-reload >/dev/null 2>&1 || true
-    else
-        rc-service xray-latest stop >/dev/null 2>&1 || true
-        rm -f -- /etc/init.d/xray-latest /etc/conf.d/xray-latest
-    fi
-    rm -f -- "$XRAY_LATEST_BIN"
-    rm -rf -- "$XRAY_LATEST_DIR"
-}
-
-_xl_install_takeover() { # $1 = staged binary, $2 = tag
-    local staged="$1" tag="$2" created_unit=0 created_cfg=0 old_bin_tmp='' slot_link_target=''
-    [[ -L "$XRAY_SLOT_BIN" ]] && slot_link_target=$(readlink "$XRAY_SLOT_BIN")
-    if [[ -f "$XRAY_SLOT_BIN" && ! -L "$XRAY_SLOT_BIN" ]]; then
-        old_bin_tmp=$(mktemp /tmp/A-Box-xl-oldbin.XXXXXX) || return 1
-        cp -f -- "$XRAY_SLOT_BIN" "$old_bin_tmp" || { rm -f -- "$old_bin_tmp"; return 1; }
-    fi
-    install_binary_atomically "$staged" "$XRAY_SLOT_BIN" || { rm -f -- "$old_bin_tmp"; return 1; }
-    if [[ ! -f "$XRAY_SLOT_CFG" || -L "$XRAY_SLOT_CFG" ]]; then
-        prepare_abox_runtime_config_dir xray "$XRAY_SLOT_DIR" || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN" || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; else rm -f -- "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
-        _xl_seed_config "$XRAY_SLOT_CFG" 'xray' || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN" || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; else rm -f -- "$XRAY_SLOT_BIN"; fi; rm -f -- "$old_bin_tmp"; return 1; }
-        created_cfg=1
-    fi
-    if ! xray_owned; then
-        _xl_write_slot_unit || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN" || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; else rm -f -- "$XRAY_SLOT_BIN"; fi; [[ "$created_cfg" == '1' ]] && rm -f -- "$XRAY_SLOT_CFG"; rm -f -- "$old_bin_tmp"; return 1; }
-        created_unit=1
-    fi
-    prepare_abox_runtime_permissions xray || { if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN" || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; else rm -f -- "$XRAY_SLOT_BIN"; fi; [[ "$created_cfg" == '1' ]] && rm -f -- "$XRAY_SLOT_CFG"; if [[ "$created_unit" == '1' ]]; then if [[ "${INIT_SYS:-}" == 'systemd' ]]; then rm -f -- /etc/systemd/system/xray.service; systemctl daemon-reload >/dev/null 2>&1 || true; else rm -f -- /etc/init.d/xray /etc/conf.d/xray; fi; fi; rm -f -- "$old_bin_tmp"; return 1; }
-    if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$XRAY_SLOT_BIN" run -test -config "$XRAY_SLOT_CFG" >/dev/null 2>&1; then
-        msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
-        if [[ -n "$slot_link_target" ]]; then ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"; elif [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN" || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; return 1; }; else rm -f -- "$XRAY_SLOT_BIN"; fi
-        [[ "$created_cfg" == '1' ]] && rm -f -- "$XRAY_SLOT_CFG"
-        if [[ "$created_unit" == '1' ]]; then
-            if [[ "${INIT_SYS:-}" == 'systemd' ]]; then rm -f -- /etc/systemd/system/xray.service; systemctl daemon-reload >/dev/null 2>&1 || true; else rm -f -- /etc/init.d/xray /etc/conf.d/xray; fi
-        fi
-        rm -f -- "$old_bin_tmp"
-        return 1
-    fi
-    if ! restart_service_soft xray; then
-        msg "${RED}$(tr_msg xl_restart_fail)${NC}"
-        # R1-15-03/R2C15-F5: a restart was attempted above, so
-        # the service may now run the NEW binary. Stop it before
-        # restoring/deleting the binary path (else cp hits ETXTBSY
-        # and rm/ln orphans a running instance). Early paths need
-        # no stop: the service there still runs the pre-overwrite
-        # binary via its old inode.
-        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl stop xray >/dev/null 2>&1 || true; else rc-service xray stop >/dev/null 2>&1 || true; fi
-        if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then
-            if ! cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; then
-                msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
-                return 1
-            fi
-            # R1-15-03: explicit executable bit (a cp that
-            # unlinks + recreates after ETXTBSY yields 0600).
-            chmod +x -- "$XRAY_SLOT_BIN" 2>/dev/null || true
-            restart_service_soft xray >/dev/null 2>&1 || true
-        else
-            if [[ -n "$slot_link_target" ]]; then
-                ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"
-                # R9C15-03: the regular-file branch restarts after
-                # restore; the symlink branch must too, else the
-                # service stays stopped with the old binary back.
-                restart_service_soft xray >/dev/null 2>&1 || true
-            else
-                rm -f -- "$XRAY_SLOT_BIN"
-            fi
-            [[ "$created_cfg" == '1' ]] && rm -f -- "$XRAY_SLOT_CFG"
-            if [[ "$created_unit" == '1' ]]; then
-                if [[ "${INIT_SYS:-}" == 'systemd' ]]; then rm -f -- /etc/systemd/system/xray.service; systemctl daemon-reload >/dev/null 2>&1 || true; else rm -f -- /etc/init.d/xray /etc/conf.d/xray; fi
-            fi
-        fi
-        rm -f -- "$old_bin_tmp"
-        return 1
-    fi
-    if ! _xl_state_write takeover "$tag"; then
-        msg "${RED}$(tr_msg xl_gen_fail)${NC}"
-        # R1-15-03/R2C15-F5: a restart was attempted above, so
-        # the service may now run the NEW binary. Stop it before
-        # restoring/deleting the binary path (else cp hits ETXTBSY
-        # and rm/ln orphans a running instance). Early paths need
-        # no stop: the service there still runs the pre-overwrite
-        # binary via its old inode.
-        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl stop xray >/dev/null 2>&1 || true; else rc-service xray stop >/dev/null 2>&1 || true; fi
-        if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then
-            if ! cp -f -- "$old_bin_tmp" "$XRAY_SLOT_BIN"; then
-                msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
-                return 1
-            fi
-            # R1-15-03: explicit executable bit (a cp that
-            # unlinks + recreates after ETXTBSY yields 0600).
-            chmod +x -- "$XRAY_SLOT_BIN" 2>/dev/null || true
-            restart_service_soft xray >/dev/null 2>&1 || true
-        else
-            if [[ -n "$slot_link_target" ]]; then
-                ln -sfn -- "$slot_link_target" "$XRAY_SLOT_BIN"
-                # R9C15-03: the regular-file branch restarts after
-                # restore; the symlink branch must too, else the
-                # service stays stopped with the old binary back.
-                restart_service_soft xray >/dev/null 2>&1 || true
-            else
-                rm -f -- "$XRAY_SLOT_BIN"
-            fi
-            [[ "$created_cfg" == '1' ]] && rm -f -- "$XRAY_SLOT_CFG"
-            if [[ "$created_unit" == '1' ]]; then
-                if [[ "${INIT_SYS:-}" == 'systemd' ]]; then rm -f -- /etc/systemd/system/xray.service; systemctl daemon-reload >/dev/null 2>&1 || true; else rm -f -- /etc/init.d/xray /etc/conf.d/xray; fi
-            fi
-        fi
-        rm -f -- "$old_bin_tmp"
-        return 1
-    fi
-    rm -f -- "$old_bin_tmp"
-    return 0
-}
-
-# Failure cleanup for a partial coexist install: remove ONLY files this
-# install round created. A pre-existing binary/unit/config dir is never
-# deleted here (the deliberate uninstall path keeps using
-# _xl_remove_coexist_files for full removal).
-_xl_cleanup_coexist_partial() { # $1=had_bin $2=created_cfg $3=had_unit $4=had_dir $5=old_bin_tmp $6=cfg_link_target $7=bin_link_target $8=old_unit_dir $9=had_enabled
-    local had_bin="$1" created_cfg="$2" had_unit="$3" had_dir="$4" old_bin_tmp="$5" cfg_link_target="$6" bin_link_target="$7" old_unit_dir="${8:-}" had_enabled="${9:-0}"
-    if [[ "$had_unit" == '0' ]]; then
-        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            systemctl disable --now xray-latest >/dev/null 2>&1 || true
-            rm -f -- /etc/systemd/system/xray-latest.service
-            systemctl daemon-reload >/dev/null 2>&1 || true
-        else
-            rc-service xray-latest stop >/dev/null 2>&1 || true
-            rm -f -- /etc/init.d/xray-latest /etc/conf.d/xray-latest
-        fi
-    fi
-    # R5C15-05: a failed unit restore must NOT delete the backup
-    # (the only copy of the pre-overwrite unit); keep it, report its
-    # path, and return 1. The xl_rollback_copy_fail text already
-    # promises the backup is kept; the code now matches it.
-    local _unit_restore_failed=0
-    if [[ -n "$old_unit_dir" && -d "$old_unit_dir" ]]; then
-        # S151: restore the pre-overwrite unit (and conf.d on openrc),
-        # then drop the backup. A failure before the overwrite restores
-        # identical content, which is a harmless no-op.
-        if [[ -e "$old_unit_dir/unit" || -L "$old_unit_dir/unit" ]]; then
-            if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-                cp -a -- "$old_unit_dir/unit" /etc/systemd/system/xray-latest.service || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; _unit_restore_failed=1; }
-                systemctl daemon-reload >/dev/null 2>&1 || true
-            else
-                cp -a -- "$old_unit_dir/unit" /etc/init.d/xray-latest || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; _unit_restore_failed=1; }
-                chmod +x /etc/init.d/xray-latest 2>/dev/null || true
-                if [[ -e "$old_unit_dir/confd" || -L "$old_unit_dir/confd" ]]; then
-                    cp -a -- "$old_unit_dir/confd" /etc/conf.d/xray-latest || { msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"; _unit_restore_failed=1; }
-                fi
-            fi
-        fi
-        if [[ "$_unit_restore_failed" == 1 ]]; then
-            msg "${YELLOW}[!] xray-latest unit backup kept at: ${old_unit_dir}${NC}"
-        else
-            rm -rf -- "$old_unit_dir"
-        fi
-    fi
-    # R11C15-01: restore the pre-overwrite ENABLED state, not
-    # just the unit file content. A previously-disabled service
-    # must not be left enabled by a failed upgrade.
-    if [[ "$had_unit" == '1' ]]; then
-        if [[ "$had_enabled" == '1' ]]; then
-            if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl enable xray-latest >/dev/null 2>&1 || msg "${YELLOW}[!] xray-latest 启用态恢复失败（原为启用）。${NC}" >&2; else rc-update add xray-latest default >/dev/null 2>&1 || msg "${YELLOW}[!] xray-latest 启用态恢复失败（原为启用）。${NC}" >&2; fi
-        else
-            if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl disable xray-latest >/dev/null 2>&1 || msg "${YELLOW}[!] xray-latest 启用态恢复失败（原为禁用）。${NC}" >&2; else rc-update del xray-latest default >/dev/null 2>&1 || msg "${YELLOW}[!] xray-latest 启用态恢复失败（原为禁用）。${NC}" >&2; fi
-        fi
-    fi
-    if [[ -n "$old_bin_tmp" && -f "$old_bin_tmp" ]]; then
-        if cp -f -- "$old_bin_tmp" "$XRAY_LATEST_BIN"; then
-            # R3C15-01: explicit executable bit (a cp that
-            # unlinks + recreates after ETXTBSY yields 0600).
-            chmod +x -- "$XRAY_LATEST_BIN" 2>/dev/null || true
-            rm -f -- "$old_bin_tmp"
-        else
-            msg "${RED}[!] $(tr_msg xl_rollback_copy_fail)${NC}"
-        fi
-    elif [[ -n "$bin_link_target" ]]; then
-        ln -sfn -- "$bin_link_target" "$XRAY_LATEST_BIN"
-    elif [[ "$had_bin" == '0' ]]; then
-        # R14C15-04: a new binary with no predecessor can only
-        # be running if this run started it; stop it before
-        # unlinking, else it keeps running on an unlinked binary.
-        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl stop xray-latest >/dev/null 2>&1 || true; else rc-service xray-latest stop >/dev/null 2>&1 || true; fi
-        rm -f -- "$XRAY_LATEST_BIN"
-    fi
-    if [[ "$created_cfg" == '1' ]]; then
-        rm -f -- "$XRAY_LATEST_CFG"
-        [[ -n "$cfg_link_target" ]] && ln -s -- "$cfg_link_target" "$XRAY_LATEST_CFG"
-    fi
-    [[ "$had_dir" == '0' ]] && rm -rf -- "$XRAY_LATEST_DIR"
-    return "$_unit_restore_failed"
-}
-
-_xl_install_coexist() { # $1 = staged binary, $2 = tag
-    local staged="$1" tag="$2" had_bin=0 created_cfg=0 had_unit=0 had_dir=0 old_bin_tmp='' cfg_link_target='' bin_link_target='' old_unit_dir='' had_enabled=0
-    [[ -e "$XRAY_LATEST_BIN" || -L "$XRAY_LATEST_BIN" ]] && had_bin=1
-    [[ -L "$XRAY_LATEST_BIN" ]] && bin_link_target=$(readlink "$XRAY_LATEST_BIN")
-    [[ -e "$XRAY_LATEST_DIR" || -L "$XRAY_LATEST_DIR" ]] && had_dir=1
-    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        [[ -e /etc/systemd/system/xray-latest.service || -L /etc/systemd/system/xray-latest.service ]] && had_unit=1
-    else
-        [[ -e /etc/init.d/xray-latest || -L /etc/init.d/xray-latest ]] && had_unit=1
-    fi
-    if [[ -f "$XRAY_LATEST_BIN" && ! -L "$XRAY_LATEST_BIN" ]]; then
-        old_bin_tmp=$(mktemp /tmp/A-Box-xl-oldbin.XXXXXX) || return 1
-        cp -f -- "$XRAY_LATEST_BIN" "$old_bin_tmp" || { rm -f -- "$old_bin_tmp"; return 1; }
-    fi
-    # R11C15-01: capture the pre-overwrite enabled state now;
-    # _xl_write_latest_unit below may change it.
-    if [[ "$had_unit" == '1' ]]; then
-        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            [[ "$(systemctl is-enabled xray-latest 2>/dev/null || true)" == 'enabled' ]] && had_enabled=1
-        else
-            rc-update show 2>/dev/null | grep -q 'xray-latest' && had_enabled=1
-        fi
-    fi
-    if [[ "$had_unit" == '1' ]]; then
-        # S151: the old unit is overwritten by _xl_write_latest_unit
-        # below; back it up now (cp -a keeps symlinks) so a later
-        # failure can restore it. The binary already had this
-        # treatment (old_bin_tmp); the unit did not.
-        old_unit_dir=$(mktemp -d /tmp/A-Box-xl-oldunit.XXXXXX) || return 1
-        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            cp -a -- /etc/systemd/system/xray-latest.service "$old_unit_dir/unit" || { rm -rf -- "$old_unit_dir"; return 1; }
-        else
-            cp -a -- /etc/init.d/xray-latest "$old_unit_dir/unit" || { rm -rf -- "$old_unit_dir"; return 1; }
-            if [[ -e /etc/conf.d/xray-latest || -L /etc/conf.d/xray-latest ]]; then
-                cp -a -- /etc/conf.d/xray-latest "$old_unit_dir/confd" || { rm -rf -- "$old_unit_dir"; return 1; }
-            fi
-        fi
-    fi
-    install_binary_atomically "$staged" "$XRAY_LATEST_BIN" || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"; return 1; }
-    prepare_abox_runtime_config_dir xray "$XRAY_LATEST_DIR" || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"; return 1; }
-    if [[ ! -f "$XRAY_LATEST_CFG" || -L "$XRAY_LATEST_CFG" ]]; then
-        [[ -L "$XRAY_LATEST_CFG" ]] && cfg_link_target=$(readlink "$XRAY_LATEST_CFG")
-        _xl_seed_config "$XRAY_LATEST_CFG" 'xray-latest' || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"; return 1; }
-        created_cfg=1
-    fi
-    _xl_write_latest_unit || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"; return 1; }
-    prepare_abox_runtime_read_file "$XRAY_LATEST_CFG" xray || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"; return 1; }
-    prepare_abox_runtime_permissions xray-latest || { _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"; return 1; }
-    if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$XRAY_LATEST_BIN" run -test -config "$XRAY_LATEST_CFG" >/dev/null 2>&1; then
-        msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
-        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"
-        return 1
-    fi
-    if ! restart_service_soft xray-latest; then
-        msg "${RED}$(tr_msg xl_restart_fail)${NC}"
-        local _relaunch=0
-        [[ "$had_unit" == '1' && ( ( -n "$old_bin_tmp" && -f "$old_bin_tmp" ) || -n "$bin_link_target" ) ]] && _relaunch=1
-        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"
-        (( _relaunch == 1 )) && restart_service_soft xray-latest >/dev/null 2>&1 || true
-        return 1
-    fi
-    if ! _xl_state_write coexist "$tag"; then
-        msg "${RED}$(tr_msg xl_gen_fail)${NC}"
-        # R3C15-01/R14C15-04: restart above succeeded, so the
-        # service now runs the NEW binary. Stop it before
-        # cleanup restores/removes the binary (else cp hits
-        # ETXTBSY and rm orphans a running instance).
-        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl stop xray-latest >/dev/null 2>&1 || true; else rc-service xray-latest stop >/dev/null 2>&1 || true; fi
-        _xl_cleanup_coexist_partial "$had_bin" "$created_cfg" "$had_unit" "$had_dir" "$old_bin_tmp" "$cfg_link_target" "$bin_link_target" "$old_unit_dir" "$had_enabled"
-        local _relaunch=0
-        [[ "$had_unit" == '1' && ( ( -n "$old_bin_tmp" && -f "$old_bin_tmp" ) || -n "$bin_link_target" ) ]] && _relaunch=1
-        (( _relaunch == 1 )) && restart_service_soft xray-latest >/dev/null 2>&1 || true
-        return 1
-    fi
-    rm -f -- "$old_bin_tmp"
-    [[ -n "$old_unit_dir" ]] && rm -rf -- "$old_unit_dir"
-    return 0
-}
-
-xray_latest_install_core() {
-    local tag='' mode='' mchoice='' tmp='' zip='' ext='' staged_ver='' cur_mode='' cur_ver='' _xl_tgt='' _xl_bin=''
-    init_system_environment || return 1
-    load_optional_abox_env_or_die
-    get_architecture
-    tag=$(xl_upstream_latest_tag) || { msg "${RED}$(tr_msg xl_tag_fail)${NC}"; return 1; }
-    cur_mode=$(_xl_state_get mode); cur_ver=$(_xl_state_get version)
-    msg "${CYAN}$(tr_msg xl_avail): ${tag}${NC}"
-    msg "${CYAN}$(tr_msg xl_slot): $(xl_binary_version "$XRAY_SLOT_BIN" || true)${NC}"
-    if ABOX_XRAY_VERSION="$tag" xray_reality_requires_mlkem 2>/dev/null; then
-        msg "${RED}${BOLD}$(tr_msg xl_mlkem_warn)${NC}"
-    fi
-    msg "${CYAN}1.${NC} $(tr_msg xl_mode_1)"
-    msg "${CYAN}2.${NC} $(tr_msg xl_mode_2)"
-    msg "${CYAN}0.${NC} $(tr_msg xl_back_main)"
-    read -r -p "$(tr_msg xl_mode_ask)" mchoice || return 0
-    case "$mchoice" in
-        2) mode='coexist' ;;
-        1) mode='takeover' ;;
-        '') mode="${cur_mode:-takeover}" ;;
-        0) return 0 ;;
-        *) msg "${RED}$(tr_msg invalid_input): $mchoice${NC}"; return 1 ;;
-    esac
-    if [[ -n "$cur_mode" && "$cur_mode" != "$mode" ]]; then
-        msg "${RED}$(tr_msg xl_mode_switch)${NC}"
-        return 1
-    fi
-    if [[ -n "$cur_mode" && "$cur_ver" == "$tag" ]]; then
-        # S153: state alone is not proof. Verify the _xl_target binary
-        # for this mode exists and really reports the target version;
-        # otherwise fall through to a real install.
-        _xl_tgt=$(_xl_target 2>/dev/null || true)
-        _xl_bin="${_xl_tgt#*|}"; _xl_bin="${_xl_bin%%|*}"
-        if [[ -f "$_xl_bin" && "$(xl_binary_version "$_xl_bin" 2>/dev/null || true)" == "$tag" ]]; then
-            msg "${GREEN}$(tr_msg xl_already): $tag ($cur_mode)${NC}"
-            return 0
-        fi
-    fi
-    if [[ "$mode" == 'takeover' ]]; then
-        msg "${RED}${BOLD}$(tr_msg xl_takeover_warn)${NC}"
-    else
-        msg "${YELLOW}$(tr_msg xl_coexist_warn)${NC}"
-        xl_show_ports
-    fi
-    confirm_soft "$(tr_msg xl_confirm)" || return 0
-    tmp=$(mktemp -d /tmp/A-Box-xray-latest.XXXXXX) || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    zip="$tmp/xray_core.zip"; ext="$tmp/ext"; mkdir -p "$ext" || { rm -rf -- "$tmp"; return 1; }
-    if ! ( clear_core_release_resolution XTLS/Xray-core; ABOX_XRAY_VERSION="$tag" fetch_github_release XTLS/Xray-core xray_core.zip "$zip" ); then
-        rm -rf -- "$tmp"
-        msg "${RED}$(tr_msg xl_fetch_fail)${NC}"
-        return 1
-    fi
-    if ! extract_zip_member_safely "$zip" xray "$ext/xray"; then rm -rf -- "$tmp"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; fi
-    chmod 755 "$ext/xray" || { rm -rf -- "$tmp"; return 1; }
-    staged_ver=$(xl_binary_version "$ext/xray")
-    if [[ "$staged_ver" != "$tag" ]]; then
-        rm -rf -- "$tmp"
-        msg "${RED}$(tr_msg xl_bin_mismatch): ${staged_ver:-?} != ${tag}${NC}"
-        return 1
-    fi
-    if [[ "$mode" == 'takeover' ]]; then
-        _xl_install_takeover "$ext/xray" "$tag" || { rm -rf -- "$tmp"; msg "${RED}$(tr_msg xl_install_fail)${NC}"; return 1; }
-    else
-        _xl_install_coexist "$ext/xray" "$tag" || { rm -rf -- "$tmp"; msg "${RED}$(tr_msg xl_install_fail)${NC}"; return 1; }
-    fi
-    rm -rf -- "$tmp"
-    set_desired_state RUNNING || { msg "${RED}$(tr_msg dp_desired_xray)${NC}"; return 1; }
-    msg "${GREEN}$(tr_msg xl_ok_installed): ${tag} (${mode})${NC}"
-    xl_show_ports
-    return 0
-}
-
-# Deploy one protocol inbound into the active latest instance.
-# S155: revoke firewall allows this deploy already succeeded, one item
-# at a time ("port/proto" list). Best effort per item; leftovers are
-# reported, and a partial failure still returns 1. Called only after a
-# successful config rollback, so a live new config never loses its
-# ports here.
-# R4C15-02: true (0) when port/proto is already A-Box-owned
-# BEFORE this deploy's allowPort. Unknown/error states are
-# treated as owned (conservative): excluding an allowance from
-# rollback can only leave a redundant allow rule, while revoking
-# a pre-existing rule can cut off the restored inbound.
-_xl_fw_owned() {
-    local spec backend rc
-    spec=$(normalize_port_spec "$1") || return 0
-    [[ "$2" == tcp || "$2" == udp ]] || return 0
-    backend=$(firewall_backend) || return 0
-    case "$backend" in
-        ufw)
-            ufw_owned_rule_exists "$spec" "$2"; rc=$?
-            (( rc == 1 )) && return 1 || return 0
-            ;;
-        firewalld)
-            [[ -f "$ABOX_FW_STATE" ]] && grep -qF "firewalld|${spec}|${2}|" "$ABOX_FW_STATE" && return 0
-            return 1
-            ;;
-        iptables)
-            iptables_rule_check "$IPT" INPUT -p "$2" --dport "$spec" -m comment --comment "A-Box-${spec}-${2}" -j ACCEPT; rc=$?
-            (( rc == 1 )) || return 0
-            if command -v ip6tables >/dev/null 2>&1; then
-                iptables_rule_check "$IPT6" INPUT -p "$2" --dport "$spec" -m comment --comment "A-Box-${spec}-${2}" -j ACCEPT; rc=$?
-                (( rc == 1 )) || return 0
-            fi
-            return 1
-            ;;
-        *) return 0 ;;
-    esac
-}
-
-_xl_revoke_deploy_allows() { # $1 = space-separated "port/proto" items
-    local item p pr rc=0 left=''
-    for item in $1; do
-        p="${item%/*}"; pr="${item#*/}"
-        if ! remove_abox_native_firewall_rule "$p" "$pr" 2>/dev/null; then
-            left="${left:+$left, }$item"; rc=1
-        fi
-    done
-    if (( rc )); then
-        msg "${RED}$(tprintf xl_fw_revoke_fail "$left")${NC}"
-        return 1
-    fi
-    return 0
-}
-
-xray_latest_deploy() { # $1 = vision | xhttp | trojan | ss
-    local kind="${1:-}" target='' cfg='' bin='' svc='' mode=''
-    local port='' defport='' tag='' uuid='' pass='' pk='' pbk='' sid='' sni='' tmp_json='' tmp_cfg='' bak='' fw_done=''
-    local pub_ip='' link='' label='' listen_addr=''
-    target=$(_xl_target) || { msg "${RED}$(tr_msg xl_need_core)${NC}"; return 1; }
-    IFS='|' read -r cfg bin svc <<< "$target"
-    mode=$(_xl_state_get mode)
-    init_system_environment || return 1
-    load_optional_abox_env_or_die
-    light_preflight_check
-    case "$kind" in
-        vision) defport='443'; tag="${ABOX_DEPLOY_TAG:-latest-vision}"; label='VLESS-Vision-Reality (Latest Xray)' ;;
-        xhttp) defport='8443'; tag="${ABOX_DEPLOY_TAG:-latest-xhttp}"; label='VLESS-XHTTP-Reality (Latest Xray)' ;;
-        trojan) defport='443'; tag="${ABOX_DEPLOY_TAG:-latest-trojan}"; label='Trojan-Reality (Latest Xray)' ;;
-        ss) defport='2053'; tag="${ABOX_DEPLOY_TAG:-latest-ss}"; label='SS-2022 (Latest Xray)' ;;
-        socks) defport='1080'; tag="${ABOX_DEPLOY_TAG:-latest-socks}"; label='SOCKS5 (Latest Xray)' ;;
-        *) msg "${RED}$(tr_msg invalid_input): $kind${NC}"; return 1 ;;
-    esac
-    clear
-    msg "${BOLD}${GREEN}${label}${NC}"
-    if [[ "$mode" == 'coexist' ]]; then
-        msg "${YELLOW}$(tr_msg xl_coexist_note)${NC}"
-    fi
-    xl_show_ports
-    port=$(prompt_validated "$(tr_msg xl_port_prompt)" port "$defport") || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    local _xl_trans='tcp'
-    case "$kind" in ss|socks) _xl_trans='tcp,udp' ;; esac
-    if xl_port_conflict "$port" "$cfg" "$tag" "$_xl_trans"; then
-        msg "${RED}$(tr_msg xl_port_conflict): ${port}${NC}"
-        xl_show_ports
-        return 1
-    fi
-    listen_addr=$(wildcard_listen_address)
-    [[ "$kind" == 'socks' ]] || sni=$(sni_prompt_or_auto)
-    [[ "$kind" == 'socks' ]] || valid_sni "$sni" || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    tmp_json=$(mktemp /tmp/A-Box-xl-inbound.XXXXXX) || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    case "$kind" in
-        vision|xhttp)
-            local keypair=''
-            keypair=$("$bin" x25519) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-            IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-            [[ -n "$pk" && -n "$pbk" ]] || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-            sid=$(openssl rand -hex 4 | tr -d '\n\r') || { rm -f "$tmp_json"; return 1; }
-            uuid=$(generate_robust_uuid) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-            if [[ "$kind" == 'vision' ]]; then
-                jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --arg sni "$sni" --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
-                    '{tag:$tag,listen:$listen,port:$port,protocol:"vless",
-                      settings:{clients:[{id:$uuid,flow:"xtls-rprx-vision",email:($tag + "/main")}],decryption:"none"},
-                      streamSettings:{network:"tcp",security:"reality",realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}},
-                      sniffing:{enabled:true,destOverride:["http","tls","quic"]}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
-            else
-                jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --arg sni "$sni" --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
-                    '{tag:$tag,listen:$listen,port:$port,protocol:"vless",
-                      settings:{clients:[{id:$uuid,email:($tag + "/main")}],decryption:"none"},
-                      streamSettings:{network:"xhttp",security:"reality",xhttpSettings:{mode:"auto",path:"/xhttp"},realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}},
-                      sniffing:{enabled:true,destOverride:["http","tls","quic"]}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
-            fi
-            ;;
-        trojan)
-            local keypair=''
-            keypair=$("$bin" x25519) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-            IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-            [[ -n "$pk" && -n "$pbk" ]] || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-            sid=$(openssl rand -hex 4 | tr -d '\n\r') || { rm -f "$tmp_json"; return 1; }
-            pass=$(rand_alnum 16) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-            jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --rawfile pass <(printf '%s' "$pass") --arg sni "$sni" --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") \
-                '{tag:$tag,listen:$listen,port:$port,protocol:"trojan",
-                  settings:{clients:[{password:$pass,email:($tag + "/main")}]},
-                  streamSettings:{network:"tcp",security:"reality",realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
-            ;;
-        ss)
-            pass=$(openssl rand -base64 16 | tr -d '\n\r') || { rm -f "$tmp_json"; return 1; }
-            [[ -n "$pass" ]] || { rm -f "$tmp_json"; return 1; }
-            jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --rawfile pass <(printf '%s' "$pass") \
-                '{tag:$tag,listen:$listen,port:$port,protocol:"shadowsocks",
-                  settings:{method:"2022-blake3-aes-128-gcm",password:$pass,network:"tcp,udp"}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
-            ;;
-        socks)
-            local suser='' spass=''
-            read -r -p "$(tr_msg socks5_user_prompt)" suser || suser=''
-            suser="${suser:-main}"
-            spass=$(rand_alnum 16) || { rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-            # R10C15-02: SOCKS5 (RFC 1929) username length is
-            # single-byte (max 255); a longer username deploys
-            # but can never authenticate. Byte count, not
-            # character count. (spass is auto 16 bytes.)
-            local _socks5_user_len
-            _socks5_user_len=$(printf '%s' "$suser" | wc -c)
-            if (( _socks5_user_len > 255 )); then rm -f "$tmp_json"; msg "${RED}SOCKS5 username must be at most 255 bytes (RFC 1929).${NC}"; return 1; fi
-            jq -n --arg tag "$tag" --arg listen "$listen_addr" --argjson port "$port" --arg user "$suser" --rawfile pass <(printf '%s' "$spass") \
-                '{tag:$tag,listen:$listen,port:$port,protocol:"socks",
-                  settings:{auth:"password",accounts:[{user:$user,pass:$pass}],udp:true}}' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
-            ;;
-    esac
-    if [[ ! -f "$cfg" || -L "$cfg" ]]; then
-        rm -f "$tmp_json"
-        msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
-        return 1
-    fi
-    bak=$(mktemp /tmp/A-Box-xl-cfg-bak.XXXXXX) || { rm -f "$tmp_json"; return 1; }
-    cp -f -- "$cfg" "$bak" || { rm -f "$tmp_json" "$bak"; return 1; }
-    tmp_cfg=$(mktemp /tmp/A-Box-xl-cfg.XXXXXX) || { rm -f "$tmp_json" "$bak"; return 1; }
-    ( umask 077; set -o noclobber; : > "$tmp_cfg.json" ) 2>/dev/null || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; return 1; }
-    mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$bak" "$tmp_cfg.json"; return 1; }; tmp_cfg="$tmp_cfg.json"
-    if ! jq --slurpfile nb "$tmp_json" --arg t "$tag" \
-            '.inbounds |= ((. // []) | map(select(.tag != $t)) + $nb)' "$cfg" > "$tmp_cfg" 2>/dev/null; then
-        rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1
-    fi
-    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$tmp_cfg" >/dev/null 2>&1; then
-        rm -f "$tmp_cfg" "$tmp_json" "$bak"
-        msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"
-        return 1
-    fi
-    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    rm -f "$tmp_cfg" "$tmp_json"
-    if [[ "$svc" == 'xray' ]]; then prepare_abox_runtime_permissions xray 2>/dev/null || true; else prepare_abox_runtime_read_file "$cfg" xray 2>/dev/null || true; fi
-    if ! restart_service_soft "$svc"; then
-        # U129: roll back THIS deployment only, with permissions re-applied
-        # and readability verified; a failed rollback is reported distinctly.
-        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
-            rm -f "$bak"
-            msg "${RED}$(tr_msg xl_restart_fail)${NC}"
-        else
-            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
-            msg "${RED}$(tprintf xl_bak_kept "$bak")${NC}"
-        fi
-        return 1
-    fi
-    # U130: firewall steps run before the backup is deleted; on failure the
-    # deploy is rolled back (old config + old links stay valid) instead of
-    # leaving a live new config with no backup and no links.
-    local tcp_preowned=0 udp_preowned=0
-    _xl_fw_owned "$port" tcp && tcp_preowned=1
-    if ! allowPort "$port" tcp; then
-        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
-            rm -f "$bak"
-            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
-            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
-        else
-            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
-        fi
-        return 1
-    fi
-    (( tcp_preowned == 0 )) && fw_done="$port/tcp"
-    if [[ "$kind" == 'ss' || "$kind" == 'socks' ]]; then _xl_fw_owned "$port" udp && udp_preowned=1; fi
-    if [[ "$kind" == 'ss' || "$kind" == 'socks' ]] && ! allowPort "$port" udp; then
-        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
-            rm -f "$bak"
-            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
-            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
-        else
-            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
-        fi
-        return 1
-    fi
-    [[ "$kind" == 'ss' || "$kind" == 'socks' ]] && (( udp_preowned == 0 )) && fw_done="$fw_done $port/udp"
-    if ! save_firewall_rules; then
-        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
-            rm -f "$bak"
-            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
-            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
-        else
-            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
-        fi
-        return 1
-    fi
-    rm -f "$bak"
-    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
-    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
-    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
-    case "$kind" in
-        vision) link="vless://$(urlencode "$uuid")@$(uri_host "$pub_ip"):${port}?security=reality&encryption=none&flow=xtls-rprx-vision&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Latest-Vision" ;;
-        xhttp) link="vless://$(urlencode "$uuid")@$(uri_host "$pub_ip"):${port}?security=reality&encryption=none&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=xhttp&path=%2Fxhttp&mode=auto#Latest-XHTTP" ;;
-        trojan) link="trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Latest-Trojan" ;;
-        ss) link=$(build_ss2022_uri "$(uri_host "$pub_ip")" "$port" "$pass"); link="${link%#SS}#Latest-SS2022" ;;
-        socks) link="socks5://$(urlencode "$suser"):$(urlencode "$spass")@$(uri_host "$pub_ip"):${port}#Latest-SOCKS5" ;;
-    esac
-    msg "${GREEN}$(tr_msg xl_ok_installed): ${label} :${port}${NC}"
-    msg "$link"
-    generate_qr "$link"
-    register_standalone_link "${ABOX_DEPLOY_STEM:-latest-${kind}}" "${label} · :${port}" "$link"
-    return 0
-}
-
-
-# One-click trio on the latest instance: Vision + XHTTP + SS-2022 in one
-# atomic config merge (shared UUID / REALITY keypair / SNI, like the main
-# combo builder), one restart, snapshot rollback on failure.
-xray_latest_deploy_trio() {
-    local target='' cfg='' bin='' svc='' mode=''
-    local vp='' xp='' sp2='' keypair='' pk='' pbk='' sid='' uuid='' sspass='' sni=''
-    local tmp_json='' tmp_cfg='' bak='' pub_ip='' link='' listen_addr='' fw_done=''
-    target=$(_xl_target) || { msg "${RED}$(tr_msg xl_need_core)${NC}"; return 1; }
-    IFS='|' read -r cfg bin svc <<< "$target"
-    mode=$(_xl_state_get mode)
-    init_system_environment || return 1
-    load_optional_abox_env_or_die
-    light_preflight_check
-    clear
-    msg "${BOLD}${GREEN}$(tr_msg xl_m_trio)${NC}"
-    if [[ "$mode" == 'coexist' ]]; then msg "${YELLOW}$(tr_msg xl_coexist_note)${NC}"; fi
-    xl_show_ports
-    vp=$(prompt_validated "$(tr_msg xl_port_prompt)" port '443') || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    if xl_port_conflict "$vp" "$cfg" 'latest-vision' 'tcp'; then msg "${RED}$(tr_msg xl_port_conflict): ${vp}${NC}"; return 1; fi
-    xp=$(prompt_validated "$(tr_msg xl_port_prompt)" port '8443') || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    if [[ "$xp" == "$vp" ]] || xl_port_conflict "$xp" "$cfg" 'latest-xhttp' 'tcp'; then msg "${RED}$(tr_msg xl_port_conflict): ${xp}${NC}"; return 1; fi
-    sp2=$(prompt_validated "$(tr_msg xl_port_prompt)" port '2053') || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    if [[ "$sp2" == "$vp" || "$sp2" == "$xp" ]] || xl_port_conflict "$sp2" "$cfg" 'latest-ss' 'tcp,udp'; then msg "${RED}$(tr_msg xl_port_conflict): ${sp2}${NC}"; return 1; fi
-    listen_addr=$(wildcard_listen_address)
-    sni=$(sni_prompt_or_auto)
-    valid_sni "$sni" || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    keypair=$("$bin" x25519) || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    IFS=$'\t' read -r pk pbk < <(parse_x25519_keypair_output "$keypair") || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    [[ -n "$pk" && -n "$pbk" ]] || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    sid=$(openssl rand -hex 4 | tr -d '\n\r') || return 1
-    uuid=$(generate_robust_uuid) || { msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    sspass=$(openssl rand -base64 16 | tr -d '\n\r') || return 1
-    [[ -n "$sspass" ]] || return 1
-    tmp_json=$(mktemp /tmp/A-Box-xl-trio.XXXXXX) || return 1
-    jq -n --arg listen "$listen_addr" --rawfile uuid <(printf '%s' "$uuid") --arg sni "$sni" --rawfile pk <(printf '%s' "$pk") --rawfile sid <(printf '%s' "$sid") --rawfile sspass <(printf '%s' "$sspass") \
-        --argjson vp "$vp" --argjson xp "$xp" --argjson sp "$sp2" '
-        [{tag:"latest-vision",listen:$listen,port:$vp,protocol:"vless",
-          settings:{clients:[{id:$uuid,flow:"xtls-rprx-vision",email:"latest-vision/main"}],decryption:"none"},
-          streamSettings:{network:"tcp",security:"reality",realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}},
-          sniffing:{enabled:true,destOverride:["http","tls","quic"]}},
-         {tag:"latest-xhttp",listen:$listen,port:$xp,protocol:"vless",
-          settings:{clients:[{id:$uuid,email:"latest-xhttp/main"}],decryption:"none"},
-          streamSettings:{network:"xhttp",security:"reality",xhttpSettings:{mode:"auto",path:"/xhttp"},realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}},
-          sniffing:{enabled:true,destOverride:["http","tls","quic"]}},
-         {tag:"latest-ss",listen:$listen,port:$sp,protocol:"shadowsocks",
-          settings:{method:"2022-blake3-aes-128-gcm",password:$sspass,network:"tcp,udp"}}]' > "$tmp_json" || { rm -f "$tmp_json"; return 1; }
-    if [[ ! -f "$cfg" || -L "$cfg" ]]; then rm -f "$tmp_json"; msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"; return 1; fi
-    bak=$(mktemp /tmp/A-Box-xl-trio-bak.XXXXXX) || { rm -f "$tmp_json"; return 1; }
-    cp -f -- "$cfg" "$bak" || { rm -f "$tmp_json" "$bak"; return 1; }
-    tmp_cfg=$(mktemp /tmp/A-Box-xl-trio-cfg.XXXXXX) || { rm -f "$tmp_json" "$bak"; return 1; }
-    ( umask 077; set -o noclobber; : > "$tmp_cfg.json" ) 2>/dev/null || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; return 1; }
-    mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$bak" "$tmp_cfg.json"; return 1; }; tmp_cfg="$tmp_cfg.json"
-    if ! jq --slurpfile nb "$tmp_json" \
-            '.inbounds |= ((. // []) | map(select(.tag != "latest-vision" and .tag != "latest-xhttp" and .tag != "latest-ss")) + $nb[0])' \
-            "$cfg" > "$tmp_cfg" 2>/dev/null; then
-        rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1
-    fi
-    jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    if ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$tmp_cfg" >/dev/null 2>&1; then
-        rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_cfg_invalid)${NC}"; return 1
-    fi
-    install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json" "$bak"; msg "${RED}$(tr_msg xl_gen_fail)${NC}"; return 1; }
-    rm -f "$tmp_cfg" "$tmp_json"
-    if [[ "$svc" == 'xray' ]]; then prepare_abox_runtime_permissions xray 2>/dev/null || true; else prepare_abox_runtime_read_file "$cfg" xray 2>/dev/null || true; fi
-    if ! restart_service_soft "$svc"; then
-        # U129: roll back THIS deployment only, with permissions re-applied
-        # and readability verified; a failed rollback is reported distinctly.
-        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
-            rm -f "$bak"
-            msg "${RED}$(tr_msg xl_restart_fail)${NC}"
-        else
-            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
-            msg "${RED}$(tprintf xl_bak_kept "$bak")${NC}"
-        fi
-        return 1
-    fi
-    # U130: firewall steps run before the backup is deleted; on failure the
-    # deploy is rolled back (old config + old links stay valid) instead of
-    # leaving a live new config with no backup and no links.
-    # 2gp: gate fw_done like the single deployer — record only rules this
-    # deploy newly created; a pre-owned rule must never be revoked by a
-    # later rollback.
-    local vp_preowned=0 xp_preowned=0 sp2_tcp_preowned=0 sp2_udp_preowned=0
-    _xl_fw_owned "$vp" tcp && vp_preowned=1
-    if ! allowPort "$vp" tcp; then
-        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
-            rm -f "$bak"
-            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
-            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
-        else
-            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
-        fi
-        return 1
-    fi
-    (( vp_preowned == 0 )) && fw_done="$vp/tcp"
-    _xl_fw_owned "$xp" tcp && xp_preowned=1
-    if ! allowPort "$xp" tcp; then
-        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
-            rm -f "$bak"
-            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
-            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
-        else
-            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
-        fi
-        return 1
-    fi
-    (( xp_preowned == 0 )) && fw_done="$fw_done $xp/tcp"
-    _xl_fw_owned "$sp2" tcp && sp2_tcp_preowned=1
-    if ! allowPort "$sp2" tcp; then
-        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
-            rm -f "$bak"
-            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
-            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
-        else
-            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
-        fi
-        return 1
-    fi
-    (( sp2_tcp_preowned == 0 )) && fw_done="$fw_done $sp2/tcp"
-    _xl_fw_owned "$sp2" udp && sp2_udp_preowned=1
-    if ! allowPort "$sp2" udp; then
-        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
-            rm -f "$bak"
-            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
-            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
-        else
-            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
-        fi
-        return 1
-    fi
-    (( sp2_udp_preowned == 0 )) && fw_done="$fw_done $sp2/udp"
-    if ! save_firewall_rules; then
-        if _xl_deploy_rollback "$bak" "$cfg" "$svc"; then
-            rm -f "$bak"
-            _xl_revoke_deploy_allows "$fw_done" 2>/dev/null || true
-            msg "${RED}$(tr_msg xl_fw_rollback)${NC}"
-        else
-            msg "${RED}$(tr_msg xl_rollback_fail)${NC}"
-        fi
-        return 1
-    fi
-    rm -f "$bak"
-    pub_ip=$(read_cached_public_ip 2>/dev/null || true)
-    [[ -n "$pub_ip" ]] || pub_ip=$(get_public_ip_fresh 2>/dev/null || true)
-    [[ -n "$pub_ip" ]] || pub_ip='<server-ip>'
-    link="vless://$(urlencode "$uuid")@$(uri_host "$pub_ip"):${vp}?security=reality&encryption=none&flow=xtls-rprx-vision&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Latest-Vision"
-    msg "${GREEN}$(tr_msg xl_ok_installed): VLESS-Vision-Reality :${vp}${NC}"; msg "$link"; generate_qr "$link"
-    register_standalone_link latest-vision "VLESS-Vision-Reality (Latest Xray) · :${vp}" "$link"
-    link="vless://$(urlencode "$uuid")@$(uri_host "$pub_ip"):${xp}?security=reality&encryption=none&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=xhttp&path=%2Fxhttp&mode=auto#Latest-XHTTP"
-    msg "${GREEN}$(tr_msg xl_ok_installed): VLESS-XHTTP-Reality :${xp}${NC}"; msg "$link"; generate_qr "$link"
-    register_standalone_link latest-xhttp "VLESS-XHTTP-Reality (Latest Xray) · :${xp}" "$link"
-    link=$(build_ss2022_uri "$(uri_host "$pub_ip")" "$sp2" "$sspass"); link="${link%#SS}#Latest-SS2022"
-    msg "${GREEN}$(tr_msg xl_ok_installed): SS-2022 :${sp2}${NC}"; msg "$link"; generate_qr "$link"
-    register_standalone_link latest-ss "SS-2022 (Latest Xray) · :${sp2}" "$link"
-    return 0
-}
-
-# One-click quad: the Xray trio above + the official Hysteria2 deployment
-# (its own established flow and transaction handling, run in a subshell so
-# its die paths cannot kill this menu).
-xray_latest_trio_deployed() {
-    local tgt='' cfg=''
-    tgt=$(_xl_target 2>/dev/null) || return 1
-    cfg="${tgt%%|*}"
-    [[ -f "$cfg" ]] || return 1
-    [[ -n "$(jq -r --arg t latest-vision '.inbounds[]? | select(.tag == $t) | .tag' "$cfg" 2>/dev/null)" ]] || return 1
-    [[ -n "$(jq -r --arg t latest-xhttp '.inbounds[]? | select(.tag == $t) | .tag' "$cfg" 2>/dev/null)" ]] || return 1
-    [[ -n "$(jq -r --arg t latest-ss '.inbounds[]? | select(.tag == $t) | .tag' "$cfg" 2>/dev/null)" ]] || return 1
-    return 0
-}
-
-xray_latest_deploy_quad() {
-    msg "${BOLD}${GREEN}$(tr_msg xl_m_quad)${NC}"
-    if xray_latest_trio_deployed 2>/dev/null; then
-        msg "${GREEN}$(tr_msg xl_trio_kept)${NC}"
-    else
-        xray_latest_deploy_trio || return 1
-    fi
-    msg "${CYAN}$(tr_msg xl_quad_note)${NC}"
-    if ( deploy_official_hy2 NORMAL 1 ); then
-        msg "${GREEN}$(tr_msg xl_ok_installed): Hysteria2${NC}"
-        return 0
-    fi
-    msg "${RED}$(tr_msg xl_quad_hy2_fail)${NC}"
-    return 1
-}
-
-xray_latest_remove() {
-    local mode='' ver=''
-    mode=$(_xl_state_get mode)
-    ver=$(_xl_state_get version)
-    if [[ -z "$mode" ]]; then
-        msg "${YELLOW}$(tr_msg xl_not_installed)${NC}"
-        return 0
-    fi
-    init_system_environment || return 1
-    if [[ "$mode" == 'takeover' ]]; then
-        msg "${RED}${BOLD}$(tr_msg xl_remove_warn_t)${NC}"
-    else
-        msg "${YELLOW}$(tr_msg xl_remove_warn_c)${NC}"
-    fi
-    confirm_hard_xray_latest_uninstall || return 0
-    if [[ "$mode" == 'coexist' ]]; then
-        _xl_remove_coexist_files
-    else
-        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-            # R4C16-01: stop must succeed AND the service must be
-            # inactive before any deletion; still active => abort
-            # with files/state kept (no orphan running instance).
-            systemctl stop xray >/dev/null 2>&1 || true
-            if systemctl is-active --quiet xray >/dev/null 2>&1; then
-                msg "${RED}[!] xray-latest stop failed, service still active; refusing to delete files.${NC}"
-                return 1
-            fi
-            systemctl disable xray >/dev/null 2>&1 || true
-            rm -f -- /etc/systemd/system/xray.service
-            systemctl daemon-reload >/dev/null 2>&1 || true
-        else
-            rc-service xray stop >/dev/null 2>&1 || true
-            if rc-service xray status >/dev/null 2>&1; then
-                msg "${RED}[!] xray-latest stop failed, service still active; refusing to delete files.${NC}"
-                return 1
-            fi
-            rm -f -- /etc/init.d/xray /etc/conf.d/xray
-        fi
-        # R7C16-01: refuse to rm -rf through a mount, and abort
-        # (state kept, no success report) when removal fails.
-        # The mount check precedes ALL deletions so an abort
-        # leaves bin, slot dir and state intact.
-        if path_tree_has_mountpoint "$XRAY_SLOT_DIR"; then
-            msg "${RED}[!] xray-latest slot dir contains a mountpoint; refusing to delete.${NC}"
-            return 1
-        fi
-        rm -f -- "$XRAY_SLOT_BIN"
-        rm -rf -- "$XRAY_SLOT_DIR" || { msg "${RED}[!] failed to remove xray-latest slot dir; state kept.${NC}"; return 1; }
-        rm -f -- "${ABOX_DIR:-/etc/ddr}/standalone-links.d/trojan-xray.link"
-    fi
-    rm -f -- "${ABOX_DIR:-/etc/ddr}/standalone-links.d"/latest-*.link
-    rm -f -- "$XRAY_LATEST_STATE"
-    msg "${GREEN}$(tr_msg xl_removed_note)${NC}"
-    return 0
-}
-
-# Ensure a usable latest core before a protocol deploy: already at the
-# menu latest tag (or tag unknown) and binary present => no-op;
-# missing / outdated / binary gone => run the core installer.
-# install_core returns 0 on cancel too, so re-verify afterwards.
-xray_latest_ensure_core() { # $1 = latest upstream tag, or empty
-    local _latest="${1:-}" _mode='' _tgt='' _bin='' _ver=''
-    _mode=$(_xl_state_get mode)
-    if [[ -n "$_mode" ]]; then
-        _tgt=$(_xl_target 2>/dev/null || true)
-        if [[ -n "$_tgt" ]]; then
-            _bin="${_tgt#*|}"; _bin="${_bin%%|*}"
-            if [[ -n "$_bin" && -x "$_bin" ]]; then
-                _ver=$(xl_binary_version "$_bin" 2>/dev/null || true)
-                if [[ -n "$_ver" && ( -z "$_latest" || "$_ver" == "$_latest" ) ]]; then
-                    return 0
-                fi
-            fi
-        fi
-    fi
-    xray_latest_install_core || return 1
-    _tgt=$(_xl_target 2>/dev/null || true)
-    [[ -n "$_tgt" ]] || return 1
-    _bin="${_tgt#*|}"; _bin="${_bin%%|*}"
-    [[ -n "$_bin" && -x "$_bin" ]] || return 1
-    # An install (or a cancelled install) must not pass a stale binary through.
-    _ver=$(xl_binary_version "$_bin" 2>/dev/null || true)
-    [[ -n "$_ver" && ( -z "$_latest" || "$_ver" == "$_latest" ) ]] || return 1
-    return 0
-}
-
-xray_latest_menu() {
-    local latest_tag='' choice='' state_mode='' state_ver=''
-    latest_tag=$(xl_upstream_latest_tag 2>/dev/null || echo '')
-    while true; do
-        clear
-        msg "${CYAN}======================================================================${NC}"
-        msg "${BOLD}${GREEN}$(tr_msg xl_title)${NC}"
-        state_mode=$(_xl_state_get mode); state_ver=$(_xl_state_get version)
-        msg "${CYAN}$(tr_msg xl_avail): ${latest_tag:-$(tr_msg xl_unknown)}${NC}"
-        msg "${CYAN}$(tr_msg xl_slot): $(xl_binary_version "$XRAY_SLOT_BIN")${NC}"
-        if [[ -n "$state_mode" ]]; then
-            if [[ "$state_mode" == 'takeover' ]]; then
-                msg "${CYAN}$(tr_msg xl_state_takeover): ${state_ver}${NC}"
-            else
-                msg "${CYAN}$(tr_msg xl_state_coexist): ${state_ver} ($(xl_binary_version "$XRAY_LATEST_BIN"))${NC}"
-            fi
-        else
-            msg "${CYAN}$(tr_msg xl_latest_inst): $(tr_msg xl_not_installed)${NC}"
-        fi
-        if [[ -n "$latest_tag" ]] && ABOX_XRAY_VERSION="$latest_tag" xray_reality_requires_mlkem 2>/dev/null; then
-            msg "${RED}${BOLD}$(tr_msg xl_mlkem_warn)${NC}"
-        fi
-        msg " ${CYAN}1.${NC}  VLESS + Vision + REALITY"
-        msg " ${CYAN}2.${NC}  VLESS + XHTTP + REALITY"
-        msg " ${CYAN}3.${NC}  Trojan-Reality"
-        msg " ${CYAN}4.${NC}  Shadowsocks 2022"
-        msg " ${CYAN}5.${NC}  SOCKS5"
-        msg " ${CYAN}6.${NC}  $(tr_msg xl_m_trio)"
-        msg " ${CYAN}7.${NC}  $(tr_msg xl_m_quad)"
-        msg " ${CYAN}8.${NC}  $(tr_msg xl_m_ports)"
-        msg " ${CYAN}9.${NC}  $(tr_msg xl_m_remove)"
-        msg " ${CYAN}0.${NC}  $(tr_msg xl_back_main)"
-        read -r -p "$(tr_msg xl_select)" choice || return 0
-        case "$choice" in
-            1) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-vision xray_latest_deploy vision; pause_return ;;
-            2) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-xhttp xray_latest_deploy xhttp; pause_return ;;
-            3) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-trojan xray_latest_deploy trojan; pause_return ;;
-            4) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-ss xray_latest_deploy ss; pause_return ;;
-            5) xray_latest_ensure_core "$latest_tag" && deploy_with_instance_choice xray-latest latest-socks xray_latest_deploy socks; pause_return ;;
-            6) xray_latest_ensure_core "$latest_tag" && xray_latest_deploy_trio; pause_return ;;
-            7) xray_latest_ensure_core "$latest_tag" && xray_latest_deploy_quad; pause_return ;;
-            8) xl_show_ports; pause_return ;;
-            9) xray_latest_remove; pause_return ;;
-            0) return 0 ;;
-            *) msg "${RED}$(tr_msg invalid_input): $choice${NC}"; sleep 1 ;;
-        esac
-    done
-}
 
 # A-Check (companion IP checker): fetched from the pinned test-tools-mirror
 # release (see run_acheck_tool), so A-Box tracks the latest A-Check without
@@ -43697,7 +42742,7 @@ view_config() {
         msg "${BOLD}${CYAN}── VLESS-Vision-Reality · 端口 ${VLESS_PORT}${NC}"
         msg "${GREEN}${VLESS_URL}${NC}"
         if [[ "$CORE" == 'xray' ]] && xray_reality_requires_mlkem; then
-            msg "${YELLOW}当前 Xray $(effective_xray_version) 的 REALITY 服务端涉及较新的兼容门槛；Mihomo 请使用下方完整 YAML。部分 Shadowrocket / sing-box 版本可能无法建立连接。A-Box 默认使用经过当前 iOS + XHTTP/REALITY 兼容性权衡的版本 Xray ${ABOX_XRAY_DEFAULT_VERSION}（兼容性固定版，非 26.9.x ML-KEM prerelease）；更高 prerelease 版本请显式设置 ABOX_XRAY_VERSION。${NC}"
+            msg "${YELLOW}$(tprintf vc_xray_mlkem_compat "$(effective_xray_version)")${NC}"
         fi
         generate_qr "$VLESS_URL"
     fi
@@ -44576,6 +43621,8 @@ core_post_upgrade_health_gate() {
 
 upgrade_xray_core_only() {
     local was_active=0 active_state='' backup='' tmp xray_zip xray_ext old_ver new_ver
+    # C2 (Q8): handle any retired xray-latest instance before upgrading.
+    xray_latest_legacy_retire || return 1
     abox_owns_service xray || die '拒绝升级：xray 不是 A-Box 托管服务。'
     msg "${YELLOW}[*] Upgrading Xray-core binary only; node parameters will be preserved...${NC}"
     get_architecture
@@ -44598,8 +43645,8 @@ upgrade_xray_core_only() {
                 0) ;;
                 1) die "拒绝将 Xray 从 ${current_tag} 降级到 ${target_ref}。如确需降级，请明确设置 ABOX_ALLOW_CORE_DOWNGRADE=1 并确认客户端兼容性。" ;;
                 2) die '当前或目标 Xray 版本格式无法比较。' ;;
-                3) msg "${YELLOW}[!] 当前 Xray ${current_tag} 高于默认兼容版本 ${target_ref}；为避免自动降级，本次跳过。${NC}"; return 0 ;;
-                4) msg "${GREEN}[OK] 当前 Xray ${current_tag} 已是默认兼容版本，无需替换。${NC}"; return 0 ;;
+                3) msg "${YELLOW}[!] 当前 Xray ${current_tag} 高于本次目标版本 ${target_ref}；为避免自动降级，本次跳过。${NC}"; return 0 ;;
+                4) msg "${GREEN}[OK] 当前 Xray ${current_tag} 已是本次目标版本 ${target_ref}，无需替换。${NC}"; return 0 ;;
                 *) die 'Xray version-direction guard returned an unexpected status.' ;;
             esac
         fi
@@ -46281,14 +45328,15 @@ PY_SELFTEST_TAR
     grep -Fq 'command_user="abox-xray:abox-xray"' <<< "$source_body" || { echo 'FAIL: Xray OpenRC service must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'capabilities="${HY2_RC_CAPS}"' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC capabilities missing'; failures=$((failures + 1)); }
     grep -Fq 'write_file_atomically_from_stdin /etc/init.d/hysteria 755 <<EOF_SVC' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC capabilities heredoc must expand deployment-time value'; failures=$((failures + 1)); }
-    # 13 real sites (U35 fix); source_body excludes this assertion line itself.
-    [[ "$(grep -Fc 'capabilities="^cap_net_bind_service"' <<< "$source_body")" -ge 13 ]] || { echo 'FAIL: Xray/Sing-box OpenRC capabilities missing'; failures=$((failures + 1)); }
+    # 11 real sites (U35 fix; C2: was 13, the retired xray-latest block
+    # held 2); source_body excludes this assertion line itself.
+    [[ "$(grep -Fc 'capabilities="^cap_net_bind_service"' <<< "$source_body")" -ge 11 ]] || { echo 'FAIL: Xray/Sing-box OpenRC capabilities missing'; failures=$((failures + 1)); }
     grep -Fq 'User=abox-singbox' <<< "$source_body" || { echo 'FAIL: Sing-box systemd unit must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'command_user="abox-singbox:abox-singbox"' <<< "$source_body" || { echo 'FAIL: Sing-box OpenRC service must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'User=abox-hysteria' <<< "$source_body" || { echo 'FAIL: Hysteria systemd unit must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'command_user="abox-hysteria:abox-hysteria"' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC service must drop root UID'; failures=$((failures + 1)); }
     grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'" <<< "$source_body" || { echo 'FAIL: Hysteria compatibility pin missing'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_TRY_LATEST_CORE_STABLE:-0' <<< "$source_body" || { echo 'FAIL: latest core upgrade must remain opt-in'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_TRY_LATEST_CORE_STABLE:-0' <<< "$source_body" || { echo 'FAIL: try-latest danger path must stay opt-in (cooldown bypass only)'; failures=$((failures + 1)); }
     grep -Fq 'sni_probe_candidate_tier() {' <<< "$source_body" || { echo 'FAIL: custom REALITY SNI probe helper missing'; failures=$((failures + 1)); }
     grep -Fq 'custom_tier=$(sni_probe_candidate_tier "$input"' <<< "$source_body" || { echo 'FAIL: custom REALITY SNI must be re-probed before acceptance'; failures=$((failures + 1)); }
     grep -Fq 'core_latest_stable_release_ref() {' <<< "$source_body" || { echo 'FAIL: dynamic stable Release resolver missing'; failures=$((failures + 1)); }
@@ -46298,15 +45346,30 @@ PY_SELFTEST_TAR
     # F-06 fix: default-value assertions must not fail when the user legally
     # overrides via environment. Isolate in a subshell with overrides unset.
     # E-2: PROBE_SKIP=1 prevents failure when host has newer Xray installed.
+    # C2 (Q7): the effective version is a fallback value when the version
+    # is unparsed/unprobed, not a policy default. Fixed inputs only.
     ( unset ABOX_XRAY_VERSION ABOX_RESOLVED_XRAY_VERSION; ABOX_XRAY_VERSION_PROBE_SKIP=1
-      [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] ) || { echo 'FAIL: effective Xray default version'; failures=$((failures + 1)); }
+      [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] ) || { echo 'FAIL: effective Xray version fallback value when unparsed/unprobed'; failures=$((failures + 1)); }
+    ( ABOX_XRAY_VERSION=v26.7.28 ABOX_XRAY_VERSION_PROBE_SKIP=1
+      [[ "$(effective_xray_version)" == 'v26.7.28' ]] ) || { echo 'FAIL: explicit Xray version must be honored by effective_xray_version'; failures=$((failures + 1)); }
     (
         unset ABOX_XRAY_VERSION ABOX_TRY_LATEST_CORE_STABLE
         ABOX_RESOLVED_XRAY_VERSION=''; ABOX_RESOLVED_XRAY_SOURCE=''
-        core_latest_stable_release_ref() { printf '%s\n' 'should-not-be-called' >&2; return 1; }
+        core_latest_stable_release_ref() { printf '%s\n' 'v26.11.9'; }
+        core_latest_mirror_release_ref() { printf '%s\n' 'v26.7.28'; }
+        core_stable_release_age_days() { printf '%s\n' '30'; }
         resolve_core_release_target XTLS/Xray-core || exit 1
-        [[ "$ABOX_RESOLVED_XRAY_VERSION|$ABOX_RESOLVED_XRAY_SOURCE" == "$ABOX_XRAY_DEFAULT_VERSION|pinned" ]]
-    ) || { echo 'FAIL: routine core resolver must preserve the Xray compatibility pin'; failures=$((failures + 1)); }
+        [[ "$ABOX_RESOLVED_XRAY_VERSION|$ABOX_RESOLVED_XRAY_SOURCE" == 'v26.11.9|upstream' ]]
+    ) || { echo 'FAIL: routine core resolver must follow the latest stable Xray release'; failures=$((failures + 1)); }
+    (
+        unset ABOX_XRAY_VERSION ABOX_TRY_LATEST_CORE_STABLE
+        ABOX_RESOLVED_XRAY_VERSION=''; ABOX_RESOLVED_XRAY_SOURCE=''
+        core_latest_stable_release_ref() { printf '%s\n' 'v26.11.9'; }
+        core_latest_mirror_release_ref() { printf '%s\n' 'v26.7.28'; }
+        core_stable_release_age_days() { return 1; }
+        resolve_core_release_target XTLS/Xray-core || exit 1
+        [[ "$ABOX_RESOLVED_XRAY_VERSION|$ABOX_RESOLVED_XRAY_SOURCE" == 'v26.7.28|mirror-latest' ]]
+    ) || { echo 'FAIL: cooldown must fall back to the current mirror Xray release'; failures=$((failures + 1)); }
     (
         unset ABOX_SINGBOX_VERSION
         ABOX_TRY_LATEST_CORE_STABLE=1
@@ -46336,25 +45399,24 @@ PY_SELFTEST_TAR
     ( release=alpine; SB_ARCH=amd64; [[ "$(core_mirror_asset_leaf SagerNet/sing-box singbox_core.tar.gz v1.14.3)" == 'sing-box-1.14.3-linux-amd64-musl.tar.gz' ]] ) || { echo 'FAIL: versioned sing-box musl mirror asset naming'; failures=$((failures + 1)); }
     ( HY2_ARCH=arm64; [[ "$(core_mirror_asset_leaf HyNetworks/hysteria hysteria_core app/v2.13.0 1)" == 'hysteria-app-v2.13.0-linux-arm64' ]] ) || { echo 'FAIL: versioned Hysteria mirror asset naming'; failures=$((failures + 1)); }
     ( ABOX_RESOLVED_XRAY_VERSION=''; ABOX_RESOLVED_XRAY_SOURCE=''; core_set_resolved_target XTLS/Xray-core v26.3.27 mirror-exact && [[ "$ABOX_RESOLVED_XRAY_VERSION|$ABOX_RESOLVED_XRAY_SOURCE" == 'v26.3.27|mirror-exact' ]] ) || { echo 'FAIL: exact-tag mirror source must preserve the requested version'; failures=$((failures + 1)); }
-    ( unset ABOX_SINGBOX_VERSION; ABOX_TRY_LATEST_CORE_STABLE=1; ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE=''; core_latest_stable_release_ref() { return 1; }; core_latest_mirror_release_ref() { printf '%s\n' 'v1.14.3'; }; resolve_core_release_target SagerNet/sing-box || exit 1; [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.3|mirror-latest' ]] ) || { echo 'FAIL: latest mirror metadata must be used when upstream API fails'; failures=$((failures + 1)); }
+    ( unset ABOX_SINGBOX_VERSION; ABOX_TRY_LATEST_CORE_STABLE=1; ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE=''; core_latest_stable_release_ref() { return 2; }; core_latest_mirror_release_ref() { printf '%s\n' 'v1.14.3'; }; resolve_core_release_target SagerNet/sing-box || exit 1; [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.3|mirror-latest' ]] ) || { echo 'FAIL: latest mirror metadata must be used when upstream API fails'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9.8 xray_reality_requires_mlkem ) || { echo 'FAIL: Xray 26.9.8 must require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.7.28 xray_reality_requires_mlkem ) && { echo 'FAIL: Xray 26.7.28 must not require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9.8-rc.1 xray_reality_requires_mlkem ) && { echo 'FAIL: Xray 26.9.8 prerelease must not require REALITY ML-KEM'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9.9-rc.1 xray_reality_requires_mlkem ) || { echo 'FAIL: Xray 26.9.9 prerelease must require REALITY ML-KEM'; failures=$((failures + 1)); }
-    ( unset ABOX_XRAY_VERSION ABOX_RESOLVED_XRAY_VERSION; ABOX_XRAY_VERSION_PROBE_SKIP=1
-      [[ "$(effective_xray_version)" == "$ABOX_XRAY_DEFAULT_VERSION" ]] ) || { echo 'FAIL: effective Xray compatibility default'; failures=$((failures + 1)); }
     ( ABOX_XRAY_VERSION=v26.9 xray_reality_requires_mlkem ) >/dev/null 2>&1 && { echo 'FAIL: malformed Xray version accepted'; failures=$((failures + 1)); }
     grep -Fq 'support-x25519mlkem768: $clash_mlkem' <<< "$source_body" || { echo 'FAIL: Clash REALITY ML-KEM flag must be version-aware'; failures=$((failures + 1)); }
     grep -Fq 'HyNetworks/hysteria) override="${ABOX_HYSTERIA_APP_VERSION:-}"; default_ref="$ABOX_HYSTERIA_DEFAULT_VERSION"' <<< "$source_body" || { echo 'FAIL: Hysteria v2.13.0 compatibility pin missing'; failures=$((failures + 1)); }
-    grep -Fq "ABOX_XRAY_DEFAULT_VERSION='v26.7.28'" <<< "$source_body" || { echo 'FAIL: Xray iOS/XHTTP compatibility pin missing'; failures=$((failures + 1)); }
     # F-06 fix: isolate policy/cooldown default assertions from user env overrides.
     ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
-      [[ "$(core_update_policy XTLS/Xray-core)" == 'pinned' ]] ) || { echo 'FAIL: Xray update policy must default to pinned'; failures=$((failures + 1)); }
+      [[ "$(core_update_policy XTLS/Xray-core)" == 'auto-stable' ]] ) || { echo 'FAIL: Xray update policy must default to auto-stable'; failures=$((failures + 1)); }
     ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
       [[ "$(core_update_policy SagerNet/sing-box)" == 'auto-stable' ]] ) || { echo 'FAIL: sing-box update policy must default to auto-stable'; failures=$((failures + 1)); }
     ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
       [[ "$(core_update_policy HyNetworks/hysteria)" == 'auto-stable' ]] ) || { echo 'FAIL: Hysteria update policy must default to auto-stable'; failures=$((failures + 1)); }
     ( ABOX_XRAY_UPDATE_POLICY='auto-stable'; [[ "$(core_update_policy XTLS/Xray-core)" == 'auto-stable' ]] ) || { echo 'FAIL: Xray policy override not honored'; failures=$((failures + 1)); }
+    ( ABOX_XRAY_UPDATE_POLICY='pinned'; [[ "$(core_update_policy XTLS/Xray-core)" == 'pinned' ]] ) || { echo 'FAIL: Xray pinned policy override not honored'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_XRAY_UPDATE_POLICY="${ABOX_XRAY_UPDATE_POLICY:-auto-stable}"' <<< "$source_body" || { echo 'FAIL: Xray update policy init must default to auto-stable'; failures=$((failures + 1)); }
     # U235: exercise the production cooldown helper, not shell expansions.
     assert_ok core_cooldown_allows_age 10 7
     assert_bad core_cooldown_allows_age 3 7
@@ -46402,12 +45464,17 @@ PY_SELFTEST_TAR
       ! wgcf_resolve_latest amd64 >/dev/null 2>&1 ) || { echo 'FAIL: wgcf resolver must fail closed on API failure'; failures=$((failures + 1)); }
     ( github_api_get() { printf '%s' '{"tag_name":"v2.3.1","draft":true,"prerelease":false,"assets":[]}'; }
       ! wgcf_resolve_latest amd64 >/dev/null 2>&1 ) || { echo 'FAIL: wgcf resolver must reject draft releases'; failures=$((failures + 1)); }
-    declare -F xray_latest_menu >/dev/null 2>&1 || { echo 'FAIL: latest Xray menu missing'; failures=$((failures + 1)); }
-    declare -F xray_latest_install_core >/dev/null 2>&1 || { echo 'FAIL: latest Xray core installer missing'; failures=$((failures + 1)); }
-    declare -F xray_latest_deploy >/dev/null 2>&1 || { echo 'FAIL: latest Xray deployer missing'; failures=$((failures + 1)); }
-    declare -F xray_latest_deploy_trio >/dev/null 2>&1 || { echo 'FAIL: latest Xray trio deployer missing'; failures=$((failures + 1)); }
-    declare -F xray_latest_deploy_quad >/dev/null 2>&1 || { echo 'FAIL: latest Xray quad deployer missing'; failures=$((failures + 1)); }
-    declare -F xray_latest_ensure_core >/dev/null 2>&1 || { echo 'FAIL: latest Xray core ensure missing'; failures=$((failures + 1)); }
+    # C2 (Q3/Q8): xray-latest is retired -- the menu/install/deploy
+    # functions must NOT exist; the legacy layer must exist instead.
+    declare -F xray_latest_menu >/dev/null 2>&1 && { echo 'FAIL: retired xray-latest menu still exists'; failures=$((failures + 1)); } || true
+    declare -F xray_latest_install_core >/dev/null 2>&1 && { echo 'FAIL: retired xray-latest core installer still exists'; failures=$((failures + 1)); } || true
+    declare -F xray_latest_deploy >/dev/null 2>&1 && { echo 'FAIL: retired xray-latest deployer still exists'; failures=$((failures + 1)); } || true
+    declare -F xray_latest_deploy_trio >/dev/null 2>&1 && { echo 'FAIL: retired xray-latest trio deployer still exists'; failures=$((failures + 1)); } || true
+    declare -F xray_latest_deploy_quad >/dev/null 2>&1 && { echo 'FAIL: retired xray-latest quad deployer still exists'; failures=$((failures + 1)); } || true
+    declare -F xray_latest_ensure_core >/dev/null 2>&1 && { echo 'FAIL: retired xray-latest core ensure still exists'; failures=$((failures + 1)); } || true
+    declare -F xray_latest_legacy_detect >/dev/null 2>&1 || { echo 'FAIL: retired xray-latest legacy detector missing'; failures=$((failures + 1)); }
+    declare -F xray_latest_legacy_retire >/dev/null 2>&1 || { echo 'FAIL: retired xray-latest legacy handler missing'; failures=$((failures + 1)); }
+    declare -F shortcut_migrate_legacy_xray_latest >/dev/null 2>&1 || { echo 'FAIL: shortcut legacy migration missing'; failures=$((failures + 1)); }
     declare -F is_systemd >/dev/null 2>&1 || { echo 'FAIL: is_systemd missing'; failures=$((failures + 1)); }
     declare -F xray_owned >/dev/null 2>&1 || { echo 'FAIL: xray_owned missing'; failures=$((failures + 1)); }
     ( INIT_SYS_EXPECTED='' INIT_SYS='' is_systemd ) && { echo 'FAIL: is_systemd true with neither variable set'; failures=$((failures + 1)); } || true
@@ -46416,7 +45483,7 @@ PY_SELFTEST_TAR
     declare -F cleanup_protocols_menu >/dev/null 2>&1 || { echo 'FAIL: cleanup protocols menu missing'; failures=$((failures + 1)); }
     declare -F remove_single_protocol_menu >/dev/null 2>&1 || { echo 'FAIL: single protocol remover missing'; failures=$((failures + 1)); }
     declare -F clear_all_protocols >/dev/null 2>&1 || { echo 'FAIL: clear all protocols missing'; failures=$((failures + 1)); }
-    grep -Fq "XRAY_LATEST_BIN='/usr/local/bin/xray-latest'" <<< "$source_body" || { echo 'FAIL: xray-latest binary path missing'; failures=$((failures + 1)); }
+    grep -Fq "XRAY_LATEST_BIN='/usr/local/bin/xray-latest'" <<< "$source_body" && { echo 'FAIL: retired xray-latest binary path constant still defined'; failures=$((failures + 1)); } || true
     grep -Fq '每月流量管控 / Monthly Traffic' <<< "$source_body" || { echo 'FAIL: traffic up-to-now banner missing'; failures=$((failures + 1)); }
     grep -Fq 'one_click_reality_deploy()' <<< "$source_body" || { echo 'FAIL: one-click Reality missing'; failures=$((failures + 1)); }
     grep -Fq 'abox_is_fast()' <<< "$source_body" || { echo 'FAIL: fast mode helper missing'; failures=$((failures + 1)); }
@@ -47284,7 +46351,7 @@ EOF_SELFTEST_IPT
         local clash_dir="$tmp/abox"
         mkdir -m 700 "$clash_dir" || { echo 'FAIL: self-test A-Box temp directory'; failures=$((failures + 1)); }
         ensure_abox_dir_owned "$clash_dir" || { echo 'FAIL: self-test A-Box temp ownership setup'; failures=$((failures + 1)); }
-        ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef CLASH_YAML_PATH="$clash_dir/A-Box-clash.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash YAML generation'; failures=$((failures + 1)); }
+        ABOX_XRAY_VERSION=v26.7.28 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef CLASH_YAML_PATH="$clash_dir/A-Box-clash.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash YAML generation'; failures=$((failures + 1)); }
         [[ "$(stat -c %a "$clash_dir/A-Box-clash.yaml" 2>/dev/null)" == '600' ]] || { echo 'FAIL: Clash YAML permissions must be 0600'; failures=$((failures + 1)); }
         ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=HY2 PUBLIC_KEY=publickey LINK_IP=203.0.113.10 HY2_DOMAIN=hy2.example.com HY2_HOP=true HY2_BASE_PORT=443 HY2_RANGE_START=20000 HY2_RANGE_END=25000 HY2_CLASH_PORTS=20000-25000 HY2_CERT_SHA256_FP=abcdef CLASH_YAML_PATH="$clash_dir/A-Box-clash-hop.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash Hysteria2 hop YAML generation'; failures=$((failures + 1)); }
         grep -q '^    port: 20000$' "$clash_dir/A-Box-clash-hop.yaml" || { echo 'FAIL: official Clash Hysteria2 hop YAML primary port must be first range port'; failures=$((failures + 1)); }
@@ -47299,9 +46366,11 @@ EOF_SELFTEST_IPT
         grep -q '^  default-nameserver:' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash YAML default-nameserver'; failures=$((failures + 1)); }
         grep -q '^  fake-ip-filter:' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash YAML fake-ip-filter'; failures=$((failures + 1)); }
         grep -q 'host: "www.microsoft.com"' "$clash_dir/A-Box-clash.yaml" || { echo 'FAIL: Clash XHTTP host'; failures=$((failures + 1)); }
-        [[ "$(grep -Fc 'support-x25519mlkem768: false' "$clash_dir/A-Box-clash.yaml")" -eq 2 ]] || { echo 'FAIL: default Xray REALITY ML-KEM flags must remain disabled'; failures=$((failures + 1)); }
+        [[ "$(grep -Fc 'support-x25519mlkem768: false' "$clash_dir/A-Box-clash.yaml")" -eq 2 ]] || { echo 'FAIL: Xray 26.7.28 must disable REALITY ML-KEM flags'; failures=$((failures + 1)); }
         ABOX_XRAY_VERSION=v26.9.8 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef CLASH_YAML_PATH="$clash_dir/A-Box-clash-mlkem.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: new-Xray Clash YAML generation'; failures=$((failures + 1)); }
         [[ "$(grep -Fc 'support-x25519mlkem768: true' "$clash_dir/A-Box-clash-mlkem.yaml")" -eq 2 ]] || { echo 'FAIL: Xray >= ML-KEM threshold must enable REALITY ML-KEM flags'; failures=$((failures + 1)); }
+        ABOX_XRAY_VERSION=v26.11.9 ABOX_DIR="$clash_dir" ABOX_ENV="$clash_dir/.env" CORE=xray MODE=ALL PUBLIC_KEY=publickey LINK_IP=203.0.113.10 UUID=11111111-1111-4111-8111-111111111111 VLESS_PORT=443 XHTTP_PORT=8443 SS_PORT=2053 HY2_BASE_PORT=443 VLESS_SNI=www.microsoft.com VISION_SNI=www.microsoft.com XHTTP_SNI=www.microsoft.com HY2_DOMAIN='' HY2_HOP=false HY2_CERT_SHA256_FP=abcdef HY2_CERT_PUBKEY_SHA256_B64=abcdef CLASH_YAML_PATH="$clash_dir/A-Box-clash-mlkem-new.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: new-Xray Clash YAML generation'; failures=$((failures + 1)); }
+        [[ "$(grep -Fc 'support-x25519mlkem768: true' "$clash_dir/A-Box-clash-mlkem-new.yaml")" -eq 2 ]] || { echo 'FAIL: Xray 26.11.9 must enable REALITY ML-KEM flags'; failures=$((failures + 1)); }
         grep -Fq '较新的 REALITY ML-KEM ClientHello 门槛' <<< "$source_body" || { echo 'FAIL: Xray ML-KEM compatibility warning missing'; failures=$((failures + 1)); }
         ABOX_DIR="$clash_dir" CORE=xray MODE=SS LINK_IP=203.0.113.10 SS_PORT=2053 SS_PASS='a"b\c' HY2_PASS='h"p' HY2_OBFS='o\b' CLASH_YAML_PATH="$clash_dir/A-Box-clash-escaped.yaml" write_clash_yaml >/dev/null 2>&1 || { echo 'FAIL: Clash YAML escaped secret generation'; failures=$((failures + 1)); }
         python3 -I - "$clash_dir/A-Box-clash-escaped.yaml" <<'PY_SELFTEST_YAML' >/dev/null 2>&1 || { echo 'FAIL: Clash YAML secret escaping'; failures=$((failures + 1)); }

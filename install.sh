@@ -7100,6 +7100,12 @@ tr_msg() {
         ru:fw2_ufw_allow) echo 'Не удалось открыть порт в UFW, или текущий UFW не поддерживает комментарии правил: %s' ;;
         fa:fw2_ufw_allow) echo 'باز کردن پورت در UFW ناموفق بود، یا UFW فعلی از توضیح قوانین پشتیبانی نمی‌کند: %s' ;;
         ja:fw2_ufw_allow) echo 'UFW ファイアウォールの開放に失敗したか、現在の UFW がルールコメントをサポートしていません： %s' ;;
+        zh:fw2_ufw_partial_foreign) echo '%s 的缺失 UFW 地址族已有非 A-Box 等价规则；拒绝修改其所有权。' ;;
+        zh-tw:fw2_ufw_partial_foreign) echo '%s 的缺失 UFW 位址族已有非 A-Box 等價規則；拒絕修改其所有權。' ;;
+        en:fw2_ufw_partial_foreign) echo 'The missing UFW address family for %s already has a non-A-Box equivalent rule; refusing to change its ownership.' ;;
+        ru:fw2_ufw_partial_foreign) echo 'В недостающем адресном семействе UFW для %s уже есть эквивалентное правило, не принадлежащее A-Box; изменение его принадлежности отклонено.' ;;
+        fa:fw2_ufw_partial_foreign) echo 'خانواده آدرس گمشده UFW برای %s از قبل قانونی معادل غیر از A-Box دارد؛ از تغییر مالکیت آن خودداری شد.' ;;
+        ja:fw2_ufw_partial_foreign) echo '%s の不足している UFW アドレスファミリには既に A-Box 以外の等価ルールがあります。その所有権の変更を拒否します。' ;;
         zh:fw2_ufw_record) echo 'UFW 已有托管规则但归属状态记录失败。' ;;
         zh-tw:fw2_ufw_record) echo 'UFW 已有託管規則但歸屬狀態記錄失敗。' ;;
         en:fw2_ufw_record) echo 'UFW already has a managed rule, but recording its ownership state failed.' ;;
@@ -12066,7 +12072,7 @@ shortcut_check_candidate() {
             ;;
         *)
             # alias / function / builtin / keyword would shadow the name.
-            SHORTCUT_ERR='cmd_shadow'; SHORTCUT_DETAIL="$(_t) $_name"; return 1
+            SHORTCUT_ERR='cmd_shadow'; SHORTCUT_DETAIL="$_t $_name"; return 1
             ;;
     esac
     # Step 6: other same-name executables in PATH (+ explicit /usr/bin).
@@ -12081,7 +12087,7 @@ shortcut_check_candidate() {
         case "$_seen_dirs" in *" $_dir "*) continue ;; esac
         _seen_dirs="$_seen_dirs$_dir "
         [[ "$_dir" == '/usr/local/bin' ]] && continue
-        if [[ -f "$_dir/$_name" && -x "$_dir/$_name" && ! -L "$_dir/$_name" ]]; then
+        if [[ -f "$_dir/$_name" && -x "$_dir/$_name" ]]; then
             SHORTCUT_ERR='path_shadow'; SHORTCUT_DETAIL="$_dir/$_name"; return 1
         fi
         IFS=':'
@@ -12111,7 +12117,6 @@ shortcut_lock_acquire() {
         _now=$(date +%s 2>/dev/null || echo 0)
         if [[ "$_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$_pid" 2>/dev/null; then
             rm -rf -- "$_lock" 2>/dev/null || true
-            continue
         fi
         _age=0
         if [[ -n "$_now" && "$_now" =~ ^[0-9]+$ ]]; then
@@ -12121,7 +12126,6 @@ shortcut_lock_acquire() {
         fi
         if (( _age > 120 )); then
             rm -rf -- "$_lock" 2>/dev/null || true
-            continue
         fi
         if (( _wait >= 60 )); then SHORTCUT_ERR='lock_timeout'; return 1; fi
         sleep 0.5
@@ -12424,8 +12428,39 @@ shortcut_prompt_conflict() {
 # conflicting name and leave whatever exists alone"; the state records
 # only names this code actually installed. When nothing is installed the
 # state file is left unwritten, so the next run prompts again.
+# R5-04: reset helper for the confirmed-reset path only. The state is
+# re-read INSIDE the lock: another process may have repaired it while
+# the user was confirming, and a lock-outside rewrite would clobber
+# that valid set. rc 0 = ok/missing (leave alone), 1 = still corrupt.
+shortcut_reset_corrupt_state_confirmed() {
+    local _rc=0
+    shortcut_lock_acquire || return 1
+    if shortcut_read_state; then
+        _rc=0
+    else
+        _rc=$?
+    fi
+    case "$_rc" in
+        0|2)
+            _rc=0
+            ;;
+        1)
+            if shortcut_write_state 'ab abox'; then
+                _rc=0
+            else
+                _rc=1
+            fi
+            ;;
+        *)
+            _rc=1
+            ;;
+    esac
+    shortcut_lock_release
+    return "$_rc"
+}
+
 shortcut_ensure() {
-    local _desired='' _rc=0
+    local _desired='' _rc=0 _reset_confirmed=0
     SHORTCUT_ERR=''
     shortcut_read_state
     _rc=$?
@@ -12436,7 +12471,7 @@ shortcut_ensure() {
             printf '%s' "$(tr_msg sc_state_reset_prompt)" > /dev/tty 2>/dev/null || { printf '%s\n' "$(tr_msg sc_none_installed)" >&2; return 1; }
             IFS= read -r _ans < /dev/tty || { printf '%s\n' "$(tr_msg sc_none_installed)" >&2; return 1; }
             case "$_ans" in
-                y|Y|yes|YES) _desired='ab abox' ;;
+                y|Y|yes|YES) _desired='ab abox'; _reset_confirmed=1 ;;
                 *) printf '%s\n' "$(tr_msg sc_none_installed)" >&2; return 1 ;;
             esac
         else
@@ -12451,6 +12486,12 @@ shortcut_ensure() {
     if ! shortcut_resolve_desired $_desired; then
         printf '%s\n' "$(tr_msg sc_none_installed)" >&2
         return 1
+    fi
+    if (( _reset_confirmed )); then
+        if ! shortcut_reset_corrupt_state_confirmed; then
+            printf '%s\n' "$(tr_msg sc_none_installed)" >&2
+            return 1
+        fi
     fi
     shortcut_change_transaction $SHORTCUT_RESOLVED
     _rc=$?
@@ -13087,7 +13128,7 @@ service_report_state() {
 }
 
 show_status_report() {
-    local init='unknown' xray_state sing_state hy2_state shortcut_state='missing' desired='UNINITIALIZED' period='' config_loaded=0
+    local init='unknown' xray_state sing_state hy2_state shortcut_state='' desired='UNINITIALIZED' period='' config_loaded=0
     local _status_lock_held=0 _status_stderr_saved=''
     # Best-effort non-blocking exclusive snapshot lock; proceed unlocked if busy.
     if [[ ${EUID:-0} -eq 0 ]] && command -v flock >/dev/null 2>&1 && [[ -f "$LOCK_FILE" && ! -L "$LOCK_FILE" ]]; then
@@ -13451,9 +13492,16 @@ reorder_one() {
             _iptables_do "$cmd" -I INPUT "${original_target_positions[i]}" "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
         done
         capture_firewall_views || return 1
-        [[ "$current_rules_output" == "$original_rules_output" ]] || return 1
-        rm -f -- "$recovery_snapshot" || return 1
-        recovery_snapshot=''
+        # R5-06: compare rule lines only. `iptables -S` prints the -P
+        # policy line first; the policy is clamped to DROP during
+        # rollback while the snapshot holds ACCEPT, so a full-string
+        # comparison can never match even when every rule is restored.
+        # The inner check must not require the policy to be restored;
+        # that is the outer rollback's job (R5-07).
+        local _current_no_policy _original_no_policy
+        _current_no_policy=$(printf '%s\n' "$current_rules_output" | awk '!/^-P[[:space:]]/') || return 1
+        _original_no_policy=$(printf '%s\n' "$original_rules_output" | awk '!/^-P[[:space:]]/') || return 1
+        [[ "$_current_no_policy" == "$_original_no_policy" ]] || return 1
         return 0
     }
     firewall_rollback() {
@@ -13475,9 +13523,20 @@ reorder_one() {
         firewall_rollback_inner
         _inner_rc=$?
         if (( _clamped )); then
-            if ! _iptables_do "$cmd" -P INPUT "$_saved_policy" >/dev/null 2>&1; then
-                printf '%s\n' 'A-Box firewall rollback: could not restore INPUT policy; left at DROP (fail-closed).' >&2
-                (( _inner_rc == 0 )) && _inner_rc=1
+            if (( _inner_rc != 0 )); then
+                printf '%s\n' 'A-Box firewall rollback: inner rollback failed; leaving INPUT policy at DROP (fail-closed).' >&2
+            elif ! _iptables_do "$cmd" -P INPUT "$_saved_policy" >/dev/null 2>&1; then
+                printf '%s\n' 'A-Box firewall rollback: could not restore INPUT policy; recovery snapshot retained.' >&2
+                _inner_rc=1
+            fi
+        fi
+        # R5-07: the snapshot is deleted only on full success (inner ok
+        # AND policy restored); every failure keeps it for manual use.
+        if (( _inner_rc == 0 )); then
+            if rm -f -- "$recovery_snapshot"; then
+                recovery_snapshot=''
+            else
+                _inner_rc=1
             fi
         fi
         return "$_inner_rc"
@@ -13605,25 +13664,40 @@ reorder_one() {
 # unreachable, yet restore reports success. Move each such
 # ACCEPT before the first terminal rule.
 reorder_plain_accepts() {
-    local cmd="$1" line terminal_idx accept_idx i spec
+    local cmd="$1" line terminal_idx accept_idx i spec rule_no iter accept_line_idx max_moves
     local -a lines=() argv=()
     command -v "$cmd" >/dev/null 2>&1 || return 0
+    iter=0; max_moves=-1
     while :; do
+        iter=$((iter + 1))
         lines=()
         while IFS= read -r line; do lines+=("$line"); done < <(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
-        terminal_idx=0; accept_idx=0
+        # R5-08: bound the loop on the FIRST snapshot's size: each
+        # pass moves one ACCEPT before the terminal rule, so more
+        # passes than rules + 1 means no progress. A per-pass re-read
+        # count would let a growing chain push the bound up forever.
+        (( max_moves < 0 )) && max_moves=${#lines[@]}
+        (( iter <= max_moves + 1 )) || return 1
+        terminal_idx=0; accept_idx=0; rule_no=0
         for (( i=0; i<${#lines[@]}; i++ )); do
             line="${lines[$i]}"
+            # R5-08: `iptables -S` prints the -P policy line first; only
+            # -A lines are chain rules, so only they advance the number.
+            [[ "$line" =~ ^-A[[:space:]]+INPUT[[:space:]] ]] || continue
+            rule_no=$((rule_no + 1))
             if [[ "$line" =~ ^-A[[:space:]]+INPUT[[:space:]]+(-m[[:space:]]+comment[[:space:]]+--comment[[:space:]]+\"?[^\"]+\"?[[:space:]]+)?-j[[:space:]]+(DROP|REJECT)([[:space:]]|$) ]]; then
-                [[ "$terminal_idx" == 0 ]] && terminal_idx=$((i+1))
+                [[ "$terminal_idx" == 0 ]] && terminal_idx=$rule_no
                 continue
             fi
-            if [[ "$terminal_idx" != 0 && "$line" =~ --comment[[:space:]]+\"?A-Box-[0-9]{1,5}-(tcp|udp)\"?([[:space:]]|$) && "$line" =~ [[:space:]]-j[[:space:]]+ACCEPT([[:space:]]|$) ]]; then
-                accept_idx=$((i+1)); break
+            if [[ "$terminal_idx" != 0 && "$line" =~ --comment[[:space:]]+\"?A-Box-[0-9]{1,5}(:[0-9]{1,5})?-(tcp|udp)\"?([[:space:]]|$) && "$line" =~ [[:space:]]-j[[:space:]]+ACCEPT([[:space:]]|$) ]]; then
+                accept_idx=$rule_no; accept_line_idx=$i; break
             fi
         done
         [[ "$accept_idx" == 0 ]] && return 0
-        line="${lines[$((accept_idx-1))]}"
+        # R5-08: accept_idx is a CHAIN rule number (for -D/-I), but
+        # lines[] also holds the -P line, so index it by the raw line
+        # number recorded alongside, not by accept_idx - 1.
+        line="${lines[$accept_line_idx]}"
         _iptables_do "$cmd" -D INPUT "$accept_idx" >/dev/null 2>&1 || return 1
         spec="${line#-A INPUT }"
         spec=$(printf '%s' "$spec" | tr -d '"')
@@ -13701,6 +13775,95 @@ _fw_nat_guard() {
     fi
     return 0
 }
+# R5-10: one restore leg (v4 or v6) with a default-deny window. The
+# live policy is clamped to DROP before any delete; the snapshot is
+# restored from a CLAMPED temp copy (its filter :INPUT policy rewritten
+# to DROP), because iptables-restore is not atomic across tables -- a
+# failed restore may already have committed the snapshot's ACCEPT.
+# Only after restore + reorder fully succeed is the snapshot's own
+# policy restored explicitly. On any failure the leg re-enforces DROP
+# and keeps the pre-delete backup for manual recovery.
+_fw_restore_leg() {
+    local cmd="$1" save_cmd="$2" restore_cmd="$3"
+    local snapshot="$4" wl_tag="$5" drop_tag="$6"
+    local backup tmp='' src='' final_policy=''
+
+    backup=$(mktemp /run/A-Box-firewall-restore-backup.XXXXXX) || return 1
+    "$save_cmd" > "$backup" 2>/dev/null || {
+        rm -f -- "$backup"
+        return 1
+    }
+
+    final_policy=$(awk '
+        $0 == "*filter" { f=1; next }
+        $0 == "COMMIT" { f=0 }
+        f && $1 == ":INPUT" { print $2 }
+    ' "$backup") || return 1
+
+    case "$final_policy" in
+        ACCEPT|DROP) ;;
+        *) echo "A-Box firewall restore: $cmd INPUT policy unknown; refusing to delete." >&2
+           return 1 ;;
+    esac
+
+    if snapshot_valid "$snapshot"; then
+        src=$(cat -- "$snapshot") || return 1
+
+        final_policy=$(printf '%s\n' "$src" | awk '
+            $0 == "*filter" { f=1; next }
+            $0 == "COMMIT" { f=0 }
+            f && $1 == ":INPUT" { print $2 }
+        ') || return 1
+
+        case "$final_policy" in
+            ACCEPT|DROP) ;;
+            *) echo "A-Box firewall restore: invalid snapshot INPUT policy; refusing to delete." >&2
+               return 1 ;;
+        esac
+
+        tmp=$(mktemp /run/A-Box-firewall-restore-clamped.XXXXXX) || return 1
+        if ! printf '%s\n' "$src" | awk '
+            $0 == "*filter" { f=1 }
+            f && $1 == ":INPUT" { $2="DROP" }
+            { print }
+            $0 == "COMMIT" { f=0 }
+        ' > "$tmp"; then
+            rm -f -- "$tmp"
+            return 1
+        fi
+
+        snapshot_test_valid "$tmp" "$restore_cmd" || {
+            rm -f -- "$tmp"
+            return 1
+        }
+    fi
+
+    if ! _iptables_do "$cmd" -P INPUT DROP >/dev/null 2>&1; then
+        echo "A-Box firewall restore: $cmd clamp failed; refusing to delete." >&2
+        if [[ -n "$tmp" ]]; then rm -f -- "$tmp"; fi
+        return 1
+    fi
+
+    if clean_chain "$cmd" filter INPUT &&
+       clean_chain "$cmd" nat PREROUTING &&
+       { [[ -z "$tmp" ]] || restore_one "$tmp" "$restore_cmd"; } &&
+       reorder_policy "$cmd" "$wl_tag" "$drop_tag" &&
+       _iptables_do "$cmd" -P INPUT "$final_policy" >/dev/null 2>&1; then
+        if [[ -n "$tmp" ]]; then
+            rm -f -- "$tmp" || return 1
+        fi
+        rm -f -- "$backup" || return 1
+        return 0
+    fi
+
+    if ! _iptables_do "$cmd" -P INPUT DROP >/dev/null 2>&1; then
+        echo "A-Box firewall restore: $cmd failed to enforce DROP; manual recovery required." >&2
+    fi
+    echo "A-Box firewall restore FAILED; pre-delete backup preserved: $backup (restore manually)" >&2
+    if [[ -n "$tmp" ]]; then rm -f -- "$tmp"; fi
+    return 1
+}
+
 # D1: validate before deleting (fail before clean when live A-Box rules
 # exist but the snapshot cannot restore them; proceed when nothing live
 # to lose, e.g. fresh boot or IPv4-only host with no live v6 rules).
@@ -13715,18 +13878,8 @@ elif ! snapshot_test_valid /etc/ddr/iptables.v4 iptables-restore; then
     echo 'A-Box firewall restore: IPv4 snapshot failed full validation (--test); refusing to delete live rules.' >&2
     exit 1
 fi
-# D1: preserve a manual-recovery backup before deleting (full save; kept
-# on failure with a loud message, not auto-restored, to avoid duplicating
-# foreign rules via --noflush).
-restore_backup4=$(mktemp /run/A-Box-firewall-restore-backup4.XXXXXX) || exit 1
-iptables-save > "$restore_backup4" 2>/dev/null || { rm -f -- "$restore_backup4"; exit 1; }
-clean_chain iptables filter INPUT || exit 1
-clean_chain iptables nat PREROUTING || exit 1
-if snapshot_valid /etc/ddr/iptables.v4; then
-    restore_one /etc/ddr/iptables.v4 iptables-restore || { echo "A-Box firewall restore FAILED; pre-delete backup preserved: $restore_backup4 (restore manually)" >&2; exit 1; }
-fi
-reorder_policy iptables WL DROP || exit 1
-rm -f -- "$restore_backup4"
+# R5-10: v4 leg via _fw_restore_leg (pre-checks above are unchanged).
+_fw_restore_leg iptables iptables-save iptables-restore /etc/ddr/iptables.v4 WL DROP || exit 1
 if command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -S INPUT >/dev/null 2>&1; then
     if ! snapshot_valid /etc/ddr/iptables.v6; then
         _fw_input_v6=$(_iptables_q ip6tables -S INPUT 2>/dev/null) || { echo 'A-Box firewall restore: IPv6 INPUT query failed; refusing to delete.' >&2; exit 1; }
@@ -13739,15 +13892,8 @@ if command -v ip6tables >/dev/null 2>&1 && _iptables_q ip6tables -S INPUT >/dev/
         echo 'A-Box firewall restore: IPv6 snapshot failed full validation (--test); refusing to delete live rules.' >&2
         exit 1
     fi
-    restore_backup6=$(mktemp /run/A-Box-firewall-restore-backup6.XXXXXX) || exit 1
-    ip6tables-save > "$restore_backup6" 2>/dev/null || { rm -f -- "$restore_backup6"; exit 1; }
-    clean_chain ip6tables filter INPUT || exit 1
-    clean_chain ip6tables nat PREROUTING || exit 1
-    if snapshot_valid /etc/ddr/iptables.v6; then
-        restore_one /etc/ddr/iptables.v6 ip6tables-restore || { echo "A-Box firewall restore FAILED; pre-delete backup preserved: $restore_backup6 (restore manually)" >&2; exit 1; }
-    fi
-    reorder_policy ip6tables WL6 DROP6 || exit 1
-    rm -f -- "$restore_backup6"
+    # R5-10: v6 leg via _fw_restore_leg (pre-checks above are unchanged).
+    _fw_restore_leg ip6tables ip6tables-save ip6tables-restore /etc/ddr/iptables.v6 WL6 DROP6 || exit 1
 elif [[ -s /etc/ddr/iptables.v6 ]]; then
     # A v6 snapshot exists but ip6tables is unusable right now:
     # fail loudly instead of silently booting without v6 rules.
@@ -14325,6 +14471,53 @@ _ufw_owned_families_complete() {
     return 0
 }
 
+# R5-13/R5-14: 0 = an applicable family that lacks an A-Box-owned rule
+# already has a foreign same-spec rule there, 1 = the missing families
+# are empty (safe to add), 2 = the UFW state could not be determined
+# (never mutate blindly). Parse mirrors _ufw_owned_families_complete
+# but tracks any rule per family.
+_ufw_missing_family_has_foreign() {
+    local spec proto output line number body rest is6
+    local has4_owned=0 has6_owned=0 has4_any=0 has6_any=0 target expected_comment
+    spec=$(normalize_port_spec "$1") || return 2
+    [[ "$2" == tcp || "$2" == udp ]] || return 2
+    proto="$2"
+    target="${spec}/${proto}"
+    expected_comment="# A-Box-${spec}-${proto}"
+    command -v ufw >/dev/null 2>&1 || return 2
+    if LC_ALL=C ufw status 2>/dev/null | head -n 1 | grep -q 'inactive'; then
+        return 2
+    fi
+    output=$(LC_ALL=C ufw status numbered 2>/dev/null) || return 2
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[[:space:]]*\[[[:space:]]*([0-9]+)\][[:space:]]+(.*)$ ]] || continue
+        number="${BASH_REMATCH[1]}"
+        body="${BASH_REMATCH[2]}"
+        [[ "$body" == "$target"* ]] || continue
+        rest="${body#"$target"}"
+        is6=0
+        [[ "$rest" == " (v6)"* ]] && is6=1
+        rest="${rest# (v6)}"
+        rest="${rest#${rest%%[![:space:]]*}}"
+        case "$rest" in
+            'ALLOW IN '*) rest="${rest#ALLOW IN }" ;;
+            'LIMIT IN '*) rest="${rest#LIMIT IN }" ;;
+            *) continue ;;
+        esac
+        rest="${rest#${rest%%[![:space:]]*}}"
+        [[ "$rest" =~ ^Anywhere([[:space:]]+\(v6\))?([[:space:]]+#.*)?$ ]] || continue
+        if (( is6 )); then has6_any=1; else has4_any=1; fi
+        [[ "$rest" == *"$expected_comment" ]] || continue
+        [[ "${rest##*# }" == "A-Box-${spec}-${proto}" ]] || continue
+        if (( is6 )); then has6_owned=1; else has4_owned=1; fi
+    done <<< "$output"
+    if (( has4_owned == 0 && has4_any == 1 )); then return 0; fi
+    if has_ipv6; then
+        if (( has6_owned == 0 && has6_any == 1 )); then return 0; fi
+    fi
+    return 1
+}
+
 ufw_owned_rule_exists() {
     local numbers rc
     numbers=$(ufw_global_rule_numbers "$1" "$2" 1); rc=$?
@@ -14608,31 +14801,51 @@ remove_abox_native_firewall_rule() {
         firewalld)
             [[ -e "$ABOX_FW_STATE" || -L "$ABOX_FW_STATE" ]] || return 0
             validate_native_firewall_state_file "$ABOX_FW_STATE" || return 1
-            fw_spec=$(port_spec_for_firewalld "$spec") || return 1
+            # R5-11: two passes. Pass 1 only selects and pre-checks: a
+            # record that merely overlaps the request (partial overlap)
+            # is rejected BEFORE anything is deleted; pass 2 then
+            # deletes, verifies and forgets each selected record by
+            # its own spec/zone/scope. No overlap -> idempotent success.
+            local _req_lo _req_hi _lo _hi _rec _sirc _record_fw_spec
+            local -a _selected=() _args=()
+            _req_lo=${spec%%:*}; _req_hi=${spec##*:}
+            _req_lo=$((10#$_req_lo)); _req_hi=$((10#$_req_hi))
             while IFS='|' read -r _backend _spec _proto _scope _zone _extra || [[ -n "$_backend$_spec$_proto$_scope$_zone$_extra" ]]; do
-                [[ "$_spec" == "$spec" && "$_proto" == "$proto" && "$_backend" == firewalld ]] || continue
+                [[ "$_backend" == firewalld && "$_proto" == "$proto" ]] || continue
                 [[ "$_scope" == runtime || "$_scope" == permanent ]] || return 1
-                firewall-cmd --state >/dev/null 2>&1 || return 1
-                if [[ "$_scope" == runtime ]]; then
-                    if [[ -n "$_zone" ]]; then
-                        firewall-cmd --zone="$_zone" --remove-port="${fw_spec}/${proto}" >/dev/null 2>&1 || true
-                    else
-                        firewalld_cmd --remove-port="${fw_spec}/${proto}" >/dev/null 2>&1 || true
-                    fi
-                    firewalld_port_state "$spec" "$proto" runtime "$_zone"
-                    [[ $? == 1 ]] || failed=1
-                else
-                    if [[ -n "$_zone" ]]; then
-                        firewall-cmd --zone="$_zone" --permanent --remove-port="${fw_spec}/${proto}" >/dev/null 2>&1 || true
-                    else
-                        firewalld_cmd --permanent --remove-port="${fw_spec}/${proto}" >/dev/null 2>&1 || true
-                    fi
-                    firewalld_port_state "$spec" "$proto" permanent "$_zone"
-                    [[ $? == 1 ]] || failed=1
+                _lo=${_spec%%:*}; _hi=${_spec##*:}
+                _lo=$((10#$_lo)); _hi=$((10#$_hi))
+                (( _lo <= _req_hi && _hi >= _req_lo )) || continue
+                if (( _lo < _req_lo || _hi > _req_hi )); then
+                    return 1
                 fi
+                _selected+=("$_spec|$_scope|$_zone")
             done < "$ABOX_FW_STATE"
+            for _rec in "${_selected[@]}"; do
+                IFS='|' read -r _spec _scope _zone <<< "$_rec"
+                firewall-cmd --state >/dev/null 2>&1 || return 1
+                _record_fw_spec=$(port_spec_for_firewalld "$_spec") || return 1
+                _args=("--remove-port=${_record_fw_spec}/${proto}")
+                if [[ "$_scope" == permanent ]]; then
+                    _args=(--permanent "${_args[@]}")
+                fi
+                if [[ -n "$_zone" ]]; then
+                    firewall-cmd --zone="$_zone" "${_args[@]}" >/dev/null 2>&1 || true
+                else
+                    firewalld_cmd "${_args[@]}" >/dev/null 2>&1 || true
+                fi
+                if firewalld_port_state "$_spec" "$proto" "$_scope" "$_zone"; then
+                    _sirc=0
+                else
+                    _sirc=$?
+                fi
+                if (( _sirc == 1 )); then
+                    forget_native_firewall_rule "$_spec" "$proto" firewalld "$_zone" "$_scope" || failed=1
+                else
+                    failed=1
+                fi
+            done
             (( failed == 0 )) || return 1
-            forget_native_firewall_rule "$spec" "$proto" firewalld || return 1
             ;;
         iptables)
             local comment="A-Box-${spec}-${proto}" cmd check_rc
@@ -14676,8 +14889,11 @@ remove_abox_native_firewall_rule() {
 apply_native_firewall_rules_from_state() {
     [[ ! -e "$ABOX_FW_STATE" && ! -L "$ABOX_FW_STATE" ]] && return 0
     validate_native_firewall_state_file "$ABOX_FW_STATE" || return 1
-    [[ "$(firewall_backend 2>/dev/null)" != 'nftables-unsupported' ]] || return 1
-    local backend spec proto scope zone extra fw_spec failed=0 _orc=0 _rrc=0
+    local backend spec proto scope zone extra fw_spec failed=0 _orc=0 _rrc=0 backend_out=''
+    # R5-12: a failed backend probe prints nothing, so the old text-only
+    # test passed an empty string through this gate. Require rc 0 too.
+    backend_out=$(firewall_backend 2>/dev/null) || return 1
+    [[ -n "$backend_out" && "$backend_out" != 'nftables-unsupported' ]] || return 1
     while IFS='|' read -r backend spec proto scope zone extra || [[ -n "$backend$spec$proto$scope$zone$extra" ]]; do
         [[ -n "$backend" ]] || continue
         case "$backend" in
@@ -14691,8 +14907,26 @@ apply_native_firewall_rules_from_state() {
                     if _ufw_owned_families_complete "$spec" "$proto"; then
                         :
                     else
-                        ufw allow proto "$proto" from any to any port "$spec" comment "A-Box-${spec}-${proto}" >/dev/null 2>&1 || { failed=1; continue; }
-                        ufw_owned_rule_exists "$spec" "$proto" || { failed=1; continue; }
+                        # R5-13: re-running `ufw allow` here would adopt
+                        # a foreign same-spec rule in the missing family
+                        # by rewriting its comment to A-Box. After
+                        # completing, verify ALL families, not just any.
+                        local _foreign_rc=0
+                        if _ufw_missing_family_has_foreign "$spec" "$proto"; then
+                            _foreign_rc=0
+                        else
+                            _foreign_rc=$?
+                        fi
+                        case "$_foreign_rc" in
+                            1)
+                                ufw allow proto "$proto" from any to any port "$spec" comment "A-Box-${spec}-${proto}" >/dev/null 2>&1 || { failed=1; continue; }
+                                _ufw_owned_families_complete "$spec" "$proto" || { failed=1; continue; }
+                                ;;
+                            *)
+                                failed=1
+                                continue
+                                ;;
+                        esac
                     fi
                 elif (( _orc == 2 )); then
                     # R3C6-06: unknown UFW state; never mutate on a blind "absent".
@@ -14768,6 +15002,31 @@ allowPort() {
         ufw)
             ufw_owned_rule_exists "$spec" "$type"; _orc=$?
             if (( _orc == 0 )); then
+                # R5-14: owned in one family is not complete; complete
+                # the other family, unless it holds a foreign rule or
+                # its state is unknown (die either way: the record has
+                # no family dimension, so a partial success cannot be
+                # recorded honestly). Verify ALL families afterwards.
+                if ! _ufw_owned_families_complete "$spec" "$type"; then
+                    local _foreign_rc=0
+                    if _ufw_missing_family_has_foreign "$spec" "$type"; then
+                        _foreign_rc=0
+                    else
+                        _foreign_rc=$?
+                    fi
+                    case "$_foreign_rc" in
+                        1)
+                            ufw allow proto "$type" from any to any port "$spec" comment "A-Box-${spec}-${type}" >/dev/null 2>&1 || die "$(tprintf fw2_ufw_allow "${spec}/${type}")"
+                            _ufw_owned_families_complete "$spec" "$type" || die "$(tprintf fw2_ufw_verify "${spec}/${type}")"
+                            ;;
+                        0)
+                            die "$(tprintf fw2_ufw_partial_foreign "${spec}/${type}")"
+                            ;;
+                        *)
+                            die "$(tprintf fw2_ufw_unknown "${spec}/${type}")"
+                            ;;
+                    esac
+                fi
                 record_native_firewall_rule ufw "$spec" "$type" rule || die "$(tr_msg fw2_ufw_record)"
             elif (( _orc == 2 )); then
                 die "$(tprintf fw2_ufw_unknown "${spec}/${type}")"
@@ -14819,7 +15078,28 @@ allowPort() {
                     record_native_firewall_rule firewalld "$_sub" "$type" runtime "$_zone" || { _rec_failed=1; break; }
                 done
                 if (( _rec_failed == 1 )); then
-                    for _sub in "${_uncovered_runtime[@]}"; do firewalld_cmd_zone "$_zone" --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || true; done
+                    # R5-15: mirror the permanent 2qp rollback: verify
+                    # each runtime port is really gone, forget its
+                    # record only then; a failed forget still counts
+                    # as rollback failure (do not swallow it).
+                    _rb_failed=0
+                    for _sub in "${_uncovered_runtime[@]}"; do
+                        _rrc=0
+                        firewalld_cmd_zone "$_zone" --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || _rrc=1
+                        if firewalld_port_state "$_sub" "$type" runtime "$_zone"; then
+                            _sirc=0
+                        else
+                            _sirc=$?
+                        fi
+                        if (( _rrc == 0 && _sirc == 1 )); then
+                            forget_native_firewall_rule "$_sub" "$type" firewalld "$_zone" runtime >/dev/null 2>&1 || _rb_failed=1
+                        else
+                            _rb_failed=1
+                        fi
+                    done
+                    if (( _rb_failed == 1 )); then
+                        msg "${YELLOW}$(tprintf fw2_fwd_rb_fail "${fw_spec}/${type}")${NC}"
+                    fi
                     die "$(tr_msg fw2_fwd_runtime_record)"
                 fi
             fi
@@ -14868,7 +15148,7 @@ allowPort() {
                         firewalld_cmd_zone "$_zone" --permanent --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || _rrc=1
                         firewalld_port_state "$_sub" "$type" permanent "$_zone"; _sirc=$?
                         if (( _rrc == 0 && _sirc == 1 )); then
-                            forget_native_firewall_rule "$_sub" "$type" firewalld "$_zone" "permanent" >/dev/null 2>&1 || true
+                            forget_native_firewall_rule "$_sub" "$type" firewalld "$_zone" "permanent" >/dev/null 2>&1 || _rb_failed=1
                         else
                             _rb_failed=1
                         fi
@@ -15095,9 +15375,16 @@ reorder_ss_whitelist_rules_one() {
             _iptables_do "$cmd" -I INPUT "${original_target_positions[i]}" "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
         done
         capture_firewall_views || return 1
-        [[ "$current_rules_output" == "$original_rules_output" ]] || return 1
-        rm -f -- "$recovery_snapshot" || return 1
-        recovery_snapshot=''
+        # R5-06: compare rule lines only. `iptables -S` prints the -P
+        # policy line first; the policy is clamped to DROP during
+        # rollback while the snapshot holds ACCEPT, so a full-string
+        # comparison can never match even when every rule is restored.
+        # The inner check must not require the policy to be restored;
+        # that is the outer rollback's job (R5-07).
+        local _current_no_policy _original_no_policy
+        _current_no_policy=$(printf '%s\n' "$current_rules_output" | awk '!/^-P[[:space:]]/') || return 1
+        _original_no_policy=$(printf '%s\n' "$original_rules_output" | awk '!/^-P[[:space:]]/') || return 1
+        [[ "$_current_no_policy" == "$_original_no_policy" ]] || return 1
         return 0
     }
     firewall_rollback() {
@@ -15119,9 +15406,20 @@ reorder_ss_whitelist_rules_one() {
         firewall_rollback_inner
         _inner_rc=$?
         if (( _clamped )); then
-            if ! _iptables_do "$cmd" -P INPUT "$_saved_policy" >/dev/null 2>&1; then
-                printf '%s\n' 'A-Box firewall rollback: could not restore INPUT policy; left at DROP (fail-closed).' >&2
-                (( _inner_rc == 0 )) && _inner_rc=1
+            if (( _inner_rc != 0 )); then
+                printf '%s\n' 'A-Box firewall rollback: inner rollback failed; leaving INPUT policy at DROP (fail-closed).' >&2
+            elif ! _iptables_do "$cmd" -P INPUT "$_saved_policy" >/dev/null 2>&1; then
+                printf '%s\n' 'A-Box firewall rollback: could not restore INPUT policy; recovery snapshot retained.' >&2
+                _inner_rc=1
+            fi
+        fi
+        # R5-07: the snapshot is deleted only on full success (inner ok
+        # AND policy restored); every failure keeps it for manual use.
+        if (( _inner_rc == 0 )); then
+            if rm -f -- "$recovery_snapshot"; then
+                recovery_snapshot=''
+            else
+                _inner_rc=1
             fi
         fi
         return "$_inner_rc"
@@ -46374,7 +46672,7 @@ N11EOF
     grep -q 'backend=\$(firewall_backend)' <<< "$source_body" || { echo 'FAIL: firewall backend routing missing'; failures=$((failures + 1)); }
     grep -q '^remove_abox_native_firewall_rule() {' "$0" || { echo 'FAIL: exact owned firewall port removal helper missing'; failures=$((failures + 1)); }
     grep -q '^forget_native_firewall_rule() {' "$0" || { echo 'FAIL: native firewall ownership-state removal helper missing'; failures=$((failures + 1)); }
-    _forget_call_prefix='forget_native_firewall_rule'; _ufw_call_suffix=' "$spec" "$proto" ufw'; _fwd_call_suffix=' "$spec" "$proto" firewalld'
+    _forget_call_prefix='forget_native_firewall_rule'; _ufw_call_suffix=' "$spec" "$proto" ufw'; _fwd_call_suffix=' "$_spec" "$proto" firewalld'
     grep -Fq -- "${_forget_call_prefix}${_ufw_call_suffix}" "$0" || { echo 'FAIL: UFW firewall-state removal must preserve backend ownership'; failures=$((failures + 1)); }
     grep -Fq -- "${_forget_call_prefix}${_fwd_call_suffix}" "$0" || { echo 'FAIL: firewalld firewall-state removal must preserve backend ownership'; failures=$((failures + 1)); }
     grep -q '^preflight_reset_ownership() {' "$0" || { echo 'FAIL: reset ownership preflight missing'; failures=$((failures + 1)); }

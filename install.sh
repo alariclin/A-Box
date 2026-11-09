@@ -43778,7 +43778,7 @@ upgrade_singbox_core_only() {
 upgrade_hysteria_core_only() {
     local was_active=0 active_state='' backup='' tmp hy2_bin old_ver new_ver
     abox_owns_service hysteria || die '拒绝升级：hysteria 不是 A-Box 托管服务。'
-    msg "${YELLOW}[*] Upgrading Hysteria 2 binary only; node parameters will be preserved. Hysteria has no documented standalone config-check command; active services are validated by restart with automatic binary rollback on failure.${NC}"
+    msg "${YELLOW}[*] Upgrading Hysteria 2 binary only; node parameters will be preserved. Hysteria has no documented standalone config-check command; a staged loopback startup precheck runs before replacement, followed by the existing post-install checks and rollback on failure.${NC}"
     get_architecture
     active_state=$(service_active_state_value hysteria 2>/dev/null) || die '无法可靠查询 Hysteria 服务状态；拒绝在状态未知时升级核心。'
     case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die 'Hysteria 服务状态响应无效；拒绝继续升级。' ;; esac
@@ -43828,6 +43828,9 @@ upgrade_hysteria_core_only() {
             *) rm -rf "$tmp"; die '最终核心版本方向检查返回异常状态。' ;;
         esac
     fi
+    if ! hysteria_staged_binary_smoke_test "$hy2_bin"; then
+        rm -rf "$tmp"; die 'Hysteria staged startup precheck failed; installed binary was not changed.'
+    fi
     [[ -f /usr/local/bin/hysteria ]] && { backup="$tmp/hysteria.backup"; cp -a /usr/local/bin/hysteria "$backup" || { rm -rf "$tmp"; die 'Hysteria binary backup failed.'; }; }
     install_binary_atomically "$hy2_bin" /usr/local/bin/hysteria || { rm -rf "$tmp"; die 'Hysteria binary atomic install failed.'; }
     if [[ "$was_active" == '1' ]]; then
@@ -43850,6 +43853,336 @@ upgrade_hysteria_core_only() {
     msg "${GREEN}[OK] Hysteria upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
     rm -rf -- "$tmp"
     ABOX_CORE_UPGRADE_TMP=''
+}
+
+# H1 (OTA Hy2 gap): staged-startup precheck helpers. The staged binary is
+# started directly (never via systemctl), on a temporary loopback copy of
+# the current config, and stopped again before any install happens.
+# Set while a staged child is alive; the INT/TERM guard uses it to kill
+# the child before re-raising so the caller's handler still runs.
+_HY2_STAGED_PID=''
+_HY2_PREV_INT=''
+_HY2_PREV_TERM=''
+
+# True (rc 0) iff PID is already dead or a zombie. /proc/<pid>/stat is
+# "<pid> (<comm>) <state> ...": strip greedily through the last ')'
+# (comm may itself contain spaces/parens) and read the state field.
+hy2_staged_pid_dead() {
+    local p="$1" st=''
+    kill -0 "$p" 2>/dev/null || return 0
+    st=$(sed 's/^.*) //' "/proc/$p/stat" 2>/dev/null | awk '{print $1}' || true)
+    [[ "$st" == "Z" ]]
+}
+
+# Stop the staged child: SIGTERM, up to 3s grace, then SIGKILL, then reap.
+# Returns 0 iff the child is dead/reaped afterwards; 1 if it is still
+# alive (the caller must treat that as precheck failure). Never kills by
+# name or port owner: only the recorded staged PID.
+hy2_staged_kill_child() {
+    local p="${_HY2_STAGED_PID:-}" waited=0
+    [[ -n "$p" ]] || return 0
+    _HY2_STAGED_PID=''
+    kill -TERM "$p" 2>/dev/null || true
+    while (( waited < 3 )); do
+        if hy2_staged_pid_dead "$p"; then wait "$p" 2>/dev/null || true; return 0; fi
+        sleep 1; waited=$((waited + 1))
+    done
+    if hy2_staged_pid_dead "$p"; then wait "$p" 2>/dev/null || true; return 0; fi
+    kill -KILL "$p" 2>/dev/null || true
+    waited=0
+    while (( waited < 3 )); do
+        if hy2_staged_pid_dead "$p"; then wait "$p" 2>/dev/null || true; return 0; fi
+        sleep 1; waited=$((waited + 1))
+    done
+    if hy2_staged_pid_dead "$p"; then wait "$p" 2>/dev/null || true; return 0; fi
+    return 1
+}
+
+# Restore the INT/TERM traps the staged helper saved on entry (sentinel
+# 'trap - INT' / 'trap - TERM' means "no previous trap": remove ours).
+hy2_staged_restore_traps() {
+    eval "$_HY2_PREV_INT"
+    eval "$_HY2_PREV_TERM"
+}
+
+# INT/TERM guard for the staged run: stop the child, restore the caller's
+# traps, then re-raise so the caller's handler (e.g. the core-upgrade
+# transaction abort) runs. Mirrors the install/restore trap discipline
+# used by the core-upgrade transaction itself.
+hy2_staged_trap_abort() {
+    local sig="$1"
+    hy2_staged_kill_child || true
+    # The re-raise below kills this shell, so the helper's normal
+    # `rm -rf "$work"` never runs: remove the staged work dir here
+    # (it holds a copy of the config). `work` is the helper's local,
+    # visible via dynamic scoping while the helper is on the stack.
+    [[ -n "${work:-}" ]] && rm -rf -- "$work" 2>/dev/null || true
+    hy2_staged_restore_traps
+    kill -"$sig" "$BASHPID"
+}
+
+# True iff ss shows UDP 127.0.0.1:<port> owned by <pid> on the same
+# record. Exact endpoint token AND exact numeric PID token: a PID-prefix
+# match (pid=123 vs pid=1234), a wildcard/IPv6 listener, another PID on
+# the endpoint, or missing process info all fail. ss failure fails.
+hy2_ss_owns_port() {
+    local pid="$1" port="$2"
+    [[ "$pid" =~ ^[0-9]+$ && "$port" =~ ^[0-9]+$ ]] || return 1
+    ss -H -4 -lnup 2>/dev/null | awk -v addr="127.0.0.1:${port}" -v pid="$pid" '
+        index($0, addr " ") > 0 && $0 ~ "(^|[^0-9])pid=" pid "([^0-9]|$)" { found=1 }
+        END { exit !found }'
+}
+
+# True iff any UDP listener owns 127.0.0.1:<port> (used for the pre-start
+# collision check; ownership by anyone counts as a collision here).
+hy2_ss_port_bound() {
+    local port="$1"
+    [[ "$port" =~ ^[0-9]+$ ]] || return 1
+    ss -H -4 -lnup 2>/dev/null | awk -v addr="127.0.0.1:${port}" '
+        index($0, addr " ") > 0 { found=1 }
+        END { exit !found }'
+}
+
+# H1 (OTA Hy2 gap): pre-install staged startup precheck for a Hysteria
+# binary that has been downloaded but NOT yet installed. Runs the staged
+# binary with a temporary loopback copy of the current config, requires
+# the staged process itself to own the UDP socket, then stops it.
+# Coverage (scoped, GPT A' verdict): detects config/initialisation
+# failures exercised by that staged environment. Does NOT validate the
+# original listener, the full service execution context, or QUIC/Hysteria
+# handshakes (that leg stays an open residual, covered by live-traffic
+# testing, not by this gate). Runs as root like the other installer
+# checks; it does not validate service-user permissions.
+# Recognised A-Box ACME profiles are skipped, never started: upstream
+# runs certmagic ManageSync synchronously at startup, so a loopback
+# staged start could contact external services or modify certificate
+# storage. Unrecognised shapes fail (never skip). No new tr_msg keys:
+# the die/warning strings follow the hardcoded-English precedent of the
+# Xray/sing-box sibling precheck messages.
+hysteria_staged_binary_smoke_test() {
+    local bin="$1" cfg="${2:-/etc/hysteria/config.yaml}"
+    local work='' tmp_cfg='' port='' profile='' pid='' rc=1
+    local outcome='' ok='' attempt=0 deadline=0 ready=0 py_rc=0
+    command -v python3 >/dev/null 2>&1 || return 1
+    command -v ss >/dev/null 2>&1 || return 1
+    [[ -x "$bin" && -f "$cfg" && ! -L "$cfg" ]] || return 1
+    abox_owns_service hysteria || return 1
+    work=$(mktemp -d /tmp/A-Box-hy2-staged.XXXXXX) || return 1
+    chmod 700 "$work" || { rm -rf "$work"; return 1; }
+    tmp_cfg="$work/config.yaml"
+    _HY2_PREV_INT=$(trap -p INT || true); [[ -n "$_HY2_PREV_INT" ]] || _HY2_PREV_INT='trap - INT'
+    _HY2_PREV_TERM=$(trap -p TERM || true); [[ -n "$_HY2_PREV_TERM" ]] || _HY2_PREV_TERM='trap - TERM'
+    trap 'hy2_staged_trap_abort INT' INT
+    trap 'hy2_staged_trap_abort TERM' TERM
+    deadline=$(( $(date +%s) + 10 ))
+    while (( attempt < 3 )); do
+        attempt=$((attempt + 1))
+        # Fresh recognition + rewrite each attempt (fresh ephemeral port).
+        # The recogniser prints "OK <port> <tls|acme>" or "REJECT <reason>".
+        outcome=$(python3 - "$cfg" "$tmp_cfg" <<'PY_HY2_STAGED' 2>"$work/py.err"
+import os
+import socket
+import sys
+
+ALLOWED_TOP = {"listen", "tls", "acme", "obfs", "auth", "bandwidth", "masquerade"}
+
+def reject(reason):
+    sys.stdout.write("REJECT " + reason + "\n")
+    sys.exit(1)
+
+def main():
+    cfg = sys.argv[1]
+    out = sys.argv[2]
+    try:
+        with open(cfg, "r", encoding="utf-8") as f:
+            raw = f.read()
+    except OSError:
+        reject("config unreadable")
+    if "\r" in raw:
+        reject("CRLF config unsupported")
+    lines = raw.split("\n")
+    top = {}
+    top_order = []
+    listen_idx = -1
+    listen_val = None
+    for i, line in enumerate(lines):
+        if line == "" or line.startswith("#"):
+            continue
+        if line.startswith("---") or line.startswith("..."):
+            reject("multi-document config unsupported")
+        if line[0] in " \t":
+            low = line.strip()
+            if low.startswith("listen:") or low.startswith("listenHTTP:") or low.startswith("listenHTTPS:"):
+                reject("nested listen line unsupported")
+            continue
+        if line[0] in "\"'":
+            reject("quoted top-level key unsupported")
+        if ":" not in line:
+            reject("unsupported top-level line")
+        key = line.split(":", 1)[0]
+        if not key or not key[0].isalpha() or not key.replace("_", "").replace("-", "").isalnum():
+            reject("unsupported top-level key")
+        if key in top:
+            reject("duplicate top-level key " + key)
+        top[key] = i
+        top_order.append(key)
+        if key == "listen":
+            listen_idx = i
+            listen_val = line.split(":", 1)[1].strip()
+    unknown = [k for k in top_order if k not in ALLOWED_TOP]
+    if unknown:
+        reject("unsupported top-level key " + unknown[0])
+    if listen_idx < 0:
+        reject("missing top-level listen")
+    val = listen_val.split("#", 1)[0].strip()
+    if val.startswith("\"") or val.startswith("'"):
+        reject("quoted listen value unsupported")
+    if not val.startswith(":"):
+        reject("listen value must be :port or :start-end")
+    portpart = val[1:]
+    if "-" in portpart:
+        pair = portpart.split("-", 1)
+        if len(pair) != 2 or not pair[0].isdigit() or not pair[1].isdigit():
+            reject("listen range not numeric")
+        lo = int(pair[0])
+        hi = int(pair[1])
+        if not (1 <= lo <= 65535 and 1 <= hi <= 65535 and lo <= hi):
+            reject("listen range out of bounds")
+    else:
+        if not portpart.isdigit():
+            reject("listen port not numeric")
+        lo = int(portpart)
+        if not (1 <= lo <= 65535):
+            reject("listen port out of bounds")
+    has_tls = "tls" in top
+    has_acme = "acme" in top
+    if has_tls == has_acme:
+        reject("config must set exactly one of tls or acme")
+    profile = "tls" if has_tls else "acme"
+    def block(bkey):
+        start = top[bkey]
+        end = len(lines)
+        for k2, idx in top.items():
+            if idx > start and idx < end:
+                end = idx
+        return lines[start + 1:end]
+    if profile == "tls":
+        cert = None
+        keyf = None
+        for ln in block("tls"):
+            s = ln.strip()
+            if s.startswith("cert:"):
+                if cert is not None:
+                    reject("duplicate tls cert")
+                cert = s.split(":", 1)[1].strip().strip("\"'")
+            elif s.startswith("key:"):
+                if keyf is not None:
+                    reject("duplicate tls key")
+                keyf = s.split(":", 1)[1].strip().strip("\"'")
+        if not cert or not keyf:
+            reject("tls cert/key missing")
+        if not cert.startswith("/") or not keyf.startswith("/"):
+            reject("tls cert/key must be absolute paths")
+    else:
+        d = None
+        typ = None
+        email = None
+        domains = 0
+        in_domains = False
+        for ln in block("acme"):
+            if ln.startswith("  ") and not ln.startswith("   "):
+                s = ln.strip()
+                if s.startswith("dir:"):
+                    d = s.split(":", 1)[1].strip().strip("\"'")
+                    in_domains = False
+                elif s.startswith("type:"):
+                    typ = s.split(":", 1)[1].strip().strip("\"'")
+                    in_domains = False
+                elif s.startswith("email:"):
+                    email = s.split(":", 1)[1].strip().strip("\"'")
+                    in_domains = False
+                elif s.startswith("domains:"):
+                    in_domains = True
+                else:
+                    in_domains = False
+            elif ln.startswith("    - ") and in_domains:
+                domains += 1
+            elif ln.strip() == "":
+                continue
+            else:
+                in_domains = False
+        if d != "/etc/hysteria/acme":
+            reject("acme dir must be /etc/hysteria/acme")
+        if typ not in ("http", "dns"):
+            reject("acme type must be http or dns")
+        if domains < 1:
+            reject("acme domains empty")
+        if not email:
+            reject("acme email missing")
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    finally:
+        s.close()
+    lines[listen_idx] = "listen: 127.0.0.1:" + str(port)
+    try:
+        with open(out, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+    except OSError:
+        reject("temp config write failed")
+    sys.stdout.write("OK " + str(port) + " " + profile + "\n")
+
+main()
+PY_HY2_STAGED
+)
+        py_rc=$?
+        if (( py_rc != 0 )); then
+            msg "${RED}[!] Hysteria staged precheck: ${outcome#REJECT }${NC}" >&2
+            rc=1; break
+        fi
+        read -r ok port profile <<<"$outcome"
+        if [[ "$ok" != "OK" || ! "$port" =~ ^[0-9]+$ || ( "$profile" != "tls" && "$profile" != "acme" ) ]]; then
+            msg "${RED}[!] Hysteria staged precheck: unrecognised recogniser output.${NC}" >&2
+            rc=1; break
+        fi
+        chmod 600 "$tmp_cfg" || { rc=1; break; }
+        if [[ "$profile" == "acme" ]]; then
+            msg "${YELLOW}[!] WARNING: Hysteria staged startup precheck skipped for this A-Box ACME configuration. Startup performs synchronous ACME certificate management and may contact external services or modify certificate storage. The staged binary was not started. Upgrade will proceed using the existing post-install restart/rollback checks.${NC}"
+            rc=0; break
+        fi
+        # Collision already present on the fresh port: retry with a new one.
+        if hy2_ss_port_bound "$port"; then
+            if (( attempt < 3 )) && (( $(date +%s) < deadline )); then continue; fi
+            msg "${RED}[!] Hysteria staged precheck: loopback port ${port} already in use.${NC}" >&2
+            rc=1; break
+        fi
+        "$bin" server -c "$tmp_cfg" >"$work/server.log" 2>&1 &
+        pid=$!
+        _HY2_STAGED_PID="$pid"
+        ready=0
+        while (( $(date +%s) < deadline )); do
+            if hy2_staged_pid_dead "$pid"; then break; fi
+            if hy2_ss_owns_port "$pid" "$port"; then
+                if ! hy2_staged_pid_dead "$pid"; then ready=1; break; fi
+            fi
+            sleep 1
+        done
+        if ! hy2_staged_kill_child; then
+            msg "${RED}[!] Hysteria staged precheck: could not stop the staged server.${NC}" >&2
+            rc=1; break
+        fi
+        if (( ready == 1 )); then rc=0; break; fi
+        # Retry ONLY a positively identified local bind collision.
+        if grep -q "address already in use" "$work/server.log" 2>/dev/null; then
+            if (( attempt < 3 )) && (( $(date +%s) < deadline )); then continue; fi
+        fi
+        msg "${RED}[!] Hysteria staged precheck: staged server did not reach a listening state.${NC}" >&2
+        rc=1; break
+    done
+    rm -rf "$work"
+    hy2_staged_restore_traps
+    return "$rc"
 }
 
 # N-04: smoke-test a Hysteria binary against the current config by doing a

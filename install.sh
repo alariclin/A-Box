@@ -4553,6 +4553,48 @@ tr_msg() {
         fa:reality_non443_warn) echo '[!] REALITY/XHTTP از درگاه %s به‌جای 443 استفاده می‌کند. Xray این مورد را عامل خطر جداگانه می‌داند؛ سازگاری درگاه با شبکه را بررسی کنید.' ;;
         zh-tw:reality_non443_warn) echo '[!] REALITY/XHTTP 使用非 443 監聽端口 (%s)。Xray 上游將其作為獨立風險條件提示；請確認該端口符合你的網絡環境。' ;;
         ja:reality_non443_warn) echo '[!] REALITY/XHTTP が非443リッスンポート (%s) を使用しています。Xray はこれを独立したリスク条件として扱います。ご利用のネットワークでこのポートが適切か確認してください。' ;;
+        zh:reality_mlkem_notice_title) echo '[!] REALITY 兼容提示：部分客户端无法直连本节点' ;;
+        en:reality_mlkem_notice_title) echo '[!] REALITY compatibility notice: some clients cannot connect directly to this node' ;;
+        ru:reality_mlkem_notice_title) echo '[!] Совместимость REALITY: некоторые клиенты не могут подключиться к этому узлу напрямую' ;;
+        fa:reality_mlkem_notice_title) echo '[!] اطلاعیهٔ سازگاری REALITY: برخی کلاینت‌ها نمی‌توانند مستقیم به این گره وصل شوند' ;;
+        zh-tw:reality_mlkem_notice_title) echo '[!] REALITY 相容性提示：部分用戶端無法直連本節點' ;;
+        ja:reality_mlkem_notice_title) echo '[!] REALITY 互換性に関する注意：一部のクライアントはこのノードに直接接続できません' ;;
+        zh:reality_mlkem_notice_cannot) echo '无法连接：基于上游 sing-box 的客户端（官方 SFA、GUI.for.SingBox、NekoBox、原版 NekoRay），以及 Shadowrocket 2.2.92 及更早版本。' ;;
+        en:reality_mlkem_notice_cannot) echo 'Cannot connect: clients based on upstream sing-box (official SFA, GUI.for.SingBox, NekoBox, original NekoRay), as well as Shadowrocket 2.2.92 and earlier versions.' ;;
+        ru:reality_mlkem_notice_cannot) echo 'Не могут подключиться: клиенты на базе upstream-версии sing-box (официальный SFA, GUI.for.SingBox, NekoBox, оригинальный NekoRay), а также Shadowrocket версии 2.2.92 и более ранних версий.' ;;
+        fa:reality_mlkem_notice_cannot) echo 'وصل نمی‌شوند: کلاینت‌های مبتنی بر sing-box بالادستی (SFA رسمی، GUI.for.SingBox، NekoBox، NekoRay اصلی) و Shadowrocket نسخه 2.2.92 و نسخه‌های قدیمی‌تر.' ;;
+        zh-tw:reality_mlkem_notice_cannot) echo '無法連線：基於上游 sing-box 的用戶端（官方 SFA、GUI.for.SingBox、NekoBox、原版 NekoRay），以及 Shadowrocket 2.2.92 及更早版本。' ;;
+        ja:reality_mlkem_notice_cannot) echo '接続不可：upstream sing-box コアを使用するクライアント（公式 SFA、GUI.for.SingBox、NekoBox、オリジナル版 NekoRay）、および Shadowrocket 2.2.92 以前のバージョン。' ;;
+        zh:reality_mlkem_notice_mihomo) echo 'Mihomo 系客户端（Clash Verge Rev、CMFA、Clash Party、FlClash）须修改配置：将指纹设为 chrome，并添加 reality-opts.support-x25519mlkem768: true；请使用下方完整 YAML，不要扫描单个节点链接。' ;;
+        en:reality_mlkem_notice_mihomo) echo 'Mihomo-based clients (Clash Verge Rev, CMFA, Clash Party, FlClash) require configuration changes: set the fingerprint to chrome and add reality-opts.support-x25519mlkem768: true; use the full YAML below instead of scanning a single-node link.' ;;
+        ru:reality_mlkem_notice_mihomo) echo 'Для клиентов на базе Mihomo (Clash Verge Rev, CMFA, Clash Party, FlClash) нужно изменить настройки: выбрать TLS-отпечаток chrome и добавить reality-opts.support-x25519mlkem768: true; используйте полную конфигурацию YAML ниже, а не сканирование ссылки на отдельный узел.' ;;
+        fa:reality_mlkem_notice_mihomo) echo 'کلاینت‌های مبتنی بر Mihomo (Clash Verge Rev، CMFA، Clash Party، FlClash) نیاز به تغییر تنظیمات دارند: fingerprint را روی chrome تنظیم کنید و reality-opts.support-x25519mlkem768: true را اضافه کنید؛ به‌جای اسکن لینک تک‌گره، از YAML کامل زیر استفاده کنید.' ;;
+        zh-tw:reality_mlkem_notice_mihomo) echo 'Mihomo 系用戶端（Clash Verge Rev、CMFA、Clash Party、FlClash）須修改設定：將指紋設為 chrome，並加入 reality-opts.support-x25519mlkem768: true；請使用下方完整 YAML，不要掃描單一節點連結。' ;;
+        ja:reality_mlkem_notice_mihomo) echo 'Mihomo 系クライアント（Clash Verge Rev、CMFA、Clash Party、FlClash）は設定変更が必要です。フィンガープリントを chrome に設定し、reality-opts.support-x25519mlkem768: true を追加してください。以下の YAML 設定全体を使用し、単一ノードのリンクをスキャンしないでください。' ;;
+        zh:reality_mlkem_notice_ok) echo '可直接连接：使用 Xray 内核的客户端（v2rayN、v2rayNG、OneXray）、Shadowrocket 2.2.93、Hiddify v5。' ;;
+        en:reality_mlkem_notice_ok) echo 'Can connect directly: clients using Xray-core (v2rayN, v2rayNG, OneXray), Shadowrocket 2.2.93, Hiddify v5.' ;;
+        ru:reality_mlkem_notice_ok) echo 'Могут подключиться напрямую: клиенты на базе Xray-core (v2rayN, v2rayNG, OneXray), Shadowrocket 2.2.93 и Hiddify v5.' ;;
+        fa:reality_mlkem_notice_ok) echo 'مستقیم وصل می‌شوند: کلاینت‌هایی که از Xray-core استفاده می‌کنند (v2rayN، v2rayNG، OneXray)، Shadowrocket نسخهٔ 2.2.93، Hiddify v5.' ;;
+        zh-tw:reality_mlkem_notice_ok) echo '可直接連線：使用 Xray 核心的用戶端（v2rayN、v2rayNG、OneXray）、Shadowrocket 2.2.93、Hiddify v5。' ;;
+        ja:reality_mlkem_notice_ok) echo '直接接続可：Xray コアを使用するクライアント（v2rayN、v2rayNG、OneXray）、Shadowrocket 2.2.93、Hiddify v5。' ;;
+        zh:reality_mlkem_notice_xhttp) echo 'XHTTP+REALITY:不能把上方“可直连”名单当作对此组合的兼容性确认；上游 sing-box 没有 XHTTP 传输；本次未逐条核实 Hiddify v5 的 XHTTP 实现；Shadowrocket 2.2.93 支持 XHTTP 传输，但本次未实测此组合，仅理论上认为该组合不再受 ML-KEM 门槛阻挡。' ;;
+        en:reality_mlkem_notice_xhttp) echo 'XHTTP+REALITY: the “Can connect directly” list above does not establish compatibility for this combination; upstream sing-box has no XHTTP transport; Hiddify v5’s XHTTP implementation was not verified in detail here; Shadowrocket 2.2.93 supports XHTTP transport, but this combination was not live-tested here and is only theoretically expected to clear the ML-KEM barrier.' ;;
+        ru:reality_mlkem_notice_xhttp) echo 'XHTTP+REALITY: приведённый выше список «Можно подключаться напрямую» не подтверждает совместимость с этой комбинацией; в исходном проекте sing-box нет транспорта XHTTP; реализация XHTTP в Hiddify v5 здесь подробно не проверялась; Shadowrocket 2.2.93 поддерживает транспорт XHTTP, но эта комбинация здесь не проверялась на практике, и лишь теоретически ожидается, что она позволит преодолеть барьер ML-KEM.' ;;
+        fa:reality_mlkem_notice_xhttp) echo 'XHTTP+REALITY: فهرست «مستقیم وصل می‌شوند» در بالا، سازگاری با این ترکیب را تأیید نمی‌کند؛ پروژهٔ بالادستی sing-box سازوکار انتقال XHTTP ندارد؛ پیاده‌سازی XHTTP در Hiddify v5 در این بررسی به‌طور مفصل راستی‌آزمایی نشده است؛ Shadowrocket 2.2.93 از سازوکار انتقال XHTTP پشتیبانی می‌کند، اما این ترکیب در این بررسی در عمل آزمایش نشده است و صرفاً به‌صورت نظری انتظار می‌رود که از سد ML-KEM عبور کند.' ;;
+        zh-tw:reality_mlkem_notice_xhttp) echo 'XHTTP+REALITY: 不能把上方「可直連」名單當作對此組合的相容性確認；上游 sing-box 沒有 XHTTP 傳輸；本次未逐條核實 Hiddify v5 的 XHTTP 實作；Shadowrocket 2.2.93 支援 XHTTP 傳輸，但本次未實測此組合，僅理論上認為該組合不再受 ML-KEM 門檻阻擋。' ;;
+        ja:reality_mlkem_notice_xhttp) echo 'XHTTP+REALITY: 上記の「直接接続可能」リストは、この組み合わせの互換性を確認したものではありません。上流の sing-box には XHTTP トランスポートがありません。Hiddify v5 の XHTTP 実装については、ここでは詳細に検証していません。Shadowrocket 2.2.93 は XHTTP トランスポートに対応していますが、この組み合わせでの実接続テストはここでは行っておらず、ML-KEM の障壁を越えられると理論上期待されるにとどまります。' ;;
+        zh:reality_mlkem_notice_unverified) echo '未核实：Stash 是否支持 ML-KEM 尚无公开证据；Streisand、V2Box 按内置 Xray 内核版本推断能连，未见针对 v26.11.9 的实测。' ;;
+        en:reality_mlkem_notice_unverified) echo 'Not verified: no public evidence whether Stash supports ML-KEM; Streisand and V2Box are inferred to connect from their bundled Xray-core versions, with no live test against v26.11.9.' ;;
+        ru:reality_mlkem_notice_unverified) echo 'Не проверено: нет открытых данных о поддержке ML-KEM в Stash; Streisand и V2Box, по версии встроенного Xray-core, предположительно подключаются, но живой проверки на v26.11.9 нет.' ;;
+        fa:reality_mlkem_notice_unverified) echo 'تأییدنشده: هیچ مدرکی در دسترس عموم نیست که نشان دهد Stash از ML-KEM پشتیبانی می‌کند یا نه؛ بر اساس نسخه‌های Xray-core همراه Streisand و V2Box، چنین استنباط می‌شود که این دو می‌توانند وصل شوند، اما هیچ آزمون اتصال عملی با v26.11.9 انجام نشده است.' ;;
+        zh-tw:reality_mlkem_notice_unverified) echo '未核實：Stash 是否支援 ML-KEM 尚無公開證據；Streisand、V2Box 按內建 Xray 核心版本推斷能連，未見針對 v26.11.9 的實測。' ;;
+        ja:reality_mlkem_notice_unverified) echo '未検証：Stash が ML-KEM に対応しているかは公開情報がありません。Streisand と V2Box は内蔵 Xray コアのバージョンから接続可能と推測されますが、v26.11.9 に対する実測は確認されていません。' ;;
+        zh:reality_mlkem_notice_mihomo_trojan) echo 'Mihomo 系客户端（Clash Verge Rev、CMFA、Clash Party、FlClash）须手动修改配置：将指纹设为 chrome，并添加 reality-opts.support-x25519mlkem768: true；上方 Trojan 链接未包含该选项，仅通过链接或二维码导入并不足够。' ;;
+        en:reality_mlkem_notice_mihomo_trojan) echo 'Mihomo-based clients (Clash Verge Rev, CMFA, Clash Party, FlClash) require manual configuration: set the fingerprint to chrome and add reality-opts.support-x25519mlkem768: true; the Trojan link above does not include this option, so importing it via the link or QR code alone is not sufficient.' ;;
+        ru:reality_mlkem_notice_mihomo_trojan) echo 'Клиентам на базе Mihomo (Clash Verge Rev, CMFA, Clash Party, FlClash) требуется ручная настройка: установите значение chrome для отпечатка и добавьте reality-opts.support-x25519mlkem768: true; ссылка Trojan выше не содержит этой опции, поэтому одного лишь импорта по ссылке или через QR-код недостаточно.' ;;
+        fa:reality_mlkem_notice_mihomo_trojan) echo 'کلاینت‌های مبتنی بر Mihomo (Clash Verge Rev, CMFA, Clash Party, FlClash) به پیکربندی دستی نیاز دارند: اثر انگشت را روی chrome تنظیم کنید و reality-opts.support-x25519mlkem768: true را اضافه کنید؛ لینک Trojan بالا شامل این گزینه نیست، بنابراین صرفاً وارد کردن آن از طریق لینک یا کد QR کافی نیست.' ;;
+        zh-tw:reality_mlkem_notice_mihomo_trojan) echo 'Mihomo 系用戶端（Clash Verge Rev、CMFA、Clash Party、FlClash）須手動修改設定：將指紋設為 chrome，並加入 reality-opts.support-x25519mlkem768: true；上方 Trojan 連結未包含此選項，僅透過連結或 QR 碼匯入並不足夠。' ;;
+        ja:reality_mlkem_notice_mihomo_trojan) echo 'Mihomo ベースのクライアント（Clash Verge Rev、CMFA、Clash Party、FlClash）は手動での設定が必要です。フィンガープリントを chrome に設定し、reality-opts.support-x25519mlkem768: true を追加してください。上記の Trojan リンクにはこのオプションが含まれていないため、リンクまたは QR コードからインポートするだけでは不十分です。' ;;
         zh:apple_sni_warn) echo '[!] Apple/iCloud 类 target (%s) 被 Xray 上游作为独立风险条件提示；建议改用经过实测的非 Apple/iCloud 目标。' ;;
         en:apple_sni_warn) echo '[!] Apple/iCloud-like target (%s) is flagged by Xray as a separate risk condition; a tested non-Apple/iCloud target is recommended.' ;;
         ru:apple_sni_warn) echo '[!] Цель Apple/iCloud (%s) отмечена Xray как отдельный фактор риска; рекомендуется проверенная цель, не связанная с Apple/iCloud.' ;;
@@ -17317,6 +17359,41 @@ clash_reality_mlkem_enabled() {
     xray_reality_requires_mlkem
 }
 
+# N1: print "R X" Reality/XHTTP presence flags for an Xray config file.
+# Fail-open silent: missing/unreadable/malformed config (or no jq) prints
+# "0 0" and returns 0 -- this is an optional notice, never a deploy failure.
+xray_config_reality_flags() {
+    local cfg="${1:-$XRAY_SLOT_CFG}" _r='0' _x='0'
+    if [[ -n "$cfg" && -r "$cfg" ]] && command -v jq >/dev/null 2>&1; then
+        if jq -e 'any(.inbounds[]?; (.protocol == "vless" or .protocol == "trojan") and .streamSettings.security == "reality")' "$cfg" >/dev/null 2>&1; then _r='1'; fi
+        if jq -e 'any(.inbounds[]?; .protocol == "vless" and .streamSettings.security == "reality" and .streamSettings.network == "xhttp")' "$cfg" >/dev/null 2>&1; then _x='1'; fi
+    fi
+    printf '%s %s\n' "$_r" "$_x"
+}
+
+# N1: deploy-time REALITY compatibility notice (tr_msg, RED+BOLD).
+# $1: XHTTP flag (1 = this install includes an XHTTP+Reality leg).
+# $2: trojan flag (1 = trojan path: print the trojan-variant mihomo line
+# instead of the standard one, which refers to YAML that does not exist
+# on the trojan path). Prints nothing and returns 0 when the installed
+# Xray version does not require ML-KEM (or the version is unparsable).
+show_reality_mlkem_notice() {
+    local _xhttp="${1:-0}" _trojan="${2:-0}"
+    xray_reality_requires_mlkem || return 0
+    msg "${RED}${BOLD}$(tr_msg reality_mlkem_notice_title)${NC}"
+    msg "${RED}${BOLD}$(tr_msg reality_mlkem_notice_cannot)${NC}"
+    if [[ "$_trojan" == '1' ]]; then
+        msg "${RED}${BOLD}$(tr_msg reality_mlkem_notice_mihomo_trojan)${NC}"
+    else
+        msg "${RED}${BOLD}$(tr_msg reality_mlkem_notice_mihomo)${NC}"
+    fi
+    msg "${RED}${BOLD}$(tr_msg reality_mlkem_notice_ok)${NC}"
+    if [[ "$_xhttp" == '1' ]]; then
+        msg "${RED}${BOLD}$(tr_msg reality_mlkem_notice_xhttp)${NC}"
+    fi
+    msg "${RED}${BOLD}$(tr_msg reality_mlkem_notice_unverified)${NC}"
+}
+
 singbox_asset_json_from_release() {
     local release_json="${1:-}" preferred asset_json
     preferred="$(singbox_asset_regex)"
@@ -21511,6 +21588,8 @@ deploy_xray_trojan_landing() {
     msg "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     generate_qr "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     register_standalone_link "${ABOX_DEPLOY_STEM:-trojan-xray}" "Trojan-Reality (Xray) · 端口 ${port}" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    # N1: trojan-path REALITY notice (trojan-variant mihomo line; no YAML here).
+    show_reality_mlkem_notice 0 1
 }
 
 # Standalone Trojan-Reality via sing-box (toolbox entry).
@@ -25433,12 +25512,12 @@ EOF_SVC
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
     if [[ "$MODE_IN" == *ALL* ]]; then prune_owned_core_families_except xray hysteria; else prune_owned_core_families_except xray; fi
     commit_deployment_transaction
-    # N1-HOOK: deploy-time compatibility prompt goes here (N1's job):
-    # after successful commit, config and health check, at the unified
-    # success exit. Must use the finally installed Xray version, the
-    # real protocol/transport and whether Reality is actually enabled
-    # in the config -- not MODE alone. Cancel/failure paths must not
-    # print an "install complete" prompt.
+    # N1: deploy-time REALITY compatibility notice. Flags come from the
+    # freshly rebuilt, committed config -- not MODE alone (GPT Q2 hybrid).
+    local _n1_flags='' _n1_reality='0' _n1_xhttp='0'
+    _n1_flags=$(xray_config_reality_flags "$XRAY_SLOT_CFG" || true)
+    read -r _n1_reality _n1_xhttp <<< "${_n1_flags:-0 0}"
+    if [[ "$_n1_reality" == '1' ]]; then show_reality_mlkem_notice "$_n1_xhttp" 0; fi
     view_config deploy
 }
 
@@ -42741,7 +42820,7 @@ view_config() {
         VLESS_URL="vless://$UUID@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#Vision"
         msg "${BOLD}${CYAN}── VLESS-Vision-Reality · 端口 ${VLESS_PORT}${NC}"
         msg "${GREEN}${VLESS_URL}${NC}"
-        if [[ "$CORE" == 'xray' ]] && xray_reality_requires_mlkem; then
+        if [[ "$CORE" == 'xray' ]] && [[ "$CALLER" != 'deploy' ]] && xray_reality_requires_mlkem; then
             msg "${YELLOW}$(tprintf vc_xray_mlkem_compat "$(effective_xray_version)")${NC}"
         fi
         generate_qr "$VLESS_URL"
@@ -45208,6 +45287,13 @@ PY_SELFTEST_TAR
     [[ "$(tr_msg confirm_local_sni_full)" != *'远程执行第三方脚本'* ]] || { echo 'FAIL: local SNI prompt still says remote third-party'; failures=$((failures + 1)); }
     grep -Fq 'en:reality_non443_warn)' <<< "$source_body" || { echo 'FAIL: English non-443 SNI warning translation missing'; failures=$((failures + 1)); }
     grep -Fq 'en:apple_sni_warn)' <<< "$source_body" || { echo 'FAIL: English Apple/iCloud SNI warning translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_title)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_title translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_cannot)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_cannot translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_mihomo)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_mihomo translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_ok)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_ok translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_xhttp)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_xhttp translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_unverified)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_unverified translation missing'; failures=$((failures + 1)); }
+    grep -Fq 'en:reality_mlkem_notice_mihomo_trojan)' <<< "$source_body" || { echo 'FAIL: English REALITY notice reality_mlkem_notice_mihomo_trojan translation missing'; failures=$((failures + 1)); }
     declare -F sni_domain_public_dns >/dev/null 2>&1 || { echo 'FAIL: SNI public-DNS guard missing'; failures=$((failures + 1)); }
     grep -Fq '__abox_missing_pkg_for "$release" groupadd passwd shadow-utils shadow' <<< "$source_body" || { echo 'FAIL: group management dependency mapping missing'; failures=$((failures + 1)); }
     grep -Fq '__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow' <<< "$source_body" || { echo 'FAIL: user management dependency mapping missing'; failures=$((failures + 1)); }

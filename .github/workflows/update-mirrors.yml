@@ -43,7 +43,9 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # F-05: Ed25519 signing key for mirror metadata (base64 raw 32-byte seed).
-      # Absent in forks: signing steps skip gracefully.
+      # Absent in forks: Wallos signing fails closed (refuses to publish
+      # unsigned manifests); test-tools signing fails on manual dispatch
+      # and skips with a notice only on scheduled runs.
       ABOX_SIGNING_PRIVKEY_B64: ${{ secrets.ABOX_SIGNING_PRIVKEY_B64 }}
     steps:
       - name: Check out repository

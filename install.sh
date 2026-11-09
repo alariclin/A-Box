@@ -303,17 +303,18 @@ WALLOS_DIR='/opt/wallos'
 WALLOS_IMAGE_RESULT=''
 WALLOS_MIRROR_RELEASE='wallos-mirror'
 ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
-# Fallback version for Xray when no newer version can be resolved or probed.
+# Xray target for an explicitly selected pinned policy;
+# not an automatic disaster-recovery fallback.
 # It is NOT the default install target: Xray now tracks the latest stable
-# release by default (auto-stable, 7-day cooling, draft/prerelease excluded),
+# release by default (auto-stable, draft/prerelease excluded),
 # like sing-box and Hysteria. Xray 26.9.8/26.9.9 introduces the newer REALITY
 # ML-KEM ClientHello gate; public interoperability reports show breakage with
 # common non-PQ clients, so the ML-KEM threshold is still enforced separately
 # (ABOX_XRAY_REALITY_MLKEM_MIN_VERSION). Explicit ABOX_XRAY_VERSION overrides
 # remain available for operators who intentionally pin a version.
 ABOX_XRAY_DEFAULT_VERSION='v26.7.28'
-# Stable sing-box compatibility pin included in the core-binaries mirror; refresh and
-# validate client/config compatibility before changing the pinned mirror version.
+# Stable sing-box compatibility pin; refresh and validate client/config
+# compatibility before changing the pinned version.
 ABOX_SINGBOX_DEFAULT_VERSION='v1.14.3'
 # Historical mirror asset mapping, NOT a promise that the version is still in
 # the mirror: superseded mirror assets are pruned on update. Automatic
@@ -323,9 +324,9 @@ ABOX_XRAY_MIRROR_VERSION='v26.7.28'
 ABOX_SINGBOX_MIRROR_VERSION='v1.14.3'
 ABOX_HYSTERIA_MIRROR_VERSION='app/v2.13.0'
 ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'
-# Per-core update policy (2026-11-09, latest-first):
-#   xray:     auto-stable - track latest official stable release after the
-#                           7-day cooling period (draft/prerelease excluded).
+# Per-core update policy (2026-11-10, latest-first):
+#   xray:     auto-stable - track the latest official stable release
+#                           (draft/prerelease excluded).
 #                           Xray >=v26.9.8 requires an ML-KEM key share and
 #                           breaks sing-box/mihomo/Karing clients (see
 #                           sing-box#4520, mihomo#3193); the ML-KEM threshold
@@ -343,10 +344,6 @@ ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'
 ABOX_XRAY_UPDATE_POLICY="${ABOX_XRAY_UPDATE_POLICY:-auto-stable}"
 ABOX_SINGBOX_UPDATE_POLICY="${ABOX_SINGBOX_UPDATE_POLICY:-auto-stable}"
 ABOX_HYSTERIA_UPDATE_POLICY="${ABOX_HYSTERIA_UPDATE_POLICY:-auto-stable}"
-# Minimum age (days) before an auto-stable policy accepts a newly published
-# stable release. Cooling is necessary but not sufficient: a cooled release
-# still goes through binary verification, config check, and health gate.
-ABOX_STABLE_COOLDOWN_DAYS="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
 # Normal Xray slot paths. Moved here when the xray-latest coexistence block
 # was deleted (2026-11-09); generic code still addresses the slot through
 # these names. XRAY_SLOT_DIR was XL-only and is gone with the block.
@@ -3893,12 +3890,12 @@ tr_msg() {
         fa:pi_acme_port_advice) echo 'ابتدا 80/tcp را آزاد کنید، یا پیش از استقرار گواهی دامنه HY2 به Cloudflare DNS-01 ACME تغییر دهید.' ;;
         zh-tw:pi_acme_port_advice) echo '請先釋放 80/tcp，或改用 Cloudflare DNS-01 ACME 後再部署 HY2 網域憑證。' ;;
         ja:pi_acme_port_advice) echo '先に 80/tcp を解放するか、Cloudflare DNS-01 ACME に切り替えてから HY2 のドメイン証明書を導入してください。' ;;
-        zh:tl_body) echo '日常部署：Xray、sing-box 与 Hysteria 默认跟随冷却期后的最新正式稳定版（默认冷却期为 7 天）。显式选择 pinned 策略时，三者的固定目标依次为：%s / %s / %s。' ;;
-        en:tl_body) echo 'Routine deployment: Xray, sing-box and Hysteria default to the latest official stable release after the cooldown (7 days by default). When the pinned policy is explicitly selected, their fixed targets, in the same order, are: %s / %s / %s.' ;;
-        ru:tl_body) echo 'При обычном развёртывании Xray, sing-box и Hysteria по умолчанию используют последний официальный стабильный выпуск после периода ожидания (по умолчанию 7 дней). При явном выборе политики pinned фиксированные версии в том же порядке: %s / %s / %s.' ;;
-        fa:tl_body) echo 'در استقرار عادی، Xray، sing-box و Hysteria به‌طور پیش‌فرض پس از دوره انتظار، آخرین نسخه پایدار رسمی را انتخاب می‌کنند (مدت پیش‌فرض: ۷ روز). با انتخاب صریح سیاست pinned، نسخه‌های ثابت به همان ترتیب عبارت‌اند از: %s / %s / %s.' ;;
-        zh-tw:tl_body) echo '日常部署：Xray、sing-box 與 Hysteria 預設跟隨冷卻期後的最新正式穩定版（預設冷卻期為 7 天）。明確選擇 pinned 策略時，三者的固定目標依序為：%s / %s / %s。' ;;
-        ja:tl_body) echo '通常の導入では、Xray、sing-box、Hysteria は既定で待機期間（既定は 7 日）を経た最新の正式安定版を選択します。pinned ポリシーを明示的に選択した場合、固定対象は同じ順で %s / %s / %s です。' ;;
+        zh:tl_body) echo '日常部署：Xray、sing-box 与 Hysteria 默认跟随最新正式稳定版。显式选择 pinned 策略时，三者的固定目标依次为：%s / %s / %s。' ;;
+        en:tl_body) echo 'Routine deployment: Xray, sing-box and Hysteria default to the latest official stable release. When the pinned policy is explicitly selected, their fixed targets, in the same order, are: %s / %s / %s.' ;;
+        ru:tl_body) echo 'При обычном развёртывании Xray, sing-box и Hysteria по умолчанию используют последний официальный стабильный выпуск. При явном выборе политики pinned фиксированные версии в том же порядке: %s / %s / %s.' ;;
+        fa:tl_body) echo 'در استقرار عادی، Xray، sing-box و Hysteria به‌طور پیش‌فرض آخرین نسخه پایدار رسمی را انتخاب می‌کنند. با انتخاب صریح سیاست pinned، نسخه‌های ثابت به همان ترتیب عبارت‌اند از: %s / %s / %s.' ;;
+        zh-tw:tl_body) echo '日常部署：Xray、sing-box 與 Hysteria 預設跟隨最新正式穩定版。明確選擇 pinned 策略時，三者的固定目標依序為：%s / %s / %s。' ;;
+        ja:tl_body) echo '通常の導入では、Xray、sing-box、Hysteria は既定で最新の正式安定版を選択します。pinned ポリシーを明示的に選択した場合、固定対象は同じ順で %s / %s / %s です。' ;;
         zh:tl_risk) echo '这条自选路径可能破坏 Shadowrocket/Mihomo 的兼容性（例如 Xray ML-KEM）。失败会触发已有的核心升级事务回滚。' ;;
         en:tl_risk) echo 'This opt-in path may break Shadowrocket/Mihomo (e.g. Xray ML-KEM). Failure triggers the existing core-upgrade transaction rollback.' ;;
         ru:tl_risk) echo 'Этот необязательный путь может нарушить совместимость Shadowrocket/Mihomo (например, Xray ML-KEM). При сбое сработает существующий транзакционный откат обновления ядра.' ;;
@@ -17125,7 +17122,7 @@ clear_core_release_resolution() {
 
 core_update_policy() {
     # Returns the update policy for a core repo: 'pinned' or 'auto-stable'.
-    # All three cores default to auto-stable (latest stable after cooling);
+    # All three cores default to auto-stable (latest stable);
     # the ML-KEM compat risk is handled by the version threshold, not by
     # pinning. Explicit ABOX_*_VERSION overrides always win.
     case "${1:-}" in
@@ -17136,52 +17133,8 @@ core_update_policy() {
     esac
 }
 
-core_stable_release_age_days() {
-    # Prints the age in whole days of a stable release tag, or fails when the
-    # published date cannot be determined. Used to enforce the cooldown before
-    # an auto-stable policy accepts a newly published release.
-    local repo="${1:-}" tag="${2:-}" json published now_ts pub_ts
-    case "$repo" in XTLS/Xray-core|SagerNet/sing-box|HyNetworks/hysteria) ;; *) return 1 ;; esac
-    [[ -n "$tag" ]] || return 1
-    json=$(github_api_get "https://api.github.com/repos/$repo/releases?per_page=100") || return 1
-    published=$(jq -er --arg tag "$tag" '
-        [ .[]? | select(.draft == false and .prerelease == false and .tag_name == $tag)
-        | .published_at ] | first // empty
-    ' <<< "$json") || return 1
-    [[ -n "$published" ]] || return 1
-    now_ts=$(date +%s) || return 1
-    pub_ts=$(date -d "$published" +%s 2>/dev/null || python3 -I - "$published" <<'PY_ISO_TS' 2>/dev/null
-import datetime, sys
-s = sys.argv[1].strip()
-if s.endswith('Z'):
-    s = s[:-1] + '+00:00'
-dt = datetime.datetime.fromisoformat(s)
-if dt.tzinfo is None:
-    dt = dt.replace(tzinfo=datetime.timezone.utc)
-print(int(dt.timestamp()))
-PY_ISO_TS
-    ) || return 1
-    [[ "$pub_ts" -le "$now_ts" ]] || return 1
-    printf '%s\n' $(( (now_ts - pub_ts) / 86400 ))
-}
-
-# U235: the production cooldown rule, extracted so the self-test can
-# exercise it directly. $1=latest stable age in days (may be empty when
-# undetermined), $2=raw ABOX_STABLE_COOLDOWN_DAYS value. Sets
-# CORE_COOLDOWN_DAYS_EFFECTIVE (invalid or 0 falls back to 7, per N-14)
-# and returns 0 when the cooldown is satisfied, 1 otherwise. An
-# undetermined age never satisfies the cooldown (fail-closed).
-core_cooldown_allows_age() {
-    local age="$1" raw="$2"
-    CORE_COOLDOWN_DAYS_EFFECTIVE=7
-    if [[ "$raw" =~ ^[0-9]{1,4}$ ]] && (( 10#$raw >= 1 && 10#$raw <= 3650 )); then
-        CORE_COOLDOWN_DAYS_EFFECTIVE="$raw"
-    fi
-    [[ "$age" =~ ^[0-9]+$ ]] && (( age >= 10#$CORE_COOLDOWN_DAYS_EFFECTIVE ))
-}
-
 resolve_core_release_target() {
-    local repo="${1:-}" override='' latest='' latest_age='' target='' source='' resolved='' resolved_source='' default_ref='' _cd_raw='' _cd_eff=7 _mirror_age='' latest_rc=0 _mirror_candidate=''
+    local repo="${1:-}" override='' latest='' target='' source='' resolved='' resolved_source='' default_ref='' latest_rc=0
     case "$repo" in
         XTLS/Xray-core) override="${ABOX_XRAY_VERSION:-}"; default_ref="$ABOX_XRAY_DEFAULT_VERSION" ;;
         SagerNet/sing-box) override="${ABOX_SINGBOX_VERSION:-}"; default_ref="$ABOX_SINGBOX_DEFAULT_VERSION" ;;
@@ -17203,56 +17156,11 @@ resolve_core_release_target() {
                 latest_rc=$?
             fi
             if (( latest_rc == 0 )) && core_release_ref_valid "$repo" "$latest" && [[ "$latest" != *-* ]]; then
-                # Cooldown: a stable release must be published for at least
-                # ABOX_STABLE_COOLDOWN_DAYS before auto-stable accepts it.
-                # Cooling is necessary, not sufficient. When the age cannot be
-                # determined, refuse to auto-adopt and fall back to the pin.
-                # Explicit ABOX_TRY_LATEST_CORE_STABLE=1 (DANGER menu) bypasses
-                # the cooldown: the operator asked for latest, knowing the risk.
-                if [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]]; then
-                    msg "${YELLOW}[!] ABOX_TRY_LATEST_CORE_STABLE=1: cooldown bypassed by explicit operator request; $latest will be tried.${NC}" >&2
-                    target="$latest"; source='upstream'
-                else
-                    latest_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
-                    # U235: the rule lives in core_cooldown_allows_age
-                    # (effective-days fallback + age comparison); the
-                    # self-test exercises that helper directly.
-                    [[ "${ABOX_STABLE_COOLDOWN_DAYS:-7}" == "0" ]] && msg "${YELLOW}[!] ABOX_STABLE_COOLDOWN_DAYS=0 is not allowed (would disable cooldown); using 7.${NC}" >&2
-                    if core_cooldown_allows_age "$latest_age" "${ABOX_STABLE_COOLDOWN_DAYS:-7}"; then
-                        target="$latest"; source='upstream'
-                    else
-                        # C2 (latest-first): no fixed-pin fallback. Try the
-                        # current verified mirror candidate, but never adopt
-                        # the same version that was just rejected for
-                        # cooldown (that would bypass the rejection), and
-                        # never adopt a mirror candidate whose age is
-                        # unknown or below a custom cooldown.
-                        _mirror_candidate=$(core_latest_mirror_release_ref "$repo" 2>/dev/null || true)
-                        if core_release_ref_valid "$repo" "$_mirror_candidate" && [[ "$_mirror_candidate" != *-* ]] && [[ "$_mirror_candidate" != "$latest" ]]; then
-                            _cd_raw="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
-                            _cd_eff=7
-                            if [[ "$_cd_raw" =~ ^[0-9]{1,4}$ ]] && (( 10#$_cd_raw >= 1 && 10#$_cd_raw <= 3650 )); then
-                                _cd_eff="$_cd_raw"
-                            fi
-                            if (( 10#$_cd_eff == 7 )); then
-                                msg "${YELLOW}[!] $repo latest stable $latest is still in cooldown (${latest_age:-unknown} days < ${CORE_COOLDOWN_DAYS_EFFECTIVE}); using current mirror version ${_mirror_candidate}.${NC}" >&2
-                                target="$_mirror_candidate"; source='mirror-latest'
-                            else
-                                _mirror_age=$(core_stable_release_age_days "$repo" "$_mirror_candidate" 2>/dev/null || true)
-                                if core_cooldown_allows_age "$_mirror_age" "${ABOX_STABLE_COOLDOWN_DAYS:-7}"; then
-                                    msg "${YELLOW}[!] $repo latest stable $latest is still in cooldown (${latest_age:-unknown} days < ${CORE_COOLDOWN_DAYS_EFFECTIVE}); mirror version ${_mirror_candidate} is ${_mirror_age} days old and satisfies the custom cooldown; using it.${NC}" >&2
-                                    target="$_mirror_candidate"; source='mirror-latest'
-                                else
-                                    msg "${RED}[!] $repo latest stable $latest is still in cooldown and the current mirror version ${_mirror_candidate} does not satisfy the custom cooldown (${_mirror_age:-unknown} days); refusing to install.${NC}" >&2
-                                    return 1
-                                fi
-                            fi
-                        else
-                            msg "${RED}[!] $repo latest stable $latest is still in cooldown (${latest_age:-unknown} days < ${CORE_COOLDOWN_DAYS_EFFECTIVE}) and no usable current mirror version is available; refusing to install.${NC}" >&2
-                            return 1
-                        fi
-                    fi
-                fi
+                # No cooling period (2026-11-10 policy): the latest stable
+                # release is adopted immediately; draft/prerelease are
+                # already excluded by core_latest_stable_release_ref.
+                # Binary verification, config check and health gate still apply.
+                target="$latest"; source='upstream'
             else
                 # C2 (D2): distinguish why there is no upstream candidate
                 # before entering the mirror branch. Return codes from
@@ -17267,51 +17175,12 @@ resolve_core_release_target() {
                     *) msg "${RED}[!] $(tprintf fg_resolve "$repo")${NC}" >&2; return 1 ;;
                 esac
                 # No usable upstream candidate: try mirror-latest.
-                # DANGER mode (ABOX_TRY_LATEST_CORE_STABLE=1) bypasses cooldown,
-                # matching the upstream-success path. Otherwise enforce cooldown;
-                # CORE-VERSIONS has no published_at, so we attempt a targeted API
-                # query for this specific tag's date. If age cannot be determined,
-                # fail explicitly (no fixed-pin fallback).
                 latest=$(core_latest_mirror_release_ref "$repo" 2>/dev/null || true)
                 if core_release_ref_valid "$repo" "$latest" && [[ "$latest" != *-* ]]; then
-                    # S29 (GPT-7): mirror adoption vs local cooldown.
-                    # Default cooldown (7/unset/invalid->7): trust the mirror
-                    # as before; no LOCAL cooldown check is performed, and the
-                    # message says so (the mirror's build-time enforcement,
-                    # if any, is not verifiable from the data here).
-                    # Custom cooldown: enforce it -- attempt a targeted age
-                    # query; adopt only if the age is known and old enough,
-                    # otherwise fall back to the pin (fail-closed, matching
-                    # the upstream branch's unknown-age rule).
-                    # DANGER (TRY_LATEST=1) bypasses, matching the upstream
-                    # path: the operator explicitly asked for latest.
-                    # S56 (argon P3-3b): the format check that used to guard
-                    # this block was subsumed by the outer gate (valid ref +
-                    # no hyphen), so its else was unreachable; folded away,
-                    # body unchanged apart from indentation.
-                    if [[ "${ABOX_TRY_LATEST_CORE_STABLE:-0}" == '1' ]]; then
-                        target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游无可用稳定版候选；ABOX_TRY_LATEST_CORE_STABLE=1 显式要求最新版，绕过冷却期，直接信任镜像版本 ${target}（未执行本地冷却校验）。${NC}" >&2
-                    else
-                        _cd_raw="${ABOX_STABLE_COOLDOWN_DAYS:-7}"
-                        _cd_eff=7
-                        if [[ "$_cd_raw" =~ ^[0-9]{1,4}$ ]] && (( 10#$_cd_raw >= 1 && 10#$_cd_raw <= 3650 )); then
-                            _cd_eff="$_cd_raw"
-                        fi
-                        if (( 10#$_cd_eff == 7 )); then
-                            target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游无可用稳定版候选；直接信任镜像版本 ${target}（未执行本地冷却校验；本地冷却期为默认值）。${NC}" >&2
-                        else
-                            _mirror_age=$(core_stable_release_age_days "$repo" "$latest" 2>/dev/null || true)
-                            if core_cooldown_allows_age "$_mirror_age" "${ABOX_STABLE_COOLDOWN_DAYS:-7}"; then
-                                target="$latest"; source='mirror-latest'; msg "${YELLOW}[!] 上游无可用稳定版候选；镜像版本 ${target} 已发布 ${_mirror_age} 天，满足本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天，采纳。${NC}" >&2
-                            elif [[ "$_mirror_age" =~ ^[0-9]+$ ]]; then
-                                msg "${RED}[!] 上游无可用稳定版候选；镜像版本 ${latest} 仅发布 ${_mirror_age} 天，未满本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天；拒绝安装。${NC}" >&2
-                                return 1
-                            else
-                                msg "${RED}[!] 上游无可用稳定版候选；镜像版本 ${latest} 的发布年龄无法确定，本地自定义冷却期 ${CORE_COOLDOWN_DAYS_EFFECTIVE} 天无法校验；拒绝安装。${NC}" >&2
-                                return 1
-                            fi
-                        fi
-                    fi
+                    # No local cooling check (2026-11-10 policy): the current
+                    # verified mirror version is adopted immediately.
+                    target="$latest"; source='mirror-latest'
+                    msg "${YELLOW}[!] No usable upstream candidate for $repo; using current mirror version ${target}.${NC}" >&2
                 else msg "${RED}[!] 上游与最新镜像元数据均不可用；拒绝安装。${NC}" >&2; return 1; fi
             fi
         else core_release_ref_valid "$repo" "$default_ref" || return 1; target="$default_ref"; source='pinned'
@@ -28723,7 +28592,7 @@ show_core_pin_docs() {
     # C2 (latest-first): all three cores default to auto-stable; the
     # fallback constants are the explicit pinned-policy targets only.
     msg "Update policy per core: Xray ${YELLOW}auto-stable${NC}; sing-box ${YELLOW}auto-stable${NC}; Hysteria ${YELLOW}auto-stable${NC}. Fallback versions (explicit pinned policy only): Xray ${ABOX_XRAY_DEFAULT_VERSION}, sing-box ${ABOX_SINGBOX_DEFAULT_VERSION}, Hysteria ${ABOX_HYSTERIA_DEFAULT_VERSION}."
-    msg "Auto-stable follows the latest official stable tag after a cooling period (7 days by default, configurable via ABOX_STABLE_COOLDOWN_DAYS; draft/prerelease excluded); config, client compatibility, and post-upgrade health gates still apply."
+    msg "Auto-stable selects the latest official stable tag at install/update time (draft/prerelease excluded); config, client compatibility, and post-upgrade health gates still apply."
     msg "Disaster recovery: an upstream failure first tries the exact-tag versioned mirror, then the current verified mirror version from ${YELLOW}${ABOX_CORE_MIRROR_RELEASE}${NC}; explicit/pinned targets never switch versions."
     msg "CORE-VERSIONS is accepted only when its digest matches SHA256SUMS; superseded versioned assets are pruned after the replacement assets and metadata are verified (no multi-version rollback)."
     msg "Explicit version overrides: ABOX_XRAY_VERSION / ABOX_SINGBOX_VERSION / ABOX_HYSTERIA_APP_VERSION; failed explicit pins do not silently switch versions."
@@ -45422,7 +45291,7 @@ PY_SELFTEST_TAR
     grep -Fq 'User=abox-hysteria' <<< "$source_body" || { echo 'FAIL: Hysteria systemd unit must drop root UID'; failures=$((failures + 1)); }
     grep -Fq 'command_user="abox-hysteria:abox-hysteria"' <<< "$source_body" || { echo 'FAIL: Hysteria OpenRC service must drop root UID'; failures=$((failures + 1)); }
     grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'" <<< "$source_body" || { echo 'FAIL: Hysteria compatibility pin missing'; failures=$((failures + 1)); }
-    grep -Fq 'ABOX_TRY_LATEST_CORE_STABLE:-0' <<< "$source_body" || { echo 'FAIL: try-latest danger path must stay opt-in (cooldown bypass only)'; failures=$((failures + 1)); }
+    grep -Fq 'ABOX_TRY_LATEST_CORE_STABLE:-0' <<< "$source_body" || { echo 'FAIL: try-latest danger path must stay opt-in (pinned-policy latest override)'; failures=$((failures + 1)); }
     grep -Fq 'sni_probe_candidate_tier() {' <<< "$source_body" || { echo 'FAIL: custom REALITY SNI probe helper missing'; failures=$((failures + 1)); }
     grep -Fq 'custom_tier=$(sni_probe_candidate_tier "$input"' <<< "$source_body" || { echo 'FAIL: custom REALITY SNI must be re-probed before acceptance'; failures=$((failures + 1)); }
     grep -Fq 'core_latest_stable_release_ref() {' <<< "$source_body" || { echo 'FAIL: dynamic stable Release resolver missing'; failures=$((failures + 1)); }
@@ -45443,19 +45312,48 @@ PY_SELFTEST_TAR
         ABOX_RESOLVED_XRAY_VERSION=''; ABOX_RESOLVED_XRAY_SOURCE=''
         core_latest_stable_release_ref() { printf '%s\n' 'v26.11.9'; }
         core_latest_mirror_release_ref() { printf '%s\n' 'v26.7.28'; }
-        core_stable_release_age_days() { printf '%s\n' '30'; }
         resolve_core_release_target XTLS/Xray-core || exit 1
         [[ "$ABOX_RESOLVED_XRAY_VERSION|$ABOX_RESOLVED_XRAY_SOURCE" == 'v26.11.9|upstream' ]]
     ) || { echo 'FAIL: routine core resolver must follow the latest stable Xray release'; failures=$((failures + 1)); }
     (
+        unset ABOX_SINGBOX_VERSION ABOX_SINGBOX_UPDATE_POLICY ABOX_TRY_LATEST_CORE_STABLE
+        ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE=''
+        core_latest_stable_release_ref() { return 3; }
+        core_latest_mirror_release_ref() { printf '%s\n' 'v1.14.3'; }
+        resolve_core_release_target SagerNet/sing-box || exit 1
+        [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.3|mirror-latest' ]]
+    ) || { echo 'FAIL: ordinary no-candidate path must fall back to mirror-latest'; failures=$((failures + 1)); }
+    (
+        unset ABOX_HYSTERIA_APP_VERSION
+        ABOX_TRY_LATEST_CORE_STABLE=1
+        ABOX_HYSTERIA_UPDATE_POLICY='pinned'
+        ABOX_RESOLVED_HYSTERIA_VERSION=''; ABOX_RESOLVED_HYSTERIA_SOURCE=''
+        core_latest_stable_release_ref() { printf '%s\n' 'app/v2.14.0'; }
+        core_latest_mirror_release_ref() { printf '%s\n' 'app/v2.13.0'; }
+        resolve_core_release_target HyNetworks/hysteria || exit 1
+        [[ "$ABOX_RESOLVED_HYSTERIA_VERSION|$ABOX_RESOLVED_HYSTERIA_SOURCE" == 'app/v2.14.0|upstream' ]]
+    ) || { echo 'FAIL: TRY_LATEST must override pinned policy'; failures=$((failures + 1)); }
+    (
+        ABOX_SINGBOX_VERSION='v1.14.2'
+        ABOX_TRY_LATEST_CORE_STABLE=1
+        ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE=''
+        resolve_core_release_target SagerNet/sing-box || exit 1
+        [[ "$ABOX_RESOLVED_SINGBOX_VERSION|$ABOX_RESOLVED_SINGBOX_SOURCE" == 'v1.14.2|explicit' ]]
+    ) || { echo 'FAIL: explicit version must win over TRY_LATEST'; failures=$((failures + 1)); }
+    (
         unset ABOX_XRAY_VERSION ABOX_TRY_LATEST_CORE_STABLE
+        ABOX_XRAY_UPDATE_POLICY='pinned'
         ABOX_RESOLVED_XRAY_VERSION=''; ABOX_RESOLVED_XRAY_SOURCE=''
-        core_latest_stable_release_ref() { printf '%s\n' 'v26.11.9'; }
-        core_latest_mirror_release_ref() { printf '%s\n' 'v26.7.28'; }
-        core_stable_release_age_days() { return 1; }
         resolve_core_release_target XTLS/Xray-core || exit 1
-        [[ "$ABOX_RESOLVED_XRAY_VERSION|$ABOX_RESOLVED_XRAY_SOURCE" == 'v26.7.28|mirror-latest' ]]
-    ) || { echo 'FAIL: cooldown must fall back to the current mirror Xray release'; failures=$((failures + 1)); }
+        [[ "$ABOX_RESOLVED_XRAY_VERSION|$ABOX_RESOLVED_XRAY_SOURCE" == 'v26.7.28|pinned' ]]
+    ) || { echo 'FAIL: pinned policy without TRY_LATEST must use the pin'; failures=$((failures + 1)); }
+    (
+        unset ABOX_SINGBOX_VERSION ABOX_SINGBOX_UPDATE_POLICY ABOX_TRY_LATEST_CORE_STABLE
+        ABOX_RESOLVED_SINGBOX_VERSION=''; ABOX_RESOLVED_SINGBOX_SOURCE=''
+        core_latest_stable_release_ref() { return 2; }
+        core_latest_mirror_release_ref() { printf '%s\n' 'v9.9.9-rc.1'; }
+        ! resolve_core_release_target SagerNet/sing-box
+    ) || { echo 'FAIL: invalid mirror candidate must fail the resolve'; failures=$((failures + 1)); }
     (
         unset ABOX_SINGBOX_VERSION
         ABOX_TRY_LATEST_CORE_STABLE=1
@@ -45493,7 +45391,7 @@ PY_SELFTEST_TAR
     ( ABOX_XRAY_VERSION=v26.9 xray_reality_requires_mlkem ) >/dev/null 2>&1 && { echo 'FAIL: malformed Xray version accepted'; failures=$((failures + 1)); }
     grep -Fq 'support-x25519mlkem768: $clash_mlkem' <<< "$source_body" || { echo 'FAIL: Clash REALITY ML-KEM flag must be version-aware'; failures=$((failures + 1)); }
     grep -Fq 'HyNetworks/hysteria) override="${ABOX_HYSTERIA_APP_VERSION:-}"; default_ref="$ABOX_HYSTERIA_DEFAULT_VERSION"' <<< "$source_body" || { echo 'FAIL: Hysteria v2.13.0 compatibility pin missing'; failures=$((failures + 1)); }
-    # F-06 fix: isolate policy/cooldown default assertions from user env overrides.
+    # F-06 fix: isolate policy default assertions from user env overrides.
     ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
       [[ "$(core_update_policy XTLS/Xray-core)" == 'auto-stable' ]] ) || { echo 'FAIL: Xray update policy must default to auto-stable'; failures=$((failures + 1)); }
     ( unset ABOX_XRAY_UPDATE_POLICY ABOX_SINGBOX_UPDATE_POLICY ABOX_HYSTERIA_UPDATE_POLICY
@@ -45503,15 +45401,12 @@ PY_SELFTEST_TAR
     ( ABOX_XRAY_UPDATE_POLICY='auto-stable'; [[ "$(core_update_policy XTLS/Xray-core)" == 'auto-stable' ]] ) || { echo 'FAIL: Xray policy override not honored'; failures=$((failures + 1)); }
     ( ABOX_XRAY_UPDATE_POLICY='pinned'; [[ "$(core_update_policy XTLS/Xray-core)" == 'pinned' ]] ) || { echo 'FAIL: Xray pinned policy override not honored'; failures=$((failures + 1)); }
     grep -Fq 'ABOX_XRAY_UPDATE_POLICY="${ABOX_XRAY_UPDATE_POLICY:-auto-stable}"' <<< "$source_body" || { echo 'FAIL: Xray update policy init must default to auto-stable'; failures=$((failures + 1)); }
-    # U235: exercise the production cooldown helper, not shell expansions.
-    assert_ok core_cooldown_allows_age 10 7
-    assert_bad core_cooldown_allows_age 3 7
-    assert_ok core_cooldown_allows_age 14 14
-    assert_bad core_cooldown_allows_age 6 14
-    assert_ok core_cooldown_allows_age 7 0
-    assert_bad core_cooldown_allows_age 6 0
-    assert_bad core_cooldown_allows_age '' 7
-    assert_ok core_cooldown_allows_age 7 'not-a-number'
+    # C4 (2026-11-10, no-cooling policy): the cooldown helpers are retired;
+    # the resolver must no longer define them, and no cooldown variable
+    # may remain in the source.
+    ! declare -F core_cooldown_allows_age >/dev/null 2>&1 || { echo 'FAIL: retired cooldown helper still exists'; failures=$((failures + 1)); }
+    ! declare -F core_stable_release_age_days >/dev/null 2>&1 || { echo 'FAIL: retired release-age helper still exists'; failures=$((failures + 1)); }
+    ! grep -Fq 'ABOX_STABLE_COOLDOWN_DAYS' <<< "$source_body" || { echo 'FAIL: retired cooldown variable still present'; failures=$((failures + 1)); }
 
     (
         [[ "$ABOX_BUILD" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[A-Za-z0-9][A-Za-z0-9-]*-v[0-9]+$ ]] || exit 1

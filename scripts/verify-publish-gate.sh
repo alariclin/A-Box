@@ -6,7 +6,7 @@
 #   - history baseline (R5C19-01: manifest + assets swapped together)
 #   - full history (R14C19-01: a historical record silently deleted)
 #   - immutable binaries (R11C19-02: --clobber overwrote a same-name asset)
-#   - stability (R5C19-02: numeric-tag prerelease bypassed cooling)
+#   - stability (R5C19-02: numeric-tag prerelease must not pass as stable)
 # This gate independently re-checks all six before anything is signed.
 # It NEVER executes a binary; it only reads manifests and queries APIs.
 #
@@ -23,7 +23,6 @@ VERIFIED="${1:-}"
   echo "ERROR: verified/CORE-VERSIONS or verified/SHA256SUMS missing"; exit 1; }
 
 TRUSTED_PUBKEY_B64="${ABOX_TRUSTED_PUBKEY_B64:-7V4PBUUVpnfYhKu5LBxACxywpYEtvnDpVpvFnSrOujQ=}"
-COOLDOWN_SECS=604800  # 7 days, same as update-core-mirror.sh enforce_cooldown.
 
 tag_of() { grep "^$1=" "$VERIFIED/CORE-VERSIONS" | cut -d= -f2; }
 
@@ -76,36 +75,43 @@ semver_cmp() {
   echo 0
 }
 
-# --- R5C19-02: each tag must be a stable release past the 7-day cooldown ---
-check_stable_cooldown() { # $1 = repo, $2 = tag for API, $3 = display tag
-  local repo="$1" tag="$2" disp="$3" rel pre draft pub age now
+# --- R5C19-02: each tag must be a stable release (adopted immediately) ---
+check_stable_release() { # $1 = repo, $2 = tag for API, $3 = display tag
+  local repo="$1" tag="$2" disp="$3" rel pre draft pub
   rel="$(gh api "repos/$repo/releases/tags/$tag" 2>/dev/null)" || {
     echo "ERROR: upstream release not found: $repo:$disp"; return 1; }
-  # NOTE: do NOT use '.prerelease // empty' -- jq's // treats false as
-  # missing, so a stable release (prerelease=false) would read as empty.
-  pre="$(jq -r '.prerelease' <<< "$rel")"
-  draft="$(jq -r '.draft' <<< "$rel")"
-  pub="$(jq -r '.published_at // empty' <<< "$rel")"
-  [[ "$pre" == "false" && "$draft" == "false" && -n "$pub" ]] || {
-    echo "ERROR: $repo:$disp is not a stable release (prerelease=$pre draft=$draft published_at=$pub)"; return 1; }
-  now="$(date +%s)"
-  age=$(( now - $(date -d "$pub" +%s 2>/dev/null || echo 0) ))
-  [[ "$age" -ge "$COOLDOWN_SECS" ]] || {
-    echo "ERROR: $repo:$disp is in cooldown (age ${age}s < ${COOLDOWN_SECS}s)"; return 1; }
-  echo "Stable+cooldown OK: $repo:$disp"
+  # Strict stability check: draft/prerelease must be boolean false (not the
+  # string "false"), tag_name must equal the requested tag, published_at
+  # must be a non-empty string. No age comparison (2026-11-10 policy).
+  if ! jq -e --arg tag "$tag" '
+    type == "object"
+    and (.draft == false)
+    and (.prerelease == false)
+    and (.tag_name == $tag)
+    and ((.published_at // "") | (type == "string" and length > 0))
+  ' <<< "$rel" >/dev/null; then
+    # NOTE: do NOT use '.prerelease // empty' for diagnostics -- jq's //
+    # treats false as missing, so a stable release would read as empty.
+    pre="$(jq -r '.prerelease' <<< "$rel")"
+    draft="$(jq -r '.draft' <<< "$rel")"
+    pub="$(jq -r '.published_at // empty' <<< "$rel")"
+    echo "ERROR: $repo:$disp is not a stable release (prerelease=$pre draft=$draft published_at=$pub)"
+    return 1
+  fi
+  echo "Stable OK: $repo:$disp"
 }
-check_stable_cooldown "XTLS/Xray-core" "$XRAY_TAG" "$XRAY_TAG" || exit 1
-check_stable_cooldown "SagerNet/sing-box" "$SB_TAG" "$SB_TAG" || exit 1
-check_stable_cooldown "HyNetworks/hysteria" "$HY_TAG" "$HY_TAG" || exit 1
-check_stable_cooldown "cloudflare/cloudflared" "$CF_TAG" "$CF_TAG" || exit 1
-check_stable_cooldown "ViRb3/wgcf" "v$WG_TAG" "$WG_TAG" || exit 1
+check_stable_release "XTLS/Xray-core" "$XRAY_TAG" "$XRAY_TAG" || exit 1
+check_stable_release "SagerNet/sing-box" "$SB_TAG" "$SB_TAG" || exit 1
+check_stable_release "HyNetworks/hysteria" "$HY_TAG" "$HY_TAG" || exit 1
+check_stable_release "cloudflare/cloudflared" "$CF_TAG" "$CF_TAG" || exit 1
+check_stable_release "ViRb3/wgcf" "v$WG_TAG" "$WG_TAG" || exit 1
 
 # --- Current Release baseline (for history / monotonicity / no-clobber) ---
 TMPD="$(mktemp -d)"
 trap 'rm -rf "$TMPD"' EXIT
 if ! release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/core-binaries" 2>/dev/null)"; then
   echo "NOTE: no existing core-binaries Release; history/monotonicity/no-clobber checks skipped (first publish)."
-  echo "Publish gate PASSED (first publish; arch + stable/cooldown verified)."
+  echo "Publish gate PASSED (first publish; arch + stable verified)."
   exit 0
 fi
 
@@ -133,7 +139,7 @@ gh release download core-binaries -p SHA256SUMS.sig -D "$TMPD" >/dev/null 2>&1 |
 gh release download core-binaries -p CORE-VERSIONS -D "$TMPD" >/dev/null 2>&1 || true
 if [[ ! -f "$TMPD/SHA256SUMS" ]]; then
   echo "NOTE: current Release has no SHA256SUMS asset; history/monotonicity checks skipped."
-  echo "Publish gate PASSED (no manifest baseline; arch + stable/cooldown + no-clobber verified)."
+  echo "Publish gate PASSED (no manifest baseline; arch + stable + no-clobber verified)."
   exit 0
 fi
 # R5C19-01: authenticate the baseline manifest before trusting it.

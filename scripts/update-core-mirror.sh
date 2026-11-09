@@ -9,8 +9,8 @@ mkdir -p "$out" "$existing"
 gh release view core-binaries >/dev/null
 gh release download core-binaries --pattern SHA256SUMS --dir "$existing"
 test -s "$existing/SHA256SUMS"
-# D-1: download existing CORE-VERSIONS for cooldown fallback (previous
-# mirror version when the latest release is < 7 days old).
+# Download existing CORE-VERSIONS for the API-failure fallback (previous
+# mirror version when the latest release cannot be fetched).
 gh release download core-binaries --pattern CORE-VERSIONS --dir "$existing"
 test -s "$existing/CORE-VERSIONS"
 # D-1-FIX: Verify CORE-VERSIONS against SHA256SUMS before trusting it for fallback.
@@ -18,8 +18,9 @@ test -s "$existing/CORE-VERSIONS"
 # U56: a mismatch no longer deadlocks re-runs. It means either a previous
 # publish was interrupted (new CORE-VERSIONS, old SHA256SUMS) or the mirror
 # metadata was tampered with. Either way the existing file is untrusted:
-# it must not feed fallback/skip decisions (enforce_cooldown aborts if a
-# fallback would be needed). Fresh latest tags still validate normally,
+# it must not feed fallback/skip decisions (the guard below refuses an
+# API-failure fallback when this metadata is untrusted). Fresh latest tags
+# still validate normally,
 # so an interrupted publish self-heals on re-run.
 EXISTING_UNTRUSTED=0
 ( cd "$existing" && sha256sum -c --status --ignore-missing <(grep "CORE-VERSIONS" SHA256SUMS) ) || {
@@ -27,16 +28,10 @@ EXISTING_UNTRUSTED=0
   EXISTING_UNTRUSTED=1
 }
 
-# D-1: 7-day cooldown. A release published < 7 days ago is not yet
-# trusted for the mirror. Fall back to the previous mirror version.
-COOLDOWN_SECONDS=604800
-# D-1-FIX: Per-core skip list (associative array). enforce_cooldown sets
-# SKIP_CORES[core_key]=1 on failure instead of return 1 (which aborted whole
-# script under set -e, blocking other cores).
+# Per-core skip list (associative array). A core is skipped only when its
+# upstream API request fails; the existing mirror tag is used instead.
 declare -A SKIP_CORES=()
 
-# NOTE: validate_release_tag must be defined BEFORE enforce_cooldown,
-# because enforce_cooldown calls it on the fallback path.
 validate_release_tag() {
   local file="$1" regex="$2" tag
   jq -e --arg regex "$regex" '
@@ -50,85 +45,69 @@ validate_release_tag() {
   printf '%s\n' "$tag"
 }
 
-# Enforce cooldown for a release JSON. If the release is < 7 days old,
-# replace the JSON file with the previous mirror version's release JSON.
-# Args: repo, json_file, core_key (CORE-VERSIONS key), tag_regex
-enforce_cooldown() {
-  local repo="$1" json_file="$2" core_key="$3" tag_regex="$4"
-  local published_at published_epoch now_epoch age latest_tag prev_tag
-  # D-1-FIX (set-e safe): All fallible commands wrapped in if ! ... guards.
-  # No bare jq/gh/date calls that could abort the whole script under set -e.
-  if ! validate_release_tag "$json_file" "$tag_regex" >/dev/null 2>&1 ||
-     ! published_at="$(jq -er '.published_at' "$json_file" 2>/dev/null)" ||
-     ! published_epoch="$(date -d "$published_at" +%s 2>/dev/null)"; then
-    echo "::warning::$core_key latest release metadata invalid; attempting fallback to previous mirror version"
-    age=0
-    latest_tag="unknown"
-  else
-    now_epoch="$(date +%s)"
-    age=$((now_epoch - published_epoch))
-    latest_tag="$(jq -er '.tag_name' "$json_file")"
-    if (( age >= COOLDOWN_SECONDS )); then
-      return 0
-    fi
-  fi
-  if [[ "${EXISTING_UNTRUSTED:-0}" == 1 ]]; then
-    echo "::error::$core_key release $latest_tag is in cooldown but existing mirror metadata is untrusted; refusing to fall back (re-run after cooldown or repair the mirror manually)"
-    return 1
-  fi
-  prev_tag="$(awk -F= -v k="$core_key" '$1 == k {sub(/^[^=]*=/, ""); print; exit}' "$existing/CORE-VERSIONS")"
-  if [[ -z "$prev_tag" ]] || ! [[ "$prev_tag" =~ $tag_regex ]]; then
-    echo "::warning::$core_key release $latest_tag is in cooldown and no valid previous tag exists; skipping $core_key"
-    SKIP_CORES["$core_key"]=1
-    return 0
-  fi
-  if [[ "$prev_tag" == "$latest_tag" ]]; then
-    echo "::notice::$core_key release $latest_tag is already in mirror; proceeding"
-    return 0
-  fi
-  echo "::warning::$core_key release $latest_tag is only $((age / 86400))d old (<7d); falling back to $prev_tag"
-  if ! gh api "repos/$repo/releases/tags/$prev_tag" > "$json_file" 2>/dev/null ||
-     ! jq -e --arg regex "$tag_regex" 'type == "object" and .draft == false and .prerelease == false and ((.tag_name // "") | test($regex))' "$json_file" >/dev/null 2>&1; then
-    echo "::warning::$core_key fallback release $prev_tag failed validation; skipping $core_key"
-    SKIP_CORES["$core_key"]=1
-    return 0
-  fi
-}
-
 if ! gh api repos/XTLS/Xray-core/releases/latest > "$root/xray.json" 2>/dev/null; then
   echo "::warning::Xray latest API request failed; using existing mirror tag"
   SKIP_CORES["Xray"]=1
 fi
-enforce_cooldown "XTLS/Xray-core" "$root/xray.json" "Xray" '^v[0-9]+\.[0-9]+\.[0-9]+$'
 if ! gh api repos/SagerNet/sing-box/releases/latest > "$root/sing-box.json" 2>/dev/null; then
   echo "::warning::sing-box latest API request failed; using existing mirror tag"
   SKIP_CORES["sing-box"]=1
 fi
-enforce_cooldown "SagerNet/sing-box" "$root/sing-box.json" "sing-box" '^v[0-9]+\.[0-9]+\.[0-9]+$'
 if ! gh api repos/HyNetworks/hysteria/releases/latest > "$root/hysteria.json" 2>/dev/null; then
   echo "::warning::Hysteria latest API request failed; using existing mirror tag"
   SKIP_CORES["Hysteria"]=1
 fi
-enforce_cooldown "HyNetworks/hysteria" "$root/hysteria.json" "Hysteria" '^app/v[0-9]+\.[0-9]+\.[0-9]+$'
 
-# D-1-FIX: For skipped cores, use existing mirror tag (not the too-new release).
+# For skipped cores (upstream API failed), use the existing mirror tag.
+# Read a core's tag from existing CORE-VERSIONS for the API-failure /
+# invalid-metadata fallback. Trust-gated (U56): refuses when the metadata
+# hash check above found it untrusted; requires exactly one matching key
+# and a tag matching the core's release regex.
+existing_mirror_tag() {
+  local key="$1" regex="$2" tag count
+  if [[ "${EXISTING_UNTRUSTED:-0}" == 1 ]]; then
+    echo "::error::existing mirror metadata is untrusted; refusing to fall back to previous $key tag (repair the mirror manually)"
+    return 1
+  fi
+  count="$(grep -c "^$key=" "$existing/CORE-VERSIONS" || true)"
+  [[ "$count" == 1 ]] || { echo "::error::existing mirror tag for $key is missing or ambiguous (matches=$count)"; return 1; }
+  tag="$(grep "^$key=" "$existing/CORE-VERSIONS" | cut -d= -f2)"
+  [[ -n "$tag" && "$tag" =~ $regex ]] || { echo "::error::existing mirror tag for $key is invalid: ${tag:-<empty>}"; return 1; }
+  printf '%s\n' "$tag"
+}
+
+# API-failure fallback reads tags from existing CORE-VERSIONS; refuse when
+# the metadata hash check above found it untrusted (fail-closed, U56).
+if [[ -n "${SKIP_CORES[Xray]:-}${SKIP_CORES[sing-box]:-}${SKIP_CORES[Hysteria]:-}" && "${EXISTING_UNTRUSTED:-0}" == 1 ]]; then
+  echo "::error::existing mirror metadata is untrusted; refusing to fall back to previous tags (repair the mirror manually)"
+  exit 1
+fi
 if [[ -n "${SKIP_CORES[Xray]:-}" ]]; then
-  xray_tag="$(grep '^Xray=' "$existing/CORE-VERSIONS" | cut -d= -f2)"
-  echo "::notice::Using existing mirror Xray tag: $xray_tag (latest skipped)"
-else
-  xray_tag="$(validate_release_tag "$root/xray.json" '^v[0-9]+\.[0-9]+\.[0-9]+$')" || { echo "::error::Xray release tag validation failed"; exit 1; }
+  xray_tag="$(existing_mirror_tag Xray '^v[0-9]+\.[0-9]+\.[0-9]+$')" || exit 1
+  echo "::notice::Using existing mirror Xray tag: $xray_tag (upstream unavailable)"
+elif ! xray_tag="$(validate_release_tag "$root/xray.json" '^v[0-9]+\.[0-9]+\.[0-9]+$')"; then
+  echo "::warning::Xray latest release metadata invalid; falling back to existing mirror tag"
+  SKIP_CORES["Xray"]=1
+  xray_tag="$(existing_mirror_tag Xray '^v[0-9]+\.[0-9]+\.[0-9]+$')" || exit 1
+  echo "::notice::Using existing mirror Xray tag: $xray_tag (latest metadata invalid)"
 fi
 if [[ -n "${SKIP_CORES[sing-box]:-}" ]]; then
-  singbox_tag="$(grep '^sing-box=' "$existing/CORE-VERSIONS" | cut -d= -f2)"
-  echo "::notice::Using existing mirror sing-box tag: $singbox_tag (latest skipped)"
-else
-  singbox_tag="$(validate_release_tag "$root/sing-box.json" '^v[0-9]+\.[0-9]+\.[0-9]+$')" || { echo "::error::sing-box release tag validation failed"; exit 1; }
+  singbox_tag="$(existing_mirror_tag sing-box '^v[0-9]+\.[0-9]+\.[0-9]+$')" || exit 1
+  echo "::notice::Using existing mirror sing-box tag: $singbox_tag (upstream unavailable)"
+elif ! singbox_tag="$(validate_release_tag "$root/sing-box.json" '^v[0-9]+\.[0-9]+\.[0-9]+$')"; then
+  echo "::warning::sing-box latest release metadata invalid; falling back to existing mirror tag"
+  SKIP_CORES["sing-box"]=1
+  singbox_tag="$(existing_mirror_tag sing-box '^v[0-9]+\.[0-9]+\.[0-9]+$')" || exit 1
+  echo "::notice::Using existing mirror sing-box tag: $singbox_tag (latest metadata invalid)"
 fi
 if [[ -n "${SKIP_CORES[Hysteria]:-}" ]]; then
-  hysteria_tag="$(grep '^Hysteria=' "$existing/CORE-VERSIONS" | cut -d= -f2)"
-  echo "::notice::Using existing mirror Hysteria tag: $hysteria_tag (latest skipped)"
-else
-  hysteria_tag="$(validate_release_tag "$root/hysteria.json" '^app/v[0-9]+\.[0-9]+\.[0-9]+$')" || { echo "::error::Hysteria release tag validation failed"; exit 1; }
+  hysteria_tag="$(existing_mirror_tag Hysteria '^app/v[0-9]+\.[0-9]+\.[0-9]+$')" || exit 1
+  echo "::notice::Using existing mirror Hysteria tag: $hysteria_tag (upstream unavailable)"
+elif ! hysteria_tag="$(validate_release_tag "$root/hysteria.json" '^app/v[0-9]+\.[0-9]+\.[0-9]+$')"; then
+  echo "::warning::Hysteria latest release metadata invalid; falling back to existing mirror tag"
+  SKIP_CORES["Hysteria"]=1
+  hysteria_tag="$(existing_mirror_tag Hysteria '^app/v[0-9]+\.[0-9]+\.[0-9]+$')" || exit 1
+  echo "::notice::Using existing mirror Hysteria tag: $hysteria_tag (latest metadata invalid)"
 fi
 
 # Pinned utilities: cloudflared (Argo) is pinned; the single source of
@@ -396,7 +375,7 @@ fi
 unset _b13_name _b13_names
 hysteria_leaf="$(tr '/' '-' <<< "$hysteria_tag" | tr -d '\n')"
 
-# D-1-FIX: Skip downloads for skipped cores (assets already in mirror).
+# Skip downloads for skipped cores (assets already in mirror).
 if [[ -z "${SKIP_CORES[Xray]:-}" ]]; then
   download_verified_asset XTLS/Xray-core "$root/xray.json" Xray-linux-64.zip "$xray_amd64_name" xray
   download_verified_asset XTLS/Xray-core "$root/xray.json" Xray-linux-arm64-v8a.zip "$xray_arm64_name" xray
@@ -421,7 +400,7 @@ else
 fi
 
 # Pinned utilities: cloudflared is always fetched at the install.sh pin;
-# wgcf is always fetched at the resolved latest release (no cooldown,
+# wgcf is always fetched at the resolved latest release (no skip),
 # no skip). Already-mirrored identical bytes are not re-uploaded (the
 # immutability merge below handles that).
 download_verified_asset cloudflare/cloudflared "$root/cloudflared.json" cloudflared-linux-amd64 "cloudflared-$CLOUDFLARED_VERSION-linux-amd64" cloudflared

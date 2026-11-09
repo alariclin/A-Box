@@ -9,7 +9,7 @@ on:
         type: boolean
         default: true
   schedule:
-    - cron: '43 6 * * 1'
+    - cron: '43 6 */3 * *'
   pull_request:
     paths:
       - '.github/workflows/update-core-mirror.yml'

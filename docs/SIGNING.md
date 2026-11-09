@@ -83,10 +83,20 @@ PY
 ```
 
 The CI signing step (`Sign mirror metadata (F-05)` in
-`update-core-mirror.yml` / `update-mirrors.yml`) reconstructs the PEM from
+`update-core-mirror.yml`, and the equivalent signing steps in
+`update-mirrors.yml`) reconstructs the PEM from
 this secret, signs with `openssl pkeyutl -sign -rawin`, and uploads
-`<file>.sig` next to each metadata file. The step skips gracefully when the
-secret is absent (so forks/CI without the key don't break).
+`<file>.sig` next to each metadata file. The step fails closed when the
+secret is absent: a missing `ABOX_SIGNING_PRIVKEY_B64` makes the signing
+step exit 1 (`update-core-mirror.yml`, R6C19-02; Wallos manifests in
+`update-mirrors.yml`, R6C19-03), and the pre-publish gate refuses to upload
+manifests whose `.sig` files are missing — so unsigned metadata is never
+published over signed metadata. Forks or CI runs without the key therefore
+fail at signing instead of publishing unsigned manifests; to publish, they
+must provision their own secret under the same name. The single exception
+is the scheduled (non-manual) test-tools refresh in `update-mirrors.yml`,
+which logs a notice and skips signing; a manual (`workflow_dispatch`)
+test-tools refresh fails closed like the rest.
 
 ### 4. Enforcement
 

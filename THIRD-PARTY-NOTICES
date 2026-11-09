@@ -1,0 +1,53 @@
+# Third-Party Notices
+
+A-Box itself is released under the Apache License 2.0 — see `LICENSE`
+in the repository root. This file lists third-party software that A-Box
+redistributes or downloads, as required by those components' own
+licenses.
+
+## sing-box
+
+- **Component:** sing-box (universal proxy platform)
+- **Upstream:** https://github.com/SagerNet/sing-box
+- **License:** GNU General Public License v3 (GPLv3), with an additional
+  restriction regarding name usage and associations. The full license
+  text is the `LICENSE` file in the upstream repository.
+- **Copyright:** Copyright (C) 2022 by nekohasekai
+  <contact-sagernet@sekai.icu>
+- **How A-Box uses it:** A-Box installs sing-box as one of its proxy
+  cores (see `install.sh`: `ABOX_SINGBOX_DEFAULT_VERSION`, currently
+  `v1.14.3`). Binaries are fetched from the official upstream releases
+  first; the `core-binaries` Release in this repository keeps a
+  compatibility-pin copy only as a fallback for when upstream is
+  unreachable. A-Box distributes the upstream binaries unmodified and
+  does not link sing-box into A-Box itself.
+
+### Corresponding source (GPLv3 section 6)
+
+The Corresponding Source for the exact sing-box version A-Box installs
+is the upstream source tree at the matching release tag in
+https://github.com/SagerNet/sing-box (for the compatibility pin, tag
+`v1.14.3`; for an auto-stable install, the tag of the version actually
+installed, shown by `install.sh --status`). No source package is bundled
+in the `core-binaries` Release.
+
+### Written offer
+
+In accordance with GPLv3 section 6(b), if you received a sing-box
+binary through A-Box and cannot obtain the Corresponding Source from
+the upstream repository above, you may request it in writing by opening
+an issue at https://github.com/alariclin/A-Box/issues stating the
+sing-box version you received. The maintainer will provide the
+Corresponding Source for that version (a link to the matching upstream
+source archive, or a copy of it) at no charge beyond the cost of
+distribution. This offer is valid for three years from the date you
+received the binary.
+
+## Other components
+
+Other software A-Box downloads or deploys (Xray-core, Hysteria,
+cloudflared, Caddy, Wallos and the test-tool scripts in the
+`test-tools-mirror` Release) remains under its own upstream license;
+see each project's upstream repository for its license terms. Only
+sing-box among the bundled cores is GPL-licensed, which is why it is
+listed here in full.

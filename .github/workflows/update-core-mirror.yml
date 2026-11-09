@@ -71,7 +71,7 @@ jobs:
         # are executed here but cannot use it to write.
         run: bash scripts/update-core-mirror.sh
       - name: Upload verified artifacts
-        uses: actions/upload-artifact@b4b15b8c7c6ac21af51f82d3829fee7b13161676 # v4.4.3
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: verified-core-mirror
           path: ${{ runner.temp }}/core-mirror/new/
@@ -382,6 +382,8 @@ jobs:
           done
           # Upload order is binaries -> CORE-VERSIONS -> SHA256SUMS (full) last.
           # SHA256SUMS.incoming is verification-only and is NOT uploaded.
+          # No --clobber: gh release upload fails if the asset already exists;
+          # set -euo pipefail then stops the step (fail-closed, no silent overwrite).
           for f in verified/*; do
             [[ -f "$f" ]] || continue
             name=$(basename "$f")
@@ -394,19 +396,19 @@ jobs:
               *) echo "ERROR: unknown file in artifact: $name; aborting"; exit 1 ;;
             esac
             echo "Uploading binary: $name"
-            gh release upload core-binaries "$f#$name" --clobber
+            gh release upload core-binaries "$f#$name"
           done
           if [[ -f verified/CORE-VERSIONS ]]; then
             echo "Uploading CORE-VERSIONS"
-            gh release upload core-binaries "verified/CORE-VERSIONS#CORE-VERSIONS" --clobber
+            gh release upload core-binaries "verified/CORE-VERSIONS#CORE-VERSIONS"
             # F-05: upload detached signature if the signing step produced one.
             if [[ -f verified/CORE-VERSIONS.sig ]]; then
-              gh release upload core-binaries "verified/CORE-VERSIONS.sig#CORE-VERSIONS.sig" --clobber
+              gh release upload core-binaries "verified/CORE-VERSIONS.sig#CORE-VERSIONS.sig"
             fi
           fi
           echo "Uploading SHA256SUMS (last)"
-          gh release upload core-binaries "verified/SHA256SUMS#SHA256SUMS" --clobber
+          gh release upload core-binaries "verified/SHA256SUMS#SHA256SUMS"
           if [[ -f verified/SHA256SUMS.sig ]]; then
-            gh release upload core-binaries "verified/SHA256SUMS.sig#SHA256SUMS.sig" --clobber
+            gh release upload core-binaries "verified/SHA256SUMS.sig#SHA256SUMS.sig"
           fi
           echo "Publish complete. Verified assets uploaded without execution."

@@ -151,12 +151,48 @@ jobs:
               sys.exit(1)
           print("OK: six-language i18n gate passed")
           PY
-      # P3-13 fix: renamed from "Alpine clean-shell bootstrap syntax".
-      # NOTE: This only checks syntax. Alpine runtime (BusyBox/musl/apk)
-      # is NOT tested here.
-      - name: Alpine syntax only
+  fixture-compat:
+    # P1-06 (GPT A'): minimal cross-distro fixture-compatibility matrix.
+    # NOT a real runtime matrix: --self-test is fixture/static assertions,
+    # it never installs real cores or touches the network. Debian slim gives
+    # a clean GNU/glibc userland, Alpine a musl one; the old standalone
+    # Alpine syntax step is folded in here (it now runs the full self-test).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - image: debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
+            pkgmgr: apt
+            selftest_timeout: 90
+          - image: alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
+            pkgmgr: apk
+            selftest_timeout: 180
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
+        with:
+          persist-credentials: false
+      - name: Fixture compatibility (${{ matrix.image }})
         run: |
-          docker run --rm -v "$PWD:/src:ro" alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 sh -ec '
-            apk add --no-cache bash
+          docker run --rm -v "$PWD:/src:ro" -w /tmp --user 0:0 "${{ matrix.image }}" sh -ec '
+            set -eu
+            if [ "${{ matrix.pkgmgr }}" = "apt" ]; then
+              export DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC
+              apt-get update
+              apt-get install -y --no-install-recommends bash tzdata iptables openssl python3 jq curl wget tar unzip zip
+            else
+              apk add --no-cache bash tzdata iptables openssl python3 jq curl wget tar unzip zip
+            fi
+            command -v timeout
             bash -n /src/install.sh
+            log=$(mktemp)
+            trap "rm -f $log" EXIT
+            rc=0
+            timeout -k 5 ${{ matrix.selftest_timeout }} bash /src/install.sh --self-test >"$log" 2>&1 || rc=$?
+            cat "$log"
+            test "$rc" -eq 0
+            grep -Fxq "SELF_TEST_OK" "$log"
+            if grep -Fq "SELF_TEST_FAILED" "$log"; then exit 1; fi
           '

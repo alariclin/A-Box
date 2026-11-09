@@ -24,14 +24,14 @@ command -v gh >/dev/null || { echo "gh CLI required"; exit 1; }
 
 # Expected exact file set (A-03 fix: refuse extras, N-10 fix: nullglob safe).
 expected=(
-    "Xray-v26.6.27-linux-64.zip"
-    "Xray-v26.6.27-linux-arm64-v8a.zip"
-    "sing-box-1.14.1-linux-amd64-glibc.tar.gz"
-    "sing-box-1.14.1-linux-amd64-musl.tar.gz"
-    "sing-box-1.14.1-linux-arm64-glibc.tar.gz"
-    "sing-box-1.14.1-linux-arm64-musl.tar.gz"
-    "hysteria-app-v2.12.3-linux-amd64"
-    "hysteria-app-v2.12.3-linux-arm64"
+    "Xray-v26.7.28-linux-64.zip"
+    "Xray-v26.7.28-linux-arm64-v8a.zip"
+    "sing-box-1.14.3-linux-amd64-glibc.tar.gz"
+    "sing-box-1.14.3-linux-amd64-musl.tar.gz"
+    "sing-box-1.14.3-linux-arm64-glibc.tar.gz"
+    "sing-box-1.14.3-linux-arm64-musl.tar.gz"
+    "hysteria-app-v2.13.0-linux-amd64"
+    "hysteria-app-v2.13.0-linux-arm64"
 )
 
 echo "[*] Checking staging file set..."
@@ -108,15 +108,15 @@ echo "[*] Manifest coverage verified."
 # skipped digest verification entirely).
 echo "[*] Verifying staged binaries against upstream official Release digests..."
 declare -A upstream_map=(
-    ["Xray-v26.6.27-linux-64.zip"]="XTLS/Xray-core|v26.6.27|Xray-linux-64.zip"
-    ["Xray-v26.6.27-linux-arm64-v8a.zip"]="XTLS/Xray-core|v26.6.27|Xray-linux-arm64-v8a.zip"
+    ["Xray-v26.7.28-linux-64.zip"]="XTLS/Xray-core|v26.7.28|Xray-linux-64.zip"
+    ["Xray-v26.7.28-linux-arm64-v8a.zip"]="XTLS/Xray-core|v26.7.28|Xray-linux-arm64-v8a.zip"
     # R-03: glibc maps to real -glibc.tar.gz asset (not suffix-less .tar.gz).
-    ["sing-box-1.14.1-linux-amd64-glibc.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-amd64-glibc.tar.gz"
-    ["sing-box-1.14.1-linux-amd64-musl.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-amd64-musl.tar.gz"
-    ["sing-box-1.14.1-linux-arm64-glibc.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-arm64-glibc.tar.gz"
-    ["sing-box-1.14.1-linux-arm64-musl.tar.gz"]="SagerNet/sing-box|v1.14.1|sing-box-1.14.1-linux-arm64-musl.tar.gz"
-    ["hysteria-app-v2.12.3-linux-amd64"]="HyNetworks/hysteria|app/v2.12.3|hysteria-linux-amd64"
-    ["hysteria-app-v2.12.3-linux-arm64"]="HyNetworks/hysteria|app/v2.12.3|hysteria-linux-arm64"
+    ["sing-box-1.14.3-linux-amd64-glibc.tar.gz"]="SagerNet/sing-box|v1.14.3|sing-box-1.14.3-linux-amd64-glibc.tar.gz"
+    ["sing-box-1.14.3-linux-amd64-musl.tar.gz"]="SagerNet/sing-box|v1.14.3|sing-box-1.14.3-linux-amd64-musl.tar.gz"
+    ["sing-box-1.14.3-linux-arm64-glibc.tar.gz"]="SagerNet/sing-box|v1.14.3|sing-box-1.14.3-linux-arm64-glibc.tar.gz"
+    ["sing-box-1.14.3-linux-arm64-musl.tar.gz"]="SagerNet/sing-box|v1.14.3|sing-box-1.14.3-linux-arm64-musl.tar.gz"
+    ["hysteria-app-v2.13.0-linux-amd64"]="HyNetworks/hysteria|app/v2.13.0|hysteria-linux-amd64"
+    ["hysteria-app-v2.13.0-linux-arm64"]="HyNetworks/hysteria|app/v2.13.0|hysteria-linux-arm64"
 )
 for name in "${expected[@]}"; do
     map_entry="${upstream_map[$name]:-}"

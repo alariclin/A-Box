@@ -18461,7 +18461,7 @@ _f2b_backup_file() {
     if [[ -f "$src" && ! -L "$src" ]]; then
         cp -p -- "$src" "$bak" || return 1
     else
-        rm -f -- "$bak"
+        rm -f -- "$bak" || return 1
     fi
     return 0
 }
@@ -18470,7 +18470,7 @@ _f2b_restore_file() {
     if [[ -f "$bak" && ! -L "$bak" ]]; then
         cp -p -- "$bak" "$src" || return 1
     else
-        rm -f -- "$src"
+        rm -f -- "$src" || return 1
     fi
     return 0
 }
@@ -18621,7 +18621,7 @@ bantime.maxtime = 86400'
                 else
                     f2b_tcp_action="${f2b_action}[name=${tcp_jail}, port=\"${tcp_grp}\", protocol=tcp]"
                 fi
-                cat >> "$jail_tmp" <<EOF_F2B_TCP
+                cat >> "$jail_tmp" <<EOF_F2B_TCP || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die 'Fail2Ban jail 追加写入失败。'; }
 [${tcp_jail}]
 enabled = true
 ignoreip = 127.0.0.1/8 ::1
@@ -18656,7 +18656,7 @@ EOF_F2B_TCP
                 # too -- Xray SS/SOCKS dual-stack ports land here, but Xray UDP
                 # auth failures are only logged to xray-error.log (the TCP jail
                 # already reads it; without this, a TCP-jail ban leaves UDP open).
-                cat >> "$jail_tmp" <<EOF_F2B_UDP
+                cat >> "$jail_tmp" <<EOF_F2B_UDP || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die 'Fail2Ban jail 追加写入失败。'; }
 [${udp_jail}]
 enabled = true
 ignoreip = 127.0.0.1/8 ::1
@@ -19262,8 +19262,48 @@ except Exception:
     raise
 PY_GEO_OWNER
 }
+# R7-03 (legacy journals): remove the two geo ownership rows from the
+# manifest so it cannot certify hashes of files restored from a
+# pre-snapshot journal. Validates the manifest strictly first; a
+# missing manifest means nothing to invalidate (return 0). Atomic
+# rewrite only when rows were actually dropped.
+_geo_manifest_invalidate() {
+    python3 -I - "$ABOX_CORE_OWNERSHIP" /usr/local/share/xray/geoip.dat /usr/local/share/xray/geosite.dat <<'PY_GEO_MANIFEST_INVALIDATE'
+import os, stat, sys, tempfile
+manifest, *targets = sys.argv[1:]
+if not os.path.exists(manifest):
+    raise SystemExit(0)
+st = os.lstat(manifest)
+if not stat.S_ISREG(st.st_mode) or st.st_uid != 0 or st.st_gid != 0 or st.st_mode & 0o077 or st.st_size > 4*1024*1024:
+    raise SystemExit(1)
+rows = []
+with open(manifest, 'r', encoding='utf-8') as f:
+    for line in f:
+        parts = line.rstrip('\n').split('\t')
+        if len(parts) != 4 or parts[0] not in {'F','D'} or not parts[2].startswith('/') or '\x00' in line:
+            raise SystemExit(1)
+        rows.append(parts)
+if len({(r[0],r[1],r[2]) for r in rows}) != len(rows):
+    raise SystemExit(1)
+kept = [r for r in rows if not (r[0] == 'F' and r[1] == 'xray' and r[2] in targets)]
+if len(kept) == len(rows):
+    raise SystemExit(0)
+dirname = os.path.dirname(manifest) or '.'
+fd, tmp = tempfile.mkstemp(prefix='.managed-core-files.geo.', dir=dirname, text=True)
+try:
+    with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as f:
+        for row in sorted(kept, key=lambda r: (r[1], os.fsencode(r[2]))):
+            f.write('\t'.join(row) + '\n')
+        f.flush(); os.fsync(f.fileno())
+    os.chmod(tmp, 0o600); os.chown(tmp, 0, 0); os.replace(tmp, manifest)
+except Exception:
+    try: os.unlink(tmp)
+    except OSError: pass
+    raise
+PY_GEO_MANIFEST_INVALIDATE
+}
 restore_geo_transaction() {
-    local base="$GEO_DIR" txn="$GEO_TXN" name had stage
+    local base="$GEO_DIR" txn="$GEO_TXN" name had stage _mhad _mstage
     [[ -d "$txn" && ! -L "$txn" && "$(stat -c %u:%g "$txn" 2>/dev/null)" == 0:0 ]] || return 1
     for name in geoip geosite; do
         had=$(cat "$txn/had_$name" 2>/dev/null) || return 1
@@ -19287,8 +19327,34 @@ restore_geo_transaction() {
             *) return 1 ;;
         esac
     done
-    if [[ -f "$base/geoip.dat" && -f "$base/geosite.dat" && -f "$ABOX_CORE_OWNERSHIP" ]]; then
-        update_geo_ownership || return 1
+    # R7-03: restore the recorded manifest pre-state (snapshot path) or
+    # invalidate the geo rows (legacy journals without a snapshot).
+    # Never re-certify restored files via the hash-resync helper: the
+    # restored pre-state is authoritative by construction.
+    if [[ -f "$txn/had_manifest" && ! -L "$txn/had_manifest" ]]; then
+        _mhad=$(cat "$txn/had_manifest" 2>/dev/null) || return 1
+        case "$_mhad" in
+            1)
+                [[ -f "$txn/manifest.old" && ! -L "$txn/manifest.old" ]] || return 1
+                [[ ! -L "$ABOX_CORE_OWNERSHIP" ]] || return 1
+                _mstage=$(mktemp "$(dirname -- "$ABOX_CORE_OWNERSHIP")/.managed-core-files.A-Box-restore.XXXXXX") || return 1
+                if ! cp -p "$txn/manifest.old" "$_mstage" || ! chmod 600 "$_mstage" || ! chown 0:0 "$_mstage" 2>/dev/null || ! mv -f "$_mstage" "$ABOX_CORE_OWNERSHIP"; then
+                    rm -f -- "$_mstage"
+                    return 1
+                fi
+                ;;
+            0)
+                rm -f -- "$ABOX_CORE_OWNERSHIP" || return 1
+                ;;
+            *) return 1 ;;
+        esac
+    else
+        # Legacy journal (no manifest snapshot): drop the two geo rows
+        # from the manifest so it cannot certify hashes of files that
+        # were restored without a recorded pre-state. The next geo
+        # update fails closed until the rows are re-registered by a
+        # trusted deploy/repair flow.
+        _geo_manifest_invalidate || return 1
     fi
     rm -rf -- "$txn" || return 1
 }
@@ -19448,6 +19514,17 @@ chmod 600 "$txn_stage"/had_* 2>/dev/null || true
 # non-privileged runtime service. The 700 root-only txn dir still
 # protects the backups at rest.
 chown root:root "$txn_stage" || { rm -rf -- "$txn_stage"; exit 1; }
+# R7-03: snapshot the ownership manifest pre-state into the transaction
+# so rollback restores the exact manifest (hashes included) instead of
+# re-certifying restored files. A symlinked or non-regular manifest
+# fails closed here: the update cannot safely record pre-state for it.
+if [[ -e "$ABOX_CORE_OWNERSHIP" || -L "$ABOX_CORE_OWNERSHIP" ]]; then
+    [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]] || { rm -rf -- "$txn_stage"; exit 1; }
+    cp -p "$ABOX_CORE_OWNERSHIP" "$txn_stage/manifest.old" || { rm -rf -- "$txn_stage"; exit 1; }
+    printf '1\n' > "$txn_stage/had_manifest" || { rm -rf -- "$txn_stage"; exit 1; }
+else
+    printf '0\n' > "$txn_stage/had_manifest" || { rm -rf -- "$txn_stage"; exit 1; }
+fi
 # R8C8-01: validate markers before publish: an empty or malformed had_*
 # must never reach GEO_TXN, or every later restore fails and updates
 # stall permanently.
@@ -19455,6 +19532,11 @@ for _m in geoip geosite; do
     _hv=$(cat "$txn_stage/had_$_m" 2>/dev/null) || { rm -rf -- "$txn_stage"; exit 1; }
     case "$_hv" in 0|1|2) ;; *) rm -rf -- "$txn_stage"; exit 1 ;; esac
 done
+_hv=$(cat "$txn_stage/had_manifest" 2>/dev/null) || { rm -rf -- "$txn_stage"; exit 1; }
+case "$_hv" in 0|1) ;; *) rm -rf -- "$txn_stage"; exit 1 ;; esac
+if [[ "$_hv" == 1 ]]; then
+    [[ -f "$txn_stage/manifest.old" && ! -L "$txn_stage/manifest.old" ]] || { rm -rf -- "$txn_stage"; exit 1; }
+fi
 mv "$txn_stage" "$GEO_TXN" || { rm -rf -- "$txn_stage"; exit 1; }
 stage_ip=$(mktemp "$GEO_DIR/.geoip.A-Box-new.XXXXXX") || { restore_geo_transaction || true; exit 1; }
 stage_site=$(mktemp "$GEO_DIR/.geosite.A-Box-new.XXXXXX") || { rm -f "$stage_ip"; restore_geo_transaction || true; exit 1; }
@@ -19889,7 +19971,7 @@ build_xray_config() {
         api:{tag:"api", services:["HandlerService","LoggerService","StatsService"]},
         stats:{},
         policy:{levels:{"0":{statsUserUplink:true, statsUserDownlink:true}}, system:{statsInboundUplink:true, statsInboundDownlink:true}},
-        routing:{domainStrategy:"IPIfNonMatch", rules: ([
+        routing:{domainStrategy:"IPOnDemand", rules: ([
             {type:"field", inboundTag:["api"], outboundTag:"api"},
             # R2C8-01: proxy clients must not reach loopback (the API has
             # no auth); the api-inbound rule above matches first, so the
@@ -19980,25 +20062,50 @@ xray_ensure_stats() {
     local cfg="$1" api_port="${2:-10085}" tmp=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     if jq -e --argjson ap "$api_port" '
+        def abox_loopback_rule:
+            {type:"field", ip:["127.0.0.0/8","::1/128"], outboundTag:"block"};
+        def abox_api_rule($t):
+            {type:"field", inboundTag:[$t], outboundTag:$t};
         (.api.tag // "api") as $t
+        | (.policy.levels // {}) as $levels
         | (([.. | objects | .level? // empty] | unique) as $reflevels
            | (.stats != null)
            and (.policy.levels."0".statsUserUplink == true)
            and (.policy.levels."0".statsUserDownlink == true)
            and ([(.policy.levels // {}) | to_entries[] | select(.value.statsUserUplink != true or .value.statsUserDownlink != true)] | length == 0)
-           and ([$reflevels[] | select((.policy.levels[(. | tostring)] // {}).statsUserUplink != true or (.policy.levels[(. | tostring)] // {}).statsUserDownlink != true)] | length == 0)
+           and ([$reflevels[] | select(($levels[(. | tostring)] // {}).statsUserUplink != true or ($levels[(. | tostring)] // {}).statsUserDownlink != true)] | length == 0)
            and (.policy.system.statsInboundUplink == true)
            and (.policy.system.statsInboundDownlink == true)
            and ((.api.services // []) | index("StatsService") != null)
            and ( ( ([.inbounds[]? | select(.tag == $t and .port == $ap and .protocol == "dokodemo-door" and .listen == "127.0.0.1")] | length > 0)
                    and ([.outbounds[]? | select(.tag == $t)] | length > 0)
                    and ([.routing.rules[]? | select(.outboundTag == $t)] | length > 0) )
-                 or (.api.listen == ("127.0.0.1:" + ($ap | tostring))) ))
+                 or (.api.listen == ("127.0.0.1:" + ($ap | tostring))) )
+           and ($t != "block")
+           and (.routing.domainStrategy == "IPOnDemand")
+           and (
+               [.outbounds[]? | select(.tag == "block")] as $blocks
+               | (($blocks | length) == 1
+                  and $blocks[0].protocol == "blackhole")
+           )
+           and (
+               if .api.listen != null then
+                   .routing.rules[0] == abox_loopback_rule
+               else
+                   (.routing.rules[0] == abox_api_rule($t)
+                    and .routing.rules[1] == abox_loopback_rule)
+               end
+           )
+    )
     ' "$cfg" >/dev/null 2>&1; then
         return 0
     fi
     tmp=$(mktemp /tmp/A-Box-xstats.XXXXXX) || return 1
     if ! jq --argjson ap "$api_port" '
+        def abox_loopback_rule:
+            {type:"field", ip:["127.0.0.0/8","::1/128"], outboundTag:"block"};
+        def abox_api_rule($t):
+            {type:"field", inboundTag:[$t], outboundTag:$t};
         (.api.tag // "api") as $t
         | ([.. | objects | .level? // empty] | unique) as $reflevels
         | .stats = (.stats // {})
@@ -20016,10 +20123,38 @@ xray_ensure_stats() {
                .inbounds = (([.inbounds[]? | select(.tag == $t)] | if length == 0 then [{listen:"127.0.0.1", port:$ap, protocol:"dokodemo-door", settings:{address:"127.0.0.1"}, tag:$t}] else [.[0] | .listen = "127.0.0.1" | .port = $ap | .protocol = "dokodemo-door"] end) + ([.inbounds[]? | select(.tag != $t)]))
                | (if ([.outbounds[]? | select(.tag == $t)] | length) == 0
                   then .outbounds = ((.outbounds // []) + [{protocol:"freedom", tag:$t}]) else . end)
-               | .routing = (.routing // {domainStrategy:"IPIfNonMatch", rules:[]})
+               | .routing = (.routing // {domainStrategy:"IPOnDemand", rules:[]})
                | (if ([.routing.rules[]? | select(.outboundTag == $t)] | length) == 0
                   then .routing.rules = ([{type:"field", inboundTag:[$t], outboundTag:$t}] + (.routing.rules // [])) else . end)
            end)
+        | if $t == "block" then
+              error("Xray API tag conflicts with the loopback block tag")
+          else . end
+        | [.outbounds[]? | select(.tag == "block")] as $blocks
+        | if ($blocks | length) == 0 then
+              .outbounds = ((.outbounds // []) + [
+                  {protocol:"blackhole", tag:"block"}
+              ])
+          elif (($blocks | length) == 1
+                and $blocks[0].protocol == "blackhole") then
+              .
+          else
+              error("Xray outbound tag block is not a unique blackhole outbound")
+          end
+        | (.api.listen == null) as $legacy_api
+        | abox_loopback_rule as $guard
+        | abox_api_rule($t) as $control
+        | .routing.domainStrategy = "IPOnDemand"
+        | .routing.rules = (
+              (if $legacy_api then [$control, $guard] else [$guard] end)
+              + (
+                  (.routing.rules // [])
+                  | map(select(
+                      . != $guard
+                      and (if $legacy_api then . != $control else true end)
+                  ))
+              )
+          )
     ' "$cfg" > "$tmp"; then rm -f "$tmp"; return 1; fi
     jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
     install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; return 1; }
@@ -20067,23 +20202,30 @@ xray_hot_remove_inbound() {
     # A corrupt config must never be reported as "nothing to delete":
     # parse it first, then distinguish "tag absent" from "read failed".
     jq empty "$cfg" >/dev/null 2>&1 || return 1
+    local routes_reference_tag
+    routes_reference_tag=$(jq -r --arg t "$tag" '
+        any(.routing.rules[]?;
+            if (.inboundTag | type) == "array" then
+                (.inboundTag | index($t)) != null
+            elif (.inboundTag | type) == "string" then
+                .inboundTag == $t
+            else
+                false
+            end)
+    ' "$cfg") || return 1
     # Skip if tag not in config (avoid unnecessary restart)
-    if ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
-        if xray_api_available; then
-            xray_api_remove_inbound "$tag" || return 1
-        else
-            # R6C8-04: tag absent from disk but the running Xray may
-            # still serve it (config edited without reload); with no
-            # API to remove it live, restart so disk config wins, and
-            # report a failed restart instead of false success.
-            restart_service_soft xray || return 1
-        fi
-        return 0
+    if [[ "$routes_reference_tag" == false ]] \
+       && ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
+        # Tag absent from disk and no route references it: the API
+        # cannot prove the running config is clean, so restart and
+        # report a failed restart instead of false success.
+        restart_service_soft xray
+        return $?
     fi
     tmpd=$(mktemp -d /tmp/A-Box-xray-hotdel.XXXXXX) || return 1
     tmp="$tmpd/config.json"
     if ! jq --arg t "$tag" '
-        .inbounds |= map(select(.tag != $t))
+        .inbounds = ((.inbounds // []) | map(select(.tag != $t)))
         | if (.routing.rules // null) then
             .routing.rules |= map(
                 if (.inboundTag | type) == "array" then
@@ -20103,9 +20245,38 @@ xray_hot_remove_inbound() {
     prepare_abox_runtime_permissions xray 2>/dev/null || true
     rm -f "$tmp"; rm -rf "$tmpd"
     if xray_api_available && xray_api_remove_inbound "$tag"; then
+        if [[ "$routes_reference_tag" == true ]]; then
+            restart_service_soft xray
+            return $?
+        fi
         return 0
     fi
     restart_service_soft xray
+}
+
+# R7-05B: enforce the loopback guard on a sing-box config file in place.
+# Prepends [{action:"resolve"}, {ip_cidr:[loopbacks], action:"reject"}]
+# to .route.rules (idempotent: no-op when the first two rules already
+# match). Refuses non-object configs and non-array route.rules. The
+# input file is never modified on failure.
+singbox_apply_loopback_guard() {
+    local src="$1" _tmp _dir
+    [[ -f "$src" && ! -L "$src" ]] || return 1
+    _dir=$(dirname -- "$src") || return 1
+    _tmp=$(mktemp "$_dir/.A-Box-sb-guard.XXXXXX") || return 1
+    if ! jq '
+        [
+          {action: "resolve"},
+          {ip_cidr: ["127.0.0.0/8", "::1/128"], action: "reject"}
+        ] as $guard
+        | if type != "object" then error("sing-box config must be an object") else . end
+        | if .route == null then .route = {} elif (.route | type) != "object" then error("sing-box route must be an object") else . end
+        | if .route.rules == null then .route.rules = [] elif (.route.rules | type) != "array" then error("sing-box route.rules must be an array") else . end
+        | if .route.rules[0:2] == $guard then . else .route.rules = ($guard + .route.rules) end
+    ' "$src" > "$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
+    jq empty "$_tmp" >/dev/null 2>&1 || { rm -f -- "$_tmp"; return 1; }
+    chmod 600 "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    mv -f -- "$_tmp" "$src" || { rm -f -- "$_tmp"; return 1; }
 }
 
 build_singbox_config() {
@@ -20183,7 +20354,7 @@ build_singbox_config() {
         | ($rs_rules[0] | map(.rule_set[]?) | unique) as $tags
         | {
         log:{level:"warn", output:"/var/log/A-Box-singbox.log"},
-        route: ({rules: (([{network:["tcp"], action:"sniff"},{protocol:"bittorrent", action:"reject"}] + $rs_rules[0])), auto_detect_interface:true}
+        route: ({rules: (([{network:["tcp"], action:"sniff"},{action:"resolve"},{ip_cidr:["127.0.0.0/8","::1/128"], action:"reject"},{protocol:"bittorrent", action:"reject"}] + $rs_rules[0])), auto_detect_interface:true}
             + (if ($tags | length) > 0 then {rule_set: ($tags | map({type:"remote", tag:., format:"binary",
                 url:("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + . + ".srs"),
                 download_detour:"direct"}))} else {} end)),
@@ -20355,8 +20526,17 @@ masquerade:
 EOF_HY2
     [[ $? -eq 0 ]] || { rm -f -- "$tmp"; return 1; }
     chmod 600 "$tmp" || { rm -f -- "$tmp"; return 1; }
-    mv -f -- "$tmp" "$out" || { rm -f -- "$tmp"; return 1; }
-    [[ -s "$out" && ! -L "$out" ]]
+    [[ ! -L "$out" && ( ! -e "$out" || -f "$out" ) ]] || {
+        rm -f -- "$tmp"
+        return 1
+    }
+
+    mv -f -T -- "$tmp" "$out" || {
+        rm -f -- "$tmp"
+        return 1
+    }
+
+    [[ -s "$out" && -f "$out" && ! -L "$out" ]]
 }
 
 # R3C8-03: official HY2 port hopping runs as abox-hysteria with
@@ -20371,9 +20551,14 @@ hy2_hop_xtables_lock_grant() {
     command -v nft >/dev/null 2>&1 && return 0
     local lock
     for lock in /run/xtables.lock /var/run/xtables.lock; do
-        [[ -e "$lock" || -L "$lock" ]] || continue
-        chgrp abox-hysteria "$lock" 2>/dev/null || return 1
-        chmod g+rw "$lock" 2>/dev/null || return 1
+        if [[ ! -e "$lock" && ! -L "$lock" ]]; then
+            (umask 077; set -C; : > "$lock") 2>/dev/null || {
+                [[ -f "$lock" && ! -L "$lock" ]] || return 1
+            }
+        fi
+        [[ -f "$lock" && ! -L "$lock" ]] || return 1
+        chown root:abox-hysteria "$lock" 2>/dev/null || return 1
+        chmod 0660 "$lock" 2>/dev/null || return 1
     done
     if is_systemd; then
         mkdir -p /etc/tmpfiles.d || return 1
@@ -20412,9 +20597,14 @@ write_hy2_xtables_lock_grant_script() {
 # service start treat it as best-effort.
 command -v nft >/dev/null 2>&1 && exit 0
 for lock in ${ABOX_XTABLES_LOCK_PATHS:-/run/xtables.lock /var/run/xtables.lock}; do
-    [ -e "$lock" ] || [ -L "$lock" ] || continue
-    chgrp abox-hysteria "$lock" || exit 1
-    chmod g+rw "$lock" || exit 1
+    if [ ! -e "$lock" ] && [ ! -L "$lock" ]; then
+        (umask 077; set -C; : > "$lock") 2>/dev/null || {
+            [ -f "$lock" ] && [ ! -L "$lock" ] || exit 1
+        }
+    fi
+    [ -f "$lock" ] && [ ! -L "$lock" ] || exit 1
+    chown root:abox-hysteria "$lock" || exit 1
+    chmod 0660 "$lock" || exit 1
 done
 exit 0
 EOF_XTABLES_GRANT
@@ -20730,7 +20920,6 @@ deployment_transaction_signal_abort() {
     local signal="$1" code=1
     case "$signal" in INT) code=130 ;; HUP) code=129 ;; TERM) code=143 ;; esac
     deployment_transaction_rollback "signal ${signal}" || true
-    restore_deployment_transaction_traps
     exit "$code"
 }
 
@@ -20871,7 +21060,6 @@ deployment_transaction_rollback_inner() {
     # missing archive).
     if ! verify_backup_restorable "$backup" "$tx_key_file"; then
         msg "${RED}[!] Rollback aborted before stopping services: backup failed pre-verification. Recovery backup retained: ${backup:-missing}${NC}" >&2
-        rollback_restart_services_from_backup "$backup" || true
         return 1
     fi
 
@@ -21093,13 +21281,120 @@ singbox_vendor_takeover_gate() {
 # extraction mirrors the live-ports collector (top-level and
 # trafficStats.listen both match the indented listen pattern).
 _hysteria_listens_on_port() {
-    local port="$1" line hy2p
-    [[ -f /etc/hysteria/config.yaml ]] || return 1
+    local port="$1" cfg=/etc/hysteria/config.yaml
+    local text line value spec span lo hi p found=0
+    local -a spans=()
+
+    # Return 1 only when absence/non-coverage is established.
+    [[ ! -e "$cfg" && ! -L "$cfg" ]] && return 1
+    [[ -f "$cfg" ]] || return 0
+    text=$(cat -- "$cfg" 2>/dev/null) || return 0
+
+    [[ "$port" =~ ^[0-9]{1,5}$ ]] || return 0
+    p=$((10#$port))
+    (( p >= 1 && p <= 65535 )) || return 0
+
     while IFS= read -r line; do
-        hy2p=$(printf '%s\n' "$line" | grep -o '[0-9]\+' | tail -n 1 || true)
-        [[ -n "$hy2p" && "$hy2p" == "$port" ]] && return 0
-    done < <(grep -E '^[[:space:]]*listen:' /etc/hysteria/config.yaml 2>/dev/null || true)
+        [[ "$line" =~ ^[[:space:]]*listen:[[:space:]]*(.*)$ ]] || continue
+        value="${BASH_REMATCH[1]}"
+
+        # Managed single-line YAML scalar; other forms are conservative.
+        value="${value%%#*}"
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%"${value##*[![:space:]]}"}"
+
+        if [[ "$value" == \"*\" || "$value" == \'*\' ]]; then
+            value="${value:1:${#value}-2}"
+        fi
+
+        [[ "$value" == *:* ]] || return 0
+        spec="${value##*:}"
+        [[ "$spec" =~ ^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$ ]] || return 0
+
+        IFS=, read -r -a spans <<< "$spec"
+        for span in "${spans[@]}"; do
+            if [[ "$span" == *-* ]]; then
+                lo="${span%-*}"
+                hi="${span#*-}"
+            else
+                lo="$span"
+                hi="$span"
+            fi
+
+            # Bound arithmetic and reject malformed/reversed ranges.
+            [[ "$lo" =~ ^[0-9]{1,5}$ && "$hi" =~ ^[0-9]{1,5}$ ]] || return 0
+            lo=$((10#$lo))
+            hi=$((10#$hi))
+            (( lo >= 1 && hi <= 65535 && lo <= hi )) || return 0
+
+            (( p >= lo && p <= hi )) && return 0
+        done
+        found=1
+    done <<< "$text"
+
+    (( found == 1 )) || return 0
     return 1
+}
+
+ensure_singbox_service_unit() {
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        if [[ -f /etc/systemd/system/sing-box.service && ! -L /etc/systemd/system/sing-box.service ]]; then
+            grep -Fxq '# Managed by A-Box' /etc/systemd/system/sing-box.service && return 0 || return 1
+        fi
+    else
+        if [[ -f /etc/init.d/sing-box && ! -L /etc/init.d/sing-box ]]; then
+            grep -Fxq '# Managed by A-Box' /etc/init.d/sing-box && return 0 || return 1
+        fi
+    fi
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || return 1
+# Managed by A-Box
+[Unit]
+Description=A-Box Sing-Box Service
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+User=abox-singbox
+Group=abox-singbox
+UMask=0077
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+Restart=always
+RestartSec=10
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+        systemctl daemon-reload >/dev/null 2>&1 || return 1
+    else
+        path_parent_chain_safe /etc/conf.d/sing-box || return 1
+        mkdir -p /etc/conf.d || return 1
+        write_file_atomically_from_stdin /etc/conf.d/sing-box 644 <<'EOF_SB_CONFD' || return 1
+rc_ulimit="-n 1048576"
+EOF_SB_CONFD
+        write_file_atomically_from_stdin /etc/init.d/sing-box 755 <<'EOF_SVC' || return 1
+#!/sbin/openrc-run
+# Managed by A-Box
+description="A-Box Sing-Box Service"
+command="/usr/local/bin/sing-box"
+command_args="run -c /etc/sing-box/config.json"
+command_background="yes"
+command_user="abox-singbox:abox-singbox"
+capabilities="^cap_net_bind_service"
+umask=077
+pidfile="/run/sing-box.pid"
+depend() { need net; }
+EOF_SVC
+        chmod +x /etc/init.d/sing-box || return 1
+    fi
+    prepare_abox_runtime_permissions sing-box || return 1
+    return 0
 }
 
 deploy_singbox_socks5_landing() {
@@ -21219,6 +21514,10 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    # R7-13: a pre-existing binary does not imply a service unit exists
+    # (e.g. the R4C8-04 seed branch never writes one); ensure it here,
+    # before the config merge and restart.
+    ensure_singbox_service_unit || die "$(tr_msg dp_sb_unit)"
 
     # Build the socks/mixed inbound object.
     local listen_addr=$(wildcard_listen_address)
@@ -21260,6 +21559,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_socks5_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -21660,6 +21960,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_trojan_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -21856,6 +22157,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tuic_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_sb_json)"; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" '' "$cfg"; die "$(tr_msg dp_tmpfile)"; }
@@ -22029,6 +22331,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_anytls_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     cfg_bak=$(mktemp /tmp/A-Box-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
@@ -22216,6 +22519,7 @@ EOF_SVC
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_shadowtls_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
@@ -22396,6 +22700,7 @@ argo_deploy_ws() {
         rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg ag_ws_update)"
     fi
     jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_json)"; }
+    singbox_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Sing-box loopback guard enforcement failed; refusing to install the unguarded config.'; }
     /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1 \
         || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_check)"; }
     # R8C9-01: back up the live config before replacing it; without
@@ -24194,6 +24499,7 @@ routing_apply_live() {
                     download_detour:"direct"})))
             ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
             jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
+            singbox_apply_loopback_guard "$tmp" || { rm -f "$tmp"; return 1; }
             if [[ -x /usr/local/bin/sing-box ]]; then
                 /usr/local/bin/sing-box check -c "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
             fi

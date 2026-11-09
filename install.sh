@@ -10,7 +10,7 @@ export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 # Only adjust on explicit opt-in (ABOX_STTY_ERASE_H=1): standard terminals
 # send ^? for Backspace, so rewriting erase breaks their Backspace — and
 # the change persists on the pty after the script exits (R2C1-03).
-if [[ -n "${ABOX_STTY_ERASE_H:-}" ]]; then
+if [[ "${ABOX_STTY_ERASE_H:-}" == '1' ]]; then
     stty erase '^H' 2>/dev/null || true
 fi
 # ==============================A-Box===============================
@@ -177,6 +177,26 @@ jq() {
         done
         # Rewrite the program for every slurpfile name: bare $NAME (not
         # followed by an identifier char or '[') becomes $NAME[0].
+        # Legacy slurpfile adaptation supports bare $NAME and the existing
+        # explicit $NAME[0] convention only. Refuse other directly attached
+        # bracket forms (e.g. $NAME[0:2]) instead of silently applying them
+        # to the wrapper array (R1-03): a slice of the one-element slurp
+        # array is not a slice of the raw string. jq >= 1.6 is required
+        # for those programs. This is deliberately a text check, not a jq
+        # lexer: text in comments or unrecognized string contexts may also
+        # be refused.
+        local _raw_scan='' _raw_needle=''
+        for _rn in "${_slurp_names[@]}"; do
+            _raw_scan="$_prog"
+            _raw_needle="\$${_rn}["
+            while [[ "$_raw_scan" == *"$_raw_needle"* ]]; do
+                _raw_scan=${_raw_scan#*"$_raw_needle"}
+                if [[ "$_raw_scan" != '0]'* ]]; then
+                    printf '%s\n' "[!] jq shim: unsupported bracket use of --rawfile '$_rn'; jq >= 1.6 is required." >&2
+                    return 2
+                fi
+            done
+        done
         _prog_new="$_prog"
         for _rn in "${_slurp_names[@]}"; do
             _prog_new=$(printf '%s' "$_prog_new" | sed -E "s/\\\$${_rn}([^A-Za-z0-9_\[]|\$)/\\\$${_rn}[0]\\1/g")
@@ -534,7 +554,7 @@ rebuild_standalone_links() {
                 # type=tcp — ws/xhttp clients dial the wrong transport
                 # on a tcp link. Unknown networks stay type=tcp.
                 _ttype='type=tcp'
-                if [[ "$_net" == 'grpc' && -n "$_svc" ]]; then _ttype="type=grpc&serviceName=$(urlencode "$_svc")";
+                if [[ "$_net" == 'grpc' ]]; then _ttype='type=grpc'; [[ -n "$_svc" ]] && _ttype="${_ttype}&serviceName=$(urlencode "$_svc")";
                 elif [[ "$_net" == 'ws' ]]; then
                     _ttype='type=ws'
                     [[ -n "$_wspath" ]] && _ttype="${_ttype}&path=$(urlencode "$_wspath")"
@@ -571,7 +591,7 @@ rebuild_standalone_links() {
                 # 2bf: same transport mapping as the Xray arm — a ws /
                 # xhttp / grpc trojan must not be emitted as type=tcp.
                 _ttype='type=tcp'
-                if [[ "$_net" == 'grpc' && -n "$_svc" ]]; then _ttype="type=grpc&serviceName=$(urlencode "$_svc")";
+                if [[ "$_net" == 'grpc' ]]; then _ttype='type=grpc'; [[ -n "$_svc" ]] && _ttype="${_ttype}&serviceName=$(urlencode "$_svc")";
                 elif [[ "$_net" == 'ws' ]]; then
                     _ttype='type=ws'
                     [[ -n "$_wspath" ]] && _ttype="${_ttype}&path=$(urlencode "$_wspath")"
@@ -905,7 +925,7 @@ abox_dir_tighten_secrets() {
     # config dirs keep their own 750/group gating, and the link
     # dir (standalone-links.d, 700) already gates its files.
     local dir="$1" f
-    for f in "$dir/.env" "$dir/.env".* "$dir"/*.tar.gz; do
+    for f in "$dir/.env" "$dir/.env".* "$dir/.backup-hmac.key" "$dir"/*.tar.gz; do
         [[ -e "$f" || -L "$f" ]] || continue
         [[ ! -L "$f" ]] || die "$(tprintf do_secret_symlink "$f")"
         [[ -f "$f" ]] || continue
@@ -8928,7 +8948,7 @@ valid_path() {
 # port_is_free: true when nothing is listening on the TCP port locally.
 # Without ss/netstat the answer is unknown, so it returns false (fail closed).
 port_is_free() {
-    local port="${1:-}" out=''
+    local port="${1:-}" out='' _probe=''
     [[ -n "$port" ]] || return 1
     [[ "$port" =~ ^[0-9]+$ ]] || return 1
     if command -v ss >/dev/null 2>&1; then
@@ -8936,18 +8956,14 @@ port_is_free() {
         out=$(ss -tuln 2>/dev/null) || return 1
         # awk reads the whole listing: no grep -q early exit, so no
         # SIGPIPE under pipefail can flip a busy result into "free".
-        if printf '%s\n' "$out" | awk -v port="$port" 'NR>1 && $5 ~ (":" port "$") {found=1} END {exit !found}'; then
-            return 1
-        else
-            return 0
-        fi
+        _probe=$(printf '%s\n' "$out" | awk -v port="$port" 'NR>1 && $5 ~ (":" port "$") {found=1} END {print (found ? "busy" : "free")}') || return 1
+        [[ "$_probe" == 'free' ]] && return 0
+        return 1
     elif command -v netstat >/dev/null 2>&1; then
         out=$(netstat -tuln 2>/dev/null) || return 1
-        if printf '%s\n' "$out" | awk -v port="$port" 'NR>2 && $4 ~ (":" port "$") {found=1} END {exit !found}'; then
-            return 1
-        else
-            return 0
-        fi
+        _probe=$(printf '%s\n' "$out" | awk -v port="$port" 'NR>2 && $4 ~ (":" port "$") {found=1} END {print (found ? "busy" : "free")}') || return 1
+        [[ "$_probe" == 'free' ]] && return 0
+        return 1
     else
         # R6C5-01: no reliable listener listing tool. The old
         # /dev/tcp loopback probe missed non-loopback binds and
@@ -38274,10 +38290,11 @@ wallos_pull_or_restore_image() {
         # then derive BOTH digest and tag from that single verified copy. The
         # old code used two separate curl fetches with no verification, so the
         # digest and tag could come from different manifest versions.
-        # TRUST BOUNDARY NOTE: SHA256SUMS is fetched from the same mutable
-        # Release as the manifest, so this check detects inconsistency and
-        # corruption but is NOT an independent authenticity proof. A signature
-        # trust root is still deferred (F-05).
+        # TRUST BOUNDARY NOTE: SHA256SUMS and the manifest are fetched from
+        # the same mutable Release. The checksum comparison alone detects
+        # inconsistency and corruption; it is NOT an independent authenticity
+        # proof. Detached Ed25519 signature checks for both files are handled
+        # by abox_verify_sig_gate (F-05) below, under its verification policy.
         local _n2_work="" _mirror_digest="" _manifest_tag="" _n2_ts="" _n2_fail_reason=""
         local _n2_manifest_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/wallos-manifest.txt"
         local _n2_sum_url="https://github.com/alariclin/A-Box/releases/download/$WALLOS_MIRROR_RELEASE/SHA256SUMS"

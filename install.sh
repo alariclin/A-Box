@@ -10002,7 +10002,7 @@ remove_optional_package() {
 # $1=release (debian|ubuntu|centos|alpine); unknown release prints nothing (no-op).
 __abox_missing_pkg_for() {
     local release="$1" cmd="$2" deb="$3" rpm="$4" apk="$5"
-    command -v "$cmd" >/dev/null 2>&1 && return 0
+    type -aP -- "$cmd" >/dev/null 2>&1 && return 0
     case "$release" in
         debian|ubuntu) printf '%s\n' "$deb" ;;
         centos) printf '%s\n' "$rpm" ;;
@@ -10061,7 +10061,7 @@ ensure_commands() {
     local required=(curl jq openssl bc unzip tar iptables ss lsof crontab logrotate python3 flock cmp)
     local c
     for c in "${required[@]}"; do
-        command -v "$c" >/dev/null 2>&1 || die "$(tprintf ec_missing "$c")"
+        type -aP -- "$c" >/dev/null 2>&1 || die "$(tprintf ec_missing "$c")"
     done
     # flock is now guaranteed; upgrade any pre-ensure fallback lock onto LOCK_FILE.
     if [[ "${ABOX_RUNTIME_LOCK_MODE:-}" == fallback ]]; then
@@ -10793,7 +10793,7 @@ for typ, _fam, rawpath, _h in rows:
     except OSError:
         continue
     try:
-        fd = os.open(leaf, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)
+        fd = os.open(leaf, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
     except OSError:
         os.close(parent_fd)
         continue
@@ -10819,9 +10819,28 @@ for typ, _fam, rawpath, _h in rows:
         # 0700 dir, add group read). Normalize only violators.
         uid_ok = st.st_uid in ({0, runtime_uid} if runtime_uid is not None else {0})
         gid_ok = st.st_gid in {0, gid}
-        mode_ok = (st.st_mode & 0o002) == 0 and (st.st_mode & 0o020) == 0
+        mode_ok = (st.st_mode & 0o022) == 0
+        mode = stat.S_IMODE(st.st_mode)
+        need = 0o5 if stat.S_ISDIR(st.st_mode) else 0o4
+        runtime_owns = (runtime_uid is not None and st.st_uid == runtime_uid)
+        # R4-03: DAC selects ONE permission class by identity; it does
+        # not OR owner/group/other. A root-exclusive 0700/0600 entry is
+        # unreadable by the runtime user and must be normalized; a
+        # runtime-owned entry that only lacks read gets its owner bits
+        # topped up instead of losing its ownership (R1-05-F02).
+        if runtime_owns:
+            access_bits = (mode >> 6) & 0o7
+        elif st.st_gid == gid:
+            access_bits = (mode >> 3) & 0o7
+        else:
+            access_bits = mode & 0o7
+        can_runtime = (access_bits & need) == need
         if uid_ok and gid_ok and mode_ok:
-            continue
+            if can_runtime:
+                continue
+            if runtime_owns:
+                os.fchmod(fd, mode | (need << 6))
+                continue
         os.fchown(fd, 0, gid)
         os.fchmod(fd, want_mode)
     finally:
@@ -10880,10 +10899,14 @@ for r in new:
         raise SystemExit(1)
     seen.add(key)
 new.sort(key=lambda r: (r[1], os.fsencode(r[2])))
+# R4-04: gate the FINAL serialized manifest, not the old size: the two
+# appended rows can push it over the 4 MiB limit the readers enforce.
+text = ''.join('\t'.join(r) + '\n' for r in new)
+if len(text.encode('utf-8')) > 4 * 1024 * 1024:
+    raise SystemExit(1)
 tmp = manifest + '.readopt.tmp'
 with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
-    for r in new:
-        f.write('\t'.join(r) + '\n')
+    f.write(text)
     f.flush()
     os.fsync(f.fileno())
 os.chmod(tmp, 0o600)
@@ -11140,11 +11163,29 @@ for _d in sorted(dirs, key=os.fsencode):
 # bind mount must refuse: nested copies inside it are foreign data even
 # when they are not themselves mountpoints and pass the artifact checks.
 # '/' itself is always a mountpoint and is excluded from the walk.
+# R4-05: an ordinary separate partition (e.g. /usr on its own filesystem)
+# is NOT a bind mount, but mountinfo alone cannot reliably tell the two
+# apart (a root bind has root '/', a btrfs subvolume mount has root !=
+# '/'), so the layout is never auto-trusted. An administrator who has
+# verified the current layout may explicitly trust specific ancestor
+# mounts for THIS invocation only, via ABOX_TRUSTED_UNINSTALL_ANCESTORS
+# (colon-separated absolute paths, e.g. /usr:/usr/local). The recorded
+# dir itself, when it is a mountpoint, is never trusted. The list is
+# never read from the manifest or old state, and never persisted.
+_trusted_ancestor_mounts = set()
+for _p in os.environ.get('ABOX_TRUSTED_UNINSTALL_ANCESTORS', '').split(':'):
+    if not _p:
+        continue
+    if not os.path.isabs(_p):
+        raise SystemExit(4)
+    _trusted_ancestor_mounts.add(os.path.abspath(os.path.normpath(_p)))
 def _path_or_ancestors_mounted(path):
-    cur = os.path.abspath(os.path.normpath(path))
+    recorded = os.path.abspath(os.path.normpath(path))
+    cur = recorded
     while cur != '/':
         if _repair_is_mountpoint(cur):
-            return True
+            if cur == recorded or cur not in _trusted_ancestor_mounts:
+                return True
         cur = os.path.dirname(cur)
     return False
 for _d in sorted(dirs):
@@ -11356,7 +11397,15 @@ auxiliary_content_is_abox_managed() {
         grep -Fq 'exec sudo bash /etc/ddr/A-Box.sh "$@"' "$file" 2>/dev/null || return 1
         return 0
     fi
-    grep -Fxq '# Managed by A-Box' "$file" 2>/dev/null && return 0
+    # R4-06: the three runtime helpers need marker AND content. The old
+    # early return made their content checks dead code; the self-test
+    # requires content without the marker to be foreign, so the early
+    # return is skipped for these three paths only. Other paths keep the
+    # marker-or-fingerprint contract.
+    case "$logical_path" in
+        /etc/ddr/traffic_monitor.sh|/etc/ddr/geo_update.sh|/etc/ddr/socket_probe.sh) ;;
+        *) grep -Fxq '# Managed by A-Box' "$file" 2>/dev/null && return 0 ;;
+    esac
     # Path-specific legacy fingerprints allow a one-time migration. New files
     # always carry the exact marker above.
     case "$logical_path" in
@@ -11796,7 +11845,7 @@ shortcut_lock_path() { printf '%s/.shortcut.lock' "${ABOX_DIR:-/etc/ddr}"; }
 # later core install can never collide) and commands the wrapper itself
 # depends on. ab/abox/sb are NOT reserved; they must pass the real
 # conflict checks below.
-SHORTCUT_RESERVED_NAMES='xray sing-box hysteria bash sh sudo env'
+SHORTCUT_RESERVED_NAMES='xray sing-box hysteria bash sh sudo env xray-latest'
 
 # SHORTCUT_ERR: machine-readable reason set by the validators/checkers.
 SHORTCUT_ERR=''
@@ -11856,9 +11905,12 @@ shortcut_parse_state_file() {
     (( _seen_version == 1 && _seen_names == 1 )) || { SHORTCUT_ERR='missing_field'; return 1; }
     # Validate every name in the set; also reject duplicates in the set.
     local _n _seen
-    [[ -n "$_names" ]] || { SHORTCUT_ERR='empty_names'; return 1; }
+    local -a _arr=()
+    [[ "$_names" != *$'\n'* ]] || { SHORTCUT_ERR='bad_name:<newline>'; return 1; }
+    IFS=$' \t' read -r -a _arr <<< "$_names"
+    ((${#_arr[@]} > 0)) || { SHORTCUT_ERR='empty_names'; return 1; }
     _seen=' '
-    for _n in $_names; do
+    for _n in "${_arr[@]}"; do
         shortcut_validate_name "$_n" || { SHORTCUT_ERR="bad_name:$_n"; return 1; }
         case "$_seen" in *" $_n "*) SHORTCUT_ERR="dup_name:$_n"; return 1 ;; esac
         _seen="$_seen$_n "
@@ -11887,9 +11939,12 @@ shortcut_read_state() {
 # Returns 0 on success, 1 on failure (SHORTCUT_ERR set).
 shortcut_write_state() {
     local _names="${1:-}" _file _tmp _n
+    local -a _arr=()
     SHORTCUT_ERR=''
-    [[ -n "$_names" ]] || { SHORTCUT_ERR='empty_names'; return 1; }
-    for _n in $_names; do
+    [[ "$_names" != *$'\n'* ]] || { SHORTCUT_ERR='bad_name:<newline>'; return 1; }
+    IFS=$' \t' read -r -a _arr <<< "$_names"
+    ((${#_arr[@]} > 0)) || { SHORTCUT_ERR='empty_names'; return 1; }
+    for _n in "${_arr[@]}"; do
         shortcut_validate_name "$_n" || { SHORTCUT_ERR="bad_name:$_n"; return 1; }
     done
     _file=$(shortcut_state_path)
@@ -12153,9 +12208,12 @@ EOS
 shortcut_change_transaction() {
     local _new_names="$*" _old_names='' _rc=0 _stage='init'
     local _old_paths='' _n _p _tmp _new_state_tmp
+    local -a _arr=()
     SHORTCUT_ERR=''
-    [[ -n "$_new_names" ]] || { SHORTCUT_ERR='empty_names'; return 1; }
-    for _n in $_new_names; do
+    [[ "$_new_names" != *$'\n'* ]] || { SHORTCUT_ERR='bad_name:<newline>'; return 1; }
+    IFS=$' \t' read -r -a _arr <<< "$_new_names"
+    ((${#_arr[@]} > 0)) || { SHORTCUT_ERR='empty_names'; return 1; }
+    for _n in "${_arr[@]}"; do
         shortcut_validate_name "$_n" || { SHORTCUT_ERR="bad_name:$_n"; return 1; }
     done
     # 1. Read old state (corrupt -> fail closed, never guess).

@@ -2013,12 +2013,18 @@ tr_msg() {
         fa:wl_pi_digest) echo 'دایجست تصویر Wallos: %s' ;;
         zh-tw:wl_pi_digest) echo 'Wallos 映像摘要：%s' ;;
         ja:wl_pi_digest) echo 'Wallos イメージのダイジェスト: %s' ;;
-        zh:wl_pi_recovery) echo '[!] 官方稳定版信息或镜像拉取失败，正在尝试 A-Box Wallos 灾备 Release。' ;;
-        en:wl_pi_recovery) echo '[!] Failed to get stable version or image; trying A-Box Wallos recovery Release.' ;;
-        ru:wl_pi_recovery) echo '[!] Не удалось получить стабильную версию или образ; пробуем резервный Release Wallos от A-Box.' ;;
-        fa:wl_pi_recovery) echo '[!] دریافت نسخه پایدار یا تصویر ناموفق بود؛ نسخه بازیابی Wallos از A-Box بررسی می‌شود.' ;;
-        zh-tw:wl_pi_recovery) echo '[!] 官方穩定版資訊或映象拉取失敗，正在嘗試 A-Box Wallos 災備 Release。' ;;
-        ja:wl_pi_recovery) echo '[!] 公式安定版の情報取得またはイメージの取得に失敗しました。A-Box Wallos のリカバリー Release を試します。' ;;
+        zh:wl_pi_manifest_mismatch) echo '[!] 上游最新版标签为 %s，镜像清单标签为 %s。两者不一致，跳过上游快速路径中使用清单摘要的拉取；继续按现有回退策略处理。' ;;
+        en:wl_pi_manifest_mismatch) echo '[!] Upstream latest tag is %s; mirror manifest tag is %s. They differ, so the upstream fast-path pull using the manifest digest is skipped; continuing with the existing fallback policy.' ;;
+        ru:wl_pi_manifest_mismatch) echo '[!] Тег актуальной версии upstream — %s, тег манифеста зеркала — %s. Они не совпадают, поэтому быстрая загрузка upstream по дайджесту манифеста пропускается; продолжается действующая политика отката.' ;;
+        fa:wl_pi_manifest_mismatch) echo '[!] برچسب آخرین نسخه upstream ‏%s‏ و برچسب مانیفست آینه ‏%s‏ است. این دو متفاوت‌اند، پس دریافت سریع upstream با دایجست مانیفست رد می‌شود؛ با سیاست بازگشتی موجود ادامه داده می‌شود.' ;;
+        zh-tw:wl_pi_manifest_mismatch) echo '[!] 上游最新版標籤為 %s，鏡像清單標籤為 %s。兩者不一致，跳過上游快速路徑中使用清單摘要的拉取；繼續按現有回退策略處理。' ;;
+        ja:wl_pi_manifest_mismatch) echo '[!] upstream の最新タグは %s、ミラーマニフェストのタグは %s です。両者が異なるため、マニフェストダイジェストを使う upstream 高速パス取得をスキップし、既存のフォールバック方針で続行します。' ;;
+        zh:wl_pi_recovery) echo '[!] 正在尝试 A-Box Wallos 灾备 Release。' ;;
+        en:wl_pi_recovery) echo '[!] Trying the A-Box Wallos recovery Release.' ;;
+        ru:wl_pi_recovery) echo '[!] Пробуем резервный Release Wallos от A-Box.' ;;
+        fa:wl_pi_recovery) echo '[!] نسخه بازیابی Wallos از A-Box بررسی می‌شود.' ;;
+        zh-tw:wl_pi_recovery) echo '[!] 正在嘗試 A-Box Wallos 災備 Release。' ;;
+        ja:wl_pi_recovery) echo '[!] A-Box Wallos のリカバリー Release を試します。' ;;
         zh:wl_pi_manifest_sum) echo 'Wallos 清单校验和不符；拒绝加载。' ;;
         en:wl_pi_manifest_sum) echo 'Wallos manifest checksum mismatch; refusing to load it.' ;;
         ru:wl_pi_manifest_sum) echo 'Контрольная сумма манифеста Wallos не совпала; загрузка отклонена.' ;;
@@ -22954,22 +22960,34 @@ argo_wait_temp_ready() { # $1=unit $2=log $3=timeout(sec, default 60)
 # $1 = domain, $2 = ws path (e.g. /<UUID>-vmess). Returns 0 on 101.
 argo_origin_probe() {
     local domain="$1" path="$2" tmpd='' hdr='' i http_code=''
+    # B15-3 (observability only): record every attempt's HTTP status
+    # plus curl's exit status, and print the bounded six-entry summary
+    # on exhaustion. The verdict is unchanged: 6 attempts, success
+    # only on HTTP 101 regardless of curl's exit status, rc 1 on
+    # exhaustion. A single first code cannot separate "no HTTP status"
+    # (000) from a curl-level failure (e.g. rc 28 timeout) or show a
+    # mixed 400/000/400 pattern; the summary can, without per-attempt
+    # noise. msg goes to stderr so stdout stays empty as before.
+    local curl_rc=0 observations=''
     tmpd=$(mktemp -d /tmp/A-Box-argo-probe.XXXXXX) || return 1
     hdr="$tmpd/headers"
     for i in 1 2 3 4 5 6; do
         : > "$hdr"
+        curl_rc=0
         http_code=$(curl -s -D "$hdr" --http1.1 --connect-timeout 5 --max-time 10 \
             -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
             -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
             -H 'Sec-WebSocket-Version: 13' \
             -w '%{http_code}' \
-            "https://${domain}${path}" -o /dev/null 2>/dev/null) || true
+            "https://${domain}${path}" -o /dev/null 2>/dev/null) || curl_rc=$?
         if [[ "$http_code" == 101 ]]; then
             rm -rf -- "$tmpd"
             return 0
         fi
+        observations+="${observations:+; }HTTP=${http_code:-<empty>} curl_rc=$curl_rc"
         [[ "$i" == 6 ]] || sleep 2
     done
+    msg "[!] Argo origin probe failed; attempts: $observations" >&2 || :
     rm -rf -- "$tmpd"
     return 1
 }
@@ -40412,13 +40430,15 @@ wallos_pull_or_restore_image() {
                     return 0
                 fi
                 msg "${YELLOW}$(tr_msg wl_pi_digest_fail)${NC}"
+            elif [[ "$_manifest_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                msg "${YELLOW}$(tprintf wl_pi_manifest_mismatch "$tag" "$_manifest_tag")${NC}"
             fi
         fi
         # S133: under ENFORCE=1, never fall back to the unsigned tag pull:
         # the observed RepoDigest is not the manifest-verified digest.
         # Skip it and fall through to the manifest-verified recovery path.
         if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
-            msg "${YELLOW}Wallos digest path failed and signing enforcement is ON; skipping unsigned tag pull.${NC}"
+            msg "${YELLOW}Wallos upstream digest-pinned path did not provide an image; signing enforcement is ON, so unsigned tag pull is skipped.${NC}"
         elif abox_run_wait '拉取 Wallos 镜像' docker pull "bellamy/wallos:$image_tag"; then
             wallos_record_image "bellamy/wallos:$image_tag"
             # P2-1: record RepoDigest for auditability (mutable tag alone is not identity).
@@ -40912,6 +40932,7 @@ wallos_recover_interrupted_upgrade() {
     was_running=$(wallos_txn_value "$journal" was_running) || return 1
     if [[ "$phase" == committed ]]; then
         rm -f -- "$journal" || return 1
+        rm -f -- "$WALLOS_DIR/.upgrade-transaction.frontend" 2>/dev/null || true
         msg "${YELLOW}$(tr_msg wl_rc_cleanup_done)${NC}"
         return 0
     fi
@@ -40986,10 +41007,94 @@ wallos_recover_interrupted_upgrade() {
             return 1
         }
     fi
+    # B15-1 (durable A): the backup restore below overwrites the live
+    # .abox-state with the pre-upgrade mode, so a local->https (or
+    # local->cftunnel) switch committed before the interrupt would be
+    # silently rolled back when R1-15-01 later reads MODE. Preserve the
+    # target frontend BEFORE the destructive restore, in a durable
+    # sidecar bound to this transaction (journal backup+old_image), so
+    # a retry after a crash between restore and re-apply still honors
+    # the target instead of snapshotting the already-restored state.
+    # Only https/cftunnel targets change the R1-15-01 branch; http and
+    # local both take the teardown branch, so they need no preserve.
+    local _fs_sidecar="$WALLOS_DIR/.upgrade-transaction.frontend"
+    local _fs_mode='' _fs_pubport='' _fs_cfhost='' _fs_have=0 _fs_wrc=0
+    if [[ -f "$_fs_sidecar" && ! -L "$_fs_sidecar" ]]; then
+        local _fs_backup='' _fs_old_image=''
+        _fs_backup=$(wallos_txn_value "$_fs_sidecar" backup 2>/dev/null || true)
+        _fs_old_image=$(wallos_txn_value "$_fs_sidecar" old_image 2>/dev/null || true)
+        if [[ "$_fs_backup" == "$backup" && "$_fs_old_image" == "$old_image" ]]; then
+            _fs_mode=$(wallos_txn_value "$_fs_sidecar" mode 2>/dev/null || true)
+            _fs_pubport=$(wallos_txn_value "$_fs_sidecar" pubport 2>/dev/null || true)
+            _fs_cfhost=$(wallos_txn_value "$_fs_sidecar" cfhost 2>/dev/null || true)
+            if [[ "$_fs_mode" == https || "$_fs_mode" == cftunnel ]]; then
+                _fs_have=1
+            else
+                msg "${RED}Recovery found a corrupt frontend record for this upgrade; refusing to report success, journal kept.${NC}"
+                return 1
+            fi
+        else
+            # Stale record from another transaction: drop it; the live
+            # snapshot below decides this transaction's intent.
+            rm -f -- "$_fs_sidecar" 2>/dev/null || true
+        fi
+    fi
+    if (( _fs_have == 0 )); then
+        _fs_mode=$(wallos_state_value MODE 2>/dev/null || true)
+        _fs_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
+        _fs_cfhost=$(wallos_state_value CFHOST 2>/dev/null || true)
+        if [[ "$_fs_mode" == https || "$_fs_mode" == cftunnel ]]; then
+            write_file_atomically_from_stdin "$_fs_sidecar" 600 <<EOF_B15_SIDECAR
+backup=$backup
+old_image=$old_image
+mode=$_fs_mode
+pubport=$_fs_pubport
+cfhost=$_fs_cfhost
+EOF_B15_SIDECAR
+            _fs_wrc=$?
+            if (( _fs_wrc != 0 )); then
+                msg "${RED}Recovery could not record the interrupted switch target; refusing to report success, journal kept.${NC}"
+                return 1
+            fi
+        else
+            _fs_mode=''
+        fi
+    fi
     wallos_restore_backup "$backup" || {
         msg "${RED}$(tprintf wl_rc_restore_fail "$journal" "$backup")${NC}"
         return 1
     }
+    # B15-1: re-apply the preserved target frontend (sidecar or live
+    # snapshot) BEFORE R1-15-01 reads MODE. The tuple is compared, not
+    # just MODE: a same-mode endpoint change (e.g. a new PUBPORT) must
+    # also survive. A failed re-apply returns 1 with the journal (and
+    # the sidecar) kept, so a retry re-applies from the durable record
+    # instead of snapshotting the restored state. Endpoint validity
+    # itself is still enforced by R1-15-01 exactly as before (missing
+    # PUBPORT / bad CFHOST fail closed there, like L4/L5).
+    if [[ -n "$_fs_mode" ]]; then
+        local _rb_image='' _rb_port='' _rb_tz='' _rb_bind='' _rb_version=''
+        local _rb_mode='' _rb_pubport='' _rb_cfhost=''
+        _rb_image=$(wallos_state_value IMAGE 2>/dev/null || true)
+        _rb_port=$(wallos_state_value PORT 2>/dev/null || true)
+        _rb_tz=$(wallos_state_value TZ 2>/dev/null || true)
+        _rb_bind=$(wallos_state_value BIND 2>/dev/null || true)
+        _rb_version=$(wallos_state_value VERSION 2>/dev/null || true)
+        _rb_mode=$(wallos_state_value MODE 2>/dev/null || true)
+        _rb_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
+        _rb_cfhost=$(wallos_state_value CFHOST 2>/dev/null || true)
+        if [[ "$_rb_mode" != "$_fs_mode" || "$_rb_pubport" != "$_fs_pubport" || "$_rb_cfhost" != "$_fs_cfhost" ]]; then
+            if [[ -z "$_rb_image" || -z "$_rb_port" || -z "$_rb_tz" ]]; then
+                msg "${RED}Recovery restored Wallos but its state is incomplete; refusing to report success, journal kept.${NC}"
+                return 1
+            fi
+            if ! wallos_write_state "$_rb_image" "$_rb_port" "$_rb_tz" "$_rb_bind" "$_fs_mode" "$_fs_pubport" "$_fs_cfhost" "$_rb_version" 1; then
+                msg "${RED}Recovery restored Wallos but could not preserve the interrupted switch target mode ($_fs_mode); refusing to report success, journal kept.${NC}"
+                return 1
+            fi
+            msg "${YELLOW}Recovery preserved the interrupted switch target mode ($_fs_mode); rebuilding its frontend.${NC}"
+        fi
+    fi
     # FIX: When old_bind is empty (legacy containers had no IP binding),
     # "-p :<port>:80/tcp" makes Docker publish on 0.0.0.0 (fail-open,
     # exposing plaintext HTTP on all interfaces). Omit -p entirely instead.
@@ -41102,6 +41207,7 @@ wallos_recover_interrupted_upgrade() {
             ;;
     esac
     rm -f -- "$journal" || return 1
+    rm -f -- "$WALLOS_DIR/.upgrade-transaction.frontend" 2>/dev/null || true
     rm -f -- "$WALLOS_DIR/.upgrade-transaction.cftoken" 2>/dev/null || true
     # R5C15-02: refresh the fail2ban jail after rebuild; see
     # the rollback path. _rec_mode is the recovered mode.

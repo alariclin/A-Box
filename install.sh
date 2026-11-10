@@ -30464,16 +30464,17 @@ users_link() {
     link=$(users_registered_link "$core" "$tag") || return 1
     [[ -n "$link" ]] || return 1
     msecret=$(printf '%s' "$main" | jq -r '.secret // ""')
-    local frag="#${tag}-${name}"
+    local frag="#$(urlencode "$tag")-$(urlencode "$name")"
     if [[ "$link" == ss://* ]]; then
-        # userinfo is base64(method:credential)
+        # userinfo is percent-encoded method:credential (SIP002)
         local rest="${link#ss://}" userinfo='' hostpart='' plain='' method='' eff=''
         userinfo="${rest%%@*}"; hostpart="${rest#*@}"
         hostpart="${hostpart%%#*}"
         plain=$(users_b64url_dec "$userinfo") || return 1
         method="${plain%%:*}"
         if [[ -n "$ssecret" ]]; then eff="${ssecret}:${secret}"; else eff="$secret"; fi
-        printf 'ss://%s@%s%s' "$(printf '%s' "${method}:${eff}" | users_b64url_enc)" "$hostpart" "$frag"
+        printf 'ss://%s:%s@%s%s' \
+            "$(urlencode "$method")" "$(urlencode "$eff")" "$hostpart" "$frag"
         return 0
     fi
     # R5C11-04: vmess://BASE64 has no userinfo@host; decode the
@@ -30554,20 +30555,21 @@ users_link_combo() {
             port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' "$cfg" 2>/dev/null | head -1)
             local sni="${VISION_SNI:-${VLESS_SNI:-}}"
             printf 'vless://%s@%s:%s?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=tcp#%s-%s' \
-                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-${VLESS_PORT:-443}}" "$sni" "$pbk" "$sid" "$tag" "$name" ;;
+                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-${VLESS_PORT:-443}}" "$sni" "$pbk" "$sid" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
         xhttp)
             port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' "$cfg" 2>/dev/null | head -1)
             local sni="${XHTTP_SNI:-${VLESS_SNI:-}}"
-            printf 'vless://%s@%s:%s?encryption=none&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=xhttp&host=%s&path=%%2Fxhttp&mode=auto#%s-%s' \
-                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-${XHTTP_PORT:-8443}}" "$sni" "$pbk" "$sid" "$sni" "$tag" "$name" ;;
+            printf 'vless://%s@%s:%s?encryption=none&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=xhttp&host=%s&path=%%2Fxhttp&mode=stream-one#%s-%s' \
+                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-${XHTTP_PORT:-8443}}" "$sni" "$pbk" "$sid" "$sni" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
         ss)
             port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' "$cfg" 2>/dev/null | head -1)
             local method='' eff=''
             method=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.method // .settings.method // "")' "$cfg" 2>/dev/null | head -1)
             [[ -n "$method" ]] || method='2022-blake3-aes-128-gcm'
             if [[ -n "$ssecret" ]]; then eff="${ssecret}:${secret}"; else eff="$secret"; fi
-            printf 'ss://%s@%s:%s#%s-%s' \
-                "$(printf '%s' "${method}:${eff}" | users_b64url_enc)" "$(uri_host "$ip")" "${port:-${SS_PORT:-2053}}" "$tag" "$name" ;;
+            printf 'ss://%s:%s@%s:%s#%s-%s' \
+                "$(urlencode "$method")" "$(urlencode "$eff")" \
+                "$(uri_host "$ip")" "${port:-${SS_PORT:-2053}}" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
         hy2)
             port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.listen_port // "")' "$cfg" 2>/dev/null | head -1)
             local obfs='' obfs_type='' sni='' cert_path='' acme_domain='' insecure=1 q=''
@@ -30595,7 +30597,7 @@ users_link_combo() {
             # R1-11-F05: sing-box Hy2 is password-only auth, even
             # multi-user; the name:secret form fails authentication.
             printf 'hysteria2://%s@%s:%s?%s#%s-%s' \
-                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-443}" "$q" "$tag" "$name" ;;
+                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-443}" "$q" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
         *) return 1 ;;
     esac
     return 0

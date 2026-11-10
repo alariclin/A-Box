@@ -35184,6 +35184,13 @@ run_builtin_sni_radar() {
     (( 10#$verify_limit >= 1 )) || die "$(tr_msg sn_verify_min)"
     valid_decimal_upto "$topn" 200 || die "$(tr_msg sn_topn_range)"
     (( 10#$topn >= 1 )) || die "$(tr_msg sn_topn_min)"
+    # R12-08: validation reads these as decimal but the stored strings
+    # keep leading zeros, which later arithmetic re-reads as octal
+    # (08 errors, 010 means 8). Canonicalise all four now.
+    concurrency=$((10#$concurrency))
+    timeout_s=$((10#$timeout_s))
+    verify_limit=$((10#$verify_limit))
+    topn=$((10#$topn))
     progress_every=$(( concurrency * 2 ))
     (( progress_every < 20 )) && progress_every=20
     msg "${CYAN}======================================================================${NC}"
@@ -35745,7 +35752,20 @@ abox_zram_teardown() {
         return 1
     fi
     if (( stop_rc == 0 )); then
-        rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state 2>/dev/null || true
+        local _rm_rc=0 _left=0 _p
+        rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state 2>/dev/null || _rm_rc=$?
+        for _p in /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state; do
+            if [[ -e "$_p" || -L "$_p" ]]; then
+                msg "${YELLOW}[!] zram 清理失败，路径仍存在：${_p}。请检查后重试。${NC}" >&2
+                _left=1
+            fi
+        done
+        if (( _rm_rc != 0 || _left != 0 )); then
+            if (( _left == 0 )); then
+                msg "${YELLOW}[!] zram 助手与配置删除命令失败，无法确认清理完成，请检查后重试。${NC}" >&2
+            fi
+            return 1
+        fi
         return 0
     fi
     # R1-13-F4: stop failed but persistence is gone. If no zram
@@ -35761,7 +35781,20 @@ abox_zram_teardown() {
         _any_active=1
     fi
     if (( _any_active == 0 )); then
-        rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state 2>/dev/null || true
+        local _rm_rc=0 _left=0 _p
+        rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state 2>/dev/null || _rm_rc=$?
+        for _p in /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state; do
+            if [[ -e "$_p" || -L "$_p" ]]; then
+                msg "${YELLOW}[!] zram 清理失败，路径仍存在：${_p}。请检查后重试。${NC}" >&2
+                _left=1
+            fi
+        done
+        if (( _rm_rc != 0 || _left != 0 )); then
+            if (( _left == 0 )); then
+                msg "${YELLOW}[!] zram 助手与配置删除命令失败，无法确认清理完成，请检查后重试。${NC}" >&2
+            fi
+            return 1
+        fi
         msg "${YELLOW}[!] zram 停止时无活动设备（陈旧状态记录），已清理助手与配置。${NC}" >&2
         return 0
     fi
@@ -36075,6 +36108,9 @@ inline_secret_assignment = re.compile(
 
 
 def redact_text(value):
+    value, _suppress = redact_userpass_mappings(value)
+    if _suppress:
+        raise _SuppressDocument()
     value = pem_span.sub("***REDACTED-PEM***", value)
     value = redact_block_scalars(value)
     value = link.sub("***CLIENT_LINK_REDACTED***", value)
@@ -36087,7 +36123,7 @@ def redact_text(value):
 
 _block_scalar_key = r"(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)"
 _block_scalar_re = re.compile(
-    r"(?i)^(\s*[\"']?" + _block_scalar_key + r"[\"']?\s*:\s*)[|>][+-]?\s*(#.*)?$"
+    r"(?i)^(\s*[\"']?" + _block_scalar_key + r"[\"']?\s*:\s*)[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(#.*)?$"
 )
 
 
@@ -36113,6 +36149,77 @@ def redact_block_scalars(text):
         else:
             out.append(line)
     return "\n".join(out)
+
+
+
+class _SuppressDocument(Exception):
+    pass
+
+
+_SUPPRESS_NOTICE = "[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]"
+_USERPASS_HEADER = re.compile(r"(?i)^(\s*[\"']?)userpass[\"']?\s*:\s*(.*)$")
+
+
+def _quoted_closed(value, quote):
+    i = 0
+    while i < len(value):
+        c = value[i]
+        if quote == '"' and c == "\\":
+            i += 2
+            continue
+        if c == quote:
+            if quote == "'" and i + 1 < len(value) and value[i + 1] == "'":
+                i += 2
+                continue
+            return True
+        i += 1
+    return False
+
+
+def redact_userpass_mappings(text):
+    # HY2 userpass mappings (R12-02): a `userpass:` header with a
+    # mapping value hides every credential in its indented subtree,
+    # which the generic scalar regexes never see (they only match
+    # `pass:` inside the header line and swallow the first entry).
+    # Replace the header with a redacted marker and discard the
+    # subtree; blank and comment-only lines do not terminate it.
+    # Returns (new_text, suppress): suppress is True when the value
+    # is a flow mapping, anchor/alias/tag, or unclosed quote that
+    # cannot be verified line by line — the caller must suppress
+    # the whole document (D2) instead of guessing.
+    lines = text.split("\n")
+    out = []
+    header_indent = None
+    for line in lines:
+        if header_indent is not None:
+            stripped = line.strip()
+            indent = len(line) - len(line.lstrip())
+            if stripped == "" or stripped.startswith("#") or indent > header_indent:
+                continue
+            header_indent = None
+        m = _USERPASS_HEADER.match(line)
+        if not m:
+            out.append(line)
+            continue
+        indent = len(line) - len(line.lstrip())
+        rest = m.group(2).strip()
+        if rest == "" or rest.startswith("#"):
+            out.append(" " * indent + 'userpass: "***REDACTED***"')
+        elif rest[0] in "{[":
+            return text, True
+        elif rest[0] in "|>":
+            out.append(" " * indent + 'userpass: "***REDACTED***"')
+        elif rest[0] in "&*!":
+            return text, True
+        elif rest[0] in "\"'":
+            if _quoted_closed(rest[1:], rest[0]):
+                out.append(" " * indent + 'userpass: "***REDACTED***"')
+            else:
+                return text, True
+        else:
+            out.append(" " * indent + 'userpass: "***REDACTED***"')
+        header_indent = indent
+    return "\n".join(out), False
 
 
 # A-05b-FIX: UUID regex for "id" key check (Xray clients[].id holds UUIDs).
@@ -36146,6 +36253,10 @@ def walk(value, in_clients=False):
 try:
     parsed = json.loads(text)
 except Exception:
+    text, _suppress = redact_userpass_mappings(text)
+    if _suppress:
+        sys.stdout.write(_SUPPRESS_NOTICE + "\n")
+        raise SystemExit(2)
     text = pem_span.sub("***REDACTED-PEM***", text)
     text = redact_block_scalars(text)
     text = url_userinfo.sub(r"\1***REDACTED***@", text)
@@ -36181,23 +36292,44 @@ except Exception:
     )
     sys.stdout.write(link.sub("***CLIENT_LINK_REDACTED***", text))
 else:
-    json.dump(walk(parsed), sys.stdout, ensure_ascii=False, indent=2)
+    try:
+        redacted = walk(parsed)
+    except _SuppressDocument:
+        sys.stdout.write(_SUPPRESS_NOTICE + "\n")
+        raise SystemExit(2)
+    json.dump(redacted, sys.stdout, ensure_ascii=False, indent=2)
     sys.stdout.write("\n")
 PY_REDACT
     else
         # No Python: the line-based sed fallback cannot verify
         # multi-line constructs (PEM spans, YAML block scalars,
-        # cross-line values). Buffer stdin, pre-scan for those
-        # shapes, and refuse/suppress when they appear: no output
-        # (mine) or a notice-only output (gpt) is safer than a
-        # "redacted" file that still holds the secret.
+        # cross-line values, unsupported credential mappings,
+        # sensitive arrays). Buffer stdin, pre-scan for those
+        # shapes, and refuse/suppress when they appear: a
+        # notice-only output is safer than a "redacted" file that
+        # still holds the secret. Suppression is a distinct outcome
+        # (D2); the Python path uses the same outcome when it meets
+        # a flow credential mapping it cannot verify.
         _redact_input=$(cat) || return 1
-        if printf '%s\n' "$_redact_input" | grep -qE -- $'-----BEGIN [^-]*KEY-----|^[[:space:]]*["\x27]?(uuid|private[_-]?key|public[_-]?key|short[_-]?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)["\x27]?[[:space:]]*:[[:space:]]*([|>][+-]?[[:space:]]*(#.*)?)?$'; then
-            printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, or a cross-line value that the fallback redactor cannot verify; it was suppressed in full and no original content is included.]'
+        if printf '%s\n' "$_redact_input" | grep -qE -- $'-----BEGIN [^-]*KEY-----|^[[:space:]]*["\x27]?(uuid|private[_-]?key|public[_-]?key|short[_-]?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)["\x27]?[[:space:]]*:[[:space:]]*([|>](([1-9][+-]?)|([+-][1-9]?))?[[:space:]]*(#.*)?)?$'; then
+            printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
             # D2: suppression is a distinct outcome, not a redaction.
             # The notice above is the whole output; callers must record
             # the file as omitted, not as redacted (see
             # write_redacted_file / export_diagnostic_bundle).
+            return 2
+        fi
+        if printf '%s\n' "$_redact_input" | grep -qiE -- $'(^|[{,])[[:space:]]*["\x27]?userpass["\x27]?[[:space:]]*:'; then
+            printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
+            # D2: a userpass credential mapping (any username) cannot
+            # be verified line by line by the fallback; suppress.
+            return 2
+        fi
+        if printf '%s\n' "$_redact_input" | grep -qiE -- $'["\x27]?(uuid|private[_-]?key|public[_-]?key|short[_-]?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|hy2_cert_sha256_fp|hy2_cert_pubkey_sha256_b64)["\x27]?[[:space:]]*[:=][[:space:]]*\['; then
+            printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
+            # D2: any recognised sensitive array opener is suppressed
+            # outright — a `]` on the opener line may sit inside a
+            # string, so it never proves the array closed there.
             return 2
         fi
         printf '%s\n' "$_redact_input" | sed -E \
@@ -36317,7 +36449,13 @@ collect_abox_cron() {
       /^# A-Box (PROBE|GEO|TRAFFIC|USERGUARD) BEGIN$/ {inblock=1}
       inblock {print}
       /^# A-Box (PROBE|GEO|TRAFFIC|USERGUARD) END$/ {inblock=0}
-      !inblock && bare_line_owner(norm_line($0)) != "" {print}
+      !inblock && bare_line_owner(norm_line($0)) != "" {
+          n = $0
+          gsub(/[ \t]+/, " ", n)
+          sub(/^ /, "", n)
+          sub(/ $/, "", n)
+          print n
+      }
       END {if (inblock) exit 1}
     ' "$all" > "$extracted" || { rm -f "$all" "$err" "$extracted"; return 1; }
     validate_abox_cron_file "$extracted" || { rm -f "$all" "$err" "$extracted"; return 1; }
@@ -36667,7 +36805,7 @@ append_managed_service_state_entry() {
 }
 
 _apply_managed_service_state_file() {
-    local state_file="${1:-}" expected_file="${2:-}" changed_file="${3:-}" line srv active enabled extra seen_srvs="|"
+    local state_file="${1:-}" expected_file="${2:-}" changed_file="${3:-}" observed_file="${4:-}" line srv active enabled extra seen_srvs="|"
     [[ -r "$state_file" && -f "$state_file" && ! -L "$state_file" ]] || return 1
     [[ "$(stat -c %u:%g "$state_file" 2>/dev/null || true)" == 0:0 ]] || return 1
     local mode
@@ -36760,7 +36898,7 @@ _apply_managed_service_state_file() {
             fi
             if (( apply_rc == 0 )); then
                 if [[ "$active" == 1 ]]; then
-                    rc-service "$srv" start >/dev/null 2>&1 || rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&- || apply_rc=1
+                    rc-service "$srv" start >/dev/null 2>&1 9>&- 10>&- || rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&- || apply_rc=1
                 else
                     rc-service "$srv" stop >/dev/null 2>&1 || apply_rc=1
                 fi
@@ -36773,8 +36911,25 @@ _apply_managed_service_state_file() {
         # preflight failure (return 2 above) never reaches here, so a
         # service the applier never touched is never recorded.
         post_state=$(managed_service_state_value "$srv" 2>/dev/null) || post_state=''
-        if [[ -n "$changed_file" && -n "$post_state" && "$post_state" != "$current_state_before" ]]; then
-            printf '%s\n' "$srv" >> "$changed_file" || return 1
+        # R12-06/R12-07: record the applier's own observation BEFORE
+        # the apply_rc return and the target-state verification below,
+        # so a failed command can still leave a usable post-state for
+        # rollback. A failed post-state query means "possibly
+        # changed", never "unchanged": record the service as changed.
+        # A failed journal append returns the distinct status 3, so
+        # the caller can tell a journal failure from an ordinary
+        # apply failure and must not take the empty-journal path.
+        if [[ -n "$observed_file" && -n "$post_state" ]]; then
+            printf '%s\n' "$post_state" >> "$observed_file" || return 3
+        fi
+        if [[ -n "$changed_file" ]]; then
+            if [[ -n "$post_state" ]]; then
+                if [[ "$post_state" != "$current_state_before" ]]; then
+                    printf '%s\n' "$srv" >> "$changed_file" || return 3
+                fi
+            else
+                printf '%s\n' "$srv" >> "$changed_file" || return 3
+            fi
         fi
         (( apply_rc == 0 )) || return 1
         local restored_srv restored_active restored_enabled restored_extra
@@ -36803,7 +36958,7 @@ _apply_managed_service_state_file() {
 }
 
 restore_managed_service_state() {
-    local state_file="${1:-}" expected_file="${2:-}" tx_dir before_file post_file changed_file line srv before after rc=0
+    local state_file="${1:-}" expected_file="${2:-}" tx_dir before_file post_file changed_file observed_file line srv before after rc=0
     [[ -r "$state_file" && -f "$state_file" && ! -L "$state_file" ]] || return 1
     validate_services_state_file "$state_file" || return 1
     tx_dir=$(mktemp -d /run/A-Box-service-restore.XXXXXX) || return 1
@@ -36820,12 +36975,25 @@ restore_managed_service_state() {
     changed_file="$tx_dir/changed.services"
     : > "$changed_file" || { rm -rf -- "$tx_dir"; return 1; }
     chmod 600 "$changed_file" || { rm -rf -- "$tx_dir"; return 1; }
+    observed_file="$tx_dir/observed.state"
+    : > "$observed_file" || { rm -rf -- "$tx_dir"; return 1; }
+    chmod 600 "$observed_file" || { rm -rf -- "$tx_dir"; return 1; }
 
-    if _apply_managed_service_state_file "$state_file" "$expected_file" "$changed_file"; then
+    if _apply_managed_service_state_file "$state_file" "$expected_file" "$changed_file" "$observed_file"; then
         rm -rf -- "$tx_dir" || return 1
         return 0
     else
         rc=$?
+    fi
+
+    if (( rc == 3 )); then
+        # R12-06: the applier could not record its change journal
+        # (changed/observed append failed), so the journal may be
+        # incomplete. Never take the empty-journal shortcut below:
+        # preserve the transaction for operator recovery and do not
+        # attempt a rollback against an unverified journal.
+        printf '%s\n' "A-Box service restore failed; service-change journal could not be recorded, recovery state preserved at $tx_dir" >&2
+        return 1
     fi
 
     # Roll back ONLY services this restore itself changed (as recorded
@@ -36864,14 +37032,32 @@ restore_managed_service_state() {
         [[ -n "$srv" ]] || continue
         local b_line p_line
         b_line=$(awk -F'|' -v target="$srv" '$1 == target {print; exit}' "$before_file") || b_line=''
-        p_line=$(awk -F'|' -v target="$srv" '$1 == target {print; exit}' "$post_file") || p_line=''
         if grep -qxF "$srv" "$changed_file" 2>/dev/null; then
+            # R12-07: the rollback expectation comes ONLY from the
+            # applier's own observation. A later live query must never
+            # be adopted as the expected post-state. A changed service
+            # with no (or no unique) observation has an unknown
+            # post-state: preserve the transaction, do not roll back.
+            local obs_count
+            obs_count=$(grep -c "^${srv}|" "$observed_file" 2>/dev/null || true)
+            if [[ "$obs_count" != 1 ]]; then
+                printf '%s\n' "A-Box service restore failed; no recorded post-state for changed service $srv, recovery state preserved at $tx_dir" >&2
+                return 1
+            fi
+            p_line=$(awk -F'|' -v target="$srv" '$1 == target {print; exit}' "$observed_file") || p_line=''
             printf '%s\n' "$b_line" >> "$rb_before" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
             printf '%s\n' "$p_line" >> "$rb_post" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
-        elif [[ "$p_line" != "$b_line" ]]; then
-            # Not changed by this restore but moved by an outside actor
-            # during the failure: leave it and report it.
-            excluded+="$srv "
+        else
+            # Not changed by this restore: compare the live
+            # re-capture against before-state only to REPORT outside
+            # changes. These diagnostic values never authorise a
+            # rollback.
+            p_line=$(awk -F'|' -v target="$srv" '$1 == target {print; exit}' "$post_file") || p_line=''
+            if [[ "$p_line" != "$b_line" ]]; then
+                # Not changed by this restore but moved by an outside actor
+                # during the failure: leave it and report it.
+                excluded+="$srv "
+            fi
         fi
     done < "$state_file"
     chmod 600 "$rb_before" "$rb_post" || { printf '%s\n' "A-Box service restore rollback incomplete or conflicted; recovery state preserved at $tx_dir" >&2; return 1; }
@@ -37161,7 +37347,8 @@ for m in tf:
  raw=m.name
  while raw.startswith('./'): raw=raw[2:]
  n=posixpath.normpath(raw)
- if n in ('','.'): continue
+ if raw in ('','.'): continue
+ if n in ('','.'): raise SystemExit(1)
  if raw.startswith('/') or n=='..' or n.startswith('../') or not allowed(n): raise SystemExit(1)
  if n in seen and not m.isdir(): raise SystemExit(1)
  seen.add(n)
@@ -37229,7 +37416,7 @@ with tarfile.open(src,'r:gz') as tf:
   while name.startswith('./'): name=name[2:]
   if not name or name=='.': continue
   target=(base/name).resolve()
-  if base not in target.parents and target!=base: raise SystemExit(1)
+  if target == base or base not in target.parents: raise SystemExit(1)
   if m.isdir(): target.mkdir(parents=True,exist_ok=True); os.chmod(target,m.mode & 0o777)
   elif m.isfile():
    if m.size<0 or m.size>max_file: raise SystemExit(1)
@@ -37275,7 +37462,14 @@ PY_LEGACY_EXTRACT
         fi
     done
     printf 'iptables\n' > "$work/meta/firewall.backend"
-    : > "$work/meta/services.state"
+    : > "$work/meta/services.state" || {
+        rm -rf -- "$work"
+        die 'Legacy services.state initialization failed.'
+    }
+    chmod 600 "$work/meta/services.state" || {
+        rm -rf -- "$work"
+        die 'Legacy services.state permission setup failed.'
+    }
     : > "$work/meta/managed-paths.txt"
     [[ -f "$work/meta/cron.abox.txt" ]] || : > "$work/meta/cron.abox.txt"
     validate_abox_cron_file "$work/meta/cron.abox.txt" || { rm -rf "$work"; die 'Legacy cron block is not compatible with the strict importer.'; }
@@ -37379,7 +37573,8 @@ for m in tf:
     while raw.startswith('./'): raw=raw[2:]
     n=posixpath.normpath(raw)
     if n==REQ_ROOT: root_member=m
-    if n in ('','.'): continue
+    if raw in ('','.'): continue
+    if n in ('','.'): raise SystemExit(1)
     if n=='..' or n.startswith('../') or n.split('/',1)[0] not in ('root','meta'): raise SystemExit(1)
     if n in seen and not m.isdir(): raise SystemExit(1)
     seen.add(n)

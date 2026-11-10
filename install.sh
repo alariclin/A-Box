@@ -13009,8 +13009,12 @@ firewall_snapshot_is_abox_managed() {
     grep -q '^\*' "$file" || return 1
     grep -q '^COMMIT$' "$file" || return 1
     awk '
-      /^\*[^ \t\r]+$/ {next}
-      /^COMMIT$/ {next}
+      /^\*[^ \t\r]+$/ {table=$0; next}
+      /^COMMIT$/ {table=""; next}
+      /^:INPUT[ \t]+(ACCEPT|DROP)([ \t]+\[[0-9]+:[0-9]+\])?[ \t]*$/ {
+        if (table!="*filter" || ++input_seen > 1) exit 1
+        next
+      }
       /^-A[ \t\r]/ && /--comment[ \t\r]+"?A-Box-/ {next}
       {exit 1}
     ' "$file"
@@ -13625,15 +13629,35 @@ _fw_restore_leg() {
     if snapshot_valid "$snapshot"; then
         src=$(cat -- "$snapshot") || return 1
 
-        final_policy=$(printf '%s\n' "$src" | awk '
-            $0 == "*filter" { f=1; next }
-            $0 == "COMMIT" { f=0 }
-            f && $1 == ":INPUT" { print $2 }
-        ') || return 1
+        local snapshot_policy
+
+        snapshot_policy=$(printf '%s\n' "$src" | awk '
+            /^\*/ { f=($0 == "*filter"); next }
+            $0 == "COMMIT" { f=0; next }
+            f && $1 == ":INPUT" {
+                if (++n > 1 ||
+                    $0 !~ /^:INPUT[ \t]+(ACCEPT|DROP)([ \t]+\[[0-9]+:[0-9]+\])?[ \t]*$/) exit 1
+                p=$2
+            }
+            END {
+                if (n > 1 ||
+                    (n == 1 && p != "ACCEPT" && p != "DROP"))
+                    exit 1
+                if (n == 1) print p
+            }
+        ') || {
+            echo "A-Box firewall restore: invalid snapshot INPUT policy; refusing to delete." >&2
+            return 1
+        }
+
+        # Snapshot without :INPUT: keep the live policy captured above.
+        if [[ -n "$snapshot_policy" ]]; then
+            final_policy="$snapshot_policy"
+        fi
 
         case "$final_policy" in
             ACCEPT|DROP) ;;
-            *) echo "A-Box firewall restore: invalid snapshot INPUT policy; refusing to delete." >&2
+            *) echo "A-Box firewall restore: invalid INPUT policy; refusing to delete." >&2
                return 1 ;;
         esac
 
@@ -13913,11 +13937,11 @@ save_firewall_rules() {
     tmp4=$(mktemp "$ABOX_DIR/.iptables.v4.XXXXXX") || { rm -f -- "$backup4" "$backup6"; return 1; }
     tmp6=$(mktemp "$ABOX_DIR/.iptables.v6.XXXXXX") || { rm -f -- "$tmp4" "$backup4" "$backup6"; return 1; }
     iptables-save > "${tmp4}.all" 2>/dev/null || { rm -f "$tmp4" "$tmp6" "${tmp4}.all" "$backup4" "$backup6"; return 1; }
-    extract_abox_iptables_rules "${tmp4}.all" all > "$tmp4" || { rm -f "$tmp4" "$tmp6" "${tmp4}.all" "$backup4" "$backup6"; return 1; }
+    extract_abox_iptables_rules "${tmp4}.all" all 1 > "$tmp4" || { rm -f "$tmp4" "$tmp6" "${tmp4}.all" "$backup4" "$backup6"; return 1; }
     rm -f "${tmp4}.all"
     if command -v ip6tables-save >/dev/null 2>&1; then
         if ip6tables-save > "${tmp6}.all" 2>/dev/null; then
-            extract_abox_iptables_rules "${tmp6}.all" all > "$tmp6" || { rm -f "$tmp4" "$tmp6" "${tmp6}.all" "$backup4" "$backup6"; return 1; }
+            extract_abox_iptables_rules "${tmp6}.all" all 1 > "$tmp6" || { rm -f "$tmp4" "$tmp6" "${tmp6}.all" "$backup4" "$backup6"; return 1; }
             rm -f "${tmp6}.all"
         elif ! host_has_usable_ipv6; then
             # A present userspace binary does not prove that the kernel IPv6
@@ -17962,7 +17986,7 @@ PY_WRITE_ENV_OLD
     mv -f -- "$tmp" "$ABOX_ENV" || { rm -f -- "$tmp"; die "$(tr_msg we_commit)"; }
 }
 
-validate_fail2ban_config_or_die() {
+validate_fail2ban_config() {
     command -v fail2ban-client >/dev/null 2>&1 || return 0
     local out sample
     if fail2ban-client -h 2>&1 | grep -E -- '(^|[[:space:]])-t([,[:space:]]|$)|--test' >/dev/null; then
@@ -17979,39 +18003,46 @@ validate_fail2ban_config_or_die() {
         fi
     fi
     if command -v fail2ban-regex >/dev/null 2>&1 && [[ -r /etc/fail2ban/filter.d/A-Box.conf ]]; then
-        sample=$(umask 077; mktemp /tmp/A-Box-f2b-sample.XXXXXX) || die 'Fail2Ban sample creation failed.'
-        cat > "$sample" <<'EOF_F2B_SAMPLE' || { rm -f -- "$sample"; die 'Fail2Ban sample write failed.'; }
+        sample=$(umask 077; mktemp /tmp/A-Box-f2b-sample.XXXXXX) || { printf '%s\n' "${RED}[!] Fail2Ban sample creation failed.${NC}" >&2; return 1; }
+        cat > "$sample" <<'EOF_F2B_SAMPLE' || { rm -f -- "$sample"; printf '%s\n' "${RED}[!] Fail2Ban sample write failed.${NC}" >&2; return 1; }
 2026-07-25T10:00:00Z process connection from 203.0.113.7:54321: message authentication failed
 2026-07-25T10:00:01Z authentication failed from [2001:db8::7]:443
 2026-07-25T10:00:02Z proxy/vless/inbound: invalid request from 198.51.100.9:44321 > proxy/vless/encoding
 2026-07-25T10:00:03Z client=198.51.100.8 rejected
 2026-07-25T10:00:04Z health check succeeded without authentication failure
 EOF_F2B_SAMPLE
-        out=$(fail2ban-regex --print-all-matched --print-all-missed "$sample" /etc/fail2ban/filter.d/A-Box.conf 2>&1) || { rm -f "$sample"; printf '%s\n' "$out" >&2; die "$(tr_msg fb_regex_fail)"; }
+        out=$(fail2ban-regex --print-all-matched --print-all-missed "$sample" /etc/fail2ban/filter.d/A-Box.conf 2>&1) || {
+            rm -f -- "$sample"
+            printf '%s\n' "$out" >&2
+            printf '%s\n' "${RED}[!] $(tr_msg fb_regex_fail)${NC}" >&2
+            return 1
+        }
         rm -f "$sample"
         local summary matched_count missed_count matched_lines
         summary=$(grep -E '^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, [0-9]+ missed' <<< "$out" | tail -n 1)
         matched_count=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, ([0-9]+) matched, [0-9]+ missed.*/\1/p' <<< "$summary")
         missed_count=$(sed -nE 's/^[[:space:]]*Lines: [0-9]+ lines?, [0-9]+ ignored, [0-9]+ matched, ([0-9]+) missed.*/\1/p' <<< "$summary")
-        [[ "$matched_count" =~ ^[0-9]+$ && "$missed_count" =~ ^[0-9]+$ ]] && (( matched_count >= 1 && missed_count >= 1 )) || { printf '%s\n' "$out" >&2; die 'Fail2Ban must match a representative failure log and leave a benign log unmatched.'; }
+        [[ "$matched_count" =~ ^[0-9]+$ && "$missed_count" =~ ^[0-9]+$ ]] && (( matched_count >= 1 && missed_count >= 1 )) || { printf '%s\n' "$out" >&2; printf '%s\n' "${RED}[!] Fail2Ban must match a representative failure log and leave a benign log unmatched.${NC}" >&2; return 1; }
         # S40 (GPT-21): totals alone also pass a REVERSED filter (matches
         # only the benign line: "1 matched, 4 missed"). Require per-line
         # proof: at least one known failure line in the matched section,
         # and the benign line absent from it. The matched section is the
         # "|  "-prefixed lines after "Matched line(s):" up to the first
         # line that is not such a line; if the format drifts so no
-        # section parses, this fails closed (die) rather than falling
+        # section parses, this fails closed (return 1) rather than falling
         # back to totals.
         matched_lines=$(awk '/Matched line[(]s[)]:/ { m = 1; next } m && /^[|]  / { sub(/^[|]  /, ""); print; next } m { m = 0 }' <<< "$out")
-        grep -Fq -e '203.0.113.7' -e '2001:db8::7' -e '198.51.100.9' -e '198.51.100.8' <<< "$matched_lines" || { printf '%s\n' "$out" >&2; die 'Fail2Ban must match a representative failure log and leave a benign log unmatched.'; }
-        # NOTE: if-form, not "grep && { die; }": as the block's last
+        grep -Fq -e '203.0.113.7' -e '2001:db8::7' -e '198.51.100.9' -e '198.51.100.8' <<< "$matched_lines" || { printf '%s\n' "$out" >&2; printf '%s\n' "${RED}[!] Fail2Ban must match a representative failure log and leave a benign log unmatched.${NC}" >&2; return 1; }
+        # NOTE: if-form, not "grep && { ...; return 1; }": as the block's last
         # statement the && form would leak grep's failing status (1)
         # as the function's return code exactly when the check PASSES.
         if grep -Fq 'health check succeeded' <<< "$matched_lines"; then
             printf '%s\n' "$out" >&2
-            die 'Fail2Ban must match a representative failure log and leave a benign log unmatched.'
+            printf '%s\n' "${RED}[!] Fail2Ban must match a representative failure log and leave a benign log unmatched.${NC}" >&2
+            return 1
         fi
     fi
+    return 0
 }
 
 abox_log_files() {
@@ -18578,14 +18609,14 @@ EOF_F2B_UDP
             mv -f -- "$jail_tmp" /etc/fail2ban/jail.d/A-Box.local || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die "$(tr_msg ad_jail_commit)"; }
             # S38 (GPT-18): validate, then restart; on either failure
             # restore the backed-up configs and retry the restart once.
-            # A retry that still fails is attributable to pre-existing
-            # other jails (ours are out of the picture), so warn only.
+            # A retry that still fails leaves Fail2Ban protection
+            # unconfirmed, so warn only (a failed restore dies above).
             local f2b_restored=0
-            if ! validate_fail2ban_config_or_die; then
-                msg "${YELLOW}[!] Fail2Ban 新配置校验失败；已恢复提交前的 filter/jail，正在重试重启。${NC}"
+            if ! validate_fail2ban_config; then
+                msg "${YELLOW}[!] Fail2Ban 新配置校验失败；正在恢复提交前的 filter/jail，恢复成功后重试重启。${NC}"
                 f2b_restored=1
             elif ! _f2b_restart; then
-                msg "${YELLOW}[!] Fail2Ban 重启失败；已恢复提交前的 filter/jail，正在重试重启。${NC}"
+                msg "${YELLOW}[!] Fail2Ban 重启失败；正在恢复提交前的 filter/jail，恢复成功后重试重启。${NC}"
                 f2b_restored=1
             fi
             if (( f2b_restored == 1 )); then
@@ -18596,8 +18627,9 @@ EOF_F2B_UDP
                     rm -f -- "$filter_bak" "$jail_bak"
                 else
                     msg "${YELLOW}[!] Fail2Ban 旧配置恢复失败；备份保留在 ${filter_bak} 与 ${jail_bak}，请手动恢复后重启 fail2ban。${NC}"
+                    die 'Fail2Ban previous configuration could not be fully restored; aborting this operation.'
                 fi
-                _f2b_restart || msg "${YELLOW}[!] Fail2Ban 重试重启失败；可能由系统其它 jail 引起，A-Box 不会因此覆盖或删除其它 jail。${NC}"
+                _f2b_restart || msg "${YELLOW}[!] Fail2Ban 提交前的 filter/jail 已恢复，但重试重启失败；防护状态未确认，请检查配置与服务日志。A-Box 不会因此覆盖或删除其它 jail。${NC}"
             else
                 rm -f -- "$filter_bak" "$jail_bak"
             fi
@@ -20081,7 +20113,11 @@ xray_hot_add_inbound() {
         XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
     fi
     install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
-    prepare_abox_runtime_permissions xray 2>/dev/null || true
+    prepare_abox_runtime_permissions xray || {
+        rm -f "$tmp"
+        rm -rf "$tmpd"
+        return 1
+    }
     rm -f "$tmp"; rm -rf "$tmpd"
     # Hot path first: no connection drop. Fallback: restart (old behavior).
     if xray_api_available && xray_api_add_inbound "$json_file"; then
@@ -20142,7 +20178,11 @@ xray_hot_remove_inbound() {
         XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
     fi
     install_file_atomically "$tmp" "$cfg" 600 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
-    prepare_abox_runtime_permissions xray 2>/dev/null || true
+    prepare_abox_runtime_permissions xray || {
+        rm -f "$tmp"
+        rm -rf "$tmpd"
+        return 1
+    }
     rm -f "$tmp"; rm -rf "$tmpd"
     if xray_api_available && xray_api_remove_inbound "$tag"; then
         if [[ "$routes_reference_tag" == true ]]; then
@@ -21302,6 +21342,21 @@ ensure_singbox_service_unit() {
         fi
     fi
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        # Do not shadow a foreign runtime/vendor unit with an /etc unit.
+        local vendor_unit
+        for vendor_unit in \
+            /run/systemd/system/sing-box.service \
+            /usr/lib/systemd/system/sing-box.service \
+            /lib/systemd/system/sing-box.service; do
+            [[ -e "$vendor_unit" || -L "$vendor_unit" ]] || continue
+            if [[ -f "$vendor_unit" && ! -L "$vendor_unit" ]] &&
+                grep -Fxq '# Managed by A-Box' "$vendor_unit" 2>/dev/null; then
+                continue
+            fi
+            printf 'Refusing to shadow foreign service unit %s; resolve the conflict explicitly before retrying.\n' \
+                "$vendor_unit" >&2
+            return 1
+        done
         write_file_atomically_from_stdin /etc/systemd/system/sing-box.service 644 <<'EOF_SVC' || return 1
 # Managed by A-Box
 [Unit]
@@ -21595,6 +21650,21 @@ ensure_xray_service_unit() {
         fi
     fi
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        # Do not shadow a foreign runtime/vendor unit with an /etc unit.
+        local vendor_unit
+        for vendor_unit in \
+            /run/systemd/system/xray.service \
+            /usr/lib/systemd/system/xray.service \
+            /lib/systemd/system/xray.service; do
+            [[ -e "$vendor_unit" || -L "$vendor_unit" ]] || continue
+            if [[ -f "$vendor_unit" && ! -L "$vendor_unit" ]] &&
+                grep -Fxq '# Managed by A-Box' "$vendor_unit" 2>/dev/null; then
+                continue
+            fi
+            printf 'Refusing to shadow foreign service unit %s; resolve the conflict explicitly before retrying.\n' \
+                "$vendor_unit" >&2
+            return 1
+        done
         write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || return 1
 # Managed by A-Box
 [Unit]
@@ -22728,6 +22798,9 @@ StandardError=append:/etc/ddr/${name}.log
 [Install]
 WantedBy=multi-user.target
 EOF_UNIT
+        if [[ "$name" == 'argo' && "${_argo_service_touched+x}" == 'x' ]]; then
+            _argo_service_touched=1
+        fi
         systemctl daemon-reload >/dev/null 2>&1 || die "$(tr_msg ag_reload)"
         # R6C9-03: do not swallow enable failure: restart can
         # succeed now while the tunnel is missing after reboot.
@@ -22747,6 +22820,9 @@ output_log="/etc/ddr/${name}.log"
 error_log="/etc/ddr/${name}.log"
 depend() { need net; }
 EOF_RC
+        if [[ "$name" == 'argo' && "${_argo_service_touched+x}" == 'x' ]]; then
+            _argo_service_touched=1
+        fi
         chmod +x "/etc/init.d/${name}" || die "$(tr_msg ag_orc_chmod)"
         # R6C9-03: do not swallow runlevel registration failure.
         rc-update add "$name" default >/dev/null 2>&1 || die "$(tr_msg ag_enable)"
@@ -23190,7 +23266,6 @@ EOF_SVC
     fi
     argo_deploy_ws
     if argo_unit_active argo 2>/dev/null; then _argo_was_running=1; fi
-    _argo_service_touched=1
     argo_write_unit argo "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 run"
     # R13C9-01: restart succeeds before cloudflared authenticates;
     # do not commit mode=fixed until an authenticated connection
@@ -37178,9 +37253,19 @@ restore_managed_service_state() {
 }
 
 extract_abox_iptables_rules() {
-    local snapshot="$1" mode="${2:-all}"
-    awk -v mode="$mode" '''
-      /^\*/ {table=$0; next} /^COMMIT$/ {next}
+    local snapshot="$1" mode="${2:-all}" include_input="${3:-0}"
+    [[ "$include_input" == 0 || "$include_input" == 1 ]] || return 1
+    awk -v mode="$mode" -v include_input="$include_input" '''
+      /^\*/ {table=$0; input_policy=""; input_seen=0; next} /^COMMIT$/ {next}
+      include_input && table=="*filter" && $1==":INPUT" {
+        if (++input_seen > 1 ||
+            $0 !~ /^:INPUT[ \t]+(ACCEPT|DROP)([ \t]+\[[0-9]+:[0-9]+\])?[ \t]*$/) {
+          bad=1
+          exit 1
+        }
+        input_policy=$2
+        next
+      }
       /^-A / {
         base=($0 ~ /--comment "?A-Box-[0-9]+(:[0-9]+)?-(tcp|udp)"?([ \t\r]|$)/)
         wl=($0 ~ /--comment "?A-Box-[0-9]+-(tcp|udp)-WL6?"?([ \t\r]|$)/)
@@ -37189,11 +37274,11 @@ extract_abox_iptables_rules() {
         owned=(base || wl || drop || hop)
         special=(wl || drop || hop)
         if ((mode=="all" && owned) || special) {
-          if (table!=emitted) {if (emitted!="") print "COMMIT"; print table; emitted=table}
+          if (table!=emitted) {if (emitted!="") print "COMMIT"; print table; if (include_input && table=="*filter" && input_policy!="") print ":INPUT " input_policy " [0:0]"; emitted=table}
           print
         }
       }
-      END {if (emitted!="") print "COMMIT"}
+      END {if (bad) exit 1; if (emitted!="") print "COMMIT"}
     ''' "$snapshot"
 }
 
@@ -41371,7 +41456,7 @@ findtime = 600
 bantime = 86400
 action = ${action}
 EOF_WF2B_JAIL
-    validate_fail2ban_config_or_die >/dev/null 2>&1 || { rm -f -- "$jail"; return 0; }
+    validate_fail2ban_config >/dev/null 2>&1 || { rm -f -- "$jail"; return 0; }
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         systemctl restart fail2ban >/dev/null 2>&1 || true
     else
@@ -47704,7 +47789,7 @@ PY_SELFTEST_TAR
     declare -F show_sni_preference_records >/dev/null 2>&1 || { echo 'FAIL: SNI record viewer missing'; failures=$((failures + 1)); }
     declare -F validate_abox_script_file >/dev/null 2>&1 || { echo 'FAIL: local script validation gate missing'; failures=$((failures + 1)); }
     declare -F install_remote_abox_script_guarded >/dev/null 2>&1 || { echo 'FAIL: guarded remote shortcut installer missing'; failures=$((failures + 1)); }
-    declare -F validate_fail2ban_config_or_die >/dev/null 2>&1 || { echo 'FAIL: fail2ban validation gate missing'; failures=$((failures + 1)); }
+    declare -F validate_fail2ban_config >/dev/null 2>&1 || { echo 'FAIL: fail2ban validation gate missing'; failures=$((failures + 1)); }
     declare -F ensure_vnstat_runtime >/dev/null 2>&1 || { echo 'FAIL: vnStat runtime gate missing'; failures=$((failures + 1)); }
     declare -F validate_abox_env_file_for_write >/dev/null 2>&1 || { echo 'FAIL: A-Box env ownership validator missing'; failures=$((failures + 1)); }
     declare -F remove_owned_runtime_helper >/dev/null 2>&1 || { echo 'FAIL: runtime helper ownership remover missing'; failures=$((failures + 1)); }

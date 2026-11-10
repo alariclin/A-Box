@@ -565,7 +565,7 @@ _tsv_unescape() {
 rebuild_standalone_links() {
     local _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ip="${F_IP:-}"
     [[ -n "$_ip" && "$_ip" != 'N/A' ]] || return 0
-    local _xc='/usr/local/etc/xray/config.json' _sc='/etc/sing-box/config.json'
+    local _xc="${ABOX_XRAY_CFG:-/usr/local/etc/xray/config.json}" _sc="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
     local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url=''
     if [[ -f "$_xc" ]]; then
         if [[ ! -f "$_dir/trojan-xray.link" ]]; then
@@ -30436,7 +30436,6 @@ users_registered_link() {
 }
 
 users_b64url_dec() { printf '%s' "$1" | tr '_-' '/+' | awk '{l=length($0); if (l%4==2) print $0"=="; else if (l%4==3) print $0"="; else print $0}' | base64 -d 2>/dev/null; }
-users_b64url_enc() { base64 -w0 2>/dev/null | tr '+/' '-_' | tr -d '='; }
 
 # Build the connection link for one registry user.
 # $1=core $2=tag $3=name -> prints link on stdout
@@ -43749,10 +43748,415 @@ _clash_default_nameservers() {
     esac
 }
 
+write_clash_standalone_yaml() {
+    local _nodes="$1" _groups="$2" _rows _record _pk _pub _rc=0
+    local _sc="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
+    local _xc="${ABOX_XRAY_CFG:-/usr/local/etc/xray/config.json}"
+
+    : > "$_nodes" || return 1
+    : > "$_groups" || return 1
+    _rows=$(umask 077; mktemp "${_nodes%/*}/.A-Box-clash-records.XXXXXX") || return 1
+
+    if ! python3 -I - "$_sc" "$_xc" "${LINK_IP:-}" > "$_rows" <<'PY_CLASH_STANDALONE'
+import json
+import os
+import re
+import stat
+import subprocess
+import sys
+import uuid
+
+sb_path, xr_path, server = sys.argv[1:]
+LIMIT = 8 * 1024 * 1024
+
+
+class Bad(ValueError):
+    pass
+
+
+def require(ok, reason):
+    if not ok:
+        raise Bad(reason)
+
+
+def obj(value):
+    require(isinstance(value, dict), "invalid object")
+    return value
+
+
+def text(value, reason, empty=False):
+    require(isinstance(value, str), reason)
+    require(empty or bool(value), reason)
+    require("\x00" not in value, reason)
+    require(not any(0xD800 <= ord(c) <= 0xDFFF for c in value), reason)
+    return value
+
+
+def first(values, reason):
+    require(isinstance(values, list) and bool(values), reason)
+    return values[0]
+
+
+def account(inbound, key):
+    return obj(first(inbound.get(key), "missing account"))
+
+
+def warning(message):
+    print(json.dumps({"comment": "P6: " + message}, ensure_ascii=False))
+
+
+def trusted_read(path):
+    text(path, "missing file path")
+    flags = os.O_RDONLY | os.O_NONBLOCK
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags)
+    with os.fdopen(fd, "rb") as stream:
+        st = os.fstat(stream.fileno())
+        require(stat.S_ISREG(st.st_mode), "not a regular file")
+        require(st.st_uid in {0, os.geteuid()}, "untrusted file owner")
+        require(not (st.st_mode & 0o022), "file is writable by group or others")
+        data = stream.read(LIMIT + 1)
+        require(len(data) <= LIMIT, "file too large")
+        return data
+
+
+def load(path, label):
+    try:
+        data = json.loads(trusted_read(path))
+        obj(data)
+        inbounds = data.get("inbounds", [])
+        require(isinstance(inbounds, list), "invalid inbounds")
+        require(all(isinstance(i, dict) for i in inbounds), "invalid inbound")
+        return inbounds
+    except FileNotFoundError:
+        return []
+    except (OSError, ValueError, UnicodeError):
+        warning(label + " source omitted: unreadable, invalid, or untrusted config")
+        return []
+
+
+def tagged(inbounds, tag):
+    matches = [i for i in inbounds if i.get("tag") == tag]
+    require(len(matches) <= 1, "duplicate inbound tag")
+    return matches[0] if matches else None
+
+
+def common(name, kind, inbound, port_key):
+    port = inbound.get(port_key)
+    require(type(port) is int and 1 <= port <= 65535, "invalid port")
+    host = text(server, "missing export server")
+    require(host != "N/A", "missing export server")
+    return {"name": name, "type": kind, "server": host, "port": port}
+
+
+def short_id(value):
+    if isinstance(value, list):
+        value = first(value, "missing Reality short ID")
+    value = text(value, "missing Reality short ID", empty=True)
+    require(re.fullmatch(r"(?:[0-9A-Fa-f]{2}){0,8}", value) is not None,
+            "invalid Reality short ID")
+    return value
+
+
+def reality(node, private, sid):
+    private = text(private, "missing Reality private key")
+    require(re.fullmatch(r"[A-Za-z0-9_-]{43}", private) is not None,
+            "invalid Reality private key")
+    node["reality-opts"] = {"public-key": "", "short-id": short_id(sid)}
+    return {"node": node, "private": private}
+
+
+def sb_reality(inbound):
+    tls = obj(inbound.get("tls"))
+    require(tls.get("enabled") is True, "TLS is not enabled")
+    r = obj(tls.get("reality"))
+    require(r.get("enabled") is True, "Reality is not enabled")
+    sni = tls.get("server_name")
+    if not sni:
+        handshake = r.get("handshake", {})
+        if isinstance(handshake, dict):
+            sni = handshake.get("server")
+    return text(sni, "missing SNI"), r
+
+
+def tcp_transport(inbound):
+    transport = inbound.get("transport")
+    if transport is None:
+        return
+    transport = obj(transport)
+    require(transport.get("type", "tcp") == "tcp",
+            "unsupported non-TCP transport")
+
+
+def trojan_sb(inbound, inbounds):
+    require(inbound.get("type") == "trojan", "unexpected inbound type")
+    tcp_transport(inbound)
+    sni, r = sb_reality(inbound)
+    users = inbound.get("users")
+    password = (account(inbound, "users").get("password")
+                if users else inbound.get("password"))
+    node = common("Trojan-Reality-sing-box", "trojan", inbound, "listen_port")
+    node.update({
+        "password": text(password, "missing Trojan password"),
+        "udp": True,
+        "sni": sni,
+        "client-fingerprint": "chrome",
+    })
+    return reality(node, r.get("private_key"), r.get("short_id"))
+
+
+def trojan_xray(inbound, inbounds):
+    require(inbound.get("protocol") == "trojan", "unexpected inbound protocol")
+    stream = obj(inbound.get("streamSettings"))
+    require(stream.get("network", "tcp") == "tcp",
+            "unsupported non-TCP transport")
+    require(stream.get("security") == "reality", "Reality is not enabled")
+    r = obj(stream.get("realitySettings"))
+    settings = obj(inbound.get("settings"))
+    client = account(settings, "clients")
+    node = common("Trojan-Reality-Xray", "trojan", inbound, "port")
+    node.update({
+        "password": text(client.get("password"), "missing Trojan password"),
+        "udp": True,
+        "sni": text(first(r.get("serverNames"), "missing SNI"), "missing SNI"),
+        "client-fingerprint": "chrome",
+    })
+    return reality(node, r.get("privateKey"), r.get("shortIds"))
+
+
+def tuic_cert_policy(tls):
+    path = text(tls.get("certificate_path"), "missing TUIC certificate path")
+    try:
+        cert = trusted_read(path)
+        result = subprocess.run(
+            ["openssl", "x509", "-noout", "-issuer", "-subject",
+             "-nameopt", "RFC2253"],
+            input=cert, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            timeout=5, check=True,
+        )
+        lines = result.stdout.decode("utf-8").splitlines()
+        issuer = next((s[len("issuer="):] for s in lines
+                       if s.startswith("issuer=")), "")
+        subject = next((s[len("subject="):] for s in lines
+                        if s.startswith("subject=")), "")
+        require(bool(issuer) and bool(subject), "unusable TUIC certificate")
+        return issuer == subject
+    except (OSError, ValueError, subprocess.SubprocessError):
+        raise Bad("TUIC certificate unreadable, invalid, or untrusted")
+
+
+def tuic(inbound, inbounds):
+    require(inbound.get("type") == "tuic", "unexpected inbound type")
+    user = account(inbound, "users")
+    user_uuid = text(user.get("uuid"), "missing TUIC UUID")
+    try:
+        require(str(uuid.UUID(user_uuid)) == user_uuid.lower(), "invalid TUIC UUID")
+    except ValueError:
+        raise Bad("invalid TUIC UUID")
+    require("password" in user, "missing TUIC password")
+    password = text(user["password"], "invalid TUIC password", empty=True)
+    tls = obj(inbound.get("tls"))
+    require(tls.get("enabled") is True, "TLS is not enabled")
+    alpn = tls.get("alpn", ["h3"])
+    if isinstance(alpn, str):
+        alpn = [alpn]
+    require(isinstance(alpn, list) and bool(alpn), "invalid TUIC ALPN")
+    alpn = [text(a, "invalid TUIC ALPN") for a in alpn]
+    cc = inbound.get("congestion_control", "bbr")
+    require(cc in ("bbr", "cubic", "new_reno"), "unsupported TUIC congestion controller")
+    skip_verify = tuic_cert_policy(tls)
+    node = common("TUIC", "tuic", inbound, "listen_port")
+    node.update({
+        "uuid": user_uuid,
+        "password": password,
+        "sni": text(tls.get("server_name"), "missing TUIC SNI"),
+        "alpn": alpn,
+        "congestion-controller": cc,
+        "udp-relay-mode": "native",
+        "reduce-rtt": False,
+        "skip-cert-verify": skip_verify,
+    })
+    return {"node": node}
+
+
+def anytls(inbound, inbounds):
+    require(inbound.get("type") == "anytls", "unexpected inbound type")
+    tcp_transport(inbound)
+    sni, r = sb_reality(inbound)
+    users = inbound.get("users")
+    password = (account(inbound, "users").get("password")
+                if users else inbound.get("password"))
+    node = common("AnyTLS-Reality", "anytls", inbound, "listen_port")
+    node.update({
+        "password": text(password, "missing AnyTLS password"),
+        "sni": sni,
+        "client-fingerprint": "chrome",
+        "skip-cert-verify": False,
+    })
+    return reality(node, r.get("private_key"), r.get("short_id"))
+
+
+def shadowtls(inbound, inbounds):
+    require(inbound.get("type") == "shadowtls", "unexpected inbound type")
+    require(type(inbound.get("version")) is int and inbound["version"] == 3,
+            "unsupported ShadowTLS version")
+    detour = text(inbound.get("detour"), "missing ShadowTLS detour")
+    inner = tagged(inbounds, detour)
+    require(inner is not None, "missing ShadowTLS detour inbound")
+    require(inner.get("type") == "shadowsocks", "detour is not Shadowsocks")
+    require(inner.get("method") == "2022-blake3-aes-128-gcm",
+            "unsupported ShadowTLS inner cipher")
+    handshake = obj(inbound.get("handshake"))
+    user = account(inbound, "users")
+    node = common("ShadowTLS", "ss", inbound, "listen_port")
+    node.update({
+        "cipher": inner["method"],
+        "password": text(inner.get("password"), "missing ShadowTLS inner password"),
+        "udp": False,
+        "plugin": "shadow-tls",
+        "plugin-opts": {
+            "host": text(handshake.get("server"), "missing ShadowTLS handshake host"),
+            "password": text(user.get("password"), "missing ShadowTLS outer password"),
+            "version": 3,
+        },
+    })
+    return {"node": node}
+
+
+def socks_sb(inbound, inbounds):
+    require(inbound.get("type") in ("socks", "mixed"), "unexpected inbound type")
+    user = account(inbound, "users")
+    node = common("SOCKS5-sing-box", "socks5", inbound, "listen_port")
+    node.update({
+        "username": text(user.get("username"), "missing SOCKS5 username"),
+        "password": text(user.get("password"), "missing SOCKS5 password"),
+        "udp": True,
+        "tls": False,
+    })
+    return {"node": node}
+
+
+def socks_xray(inbound, inbounds):
+    require(inbound.get("protocol") == "socks", "unexpected inbound protocol")
+    settings = obj(inbound.get("settings"))
+    require(settings.get("auth") == "password", "unsupported SOCKS5 authentication")
+    require(settings.get("udp") is True, "unsupported SOCKS5 UDP setting")
+    user = account(settings, "accounts")
+    node = common("SOCKS5-Xray", "socks5", inbound, "port")
+    node.update({
+        "username": text(user.get("user"), "missing SOCKS5 username"),
+        "password": text(user.get("pass"), "missing SOCKS5 password"),
+        "udp": True,
+        "tls": False,
+    })
+    return {"node": node}
+
+
+def export(inbounds, label, tag, builder):
+    try:
+        inbound = tagged(inbounds, tag)
+        if inbound is None:
+            return
+        record = builder(inbound, inbounds)
+        print(json.dumps(record, ensure_ascii=False))
+    except Bad as exc:
+        warning(label + "/" + tag + " omitted: " + str(exc))
+
+
+sb = load(sb_path, "sing-box")
+xr = load(xr_path, "Xray")
+
+export(xr, "Xray", "trojan-landing", trojan_xray)
+export(sb, "sing-box", "trojan-landing", trojan_sb)
+export(sb, "sing-box", "tuic-in", tuic)
+export(sb, "sing-box", "anytls-in", anytls)
+export(sb, "sing-box", "shadowtls-in", shadowtls)
+export(xr, "Xray", "socks5-landing", socks_xray)
+export(sb, "sing-box", "socks5-landing", socks_sb)
+PY_CLASH_STANDALONE
+    then
+        rm -f -- "$_rows"
+        return 1
+    fi
+
+    while IFS= read -r _record; do
+        [[ -n "$_record" ]] || continue
+        _pk=$(python3 -I -c \
+            'import json,sys; print(json.load(sys.stdin).get("private", ""))' \
+            <<< "$_record") || { _rc=1; break; }
+        _pub=''
+        if [[ -n "$_pk" ]]; then
+            if _pub=$(x25519_pub_from_priv "$_pk" 2>/dev/null); then
+                [[ "$_pub" =~ ^[A-Za-z0-9_-]{43}$ ]] || _pub=''
+            else
+                _pub=''
+            fi
+        fi
+
+        if ! python3 -I -c '
+import json
+import sys
+
+nodes_path, groups_path, public_key = sys.argv[1:]
+record = json.load(sys.stdin)
+
+
+def scalar(value):
+    return json.dumps(value, ensure_ascii=False, allow_nan=False)
+
+
+def fields(stream, mapping, indent):
+    prefix = " " * indent
+    for key, value in mapping.items():
+        if isinstance(value, dict):
+            stream.write(prefix + key + ":\n")
+            fields(stream, value, indent + 2)
+        elif isinstance(value, list):
+            stream.write(prefix + key + ":\n")
+            for item in value:
+                stream.write(prefix + "  - " + scalar(item) + "\n")
+        else:
+            stream.write(prefix + key + ": " + scalar(value) + "\n")
+
+
+with open(nodes_path, "a", encoding="utf-8") as nodes:
+    if "comment" in record:
+        nodes.write("  # " + record["comment"] + "\n")
+        sys.exit(0)
+
+    node = record["node"]
+    if "private" in record:
+        if not public_key:
+            nodes.write("  # P6: " + node["name"] +
+                        " omitted: Reality public-key derivation failed\n")
+            sys.exit(0)
+        node["reality-opts"]["public-key"] = public_key
+
+    if node["type"] == "tuic" and node["skip-cert-verify"]:
+        nodes.write("  # P6: TUIC uses an unverified self-issued certificate.\n")
+
+    nodes.write("  - name: " + scalar(node["name"]) + "\n")
+    fields(nodes, {k: v for k, v in node.items() if k != "name"}, 4)
+
+with open(groups_path, "a", encoding="utf-8") as groups:
+    groups.write("      - " + scalar(node["name"]) + "\n")
+' "$_nodes" "$_groups" "$_pub" <<< "$_record"
+        then
+            _rc=1
+            break
+        fi
+    done < "$_rows"
+
+    unset _pk _record
+    rm -f -- "$_rows"
+    return "$_rc"
+}
+
 write_clash_yaml() {
     local out="${CLASH_YAML_PATH:-$ABOX_DIR/A-Box-clash.yaml}" S_IP="${LINK_IP:-}" hy2_name="Hy2" tmp_out out_real base_real clash_hop_port client_uuid proxy_name
     local hy2_pass_yaml hy2_obfs_yaml ss_pass_yaml clash_mlkem=false clash_mlkem_rc
     local clash_ns1 clash_ns2 clash_country
+    local _clash_standalone_nodes_tmp='' _clash_standalone_groups_tmp=''
     if clash_reality_mlkem_enabled; then
         clash_mlkem=true
     else
@@ -43833,6 +44237,19 @@ PY_CLASH_REALPATH
     clash_ns1=$(_clash_default_nameservers "$clash_country" 2>/dev/null | sed -n '1p')
     clash_ns2=$(_clash_default_nameservers "$clash_country" 2>/dev/null | sed -n '2p')
     [[ -n "$clash_ns1" && -n "$clash_ns2" ]] || { clash_ns1='1.1.1.1'; clash_ns2='8.8.8.8'; }
+    _clash_standalone_nodes_tmp=$(umask 077; mktemp "$base_real/.A-Box-clash-nodes.XXXXXX") || {
+        rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"
+        return 1
+    }
+    _clash_standalone_groups_tmp=$(umask 077; mktemp "$base_real/.A-Box-clash-groups.XXXXXX") || {
+        rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" "$_clash_standalone_nodes_tmp"
+        return 1
+    }
+    if ! write_clash_standalone_yaml "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"; then
+        rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+            "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+        return 1
+    fi
     {
         cat <<EOF_CLASH
 mixed-port: 7890
@@ -44012,6 +44429,11 @@ EOF_CLASH
       enabled: false
 EOF_CLASH
         fi
+        cat -- "$_clash_standalone_nodes_tmp" || {
+            rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+                "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+            return 1
+        }
         cat <<EOF_CLASH
 
 proxy-groups:
@@ -44028,14 +44450,24 @@ EOF_CLASH
         done < "$_clash_uuid_list_tmp"
         [[ "$hy2_yaml_emit" == true ]] && echo "      - $hy2_name"
         [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo '      - SS'
+        cat -- "$_clash_standalone_groups_tmp" || {
+            rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+                "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+            return 1
+        }
         cat <<EOF_CLASH
       - DIRECT
 
 rules:
   - MATCH,PROXY
 EOF_CLASH
-    } > "$tmp_out" || { rm -f -- "$tmp_out" "$_clash_uuid_list_tmp"; return 1; }
-    rm -f -- "$_clash_uuid_list_tmp"
+    } > "$tmp_out" || {
+        rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
+            "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
+        return 1
+    }
+    rm -f -- "$_clash_uuid_list_tmp" \
+        "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
     chmod 600 "$tmp_out" || { rm -f -- "$tmp_out"; return 1; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
     mv -f -T -- "$tmp_out" "$out" || { rm -f -- "$tmp_out"; return 1; }

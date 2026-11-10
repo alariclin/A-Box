@@ -22531,10 +22531,9 @@ EOF_SVC
     rm -f "$tmp_cfg" "$tmp_json"
 
     restart_service_soft sing-box || { if [[ -n "$cfg_bak" ]]; then restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; fi; die "$(tr_msg dp_sb_restart)"; }
+    allowPort "$port" tcp || { if [[ -n "$cfg_bak" ]]; then restore_cfg_backup "$cfg_bak" "$cfg" && restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    save_firewall_rules || { if [[ -n "$cfg_bak" ]]; then restore_cfg_backup "$cfg_bak" "$cfg" && restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; die "$(tr_msg pi_fw_persist_fail)"; }
     [[ -n "$cfg_bak" ]] && rm -f -- "$cfg_bak"
-
-    allowPort "$port" tcp || die "$(tprintf dp_fw_allow "${port}/tcp")"
-    save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
@@ -22676,7 +22675,7 @@ argo_deploy_ws() {
     # (additional credentials are not wiped); the main UUID is prepended
     # only when it is missing. A new inbound, or users that are not an
     # array, falls back to the single-user array built above.
-    if ! jq --slurpfile nb "$tmp_json" --arg uuid "$ARGO_UUID" \
+    if ! jq --slurpfile nb "$tmp_json" --rawfile uuid <(printf '%s' "$ARGO_UUID") \
             '(.inbounds | map(select(.tag=="vmess-ws-in" or .tag=="vless-ws-in"))) as $old
              | .inbounds |= (
                  map(select(.tag!="vmess-ws-in" and .tag!="vless-ws-in"))
@@ -22730,8 +22729,21 @@ argo_write_unit() {
     # A-Box-managed units (written by this function with the marker)
     # may be replaced; same gate as argo_remove_unit. A symlink is
     # refused as well: writing through it would follow the link.
-    if [[ -f "$unit" ]]; then
-        [[ ! -L "$unit" ]] && grep -Fxq '# Managed by A-Box' "$unit" 2>/dev/null || die "Refusing to overwrite foreign service unit ${unit} (not managed by A-Box). Remove or rename it, or deploy with a different name."
+    # R8C9-03: occupancy is -e/-L, not -f: a dangling symlink or a
+    # directory at the /etc path must not slip past as "absent".
+    if [[ -e "$unit" || -L "$unit" ]]; then
+        [[ -f "$unit" && ! -L "$unit" ]] && grep -Fxq '# Managed by A-Box' "$unit" 2>/dev/null || die "Refusing to overwrite foreign service unit ${unit} (not managed by A-Box). Remove or rename it, or deploy with a different name."
+    elif [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        # systemd also resolves the same name from vendor unit
+        # dirs; with no /etc unit, a foreign vendor unit must
+        # still refuse the takeover (the /etc write + restart below
+        # would otherwise shadow and restart an external service).
+        local vendor_unit
+        for vendor_unit in "/usr/lib/systemd/system/${name}.service" "/lib/systemd/system/${name}.service"; do
+            if [[ -e "$vendor_unit" || -L "$vendor_unit" ]]; then
+                [[ -f "$vendor_unit" && ! -L "$vendor_unit" ]] && grep -Fxq '# Managed by A-Box' "$vendor_unit" 2>/dev/null || die "Refusing to overwrite foreign service unit ${vendor_unit} (not managed by A-Box). Remove or rename it, or deploy with a different name."
+            fi
+        done
     fi
     if [[ "$name" == 'argo' ]]; then
         env_file_line='EnvironmentFile=/etc/ddr/.argo-token'
@@ -22874,17 +22886,18 @@ argo_wait_temp_ready() { # $1=unit $2=log $3=timeout(sec, default 60)
 # 6 attempts, 2s apart, 10s max / 5s connect-timeout each.
 # $1 = domain, $2 = ws path (e.g. /<UUID>-vmess). Returns 0 on 101.
 argo_origin_probe() {
-    local domain="$1" path="$2" tmpd='' hdr='' i
+    local domain="$1" path="$2" tmpd='' hdr='' i http_code=''
     tmpd=$(mktemp -d /tmp/A-Box-argo-probe.XXXXXX) || return 1
     hdr="$tmpd/headers"
     for i in 1 2 3 4 5 6; do
         : > "$hdr"
-        curl -s -D "$hdr" --http1.1 --connect-timeout 5 --max-time 10 \
+        http_code=$(curl -s -D "$hdr" --http1.1 --connect-timeout 5 --max-time 10 \
             -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
             -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
             -H 'Sec-WebSocket-Version: 13' \
-            "https://${domain}${path}" -o /dev/null 2>/dev/null || true
-        if head -1 "$hdr" 2>/dev/null | grep -q '^HTTP/[^ ]* 101'; then
+            -w '%{http_code}' \
+            "https://${domain}${path}" -o /dev/null 2>/dev/null) || true
+        if [[ "$http_code" == 101 ]]; then
             rm -rf -- "$tmpd"
             return 0
         fi
@@ -23047,6 +23060,46 @@ argo_wait_fixed_ready() { # $1=log $2=timeout(sec, default 60)
     return 1
 }
 
+# R8C9-05/R8C9-06: EXIT handler for the fixed-Argo token backup.
+# Restores the previous token on failure, restores the previous run
+# state (restarts a tunnel that was running before the change, stops
+# one that was not), then runs the EXIT trap that was installed before
+# deploy_argo_fixed (a caller cleanup must not be dropped). The
+# saved-trap replay mirrors deployment_transaction_exit_abort; the
+# entry status is preserved for the old handler and rollback failures
+# are diagnosed without masking the original failure.
+_argo_token_exit_restore() {
+    local _code=$? _prev_cmd=''
+    trap - EXIT
+    if [[ "${_argo_token_ok:-0}" != "1" && -n "${_argo_token_bak:-}" && -f "${_argo_token_bak:-}" ]]; then
+        if cp -a "${_argo_token_bak}" /etc/ddr/.argo-token 2>/dev/null; then
+            if [[ "${_argo_service_touched:-0}" == "1" ]]; then
+                if [[ "${_argo_was_running:-0}" == "1" ]]; then
+                    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+                        systemctl restart argo.service >/dev/null 2>&1 || msg "${RED}[!] Argo tunnel restart failed during token rollback; the old token was restored but the tunnel may not be running.${NC}"
+                    else
+                        rc-service argo restart >/dev/null 2>&1 || msg "${RED}[!] Argo tunnel restart failed during token rollback; the old token was restored but the tunnel may not be running.${NC}"
+                    fi
+                else
+                    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+                        systemctl stop argo.service >/dev/null 2>&1 || true
+                    else
+                        rc-service argo stop >/dev/null 2>&1 || true
+                    fi
+                fi
+            fi
+        else
+            msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
+        fi
+    fi
+    if [[ -n "${_argo_prev_trap_exit:-}" ]]; then
+        _prev_cmd="${_argo_prev_trap_exit#trap -- }"
+        _prev_cmd="${_prev_cmd% *}"
+        (exit "$_code")
+        eval "eval $_prev_cmd" || true
+    fi
+}
+
 deploy_argo_fixed() {
     clear; msg "${BOLD}${GREEN}$(tr_msg argo_title)${NC}"
     init_system_environment
@@ -23064,11 +23117,13 @@ deploy_argo_fixed() {
     # R5C9-02: back up the existing token before overwriting; the
     # EXIT trap restores it on any failure (die exits), and it is
     # cleared only after the fixed tunnel is verified ready.
-    local _argo_token_bak='' _argo_token_ok=0
+    local _argo_token_bak='' _argo_token_ok=0 _argo_prev_trap_exit='' _argo_exit_trap_installed=0 _argo_service_touched=0 _argo_was_running=0
     if [[ -f /etc/ddr/.argo-token ]]; then
         _argo_token_bak=$(mktemp /etc/ddr/.argo-token.bak.XXXXXX) || die "Failed to back up the existing Argo token."
         cp -a /etc/ddr/.argo-token "$_argo_token_bak" || die "Failed to back up the existing Argo token."
-        trap 'if [[ "${_argo_token_ok:-0}" != "1" && -n "${_argo_token_bak:-}" && -f "${_argo_token_bak:-}" ]]; then cp -a "${_argo_token_bak}" /etc/ddr/.argo-token 2>/dev/null || true; fi' EXIT
+        _argo_prev_trap_exit=$(trap -p EXIT || true)
+        trap '_argo_token_exit_restore' EXIT
+        _argo_exit_trap_installed=1
     fi
     write_file_atomically_from_stdin /etc/ddr/.argo-token 600 <<< "TUNNEL_TOKEN=${token}" || die "$(tr_msg ag_token_write)"
     local cfg='/etc/sing-box/config.json' tmp_json
@@ -23167,6 +23222,8 @@ EOF_SVC
         rm -f "$tmp_json"
     fi
     argo_deploy_ws
+    if argo_unit_active argo 2>/dev/null; then _argo_was_running=1; fi
+    _argo_service_touched=1
     argo_write_unit argo "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 run"
     # R13C9-01: restart succeeds before cloudflared authenticates;
     # do not commit mode=fixed until an authenticated connection
@@ -23175,7 +23232,15 @@ EOF_SVC
     # R5C9-02: fixed tunnel verified; the new token is good, so
     # clear the restore trap and drop the backup. R1-09-C04: only
     # now (fixed ready) delete the temp units, then commit state.
-    _argo_token_ok=1; trap - EXIT; [[ -n "$_argo_token_bak" ]] && rm -f -- "$_argo_token_bak"
+    # R8C9-05: only now (token verified) clear the restore trap —
+    # and restore the caller's EXIT trap instead of wiping it.
+    # Gated on the explicit installed flag, not on the backup
+    # file: when no trap was installed, nothing is touched.
+    if (( _argo_exit_trap_installed == 1 )); then
+        _argo_token_ok=1
+        restore_saved_trap EXIT "$_argo_prev_trap_exit"
+        rm -f -- "$_argo_token_bak"
+    fi
     argo_remove_unit argo-vmess
     argo_remove_unit argo-vless
     _argo_state_write "mode=fixed
@@ -23224,6 +23289,21 @@ argo_status() {
     fi
 }
 
+# R8C9-09: ownership predicate shared with argo_remove_unit: only an
+# /etc unit that exists, is not a symlink and carries the A-Box marker
+# may be stopped or removed. A foreign same-name service is left
+# running; the strict stop check below then fails the uninstall
+# instead of stopping someone else's service.
+argo_unit_managed() { # $1 = unit name -> 0 iff A-Box-managed /etc unit
+    local unit
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        unit="/etc/systemd/system/${1}.service"
+    else
+        unit="/etc/init.d/${1}"
+    fi
+    [[ -f "$unit" && ! -L "$unit" ]] && grep -Fxq '# Managed by A-Box' "$unit" 2>/dev/null
+}
+
 argo_uninstall() {
     local ans=''
     read -r -p "$(tr_msg argo_confirm_uninstall)" ans || ans=''
@@ -23231,6 +23311,17 @@ argo_uninstall() {
         Y|y) ;;
         *) return 0 ;;
     esac
+    # R8C9-09: refuse outright when a same-name service is active
+    # but not A-Box-managed, BEFORE any stop, config rewrite or
+    # other uninstall side effect: stopping it is forbidden, and
+    # proceeding would leave a half-uninstalled state behind the
+    # strict stop check below.
+    for _u in argo argo-vmess argo-vless; do
+        if ! argo_unit_managed "$_u" && argo_unit_active "$_u"; then
+            msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
+            return 1
+        fi
+    done
     local cfg='/etc/sing-box/config.json' tmp_cfg
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
         if ! command -v jq >/dev/null 2>&1; then
@@ -23248,14 +23339,21 @@ argo_uninstall() {
             # is dropped by construction (allowlist, not denylist).
             # Logical rules recurse: the transform is compositional, so
             # AND/OR over transformed sub-rules stays faithful. A logical
-            # rule whose sub-rules all empty out is dropped (it could
-            # never match post-uninstall).
-            def _keep_fields: ["type","invert","action","outbound","method","no_drop","override_address","override_port","network_strategy","network_type","fallback_network_type","fallback_delay","udp_disable_domain_unmapping","udp_connect","udp_timeout","tls_fragment","tls_fragment_fallback_delay","tls_record_fragment","tls_spoof","tls_spoof_method","sniffer","timeout","server","strategy","disable_cache","disable_optimistic_cache","rewrite_ttl","client_subnet","mode","rules"];
+            # rule that is false before its own invert is dropped — or,
+            # when the parent itself is inverted, becomes an unconditional
+            # (FULL-HIT) rule keeping the parent effect fields.
+            def _keep_fields: ["type","action","outbound","method","no_drop","override_address","override_port","network_strategy","network_type","fallback_network_type","fallback_delay","udp_disable_domain_unmapping","udp_connect","udp_timeout","tls_fragment","tls_fragment_fallback_delay","tls_record_fragment","tls_spoof","tls_spoof_method","sniffer","timeout","server","strategy","disable_cache","disable_optimistic_cache","rewrite_ttl","client_subnet","mode","rules"];
             def _strip_conditions: with_entries(select(.key as $k | _keep_fields | index($k)));
+            def _logical_full_hit: _strip_conditions | del(.type, .mode, .rules, .invert);
             def _fixrule:
               if (.type // "default") == "logical" then
                 if (.rules | type) == "array" then
-                  (.rules |= map(_fixrule)) | select((.rules | length) > 0)
+                  ((.rules | length) as $n
+                   | (.rules |= map(_fixrule))
+                   | if (((.mode // "and") == "and" and (.rules | length) < $n)
+                         or ((.mode // "and") == "or" and (.rules | length) == 0)) then
+                       if (.invert // false) then _logical_full_hit else empty end
+                     else select((.rules | length) > 0) end)
                 else . end
               elif (.inbound | type) == "string" then
                 if (.inbound == "vmess-ws-in" or .inbound == "vless-ws-in") then
@@ -23288,7 +23386,7 @@ argo_uninstall() {
     # unit reports inactive even when its process survives as
     # an orphan, and uninstall would report success over it.
     for _u in argo argo-vmess argo-vless; do
-        if argo_unit_active "$_u"; then
+        if argo_unit_managed "$_u" && argo_unit_active "$_u"; then
             if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
                 systemctl stop "$_u.service" >/dev/null 2>&1 || true
             else
@@ -24243,13 +24341,20 @@ routing_outbound_has() {
     # an Xray config exists, verify it actually declares direct
     # (JSONC-aware, since Xray accepts comments); a missing direct
     # means the rule would fail core validation at apply time.
-    # No Xray config means sing-box-only, where direct is built-in.
+    # No Xray config means sing-box-only: verify the tag in the
+    # sing-box config below (R8C9-10) — type "direct" is not a tag.
     if [[ "$tag" == 'direct' ]]; then
         if [[ -f /usr/local/etc/xray/config.json && ! -L /usr/local/etc/xray/config.json ]]; then
             # jq -e zero-output exits 4, not 1: normalize to 0/1.
             jsonc_strip_comments /usr/local/etc/xray/config.json 2>/dev/null | jq -e --arg t 'direct' '.outbounds[]? | select(.tag == $t)' >/dev/null 2>&1 && return 0 || return 1
+        elif [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json ]]; then
+            # R8C9-10: sing-box-only: type "direct" is not a tag;
+            # the tag must actually be declared (JSONC-aware, like
+            # the Xray branch). A missing tag, or an unreadable
+            # config, is absent — the tag is never assumed present.
+            jsonc_strip_comments /etc/sing-box/config.json 2>/dev/null | jq -e --arg t 'direct' '.outbounds[]? | select(.tag == $t)' >/dev/null 2>&1 && return 0 || return 1
         else
-            return 0
+            return 1
         fi
     fi
     routing_state_init || return 1
@@ -24413,12 +24518,15 @@ routing_apply_live() {
             rm -f "$tmp"
             local atmp='' applied_bak=''
             if [[ -f "$applied_file" ]]; then
-                applied_bak=$(mktemp) || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
-                cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak" "$applied_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
+                applied_bak=$(mktemp) || { if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions xray 2>/dev/null; then rm -f -- "$live_bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
+                cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions xray 2>/dev/null; then rm -f -- "$live_bak" "$applied_bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
             fi
             if ! atmp=$(mktemp); then
-                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
-                rm -f -- "$live_bak" "$applied_bak"
+                if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions xray 2>/dev/null; then
+                    rm -f -- "$live_bak" "$applied_bak"
+                else
+                    msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
+                fi
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
@@ -24426,13 +24534,19 @@ routing_apply_live() {
                 :
             else
                 rm -f "$atmp"
-                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
+                local _rb_ok=1
+                cp -f -- "$live_bak" "$cfg" 2>/dev/null || _rb_ok=0
+                prepare_abox_runtime_permissions xray 2>/dev/null || _rb_ok=0
                 if [[ -n "$applied_bak" ]]; then
-                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
+                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || _rb_ok=0
                 else
                     rm -f -- "$applied_file"
                 fi
-                rm -f -- "$live_bak" "$applied_bak"
+                if (( _rb_ok == 1 )); then
+                    rm -f -- "$live_bak" "$applied_bak"
+                else
+                    msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
+                fi
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
@@ -24510,12 +24624,15 @@ routing_apply_live() {
             rm -f "$tmp"
             local atmp='' applied_bak=''
             if [[ -f "$applied_file" ]]; then
-                applied_bak=$(mktemp) || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
-                cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }; rm -f -- "$live_bak" "$applied_bak"; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
+                applied_bak=$(mktemp) || { if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions sing-box 2>/dev/null; then rm -f -- "$live_bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
+                cp -a -- "$applied_file" "$applied_bak" && chmod 600 -- "$applied_bak" || { if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions sing-box 2>/dev/null; then rm -f -- "$live_bak" "$applied_bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"; return 1; }
             fi
             if ! atmp=$(mktemp); then
-                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
-                rm -f -- "$live_bak" "$applied_bak"
+                if cp -f -- "$live_bak" "$cfg" 2>/dev/null && prepare_abox_runtime_permissions sing-box 2>/dev/null; then
+                    rm -f -- "$live_bak" "$applied_bak"
+                else
+                    msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
+                fi
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
@@ -24523,13 +24640,19 @@ routing_apply_live() {
                 :
             else
                 rm -f "$atmp"
-                cp -f -- "$live_bak" "$cfg" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
+                local _rb_ok=1
+                cp -f -- "$live_bak" "$cfg" 2>/dev/null || _rb_ok=0
+                prepare_abox_runtime_permissions sing-box 2>/dev/null || _rb_ok=0
                 if [[ -n "$applied_bak" ]]; then
-                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || { msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; return 1; }
+                    cp -f -- "$applied_bak" "$applied_file" 2>/dev/null || _rb_ok=0
                 else
                     rm -f -- "$applied_file"
                 fi
-                rm -f -- "$live_bak" "$applied_bak"
+                if (( _rb_ok == 1 )); then
+                    rm -f -- "$live_bak" "$applied_bak"
+                else
+                    msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
+                fi
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi

@@ -25572,9 +25572,14 @@ _xl_legacy_adopt() {
     fi
     # Normal slot: binary + config, root-owned, correct types.
     [[ -f "$_slot_bin" && ! -L "$_slot_bin" && -x "$_slot_bin" ]] || { msg "${RED}[!] Takeover adoption refused: normal Xray binary is missing or not executable.${NC}" >&2; return 1; }
-    # Root-owned user is the security gate (group is not security-relevant:
-    # a root-owned file is writable only by root regardless of its group).
-    [[ "$(stat -c %u "$_slot_bin" 2>/dev/null || true)" == '0' ]] || { msg "${RED}[!] Takeover adoption refused: normal Xray binary is not root-owned.${NC}" >&2; return 1; }
+    # Root-owned is necessary but not sufficient: a root-owned file
+    # with group/other write bits is writable by non-root users, so
+    # the mode gate below is required before executing it as root.
+    # (Owner write alone, e.g. 0700/0755, is allowed.)
+    local _slot_uid=''
+    _slot_uid=$(stat -c %u -- "$_slot_bin" 2>/dev/null) || { msg "${RED}[!] Takeover adoption refused: cannot determine normal Xray binary owner.${NC}" >&2; return 1; }
+    [[ "$_slot_uid" == '0' ]] || { msg "${RED}[!] Takeover adoption refused: normal Xray binary is not root-owned.${NC}" >&2; return 1; }
+    path_mode_has_no_group_other_write "$_slot_bin" || { msg "${RED}[!] Takeover adoption refused: normal Xray binary is group- or other-writable; manual review required.${NC}" >&2; return 1; }
     [[ -f "$_slot_cfg" && ! -L "$_slot_cfg" ]] || { msg "${RED}[!] Takeover adoption refused: normal Xray config is missing.${NC}" >&2; return 1; }
     jq empty "$_slot_cfg" >/dev/null 2>&1 || { msg "${RED}[!] Takeover adoption refused: normal Xray config is not valid JSON.${NC}" >&2; return 1; }
     # Config test with the normal Xray runtime identity.
@@ -25986,7 +25991,7 @@ deploy_xray() {
     chmod 600 /usr/local/etc/xray/config.json || die 'Xray config permission hardening failed.'
     jq empty /usr/local/etc/xray/config.json >/dev/null 2>&1 || die "$(tr_msg dp_xray_json)"
     /usr/local/bin/xray run -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1 || die "$(tr_msg dp_xray_check)"
-    standalone_preserve_restore xray /usr/local/etc/xray/config.json || return 1
+    standalone_preserve_restore xray /usr/local/etc/xray/config.json || { deployment_transaction_rollback; return 1; }
 
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die "$(tr_msg dp_xray_unit)"
@@ -26124,7 +26129,7 @@ deploy_singbox() {
     chmod 600 /etc/sing-box/config.json || die 'Sing-box config permission hardening failed.'
     jq empty /etc/sing-box/config.json >/dev/null 2>&1 || die "$(tr_msg dp_sb_json)"
     /usr/local/bin/sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1 || die "$(tr_msg dp_sb_check)"
-    standalone_preserve_restore sing-box /etc/sing-box/config.json || return 1
+    standalone_preserve_restore sing-box /etc/sing-box/config.json || { deployment_transaction_rollback; return 1; }
 
     if [[ "$MODE_IN" == *'HY2'* || "$MODE_IN" == *'ALL'* ]] && [[ "${HY2_HOP:-}" == 'true' ]]; then
         # A-02: CAP_NET_ADMIN removed (see HY2_CAPS).
@@ -26728,6 +26733,7 @@ for_expected_services() {
 # falls back to the legacy start-all behavior.
 capture_pre_block_states() {
     local period="$1" tmp list srv active enabled_state
+    local _q='' _load_state='' _active_state='' _key='' _value='' _rc=0 _runlevel='' _member='' _rest=''
     local file="${PRE_BLOCK_STATES_PREFIX}-${period}"
     list=$(expected_service_list) || return 1
     tmp=$(mktemp /tmp/A-Box-pre-block-states.XXXXXX) || return 1
@@ -26735,12 +26741,52 @@ capture_pre_block_states() {
         [[ -n "$srv" ]] || continue
         active=0
         if is_systemd; then
-            systemctl is-active --quiet "$srv" 2>/dev/null && active=1
-            enabled_state=$(systemctl show -p UnitFileState --value "$srv" 2>/dev/null || printf 'unknown')
+            # One show query validates LoadState + ActiveState +
+            # UnitFileState together; any query or validation
+            # failure fails the whole snapshot (never record
+            # "unknown" as "originally stopped").
+            _q=$(systemctl show --no-pager --all -p LoadState -p ActiveState -p UnitFileState -- "$srv" 2>/dev/null) || { rm -f -- "$tmp"; return 1; }
+            _load_state=''; _active_state=''; enabled_state=''
+            while IFS='=' read -r _key _value; do
+                case "$_key" in
+                    LoadState) [[ -z "$_load_state" && -n "$_value" ]] || { rm -f -- "$tmp"; return 1; }; _load_state="$_value" ;;
+                    ActiveState) [[ -z "$_active_state" && -n "$_value" ]] || { rm -f -- "$tmp"; return 1; }; _active_state="$_value" ;;
+                    UnitFileState) [[ -z "$enabled_state" && -n "$_value" ]] || { rm -f -- "$tmp"; return 1; }; enabled_state="$_value" ;;
+                    *) rm -f -- "$tmp"; return 1 ;;
+                esac
+            done <<< "$_q"
+            case "$_load_state" in
+                loaded|masked) ;;
+                *) rm -f -- "$tmp"; return 1 ;;
+            esac
+            case "$_active_state" in
+                active|reloading|refreshing) active=1 ;;
+                inactive|failed) active=0 ;;
+                *) rm -f -- "$tmp"; return 1 ;;
+            esac
+            case "$enabled_state" in
+                enabled|enabled-runtime|disabled|static|indirect|linked|linked-runtime|alias|masked|masked-runtime|generated|transient) ;;
+                *) rm -f -- "$tmp"; return 1 ;;
+            esac
         else
-            rc-service "$srv" status >/dev/null 2>&1 && active=1
+            # OpenRC: default status contract (in-repo precedent:
+            # service_active_state_value / stop_owned /
+            # _remove_hy2_official): 0 = started, 3|16|32 =
+            # confirmed stopped, anything else = unknown.
+            if rc-service "$srv" status >/dev/null 2>&1; then
+                active=1
+            else
+                _rc=$?
+                case "$_rc" in
+                    3|16|32) active=0 ;;
+                    *) rm -f -- "$tmp"; return 1 ;;
+                esac
+            fi
+            _runlevel=$(rc-update show default 2>/dev/null) || { rm -f -- "$tmp"; return 1; }
             enabled_state='disabled'
-            if rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)"; then enabled_state='enabled'; fi
+            while IFS=$' \t' read -r _member _rest; do
+                if [[ "$_member" == "$srv" ]]; then enabled_state='enabled'; fi
+            done <<< "$_runlevel"
         fi
         printf '%s %s %s\n' "$srv" "$active" "$enabled_state" >> "$tmp" || { rm -f -- "$tmp"; return 1; }
     done <<< "$list"
@@ -28258,7 +28304,7 @@ do_cleanup() {
         rm -f /usr/local/bin/caddy /etc/ddr/.abox-caddy-owned || true
     fi
     users_registries_wipe || msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"
-    abox_zram_teardown
+    abox_zram_teardown || die 'zram teardown failed; aborting cleanup.'
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         if systemctl list-unit-files fail2ban.service >/dev/null 2>&1 && systemctl cat fail2ban.service >/dev/null 2>&1; then
             systemctl try-restart fail2ban >/dev/null 2>&1 || msg "${YELLOW}[!] $(tr_msg cl_f2b_restart_clean)${NC}"
@@ -28450,19 +28496,32 @@ _protocol_cfg_of() { # $1 = core -> cfg|bin|svc
 # _remove_inbounds_from_config CORE TAG...   |   CORE --all
 _remove_inbounds_from_config() {
     local core="$1"; shift
-    local info='' cfg='' bin='' svc='' bak='' tmp_cfg='' tags_json='' filter='' route_filter='' routes_before=0 routes_after=0
+    local info='' cfg='' bin='' svc='' bak='' tmp_cfg='' tags_json='' filter='' route_filter='' routes_before=0 routes_after=0 src_cfg=''
     info=$(_protocol_cfg_of "$core") || return 1
     IFS='|' read -r cfg bin svc <<< "$info"
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    # Delete through the same JSONC-stripped view the inventory
+    # uses. Prepare backup + stripped input BEFORE reading tags,
+    # so all three jq reads share one input snapshot; the live
+    # file is never rewritten before the new config validates.
+    [[ "${1:-}" == '--all' || $# -ge 1 ]] || return 1
+    bak=$(mktemp /tmp/A-Box-rm-bak.XXXXXX) || return 1
+    cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
+    src_cfg=$(mktemp /tmp/A-Box-rm-cfg.XXXXXX) || { rm -f "$bak"; return 1; }
+    tmp_cfg="$src_cfg.json"
+    ( umask 077; set -o noclobber; : > "$tmp_cfg" ) 2>/dev/null || { rm -f "$src_cfg" "$bak"; return 1; }
+    if ! jsonc_strip_comments "$bak" > "$src_cfg" 2>/dev/null; then
+        rm -f "$src_cfg" "$tmp_cfg" "$bak"
+        return 1
+    fi
     if [[ "${1:-}" == '--all' ]]; then
         # Clear-all keeps the internal "api" inbound (traffic-stats
         # infrastructure, not a node protocol) and drops everything else.
         filter='.inbounds |= map(select(.tag == "api"))'
         # Routing cleanup needs the removed set: every non-api tag.
-        tags_json=$(jq -r '.inbounds[]? | .tag // empty | select(. != "api")' "$cfg" 2>/dev/null | jq -R . | jq -s .) || return 1
+        tags_json=$(set -o pipefail; jq -r '.inbounds[]? | .tag // empty | select(. != "api")' "$src_cfg" 2>/dev/null | jq -R . | jq -s .) || { rm -f "$src_cfg" "$tmp_cfg" "$bak"; return 1; }
     else
-        (( $# >= 1 )) || return 1
-        tags_json=$(printf '%s\n' "$@" | jq -R . | jq -s .) || return 1
+        tags_json=$(set -o pipefail; printf '%s\n' "$@" | jq -R . | jq -s .) || { rm -f "$src_cfg" "$tmp_cfg" "$bak"; return 1; }
         filter='.inbounds |= map(select(.tag as $t | ($tags | index($t)) == null))'
     fi
     # U147: drop/strip routing rules that reference a removed inbound.
@@ -28470,9 +28529,12 @@ _remove_inbounds_from_config() {
     # string or an array. A rule survives when at least one inbound
     # reference survives; a rule left with no inbound reference at all
     # is dropped (an emptied list would otherwise match all traffic).
-    # Rules without any inbound field are untouched.
+    # Rules without any inbound field are untouched. An invert rule
+    # is never stripped: it rejects everything except the listed
+    # inbounds, so deleting it would revoke the reject policy.
     route_filter='def strip_field(f):
-      if has(f) then
+      if .invert == true then .
+      elif has(f) then
         if (.[f] | type) == "string" then
           if (.[f] as $t | ($tags | index($t)) != null) then del(.[f]) else . end
         elif (.[f] | type) == "array" then
@@ -28485,7 +28547,8 @@ _remove_inbounds_from_config() {
       (strip_field("inboundTag") | strip_field("inbound")) as $r
       | (if ($r | has("rules") and ($r.rules | type) == "array") then
            ($r | .rules |= map(strip_rule)
-                | if (.mode == "and" and (.rules | length) < ($r.rules | length)) then empty else . end)
+                | if (.invert == true and (.rules != ($r.rules))) then error("cannot safely rewrite inverted logical rule")
+                  elif (.mode == "and" and (.rules | length) < ($r.rules | length)) then empty else . end)
          else $r end) as $r2
       | if (($r2 | has("inboundTag") or has("inbound")) or ($r2 | has("rules") and ($r2.rules | length) > 0)) then $r2
         elif (has("inboundTag") or has("inbound") or has("rules")) then empty
@@ -28493,16 +28556,11 @@ _remove_inbounds_from_config() {
     (if .routing.rules then .routing.rules |= map(strip_rule) else . end)
     | (if .route.rules then .route.rules |= map(strip_rule) else . end)'
     filter="$filter | $route_filter"
-    routes_before=$(jq -r '[(.routing.rules // []), (.route.rules // [])] | map(length) | add' "$cfg" 2>/dev/null || echo 0)
-    bak=$(mktemp /tmp/A-Box-rm-bak.XXXXXX) || return 1
-    cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
-    tmp_cfg=$(mktemp /tmp/A-Box-rm-cfg.XXXXXX) || { rm -f "$bak"; return 1; }
-    ( umask 077; set -o noclobber; : > "$tmp_cfg.json" ) 2>/dev/null || { rm -f "$tmp_cfg" "$bak"; return 1; }
-    mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$bak" "$tmp_cfg.json"; return 1; }
-    tmp_cfg="$tmp_cfg.json"
-    if ! jq --argjson tags "$tags_json" "$filter" "$cfg" > "$tmp_cfg" 2>/dev/null; then
-        rm -f "$tmp_cfg" "$bak"; return 1
+    routes_before=$(jq -r '[(.routing.rules // []), (.route.rules // [])] | map(length) | add' "$src_cfg" 2>/dev/null || echo 0)
+    if ! jq --argjson tags "$tags_json" "$filter" "$src_cfg" > "$tmp_cfg" 2>/dev/null; then
+        rm -f "$src_cfg" "$tmp_cfg" "$bak"; return 1
     fi
+    rm -f "$src_cfg"
     routes_after=$(jq -r '[(.routing.rules // []), (.route.rules // [])] | map(length) | add' "$tmp_cfg" 2>/dev/null || echo 0)
     if [[ "$core" == 'sing-box' ]]; then
         "$bin" check -c "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$bak"; return 1; }
@@ -28587,10 +28645,37 @@ sync_env_ports_after_removal() {
     if [[ -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
         # R7C11-02: collect every listen port (top-level and
         # trafficStats.listen), not just the first top-level one.
-        while IFS= read -r _hy2line; do
-            hy2p=$(printf '%s\n' "$_hy2line" | grep -o '[0-9]\+' | tail -n 1 || true)
-            [[ -n "$hy2p" ]] && live_ports+=("$hy2p")
-        done < <(grep -E '^[[:space:]]*listen:' /etc/hysteria/config.yaml 2>/dev/null || true)
+        local _hy2_lines='' _hy2_rc=0 _hy2_value='' _hy2_re='' _hy2_key_re="^[[:space:]]*(listen|'listen'|\"listen\")[[:space:]]*:"
+        local _hy2_endpoint_re='^([[:alnum:]_.%-]*|\[[[:alnum:]_.%:-]+\]):([0-9]+(-[0-9]+)?)$'
+        _hy2_lines=$(grep -E "$_hy2_key_re" /etc/hysteria/config.yaml 2>/dev/null) || _hy2_rc=$?
+        if (( _hy2_rc > 1 )); then
+            _read_failed=1
+        else
+            while IFS= read -r _hy2line; do
+                [[ -n "$_hy2line" ]] || continue
+                _hy2_value="${_hy2line#*:}"
+                _hy2_value="${_hy2_value#"${_hy2_value%%[![:space:]]*}"}"
+                if [[ "$_hy2_value" == '"'* ]]; then
+                    _hy2_re='^"([^"\\]*)"([[:space:]]+#.*)?[[:space:]]*$'
+                elif [[ "$_hy2_value" == "'"* ]]; then
+                    _hy2_re="^'([^']*)'([[:space:]]+#.*)?[[:space:]]*$"
+                else
+                    _hy2_re='^([^[:space:]]+)([[:space:]]+#.*)?[[:space:]]*$'
+                fi
+                if [[ "$_hy2_value" =~ $_hy2_re ]]; then
+                    _hy2_value="${BASH_REMATCH[1]}"
+                else
+                    _read_failed=1
+                    continue
+                fi
+                if [[ "$_hy2_value" =~ $_hy2_endpoint_re ]]; then
+                    hy2p="${BASH_REMATCH[2]}"
+                    live_ports+=("$hy2p")
+                else
+                    _read_failed=1
+                fi
+            done <<< "$_hy2_lines"
+        fi
     fi
     # A config that exists but fails to parse must fail closed: treating
     # its ports as absent would clear live .env ports.
@@ -28998,7 +29083,7 @@ check_virgin_state() {
     fi
     rm -f "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true; path_tree_has_mountpoint /etc/ddr/standalone-links.d && die 'Refusing to delete /etc/ddr/standalone-links.d: mountpoint present in its tree.'; rm -rf -- /etc/ddr/standalone-links.d || die 'Failed to delete /etc/ddr/standalone-links.d.'
     users_registries_wipe || true
-    abox_zram_teardown
+    abox_zram_teardown || die 'zram teardown failed; aborting environment reset.'
     # Wallos is a standalone addon, not a protocol/core: environment
     # resets and protocol removal never tear it down, and its
     # fail2ban files stay with it. Only the deep uninstall tiers

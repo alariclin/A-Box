@@ -2238,7 +2238,7 @@ tr_msg() {
         zh:wl_rc_caddy_teardown_fail) echo '恢复重建失败，且残留的 Caddy 前端未能停止：80 端口可能仍被占用，请手动停止 abox-wallos-caddy 并检查。' ;;
         en:wl_rc_caddy_teardown_fail) echo 'Recovery rebuild failed and the orphan Caddy frontend could not be stopped: port 80 may still be held — stop abox-wallos-caddy manually and check.' ;;
         ru:wl_rc_caddy_teardown_fail) echo 'Восстановление не удалось, и осиротевший фронтенд Caddy не удалось остановить: порт 80 может оставаться занятым — остановите abox-wallos-caddy вручную и проверьте.' ;;
-        fa:wl_rc_caddy_teardown_fail) echo 'بازسازی بازیابی ناموفق بود و فرانت‌اند یتیم Caddy متوقف نشد: ممکن است پورت 80 همچنان اشغال باشد — abox-wallos-caddy را به‌صورت دستی متوقف کنید و بررسی کنید.' ;;
+        fa:wl_rc_caddy_teardown_fail) echo 'بازسازی در فرایند بازیابی ناموفق بود و فرانت‌اند یتیم Caddy متوقف نشد: ممکن است پورت 80 همچنان اشغال باشد — abox-wallos-caddy را به‌صورت دستی متوقف کنید و بررسی کنید.' ;;
         zh-tw:wl_rc_caddy_teardown_fail) echo '恢復重建失敗，且殘留的 Caddy 前端未能停止：80 連接埠可能仍被佔用，請手動停止 abox-wallos-caddy 並檢查。' ;;
         ja:wl_rc_caddy_teardown_fail) echo '復旧の再構築に失敗し、残存した Caddy フロントエンドを停止できませんでした。ポート 80 が占有されたままの可能性があります。abox-wallos-caddy を手動で停止して確認してください。' ;;
         zh:init_soft_warn) echo '未检测到受支持的初始化系统 (Systemd/OpenRC)，菜单以只读方式打开，部署类操作不可用。' ;;
@@ -3513,12 +3513,6 @@ tr_msg() {
         fa:oc_replace_warn) echo 'این میزبان از قبل یک استقرار دارد (کنونی: %s). ادامه کار، پیکربندی موجود آن هسته را بازنویسی و فقط Vision را نگه می‌دارد؛ گره‌های سایر پروتکل‌ها حذف می‌شوند!' ;;
         zh-tw:oc_replace_warn) echo '本機已有部署（目前：%s）。繼續將覆蓋同核心的現有設定，只保留 Vision，其餘協議節點會被清除！' ;;
         ja:oc_replace_warn) echo 'このホストには導入済みの構成があります（現在: %s）。続行すると、そのコアの既存設定が上書きされ、Vision のみが残ります。他のプロトコルノードは削除されます！' ;;
-        zh:tf_vnstat_pending) echo 'vnStat 接口已注册，月度数据将在首个采集周期（约 5 分钟）后显示。' ;;
-        en:tf_vnstat_pending) echo 'The vnStat interface is registered; monthly data appears after the first collection cycle (about 5 minutes).' ;;
-        ru:tf_vnstat_pending) echo 'Интерфейс vnStat зарегистрирован; месячные данные появятся после первого цикла сбора (около 5 минут).' ;;
-        fa:tf_vnstat_pending) echo 'رابط vnStat ثبت شد؛ داده‌های ماهانه پس از نخستین چرخه گردآوری (حدود ۵ دقیقه) نمایش داده می‌شود.' ;;
-        zh-tw:tf_vnstat_pending) echo 'vnStat 介面已註冊，月度資料將在首個採集週期（約 5 分鐘）後顯示。' ;;
-        ja:tf_vnstat_pending) echo 'vnStat のインターフェースを登録しました。月次データは最初の収集サイクル（約5分）後に表示されます。' ;;
         zh:pi_input_closed) echo '交互输入已结束。' ;;
         en:pi_input_closed) echo 'Interactive input closed.' ;;
         ru:pi_input_closed) echo 'Ввод завершён.' ;;
@@ -3633,12 +3627,6 @@ tr_msg() {
         fa:dp_current) echo 'پیکربندی کنونی: %s | استقرار جدید: %s' ;;
         zh-tw:dp_current) echo '目前設定：%s | 新部署：%s' ;;
         ja:dp_current) echo '現在の設定: %s | 新規導入: %s' ;;
-        zh:dp_continue) echo '继续部署吗？[Y/N]: ' ;;
-        en:dp_continue) echo 'Continue deployment? [Y/N]: ' ;;
-        ru:dp_continue) echo 'Продолжить развёртывание? [Y/N]: ' ;;
-        fa:dp_continue) echo 'استقرار ادامه یابد؟ [Y/N]: ' ;;
-        zh-tw:dp_continue) echo '繼續部署嗎？[Y/N]: ' ;;
-        ja:dp_continue) echo '導入を続けますか？[Y/N]: ' ;;
         zh:dp_fast_skip) echo '[快速/一键] 全新主机，跳过部署确认。' ;;
         en:dp_fast_skip) echo '[fast/one-click] fresh host; skip deploy confirm.' ;;
         ru:dp_fast_skip) echo '[быстрый/в один клик] новый хост; подтверждение развёртывания пропущено.' ;;
@@ -4005,18 +3993,6 @@ tr_msg() {
         fa:mu_col_window) echo 'بازه' ;;
         zh-tw:mu_col_window) echo '時段' ;;
         ja:mu_col_window) echo '時間帯' ;;
-        zh:mu_opts1) echo '1. 添加用户   2. 删除用户   3. 设置流量限额(GB)  4. 设置到期(天)  5. 设置可用时段' ;;
-        en:mu_opts1) echo '1. Add user   2. Delete user   3. Set quota (GB)  4. Set expiry (days)  5. Set time window' ;;
-        ru:mu_opts1) echo '1. Добавить   2. Удалить   3. Лимит трафика (ГБ)  4. Срок (дней)  5. Расписание' ;;
-        fa:mu_opts1) echo '1. افزودن کاربر   2. حذف کاربر   3. سهمیه ترافیک (GB)  4. انقضا (روز)  5. بازه زمانی' ;;
-        zh-tw:mu_opts1) echo '1. 新增用戶   2. 刪除用戶   3. 設定流量限額(GB)  4. 設定到期(天)  5. 設定可用時段' ;;
-        ja:mu_opts1) echo '1. ユーザー追加   2. ユーザー削除   3. 流量制限 (GB)  4. 有効期限 (日)  5. 時間帯設定' ;;
-        zh:mu_opts2) echo '6. 用量清零   7. 查看专属链接   8. 停用/启用   9. 从配置重新导入名单   0. 返回' ;;
-        en:mu_opts2) echo '6. Reset usage   7. View user link   8. Enable/Disable   9. Re-import from config   0. Back' ;;
-        ru:mu_opts2) echo '6. Сброс трафика   7. Ссылка пользователя   8. Вкл/Выкл   9. Переимпорт из конфига   0. Назад' ;;
-        fa:mu_opts2) echo '6. صفر کردن مصرف   7. مشاهده پیوند کاربر   8. فعال/غیرفعال   9. وارد کردن مجدد از پیکربندی   0. بازگشت' ;;
-        zh-tw:mu_opts2) echo '6. 用量清零   7. 查看專屬連結   8. 停用/啟用   9. 從設定重新匯入名單   0. 返回' ;;
-        ja:mu_opts2) echo '6. 使用量リセット   7. ユーザーリンク表示   8. 有効/無効   9. 設定から再インポート   0. 戻る' ;;
         zh:mu_a1) echo '添加用户' ;;
         en:mu_a1) echo 'Add user' ;;
         ru:mu_a1) echo 'Добавить' ;;
@@ -4497,6 +4473,12 @@ tr_msg() {
         fa:rollback_copy_fail) echo 'کپی بازگشت ناموفق بود؛ پشتیبان قدیمی نگه داشته شد، آن را دستی بازیابی و بررسی کنید.' ;;
         zh-tw:rollback_copy_fail) echo '回滾複製失敗，舊備份已保留未刪，請手動還原並檢查。' ;;
         ja:rollback_copy_fail) echo 'ロールバックのコピーに失敗しました。古いバックアップは削除せず残してあります。手動で復元し、確認してください。' ;;
+        zh:rollback_restart_fail) echo '旧配置已成功恢复，但 sing-box 服务重启失败，请手动重启服务并检查。' ;;
+        en:rollback_restart_fail) echo 'The previous configuration was restored successfully, but the sing-box service failed to restart; restart the service manually and check.' ;;
+        ru:rollback_restart_fail) echo 'Предыдущая конфигурация успешно восстановлена, но перезапустить службу sing-box не удалось; перезапустите службу вручную и проверьте.' ;;
+        fa:rollback_restart_fail) echo 'پیکربندی قبلی با موفقیت بازیابی شد، اما راه‌اندازی مجدد سرویس sing-box ناموفق بود؛ سرویس را به‌صورت دستی راه‌اندازی مجدد کنید و بررسی کنید.' ;;
+        zh-tw:rollback_restart_fail) echo '舊設定已成功還原，但 sing-box 服務重新啟動失敗，請手動重新啟動服務並檢查。' ;;
+        ja:rollback_restart_fail) echo '以前の設定は正常に復元されましたが、sing-box サービスの再起動に失敗しました。サービスを手動で再起動し、確認してください。' ;;
         zh:press_return) echo '按回车返回...' ;;
         en:press_return) echo 'Press Enter to return...' ;;
         ru:press_return) echo 'Нажмите Enter, чтобы вернуться...' ;;
@@ -4539,18 +4521,6 @@ tr_msg() {
         fa:lang_saved) echo 'زبان ذخیره شد.' ;;
         zh-tw:lang_saved) echo '語言已儲存。' ;;
         ja:lang_saved) echo '言語を保存しました。' ;;
-        zh:yes_no_default_no) echo '[Y/N]' ;;
-        en:yes_no_default_no) echo '[Y/N]' ;;
-        ru:yes_no_default_no) echo '[Y/N]' ;;
-        fa:yes_no_default_no) echo '[Y/N]' ;;
-        zh-tw:yes_no_default_no) echo '[Y/N]' ;;
-        ja:yes_no_default_no) echo '[Y/N]' ;;
-        zh:yes_no_default_yes) echo '[Y/N]' ;;
-        en:yes_no_default_yes) echo '[Y/N]' ;;
-        ru:yes_no_default_yes) echo '[Y/N]' ;;
-        fa:yes_no_default_yes) echo '[Y/N]' ;;
-        zh-tw:yes_no_default_yes) echo '[Y/N]' ;;
-        ja:yes_no_default_yes) echo '[Y/N]' ;;
         zh:reality_sni_prompt) echo '   %s 请输入伪装 SNI (端口 %s，回车默认: %s): ' ;;
         en:reality_sni_prompt) echo '   %s Enter camouflage SNI (port %s, default: %s): ' ;;
         ru:reality_sni_prompt) echo '   %s Введите маскирующий SNI (порт %s, по умолчанию: %s): ' ;;
@@ -4563,12 +4533,6 @@ tr_msg() {
         fa:bad_sni) echo 'قالب SNI نامعتبر است: %s' ;;
         zh-tw:bad_sni) echo 'SNI 格式非法: %s' ;;
         ja:bad_sni) echo '無効な SNI 形式: %s' ;;
-        zh:apple_non443_warn) echo '检测到非 443 端口使用 Apple/iCloud 类 SNI：%s。Xray-core 对 apple/icloud target 与非443端口有风险警告，此组合可能提高 IP 封禁概率。' ;;
-        en:apple_non443_warn) echo 'Apple/iCloud-like SNI on non-443 port detected: %s. Xray-core warns about apple/icloud targets and non-443 listening ports; this combination may increase IP blocking risk.' ;;
-        ru:apple_non443_warn) echo 'На порту, отличном от 443, обнаружен SNI Apple/iCloud: %s. Xray предупреждает о сочетании таких целей и нестандартного порта; риск блокировки IP может возрасти.' ;;
-        fa:apple_non443_warn) echo 'SNI شبیه Apple/iCloud روی درگاهی غیر از 443 شناسایی شد: %s. Xray درباره این ترکیب هشدار می‌دهد و احتمال مسدودشدن IP ممکن است افزایش یابد.' ;;
-        zh-tw:apple_non443_warn) echo '檢測到非 443 端口使用 Apple/iCloud 類 SNI：%s。Xray-core 對 apple/icloud target 與非443端口有風險警告，此組合可能提高 IP 封禁概率。' ;;
-        ja:apple_non443_warn) echo '非443ポートで Apple/iCloud 系 SNI (%s) を検出しました。Xray-core はこの組み合わせに警告しており、IP がブロックされるリスクが高まる可能性があります。' ;;
         zh:reality_non443_warn) echo '[!] REALITY/XHTTP 使用非 443 监听端口 (%s)。Xray 上游将其作为独立风险条件提示；请确认该端口符合你的网络环境。' ;;
         en:reality_non443_warn) echo '[!] REALITY/XHTTP is using a non-443 listen port (%s). Xray treats this as a separate risk condition; confirm that the port is suitable for your network environment.' ;;
         ru:reality_non443_warn) echo '[!] REALITY/XHTTP использует порт %s вместо 443. Xray отмечает это как отдельный фактор риска; убедитесь, что порт подходит для вашей сети.' ;;
@@ -4647,12 +4611,6 @@ tr_msg() {
         fa:bad_port) echo 'درگاه نامعتبر است: %s' ;;
         zh-tw:bad_port) echo '端口非法: %s' ;;
         ja:bad_port) echo '無効なポート: %s' ;;
-        zh:toolbox_title) echo '综合工具箱 / Toolbox' ;;
-        en:toolbox_title) echo 'Toolbox' ;;
-        ru:toolbox_title) echo 'Инструменты' ;;
-        fa:toolbox_title) echo 'جعبه ابزار' ;;
-        zh-tw:toolbox_title) echo '綜合工具箱 / Toolbox' ;;
-        ja:toolbox_title) echo 'ツールボックス' ;;
         zh:confirm_remote) echo '即将下载第三方远程脚本：%s。下载后会显示 SHA256 并要求强确认。继续下载？[Y/N]: ' ;;
         en:confirm_remote) echo 'About to download a third-party remote script: %s. SHA256 will be shown and a strong confirmation will be required. Continue download? [Y/N]: ' ;;
         ru:confirm_remote) echo 'Будет загружен сторонний скрипт: %s. SHA256 будет показан, перед запуском потребуется подтверждение. Продолжить? [Y/N]: ' ;;
@@ -5295,18 +5253,6 @@ tr_msg() {
         fa:split_rule_del_done) echo 'قانون حذف شد.' ;;
         zh-tw:split_rule_del_done) echo '規則已刪除。' ;;
         ja:split_rule_del_done) echo 'ルールを削除しました。' ;;
-        zh:mi_version) echo '版本' ;;
-        en:mi_version) echo 'Versions' ;;
-        ru:mi_version) echo 'Версии' ;;
-        fa:mi_version) echo 'نسخه‌ها' ;;
-        zh-tw:mi_version) echo '版本' ;;
-        ja:mi_version) echo 'バージョン' ;;
-        zh:mi_no_core) echo '未安装核心' ;;
-        en:mi_no_core) echo 'No core installed' ;;
-        ru:mi_no_core) echo 'Ядро не установлено' ;;
-        fa:mi_no_core) echo 'هسته‌ای نصب نشده' ;;
-        zh-tw:mi_no_core) echo '未安裝核心' ;;
-        ja:mi_no_core) echo 'コア未インストール' ;;
         zh:mi_system) echo '系统' ;;
         en:mi_system) echo 'System' ;;
         ru:mi_system) echo 'Система' ;;
@@ -5343,24 +5289,12 @@ tr_msg() {
         fa:mi_split) echo 'تفکیک' ;;
         zh-tw:mi_split) echo '分流' ;;
         ja:mi_split) echo '振り分け' ;;
-        zh:mi_rules) echo '规则 %s 条' ;;
-        en:mi_rules) echo '%s rules' ;;
-        ru:mi_rules) echo 'правил: %s' ;;
-        fa:mi_rules) echo '%s قانون' ;;
-        zh-tw:mi_rules) echo '規則 %s 條' ;;
-        ja:mi_rules) echo 'ルール %s 件' ;;
         zh:mi_users) echo '用户' ;;
         en:mi_users) echo 'Users' ;;
         ru:mi_users) echo 'Пользователи' ;;
         fa:mi_users) echo 'کاربران' ;;
         zh-tw:mi_users) echo '用戶' ;;
         ja:mi_users) echo 'ユーザー' ;;
-        zh:mi_users_line) echo '共 %s 人 · 封锁 %s · 本期用量 %s' ;;
-        en:mi_users_line) echo '%s users · %s blocked · used %s this period' ;;
-        ru:mi_users_line) echo 'всего %s · заблокировано %s · трафик за период %s' ;;
-        fa:mi_users_line) echo 'مجموع %s کاربر · مسدود %s · مصرف این دوره %s' ;;
-        zh-tw:mi_users_line) echo '共 %s 人 · 封鎖 %s · 本期用量 %s' ;;
-        ja:mi_users_line) echo '合計 %s 人 · ブロック %s · 今期使用量 %s' ;;
         zh:mi_u_blocked) echo '封锁' ;;
         en:mi_u_blocked) echo 'blocked' ;;
         ru:mi_u_blocked) echo 'заблокирован' ;;
@@ -7155,24 +7089,6 @@ tr_msg() {
         ru:ss2_self_verify) echo 'Проверка текущего скрипта A-Box не пройдена.' ;;
         fa:ss2_self_verify) echo 'بررسی اسکریپت فعلی A-Box ناموفق بود.' ;;
         ja:ss2_self_verify) echo '現在の A-Box スクリプトの検証に失敗しました。' ;;
-        zh:ss2_tmp) echo '快捷入口临时文件创建失败。' ;;
-        zh-tw:ss2_tmp) echo '快捷入口臨時檔案建立失敗。' ;;
-        en:ss2_tmp) echo 'Failed to create the shortcut temp file.' ;;
-        ru:ss2_tmp) echo 'Не удалось создать временный файл ярлыка.' ;;
-        fa:ss2_tmp) echo 'ایجاد فایل موقت میانبر ناموفق بود.' ;;
-        ja:ss2_tmp) echo 'ショートカットの一時ファイルを作成できませんでした。' ;;
-        zh:ss2_tmp_chmod) echo '快捷入口临时文件权限设置失败。' ;;
-        zh-tw:ss2_tmp_chmod) echo '快捷入口臨時檔案權限設定失敗。' ;;
-        en:ss2_tmp_chmod) echo 'Failed to set permissions on the shortcut temp file.' ;;
-        ru:ss2_tmp_chmod) echo 'Не удалось задать права временного файла ярлыка.' ;;
-        fa:ss2_tmp_chmod) echo 'تنظیم مجوزهای فایل موقت میانبر ناموفق بود.' ;;
-        ja:ss2_tmp_chmod) echo 'ショートカット一時ファイルの権限設定に失敗しました。' ;;
-        zh:ss2_write) echo '快捷入口写入失败。' ;;
-        zh-tw:ss2_write) echo '快捷入口寫入失敗。' ;;
-        en:ss2_write) echo 'Failed to write the shortcut.' ;;
-        ru:ss2_write) echo 'Не удалось записать ярлык.' ;;
-        fa:ss2_write) echo 'نوشتن میانبر ناموفق بود.' ;;
-        ja:ss2_write) echo 'ショートカットの書き込みに失敗しました。' ;;
         zh:sv_enable_boot) echo '服务 %s 无法设置为开机启动。' ;;
         zh-tw:sv_enable_boot) echo '服務 %s 無法設定為開機啟動。' ;;
         en:sv_enable_boot) echo 'The service %s could not be set to start at boot.' ;;
@@ -7347,12 +7263,6 @@ tr_msg() {
         ru:tn_tmp_init) echo 'Не удалось инициализировать временный файл настройки; исходное состояние восстановлено.' ;;
         fa:tn_tmp_init) echo 'مقداردهی اولیه فایل موقت بهینه‌سازی ناموفق بود؛ وضعیت اصلی بازگردانده شد.' ;;
         ja:tn_tmp_init) echo 'チューニング一時ファイルの初期化に失敗し、元の状態に復旧しました。' ;;
-        zh:tx_backup) echo '无法确认部署前备份文件。' ;;
-        zh-tw:tx_backup) echo '無法確認部署前備份檔案。' ;;
-        en:tx_backup) echo 'Cannot confirm the pre-deployment backup file.' ;;
-        ru:tx_backup) echo 'Невозможно подтвердить файл резервной копии перед развёртыванием.' ;;
-        fa:tx_backup) echo 'تأیید فایل پشتیبان پیش از استقرار ممکن نیست.' ;;
-        ja:tx_backup) echo 'デプロイ前のバックアップファイルを確認できません。' ;;
         zh:tx_nested) echo '检测到嵌套部署事务；拒绝静默复用外层事务。' ;;
         zh-tw:tx_nested) echo '偵測到巢狀部署事務；拒絕靜默復用外層事務。' ;;
         en:tx_nested) echo 'A nested deployment transaction was detected; refusing to silently reuse the outer transaction.' ;;
@@ -8217,12 +8127,6 @@ tr_msg() {
         fa:wl_st_php_bad) echo 'نسخهٔ PHP: ‏%s (php2shell اصلاح نشده است — Wallos را ارتقا دهید)' ;;
         zh-tw:wl_st_php_bad) echo 'PHP 版本：%s（php2shell 未修復 — 請升級 Wallos）' ;;
         ja:wl_st_php_bad) echo 'PHP バージョン: %s（php2shell 未修正 — Wallos をアップグレードしてください）' ;;
-        zh:fmt_unused) echo '未用' ;;
-        en:fmt_unused) echo 'unused' ;;
-        ru:fmt_unused) echo 'нет трафика' ;;
-        fa:fmt_unused) echo 'بدون مصرف' ;;
-        zh-tw:fmt_unused) echo '未用' ;;
-        ja:fmt_unused) echo '未使用' ;;
         zh:sni_custom_prompt) echo 'SNI（回车 = 自动优选，或直接输入域名）: ' ;;
         en:sni_custom_prompt) echo 'SNI (Enter = auto-select, or type a domain): ' ;;
         ru:sni_custom_prompt) echo 'SNI (Enter — автовыбор, или введите домен): ' ;;
@@ -8289,12 +8193,6 @@ tr_msg() {
         fa:nsni_checking) echo 'در حال بررسی SNI جدید (شروع سرد ممکن است چند ثانیه طول بکشد، لطفاً صبر کنید)…' ;;
         zh-tw:nsni_checking) echo '正在驗證新 SNI（冷啟動可能需要數秒，請稍候）…' ;;
         ja:nsni_checking) echo '新しい SNI を確認中です（コールドスタートは数秒かかる場合があります。しばらくお待ちください）…' ;;
-        zh:mi_u_forever) echo '永久' ;;
-        en:mi_u_forever) echo 'forever' ;;
-        ru:mi_u_forever) echo 'навсегда' ;;
-        fa:mi_u_forever) echo 'دائمی' ;;
-        zh-tw:mi_u_forever) echo '永久' ;;
-        ja:mi_u_forever) echo '無期限' ;;
         zh:mi_u_expired) echo '已过期' ;;
         en:mi_u_expired) echo 'expired' ;;
         ru:mi_u_expired) echo 'истёк' ;;
@@ -8331,30 +8229,6 @@ tr_msg() {
         fa:split_need_outbound) echo 'ابتدا خروجی SOCKS5 اضافه کنید.' ;;
         zh-tw:split_need_outbound) echo '請先添加 SOCKS5 出站。' ;;
         ja:split_need_outbound) echo '先に SOCKS5 アウトバウンドを追加してください。' ;;
-        zh:mi_running) echo '运行中' ;;
-        en:mi_running) echo 'running' ;;
-        ru:mi_running) echo 'работает' ;;
-        fa:mi_running) echo 'در حال اجرا' ;;
-        zh-tw:mi_running) echo '運行中' ;;
-        ja:mi_running) echo '稼働中' ;;
-        zh:mi_stopped) echo '已停止' ;;
-        en:mi_stopped) echo 'stopped' ;;
-        ru:mi_stopped) echo 'остановлено' ;;
-        fa:mi_stopped) echo 'متوقف' ;;
-        zh-tw:mi_stopped) echo '已停止' ;;
-        ja:mi_stopped) echo '停止中' ;;
-        zh:mi_not_installed) echo '未安装' ;;
-        en:mi_not_installed) echo 'not installed' ;;
-        ru:mi_not_installed) echo 'не установлено' ;;
-        fa:mi_not_installed) echo 'نصب نشده' ;;
-        zh-tw:mi_not_installed) echo '未安裝' ;;
-        ja:mi_not_installed) echo '未インストール' ;;
-        zh:mi_on) echo '已开启' ;;
-        en:mi_on) echo 'on' ;;
-        ru:mi_on) echo 'вкл' ;;
-        fa:mi_on) echo 'روشن' ;;
-        zh-tw:mi_on) echo '已開啟' ;;
-        ja:mi_on) echo '有効' ;;
         zh:mi_off) echo '未开启' ;;
         en:mi_off) echo 'off' ;;
         ru:mi_off) echo 'выкл' ;;
@@ -8392,22 +8266,16 @@ tr_msg() {
         zh-tw:mi_disk) echo '硬碟' ;;
         ja:mi_disk) echo 'ディスク' ;;
         zh:mi_net) echo '网络' ;;
-        zh:mi_dns) echo 'DNS' ;;
         zh:mi_dns_plain) echo '明文' ;;
         en:mi_net) echo 'Network' ;;
-        en:mi_dns) echo 'DNS' ;;
         en:mi_dns_plain) echo 'Plain' ;;
         ru:mi_net) echo 'Сеть' ;;
-        ru:mi_dns) echo 'DNS' ;;
         ru:mi_dns_plain) echo 'Обычный' ;;
         fa:mi_net) echo 'شبکه' ;;
-        fa:mi_dns) echo 'DNS' ;;
         fa:mi_dns_plain) echo 'ساده' ;;
         zh-tw:mi_net) echo '網絡' ;;
-        zh-tw:mi_dns) echo 'DNS' ;;
         zh-tw:mi_dns_plain) echo '明文' ;;
         ja:mi_net) echo 'ネットワーク' ;;
-        ja:mi_dns) echo 'DNS' ;;
         ja:mi_dns_plain) echo '平文' ;;
         zh:mi_hy2_hop) echo '跳跃端口 %s' ;;
         en:mi_hy2_hop) echo 'hop ports %s' ;;
@@ -22604,8 +22472,8 @@ EOF_SVC
     rm -f "$tmp_cfg" "$tmp_json"
 
     restart_service_soft sing-box || { if [[ -n "$cfg_bak" ]]; then restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; fi; die "$(tr_msg dp_sb_restart)"; }
-    allowPort "$port" tcp || { if [[ -n "$cfg_bak" ]]; then restore_cfg_backup "$cfg_bak" "$cfg" && restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    save_firewall_rules || { if [[ -n "$cfg_bak" ]]; then restore_cfg_backup "$cfg_bak" "$cfg" && restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; die "$(tr_msg pi_fw_persist_fail)"; }
+    allowPort "$port" tcp || { if [[ -n "$cfg_bak" ]]; then if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; fi; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    save_firewall_rules || { if [[ -n "$cfg_bak" ]]; then if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; fi; die "$(tr_msg pi_fw_persist_fail)"; }
     [[ -n "$cfg_bak" ]] && rm -f -- "$cfg_bak"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
@@ -47595,7 +47463,6 @@ PY_SELFTEST_TAR
     grep -Fq 'get_public_ip_swr()' <<< "$source_body" || { echo 'FAIL: get_public_ip_swr missing'; failures=$((failures + 1)); }
     grep -Fq '_ip_geo_fetch_now()' <<< "$source_body" || { echo 'FAIL: _ip_geo_fetch_now missing'; failures=$((failures + 1)); }
     grep -Fq '_MI_SNI_LIST' <<< "$source_body" || { echo 'FAIL: SNI list missing'; failures=$((failures + 1)); }
-    grep -Fq 'mi_users_line' <<< "$source_body" || { echo 'FAIL: mi_users_line missing'; failures=$((failures + 1)); }
     grep -Fq '_MI_USER_RECS' <<< "$source_body" || { echo 'FAIL: user records missing'; failures=$((failures + 1)); }
     grep -Fq 'mi_u_blocked' <<< "$source_body" || { echo 'FAIL: mi_u_blocked missing'; failures=$((failures + 1)); }
     grep -Fq 'mi_users_none' <<< "$source_body" || { echo 'FAIL: mi_users_none missing'; failures=$((failures + 1)); }

@@ -394,8 +394,9 @@ jobs:
           done
           # Upload order is binaries -> CORE-VERSIONS -> SHA256SUMS (full) last.
           # SHA256SUMS.incoming is verification-only and is NOT uploaded.
-          # No --clobber: gh release upload fails if the asset already exists;
-          # set -euo pipefail then stops the step (fail-closed, no silent overwrite).
+          # Versioned binaries stay no-clobber: an existing asset aborts the step.
+          # Only fixed-name metadata and signatures use --clobber after publish gates.
+          # Metadata replacement is not atomic; failures stop verification/pruning.
           for f in verified/*; do
             [[ -f "$f" ]] || continue
             name=$(basename "$f")
@@ -412,16 +413,16 @@ jobs:
           done
           if [[ -f verified/CORE-VERSIONS ]]; then
             echo "Uploading CORE-VERSIONS"
-            gh release upload core-binaries "verified/CORE-VERSIONS#CORE-VERSIONS"
+            gh release upload core-binaries "verified/CORE-VERSIONS#CORE-VERSIONS" --clobber
             # F-05: upload detached signature if the signing step produced one.
             if [[ -f verified/CORE-VERSIONS.sig ]]; then
-              gh release upload core-binaries "verified/CORE-VERSIONS.sig#CORE-VERSIONS.sig"
+              gh release upload core-binaries "verified/CORE-VERSIONS.sig#CORE-VERSIONS.sig" --clobber
             fi
           fi
           echo "Uploading SHA256SUMS (last)"
-          gh release upload core-binaries "verified/SHA256SUMS#SHA256SUMS"
+          gh release upload core-binaries "verified/SHA256SUMS#SHA256SUMS" --clobber
           if [[ -f verified/SHA256SUMS.sig ]]; then
-            gh release upload core-binaries "verified/SHA256SUMS.sig#SHA256SUMS.sig"
+            gh release upload core-binaries "verified/SHA256SUMS.sig#SHA256SUMS.sig" --clobber
           fi
           echo "Publish complete. Verified assets uploaded without execution."
       # C2 (Q6, step 6 of the 9-step publish order): re-download the

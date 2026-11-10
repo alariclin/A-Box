@@ -19118,6 +19118,7 @@ acquire_abox_runtime_guard() {
 # A-07: Do NOT acquire the shared runtime lock here. Downloads below (up to
 # 60s + 90s + 90s = 240s) would hold /run/A-Box.lock and kill interactive
 # sessions via flock -w 15. Acquired just before txn_stage instead.
+is_systemd() { [[ "${INIT_SYS_EXPECTED:-${INIT_SYS:-}}" == systemd ]]; }
 xray_owned() { local u; if is_systemd; then u=/etc/systemd/system/xray.service; else u=/etc/init.d/xray; fi; [[ -f "$u" && ! -L "$u" ]] && grep -Fxq '# Managed by A-Box' "$u"; }
 update_geo_ownership() {
     python3 -I - "$ABOX_CORE_OWNERSHIP" /usr/local/share/xray/geoip.dat /usr/local/share/xray/geosite.dat <<'PY_GEO_OWNER'
@@ -45467,8 +45468,9 @@ core_ports_listening() {
 # Probing plain-TCP inbounds (SS, non-TLS vless) or UDP ports causes false failures.
 core_expected_tls_tcp_targets() {
     # R15-06/07/08: enumerate per-inbound (host, port) TLS targets as TSV
-    # (host<TAB>port, one line per target), NOT bare ports. The config is
-    # stripped (JSONC) and parsed with each step checked separately: the
+    # (host<TAB>port, one line per target), NOT bare ports. For xray and
+    # singbox, the config is stripped (JSONC) and parsed with each step
+    # checked separately: the
     # strip helper falls back to cat when its python fails, so only the
     # parse check can catch a strip failure. The document shape is
     # validated (one object, .inbounds null-or-array) so an empty or
@@ -45489,6 +45491,14 @@ core_expected_tls_tcp_targets() {
     local core="$1" cfg="$2"
     local _stripped _strip_rc _doc _doc_rc _targets _enum_rc _line _diag
     [[ -f "$cfg" && ! -L "$cfg" ]] || { msg "${RED}[!] TLS 目标枚举失败：配置文件缺失：${cfg}${NC}" >&2; return 1; }
+    # R1-F16-1: only xray/singbox use the JSON(C) inbound schema below.
+    # Hysteria config is YAML and its primary listener is QUIC/UDP;
+    # other cores are not enumerated here. Return before parsing so an
+    # unparsable-as-JSON config cannot fail the health gate.
+    case "$core" in
+        xray|singbox) ;;
+        *) return 0 ;;
+    esac
     _stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null); _strip_rc=$?
     (( _strip_rc == 0 )) || { msg "${RED}[!] TLS 目标枚举失败：无法剥离注释：${cfg}${NC}" >&2; return 1; }
     _doc=$(printf '%s' "$_stripped" | jq -c '.' 2>/dev/null); _doc_rc=$?

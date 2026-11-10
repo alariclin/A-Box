@@ -17280,9 +17280,9 @@ fetch_github_release() {
 
     if [[ "$target_source" == 'upstream' || "$target_source" == 'explicit' || "$target_source" == 'pinned' ]]; then
         if core_fetch_upstream_release_asset "$repo" "$output_file" "$dest_file" "$target_ref" "$asset_re" "$target_source"; then return 0; fi
-        # F-02 fix: for auto-stable (source=upstream), try the exact-tag versioned
-        # mirror before falling back to the fixed compat pin. This honors the
-        # documented "same version mirror first" policy.
+        # F-02 fix: for auto-stable (source=upstream), try the same-tag versioned
+        # mirror after upstream failure; if unavailable, try the current verified
+        # mirror version (source=mirror). There is no fixed-pin fallback.
         if [[ "$target_source" == 'upstream' ]]; then
             if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
                 core_set_resolved_target "$repo" "$target_ref" mirror-exact || die "$(tr_msg fg_record_exact)"

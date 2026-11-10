@@ -151,12 +151,16 @@ jobs:
               sys.exit(1)
           print("OK: six-language i18n gate passed")
           PY
-  fixture-compat:
+  fixture-compat-matrix:
     # P1-06 (GPT A'): minimal cross-distro fixture-compatibility matrix.
     # NOT a real runtime matrix: --self-test is fixture/static assertions,
     # it never installs real cores or touches the network. Debian slim gives
     # a clean GNU/glibc userland, Alpine a musl one; the old standalone
     # Alpine syntax step is folded in here (it now runs the full self-test).
+    # Job id is fixture-compat-matrix (not fixture-compat): a matrix job
+    # reports checks as "<id> (matrix values)", which never exactly matches
+    # the ruleset's required check "fixture-compat". The bare name belongs
+    # to the fixture-compat summary gate below (needs + if: always()).
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -196,3 +200,18 @@ jobs:
             grep -Fxq "SELF_TEST_OK" "$log"
             if grep -Fq "SELF_TEST_FAILED" "$log"; then exit 1; fi
           '
+
+  fixture-compat:
+    # Fixed-name summary gate for fixture-compat-matrix above.
+    # Required by the "Protect main" ruleset (exact-name match); reports
+    # success only when the whole matrix succeeded. if: always() + an
+    # explicit result check: a skipped gate must never read as a pass.
+    name: fixture-compat
+    needs: fixture-compat-matrix
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the complete matrix to pass
+        env:
+          MATRIX_RESULT: ${{ needs.fixture-compat-matrix.result }}
+        run: test "$MATRIX_RESULT" = success

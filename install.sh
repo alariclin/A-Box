@@ -28479,13 +28479,18 @@ _standalone_link_survivor() {
     esac
     # 2gq: a missing config is a confirmed "not served" (as before); a
     # jq failure is NOT — it must never be read as "no survivor".
-    # jq -e rc: 0 match; 1 no match (jq <= 1.6); 4 no match (jq >= 1.7);
-    # anything else (2/3/5/127/...) means the check itself failed.
+    # One-pass Boolean slurp: rc 0 = survivor, rc 1 = confirmed
+    # absence, anything else = unverifiable. The slurp reads the
+    # whole file once, so a validate-then-reread race cannot flip
+    # the answer. An empty file slurps to [] (false -> rc 1), so
+    # it is rejected up front as unverifiable, not "confirmed gone".
+    # (jq 1.6 parse-fail is rc 4, jq 1.7 is rc 5 — both land in *.)
     [[ -f "$_cfg" && ! -L "$_cfg" ]] || return 1
-    jq -e "$_prog" "$_cfg" >/dev/null 2>&1 || _jq_rc=$?
+    [[ -s "$_cfg" ]] || { msg "${YELLOW}[!] standalone link '$key': survivorship unverifiable (empty config); keeping the link.${NC}" >&2; return 2; }
+    jq -s -e "([.[] | (${_prog})] | length) > 0" "$_cfg" >/dev/null 2>&1 || _jq_rc=$?
     case "$_jq_rc" in
         0) return 0 ;;
-        1|4) return 1 ;;
+        1) return 1 ;;
         *) msg "${YELLOW}[!] standalone link '$key': survivorship unverifiable (jq rc ${_jq_rc}); keeping the link.${NC}" >&2; return 2 ;;
     esac
 }
@@ -28521,12 +28526,13 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     # the pair is the script-managed /etc/sing-box/hy2.crt+key;
     # anything else (shared, external path, still referenced) stays.
     if [[ "$core" == 'sing-box' ]]; then
-        if [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json ]]; then
+        if [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json && -s /etc/sing-box/config.json ]]; then
             # 2gq: delete the cert pair only when jq confirms no
-            # hysteria2 inbound remains (rc 1/4); a jq failure keeps it.
+            # hysteria2 inbound remains (one-pass Boolean, rc 1);
+            # a jq failure or an empty config keeps it.
             local _hy2_jq_rc=0
-            jq -e '.inbounds[]? | select(.type == "hysteria2")' /etc/sing-box/config.json >/dev/null 2>&1 || _hy2_jq_rc=$?
-            if [[ "$_hy2_jq_rc" == 1 || "$_hy2_jq_rc" == 4 ]]; then
+            jq -s -e '([.[] | .inbounds[]? | select(.type == "hysteria2")] | length) > 0' /etc/sing-box/config.json >/dev/null 2>&1 || _hy2_jq_rc=$?
+            if [[ "$_hy2_jq_rc" == 1 ]]; then
                 [[ -f /etc/sing-box/hy2.crt && ! -L /etc/sing-box/hy2.crt ]] && rm -f -- /etc/sing-box/hy2.crt 2>/dev/null || true
                 [[ -f /etc/sing-box/hy2.key && ! -L /etc/sing-box/hy2.key ]] && rm -f -- /etc/sing-box/hy2.key 2>/dev/null || true
             fi
@@ -28538,12 +28544,13 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     # The shared Argo link registration goes only when no ws inbound remains.
     if [[ "$core" == 'sing-box' ]]; then
         cfg='/etc/sing-box/config.json'
-        if [[ -f "$cfg" && ! -L "$cfg" ]]; then
+        if [[ -f "$cfg" && ! -L "$cfg" && -s "$cfg" ]]; then
             # 2gq: remove the shared Argo link only when jq confirms no
-            # ws inbound remains (rc 1/4); a jq failure keeps it.
+            # ws inbound remains (one-pass Boolean, rc 1); a jq
+            # failure or an empty config keeps it.
             local _argo_jq_rc=0
-            jq -e '.inbounds[]? | select(.tag == "vmess-ws-in" or .tag == "vless-ws-in")' "$cfg" >/dev/null 2>&1 || _argo_jq_rc=$?
-            if [[ "$_argo_jq_rc" == 1 || "$_argo_jq_rc" == 4 ]]; then
+            jq -s -e '([.[] | .inbounds[]? | select(.tag == "vmess-ws-in" or .tag == "vless-ws-in")] | length) > 0' "$cfg" >/dev/null 2>&1 || _argo_jq_rc=$?
+            if [[ "$_argo_jq_rc" == 1 ]]; then
                 rm -f -- /etc/ddr/standalone-links.d/argo.link 2>/dev/null || true
                 argo_remove_unit argo || true
             fi
@@ -28560,6 +28567,10 @@ _remove_hy2_official() {
         msg "${YELLOW}[!] $(tr_msg hy2_skip_foreign)${NC}"
         return 1
     fi
+    # R6C11-01 (moved up, R10-03): refuse if /etc/hysteria (or
+    # anything under it) is a mountpoint BEFORE stopping or
+    # deleting anything; rm -rf would delete shared foreign data.
+    path_tree_has_mountpoint /etc/hysteria && return 1
     stop_abox_service_soft hysteria >/dev/null 2>&1 || {
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then systemctl stop hysteria >/dev/null 2>&1 || true
         elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then rc-service hysteria stop >/dev/null 2>&1 || true; fi
@@ -28597,9 +28608,6 @@ _remove_hy2_official() {
     # 2fv: remove the grant script and the tmpfiles.d persistence
     # entry (both are deploy artifacts of the official-hop grant).
     rm -f -- /usr/local/bin/abox-hy2-xtables-lock-grant /etc/tmpfiles.d/abox-xtables-lock.conf
-    # R6C11-01: refuse if /etc/hysteria (or anything under it) is a
-    # mountpoint; rm -rf would delete shared foreign data.
-    path_tree_has_mountpoint /etc/hysteria && return 1
     rm -rf -- /etc/hysteria || return 1
     rm -f -- /etc/ddr/standalone-links.d/hy2.link /etc/ddr/standalone-links.d/hysteria.link 2>/dev/null || true
     users_registry_remove hy2 hy2-official
@@ -29366,7 +29374,8 @@ list_extra_uuids() {
     # Validate UUID shape without interval-regex operators such as {8}. Older
     # mawk versions shipped by supported legacy distributions do not implement
     # interval expressions, which would otherwise silently hide every UUID.
-    awk -v primary="${UUID:-}" '
+    ABOX_PRIMARY_UUID="${UUID:-}" awk '
+        BEGIN { primary = ENVIRON["ABOX_PRIMARY_UUID"] }
         {
             if (split($0, part, "-") != 5) next
             if (length(part[1]) != 8 || length(part[2]) != 4 || length(part[3]) != 4 || length(part[4]) != 4 || length(part[5]) != 12) next
@@ -29685,7 +29694,11 @@ users_reg_write_path() {
     printf '%s\n' "$content" > "$tmp" || { rm -f "$tmp"; return 1; }
     jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
     chmod 600 "$tmp" || { rm -f "$tmp"; return 1; }
-    mv -f -- "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
+    # R10-06: a directory at the destination must fail, not be
+    # silently swallowed: without -T, mv renames the temp file
+    # INTO the directory and reports success.
+    if [[ -d "$dest" ]]; then rm -f "$tmp"; return 1; fi
+    mv -f -T -- "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
     return 0
 }
 
@@ -29846,14 +29859,14 @@ users_adopt() {
             [[ -n "$proto" ]] || return 1
             raw=$(jq -c --arg t "$tag" '
                 .inbounds[]? | select(.tag == $t) | .settings as $st
-                | if .protocol == "vless" then [$st.clients[]? | {name: (if .email then (.email | split("/") | .[1] // "main") else "main" end), secret: .id, flow: (.flow // "")}]
-                  elif .protocol == "trojan" then [$st.clients[]? | {name: (if .email then (.email | split("/") | .[1] // "main") else "main" end), secret: .password}]
+                | if .protocol == "vless" then [$st.clients[]? | {name: (if .email then (if .email == "" then "main" else (.email | split("/") | .[-1]) end) else "main" end), secret: .id, flow: (.flow // "")}]
+                  elif .protocol == "trojan" then [$st.clients[]? | {name: (if .email then (if .email == "" then "main" else (.email | split("/") | .[-1]) end) else "main" end), secret: .password}]
                   elif .protocol == "shadowsocks" then
                       (if (($st.clients // null) | type) == "array"
-                       then [$st.clients[] | {name: (if .email then (.email | split("/") | .[1] // "main") else "main" end), secret: .password}]
+                       then [$st.clients[] | {name: (if .email then (if .email == "" then "main" else (.email | split("/") | .[-1]) end) else "main" end), secret: .password}]
                        else [{name: "main", secret: ($st.password // "")}] end)
                   elif .protocol == "socks" then [$st.accounts[]? | {name: (.user // "main"), secret: (.pass // "")}]
-                  elif .protocol == "vmess" then [$st.clients[]? | {name: (if .email then (.email | split("/") | .[1] // "main") else "main" end), secret: .id, uuid: .id, alterId: (.alterId // 0)}]
+                  elif .protocol == "vmess" then [$st.clients[]? | {name: (if .email then (if .email == "" then "main" else (.email | split("/") | .[-1]) end) else "main" end), secret: .id, uuid: .id, alterId: (.alterId // 0)}]
                   else [] end' "$cfg" 2>/dev/null) || return 1
             if [[ "$proto" == 'shadowsocks' ]]; then
                 # clients-form SS keeps the server key separately.
@@ -29902,18 +29915,72 @@ users_adopt() {
 # sentinel). Single-quoted strips the quotes and unescapes '' -> '.
 # Plain strips the first ' #' inline comment and trailing whitespace.
 users_hy2_yaml_scalar() {
-    local v="$1"
+    local v="$1" _tok='' _rest='' _sfx='' _dec=''
+    local _i=0 _len=0 _c='' _close=-1 _out=''
+    local q="'"
+    # Double-quoted: scan for the closing quote, consuming backslash
+    # pairs; decode the token with jq (staged, so a failed decode
+    # cannot emit partial output plus the fallback); validate the
+    # suffix (empty, whitespace, or whitespace + '#...' comment).
+    # Anything else (unterminated quote, malformed suffix, invalid
+    # escape) falls back to the original input unchanged.
     if [[ "$v" == '"'* ]]; then
-        v=$(printf '%s' "$v" | jq -r '. + "__ABOX_TRAILING_NL_KEEP__"' 2>/dev/null || printf '%s__ABOX_TRAILING_NL_KEEP__' "$v")
-        printf '%s' "$v"
+        _len=${#v}
+        _i=1
+        while (( _i < _len )); do
+            _c=${v:_i:1}
+            if [[ "$_c" == '\' ]]; then _i=$(( _i + 2 )); continue; fi
+            if [[ "$_c" == '"' ]]; then _close=$_i; break; fi
+            _i=$(( _i + 1 ))
+        done
+        if (( _close < 0 )); then
+            printf '%s__ABOX_TRAILING_NL_KEEP__' "$v"
+            return 0
+        fi
+        _tok=${v:0:_close+1}
+        _rest=${v:_close+1}
+        _sfx="$_rest"
+        while [[ "$_sfx" == ' '* || "$_sfx" == $'\t'* || "$_sfx" == $'\r'* ]]; do _sfx=${_sfx:1}; done
+        if [[ -n "$_sfx" && "$_sfx" != '#'* ]]; then
+            printf '%s__ABOX_TRAILING_NL_KEEP__' "$v"
+            return 0
+        fi
+        _dec=$(printf '%s' "$_tok" | jq -r '. + "__ABOX_TRAILING_NL_KEEP__"' 2>/dev/null) || {
+            printf '%s__ABOX_TRAILING_NL_KEEP__' "$v"
+            return 0
+        }
+        printf '%s' "$_dec"
         return 0
     fi
-    local q="'"
+    # Single-quoted: scan for the closing quote; '' inside the
+    # quotes is a literal quote, '#' inside is content.
     if [[ "$v" == "$q"* ]]; then
-        v=${v#"$q"}
-        v=${v%"$q"}
-        v=${v//"$q$q"/"$q"}
-        printf '%s__ABOX_TRAILING_NL_KEEP__' "$v"
+        _len=${#v}
+        _i=1
+        while (( _i < _len )); do
+            _c=${v:_i:1}
+            if [[ "$_c" == "$q" ]]; then
+                if [[ "${v:_i+1:1}" == "$q" ]]; then _out+="$_c"; _i=$(( _i + 2 )); continue; fi
+                _close=$_i; break
+            fi
+            _out+="$_c"; _i=$(( _i + 1 ))
+        done
+        if (( _close < 0 )); then
+            # Unterminated: old fallback — strip the leading quote
+            # only, then unescape '' -> '.
+            _out=${v:1}
+            _out=${_out//"$q$q"/"$q"}
+            printf '%s__ABOX_TRAILING_NL_KEEP__' "$_out"
+            return 0
+        fi
+        _rest=${v:_close+1}
+        _sfx="$_rest"
+        while [[ "$_sfx" == ' '* || "$_sfx" == $'\t'* || "$_sfx" == $'\r'* ]]; do _sfx=${_sfx:1}; done
+        if [[ -n "$_sfx" && "$_sfx" != '#'* ]]; then
+            printf '%s__ABOX_TRAILING_NL_KEEP__' "$v"
+            return 0
+        fi
+        printf '%s__ABOX_TRAILING_NL_KEEP__' "$_out"
         return 0
     fi
     # Plain: cut at the first ' #' (YAML comment) and trim trailing space.
@@ -30014,7 +30081,24 @@ users_reg_ensure() {
         [[ -n "$merged" ]] || { rm -f -- "$scratch"; return 1; }
         users_reg_write "$core" "$tag" "$merged" || { rm -f -- "$scratch"; return 1; }
     else
+        # R10-09: a registry whose inbound was deleted keeps its
+        # snapshot, but the snapshot alone must not resurrect it:
+        # admit it only when the snapshot matches this tag AND a
+        # live-config lookup positively confirms no inbound with
+        # this tag exists. Any other adopt failure stays rc 1,
+        # and the registry is left untouched (read-only).
         rm -f -- "$scratch"
+        local _snap_ok=0 _live_rc=0 _cfg09=''
+        if jq -e --arg t "$tag" '.inbound_snapshot | type == "object" and .tag == $t' "$reg" >/dev/null 2>&1; then
+            _cfg09=$(users_cfg_of "$core" 2>/dev/null || echo '')
+            if [[ -n "$_cfg09" && -f "$_cfg09" && ! -L "$_cfg09" && -s "$_cfg09" ]]; then
+                jq -s -e --arg t "$tag" '([.[] | .inbounds[]? | select(.tag == $t)] | length) > 0' "$_cfg09" >/dev/null 2>&1 || _live_rc=$?
+                if [[ "$_live_rc" == 1 ]]; then _snap_ok=1; fi
+            fi
+        fi
+        if (( _snap_ok == 1 )); then
+            return 0
+        fi
         return 1
     fi
     rm -f -- "$scratch"
@@ -30185,7 +30269,7 @@ users_sync() {
     fi
     if (( _commit_rc == 2 )); then
         msg "users_sync stage SYNC-20: config commit failed and restore failed; backup kept at $bak for manual recovery" >&2
-        rm -f "$tmp"; rm -rf "$tmpd"; return 1
+        rm -f "$tmp"; rm -rf "$tmpd"; return 2
     fi
     msg "users_sync stage SYNC-20: config commit failed" >&2; 
     rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
@@ -30211,7 +30295,7 @@ users_hy2_write_users() {
         auth_block=$(printf 'auth:\n  type: password\n  password: %s' "$(json_escape "$rnd")")
     else
         local lines=''
-        lines=$(printf '%s' "$users_json" | jq -r '.[] | "    " + .name + ": " + (.secret | @json)' 2>/dev/null) || return 1
+        lines=$(printf '%s' "$users_json" | jq -r '.[] | "    " + ((.login // .name) | @json) + ": " + (.secret | @json)' 2>/dev/null) || return 1
         auth_block=$(printf 'auth:\n  type: userpass\n  userpass:\n%s' "$lines")
     fi
     AUTH_BLOCK="$auth_block" awk '
@@ -30296,6 +30380,10 @@ users_link() {
     # JSON, replace id (target uuid) and ps (target name),
     # re-encode. Standard base64 first, url-safe fallback.
     if [[ "$link" == vmess://* ]]; then
+        # R10-11: legacy rows may carry the uuid only in .secret
+        # (add-user used to leave .uuid empty for vmess); fall
+        # back to it before the guard so the link still builds.
+        use_uuid="${use_uuid:-$secret}"
         [[ -n "$use_uuid" ]] || return 1
         local vblob='' vjson='' vnew=''
         vblob="${link#vmess://}"
@@ -30307,7 +30395,7 @@ users_link() {
         local _aid=''
         _aid=$(printf '%s' "$user" | jq -r '.alterId // 0' 2>/dev/null)
         [[ "$_aid" =~ ^[0-9]+$ ]] || _aid=0
-        vnew=$(printf '%s' "$vjson" | jq -c --arg id "$use_uuid" --arg ps "$name" --arg aid "$_aid" '.id = $id | .ps = $ps | .aid = $aid' 2>/dev/null) || return 1
+        vnew=$(printf '%s' "$vjson" | jq -c --rawfile id <(printf '%s' "$use_uuid") --arg ps "$name" --arg aid "$_aid" '.id = $id | .ps = $ps | .aid = $aid' 2>/dev/null) || return 1
         printf 'vmess://%s' "$(printf '%s' "$vnew" | base64 -w0 2>/dev/null | tr -d '\n')"
         return 0
     fi
@@ -30323,7 +30411,12 @@ users_link() {
         newinfo="$(urlencode "$use_uuid"):$(urlencode "$secret")" 
     elif [[ "$core" == 'hy2' ]]; then
         if (( enabled_count >= 2 )); then
-            newinfo="$(urlencode "$name"):$(urlencode "$secret")"
+            # R10-10: the server authenticates by .login // .name;
+            # use the login for the userinfo (the fragment keeps
+            # the display name, as the SOCKS branch does).
+            local ulogin=''
+            ulogin=$(printf '%s' "$user" | jq -r '(.login // .name) // ""')
+            newinfo="$(urlencode "$ulogin"):$(urlencode "$secret")"
         else
             newinfo="$(urlencode "$secret")"
         fi
@@ -30551,13 +30644,18 @@ users_apply_reg() {
     [[ -n "$_reg" ]] || return 1
     : > "${_reg}.sync-pending" || return 1
     users_reg_write "$1" "$2" "$_new" || { rm -f -- "${_reg}.sync-pending"; return 1; }
-    if ! users_sync "$1" "$2"; then
+    local _sync_rc=0
+    users_sync "$1" "$2" || _sync_rc=$?
+    if (( _sync_rc != 0 )); then
         # Roll back, and clear the marker only after verifying
         # the rollback landed (re-read matches the old content).
         # If the rollback or its verification fails, the marker
-        # stays so the guard retries the sync.
+        # stays so the guard retries the sync. A config-restore
+        # failure (sync rc 2) also keeps the marker: the live
+        # config may still hold the new users, so the guard must
+        # retry the sync instead of treating the debt as settled.
         if users_reg_write "$1" "$2" "$4" >/dev/null 2>&1; then
-            if [[ "$(jq -c . "$_reg" 2>/dev/null)" == "$(printf '%s' "$4" | jq -c . 2>/dev/null)" ]]; then
+            if (( _sync_rc != 2 )) && [[ "$(jq -c . "$_reg" 2>/dev/null)" == "$(printf '%s' "$4" | jq -c . 2>/dev/null)" ]]; then
                 rm -f -- "${_reg}.sync-pending"
             fi
         fi
@@ -30595,7 +30693,7 @@ users_ss_new_secret() {
     if [[ -n "$cfg" && -f "$cfg" && ! -L "$cfg" ]]; then
         method=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.settings.method // .method // "")' "$cfg" 2>/dev/null | head -1)
     fi
-    [[ "$method" == *256* ]] && keylen=32
+    [[ "$method" == *256* || "$method" == "2022-blake3-chacha20-poly1305" ]] && keylen=32
     openssl rand -base64 "$keylen" 2>/dev/null | tr -d '\n\r'
 }
 users_inbound_menu() {
@@ -30663,7 +30761,8 @@ users_inbound_menu() {
                 # new user flowless on a vision inbound with no main).
                 flow=$(jq -r '([.users[] | select(.name == "main" and (.flow // "") != "") | .flow] + [.users[] | select(.flow != null and .flow != "") | .flow] | first) // ""' "$reg" 2>/dev/null)
                 case "$proto" in
-                    vless|vmess) secret=$(generate_robust_uuid) || continue ;;
+                    vless) secret=$(generate_robust_uuid) || continue ;;
+                    vmess) secret=$(generate_robust_uuid) || continue; nuuid="$secret" ;;
                     tuic) nuuid=$(generate_robust_uuid) || continue; secret=$(rand_alnum 16) || continue ;;
                     shadowsocks) secret=$(users_ss_new_secret "$core" "$tag"); [[ -n "$secret" ]] || continue ;;
                     *) secret=$(rand_alnum 16) || continue ;;
@@ -30691,7 +30790,7 @@ users_inbound_menu() {
                 nm=$(users_pick_user "$reg" "$(tr_msg mu_pick_del)") || { pause_return; continue; }
                 [[ -n "$nm" && "$nm" != 'main' ]] || { msg "${RED}$(tr_msg mu_main_keep)${NC}"; pause_return; continue; }
                 local del_answer=''
-                read -r -p "$(printf '%s %s ? [Y/N]: ' "$(tr_msg mu_del_confirm)" "$nm")" del_answer || [[ -n "$del_answer" ]] || { msg "$(tr_msg mu_cancelled)"; pause_return; continue; }
+                read -r -p "$(printf '%s %s ? [Y/N]: ' "$(tr_msg mu_del_confirm)" "$nm")" del_answer || { msg "$(tr_msg mu_cancelled)"; pause_return; continue; }
                 is_yes "$del_answer" || { msg "$(tr_msg mu_cancelled)"; pause_return; continue; }
                 new=$(printf '%s' "$old" | jq -c --arg n "$nm" '.users |= map(select(.name != $n))') || continue
                 if users_apply_reg "$core" "$tag" "$new" "$old"; then msg "${GREEN}$(tr_msg mu_deleted): ${nm}${NC}"; else msg "${RED}$(tr_msg mu_del_fail)${NC}"; fi
@@ -31034,7 +31133,7 @@ users_guard_eval() {
         | ([.users[] | select($have == 1 and (.email // "") != "" and ($stats[.email] != null) and ((($stats[.email].up // 0) < (.last_up // 0)) or (($stats[.email].down // 0) < (.last_down // 0))))] | length) as $n_dec
         | (($n_with > 0) and ($n_dec == $n_with)) as $restarted
         | (($gen != "") and ((.core_gen // "") != "") and ($gen != .core_gen)) as $gen_changed
-        | (if $gen != "" then .core_gen = $gen else . end)
+        | (if $gen != "" and $have == 1 then .core_gen = $gen else . end)
         | .users |= map(
             (if $have == 1 and (.email // "") != "" and ($stats[.email] != null) then
                 (if .period != $per then

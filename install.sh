@@ -27997,7 +27997,7 @@ manage_ss_whitelist() {
             fi
             save_firewall_rules || { if _ss_wl_rollback_to_snapshot; then die "$(tr_msg pi_fw_persist_rb)"; else die "$(tr_msg pi_fw_persist_norb)"; fi; }
             sync_ss_whitelist_ip_to_env || { if _ss_wl_rollback_to_snapshot && save_firewall_rules; then die "$(tr_msg mw_env_sync)"; else die "$(tr_msg mw_env_sync_norb)"; fi; }
-            [[ "$found" == 1 ]] && msg "${GREEN}已移除白名单: $del_ip${NC}" || msg "${YELLOW}未找到该白名单规则。${NC}"
+            if [[ "$found" == 1 ]]; then msg "${GREEN}已移除白名单: $del_ip${NC}"; else msg "${YELLOW}未找到该白名单规则。${NC}"; fi
             pause_return
             ;;
         3)
@@ -32659,7 +32659,7 @@ timezone_locale_ntp_menu() {
                 *) ntp_ok='已请求启用 NTP；请检查同步状态。'; ntp_fail='启用 NTP 失败，请检查时间同步服务。'; ntp_none='当前系统没有 timedatectl；请使用发行版对应的 chrony/openntpd 管理方式。' ;;
             esac
             if command -v timedatectl >/dev/null 2>&1; then
-                timedatectl set-ntp true && msg "${GREEN}$ntp_ok${NC}" || msg "${RED}$ntp_fail${NC}"
+                if timedatectl set-ntp true; then msg "${GREEN}$ntp_ok${NC}"; else msg "${RED}$ntp_fail${NC}"; fi
             else
                 msg "${YELLOW}$ntp_none${NC}"
             fi
@@ -32675,7 +32675,7 @@ timezone_locale_ntp_menu() {
                 *) rb_ok='已恢复修改前时区。'; rb_fail='时区回滚失败。'; rb_none='没有可用的时区回滚快照。' ;;
             esac
             if [[ -d "$ABOX_DIR/.tz-rollback" ]]; then
-                restore_timezone_snapshot "$ABOX_DIR/.tz-rollback" && msg "${GREEN}$rb_ok${NC}" || msg "${RED}$rb_fail${NC}"
+                if restore_timezone_snapshot "$ABOX_DIR/.tz-rollback"; then msg "${GREEN}$rb_ok${NC}"; else msg "${RED}$rb_fail${NC}"; fi
             else
                 msg "${YELLOW}$rb_none${NC}"
             fi
@@ -34439,7 +34439,7 @@ dns_menu() {
         7) apply_host_dns plain '1.1.1.1' '2606:4700:4700::1111'; pause_return ;;
         8) apply_host_dns plain '9.9.9.9' '2620:fe::fe'; pause_return ;;
         6) dns_enable_doh; pause_return ;;
-        9) if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then restore_dns_snapshot "$DNS_BACKUP_DIR" && msg "${GREEN}DNS restored.${NC}" || msg "${RED}DNS rollback failed.${NC}"; else msg "${YELLOW}No DNS snapshot exists.${NC}"; fi; pause_return ;;
+        9) if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then if restore_dns_snapshot "$DNS_BACKUP_DIR"; then msg "${GREEN}DNS restored.${NC}"; else msg "${RED}DNS rollback failed.${NC}"; fi; else msg "${YELLOW}No DNS snapshot exists.${NC}"; fi; pause_return ;;
         10) dns_setup_tri_mode ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $c${NC}"; sleep 1 ;;
@@ -36189,7 +36189,7 @@ swap_menu() {
             4) remove_zram_swap ;;
             5)
                 if [[ -f "$ABOX_DIR/.swapfile.managed" ]]; then
-                    remove_abox_swap && msg "${GREEN}磁盘 Swap 文件已移除。${NC}" || msg "${RED}移除失败，请检查 /swapfile 与 /etc/fstab。${NC}"
+                    if remove_abox_swap; then msg "${GREEN}磁盘 Swap 文件已移除。${NC}"; else msg "${RED}移除失败，请检查 /swapfile 与 /etc/fstab。${NC}"; fi
                 else
                     msg "${YELLOW}没有 A-Box 创建的磁盘 Swap 文件。${NC}"
                 fi

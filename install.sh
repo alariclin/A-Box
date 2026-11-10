@@ -18766,7 +18766,9 @@ acquire_abox_runtime_guard() {
         IFS= read -r fb_pid < "$FALLBACK_DIR/pid" || exit 0
         IFS= read -r fb_start < "$FALLBACK_DIR/starttime" || exit 0
         if [[ "$fb_pid" =~ ^[0-9]+$ && -d "/proc/$fb_pid" ]]; then
-            fb_actual=$(awk '{print $22}' "/proc/${fb_pid}/stat" 2>/dev/null || true)
+            # R6-F09-2: a failed/empty probe is UNKNOWN, never "no holder".
+            fb_actual=$(awk '{print $22}' "/proc/${fb_pid}/stat" 2>/dev/null) || exit 0
+            [[ -z "$fb_actual" ]] && exit 0
             [[ -n "$fb_actual" && "$fb_actual" == "$fb_start" ]] && exit 0
         fi
     fi
@@ -19126,7 +19128,9 @@ acquire_abox_runtime_guard() {
         IFS= read -r fb_pid < "$FALLBACK_DIR/pid" || exit 0
         IFS= read -r fb_start < "$FALLBACK_DIR/starttime" || exit 0
         if [[ "$fb_pid" =~ ^[0-9]+$ && -d "/proc/$fb_pid" ]]; then
-            fb_actual=$(awk '{print $22}' "/proc/${fb_pid}/stat" 2>/dev/null || true)
+            # R6-F09-2: a failed/empty probe is UNKNOWN, never "no holder".
+            fb_actual=$(awk '{print $22}' "/proc/${fb_pid}/stat" 2>/dev/null) || exit 0
+            [[ -z "$fb_actual" ]] && exit 0
             [[ -n "$fb_actual" && "$fb_actual" == "$fb_start" ]] && exit 0
         fi
     fi
@@ -19199,6 +19203,63 @@ PY_GEO_OWNER
 # pre-snapshot journal. Validates the manifest strictly first; a
 # missing manifest means nothing to invalidate (return 0). Atomic
 # rewrite only when rows were actually dropped.
+_geo_manifest_restore_rows() {
+    # R6-F07-4: row-level manifest restore. $1 = snapshot|empty, $2 = snapshot path.
+    # Merges only the two geo rows (F/xray + geoip/geosite.dat paths) from the
+    # snapshot into the current manifest; every other row is kept byte-for-byte
+    # (raw line, original order). 'empty' drops the geo rows and keeps the rest.
+    # Atomic via tmp+os.replace; any validation/commit failure returns 1.
+    local _mode="$1" _snap="${2:-}"
+    case "$_mode" in snapshot|empty) ;; *) return 1 ;; esac
+    python3 -I - "$ABOX_CORE_OWNERSHIP" "$_mode" "$_snap" /usr/local/share/xray/geoip.dat /usr/local/share/xray/geosite.dat <<'PY_GEO_MANIFEST_RESTORE'
+import os, stat, sys, tempfile
+manifest, mode, snap, *targets = sys.argv[1:]
+targets = set(targets)
+def _load(path, required):
+    if not os.path.lexists(path):
+        if required:
+            raise SystemExit(1)
+        return [], [], False
+    st = os.lstat(path)
+    if not stat.S_ISREG(st.st_mode) or st.st_uid != 0 or st.st_gid != 0 or st.st_mode & 0o077 or st.st_size > 4*1024*1024:
+        raise SystemExit(1)
+    rows, raws = [], []
+    with open(path, 'r', encoding='utf-8') as f:
+        for line in f:
+            if '\x00' in line:
+                raise SystemExit(1)
+            parts = line.rstrip('\n').split('\t')
+            if len(parts) != 4 or parts[0] not in {'F','D'} or not parts[2].startswith('/') :
+                raise SystemExit(1)
+            rows.append(parts)
+            raws.append(line if line.endswith('\n') else line + '\n')
+    if len({(r[0],r[1],r[2]) for r in rows}) != len(rows):
+        raise SystemExit(1)
+    return rows, raws, True
+snap_rows, _, _ = _load(snap, mode == 'snapshot') if mode == 'snapshot' else ([], [], False)
+cur_rows, cur_raws, cur_exists = _load(manifest, False)
+geo = [r for r in snap_rows if r[0] == 'F' and r[1] == 'xray' and r[2] in targets]
+kept_raws = [raw for row, raw in zip(cur_rows, cur_raws)
+             if not (row[0] == 'F' and row[1] == 'xray' and row[2] in targets)]
+if not geo and not kept_raws:
+    if not cur_exists:
+        raise SystemExit(0)
+dirname = os.path.dirname(manifest) or '.'
+fd, tmp = tempfile.mkstemp(prefix='.managed-core-files.geo.', dir=dirname, text=True)
+try:
+    with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as f:
+        for row in geo:
+            f.write('\t'.join(row) + '\n')
+        for raw in kept_raws:
+            f.write(raw)
+        f.flush(); os.fsync(f.fileno())
+    os.chmod(tmp, 0o600); os.chown(tmp, 0, 0); os.replace(tmp, manifest)
+except Exception:
+    try: os.unlink(tmp)
+    except OSError: pass
+    raise
+PY_GEO_MANIFEST_RESTORE
+}
 _geo_manifest_invalidate() {
     python3 -I - "$ABOX_CORE_OWNERSHIP" /usr/local/share/xray/geoip.dat /usr/local/share/xray/geosite.dat <<'PY_GEO_MANIFEST_INVALIDATE'
 import os, stat, sys, tempfile
@@ -19235,7 +19296,7 @@ except Exception:
 PY_GEO_MANIFEST_INVALIDATE
 }
 restore_geo_transaction() {
-    local base="$GEO_DIR" txn="$GEO_TXN" name had stage _mhad _mstage
+    local base="$GEO_DIR" txn="$GEO_TXN" name had stage _mhad
     [[ -d "$txn" && ! -L "$txn" && "$(stat -c %u:%g "$txn" 2>/dev/null)" == 0:0 ]] || return 1
     for name in geoip geosite; do
         had=$(cat "$txn/had_$name" 2>/dev/null) || return 1
@@ -19259,8 +19320,10 @@ restore_geo_transaction() {
             *) return 1 ;;
         esac
     done
-    # R7-03: restore the recorded manifest pre-state (snapshot path) or
-    # invalidate the geo rows (legacy journals without a snapshot).
+    # R7-03 (R6-F07-4): restore only the two geo rows from the recorded
+    # manifest pre-state (snapshot path) or invalidate the geo rows
+    # (legacy journals without a snapshot). Other families' rows are
+    # never touched by the restore.
     # Never re-certify restored files via the hash-resync helper: the
     # restored pre-state is authoritative by construction.
     if [[ -f "$txn/had_manifest" && ! -L "$txn/had_manifest" ]]; then
@@ -19269,14 +19332,10 @@ restore_geo_transaction() {
             1)
                 [[ -f "$txn/manifest.old" && ! -L "$txn/manifest.old" ]] || return 1
                 [[ ! -L "$ABOX_CORE_OWNERSHIP" ]] || return 1
-                _mstage=$(mktemp "$(dirname -- "$ABOX_CORE_OWNERSHIP")/.managed-core-files.A-Box-restore.XXXXXX") || return 1
-                if ! cp -p "$txn/manifest.old" "$_mstage" || ! chmod 600 "$_mstage" || ! chown 0:0 "$_mstage" 2>/dev/null || ! mv -f "$_mstage" "$ABOX_CORE_OWNERSHIP"; then
-                    rm -f -- "$_mstage"
-                    return 1
-                fi
+                _geo_manifest_restore_rows snapshot "$txn/manifest.old" || return 1
                 ;;
             0)
-                rm -f -- "$ABOX_CORE_OWNERSHIP" || return 1
+                _geo_manifest_restore_rows empty || return 1
                 ;;
             *) return 1 ;;
         esac
@@ -19447,7 +19506,7 @@ chmod 600 "$txn_stage"/had_* 2>/dev/null || true
 # protects the backups at rest.
 chown root:root "$txn_stage" || { rm -rf -- "$txn_stage"; exit 1; }
 # R7-03: snapshot the ownership manifest pre-state into the transaction
-# so rollback restores the exact manifest (hashes included) instead of
+# so rollback can restore the two geo rows (hashes included) instead of
 # re-certifying restored files. A symlinked or non-regular manifest
 # fails closed here: the update cannot safely record pre-state for it.
 if [[ -e "$ABOX_CORE_OWNERSHIP" || -L "$ABOX_CORE_OWNERSHIP" ]]; then
@@ -20986,7 +21045,7 @@ _rollback_start_snapshot_services() {
         if [[ "${INIT_SYS:-}" == systemd ]]; then
             systemctl start "$_srv" >/dev/null 2>&1 || true
         elif command -v rc-service >/dev/null 2>&1; then
-            rc-service "$_srv" start >/dev/null 2>&1 || true
+            rc-service "$_srv" start >/dev/null 2>&1 9>&- 10>&- || true
         fi
         msg "[!] Rollback fallback: attempted to start ${_srv} from snapshot (strict service-state restore failed)."
     done < "$state_file"
@@ -22842,17 +22901,47 @@ argo_remove_unit() { # $1 = unit name; best-effort, refuses foreign units
     # must survive, as must a service with no /etc unit at all.
     [[ -f "$unit" && ! -L "$unit" ]] || return 1
     grep -Fxq '# Managed by A-Box' "$unit" 2>/dev/null || return 1
+    # R6-F08-6 (A'): verify each step's OUTCOME, not just its rc. A stop/disable
+    # rc alone is not proof (repeat stop may fail while already stopped);
+    # the unit file and its enable entries are verified gone BEFORE the
+    # marker-bearing unit is deleted, so a failure keeps the unit identifiable.
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl stop "${name}.service" >/dev/null 2>&1 || true
+        if argo_unit_active "$name"; then return 1; fi
         systemctl disable "${name}.service" >/dev/null 2>&1 || true
-        rm -f "/etc/systemd/system/${name}.service"
-        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl disable --runtime "${name}.service" >/dev/null 2>&1 || true
+        local _link
+        for _link in /etc/systemd/system/*.wants/"${name}.service" /etc/systemd/system/*.requires/"${name}.service" /run/systemd/system/*.wants/"${name}.service" /run/systemd/system/*.requires/"${name}.service"; do
+            [[ -e "$_link" || -L "$_link" ]] || continue
+            return 1
+        done
+        rm -f "/etc/systemd/system/${name}.service" || return 1
+        [[ ! -e "/etc/systemd/system/${name}.service" && ! -L "/etc/systemd/system/${name}.service" ]] || return 1
+        systemctl daemon-reload >/dev/null 2>&1 || return 1
     else
         rc-service "$name" stop >/dev/null 2>&1 || true
+        if argo_unit_active "$name"; then return 1; fi
         rc-update del "$name" default >/dev/null 2>&1 || true
-        rm -f "/etc/init.d/${name}"
+        local _rl _entry
+        for _rl in /etc/runlevels/*; do
+            [[ -d "$_rl" ]] || continue
+            _entry="$_rl/$name"
+            [[ -L "$_entry" ]] || continue
+            case "$(readlink -- "$_entry" 2>/dev/null || true)" in
+                */init.d/"$name"|/etc/init.d/"$name") rm -f -- "$_entry" || return 1 ;;
+            esac
+        done
+        for _rl in /etc/runlevels/*; do
+            [[ -d "$_rl" ]] || continue
+            _entry="$_rl/$name"
+            [[ -e "$_entry" || -L "$_entry" ]] && return 1
+        done
+        rm -f "/etc/init.d/${name}" || return 1
+        [[ ! -e "/etc/init.d/${name}" && ! -L "/etc/init.d/${name}" ]] || return 1
     fi
-    rm -f "/etc/ddr/${name}.log"
+    # Non-critical log cleanup: must not decide the return value.
+    rm -f "/etc/ddr/${name}.log" || true
+    return 0
 }
 
 argo_unit_active() { # $1 = unit name -> 0 active
@@ -22927,17 +23016,42 @@ argo_origin_probe() {
     # mixed 400/000/400 pattern; the summary can, without per-attempt
     # noise. msg goes to stderr so stdout stays empty as before.
     local curl_rc=0 observations=''
+    local url_cfg=''
+    local -a probe_pipe_rc=()
+    local _url_q='"'
+
+    # R6-F08-3: the probe URL carries the auth UUID; it must never reach
+    # any child argv (/proc/<pid>/cmdline). Pass it via a curl config on
+    # stdin instead. Bash builtins only; no external encoder sees the URL.
+    # NOTE (deviation from GPT's literal line): GPT wrote
+    # url_cfg=${url_cfg//\"/\\"}, which is INVALID bash: inside ${}
+    # the bare \" opens an unterminated double quote (bash -n fails:
+    # unexpected EOF while looking for matching `"'). The quote is
+    # therefore held in _url_q and matched as "$_url_q" (fixture-verified
+    # byte-exact on the full escape matrix: backslash/quote/tab/LF/CR/VT).
+    url_cfg="https://${domain}${path}"
+    url_cfg=${url_cfg//\\/\\\\}
+    url_cfg=${url_cfg//"$_url_q"/\\"$_url_q"}
+    url_cfg=${url_cfg//$'\t'/\\t}
+    url_cfg=${url_cfg//$'\n'/\\n}
+    url_cfg=${url_cfg//$'\r'/\\r}
+    url_cfg=${url_cfg//$'\v'/\\v}
     tmpd=$(mktemp -d /tmp/A-Box-argo-probe.XXXXXX) || return 1
     hdr="$tmpd/headers"
     for i in 1 2 3 4 5 6; do
         : > "$hdr"
         curl_rc=0
-        http_code=$(curl -s -D "$hdr" --http1.1 --connect-timeout 5 --max-time 10 \
-            -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
-            -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
-            -H 'Sec-WebSocket-Version: 13' \
-            -w '%{http_code}' \
-            "https://${domain}${path}" -o /dev/null 2>/dev/null) || curl_rc=$?
+        http_code=$(
+            builtin printf 'url = "%s"\n' "$url_cfg" 2>/dev/null |
+                curl -K - -s -D "$hdr" --http1.1 \
+                    --connect-timeout 5 --max-time 10 \
+                    -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+                    -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+                    -H 'Sec-WebSocket-Version: 13' \
+                    -w '%{http_code}' -o /dev/null 2>/dev/null
+            probe_pipe_rc=("${PIPESTATUS[@]}")
+            exit "${probe_pipe_rc[1]}"
+        ) || curl_rc=$?
         if [[ "$http_code" == 101 ]]; then
             rm -rf -- "$tmpd"
             return 0
@@ -23121,7 +23235,7 @@ _argo_token_exit_restore() {
                     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
                         systemctl restart argo.service >/dev/null 2>&1 || msg "${RED}[!] Argo tunnel restart failed during token rollback; the old token was restored but the tunnel may not be running.${NC}"
                     else
-                        rc-service argo restart >/dev/null 2>&1 || msg "${RED}[!] Argo tunnel restart failed during token rollback; the old token was restored but the tunnel may not be running.${NC}"
+                        rc-service argo restart >/dev/null 2>&1 9>&- 10>&- || msg "${RED}[!] Argo tunnel restart failed during token rollback; the old token was restored but the tunnel may not be running.${NC}"
                     fi
                 else
                     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
@@ -23358,8 +23472,11 @@ argo_uninstall() {
     # other uninstall side effect: stopping it is forbidden, and
     # proceeding would leave a half-uninstalled state behind the
     # strict stop check below.
+    local -a _argo_remove_targets=()
     for _u in argo argo-vmess argo-vless; do
-        if ! argo_unit_managed "$_u" && argo_unit_active "$_u"; then
+        if argo_unit_managed "$_u"; then
+            _argo_remove_targets+=("$_u")
+        elif argo_unit_active "$_u"; then
             msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
             return 1
         fi
@@ -23440,9 +23557,12 @@ argo_uninstall() {
             fi
         fi
     done
-    argo_remove_unit argo
-    argo_remove_unit argo-vmess
-    argo_remove_unit argo-vless
+    for _u in "${_argo_remove_targets[@]}"; do
+        if ! argo_remove_unit "$_u"; then
+            msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
+            return 1
+        fi
+    done
     # Strict stop check: a unit that refused to stop must not
     # be papered over by deleting its state, token and link.
     # State is kept so the uninstall can be retried or the
@@ -23451,6 +23571,20 @@ argo_uninstall() {
         msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
         return 1
     fi
+    # R6-F08-6: final gate before committing the uninstall. Frozen managed
+    # units must be gone (no file, no dangling link); reload so a previous
+    # run that deleted files but failed reload can still be retried to green.
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        systemctl daemon-reload >/dev/null 2>&1 || { msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"; return 1; }
+    fi
+    local _upath
+    for _u in "${_argo_remove_targets[@]}"; do
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then _upath="/etc/systemd/system/${_u}.service"; else _upath="/etc/init.d/${_u}"; fi
+        if [[ -e "$_upath" || -L "$_upath" ]]; then
+            msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
+            return 1
+        fi
+    done
     rm -f "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/standalone-links.d/argo.link
     # /usr/local/bin/cloudflared is shared with the Wallos CF tunnel
     # and may be a foreign binary install_cloudflared early-returned
@@ -24979,8 +25113,11 @@ warp_apply_preset() {
         if routing_state_put < "$snap" > /dev/null 2>&1; then
             rm -f "$snap"
         else
-            rm -f "$snap"
+            # R6-F09-8: keep the failed rollback snapshot: it is the only copy
+            # of the pre-preset state. Print its path so it can be retried
+            # manually; /tmp retention is a rescue window, not a durable backup.
             msg "${YELLOW}[!] $(tr_msg warp_preset_rollback_fail)${NC}"
+            msg "${YELLOW}[!] ${snap}${NC}"
         fi
         return 1
     fi
@@ -24993,8 +25130,11 @@ warp_apply_preset() {
         if routing_state_put < "$snap" > /dev/null 2>&1; then
             rm -f "$snap"
         else
-            rm -f "$snap"
+            # R6-F09-8: keep the failed rollback snapshot: it is the only copy
+            # of the pre-preset state. Print its path so it can be retried
+            # manually; /tmp retention is a rescue window, not a durable backup.
             msg "${YELLOW}[!] $(tr_msg warp_preset_rollback_fail)${NC}"
+            msg "${YELLOW}[!] ${snap}${NC}"
         fi
         msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
         return 1
@@ -25003,8 +25143,11 @@ warp_apply_preset() {
         if routing_state_put < "$snap" > /dev/null 2>&1; then
             rm -f "$snap"
         else
-            rm -f "$snap"
+            # R6-F09-8: keep the failed rollback snapshot: it is the only copy
+            # of the pre-preset state. Print its path so it can be retried
+            # manually; /tmp retention is a rescue window, not a durable backup.
             msg "${YELLOW}[!] $(tr_msg warp_preset_rollback_fail)${NC}"
+            msg "${YELLOW}[!] ${snap}${NC}"
         fi
         return 1
     fi
@@ -25343,6 +25486,11 @@ EOF_SVC
             chmod +x /etc/init.d/xray || die "$(tr_msg dp_xray_chmod)"
         fi
     fi
+
+    # R6-F09-7: a pre-existing binary does not imply a service unit exists.
+    # Ensure it here, before the config merge and restart (R7-13 precedent
+    # on the sing-box path). Managed units are a no-op; foreign units die.
+    ensure_xray_service_unit || die "$(tr_msg dp_xray_unit)"
 
     # Build the socks inbound object.
     # Seed a minimal config shell; the socks inbound is appended below.
@@ -25714,6 +25862,13 @@ _xl_legacy_retire_coexist() {
         [[ ! -L "$_bin" ]] || { msg "${RED}[!] Refusing to retire: xray-latest binary is a symlink.${NC}" >&2; return 1; }
         path_parent_chain_safe "$_bin" || { msg "${RED}[!] Refusing to retire: unsafe parent path for the xray-latest binary.${NC}" >&2; return 1; }
     fi
+    # R6-F09-3: a symlinked drop-in dir is refused up front, like the
+    # symlinked binary/dir (snapshot must never follow it, and the
+    # delete step would skip it, leaving ambiguous residue).
+    if [[ -L "$_sysdir/xray-latest.service.d" ]]; then
+        msg "${RED}[!] Refusing to retire: symlinked xray-latest unit drop-in directory.${NC}" >&2
+        return 1
+    fi
     # 3. Snapshot (recoverable copy) before any change.
     local _snapdir="${XL_LEGACY_SNAPSHOT_DIR:-$_abox_dir/backups}"
     mkdir -p "$_snapdir" 2>/dev/null || { msg "${RED}[!] Could not create the retire snapshot directory; refusing to retire.${NC}" >&2; return 1; }
@@ -25724,6 +25879,7 @@ _xl_legacy_retire_coexist() {
     [[ -e "$_dir" || -L "$_dir" ]] && _snap_paths+=("$_dir")
     [[ -e "$_state" || -L "$_state" ]] && _snap_paths+=("$_state")
     [[ -e "$_sysdir/xray-latest.service" || -L "$_sysdir/xray-latest.service" ]] && _snap_paths+=("$_sysdir/xray-latest.service")
+    [[ -d "$_sysdir/xray-latest.service.d" && ! -L "$_sysdir/xray-latest.service.d" ]] && _snap_paths+=("$_sysdir/xray-latest.service.d")
     [[ -e "$_initd/xray-latest" || -L "$_initd/xray-latest" ]] && _snap_paths+=("$_initd/xray-latest")
     [[ -e "$_confd/xray-latest" || -L "$_confd/xray-latest" ]] && _snap_paths+=("$_confd/xray-latest")
     local _sp
@@ -25912,12 +26068,54 @@ restore_filter_legacy_xray_latest() {
         [[ -e "$_g" || -L "$_g" ]] || continue
         rm -f -- "$_g" || return 1
     done
-    # services.state: drop xray-latest lines (3-field format).
+    # services.state: drop xray-latest lines (pipe-separated service|active|enabled).
     local _ss="$_work/meta/services.state"
     if [[ -f "$_ss" && ! -L "$_ss" ]]; then
-        local _tmp="$_ss.filter.tmp"
-        awk -F'\t' '$1 != "xray-latest"' "$_ss" > "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
-        mv -f -- "$_tmp" "$_ss" || { rm -f -- "$_tmp"; return 1; }
+        # R6-F09-5 (B'): capture the original metadata and restore+verify it
+        # on the temp file BEFORE mv, so the rewrite never downgrades the
+        # mode (e.g. 0600 -> 0644 under umask 022) or the owner. Any failure
+        # leaves the original file untouched. (Plain mv, not mv -T: the
+        # target must stay BusyBox-compatible; the pre-mv stat re-check
+        # below guards the replace.)
+        local _ss_meta _ss_id _ss_mode _ss_owner _ss_extra
+        local _ss_now _ss_tmp_meta _tmp=''
+
+        _ss_meta=$(stat -c '%d:%i %a %u:%g' -- "$_ss" 2>/dev/null) ||
+            return 1
+        read -r _ss_id _ss_mode _ss_owner _ss_extra <<< "$_ss_meta" ||
+            return 1
+        [[ "$_ss_id" =~ ^[0-9]+:[0-9]+$ &&
+           "$_ss_mode" =~ ^[0-7]{3,4}$ &&
+           "$_ss_owner" == 0:0 &&
+           -z "$_ss_extra" ]] || return 1
+        (( (8#$_ss_mode & 8#077) == 0 )) || return 1
+
+        _tmp=$( ( umask 077; mktemp -- "$_ss.filter.XXXXXX" ) ) ||
+            return 1
+
+        ( umask 077
+          awk -F'|' '$1 != "xray-latest"' "$_ss" > "$_tmp" 2>/dev/null
+        ) || { rm -f -- "$_tmp"; return 1; }
+
+        chown 0:0 -- "$_tmp" ||
+            { rm -f -- "$_tmp"; return 1; }
+        chmod "$_ss_mode" -- "$_tmp" ||
+            { rm -f -- "$_tmp"; return 1; }
+
+        _ss_tmp_meta=$(stat -c '%a %u:%g' -- "$_tmp" 2>/dev/null) ||
+            { rm -f -- "$_tmp"; return 1; }
+        [[ "$_ss_tmp_meta" == "$_ss_mode 0:0" ]] ||
+            { rm -f -- "$_tmp"; return 1; }
+
+        [[ -f "$_ss" && ! -L "$_ss" ]] ||
+            { rm -f -- "$_tmp"; return 1; }
+        _ss_now=$(stat -c '%d:%i %a %u:%g' -- "$_ss" 2>/dev/null) ||
+            { rm -f -- "$_tmp"; return 1; }
+        [[ "$_ss_now" == "$_ss_meta" ]] ||
+            { rm -f -- "$_tmp"; return 1; }
+
+        mv -f -- "$_tmp" "$_ss" ||
+            { rm -f -- "$_tmp"; return 1; }
     fi
     # Ownership manifest: drop field-2 == xray-latest rows.
     local _mf="$_root/etc/ddr/.managed-core-files.tsv"
@@ -26335,7 +26533,9 @@ acquire_abox_runtime_guard() {
         IFS= read -r fb_pid < "$FALLBACK_DIR/pid" || exit 0
         IFS= read -r fb_start < "$FALLBACK_DIR/starttime" || exit 0
         if [[ "$fb_pid" =~ ^[0-9]+$ && -d "/proc/$fb_pid" ]]; then
-            fb_actual=$(awk '{print $22}' "/proc/${fb_pid}/stat" 2>/dev/null || true)
+            # R6-F09-2: a failed/empty probe is UNKNOWN, never "no holder".
+            fb_actual=$(awk '{print $22}' "/proc/${fb_pid}/stat" 2>/dev/null) || exit 0
+            [[ -z "$fb_actual" ]] && exit 0
             [[ -n "$fb_actual" && "$fb_actual" == "$fb_start" ]] && exit 0
         fi
     fi

@@ -30141,7 +30141,8 @@ users_adopt() {
             [[ -n "$proto" ]] || return 1
             raw=$(jq -c --arg t "$tag" '
                 .inbounds[]? | select(.tag == $t)
-                | if .type == "vless" or .type == "vmess" then [.users[]? | {name: (.name // "main"), secret: (.uuid // .password // ""), flow: (.flow // ""), alterId: (.alterId // 0)}]
+                | if .type == "vmess" then [.users[]? | {name: (.name // "main"), secret: (.uuid // .password // ""), uuid: (.uuid // .password // ""), flow: (.flow // ""), alterId: (.alterId // 0)}]
+                  elif .type == "vless" then [.users[]? | {name: (.name // "main"), secret: (.uuid // .password // ""), flow: (.flow // ""), alterId: (.alterId // 0)}]
                   elif .type == "tuic" then [.users[]? | {name: (.name // "main"), secret: (.password // ""), uuid: (.uuid // "")}]
                   elif .type == "shadowsocks" then
                       (if ((.users // null) | type) == "array" and ((.users // []) | length) > 0
@@ -30261,21 +30262,56 @@ users_hy2_read_users() {
     if [[ "$type" == 'userpass' ]]; then
         # Indent-relative: userpass at any indent, entries at +2.
         out=$(printf '%s\n' "$block" | awk '
-            /^[[:space:]]*userpass:/{match($0, /^ */); u=RLENGTH; next}
-            u != "" && $0 ~ /^[[:space:]]*$/{next}
+            u == "" && /^[[:space:]]*userpass:/{match($0, /^ */); u=RLENGTH; next}
+            u != "" && /^[[:space:]]*($|#)/{next}
             u != "" {
                 match($0, /^ */); ind=RLENGTH
-                if (ind == u + 2) {
-                    line=$0; sub(/^ */, "", line);
-                    i=index(line, ": "); name=substr(line, 1, i-1); val=substr(line, i+2);
-                    printf "%s\t%s\n", name, val
-                } else if (ind <= u) { exit }
-            }')
+                if (ind <= u) exit
+                if (ind != u + 2) next
+                line=$0; sub(/^ */, "", line)
+                sq=sprintf("%c", 39)
+                q=substr(line, 1, 1)
+                k=1
+                if (q == "\"" || q == sq) k=2
+                else q=""
+                sep=0
+                for (; k <= length(line); k++) {
+                    c=substr(line, k, 1)
+                    nx=substr(line, k+1, 1)
+                    if (q == "\"") {
+                        if (c == "\\") { k++; continue }
+                        if (c == "\"") q=""
+                        continue
+                    }
+                    if (q == sq) {
+                        if (c == sq) {
+                            if (nx == sq) k++
+                            else q=""
+                        }
+                        continue
+                    }
+                    if (c == "#" && (k == 1 || substr(line, k-1, 1) ~ /[ \t]/))
+                        break
+                    if (c == ":" && (nx == "" || nx ~ /[ \t]/)) {
+                        sep=k
+                        break
+                    }
+                }
+                if (!sep) exit 1
+                name=substr(line, 1, sep-1)
+                val=substr(line, sep+1)
+                sub(/^[ \t]*/, "", val)
+                printf "K%s\nV%s\n", name, val
+            }') || return 1
         local list='[]' n='' v=''
-        while IFS=$'\t' read -r n v; do
+        while IFS= read -r n && IFS= read -r v; do
+            n=${n#K}
+            v=${v#V}
             [[ -n "$n" ]] || continue
             v=$(users_hy2_yaml_scalar "$v")
             v=${v%__ABOX_TRAILING_NL_KEEP__}
+            n=$(users_hy2_yaml_scalar "$n")
+            n=${n%__ABOX_TRAILING_NL_KEEP__}
             list=$(printf '%s' "$list" | jq -c --arg n "$n" --rawfile v <(printf '%s' "$v") '. + [{name: $n, secret: $v}]') || return 1
         done <<< "$out"
         # R6C11-03 fail-closed: a userpass section that yields nothing is
@@ -30598,6 +30634,44 @@ users_registered_link() {
 
 users_b64url_dec() { printf '%s' "$1" | tr '_-' '/+' | awk '{l=length($0); if (l%4==2) print $0"=="; else if (l%4==3) print $0"="; else print $0}' | base64 -d 2>/dev/null; }
 
+# Strict percent-decoder for SS userinfo (SIP002): '%HH' must be two hex
+# digits; '+' stays a literal plus; decode exactly once. '%00' is
+# refused: bash cannot hold a NUL byte, so silently dropping it would
+# change the credential.
+_ss_pct_dec() {
+    local s="$1" out='' i=0 c='' h=''
+    while (( i < ${#s} )); do
+        c=${s:i:1}
+        if [[ "$c" == '%' ]]; then
+            h=${s:i+1:2}
+            [[ "${#h}" == 2 && "$h" =~ ^[0-9A-Fa-f]{2}$ ]] || return 1
+            [[ "${h,,}" != "00" ]] || return 1
+            printf -v c '%b' "\x$h"
+            out+="$c"
+            i=$(( i + 3 ))
+        else
+            out+="$c"
+            i=$(( i + 1 ))
+        fi
+    done
+    printf '%s' "$out"
+}
+
+# Strict Base64/Base64URL validator for SS userinfo: charset, padding
+# (1-2 '=' at the very end only), single alphabet, and length are
+# checked before decoding. The shared users_b64url_dec does the decode.
+_ss_b64_strict() {
+    local s="$1" body='' pad=''
+    [[ "$s" =~ ^[A-Za-z0-9+/=_-]+$ ]] || return 1
+    body="${s%%=*}"
+    pad="${s:${#body}}"
+    [[ "$pad" == "" || "$pad" == "=" || "$pad" == "==" ]] || return 1
+    [[ "$body" =~ ^[A-Za-z0-9+/-]+$ ]] || return 1
+    if [[ "$body" == *[-_]* ]]; then [[ "$body" != *[+/]* ]] || return 1; fi
+    (( (${#s} % 4) != 1 )) || return 1
+    users_b64url_dec "$s"
+}
+
 # Build the connection link for one registry user.
 # $1=core $2=tag $3=name -> prints link on stdout
 users_link() {
@@ -30626,15 +30700,42 @@ users_link() {
     msecret=$(printf '%s' "$main" | jq -r '.secret // ""')
     local frag="#$(urlencode "$tag")-$(urlencode "$name")"
     if [[ "$link" == ss://* ]]; then
-        # userinfo is percent-encoded method:credential (SIP002)
-        local rest="${link#ss://}" userinfo='' hostpart='' plain='' method='' eff=''
+        # SIP002 plaintext (method:credential, percent-encoded) or
+        # legacy Base64 userinfo; split on structure, never guess:
+        # a literal ':' means plaintext, anything else must be strict
+        # Base64 decoding to method:credential. A stored link with no
+        # outer '@' (e.g. ShadowTLS ss://<b64>?shadow-tls=...) is
+        # refused explicitly (return 1): its inner/outer credentials
+        # cannot be mapped to this user's secret here.
+        local rest="${link#ss://}" userinfo='' hostpart='' plain='' method='' eff='' query=''
+        rest="${rest%%#*}"
+        if [[ "$rest" == *\?* ]]; then
+            query="?${rest#*\?}"
+            rest="${rest%%\?*}"
+        fi
+        [[ "$rest" == *@* ]] || return 1
         userinfo="${rest%%@*}"; hostpart="${rest#*@}"
-        hostpart="${hostpart%%#*}"
-        plain=$(users_b64url_dec "$userinfo") || return 1
-        method="${plain%%:*}"
+        [[ -n "$userinfo" && -n "$hostpart" ]] || return 1
+        [[ "$hostpart" != *@* ]] || return 1
+        if [[ "$userinfo" == *:* ]]; then
+            # Plaintext: split on the FIRST literal ':' only, then
+            # strict percent-decode each side once ('+' stays literal).
+            local _m_enc="${userinfo%%:*}" _c_enc="${userinfo#*:}" _m_dec='' _c_dec=''
+            _m_dec=$(_ss_pct_dec "$_m_enc") || return 1
+            _c_dec=$(_ss_pct_dec "$_c_enc") || return 1
+            method="$_m_dec"
+        else
+            plain=$(_ss_b64_strict "$userinfo") || return 1
+            [[ "$plain" == *:* ]] || return 1
+            method="${plain%%:*}"
+        fi
+        case "$method" in
+            2022-blake3-aes-128-gcm|2022-blake3-aes-256-gcm|2022-blake3-chacha20-poly1305|aes-128-gcm|aes-256-gcm|chacha20-ietf-poly1305|xchacha20-ietf-poly1305) ;;
+            *) return 1 ;;
+        esac
         if [[ -n "$ssecret" ]]; then eff="${ssecret}:${secret}"; else eff="$secret"; fi
-        printf 'ss://%s:%s@%s%s' \
-            "$(urlencode "$method")" "$(urlencode "$eff")" "$hostpart" "$frag"
+        printf 'ss://%s:%s@%s%s%s' \
+            "$(urlencode "$method")" "$(urlencode "$eff")" "$hostpart" "$query" "$frag"
         return 0
     fi
     # R5C11-04: vmess://BASE64 has no userinfo@host; decode the
@@ -30648,7 +30749,8 @@ users_link() {
         [[ -n "$use_uuid" ]] || return 1
         local vblob='' vjson='' vnew=''
         vblob="${link#vmess://}"
-        vjson=$(printf '%s' "$vblob" | base64 -d 2>/dev/null || users_b64url_dec "$vblob") || return 1
+        vjson=$(printf '%s' "$vblob" | base64 -d 2>/dev/null) || vjson=$(users_b64url_dec "$vblob") || return 1
+        [[ "$vjson" =~ [^[:space:]] ]] || return 1
         [[ -n "$vjson" ]] || return 1
         # 2fp: the template link's aid is the deploy-time default (0);
         # follow the registry user's preserved alterId so the link
@@ -31035,7 +31137,7 @@ users_inbound_menu() {
                 new=$(printf '%s' "$old" | jq -c --arg n "$nm" --rawfile s <(printf '%s' "$secret") --rawfile u <(printf '%s' "$nuuid") --arg f "$flow" --arg e "$email" --arg now "$created" '
                     .users += [{name: $n, secret: $s, uuid: $u, flow: $f, email: $e, created: $now,
                                 expire_at: 0, quota_gb: 0, window: "", disabled: false, blocked: "",
-                                period: "", used_up: 0, used_down: 0, last_up: 0, last_down: 0}]') || continue
+                                period: "", used_up: 0, used_down: 0, last_up: 0, last_down: 0, count_from_zero: true}]') || continue
                 if users_apply_reg "$core" "$tag" "$new" "$old"; then
                     msg "${GREEN}$(tr_msg mu_added): ${nm}${NC}"
                     if [[ "$proto" == 'shadowsocks' ]] && (( $(printf '%s' "$new" | jq '.users | length') == 2 )) && [[ -z "$(printf '%s' "$old" | jq -r '.server_secret // ""')" ]]; then
@@ -31400,7 +31502,10 @@ users_guard_eval() {
             (if $have == 1 and (.email // "") != "" and ($stats[.email] != null) then
                 (if .period != $per then
                     (if .period == "" then
-                        .period = $per | .last_up = $stats[.email].up | .last_down = $stats[.email].down | .baseline_stale = false
+                        (if .count_from_zero == true then
+                            .used_up += $stats[.email].up | .used_down += $stats[.email].down
+                         else . end)
+                        | .period = $per | .last_up = $stats[.email].up | .last_down = $stats[.email].down | .baseline_stale = false | del(.count_from_zero)
                      else
                         .used_up = 0 | .used_down = 0 | .period = $per
                         | .last_up = $stats[.email].up | .last_down = $stats[.email].down | .baseline_stale = false
@@ -31421,7 +31526,7 @@ users_guard_eval() {
                  end)
              elif .period != $per then
                 (if .period == "" then
-                    .period = $per
+                    .
                  else
                     .used_up = 0 | .used_down = 0 | .period = $per | .baseline_stale = true
                  end)
@@ -32735,11 +32840,13 @@ dns_backend_detect() {
     # systemd-resolved only counts when queries really flow through
     # it: the stub file (NOT the upstream-list file
     # /run/systemd/resolve/resolv.conf, which glibc reads directly
-    # and which bypasses resolved DoT) or a 127.0.0.53 / 127.0.0.54
-    # stub entry (.54 is systemd 253+'s proxy stub).
+    # and which bypasses resolved DoT), or a resolv.conf whose every
+    # nameserver is a 127.0.0.53 / 127.0.0.54 stub entry (.54 is
+    # systemd 253+'s proxy stub). Any direct (non-stub) nameserver
+    # means glibc can query it first, so the file is not resolved.
     if command -v resolvectl >/dev/null 2>&1 && systemctl is-active --quiet systemd-resolved 2>/dev/null \
         && { [[ "$_link" == */stub-resolv.conf ]] \
-             || grep -qE '^nameserver[[:space:]]+127\.0\.0\.5[34]([[:space:]]|$)' "$_rc" 2>/dev/null; }; then
+             || LC_ALL=C awk '{ sub(/^[[:space:]]+/, ""); if ($1 != "nameserver") next; seen=1; addr=$2; sub(/\r$/, "", addr); if (addr != "127.0.0.53" && addr != "127.0.0.54") bad=1 } END { exit ((seen && !bad) ? 0 : 1) }' "$_rc" 2>/dev/null; }; then
         printf 'resolved\n'
     elif command -v nmcli >/dev/null 2>&1 && nmcli general status >/dev/null 2>&1 \
         && { [[ "$(readlink "$_rc" 2>/dev/null)" == *NetworkManager* ]] \
@@ -33090,10 +33197,10 @@ nm_effective_device() {
 
 nm_dns_verify_applied() {
     local connection="$1" v4="$2" v6="${3:-}" rc="${4:-/etc/resolv.conf}" v=''
-    v=$(nmcli -g ipv4.dns connection show "$connection" 2>/dev/null || true)
+    v=$(nmcli --escape no -g ipv4.dns connection show "$connection" 2>/dev/null || true)
     [[ "$(_nm_dns_norm_set "$v")" == "$(_nm_dns_norm_set "$v4")" ]] || return 1
     if [[ -n "$v6" ]]; then
-        v=$(nmcli -g ipv6.dns connection show "$connection" 2>/dev/null || true)
+        v=$(nmcli --escape no -g ipv6.dns connection show "$connection" 2>/dev/null || true)
         [[ "$(_nm_dns_norm_set "$v")" == "$(_nm_dns_norm_set "$v6")" ]] || return 1
     fi
     # R6C12-02: the EFFECTIVE resolver is the FIRST nameserver.

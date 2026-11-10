@@ -299,6 +299,19 @@ ABOX_LANG='zh'
 ABOX_BUILD='2026-10-15-arbitrated-fix-v192'
 ABOX_BUILD_EPOCH=20261015192
 WALLOS_DIR='/opt/wallos'
+# P2-03 (hardening, not a confirmed vulnerability): one shared Docker
+# launch-hardening profile for every Wallos container (install,
+# rollback, recovery, rebind). Narrow profile only: drop NET_RAW and
+# forbid privilege gains at exec. The fuller candidate (cap-drop ALL +
+# minimal cap-add set + memory/cpus/pids limits) is NOT enabled here:
+# it is unproven against the real Wallos image and must be validated
+# on real Docker before it becomes the default. --read-only is
+# deliberately absent: Wallos needs writable paths beyond the db/logos
+# volumes and the tmpfs recipe for them is unverified.
+WALLOS_DOCKER_HARDENING=(
+    --cap-drop NET_RAW
+    --security-opt no-new-privileges
+)
 # D-04: top-level init (set -u is active; rollback reads this before any writer runs).
 WALLOS_IMAGE_RESULT=''
 WALLOS_MIRROR_RELEASE='wallos-mirror'
@@ -38104,6 +38117,12 @@ _merge_retained_manifest_rows_inner() {
         prev_key="$key"; prev_line="$cur"
     done < "$tmp.dedup"
     mv -f -- "$tmp.dedup" "$tmp" || { rm -f -- "$tmp" "$tmp.dedup" "$rows_file"; return 1; }
+    # R13-02: the merged manifest must be re-checked against the
+    # 4 MiB cap before it can be installed; a merge that grew past
+    # the cap fails instead of silently installing an oversized
+    # manifest (the caller restores the live manifest from the
+    # snapshot, so the restore fails as a whole, not partially).
+    [[ "$(stat -c %s "$tmp" 2>/dev/null || echo 99999999)" -le 4194304 ]] || { rm -f -- "$tmp" "$rows_file"; return 1; }
     chmod 600 "$tmp" || { rm -f -- "$tmp" "$rows_file"; return 1; }
     if [[ $EUID -eq 0 ]]; then chown root:root "$tmp" || { rm -f -- "$tmp" "$rows_file"; return 1; }; fi
     mv -f -- "$tmp" "$live" || { rm -f -- "$tmp" "$rows_file"; return 1; }
@@ -38128,7 +38147,7 @@ stop_managed_services_for_restore() {
 }
 
 clear_abox_runtime_for_restore() {
-    local child base failed=0 preserve_latest=0 _contains_rc=0
+    local child base failed=0 preserve_latest=0 preserve_shortcut=0 _contains_rc=0
     [[ -d "$ABOX_DIR" && ! -L "$ABOX_DIR" ]] || return 0
     # SYD-B5e R3: the B5 preserve rule (old backup keeps live latest) must
     # hold across the clear step too, or the preserved family's config dir
@@ -38136,11 +38155,18 @@ clear_abox_runtime_for_restore() {
     if [[ -n "${1:-}" && -d "$1" ]]; then
         backup_root_contains_service "$1" xray-latest || _contains_rc=$?
         [[ "$_contains_rc" == 1 ]] && preserve_latest=1
+        # R13-01: an old backup without .shortcut must not delete
+        # the live .shortcut state (the backup has nothing to
+        # restore in its place; the live file is the only copy).
+        if [[ ! -e "$1$ABOX_DIR/.shortcut" && ! -L "$1$ABOX_DIR/.shortcut" ]]; then
+            preserve_shortcut=1
+        fi
     fi
     for child in "$ABOX_DIR"/* "$ABOX_DIR"/.[!.]* "$ABOX_DIR"/..?*; do
         [[ -e "$child" || -L "$child" ]] || continue
         base=${child##*/}
         abox_restore_preserved_name "$base" && continue
+        [[ "$preserve_shortcut" == 1 && "$base" == .shortcut ]] && continue
         [[ "$preserve_latest" == 1 && "$base" == xray-latest ]] && continue
         path_tree_has_mountpoint "$child" && { msg "${RED}[!] Restore cleanup encountered a mountpoint; aborting before deletion: ${child}${NC}"; return 1; }
     done
@@ -38148,6 +38174,7 @@ clear_abox_runtime_for_restore() {
         [[ -e "$child" || -L "$child" ]] || continue
         base=${child##*/}
         abox_restore_preserved_name "$base" && continue
+        [[ "$preserve_shortcut" == 1 && "$base" == .shortcut ]] && continue
         [[ "$preserve_latest" == 1 && "$base" == xray-latest ]] && continue
         rm -rf -- "$child" || failed=1
     done
@@ -38359,7 +38386,7 @@ __abox_backup_copy_path() {
     cp -a -- "$src" "$dst"
 }
 backup_current_config() {
-    local ts unique backup_dir work root tarball backup_failed=0 backup_fw_unsupported=0 backend srv path _abox_links
+    local ts unique backup_dir work root tarball archive_tmp backup_failed=0 backup_fw_unsupported=0 backend srv path _abox_links
     valid_backup_retention_count "$BACKUP_RETENTION_COUNT" || die 'BACKUP_RETENTION_COUNT 无效；必须是 0-1000 的整数。'
     ts=$(date +%Y%m%d-%H%M%S); unique=$(openssl rand -hex 3 2>/dev/null || printf '%s' "$$")
     backup_dir="${1:-$ABOX_DIR/backups}"
@@ -38453,8 +38480,17 @@ backup_current_config() {
     create_backup_manifest "$work" "$work/meta/manifest.sha256" || { rm -rf "$work"; die 'Backup manifest creation failed.'; }
     validate_extracted_backup_content "$root" || { rm -rf "$work"; die 'Backup content validation failed.'; }
     tarball="$backup_dir/A-Box-backup-${ts}-${unique}.tar.gz"
-    tar -C "$work" --hard-dereference -czf "$tarball" root meta || { rm -rf "$work"; rm -f "$tarball"; die 'Backup tarball creation failed.'; }
-    chmod 600 "$tarball"; validate_backup_archive "$tarball" || { rm -rf "$work"; rm -f "$tarball"; die 'Backup archive validation failed.'; }
+    # R13-03: create the archive as a private temp file in the same
+    # directory (umask 077 mktemp, so no 0644-readable window under
+    # umask 022), chmod it under control, then publish it with a
+    # same-dir rename. A failure before publication only removes
+    # the temp file, never a pre-existing tarball at the final name.
+    archive_tmp=$(umask 077; mktemp "$backup_dir/.A-Box-backup.XXXXXXXXXX") || { rm -rf "$work"; die 'Backup temporary file creation failed.'; }
+    (umask 077; tar -C "$work" --hard-dereference -czf "$archive_tmp" root meta) || { rm -rf "$work"; rm -f "$archive_tmp"; die 'Backup tarball creation failed.'; }
+    chmod 600 "$archive_tmp" || { rm -rf "$work"; rm -f "$archive_tmp"; die 'Backup tarball permission setting failed.'; }
+    [[ ! -d "$tarball" ]] || { rm -rf "$work"; rm -f "$archive_tmp"; die 'Backup destination is a directory.'; }
+    mv -f -- "$archive_tmp" "$tarball" || { rm -rf "$work"; rm -f "$archive_tmp"; die 'Backup tarball publication failed.'; }
+    validate_backup_archive "$tarball" || { rm -rf "$work"; rm -f "$tarball"; die 'Backup archive validation failed.'; }
     backup_checksum_write "$tarball" || { rm -rf "$work"; rm -f "$tarball" "${tarball}.sha256"; die 'Backup SHA256 creation failed.'; }
     backup_auth_write "$tarball" || { rm -rf "$work"; rm -f "$tarball" "${tarball}.sha256" "${tarball}.hmac"; die 'Backup HMAC authentication creation failed.'; }
     local backup_dir_real abox_dir_real
@@ -38549,6 +38585,144 @@ auto_backup_silent() {
     ABOX_LAST_BACKUP="$newest"
 }
 
+# R13-04: preflight for the preserved retired xray-latest instance.
+# Records (port, proto) pairs that have a real prior A-Box firewall
+# allow into $1 (plan file, "port|proto" per line). Returns 0 with an
+# empty plan when there is no owned instance or no inbounds; returns 1
+# when the live config cannot be parsed strictly or a prior-allow
+# query fails (unknown state must fail, never silently skip).
+preserved_latest_firewall_preflight() {
+    local plan="$1" cfg _backend _pairs _port _proto _rc _has _zone
+    [[ -n "$plan" ]] || return 1
+    abox_owns_service xray-latest || return 0
+    cfg="$ABOX_DIR/xray-latest/config.json"
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    _backend=$(firewall_backend 2>/dev/null) || return 1
+    case "$_backend" in
+        iptables|ufw|firewalld) ;;
+        *) return 1 ;;
+    esac
+    # Parse the live inbounds strictly: port must be a JSON int
+    # (booleans are ints in Python and must be excluded); the transport
+    # maps to tcp/udp; an unknown transport, a range or boolean port,
+    # or malformed JSON fails the preflight. A config with no inbounds
+    # yields an empty plan and success.
+    _pairs=$(python3 -I - "$cfg" <<'PY_PREFLIGHT'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    cfg = json.load(f)
+inbounds = cfg.get("inbounds")
+if inbounds is None:
+    inbounds = []
+if not isinstance(inbounds, list):
+    sys.exit(1)
+seen = set()
+out = []
+for ib in inbounds:
+    if not isinstance(ib, dict):
+        sys.exit(1)
+    port = ib.get("port")
+    if isinstance(port, bool) or not isinstance(port, int):
+        sys.exit(1)
+    if not 1 <= port <= 65535:
+        sys.exit(1)
+    ss = ib.get("streamSettings")
+    if ss is None:
+        proto = "tcp"
+    else:
+        if not isinstance(ss, dict):
+            sys.exit(1)
+        network = ss.get("network")
+        if network is None:
+            proto = "tcp"
+        elif network in ("tcp", "ws", "http", "grpc", "xhttp"):
+            proto = "tcp"
+        elif network in ("kcp", "quic"):
+            proto = "udp"
+        else:
+            sys.exit(1)
+    key = (port, proto)
+    if key not in seen:
+        seen.add(key)
+        out.append("%d|%s" % (port, proto))
+print("\n".join(out))
+PY_PREFLIGHT
+) || return 1
+    : > "$plan" || return 1
+    chmod 600 "$plan" || { rm -f -- "$plan"; return 1; }
+    if [[ -n "$_pairs" ]]; then
+        while IFS='|' read -r _port _proto || [[ -n "$_port" ]]; do
+            [[ -n "$_port" && -n "$_proto" ]] || { rm -f -- "$plan"; return 1; }
+            _has=0
+            case "$_backend" in
+                iptables)
+                    iptables_rule_check "${IPT:-iptables}" INPUT -p "$_proto" --dport "$_port" -m comment --comment "A-Box-${_port}-${_proto}" -j ACCEPT; _rc=$?
+                    if [[ "$_rc" == 0 ]]; then
+                        _has=1
+                    elif [[ "$_rc" == 2 ]]; then
+                        rm -f -- "$plan"; return 1
+                    elif command -v ip6tables >/dev/null 2>&1; then
+                        iptables_rule_check "${IPT6:-ip6tables}" INPUT -p "$_proto" --dport "$_port" -m comment --comment "A-Box-${_port}-${_proto}" -j ACCEPT; _rc=$?
+                        if [[ "$_rc" == 0 ]]; then
+                            _has=1
+                        elif [[ "$_rc" == 2 ]]; then
+                            rm -f -- "$plan"; return 1
+                        fi
+                    fi
+                    ;;
+                ufw)
+                    ufw_owned_rule_exists "$_port" "$_proto"; _rc=$?
+                    if [[ "$_rc" == 0 ]]; then
+                        _has=1
+                    elif [[ "$_rc" == 2 ]]; then
+                        rm -f -- "$plan"; return 1
+                    fi
+                    ;;
+                firewalld)
+                    if [[ -z "${_zone:-}" ]]; then
+                        _zone=$(firewalld_zone_for_abox) || { rm -f -- "$plan"; return 1; }
+                    fi
+                    firewalld_port_state "$_port" "$_proto" runtime "$_zone"; _rc=$?
+                    if [[ "$_rc" == 0 ]]; then
+                        _has=1
+                    elif [[ "$_rc" == 2 ]]; then
+                        rm -f -- "$plan"; return 1
+                    fi
+                    firewalld_port_state "$_port" "$_proto" permanent "$_zone"; _rc=$?
+                    if [[ "$_rc" == 0 ]]; then
+                        _has=1
+                    elif [[ "$_rc" == 2 ]]; then
+                        rm -f -- "$plan"; return 1
+                    fi
+                    ;;
+            esac
+            if [[ "$_has" == 1 ]]; then
+                printf '%s|%s\n' "$_port" "$_proto" >> "$plan" || { rm -f -- "$plan"; return 1; }
+            fi
+        done <<< "$_pairs"
+    fi
+    return 0
+}
+
+# R13-04: replay the preflight plan ($1). A missing or empty plan is
+# a no-op (success). A non-empty plan with a lost instance fails
+# instead of silently succeeding. Each pair is re-allowed through
+# allowPort in a subshell, so an allowPort die cannot kill the caller.
+restore_preserved_latest_firewall() {
+    local plan="$1" _port _proto
+    [[ -n "$plan" ]] || return 1
+    if [[ ! -e "$plan" && ! -L "$plan" ]]; then return 0; fi
+    [[ -f "$plan" && ! -L "$plan" ]] || return 1
+    if [[ ! -s "$plan" ]]; then return 0; fi
+    abox_owns_service xray-latest || return 1
+    while IFS='|' read -r _port _proto || [[ -n "$_port" ]]; do
+        [[ "$_port" =~ ^[0-9]+$ ]] || return 1
+        [[ "$_proto" == tcp || "$_proto" == udp ]] || return 1
+        ( allowPort "$_port" "$_proto" ) < /dev/null || return 1
+    done < "$plan"
+    return 0
+}
+
 restore_latest_backup_silent() {
     local backup_dir="${1:-$ABOX_DIR/backups}" selected="${2:-}" key_file="${3:-}" work root backend mode=all srv
     [[ -d "$backup_dir" ]] || { msg "restore gate failed: backup-dir" >&2; return 1; }
@@ -38612,6 +38786,7 @@ PY_LATEST_BACKUP
     xray_latest_legacy_detect >/dev/null 2>&1 || _c2_xl_detect_rc=$?
     if (( _c2_xl_detect_rc == 2 )); then msg "restore gate failed: legacy xray-latest layout unclassifiable (work preserved at $work)" >&2; rm -rf "$work"; return 1; fi
     restore_filter_legacy_xray_latest "$root" "$work" || { msg "restore gate failed: legacy-filter (work preserved at $work)" >&2; rm -rf "$work"; return 1; }
+    preserved_latest_firewall_preflight "$work/preserved-latest-firewall.plan" || { msg "restore gate failed: legacy-fw-preflight (work preserved at $work)" >&2; rm -rf "$work"; return 1; }
     stop_managed_services_for_restore "$root" >/dev/null 2>&1 || { msg "restore gate failed: stop-services" >&2; rm -rf "$work"; return 1; }
     clean_nat_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-nat" >&2; rm -rf "$work"; return 1; }
     clean_input_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-input" >&2; rm -rf "$work"; return 1; }
@@ -38636,6 +38811,7 @@ PY_LATEST_BACKUP
     backend=$(cat "$work/meta/firewall.backend" 2>/dev/null || echo iptables); [[ "$backend" == iptables ]] || mode=special
     restore_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 "$mode" || { msg "restore gate failed: iptables4 (work preserved at $work)" >&2; return 1; }
     restore_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 "$mode" || { msg "restore gate failed: iptables6 (work preserved at $work)" >&2; return 1; }
+    restore_preserved_latest_firewall "$work/preserved-latest-firewall.plan" || { msg "restore gate failed: legacy-fw-replay (work preserved at $work)" >&2; return 1; }
     # X-08: a pre-deployment backup on a fresh host legitimately has no .env;
     # guard like regenerate_runtime_assets_after_restore does (L13851).
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
@@ -38742,6 +38918,7 @@ restore_from_backup() {
     xray_latest_legacy_detect >/dev/null 2>&1 || _c2_xl_detect_rc=$?
     if (( _c2_xl_detect_rc == 2 )); then rm -rf "$work"; die '恢复前检测到无法分类的 xray-latest 遗留布局，恢复已中止。'; fi
     restore_filter_legacy_xray_latest "$root" "$work" || { rm -rf "$work"; die '恢复前过滤退役 xray-latest 备份内容失败。'; }
+    preserved_latest_firewall_preflight "$work/preserved-latest-firewall.plan" || { rm -rf "$work"; die '恢复前检查退役 xray-latest 防火墙放行失败。'; }
     stop_managed_services_for_restore "$root" || die '恢复前无法停止全部 A-Box 托管服务。'
     clean_nat_rules || die '恢复前无法完整删除 A-Box HY2 NAT 规则。'
     clean_input_rules || die '恢复前无法完整删除 A-Box INPUT/原生防火墙规则。'
@@ -38779,6 +38956,7 @@ restore_from_backup() {
     [[ "$backend" == iptables ]] || mode=special
     restore_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 "$mode" || die 'IPv4 A-Box firewall restore failed.'
     restore_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 "$mode" || die 'IPv6 A-Box firewall restore failed.'
+    restore_preserved_latest_firewall "$work/preserved-latest-firewall.plan" || die '恢复退役 xray-latest 防火墙放行失败。'
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
         load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || die '恢复后的 A-Box 环境文件校验失败。'
         if [[ -n "${SS_PORT:-}" ]]; then enforce_ss_whitelist_order "$SS_PORT" || die 'Restored SS whitelist order validation failed.'; fi
@@ -39226,7 +39404,56 @@ wallos_port_free() {
     # plain `docker ps` (no -a) is the right source.
     if command -v docker >/dev/null 2>&1; then
         _dp=$(docker ps --format '{{.Ports}}' 2>/dev/null) || return 1
-        if printf '%s\n' "$_dp" | grep -qE "(^|[^0-9])${port}->"; then return 1; fi
+        # R13-05: parse published ports strictly. Only the HOST side
+        # counts, as a single port or a lo-hi range; only a TCP
+        # publication blocks a TCP port (UDP/SCTP do not). A malformed
+        # published entry, or one without a protocol, fails closed
+        # (busy). awk exits 0 = free, non-zero = busy/probe failure.
+        if ! printf '%s\n' "$_dp" | awk -v want="$port" '
+        BEGIN { busy = 0; bad = 0 }
+        {
+            n = split($0, parts, ",")
+            for (i = 1; i <= n; i++) {
+                entry = parts[i]
+                sub(/^[ \t]+/, "", entry)
+                sub(/[ \t]+$/, "", entry)
+                if (entry == "") continue
+                if (index(entry, "->") == 0) continue
+                arrow = index(entry, "->")
+                host = substr(entry, 1, arrow - 1)
+                rest = substr(entry, arrow + 2)
+                slash = 0
+                for (k = length(rest); k >= 1; k--) {
+                    if (substr(rest, k, 1) == "/") { slash = k; break }
+                }
+                if (slash == 0) { bad = 1; continue }
+                proto = substr(rest, slash + 1)
+                if (proto != "tcp") {
+                    if (proto == "udp" || proto == "sctp") continue
+                    bad = 1; continue
+                }
+                colon = 0
+                for (k = length(host); k >= 1; k--) {
+                    if (substr(host, k, 1) == ":") { colon = k; break }
+                }
+                hpspec = (colon == 0) ? host : substr(host, colon + 1)
+                if (hpspec ~ /^[0-9]+$/) {
+                    if (hpspec + 0 == want + 0) busy = 1
+                } else if (hpspec ~ /^[0-9]+-[0-9]+$/) {
+                    dash = index(hpspec, "-")
+                    lo = substr(hpspec, 1, dash - 1) + 0
+                    hi = substr(hpspec, dash + 1) + 0
+                    if (lo > hi) { bad = 1; continue }
+                    if (want + 0 >= lo && want + 0 <= hi) busy = 1
+                } else {
+                    bad = 1
+                }
+            }
+        }
+        END { if (busy || bad) exit 1; exit 0 }
+'; then
+            return 1
+        fi
     fi
     return 0
 }
@@ -39270,7 +39497,7 @@ wallos_install_runtime() {
                 elif command -v rc-service >/dev/null 2>&1; then
                     rc-service docker start >/dev/null 2>&1 9>&- 10>&- || true
                 elif command -v service >/dev/null 2>&1; then
-                    service docker start >/dev/null 2>&1 || true
+                    service docker start >/dev/null 2>&1 9>&- 10>&- || true
                 fi
                 ;;
         esac
@@ -39286,7 +39513,7 @@ wallos_install_runtime() {
         debian|ubuntu|linuxmint|kali)
             apt-get update && apt-get install -y docker.io ca-certificates curl jq || return 1
             if command -v systemctl >/dev/null 2>&1; then systemctl enable --now docker || return 1
-            elif command -v service >/dev/null 2>&1; then service docker start || return 1
+            elif command -v service >/dev/null 2>&1; then service docker start 9>&- 10>&- || return 1
             else return 1; fi
             ;;
         alpine)
@@ -39294,7 +39521,7 @@ wallos_install_runtime() {
             # R7C14-01: boot-enable failure must fail the install, not swallow
             # (else Docker, and hence Wallos, stays dead after reboot).
             rc-update add docker default >/dev/null 2>&1 || return 1
-            rc-service docker start || return 1
+            rc-service docker start 9>&- 10>&- || return 1
             ;;
         centos|rhel|rocky|almalinux|fedora)
             local -a docker_conflicts=()
@@ -39501,17 +39728,22 @@ wallos_prune_local_images() {
 # Tries to bring Wallos back up with the previous image so the service is not
 # left completely down. Data on disk is already the restored backup.
 _wallos_rollback_recover() {
-    local prev_image="$1" port="$2" tz="$3" bind_address="$4"
+    local prev_image="$1" port="$2" tz="$3" bind_address="$4" _pre_version="${5:-}" _pre_mode="${6:-}" _pre_pubport="${7:-}" _pre_cfhost="${8:-}"
     local -a _pub_args=()
     # X-03: use explicit bind:port form like the install path (L15630).
     # The old 0.0.0.0 -> "-p port:80" special case also published IPv6 [::]:port.
     [[ -n "$bind_address" ]] && _pub_args=(-p "${bind_address}:${port}:80/tcp")
     [[ -n "$prev_image" ]] || return 1
+    # R13-09: the previous version must be known before the
+    # container is touched; an unknown version must fail, never
+    # silently keep the backup's VERSION/IMAGE as the recovered state.
+    [[ "$_pre_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
     # X-01: remove any existing 'wallos' container first. Callers may invoke
     # this after a failed docker run or unhealthy new container is still present;
     # without this, the second 'docker run --name wallos' always hits a name conflict.
     docker rm -f wallos >/dev/null 2>&1 || true
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
+        "${WALLOS_DOCKER_HARDENING[@]}" \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
         -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$prev_image" >/dev/null 2>&1 || return 1
@@ -39521,6 +39753,15 @@ _wallos_rollback_recover() {
     docker image inspect "$prev_image" >/dev/null 2>&1 || return 1
     [[ -s "$WALLOS_DIR/db/wallos.db" && ! -L "$WALLOS_DIR/db/wallos.db" ]] || return 1
     wallos_wait_healthy "$port" || return 1
+    # R13-09: commit the recovered deployment's state from the
+    # captured pre-rollback metadata (restore mode: a captured
+    # empty field stays absent instead of inheriting the backup's
+    # value). A failed write is reported distinctly: the container
+    # is healthy, but the recovery is incomplete.
+    if ! wallos_write_state "$prev_image" "$port" "$tz" "$bind_address" "$_pre_mode" "$_pre_pubport" "$_pre_cfhost" "$_pre_version" 1; then
+        msg "${RED}Previous Wallos container is healthy, but state recovery failed; VERSION/IMAGE were not restored to the pre-rollback values.${NC}"
+        return 1
+    fi
 }
 
 # Normalize a Wallos image digest to canonical form
@@ -39542,6 +39783,28 @@ wallos_normalize_digest() {
     printf 'bellamy/wallos@sha256:%s' "${hex,,}"
 }
 
+# R13-08: check whether the local image with the captured ID
+# carries the expected registry manifest digest in its RepoDigests.
+# The image is inspected by its captured ID, never by a mutable tag:
+# the tag could be retargeted between the .Id capture and this check.
+# An empty RepoDigests, a malformed expected digest, or an inspection
+# failure all fail (the caller falls back to the verified-fetch path).
+# Note: `docker load` does not reliably populate RepoDigests, so this
+# is a conservative optimization only; offline reuse of mirror-loaded
+# images still needs a trusted manifest-to-image-ID binding.
+wallos_local_image_has_digest() {
+    local image_ref="$1" expected="$2" _norm_expected _digests _d _norm
+    [[ -n "$image_ref" && -n "$expected" ]] || return 1
+    _norm_expected=$(wallos_normalize_digest "$expected") || return 1
+    _digests=$(docker image inspect -f '{{join .RepoDigests "\n"}}' "$image_ref" 2>/dev/null) || return 1
+    while IFS= read -r _d || [[ -n "$_d" ]]; do
+        [[ -n "$_d" ]] || continue
+        _norm=$(wallos_normalize_digest "$_d") || continue
+        [[ "$_norm" == "$_norm_expected" ]] && return 0
+    done <<< "$_digests"
+    return 1
+}
+
 # Validate `docker load` output for a Wallos archive. Accepts exactly one
 # loaded image, either tag-form ("Loaded image: bellamy/wallos:<tag>",
 # what `docker save` of a tag produces) or digest-form ("Loaded image ID:
@@ -39552,6 +39815,11 @@ wallos_normalize_digest() {
 # Args: $1 = load output, $2 = expected tag (e.g. 5.10.4).
 wallos_check_loaded_image() {
     local load_out="${1:-}" image_tag="${2:-}" loaded_id
+    # R13-07: exactly one recognized load-result record, total.
+    # Each branch below counts only its own kind, so a mixed
+    # tag+ID output used to pass either branch; the total count
+    # closes that bypass.
+    [[ "$(grep -Ec '^Loaded image( ID)?:' <<< "$load_out")" == 1 ]] || return 1
     if [[ "$(grep -c '^Loaded image:' <<< "$load_out")" == 1 ]] &&
        grep -Fqx "Loaded image: bellamy/wallos:$image_tag" <<< "$load_out"; then
         return 0
@@ -39632,17 +39900,31 @@ wallos_rollback_to_version() {
         msg "${RED}$(tprintf wl_rb_unknown_ver "$_installed_img")${NC}"; return 1
     fi
     image_tag="${target_tag#v}"
+    # R13-09: capture the pre-rollback Wallos metadata BEFORE any
+    # destructive rollback step, and refuse the rollback when the
+    # previous version cannot be established. A rollback that
+    # cannot record its own previous version must not start:
+    # recovery could otherwise leave the backup's VERSION/IMAGE
+    # standing as the recovered state.
+    local _pre_rb_version='' _pre_rb_mode='' _pre_rb_pubport='' _pre_rb_cfhost=''
+    _pre_rb_version=$(wallos_state_value VERSION 2>/dev/null || true)
+    if [[ ! "$_pre_rb_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        msg "${RED}Refusing rollback: cannot establish the current Wallos version from state; refusing to roll back without a known previous version.${NC}"
+        return 1
+    fi
+    _pre_rb_mode=$(wallos_state_value MODE 2>/dev/null || true)
+    _pre_rb_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
+    _pre_rb_cfhost=$(wallos_state_value CFHOST 2>/dev/null || true)
     # R15C14-02: never trust a mutable local tag. Authenticate
     # the local image against the versioned manifest digest; on
     # match run by the immutable digest, else verified pull and
     # run by the freshly loaded image ID.
-    local run_image='' _local_id='' _expected_digest='' _local_hex='' _expected_hex=''
+    local run_image='' _local_id='' _expected_digest=''
     _local_id=$(docker image inspect -f '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
     _expected_digest=$(wallos_versioned_image_digest "$target_tag" 2>/dev/null || true)
-    _local_hex="${_local_id##*sha256:}"
-    _expected_hex="${_expected_digest##*sha256:}"
-    if [[ -n "$_local_id" && -n "$_expected_hex" && "$_local_hex" == "$_expected_hex" ]]; then
-        run_image="sha256:$_local_hex"
+    if [[ "$_local_id" =~ ^sha256:[0-9a-f]{64}$ ]] &&
+       wallos_local_image_has_digest "$_local_id" "$_expected_digest"; then
+        run_image="$_local_id"
     else
         msg "${YELLOW}$(tprintf wl_rb_fetching "$image_tag")${NC}"
         # Use the versioned mirror path: temporarily override tag selection.
@@ -39714,7 +39996,7 @@ wallos_rollback_to_version() {
         return 1
     }
     wallos_restore_backup "$backup" || { msg "${RED}$(tr_msg wl_rb_restore_fail)${NC}"
-        _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
+        _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" "$_pre_rb_version" "$_pre_rb_mode" "$_pre_rb_pubport" "$_pre_rb_cfhost" && \
             msg "${YELLOW}$(tr_msg wl_rb_recovered)${NC}"
         return 1; }
     local -a _pub_args=()
@@ -39723,15 +40005,16 @@ wallos_rollback_to_version() {
     [[ -n "$bind_address" ]] && _pub_args=(-p "${bind_address}:${port}:80/tcp")
     # Empty bind_address: omit -p entirely (no port publication, fail-closed).
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
+        "${WALLOS_DOCKER_HARDENING[@]}" \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
         -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$run_image" >/dev/null || {
         msg "${RED}$(tprintf wl_rb_start_fail "$target_tag")${NC}"
-        _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
+        _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" "$_pre_rb_version" "$_pre_rb_mode" "$_pre_rb_pubport" "$_pre_rb_cfhost" && \
             msg "${YELLOW}$(tr_msg wl_rb_recovered)${NC}"
         return 1; }
     wallos_wait_healthy "$port" || { msg "${RED}$(tprintf wl_rb_unhealthy "$target_tag")${NC}"
-        _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" && \
+        _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" "$_pre_rb_version" "$_pre_rb_mode" "$_pre_rb_pubport" "$_pre_rb_cfhost" && \
             msg "${YELLOW}$(tr_msg wl_rb_recovered)${NC}"
         return 1; }
     wallos_write_state "$run_image" "$port" "$tz" "$bind_address" "" "" "" "${target_tag#v}" || {
@@ -40528,6 +40811,7 @@ wallos_recover_interrupted_upgrade() {
     fi
     if (( was_running == 1 )); then
         docker run -d --name wallos --label com.alariclin.abox.managed=true \
+            "${WALLOS_DOCKER_HARDENING[@]}" \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
             -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || return 1
@@ -40545,6 +40829,7 @@ wallos_recover_interrupted_upgrade() {
         fi
     else
         docker create --name wallos --label com.alariclin.abox.managed=true \
+            "${WALLOS_DOCKER_HARDENING[@]}" \
             -v "$WALLOS_DIR/db:/var/www/html/db" \
             -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
             -e TZ="$old_tz" "${wallos_pub_args[@]}" --restart unless-stopped "$_run_image" >/dev/null || return 1
@@ -41479,11 +41764,19 @@ wallos_write_state() {
     # Round 15: also persist MODE (local|https) + PUBPORT (the Caddy
     # public port in https mode). When $5/$6 are omitted, existing
     # values are carried over so restore/rollback paths keep them.
-    local image="$1" port="$2" tz="$3" bind="${4-127.0.0.1}" mode="${5:-}" pubport="${6:-}" cfhost="${7:-}" version="${8:-}" tmp
-    if [[ -z "$mode" ]]; then mode=$(wallos_state_value MODE 2>/dev/null || true); fi
-    if [[ -z "$pubport" ]]; then pubport=$(wallos_state_value PUBPORT 2>/dev/null || true); fi
-    if [[ -z "$cfhost" ]]; then cfhost=$(wallos_state_value CFHOST 2>/dev/null || true); fi
-    if [[ -z "$version" ]]; then version=$(wallos_state_value VERSION 2>/dev/null || true); fi
+    local image="$1" port="$2" tz="$3" bind="${4-127.0.0.1}" mode="${5:-}" pubport="${6:-}" cfhost="${7:-}" version="${8:-}" restore="${9:-}" tmp
+    # R13-09: restore mode ($9 == 1) means "set exactly these
+    # values": an empty mode/pubport/cfhost/version stays absent
+    # instead of inheriting whatever the current state file holds
+    # (during rollback recovery that is the backup's metadata,
+    # not the pre-rollback deployment's). All other callers omit
+    # $9 and keep the carry-over behavior.
+    if [[ "$restore" != 1 ]]; then
+        if [[ -z "$mode" ]]; then mode=$(wallos_state_value MODE 2>/dev/null || true); fi
+        if [[ -z "$pubport" ]]; then pubport=$(wallos_state_value PUBPORT 2>/dev/null || true); fi
+        if [[ -z "$cfhost" ]]; then cfhost=$(wallos_state_value CFHOST 2>/dev/null || true); fi
+        if [[ -z "$version" ]]; then version=$(wallos_state_value VERSION 2>/dev/null || true); fi
+    fi
     tmp=$(umask 077; mktemp "$WALLOS_DIR/.abox-state.new.XXXXXX") || return 1
     if ! printf 'IMAGE=%s\nPORT=%s\nTZ=%s\nBIND=%s\n' "$image" "$port" "$tz" "$bind" > "$tmp"; then
         rm -f -- "$tmp"; return 1
@@ -41544,6 +41837,7 @@ wallos_restore_direct_container() {
     local -a _pub_args=()
     [[ -n "$bind_address" ]] && _pub_args=(-p "${bind_address}:${port}:80/tcp")
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
+        "${WALLOS_DOCKER_HARDENING[@]}" \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
         -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null || return 1
@@ -41555,6 +41849,7 @@ wallos_restore_direct_container() {
 wallos_http_rebind() { # $1=public port $2=image $3=tz: republish the container on 0.0.0.0 (HTTP fallback)
     docker rm -f wallos >/dev/null 2>&1 || true
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
+        "${WALLOS_DOCKER_HARDENING[@]}" \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
         -e TZ="$3" -p "0.0.0.0:$1:80/tcp" --restart unless-stopped "$2" >/dev/null || return 1
@@ -42236,6 +42531,7 @@ wallos_install_or_update() {
         return 1
     fi
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
+        "${WALLOS_DOCKER_HARDENING[@]}" \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
         -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null

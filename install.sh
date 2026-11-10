@@ -46260,10 +46260,30 @@ runtime_lock_proc_starttime() {
     awk '{ if (sub(/^[^ ]+ \(.*\) /, "") == 0) exit 1; print $20 }' "/proc/${pid}/stat" 2>/dev/null
 }
 
+# R16-01: shared parent-dir safety check for runtime lock paths. A lock
+# file/dir is only safe if its parent cannot be used to unlink and
+# replace it: the parent must be a real directory owned root:root whose
+# mode parses as octal, and group/other write permission is allowed only
+# with the sticky bit set. Without the sticky rule, 0777/0770/0775 let
+# any local user unlink the lock while an instance holds it and create a
+# fresh root-owned lock on another inode, so two instances both pass
+# their checks and enter the protected operation. Fail closed on every
+# inspection failure.
+runtime_lock_parent_dir_safe() {
+    local parent="$1" mode
+    [[ -d "$parent" && ! -L "$parent" ]] || return 1
+    [[ "$(stat -c %u:%g "$parent" 2>/dev/null || true)" == 0:0 ]] || return 1
+    mode=$(stat -c %a "$parent" 2>/dev/null) || return 1
+    [[ "$mode" =~ ^[0-7]{1,4}$ ]] || return 1
+    (( (8#$mode & 8#022) == 0 || (8#$mode & 8#1000) != 0 ))
+}
+
 open_runtime_flock_fd() {
     local uid gid mode fd_id path_id
-    [[ -d "$(dirname "$LOCK_FILE")" && ! -L "$(dirname "$LOCK_FILE")" ]] || return 1
-    [[ "$(stat -c %u:%g "$(dirname "$LOCK_FILE")" 2>/dev/null || true)" == 0:0 ]] || return 1
+    # R16-01: the lock parent must pass the shared sticky rule (see
+    # runtime_lock_parent_dir_safe); fchmod(0600) on the file cannot
+    # stop a parent-write holder from unlinking the pathname.
+    runtime_lock_parent_dir_safe "$(dirname "$LOCK_FILE")" || return 1
     if [[ -e "$LOCK_FILE" || -L "$LOCK_FILE" ]]; then
         [[ -f "$LOCK_FILE" && ! -L "$LOCK_FILE" ]] || return 1
         uid=$(stat -c %u "$LOCK_FILE" 2>/dev/null) || return 1
@@ -46303,6 +46323,10 @@ PY_FLOCK_HARDEN
 
 validate_inherited_flock_lock() {
     local fd_id path_id
+    # R16-01: the inherited lock is only as safe as its parent: an
+    # fd/path match alone does not prove nobody can unlink the
+    # pathname and substitute another inode.
+    runtime_lock_parent_dir_safe "$(dirname "$LOCK_FILE")" || return 1
     [[ -e /proc/$$/fd/9 && -e "$LOCK_FILE" ]] || return 1
     fd_id=$(stat -Lc '%d:%i' /proc/$$/fd/9 2>/dev/null) || return 1
     path_id=$(stat -Lc '%d:%i' "$LOCK_FILE" 2>/dev/null) || return 1
@@ -46332,175 +46356,106 @@ runtime_lock_cleanup() {
 }
 
 fallback_runtime_lock_held() { # 0 = a live process holds the fallback lock
+    # R16-02: tri-state. 0 = a live holder is proven; 1 = definitely no
+    # live holder (dir absent, pid dead, or starttime mismatch, i.e. a
+    # different process incarnation); 2 = holder state UNKNOWN, fail
+    # closed. A failed /proc probe, an unreadable/missing/empty pid or
+    # starttime, a non-numeric pid, a symlink dir, or a non-root-owned
+    # dir proves nothing about absence, so all of them are 2, never 1.
+    # (The old code returned 1 for every one of these, which the
+    # flock-branch caller read as "no holder" and then took a second
+    # lock.) An empty starttime is unknown too: a legitimate holder
+    # always publishes a non-empty starttime (S159).
     local pid start actual
-    [[ -d "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" && -r "$LOCK_FALLBACK_DIR/pid" && -r "$LOCK_FALLBACK_DIR/starttime" ]] || return 1
-    [[ "$(stat -c %u:%g "$LOCK_FALLBACK_DIR" 2>/dev/null || true)" == 0:0 ]] || return 1
-    IFS= read -r pid < "$LOCK_FALLBACK_DIR/pid" || return 1
-    IFS= read -r start < "$LOCK_FALLBACK_DIR/starttime" || return 1
-    [[ "$pid" =~ ^[0-9]+$ && -d "/proc/$pid" ]] || return 1
+    [[ -e "$LOCK_FALLBACK_DIR" || -L "$LOCK_FALLBACK_DIR" ]] || return 1
+    [[ -d "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" ]] || return 2
+    [[ "$(stat -c %u:%g "$LOCK_FALLBACK_DIR" 2>/dev/null || true)" == 0:0 ]] || return 2
+    IFS= read -r pid < "$LOCK_FALLBACK_DIR/pid" || return 2
+    IFS= read -r start < "$LOCK_FALLBACK_DIR/starttime" || return 2
+    [[ -n "$start" ]] || return 2
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 2
+    [[ -d "/proc/$pid" ]] || return 1
     actual=$(runtime_lock_proc_starttime "$pid" || true)
-    [[ -n "$actual" && "$actual" == "$start" ]]
+    [[ -n "$actual" ]] || return 2
+    [[ "$actual" == "$start" ]]
 }
 
 acquire_fallback_runtime_lock() {
-    local existing_pid existing_start actual_start lock_dir_created=0 stale_away='' _moved_pid='' _moved_start='' _moved_actual='' _dir_age=0 _dir_mtime="" _remv_pid='' _remv_start='' _pre_has_pid=0 _pre_has_start=0 _pre_pid='' _pre_start='' _post_has_pid=0 _post_has_start=0 _post_pid='' _post_start='' _self_start='' _br_pid='' _br_start=''
-    if mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null; then
-        lock_dir_created=1
-        chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
-    else
-        # F1 (R1C17-F1): branch on READ values, not file size. A
-        # blank-line file passes -s (size 1) but reads empty, and the
-        # complete branch then restores + returns 1 on every call
-        # (U132 empty check), wedging forever. Empty metadata must
-        # take the incomplete (age-gate) path instead, with its S158
-        # pre/post change detection intact. (0-byte files already
-        # took that path via -s; this closes the blank-line variant.)
-        [[ -f "$LOCK_FALLBACK_DIR/pid" ]] && IFS= read -r _br_pid < "$LOCK_FALLBACK_DIR/pid" 2>/dev/null || _br_pid=''
-        [[ -f "$LOCK_FALLBACK_DIR/starttime" ]] && IFS= read -r _br_start < "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || _br_start=''
-        if [[ -d "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" && -n "$_br_pid" && -n "$_br_start" ]]; then
-            IFS= read -r existing_pid < "$LOCK_FALLBACK_DIR/pid" || existing_pid=''
-            IFS= read -r existing_start < "$LOCK_FALLBACK_DIR/starttime" || existing_start=''
-            if [[ "$existing_pid" =~ ^[0-9]+$ && -d "/proc/$existing_pid" ]]; then
-                actual_start=$(runtime_lock_proc_starttime "$existing_pid" || true)
-                # R16C17-01: an empty probe result means the holder's
-                # liveness is unknown, not that the lock is stale.
-                # Reclaiming on it deletes a live lock's dir.
-                [[ -n "$actual_start" ]] || return 1
-                [[ "$actual_start" == "$existing_start" ]] && return 1
-            fi
-            [[ "$(stat -c %u:%g "$LOCK_FALLBACK_DIR" 2>/dev/null || true)" == 0:0 ]] || return 1
-            # S157: revalidate immediately before the move. The captured
-            # pid/starttime may be stale: another reclaimer may already
-            # have replaced this dir with a live lock since we read it.
-            # Moving on stale data would steal that live lock, so abort
-            # on any change instead of moving first and rechecking later.
-            IFS= read -r _remv_pid < "$LOCK_FALLBACK_DIR/pid" 2>/dev/null || _remv_pid=''
-            IFS= read -r _remv_start < "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || _remv_start=''
-            [[ "$_remv_pid" == "$existing_pid" && "$_remv_start" == "$existing_start" ]] || return 1
-            # Rename-away stale dir as one visible step, then mkdir the canonical name.
-            # Avoids the prior rmdir+mkdir TOCTOU window where two reclaimers could both win.
-            stale_away="${LOCK_FALLBACK_DIR}.stale.$$.$RANDOM"
-            # X-07: plain POSIX mv (no GNU -T); $stale_away embeds $$.$RANDOM
-            # so a pre-check guarantees it does not exist as a directory.
-            [[ ! -e "$stale_away" && ! -L "$stale_away" ]] || return 1
-            mv -- "$LOCK_FALLBACK_DIR" "$stale_away" 2>/dev/null || return 1
-            # U132: revalidate what was moved. If another reclaimer already
-            # replaced the stale dir with a live lock, the moved pid/start
-            # differ from the captured stale ones. Never delete a live lock;
-            # restore it when the canonical name is still free, else leave
-            # the moved dir intact (an orphan is inert; deleting it is not).
-            IFS= read -r _moved_pid < "$stale_away/pid" 2>/dev/null || _moved_pid=''
-            IFS= read -r _moved_start < "$stale_away/starttime" 2>/dev/null || _moved_start=''
-            if [[ -z "$existing_pid" || -z "$existing_start" || "$_moved_pid" != "$existing_pid" || "$_moved_start" != "$existing_start" ]]; then
-                if [[ ! -e "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" ]]; then
-                    mv -- "$stale_away" "$LOCK_FALLBACK_DIR" 2>/dev/null || true
-                fi
-                # 17-F2: if the moved dir is a LIVE lock, the
-                # revalidate-to-mv window stole it. It cannot be
-                # restored when canonical is occupied, and deleting it
-                # would destroy a live lock: leave it orphaned, but say
-                # so loudly instead of silently.
-                if [[ "$_moved_pid" =~ ^[0-9]+$ && -d "/proc/$_moved_pid" ]]; then
-                    _moved_actual=$(runtime_lock_proc_starttime "$_moved_pid" 2>/dev/null || true)
-                    if [[ -n "$_moved_actual" && "$_moved_actual" == "$_moved_start" ]]; then
-                        printf '%s\n' "A-Box WARNING: fallback lock dir moved aside appears LIVE (pid $_moved_pid); left orphaned at $stale_away, manual recovery may be needed." >&2
-                    fi
-                fi
-                return 1
-            fi
-            rm -rf -- "$stale_away" 2>/dev/null || true
-            mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null || return 1
-            lock_dir_created=1
-            chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
-        elif [[ -d "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" && "$(stat -c %u:%g "$LOCK_FALLBACK_DIR" 2>/dev/null || true)" == 0:0 ]]; then
-            # U231: a create interrupted between mkdir and the pid/
-            # starttime writes leaves a metadata-less residual dir that
-            # the complete-metadata branch above never matches, wedging
-            # the lock forever. Reclaim it once it is old enough that no
-            # live creator can still be mid-create (dir mtime gate, root
-            # ownership required); a fresh dir means a creator may still
-            # be writing, so it is left alone.
-            _dir_mtime=$(stat -c %Y "$LOCK_FALLBACK_DIR" 2>/dev/null) || return 1
-            _dir_age=$(( $(date +%s) - _dir_mtime ))
-            if (( _dir_age <= 120 )); then
-                return 1
-            fi
-            # S158: record pre-move metadata presence+content. A pid-only
-            # residual (create interrupted between the pid and starttime
-            # writes) is a dead residual once the age gate passed, not a
-            # live lock: restoring it on ANY metadata file wedges it
-            # forever. Only a changed set means a new holder moved in.
-            if [[ -e "$LOCK_FALLBACK_DIR/pid" || -L "$LOCK_FALLBACK_DIR/pid" ]]; then
-                _pre_has_pid=1; IFS= read -r _pre_pid < "$LOCK_FALLBACK_DIR/pid" 2>/dev/null || _pre_pid=''
-            fi
-            if [[ -e "$LOCK_FALLBACK_DIR/starttime" || -L "$LOCK_FALLBACK_DIR/starttime" ]]; then
-                _pre_has_start=1; IFS= read -r _pre_start < "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || _pre_start=''
-            fi
-            # R4C17-01: a pid-only residual whose pid is still alive
-            # is a live creator (SIGSTOP between the pid and starttime
-            # writes), not a dead residual: reclaiming it double-holds
-            # on resume. Only a dead or invalid pid may be reclaimed.
-            if (( _pre_has_pid && !_pre_has_start )); then
-                if [[ "$_pre_pid" =~ ^[0-9]+$ && -d "/proc/$_pre_pid" ]]; then
-                    return 1
-                fi
-            fi
-            # S158: recheck age immediately before mv (a replacement dir
-            # is fresh; the age gate above may predate the replacement).
-            _dir_mtime=$(stat -c %Y "$LOCK_FALLBACK_DIR" 2>/dev/null) || return 1
-            _dir_age=$(( $(date +%s) - _dir_mtime ))
-            if (( _dir_age <= 120 )); then
-                return 1
-            fi
-            stale_away="${LOCK_FALLBACK_DIR}.stale.$$.$RANDOM"
-            [[ ! -e "$stale_away" && ! -L "$stale_away" ]] || return 1
-            mv -- "$LOCK_FALLBACK_DIR" "$stale_away" 2>/dev/null || return 1
-            # U231-recheck: the moved dir must still match the recorded
-            # pre-move set exactly. If another reclaimer replaced the
-            # stale dir with a live lock between the age gate and our mv,
-            # the set differs; never delete it: restore it when the
-            # canonical name is free, else leave the moved dir intact
-            # (an orphan is inert, deleting it is not) — mirroring the
-            # U132 branch above.
-            if [[ -e "$stale_away/pid" || -L "$stale_away/pid" ]]; then
-                _post_has_pid=1; IFS= read -r _post_pid < "$stale_away/pid" 2>/dev/null || _post_pid=''
-            fi
-            if [[ -e "$stale_away/starttime" || -L "$stale_away/starttime" ]]; then
-                _post_has_start=1; IFS= read -r _post_start < "$stale_away/starttime" 2>/dev/null || _post_start=''
-            fi
-            if [[ "$_post_has_pid" != "$_pre_has_pid" || "$_post_has_start" != "$_pre_has_start" || "$_post_pid" != "$_pre_pid" || "$_post_start" != "$_pre_start" ]]; then
-                if [[ ! -e "$LOCK_FALLBACK_DIR" && ! -L "$LOCK_FALLBACK_DIR" ]]; then
-                    mv -- "$stale_away" "$LOCK_FALLBACK_DIR" 2>/dev/null || true
-                fi
-                # 17-F2: same live-orphan signal as the U132 branch above.
-                if [[ "$_post_pid" =~ ^[0-9]+$ && -d "/proc/$_post_pid" ]]; then
-                    _moved_actual=$(runtime_lock_proc_starttime "$_post_pid" 2>/dev/null || true)
-                    if [[ -n "$_moved_actual" && "$_moved_actual" == "$_post_start" ]]; then
-                        printf '%s\n' "A-Box WARNING: fallback lock dir moved aside appears LIVE (pid $_post_pid); left orphaned at $stale_away, manual recovery may be needed." >&2
-                    fi
-                fi
-                return 1
-            fi
-            rm -rf -- "$stale_away" 2>/dev/null || true
-            mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null || return 1
-            lock_dir_created=1
-            chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
-        else
-            return 1
-        fi
+    # R16-03 (narrow variant, GPT-02): NO automatic reclamation. The old
+    # complete/incomplete-metadata reclaim branches moved the canonical
+    # dir aside with mv and could orphan a LIVE lock (17-F2): the mv is
+    # not atomic with the metadata check, so interleaved reclaimers
+    # could steal each other's live locks, and a creator SIGSTOPped
+    # before writing its pid could later overwrite the new owner's
+    # metadata. The exchange-and-rollback scheme was rejected for the
+    # same reason (an interleaved exchange-back can rm -rf a live lock).
+    # mkdir success is the only acquisition: an existing canonical dir
+    # means another instance may own it, so refuse and say so. A crashed
+    # instance's residue is recovered only by explicit manual removal
+    # (rm -rf the fallback dir) or a reboot (/run is tmpfs); never
+    # automatically. The kernel-lock tier (python fcntl on an inherited
+    # fd) was verified working, but it is not made mandatory here:
+    # python3 may be absent before ensure_commands installs it, and
+    # refusing to run then would break bootstrap on minimal systems.
+    # R16-01 parent rule (GPT-01(c)): the fallback dir's parent must
+    # pass the same sticky check as the flock lock's parent.
+    local _self_start _held_rc _fb_id _fb_rc
+    runtime_lock_parent_dir_safe "$(dirname "$LOCK_FALLBACK_DIR")" || return 1
+    if ! mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null; then
+        # Best-effort diagnostic only (read-only classification):
+        # live holder / stale residue / unknown. Never removes or moves
+        # anything.
+        _held_rc=0
+        fallback_runtime_lock_held || _held_rc=$?
+        case "$_held_rc" in
+            0) printf '%s\n' "A-Box fallback lock is held by a live instance (pid $(cat "$LOCK_FALLBACK_DIR/pid" 2>/dev/null || true))." >&2 ;;
+            1) printf '%s\n' "A-Box fallback lock dir already exists but no live holder was found; remove it manually if no instance is running: rm -rf -- $LOCK_FALLBACK_DIR" >&2 ;;
+            *) printf '%s\n' "A-Box fallback lock dir already exists and its holder state could not be determined; refusing to proceed." >&2 ;;
+        esac
+        return 1
     fi
+    chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
     umask 077
-    printf '%s\n' "$$" > "$LOCK_FALLBACK_DIR/pid" || { (( lock_dir_created )) && { rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true; rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true; }; return 1; }
-    # S159: capture starttime first and require it non-empty. The old
-    # `printf ... "$(...)" > file || ...` tested printf's status, not
-    # the /proc read's: a failed read wrote an empty line and the lock
-    # was still granted with an empty starttime (which validate then
-    # accepted, empty == empty, while liveness checks demand non-empty).
-    _self_start=$(runtime_lock_proc_starttime $$) || { (( lock_dir_created )) && { rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true; rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true; }; return 1; }
-    [[ -n "$_self_start" ]] || { (( lock_dir_created )) && { rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true; rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true; }; return 1; }
-    printf '%s\n' "$_self_start" > "$LOCK_FALLBACK_DIR/starttime" || { (( lock_dir_created )) && { rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true; rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true; }; return 1; }
-    chmod 600 "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" || { (( lock_dir_created )) && { rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true; rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true; }; return 1; }
-    chown root:root "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" || { (( lock_dir_created )) && { rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true; rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true; }; return 1; }
+    # Identity pin: record the dir we just created; every later step
+    # verifies it is still the same inode before touching it, and
+    # cleanup below removes only our own dir.
+    _fb_id=$(stat -Lc '%d:%i' "$LOCK_FALLBACK_DIR" 2>/dev/null) || return 1
+    _fb_rc=0
+    # Noclobber metadata writes: a pre-existing pid/starttime file in
+    # a dir we just created means the dir is not fresh; never
+    # overwrite it.
+    ( set -o noclobber; printf '%s\n' "$$" > "$LOCK_FALLBACK_DIR/pid" ) 2>/dev/null || _fb_rc=1
+    if (( _fb_rc == 0 )); then
+        # S159: capture starttime first and require it non-empty. The old
+        # `printf ... "$(...)" > file || ...` tested printf's status, not
+        # the /proc read's: a failed read wrote an empty line and the lock
+        # was still granted with an empty starttime (which validate then
+        # accepted, empty == empty, while liveness checks demand non-empty).
+        _self_start=$(runtime_lock_proc_starttime $$) || _fb_rc=1
+        [[ -n "$_self_start" ]] || _fb_rc=1
+    fi
+    if (( _fb_rc == 0 )); then
+        ( set -o noclobber; printf '%s\n' "$_self_start" > "$LOCK_FALLBACK_DIR/starttime" ) 2>/dev/null || _fb_rc=1
+    fi
+    if (( _fb_rc == 0 )); then
+        chmod 600 "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" || _fb_rc=1
+        chown root:root "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" || _fb_rc=1
+    fi
+    if (( _fb_rc == 0 )); then
+        # Final read-back verification: the published metadata must be
+        # ours, in the dir we created. Anything else means the dir was
+        # replaced under us; refuse without touching it.
+        [[ "$(cat "$LOCK_FALLBACK_DIR/pid" 2>/dev/null || true)" == "$$" ]] || _fb_rc=1
+        [[ "$(cat "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true)" == "$_self_start" ]] || _fb_rc=1
+        [[ "$(stat -Lc '%d:%i' "$LOCK_FALLBACK_DIR" 2>/dev/null || true)" == "$_fb_id" ]] || _fb_rc=1
+    fi
+    if (( _fb_rc != 0 )); then
+        if [[ "$(stat -Lc '%d:%i' "$LOCK_FALLBACK_DIR" 2>/dev/null || true)" == "$_fb_id" ]]; then
+            rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true
+            rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true
+        fi
+        return 1
+    fi
     ABOX_RUNTIME_LOCK_MODE='fallback'
 }
 
@@ -46534,7 +46489,17 @@ acquire_runtime_lock() {
     elif command -v flock >/dev/null 2>&1; then
         # U133: a live fallback lock means another instance is running even
         # though the flock is free; never hold two lock objects at once.
-        if fallback_runtime_lock_held; then die '检测到另一个 A-Box 实例正在运行。'; fi
+        # R16-02: fallback_runtime_lock_held is tri-state: 0 live holder,
+        # 1 definitely no holder, 2 holder state unknown. Only 1 may
+        # proceed; unknown refuses (fail closed) instead of being read
+        # as "no holder" and taking a second lock.
+        local _fb_held_rc=0
+        fallback_runtime_lock_held || _fb_held_rc=$?
+        case "$_fb_held_rc" in
+            0) die '检测到另一个 A-Box 实例正在运行。' ;;
+            1) : ;;
+            *) die '无法确认 fallback 运行锁持有者状态，拒绝继续。' ;;
+        esac
         open_runtime_flock_fd || die '运行锁路径不安全或无法打开。'
         flock -n 9 || die '检测到另一个 A-Box 实例正在运行。'
         ABOX_RUNTIME_LOCK_MODE='flock'
@@ -46583,12 +46548,36 @@ enter_runtime() {
 expected_managed_services() {
     clear_abox_env_vars
     load_abox_env "$ABOX_ENV" || return 1
+    local -a _svcs=()
     case "${CORE:-}" in
-        xray) printf 'xray\n'; [[ "${MODE:-}" == *ALL* ]] && printf 'hysteria\n' ;;
-        singbox) printf 'sing-box\n' ;;
-        hysteria) printf 'hysteria\n' ;;
+        xray) _svcs+=(xray); [[ "${MODE:-}" == *ALL* ]] && _svcs+=(hysteria) ;;
+        singbox) _svcs+=(sing-box) ;;
+        hysteria) _svcs+=(hysteria) ;;
         *) return 1 ;;
     esac
+    # R16-04: the main .env CORE/MODE pair is not the whole managed
+    # stack. A-Box-owned auxiliary cores deployed outside the main pair
+    # (e.g. a toolbox-deployed sing-box SOCKS5/Trojan landing next to
+    # a CORE=xray main) are managed too: --stop/--start and the traffic
+    # unblock path must cover them, or they keep proxying while the
+    # command announces the whole managed stack stopped/started. Mirror
+    # expected_service_list (traffic-monitor side): main set first,
+    # then every additional owned service from the fixed live slots,
+    # deduplicated; ownership is gated by abox_owns_service, never by
+    # unit existence alone. xray-latest is retired and is never added
+    # to either direction. The traffic-block side already stops the
+    # whole owned set (stop_all_owned_services fallback), so widening
+    # the unblock/start side to match it is the consistent behavior.
+    local _srv _s _dup
+    for _srv in xray sing-box hysteria; do
+        _dup=0
+        for _s in "${_svcs[@]}"; do
+            if [[ "$_s" == "$_srv" ]]; then _dup=1; break; fi
+        done
+        (( _dup == 1 )) && continue
+        abox_owns_service "$_srv" 2>/dev/null && _svcs+=("$_srv")
+    done
+    printf '%s\n' "${_svcs[@]}"
     return 0
 }
 
@@ -46613,21 +46602,63 @@ __abox_service_tx_rollback() {
     local changed_pre="$1" changed_expected="$2"
     [[ ! -s "$changed_pre" ]] && return 0
     [[ -s "$changed_expected" ]] || return 1
-    # S160: if every registered service is still at its pre-state, the
-    # mutation never took effect (failed before changing anything);
-    # there is nothing to restore, so do not report incomplete. Without
-    # this, pre-registration below would turn a benign failed mutation
-    # into a preflight refusal (current == pre, not expected) with a
-    # scary message and a leftover tx_dir.
-    local _rb_srv _rb_pre _rb_cur _rb_unchanged=1
+    # R16-05: the old code skipped restore only when EVERY registered
+    # service was still at its pre-state, then handed ALL registrations
+    # to the strict expected-state preflight; one changed service made
+    # the unchanged services (still at pre-state, not expected-state)
+    # fail the whole rollback (return 2), leaving the changed service
+    # changed. Restore PER SERVICE instead: a service still at its
+    # pre-state needs no restore; only a changed service goes through
+    # the strict per-service restore of its own pre/expected pair.
+    # (The old all-unchanged shortcut is subsumed: every service is
+    # skipped, so the loop below returns 0 silently.)
+    # Safeguard 1: validate the complete input journals BEFORE
+    # restoring anything (valid rows, unique keys, identical service
+    # sets), so a corrupt journal can never produce a partial restore.
+    validate_services_state_file "$changed_pre" || return 1
+    validate_services_state_file "$changed_expected" || return 1
+    [[ "$(awk -F'|' 'NF {print $1}' "$changed_pre" | LC_ALL=C sort)" == "$(awk -F'|' 'NF {print $1}' "$changed_expected" | LC_ALL=C sort)" ]] || return 1
+    local _rb_srv _rb_pre _rb_cur _rb_failed=() _rb_conflict=0 _rb_other=0 _rb_txd _rb_sp _rb_se _rb_srv_rc _rb_umask
+    _rb_umask=$(umask)
+    umask 077
     while IFS='|' read -r _rb_srv _ _ || [[ -n "$_rb_srv" ]]; do
         [[ -n "$_rb_srv" ]] || continue
-        _rb_pre=$(awk -F'|' -v target="$_rb_srv" '$1 == target {print; found=1; exit} END {if (!found) exit 1}' "$changed_pre") || return 1
-        _rb_cur=$(managed_service_state_value "$_rb_srv" 2>/dev/null) || { _rb_unchanged=0; break; }
-        [[ "$_rb_cur" == "$_rb_pre" ]] || { _rb_unchanged=0; break; }
+        _rb_pre=$(awk -F'|' -v target="$_rb_srv" '$1 == target {print; found=1; exit} END {if (!found) exit 1}' "$changed_pre") || { _rb_other=1; _rb_failed+=("$_rb_srv"); continue; }
+        _rb_cur=$(managed_service_state_value "$_rb_srv" 2>/dev/null) || { _rb_other=1; _rb_failed+=("$_rb_srv"); continue; }
+        [[ "$_rb_cur" == "$_rb_pre" ]] && continue
+        # Changed: strict per-service restore of this service's own
+        # pre/expected pair. Singleton journals live in a fresh private
+        # temp dir (0700 root:root, files 0600 root:root); every
+        # creation/write/ownership/permission step is checked, and the
+        # temp dir is always removed afterwards. A query failure above
+        # records the service as failed and moves on (never blocks the
+        # other services); a conflict/restore failure is recorded the
+        # same way. The caller's original tx journals are untouched, so
+        # recovery information is preserved on failure.
+        _rb_txd=$(mktemp -d /run/A-Box-service-tx-rollback.XXXXXX) || { _rb_other=1; _rb_failed+=("$_rb_srv"); continue; }
+        if ! chmod 700 "$_rb_txd" || { [[ $EUID -eq 0 ]] && ! chown root:root "$_rb_txd"; }; then rm -rf -- "$_rb_txd" 2>/dev/null || true; _rb_other=1; _rb_failed+=("$_rb_srv"); continue; fi
+        _rb_sp="$_rb_txd/pre.state"; _rb_se="$_rb_txd/expected.state"
+        if ! awk -F'|' -v target="$_rb_srv" '$1 == target {print}' "$changed_pre" > "$_rb_sp" || ! awk -F'|' -v target="$_rb_srv" '$1 == target {print}' "$changed_expected" > "$_rb_se"; then rm -rf -- "$_rb_txd" 2>/dev/null || true; _rb_other=1; _rb_failed+=("$_rb_srv"); continue; fi
+        if ! chmod 600 "$_rb_sp" "$_rb_se" || { [[ $EUID -eq 0 ]] && ! chown root:root "$_rb_sp" "$_rb_se"; }; then rm -rf -- "$_rb_txd" 2>/dev/null || true; _rb_other=1; _rb_failed+=("$_rb_srv"); continue; fi
+        restore_managed_service_state "$_rb_sp" "$_rb_se"
+        _rb_srv_rc=$?
+        rm -rf -- "$_rb_txd" 2>/dev/null || true
+        if (( _rb_srv_rc != 0 )); then
+            _rb_failed+=("$_rb_srv")
+            if (( _rb_srv_rc == 2 )); then _rb_conflict=1; else _rb_other=1; fi
+        fi
     done < "$changed_pre"
-    (( _rb_unchanged == 1 )) && return 0
-    restore_managed_service_state "$changed_pre" "$changed_expected"
+    umask "$_rb_umask"
+    if (( ${#_rb_failed[@]} == 0 )); then
+        return 0
+    fi
+    printf '%s\n' "A-Box service tx rollback incomplete; failed services: ${_rb_failed[*]}" >&2
+    # Preserve status 2 for a conflict-only outcome (callers may
+    # distinguish it); any other failure kind aggregates to 1.
+    if (( _rb_conflict == 1 && _rb_other == 0 )); then
+        return 2
+    fi
+    return 1
 }
 # S161: trap/failure-path wrapper: restore block period + desired state
 # + service state together, and report any step failure. The signal
@@ -46836,6 +46867,11 @@ check_i18n_parity_file() {
     _out=${_out%BAD=*}
     _out=${_out%$'\n'}
     [[ -n "$_out" ]] && printf '%s\n' "$_out"
+    # R16-06: bash return codes are 8 bits; returning $_bad raw wraps
+    # 256/512 to 0 and the self-test would still print SELF_TEST_OK.
+    # Clamp to 255 (preserves the 1..255 contribution to the caller's
+    # failure count, unlike collapsing to 1).
+    (( _bad > 255 )) && _bad=255
     return "$_bad"
 }
 run_self_tests() {
@@ -48441,7 +48477,11 @@ PY_SELFTEST_YAML
     grep -Fq 'install -d -m 700 "$ABOX_DIR" || return 1' <<< "$source_body" || { echo 'FAIL: rollback restore must recreate a missing A-Box directory'; failures=$((failures + 1)); }
     grep -Fq 'previous_state=$(get_desired_state)' <<< "$source_body" || { echo 'FAIL: manual service transitions must snapshot desired state'; failures=$((failures + 1)); }
     grep -Fq 'local pre_state=' <<< "$source_body" || { echo 'FAIL: manual service transactions must capture pre-state'; failures=$((failures + 1)); }
-    grep -Fq 'restore_managed_service_state "$changed_pre" "$changed_expected"' <<< "$source_body" || { echo 'FAIL: manual service rollback must use expected-state conflict guards'; failures=$((failures + 1)); }
+    # R16-05: per-service restore routes each changed service through
+    # restore_managed_service_state with its own singleton journals
+    # (the old whole-journal call shape is gone; the guard is the same
+    # function, so the expected-state conflict preflight still applies).
+    grep -Fq 'restore_managed_service_state "$_rb_sp" "$_rb_se"' <<< "$source_body" || { echo 'FAIL: manual service rollback must use expected-state conflict guards'; failures=$((failures + 1)); }
     grep -Fq 'current_state_before=$(managed_service_state_value' <<< "$source_body" || { echo 'FAIL: service rollback must recheck state before mutation'; failures=$((failures + 1)); }
     grep -Fq 'start_abox_service_soft "$srv"' <<< "$source_body" || { echo 'FAIL: manual start must use non-fatal service start path'; failures=$((failures + 1)); }
     declare -p redacted_json >/dev/null 2>&1 && declare -p redacted_headers >/dev/null 2>&1 || { echo 'FAIL: redaction self-test variables are not separated'; failures=$((failures + 1)); }
@@ -48570,7 +48610,11 @@ PY_MOUNTINFO_DECODE_CONSISTENCY
     grep -Fq 'path_parent_chain_safe /etc/conf.d/xray || die' <<< "$source_body" || { echo 'FAIL: Xray OpenRC conf.d parent chain guard missing'; failures=$((failures + 1)); }
     grep -Fq 'path_parent_chain_safe /etc/conf.d/sing-box || die' <<< "$source_body" || { echo 'FAIL: sing-box OpenRC conf.d parent chain guard missing'; failures=$((failures + 1)); }
     grep -Fq 'aux_paths=$(managed_auxiliary_paths) ||' <<< "$source_body" || { echo 'FAIL: backup must not swallow managed auxiliary path enumeration errors through process substitution'; failures=$((failures + 1)); }
-    grep -Fq 'lock_dir_created=0' <<< "$source_body" || { echo 'FAIL: fallback runtime lock must track newly created directory for rollback'; failures=$((failures + 1)); }
+    # R16-03: the reclaim branches (and their lock_dir_created flag)
+    # are gone; creation ownership is now tracked by the identity pin
+    # (_fb_id: dev:ino captured at mkdir, verified before any cleanup
+    # touches the dir), which the failure cleanup below still checks.
+    grep -Fq '_fb_id=$(stat -Lc' <<< "$source_body" || { echo 'FAIL: fallback runtime lock must track newly created directory for rollback'; failures=$((failures + 1)); }
     if command -v flock >/dev/null 2>&1; then
         (
             _saved_lock_fallback="$LOCK_FALLBACK_DIR"

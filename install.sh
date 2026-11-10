@@ -36472,7 +36472,7 @@ inline_authorization = re.compile(
 )
 inline_cookie = re.compile(r"(?i)(\b(?:cookie|set-cookie)\s*[:=]\s*)[^\r\n]+")
 inline_secret_assignment = re.compile(
-    r"(?i)([\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|ss_pass|hy2_pass|hy2_obfs)\b[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|[^,;\r\n}\"]+)"
+    r"(?i)([\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|ss_pass|hy2_pass|hy2_obfs)\b[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|[^\r\n}\"]+)"
 )
 
 
@@ -36655,7 +36655,7 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|[^,\r\n}\"]+)",
+        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|[^\r\n}\"]+)",
         r'\1"***REDACTED***"',
         text,
     )
@@ -36713,6 +36713,7 @@ PY_REDACT
             -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*)(\x27)([^\x27]|\x27\x27)*\3/\1\3***REDACTED***\3/Ig' \
             -e 's/^(id[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/\1***REDACTED***/Ig' \
             -e 's/([^A-Za-z0-9_])(id[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/\1\2***REDACTED***/Ig' \
+            -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*)[^}"\x27[:space:]][^}"\r]*/\1***REDACTED***/Ig' \
             -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*[" ]?)[^,}[:space:]["]+/\1***REDACTED***/Ig' \
             -e 's/(vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess):\/\/[^[:space:]]+/***CLIENT_LINK_REDACTED***/Ig' \
         -e 's/(https?|ftp):\/\/[^\/[:space:]@]+@/\1***REDACTED***@/Ig'
@@ -40383,7 +40384,7 @@ wallos_rollback_to_version() {
         _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" "$_pre_rb_version" "$_pre_rb_mode" "$_pre_rb_pubport" "$_pre_rb_cfhost" && \
             msg "${YELLOW}$(tr_msg wl_rb_recovered)${NC}"
         return 1; }
-    wallos_write_state "$run_image" "$port" "$tz" "$bind_address" "" "" "" "${target_tag#v}" || {
+    wallos_write_state "$run_image" "$port" "$tz" "$bind_address" "$_pre_rb_mode" "$_pre_rb_pubport" "$_pre_rb_cfhost" "${target_tag#v}" 1 || {
         msg "${RED}$(tr_msg wl_rb_state_fail)${NC}"; return 1; }
     # N-11: prune to 2 images (new current + previous).
     wallos_prune_local_images "$run_image" "$prev_image"
@@ -41232,9 +41233,14 @@ EOF_B15_SIDECAR
     # instead of snapshotting the restored state. Endpoint validity
     # itself is still enforced by R1-15-01 exactly as before (missing
     # PUBPORT / bad CFHOST fail closed there, like L4/L5).
+    # F15-1: the re-apply also covers the https internal layout: when
+    # the target is https, the container port is moved off the public
+    # port (re-randomized when it equals PUBPORT) and bound to
+    # 127.0.0.1, so the rebuild cannot collide with Caddy on :P.
     if [[ -n "$_fs_mode" ]]; then
         local _rb_image='' _rb_port='' _rb_tz='' _rb_bind='' _rb_version=''
         local _rb_mode='' _rb_pubport='' _rb_cfhost=''
+        local _rb_layout_changed=0 _rb_new_port=0
         _rb_image=$(wallos_state_value IMAGE 2>/dev/null || true)
         _rb_port=$(wallos_state_value PORT 2>/dev/null || true)
         _rb_tz=$(wallos_state_value TZ 2>/dev/null || true)
@@ -41243,7 +41249,44 @@ EOF_B15_SIDECAR
         _rb_mode=$(wallos_state_value MODE 2>/dev/null || true)
         _rb_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
         _rb_cfhost=$(wallos_state_value CFHOST 2>/dev/null || true)
-        if [[ "$_rb_mode" != "$_fs_mode" || "$_rb_pubport" != "$_fs_pubport" || "$_rb_cfhost" != "$_fs_cfhost" ]]; then
+        # F15-1: when the interrupted target is https, the internal
+        # container port must also move off the public port: the journal
+        # kept old_port == PUBPORT with a 0.0.0.0 bind, and re-applying
+        # only the frontend triple would leave docker -p 0.0.0.0:P:80
+        # colliding with Caddy on :P. Compute the layout first; an
+        # invalid port refuses with the journal kept, exactly like the
+        # incomplete-state refusal below.
+        if [[ "$_fs_mode" == https ]]; then
+            if [[ ! "$_fs_pubport" =~ ^[0-9]+$ ]] || [[ ${#_fs_pubport} -gt 5 ]] || (( 10#$_fs_pubport < 1 || 10#$_fs_pubport > 65535 )); then
+                msg "${RED}Recovery cannot re-apply the interrupted https target: invalid public port; journal kept.${NC}"
+                return 1
+            fi
+            if [[ ! "$_rb_port" =~ ^[0-9]+$ ]] || [[ ${#_rb_port} -gt 5 ]] || (( 10#$_rb_port < 1 || 10#$_rb_port > 65535 )); then
+                msg "${RED}Recovery restored Wallos but its state has an invalid container port; refusing to report success, journal kept.${NC}"
+                return 1
+            fi
+            _rb_bind=127.0.0.1
+            if [[ "$old_bind" != 127.0.0.1 || "$old_port" != "$_rb_port" ]]; then
+                _rb_layout_changed=1
+            fi
+            if (( 10#$_rb_port == 10#$_fs_pubport )); then
+                local _rb_tries=0 _rb_cand='' _rb_found=0
+                while (( _rb_tries < 50 )); do
+                    _rb_tries=$(( _rb_tries + 1 ))
+                    _rb_cand=$(( (RANDOM * 32768 + RANDOM) % 40000 + 20000 ))
+                    (( 10#$_rb_cand == 10#$_fs_pubport )) && continue
+                    if wallos_port_free "$_rb_cand"; then _rb_found=1; break; fi
+                done
+                if (( _rb_found == 0 )); then
+                    msg "${RED}Recovery could not pick a free internal port for the https target; journal kept.${NC}"
+                    return 1
+                fi
+                _rb_port="$_rb_cand"
+                _rb_new_port=1
+                _rb_layout_changed=1
+            fi
+        fi
+        if [[ "$_rb_mode" != "$_fs_mode" || "$_rb_pubport" != "$_fs_pubport" || "$_rb_cfhost" != "$_fs_cfhost" || "$_rb_layout_changed" == 1 ]]; then
             if [[ -z "$_rb_image" || -z "$_rb_port" || -z "$_rb_tz" ]]; then
                 msg "${RED}Recovery restored Wallos but its state is incomplete; refusing to report success, journal kept.${NC}"
                 return 1
@@ -41254,6 +41297,14 @@ EOF_B15_SIDECAR
             fi
             msg "${YELLOW}Recovery preserved the interrupted switch target mode ($_fs_mode); rebuilding its frontend.${NC}"
         fi
+    fi
+    # F15-1: in https mode the B15 re-apply may have moved the internal
+    # layout (re-randomized port, 127.0.0.1 bind); the rebuild below
+    # must use the effective layout even when no state write was
+    # required, so sync the journal values now.
+    if [[ "$_fs_mode" == https ]]; then
+        old_port="$_rb_port"
+        old_bind="$_rb_bind"
     fi
     # FIX: When old_bind is empty (legacy containers had no IP binding),
     # "-p :<port>:80/tcp" makes Docker publish on 0.0.0.0 (fail-open,
@@ -41334,6 +41385,31 @@ EOF_B15_SIDECAR
                     wallos_https_teardown >/dev/null 2>&1 || msg "${RED}$(tr_msg wl_rc_caddy_teardown_fail)${NC}"
                     msg "${RED}Recovery restored Wallos but its Caddy frontend is not running; refusing to report success, journal kept.${NC}"
                     return 1
+                fi
+            else
+                # F15-1: Caddy is already running. When the B15 re-apply
+                # re-randomized the internal port, the live config may
+                # still proxy the old internal port; converge it now
+                # instead of trusting the running front. A config that
+                # already matches is left alone (no restart, no cert
+                # work). Q was only re-randomized in the https branch
+                # above, so _rb_new_port is 0/unset otherwise.
+                if [[ "${_rb_new_port:-0}" == 1 ]]; then
+                    _rec_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
+                    if ! _wallos_caddy_config_matches "$_rec_pubport" "$old_port"; then
+                        if [[ ! "$_rec_pubport" =~ ^[0-9]+$ ]] || ! wallos_https_setup "$_rec_pubport" "$old_port"; then
+                            if ! wallos_https_teardown >/dev/null 2>&1; then
+                                msg "${RED}$(tr_msg wl_rc_caddy_teardown_fail)${NC}"
+                            fi
+                            msg "${RED}Recovery restored Wallos but its Caddy frontend is not running; refusing to report success, journal kept.${NC}"
+                            return 1
+                        fi
+                        if ! is_service_running abox-wallos-caddy 2>/dev/null; then
+                            wallos_https_teardown >/dev/null 2>&1 || msg "${RED}$(tr_msg wl_rc_caddy_teardown_fail)${NC}"
+                            msg "${RED}Recovery restored Wallos but its Caddy frontend is not running; refusing to report success, journal kept.${NC}"
+                            return 1
+                        fi
+                    fi
                 fi
             fi
             ;;
@@ -41940,6 +42016,20 @@ wallos_https_80_rollback() {
     remove_abox_native_firewall_rule "80" "tcp" >/dev/null 2>&1 || msg "${YELLOW}[!] Failed to revoke the newly added 80/tcp allow; remove it manually.${NC}"
 }
 
+# F15-1: true (0) only when the live Caddy config already proxies
+# public port $1 to internal 127.0.0.1:$2. A missing/unreadable file,
+# missing jq, bad JSON, or any mismatch returns 1 (setup must run).
+_wallos_caddy_config_matches() { # $1=public port $2=internal port
+    local pubport="${1:-}" internal="${2:-}" cfg='/etc/ddr/wallos-caddy.json' listen='' dial=''
+    [[ "$pubport" =~ ^[0-9]+$ ]] || return 1
+    [[ "$internal" =~ ^[0-9]+$ ]] || return 1
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    command -v jq >/dev/null 2>&1 || return 1
+    listen=$(jq -r '.apps.http.servers.wallos.listen[0] // empty' "$cfg" 2>/dev/null || true)
+    dial=$(jq -r '.apps.http.servers.wallos.routes[0].handle[0].upstreams[0].dial // empty' "$cfg" 2>/dev/null || true)
+    [[ "$listen" == ":$pubport" && "$dial" == "127.0.0.1:$internal" ]]
+}
+
 wallos_https_setup() { # $1 = public port, $2 = internal container port
     local pubport="$1" internal="$2" pub_ip='' tmp_json='' tmpd='' _t=0 _cert='' _code='' _http80_new=0 _http80_pre=2 _http80_post=2
     pub_ip=$(get_public_ip 2>/dev/null || true)
@@ -42274,16 +42364,14 @@ wallos_cftunnel_setup() { # $1 = public hostname (wallos.example.com)
 
 wallos_write_state() {
     # P3-6: persist BIND so backup/restore and rebuild-from-state preserve network exposure.
-    # Round 15: also persist MODE (local|https) + PUBPORT (the Caddy
-    # public port in https mode). When $5/$6 are omitted, existing
-    # values are carried over so restore/rollback paths keep them.
+    # Round 15: persist MODE (local|http|https|cftunnel), PUBPORT and CFHOST.
+    # Unless $9 == 1, omitted or empty $5..$8 inherit current-state values.
     local image="$1" port="$2" tz="$3" bind="${4-127.0.0.1}" mode="${5:-}" pubport="${6:-}" cfhost="${7:-}" version="${8:-}" restore="${9:-}" tmp
-    # R13-09: restore mode ($9 == 1) means "set exactly these
-    # values": an empty mode/pubport/cfhost/version stays absent
-    # instead of inheriting whatever the current state file holds
-    # (during rollback recovery that is the backup's metadata,
-    # not the pre-rollback deployment's). All other callers omit
-    # $9 and keep the carry-over behavior.
+    # R13-09 / F14-1: $9 == 1 disables carry-over for
+    # MODE/PUBPORT/CFHOST/VERSION; existing output validation still applies.
+    # Rollback success and failure recovery use pre-rollback frontend
+    # metadata, not the backup metadata now in the current state file.
+    # VERSION is explicit: target on success, previous on recovery.
     if [[ "$restore" != 1 ]]; then
         if [[ -z "$mode" ]]; then mode=$(wallos_state_value MODE 2>/dev/null || true); fi
         if [[ -z "$pubport" ]]; then pubport=$(wallos_state_value PUBPORT 2>/dev/null || true); fi
@@ -47328,7 +47416,7 @@ __abox_service_tx_rollback() {
     validate_services_state_file "$changed_pre" || return 1
     validate_services_state_file "$changed_expected" || return 1
     [[ "$(awk -F'|' 'NF {print $1}' "$changed_pre" | LC_ALL=C sort)" == "$(awk -F'|' 'NF {print $1}' "$changed_expected" | LC_ALL=C sort)" ]] || return 1
-    local _rb_srv _rb_pre _rb_cur _rb_failed=() _rb_conflict=0 _rb_other=0 _rb_txd _rb_sp _rb_se _rb_srv_rc _rb_umask
+    local _rb_srv _rb_pre _rb_cur _rb_exp _rb_mid _rb_pre_srv _rb_pre_active _rb_pre_enabled _rb_failed=() _rb_conflict=0 _rb_other=0 _rb_txd _rb_sp _rb_se _rb_srv_rc _rb_umask
     _rb_umask=$(umask)
     umask 077
     while IFS='|' read -r _rb_srv _ _ || [[ -n "$_rb_srv" ]]; do
@@ -47336,6 +47424,27 @@ __abox_service_tx_rollback() {
         _rb_pre=$(awk -F'|' -v target="$_rb_srv" '$1 == target {print; found=1; exit} END {if (!found) exit 1}' "$changed_pre") || { _rb_other=1; _rb_failed+=("$_rb_srv"); continue; }
         _rb_cur=$(managed_service_state_value "$_rb_srv" 2>/dev/null) || { _rb_other=1; _rb_failed+=("$_rb_srv"); continue; }
         [[ "$_rb_cur" == "$_rb_pre" ]] && continue
+        # F17-1: a changed service is restored only when its live state
+        # is exactly a step-prefix of this transaction's own step:
+        # stop-prefix (srv|0|<pre-enabled>) towards srv|0|disabled, or
+        # start-prefix (srv|<pre-active>|enabled) towards srv|1|enabled.
+        # Any other shape is a conflict: record it and move on to the
+        # other services (never blocks them). The temp expected file
+        # below then holds the one frozen live observation, still
+        # re-checked by the strict preflight.
+        _rb_exp=$(awk -F'|' -v target="$_rb_srv" '$1 == target {print; found=1; exit} END {if (!found) exit 1}' "$changed_expected") || { _rb_other=1; _rb_failed+=("$_rb_srv"); continue; }
+        _rb_mid=''
+        if [[ "$_rb_cur" != "$_rb_exp" ]]; then
+            IFS='|' read -r _rb_pre_srv _rb_pre_active _rb_pre_enabled <<< "$_rb_pre"
+            if [[ "$_rb_exp" == "$_rb_srv|0|disabled" ]]; then
+                _rb_mid="$_rb_srv|0|$_rb_pre_enabled"
+            elif [[ "$_rb_exp" == "$_rb_srv|1|enabled" ]]; then
+                _rb_mid="$_rb_srv|$_rb_pre_active|enabled"
+            fi
+            if [[ -z "$_rb_mid" || "$_rb_cur" != "$_rb_mid" ]]; then
+                _rb_conflict=1; _rb_failed+=("$_rb_srv"); continue
+            fi
+        fi
         # Changed: strict per-service restore of this service's own
         # pre/expected pair. Singleton journals live in a fresh private
         # temp dir (0700 root:root, files 0600 root:root); every
@@ -47345,10 +47454,16 @@ __abox_service_tx_rollback() {
         # other services); a conflict/restore failure is recorded the
         # same way. The caller's original tx journals are untouched, so
         # recovery information is preserved on failure.
+        # F17-1: the exemption above is a whitelist, not a shape proof:
+        # only the two step-prefixes of this transaction's own step are
+        # accepted, and the temp expected file holds the one frozen live
+        # observation, still re-checked by the strict preflight. An
+        # indistinguishable foreign operation with the same shape (e.g.
+        # an admin stop-only) cannot be told apart from P/E/L alone.
         _rb_txd=$(mktemp -d /run/A-Box-service-tx-rollback.XXXXXX) || { _rb_other=1; _rb_failed+=("$_rb_srv"); continue; }
         if ! chmod 700 "$_rb_txd" || { [[ $EUID -eq 0 ]] && ! chown root:root "$_rb_txd"; }; then rm -rf -- "$_rb_txd" 2>/dev/null || true; _rb_other=1; _rb_failed+=("$_rb_srv"); continue; fi
         _rb_sp="$_rb_txd/pre.state"; _rb_se="$_rb_txd/expected.state"
-        if ! awk -F'|' -v target="$_rb_srv" '$1 == target {print}' "$changed_pre" > "$_rb_sp" || ! awk -F'|' -v target="$_rb_srv" '$1 == target {print}' "$changed_expected" > "$_rb_se"; then rm -rf -- "$_rb_txd" 2>/dev/null || true; _rb_other=1; _rb_failed+=("$_rb_srv"); continue; fi
+        if ! printf '%s\n' "$_rb_pre" > "$_rb_sp" || ! printf '%s\n' "$_rb_cur" > "$_rb_se"; then rm -rf -- "$_rb_txd" 2>/dev/null || true; _rb_other=1; _rb_failed+=("$_rb_srv"); continue; fi
         if ! chmod 600 "$_rb_sp" "$_rb_se" || { [[ $EUID -eq 0 ]] && ! chown root:root "$_rb_sp" "$_rb_se"; }; then rm -rf -- "$_rb_txd" 2>/dev/null || true; _rb_other=1; _rb_failed+=("$_rb_srv"); continue; fi
         restore_managed_service_state "$_rb_sp" "$_rb_se"
         _rb_srv_rc=$?

@@ -31257,10 +31257,11 @@ _nsni_probe() {
 _nsni_rollback() {
     local _cfg="$1" _bak="$2" _key="$3" _crt="$4" _kebak="$5" _crtbak="$6" _core="$7" _was_running="$8"
     local _link="${9:-}" _linkbak="${10:-}"
+    local _kemode="${11:-}" _crtmode="${12:-}"
     local _ok=1
     [[ -f "$_bak" && -r "$_bak" ]] && cat "$_bak" > "$_cfg" 2>/dev/null || _ok=0
-    if [[ -n "$_kebak" && -f "$_kebak" ]]; then cp -a "$_kebak" "$_key" 2>/dev/null || _ok=0; fi
-    if [[ -n "$_crtbak" && -f "$_crtbak" ]]; then cp -a "$_crtbak" "$_crt" 2>/dev/null || _ok=0; fi
+    if [[ -n "$_kebak" && -f "$_kebak" ]]; then if cp -a "$_kebak" "$_key" 2>/dev/null; then if [[ -n "$_kemode" ]]; then chmod -- "$_kemode" "$_key" 2>/dev/null || _ok=0; fi; else _ok=0; fi; fi
+    if [[ -n "$_crtbak" && -f "$_crtbak" ]]; then if cp -a "$_crtbak" "$_crt" 2>/dev/null; then if [[ -n "$_crtmode" ]]; then chmod -- "$_crtmode" "$_crt" 2>/dev/null || _ok=0; fi; else _ok=0; fi; fi
     if [[ -n "$_link" && -n "$_linkbak" && -f "$_linkbak" ]]; then
         if cp -a "$_linkbak" "$_link" 2>/dev/null; then rm -f "$_linkbak"; else _ok=0; fi
     fi
@@ -31324,7 +31325,7 @@ PYEOF
 _nsni_handshake_check() {
     local core="$1" tag="$2" cfg="$3" sni="$4"
     local bin='' port='' listen='' dial='' uuid='' flow='' net='' xpath='' xhost='' xmode='' grpc_service='' sid='' pbk=''
-    local lf='' sport='' cc='' tmpd='' pid='' code='' i=0 up=0 _try=0 _envf='' pbk_src='' logf='' cerr='' cerr_curl='' curl_rc=0 ready=0 _priv=''
+    local lf='' sport='' cc='' tmpd='' pid='' code='' i=0 up=0 _try=0 _envf='' pbk_src='' logf='' cerr='' cerr_curl='' curl_rc=0 ready=0 _priv='' tport='443' _tgt='' _tport_cand='' _thost=''
     case "$core" in
         xray) bin='/usr/local/bin/xray' ;;
         sing-box) bin="${SB_PATH:-/usr/local/bin/sing-box}" ;;
@@ -31358,6 +31359,38 @@ _nsni_handshake_check() {
     # range start (the inbound listens there) instead of failing
     # every /dev/tcp attempt and rolling back a healthy inbound.
     if [[ "$port" == *-* ]]; then port="${port%%-*}"; fi
+    # R11-01: the probe URL needs the REALITY target's HTTPS port,
+    # not the inbound listen port. Derive it from the live target:
+    # xray keeps it in realitySettings.target/dest (custom ports are
+    # preserved by _nsni_apply); sing-box keeps it in
+    # tls.reality.handshake.server_port. An absent port (or a socket
+    # target, which has none) falls back to 443 as a documented
+    # application-probe fallback, not a claim about the REALITY
+    # target. A malformed target or port returns 2 (unavailable): a
+    # wrong probe must not roll back a healthy SNI. Validated here,
+    # before any temp resource is allocated.
+    if [[ "$core" == 'sing-box' ]]; then
+        tport=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.tls.reality.handshake.server_port // 443)' "$cfg" 2>/dev/null | head -n 1)
+        if [[ ! "$tport" =~ ^[0-9]+$ ]] || (( 10#$tport < 1 || 10#$tport > 65535 )); then return 2; fi
+    else
+        _tgt=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.streamSettings.realitySettings.target // .streamSettings.realitySettings.dest // "")' "$cfg" 2>/dev/null | head -n 1)
+        case "$_tgt" in
+            '') tport='443' ;;
+            /*|@*) tport='443' ;;
+            \[*\]:*)
+                _tport_cand="${_tgt##*:}"
+                if [[ "$_tport_cand" =~ ^[0-9]+$ ]] && (( 10#$_tport_cand >= 1 && 10#$_tport_cand <= 65535 )); then tport="$_tport_cand"; else return 2; fi ;;
+            \[*\]) tport='443' ;;
+            *:*)
+                _thost="${_tgt%:*}"
+                if [[ -z "$_thost" || "$_thost" == *:* ]]; then return 2; fi
+                _tport_cand="${_tgt##*:}"
+                if [[ "$_tport_cand" =~ ^[0-9]+$ ]] && (( 10#$_tport_cand >= 1 && 10#$_tport_cand <= 65535 )); then tport="$_tport_cand"; else return 2; fi ;;
+            *)
+                if [[ "$_tgt" =~ ^[0-9]+$ ]]; then return 2; fi
+                tport='443' ;;
+        esac
+    fi
     # R1-12-F2: ''/0.0.0.0 stay on IPv4 loopback; :: goes via ::1.
     case "$listen" in ''|0.0.0.0) dial='127.0.0.1' ;; '::') dial='::1' ;; *) dial="$listen" ;; esac
     [[ -z "$xhost" ]] && xhost="$sni"
@@ -31414,7 +31447,7 @@ _nsni_handshake_check() {
             chmod 600 "$logf" 2>/dev/null || true
         fi
     fi
-    { printf 'nsni-check core=%s tag=%s sni=%s dial=%s port=%s pbk_src=%s pbk_len=%s sid_set=%s flow=%s\n' "$core" "$tag" "$sni" "$dial" "$port" "$pbk_src" "${#pbk}" "$([ -n "$sid" ] && printf yes || printf no)" "${flow:-}"; } >> "$logf" 2>/dev/null || true
+    { printf 'nsni-check core=%s tag=%s sni=%s dial=%s port=%s tport=%s pbk_src=%s pbk_len=%s sid_set=%s flow=%s\n' "$core" "$tag" "$sni" "$dial" "$port" "$tport" "$pbk_src" "${#pbk}" "$([ -n "$sid" ] && printf yes || printf no)" "${flow:-}"; } >> "$logf" 2>/dev/null || true
     if _wait_tcp_port "$dial" "$port" 60; then ready=1; else ready=0; fi
     printf 'nsni-check server-ready=%s\n' "$ready" >> "$logf" 2>/dev/null || true
     if [[ "$ready" != 1 ]]; then printf 'nsni-check verdict=FAIL server-not-ready\n' >> "$logf" 2>/dev/null || true; rm -f "$cerr" "$cerr_curl"; rm -rf "$tmpd"; return 1; fi
@@ -31427,7 +31460,7 @@ _nsni_handshake_check() {
         return 2
     fi
     if [[ "$core" == 'sing-box' ]]; then
-        jq -n --arg dial "$dial" --argjson port "$port" --arg uuid "$uuid" --arg sni "$sni" --arg pbk "$pbk" --arg sid "$sid" --arg flow "$flow" --argjson sport "$sport" '{
+        jq -n --arg dial "$dial" --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --arg sni "$sni" --arg pbk "$pbk" --rawfile sid <(printf '%s' "$sid") --arg flow "$flow" --argjson sport "$sport" '{
             log: {level: "warning"},
             inbounds: [{type: "socks", tag: "socks-in", listen: "127.0.0.1", listen_port: $sport}],
             outbounds: [({type: "vless", tag: "proxy", server: $dial, server_port: $port, uuid: $uuid} + (if $flow != "" then {flow: $flow} else {} end) + {
@@ -31435,7 +31468,7 @@ _nsni_handshake_check() {
         }' > "$cc" 2>/dev/null || { rm -f "$cerr" "$cerr_curl"; rm -rf "$tmpd"; return 2; }
         "$bin" run -c "$cc" >"$cerr" 2>&1 & pid=$!
     else
-        jq -n --arg dial "$dial" --argjson port "$port" --arg uuid "$uuid" --arg flow "$flow" --arg net "$net" --arg sni "$sni" --arg pbk "$pbk" --arg sid "$sid" --arg xpath "$xpath" --arg xhost "$xhost" --arg xmode "$xmode" --arg grpc_service "$grpc_service" --argjson sport "$sport" '{
+        jq -n --arg dial "$dial" --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --arg flow "$flow" --arg net "$net" --arg sni "$sni" --arg pbk "$pbk" --rawfile sid <(printf '%s' "$sid") --arg xpath "$xpath" --arg xhost "$xhost" --arg xmode "$xmode" --arg grpc_service "$grpc_service" --argjson sport "$sport" '{
             log: {loglevel: "warning"},
             inbounds: [{port: $sport, listen: "127.0.0.1", protocol: "socks", settings: {auth: "noauth", udp: true}, tag: "socks-in"}],
             outbounds: [{protocol: "vless", settings: {vnext: [{address: $dial, port: $port, users: [{id: $uuid, flow: $flow, encryption: "none"}]}]},
@@ -31474,7 +31507,7 @@ _nsni_handshake_check() {
             1) _ct=20; _mt=30 ;;
             *) _ct=40; _mt=60 ;;
         esac
-        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --noproxy '' --connect-timeout "$_ct" --max-time "$_mt" "https://$sni:$port/" 2>"$cerr_curl")
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --socks5-hostname "127.0.0.1:$sport" --noproxy '' --connect-timeout "$_ct" --max-time "$_mt" "https://$sni:$tport/" 2>"$cerr_curl")
         curl_rc=$?
         [[ "$curl_rc" != 0 ]] && code='000'
         printf 'nsni-check try=%s curl-rc=%s http=%s\n' "$_try" "$curl_rc" "$code" >> "$logf" 2>/dev/null || true
@@ -31517,17 +31550,22 @@ _nsni_apply() {
     esac
     cat "$tmp" > "$cfg" || { if [[ -f "$bak" && -r "$bak" ]] && cat "$bak" > "$cfg" 2>/dev/null; then rm -f "$tmp" "$bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; rm -f "$tmp"; fi; return 1; }
     rm -f "$tmp"
-    local _kebak='' _crtbak=''
+    local _kebak='' _crtbak='' _kemode='' _crtmode=''
     if [[ "$kind" == 'tuic' && -n "$key" && -n "$crt" ]]; then
         _kebak=$(mktemp /tmp/A-Box-nsni-keybak.XXXXXX 2>/dev/null || true)
         _crtbak=$(mktemp /tmp/A-Box-nsni-crtbak.XXXXXX 2>/dev/null || true)
-        if [[ -z "$_kebak" || -z "$_crtbak" ]] || ! cp -a "$key" "$_kebak" 2>/dev/null || ! chmod 600 "$_kebak" 2>/dev/null || ! cp -a "$crt" "$_crtbak" 2>/dev/null || ! chmod 600 "$_crtbak" 2>/dev/null; then
+        # R11-03: record the original modes before the backups are
+        # tightened to 0600, so rollback can restore them (a 0640
+        # file readable by a non-root core must stay readable).
+        # Checked stat is part of the failure chain: a failed
+        # capture aborts here, never silently with an empty mode.
+        if [[ -z "$_kebak" || -z "$_crtbak" ]] || ! cp -a "$key" "$_kebak" 2>/dev/null || ! chmod 600 "$_kebak" 2>/dev/null || ! cp -a "$crt" "$_crtbak" 2>/dev/null || ! chmod 600 "$_crtbak" 2>/dev/null || ! _kemode=$(stat -c %a "$key" 2>/dev/null) || ! _crtmode=$(stat -c %a "$crt" 2>/dev/null); then
             if [[ -f "$bak" && -r "$bak" ]] && cat "$bak" > "$cfg" 2>/dev/null; then rm -f "$bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi
             rm -f "$_kebak" "$_crtbak"
             return 1
         fi
         if ! generate_self_signed_cert_atomically "$key" "$crt" "$new" >/dev/null 2>&1; then
-            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "" "" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
             return 1
         fi
     fi
@@ -31535,7 +31573,7 @@ _nsni_apply() {
         local _restart_ok=0
         if is_systemd; then systemctl restart "$core" >/dev/null 2>&1 && _restart_ok=1; else rc-service "$core" restart >/dev/null 2>&1 && _restart_ok=1; fi
         if (( _restart_ok == 0 )); then
-            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "" "" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
             return 1
         fi
     fi
@@ -31552,7 +31590,7 @@ _nsni_apply() {
         local _hs_rc=$?
         if (( _hs_rc == 1 )); then
             msg "${RED}[!] New SNI handshake failed; rolling back to the previous SNI.${NC}" >&2
-            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "" "" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
             return 1
         elif (( _hs_rc == 2 )); then
             msg "${YELLOW}[!] Handshake self-check unavailable; new SNI is unverified.${NC}" >&2
@@ -31565,9 +31603,17 @@ _nsni_apply() {
         _esc_old=$(printf '%s' "$old" | sed 's/[][\\.|*^$]/\\&/g')
         _esc_new=$(printf '%s' "$new" | sed 's/[\\|&]/\\&/g')
         _lbak=$(mktemp /tmp/A-Box-nsni-linkbak.XXXXXX 2>/dev/null || true)
-        if [[ -n "$_lbak" ]] && ! cp -a "$_ldir/$_lf" "$_lbak" 2>/dev/null; then rm -f "$_lbak"; _lbak=''; fi
+        # R11-04: a failed link backup must stop the edit here. The
+        # old code cleared _lbak and ran sed -i anyway, so a later
+        # .env failure rolled the config back but left the NEW SNI
+        # in the link (service old SNI, link new SNI).
+        if [[ -z "$_lbak" ]] || ! cp -a "$_ldir/$_lf" "$_lbak" 2>/dev/null; then
+            rm -f "$_lbak" 2>/dev/null || true
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "" "" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+            return 1
+        fi
         if ! sed -i -e "s|\([?&]sni=\)${_esc_old}\([&#]\)|\1${_esc_new}\2|g" -e "s|\([?&]sni=\)${_esc_old}\$|\1${_esc_new}|g" "$_ldir/$_lf" 2>/dev/null; then
-            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
             return 1
         fi
         _shown=$(cat "$_ldir/$_lf" 2>/dev/null)
@@ -31587,26 +31633,26 @@ _nsni_apply() {
                         rm -f "$_ebak"
                     elif cp -a "$_ebak" "$_envf" 2>/dev/null; then
                         rm -f "$_etmp" "$_ebak"
-                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
                         return 1
                     else
                         msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
                         rm -f "$_etmp"
-                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
                         return 1
                     fi
                 else
                     rm -f "$_etmp" "$_ebak"
-                    if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+                    if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
                     return 1
                 fi
             else
-                if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+                if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
                 return 1
             fi
             rm -f "$_etmp"
         else
-            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+            if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
             return 1
         fi
     fi
@@ -32079,7 +32125,6 @@ apply_timezone_name() {
         if timedatectl set-timezone "$tz" 2>/dev/null; then return 0; fi
         # timedatectl exists but cannot set (systemd not PID 1,
         # container, etc.): fall through to zoneinfo below.
-        return 0
     fi
     # Alpine / BusyBox path
     if [[ -f "/usr/share/zoneinfo/$tz" ]]; then
@@ -32463,6 +32508,32 @@ snapshot_dns_state() {
         mkdir -p "$dir/resolved.conf.d" || return 1
         cp -a /etc/systemd/resolved.conf.d/99-abox-dns.conf "$dir/resolved.conf.d/99-abox-dns.conf" || return 1
     fi
+    # R11-06: capture the OTHER DNS-bearing drop-ins into this
+    # snapshot's resolved-cleanup/ (the layout
+    # restore_dns_snapshot_body already restores). The strip helper
+    # only backs them up to the baseline dir, so without this a
+    # rollback from the current snapshot cannot put them back.
+    local _df='' _dbase='' _dsub='' _grc=0
+    for _df in /etc/systemd/resolved.conf.d/*.conf /run/systemd/resolved.conf.d/*.conf /usr/lib/systemd/resolved.conf.d/*.conf /usr/local/lib/systemd/resolved.conf.d/*.conf; do
+        [[ -f "$_df" ]] || continue
+        [[ "$_df" == /etc/systemd/resolved.conf.d/99-abox-dns.conf ]] && continue
+        [[ -L "$_df" ]] && continue
+        [[ -r "$_df" ]] || return 1
+        _grc=0
+        grep -qiE '^[[:space:]]*(DNS|FallbackDNS|DNSOverTLS)[[:space:]]*=' "$_df" 2>/dev/null || _grc=$?
+        (( _grc == 2 )) && return 1
+        (( _grc != 0 )) && continue
+        _dbase=$(basename "$_df")
+        case "$_df" in
+            /etc/systemd/resolved.conf.d/*) _dsub='etc' ;;
+            /run/systemd/resolved.conf.d/*) _dsub='run' ;;
+            /usr/lib/systemd/resolved.conf.d/*) _dsub='usr-lib' ;;
+            /usr/local/lib/systemd/resolved.conf.d/*) _dsub='usr-local-lib' ;;
+            *) continue ;;
+        esac
+        mkdir -p "$dir/resolved-cleanup/$_dsub" || return 1
+        cp -a "$_df" "$dir/resolved-cleanup/$_dsub/$_dbase" || return 1
+    done
     if [[ -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml ]]; then
         mkdir -p "$dir/dnscrypt-proxy" || return 1
         cp -a /etc/dnscrypt-proxy/dnscrypt-proxy.toml "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" || return 1
@@ -32577,14 +32648,17 @@ restore_dns_snapshot_body() {
     if [[ -f "$dir/dns-state" ]]; then rm -f -- "$DNS_STATE_FILE" || return 1; cp -a "$dir/dns-state" "$DNS_STATE_FILE" || return 1
     elif [[ -f "$dir/dns-state.absent" ]]; then rm -f "$DNS_STATE_FILE" || return 1; fi
     if [[ "$backend" == resolved ]] && command -v systemctl >/dev/null 2>&1; then systemctl restart systemd-resolved >/dev/null 2>&1 || return 1; fi
-    if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files dnscrypt-proxy.service >/dev/null 2>&1; then
+    if command -v systemctl >/dev/null 2>&1; then
+        local _dnscrypt_units=''
+        _dnscrypt_units=$(systemctl list-unit-files --type=service --no-legend --no-pager dnscrypt-proxy.service 2>/dev/null) || return 1
+        if awk -v wanted='dnscrypt-proxy.service' '$1 == wanted { found=1 } END { exit !found }' <<< "$_dnscrypt_units"; then
         state=$(tr -d '[:space:]' < "$dir/dnscrypt-service-state" 2>/dev/null || printf inactive)
         local enabled_state _got_ens
         enabled_state=$(tr -d '[:space:]' < "$dir/dnscrypt-service-enabled" 2>/dev/null || printf disabled)
         # R13C12-03: enabled-runtime restores as runtime-only,
         # not as a persistent enablement that never existed.
         if [[ "$enabled_state" == enabled ]]; then systemctl enable dnscrypt-proxy >/dev/null 2>&1 || return 1
-        elif [[ "$enabled_state" == enabled-runtime ]]; then systemctl enable --runtime dnscrypt-proxy >/dev/null 2>&1 || return 1
+        elif [[ "$enabled_state" == enabled-runtime ]]; then systemctl disable dnscrypt-proxy >/dev/null 2>&1 || return 1; systemctl enable --runtime dnscrypt-proxy >/dev/null 2>&1 || return 1
         # R14C12-02: disable/stop failures propagate (no || true).
         else systemctl disable dnscrypt-proxy >/dev/null 2>&1 || return 1; fi
         if [[ "$state" == active ]]; then systemctl restart dnscrypt-proxy >/dev/null 2>&1 || return 1; else systemctl stop dnscrypt-proxy >/dev/null 2>&1 || return 1; fi
@@ -32600,6 +32674,7 @@ restore_dns_snapshot_body() {
             enabled-runtime) [[ "$_got_ens" == enabled-runtime ]] || return 1 ;;
             *) [[ "$_got_ens" != enabled && "$_got_ens" != enabled-runtime ]] || return 1 ;;
         esac
+        fi
     fi
     return 0
 }
@@ -32842,7 +32917,7 @@ resolved_strip_global_dns_sources() {
 # possible, treated as pass: the strip above is the actual fix, this is
 # defense in depth.
 resolved_global_dns_check() {
-    local expected="$1" line='' tok='' got='' dline=''
+    local expected="$1" line='' tok='' got='' dline='' _dom_out='' _lline='' _ltoks=''
     local -a exp=() gottok=() norm_exp=() norm_got=()
     command -v resolvectl >/dev/null 2>&1 || return 0
     line=$(resolvectl dns 2>/dev/null | awk '/^Global:/ {print; exit}' || true)
@@ -32853,12 +32928,26 @@ resolved_global_dns_check() {
     for tok in "${exp[@]}"; do tok="${tok%%#*}"; case "$tok" in *.*:*) tok="${tok%:*}";; esac; norm_exp+=("$(normalize_ip_literal "$tok")"); done
     for tok in "${gottok[@]}"; do tok="${tok%%#*}"; case "$tok" in *.*:*) tok="${tok%:*}";; esac; norm_got+=("$(normalize_ip_literal "$tok")"); done
     [[ "$(printf '%s\n' "${norm_exp[@]}" | sort -u | tr '\n' ' ')" == "$(printf '%s\n' "${norm_got[@]}" | sort -u | tr '\n' ' ')" ]] || return 1
-    # F06: a global DNS list alone does not keep link DHCP
-    # resolvers out of the query path; only a global route
-    # domain of ~. does. Require it, else roll back.
-    dline=$(resolvectl domain 2>/dev/null | awk '/^Global:/ {print; exit}' || true)
+    # F06/R11-15: a global DNS list alone does not keep link DHCP
+    # resolvers out of the query path, and a global route domain
+    # of ~. alone does not either: any link domain (route-only
+    # or ordinary) can still select that link for matching names.
+    # Require global ~. AND no link domain at all, else roll back.
+    _dom_out=$(LC_ALL=C resolvectl domain 2>/dev/null) || return 1
+    dline=$(printf '%s\n' "$_dom_out" | awk '/^Global:/ {print; exit}' || true)
     [[ -n "$dline" ]] || return 1
     [[ " $dline " == *' ~. '* ]] || return 1
+    while IFS= read -r _lline; do
+        case "$_lline" in
+            'Global:'*) ;;
+            'Link '*:*)
+                _ltoks="${_lline#*:}"
+                [[ -n "${_ltoks//[[:space:]]/}" ]] && return 1 ;;
+            '') ;;
+            *) return 1 ;;
+        esac
+    done <<< "$_dom_out"
+    return 0
 }
 
 apply_host_dns() {
@@ -33438,7 +33527,7 @@ dns_install_dnscrypt_proxy() {
         esac
         read -r -p "$prompt" answer
         is_yes "$answer" || { msg "${YELLOW}dnscrypt-proxy config missing and reinstall declined; DNS was not changed.${NC}"; return 1; }
-        if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y --reinstall dnscrypt-proxy || return 1
+        if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y --reinstall -o Dpkg::Options::=--force-confmiss dnscrypt-proxy || return 1
         elif command -v apk >/dev/null 2>&1; then apk fix dnscrypt-proxy || return 1
         else msg "${YELLOW}Automatic DoH setup is not enabled for this package manager; DNS was not changed.${NC}"; return 1; fi
         [[ -f "$_cfg" && ! -L "$_cfg" ]] || { msg "${YELLOW}dnscrypt-proxy config still missing after reinstall; DNS was not changed.${NC}"; return 1; }
@@ -33500,6 +33589,26 @@ dns_enable_doh() {
     dns_install_dnscrypt_proxy || { msg "${YELLOW}$(tr_msg dh_unavailable)${NC}"; return 1; }
     config='/etc/dnscrypt-proxy/dnscrypt-proxy.toml'
     [[ -f "$config" && ! -L "$config" ]] || { msg "${RED}$(tr_msg dh_cfg_missing)${NC}"; return 1; }
+    # R11-10: socket activation hands the service the socket's own
+    # listen addresses; verify BOTH typed endpoints (Stream for TCP,
+    # Datagram for UDP) are exactly 127.0.0.1:5353 before any
+    # snapshot or temp file is created. The hardcoded probe below
+    # targets 127.0.0.1:5353, so a differently-bound socket would
+    # fail only after a full install/restart churn. Empty,
+    # unparseable, or mismatched output fails closed.
+    if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
+        local _sock_listen=''
+        _sock_listen=$(systemctl show --property=Listen --value dnscrypt-proxy.socket 2>/dev/null) || { msg "${RED}[!] Cannot query dnscrypt-proxy.socket endpoints; resolver configuration was not switched.${NC}"; return 1; }
+        if [[ -z "$_sock_listen" ]] || ! printf '%s\n' "$_sock_listen" | grep -qF '127.0.0.1:5353 (Stream)' 2>/dev/null || ! printf '%s\n' "$_sock_listen" | grep -qF '127.0.0.1:5353 (Datagram)' 2>/dev/null; then
+            msg "${RED}[!] dnscrypt-proxy.socket does not listen on 127.0.0.1:5353 (Stream and Datagram); resolver configuration was not switched. Effective Listen: ${_sock_listen:-none} -- correct the socket configuration or disable socket activation.${NC}"
+            return 1
+        fi
+    fi
+    # R11-11: capture owner/mode BEFORE any work touches the config.
+    local _cfg_meta='' _cfg_uid='' _cfg_gid='' _cfg_mode=''
+    _cfg_meta=$(stat -c '%u %g %a' "$config" 2>/dev/null) || { msg "${RED}[!] Cannot read ownership/mode of $config; refusing to replace it.${NC}"; return 1; }
+    read -r _cfg_uid _cfg_gid _cfg_mode <<< "$_cfg_meta"
+    [[ "$_cfg_uid" =~ ^[0-9]+$ && "$_cfg_gid" =~ ^[0-9]+$ && "$_cfg_mode" =~ ^[0-7]{3,4}$ ]] || { msg "${RED}[!] Cannot read ownership/mode of $config; refusing to replace it.${NC}"; return 1; }
     # FINAL-AUDIT fix: stage the new snapshot in a temp dir and verify it
     # is COMPLETE before replacing the old one. The old code ran
     # `rm -rf $DNS_BACKUP_DIR` first, so a mkdir/snapshot failure destroyed
@@ -33512,13 +33621,24 @@ dns_enable_doh() {
         msg "${RED}$(tr_msg dh_snap_rollback)${NC}"
         return 1
     fi
+    # R11-09: retain a copy of THIS run's pre-change snapshot before
+    # the install primitive runs: when a COMPLETE baseline already
+    # exists it preserves the baseline and discards the staging dir,
+    # so restoring from $DNS_BACKUP_DIR on failure would undo the
+    # previous successful DNS change instead of this run's pre-state.
+    # Removed after a successful restore and on success; retained
+    # (and reported) only when a restore fails.
+    local _doh_snap_keep=''
+    _doh_snap_keep=$(mktemp -d /tmp/A-Box-doh-snap.XXXXXX) || { rm -rf -- "$_doh_snap_new"; msg "${RED}$(tr_msg dh_snap_install)${NC}"; return 1; }
+    if ! chmod 700 "$_doh_snap_keep" 2>/dev/null || ! cp -a "$_doh_snap_new/." "$_doh_snap_keep/" 2>/dev/null || [[ ! -f "$_doh_snap_keep/COMPLETE" ]]; then rm -rf -- "$_doh_snap_new" "$_doh_snap_keep"; msg "${RED}$(tr_msg dh_snap_install)${NC}"; return 1; fi
     # TRAP-5: use the unified snapshot primitive (POSIX mv + pre-move-aside, idempotency,
     # crash-safe pending-swap). Preserves an existing COMPLETE baseline.
     if ! dns_snapshot_install_new "$_doh_snap_new"; then
+        rm -rf -- "$_doh_snap_keep" 2>/dev/null || true
         msg "${RED}$(tr_msg dh_snap_install)${NC}"
         return 1
     fi
-    temp=$(umask 077; mktemp /tmp/A-Box-doh.XXXXXX) || return 1
+    temp=$(umask 077; mktemp /tmp/A-Box-doh.XXXXXX) || { rm -rf -- "$_doh_snap_keep" 2>/dev/null || true; return 1; }
     # R8C12-N02: under socket activation the socket unit binds
     # the address; the service must inherit it (empty list).
     local doh_listen="['127.0.0.1:5353']"
@@ -33612,16 +33732,13 @@ set_option('ignore_system_dns', 'true')
 with open(target, 'w', encoding='utf-8') as handle: handle.write(text)
 PY_DOH_CONFIG
     rc=$?
-    if (( rc != 0 )); then rm -f -- "$temp"; restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; fi
+    if (( rc != 0 )); then rm -f -- "$temp"; rm -rf -- "$_doh_snap_keep" 2>/dev/null || true; return 1; fi
     # R1-12-F7: preserve the original mode (a 0640 credential
     # file must not be loosened to 0644 by the rewrite).
-    local _cfg_mode=''
-    _cfg_mode=$(stat -c %a "$config" 2>/dev/null || true)
-    [[ "$_cfg_mode" =~ ^[0-7]{3,4}$ ]] || _cfg_mode='644'
-    install -m "$_cfg_mode" "$temp" "$config" || { rm -f -- "$temp"; restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
+    install -o "$_cfg_uid" -g "$_cfg_gid" -m "$_cfg_mode" "$temp" "$config" || { rm -f -- "$temp"; if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
     rm -f -- "$temp"
     if ! dnscrypt-proxy -config "$config" -check >/dev/null 2>&1; then
-        restore_dns_snapshot "$DNS_BACKUP_DIR" || true
+        if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi
         msg "${RED}$(tr_msg dh_cfg_check)${NC}"
         return 1
     fi
@@ -33629,10 +33746,10 @@ PY_DOH_CONFIG
     # would keep serving the old config; restart a live instance so
     # the new config is really loaded before probing it.
     if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
-        systemctl enable dnscrypt-proxy >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
-        systemctl restart dnscrypt-proxy >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
+        systemctl enable dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
+        systemctl restart dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
     else
-        systemctl enable --now dnscrypt-proxy >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
+        systemctl enable --now dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
     fi
     # R2C12-10: retry the probe (cold start needs a few
     # seconds); rollback only if every attempt fails.
@@ -33643,34 +33760,36 @@ PY_DOH_CONFIG
         (( _probe_i < 5 )) && sleep 2
     done
     if (( _probe_ok == 0 )); then
-        restore_dns_snapshot "$DNS_BACKUP_DIR" || true
+        if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi
         msg "${RED}$(tr_msg dh_test_resolve)${NC}"
         return 1
     fi
-    resolved_strip_global_dns_sources || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
-    write_file_atomically_from_stdin /etc/systemd/resolved.conf.d/99-abox-dns.conf 644 <<'EOF_DOH' || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
+    resolved_strip_global_dns_sources || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
+    write_file_atomically_from_stdin /etc/systemd/resolved.conf.d/99-abox-dns.conf 644 <<'EOF_DOH' || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
 [Resolve]
 DNS=127.0.0.1:5353
 FallbackDNS=
 Domains=~.
 DNSOverTLS=no
 EOF_DOH
-    systemctl restart systemd-resolved >/dev/null 2>&1 || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
-    resolved_global_dns_check '127.0.0.1:5353' || { restore_dns_snapshot "$DNS_BACKUP_DIR" || true; return 1; }
+    systemctl restart systemd-resolved >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
+    resolved_global_dns_check '127.0.0.1:5353' || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
     if resolvectl query example.com >/dev/null 2>&1; then
         if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< 'backend=resolved;mode=doh;proxy=dnscrypt-proxy'; then
-            if restore_dns_snapshot "$DNS_BACKUP_DIR"; then
+            if restore_dns_snapshot "$_doh_snap_keep"; then
+                rm -rf -- "$_doh_snap_keep" 2>/dev/null || true
                 systemctl restart systemd-resolved >/dev/null 2>&1 || true
                 msg "${RED}$(tr_msg dh_meta_commit)${NC}"
             else
-                msg "${RED}$(tprintf dh_meta_commit_fail "$DNS_BACKUP_DIR")${NC}"
+                msg "${RED}$(tprintf dh_meta_commit_fail "$_doh_snap_keep")${NC}"
             fi
             return 1
         fi
         msg "${GREEN}$(tr_msg dh_ok)${NC}"
         msg "${YELLOW}$(tr_msg dh_note)${NC}"
+        rm -rf -- "$_doh_snap_keep" 2>/dev/null || true
     else
-        restore_dns_snapshot "$DNS_BACKUP_DIR" || true
+        if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi
         msg "${RED}$(tr_msg dh_resolved_health)${NC}"
         return 1
     fi
@@ -33771,7 +33890,7 @@ _dns_current_v4() {
             # Sole-loopback fallback (R1-12-F9): if only 127.* nameservers
             # exist (e.g. Unbound), return them instead of empty; empty
             # makes the caller fall back to IPv6-only and rewrite away v4.
-            cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ {print $2}' /etc/resolv.conf 2>/dev/null || true)
+            cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\.0\.0\.(53|54)$/ {print $2}' /etc/resolv.conf 2>/dev/null || true)
             out=$(_dns_valid_v4_group "$cur")
             [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
@@ -33782,7 +33901,7 @@ _dns_current_v4() {
             # Sole-loopback fallback (R1-12-F9): if only 127.* nameservers
             # exist (e.g. Unbound), return them instead of empty; empty
             # makes the caller fall back to IPv6-only and rewrite away v4.
-            cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ {print $2}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
+            cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 !~ /:/ && $2 !~ /^127\.0\.0\.(53|54)$/ {print $2}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
             out=$(_dns_valid_v4_group "$cur")
             [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
@@ -33804,12 +33923,22 @@ _dns_current_v4() {
 _dns_current_v6() {
     local cur='' out=''
     if [[ -r /etc/resolv.conf ]]; then
-        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 !~ /\./ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2}' /etc/resolv.conf 2>/dev/null || true)
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ {
+            addr = $2
+            sub(/%.*/, "", addr)
+            if (addr ~ /:/ && addr !~ /\./)
+                print $2
+        }' /etc/resolv.conf 2>/dev/null || true)
         out=$(_dns_valid_v6_group "$cur")
         [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi
     if [[ -r /run/systemd/resolve/resolv.conf ]]; then
-        cur=$(awk '/^[ \t]*nameserver[ \t]+/ && $2 ~ /:/ && $2 !~ /\./ && $2 != "::1" && tolower($2) !~ /^fe80:/ {print $2}' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
+        cur=$(awk '/^[ \t]*nameserver[ \t]+/ {
+            addr = $2
+            sub(/%.*/, "", addr)
+            if (addr ~ /:/ && addr !~ /\./)
+                print $2
+        }' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
         out=$(_dns_valid_v6_group "$cur")
         [[ -n "$out" ]] && { printf '%s' "$out"; return 0; }
     fi

@@ -4467,6 +4467,12 @@ tr_msg() {
         fa:remove_cancelled) echo 'حذف لغو شد.' ;;
         zh-tw:remove_cancelled) echo '已取消刪除。' ;;
         ja:remove_cancelled) echo '削除をキャンセルしました。' ;;
+        zh:rollback_cleanup_fail) echo '旧配置已恢复，但备份清理失败。请手动检查并清理残留备份，勿将其用于后续回滚。' ;;
+        en:rollback_cleanup_fail) echo 'The old configuration was restored, but backup cleanup failed. Check and remove any leftover backup manually; do not reuse it for a later rollback.' ;;
+        ru:rollback_cleanup_fail) echo 'Предыдущая конфигурация восстановлена, но удалить резервную копию не удалось. Вручную проверьте и удалите оставшуюся резервную копию; не используйте её для последующего отката.' ;;
+        fa:rollback_cleanup_fail) echo 'پیکربندی قبلی بازیابی شد، اما حذف نسخهٔ پشتیبان ناموفق بود. نسخهٔ پشتیبان باقی‌مانده را به‌صورت دستی بررسی و حذف کنید؛ از آن برای بازگشت بعدی استفاده نکنید.' ;;
+        zh-tw:rollback_cleanup_fail) echo '舊設定已還原，但備份清理失敗。請手動檢查並清理殘留備份，勿將其用於後續回滾。' ;;
+        ja:rollback_cleanup_fail) echo '以前の設定は復元されましたが、バックアップの削除に失敗しました。残っているバックアップを手動で確認して削除し、後のロールバックには再利用しないでください。' ;;
         zh:rollback_copy_fail) echo '回滚复制失败，旧备份已保留未删，请手动恢复并检查。' ;;
         en:rollback_copy_fail) echo 'Rollback copy failed; the old backup was kept, restore it manually and check.' ;;
         ru:rollback_copy_fail) echo 'Копирование при откате не удалось; старая резервная копия сохранена, восстановите её вручную и проверьте.' ;;
@@ -20278,14 +20284,21 @@ restore_file_or_remove() {
     fi
 }
 
-# Restore a file from its pre-commit backup. $1=bak, $2=dest. Silent;
-# returns 1 when the backup is missing or the copy fails. On success
-# the backup is removed, so a later failure cannot restore stale data.
+# Restore a file from its pre-commit backup. $1=bak, $2=dest.
+# Returns 1 if the backup path is empty, does not name a regular file,
+# or the copy fails; returns 0 once the copy succeeds.
+# No stdout output. Backup removal is best-effort; a cleanup failure
+# is reported on stderr and does not change the copy-success status.
+# If cleanup fails, a later rollback using the same backup can restore
+# stale data.
 restore_cfg_backup() {
     local bak="${1:-}" dest="$2"
     [[ -n "$bak" && -f "$bak" ]] || return 1
     cp -f -- "$bak" "$dest" 2>/dev/null || return 1
-    rm -f -- "$bak"
+    if ! rm -f -- "$bak" 2>/dev/null; then
+        msg "${RED}[!] $(tr_msg rollback_cleanup_fail)${NC}" >&2 || true
+    fi
+    return 0
 }
 
 # Restore a TUIC deploy's pre-commit backups: the old cert pair (from

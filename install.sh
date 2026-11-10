@@ -44803,14 +44803,24 @@ update_script() {
         pause_return
         return 1
     fi
-    sha=$(sha256sum "$tmp_update" | awk '{print $1}')
-    msg "${YELLOW}[*] OTA SHA256: ${sha}${NC}"
     if ! validate_abox_script_file "$tmp_update" 'OTA A-Box 脚本'; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
         msg "${RED}[!] 更新脚本语法或指纹校验失败；当前版本未修改。${NC}"
         pause_return
         return 1
     fi
+    # Check version eligibility before hash confirmation to avoid asking the user
+    # to approve a candidate that the direction policy rejects. Passing this check
+    # does not authorize installation; hash confirmation is still required before
+    # committing either the script or the SNI cache.
+    if ! validate_ota_version_direction "$tmp_update"; then
+        rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
+        msg "${RED}[!] 更新脚本版本方向校验失败；当前版本未修改。${NC}"
+        pause_return
+        return 1
+    fi
+    sha=$(sha256sum "$tmp_update" | awk '{print $1}')
+    msg "${YELLOW}[*] OTA SHA256: ${sha}${NC}"
     if ! curl -fLsS --connect-timeout 8 -m 45 --max-filesize "$ABOX_SNI_CANDIDATE_MAX_BYTES" "$OTA_SNI_URL" -o "$tmp_sni_download" 2>/dev/null || ! sni_normalize_candidate_file "$tmp_sni_download" "$tmp_sni_normalized"; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
         msg "${RED}[!] 同一 commit 的 SNI 数据缺失或校验失败；为避免脚本与数据版本不一致，已取消 OTA。${NC}"
@@ -44822,14 +44832,6 @@ update_script() {
         msg "${YELLOW}[*] OTA update canceled; script and SNI cache were not changed.${NC}"
         pause_return
         return 0
-    fi
-    # Version direction is checked only after the script hash is confirmed,
-    # so unauthenticated metadata never influences a decision first.
-    if ! validate_ota_version_direction "$tmp_update"; then
-        rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
-        msg "${RED}[!] 更新脚本版本方向校验失败；当前版本未修改。${NC}"
-        pause_return
-        return 1
     fi
     msg "${YELLOW}[*] OTA remote build: ${OTA_REMOTE_BUILD} (${OTA_REMOTE_EPOCH})${NC}"
 

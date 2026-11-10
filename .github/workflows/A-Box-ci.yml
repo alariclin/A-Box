@@ -160,3 +160,67 @@ jobs:
             apk add --no-cache bash
             bash -n /src/install.sh
           '
+
+  fixture-compat-matrix:
+    # P1-06 (GPT A'): minimal cross-distro fixture-compatibility matrix.
+    # NOT a real runtime matrix: --self-test is fixture/static assertions,
+    # it never installs real cores or touches the network. Debian slim gives
+    # a clean GNU/glibc userland, Alpine a musl one.
+    # Job id is fixture-compat-matrix (not fixture-compat): a matrix job
+    # reports checks as "<id> (matrix values)", which never exactly matches
+    # the ruleset's required check "fixture-compat". The bare name belongs
+    # to the fixture-compat summary gate below (needs + if: always()).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - image: debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
+            pkgmgr: apt
+            selftest_timeout: 90
+          - image: alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
+            pkgmgr: apk
+            selftest_timeout: 180
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0, pinned Node 24 runtime
+        with:
+          persist-credentials: false
+      - name: Fixture compatibility (${{ matrix.image }})
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /tmp --user 0:0 "${{ matrix.image }}" sh -ec '
+            set -eu
+            if [ "${{ matrix.pkgmgr }}" = "apt" ]; then
+              export DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC
+              apt-get update
+              apt-get install -y --no-install-recommends bash tzdata iptables openssl python3 jq curl wget tar unzip zip
+            else
+              apk add --no-cache bash tzdata iptables openssl python3 jq curl wget tar unzip zip
+            fi
+            command -v timeout
+            bash -n /src/install.sh
+            log=$(mktemp)
+            trap "rm -f $log" EXIT
+            rc=0
+            timeout -k 5 ${{ matrix.selftest_timeout }} bash /src/install.sh --self-test >"$log" 2>&1 || rc=$?
+            cat "$log"
+            test "$rc" -eq 0
+            grep -Fxq "SELF_TEST_OK" "$log"
+            if grep -Fq "SELF_TEST_FAILED" "$log"; then exit 1; fi
+          '
+
+  fixture-compat:
+    # Fixed-name summary gate for fixture-compat-matrix above.
+    # Required by the "Protect main" ruleset (exact-name match); reports
+    # success only when the whole matrix succeeded. if: always() + an
+    # explicit result check: a skipped gate must never read as a pass.
+    name: fixture-compat
+    needs: fixture-compat-matrix
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the complete matrix to pass
+        env:
+          MATRIX_RESULT: ${{ needs.fixture-compat-matrix.result }}
+        run: test "$MATRIX_RESULT" = success

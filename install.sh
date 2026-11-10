@@ -24775,12 +24775,21 @@ warp_build_outbound_json() {
     priv=$(grep '^PrivateKey' "$profile" | head -1 | awk '{print $3}') || return 1
     peer=$(grep '^PublicKey' "$profile" | head -1 | awk '{print $3}') || return 1
     endpoint=$(grep '^Endpoint' "$profile" | head -1 | awk '{print $3}') || return 1
-    # wgcf writes both addresses on ONE line: "Address = 172.16.0.2/32, 2606:.../128"
-    local addr_line
-    addr_line=$(grep '^Address' "$profile" | head -1 | cut -d'=' -f2- | tr -d ' ') || return 1
-    local _addrs
-    IFS=',' read -r -a _addrs <<< "$addr_line"
-    addr4="${_addrs[0]:-}"; addr6="${_addrs[1]:-}"
+    # R9-01: wgcf usually writes both addresses on ONE line, but a valid
+    # profile may put IPv4 and IPv6 on separate "Address =" lines. Parse
+    # every Address line and classify each token by family.
+    local _addr_raw _tok
+    _addr_raw=$(grep -E '^[[:blank:]]*Address[[:blank:]]*=' "$profile" | cut -d'=' -f2- | tr -d ' \t\r' | tr ',' '\n')
+    [[ -n "$_addr_raw" ]] || return 1
+    addr4=''; addr6=''
+    while IFS= read -r _tok; do
+        [[ -n "$_tok" ]] || continue
+        if [[ "$_tok" == *:* ]]; then
+            [[ -z "$addr6" ]] && addr6="$_tok"
+        else
+            [[ -z "$addr4" ]] && addr4="$_tok"
+        fi
+    done <<< "$_addr_raw"
     [[ "$addr4" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]] || return 1
     [[ -n "$addr6" && ! "$addr6" =~ : ]] && addr6='' 
     [[ -n "$priv" && -n "$peer" && -n "$endpoint" ]] || return 1
@@ -26088,6 +26097,11 @@ ensure_vnstat_runtime() {
 
 setup_traffic_monitor() {
     command -v flock >/dev/null 2>&1 || { msg "${RED}[!] flock 命令不可用：流量监控依赖 flock 锁，缺失时脚本会静默退出，拒绝安装。${NC}" >&2; return 1; }
+    # R9-03: a retired xray-latest coexist instance is outside the managed
+    # core set and would never be stopped by a quota block. Refuse to
+    # install the monitor until it is retired (fail closed); do not
+    # auto-migrate or delete legacy assets here.
+    xray_latest_legacy_retire || return 1
     ensure_vnstat_runtime
     local ensure_rc=$?
     [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] 流量限制事务状态快照失败。${NC}" >&2; return 1; }
@@ -26552,14 +26566,33 @@ capture_pre_block_states() {
             enabled_state='disabled'
             if rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)"; then enabled_state='enabled'; fi
         fi
-        printf '%s %s %s\n' "$srv" "$active" "$enabled_state" >> "$tmp"
+        printf '%s %s %s\n' "$srv" "$active" "$enabled_state" >> "$tmp" || { rm -f -- "$tmp"; return 1; }
     done <<< "$list"
+    [[ -s "$tmp" ]] || { rm -f -- "$tmp"; return 1; }
     chmod 600 -- "$tmp" 2>/dev/null || { rm -f -- "$tmp"; return 1; }
     mv -f -- "$tmp" "$file" || { rm -f -- "$tmp"; return 1; }
 }
+# R9-04: a failed snapshot must never be re-taken later in the same
+# period: after a block the services are already stopped, so a second
+# capture would record post-block states and rollover would restore
+# "stopped" as if it were the pre-block state. Two independent guards:
+# (1) a per-period failure marker suppresses re-capture; (2) a committed
+# TRAFFIC_BLOCKED state for this period proves a block already ran, so
+# a missing snapshot must not trigger a post-block re-capture even if
+# the marker write itself failed. Either guard failing closed keeps the
+# documented start-all-owned fallback (restore_or_start_owned).
 capture_pre_block_states_once() {
     local file="${PRE_BLOCK_STATES_PREFIX}-${1:-}"
-    [[ -f "$file" ]] || capture_pre_block_states "$1"
+    [[ -f "$file" ]] && return 0
+    [[ -f "${file}.snapshot-failed" ]] && return 1
+    if [[ "$(read_desired 2>/dev/null)" == TRAFFIC_BLOCKED && "$(read_block_period 2>/dev/null)" == "${1:-}" ]]; then
+        return 1
+    fi
+    capture_pre_block_states "$1" || {
+        : > "${file}.snapshot-failed" 2>/dev/null || true
+        chmod 600 -- "${file}.snapshot-failed" 2>/dev/null || true
+        return 1
+    }
 }
 # R7C10-01: restore the snapshot. Enablement is restored independently
 # of activity (a service enabled-but-stopped before the block keeps its
@@ -26584,7 +26617,7 @@ restore_pre_block_states() {
         esac
         if [[ "$active" == 1 ]]; then
             if is_systemd; then systemctl restart "$srv" >/dev/null 2>&1 || _rc=1;
-            else rc-service "$srv" restart >/dev/null 2>&1 || _rc=1; fi
+            else rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&- || _rc=1; fi
         fi
     done < "$file"
     return "$_rc"
@@ -26708,7 +26741,7 @@ if [[ "$desired" == TRAFFIC_BLOCKED && "$blocked_period" != "$current_period" ]]
     rm -f -- "$ROLLOVER_MARKER"
     # 2jx: verify the snapshot removal — a stale snapshot would make the
     # next period restore stale pre-block states. Retry once, then log.
-    rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}" || { sleep 1; rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}" || traffic_error "stale pre-block snapshot for ${blocked_period} could not be removed; next period may restore stale service states"; }
+    rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}" "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}.snapshot-failed" || { sleep 1; rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}" "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}.snapshot-failed" || traffic_error "stale pre-block snapshot for ${blocked_period} could not be removed; next period may restore stale service states"; }
     traffic_error "monthly quota period rolled over from ${blocked_period} to ${current_period}; managed services resumed"
 fi
 # R6C10-01: recover an interrupted rollover. A kill after the
@@ -26734,7 +26767,7 @@ if [[ -f "$ROLLOVER_MARKER" && "$desired" == MAINTENANCE ]]; then
     desired=RUNNING
     # 2jx: verify the snapshot removal — a stale snapshot would make the
     # next period restore stale pre-block states. Retry once, then log.
-    rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}" || { sleep 1; rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}" || traffic_error "stale pre-block snapshot for ${blocked_period} could not be removed; next period may restore stale service states"; }
+    rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}" "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}.snapshot-failed" || { sleep 1; rm -f -- "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}" "${PRE_BLOCK_STATES_PREFIX}-${blocked_period}.snapshot-failed" || traffic_error "stale pre-block snapshot for ${blocked_period} could not be removed; next period may restore stale service states"; }
     traffic_error "recovered interrupted monthly quota rollover from ${blocked_period} to ${current_period}; managed services resumed"
 elif [[ -f "$ROLLOVER_MARKER" ]]; then
     # Stale marker: the state was changed manually out from under the
@@ -27824,7 +27857,7 @@ manage_ss_whitelist() {
 # Best-effort: a failure warns and never blocks cleanup. Groups are
 # not removed.
 remove_abox_created_service_users() {
-    local rec='' u='' shell='' _pu='' _rest='' _line='' _rec_uid='' _uid='' _gid='' _members='' _others='' _other_primary='' _safe_grp='' _g='' _kept=''
+    local rec='' u='' shell='' _pu='' _rest='' _line='' _rec_uid='' _uid='' _safe_grp='' _g='' _kept=''
     rec="${ABOX_DIR:-/etc/ddr}/.created-service-users"
     if [[ ! -f "$rec" || -L "$rec" ]]; then
         for u in abox-xray abox-singbox abox-hysteria; do
@@ -27863,26 +27896,23 @@ remove_abox_created_service_users() {
             printf '%s\n' "$_line" >> "$_kept"
             continue
         fi
-        # R10C10-01: protect a pre-existing same-name group from
-        # userdel (USERGROUPS_ENAB deletes the primary group). A
-        # clean A-Box user-private group has GID == UID, no other
-        # primary user and no other members; anything else is moved
-        # off the group first, and refusal keeps the entry.
+        # R9-06 (supersedes the R10C10-01 shape test): protect a
+        # pre-existing same-name group from userdel (USERGROUPS_ENAB
+        # deletes the primary group). Shape cannot prove provenance —
+        # a foreign group can have GID == UID with no other members,
+        # exactly like a clean A-Box user-private group — so the user
+        # is ALWAYS moved off the same-name group first; userdel then
+        # cannot delete it. The group itself is left behind, per
+        # "Groups are not removed" above.
         if getent group "$u" >/dev/null 2>&1; then
-            _gid=$(getent group "$u" | awk -F: '{print $3}')
-            _members=$(getent group "$u" | awk -F: '{print $4}')
-            _others=$(printf '%s' "$_members" | tr ',' '\n' | grep -vx -- "$u" 2>/dev/null | head -1 || true)
-            _other_primary=$(getent passwd 2>/dev/null | awk -F: -v g="$_gid" -v u="$u" '$4 == g && $1 != u {print $1; exit}')
-            if [[ "$_gid" != "$_uid" || -n "$_other_primary" || -n "$_others" ]]; then
-                _safe_grp=''
-                for _g in nogroup nobody; do
-                    if getent group "$_g" >/dev/null 2>&1; then _safe_grp="$_g"; break; fi
-                done
-                if [[ -z "$_safe_grp" ]] || ! usermod -g "$_safe_grp" "$u" >/dev/null 2>&1; then
-                    msg "${YELLOW}[!] Service user ${u} has a pre-existing group that cannot be protected; keeping it.${NC}" >&2
-                    printf '%s\n' "$_line" >> "$_kept"
-                    continue
-                fi
+            _safe_grp=''
+            for _g in nogroup nobody; do
+                if getent group "$_g" >/dev/null 2>&1; then _safe_grp="$_g"; break; fi
+            done
+            if [[ -z "$_safe_grp" ]] || ! usermod -g "$_safe_grp" "$u" >/dev/null 2>&1; then
+                msg "${YELLOW}[!] Service user ${u} has a pre-existing group that cannot be protected; keeping it.${NC}" >&2
+                printf '%s\n' "$_line" >> "$_kept"
+                continue
             fi
         fi
         if command -v userdel >/dev/null 2>&1; then
@@ -27963,10 +27993,10 @@ abox_caddy_owned() {
     fi
     # Legacy: any non-A-Box unit/script referencing the binary means
     # something else uses it; keep it.
-    for _ref in /etc/systemd/system/*.service /etc/init.d/*; do
+    for _ref in /etc/systemd/system/*.service /usr/lib/systemd/system/*.service /lib/systemd/system/*.service /etc/init.d/*; do
         [[ -f "$_ref" ]] || continue
         case "$_ref" in
-            */abox-wallos-caddy.service|*/abox-wallos-caddy) continue ;;
+            /etc/systemd/system/abox-wallos-caddy.service|/etc/init.d/abox-wallos-caddy) continue ;;
         esac
         if grep -qF '/usr/local/bin/caddy' "$_ref" 2>/dev/null; then
             return 1
@@ -28042,9 +28072,9 @@ do_cleanup() {
     # binary itself is removed below, after the front is down.
     local _caddy_owned=0
     abox_caddy_owned && _caddy_owned=1
-    wallos_https_teardown >/dev/null 2>&1 || true
-    wallos_cftunnel_teardown >/dev/null 2>&1 || true
-    wallos_stack_teardown
+    wallos_https_teardown >/dev/null 2>&1 || die 'Wallos HTTPS teardown failed; aborting cleanup.'
+    wallos_cftunnel_teardown >/dev/null 2>&1 || die 'Wallos tunnel teardown failed; aborting cleanup.'
+    wallos_stack_teardown || die 'Wallos stack teardown failed; aborting cleanup.'
     # S-UNINSTALL-01: remove the caddy binary only when ownership was
     # proven above AND the front is confirmed stopped; a still-running
     # front, or any doubt in the ownership verdict, keeps the binary.
@@ -28101,7 +28131,7 @@ do_cleanup() {
             msg "${YELLOW}[!] $(tprintf cu_swap_note "$ABOX_DIR")${NC}"
             die "$(tr_msg cu_swap_die)"
         fi
-        wallos_stack_teardown purge-data
+        wallos_stack_teardown purge-data || die 'Wallos stack teardown (purge-data) failed; aborting cleanup before ABOX_DIR is deleted.'
         path_tree_has_mountpoint "$ABOX_DIR" && die "$(tr_msg cu_mount)"
         # Keep the deployment transaction active until the final data-directory
         # deletion has been confirmed. If rm/race/permission errors occur, the

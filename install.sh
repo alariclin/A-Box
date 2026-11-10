@@ -2325,6 +2325,12 @@ tr_msg() {
         fa:wl_repair_fail) echo 'بررسی سلامت پس از تعمیر ناموفق بود؛ کانتینر متوقف باقی ماند. پایگاه اصلی در %s حفظ شده است؛ تعمیر را دوباره امتحان کنید یا به‌صورت دستی بازیابی کنید.' ;;
         zh-tw:wl_repair_fail) echo '修復後健康檢查未通過，容器已保持停止。原資料庫保留在 %s，請重試修復或手動恢復。' ;;
         ja:wl_repair_fail) echo '修復後のヘルスチェックに失敗しました。コンテナは停止したままです。元のデータベースは %s に保存されています。修復を再試行するか、手動で復旧してください。' ;;
+        zh:wl_repair_fail_stop_unconfirmed) echo '修复后健康检查未通过，wallos 容器自动停止未确认，可能仍在运行。备份在 %s，请手动停止容器并排查。原数据库未被恢复。' ;;
+        en:wl_repair_fail_stop_unconfirmed) echo 'Post-repair health check failed; automatic stop of wallos could not be confirmed, it may still be running. Backup: %s. Stop the container manually and investigate. The original database was not restored.' ;;
+        ru:wl_repair_fail_stop_unconfirmed) echo 'Проверка после восстановления не пройдена; автоматическую остановку wallos подтвердить не удалось, контейнер может продолжать работу. Резервная копия: %s. Остановите контейнер вручную и разберитесь. Исходная база данных не восстанавливалась.' ;;
+        fa:wl_repair_fail_stop_unconfirmed) echo 'بررسی سلامت پس از تعمیر ناموفق بود؛ توقف خودکار wallos تأیید نشد، ممکن است هنوز در حال اجرا باشد. پشتیبان: %s. کانتینر را به‌صورت دستی متوقف کنید و بررسی کنید. پایگاه داده اصلی بازیابی نشد.' ;;
+        zh-tw:wl_repair_fail_stop_unconfirmed) echo '修復後健康檢查未通過，wallos 容器自動停止未確認，可能仍在運行。備份在 %s，請手動停止容器並排查。原資料庫未被恢復。' ;;
+        ja:wl_repair_fail_stop_unconfirmed) echo '修復後のヘルスチェックに失敗しました。wallos の自動停止を確認できませんでした。コンテナがまだ実行中の可能性があります。バックアップ: %s。コンテナを手動で停止し、調査してください。元のデータベースは復旧されていません。' ;;
         zh:wl_repair_need_confirm) echo '非交互运行：请设置 WALLOS_DB_REPAIR_CONFIRM=1 以确认执行修复。' ;;
         en:wl_repair_need_confirm) echo 'Non-interactive run: set WALLOS_DB_REPAIR_CONFIRM=1 to authorize the repair.' ;;
         ru:wl_repair_need_confirm) echo 'Неинтерактивный запуск: установите WALLOS_DB_REPAIR_CONFIRM=1, чтобы разрешить восстановление.' ;;
@@ -40840,8 +40846,10 @@ wallos_recover_interrupted_upgrade() {
     # cftunnel rebuild calls wallos_cftunnel_setup, which requires a
     # non-empty token file.
     if [[ -f "$WALLOS_DIR/.upgrade-transaction.cftoken" && ! -L "$WALLOS_DIR/.upgrade-transaction.cftoken" ]]; then
-        cp -a "$WALLOS_DIR/.upgrade-transaction.cftoken" "$WALLOS_CF_TOKEN_FILE" 2>/dev/null || true
-        chmod 600 "$WALLOS_CF_TOKEN_FILE" 2>/dev/null || true
+        # R14-01: a failed restore must fail recovery — restarting the
+        # tunnel with an unrestored token would keep the new identity.
+        cp -a "$WALLOS_DIR/.upgrade-transaction.cftoken" "$WALLOS_CF_TOKEN_FILE" 2>/dev/null || { msg "${RED}Recovery could not restore the tunnel token; refusing to report success, journal kept.${NC}"; return 1; }
+        chmod 600 "$WALLOS_CF_TOKEN_FILE" 2>/dev/null || { msg "${RED}Recovery could not secure the restored tunnel token; refusing to report success, journal kept.${NC}"; return 1; }
     fi
     # R1-15-01: align both frontends with the recovered mode before
     # deleting the journal; never report success on a misaligned
@@ -40852,7 +40860,7 @@ wallos_recover_interrupted_upgrade() {
     # pubport / cfhost because the failed commit never overwrote it —
     # instead of refusing and wedging on the kept journal. A failed
     # rebuild still refuses exactly as before.
-    local _rec_mode='' _rec_pubport='' _rec_cfhost=''
+    local _rec_mode='' _rec_pubport='' _rec_cfhost='' _rc=0
     _rec_mode=$(wallos_state_value MODE 2>/dev/null || true)
     case "$_rec_mode" in
         https)
@@ -40891,6 +40899,19 @@ wallos_recover_interrupted_upgrade() {
                     return 1
                 fi
                 is_service_running abox-wallos-cftunnel 2>/dev/null || { msg "${RED}Recovery restored Wallos but its tunnel frontend is not running; refusing to report success, journal kept.${NC}"; return 1; }
+            else
+                # R14-01: the running cloudflared still uses the token it
+                # started with; restart so it re-reads the restored file.
+                # rc 1 = restart failed, rc 2 = not running afterwards.
+                wallos_cftunnel_restart
+                _rc=$?
+                if (( _rc == 1 )); then
+                    msg "${RED}Recovery restored Wallos but could not re-establish its tunnel frontend with the restored token; refusing to report success, journal kept.${NC}"
+                    return 1
+                elif (( _rc == 2 )); then
+                    msg "${RED}Recovery restored Wallos but its tunnel frontend is not running; refusing to report success, journal kept.${NC}"
+                    return 1
+                fi
             fi
             ;;
         *)
@@ -41343,7 +41364,7 @@ EOF_WCADDY_RC
     fi
 }
 
-wallos_https_teardown() { # stop the HTTPS front, drop its config/data; returns 1 if the front is still running
+wallos_https_teardown() { # stop the HTTPS front, drop its config/data; returns 1 if the front is still running or if disable/removal fails
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl stop abox-wallos-caddy.service >/dev/null 2>&1 || true
         # S148: verify the stop before removing the unit: deleting the
@@ -41352,18 +41373,28 @@ wallos_https_teardown() { # stop the HTTPS front, drop its config/data; returns 
         if is_service_running abox-wallos-caddy 2>/dev/null; then
             return 1
         fi
-        systemctl disable abox-wallos-caddy.service >/dev/null 2>&1 || true
-        rm -f "/etc/systemd/system/abox-wallos-caddy.service"
-        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl disable abox-wallos-caddy.service >/dev/null 2>&1 || {
+            # R14-02: a failed disable is OK only if no boot
+            # registration remains (repeat / partial teardown).
+            local _wants=(/etc/systemd/system/*.wants/abox-wallos-caddy.service)
+            [[ ! -e "${_wants[0]}" ]] || return 1
+        }
+        rm -f "/etc/systemd/system/abox-wallos-caddy.service" || return 1
+        systemctl daemon-reload >/dev/null 2>&1 || return 1
     else
         rc-service abox-wallos-caddy stop >/dev/null 2>&1 || true
         if is_service_running abox-wallos-caddy 2>/dev/null; then
             return 1
         fi
-        rc-update del abox-wallos-caddy default >/dev/null 2>&1 || true
-        rm -f "/etc/init.d/abox-wallos-caddy"
+        rc-update del abox-wallos-caddy default >/dev/null 2>&1 || {
+            # R14-02: same idempotency rule for the runlevel link.
+            [[ ! -e /etc/runlevels/default/abox-wallos-caddy ]] || return 1
+        }
+        rm -f "/etc/init.d/abox-wallos-caddy" || return 1
     fi
-    rm -f /etc/ddr/wallos-caddy.json /etc/ddr/abox-wallos-caddy.log "$WALLOS_CADDY_LOG"
+    # R14-02: the required config must go; a stale log need not fail.
+    rm -f /etc/ddr/wallos-caddy.json || return 1
+    rm -f /etc/ddr/abox-wallos-caddy.log "$WALLOS_CADDY_LOG" || true
     # Keep /etc/ddr/wallos-caddy (certificates + ACME account): a
     # reinstall reuses the stored certificate instead of issuing a
     # new one, so repeated installs stop burning the Let's Encrypt
@@ -41653,24 +41684,34 @@ wallos_preserve_cftoken() {
     return 0
 }
 
-wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still running (see S148)
+wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still running (see S148) or if disable/removal fails
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl stop abox-wallos-cftunnel.service >/dev/null 2>&1 || true
         if is_service_running abox-wallos-cftunnel 2>/dev/null; then
             return 1
         fi
-        systemctl disable abox-wallos-cftunnel.service >/dev/null 2>&1 || true
-        rm -f "/etc/systemd/system/abox-wallos-cftunnel.service"
-        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl disable abox-wallos-cftunnel.service >/dev/null 2>&1 || {
+            # R14-02: a failed disable is OK only if no boot
+            # registration remains (repeat / partial teardown).
+            local _wants=(/etc/systemd/system/*.wants/abox-wallos-cftunnel.service)
+            [[ ! -e "${_wants[0]}" ]] || return 1
+        }
+        rm -f "/etc/systemd/system/abox-wallos-cftunnel.service" || return 1
+        systemctl daemon-reload >/dev/null 2>&1 || return 1
     else
         rc-service abox-wallos-cftunnel stop >/dev/null 2>&1 || true
         if is_service_running abox-wallos-cftunnel 2>/dev/null; then
             return 1
         fi
-        rc-update del abox-wallos-cftunnel default >/dev/null 2>&1 || true
-        rm -f "/etc/init.d/abox-wallos-cftunnel"
+        rc-update del abox-wallos-cftunnel default >/dev/null 2>&1 || {
+            # R14-02: same idempotency rule for the runlevel link.
+            [[ ! -e /etc/runlevels/default/abox-wallos-cftunnel ]] || return 1
+        }
+        rm -f "/etc/init.d/abox-wallos-cftunnel" || return 1
     fi
-    rm -f "$WALLOS_CF_TOKEN_FILE" /etc/ddr/abox-wallos-cftunnel.log
+    # R14-02: the required token file must go; a stale log need not fail.
+    rm -f "$WALLOS_CF_TOKEN_FILE" || return 1
+    rm -f /etc/ddr/abox-wallos-cftunnel.log || true
     return 0
 }
 # Stop and remove the Wallos container itself. The container is
@@ -41730,6 +41771,19 @@ wallos_stack_teardown() {
 }
 
 
+# Restart the tunnel frontend so it re-reads the token file.
+# Returns 0 only if the service is running afterwards; 1 if the restart
+# command failed, 2 if it is not running after the restart.
+wallos_cftunnel_restart() {
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        systemctl restart abox-wallos-cftunnel.service >/dev/null 2>&1 || return 1
+    else
+        rc-service abox-wallos-cftunnel restart >/dev/null 2>&1 9>&- 10>&- || return 1
+    fi
+    is_service_running abox-wallos-cftunnel 2>/dev/null || return 2
+    return 0
+}
+
 wallos_cftunnel_setup() { # $1 = public hostname (wallos.example.com)
     local host="$1" _t=0 _code='' _iport=''
     if [[ ! "$host" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
@@ -41750,12 +41804,23 @@ wallos_cftunnel_setup() { # $1 = public hostname (wallos.example.com)
         msg "${RED}$(tr_msg wl_cf_not_running)${NC}"
         return 1
     fi
-    _code=$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' "https://${host}/" 2>/dev/null || true)
-    if [[ -z "$_code" || "$_code" == '000' || "$_code" == '502' ]]; then
-        _iport=$(wallos_state_value PORT 2>/dev/null || true)
-        msg "${RED}$(tprintf wl_cf_no_resp "$host" "$_iport")${NC}"
-        return 1
-    fi
+    # R14-03: accept only the healthy codes (same allowlist as
+    # wallos_wait_healthy); a Cloudflare tunnel error (e.g. 530 Error
+    # 1033) means the tunnel is not connected even if cloudflared runs.
+    # Retry empty/000/5xx briefly: cloudflared can be running while the
+    # tunnel is still registering, so one immediate 530 is a race.
+    local _tries=0
+    while (( _tries < 6 )); do
+        _code=$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' "https://${host}/" 2>/dev/null || true)
+        case "$_code" in
+            200|301|302|303|307|308) return 0 ;;
+            ''|000|5*) sleep 2; _tries=$((_tries + 1)); continue ;;
+            *) break ;;
+        esac
+    done
+    _iport=$(wallos_state_value PORT 2>/dev/null || true)
+    msg "${RED}$(tprintf wl_cf_no_resp "$host" "$_iport")${NC}"
+    return 1
     return 0
 }
 
@@ -41933,6 +41998,10 @@ finally:
     con.close()
 PY_WALLOS_TEMPLATE
     fi
+    # R14-04: never write through a pre-existing destination (a
+    # planted symlink would redirect the write); callers must pass a
+    # fresh path inside a protected directory.
+    [[ ! -e "$dest" && ! -L "$dest" ]] || { rm -rf "$_tmp"; return 1; }
     cp "$_tmp/wallos.db" "$dest" || { rm -rf "$_tmp"; return 1; }
     rm -rf "$_tmp"
     [[ -s "$dest" ]] || return 1
@@ -41957,7 +42026,11 @@ wallos_db_diagnose() {
     # WAL-resident rows are still visible to the classifier.
     cp -a "$_db" "$_tmp/live.db" || { rm -rf "$_tmp"; printf 'unknown:database copy failed\n'; return 2; }
     for _side in wallos.db-wal wallos.db-shm wallos.db-journal; do
-        [[ -e "$WALLOS_DIR/db/$_side" ]] && cp -a "$WALLOS_DIR/db/$_side" "$_tmp/live.db-${_side#wallos.db-}" 2>/dev/null || true
+        # R14-05: a present sidecar that cannot be copied means the
+        # diagnosis is unknowable — never silently continue without it.
+        if [[ -e "$WALLOS_DIR/db/$_side" ]]; then
+            cp -a "$WALLOS_DIR/db/$_side" "$_tmp/live.db-${_side#wallos.db-}" 2>/dev/null || { rm -rf "$_tmp"; printf 'unknown:sidecar copy failed (%s)\n' "$_side"; return 2; }
+        fi
     done
     # Phase 1: integrity + core tables + rows (no template needed).
     # A database with both core tables is complete; one with rows in
@@ -42030,16 +42103,18 @@ PY_WALLOS_DIAGNOSE2
 # Explicit repair of a poisoned Wallos database (menu item 6).
 # Sequence: diagnose (no mutation) -> confirm -> stop container
 # (quiesce writers) -> revalidate (hash + re-diagnose) -> verified
-# backup (db + sidecars) -> stage + validate template in the db dir
-# -> atomic rename over the live db -> start -> full health check.
-# On verification failure the container is left stopped and the
-# backup location is reported; the original (poisoned) database is
-# NOT restored, because restoring it restores a known-broken state.
+# backup (db + sidecars) -> stage + validate template in a protected
+# staging dir -> atomic rename over the live db -> start -> full
+# health check. On verification failure the container is stopped and
+# the backup location is reported; a stop that cannot be confirmed
+# is reported as unconfirmed, never claimed stopped. The original
+# (poisoned) database is NOT restored, because restoring it restores
+# a known-broken state.
 # Returns 0 on success (or when no repair was needed), 1 otherwise.
 wallos_db_repair_poisoned() {
     local _db="$WALLOS_DIR/db/wallos.db" _image='' _diag='' _drc=0
     local _had_container=0 _was_running=0 _backup_dir='' _journal=''
-    local _staged='' _hash_before='' _hash_after='' _staged_hash='' _ts=''
+    local _staged='' _hash_before='' _hash_after='' _staged_hash='' _ts='' _stage_dir=''
     local _side=''
     (( EUID == 0 )) || { msg "${RED}$(tr_msg wl_iu_need_root)${NC}"; return 1; }
     if docker container inspect wallos >/dev/null 2>&1; then
@@ -42107,28 +42182,48 @@ wallos_db_repair_poisoned() {
         echo "started=$(now_iso)"
     } > "$_journal" || { msg "${RED}$(tprintf wl_repair_abort 'journal write failed')${NC}"; return 1; }
     chmod 600 "$_journal" || { msg "${RED}$(tprintf wl_repair_abort 'journal permission failed')${NC}"; return 1; }
-    # Stage the validated template in the db directory itself so the
-    # final rename is atomic (same filesystem); never copy over the
-    # live file in place. Move the old sidecars aside first (they are
+    # R14-04: stage inside a private root-owned directory under
+    # $WALLOS_DIR (root-owned parent, same filesystem as db/), never
+    # under a predictable name inside db/ itself, where a writer could
+    # pre-plant or swap the staged path mid-repair. The helper refuses
+    # any pre-existing destination, so the staged file is created
+    # fresh and cannot be a planted symlink. Never copy over the live
+    # file in place. Move the old sidecars aside first (they are
     # preserved in the backup) so they cannot attach to the new db.
-    _staged="$WALLOS_DIR/db/.wallos.db.repair-$$"
+    _stage_dir=$(umask 077; mktemp -d "$WALLOS_DIR/.wallos-db-repair.XXXXXXXXXX") || { msg "${RED}$(tprintf wl_repair_abort 'staging directory creation failed')${NC}"; return 1; }
+    _staged="$_stage_dir/wallos.db"
     if ! wallos_db_template_extract "$_image" "$_staged"; then
+        rm -rf -- "$_stage_dir" 2>/dev/null || true
         rm -f -- "$_journal"
         msg "${RED}$(tprintf wl_repair_abort 'template extraction/validation failed')${NC}"; return 1
     fi
-    chown 82:82 "$_staged" || { rm -f -- "$_staged" "$_journal"; msg "${RED}$(tprintf wl_repair_abort 'template ownership failed')${NC}"; return 1; }
-    chmod 600 "$_staged" || { rm -f -- "$_staged" "$_journal"; msg "${RED}$(tprintf wl_repair_abort 'template permission failed')${NC}"; return 1; }
+    chown 82:82 "$_staged" || { rm -rf -- "$_stage_dir" 2>/dev/null || true; rm -f -- "$_journal"; msg "${RED}$(tprintf wl_repair_abort 'template ownership failed')${NC}"; return 1; }
+    chmod 600 "$_staged" || { rm -rf -- "$_stage_dir" 2>/dev/null || true; rm -f -- "$_journal"; msg "${RED}$(tprintf wl_repair_abort 'template permission failed')${NC}"; return 1; }
     _staged_hash=$(sha256sum "$_staged" 2>/dev/null | awk '{print $1}')
     for _side in wallos.db-wal wallos.db-shm wallos.db-journal; do
-        rm -f -- "$WALLOS_DIR/db/$_side" || { rm -f -- "$_staged" "$_journal"; msg "${RED}$(tprintf wl_repair_abort 'sidecar removal failed')${NC}"; return 1; }
+        rm -f -- "$WALLOS_DIR/db/$_side" || { rm -rf -- "$_stage_dir" 2>/dev/null || true; rm -f -- "$_journal"; msg "${RED}$(tprintf wl_repair_abort 'sidecar removal failed')${NC}"; return 1; }
     done
-    mv -f -- "$_staged" "$_db" || { rm -f -- "$_staged" "$_journal"; msg "${RED}$(tprintf wl_repair_abort 'replacement install failed')${NC}"; return 1; }
+    # Exact-destination rename: -T refuses to treat a symlinked $_db
+    # as a directory. The live-symlink check is a policy rejection
+    # (fail closed on an unexpected live symlink); the device check
+    # fails closed instead of silently copying on EXDEV.
+    [[ ! -L "$_db" ]] || { rm -rf -- "$_stage_dir" 2>/dev/null || true; rm -f -- "$_journal"; msg "${RED}$(tprintf wl_repair_abort 'live database is a symlink')${NC}"; return 1; }
+    [[ "$(stat -c %d -- "$_staged" 2>/dev/null || echo x)" == "$(stat -c %d -- "$WALLOS_DIR/db" 2>/dev/null || echo y)" ]] || { rm -rf -- "$_stage_dir" 2>/dev/null || true; rm -f -- "$_journal"; msg "${RED}$(tprintf wl_repair_abort 'staging directory is on another filesystem')${NC}"; return 1; }
+    mv -fT -- "$_staged" "$_db" || { rm -rf -- "$_stage_dir" 2>/dev/null || true; rm -f -- "$_journal"; msg "${RED}$(tprintf wl_repair_abort 'replacement install failed')${NC}"; return 1; }
+    rm -rf -- "$_stage_dir" 2>/dev/null || true
     [[ "$(sha256sum "$_db" 2>/dev/null | awk '{print $1}')" == "$_staged_hash" ]] || { printf '%s\n' "phase=failed" >> "$_journal" 2>/dev/null || true; msg "${RED}$(tprintf wl_repair_fail "$_backup_dir")${NC}"; return 1; }
     if (( _had_container == 1 )); then
         docker start wallos >/dev/null 2>&1 || { printf '%s\n' "phase=failed" >> "$_journal" 2>/dev/null || true; msg "${RED}$(tprintf wl_repair_start_fail "$_backup_dir")${NC}"; return 1; }
         if ! wallos_db_health; then
+            # R14-06: leave the failed instance stopped, as promised;
+            # a stop that cannot be confirmed is reported, not claimed.
             printf '%s\n' "phase=failed" >> "$_journal" 2>/dev/null || true
-            msg "${RED}$(tprintf wl_repair_fail "$_backup_dir")${NC}"; return 1
+            if docker stop wallos >/dev/null 2>&1; then
+                msg "${RED}$(tprintf wl_repair_fail "$_backup_dir")${NC}"
+            else
+                msg "${RED}$(tprintf wl_repair_fail_stop_unconfirmed "$_backup_dir")${NC}"
+            fi
+            return 1
         fi
         rm -f -- "$_journal"
         msg "${GREEN}$(tprintf wl_repair_done "$_backup_dir")${NC}"
@@ -42194,7 +42289,7 @@ wallos_remove_abox_iptables_accept() {
 }
 
 wallos_install_or_update() {
-    local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_image_id='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing=''
+    local arch image port tz bind_address="${WALLOS_BIND_ADDRESS:-127.0.0.1}" old_bind='0.0.0.0' old_image='' old_image_id='' old_port='' old_tz='UTC' backup='' stamp code running=0 was_running=0 marker security_note restore_ok=0 backup_listing='' _wl_label=''
     (( EUID == 0 )) || { msg "${RED}$(tr_msg wl_iu_need_root)${NC}"; return 1; }
     command -v jq >/dev/null 2>&1 || { msg "${RED}$(tr_msg wl_iu_need_jq)${NC}"; return 1; }
     wallos_print_host_info
@@ -42211,6 +42306,15 @@ wallos_install_or_update() {
             msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}"
             return 1
         }
+        # R14-07: the marker alone does not prove the live 'wallos'
+        # container is A-Box-managed; require the ownership label
+        # (same evidence as wallos_stack_teardown / recovery). The
+        # inspect exit status is checked too: a failed inspect is a
+        # refusal, not an empty label to be re-tested.
+        if ! _wl_label=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null) || [[ "$_wl_label" != 'true' ]]; then
+            msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}"
+            return 1
+        fi
         running=1
         [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)" == true ]] && was_running=1
         old_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
@@ -42461,7 +42565,13 @@ wallos_install_or_update() {
         if confirm_yes_no "$(tprintf wl_iu_fwd_q "$port")"; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}"; else _fw_refused=1; fi
     fi
     if (( _fw_refused == 1 )) && { [[ -n "$old_bind" ]] || (( _bind_chosen == 1 )); }; then
+        # R14-08: a refused public opening demotes the mode to local as
+        # well as the bind; MODE=http would otherwise keep advertising
+        # a public URL and survive as 'keep public HTTP' on rerun.
         bind_address='127.0.0.1'
+        if [[ "$wmode" == http ]]; then
+            wmode='local'
+        fi
     fi
 
     # 2do: the https front (Caddy on $pubport, plus 80/tcp for ACME
@@ -42684,8 +42794,25 @@ wallos_install_or_update() {
         # R15C15-01: restore the pre-replacement token so the
         # original tunnel can be rebuilt.
         if [[ -f "$WALLOS_DIR/.upgrade-transaction.cftoken" && ! -L "$WALLOS_DIR/.upgrade-transaction.cftoken" ]]; then
-            cp -a "$WALLOS_DIR/.upgrade-transaction.cftoken" "$WALLOS_CF_TOKEN_FILE" 2>/dev/null || true
-            chmod 600 "$WALLOS_CF_TOKEN_FILE" 2>/dev/null || true
+            # R14-01: a failed restore is reported, and a tunnel still
+            # running on the new token is restarted so it re-reads the
+            # restored file; the original setup failure is returned.
+            if cp -a "$WALLOS_DIR/.upgrade-transaction.cftoken" "$WALLOS_CF_TOKEN_FILE" 2>/dev/null && chmod 600 "$WALLOS_CF_TOKEN_FILE" 2>/dev/null; then
+                if is_service_running abox-wallos-cftunnel 2>/dev/null; then
+                    if ! wallos_cftunnel_restart; then
+                        # Conservative containment: do not leave the
+                        # tunnel running on the new token.
+                        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+                            systemctl stop abox-wallos-cftunnel.service >/dev/null 2>&1 || msg "${RED}The tunnel frontend could not be stopped; it may still be running on the new token.${NC}"
+                        else
+                            rc-service abox-wallos-cftunnel stop >/dev/null 2>&1 || msg "${RED}The tunnel frontend could not be stopped; it may still be running on the new token.${NC}"
+                        fi
+                        msg "${RED}Recovery could not re-establish the tunnel frontend with the restored token.${NC}"
+                    fi
+                fi
+            else
+                msg "${RED}Recovery could not restore the tunnel token; the running tunnel may still use the new token.${NC}"
+            fi
         fi
             return 1
         fi
@@ -43020,8 +43147,17 @@ wallos_menu() {
         3) wallos_backup_now; pause_return ;;
         4)
             if [[ -f "$WALLOS_DIR/.A-Box-managed" ]] && confirm_yes_no "$(tprintf wl_remove_q "$WALLOS_DIR")"; then
+                # R14-07: only a container carrying the A-Box ownership
+                # label may be removed; a same-name foreign container is
+                # left alone (the marker alone is not ownership). An
+                # absent container keeps the existing failure outcome.
+                local _wl_label=''
+                if ! docker container inspect wallos >/dev/null 2>&1; then
+                    msg "${RED}$(tr_msg wl_remove_fail)${NC}"
+                elif ! _wl_label=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null) || [[ "$_wl_label" != 'true' ]]; then
+                    msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}"
                 # B-06 fix: verify the container is actually gone before reporting success.
-                if docker rm -f wallos >/dev/null 2>&1 && ! docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'wallos'; then
+                elif docker rm -f wallos >/dev/null 2>&1 && ! docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'wallos'; then
                     msg "${GREEN}$(tr_msg wl_removed)${NC}"
                     wallos_https_teardown >/dev/null 2>&1 || true
                     wallos_cftunnel_teardown >/dev/null 2>&1 || true

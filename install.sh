@@ -20989,23 +20989,51 @@ cleanup_ephemeral_deployment_transaction_dir() {
 # BEFORE any target is deleted. Returns 0 only when the backup
 # would pass the restore's own pre-destructive gates.
 verify_backup_restorable() {
-    local backup="${1:-}" key_file="${2:-}" work root
+    # R15-09 (sibling of the core-upgrade defect): this used to verify
+    # the SHARED archive directly and keep no private copy at all, so
+    # the deployment rollback could delete the core and then find the
+    # shared backup rotated away. Pin FIRST (archive + sidecars into a
+    # private work dir), run every check against the pin, and retain it
+    # on opt-in (3rd arg retain=1) for the rollback to consume through
+    # the existing restore arguments. A retained pin is published as
+    # ABOX_VERIFY_PINNED_WORK only after every gate succeeds. The
+    # explicit key file keeps its caller-provided path (it is not a
+    # shared-backup sidecar).
+    local backup="${1:-}" key_file="${2:-}" retain="${3:-0}" work root _pbc _rbs=''
     [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || return 1
-    backup_checksum_verify "$backup" "${backup}.sha256" || return 1
-    if [[ -n "$key_file" ]]; then
-        backup_auth_verify_with_key_file "$backup" "${backup}.hmac" "$key_file" || return 1
-    else
-        backup_auth_verify "$backup" "${backup}.hmac" || return 1
+    if [[ -n "${ABOX_VERIFY_PINNED_WORK:-}" ]]; then
+        if [[ -d "$ABOX_VERIFY_PINNED_WORK" ]]; then
+            return 1
+        fi
+        ABOX_VERIFY_PINNED_WORK=''
     fi
-    validate_backup_archive "$backup" || return 1
     work=$(mktemp -d /tmp/A-Box-verify.XXXXXX) || return 1
     chmod 700 "$work" 2>/dev/null || true
-    tar -xzf "$backup" -C "$work" 2>/dev/null || { rm -rf "$work"; return 1; }
+    _pbc="$work/$(basename "$backup")"
+    cp -- "$backup" "$_pbc" || { rm -rf "$work"; return 1; }
+    chmod 600 "$_pbc" || { rm -rf "$work"; return 1; }
+    for _rbs in "${backup}.sha256" "${backup}.hmac" "${backup}.key"; do
+        if [[ -e "$_rbs" ]]; then
+            cp -- "$_rbs" "$work/$(basename "$_rbs")" || { rm -rf "$work"; return 1; }
+        fi
+    done
+    backup_checksum_verify "$_pbc" "${_pbc}.sha256" || { rm -rf "$work"; return 1; }
+    if [[ -n "$key_file" ]]; then
+        backup_auth_verify_with_key_file "$_pbc" "${_pbc}.hmac" "$key_file" || { rm -rf "$work"; return 1; }
+    else
+        backup_auth_verify "$_pbc" "${_pbc}.hmac" || { rm -rf "$work"; return 1; }
+    fi
+    validate_backup_archive "$_pbc" || { rm -rf "$work"; return 1; }
+    tar -xzf "$_pbc" -C "$work" 2>/dev/null || { rm -rf "$work"; return 1; }
     root="$work/root"
     assert_restore_target_safe "$root" || { rm -rf "$work"; return 1; }
     assert_restore_shortcut_safe "$root" || { rm -rf "$work"; return 1; }
     validate_backup_core_init_compatibility "$root" || { rm -rf "$work"; return 1; }
-    rm -rf "$work"
+    if [[ "$retain" == 1 ]]; then
+        ABOX_VERIFY_PINNED_WORK="$work"
+    else
+        rm -rf "$work"
+    fi
     return 0
 }
 
@@ -21077,20 +21105,38 @@ deployment_transaction_rollback_inner() {
     # clear leaves every service down with no usable restore
     # (rollback_restart_services_from_backup is a no-op for a
     # missing archive).
-    if ! verify_backup_restorable "$backup" "$tx_key_file"; then
+    # R15-09: same pinning as the core-upgrade rollback (see
+    # restore_backup_prevalidate): the verified copy is retained and is
+    # the object the restore consumes. A pin from an earlier
+    # transaction is a recovery bundle: refuse, never overwrite it.
+    if [[ -n "${ABOX_VERIFY_PINNED_WORK:-}" ]]; then
+        if [[ -d "$ABOX_VERIFY_PINNED_WORK" ]]; then
+            msg "${RED}[!] Rollback aborted: a retained recovery bundle already exists: ${ABOX_VERIFY_PINNED_WORK}; manual handling required.${NC}" >&2
+            return 1
+        fi
+        ABOX_VERIFY_PINNED_WORK=''
+    fi
+    if ! verify_backup_restorable "$backup" "$tx_key_file" 1; then
         msg "${RED}[!] Rollback aborted before stopping services: backup failed pre-verification. Recovery backup retained: ${backup:-missing}${NC}" >&2
         return 1
     fi
 
+    # The retained bundle is the restore source from here on. It must
+    # be complete before any destructive step; a failed stop/cleanup/
+    # remove/restore RETAINS it and names it. Only a successful restore
+    # deletes it.
+    local _pinned_dir="$ABOX_VERIFY_PINNED_WORK"
+    local _pinned_archive="$_pinned_dir/$(basename "$backup")"
+    [[ -n "$_pinned_dir" && -f "$_pinned_archive" && ! -L "$_pinned_archive" ]] || { msg "${RED}[!] Rollback aborted: the retained recovery bundle is incomplete: ${_pinned_archive:-missing}.${NC}" >&2; return 1; }
     if ! stop_all_managed_services >/dev/null 2>&1; then
-        msg "${RED}[!] Rollback aborted before destructive cleanup: one or more managed services could not be confirmed stopped. Pre-operation backup retained: ${backup:-missing}${NC}" >&2
+        msg "${RED}[!] Rollback aborted before destructive cleanup: one or more managed services could not be confirmed stopped. Recovery bundle retained: $_pinned_archive${NC}" >&2
         return 1
     fi
     clean_nat_rules >/dev/null 2>&1 || cleanup_failed=1
     clean_input_rules >/dev/null 2>&1 || cleanup_failed=1
     remove_native_firewall_rules >/dev/null 2>&1 || cleanup_failed=1
     if (( cleanup_failed != 0 )); then
-        msg "${RED}[!] Rollback aborted before removing core files: firewall cleanup could not be verified. Recovery backup retained: ${backup:-missing}${NC}" >&2
+        msg "${RED}[!] Rollback aborted before removing core files: firewall cleanup could not be verified. Recovery bundle retained: $_pinned_archive${NC}" >&2
         return 1
     fi
 
@@ -21099,24 +21145,26 @@ deployment_transaction_rollback_inner() {
 
     for srv in $targets; do
         if ! remove_core_family_force "$srv"; then
-            msg "${RED}[!] Rollback aborted: unable to remove the staged/current ${srv} core family. No backup restore was attempted; recovery backup retained: ${backup:-missing}${NC}" >&2
+            msg "${RED}[!] Rollback aborted: unable to remove the staged/current ${srv} core family. No backup restore was attempted; recovery bundle retained: $_pinned_archive${NC}" >&2
             return 1
         fi
     done
 
     if [[ -n "$tx_key_file" ]]; then
-        if ! restore_latest_backup_silent "$tx_backup_dir" "$backup" "$tx_key_file"; then
-            msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup: ${backup:-missing}. Recovery context retained.${NC}" >&2
-            rollback_restart_services_from_backup "$backup" || true
+        if ! restore_latest_backup_silent "$_pinned_dir" "$_pinned_archive" "$tx_key_file"; then
+            msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup: ${_pinned_archive}. Recovery bundle retained: ${_pinned_archive}${NC}" >&2
+            rollback_restart_services_from_backup "$_pinned_archive" || true
             return 1
         fi
     else
-        if ! restore_latest_backup_silent "$tx_backup_dir" "$backup"; then
-            msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup: ${backup:-missing}. Recovery context retained.${NC}" >&2
-            rollback_restart_services_from_backup "$backup" || true
+        if ! restore_latest_backup_silent "$_pinned_dir" "$_pinned_archive"; then
+            msg "${RED}[!] Automatic rollback could not restore the exact pre-operation backup: ${_pinned_archive}. Recovery bundle retained: ${_pinned_archive}${NC}" >&2
+            rollback_restart_services_from_backup "$_pinned_archive" || true
             return 1
         fi
     fi
+    rm -rf -- "$_pinned_dir" || { msg "${RED}[!] Prior state restored, but retained-bundle cleanup failed: $_pinned_dir${NC}" >&2; return 1; }
+    ABOX_VERIFY_PINNED_WORK=''
 
     if [[ -n "$tx_tmp" ]]; then
         rm -rf -- "$tx_tmp" || { msg "${RED}[!] Prior state restored, but transaction staging cleanup failed: $tx_tmp${NC}" >&2; return 1; }
@@ -25513,15 +25561,18 @@ xray_latest_legacy_detect() {
 
 _xl_legacy_drop_manifest_rows() {
     # Remove xray-latest rows (field 2) from the ownership manifest.
-    # Records only, never the file itself; best-effort -- the re-detect
-    # after adoption/retirement is the gate that catches leftovers.
+    # Records only, never the file itself. Failure is REPORTED (rc 1):
+    # callers treat it as a refusal, not a silent best-effort -- the
+    # re-detect after adoption/retirement is the gate that catches
+    # leftovers, and a silent drop failure would hide them until then.
     local _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}"
     [[ -f "$_mf" && ! -L "$_mf" ]] || return 0
-    local _tmp="$_mf.legacy.tmp"
-    awk -F'\t' '$2 != "xray-latest"' "$_mf" > "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 0; }
+    local _tmp
+    _tmp=$(mktemp "${_mf}.legacy.XXXXXX" 2>/dev/null) || return 1
+    awk -F'\t' '$2 != "xray-latest"' "$_mf" > "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
     chmod 600 -- "$_tmp" 2>/dev/null || true
     chown root:root -- "$_tmp" 2>/dev/null || true
-    mv -f -- "$_tmp" "$_mf" 2>/dev/null || rm -f -- "$_tmp"
+    mv -f -- "$_tmp" "$_mf" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
     return 0
 }
 
@@ -25574,11 +25625,11 @@ _xl_legacy_adopt() {
     # Version for the adoption notice.
     _ver=$(core_version_from_output "$("$_slot_bin" version 2>/dev/null | head -n 1 || true)" 2>/dev/null || true)
     [[ -n "$_ver" ]] || _ver='unknown'
-    # Adopt: delete only the legacy state file, last, and drop any
-    # stale xray-latest rows from the ownership manifest (the adopted
-    # instance's rows are field-2 == xray and stay untouched).
+    # Adopt: drop stale xray-latest manifest rows FIRST (checked),
+    # then delete only the legacy state file, last. The adopted
+    # instance's rows are field-2 == xray and stay untouched.
+    _xl_legacy_drop_manifest_rows || { msg "${RED}[!] Takeover adoption failed: could not drop stale xray-latest manifest rows.${NC}" >&2; return 1; }
     rm -f -- "$_state" || { msg "${RED}[!] Takeover adoption failed: could not remove the legacy state file.${NC}" >&2; return 1; }
-    _xl_legacy_drop_manifest_rows
     # Re-detect: must now report none.
     _m2=$(xray_latest_legacy_detect 2>/dev/null); _r2=$?
     if (( _r2 != 1 )); then
@@ -25609,15 +25660,78 @@ _xl_legacy_retire_coexist() {
         IFS= read -r _ans || return 1
         case "$_ans" in y|Y|yes|YES) : ;; *) msg "${YELLOW}[!] Retire cancelled; xray-latest instance left untouched.${NC}" >&2; return 1 ;; esac
     fi
+    # 1b. Ownership gate (R15-01): the instance to retire must be an
+    # A-Box-managed service RIGHT NOW. History (mode=takeover in the
+    # state file) is not proof: the same-name service may since have
+    # been replaced by a foreign deployment. A foreign service is
+    # refused, never stopped or deleted. Exception: the narrow
+    # residual-artifact path below -- no same-name service definition
+    # anywhere, not running, no live process -- allows artifacts-only
+    # cleanup of a partially retired instance whose unit is already
+    # gone (the snapshot in step 3 still preserves everything).
+    local _residual=0
+    if abox_owns_service xray-latest 2>/dev/null; then
+        _residual=0
+    else
+        # Residual-artifact path: verify, in order, that no service
+        # definition exists (same-name unit anywhere, plus the
+        # retire-local unit/drop-in/enable-link paths, plus the init
+        # script on OpenRC where it IS the service definition), that
+        # the service is not running, and that no process runs the
+        # legacy binary. ANY of these fails -> refuse.
+        local _ru _rinit='unknown' _wl0
+        _rinit=$(effective_init_system 2>/dev/null || printf 'unknown')
+        _ru=$(same_name_service_unit_path xray-latest 2>/dev/null || true)
+        if [[ -n "$_ru" ]] || [[ -e "$_sysdir/xray-latest.service" || -L "$_sysdir/xray-latest.service" ]] || [[ -d "$_sysdir/xray-latest.service.d" && ! -L "$_sysdir/xray-latest.service.d" ]]; then
+            msg "${RED}[!] Refusing to retire: xray-latest is not an A-Box-managed service (a same-name service definition exists); manual handling required.${NC}" >&2
+            return 1
+        fi
+        if [[ "$_rinit" == openrc ]] && [[ -e "$_initd/xray-latest" || -L "$_initd/xray-latest" ]]; then
+            msg "${RED}[!] Refusing to retire: xray-latest is not an A-Box-managed service (a same-name init script exists); manual handling required.${NC}" >&2
+            return 1
+        fi
+        for _wl0 in "$_sysdir"/*.wants/xray-latest.service; do
+            [[ -e "$_wl0" || -L "$_wl0" ]] || continue
+            msg "${RED}[!] Refusing to retire: xray-latest is not an A-Box-managed service (a same-name enable link exists); manual handling required.${NC}" >&2
+            return 1
+        done
+        if is_service_running xray-latest 2>/dev/null; then
+            msg "${RED}[!] Refusing to retire: xray-latest is not an A-Box-managed service and is running; manual handling required.${NC}" >&2
+            return 1
+        fi
+        if command -v pgrep >/dev/null 2>&1 && pgrep -f "$_bin" >/dev/null 2>&1; then
+            msg "${RED}[!] Refusing to retire: a process is still running the xray-latest binary; manual handling required.${NC}" >&2
+            return 1
+        fi
+        _residual=1
+    fi
     # 2. Pre-checks (before stopping or deleting anything).
+    # The mount preflight covers the COMPLETE retirement target set --
+    # every path a later step deletes or rewrites -- and a mount (or a
+    # mount-check failure, which path_tree_has_mountpoint reports as 0,
+    # fail-closed) is an explicit refusal, never a silent skip. It runs
+    # before the snapshot: nothing has changed yet if it refuses.
+    local -a _pre_targets=()
+    [[ -e "$_bin" || -L "$_bin" ]] && _pre_targets+=("$_bin")
+    [[ -e "$_dir" || -L "$_dir" ]] && _pre_targets+=("$_dir")
+    [[ -e "$_sysdir/xray-latest.service" || -L "$_sysdir/xray-latest.service" ]] && _pre_targets+=("$_sysdir/xray-latest.service")
+    [[ -e "$_sysdir/xray-latest.service.d" || -L "$_sysdir/xray-latest.service.d" ]] && _pre_targets+=("$_sysdir/xray-latest.service.d")
+    [[ -e "$_initd/xray-latest" || -L "$_initd/xray-latest" ]] && _pre_targets+=("$_initd/xray-latest")
+    [[ -e "$_confd/xray-latest" || -L "$_confd/xray-latest" ]] && _pre_targets+=("$_confd/xray-latest")
+    [[ -e "$_state" || -L "$_state" ]] && _pre_targets+=("$_state")
+    local _pt _sp2
+    for _sp2 in "$_abox_dir/users.d"/xray-latest__*.json "$_abox_dir/standalone-links.d"/latest-*.link "$_sysdir"/*.wants/xray-latest.service; do
+        [[ -e "$_sp2" || -L "$_sp2" ]] && _pre_targets+=("$_sp2")
+    done
+    for _pt in "${_pre_targets[@]}"; do
+        path_tree_has_mountpoint "$_pt" && { msg "${RED}[!] Refusing to retire: mountpoint at or under ${_pt}.${NC}" >&2; return 1; }
+    done
     if [[ -e "$_dir" || -L "$_dir" ]]; then
         [[ ! -L "$_dir" ]] || { msg "${RED}[!] Refusing to retire: /etc/ddr/xray-latest is a symlink.${NC}" >&2; return 1; }
-        path_tree_has_nested_mountpoint "$_dir" && { msg "${RED}[!] Refusing to retire: mountpoint under the xray-latest directory.${NC}" >&2; return 1; }
         path_parent_chain_safe "$_dir" || { msg "${RED}[!] Refusing to retire: unsafe parent path for the xray-latest directory.${NC}" >&2; return 1; }
     fi
     if [[ -e "$_bin" || -L "$_bin" ]]; then
         [[ ! -L "$_bin" ]] || { msg "${RED}[!] Refusing to retire: xray-latest binary is a symlink.${NC}" >&2; return 1; }
-        path_tree_has_mountpoint "$_bin" && { msg "${RED}[!] Refusing to retire: xray-latest binary is a mountpoint.${NC}" >&2; return 1; }
         path_parent_chain_safe "$_bin" || { msg "${RED}[!] Refusing to retire: unsafe parent path for the xray-latest binary.${NC}" >&2; return 1; }
     fi
     # 3. Snapshot (recoverable copy) before any change.
@@ -25641,33 +25755,70 @@ _xl_legacy_retire_coexist() {
         chmod 600 "$_snapfile" 2>/dev/null || true
     fi
     # 4. Stop the service and verify it stopped; on failure delete nothing.
-    stop_abox_service xray-latest 2>/dev/null || true
-    if is_service_running xray-latest 2>/dev/null; then
-        msg "${RED}[!] xray-latest is still running; refusing to delete its files.${NC}" >&2
-        return 1
+    # R15-02: the stop return code AND an explicit state query are BOTH
+    # required. A failed stop is a refusal (the old `|| true` discarded
+    # it); a failed state query is "state unknown", also a refusal --
+    # is_service_running conflates query failure with "not running" and
+    # must not be used as the proof. The state value must be exactly 0.
+    # The pgrep check stays as an extra guard, not as the state proof.
+    # The residual path verified there is no service to stop, so it
+    # skips this step entirely.
+    if (( _residual == 0 )); then
+        stop_abox_service xray-latest 2>/dev/null || { msg "${RED}[!] Refusing to retire: could not stop xray-latest; deleting nothing.${NC}" >&2; return 1; }
+        local _stop_state
+        _stop_state=$(service_active_state_value xray-latest 2>/dev/null) || { msg "${RED}[!] Refusing to retire: xray-latest state is unknown after stop; deleting nothing.${NC}" >&2; return 1; }
+        [[ "$_stop_state" == '0' ]] || { msg "${RED}[!] xray-latest is still active after stop; refusing to delete its files.${NC}" >&2; return 1; }
+        if command -v pgrep >/dev/null 2>&1 && pgrep -f "$_bin" >/dev/null 2>&1; then
+            msg "${RED}[!] A process is still running the xray-latest binary; refusing to delete its files.${NC}" >&2
+            return 1
+        fi
     fi
-    if command -v pgrep >/dev/null 2>&1 && pgrep -f "$_bin" >/dev/null 2>&1; then
-        msg "${RED}[!] A process is still running the xray-latest binary; refusing to delete its files.${NC}" >&2
-        return 1
-    fi
-    # 5. Delete the core family (manifest-verified first; force path for
-    # manifest-less old installs, after the service is verified stopped).
-    # The owned removal may fail when no manifest exists; the force pass
-    # below is what matters, so its failure is not fatal here.
-    remove_owned_core_family xray-latest 0 2>/dev/null || true
-    # 6. Verify the files are actually gone; if the manifest path left
-    # unrecorded files behind (or failed outright), take the force path.
-    if [[ -e "$_bin" || -L "$_bin" || -e "$_dir" || -L "$_dir" || -e "$_cfg" || -L "$_cfg" || -e "$_sysdir/xray-latest.service" || -L "$_sysdir/xray-latest.service" || -e "$_initd/xray-latest" || -L "$_initd/xray-latest" || -e "$_confd/xray-latest" || -L "$_confd/xray-latest" ]]; then
-        remove_core_family_force xray-latest 2>/dev/null || { msg "${RED}[!] Could not remove the xray-latest core family; state file kept, re-run after fixing the cause.${NC}" >&2; return 1; }
-    fi
+    # 5. Delete the core family via the manifest-verified path, handling
+    # its NATIVE return code locally (R15-03). The shared wrapper
+    # remove_owned_core_family collapses rc 3 (files changed after
+    # registration, preserved) to 1, and its force_heal semantics do not
+    # apply to retirement, so it must not be used here.
+    #   0: verified removal; the expected family paths must be gone --
+    #      leftovers are a refusal, never a reason to force-delete.
+    #   2: no manifest rows; the force path is allowed only with current
+    #      ownership proof (or the verified residual path) + the
+    #      successful preflight above.
+    #   3: files changed after registration; they were preserved --
+    #      refuse and keep files, records and state.
+    #   other: refuse.
+    remove_recorded_core_family xray-latest; local _rrc=$?
+    case "$_rrc" in
+        0) : ;;
+        2)
+            if (( _residual == 1 )) || abox_owns_service xray-latest 2>/dev/null; then
+                remove_core_family_force xray-latest 2>/dev/null || { msg "${RED}[!] Could not remove the xray-latest core family (no manifest); state file kept, re-run after fixing the cause.${NC}" >&2; return 1; }
+            else
+                msg "${RED}[!] Refusing to retire: no per-file ownership manifest for xray-latest and no current ownership proof; manual handling required.${NC}" >&2
+                return 1
+            fi
+            ;;
+        3)
+            msg "${RED}[!] Refusing to retire: one or more xray-latest files changed after ownership registration; they were preserved instead of being deleted. State file kept.${NC}" >&2
+            return 1
+            ;;
+        *)
+            msg "${RED}[!] Refusing to retire: manifest-verified removal failed (rc=${_rrc}); state file kept.${NC}" >&2
+            return 1
+            ;;
+    esac
+    # 6. Verify the files are actually gone. Leftovers after a reported
+    # success are a refusal -- the old "files remain, therefore force"
+    # fallback deleted files the manifest path had just refused to
+    # touch (including rc-3 preserved files).
     if [[ -e "$_bin" || -L "$_bin" || -e "$_dir" || -L "$_dir" || -e "$_cfg" || -L "$_cfg" || -e "$_sysdir/xray-latest.service" || -L "$_sysdir/xray-latest.service" || -e "$_initd/xray-latest" || -L "$_initd/xray-latest" || -e "$_confd/xray-latest" || -L "$_confd/xray-latest" ]]; then
         msg "${RED}[!] xray-latest files remain after removal; state file kept.${NC}" >&2
         return 1
     fi
     # 6b. Manifest: drop stale xray-latest rows (records only). The
     # manifest-verified path already removes its own rows; the force
-    # path does not, so this covers manifest-less old installs.
-    _xl_legacy_drop_manifest_rows
+    # path does not, so this covers manifest-less old installs. A
+    # failure here is a refusal, not a silent best-effort (R15-03).
+    _xl_legacy_drop_manifest_rows || { msg "${RED}[!] Could not drop stale xray-latest manifest rows; state file kept.${NC}" >&2; return 1; }
     # 7. Shared indexes: remove records only, per item, never whole files.
     # Enable links (symlinks at the XL unit) and drop-ins go here too.
     local _lf2 _wl
@@ -25682,7 +25833,11 @@ _xl_legacy_retire_coexist() {
         esac
     done
     if [[ -d "$_sysdir/xray-latest.service.d" && ! -L "$_sysdir/xray-latest.service.d" ]]; then
-        path_tree_has_nested_mountpoint "$_sysdir/xray-latest.service.d" || rm -rf -- "$_sysdir/xray-latest.service.d" || { msg "${RED}[!] Could not remove unit drop-ins; state file kept.${NC}" >&2; return 1; }
+        if path_tree_has_nested_mountpoint "$_sysdir/xray-latest.service.d"; then
+            msg "${RED}[!] Refusing to retire: mountpoint under the xray-latest unit drop-in directory; state file kept.${NC}" >&2
+            return 1
+        fi
+        rm -rf -- "$_sysdir/xray-latest.service.d" || { msg "${RED}[!] Could not remove unit drop-ins; state file kept.${NC}" >&2; return 1; }
     fi
     local _rg2
     for _rg2 in "$_abox_dir/users.d"/xray-latest__*.json; do
@@ -25690,6 +25845,33 @@ _xl_legacy_retire_coexist() {
         rm -f -- "$_rg2" || { msg "${RED}[!] Could not remove registry $_rg2; state file kept.${NC}" >&2; return 1; }
     done
     if systemd_available; then systemctl daemon-reload >/dev/null 2>&1 || true; fi
+    # 7b. Residual-evidence verification BEFORE the state file is
+    # removed (R15-04): no legacy evidence may remain except the state
+    # file itself. The final re-detect in step 9 is the last gate, but
+    # it must not be the one that discovers a leftover after the state
+    # file is already gone. This check is symlink-inclusive where the
+    # re-detect is not: a symlinked registry file or link index is
+    # evidence even though the cleanup loops above (correctly) refuse
+    # to follow symlinks.
+    local _resid=0 _rf2 _lf3 _wl2 _marc=0
+    [[ -e "$_bin" || -L "$_bin" || -e "$_dir" || -L "$_dir" || -e "$_cfg" || -L "$_cfg" || -e "$_sysdir/xray-latest.service" || -L "$_sysdir/xray-latest.service" || -e "$_sysdir/xray-latest.service.d" || -L "$_sysdir/xray-latest.service.d" || -e "$_initd/xray-latest" || -L "$_initd/xray-latest" || -e "$_confd/xray-latest" || -L "$_confd/xray-latest" ]] && _resid=1
+    for _rf2 in "$_abox_dir/users.d"/xray-latest__*.json; do
+        [[ -e "$_rf2" || -L "$_rf2" ]] && _resid=1
+    done
+    for _lf3 in "$_abox_dir/standalone-links.d"/latest-*.link; do
+        [[ -e "$_lf3" || -L "$_lf3" ]] && _resid=1
+    done
+    for _wl2 in "$_sysdir"/*.wants/xray-latest.service; do
+        [[ -e "$_wl2" || -L "$_wl2" ]] && _resid=1
+    done
+    if [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]]; then
+        awk -F'\t' '$2 == "xray-latest" {found=1; exit} END {exit !found}' "$ABOX_CORE_OWNERSHIP" 2>/dev/null; _marc=$?
+        (( _marc == 0 || _marc == 2 )) && _resid=1
+    fi
+    if (( _resid == 1 )); then
+        msg "${RED}[!] Refusing to finish retirement: legacy xray-latest evidence remains; state file kept for re-detection.${NC}" >&2
+        return 1
+    fi
     # 8. State file LAST.
     rm -f -- "$_state" || { msg "${RED}[!] Could not remove the legacy state file.${NC}" >&2; return 1; }
     # 9. Re-detect: must now report none.
@@ -44772,7 +44954,7 @@ core_expected_listen_ports() {
             # U228: xray socks listens on UDP only when settings.udp
             # is true (absent/false means TCP-only); emitting udp/ for a
             # TCP-only socks inbound failed the health check outright.
-            jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '(.api.tag // "__no_api__") as $apit | ((.inbounds[]? | select(.port != null and .tag != $apit) | (if .protocol == "shadowsocks" then (if (.settings.network // "tcp,udp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp,udp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif .protocol == "socks" then (if .settings.udp == true then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end) elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp,udp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp,udp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif (.streamSettings.network // "tcp") == "kcp" or (.streamSettings.network // "tcp") == "quic" then "udp/\(.port)" else "tcp/\(.port)" end)) , (.inbounds[]? | select(.port == null and (.listen | type == "string") and (.listen | contains("/")) and .tag != $apit) | "unix/\(.listen)"))' 2>/dev/null
+            jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '(.api.tag // "__no_api__") as $apit | ((.inbounds[]? | select(.port != null and .tag != $apit) | (if .protocol == "shadowsocks" then (if (.settings.network // "tcp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif .protocol == "socks" then (if .settings.udp == true then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end) elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif (.streamSettings.network // "tcp") == "kcp" or (.streamSettings.network // "tcp") == "quic" then "udp/\(.port)" else "tcp/\(.port)" end)) , (.inbounds[]? | select(.port == null and (.listen | type == "string") and (.listen | contains("/")) and .tag != $apit) | "unix/\(.listen)"))' 2>/dev/null
             ;;
         singbox)
             jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '.inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" or .type == "tuic" then "udp/\(.listen_port)" elif .type == "shadowsocks" then (if .network == "tcp" then "tcp/\(.listen_port)" elif .network == "udp" then "udp/\(.listen_port)" else "tcp/\(.listen_port)", "udp/\(.listen_port)" end) elif .type == "socks" or .type == "mixed" then "tcp/\(.listen_port)" else "tcp/\(.listen_port)" end)' 2>/dev/null
@@ -44856,40 +45038,88 @@ core_ports_listening() {
 # but cannot complete handshakes (e.g. protocol regressions).
 # P1-2: Return only TLS-capable inbound ports (for TLS smoke probe).
 # B9-02: core_tls_listen_ports removed (dead code; production uses
-# core_expected_tls_tcp_ports). 2026-10-16.
+# core_expected_tls_tcp_targets). 2026-10-16.
 
 # C-01: Only TLS/REALITY TCP ports may receive a TLS ClientHello probe.
 # Probing plain-TCP inbounds (SS, non-TLS vless) or UDP ports causes false failures.
-core_expected_tls_tcp_ports() {
+core_expected_tls_tcp_targets() {
+    # R15-06/07/08: enumerate per-inbound (host, port) TLS targets as TSV
+    # (host<TAB>port, one line per target), NOT bare ports. The config is
+    # stripped (JSONC) and parsed with each step checked separately: the
+    # strip helper falls back to cat when its python fails, so only the
+    # parse check can catch a strip failure. The document shape is
+    # validated (one object, .inbounds null-or-array) so an empty or
+    # unparseable document never becomes a successful no-TLS. A
+    # selected-but-unusable target is DIAGNOSED (rc 1), never silently
+    # skipped: non-scalar port, hostname listen (listen accepts an IP or
+    # a Unix socket, not a hostname), unclassified transport. An omitted
+    # sing-box listen binds 127.0.0.1 (verified by running the pinned
+    # sing-box 1.14.4 binary; the docs mark listen Required but the
+    # binary does not enforce it). Dedup is on host+port
+    # (same port on different addresses is legitimate). Unix listeners
+    # (path or abstract "@name") are not TCP targets. Xray: any protocol
+    # with TLS/REALITY security on a TCP transport (tcp/raw/ws/grpc/http/
+    # h2/httpupgrade/xhttp/splithttp); kcp/quic excluded; the "api"
+    # control-plane inbound is excluded. sing-box: any type with
+    # tls.enabled, except the UDP types tuic/hysteria2/hysteria and any
+    # inbound whose configured network is UDP-only.
     local core="$1" cfg="$2"
+    local _stripped _strip_rc _doc _doc_rc _targets _enum_rc _line _diag
+    [[ -f "$cfg" && ! -L "$cfg" ]] || { msg "${RED}[!] TLS 目标枚举失败：配置文件缺失：${cfg}${NC}" >&2; return 1; }
+    _stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null); _strip_rc=$?
+    (( _strip_rc == 0 )) || { msg "${RED}[!] TLS 目标枚举失败：无法剥离注释：${cfg}${NC}" >&2; return 1; }
+    _doc=$(printf '%s' "$_stripped" | jq -c '.' 2>/dev/null); _doc_rc=$?
+    (( _doc_rc == 0 )) || { msg "${RED}[!] TLS 目标枚举失败：无法解析配置：${cfg}${NC}" >&2; return 1; }
+    printf '%s' "$_doc" | jq -e 'type == "object" and ((.inbounds // null) == null or (.inbounds | type == "array"))' >/dev/null 2>&1 || { msg "${RED}[!] TLS 目标枚举失败：配置结构异常：${cfg}${NC}" >&2; return 1; }
     case "$core" in
         xray)
-            jq -r '.inbounds[]? | select(.protocol == "vless" and (.streamSettings.security == "reality" or .streamSettings.security == "tls")) | .port // empty' "$cfg" 2>/dev/null
+            _targets=$(printf '%s' "$_doc" | jq -c '.inbounds[]? | select(.tag != "api") | select(.streamSettings.security == "tls" or .streamSettings.security == "reality") | (.listen // "0.0.0.0") as $listen | (.streamSettings.network // "tcp") as $net | if ($listen | type) != "string" then {"diag": "non-string listen on a TLS inbound"} elif ($listen | contains("/") or startswith("@")) then empty elif (["tcp","raw","ws","grpc","http","h2","httpupgrade","xhttp","splithttp"] | index($net)) then (if $listen == "0.0.0.0" then "127.0.0.1" elif $listen == "::" then "::1" elif ($listen | test("^(\\d{1,3}\\.){3}\\d{1,3}$") or contains(":")) then ($listen | gsub("^\\[|\\]$"; "")) else null end) as $host | (.port) as $port | if ($port | type != "number") or $port < 1 or $port > 65535 then {"diag": ("non-scalar TLS port " + (($port // "?") | tostring))} elif $host == null then {"diag": ("hostname listen " + $listen + " is not a dialable address")} else {"host": $host, "port": $port} end elif $net == "kcp" or $net == "quic" then empty else {"diag": ("unclassified TLS transport " + ($net | tostring))} end' 2>/dev/null); _enum_rc=$?
             ;;
         singbox)
-            jq -r '.inbounds[]? | select(.type == "vless" and .tls.enabled == true) | .listen_port // empty' "$cfg" 2>/dev/null
+            _targets=$(printf '%s' "$_doc" | jq -c '.inbounds[]? | select(.tls.enabled == true) | select(.type != "tuic" and .type != "hysteria2" and .type != "hysteria") | select((.network // "tcp") != "udp") | if (.listen | type != "string") and .listen != null then {"diag": "non-string listen on a TLS inbound"} elif ((.listen // "") | contains("/") or startswith("@")) then empty else (if (.listen == null or .listen == "") then "127.0.0.1" elif .listen == "0.0.0.0" then "127.0.0.1" elif .listen == "::" then "::1" elif (.listen | test("^(\\d{1,3}\\.){3}\\d{1,3}$") or contains(":")) then (.listen | gsub("^\\[|\\]$"; "")) else null end) as $host | (.listen_port) as $port | if ($port | type != "number") or $port < 1 or $port > 65535 then {"diag": ("non-scalar TLS port " + (($port // "?") | tostring))} elif $host == null then {"diag": ("hostname listen " + .listen + " is not a dialable address")} else {"host": $host, "port": $port} end end' 2>/dev/null); _enum_rc=$?
             ;;
+        # hysteria (and any other core): no TLS TCP inbounds to enumerate;
+        # a parsed config with no targets probes nothing. The health gate
+        # calls this probe for hysteria too -- it must not fail there.
         *) return 0 ;;
     esac
+    (( _enum_rc == 0 )) || { msg "${RED}[!] TLS 目标枚举失败：无法枚举入站：${cfg}${NC}" >&2; return 1; }
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        [[ -n "$_line" ]] || continue
+        _diag=$(printf '%s' "$_line" | jq -r 'if has("diag") then .diag else empty end' 2>/dev/null)
+        if [[ -n "$_diag" ]]; then
+            msg "${RED}[!] TLS 目标枚举失败：${_diag}（${cfg}）${NC}" >&2
+            return 1
+        fi
+        printf '%s' "$_line" | jq -r '"\(.host)\t\(.port)"' 2>/dev/null || { msg "${RED}[!] TLS 目标枚举失败：目标格式异常：${cfg}${NC}" >&2; return 1; }
+    done <<< "$_targets"
+    return 0
 }
 
 core_tls_smoke_probe() {
-    local core="$1" cfg="$2" port probe_host
-    # R1-16-F3: a :: listener is reached via ::1, a 0.0.0.0
-    # listener via 127.0.0.1; never hardcode 127.0.0.1.
-    probe_host='127.0.0.1'
-    [[ "$(wildcard_listen_address 2>/dev/null || printf '0.0.0.0')" == '::' ]] && probe_host='::1'
+    local core="$1" cfg="$2" host port _targets _enum_rc
+    # R1-16-F3 (revised R15-07): probe each inbound at ITS OWN listen
+    # address -- a :: listener via ::1, a 0.0.0.0 listener via 127.0.0.1,
+    # an explicit IP via itself; never the host wildcard preference.
+    # R15-06: enumeration runs FIRST and its failure is a gate failure,
+    # never a vacuous pass. A parsed config with no TLS inbounds
+    # legitimately probes nothing.
+    _targets=$(core_expected_tls_tcp_targets "$core" "$cfg"); _enum_rc=$?
+    (( _enum_rc == 0 )) || return 1
     # C-01 NUL: Do NOT store ClientHello in Bash var (Bash strips \x00). Send via printf in subshell.
     # Valid 50-byte TLS 1.2 ClientHello: Record len 0x002d (45), HandshakeType 0x01 (ClientHello), Handshake len 0x000029 (41).
-    while IFS= read -r port; do
-        [[ "$port" =~ ^[0-9]+$ ]] || continue
+    while IFS=$'\t' read -r host port || [[ -n "$host" ]]; do
+        [[ -z "$host" && -z "$port" ]] && continue
+        [[ -n "$host" && "$port" =~ ^[0-9]+$ ]] || { msg "${RED}[!] ${core} TLS 目标格式异常：${host}:${port}${NC}" >&2; return 1; }
         # Open TCP, send ClientHello, read up to 7 bytes (TLS record header).
         # Only a TLS record proves the data plane is alive: first byte
         # 0x16 (ServerHello, incl. REALITY fallback to a TLS site) or
         # 0x15 (Alert). A non-TLS target is a misconfiguration and fails.
-        # Timeout 5s.
+        # Timeout 5s. The destination is passed as DATA ($1/$2), never
+        # interpolated into the child shell source: the host comes from
+        # config text (R15-07).
         if ! timeout 5 bash -c '
-            exec 3<>/dev/tcp/'"$probe_host"'/'"$port"' || exit 1
+            exec 3<>/dev/tcp/$1/$2 || exit 1
             printf "\x16\x03\x01\x00\x2d\x01\x00\x00\x29\x03\x03\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x00\x00\x02\x00\x2f\x01\x00" >&3 || exit 1
             IFS= read -r -d "" -n 7 -t 4 resp <&3 || exit 1
             [[ -n "$resp" ]] || exit 1
@@ -44897,11 +45127,11 @@ core_tls_smoke_probe() {
             # byte 0x16 (Handshake/ServerHello) or 0x15 (Alert).
             # Plaintext (or any other record type) must fail.
             [[ "${resp:0:1}" == "$(printf "\x16")" || "${resp:0:1}" == "$(printf "\x15")" ]] || exit 1
-        ' 2>/dev/null; then
-            msg "${RED}[!] ${core} 端口 ${port} 无 TLS 响应（数据面可能异常）。${NC}"
+        ' _ "$host" "$port" 2>/dev/null; then
+            msg "${RED}[!] ${core} ${host}:${port} 无 TLS 响应（数据面可能异常）。${NC}" >&2
             return 1
         fi
-    done < <(core_expected_tls_tcp_ports "$core" "$cfg" | awk '!seen[$0]++')
+    done < <(printf '%s\n' "$_targets" | awk '!seen[$0]++')
     return 0
 }
 
@@ -45657,7 +45887,7 @@ core_upgrade_transaction_set_status() {
 # independently when it runs (the double unpack is deliberate and
 # cheap against destroying a live system on a bad backup).
 restore_backup_prevalidate() {
-    local backup_dir="${1:-$ABOX_DIR/backups}" selected="${2:-}" work root
+    local backup_dir="${1:-$ABOX_DIR/backups}" selected="${2:-}" retain="${3:-0}" work root
     [[ -d "$backup_dir" ]] || { msg "prevalidate gate failed: backup-dir" >&2; return 1; }
     if [[ -n "$selected" ]]; then
         [[ -f "$selected" && "$(dirname "$selected")" == "$backup_dir" ]] || { msg "prevalidate gate failed: selected-path" >&2; return 1; }
@@ -45679,6 +45909,15 @@ PY_LATEST_BACKUP
 ) || { msg "prevalidate gate failed: latest-select" >&2; return 1; }
     fi
     [[ -n "$selected" ]] || { msg "prevalidate gate failed: selected-empty" >&2; return 1; }
+    # R15-09: a retained pin is a recovery bundle from an earlier
+    # transaction -- never silently overwrite it, and never publish a
+    # new one while one is live. A dangling value (dir gone) is cleared.
+    if [[ -n "${ABOX_PREVALIDATE_WORK:-}" ]]; then
+        if [[ -d "$ABOX_PREVALIDATE_WORK" ]]; then
+            msg "prevalidate gate failed: stale retained pin exists: $ABOX_PREVALIDATE_WORK" >&2; return 1
+        fi
+        ABOX_PREVALIDATE_WORK=''
+    fi
     # F01: verify-and-extract must use one pinned copy, not the
     # shared $selected path (a writer on the backup dir could
     # swap it between verify and tar). Copy the archive plus
@@ -45706,7 +45945,15 @@ PY_LATEST_BACKUP
         [[ "$(stat -c %s "$ABOX_CORE_OWNERSHIP" 2>/dev/null || echo 99999999)" -le 4194304 ]] || { rm -rf "$work"; msg "prevalidate gate failed: live-manifest-size" >&2; return 1; }
         _manifest_rows_valid "$ABOX_CORE_OWNERSHIP" || { rm -rf "$work"; msg "prevalidate gate failed: live-manifest-rows" >&2; return 1; }
     fi
-    rm -rf "$work"
+    # R15-09: retain the verified copy ONLY on opt-in. Check-only callers
+    # keep the old behaviour (the work dir is deleted). The pin is
+    # published here -- after every gate above succeeded -- and the
+    # rollback consumes it through the existing restore arguments.
+    if [[ "$retain" == 1 ]]; then
+        ABOX_PREVALIDATE_WORK="$work"
+    else
+        rm -rf "$work"
+    fi
     return 0
 }
 
@@ -45717,8 +45964,8 @@ core_upgrade_rollback_backup_valid() {
     # deep gate, which additionally covers unpack, target-safe,
     # shortcut-safe, init-compat and the live manifest, all on an
     # F01 private copy. A non-backup candidate no longer passes.
-    local selected="${1:-}"
-    restore_backup_prevalidate "${ABOX_DIR}/backups" "$selected"
+    local selected="${1:-}" retain="${2:-0}"
+    restore_backup_prevalidate "${ABOX_DIR}/backups" "$selected" "$retain"
 }
 
 core_upgrade_transaction_rollback() {
@@ -45733,29 +45980,50 @@ core_upgrade_transaction_rollback() {
     # R5C16-03: verify the restore archive BEFORE any destructive step.
     # A missing or invalid backup must abort here, not after services
     # are stopped and core families force-removed (unrecoverable).
-    if ! core_upgrade_rollback_backup_valid "$backup"; then
+    # R15-09: the verified copy is retained (opt-in) and is the object
+    # the restore consumes -- the shared backup must not be re-read after
+    # the core is deleted. A pin from an earlier transaction is a
+    # recovery bundle: refuse rather than overwrite it.
+    if [[ -n "${ABOX_PREVALIDATE_WORK:-}" ]]; then
+        if [[ -d "$ABOX_PREVALIDATE_WORK" ]]; then
+            msg "${RED}[!] Core-upgrade rollback aborted: a retained recovery bundle already exists: ${ABOX_PREVALIDATE_WORK}; manual handling required.${NC}" >&2
+            core_upgrade_transaction_set_status failed
+            return 1
+        fi
+        ABOX_PREVALIDATE_WORK=''
+    fi
+    if ! core_upgrade_rollback_backup_valid "$backup" 1; then
         msg "${RED}[!] Core-upgrade rollback aborted: restore backup missing or invalid: ${backup:-missing}. No services stopped, no core families removed.${NC}" >&2
         core_upgrade_transaction_set_status failed
         return 1
     fi
+    # The retained bundle is the restore source from here on. It must
+    # be complete (archive present, not a symlink) before any destructive
+    # step; a failed stop/remove/restore RETAINS it and names it, so the
+    # operator can recover by hand. Only a successful restore deletes it.
+    local _pinned_dir="$ABOX_PREVALIDATE_WORK"
+    local _pinned_archive="$_pinned_dir/$(basename "$backup")"
+    [[ -n "$_pinned_dir" && -f "$_pinned_archive" && ! -L "$_pinned_archive" ]] || { msg "${RED}[!] Core-upgrade rollback aborted: the retained recovery bundle is incomplete: ${_pinned_archive:-missing}.${NC}" >&2; core_upgrade_transaction_set_status failed; return 1; }
     if ! stop_all_managed_services >/dev/null 2>&1; then
-        msg "${RED}[!] Core-upgrade rollback aborted: one or more managed services could not be confirmed stopped. Backup retained: ${backup:-missing}${NC}" >&2
+        msg "${RED}[!] Core-upgrade rollback aborted: one or more managed services could not be confirmed stopped. Recovery bundle retained: $_pinned_archive${NC}" >&2
         core_upgrade_transaction_set_status failed
         return 1
     fi
     for srv in $targets; do
         case "$srv" in singbox) srv='sing-box' ;; esac
         if ! remove_core_family_force "$srv"; then
-            msg "${RED}[!] Core-upgrade rollback aborted: unable to remove ${srv} safely. Backup retained: ${backup:-missing}${NC}" >&2
+            msg "${RED}[!] Core-upgrade rollback aborted: unable to remove ${srv} safely. Recovery bundle retained: $_pinned_archive${NC}" >&2
             core_upgrade_transaction_set_status failed
             return 1
         fi
     done
-    if ! restore_latest_backup_silent "$ABOX_DIR/backups" "$backup"; then
-        msg "${RED}[!] Core upgrade rollback failed: ${backup:-missing}. Recovery context retained.${NC}" >&2
+    if ! restore_latest_backup_silent "$_pinned_dir" "$_pinned_archive"; then
+        msg "${RED}[!] Core upgrade rollback failed: ${_pinned_archive}. Recovery bundle retained: ${_pinned_archive}${NC}" >&2
         core_upgrade_transaction_set_status failed
         return 1
     fi
+    rm -rf -- "$_pinned_dir" || { msg "${RED}[!] Prior core state restored, but retained-bundle cleanup failed: $_pinned_dir${NC}" >&2; core_upgrade_transaction_set_status failed; return 1; }
+    ABOX_PREVALIDATE_WORK=''
     if [[ -n "$core_tmp" ]]; then
         rm -rf -- "$core_tmp" || { msg "${RED}[!] Prior core state restored, but upgrade staging cleanup failed: $core_tmp${NC}" >&2; core_upgrade_transaction_set_status failed; return 1; }
     fi

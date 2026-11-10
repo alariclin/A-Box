@@ -296,8 +296,8 @@ PUBLIC_IP_CACHE_TTL=600
 BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-10}
 LOCK_FALLBACK_DIR='/run/A-Box.lock.d'
 ABOX_LANG='zh'
-ABOX_BUILD='2026-10-15-arbitrated-fix-v192'
-ABOX_BUILD_EPOCH=20261015192
+ABOX_BUILD='2026-11-10-arbitrated-fix-v193'
+ABOX_BUILD_EPOCH=20261110193
 WALLOS_DIR='/opt/wallos'
 # P2-03 (hardening, not a confirmed vulnerability): one shared Docker
 # launch-hardening profile for every Wallos container (install,

@@ -34,7 +34,7 @@
 
 ## 這是什麼
 
-A-Box 是一個單一檔案 Bash 腳本（`install.sh`，約 30,000 行），用於在 Linux VPS 上部署和維護代理與網路服務。它負責安裝和設定 Xray、sing-box 與官方 Hysteria 2 伺服器端，產生用戶端設定，並把日常維運——防火牆規則、Fail2Ban 防護、DNS 設定、備份、升級與診斷——收進一個六種語言的互動選單。你在選單裡選定之前，腳本不會部署任何東西；破壞性操作都會先要求確認。
+A-Box 是一個單一檔案 Bash 腳本（`install.sh`，約 49,249 行），用於在 Linux VPS 上部署和維護代理與網路服務。它負責安裝和設定 Xray、sing-box 與官方 Hysteria 2 伺服器端，產生用戶端設定，並把日常維運——防火牆規則、Fail2Ban 防護、DNS 設定、備份、升級與診斷——收進一個六種語言的互動選單。你在選單裡選定之前，腳本不會部署任何東西；破壞性操作都會先要求確認。
 
 ## 快速開始
 
@@ -134,9 +134,9 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 **備份、升級與 OTA。** 配置備份/還原使用帶版本號的清單格式與還原金鑰（`--export-backup-key`）。核心升級保留現有節點參數；腳本自身的 OTA 更新會顯示 SHA-256 並要求明確確認。Xray Geo 資料可單獨更新。
 
-**核心版本。** Xray 鎖定在 `v26.7.28`：Xray ≥ v26.9.8 要求 X25519MLKEM768 金鑰交換，sing-box 用戶端目前無法完成該握手。sing-box 與 Hysteria 預設自動跟隨官方最新穩定版（7 天冷卻、驗證通過後才採用），相容釘版 `v1.14.3` / `app/v2.13.0` 僅作兜底；Argo 用的 cloudflared 鎖定 `2026.10.2`，Wallos 的 HTTPS 前端 Caddy 鎖定 `2.11.7`，均帶 SHA-256 校驗。核心二進位按發布清單做 SHA-256 校驗，已發布簽名的強制 Ed25519 驗簽（見 `docs/SIGNING.md`）。固定版本與各版本最新穩定版都保存在 `core-binaries` 發布中以便回滾。
+**核心版本。** Xray、sing-box 與 Hysteria 均預設跟隨官方最新穩定版（`auto-stable`，排除草稿／預發佈標籤）。不設冷卻期；採用前仍須通過 SHA-256 清單校驗、二進位版本探測、設定檢查與健康檢查關卡。上游下載失敗後，自動復原先嘗試同標籤版本化鏡像，再嘗試目前經驗證的鏡像版本，後者可能較舊。上游與鏡像均無可用候選時，安裝程式拒絕安裝；不會自動回退到固定相容釘版。明確指定的 `pinned` 策略選擇 `install.sh` 中設定的預設相容版本；明確指定的版本覆寫則要求其指定標籤，並優先於更新策略。兩者透過鏡像復原時都必須符合所選標籤。Xray >= `v26.9.8` 對 REALITY ClientHello 有 ML-KEM 要求，可能破壞用戶端互通，因此採用新版 Xray 時仍須驗證用戶端握手。Argo 使用的 cloudflared 鎖定為 `2026.10.2`，Wallos 的 HTTPS 前端 Caddy 鎖定為 `2.11.7`，兩者均帶 SHA-256 校驗。已發佈簽章時強制執行 Ed25519 驗簽（見 `docs/SIGNING.md`）。`core-binaries` 中被取代的資產會在鏡像更新時刪除；歷史相容釘版對應關係不保證對應版本仍然可用，因此該發佈不是多版本回滾庫。
 
-**SNI 候選。** 倉庫自帶 4,158 條候選網域種子列表（`data/sni-candidates.txt`）。工具箱可在目標 VPS 上實測優選（完整版或微型版）並保存記錄。列表裡的網域只是候選，不保證在你的網路可用、也不保證適合某個具體的 REALITY 部署。拿不到有效列表時該流程直接失敗，不硬湊。
+**SNI 候選。** 倉庫自帶 4,154 條候選網域種子列表（`data/sni-candidates.txt`）。工具箱可在目標 VPS 上實測優選（完整版或微型版）並保存記錄。列表裡的網域只是候選，不保證在你的網路可用、也不保證適合某個具體的 REALITY 部署。拿不到有效列表時該流程直接失敗，不硬湊。
 
 ## 命令行
 
@@ -156,7 +156,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 ## 系統要求
 
-已實測系統（14 個）：Debian 10 / 11 / 12 / 13、Ubuntu 20.04 / 22.04 / 24.04、Rocky Linux 8 / 9、AlmaLinux 8 / 9、Fedora 40、Alpine 3.18 / 3.19。
+已實測系統（14 個）：Debian 10 / 11 / 12 / 13、Ubuntu 20.04 / 22.04 / 24.04、Rocky Linux 8 / 9、AlmaLinux 8 / 9、Fedora 40、Alpine 3.18 / 3.19。14 系統矩陣由外部 VPS 測試腳本 `vps-all-systems-test.sh` 在真實 VPS 主機上執行，而非由 GitHub CI 執行；CI 執行 Bash 語法檢查、ShellCheck、ubuntu-latest 上的內建自測，以及 Debian/Alpine 測試夾具相容性矩陣。
 
 | 項目 | 要求 |
 |---|---|

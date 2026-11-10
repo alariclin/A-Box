@@ -77,7 +77,7 @@ A-Box 应成为：**跨发行版、可审计、可回滚、客户端互通优先
 - **健康**：socket 探针、服务状态、desired state。
 - **诊断包**：脱敏导出（去 UUID/密钥），方便远端协助。
 - **预检**：无 PID1 / 无权限时明确 SKIP/FAIL，而不是假成功。
-- **矩阵**：CI + 特权 Docker systemd/OpenRC 安装矩阵持续覆盖主流发行版。
+- **矩阵**：CI 在 `ubuntu-latest` 上执行 Bash 语法检查、ShellCheck 与内置自测等检查，并在 Docker 的 `debian:bookworm-slim` 和 `alpine:3.22` 中运行完整 `--self-test` 测试夹具兼容性矩阵；这不是真实安装矩阵，也不是特权 systemd/OpenRC 安装矩阵。14 系统矩阵由外部脚本 `vps-all-systems-test.sh` 在真实 VPS 主机上运行，不属于仓库内的 GitHub CI。
 
 ## 6. 客户端生态
 
@@ -89,7 +89,7 @@ A-Box 应成为：**跨发行版、可审计、可回滚、客户端互通优先
 4. **官方 sing-box 客户端**
 5. **Hysteria 官方客户端**
 
-策略：**钉住经实测互通的核心版本**（当前 Xray `v26.7.28` 避开 ML-KEM 门槛），用环境变量允许专家升级，而不是默认追 `latest`。
+策略：**Xray、sing-box 与 Hysteria 均默认采用 `auto-stable`，跟随官方最新稳定版并排除草稿／预发布，不设冷却期**；采用前须通过 SHA-256 校验、二进制版本探测、配置检查与健康检查关卡。上游下载失败时先尝试同标签版本化镜像，再尝试当前经验证的镜像版本，后者可能较旧；上游与镜像均无可用候选时拒绝安装，不会自动回落到固定兼容钉版。显式 `pinned` 策略以 `install.sh` 中配置的默认兼容版本为安装目标；显式版本覆盖请求指定标签并优先于策略，两者的镜像恢复均不得静默替换标签。客户端互通仍是验收门槛：Xray >= `v26.9.8` 的 REALITY ClientHello 有 ML-KEM 要求，可能破坏客户端互通；`ABOX_XRAY_REALITY_MLKEM_MIN_VERSION` 门槛仍独立执行，采用新版前须实测客户端握手，不能把“最新版”等同于“已互通”。
 
 导出应一键给出：URI、Clash、sing-box JSON、二维码（可选）、分享 IP 随 IP 偏好。
 
@@ -106,7 +106,7 @@ A-Box 应成为：**跨发行版、可审计、可回滚、客户端互通优先
 ## 8. 核心灾备
 
 - 核心灾备的固定入口是 `core-binaries`（Release 标题 `A-Box Core Binary Mirrors`）；旧版入口 `core-mirrors-v171` 已删除，仍硬编码旧 tag 的历史安装脚本无法再从该入口下载。Wallos 和测试工具分别使用 `wallos-mirror`、`test-tools-mirror`。
-- 下载顺序：上游 → 同仓灾备 → **保留 last-good**；核心灾备同时校验 `SHA256SUMS` 并拒绝与发布清单 pin 不一致的版本。该灾备仍托管在 GitHub，不能抵御整个 GitHub 域名/API/Release 同时不可用；要满足该级别的灾备目标，必须额外配置独立域名/存储和独立信任根。
+- 下载顺序：上游 → 同仓灾备 → **保留 last-good**；核心灾备同时校验 `SHA256SUMS`，拒绝 SHA-256 校验失败或实际二进制版本与本次下载所选标签不一致的资产；显式版本覆盖与 `pinned` 目标不得静默替换为其他标签。该灾备仍托管在 GitHub，不能抵御整个 GitHub 域名/API/Release 同时不可用；要满足该级别的灾备目标，必须额外配置独立域名/存储和独立信任根。
 - 文档写明体积，禁止把大二进制提交进 git 树
 
 ## 9. 路线图（无承诺排序）
@@ -149,7 +149,7 @@ A-Box 应成为：**跨发行版、可审计、可回滚、客户端互通优先
 | 主流发行版 `--self-test` | 100% PASS |
 | 特权矩阵端到端安装 | ≥ 12 OS PASS |
 | 新功能回滚覆盖率 | 破坏性变更 100% 有快照 |
-| Shadowrocket REALITY 互通 | pin 版本下默认可用 |
+| Shadowrocket REALITY 互通 | 所选核心版本须通过 Shadowrocket REALITY 握手实测 |
 | 冷启动到可分享链接 | 熟练用户 < 5 分钟 |
 | 上游 GitHub 宕机 | 灾备 Release 仍可装核 |
 

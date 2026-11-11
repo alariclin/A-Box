@@ -38137,8 +38137,14 @@ _AUTH_STOP_HEAD = (
 # an optional comment gap + the stop-head above). Fixes the JSON-path
 # `Bearer abcd,token:` leak without splitting a delimiter tail that has
 # no following key (P6), which the plain mirror would have exposed.
+_AUTH_QUOTED_TAIL = (
+    r"""(?:"(?:\\[^\r\n]|[^"\\\r\n])*(?:"|(?=\r?\n|\Z))"""
+    r"""|'(?:\\[^\r\n]|[^'\\\r\n])*(?:'|(?=\r?\n|\Z)))"""
+)
+
 _AUTH_VALUE = (
-    r"(?:[^\s,;}]|[,;}](?!" + _COMMENT_GAP + _AUTH_STOP_HEAD + r"))+"
+    r"(?:[^\s,;}]*:[ \t]+" + _AUTH_QUOTED_TAIL
+    + r"|(?:[^\s,;}]|[,;}](?!" + _COMMENT_GAP + _AUTH_STOP_HEAD + r"))+)"
 )
 
 inline_authorization = re.compile(
@@ -38541,7 +38547,7 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)(\b(?:authorization|proxy-authorization)" + _COMMENT_GAP + r":" + _COMMENT_GAP + r")(?:bearer\s+[^\s,;}]+|basic\s+[^\s,;}]+|[^\s,;}]+)",
+        r"(?i)(\b(?:authorization|proxy-authorization)" + _COMMENT_GAP + r":" + _COMMENT_GAP + r")(?:bearer\s+(?:[^\s,;}]*:[ \t]+" + _AUTH_QUOTED_TAIL + r"|[^\s,;}]+)|basic\s+(?:[^\s,;}]*:[ \t]+" + _AUTH_QUOTED_TAIL + r"|[^\s,;}]+)|[^\s,;}]+)",
         r'\1***REDACTED***',
         text,
     )
@@ -38675,9 +38681,9 @@ PY_REDACT
         fi
         printf '%s\n' "$_redact_input" | sed -E \
             -e 's/(UUID|SS_PASS|HY2_PASS|HY2_OBFS|HY2_ACME_DNS_CF_API_TOKEN|PUBLIC_KEY|SHORT_ID)=.*/\1=***REDACTED***/Ig' \
-            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)(Bearer|Basic)[[:space:]]+[^,;[:space:]}"]+/\1\3 ***REDACTED***/Ig' \
+            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)(Bearer|Basic)[[:space:]]+([^,;[:space:]}]*:[[:blank:]]+("(\\.|[^"\\])*("|$)|'"'"'(\\.|[^'"'"'\\])*('"'"'|$))|[^,;[:space:]}]+)/\1\3 ***REDACTED***/Ig' \
             -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)[^,;[:space:]}"]+/\1***REDACTED***/Ig' \
-            -e 's/((Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*)[^,}[:cntrl:]"]+/\1***REDACTED***/Ig' \
+            -e 's/((Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*)[^,}[:cntrl:]"[:space:]][^,}[:cntrl:]"]*/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
             -e 's/([\"'"'"' ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)[\"'"'"' ]?[[:space:]]*[:=][[:space:]]*\[)[^]]*/\1***REDACTED***/Ig' \
@@ -50590,14 +50596,18 @@ PY_SELFTEST_TAR
     # fallback. Each case pins the PRISTINE end-to-end behaviour of
     # redact_secrets_stream with python3 hidden (same hiding as the
     # block above). Exact-equality: the RHS of [[ == ]] is quoted so the
-    # asterisks in ***REDACTED*** are literal, not globs. Rules that are
-    # structurally unobservable end-to-end (02: its only separating
-    # input leaks the inner value while Python redacts it -- reported as
-    # a potential under-redaction finding, not locked; 07 dead behind
-    # the D2 array scan; 18: nested discrimination would lock a visible
-    # tail the broken version redacts; 19/22/24 subsumed by earlier
-    # rules 20/21) are covered via their guard rules and the D2
-    # positives below, not faked as direct assertions. Two cases use
+    # asterisks in ***REDACTED*** are literal, not globs. Rules without
+    # suitable direct pristine assertions (07 dead behind the D2 array
+    # scan; 18: nested discrimination would lock a visible tail the
+    # broken version redacts; 22/24 subsumed by earlier rules 20/21)
+    # are covered via their guard rules and the D2 positives below, not
+    # faked as direct assertions. Rule 19 has a clean nested-input guard
+    # below; it is not subsumed by rules 20/21.
+    # Rule 02 pre-fix evidence: the separating key-head case
+    # (Bearer token: "S", also secret: "S") leaks on both sed and Python.
+    # The embedded-double-quote case (Bearer A"B) leaks only on sed,
+    # but does not separate rule 02. These are distinct findings.
+    # Two cases use
     # relaxed checks on purpose: r09 (gone-kind: tail secret gone +
     # visible kept, quotes not prescribed -- rule 27 eats them) and the
     # edge cases (bytes-kind: file+cmp, because $(...) strips trailing
@@ -50632,6 +50642,7 @@ PY_SELFTEST_TAR
         _fb_check $'r03-mid-sq' $'xx Authorization: \'bare-secret-03\', tail\n' $'xx Authorization: ***REDACTED***'
         _fb_check $'r04-mid-sq-cookie' $'xx Cookie: \'sid=cookie-secret-04\', tail\n' $'xx Cookie: ***REDACTED***'
         _fb_check $'r05-line-auth-dq' $'Authorization: "Bearer token-05"\n' $'Authorization: ***REDACTED***'
+        _fb_check $'r06-line-cookie-space' $'Cookie: "sid=cookie-06"\n' $'Cookie: ***REDACTED***'
         _fb_check $'r06-line-cookie-nospace' $'Cookie:"sid=cookie-06"\n' $'Cookie:***REDACTED***'
         _fb_check $'r08-dq-comma' $'{"token": "a,b", "safe":"visible"}\n' $'{"token": "***REDACTED***", "safe":"visible"}'
         _fb_check_gone $'r09-sq-tail' $'\'token\': \'sq-head,sq-tail-secret\' visible\n' $'sq-tail-secret' $'visible'
@@ -50643,6 +50654,7 @@ PY_SELFTEST_TAR
         _fb_check $'r15-mid-id-gap-dq' $'xx "id": /* note */ "dq-secret-15" visible\n' $'xx "id": /* note */ "***REDACTED***" visible'
         _fb_check $'r16-line-id-gap-sq' $'id: /* note */ \'sq-secret-16\' visible\n' $'id: /* note */ \'***REDACTED***\' visible'
         _fb_check $'r17-mid-id-gap-sq' $'xx \'id\': /* note */ \'sq-secret-17\' visible\n' $'xx \'id\': /* note */ \'***REDACTED***\' visible'
+        _fb_check $'r19-nested-id-gap-bare' $'id: abc-id:/* note */ 456-secret visible\n' $'id: ***REDACTED*** note */ ***REDACTED*** visible'
         _fb_check $'r20-line-id-gap-bare' $'id: /* note */ 123abc-20 visible\n' $'id: /* note */ ***REDACTED*** visible'
         _fb_check $'r21-mid-id-gap-bare' $'xx "id": /* note */ 123abc-21 visible\n' $'xx "id": /* note */ ***REDACTED*** visible'
         _fb_check $'r23-nested-num' $'xx id: /* id: 123-secret */ 456-secret visible\n' $'xx id: /* id: ***REDACTED*** */ ***REDACTED*** visible'

@@ -3363,6 +3363,12 @@ tr_msg() {
         fa:wl_caddy_install) echo 'نصب اتمی Caddy ناموفق بود.' ;;
         zh-tw:wl_caddy_install) echo 'Caddy 原子安裝失敗。' ;;
         ja:wl_caddy_install) echo 'Caddy のアトミックインストールに失敗しました。' ;;
+        zh:wl_caddy_external_conflict) echo '已存在一个 Caddy 二进制文件，但没有有效的 A-Box 所有权标记，拒绝替换。请先核对使用它的其他服务及自定义模块，手动迁移或隔离部署后再重试。' ;;
+        en:wl_caddy_external_conflict) echo 'A Caddy binary already exists but has no valid A-Box ownership marker; refusing to replace it. Check the other services and custom modules that use it first, then migrate it manually or deploy separately and retry.' ;;
+        ru:wl_caddy_external_conflict) echo 'Бинарный файл Caddy уже существует, но не имеет действующего маркера принадлежности A-Box; замена отклонена. Сначала проверьте другие службы и пользовательские модули, которые его используют, затем перенесите его вручную или разверните отдельно и повторите попытку.' ;;
+        fa:wl_caddy_external_conflict) echo 'یک فایل باینری Caddy از قبل وجود دارد اما نشان مالکیت معتبر A-Box را ندارد؛ از جایگزینی آن خودداری شد. ابتدا سایر سرویس‌ها و ماژول‌های سفارشی که از آن استفاده می‌کنند را بررسی کنید، سپس آن را به‌صورت دستی منتقل کنید یا جداگانه مستقر کنید و دوباره تلاش کنید.' ;;
+        zh-tw:wl_caddy_external_conflict) echo '已存在一個 Caddy 二進位檔案，但沒有有效的 A-Box 所有權標記，拒絕替換。請先核對使用它的其他服務及自訂模組，手動遷移或隔離部署後再重試。' ;;
+        ja:wl_caddy_external_conflict) echo 'Caddy バイナリは既に存在しますが、有効な A-Box 所有権マーカーがありません。置き換えを拒否します。まずそれを使用している他のサービスやカスタムモジュールを確認し、手動で移行するか分離してデプロイしてから再試行してください。' ;;
         zh:wl_fw_80_fail) echo '80/tcp 放行失败；若主机防火墙默认拒绝入站，ACME HTTP-01 申证可能超时。' ;;
         en:wl_fw_80_fail) echo 'Failed to allow 80/tcp; if the host firewall denies inbound by default, ACME HTTP-01 issuance may time out.' ;;
         ru:wl_fw_80_fail) echo 'Не удалось разрешить 80/tcp; если брандмауэр хоста по умолчанию отклоняет входящие соединения, выпуск ACME HTTP-01 может превысить время ожидания.' ;;
@@ -36795,6 +36801,25 @@ def redact_userpass_mappings(text):
 uuid_val = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
 
 
+# R7-F13-3: complete-scalar id matcher for the text branch. Xray accepts
+# any short string as a VLESS client id (mapped to UUIDv5), so a non-UUID
+# string id is a credential too. A bare integer id is a numeric field,
+# not a credential, and is kept; a quoted "123" is a string and is
+# redacted. The key spelling is unchanged (\bid\b): a `client-id` key
+# tail was already matched (and redacted) by the old rule, so narrowing
+# the key boundary would regress it.
+_id_scalar_re = re.compile(
+    r"(?i)(\bid\b[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|[^\s,}\]]+)"
+)
+
+
+def _redact_id_scalar(m):
+    if re.fullmatch(r"-?\d+", m.group(2)):
+        return m.group(0)
+    return m.group(1) + '"***REDACTED***"'
+
+
+
 def walk(value, in_clients=False):
     if isinstance(value, dict):
         result = {}
@@ -36844,11 +36869,7 @@ except Exception:
         r'\1***REDACTED***',
         text,
     )
-    text = re.sub(
-        r"(?i)(\bid\b[\"']?\s*[:=]\s*[\"']?)([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})",
-        r'\1***REDACTED***',
-        text,
-    )
+    text = _id_scalar_re.sub(_redact_id_scalar, text)
     text = re.sub(
         r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]\s*\[)[^\]]*",
         r'\1***REDACTED***',
@@ -36911,8 +36932,12 @@ PY_REDACT
             -e 's/([\"\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)[\"\x27 ]?[[:space:]]*[:=][[:space:]]*\[)[^]]*/\1***REDACTED***/Ig' \
             -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
             -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*)(\x27)([^\x27]|\x27\x27)*\3/\1\3***REDACTED***\3/Ig' \
-            -e 's/^(id[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/\1***REDACTED***/Ig' \
-            -e 's/([^A-Za-z0-9_])(id[" ]?[[:space:]]*[:=][[:space:]]*[" ]?)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/\1\2***REDACTED***/Ig' \
+            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1\2"***REDACTED***"/Ig' \
+            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(\x27)([^\x27]|\x27\x27)*\x27/\1\2***REDACTED***\2/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(\x27)([^\x27]|\x27\x27)*\x27/\1\2\3***REDACTED***\3/Ig' \
+            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]*[^][:space:],}"\x270-9-][^][:space:],}"\x27]*)/\1***REDACTED***/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]*[^][:space:],}"\x270-9-][^][:space:],}"\x27]*)/\1\2***REDACTED***/Ig' \
             -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*)[^}"\x27[:space:]][^}"\r]*/\1***REDACTED***/Ig' \
             -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*[" ]?)[^,}[:space:]["]+/\1***REDACTED***/Ig' \
             -e 's/(vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess):\/\/[^[:space:]]+/***CLIENT_LINK_REDACTED***/Ig' \
@@ -40210,8 +40235,26 @@ wallos_record_image() {
     local img="${1:-}"
     img="${img#docker.io/}"
     [[ "$img" =~ ^bellamy/wallos:[A-Za-z0-9._-]+$ || "$img" =~ ^bellamy/wallos@sha256:[A-Fa-f0-9]{64}$ ]] || return 0
-    { touch "${ABOX_DIR}/wallos-images.txt" 2>/dev/null && chmod 600 "${ABOX_DIR}/wallos-images.txt" 2>/dev/null; } || true
-    grep -Fqx "$img" "${ABOX_DIR}/wallos-images.txt" 2>/dev/null || printf '%s\n' "$img" >> "${ABOX_DIR}/wallos-images.txt" 2>/dev/null || true
+    # R7-F14-4: bind the record to the image ID, not the tag alone. A tag
+    # is mutable: an admin rebuild under the same tag must not inherit
+    # silent-prune authorization from an earlier A-Box image. If the ID
+    # cannot be determined or is malformed, do not record at all (and do
+    # not fall back to a tag-only record); the image then stays
+    # unrecorded and pruning asks instead of deleting silently.
+    local _img_id=''
+    _img_id=$(docker image inspect -f '{{.Id}}' "$img" 2>/dev/null || true)
+    [[ "$_img_id" =~ ^sha256:[0-9a-f]{64}$ ]] || return 0
+    # Atomic replace (private temp + chmod + mv): keep only the newest
+    # binding per reference, so a stale ID never authorizes a later prune.
+    local _rec_file="${ABOX_DIR}/wallos-images.txt" _tmp='' _grep_rc=0
+    _tmp=$(mktemp "${ABOX_DIR}/.wallos-images.XXXXXX" 2>/dev/null) || return 0
+    if [[ -f "$_rec_file" ]]; then
+        grep -Fv "$img|" "$_rec_file" > "$_tmp" 2>/dev/null || _grep_rc=$?
+        (( _grep_rc == 0 || _grep_rc == 1 )) || { rm -f -- "$_tmp"; return 0; }
+    fi
+    printf '%s|%s\n' "$img" "$_img_id" >> "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 0; }
+    chmod 600 "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 0; }
+    mv -f -- "$_tmp" "$_rec_file" 2>/dev/null || { rm -f -- "$_tmp"; return 0; }
     return 0
 }
 
@@ -40262,13 +40305,25 @@ wallos_prune_local_images() {
             # R14C14-02: only A-Box-recorded images may be pruned
             # silently. An unrecorded same-name image may be the
             # user's own build: ask on a terminal, else skip.
-            if ! grep -Fqx "$img" "${ABOX_DIR}/wallos-images.txt" 2>/dev/null; then
+            # R7-F14-4: silent pruning is authorized only by an exact
+            # tag|ID binding for the CURRENT image. A tag-only record
+            # (legacy) or a record for a different ID (rebuilt under
+            # the same tag) does not authorize deletion.
+            if [[ -z "$_img_id" ]] || ! grep -Fqx "$img|$_img_id" "${ABOX_DIR}/wallos-images.txt" 2>/dev/null; then
                 if [[ -t 0 ]]; then
                     confirm_yes_no "$(tprintf wl_pr_confirm_unrecorded "$img")" || continue
                 else
                     msg "${YELLOW}$(tprintf wl_pr_skip_unrecorded "$img")${NC}"
                     continue
                 fi
+            fi
+            # Re-check immediately before the delete: a rebuild between
+            # the scan and the delete must not slip through.
+            local _img_id_now=''
+            _img_id_now=$(docker image inspect -f '{{.Id}}' "$img" 2>/dev/null || true)
+            if [[ "$_img_id_now" != "$_img_id" ]] || ! grep -Fqx "$img|$_img_id_now" "${ABOX_DIR}/wallos-images.txt" 2>/dev/null; then
+                msg "${YELLOW}$(tprintf wl_pr_skip_unrecorded "$img")${NC}"
+                continue
             fi
             if docker rmi "$img" >/dev/null 2>&1; then
                 removed=$((removed + 1))
@@ -40545,9 +40600,37 @@ wallos_rollback_to_version() {
         break
     done
     [[ -n "$backup" && -f "$backup" && ! -L "$backup" ]] || { msg "${RED}$(tr_msg wl_rb_no_backup)${NC}"; [[ -n "$_rb_skipped" ]] && msg "${YELLOW}Skipped backups newer than $target_tag or without a recorded version: ${_rb_skipped% }${NC}"; return 1; }
+    # R7-F14-2: pin the backup to a private copy before any validation or
+    # restore reads it. The shared backups/ path is writable by root
+    # processes outside this function; a swap between the version screen,
+    # the pre-validation and the restore would restore a different
+    # (newer, incompatible) archive. All later steps consume the pinned
+    # copy only, and it is deleted on every exit path (success included).
+    local _rb_stage_dir='' _rb_pinned=''
+    _rb_stage_dir=$(umask 077; mktemp -d /tmp/A-Box-rollback.XXXXXX) || { msg "${RED}$(tr_msg wl_rb_bad_backup)${NC}"; return 1; }
+    _rb_pinned="$_rb_stage_dir/wallos-rollback.tar.gz"
+    cp -- "$backup" "$_rb_pinned" || { rm -rf -- "$_rb_stage_dir"; msg "${RED}$(tr_msg wl_rb_bad_backup)${NC}"; return 1; }
+    chmod 600 "$_rb_pinned" || { rm -rf -- "$_rb_stage_dir"; msg "${RED}$(tr_msg wl_rb_bad_backup)${NC}"; return 1; }
+    # Re-run the version gate on the pinned copy (canonical copy of the
+    # U112/U115 screening logic above): the pinned archive must carry
+    # the same recorded-version decision as the screened candidate.
+    local _rb_pinned_state='' _rb_pinned_image='' _rb_pinned_ver=''
+    _rb_pinned_state=$(tar -xzOf "$_rb_pinned" .abox-state 2>/dev/null | head -c 65537 || true)
+    if (( ${#_rb_pinned_state} > 65536 )); then
+        rm -rf -- "$_rb_stage_dir"; msg "${RED}$(tr_msg wl_rb_bad_backup)${NC}"; return 1
+    fi
+    _rb_pinned_ver=$(printf '%s\n' "$_rb_pinned_state" | awk -F= '$1=="VERSION" {print $2; exit}' 2>/dev/null || true)
+    if [[ ! "$_rb_pinned_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        _rb_pinned_image=$(printf '%s\n' "$_rb_pinned_state" | awk -F= '$1=="IMAGE" {print $2; exit}' 2>/dev/null || true)
+        _rb_pinned_image="${_rb_pinned_image#docker.io/}"
+        _rb_pinned_ver="${_rb_pinned_image##*:}"
+    fi
+    if [[ ! "$_rb_pinned_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || wallos_version_is_older "$_target_ver" "$_rb_pinned_ver"; then
+        rm -rf -- "$_rb_stage_dir"; msg "${RED}$(tr_msg wl_rb_bad_backup)${NC}"; return 1
+    fi
     # U118: validate the backup fully BEFORE touching the running container;
     # a bad backup must abort here, not after the service is already removed.
-    wallos_validate_backup "$backup" || { msg "${RED}$(tr_msg wl_rb_bad_backup)${NC}"; return 1; }
+    wallos_validate_backup "$_rb_pinned" || { rm -rf -- "$_rb_stage_dir"; msg "${RED}$(tr_msg wl_rb_bad_backup)${NC}"; return 1; }
     docker stop wallos >/dev/null 2>&1 || true
     # N-11: capture the pre-rollback image BEFORE removing the container,
     # so the prune step can retain 2 images (new current + previous). (NEW-1)
@@ -40560,12 +40643,19 @@ wallos_rollback_to_version() {
         # container instead of leaving it in Exited state.
         docker start wallos >/dev/null 2>&1 || true
         msg "${RED}$(tr_msg wl_rb_rm_fail)${NC}"
+        rm -rf -- "$_rb_stage_dir"
         return 1
     }
-    wallos_restore_backup "$backup" || { msg "${RED}$(tr_msg wl_rb_restore_fail)${NC}"
+    wallos_restore_backup "$_rb_pinned" || { msg "${RED}$(tr_msg wl_rb_restore_fail)${NC}"
         _wallos_rollback_recover "$prev_image" "$port" "$tz" "$bind_address" "$_pre_rb_version" "$_pre_rb_mode" "$_pre_rb_pubport" "$_pre_rb_cfhost" && \
             msg "${YELLOW}$(tr_msg wl_rb_recovered)${NC}"
+        rm -rf -- "$_rb_stage_dir"
         return 1; }
+    # The pinned copy has been consumed by the restore; delete it now so
+    # no later exit path can mistake it for a live backup.
+    rm -rf -- "$_rb_stage_dir"
+    _rb_stage_dir=''
+
     local -a _pub_args=()
     # X-03: explicit bind:port form (matches install path); bare "-p port:80"
     # would also publish IPv6 [::]:port when bind is 0.0.0.0.
@@ -42011,6 +42101,17 @@ install_wallos_caddy() {
     if [[ -x /usr/local/bin/caddy ]] && /usr/local/bin/caddy version 2>/dev/null | grep -q "v${WALLOS_CADDY_VERSION}"; then
         return 0
     fi
+    # R7-F15-5: refuse to overwrite a foreign caddy binary. The early
+    # return above only recognizes a same-version binary; a
+    # different-version (or non-executable, or dangling-link) foreign
+    # binary would otherwise be replaced by the pinned download and
+    # then marked A-Box-owned. Only a valid ownership marker proves
+    # the binary is ours. (A dangling link is already refused by the
+    # atomic installer, but this gate refuses before any download.)
+    if [[ -e /usr/local/bin/caddy || -L /usr/local/bin/caddy ]] && [[ ! -f /etc/ddr/.abox-caddy-owned || -L /etc/ddr/.abox-caddy-owned ]]; then
+        msg "${RED}$(tr_msg wl_caddy_external_conflict)${NC}"
+        return 1
+    fi
     get_architecture
     local want='' url='' tmp got
     case "$SB_ARCH" in
@@ -42036,6 +42137,9 @@ install_wallos_caddy() {
     # uninstall conservatively keeps the binary instead of deleting a
     # possibly foreign one. The early return above deliberately
     # writes no marker.
+    # R7-F15-5: the refusal gate above (before the download) already
+    # rejects a foreign binary, so this marker is only ever written
+    # for a binary this function installed.
     touch /etc/ddr/.abox-caddy-owned 2>/dev/null || true
     rm -rf "$tmp"
 }
@@ -42458,7 +42562,7 @@ wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still r
 # alone. With $1=purge-data the A-Box Wallos data dir is removed
 # too (full uninstall); other flows keep the subscription data.
 wallos_stack_teardown() {
-    local _purge="${1:-keep-data}" _rm_failed=0 _docker_ok=0 _gone=0
+    local _purge="${1:-keep-data}" _rm_failed=0 _docker_ok=0 _gone=0 _unknown=0
     if command -v docker >/dev/null 2>&1; then
         _docker_ok=1
         if docker inspect wallos >/dev/null 2>&1; then
@@ -42476,8 +42580,16 @@ wallos_stack_teardown() {
             # An unmanaged container is deliberately left running (as
             # before); _gone stays 0 so purge below refuses.
         else
-            docker info >/dev/null 2>&1 && _gone=1
+            if docker info >/dev/null 2>&1; then
+                _gone=1
+            else
+                _unknown=1
+            fi
         fi
+    else
+        # R7-F15-7: no docker binary at all: the container state is
+        # unknown, not "gone". Keep-data must not report success.
+        _unknown=1
     fi
     if [[ "$_purge" == 'purge-data' && -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]]; then
         # U121: never delete data under a container that may still be alive.
@@ -42503,6 +42615,15 @@ wallos_stack_teardown() {
     # keep-data mode too, not report success while it still runs.
     if (( _rm_failed == 1 )); then
         msg "${RED}$(tr_msg wl_td_rm_fail)${NC}"
+        return 1
+    fi
+    # R7-F15-7: in keep-data mode an unknown container state (docker
+    # missing, or inspect and info both failed) must fail the teardown,
+    # not report success while a container may still be running. (A
+    # container that was inspected and found unmanaged is deliberately
+    # left in place and still returns 0 here.)
+    if [[ "$_purge" == 'keep-data' ]] && (( _unknown == 1 )); then
+        msg "${RED}$(tr_msg wl_td_purge_refuse)${NC}"
         return 1
     fi
     return 0
@@ -42586,7 +42707,12 @@ wallos_write_state() {
     if [[ "$mode" == cftunnel && "$cfhost" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then printf 'CFHOST=%s\n' "$cfhost" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
     if [[ "$pubport" =~ ^[0-9]+$ ]]; then printf 'PUBPORT=%s\n' "$pubport" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
     if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then printf 'VERSION=%s\n' "$version" >> "$tmp" || { rm -f -- "$tmp"; return 1; }; fi
-    if ! chmod 600 "$tmp" || ! mv -f -- "$tmp" "$WALLOS_DIR/.abox-state"; then
+    # R7-F15-6 (R10-06 clone): a directory at the state path must fail,
+    # not be silently swallowed: without -T, mv renames the temp file
+    # INTO the directory and reports success. The -T flag is what
+    # closes the pre-check/move race, not the check.
+    if [[ -d "$WALLOS_DIR/.abox-state" ]]; then rm -f -- "$tmp"; return 1; fi
+    if ! chmod 600 "$tmp" || ! mv -f -T -- "$tmp" "$WALLOS_DIR/.abox-state"; then
         rm -f -- "$tmp"
         return 1
     fi
@@ -42849,15 +42975,29 @@ PY_WALLOS_DIAGNOSE2
 # Returns 0 on success (or when no repair was needed), 1 otherwise.
 wallos_db_repair_poisoned() {
     local _db="$WALLOS_DIR/db/wallos.db" _image='' _diag='' _drc=0
-    local _had_container=0 _was_running=0 _backup_dir='' _journal=''
-    local _staged='' _hash_before='' _hash_after='' _staged_hash='' _ts='' _stage_dir=''
+    local _had_container=0 _was_running=0 _backup_dir='' _journal='' _inspect_err='' _managed=''
+    local _staged='' _hash_before='' _hash_after='' _staged_hash='' _ts='' _stage_dir='' _src_hash='' _dst_hash=''
     local _side=''
     (( EUID == 0 )) || { msg "${RED}$(tr_msg wl_iu_need_root)${NC}"; return 1; }
-    if docker container inspect wallos >/dev/null 2>&1; then
+    # R7-F15-4: three states. Inspect success -> label gate (a foreign
+    # same-name container is refused, never stopped/started); daemon
+    # confirms absence ("No such container/object") -> no-container path;
+    # any other inspect failure (daemon unreachable) -> refuse: the
+    # container state is unknown and a live replace would be unsafe.
+    if _inspect_err=$(docker container inspect wallos 2>&1 >/dev/null); then
         _had_container=1
+        if ! _managed=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null) || [[ "$_managed" != 'true' ]]; then
+            msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}"
+            return 1
+        fi
         [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)" == true ]] && _was_running=1
         _image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
         _image="${_image#docker.io/}"
+    elif [[ "$_inspect_err" == *'No such container'* || "$_inspect_err" == *'No such object'* ]]; then
+        _had_container=0
+    else
+        msg "${RED}$(tprintf wl_repair_abort 'container state unknown')${NC}"
+        return 1
     fi
     if [[ -z "$_image" ]]; then
         _image=$(wallos_state_value IMAGE 2>/dev/null || true)
@@ -42899,12 +43039,27 @@ wallos_db_repair_poisoned() {
     # Verified backup (db + SQLite sidecars) before any replacement.
     # wallos_create_backup is not used here: it requires .abox-state
     # and logos, which a poisoned install may not have yet.
+    # R7-F15-3: reject a symlinked live database BEFORE creating the
+    # backup directory: the backup loop below follows links, and a chmod
+    # on a linked backup would retarget the link's host file. (The later
+    # pre-commit check is kept as a second gate.)
+    [[ ! -L "$_db" ]] || { msg "${RED}$(tprintf wl_repair_abort 'live database is a symlink')${NC}"; return 1; }
     mkdir_private "$WALLOS_DIR/backups" || { msg "${RED}$(tprintf wl_repair_abort 'backup directory creation failed')${NC}"; return 1; }
     mkdir -m 700 "$_backup_dir" || { msg "${RED}$(tprintf wl_repair_abort 'backup directory creation failed')${NC}"; return 1; }
     for _side in wallos.db wallos.db-wal wallos.db-shm wallos.db-journal; do
-        [[ -e "$WALLOS_DIR/db/$_side" ]] || continue
-        cp -a "$WALLOS_DIR/db/$_side" "$_backup_dir/$_side" || { msg "${RED}$(tprintf wl_repair_abort 'backup copy failed')${NC}"; return 1; }
+        [[ -e "$WALLOS_DIR/db/$_side" || -L "$WALLOS_DIR/db/$_side" ]] || continue
+        # R7-F15-3: a backup must be a faithful COPY of regular-file
+        # content. cp -a preserves symlinks, so a linked sidecar (or a
+        # linked wallos.db) would leave a symlink in the backup and the
+        # chmod below would retarget the link's host file. A dangling
+        # link, a directory or a FIFO aborts instead of being copied.
+        [[ -f "$WALLOS_DIR/db/$_side" ]] || { msg "${RED}$(tprintf wl_repair_abort 'backup source is not a regular file')${NC}"; return 1; }
+        cp -- "$WALLOS_DIR/db/$_side" "$_backup_dir/$_side" || { msg "${RED}$(tprintf wl_repair_abort 'backup copy failed')${NC}"; return 1; }
+        [[ -f "$_backup_dir/$_side" && ! -L "$_backup_dir/$_side" ]] || { msg "${RED}$(tprintf wl_repair_abort 'backup verification failed')${NC}"; return 1; }
         chmod 600 "$_backup_dir/$_side" || { msg "${RED}$(tprintf wl_repair_abort 'backup permission failed')${NC}"; return 1; }
+        _src_hash=$(sha256sum "$WALLOS_DIR/db/$_side" 2>/dev/null | awk '{print $1}')
+        _dst_hash=$(sha256sum "$_backup_dir/$_side" 2>/dev/null | awk '{print $1}')
+        [[ "$_src_hash" =~ ^[0-9a-f]{64}$ && "$_dst_hash" =~ ^[0-9a-f]{64}$ && "$_src_hash" == "$_dst_hash" ]] || { msg "${RED}$(tprintf wl_repair_abort 'backup verification failed')${NC}"; return 1; }
     done
     [[ "$(sha256sum "$_backup_dir/wallos.db" 2>/dev/null | awk '{print $1}')" == "$_hash_after" ]] || { msg "${RED}$(tprintf wl_repair_abort 'backup verification failed')${NC}"; return 1; }
     # Journal the repair before the destructive step, so an interrupted
@@ -43022,6 +43177,143 @@ wallos_remove_abox_iptables_accept() {
         [[ "$check_rc" == 1 ]] || failed=1
     done
     (( failed == 0 ))
+}
+
+# R7-F15-2: non-fatal single-port opening for the Wallos install path.
+# Unlike allowPort (which dies on any failure), this never exits the
+# process: it returns 0 when the port is open (newly created or already
+# open) and 1 when the state is unknown or the opening failed, after
+# warning and removing any partial opening it made. When it creates a
+# new rule it prints exactly one line "backend|spec|proto" on stdout
+# (the caller's rollback-set entry); all diagnostics go to stderr so
+# the increment can be captured with $(...). A reused rule (owned and
+# complete, or foreign) prints nothing and is NOT an increment: a later
+# install failure must not delete a rule this attempt did not create.
+# An owned rule that covers only one address family is warned about and
+# left unchanged (the record has no family dimension, so a completion
+# could not be rolled back without deleting the pre-existing family
+# too); it still returns 0 because the port is open in the family that
+# exists and the deployment can proceed.
+wallos_fw_open_once() {
+    local raw_port="$1" type="${2:-tcp}" backend spec _orc=0 _rrc=0
+    local _fw_zone='' _fw_spec='' _fw_rt=0 _fw_pm=0 _fw_rc=0 _fw_added_rt=0
+    spec=$(normalize_port_spec "$raw_port") || { msg "${YELLOW}[!] Invalid port for firewall opening: ${raw_port}${NC}" >&2; return 1; }
+    [[ "$type" == tcp || "$type" == udp ]] || { msg "${YELLOW}[!] Invalid protocol for firewall opening: ${type}${NC}" >&2; return 1; }
+    backend=$(firewall_backend) || { msg "${YELLOW}[!] Cannot determine the firewall backend; leaving ${spec}/${type} closed.${NC}" >&2; return 1; }
+    case "$backend" in
+        ufw)
+            ufw_owned_rule_exists "$spec" "$type"; _orc=$?
+            if (( _orc == 0 )); then
+                if _ufw_owned_families_complete "$spec" "$type"; then
+                    return 0
+                fi
+                msg "${YELLOW}[!] A-Box firewall rule for ${spec}/${type} covers only one address family; leaving it unchanged.${NC}" >&2
+                return 0
+            elif (( _orc == 2 )); then
+                msg "${YELLOW}[!] Cannot determine the A-Box firewall state for ${spec}/${type}; leaving it unchanged.${NC}" >&2
+                return 1
+            fi
+            ufw_rule_exists "$spec" "$type"; _rrc=$?
+            if (( _rrc == 0 )); then
+                msg "${YELLOW}[!] ${spec}/${type} is already allowed by a non-A-Box firewall rule; keeping it without claiming ownership.${NC}" >&2
+                return 0
+            elif (( _rrc == 2 )); then
+                msg "${YELLOW}[!] Cannot determine the firewall state for ${spec}/${type}; leaving it unchanged.${NC}" >&2
+                return 1
+            fi
+            ufw allow proto "$type" from any to any port "$spec" comment "A-Box-${spec}-${type}" >/dev/null 2>&1 || { msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}" >&2; return 1; }
+            if ! ufw_owned_rule_exists "$spec" "$type"; then
+                ufw_delete_owned_rules "$spec" "$type" >/dev/null 2>&1 || true
+                msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}" >&2
+                return 1
+            fi
+            if ! record_native_firewall_rule ufw "$spec" "$type" rule; then
+                ufw_delete_owned_rules "$spec" "$type" >/dev/null 2>&1 || true
+                msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}" >&2
+                return 1
+            fi
+            printf '%s\n' "ufw|${spec}|${type}"
+            return 0
+            ;;
+        firewalld)
+            # Pin the zone once (R9C6-01), then open the single port in
+            # runtime and permanent, recording each scope. A single
+            # port has no subrange coalescing to track, so the record
+            # is the port itself in each scope. Any failure removes
+            # the increments already made in this call (and forgets
+            # their records) before returning 1.
+            _fw_zone=$(firewalld_zone_for_abox) || { msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1; }
+            _fw_spec=$(port_spec_for_firewalld "$spec") || { msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1; }
+            firewalld_port_state "$spec" "$type" runtime "$_fw_zone"; _fw_rc=$?
+            case "$_fw_rc" in 0) _fw_rt=1 ;; 1) _fw_rt=0 ;; *) msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1 ;; esac
+            firewalld_port_state "$spec" "$type" permanent "$_fw_zone"; _fw_rc=$?
+            case "$_fw_rc" in 0) _fw_pm=1 ;; 1) _fw_pm=0 ;; *) msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1 ;; esac
+            if (( _fw_rt == 1 && _fw_pm == 1 )); then
+                return 0
+            fi
+            if (( _fw_rt == 0 )); then
+                firewalld_cmd_zone "$_fw_zone" --add-port="${_fw_spec}/${type}" >/dev/null 2>&1 || { msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1; }
+                _fw_added_rt=1
+                if ! firewalld_port_state "$spec" "$type" runtime "$_fw_zone" >/dev/null 2>&1; then
+                    firewalld_cmd_zone "$_fw_zone" --remove-port="${_fw_spec}/${type}" >/dev/null 2>&1 || true
+                    msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1
+                fi
+                if ! record_native_firewall_rule firewalld "$spec" "$type" runtime "$_fw_zone"; then
+                    firewalld_cmd_zone "$_fw_zone" --remove-port="${_fw_spec}/${type}" >/dev/null 2>&1 || true
+                    msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1
+                fi
+            fi
+            if (( _fw_pm == 0 )); then
+                if ! firewalld_cmd_zone "$_fw_zone" --permanent --add-port="${_fw_spec}/${type}" >/dev/null 2>&1; then
+                    if (( _fw_added_rt == 1 )); then
+                        firewalld_cmd_zone "$_fw_zone" --remove-port="${_fw_spec}/${type}" >/dev/null 2>&1 || true
+                        forget_native_firewall_rule "$spec" "$type" firewalld "$_fw_zone" runtime >/dev/null 2>&1 || true
+                    fi
+                    msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1
+                fi
+                if ! firewalld_port_state "$spec" "$type" permanent "$_fw_zone" >/dev/null 2>&1; then
+                    firewalld_cmd_zone "$_fw_zone" --permanent --remove-port="${_fw_spec}/${type}" >/dev/null 2>&1 || true
+                    if (( _fw_added_rt == 1 )); then
+                        firewalld_cmd_zone "$_fw_zone" --remove-port="${_fw_spec}/${type}" >/dev/null 2>&1 || true
+                        forget_native_firewall_rule "$spec" "$type" firewalld "$_fw_zone" runtime >/dev/null 2>&1 || true
+                    fi
+                    msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1
+                fi
+                if ! record_native_firewall_rule firewalld "$spec" "$type" permanent "$_fw_zone"; then
+                    firewalld_cmd_zone "$_fw_zone" --permanent --remove-port="${_fw_spec}/${type}" >/dev/null 2>&1 || true
+                    if (( _fw_added_rt == 1 )); then
+                        firewalld_cmd_zone "$_fw_zone" --remove-port="${_fw_spec}/${type}" >/dev/null 2>&1 || true
+                        forget_native_firewall_rule "$spec" "$type" firewalld "$_fw_zone" runtime >/dev/null 2>&1 || true
+                    fi
+                    msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1
+                fi
+            fi
+            printf '%s\n' "firewalld|${spec}|${type}"
+            return 0
+            ;;
+        *)
+            msg "${YELLOW}[!] Firewall backend ${backend} cannot be opened by this installer; leaving ${spec}/${type} closed.${NC}" >&2
+            return 1
+            ;;
+    esac
+}
+
+# R7-F15-2: roll back firewall increments opened by this install attempt
+# (entries "backend|spec|proto"). Each entry is removed through the
+# ledger deleter (which verifies the rule is really gone); a failure is
+# reported loudly and returns 1, so a caller that must not claim success
+# can fold it into its own failure flag. An empty set is a no-op success.
+wallos_fw_rollback_added() {
+    local _entry _backend _spec _proto _failed=0
+    for _entry in "$@"; do
+        IFS='|' read -r _backend _spec _proto <<< "$_entry"
+        [[ -n "$_spec" && -n "$_proto" ]] || { _failed=1; continue; }
+        if ! remove_abox_native_firewall_rule "$_spec" "$_proto" >/dev/null 2>&1; then
+            msg "${YELLOW}[!] Failed to roll back the firewall opening for ${_spec}/${_proto} opened by this install attempt; the port may still be open.${NC}" >&2
+            _failed=1
+        fi
+    done
+    (( _failed == 0 ))
 }
 
 wallos_install_or_update() {
@@ -43294,11 +43586,26 @@ wallos_install_or_update() {
     # not leave a public Docker DNAT publication: DNAT bypasses UFW INPUT,
     # so skipping allowPort alone does not honor the refusal. When a
     # refused public bind would otherwise be published, force loopback.
+    # R7-F15-2: firewall increments opened by this attempt, as
+    # "backend|spec|proto" lines (see wallos_fw_open_once). Rolled back
+    # if the install fails after opening them.
+    local -a _fw_added=()
+    local _fw_open_out=''
     local _fw_refused=0
     if [[ "$bind_address" == 0.0.0.0 ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
-        if confirm_yes_no "$(tprintf wl_iu_ufw_q "$port")"; then ufw allow "$port/tcp" || msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}"; else _fw_refused=1; fi
+        if confirm_yes_no "$(tprintf wl_iu_ufw_q "$port")"; then
+            _fw_open_out=$(wallos_fw_open_once "$port" tcp) || msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}"
+            [[ -n "$_fw_open_out" ]] && _fw_added+=("$_fw_open_out")
+        else
+            _fw_refused=1
+        fi
     elif [[ "$bind_address" == 0.0.0.0 ]] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-        if confirm_yes_no "$(tprintf wl_iu_fwd_q "$port")"; then firewall-cmd --permanent --add-port="$port/tcp" && firewall-cmd --reload || msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}"; else _fw_refused=1; fi
+        if confirm_yes_no "$(tprintf wl_iu_fwd_q "$port")"; then
+            _fw_open_out=$(wallos_fw_open_once "$port" tcp) || msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}"
+            [[ -n "$_fw_open_out" ]] && _fw_added+=("$_fw_open_out")
+        else
+            _fw_refused=1
+        fi
     fi
     if (( _fw_refused == 1 )) && { [[ -n "$old_bind" ]] || (( _bind_chosen == 1 )); }; then
         # R14-08: a refused public opening demotes the mode to local as
@@ -43323,9 +43630,19 @@ wallos_install_or_update() {
     # https upgrade on a firewalled host.
     local _fw_https_refused=0
     if [[ "$wmode" == https ]] && [[ -t 0 ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
-        if confirm_yes_no "$(tprintf wl_iu_ufw_q_https "$pubport")"; then ufw allow "$pubport/tcp" || msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}"; else _fw_https_refused=1; fi
+        if confirm_yes_no "$(tprintf wl_iu_ufw_q_https "$pubport")"; then
+            _fw_open_out=$(wallos_fw_open_once "$pubport" tcp) || msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}"
+            [[ -n "$_fw_open_out" ]] && _fw_added+=("$_fw_open_out")
+        else
+            _fw_https_refused=1
+        fi
     elif [[ "$wmode" == https ]] && [[ -t 0 ]] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-        if confirm_yes_no "$(tprintf wl_iu_fwd_q_https "$pubport")"; then firewall-cmd --permanent --add-port="$pubport/tcp" && firewall-cmd --reload || msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}"; else _fw_https_refused=1; fi
+        if confirm_yes_no "$(tprintf wl_iu_fwd_q_https "$pubport")"; then
+            _fw_open_out=$(wallos_fw_open_once "$pubport" tcp) || msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}"
+            [[ -n "$_fw_open_out" ]] && _fw_added+=("$_fw_open_out")
+        else
+            _fw_https_refused=1
+        fi
     fi
     if (( _fw_https_refused == 1 )); then
         msg "${RED}$(tr_msg wl_iu_https_fw_abort)${NC}"
@@ -43348,6 +43665,10 @@ wallos_install_or_update() {
             wallos_remove_abox_iptables_accept "$_rp" tcp || _refuse_cleanup_failed=1
             remove_abox_native_firewall_rule "$_rp" tcp || _refuse_cleanup_failed=1
         done
+        # R7-F15-2: also roll back any firewall opening made by this
+        # attempt; a failed rollback joins the loud refusal-cleanup
+        # failure flag below (the port may still be open).
+        wallos_fw_rollback_added "${_fw_added[@]}" || _refuse_cleanup_failed=1
         save_firewall_rules || _refuse_cleanup_failed=1
         if (( _refuse_cleanup_failed == 1 )); then
             msg "${RED}$(tr_msg wl_iu_https_fw_refuse_cleanup_fail)${NC}"
@@ -43374,6 +43695,7 @@ wallos_install_or_update() {
             wallos_recover_interrupted_upgrade >/dev/null 2>&1 || true
         fi
         msg "${RED}$(tr_msg wl_iu_preseed_fail)${NC}"
+        wallos_fw_rollback_added "${_fw_added[@]}" || true
         return 1
     fi
     docker run -d --name wallos --label com.alariclin.abox.managed=true \
@@ -43400,6 +43722,7 @@ wallos_install_or_update() {
             wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_incomplete "${WALLOS_DIR}/.upgrade-transaction" "${backup:-unavailable}")${NC}"
         fi
         msg "${RED}$(tr_msg wl_iu_health_kept)${NC}"
+        wallos_fw_rollback_added "${_fw_added[@]}" || true
         return 1
     fi
 
@@ -43410,6 +43733,7 @@ wallos_install_or_update() {
     # with the old frontend still serving (fail-closed).
     if ! wallos_preserve_cftoken; then
         msg "${RED}$(tr_msg wl_iu_cftoken_backup_fail)${NC}"
+        wallos_fw_rollback_added "${_fw_added[@]}" || true
         return 1
     fi
 
@@ -43429,11 +43753,13 @@ wallos_install_or_update() {
     if [[ "$wmode" == https ]]; then
         if ! wallos_cftunnel_teardown >/dev/null 2>&1; then
             msg "${RED}$(tr_msg wl_iu_teardown_fail)${NC}"
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
             return 1
         fi
     elif [[ "$wmode" == cftunnel ]]; then
         if ! wallos_https_teardown >/dev/null 2>&1; then
             msg "${RED}$(tr_msg wl_iu_teardown_fail)${NC}"
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
             return 1
         fi
     elif [[ "$_old_mode" == https || "$_old_mode" == cftunnel ]]; then
@@ -43444,6 +43770,7 @@ wallos_install_or_update() {
         wallos_cftunnel_teardown >/dev/null 2>&1 || _td_ok=0
         if (( _td_ok == 0 )); then
             msg "${RED}$(tr_msg wl_iu_teardown_fail)${NC}"
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
             return 1
         fi
     fi
@@ -43459,6 +43786,7 @@ wallos_install_or_update() {
         else
             docker rm -f wallos >/dev/null 2>&1 || true
         fi
+        wallos_fw_rollback_added "${_fw_added[@]}" || true
         return 1
     fi
     if (( running == 1 )); then
@@ -43500,9 +43828,11 @@ wallos_install_or_update() {
                 else
                     msg "${RED}$(tr_msg wl_iu_https_incomplete)${NC}"
                 fi
+                wallos_fw_rollback_added "${_fw_added[@]}" || true
                 return 1
             else
                 msg "${RED}$(tr_msg wl_iu_https_incomplete)${NC}"
+                wallos_fw_rollback_added "${_fw_added[@]}" || true
                 return 1
             fi
         fi
@@ -43519,10 +43849,10 @@ wallos_install_or_update() {
         # transaction before overwriting; restored on setup
         # failure and by interrupted-upgrade recovery.
         if [[ -f "$WALLOS_CF_TOKEN_FILE" && ! -L "$WALLOS_CF_TOKEN_FILE" ]]; then
-            cp -a "$WALLOS_CF_TOKEN_FILE" "$WALLOS_DIR/.upgrade-transaction.cftoken" || { msg "${RED}[!] Failed to back up the existing tunnel token; refusing to overwrite it.${NC}"; return 1; }
-            chmod 600 "$WALLOS_DIR/.upgrade-transaction.cftoken" || { msg "${RED}[!] Failed to secure the tunnel token backup; refusing to overwrite it.${NC}"; return 1; }
+            cp -a "$WALLOS_CF_TOKEN_FILE" "$WALLOS_DIR/.upgrade-transaction.cftoken" || { msg "${RED}[!] Failed to back up the existing tunnel token; refusing to overwrite it.${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+            chmod 600 "$WALLOS_DIR/.upgrade-transaction.cftoken" || { msg "${RED}[!] Failed to secure the tunnel token backup; refusing to overwrite it.${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
         fi
-            write_file_atomically_from_stdin "$WALLOS_CF_TOKEN_FILE" 600 <<< "TUNNEL_TOKEN=${cftoken}" || { msg "${RED}CF 隧道令牌保存失败。${NC}"; return 1; }
+            write_file_atomically_from_stdin "$WALLOS_CF_TOKEN_FILE" 600 <<< "TUNNEL_TOKEN=${cftoken}" || { msg "${RED}CF 隧道令牌保存失败。${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
             cftoken=''
         fi
         if ! wallos_cftunnel_setup "$cfhost"; then
@@ -43550,6 +43880,7 @@ wallos_install_or_update() {
                 msg "${RED}Recovery could not restore the tunnel token; the running tunnel may still use the new token.${NC}"
             fi
         fi
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
             return 1
         fi
         case "${ABOX_LANG:-zh}" in
@@ -43560,6 +43891,7 @@ wallos_install_or_update() {
         case "${ABOX_LANG:-zh}" in
             *) msg "${RED}$(tr_msg wl_health_fail)${NC}" ; msg "$(tr_msg wl_health_fail_repair_hint)" ;;
         esac
+        wallos_fw_rollback_added "${_fw_added[@]}" || true
         return 1
     fi
     # R9C15-02: firewall opens are a post-deployment check, not a
@@ -43569,12 +43901,12 @@ wallos_install_or_update() {
     # reboot) while the install reported success. On failure the
     # journal stays active, so the next run recovers.
     if (( _fw_refused == 0 )) && [[ "$wmode" == https ]]; then
-        allowPort "$pubport" tcp || return 1
-        allowPort 80 tcp || return 1
-        save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; return 1; }
+        allowPort "$pubport" tcp || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        allowPort 80 tcp || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
     elif (( _fw_refused == 0 )) && [[ "$bind_address" == 0.0.0.0 ]]; then
-        allowPort "$port" tcp || return 1
-        save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; return 1; }
+        allowPort "$port" tcp || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
     fi
     # S143: the upgrade journal is the rollback material. It must not be
     # committed (phase=committed, which recover treats as "already done"
@@ -43588,10 +43920,12 @@ wallos_install_or_update() {
             msg "${RED}$(tr_msg wl_iu_health_meta_fail)${NC}"
             docker rm -f wallos >/dev/null 2>&1 || true
             wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_fail "$WALLOS_DIR/.upgrade-transaction" "$backup")${NC}"
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
             return 1
         fi
         rm -f -- "$WALLOS_DIR/.upgrade-transaction" || {
             msg "${YELLOW}$(tr_msg wl_iu_journal_pending)${NC}"
+            wallos_fw_rollback_added "${_fw_added[@]}" || true
             return 1
         }
     fi
@@ -43732,7 +44066,7 @@ wallos_resume_after_backup() {
 }
 
 wallos_backup_now() {
-    local stamp backup was_running=0 _inspect_err _running
+    local stamp backup was_running=0 _inspect_err _running _managed
     [[ -f "$WALLOS_DIR/.A-Box-managed" && ! -L "$WALLOS_DIR/.A-Box-managed" ]] || { msg "$(tr_msg wl_bn_none)"; return 1; }
     # R6C15-03: an inspect failure is NOT "stopped". Only a daemon-confirmed
     # absence ("No such container/object") allows an offline backup; any other
@@ -43741,6 +44075,12 @@ wallos_backup_now() {
     # can silently drop committed records at checkpoint timing while gzip/tar
     # checks still pass. Fail closed instead.
     if _inspect_err=$(docker container inspect wallos 2>&1 >/dev/null); then
+        # R7-F15-4: refuse a foreign same-name container (R14-07 idiom):
+        # the stop/start below must only ever touch an A-Box-managed one.
+        if ! _managed=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null) || [[ "$_managed" != 'true' ]]; then
+            msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}" >&2
+            return 1
+        fi
         _running=$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null) || { msg "${RED}$(tr_msg wl_bn_docker_unknown)${NC}" >&2; return 1; }
         if [[ "$_running" == true ]]; then
             docker stop wallos >/dev/null 2>&1 || return 1
@@ -44386,9 +44726,56 @@ def trusted_read(path):
         return data
 
 
+def strip_jsonc_comments(data):
+    # R7-F16-6: strip // and /* */ comments, mirroring the
+    # jsonc_strip_comments state machine (string-aware: a // inside a
+    # string is data, not a comment; backslash escapes inside strings
+    # are honored). Unlike that helper, an unterminated block comment
+    # raises instead of silently truncating the document.
+    if isinstance(data, (bytes, bytearray)):
+        data = bytes(data).decode("utf-8", errors="replace")
+    out = []
+    i = 0
+    n = len(data)
+    in_str = False
+    esc = False
+    bs = chr(92)
+    while i < n:
+        c = data[i]
+        if in_str:
+            out.append(c)
+            if esc:
+                esc = False
+            elif c == bs:
+                esc = True
+            elif c == '"':
+                in_str = False
+            i += 1
+            continue
+        if c == '"':
+            in_str = True
+            out.append(c)
+            i += 1
+            continue
+        if c == "/" and i + 1 < n and data[i + 1] == "/":
+            while i < n and data[i] != "\n":
+                i += 1
+            continue
+        if c == "/" and i + 1 < n and data[i + 1] == "*":
+            j = data.find("*/", i + 2)
+            if j < 0:
+                raise ValueError("unterminated JSONC block comment")
+            out.append(" ")
+            i = j + 2
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def load(path, label):
     try:
-        data = json.loads(trusted_read(path))
+        data = json.loads(strip_jsonc_comments(trusted_read(path)))
         obj(data)
         inbounds = data.get("inbounds", [])
         require(isinstance(inbounds, list), "invalid inbounds")
@@ -44407,8 +44794,30 @@ def tagged(inbounds, tag):
     return matches[0] if matches else None
 
 
+def normalize_xray_port(port):
+    # R7-F16-5: Xray accepts a string port (pure digits, or a "lo-hi"
+    # range whose first port is the probe/export target). Anything else
+    # (bool, float, list, dict, comma list, inverted or out-of-range
+    # range) is rejected by the strict check in common() below.
+    if isinstance(port, bool):
+        raise Bad("invalid port")
+    if isinstance(port, int):
+        return port
+    if isinstance(port, str):
+        if re.fullmatch(r"[0-9]+", port):
+            return int(port)
+        m = re.fullmatch(r"([0-9]+)-([0-9]+)", port)
+        if m:
+            lo, hi = int(m.group(1)), int(m.group(2))
+            if 1 <= lo <= 65535 and 1 <= hi <= 65535 and lo <= hi:
+                return lo
+    raise Bad("invalid port")
+
+
 def common(name, kind, inbound, port_key):
     port = inbound.get(port_key)
+    if port_key == "port":
+        port = normalize_xray_port(port)
     require(type(port) is int and 1 <= port <= 65535, "invalid port")
     host = text(server, "missing export server")
     require(host != "N/A", "missing export server")
@@ -46071,7 +46480,13 @@ core_expected_tls_tcp_targets() {
     printf '%s' "$_doc" | jq -e 'type == "object" and ((.inbounds // null) == null or (.inbounds | type == "array"))' >/dev/null 2>&1 || { msg "${RED}[!] TLS 目标枚举失败：配置结构异常：${cfg}${NC}" >&2; return 1; }
     case "$core" in
         xray)
-            _targets=$(printf '%s' "$_doc" | jq -c '.inbounds[]? | select(.tag != "api") | select(.streamSettings.security == "tls" or .streamSettings.security == "reality") | (.listen // "0.0.0.0") as $listen | (.streamSettings.network // "tcp") as $net | if ($listen | type) != "string" then {"diag": "non-string listen on a TLS inbound"} elif ($listen | contains("/") or startswith("@")) then empty elif (["tcp","raw","ws","grpc","http","h2","httpupgrade","xhttp","splithttp"] | index($net)) then (if $listen == "0.0.0.0" then "127.0.0.1" elif $listen == "::" then "::1" elif ($listen | test("^(\\d{1,3}\\.){3}\\d{1,3}$") or contains(":")) then ($listen | gsub("^\\[|\\]$"; "")) else null end) as $host | (.port) as $port | if ($port | type != "number") or $port < 1 or $port > 65535 then {"diag": ("non-scalar TLS port " + (($port // "?") | tostring))} elif $host == null then {"diag": ("hostname listen " + $listen + " is not a dialable address")} else {"host": $host, "port": $port} end elif $net == "kcp" or $net == "quic" then empty else {"diag": ("unclassified TLS transport " + ($net | tostring))} end' 2>/dev/null); _enum_rc=$?
+            # R7-F16-5: a string port is normalized before the scalar
+            # check (see the $raw_port step below): a pure-digit string
+            # becomes its number, and a "lo-hi" range contributes only
+            # its first port (the probe target is a single port; the
+            # range's other ports are not probed). Anything else is
+            # still a diagnostic, never silently skipped.
+            _targets=$(printf '%s' "$_doc" | jq -c '.inbounds[]? | select(.tag != "api") | select(.streamSettings.security == "tls" or .streamSettings.security == "reality") | (.listen // "0.0.0.0") as $listen | (.streamSettings.network // "tcp") as $net | if ($listen | type) != "string" then {"diag": "non-string listen on a TLS inbound"} elif ($listen | contains("/") or startswith("@")) then empty elif (["tcp","raw","ws","grpc","http","h2","httpupgrade","xhttp","splithttp"] | index($net)) then (if $listen == "0.0.0.0" then "127.0.0.1" elif $listen == "::" then "::1" elif ($listen | test("^(\\d{1,3}\\.){3}\\d{1,3}$") or contains(":")) then ($listen | gsub("^\\[|\\]$"; "")) else null end) as $host | (.port) as $raw_port | (if ($raw_port | type) == "number" then $raw_port elif ($raw_port | type) == "string" and ($raw_port | test("^[0-9]+$")) then ($raw_port | tonumber) elif ($raw_port | type) == "string" and ($raw_port | test("^[0-9]+-[0-9]+$")) then (($raw_port | split("-") | map(tonumber)) as $r | if $r[0] >= 1 and $r[0] <= 65535 and $r[1] >= 1 and $r[1] <= 65535 and $r[0] <= $r[1] then $r[0] else null end) else null end) as $port | if ($port | type != "number") or $port < 1 or $port > 65535 then {"diag": ("non-scalar TLS port " + (($raw_port // "?") | tostring))} elif $host == null then {"diag": ("hostname listen " + $listen + " is not a dialable address")} else {"host": $host, "port": $port} end elif $net == "kcp" or $net == "quic" then empty else {"diag": ("unclassified TLS transport " + ($net | tostring))} end' 2>/dev/null); _enum_rc=$?
             ;;
         singbox)
             _targets=$(printf '%s' "$_doc" | jq -c '.inbounds[]? | select(.tls.enabled == true) | select(.type != "tuic" and .type != "hysteria2" and .type != "hysteria") | select((.network // "tcp") != "udp") | if (.listen | type != "string") and .listen != null then {"diag": "non-string listen on a TLS inbound"} elif ((.listen // "") | contains("/") or startswith("@")) then empty else (if (.listen == null or .listen == "") then "127.0.0.1" elif .listen == "0.0.0.0" then "127.0.0.1" elif .listen == "::" then "::1" elif (.listen | test("^(\\d{1,3}\\.){3}\\d{1,3}$") or contains(":")) then (.listen | gsub("^\\[|\\]$"; "")) else null end) as $host | (.listen_port) as $port | if ($port | type != "number") or $port < 1 or $port > 65535 then {"diag": ("non-scalar TLS port " + (($port // "?") | tostring))} elif $host == null then {"diag": ("hostname listen " + .listen + " is not a dialable address")} else {"host": $host, "port": $port} end end' 2>/dev/null); _enum_rc=$?
@@ -46738,7 +47153,7 @@ PY_HY2_STAGED
 # error, not a silent pass.
 hysteria_binary_smoke_test() {
     local cfg='/etc/hysteria/config.yaml'
-    local was_enabled_state='' ok=0 waited=0 rc=1 restore_failed=0 cur_state='' rc_out='' rc_status=0
+    local was_enabled_state='' ok=0 waited=0 rc=1 restore_failed=0 cur_state='' rc_out='' rc_status=0 stop_rc=0 stop_state='' stop_unknown=0
     [[ -x /usr/local/bin/hysteria && -f "$cfg" ]] || return 1
     abox_owns_service hysteria || return 1
     # Snapshot enablement state with full granularity. systemctl is-enabled
@@ -46803,12 +47218,28 @@ hysteria_binary_smoke_test() {
     (( ok == 1 )) && rc=0
     # --- Unified cleanup: ALWAYS runs (success, start failure, probe timeout).
     # Stop the service first.
-    stop_abox_service_soft hysteria >/dev/null 2>&1 || true
+    # R7-F16-4: distinguish "stopped" from "unknown". A failed stop
+    # command or an unreadable service state must not be read as
+    # "stopped": the temporary service may still be running. Only a
+    # confirmed stopped state (service_active_state_value rc 0, output
+    # 0) clears the stop; an unknown state fails the restore. A
+    # non-zero stop alone is not a failure when the service is
+    # confirmed stopped (it may already have been stopped).
+    stop_abox_service_soft hysteria >/dev/null 2>&1 || stop_rc=$?
     waited=0
-    while (( waited < 10 )) && is_service_running hysteria 2>/dev/null; do
+    while (( waited < 10 )); do
+        if stop_state=$(service_active_state_value hysteria 2>/dev/null); then
+            [[ "$stop_state" == 0 ]] && break
+        else
+            stop_unknown=1
+            break
+        fi
         sleep 1; waited=$((waited + 1))
     done
-    if is_service_running hysteria 2>/dev/null; then
+    if (( stop_unknown == 1 )); then
+        msg "${RED}[!] Hysteria smoke test could not determine whether the temporary service stopped; manual check required.${NC}" >&2
+        restore_failed=1
+    elif [[ "$stop_state" != 0 ]]; then
         msg "${RED}[!] Hysteria smoke test could not stop the temporary service; manual check required.${NC}" >&2
         restore_failed=1
     fi
@@ -47113,7 +47544,7 @@ upgrade_current_cores_only() {
         printf 'not-started\n' > "$rb_status" || { rm -f -- "$rb_status"; msg "${RED}[!] [$t] cannot create rollback status file; aborting core upgrades.${NC}"; return 1; }
         ABOX_CORE_TX_RB_STATUS="$rb_status"
         if ( begin_core_upgrade_transaction "$t"
-             case "$t" in xray) upgrade_xray_core_only ;; singbox) upgrade_singbox_core_only ;; hysteria) upgrade_hysteria_core_only ;; esac
+             case "$t" in xray) upgrade_xray_core_only ;; singbox) upgrade_singbox_core_only ;; hysteria) upgrade_hysteria_core_only ;; esac || { core_upgrade_transaction_rollback; exit 1; }
              commit_core_upgrade_transaction ); then
             rm -f -- "$rb_status"
             msg "${GREEN}[$t] upgrade completed.${NC}"

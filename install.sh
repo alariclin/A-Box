@@ -23571,9 +23571,13 @@ argo_remove_unit() { # $1 = unit name; best-effort, refuses foreign units
     # rc alone is not proof (repeat stop may fail while already stopped);
     # the unit file and its enable entries are verified gone BEFORE the
     # marker-bearing unit is deleted, so a failure keeps the unit identifiable.
+    # R11-C (R6-1): the stop check below is argo_unit_stopped_confirmed, not
+    # argo_unit_active: a failed status query must refuse, never read as
+    # "stopped", and a live daemon must block deletion even when the
+    # manager reports the unit inactive.
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl stop "${name}.service" >/dev/null 2>&1 || true
-        if argo_unit_active "$name"; then return 1; fi
+        if ! argo_unit_stopped_confirmed "$name"; then return 1; fi
         systemctl disable "${name}.service" >/dev/null 2>&1 || true
         systemctl disable --runtime "${name}.service" >/dev/null 2>&1 || true
         local _link
@@ -23586,7 +23590,7 @@ argo_remove_unit() { # $1 = unit name; best-effort, refuses foreign units
         systemctl daemon-reload >/dev/null 2>&1 || return 1
     else
         rc-service "$name" stop >/dev/null 2>&1 || true
-        if argo_unit_active "$name"; then return 1; fi
+        if ! argo_unit_stopped_confirmed "$name"; then return 1; fi
         rc-update del "$name" default >/dev/null 2>&1 || true
         local _rl _entry
         for _rl in /etc/runlevels/*; do
@@ -23615,6 +23619,144 @@ argo_unit_active() { # $1 = unit name -> 0 active
         systemctl is-active --quiet "$1" 2>/dev/null
     else
         rc-service "$1" status >/dev/null 2>&1
+    fi
+}
+
+# R11-C (R6-1): confirmed-stopped predicate. argo_unit_active() only
+# returns the manager's raw rc, so "query failed" and "inactive" look
+# identical; callers that delete a unit on "not active" therefore delete
+# over a live daemon. This predicate returns 0 ONLY when the unit is
+# positively confirmed stopped; every other outcome (running, query
+# failure, unattributable residue process, unavailable check tool)
+# returns 1 and records a short reason in _ARGO_STOPPED_DETAIL for the
+# caller's diagnostic. "Not installed" counts as confirmed stopped:
+# there is no unit to run, but this says nothing about the unit file,
+# so argo_remove_unit still enforces its managed-file check first.
+_ARGO_STOPPED_DETAIL=''
+
+_argo_live_cloudflared_pids() { # prints one pid per line; rc 2 = check unavailable
+    local _x='' _f='' _rc=0 _p _seen=''
+    command -v pgrep >/dev/null 2>&1 || return 2
+    _x=$(pgrep -x cloudflared 2>/dev/null); _rc=$?
+    (( _rc == 0 || _rc == 1 )) || return 2
+    _f=$(pgrep -f '^/usr/local/bin/cloudflared([[:space:]]|$)' 2>/dev/null); _rc=$?
+    (( _rc == 0 || _rc == 1 )) || return 2
+    for _p in $_x $_f; do
+        [[ "$_p" =~ ^[0-9]+$ ]] || continue
+        case " $_seen " in *" $_p "*) continue ;; esac
+        _seen+=" $_p"
+        printf '%s\n' "$_p"
+    done
+    return 0
+}
+
+_argo_cloudflared_pid_attributed() { # $1 = pid, $2 = own unit -> 0 if the pid belongs to another known instance
+    local _pid="$1" _own="$2" _u _mp _pf _pp
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        for _u in argo argo-vmess argo-vless abox-wallos-cftunnel; do
+            [[ "$_u" == "$_own" ]] && continue
+            _mp=$(systemctl show -p MainPID --value "${_u}.service" 2>/dev/null || true)
+            [[ "$_mp" =~ ^[0-9]+$ ]] || continue
+            (( 10#$_mp != 0 )) || continue
+            [[ "$_mp" == "$_pid" ]] && return 0
+        done
+    else
+        for _u in argo argo-vmess argo-vless abox-wallos-cftunnel; do
+            [[ "$_u" == "$_own" ]] && continue
+            _pf="/run/${_u}.pid"
+            [[ -f "$_pf" && ! -L "$_pf" ]] || continue
+            _pp=$(< "$_pf")
+            [[ "$_pp" =~ ^[0-9]+$ ]] || continue
+            [[ "$_pp" == "$_pid" ]] && return 0
+        done
+    fi
+    return 1
+}
+
+_argo_stopped_confirmed_systemd() { # $1 = unit name -> 0 iff confirmed stopped
+    local _name="$1" _out='' _rc=0 _l1='' _l2='' _l3=''
+    _out=$(systemctl show --property=LoadState,ActiveState,MainPID --value "${_name}.service" 2>/dev/null); _rc=$?
+    (( _rc == 0 )) || { _ARGO_STOPPED_DETAIL='status query failed'; return 1; }
+    { IFS= read -r _l1; IFS= read -r _l2; IFS= read -r _l3; } <<< "$_out"
+    [[ -n "$_l1" && -n "$_l2" && -n "$_l3" ]] || { _ARGO_STOPPED_DETAIL='status query failed'; return 1; }
+    if [[ "$_l1" == not-found ]]; then
+        # Not loaded by the manager: stopped only if no unit file exists
+        # (and no dangling link) and no residue process survives.
+        if [[ -e "/etc/systemd/system/${_name}.service" || -L "/etc/systemd/system/${_name}.service" ]]; then
+            _ARGO_STOPPED_DETAIL='unit file present but not loaded by systemd'
+            return 1
+        fi
+    elif [[ "$_l1" == loaded ]]; then
+        case "$_l2" in
+            active) _ARGO_STOPPED_DETAIL='still running'; return 1 ;;
+            inactive)
+                [[ "$_l3" == 0 ]] || { _ARGO_STOPPED_DETAIL='inconsistent manager state'; return 1; }
+                ;;
+            *) _ARGO_STOPPED_DETAIL='unit state unknown'; return 1 ;;
+        esac
+    else
+        _ARGO_STOPPED_DETAIL='unit state unknown'
+        return 1
+    fi
+    local _residue='' _p
+    if ! _residue=$(_argo_live_cloudflared_pids); then
+        _ARGO_STOPPED_DETAIL='process check unavailable'
+        return 1
+    fi
+    while IFS= read -r _p; do
+        [[ -n "$_p" ]] || continue
+        if ! _argo_cloudflared_pid_attributed "$_p" "$_name"; then
+            _ARGO_STOPPED_DETAIL="unattributed cloudflared process (pid $_p)"
+            return 1
+        fi
+    done <<< "$_residue"
+    _ARGO_STOPPED_DETAIL='stopped'
+    return 0
+}
+
+_argo_stopped_confirmed_openrc() { # $1 = unit name -> 0 iff confirmed stopped
+    local _name="$1" _pid='' _p
+    local _pf="/run/${_name}.pid"
+    if [[ -e "$_pf" || -L "$_pf" ]]; then
+        [[ -f "$_pf" && ! -L "$_pf" ]] || { _ARGO_STOPPED_DETAIL='pidfile unreadable'; return 1; }
+        _pid=$(< "$_pf")
+        [[ "$_pid" =~ ^[0-9]+$ ]] && (( 10#$_pid > 0 )) || { _ARGO_STOPPED_DETAIL='pidfile unreadable'; return 1; }
+        if kill -0 "$_pid" 2>/dev/null; then
+            _ARGO_STOPPED_DETAIL='still running'
+            return 1
+        fi
+        # kill -0 failed: ESRCH means dead; a /proc entry means the
+        # process exists but cannot be signalled: unknown, not dead.
+        if [[ -d "/proc/$_pid" ]]; then
+            _ARGO_STOPPED_DETAIL='status query failed'
+            return 1
+        fi
+        # Stale pidfile: fall through to the process scan below, in case
+        # a live cloudflared survives under another pid.
+    fi
+    local _residue=''
+    if ! _residue=$(_argo_live_cloudflared_pids); then
+        _ARGO_STOPPED_DETAIL='process check unavailable'
+        return 1
+    fi
+    while IFS= read -r _p; do
+        [[ -n "$_p" ]] || continue
+        if ! _argo_cloudflared_pid_attributed "$_p" "$_name"; then
+            _ARGO_STOPPED_DETAIL="unattributed cloudflared process (pid $_p)"
+            return 1
+        fi
+    done <<< "$_residue"
+    _ARGO_STOPPED_DETAIL='stopped'
+    return 0
+}
+
+argo_unit_stopped_confirmed() { # $1 = unit name -> 0 iff confirmed stopped
+    local name="$1"
+    _ARGO_STOPPED_DETAIL=''
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        _argo_stopped_confirmed_systemd "$name"
+    else
+        _argo_stopped_confirmed_openrc "$name"
     fi
 }
 
@@ -24138,12 +24280,15 @@ argo_uninstall() {
     # other uninstall side effect: stopping it is forbidden, and
     # proceeding would leave a half-uninstalled state behind the
     # strict stop check below.
+    # R11-C (R6-1): the check is argo_unit_stopped_confirmed, so an
+    # unconfirmable (unknown) state refuses exactly like an active one.
     local -a _argo_remove_targets=()
     for _u in argo argo-vmess argo-vless; do
         if argo_unit_managed "$_u"; then
             _argo_remove_targets+=("$_u")
-        elif argo_unit_active "$_u"; then
+        elif ! argo_unit_stopped_confirmed "$_u"; then
             msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
+            msg "${YELLOW}[!] Argo unit ${_u} could not be confirmed stopped (${_ARGO_STOPPED_DETAIL:-unknown reason}); refusing to uninstall.${NC}"
             return 1
         fi
     done
@@ -24210,17 +24355,23 @@ argo_uninstall() {
     # their files. Checking after deletion is vacuous: a deleted
     # unit reports inactive even when its process survives as
     # an orphan, and uninstall would report success over it.
-    for _u in argo argo-vmess argo-vless; do
-        if argo_unit_managed "$_u" && argo_unit_active "$_u"; then
-            if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-                systemctl stop "$_u.service" >/dev/null 2>&1 || true
-            else
-                rc-service "$_u" stop >/dev/null 2>&1 || true
-            fi
-            if argo_unit_active "$_u"; then
-                msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
-                return 1
-            fi
+    # R11-C (R6-1): two phases. Phase 1 stops every frozen managed
+    # target unconditionally: the old "worth stopping" gate used
+    # argo_unit_active, so a unit whose status query failed was
+    # never stopped at all. Phase 2 confirms every frozen target
+    # stopped with argo_unit_stopped_confirmed; unknown refuses.
+    for _u in "${_argo_remove_targets[@]}"; do
+        if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+            systemctl stop "$_u.service" >/dev/null 2>&1 || true
+        else
+            rc-service "$_u" stop >/dev/null 2>&1 || true
+        fi
+    done
+    for _u in "${_argo_remove_targets[@]}"; do
+        if ! argo_unit_stopped_confirmed "$_u"; then
+            msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
+            msg "${YELLOW}[!] Argo unit ${_u} could not be confirmed stopped (${_ARGO_STOPPED_DETAIL:-unknown reason}); refusing to uninstall.${NC}"
+            return 1
         fi
     done
     for _u in "${_argo_remove_targets[@]}"; do
@@ -24229,14 +24380,6 @@ argo_uninstall() {
             return 1
         fi
     done
-    # Strict stop check: a unit that refused to stop must not
-    # be papered over by deleting its state, token and link.
-    # State is kept so the uninstall can be retried or the
-    # leftover unit inspected; success is not reported.
-    if argo_unit_active argo || argo_unit_active argo-vmess || argo_unit_active argo-vless; then
-        msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
-        return 1
-    fi
     # R6-F08-6: final gate before committing the uninstall. Frozen managed
     # units must be gone (no file, no dangling link); reload so a previous
     # run that deleted files but failed reload can still be retried to green.
@@ -24248,6 +24391,21 @@ argo_uninstall() {
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then _upath="/etc/systemd/system/${_u}.service"; else _upath="/etc/init.d/${_u}"; fi
         if [[ -e "$_upath" || -L "$_upath" ]]; then
             msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
+            return 1
+        fi
+    done
+    # R11-C (R6-1): final stop confirmation, AFTER the reload/path
+    # re-check above and BEFORE state cleanup: every name must be
+    # confirmed stopped (not merely "not active"), so a daemon that
+    # survived deletion of its unit file still blocks the uninstall
+    # instead of being papered over by deleting state and token.
+    # A unit that refused to stop must not be papered over by
+    # deleting its state, token and link; state is kept so the
+    # uninstall can be retried or the leftover unit inspected.
+    for _u in argo argo-vmess argo-vless; do
+        if ! argo_unit_stopped_confirmed "$_u"; then
+            msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
+            msg "${YELLOW}[!] Argo unit ${_u} could not be confirmed stopped (${_ARGO_STOPPED_DETAIL:-unknown reason}); refusing to uninstall.${NC}"
             return 1
         fi
     done
@@ -31532,7 +31690,7 @@ _ss_b64_strict() {
     body="${s%%=*}"
     pad="${s:${#body}}"
     [[ "$pad" == "" || "$pad" == "=" || "$pad" == "==" ]] || return 1
-    [[ "$body" =~ ^[A-Za-z0-9+/-]+$ ]] || return 1
+    [[ "$body" =~ ^[A-Za-z0-9+/_-]+$ ]] || return 1
     if [[ "$body" == *[-_]* ]]; then [[ "$body" != *[+/]* ]] || return 1; fi
     (( (${#s} % 4) != 1 )) || return 1
     users_b64url_dec "$s"
@@ -37447,8 +37605,40 @@ inline_authorization = re.compile(
     r"(?i)(\b(?:authorization|proxy-authorization)\s*[:=]\s*)(?:Bearer\s+\S+|Basic\s+\S+|\S+)"
 )
 inline_cookie = re.compile(r"(?i)(\b(?:cookie|set-cookie)\s*[:=]\s*)[^\r\n]+")
+
+# R11-C (R5-1): tempered-greedy unquoted value. A plain [^\r\n}"]+ tail
+# swallows a following "key: value" on the same line, so re.sub never
+# re-scans the consumed key and its quoted value leaks. The unquoted
+# branch now stops before a following secret key-head (after an
+# optional , or ; separator), while still consuming a plain comma tail
+# in full (F13-2: "abcd,efgh" stays one redacted value). The two rules
+# keep their own key tables (inline has \b and no authorization|cookie;
+# text has both and no \b); only the constructor is shared.
+_INLINE_KEY_HEAD = (
+    r"""[\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
+    r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
+    r"""|ss_pass|hy2_pass|hy2_obfs)\b[\"']?\s*[:=]"""
+)
+_TEXT_KEY_HEAD = (
+    r"""[\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
+    r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
+    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]"""
+)
+
+
+def _unquoted_value(head):
+    # (?:(?!STOP)ATOM)+ with STOP = optional ,/; separator + key-head.
+    return (
+        r"""(?:(?!(?:[,;][^\S\r\n]*)?"""
+        + head
+        + r""")[^\r\n}\"])+"""
+    )
+
+
 inline_secret_assignment = re.compile(
-    r"(?i)([\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|ss_pass|hy2_pass|hy2_obfs)\b[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|[^\r\n}\"]+)"
+    r"(?i)(" + _INLINE_KEY_HEAD + r"\s*)(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|"
+    + _unquoted_value(_INLINE_KEY_HEAD)
+    + r")"
 )
 
 
@@ -37646,7 +37836,9 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|[^\r\n}\"]+)",
+        r"(?i)(" + _TEXT_KEY_HEAD + r"\s*)(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|"
+        + _unquoted_value(_TEXT_KEY_HEAD)
+        + r")",
         r'\1"***REDACTED***"',
         text,
     )
@@ -41386,8 +41578,8 @@ wallos_rollback_to_version() {
             msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"
             return 1
         fi
-        # R10-F14-3: take the freshly pulled image ID FIRST (it is
-        # the archive-derived ID now), then restore the saved global.
+        # R11-C (R2-10-1): take the freshly loaded image's daemon
+        # store-native ID FIRST, then restore the saved global.
         run_image="${WALLOS_IMAGE_RESULT:-}"
         WALLOS_IMAGE_RESULT="$_saved_result"
         [[ "$run_image" =~ ^sha256:[0-9a-f]{64}$ ]] || { msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"; return 1; }
@@ -41563,8 +41755,11 @@ _wallos_pull_versioned_image() {
         msg "${RED}Wallos versioned archive checksum mismatch; refusing.${NC}"
         return 1
     fi
-    # R10-F14-3: derive the image ID from the authenticated archive
-    # before docker load and before $work is deleted below.
+    # R11-C (R2-10-1): derive the config digest from the authenticated
+    # archive as a sanity check only. Under a containerd image store
+    # the daemon's .Id is the manifest/index digest, not the config
+    # digest, so this value must never be used as the run target or
+    # for an image inspect; the run target comes from the daemon.
     local _archive_id
     _archive_id=$(wallos_image_id_from_archive "$work/$asset") || { rm -rf -- "$work"; return 1; }
     [[ "$_archive_id" =~ ^sha256:[0-9a-f]{64}$ ]] || { rm -rf -- "$work"; return 1; }
@@ -41574,12 +41769,14 @@ _wallos_pull_versioned_image() {
         rm -rf -- "$work"; return 1
     fi
     rm -rf -- "$work"
-    # R10-F14-3: adopt the archive-derived ID; the tag only cross-checks.
+    # R11-C (R2-10-1): adopt the daemon-reported store-native .Id.
+    # An inspect failure refuses; a malformed ID refuses. The config
+    # digest above is not the daemon's addressable image ID.
     local _archive_tag_id
-    _archive_tag_id=$(docker image inspect --format '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
-    [[ "$_archive_tag_id" == "$_archive_id" ]] || return 1
+    _archive_tag_id=$(docker image inspect --format '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null) || return 1
+    [[ "$_archive_tag_id" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
     wallos_record_image "bellamy/wallos:$image_tag"
-    WALLOS_IMAGE_RESULT="$_archive_id"
+    WALLOS_IMAGE_RESULT="$_archive_tag_id"
     WALLOS_IMAGE_VERSION="$image_tag"
     return 0
 }
@@ -41816,10 +42013,12 @@ wallos_pull_or_restore_image() {
     fi
     # N-3: Verify docker load loaded exactly the single expected image.
     # Do NOT docker rmi beforehand (would destroy rollback image on load failure).
-    # R10-F14-3: derive the image ID from the authenticated archive
-    # BEFORE docker load and BEFORE $work is deleted below; the ID is
-    # the config JSON SHA256, so the run target is bound to the
-    # verified tarball, not to a mutable tag.
+    # R11-C (R2-10-1): derive the config digest from the authenticated
+    # archive as a sanity check only. It is the config JSON SHA256;
+    # under a containerd image store the daemon's .Id differs, so
+    # this value must never be used as the run target or for an
+    # image inspect; the run target is resolved from the daemon
+    # right after the load check below.
     local _archive_id
     _archive_id=$(wallos_image_id_from_archive "$work/$asset") || { rm -rf -- "$work"; return 1; }
     [[ "$_archive_id" =~ ^sha256:[0-9a-f]{64}$ ]] || { rm -rf -- "$work"; return 1; }
@@ -41828,6 +42027,16 @@ wallos_pull_or_restore_image() {
     if ! wallos_check_loaded_image "$load_out" "${tag#v}"; then
         rm -rf -- "$work"
         msg "${RED}$(tprintf wl_pi_archive "${tag#v}")${NC}"
+        return 1
+    fi
+    # R11-C (R2-10-1): resolve the daemon's store-native image ID once,
+    # right after the load check. Every later step (RepoDigests query,
+    # final adopt) uses this saved value; the tag is never re-resolved,
+    # so a concurrent retag cannot change which image is adopted.
+    local image_tag="${tag#v}" _loaded_id
+    if ! _loaded_id=$(docker image inspect --format '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null) || [[ ! "$_loaded_id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        rm -rf -- "$work"
+        msg "${RED}Wallos loaded image ID could not be resolved from the daemon; refusing.${NC}"
         return 1
     fi
     # D-2-FIX: Fail-closed digest check. Manifest is now hash-verified above.
@@ -41854,9 +42063,10 @@ wallos_pull_or_restore_image() {
     # membership instead. An empty list still skips the check
     # (docker load populates no RepoDigest; see the NOTE above).
     local loaded_digests
-    # R10-F14-3: query by the archive-derived ID, not the mutable tag.
-    # A failed inspect is a refusal, not an empty digest list.
-    if ! loaded_digests=$(docker image inspect --format '{{join .RepoDigests "\n"}}' "$_archive_id" 2>/dev/null); then
+    # R11-C (R2-10-1): query by the daemon ID resolved above, not the
+    # mutable tag and not the config digest. A failed inspect is a
+    # refusal, not an empty digest list.
+    if ! loaded_digests=$(docker image inspect --format '{{join .RepoDigests "\n"}}' "$_loaded_id" 2>/dev/null); then
         rm -rf -- "$work"
         msg "${RED}Wallos loaded image digest check failed; refusing.${NC}"
         return 1
@@ -41880,23 +42090,11 @@ wallos_pull_or_restore_image() {
         return 1
     fi
     rm -rf -- "$work"
-    local image_tag="${tag#v}" _loaded_id
-    # R10-F14-3: cross-check the tag against the archive-derived ID.
-    # The tag is used only for consistency; the run target is always
-    # the archive ID, so a concurrent retag cannot change which image
-    # is adopted. The config ID was computed from the authenticated
-    # archive above, not from a post-load tag query (U115); a manifest
-    # digest cannot be used here because docker load populates no
-    # RepoDigest.
-    _loaded_id=$(docker image inspect --format '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
-    if [[ "$_loaded_id" == "$_archive_id" ]]; then
-        WALLOS_IMAGE_RESULT="$_archive_id"
-        wallos_record_image "bellamy/wallos:$image_tag"
-    else
-        # S136: never silently downgrade to the mutable tag here.
-        msg "${RED}Wallos loaded image ID does not match the verified archive; refusing.${NC}"
-        return 1
-    fi
+    # R11-C (R2-10-1): adopt the daemon ID resolved after the load
+    # check above. Do not resolve the tag again here: the saved value
+    # is the single source of truth for the run target.
+    WALLOS_IMAGE_RESULT="$_loaded_id"
+    wallos_record_image "bellamy/wallos:$image_tag"
     WALLOS_IMAGE_VERSION="$image_tag"
     return 0
 }
@@ -42386,7 +42584,7 @@ EOF_B15_SIDECAR
     if [[ -n "$_fs_mode" ]]; then
         local _rb_image='' _rb_port='' _rb_tz='' _rb_bind='' _rb_version=''
         local _rb_mode='' _rb_pubport='' _rb_cfhost=''
-        local _rb_layout_changed=0 _rb_new_port=0
+        local _rb_layout_changed=0
         _rb_image=$(wallos_state_value IMAGE 2>/dev/null || true)
         _rb_port=$(wallos_state_value PORT 2>/dev/null || true)
         _rb_tz=$(wallos_state_value TZ 2>/dev/null || true)
@@ -42428,7 +42626,6 @@ EOF_B15_SIDECAR
                     return 1
                 fi
                 _rb_port="$_rb_cand"
-                _rb_new_port=1
                 _rb_layout_changed=1
             fi
         fi
@@ -42533,28 +42730,27 @@ EOF_B15_SIDECAR
                     return 1
                 fi
             else
-                # F15-1: Caddy is already running. When the B15 re-apply
-                # re-randomized the internal port, the live config may
-                # still proxy the old internal port; converge it now
-                # instead of trusting the running front. A config that
-                # already matches is left alone (no restart, no cert
-                # work). Q was only re-randomized in the https branch
-                # above, so _rb_new_port is 0/unset otherwise.
-                if [[ "${_rb_new_port:-0}" == 1 ]]; then
-                    _rec_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
-                    if ! _wallos_caddy_config_matches "$_rec_pubport" "$old_port"; then
-                        if [[ ! "$_rec_pubport" =~ ^[0-9]+$ ]] || ! wallos_https_setup "$_rec_pubport" "$old_port"; then
-                            if ! wallos_https_teardown >/dev/null 2>&1; then
-                                msg "${RED}$(tr_msg wl_rc_caddy_teardown_fail)${NC}"
-                            fi
-                            msg "${RED}Recovery restored Wallos but its Caddy frontend is not running; refusing to report success, journal kept.${NC}"
-                            return 1
+                # R11-C (R5-2): Caddy is already running. Always verify
+                # the live config against the effective layout (the
+                # rebuild port in $old_port): a port change that did
+                # not come from the re-randomize path above (e.g. a
+                # journal/backup mismatch, or a restored state with
+                # no sidecar) leaves the live config proxying a dead
+                # port, and no flag can see it. A config that already
+                # matches is left alone (no restart, no cert work).
+                _rec_pubport=$(wallos_state_value PUBPORT 2>/dev/null || true)
+                if ! _wallos_caddy_config_matches "$_rec_pubport" "$old_port"; then
+                    if [[ ! "$_rec_pubport" =~ ^[0-9]+$ ]] || ! wallos_https_setup "$_rec_pubport" "$old_port"; then
+                        if ! wallos_https_teardown >/dev/null 2>&1; then
+                            msg "${RED}$(tr_msg wl_rc_caddy_teardown_fail)${NC}"
                         fi
-                        if ! is_service_running abox-wallos-caddy 2>/dev/null; then
-                            wallos_https_teardown >/dev/null 2>&1 || msg "${RED}$(tr_msg wl_rc_caddy_teardown_fail)${NC}"
-                            msg "${RED}Recovery restored Wallos but its Caddy frontend is not running; refusing to report success, journal kept.${NC}"
-                            return 1
-                        fi
+                        msg "${RED}Recovery restored Wallos but its Caddy frontend is not running; refusing to report success, journal kept.${NC}"
+                        return 1
+                    fi
+                    if ! is_service_running abox-wallos-caddy 2>/dev/null; then
+                        wallos_https_teardown >/dev/null 2>&1 || msg "${RED}$(tr_msg wl_rc_caddy_teardown_fail)${NC}"
+                        msg "${RED}Recovery restored Wallos but its Caddy frontend is not running; refusing to report success, journal kept.${NC}"
+                        return 1
                     fi
                 fi
             fi

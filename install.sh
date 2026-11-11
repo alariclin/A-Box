@@ -38142,9 +38142,37 @@ _AUTH_QUOTED_TAIL = (
     r"""|'(?:\\[^\r\n]|[^'\\\r\n])*(?:'|(?=\r?\n|\Z)))"""
 )
 
+# R16-A (N02): repeatable quoted segment for EXTRA segments after the first one.
+# Closed dq/sq, or unterminated whose FIRST content char is not `}` (a leftover JSON
+# closing-quote + `}` must never be eaten as a fake segment). The guard `(?![ \t]*:)`
+# (applied at each use) keeps quoted KEYs such as `"safe":` out of the value.
+_AUTH_QUOTED_TAIL_REPEAT = (
+    r"""(?:"(?:\\[^\r\n]|[^"\\\r\n])*"|'(?:\\[^\r\n]|[^'\\\r\n])*'|"(?:\\[^\r\n]|[^"\\\r\n}])(?:\\[^\r\n]|[^"\\\r\n])*(?=\r?\n|\Z)|'(?:\\[^\r\n]|[^'\\\r\n}])(?:\\[^\r\n]|[^'\\\r\n])*(?=\r?\n|\Z))"""
+)
+
+# R16-A (N02): extra quoted segments after a value (bridge of bare chars, then one
+# or more separator + quoted segment, each guarded against quoted keys). No END
+# lookahead: it would drop S2 in `"S1" "S2" "safe": "v"` (guard already rejects keys).
+_AUTH_EXTRA = (
+    r"""(?:[^ \t\r\n,;:}"'\\]*"""
+    r"""(?:[ \t]*,?[ \t]*""" + _AUTH_QUOTED_TAIL_REPEAT + r"""(?![ \t]*:))+)?"""
+)
+
+# R16-A (W-01): precise quoted-key head (escape-aware dq, doubled-apostrophe sq).
+_QUOTED_KEY_HEAD = (
+    r"""(?:"(?:\\[^\r\n]|[^"\\\r\n])*"|'(?:''|[^'\r\n])*')[ \t]*[:=]"""
+)
+
+# R16-A (W-01 b): tempered plain branch; stops before a quoted key-head too
+# (not only sensitive HEADs), so `, "safe":` survives the auth rule itself.
+_AUTH_PLAIN = (
+    r"""(?:[^\s,;}]|[,;}](?!""" + _COMMENT_GAP + r"""(?:""" + _AUTH_STOP_HEAD
+    + r"""|""" + _QUOTED_KEY_HEAD + r""")))+"""
+)
+
 _AUTH_VALUE = (
-    r"(?:[^\s,;}]*:[ \t]+" + _AUTH_QUOTED_TAIL
-    + r"|(?:[^\s,;}]|[,;}](?!" + _COMMENT_GAP + _AUTH_STOP_HEAD + r"))+)"
+    r"(?:[^\s,;}]*[ \t]*:[ \t]+" + _AUTH_QUOTED_TAIL + _AUTH_EXTRA
+    + r"|" + _AUTH_PLAIN + _AUTH_EXTRA + r")"
 )
 
 inline_authorization = re.compile(
@@ -38176,9 +38204,9 @@ _TEXT_KEY_HEAD = (
 def _unquoted_value(head):
     # (?:(?!STOP)ATOM)+ with STOP = optional ,/; separator + key-head.
     return (
-        r"""(?:(?!(?:[,;][^\S\r\n]*)?"""
+        r"""(?:(?!(?:[,;][^\S\r\n]*)?(?:"""
         + head
-        + r""")[^\r\n}\"])+"""
+        + r"""|""" + _QUOTED_KEY_HEAD + r"""))[^\r\n}\"])+"""
     )
 
 
@@ -38547,7 +38575,7 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)(\b(?:authorization|proxy-authorization)" + _COMMENT_GAP + r":" + _COMMENT_GAP + r")(?:bearer\s+(?:[^\s,;}]*:[ \t]+" + _AUTH_QUOTED_TAIL + r"|[^\s,;}]+)|basic\s+(?:[^\s,;}]*:[ \t]+" + _AUTH_QUOTED_TAIL + r"|[^\s,;}]+)|[^\s,;}]+)",
+        r"(?i)(\b(?:authorization|proxy-authorization)" + _COMMENT_GAP + r":" + _COMMENT_GAP + r")(?:bearer\s+(?:[^\s,;}]*[ \t]*:[ \t]+" + _AUTH_QUOTED_TAIL + _AUTH_EXTRA + r"|[^\s,;}]+" + _AUTH_EXTRA + r")|basic\s+(?:[^\s,;}]*[ \t]*:[ \t]+" + _AUTH_QUOTED_TAIL + _AUTH_EXTRA + r"|[^\s,;}]+" + _AUTH_EXTRA + r")|[^\s,;}]+" + _AUTH_EXTRA + r")",
         r'\1***REDACTED***',
         text,
     )
@@ -38703,8 +38731,9 @@ PY_REDACT
         fi
         printf '%s\n' "$_redact_input" | sed -E \
             -e 's/(UUID|SS_PASS|HY2_PASS|HY2_OBFS|HY2_ACME_DNS_CF_API_TOKEN|PUBLIC_KEY|SHORT_ID)=.*/\1=***REDACTED***/Ig' \
-            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)(Bearer|Basic)[[:space:]]+([^,;[:space:]}]*:[[:blank:]]+("(\\.|[^"\\])*("|$)|'"'"'(\\.|[^'"'"'\\])*('"'"'|$))|[^,;[:space:]}"]*("+[^,;[:space:]}"]+)+|[^,;[:space:]}"]+)/\1\3 ***REDACTED***/Ig' \
-            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)[^,;[:space:]}"]+/\1***REDACTED***/Ig' \
+            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)(Bearer|Basic)[[:space:]]+([^,;[:space:]}]*[[:blank:]]*:[[:blank:]]+("(\\.|[^"\\])*("|$)|'"'"'(\\.|[^'"'"'\\])*('"'"'|$))|[^,;[:space:]}"]*("+[^,;[:space:]}"]+)+|[^,;[:space:]}"]+)/\1\3 ***REDACTED***/Ig' \
+            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*(Bearer[[:space:]]+|Basic[[:space:]]+)?)[^,;[:space:]}"]+([[:blank:]]*,?[[:blank:]]*("(\\.|[^"\\])*"|"(\\.|[^"\\}])(\\.|[^"\\])*$))+([[:blank:]]*"?[[:blank:]]*[,;}]|[[:blank:]]*$|[[:blank:]]*"[^"]*"[[:blank:]]*:)/\1***REDACTED***\9/Ig' \
+            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)([^,;[:space:]}"]+:[[:blank:]]+"(\\.|[^"\\])*"([[:blank:]]*([^[:space:]:]|$))|[^,;[:space:]}"]+)/\1***REDACTED***\5/Ig' \
             -e 's/((Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*)[^,}[:cntrl:]"[:space:]][^,}[:cntrl:]"]*/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
@@ -38727,7 +38756,7 @@ PY_REDACT
             -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]+-[^][:space:],}"'"'"']*)/\1\2***REDACTED***/Ig' \
             -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]*([^]/[:space:],}"'"'"'0-9-]|\/[^][:space:],}"'"'"'*])[^][:space:],}"'"'"']*)/\1***REDACTED***/Ig' \
             -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]*([^]/[:space:],}"'"'"'0-9-]|\/[^][:space:],}"'"'"'*])[^][:space:],}"'"'"']*)/\1\2***REDACTED***/Ig' \
-            -e 's/(["'"'"' ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["'"'"' ]?[[:space:]]*[:=][[:space:]]*)[^}"'"'"'[:space:]][^}"\r]*/\1***REDACTED***/Ig' \
+            -e 's/(["'"'"' ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["'"'"' ]?[[:space:]]*[:=][[:space:]]*)[^}"'"'"'[:space:]][^}"\r,]*(,[[:blank:]]*([^"'"'"'[:space:],][^}"\r,]*|("(\\.|[^"\\])*"|'"'"'([^'"'"']|'"'"''"'"')*'"'"')([[:blank:]]+[^}"'"'"'[:space:],:=][^}"\r,]*)?))*([[:blank:]]*[,;}"\r]|[[:blank:]]*$)/\1***REDACTED***\9/Ig' \
             -e 's/(["'"'"' ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["'"'"' ]?[[:space:]]*[:=][[:space:]]*[" ]?)[^,}[:space:]["]+/\1***REDACTED***/Ig' \
             -e 's/(vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess):\/\/[^[:space:]]+/***CLIENT_LINK_REDACTED***/Ig' \
         -e 's/(https?|ftp):\/\/[^\/[:space:]@]+@/\1***REDACTED***@/Ig'
@@ -50619,19 +50648,19 @@ PY_SELFTEST_TAR
     # redact_secrets_stream with python3 hidden (same hiding as the
     # block above). Exact-equality: the RHS of [[ == ]] is quoted so the
     # asterisks in ***REDACTED*** are literal, not globs. Rules without
-    # suitable direct pristine assertions (07 dead behind the D2 array
-    # scan; 18: nested discrimination would lock a visible tail the
-    # broken version redacts; 22/24 subsumed by earlier rules 20/21)
+    # suitable direct pristine assertions (08 dead behind the D2 array
+    # scan; 19: nested discrimination would lock a visible tail the
+    # broken version redacts; 23/25 subsumed by earlier rules 21/22)
     # are covered via their guard rules and the D2 positives below, not
-    # faked as direct assertions. Rule 19 has a clean nested-input guard
-    # below; it is not subsumed by rules 20/21.
+    # faked as direct assertions. Rule 20 has a clean nested-input guard
+    # below; it is not subsumed by rules 21/22.
     # Rule 02 pre-fix evidence: the separating key-head case
     # (Bearer token: "S", also secret: "S") leaks on both sed and Python.
     # The embedded-double-quote case (Bearer A"B) leaks only on sed,
     # but does not separate rule 02. These are distinct findings.
     # Two cases use
     # relaxed checks on purpose: r09 (gone-kind: tail secret gone +
-    # visible kept, quotes not prescribed -- rule 27 eats them) and the
+    # visible kept, quotes not prescribed -- rule 28 eats them) and the
     # edge cases (bytes-kind: file+cmp, because $(...) strips trailing
     # newlines and cannot pin empty-input / no-trailing-LF bytes).
     _fb_bad=$( (

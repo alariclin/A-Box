@@ -41,14 +41,14 @@ A-Box یک اسکریپت Bash تک‌فایل است (`install.sh`، حدود �
 منبع رسمی، با دستور قفل‌شده روی یک کامیت تغییرناپذیر:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/322314272339dfcb6b9371ad8838d1b0ebc89bab/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/58a7c0c2bc40373464d973167c7554e53c6f457b/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 آینه شخص ثالث همان فایل قفل‌شده (فقط مسیر انتقال است، نه یک درگاه رسمی). آن را مستقیم اجرا نکنید: ابتدا دانلود کنید، سپس بایت‌به‌بایت با منبع رسمی مقایسه کنید و تنها پس از تطابق اجرا کنید. آینه را فقط زمانی به کار ببرید که به پروکسی اعتماد دارید؛ فایل آینه بررسی‌نشده را هرگز در محیط واقعی اجرا نکنید:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/322314272339dfcb6b9371ad8838d1b0ebc89bab/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/322314272339dfcb6b9371ad8838d1b0ebc89bab/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/58a7c0c2bc40373464d973167c7554e53c6f457b/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/58a7c0c2bc40373464d973167c7554e53c6f457b/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 

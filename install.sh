@@ -481,9 +481,18 @@ abox_run_wait() {
 # cache only: every failure is swallowed, never fails a deployment.
 register_standalone_link() {
     local _key="$1" _title="$2"; shift 2
-    local _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _tmp
+    local _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _tmp _owner
     mkdir -p "$_dir" 2>/dev/null || return 0
-    chmod 700 "$_dir" 2>/dev/null || true
+    # R8-F1-1 (hardening/加固，防御纵深，非已确认漏洞): refuse a
+    # symlinked or non-root-owned cache dir before chmod/mktemp
+    # can follow it: chmod would retarget an outside dir and the
+    # credential would land in the link target. Display cache
+    # only, so every refusal is a silent return 0, never a
+    # deployment failure.
+    [[ -d "$_dir" && ! -L "$_dir" ]] || return 0
+    _owner=$(stat -c '%u' -- "$_dir" 2>/dev/null) || return 0
+    [[ "$_owner" == 0 ]] || return 0
+    chmod 700 "$_dir" 2>/dev/null || return 0
     _tmp=$(mktemp "$_dir/.tmp.XXXXXX" 2>/dev/null) || return 0
     { printf '%s\n' "$_title"; printf '%s\n' "$@"; } > "$_tmp" 2>/dev/null         || { rm -f -- "$_tmp"; return 0; }
     chmod 600 "$_tmp" 2>/dev/null || true
@@ -558,6 +567,32 @@ _tsv_unescape() {
     _tu_res="$_tu_out"
 }
 
+# R8-F1-3: a cached shadowtls link whose ss:// URI carries exactly one
+# shadow-tls query parameter, and that parameter is empty, is a proven-bad
+# link published by the old unchecked pipeline. The rebuild gate treats
+# it as missing so the next rebuild retries. Anything else that exists (a
+# valid link, unparseable content, a duplicate parameter) is left alone —
+# never deleted or rebuilt on suspicion.
+_standalone_link_is_empty_shadowtls() {
+    local _f="$1" _uri='' _q='' _part='' _n=0 _empty=0
+    [[ -f "$_f" && ! -L "$_f" ]] || return 1
+    [[ "$(grep -c '^ss://' "$_f" 2>/dev/null || true)" == 1 ]] || return 1
+    _uri=$(grep -m1 '^ss://' "$_f" 2>/dev/null) || return 1
+    [[ "$_uri" == *'?'* ]] || return 1
+    _q="${_uri#*\?}"
+    _q="${_q%%#*}"
+    while [[ -n "$_q" ]]; do
+        _part="${_q%%&*}"
+        case "$_part" in
+            'shadow-tls=') _n=$((_n + 1)); _empty=1 ;;
+            'shadow-tls='*) _n=$((_n + 1)) ;;
+        esac
+        [[ "$_q" == *'&'* ]] || break
+        _q="${_q#*&}"
+    done
+    (( _n == 1 && _empty == 1 ))
+}
+
 # Rebuild missing standalone registry entries from the live core configs
 # (nodes deployed before the registry existed). Best-effort: a node with
 # no data at all for a link is skipped silently; partial data warns. Argo is registry-only - its
@@ -566,7 +601,7 @@ rebuild_standalone_links() {
     local _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ip="${F_IP:-}"
     [[ -n "$_ip" && "$_ip" != 'N/A' ]] || return 0
     local _xc="${ABOX_XRAY_CFG:-/usr/local/etc/xray/config.json}" _sc="${ABOX_SB_CFG:-/etc/sing-box/config.json}"
-    local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url=''
+    local _port='' _pass='' _sni='' _sid='' _pk='' _pub='' _uuid='' _cc='' _inner='' _user='' _cert='' _insecure='' _iss='' _sub='' _obfs='' _obfs_raw='' _url='' _cert_inline='' _meta=''
     if [[ -f "$_xc" ]]; then
         if [[ ! -f "$_dir/trojan-xray.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _svc=''; _wspath=''; _wshost=''; _xpath=''
@@ -636,11 +671,27 @@ rebuild_standalone_links() {
             _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // "")] | @tsv' "$_sc" 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert
             _tsv_unescape "$_uuid" _uuid; _tsv_unescape "$_pass" _pass; _tsv_unescape "$_cc" _cc; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_alpn" _alpn; _tsv_unescape "$_cert" _cert
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_uuid" && ( -n "$_pass" || "$_has_pass" == 'true' ) ]]; then
-                _insecure='allow_insecure=1'
-                if [[ -n "$_cert" && -f "$_cert" && ! -L "$_cert" ]]; then
-                    _iss=$(openssl x509 -noout -in "$_cert" -issuer 2>/dev/null | sed 's/^issuer=//')
-                    _sub=$(openssl x509 -noout -in "$_cert" -subject 2>/dev/null | sed 's/^subject=//')
-                    if [[ -n "$_iss" && -n "$_sub" && "$_iss" != "$_sub" ]]; then _insecure=''; fi
+                # R8-F1-2: fail-closed default — allow_insecure=1 is
+                # written only when the certificate is positively
+                # proven self-signed (issuer==subject). Unknown or
+                # unverifiable material never authorises skipping
+                # verification. Inline .tls.certificate takes
+                # priority over certificate_path (it is the cert
+                # sing-box actually uses); a failed inline parse
+                # must not fall back to the path for an insecure
+                # conclusion.
+                _insecure=''
+                _cert_inline=$(jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | (.tls.certificate // empty) | if type == "array" then join("\n") elif type == "string" then . else empty end' "$_sc" 2>/dev/null) || _cert_inline=''
+                if [[ -n "$_cert_inline" ]]; then
+                    _meta=$(printf '%s\n' "$_cert_inline" | openssl x509 -noout -issuer -subject 2>/dev/null) || _meta=''
+                    _iss=$(printf '%s\n' "$_meta" | sed -n 's/^issuer=//p')
+                    _sub=$(printf '%s\n' "$_meta" | sed -n 's/^subject=//p')
+                    if [[ -n "$_iss" && -n "$_sub" && "$_iss" == "$_sub" ]]; then _insecure='allow_insecure=1'; fi
+                elif [[ -n "$_cert" && -f "$_cert" && ! -L "$_cert" && -r "$_cert" ]]; then
+                    _meta=$(openssl x509 -noout -in "$_cert" -issuer -subject 2>/dev/null) || _meta=''
+                    _iss=$(printf '%s\n' "$_meta" | sed -n 's/^issuer=//p')
+                    _sub=$(printf '%s\n' "$_meta" | sed -n 's/^subject=//p')
+                    if [[ -n "$_iss" && -n "$_sub" && "$_iss" == "$_sub" ]]; then _insecure='allow_insecure=1'; fi
                 fi
                 register_standalone_link tuic "TUIC · 端口 ${_port}" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=${_alpn}&sni=${_sni}${_insecure:+&${_insecure}}#TUIC"
             elif [[ -n "$_port$_uuid$_pass$_cc$_sni" ]]; then
@@ -658,7 +709,12 @@ rebuild_standalone_links() {
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete anytls)${NC}" >&2
             fi
         fi
-        if [[ ! -f "$_dir/shadowtls.link" ]]; then
+        # R8-F1-3: an existing link is trusted, except a
+        # proven-empty shadow-tls parameter (see
+        # _standalone_link_is_empty_shadowtls): that is the bad
+        # link the old unchecked pipeline published, and the
+        # next rebuild must retry it instead of skipping forever.
+        if [[ ! -f "$_dir/shadowtls.link" ]] || _standalone_link_is_empty_shadowtls "$_dir/shadowtls.link"; then
             _port=''; _pass=''; _sni=''; _inner=''
             _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-in")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // "")] | @tsv' "$_sc" 2>/dev/null)" _port _pass _sni _detour
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_detour" _detour
@@ -670,11 +726,26 @@ rebuild_standalone_links() {
                     _tsv_unescape "$_inner" _inner; _tsv_unescape "$_inner_method" _inner_method; _tsv_unescape "$_inner_user" _inner_user
                     [[ -n "$_inner_method" ]] || _inner_method='2022-blake3-aes-128-gcm'
                     if [[ -n "$_inner" ]]; then
-                        local _ub _pb _cred
+                        local _ub _pb _pb_json _cred
                         if [[ -n "$_inner_user" ]]; then _cred="${_inner_method}:${_inner}:${_inner_user}"; else _cred="${_inner_method}:${_inner}"; fi
                         _ub=$(printf '%s' "${_cred}@$(uri_host "$_ip"):${_port}" | base64 | tr -d '\n\r')
-                    _pb=$(jq -cn --arg h "$_sni" --rawfile p <(printf '%s' "$_pass") '{version:"3", host:$h, password:$p}' | base64 | tr -d '\n\r')
+                    # R8-F1-3: check every encoding step before
+                    # publishing. jq runs alone so its status is
+                    # visible (the old pipeline's status was tr's);
+                    # the base64 step runs under a subshell-local
+                    # pipefail so a partial non-empty output from a
+                    # failed upstream cannot slip through. Any
+                    # failure warns and skips this registration only
+                    # (no file is published, so the next rebuild
+                    # retries); other protocols are unaffected.
+                    if _pb_json=$(jq -cn --arg h "$_sni" --rawfile p <(printf '%s' "$_pass") '{version:"3", host:$h, password:$p}') &&
+                       [[ -n "$_pb_json" ]] &&
+                       _pb=$(set -o pipefail; printf '%s' "$_pb_json" | base64 | tr -d '\n\r') &&
+                       [[ -n "$_pb" ]]; then
                         register_standalone_link shadowtls "ShadowTLS · 端口 ${_port}" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
+                    else
+                        printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
+                    fi
                     else
                         printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
                     fi
@@ -948,7 +1019,10 @@ abox_dir_tighten_secrets() {
     # opened to traversal; a symlinked secret is refused, never
     # followed. Subdirectories are not recursed into: service
     # config dirs keep their own 750/group gating, and the link
-    # dir (standalone-links.d, 700) already gates its files.
+    # dir (standalone-links.d, 700) is verified by
+    # register_standalone_link before every write (R8-F1-1
+    # hardening/加固: a symlinked or non-root-owned link dir is
+    # refused instead of assumed to gate its files).
     local dir="$1" f
     for f in "$dir/.env" "$dir/.env".* "$dir/.backup-hmac.key" "$dir"/*.tar.gz; do
         [[ -e "$f" || -L "$f" ]] || continue
@@ -8413,7 +8487,10 @@ is_yes() { [[ "${1:-}" =~ ^[Yy]$ ]]; }
 
 confirm_yes_no() {
     local prompt="$1" answer
-    read -r -p "$prompt" answer
+    # R8-F3-1: a failed read must refuse, even when it already stored
+    # a 'y' (e.g. 'y' with no trailing newline, then EOF): only a
+    # successful read plus is_yes counts as confirmation.
+    read -r -p "$prompt" answer || return 1
     is_yes "$answer"
 }
 
@@ -8681,12 +8758,16 @@ port_is_free() {
         out=$(ss -tuln 2>/dev/null) || return 1
         # awk reads the whole listing: no grep -q early exit, so no
         # SIGPIPE under pipefail can flip a busy result into "free".
-        _probe=$(printf '%s\n' "$out" | awk -v port="$port" 'NR>1 && $5 ~ (":" port "$") {found=1} END {print (found ? "busy" : "free")}') || return 1
+        # R8-F3-2: only TCP rows count — -tuln also lists UDP, and the
+        # TCP/UDP port spaces are independent. (Do NOT switch to
+        # -tln: ss drops the Netid column there, moving Local from
+        # $5 to $4, which would turn real TCP listeners free.)
+        _probe=$(printf '%s\n' "$out" | awk -v port="$port" 'NR>1 && $1 ~ /^tcp/ && $5 ~ (":" port "$") {found=1} END {print (found ? "busy" : "free")}') || return 1
         [[ "$_probe" == 'free' ]] && return 0
         return 1
     elif command -v netstat >/dev/null 2>&1; then
         out=$(netstat -tuln 2>/dev/null) || return 1
-        _probe=$(printf '%s\n' "$out" | awk -v port="$port" 'NR>2 && $4 ~ (":" port "$") {found=1} END {print (found ? "busy" : "free")}') || return 1
+        _probe=$(printf '%s\n' "$out" | awk -v port="$port" 'NR>2 && $1 ~ /^tcp/ && $4 ~ (":" port "$") {found=1} END {print (found ? "busy" : "free")}') || return 1
         [[ "$_probe" == 'free' ]] && return 0
         return 1
     else
@@ -9979,9 +10060,18 @@ service_manager() {
                 stop)
                     rc-service "$srv" stop >/dev/null 2>&1 || true
                     [[ "$(service_active_state_value "$srv" 2>/dev/null || printf '%s' unknown)" == 0 ]] || return 1
-                    # Not being in default runlevel is success; OpenRC returns non-zero then.
-                    if rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)"; then
+                    # R8-F04-1: query failure is failure — a failed
+                    # rc-update show must not be read as "not in the
+                    # default runlevel". Only a confirmed absence
+                    # (grep rc 1) may skip the del; a grep error
+                    # (rc > 1) fails like the query itself.
+                    local _openrc_default _openrc_match_rc
+                    _openrc_default=$(rc-update show default 2>/dev/null) || return 1
+                    if grep -Eq "(^|[[:space:]])${srv}([[:space:]]|$)" <<< "$_openrc_default"; then
                         rc-update del "$srv" default >/dev/null 2>&1 || return 1
+                    else
+                        _openrc_match_rc=$?
+                        [[ "$_openrc_match_rc" == 1 ]] || return 1
                     fi
                     [[ "$(service_active_state_value "$srv" 2>/dev/null || printf '%s' unknown)" == 0 ]] || return 1
                     ;;
@@ -11197,6 +11287,11 @@ users_registries_remove_core() {
         xray|sing-box) _prefixes="$1" ;;
         *) return 0 ;;
     esac
+    # R8-F04-2: refuse a symlinked registry dir before the glob can
+    # follow it into the link target. The leaf ! -L guard only covers
+    # the last component; a linked ancestor would delete ordinary
+    # files outside the registry. A missing dir stays a no-op success.
+    [[ ! -L "$_dir" ]] || return 1
     [[ -d "$_dir" ]] || return 0
     for _prefix in $_prefixes; do
         for _f in "$_dir"/${_prefix}__*.json; do
@@ -11259,6 +11354,104 @@ prune_owned_core_families_except() {
     fi
 }
 
+_core_residue_dir_known_only() {
+    # Read-only: $1 dir, rest allowed basenames (glob patterns). A pattern
+    # ending in '/' allows a subdirectory of that name (checked by the
+    # caller, never deleted on this proof alone). Absent dir: ok.
+    # Symlink dir, unknown files, unknown/empty subdirs, links, or
+    # abnormal entries: refuse. No deletion, no writes.
+    local _d="$1"; shift
+    [[ -e "$_d" || -L "$_d" ]] || return 0
+    [[ -d "$_d" && ! -L "$_d" ]] || return 1
+    local _tmp _n _base _pat _ok
+    _tmp=$(mktemp) || return 1
+    if ! find "$_d" -mindepth 1 -maxdepth 1 -print0 >"$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
+    while IFS= read -r -d '' _n; do
+        _base=$(basename "$_n")
+        _ok=0
+        for _pat in "$@"; do
+            if [[ "$_pat" == */ ]]; then
+                [[ -d "$_n" && ! -L "$_n" && "$_base" == "${_pat%/}" ]] && _ok=1
+            else
+                [[ -f "$_n" && ! -L "$_n" ]] || continue
+                case "$_base" in $_pat) _ok=1 ;; esac
+            fi
+            [[ "$_ok" == 1 ]] && break
+        done
+        if [[ "$_ok" != 1 ]]; then rm -f -- "$_tmp"; return 1; fi
+    done < "$_tmp"
+    rm -f -- "$_tmp"
+    return 0
+}
+
+_core_residue_tree_plain_files_only() {
+    # Read-only: every entry under $1 must be a plain dir or regular file;
+    # any link, fifo, socket, or device refuses. Used for the hysteria
+    # acme/ subtree once its ownership marker has proven it.
+    local _d="$1" _tmp _n
+    [[ -d "$_d" && ! -L "$_d" ]] || return 1
+    _tmp=$(mktemp) || return 1
+    if ! find "$_d" -mindepth 1 -print0 >"$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
+    while IFS= read -r -d '' _n; do
+        if [[ ! -d "$_n" && ! -f "$_n" ]] || [[ -L "$_n" ]]; then rm -f -- "$_tmp"; return 1; fi
+    done < "$_tmp"
+    rm -f -- "$_tmp"
+    return 0
+}
+
+core_family_residue_known_only() {
+    # R8-F04-3 (hardening): read-only residue precheck for the config-only
+    # removal branch. Returns 0 only when every path
+    # remove_core_family_force would delete for this family is a known
+    # A-Box path, matched by family-relative path (never by bare
+    # basename), with no symlink or abnormal entry anywhere in the tree.
+    # The binary and the service unit must be absent here (the config-only
+    # identification already requires that); one that reappears is unknown
+    # and refuses. The hysteria acme/ subtree is allowed only through its
+    # existing marker/manifest proof, never by name. A whitelist match is
+    # legacy compatibility, not proof that a known file is unmodified —
+    # when a trusted manifest exists, the manifest path is used instead.
+    local srv="$1" path core_paths=''
+    case "$srv" in
+        xray|sing-box|hysteria|xray-latest) ;;
+        *) return 1 ;;
+    esac
+    core_paths=$(core_family_paths "$srv") || return 1
+    while IFS= read -r path; do
+        [[ -n "$path" ]] || continue
+        [[ -e "$path" || -L "$path" ]] || continue
+        case "$path" in
+            /usr/local/bin/*)
+                return 1 ;;
+            /etc/init.d/*|/etc/systemd/system/*)
+                return 1 ;;
+            /etc/conf.d/*)
+                [[ -f "$path" && ! -L "$path" ]] || return 1 ;;
+            *)
+                case "$srv:$path" in
+                    xray:/usr/local/etc/xray)
+                        _core_residue_dir_known_only "$path" config.json || return 1 ;;
+                    xray:/usr/local/share/xray)
+                        _core_residue_dir_known_only "$path" geoip.dat geosite.dat || return 1 ;;
+                    sing-box:/etc/sing-box)
+                        _core_residue_dir_known_only "$path" config.json hy2.crt hy2.key tuic.crt tuic.key 'tuic-*.crt' 'tuic-*.key' || return 1 ;;
+                    hysteria:/etc/hysteria)
+                        _core_residue_dir_known_only "$path" config.yaml server.crt server.key 'acme/' || return 1
+                        if [[ -e /etc/hysteria/acme || -L /etc/hysteria/acme ]]; then
+                            { hysteria_acme_owner_marker_valid /etc/hysteria/acme/.A-Box-managed \
+                                || hysteria_acme_current_tree_matches_manifest "$ABOX_CORE_OWNERSHIP" /etc/hysteria/acme; } || return 1
+                            _core_residue_tree_plain_files_only /etc/hysteria/acme || return 1
+                        fi ;;
+                    xray-latest:/etc/ddr/xray-latest)
+                        _core_residue_dir_known_only "$path" config.json || return 1 ;;
+                    *) return 1 ;;
+                esac
+                ;;
+        esac
+    done <<< "$core_paths"
+    return 0
+}
+
 abox_owns_config_only_core_dir() {
     local srv="$1" cfg_dir='' bin='' _u='' _g='' _gid=''
     same_name_service_unit_path "$srv" >/dev/null 2>&1 && return 1
@@ -11281,7 +11474,10 @@ list_foreign_core_conflicts() {
     local srv path unit key core_paths=''
     local -A seen=()
     for srv in "$@"; do
-        { abox_owns_service "$srv" || abox_owns_config_only_core_dir "$srv"; } && continue
+        # R8-F04-3 (hardening): a config-only residue is skipped only when the
+        # read-only residue precheck also passes; unknown files stay listed
+        # as conflicts instead of being silently treated as ours.
+        { abox_owns_service "$srv" || { abox_owns_config_only_core_dir "$srv" && core_family_residue_known_only "$srv"; }; } && continue
         unit=$(same_name_service_unit_path "$srv" 2>/dev/null || true)
         if [[ -n "$unit" ]]; then
             key="${srv}|${unit}"
@@ -11440,8 +11636,39 @@ remove_owned_core_family() {
     local srv="$1" force_heal="${2:-0}" path rc core_paths=''
     if ! abox_owns_service "$srv"; then
         if abox_owns_config_only_core_dir "$srv"; then
-            remove_core_family_force "$srv" || return 1
-            return 0
+            # R8-F04-3 (hardening): a config-only residue is not proof of
+            # ownership — the old code deleted the whole family tree here
+            # without consulting the manifest. Prefer the manifest path;
+            # only a truly missing manifest may fall back to the read-only
+            # legacy residue precheck (an existing-but-unusable manifest
+            # refuses unless an explicit force-heal is in progress), and
+            # a modified/malformed manifest refuses outright. A whitelist
+            # match is legacy compatibility,
+            # not proof that a known file is unmodified.
+            remove_recorded_core_family "$srv"; rc=$?
+            case "$rc" in
+                0) return 0 ;;
+                2)
+                    if [[ -e "$ABOX_CORE_OWNERSHIP" || -L "$ABOX_CORE_OWNERSHIP" ]]; then
+                        # Manifest exists but covers nothing usable for this
+                        # family (non-compliant path, or no rows for it).
+                        # Only an explicit force-heal may fall back to the
+                        # whitelist; otherwise refuse.
+                        if [[ "$force_heal" != 1 ]]; then
+                            msg "${RED}[!] ${srv} 的归属清单存在但不可用（链接／权限／内容异常），拒绝删除配置残留；请先修复清单。${NC}"
+                            return 1
+                        fi
+                    fi
+                    core_family_residue_known_only "$srv" || return 1
+                    msg "${YELLOW}[!] ${srv} 无可用归属清单，残留预检通过（仅已知文件名，未核对内容是否被修改），按遗留兼容清理已知文件。${NC}"
+                    remove_core_family_force "$srv" || return 1
+                    return 0
+                    ;;
+                *)
+                    msg "${RED}[!] ${srv} 的归属清单校验未通过，配置残留已保留，未删除。${NC}"
+                    return 1
+                    ;;
+            esac
         fi
         if [[ "$force_heal" == 1 ]] && core_family_binary_orphaned "$srv"; then
             msg "${YELLOW}[!] ${srv} 仅剩无归属记录的二进制残留（旧版本安装、归属凭据已被先前清理删除），按显式清理流程强制移除。${NC}"
@@ -11653,7 +11880,7 @@ shortcut_read_state() {
 # (temp file in the same directory, mode 600, root:root, rename).
 # Returns 0 on success, 1 on failure (SHORTCUT_ERR set).
 shortcut_write_state() {
-    local _names="${1:-}" _file _tmp _n
+    local _names="${1:-}" _file _tmp _n _seen=' '
     local -a _arr=()
     SHORTCUT_ERR=''
     [[ "$_names" != *$'\n'* ]] || { SHORTCUT_ERR='bad_name:<newline>'; return 1; }
@@ -11661,6 +11888,12 @@ shortcut_write_state() {
     ((${#_arr[@]} > 0)) || { SHORTCUT_ERR='empty_names'; return 1; }
     for _n in "${_arr[@]}"; do
         shortcut_validate_name "$_n" || { SHORTCUT_ERR="bad_name:$_n"; return 1; }
+        # R8-F04-4: reject duplicates before any write, mirroring the
+        # reader — a duplicated name must never reach the state file.
+        case "$_seen" in
+            *" $_n "*) SHORTCUT_ERR="dup_name:$_n"; return 1 ;;
+        esac
+        _seen="$_seen$_n "
     done
     _file=$(shortcut_state_path)
     _tmp=$(umask 077; mktemp "${_file}.XXXXXX" 2>/dev/null) || { SHORTCUT_ERR='mktemp'; return 1; }

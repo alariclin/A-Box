@@ -50585,6 +50585,117 @@ PY_SELFTEST_TAR
         _fallback_redacted=$(printf '%s\n' '{"message":"Authorization: Bearer fallback-json-token", "api_key":"fallback-api-secret", "safe":"visible"}' | redact_secrets_stream)
         [[ "$_fallback_redacted" != *fallback-json-token* && "$_fallback_redacted" != *fallback-api-secret* && "$_fallback_redacted" == *visible* ]]
     ); then echo 'FAIL: sed-only diagnostic redaction fallback'; failures=$((failures + 1)); fi
+    # R14-D (round-4 review, self-test coverage gap, low | hardening):
+    # per-expression assertions for the sed-only diagnostic redaction
+    # fallback. Each case pins the PRISTINE end-to-end behaviour of
+    # redact_secrets_stream with python3 hidden (same hiding as the
+    # block above). Exact-equality: the RHS of [[ == ]] is quoted so the
+    # asterisks in ***REDACTED*** are literal, not globs. Rules that are
+    # structurally unobservable end-to-end (02: its only separating
+    # input leaks the inner value while Python redacts it -- reported as
+    # a potential under-redaction finding, not locked; 07 dead behind
+    # the D2 array scan; 18: nested discrimination would lock a visible
+    # tail the broken version redacts; 19/22/24 subsumed by earlier
+    # rules 20/21) are covered via their guard rules and the D2
+    # positives below, not faked as direct assertions. Two cases use
+    # relaxed checks on purpose: r09 (gone-kind: tail secret gone +
+    # visible kept, quotes not prescribed -- rule 27 eats them) and the
+    # edge cases (bytes-kind: file+cmp, because $(...) strips trailing
+    # newlines and cannot pin empty-input / no-trailing-LF bytes).
+    _fb_bad=$( (
+        command() {
+            if [[ "${1:-}" == '-v' && "${2:-}" == 'python3' ]]; then return 1; fi
+            builtin command "$@"
+        }
+        _fb_notice=$'[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
+        _fb_check() {
+            local label="$1" input="$2" expected="$3" out rc
+            out=$(printf '%s\n' "$input" | redact_secrets_stream 2>/dev/null); rc=$?
+            [[ $rc == 0 && "$out" == "$expected" ]] || printf 'FAIL-SED %s\n' "$label"
+        }
+        _fb_check_gone() {
+            local label="$1" input="$2" absent="$3" present="$4" out rc
+            out=$(printf '%s\n' "$input" | redact_secrets_stream 2>/dev/null); rc=$?
+            [[ $rc == 0 && "$out" != *"$absent"* && "$out" == *"$present"* ]] || printf 'FAIL-SED %s\n' "$label"
+        }
+        _fb_check_bytes() {
+            local label="$1" input="$2" expected="$3" rc
+            printf '%s' "$input" | redact_secrets_stream > "$tmp/fb-out" 2>/dev/null; rc=$?
+            if [[ $rc != 0 ]] || ! printf '%s' "$expected" | cmp -s - "$tmp/fb-out"; then printf 'FAIL-SED %s\n' "$label"; fi
+        }
+        _fb_check_d2() {
+            local label="$1" input="$2" out rc
+            out=$(printf '%s\n' "$input" | redact_secrets_stream 2>/dev/null); rc=$?
+            [[ $rc == 2 && "$out" == "$_fb_notice" ]] || printf 'FAIL-SED %s\n' "$label"
+        }
+        _fb_check $'r01-env-quote' $'UUID=ab"cd-01\n' $'UUID=***REDACTED***'
+        _fb_check $'r03-mid-sq' $'xx Authorization: \'bare-secret-03\', tail\n' $'xx Authorization: ***REDACTED***'
+        _fb_check $'r04-mid-sq-cookie' $'xx Cookie: \'sid=cookie-secret-04\', tail\n' $'xx Cookie: ***REDACTED***'
+        _fb_check $'r05-line-auth-dq' $'Authorization: "Bearer token-05"\n' $'Authorization: ***REDACTED***'
+        _fb_check $'r06-line-cookie-nospace' $'Cookie:"sid=cookie-06"\n' $'Cookie:***REDACTED***'
+        _fb_check $'r08-dq-comma' $'{"token": "a,b", "safe":"visible"}\n' $'{"token": "***REDACTED***", "safe":"visible"}'
+        _fb_check_gone $'r09-sq-tail' $'\'token\': \'sq-head,sq-tail-secret\' visible\n' $'sq-tail-secret' $'visible'
+        _fb_check $'r10-nested-dq' $'id: "id: \'inner" tail \' visible\n' $'id: "***REDACTED***" tail \' visible'
+        _fb_check $'r11-nested-comment-dq' $'xx id: /* id: "comment-secret" */ "outer-secret" visible\n' $'xx id: /* id: "***REDACTED***" */ "***REDACTED***" visible'
+        _fb_check $'r12-nested-sq' $'id: \'id: /* note */ "inner\' tail " visible\n' $'id: \'***REDACTED***\' tail " visible'
+        _fb_check $'r13-nested-comment-sq' $'xx id: /* id: \'comment-secret\' */ \'outer-secret\' visible\n' $'xx id: /* id: \'***REDACTED***\' */ \'***REDACTED***\' visible'
+        _fb_check $'r14-line-id-gap-dq' $'id: /* note */ "dq-secret-14" visible\n' $'id: /* note */ "***REDACTED***" visible'
+        _fb_check $'r15-mid-id-gap-dq' $'xx "id": /* note */ "dq-secret-15" visible\n' $'xx "id": /* note */ "***REDACTED***" visible'
+        _fb_check $'r16-line-id-gap-sq' $'id: /* note */ \'sq-secret-16\' visible\n' $'id: /* note */ \'***REDACTED***\' visible'
+        _fb_check $'r17-mid-id-gap-sq' $'xx \'id\': /* note */ \'sq-secret-17\' visible\n' $'xx \'id\': /* note */ \'***REDACTED***\' visible'
+        _fb_check $'r20-line-id-gap-bare' $'id: /* note */ 123abc-20 visible\n' $'id: /* note */ ***REDACTED*** visible'
+        _fb_check $'r21-mid-id-gap-bare' $'xx "id": /* note */ 123abc-21 visible\n' $'xx "id": /* note */ ***REDACTED*** visible'
+        _fb_check $'r23-nested-num' $'xx id: /* id: 123-secret */ 456-secret visible\n' $'xx id: /* id: ***REDACTED*** */ ***REDACTED*** visible'
+        _fb_check $'r25-nested-bare' $'xx id: /* id: 123abc */ outerabc visible\n' $'xx id: /* id: ***REDACTED*** */ ***REDACTED*** visible'
+        _fb_check $'r26-unquoted' $'token: unquoted-secret-26 visible\n' $'token: ***REDACTED***'
+        _fb_check $'r27-unterm-dq' $'token: "unterm-secret-27\n' $'token: "***REDACTED***'
+        _fb_check $'r28-link' $'see vless://link-secret-28@example.test visible\n' $'see ***CLIENT_LINK_REDACTED*** visible'
+        _fb_check $'r29-userinfo' $'see https://user:pw-secret-29@example.test/path visible\n' $'see https***REDACTED***@example.test/path visible'
+        _fb_check $'r08-api-key' $'{"api_key": "head,api-tail-secret", "safe":"visible"}\n' $'{"api_key": "***REDACTED***", "safe":"visible"}'
+        _fb_check $'r08-cert-key' $'{"HY2_CERT_PUBKEY_SHA256_B64": "head,cert-tail-secret", "safe":"visible"}\n' $'{"HY2_CERT_PUBKEY_SHA256_B64": "***REDACTED***", "safe":"visible"}'
+        _fb_check $'r05-proxy-basic' $'Proxy-Authorization: "Basic proxy-secret"\n' $'Proxy-Authorization: ***REDACTED***'
+        _fb_check $'r06-set-cookie-nospace' $'Set-Cookie:"sid=setcookie-06"\n' $'Set-Cookie:***REDACTED***'
+        _fb_check $'r01-ss-pass-env' $'SS_PASS=ab"env-tail-secret\n' $'SS_PASS=***REDACTED***'
+        _fb_check $'r28-hy2-link' $'see hy2://link-tail-secret@example.test visible\n' $'see ***CLIENT_LINK_REDACTED*** visible'
+        _fb_check_d2 $'d2-pem' $'-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n'
+        _fb_check_d2 $'d2-blockscalar' $'token: |\n  scalar-secret\n'
+        _fb_check_d2 $'d2-blockscalar-folded' $'token: >-\n  scalar-tail-secret\n'
+        _fb_check_d2 $'d2-userpass' $'userpass:\n  alice: pass-secret\n'
+        _fb_check_d2 $'d2-array' $'token: ["aaa", "bbb"]\n'
+        _fb_check_d2 $'d2-array-cert-key' $'HY2_CERT_SHA256_FP: ["cert-array-secret"]\n'
+        _fb_check_d2 $'d2-id-gap-eol-comment' $'id: /* note */\n"dq-secret"\n'
+        _fb_check_d2 $'d2-id-gap-slash' $'id: // note\n"dq-secret"\n'
+        _fb_check_d2 $'d2-id-gap-key-sep' $'id /* note */ : "dq-secret"\n'
+        _fb_check_d2 $'d2-id-gap-unterm-block' $'id: /* open\n"id-gap-tail-secret"\n'
+        _fb_check_d2 $'d2-id-gap-slash-key-sep' $'id // note\n"id-gap-tail-secret"\n'
+        _fb_check_d2 $'d2-nonid-gap-key-sep' $'token /* note */ : "gap-secret"\n'
+        _fb_check_d2 $'d2-nonid-gap-after-sep' $'token: /* note */\n"gap-secret"\n'
+        _fb_check_d2 $'d2-nonid-gap-after-sep-slash' $'token: // note\n"gap-secret"\n'
+        _fb_check_d2 $'d2-nonid-gap-slash-key-sep' $'token // note : "gap-tail-secret"\n'
+        _fb_check_d2 $'d2-nonid-gap-cert-key' $'HY2_CERT_PUBKEY_SHA256_B64 /* note */ : "cert-gap-secret"\n'
+        _fb_check_d2 $'d2-nonid-gap-env-eq' $'SS_PASS /* note */ = "env-gap-secret"\n'
+        _fb_check_d2 $'d2-nonid-gap-crlf' $'token: /* note */\r\n"gap-tail-secret"\r\n'
+        _fb_check_d2 $'d2-auth-gap-key-sep' $'Authorization /* note */ : Bearer auth-gap-secret\n'
+        _fb_check_d2 $'d2-auth-gap-slash' $'Authorization: // note\nBearer auth-gap-secret\n'
+        _fb_check_d2 $'d2-auth-gap-proxy-basic' $'Proxy-Authorization // note : Basic proxy-gap-secret\n'
+        _fb_check_d2 $'d2-cookie-gap-key-sep' $'Cookie /* note */ : sid=x\n'
+        _fb_check $'d2neg-url-value' $'token: "https://example.test"\n' $'token: "***REDACTED***"'
+        _fb_check $'d2neg-trailing-comment' $'token: "x" // note\n' $'token: "***REDACTED***" // note'
+        _fb_check $'d2neg-id-trailing-comment' $'id: "x" // note\n' $'id: "***REDACTED***" // note'
+        _fb_check $'d2neg-id-sameline-gap' $'id: /* note */ "dq-secret"\n' $'id: /* note */ "***REDACTED***"'
+        _fb_check $'d2neg-plain' $'name: "visible"\n' $'name: "visible"'
+        _fb_check $'keep-id-int' $'id: 123\n' $'id: 123'
+        _fb_check $'keep-id-negint' $'id: -123\n' $'id: -123'
+        _fb_check $'keep-id-zero' $'id: 0\n' $'id: 0'
+        _fb_check_bytes $'edge-empty' $'' $'\n'
+        _fb_check_bytes $'edge-no-trailing-lf' $'token: "notrail-secret"' $'token: "***REDACTED***"\n'
+        _fb_check_bytes $'edge-only-lf' $'\n' $'\n'
+        _fb_check_bytes $'edge-crlf' $'token: "crlf-secret"\r\n' $'token: "***REDACTED***"\r\n'
+        _fb_check_bytes $'edge-multiline' $'safe one\nsafe two\n' $'safe one\nsafe two\n'
+        _fb_check_d2 $'edge-safe-then-d2' $'name: "visible"\ntoken: /* note */\n"gap-secret"\n'
+        _fb_check_d2 $'edge-d2-then-safe' $'token: /* note */\n"gap-secret"\nname: "visible"\n'
+    ) )
+    if [[ -n "$_fb_bad" ]]; then printf '%s\n' "$_fb_bad"; failures=$((failures + $(printf '%s\n' "$_fb_bad" | grep -c '^FAIL-SED'))); fi
     if ! (
         get_public_ip() { printf '1.1.1.9\n'; }
         asn_lookup_ip() {

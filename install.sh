@@ -38645,7 +38645,11 @@ PY_REDACT
         # keeps its sed/grep/cat-only tool budget (R12-B harness) and
         # no pipeline is involved, so there is no SIGPIPE hazard.
         _redact_gap_scan="${_redact_input//$'\n'/ }"
-        if grep -qiE -- $'(^|[^A-Za-z0-9_])["\x27]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key)["\x27]?[[:space:]]*[:=][[:space:]]*(/\*|//)|(^|[^A-Za-z0-9_])["\x27]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key)["\x27]?[[:space:]]*(/\*|//)' <<< "$_redact_gap_scan"; then
+        local _redact_d2_scan_rc=2
+        if ! {
+            grep -qiE -- $'(^|[^A-Za-z0-9_])["\x27]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key)["\x27]?[[:space:]]*[:=][[:space:]]*(/\*|//)|(^|[^A-Za-z0-9_])["\x27]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key)["\x27]?[[:space:]]*(/\*|//)'
+            _redact_d2_scan_rc=$?
+        } <<< "$_redact_gap_scan" || (( _redact_d2_scan_rc != 1 )); then
             printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
             # D2: a comment in a non-id key gap pushes the value out of the
             # line the fallback can verify (or hides it entirely); the
@@ -38659,7 +38663,11 @@ PY_REDACT
         # (the value then sits on a later line, out of reach of the
         # line-based rules). Single-line `/*` after the separator stays a
         # successful redaction, not a suppression.
-        if grep -qiE -- $'(^|[^A-Za-z0-9_])["\x27]?(Authorization|Proxy-Authorization|Cookie|Set-Cookie)["\x27]?[[:space:]]*(/\*|//)|(^|[^A-Za-z0-9_])["\x27]?(Authorization|Proxy-Authorization|Cookie|Set-Cookie)["\x27]?[[:space:]]*[:=][[:space:]]*//' <<< "$_redact_gap_scan"; then
+        local _redact_d2_scan_rc=2
+        if ! {
+            grep -qiE -- $'(^|[^A-Za-z0-9_])["\x27]?(Authorization|Proxy-Authorization|Cookie|Set-Cookie)["\x27]?[[:space:]]*(/\*|//)|(^|[^A-Za-z0-9_])["\x27]?(Authorization|Proxy-Authorization|Cookie|Set-Cookie)["\x27]?[[:space:]]*[:=][[:space:]]*//'
+            _redact_d2_scan_rc=$?
+        } <<< "$_redact_gap_scan" || (( _redact_d2_scan_rc != 1 )); then
             printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
             # D2: a comment in an authorization/cookie gap the fallback
             # cannot verify; the notice above is the whole output.

@@ -21416,12 +21416,19 @@ install_file_atomically() {
     [[ -d "$dir" ]] || install -d -m 755 "$dir" || return 1
     staged=$(mktemp "${dest}.A-Box-new.XXXXXX") || return 1
     command install -m "$mode" "$src" "$staged" || { rm -f -- "$staged"; return 1; }
-    # R7C8-01: a real sync failure must fail the install, not be
-    # swallowed; _abox_sync_file still tolerates "option
-    # unsupported" (busybox) as best-effort.
+    # R7C8-01: before commit, a real staged-file sync failure must
+    # fail the install. Unsupported sync options remain best-effort.
     _abox_sync_file "$staged" || { rm -f -- "$staged"; return 1; }
     mv -f -- "$staged" "$dest" || { rm -f -- "$staged"; return 1; }
-    _abox_sync_file "$dir" || return 1
+
+    # R10-F08-5: the replacement is committed. Return 0 means installed,
+    # not guaranteed crash durability of the directory entry.
+    if ! _abox_sync_file "$dir"; then
+        builtin printf \
+            'A-Box: WARNING: target "%s" has been replaced, but parent directory "%s" sync failed; crash durability is not guaranteed.\n' \
+            "$dest" "$dir" >&2 || :
+    fi
+    return 0
 }
 
 install_binary_atomically() { install_file_atomically "$1" "$2" 755; }
@@ -29657,11 +29664,11 @@ _remove_hy2_official() {
     if command -v pgrep >/dev/null 2>&1 && pgrep -x hysteria >/dev/null 2>&1; then return 1; fi
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl disable hysteria >/dev/null 2>&1 || true
-        rm -f -- /etc/systemd/system/hysteria.service
+        rm -f -- /etc/systemd/system/hysteria.service || return 1
         systemctl daemon-reload >/dev/null 2>&1 || true
     elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
         rc-update del hysteria default >/dev/null 2>&1 || true
-        rm -f -- /etc/init.d/hysteria /etc/conf.d/hysteria
+        rm -f -- /etc/init.d/hysteria /etc/conf.d/hysteria || return 1
     fi
     # 2fv: remove the grant script and the tmpfiles.d persistence
     # entry (both are deploy artifacts of the official-hop grant).
@@ -32430,7 +32437,7 @@ _nsni_rollback() {
         if cp -a "$_linkbak" "$_link" 2>/dev/null; then rm -f "$_linkbak"; else _ok=0; fi
     fi
     if (( _ok == 1 && _was_running == 1 )); then
-        if is_systemd; then systemctl restart "$_core" >/dev/null 2>&1 || _ok=0; else rc-service "$_core" restart >/dev/null 2>&1 || _ok=0; fi
+        if is_systemd; then systemctl restart "$_core" >/dev/null 2>&1 || _ok=0; else rc-service "$_core" restart >/dev/null 2>&1 9>&- 10>&- || _ok=0; fi
     fi
     (( _ok == 1 ))
 }
@@ -32735,7 +32742,7 @@ _nsni_apply() {
     fi
     if is_service_running "$core" 2>/dev/null; then
         local _restart_ok=0
-        if is_systemd; then systemctl restart "$core" >/dev/null 2>&1 && _restart_ok=1; else rc-service "$core" restart >/dev/null 2>&1 && _restart_ok=1; fi
+        if is_systemd; then systemctl restart "$core" >/dev/null 2>&1 && _restart_ok=1; else rc-service "$core" restart >/dev/null 2>&1 9>&- 10>&- && _restart_ok=1; fi
         if (( _restart_ok == 0 )); then
             if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "" "" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
             return 1
@@ -34263,10 +34270,10 @@ EOF_DNS
     if ! write_file_atomically_from_stdin "$DNS_STATE_FILE" 600 <<< "backend=${backend};mode=${mode};v4=${v4};v6=${v6}"; then
         if restore_dns_snapshot "$dns_snap_tmp"; then
             msg "${RED}DNS state metadata could not be committed; the previous DNS configuration was restored.${NC}"
+            rm -rf -- "$dns_snap_tmp"
         else
-            msg "${RED}DNS state metadata could not be committed and automatic rollback failed. Use the DNS menu's restore option and inspect $DNS_BACKUP_DIR.${NC}"
+            msg "${RED}DNS state metadata could not be committed and automatic rollback failed. The pre-change snapshot is retained at $dns_snap_tmp; preserve it for manual recovery. $DNS_BACKUP_DIR may contain an older baseline.${NC}"
         fi
-        rm -rf -- "$dns_snap_tmp"
         return 1
     fi
     case "${ABOX_LANG:-zh}" in
@@ -34755,6 +34762,29 @@ dns_enable_doh() {
     dns_install_dnscrypt_proxy || { msg "${YELLOW}$(tr_msg dh_unavailable)${NC}"; return 1; }
     config='/etc/dnscrypt-proxy/dnscrypt-proxy.toml'
     [[ -f "$config" && ! -L "$config" ]] || { msg "${RED}$(tr_msg dh_cfg_missing)${NC}"; return 1; }
+    # R10-F12-4: a top-level forwarding_rules entry would keep some
+    # queries on plaintext forwarding after DoH is enabled. Warn
+    # before anything is changed; declining leaves the config
+    # untouched (remove the entry by hand, or keep the current DNS).
+    if awk '
+        /^[[:space:]]*#/ { next }
+        /^[[:space:]]*$/ { next }
+        /^[[:space:]]*\[/ { exit }
+        /^[[:space:]]*["'"'"']?forwarding_rules["'"'"']?[[:space:]]*=/ { found=1; exit }
+        END { exit !found }
+    ' "$config"; then
+        case "${ABOX_LANG:-zh}" in
+            en) msg "${YELLOW}Enabling DoH will disable the custom forwarding_rules entry in $config; domains listed there will no longer be forwarded as configured.${NC}"; prompt='Continue and disable forwarding_rules? [Y/N]: ' ;;
+            ru) msg "${YELLOW}Включение DoH отключит пользовательскую запись forwarding_rules в $config; домены из неё больше не будут перенаправляться как настроено.${NC}"; prompt='Продолжить и отключить forwarding_rules? [Y/N]: ' ;;
+            fa) msg "${YELLOW}فعال‌سازی DoH ورودی سفارشی forwarding_rules در $config را غیرفعال می‌کند؛ دامنه‌های فهرست‌شده دیگر طبق پیکربندی هدایت نمی‌شوند.${NC}"; prompt='ادامه و غیرفعال‌سازی forwarding_rules؟ [Y/N]: ' ;;
+            zh-tw) msg "${YELLOW}啟用 DoH 將停用 $config 中的自訂 forwarding_rules 條目；其中列出的網域將不再按原設定轉發。${NC}"; prompt='繼續並停用 forwarding_rules？[Y/N]: ' ;;
+            ja) msg "${YELLOW}DoH を有効にすると $config のカスタム forwarding_rules エントリが無効になり、一覧のドメインは設定どおり転送されなくなります。${NC}"; prompt='続行して forwarding_rules を無効にしますか？[Y/N]: ' ;;
+            *) msg "${YELLOW}启用 DoH 将停用 $config 中的自定义 forwarding_rules 条目；其中列出的域名将不再按原配置转发。${NC}"; prompt='继续并停用 forwarding_rules？[Y/N]: ' ;;
+        esac
+        if [[ "${ABOX_DOH_YES:-}" == 1 ]]; then answer='y'
+        else read -r -p "$prompt" answer; fi
+        is_yes "$answer" || return 0
+    fi
     # R11-10: socket activation hands the service the socket's own
     # listen addresses; verify BOTH typed endpoints (Stream for TCP,
     # Datagram for UDP) are exactly 127.0.0.1:5353 before any
@@ -34818,17 +34848,33 @@ server = sys.argv[3] if len(sys.argv) > 3 else 'cloudflare'
 listen = sys.argv[4] if len(sys.argv) > 4 else "['127.0.0.1:5353']"
 
 with open(source, encoding='utf-8') as handle: text = handle.read()
+def _top_level_end(lines):
+    # First real table header ends the top-level region; options under
+    # a [table] are never touched (an option set there would not apply
+    # globally, and a commented example must not be uncommented).
+    for idx, raw in enumerate(lines):
+        if raw.lstrip().startswith('['):
+            return idx
+    return len(lines)
+
+def _top_level_has_option(name):
+    # Same-scope presence check for the post-rewrite verification: a
+    # same-named key under a [table] must not be misread as a
+    # top-level entry (a plain full-text grep would misjudge it).
+    lines = text.splitlines(keepends=True)
+    top_end = _top_level_end(lines)
+    for idx in range(top_end):
+        stripped = lines[idx].lstrip()
+        if stripped.startswith('#'):
+            continue
+        if re.match(r"['\"]?" + re.escape(name) + r"['\"]?\s*=", stripped) is not None:
+            return True
+    return False
+
 def set_option(name, value):
     global text
     lines = text.splitlines(keepends=True)
-    # Top-level region ends at the first table header; options under a
-    # [table] are never touched (an option set there would not apply
-    # globally, and a commented example must not be uncommented).
-    top_end = len(lines)
-    for idx, raw in enumerate(lines):
-        if raw.lstrip().startswith('['):
-            top_end = idx
-            break
+    top_end = _top_level_end(lines)
 
     def is_assignment(raw):
         stripped = raw.lstrip()
@@ -34887,6 +34933,65 @@ def set_option(name, value):
                 text += '\n'
             text += name + ' = ' + value + '\n'
 
+def remove_option(name):
+    # R10-F12-4: delete a top-level option entry (complete assignment
+    # span), or do nothing when it is absent. Shares the top-level
+    # scope rule with set_option; unlike set_option it never inserts.
+    # A value span that cannot be bounded reliably (unterminated
+    # quote, unbalanced brackets at the region end) fails closed
+    # instead of leaving a partial assignment behind.
+    global text
+    lines = text.splitlines(keepends=True)
+    top_end = _top_level_end(lines)
+
+    def is_assignment(raw):
+        stripped = raw.lstrip()
+        if stripped.startswith('#'):
+            return False
+        return re.match(r"['\"]?" + re.escape(name) + r"['\"]?\s*=", stripped) is not None
+
+    out = []
+    idx = 0
+    while idx < top_end:
+        raw = lines[idx]
+        if is_assignment(raw):
+            depth = 0
+            j = idx
+            in_s = in_d = False
+            closed = False
+            while True:
+                segment = lines[j]
+                k = 0
+                while k < len(segment):
+                    ch = segment[k]
+                    if ch == '#' and not in_s and not in_d:
+                        break
+                    if ch == "'" and not in_d:
+                        in_s = not in_s
+                    elif ch == '"' and not in_s:
+                        in_d = not in_d
+                    elif not in_s and not in_d:
+                        if ch == '[':
+                            depth += 1
+                        elif ch == ']':
+                            depth -= 1
+                    k += 1
+                j += 1
+                if depth <= 0 and not in_s and not in_d:
+                    closed = True
+                    break
+                if j >= top_end:
+                    break
+            if not closed:
+                sys.stderr.write('cannot remove %s: value span cannot be bounded reliably\n' % name)
+                sys.exit(1)
+            idx = j
+            continue
+        out.append(raw)
+        idx += 1
+    out.extend(lines[top_end:])
+    text = ''.join(out)
+
 set_option('server_names', "['%s']" % server)
 set_option('listen_addresses', listen)
 set_option('dnscrypt_servers', 'false')
@@ -34895,6 +35000,14 @@ set_option('ipv4_servers', 'true')
 set_option('ipv6_servers', 'false')
 set_option('bootstrap_resolvers', "['9.9.9.9:53', '1.1.1.1:53']")
 set_option('ignore_system_dns', 'true')
+# R10-F12-4: a top-level forwarding_rules entry would keep matching
+# domains on plaintext forwarding after DoH is enabled. Remove the
+# entry (the rules file itself is left alone, and the pre-change
+# snapshot stays available for rollback).
+remove_option('forwarding_rules')
+if _top_level_has_option('forwarding_rules'):
+    sys.stderr.write('forwarding_rules still present at top level after rewrite\n')
+    sys.exit(1)
 with open(target, 'w', encoding='utf-8') as handle: handle.write(text)
 PY_DOH_CONFIG
     rc=$?
@@ -34917,6 +35030,10 @@ PY_DOH_CONFIG
     else
         systemctl enable --now dnscrypt-proxy >/dev/null 2>&1 || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; return 1; }
     fi
+    # R10-F12-4: this probe is an availability check only (the local
+    # proxy answers); it does not prove queries travel over DoH. The
+    # forwarding_rules entry is disabled by the rewrite above and
+    # verified absent before install, which is the actual gate.
     # R2C12-10: retry the probe (cold start needs a few
     # seconds); rollback only if every attempt fails.
     local _probe_ok=0 _probe_i=0
@@ -36623,16 +36740,16 @@ setup_swap_2g() {
             _swap_nocow=1
         fi
         if (( _swap_nocow == 1 )); then
-            : > /swapfile || die 'Swap 文件创建失败。'
+            (umask 077 && : > /swapfile) || die 'Swap 文件创建失败。'
             chattr +C /swapfile 2>/dev/null || { rm -f /swapfile; die 'Btrfs Swap 需 NOCOW 属性，chattr +C 失败。'; }
         fi
-        if ! fallocate -l 2G /swapfile 2>/dev/null; then
+        if ! (umask 077 && fallocate -l 2G /swapfile 2>/dev/null); then
             rm -f /swapfile
             if (( _swap_nocow == 1 )); then
-                : > /swapfile || die 'Swap 文件创建失败。'
+                (umask 077 && : > /swapfile) || die 'Swap 文件创建失败。'
                 chattr +C /swapfile 2>/dev/null || { rm -f /swapfile; die 'Btrfs Swap 需 NOCOW 属性，chattr +C 失败。'; }
             fi
-            dd if=/dev/zero of=/swapfile bs=1M count=2048 || { rm -f /swapfile; die 'Swap 文件创建失败。'; }
+            (umask 077 && dd if=/dev/zero of=/swapfile bs=1M count=2048) || { rm -f /swapfile; die 'Swap 文件创建失败。'; }
         fi
         created_by_abox=1
         chmod 600 /swapfile || { rm -f /swapfile; die 'Swap 文件权限设置失败。'; }
@@ -39967,9 +40084,9 @@ PY_LATEST_BACKUP
     # a live instance. An unclassifiable live layout fails the restore.
     _c2_xl_detect_rc=0
     xray_latest_legacy_detect >/dev/null 2>&1 || _c2_xl_detect_rc=$?
-    if (( _c2_xl_detect_rc == 2 )); then msg "restore gate failed: legacy xray-latest layout unclassifiable (work preserved at $work)" >&2; rm -rf "$work"; return 1; fi
-    restore_filter_legacy_xray_latest "$root" "$work" || { msg "restore gate failed: legacy-filter (work preserved at $work)" >&2; rm -rf "$work"; return 1; }
-    preserved_latest_firewall_preflight "$work/preserved-latest-firewall.plan" || { msg "restore gate failed: legacy-fw-preflight (work preserved at $work)" >&2; rm -rf "$work"; return 1; }
+    if (( _c2_xl_detect_rc == 2 )); then msg "restore gate failed: legacy xray-latest layout unclassifiable (work preserved at $work)" >&2; return 1; fi
+    restore_filter_legacy_xray_latest "$root" "$work" || { msg "restore gate failed: legacy-filter (work preserved at $work)" >&2; return 1; }
+    preserved_latest_firewall_preflight "$work/preserved-latest-firewall.plan" || { msg "restore gate failed: legacy-fw-preflight (work preserved at $work)" >&2; return 1; }
     stop_managed_services_for_restore "$root" >/dev/null 2>&1 || { msg "restore gate failed: stop-services" >&2; rm -rf "$work"; return 1; }
     clean_nat_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-nat" >&2; rm -rf "$work"; return 1; }
     clean_input_rules >/dev/null 2>&1 || { msg "restore gate failed: clean-input" >&2; rm -rf "$work"; return 1; }
@@ -41026,6 +41143,63 @@ wallos_local_image_has_digest() {
 # carries no tag, so the image is re-tagged by ID for the downstream
 # `docker image inspect bellamy/wallos:<tag>` checks.
 # Args: $1 = load output, $2 = expected tag (e.g. 5.10.4).
+# R10-F14-3: image ID from an authenticated archive. The config
+# blob's SHA256 IS the image ID; reading it from the tarball (not from
+# a post-load tag query) closes the load-to-run TOCTOU.
+wallos_image_id_from_archive() {
+    local archive="$1"
+    [[ -f "$archive" && ! -L "$archive" ]] || return 1
+    python3 -I - "$archive" <<'PY_WALLOS_ARCHIVE_ID'
+import sys, tarfile, hashlib, json
+archive = sys.argv[1]
+try:
+    tf = tarfile.open(archive, 'r:gz')
+except Exception:
+    sys.exit(1)
+with tf:
+    try:
+        manifest_member = tf.getmember('manifest.json')
+    except KeyError:
+        sys.exit(1)
+    if not manifest_member.isfile():
+        sys.exit(1)
+    names = tf.getnames()
+    if names.count('manifest.json') != 1:
+        sys.exit(1)
+    try:
+        raw = tf.extractfile(manifest_member).read()
+        entries = json.loads(raw)
+    except Exception:
+        sys.exit(1)
+    if not isinstance(entries, list) or len(entries) != 1:
+        sys.exit(1)
+    entry = entries[0]
+    if not isinstance(entry, dict):
+        sys.exit(1)
+    config_name = entry.get('Config')
+    if not isinstance(config_name, str) or not config_name:
+        sys.exit(1)
+    if names.count(config_name) != 1:
+        sys.exit(1)
+    try:
+        member = tf.getmember(config_name)
+    except KeyError:
+        sys.exit(1)
+    if not member.isfile():
+        sys.exit(1)
+    f = tf.extractfile(member)
+    if f is None:
+        sys.exit(1)
+    h = hashlib.sha256()
+    while True:
+        chunk = f.read(65536)
+        if not chunk:
+            break
+        h.update(chunk)
+    sys.stdout.write('sha256:' + h.hexdigest() + '\n')
+PY_WALLOS_ARCHIVE_ID
+}
+
 wallos_check_loaded_image() {
     local load_out="${1:-}" image_tag="${2:-}" loaded_id
     # R13-07: exactly one recognized load-result record, total.
@@ -41119,10 +41293,13 @@ wallos_rollback_to_version() {
     # cannot record its own previous version must not start:
     # recovery could otherwise leave the backup's VERSION/IMAGE
     # standing as the recovered state.
+    # R10-F14-5: reuse the version established above: explicit
+    # container tag first, recorded state VERSION as the U115
+    # fallback. The final format check below stays.
     local _pre_rb_version='' _pre_rb_mode='' _pre_rb_pubport='' _pre_rb_cfhost=''
-    _pre_rb_version=$(wallos_state_value VERSION 2>/dev/null || true)
+    _pre_rb_version="$_installed_ver"
     if [[ ! "$_pre_rb_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        msg "${RED}Refusing rollback: cannot establish the current Wallos version from state; refusing to roll back without a known previous version.${NC}"
+        msg "${RED}Refusing rollback: cannot establish the current Wallos version; refusing to roll back without a known previous version.${NC}"
         return 1
     fi
     _pre_rb_mode=$(wallos_state_value MODE 2>/dev/null || true)
@@ -41147,9 +41324,11 @@ wallos_rollback_to_version() {
             msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"
             return 1
         fi
+        # R10-F14-3: take the freshly pulled image ID FIRST (it is
+        # the archive-derived ID now), then restore the saved global.
+        run_image="${WALLOS_IMAGE_RESULT:-}"
         WALLOS_IMAGE_RESULT="$_saved_result"
-        run_image=$(docker image inspect -f '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
-        [[ -n "$run_image" ]] || { msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"; return 1; }
+        [[ "$run_image" =~ ^sha256:[0-9a-f]{64}$ ]] || { msg "${RED}$(tprintf wl_rb_fetch_fail "$target_tag")${NC}"; return 1; }
     fi
     # Stop and remove current container, restore latest backup, recreate.
     port=$(wallos_state_value PORT 2>/dev/null || true)
@@ -41322,15 +41501,23 @@ _wallos_pull_versioned_image() {
         msg "${RED}Wallos versioned archive checksum mismatch; refusing.${NC}"
         return 1
     fi
+    # R10-F14-3: derive the image ID from the authenticated archive
+    # before docker load and before $work is deleted below.
+    local _archive_id
+    _archive_id=$(wallos_image_id_from_archive "$work/$asset") || { rm -rf -- "$work"; return 1; }
+    [[ "$_archive_id" =~ ^sha256:[0-9a-f]{64}$ ]] || { rm -rf -- "$work"; return 1; }
     local load_out image_tag="${tag#v}"
     load_out=$(gzip -dc "$work/$asset" | docker load 2>&1) || { rm -rf -- "$work"; return 1; }
     if ! wallos_check_loaded_image "$load_out" "$image_tag"; then
         rm -rf -- "$work"; return 1
     fi
     rm -rf -- "$work"
-    docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1 || return 1
+    # R10-F14-3: adopt the archive-derived ID; the tag only cross-checks.
+    local _archive_tag_id
+    _archive_tag_id=$(docker image inspect --format '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
+    [[ "$_archive_tag_id" == "$_archive_id" ]] || return 1
     wallos_record_image "bellamy/wallos:$image_tag"
-    WALLOS_IMAGE_RESULT="bellamy/wallos:$image_tag"
+    WALLOS_IMAGE_RESULT="$_archive_id"
     WALLOS_IMAGE_VERSION="$image_tag"
     return 0
 }
@@ -41567,6 +41754,13 @@ wallos_pull_or_restore_image() {
     fi
     # N-3: Verify docker load loaded exactly the single expected image.
     # Do NOT docker rmi beforehand (would destroy rollback image on load failure).
+    # R10-F14-3: derive the image ID from the authenticated archive
+    # BEFORE docker load and BEFORE $work is deleted below; the ID is
+    # the config JSON SHA256, so the run target is bound to the
+    # verified tarball, not to a mutable tag.
+    local _archive_id
+    _archive_id=$(wallos_image_id_from_archive "$work/$asset") || { rm -rf -- "$work"; return 1; }
+    [[ "$_archive_id" =~ ^sha256:[0-9a-f]{64}$ ]] || { rm -rf -- "$work"; return 1; }
     local load_out
     load_out=$(gzip -dc "$work/$asset" | docker load 2>&1) || { rm -rf -- "$work"; return 1; }
     if ! wallos_check_loaded_image "$load_out" "${tag#v}"; then
@@ -41598,7 +41792,13 @@ wallos_pull_or_restore_image() {
     # membership instead. An empty list still skips the check
     # (docker load populates no RepoDigest; see the NOTE above).
     local loaded_digests
-    loaded_digests=$(docker image inspect --format '{{join .RepoDigests "\n"}}' "bellamy/wallos:${tag#v}" 2>/dev/null || true)
+    # R10-F14-3: query by the archive-derived ID, not the mutable tag.
+    # A failed inspect is a refusal, not an empty digest list.
+    if ! loaded_digests=$(docker image inspect --format '{{join .RepoDigests "\n"}}' "$_archive_id" 2>/dev/null); then
+        rm -rf -- "$work"
+        msg "${RED}Wallos loaded image digest check failed; refusing.${NC}"
+        return 1
+    fi
     # U116: normalize both sides (whitespace, docker.io/ prefix, case) before
     # comparing; the format check above allows the prefix, so a raw string
     # comparison would reject the same digest in a different spelling.
@@ -41619,17 +41819,20 @@ wallos_pull_or_restore_image() {
     fi
     rm -rf -- "$work"
     local image_tag="${tag#v}" _loaded_id
-    docker image inspect "bellamy/wallos:$image_tag" >/dev/null 2>&1 || return 1
-    # U115: run by immutable image ID, not the mutable tag. The tarball is
-    # hash-verified, so its config ID is authentic; a manifest digest cannot
-    # be used here because docker load populates no RepoDigest.
+    # R10-F14-3: cross-check the tag against the archive-derived ID.
+    # The tag is used only for consistency; the run target is always
+    # the archive ID, so a concurrent retag cannot change which image
+    # is adopted. The config ID was computed from the authenticated
+    # archive above, not from a post-load tag query (U115); a manifest
+    # digest cannot be used here because docker load populates no
+    # RepoDigest.
     _loaded_id=$(docker image inspect --format '{{.Id}}' "bellamy/wallos:$image_tag" 2>/dev/null || true)
-    if [[ "$_loaded_id" =~ ^sha256:[A-Fa-f0-9]{64}$ ]]; then
-        WALLOS_IMAGE_RESULT="$_loaded_id"
+    if [[ "$_loaded_id" == "$_archive_id" ]]; then
+        WALLOS_IMAGE_RESULT="$_archive_id"
         wallos_record_image "bellamy/wallos:$image_tag"
     else
         # S136: never silently downgrade to the mutable tag here.
-        msg "${RED}Wallos loaded image ID could not be resolved; refusing mutable tag fallback.${NC}"
+        msg "${RED}Wallos loaded image ID does not match the verified archive; refusing.${NC}"
         return 1
     fi
     WALLOS_IMAGE_VERSION="$image_tag"
@@ -47446,11 +47649,13 @@ hy2_staged_kill_child() {
     return 1
 }
 
-# Restore the INT/TERM traps the staged helper saved on entry (sentinel
-# 'trap - INT' / 'trap - TERM' means "no previous trap": remove ours).
+# Restore the INT/TERM/HUP traps the staged helper saved on entry
+# (sentinel 'trap - INT' / 'trap - TERM' / 'trap - HUP' means "no
+# previous trap": remove ours).
 hy2_staged_restore_traps() {
     eval "$_HY2_PREV_INT"
     eval "$_HY2_PREV_TERM"
+    eval "$_HY2_PREV_HUP"
 }
 
 # INT/TERM guard for the staged run: stop the child, restore the caller's
@@ -47520,8 +47725,10 @@ hysteria_staged_binary_smoke_test() {
     tmp_cfg="$work/config.yaml"
     _HY2_PREV_INT=$(trap -p INT || true); [[ -n "$_HY2_PREV_INT" ]] || _HY2_PREV_INT='trap - INT'
     _HY2_PREV_TERM=$(trap -p TERM || true); [[ -n "$_HY2_PREV_TERM" ]] || _HY2_PREV_TERM='trap - TERM'
+    _HY2_PREV_HUP=$(trap -p HUP || true); [[ -n "$_HY2_PREV_HUP" ]] || _HY2_PREV_HUP='trap - HUP'
     trap 'hy2_staged_trap_abort INT' INT
     trap 'hy2_staged_trap_abort TERM' TERM
+    trap 'hy2_staged_trap_abort HUP' HUP
     deadline=$(( $(date +%s) + 10 ))
     while (( attempt < 3 )); do
         attempt=$((attempt + 1))
@@ -47705,7 +47912,7 @@ PY_HY2_STAGED
             msg "${RED}[!] Hysteria staged precheck: loopback port ${port} already in use.${NC}" >&2
             rc=1; break
         fi
-        "$bin" server -c "$tmp_cfg" >"$work/server.log" 2>&1 &
+        "$bin" server -c "$tmp_cfg" >"$work/server.log" 2>&1 9>&- 10>&- &
         pid=$!
         _HY2_STAGED_PID="$pid"
         ready=0
@@ -48620,8 +48827,18 @@ prepare_noninteractive_service_control() {
 # $1=changed_pre $2=changed_expected (transaction state files).
 __abox_service_tx_rollback() {
     local changed_pre="$1" changed_expected="$2"
-    [[ ! -s "$changed_pre" ]] && return 0
-    [[ -s "$changed_expected" ]] || return 1
+    local _tx_pre_keys='' _tx_exp_keys='' _tx_last_pre='' _tx_pre_minus_last=''
+    # R10-F17-2 (A'): an empty pre journal with a non-empty expected
+    # journal is corrupt input, not "nothing changed". A missing or
+    # empty pre with an empty expected journal means nothing changed.
+    if [[ ! -s "$changed_pre" ]]; then
+        [[ -s "$changed_expected" ]] && return 1
+        return 0
+    fi
+    # A missing/unreadable expected journal is still a hard failure;
+    # a legally empty expected file (zero records: the first pre
+    # append raced the signal) enters the A' set check below.
+    [[ -f "$changed_expected" && ! -L "$changed_expected" ]] || return 1
     # R16-05: the old code skipped restore only when EVERY registered
     # service was still at its pre-state, then handed ALL registrations
     # to the strict expected-state preflight; one changed service made
@@ -48633,11 +48850,23 @@ __abox_service_tx_rollback() {
     # (The old all-unchanged shortcut is subsumed: every service is
     # skipped, so the loop below returns 0 silently.)
     # Safeguard 1: validate the complete input journals BEFORE
-    # restoring anything (valid rows, unique keys, identical service
-    # sets), so a corrupt journal can never produce a partial restore.
+    # restoring anything (valid rows, unique keys). The service sets
+    # must be identical, or expected must equal pre minus exactly the
+    # last pre record (R10-F17-2 A': the trailing service whose pre
+    # append landed but whose expected append did not). A service
+    # with no expected record is never restored; any other mismatch
+    # is refused before any restore. The "no partial restore ever"
+    # promise no longer holds for that one trailing-item shape.
     validate_services_state_file "$changed_pre" || return 1
     validate_services_state_file "$changed_expected" || return 1
-    [[ "$(awk -F'|' 'NF {print $1}' "$changed_pre" | LC_ALL=C sort)" == "$(awk -F'|' 'NF {print $1}' "$changed_expected" | LC_ALL=C sort)" ]] || return 1
+    _tx_pre_keys=$(awk -F'|' 'NF {print $1}' "$changed_pre" | LC_ALL=C sort) || return 1
+    _tx_exp_keys=$(awk -F'|' 'NF {print $1}' "$changed_expected" | LC_ALL=C sort) || return 1
+    if [[ "$_tx_pre_keys" != "$_tx_exp_keys" ]]; then
+        _tx_last_pre=$(awk -F'|' 'NF {k=$1} END {print k}' "$changed_pre") || return 1
+        [[ -n "$_tx_last_pre" ]] || return 1
+        _tx_pre_minus_last=$(awk -F'|' -v last="$_tx_last_pre" 'NF && $1 != last {print $1}' "$changed_pre" | LC_ALL=C sort) || return 1
+        [[ "$_tx_pre_minus_last" == "$_tx_exp_keys" ]] || return 1
+    fi
     local _rb_srv _rb_pre _rb_cur _rb_exp _rb_mid _rb_pre_srv _rb_pre_active _rb_pre_enabled _rb_failed=() _rb_conflict=0 _rb_other=0 _rb_txd _rb_sp _rb_se _rb_srv_rc _rb_umask
     _rb_umask=$(umask)
     umask 077
@@ -49362,7 +49591,7 @@ PY_SELFTEST_TAR
     ( ABOX_XRAY_VERSION=v26.7.28 ABOX_XRAY_VERSION_PROBE_SKIP=1
       [[ "$(effective_xray_version)" == 'v26.7.28' ]] ) || { echo 'FAIL: explicit Xray version must be honored by effective_xray_version'; failures=$((failures + 1)); }
     (
-        unset ABOX_XRAY_VERSION ABOX_TRY_LATEST_CORE_STABLE
+        unset ABOX_XRAY_VERSION ABOX_TRY_LATEST_CORE_STABLE ABOX_XRAY_UPDATE_POLICY
         ABOX_RESOLVED_XRAY_VERSION=''; ABOX_RESOLVED_XRAY_SOURCE=''
         core_latest_stable_release_ref() { printf '%s\n' 'v26.11.9'; }
         core_latest_mirror_release_ref() { printf '%s\n' 'v26.7.28'; }

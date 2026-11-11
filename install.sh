@@ -13477,7 +13477,7 @@ _iptables_do() {
 }
 clean_chain() {
     local cmd="$1" table="$2" chain="$3" output rule
-    local owned_re='--comment "?A-Box-(HY2-HOP|[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?)"?([ \t\r]|$)'
+    local owned_re='--comment "?A-Box-(HY2-HOP|[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?)(:A-Box-tmp-[0-9]+-[0-9]+)?"?([ \t\r]|$)'
     local -a argv=()
     if ! command -v "$cmd" >/dev/null 2>&1; then
         # N-04: use objective host_has_usable_ipv6 (not preference-aware has_ipv6)
@@ -13996,7 +13996,7 @@ reorder_policy() {
     command -v "$cmd" >/dev/null 2>&1 || return 0
     rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
     while IFS= read -r line; do
-        if [[ "$line" =~ --comment[[:space:]]+\"?A-Box-([0-9]{1,5})-(tcp|udp)-${drop_suffix}\"?([[:space:]]|$) ]]; then
+        if [[ "$line" =~ --comment[[:space:]]+\"?A-Box-([0-9]{1,5})-(tcp|udp)-${drop_suffix}(:A-Box-tmp-[0-9]+-[0-9]+)?\"?([[:space:]]|$) ]]; then
             port="${BASH_REMATCH[1]}"; proto="${BASH_REMATCH[2]}"; key="${port}|${proto}"
             [[ -n "${seen[$key]:-}" ]] && continue
             seen[$key]=1
@@ -16360,7 +16360,7 @@ clean_input_rules() {
     }
     local output rule failed=0 owned_re
     local -a argv=()
-    owned_re='--comment "?A-Box-[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?"?([ \t\r]|$)'
+    owned_re='--comment "?A-Box-[0-9]+(:[0-9]+)?-(tcp|udp)(-(WL6?|DROP6?))?(:A-Box-tmp-[0-9]+-[0-9]+)?"?([ \t\r]|$)'
     remove_native_firewall_rules 2>/dev/null || failed=1
     while :; do
         output=$(_iptables_q "$IPT" -S INPUT 2>/dev/null) || { failed=1; break; }
@@ -23741,9 +23741,9 @@ _argo_cloudflared_pid_attributed() { # $1 = pid, $2 = own unit -> 0 if the pid b
 
 _argo_stopped_confirmed_systemd() { # $1 = unit name -> 0 iff confirmed stopped
     local _name="$1" _out='' _rc=0 _l1='' _l2='' _l3=''
-    _out=$(systemctl show --property=LoadState,ActiveState,MainPID --value "${_name}.service" 2>/dev/null); _rc=$?
+    _out=$(systemctl show --property=LoadState,ActiveState,MainPID "${_name}.service" 2>/dev/null); _rc=$?
     (( _rc == 0 )) || { _ARGO_STOPPED_DETAIL='status query failed'; return 1; }
-    { IFS= read -r _l1; IFS= read -r _l2; IFS= read -r _l3; } <<< "$_out"
+    _l1=$(sed -n 's/^LoadState=//p' <<< "$_out"); _l2=$(sed -n 's/^ActiveState=//p' <<< "$_out"); _l3=$(sed -n 's/^MainPID=//p' <<< "$_out")
     [[ -n "$_l1" && -n "$_l2" && -n "$_l3" ]] || { _ARGO_STOPPED_DETAIL='status query failed'; return 1; }
     if [[ "$_l1" == not-found ]]; then
         # Not loaded by the manager: stopped only if no unit file exists
@@ -28977,7 +28977,7 @@ remove_ss_source_whitelist_rules() {
         for proto in tcp udp; do
             while :; do
                 ipt_out=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { failed=1; break; }
-                line=$(awk -v p="$proto" -v port="$SS_PORT" '$0 ~ "^-A INPUT " && $0 ~ ("-p " p) && $0 ~ ("--dport " port) && $0 ~ ("--comment \"?A-Box-" port "-" p "-WL6?\"?($|[ \t\r])") {print; exit}' <<< "$ipt_out") || { failed=1; break; }
+                line=$(awk -v p="$proto" -v port="$SS_PORT" '$0 ~ "^-A INPUT " && $0 ~ ("-p " p) && $0 ~ ("--dport " port) && $0 ~ ("--comment \"?A-Box-" port "-" p "-WL6?(:A-Box-tmp-[0-9]+-[0-9]+)?\"?($|[ \t\r])") {print; exit}' <<< "$ipt_out") || { failed=1; break; }
                 [[ -n "$line" ]] || break
                 line=${line//\"/}
                 rule="${line#-A INPUT }"
@@ -28999,7 +28999,7 @@ sync_ss_whitelist_ip_to_env() {
         return 1
     fi
     ips=$(awk -v port="$SS_PORT" '
-        $0 ~ ("--comment \"?A-Box-" port "-(tcp|udp)-WL\"?([ \t\r]|$)") && $0 ~ /-j ACCEPT([ \t\r]|$)/ {
+        $0 ~ ("--comment \"?A-Box-" port "-(tcp|udp)-WL(:A-Box-tmp-[0-9]+-[0-9]+)?\"?([ \t\r]|$)") && $0 ~ /-j ACCEPT([ \t\r]|$)/ {
             for (i = 1; i < NF; i++) {
                 if ($i == "-s") { sub(/\/32$/, "", $(i+1)); print $(i+1) }
             }
@@ -29011,7 +29011,7 @@ sync_ss_whitelist_ip_to_env() {
             return 1
         fi
         v6ips=$(awk -v port="$SS_PORT" '
-            $0 ~ ("--comment \"?A-Box-" port "-(tcp|udp)-WL6\"?([ \t\r]|$)") && $0 ~ /-j ACCEPT([ \t\r]|$)/ {
+            $0 ~ ("--comment \"?A-Box-" port "-(tcp|udp)-WL6(:A-Box-tmp-[0-9]+-[0-9]+)?\"?([ \t\r]|$)") && $0 ~ /-j ACCEPT([ \t\r]|$)/ {
                 for (i = 1; i < NF; i++) {
                     if ($i == "-s") { sub(/\/128$/, "", $(i+1)); print $(i+1) }
                 }
@@ -39258,13 +39258,17 @@ extract_abox_iptables_rules() {
         next
       }
       /^-A / {
-        base=($0 ~ /--comment "?A-Box-[0-9]+(:[0-9]+)?-(tcp|udp)"?([ \t\r]|$)/)
-        wl=($0 ~ /--comment "?A-Box-[0-9]+-(tcp|udp)-WL6?"?([ \t\r]|$)/)
-        drop=($0 ~ /--comment "?A-Box-[0-9]+-(tcp|udp)-DROP6?"?([ \t\r]|$)/)
+        base=($0 ~ /--comment "?A-Box-[0-9]+(:[0-9]+)?-(tcp|udp)(:A-Box-tmp-[0-9]+-[0-9]+)?"?([ \t\r]|$)/)
+        wl=($0 ~ /--comment "?A-Box-[0-9]+-(tcp|udp)-WL6?(:A-Box-tmp-[0-9]+-[0-9]+)?"?([ \t\r]|$)/)
+        drop=($0 ~ /--comment "?A-Box-[0-9]+-(tcp|udp)-DROP6?(:A-Box-tmp-[0-9]+-[0-9]+)?"?([ \t\r]|$)/)
         hop=($0 ~ /--comment "?A-Box-HY2-HOP"?([ \t\r]|$)/)
         owned=(base || wl || drop || hop)
         special=(wl || drop || hop)
         if ((mode=="all" && owned) || special) {
+          gsub(/:A-Box-tmp-[0-9]+-[0-9]+/, "")
+          _k = table SUBSEP $0
+          if (_k in seen) next
+          seen[_k] = 1
           if (table!=emitted) {if (emitted!="") print "COMMIT"; print table; if (include_input && table=="*filter" && input_policy!="") print ":INPUT " input_policy " [0:0]"; emitted=table}
           print
         }

@@ -38,7 +38,7 @@ jobs:
         run: |
           grep -Eq "^ABOX_BUILD='[^']+'$" install.sh
           grep -Eq '^ABOX_BUILD_EPOCH=[0-9]+$' install.sh
-          grep -Fq 'ABOX_XRAY_UPDATE_POLICY="${ABOX_XRAY_UPDATE_POLICY:-auto-stable}"' install.sh
+          grep -Fq "ABOX_XRAY_UPDATE_POLICY=\"\${ABOX_XRAY_UPDATE_POLICY:-auto-stable}\"" install.sh
           grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" install.sh
           grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'" install.sh
           grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.3'" install.sh

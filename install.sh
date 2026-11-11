@@ -13137,14 +13137,14 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
                     | if $r == null then {addr: (.listen // "0.0.0.0"), transports: transport_set, range: null, unparseable: true}
                       else {addr: (.listen // "0.0.0.0"), transports: transport_set, range: $r, unparseable: false} end)
                  end);
-            # R9 (F05-5, GPT D): the IPv4 wildcard never shares a socket
-            # with a confirmed pure-IPv6 literal (e.g. ::1), but the IPv6
-            # wildcard :: is dual-stack by default on Linux (IPV6_V6ONLY=0;
-            # a :: listener accepts IPv4, verified by a socket test), so it
-            # stays a possible conflict, as do IPv4-mapped addresses (any
-            # spelling), the unspecified address, hostnames and anything
-            # that does not positively parse as IPv6. Fail closed: only a
-            # positively validated literal earns the exemption.
+            # R11-B (R9-3): treat both wildcards as possible cross-family
+            # overlaps. Go may bind 0.0.0.0 through a dual-stack socket;
+            # its IPv4 spelling does not prove an IPv4-only listener.
+            # Apply this conservative address rule to both TCP and UDP.
+            # bindings_conflict also requires transport and port overlap.
+            # Conflicting restored inbounds are skipped with a warning.
+            # Legacy IPv6 parsing helpers below remain unused and are
+            # retained to keep this patch within the no-deletion scope.
             def v6_groups($s):
               ($s | test("::")) as $has_dd
               | ($s | split("::")) as $parts
@@ -13169,8 +13169,8 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
                    and ((($g[0:5] | map(test("^(0+)$")) | all) and (($g[5] | ascii_downcase) == "ffff")) | not));
             def addr_overlap($a; $b):
               ($a == $b)
-              or (($a == "0.0.0.0") and ((is_pure_v6($b)) | not))
-              or (($b == "0.0.0.0") and ((is_pure_v6($a)) | not))
+              or ($a == "0.0.0.0")
+              or ($b == "0.0.0.0")
               or ($a == "::")
               or ($b == "::");
             def range_overlap($r1; $r2):
@@ -14059,8 +14059,8 @@ _fw_restore_leg() {
     }
 
     final_policy=$(awk '
-        $0 == "*filter" { f=1; next }
-        $0 == "COMMIT" { f=0 }
+        /^\*/ { f=($0 ~ /^\*filter[ \t]*$/); next }
+        /^COMMIT[ \t]*$/ { f=0; next }
         f && $1 == ":INPUT" { print $2 }
     ' "$backup") || return 1
 
@@ -14076,8 +14076,8 @@ _fw_restore_leg() {
         local snapshot_policy
 
         snapshot_policy=$(printf '%s\n' "$src" | awk '
-            /^\*/ { f=($0 == "*filter"); next }
-            $0 == "COMMIT" { f=0; next }
+            /^\*/ { f=($0 ~ /^\*filter[ \t]*$/); next }
+            /^COMMIT[ \t]*$/ { f=0; next }
             f && $1 == ":INPUT" {
                 if (++n > 1 ||
                     $0 !~ /^:INPUT[ \t]+(ACCEPT|DROP)([ \t]+\[[0-9]+:[0-9]+\])?[ \t]*$/) exit 1
@@ -14107,10 +14107,10 @@ _fw_restore_leg() {
 
         tmp=$(mktemp /run/A-Box-firewall-restore-clamped.XXXXXX) || return 1
         if ! printf '%s\n' "$src" | awk '
-            $0 == "*filter" { f=1 }
-            f && $1 == ":INPUT" { $2="DROP" }
+            /^\*/ { f=($0 ~ /^\*filter[ \t]*$/) }
+            /^COMMIT[ \t]*$/ { f=0 }
+            f && $1 == ":INPUT" { sub(/ACCEPT|DROP/, "DROP") }
             { print }
-            $0 == "COMMIT" { f=0 }
         ' > "$tmp"; then
             rm -f -- "$tmp"
             return 1
@@ -15069,11 +15069,22 @@ forget_native_firewall_rule() {
 
 remove_abox_native_firewall_rule() {
     local raw_spec="$1" proto="$2" spec backend fw_spec failed=0 record _backend _spec _proto _scope _zone _extra
+    local _target_scope='' _target_zone='' _scope_given=0 _zone_given=0
+    # R11-B (R7-1): optional scope/zone restriction. When given (even
+    # empty), that dimension matches exactly; when omitted, it matches
+    # all (same "provided means restrict" convention as
+    # forget_native_firewall_rule). An explicit empty/illegal scope or
+    # a non-empty illegal zone fails instead of degrading to unscoped.
+    if [[ $# -ge 3 ]]; then _target_scope="$3"; _scope_given=1; fi
+    if [[ $# -ge 4 ]]; then _target_zone="$4"; _zone_given=1; fi
+    if (( _scope_given == 1 )) && [[ "$_target_scope" != runtime && "$_target_scope" != permanent ]]; then return 1; fi
+    if (( _zone_given == 1 )) && [[ -n "$_target_zone" ]] && [[ ! "$_target_zone" =~ ^[A-Za-z0-9_.:@+-]+$ ]]; then return 1; fi
     spec=$(normalize_port_spec "$raw_spec") || return 1
     [[ "$proto" == tcp || "$proto" == udp ]] || return 1
     backend=$(firewall_backend) || return 1
     case "$backend" in
         ufw)
+            (( _scope_given == 0 && _zone_given == 0 )) || return 1
             if [[ -e "$ABOX_FW_STATE" || -L "$ABOX_FW_STATE" ]]; then
                 validate_native_firewall_state_file "$ABOX_FW_STATE" || return 1
                 while IFS='|' read -r _backend _spec _proto _scope _zone _extra || [[ -n "$_backend$_spec$_proto$_scope$_zone$_extra" ]]; do
@@ -15101,6 +15112,12 @@ remove_abox_native_firewall_rule() {
             while IFS='|' read -r _backend _spec _proto _scope _zone _extra || [[ -n "$_backend$_spec$_proto$_scope$_zone$_extra" ]]; do
                 [[ "$_backend" == firewalld && "$_proto" == "$proto" ]] || continue
                 [[ "$_scope" == runtime || "$_scope" == permanent ]] || return 1
+                if (( _scope_given == 1 )) && [[ "$_scope" != "$_target_scope" ]]; then
+                    continue
+                fi
+                if (( _zone_given == 1 )) && [[ "$_zone" != "$_target_zone" ]]; then
+                    continue
+                fi
                 _lo=${_spec%%:*}; _hi=${_spec##*:}
                 _lo=$((10#$_lo)); _hi=$((10#$_hi))
                 (( _lo <= _req_hi && _hi >= _req_lo )) || continue
@@ -15136,6 +15153,7 @@ remove_abox_native_firewall_rule() {
             (( failed == 0 )) || return 1
             ;;
         iptables)
+            (( _scope_given == 0 && _zone_given == 0 )) || return 1
             local comment="A-Box-${spec}-${proto}" cmd check_rc
             for cmd in "$IPT" "$IPT6"; do
                 [[ "$cmd" == "$IPT" || -x "$cmd" || -n "$(command -v "$cmd" 2>/dev/null)" ]] || continue
@@ -22051,6 +22069,7 @@ ensure_singbox_service_unit() {
         local vendor_unit
         for vendor_unit in \
             /run/systemd/system/sing-box.service \
+            /usr/local/lib/systemd/system/sing-box.service \
             /usr/lib/systemd/system/sing-box.service \
             /lib/systemd/system/sing-box.service; do
             [[ -e "$vendor_unit" || -L "$vendor_unit" ]] || continue
@@ -22359,6 +22378,7 @@ ensure_xray_service_unit() {
         local vendor_unit
         for vendor_unit in \
             /run/systemd/system/xray.service \
+            /usr/local/lib/systemd/system/xray.service \
             /usr/lib/systemd/system/xray.service \
             /lib/systemd/system/xray.service; do
             [[ -e "$vendor_unit" || -L "$vendor_unit" ]] || continue
@@ -44124,7 +44144,17 @@ wallos_fw_open_once() {
                     msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1
                 fi
             fi
-            printf '%s\n' "firewalld|${spec}|${type}"
+            # R11-B (R7-1): emit one increment per scope actually added
+            # by this call, carrying scope and the pinned zone, so a
+            # rollback can only remove what this call added. _fw_rt /
+            # _fw_pm are the pre-call states: reaching here means any
+            # scope that was missing is now added, verified and recorded.
+            if (( _fw_rt == 0 )); then
+                printf '%s\n' "firewalld|${spec}|${type}|runtime|${_fw_zone}"
+            fi
+            if (( _fw_pm == 0 )); then
+                printf '%s\n' "firewalld|${spec}|${type}|permanent|${_fw_zone}"
+            fi
             return 0
             ;;
         *)
@@ -44135,16 +44165,40 @@ wallos_fw_open_once() {
 }
 
 # R7-F15-2: roll back firewall increments opened by this install attempt
-# (entries "backend|spec|proto"). Each entry is removed through the
+# (entries "backend|spec|proto"; firewalld entries are "backend|spec|proto|scope|zone"). Each entry is removed through the
 # ledger deleter (which verifies the rule is really gone); a failure is
 # reported loudly and returns 1, so a caller that must not claim success
 # can fold it into its own failure flag. An empty set is a no-op success.
 wallos_fw_rollback_added() {
-    local _entry _backend _spec _proto _failed=0
+    local _entry _backend _spec _proto _scope _zone _failed=0 _pipes _scoped=0
     for _entry in "$@"; do
-        IFS='|' read -r _backend _spec _proto <<< "$_entry"
+        _scoped=0; _scope=''; _zone=''
+        # R11-B (R7-1): one entry is one line: legacy three-field
+        # "backend|spec|proto", or a firewalld five-field line with
+        # "|scope|zone". Anything else (wrong pipe count, multi-line,
+        # non-firewalld scoped line, illegal scope/zone) fails loudly
+        # without deleting anything; it must never degrade to an
+        # unscoped delete.
+        case "$_entry" in *$'\n'*) _failed=1; continue ;; esac
+        _pipes=${_entry//[^|]/}
+        if (( ${#_pipes} == 2 )); then
+            IFS='|' read -r _backend _spec _proto <<< "$_entry"
+        elif (( ${#_pipes} == 4 )); then
+            IFS='|' read -r _backend _spec _proto _scope _zone <<< "$_entry"
+            _scoped=1
+        else
+            _failed=1; continue
+        fi
         [[ -n "$_spec" && -n "$_proto" ]] || { _failed=1; continue; }
-        if ! remove_abox_native_firewall_rule "$_spec" "$_proto" >/dev/null 2>&1; then
+        if (( _scoped == 1 )); then
+            [[ "$_backend" == firewalld ]] || { _failed=1; continue; }
+            [[ "$_scope" == runtime || "$_scope" == permanent ]] || { _failed=1; continue; }
+            [[ "$_zone" =~ ^[A-Za-z0-9_.:@+-]*$ ]] || { _failed=1; continue; }
+            if ! remove_abox_native_firewall_rule "$_spec" "$_proto" "$_scope" "$_zone" >/dev/null 2>&1; then
+                msg "${YELLOW}[!] Failed to roll back the firewall opening for ${_spec}/${_proto} opened by this install attempt; the port may still be open.${NC}" >&2
+                _failed=1
+            fi
+        elif ! remove_abox_native_firewall_rule "$_spec" "$_proto" >/dev/null 2>&1; then
             msg "${YELLOW}[!] Failed to roll back the firewall opening for ${_spec}/${_proto} opened by this install attempt; the port may still be open.${NC}" >&2
             _failed=1
         fi
@@ -44423,7 +44477,7 @@ wallos_install_or_update() {
     # so skipping allowPort alone does not honor the refusal. When a
     # refused public bind would otherwise be published, force loopback.
     # R7-F15-2: firewall increments opened by this attempt, as
-    # "backend|spec|proto" lines (see wallos_fw_open_once). Rolled back
+    # "backend|spec|proto" lines (firewalld lines carry "|scope|zone"; see wallos_fw_open_once). Rolled back
     # if the install fails after opening them.
     local -a _fw_added=()
     local _fw_open_out=''
@@ -44431,14 +44485,14 @@ wallos_install_or_update() {
     if [[ "$bind_address" == 0.0.0.0 ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
         if confirm_yes_no "$(tprintf wl_iu_ufw_q "$port")"; then
             _fw_open_out=$(wallos_fw_open_once "$port" tcp) || msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}"
-            [[ -n "$_fw_open_out" ]] && _fw_added+=("$_fw_open_out")
+            [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
         else
             _fw_refused=1
         fi
     elif [[ "$bind_address" == 0.0.0.0 ]] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
         if confirm_yes_no "$(tprintf wl_iu_fwd_q "$port")"; then
             _fw_open_out=$(wallos_fw_open_once "$port" tcp) || msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}"
-            [[ -n "$_fw_open_out" ]] && _fw_added+=("$_fw_open_out")
+            [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
         else
             _fw_refused=1
         fi
@@ -44468,14 +44522,14 @@ wallos_install_or_update() {
     if [[ "$wmode" == https ]] && [[ -t 0 ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
         if confirm_yes_no "$(tprintf wl_iu_ufw_q_https "$pubport")"; then
             _fw_open_out=$(wallos_fw_open_once "$pubport" tcp) || msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}"
-            [[ -n "$_fw_open_out" ]] && _fw_added+=("$_fw_open_out")
+            [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
         else
             _fw_https_refused=1
         fi
     elif [[ "$wmode" == https ]] && [[ -t 0 ]] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
         if confirm_yes_no "$(tprintf wl_iu_fwd_q_https "$pubport")"; then
             _fw_open_out=$(wallos_fw_open_once "$pubport" tcp) || msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}"
-            [[ -n "$_fw_open_out" ]] && _fw_added+=("$_fw_open_out")
+            [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
         else
             _fw_https_refused=1
         fi

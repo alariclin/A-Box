@@ -38629,8 +38629,8 @@ PY_REDACT
         fi
         # R12B-N1: a JSONC comment in a NON-id sensitive key gap that the
         # line-based sed rules below cannot verify (same class as the `id`
-        # gap above, outside the id range). Four shapes, matched with
-        # grep -z (whole input as one line) so a comment on the line AFTER
+        # gap above, outside the id range). Four shapes, matched against the input folded once into
+        # _redact_gap_scan (newlines to spaces) so a comment on the line AFTER
         # separator, or between key and separator across lines, is seen
         # too: a comment after the separator (`/*` or `//`) and a comment
         # between key and separator (`/*` or `//`). `id` is excluded (its
@@ -38640,7 +38640,12 @@ PY_REDACT
         # A quoted URL value (`token: "https://..."`) or a trailing comment
         # (`token: "x" // note`) never triggers: the comment marker must sit
         # in the gap (separator first / key first, value not yet seen).
-        if printf '%s\n' "$_redact_input" | grep -qziE -- $'(^|[^A-Za-z0-9_])["\x27]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key)["\x27]?[[:space:]]*[:=][[:space:]]*(/\*|//)|(^|[^A-Za-z0-9_])["\x27]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key)["\x27]?[[:space:]]*(/\*|//)'; then
+        local _redact_gap_scan
+        # Fold is a bash parameter expansion (builtin): the fallback
+        # keeps its sed/grep/cat-only tool budget (R12-B harness) and
+        # no pipeline is involved, so there is no SIGPIPE hazard.
+        _redact_gap_scan="${_redact_input//$'\n'/ }"
+        if grep -qiE -- $'(^|[^A-Za-z0-9_])["\x27]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key)["\x27]?[[:space:]]*[:=][[:space:]]*(/\*|//)|(^|[^A-Za-z0-9_])["\x27]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key)["\x27]?[[:space:]]*(/\*|//)' <<< "$_redact_gap_scan"; then
             printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
             # D2: a comment in a non-id key gap pushes the value out of the
             # line the fallback can verify (or hides it entirely); the
@@ -38654,7 +38659,7 @@ PY_REDACT
         # (the value then sits on a later line, out of reach of the
         # line-based rules). Single-line `/*` after the separator stays a
         # successful redaction, not a suppression.
-        if printf '%s\n' "$_redact_input" | grep -qziE -- $'(^|[^A-Za-z0-9_])["\x27]?(Authorization|Proxy-Authorization|Cookie|Set-Cookie)["\x27]?[[:space:]]*(/\*|//)|(^|[^A-Za-z0-9_])["\x27]?(Authorization|Proxy-Authorization|Cookie|Set-Cookie)["\x27]?[[:space:]]*[:=][[:space:]]*//'; then
+        if grep -qiE -- $'(^|[^A-Za-z0-9_])["\x27]?(Authorization|Proxy-Authorization|Cookie|Set-Cookie)["\x27]?[[:space:]]*(/\*|//)|(^|[^A-Za-z0-9_])["\x27]?(Authorization|Proxy-Authorization|Cookie|Set-Cookie)["\x27]?[[:space:]]*[:=][[:space:]]*//' <<< "$_redact_gap_scan"; then
             printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
             # D2: a comment in an authorization/cookie gap the fallback
             # cannot verify; the notice above is the whole output.
@@ -38667,27 +38672,27 @@ PY_REDACT
             -e 's/((Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*)[^,}[:cntrl:]"]+/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
-            -e 's/([\"\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)[\"\x27 ]?[[:space:]]*[:=][[:space:]]*\[)[^]]*/\1***REDACTED***/Ig' \
-            -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
-            -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*)(\x27)([^\x27]|\x27\x27)*\3/\1\3***REDACTED***\3/Ig' \
-            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1\2"***REDACTED***"/Ig' \
-            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(\x27)([^\x27]|\x27\x27)*\x27/\1\2***REDACTED***\2/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(\x27)([^\x27]|\x27\x27)*\x27/\1\2\3***REDACTED***\3/Ig' \
-            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)"([^"\\]|\\.)*"/\1\2"***REDACTED***"/Ig' \
-            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(\x27)([^\x27]|\x27\x27)*\x27/\1\4***REDACTED***\4/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(\x27)([^\x27]|\x27\x27)*\x27/\1\2\5***REDACTED***\5/Ig' \
-            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"\x27]*)/\1***REDACTED***/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"\x27]*)/\1\2***REDACTED***/Ig' \
-            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"\x27]*|-?[0-9]*([^][:space:],}"\x270-9/-]|\/[^][:space:],}"\x27*])[^][:space:],}"\x27]*)/\1***REDACTED***/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"\x27]*|-?[0-9]*([^][:space:],}"\x270-9/-]|\/[^][:space:],}"\x27*])[^][:space:],}"\x27]*)/\1\2***REDACTED***/Ig' \
-            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]+-[^][:space:],}"\x27]*)/\1***REDACTED***/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]+-[^][:space:],}"\x27]*)/\1\2***REDACTED***/Ig' \
-            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]*([^][:space:],}"\x270-9/-]|\/[^][:space:],}"\x27*])[^][:space:],}"\x27]*)/\1***REDACTED***/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]*([^][:space:],}"\x270-9/-]|\/[^][:space:],}"\x27*])[^][:space:],}"\x27]*)/\1\2***REDACTED***/Ig' \
-            -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*)[^}"\x27[:space:]][^}"\r]*/\1***REDACTED***/Ig' \
-            -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*[" ]?)[^,}[:space:]["]+/\1***REDACTED***/Ig' \
+            -e 's/([\"'"'"' ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)[\"'"'"' ]?[[:space:]]*[:=][[:space:]]*\[)[^]]*/\1***REDACTED***/Ig' \
+            -e 's/(["'"'"' ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["'"'"' ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
+            -e 's/(["'"'"' ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["'"'"' ]?[[:space:]]*[:=][[:space:]]*)('"'"')([^'"'"']|'"'"''"'"')*'"'"'/\1\3***REDACTED***\3/Ig' \
+            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1\2"***REDACTED***"/Ig' \
+            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)('"'"')([^'"'"']|'"'"''"'"')*'"'"'/\1\2***REDACTED***\2/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)('"'"')([^'"'"']|'"'"''"'"')*'"'"'/\1\2\3***REDACTED***\3/Ig' \
+            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)"([^"\\]|\\.)*"/\1\2"***REDACTED***"/Ig' \
+            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)('"'"')([^'"'"']|'"'"''"'"')*'"'"'/\1\4***REDACTED***\4/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)('"'"')([^'"'"']|'"'"''"'"')*'"'"'/\1\2\5***REDACTED***\5/Ig' \
+            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"'"'"']*)/\1***REDACTED***/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"'"'"']*)/\1\2***REDACTED***/Ig' \
+            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"'"'"']*|-?[0-9]*([^]/[:space:],}"'"'"'0-9-]|\/[^][:space:],}"'"'"'*])[^][:space:],}"'"'"']*)/\1***REDACTED***/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"'"'"']*|-?[0-9]*([^]/[:space:],}"'"'"'0-9-]|\/[^][:space:],}"'"'"'*])[^][:space:],}"'"'"']*)/\1\2***REDACTED***/Ig' \
+            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]+-[^][:space:],}"'"'"']*)/\1***REDACTED***/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]+-[^][:space:],}"'"'"']*)/\1\2***REDACTED***/Ig' \
+            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]*([^]/[:space:],}"'"'"'0-9-]|\/[^][:space:],}"'"'"'*])[^][:space:],}"'"'"']*)/\1***REDACTED***/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]*([^]/[:space:],}"'"'"'0-9-]|\/[^][:space:],}"'"'"'*])[^][:space:],}"'"'"']*)/\1\2***REDACTED***/Ig' \
+            -e 's/(["'"'"' ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["'"'"' ]?[[:space:]]*[:=][[:space:]]*)[^}"'"'"'[:space:]][^}"\r]*/\1***REDACTED***/Ig' \
+            -e 's/(["'"'"' ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["'"'"' ]?[[:space:]]*[:=][[:space:]]*[" ]?)[^,}[:space:]["]+/\1***REDACTED***/Ig' \
             -e 's/(vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess):\/\/[^[:space:]]+/***CLIENT_LINK_REDACTED***/Ig' \
         -e 's/(https?|ftp):\/\/[^\/[:space:]@]+@/\1***REDACTED***@/Ig'
     fi

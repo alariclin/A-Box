@@ -38594,7 +38594,17 @@ PY_REDACT
         # (D2); the Python path uses the same outcome when it meets
         # a flow credential mapping it cannot verify.
         _redact_input=$(cat) || return 1
-        if printf '%s\n' "$_redact_input" | grep -qE -- $'-----BEGIN [^-]*KEY-----|^[[:space:]]*["\x27]?(uuid|private[_-]?key|public[_-]?key|short[_-]?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)["\x27]?[[:space:]]*:[[:space:]]*([|>](([1-9][+-]?)|([+-][1-9]?))?[[:space:]]*(#.*)?)?$'; then
+        # R15-A: the four D2 scans below feed grep via a here-string
+        # (same shape as the R14-A gap scans). Bash prepares the
+        # here-string before grep runs; even when an internal pipe is
+        # used, no concurrent producer remains for grep -q's early
+        # exit to SIGPIPE. Suppress on a match, scan error, or
+        # redirection error; only grep rc=1 permits continuation.
+        local _redact_d2_scan_rc=2
+        if ! {
+            grep -qE -- $'-----BEGIN [^-]*KEY-----|^[[:space:]]*["\x27]?(uuid|private[_-]?key|public[_-]?key|short[_-]?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)["\x27]?[[:space:]]*:[[:space:]]*([|>](([1-9][+-]?)|([+-][1-9]?))?[[:space:]]*(#.*)?)?$'
+            _redact_d2_scan_rc=$?
+        } <<< "$_redact_input" || (( _redact_d2_scan_rc != 1 )); then
             printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
             # D2: suppression is a distinct outcome, not a redaction.
             # The notice above is the whole output; callers must record
@@ -38602,13 +38612,21 @@ PY_REDACT
             # write_redacted_file / export_diagnostic_bundle).
             return 2
         fi
-        if printf '%s\n' "$_redact_input" | grep -qiE -- $'(^|[{,])[[:space:]]*["\x27]?userpass["\x27]?[[:space:]]*:'; then
+        local _redact_d2_scan_rc=2
+        if ! {
+            grep -qiE -- $'(^|[{,])[[:space:]]*["\x27]?userpass["\x27]?[[:space:]]*:'
+            _redact_d2_scan_rc=$?
+        } <<< "$_redact_input" || (( _redact_d2_scan_rc != 1 )); then
             printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
             # D2: a userpass credential mapping (any username) cannot
             # be verified line by line by the fallback; suppress.
             return 2
         fi
-        if printf '%s\n' "$_redact_input" | grep -qiE -- $'["\x27]?(uuid|private[_-]?key|public[_-]?key|short[_-]?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|hy2_cert_sha256_fp|hy2_cert_pubkey_sha256_b64)["\x27]?[[:space:]]*[:=][[:space:]]*\['; then
+        local _redact_d2_scan_rc=2
+        if ! {
+            grep -qiE -- $'["\x27]?(uuid|private[_-]?key|public[_-]?key|short[_-]?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|hy2_cert_sha256_fp|hy2_cert_pubkey_sha256_b64)["\x27]?[[:space:]]*[:=][[:space:]]*\['
+            _redact_d2_scan_rc=$?
+        } <<< "$_redact_input" || (( _redact_d2_scan_rc != 1 )); then
             printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
             # D2: any recognised sensitive array opener is suppressed
             # outright — a `]` on the opener line may sit inside a
@@ -38626,7 +38644,11 @@ PY_REDACT
         # comment with no `*/` on this line (cross-line or unterminated);
         # a block comment that closes but ends the line (value on a later
         # line); or a block comment between the key and the separator.
-        if printf '%s\n' "$_redact_input" | grep -qE -- $'(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*//|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*/\*([^*]|\*+[^*/])*\**$|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*/\*([^*]|\*+[^*/])*\*+/[[:space:]]*$|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*/\*|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*//'; then
+        local _redact_d2_scan_rc=2
+        if ! {
+            grep -qE -- $'(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*//|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*/\*([^*]|\*+[^*/])*\**$|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*/\*([^*]|\*+[^*/])*\*+/[[:space:]]*$|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*/\*|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*//'
+            _redact_d2_scan_rc=$?
+        } <<< "$_redact_input" || (( _redact_d2_scan_rc != 1 )); then
             printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
             # D2: a comment in the `id` gap pushes the value out of the
             # line the fallback can verify (or hides it entirely); the

@@ -38703,7 +38703,7 @@ PY_REDACT
         fi
         printf '%s\n' "$_redact_input" | sed -E \
             -e 's/(UUID|SS_PASS|HY2_PASS|HY2_OBFS|HY2_ACME_DNS_CF_API_TOKEN|PUBLIC_KEY|SHORT_ID)=.*/\1=***REDACTED***/Ig' \
-            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)(Bearer|Basic)[[:space:]]+([^,;[:space:]}]*:[[:blank:]]+("(\\.|[^"\\])*("|$)|'"'"'(\\.|[^'"'"'\\])*('"'"'|$))|[^,;[:space:]}]+)/\1\3 ***REDACTED***/Ig' \
+            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)(Bearer|Basic)[[:space:]]+([^,;[:space:]}]*:[[:blank:]]+("(\\.|[^"\\])*("|$)|'"'"'(\\.|[^'"'"'\\])*('"'"'|$))|[^,;[:space:]}"]*("+[^,;[:space:]}"]+)+|[^,;[:space:]}"]+)/\1\3 ***REDACTED***/Ig' \
             -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)[^,;[:space:]}"]+/\1***REDACTED***/Ig' \
             -e 's/((Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*)[^,}[:cntrl:]"[:space:]][^,}[:cntrl:]"]*/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \

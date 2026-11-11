@@ -20165,10 +20165,35 @@ chown root:root "$txn_stage" || { rm -rf -- "$txn_stage"; exit 1; }
 # R7-03: snapshot the ownership manifest pre-state into the transaction
 # so rollback can restore the two geo rows (hashes included) instead of
 # re-certifying restored files. A symlinked or non-regular manifest
-# fails closed here: the update cannot safely record pre-state for it.
+# fails closed here, and so does a manifest the restorer would refuse
+# (non-root owner, group/other mode bits, oversize, or malformed rows):
+# snapshotting it would publish a snapshot rollback can never restore
+# (R11-D R6-2). The update cannot safely record pre-state for it.
 if [[ -e "$ABOX_CORE_OWNERSHIP" || -L "$ABOX_CORE_OWNERSHIP" ]]; then
     [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]] || { rm -rf -- "$txn_stage"; exit 1; }
+    _r6_uid=$(stat -c %u "$ABOX_CORE_OWNERSHIP" 2>/dev/null) || { rm -rf -- "$txn_stage"; exit 1; }
+    _r6_gid=$(stat -c %g "$ABOX_CORE_OWNERSHIP" 2>/dev/null) || { rm -rf -- "$txn_stage"; exit 1; }
+    _r6_mode=$(stat -c %a "$ABOX_CORE_OWNERSHIP" 2>/dev/null) || { rm -rf -- "$txn_stage"; exit 1; }
+    _r6_size=$(stat -c %s "$ABOX_CORE_OWNERSHIP" 2>/dev/null) || { rm -rf -- "$txn_stage"; exit 1; }
+    [[ "$_r6_uid" == 0 && "$_r6_gid" == 0 ]] || { printf '%s\n' "geo_update: ownership manifest snapshot rejected (unsafe owner); update aborted before Geo changes" >&2; rm -rf -- "$txn_stage"; exit 1; }
+    (( (8#$_r6_mode & 077) == 0 )) || { printf '%s\n' "geo_update: ownership manifest snapshot rejected (unsafe mode); update aborted before Geo changes" >&2; rm -rf -- "$txn_stage"; exit 1; }
+    (( _r6_size <= 4194304 )) || { printf '%s\n' "geo_update: ownership manifest snapshot rejected (oversize); update aborted before Geo changes" >&2; rm -rf -- "$txn_stage"; exit 1; }
     cp -p "$ABOX_CORE_OWNERSHIP" "$txn_stage/manifest.old" || { rm -rf -- "$txn_stage"; exit 1; }
+    python3 -I - "$txn_stage/manifest.old" <<'PY_GEO_MANIFEST_SNAPSHOT_CHECK' || { printf '%s\n' "geo_update: ownership manifest snapshot rejected (malformed rows); update aborted before Geo changes" >&2; rm -rf -- "$txn_stage"; exit 1; }
+import os, stat, sys
+path = sys.argv[1]
+st = os.lstat(path)
+ok = stat.S_ISREG(st.st_mode) and st.st_uid == 0 and st.st_gid == 0 and not (st.st_mode & 0o077) and st.st_size <= 4 * 1024 * 1024
+seen = set()
+with open(path, 'r', encoding='utf-8') as f:
+    for line in f:
+        ok = ok and '\x00' not in line
+        parts = line.rstrip('\n').split('\t')
+        ok = ok and len(parts) == 4 and parts[0] in {'F', 'D'} and parts[2].startswith('/')
+        ok = ok and (parts[0], parts[1], parts[2]) not in seen
+        seen.add((parts[0], parts[1], parts[2]))
+raise SystemExit(not ok)
+PY_GEO_MANIFEST_SNAPSHOT_CHECK
     printf '1\n' > "$txn_stage/had_manifest" || { rm -rf -- "$txn_stage"; exit 1; }
 else
     printf '0\n' > "$txn_stage/had_manifest" || { rm -rf -- "$txn_stage"; exit 1; }
@@ -32498,6 +32523,7 @@ users_core_generation() { # $1 = core -> generation string, or empty if undeterm
 users_guard_eval() {
     local reg="$1" core="$2" tag="$3" now_s="$4" period="$5" hhmm="$6" stats="$7" have="$8"
     local gen="${9:-}"
+    local tzoff="${10:-0}"
     local old_json='' updated=''
     # Retry a previously failed config sync: its registry transition
     # was already committed, so no new transition would ever re-fire
@@ -32511,7 +32537,15 @@ users_guard_eval() {
     fi
     old_json=$(jq -c . "$reg" 2>/dev/null) || return 0
     [[ -n "$old_json" ]] || return 0
-    updated=$(jq -c --arg per "$period" --argjson now "$now_s" --arg hhmm "$hhmm" --argjson stats "${stats:-{\}}" --argjson have "$have" --arg gen "$gen" '
+    updated=$(jq -c --arg per "$period" --argjson now "$now_s" --arg hhmm "$hhmm" --argjson stats "${stats:-{\}}" --argjson have "$have" --arg gen "$gen" --argjson tzoff "$tzoff" '
+        def created_in_period($p; $off):
+            .created as $c
+            | if ($c | type) != "string" then false
+              elif ($c | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$") | not) then false
+              else (try (((($c | fromdateiso8601) | todateiso8601) == $c)
+                         and (((($c | fromdateiso8601) + $off) | todateiso8601)[0:7] == $p))
+                    catch false)
+              end;
         def inwindow($w; $t):
             if $w == "" then true
             else ($w | split("-")) as $r
@@ -32526,7 +32560,7 @@ users_guard_eval() {
             (if $have == 1 and (.email // "") != "" and ($stats[.email] != null) then
                 (if .period != $per then
                     (if .period == "" then
-                        (if .count_from_zero == true then
+                        (if .count_from_zero == true and created_in_period($per; $tzoff) then
                             .used_up += $stats[.email].up | .used_down += $stats[.email].down
                          else . end)
                         | .period = $per | .last_up = $stats[.email].up | .last_down = $stats[.email].down | .baseline_stale = false | del(.count_from_zero)
@@ -33131,6 +33165,12 @@ user_guard_tick() {
     fi
     local now_s='' period='' hhmm=''
     now_s=$(date +%s); period=$(date '+%Y-%m'); hhmm=$(date '+%H:%M')
+    local _tzoff='' _tzoff_s=0 _tzsign=1
+    _tzoff=$(date +%z 2>/dev/null || echo '+0000')
+    if [[ "$_tzoff" =~ ^([+-])([0-9]{2})([0-9]{2})$ ]]; then
+        [[ "${BASH_REMATCH[1]}" == '-' ]] && _tzsign=-1
+        _tzoff_s=$(( _tzsign * (10#${BASH_REMATCH[2]} * 3600 + 10#${BASH_REMATCH[3]} * 60) ))
+    fi
     local core='' tag='' proto='' port=''
     while IFS=$'\t' read -r core tag proto port; do
         [[ -n "$core" && -n "$tag" && "$proto" != 'shadowtls' ]] || continue
@@ -33151,7 +33191,7 @@ user_guard_tick() {
             xray) stats="$stats_xray"; have=$have_xray; gen="$gen_xray" ;;
             *) stats=''; have=0; gen='' ;;
         esac
-        users_guard_eval "$reg" "$rcore" "$rtag" "$now_s" "$period" "$hhmm" "$stats" "$have" "$gen"
+        users_guard_eval "$reg" "$rcore" "$rtag" "$now_s" "$period" "$hhmm" "$stats" "$have" "$gen" "$_tzoff_s"
     done
     return 0
 }
@@ -43066,7 +43106,11 @@ findtime = 600
 bantime = 86400
 action = ${action}
 EOF_WF2B_JAIL
-    validate_fail2ban_config >/dev/null 2>&1 || { rm -f -- "$jail"; return 0; }
+    if ! validate_fail2ban_config 2>&1 >/dev/null; then
+        msg "${RED}Wallos fail2ban jail NOT created: fail2ban configuration validation failed. Login brute-force protection is OFF.${NC}" 2>&1
+        rm -f -- "$jail"
+        return 1
+    fi
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         systemctl restart fail2ban >/dev/null 2>&1 || true
     else
@@ -43381,8 +43425,8 @@ _wallos_caddy_config_matches() { # $1=public port $2=internal port
     [[ "$internal" =~ ^[0-9]+$ ]] || return 1
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     command -v jq >/dev/null 2>&1 || return 1
-    listen=$(jq -r '.apps.http.servers.wallos.listen[0] // empty' "$cfg" 2>/dev/null || true)
-    dial=$(jq -r '.apps.http.servers.wallos.routes[0].handle[0].upstreams[0].dial // empty' "$cfg" 2>/dev/null || true)
+    listen=$(jq -r '.apps.http.servers.wallos.listen[0] // empty' "$cfg" 2>/dev/null) || return 1
+    dial=$(jq -r '.apps.http.servers.wallos.routes[0].handle[0].upstreams[0].dial // empty' "$cfg" 2>/dev/null) || return 1
     [[ "$listen" == ":$pubport" && "$dial" == "127.0.0.1:$internal" ]]
 }
 
@@ -44246,6 +44290,42 @@ wallos_remove_abox_iptables_accept() {
 # could not be rolled back without deleting the pre-existing family
 # too); it still returns 0 because the port is open in the family that
 # exists and the deployment can proceed.
+# R11-D (R7-6): roll back one firewalld scope this call added, then
+# forget its ledger record ONLY if the port is confirmed gone afterwards
+# (firewalld_port_state rc 1). $1=spec $2=type $3=scope $4=zone $5=fw_spec
+# $6=record_if_still_present (0/1: when 1 and the port is not confirmed
+# gone, record the scope so a later cleanup can find it — the rule was
+# created by this call, and the ledger deleter re-verifies live state
+# before deleting, so a possibly-stale record self-heals).
+# Returns 0 when the scope is confirmed gone; 1 otherwise (record kept
+# or (re)written, RED warning emitted).
+_fw_rollback_firewalld_scope() {
+    local _spec="$1" _type="$2" _scope="$3" _zone="$4" _fw_spec="$5" _rec="$6" _rc=0
+    if [[ "$_scope" == permanent ]]; then
+        firewalld_cmd_zone "$_zone" --permanent --remove-port="${_fw_spec}/${_type}" >/dev/null 2>&1 || true
+    else
+        firewalld_cmd_zone "$_zone" --remove-port="${_fw_spec}/${_type}" >/dev/null 2>&1 || true
+    fi
+    firewalld_port_state "$_spec" "$_type" "$_scope" "$_zone" >/dev/null 2>&1; _rc=$?
+    if (( _rc == 1 )); then
+        if forget_native_firewall_rule "$_spec" "$_type" firewalld "$_zone" "$_scope" >/dev/null 2>&1; then
+            return 0
+        fi
+        msg "${RED}[!] Firewalld ${_scope} rule for ${_spec}/${_type} (zone ${_zone}) is gone, but its ledger record could not be forgotten; a stale record may be replayed by a later rollback.${NC}" >&2
+        return 1
+    fi
+    if (( _rec == 1 )); then
+        if record_native_firewall_rule firewalld "$_spec" "$_type" "$_scope" "$_zone"; then
+            msg "${RED}[!] Failed to remove the firewalld ${_scope} rule for ${_spec}/${_type} (zone ${_zone}); the port may still be open, but its ledger record is kept for later cleanup.${NC}" >&2
+        else
+            msg "${RED}[!] Failed to remove the firewalld ${_scope} rule for ${_spec}/${_type} (zone ${_zone}) and its ledger record could not be written; manual cleanup may be required.${NC}" >&2
+        fi
+    else
+        msg "${RED}[!] Failed to remove the firewalld ${_scope} rule for ${_spec}/${_type} (zone ${_zone}); the port may still be open, but its ledger record is kept for later cleanup.${NC}" >&2
+    fi
+    return 1
+}
+
 wallos_fw_open_once() {
     local raw_port="$1" type="${2:-tcp}" backend spec _orc=0 _rrc=0
     local _fw_zone='' _fw_spec='' _fw_rt=0 _fw_pm=0 _fw_rc=0 _fw_added_rt=0
@@ -44274,14 +44354,45 @@ wallos_fw_open_once() {
                 return 1
             fi
             ufw allow proto "$type" from any to any port "$spec" comment "A-Box-${spec}-${type}" >/dev/null 2>&1 || { msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}" >&2; return 1; }
-            if ! ufw_owned_rule_exists "$spec" "$type"; then
-                ufw_delete_owned_rules "$spec" "$type" >/dev/null 2>&1 || true
+            ufw_owned_rule_exists "$spec" "$type"; _orc=$?
+            if (( _orc == 1 )); then
+                # Confirmed absent: allow reported success but no owned
+                # rule exists. Nothing is live to track.
                 msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}" >&2
+                return 1
+            elif (( _orc == 2 )); then
+                # State unknown: try to delete, then re-check tri-state.
+                ufw_delete_owned_rules "$spec" "$type" >/dev/null 2>&1 || true
+                ufw_owned_rule_exists "$spec" "$type"; _orc=$?
+                if (( _orc == 1 )); then
+                    msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}" >&2
+                    return 1
+                fi
+                # Still present (0) or still unknown (2): the rule this
+                # call just added may still be live with no record.
+                # Record it so a later cleanup can find it (the ledger
+                # deleter re-verifies live state before deleting).
+                if record_native_firewall_rule ufw "$spec" "$type" rule; then
+                    msg "${RED}[!] UFW rule for ${spec}/${type} could not be verified removed; the port may still be open, but its ledger record is kept for later cleanup.${NC}" >&2
+                else
+                    msg "${RED}[!] UFW rule for ${spec}/${type} could not be verified removed and its ledger record could not be written; manual cleanup may be required.${NC}" >&2
+                fi
                 return 1
             fi
             if ! record_native_firewall_rule ufw "$spec" "$type" rule; then
                 ufw_delete_owned_rules "$spec" "$type" >/dev/null 2>&1 || true
-                msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}" >&2
+                ufw_owned_rule_exists "$spec" "$type"; _orc=$?
+                if (( _orc == 1 )); then
+                    msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}" >&2
+                    return 1
+                fi
+                # Still present (0) or still unknown (2): retry the record
+                # so the possibly-live rule stays tracked for later cleanup.
+                if record_native_firewall_rule ufw "$spec" "$type" rule; then
+                    msg "${RED}[!] UFW rule for ${spec}/${type} could not be verified removed; the port may still be open, but its ledger record is kept for later cleanup.${NC}" >&2
+                else
+                    msg "${RED}[!] UFW rule for ${spec}/${type} could not be verified removed and its ledger record could not be written; manual cleanup may be required.${NC}" >&2
+                fi
                 return 1
             fi
             printf '%s\n' "ufw|${spec}|${type}"
@@ -44292,8 +44403,11 @@ wallos_fw_open_once() {
             # runtime and permanent, recording each scope. A single
             # port has no subrange coalescing to track, so the record
             # is the port itself in each scope. Any failure removes
-            # the increments already made in this call (and forgets
-            # their records) before returning 1.
+            # the increments already made in this call before returning
+            # 1; a scope is forgotten from the ledger only once its
+            # port is confirmed gone (R11-D R7-6), so a failed removal
+            # keeps its record (or records the scope) for later cleanup
+            # instead of leaving an untracked opening.
             _fw_zone=$(firewalld_zone_for_abox) || { msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1; }
             _fw_spec=$(port_spec_for_firewalld "$spec") || { msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1; }
             firewalld_port_state "$spec" "$type" runtime "$_fw_zone"; _fw_rc=$?
@@ -44307,35 +44421,32 @@ wallos_fw_open_once() {
                 firewalld_cmd_zone "$_fw_zone" --add-port="${_fw_spec}/${type}" >/dev/null 2>&1 || { msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1; }
                 _fw_added_rt=1
                 if ! firewalld_port_state "$spec" "$type" runtime "$_fw_zone" >/dev/null 2>&1; then
-                    firewalld_cmd_zone "$_fw_zone" --remove-port="${_fw_spec}/${type}" >/dev/null 2>&1 || true
+                    _fw_rollback_firewalld_scope "$spec" "$type" runtime "$_fw_zone" "$_fw_spec" 1 || true
                     msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1
                 fi
                 if ! record_native_firewall_rule firewalld "$spec" "$type" runtime "$_fw_zone"; then
-                    firewalld_cmd_zone "$_fw_zone" --remove-port="${_fw_spec}/${type}" >/dev/null 2>&1 || true
+                    _fw_rollback_firewalld_scope "$spec" "$type" runtime "$_fw_zone" "$_fw_spec" 1 || true
                     msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1
                 fi
             fi
             if (( _fw_pm == 0 )); then
                 if ! firewalld_cmd_zone "$_fw_zone" --permanent --add-port="${_fw_spec}/${type}" >/dev/null 2>&1; then
                     if (( _fw_added_rt == 1 )); then
-                        firewalld_cmd_zone "$_fw_zone" --remove-port="${_fw_spec}/${type}" >/dev/null 2>&1 || true
-                        forget_native_firewall_rule "$spec" "$type" firewalld "$_fw_zone" runtime >/dev/null 2>&1 || true
+                        _fw_rollback_firewalld_scope "$spec" "$type" runtime "$_fw_zone" "$_fw_spec" 0 || true
                     fi
                     msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1
                 fi
                 if ! firewalld_port_state "$spec" "$type" permanent "$_fw_zone" >/dev/null 2>&1; then
-                    firewalld_cmd_zone "$_fw_zone" --permanent --remove-port="${_fw_spec}/${type}" >/dev/null 2>&1 || true
+                    _fw_rollback_firewalld_scope "$spec" "$type" permanent "$_fw_zone" "$_fw_spec" 1 || true
                     if (( _fw_added_rt == 1 )); then
-                        firewalld_cmd_zone "$_fw_zone" --remove-port="${_fw_spec}/${type}" >/dev/null 2>&1 || true
-                        forget_native_firewall_rule "$spec" "$type" firewalld "$_fw_zone" runtime >/dev/null 2>&1 || true
+                        _fw_rollback_firewalld_scope "$spec" "$type" runtime "$_fw_zone" "$_fw_spec" 0 || true
                     fi
                     msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1
                 fi
                 if ! record_native_firewall_rule firewalld "$spec" "$type" permanent "$_fw_zone"; then
-                    firewalld_cmd_zone "$_fw_zone" --permanent --remove-port="${_fw_spec}/${type}" >/dev/null 2>&1 || true
+                    _fw_rollback_firewalld_scope "$spec" "$type" permanent "$_fw_zone" "$_fw_spec" 1 || true
                     if (( _fw_added_rt == 1 )); then
-                        firewalld_cmd_zone "$_fw_zone" --remove-port="${_fw_spec}/${type}" >/dev/null 2>&1 || true
-                        forget_native_firewall_rule "$spec" "$type" firewalld "$_fw_zone" runtime >/dev/null 2>&1 || true
+                        _fw_rollback_firewalld_scope "$spec" "$type" runtime "$_fw_zone" "$_fw_spec" 0 || true
                     fi
                     msg "${YELLOW}$(tr_msg wl_iu_fwd_fail)${NC}" >&2; return 1
                 fi
@@ -44987,11 +45098,11 @@ wallos_install_or_update() {
     # reboot) while the install reported success. On failure the
     # journal stays active, so the next run recovers.
     if (( _fw_refused == 0 )) && [[ "$wmode" == https ]]; then
-        allowPort "$pubport" tcp || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
-        allowPort 80 tcp || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        ( allowPort "$pubport" tcp ) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        ( allowPort 80 tcp ) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
         save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
     elif (( _fw_refused == 0 )) && [[ "$bind_address" == 0.0.0.0 ]]; then
-        allowPort "$port" tcp || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        ( allowPort "$port" tcp ) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
         save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
     fi
     # S143: the upgrade journal is the rollback material. It must not be

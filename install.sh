@@ -22012,12 +22012,27 @@ setup_socks5_params() {
 singbox_vendor_takeover_gate() {
     local vendor_unit='' state_enabled='unknown' state_active='unknown' backup='' answer='' _orc_rc='' _u=''
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        for _u in /etc/systemd/system/sing-box.service /usr/lib/systemd/system/sing-box.service /lib/systemd/system/sing-box.service; do
-            if [[ -f "$_u" ]]; then vendor_unit="$_u"; break; fi
-        done
+        # Prefer systemd's selected fragment, including nonstandard locations.
+        _u=$(systemctl show -p FragmentPath --value sing-box.service 2>/dev/null || true)
+        if [[ -n "$_u" && -f "$_u" ]]; then
+            vendor_unit="$_u"
+        else
+            for _u in \
+                /etc/systemd/system/sing-box.service \
+                /run/systemd/system/sing-box.service \
+                /usr/local/lib/systemd/system/sing-box.service \
+                /usr/lib/systemd/system/sing-box.service \
+                /lib/systemd/system/sing-box.service; do
+                if [[ -f "$_u" ]]; then
+                    vendor_unit="$_u"
+                    break
+                fi
+            done
+        fi
         if [[ -n "$vendor_unit" ]] && grep -q 'Managed by A-Box' "$vendor_unit" 2>/dev/null; then return 0; fi
         if [[ -z "$vendor_unit" ]]; then
-            if [[ -x /usr/bin/sing-box ]] && { systemctl is-enabled --quiet sing-box.service 2>/dev/null || systemctl is-active --quiet sing-box.service 2>/dev/null; }; then
+            if systemctl is-enabled --quiet sing-box.service 2>/dev/null ||
+               systemctl is-active --quiet sing-box.service 2>/dev/null; then
                 vendor_unit='(service without unit file)'
             else
                 return 0
@@ -23550,12 +23565,16 @@ argo_write_unit() {
     if [[ -e "$unit" || -L "$unit" ]]; then
         [[ -f "$unit" && ! -L "$unit" ]] && grep -Fxq '# Managed by A-Box' "$unit" 2>/dev/null || die "Refusing to overwrite foreign service unit ${unit} (not managed by A-Box). Remove or rename it, or deploy with a different name."
     elif [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        # systemd also resolves the same name from vendor unit
+        # systemd also resolves the same name from runtime and vendor unit
         # dirs; with no /etc unit, a foreign vendor unit must
         # still refuse the takeover (the /etc write + restart below
         # would otherwise shadow and restart an external service).
         local vendor_unit
-        for vendor_unit in "/usr/lib/systemd/system/${name}.service" "/lib/systemd/system/${name}.service"; do
+        for vendor_unit in \
+            "/run/systemd/system/${name}.service" \
+            "/usr/local/lib/systemd/system/${name}.service" \
+            "/usr/lib/systemd/system/${name}.service" \
+            "/lib/systemd/system/${name}.service"; do
             if [[ -e "$vendor_unit" || -L "$vendor_unit" ]]; then
                 [[ -f "$vendor_unit" && ! -L "$vendor_unit" ]] && grep -Fxq '# Managed by A-Box' "$vendor_unit" 2>/dev/null || die "Refusing to overwrite foreign service unit ${vendor_unit} (not managed by A-Box). Remove or rename it, or deploy with a different name."
             fi
@@ -29349,7 +29368,7 @@ abox_caddy_owned() {
     fi
     # Legacy: any non-A-Box unit/script referencing the binary means
     # something else uses it; keep it.
-    for _ref in /etc/systemd/system/*.service /usr/lib/systemd/system/*.service /lib/systemd/system/*.service /etc/init.d/*; do
+    for _ref in /etc/systemd/system/*.service /run/systemd/system/*.service /usr/local/lib/systemd/system/*.service /usr/lib/systemd/system/*.service /lib/systemd/system/*.service /etc/init.d/*; do
         [[ -f "$_ref" ]] || continue
         case "$_ref" in
             /etc/systemd/system/abox-wallos-caddy.service|/etc/init.d/abox-wallos-caddy) continue ;;
@@ -32608,7 +32627,8 @@ users_core_generation() { # $1 = core -> generation string, or empty if undeterm
 users_guard_eval() {
     local reg="$1" core="$2" tag="$3" now_s="$4" period="$5" hhmm="$6" stats="$7" have="$8"
     local gen="${9:-}"
-    local tzoff="${10:-0}"
+    local per_start="${10:-null}"
+    local per_end="${11:-null}"
     local old_json='' updated=''
     # Retry a previously failed config sync: its registry transition
     # was already committed, so no new transition would ever re-fire
@@ -32622,14 +32642,20 @@ users_guard_eval() {
     fi
     old_json=$(jq -c . "$reg" 2>/dev/null) || return 0
     [[ -n "$old_json" ]] || return 0
-    updated=$(jq -c --arg per "$period" --argjson now "$now_s" --arg hhmm "$hhmm" --argjson stats "${stats:-{\}}" --argjson have "$have" --arg gen "$gen" --argjson tzoff "$tzoff" '
-        def created_in_period($p; $off):
+    updated=$(jq -c --arg per "$period" --argjson now "$now_s" --arg hhmm "$hhmm" --argjson stats "${stats:-{\}}" --argjson have "$have" --arg gen "$gen" --argjson per_start "$per_start" --argjson per_end "$per_end" '
+        def created_in_period($s; $e):
             .created as $c
             | if ($c | type) != "string" then false
               elif ($c | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$") | not) then false
-              else (try (((($c | fromdateiso8601) | todateiso8601) == $c)
-                         and (((($c | fromdateiso8601) + $off) | todateiso8601)[0:7] == $p))
-                    catch false)
+              elif (($s | type) != "number") or
+                   (($e | type) != "number") then false
+              elif $s >= $e then false
+              else (try (
+                        ($c | fromdateiso8601) as $t
+                        | ((($t | todateiso8601) == $c)
+                           and ($t >= $s)
+                           and ($t < $e))
+                    ) catch false)
               end;
         def inwindow($w; $t):
             if $w == "" then true
@@ -32645,7 +32671,7 @@ users_guard_eval() {
             (if $have == 1 and (.email // "") != "" and ($stats[.email] != null) then
                 (if .period != $per then
                     (if .period == "" then
-                        (if .count_from_zero == true and created_in_period($per; $tzoff) then
+                        (if .count_from_zero == true and created_in_period($per_start; $per_end) then
                             .used_up += $stats[.email].up | .used_down += $stats[.email].down
                          else . end)
                         | .period = $per | .last_up = $stats[.email].up | .last_down = $stats[.email].down | .baseline_stale = false | del(.count_from_zero)
@@ -33250,11 +33276,29 @@ user_guard_tick() {
     fi
     local now_s='' period='' hhmm=''
     now_s=$(date +%s); period=$(date '+%Y-%m'); hhmm=$(date '+%H:%M')
-    local _tzoff='' _tzoff_s=0 _tzsign=1
-    _tzoff=$(date +%z 2>/dev/null || echo '+0000')
-    if [[ "$_tzoff" =~ ^([+-])([0-9]{2})([0-9]{2})$ ]]; then
-        [[ "${BASH_REMATCH[1]}" == '-' ]] && _tzsign=-1
-        _tzoff_s=$(( _tzsign * (10#${BASH_REMATCH[2]} * 3600 + 10#${BASH_REMATCH[3]} * 60) ))
+    # R3-04-C1: the period is a local-month interval, so resolve it to UTC
+    # boundary epochs in the same timezone context that produced $period.
+    # The next month is computed by integer year/month arithmetic: GNU date
+    # relative '+1 month' is DST-unsafe (2026-11-01 +1 month lands 9h short).
+    # On conversion failure the bounds stay null and created_in_period()
+    # returns false (first sample baselined, fail-open undercount).
+    local _per_start=null _per_end=null
+    local _per_year _per_month _next_year _next_month _next_period
+    local _start_epoch _end_epoch
+    if [[ "$period" =~ ^([0-9]{4})-(0[1-9]|1[0-2])$ ]]; then
+        _per_year=$((10#${BASH_REMATCH[1]}))
+        _per_month=$((10#${BASH_REMATCH[2]}))
+        _next_year=$((_per_year + (_per_month == 12)))
+        _next_month=$((_per_month % 12 + 1))
+        printf -v _next_period '%04d-%02d' "$_next_year" "$_next_month"
+        if _start_epoch=$(date -d "${period}-01 00:00:00" +%s 2>/dev/null) &&
+           _end_epoch=$(date -d "${_next_period}-01 00:00:00" +%s 2>/dev/null) &&
+           [[ "$_start_epoch" =~ ^-?[0-9]+$ &&
+              "$_end_epoch" =~ ^-?[0-9]+$ ]] &&
+           (( _end_epoch > _start_epoch )); then
+            _per_start=$_start_epoch
+            _per_end=$_end_epoch
+        fi
     fi
     local core='' tag='' proto='' port=''
     while IFS=$'\t' read -r core tag proto port; do
@@ -33276,7 +33320,7 @@ user_guard_tick() {
             xray) stats="$stats_xray"; have=$have_xray; gen="$gen_xray" ;;
             *) stats=''; have=0; gen='' ;;
         esac
-        users_guard_eval "$reg" "$rcore" "$rtag" "$now_s" "$period" "$hhmm" "$stats" "$have" "$gen" "$_tzoff_s"
+        users_guard_eval "$reg" "$rcore" "$rtag" "$now_s" "$period" "$hhmm" "$stats" "$have" "$gen" "$_per_start" "$_per_end"
     done
     return 0
 }
@@ -35532,18 +35576,6 @@ def _scan_or_fail():
     except ValueError as _e:
         sys.stderr.write('cannot parse config as TOML: %s\n' % _e)
         sys.exit(1)
-
-
-def _top_level_end(lines):
-    # First real table header ends the top-level region; options under
-    # a [table] are never touched (an option set there would not apply
-    # globally, and a commented example must not be uncommented).
-    # Compatibility wrapper over the statement scanner: a '[' line
-    # inside a multiline string or a nested array is not a header.
-    for st in _scan_text(''.join(lines)):
-        if st['kind'] in ('table', 'array_table'):
-            return st['start_line']
-    return len(lines)
 
 
 def _top_level_has_option(name):

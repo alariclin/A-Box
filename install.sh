@@ -35026,13 +35026,32 @@ dns_enable_doh() {
     # queries on plaintext forwarding after DoH is enabled. Warn
     # before anything is changed; declining leaves the config
     # untouched (remove the entry by hand, or keep the current DNS).
-    if awk '
+    # R11E-R2-10-2: the old awk scope check below treated any '['
+    # line as a table header (including lines inside multiline
+    # strings / nested arrays) and never decoded TOML escapes, so it
+    # missed real top-level forwarding_rules entries. With tomllib
+    # (Python 3.11+) the check is exact; without it, the awk program
+    # is a warning-only fallback -- removal is enforced by the
+    # rewriter, never by this pre-check.
+    _doh_fr_present=0
+    if _doh_fr_out=$(python3 -I -c 'import sys, tomllib; print("forwarding_rules" in tomllib.load(open(sys.argv[1], "rb")))' "$config" 2>/dev/null); then
+        [[ "$_doh_fr_out" == 'True' ]] && _doh_fr_present=1
+    elif python3 -I -c 'import tomllib' 2>/dev/null; then
+        # tomllib exists but the file did not parse: refuse outright,
+        # never warn-and-continue on an unverifiable config.
+        msg "${RED}[!] Cannot parse $config as TOML; refusing to enable DoH on an unverifiable config.${NC}"
+        return 1
+    elif awk '
         /^[[:space:]]*#/ { next }
         /^[[:space:]]*$/ { next }
         /^[[:space:]]*\[/ { exit }
         /^[[:space:]]*["'"'"']?forwarding_rules["'"'"']?[[:space:]]*=/ { found=1; exit }
         END { exit !found }
     ' "$config"; then
+        # No tomllib (Python < 3.11): the awk fallback matched.
+        _doh_fr_present=1
+    fi
+    if [[ "$_doh_fr_present" == 1 ]]; then
         case "${ABOX_LANG:-zh}" in
             en) msg "${YELLOW}Enabling DoH will disable the custom forwarding_rules entry in $config; domains listed there will no longer be forwarded as configured.${NC}"; prompt='Continue and disable forwarding_rules? [Y/N]: ' ;;
             ru) msg "${YELLOW}Включение DoH отключит пользовательскую запись forwarding_rules в $config; домены из неё больше не будут перенаправляться как настроено.${NC}"; prompt='Продолжить и отключить forwarding_rules? [Y/N]: ' ;;
@@ -35108,149 +35127,430 @@ server = sys.argv[3] if len(sys.argv) > 3 else 'cloudflare'
 listen = sys.argv[4] if len(sys.argv) > 4 else "['127.0.0.1:5353']"
 
 with open(source, encoding='utf-8') as handle: text = handle.read()
+
+# R11E-R2-10-2: TOML-aware statement scanner. The old line-based scope
+# detector treated ANY line starting with '[' as a table header --
+# including a '[' line inside a multiline string or a nested array --
+# and the key regex never decoded TOML quoted-key escapes, so delete
+# and re-check missed the same real top-level forwarding_rules entry
+# while the post-rewrite check passed and plaintext forwarding stayed
+# live. This scanner walks the document once, tracking string state
+# (single-line and triple-quoted basic/literal), comments, and bracket
+# / brace depth, and returns real statements with decoded key paths.
+# Input that cannot be bounded reliably (unterminated string,
+# unbalanced brackets at end of input, malformed key/header) fails
+# closed instead of leaving a partial assignment behind.
+_TRIPLE_DQ = '"' * 3
+_TRIPLE_SQ = "'" * 3
+_BASIC_ESCAPES = {
+    'b': '\b', 't': '\t', 'n': '\n', 'f': '\f', 'r': '\r',
+    '"': '"', '\\': '\\',
+}
+
+
+def _decode_basic_escapes(raw):
+    # Decode the escape sequences of a basic-string body (without the
+    # surrounding quotes): \b \t \n \f \r \" \\ \uXXXX \UXXXXXXXX,
+    # plus the multiline line-ending backslash (backslash, optional
+    # blanks, newline, and all following whitespace are trimmed).
+    # Raises ValueError on an unknown escape (invalid TOML).
+    out = []
+    i = 0
+    n = len(raw)
+    while i < n:
+        c = raw[i]
+        if c != '\\':
+            out.append(c)
+            i += 1
+            continue
+        if i + 1 >= n:
+            raise ValueError('trailing backslash in basic string')
+        e = raw[i + 1]
+        if e in _BASIC_ESCAPES:
+            out.append(_BASIC_ESCAPES[e])
+            i += 2
+        elif e == 'u':
+            if i + 6 > n:
+                raise ValueError('short \\u escape')
+            out.append(chr(int(raw[i + 2:i + 6], 16)))
+            i += 6
+        elif e == 'U':
+            if i + 10 > n:
+                raise ValueError('short \\U escape')
+            out.append(chr(int(raw[i + 2:i + 10], 16)))
+            i += 10
+        elif e in ' \t\r\n':
+            # Line-ending backslash (multiline strings only): trim
+            # the backslash, the blanks, the newline, and all
+            # following whitespace up to the next real character.
+            j = i + 1
+            while j < n and raw[j] in ' \t':
+                j += 1
+            if j < n and raw[j] == '\r':
+                j += 1
+            if j < n and raw[j] == '\n':
+                j += 1
+                while j < n and raw[j] in ' \t\r\n':
+                    j += 1
+                i = j
+            else:
+                raise ValueError('backslash without following newline')
+        else:
+            raise ValueError('unknown escape \\' + e)
+    return ''.join(out)
+
+
+def _parse_key_path(s, i):
+    # Parse a (possibly dotted) key starting at offset i in string s.
+    # Returns (path_tuple, end_index) with end_index just past the last
+    # segment (trailing blanks skipped). Raises ValueError on a
+    # malformed key. Bare segments are [A-Za-z0-9_-]+; quoted segments
+    # are basic (escapes decoded) or literal (raw, no escapes, so a
+    # literal '\u0066...' is a DIFFERENT key from 'f...').
+    segments = []
+    n = len(s)
+    while True:
+        while i < n and s[i] in ' \t':
+            i += 1
+        if i >= n:
+            raise ValueError('key with no terminator')
+        if s[i] == '"':
+            j = i + 1
+            parts = []
+            closed = False
+            while j < n:
+                if s[j] == '\\':
+                    if j + 1 >= n:
+                        raise ValueError('bad escape in quoted key')
+                    parts.append(s[j:j + 2])
+                    j += 2
+                    continue
+                if s[j] == '"':
+                    closed = True
+                    j += 1
+                    break
+                parts.append(s[j])
+                j += 1
+            if not closed:
+                raise ValueError('unterminated quoted key')
+            segments.append(_decode_basic_escapes(''.join(parts)))
+            i = j
+        elif s[i] == "'":
+            j = s.find("'", i + 1)
+            if j == -1:
+                raise ValueError('unterminated quoted key')
+            segments.append(s[i + 1:j])
+            i = j + 1
+        else:
+            m = re.match(r'[A-Za-z0-9_-]+', s[i:])
+            if m is None:
+                raise ValueError('bad key character %r' % s[i])
+            segments.append(m.group(0))
+            i += len(m.group(0))
+        while i < n and s[i] in ' \t':
+            i += 1
+        if i < n and s[i] == '.':
+            i += 1
+            continue
+        return tuple(segments), i
+
+
+def _scan_line_chars(seg, state, depth, brace):
+    # Scan one line's characters (seg excludes the trailing newline).
+    # Returns (state, depth, brace). States: 'normal', 'dq'/'sq'
+    # (single-line basic/literal), 'dq_ml'/'sq_ml' (triple-quoted).
+    # A '#' outside a string starts a comment: the rest of the line
+    # is skipped. Brackets inside strings/comments do not count.
+    # A triple-quoted string ends at a run of 3+ quotes: the last
+    # three close it, any earlier quotes in the run are content (so
+    # four/five-quote endings scan right). Raises ValueError on an
+    # unterminated single-line string (a raw newline inside one).
+    i = 0
+    n = len(seg)
+    while i < n:
+        c = seg[i]
+        if state == 'dq':
+            if c == '\\':
+                i += 2
+                continue
+            if c == '"':
+                state = 'normal'
+                i += 1
+                continue
+            i += 1
+            continue
+        if state == 'sq':
+            if c == "'":
+                state = 'normal'
+                i += 1
+                continue
+            i += 1
+            continue
+        if state == 'dq_ml':
+            if c == '\\':
+                i += 2
+                continue
+            if c == '"':
+                j = i
+                while j < n and seg[j] == '"':
+                    j += 1
+                if j - i >= 3:
+                    state = 'normal'
+                i = j
+                continue
+            i += 1
+            continue
+        if state == 'sq_ml':
+            if c == "'":
+                j = i
+                while j < n and seg[j] == "'":
+                    j += 1
+                if j - i >= 3:
+                    state = 'normal'
+                i = j
+                continue
+            i += 1
+            continue
+        # state == 'normal'
+        if c == '#':
+            break
+        if c == '"':
+            if seg.startswith(_TRIPLE_DQ, i):
+                state = 'dq_ml'
+                i += 3
+            else:
+                state = 'dq'
+                i += 1
+            continue
+        if c == "'":
+            if seg.startswith(_TRIPLE_SQ, i):
+                state = 'sq_ml'
+                i += 3
+            else:
+                state = 'sq'
+                i += 1
+            continue
+        if c == '[':
+            depth += 1
+        elif c == ']':
+            depth -= 1
+        elif c == '{':
+            brace += 1
+        elif c == '}':
+            brace -= 1
+        i += 1
+    if state in ('dq', 'sq'):
+        raise ValueError('unterminated string')
+    return state, depth, brace
+
+def _scan_text(text):
+    # Returns a list of statements. Each is a dict:
+    #   kind: 'kv' | 'table' | 'array_table'
+    #   path: tuple of decoded key segments
+    #   scope: enclosing table path, or None at top level (kv only)
+    #   start_off, end_off: char offsets of the whole-line span
+    #     (start of the first line to start of the line after the last)
+    #   start_line, end_line: 0-based line indexes, end exclusive
+    #   value_text: raw value text for kv (no trailing newline)
+    # A '[' line is a table header ONLY when seen in normal state at
+    # bracket depth 0 at a line start -- never inside a multiline
+    # string or a nested array. Raises ValueError on input that cannot
+    # be bounded reliably.
+    lines = text.splitlines(keepends=True)
+    line_start = []
+    off = 0
+    for ln in lines:
+        line_start.append(off)
+        off += len(ln)
+    statements = []
+    state = 'normal'
+    depth = 0
+    brace = 0
+    cur = None       # open kv statement being built, or None
+    cur_scope = None # path of the enclosing table, or None
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        seg = raw.rstrip('\r\n')
+        if cur is not None or state in ('dq_ml', 'sq_ml') or depth > 0 or brace > 0:
+            # Continuation of an open multiline value/string: this line
+            # is value content, never a new statement or a header.
+            state, depth, brace = _scan_line_chars(seg, state, depth, brace)
+            if depth < 0 or brace < 0:
+                raise ValueError('unbalanced brackets')
+            if state == 'normal' and depth == 0 and brace == 0:
+                cur['end_line'] = i + 1
+                cur['end_off'] = line_start[i] + len(raw)
+                cur['value_text'] = text[cur['value_off']:cur['end_off']].rstrip('\r\n')
+                statements.append(cur)
+                cur = None
+            i += 1
+            continue
+        # Fresh line: blank, comment, header, or key = value.
+        stripped = seg.lstrip()
+        if stripped == '' or stripped.startswith('#'):
+            i += 1
+            continue
+        if stripped[0] == '[':
+            is_array = stripped.startswith('[[')
+            inner = stripped[2:] if is_array else stripped[1:]
+            path, end = _parse_key_path(inner, 0)
+            rest = inner[end:]
+            close = ']]' if is_array else ']'
+            if not rest.startswith(close):
+                raise ValueError('malformed table header')
+            tail = rest[len(close):].lstrip(' \t')
+            if tail != '' and not tail.startswith('#'):
+                raise ValueError('trailing content after table header')
+            statements.append({
+                'kind': 'array_table' if is_array else 'table',
+                'path': path, 'scope': None,
+                'start_off': line_start[i], 'end_off': line_start[i] + len(raw),
+                'start_line': i, 'end_line': i + 1, 'value_text': None,
+            })
+            cur_scope = path
+            i += 1
+            continue
+        # Key = value. Parse the key path from the first non-blank char.
+        key_start = len(seg) - len(stripped)
+        path, end = _parse_key_path(seg, key_start)
+        if end >= len(seg) or seg[end] != '=':
+            raise ValueError('expected "=" after key')
+        rel_value_off = end + 1
+        cur = {
+            'kind': 'kv', 'path': path, 'scope': cur_scope,
+            'start_off': line_start[i], 'end_off': None,
+            'start_line': i, 'end_line': None, 'value_text': None,
+            'value_off': line_start[i] + rel_value_off,
+        }
+        state, depth, brace = _scan_line_chars(seg[rel_value_off:], state, depth, brace)
+        if depth < 0 or brace < 0:
+            raise ValueError('unbalanced brackets')
+        if state == 'normal' and depth == 0 and brace == 0:
+            cur['end_line'] = i + 1
+            cur['end_off'] = line_start[i] + len(raw)
+            cur['value_text'] = text[cur['value_off']:cur['end_off']].rstrip('\r\n')
+            statements.append(cur)
+            cur = None
+        i += 1
+    if state in ('dq_ml', 'sq_ml'):
+        raise ValueError('unterminated multiline string')
+    if depth > 0 or brace > 0 or cur is not None:
+        raise ValueError('unterminated value')
+    return statements
+
+
+def _scan_or_fail():
+    # Fresh scan of the current text; unparseable input fails closed.
+    try:
+        return _scan_text(text)
+    except ValueError as _e:
+        sys.stderr.write('cannot parse config as TOML: %s\n' % _e)
+        sys.exit(1)
+
+
 def _top_level_end(lines):
     # First real table header ends the top-level region; options under
     # a [table] are never touched (an option set there would not apply
     # globally, and a commented example must not be uncommented).
-    for idx, raw in enumerate(lines):
-        if raw.lstrip().startswith('['):
-            return idx
+    # Compatibility wrapper over the statement scanner: a '[' line
+    # inside a multiline string or a nested array is not a header.
+    for st in _scan_text(''.join(lines)):
+        if st['kind'] in ('table', 'array_table'):
+            return st['start_line']
     return len(lines)
+
 
 def _top_level_has_option(name):
     # Same-scope presence check for the post-rewrite verification: a
     # same-named key under a [table] must not be misread as a
-    # top-level entry (a plain full-text grep would misjudge it).
-    lines = text.splitlines(keepends=True)
-    top_end = _top_level_end(lines)
-    for idx in range(top_end):
-        stripped = lines[idx].lstrip()
-        if stripped.startswith('#'):
-            continue
-        if re.match(r"['\"]?" + re.escape(name) + r"['\"]?\s*=", stripped) is not None:
-            return True
+    # top-level entry (a plain full-text grep would misjudge it). A
+    # dotted key counts (forwarding_rules.sub IS a root
+    # forwarding_rules key); a quoted "forwarding_rules.sub" is one
+    # literal segment and does not count.
+    for st in _scan_or_fail():
+        if st['path'] and st['path'][0] == name:
+            if st['kind'] == 'kv' and st['scope'] is None:
+                return True
+            if st['kind'] in ('table', 'array_table'):
+                return True
     return False
+
+
+def _top_level_option_canonical(name):
+    # Raw value text of the single top-level statement whose key path
+    # is exactly (name,), or None. Fresh scan; never reuses indexes.
+    for st in _scan_or_fail():
+        if st['kind'] == 'kv' and st['scope'] is None and st['path'] == (name,):
+            return st['value_text']
+    return None
+
 
 def set_option(name, value):
     global text
-    lines = text.splitlines(keepends=True)
-    top_end = _top_level_end(lines)
-
-    def is_assignment(raw):
-        stripped = raw.lstrip()
-        if stripped.startswith('#'):
-            return False
-        return re.match(r"['\"]?" + re.escape(name) + r"['\"]?\s*=", stripped) is not None
-
-    out = []
-    replaced = False
-    idx = 0
-    while idx < top_end:
-        raw = lines[idx]
-        if is_assignment(raw):
-            if not replaced:
-                out.append(name + ' = ' + value + '\n')
-                replaced = True
-            # Consume the whole value span: a multiline array keeps its
-            # continuation lines, which the old single-line regex left
-            # behind as broken TOML.
-            depth = 0
-            j = idx
-            while True:
-                segment = lines[j]
-                k = 0
-                in_s = in_d = False
-                while k < len(segment):
-                    ch = segment[k]
-                    if ch == '#' and not in_s and not in_d:
-                        break
-                    if ch == "'" and not in_d:
-                        in_s = not in_s
-                    elif ch == '"' and not in_s:
-                        in_d = not in_d
-                    elif not in_s and not in_d:
-                        if ch == '[':
-                            depth += 1
-                        elif ch == ']':
-                            depth -= 1
-                    k += 1
-                j += 1
-                if depth <= 0 or j >= top_end:
-                    break
-            idx = j
+    stmts = _scan_or_fail()
+    targets = []
+    first_header_off = None
+    for st in stmts:
+        if st['kind'] in ('table', 'array_table') and first_header_off is None:
+            first_header_off = st['start_off']
+        if st['scope'] is not None:
             continue
-        out.append(raw)
-        idx += 1
-    out.extend(lines[top_end:])
-    text = ''.join(out)
-    if not replaced:
+        if st['path'] and st['path'][0] == name:
+            if st['kind'] == 'kv' and st['path'] == (name,):
+                targets.append(st)
+            else:
+                # A dotted `name.sub` or a `[name]` table would
+                # conflict with a plain assignment: fail closed.
+                sys.stderr.write("conflicting definition of '%s'\n" % name)
+                sys.exit(1)
+    if len(targets) > 1:
+        sys.stderr.write("duplicate definition of '%s'\n" % name)
+        sys.exit(1)
+    if targets:
+        st = targets[0]
+        text = text[:st['start_off']] + name + ' = ' + value + '\n' + text[st['end_off']:]
+    else:
         # Insert before the first table header: appending at end of file
         # would land a top-level option inside the last [table].
-        if top_end < len(lines):
-            text = ''.join(lines[:top_end]) + name + ' = ' + value + '\n' + ''.join(lines[top_end:])
+        if first_header_off is not None:
+            text = text[:first_header_off] + name + ' = ' + value + '\n' + text[first_header_off:]
         else:
             if text and not text.endswith('\n'):
                 text += '\n'
             text += name + ' = ' + value + '\n'
 
+
 def remove_option(name):
     # R10-F12-4: delete a top-level option entry (complete assignment
     # span), or do nothing when it is absent. Shares the top-level
     # scope rule with set_option; unlike set_option it never inserts.
-    # A value span that cannot be bounded reliably (unterminated
-    # quote, unbalanced brackets at the region end) fails closed
-    # instead of leaving a partial assignment behind.
+    # Deletes ALL top-level statements whose first key segment matches
+    # (a dotted `name.sub` is two segments; a quoted "name.sub" is
+    # one literal segment and is kept). A `[name]` table header is
+    # deleted together with its whole scope, or its entries would be
+    # orphaned into the top level.
     global text
-    lines = text.splitlines(keepends=True)
-    top_end = _top_level_end(lines)
-
-    def is_assignment(raw):
-        stripped = raw.lstrip()
-        if stripped.startswith('#'):
-            return False
-        return re.match(r"['\"]?" + re.escape(name) + r"['\"]?\s*=", stripped) is not None
-
-    out = []
-    idx = 0
-    while idx < top_end:
-        raw = lines[idx]
-        if is_assignment(raw):
-            depth = 0
-            j = idx
-            in_s = in_d = False
-            closed = False
-            while True:
-                segment = lines[j]
-                k = 0
-                while k < len(segment):
-                    ch = segment[k]
-                    if ch == '#' and not in_s and not in_d:
-                        break
-                    if ch == "'" and not in_d:
-                        in_s = not in_s
-                    elif ch == '"' and not in_s:
-                        in_d = not in_d
-                    elif not in_s and not in_d:
-                        if ch == '[':
-                            depth += 1
-                        elif ch == ']':
-                            depth -= 1
-                    k += 1
+    stmts = _scan_or_fail()
+    spans = []
+    i = 0
+    while i < len(stmts):
+        st = stmts[i]
+        if st['kind'] == 'kv' and st['scope'] is None and st['path'] and st['path'][0] == name:
+            spans.append((st['start_off'], st['end_off']))
+            i += 1
+        elif st['kind'] in ('table', 'array_table') and st['path'] and st['path'][0] == name:
+            j = i + 1
+            while j < len(stmts) and stmts[j]['kind'] not in ('table', 'array_table'):
                 j += 1
-                if depth <= 0 and not in_s and not in_d:
-                    closed = True
-                    break
-                if j >= top_end:
-                    break
-            if not closed:
-                sys.stderr.write('cannot remove %s: value span cannot be bounded reliably\n' % name)
-                sys.exit(1)
-            idx = j
-            continue
-        out.append(raw)
-        idx += 1
-    out.extend(lines[top_end:])
-    text = ''.join(out)
+            end = stmts[j]['start_off'] if j < len(stmts) else len(text)
+            spans.append((st['start_off'], end))
+            i = j
+        else:
+            i += 1
+    for s, e in reversed(spans):
+        text = text[:s] + text[e:]
+
 
 set_option('server_names', "['%s']" % server)
 set_option('listen_addresses', listen)
@@ -35265,9 +35565,58 @@ set_option('ignore_system_dns', 'true')
 # entry (the rules file itself is left alone, and the pre-change
 # snapshot stays available for rollback).
 remove_option('forwarding_rules')
-if _top_level_has_option('forwarding_rules'):
-    sys.stderr.write('forwarding_rules still present at top level after rewrite\n')
-    sys.exit(1)
+# R11E-R2-10-2: final verification, independent of the mutation passes
+# above (fresh scan; never reuses indexes from set/remove). With
+# tomllib (Python 3.11+) verify the parsed document; without it,
+# re-scan with the statement scanner and compare canonical value text
+# (whitespace-insensitive; managed values are single-line canonical
+# after set_option, so a trailing comment cannot survive on them).
+_expected_values = {
+    'server_names': "['%s']" % server,
+    'listen_addresses': listen,
+    'dnscrypt_servers': 'false',
+    'doh_servers': 'true',
+    'ipv4_servers': 'true',
+    'ipv6_servers': 'false',
+    'bootstrap_resolvers': "['9.9.9.9:53', '1.1.1.1:53']",
+    'ignore_system_dns': 'true',
+}
+try:
+    import tomllib
+except ImportError:
+    tomllib = None
+if tomllib is not None:
+    try:
+        _doc = tomllib.loads(text)
+    except Exception as _e:
+        sys.stderr.write('rewritten config is not valid TOML: %s\n' % _e)
+        sys.exit(1)
+    if 'forwarding_rules' in _doc:
+        sys.stderr.write('forwarding_rules still present at top level after rewrite\n')
+        sys.exit(1)
+    _expected_doc = {
+        'server_names': [server],
+        'listen_addresses': tomllib.loads('x = ' + listen)['x'],
+        'dnscrypt_servers': False,
+        'doh_servers': True,
+        'ipv4_servers': True,
+        'ipv6_servers': False,
+        'bootstrap_resolvers': ['9.9.9.9:53', '1.1.1.1:53'],
+        'ignore_system_dns': True,
+    }
+    for _k, _want in _expected_doc.items():
+        if _doc.get(_k) != _want:
+            sys.stderr.write('option %s has unexpected value %r (want %r)\n' % (_k, _doc.get(_k), _want))
+            sys.exit(1)
+else:
+    if _top_level_has_option('forwarding_rules'):
+        sys.stderr.write('forwarding_rules still present at top level after rewrite\n')
+        sys.exit(1)
+    for _k, _want in _expected_values.items():
+        _got = _top_level_option_canonical(_k)
+        if _got is None or ''.join(_got.split()) != ''.join(_want.split()):
+            sys.stderr.write('option %s has unexpected value %r (want %r)\n' % (_k, _got, _want))
+            sys.exit(1)
 with open(target, 'w', encoding='utf-8') as handle: handle.write(text)
 PY_DOH_CONFIG
     rc=$?
@@ -37808,15 +38157,122 @@ uuid_val = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f
 # redacted. The key spelling is unchanged (\bid\b): a `client-id` key
 # tail was already matched (and redacted) by the old rule, so narrowing
 # the key boundary would regress it.
-_id_scalar_re = re.compile(
-    r"(?i)(\bid\b[\"']?\s*[:=]\s*)(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|[^\s,}\]]+)"
-)
+# R11E-R7-2: comment-aware id matcher. The old `_id_scalar_re` required
+# the value immediately after the separator, so a JSONC comment (`/* */`
+# or `//` to end of line) sitting between the `id` key and its value was
+# itself consumed as the bare scalar and the real credential survived.
+# This scanner consumes the whole key-to-value gap (whitespace plus any
+# number of JSONC comments, on either side of `:`/`=`), then redacts
+# only the real scalar. A comment gap that never yields a verifiable
+# value (unterminated block comment, or a structural character / EOF
+# right after the comment) raises _SuppressDocument (D2): the document
+# is suppressed rather than released with an unverified id value. A
+# bare integer id is still a numeric field, not a credential, and is
+# kept; a quoted "123" is a string and is redacted. The key boundary
+# is unchanged (\\bid\\b): a `client-id` key tail is still matched.
+_ID_KEY_RE = re.compile(r"(?i)\bid\b[\"']?")
+_BARE_ID_RE = re.compile(r"[^\s,}\]]+")
 
 
-def _redact_id_scalar(m):
-    if re.fullmatch(r"-?\d+", m.group(2)):
-        return m.group(0)
-    return m.group(1) + '"***REDACTED***"'
+def _skip_id_gap(text, pos):
+    # Skip whitespace and JSONC comments starting at pos. Returns
+    # (new_pos, saw_comment). Raises _SuppressDocument on an
+    # unterminated block comment or a line comment with no line end.
+    saw_comment = False
+    n = len(text)
+    while pos < n:
+        c = text[pos]
+        if c in " \t\r\n":
+            pos += 1
+            continue
+        if text.startswith("/*", pos):
+            end = text.find("*/", pos + 2)
+            if end == -1:
+                raise _SuppressDocument()
+            saw_comment = True
+            pos = end + 2
+            continue
+        if text.startswith("//", pos):
+            end = text.find("\n", pos + 2)
+            if end == -1:
+                raise _SuppressDocument()
+            saw_comment = True
+            pos = end + 1
+            continue
+        break
+    return pos, saw_comment
+
+
+def _redact_id_text(text):
+    out = []
+    cursor = 0
+    for m in _ID_KEY_RE.finditer(text):
+        if m.start() < cursor:
+            continue
+        pos = m.end()
+        pos, saw_comment = _skip_id_gap(text, pos)
+        if pos >= len(text) or text[pos] not in ":=":
+            continue
+        pos += 1
+        pos, saw_comment2 = _skip_id_gap(text, pos)
+        saw_comment = saw_comment or saw_comment2
+        if pos >= len(text):
+            if saw_comment:
+                raise _SuppressDocument()
+            continue
+        c = text[pos]
+        if c == '"':
+            j = pos + 1
+            closed = False
+            while j < len(text):
+                if text[j] == "\\":
+                    j += 2
+                    continue
+                if text[j] == '"':
+                    closed = True
+                    j += 1
+                    break
+                j += 1
+            if not closed:
+                raise _SuppressDocument()
+            val_end = j
+            val_text = text[pos:val_end]
+            keep = False
+        elif c == "'":
+            j = pos + 1
+            closed = False
+            while j < len(text):
+                if text.startswith("''", j):
+                    j += 2
+                    continue
+                if text[j] == "'":
+                    closed = True
+                    j += 1
+                    break
+                j += 1
+            if not closed:
+                raise _SuppressDocument()
+            val_end = j
+            val_text = text[pos:val_end]
+            keep = False
+        else:
+            bm = _BARE_ID_RE.match(text, pos)
+            if bm is None:
+                if saw_comment:
+                    raise _SuppressDocument()
+                continue
+            val_end = bm.end()
+            val_text = bm.group(0)
+            keep = re.fullmatch(r"-?\d+", val_text) is not None
+        out.append(text[cursor:m.start()])
+        if keep:
+            out.append(text[m.start():val_end])
+        else:
+            out.append(text[m.start():pos])
+            out.append('"***REDACTED***"')
+        cursor = val_end
+    out.append(text[cursor:])
+    return "".join(out)
 
 
 
@@ -37869,7 +38325,11 @@ except Exception:
         r'\1***REDACTED***',
         text,
     )
-    text = _id_scalar_re.sub(_redact_id_scalar, text)
+    try:
+        text = _redact_id_text(text)
+    except _SuppressDocument:
+        sys.stdout.write(_SUPPRESS_NOTICE + "\n")
+        raise SystemExit(2)
     text = re.sub(
         r"(?i)([\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]\s*\[)[^\]]*",
         r'\1***REDACTED***',
@@ -37924,6 +38384,22 @@ PY_REDACT
             # string, so it never proves the array closed there.
             return 2
         fi
+        # R11E-R7-2: a JSONC comment in an `id` key-to-value gap that the
+        # line-based sed rules below cannot verify. Four narrow shapes,
+        # all anchored to the gap (separator first, value not yet seen),
+        # so a URL value (`id: "https://…"`) or a trailing comment
+        # (`id: "x" // note`) never triggers: `//` in the gap (the value
+        # must be on a later line); a block comment with no `*/` on this
+        # line (cross-line or unterminated); a block comment that closes
+        # but ends the line (value on a later line); a comment between
+        # the key and the separator.
+        if printf '%s\n' "$_redact_input" | grep -qE -- $'(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*//|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*/\*([^*]|\*+[^*/])*\**$|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*/\*([^*]|\*+[^*/])*\*+/[[:space:]]*$|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*/\*'; then
+            printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
+            # D2: a comment in the `id` gap pushes the value out of the
+            # line the fallback can verify (or hides it entirely); the
+            # notice above is the whole output.
+            return 2
+        fi
         printf '%s\n' "$_redact_input" | sed -E \
             -e 's/(UUID|SS_PASS|HY2_PASS|HY2_OBFS|HY2_ACME_DNS_CF_API_TOKEN|PUBLIC_KEY|SHORT_ID)=.*/\1=***REDACTED***/Ig' \
             -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)(Bearer|Basic)[[:space:]]+[^,;[:space:]}"]+/\1\3 ***REDACTED***/Ig' \
@@ -37938,8 +38414,18 @@ PY_REDACT
             -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1\2"***REDACTED***"/Ig' \
             -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(\x27)([^\x27]|\x27\x27)*\x27/\1\2***REDACTED***\2/Ig' \
             -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(\x27)([^\x27]|\x27\x27)*\x27/\1\2\3***REDACTED***\3/Ig' \
-            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]*[^][:space:],}"\x270-9-][^][:space:],}"\x27]*)/\1***REDACTED***/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]*[^][:space:],}"\x270-9-][^][:space:],}"\x27]*)/\1\2***REDACTED***/Ig' \
+            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)"([^"\\]|\\.)*"/\1\2"***REDACTED***"/Ig' \
+            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(\x27)([^\x27]|\x27\x27)*\x27/\1\4***REDACTED***\4/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(\x27)([^\x27]|\x27\x27)*\x27/\1\2\5***REDACTED***\5/Ig' \
+            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"\x27]*)/\1***REDACTED***/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"\x27]*)/\1\2***REDACTED***/Ig' \
+            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"\x27]*|-?[0-9]*([^][:space:],}"\x270-9/-]|\/[^][:space:],}"\x27*])[^][:space:],}"\x27]*)/\1***REDACTED***/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"\x27]*|-?[0-9]*([^][:space:],}"\x270-9/-]|\/[^][:space:],}"\x27*])[^][:space:],}"\x27]*)/\1\2***REDACTED***/Ig' \
+            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]+-[^][:space:],}"\x27]*)/\1***REDACTED***/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]+-[^][:space:],}"\x27]*)/\1\2***REDACTED***/Ig' \
+            -e 's/^([[:space:]]*id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]*([^][:space:],}"\x270-9/-]|\/[^][:space:],}"\x27*])[^][:space:],}"\x27]*)/\1***REDACTED***/Ig' \
+            -e 's/([^A-Za-z0-9_])(id["\x27 ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]*([^][:space:],}"\x270-9/-]|\/[^][:space:],}"\x27*])[^][:space:],}"\x27]*)/\1\2***REDACTED***/Ig' \
             -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*)[^}"\x27[:space:]][^}"\r]*/\1***REDACTED***/Ig' \
             -e 's/(["\x27 ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["\x27 ]?[[:space:]]*[:=][[:space:]]*[" ]?)[^,}[:space:]["]+/\1***REDACTED***/Ig' \
             -e 's/(vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess):\/\/[^[:space:]]+/***CLIENT_LINK_REDACTED***/Ig' \
@@ -41294,7 +41780,7 @@ wallos_prune_local_images() {
     done < <(docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep '^bellamy/wallos:' || true)
     local removed=0
     for img in "${all_images[@]}"; do
-        local _img_id='' _keep_by_id=0
+        local _img_id='' _keep_by_id=0 _confirmed_id=''
         _img_id=$(docker image inspect -f '{{.Id}}' "$img" 2>/dev/null || true)
         if [[ -n "$_img_id" ]]; then
             for _kid in "${keep_ids[@]}"; do
@@ -41311,9 +41797,29 @@ wallos_prune_local_images() {
             # tag|ID binding for the CURRENT image. A tag-only record
             # (legacy) or a record for a different ID (rebuilt under
             # the same tag) does not authorize deletion.
+            # R11E-R7-4/R7-5: an image whose ID cannot be resolved to a
+            # well-formed sha256 ID is unidentifiable: skip it without
+            # prompting. A confirm here could never authorize the delete
+            # below (the recheck could not verify it), and prompting
+            # would only mislead. Kept images never reach this gate:
+            # it sits inside the delete branch, after the keep check.
+            if [[ ! "$_img_id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                msg "${YELLOW}$(tprintf wl_pr_skip_unrecorded "$img")${NC}"
+                continue
+            fi
             if [[ -z "$_img_id" ]] || ! grep -Fqx "$img|$_img_id" "${ABOX_DIR}/wallos-images.txt" 2>/dev/null; then
                 if [[ -t 0 ]]; then
-                    confirm_yes_no "$(tprintf wl_pr_confirm_unrecorded "$img")" || continue
+                    if confirm_yes_no "$(tprintf wl_pr_confirm_unrecorded "$img")"; then
+                        # R11E-R7-4: record the confirmation against the
+                        # CURRENT image ID. The recheck below accepts
+                        # this ID as well as a live tag|ID record, so a
+                        # confirmed delete of an unrecorded image is
+                        # reachable again; the ID must still match the
+                        # rechecked ID exactly.
+                        _confirmed_id="$_img_id"
+                    else
+                        continue
+                    fi
                 else
                     msg "${YELLOW}$(tprintf wl_pr_skip_unrecorded "$img")${NC}"
                     continue
@@ -41323,11 +41829,26 @@ wallos_prune_local_images() {
             # the scan and the delete must not slip through.
             local _img_id_now=''
             _img_id_now=$(docker image inspect -f '{{.Id}}' "$img" 2>/dev/null || true)
-            if [[ "$_img_id_now" != "$_img_id" ]] || ! grep -Fqx "$img|$_img_id_now" "${ABOX_DIR}/wallos-images.txt" 2>/dev/null; then
+            if [[ "$_img_id_now" != "$_img_id" ]]; then
                 msg "${YELLOW}$(tprintf wl_pr_skip_unrecorded "$img")${NC}"
                 continue
             fi
-            if docker rmi "$img" >/dev/null 2>&1; then
+            # R11E-R7-4: the recheck accepts the confirmed ID as well as
+            # a live record binding. Before this fix the record test
+            # below was false for unrecorded images by definition, so a
+            # confirmed delete could never reach the delete. The
+            # confirmed ID must be non-empty and equal to the rechecked
+            # ID; a revoked binding with no confirmation still skips.
+            if ! grep -Fqx "$img|$_img_id_now" "${ABOX_DIR}/wallos-images.txt" 2>/dev/null && [[ -z "$_confirmed_id" || "$_confirmed_id" != "$_img_id_now" ]]; then
+                msg "${YELLOW}$(tprintf wl_pr_skip_unrecorded "$img")${NC}"
+                continue
+            fi
+            # R11E-R7-5: delete by the verified immutable ID, never by
+            # the mutable tag: a retarget between the recheck and the
+            # delete must not remove the wrong image. (A multi-tag
+            # image may fail ID deletion without -f; that is accepted
+            # and reported, never forced.)
+            if docker rmi "$_img_id_now" >/dev/null 2>&1; then
                 removed=$((removed + 1))
             else
                 # D-09: was silently swallowed by `|| true`.
@@ -43658,29 +44179,47 @@ wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still r
 # alone. With $1=purge-data the A-Box Wallos data dir is removed
 # too (full uninstall); other flows keep the subscription data.
 wallos_stack_teardown() {
-    local _purge="${1:-keep-data}" _rm_failed=0 _docker_ok=0 _gone=0 _unknown=0
+    local _purge="${1:-keep-data}" _rm_failed=0 _docker_ok=0 _gone=0 _unknown=0 _inspect_err='' _recheck_err=''
     if command -v docker >/dev/null 2>&1; then
         _docker_ok=1
-        if docker inspect wallos >/dev/null 2>&1; then
+        # R11E-R7-7: classify an inspect failure by its own error text,
+        # never by whether `docker info` happens to succeed. A daemon
+        # that answers `info` can still fail an `inspect` (timeout,
+        # auth-plugin refusal, transient error) while the container
+        # keeps running; treating that as "gone" let keep-data return
+        # 0 with the container still alive. Only Docker's own
+        # "No such container" / "No such object" proves absence (same
+        # wording the backup/repair paths already use).
+        if _inspect_err=$(docker inspect wallos 2>&1 >/dev/null); then
             local _lbl=''
             _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)
             # R16C15-01: only the managed label authorizes removal;
             # a leftover state file alone is not proof of ownership.
             if [[ "$_lbl" == 'true' ]]; then
                 if docker rm -f wallos >/dev/null 2>&1; then
-                    docker inspect wallos >/dev/null 2>&1 || _gone=1
+                    # Same three-state classification for the post-rm
+                    # recheck: a "No such container/object" failure
+                    # proves the removal; any other failure (or a
+                    # still-present container) leaves _gone at 0, so
+                    # purge refuses, and an unknown recheck fails
+                    # keep-data instead of reporting success.
+                    if _recheck_err=$(docker inspect wallos 2>&1 >/dev/null); then
+                        :
+                    elif [[ "$_recheck_err" == *'No such container'* || "$_recheck_err" == *'No such object'* ]]; then
+                        _gone=1
+                    else
+                        _unknown=1
+                    fi
                 else
                     _rm_failed=1
                 fi
             fi
             # An unmanaged container is deliberately left running (as
             # before); _gone stays 0 so purge below refuses.
+        elif [[ "$_inspect_err" == *'No such container'* || "$_inspect_err" == *'No such object'* ]]; then
+            _gone=1
         else
-            if docker info >/dev/null 2>&1; then
-                _gone=1
-            else
-                _unknown=1
-            fi
+            _unknown=1
         fi
     else
         # R7-F15-7: no docker binary at all: the container state is
@@ -43714,10 +44253,11 @@ wallos_stack_teardown() {
         return 1
     fi
     # R7-F15-7: in keep-data mode an unknown container state (docker
-    # missing, or inspect and info both failed) must fail the teardown,
-    # not report success while a container may still be running. (A
-    # container that was inspected and found unmanaged is deliberately
-    # left in place and still returns 0 here.)
+    # missing, or inspect failed without Docker reporting the
+    # container absent) must fail the teardown, not report success
+    # while a container may still be running. (A container that was
+    # inspected and found unmanaged is deliberately left in place and
+    # still returns 0 here.)
     if [[ "$_purge" == 'keep-data' ]] && (( _unknown == 1 )); then
         msg "${RED}$(tr_msg wl_td_purge_refuse)${NC}"
         return 1

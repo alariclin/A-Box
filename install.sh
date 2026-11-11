@@ -325,7 +325,7 @@ ABOX_TEST_MIRROR_RELEASE='test-tools-mirror'
 # common non-PQ clients, so the ML-KEM threshold is still enforced separately
 # (ABOX_XRAY_REALITY_MLKEM_MIN_VERSION). Explicit ABOX_XRAY_VERSION overrides
 # remain available for operators who intentionally pin a version.
-ABOX_XRAY_DEFAULT_VERSION='v26.7.28'
+ABOX_XRAY_DEFAULT_VERSION='v26.11.9'
 # Stable sing-box compatibility pin; refresh and validate client/config
 # compatibility before changing the pinned version.
 ABOX_SINGBOX_DEFAULT_VERSION='v1.14.3'
@@ -333,7 +333,7 @@ ABOX_SINGBOX_DEFAULT_VERSION='v1.14.3'
 # the mirror: superseded mirror assets are pruned on update. Automatic
 # disaster recovery reads the current verified mirror version instead
 # (core_latest_mirror_release_ref). Recovery is refused for other pins.
-ABOX_XRAY_MIRROR_VERSION='v26.7.28'
+ABOX_XRAY_MIRROR_VERSION='v26.11.9'
 ABOX_SINGBOX_MIRROR_VERSION='v1.14.3'
 ABOX_HYSTERIA_MIRROR_VERSION='app/v2.13.0'
 ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'
@@ -50860,7 +50860,7 @@ PY_SELFTEST_TAR
         ABOX_XRAY_UPDATE_POLICY='pinned'
         ABOX_RESOLVED_XRAY_VERSION=''; ABOX_RESOLVED_XRAY_SOURCE=''
         resolve_core_release_target XTLS/Xray-core || exit 1
-        [[ "$ABOX_RESOLVED_XRAY_VERSION|$ABOX_RESOLVED_XRAY_SOURCE" == 'v26.7.28|pinned' ]]
+        [[ "$ABOX_RESOLVED_XRAY_VERSION|$ABOX_RESOLVED_XRAY_SOURCE" == 'v26.11.9|pinned' ]]
     ) || { echo 'FAIL: pinned policy without TRY_LATEST must use the pin'; failures=$((failures + 1)); }
     (
         unset ABOX_SINGBOX_VERSION ABOX_SINGBOX_UPDATE_POLICY ABOX_TRY_LATEST_CORE_STABLE

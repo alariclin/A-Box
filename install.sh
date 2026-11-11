@@ -38075,10 +38075,45 @@ secret = re.compile(
 link = re.compile(r"(?i)\b(?:vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess)://\S+")
 pem_span = re.compile(r"-----BEGIN [^-]*KEY-----.*?-----END [^-]*KEY-----", re.S)
 url_userinfo = re.compile(r"(?i)(\b(?:https?|ftp)://)[^\s/@]+@")
-inline_authorization = re.compile(
-    r"(?i)(\b(?:authorization|proxy-authorization)\s*[:=]\s*)(?:Bearer\s+\S+|Basic\s+\S+|\S+)"
+# R12B-N1: a JSONC comment gap (whitespace plus /* */ or // comments) that
+# may sit between a sensitive key and its separator, or between the
+# separator and its value. Shared by the two key heads below, by both
+# key->value regexes, and by the authorization/cookie prefix groups; a
+# comment in the gap is KEPT (it sits inside group 1 of the substitution).
+# Noncapturing throughout, so group numbering of the replacements is
+# unchanged. \Z (not $) marks the real end of string for a // comment.
+_COMMENT_GAP = (
+    r"(?:[ \t\r\n]|/\*(?:[^*]|\*+[^*/])*\*+/|//[^\n]*(?:\n|\Z))*"
 )
-inline_cookie = re.compile(r"(?i)(\b(?:cookie|set-cookie)\s*[:=]\s*)[^\r\n]+")
+
+# R12B-C3: stop-head for the tempered authorization value below: the
+# assignments the downstream passes actually redact (the inline key table
+# plus authorization/proxy-authorization/cookie/set-cookie, whose own rules
+# run after authorization). A delimiter stops the auth value only when one
+# of these follows; otherwise the delimiter stays part of the redacted
+# value (P6). No capturing groups, so replacement \1 stays the prefix.
+_AUTH_STOP_HEAD = (
+    r"""["']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
+    r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
+    r"""|authorization|proxy-authorization|cookie|set-cookie"""
+    r"""|ss_pass|hy2_pass|hy2_obfs)\b["']?\s*[:=]"""
+)
+
+# R12B-C3: tempered authorization value. Ordinary characters are
+# [^\s,;}] (the text path's charset); a delimiter (, ; }) is consumed
+# only when NO sensitive assignment follows it (negative lookahead over
+# an optional comment gap + the stop-head above). Fixes the JSON-path
+# `Bearer abcd,token:` leak without splitting a delimiter tail that has
+# no following key (P6), which the plain mirror would have exposed.
+_AUTH_VALUE = (
+    r"(?:[^\s,;}]|[,;}](?!" + _COMMENT_GAP + _AUTH_STOP_HEAD + r"))+"
+)
+
+inline_authorization = re.compile(
+    r"(?i)(\b(?:authorization|proxy-authorization)" + _COMMENT_GAP + r"[:=]" + _COMMENT_GAP + r")"
+    r"(?:Bearer\s+" + _AUTH_VALUE + r"|Basic\s+" + _AUTH_VALUE + r"|" + _AUTH_VALUE + r")"
+)
+inline_cookie = re.compile(r"(?i)(\b(?:cookie|set-cookie)" + _COMMENT_GAP + r"[:=]" + _COMMENT_GAP + r")[^\r\n]+")
 
 # R11-C (R5-1): tempered-greedy unquoted value. A plain [^\r\n}"]+ tail
 # swallows a following "key: value" on the same line, so re.sub never
@@ -38091,12 +38126,12 @@ inline_cookie = re.compile(r"(?i)(\b(?:cookie|set-cookie)\s*[:=]\s*)[^\r\n]+")
 _INLINE_KEY_HEAD = (
     r"""[\"']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
-    r"""|ss_pass|hy2_pass|hy2_obfs)\b[\"']?\s*[:=]"""
+    r"""|ss_pass|hy2_pass|hy2_obfs)\b[\"']?""" + _COMMENT_GAP + r"""[:=]"""
 )
 _TEXT_KEY_HEAD = (
     r"""[\"']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
     r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
-    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?\s*[:=]"""
+    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)[\"']?""" + _COMMENT_GAP + r"""[:=]"""
 )
 
 
@@ -38110,13 +38145,14 @@ def _unquoted_value(head):
 
 
 inline_secret_assignment = re.compile(
-    r"(?i)(" + _INLINE_KEY_HEAD + r"\s*)(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|"
+    r"(?i)(" + _INLINE_KEY_HEAD + _COMMENT_GAP + r")(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|"
     + _unquoted_value(_INLINE_KEY_HEAD)
     + r")"
 )
 
 
 def redact_text(value):
+    _check_key_gaps(value, _INLINE_KEY_CANDIDATE)
     value, _suppress = redact_userpass_mappings(value)
     if _suppress:
         raise _SuppressDocument()
@@ -38288,6 +38324,60 @@ def _skip_id_gap(text, pos):
     return pos, saw_comment
 
 
+# R12B-N1: sensitive-key candidates for the malformed-gap guard. The key
+# word + optional quotes, WITHOUT the separator: an unterminated comment
+# between key and separator prevents the full head from matching at all,
+# so the guard must start from the key alone. Kept in sync with the two
+# key heads above (the inline candidate also covers
+# authorization/proxy-authorization/cookie/set-cookie, which redact_text()
+# must guard even though _INLINE_KEY_HEAD excludes them).
+_TEXT_KEY_CANDIDATE = (
+    r"""["']?(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
+    r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
+    r"""|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)["']?"""
+)
+_INLINE_KEY_CANDIDATE = (
+    r"""["']?\b(?:uuid|private.?key|public.?key|short.?ids?|fingerprint"""
+    r"""|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key"""
+    r"""|authorization|proxy-authorization|cookie|set-cookie"""
+    r"""|ss_pass|hy2_pass|hy2_obfs)\b["']?"""
+)
+
+
+def _check_key_gaps(text, key_re):
+    # Fail closed (R12B-N1): a JSONC comment in a sensitive-key gap that
+    # never closes (or a // comment with no line end) cannot be verified
+    # by the regexes below; suppress the document rather than risk the
+    # real value surviving past the comment. Starts from a KEY CANDIDATE
+    # (no separator required) and skips the gap after the key, then again
+    # after the separator when one follows. Raises _SuppressDocument.
+    for _m in re.finditer(r"(?i)" + key_re, text):
+        _pos, _saw = _skip_id_gap(text, _m.end())
+        if _pos < len(text) and text[_pos] in ":=":
+            _skip_id_gap(text, _pos + 1)
+
+
+# R12B-C2: stop-head for the tempered bare-id scan below, derived from the
+# shared _TEXT_KEY_HEAD (plus `id` itself, so a following id field stays
+# visible to this scanner). No copying of the key table.
+_BARE_ID_STOP_RE = re.compile(
+    r"(?i)(?:" + _TEXT_KEY_HEAD + r"|" + r"""["']?id["']?\s*[:=]""" + r")"
+)
+
+
+def _bare_id_stops(text, pos):
+    # At a ';' inside a bare id value, stop only when a sensitive key-head
+    # follows (after optional whitespace / JSONC comments, skipped with the
+    # existing gap semantics). An unterminated comment in that gap is
+    # treated as "no stop": the comment and everything after it is then
+    # consumed into the id value and redacted, so nothing survives.
+    try:
+        _p2, _saw = _skip_id_gap(text, pos + 1)
+    except _SuppressDocument:
+        return False
+    return _BARE_ID_STOP_RE.match(text, _p2) is not None
+
+
 def _redact_id_text(text):
     out = []
     cursor = 0
@@ -38347,7 +38437,20 @@ def _redact_id_text(text):
                     raise _SuppressDocument()
                 continue
             val_end = bm.end()
-            val_text = bm.group(0)
+            # R12B-C2: tempered ';'. The bare match above swallows a ';'
+            # followed by a sensitive key (`abcd;token:`), stranding the
+            # key's quoted value; stop before the FIRST such ';' instead.
+            # A ';' with no following key stays part of the value (P4).
+            _j = pos
+            while True:
+                _k = text.find(";", _j, val_end)
+                if _k == -1:
+                    break
+                if _bare_id_stops(text, _k):
+                    val_end = _k
+                    break
+                _j = _k + 1
+            val_text = text[pos:val_end]
             keep = re.fullmatch(r"-?\d+", val_text) is not None
         out.append(text[cursor:m.start()])
         if keep:
@@ -38388,6 +38491,11 @@ def walk(value, in_clients=False):
 try:
     parsed = json.loads(text)
 except Exception:
+    try:
+        _check_key_gaps(text, _TEXT_KEY_CANDIDATE)
+    except _SuppressDocument:
+        sys.stdout.write(_SUPPRESS_NOTICE + "\n")
+        raise SystemExit(2)
     text, _suppress = redact_userpass_mappings(text)
     if _suppress:
         sys.stdout.write(_SUPPRESS_NOTICE + "\n")
@@ -38401,12 +38509,12 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)(\b(?:authorization|proxy-authorization)\s*:\s*)(?:bearer\s+[^\s,;}]+|basic\s+[^\s,;}]+|[^\s,;}]+)",
+        r"(?i)(\b(?:authorization|proxy-authorization)" + _COMMENT_GAP + r":" + _COMMENT_GAP + r")(?:bearer\s+[^\s,;}]+|basic\s+[^\s,;}]+|[^\s,;}]+)",
         r'\1***REDACTED***',
         text,
     )
     text = re.sub(
-        r"(?i)(\b(?:cookie|set-cookie)\s*:\s*)[^\r\n]+",
+        r"(?i)(\b(?:cookie|set-cookie)" + _COMMENT_GAP + r":" + _COMMENT_GAP + r")[^\r\n]+",
         r'\1***REDACTED***',
         text,
     )
@@ -38421,7 +38529,7 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)(" + _TEXT_KEY_HEAD + r"\s*)(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|"
+        r"(?i)(" + _TEXT_KEY_HEAD + _COMMENT_GAP + r")(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|"
         + _unquoted_value(_TEXT_KEY_HEAD)
         + r")",
         r'\1"***REDACTED***"',
@@ -38470,19 +38578,54 @@ PY_REDACT
             return 2
         fi
         # R11E-R7-2: a JSONC comment in an `id` key-to-value gap that the
-        # line-based sed rules below cannot verify. Four narrow shapes,
-        # all anchored to the gap (separator first, value not yet seen),
-        # so a URL value (`id: "https://…"`) or a trailing comment
-        # (`id: "x" // note`) never triggers: `//` in the gap (the value
-        # must be on a later line); a block comment with no `*/` on this
-        # line (cross-line or unterminated); a block comment that closes
-        # but ends the line (value on a later line); a comment between
-        # the key and the separator.
-        if printf '%s\n' "$_redact_input" | grep -qE -- $'(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*//|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*/\*([^*]|\*+[^*/])*\**$|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*/\*([^*]|\*+[^*/])*\*+/[[:space:]]*$|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*/\*'; then
+        # line-based sed rules below cannot verify. Five narrow shapes,
+        # all anchored to the gap (a comment either after the separator
+        # or between the key and the separator; value not yet seen), so
+        # a URL value (`id: "https://…"`) or a trailing comment
+        # (`id: "x" // note`) never triggers: `//` after the separator
+        # (the value must be on a later line); `//` between the key and
+        # the separator (separator and value on a later line); a block
+        # comment with no `*/` on this line (cross-line or unterminated);
+        # a block comment that closes but ends the line (value on a later
+        # line); or a block comment between the key and the separator.
+        if printf '%s\n' "$_redact_input" | grep -qE -- $'(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*//|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*/\*([^*]|\*+[^*/])*\**$|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*/\*([^*]|\*+[^*/])*\*+/[[:space:]]*$|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*/\*|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*//'; then
             printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
             # D2: a comment in the `id` gap pushes the value out of the
             # line the fallback can verify (or hides it entirely); the
             # notice above is the whole output.
+            return 2
+        fi
+        # R12B-N1: a JSONC comment in a NON-id sensitive key gap that the
+        # line-based sed rules below cannot verify (same class as the `id`
+        # gap above, outside the id range). Four shapes, matched with
+        # grep -z (whole input as one line) so a comment on the line AFTER
+        # separator, or between key and separator across lines, is seen
+        # too: a comment after the separator (`/*` or `//`) and a comment
+        # between key and separator (`/*` or `//`). `id` is excluded (its
+        # own D2 scan + rules above); authorization/cookie are excluded
+        # here (their single-line gap shapes are already redacted by the
+        # auth/cookie rules below) and get narrow checks in the next block.
+        # A quoted URL value (`token: "https://..."`) or a trailing comment
+        # (`token: "x" // note`) never triggers: the comment marker must sit
+        # in the gap (separator first / key first, value not yet seen).
+        if printf '%s\n' "$_redact_input" | grep -qziE -- $'(^|[^A-Za-z0-9_])["\x27]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key)["\x27]?[[:space:]]*[:=][[:space:]]*(/\*|//)|(^|[^A-Za-z0-9_])["\x27]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key)["\x27]?[[:space:]]*(/\*|//)'; then
+            printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
+            # D2: a comment in a non-id key gap pushes the value out of the
+            # line the fallback can verify (or hides it entirely); the
+            # notice above is the whole output.
+            return 2
+        fi
+        # R12B-N1 (auth/cookie narrow checks): the auth/cookie rules below
+        # already redact a block comment after the separator, so only their
+        # UNSUPPORTED gap shapes suppress here: a comment between the key
+        # and the separator (`/*` or `//`), and a `//` after the separator
+        # (the value then sits on a later line, out of reach of the
+        # line-based rules). Single-line `/*` after the separator stays a
+        # successful redaction, not a suppression.
+        if printf '%s\n' "$_redact_input" | grep -qziE -- $'(^|[^A-Za-z0-9_])["\x27]?(Authorization|Proxy-Authorization|Cookie|Set-Cookie)["\x27]?[[:space:]]*(/\*|//)|(^|[^A-Za-z0-9_])["\x27]?(Authorization|Proxy-Authorization|Cookie|Set-Cookie)["\x27]?[[:space:]]*[:=][[:space:]]*//'; then
+            printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
+            # D2: a comment in an authorization/cookie gap the fallback
+            # cannot verify; the notice above is the whole output.
             return 2
         fi
         printf '%s\n' "$_redact_input" | sed -E \

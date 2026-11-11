@@ -681,13 +681,30 @@ rebuild_standalone_links() {
                 # must not fall back to the path for an insecure
                 # conclusion.
                 _insecure=''
-                _cert_inline=$(jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | (.tls.certificate // empty) | if type == "array" then join("\n") elif type == "string" then . else empty end' "$_sc" 2>/dev/null) || _cert_inline=''
+                # R11-F R8-02: inline-certificate presence is a
+                # three-state fact (present/absent/unknown). Only a
+                # positively confirmed absence authorises the
+                # certificate_path branch below; an unusable or
+                # unextractable inline value never falls back to
+                # the path for an insecure conclusion. The link is
+                # still registered, just without allow_insecure=1.
+                local _cert_inline_state='unknown' _cert_inline_present=''
+                _cert_inline=''
+                if _cert_inline_present=$(jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | .tls | if . == null then false elif type == "object" then (has("certificate") and (.certificate != null)) else error("invalid tls type") end' "$_sc" 2>/dev/null); then
+                    case "$_cert_inline_present" in
+                        true) _cert_inline_state='present' ;;
+                        false) _cert_inline_state='absent' ;;
+                    esac
+                fi
+                if [[ "$_cert_inline_state" == 'present' ]]; then
+                    _cert_inline=$(jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | .tls.certificate | if type == "string" then . elif type == "array" then if all(.[]; type == "string") then join("\n") else error("inline certificate array must contain only strings") end else error("unsupported inline certificate type") end' "$_sc" 2>/dev/null) || _cert_inline=''
+                fi
                 if [[ -n "$_cert_inline" ]]; then
                     _meta=$(printf '%s\n' "$_cert_inline" | openssl x509 -noout -issuer -subject 2>/dev/null) || _meta=''
                     _iss=$(printf '%s\n' "$_meta" | sed -n 's/^issuer=//p')
                     _sub=$(printf '%s\n' "$_meta" | sed -n 's/^subject=//p')
                     if [[ -n "$_iss" && -n "$_sub" && "$_iss" == "$_sub" ]]; then _insecure='allow_insecure=1'; fi
-                elif [[ -n "$_cert" && -f "$_cert" && ! -L "$_cert" && -r "$_cert" ]]; then
+                elif [[ "$_cert_inline_state" == 'absent' && -n "$_cert" && -f "$_cert" && ! -L "$_cert" && -r "$_cert" ]]; then
                     _meta=$(openssl x509 -noout -in "$_cert" -issuer -subject 2>/dev/null) || _meta=''
                     _iss=$(printf '%s\n' "$_meta" | sed -n 's/^issuer=//p')
                     _sub=$(printf '%s\n' "$_meta" | sed -n 's/^subject=//p')
@@ -11367,7 +11384,11 @@ _core_residue_dir_known_only() {
     _tmp=$(mktemp) || return 1
     if ! find "$_d" -mindepth 1 -maxdepth 1 -print0 >"$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
     while IFS= read -r -d '' _n; do
-        _base=$(basename "$_n")
+        # R11-F R8-01: ${...##*/} keeps trailing newlines that
+        # command substitution strips, so $'acme\n' / $'config.yaml\n'
+        # no longer false-match the whitelist. Inputs come from
+        # find -mindepth 1 -print0, so no trailing-slash form reaches here.
+        _base=${_n##*/}
         _ok=0
         for _pat in "$@"; do
             if [[ "$_pat" == */ ]]; then
@@ -19871,6 +19892,8 @@ _geo_manifest_restore_rows() {
     python3 -I - "$ABOX_CORE_OWNERSHIP" "$_mode" "$_snap" /usr/local/share/xray/geoip.dat /usr/local/share/xray/geosite.dat <<'PY_GEO_MANIFEST_RESTORE'
 import os, stat, sys, tempfile
 manifest, mode, snap, *targets = sys.argv[1:]
+# R11-F R6-4: merged-output cap, same value as the per-input _load cap.
+MAX_MANIFEST_BYTES = 4 * 1024 * 1024
 targets = set(targets)
 def _load(path, required):
     if not os.path.lexists(path):
@@ -19878,7 +19901,7 @@ def _load(path, required):
             raise SystemExit(1)
         return [], [], False
     st = os.lstat(path)
-    if not stat.S_ISREG(st.st_mode) or st.st_uid != 0 or st.st_gid != 0 or st.st_mode & 0o077 or st.st_size > 4*1024*1024:
+    if not stat.S_ISREG(st.st_mode) or st.st_uid != 0 or st.st_gid != 0 or st.st_mode & 0o077 or st.st_size > MAX_MANIFEST_BYTES:
         raise SystemExit(1)
     rows, raws = [], []
     with open(path, 'r', encoding='utf-8') as f:
@@ -19901,12 +19924,30 @@ kept_raws = [raw for row, raw in zip(cur_rows, cur_raws)
 if not geo and not kept_raws:
     if not cur_exists:
         raise SystemExit(0)
+# R11-F R6-4: verify the merged output size on the exact bytes that
+# will be written (geo rows serialised here, kept rows already carry
+# their trailing newline from _load) BEFORE creating any tmp file,
+# so an oversize merge is refused with the original manifest intact
+# and no tmp residue. Boundary: > limit refuses, exactly at limit ok.
+geo_raws = ['\t'.join(row) + '\n' for row in geo]
+output_bytes = (
+    sum(len(raw.encode('utf-8')) for raw in geo_raws)
+    + sum(len(raw.encode('utf-8')) for raw in kept_raws)
+)
+if output_bytes > MAX_MANIFEST_BYTES:
+    print(
+        f'geo manifest restore: merged output rejected '
+        f'(oversize: {output_bytes} > {MAX_MANIFEST_BYTES} bytes); '
+        f'not published',
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
 dirname = os.path.dirname(manifest) or '.'
 fd, tmp = tempfile.mkstemp(prefix='.managed-core-files.geo.', dir=dirname, text=True)
 try:
     with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as f:
-        for row in geo:
-            f.write('\t'.join(row) + '\n')
+        for raw in geo_raws:
+            f.write(raw)
         for raw in kept_raws:
             f.write(raw)
         f.flush(); os.fsync(f.fileno())
@@ -26969,9 +27010,53 @@ restore_filter_legacy_xray_latest() {
     # Ownership manifest: drop field-2 == xray-latest rows.
     local _mf="$_root/etc/ddr/.managed-core-files.tsv"
     if [[ -f "$_mf" && ! -L "$_mf" ]]; then
-        local _tmp2="$_mf.filter.tmp"
-        awk -F'\t' '$2 != "xray-latest"' "$_mf" > "$_tmp2" 2>/dev/null || { rm -f -- "$_tmp2"; return 1; }
-        mv -f -- "$_tmp2" "$_mf" || { rm -f -- "$_tmp2"; return 1; }
+        # R11-F R6-3: same metadata-preserving rewrite as the
+        # services.state branch above (B'): capture the original
+        # metadata and restore+verify it on the temp file BEFORE mv,
+        # so the rewrite never downgrades the mode (e.g. 0600 ->
+        # 0644 under umask 022) or the owner. Any failure leaves
+        # the original file untouched. (Plain mv, not mv -T: the
+        # target must stay BusyBox-compatible; the pre-mv stat
+        # re-check below guards the replace.)
+        local _mf_meta _mf_id _mf_mode _mf_owner _mf_extra
+        local _mf_now _mf_tmp_meta _tmp2=''
+
+        _mf_meta=$(stat -c '%d:%i %a %u:%g' -- "$_mf" 2>/dev/null) ||
+            return 1
+        read -r _mf_id _mf_mode _mf_owner _mf_extra <<< "$_mf_meta" ||
+            return 1
+        [[ "$_mf_id" =~ ^[0-9]+:[0-9]+$ &&
+           "$_mf_mode" =~ ^[0-7]{3,4}$ &&
+           "$_mf_owner" == 0:0 &&
+           -z "$_mf_extra" ]] || return 1
+        (( (8#$_mf_mode & 8#077) == 0 )) || return 1
+
+        _tmp2=$( ( umask 077; mktemp -- "$_mf.filter.XXXXXX" ) ) ||
+            return 1
+
+        ( umask 077
+          awk -F'\t' '$2 != "xray-latest"' "$_mf" > "$_tmp2" 2>/dev/null
+        ) || { rm -f -- "$_tmp2"; return 1; }
+
+        chown 0:0 -- "$_tmp2" ||
+            { rm -f -- "$_tmp2"; return 1; }
+        chmod "$_mf_mode" -- "$_tmp2" ||
+            { rm -f -- "$_tmp2"; return 1; }
+
+        _mf_tmp_meta=$(stat -c '%a %u:%g' -- "$_tmp2" 2>/dev/null) ||
+            { rm -f -- "$_tmp2"; return 1; }
+        [[ "$_mf_tmp_meta" == "$_mf_mode 0:0" ]] ||
+            { rm -f -- "$_tmp2"; return 1; }
+
+        [[ -f "$_mf" && ! -L "$_mf" ]] ||
+            { rm -f -- "$_tmp2"; return 1; }
+        _mf_now=$(stat -c '%d:%i %a %u:%g' -- "$_mf" 2>/dev/null) ||
+            { rm -f -- "$_tmp2"; return 1; }
+        [[ "$_mf_now" == "$_mf_meta" ]] ||
+            { rm -f -- "$_tmp2"; return 1; }
+
+        mv -f -- "$_tmp2" "$_mf" ||
+            { rm -f -- "$_tmp2"; return 1; }
     fi
     return 0
 }
@@ -48607,6 +48692,18 @@ hy2_staged_restore_traps() {
 # used by the core-upgrade transaction itself.
 hy2_staged_trap_abort() {
     local sig="$1"
+    # R11-F R2-10-3 (scheme D): a signal arriving while the staged
+    # server is being started but its PID is not yet registered is
+    # only RECORDED here; the smoke test runs the real abort right
+    # after registration. This neither drops the abort request (as
+    # trap '' would) nor guesses a PID via $! (which could still be
+    # a stale unrelated background job). First pending signal wins.
+    if [[ "${_HY2_STAGED_STARTING:-0}" == 1 ]]; then
+        if [[ -z "${_HY2_STAGED_PENDING_SIG:-}" ]]; then
+            _HY2_STAGED_PENDING_SIG="$sig"
+        fi
+        return 0
+    fi
     hy2_staged_kill_child || true
     # The re-raise below kills this shell, so the helper's normal
     # `rm -rf "$work"` never runs: remove the staged work dir here
@@ -48669,6 +48766,9 @@ hysteria_staged_binary_smoke_test() {
     _HY2_PREV_INT=$(trap -p INT || true); [[ -n "$_HY2_PREV_INT" ]] || _HY2_PREV_INT='trap - INT'
     _HY2_PREV_TERM=$(trap -p TERM || true); [[ -n "$_HY2_PREV_TERM" ]] || _HY2_PREV_TERM='trap - TERM'
     _HY2_PREV_HUP=$(trap -p HUP || true); [[ -n "$_HY2_PREV_HUP" ]] || _HY2_PREV_HUP='trap - HUP'
+    # R11-F R2-10-3: start-window state (function locals; the abort
+    # helper reads them via dynamic scoping, same as $work below).
+    local _HY2_STAGED_STARTING=0 _HY2_STAGED_PENDING_SIG=''
     trap 'hy2_staged_trap_abort INT' INT
     trap 'hy2_staged_trap_abort TERM' TERM
     trap 'hy2_staged_trap_abort HUP' HUP
@@ -48855,9 +48955,19 @@ PY_HY2_STAGED
             msg "${RED}[!] Hysteria staged precheck: loopback port ${port} already in use.${NC}" >&2
             rc=1; break
         fi
+        # R11-F R2-10-3: signals between here and PID registration
+        # are recorded, not executed, by the trap (see above); the
+        # pending request is executed immediately below, once
+        # _HY2_STAGED_PID is set. Do not insert work between clearing
+        # STARTING and the pending check.
+        _HY2_STAGED_STARTING=1
         "$bin" server -c "$tmp_cfg" >"$work/server.log" 2>&1 9>&- 10>&- &
         pid=$!
         _HY2_STAGED_PID="$pid"
+        _HY2_STAGED_STARTING=0
+        if [[ -n "${_HY2_STAGED_PENDING_SIG:-}" ]]; then
+            hy2_staged_trap_abort "$_HY2_STAGED_PENDING_SIG"
+        fi
         ready=0
         while (( $(date +%s) < deadline )); do
             if hy2_staged_pid_dead "$pid"; then break; fi

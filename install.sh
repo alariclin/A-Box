@@ -12197,14 +12197,43 @@ shortcut_change_transaction() {
         case " $_new_names " in *" $_n "*) : ;; *) _pending="$_pending$_n " ;; esac
     done
     _pending="${_pending% }"
+    # R9 (F05-3): merge the previous record's pending cleanup debt before
+    # overwriting it: the writer replaces the record wholesale, so an
+    # interrupted earlier transaction's pending names would otherwise be
+    # dropped by an empty _pending. Inherit every valid name that is not
+    # a new name of this transaction; step 9 re-checks ownership before
+    # deleting anything, so foreign or already-gone names stay safe.
+    # Any stage qualifies: this record is first written as 'installing',
+    # so a stage whitelist would reopen the loss on the next interruption.
+    # A record that exists but cannot be read fails closed (old record
+    # kept, temp cleaned, lock released).
+    local _mfile _mcontent _mline _mval _mn
+    _mfile=$(shortcut_migrate_path)
+    if [[ -f "$_mfile" && ! -L "$_mfile" ]]; then
+        _mcontent=$(cat -- "$_mfile" 2>/dev/null) || { rm -f -- "$_tmp"; shortcut_lock_release; SHORTCUT_ERR='migrate_read'; return 1; }
+        _pending="$_pending "
+        while IFS= read -r _mline || [[ -n "$_mline" ]]; do
+            case "$_mline" in pending=*) _mval="${_mline#pending=}" ;; *) continue ;; esac
+            for _mn in $_mval; do
+                shortcut_validate_name "$_mn" 2>/dev/null || continue
+                case " $_new_names " in *" $_mn "*) continue ;; esac
+                case " $_pending " in *" $_mn "*) continue ;; esac
+                _pending="$_pending$_mn "
+            done
+        done <<< "$_mcontent"
+        _pending="${_pending% }"
+    fi
     shortcut_migrate_write "$_old_names" "$_new_names" 'installing' "$_pending" || { rm -f -- "$_tmp"; shortcut_lock_release; SHORTCUT_ERR='migrate_write'; return 1; }
-    # 7. Atomically install new wrappers (skip identical content).
+    # 7. Atomically install new wrappers (skip identical executable
+    # content). R9 (F05-4): a content-identical but non-executable wrapper
+    # must be reinstalled, not skipped: skipping it left a 0644 wrapper
+    # committed as usable.
     # Track which targets this transaction CREATED (did not exist before).
     local _created=''
     for _n in $_new_names; do
         _p="/usr/local/bin/$_n"
         if [[ ! -e "$_p" && ! -L "$_p" ]]; then _created="$_created$_n "; fi
-        if [[ -f "$_p" ]] && cmp -s "$_tmp" "$_p"; then continue; fi
+        if [[ -f "$_p" && -x "$_p" ]] && cmp -s "$_tmp" "$_p"; then continue; fi
         if ! install_binary_atomically "$_tmp" "$_p"; then
             # Roll back ONLY files this transaction created and can still
             # confirm belong to it (content matches what we just built).
@@ -12221,7 +12250,8 @@ shortcut_change_transaction() {
     done
     rm -f -- "$_tmp"
     # Verify every new entry before touching the old ones: it must exist,
-    # be a managed regular file, and match the wrapper we just built.
+    # be executable, be a managed regular file, and match the wrapper we
+    # just built. R9 (F05-4): the -x check closes the 0644 commit hole.
     local _vtmp
     _vtmp=$(umask 077; mktemp /tmp/A-Box-shortcut.XXXXXX 2>/dev/null) || { shortcut_lock_release; SHORTCUT_ERR='mktemp'; return 1; }
     if ! shortcut_build_wrapper "$_vtmp"; then
@@ -12229,7 +12259,7 @@ shortcut_change_transaction() {
     fi
     for _n in $_new_names; do
         _p="/usr/local/bin/$_n"
-        if [[ ! -f "$_p" ]] || ! shortcut_is_abox_managed "$_p" || ! cmp -s "$_vtmp" "$_p"; then
+        if [[ ! -f "$_p" || ! -x "$_p" ]] || ! shortcut_is_abox_managed "$_p" || ! cmp -s "$_vtmp" "$_p"; then
             rm -f -- "$_vtmp"
             shortcut_lock_release
             SHORTCUT_ERR="verify:$_n"; return 1
@@ -13107,8 +13137,42 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
                     | if $r == null then {addr: (.listen // "0.0.0.0"), transports: transport_set, range: null, unparseable: true}
                       else {addr: (.listen // "0.0.0.0"), transports: transport_set, range: $r, unparseable: false} end)
                  end);
+            # R9 (F05-5, GPT D): the IPv4 wildcard never shares a socket
+            # with a confirmed pure-IPv6 literal (e.g. ::1), but the IPv6
+            # wildcard :: is dual-stack by default on Linux (IPV6_V6ONLY=0;
+            # a :: listener accepts IPv4, verified by a socket test), so it
+            # stays a possible conflict, as do IPv4-mapped addresses (any
+            # spelling), the unspecified address, hostnames and anything
+            # that does not positively parse as IPv6. Fail closed: only a
+            # positively validated literal earns the exemption.
+            def v6_groups($s):
+              ($s | test("::")) as $has_dd
+              | ($s | split("::")) as $parts
+              | ($parts[0] | split(":") | map(select(. != ""))) as $left
+              | ((($parts[1] // "") | split(":") | map(select(. != "")))) as $right
+              | if $has_dd then
+                  $left + ([range(0; (8 - ($left | length) - ($right | length))) | "0"] + $right)
+                else ($s | split(":")) end;
+            def is_pure_v6($s):
+              ($s | type == "string")
+              and ($s | test(":"))
+              and ($s != "::")
+              and ($s | test("^[0-9a-fA-F:]+$"))
+              and (($s | split("::") | length) <= 2)
+              and (($s | test(":::") | not))
+              and (($s | test("^:[^:]") | not))
+              and (($s | test("[^:]:$") | not))
+              and ((v6_groups($s)) as $g
+                   | ($g | length) == 8
+                   and ($g | map(test("^[0-9a-fA-F]{1,4}$")) | all)
+                   and (($g | map(test("^(0+)$")) | all) | not)
+                   and ((($g[0:5] | map(test("^(0+)$")) | all) and (($g[5] | ascii_downcase) == "ffff")) | not));
             def addr_overlap($a; $b):
-              ($a == $b) or ($a == "0.0.0.0") or ($a == "::") or ($b == "0.0.0.0") or ($b == "::");
+              ($a == $b)
+              or (($a == "0.0.0.0") and ((is_pure_v6($b)) | not))
+              or (($b == "0.0.0.0") and ((is_pure_v6($a)) | not))
+              or ($a == "::")
+              or ($b == "::");
             def range_overlap($r1; $r2):
               ($r1[0] <= $r2[1]) and ($r2[0] <= $r1[1]);
             def bindings_conflict($x; $y):
@@ -13459,7 +13523,11 @@ reorder_one() {
     local wl_re="--comment[[:space:]]+\"?${wl_comment}\"?([[:space:]]|$)" drop_re="--comment[[:space:]]+\"?${drop_comment}\"?([[:space:]]|$)"
     local save_cmd="${cmd}-save" rules_output='' recovery_snapshot='' lock_file=/run/A-Box-firewall-reorder.lock lock_fd=''
     local original_rules_output='' current_rules_output='' current_line line i j n rule_no target_idx del_idx check_rc=0 mutated=0
-    local _recheck_output='' _recheck_line='' _recheck_norm='' _delete_norm=''
+    # R9 (F06-2, 加固): temporary markers distinguish the copies this
+    # transaction inserts from pre-existing identical copies, so a
+    # content delete can never remove the wrong twin. See P1'/P2'/P4'/P5'.
+    local _tmp_marker="A-Box-tmp-$$-$RANDOM$RANDOM" _marked_line='' _marked_drop_line='' _delete_norm=''
+    local -a _tmp_lines=()
     local -a rules=() argv=() current_lines=() delete_lines=() delete_target_indices=() delete_rule_numbers=()
     local -a original_target_lines=() original_target_positions=() expected_target_lines=()
     local -a current_target_lines=() current_foreign_lines=() original_foreign_rules=()
@@ -13568,16 +13636,22 @@ reorder_one() {
         # deletes and re-inserts managed rules: with an ACCEPT policy
         # the gap would leave the port unfiltered. DROP makes "no rule"
         # fail closed instead of fail open.
+        # R9 (F05-2/F06-1): if the clamp cannot be established (or the
+        # policy cannot be read), refuse the inner rollback outright and
+        # keep the recovery snapshot: deleting rules under an unclamped
+        # ACCEPT policy would open the port with no fail-closed cover.
         local _saved_policy='' _clamped=0 _inner_rc=0
         _saved_policy=$("$save_cmd" -t filter 2>/dev/null | awk '/^:INPUT /{print $2; exit}') || _saved_policy=''
         if [[ "$_saved_policy" == ACCEPT ]]; then
             if _iptables_do "$cmd" -P INPUT DROP >/dev/null 2>&1; then
                 _clamped=1
             else
-                printf '%s\n' 'A-Box firewall rollback: could not clamp INPUT policy to DROP; proceeding with the unprotected window.' >&2
+                printf '%s\n' 'A-Box firewall rollback: could not clamp INPUT policy to DROP; inner rollback not started; recovery snapshot retained.' >&2
+                return 1
             fi
         elif [[ -z "$_saved_policy" ]]; then
-            printf '%s\n' 'A-Box firewall rollback: could not read INPUT policy; proceeding without a policy clamp.' >&2
+            printf '%s\n' 'A-Box firewall rollback: could not read INPUT policy; inner rollback not started; recovery snapshot retained.' >&2
+            return 1
         fi
         firewall_rollback_inner
         _inner_rc=$?
@@ -13600,6 +13674,43 @@ reorder_one() {
         fi
         return "$_inner_rc"
     }
+    _marked_line_for() {
+        # R9 (F06-2, 加固): insert " -m comment --comment <marker>"
+        # before the first " -j " of a normalized rule line, so the copy
+        # this transaction inserts is textually distinct from any
+        # pre-existing identical copy. Returns 1 if there is no " -j ".
+        local _in="$1"
+        [[ "$_in" == *' -j '* ]] || return 1
+        printf '%s\n' "${_in/ -j / -m comment --comment ${_tmp_marker} -j }"
+        return 0
+    }
+    _expected_remove_first() {
+        # R9 (F06-2, 加固): remove the first occurrence of $1 from
+        # expected_target_lines and its matching 'T' from
+        # expected_interleave. Returns 1 if the line is not expected
+        # (bookkeeping is wrong; the caller must roll back).
+        local _spec="$1" _k=0 _t=0 _idx=0 _found=0 _new_interleave='' _c
+        local -a _kept=()
+        for (( _idx=0; _idx<${#expected_target_lines[@]}; _idx++ )); do
+            if (( _found == 0 )) && [[ "${expected_target_lines[_idx]}" == "$_spec" ]]; then
+                _found=1; _k=$_idx
+            else
+                _kept+=("${expected_target_lines[_idx]}")
+            fi
+        done
+        (( _found )) || return 1
+        expected_target_lines=("${_kept[@]}")
+        for (( _idx=0; _idx<${#expected_interleave}; _idx++ )); do
+            _c="${expected_interleave:_idx:1}"
+            if [[ "$_c" == T ]]; then
+                if (( _t == _k )); then _t=$((_t + 1)); continue; fi
+                _t=$((_t + 1))
+            fi
+            _new_interleave+="$_c"
+        done
+        expected_interleave="$_new_interleave"
+        return 0
+    }
 
     recovery_snapshot=$(mktemp /run/A-Box-firewall-recovery.XXXXXX) || { __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     if ! "$save_cmd" -t filter > "$recovery_snapshot" 2>/dev/null; then
@@ -13615,7 +13726,13 @@ reorder_one() {
     original_interleave="$current_interleave"
     expected_interleave="$current_interleave"
     for line in "${original_target_lines[@]}"; do
-        if [[ "$line" =~ $wl_re ]]; then rules+=("$line"); fi
+        if [[ "$line" =~ $wl_re ]]; then
+            # R9 (F06-2, 加固): strip a stale temporary marker left by an
+            # interrupted earlier run, so the leftover copy is rebuilt as
+            # its canonical rule and the old marked copy is cleaned by
+            # the normal delete flow instead of being re-marked.
+            rules+=("$(printf '%s' "$line" | sed -E 's/ -m comment --comment A-Box-tmp-[0-9-]*//g')")
+        fi
     done
     rule_no=0
     while IFS= read -r line; do
@@ -13629,7 +13746,13 @@ reorder_one() {
 
     for ((i=n-1; i>=0; i--)); do
         local expected_line="${rules[i]}"
-        line=${rules[i]//\"/}
+        # R9 (F06-2, 加固) P1': insert a MARKED copy, not the canonical
+        # line: the marker is what lets the delete phase tell this copy
+        # apart from an identical pre-existing one. expected_line stays
+        # the marked line until P5' swaps in the canonical rules.
+        _marked_line=$(_marked_line_for "${rules[i]}") || { firewall_rollback >/dev/null 2>&1 || printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        expected_line="$_marked_line"
+        line=${_marked_line//\"/}
         read -r -a argv <<< "$line"
         [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { firewall_rollback >/dev/null 2>&1 || printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         firewall_state_matches_expected || {
@@ -13649,17 +13772,23 @@ reorder_one() {
             return 1
         fi
         mutated=1
+        _tmp_lines=("$_marked_line" "${_tmp_lines[@]}")
         expected_target_lines=("$expected_line" "${expected_target_lines[@]}")
         expected_interleave="T$expected_interleave"
     done
     local expected_drop_line="-A INPUT -p ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
+    # R9 (F06-2, 加固) P2': the DROP is a duplicated spec too (old and new
+    # DROP are textually identical), so it is marked exactly like the WL
+    # copies. The marked DROP is recorded in _tmp_lines at position n.
+    _marked_drop_line=$(_marked_line_for "$expected_drop_line") || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-    if ! _iptables_do "$cmd" -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
+    if ! _iptables_do "$cmd" -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -m comment --comment "$_tmp_marker" -j DROP >/dev/null 2>&1; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
         __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
-    expected_target_lines=("${expected_target_lines[@]:0:n}" "$expected_drop_line" "${expected_target_lines[@]:n}")
+    _tmp_lines=("${_tmp_lines[@]:0:n}" "$_marked_drop_line" "${_tmp_lines[@]:n}")
+    expected_target_lines=("${expected_target_lines[@]:0:n}" "$_marked_drop_line" "${expected_target_lines[@]:n}")
     expected_interleave="${expected_interleave:0:n}T${expected_interleave:n}"
 
     rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
@@ -13680,26 +13809,70 @@ reorder_one() {
     done
     for ((j=${#delete_lines[@]}-1; j>=0; j--)); do
         firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        # R9 (F06-2, 加固) P4': delete by content spec, not by number, and
+        # verify the result. The pre-delete state check above already
+        # failed closed on any external change; a numbered delete would
+        # still be a second, unguarded window (S26's recheck and the
+        # delete were two independent calls). The spec deletes the first
+        # matching rule, which is the old copy: the marked copies above
+        # it carry the extra marker text, so they never match a
+        # canonical spec. _expected_remove_first drops the same first
+        # occurrence from the expected state, and the post-delete state
+        # check below proves the live chain equals it -- a wrong-copy
+        # delete is caught here instead of passing silently.
         line=${delete_lines[j]//\"/}
         read -r -a argv <<< "$line"
         [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-        # S26: re-verify the rule currently at delete_rule_numbers[j]
-        # matches the snapshot line before deleting by number: an
-        # external change between the state check and the delete can
-        # shift numbers onto a foreign rule. On mismatch, abort and roll back.
-        _recheck_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-        _recheck_line=$(printf '%s\n' "$_recheck_output" | awk -v _n="${delete_rule_numbers[j]}" '/^-A[[:space:]]+INPUT[[:space:]]/ { _c++ } _c == _n { print; exit }')
-        _recheck_norm=$(__abox_normalize_managed_rule_line "$_recheck_line")
-        _delete_norm=$(__abox_normalize_managed_rule_line "${delete_lines[j]}")
-        [[ -n "$_recheck_norm" && "$_recheck_norm" == "$_delete_norm" ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-        if ! _iptables_do "$cmd" -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
+        _delete_norm=$(__abox_normalize_managed_rule_line "${delete_lines[j]}") || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        _expected_remove_first "$_delete_norm" || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        if ! _iptables_do "$cmd" -D INPUT "${argv[@]:2}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
             __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         fi
-        del_idx="${delete_target_indices[j]}"
-        expected_target_lines=("${expected_target_lines[@]:0:del_idx}" "${expected_target_lines[@]:del_idx+1}")
-        expected_interleave="${expected_interleave:0:$((delete_rule_numbers[j] - 1))}${expected_interleave:$((delete_rule_numbers[j]))}"
+        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    done
+    # R9 (F06-2, 加固) P5': swap the temporary marked copies for the
+    # canonical rules at the same positions, then delete the marked
+    # copies. The final state check below then sees only canonical
+    # rules; any surviving marked copy fails it.
+    for ((i=n-1; i>=0; i--)); do
+        line=${rules[i]//\"/}
+        read -r -a argv <<< "$line"
+        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        if ! _iptables_do "$cmd" -I INPUT 1 "${argv[@]:2}" >/dev/null 2>&1; then
+            if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
+            return 1
+        fi
+        mutated=1
+        expected_target_lines=("${rules[i]}" "${expected_target_lines[@]}")
+        expected_interleave="T$expected_interleave"
+    done
+    firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    if ! _iptables_do "$cmd" -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
+        if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
+        return 1
+    fi
+    expected_target_lines=("${expected_target_lines[@]:0:n}" "$expected_drop_line" "${expected_target_lines[@]:n}")
+    expected_interleave="${expected_interleave:0:n}T${expected_interleave:n}"
+    # Delete every temporary marked copy by content spec. Each spec is
+    # unique to this transaction (marker), so the delete can only remove
+    # this transaction's own copies, never an old or foreign rule.
+    for ((i=0; i<${#_tmp_lines[@]}; i++)); do
+        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        line=${_tmp_lines[i]//\"/}
+        read -r -a argv <<< "$line"
+        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        _expected_remove_first "${_tmp_lines[i]}" || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        if ! _iptables_do "$cmd" -D INPUT "${argv[@]:2}" >/dev/null 2>&1; then
+            if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
+            return 1
+        fi
+        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     done
     if ! firewall_state_matches_expected; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
@@ -13723,14 +13896,25 @@ reorder_one() {
 # unreachable, yet restore reports success. Move each such
 # ACCEPT before the first terminal rule.
 reorder_plain_accepts() {
-    local cmd="$1" line terminal_idx accept_idx i spec rule_no iter accept_line_idx max_moves
+    local cmd="$1" line terminal_idx accept_idx i spec rule_no iter accept_line_idx max_moves _qout
     local -a lines=() argv=()
     command -v "$cmd" >/dev/null 2>&1 || return 0
     iter=0; max_moves=-1
     while :; do
         iter=$((iter + 1))
         lines=()
-        while IFS= read -r line; do lines+=("$line"); done < <(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
+        # R9 (F05-6): capture the query output first and propagate its
+        # exit code. The old process-substitution form took the while
+        # loop's status, so a failing query with no output silently
+        # yielded an empty snapshot and a success return. The non-empty
+        # guard keeps zero-byte output as zero lines (no phantom empty
+        # line inflating max_moves).
+        _qout=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
+        if [[ -n "$_qout" ]]; then
+            while IFS= read -r line; do
+                lines+=("$line")
+            done <<< "$_qout" || return 1
+        fi
         # R5-08: bound the loop on the FIRST snapshot's size: each
         # pass moves one ACCEPT before the terminal rule, so more
         # passes than rules + 1 means no progress. A per-pass re-read
@@ -13983,6 +14167,10 @@ exit 0
 EOF_ABOX_FW_RESTORE
     [[ $? -eq 0 ]] || { rm -f "$tmp"; return 1; }
     chmod 700 "$tmp" || { rm -f "$tmp"; return 1; }
+    # R9 (F05-7): normalize ownership before publish. mktemp inherits the
+    # caller's egid, but the precheck above requires 0:0; without this a
+    # first publish under egid != 0 succeeds and the second self-refuses.
+    chown root:root "$tmp" || { rm -f "$tmp"; return 1; }
     mv -f "$tmp" "$ABOX_DIR/firewall_restore.sh" || { rm -f "$tmp"; return 1; }
 }
 
@@ -15355,7 +15543,11 @@ reorder_ss_whitelist_rules_one() {
     local wl_re="--comment[[:space:]]+\"?${wl_comment}\"?([[:space:]]|$)" drop_re="--comment[[:space:]]+\"?${drop_comment}\"?([[:space:]]|$)"
     local save_cmd="${cmd}-save" rules_output='' recovery_snapshot='' lock_file=/run/A-Box-firewall-reorder.lock lock_fd=''
     local original_rules_output='' current_rules_output='' current_line line i j n rule_no target_idx del_idx check_rc=0 mutated=0
-    local _recheck_output='' _recheck_line='' _recheck_norm='' _delete_norm=''
+    # R9 (F06-2, 加固): temporary markers distinguish the copies this
+    # transaction inserts from pre-existing identical copies, so a
+    # content delete can never remove the wrong twin. See P1'/P2'/P4'/P5'.
+    local _tmp_marker="A-Box-tmp-$$-$RANDOM$RANDOM" _marked_line='' _marked_drop_line='' _delete_norm=''
+    local -a _tmp_lines=()
     local current_interleave='' original_interleave='' expected_interleave=''
     local -a rules=() argv=() current_lines=() delete_lines=() delete_target_indices=() delete_rule_numbers=()
     local -a original_target_lines=() original_target_positions=() expected_target_lines=()
@@ -15365,7 +15557,7 @@ reorder_ss_whitelist_rules_one() {
     # (RETURN trap fires once, when this function returns -- not on
     # nested calls -- and unset -f on an undefined name is harmless,
     # so early returns before the definitions below are safe).
-    trap 'unset -f capture_firewall_views firewall_state_matches_expected firewall_rollback' RETURN
+    trap 'unset -f capture_firewall_views firewall_state_matches_expected firewall_rollback _marked_line_for _expected_remove_first' RETURN
 
     command -v "$cmd" >/dev/null 2>&1 || return 0
     command -v "$save_cmd" >/dev/null 2>&1 || return 1
@@ -15471,16 +15663,22 @@ reorder_ss_whitelist_rules_one() {
         # deletes and re-inserts managed rules: with an ACCEPT policy
         # the gap would leave the port unfiltered. DROP makes "no rule"
         # fail closed instead of fail open.
+        # R9 (F05-2/F06-1): if the clamp cannot be established (or the
+        # policy cannot be read), refuse the inner rollback outright and
+        # keep the recovery snapshot: deleting rules under an unclamped
+        # ACCEPT policy would open the port with no fail-closed cover.
         local _saved_policy='' _clamped=0 _inner_rc=0
         _saved_policy=$("$save_cmd" -t filter 2>/dev/null | awk '/^:INPUT /{print $2; exit}') || _saved_policy=''
         if [[ "$_saved_policy" == ACCEPT ]]; then
             if _iptables_do "$cmd" -P INPUT DROP >/dev/null 2>&1; then
                 _clamped=1
             else
-                printf '%s\n' 'A-Box firewall rollback: could not clamp INPUT policy to DROP; proceeding with the unprotected window.' >&2
+                printf '%s\n' 'A-Box firewall rollback: could not clamp INPUT policy to DROP; inner rollback not started; recovery snapshot retained.' >&2
+                return 1
             fi
         elif [[ -z "$_saved_policy" ]]; then
-            printf '%s\n' 'A-Box firewall rollback: could not read INPUT policy; proceeding without a policy clamp.' >&2
+            printf '%s\n' 'A-Box firewall rollback: could not read INPUT policy; inner rollback not started; recovery snapshot retained.' >&2
+            return 1
         fi
         firewall_rollback_inner
         _inner_rc=$?
@@ -15503,6 +15701,43 @@ reorder_ss_whitelist_rules_one() {
         fi
         return "$_inner_rc"
     }
+    _marked_line_for() {
+        # R9 (F06-2, 加固): insert " -m comment --comment <marker>"
+        # before the first " -j " of a normalized rule line, so the copy
+        # this transaction inserts is textually distinct from any
+        # pre-existing identical copy. Returns 1 if there is no " -j ".
+        local _in="$1"
+        [[ "$_in" == *' -j '* ]] || return 1
+        printf '%s\n' "${_in/ -j / -m comment --comment ${_tmp_marker} -j }"
+        return 0
+    }
+    _expected_remove_first() {
+        # R9 (F06-2, 加固): remove the first occurrence of $1 from
+        # expected_target_lines and its matching 'T' from
+        # expected_interleave. Returns 1 if the line is not expected
+        # (bookkeeping is wrong; the caller must roll back).
+        local _spec="$1" _k=0 _t=0 _idx=0 _found=0 _new_interleave='' _c
+        local -a _kept=()
+        for (( _idx=0; _idx<${#expected_target_lines[@]}; _idx++ )); do
+            if (( _found == 0 )) && [[ "${expected_target_lines[_idx]}" == "$_spec" ]]; then
+                _found=1; _k=$_idx
+            else
+                _kept+=("${expected_target_lines[_idx]}")
+            fi
+        done
+        (( _found )) || return 1
+        expected_target_lines=("${_kept[@]}")
+        for (( _idx=0; _idx<${#expected_interleave}; _idx++ )); do
+            _c="${expected_interleave:_idx:1}"
+            if [[ "$_c" == T ]]; then
+                if (( _t == _k )); then _t=$((_t + 1)); continue; fi
+                _t=$((_t + 1))
+            fi
+            _new_interleave+="$_c"
+        done
+        expected_interleave="$_new_interleave"
+        return 0
+    }
 
     recovery_snapshot=$(mktemp /run/A-Box-firewall-recovery.XXXXXX) || { __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     if ! "$save_cmd" -t filter > "$recovery_snapshot" 2>/dev/null; then
@@ -15518,7 +15753,13 @@ reorder_ss_whitelist_rules_one() {
     original_interleave="$current_interleave"
     expected_interleave="$current_interleave"
     for line in "${original_target_lines[@]}"; do
-        if [[ "$line" =~ $wl_re ]]; then rules+=("$line"); fi
+        if [[ "$line" =~ $wl_re ]]; then
+            # R9 (F06-2, 加固): strip a stale temporary marker left by an
+            # interrupted earlier run, so the leftover copy is rebuilt as
+            # its canonical rule and the old marked copy is cleaned by
+            # the normal delete flow instead of being re-marked.
+            rules+=("$(printf '%s' "$line" | sed -E 's/ -m comment --comment A-Box-tmp-[0-9-]*//g')")
+        fi
     done
     rule_no=0
     while IFS= read -r line; do
@@ -15532,7 +15773,13 @@ reorder_ss_whitelist_rules_one() {
 
     for ((i=n-1; i>=0; i--)); do
         local expected_line="${rules[i]}"
-        line=${rules[i]//\"/}
+        # R9 (F06-2, 加固) P1': insert a MARKED copy, not the canonical
+        # line: the marker is what lets the delete phase tell this copy
+        # apart from an identical pre-existing one. expected_line stays
+        # the marked line until P5' swaps in the canonical rules.
+        _marked_line=$(_marked_line_for "${rules[i]}") || { firewall_rollback >/dev/null 2>&1 || printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        expected_line="$_marked_line"
+        line=${_marked_line//\"/}
         read -r -a argv <<< "$line"
         [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { firewall_rollback >/dev/null 2>&1 || printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
         firewall_state_matches_expected || {
@@ -15552,17 +15799,23 @@ reorder_ss_whitelist_rules_one() {
             return 1
         fi
         mutated=1
+        _tmp_lines=("$_marked_line" "${_tmp_lines[@]}")
         expected_target_lines=("$expected_line" "${expected_target_lines[@]}")
         expected_interleave="T$expected_interleave"
     done
     local expected_drop_line="-A INPUT -p ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
+    # R9 (F06-2, 加固) P2': the DROP is a duplicated spec too (old and new
+    # DROP are textually identical), so it is marked exactly like the WL
+    # copies. The marked DROP is recorded in _tmp_lines at position n.
+    _marked_drop_line=$(_marked_line_for "$expected_drop_line") || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-    if ! _iptables_do "$cmd" -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
+    if ! _iptables_do "$cmd" -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -m comment --comment "$_tmp_marker" -j DROP >/dev/null 2>&1; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
         __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
     fi
-    expected_target_lines=("${expected_target_lines[@]:0:n}" "$expected_drop_line" "${expected_target_lines[@]:n}")
+    _tmp_lines=("${_tmp_lines[@]:0:n}" "$_marked_drop_line" "${_tmp_lines[@]:n}")
+    expected_target_lines=("${expected_target_lines[@]:0:n}" "$_marked_drop_line" "${expected_target_lines[@]:n}")
     expected_interleave="${expected_interleave:0:n}T${expected_interleave:n}"
 
     rules_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
@@ -15583,26 +15836,70 @@ reorder_ss_whitelist_rules_one() {
     done
     for ((j=${#delete_lines[@]}-1; j>=0; j--)); do
         firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        # R9 (F06-2, 加固) P4': delete by content spec, not by number, and
+        # verify the result. The pre-delete state check above already
+        # failed closed on any external change; a numbered delete would
+        # still be a second, unguarded window (S26's recheck and the
+        # delete were two independent calls). The spec deletes the first
+        # matching rule, which is the old copy: the marked copies above
+        # it carry the extra marker text, so they never match a
+        # canonical spec. _expected_remove_first drops the same first
+        # occurrence from the expected state, and the post-delete state
+        # check below proves the live chain equals it -- a wrong-copy
+        # delete is caught here instead of passing silently.
         line=${delete_lines[j]//\"/}
         read -r -a argv <<< "$line"
         [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-        # S26: re-verify the rule currently at delete_rule_numbers[j]
-        # matches the snapshot line before deleting by number: an
-        # external change between the state check and the delete can
-        # shift numbers onto a foreign rule. On mismatch, abort and roll back.
-        _recheck_output=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-        _recheck_line=$(printf '%s\n' "$_recheck_output" | awk -v _n="${delete_rule_numbers[j]}" '/^-A[[:space:]]+INPUT[[:space:]]/ { _c++ } _c == _n { print; exit }')
-        _recheck_norm=$(__abox_normalize_managed_rule_line "$_recheck_line")
-        _delete_norm=$(__abox_normalize_managed_rule_line "${delete_lines[j]}")
-        [[ -n "$_recheck_norm" && "$_recheck_norm" == "$_delete_norm" ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-        if ! _iptables_do "$cmd" -D INPUT "${delete_rule_numbers[j]}" >/dev/null 2>&1; then
+        _delete_norm=$(__abox_normalize_managed_rule_line "${delete_lines[j]}") || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        _expected_remove_first "$_delete_norm" || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        if ! _iptables_do "$cmd" -D INPUT "${argv[@]:2}" >/dev/null 2>&1; then
             if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
             __abox_firewall_unlock "$lock_fd"; lock_fd=''
             return 1
         fi
-        del_idx="${delete_target_indices[j]}"
-        expected_target_lines=("${expected_target_lines[@]:0:del_idx}" "${expected_target_lines[@]:del_idx+1}")
-        expected_interleave="${expected_interleave:0:$((delete_rule_numbers[j] - 1))}${expected_interleave:$((delete_rule_numbers[j]))}"
+        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    done
+    # R9 (F06-2, 加固) P5': swap the temporary marked copies for the
+    # canonical rules at the same positions, then delete the marked
+    # copies. The final state check below then sees only canonical
+    # rules; any surviving marked copy fails it.
+    for ((i=n-1; i>=0; i--)); do
+        line=${rules[i]//\"/}
+        read -r -a argv <<< "$line"
+        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        if ! _iptables_do "$cmd" -I INPUT 1 "${argv[@]:2}" >/dev/null 2>&1; then
+            if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
+            return 1
+        fi
+        mutated=1
+        expected_target_lines=("${rules[i]}" "${expected_target_lines[@]}")
+        expected_interleave="T$expected_interleave"
+    done
+    firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+    if ! _iptables_do "$cmd" -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
+        if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
+        __abox_firewall_unlock "$lock_fd"; lock_fd=''
+        return 1
+    fi
+    expected_target_lines=("${expected_target_lines[@]:0:n}" "$expected_drop_line" "${expected_target_lines[@]:n}")
+    expected_interleave="${expected_interleave:0:n}T${expected_interleave:n}"
+    # Delete every temporary marked copy by content spec. Each spec is
+    # unique to this transaction (marker), so the delete can only remove
+    # this transaction's own copies, never an old or foreign rule.
+    for ((i=0; i<${#_tmp_lines[@]}; i++)); do
+        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        line=${_tmp_lines[i]//\"/}
+        read -r -a argv <<< "$line"
+        [[ "${argv[0]:-}" == -A && "${argv[1]:-}" == INPUT ]] || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        _expected_remove_first "${_tmp_lines[i]}" || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
+        if ! _iptables_do "$cmd" -D INPUT "${argv[@]:2}" >/dev/null 2>&1; then
+            if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
+            __abox_firewall_unlock "$lock_fd"; lock_fd=''
+            return 1
+        fi
+        firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
     done
     if ! firewall_state_matches_expected; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
@@ -15923,7 +16220,14 @@ enforce_ss_whitelist_order() {
 }
 
 clean_nat_rules() {
-    [[ "$(firewall_backend 2>/dev/null)" != 'nftables-unsupported' ]] || {
+    # R9 (F06-3): check the probe exit code, not just its output: a
+    # failed probe used to fall through and delete rules. Empty output
+    # is not a backend identity either (hardening on top of the R5-12
+    # gate in remove_abox_native_firewall_rule).
+    local backend
+    backend=$(firewall_backend 2>/dev/null) || return 1
+    [[ -n "$backend" ]] || return 1
+    [[ "$backend" != 'nftables-unsupported' ]] || {
         msg "${RED}Native nftables rules detected; refusing to mutate a parallel iptables ruleset.${NC}"
         return 1
     }
@@ -15962,7 +16266,14 @@ clean_nat_rules() {
 }
 
 clean_input_rules() {
-    [[ "$(firewall_backend 2>/dev/null)" != 'nftables-unsupported' ]] || {
+    # R9 (F06-3): check the probe exit code, not just its output: a
+    # failed probe used to fall through and delete rules. Empty output
+    # is not a backend identity either (hardening on top of the R5-12
+    # gate in remove_abox_native_firewall_rule).
+    local backend
+    backend=$(firewall_backend 2>/dev/null) || return 1
+    [[ -n "$backend" ]] || return 1
+    [[ "$backend" != 'nftables-unsupported' ]] || {
         msg "${RED}Native nftables rules detected; refusing to mutate a parallel iptables ruleset.${NC}"
         return 1
     }
@@ -17507,7 +17818,22 @@ core_fetch_upstream_release_asset() {
             validate_core_asset_binary_version "$output_file" "$tmp_file" "$release_ref"; _core_ver_rc=$?
             if (( _core_ver_rc == 2 )); then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 二进制无法执行（非版本不符）；请检查工作目录挂载选项（/tmp noexec 常见）或 TMPDIR，拒绝该候选。${NC}" >&2; continue; fi
             if (( _core_ver_rc != 0 )); then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 二进制版本与上游 tag 不一致，拒绝该候选。${NC}" >&2; continue; fi
-            mv -f -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
+            # R9 (F06-5): recheck for a clear diagnostic; -T prevents
+            # moving INTO a directory even if the target changes after
+            # this check (mirrors the fetch_abox_mirror_asset commit).
+            if [[ -d "$dest_file" ]]; then
+                rm -f -- "$tmp_file"
+                msg "${YELLOW}[!] 目标路径为目录，拒绝写入: ${dest_file}${NC}" >&2
+                return 1
+            fi
+            mv -f -T -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
+
+            # Best-effort post-commit check before updating resolved state.
+            # This does not prevent a later concurrent replacement.
+            if [[ ! -f "$dest_file" ]]; then
+                msg "${YELLOW}[!] 提交后目标路径不是普通文件，拒绝更新状态: ${dest_file}${NC}" >&2
+                return 1
+            fi
             ABOX_LAST_CORE_RELEASE_REF="$release_ref"; ABOX_LAST_CORE_SOURCE="$source"
             core_set_resolved_target "$repo" "$release_ref" "$source" || return 1
             msg "${GREEN}   上游候选通过 SHA-256、归档与二进制版本校验：${repo}:${release_ref}${NC}"
@@ -17520,7 +17846,7 @@ core_fetch_upstream_release_asset() {
 }
 
 fetch_github_release() {
-    local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" asset_re='' target_ref='' target_source='' mirror_ref=''
+    local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" asset_re='' target_ref='' target_source='' mirror_ref='' _pin_ref=''
     case "$repo:$output_file" in XTLS/Xray-core:xray_core.zip) asset_re="^Xray-linux-${XRAY_ARCH}[.]zip$" ;; SagerNet/sing-box:singbox_core.tar.gz) asset_re="$(singbox_asset_regex)" ;; HyNetworks/hysteria:hysteria_core) asset_re="^hysteria-linux-${HY2_ARCH}$" ;; *) die "$(tprintf fg_no_rule "$repo" "$output_file")" ;; esac
     resolve_core_release_target "$repo" || die "$(tprintf fg_resolve "$repo")"
     target_ref=$(core_resolved_version "$repo") || die "$(tprintf fg_read_ver "$repo")"
@@ -17553,7 +17879,25 @@ fetch_github_release() {
                 msg "${GREEN}   上游失败，从同标签版本化镜像恢复 ${target_ref}；未替换版本号。${NC}"
                 return 0
             fi
-            msg "${YELLOW}[!] 同标签版本化镜像也不可用，继续尝试当前镜像版本。${NC}" >&2
+            # R9 (F06-4): same-tag fixed-name retry for Xray/Hysteria only.
+            # The versioned attempt above (prefer_versioned=1) and the
+            # fixed-name asset are different download targets; when the
+            # mirror pin equals the target, the fixed name is a valid
+            # same-version recovery. sing-box has no fixed-name leaf
+            # (core_mirror_asset_leaf always returns the versioned leaf),
+            # so it is excluded. A failed pin read skips this optional
+            # retry and falls through to C2; it never dies here.
+            if [[ "$repo:$output_file" == 'XTLS/Xray-core:xray_core.zip' ||
+                  "$repo:$output_file" == 'HyNetworks/hysteria:hysteria_core' ]] &&
+                _pin_ref=$(core_release_mirror_version "$repo") &&
+                [[ "$target_ref" == "$_pin_ref" ]] &&
+                fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 0; then
+                core_set_resolved_target "$repo" "$target_ref" mirror-exact || die "$(tr_msg fg_record_exact)"
+                ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-exact'
+                msg "${GREEN}   上游失败，从同标签固定容灾资产恢复 ${target_ref}；未替换版本号。${NC}"
+                return 0
+            fi
+            msg "${YELLOW}[!] 同标签镜像资产不可用，继续尝试当前镜像版本。${NC}" >&2
         fi
         if [[ "$target_source" == 'explicit' || "$target_source" == 'pinned' ]]; then
             if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
@@ -17584,14 +17928,28 @@ fetch_github_release() {
             msg "${GREEN}   最新稳定镜像候选通过 SHA-256 与实际二进制版本校验：${target_ref}${NC}"
             return 0
         fi
+        # R9 (F06-4): same-tag fixed-name retry for Xray/Hysteria only (see
+        # the upstream branch above for the rationale). Bookkeeping copies
+        # this branch's versioned-success block: source stays $target_source.
+        if [[ "$repo:$output_file" == 'XTLS/Xray-core:xray_core.zip' ||
+              "$repo:$output_file" == 'HyNetworks/hysteria:hysteria_core' ]] &&
+            _pin_ref=$(core_release_mirror_version "$repo") &&
+            [[ "$target_ref" == "$_pin_ref" ]] &&
+            fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 0; then
+            core_set_resolved_target "$repo" "$target_ref" "$target_source" || die "$(tr_msg fg_record_latest)"
+            ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE="$target_source"
+            msg "${GREEN}   最新稳定镜像固定容灾资产通过 SHA-256 与实际二进制版本校验：${target_ref}${NC}"
+            return 0
+        fi
         msg "${YELLOW}[!] 与目标版本一致的最新稳定镜像资产不可用；继续尝试当前镜像版本。${NC}" >&2
     fi
 
-    # C2 (latest-first): no fixed-pin fallback. Auto-stable sources may
+    # C2 (latest-first): no fixed-pin fallback HERE. Auto-stable sources may
     # fall back to the current verified mirror version (source 'mirror');
     # explicit/pinned/mirror-exact sources must fail instead of silently
     # switching to a different version. A mirror candidate equal to the
-    # failed target was already tried as the same-tag mirror above.
+    # failed target was already tried as the same-tag mirror above, as was
+    # the fixed-name asset where it applies (R9 F06-4).
     if [[ "$target_source" == 'upstream' || "$target_source" == 'mirror-latest' ]]; then
         mirror_ref=$(core_latest_mirror_release_ref "$repo" 2>/dev/null || true)
         if core_release_ref_valid "$repo" "$mirror_ref" && [[ "$mirror_ref" != *-* ]] && [[ "$mirror_ref" != "$target_ref" ]] && fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$mirror_ref"; then

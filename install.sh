@@ -624,7 +624,7 @@ rebuild_standalone_links() {
                     [[ -n "$_xpath" ]] && _ttype="${_ttype}&path=$(urlencode "$_xpath")"
                 fi
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
-                register_standalone_link trojan-xray "Trojan-Reality (Xray) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
+                register_standalone_link trojan-xray "$(tprintf sl_node_port 'Trojan-Reality (Xray)' "$_port")" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete trojan-xray)${NC}" >&2
             fi
@@ -661,7 +661,7 @@ rebuild_standalone_links() {
                     [[ -n "$_wspath" ]] && _ttype="${_ttype}&path=$(urlencode "$_wspath")"
                 fi
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
-                register_standalone_link trojan-sb "Trojan-Reality (sing-box) · 端口 ${_port}" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
+                register_standalone_link trojan-sb "$(tprintf sl_node_port 'Trojan-Reality (sing-box)' "$_port")" "trojan://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}&${_ttype}#Trojan-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete trojan-sb)${NC}" >&2
             fi
@@ -710,7 +710,7 @@ rebuild_standalone_links() {
                     _sub=$(printf '%s\n' "$_meta" | sed -n 's/^subject=//p')
                     if [[ -n "$_iss" && -n "$_sub" && "$_iss" == "$_sub" ]]; then _insecure='allow_insecure=1'; fi
                 fi
-                register_standalone_link tuic "TUIC · 端口 ${_port}" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=${_alpn}&sni=${_sni}${_insecure:+&${_insecure}}#TUIC"
+                register_standalone_link tuic "$(tprintf sl_node_port 'TUIC' "$_port")" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=${_alpn}&sni=${_sni}${_insecure:+&${_insecure}}#TUIC"
             elif [[ -n "$_port$_uuid$_pass$_cc$_sni" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete tuic)${NC}" >&2
             fi
@@ -721,7 +721,7 @@ rebuild_standalone_links() {
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
-                register_standalone_link anytls "AnyTLS-Reality · 端口 ${_port}" "anytls://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}#AnyTLS-Reality"
+                register_standalone_link anytls "$(tprintf sl_node_port 'AnyTLS-Reality' "$_port")" "anytls://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}#AnyTLS-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
                 printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete anytls)${NC}" >&2
             fi
@@ -759,7 +759,7 @@ rebuild_standalone_links() {
                        [[ -n "$_pb_json" ]] &&
                        _pb=$(set -o pipefail; printf '%s' "$_pb_json" | base64 | tr -d '\n\r') &&
                        [[ -n "$_pb" ]]; then
-                        register_standalone_link shadowtls "ShadowTLS · 端口 ${_port}" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
+                        register_standalone_link shadowtls "$(tprintf sl_node_port 'ShadowTLS' "$_port")" "ss://${_ub}?shadow-tls=${_pb}#ShadowTLS"
                     else
                         printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
                     fi
@@ -801,7 +801,7 @@ rebuild_standalone_links() {
             _url=$(hy2_standalone_url "$_pass" "$_obfs" "$_ip" 2>/dev/null || true)
             if [[ -n "$_url" ]]; then
                 IFS=$'\t' read -r _port _ < <(build_hy2_uri_endpoint 2>/dev/null || true)
-                [[ -n "$_port" ]] && register_standalone_link hy2 "Hysteria 2 · 端口 ${_port}" "$_url"
+                [[ -n "$_port" ]] && register_standalone_link hy2 "$(tprintf sl_node_port 'Hysteria 2' "$_port")" "$_url"
             fi
         fi
     fi
@@ -5176,6 +5176,1008 @@ tr_msg() {
         fa:mu_inst_port_note) echo 'هنگام نصب یک پورت آزاد انتخاب کنید' ;;
         zh-tw:mu_inst_port_note) echo '部署時請選一個未被佔用的埠' ;;
         ja:mu_inst_port_note) echo 'デプロイ時に空いているポートを選んでください' ;;
+        zh:upgrade_singbox_core_only_not_owned) echo '拒绝升级：sing-box 不是 A-Box 托管服务。' ;;
+        en:upgrade_singbox_core_only_not_owned) echo 'Upgrade refused: sing-box is not an A-Box-managed service.' ;;
+        ru:upgrade_singbox_core_only_not_owned) echo 'Обновление отклонено: служба sing-box не управляется A-Box.' ;;
+        fa:upgrade_singbox_core_only_not_owned) echo 'ارتقا رد شد: سرویس sing-box تحت مدیریت A-Box نیست.' ;;
+        zh-tw:upgrade_singbox_core_only_not_owned) echo '拒絕升級：sing-box 不是 A-Box 託管服務。' ;;
+        ja:upgrade_singbox_core_only_not_owned) echo 'アップグレードを拒否しました：sing-box は A-Box の管理対象サービスではありません。' ;;
+        zh:upgrade_singbox_core_only_state_unknown) echo '无法可靠查询 sing-box 服务状态；拒绝在状态未知时升级核心。' ;;
+        en:upgrade_singbox_core_only_state_unknown) echo 'Cannot reliably query the sing-box service status; core upgrade refused while the status is unknown.' ;;
+        ru:upgrade_singbox_core_only_state_unknown) echo 'Не удалось достоверно определить состояние службы sing-box; обновление ядра при неизвестном состоянии отклонено.' ;;
+        fa:upgrade_singbox_core_only_state_unknown) echo 'وضعیت سرویس sing-box را نمی‌توان به‌طور قابل اعتماد دریافت کرد؛ ارتقای هسته در وضعیت نامشخص رد شد.' ;;
+        zh-tw:upgrade_singbox_core_only_state_unknown) echo '無法可靠查詢 sing-box 服務狀態；拒絕在狀態未知時升級核心。' ;;
+        ja:upgrade_singbox_core_only_state_unknown) echo 'sing-box サービスの状態を確実に取得できません。状態が不明なため、コアのアップグレードを拒否しました。' ;;
+        zh:upgrade_singbox_core_only_state_invalid) echo 'sing-box 服务状态响应无效；拒绝继续升级。' ;;
+        en:upgrade_singbox_core_only_state_invalid) echo 'Invalid sing-box service status response; further upgrade refused.' ;;
+        ru:upgrade_singbox_core_only_state_invalid) echo 'Недопустимый ответ о состоянии службы sing-box; продолжение обновления отклонено.' ;;
+        fa:upgrade_singbox_core_only_state_invalid) echo 'پاسخ وضعیت سرویس sing-box نامعتبر است؛ ادامه ارتقا رد شد.' ;;
+        zh-tw:upgrade_singbox_core_only_state_invalid) echo 'sing-box 服務狀態回應無效；拒絕繼續升級。' ;;
+        ja:upgrade_singbox_core_only_state_invalid) echo 'sing-box サービスの状態応答が無効です。アップグレードの続行を拒否しました。' ;;
+        zh:upgrade_singbox_core_only_version_unreadable) echo '无法读取现有 sing-box 版本；默认拒绝覆盖未知版本核心。' ;;
+        en:upgrade_singbox_core_only_version_unreadable) echo 'Cannot read the existing sing-box version; overwriting a core of unknown version is refused by default.' ;;
+        ru:upgrade_singbox_core_only_version_unreadable) echo 'Не удалось прочитать установленную версию sing-box; по умолчанию перезапись ядра с неизвестной версией запрещена.' ;;
+        fa:upgrade_singbox_core_only_version_unreadable) echo 'نسخه فعلی sing-box قابل خواندن نیست؛ بازنویسی هسته با نسخه نامشخص به‌طور پیش‌فرض رد می‌شود.' ;;
+        zh-tw:upgrade_singbox_core_only_version_unreadable) echo '無法讀取現有 sing-box 版本；預設拒絕覆寫版本未知的核心。' ;;
+        ja:upgrade_singbox_core_only_version_unreadable) echo '既存の sing-box バージョンを読み取れません。既定では、バージョン不明のコアの上書きを拒否します。' ;;
+        zh:upgrade_singbox_core_only_target_unresolvable) echo '无法解析 sing-box 最新正式稳定候选或固定容灾版本。' ;;
+        en:upgrade_singbox_core_only_target_unresolvable) echo 'Cannot resolve the latest official stable sing-box candidate or the pinned fallback version.' ;;
+        ru:upgrade_singbox_core_only_target_unresolvable) echo 'Не удалось определить последний официальный стабильный кандидат sing-box или закреплённую резервную версию.' ;;
+        fa:upgrade_singbox_core_only_target_unresolvable) echo 'آخرین نسخه نامزد رسمی و پایدار sing-box یا نسخه جایگزین ثابت قابل تعیین نیست.' ;;
+        zh-tw:upgrade_singbox_core_only_target_unresolvable) echo '無法解析 sing-box 最新正式穩定候選版本或固定備援版本。' ;;
+        ja:upgrade_singbox_core_only_target_unresolvable) echo 'sing-box の最新の正式安定版候補、または固定されたフォールバック版を特定できません。' ;;
+        zh:upgrade_singbox_core_only_current_version_unparseable) echo '无法解析当前 sing-box 版本；为避免意外降级，拒绝升级。' ;;
+        en:upgrade_singbox_core_only_current_version_unparseable) echo 'Cannot parse the current sing-box version; upgrade refused to prevent an unintended downgrade.' ;;
+        ru:upgrade_singbox_core_only_current_version_unparseable) echo 'Не удалось разобрать текущую версию sing-box; обновление отклонено во избежание непреднамеренного понижения версии.' ;;
+        fa:upgrade_singbox_core_only_current_version_unparseable) echo 'نسخه فعلی sing-box قابل تجزیه نیست؛ برای جلوگیری از تنزل ناخواسته نسخه، ارتقا رد شد.' ;;
+        zh-tw:upgrade_singbox_core_only_current_version_unparseable) echo '無法解析目前的 sing-box 版本；為避免意外降級，拒絕升級。' ;;
+        ja:upgrade_singbox_core_only_current_version_unparseable) echo '現在の sing-box バージョンを解析できません。意図しないダウングレードを防ぐため、アップグレードを拒否しました。' ;;
+        zh:upgrade_singbox_core_only_downgrade_refused) echo '拒绝将 sing-box 从 %s 降级到 %s。如确需降级，请明确设置 ABOX_ALLOW_CORE_DOWNGRADE=1 并确认配置兼容性。' ;;
+        en:upgrade_singbox_core_only_downgrade_refused) echo 'Downgrade of sing-box from %s to %s refused. If a downgrade is necessary, explicitly set ABOX_ALLOW_CORE_DOWNGRADE=1 and confirm configuration compatibility.' ;;
+        ru:upgrade_singbox_core_only_downgrade_refused) echo 'Понижение версии sing-box с %s до %s отклонено. Если понижение необходимо, явно задайте ABOX_ALLOW_CORE_DOWNGRADE=1 и проверьте совместимость конфигурации.' ;;
+        fa:upgrade_singbox_core_only_downgrade_refused) echo 'تنزل نسخه sing-box از %s به %s رد شد. اگر تنزل ضروری است، صریحاً ABOX_ALLOW_CORE_DOWNGRADE=1 را تنظیم کنید و سازگاری پیکربندی را تأیید کنید.' ;;
+        zh-tw:upgrade_singbox_core_only_downgrade_refused) echo '拒絕將 sing-box 從 %s 降級到 %s。如確需降級，請明確設定 ABOX_ALLOW_CORE_DOWNGRADE=1 並確認設定相容性。' ;;
+        ja:upgrade_singbox_core_only_downgrade_refused) echo 'sing-box の %s から %s へのダウングレードを拒否しました。必要な場合は、ABOX_ALLOW_CORE_DOWNGRADE=1 を明示的に設定し、設定の互換性を確認してください。' ;;
+        zh:upgrade_singbox_core_only_version_incomparable) echo '当前或目标 sing-box 版本格式无法比较。' ;;
+        en:upgrade_singbox_core_only_version_incomparable) echo 'The current or target sing-box version format does not support comparison.' ;;
+        ru:upgrade_singbox_core_only_version_incomparable) echo 'Формат текущей или целевой версии sing-box не позволяет сравнить версии.' ;;
+        fa:upgrade_singbox_core_only_version_incomparable) echo 'قالب نسخه فعلی یا هدف sing-box امکان مقایسه را نمی‌دهد.' ;;
+        zh-tw:upgrade_singbox_core_only_version_incomparable) echo '目前或目標 sing-box 版本的格式無法比較。' ;;
+        ja:upgrade_singbox_core_only_version_incomparable) echo '現在または対象の sing-box バージョンの形式では、バージョンを比較できません。' ;;
+        zh:upgrade_singbox_core_only_above_pinned_skip) echo '当前 sing-box %s 高于固定兼容版本 %s；为避免自动降级，本次跳过。' ;;
+        en:upgrade_singbox_core_only_above_pinned_skip) echo 'Current sing-box version %s is newer than pinned compatible version %s; skipped this time to avoid an automatic downgrade.' ;;
+        ru:upgrade_singbox_core_only_above_pinned_skip) echo 'Текущая версия sing-box %s новее закреплённой совместимой версии %s; операция пропущена во избежание автоматического понижения версии.' ;;
+        fa:upgrade_singbox_core_only_above_pinned_skip) echo 'نسخه فعلی sing-box %s بالاتر از نسخه سازگار ثابت %s است؛ این بار برای جلوگیری از تنزل خودکار نسخه، عملیات رد شد.' ;;
+        zh-tw:upgrade_singbox_core_only_above_pinned_skip) echo '目前 sing-box %s 高於固定相容版本 %s；為避免自動降級，本次略過。' ;;
+        ja:upgrade_singbox_core_only_above_pinned_skip) echo '現在の sing-box %s は固定された互換バージョン %s より新しいため、自動ダウングレードを避けるために今回はスキップしました。' ;;
+        zh:upgrade_singbox_core_only_already_pinned) echo '当前 sing-box %s 已是固定兼容版本，无需替换。' ;;
+        en:upgrade_singbox_core_only_already_pinned) echo 'Current sing-box version %s is already the pinned compatible version; no replacement is needed.' ;;
+        ru:upgrade_singbox_core_only_already_pinned) echo 'Текущая версия sing-box %s уже является закреплённой совместимой версией; замена не требуется.' ;;
+        fa:upgrade_singbox_core_only_already_pinned) echo 'نسخه فعلی sing-box %s همان نسخه سازگار ثابت است؛ نیازی به جایگزینی نیست.' ;;
+        zh-tw:upgrade_singbox_core_only_already_pinned) echo '目前 sing-box %s 已是固定相容版本，無需替換。' ;;
+        ja:upgrade_singbox_core_only_already_pinned) echo '現在の sing-box %s はすでに固定された互換バージョンです。置き換えは不要です。' ;;
+        zh:upgrade_singbox_core_only_final_mismatch) echo '最终核心二进制版本与所选标签 %s 不一致。' ;;
+        en:upgrade_singbox_core_only_final_mismatch) echo 'The final core binary version does not match the selected tag %s.' ;;
+        ru:upgrade_singbox_core_only_final_mismatch) echo 'Версия итогового бинарного файла ядра не соответствует выбранному тегу %s.' ;;
+        fa:upgrade_singbox_core_only_final_mismatch) echo 'نسخه فایل باینری نهایی هسته با برچسب انتخاب‌شده %s مطابقت ندارد.' ;;
+        zh-tw:upgrade_singbox_core_only_final_mismatch) echo '最終核心二進位檔版本與所選標籤 %s 不一致。' ;;
+        ja:upgrade_singbox_core_only_final_mismatch) echo '最終コアバイナリのバージョンが選択したタグ %s と一致しません。' ;;
+        zh:upgrade_singbox_core_only_final_version_unparseable) echo '无法解析最终候选二进制版本。' ;;
+        en:upgrade_singbox_core_only_final_version_unparseable) echo 'Cannot parse the final candidate binary version.' ;;
+        ru:upgrade_singbox_core_only_final_version_unparseable) echo 'Не удалось разобрать версию итогового бинарного файла-кандидата.' ;;
+        fa:upgrade_singbox_core_only_final_version_unparseable) echo 'نسخه فایل باینری نامزد نهایی قابل تجزیه نیست.' ;;
+        zh-tw:upgrade_singbox_core_only_final_version_unparseable) echo '無法解析最終候選二進位檔版本。' ;;
+        ja:upgrade_singbox_core_only_final_version_unparseable) echo '最終候補バイナリのバージョンを解析できません。' ;;
+        zh:upgrade_singbox_core_only_final_downgrade_refused) echo '拒绝将 sing-box 从 %s 降级到最终候选版本 %s。' ;;
+        en:upgrade_singbox_core_only_final_downgrade_refused) echo 'Downgrade of sing-box from %s to final candidate version %s refused.' ;;
+        ru:upgrade_singbox_core_only_final_downgrade_refused) echo 'Понижение версии sing-box с %s до итоговой версии-кандидата %s отклонено.' ;;
+        fa:upgrade_singbox_core_only_final_downgrade_refused) echo 'تنزل نسخه sing-box از %s به نسخه نامزد نهایی %s رد شد.' ;;
+        zh-tw:upgrade_singbox_core_only_final_downgrade_refused) echo '拒絕將 sing-box 從 %s 降級到最終候選版本 %s。' ;;
+        ja:upgrade_singbox_core_only_final_downgrade_refused) echo 'sing-box の %s から最終候補バージョン %s へのダウングレードを拒否しました。' ;;
+        zh:upgrade_singbox_core_only_final_version_incomparable) echo '最终核心候选版本格式无法比较。' ;;
+        en:upgrade_singbox_core_only_final_version_incomparable) echo 'The final core candidate version format does not support comparison.' ;;
+        ru:upgrade_singbox_core_only_final_version_incomparable) echo 'Формат итоговой версии-кандидата ядра не позволяет сравнить версии.' ;;
+        fa:upgrade_singbox_core_only_final_version_incomparable) echo 'قالب نسخه نامزد نهایی هسته امکان مقایسه را نمی‌دهد.' ;;
+        zh-tw:upgrade_singbox_core_only_final_version_incomparable) echo '最終核心候選版本的格式無法比較。' ;;
+        ja:upgrade_singbox_core_only_final_version_incomparable) echo '最終コア候補バージョンの形式では、バージョンを比較できません。' ;;
+        zh:upgrade_singbox_core_only_final_below_skip) echo '最终候选版本 %s 低于当前版本 %s；已跳过以避免自动降级。' ;;
+        en:upgrade_singbox_core_only_final_below_skip) echo 'Final candidate version %s is older than current version %s; skipped to avoid an automatic downgrade.' ;;
+        ru:upgrade_singbox_core_only_final_below_skip) echo 'Итоговая версия-кандидат %s старее текущей версии %s; операция пропущена во избежание автоматического понижения версии.' ;;
+        fa:upgrade_singbox_core_only_final_below_skip) echo 'نسخه نامزد نهایی %s پایین‌تر از نسخه فعلی %s است؛ برای جلوگیری از تنزل خودکار نسخه، عملیات رد شد.' ;;
+        zh-tw:upgrade_singbox_core_only_final_below_skip) echo '最終候選版本 %s 低於目前版本 %s；已略過以避免自動降級。' ;;
+        ja:upgrade_singbox_core_only_final_below_skip) echo '最終候補バージョン %s は現在のバージョン %s より古いため、自動ダウングレードを避けるためにスキップしました。' ;;
+        zh:upgrade_singbox_core_only_final_same) echo '最终候选版本 %s 与当前版本相同，无需替换。' ;;
+        en:upgrade_singbox_core_only_final_same) echo 'Final candidate version %s matches the current version; no replacement is needed.' ;;
+        ru:upgrade_singbox_core_only_final_same) echo 'Итоговая версия-кандидат %s совпадает с текущей версией; замена не требуется.' ;;
+        fa:upgrade_singbox_core_only_final_same) echo 'نسخه نامزد نهایی %s با نسخه فعلی یکسان است؛ نیازی به جایگزینی نیست.' ;;
+        zh-tw:upgrade_singbox_core_only_final_same) echo '最終候選版本 %s 與目前版本相同，無需替換。' ;;
+        ja:upgrade_singbox_core_only_final_same) echo '最終候補バージョン %s は現在のバージョンと同じです。置き換えは不要です。' ;;
+        zh:upgrade_singbox_core_only_final_direction_error) echo '最终核心版本方向检查返回异常状态。' ;;
+        en:upgrade_singbox_core_only_final_direction_error) echo 'The final core version direction check returned an unexpected status.' ;;
+        ru:upgrade_singbox_core_only_final_direction_error) echo 'Проверка направления изменения итоговой версии ядра вернула неожиданный статус.' ;;
+        fa:upgrade_singbox_core_only_final_direction_error) echo 'بررسی جهت تغییر نسخه نهایی هسته، وضعیت غیرمنتظره‌ای برگرداند.' ;;
+        zh-tw:upgrade_singbox_core_only_final_direction_error) echo '最終核心版本方向檢查回傳異常狀態。' ;;
+        ja:upgrade_singbox_core_only_final_direction_error) echo '最終コアバージョンの変更方向チェックが異常な状態を返しました。' ;;
+        zh:upgrade_singbox_core_only_ownership_update_fail) echo 'sing-box 核心已替换，但归属清单更新失败。' ;;
+        en:upgrade_singbox_core_only_ownership_update_fail) echo 'The sing-box core was replaced, but updating the ownership manifest failed.' ;;
+        ru:upgrade_singbox_core_only_ownership_update_fail) echo 'Ядро sing-box заменено, но обновить реестр принадлежности не удалось.' ;;
+        fa:upgrade_singbox_core_only_ownership_update_fail) echo 'هسته sing-box جایگزین شد، اما به‌روزرسانی فهرست مالکیت ناموفق بود.' ;;
+        zh-tw:upgrade_singbox_core_only_ownership_update_fail) echo 'sing-box 核心已替換，但歸屬清單更新失敗。' ;;
+        ja:upgrade_singbox_core_only_ownership_update_fail) echo 'sing-box コアは置き換えられましたが、所有情報マニフェストの更新に失敗しました。' ;;
+        zh:upgrade_hysteria_core_only_not_owned) echo '拒绝升级：hysteria 不是 A-Box 托管服务。' ;;
+        en:upgrade_hysteria_core_only_not_owned) echo 'Upgrade refused: Hysteria is not an A-Box-managed service.' ;;
+        ru:upgrade_hysteria_core_only_not_owned) echo 'Обновление отклонено: служба Hysteria не управляется A-Box.' ;;
+        fa:upgrade_hysteria_core_only_not_owned) echo 'ارتقا رد شد: سرویس Hysteria تحت مدیریت A-Box نیست.' ;;
+        zh-tw:upgrade_hysteria_core_only_not_owned) echo '拒絕升級：Hysteria 不是 A-Box 託管服務。' ;;
+        ja:upgrade_hysteria_core_only_not_owned) echo 'アップグレードを拒否しました：Hysteria は A-Box の管理対象サービスではありません。' ;;
+        zh:upgrade_hysteria_core_only_state_unknown) echo '无法可靠查询 Hysteria 服务状态；拒绝在状态未知时升级核心。' ;;
+        en:upgrade_hysteria_core_only_state_unknown) echo 'Cannot reliably query the Hysteria service status; core upgrade refused while the status is unknown.' ;;
+        ru:upgrade_hysteria_core_only_state_unknown) echo 'Не удалось достоверно определить состояние службы Hysteria; обновление ядра при неизвестном состоянии отклонено.' ;;
+        fa:upgrade_hysteria_core_only_state_unknown) echo 'وضعیت سرویس Hysteria را نمی‌توان به‌طور قابل اعتماد دریافت کرد؛ ارتقای هسته در وضعیت نامشخص رد شد.' ;;
+        zh-tw:upgrade_hysteria_core_only_state_unknown) echo '無法可靠查詢 Hysteria 服務狀態；拒絕在狀態未知時升級核心。' ;;
+        ja:upgrade_hysteria_core_only_state_unknown) echo 'Hysteria サービスの状態を確実に取得できません。状態が不明なため、コアのアップグレードを拒否しました。' ;;
+        zh:upgrade_hysteria_core_only_state_invalid) echo 'Hysteria 服务状态响应无效；拒绝继续升级。' ;;
+        en:upgrade_hysteria_core_only_state_invalid) echo 'Invalid Hysteria service status response; further upgrade refused.' ;;
+        ru:upgrade_hysteria_core_only_state_invalid) echo 'Недопустимый ответ о состоянии службы Hysteria; продолжение обновления отклонено.' ;;
+        fa:upgrade_hysteria_core_only_state_invalid) echo 'پاسخ وضعیت سرویس Hysteria نامعتبر است؛ ادامه ارتقا رد شد.' ;;
+        zh-tw:upgrade_hysteria_core_only_state_invalid) echo 'Hysteria 服務狀態回應無效；拒絕繼續升級。' ;;
+        ja:upgrade_hysteria_core_only_state_invalid) echo 'Hysteria サービスの状態応答が無効です。アップグレードの続行を拒否しました。' ;;
+        zh:upgrade_hysteria_core_only_version_unreadable) echo '无法读取现有 Hysteria 版本；默认拒绝覆盖未知版本核心。' ;;
+        en:upgrade_hysteria_core_only_version_unreadable) echo 'Cannot read the existing Hysteria version; overwriting a core of unknown version is refused by default.' ;;
+        ru:upgrade_hysteria_core_only_version_unreadable) echo 'Не удалось прочитать установленную версию Hysteria; по умолчанию перезапись ядра с неизвестной версией запрещена.' ;;
+        fa:upgrade_hysteria_core_only_version_unreadable) echo 'نسخه فعلی Hysteria قابل خواندن نیست؛ بازنویسی هسته با نسخه نامشخص به‌طور پیش‌فرض رد می‌شود.' ;;
+        zh-tw:upgrade_hysteria_core_only_version_unreadable) echo '無法讀取現有 Hysteria 版本；預設拒絕覆寫版本未知的核心。' ;;
+        ja:upgrade_hysteria_core_only_version_unreadable) echo '既存の Hysteria バージョンを読み取れません。既定では、バージョン不明のコアの上書きを拒否します。' ;;
+        zh:upgrade_hysteria_core_only_target_unresolvable) echo '无法解析 Hysteria 最新正式稳定候选或固定容灾版本。' ;;
+        en:upgrade_hysteria_core_only_target_unresolvable) echo 'Cannot resolve the latest official stable Hysteria candidate or the pinned fallback version.' ;;
+        ru:upgrade_hysteria_core_only_target_unresolvable) echo 'Не удалось определить последний официальный стабильный кандидат Hysteria или закреплённую резервную версию.' ;;
+        fa:upgrade_hysteria_core_only_target_unresolvable) echo 'آخرین نسخه نامزد رسمی و پایدار Hysteria یا نسخه جایگزین ثابت قابل تعیین نیست.' ;;
+        zh-tw:upgrade_hysteria_core_only_target_unresolvable) echo '無法解析 Hysteria 最新正式穩定候選版本或固定備援版本。' ;;
+        ja:upgrade_hysteria_core_only_target_unresolvable) echo 'Hysteria の最新の正式安定版候補、または固定されたフォールバック版を特定できません。' ;;
+        zh:upgrade_hysteria_core_only_current_version_unparseable) echo '无法解析当前 Hysteria 版本；为避免意外降级，拒绝升级。' ;;
+        en:upgrade_hysteria_core_only_current_version_unparseable) echo 'Cannot parse the current Hysteria version; upgrade refused to prevent an unintended downgrade.' ;;
+        ru:upgrade_hysteria_core_only_current_version_unparseable) echo 'Не удалось разобрать текущую версию Hysteria; обновление отклонено во избежание непреднамеренного понижения версии.' ;;
+        fa:upgrade_hysteria_core_only_current_version_unparseable) echo 'نسخه فعلی Hysteria قابل تجزیه نیست؛ برای جلوگیری از تنزل ناخواسته نسخه، ارتقا رد شد.' ;;
+        zh-tw:upgrade_hysteria_core_only_current_version_unparseable) echo '無法解析目前的 Hysteria 版本；為避免意外降級，拒絕升級。' ;;
+        ja:upgrade_hysteria_core_only_current_version_unparseable) echo '現在の Hysteria バージョンを解析できません。意図しないダウングレードを防ぐため、アップグレードを拒否しました。' ;;
+        zh:upgrade_hysteria_core_only_downgrade_refused) echo '拒绝将 Hysteria 从 %s 降级到 %s。如确需降级，请明确设置 ABOX_ALLOW_CORE_DOWNGRADE=1 并确认客户端兼容性。' ;;
+        en:upgrade_hysteria_core_only_downgrade_refused) echo 'Downgrade of Hysteria from %s to %s refused. If a downgrade is necessary, explicitly set ABOX_ALLOW_CORE_DOWNGRADE=1 and confirm client compatibility.' ;;
+        ru:upgrade_hysteria_core_only_downgrade_refused) echo 'Понижение версии Hysteria с %s до %s отклонено. Если понижение необходимо, явно задайте ABOX_ALLOW_CORE_DOWNGRADE=1 и проверьте совместимость клиентов.' ;;
+        fa:upgrade_hysteria_core_only_downgrade_refused) echo 'تنزل نسخه Hysteria از %s به %s رد شد. اگر تنزل ضروری است، صریحاً ABOX_ALLOW_CORE_DOWNGRADE=1 را تنظیم کنید و سازگاری کلاینت را تأیید کنید.' ;;
+        zh-tw:upgrade_hysteria_core_only_downgrade_refused) echo '拒絕將 Hysteria 從 %s 降級到 %s。如確需降級，請明確設定 ABOX_ALLOW_CORE_DOWNGRADE=1 並確認用戶端相容性。' ;;
+        ja:upgrade_hysteria_core_only_downgrade_refused) echo 'Hysteria の %s から %s へのダウングレードを拒否しました。必要な場合は、ABOX_ALLOW_CORE_DOWNGRADE=1 を明示的に設定し、クライアントの互換性を確認してください。' ;;
+        zh:upgrade_hysteria_core_only_version_incomparable) echo '当前或目标 Hysteria 版本格式无法比较。' ;;
+        en:upgrade_hysteria_core_only_version_incomparable) echo 'The current or target Hysteria version format does not support comparison.' ;;
+        ru:upgrade_hysteria_core_only_version_incomparable) echo 'Формат текущей или целевой версии Hysteria не позволяет сравнить версии.' ;;
+        fa:upgrade_hysteria_core_only_version_incomparable) echo 'قالب نسخه فعلی یا هدف Hysteria امکان مقایسه را نمی‌دهد.' ;;
+        zh-tw:upgrade_hysteria_core_only_version_incomparable) echo '目前或目標 Hysteria 版本的格式無法比較。' ;;
+        ja:upgrade_hysteria_core_only_version_incomparable) echo '現在または対象の Hysteria バージョンの形式では、バージョンを比較できません。' ;;
+        zh:upgrade_hysteria_core_only_above_pinned_skip) echo '当前 Hysteria %s 高于固定兼容版本 %s；为避免自动降级，本次跳过。' ;;
+        en:upgrade_hysteria_core_only_above_pinned_skip) echo 'Current Hysteria version %s is newer than pinned compatible version %s; skipped this time to avoid an automatic downgrade.' ;;
+        ru:upgrade_hysteria_core_only_above_pinned_skip) echo 'Текущая версия Hysteria %s новее закреплённой совместимой версии %s; операция пропущена во избежание автоматического понижения версии.' ;;
+        fa:upgrade_hysteria_core_only_above_pinned_skip) echo 'نسخه فعلی Hysteria %s بالاتر از نسخه سازگار ثابت %s است؛ این بار برای جلوگیری از تنزل خودکار نسخه، عملیات رد شد.' ;;
+        zh-tw:upgrade_hysteria_core_only_above_pinned_skip) echo '目前 Hysteria %s 高於固定相容版本 %s；為避免自動降級，本次略過。' ;;
+        ja:upgrade_hysteria_core_only_above_pinned_skip) echo '現在の Hysteria %s は固定された互換バージョン %s より新しいため、自動ダウングレードを避けるために今回はスキップしました。' ;;
+        zh:upgrade_hysteria_core_only_already_pinned) echo '当前 Hysteria %s 已是固定兼容版本，无需替换。' ;;
+        en:upgrade_hysteria_core_only_already_pinned) echo 'Current Hysteria version %s is already the pinned compatible version; no replacement is needed.' ;;
+        ru:upgrade_hysteria_core_only_already_pinned) echo 'Текущая версия Hysteria %s уже является закреплённой совместимой версией; замена не требуется.' ;;
+        fa:upgrade_hysteria_core_only_already_pinned) echo 'نسخه فعلی Hysteria %s همان نسخه سازگار ثابت است؛ نیازی به جایگزینی نیست.' ;;
+        zh-tw:upgrade_hysteria_core_only_already_pinned) echo '目前 Hysteria %s 已是固定相容版本，無需替換。' ;;
+        ja:upgrade_hysteria_core_only_already_pinned) echo '現在の Hysteria %s はすでに固定された互換バージョンです。置き換えは不要です。' ;;
+        zh:upgrade_hysteria_core_only_final_mismatch) echo '最终核心二进制版本与所选标签 %s 不一致。' ;;
+        en:upgrade_hysteria_core_only_final_mismatch) echo 'The final core binary version does not match the selected tag %s.' ;;
+        ru:upgrade_hysteria_core_only_final_mismatch) echo 'Версия итогового бинарного файла ядра не соответствует выбранному тегу %s.' ;;
+        fa:upgrade_hysteria_core_only_final_mismatch) echo 'نسخه فایل باینری نهایی هسته با برچسب انتخاب‌شده %s مطابقت ندارد.' ;;
+        zh-tw:upgrade_hysteria_core_only_final_mismatch) echo '最終核心二進位檔版本與所選標籤 %s 不一致。' ;;
+        ja:upgrade_hysteria_core_only_final_mismatch) echo '最終コアバイナリのバージョンが選択したタグ %s と一致しません。' ;;
+        zh:upgrade_hysteria_core_only_final_version_unparseable) echo '无法解析最终候选二进制版本。' ;;
+        en:upgrade_hysteria_core_only_final_version_unparseable) echo 'Cannot parse the final candidate binary version.' ;;
+        ru:upgrade_hysteria_core_only_final_version_unparseable) echo 'Не удалось разобрать версию итогового бинарного файла-кандидата.' ;;
+        fa:upgrade_hysteria_core_only_final_version_unparseable) echo 'نسخه فایل باینری نامزد نهایی قابل تجزیه نیست.' ;;
+        zh-tw:upgrade_hysteria_core_only_final_version_unparseable) echo '無法解析最終候選二進位檔版本。' ;;
+        ja:upgrade_hysteria_core_only_final_version_unparseable) echo '最終候補バイナリのバージョンを解析できません。' ;;
+        zh:upgrade_hysteria_core_only_final_downgrade_refused) echo '拒绝将 Hysteria 从 %s 降级到最终候选版本 %s。' ;;
+        en:upgrade_hysteria_core_only_final_downgrade_refused) echo 'Downgrade of Hysteria from %s to final candidate version %s refused.' ;;
+        ru:upgrade_hysteria_core_only_final_downgrade_refused) echo 'Понижение версии Hysteria с %s до итоговой версии-кандидата %s отклонено.' ;;
+        fa:upgrade_hysteria_core_only_final_downgrade_refused) echo 'تنزل نسخه Hysteria از %s به نسخه نامزد نهایی %s رد شد.' ;;
+        zh-tw:upgrade_hysteria_core_only_final_downgrade_refused) echo '拒絕將 Hysteria 從 %s 降級到最終候選版本 %s。' ;;
+        ja:upgrade_hysteria_core_only_final_downgrade_refused) echo 'Hysteria の %s から最終候補バージョン %s へのダウングレードを拒否しました。' ;;
+        zh:upgrade_hysteria_core_only_final_version_incomparable) echo '最终核心候选版本格式无法比较。' ;;
+        en:upgrade_hysteria_core_only_final_version_incomparable) echo 'The final core candidate version format does not support comparison.' ;;
+        ru:upgrade_hysteria_core_only_final_version_incomparable) echo 'Формат итоговой версии-кандидата ядра не позволяет сравнить версии.' ;;
+        fa:upgrade_hysteria_core_only_final_version_incomparable) echo 'قالب نسخه نامزد نهایی هسته امکان مقایسه را نمی‌دهد.' ;;
+        zh-tw:upgrade_hysteria_core_only_final_version_incomparable) echo '最終核心候選版本的格式無法比較。' ;;
+        ja:upgrade_hysteria_core_only_final_version_incomparable) echo '最終コア候補バージョンの形式では、バージョンを比較できません。' ;;
+        zh:upgrade_hysteria_core_only_final_below_skip) echo '最终候选版本 %s 低于当前版本 %s；已跳过以避免自动降级。' ;;
+        en:upgrade_hysteria_core_only_final_below_skip) echo 'Final candidate version %s is older than current version %s; skipped to avoid an automatic downgrade.' ;;
+        ru:upgrade_hysteria_core_only_final_below_skip) echo 'Итоговая версия-кандидат %s старее текущей версии %s; операция пропущена во избежание автоматического понижения версии.' ;;
+        fa:upgrade_hysteria_core_only_final_below_skip) echo 'نسخه نامزد نهایی %s پایین‌تر از نسخه فعلی %s است؛ برای جلوگیری از تنزل خودکار نسخه، عملیات رد شد.' ;;
+        zh-tw:upgrade_hysteria_core_only_final_below_skip) echo '最終候選版本 %s 低於目前版本 %s；已略過以避免自動降級。' ;;
+        ja:upgrade_hysteria_core_only_final_below_skip) echo '最終候補バージョン %s は現在のバージョン %s より古いため、自動ダウングレードを避けるためにスキップしました。' ;;
+        zh:upgrade_hysteria_core_only_final_same) echo '最终候选版本 %s 与当前版本相同，无需替换。' ;;
+        en:upgrade_hysteria_core_only_final_same) echo 'Final candidate version %s matches the current version; no replacement is needed.' ;;
+        ru:upgrade_hysteria_core_only_final_same) echo 'Итоговая версия-кандидат %s совпадает с текущей версией; замена не требуется.' ;;
+        fa:upgrade_hysteria_core_only_final_same) echo 'نسخه نامزد نهایی %s با نسخه فعلی یکسان است؛ نیازی به جایگزینی نیست.' ;;
+        zh-tw:upgrade_hysteria_core_only_final_same) echo '最終候選版本 %s 與目前版本相同，無需替換。' ;;
+        ja:upgrade_hysteria_core_only_final_same) echo '最終候補バージョン %s は現在のバージョンと同じです。置き換えは不要です。' ;;
+        zh:upgrade_hysteria_core_only_final_direction_error) echo '最终核心版本方向检查返回异常状态。' ;;
+        en:upgrade_hysteria_core_only_final_direction_error) echo 'The final core version direction check returned an unexpected status.' ;;
+        ru:upgrade_hysteria_core_only_final_direction_error) echo 'Проверка направления изменения итоговой версии ядра вернула неожиданный статус.' ;;
+        fa:upgrade_hysteria_core_only_final_direction_error) echo 'بررسی جهت تغییر نسخه نهایی هسته، وضعیت غیرمنتظره‌ای برگرداند.' ;;
+        zh-tw:upgrade_hysteria_core_only_final_direction_error) echo '最終核心版本方向檢查回傳異常狀態。' ;;
+        ja:upgrade_hysteria_core_only_final_direction_error) echo '最終コアバージョンの変更方向チェックが異常な状態を返しました。' ;;
+        zh:upgrade_hysteria_core_only_ownership_update_fail) echo 'Hysteria 核心已替换，但归属清单更新失败。' ;;
+        en:upgrade_hysteria_core_only_ownership_update_fail) echo 'The Hysteria core was replaced, but updating the ownership manifest failed.' ;;
+        ru:upgrade_hysteria_core_only_ownership_update_fail) echo 'Ядро Hysteria заменено, но обновить реестр принадлежности не удалось.' ;;
+        fa:upgrade_hysteria_core_only_ownership_update_fail) echo 'هسته Hysteria جایگزین شد، اما به‌روزرسانی فهرست مالکیت ناموفق بود.' ;;
+        zh-tw:upgrade_hysteria_core_only_ownership_update_fail) echo 'Hysteria 核心已替換，但歸屬清單更新失敗。' ;;
+        ja:upgrade_hysteria_core_only_ownership_update_fail) echo 'Hysteria コアは置き換えられましたが、所有情報マニフェストの更新に失敗しました。' ;;
+        zh:ensure_vnstat_runtime_installing) echo '未检测到 vnStat；正在按需安装流量统计组件...' ;;
+        en:ensure_vnstat_runtime_installing) echo 'vnStat not detected; installing the traffic statistics component as needed...' ;;
+        ru:ensure_vnstat_runtime_installing) echo 'vnStat не обнаружен; устанавливается необходимый компонент статистики трафика...' ;;
+        fa:ensure_vnstat_runtime_installing) echo 'vnStat شناسایی نشد؛ مؤلفه آمار ترافیک در صورت نیاز در حال نصب است...' ;;
+        zh-tw:ensure_vnstat_runtime_installing) echo '未偵測到 vnStat；正在依需求安裝流量統計元件...' ;;
+        ja:ensure_vnstat_runtime_installing) echo 'vnStat が検出されませんでした。必要なトラフィック統計コンポーネントをインストールしています...' ;;
+        zh:ensure_vnstat_runtime_install_fail) echo 'vnStat 安装失败，无法启用流量限制。' ;;
+        en:ensure_vnstat_runtime_install_fail) echo 'vnStat installation failed; cannot enable traffic limits.' ;;
+        ru:ensure_vnstat_runtime_install_fail) echo 'Не удалось установить vnStat; невозможно включить ограничения трафика.' ;;
+        fa:ensure_vnstat_runtime_install_fail) echo 'نصب vnStat ناموفق بود؛ فعال‌سازی محدودیت ترافیک ممکن نیست.' ;;
+        zh-tw:ensure_vnstat_runtime_install_fail) echo 'vnStat 安裝失敗，無法啟用流量限制。' ;;
+        ja:ensure_vnstat_runtime_install_fail) echo 'vnStat のインストールに失敗したため、トラフィック制限を有効にできません。' ;;
+        zh:ensure_vnstat_runtime_still_unavailable) echo 'vnStat 安装后仍不可用，无法启用流量限制。' ;;
+        en:ensure_vnstat_runtime_still_unavailable) echo 'vnStat is still unavailable after installation; cannot enable traffic limits.' ;;
+        ru:ensure_vnstat_runtime_still_unavailable) echo 'После установки vnStat по-прежнему недоступен; невозможно включить ограничения трафика.' ;;
+        fa:ensure_vnstat_runtime_still_unavailable) echo 'vnStat پس از نصب همچنان در دسترس نیست؛ فعال‌سازی محدودیت ترافیک ممکن نیست.' ;;
+        zh-tw:ensure_vnstat_runtime_still_unavailable) echo 'vnStat 安裝後仍無法使用，無法啟用流量限制。' ;;
+        ja:ensure_vnstat_runtime_still_unavailable) echo 'インストール後も vnStat を利用できないため、トラフィック制限を有効にできません。' ;;
+        zh:ensure_vnstat_runtime_service_start_fail) echo 'vnStat 服务无法启动；未启用流量限制。' ;;
+        en:ensure_vnstat_runtime_service_start_fail) echo 'Cannot start the vnStat service; traffic limits were not enabled.' ;;
+        ru:ensure_vnstat_runtime_service_start_fail) echo 'Не удалось запустить службу vnStat; ограничения трафика не включены.' ;;
+        fa:ensure_vnstat_runtime_service_start_fail) echo 'راه‌اندازی سرویس vnStat ممکن نیست؛ محدودیت ترافیک فعال نشد.' ;;
+        zh-tw:ensure_vnstat_runtime_service_start_fail) echo 'vnStat 服務無法啟動；未啟用流量限制。' ;;
+        ja:ensure_vnstat_runtime_service_start_fail) echo 'vnStat サービスを起動できません。トラフィック制限は有効にされませんでした。' ;;
+        zh:ensure_vnstat_runtime_service_not_active) echo 'vnStat 服务未处于 active 状态；未启用流量限制。' ;;
+        en:ensure_vnstat_runtime_service_not_active) echo 'The vnStat service is not in the active state; traffic limits were not enabled.' ;;
+        ru:ensure_vnstat_runtime_service_not_active) echo 'Служба vnStat не находится в состоянии active; ограничения трафика не включены.' ;;
+        fa:ensure_vnstat_runtime_service_not_active) echo 'سرویس vnStat در وضعیت active نیست؛ محدودیت ترافیک فعال نشد.' ;;
+        zh-tw:ensure_vnstat_runtime_service_not_active) echo 'vnStat 服務未處於 active 狀態；未啟用流量限制。' ;;
+        ja:ensure_vnstat_runtime_service_not_active) echo 'vnStat サービスが active 状態ではありません。トラフィック制限は有効にされませんでした。' ;;
+        zh:ensure_vnstat_runtime_no_systemd_service) echo '系统未提供可识别的 vnStat systemd 服务；无法安全启用流量限制。' ;;
+        en:ensure_vnstat_runtime_no_systemd_service) echo 'No recognizable vnStat systemd service is provided by the system; cannot safely enable traffic limits.' ;;
+        ru:ensure_vnstat_runtime_no_systemd_service) echo 'В системе нет распознаваемой службы vnStat для systemd; невозможно безопасно включить ограничения трафика.' ;;
+        fa:ensure_vnstat_runtime_no_systemd_service) echo 'سیستم سرویس قابل‌شناسایی vnStat برای systemd ارائه نمی‌کند؛ فعال‌سازی امن محدودیت ترافیک ممکن نیست.' ;;
+        zh-tw:ensure_vnstat_runtime_no_systemd_service) echo '系統未提供可辨識的 vnStat systemd 服務；無法安全啟用流量限制。' ;;
+        ja:ensure_vnstat_runtime_no_systemd_service) echo 'システムに認識可能な vnStat の systemd サービスがないため、トラフィック制限を安全に有効化できません。' ;;
+        zh:ensure_vnstat_runtime_no_openrc_service) echo '系统未提供 vnstatd OpenRC 服务；无法安全启用流量限制。' ;;
+        en:ensure_vnstat_runtime_no_openrc_service) echo 'No vnstatd OpenRC service is provided by the system; cannot safely enable traffic limits.' ;;
+        ru:ensure_vnstat_runtime_no_openrc_service) echo 'В системе нет службы vnstatd для OpenRC; невозможно безопасно включить ограничения трафика.' ;;
+        fa:ensure_vnstat_runtime_no_openrc_service) echo 'سیستم سرویس vnstatd برای OpenRC ارائه نمی‌کند؛ فعال‌سازی امن محدودیت ترافیک ممکن نیست.' ;;
+        zh-tw:ensure_vnstat_runtime_no_openrc_service) echo '系統未提供 vnstatd OpenRC 服務；無法安全啟用流量限制。' ;;
+        ja:ensure_vnstat_runtime_no_openrc_service) echo 'システムに vnstatd の OpenRC サービスがないため、トラフィック制限を安全に有効化できません。' ;;
+        zh:ensure_vnstat_runtime_openrc_add_fail) echo 'vnStat OpenRC 服务无法加入 default runlevel。' ;;
+        en:ensure_vnstat_runtime_openrc_add_fail) echo 'Cannot add the vnStat OpenRC service to the default runlevel.' ;;
+        ru:ensure_vnstat_runtime_openrc_add_fail) echo 'Не удалось добавить службу vnStat для OpenRC в уровень запуска default.' ;;
+        fa:ensure_vnstat_runtime_openrc_add_fail) echo 'افزودن سرویس vnStat در OpenRC به سطح اجرای default ممکن نیست.' ;;
+        zh-tw:ensure_vnstat_runtime_openrc_add_fail) echo 'vnStat OpenRC 服務無法加入 default 執行層級。' ;;
+        ja:ensure_vnstat_runtime_openrc_add_fail) echo 'vnStat の OpenRC サービスを default ランレベルに追加できません。' ;;
+        zh:ensure_vnstat_runtime_openrc_start_fail) echo 'vnStat OpenRC 服务无法启动；未启用流量限制。' ;;
+        en:ensure_vnstat_runtime_openrc_start_fail) echo 'Cannot start the vnStat OpenRC service; traffic limits were not enabled.' ;;
+        ru:ensure_vnstat_runtime_openrc_start_fail) echo 'Не удалось запустить службу vnStat для OpenRC; ограничения трафика не включены.' ;;
+        fa:ensure_vnstat_runtime_openrc_start_fail) echo 'راه‌اندازی سرویس vnStat در OpenRC ممکن نیست؛ محدودیت ترافیک فعال نشد.' ;;
+        zh-tw:ensure_vnstat_runtime_openrc_start_fail) echo 'vnStat OpenRC 服務無法啟動；未啟用流量限制。' ;;
+        ja:ensure_vnstat_runtime_openrc_start_fail) echo 'vnStat の OpenRC サービスを起動できません。トラフィック制限は有効にされませんでした。' ;;
+        zh:ensure_vnstat_runtime_openrc_not_running) echo 'vnStat OpenRC 服务未处于运行状态；未启用流量限制。' ;;
+        en:ensure_vnstat_runtime_openrc_not_running) echo 'The vnStat OpenRC service is not running; traffic limits were not enabled.' ;;
+        ru:ensure_vnstat_runtime_openrc_not_running) echo 'Служба vnStat для OpenRC не работает; ограничения трафика не включены.' ;;
+        fa:ensure_vnstat_runtime_openrc_not_running) echo 'سرویس vnStat در OpenRC در حال اجرا نیست؛ محدودیت ترافیک فعال نشد.' ;;
+        zh-tw:ensure_vnstat_runtime_openrc_not_running) echo 'vnStat OpenRC 服務未在執行；未啟用流量限制。' ;;
+        ja:ensure_vnstat_runtime_openrc_not_running) echo 'vnStat の OpenRC サービスが稼働していません。トラフィック制限は有効にされませんでした。' ;;
+        zh:ensure_vnstat_runtime_runtime_unknown) echo '无法确认 vnStat 运行时环境；未启用流量限制。' ;;
+        en:ensure_vnstat_runtime_runtime_unknown) echo 'Cannot determine the vnStat runtime environment; traffic limits were not enabled.' ;;
+        ru:ensure_vnstat_runtime_runtime_unknown) echo 'Не удалось определить среду выполнения vnStat; ограничения трафика не включены.' ;;
+        fa:ensure_vnstat_runtime_runtime_unknown) echo 'تشخیص محیط اجرای vnStat ممکن نیست؛ محدودیت ترافیک فعال نشد.' ;;
+        zh-tw:ensure_vnstat_runtime_runtime_unknown) echo '無法確認 vnStat 執行環境；未啟用流量限制。' ;;
+        ja:ensure_vnstat_runtime_runtime_unknown) echo 'vnStat の実行環境を確認できません。トラフィック制限は有効にされませんでした。' ;;
+        zh:ensure_vnstat_runtime_iface_fix_not_active) echo 'vnStat 接口修复后服务未处于 active 状态；未启用流量限制。' ;;
+        en:ensure_vnstat_runtime_iface_fix_not_active) echo 'The vnStat service is not in the active state after interface repair; traffic limits were not enabled.' ;;
+        ru:ensure_vnstat_runtime_iface_fix_not_active) echo 'После исправления интерфейса vnStat служба не находится в состоянии active; ограничения трафика не включены.' ;;
+        fa:ensure_vnstat_runtime_iface_fix_not_active) echo 'پس از اصلاح رابط vnStat، سرویس در وضعیت active نیست؛ محدودیت ترافیک فعال نشد.' ;;
+        zh-tw:ensure_vnstat_runtime_iface_fix_not_active) echo '修復 vnStat 介面後，服務未處於 active 狀態；未啟用流量限制。' ;;
+        ja:ensure_vnstat_runtime_iface_fix_not_active) echo 'vnStat のインターフェース修復後もサービスが active 状態ではありません。トラフィック制限は有効にされませんでした。' ;;
+        zh:ensure_vnstat_runtime_iface_fix_not_running) echo 'vnStat 接口修复后服务未处于运行状态；未启用流量限制。' ;;
+        en:ensure_vnstat_runtime_iface_fix_not_running) echo 'The vnStat service is not running after interface repair; traffic limits were not enabled.' ;;
+        ru:ensure_vnstat_runtime_iface_fix_not_running) echo 'После исправления интерфейса vnStat служба не работает; ограничения трафика не включены.' ;;
+        fa:ensure_vnstat_runtime_iface_fix_not_running) echo 'پس از اصلاح رابط vnStat، سرویس در حال اجرا نیست؛ محدودیت ترافیک فعال نشد.' ;;
+        zh-tw:ensure_vnstat_runtime_iface_fix_not_running) echo '修復 vnStat 介面後，服務未在執行；未啟用流量限制。' ;;
+        ja:ensure_vnstat_runtime_iface_fix_not_running) echo 'vnStat のインターフェース修復後もサービスが稼働していません。トラフィック制限は有効にされませんでした。' ;;
+        zh:ensure_vnstat_runtime_iface_fix_not_registered) echo 'vnStat 接口修复后仍未注册；未启用流量限制。' ;;
+        en:ensure_vnstat_runtime_iface_fix_not_registered) echo 'The interface is still not registered with vnStat after repair; traffic limits were not enabled.' ;;
+        ru:ensure_vnstat_runtime_iface_fix_not_registered) echo 'После исправления интерфейс по-прежнему не зарегистрирован в vnStat; ограничения трафика не включены.' ;;
+        fa:ensure_vnstat_runtime_iface_fix_not_registered) echo 'پس از اصلاح، رابط همچنان در vnStat ثبت نشده است؛ محدودیت ترافیک فعال نشد.' ;;
+        zh-tw:ensure_vnstat_runtime_iface_fix_not_registered) echo '修復後介面仍未在 vnStat 註冊；未啟用流量限制。' ;;
+        ja:ensure_vnstat_runtime_iface_fix_not_registered) echo '修復後もインターフェースが vnStat に登録されていません。トラフィック制限は有効にされませんでした。' ;;
+        zh:restore_from_backup_legacy_layout_unclassified) echo '恢复前检测到无法分类的 xray-latest 遗留布局，恢复已中止。' ;;
+        en:restore_from_backup_legacy_layout_unclassified) echo 'An unclassifiable legacy xray-latest layout was detected before restore. Restore aborted.' ;;
+        ru:restore_from_backup_legacy_layout_unclassified) echo 'Перед восстановлением обнаружена устаревшая структура xray-latest, которую невозможно классифицировать. Восстановление прервано.' ;;
+        fa:restore_from_backup_legacy_layout_unclassified) echo 'پیش از بازیابی، ساختار قدیمی xray-latest با دسته‌بندی نامشخص شناسایی شد. بازیابی متوقف شد.' ;;
+        zh-tw:restore_from_backup_legacy_layout_unclassified) echo '還原前偵測到無法分類的 xray-latest 舊版配置結構，已中止還原。' ;;
+        ja:restore_from_backup_legacy_layout_unclassified) echo '復元前に分類できない xray-latest の旧構成を検出したため、復元を中止しました。' ;;
+        zh:restore_from_backup_legacy_filter_fail) echo '恢复前过滤退役 xray-latest 备份内容失败。' ;;
+        en:restore_from_backup_legacy_filter_fail) echo 'Failed to filter out retired xray-latest backup content before restore.' ;;
+        ru:restore_from_backup_legacy_filter_fail) echo 'Перед восстановлением не удалось исключить из резервной копии содержимое выведенного из эксплуатации xray-latest.' ;;
+        fa:restore_from_backup_legacy_filter_fail) echo 'حذف محتوای xray-latest کنارگذاشته‌شده از نسخه پشتیبان پیش از بازیابی ناموفق بود.' ;;
+        zh-tw:restore_from_backup_legacy_filter_fail) echo '還原前排除已退役的 xray-latest 備份內容失敗。' ;;
+        ja:restore_from_backup_legacy_filter_fail) echo '復元前に、廃止された xray-latest のバックアップ内容を除外できませんでした。' ;;
+        zh:restore_from_backup_legacy_firewall_preflight_fail) echo '恢复前检查退役 xray-latest 防火墙放行失败。' ;;
+        en:restore_from_backup_legacy_firewall_preflight_fail) echo 'Pre-restore check of firewall allow rules for retired xray-latest failed.' ;;
+        ru:restore_from_backup_legacy_firewall_preflight_fail) echo 'Проверка разрешающих правил межсетевого экрана для выведенного из эксплуатации xray-latest перед восстановлением не удалась.' ;;
+        fa:restore_from_backup_legacy_firewall_preflight_fail) echo 'بررسی پیش از بازیابی قواعد مجازسازی دیوار آتش برای xray-latest کنارگذاشته‌شده ناموفق بود.' ;;
+        zh-tw:restore_from_backup_legacy_firewall_preflight_fail) echo '還原前檢查已退役的 xray-latest 防火牆允許規則失敗。' ;;
+        ja:restore_from_backup_legacy_firewall_preflight_fail) echo '廃止された xray-latest のファイアウォール許可ルールの復元前チェックに失敗しました。' ;;
+        zh:restore_from_backup_stop_services_fail) echo '恢复前无法停止全部 A-Box 托管服务。' ;;
+        en:restore_from_backup_stop_services_fail) echo 'Could not stop all A-Box-managed services before restore.' ;;
+        ru:restore_from_backup_stop_services_fail) echo 'Перед восстановлением не удалось остановить все службы, управляемые A-Box.' ;;
+        fa:restore_from_backup_stop_services_fail) echo 'توقف همه سرویس‌های تحت مدیریت A-Box پیش از بازیابی ممکن نبود.' ;;
+        zh-tw:restore_from_backup_stop_services_fail) echo '還原前無法停止所有由 A-Box 管理的服務。' ;;
+        ja:restore_from_backup_stop_services_fail) echo '復元前に A-Box が管理するすべてのサービスを停止できませんでした。' ;;
+        zh:restore_from_backup_clean_nat_fail) echo '恢复前无法完整删除 A-Box HY2 NAT 规则。' ;;
+        en:restore_from_backup_clean_nat_fail) echo 'Could not completely remove A-Box HY2 NAT rules before restore.' ;;
+        ru:restore_from_backup_clean_nat_fail) echo 'Перед восстановлением не удалось полностью удалить правила A-Box HY2 NAT.' ;;
+        fa:restore_from_backup_clean_nat_fail) echo 'حذف کامل قواعد A-Box HY2 NAT پیش از بازیابی ممکن نبود.' ;;
+        zh-tw:restore_from_backup_clean_nat_fail) echo '還原前無法完整移除 A-Box HY2 NAT 規則。' ;;
+        ja:restore_from_backup_clean_nat_fail) echo '復元前に A-Box HY2 NAT ルールを完全に削除できませんでした。' ;;
+        zh:restore_from_backup_clean_input_fail) echo '恢复前无法完整删除 A-Box INPUT/原生防火墙规则。' ;;
+        en:restore_from_backup_clean_input_fail) echo 'Could not completely remove A-Box INPUT and native firewall rules before restore.' ;;
+        ru:restore_from_backup_clean_input_fail) echo 'Перед восстановлением не удалось полностью удалить правила A-Box для INPUT и штатного межсетевого экрана.' ;;
+        fa:restore_from_backup_clean_input_fail) echo 'حذف کامل قواعد INPUT و دیوار آتش بومی A-Box پیش از بازیابی ممکن نبود.' ;;
+        zh-tw:restore_from_backup_clean_input_fail) echo '還原前無法完整移除 A-Box INPUT 與原生防火牆規則。' ;;
+        ja:restore_from_backup_clean_input_fail) echo '復元前に A-Box の INPUT およびネイティブファイアウォールのルールを完全に削除できませんでした。' ;;
+        zh:restore_from_backup_remove_cores_fail) echo '恢复前删除当前 A-Box 核心文件失败。' ;;
+        en:restore_from_backup_remove_cores_fail) echo 'Failed to remove the current A-Box core files before restore.' ;;
+        ru:restore_from_backup_remove_cores_fail) echo 'Перед восстановлением не удалось удалить текущие файлы ядер A-Box.' ;;
+        fa:restore_from_backup_remove_cores_fail) echo 'حذف فایل‌های هسته فعلی A-Box پیش از بازیابی ناموفق بود.' ;;
+        zh-tw:restore_from_backup_remove_cores_fail) echo '還原前移除目前的 A-Box 核心檔案失敗。' ;;
+        ja:restore_from_backup_remove_cores_fail) echo '復元前に現在の A-Box コアファイルを削除できませんでした。' ;;
+        zh:restore_from_backup_clear_runtime_fail) echo '恢复前清理 A-Box 运行目录失败。' ;;
+        en:restore_from_backup_clear_runtime_fail) echo 'Failed to clean the A-Box runtime directory before restore.' ;;
+        ru:restore_from_backup_clear_runtime_fail) echo 'Перед восстановлением не удалось очистить рабочий каталог A-Box.' ;;
+        fa:restore_from_backup_clear_runtime_fail) echo 'پاک‌سازی پوشه اجرای A-Box پیش از بازیابی ناموفق بود.' ;;
+        zh-tw:restore_from_backup_clear_runtime_fail) echo '還原前清理 A-Box 執行目錄失敗。' ;;
+        ja:restore_from_backup_clear_runtime_fail) echo '復元前に A-Box の実行ディレクトリをクリーンアップできませんでした。' ;;
+        zh:restore_from_backup_aux_enum_fail) echo '无法枚举 A-Box 辅助文件，恢复已中止。' ;;
+        en:restore_from_backup_aux_enum_fail) echo 'Cannot enumerate A-Box auxiliary files. Restore aborted.' ;;
+        ru:restore_from_backup_aux_enum_fail) echo 'Не удалось перечислить вспомогательные файлы A-Box. Восстановление прервано.' ;;
+        fa:restore_from_backup_aux_enum_fail) echo 'فهرست کردن فایل‌های کمکی A-Box ممکن نیست. بازیابی متوقف شد.' ;;
+        zh-tw:restore_from_backup_aux_enum_fail) echo '無法列舉 A-Box 輔助檔案，已中止還原。' ;;
+        ja:restore_from_backup_aux_enum_fail) echo 'A-Box の補助ファイルを列挙できないため、復元を中止しました。' ;;
+        zh:restore_from_backup_dir_perm_fail) echo '恢复后的 A-Box 目录权限加固失败。' ;;
+        en:restore_from_backup_dir_perm_fail) echo 'Failed to harden permissions on the restored A-Box directory.' ;;
+        ru:restore_from_backup_dir_perm_fail) echo 'Не удалось усилить защиту прав доступа к восстановленному каталогу A-Box.' ;;
+        fa:restore_from_backup_dir_perm_fail) echo 'ایمن‌سازی مجوزهای پوشه بازیابی‌شده A-Box ناموفق بود.' ;;
+        zh-tw:restore_from_backup_dir_perm_fail) echo '還原後的 A-Box 目錄權限強化失敗。' ;;
+        ja:restore_from_backup_dir_perm_fail) echo '復元後の A-Box ディレクトリのアクセス権限の強化に失敗しました。' ;;
+        zh:restore_from_backup_env_perm_fail) echo '恢复后的 .env 权限加固失败。' ;;
+        en:restore_from_backup_env_perm_fail) echo 'Failed to harden permissions on the restored .env file.' ;;
+        ru:restore_from_backup_env_perm_fail) echo 'Не удалось усилить защиту прав доступа к восстановленному файлу .env.' ;;
+        fa:restore_from_backup_env_perm_fail) echo 'ایمن‌سازی مجوزهای فایل .env بازیابی‌شده ناموفق بود.' ;;
+        zh-tw:restore_from_backup_env_perm_fail) echo '還原後的 .env 權限強化失敗。' ;;
+        ja:restore_from_backup_env_perm_fail) echo '復元後の .env ファイルのアクセス権限の強化に失敗しました。' ;;
+        zh:restore_from_backup_shortcut_type_fail) echo '恢复后的快捷键状态文件类型异常。' ;;
+        en:restore_from_backup_shortcut_type_fail) echo 'The restored shortcut state file has an unexpected file type.' ;;
+        ru:restore_from_backup_shortcut_type_fail) echo 'Восстановленный файл состояния ярлыка имеет неожиданный тип.' ;;
+        fa:restore_from_backup_shortcut_type_fail) echo 'نوع فایل وضعیت میان‌بر بازیابی‌شده غیرمنتظره است.' ;;
+        zh-tw:restore_from_backup_shortcut_type_fail) echo '還原後的快捷鍵狀態檔案類型異常。' ;;
+        ja:restore_from_backup_shortcut_type_fail) echo '復元後のショートカット状態ファイルの種類が想定と異なります。' ;;
+        zh:restore_from_backup_shortcut_owner_fail) echo '恢复后的快捷键状态文件属主加固失败。' ;;
+        en:restore_from_backup_shortcut_owner_fail) echo 'Failed to harden ownership of the restored shortcut state file.' ;;
+        ru:restore_from_backup_shortcut_owner_fail) echo 'Не удалось защитить восстановленный файл состояния ярлыка путём усиления требований к владельцу.' ;;
+        fa:restore_from_backup_shortcut_owner_fail) echo 'ایمن‌سازی مالکیت فایل وضعیت میان‌بر بازیابی‌شده ناموفق بود.' ;;
+        zh-tw:restore_from_backup_shortcut_owner_fail) echo '還原後的快捷鍵狀態檔案擁有者安全強化失敗。' ;;
+        ja:restore_from_backup_shortcut_owner_fail) echo '復元後のショートカット状態ファイルの所有者設定の強化に失敗しました。' ;;
+        zh:restore_from_backup_shortcut_perm_fail) echo '恢复后的快捷键状态文件权限加固失败。' ;;
+        en:restore_from_backup_shortcut_perm_fail) echo 'Failed to harden permissions on the restored shortcut state file.' ;;
+        ru:restore_from_backup_shortcut_perm_fail) echo 'Не удалось усилить защиту прав доступа к восстановленному файлу состояния ярлыка.' ;;
+        fa:restore_from_backup_shortcut_perm_fail) echo 'ایمن‌سازی مجوزهای فایل وضعیت میان‌بر بازیابی‌شده ناموفق بود.' ;;
+        zh-tw:restore_from_backup_shortcut_perm_fail) echo '還原後的快捷鍵狀態檔案權限強化失敗。' ;;
+        ja:restore_from_backup_shortcut_perm_fail) echo '復元後のショートカット状態ファイルのアクセス権限の強化に失敗しました。' ;;
+        zh:restore_from_backup_legacy_firewall_restore_fail) echo '恢复退役 xray-latest 防火墙放行失败。' ;;
+        en:restore_from_backup_legacy_firewall_restore_fail) echo 'Failed to restore firewall allow rules for retired xray-latest.' ;;
+        ru:restore_from_backup_legacy_firewall_restore_fail) echo 'Не удалось восстановить разрешающие правила межсетевого экрана для выведенного из эксплуатации xray-latest.' ;;
+        fa:restore_from_backup_legacy_firewall_restore_fail) echo 'بازیابی قواعد مجازسازی دیوار آتش برای xray-latest کنارگذاشته‌شده ناموفق بود.' ;;
+        zh-tw:restore_from_backup_legacy_firewall_restore_fail) echo '還原已退役的 xray-latest 防火牆允許規則失敗。' ;;
+        ja:restore_from_backup_legacy_firewall_restore_fail) echo '廃止された xray-latest のファイアウォール許可ルールの復元に失敗しました。' ;;
+        zh:restore_from_backup_env_verify_fail) echo '恢复后的 A-Box 环境文件校验失败。' ;;
+        en:restore_from_backup_env_verify_fail) echo 'Validation of the restored A-Box environment file failed.' ;;
+        ru:restore_from_backup_env_verify_fail) echo 'Проверка восстановленного файла окружения A-Box не пройдена.' ;;
+        fa:restore_from_backup_env_verify_fail) echo 'اعتبارسنجی فایل محیطی بازیابی‌شده A-Box ناموفق بود.' ;;
+        zh-tw:restore_from_backup_env_verify_fail) echo '還原後的 A-Box 環境檔案驗證失敗。' ;;
+        ja:restore_from_backup_env_verify_fail) echo '復元後の A-Box 環境ファイルの検証に失敗しました。' ;;
+        zh:core_fetch_upstream_release_asset_api_unavailable) echo '上游 Release API 不可用: %s:%s' ;;
+        en:core_fetch_upstream_release_asset_api_unavailable) echo 'Upstream Release API unavailable: %s:%s' ;;
+        ru:core_fetch_upstream_release_asset_api_unavailable) echo 'API релизов вышестоящего проекта недоступен: %s:%s' ;;
+        fa:core_fetch_upstream_release_asset_api_unavailable) echo 'API انتشار بالادستی در دسترس نیست: %s:%s' ;;
+        zh-tw:core_fetch_upstream_release_asset_api_unavailable) echo '上游 Release API 無法使用: %s:%s' ;;
+        ja:core_fetch_upstream_release_asset_api_unavailable) echo '上流の Release API を利用できません: %s:%s' ;;
+        zh:core_fetch_upstream_release_asset_metadata_mismatch) echo '上游 Release 元数据与目标版本/稳定性不一致: %s:%s' ;;
+        en:core_fetch_upstream_release_asset_metadata_mismatch) echo 'Upstream Release metadata does not match the target version or stability: %s:%s' ;;
+        ru:core_fetch_upstream_release_asset_metadata_mismatch) echo 'Метаданные релиза вышестоящего проекта не соответствуют целевой версии или статусу стабильности: %s:%s' ;;
+        fa:core_fetch_upstream_release_asset_metadata_mismatch) echo 'فراداده انتشار بالادستی با نسخه هدف یا وضعیت پایداری مطابقت ندارد: %s:%s' ;;
+        zh-tw:core_fetch_upstream_release_asset_metadata_mismatch) echo '上游 Release 中繼資料與目標版本或穩定性不符: %s:%s' ;;
+        ja:core_fetch_upstream_release_asset_metadata_mismatch) echo '上流の Release メタデータが対象バージョンまたは安定性と一致しません: %s:%s' ;;
+        zh:core_fetch_upstream_release_asset_asset_match_count) echo '目标架构资产匹配数不是 1（匹配 %s 个）: %s:%s' ;;
+        en:core_fetch_upstream_release_asset_asset_match_count) echo 'Expected 1 asset matching the target architecture, but found %s: %s:%s' ;;
+        ru:core_fetch_upstream_release_asset_asset_match_count) echo 'Количество файлов релиза для целевой архитектуры не равно 1 (найдено %s): %s:%s' ;;
+        fa:core_fetch_upstream_release_asset_asset_match_count) echo 'تعداد فایل‌های منطبق با معماری هدف برابر با 1 نیست (تعداد یافت‌شده: %s): %s:%s' ;;
+        zh-tw:core_fetch_upstream_release_asset_asset_match_count) echo '符合目標架構的資產數量不是 1（符合 %s 個）: %s:%s' ;;
+        ja:core_fetch_upstream_release_asset_asset_match_count) echo '対象アーキテクチャに一致するアセット数が 1 ではありません（一致数: %s）: %s:%s' ;;
+        zh:core_fetch_upstream_release_asset_url_mismatch) echo '下载 URL 与官方仓库/tag/资产不匹配，拒绝该候选。' ;;
+        en:core_fetch_upstream_release_asset_url_mismatch) echo 'Download URL does not match the official repository, tag, or asset. Candidate rejected.' ;;
+        ru:core_fetch_upstream_release_asset_url_mismatch) echo 'URL загрузки не соответствует официальному репозиторию, тегу или файлу релиза. Кандидат отклонён.' ;;
+        fa:core_fetch_upstream_release_asset_url_mismatch) echo 'نشانی دانلود با مخزن رسمی، تگ یا فایل انتشار مطابقت ندارد. این گزینه رد شد.' ;;
+        zh-tw:core_fetch_upstream_release_asset_url_mismatch) echo '下載 URL 與官方儲存庫、tag 或資產不符，拒絕此候選項目。' ;;
+        ja:core_fetch_upstream_release_asset_url_mismatch) echo 'ダウンロード URL が公式リポジトリ、タグ、またはアセットと一致しないため、この候補を拒否します。' ;;
+        zh:core_fetch_upstream_release_asset_digest_missing) echo '官方 Release 缺少有效 SHA-256 digest。' ;;
+        en:core_fetch_upstream_release_asset_digest_missing) echo 'Official Release is missing a valid SHA-256 digest.' ;;
+        ru:core_fetch_upstream_release_asset_digest_missing) echo 'В официальном релизе отсутствует корректный хеш SHA-256.' ;;
+        fa:core_fetch_upstream_release_asset_digest_missing) echo 'انتشار رسمی فاقد هش معتبر SHA-256 است.' ;;
+        zh-tw:core_fetch_upstream_release_asset_digest_missing) echo '官方 Release 缺少有效的 SHA-256 摘要。' ;;
+        ja:core_fetch_upstream_release_asset_digest_missing) echo '公式 Release に有効な SHA-256 ダイジェストがありません。' ;;
+        zh:core_fetch_upstream_release_asset_dest_is_dir) echo '目标路径为目录，拒绝写入: %s' ;;
+        en:core_fetch_upstream_release_asset_dest_is_dir) echo 'Destination path is a directory; refusing to write: %s' ;;
+        ru:core_fetch_upstream_release_asset_dest_is_dir) echo 'Целевой путь является каталогом; запись отклонена: %s' ;;
+        fa:core_fetch_upstream_release_asset_dest_is_dir) echo 'مسیر مقصد یک پوشه است؛ نوشتن در آن رد شد: %s' ;;
+        zh-tw:core_fetch_upstream_release_asset_dest_is_dir) echo '目標路徑為目錄，拒絕寫入: %s' ;;
+        ja:core_fetch_upstream_release_asset_dest_is_dir) echo '書き込み先がディレクトリのため、書き込みを拒否します: %s' ;;
+        zh:core_fetch_upstream_release_asset_digest_mismatch) echo '资产 SHA-256 不匹配，继续下一个通道。' ;;
+        en:core_fetch_upstream_release_asset_digest_mismatch) echo 'Asset SHA-256 mismatch; trying the next channel.' ;;
+        ru:core_fetch_upstream_release_asset_digest_mismatch) echo 'Хеш SHA-256 файла релиза не совпадает; переход к следующему каналу.' ;;
+        fa:core_fetch_upstream_release_asset_digest_mismatch) echo 'هش SHA-256 فایل انتشار مطابقت ندارد؛ کانال بعدی امتحان می‌شود.' ;;
+        zh-tw:core_fetch_upstream_release_asset_digest_mismatch) echo '資產 SHA-256 不符，繼續嘗試下一個通道。' ;;
+        ja:core_fetch_upstream_release_asset_digest_mismatch) echo 'アセットの SHA-256 が一致しないため、次のチャネルを試します。' ;;
+        zh:core_fetch_upstream_release_asset_archive_invalid) echo '下载归档格式校验失败，继续下一个通道。' ;;
+        en:core_fetch_upstream_release_asset_archive_invalid) echo 'Downloaded archive failed format validation; trying the next channel.' ;;
+        ru:core_fetch_upstream_release_asset_archive_invalid) echo 'Проверка формата загруженного архива не пройдена; переход к следующему каналу.' ;;
+        fa:core_fetch_upstream_release_asset_archive_invalid) echo 'اعتبارسنجی قالب بایگانی دانلودشده ناموفق بود؛ کانال بعدی امتحان می‌شود.' ;;
+        zh-tw:core_fetch_upstream_release_asset_archive_invalid) echo '下載的封存檔格式驗證失敗，繼續嘗試下一個通道。' ;;
+        ja:core_fetch_upstream_release_asset_archive_invalid) echo 'ダウンロードしたアーカイブの形式検証に失敗したため、次のチャネルを試します。' ;;
+        zh:core_fetch_upstream_release_asset_binary_not_executable) echo '二进制无法执行（非版本不符）；请检查工作目录挂载选项（/tmp noexec 常见）或 TMPDIR，拒绝该候选。' ;;
+        en:core_fetch_upstream_release_asset_binary_not_executable) echo 'Binary cannot be executed (not a version mismatch); check the working directory mount options (noexec on /tmp is common) or TMPDIR. Candidate rejected.' ;;
+        ru:core_fetch_upstream_release_asset_binary_not_executable) echo 'Бинарный файл невозможно выполнить (это не несовпадение версии); проверьте параметры монтирования рабочего каталога (часто для /tmp задан noexec) или TMPDIR. Кандидат отклонён.' ;;
+        fa:core_fetch_upstream_release_asset_binary_not_executable) echo 'فایل باینری قابل اجرا نیست (مشکل از عدم تطابق نسخه نیست)؛ گزینه‌های اتصال پوشه کاری (گزینه noexec برای /tmp رایج است) یا TMPDIR را بررسی کنید. این گزینه رد شد.' ;;
+        zh-tw:core_fetch_upstream_release_asset_binary_not_executable) echo '二進位檔無法執行（並非版本不符）；請檢查工作目錄掛載選項（/tmp 設為 noexec 很常見）或 TMPDIR，拒絕此候選項目。' ;;
+        ja:core_fetch_upstream_release_asset_binary_not_executable) echo 'バイナリを実行できません（バージョン不一致ではありません）。作業ディレクトリのマウントオプション（/tmp の noexec がよくある原因です）または TMPDIR を確認してください。この候補を拒否します。' ;;
+        zh:core_fetch_upstream_release_asset_binary_version_mismatch) echo '二进制版本与上游 tag 不一致，拒绝该候选。' ;;
+        en:core_fetch_upstream_release_asset_binary_version_mismatch) echo 'Binary version does not match the upstream tag. Candidate rejected.' ;;
+        ru:core_fetch_upstream_release_asset_binary_version_mismatch) echo 'Версия бинарного файла не соответствует тегу вышестоящего проекта. Кандидат отклонён.' ;;
+        fa:core_fetch_upstream_release_asset_binary_version_mismatch) echo 'نسخه فایل باینری با تگ بالادستی مطابقت ندارد. این گزینه رد شد.' ;;
+        zh-tw:core_fetch_upstream_release_asset_binary_version_mismatch) echo '二進位檔版本與上游 tag 不符，拒絕此候選項目。' ;;
+        ja:core_fetch_upstream_release_asset_binary_version_mismatch) echo 'バイナリのバージョンが上流のタグと一致しないため、この候補を拒否します。' ;;
+        zh:core_fetch_upstream_release_asset_committed_not_file) echo '提交后目标路径不是普通文件，拒绝更新状态: %s' ;;
+        en:core_fetch_upstream_release_asset_committed_not_file) echo 'Destination path is not a regular file after commit; refusing to update state: %s' ;;
+        ru:core_fetch_upstream_release_asset_committed_not_file) echo 'После фиксации целевой путь не является обычным файлом; обновление состояния отклонено: %s' ;;
+        fa:core_fetch_upstream_release_asset_committed_not_file) echo 'پس از ثبت نهایی، مسیر مقصد یک فایل معمولی نیست؛ به‌روزرسانی وضعیت رد شد: %s' ;;
+        zh-tw:core_fetch_upstream_release_asset_committed_not_file) echo '提交後目標路徑不是一般檔案，拒絕更新狀態: %s' ;;
+        ja:core_fetch_upstream_release_asset_committed_not_file) echo 'コミット後の対象パスが通常ファイルではないため、状態の更新を拒否します: %s' ;;
+        zh:core_fetch_upstream_release_asset_candidate_verified) echo '   上游候选通过 SHA-256、归档与二进制版本校验：%s:%s' ;;
+        en:core_fetch_upstream_release_asset_candidate_verified) echo '   Upstream candidate passed SHA-256, archive, and binary version validation: %s:%s' ;;
+        ru:core_fetch_upstream_release_asset_candidate_verified) echo '   Кандидат из вышестоящего проекта прошёл проверки SHA-256, архива и версии бинарного файла: %s:%s' ;;
+        fa:core_fetch_upstream_release_asset_candidate_verified) echo '   گزینه بالادستی از اعتبارسنجی SHA-256، بایگانی و نسخه فایل باینری گذشت: %s:%s' ;;
+        zh-tw:core_fetch_upstream_release_asset_candidate_verified) echo '   上游候選項目通過 SHA-256、封存檔與二進位檔版本驗證：%s:%s' ;;
+        ja:core_fetch_upstream_release_asset_candidate_verified) echo '   上流の候補が SHA-256、アーカイブ、バイナリバージョンの検証に合格しました: %s:%s' ;;
+        zh:core_fetch_upstream_release_asset_all_channels_fail) echo '上游资产全部下载/验证通道失败。' ;;
+        en:core_fetch_upstream_release_asset_all_channels_fail) echo 'All upstream asset download and verification channels failed.' ;;
+        ru:core_fetch_upstream_release_asset_all_channels_fail) echo 'Все каналы загрузки и проверки файлов релиза вышестоящего проекта завершились неудачей.' ;;
+        fa:core_fetch_upstream_release_asset_all_channels_fail) echo 'همه کانال‌های دانلود و اعتبارسنجی فایل‌های انتشار بالادستی ناموفق بودند.' ;;
+        zh-tw:core_fetch_upstream_release_asset_all_channels_fail) echo '上游資產的所有下載與驗證通道均失敗。' ;;
+        ja:core_fetch_upstream_release_asset_all_channels_fail) echo '上流アセットのダウンロードと検証がすべてのチャネルで失敗しました。' ;;
+        zh:setup_active_defense_mounting) echo '正在挂载私有日志与 Fail2Ban 主动防御矩阵...' ;;
+        en:setup_active_defense_mounting) echo 'Mounting private logs and the Fail2Ban active defense matrix...' ;;
+        ru:setup_active_defense_mounting) echo 'Подключение приватных журналов и матрицы активной защиты Fail2Ban...' ;;
+        fa:setup_active_defense_mounting) echo 'در حال اتصال گزارش‌های خصوصی و ماتریس دفاع فعال Fail2Ban...' ;;
+        zh-tw:setup_active_defense_mounting) echo '正在掛載私有日誌與 Fail2Ban 主動防禦矩陣...' ;;
+        ja:setup_active_defense_mounting) echo 'プライベートログと Fail2Ban アクティブ防御マトリクスをマウント中...' ;;
+        zh:setup_active_defense_logrotate_write_fail) echo 'logrotate 配置原子写入失败。' ;;
+        en:setup_active_defense_logrotate_write_fail) echo 'Atomic write of the logrotate configuration failed.' ;;
+        ru:setup_active_defense_logrotate_write_fail) echo 'Атомарная запись конфигурации logrotate не удалась.' ;;
+        fa:setup_active_defense_logrotate_write_fail) echo 'نوشتن اتمی پیکربندی logrotate ناموفق بود.' ;;
+        zh-tw:setup_active_defense_logrotate_write_fail) echo 'logrotate 設定原子寫入失敗。' ;;
+        ja:setup_active_defense_logrotate_write_fail) echo 'logrotate 設定のアトミック書き込みに失敗しました。' ;;
+        zh:setup_active_defense_filter_backup_fail) echo 'Fail2Ban filter 备份失败。' ;;
+        en:setup_active_defense_filter_backup_fail) echo 'Failed to back up the Fail2Ban filter.' ;;
+        ru:setup_active_defense_filter_backup_fail) echo 'Не удалось создать резервную копию filter Fail2Ban.' ;;
+        fa:setup_active_defense_filter_backup_fail) echo 'پشتیبان‌گیری از filter در Fail2Ban ناموفق بود.' ;;
+        zh-tw:setup_active_defense_filter_backup_fail) echo 'Fail2Ban filter 備份失敗。' ;;
+        ja:setup_active_defense_filter_backup_fail) echo 'Fail2Ban filter のバックアップに失敗しました。' ;;
+        zh:setup_active_defense_jail_backup_fail) echo 'Fail2Ban jail 备份失败。' ;;
+        en:setup_active_defense_jail_backup_fail) echo 'Failed to back up the Fail2Ban jail.' ;;
+        ru:setup_active_defense_jail_backup_fail) echo 'Не удалось создать резервную копию jail Fail2Ban.' ;;
+        fa:setup_active_defense_jail_backup_fail) echo 'پشتیبان‌گیری از jail در Fail2Ban ناموفق بود.' ;;
+        zh-tw:setup_active_defense_jail_backup_fail) echo 'Fail2Ban jail 備份失敗。' ;;
+        ja:setup_active_defense_jail_backup_fail) echo 'Fail2Ban jail のバックアップに失敗しました。' ;;
+        zh:setup_active_defense_filter_write_fail) echo 'Fail2Ban filter 原子写入失败。' ;;
+        en:setup_active_defense_filter_write_fail) echo 'Atomic write of the Fail2Ban filter failed.' ;;
+        ru:setup_active_defense_filter_write_fail) echo 'Атомарная запись filter Fail2Ban не удалась.' ;;
+        fa:setup_active_defense_filter_write_fail) echo 'نوشتن اتمی filter در Fail2Ban ناموفق بود.' ;;
+        zh-tw:setup_active_defense_filter_write_fail) echo 'Fail2Ban filter 原子寫入失敗。' ;;
+        ja:setup_active_defense_filter_write_fail) echo 'Fail2Ban filter のアトミック書き込みに失敗しました。' ;;
+        zh:setup_active_defense_jail_append_fail) echo 'Fail2Ban jail 追加写入失败。' ;;
+        en:setup_active_defense_jail_append_fail) echo 'Failed to append to the Fail2Ban jail.' ;;
+        ru:setup_active_defense_jail_append_fail) echo 'Не удалось дописать данные в jail Fail2Ban.' ;;
+        fa:setup_active_defense_jail_append_fail) echo 'افزودن به انتهای jail در Fail2Ban ناموفق بود.' ;;
+        zh-tw:setup_active_defense_jail_append_fail) echo 'Fail2Ban jail 附加寫入失敗。' ;;
+        ja:setup_active_defense_jail_append_fail) echo 'Fail2Ban jail への追記に失敗しました。' ;;
+        zh:setup_active_defense_new_config_invalid) echo 'Fail2Ban 新配置校验失败；正在恢复提交前的 filter/jail，恢复成功后重试重启。' ;;
+        en:setup_active_defense_new_config_invalid) echo 'The new Fail2Ban configuration failed validation; restoring the pre-commit filter/jail and retrying the restart after successful restoration.' ;;
+        ru:setup_active_defense_new_config_invalid) echo 'Новая конфигурация Fail2Ban не прошла проверку; восстанавливаем filter/jail до фиксации изменений, после успешного восстановления повторим перезапуск.' ;;
+        fa:setup_active_defense_new_config_invalid) echo 'اعتبارسنجی پیکربندی جدید Fail2Ban ناموفق بود؛ filter/jail پیش از ثبت نهایی در حال بازیابی است و پس از بازیابی موفق، راه‌اندازی مجدد دوباره امتحان می‌شود.' ;;
+        zh-tw:setup_active_defense_new_config_invalid) echo 'Fail2Ban 新設定驗證失敗；正在還原提交前的 filter/jail，還原成功後重試重新啟動。' ;;
+        ja:setup_active_defense_new_config_invalid) echo 'Fail2Ban の新しい設定の検証に失敗しました。コミット前の filter/jail を復元中です。復元に成功したら再起動を再試行します。' ;;
+        zh:setup_active_defense_restart_fail) echo 'Fail2Ban 重启失败；正在恢复提交前的 filter/jail，恢复成功后重试重启。' ;;
+        en:setup_active_defense_restart_fail) echo 'Fail2Ban restart failed; restoring the pre-commit filter/jail and retrying the restart after successful restoration.' ;;
+        ru:setup_active_defense_restart_fail) echo 'Перезапуск Fail2Ban не удался; восстанавливаем filter/jail до фиксации изменений, после успешного восстановления повторим перезапуск.' ;;
+        fa:setup_active_defense_restart_fail) echo 'راه‌اندازی مجدد Fail2Ban ناموفق بود؛ filter/jail پیش از ثبت نهایی در حال بازیابی است و پس از بازیابی موفق، راه‌اندازی مجدد دوباره امتحان می‌شود.' ;;
+        zh-tw:setup_active_defense_restart_fail) echo 'Fail2Ban 重新啟動失敗；正在還原提交前的 filter/jail，還原成功後重試重新啟動。' ;;
+        ja:setup_active_defense_restart_fail) echo 'Fail2Ban の再起動に失敗しました。コミット前の filter/jail を復元中です。復元に成功したら再起動を再試行します。' ;;
+        zh:setup_active_defense_old_config_restore_fail) echo 'Fail2Ban 旧配置恢复失败；备份保留在 %s 与 %s，请手动恢复后重启 fail2ban。' ;;
+        en:setup_active_defense_old_config_restore_fail) echo 'Failed to restore the old Fail2Ban configuration; backups are retained at %s and %s. Restore manually, then restart fail2ban.' ;;
+        ru:setup_active_defense_old_config_restore_fail) echo 'Не удалось восстановить старую конфигурацию Fail2Ban; резервные копии сохранены в %s и %s. Восстановите их вручную, затем перезапустите fail2ban.' ;;
+        fa:setup_active_defense_old_config_restore_fail) echo 'بازیابی پیکربندی قبلی Fail2Ban ناموفق بود؛ نسخه‌های پشتیبان در %s و %s نگه داشته شده‌اند. آن‌ها را دستی بازیابی کنید، سپس fail2ban را دوباره راه‌اندازی کنید.' ;;
+        zh-tw:setup_active_defense_old_config_restore_fail) echo 'Fail2Ban 舊設定還原失敗；備份保留在 %s 與 %s，請手動還原後重新啟動 fail2ban。' ;;
+        ja:setup_active_defense_old_config_restore_fail) echo 'Fail2Ban の旧設定の復元に失敗しました。バックアップは %s と %s に保持されています。手動で復元してから fail2ban を再起動してください。' ;;
+        zh:setup_active_defense_restored_restart_fail) echo 'Fail2Ban 提交前的 filter/jail 已恢复，但重试重启失败；防护状态未确认，请检查配置与服务日志。A-Box 不会因此覆盖或删除其它 jail。' ;;
+        en:setup_active_defense_restored_restart_fail) echo 'The pre-commit Fail2Ban filter/jail were restored, but the restart retry failed; protection status is unconfirmed. Check the configuration and service logs. A-Box will not overwrite or delete other jails because of this.' ;;
+        ru:setup_active_defense_restored_restart_fail) echo 'Filter/jail Fail2Ban до фиксации изменений восстановлены, но повторный перезапуск не удался; состояние защиты не подтверждено. Проверьте конфигурацию и журналы сервиса. A-Box не будет из-за этого перезаписывать или удалять другие jail.' ;;
+        fa:setup_active_defense_restored_restart_fail) echo 'filter/jail پیش از ثبت نهایی Fail2Ban بازیابی شد، اما تلاش دوباره برای راه‌اندازی مجدد ناموفق بود؛ وضعیت حفاظت تأیید نشده است. پیکربندی و گزارش‌های سرویس را بررسی کنید. A-Box به این دلیل سایر jailها را بازنویسی یا حذف نخواهد کرد.' ;;
+        zh-tw:setup_active_defense_restored_restart_fail) echo 'Fail2Ban 提交前的 filter/jail 已還原，但重試重新啟動失敗；防護狀態未確認，請檢查設定與服務日誌。A-Box 不會因此覆寫或刪除其他 jail。' ;;
+        ja:setup_active_defense_restored_restart_fail) echo 'Fail2Ban のコミット前の filter/jail は復元されましたが、再起動の再試行に失敗しました。防御状態は未確認です。設定とサービスログを確認してください。A-Box がこのために他の jail を上書きまたは削除することはありません。' ;;
+        zh:setup_active_defense_restart_fail_restored) echo 'Fail2Ban 重启失败；已恢复旧配置（恢复失败时备份保留待手动恢复）。' ;;
+        en:setup_active_defense_restart_fail_restored) echo 'Fail2Ban restart failed; the old configuration was restored (if restoration failed, backups are retained for manual restoration).' ;;
+        ru:setup_active_defense_restart_fail_restored) echo 'Перезапуск Fail2Ban не удался; старая конфигурация восстановлена (если восстановление не удалось, резервные копии сохранены для ручного восстановления).' ;;
+        fa:setup_active_defense_restart_fail_restored) echo 'راه‌اندازی مجدد Fail2Ban ناموفق بود؛ پیکربندی قبلی بازیابی شد (در صورت شکست بازیابی، نسخه‌های پشتیبان برای بازیابی دستی نگه داشته شده‌اند).' ;;
+        zh-tw:setup_active_defense_restart_fail_restored) echo 'Fail2Ban 重新啟動失敗；已還原舊設定（還原失敗時保留備份，供手動還原）。' ;;
+        ja:setup_active_defense_restart_fail_restored) echo 'Fail2Ban の再起動に失敗しました。旧設定を復元しました（復元に失敗した場合は、手動復元用にバックアップを保持しています）。' ;;
+        zh:manual_start_managed_stack_state_unreadable) echo '无法读取有效的 A-Box 部署状态。' ;;
+        en:manual_start_managed_stack_state_unreadable) echo 'Unable to read a valid A-Box deployment state.' ;;
+        ru:manual_start_managed_stack_state_unreadable) echo 'Не удалось прочитать корректное состояние развёртывания A-Box.' ;;
+        fa:manual_start_managed_stack_state_unreadable) echo 'خواندن وضعیت معتبر استقرار A-Box ممکن نیست.' ;;
+        zh-tw:manual_start_managed_stack_state_unreadable) echo '無法讀取有效的 A-Box 部署狀態。' ;;
+        ja:manual_start_managed_stack_state_unreadable) echo '有効な A-Box デプロイ状態を読み取れません。' ;;
+        zh:manual_start_managed_stack_desired_state_unreadable) echo '无法读取当前 A-Box 期望状态。' ;;
+        en:manual_start_managed_stack_desired_state_unreadable) echo 'Unable to read the current A-Box desired state.' ;;
+        ru:manual_start_managed_stack_desired_state_unreadable) echo 'Не удалось прочитать текущее желаемое состояние A-Box.' ;;
+        fa:manual_start_managed_stack_desired_state_unreadable) echo 'خواندن وضعیت مطلوب فعلی A-Box ممکن نیست.' ;;
+        zh-tw:manual_start_managed_stack_desired_state_unreadable) echo '無法讀取目前的 A-Box 期望狀態。' ;;
+        ja:manual_start_managed_stack_desired_state_unreadable) echo '現在の A-Box の望ましい状態を読み取れません。' ;;
+        zh:manual_start_managed_stack_block_period_unreadable) echo '无法读取当前流量封禁周期状态.' ;;
+        en:manual_start_managed_stack_block_period_unreadable) echo 'Unable to read the current traffic blocking period state.' ;;
+        ru:manual_start_managed_stack_block_period_unreadable) echo 'Не удалось прочитать состояние текущего периода блокировки трафика.' ;;
+        fa:manual_start_managed_stack_block_period_unreadable) echo 'خواندن وضعیت دوره فعلی مسدودسازی ترافیک ممکن نیست.' ;;
+        zh-tw:manual_start_managed_stack_block_period_unreadable) echo '無法讀取目前的流量封鎖週期狀態。' ;;
+        ja:manual_start_managed_stack_block_period_unreadable) echo '現在のトラフィック遮断期間の状態を読み取れません。' ;;
+        zh:manual_start_managed_stack_tx_dir_fail) echo '无法创建服务状态事务目录。' ;;
+        en:manual_start_managed_stack_tx_dir_fail) echo 'Unable to create the service state transaction directory.' ;;
+        ru:manual_start_managed_stack_tx_dir_fail) echo 'Не удалось создать каталог транзакции состояния сервисов.' ;;
+        fa:manual_start_managed_stack_tx_dir_fail) echo 'ایجاد پوشه تراکنش وضعیت سرویس ممکن نیست.' ;;
+        zh-tw:manual_start_managed_stack_tx_dir_fail) echo '無法建立服務狀態交易目錄。' ;;
+        ja:manual_start_managed_stack_tx_dir_fail) echo 'サービス状態トランザクションのディレクトリを作成できません。' ;;
+        zh:manual_start_managed_stack_tx_dir_perm_fail) echo '服务状态事务目录权限设置失败。' ;;
+        en:manual_start_managed_stack_tx_dir_perm_fail) echo 'Failed to set permissions on the service state transaction directory.' ;;
+        ru:manual_start_managed_stack_tx_dir_perm_fail) echo 'Не удалось установить права доступа к каталогу транзакции состояния сервисов.' ;;
+        fa:manual_start_managed_stack_tx_dir_perm_fail) echo 'تنظیم مجوزهای پوشه تراکنش وضعیت سرویس ناموفق بود.' ;;
+        zh-tw:manual_start_managed_stack_tx_dir_perm_fail) echo '服務狀態交易目錄權限設定失敗。' ;;
+        ja:manual_start_managed_stack_tx_dir_perm_fail) echo 'サービス状態トランザクションのディレクトリの権限設定に失敗しました。' ;;
+        zh:manual_start_managed_stack_snapshot_fail) echo '无法保存服务运行/启用状态快照。' ;;
+        en:manual_start_managed_stack_snapshot_fail) echo 'Unable to save a snapshot of service running and enabled states.' ;;
+        ru:manual_start_managed_stack_snapshot_fail) echo 'Не удалось сохранить снимок состояний работы и включения сервисов.' ;;
+        fa:manual_start_managed_stack_snapshot_fail) echo 'ذخیره تصویر وضعیت اجرای سرویس‌ها و فعال‌بودن آن‌ها ممکن نیست.' ;;
+        zh-tw:manual_start_managed_stack_snapshot_fail) echo '無法儲存服務執行／啟用狀態快照。' ;;
+        ja:manual_start_managed_stack_snapshot_fail) echo 'サービスの稼働状態と有効化状態のスナップショットを保存できません。' ;;
+        zh:manual_start_managed_stack_prev_state_save_fail) echo '无法保存服务事务前置状态。' ;;
+        en:manual_start_managed_stack_prev_state_save_fail) echo 'Unable to save the pre-transaction service state.' ;;
+        ru:manual_start_managed_stack_prev_state_save_fail) echo 'Не удалось сохранить состояние сервисов до транзакции.' ;;
+        fa:manual_start_managed_stack_prev_state_save_fail) echo 'ذخیره وضعیت سرویس پیش از تراکنش ممکن نیست.' ;;
+        zh-tw:manual_start_managed_stack_prev_state_save_fail) echo '無法儲存服務交易前的狀態。' ;;
+        ja:manual_start_managed_stack_prev_state_save_fail) echo 'トランザクション前のサービス状態を保存できません。' ;;
+        zh:manual_start_managed_stack_block_flag_save_fail) echo '无法保存服务事务封禁标志。' ;;
+        en:manual_start_managed_stack_block_flag_save_fail) echo 'Unable to save the service transaction blocking flag.' ;;
+        ru:manual_start_managed_stack_block_flag_save_fail) echo 'Не удалось сохранить флаг блокировки транзакции сервисов.' ;;
+        fa:manual_start_managed_stack_block_flag_save_fail) echo 'ذخیره پرچم مسدودسازی تراکنش سرویس ممکن نیست.' ;;
+        zh-tw:manual_start_managed_stack_block_flag_save_fail) echo '無法儲存服務交易封鎖旗標。' ;;
+        ja:manual_start_managed_stack_block_flag_save_fail) echo 'サービストランザクションの遮断フラグを保存できません。' ;;
+        zh:manual_start_managed_stack_block_period_save_fail) echo '无法保存服务事务封禁周期。' ;;
+        en:manual_start_managed_stack_block_period_save_fail) echo 'Unable to save the service transaction blocking period.' ;;
+        ru:manual_start_managed_stack_block_period_save_fail) echo 'Не удалось сохранить период блокировки транзакции сервисов.' ;;
+        fa:manual_start_managed_stack_block_period_save_fail) echo 'ذخیره دوره مسدودسازی تراکنش سرویس ممکن نیست.' ;;
+        zh-tw:manual_start_managed_stack_block_period_save_fail) echo '無法儲存服務交易封鎖週期。' ;;
+        ja:manual_start_managed_stack_block_period_save_fail) echo 'サービストランザクションの遮断期間を保存できません。' ;;
+        zh:manual_start_managed_stack_start_commit_fail) echo '至少一个托管服务启动/启用或状态提交失败；已尝试回滚本次操作。' ;;
+        en:manual_start_managed_stack_start_commit_fail) echo 'Starting or enabling at least one managed service, or committing the state, failed; rollback of this operation was attempted.' ;;
+        ru:manual_start_managed_stack_start_commit_fail) echo 'Не удалось запустить или включить хотя бы один управляемый сервис либо зафиксировать состояние; предпринята попытка отката этой операции.' ;;
+        fa:manual_start_managed_stack_start_commit_fail) echo 'راه‌اندازی یا فعال‌سازی حداقل یک سرویس مدیریت‌شده، یا ثبت نهایی وضعیت ناموفق بود؛ تلاش برای بازگردانی این عملیات انجام شد.' ;;
+        zh-tw:manual_start_managed_stack_start_commit_fail) echo '至少一個受管理服務啟動／啟用或狀態提交失敗；已嘗試回復本次操作。' ;;
+        ja:manual_start_managed_stack_start_commit_fail) echo '少なくとも1つの管理対象サービスの起動／有効化、または状態のコミットに失敗しました。今回の操作のロールバックを試みました。' ;;
+        zh:manual_start_managed_stack_tx_cleanup_fail) echo '服务状态事务清理失败；服务已按预期启动，但未能清理事务材料。' ;;
+        en:manual_start_managed_stack_tx_cleanup_fail) echo 'Service state transaction cleanup failed; services started as expected, but transaction artifacts could not be removed.' ;;
+        ru:manual_start_managed_stack_tx_cleanup_fail) echo 'Очистка транзакции состояния сервисов не удалась; сервисы запущены как ожидалось, но материалы транзакции удалить не удалось.' ;;
+        fa:manual_start_managed_stack_tx_cleanup_fail) echo 'پاک‌سازی تراکنش وضعیت سرویس ناموفق بود؛ سرویس‌ها طبق انتظار راه‌اندازی شدند، اما فایل‌های تراکنش پاک نشدند.' ;;
+        zh-tw:manual_start_managed_stack_tx_cleanup_fail) echo '服務狀態交易清理失敗；服務已按預期啟動，但無法清理交易資料。' ;;
+        ja:manual_start_managed_stack_tx_cleanup_fail) echo 'サービス状態トランザクションのクリーンアップに失敗しました。サービスは予定どおり起動しましたが、トランザクションの関連データを削除できませんでした。' ;;
+        zh:fetch_github_release_candidate) echo ' -> 核心候选 [%s:%s，source=%s]... ' ;;
+        en:fetch_github_release_candidate) echo ' -> Core candidate [%s:%s, source=%s]... ' ;;
+        ru:fetch_github_release_candidate) echo ' -> Кандидат ядра [%s:%s, source=%s]... ' ;;
+        fa:fetch_github_release_candidate) echo ' -> نامزد هسته [%s:%s، source=%s]... ' ;;
+        zh-tw:fetch_github_release_candidate) echo ' -> 核心候選 [%s:%s，source=%s]... ' ;;
+        ja:fetch_github_release_candidate) echo ' -> コア候補 [%s:%s、source=%s]... ' ;;
+        zh:fetch_github_release_mirror_versioned_restored) echo '   上游失败，从同标签版本化镜像恢复 %s；未替换版本号。' ;;
+        en:fetch_github_release_mirror_versioned_restored) echo '   Upstream failed; restored %s from the versioned mirror for the same tag; version number unchanged.' ;;
+        ru:fetch_github_release_mirror_versioned_restored) echo '   Сбой основного источника; %s восстановлен из версионированного зеркала с тем же тегом; номер версии не изменён.' ;;
+        fa:fetch_github_release_mirror_versioned_restored) echo '   دریافت از بالادست ناموفق بود؛ %s از آینه نسخه‌دار با همان برچسب بازیابی شد؛ شماره نسخه تغییر نکرد.' ;;
+        zh-tw:fetch_github_release_mirror_versioned_restored) echo '   上游失敗，從同標籤版本化鏡像還原 %s；未替換版本號。' ;;
+        ja:fetch_github_release_mirror_versioned_restored) echo '   アップストリームで失敗したため、同じタグのバージョン別ミラーから %s を復元しました。バージョン番号は変更していません。' ;;
+        zh:fetch_github_release_mirror_pinned_restored) echo '   上游失败，从同标签固定容灾资产恢复 %s；未替换版本号。' ;;
+        en:fetch_github_release_mirror_pinned_restored) echo '   Upstream failed; restored %s from the pinned disaster recovery asset for the same tag; version number unchanged.' ;;
+        ru:fetch_github_release_mirror_pinned_restored) echo '   Сбой основного источника; %s восстановлен из закреплённого аварийного ресурса с тем же тегом; номер версии не изменён.' ;;
+        fa:fetch_github_release_mirror_pinned_restored) echo '   دریافت از بالادست ناموفق بود؛ %s از فایل ثابت بازیابی اضطراری با همان برچسب بازیابی شد؛ شماره نسخه تغییر نکرد.' ;;
+        zh-tw:fetch_github_release_mirror_pinned_restored) echo '   上游失敗，從同標籤固定容災資產還原 %s；未替換版本號。' ;;
+        ja:fetch_github_release_mirror_pinned_restored) echo '   アップストリームで失敗したため、同じタグの固定された災害復旧用アセットから %s を復元しました。バージョン番号は変更していません。' ;;
+        zh:fetch_github_release_mirror_unavailable) echo '同标签镜像资产不可用，继续尝试当前镜像版本。' ;;
+        en:fetch_github_release_mirror_unavailable) echo 'Mirror assets for the same tag are unavailable; continuing with the current mirror version.' ;;
+        ru:fetch_github_release_mirror_unavailable) echo 'Ресурсы зеркала с тем же тегом недоступны; продолжаем попытки с текущей версией зеркала.' ;;
+        fa:fetch_github_release_mirror_unavailable) echo 'فایل‌های آینه با همان برچسب در دسترس نیستند؛ تلاش با نسخه فعلی آینه ادامه می‌یابد.' ;;
+        zh-tw:fetch_github_release_mirror_unavailable) echo '同標籤鏡像資產不可用，繼續嘗試目前鏡像版本。' ;;
+        ja:fetch_github_release_mirror_unavailable) echo '同じタグのミラーアセットは利用できません。現在のミラーバージョンを引き続き試します。' ;;
+        zh:fetch_github_release_explicit_mirror_restored) echo '   显式版本从同标签容灾资产恢复；未替换版本号。' ;;
+        en:fetch_github_release_explicit_mirror_restored) echo '   The explicitly specified version was restored from the disaster recovery asset for the same tag; version number unchanged.' ;;
+        ru:fetch_github_release_explicit_mirror_restored) echo '   Явно указанная версия восстановлена из аварийного ресурса с тем же тегом; номер версии не изменён.' ;;
+        fa:fetch_github_release_explicit_mirror_restored) echo '   نسخه صریحاً مشخص‌شده از فایل بازیابی اضطراری با همان برچسب بازیابی شد؛ شماره نسخه تغییر نکرد.' ;;
+        zh-tw:fetch_github_release_explicit_mirror_restored) echo '   明確指定的版本已從同標籤容災資產還原；未替換版本號。' ;;
+        ja:fetch_github_release_explicit_mirror_restored) echo '   明示的に指定されたバージョンを同じタグの災害復旧用アセットから復元しました。バージョン番号は変更していません。' ;;
+        zh:fetch_github_release_explicit_pinned_restored) echo '   显式版本从同标签固定容灾资产恢复；未替换版本号。' ;;
+        en:fetch_github_release_explicit_pinned_restored) echo '   The explicitly specified version was restored from the pinned disaster recovery asset for the same tag; version number unchanged.' ;;
+        ru:fetch_github_release_explicit_pinned_restored) echo '   Явно указанная версия восстановлена из закреплённого аварийного ресурса с тем же тегом; номер версии не изменён.' ;;
+        fa:fetch_github_release_explicit_pinned_restored) echo '   نسخه صریحاً مشخص‌شده از فایل ثابت بازیابی اضطراری با همان برچسب بازیابی شد؛ شماره نسخه تغییر نکرد.' ;;
+        zh-tw:fetch_github_release_explicit_pinned_restored) echo '   明確指定的版本已從同標籤固定容災資產還原；未替換版本號。' ;;
+        ja:fetch_github_release_explicit_pinned_restored) echo '   明示的に指定されたバージョンを同じタグの固定された災害復旧用アセットから復元しました。バージョン番号は変更していません。' ;;
+        zh:fetch_github_release_latest_mirror_verified) echo '   最新稳定镜像候选通过 SHA-256 与实际二进制版本校验：%s' ;;
+        en:fetch_github_release_latest_mirror_verified) echo '   The latest stable mirror candidate passed SHA-256 and actual binary version checks: %s' ;;
+        ru:fetch_github_release_latest_mirror_verified) echo '   Кандидат последней стабильной версии из зеркала прошёл проверку SHA-256 и фактической версии бинарного файла: %s' ;;
+        fa:fetch_github_release_latest_mirror_verified) echo '   نامزد آخرین نسخه پایدار آینه، بررسی SHA-256 و نسخه واقعی فایل باینری را گذراند: %s' ;;
+        zh-tw:fetch_github_release_latest_mirror_verified) echo '   最新穩定鏡像候選通過 SHA-256 與實際二進位版本驗證：%s' ;;
+        ja:fetch_github_release_latest_mirror_verified) echo '   最新安定版のミラー候補が SHA-256 と実際のバイナリバージョンの検証に合格しました：%s' ;;
+        zh:fetch_github_release_latest_pinned_verified) echo '   最新稳定镜像固定容灾资产通过 SHA-256 与实际二进制版本校验：%s' ;;
+        en:fetch_github_release_latest_pinned_verified) echo '   The pinned disaster recovery asset in the latest stable mirror passed SHA-256 and actual binary version checks: %s' ;;
+        ru:fetch_github_release_latest_pinned_verified) echo '   Закреплённый аварийный ресурс в зеркале последней стабильной версии прошёл проверку SHA-256 и фактической версии бинарного файла: %s' ;;
+        fa:fetch_github_release_latest_pinned_verified) echo '   فایل ثابت بازیابی اضطراری در آینه آخرین نسخه پایدار، بررسی SHA-256 و نسخه واقعی فایل باینری را گذراند: %s' ;;
+        zh-tw:fetch_github_release_latest_pinned_verified) echo '   最新穩定鏡像固定容災資產通過 SHA-256 與實際二進位版本驗證：%s' ;;
+        ja:fetch_github_release_latest_pinned_verified) echo '   最新安定版ミラーの固定された災害復旧用アセットが SHA-256 と実際のバイナリバージョンの検証に合格しました：%s' ;;
+        zh:fetch_github_release_latest_mirror_unavailable) echo '与目标版本一致的最新稳定镜像资产不可用；继续尝试当前镜像版本。' ;;
+        en:fetch_github_release_latest_mirror_unavailable) echo 'Latest stable mirror assets matching the target version are unavailable; continuing with the current mirror version.' ;;
+        ru:fetch_github_release_latest_mirror_unavailable) echo 'Ресурсы зеркала последней стабильной версии, соответствующие целевой версии, недоступны; продолжаем попытки с текущей версией зеркала.' ;;
+        fa:fetch_github_release_latest_mirror_unavailable) echo 'فایل‌های آینه آخرین نسخه پایدار که با نسخه هدف مطابقت دارند در دسترس نیستند؛ تلاش با نسخه فعلی آینه ادامه می‌یابد.' ;;
+        zh-tw:fetch_github_release_latest_mirror_unavailable) echo '與目標版本一致的最新穩定鏡像資產不可用；繼續嘗試目前鏡像版本。' ;;
+        ja:fetch_github_release_latest_mirror_unavailable) echo '対象バージョンと一致する最新安定版のミラーアセットは利用できません。現在のミラーバージョンを引き続き試します。' ;;
+        zh:fetch_github_release_current_mirror_verified) echo '   当前镜像版本通过 SHA-256 与实际二进制版本校验：%s' ;;
+        en:fetch_github_release_current_mirror_verified) echo '   The current mirror version passed SHA-256 and actual binary version checks: %s' ;;
+        ru:fetch_github_release_current_mirror_verified) echo '   Текущая версия зеркала прошла проверку SHA-256 и фактической версии бинарного файла: %s' ;;
+        fa:fetch_github_release_current_mirror_verified) echo '   نسخه فعلی آینه، بررسی SHA-256 و نسخه واقعی فایل باینری را گذراند: %s' ;;
+        zh-tw:fetch_github_release_current_mirror_verified) echo '   目前鏡像版本通過 SHA-256 與實際二進位版本驗證：%s' ;;
+        ja:fetch_github_release_current_mirror_verified) echo '   現在のミラーバージョンが SHA-256 と実際のバイナリバージョンの検証に合格しました：%s' ;;
+        zh:setup_zram_swap_title) echo 'zram 压缩交换 / zram Compressed Swap' ;;
+        en:setup_zram_swap_title) echo 'zram Compressed Swap' ;;
+        ru:setup_zram_swap_title) echo 'Сжатая подкачка zram' ;;
+        fa:setup_zram_swap_title) echo 'فضای مبادله فشرده zram' ;;
+        zh-tw:setup_zram_swap_title) echo 'zram 壓縮交換 / zram Compressed Swap' ;;
+        ja:setup_zram_swap_title) echo 'zram 圧縮スワップ' ;;
+        zh:setup_zram_swap_status_query_fail) echo 'zram 活动状态查询失败，无法确认是否已有交换设备；已中止以防重复创建。' ;;
+        en:setup_zram_swap_status_query_fail) echo 'Failed to query zram activity; unable to determine whether a swap device already exists. Aborted to prevent duplicate creation.' ;;
+        ru:setup_zram_swap_status_query_fail) echo 'Не удалось проверить активность zram; невозможно определить, существует ли уже устройство подкачки. Операция прервана во избежание повторного создания.' ;;
+        fa:setup_zram_swap_status_query_fail) echo 'پرس‌وجوی وضعیت فعالیت zram ناموفق بود؛ وجود دستگاه مبادله قبلی قابل تأیید نیست. برای جلوگیری از ایجاد تکراری، عملیات متوقف شد.' ;;
+        zh-tw:setup_zram_swap_status_query_fail) echo 'zram 活動狀態查詢失敗，無法確認是否已有交換裝置；已中止以防重複建立。' ;;
+        ja:setup_zram_swap_status_query_fail) echo 'zram の稼働状態の照会に失敗し、既存のスワップデバイスの有無を確認できません。重複作成を防ぐため中止しました。' ;;
+        zh:setup_zram_swap_already_running) echo 'zram 交换已在运行：' ;;
+        en:setup_zram_swap_already_running) echo 'zram swap is already running:' ;;
+        ru:setup_zram_swap_already_running) echo 'Подкачка zram уже работает:' ;;
+        fa:setup_zram_swap_already_running) echo 'فضای مبادله zram از قبل فعال است:' ;;
+        zh-tw:setup_zram_swap_already_running) echo 'zram 交換已在執行：' ;;
+        ja:setup_zram_swap_already_running) echo 'zram スワップは既に稼働しています：' ;;
+        zh:setup_zram_swap_no_kernel_support) echo '当前内核没有 zram 支持（模块不可用）。请改用本菜单第 2 项的磁盘 Swap 文件。' ;;
+        en:setup_zram_swap_no_kernel_support) echo 'The current kernel does not support zram (module unavailable). Use the disk Swap file in item 2 of this menu instead.' ;;
+        ru:setup_zram_swap_no_kernel_support) echo 'Текущее ядро не поддерживает zram (модуль недоступен). Вместо этого используйте дисковый файл Swap из пункта 2 этого меню.' ;;
+        fa:setup_zram_swap_no_kernel_support) echo 'هسته فعلی از zram پشتیبانی نمی‌کند (ماژول در دسترس نیست). به‌جای آن از فایل Swap روی دیسک در گزینه 2 این منو استفاده کنید.' ;;
+        zh-tw:setup_zram_swap_no_kernel_support) echo '目前核心不支援 zram（模組不可用）。請改用本選單第 2 項的磁碟 Swap 檔案。' ;;
+        ja:setup_zram_swap_no_kernel_support) echo '現在のカーネルは zram に対応していません（モジュールを利用できません）。代わりに、このメニューの項目 2 のディスク Swap ファイルを使用してください。' ;;
+        zh:setup_zram_swap_config_write_fail) echo 'zram 配置写入失败。' ;;
+        en:setup_zram_swap_config_write_fail) echo 'Failed to write the zram configuration.' ;;
+        ru:setup_zram_swap_config_write_fail) echo 'Не удалось записать конфигурацию zram.' ;;
+        fa:setup_zram_swap_config_write_fail) echo 'نوشتن پیکربندی zram ناموفق بود.' ;;
+        zh-tw:setup_zram_swap_config_write_fail) echo 'zram 設定寫入失敗。' ;;
+        ja:setup_zram_swap_config_write_fail) echo 'zram 設定の書き込みに失敗しました。' ;;
+        zh:setup_zram_swap_helper_write_fail) echo 'zram 辅助脚本写入失败。' ;;
+        en:setup_zram_swap_helper_write_fail) echo 'Failed to write the zram helper script.' ;;
+        ru:setup_zram_swap_helper_write_fail) echo 'Не удалось записать вспомогательный скрипт zram.' ;;
+        fa:setup_zram_swap_helper_write_fail) echo 'نوشتن اسکریپت کمکی zram ناموفق بود.' ;;
+        zh-tw:setup_zram_swap_helper_write_fail) echo 'zram 輔助指令碼寫入失敗。' ;;
+        ja:setup_zram_swap_helper_write_fail) echo 'zram 補助スクリプトの書き込みに失敗しました。' ;;
+        zh:setup_zram_swap_enable_cleanup_fail) echo 'zram 启用失败，且失败清理未能停用已激活的交换区；已保留助手与配置，请手工 swapoff 后重试。' ;;
+        en:setup_zram_swap_enable_cleanup_fail) echo 'Failed to enable zram, and failure cleanup could not deactivate the swap space already activated; the helper and configuration have been retained. Run swapoff manually, then retry.' ;;
+        ru:setup_zram_swap_enable_cleanup_fail) echo 'Не удалось включить zram, а очистка после сбоя не смогла отключить уже активированную область подкачки; вспомогательный скрипт и конфигурация сохранены. Выполните swapoff вручную, затем повторите попытку.' ;;
+        fa:setup_zram_swap_enable_cleanup_fail) echo 'فعال‌سازی zram ناموفق بود و پاک‌سازی پس از خطا نتوانست فضای مبادله فعال‌شده را غیرفعال کند؛ اسکریپت کمکی و پیکربندی نگه داشته شده‌اند. swapoff را دستی اجرا کنید، سپس دوباره تلاش کنید.' ;;
+        zh-tw:setup_zram_swap_enable_cleanup_fail) echo 'zram 啟用失敗，且失敗清理無法停用已啟用的交換區；已保留輔助指令碼與設定，請手動執行 swapoff 後重試。' ;;
+        ja:setup_zram_swap_enable_cleanup_fail) echo 'zram の有効化に失敗し、失敗時のクリーンアップでも既に有効になったスワップ領域を無効化できませんでした。補助スクリプトと設定は保持しています。手動で swapoff を実行してから再試行してください。' ;;
+        zh:setup_zram_swap_enable_fail) echo 'zram 启用失败（设备创建/格式化/挂载任一环节未通过），已保留助手与配置（既有开机建置不受影响）。请改用磁盘 Swap 文件。' ;;
+        en:setup_zram_swap_enable_fail) echo 'Failed to enable zram (device creation, formatting, or mounting failed); the helper and configuration have been retained (existing boot setup is unaffected). Use a disk Swap file instead.' ;;
+        ru:setup_zram_swap_enable_fail) echo 'Не удалось включить zram (сбой создания устройства, форматирования или подключения); вспомогательный скрипт и конфигурация сохранены (существующая настройка при загрузке не затронута). Используйте дисковый файл Swap.' ;;
+        fa:setup_zram_swap_enable_fail) echo 'فعال‌سازی zram ناموفق بود (ایجاد دستگاه، قالب‌بندی یا اتصال شکست خورد)؛ اسکریپت کمکی و پیکربندی نگه داشته شده‌اند (تنظیمات موجود هنگام بوت تحت تأثیر نیستند). به‌جای آن از فایل Swap روی دیسک استفاده کنید.' ;;
+        zh-tw:setup_zram_swap_enable_fail) echo 'zram 啟用失敗（裝置建立／格式化／掛載任一環節未通過），已保留輔助指令碼與設定（既有開機設定不受影響）。請改用磁碟 Swap 檔案。' ;;
+        ja:setup_zram_swap_enable_fail) echo 'zram の有効化に失敗しました（デバイス作成／フォーマット／マウントのいずれかで失敗）。補助スクリプトと設定は保持しています（既存の起動時設定には影響しません）。代わりにディスク Swap ファイルを使用してください。' ;;
+        zh:setup_zram_swap_autostart_systemd_fail) echo 'zram 已启用，但开机自启设置未成功（systemctl enable 失败），重启后需手动重新启用。' ;;
+        en:setup_zram_swap_autostart_systemd_fail) echo 'zram is enabled, but boot autostart setup failed (systemctl enable failed); you must enable it again manually after reboot.' ;;
+        ru:setup_zram_swap_autostart_systemd_fail) echo 'zram включён, но настройка автозапуска при загрузке не удалась (сбой systemctl enable); после перезагрузки потребуется включить его вручную.' ;;
+        fa:setup_zram_swap_autostart_systemd_fail) echo 'zram فعال است، اما تنظیم شروع خودکار هنگام بوت ناموفق بود (systemctl enable شکست خورد)؛ پس از راه‌اندازی مجدد باید آن را دستی دوباره فعال کنید.' ;;
+        zh-tw:setup_zram_swap_autostart_systemd_fail) echo 'zram 已啟用，但開機自動啟動設定未成功（systemctl enable 失敗），重新開機後需手動再次啟用。' ;;
+        ja:setup_zram_swap_autostart_systemd_fail) echo 'zram は有効ですが、起動時の自動起動設定に失敗しました（systemctl enable 失敗）。再起動後は手動で再度有効化する必要があります。' ;;
+        zh:setup_zram_swap_autostart_openrc_fail) echo 'zram 已启用，但开机自启设置未成功（rc-update 失败），重启后需手动重新启用。' ;;
+        en:setup_zram_swap_autostart_openrc_fail) echo 'zram is enabled, but boot autostart setup failed (rc-update failed); you must enable it again manually after reboot.' ;;
+        ru:setup_zram_swap_autostart_openrc_fail) echo 'zram включён, но настройка автозапуска при загрузке не удалась (сбой rc-update); после перезагрузки потребуется включить его вручную.' ;;
+        fa:setup_zram_swap_autostart_openrc_fail) echo 'zram فعال است، اما تنظیم شروع خودکار هنگام بوت ناموفق بود (rc-update شکست خورد)؛ پس از راه‌اندازی مجدد باید آن را دستی دوباره فعال کنید.' ;;
+        zh-tw:setup_zram_swap_autostart_openrc_fail) echo 'zram 已啟用，但開機自動啟動設定未成功（rc-update 失敗），重新開機後需手動再次啟用。' ;;
+        ja:setup_zram_swap_autostart_openrc_fail) echo 'zram は有効ですが、起動時の自動起動設定に失敗しました（rc-update 失敗）。再起動後は手動で再度有効化する必要があります。' ;;
+        zh:setup_zram_swap_init_unknown) echo '无法识别 init 系统：zram 本次已启用，但未设置开机自启。' ;;
+        en:setup_zram_swap_init_unknown) echo 'Unable to identify the init system; zram is enabled for this session, but boot autostart has not been configured.' ;;
+        ru:setup_zram_swap_init_unknown) echo 'Не удалось определить систему init; zram включён в этом сеансе, но автозапуск при загрузке не настроен.' ;;
+        fa:setup_zram_swap_init_unknown) echo 'شناسایی سیستم init ممکن نیست؛ zram برای این نشست فعال شده است، اما شروع خودکار هنگام بوت تنظیم نشده است.' ;;
+        zh-tw:setup_zram_swap_init_unknown) echo '無法識別 init 系統：zram 本次已啟用，但未設定開機自動啟動。' ;;
+        ja:setup_zram_swap_init_unknown) echo 'init システムを識別できません。今回は zram を有効化しましたが、起動時の自動起動は設定していません。' ;;
+        zh:setup_zram_swap_enabled_summary) echo 'zram 已启用：大小 %sM · 算法 %s · 优先级 100（高于磁盘 Swap，内核优先使用）' ;;
+        en:setup_zram_swap_enabled_summary) echo 'zram enabled: size %sM · algorithm %s · priority 100 (higher than disk Swap; the kernel uses it first)' ;;
+        ru:setup_zram_swap_enabled_summary) echo 'zram включён: размер %sM · алгоритм %s · приоритет 100 (выше дискового Swap; ядро использует его в первую очередь)' ;;
+        fa:setup_zram_swap_enabled_summary) echo 'zram فعال شد: اندازه %sM · الگوریتم %s · اولویت 100 (بالاتر از Swap دیسکی؛ هسته ابتدا از آن استفاده می‌کند)' ;;
+        zh-tw:setup_zram_swap_enabled_summary) echo 'zram 已啟用：大小 %sM · 演算法 %s · 優先權 100（高於磁碟 Swap，核心優先使用）' ;;
+        ja:setup_zram_swap_enabled_summary) echo 'zram を有効化しました：サイズ %sM · アルゴリズム %s · 優先度 100（ディスク Swap より高く、カーネルが優先的に使用）' ;;
+        zh:export_backup_recovery_key_need_root) echo '导出备份恢复密钥需要 root。' ;;
+        en:export_backup_recovery_key_need_root) echo 'Exporting the backup recovery key requires root privileges.' ;;
+        ru:export_backup_recovery_key_need_root) echo 'Для экспорта ключа восстановления резервной копии требуются права root.' ;;
+        fa:export_backup_recovery_key_need_root) echo 'صدور کلید بازیابی نسخه پشتیبان به دسترسی root نیاز دارد.' ;;
+        zh-tw:export_backup_recovery_key_need_root) echo '匯出備份復原金鑰需要 root 權限。' ;;
+        ja:export_backup_recovery_key_need_root) echo 'バックアップ復元キーのエクスポートには root 権限が必要です。' ;;
+        zh:export_backup_recovery_key_usage) echo '用法: --export-backup-key /path/on/separate-medium/A-Box-recovery.key' ;;
+        en:export_backup_recovery_key_usage) echo 'Usage: --export-backup-key /path/on/separate-medium/A-Box-recovery.key' ;;
+        ru:export_backup_recovery_key_usage) echo 'Использование: --export-backup-key /path/on/separate-medium/A-Box-recovery.key' ;;
+        fa:export_backup_recovery_key_usage) echo 'نحوه استفاده: --export-backup-key /path/on/separate-medium/A-Box-recovery.key' ;;
+        zh-tw:export_backup_recovery_key_usage) echo '用法: --export-backup-key /path/on/separate-medium/A-Box-recovery.key' ;;
+        ja:export_backup_recovery_key_usage) echo '使用法: --export-backup-key /path/on/separate-medium/A-Box-recovery.key' ;;
+        zh:export_backup_recovery_key_dest_not_absolute) echo '恢复密钥导出路径必须是绝对路径。' ;;
+        en:export_backup_recovery_key_dest_not_absolute) echo 'The recovery key export path must be absolute.' ;;
+        ru:export_backup_recovery_key_dest_not_absolute) echo 'Путь экспорта ключа восстановления должен быть абсолютным.' ;;
+        fa:export_backup_recovery_key_dest_not_absolute) echo 'مسیر صدور کلید بازیابی باید مطلق باشد.' ;;
+        zh-tw:export_backup_recovery_key_dest_not_absolute) echo '復原金鑰匯出路徑必須是絕對路徑。' ;;
+        ja:export_backup_recovery_key_dest_not_absolute) echo '復元キーのエクスポート先は絶対パスである必要があります。' ;;
+        zh:export_backup_recovery_key_dest_exists) echo '拒绝覆盖现有恢复密钥文件: %s' ;;
+        en:export_backup_recovery_key_dest_exists) echo 'Refusing to overwrite the existing recovery key file: %s' ;;
+        ru:export_backup_recovery_key_dest_exists) echo 'Отказ от перезаписи существующего файла ключа восстановления: %s' ;;
+        fa:export_backup_recovery_key_dest_exists) echo 'بازنویسی فایل موجود کلید بازیابی رد می‌شود: %s' ;;
+        zh-tw:export_backup_recovery_key_dest_exists) echo '拒絕覆寫現有復原金鑰檔案: %s' ;;
+        ja:export_backup_recovery_key_dest_exists) echo '既存の復元キーファイルの上書きを拒否します: %s' ;;
+        zh:export_backup_recovery_key_auth_key_fail) echo '无法创建或读取备份认证密钥。' ;;
+        en:export_backup_recovery_key_auth_key_fail) echo 'Unable to create or read the backup authentication key.' ;;
+        ru:export_backup_recovery_key_auth_key_fail) echo 'Не удалось создать или прочитать ключ аутентификации резервной копии.' ;;
+        fa:export_backup_recovery_key_auth_key_fail) echo 'ایجاد یا خواندن کلید احراز هویت نسخه پشتیبان ممکن نیست.' ;;
+        zh-tw:export_backup_recovery_key_auth_key_fail) echo '無法建立或讀取備份驗證金鑰。' ;;
+        ja:export_backup_recovery_key_auth_key_fail) echo 'バックアップ認証キーを作成または読み取りできません。' ;;
+        zh:export_backup_recovery_key_read_fail) echo '恢复密钥读取失败。' ;;
+        en:export_backup_recovery_key_read_fail) echo 'Failed to read the recovery key.' ;;
+        ru:export_backup_recovery_key_read_fail) echo 'Не удалось прочитать ключ восстановления.' ;;
+        fa:export_backup_recovery_key_read_fail) echo 'خواندن کلید بازیابی ناموفق بود.' ;;
+        zh-tw:export_backup_recovery_key_read_fail) echo '復原金鑰讀取失敗。' ;;
+        ja:export_backup_recovery_key_read_fail) echo '復元キーの読み取りに失敗しました。' ;;
+        zh:export_backup_recovery_key_format_invalid) echo '恢复密钥格式非法。' ;;
+        en:export_backup_recovery_key_format_invalid) echo 'The recovery key format is invalid.' ;;
+        ru:export_backup_recovery_key_format_invalid) echo 'Недопустимый формат ключа восстановления.' ;;
+        fa:export_backup_recovery_key_format_invalid) echo 'قالب کلید بازیابی نامعتبر است.' ;;
+        zh-tw:export_backup_recovery_key_format_invalid) echo '復原金鑰格式無效。' ;;
+        ja:export_backup_recovery_key_format_invalid) echo '復元キーの形式が無効です。' ;;
+        zh:export_backup_recovery_key_export_fail) echo '恢复密钥导出失败；目标目录必须为 root 所有且不可被组/其他用户写入。' ;;
+        en:export_backup_recovery_key_export_fail) echo 'Recovery key export failed; the destination directory must be owned by root and not writable by the group or other users.' ;;
+        ru:export_backup_recovery_key_export_fail) echo 'Экспорт ключа восстановления не удался; каталог назначения должен принадлежать root и быть недоступным для записи группе и другим пользователям.' ;;
+        fa:export_backup_recovery_key_export_fail) echo 'صدور کلید بازیابی ناموفق بود؛ مالک پوشه مقصد باید root باشد و گروه یا سایر کاربران نباید اجازه نوشتن در آن داشته باشند.' ;;
+        zh-tw:export_backup_recovery_key_export_fail) echo '復原金鑰匯出失敗；目標目錄必須由 root 擁有，且群組或其他使用者不得寫入。' ;;
+        ja:export_backup_recovery_key_export_fail) echo '復元キーのエクスポートに失敗しました。保存先ディレクトリは root が所有し、グループやその他のユーザーが書き込めない必要があります。' ;;
+        zh:export_backup_recovery_key_fingerprint_fail) echo '恢复密钥指纹计算失败。' ;;
+        en:export_backup_recovery_key_fingerprint_fail) echo 'Failed to calculate the recovery key fingerprint.' ;;
+        ru:export_backup_recovery_key_fingerprint_fail) echo 'Не удалось вычислить отпечаток ключа восстановления.' ;;
+        fa:export_backup_recovery_key_fingerprint_fail) echo 'محاسبه اثر انگشت کلید بازیابی ناموفق بود.' ;;
+        zh-tw:export_backup_recovery_key_fingerprint_fail) echo '復原金鑰指紋計算失敗。' ;;
+        ja:export_backup_recovery_key_fingerprint_fail) echo '復元キーのフィンガープリントの計算に失敗しました。' ;;
+        zh:acquire_runtime_lock_inherited_flock_unverifiable) echo '继承的 flock 锁无法验证。' ;;
+        en:acquire_runtime_lock_inherited_flock_unverifiable) echo 'The inherited flock lock cannot be verified.' ;;
+        ru:acquire_runtime_lock_inherited_flock_unverifiable) echo 'Унаследованную блокировку flock невозможно проверить.' ;;
+        fa:acquire_runtime_lock_inherited_flock_unverifiable) echo 'قفل flock به‌ارث‌رسیده قابل تأیید نیست.' ;;
+        zh-tw:acquire_runtime_lock_inherited_flock_unverifiable) echo '繼承的 flock 鎖無法驗證。' ;;
+        ja:acquire_runtime_lock_inherited_flock_unverifiable) echo '継承した flock ロックを検証できません。' ;;
+        zh:acquire_runtime_lock_inherited_lock_invalid) echo 'OTA 继承的运行锁无效或 inode 已变化。' ;;
+        en:acquire_runtime_lock_inherited_lock_invalid) echo 'The runtime lock inherited from OTA is invalid or its inode has changed.' ;;
+        ru:acquire_runtime_lock_inherited_lock_invalid) echo 'Унаследованная от OTA блокировка выполнения недействительна или её inode изменился.' ;;
+        fa:acquire_runtime_lock_inherited_lock_invalid) echo 'قفل اجرایی به‌ارث‌رسیده از OTA نامعتبر است یا inode آن تغییر کرده است.' ;;
+        zh-tw:acquire_runtime_lock_inherited_lock_invalid) echo 'OTA 繼承的執行鎖無效或 inode 已變更。' ;;
+        ja:acquire_runtime_lock_inherited_lock_invalid) echo 'OTA から継承した実行ロックが無効か、inode が変更されています。' ;;
+        zh:acquire_runtime_lock_inherited_fallback_invalid) echo 'OTA 继承的 fallback 运行锁无效。' ;;
+        en:acquire_runtime_lock_inherited_fallback_invalid) echo 'The fallback runtime lock inherited from OTA is invalid.' ;;
+        ru:acquire_runtime_lock_inherited_fallback_invalid) echo 'Унаследованная от OTA блокировка выполнения fallback недействительна.' ;;
+        fa:acquire_runtime_lock_inherited_fallback_invalid) echo 'قفل اجرایی fallback به‌ارث‌رسیده از OTA نامعتبر است.' ;;
+        zh-tw:acquire_runtime_lock_inherited_fallback_invalid) echo 'OTA 繼承的 fallback 執行鎖無效。' ;;
+        ja:acquire_runtime_lock_inherited_fallback_invalid) echo 'OTA から継承したフォールバック実行ロックが無効です。' ;;
+        zh:acquire_runtime_lock_another_instance_running) echo '检测到另一个 A-Box 实例正在运行。' ;;
+        en:acquire_runtime_lock_another_instance_running) echo 'Another running A-Box instance was detected.' ;;
+        ru:acquire_runtime_lock_another_instance_running) echo 'Обнаружен другой работающий экземпляр A-Box.' ;;
+        fa:acquire_runtime_lock_another_instance_running) echo 'نمونه دیگری از A-Box در حال اجرا شناسایی شد.' ;;
+        zh-tw:acquire_runtime_lock_another_instance_running) echo '偵測到另一個 A-Box 執行個體正在執行。' ;;
+        ja:acquire_runtime_lock_another_instance_running) echo '別の A-Box インスタンスが実行中であることを検出しました。' ;;
+        zh:acquire_runtime_lock_fallback_owner_unknown) echo '无法确认 fallback 运行锁持有者状态，拒绝继续。' ;;
+        en:acquire_runtime_lock_fallback_owner_unknown) echo 'Unable to determine the status of the fallback runtime lock holder; refusing to continue.' ;;
+        ru:acquire_runtime_lock_fallback_owner_unknown) echo 'Невозможно определить состояние владельца блокировки выполнения fallback; продолжение запрещено.' ;;
+        fa:acquire_runtime_lock_fallback_owner_unknown) echo 'وضعیت دارنده قفل اجرایی fallback قابل تأیید نیست؛ ادامه کار رد می‌شود.' ;;
+        zh-tw:acquire_runtime_lock_fallback_owner_unknown) echo '無法確認 fallback 執行鎖持有者的狀態，拒絕繼續。' ;;
+        ja:acquire_runtime_lock_fallback_owner_unknown) echo 'フォールバック実行ロックの保持者の状態を確認できないため、続行を拒否します。' ;;
+        zh:acquire_runtime_lock_lock_path_unsafe) echo '运行锁路径不安全或无法打开。' ;;
+        en:acquire_runtime_lock_lock_path_unsafe) echo 'The runtime lock path is unsafe or cannot be opened.' ;;
+        ru:acquire_runtime_lock_lock_path_unsafe) echo 'Путь блокировки выполнения небезопасен или его невозможно открыть.' ;;
+        fa:acquire_runtime_lock_lock_path_unsafe) echo 'مسیر قفل اجرایی ناامن است یا باز کردن آن ممکن نیست.' ;;
+        zh-tw:acquire_runtime_lock_lock_path_unsafe) echo '執行鎖路徑不安全或無法開啟。' ;;
+        ja:acquire_runtime_lock_lock_path_unsafe) echo '実行ロックのパスが安全でないか、開けません。' ;;
+        zh:acquire_runtime_lock_another_instance_no_flock) echo '检测到另一个 A-Box 实例正在运行，且当前系统缺少 flock。' ;;
+        en:acquire_runtime_lock_another_instance_no_flock) echo 'Another running A-Box instance was detected, and flock is unavailable on this system.' ;;
+        ru:acquire_runtime_lock_another_instance_no_flock) echo 'Обнаружен другой работающий экземпляр A-Box, а flock в этой системе отсутствует.' ;;
+        fa:acquire_runtime_lock_another_instance_no_flock) echo 'نمونه دیگری از A-Box در حال اجرا شناسایی شد و flock در این سیستم موجود نیست.' ;;
+        zh-tw:acquire_runtime_lock_another_instance_no_flock) echo '偵測到另一個 A-Box 執行個體正在執行，且目前系統缺少 flock。' ;;
+        ja:acquire_runtime_lock_another_instance_no_flock) echo '別の A-Box インスタンスが実行中であることを検出しましたが、このシステムには flock がありません。' ;;
+        zh:acquire_runtime_lock_another_instance_after_fallback) echo '检测到另一个 A-Box 实例正在运行（回落锁发布后 flock 已被占用）。' ;;
+        en:acquire_runtime_lock_another_instance_after_fallback) echo 'Another running A-Box instance was detected (flock became occupied after the fallback lock was published).' ;;
+        ru:acquire_runtime_lock_another_instance_after_fallback) echo 'Обнаружен другой работающий экземпляр A-Box (после публикации блокировки fallback блокировка flock оказалась занята).' ;;
+        fa:acquire_runtime_lock_another_instance_after_fallback) echo 'نمونه دیگری از A-Box در حال اجرا شناسایی شد (پس از انتشار قفل جایگزین، قفل flock اشغال شده است).' ;;
+        zh-tw:acquire_runtime_lock_another_instance_after_fallback) echo '偵測到另一個 A-Box 執行個體正在執行（回退鎖發布後 flock 已被占用）。' ;;
+        ja:acquire_runtime_lock_another_instance_after_fallback) echo '別の A-Box インスタンスが実行中であることを検出しました（フォールバックロックの公開後に flock が占有されました）。' ;;
+        zh:manual_stop_managed_stack_state_unreadable) echo '无法读取有效的 A-Box 部署状态。' ;;
+        en:manual_stop_managed_stack_state_unreadable) echo 'Unable to read a valid A-Box deployment state.' ;;
+        ru:manual_stop_managed_stack_state_unreadable) echo 'Не удалось прочитать допустимое состояние развёртывания A-Box.' ;;
+        fa:manual_stop_managed_stack_state_unreadable) echo 'خواندن وضعیت معتبر استقرار A-Box ممکن نیست.' ;;
+        zh-tw:manual_stop_managed_stack_state_unreadable) echo '無法讀取有效的 A-Box 部署狀態。' ;;
+        ja:manual_stop_managed_stack_state_unreadable) echo '有効な A-Box のデプロイ状態を読み取れません。' ;;
+        zh:manual_stop_managed_stack_desired_state_unreadable) echo '无法读取当前 A-Box 期望状态。' ;;
+        en:manual_stop_managed_stack_desired_state_unreadable) echo 'Unable to read the current A-Box desired state.' ;;
+        ru:manual_stop_managed_stack_desired_state_unreadable) echo 'Не удалось прочитать текущее желаемое состояние A-Box.' ;;
+        fa:manual_stop_managed_stack_desired_state_unreadable) echo 'خواندن وضعیت مطلوب فعلی A-Box ممکن نیست.' ;;
+        zh-tw:manual_stop_managed_stack_desired_state_unreadable) echo '無法讀取目前 A-Box 的期望狀態。' ;;
+        ja:manual_stop_managed_stack_desired_state_unreadable) echo '現在の A-Box の目標状態を読み取れません。' ;;
+        zh:manual_stop_managed_stack_tx_dir_fail) echo '无法创建服务状态事务目录。' ;;
+        en:manual_stop_managed_stack_tx_dir_fail) echo 'Unable to create the service-state transaction directory.' ;;
+        ru:manual_stop_managed_stack_tx_dir_fail) echo 'Не удалось создать каталог транзакции состояния служб.' ;;
+        fa:manual_stop_managed_stack_tx_dir_fail) echo 'ایجاد پوشه تراکنش وضعیت سرویس‌ها ممکن نیست.' ;;
+        zh-tw:manual_stop_managed_stack_tx_dir_fail) echo '無法建立服務狀態交易目錄。' ;;
+        ja:manual_stop_managed_stack_tx_dir_fail) echo 'サービス状態トランザクションのディレクトリを作成できません。' ;;
+        zh:manual_stop_managed_stack_tx_dir_perm_fail) echo '服务状态事务目录权限设置失败。' ;;
+        en:manual_stop_managed_stack_tx_dir_perm_fail) echo 'Failed to set permissions on the service-state transaction directory.' ;;
+        ru:manual_stop_managed_stack_tx_dir_perm_fail) echo 'Не удалось установить права доступа к каталогу транзакции состояния служб.' ;;
+        fa:manual_stop_managed_stack_tx_dir_perm_fail) echo 'تنظیم مجوزهای پوشه تراکنش وضعیت سرویس‌ها ناموفق بود.' ;;
+        zh-tw:manual_stop_managed_stack_tx_dir_perm_fail) echo '服務狀態交易目錄權限設定失敗。' ;;
+        ja:manual_stop_managed_stack_tx_dir_perm_fail) echo 'サービス状態トランザクションのディレクトリの権限設定に失敗しました。' ;;
+        zh:manual_stop_managed_stack_snapshot_fail) echo '无法保存服务运行/启用状态快照。' ;;
+        en:manual_stop_managed_stack_snapshot_fail) echo 'Unable to save a snapshot of the service running/enabled states.' ;;
+        ru:manual_stop_managed_stack_snapshot_fail) echo 'Не удалось сохранить снимок состояний работы и включения служб.' ;;
+        fa:manual_stop_managed_stack_snapshot_fail) echo 'ذخیره تصویر لحظه‌ای از وضعیت اجرا/فعال بودن سرویس‌ها ممکن نیست.' ;;
+        zh-tw:manual_stop_managed_stack_snapshot_fail) echo '無法儲存服務執行/啟用狀態快照。' ;;
+        ja:manual_stop_managed_stack_snapshot_fail) echo 'サービスの実行/有効化状態のスナップショットを保存できません。' ;;
+        zh:manual_stop_managed_stack_prev_state_save_fail) echo '无法保存服务事务前置状态。' ;;
+        en:manual_stop_managed_stack_prev_state_save_fail) echo 'Unable to save the service state before the transaction.' ;;
+        ru:manual_stop_managed_stack_prev_state_save_fail) echo 'Не удалось сохранить состояние служб до транзакции.' ;;
+        fa:manual_stop_managed_stack_prev_state_save_fail) echo 'ذخیره وضعیت سرویس‌ها پیش از تراکنش ممکن نیست.' ;;
+        zh-tw:manual_stop_managed_stack_prev_state_save_fail) echo '無法儲存服務交易前的狀態。' ;;
+        ja:manual_stop_managed_stack_prev_state_save_fail) echo 'トランザクション前のサービス状態を保存できません。' ;;
+        zh:manual_stop_managed_stack_stop_commit_fail) echo '至少一个托管服务停止/禁用失败；未提交 MANUAL_STOPPED 状态。' ;;
+        en:manual_stop_managed_stack_stop_commit_fail) echo 'Failed to stop/disable at least one managed service; the MANUAL_STOPPED state was not committed.' ;;
+        ru:manual_stop_managed_stack_stop_commit_fail) echo 'Не удалось остановить/отключить хотя бы одну управляемую службу; состояние MANUAL_STOPPED не зафиксировано.' ;;
+        fa:manual_stop_managed_stack_stop_commit_fail) echo 'توقف/غیرفعال‌سازی دست‌کم یک سرویس مدیریت‌شده ناموفق بود؛ وضعیت MANUAL_STOPPED ثبت نهایی نشد.' ;;
+        zh-tw:manual_stop_managed_stack_stop_commit_fail) echo '至少一個受管理服務停止/停用失敗；未提交 MANUAL_STOPPED 狀態。' ;;
+        ja:manual_stop_managed_stack_stop_commit_fail) echo '少なくとも1つの管理対象サービスの停止/無効化に失敗しました。MANUAL_STOPPED 状態はコミットされていません。' ;;
+        zh:manual_stop_managed_stack_submit_fail) echo '服务状态提交失败；已尝试恢复原运行/启用状态。' ;;
+        en:manual_stop_managed_stack_submit_fail) echo 'Failed to commit the service state; restoration of the original running/enabled states was attempted.' ;;
+        ru:manual_stop_managed_stack_submit_fail) echo 'Не удалось зафиксировать состояние служб; предпринята попытка восстановить исходные состояния работы и включения.' ;;
+        fa:manual_stop_managed_stack_submit_fail) echo 'ثبت نهایی وضعیت سرویس‌ها ناموفق بود؛ برای بازگرداندن وضعیت اولیه اجرا/فعال بودن تلاش شد.' ;;
+        zh-tw:manual_stop_managed_stack_submit_fail) echo '服務狀態提交失敗；已嘗試還原原本的執行/啟用狀態。' ;;
+        ja:manual_stop_managed_stack_submit_fail) echo 'サービス状態のコミットに失敗しました。元の実行/有効化状態への復元を試みました。' ;;
+        zh:manual_stop_managed_stack_tx_cleanup_fail) echo '服务状态事务清理失败；服务已按预期停止，但未能清理事务材料。' ;;
+        en:manual_stop_managed_stack_tx_cleanup_fail) echo 'Service-state transaction cleanup failed; services stopped as expected, but transaction artifacts could not be removed.' ;;
+        ru:manual_stop_managed_stack_tx_cleanup_fail) echo 'Очистка транзакции состояния служб не удалась; службы остановлены как ожидалось, но удалить материалы транзакции не удалось.' ;;
+        fa:manual_stop_managed_stack_tx_cleanup_fail) echo 'پاک‌سازی تراکنش وضعیت سرویس‌ها ناموفق بود؛ سرویس‌ها طبق انتظار متوقف شدند، اما آثار تراکنش حذف نشدند.' ;;
+        zh-tw:manual_stop_managed_stack_tx_cleanup_fail) echo '服務狀態交易清理失敗；服務已按預期停止，但未能清理交易資料。' ;;
+        ja:manual_stop_managed_stack_tx_cleanup_fail) echo 'サービス状態トランザクションのクリーンアップに失敗しました。サービスは期待どおり停止しましたが、トランザクションの関連データを削除できませんでした。' ;;
+        zh:traffic_management_menu_dash_title) echo '每月流量管控 / Monthly Traffic' ;;
+        en:traffic_management_menu_dash_title) echo 'Monthly Traffic Management / Monthly Traffic' ;;
+        ru:traffic_management_menu_dash_title) echo 'Управление месячным трафиком / Monthly Traffic' ;;
+        fa:traffic_management_menu_dash_title) echo 'مدیریت ترافیک ماهانه / Monthly Traffic' ;;
+        zh-tw:traffic_management_menu_dash_title) echo '每月流量管控 / Monthly Traffic' ;;
+        ja:traffic_management_menu_dash_title) echo '月間トラフィック管理 / Monthly Traffic' ;;
+        zh:traffic_management_menu_this_month) echo '本月' ;;
+        en:traffic_management_menu_this_month) echo 'This month' ;;
+        ru:traffic_management_menu_this_month) echo 'Этот месяц' ;;
+        fa:traffic_management_menu_this_month) echo 'این ماه' ;;
+        zh-tw:traffic_management_menu_this_month) echo '本月' ;;
+        ja:traffic_management_menu_this_month) echo '今月' ;;
+        zh:traffic_management_menu_used_this_month) echo '本月已用 (%s · %s):' ;;
+        en:traffic_management_menu_used_this_month) echo 'Used this month (%s · %s):' ;;
+        ru:traffic_management_menu_used_this_month) echo 'Использовано за этот месяц (%s · %s):' ;;
+        fa:traffic_management_menu_used_this_month) echo 'مصرف این ماه (%s · %s):' ;;
+        zh-tw:traffic_management_menu_used_this_month) echo '本月已用 (%s · %s):' ;;
+        ja:traffic_management_menu_used_this_month) echo '今月の使用量 (%s · %s):' ;;
+        zh:traffic_management_menu_remaining) echo '剩余 %s' ;;
+        en:traffic_management_menu_remaining) echo 'Remaining %s' ;;
+        ru:traffic_management_menu_remaining) echo 'Осталось %s' ;;
+        fa:traffic_management_menu_remaining) echo 'باقی‌مانده %s' ;;
+        zh-tw:traffic_management_menu_remaining) echo '剩餘 %s' ;;
+        ja:traffic_management_menu_remaining) echo '残り %s' ;;
+        zh:traffic_management_menu_over_limit) echo '超出 %s' ;;
+        en:traffic_management_menu_over_limit) echo 'Over by %s' ;;
+        ru:traffic_management_menu_over_limit) echo 'Превышение на %s' ;;
+        fa:traffic_management_menu_over_limit) echo 'مازاد %s' ;;
+        zh-tw:traffic_management_menu_over_limit) echo '超出 %s' ;;
+        ja:traffic_management_menu_over_limit) echo '超過 %s' ;;
+        zh:traffic_management_menu_used_with_limit) echo '已用 %s / 上限 %s GB / %s' ;;
+        en:traffic_management_menu_used_with_limit) echo 'Used %s / Limit %s GB / %s' ;;
+        ru:traffic_management_menu_used_with_limit) echo 'Использовано %s / Лимит %s GB / %s' ;;
+        fa:traffic_management_menu_used_with_limit) echo 'مصرف‌شده %s / سقف %s GB / %s' ;;
+        zh-tw:traffic_management_menu_used_with_limit) echo '已用 %s / 上限 %s GB / %s' ;;
+        ja:traffic_management_menu_used_with_limit) echo '使用済み %s / 上限 %s GB / %s' ;;
+        zh:traffic_management_menu_used_no_limit) echo '已用 %s / 上限 未设定' ;;
+        en:traffic_management_menu_used_no_limit) echo 'Used %s / Limit not set' ;;
+        ru:traffic_management_menu_used_no_limit) echo 'Использовано %s / Лимит не задан' ;;
+        fa:traffic_management_menu_used_no_limit) echo 'مصرف‌شده %s / سقف تنظیم نشده' ;;
+        zh-tw:traffic_management_menu_used_no_limit) echo '已用 %s / 上限 未設定' ;;
+        ja:traffic_management_menu_used_no_limit) echo '使用済み %s / 上限 未設定' ;;
+        zh:traffic_management_menu_no_current_month_data) echo '暂无本月数据（最新记录为 %s），vnStat 正在收集中。' ;;
+        en:traffic_management_menu_no_current_month_data) echo 'No data for this month yet (latest record: %s); vnStat is collecting data.' ;;
+        ru:traffic_management_menu_no_current_month_data) echo 'Данных за этот месяц пока нет (последняя запись: %s); vnStat собирает данные.' ;;
+        fa:traffic_management_menu_no_current_month_data) echo 'هنوز داده‌ای برای این ماه موجود نیست (آخرین رکورد: %s)؛ vnStat در حال جمع‌آوری داده است.' ;;
+        zh-tw:traffic_management_menu_no_current_month_data) echo '暫無本月資料（最新紀錄為 %s），vnStat 正在收集中。' ;;
+        ja:traffic_management_menu_no_current_month_data) echo '今月のデータはまだありません（最新の記録は %s）。vnStat がデータを収集中です。' ;;
+        zh:traffic_management_menu_history_title) echo '历史月度统计' ;;
+        en:traffic_management_menu_history_title) echo 'Historical monthly statistics' ;;
+        ru:traffic_management_menu_history_title) echo 'Историческая месячная статистика' ;;
+        fa:traffic_management_menu_history_title) echo 'آمار ماهانه گذشته' ;;
+        zh-tw:traffic_management_menu_history_title) echo '歷史月度統計' ;;
+        ja:traffic_management_menu_history_title) echo '過去の月別統計' ;;
+        zh:traffic_management_menu_col_month) echo '月份' ;;
+        en:traffic_management_menu_col_month) echo 'Month' ;;
+        ru:traffic_management_menu_col_month) echo 'Месяц' ;;
+        fa:traffic_management_menu_col_month) echo 'ماه' ;;
+        zh-tw:traffic_management_menu_col_month) echo '月份' ;;
+        ja:traffic_management_menu_col_month) echo '月' ;;
+        zh:traffic_management_menu_col_total) echo '总流量' ;;
+        en:traffic_management_menu_col_total) echo 'Total traffic' ;;
+        ru:traffic_management_menu_col_total) echo 'Общий трафик' ;;
+        fa:traffic_management_menu_col_total) echo 'مجموع ترافیک' ;;
+        zh-tw:traffic_management_menu_col_total) echo '總流量' ;;
+        ja:traffic_management_menu_col_total) echo '総通信量' ;;
+        zh:traffic_management_menu_col_rx) echo '下行 RX' ;;
+        en:traffic_management_menu_col_rx) echo 'Download RX' ;;
+        ru:traffic_management_menu_col_rx) echo 'Входящий RX' ;;
+        fa:traffic_management_menu_col_rx) echo 'دریافت RX' ;;
+        zh-tw:traffic_management_menu_col_rx) echo '下行 RX' ;;
+        ja:traffic_management_menu_col_rx) echo 'ダウンロード RX' ;;
+        zh:traffic_management_menu_col_tx) echo '上行 TX' ;;
+        en:traffic_management_menu_col_tx) echo 'Upload TX' ;;
+        ru:traffic_management_menu_col_tx) echo 'Исходящий TX' ;;
+        fa:traffic_management_menu_col_tx) echo 'ارسال TX' ;;
+        zh-tw:traffic_management_menu_col_tx) echo '上行 TX' ;;
+        ja:traffic_management_menu_col_tx) echo 'アップロード TX' ;;
+        zh:traffic_management_menu_col_status) echo '状态' ;;
+        en:traffic_management_menu_col_status) echo 'Status' ;;
+        ru:traffic_management_menu_col_status) echo 'Статус' ;;
+        fa:traffic_management_menu_col_status) echo 'وضعیت' ;;
+        zh-tw:traffic_management_menu_col_status) echo '狀態' ;;
+        ja:traffic_management_menu_col_status) echo '状態' ;;
+        zh:traffic_management_menu_status_running) echo '进行中' ;;
+        en:traffic_management_menu_status_running) echo 'In progress' ;;
+        ru:traffic_management_menu_status_running) echo 'В процессе' ;;
+        fa:traffic_management_menu_status_running) echo 'در جریان' ;;
+        zh-tw:traffic_management_menu_status_running) echo '進行中' ;;
+        ja:traffic_management_menu_status_running) echo '進行中' ;;
+        zh:traffic_management_menu_status_over) echo '超限' ;;
+        en:traffic_management_menu_status_over) echo 'Over limit' ;;
+        ru:traffic_management_menu_status_over) echo 'Лимит превышен' ;;
+        fa:traffic_management_menu_status_over) echo 'بیش از سقف' ;;
+        zh-tw:traffic_management_menu_status_over) echo '超限' ;;
+        ja:traffic_management_menu_status_over) echo '上限超過' ;;
+        zh:traffic_management_menu_status_ok) echo '正常' ;;
+        en:traffic_management_menu_status_ok) echo 'Normal' ;;
+        ru:traffic_management_menu_status_ok) echo 'Норма' ;;
+        fa:traffic_management_menu_status_ok) echo 'عادی' ;;
+        zh-tw:traffic_management_menu_status_ok) echo '正常' ;;
+        ja:traffic_management_menu_status_ok) echo '正常' ;;
+        zh:traffic_management_menu_no_month_stats) echo '暂无本月统计数据，vnStat 正在收集中。' ;;
+        en:traffic_management_menu_no_month_stats) echo 'No statistics for this month yet; vnStat is collecting data.' ;;
+        ru:traffic_management_menu_no_month_stats) echo 'Статистики за этот месяц пока нет; vnStat собирает данные.' ;;
+        fa:traffic_management_menu_no_month_stats) echo 'هنوز آماری برای این ماه موجود نیست؛ vnStat در حال جمع‌آوری داده است.' ;;
+        zh-tw:traffic_management_menu_no_month_stats) echo '暫無本月統計資料，vnStat 正在收集中。' ;;
+        ja:traffic_management_menu_no_month_stats) echo '今月の統計データはまだありません。vnStat がデータを収集中です。' ;;
         zh:cl_title) echo '清空与重置' ;;
         en:cl_title) echo 'Cleanup & reset' ;;
         ru:cl_title) echo 'Очистка и сброс' ;;
@@ -18647,44 +19649,44 @@ core_fetch_upstream_release_asset() {
     local repo="${1:-}" output_file="${2:-}" dest_file="${3:-}" release_ref="${4:-}" asset_re="${5:-}" source="${6:-upstream}"
     local api_url release_json asset_array count asset_json asset_name download_url digest mirror tmp_file require_stable=1 _core_ver_rc
     api_url="https://api.github.com/repos/${repo}/releases/tags/${release_ref//\//%2F}"
-    release_json=$(github_api_get "$api_url" 2>/dev/null) || { msg "${YELLOW}[!] 上游 Release API 不可用: ${repo}:${release_ref}${NC}" >&2; return 1; }
+    release_json=$(github_api_get "$api_url" 2>/dev/null) || { msg "${YELLOW}[!] $(tprintf core_fetch_upstream_release_asset_api_unavailable "${repo}" "${release_ref}")${NC}" >&2; return 1; }
     [[ "$source" == 'explicit' || "$source" == 'pinned' ]] && require_stable=0
     if ! jq -e --arg tag "$release_ref" --argjson stable "$require_stable" '
         type == "object" and .tag_name == $tag and .draft == false
         and (if $stable == 1 then .prerelease == false else true end)
     ' <<< "$release_json" >/dev/null 2>&1; then
-        msg "${YELLOW}[!] 上游 Release 元数据与目标版本/稳定性不一致: ${repo}:${release_ref}${NC}" >&2; return 1
+        msg "${YELLOW}[!] $(tprintf core_fetch_upstream_release_asset_metadata_mismatch "${repo}" "${release_ref}")${NC}" >&2; return 1
     fi
     if [[ "$repo:$output_file" == 'SagerNet/sing-box:singbox_core.tar.gz' ]]; then asset_re="$(singbox_asset_regex)"; fi
     asset_array=$(jq -c --arg re "$asset_re" '[.assets[]? | select(((.name // "") | type) == "string") | select((.name // "") | test($re)) | {name:.name,url:(.browser_download_url // ""),digest:(.digest // "")}]' <<< "$release_json" 2>/dev/null) || return 1
     count=$(jq -r 'length' <<< "$asset_array" 2>/dev/null) || return 1
-    [[ "$count" == '1' ]] || { msg "${YELLOW}[!] 目标架构资产匹配数不是 1（匹配 ${count:-0} 个）: ${repo}:${release_ref}${NC}" >&2; return 1; }
+    [[ "$count" == '1' ]] || { msg "${YELLOW}[!] $(tprintf core_fetch_upstream_release_asset_asset_match_count "${count:-0}" "${repo}" "${release_ref}")${NC}" >&2; return 1; }
     asset_json=$(jq -c '.[0]' <<< "$asset_array") || return 1
     asset_name=$(jq -r '.name // ""' <<< "$asset_json"); download_url=$(jq -r '.url // ""' <<< "$asset_json"); digest=$(jq -r '.digest // ""' <<< "$asset_json")
     [[ -n "$asset_name" ]] || return 1
-    valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { msg "${YELLOW}[!] 下载 URL 与官方仓库/tag/资产不匹配，拒绝该候选。${NC}" >&2; return 1; }
-    [[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]] || { msg "${YELLOW}[!] 官方 Release 缺少有效 SHA-256 digest。${NC}" >&2; return 1; }
+    valid_github_download_url "$repo" "$download_url" "$release_ref" "$asset_name" || { msg "${YELLOW}[!] $(tr_msg core_fetch_upstream_release_asset_url_mismatch)${NC}" >&2; return 1; }
+    [[ "$digest" == sha256:* && "${digest#sha256:}" =~ ^[A-Fa-f0-9]{64}$ ]] || { msg "${YELLOW}[!] $(tr_msg core_fetch_upstream_release_asset_digest_missing)${NC}" >&2; return 1; }
     # R10C7-01: refuse a directory target before any download; mv would
     # otherwise move the verified asset INTO the directory, report success,
     # and update resolved state while the requested path holds no file.
-    if [[ -e "$dest_file" && -d "$dest_file" ]]; then msg "${YELLOW}[!] 目标路径为目录，拒绝写入: ${dest_file}${NC}" >&2; return 1; fi
+    if [[ -e "$dest_file" && -d "$dest_file" ]]; then msg "${YELLOW}[!] $(tprintf core_fetch_upstream_release_asset_dest_is_dir "${dest_file}")${NC}" >&2; return 1; fi
     for mirror in '' 'https://ghp.ci/' 'https://gh-proxy.com/'; do
         tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
         if abox_run_wait "下载 ${asset_name}" curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
             # S31 (GPT-11): digest first -- the digest is already in hand
             # from release metadata, so the cheap SHA-256 check must reject
             # a bad archive before the expensive full-archive parse runs.
-            if ! verify_github_asset_digest "$tmp_file" "$digest"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 资产 SHA-256 不匹配，继续下一个通道。${NC}" >&2; continue; fi
-            if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 下载归档格式校验失败，继续下一个通道。${NC}" >&2; continue; fi
+            if ! verify_github_asset_digest "$tmp_file" "$digest"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] $(tr_msg core_fetch_upstream_release_asset_digest_mismatch)${NC}" >&2; continue; fi
+            if ! validate_downloaded_asset "$output_file" "$tmp_file"; then rm -f -- "$tmp_file"; msg "${YELLOW}[!] $(tr_msg core_fetch_upstream_release_asset_archive_invalid)${NC}" >&2; continue; fi
             validate_core_asset_binary_version "$output_file" "$tmp_file" "$release_ref"; _core_ver_rc=$?
-            if (( _core_ver_rc == 2 )); then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 二进制无法执行（非版本不符）；请检查工作目录挂载选项（/tmp noexec 常见）或 TMPDIR，拒绝该候选。${NC}" >&2; continue; fi
-            if (( _core_ver_rc != 0 )); then rm -f -- "$tmp_file"; msg "${YELLOW}[!] 二进制版本与上游 tag 不一致，拒绝该候选。${NC}" >&2; continue; fi
+            if (( _core_ver_rc == 2 )); then rm -f -- "$tmp_file"; msg "${YELLOW}[!] $(tr_msg core_fetch_upstream_release_asset_binary_not_executable)${NC}" >&2; continue; fi
+            if (( _core_ver_rc != 0 )); then rm -f -- "$tmp_file"; msg "${YELLOW}[!] $(tr_msg core_fetch_upstream_release_asset_binary_version_mismatch)${NC}" >&2; continue; fi
             # R9 (F06-5): recheck for a clear diagnostic; -T prevents
             # moving INTO a directory even if the target changes after
             # this check (mirrors the fetch_abox_mirror_asset commit).
             if [[ -d "$dest_file" ]]; then
                 rm -f -- "$tmp_file"
-                msg "${YELLOW}[!] 目标路径为目录，拒绝写入: ${dest_file}${NC}" >&2
+                msg "${YELLOW}[!] $(tprintf core_fetch_upstream_release_asset_dest_is_dir "${dest_file}")${NC}" >&2
                 return 1
             fi
             mv -f -T -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
@@ -18692,17 +19694,17 @@ core_fetch_upstream_release_asset() {
             # Best-effort post-commit check before updating resolved state.
             # This does not prevent a later concurrent replacement.
             if [[ ! -f "$dest_file" ]]; then
-                msg "${YELLOW}[!] 提交后目标路径不是普通文件，拒绝更新状态: ${dest_file}${NC}" >&2
+                msg "${YELLOW}[!] $(tprintf core_fetch_upstream_release_asset_committed_not_file "${dest_file}")${NC}" >&2
                 return 1
             fi
             ABOX_LAST_CORE_RELEASE_REF="$release_ref"; ABOX_LAST_CORE_SOURCE="$source"
             core_set_resolved_target "$repo" "$release_ref" "$source" || return 1
-            msg "${GREEN}   上游候选通过 SHA-256、归档与二进制版本校验：${repo}:${release_ref}${NC}"
+            msg "${GREEN}$(tprintf core_fetch_upstream_release_asset_candidate_verified "${repo}" "${release_ref}")${NC}"
             return 0
         fi
         rm -f -- "$tmp_file"
     done
-    msg "${YELLOW}[!] 上游资产全部下载/验证通道失败。${NC}" >&2
+    msg "${YELLOW}[!] $(tr_msg core_fetch_upstream_release_asset_all_channels_fail)${NC}" >&2
     return 1
 }
 
@@ -18718,7 +19720,7 @@ fetch_github_release() {
     if [[ "$repo:$output_file" == 'XTLS/Xray-core:xray_core.zip' ]]; then
         if ABOX_XRAY_VERSION="$target_ref" xray_reality_requires_mlkem; then msg "${YELLOW}[!] $(tprintf fg_mlkem "$target_ref")${NC}"; else local mlkem_rc=$?; (( mlkem_rc == 1 )) || die "$(tr_msg fg_unparsable)"; fi
     fi
-    msg "${YELLOW} -> 核心候选 [${repo}:${target_ref}，source=${target_source}]... ${NC}"
+    msg "${YELLOW}$(tprintf fetch_github_release_candidate "${repo}" "${target_ref}" "${target_source}")${NC}"
     probe_core_sources_banner
 
     if [[ "$target_source" == 'mirror-exact' ]]; then
@@ -18737,7 +19739,7 @@ fetch_github_release() {
             if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
                 core_set_resolved_target "$repo" "$target_ref" mirror-exact || die "$(tr_msg fg_record_exact)"
                 ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-exact'
-                msg "${GREEN}   上游失败，从同标签版本化镜像恢复 ${target_ref}；未替换版本号。${NC}"
+                msg "${GREEN}$(tprintf fetch_github_release_mirror_versioned_restored "${target_ref}")${NC}"
                 return 0
             fi
             # R9 (F06-4): same-tag fixed-name retry for Xray/Hysteria only.
@@ -18755,23 +19757,23 @@ fetch_github_release() {
                 fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 0; then
                 core_set_resolved_target "$repo" "$target_ref" mirror-exact || die "$(tr_msg fg_record_exact)"
                 ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-exact'
-                msg "${GREEN}   上游失败，从同标签固定容灾资产恢复 ${target_ref}；未替换版本号。${NC}"
+                msg "${GREEN}$(tprintf fetch_github_release_mirror_pinned_restored "${target_ref}")${NC}"
                 return 0
             fi
-            msg "${YELLOW}[!] 同标签镜像资产不可用，继续尝试当前镜像版本。${NC}" >&2
+            msg "${YELLOW}[!] $(tr_msg fetch_github_release_mirror_unavailable)${NC}" >&2
         fi
         if [[ "$target_source" == 'explicit' || "$target_source" == 'pinned' ]]; then
             if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
                 core_set_resolved_target "$repo" "$target_ref" mirror-exact || die "$(tr_msg fg_record_exact)"
                 ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-exact'
-                msg "${GREEN}   显式版本从同标签容灾资产恢复；未替换版本号。${NC}"
+                msg "${GREEN}$(tr_msg fetch_github_release_explicit_mirror_restored)${NC}"
                 return 0
             fi
             mirror_ref=$(core_release_mirror_version "$repo") || die "$(tprintf fg_no_pin "$repo")"
             if [[ "$target_ref" == "$mirror_ref" ]] && fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 0; then
                 core_set_resolved_target "$repo" "$target_ref" mirror-exact || die "$(tr_msg fg_record_exact)"
                 ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE='mirror-exact'
-                msg "${GREEN}   显式版本从同标签固定容灾资产恢复；未替换版本号。${NC}"
+                msg "${GREEN}$(tr_msg fetch_github_release_explicit_pinned_restored)${NC}"
                 return 0
             fi
             die "$(tprintf fg_explicit_unavail "$target_ref")"
@@ -18786,7 +19788,7 @@ fetch_github_release() {
         if fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 1; then
             core_set_resolved_target "$repo" "$target_ref" "$target_source" || die "$(tr_msg fg_record_latest)"
             ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE="$target_source"
-            msg "${GREEN}   最新稳定镜像候选通过 SHA-256 与实际二进制版本校验：${target_ref}${NC}"
+            msg "${GREEN}$(tprintf fetch_github_release_latest_mirror_verified "${target_ref}")${NC}"
             return 0
         fi
         # R9 (F06-4): same-tag fixed-name retry for Xray/Hysteria only (see
@@ -18799,10 +19801,10 @@ fetch_github_release() {
             fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$target_ref" 0; then
             core_set_resolved_target "$repo" "$target_ref" "$target_source" || die "$(tr_msg fg_record_latest)"
             ABOX_LAST_CORE_RELEASE_REF="$target_ref"; ABOX_LAST_CORE_SOURCE="$target_source"
-            msg "${GREEN}   最新稳定镜像固定容灾资产通过 SHA-256 与实际二进制版本校验：${target_ref}${NC}"
+            msg "${GREEN}$(tprintf fetch_github_release_latest_pinned_verified "${target_ref}")${NC}"
             return 0
         fi
-        msg "${YELLOW}[!] 与目标版本一致的最新稳定镜像资产不可用；继续尝试当前镜像版本。${NC}" >&2
+        msg "${YELLOW}[!] $(tr_msg fetch_github_release_latest_mirror_unavailable)${NC}" >&2
     fi
 
     # C2 (latest-first): no fixed-pin fallback HERE. Auto-stable sources may
@@ -18816,7 +19818,7 @@ fetch_github_release() {
         if core_release_ref_valid "$repo" "$mirror_ref" && [[ "$mirror_ref" != *-* ]] && [[ "$mirror_ref" != "$target_ref" ]] && fetch_abox_mirror_asset "$repo" "$output_file" "$dest_file" "$mirror_ref"; then
             core_set_resolved_target "$repo" "$mirror_ref" mirror || die "$(tr_msg fg_record_pin)"
             ABOX_LAST_CORE_RELEASE_REF="$mirror_ref"; ABOX_LAST_CORE_SOURCE='mirror'
-            msg "${GREEN}   当前镜像版本通过 SHA-256 与实际二进制版本校验：${mirror_ref}${NC}"
+            msg "${GREEN}$(tprintf fetch_github_release_current_mirror_verified "${mirror_ref}")${NC}"
             return 0
         fi
     fi
@@ -19888,13 +20890,13 @@ _f2b_restart() {
 
 setup_active_defense() {
     local log_file
-    msg "${YELLOW}[*] 正在挂载私有日志与 Fail2Ban 主动防御矩阵...${NC}"
+    msg "${YELLOW}[*] $(tr_msg setup_active_defense_mounting)${NC}"
     while IFS= read -r log_file; do
         [[ -n "$log_file" ]] || continue
         ensure_abox_log_file "$log_file"
     done < <(abox_log_files)
     assert_abox_auxiliary_safe /etc/logrotate.d/A-Box || die "$(tprintf ax_refuse "/etc/logrotate.d/A-Box")"
-    write_file_atomically_from_stdin /etc/logrotate.d/A-Box 644 <<'EOF_LOGROTATE' || die 'logrotate 配置原子写入失败。'
+    write_file_atomically_from_stdin /etc/logrotate.d/A-Box 644 <<'EOF_LOGROTATE' || die "$(tr_msg setup_active_defense_logrotate_write_fail)"
 # Managed by A-Box
 /var/log/A-Box-*.log {
     su root root
@@ -19925,9 +20927,9 @@ EOF_LOGROTATE
         # later die leaves them behind.
         filter_bak=$(mktemp /etc/fail2ban/filter.d/.A-Box.conf.A-Box-bak.XXXXXX) || { rm -f -- "$jail_tmp"; die "$(tr_msg ad_jail_tmp)"; }
         jail_bak=$(mktemp /etc/fail2ban/jail.d/.A-Box.local.A-Box-bak.XXXXXX) || { rm -f -- "$jail_tmp" "$filter_bak"; die "$(tr_msg ad_jail_tmp)"; }
-        _f2b_backup_file /etc/fail2ban/filter.d/A-Box.conf "$filter_bak" || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die 'Fail2Ban filter 备份失败。'; }
-        _f2b_backup_file /etc/fail2ban/jail.d/A-Box.local "$jail_bak" || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die 'Fail2Ban jail 备份失败。'; }
-        write_file_atomically_from_stdin /etc/fail2ban/filter.d/A-Box.conf 644 <<'EOF_F2B_FILTER' || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die 'Fail2Ban filter 原子写入失败。'; }
+        _f2b_backup_file /etc/fail2ban/filter.d/A-Box.conf "$filter_bak" || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die "$(tr_msg setup_active_defense_filter_backup_fail)"; }
+        _f2b_backup_file /etc/fail2ban/jail.d/A-Box.local "$jail_bak" || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die "$(tr_msg setup_active_defense_jail_backup_fail)"; }
+        write_file_atomically_from_stdin /etc/fail2ban/filter.d/A-Box.conf 644 <<'EOF_F2B_FILTER' || { rm -f -- "$jail_tmp" "$filter_bak" "$jail_bak"; die "$(tr_msg setup_active_defense_filter_write_fail)"; }
 # Managed by A-Box
 [Definition]
 failregex = ^.*(?:authentication failed|message authentication failed).*?(?:from|client[=:])\s*\[?<HOST>\]?(?::[0-9]+)?(?:\s|:|$).*$
@@ -20009,7 +21011,7 @@ bantime.maxtime = 86400'
                 else
                     f2b_tcp_action="${f2b_action}[name=${tcp_jail}, port=\"${tcp_grp}\", protocol=tcp]"
                 fi
-                cat >> "$jail_tmp" <<EOF_F2B_TCP || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die 'Fail2Ban jail 追加写入失败。'; }
+                cat >> "$jail_tmp" <<EOF_F2B_TCP || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die "$(tr_msg setup_active_defense_jail_append_fail)"; }
 [${tcp_jail}]
 enabled = true
 ignoreip = 127.0.0.1/8 ::1
@@ -20044,7 +21046,7 @@ EOF_F2B_TCP
                 # too -- Xray SS/SOCKS dual-stack ports land here, but Xray UDP
                 # auth failures are only logged to xray-error.log (the TCP jail
                 # already reads it; without this, a TCP-jail ban leaves UDP open).
-                cat >> "$jail_tmp" <<EOF_F2B_UDP || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die 'Fail2Ban jail 追加写入失败。'; }
+                cat >> "$jail_tmp" <<EOF_F2B_UDP || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die "$(tr_msg setup_active_defense_jail_append_fail)"; }
 [${udp_jail}]
 enabled = true
 ignoreip = 127.0.0.1/8 ::1
@@ -20071,10 +21073,10 @@ EOF_F2B_UDP
             # unconfirmed, so warn only (a failed restore dies above).
             local f2b_restored=0
             if ! validate_fail2ban_config; then
-                msg "${YELLOW}[!] Fail2Ban 新配置校验失败；正在恢复提交前的 filter/jail，恢复成功后重试重启。${NC}"
+                msg "${YELLOW}[!] $(tr_msg setup_active_defense_new_config_invalid)${NC}"
                 f2b_restored=1
             elif ! _f2b_restart; then
-                msg "${YELLOW}[!] Fail2Ban 重启失败；正在恢复提交前的 filter/jail，恢复成功后重试重启。${NC}"
+                msg "${YELLOW}[!] $(tr_msg setup_active_defense_restart_fail)${NC}"
                 f2b_restored=1
             fi
             if (( f2b_restored == 1 )); then
@@ -20084,10 +21086,10 @@ EOF_F2B_UDP
                 if (( f2b_restore_ok == 1 )); then
                     rm -f -- "$filter_bak" "$jail_bak"
                 else
-                    msg "${YELLOW}[!] Fail2Ban 旧配置恢复失败；备份保留在 ${filter_bak} 与 ${jail_bak}，请手动恢复后重启 fail2ban。${NC}"
+                    msg "${YELLOW}[!] $(tprintf setup_active_defense_old_config_restore_fail "${filter_bak}" "${jail_bak}")${NC}"
                     die 'Fail2Ban previous configuration could not be fully restored; aborting this operation.'
                 fi
-                _f2b_restart || msg "${YELLOW}[!] Fail2Ban 提交前的 filter/jail 已恢复，但重试重启失败；防护状态未确认，请检查配置与服务日志。A-Box 不会因此覆盖或删除其它 jail。${NC}"
+                _f2b_restart || msg "${YELLOW}[!] $(tr_msg setup_active_defense_restored_restart_fail)${NC}"
             else
                 rm -f -- "$filter_bak" "$jail_bak"
             fi
@@ -20101,7 +21103,7 @@ EOF_F2B_UDP
                 rm -f -- "$filter_bak" "$jail_bak"
             else
                 _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"
-                msg "${YELLOW}[!] Fail2Ban 重启失败；已恢复旧配置（恢复失败时备份保留待手动恢复）。${NC}"
+                msg "${YELLOW}[!] $(tr_msg setup_active_defense_restart_fail_restored)${NC}"
             fi
         fi
     fi
@@ -22300,7 +23302,7 @@ EOF_SVC
         _hy2_url=$(hy2_standalone_url "${HY2_PASS:-}" "${HY2_OBFS:-}" "${LINK_IP:-}" 2>/dev/null || true)
         if [[ -n "$_hy2_url" ]]; then
             IFS=$'\t' read -r _hy2_port _ < <(build_hy2_uri_endpoint 2>/dev/null || true)
-            [[ -n "$_hy2_port" ]] && register_standalone_link "${ABOX_DEPLOY_STEM:-hy2}" "Hysteria 2 · 端口 ${_hy2_port}" "$_hy2_url"
+            [[ -n "$_hy2_port" ]] && register_standalone_link "${ABOX_DEPLOY_STEM:-hy2}" "$(tprintf sl_node_port 'Hysteria 2' "$_hy2_port")" "$_hy2_url"
         fi
         view_config deploy
     fi
@@ -23422,7 +24424,7 @@ deploy_xray_trojan_landing() {
     msg "${GREEN}$(tr_msg trojan_done)${NC}"
     msg "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     generate_qr "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
-    register_standalone_link "${ABOX_DEPLOY_STEM:-trojan-xray}" "Trojan-Reality (Xray) · 端口 ${port}" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    register_standalone_link "${ABOX_DEPLOY_STEM:-trojan-xray}" "$(tprintf sl_node_port 'Trojan-Reality (Xray)' "$port")" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     # N1: trojan-path REALITY notice (trojan-variant mihomo line; no YAML here).
     show_reality_mlkem_notice 0 1
 }
@@ -23594,7 +24596,7 @@ EOF_SVC
     msg "${GREEN}$(tr_msg trojan_done)${NC}"
     msg "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
     generate_qr "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
-    register_standalone_link "${ABOX_DEPLOY_STEM:-trojan-sb}" "Trojan-Reality (sing-box) · 端口 ${port}" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
+    register_standalone_link "${ABOX_DEPLOY_STEM:-trojan-sb}" "$(tprintf sl_node_port 'Trojan-Reality (sing-box)' "$port")" "trojan://$(urlencode "$pass")@$(uri_host "$pub_ip"):${port}?security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#Trojan-Reality"
 }
 
 
@@ -28160,27 +29162,27 @@ EOF_SVC
 
 ensure_vnstat_runtime() {
     if ! command -v vnstat >/dev/null 2>&1; then
-        msg "${YELLOW}[*] 未检测到 vnStat；正在按需安装流量统计组件...${NC}"
-        install_optional_package vnstat || { msg "${RED}[!] vnStat 安装失败，无法启用流量限制。${NC}" >&2; return 1; }
+        msg "${YELLOW}[*] $(tr_msg ensure_vnstat_runtime_installing)${NC}"
+        install_optional_package vnstat || { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_install_fail)${NC}" >&2; return 1; }
     fi
-    command -v vnstat >/dev/null 2>&1 || { msg "${RED}[!] vnStat 安装后仍不可用，无法启用流量限制。${NC}" >&2; return 1; }
+    command -v vnstat >/dev/null 2>&1 || { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_still_unavailable)${NC}" >&2; return 1; }
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         if systemctl list-unit-files --type=service --no-legend vnstat.service 2>/dev/null | awk -v wanted="vnstat.service" '$1 == wanted { found=1 } END { exit !found }' ; then
-            systemctl enable --now vnstat >/dev/null 2>&1 || { msg "${RED}[!] vnStat 服务无法启动；未启用流量限制。${NC}" >&2; return 1; }
-            systemctl is-active --quiet vnstat || { msg "${RED}[!] vnStat 服务未处于 active 状态；未启用流量限制。${NC}" >&2; return 1; }
+            systemctl enable --now vnstat >/dev/null 2>&1 || { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_service_start_fail)${NC}" >&2; return 1; }
+            systemctl is-active --quiet vnstat || { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_service_not_active)${NC}" >&2; return 1; }
         elif systemctl list-unit-files --type=service --no-legend vnstatd.service 2>/dev/null | awk -v wanted="vnstatd.service" '$1 == wanted { found=1 } END { exit !found }' ; then
-            systemctl enable --now vnstatd >/dev/null 2>&1 || { msg "${RED}[!] vnStat 服务无法启动；未启用流量限制。${NC}" >&2; return 1; }
-            systemctl is-active --quiet vnstatd || { msg "${RED}[!] vnStat 服务未处于 active 状态；未启用流量限制。${NC}" >&2; return 1; }
+            systemctl enable --now vnstatd >/dev/null 2>&1 || { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_service_start_fail)${NC}" >&2; return 1; }
+            systemctl is-active --quiet vnstatd || { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_service_not_active)${NC}" >&2; return 1; }
         else
-            { msg "${RED}[!] 系统未提供可识别的 vnStat systemd 服务；无法安全启用流量限制。${NC}" >&2; return 1; }
+            { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_no_systemd_service)${NC}" >&2; return 1; }
         fi
     elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
-        [[ -x /etc/init.d/vnstatd ]] || { msg "${RED}[!] 系统未提供 vnstatd OpenRC 服务；无法安全启用流量限制。${NC}" >&2; return 1; }
-        rc-update add vnstatd default >/dev/null 2>&1 || { msg "${RED}[!] vnStat OpenRC 服务无法加入 default runlevel。${NC}" >&2; return 1; }
-        rc-service vnstatd restart >/dev/null 2>&1 9>&- 10>&- || { msg "${RED}[!] vnStat OpenRC 服务无法启动；未启用流量限制。${NC}" >&2; return 1; }
-        rc-service vnstatd status >/dev/null 2>&1 || { msg "${RED}[!] vnStat OpenRC 服务未处于运行状态；未启用流量限制。${NC}" >&2; return 1; }
+        [[ -x /etc/init.d/vnstatd ]] || { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_no_openrc_service)${NC}" >&2; return 1; }
+        rc-update add vnstatd default >/dev/null 2>&1 || { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_openrc_add_fail)${NC}" >&2; return 1; }
+        rc-service vnstatd restart >/dev/null 2>&1 9>&- 10>&- || { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_openrc_start_fail)${NC}" >&2; return 1; }
+        rc-service vnstatd status >/dev/null 2>&1 || { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_openrc_not_running)${NC}" >&2; return 1; }
     else
-        { msg "${RED}[!] 无法确认 vnStat 运行时环境；未启用流量限制。${NC}" >&2; return 1; }
+        { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_runtime_unknown)${NC}" >&2; return 1; }
     fi
     # A long-running vnstatd only registers interfaces present at
     # its own start; without this the dashboard stays empty until
@@ -28197,12 +29199,12 @@ ensure_vnstat_runtime() {
                 if systemctl list-unit-files --type=service --no-legend vnstat.service 2>/dev/null | awk -v wanted="vnstat.service" '$1 == wanted { found=1 } END { exit !found }' ; then _vunit=vnstat;
                 elif systemctl list-unit-files --type=service --no-legend vnstatd.service 2>/dev/null | awk -v wanted="vnstatd.service" '$1 == wanted { found=1 } END { exit !found }' ; then _vunit=vnstatd; fi
                 [[ -n "$_vunit" ]] && systemctl restart "$_vunit" >/dev/null 2>&1 || true
-                [[ -n "$_vunit" ]] && systemctl is-active --quiet "$_vunit" || { msg "${RED}[!] vnStat 接口修复后服务未处于 active 状态；未启用流量限制。${NC}" >&2; return 1; }
+                [[ -n "$_vunit" ]] && systemctl is-active --quiet "$_vunit" || { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_iface_fix_not_active)${NC}" >&2; return 1; }
             elif [[ "${INIT_SYS:-}" == 'openrc' ]]; then
                 rc-service vnstatd restart >/dev/null 2>&1 9>&- 10>&- || true
-                rc-service vnstatd status >/dev/null 2>&1 || { msg "${RED}[!] vnStat 接口修复后服务未处于运行状态；未启用流量限制。${NC}" >&2; return 1; }
+                rc-service vnstatd status >/dev/null 2>&1 || { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_iface_fix_not_running)${NC}" >&2; return 1; }
             fi
-            [[ "$(vnstat -i "$_viface" --json m 2>/dev/null | jq -r --arg iface "$_viface" '.interfaces // [] | any(.[]; (.name // .id) == $iface)' 2>/dev/null)" == "true" ]] || { msg "${RED}[!] vnStat 接口修复后仍未注册；未启用流量限制。${NC}" >&2; return 1; }
+            [[ "$(vnstat -i "$_viface" --json m 2>/dev/null | jq -r --arg iface "$_viface" '.interfaces // [] | any(.[]; (.name // .id) == $iface)' 2>/dev/null)" == "true" ]] || { msg "${RED}[!] $(tr_msg ensure_vnstat_runtime_iface_fix_not_registered)${NC}" >&2; return 1; }
         fi
     fi
 }
@@ -29484,8 +30486,30 @@ traffic_management_menu() {
     if command -v vnstat >/dev/null 2>&1; then
         _tjson=$(vnstat -i "$INTERFACE" --json m 2>/dev/null) || _tjson=''
     fi
+    # R21-F1B: dashboard strings come from tr_msg (6 langs) via argv,
+    # so the embedded Python report renders in the selected language.
+    local _tm_args=(
+        "$(tr_msg traffic_management_menu_dash_title)"
+        "$(tr_msg traffic_management_menu_this_month)"
+        "$(tr_msg traffic_management_menu_used_this_month)"
+        "$(tr_msg traffic_management_menu_remaining)"
+        "$(tr_msg traffic_management_menu_over_limit)"
+        "$(tr_msg traffic_management_menu_used_with_limit)"
+        "$(tr_msg traffic_management_menu_used_no_limit)"
+        "$(tr_msg traffic_management_menu_no_current_month_data)"
+        "$(tr_msg traffic_management_menu_history_title)"
+        "$(tr_msg traffic_management_menu_col_month)"
+        "$(tr_msg traffic_management_menu_col_total)"
+        "$(tr_msg traffic_management_menu_col_rx)"
+        "$(tr_msg traffic_management_menu_col_tx)"
+        "$(tr_msg traffic_management_menu_col_status)"
+        "$(tr_msg traffic_management_menu_status_running)"
+        "$(tr_msg traffic_management_menu_status_over)"
+        "$(tr_msg traffic_management_menu_status_ok)"
+        "$(tr_msg traffic_management_menu_no_month_stats)"
+    )
     if [[ -n "$_tjson" ]]; then
-        python3 -I - "$_tjson" "$INTERFACE" "$_tlimit" "${TRAFFIC_LIMIT_MODE:-total}" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
+        python3 -I - "$_tjson" "$INTERFACE" "$_tlimit" "${TRAFFIC_LIMIT_MODE:-total}" "${_tm_args[@]}" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
             msg "${YELLOW}[!] 流量数据解析失败。${NC}"
 import datetime, json, sys, unicodedata
 
@@ -29506,6 +30530,11 @@ BAR = "─" * 80
 GIB = 1073741824
 
 raw, iface, limit_s = sys.argv[1], sys.argv[2], sys.argv[3]
+(TM_TITLE, TM_THIS_MONTH, TM_USED_THIS_MONTH, TM_REMAINING, TM_OVER_LIMIT,
+ TM_USED_WITH_LIMIT, TM_USED_NO_LIMIT, TM_NO_CURRENT_MONTH_DATA,
+ TM_HISTORY_TITLE, TM_COL_MONTH, TM_COL_TOTAL, TM_COL_RX, TM_COL_TX,
+ TM_COL_STATUS, TM_STATUS_RUNNING, TM_STATUS_OVER, TM_STATUS_OK,
+ TM_NO_MONTH_STATS) = sys.argv[5:23]
 mode = sys.argv[4] if len(sys.argv) > 4 else 'total'
 if mode not in ('total', 'rx', 'tx'):
     mode = 'total'
@@ -29551,32 +30580,34 @@ months = sorted(months,
 
 out = []
 out.append(f"{BLUE}{BAR}{NC}")
-out.append(f"{YELLOW}{center('每月流量管控 / Monthly Traffic')}{NC}")
+out.append(f"{YELLOW}{center(TM_TITLE)}{NC}")
 out.append(f"{BLUE}{BAR}{NC}")
 if months:
     cur = months[0]
     rx = int(cur.get("rx", 0)); tx = int(cur.get("tx", 0)); total = rx + tx
     used = used_value(rx, tx)
     d = cur.get("date", {})
-    ym = f"{d.get('year', '--')}-{int(d.get('month', 0)):02d}" if d.get("year") else "本月"
+    ym = f"{d.get('year', '--')}-{int(d.get('month', 0)):02d}" if d.get("year") else TM_THIS_MONTH
     now = datetime.datetime.now()
     is_current = (d.get("year") == now.year and d.get("month") == now.month)
     if is_current:
-        out.append(f"本月已用 ({iface} \u00b7 {ym}):")
+        out.append(TM_USED_THIS_MONTH % (iface, ym))
         if limit_gb > 0:
             cap = limit_gb * GIB
             out.append(progress_bar(used / cap))
             rem = cap - used
-            rem_s = f"{GREEN}剩余 {fmt_gb(rem)}{NC}" if rem >= 0 else f"{RED}超出 {fmt_gb(-rem)}{NC}"
-            out.append(f"{YELLOW}已用 {fmt_gb(used)}{NC} / 上限 {limit_gb:,.0f} GB / {rem_s}")
+            rem_s = f"{GREEN}{TM_REMAINING % fmt_gb(rem)}{NC}" if rem >= 0 else f"{RED}{TM_OVER_LIMIT % fmt_gb(-rem)}{NC}"
+            _uw = TM_USED_WITH_LIMIT.split('%s', 1)
+            out.append(f"{YELLOW}{_uw[0]}{fmt_gb(used)}{NC}{_uw[1] % (format(limit_gb, ',.0f'), rem_s)}")
         else:
-            out.append(f"{YELLOW}已用 {fmt_gb(used)}{NC} / 上限 未设定")
+            _un = TM_USED_NO_LIMIT.split('%s', 1)
+            out.append(f"{YELLOW}{_un[0]}{fmt_gb(used)}{NC}{_un[1]}")
     else:
-        out.append(f"{YELLOW}暂无本月数据（最新记录为 {ym}），vnStat 正在收集中。{NC}")
+        out.append(f"{YELLOW}{TM_NO_CURRENT_MONTH_DATA % ym}{NC}")
     out.append(f"{BLUE}{BAR}{NC}")
-    out.append(f"{CYAN}{center('历史月度统计')}{NC}")
-    out.append(f"{YELLOW}{pad('月份', 10)}{pad('总流量', 15, True)}"
-               f"{pad('下行 RX', 15, True)}{pad('上行 TX', 15, True)}  状态{NC}")
+    out.append(f"{CYAN}{center(TM_HISTORY_TITLE)}{NC}")
+    out.append(f"{YELLOW}{pad(TM_COL_MONTH, 10)}{pad(TM_COL_TOTAL, 15, True)}"
+               f"{pad(TM_COL_RX, 15, True)}{pad(TM_COL_TX, 15, True)}  {TM_COL_STATUS}{NC}")
     out.append(f"{GRAY}{'─' * 66}{NC}")
     for i, m in enumerate(months):
         dd = m.get("date", {})
@@ -29585,15 +30616,15 @@ if months:
         m_used = used_value(r, t)
         m_current = (dd.get("year") == now.year and dd.get("month") == now.month)
         if m_current:
-            st = f"{YELLOW}进行中{NC}"
+            st = f"{YELLOW}{TM_STATUS_RUNNING}{NC}"
         elif limit_gb > 0 and m_used > limit_gb * GIB:
-            st = f"{RED}超限{NC}"
+            st = f"{RED}{TM_STATUS_OVER}{NC}"
         else:
-            st = f"{GREEN}正常{NC}"
+            st = f"{GREEN}{TM_STATUS_OK}{NC}"
         out.append(f"{pad(yymm, 10)}{pad(fmt_gb(tot), 15, True)}"
                    f"{pad(fmt_gb(r), 15, True)}{pad(fmt_gb(t), 15, True)}  {st}")
 else:
-    out.append(f"{YELLOW}暂无本月统计数据，vnStat 正在收集中。{NC}")
+    out.append(f"{YELLOW}{TM_NO_MONTH_STATS}{NC}")
 sys.stdout.write("\n".join(out) + "\n")
 PY_TRAFFIC_DASH
     else
@@ -38624,7 +39655,7 @@ abox_zram_teardown() {
 setup_zram_swap() {
     clear
     msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}zram 压缩交换 / zram Compressed Swap${NC}"
+    msg "${BOLD}${GREEN}$(tr_msg setup_zram_swap_title)${NC}"
     msg "${CYAN}======================================================================${NC}"
     local _swapon_out
     if ! _swapon_out=$(swapon --show=NAME --noheadings 2>/dev/null); then
@@ -38632,20 +39663,20 @@ setup_zram_swap() {
         if [[ -r /proc/swaps ]]; then
             _swapon_out=$(awk 'NR>1{print $1}' /proc/swaps 2>/dev/null || true)
         else
-            msg "${RED}zram 活动状态查询失败，无法确认是否已有交换设备；已中止以防重复创建。${NC}"
+            msg "${RED}$(tr_msg setup_zram_swap_status_query_fail)${NC}"
             pause_return
             return 0
         fi
     fi
     if printf '%s\n' "$_swapon_out" | grep -qE '^/dev/zram[0-9]+$'; then
-        msg "${YELLOW}zram 交换已在运行：${NC}"
+        msg "${YELLOW}$(tr_msg setup_zram_swap_already_running)${NC}"
         swapon --show || true
         pause_return
         return 0
     fi
     modprobe zram 2>/dev/null || true
     if [[ ! -e /sys/class/zram-control ]]; then
-        msg "${RED}当前内核没有 zram 支持（模块不可用）。请改用本菜单第 2 项的磁盘 Swap 文件。${NC}"
+        msg "${RED}$(tr_msg setup_zram_swap_no_kernel_support)${NC}"
         pause_return
         return 0
     fi
@@ -38668,13 +39699,13 @@ SIZE_MB=${size_mb}
 ALGO=${algo}
 EOF_ZRAM_CONF
     then
-        msg "${RED}zram 配置写入失败。${NC}"
+        msg "${RED}$(tr_msg setup_zram_swap_config_write_fail)${NC}"
         pause_return
         return 0
     fi
     if ! abox_zram_write_helper; then
         rm -f /etc/ddr/zram.conf
-        msg "${RED}zram 辅助脚本写入失败。${NC}"
+        msg "${RED}$(tr_msg setup_zram_swap_helper_write_fail)${NC}"
         pause_return
         return 0
     fi
@@ -38685,13 +39716,13 @@ EOF_ZRAM_CONF
         # active: keep the helper and config so it can still be stopped.
         # (Plain 1 means failed with the device confirmed down.)
         if (( _zram_start_rc == 2 )); then
-            msg "${RED}zram 启用失败，且失败清理未能停用已激活的交换区；已保留助手与配置，请手工 swapoff 后重试。${NC}"
+            msg "${RED}$(tr_msg setup_zram_swap_enable_cleanup_fail)${NC}"
         else
             # R10C13-02: do not delete helper/config on failure:
             # a pre-existing boot unit points at the helper, and
             # deleting it would orphan that unit. Keep them (a
             # retry overwrites; a first-time failure leaves inert files).
-            msg "${RED}zram 启用失败（设备创建/格式化/挂载任一环节未通过），已保留助手与配置（既有开机建置不受影响）。请改用磁盘 Swap 文件。${NC}"
+            msg "${RED}$(tr_msg setup_zram_swap_enable_fail)${NC}"
         fi
         pause_return
         return 0
@@ -38715,7 +39746,7 @@ ExecStop=/usr/local/sbin/abox-zram stop
 WantedBy=multi-user.target
 EOF_ZRAM_UNIT
             systemctl daemon-reload >/dev/null 2>&1 || true
-            systemctl enable abox-zram.service >/dev/null 2>&1 || msg "${YELLOW}[!] zram 已启用，但开机自启设置未成功（systemctl enable 失败），重启后需手动重新启用。${NC}"
+            systemctl enable abox-zram.service >/dev/null 2>&1 || msg "${YELLOW}[!] $(tr_msg setup_zram_swap_autostart_systemd_fail)${NC}"
             ;;
         openrc)
             write_file_atomically_from_stdin /etc/init.d/abox-zram 755 <<'EOF_ZRAM_RC' || true
@@ -38736,15 +39767,15 @@ stop() {
     eend $?
 }
 EOF_ZRAM_RC
-            rc-update add abox-zram default >/dev/null 2>&1 || msg "${YELLOW}[!] zram 已启用，但开机自启设置未成功（rc-update 失败），重启后需手动重新启用。${NC}"
+            rc-update add abox-zram default >/dev/null 2>&1 || msg "${YELLOW}[!] $(tr_msg setup_zram_swap_autostart_openrc_fail)${NC}"
             ;;
         *)
-            msg "${YELLOW}[!] 无法识别 init 系统：zram 本次已启用，但未设置开机自启。${NC}"
+            msg "${YELLOW}[!] $(tr_msg setup_zram_swap_init_unknown)${NC}"
             ;;
     esac
     local _actual_algo=''
     _actual_algo=$(sed -n 's/^ALGO=//p' /etc/ddr/zram.state 2>/dev/null | head -1)
-    msg "${GREEN}zram 已启用：大小 ${size_mb}M · 算法 ${_actual_algo:-$algo} · 优先级 100（高于磁盘 Swap，内核优先使用）${NC}"
+    msg "${GREEN}$(tprintf setup_zram_swap_enabled_summary "${size_mb}" "${_actual_algo:-$algo}")${NC}"
     swapon --show || true
     pause_return
 }
@@ -40401,15 +41432,15 @@ prepare_backup_auth_for_manual_restore() {
 
 export_backup_recovery_key() {
     local dest="${1:-}" key fingerprint
-    [[ $EUID -eq 0 ]] || die '导出备份恢复密钥需要 root。'
-    [[ -n "$dest" ]] || die '用法: --export-backup-key /path/on/separate-medium/A-Box-recovery.key'
-    [[ "$dest" == /* ]] || die '恢复密钥导出路径必须是绝对路径。'
-    [[ ! -e "$dest" && ! -L "$dest" ]] || die "拒绝覆盖现有恢复密钥文件: $dest"
-    ensure_backup_auth_key || die '无法创建或读取备份认证密钥。'
-    IFS= read -r key < "$ABOX_BACKUP_KEY" || die '恢复密钥读取失败。'
-    [[ "$key" =~ ^[A-Fa-f0-9]{64}$ ]] || die '恢复密钥格式非法。'
-    write_private_sidecar "$dest" "$key" || die '恢复密钥导出失败；目标目录必须为 root 所有且不可被组/其他用户写入。'
-    fingerprint=$(backup_key_fingerprint "$dest") || die '恢复密钥指纹计算失败。'
+    [[ $EUID -eq 0 ]] || die "$(tr_msg export_backup_recovery_key_need_root)"
+    [[ -n "$dest" ]] || die "$(tr_msg export_backup_recovery_key_usage)"
+    [[ "$dest" == /* ]] || die "$(tr_msg export_backup_recovery_key_dest_not_absolute)"
+    [[ ! -e "$dest" && ! -L "$dest" ]] || die "$(tprintf export_backup_recovery_key_dest_exists "$dest")"
+    ensure_backup_auth_key || die "$(tr_msg export_backup_recovery_key_auth_key_fail)"
+    IFS= read -r key < "$ABOX_BACKUP_KEY" || die "$(tr_msg export_backup_recovery_key_read_fail)"
+    [[ "$key" =~ ^[A-Fa-f0-9]{64}$ ]] || die "$(tr_msg export_backup_recovery_key_format_invalid)"
+    write_private_sidecar "$dest" "$key" || die "$(tr_msg export_backup_recovery_key_export_fail)"
+    fingerprint=$(backup_key_fingerprint "$dest") || die "$(tr_msg export_backup_recovery_key_fingerprint_fail)"
     msg "${GREEN}[*] Recovery key exported:${NC} $dest"
     msg "${GREEN}[*] Key fingerprint (SHA256):${NC} $fingerprint"
     msg "${YELLOW}[!] Store this key separately from backup archives. Anyone holding both can authenticate modified archives.${NC}"
@@ -42001,16 +43032,16 @@ restore_from_backup() {
     # a live instance. An unclassifiable live layout fails the restore.
     _c2_xl_detect_rc=0
     xray_latest_legacy_detect >/dev/null 2>&1 || _c2_xl_detect_rc=$?
-    if (( _c2_xl_detect_rc == 2 )); then rm -rf "$work"; die '恢复前检测到无法分类的 xray-latest 遗留布局，恢复已中止。'; fi
-    restore_filter_legacy_xray_latest "$root" "$work" || { rm -rf "$work"; die '恢复前过滤退役 xray-latest 备份内容失败。'; }
-    preserved_latest_firewall_preflight "$work/preserved-latest-firewall.plan" || { rm -rf "$work"; die '恢复前检查退役 xray-latest 防火墙放行失败。'; }
-    stop_managed_services_for_restore "$root" || die '恢复前无法停止全部 A-Box 托管服务。'
-    clean_nat_rules || die '恢复前无法完整删除 A-Box HY2 NAT 规则。'
-    clean_input_rules || die '恢复前无法完整删除 A-Box INPUT/原生防火墙规则。'
+    if (( _c2_xl_detect_rc == 2 )); then rm -rf "$work"; die "$(tr_msg restore_from_backup_legacy_layout_unclassified)"; fi
+    restore_filter_legacy_xray_latest "$root" "$work" || { rm -rf "$work"; die "$(tr_msg restore_from_backup_legacy_filter_fail)"; }
+    preserved_latest_firewall_preflight "$work/preserved-latest-firewall.plan" || { rm -rf "$work"; die "$(tr_msg restore_from_backup_legacy_firewall_preflight_fail)"; }
+    stop_managed_services_for_restore "$root" || die "$(tr_msg restore_from_backup_stop_services_fail)"
+    clean_nat_rules || die "$(tr_msg restore_from_backup_clean_nat_fail)"
+    clean_input_rules || die "$(tr_msg restore_from_backup_clean_input_fail)"
     # R4C14-01: mount-compatibility check BEFORE any deletion.
     path_tree_has_nested_mountpoint "$ABOX_DIR" && die 'Restore refused: nested mount under A-Box directory.'
-    remove_owned_core_families_for_restore "$root" || die '恢复前删除当前 A-Box 核心文件失败。'
-    clear_abox_runtime_for_restore "$root" || die '恢复前清理 A-Box 运行目录失败。'
+    remove_owned_core_families_for_restore "$root" || die "$(tr_msg restore_from_backup_remove_cores_fail)"
+    clear_abox_runtime_for_restore "$root" || die "$(tr_msg restore_from_backup_clear_runtime_fail)"
     restore_abox_directory "$root" || die 'Restore A-Box directory failed.'
     local _mrc=0
     merge_retained_manifest_rows "$root" "$_manifest_snapshot"; _mrc=$?
@@ -42020,20 +43051,20 @@ restore_from_backup() {
         restore_core_family_from_backup "$root" "$srv" || die "Restore failed for core family: $srv"
     done
     local aux_paths=''
-    aux_paths=$(managed_auxiliary_paths) || die '无法枚举 A-Box 辅助文件，恢复已中止。'
+    aux_paths=$(managed_auxiliary_paths) || die "$(tr_msg restore_from_backup_aux_enum_fail)"
     while IFS= read -r path; do
         shortcut_is_managed_path "$path" && continue
         restore_auxiliary_path_from_backup "$root" "$path" || die "Restore failed: $path"
     done <<< "$aux_paths"
-    chmod 700 "$ABOX_DIR" 2>/dev/null || die '恢复后的 A-Box 目录权限加固失败。'
+    chmod 700 "$ABOX_DIR" 2>/dev/null || die "$(tr_msg restore_from_backup_dir_perm_fail)"
     # X-08: restoring an initial backup (no .env) must not die here.
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
-        chmod 600 "$ABOX_ENV" 2>/dev/null || die '恢复后的 .env 权限加固失败。'
+        chmod 600 "$ABOX_ENV" 2>/dev/null || die "$(tr_msg restore_from_backup_env_perm_fail)"
     fi
     if [[ -e "$ABOX_DIR/.shortcut" || -L "$ABOX_DIR/.shortcut" ]]; then
-        [[ -f "$ABOX_DIR/.shortcut" && ! -L "$ABOX_DIR/.shortcut" ]] || die '恢复后的快捷键状态文件类型异常。'
-        chown root:root "$ABOX_DIR/.shortcut" 2>/dev/null || die '恢复后的快捷键状态文件属主加固失败。'
-        chmod 600 "$ABOX_DIR/.shortcut" 2>/dev/null || die '恢复后的快捷键状态文件权限加固失败。'
+        [[ -f "$ABOX_DIR/.shortcut" && ! -L "$ABOX_DIR/.shortcut" ]] || die "$(tr_msg restore_from_backup_shortcut_type_fail)"
+        chown root:root "$ABOX_DIR/.shortcut" 2>/dev/null || die "$(tr_msg restore_from_backup_shortcut_owner_fail)"
+        chmod 600 "$ABOX_DIR/.shortcut" 2>/dev/null || die "$(tr_msg restore_from_backup_shortcut_perm_fail)"
     fi
     regenerate_runtime_assets_after_restore "$root" || die 'Regenerate trusted A-Box runtime helpers and cron blocks failed.'
     apply_native_firewall_rules_from_state || die 'Restore native firewall rules failed.'
@@ -42041,9 +43072,9 @@ restore_from_backup() {
     [[ "$backend" == iptables ]] || mode=special
     restore_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 "$mode" || die 'IPv4 A-Box firewall restore failed.'
     restore_abox_iptables_snapshot "$work/meta/ip6tables.snapshot" 6 "$mode" || die 'IPv6 A-Box firewall restore failed.'
-    restore_preserved_latest_firewall "$work/preserved-latest-firewall.plan" || die '恢复退役 xray-latest 防火墙放行失败。'
+    restore_preserved_latest_firewall "$work/preserved-latest-firewall.plan" || die "$(tr_msg restore_from_backup_legacy_firewall_restore_fail)"
     if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
-        load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || die '恢复后的 A-Box 环境文件校验失败。'
+        load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || die "$(tr_msg restore_from_backup_env_verify_fail)"
         if [[ -n "${SS_PORT:-}" ]]; then enforce_ss_whitelist_order "$SS_PORT" || die 'Restored SS whitelist order validation failed.'; fi
     else
         clear_abox_env_vars
@@ -49443,30 +50474,30 @@ upgrade_xray_core_only() {
 
 upgrade_singbox_core_only() {
     local was_active=0 active_state='' backup='' tmp sb_tar sb_ext sb_path old_ver new_ver
-    abox_owns_service sing-box || die '拒绝升级：sing-box 不是 A-Box 托管服务。'
+    abox_owns_service sing-box || die "$(tr_msg upgrade_singbox_core_only_not_owned)"
     msg "${YELLOW}[*] Upgrading sing-box binary only; node parameters will be preserved...${NC}"
     get_architecture
-    active_state=$(service_active_state_value sing-box 2>/dev/null) || die '无法可靠查询 sing-box 服务状态；拒绝在状态未知时升级核心。'
-    case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die 'sing-box 服务状态响应无效；拒绝继续升级。' ;; esac
+    active_state=$(service_active_state_value sing-box 2>/dev/null) || die "$(tr_msg upgrade_singbox_core_only_state_unknown)"
+    case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die "$(tr_msg upgrade_singbox_core_only_state_invalid)" ;; esac
     [[ -x /usr/local/bin/sing-box ]] && old_ver=$(/usr/local/bin/sing-box version 2>/dev/null | head -n 1 || true)
-    core_version_probe_safe /usr/local/bin/sing-box "${old_ver:-}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die '无法读取现有 sing-box 版本；默认拒绝覆盖未知版本核心。'
+    core_version_probe_safe /usr/local/bin/sing-box "${old_ver:-}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die "$(tr_msg upgrade_singbox_core_only_version_unreadable)"
     local target_ref='' current_tag='' decision=0
     clear_core_release_resolution SagerNet/sing-box
-    resolve_core_release_target SagerNet/sing-box || die '无法解析 sing-box 最新正式稳定候选或固定容灾版本。'
+    resolve_core_release_target SagerNet/sing-box || die "$(tr_msg upgrade_singbox_core_only_target_unresolvable)"
     target_ref="$ABOX_RESOLVED_SINGBOX_VERSION"
     if [[ -n "${old_ver:-}" ]]; then
         current_tag=$(core_version_from_output "$old_ver" || true)
         if [[ -z "$current_tag" ]]; then
-            [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] || die '无法解析当前 sing-box 版本；为避免意外降级，拒绝升级。'
+            [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] || die "$(tr_msg upgrade_singbox_core_only_current_version_unparseable)"
         else
             core_version_upgrade_decision "$current_tag" "$target_ref" "${ABOX_SINGBOX_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
             decision=$?
             case "$decision" in
                 0) ;;
-                1) die "拒绝将 sing-box 从 ${current_tag} 降级到 ${target_ref}。如确需降级，请明确设置 ABOX_ALLOW_CORE_DOWNGRADE=1 并确认配置兼容性。" ;;
-                2) die '当前或目标 sing-box 版本格式无法比较。' ;;
-                3) msg "${YELLOW}[!] 当前 sing-box ${current_tag} 高于固定兼容版本 ${target_ref}；为避免自动降级，本次跳过。${NC}"; return 0 ;;
-                4) msg "${GREEN}[OK] 当前 sing-box ${current_tag} 已是固定兼容版本，无需替换。${NC}"; return 0 ;;
+                1) die "$(tprintf upgrade_singbox_core_only_downgrade_refused "${current_tag}" "${target_ref}")" ;;
+                2) die "$(tr_msg upgrade_singbox_core_only_version_incomparable)" ;;
+                3) msg "${YELLOW}[!] $(tprintf upgrade_singbox_core_only_above_pinned_skip "${current_tag}" "${target_ref}")${NC}"; return 0 ;;
+                4) msg "${GREEN}[OK] $(tprintf upgrade_singbox_core_only_already_pinned "${current_tag}")${NC}"; return 0 ;;
                 *) die 'sing-box version-direction guard returned an unexpected status.' ;;
             esac
         fi
@@ -49482,19 +50513,19 @@ upgrade_singbox_core_only() {
     chmod 755 "$sb_path" || { rm -rf "$tmp"; die 'sing-box staged binary chmod failed.'; }
     new_ver=$("$sb_path" version 2>/dev/null | head -n 1 || true)
     [[ -n "$new_ver" ]] || { rm -rf "$tmp"; die 'sing-box staged binary execution check failed.'; }
-    core_binary_matches_release_ref "$ABOX_LAST_CORE_RELEASE_REF" "$new_ver" || { rm -rf "$tmp"; die "最终核心二进制版本与所选标签 ${ABOX_LAST_CORE_RELEASE_REF} 不一致。"; }
+    core_binary_matches_release_ref "$ABOX_LAST_CORE_RELEASE_REF" "$new_ver" || { rm -rf "$tmp"; die "$(tprintf upgrade_singbox_core_only_final_mismatch "${ABOX_LAST_CORE_RELEASE_REF}")"; }
     if [[ -n "$current_tag" ]]; then
         local final_tag='' final_decision=0
-        final_tag=$(core_version_from_output "$new_ver" 2>/dev/null) || { rm -rf "$tmp"; die '无法解析最终候选二进制版本。'; }
+        final_tag=$(core_version_from_output "$new_ver" 2>/dev/null) || { rm -rf "$tmp"; die "$(tr_msg upgrade_singbox_core_only_final_version_unparseable)"; }
         core_version_upgrade_decision "$current_tag" "$final_tag" "${ABOX_SINGBOX_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
         final_decision=$?
         case "$final_decision" in
             0) ;;
-            1) rm -rf "$tmp"; die "拒绝将 sing-box 从 ${current_tag} 降级到最终候选版本 ${final_tag}。" ;;
-            2) rm -rf "$tmp"; die '最终核心候选版本格式无法比较。' ;;
-            3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] 最终候选版本 ${final_tag} 低于当前版本 ${current_tag}；已跳过以避免自动降级。${NC}"; return 0 ;;
-            4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] 最终候选版本 ${final_tag} 与当前版本相同，无需替换。${NC}"; return 0 ;;
-            *) rm -rf "$tmp"; die '最终核心版本方向检查返回异常状态。' ;;
+            1) rm -rf "$tmp"; die "$(tprintf upgrade_singbox_core_only_final_downgrade_refused "${current_tag}" "${final_tag}")" ;;
+            2) rm -rf "$tmp"; die "$(tr_msg upgrade_singbox_core_only_final_version_incomparable)" ;;
+            3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] $(tprintf upgrade_singbox_core_only_final_below_skip "${final_tag}" "${current_tag}")${NC}"; return 0 ;;
+            4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] $(tprintf upgrade_singbox_core_only_final_same "${final_tag}")${NC}"; return 0 ;;
+            *) rm -rf "$tmp"; die "$(tr_msg upgrade_singbox_core_only_final_direction_error)" ;;
         esac
     fi
     if [[ -f /etc/sing-box/config.json ]] && ! "$sb_path" check -c /etc/sing-box/config.json >/dev/null 2>&1; then
@@ -49510,7 +50541,7 @@ upgrade_singbox_core_only() {
         # P1-A: service was stopped, so restart_service_soft (which refreshes
         # the ownership manifest) was skipped. Record the new binary now to
         # keep /etc/ddr/.managed-core-files.tsv in sync.
-        record_core_family_ownership sing-box || { rm -rf "$tmp"; die 'sing-box 核心已替换，但归属清单更新失败。'; }
+        record_core_family_ownership sing-box || { rm -rf "$tmp"; die "$(tr_msg upgrade_singbox_core_only_ownership_update_fail)"; }
     fi
     msg "${GREEN}[OK] sing-box upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
     rm -rf -- "$tmp"
@@ -49519,30 +50550,30 @@ upgrade_singbox_core_only() {
 
 upgrade_hysteria_core_only() {
     local was_active=0 active_state='' backup='' tmp hy2_bin old_ver new_ver
-    abox_owns_service hysteria || die '拒绝升级：hysteria 不是 A-Box 托管服务。'
+    abox_owns_service hysteria || die "$(tr_msg upgrade_hysteria_core_only_not_owned)"
     msg "${YELLOW}[*] Upgrading Hysteria 2 binary only; node parameters will be preserved. Hysteria has no documented standalone config-check command; a staged loopback startup precheck runs before replacement, followed by the existing post-install checks and rollback on failure.${NC}"
     get_architecture
-    active_state=$(service_active_state_value hysteria 2>/dev/null) || die '无法可靠查询 Hysteria 服务状态；拒绝在状态未知时升级核心。'
-    case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die 'Hysteria 服务状态响应无效；拒绝继续升级。' ;; esac
+    active_state=$(service_active_state_value hysteria 2>/dev/null) || die "$(tr_msg upgrade_hysteria_core_only_state_unknown)"
+    case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die "$(tr_msg upgrade_hysteria_core_only_state_invalid)" ;; esac
     [[ -x /usr/local/bin/hysteria ]] && old_ver=$(/usr/local/bin/hysteria version 2>/dev/null | head -n 1 || true)
-    core_version_probe_safe /usr/local/bin/hysteria "${old_ver:-}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die '无法读取现有 Hysteria 版本；默认拒绝覆盖未知版本核心。'
+    core_version_probe_safe /usr/local/bin/hysteria "${old_ver:-}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die "$(tr_msg upgrade_hysteria_core_only_version_unreadable)"
     local target_ref='' current_tag='' decision=0
     clear_core_release_resolution HyNetworks/hysteria
-    resolve_core_release_target HyNetworks/hysteria || die '无法解析 Hysteria 最新正式稳定候选或固定容灾版本。'
+    resolve_core_release_target HyNetworks/hysteria || die "$(tr_msg upgrade_hysteria_core_only_target_unresolvable)"
     target_ref="$ABOX_RESOLVED_HYSTERIA_VERSION"
     if [[ -n "${old_ver:-}" ]]; then
         current_tag=$(core_version_from_output "$old_ver" || true)
         if [[ -z "$current_tag" ]]; then
-            [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] || die '无法解析当前 Hysteria 版本；为避免意外降级，拒绝升级。'
+            [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] || die "$(tr_msg upgrade_hysteria_core_only_current_version_unparseable)"
         else
             core_version_upgrade_decision "$current_tag" "$target_ref" "${ABOX_HYSTERIA_APP_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
             decision=$?
             case "$decision" in
                 0) ;;
-                1) die "拒绝将 Hysteria 从 ${current_tag} 降级到 ${target_ref#*/}。如确需降级，请明确设置 ABOX_ALLOW_CORE_DOWNGRADE=1 并确认客户端兼容性。" ;;
-                2) die '当前或目标 Hysteria 版本格式无法比较。' ;;
-                3) msg "${YELLOW}[!] 当前 Hysteria ${current_tag} 高于固定兼容版本 ${target_ref#*/}；为避免自动降级，本次跳过。${NC}"; return 0 ;;
-                4) msg "${GREEN}[OK] 当前 Hysteria ${current_tag} 已是固定兼容版本，无需替换。${NC}"; return 0 ;;
+                1) die "$(tprintf upgrade_hysteria_core_only_downgrade_refused "${current_tag}" "${target_ref#*/}")" ;;
+                2) die "$(tr_msg upgrade_hysteria_core_only_version_incomparable)" ;;
+                3) msg "${YELLOW}[!] $(tprintf upgrade_hysteria_core_only_above_pinned_skip "${current_tag}" "${target_ref#*/}")${NC}"; return 0 ;;
+                4) msg "${GREEN}[OK] $(tprintf upgrade_hysteria_core_only_already_pinned "${current_tag}")${NC}"; return 0 ;;
                 *) die 'Hysteria version-direction guard returned an unexpected status.' ;;
             esac
         fi
@@ -49555,19 +50586,19 @@ upgrade_hysteria_core_only() {
     chmod 755 "$hy2_bin" || { rm -rf "$tmp"; die 'Hysteria staged binary chmod failed.'; }
     new_ver=$("$hy2_bin" version 2>/dev/null | head -n 1 || true)
     [[ -n "$new_ver" ]] || { rm -rf "$tmp"; die 'Hysteria staged binary execution check failed.'; }
-    core_binary_matches_release_ref "$ABOX_LAST_CORE_RELEASE_REF" "$new_ver" || { rm -rf "$tmp"; die "最终核心二进制版本与所选标签 ${ABOX_LAST_CORE_RELEASE_REF} 不一致。"; }
+    core_binary_matches_release_ref "$ABOX_LAST_CORE_RELEASE_REF" "$new_ver" || { rm -rf "$tmp"; die "$(tprintf upgrade_hysteria_core_only_final_mismatch "${ABOX_LAST_CORE_RELEASE_REF}")"; }
     if [[ -n "$current_tag" ]]; then
         local final_tag='' final_decision=0
-        final_tag=$(core_version_from_output "$new_ver" 2>/dev/null) || { rm -rf "$tmp"; die '无法解析最终候选二进制版本。'; }
+        final_tag=$(core_version_from_output "$new_ver" 2>/dev/null) || { rm -rf "$tmp"; die "$(tr_msg upgrade_hysteria_core_only_final_version_unparseable)"; }
         core_version_upgrade_decision "$current_tag" "$final_tag" "${ABOX_HYSTERIA_APP_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
         final_decision=$?
         case "$final_decision" in
             0) ;;
-            1) rm -rf "$tmp"; die "拒绝将 Hysteria 从 ${current_tag} 降级到最终候选版本 ${final_tag}。" ;;
-            2) rm -rf "$tmp"; die '最终核心候选版本格式无法比较。' ;;
-            3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] 最终候选版本 ${final_tag} 低于当前版本 ${current_tag}；已跳过以避免自动降级。${NC}"; return 0 ;;
-            4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] 最终候选版本 ${final_tag} 与当前版本相同，无需替换。${NC}"; return 0 ;;
-            *) rm -rf "$tmp"; die '最终核心版本方向检查返回异常状态。' ;;
+            1) rm -rf "$tmp"; die "$(tprintf upgrade_hysteria_core_only_final_downgrade_refused "${current_tag}" "${final_tag}")" ;;
+            2) rm -rf "$tmp"; die "$(tr_msg upgrade_hysteria_core_only_final_version_incomparable)" ;;
+            3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] $(tprintf upgrade_hysteria_core_only_final_below_skip "${final_tag}" "${current_tag}")${NC}"; return 0 ;;
+            4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] $(tprintf upgrade_hysteria_core_only_final_same "${final_tag}")${NC}"; return 0 ;;
+            *) rm -rf "$tmp"; die "$(tr_msg upgrade_hysteria_core_only_final_direction_error)" ;;
         esac
     fi
     if ! hysteria_staged_binary_smoke_test "$hy2_bin"; then
@@ -49590,7 +50621,7 @@ upgrade_hysteria_core_only() {
         # P1-A: service was stopped, so restart_service_soft (which refreshes
         # the ownership manifest) was skipped. Record the new binary now to
         # keep /etc/ddr/.managed-core-files.tsv in sync.
-        record_core_family_ownership hysteria || { rm -rf "$tmp"; die 'Hysteria 核心已替换，但归属清单更新失败。'; }
+        record_core_family_ownership hysteria || { rm -rf "$tmp"; die "$(tr_msg upgrade_hysteria_core_only_ownership_update_fail)"; }
     fi
     msg "${GREEN}[OK] Hysteria upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
     rm -rf -- "$tmp"
@@ -50723,11 +51754,11 @@ upgrade_runtime_lock_to_flock_if_possible() {
 
 acquire_runtime_lock() {
     if [[ "${ABOX_INHERITED_LOCK_MODE:-}" == flock ]]; then
-        command -v flock >/dev/null 2>&1 || die '继承的 flock 锁无法验证。'
-        validate_inherited_flock_lock || die 'OTA 继承的运行锁无效或 inode 已变化。'
+        command -v flock >/dev/null 2>&1 || die "$(tr_msg acquire_runtime_lock_inherited_flock_unverifiable)"
+        validate_inherited_flock_lock || die "$(tr_msg acquire_runtime_lock_inherited_lock_invalid)"
         ABOX_RUNTIME_LOCK_MODE='flock'
     elif [[ "${ABOX_INHERITED_LOCK_MODE:-}" == fallback ]]; then
-        validate_owned_fallback_runtime_lock || die 'OTA 继承的 fallback 运行锁无效。'
+        validate_owned_fallback_runtime_lock || die "$(tr_msg acquire_runtime_lock_inherited_fallback_invalid)"
         ABOX_RUNTIME_LOCK_MODE='fallback'
     elif command -v flock >/dev/null 2>&1; then
         # U133: a live fallback lock means another instance is running even
@@ -50739,15 +51770,15 @@ acquire_runtime_lock() {
         local _fb_held_rc=0
         fallback_runtime_lock_held || _fb_held_rc=$?
         case "$_fb_held_rc" in
-            0) die '检测到另一个 A-Box 实例正在运行。' ;;
+            0) die "$(tr_msg acquire_runtime_lock_another_instance_running)" ;;
             1) : ;;
-            *) die '无法确认 fallback 运行锁持有者状态，拒绝继续。' ;;
+            *) die "$(tr_msg acquire_runtime_lock_fallback_owner_unknown)" ;;
         esac
-        open_runtime_flock_fd || die '运行锁路径不安全或无法打开。'
-        flock -n 9 || die '检测到另一个 A-Box 实例正在运行。'
+        open_runtime_flock_fd || die "$(tr_msg acquire_runtime_lock_lock_path_unsafe)"
+        flock -n 9 || die "$(tr_msg acquire_runtime_lock_another_instance_running)"
         ABOX_RUNTIME_LOCK_MODE='flock'
     else
-        acquire_fallback_runtime_lock || die '检测到另一个 A-Box 实例正在运行，且当前系统缺少 flock。'
+        acquire_fallback_runtime_lock || die "$(tr_msg acquire_runtime_lock_another_instance_no_flock)"
         # R6C17-01: post-publish recheck. Another process may have
         # promoted to flock while this one was scheduled out; holding
         # fallback alongside its flock is double hold. If flock is now
@@ -50756,7 +51787,7 @@ acquire_runtime_lock() {
         # EXIT cleanup trap is only installed after this branch, so the
         # release here must be explicit.)
         if command -v flock >/dev/null 2>&1; then
-            upgrade_runtime_lock_to_flock_if_possible || { runtime_lock_cleanup; die '检测到另一个 A-Box 实例正在运行（回落锁发布后 flock 已被占用）。'; }
+            upgrade_runtime_lock_to_flock_if_possible || { runtime_lock_cleanup; die "$(tr_msg acquire_runtime_lock_another_instance_after_fallback)"; }
         fi
     fi
     unset ABOX_INHERITED_LOCK_MODE
@@ -50993,17 +52024,17 @@ __abox_service_tx_rollback_all() {
 manual_stop_managed_stack() {
     local srv failed=0 services previous_state pre_state changed_pre changed_expected tx_dir before after active enabled
     prepare_noninteractive_service_control
-    services=$(expected_managed_services) || die '无法读取有效的 A-Box 部署状态。'
-    previous_state=$(get_desired_state) || die '无法读取当前 A-Box 期望状态。'
-    tx_dir=$(mktemp -d /run/A-Box-service-tx.XXXXXX) || die '无法创建服务状态事务目录。'
-    chmod 700 "$tx_dir" || { rm -rf -- "$tx_dir"; die '服务状态事务目录权限设置失败。'; }
+    services=$(expected_managed_services) || die "$(tr_msg manual_stop_managed_stack_state_unreadable)"
+    previous_state=$(get_desired_state) || die "$(tr_msg manual_stop_managed_stack_desired_state_unreadable)"
+    tx_dir=$(mktemp -d /run/A-Box-service-tx.XXXXXX) || die "$(tr_msg manual_stop_managed_stack_tx_dir_fail)"
+    chmod 700 "$tx_dir" || { rm -rf -- "$tx_dir"; die "$(tr_msg manual_stop_managed_stack_tx_dir_perm_fail)"; }
     pre_state="$tx_dir/pre.state"; changed_pre="$tx_dir/changed-pre.state"; changed_expected="$tx_dir/changed-expected.state"
-    capture_managed_service_state "$pre_state" || { rm -rf -- "$tx_dir"; die '无法保存服务运行/启用状态快照。'; }
+    capture_managed_service_state "$pre_state" || { rm -rf -- "$tx_dir"; die "$(tr_msg manual_stop_managed_stack_snapshot_fail)"; }
     : > "$changed_pre"; : > "$changed_expected"
     # S161: persist the pre-transaction desired state for the trap
     # wrapper: a signal after commit must restore it, not leave the
     # committed value behind on a rolled-back stack.
-    printf '%s\n' "$previous_state" > "$tx_dir/previous.state" || { rm -rf -- "$tx_dir"; die '无法保存服务事务前置状态。'; }
+    printf '%s\n' "$previous_state" > "$tx_dir/previous.state" || { rm -rf -- "$tx_dir"; die "$(tr_msg manual_stop_managed_stack_prev_state_save_fail)"; }
     # U232: a signal mid-transaction must roll the service changes
     # back, not just clean the runtime lock. These replace
     # acquire_runtime_lock's signal traps for the transaction window;
@@ -51030,39 +52061,39 @@ manual_stop_managed_stack() {
 
     if (( failed != 0 )); then
         if ! __abox_service_tx_rollback_all "$tx_dir"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
-        die '至少一个托管服务停止/禁用失败；未提交 MANUAL_STOPPED 状态。'
+        die "$(tr_msg manual_stop_managed_stack_stop_commit_fail)"
     fi
     set_desired_state MANUAL_STOPPED || {
         if ! __abox_service_tx_rollback_all "$tx_dir"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
-        die '服务状态提交失败；已尝试恢复原运行/启用状态。'
+        die "$(tr_msg manual_stop_managed_stack_submit_fail)"
     }
     # U232: transaction committed; restore the lock traps exactly.
     trap 'runtime_lock_cleanup; exit 129' HUP
     trap 'runtime_lock_cleanup; exit 130' INT
     trap 'runtime_lock_cleanup; exit 143' TERM
-    rm -rf -- "$tx_dir" || die '服务状态事务清理失败；服务已按预期停止，但未能清理事务材料。'
+    rm -rf -- "$tx_dir" || die "$(tr_msg manual_stop_managed_stack_tx_cleanup_fail)"
     printf 'A-Box managed stack stopped; Intent=MANUAL_STOPPED\n'
 }
 
 manual_start_managed_stack() {
     local srv failed=0 services previous_state previous_block_period='' block_state_present=0 before after active enabled tx_dir
     prepare_noninteractive_service_control
-    services=$(expected_managed_services) || die '无法读取有效的 A-Box 部署状态。'
-    previous_state=$(get_desired_state) || die '无法读取当前 A-Box 期望状态。'
+    services=$(expected_managed_services) || die "$(tr_msg manual_start_managed_stack_state_unreadable)"
+    previous_state=$(get_desired_state) || die "$(tr_msg manual_start_managed_stack_desired_state_unreadable)"
     if [[ -e "$ABOX_TRAFFIC_BLOCK_STATE" || -L "$ABOX_TRAFFIC_BLOCK_STATE" ]]; then
-        previous_block_period=$(get_traffic_block_period) || die '无法读取当前流量封禁周期状态.'
+        previous_block_period=$(get_traffic_block_period) || die "$(tr_msg manual_start_managed_stack_block_period_unreadable)"
         block_state_present=1
     fi
-    tx_dir=$(mktemp -d /run/A-Box-service-tx.XXXXXX) || die '无法创建服务状态事务目录。'
-    chmod 700 "$tx_dir" || { rm -rf -- "$tx_dir"; die '服务状态事务目录权限设置失败。'; }
+    tx_dir=$(mktemp -d /run/A-Box-service-tx.XXXXXX) || die "$(tr_msg manual_start_managed_stack_tx_dir_fail)"
+    chmod 700 "$tx_dir" || { rm -rf -- "$tx_dir"; die "$(tr_msg manual_start_managed_stack_tx_dir_perm_fail)"; }
     local pre_state="$tx_dir/pre.state" changed_pre="$tx_dir/changed-pre.state" changed_expected="$tx_dir/changed-expected.state"
-    capture_managed_service_state "$pre_state" || { rm -rf -- "$tx_dir"; die '无法保存服务运行/启用状态快照。'; }
+    capture_managed_service_state "$pre_state" || { rm -rf -- "$tx_dir"; die "$(tr_msg manual_start_managed_stack_snapshot_fail)"; }
     : > "$changed_pre"; : > "$changed_expected"
     # S161: persist pre-transaction desired state + block period for
     # the trap wrapper (see stop flow).
-    printf '%s\n' "$previous_state" > "$tx_dir/previous.state" || { rm -rf -- "$tx_dir"; die '无法保存服务事务前置状态。'; }
-    printf '%s\n' "$block_state_present" > "$tx_dir/block-present.state" || { rm -rf -- "$tx_dir"; die '无法保存服务事务封禁标志。'; }
-    printf '%s\n' "$previous_block_period" > "$tx_dir/previous-block.state" || { rm -rf -- "$tx_dir"; die '无法保存服务事务封禁周期。'; }
+    printf '%s\n' "$previous_state" > "$tx_dir/previous.state" || { rm -rf -- "$tx_dir"; die "$(tr_msg manual_start_managed_stack_prev_state_save_fail)"; }
+    printf '%s\n' "$block_state_present" > "$tx_dir/block-present.state" || { rm -rf -- "$tx_dir"; die "$(tr_msg manual_start_managed_stack_block_flag_save_fail)"; }
+    printf '%s\n' "$previous_block_period" > "$tx_dir/previous-block.state" || { rm -rf -- "$tx_dir"; die "$(tr_msg manual_start_managed_stack_block_period_save_fail)"; }
     # U232: a signal mid-transaction must roll the service changes
     # back, not just clean the runtime lock. These replace
     # acquire_runtime_lock's signal traps for the transaction window;
@@ -51099,13 +52130,13 @@ manual_start_managed_stack() {
         # restores block period + desired state + services together,
         # and tx_dir is deleted only when ALL steps report ok.
         if ! __abox_service_tx_rollback_all "$tx_dir"; then printf '%s\n' "A-Box service rollback incomplete; recovery state preserved at $tx_dir" >&2; else rm -rf -- "$tx_dir"; fi
-        die '至少一个托管服务启动/启用或状态提交失败；已尝试回滚本次操作。'
+        die "$(tr_msg manual_start_managed_stack_start_commit_fail)"
     fi
     # U232: transaction committed; restore the lock traps exactly.
     trap 'runtime_lock_cleanup; exit 129' HUP
     trap 'runtime_lock_cleanup; exit 130' INT
     trap 'runtime_lock_cleanup; exit 143' TERM
-    rm -rf -- "$tx_dir" || die '服务状态事务清理失败；服务已按预期启动，但未能清理事务材料。'
+    rm -rf -- "$tx_dir" || die "$(tr_msg manual_start_managed_stack_tx_cleanup_fail)"
     printf 'A-Box managed stack started; Intent=RUNNING\n'
 }
 

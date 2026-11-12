@@ -38139,7 +38139,7 @@ _AUTH_STOP_HEAD = (
 # no following key (P6), which the plain mirror would have exposed.
 _AUTH_QUOTED_TAIL = (
     r"""(?:"(?:\\[^\r\n]|[^"\\\r\n])*(?:"|(?=\r?\n|\Z))"""
-    r"""|'(?:\\[^\r\n]|[^'\\\r\n])*(?:'|(?=\r?\n|\Z)))"""
+    r"""|'(?:\\[^\r\n]|[^'\\\r\n])*(?:'|(?=\r?\n|\Z)))(?![ \t]*[:=])"""
 )
 
 # R16-A (N02): repeatable quoted segment for EXTRA segments after the first one.
@@ -38731,7 +38731,7 @@ PY_REDACT
         fi
         printf '%s\n' "$_redact_input" | sed -E \
             -e 's/(UUID|SS_PASS|HY2_PASS|HY2_OBFS|HY2_ACME_DNS_CF_API_TOKEN|PUBLIC_KEY|SHORT_ID)=.*/\1=***REDACTED***/Ig' \
-            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)(Bearer|Basic)[[:space:]]+([^,;[:space:]}]*[[:blank:]]*:[[:blank:]]+("(\\.|[^"\\])*("|$)|'"'"'(\\.|[^'"'"'\\])*('"'"'|$))|[^,;[:space:]}"]*("+[^,;[:space:]}"]+)+|[^,;[:space:]}"]+)/\1\3 ***REDACTED***/Ig' \
+            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)(Bearer|Basic)[[:space:]]+([^,;[:space:]}]*[[:blank:]]*:[[:blank:]]+(("(\\.|[^"\\])*"|'"'"'(\\.|[^'"'"'\\])*'"'"')([[:blank:]]*$|[[:blank:]]*\b|[[:blank:]]*[^:=[:blank:][:alnum:]_])|("(\\.|[^"\\])*$|'"'"'(\\.|[^'"'"'\\])*$))|[^,;[:space:]}"]*("+[^,;[:space:]}"]+)+|[^,;[:space:]}"]+)/\1\3 ***REDACTED***\9/Ig' \
             -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*(Bearer[[:space:]]+|Basic[[:space:]]+)?)[^,;[:space:]}"]+([[:blank:]]*,?[[:blank:]]*("(\\.|[^"\\])*"|"(\\.|[^"\\}])(\\.|[^"\\])*$))+([[:blank:]]*"?[[:blank:]]*[,;}]|[[:blank:]]*$|[[:blank:]]*"[^"]*"[[:blank:]]*:)/\1***REDACTED***\9/Ig' \
             -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)([^,;[:space:]}"]+:[[:blank:]]+"(\\.|[^"\\])*"([[:blank:]]*([^[:space:]:]|$))|[^,;[:space:]}"]+)/\1***REDACTED***\5/Ig' \
             -e 's/((Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*)[^,}[:cntrl:]"[:space:]][^,}[:cntrl:]"]*/\1***REDACTED***/Ig' \

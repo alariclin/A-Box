@@ -37753,12 +37753,41 @@ abox_zram_teardown() {
     local _init=''
     _init=$(effective_init_system)
     if [[ "$_init" == 'systemd' ]]; then
-        systemctl disable abox-zram.service >/dev/null 2>&1 || persist_rc=1
-        rm -f /etc/systemd/system/abox-zram.service 2>/dev/null || persist_rc=1
-        systemctl daemon-reload >/dev/null 2>&1 || persist_rc=1
+        local _zram_present=0 _zram_load='' _zram_p
+        # R21 F-RESET-ZRAM: skip only proven absence; masks and boot-link remnants count.
+        for _zram_p in /{etc,run,usr/local/lib,usr/lib,lib}/systemd/system/abox-zram.service \
+            /{etc,run,usr/local/lib,usr/lib,lib}/systemd/system/*.{wants,requires,upholds}/abox-zram.service; do
+            if [[ -e "$_zram_p" || -L "$_zram_p" ]]; then
+                _zram_present=1
+                break
+            fi
+        done
+        if (( _zram_present == 0 )); then
+            # Probe errors do not establish absence: use normal cleanup.
+            if ! _zram_load=$(systemctl show -p LoadState --value abox-zram.service 2>/dev/null) ||
+                [[ "$_zram_load" != 'not-found' ]]; then
+                _zram_present=1
+            fi
+        fi
+        if (( _zram_present != 0 )); then
+            systemctl disable abox-zram.service >/dev/null 2>&1 || persist_rc=1
+            rm -f /etc/systemd/system/abox-zram.service 2>/dev/null || persist_rc=1
+            systemctl daemon-reload >/dev/null 2>&1 || persist_rc=1
+        fi
     elif [[ "$_init" == 'openrc' ]]; then
-        rc-update del abox-zram default >/dev/null 2>&1 || persist_rc=1
-        rm -f /etc/init.d/abox-zram 2>/dev/null || persist_rc=1
+        # R21 F-RESET-ZRAM: a missing script is harmless only without runlevel remnants.
+        if [[ -e /etc/init.d/abox-zram || -L /etc/init.d/abox-zram ]]; then
+            rc-update del abox-zram default >/dev/null 2>&1 || persist_rc=1
+            rm -f /etc/init.d/abox-zram 2>/dev/null || persist_rc=1
+        else
+            local _zram_link
+            for _zram_link in /etc/runlevels/*/abox-zram; do
+                if [[ -e "$_zram_link" || -L "$_zram_link" ]]; then
+                    persist_rc=1
+                    break
+                fi
+            done
+        fi
     fi
     # R5C13-04: a persistence failure must not be swallowed while
     # the helper is deleted (that orphans a still-enabled boot unit).

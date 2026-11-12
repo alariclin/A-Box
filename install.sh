@@ -38139,7 +38139,7 @@ _AUTH_STOP_HEAD = (
 # no following key (P6), which the plain mirror would have exposed.
 _AUTH_QUOTED_TAIL = (
     r"""(?:"(?:\\[^\r\n]|[^"\\\r\n])*(?:"|\\?(?=\r?\n|\Z))"""
-    r"""|'(?:\\[^\r\n]|[^'\\\r\n])*(?:'|\\?(?=\r?\n|\Z)))(?![ \t]*[:=])"""
+    r"""|(?!(?:'(?:''|[^'\r\n])*')[ \t]*[:=])'(?:\\[^\r\n]|''|[^'\\\r\n])*(?:'|\\?(?=\r?\n|\Z)))(?![ \t]*[:=])"""
 )
 
 # R16-A (N02): repeatable quoted segment for EXTRA segments after the first one.

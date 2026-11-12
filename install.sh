@@ -50537,7 +50537,18 @@ PY_SELFTEST_TAR
         _fb_expect_omitted() {
             local label="$1" input="$2" rc
             printf '%s' "$input" | redact_secrets_stream > "$tmp/fb-out" 2>/dev/null; rc=$?
-            if [[ $rc != 2 ]] || ! printf '%s\n' "$_fb_notice" | cmp -s - "$tmp/fb-out"; then printf 'FAIL-SED %s\n' "$label"; fi
+            if [[ $rc != 2 ]] || ! {
+                if command -v cmp >/dev/null 2>&1; then
+                    printf '%s\n' "$_fb_notice" | cmp -s - "$tmp/fb-out"
+                else
+                    (
+                        set -o pipefail
+                        _r20_expect_hex=$(printf '%s\n' "$_fb_notice" | LC_ALL=C od -An -v -tx1) || exit 2
+                        _r20_actual_hex=$(LC_ALL=C od -An -v -tx1 < "$tmp/fb-out") || exit 2
+                        [[ "$_r20_actual_hex" == "$_r20_expect_hex" ]]
+                    )
+                fi
+            }; then printf 'FAIL-SED %s\n' "$label"; fi
         }
         _fb_expect_omitted $'r01-env-quote' $'UUID=ab"cd-01\n'
         _fb_expect_omitted $'r03-mid-sq' $'xx Authorization: \'bare-secret-03\', tail\n'
@@ -50617,7 +50628,18 @@ PY_SELFTEST_TAR
         _fb_expect_omitted $'empty' $''
         # NUL bytes cannot travel in a shell variable: direct byte check.
         printf 'token: "nul-secret"\0tail' | redact_secrets_stream > "$tmp/fb-out" 2>/dev/null
-        if [[ $? != 2 ]] || ! printf '%s\n' "$_fb_notice" | cmp -s - "$tmp/fb-out"; then printf 'FAIL-SED nul-bytes\n'; fi
+        if [[ $? != 2 ]] || ! {
+            if command -v cmp >/dev/null 2>&1; then
+                printf '%s\n' "$_fb_notice" | cmp -s - "$tmp/fb-out"
+            else
+                (
+                    set -o pipefail
+                    _r20_expect_hex=$(printf '%s\n' "$_fb_notice" | LC_ALL=C od -An -v -tx1) || exit 2
+                    _r20_actual_hex=$(LC_ALL=C od -An -v -tx1 < "$tmp/fb-out") || exit 2
+                    [[ "$_r20_actual_hex" == "$_r20_expect_hex" ]]
+                )
+            fi
+        }; then printf 'FAIL-SED nul-bytes\n'; fi
         # Notice write failure must be rc=1, never masked as 2.
         if [[ -c /dev/full ]]; then
             printf 'token: "x"' | redact_secrets_stream > /dev/full 2>/dev/null
@@ -50679,7 +50701,18 @@ PY_SELFTEST_TAR
         seq 1 100000 2>/dev/null | redact_secrets_stream > "$tmp/sigpipe-out" 2>/dev/null
         _sp_rcs=("${PIPESTATUS[@]}")
         [[ "${_sp_rcs[1]:-1}" == 2 && "${_sp_rcs[0]:-1}" == 141 ]] &&
-        printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: python3 is unavailable; diagnostic redaction cannot be verified. This document was suppressed in full and no original content is included.]' | cmp -s - "$tmp/sigpipe-out" &&
+        {
+            if command -v cmp >/dev/null 2>&1; then
+                printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: python3 is unavailable; diagnostic redaction cannot be verified. This document was suppressed in full and no original content is included.]' | cmp -s - "$tmp/sigpipe-out"
+            else
+                (
+                    set -o pipefail
+                    _r20_expect_hex=$(printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: python3 is unavailable; diagnostic redaction cannot be verified. This document was suppressed in full and no original content is included.]' | LC_ALL=C od -An -v -tx1) || exit 2
+                    _r20_actual_hex=$(LC_ALL=C od -An -v -tx1 < "$tmp/sigpipe-out") || exit 2
+                    [[ "$_r20_actual_hex" == "$_r20_expect_hex" ]]
+                )
+            fi
+        } &&
         unset -f command
     ); then echo 'FAIL: SIGPIPE producer must not break omitted path'; failures=$((failures + 1)); fi
     # R19 integration: python3 present but failing to start must fail

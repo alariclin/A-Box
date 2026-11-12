@@ -38155,7 +38155,7 @@ _AUTH_QUOTED_TAIL_REPEAT = (
 # lookahead: it would drop S2 in `"S1" "S2" "safe": "v"` (guard already rejects keys).
 _AUTH_EXTRA = (
     r"""(?:[^ \t\r\n,;:}"'\\]*"""
-    r"""(?:[ \t]*,?[ \t]*""" + _AUTH_QUOTED_TAIL_REPEAT + r"""(?![ \t]*:))+)?"""
+    r"""(?:[ \t]*,?[ \t]*(?!(?:"(?:\\[^\r\n]|[^"\\\r\n])*"|'(?:''|[^'\r\n])*')[ \t]*[:=])""" + _AUTH_QUOTED_TAIL_REPEAT + r"""(?![ \t]*[:=]))+)?"""
 )
 
 # R16-A (W-01): precise quoted-key head (escape-aware dq, doubled-apostrophe sq).

@@ -38637,9 +38637,9 @@ write_redacted_file() {
     mkdir -p "$(dirname "$dst")" || return 1
     redact_secrets_stream < "$src" > "$dst" 2>/dev/null; _rc=$?
     if [[ "$_rc" == 2 ]]; then
-        # Whole document suppressed by the no-Python fallback: the
-        # notice-only file is kept (it says so), but it is an omission,
-        # not a redacted copy.
+        # Whole document suppressed (python3 unavailable: unconditional
+        # whole-document suppression): the notice-only file is kept
+        # (it says so), but it is an omission, not a redacted copy.
         [[ -s "$dst" ]] || { rm -f -- "$dst"; return 1; }
         WRITE_REDACTED_FILE_STATUS='omitted'
         return 0
@@ -41406,7 +41406,7 @@ export_diagnostic_bundle() {
         write_redacted_file "$ABOX_ENV" "$work/env.redacted" || { rm -rf "$work"; die 'Diagnostic secret redaction failed; refusing to create a misleading bundle.'; }
         case "$WRITE_REDACTED_FILE_STATUS" in
             redacted) _diagnostic_record "$work/omissions.txt" 'env.redacted' 'redacted' 'secrets redacted' ;;
-            omitted) _diagnostic_record "$work/omissions.txt" 'env.redacted' 'omitted' 'whole document suppressed: no-Python fallback could not verify PEM/block-scalar content; notice only' ;;
+            omitted) _diagnostic_record "$work/omissions.txt" 'env.redacted' 'omitted' 'whole document suppressed: python3 unavailable; diagnostic redaction cannot be verified; notice only' ;;
             absent) _diagnostic_record "$work/omissions.txt" 'env.redacted' 'absent' 'source became unreadable during collection' ;;
         esac
     else
@@ -41424,7 +41424,7 @@ export_diagnostic_bundle() {
                 [[ "$_jrc" != 0 ]] && _jnote="${_jnote}; journalctl exited ${_jrc}, output may be empty"
                 _diagnostic_record "$work/omissions.txt" "logs/${_unit}.journal.txt" 'redacted' "$_jnote"
             elif [[ "$_red_rc" == 2 ]]; then
-                _diagnostic_record "$work/omissions.txt" "logs/${_unit}.journal.txt" 'omitted' 'whole document suppressed: no-Python fallback could not verify its content; notice only'
+                _diagnostic_record "$work/omissions.txt" "logs/${_unit}.journal.txt" 'omitted' 'whole document suppressed: python3 unavailable; diagnostic redaction cannot be verified; notice only'
             else
                 rm -f -- "$work/logs/${_unit}.journal.txt"
                 _diagnostic_record "$work/omissions.txt" "logs/${_unit}.journal.txt" 'failed' "redaction failed (rc=${_red_rc}); file removed"
@@ -41446,7 +41446,7 @@ export_diagnostic_bundle() {
                 [[ "$_trc" != 0 ]] && _tnote="${_tnote}; tail exited ${_trc}, output may be empty"
                 _diagnostic_record "$work/omissions.txt" "$_rel" 'redacted' "$_tnote"
             elif [[ "$_red_rc" == 2 ]]; then
-                _diagnostic_record "$work/omissions.txt" "$_rel" 'omitted' 'whole document suppressed: no-Python fallback could not verify its content; notice only'
+                _diagnostic_record "$work/omissions.txt" "$_rel" 'omitted' 'whole document suppressed: python3 unavailable; diagnostic redaction cannot be verified; notice only'
             else
                 rm -f -- "$work/${_rel}"
                 _diagnostic_record "$work/omissions.txt" "$_rel" 'failed' "redaction failed (rc=${_red_rc}); file removed"

@@ -1120,6 +1120,774 @@ tr_msg() {
         fa:pi_bad_domain) echo 'قالب دامنه نامعتبر است: %s' ;;
         zh-tw:pi_bad_domain) echo '域名格式不合法：%s' ;;
         ja:pi_bad_domain) echo 'ドメイン形式が無効です: %s' ;;
+        zh:setup_swap_2g_title) echo 'Swap 虚拟内存一键划拨' ;;
+        en:setup_swap_2g_title) echo 'One-click allocation of swap virtual memory' ;;
+        ru:setup_swap_2g_title) echo 'Выделение виртуальной памяти свопа одним нажатием' ;;
+        fa:setup_swap_2g_title) echo 'تخصیص یک‌کلیکی حافظه مجازی سواپ' ;;
+        zh-tw:setup_swap_2g_title) echo '一鍵配置交換虛擬記憶體' ;;
+        ja:setup_swap_2g_title) echo 'スワップ仮想メモリをワンクリックで割り当て' ;;
+        zh:setup_swap_2g_fstab_not_safe) echo '/etc/fstab 必须是 root 所有且不可被组/其他用户写入的普通文件，拒绝继续写入。' ;;
+        en:setup_swap_2g_fstab_not_safe) echo '/etc/fstab must be a regular file owned by root and not writable by the group or other users; refusing to continue writing.' ;;
+        ru:setup_swap_2g_fstab_not_safe) echo '/etc/fstab должен быть обычным файлом, принадлежащим root, без права записи для группы и остальных пользователей; дальнейшая запись отклонена.' ;;
+        fa:setup_swap_2g_fstab_not_safe) echo '/etc/fstab باید فایلی عادی با مالک root باشد و گروه یا سایر کاربران نتوانند در آن بنویسند؛ ادامه نوشتن رد می‌شود.' ;;
+        zh-tw:setup_swap_2g_fstab_not_safe) echo '/etc/fstab 必須是 root 所有且群組與其他使用者皆不可寫入的一般檔案；拒絕繼續寫入。' ;;
+        ja:setup_swap_2g_fstab_not_safe) echo '/etc/fstab は root 所有の通常ファイルで、グループやその他のユーザーに書き込み権限がない必要があります。これ以上の書き込みは行いません。' ;;
+        zh:setup_swap_2g_no_symlink_swapfile) echo '拒绝使用符号链接 /swapfile。' ;;
+        en:setup_swap_2g_no_symlink_swapfile) echo 'Refusing to use the symbolic link /swapfile.' ;;
+        ru:setup_swap_2g_no_symlink_swapfile) echo 'Отказ от использования символической ссылки /swapfile.' ;;
+        fa:setup_swap_2g_no_symlink_swapfile) echo 'استفاده از پیوند نمادین /swapfile رد می‌شود.' ;;
+        zh-tw:setup_swap_2g_no_symlink_swapfile) echo '拒絕使用符號連結 /swapfile。' ;;
+        ja:setup_swap_2g_no_symlink_swapfile) echo 'シンボリックリンク /swapfile の使用を拒否します。' ;;
+        zh:setup_swap_2g_swapfile_not_regular) echo '/swapfile 已存在但不是普通文件。' ;;
+        en:setup_swap_2g_swapfile_not_regular) echo '/swapfile already exists but is not a regular file.' ;;
+        ru:setup_swap_2g_swapfile_not_regular) echo '/swapfile уже существует, но не является обычным файлом.' ;;
+        fa:setup_swap_2g_swapfile_not_regular) echo '/swapfile از قبل وجود دارد، اما فایل عادی نیست.' ;;
+        zh-tw:setup_swap_2g_swapfile_not_regular) echo '/swapfile 已存在，但不是一般檔案。' ;;
+        ja:setup_swap_2g_swapfile_not_regular) echo '/swapfile は既に存在しますが、通常ファイルではありません。' ;;
+        zh:setup_swap_2g_swapfile_not_root_owned) echo '/swapfile 不是 root:root 所有。' ;;
+        en:setup_swap_2g_swapfile_not_root_owned) echo '/swapfile is not owned by root:root.' ;;
+        ru:setup_swap_2g_swapfile_not_root_owned) echo '/swapfile не принадлежит root:root.' ;;
+        fa:setup_swap_2g_swapfile_not_root_owned) echo '/swapfile متعلق به root:root نیست.' ;;
+        zh-tw:setup_swap_2g_swapfile_not_root_owned) echo '/swapfile 並非 root:root 所有。' ;;
+        ja:setup_swap_2g_swapfile_not_root_owned) echo '/swapfile の所有者とグループが root:root ではありません。' ;;
+        zh:setup_swap_2g_swapfile_perm_not_0600) echo '/swapfile 已存在但权限不是 0600；A-Box 不会修改非托管 Swap 文件，请先手动收紧权限。' ;;
+        en:setup_swap_2g_swapfile_perm_not_0600) echo '/swapfile already exists but its permissions are not 0600; A-Box will not modify unmanaged swap files. Restrict the permissions manually first.' ;;
+        ru:setup_swap_2g_swapfile_perm_not_0600) echo '/swapfile уже существует, но его права не равны 0600; A-Box не изменяет файлы свопа вне своего управления. Сначала ограничьте права вручную.' ;;
+        fa:setup_swap_2g_swapfile_perm_not_0600) echo '/swapfile از قبل وجود دارد، اما مجوزهای آن 0600 نیست؛ A-Box فایل‌های سواپ خارج از مدیریت خود را تغییر نمی‌دهد. ابتدا مجوزها را دستی محدود کنید.' ;;
+        zh-tw:setup_swap_2g_swapfile_perm_not_0600) echo '/swapfile 已存在，但權限不是 0600；A-Box 不會修改非託管的交換檔案，請先手動收緊權限。' ;;
+        ja:setup_swap_2g_swapfile_perm_not_0600) echo '/swapfile は既に存在しますが、権限が 0600 ではありません。A-Box は管理対象外のスワップファイルを変更しません。まず手動で権限を制限してください。' ;;
+        zh:setup_swap_2g_root_free_low) echo '根文件系统剩余空间不足 2G Swap 安全创建阈值。当前=%sKiB。' ;;
+        en:setup_swap_2g_root_free_low) echo 'Free space on the root filesystem is below the safety threshold for creating 2G swap. Current=%sKiB.' ;;
+        ru:setup_swap_2g_root_free_low) echo 'Свободное место в корневой файловой системе ниже порога безопасного создания свопа 2G. Сейчас=%sKiB.' ;;
+        fa:setup_swap_2g_root_free_low) echo 'فضای آزاد فایل‌سیستم ریشه کمتر از آستانه ایمن ایجاد سواپ 2G است. مقدار کنونی=%sKiB.' ;;
+        zh-tw:setup_swap_2g_root_free_low) echo '根檔案系統的剩餘空間低於安全建立 2G 交換空間的門檻。目前=%sKiB。' ;;
+        ja:setup_swap_2g_root_free_low) echo 'ルートファイルシステムの空き容量が、2G スワップを安全に作成するためのしきい値を下回っています。現在=%sKiB。' ;;
+        zh:setup_swap_2g_swap_file_create_failed) echo 'Swap 文件创建失败。' ;;
+        en:setup_swap_2g_swap_file_create_failed) echo 'Failed to create the swap file.' ;;
+        ru:setup_swap_2g_swap_file_create_failed) echo 'Не удалось создать файл свопа.' ;;
+        fa:setup_swap_2g_swap_file_create_failed) echo 'ایجاد فایل سواپ ناموفق بود.' ;;
+        zh-tw:setup_swap_2g_swap_file_create_failed) echo '交換檔案建立失敗。' ;;
+        ja:setup_swap_2g_swap_file_create_failed) echo 'スワップファイルを作成できませんでした。' ;;
+        zh:setup_swap_2g_btrfs_nocow_failed) echo 'Btrfs Swap 需 NOCOW 属性，chattr +C 失败。' ;;
+        en:setup_swap_2g_btrfs_nocow_failed) echo 'Swap on Btrfs requires the NOCOW attribute; chattr +C failed.' ;;
+        ru:setup_swap_2g_btrfs_nocow_failed) echo 'Для свопа на Btrfs требуется атрибут NOCOW; chattr +C завершился с ошибкой.' ;;
+        fa:setup_swap_2g_btrfs_nocow_failed) echo 'سواپ روی Btrfs به ویژگی NOCOW نیاز دارد؛ chattr +C ناموفق بود.' ;;
+        zh-tw:setup_swap_2g_btrfs_nocow_failed) echo 'Btrfs 交換空間需要 NOCOW 屬性；chattr +C 失敗。' ;;
+        ja:setup_swap_2g_btrfs_nocow_failed) echo 'Btrfs 上のスワップには NOCOW 属性が必要ですが、chattr +C に失敗しました。' ;;
+        zh:setup_swap_2g_swap_file_chmod_failed) echo 'Swap 文件权限设置失败。' ;;
+        en:setup_swap_2g_swap_file_chmod_failed) echo 'Failed to set the swap file permissions.' ;;
+        ru:setup_swap_2g_swap_file_chmod_failed) echo 'Не удалось установить права файла свопа.' ;;
+        fa:setup_swap_2g_swap_file_chmod_failed) echo 'تنظیم مجوزهای فایل سواپ ناموفق بود.' ;;
+        zh-tw:setup_swap_2g_swap_file_chmod_failed) echo '交換檔案權限設定失敗。' ;;
+        ja:setup_swap_2g_swap_file_chmod_failed) echo 'スワップファイルの権限を設定できませんでした。' ;;
+        zh:setup_swap_2g_swap_file_chown_failed) echo 'Swap 文件属主设置失败。' ;;
+        en:setup_swap_2g_swap_file_chown_failed) echo 'Failed to set the swap file owner.' ;;
+        ru:setup_swap_2g_swap_file_chown_failed) echo 'Не удалось задать владельца файла свопа.' ;;
+        fa:setup_swap_2g_swap_file_chown_failed) echo 'تنظیم مالک فایل سواپ ناموفق بود.' ;;
+        zh-tw:setup_swap_2g_swap_file_chown_failed) echo '交換檔案屬主設定失敗。' ;;
+        ja:setup_swap_2g_swap_file_chown_failed) echo 'スワップファイルの所有者を設定できませんでした。' ;;
+        zh:setup_swap_2g_mkswap_failed) echo 'mkswap 失败。' ;;
+        en:setup_swap_2g_mkswap_failed) echo 'mkswap failed.' ;;
+        ru:setup_swap_2g_mkswap_failed) echo 'mkswap завершился с ошибкой.' ;;
+        fa:setup_swap_2g_mkswap_failed) echo 'mkswap ناموفق بود.' ;;
+        zh-tw:setup_swap_2g_mkswap_failed) echo 'mkswap 失敗。' ;;
+        ja:setup_swap_2g_mkswap_failed) echo 'mkswap に失敗しました。' ;;
+        zh:setup_swap_2g_swapon_failed_no_fstab) echo 'swapon 失败；不会写入 /etc/fstab。' ;;
+        en:setup_swap_2g_swapon_failed_no_fstab) echo 'swapon failed; /etc/fstab will not be written.' ;;
+        ru:setup_swap_2g_swapon_failed_no_fstab) echo 'swapon завершился с ошибкой; запись в /etc/fstab выполняться не будет.' ;;
+        fa:setup_swap_2g_swapon_failed_no_fstab) echo 'swapon ناموفق بود؛ در /etc/fstab نوشته نخواهد شد.' ;;
+        zh-tw:setup_swap_2g_swapon_failed_no_fstab) echo 'swapon 失敗；不會寫入 /etc/fstab。' ;;
+        ja:setup_swap_2g_swapon_failed_no_fstab) echo 'swapon に失敗しました。/etc/fstab への書き込みは行いません。' ;;
+        zh:setup_swap_2g_swap_active_unknown) echo '无法可靠判断 /swapfile 当前是否已激活；拒绝执行破坏性 Swap 操作。' ;;
+        en:setup_swap_2g_swap_active_unknown) echo 'Cannot reliably determine whether /swapfile is currently active; refusing to perform destructive swap operations.' ;;
+        ru:setup_swap_2g_swap_active_unknown) echo 'Невозможно надёжно определить, активен ли сейчас /swapfile; отказ от выполнения разрушительных операций со свопом.' ;;
+        fa:setup_swap_2g_swap_active_unknown) echo 'نمی‌توان با اطمینان تشخیص داد که /swapfile اکنون فعال است یا نه؛ اجرای عملیات مخرب سواپ رد می‌شود.' ;;
+        zh-tw:setup_swap_2g_swap_active_unknown) echo '無法可靠判斷 /swapfile 目前是否已啟用；拒絕執行破壞性的交換操作。' ;;
+        ja:setup_swap_2g_swap_active_unknown) echo '/swapfile が現在有効かどうかを確実に判断できません。破壊的なスワップ操作は行いません。' ;;
+        zh:setup_swap_2g_fstab_backup_failed_swap_stuck) echo '/etc/fstab 备份创建失败且新建 Swap 无法安全关闭；已保留 /swapfile，未修改 /etc/fstab，请立即检查并手动处理。' ;;
+        en:setup_swap_2g_fstab_backup_failed_swap_stuck) echo 'Failed to create a backup of /etc/fstab, and the newly created swap cannot be safely deactivated; /swapfile was retained and /etc/fstab was left unchanged. Check immediately and resolve this manually.' ;;
+        ru:setup_swap_2g_fstab_backup_failed_swap_stuck) echo 'Не удалось создать резервную копию /etc/fstab, а новый своп нельзя безопасно отключить; /swapfile сохранён, /etc/fstab не изменён. Немедленно проверьте состояние и устраните проблему вручную.' ;;
+        fa:setup_swap_2g_fstab_backup_failed_swap_stuck) echo 'ایجاد نسخه پشتیبان /etc/fstab ناموفق بود و سواپ تازه‌ساخته‌شده را نمی‌توان با ایمنی غیرفعال کرد؛ /swapfile نگه داشته شد و /etc/fstab تغییر نکرد. فوراً بررسی کنید و به‌صورت دستی رسیدگی کنید.' ;;
+        zh-tw:setup_swap_2g_fstab_backup_failed_swap_stuck) echo '/etc/fstab 備份建立失敗，且新建的交換空間無法安全停用；已保留 /swapfile，未修改 /etc/fstab，請立即檢查並手動處理。' ;;
+        ja:setup_swap_2g_fstab_backup_failed_swap_stuck) echo '/etc/fstab のバックアップ作成に失敗し、新規作成したスワップも安全に無効化できません。/swapfile は保持し、/etc/fstab は変更していません。直ちに確認して手動で対処してください。' ;;
+        zh:setup_swap_2g_fstab_backup_create_failed_rolled_back) echo '/etc/fstab 备份创建失败；已回滚新建 Swap，且未修改 /etc/fstab。' ;;
+        en:setup_swap_2g_fstab_backup_create_failed_rolled_back) echo 'Failed to create a backup of /etc/fstab; the newly created swap was rolled back and /etc/fstab was left unchanged.' ;;
+        ru:setup_swap_2g_fstab_backup_create_failed_rolled_back) echo 'Не удалось создать резервную копию /etc/fstab; новый своп отменён откатом, /etc/fstab не изменён.' ;;
+        fa:setup_swap_2g_fstab_backup_create_failed_rolled_back) echo 'ایجاد نسخه پشتیبان /etc/fstab ناموفق بود؛ بازگشت سواپ تازه‌ساخته‌شده انجام شد و /etc/fstab تغییر نکرد.' ;;
+        zh-tw:setup_swap_2g_fstab_backup_create_failed_rolled_back) echo '/etc/fstab 備份建立失敗；已回滾新建的交換空間，且未修改 /etc/fstab。' ;;
+        ja:setup_swap_2g_fstab_backup_create_failed_rolled_back) echo '/etc/fstab のバックアップ作成に失敗しました。新規作成したスワップはロールバックし、/etc/fstab は変更していません。' ;;
+        zh:setup_swap_2g_fstab_backup_unreliable_swap_stuck) echo '无法创建可靠的 /etc/fstab 备份且新建 Swap 无法安全关闭；已保留 /swapfile，未修改 /etc/fstab。' ;;
+        en:setup_swap_2g_fstab_backup_unreliable_swap_stuck) echo 'Cannot create a reliable backup of /etc/fstab, and the newly created swap cannot be safely deactivated; /swapfile was retained and /etc/fstab was left unchanged.' ;;
+        ru:setup_swap_2g_fstab_backup_unreliable_swap_stuck) echo 'Невозможно создать надёжную резервную копию /etc/fstab, а новый своп нельзя безопасно отключить; /swapfile сохранён, /etc/fstab не изменён.' ;;
+        fa:setup_swap_2g_fstab_backup_unreliable_swap_stuck) echo 'نمی‌توان نسخه پشتیبان قابل‌اعتمادی از /etc/fstab ایجاد کرد و سواپ تازه‌ساخته‌شده را نمی‌توان با ایمنی غیرفعال کرد؛ /swapfile نگه داشته شد و /etc/fstab تغییر نکرد.' ;;
+        zh-tw:setup_swap_2g_fstab_backup_unreliable_swap_stuck) echo '無法建立可靠的 /etc/fstab 備份，且新建的交換空間無法安全停用；已保留 /swapfile，未修改 /etc/fstab。' ;;
+        ja:setup_swap_2g_fstab_backup_unreliable_swap_stuck) echo '/etc/fstab の信頼できるバックアップを作成できず、新規作成したスワップも安全に無効化できません。/swapfile は保持し、/etc/fstab は変更していません。' ;;
+        zh:setup_swap_2g_fstab_backup_failed_rolled_back) echo '/etc/fstab 备份失败；已回滚新建 Swap，且未修改 /etc/fstab。' ;;
+        en:setup_swap_2g_fstab_backup_failed_rolled_back) echo 'Backup of /etc/fstab failed; the newly created swap was rolled back and /etc/fstab was left unchanged.' ;;
+        ru:setup_swap_2g_fstab_backup_failed_rolled_back) echo 'Резервное копирование /etc/fstab не удалось; новый своп отменён откатом, /etc/fstab не изменён.' ;;
+        fa:setup_swap_2g_fstab_backup_failed_rolled_back) echo 'پشتیبان‌گیری از /etc/fstab ناموفق بود؛ بازگشت سواپ تازه‌ساخته‌شده انجام شد و /etc/fstab تغییر نکرد.' ;;
+        zh-tw:setup_swap_2g_fstab_backup_failed_rolled_back) echo '/etc/fstab 備份失敗；已回滾新建的交換空間，且未修改 /etc/fstab。' ;;
+        ja:setup_swap_2g_fstab_backup_failed_rolled_back) echo '/etc/fstab のバックアップに失敗しました。新規作成したスワップはロールバックし、/etc/fstab は変更していません。' ;;
+        zh:setup_swap_2g_rollback_incomplete_keep_backup) echo 'Swap 回滚未完成；保留 fstab 备份：%s' ;;
+        en:setup_swap_2g_rollback_incomplete_keep_backup) echo 'Swap rollback is incomplete; retaining the fstab backup: %s' ;;
+        ru:setup_swap_2g_rollback_incomplete_keep_backup) echo 'Откат свопа не завершён; резервная копия fstab сохранена: %s' ;;
+        fa:setup_swap_2g_rollback_incomplete_keep_backup) echo 'بازگشت سواپ کامل نشده است؛ نسخه پشتیبان fstab نگه داشته می‌شود: %s' ;;
+        zh-tw:setup_swap_2g_rollback_incomplete_keep_backup) echo '交換空間回滾未完成；保留 fstab 備份：%s' ;;
+        ja:setup_swap_2g_rollback_incomplete_keep_backup) echo 'スワップのロールバックが未完了です。fstab のバックアップを保持します: %s' ;;
+        zh:setup_swap_2g_fstab_tmp_create_failed_swap_stuck) echo '/etc/fstab 临时文件创建失败且 Swap 无法安全回滚；已保留恢复材料。' ;;
+        en:setup_swap_2g_fstab_tmp_create_failed_swap_stuck) echo 'Failed to create a temporary file for /etc/fstab, and swap cannot be safely rolled back; recovery materials were retained.' ;;
+        ru:setup_swap_2g_fstab_tmp_create_failed_swap_stuck) echo 'Не удалось создать временный файл для /etc/fstab, а своп нельзя безопасно откатить; материалы для восстановления сохранены.' ;;
+        fa:setup_swap_2g_fstab_tmp_create_failed_swap_stuck) echo 'ایجاد فایل موقت برای /etc/fstab ناموفق بود و بازگشت ایمن سواپ ممکن نیست؛ موارد لازم برای بازیابی نگه داشته شد.' ;;
+        zh-tw:setup_swap_2g_fstab_tmp_create_failed_swap_stuck) echo '/etc/fstab 臨時檔案建立失敗，且交換空間無法安全回滾；已保留恢復材料。' ;;
+        ja:setup_swap_2g_fstab_tmp_create_failed_swap_stuck) echo '/etc/fstab 用の一時ファイルを作成できず、スワップも安全にロールバックできません。復旧に必要なものは保持しました。' ;;
+        zh:setup_swap_2g_fstab_tmp_create_failed_rolled_back) echo '/etc/fstab 临时文件创建失败；已回滚新建 Swap。' ;;
+        en:setup_swap_2g_fstab_tmp_create_failed_rolled_back) echo 'Failed to create a temporary file for /etc/fstab; the newly created swap was rolled back.' ;;
+        ru:setup_swap_2g_fstab_tmp_create_failed_rolled_back) echo 'Не удалось создать временный файл для /etc/fstab; выполнен откат нового свопа.' ;;
+        fa:setup_swap_2g_fstab_tmp_create_failed_rolled_back) echo 'ایجاد فایل موقت برای /etc/fstab ناموفق بود؛ بازگشت سواپ تازه‌ساخته‌شده انجام شد.' ;;
+        zh-tw:setup_swap_2g_fstab_tmp_create_failed_rolled_back) echo '/etc/fstab 臨時檔案建立失敗；已回滾新建的交換空間。' ;;
+        ja:setup_swap_2g_fstab_tmp_create_failed_rolled_back) echo '/etc/fstab 用の一時ファイルを作成できませんでした。新規作成したスワップはロールバックしました。' ;;
+        zh:setup_swap_2g_fstab_write_failed_swap_stuck) echo '/etc/fstab 写入失败且 Swap 无法安全回滚；已保留恢复材料。' ;;
+        en:setup_swap_2g_fstab_write_failed_swap_stuck) echo 'Writing /etc/fstab failed, and swap cannot be safely rolled back; recovery materials were retained.' ;;
+        ru:setup_swap_2g_fstab_write_failed_swap_stuck) echo 'Запись в /etc/fstab не удалась, а своп нельзя безопасно откатить; материалы для восстановления сохранены.' ;;
+        fa:setup_swap_2g_fstab_write_failed_swap_stuck) echo 'نوشتن در /etc/fstab ناموفق بود و بازگشت ایمن سواپ ممکن نیست؛ موارد لازم برای بازیابی نگه داشته شد.' ;;
+        zh-tw:setup_swap_2g_fstab_write_failed_swap_stuck) echo '/etc/fstab 寫入失敗，且交換空間無法安全回滾；已保留恢復材料。' ;;
+        ja:setup_swap_2g_fstab_write_failed_swap_stuck) echo '/etc/fstab への書き込みに失敗し、スワップも安全にロールバックできません。復旧に必要なものは保持しました。' ;;
+        zh:setup_swap_2g_fstab_write_failed_rolled_back) echo '/etc/fstab 写入失败；已回滚新建 Swap。' ;;
+        en:setup_swap_2g_fstab_write_failed_rolled_back) echo 'Writing /etc/fstab failed; the newly created swap was rolled back.' ;;
+        ru:setup_swap_2g_fstab_write_failed_rolled_back) echo 'Запись в /etc/fstab не удалась; выполнен откат нового свопа.' ;;
+        fa:setup_swap_2g_fstab_write_failed_rolled_back) echo 'نوشتن در /etc/fstab ناموفق بود؛ بازگشت سواپ تازه‌ساخته‌شده انجام شد.' ;;
+        zh-tw:setup_swap_2g_fstab_write_failed_rolled_back) echo '/etc/fstab 寫入失敗；已回滾新建的交換空間。' ;;
+        ja:setup_swap_2g_fstab_write_failed_rolled_back) echo '/etc/fstab への書き込みに失敗しました。新規作成したスワップはロールバックしました。' ;;
+        zh:setup_swap_2g_fstab_perm_failed_swap_stuck) echo '/etc/fstab 权限保留失败且 Swap 无法安全回滚；已保留恢复材料。' ;;
+        en:setup_swap_2g_fstab_perm_failed_swap_stuck) echo 'Failed to preserve /etc/fstab permissions, and swap cannot be safely rolled back; recovery materials were retained.' ;;
+        ru:setup_swap_2g_fstab_perm_failed_swap_stuck) echo 'Не удалось сохранить права /etc/fstab, а своп нельзя безопасно откатить; материалы для восстановления сохранены.' ;;
+        fa:setup_swap_2g_fstab_perm_failed_swap_stuck) echo 'حفظ مجوزهای /etc/fstab ناموفق بود و بازگشت ایمن سواپ ممکن نیست؛ موارد لازم برای بازیابی نگه داشته شد.' ;;
+        zh-tw:setup_swap_2g_fstab_perm_failed_swap_stuck) echo '/etc/fstab 權限保留失敗，且交換空間無法安全回滾；已保留恢復材料。' ;;
+        ja:setup_swap_2g_fstab_perm_failed_swap_stuck) echo '/etc/fstab の権限を保持できず、スワップも安全にロールバックできません。復旧に必要なものは保持しました。' ;;
+        zh:setup_swap_2g_fstab_perm_failed_rolled_back) echo '/etc/fstab 权限保留失败；已回滚新建 Swap。' ;;
+        en:setup_swap_2g_fstab_perm_failed_rolled_back) echo 'Failed to preserve /etc/fstab permissions; the newly created swap was rolled back.' ;;
+        ru:setup_swap_2g_fstab_perm_failed_rolled_back) echo 'Не удалось сохранить права /etc/fstab; выполнен откат нового свопа.' ;;
+        fa:setup_swap_2g_fstab_perm_failed_rolled_back) echo 'حفظ مجوزهای /etc/fstab ناموفق بود؛ بازگشت سواپ تازه‌ساخته‌شده انجام شد.' ;;
+        zh-tw:setup_swap_2g_fstab_perm_failed_rolled_back) echo '/etc/fstab 權限保留失敗；已回滾新建的交換空間。' ;;
+        ja:setup_swap_2g_fstab_perm_failed_rolled_back) echo '/etc/fstab の権限を保持できませんでした。新規作成したスワップはロールバックしました。' ;;
+        zh:setup_swap_2g_fstab_commit_failed_swap_stuck) echo '/etc/fstab 原子提交失败且 Swap 无法安全回滚；已保留恢复材料。' ;;
+        en:setup_swap_2g_fstab_commit_failed_swap_stuck) echo 'Atomic commit of /etc/fstab failed, and swap cannot be safely rolled back; recovery materials were retained.' ;;
+        ru:setup_swap_2g_fstab_commit_failed_swap_stuck) echo 'Атомарная фиксация /etc/fstab не удалась, а своп нельзя безопасно откатить; материалы для восстановления сохранены.' ;;
+        fa:setup_swap_2g_fstab_commit_failed_swap_stuck) echo 'ثبت اتمی /etc/fstab ناموفق بود و بازگشت ایمن سواپ ممکن نیست؛ موارد لازم برای بازیابی نگه داشته شد.' ;;
+        zh-tw:setup_swap_2g_fstab_commit_failed_swap_stuck) echo '/etc/fstab 原子提交失敗，且交換空間無法安全回滾；已保留恢復材料。' ;;
+        ja:setup_swap_2g_fstab_commit_failed_swap_stuck) echo '/etc/fstab のアトミックコミットに失敗し、スワップも安全にロールバックできません。復旧に必要なものは保持しました。' ;;
+        zh:setup_swap_2g_fstab_commit_failed_rolled_back) echo '/etc/fstab 原子提交失败；已回滚新建 Swap。' ;;
+        en:setup_swap_2g_fstab_commit_failed_rolled_back) echo 'Atomic commit of /etc/fstab failed; the newly created swap was rolled back.' ;;
+        ru:setup_swap_2g_fstab_commit_failed_rolled_back) echo 'Атомарная фиксация /etc/fstab не удалась; выполнен откат нового свопа.' ;;
+        fa:setup_swap_2g_fstab_commit_failed_rolled_back) echo 'ثبت اتمی /etc/fstab ناموفق بود؛ بازگشت سواپ تازه‌ساخته‌شده انجام شد.' ;;
+        zh-tw:setup_swap_2g_fstab_commit_failed_rolled_back) echo '/etc/fstab 原子提交失敗；已回滾新建的交換空間。' ;;
+        ja:setup_swap_2g_fstab_commit_failed_rolled_back) echo '/etc/fstab のアトミックコミットに失敗しました。新規作成したスワップはロールバックしました。' ;;
+        zh:setup_swap_2g_ownership_marker_write_failed_incomplete) echo 'Swap ownership marker 写入失败，自动回滚未完成；保留 fstab 备份：%s' ;;
+        en:setup_swap_2g_ownership_marker_write_failed_incomplete) echo 'Failed to write the swap ownership marker, and automatic rollback is incomplete; retaining the fstab backup: %s' ;;
+        ru:setup_swap_2g_ownership_marker_write_failed_incomplete) echo 'Не удалось записать маркер принадлежности свопа, автоматический откат не завершён; резервная копия fstab сохранена: %s' ;;
+        fa:setup_swap_2g_ownership_marker_write_failed_incomplete) echo 'نوشتن نشانگر مالکیت سواپ ناموفق بود و بازگشت خودکار کامل نشده است؛ نسخه پشتیبان fstab نگه داشته می‌شود: %s' ;;
+        zh-tw:setup_swap_2g_ownership_marker_write_failed_incomplete) echo '交換空間所有權標記寫入失敗，自動回滾未完成；保留 fstab 備份：%s' ;;
+        ja:setup_swap_2g_ownership_marker_write_failed_incomplete) echo 'スワップの所有権マーカーを書き込めず、自動ロールバックも未完了です。fstab のバックアップを保持します: %s' ;;
+        zh:setup_swap_2g_ownership_marker_write_failed_check) echo 'Swap 归属标记写入失败且自动回滚不完整；已保留恢复材料，请立即检查 /etc/fstab 与 /swapfile。' ;;
+        en:setup_swap_2g_ownership_marker_write_failed_check) echo 'Failed to write the swap ownership marker, and automatic rollback is incomplete; recovery materials were retained. Check /etc/fstab and /swapfile immediately.' ;;
+        ru:setup_swap_2g_ownership_marker_write_failed_check) echo 'Не удалось записать маркер принадлежности свопа, автоматический откат не завершён; материалы для восстановления сохранены. Немедленно проверьте /etc/fstab и /swapfile.' ;;
+        fa:setup_swap_2g_ownership_marker_write_failed_check) echo 'نوشتن نشانگر مالکیت سواپ ناموفق بود و بازگشت خودکار کامل نشده است؛ موارد لازم برای بازیابی نگه داشته شد. فوراً /etc/fstab و /swapfile را بررسی کنید.' ;;
+        zh-tw:setup_swap_2g_ownership_marker_write_failed_check) echo '交換空間所有權標記寫入失敗，且自動回滾不完整；已保留恢復材料，請立即檢查 /etc/fstab 與 /swapfile。' ;;
+        ja:setup_swap_2g_ownership_marker_write_failed_check) echo 'スワップの所有権マーカーを書き込めず、自動ロールバックも未完了です。復旧に必要なものは保持しました。直ちに /etc/fstab と /swapfile を確認してください。' ;;
+        zh:setup_swap_2g_ownership_marker_write_failed_rolled_back) echo 'Swap 归属标记写入失败；已完整回滚 A-Box 新建 Swap。' ;;
+        en:setup_swap_2g_ownership_marker_write_failed_rolled_back) echo 'Failed to write the swap ownership marker; the swap newly created by A-Box was fully rolled back.' ;;
+        ru:setup_swap_2g_ownership_marker_write_failed_rolled_back) echo 'Не удалось записать маркер принадлежности свопа; своп, созданный A-Box, полностью отменён откатом.' ;;
+        fa:setup_swap_2g_ownership_marker_write_failed_rolled_back) echo 'نوشتن نشانگر مالکیت سواپ ناموفق بود؛ بازگشت سواپ تازه‌ساخته‌شده توسط A-Box به‌طور کامل انجام شد.' ;;
+        zh-tw:setup_swap_2g_ownership_marker_write_failed_rolled_back) echo '交換空間所有權標記寫入失敗；已完整回滾 A-Box 新建的交換空間。' ;;
+        ja:setup_swap_2g_ownership_marker_write_failed_rolled_back) echo 'スワップの所有権マーカーを書き込めませんでした。A-Box が新規作成したスワップは完全にロールバックしました。' ;;
+        zh:setup_swap_2g_fstab_unmarked_entry_skip) echo '/etc/fstab 已有未标记的 /swapfile 条目；本次不写入托管区块、也不声明所有权。' ;;
+        en:setup_swap_2g_fstab_unmarked_entry_skip) echo '/etc/fstab already contains an unmarked /swapfile entry; no managed block will be written and no ownership will be claimed this time.' ;;
+        ru:setup_swap_2g_fstab_unmarked_entry_skip) echo 'В /etc/fstab уже есть запись /swapfile без метки; в этот раз управляемый блок не будет записан и принадлежность A-Box не будет заявлена.' ;;
+        fa:setup_swap_2g_fstab_unmarked_entry_skip) echo '/etc/fstab از قبل ورودی بدون نشان برای /swapfile دارد؛ این بار بلوک تحت مدیریت نوشته نمی‌شود و مالکیت نیز اعلام نخواهد شد.' ;;
+        zh-tw:setup_swap_2g_fstab_unmarked_entry_skip) echo '/etc/fstab 已有未標記的 /swapfile 項目；本次不寫入託管區塊，也不宣告所有權。' ;;
+        ja:setup_swap_2g_fstab_unmarked_entry_skip) echo '/etc/fstab にはマーカーのない /swapfile エントリが既にあります。今回は管理用ブロックを書き込まず、所有権も宣言しません。' ;;
+        zh:setup_swap_2g_tmp_backup_cleanup_failed) echo 'Swap 临时备份清理失败；Swap 已部署但安全备份残留，请检查 /etc/.fstab.A-Box-setup-backup.*。' ;;
+        en:setup_swap_2g_tmp_backup_cleanup_failed) echo 'Failed to clean up the temporary swap backup; swap has been deployed, but safety backup files remain. Check /etc/.fstab.A-Box-setup-backup.*.' ;;
+        ru:setup_swap_2g_tmp_backup_cleanup_failed) echo 'Не удалось удалить временную резервную копию свопа; своп развёрнут, но страховочные резервные копии остались. Проверьте /etc/.fstab.A-Box-setup-backup.*.' ;;
+        fa:setup_swap_2g_tmp_backup_cleanup_failed) echo 'پاک‌سازی نسخه پشتیبان موقت سواپ ناموفق بود؛ سواپ مستقر شده، اما نسخه‌های پشتیبان ایمنی باقی مانده‌اند. /etc/.fstab.A-Box-setup-backup.* را بررسی کنید.' ;;
+        zh-tw:setup_swap_2g_tmp_backup_cleanup_failed) echo '交換空間臨時備份清理失敗；交換空間已部署，但安全備份仍有殘留，請檢查 /etc/.fstab.A-Box-setup-backup.*。' ;;
+        ja:setup_swap_2g_tmp_backup_cleanup_failed) echo 'スワップの一時バックアップを削除できませんでした。スワップはデプロイ済みですが、安全確保用のバックアップが残っています。/etc/.fstab.A-Box-setup-backup.* を確認してください。' ;;
+        zh:setup_swap_2g_existing_swapfile_not_abox) echo '已存在的 /swapfile 非 A-Box 创建文件；已启用但不修改 /etc/fstab，也不会声明所有权。' ;;
+        en:setup_swap_2g_existing_swapfile_not_abox) echo 'The existing /swapfile was not created by A-Box; it has been activated, but /etc/fstab will not be modified and ownership will not be claimed.' ;;
+        ru:setup_swap_2g_existing_swapfile_not_abox) echo 'Существующий /swapfile создан не A-Box; он активирован, но /etc/fstab изменяться не будет и принадлежность A-Box не будет заявлена.' ;;
+        fa:setup_swap_2g_existing_swapfile_not_abox) echo 'فایل موجود /swapfile را A-Box ایجاد نکرده است؛ فعال شده، اما /etc/fstab تغییر نمی‌کند و مالکیت نیز اعلام نخواهد شد.' ;;
+        zh-tw:setup_swap_2g_existing_swapfile_not_abox) echo '現有的 /swapfile 並非 A-Box 建立的檔案；已啟用，但不修改 /etc/fstab，也不宣告所有權。' ;;
+        ja:setup_swap_2g_existing_swapfile_not_abox) echo '既存の /swapfile は A-Box が作成したファイルではありません。有効化しましたが、/etc/fstab は変更せず、所有権も宣言しません。' ;;
+        zh:apply_vps_tune_snapshot_incomplete) echo '检测到未完成的调优快照；请先检查并恢复/清理该快照。' ;;
+        en:apply_vps_tune_snapshot_incomplete) echo 'An incomplete tuning snapshot was detected; inspect it first, then restore or clean it up.' ;;
+        ru:apply_vps_tune_snapshot_incomplete) echo 'Обнаружен незавершённый снимок настройки; сначала проверьте его, затем восстановите или очистите.' ;;
+        fa:apply_vps_tune_snapshot_incomplete) echo 'یک عکس ناتمام از تنظیمات شناسایی شد؛ ابتدا آن را بررسی و سپس بازیابی یا پاک‌سازی کنید.' ;;
+        zh-tw:apply_vps_tune_snapshot_incomplete) echo '偵測到未完成的調校快照；請先檢查並還原或清理該快照。' ;;
+        ja:apply_vps_tune_snapshot_incomplete) echo '未完了のチューニングスナップショットが検出されました。先に確認し、復元またはクリーンアップしてください。' ;;
+        zh:apply_vps_tune_already_applied) echo 'VPS 调优已全部应用，无需重复操作。' ;;
+        en:apply_vps_tune_already_applied) echo 'All VPS tuning settings have already been applied; no further action is needed.' ;;
+        ru:apply_vps_tune_already_applied) echo 'Все настройки VPS уже применены; повторять операцию не требуется.' ;;
+        fa:apply_vps_tune_already_applied) echo 'همهٔ تنظیمات VPS قبلاً اعمال شده‌اند؛ نیازی به تکرار عملیات نیست.' ;;
+        zh-tw:apply_vps_tune_already_applied) echo 'VPS 調校已全部套用，無需重複操作。' ;;
+        ja:apply_vps_tune_already_applied) echo 'VPS チューニングはすべて適用済みです。操作を繰り返す必要はありません。' ;;
+        zh:apply_vps_tune_missing_items_found) echo '检测到未应用的调优项：' ;;
+        en:apply_vps_tune_missing_items_found) echo 'The following tuning items have not been applied:' ;;
+        ru:apply_vps_tune_missing_items_found) echo 'Обнаружены неприменённые пункты настройки:' ;;
+        fa:apply_vps_tune_missing_items_found) echo 'موارد اعمال‌نشدهٔ تنظیمات شناسایی شدند:' ;;
+        zh-tw:apply_vps_tune_missing_items_found) echo '偵測到尚未套用的調校項目：' ;;
+        ja:apply_vps_tune_missing_items_found) echo '未適用のチューニング項目が検出されました：' ;;
+        zh:apply_vps_tune_keep_snapshot_fill_missing) echo '保留已有调优快照（恢复时仍回到最初状态），仅补齐缺失项。' ;;
+        en:apply_vps_tune_keep_snapshot_fill_missing) echo 'The existing tuning snapshot is retained (restoration still returns to the original state); only missing items are applied.' ;;
+        ru:apply_vps_tune_keep_snapshot_fill_missing) echo 'Существующий снимок настройки сохраняется (восстановление по-прежнему вернёт исходное состояние); применяются только недостающие пункты.' ;;
+        fa:apply_vps_tune_keep_snapshot_fill_missing) echo 'عکس موجود از تنظیمات حفظ می‌شود (بازیابی همچنان به حالت اولیه برمی‌گردد)؛ فقط موارد جاافتاده تکمیل می‌شوند.' ;;
+        zh-tw:apply_vps_tune_keep_snapshot_fill_missing) echo '保留既有調校快照（還原時仍會回到最初狀態），僅補齊缺少的項目。' ;;
+        ja:apply_vps_tune_keep_snapshot_fill_missing) echo '既存のチューニングスナップショットを保持し（復元時は引き続き最初の状態に戻ります）、不足項目のみを適用します。' ;;
+        zh:apply_vps_tune_limits_write_failed) echo 'limits 配置原子写入失败，已恢复原状态。' ;;
+        en:apply_vps_tune_limits_write_failed) echo 'Atomic write of the limits configuration failed; the original state was restored.' ;;
+        ru:apply_vps_tune_limits_write_failed) echo 'Атомарная запись конфигурации limits не удалась; исходное состояние восстановлено.' ;;
+        fa:apply_vps_tune_limits_write_failed) echo 'نوشتن اتمی پیکربندی limits ناموفق بود؛ حالت اولیه بازیابی شد.' ;;
+        zh-tw:apply_vps_tune_limits_write_failed) echo 'limits 配置原子寫入失敗，已還原原始狀態。' ;;
+        ja:apply_vps_tune_limits_write_failed) echo 'limits 設定のアトミック書き込みに失敗しました。元の状態に復元しました。' ;;
+        zh:apply_vps_tune_sysctl_write_failed) echo 'sysctl 调优项写入失败，已恢复原状态。' ;;
+        en:apply_vps_tune_sysctl_write_failed) echo 'Failed to write the sysctl tuning settings; the original state was restored.' ;;
+        ru:apply_vps_tune_sysctl_write_failed) echo 'Не удалось записать настройки sysctl; исходное состояние восстановлено.' ;;
+        fa:apply_vps_tune_sysctl_write_failed) echo 'نوشتن موارد تنظیمات sysctl ناموفق بود؛ حالت اولیه بازیابی شد.' ;;
+        zh-tw:apply_vps_tune_sysctl_write_failed) echo 'sysctl 調校項目寫入失敗，已還原原始狀態。' ;;
+        ja:apply_vps_tune_sysctl_write_failed) echo 'sysctl チューニング項目の書き込みに失敗しました。元の状態に復元しました。' ;;
+        zh:apply_vps_tune_bbr_module_write_failed) echo 'BBR 内核模块持久加载配置写入失败。' ;;
+        en:apply_vps_tune_bbr_module_write_failed) echo 'Failed to write the configuration for persistent loading of the BBR kernel module.' ;;
+        ru:apply_vps_tune_bbr_module_write_failed) echo 'Не удалось записать конфигурацию постоянной загрузки модуля ядра BBR.' ;;
+        fa:apply_vps_tune_bbr_module_write_failed) echo 'نوشتن پیکربندی بارگذاری ماندگار ماژول هستهٔ BBR ناموفق بود.' ;;
+        zh-tw:apply_vps_tune_bbr_module_write_failed) echo 'BBR 核心模組的持久載入配置寫入失敗。' ;;
+        ja:apply_vps_tune_bbr_module_write_failed) echo 'BBR カーネルモジュールの永続的な読み込み設定の書き込みに失敗しました。' ;;
+        zh:apply_vps_tune_no_bbr_skip) echo '当前内核未提供 BBR，跳过 BBR/FQ 设置。' ;;
+        en:apply_vps_tune_no_bbr_skip) echo 'BBR is unavailable in the current kernel; skipping BBR/FQ settings.' ;;
+        ru:apply_vps_tune_no_bbr_skip) echo 'В текущем ядре BBR недоступен; настройки BBR/FQ пропущены.' ;;
+        fa:apply_vps_tune_no_bbr_skip) echo 'BBR در هستهٔ فعلی در دسترس نیست؛ تنظیمات BBR/FQ رد می‌شوند.' ;;
+        zh-tw:apply_vps_tune_no_bbr_skip) echo '目前核心未提供 BBR，跳過 BBR/FQ 設定。' ;;
+        ja:apply_vps_tune_no_bbr_skip) echo '現在のカーネルでは BBR が利用できないため、BBR/FQ 設定をスキップします。' ;;
+        zh:apply_vps_tune_missing_filled) echo '缺失项已补齐，系统调优已全部应用；未强制启用 IP forwarding，也未修改核心 JSON 配置。' ;;
+        en:apply_vps_tune_missing_filled) echo 'Missing items have been filled in, and all system tuning settings are now applied; IP forwarding was not forcibly enabled, and the core JSON configuration was not modified.' ;;
+        ru:apply_vps_tune_missing_filled) echo 'Недостающие пункты добавлены, все настройки системы применены; IP forwarding не включался принудительно, JSON-конфигурация ядра не изменялась.' ;;
+        fa:apply_vps_tune_missing_filled) echo 'موارد جاافتاده تکمیل شدند و همهٔ تنظیمات سیستم اعمال شده‌اند؛ IP forwarding به‌اجبار فعال نشده و پیکربندی JSON هسته نیز تغییر نکرده است.' ;;
+        zh-tw:apply_vps_tune_missing_filled) echo '缺少的項目已補齊，系統調校已全部套用；未強制啟用 IP forwarding，也未修改核心 JSON 配置。' ;;
+        ja:apply_vps_tune_missing_filled) echo '不足項目を補い、システムチューニングをすべて適用しました。IP forwarding の強制有効化や、コアの JSON 設定の変更は行っていません。' ;;
+        zh:apply_vps_tune_items_still_inactive) echo '以下调优项仍未生效（可能为内核限制）：' ;;
+        en:apply_vps_tune_items_still_inactive) echo 'The following tuning items are still not in effect (possibly due to kernel limitations):' ;;
+        ru:apply_vps_tune_items_still_inactive) echo 'Следующие пункты настройки всё ещё не действуют (возможно, из-за ограничений ядра):' ;;
+        fa:apply_vps_tune_items_still_inactive) echo 'موارد زیر از تنظیمات هنوز مؤثر نشده‌اند (ممکن است به‌دلیل محدودیت هسته باشد):' ;;
+        zh-tw:apply_vps_tune_items_still_inactive) echo '以下調校項目仍未生效（可能是核心限制）：' ;;
+        ja:apply_vps_tune_items_still_inactive) echo '次のチューニング項目はまだ有効になっていません（カーネルの制限が原因の可能性があります）：' ;;
+        zh:view_config_no_persisted_vars) echo '未检测到持久化配置变量。' ;;
+        en:view_config_no_persisted_vars) echo 'No persisted configuration variables were detected.' ;;
+        ru:view_config_no_persisted_vars) echo 'Сохранённые переменные конфигурации не обнаружены.' ;;
+        fa:view_config_no_persisted_vars) echo 'هیچ متغیر پیکربندی ماندگاری شناسایی نشد.' ;;
+        zh-tw:view_config_no_persisted_vars) echo '未偵測到持久化配置變數。' ;;
+        ja:view_config_no_persisted_vars) echo '永続化された設定変数が検出されませんでした。' ;;
+        zh:view_config_state_file_invalid) echo 'A-Box 状态文件无效或权限不安全。' ;;
+        en:view_config_state_file_invalid) echo 'The A-Box state file is invalid or its permissions are insecure.' ;;
+        ru:view_config_state_file_invalid) echo 'Файл состояния A-Box недействителен или имеет небезопасные права доступа.' ;;
+        fa:view_config_state_file_invalid) echo 'فایل وضعیت A-Box نامعتبر است یا مجوزهای آن امن نیستند.' ;;
+        zh-tw:view_config_state_file_invalid) echo 'A-Box 狀態檔案無效或權限不安全。' ;;
+        ja:view_config_state_file_invalid) echo 'A-Box 状態ファイルが無効か、権限が安全ではありません。' ;;
+        zh:view_config_public_ip_changed_save_failed) echo '公网 IP 已变化，但持久化更新失败。' ;;
+        en:view_config_public_ip_changed_save_failed) echo 'The public IP has changed, but persisting the update failed.' ;;
+        ru:view_config_public_ip_changed_save_failed) echo 'Публичный IP изменился, но сохранить обновление для постоянного использования не удалось.' ;;
+        fa:view_config_public_ip_changed_save_failed) echo 'IP عمومی تغییر کرده است، اما ذخیرهٔ ماندگار به‌روزرسانی ناموفق بود.' ;;
+        zh-tw:view_config_public_ip_changed_save_failed) echo '公網 IP 已變更，但持久化更新失敗。' ;;
+        ja:view_config_public_ip_changed_save_failed) echo '公開 IP が変更されましたが、更新の永続化に失敗しました。' ;;
+        zh:view_config_hy2_uri_port_invalid) echo 'Hysteria2 分享链接端口参数无效。' ;;
+        en:view_config_hy2_uri_port_invalid) echo 'The port parameter in the Hysteria 2 share link is invalid.' ;;
+        ru:view_config_hy2_uri_port_invalid) echo 'Параметр порта в ссылке для обмена Hysteria 2 недопустим.' ;;
+        fa:view_config_hy2_uri_port_invalid) echo 'پارامتر درگاه در پیوند اشتراک‌گذاری Hysteria 2 نامعتبر است.' ;;
+        zh-tw:view_config_hy2_uri_port_invalid) echo 'Hysteria 2 分享連結的連接埠參數無效。' ;;
+        ja:view_config_hy2_uri_port_invalid) echo 'Hysteria 2 共有リンクのポートパラメータが無効です。' ;;
+        zh:view_config_public_ip_unavailable) echo '未能自动获取公网 IP，分享链接可能不可用。' ;;
+        en:view_config_public_ip_unavailable) echo 'Failed to retrieve the public IP automatically; share links may not work.' ;;
+        ru:view_config_public_ip_unavailable) echo 'Не удалось автоматически получить публичный IP; ссылки для обмена могут не работать.' ;;
+        fa:view_config_public_ip_unavailable) echo 'دریافت خودکار IP عمومی ناموفق بود؛ پیوندهای اشتراک‌گذاری ممکن است کار نکنند.' ;;
+        zh-tw:view_config_public_ip_unavailable) echo '無法自動取得公網 IP，分享連結可能無法使用。' ;;
+        ja:view_config_public_ip_unavailable) echo '公開 IP を自動取得できませんでした。共有リンクが利用できない可能性があります。' ;;
+        zh:view_config_network_params_title) echo '全局拓扑网络参数 (%s)' ;;
+        en:view_config_network_params_title) echo 'Network parameters for the global topology (%s)' ;;
+        ru:view_config_network_params_title) echo 'Сетевые параметры глобальной топологии (%s)' ;;
+        fa:view_config_network_params_title) echo 'پارامترهای شبکهٔ توپولوژی سراسری (%s)' ;;
+        zh-tw:view_config_network_params_title) echo '全域拓撲網路參數 (%s)' ;;
+        ja:view_config_network_params_title) echo 'グローバルトポロジーのネットワークパラメータ (%s)' ;;
+        zh:view_config_engine_stack_label) echo '引擎栈:' ;;
+        en:view_config_engine_stack_label) echo 'Engine stack:' ;;
+        ru:view_config_engine_stack_label) echo 'Стек движков:' ;;
+        fa:view_config_engine_stack_label) echo 'پشتهٔ موتور:' ;;
+        zh-tw:view_config_engine_stack_label) echo '引擎堆疊：' ;;
+        ja:view_config_engine_stack_label) echo 'エンジンスタック：' ;;
+        zh:view_config_mode_label) echo '模式:' ;;
+        en:view_config_mode_label) echo 'Mode:' ;;
+        ru:view_config_mode_label) echo 'Режим:' ;;
+        fa:view_config_mode_label) echo 'حالت:' ;;
+        zh-tw:view_config_mode_label) echo '模式：' ;;
+        ja:view_config_mode_label) echo 'モード：' ;;
+        zh:view_config_single_node_uri_title) echo 'Shadowrocket / v2rayNG / NekoBox 单节点 URI' ;;
+        en:view_config_single_node_uri_title) echo 'Shadowrocket / v2rayNG / NekoBox single-node URI' ;;
+        ru:view_config_single_node_uri_title) echo 'URI одного узла для Shadowrocket / v2rayNG / NekoBox' ;;
+        fa:view_config_single_node_uri_title) echo 'URI تک‌گره برای Shadowrocket / v2rayNG / NekoBox' ;;
+        zh-tw:view_config_single_node_uri_title) echo 'Shadowrocket / v2rayNG / NekoBox 單節點 URI' ;;
+        ja:view_config_single_node_uri_title) echo 'Shadowrocket / v2rayNG / NekoBox 単一ノード URI' ;;
+        zh:view_config_vless_vision_reality_port) echo 'VLESS-Vision-Reality · 端口 %s' ;;
+        en:view_config_vless_vision_reality_port) echo 'VLESS-Vision-Reality · port %s' ;;
+        ru:view_config_vless_vision_reality_port) echo 'VLESS-Vision-Reality · порт %s' ;;
+        fa:view_config_vless_vision_reality_port) echo 'VLESS-Vision-Reality · درگاه %s' ;;
+        zh-tw:view_config_vless_vision_reality_port) echo 'VLESS-Vision-Reality · 連接埠 %s' ;;
+        ja:view_config_vless_vision_reality_port) echo 'VLESS-Vision-Reality · ポート %s' ;;
+        zh:view_config_vless_xhttp_reality_port) echo 'VLESS-XHTTP-Reality · 端口 %s' ;;
+        en:view_config_vless_xhttp_reality_port) echo 'VLESS-XHTTP-Reality · port %s' ;;
+        ru:view_config_vless_xhttp_reality_port) echo 'VLESS-XHTTP-Reality · порт %s' ;;
+        fa:view_config_vless_xhttp_reality_port) echo 'VLESS-XHTTP-Reality · درگاه %s' ;;
+        zh-tw:view_config_vless_xhttp_reality_port) echo 'VLESS-XHTTP-Reality · 連接埠 %s' ;;
+        ja:view_config_vless_xhttp_reality_port) echo 'VLESS-XHTTP-Reality · ポート %s' ;;
+        zh:view_config_hy2_fingerprint_unavailable) echo 'Hysteria 2 证书指纹不可用，已拒发该条分享链接（pin 分支无有效 pin 时不输出 insecure 空 pin 链接）；其余链接不受影响。' ;;
+        en:view_config_hy2_fingerprint_unavailable) echo 'The Hysteria 2 certificate fingerprint is unavailable; this share link was withheld (the pin branch does not output an insecure link with an empty pin when no valid pin is available); other links are unaffected.' ;;
+        ru:view_config_hy2_fingerprint_unavailable) echo 'Отпечаток сертификата Hysteria 2 недоступен; эта ссылка для обмена не выдана (ветка pin при отсутствии действительного pin не выводит ссылку insecure с пустым pin); остальные ссылки не затронуты.' ;;
+        fa:view_config_hy2_fingerprint_unavailable) echo 'اثر انگشت گواهی Hysteria 2 در دسترس نیست؛ این پیوند اشتراک‌گذاری صادر نشد (شاخهٔ pin در نبود pin معتبر، پیوند insecure با pin خالی تولید نمی‌کند)؛ سایر پیوندها تحت تأثیر نیستند.' ;;
+        zh-tw:view_config_hy2_fingerprint_unavailable) echo 'Hysteria 2 憑證指紋不可用，已拒絕輸出這條分享連結（pin 分支沒有有效 pin 時，不輸出 insecure 且 pin 為空的連結）；其餘連結不受影響。' ;;
+        ja:view_config_hy2_fingerprint_unavailable) echo 'Hysteria 2 の証明書フィンガープリントが利用できないため、この共有リンクの出力を拒否しました（pin 分岐では有効な pin がない場合、pin が空の insecure リンクを出力しません）。他のリンクには影響しません。' ;;
+        zh:view_config_hy2_port) echo 'Hysteria 2 · 端口 %s' ;;
+        en:view_config_hy2_port) echo 'Hysteria 2 · port %s' ;;
+        ru:view_config_hy2_port) echo 'Hysteria 2 · порт %s' ;;
+        fa:view_config_hy2_port) echo 'Hysteria 2 · درگاه %s' ;;
+        zh-tw:view_config_hy2_port) echo 'Hysteria 2 · 連接埠 %s' ;;
+        ja:view_config_hy2_port) echo 'Hysteria 2 · ポート %s' ;;
+        zh:view_config_port_hop_interval_note) echo '端口跳跃默认间隔 30s；不建议低于 5s。' ;;
+        en:view_config_port_hop_interval_note) echo 'The default port-hopping interval is 30s; intervals below 5s are not recommended.' ;;
+        ru:view_config_port_hop_interval_note) echo 'Интервал смены портов по умолчанию — 30s; значения ниже 5s не рекомендуются.' ;;
+        fa:view_config_port_hop_interval_note) echo 'فاصلهٔ پیش‌فرض پرش درگاه 30s است؛ فاصله‌های کمتر از 5s توصیه نمی‌شوند.' ;;
+        zh-tw:view_config_port_hop_interval_note) echo '連接埠跳躍的預設間隔為 30s；不建議低於 5s。' ;;
+        ja:view_config_port_hop_interval_note) echo 'ポートホッピングの既定間隔は 30s です。5s 未満は推奨しません。' ;;
+        zh:view_config_ss2022_port) echo 'Shadowsocks-2022 · 端口 %s' ;;
+        en:view_config_ss2022_port) echo 'Shadowsocks-2022 · port %s' ;;
+        ru:view_config_ss2022_port) echo 'Shadowsocks-2022 · порт %s' ;;
+        fa:view_config_ss2022_port) echo 'Shadowsocks-2022 · درگاه %s' ;;
+        zh-tw:view_config_ss2022_port) echo 'Shadowsocks-2022 · 連接埠 %s' ;;
+        ja:view_config_ss2022_port) echo 'Shadowsocks-2022 · ポート %s' ;;
+        zh:view_config_clash_yaml_failed) echo 'Clash/Mihomo YAML 配置生成失败。' ;;
+        en:view_config_clash_yaml_failed) echo 'Failed to generate the Clash/Mihomo YAML configuration.' ;;
+        ru:view_config_clash_yaml_failed) echo 'Не удалось создать конфигурацию YAML для Clash/Mihomo.' ;;
+        fa:view_config_clash_yaml_failed) echo 'تولید پیکربندی YAML برای Clash/Mihomo ناموفق بود.' ;;
+        zh-tw:view_config_clash_yaml_failed) echo 'Clash/Mihomo YAML 配置產生失敗。' ;;
+        ja:view_config_clash_yaml_failed) echo 'Clash/Mihomo の YAML 設定の生成に失敗しました。' ;;
+        zh:view_config_clash_full_config_title) echo 'Clash / Mihomo 完整配置' ;;
+        en:view_config_clash_full_config_title) echo 'Clash / Mihomo full configuration' ;;
+        ru:view_config_clash_full_config_title) echo 'Полная конфигурация Clash / Mihomo' ;;
+        fa:view_config_clash_full_config_title) echo 'پیکربندی کامل Clash / Mihomo' ;;
+        zh-tw:view_config_clash_full_config_title) echo 'Clash / Mihomo 完整配置' ;;
+        ja:view_config_clash_full_config_title) echo 'Clash / Mihomo の完全な設定' ;;
+        zh:view_config_clash_import_note) echo 'Clash/Mihomo 类客户端请导入完整 YAML 或远程订阅 URL；不要扫描上方单条 vless:// / hysteria2:// / ss://。' ;;
+        en:view_config_clash_import_note) echo 'For Clash/Mihomo-compatible clients, import the complete YAML or a remote subscription URL; do not scan the individual vless:// / hysteria2:// / ss:// links above.' ;;
+        ru:view_config_clash_import_note) echo 'В клиентах семейства Clash/Mihomo импортируйте полный YAML или URL удалённой подписки; не сканируйте отдельные ссылки vless:// / hysteria2:// / ss:// выше.' ;;
+        fa:view_config_clash_import_note) echo 'در کلاینت‌های خانوادهٔ Clash/Mihomo، YAML کامل یا URL اشتراک راه دور را وارد کنید؛ پیوندهای تکی vless:// / hysteria2:// / ss:// در بالا را اسکن نکنید.' ;;
+        zh-tw:view_config_clash_import_note) echo 'Clash/Mihomo 類型的用戶端請匯入完整 YAML 或遠端訂閱 URL；不要掃描上方單條 vless:// / hysteria2:// / ss:// 連結。' ;;
+        ja:view_config_clash_import_note) echo 'Clash/Mihomo 系クライアントには完全な YAML またはリモートサブスクリプション URL をインポートしてください。上の個別の vless:// / hysteria2:// / ss:// リンクはスキャンしないでください。' ;;
+        zh:view_config_clash_sub_url_missing) echo '未设置 ABOX_CLASH_SUB_URL。若需要 Clash 扫码导入，请把 %s 发布到 HTTPS 后执行：' ;;
+        en:view_config_clash_sub_url_missing) echo 'ABOX_CLASH_SUB_URL is not set. To import into Clash by scanning a QR code, publish %s over HTTPS, then run:' ;;
+        ru:view_config_clash_sub_url_missing) echo 'ABOX_CLASH_SUB_URL не задан. Для импорта в Clash сканированием QR-кода опубликуйте %s по HTTPS, затем выполните:' ;;
+        fa:view_config_clash_sub_url_missing) echo 'ABOX_CLASH_SUB_URL تنظیم نشده است. برای وارد کردن در Clash با اسکن کد QR، %s را روی HTTPS منتشر کنید و سپس اجرا کنید:' ;;
+        zh-tw:view_config_clash_sub_url_missing) echo '尚未設定 ABOX_CLASH_SUB_URL。若要在 Clash 掃碼匯入，請先將 %s 發布至 HTTPS，再執行：' ;;
+        ja:view_config_clash_sub_url_missing) echo 'ABOX_CLASH_SUB_URL が設定されていません。Clash で QR コードをスキャンしてインポートするには、%s を HTTPS で公開してから次を実行してください：' ;;
+        zh:view_config_clash_yaml_preview_title) echo 'Clash / Mihomo YAML 预览' ;;
+        en:view_config_clash_yaml_preview_title) echo 'Clash / Mihomo YAML preview' ;;
+        ru:view_config_clash_yaml_preview_title) echo 'Предпросмотр YAML для Clash / Mihomo' ;;
+        fa:view_config_clash_yaml_preview_title) echo 'پیش‌نمایش YAML برای Clash / Mihomo' ;;
+        zh-tw:view_config_clash_yaml_preview_title) echo 'Clash / Mihomo YAML 預覽' ;;
+        ja:view_config_clash_yaml_preview_title) echo 'Clash / Mihomo YAML プレビュー' ;;
+        zh:view_config_singbox_outbound_example) echo 'Sing-box 出站示例' ;;
+        en:view_config_singbox_outbound_example) echo 'sing-box outbound example' ;;
+        ru:view_config_singbox_outbound_example) echo 'Пример исходящего подключения sing-box' ;;
+        fa:view_config_singbox_outbound_example) echo 'نمونهٔ خروجی sing-box' ;;
+        zh-tw:view_config_singbox_outbound_example) echo 'sing-box 出站範例' ;;
+        ja:view_config_singbox_outbound_example) echo 'sing-box アウトバウンドの例' ;;
+        zh:view_config_singbox_tls_failed_skip) echo 'Sing-box TLS 配置生成失败；已省略无效的出站示例。' ;;
+        en:view_config_singbox_tls_failed_skip) echo 'Failed to generate the sing-box TLS configuration; the invalid outbound example was omitted.' ;;
+        ru:view_config_singbox_tls_failed_skip) echo 'Не удалось создать конфигурацию TLS для sing-box; недействительный пример исходящего подключения пропущен.' ;;
+        fa:view_config_singbox_tls_failed_skip) echo 'تولید پیکربندی TLS برای sing-box ناموفق بود؛ نمونهٔ خروجی نامعتبر حذف شد.' ;;
+        zh-tw:view_config_singbox_tls_failed_skip) echo 'sing-box TLS 配置產生失敗；已省略無效的出站範例。' ;;
+        ja:view_config_singbox_tls_failed_skip) echo 'sing-box の TLS 設定の生成に失敗しました。無効なアウトバウンド例は省略しました。' ;;
+        zh:view_config_hy2_port_hop_state_invalid) echo 'Hysteria 2 端口跳跃状态缺失或非法；已省略无效的 Sing-box 出站示例。' ;;
+        en:view_config_hy2_port_hop_state_invalid) echo 'The Hysteria 2 port-hopping state is missing or invalid; the invalid sing-box outbound example was omitted.' ;;
+        ru:view_config_hy2_port_hop_state_invalid) echo 'Состояние смены портов Hysteria 2 отсутствует или недопустимо; недействительный пример исходящего подключения sing-box пропущен.' ;;
+        fa:view_config_hy2_port_hop_state_invalid) echo 'وضعیت پرش درگاه Hysteria 2 موجود نیست یا نامعتبر است؛ نمونهٔ خروجی نامعتبر sing-box حذف شد.' ;;
+        zh-tw:view_config_hy2_port_hop_state_invalid) echo 'Hysteria 2 連接埠跳躍狀態缺少或不合法；已省略無效的 sing-box 出站範例。' ;;
+        ja:view_config_hy2_port_hop_state_invalid) echo 'Hysteria 2 のポートホッピング状態が欠落しているか不正です。無効な sing-box アウトバウンド例は省略しました。' ;;
+        zh:view_config_deploy_done) echo '服务池部署完成。' ;;
+        en:view_config_deploy_done) echo 'Service pool deployment completed.' ;;
+        ru:view_config_deploy_done) echo 'Развёртывание пула сервисов завершено.' ;;
+        fa:view_config_deploy_done) echo 'استقرار مجموعهٔ سرویس‌ها به پایان رسید.' ;;
+        zh-tw:view_config_deploy_done) echo '服務池部署完成。' ;;
+        ja:view_config_deploy_done) echo 'サービスプールのデプロイが完了しました。' ;;
+        zh:update_script_resolve_main_commit_failed) echo '无法将 A-Box main 分支解析为不可变 commit；已拒绝 OTA。' ;;
+        en:update_script_resolve_main_commit_failed) echo 'Cannot resolve the A-Box main branch to an immutable commit; OTA has been refused.' ;;
+        ru:update_script_resolve_main_commit_failed) echo 'Не удалось определить неизменяемый commit ветки main A-Box; OTA отклонено.' ;;
+        fa:update_script_resolve_main_commit_failed) echo 'تعیین یک commit تغییرناپذیر برای شاخه main در A-Box ممکن نیست؛ OTA رد شد.' ;;
+        zh-tw:update_script_resolve_main_commit_failed) echo '無法將 A-Box main 分支解析為不可變 commit；已拒絕 OTA。' ;;
+        ja:update_script_resolve_main_commit_failed) echo 'A-Box の main ブランチを不変の commit に解決できません。OTA を拒否しました。' ;;
+        zh:update_script_ota_url_not_immutable) echo 'OTA URL 未指向不可变的 A-Box commit；已拒绝更新。' ;;
+        en:update_script_ota_url_not_immutable) echo 'The OTA URL does not point to an immutable A-Box commit; the update has been refused.' ;;
+        ru:update_script_ota_url_not_immutable) echo 'URL для OTA не указывает на неизменяемый commit A-Box; обновление отклонено.' ;;
+        fa:update_script_ota_url_not_immutable) echo 'نشانی URL مربوط به OTA به یک commit تغییرناپذیر A-Box اشاره نمی‌کند؛ به‌روزرسانی رد شد.' ;;
+        zh-tw:update_script_ota_url_not_immutable) echo 'OTA URL 未指向不可變的 A-Box commit；已拒絕更新。' ;;
+        ja:update_script_ota_url_not_immutable) echo 'OTA URL が A-Box の不変の commit を指していません。更新を拒否しました。' ;;
+        zh:update_script_tmp_create_failed) echo '更新脚本临时文件创建失败。' ;;
+        en:update_script_tmp_create_failed) echo 'Failed to create a temporary file for the update script.' ;;
+        ru:update_script_tmp_create_failed) echo 'Не удалось создать временный файл для скрипта обновления.' ;;
+        fa:update_script_tmp_create_failed) echo 'ایجاد فایل موقت برای اسکریپت به‌روزرسانی ناموفق بود.' ;;
+        zh-tw:update_script_tmp_create_failed) echo '更新腳本臨時檔案建立失敗。' ;;
+        ja:update_script_tmp_create_failed) echo '更新スクリプト用の一時ファイルを作成できませんでした。' ;;
+        zh:update_script_sni_tmp_create_failed) echo 'SNI 数据更新临时文件创建失败。' ;;
+        en:update_script_sni_tmp_create_failed) echo 'Failed to create a temporary file for the SNI data update.' ;;
+        ru:update_script_sni_tmp_create_failed) echo 'Не удалось создать временный файл для обновления данных SNI.' ;;
+        fa:update_script_sni_tmp_create_failed) echo 'ایجاد فایل موقت برای به‌روزرسانی داده‌های SNI ناموفق بود.' ;;
+        zh-tw:update_script_sni_tmp_create_failed) echo 'SNI 資料更新臨時檔案建立失敗。' ;;
+        ja:update_script_sni_tmp_create_failed) echo 'SNI データ更新用の一時ファイルを作成できませんでした。' ;;
+        zh:update_script_sni_verify_tmp_create_failed) echo 'SNI 数据校验临时文件创建失败。' ;;
+        en:update_script_sni_verify_tmp_create_failed) echo 'Failed to create a temporary file for SNI data verification.' ;;
+        ru:update_script_sni_verify_tmp_create_failed) echo 'Не удалось создать временный файл для проверки данных SNI.' ;;
+        fa:update_script_sni_verify_tmp_create_failed) echo 'ایجاد فایل موقت برای بررسی صحت داده‌های SNI ناموفق بود.' ;;
+        zh-tw:update_script_sni_verify_tmp_create_failed) echo 'SNI 資料校驗臨時檔案建立失敗。' ;;
+        ja:update_script_sni_verify_tmp_create_failed) echo 'SNI データ検証用の一時ファイルを作成できませんでした。' ;;
+        zh:update_script_syncing_pinned_commit) echo '正在同步固定 commit 的脚本和 SNI 数据...' ;;
+        en:update_script_syncing_pinned_commit) echo 'Synchronizing the script and SNI data from the pinned commit...' ;;
+        ru:update_script_syncing_pinned_commit) echo 'Синхронизация скрипта и данных SNI из закреплённого commit...' ;;
+        fa:update_script_syncing_pinned_commit) echo 'در حال همگام‌سازی اسکریپت و داده‌های SNI از commit تثبیت‌شده...' ;;
+        zh-tw:update_script_syncing_pinned_commit) echo '正在同步固定 commit 的腳本與 SNI 資料...' ;;
+        ja:update_script_syncing_pinned_commit) echo '固定した commit のスクリプトと SNI データを同期しています...' ;;
+        zh:update_script_download_failed_unchanged) echo '无法下载更新脚本；当前版本未修改。' ;;
+        en:update_script_download_failed_unchanged) echo 'Cannot download the update script; the current version is unchanged.' ;;
+        ru:update_script_download_failed_unchanged) echo 'Не удалось загрузить скрипт обновления; текущая версия не изменена.' ;;
+        fa:update_script_download_failed_unchanged) echo 'دریافت اسکریپت به‌روزرسانی ممکن نیست؛ نسخه فعلی تغییر نکرده است.' ;;
+        zh-tw:update_script_download_failed_unchanged) echo '無法下載更新腳本；目前版本未修改。' ;;
+        ja:update_script_download_failed_unchanged) echo '更新スクリプトをダウンロードできません。現在のバージョンは変更していません。' ;;
+        zh:update_script_ota_script_label) echo 'OTA A-Box 脚本' ;;
+        en:update_script_ota_script_label) echo 'OTA A-Box script' ;;
+        ru:update_script_ota_script_label) echo 'Скрипт A-Box для OTA' ;;
+        fa:update_script_ota_script_label) echo 'اسکریپت A-Box برای OTA' ;;
+        zh-tw:update_script_ota_script_label) echo 'OTA A-Box 腳本' ;;
+        ja:update_script_ota_script_label) echo 'OTA 用 A-Box スクリプト' ;;
+        zh:update_script_verify_failed_unchanged) echo '更新脚本语法或指纹校验失败；当前版本未修改。' ;;
+        en:update_script_verify_failed_unchanged) echo 'Update script syntax or fingerprint verification failed; the current version is unchanged.' ;;
+        ru:update_script_verify_failed_unchanged) echo 'Проверка синтаксиса или отпечатка скрипта обновления не удалась; текущая версия не изменена.' ;;
+        fa:update_script_verify_failed_unchanged) echo 'بررسی نحو یا اثرانگشت اسکریپت به‌روزرسانی ناموفق بود؛ نسخه فعلی تغییر نکرده است.' ;;
+        zh-tw:update_script_verify_failed_unchanged) echo '更新腳本語法或指紋校驗失敗；目前版本未修改。' ;;
+        ja:update_script_verify_failed_unchanged) echo '更新スクリプトの構文またはフィンガープリントの検証に失敗しました。現在のバージョンは変更していません。' ;;
+        zh:update_script_version_direction_failed_unchanged) echo '更新脚本版本方向校验失败；当前版本未修改。' ;;
+        en:update_script_version_direction_failed_unchanged) echo 'Update script version direction verification failed; the current version is unchanged.' ;;
+        ru:update_script_version_direction_failed_unchanged) echo 'Проверка направления изменения версии скрипта обновления не удалась; текущая версия не изменена.' ;;
+        fa:update_script_version_direction_failed_unchanged) echo 'بررسی جهت تغییر نسخه اسکریپت به‌روزرسانی ناموفق بود؛ نسخه فعلی تغییر نکرده است.' ;;
+        zh-tw:update_script_version_direction_failed_unchanged) echo '更新腳本版本方向校驗失敗；目前版本未修改。' ;;
+        ja:update_script_version_direction_failed_unchanged) echo '更新スクリプトのバージョン変更方向の検証に失敗しました。現在のバージョンは変更していません。' ;;
+        zh:update_script_sni_missing_cancelled) echo '同一 commit 的 SNI 数据缺失或校验失败；为避免脚本与数据版本不一致，已取消 OTA。' ;;
+        en:update_script_sni_missing_cancelled) echo 'SNI data for the same commit is missing or failed verification; OTA has been cancelled to avoid a version mismatch between the script and data.' ;;
+        ru:update_script_sni_missing_cancelled) echo 'Данные SNI для того же commit отсутствуют или не прошли проверку; OTA отменено во избежание несовпадения версий скрипта и данных.' ;;
+        fa:update_script_sni_missing_cancelled) echo 'داده‌های SNI مربوط به همان commit موجود نیستند یا بررسی صحت آن‌ها ناموفق بود؛ برای جلوگیری از ناسازگاری نسخه اسکریپت و داده‌ها، OTA لغو شد.' ;;
+        zh-tw:update_script_sni_missing_cancelled) echo '同一 commit 的 SNI 資料缺失或校驗失敗；為避免腳本與資料版本不一致，已取消 OTA。' ;;
+        ja:update_script_sni_missing_cancelled) echo '同じ commit の SNI データがないか、検証に失敗しました。スクリプトとデータのバージョン不一致を避けるため、OTA をキャンセルしました。' ;;
+        zh:update_script_data_dir_check_failed) echo 'A-Box 数据目录归属或权限校验失败；OTA 未修改本地脚本或缓存。' ;;
+        en:update_script_data_dir_check_failed) echo 'A-Box data directory ownership or permissions verification failed; OTA did not modify the local script or cache.' ;;
+        ru:update_script_data_dir_check_failed) echo 'Проверка владельца или прав каталога данных A-Box не удалась; OTA не изменило локальный скрипт или кэш.' ;;
+        fa:update_script_data_dir_check_failed) echo 'بررسی مالک یا مجوزهای پوشه داده‌های A-Box ناموفق بود؛ OTA اسکریپت محلی یا حافظه نهان را تغییر نداد.' ;;
+        zh-tw:update_script_data_dir_check_failed) echo 'A-Box 資料目錄屬主或權限校驗失敗；OTA 未修改本機腳本或快取。' ;;
+        ja:update_script_data_dir_check_failed) echo 'A-Box データディレクトリの所有者または権限の検証に失敗しました。OTA はローカルのスクリプトやキャッシュを変更していません。' ;;
+        zh:update_script_abox_sh_missing_unsafe) echo '当前 A-Box.sh 不存在或路径不安全；拒绝无法回滚的 OTA。' ;;
+        en:update_script_abox_sh_missing_unsafe) echo 'The current A-Box.sh is missing or its path is unsafe; refusing OTA that cannot be rolled back.' ;;
+        ru:update_script_abox_sh_missing_unsafe) echo 'Текущий A-Box.sh отсутствует или его путь небезопасен; в OTA без возможности отката отказано.' ;;
+        fa:update_script_abox_sh_missing_unsafe) echo 'A-Box.sh فعلی موجود نیست یا مسیر آن ناامن است؛ OTA بدون امکان بازگشت رد می‌شود.' ;;
+        zh-tw:update_script_abox_sh_missing_unsafe) echo '目前的 A-Box.sh 不存在或路徑不安全；拒絕無法回滾的 OTA。' ;;
+        ja:update_script_abox_sh_missing_unsafe) echo '現在の A-Box.sh が存在しないか、パスが安全ではありません。ロールバックできない OTA は拒否します。' ;;
+        zh:update_script_ota_snapshot_failed) echo '无法创建 OTA 脚本回滚快照。' ;;
+        en:update_script_ota_snapshot_failed) echo 'Cannot create a rollback snapshot of the OTA script.' ;;
+        ru:update_script_ota_snapshot_failed) echo 'Не удалось создать снимок скрипта OTA для отката.' ;;
+        fa:update_script_ota_snapshot_failed) echo 'نمی‌توان برای بازگشت از اسکریپت OTA عکس گرفت.' ;;
+        zh-tw:update_script_ota_snapshot_failed) echo '無法建立 OTA 腳本回滾快照。' ;;
+        ja:update_script_ota_snapshot_failed) echo 'OTA スクリプトのロールバック用スナップショットを作成できません。' ;;
+        zh:update_script_save_current_script_failed) echo '无法保存当前 A-Box 脚本；OTA 已取消。' ;;
+        en:update_script_save_current_script_failed) echo 'Cannot save the current A-Box script; OTA has been cancelled.' ;;
+        ru:update_script_save_current_script_failed) echo 'Не удалось сохранить текущий скрипт A-Box; OTA отменено.' ;;
+        fa:update_script_save_current_script_failed) echo 'ذخیره اسکریپت فعلی A-Box ممکن نیست؛ OTA لغو شد.' ;;
+        zh-tw:update_script_save_current_script_failed) echo '無法儲存目前的 A-Box 腳本；OTA 已取消。' ;;
+        ja:update_script_save_current_script_failed) echo '現在の A-Box スクリプトを保存できません。OTA をキャンセルしました。' ;;
+        zh:update_script_sni_cache_unsafe) echo '现有 SNI 缓存不安全；OTA 未覆盖此文件。' ;;
+        en:update_script_sni_cache_unsafe) echo 'The existing SNI cache is unsafe; OTA did not overwrite this file.' ;;
+        ru:update_script_sni_cache_unsafe) echo 'Существующий кэш SNI небезопасен; OTA не перезаписало этот файл.' ;;
+        fa:update_script_sni_cache_unsafe) echo 'حافظه نهان موجود SNI ناامن است؛ OTA این فایل را بازنویسی نکرد.' ;;
+        zh-tw:update_script_sni_cache_unsafe) echo '現有 SNI 快取不安全；OTA 未覆寫此檔案。' ;;
+        ja:update_script_sni_cache_unsafe) echo '既存の SNI キャッシュは安全ではありません。OTA はこのファイルを上書きしていません。' ;;
+        zh:update_script_sni_snapshot_failed) echo '无法创建 SNI 缓存回滚快照。' ;;
+        en:update_script_sni_snapshot_failed) echo 'Cannot create a rollback snapshot of the SNI cache.' ;;
+        ru:update_script_sni_snapshot_failed) echo 'Не удалось создать снимок кэша SNI для отката.' ;;
+        fa:update_script_sni_snapshot_failed) echo 'نمی‌توان برای بازگشت از حافظه نهان SNI عکس گرفت.' ;;
+        zh-tw:update_script_sni_snapshot_failed) echo '無法建立 SNI 快取回滾快照。' ;;
+        ja:update_script_sni_snapshot_failed) echo 'SNI キャッシュのロールバック用スナップショットを作成できません。' ;;
+        zh:update_script_save_sni_cache_failed) echo '无法保存当前 SNI 缓存；OTA 已取消。' ;;
+        en:update_script_save_sni_cache_failed) echo 'Cannot save the current SNI cache; OTA has been cancelled.' ;;
+        ru:update_script_save_sni_cache_failed) echo 'Не удалось сохранить текущий кэш SNI; OTA отменено.' ;;
+        fa:update_script_save_sni_cache_failed) echo 'ذخیره حافظه نهان فعلی SNI ممکن نیست؛ OTA لغو شد.' ;;
+        zh-tw:update_script_save_sni_cache_failed) echo '無法儲存目前的 SNI 快取；OTA 已取消。' ;;
+        ja:update_script_save_sni_cache_failed) echo '現在の SNI キャッシュを保存できません。OTA をキャンセルしました。' ;;
+        zh:update_script_commit_sni_cache_failed) echo '无法安全提交与 OTA 同 commit 的 SNI 数据缓存；脚本未替换。' ;;
+        en:update_script_commit_sni_cache_failed) echo 'Cannot safely commit the SNI data cache from the same commit as the OTA update; the script was not replaced.' ;;
+        ru:update_script_commit_sni_cache_failed) echo 'Не удалось безопасно зафиксировать кэш данных SNI из того же commit, что и обновление OTA; скрипт не заменён.' ;;
+        fa:update_script_commit_sni_cache_failed) echo 'ثبت امن حافظه نهان داده‌های SNI از همان commit به‌روزرسانی OTA ممکن نیست؛ اسکریپت جایگزین نشد.' ;;
+        zh-tw:update_script_commit_sni_cache_failed) echo '無法安全提交與 OTA 同 commit 的 SNI 資料快取；腳本未替換。' ;;
+        ja:update_script_commit_sni_cache_failed) echo 'OTA と同じ commit の SNI データキャッシュを安全に確定できません。スクリプトは置き換えていません。' ;;
+        zh:update_script_atomic_write_failed_rolled_back) echo 'OTA 脚本原子写入失败；旧脚本保留，SNI 缓存已回滚。' ;;
+        en:update_script_atomic_write_failed_rolled_back) echo 'Atomic writing of the OTA script failed; the old script was retained and the SNI cache has been rolled back.' ;;
+        ru:update_script_atomic_write_failed_rolled_back) echo 'Атомарная запись скрипта OTA не удалась; старый скрипт сохранён, кэш SNI откачен.' ;;
+        fa:update_script_atomic_write_failed_rolled_back) echo 'نوشتن اتمی اسکریپت OTA ناموفق بود؛ اسکریپت قدیمی نگه داشته شد و بازگشت حافظه نهان SNI انجام شد.' ;;
+        zh-tw:update_script_atomic_write_failed_rolled_back) echo 'OTA 腳本原子寫入失敗；舊腳本保留，SNI 快取已回滾。' ;;
+        ja:update_script_atomic_write_failed_rolled_back) echo 'OTA スクリプトのアトミック書き込みに失敗しました。旧スクリプトを保持し、SNI キャッシュをロールバックしました。' ;;
+        zh:update_script_atomic_write_failed_rollback_incomplete) echo 'OTA 脚本原子写入失败，且 SNI 缓存回滚不完整；请勿重试，先检查 A-Box.sh 与 SNI 缓存。旧脚本快照与旧 SNI 缓存快照保留于 /tmp（A-Box-update-old-*）。' ;;
+        en:update_script_atomic_write_failed_rollback_incomplete) echo 'Atomic writing of the OTA script failed, and the SNI cache rollback is incomplete; do not retry. Check A-Box.sh and the SNI cache first. Snapshots of the old script and old SNI cache are retained in /tmp (A-Box-update-old-*).' ;;
+        ru:update_script_atomic_write_failed_rollback_incomplete) echo 'Атомарная запись скрипта OTA не удалась, а откат кэша SNI выполнен не полностью; не повторяйте попытку, сначала проверьте A-Box.sh и кэш SNI. Снимки старого скрипта и старого кэша SNI сохранены в /tmp (A-Box-update-old-*).' ;;
+        fa:update_script_atomic_write_failed_rollback_incomplete) echo 'نوشتن اتمی اسکریپت OTA ناموفق بود و بازگشت حافظه نهان SNI کامل نشده است؛ دوباره تلاش نکنید و ابتدا A-Box.sh و حافظه نهان SNI را بررسی کنید. عکس‌های اسکریپت قدیمی و حافظه نهان قدیمی SNI در /tmp (A-Box-update-old-*) نگه داشته شده‌اند.' ;;
+        zh-tw:update_script_atomic_write_failed_rollback_incomplete) echo 'OTA 腳本原子寫入失敗，且 SNI 快取回滾不完整；請勿重試，先檢查 A-Box.sh 與 SNI 快取。舊腳本快照與舊 SNI 快取快照保留於 /tmp（A-Box-update-old-*）。' ;;
+        ja:update_script_atomic_write_failed_rollback_incomplete) echo 'OTA スクリプトのアトミック書き込みに失敗し、SNI キャッシュのロールバックも不完全です。再試行せず、まず A-Box.sh と SNI キャッシュを確認してください。旧スクリプトと旧 SNI キャッシュのスナップショットは /tmp（A-Box-update-old-*）に保持しています。' ;;
+        zh:update_script_persist_verify_failed_restored) echo 'OTA 持久化校验失败；旧脚本和旧 SNI 缓存已恢复。' ;;
+        en:update_script_persist_verify_failed_restored) echo 'OTA persistence verification failed; the old script and old SNI cache have been restored.' ;;
+        ru:update_script_persist_verify_failed_restored) echo 'Проверка сохранения результатов OTA не удалась; старый скрипт и старый кэш SNI восстановлены.' ;;
+        fa:update_script_persist_verify_failed_restored) echo 'بررسی ماندگاری OTA ناموفق بود؛ اسکریپت قدیمی و حافظه نهان قدیمی SNI بازیابی شدند.' ;;
+        zh-tw:update_script_persist_verify_failed_restored) echo 'OTA 持久化校驗失敗；舊腳本和舊 SNI 快取已恢復。' ;;
+        ja:update_script_persist_verify_failed_restored) echo 'OTA の永続化の検証に失敗しました。旧スクリプトと旧 SNI キャッシュを復旧しました。' ;;
+        zh:update_script_persist_verify_failed_rollback_incomplete) echo 'OTA 持久化校验失败且回滚不完整；请勿重试，先检查 A-Box.sh 与 SNI 缓存。旧脚本快照与旧 SNI 缓存快照保留于 /tmp（A-Box-update-old-*）。' ;;
+        en:update_script_persist_verify_failed_rollback_incomplete) echo 'OTA persistence verification failed, and rollback is incomplete; do not retry. Check A-Box.sh and the SNI cache first. Snapshots of the old script and old SNI cache are retained in /tmp (A-Box-update-old-*).' ;;
+        ru:update_script_persist_verify_failed_rollback_incomplete) echo 'Проверка сохранения результатов OTA не удалась, а откат выполнен не полностью; не повторяйте попытку, сначала проверьте A-Box.sh и кэш SNI. Снимки старого скрипта и старого кэша SNI сохранены в /tmp (A-Box-update-old-*).' ;;
+        fa:update_script_persist_verify_failed_rollback_incomplete) echo 'بررسی ماندگاری OTA ناموفق بود و بازگشت کامل نشده است؛ دوباره تلاش نکنید و ابتدا A-Box.sh و حافظه نهان SNI را بررسی کنید. عکس‌های اسکریپت قدیمی و حافظه نهان قدیمی SNI در /tmp (A-Box-update-old-*) نگه داشته شده‌اند.' ;;
+        zh-tw:update_script_persist_verify_failed_rollback_incomplete) echo 'OTA 持久化校驗失敗且回滾不完整；請勿重試，先檢查 A-Box.sh 與 SNI 快取。舊腳本快照與舊 SNI 快取快照保留於 /tmp（A-Box-update-old-*）。' ;;
+        ja:update_script_persist_verify_failed_rollback_incomplete) echo 'OTA の永続化の検証に失敗し、ロールバックも不完全です。再試行せず、まず A-Box.sh と SNI キャッシュを確認してください。旧スクリプトと旧 SNI キャッシュのスナップショットは /tmp（A-Box-update-old-*）に保持しています。' ;;
+        zh:update_script_core_sni_synced) echo '核心代码与同 commit 的 SNI 候选数据库已同步。' ;;
+        en:update_script_core_sni_synced) echo 'The core code and SNI candidate database from the same commit have been synchronized.' ;;
+        ru:update_script_core_sni_synced) echo 'Код ядра и база данных кандидатов SNI из того же commit синхронизированы.' ;;
+        fa:update_script_core_sni_synced) echo 'کد هسته و پایگاه داده نامزدهای SNI از همان commit همگام‌سازی شدند.' ;;
+        zh-tw:update_script_core_sni_synced) echo '核心程式碼與同 commit 的 SNI 候選資料庫已同步。' ;;
+        ja:update_script_core_sni_synced) echo 'コアコードと同じ commit の SNI 候補データベースを同期しました。' ;;
+        zh:manage_ss_whitelist_iptables_only_backend) echo 'SS-2022 源地址白名单仅支持原生 iptables/ip6tables 后端；当前是 %s。为避免 UFW/firewalld 与 A-Box 双重持久化或规则顺序错误，拒绝修改。' ;;
+        en:manage_ss_whitelist_iptables_only_backend) echo 'The SS-2022 source whitelist only supports the native iptables/ip6tables backend; the current backend is %s. Refusing to modify it to avoid duplicate persistence by UFW/firewalld and A-Box or incorrect rule ordering.' ;;
+        ru:manage_ss_whitelist_iptables_only_backend) echo 'Белый список источников SS-2022 поддерживает только нативный бэкенд iptables/ip6tables; сейчас используется %s. Изменения запрещены во избежание двойного сохранения правил средствами UFW/firewalld и A-Box или неверного порядка правил.' ;;
+        fa:manage_ss_whitelist_iptables_only_backend) echo 'فهرست سفید مبدأ SS-2022 فقط از پس‌زمینه بومی iptables/ip6tables پشتیبانی می‌کند؛ پس‌زمینه کنونی %s است. برای جلوگیری از ماندگاری دوگانه توسط UFW/firewalld و A-Box یا ترتیب نادرست قوانین، تغییر انجام نمی‌شود.' ;;
+        zh-tw:manage_ss_whitelist_iptables_only_backend) echo 'SS-2022 來源白名單僅支援原生 iptables/ip6tables 後端；目前為 %s。為避免 UFW/firewalld 與 A-Box 雙重持久化或規則順序錯誤，拒絕修改。' ;;
+        ja:manage_ss_whitelist_iptables_only_backend) echo 'SS-2022 の送信元ホワイトリストは、ネイティブ iptables/ip6tables バックエンドのみをサポートします。現在のバックエンドは %s です。UFW/firewalld と A-Box による二重の永続化やルール順序の誤りを避けるため、変更を拒否します。' ;;
+        zh:manage_ss_whitelist_no_ss_port) echo '未检测到已部署的 SS-2022 服务端口。' ;;
+        en:manage_ss_whitelist_no_ss_port) echo 'No deployed SS-2022 service port was detected.' ;;
+        ru:manage_ss_whitelist_no_ss_port) echo 'Порт развёрнутого сервиса SS-2022 не обнаружен.' ;;
+        fa:manage_ss_whitelist_no_ss_port) echo 'درگاه سرویس SS-2022 مستقرشده شناسایی نشد.' ;;
+        zh-tw:manage_ss_whitelist_no_ss_port) echo '未偵測到已部署的 SS-2022 服務連接埠。' ;;
+        ja:manage_ss_whitelist_no_ss_port) echo 'デプロイ済みの SS-2022 サービスポートが検出されませんでした。' ;;
+        zh:manage_ss_whitelist_title) echo 'SS-2022 白名单 IP 管理' ;;
+        en:manage_ss_whitelist_title) echo 'SS-2022 whitelist IP management' ;;
+        ru:manage_ss_whitelist_title) echo 'Управление IP-адресами белого списка SS-2022' ;;
+        fa:manage_ss_whitelist_title) echo 'مدیریت IPهای فهرست سفید SS-2022' ;;
+        zh-tw:manage_ss_whitelist_title) echo 'SS-2022 白名單 IP 管理' ;;
+        ja:manage_ss_whitelist_title) echo 'SS-2022 ホワイトリスト IP 管理' ;;
+        zh:manage_ss_whitelist_listen_port) echo '当前 SS-2022 监听端口: %s/TCP+UDP' ;;
+        en:manage_ss_whitelist_listen_port) echo 'Current SS-2022 listen port: %s/TCP+UDP' ;;
+        ru:manage_ss_whitelist_listen_port) echo 'Текущий порт прослушивания SS-2022: %s/TCP+UDP' ;;
+        fa:manage_ss_whitelist_listen_port) echo 'درگاه شنود کنونی SS-2022: %s/TCP+UDP' ;;
+        zh-tw:manage_ss_whitelist_listen_port) echo '目前 SS-2022 監聽連接埠：%s/TCP+UDP' ;;
+        ja:manage_ss_whitelist_listen_port) echo '現在の SS-2022 リッスンポート: %s/TCP+UDP' ;;
+        zh:manage_ss_whitelist_ipv4_label) echo 'IPv4 白名单:' ;;
+        en:manage_ss_whitelist_ipv4_label) echo 'IPv4 whitelist:' ;;
+        ru:manage_ss_whitelist_ipv4_label) echo 'Белый список IPv4:' ;;
+        fa:manage_ss_whitelist_ipv4_label) echo 'فهرست سفید IPv4:' ;;
+        zh-tw:manage_ss_whitelist_ipv4_label) echo 'IPv4 白名單：' ;;
+        ja:manage_ss_whitelist_ipv4_label) echo 'IPv4 ホワイトリスト:' ;;
+        zh:manage_ss_whitelist_ipv6_label) echo 'IPv6 白名单:' ;;
+        en:manage_ss_whitelist_ipv6_label) echo 'IPv6 whitelist:' ;;
+        ru:manage_ss_whitelist_ipv6_label) echo 'Белый список IPv6:' ;;
+        fa:manage_ss_whitelist_ipv6_label) echo 'فهرست سفید IPv6:' ;;
+        zh-tw:manage_ss_whitelist_ipv6_label) echo 'IPv6 白名單：' ;;
+        ja:manage_ss_whitelist_ipv6_label) echo 'IPv6 ホワイトリスト:' ;;
+        zh:manage_ss_whitelist_add_ip) echo '新增白名单 IP/CIDR (TCP+UDP)' ;;
+        en:manage_ss_whitelist_add_ip) echo 'Add IP/CIDR to the whitelist (TCP+UDP)' ;;
+        ru:manage_ss_whitelist_add_ip) echo 'Добавить IP/CIDR в белый список (TCP+UDP)' ;;
+        fa:manage_ss_whitelist_add_ip) echo 'افزودن IP/CIDR به فهرست سفید (TCP+UDP)' ;;
+        zh-tw:manage_ss_whitelist_add_ip) echo '新增白名單 IP/CIDR (TCP+UDP)' ;;
+        ja:manage_ss_whitelist_add_ip) echo 'ホワイトリストに IP/CIDR を追加 (TCP+UDP)' ;;
+        zh:manage_ss_whitelist_remove_ip) echo '移除白名单 IP/CIDR (TCP+UDP)' ;;
+        en:manage_ss_whitelist_remove_ip) echo 'Remove IP/CIDR from the whitelist (TCP+UDP)' ;;
+        ru:manage_ss_whitelist_remove_ip) echo 'Удалить IP/CIDR из белого списка (TCP+UDP)' ;;
+        fa:manage_ss_whitelist_remove_ip) echo 'حذف IP/CIDR از فهرست سفید (TCP+UDP)' ;;
+        zh-tw:manage_ss_whitelist_remove_ip) echo '移除白名單 IP/CIDR (TCP+UDP)' ;;
+        ja:manage_ss_whitelist_remove_ip) echo 'ホワイトリストから IP/CIDR を削除 (TCP+UDP)' ;;
+        zh:manage_ss_whitelist_enable_mode) echo '开启白名单模式 (TCP+UDP DROP)' ;;
+        en:manage_ss_whitelist_enable_mode) echo 'Enable whitelist mode (TCP+UDP DROP)' ;;
+        ru:manage_ss_whitelist_enable_mode) echo 'Включить режим белого списка (TCP+UDP DROP)' ;;
+        fa:manage_ss_whitelist_enable_mode) echo 'فعال‌سازی حالت فهرست سفید (TCP+UDP DROP)' ;;
+        zh-tw:manage_ss_whitelist_enable_mode) echo '啟用白名單模式 (TCP+UDP DROP)' ;;
+        ja:manage_ss_whitelist_enable_mode) echo 'ホワイトリストモードを有効化 (TCP+UDP DROP)' ;;
+        zh:manage_ss_whitelist_open_all) echo '切换为全网开放 (移除 DROP 并放行 TCP+UDP)' ;;
+        en:manage_ss_whitelist_open_all) echo 'Switch to access from all networks (remove DROP and allow TCP+UDP)' ;;
+        ru:manage_ss_whitelist_open_all) echo 'Открыть доступ из всех сетей (удалить DROP и разрешить TCP+UDP)' ;;
+        fa:manage_ss_whitelist_open_all) echo 'تغییر به دسترسی باز برای همه شبکه‌ها (حذف DROP و مجاز کردن TCP+UDP)' ;;
+        zh-tw:manage_ss_whitelist_open_all) echo '切換為全網開放 (移除 DROP 並放行 TCP+UDP)' ;;
+        ja:manage_ss_whitelist_open_all) echo '全ネットワークからのアクセスを許可する設定に切り替える (DROP を削除し TCP+UDP を許可)' ;;
+        zh:manage_ss_whitelist_back_to_menu) echo '返回主菜单' ;;
+        en:manage_ss_whitelist_back_to_menu) echo 'Return to the main menu' ;;
+        ru:manage_ss_whitelist_back_to_menu) echo 'Вернуться в главное меню' ;;
+        fa:manage_ss_whitelist_back_to_menu) echo 'بازگشت به منوی اصلی' ;;
+        zh-tw:manage_ss_whitelist_back_to_menu) echo '返回主選單' ;;
+        ja:manage_ss_whitelist_back_to_menu) echo 'メインメニューに戻る' ;;
+        zh:manage_ss_whitelist_ipv6_addr_invalid) echo 'IPv6 白名单地址非法: %s' ;;
+        en:manage_ss_whitelist_ipv6_addr_invalid) echo 'Invalid IPv6 whitelist address: %s' ;;
+        ru:manage_ss_whitelist_ipv6_addr_invalid) echo 'Недопустимый адрес IPv6 в белом списке: %s' ;;
+        fa:manage_ss_whitelist_ipv6_addr_invalid) echo 'نشانی IPv6 فهرست سفید نامعتبر است: %s' ;;
+        zh-tw:manage_ss_whitelist_ipv6_addr_invalid) echo 'IPv6 白名單位址不合法：%s' ;;
+        ja:manage_ss_whitelist_ipv6_addr_invalid) echo 'IPv6 ホワイトリストアドレスが無効です: %s' ;;
+        zh:manage_ss_whitelist_ipv4_addr_invalid) echo 'IPv4 白名单地址非法: %s' ;;
+        en:manage_ss_whitelist_ipv4_addr_invalid) echo 'Invalid IPv4 whitelist address: %s' ;;
+        ru:manage_ss_whitelist_ipv4_addr_invalid) echo 'Недопустимый адрес IPv4 в белом списке: %s' ;;
+        fa:manage_ss_whitelist_ipv4_addr_invalid) echo 'نشانی IPv4 فهرست سفید نامعتبر است: %s' ;;
+        zh-tw:manage_ss_whitelist_ipv4_addr_invalid) echo 'IPv4 白名單位址不合法：%s' ;;
+        ja:manage_ss_whitelist_ipv4_addr_invalid) echo 'IPv4 ホワイトリストアドレスが無効です: %s' ;;
+        zh:manage_ss_whitelist_added) echo '已添加白名单: %s (TCP+UDP)' ;;
+        en:manage_ss_whitelist_added) echo 'Added to the whitelist: %s (TCP+UDP)' ;;
+        ru:manage_ss_whitelist_added) echo 'Добавлено в белый список: %s (TCP+UDP)' ;;
+        fa:manage_ss_whitelist_added) echo 'به فهرست سفید افزوده شد: %s (TCP+UDP)' ;;
+        zh-tw:manage_ss_whitelist_added) echo '已加入白名單：%s (TCP+UDP)' ;;
+        ja:manage_ss_whitelist_added) echo 'ホワイトリストに追加しました: %s (TCP+UDP)' ;;
+        zh:manage_ss_whitelist_no_ipv6_firewall) echo '当前系统没有可用的 IPv6 防火墙，无法移除 IPv6 白名单；IPv4 规则未受影响。' ;;
+        en:manage_ss_whitelist_no_ipv6_firewall) echo 'The current system has no working IPv6 firewall, so the IPv6 whitelist cannot be removed; IPv4 rules are unaffected.' ;;
+        ru:manage_ss_whitelist_no_ipv6_firewall) echo 'В текущей системе нет доступного IPv6-файрвола, поэтому удалить белый список IPv6 невозможно; правила IPv4 не затронуты.' ;;
+        fa:manage_ss_whitelist_no_ipv6_firewall) echo 'سیستم کنونی فایروال IPv6 قابل استفاده ندارد، بنابراین حذف فهرست سفید IPv6 ممکن نیست؛ قوانین IPv4 تحت تأثیر قرار نگرفته‌اند.' ;;
+        zh-tw:manage_ss_whitelist_no_ipv6_firewall) echo '目前系統沒有可用的 IPv6 防火牆，無法移除 IPv6 白名單；IPv4 規則未受影響。' ;;
+        ja:manage_ss_whitelist_no_ipv6_firewall) echo '現在のシステムには利用可能な IPv6 ファイアウォールがないため、IPv6 ホワイトリストを削除できません。IPv4 ルールには影響ありません。' ;;
+        zh:manage_ss_whitelist_removed) echo '已移除白名单: %s' ;;
+        en:manage_ss_whitelist_removed) echo 'Removed from the whitelist: %s' ;;
+        ru:manage_ss_whitelist_removed) echo 'Удалено из белого списка: %s' ;;
+        fa:manage_ss_whitelist_removed) echo 'از فهرست سفید حذف شد: %s' ;;
+        zh-tw:manage_ss_whitelist_removed) echo '已從白名單移除：%s' ;;
+        ja:manage_ss_whitelist_removed) echo 'ホワイトリストから削除しました: %s' ;;
+        zh:manage_ss_whitelist_rule_not_found) echo '未找到该白名单规则。' ;;
+        en:manage_ss_whitelist_rule_not_found) echo 'The specified whitelist rule was not found.' ;;
+        ru:manage_ss_whitelist_rule_not_found) echo 'Указанное правило белого списка не найдено.' ;;
+        fa:manage_ss_whitelist_rule_not_found) echo 'این قانون فهرست سفید یافت نشد.' ;;
+        zh-tw:manage_ss_whitelist_rule_not_found) echo '未找到該白名單規則。' ;;
+        ja:manage_ss_whitelist_rule_not_found) echo '指定されたホワイトリストルールが見つかりませんでした。' ;;
+        zh:manage_ss_whitelist_protect_enabled) echo '已开启白名单保护模式 (TCP+UDP)。' ;;
+        en:manage_ss_whitelist_protect_enabled) echo 'Whitelist protection mode has been enabled (TCP+UDP).' ;;
+        ru:manage_ss_whitelist_protect_enabled) echo 'Режим защиты с белым списком включён (TCP+UDP).' ;;
+        fa:manage_ss_whitelist_protect_enabled) echo 'حالت محافظت با فهرست سفید فعال شد (TCP+UDP).' ;;
+        zh-tw:manage_ss_whitelist_protect_enabled) echo '已啟用白名單保護模式 (TCP+UDP)。' ;;
+        ja:manage_ss_whitelist_protect_enabled) echo 'ホワイトリスト保護モードを有効化しました (TCP+UDP)。' ;;
+        zh:manage_ss_whitelist_open_mode) echo '已切换为全网开放模式 (TCP+UDP)。' ;;
+        en:manage_ss_whitelist_open_mode) echo 'Switched to open access mode for all networks (TCP+UDP).' ;;
+        ru:manage_ss_whitelist_open_mode) echo 'Выполнено переключение в режим открытого доступа из всех сетей (TCP+UDP).' ;;
+        fa:manage_ss_whitelist_open_mode) echo 'به حالت دسترسی باز برای همه شبکه‌ها تغییر یافت (TCP+UDP).' ;;
+        zh-tw:manage_ss_whitelist_open_mode) echo '已切換為全網開放模式 (TCP+UDP)。' ;;
+        ja:manage_ss_whitelist_open_mode) echo '全ネットワークに開放するモードに切り替えました (TCP+UDP)。' ;;
+        zh:upgrade_xray_core_only_not_abox_managed) echo '拒绝升级：xray 不是 A-Box 托管服务。' ;;
+        en:upgrade_xray_core_only_not_abox_managed) echo 'Upgrade refused: xray is not an A-Box-managed service.' ;;
+        ru:upgrade_xray_core_only_not_abox_managed) echo 'Обновление отклонено: служба xray не управляется A-Box.' ;;
+        fa:upgrade_xray_core_only_not_abox_managed) echo 'ارتقا رد شد: سرویس xray تحت مدیریت A-Box نیست.' ;;
+        zh-tw:upgrade_xray_core_only_not_abox_managed) echo '拒絕升級：xray 不是 A-Box 託管服務。' ;;
+        ja:upgrade_xray_core_only_not_abox_managed) echo 'アップグレードを拒否しました。xray は A-Box 管理下のサービスではありません。' ;;
+        zh:upgrade_xray_core_only_service_state_unknown) echo '无法可靠查询 Xray 服务状态；拒绝在状态未知时升级核心。' ;;
+        en:upgrade_xray_core_only_service_state_unknown) echo 'Cannot reliably determine the Xray service state; refusing to upgrade the core while the state is unknown.' ;;
+        ru:upgrade_xray_core_only_service_state_unknown) echo 'Не удалось достоверно определить состояние службы Xray; обновление ядра при неизвестном состоянии отклонено.' ;;
+        fa:upgrade_xray_core_only_service_state_unknown) echo 'وضعیت سرویس Xray را نمی‌توان با اطمینان تعیین کرد؛ تا زمانی که وضعیت نامشخص است، ارتقای هسته انجام نمی‌شود.' ;;
+        zh-tw:upgrade_xray_core_only_service_state_unknown) echo '無法可靠查詢 Xray 服務狀態；拒絕在狀態未知時升級核心。' ;;
+        ja:upgrade_xray_core_only_service_state_unknown) echo 'Xray サービスの状態を確実に取得できません。状態が不明なままコアをアップグレードすることは拒否します。' ;;
+        zh:upgrade_xray_core_only_service_state_invalid) echo 'Xray 服务状态响应无效；拒绝继续升级。' ;;
+        en:upgrade_xray_core_only_service_state_invalid) echo 'The Xray service state response is invalid; refusing to continue the upgrade.' ;;
+        ru:upgrade_xray_core_only_service_state_invalid) echo 'Ответ о состоянии службы Xray недействителен; отказ от продолжения обновления.' ;;
+        fa:upgrade_xray_core_only_service_state_invalid) echo 'پاسخ وضعیت سرویس Xray نامعتبر است؛ ادامهٔ ارتقا رد می‌شود.' ;;
+        zh-tw:upgrade_xray_core_only_service_state_invalid) echo 'Xray 服務狀態回應無效；拒絕繼續升級。' ;;
+        ja:upgrade_xray_core_only_service_state_invalid) echo 'Xray サービスの状態応答が無効です。アップグレードの続行を拒否します。' ;;
+        zh:upgrade_xray_core_only_read_version_failed) echo '无法读取现有 Xray 版本；默认拒绝覆盖未知版本核心。' ;;
+        en:upgrade_xray_core_only_read_version_failed) echo 'Cannot read the existing Xray version; overwriting a core of unknown version is refused by default.' ;;
+        ru:upgrade_xray_core_only_read_version_failed) echo 'Не удалось прочитать установленную версию Xray; по умолчанию перезапись ядра с неизвестной версией запрещена.' ;;
+        fa:upgrade_xray_core_only_read_version_failed) echo 'خواندن نسخهٔ موجود Xray ممکن نیست؛ بازنویسی هسته‌ای با نسخهٔ نامشخص به‌صورت پیش‌فرض رد می‌شود.' ;;
+        zh-tw:upgrade_xray_core_only_read_version_failed) echo '無法讀取現有 Xray 版本；預設拒絕覆寫版本未知的核心。' ;;
+        ja:upgrade_xray_core_only_read_version_failed) echo '既存の Xray バージョンを読み取れません。バージョン不明のコアの上書きはデフォルトで拒否します。' ;;
+        zh:upgrade_xray_core_only_resolve_target_failed) echo '无法解析 Xray 最新正式稳定候选或固定容灾版本。' ;;
+        en:upgrade_xray_core_only_resolve_target_failed) echo 'Cannot resolve the latest official stable Xray candidate or the pinned disaster-recovery version.' ;;
+        ru:upgrade_xray_core_only_resolve_target_failed) echo 'Не удалось определить последний официальный стабильный кандидат Xray или закреплённую версию для аварийного восстановления.' ;;
+        fa:upgrade_xray_core_only_resolve_target_failed) echo 'تعیین آخرین گزینهٔ رسمی و پایدار Xray یا نسخهٔ ثابتِ بازیابی اضطراری ممکن نیست.' ;;
+        zh-tw:upgrade_xray_core_only_resolve_target_failed) echo '無法解析 Xray 最新正式穩定候選或固定容災版本。' ;;
+        ja:upgrade_xray_core_only_resolve_target_failed) echo 'Xray の最新の正式な安定版候補、または固定された障害復旧用バージョンを特定できません。' ;;
+        zh:upgrade_xray_core_only_current_version_unparseable) echo '无法解析当前 Xray 版本；为避免意外降级，拒绝升级。' ;;
+        en:upgrade_xray_core_only_current_version_unparseable) echo 'Cannot parse the current Xray version; refusing to upgrade to avoid an unintended fallback to an older version.' ;;
+        ru:upgrade_xray_core_only_current_version_unparseable) echo 'Не удалось разобрать текущую версию Xray; обновление отклонено во избежание непреднамеренного перехода на более раннюю версию.' ;;
+        fa:upgrade_xray_core_only_current_version_unparseable) echo 'تجزیهٔ نسخهٔ فعلی Xray ممکن نیست؛ برای جلوگیری از بازگشت ناخواسته به نسخهٔ پایین‌تر، ارتقا رد می‌شود.' ;;
+        zh-tw:upgrade_xray_core_only_current_version_unparseable) echo '無法解析目前 Xray 版本；為避免意外降級，拒絕升級。' ;;
+        ja:upgrade_xray_core_only_current_version_unparseable) echo '現在の Xray バージョンを解析できません。意図しない旧バージョンへのフォールバックを避けるため、アップグレードを拒否します。' ;;
+        zh:upgrade_xray_core_only_downgrade_refused) echo '拒绝将 Xray 从 %s 降级到 %s。如确需降级，请明确设置 ABOX_ALLOW_CORE_DOWNGRADE=1 并确认客户端兼容性。' ;;
+        en:upgrade_xray_core_only_downgrade_refused) echo 'Refusing to fall back from Xray %s to the older version %s. If this fallback is truly required, explicitly set ABOX_ALLOW_CORE_DOWNGRADE=1 and confirm client compatibility.' ;;
+        ru:upgrade_xray_core_only_downgrade_refused) echo 'Отказ от перехода Xray с %s на более раннюю версию %s. Если такой переход действительно необходим, явно задайте ABOX_ALLOW_CORE_DOWNGRADE=1 и убедитесь в совместимости клиентов.' ;;
+        fa:upgrade_xray_core_only_downgrade_refused) echo 'بازگشت Xray از %s به نسخهٔ پایین‌تر %s رد می‌شود. اگر واقعاً به این بازگشت نیاز دارید، ABOX_ALLOW_CORE_DOWNGRADE=1 را صریحاً تنظیم کنید و سازگاری کلاینت‌ها را تأیید کنید.' ;;
+        zh-tw:upgrade_xray_core_only_downgrade_refused) echo '拒絕將 Xray 從 %s 降級到 %s。如確實需要降級，請明確設定 ABOX_ALLOW_CORE_DOWNGRADE=1 並確認用戶端相容性。' ;;
+        ja:upgrade_xray_core_only_downgrade_refused) echo 'Xray %s から旧バージョン %s へのフォールバックを拒否します。本当にフォールバックが必要な場合は、ABOX_ALLOW_CORE_DOWNGRADE=1 を明示的に設定し、クライアントの互換性を確認してください。' ;;
+        zh:upgrade_xray_core_only_version_uncomparable) echo '当前或目标 Xray 版本格式无法比较。' ;;
+        en:upgrade_xray_core_only_version_uncomparable) echo 'The current or target Xray version format cannot be compared.' ;;
+        ru:upgrade_xray_core_only_version_uncomparable) echo 'Формат текущей или целевой версии Xray не допускает сравнения.' ;;
+        fa:upgrade_xray_core_only_version_uncomparable) echo 'قالب نسخهٔ فعلی یا هدف Xray قابل مقایسه نیست.' ;;
+        zh-tw:upgrade_xray_core_only_version_uncomparable) echo '目前或目標 Xray 版本格式無法比較。' ;;
+        ja:upgrade_xray_core_only_version_uncomparable) echo '現在または対象の Xray バージョンの形式では比較できません。' ;;
+        zh:upgrade_xray_core_only_current_higher_skip) echo '当前 Xray %s 高于本次目标版本 %s；为避免自动降级，本次跳过。' ;;
+        en:upgrade_xray_core_only_current_higher_skip) echo 'The current Xray version %s is newer than this run's target version %s; skipping this run to avoid an automatic fallback to an older version.' ;;
+        ru:upgrade_xray_core_only_current_higher_skip) echo 'Текущая версия Xray %s новее целевой версии %s для этого запуска; запуск пропущен во избежание автоматического перехода на более раннюю версию.' ;;
+        fa:upgrade_xray_core_only_current_higher_skip) echo 'نسخهٔ فعلی Xray %s از نسخهٔ هدف %s در این اجرا بالاتر است؛ برای جلوگیری از بازگشت خودکار به نسخهٔ پایین‌تر، این اجرا رد می‌شود.' ;;
+        zh-tw:upgrade_xray_core_only_current_higher_skip) echo '目前 Xray %s 高於本次目標版本 %s；為避免自動降級，本次跳過。' ;;
+        ja:upgrade_xray_core_only_current_higher_skip) echo '現在の Xray %s は今回の対象バージョン %s より新しいため、旧バージョンへの自動フォールバックを避けて今回はスキップします。' ;;
+        zh:upgrade_xray_core_only_already_target) echo '当前 Xray %s 已是本次目标版本 %s，无需替换。' ;;
+        en:upgrade_xray_core_only_already_target) echo 'The current Xray %s is already at this run's target version %s; no replacement is needed.' ;;
+        ru:upgrade_xray_core_only_already_target) echo 'Текущая версия Xray %s уже соответствует целевой версии %s для этой операции; замена не требуется.' ;;
+        fa:upgrade_xray_core_only_already_target) echo 'نسخهٔ کنونی Xray %s همان نسخهٔ هدف %s برای این عملیات است؛ نیازی به جایگزینی نیست.' ;;
+        zh-tw:upgrade_xray_core_only_already_target) echo '目前 Xray %s 已是本次目標版本 %s，無需替換。' ;;
+        ja:upgrade_xray_core_only_already_target) echo '現在の Xray %s はすでに今回の目標バージョン %s と同じため、置き換えは不要です。' ;;
+        zh:upgrade_xray_core_only_final_binary_mismatch) echo '最终核心二进制版本与所选标签 %s 不一致。' ;;
+        en:upgrade_xray_core_only_final_binary_mismatch) echo 'The final core binary version does not match the selected tag %s.' ;;
+        ru:upgrade_xray_core_only_final_binary_mismatch) echo 'Версия итогового бинарного файла ядра не соответствует выбранному тегу %s.' ;;
+        fa:upgrade_xray_core_only_final_binary_mismatch) echo 'نسخهٔ فایل باینری نهایی هسته با برچسب انتخاب‌شدهٔ %s مطابقت ندارد.' ;;
+        zh-tw:upgrade_xray_core_only_final_binary_mismatch) echo '最終核心二進位檔的版本與所選標籤 %s 不一致。' ;;
+        ja:upgrade_xray_core_only_final_binary_mismatch) echo '最終コアバイナリのバージョンが選択したタグ %s と一致しません。' ;;
+        zh:upgrade_xray_core_only_final_version_unparseable) echo '无法解析最终候选二进制版本。' ;;
+        en:upgrade_xray_core_only_final_version_unparseable) echo 'Cannot parse the version of the final candidate binary.' ;;
+        ru:upgrade_xray_core_only_final_version_unparseable) echo 'Не удалось разобрать версию итогового бинарного файла-кандидата.' ;;
+        fa:upgrade_xray_core_only_final_version_unparseable) echo 'نمی‌توان نسخهٔ فایل باینری نامزد نهایی را تجزیه کرد.' ;;
+        zh-tw:upgrade_xray_core_only_final_version_unparseable) echo '無法解析最終候選二進位檔的版本。' ;;
+        ja:upgrade_xray_core_only_final_version_unparseable) echo '最終候補バイナリのバージョンを解析できません。' ;;
+        zh:upgrade_xray_core_only_downgrade_final_refused) echo '拒绝将 Xray 从 %s 降级到最终候选版本 %s。' ;;
+        en:upgrade_xray_core_only_downgrade_final_refused) echo 'Refusing to downgrade Xray from %s to the final candidate version %s.' ;;
+        ru:upgrade_xray_core_only_downgrade_final_refused) echo 'Отказ от понижения версии Xray с %s до итоговой версии-кандидата %s.' ;;
+        fa:upgrade_xray_core_only_downgrade_final_refused) echo 'از کاهش نسخهٔ Xray از %s به نسخهٔ نامزد نهایی %s خودداری می‌شود.' ;;
+        zh-tw:upgrade_xray_core_only_downgrade_final_refused) echo '拒絕將 Xray 從 %s 降級至最終候選版本 %s。' ;;
+        ja:upgrade_xray_core_only_downgrade_final_refused) echo 'Xray を %s から最終候補バージョン %s にダウングレードすることを拒否します。' ;;
+        zh:upgrade_xray_core_only_final_version_uncomparable) echo '最终核心候选版本格式无法比较。' ;;
+        en:upgrade_xray_core_only_final_version_uncomparable) echo 'The final core candidate version cannot be compared because of its format.' ;;
+        ru:upgrade_xray_core_only_final_version_uncomparable) echo 'Формат итоговой версии-кандидата ядра не позволяет выполнить сравнение.' ;;
+        fa:upgrade_xray_core_only_final_version_uncomparable) echo 'قالب نسخهٔ نامزد نهایی هسته امکان مقایسه را نمی‌دهد.' ;;
+        zh-tw:upgrade_xray_core_only_final_version_uncomparable) echo '最終核心候選版本的格式無法比較。' ;;
+        ja:upgrade_xray_core_only_final_version_uncomparable) echo '最終コア候補バージョンの形式では比較できません。' ;;
+        zh:upgrade_xray_core_only_final_lower_skip) echo '最终候选版本 %s 低于当前版本 %s；已跳过以避免自动降级。' ;;
+        en:upgrade_xray_core_only_final_lower_skip) echo 'The final candidate version %s is lower than the current version %s; skipped to avoid an automatic downgrade.' ;;
+        ru:upgrade_xray_core_only_final_lower_skip) echo 'Итоговая версия-кандидат %s ниже текущей версии %s; она пропущена во избежание автоматического понижения версии.' ;;
+        fa:upgrade_xray_core_only_final_lower_skip) echo 'نسخهٔ نامزد نهایی %s پایین‌تر از نسخهٔ کنونی %s است؛ برای جلوگیری از کاهش خودکار نسخه، رد شد.' ;;
+        zh-tw:upgrade_xray_core_only_final_lower_skip) echo '最終候選版本 %s 低於目前版本 %s；已跳過，以避免自動降級。' ;;
+        ja:upgrade_xray_core_only_final_lower_skip) echo '最終候補バージョン %s は現在のバージョン %s より低いバージョンです。自動ダウングレードを避けるためスキップしました。' ;;
+        zh:upgrade_xray_core_only_final_same_skip) echo '最终候选版本 %s 与当前版本相同，无需替换。' ;;
+        en:upgrade_xray_core_only_final_same_skip) echo 'The final candidate version %s is the same as the current version; no replacement is needed.' ;;
+        ru:upgrade_xray_core_only_final_same_skip) echo 'Итоговая версия-кандидат %s совпадает с текущей версией; замена не требуется.' ;;
+        fa:upgrade_xray_core_only_final_same_skip) echo 'نسخهٔ نامزد نهایی %s با نسخهٔ کنونی یکسان است؛ نیازی به جایگزینی نیست.' ;;
+        zh-tw:upgrade_xray_core_only_final_same_skip) echo '最終候選版本 %s 與目前版本相同，無需替換。' ;;
+        ja:upgrade_xray_core_only_final_same_skip) echo '最終候補バージョン %s は現在のバージョンと同じため、置き換えは不要です。' ;;
+        zh:upgrade_xray_core_only_direction_check_abnormal) echo '最终核心版本方向检查返回异常状态。' ;;
+        en:upgrade_xray_core_only_direction_check_abnormal) echo 'The final core version change direction check returned an abnormal status.' ;;
+        ru:upgrade_xray_core_only_direction_check_abnormal) echo 'Проверка направления изменения версии итогового ядра вернула нештатный статус.' ;;
+        fa:upgrade_xray_core_only_direction_check_abnormal) echo 'بررسی جهت تغییر نسخهٔ نهایی هسته وضعیت غیرعادی برگرداند.' ;;
+        zh-tw:upgrade_xray_core_only_direction_check_abnormal) echo '最終核心版本方向檢查傳回異常狀態。' ;;
+        ja:upgrade_xray_core_only_direction_check_abnormal) echo '最終コアバージョンの変更方向チェックが異常なステータスを返しました。' ;;
+        zh:upgrade_xray_core_only_ownership_update_failed) echo 'Xray 核心已替换，但归属清单更新失败。' ;;
+        en:upgrade_xray_core_only_ownership_update_failed) echo 'The Xray core has been replaced, but the ownership manifest update failed.' ;;
+        ru:upgrade_xray_core_only_ownership_update_failed) echo 'Ядро Xray заменено, но обновить манифест принадлежности не удалось.' ;;
+        fa:upgrade_xray_core_only_ownership_update_failed) echo 'هستهٔ Xray جایگزین شد، اما به‌روزرسانی فهرست مالکیت ناموفق بود.' ;;
+        zh-tw:upgrade_xray_core_only_ownership_update_failed) echo 'Xray 核心已替換，但歸屬清單更新失敗。' ;;
+        ja:upgrade_xray_core_only_ownership_update_failed) echo 'Xray コアは置き換えられましたが、所有情報マニフェストの更新に失敗しました。' ;;
         zh:diag_redaction_limited) echo '诊断收集受限：无法安全脱敏的文档已被省略。请查看诊断包中的 OMITTED 提示。若 python3 不可用，请安装后重新导出诊断包。' ;;
         en:diag_redaction_limited) echo 'Diagnostic collection is limited: documents that could not be safely redacted were omitted. See the OMITTED notices in the bundle. If python3 is unavailable, install it and export diagnostics again.' ;;
         ru:diag_redaction_limited) echo 'Сбор диагностических данных ограничен: документы, в которых не удалось безопасно скрыть конфиденциальные данные, исключены. См. уведомления OMITTED в диагностическом пакете. Если python3 недоступен, установите его и повторите экспорт диагностики.' ;;
@@ -29064,28 +29832,28 @@ manage_ss_whitelist() {
     local _wl_backend
     _wl_backend=$(firewall_backend)
     [[ "$_wl_backend" == 'iptables' ]] || {
-        msg "${RED}[!] SS-2022 源地址白名单仅支持原生 iptables/ip6tables 后端；当前是 ${_wl_backend}。为避免 UFW/firewalld 与 A-Box 双重持久化或规则顺序错误，拒绝修改。${NC}"
+        msg "${RED}[!] $(tprintf manage_ss_whitelist_iptables_only_backend "${_wl_backend}")${NC}"
         pause_return
         return 1
     }
     load_optional_abox_env_or_die
-    [[ -z "${SS_PORT:-}" ]] && { msg "${RED}[!] 未检测到已部署的 SS-2022 服务端口。${NC}"; pause_return; return; }
+    [[ -z "${SS_PORT:-}" ]] && { msg "${RED}[!] $(tr_msg manage_ss_whitelist_no_ss_port)${NC}"; pause_return; return; }
     msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}SS-2022 白名单 IP 管理 / SS-2022 Whitelist Manager${NC}"
+    msg "${BOLD}${GREEN}$(tr_msg manage_ss_whitelist_title)${NC}"
     msg "${CYAN}======================================================================${NC}"
-    msg "${YELLOW}当前 SS-2022 监听端口: $SS_PORT/TCP+UDP${NC}"
-    msg "IPv4 白名单:"
+    msg "${YELLOW}$(tprintf manage_ss_whitelist_listen_port "$SS_PORT")${NC}"
+    msg "$(tr_msg manage_ss_whitelist_ipv4_label)"
     $IPT -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT([^0-9]|$)" | grep 'ACCEPT' | awk '{print $5}' | grep -v '0.0.0.0/0' | sort -u || true
     if command -v ip6tables >/dev/null 2>&1 && $IPT6 -nL INPUT >/dev/null 2>&1; then
-        msg "IPv6 白名单:"
+        msg "$(tr_msg manage_ss_whitelist_ipv6_label)"
         $IPT6 -nL INPUT --line-numbers 2>/dev/null | grep -E "(tcp|udp) dpt:$SS_PORT([^0-9]|$)" | grep 'ACCEPT' | awk '{print $5}' | grep -v '::/0' | sort -u || true
     fi
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
-    msg "${CYAN}1.${NC} 新增白名单 IP/CIDR (TCP+UDP)"
-    msg "${CYAN}2.${NC} 移除白名单 IP/CIDR (TCP+UDP)"
-    msg "${CYAN}3.${NC} 开启白名单模式 (TCP+UDP DROP)"
-    msg "${CYAN}4.${NC} 切换为全网开放 (移除 DROP 并放行 TCP+UDP)"
-    msg "${CYAN}0.${NC} 返回主菜单"
+    msg "${CYAN}1.${NC} $(tr_msg manage_ss_whitelist_add_ip)"
+    msg "${CYAN}2.${NC} $(tr_msg manage_ss_whitelist_remove_ip)"
+    msg "${CYAN}3.${NC} $(tr_msg manage_ss_whitelist_enable_mode)"
+    msg "${CYAN}4.${NC} $(tr_msg manage_ss_whitelist_open_all)"
+    msg "${CYAN}0.${NC} $(tr_msg manage_ss_whitelist_back_to_menu)"
     read -r -p "$(tr_msg wl_pick_prompt)" wl_choice
     local add_ip del_ip rule found proto
     case "$wl_choice" in
@@ -29094,7 +29862,7 @@ manage_ss_whitelist() {
             [[ -z "$add_ip" ]] && return
             _ss_wl_snapshot_rules || die "$(tr_msg pi_ss_snapshot)"
             if [[ "$add_ip" == *:* ]]; then
-                valid_ipv6_cidr "$add_ip" || { msg "${RED}[!] IPv6 白名单地址非法: $add_ip${NC}"; pause_return; return; }
+                valid_ipv6_cidr "$add_ip" || { msg "${RED}[!] $(tprintf manage_ss_whitelist_ipv6_addr_invalid "$add_ip")${NC}"; pause_return; return; }
                 # N-04: objective check (not preference-aware has_ipv6), consistent
                 # with option 2/3 and pre_install_setup.
                 host_has_usable_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1 || die "$(tr_msg mw_no_v6fw)"
@@ -29108,7 +29876,7 @@ manage_ss_whitelist() {
                     esac
                 done
             else
-                valid_ipv4_cidr "$add_ip" || { msg "${RED}[!] IPv4 白名单地址非法: $add_ip${NC}"; pause_return; return; }
+                valid_ipv4_cidr "$add_ip" || { msg "${RED}[!] $(tprintf manage_ss_whitelist_ipv4_addr_invalid "$add_ip")${NC}"; pause_return; return; }
                 for proto in tcp udp; do
                     # F-06: check existence first (idempotent) — do not insert duplicates.
                     if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
@@ -29121,7 +29889,7 @@ manage_ss_whitelist() {
             fi
             save_firewall_rules || { if _ss_wl_rollback_to_snapshot; then die "$(tr_msg pi_fw_persist_rb)"; else die "$(tr_msg pi_fw_persist_norb)"; fi; }
             sync_ss_whitelist_ip_to_env || { if _ss_wl_rollback_to_snapshot && save_firewall_rules; then die "$(tr_msg mw_env_sync)"; else die "$(tr_msg mw_env_sync_norb)"; fi; }
-            msg "${GREEN}已添加白名单: $add_ip (TCP+UDP)${NC}"
+            msg "${GREEN}$(tprintf manage_ss_whitelist_added "$add_ip")${NC}"
             pause_return
             ;;
         2)
@@ -29130,9 +29898,9 @@ manage_ss_whitelist() {
             _ss_wl_snapshot_rules || die "$(tr_msg pi_ss_snapshot)"
             found=0
             if [[ "$del_ip" == *:* ]]; then
-                valid_ipv6_cidr "$del_ip" || { msg "${RED}[!] IPv6 白名单地址非法: $del_ip${NC}"; pause_return; return; }
+                valid_ipv6_cidr "$del_ip" || { msg "${RED}[!] $(tprintf manage_ss_whitelist_ipv6_addr_invalid "$del_ip")${NC}"; pause_return; return; }
                 if ! host_has_usable_ipv6 || ! command -v ip6tables >/dev/null 2>&1 || ! _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
-                    msg "${YELLOW}[!] 当前系统没有可用的 IPv6 防火墙，无法移除 IPv6 白名单；IPv4 规则未受影响。${NC}"
+                    msg "${YELLOW}[!] $(tr_msg manage_ss_whitelist_no_ipv6_firewall)${NC}"
                     pause_return
                     return
                 fi
@@ -29149,7 +29917,7 @@ manage_ss_whitelist() {
                     done
                 done
             else
-                valid_ipv4_cidr "$del_ip" || { msg "${RED}[!] IPv4 白名单地址非法: $del_ip${NC}"; pause_return; return; }
+                valid_ipv4_cidr "$del_ip" || { msg "${RED}[!] $(tprintf manage_ss_whitelist_ipv4_addr_invalid "$del_ip")${NC}"; pause_return; return; }
                 for proto in tcp udp; do
                     while :; do
                         if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$del_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
@@ -29165,7 +29933,7 @@ manage_ss_whitelist() {
             fi
             save_firewall_rules || { if _ss_wl_rollback_to_snapshot; then die "$(tr_msg pi_fw_persist_rb)"; else die "$(tr_msg pi_fw_persist_norb)"; fi; }
             sync_ss_whitelist_ip_to_env || { if _ss_wl_rollback_to_snapshot && save_firewall_rules; then die "$(tr_msg mw_env_sync)"; else die "$(tr_msg mw_env_sync_norb)"; fi; }
-            if [[ "$found" == 1 ]]; then msg "${GREEN}已移除白名单: $del_ip${NC}"; else msg "${YELLOW}未找到该白名单规则。${NC}"; fi
+            if [[ "$found" == 1 ]]; then msg "${GREEN}$(tprintf manage_ss_whitelist_removed "$del_ip")${NC}"; else msg "${YELLOW}$(tr_msg manage_ss_whitelist_rule_not_found)${NC}"; fi
             pause_return
             ;;
         3)
@@ -29190,7 +29958,7 @@ manage_ss_whitelist() {
             done
             enforce_ss_whitelist_order "$SS_PORT" || { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_order)"; }
             save_firewall_rules || { if _ss_wl_rollback_to_snapshot; then die "$(tr_msg pi_fw_persist_rb)"; else die "$(tr_msg pi_fw_persist_norb)"; fi; }
-            msg "${GREEN}已开启白名单保护模式 (TCP+UDP)。${NC}"
+            msg "${GREEN}$(tr_msg manage_ss_whitelist_protect_enabled)${NC}"
             pause_return
             ;;
         4)
@@ -29230,7 +29998,7 @@ manage_ss_whitelist() {
             save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
             sync_ss_whitelist_ip_to_env || die "$(tr_msg mw_env_sync)"
             ABOX_DIE_HOOK="$_old_die_hook"
-            msg "${GREEN}已切换为全网开放模式 (TCP+UDP)。${NC}"
+            msg "${GREEN}$(tr_msg manage_ss_whitelist_open_mode)${NC}"
             pause_return
             ;;
         *) return 0 ;;
@@ -30390,18 +31158,18 @@ apply_vps_tune() {
         snapshot_exists=1
     elif [[ -e "$dir" || -L "$dir" ]]; then
         [[ -d "$dir" && ! -L "$dir" ]] || die "$(tr_msg tn_backup_unsafe)"
-        [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]] || { msg "${RED}[!] 检测到未完成的调优快照；请先检查并恢复/清理该快照。${NC}"; return 1; }
+        [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]] || { msg "${RED}[!] $(tr_msg apply_vps_tune_snapshot_incomplete)${NC}"; return 1; }
     fi
     # Idempotent re-run: inspect live state first, never error out on re-apply.
     missing=$(_tune_missing_items)
     if [[ -z "$missing" ]]; then
-        msg "${GREEN}VPS 调优已全部应用，无需重复操作。${NC}"
+        msg "${GREEN}$(tr_msg apply_vps_tune_already_applied)${NC}"
         return 0
     fi
-    msg "${YELLOW}检测到未应用的调优项：${NC}"
+    msg "${YELLOW}$(tr_msg apply_vps_tune_missing_items_found)${NC}"
     msg "$missing"
     if (( snapshot_exists == 1 )); then
-        msg "${YELLOW}[!] 保留已有调优快照（恢复时仍回到最初状态），仅补齐缺失项。${NC}"
+        msg "${YELLOW}[!] $(tr_msg apply_vps_tune_keep_snapshot_fill_missing)${NC}"
     else
         snapshot_tmp=$(mktemp -d "$ABOX_DIR/.tune-backup-new.XXXXXX") || die "$(tr_msg tn_backup_tmp)"
         if [[ -f /etc/sysctl.d/99-A-Box-tune.conf ]] && ! cp -a /etc/sysctl.d/99-A-Box-tune.conf "$snapshot_tmp/sysctl.conf"; then
@@ -30424,7 +31192,7 @@ apply_vps_tune() {
         fi
         mv -f -- "$snapshot_tmp" "$dir" || { rm -rf -- "$snapshot_tmp"; die "$(tr_msg tn_commit)"; }
     fi
-    write_file_atomically_from_stdin /etc/security/limits.d/A-Box.conf 644 <<'EOF_LIMITS' || { restore_vps_tune 1 || true; die 'limits 配置原子写入失败，已恢复原状态。'; }
+    write_file_atomically_from_stdin /etc/security/limits.d/A-Box.conf 644 <<'EOF_LIMITS' || { restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_limits_write_failed)"; }
 # Managed by A-Box
 * soft nofile 1048576
 * hard nofile 1048576
@@ -30433,48 +31201,48 @@ root hard nofile 1048576
 EOF_LIMITS
     tmp=$(umask 077; mktemp /tmp/A-Box-sysctl.XXXXXX) || { restore_vps_tune 1 || true; die "$(tr_msg tn_tmp)"; }
     printf '%s\n' '# Managed by A-Box' > "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg tn_tmp_init)"; }
-    __abox_add_sysctl fs.file-max 1048576 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl fs.inotify.max_user_instances 8192 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.ipv4.tcp_syncookies 1 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.ipv4.tcp_fin_timeout 30 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.ipv4.tcp_max_syn_backlog 8192 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.ipv4.tcp_fastopen 3 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.ipv4.tcp_mtu_probing 1 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.ipv4.tcp_notsent_lowat 16384 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.core.netdev_max_backlog 250000 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.core.somaxconn 32768 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.core.rmem_max 16777216 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.core.wmem_max 16777216 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.ipv4.tcp_rmem '4096 87380 16777216' "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.ipv4.tcp_wmem '4096 65536 16777216' "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.ipv4.tcp_keepalive_time 600 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.ipv4.tcp_slow_start_after_idle 0 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-    __abox_add_sysctl net.ipv4.ip_local_port_range '10240 65535' "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+    __abox_add_sysctl fs.file-max 1048576 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl fs.inotify.max_user_instances 8192 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.ipv4.tcp_syncookies 1 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.ipv4.tcp_fin_timeout 30 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.ipv4.tcp_max_syn_backlog 8192 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.ipv4.tcp_fastopen 3 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.ipv4.tcp_mtu_probing 1 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.ipv4.tcp_notsent_lowat 16384 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.core.netdev_max_backlog 250000 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.core.somaxconn 32768 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.core.rmem_max 16777216 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.core.wmem_max 16777216 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.ipv4.tcp_rmem '4096 87380 16777216' "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.ipv4.tcp_wmem '4096 65536 16777216' "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.ipv4.tcp_keepalive_time 600 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.ipv4.tcp_slow_start_after_idle 0 "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+    __abox_add_sysctl net.ipv4.ip_local_port_range '10240 65535' "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
     if modprobe tcp_bbr >/dev/null 2>&1; then bbr_loaded=1; fi
     available=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
     if grep -qw bbr <<< "$available"; then
-        __abox_add_sysctl net.core.default_qdisc fq "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
-        __abox_add_sysctl net.ipv4.tcp_congestion_control bbr "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die 'sysctl 调优项写入失败，已恢复原状态。'; }
+        __abox_add_sysctl net.core.default_qdisc fq "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
+        __abox_add_sysctl net.ipv4.tcp_congestion_control bbr "$tmp" || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_sysctl_write_failed)"; }
         if (( bbr_loaded == 1 )); then
             path_parent_chain_safe "$bbr_module_file" || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg tn_bbr_chain)"; }
             [[ ! -L /etc/modules-load.d && (! -e /etc/modules-load.d || -d /etc/modules-load.d) ]] || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg tn_moddir_unsafe)"; }
             install -d -m 755 /etc/modules-load.d || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg tn_moddir_create)"; }
-            write_file_atomically_from_stdin "$bbr_module_file" 644 <<'EOF_BBR' || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die 'BBR 内核模块持久加载配置写入失败。'; }
+            write_file_atomically_from_stdin "$bbr_module_file" 644 <<'EOF_BBR' || { rm -f -- "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg apply_vps_tune_bbr_module_write_failed)"; }
 # Managed by A-Box
 tcp_bbr
 EOF_BBR
         fi
     else
-        msg "${YELLOW}[!] 当前内核未提供 BBR，跳过 BBR/FQ 设置。${NC}"
+        msg "${YELLOW}[!] $(tr_msg apply_vps_tune_no_bbr_skip)${NC}"
     fi
     install_file_atomically "$tmp" /etc/sysctl.d/99-A-Box-tune.conf 600 || { rm -f "$tmp"; restore_vps_tune 1 || true; die "$(tr_msg tn_atomic_write)"; }
     rm -f "$tmp"
     if ! sysctl -p /etc/sysctl.d/99-A-Box-tune.conf >/dev/null 2>&1; then restore_vps_tune 1; die "$(tr_msg tn_apply)"; fi
     missing=$(_tune_missing_items)
     if [[ -z "$missing" ]]; then
-        msg "${GREEN}缺失项已补齐，系统调优已全部应用；未强制启用 IP forwarding，也未修改核心 JSON 配置。${NC}"
+        msg "${GREEN}$(tr_msg apply_vps_tune_missing_filled)${NC}"
     else
-        msg "${YELLOW}[!] 以下调优项仍未生效（可能为内核限制）：${NC}"
+        msg "${YELLOW}[!] $(tr_msg apply_vps_tune_items_still_inactive)${NC}"
         msg "$missing"
     fi
 }
@@ -37460,77 +38228,77 @@ setup_swap_2g() {
     local fstab_tmp='' fstab_backup='' free_kib=0 created_by_abox=0 last_byte="" _swap_nocow=0
     clear
     msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}Swap 虚拟内存一键划拨 / Allocate 2G Swap${NC}"
+    msg "${BOLD}${GREEN}$(tr_msg setup_swap_2g_title)${NC}"
     msg "${CYAN}======================================================================${NC}"
-    fstab_path_is_safe || die '/etc/fstab 必须是 root 所有且不可被组/其他用户写入的普通文件，拒绝继续写入。'
-    [[ ! -L /swapfile ]] || die '拒绝使用符号链接 /swapfile。'
-    if [[ -e /swapfile && ! -f /swapfile ]]; then die '/swapfile 已存在但不是普通文件。'; fi
+    fstab_path_is_safe || die "$(tr_msg setup_swap_2g_fstab_not_safe)"
+    [[ ! -L /swapfile ]] || die "$(tr_msg setup_swap_2g_no_symlink_swapfile)"
+    if [[ -e /swapfile && ! -f /swapfile ]]; then die "$(tr_msg setup_swap_2g_swapfile_not_regular)"; fi
     if [[ -f /swapfile ]]; then
-        [[ "$(stat -c %u:%g /swapfile 2>/dev/null || echo -1:-1)" == 0:0 ]] || die '/swapfile 不是 root:root 所有。'
-        [[ "$(stat -c %a /swapfile 2>/dev/null || echo 999)" =~ ^0?600$ ]] || die '/swapfile 已存在但权限不是 0600；A-Box 不会修改非托管 Swap 文件，请先手动收紧权限。'
+        [[ "$(stat -c %u:%g /swapfile 2>/dev/null || echo -1:-1)" == 0:0 ]] || die "$(tr_msg setup_swap_2g_swapfile_not_root_owned)"
+        [[ "$(stat -c %a /swapfile 2>/dev/null || echo 999)" =~ ^0?600$ ]] || die "$(tr_msg setup_swap_2g_swapfile_perm_not_0600)"
         msg "${YELLOW}$(tr_msg swap_exists)${NC}"
     else
         free_kib=$(df -Pk / | awk 'NR==2{print $4}')
-        [[ "$free_kib" =~ ^[0-9]+$ && "$free_kib" -ge 2300000 ]] || die "根文件系统剩余空间不足 2G Swap 安全创建阈值。当前=${free_kib:-unknown}KiB。"
+        [[ "$free_kib" =~ ^[0-9]+$ && "$free_kib" -ge 2300000 ]] || die "$(tprintf setup_swap_2g_root_free_low "${free_kib:-unknown}")"
         # R5C13-02: Btrfs COW swapfiles are rejected by swapon;
         # set NOCOW on the empty file before any extents exist.
         if [[ "$(stat -f -c %T / 2>/dev/null || echo unknown)" == "btrfs" ]]; then
             _swap_nocow=1
         fi
         if (( _swap_nocow == 1 )); then
-            (umask 077 && : > /swapfile) || die 'Swap 文件创建失败。'
-            chattr +C /swapfile 2>/dev/null || { rm -f /swapfile; die 'Btrfs Swap 需 NOCOW 属性，chattr +C 失败。'; }
+            (umask 077 && : > /swapfile) || die "$(tr_msg setup_swap_2g_swap_file_create_failed)"
+            chattr +C /swapfile 2>/dev/null || { rm -f /swapfile; die "$(tr_msg setup_swap_2g_btrfs_nocow_failed)"; }
         fi
         if ! (umask 077 && fallocate -l 2G /swapfile 2>/dev/null); then
             rm -f /swapfile
             if (( _swap_nocow == 1 )); then
-                (umask 077 && : > /swapfile) || die 'Swap 文件创建失败。'
-                chattr +C /swapfile 2>/dev/null || { rm -f /swapfile; die 'Btrfs Swap 需 NOCOW 属性，chattr +C 失败。'; }
+                (umask 077 && : > /swapfile) || die "$(tr_msg setup_swap_2g_swap_file_create_failed)"
+                chattr +C /swapfile 2>/dev/null || { rm -f /swapfile; die "$(tr_msg setup_swap_2g_btrfs_nocow_failed)"; }
             fi
-            (umask 077 && dd if=/dev/zero of=/swapfile bs=1M count=2048) || { rm -f /swapfile; die 'Swap 文件创建失败。'; }
+            (umask 077 && dd if=/dev/zero of=/swapfile bs=1M count=2048) || { rm -f /swapfile; die "$(tr_msg setup_swap_2g_swap_file_create_failed)"; }
         fi
         created_by_abox=1
-        chmod 600 /swapfile || { rm -f /swapfile; die 'Swap 文件权限设置失败。'; }
-        chown root:root /swapfile || { rm -f /swapfile; die 'Swap 文件属主设置失败。'; }
-        mkswap /swapfile >/dev/null || { rm -f /swapfile; die 'mkswap 失败。'; }
+        chmod 600 /swapfile || { rm -f /swapfile; die "$(tr_msg setup_swap_2g_swap_file_chmod_failed)"; }
+        chown root:root /swapfile || { rm -f /swapfile; die "$(tr_msg setup_swap_2g_swap_file_chown_failed)"; }
+        mkswap /swapfile >/dev/null || { rm -f /swapfile; die "$(tr_msg setup_swap_2g_mkswap_failed)"; }
     fi
     swapfile_active_state
     case $? in
         0) ;;
-        1) swapon /swapfile || { (( created_by_abox == 1 )) && rm -f -- /swapfile; die 'swapon 失败；不会写入 /etc/fstab。'; } ;;
-        *) die '无法可靠判断 /swapfile 当前是否已激活；拒绝执行破坏性 Swap 操作。' ;;
+        1) swapon /swapfile || { (( created_by_abox == 1 )) && rm -f -- /swapfile; die "$(tr_msg setup_swap_2g_swapon_failed_no_fstab)"; } ;;
+        *) die "$(tr_msg setup_swap_2g_swap_active_unknown)" ;;
     esac
     if (( created_by_abox == 1 )); then
         if ! fstab_backup=$(mktemp /etc/.fstab.A-Box-setup-backup.XXXXXX); then
             if ! rollback_new_swap_activation_only; then
-                die '/etc/fstab 备份创建失败且新建 Swap 无法安全关闭；已保留 /swapfile，未修改 /etc/fstab，请立即检查并手动处理。'
+                die "$(tr_msg setup_swap_2g_fstab_backup_failed_swap_stuck)"
             fi
-            die '/etc/fstab 备份创建失败；已回滚新建 Swap，且未修改 /etc/fstab。'
+            die "$(tr_msg setup_swap_2g_fstab_backup_create_failed_rolled_back)"
         fi
         if ! cp -a /etc/fstab "$fstab_backup"; then
             rm -f -- "$fstab_backup" || true
             if ! rollback_new_swap_activation_only; then
-                die '无法创建可靠的 /etc/fstab 备份且新建 Swap 无法安全关闭；已保留 /swapfile，未修改 /etc/fstab。'
+                die "$(tr_msg setup_swap_2g_fstab_backup_unreliable_swap_stuck)"
             fi
-            die '/etc/fstab 备份失败；已回滚新建 Swap，且未修改 /etc/fstab。'
+            die "$(tr_msg setup_swap_2g_fstab_backup_failed_rolled_back)"
         fi
         if ! grep -qE '^/swapfile[[:space:]]+[^[:space:]]+[[:space:]]+swap([[:space:]]|$)' /etc/fstab 2>/dev/null; then
             if ! fstab_tmp=$(mktemp /etc/.fstab.A-Box.XXXXXX); then
                 if ! rollback_abox_new_swap "$fstab_backup"; then
-                    msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
-                    die '/etc/fstab 临时文件创建失败且 Swap 无法安全回滚；已保留恢复材料。'
+                    msg "${RED}[!] $(tprintf setup_swap_2g_rollback_incomplete_keep_backup "${fstab_backup}")${NC}" >&2
+                    die "$(tr_msg setup_swap_2g_fstab_tmp_create_failed_swap_stuck)"
                 fi
                 rm -f "$fstab_backup" || true
-                die '/etc/fstab 临时文件创建失败；已回滚新建 Swap。'
+                die "$(tr_msg setup_swap_2g_fstab_tmp_create_failed_rolled_back)"
             fi
             if ! cat /etc/fstab > "$fstab_tmp"; then
                 rm -f "$fstab_tmp"
                 if ! rollback_abox_new_swap "$fstab_backup"; then
-                    msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
-                    die '/etc/fstab 写入失败且 Swap 无法安全回滚；已保留恢复材料。'
+                    msg "${RED}[!] $(tprintf setup_swap_2g_rollback_incomplete_keep_backup "${fstab_backup}")${NC}" >&2
+                    die "$(tr_msg setup_swap_2g_fstab_write_failed_swap_stuck)"
                 fi
                 rm -f "$fstab_backup" || true
-                die '/etc/fstab 写入失败；已回滚新建 Swap。'
+                die "$(tr_msg setup_swap_2g_fstab_write_failed_rolled_back)"
             fi
             # Trailing-newline guard: without it the BEGIN marker glues
             # onto a newline-less last line, and the later removal (which
@@ -37541,31 +38309,31 @@ setup_swap_2g() {
             if ! last_byte=$(tail -c 1 "$fstab_tmp" 2>/dev/null); then
                 rm -f "$fstab_tmp"
                 if ! rollback_abox_new_swap "$fstab_backup"; then
-                    msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
-                    die '/etc/fstab 写入失败且 Swap 无法安全回滚；已保留恢复材料。'
+                    msg "${RED}[!] $(tprintf setup_swap_2g_rollback_incomplete_keep_backup "${fstab_backup}")${NC}" >&2
+                    die "$(tr_msg setup_swap_2g_fstab_write_failed_swap_stuck)"
                 fi
                 rm -f "$fstab_backup" || true
-                die '/etc/fstab 写入失败；已回滚新建 Swap。'
+                die "$(tr_msg setup_swap_2g_fstab_write_failed_rolled_back)"
             fi
             if [[ -s "$fstab_tmp" ]] && [[ -n "$last_byte" ]]; then
                 printf '\n' >> "$fstab_tmp" || {
                     rm -f "$fstab_tmp"
                     if ! rollback_abox_new_swap "$fstab_backup"; then
-                        msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
-                        die '/etc/fstab 写入失败且 Swap 无法安全回滚；已保留恢复材料。'
+                        msg "${RED}[!] $(tprintf setup_swap_2g_rollback_incomplete_keep_backup "${fstab_backup}")${NC}" >&2
+                        die "$(tr_msg setup_swap_2g_fstab_write_failed_swap_stuck)"
                     fi
                     rm -f "$fstab_backup" || true
-                    die '/etc/fstab 写入失败；已回滚新建 Swap。'
+                    die "$(tr_msg setup_swap_2g_fstab_write_failed_rolled_back)"
                 }
             fi
             if ! printf '%s\n' '# A-Box swap BEGIN' '/swapfile none swap sw 0 0' '# A-Box swap END' >> "$fstab_tmp"; then
                 rm -f "$fstab_tmp"
                 if ! rollback_abox_new_swap "$fstab_backup"; then
-                    msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
-                    die '/etc/fstab 写入失败且 Swap 无法安全回滚；已保留恢复材料。'
+                    msg "${RED}[!] $(tprintf setup_swap_2g_rollback_incomplete_keep_backup "${fstab_backup}")${NC}" >&2
+                    die "$(tr_msg setup_swap_2g_fstab_write_failed_swap_stuck)"
                 fi
                 rm -f "$fstab_backup" || true
-                die '/etc/fstab 写入失败；已回滚新建 Swap。'
+                die "$(tr_msg setup_swap_2g_fstab_write_failed_rolled_back)"
             fi
             # R6C13-01: preserve the original fstab mode
             # explicitly. BusyBox chmod lacks --reference;
@@ -37573,29 +38341,29 @@ setup_swap_2g() {
             # holding CIFS credentials. Abort if unpreservable.
             _orig_mode=$(stat -c %a /etc/fstab 2>/dev/null) || { rm -f "$fstab_tmp";
                 if ! rollback_abox_new_swap "$fstab_backup"; then
-                    msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
-                    die '/etc/fstab 权限保留失败且 Swap 无法安全回滚；已保留恢复材料。'
+                    msg "${RED}[!] $(tprintf setup_swap_2g_rollback_incomplete_keep_backup "${fstab_backup}")${NC}" >&2
+                    die "$(tr_msg setup_swap_2g_fstab_perm_failed_swap_stuck)"
                 fi
                 rm -f "$fstab_backup" || true
-                die '/etc/fstab 权限保留失败；已回滚新建 Swap。'
+                die "$(tr_msg setup_swap_2g_fstab_perm_failed_rolled_back)"
             }
             chmod "$_orig_mode" "$fstab_tmp" || { rm -f "$fstab_tmp";
                 if ! rollback_abox_new_swap "$fstab_backup"; then
-                    msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
-                    die '/etc/fstab 权限保留失败且 Swap 无法安全回滚；已保留恢复材料。'
+                    msg "${RED}[!] $(tprintf setup_swap_2g_rollback_incomplete_keep_backup "${fstab_backup}")${NC}" >&2
+                    die "$(tr_msg setup_swap_2g_fstab_perm_failed_swap_stuck)"
                 fi
                 rm -f "$fstab_backup" || true
-                die '/etc/fstab 权限保留失败；已回滚新建 Swap。'
+                die "$(tr_msg setup_swap_2g_fstab_perm_failed_rolled_back)"
             }
             chown --reference=/etc/fstab "$fstab_tmp" 2>/dev/null || true
             if ! mv -f "$fstab_tmp" /etc/fstab; then
                 rm -f "$fstab_tmp"
                 if ! rollback_abox_new_swap "$fstab_backup"; then
-                    msg "${RED}[!] Swap 回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
-                    die '/etc/fstab 原子提交失败且 Swap 无法安全回滚；已保留恢复材料。'
+                    msg "${RED}[!] $(tprintf setup_swap_2g_rollback_incomplete_keep_backup "${fstab_backup}")${NC}" >&2
+                    die "$(tr_msg setup_swap_2g_fstab_commit_failed_swap_stuck)"
                 fi
                 rm -f "$fstab_backup" || true
-                die '/etc/fstab 原子提交失败；已回滚新建 Swap。'
+                die "$(tr_msg setup_swap_2g_fstab_commit_failed_rolled_back)"
             fi
         fi
         if grep -q '# A-Box swap BEGIN' /etc/fstab 2>/dev/null; then
@@ -37604,18 +38372,18 @@ A-Box managed swap v1
 EOF_SWAP_MARK
             then
                 if ! rollback_abox_new_swap "$fstab_backup"; then
-                    msg "${RED}[!] Swap ownership marker 写入失败，自动回滚未完成；保留 fstab 备份：${fstab_backup}${NC}" >&2
-                    die 'Swap 归属标记写入失败且自动回滚不完整；已保留恢复材料，请立即检查 /etc/fstab 与 /swapfile。'
+                    msg "${RED}[!] $(tprintf setup_swap_2g_ownership_marker_write_failed_incomplete "${fstab_backup}")${NC}" >&2
+                    die "$(tr_msg setup_swap_2g_ownership_marker_write_failed_check)"
                 fi
                 rm -f "$fstab_backup" || true
-                die 'Swap 归属标记写入失败；已完整回滚 A-Box 新建 Swap。'
+                die "$(tr_msg setup_swap_2g_ownership_marker_write_failed_rolled_back)"
             fi
         else
-            msg "${YELLOW}[!] /etc/fstab 已有未标记的 /swapfile 条目；本次不写入托管区块、也不声明所有权。${NC}"
+            msg "${YELLOW}[!] $(tr_msg setup_swap_2g_fstab_unmarked_entry_skip)${NC}"
         fi
-        rm -f "$fstab_backup" || die 'Swap 临时备份清理失败；Swap 已部署但安全备份残留，请检查 /etc/.fstab.A-Box-setup-backup.*。'
+        rm -f "$fstab_backup" || die "$(tr_msg setup_swap_2g_tmp_backup_cleanup_failed)"
     elif ! grep -qE '^/swapfile[[:space:]]+[^[:space:]]+[[:space:]]+swap([[:space:]]|$)' /etc/fstab 2>/dev/null; then
-        msg "${YELLOW}[!] 已存在的 /swapfile 非 A-Box 创建文件；已启用但不修改 /etc/fstab，也不会声明所有权。${NC}"
+        msg "${YELLOW}[!] $(tr_msg setup_swap_2g_existing_swapfile_not_abox)${NC}"
     fi
     swapon --show || true
     msg "${GREEN}$(tr_msg swap_done)${NC}"
@@ -47603,13 +48371,13 @@ hy2_cert_pin_colon() {
 view_config() {
     local CALLER=${1:-manual}
     clear
-    [[ ! -f "$ABOX_ENV" ]] && { msg "${RED}未检测到持久化配置变量。${NC}"; show_standalone_links; pause_return; return 0; }
-    load_abox_env "$ABOX_ENV" || die 'A-Box 状态文件无效或权限不安全。'
+    [[ ! -f "$ABOX_ENV" ]] && { msg "${RED}$(tr_msg view_config_no_persisted_vars)${NC}"; show_standalone_links; pause_return; return 0; }
+    load_abox_env "$ABOX_ENV" || die "$(tr_msg view_config_state_file_invalid)"
     local refreshed_ip
     refreshed_ip=$(refresh_public_ip || true)
     if [[ -n "$refreshed_ip" && "$refreshed_ip" != 'N/A' && "$refreshed_ip" != "${LINK_IP:-}" ]]; then
         LINK_IP="$refreshed_ip"
-        write_env || die '公网 IP 已变化，但持久化更新失败。'
+        write_env || die "$(tr_msg view_config_public_ip_changed_save_failed)"
     fi
     VISION_SNI=${VISION_SNI:-${VLESS_SNI:-}}
     XHTTP_SNI=${XHTTP_SNI:-${VLESS_SNI:-}}
@@ -47619,9 +48387,9 @@ view_config() {
     local _clash_sub_global="${CLASH_SUB_URL:-}"
     local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME
     local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json
-    IFS=$'\t' read -r HY2_URI_PORT HY2_QUERY_PREFIX < <(build_hy2_uri_endpoint) || die 'Hysteria2 分享链接端口参数无效。'
+    IFS=$'\t' read -r HY2_URI_PORT HY2_QUERY_PREFIX < <(build_hy2_uri_endpoint) || die "$(tr_msg view_config_hy2_uri_port_invalid)"
     [[ "$LINK_IP" =~ : ]] && F_IP="[$LINK_IP]"
-    [[ -z "$LINK_IP" || "$LINK_IP" == 'N/A' ]] && msg "${YELLOW}[!] 未能自动获取公网 IP，分享链接可能不可用。${NC}"
+    [[ -z "$LINK_IP" || "$LINK_IP" == 'N/A' ]] && msg "${YELLOW}[!] $(tr_msg view_config_public_ip_unavailable)${NC}"
     VISION_SNI_E=$(urlencode "${VISION_SNI:-}")
     XHTTP_SNI_E=$(urlencode "${XHTTP_SNI:-}")
     PUBLIC_KEY_E=$(urlencode "${PUBLIC_KEY:-}")
@@ -47644,14 +48412,14 @@ view_config() {
     [[ -n "$HY2_PIN_E" ]] || msg "${YELLOW}[!] Hy2 certificate unreadable; pinSHA256 left empty.${NC}" >&2
     HY2_PIN_E=$(urlencode "$HY2_PIN_E")
     msg "${BLUE}======================================================================${NC}"
-    msg "${BOLD}${CYAN}全局拓扑网络参数 (${MODE}) / Network Parameters${NC}"
+    msg "${BOLD}${CYAN}$(tprintf view_config_network_params_title "${MODE}")${NC}"
     msg "${BLUE}======================================================================${NC}"
-    msg "${BOLD}引擎栈:${NC} $CORE | ${BOLD}模式:${NC} $MODE"
+    msg "${BOLD}$(tr_msg view_config_engine_stack_label)${NC} $CORE | ${BOLD}$(tr_msg view_config_mode_label)${NC} $MODE"
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
-    msg "${YELLOW}[ Shadowrocket / v2rayNG / NekoBox 单节点 URI ]${NC}"
+    msg "${YELLOW}[ $(tr_msg view_config_single_node_uri_title) ]${NC}"
     if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
         VLESS_URL="vless://$UUID@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#Vision"
-        msg "${BOLD}${CYAN}── VLESS-Vision-Reality · 端口 ${VLESS_PORT}${NC}"
+        msg "${BOLD}${CYAN}── $(tprintf view_config_vless_vision_reality_port "${VLESS_PORT}")${NC}"
         msg "${GREEN}${VLESS_URL}${NC}"
         if [[ "$CORE" == 'xray' ]] && [[ "$CALLER" != 'deploy' ]] && xray_reality_requires_mlkem; then
             msg "${YELLOW}$(tprintf vc_xray_mlkem_compat "$(effective_xray_version)")${NC}"
@@ -47660,7 +48428,7 @@ view_config() {
     fi
     if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
         XHTTP_URL="vless://$UUID@$F_IP:$XHTTP_PORT?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#XHTTP"
-        msg "${BOLD}${CYAN}── VLESS-XHTTP-Reality · 端口 ${XHTTP_PORT}${NC}"
+        msg "${BOLD}${CYAN}── $(tprintf view_config_vless_xhttp_reality_port "${XHTTP_PORT}")${NC}"
         msg "${GREEN}${XHTTP_URL}${NC}"
         generate_qr "$XHTTP_URL"
     fi
@@ -47669,7 +48437,7 @@ view_config() {
         # only; the rest of view_config continues. Never emit an insecure
         # link with an empty pinSHA256.
         if [[ -z "$HY2_PIN_E" ]] && [[ -z "${HY2_DOMAIN:-}" || "$CORE" == 'singbox' ]]; then
-            msg "${RED}[!] Hysteria 2 证书指纹不可用，已拒发该条分享链接（pin 分支无有效 pin 时不输出 insecure 空 pin 链接）；其余链接不受影响。${NC}"
+            msg "${RED}[!] $(tr_msg view_config_hy2_fingerprint_unavailable)${NC}"
         else
         if [[ -n "${HY2_DOMAIN:-}" && "$CORE" != 'singbox' ]]; then
             HY2_URL="hysteria2://$HY2_PASS_E@$HY2_DOMAIN:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}sni=$HY2_DOMAIN_E&obfs=salamander&obfs-password=$HY2_OBFS_E#Hy2"
@@ -47678,25 +48446,25 @@ view_config() {
         else
             HY2_URL="hysteria2://$HY2_PASS_E@$F_IP:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}sni=localhost&insecure=1&pinSHA256=$HY2_PIN_E&obfs=salamander&obfs-password=$HY2_OBFS_E#Hy2"
         fi
-        msg "${BOLD}${CYAN}── Hysteria 2 · 端口 ${HY2_URI_PORT}${NC}"
+        msg "${BOLD}${CYAN}── $(tprintf view_config_hy2_port "${HY2_URI_PORT}")${NC}"
         msg "${GREEN}${HY2_URL}${NC}"
-        [[ "${HY2_HOP:-}" == 'true' ]] && msg "${YELLOW}端口跳跃默认间隔 30s；不建议低于 5s。${NC}"
+        [[ "${HY2_HOP:-}" == 'true' ]] && msg "${YELLOW}$(tr_msg view_config_port_hop_interval_note)${NC}"
         generate_qr "$HY2_URL"
         fi
     fi
     if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
         SS_URL=$(build_ss2022_uri "$F_IP" "$SS_PORT" "$SS_PASS")
-        msg "${BOLD}${CYAN}── Shadowsocks-2022 · 端口 ${SS_PORT}${NC}"
+        msg "${BOLD}${CYAN}── $(tprintf view_config_ss2022_port "${SS_PORT}")${NC}"
         msg "${GREEN}${SS_URL}${NC}"
         generate_qr "$SS_URL"
     fi
 
-    CLASH_FILE=$(write_clash_yaml) || die 'Clash/Mihomo YAML 配置生成失败。'
+    CLASH_FILE=$(write_clash_yaml) || die "$(tr_msg view_config_clash_yaml_failed)"
     CLASH_SUB_URL="${ABOX_CLASH_SUB_URL:-${_clash_sub_global:-}}"
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
-    msg "${YELLOW}[ Clash / Mihomo 完整配置 ]${NC}"
+    msg "${YELLOW}[ $(tr_msg view_config_clash_full_config_title) ]${NC}"
     msg "${GREEN}Local YAML: ${CLASH_FILE}${NC}"
-    msg "${YELLOW}Clash/Mihomo 类客户端请导入完整 YAML 或远程订阅 URL；不要扫描上方单条 vless:// / hysteria2:// / ss://。${NC}"
+    msg "${YELLOW}$(tr_msg view_config_clash_import_note)${NC}"
     if [[ -n "$CLASH_SUB_URL" ]]; then
         CLASH_SCHEME="clash://install-config?url=$(urlencode "$CLASH_SUB_URL")"
         msg "${GREEN}Subscription URL: ${CLASH_SUB_URL}${NC}"
@@ -47707,15 +48475,15 @@ view_config() {
         local _clash_launch=''
         _clash_launch=$(shortcut_primary_names 2>/dev/null | awk '{print $1; exit}' 2>/dev/null || true)
         _clash_launch=${_clash_launch:-ab}
-        msg "${YELLOW}未设置 ABOX_CLASH_SUB_URL。若需要 Clash 扫码导入，请把 ${CLASH_FILE} 发布到 HTTPS 后执行：${NC}"
+        msg "${YELLOW}$(tprintf view_config_clash_sub_url_missing "${CLASH_FILE}")${NC}"
         msg "${CYAN}ABOX_CLASH_SUB_URL='https://example.com/A-Box-clash.yaml' ${_clash_launch}${NC}"
     fi
 
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
-    msg "${YELLOW}[ Clash / Mihomo YAML 预览 ]${NC}"
+    msg "${YELLOW}[ $(tr_msg view_config_clash_yaml_preview_title) ]${NC}"
     sed -n '1,220p' "$CLASH_FILE" 2>/dev/null || true
 
-    printf '\n%s\n' "${YELLOW}--- Sing-box 出站示例 ---${NC}"
+    printf '\n%s\n' "${YELLOW}--- $(tr_msg view_config_singbox_outbound_example) ---${NC}"
     if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
         S_IP="$LINK_IP"
         [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="$HY2_DOMAIN"
@@ -47724,7 +48492,7 @@ view_config() {
                 # U223: check the TLS fragment BEFORE embedding it; the
                 # old $(...) inside the heredoc silently produced a
                 # dangling comma and a missing tls block on failure.
-                _hy2_tls_json=$(singbox_hy2_tls_json) || msg "${RED}[!] Sing-box TLS 配置生成失败；已省略无效的出站示例。${NC}"
+                _hy2_tls_json=$(singbox_hy2_tls_json) || msg "${RED}[!] $(tr_msg view_config_singbox_tls_failed_skip)${NC}"
                 if [[ -n "$_hy2_tls_json" ]]; then
                 cat <<EOF_SB
     {
@@ -47742,10 +48510,10 @@ ${_hy2_tls_json},
 EOF_SB
                 fi
             else
-                msg "${YELLOW}[!] Hysteria 2 端口跳跃状态缺失或非法；已省略无效的 Sing-box 出站示例。${NC}"
+                msg "${YELLOW}[!] $(tr_msg view_config_hy2_port_hop_state_invalid)${NC}"
             fi
         else
-            _hy2_tls_json=$(singbox_hy2_tls_json) || msg "${RED}[!] Sing-box TLS 配置生成失败；已省略无效的出站示例。${NC}"
+            _hy2_tls_json=$(singbox_hy2_tls_json) || msg "${RED}[!] $(tr_msg view_config_singbox_tls_failed_skip)${NC}"
             if [[ -n "$_hy2_tls_json" ]]; then
             cat <<EOF_SB
     {
@@ -47799,7 +48567,7 @@ EOF_V2N
     # --- standalone protocols (links registered at deploy time) ---
     show_standalone_links
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
-    [[ "$CALLER" == 'deploy' ]] && msg "${GREEN}服务池部署完成。${NC}"
+    [[ "$CALLER" == 'deploy' ]] && msg "${GREEN}$(tr_msg view_config_deploy_done)${NC}"
     pause_return
 }
 
@@ -48097,22 +48865,22 @@ update_script() {
     clear
     local OTA_URL OTA_SNI_URL tmp_update tmp_sni_download tmp_sni_normalized tmp_old_script='' tmp_old_sni_cache=''
     local sni_cache old_cache_exists=0 sha script_restore_ok=1 cache_restore_ok=1
-    OTA_URL=$(resolve_abox_main_commit_url) || die '无法将 A-Box main 分支解析为不可变 commit；已拒绝 OTA。'
-    [[ "$OTA_URL" =~ ^https://raw\.githubusercontent\.com/alariclin/A-Box/[0-9a-f]{40}/install\.sh$ ]] || die 'OTA URL 未指向不可变的 A-Box commit；已拒绝更新。'
+    OTA_URL=$(resolve_abox_main_commit_url) || die "$(tr_msg update_script_resolve_main_commit_failed)"
+    [[ "$OTA_URL" =~ ^https://raw\.githubusercontent\.com/alariclin/A-Box/[0-9a-f]{40}/install\.sh$ ]] || die "$(tr_msg update_script_ota_url_not_immutable)"
     OTA_SNI_URL="${OTA_URL%/install.sh}/data/sni-candidates.txt"
-    tmp_update=$(umask 077; mktemp /tmp/A-Box-update.XXXXXX) || die '更新脚本临时文件创建失败。'
-    tmp_sni_download=$(umask 077; mktemp /tmp/A-Box-update-sni.XXXXXX) || { rm -f -- "$tmp_update"; die 'SNI 数据更新临时文件创建失败。'; }
-    tmp_sni_normalized=$(umask 077; mktemp /tmp/A-Box-update-sni-normalized.XXXXXX) || { rm -f -- "$tmp_update" "$tmp_sni_download"; die 'SNI 数据校验临时文件创建失败。'; }
-    msg "${YELLOW}[*] 正在同步固定 commit 的脚本和 SNI 数据...${NC}"
+    tmp_update=$(umask 077; mktemp /tmp/A-Box-update.XXXXXX) || die "$(tr_msg update_script_tmp_create_failed)"
+    tmp_sni_download=$(umask 077; mktemp /tmp/A-Box-update-sni.XXXXXX) || { rm -f -- "$tmp_update"; die "$(tr_msg update_script_sni_tmp_create_failed)"; }
+    tmp_sni_normalized=$(umask 077; mktemp /tmp/A-Box-update-sni-normalized.XXXXXX) || { rm -f -- "$tmp_update" "$tmp_sni_download"; die "$(tr_msg update_script_sni_verify_tmp_create_failed)"; }
+    msg "${YELLOW}[*] $(tr_msg update_script_syncing_pinned_commit)${NC}"
     if ! curl -fLsS --connect-timeout 10 -m 60 "$OTA_URL" -o "$tmp_update"; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
-        msg "${RED}[!] 无法下载更新脚本；当前版本未修改。${NC}"
+        msg "${RED}[!] $(tr_msg update_script_download_failed_unchanged)${NC}"
         pause_return
         return 1
     fi
-    if ! validate_abox_script_file "$tmp_update" 'OTA A-Box 脚本'; then
+    if ! validate_abox_script_file "$tmp_update" "$(tr_msg update_script_ota_script_label)"; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
-        msg "${RED}[!] 更新脚本语法或指纹校验失败；当前版本未修改。${NC}"
+        msg "${RED}[!] $(tr_msg update_script_verify_failed_unchanged)${NC}"
         pause_return
         return 1
     fi
@@ -48122,7 +48890,7 @@ update_script() {
     # committing either the script or the SNI cache.
     if ! validate_ota_version_direction "$tmp_update"; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
-        msg "${RED}[!] 更新脚本版本方向校验失败；当前版本未修改。${NC}"
+        msg "${RED}[!] $(tr_msg update_script_version_direction_failed_unchanged)${NC}"
         pause_return
         return 1
     fi
@@ -48130,7 +48898,7 @@ update_script() {
     msg "${YELLOW}[*] OTA SHA256: ${sha}${NC}"
     if ! curl -fLsS --connect-timeout 8 -m 45 --max-filesize "$ABOX_SNI_CANDIDATE_MAX_BYTES" "$OTA_SNI_URL" -o "$tmp_sni_download" 2>/dev/null || ! sni_normalize_candidate_file "$tmp_sni_download" "$tmp_sni_normalized"; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
-        msg "${RED}[!] 同一 commit 的 SNI 数据缺失或校验失败；为避免脚本与数据版本不一致，已取消 OTA。${NC}"
+        msg "${RED}[!] $(tr_msg update_script_sni_missing_cancelled)${NC}"
         pause_return
         return 1
     fi
@@ -48146,68 +48914,68 @@ update_script() {
     # or post-write validation fails, restore the old script/cache pair.
     [[ -d "$ABOX_DIR" && ! -L "$ABOX_DIR" ]] && path_owned_by_root "$ABOX_DIR" && path_mode_has_no_group_other_write "$ABOX_DIR" || {
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
-        die 'A-Box 数据目录归属或权限校验失败；OTA 未修改本地脚本或缓存。'
+        die "$(tr_msg update_script_data_dir_check_failed)"
     }
     [[ -f "$ABOX_DIR/A-Box.sh" && ! -L "$ABOX_DIR/A-Box.sh" ]] && \
         path_owned_by_root "$ABOX_DIR/A-Box.sh" && path_mode_has_no_group_other_write "$ABOX_DIR/A-Box.sh" && \
         path_parent_chain_safe "$ABOX_DIR/A-Box.sh" || {
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
-        die '当前 A-Box.sh 不存在或路径不安全；拒绝无法回滚的 OTA。'
+        die "$(tr_msg update_script_abox_sh_missing_unsafe)"
     }
     tmp_old_script=$(umask 077; mktemp /tmp/A-Box-update-old-script.XXXXXX) || {
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
-        die '无法创建 OTA 脚本回滚快照。'
+        die "$(tr_msg update_script_ota_snapshot_failed)"
     }
     if ! cp -p -- "$ABOX_DIR/A-Box.sh" "$tmp_old_script"; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized" "$tmp_old_script"
-        die '无法保存当前 A-Box 脚本；OTA 已取消。'
+        die "$(tr_msg update_script_save_current_script_failed)"
     fi
     sni_cache="$ABOX_DIR/A-Box-sni-candidates.txt"
     if [[ -e "$sni_cache" || -L "$sni_cache" ]]; then
         if [[ ! -f "$sni_cache" || -L "$sni_cache" ]] || ! path_owned_by_root "$sni_cache" || \
             ! path_mode_has_no_group_other_write "$sni_cache" || path_tree_has_mountpoint "$sni_cache"; then
             rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized" "$tmp_old_script"
-            die '现有 SNI 缓存不安全；OTA 未覆盖此文件。'
+            die "$(tr_msg update_script_sni_cache_unsafe)"
         fi
         tmp_old_sni_cache=$(umask 077; mktemp /tmp/A-Box-update-old-sni.XXXXXX) || {
             rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized" "$tmp_old_script"
-            die '无法创建 SNI 缓存回滚快照。'
+            die "$(tr_msg update_script_sni_snapshot_failed)"
         }
         if ! cp -p -- "$sni_cache" "$tmp_old_sni_cache"; then
             rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized" "$tmp_old_script" "$tmp_old_sni_cache"
-            die '无法保存当前 SNI 缓存；OTA 已取消。'
+            die "$(tr_msg update_script_save_sni_cache_failed)"
         fi
         old_cache_exists=1
     fi
 
     if ! sni_store_candidate_cache "$tmp_sni_normalized"; then
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized" "$tmp_old_script" "$tmp_old_sni_cache"
-        die '无法安全提交与 OTA 同 commit 的 SNI 数据缓存；脚本未替换。'
+        die "$(tr_msg update_script_commit_sni_cache_failed)"
     fi
     if ! install_binary_atomically "$tmp_update" "$ABOX_DIR/A-Box.sh"; then
         restore_sni_candidate_cache_snapshot "$tmp_old_sni_cache" "$old_cache_exists" || cache_restore_ok=0
         if (( cache_restore_ok == 1 )); then
             rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized" "$tmp_old_script" "$tmp_old_sni_cache"
-            die 'OTA 脚本原子写入失败；旧脚本保留，SNI 缓存已回滚。'
+            die "$(tr_msg update_script_atomic_write_failed_rolled_back)"
         fi
         # U226: incomplete rollback keeps the snapshots for manual
         # recovery (only the throwaway downloads are removed here).
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
-        die 'OTA 脚本原子写入失败，且 SNI 缓存回滚不完整；请勿重试，先检查 A-Box.sh 与 SNI 缓存。旧脚本快照与旧 SNI 缓存快照保留于 /tmp（A-Box-update-old-*）。'
+        die "$(tr_msg update_script_atomic_write_failed_rollback_incomplete)"
     fi
     if ! validate_abox_script_file "$ABOX_DIR/A-Box.sh" "$(tr_msg ss2_ctx_persisted)"; then
         rollback_binary_install "$ABOX_DIR/A-Box.sh" "$tmp_old_script" || script_restore_ok=0
         restore_sni_candidate_cache_snapshot "$tmp_old_sni_cache" "$old_cache_exists" || cache_restore_ok=0
         if (( script_restore_ok == 1 && cache_restore_ok == 1 )); then
             rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized" "$tmp_old_script" "$tmp_old_sni_cache"
-            die 'OTA 持久化校验失败；旧脚本和旧 SNI 缓存已恢复。'
+            die "$(tr_msg update_script_persist_verify_failed_restored)"
         fi
         # U226: incomplete rollback keeps the snapshots for manual recovery.
         rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized"
-        die 'OTA 持久化校验失败且回滚不完整；请勿重试，先检查 A-Box.sh 与 SNI 缓存。旧脚本快照与旧 SNI 缓存快照保留于 /tmp（A-Box-update-old-*）。'
+        die "$(tr_msg update_script_persist_verify_failed_rollback_incomplete)"
     fi
     rm -f -- "$tmp_update" "$tmp_sni_download" "$tmp_sni_normalized" "$tmp_old_script" "$tmp_old_sni_cache"
-    msg "${GREEN}核心代码与同 commit 的 SNI 候选数据库已同步。${NC}"
+    msg "${GREEN}$(tr_msg update_script_core_sni_synced)${NC}"
     sleep 2
     export ABOX_INHERITED_LOCK_MODE="$ABOX_RUNTIME_LOCK_MODE"
     exec "$ABOX_DIR/A-Box.sh"
@@ -48600,30 +49368,30 @@ upgrade_xray_core_only() {
     local was_active=0 active_state='' backup='' tmp xray_zip xray_ext old_ver new_ver
     # C2 (Q8): handle any retired xray-latest instance before upgrading.
     xray_latest_legacy_retire || return 1
-    abox_owns_service xray || die '拒绝升级：xray 不是 A-Box 托管服务。'
+    abox_owns_service xray || die "$(tr_msg upgrade_xray_core_only_not_abox_managed)"
     msg "${YELLOW}[*] Upgrading Xray-core binary only; node parameters will be preserved...${NC}"
     get_architecture
-    active_state=$(service_active_state_value xray 2>/dev/null) || die '无法可靠查询 Xray 服务状态；拒绝在状态未知时升级核心。'
-    case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die 'Xray 服务状态响应无效；拒绝继续升级。' ;; esac
+    active_state=$(service_active_state_value xray 2>/dev/null) || die "$(tr_msg upgrade_xray_core_only_service_state_unknown)"
+    case "$active_state" in 1) was_active=1 ;; 0) was_active=0 ;; *) die "$(tr_msg upgrade_xray_core_only_service_state_invalid)" ;; esac
     [[ -x /usr/local/bin/xray ]] && old_ver=$(/usr/local/bin/xray version 2>/dev/null | head -n 1 || true)
-    core_version_probe_safe /usr/local/bin/xray "${old_ver:-}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die '无法读取现有 Xray 版本；默认拒绝覆盖未知版本核心。'
+    core_version_probe_safe /usr/local/bin/xray "${old_ver:-}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" || die "$(tr_msg upgrade_xray_core_only_read_version_failed)"
     local target_ref current_tag='' decision=0
     clear_core_release_resolution XTLS/Xray-core
-    resolve_core_release_target XTLS/Xray-core || die '无法解析 Xray 最新正式稳定候选或固定容灾版本。'
+    resolve_core_release_target XTLS/Xray-core || die "$(tr_msg upgrade_xray_core_only_resolve_target_failed)"
     target_ref="$ABOX_RESOLVED_XRAY_VERSION"
     if [[ -n "${old_ver:-}" ]]; then
         current_tag=$(core_version_from_output "$old_ver" || true)
         if [[ -z "$current_tag" ]]; then
-            [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] || die '无法解析当前 Xray 版本；为避免意外降级，拒绝升级。'
+            [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] || die "$(tr_msg upgrade_xray_core_only_current_version_unparseable)"
         else
             core_version_upgrade_decision "$current_tag" "$target_ref" "${ABOX_XRAY_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
             decision=$?
             case "$decision" in
                 0) ;;
-                1) die "拒绝将 Xray 从 ${current_tag} 降级到 ${target_ref}。如确需降级，请明确设置 ABOX_ALLOW_CORE_DOWNGRADE=1 并确认客户端兼容性。" ;;
-                2) die '当前或目标 Xray 版本格式无法比较。' ;;
-                3) msg "${YELLOW}[!] 当前 Xray ${current_tag} 高于本次目标版本 ${target_ref}；为避免自动降级，本次跳过。${NC}"; return 0 ;;
-                4) msg "${GREEN}[OK] 当前 Xray ${current_tag} 已是本次目标版本 ${target_ref}，无需替换。${NC}"; return 0 ;;
+                1) die "$(tprintf upgrade_xray_core_only_downgrade_refused "${current_tag}" "${target_ref}")" ;;
+                2) die "$(tr_msg upgrade_xray_core_only_version_uncomparable)" ;;
+                3) msg "${YELLOW}[!] $(tprintf upgrade_xray_core_only_current_higher_skip "${current_tag}" "${target_ref}")${NC}"; return 0 ;;
+                4) msg "${GREEN}[OK] $(tprintf upgrade_xray_core_only_already_target "${current_tag}" "${target_ref}")${NC}"; return 0 ;;
                 *) die 'Xray version-direction guard returned an unexpected status.' ;;
             esac
         fi
@@ -48638,19 +49406,19 @@ upgrade_xray_core_only() {
     chmod 755 "$xray_ext/xray" || { rm -rf "$tmp"; die 'Xray staged binary chmod failed.'; }
     new_ver=$("$xray_ext/xray" version 2>/dev/null | head -n 1 || true)
     [[ -n "$new_ver" ]] || { rm -rf "$tmp"; die 'Xray staged binary execution check failed.'; }
-    core_binary_matches_release_ref "$ABOX_LAST_CORE_RELEASE_REF" "$new_ver" || { rm -rf "$tmp"; die "最终核心二进制版本与所选标签 ${ABOX_LAST_CORE_RELEASE_REF} 不一致。"; }
+    core_binary_matches_release_ref "$ABOX_LAST_CORE_RELEASE_REF" "$new_ver" || { rm -rf "$tmp"; die "$(tprintf upgrade_xray_core_only_final_binary_mismatch "${ABOX_LAST_CORE_RELEASE_REF}")"; }
     if [[ -n "$current_tag" ]]; then
         local final_tag='' final_decision=0
-        final_tag=$(core_version_from_output "$new_ver" 2>/dev/null) || { rm -rf "$tmp"; die '无法解析最终候选二进制版本。'; }
+        final_tag=$(core_version_from_output "$new_ver" 2>/dev/null) || { rm -rf "$tmp"; die "$(tr_msg upgrade_xray_core_only_final_version_unparseable)"; }
         core_version_upgrade_decision "$current_tag" "$final_tag" "${ABOX_XRAY_VERSION:+1}" "${ABOX_ALLOW_CORE_DOWNGRADE:-0}"
         final_decision=$?
         case "$final_decision" in
             0) ;;
-            1) rm -rf "$tmp"; die "拒绝将 Xray 从 ${current_tag} 降级到最终候选版本 ${final_tag}。" ;;
-            2) rm -rf "$tmp"; die '最终核心候选版本格式无法比较。' ;;
-            3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] 最终候选版本 ${final_tag} 低于当前版本 ${current_tag}；已跳过以避免自动降级。${NC}"; return 0 ;;
-            4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] 最终候选版本 ${final_tag} 与当前版本相同，无需替换。${NC}"; return 0 ;;
-            *) rm -rf "$tmp"; die '最终核心版本方向检查返回异常状态。' ;;
+            1) rm -rf "$tmp"; die "$(tprintf upgrade_xray_core_only_downgrade_final_refused "${current_tag}" "${final_tag}")" ;;
+            2) rm -rf "$tmp"; die "$(tr_msg upgrade_xray_core_only_final_version_uncomparable)" ;;
+            3) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${YELLOW}[!] $(tprintf upgrade_xray_core_only_final_lower_skip "${final_tag}" "${current_tag}")${NC}"; return 0 ;;
+            4) rm -rf "$tmp"; ABOX_CORE_UPGRADE_TMP=''; msg "${GREEN}[OK] $(tprintf upgrade_xray_core_only_final_same_skip "${final_tag}")${NC}"; return 0 ;;
+            *) rm -rf "$tmp"; die "$(tr_msg upgrade_xray_core_only_direction_check_abnormal)" ;;
         esac
     fi
     if [[ -f /usr/local/etc/xray/config.json ]] && ! XRAY_LOCATION_ASSET=/usr/local/share/xray "$xray_ext/xray" run -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1; then
@@ -48666,7 +49434,7 @@ upgrade_xray_core_only() {
         # P1-A: service was stopped, so restart_service_soft (which refreshes
         # the ownership manifest) was skipped. Record the new binary now to
         # keep /etc/ddr/.managed-core-files.tsv in sync.
-        record_core_family_ownership xray || { rm -rf "$tmp"; die 'Xray 核心已替换，但归属清单更新失败。'; }
+        record_core_family_ownership xray || { rm -rf "$tmp"; die "$(tr_msg upgrade_xray_core_only_ownership_update_failed)"; }
     fi
     msg "${GREEN}[OK] Xray-core upgraded.${NC} ${old_ver:-unknown} -> ${new_ver:-unknown}"
     rm -rf -- "$tmp"

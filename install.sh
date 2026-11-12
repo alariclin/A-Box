@@ -2230,6 +2230,12 @@ tr_msg() {
         fa:wl_td_purge_refuse) echo 'نمی‌توان تأیید کرد کانتینر Wallos از بین رفته است؛ پوشه داده حفظ شد.' ;;
         zh-tw:wl_td_purge_refuse) echo '無法確認 Wallos 容器已不存在，資料目錄未刪除。' ;;
         ja:wl_td_purge_refuse) echo 'Wallos コンテナが存在しないことを確認できないため、データディレクトリは削除していません。' ;;
+        zh:wl_td_docker_err) echo 'Docker 错误：%s' ;;
+        en:wl_td_docker_err) echo 'Docker error: %s' ;;
+        ru:wl_td_docker_err) echo 'Ошибка Docker: %s' ;;
+        fa:wl_td_docker_err) echo 'خطای Docker: %s' ;;
+        zh-tw:wl_td_docker_err) echo 'Docker 錯誤：%s' ;;
+        ja:wl_td_docker_err) echo 'Docker エラー: %s' ;;
         zh:wl_rb_restore_fail) echo 'Wallos 备份恢复失败。' ;;
         en:wl_rb_restore_fail) echo 'Wallos backup restore failed.' ;;
         ru:wl_rb_restore_fail) echo 'Не удалось восстановить резервную копию Wallos.' ;;
@@ -44413,6 +44419,34 @@ wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still r
 # /opt/wallos ownership state file exists; anything else is left
 # alone. With $1=purge-data the A-Box Wallos data dir is removed
 # too (full uninstall); other flows keep the subscription data.
+# R21-WALLOS: classify a failed `docker inspect wallos` as "container gone"
+# only when Docker's own "no such container/object" wording is present
+# (matched case-insensitively: Docker 29 reports it lowercase) AND a
+# second, independent check (`docker ps -a`) also shows no container
+# named wallos (same idiom as the B-06 fix at the Wallos menu remove
+# path). Any other inspect failure, a failing ps, or a ps listing that
+# still names wallos leaves the state unknown (fail-closed, R11E-R7-7
+# preserved). $1 = inspect stderr text. Returns 0 iff gone is proven.
+_wallos_container_gone() {
+    local _err_lc _names
+    _err_lc=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    case "$_err_lc" in
+        *'no such container'*|*'no such object'*) ;;
+        *) return 1 ;;
+    esac
+    _names=$(docker ps -a --format '{{.Names}}' 2>/dev/null) || return 1
+    printf '%s\n' "$_names" | grep -qx 'wallos' && return 1
+    return 0
+}
+
+# R21-WALLOS: surface the captured docker error text when a teardown
+# refusal is caused by an unknown container state, so the operator can
+# see WHY instead of only the generic refusal. Prints nothing when
+# there is no captured error (e.g. an unmanaged container left in place).
+_wallos_show_docker_err() { # $1 = inspect/recheck stderr (may be empty)
+    [[ -n "${1:-}" ]] && msg "${RED}$(tprintf wl_td_docker_err "$1")${NC}"
+}
+
 wallos_stack_teardown() {
     local _purge="${1:-keep-data}" _rm_failed=0 _docker_ok=0 _gone=0 _unknown=0 _inspect_err='' _recheck_err=''
     if command -v docker >/dev/null 2>&1; then
@@ -44424,7 +44458,9 @@ wallos_stack_teardown() {
         # keeps running; treating that as "gone" let keep-data return
         # 0 with the container still alive. Only Docker's own
         # "No such container" / "No such object" proves absence (same
-        # wording the backup/repair paths already use).
+        # wording the backup/repair paths already use), matched
+        # case-insensitively by _wallos_container_gone (Docker 29
+        # reports it lowercase) and confirmed by `docker ps -a`.
         if _inspect_err=$(docker inspect wallos 2>&1 >/dev/null); then
             local _lbl=''
             _lbl=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)
@@ -44433,14 +44469,15 @@ wallos_stack_teardown() {
             if [[ "$_lbl" == 'true' ]]; then
                 if docker rm -f wallos >/dev/null 2>&1; then
                     # Same three-state classification for the post-rm
-                    # recheck: a "No such container/object" failure
-                    # proves the removal; any other failure (or a
-                    # still-present container) leaves _gone at 0, so
-                    # purge refuses, and an unknown recheck fails
+                    # recheck: _wallos_container_gone (case-insensitive
+                    # "no such container/object" + `docker ps -a`
+                    # confirmation) proves the removal; any other failure
+                    # (or a still-present container) leaves _gone at 0,
+                    # so purge refuses, and an unknown recheck fails
                     # keep-data instead of reporting success.
                     if _recheck_err=$(docker inspect wallos 2>&1 >/dev/null); then
                         :
-                    elif [[ "$_recheck_err" == *'No such container'* || "$_recheck_err" == *'No such object'* ]]; then
+                    elif _wallos_container_gone "$_recheck_err"; then
                         _gone=1
                     else
                         _unknown=1
@@ -44451,7 +44488,7 @@ wallos_stack_teardown() {
             fi
             # An unmanaged container is deliberately left running (as
             # before); _gone stays 0 so purge below refuses.
-        elif [[ "$_inspect_err" == *'No such container'* || "$_inspect_err" == *'No such object'* ]]; then
+        elif _wallos_container_gone "$_inspect_err"; then
             _gone=1
         else
             _unknown=1
@@ -44469,6 +44506,7 @@ wallos_stack_teardown() {
         fi
         if (( _docker_ok == 0 )) || (( _gone == 0 )); then
             msg "${RED}$(tr_msg wl_td_purge_refuse)${NC}"
+            _wallos_show_docker_err "${_inspect_err:-$_recheck_err}"
             return 1
         fi
         # R8C15-01: refuse before deleting when a mount sits at
@@ -44495,6 +44533,7 @@ wallos_stack_teardown() {
     # still returns 0 here.)
     if [[ "$_purge" == 'keep-data' ]] && (( _unknown == 1 )); then
         msg "${RED}$(tr_msg wl_td_purge_refuse)${NC}"
+        _wallos_show_docker_err "${_inspect_err:-$_recheck_err}"
         return 1
     fi
     return 0

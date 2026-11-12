@@ -1120,6 +1120,12 @@ tr_msg() {
         fa:pi_bad_domain) echo 'قالب دامنه نامعتبر است: %s' ;;
         zh-tw:pi_bad_domain) echo '域名格式不合法：%s' ;;
         ja:pi_bad_domain) echo 'ドメイン形式が無効です: %s' ;;
+        zh:diag_redaction_limited) echo '诊断收集受限：无法安全脱敏的文档已被省略。请查看诊断包中的 OMITTED 提示。若 python3 不可用，请安装后重新导出诊断包。' ;;
+        en:diag_redaction_limited) echo 'Diagnostic collection is limited: documents that could not be safely redacted were omitted. See the OMITTED notices in the bundle. If python3 is unavailable, install it and export diagnostics again.' ;;
+        ru:diag_redaction_limited) echo 'Сбор диагностических данных ограничен: документы, в которых не удалось безопасно скрыть конфиденциальные данные, исключены. См. уведомления OMITTED в диагностическом пакете. Если python3 недоступен, установите его и повторите экспорт диагностики.' ;;
+        fa:diag_redaction_limited) echo 'گردآوری اطلاعات عیب‌یابی محدود شده است: اسنادی که حذف امن اطلاعات محرمانه از آن‌ها ممکن نبود، کنار گذاشته شدند. پیام‌های OMITTED را در بستهٔ عیب‌یابی بررسی کنید. اگر python3 در دسترس نیست، آن را نصب کرده و بستهٔ عیب‌یابی را دوباره تهیه کنید.' ;;
+        zh-tw:diag_redaction_limited) echo '診斷收集受限：無法安全脫敏的文件已被省略。請查看診斷套件中的 OMITTED 提示。若 python3 無法使用，請安裝後重新匯出診斷套件。' ;;
+        ja:diag_redaction_limited) echo '診断情報の収集は制限されています。安全に秘匿化できなかった文書は省略されました。診断バンドル内の OMITTED 通知を確認してください。python3 が利用できない場合は、インストールしてから診断情報を再エクスポートしてください。' ;;
         zh:pi_hy2_masq_prompt) echo '请输入 HTTP/3 伪装站点 URL (回车默认: %s): ' ;;
         en:pi_hy2_masq_prompt) echo 'Enter HTTP/3 masquerade URL (default: %s): ' ;;
         ru:pi_hy2_masq_prompt) echo 'Ввести URL маскировки HTTP/3 (по умолчанию: %s): ' ;;
@@ -41460,6 +41466,10 @@ export_diagnostic_bundle() {
         "$(( _diag_n_generated + _diag_n_redacted + _diag_n_omitted + _diag_n_absent + _diag_n_failed ))" \
         "$_diag_n_generated" "$_diag_n_redacted" "$_diag_n_omitted" "$_diag_n_absent" "$_diag_n_failed" \
         >> "$work/omissions.txt"
+
+    if [[ "$_diag_n_omitted" -gt 0 ]]; then
+        msg "${YELLOW}[!] $(tr_msg diag_redaction_limited)${NC}"
+    fi
 
     bundle="$diag_dir/A-Box-diagnostic-${ts}.tar.gz"
     # Re-check immediately before writing: a symlink swapped in after

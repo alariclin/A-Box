@@ -38089,8 +38089,8 @@ remove_abox_swap() {
 
 redact_secrets_stream() {
     # Return contract (D2): 0 = redacted output written; 2 = the whole
-    # document was suppressed (no-Python fallback found PEM/block-scalar
-    # material it cannot verify; the OMITTED notice is the output);
+    # document was suppressed (python3 unavailable: unconditional
+    # whole-document suppression, fixed OMITTED notice only);
     # any other non-zero value = redaction error, output unusable.
     if command -v python3 >/dev/null 2>&1; then
         python3 -I - 3<&0 <<'PY_REDACT'
@@ -38612,156 +38612,16 @@ else:
     sys.stdout.write("\n")
 PY_REDACT
     else
-        # No Python: the line-based sed fallback cannot verify
-        # multi-line constructs (PEM spans, YAML block scalars,
-        # cross-line values, unsupported credential mappings,
-        # sensitive arrays). Buffer stdin, pre-scan for those
-        # shapes, and refuse/suppress when they appear: a
-        # notice-only output is safer than a "redacted" file that
-        # still holds the secret. Suppression is a distinct outcome
-        # (D2); the Python path uses the same outcome when it meets
-        # a flow credential mapping it cannot verify.
-        _redact_input=$(cat) || return 1
-        # R15-A: the four D2 scans below feed grep via a here-string
-        # (same shape as the R14-A gap scans). Bash prepares the
-        # here-string before grep runs; even when an internal pipe is
-        # used, no concurrent producer remains for grep -q's early
-        # exit to SIGPIPE. Suppress on a match, scan error, or
-        # redirection error; only grep rc=1 permits continuation.
-        local _redact_d2_scan_rc=2
-        if ! {
-            grep -qE -- $'-----BEGIN [^-]*KEY-----|^[[:space:]]*["\x27]?(uuid|private[_-]?key|public[_-]?key|short[_-]?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)["\x27]?[[:space:]]*:[[:space:]]*([|>](([1-9][+-]?)|([+-][1-9]?))?[[:space:]]*(#.*)?)?$'
-            _redact_d2_scan_rc=$?
-        } <<< "$_redact_input" || (( _redact_d2_scan_rc != 1 )); then
-            printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
-            # D2: suppression is a distinct outcome, not a redaction.
-            # The notice above is the whole output; callers must record
-            # the file as omitted, not as redacted (see
-            # write_redacted_file / export_diagnostic_bundle).
+        # No Python, no verified redactor (Scheme A, R19): suppress the
+        # whole document unconditionally. Do not read stdin, do not
+        # buffer input, do not scan, do not run sed. The fixed notice
+        # below is the whole output; a failed notice write is rc=1
+        # (never masked as 2).
+        if printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: python3 is unavailable; diagnostic redaction cannot be verified. This document was suppressed in full and no original content is included.]'; then
             return 2
+        else
+            return 1
         fi
-        local _redact_d2_scan_rc=2
-        if ! {
-            grep -qiE -- $'(^|[{,])[[:space:]]*["\x27]?userpass["\x27]?[[:space:]]*:'
-            _redact_d2_scan_rc=$?
-        } <<< "$_redact_input" || (( _redact_d2_scan_rc != 1 )); then
-            printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
-            # D2: a userpass credential mapping (any username) cannot
-            # be verified line by line by the fallback; suppress.
-            return 2
-        fi
-        local _redact_d2_scan_rc=2
-        if ! {
-            grep -qiE -- $'["\x27]?(uuid|private[_-]?key|public[_-]?key|short[_-]?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|hy2_cert_sha256_fp|hy2_cert_pubkey_sha256_b64)["\x27]?[[:space:]]*[:=][[:space:]]*\['
-            _redact_d2_scan_rc=$?
-        } <<< "$_redact_input" || (( _redact_d2_scan_rc != 1 )); then
-            printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
-            # D2: any recognised sensitive array opener is suppressed
-            # outright — a `]` on the opener line may sit inside a
-            # string, so it never proves the array closed there.
-            return 2
-        fi
-        # R11E-R7-2: a JSONC comment in an `id` key-to-value gap that the
-        # line-based sed rules below cannot verify. Five narrow shapes,
-        # all anchored to the gap (a comment either after the separator
-        # or between the key and the separator; value not yet seen), so
-        # a URL value (`id: "https://…"`) or a trailing comment
-        # (`id: "x" // note`) never triggers: `//` after the separator
-        # (the value must be on a later line); `//` between the key and
-        # the separator (separator and value on a later line); a block
-        # comment with no `*/` on this line (cross-line or unterminated);
-        # a block comment that closes but ends the line (value on a later
-        # line); or a block comment between the key and the separator.
-        local _redact_d2_scan_rc=2
-        if ! {
-            grep -qE -- $'(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*//|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*/\*([^*]|\*+[^*/])*\**$|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*[:=][[:space:]]*/\*([^*]|\*+[^*/])*\*+/[[:space:]]*$|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*/\*|(^|[^A-Za-z0-9_])["\x27]?id["\x27]?[[:space:]]*//'
-            _redact_d2_scan_rc=$?
-        } <<< "$_redact_input" || (( _redact_d2_scan_rc != 1 )); then
-            printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
-            # D2: a comment in the `id` gap pushes the value out of the
-            # line the fallback can verify (or hides it entirely); the
-            # notice above is the whole output.
-            return 2
-        fi
-        # R12B-N1: a JSONC comment in a NON-id sensitive key gap that the
-        # line-based sed rules below cannot verify (same class as the `id`
-        # gap above, outside the id range). Four shapes, matched against the input folded once into
-        # _redact_gap_scan (newlines to spaces) so a comment on the line AFTER
-        # separator, or between key and separator across lines, is seen
-        # too: a comment after the separator (`/*` or `//`) and a comment
-        # between key and separator (`/*` or `//`). `id` is excluded (its
-        # own D2 scan + rules above); authorization/cookie are excluded
-        # here (their single-line gap shapes are already redacted by the
-        # auth/cookie rules below) and get narrow checks in the next block.
-        # A quoted URL value (`token: "https://..."`) or a trailing comment
-        # (`token: "x" // note`) never triggers: the comment marker must sit
-        # in the gap (separator first / key first, value not yet seen).
-        local _redact_gap_scan
-        # Fold is a bash parameter expansion (builtin): the fallback
-        # keeps its sed/grep/cat-only tool budget (R12-B harness) and
-        # no pipeline is involved, so there is no SIGPIPE hazard.
-        _redact_gap_scan="${_redact_input//$'\n'/ }"
-        local _redact_d2_scan_rc=2
-        if ! {
-            grep -qiE -- $'(^|[^A-Za-z0-9_])["\x27]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key)["\x27]?[[:space:]]*[:=][[:space:]]*(/\*|//)|(^|[^A-Za-z0-9_])["\x27]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key)["\x27]?[[:space:]]*(/\*|//)'
-            _redact_d2_scan_rc=$?
-        } <<< "$_redact_gap_scan" || (( _redact_d2_scan_rc != 1 )); then
-            printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
-            # D2: a comment in a non-id key gap pushes the value out of the
-            # line the fallback can verify (or hides it entirely); the
-            # notice above is the whole output.
-            return 2
-        fi
-        # R12B-N1 (auth/cookie narrow checks): the auth/cookie rules below
-        # already redact a block comment after the separator, so only their
-        # UNSUPPORTED gap shapes suppress here: a comment between the key
-        # and the separator (`/*` or `//`), and a `//` after the separator
-        # (the value then sits on a later line, out of reach of the
-        # line-based rules). Single-line `/*` after the separator stays a
-        # successful redaction, not a suppression.
-        local _redact_d2_scan_rc=2
-        if ! {
-            grep -qiE -- $'(^|[^A-Za-z0-9_])["\x27]?(Authorization|Proxy-Authorization|Cookie|Set-Cookie)["\x27]?[[:space:]]*(/\*|//)|(^|[^A-Za-z0-9_])["\x27]?(Authorization|Proxy-Authorization|Cookie|Set-Cookie)["\x27]?[[:space:]]*[:=][[:space:]]*//'
-            _redact_d2_scan_rc=$?
-        } <<< "$_redact_gap_scan" || (( _redact_d2_scan_rc != 1 )); then
-            printf '%s\n' '[ABOX REDACTED DOCUMENT OMITTED: this document contains PEM material, a YAML block scalar, a cross-line value, an unsupported credential mapping, or a sensitive array that the redactor cannot verify; it was suppressed in full and no original content is included.]'
-            # D2: a comment in an authorization/cookie gap the fallback
-            # cannot verify; the notice above is the whole output.
-            return 2
-        fi
-        printf '%s\n' "$_redact_input" | sed -E \
-            -e 's/(UUID|SS_PASS|HY2_PASS|HY2_OBFS|HY2_ACME_DNS_CF_API_TOKEN|PUBLIC_KEY|SHORT_ID)=.*/\1=***REDACTED***/Ig' \
-            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)(Bearer|Basic)[[:space:]]+([^,;[:space:]}]*[[:blank:]]*:[[:blank:]]+(("(\\.|[^"\\])*"|'"'"'(\\.|[^'"'"'\\])*'"'"')([[:blank:]]*$|[[:blank:]]*\b|[[:blank:]]*[^:=[:blank:][:alnum:]_])|("(\\.|[^"\\])*\\?$|'"'"'(\\.|[^'"'"'\\])*\\?$))|[^,;[:space:]}"]*("+[^,;[:space:]}"]+)+|[^,;[:space:]}"]+)/\1\3 ***REDACTED***\9/Ig' \
-            -e 's/(Authorization[[:space:]]*:[[:space:]]*|Authorization[[:space:]]*:[[:space:]]*Bearer[[:space:]]+|Authorization[[:space:]]*:[[:space:]]*Basic[[:space:]]+|Proxy-Authorization[[:space:]]*:[[:space:]]*|Proxy-Authorization[[:space:]]*:[[:space:]]*Bearer[[:space:]]+|Proxy-Authorization[[:space:]]*:[[:space:]]*Basic[[:space:]]+)[^,;[:space:]}"]+[[:blank:]]*:?([[:blank:]]*,?[[:blank:]]*"(\\[^\r\n]|[^"\\\r\n])*"|[[:blank:]]*,?[[:blank:]]*'"'"'(\\[^\r\n]|'"'"''"'"'|[^'"'"'\\\r\n])*'"'"')*[[:blank:]]*,?[[:blank:]]*"}[ \t]*\}*[ \t]*(\\[^\r\n]|[^]"\\\r\n,}:= \t]|\\(\r?)$)([ \t]*\\[^\r\n]|[ \t]*[^"\\\r\n \t]|[ \t]*\\(\r?)$)*([ \t]*"(\\[^\r\n]|[^"\\\r\n])*"[[:blank:]]*[:=]|[ \t]*\r?$)/\1***REDACTED***\6\8\9/Ig' \
-            -e 's/(Authorization[[:space:]]*:[[:space:]]*|Authorization[[:space:]]*:[[:space:]]*Bearer[[:space:]]+|Authorization[[:space:]]*:[[:space:]]*Basic[[:space:]]+|Proxy-Authorization[[:space:]]*:[[:space:]]*|Proxy-Authorization[[:space:]]*:[[:space:]]*Bearer[[:space:]]+|Proxy-Authorization[[:space:]]*:[[:space:]]*Basic[[:space:]]+)[^,;[:space:]}"]+[[:blank:]]*:?([[:blank:]]*,?[[:blank:]]*"(\\[^\r\n]|[^"\\\r\n])*"|[[:blank:]]*,?[[:blank:]]*'"'"'(\\[^\r\n]|'"'"''"'"'|[^'"'"'\\\r\n])*'"'"')*[[:blank:]]*,?[[:blank:]]*'"'"'}[ \t]*\}*[ \t]*(\\[^\r\n]|[^]'"'"'\\\r\n,}:= \t]|\\(\r?)$)([ \t]*\\[^\r\n]|[ \t]*[^'"'"'\\\r\n \t]|[ \t]*\\(\r?)$)*([ \t]*'"'"'(\\[^\r\n]|'"'"''"'"'|[^'"'"'\\\r\n])*'"'"'[[:blank:]]*[:=]|[ \t]*\r?$)/\1***REDACTED***\6\8\9/Ig' \
-            -e 's/(Authorization[[:space:]]*:[[:space:]]*|Authorization[[:space:]]*:[[:space:]]*Bearer[[:space:]]+|Authorization[[:space:]]*:[[:space:]]*Basic[[:space:]]+|Proxy-Authorization[[:space:]]*:[[:space:]]*|Proxy-Authorization[[:space:]]*:[[:space:]]*Bearer[[:space:]]+|Proxy-Authorization[[:space:]]*:[[:space:]]*Basic[[:space:]]+)[^,;[:space:]}"]+[[:blank:]]*:?([[:blank:]]*,?[[:blank:]]*"(\\.|[^"\\])*"|[[:blank:]]*,?[[:blank:]]*"(\\.|[^"\\}])(\\.|[^"\\])*\\?$|[[:blank:]]*,?[[:blank:]]*"\\$|[[:blank:]]*,?[[:blank:]]*'"'"'(\\.|'"'"''"'"'|[^'"'"'\\])*'"'"'|[[:blank:]]*,?[[:blank:]]*'"'"'(\\.|'"'"''"'"'|[^'"'"'\\}])(\\.|'"'"''"'"'|[^'"'"'\\])*\\?$|[[:blank:]]*,?[[:blank:]]*'"'"'\\$)+([[:blank:]]*"?[[:blank:]]*[,;}]|[[:blank:]]*$|[[:blank:]]*"(\\.|[^"\\])*"[[:blank:]]*[:=]|[[:blank:]]+'"'"'(\\.|'"'"''"'"'|[^'"'"'\\])*'"'"'[[:blank:]]*[:=]|[[:blank:]]+\b|[[:blank:]]+[^"\x27[:space:][:alnum:]_,;}:=])/\1***REDACTED***\9/Ig' \
-            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)([^,;[:space:]}"]+([[:blank:]]+\*\*\*REDACTED\*\*\*)?[[:blank:]]*:[[:blank:]]+("(\\.|[^"\\])*"|\\"(\\.|[^"\\])*\\")([[:blank:]]*([^[:space:]:]|$))|[^,;[:space:]}"]+)/\1***REDACTED***\8/Ig' \
-            -e 's/((Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*)[^,}[:cntrl:]"[:space:]][^,}[:cntrl:]"]*/\1***REDACTED***/Ig' \
-            -e 's/^([[:space:]]*(Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
-            -e 's/^([[:space:]]*(Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
-            -e 's/([\"'"'"' ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)[\"'"'"' ]?[[:space:]]*[:=][[:space:]]*\[)[^]]*/\1***REDACTED***/Ig' \
-            -e 's/(["'"'"' ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["'"'"' ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
-            -e 's/(["'"'"' ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["'"'"' ]?[[:space:]]*[:=][[:space:]]*)('"'"')([^'"'"']|'"'"''"'"')*'"'"'/\1\3***REDACTED***\3/Ig' \
-            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)"([^"\\]|\\.)*"/\1\2"***REDACTED***"/Ig' \
-            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)('"'"')([^'"'"']|'"'"''"'"')*'"'"'/\1\2***REDACTED***\2/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)('"'"')([^'"'"']|'"'"''"'"')*'"'"'/\1\2\3***REDACTED***\3/Ig' \
-            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)"([^"\\]|\\.)*"/\1"***REDACTED***"/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)"([^"\\]|\\.)*"/\1\2"***REDACTED***"/Ig' \
-            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)('"'"')([^'"'"']|'"'"''"'"')*'"'"'/\1\4***REDACTED***\4/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)('"'"')([^'"'"']|'"'"''"'"')*'"'"'/\1\2\5***REDACTED***\5/Ig' \
-            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"'"'"']*)/\1***REDACTED***/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"'"'"']*)/\1\2***REDACTED***/Ig' \
-            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"'"'"']*|-?[0-9]*([^]/[:space:],}"'"'"'0-9-]|\/[^][:space:],}"'"'"'*])[^][:space:],}"'"'"']*)/\1***REDACTED***/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*(\/\*([^*]|\*+[^*/])*\*+\/[[:space:]]*)*)(-?[0-9]+-[^][:space:],}"'"'"']*|-?[0-9]*([^]/[:space:],}"'"'"'0-9-]|\/[^][:space:],}"'"'"'*])[^][:space:],}"'"'"']*)/\1\2***REDACTED***/Ig' \
-            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]+-[^][:space:],}"'"'"']*)/\1***REDACTED***/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]+-[^][:space:],}"'"'"']*)/\1\2***REDACTED***/Ig' \
-            -e 's/^([[:space:]]*id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]*([^]/[:space:],}"'"'"'0-9-]|\/[^][:space:],}"'"'"'*])[^][:space:],}"'"'"']*)/\1***REDACTED***/Ig' \
-            -e 's/([^A-Za-z0-9_])(id["'"'"' ]?[[:space:]]*[:=][[:space:]]*)(-?[0-9]*([^]/[:space:],}"'"'"'0-9-]|\/[^][:space:],}"'"'"'*])[^][:space:],}"'"'"']*)/\1\2***REDACTED***/Ig' \
-            -e 's/([^:=[:space:]])([[:blank:]]+)((UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)[[:blank:]]*[:=]|'"'"'(\\.|'"'"''"'"'|[^'"'"'\\])*'"'"'[[:blank:]]*[:=])/\1\n}\2\3/g; s/(["'"'"' ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["'"'"' ]?[[:space:]]*[:=][[:space:]]*)[^}"'"'"'[:space:]]([^}"\r\n,]*[^}"\r\n,[:blank:]])?(,[[:blank:]]*[^"'"'"'[:space:],][^}"\r\n,]*|,[[:blank:]]*("(\\.|[^"\\])*"|'"'"'([^'"'"']|'"'"''"'"')*'"'"')([[:blank:]]+[^}"'"'"'[:space:],:=][^}"\r\n,]*)?)*([[:blank:]]*[,;}"\r]|[[:blank:]]*$|[[:blank:]]*\n[}])/\1***REDACTED***\9/Ig; s/\n[}]//g' \
-            -e 's/(["'"'"' ]?(UUID|SS_PASS|HY2_PASS|HY2_OBFS|PRIVATE_KEY|PUBLIC_KEY|SHORT_ID|HY2_CERT_SHA256_FP|HY2_CERT_PUBKEY_SHA256_B64|privateKey|private_key|publicKey|shortIds?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api[_-]?key|authorization|cookie)["'"'"' ]?[[:space:]]*[:=][[:space:]]*[" ]?)[^,}[:space:]["]+/\1***REDACTED***/Ig' \
-            -e 's/(vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess):\/\/[^[:space:]]+/***CLIENT_LINK_REDACTED***/Ig' \
-        -e 's/(https?|ftp):\/\/[^\/[:space:]@]+@/\1***REDACTED***@/Ig'
     fi
 }
 

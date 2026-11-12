@@ -9976,6 +9976,1134 @@ tr_msg() {
         ru:tp_tty_menu) echo 'В текущей среде нет интерактивного TTY; невозможно запустить интерактивное меню.' ;;
         fa:tp_tty_menu) echo 'در محیط فعلی TTY تعاملی وجود ندارد؛ اجرای منوی تعاملی ممکن نیست.' ;;
         ja:tp_tty_menu) echo '現在の環境には対話型 TTY がなく、対話型メニューを実行できません。' ;;
+        zh:__abox_restore_fstab_from_swap_backup_failed) echo 'Swap 清理失败且 /etc/fstab 自动恢复也失败；保留恢复备份：%s' ;;
+        en:__abox_restore_fstab_from_swap_backup_failed) echo 'Swap cleanup failed and automatic restoration of /etc/fstab also failed; keeping the recovery backup: %s' ;;
+        ru:__abox_restore_fstab_from_swap_backup_failed) echo 'Очистка Swap и автоматическое восстановление /etc/fstab не удались; резервная копия для восстановления сохранена: %s' ;;
+        fa:__abox_restore_fstab_from_swap_backup_failed) echo 'پاک‌سازی Swap و بازیابی خودکار /etc/fstab ناموفق بودند؛ نسخهٔ پشتیبان بازیابی حفظ می‌شود: %s' ;;
+        zh-tw:__abox_restore_fstab_from_swap_backup_failed) echo 'Swap 清理失敗，且 /etc/fstab 自動還原也失敗；保留還原用備份：%s' ;;
+        ja:__abox_restore_fstab_from_swap_backup_failed) echo 'Swap のクリーンアップと /etc/fstab の自動復元に失敗しました。復元用バックアップを保持します：%s' ;;
+        zh:_dns_provider_list_cloudflare_alt) echo 'Cloudflare备' ;;
+        en:_dns_provider_list_cloudflare_alt) echo 'Cloudflare backup' ;;
+        ru:_dns_provider_list_cloudflare_alt) echo 'Резервный Cloudflare' ;;
+        fa:_dns_provider_list_cloudflare_alt) echo 'Cloudflare پشتیبان' ;;
+        zh-tw:_dns_provider_list_cloudflare_alt) echo 'Cloudflare 備用' ;;
+        ja:_dns_provider_list_cloudflare_alt) echo 'Cloudflare 予備' ;;
+        zh:_dns_provider_list_google_alt) echo 'Google备' ;;
+        en:_dns_provider_list_google_alt) echo 'Google backup' ;;
+        ru:_dns_provider_list_google_alt) echo 'Резервный Google' ;;
+        fa:_dns_provider_list_google_alt) echo 'Google پشتیبان' ;;
+        zh-tw:_dns_provider_list_google_alt) echo 'Google 備用' ;;
+        ja:_dns_provider_list_google_alt) echo 'Google 予備' ;;
+        zh:_dns_provider_list_quad9_sec) echo 'Quad9安全' ;;
+        en:_dns_provider_list_quad9_sec) echo 'Quad9 secure' ;;
+        ru:_dns_provider_list_quad9_sec) echo 'Безопасный Quad9' ;;
+        fa:_dns_provider_list_quad9_sec) echo 'Quad9 امن' ;;
+        zh-tw:_dns_provider_list_quad9_sec) echo 'Quad9 安全' ;;
+        ja:_dns_provider_list_quad9_sec) echo 'Quad9 セキュリティ' ;;
+        zh:_f2b_restore_backups_or_keep_restore_failed) echo 'Fail2Ban 旧配置恢复失败；备份保留在 %s 与 %s，请手动恢复后重启 fail2ban。' ;;
+        en:_f2b_restore_backups_or_keep_restore_failed) echo 'Failed to restore the previous Fail2Ban configuration; backups remain at %s and %s. Restore them manually, then restart fail2ban.' ;;
+        ru:_f2b_restore_backups_or_keep_restore_failed) echo 'Не удалось восстановить прежнюю конфигурацию Fail2Ban; резервные копии сохранены в %s и %s. Восстановите их вручную и перезапустите fail2ban.' ;;
+        fa:_f2b_restore_backups_or_keep_restore_failed) echo 'بازیابی پیکربندی قبلی Fail2Ban ناموفق بود؛ نسخه‌های پشتیبان در %s و %s باقی مانده‌اند. آن‌ها را دستی بازیابی کنید و سپس fail2ban را دوباره راه‌اندازی کنید.' ;;
+        zh-tw:_f2b_restore_backups_or_keep_restore_failed) echo 'Fail2Ban 舊設定還原失敗；備份保留於 %s 與 %s，請手動還原後重新啟動 fail2ban。' ;;
+        ja:_f2b_restore_backups_or_keep_restore_failed) echo 'Fail2Ban の旧設定を復元できませんでした。バックアップは %s と %s に残っています。手動で復元してから fail2ban を再起動してください。' ;;
+        zh:_remove_inbounds_from_config_restore_failed) echo '旧配置恢复失败，备份保留在 %s，请手工恢复。' ;;
+        en:_remove_inbounds_from_config_restore_failed) echo 'Failed to restore the old configuration. The backup is retained at %s; restore it manually.' ;;
+        ru:_remove_inbounds_from_config_restore_failed) echo 'Не удалось восстановить прежнюю конфигурацию. Резервная копия сохранена в %s; восстановите её вручную.' ;;
+        fa:_remove_inbounds_from_config_restore_failed) echo 'بازیابی پیکربندی قبلی ناموفق بود؛ نسخهٔ پشتیبان در %s نگه داشته شده است، آن را دستی بازیابی کنید.' ;;
+        zh-tw:_remove_inbounds_from_config_restore_failed) echo '舊設定還原失敗，備份保留於 %s，請手動還原。' ;;
+        ja:_remove_inbounds_from_config_restore_failed) echo '以前の設定の復元に失敗しました。バックアップは %s に残っています。手動で復元してください。' ;;
+        zh:_tune_missing_items_bbr_autoload) echo 'BBR 模块开机自动加载配置' ;;
+        en:_tune_missing_items_bbr_autoload) echo 'BBR module autoload configuration at boot' ;;
+        ru:_tune_missing_items_bbr_autoload) echo 'Настройка автоматической загрузки модуля BBR при запуске' ;;
+        fa:_tune_missing_items_bbr_autoload) echo 'تنظیمات بارگذاری خودکار ماژول BBR هنگام راه‌اندازی' ;;
+        zh-tw:_tune_missing_items_bbr_autoload) echo 'BBR 模組開機自動載入設定' ;;
+        ja:_tune_missing_items_bbr_autoload) echo '起動時の BBR モジュール自動読み込み設定' ;;
+        zh:_tune_missing_items_empty) echo '<空>' ;;
+        en:_tune_missing_items_empty) echo '<empty>' ;;
+        ru:_tune_missing_items_empty) echo '<пусто>' ;;
+        fa:_tune_missing_items_empty) echo '<خالی>' ;;
+        zh-tw:_tune_missing_items_empty) echo '<空>' ;;
+        ja:_tune_missing_items_empty) echo '<空>' ;;
+        zh:_tune_missing_items_limits_nofile) echo 'limits 配置（nofile 上限 1048576）' ;;
+        en:_tune_missing_items_limits_nofile) echo 'limits configuration (nofile limit 1048576)' ;;
+        ru:_tune_missing_items_limits_nofile) echo 'Конфигурация limits (предел nofile 1048576)' ;;
+        fa:_tune_missing_items_limits_nofile) echo 'پیکربندی limits (سقف nofile برابر با 1048576)' ;;
+        zh-tw:_tune_missing_items_limits_nofile) echo 'limits 設定（nofile 上限 1048576）' ;;
+        ja:_tune_missing_items_limits_nofile) echo 'limits 設定（nofile 上限 1048576）' ;;
+        zh:_tune_missing_items_persist_mismatch) echo 'sysctl 持久文件缺失/不符：%s（期望 %s）' ;;
+        en:_tune_missing_items_persist_mismatch) echo 'sysctl persistence file missing/mismatched: %s (expected %s)' ;;
+        ru:_tune_missing_items_persist_mismatch) echo 'Файл постоянных настроек sysctl отсутствует/не соответствует: %s (ожидается %s)' ;;
+        fa:_tune_missing_items_persist_mismatch) echo 'فایل تنظیمات پایدار sysctl موجود نیست/مطابقت ندارد: %s (مورد انتظار %s)' ;;
+        zh-tw:_tune_missing_items_persist_mismatch) echo 'sysctl 持久化設定檔缺少/不符：%s（預期 %s）' ;;
+        ja:_tune_missing_items_persist_mismatch) echo 'sysctl 永続化ファイルが欠落または不一致：%s（期待値 %s）' ;;
+        zh:_tune_missing_items_persist_missing) echo 'sysctl 持久文件（/etc/sysctl.d/99-A-Box-tune.conf 缺失）' ;;
+        en:_tune_missing_items_persist_missing) echo 'sysctl persistence file (/etc/sysctl.d/99-A-Box-tune.conf missing)' ;;
+        ru:_tune_missing_items_persist_missing) echo 'Файл постоянных настроек sysctl (/etc/sysctl.d/99-A-Box-tune.conf отсутствует)' ;;
+        fa:_tune_missing_items_persist_missing) echo 'فایل تنظیمات پایدار sysctl (فایل /etc/sysctl.d/99-A-Box-tune.conf وجود ندارد)' ;;
+        zh-tw:_tune_missing_items_persist_missing) echo 'sysctl 持久化設定檔（缺少 /etc/sysctl.d/99-A-Box-tune.conf）' ;;
+        ja:_tune_missing_items_persist_missing) echo 'sysctl 永続化ファイル（/etc/sysctl.d/99-A-Box-tune.conf がありません）' ;;
+        zh:_tune_missing_items_sysctl_detail) echo '%s（当前 %s，期望 %s）' ;;
+        en:_tune_missing_items_sysctl_detail) echo '%s (current %s, expected %s)' ;;
+        ru:_tune_missing_items_sysctl_detail) echo '%s (сейчас %s, ожидается %s)' ;;
+        fa:_tune_missing_items_sysctl_detail) echo '%s (کنونی %s، مورد انتظار %s)' ;;
+        zh-tw:_tune_missing_items_sysctl_detail) echo '%s（目前 %s，預期 %s）' ;;
+        ja:_tune_missing_items_sysctl_detail) echo '%s（現在 %s、期待値 %s）' ;;
+        zh:abox_zram_teardown_helper_remove_failed) echo 'zram 助手与配置删除命令失败，无法确认清理完成，请检查后重试。' ;;
+        en:abox_zram_teardown_helper_remove_failed) echo 'The command to remove the zram helper and configuration failed; cleanup cannot be confirmed. Check and retry.' ;;
+        ru:abox_zram_teardown_helper_remove_failed) echo 'Команда удаления помощника zram и конфигурации завершилась ошибкой; завершение очистки не подтверждено. Проверьте и повторите попытку.' ;;
+        fa:abox_zram_teardown_helper_remove_failed) echo 'فرمان حذف ابزار کمکی zram و پیکربندی ناموفق بود؛ تکمیل پاک‌سازی قابل تأیید نیست. بررسی کنید و دوباره تلاش کنید.' ;;
+        zh-tw:abox_zram_teardown_helper_remove_failed) echo 'zram 輔助程式與設定的刪除指令失敗，無法確認清理完成，請檢查後重試。' ;;
+        ja:abox_zram_teardown_helper_remove_failed) echo 'zram ヘルパーと設定の削除コマンドが失敗し、クリーンアップの完了を確認できません。確認してから再試行してください。' ;;
+        zh:abox_zram_teardown_path_remains) echo 'zram 清理失败，路径仍存在：%s。请检查后重试。' ;;
+        en:abox_zram_teardown_path_remains) echo 'zram cleanup failed; the path still exists: %s. Check it and retry.' ;;
+        ru:abox_zram_teardown_path_remains) echo 'Очистка zram не удалась, путь всё ещё существует: %s. Проверьте его и повторите попытку.' ;;
+        fa:abox_zram_teardown_path_remains) echo 'پاک‌سازی zram ناموفق بود؛ مسیر هنوز وجود دارد: %s. آن را بررسی کنید و دوباره تلاش کنید.' ;;
+        zh-tw:abox_zram_teardown_path_remains) echo 'zram 清理失敗，路徑仍存在：%s。請檢查後重試。' ;;
+        ja:abox_zram_teardown_path_remains) echo 'zram のクリーンアップに失敗し、パスが残っています：%s。確認してから再試行してください。' ;;
+        zh:abox_zram_teardown_persist_remove_failed) echo 'zram 开机持久化删除失败，已保留 abox-zram 助手与配置以便重试。' ;;
+        en:abox_zram_teardown_persist_remove_failed) echo 'Failed to remove zram boot persistence; the abox-zram helper and configuration have been kept for retry.' ;;
+        ru:abox_zram_teardown_persist_remove_failed) echo 'Не удалось удалить настройки запуска zram при загрузке; помощник abox-zram и конфигурация сохранены для повторной попытки.' ;;
+        fa:abox_zram_teardown_persist_remove_failed) echo 'حذف تنظیمات پایدار راه‌اندازی zram ناموفق بود؛ ابزار کمکی abox-zram و پیکربندی برای تلاش مجدد حفظ شده‌اند.' ;;
+        zh-tw:abox_zram_teardown_persist_remove_failed) echo 'zram 開機持續啟用設定刪除失敗，已保留 abox-zram 輔助程式與設定以便重試。' ;;
+        ja:abox_zram_teardown_persist_remove_failed) echo 'zram の起動時永続化設定を削除できませんでした。再試行できるよう、abox-zram ヘルパーと設定を保持しました。' ;;
+        zh:abox_zram_teardown_stale_stopped) echo 'zram 停止时无活动设备（陈旧状态记录），已清理助手与配置。' ;;
+        en:abox_zram_teardown_stale_stopped) echo 'No active zram devices were found when stopping it (stale state record); the helper and configuration have been cleaned up.' ;;
+        ru:abox_zram_teardown_stale_stopped) echo 'При остановке zram активных устройств не было (устаревшая запись состояния); помощник и конфигурация удалены.' ;;
+        fa:abox_zram_teardown_stale_stopped) echo 'هنگام توقف zram هیچ دستگاه فعالی وجود نداشت (سابقهٔ وضعیت قدیمی بود)؛ ابزار کمکی و پیکربندی پاک‌سازی شدند.' ;;
+        zh-tw:abox_zram_teardown_stale_stopped) echo '停止 zram 時沒有作用中的裝置（狀態紀錄已過期），已清理輔助程式與設定。' ;;
+        ja:abox_zram_teardown_stale_stopped) echo 'zram の停止時にアクティブなデバイスはありませんでした（古い状態記録）。ヘルパーと設定を削除しました。' ;;
+        zh:abox_zram_teardown_stop_failed) echo 'zram 交换区未能停止，已保留 abox-zram 助手与配置以便重试。' ;;
+        en:abox_zram_teardown_stop_failed) echo 'Failed to stop the zram swap area; the abox-zram helper and configuration have been kept for retry.' ;;
+        ru:abox_zram_teardown_stop_failed) echo 'Не удалось отключить область подкачки zram; помощник abox-zram и конфигурация сохранены для повторной попытки.' ;;
+        fa:abox_zram_teardown_stop_failed) echo 'توقف فضای مبادلهٔ zram ناموفق بود؛ ابزار کمکی abox-zram و پیکربندی برای تلاش مجدد حفظ شده‌اند.' ;;
+        zh-tw:abox_zram_teardown_stop_failed) echo 'zram 交換空間無法停止，已保留 abox-zram 輔助程式與設定以便重試。' ;;
+        ja:abox_zram_teardown_stop_failed) echo 'zram のスワップ領域を停止できませんでした。再試行できるよう、abox-zram ヘルパーと設定を保持しました。' ;;
+        zh:allowport_ufw_global_rule) echo '%s/%s 已由非 A-Box UFW 全局规则放行；保留该规则且不声明所有权。' ;;
+        en:allowport_ufw_global_rule) echo '%s/%s is already allowed by a non-A-Box global UFW rule; preserving the rule without claiming ownership.' ;;
+        ru:allowport_ufw_global_rule) echo '%s/%s уже разрешён глобальным правилом UFW, не принадлежащим A-Box; правило сохраняется без заявления о принадлежности.' ;;
+        fa:allowport_ufw_global_rule) echo '%s/%s از قبل توسط یک قانون سراسری UFW غیرمتعلق به A-Box مجاز شده است؛ قانون حفظ می‌شود و ادعای مالکیت نمی‌شود.' ;;
+        zh-tw:allowport_ufw_global_rule) echo '%s/%s 已由不屬於 A-Box 的 UFW 全域規則允許通行；保留該規則，不宣告其所有權。' ;;
+        ja:allowport_ufw_global_rule) echo '%s/%s は A-Box 所有ではない UFW のグローバルルールで既に許可されています。ルールを保持し、所有権は主張しません。' ;;
+        zh:apply_host_dns_cancelled) echo '已取消。' ;;
+        en:apply_host_dns_cancelled) echo 'Cancelled.' ;;
+        ru:apply_host_dns_cancelled) echo 'Отменено.' ;;
+        fa:apply_host_dns_cancelled) echo 'لغو شد.' ;;
+        zh-tw:apply_host_dns_cancelled) echo '已取消。' ;;
+        ja:apply_host_dns_cancelled) echo 'キャンセルしました。' ;;
+        zh:apply_host_dns_clear_sources_failed) echo '清除既有全局 DNS 来源失败，未修改 DNS。' ;;
+        en:apply_host_dns_clear_sources_failed) echo 'Failed to clear existing global DNS sources; DNS was not modified.' ;;
+        ru:apply_host_dns_clear_sources_failed) echo 'Не удалось очистить существующие общесистемные источники DNS; DNS не изменён.' ;;
+        fa:apply_host_dns_clear_sources_failed) echo 'پاک‌کردن منابع فعلی DNS سراسری ناموفق بود؛ DNS تغییر نکرد.' ;;
+        zh-tw:apply_host_dns_clear_sources_failed) echo '清除既有全域 DNS 來源失敗，未變更 DNS。' ;;
+        ja:apply_host_dns_clear_sources_failed) echo '既存のシステム全体の DNS ソースを削除できませんでした。DNS は変更していません。' ;;
+        zh:apply_host_dns_dot_write_failed) echo 'DoT drop-in 写入失败。' ;;
+        en:apply_host_dns_dot_write_failed) echo 'Failed to write the DoT drop-in.' ;;
+        ru:apply_host_dns_dot_write_failed) echo 'Не удалось записать файл drop-in для DoT.' ;;
+        fa:apply_host_dns_dot_write_failed) echo 'نوشتن فایل drop-in مربوط به DoT ناموفق بود.' ;;
+        zh-tw:apply_host_dns_dot_write_failed) echo 'DoT drop-in 寫入失敗。' ;;
+        ja:apply_host_dns_dot_write_failed) echo 'DoT のドロップインの書き込みに失敗しました。' ;;
+        zh:apply_host_dns_dropin_write_failed) echo 'DNS drop-in 写入失败。' ;;
+        en:apply_host_dns_dropin_write_failed) echo 'Failed to write the DNS drop-in.' ;;
+        ru:apply_host_dns_dropin_write_failed) echo 'Не удалось записать файл drop-in для DNS.' ;;
+        fa:apply_host_dns_dropin_write_failed) echo 'نوشتن فایل drop-in مربوط به DNS ناموفق بود.' ;;
+        zh-tw:apply_host_dns_dropin_write_failed) echo 'DNS drop-in 寫入失敗。' ;;
+        ja:apply_host_dns_dropin_write_failed) echo 'DNS のドロップインの書き込みに失敗しました。' ;;
+        zh:apply_host_dns_verify_mismatch) echo '应用后全局 DNS 集合与预期不符，已回滚。' ;;
+        en:apply_host_dns_verify_mismatch) echo 'The global DNS set did not match the expected set after applying the changes; rolled back.' ;;
+        ru:apply_host_dns_verify_mismatch) echo 'После применения общесистемный набор DNS не совпал с ожидаемым; выполнен откат.' ;;
+        fa:apply_host_dns_verify_mismatch) echo 'پس از اعمال تغییرات، مجموعه DNS سراسری با مقدار مورد انتظار مطابقت نداشت؛ تغییرات بازگردانده شد.' ;;
+        zh-tw:apply_host_dns_verify_mismatch) echo '套用後的全域 DNS 集合與預期不符，已回復。' ;;
+        ja:apply_host_dns_verify_mismatch) echo '適用後のシステム全体の DNS セットが期待値と一致しなかったため、ロールバックしました。' ;;
+        zh:backup_current_config_retention_invalid) echo 'BACKUP_RETENTION_COUNT 无效；必须是 0-1000 的整数。' ;;
+        en:backup_current_config_retention_invalid) echo 'Invalid BACKUP_RETENTION_COUNT; it must be an integer in the range 0-1000.' ;;
+        ru:backup_current_config_retention_invalid) echo 'Недопустимое значение BACKUP_RETENTION_COUNT; требуется целое число в диапазоне 0-1000.' ;;
+        fa:backup_current_config_retention_invalid) echo 'BACKUP_RETENTION_COUNT نامعتبر است؛ باید عددی صحیح در محدودهٔ 0-1000 باشد.' ;;
+        zh-tw:backup_current_config_retention_invalid) echo 'BACKUP_RETENTION_COUNT 無效；必須是 0-1000 範圍內的整數。' ;;
+        ja:backup_current_config_retention_invalid) echo 'BACKUP_RETENTION_COUNT が無効です。0-1000 の範囲の整数である必要があります。' ;;
+        zh:backup_restore_menu_title) echo '配置备份与恢复' ;;
+        en:backup_restore_menu_title) echo 'Backup / Restore' ;;
+        ru:backup_restore_menu_title) echo 'Резервное копирование и восстановление конфигурации' ;;
+        fa:backup_restore_menu_title) echo 'پشتیبان‌گیری و بازیابی پیکربندی' ;;
+        zh-tw:backup_restore_menu_title) echo '設定備份與還原' ;;
+        ja:backup_restore_menu_title) echo '設定のバックアップと復元' ;;
+        zh:begin_core_upgrade_transaction_backup_failed) echo '核心升级前精确备份创建失败。' ;;
+        en:begin_core_upgrade_transaction_backup_failed) echo 'Failed to create an exact backup before the core upgrade.' ;;
+        ru:begin_core_upgrade_transaction_backup_failed) echo 'Не удалось создать точную резервную копию перед обновлением ядра.' ;;
+        fa:begin_core_upgrade_transaction_backup_failed) echo 'ایجاد نسخهٔ پشتیبان دقیق پیش از ارتقای هسته ناموفق بود.' ;;
+        zh-tw:begin_core_upgrade_transaction_backup_failed) echo '核心升級前的精確備份建立失敗。' ;;
+        ja:begin_core_upgrade_transaction_backup_failed) echo 'コアのアップグレード前に正確なバックアップを作成できませんでした。' ;;
+        zh:check_selected_ports_free_checking) echo '正在检查新选择端口是否仍被任何进程占用...' ;;
+        en:check_selected_ports_free_checking) echo 'Checking whether any process is still using the newly selected ports...' ;;
+        ru:check_selected_ports_free_checking) echo 'Проверяется, не заняты ли вновь выбранные порты какими-либо процессами...' ;;
+        fa:check_selected_ports_free_checking) echo 'در حال بررسی اینکه آیا فرایندی هنوز پورت‌های تازه انتخاب‌شده را اشغال کرده است...' ;;
+        zh-tw:check_selected_ports_free_checking) echo '正在檢查新選取的連接埠是否仍被任何處理程序占用...' ;;
+        ja:check_selected_ports_free_checking) echo '新しく選択したポートを使用しているプロセスがまだあるか確認しています...' ;;
+        zh:check_selected_ports_free_hy2_range_occupied) echo 'HY2 UDP 跳跃区间 %s-%s 仍被进程占用：' ;;
+        en:check_selected_ports_free_hy2_range_occupied) echo 'The HY2 UDP port-hopping range %s-%s is still occupied by a process:' ;;
+        ru:check_selected_ports_free_hy2_range_occupied) echo 'Диапазон переключения портов HY2 UDP %s-%s всё ещё занят процессом:' ;;
+        fa:check_selected_ports_free_hy2_range_occupied) echo 'محدوده پرش پورت HY2 UDP %s-%s هنوز توسط یک فرایند اشغال شده است:' ;;
+        zh-tw:check_selected_ports_free_hy2_range_occupied) echo 'HY2 UDP 連接埠跳躍範圍 %s-%s 仍被處理程序占用：' ;;
+        ja:check_selected_ports_free_hy2_range_occupied) echo 'HY2 UDP ポートホッピング範囲 %s-%s はまだプロセスに占有されています:' ;;
+        zh:check_selected_ports_free_occupied) echo '新选择端口 %s/%s 仍被进程占用：' ;;
+        en:check_selected_ports_free_occupied) echo 'Newly selected port %s/%s is still occupied by a process:' ;;
+        ru:check_selected_ports_free_occupied) echo 'Вновь выбранный порт %s/%s всё ещё занят процессом:' ;;
+        fa:check_selected_ports_free_occupied) echo 'پورت تازه انتخاب‌شده %s/%s هنوز توسط یک فرایند اشغال شده است:' ;;
+        zh-tw:check_selected_ports_free_occupied) echo '新選取的連接埠 %s/%s 仍被處理程序占用：' ;;
+        ja:check_selected_ports_free_occupied) echo '新しく選択したポート %s/%s はまだプロセスに占有されています:' ;;
+        zh:check_selected_ports_free_owned_process) echo '端口 %s/%s 当前由 A-Box 自有进程占用（同端口重装容忍）。' ;;
+        en:check_selected_ports_free_owned_process) echo 'Port %s/%s is currently occupied by an A-Box-owned process (allowed when reinstalling on the same port).' ;;
+        ru:check_selected_ports_free_owned_process) echo 'Порт %s/%s сейчас занят собственным процессом A-Box (допускается при переустановке на том же порту).' ;;
+        fa:check_selected_ports_free_owned_process) echo 'پورت %s/%s اکنون توسط فرایند متعلق به A-Box اشغال شده است (برای نصب مجدد روی همان پورت مجاز است).' ;;
+        zh-tw:check_selected_ports_free_owned_process) echo '連接埠 %s/%s 目前由 A-Box 自有處理程序占用（允許使用相同連接埠重新安裝）。' ;;
+        ja:check_selected_ports_free_owned_process) echo 'ポート %s/%s は現在 A-Box 自身のプロセスが使用しています（同じポートでの再インストールでは許容されます）。' ;;
+        zh:check_virgin_state_abox_dir_undefined) echo 'ABOX_DIR 未定义' ;;
+        en:check_virgin_state_abox_dir_undefined) echo 'ABOX_DIR is undefined' ;;
+        ru:check_virgin_state_abox_dir_undefined) echo 'ABOX_DIR не определена' ;;
+        fa:check_virgin_state_abox_dir_undefined) echo 'ABOX_DIR تعریف نشده است' ;;
+        zh-tw:check_virgin_state_abox_dir_undefined) echo 'ABOX_DIR 未定義' ;;
+        ja:check_virgin_state_abox_dir_undefined) echo 'ABOX_DIR が未定義です' ;;
+        zh:confirm_ota_script_hash_assume_yes_disabled) echo 'ABOX_ASSUME_YES_OTA 已禁用；非交互更新必须使用 ABOX_OTA_SHA256_ALLOWLIST。' ;;
+        en:confirm_ota_script_hash_assume_yes_disabled) echo 'ABOX_ASSUME_YES_OTA is disabled; non-interactive updates must use ABOX_OTA_SHA256_ALLOWLIST.' ;;
+        ru:confirm_ota_script_hash_assume_yes_disabled) echo 'ABOX_ASSUME_YES_OTA отключён; для неинтерактивного обновления обязательно используйте ABOX_OTA_SHA256_ALLOWLIST.' ;;
+        fa:confirm_ota_script_hash_assume_yes_disabled) echo 'ABOX_ASSUME_YES_OTA غیرفعال شده است؛ به‌روزرسانی غیرتعاملی باید از ABOX_OTA_SHA256_ALLOWLIST استفاده کند.' ;;
+        zh-tw:confirm_ota_script_hash_assume_yes_disabled) echo 'ABOX_ASSUME_YES_OTA 已停用；非互動式更新必須使用 ABOX_OTA_SHA256_ALLOWLIST。' ;;
+        ja:confirm_ota_script_hash_assume_yes_disabled) echo 'ABOX_ASSUME_YES_OTA は無効です。非対話型の更新では ABOX_OTA_SHA256_ALLOWLIST を使用する必要があります。' ;;
+        zh:core_expected_tls_tcp_targets_bad_shape) echo 'TLS 目标枚举失败：配置结构异常：%s' ;;
+        en:core_expected_tls_tcp_targets_bad_shape) echo 'TLS target enumeration failed: invalid configuration structure: %s' ;;
+        ru:core_expected_tls_tcp_targets_bad_shape) echo 'Не удалось перечислить цели TLS: некорректная структура конфигурации: %s' ;;
+        fa:core_expected_tls_tcp_targets_bad_shape) echo 'فهرست‌کردن مقصدهای TLS ناموفق بود: ساختار پیکربندی نامعتبر است: %s' ;;
+        zh-tw:core_expected_tls_tcp_targets_bad_shape) echo 'TLS 目標列舉失敗：設定結構異常：%s' ;;
+        ja:core_expected_tls_tcp_targets_bad_shape) echo 'TLS ターゲットの列挙に失敗：設定の構造が不正です：%s' ;;
+        zh:core_expected_tls_tcp_targets_bad_target) echo 'TLS 目标枚举失败：目标格式异常：%s' ;;
+        en:core_expected_tls_tcp_targets_bad_target) echo 'TLS target enumeration failed: invalid target format: %s' ;;
+        ru:core_expected_tls_tcp_targets_bad_target) echo 'Не удалось перечислить цели TLS: некорректный формат цели: %s' ;;
+        fa:core_expected_tls_tcp_targets_bad_target) echo 'فهرست‌کردن مقصدهای TLS ناموفق بود: قالب مقصد نامعتبر است: %s' ;;
+        zh-tw:core_expected_tls_tcp_targets_bad_target) echo 'TLS 目標列舉失敗：目標格式異常：%s' ;;
+        ja:core_expected_tls_tcp_targets_bad_target) echo 'TLS ターゲットの列挙に失敗：ターゲットの形式が不正です：%s' ;;
+        zh:core_expected_tls_tcp_targets_config_missing) echo 'TLS 目标枚举失败：配置文件缺失：%s' ;;
+        en:core_expected_tls_tcp_targets_config_missing) echo 'TLS target enumeration failed: configuration file missing: %s' ;;
+        ru:core_expected_tls_tcp_targets_config_missing) echo 'Не удалось перечислить цели TLS: отсутствует файл конфигурации: %s' ;;
+        fa:core_expected_tls_tcp_targets_config_missing) echo 'فهرست‌کردن مقصدهای TLS ناموفق بود: فایل پیکربندی موجود نیست: %s' ;;
+        zh-tw:core_expected_tls_tcp_targets_config_missing) echo 'TLS 目標列舉失敗：缺少設定檔：%s' ;;
+        ja:core_expected_tls_tcp_targets_config_missing) echo 'TLS 対象の列挙に失敗しました：設定ファイルがありません：%s' ;;
+        zh:core_expected_tls_tcp_targets_diag) echo 'TLS 目标枚举失败：%s（%s）' ;;
+        en:core_expected_tls_tcp_targets_diag) echo 'TLS target enumeration failed: %s (%s)' ;;
+        ru:core_expected_tls_tcp_targets_diag) echo 'Не удалось перечислить цели TLS: %s (%s)' ;;
+        fa:core_expected_tls_tcp_targets_diag) echo 'فهرست‌کردن مقصدهای TLS ناموفق بود: %s (%s)' ;;
+        zh-tw:core_expected_tls_tcp_targets_diag) echo 'TLS 目標列舉失敗：%s（%s）' ;;
+        ja:core_expected_tls_tcp_targets_diag) echo 'TLS ターゲットの列挙に失敗：%s（%s）' ;;
+        zh:core_expected_tls_tcp_targets_enum_failed) echo 'TLS 目标枚举失败：无法枚举入站：%s' ;;
+        en:core_expected_tls_tcp_targets_enum_failed) echo 'TLS target enumeration failed: unable to enumerate inbounds: %s' ;;
+        ru:core_expected_tls_tcp_targets_enum_failed) echo 'Не удалось перечислить цели TLS: невозможно перечислить входящие подключения: %s' ;;
+        fa:core_expected_tls_tcp_targets_enum_failed) echo 'فهرست‌کردن مقصدهای TLS ناموفق بود: فهرست‌کردن ورودی‌ها ممکن نیست: %s' ;;
+        zh-tw:core_expected_tls_tcp_targets_enum_failed) echo 'TLS 目標列舉失敗：無法列舉入站：%s' ;;
+        ja:core_expected_tls_tcp_targets_enum_failed) echo 'TLS ターゲットの列挙に失敗：インバウンドを列挙できません：%s' ;;
+        zh:core_expected_tls_tcp_targets_parse_failed) echo 'TLS 目标枚举失败：无法解析配置：%s' ;;
+        en:core_expected_tls_tcp_targets_parse_failed) echo 'TLS target enumeration failed: unable to parse configuration: %s' ;;
+        ru:core_expected_tls_tcp_targets_parse_failed) echo 'Не удалось перечислить цели TLS: невозможно разобрать конфигурацию: %s' ;;
+        fa:core_expected_tls_tcp_targets_parse_failed) echo 'فهرست‌کردن مقصدهای TLS ناموفق بود: تجزیهٔ پیکربندی ممکن نیست: %s' ;;
+        zh-tw:core_expected_tls_tcp_targets_parse_failed) echo 'TLS 目標列舉失敗：無法剖析設定：%s' ;;
+        ja:core_expected_tls_tcp_targets_parse_failed) echo 'TLS ターゲットの列挙に失敗：設定を解析できません：%s' ;;
+        zh:core_expected_tls_tcp_targets_strip_failed) echo 'TLS 目标枚举失败：无法剥离注释：%s' ;;
+        en:core_expected_tls_tcp_targets_strip_failed) echo 'TLS target enumeration failed: unable to strip comments: %s' ;;
+        ru:core_expected_tls_tcp_targets_strip_failed) echo 'Не удалось перечислить цели TLS: невозможно удалить комментарии: %s' ;;
+        fa:core_expected_tls_tcp_targets_strip_failed) echo 'فهرست‌کردن مقصدهای TLS ناموفق بود: حذف توضیحات ممکن نیست: %s' ;;
+        zh-tw:core_expected_tls_tcp_targets_strip_failed) echo 'TLS 目標列舉失敗：無法移除註解：%s' ;;
+        ja:core_expected_tls_tcp_targets_strip_failed) echo 'TLS ターゲットの列挙に失敗：コメントを除去できません：%s' ;;
+        zh:core_fetch_upstream_release_asset_downloading) echo '下载 %s' ;;
+        en:core_fetch_upstream_release_asset_downloading) echo 'Downloading %s' ;;
+        ru:core_fetch_upstream_release_asset_downloading) echo 'Загрузка %s' ;;
+        fa:core_fetch_upstream_release_asset_downloading) echo 'در حال دانلود %s' ;;
+        zh-tw:core_fetch_upstream_release_asset_downloading) echo '下載 %s' ;;
+        ja:core_fetch_upstream_release_asset_downloading) echo '%s をダウンロード中' ;;
+        zh:core_ports_listening_enum_failed) echo '%s 监听枚举失败（%s）。' ;;
+        en:core_ports_listening_enum_failed) echo '%s listener enumeration failed (%s).' ;;
+        ru:core_ports_listening_enum_failed) echo '%s: не удалось перечислить прослушиваемые сокеты (%s).' ;;
+        fa:core_ports_listening_enum_failed) echo '%s: فهرست‌کردن شنونده‌ها ناموفق بود (%s).' ;;
+        zh-tw:core_ports_listening_enum_failed) echo '%s 接聽項目列舉失敗（%s）。' ;;
+        ja:core_ports_listening_enum_failed) echo '%s のリスナー列挙に失敗しました（%s）。' ;;
+        zh:core_ports_listening_no_expected) echo '%s 无预期监听端口。' ;;
+        en:core_ports_listening_no_expected) echo '%s has no expected listening ports.' ;;
+        ru:core_ports_listening_no_expected) echo '%s: ожидаемые прослушиваемые порты отсутствуют.' ;;
+        fa:core_ports_listening_no_expected) echo '%s هیچ پورت مورد انتظاری برای گوش‌دادن ندارد.' ;;
+        zh-tw:core_ports_listening_no_expected) echo '%s 沒有預期的接聽連接埠。' ;;
+        ja:core_ports_listening_no_expected) echo '%s には待ち受けが想定されるポートがありません。' ;;
+        zh:core_ports_listening_port_not_listening) echo '%s 端口 %s/%s 未处于监听状态。' ;;
+        en:core_ports_listening_port_not_listening) echo '%s port %s/%s is not listening.' ;;
+        ru:core_ports_listening_port_not_listening) echo '%s: порт %s/%s не прослушивается.' ;;
+        fa:core_ports_listening_port_not_listening) echo '%s: پورت %s/%s در حال گوش‌دادن نیست.' ;;
+        zh-tw:core_ports_listening_port_not_listening) echo '%s 連接埠 %s/%s 未處於接聽狀態。' ;;
+        ja:core_ports_listening_port_not_listening) echo '%s のポート %s/%s は待ち受け状態ではありません。' ;;
+        zh:core_ports_listening_unix_not_listening) echo '%s Unix 套接字 %s 未处于监听状态。' ;;
+        en:core_ports_listening_unix_not_listening) echo '%s Unix socket %s is not listening.' ;;
+        ru:core_ports_listening_unix_not_listening) echo '%s: сокет Unix %s не прослушивается.' ;;
+        fa:core_ports_listening_unix_not_listening) echo '%s: سوکت Unix %s در حال گوش‌دادن نیست.' ;;
+        zh-tw:core_ports_listening_unix_not_listening) echo '%s Unix 通訊端 %s 未處於接聽狀態。' ;;
+        ja:core_ports_listening_unix_not_listening) echo '%s の Unix ソケット %s は待ち受け状態ではありません。' ;;
+        zh:core_tls_smoke_probe_bad_target) echo '%s TLS 目标格式异常：%s:%s' ;;
+        en:core_tls_smoke_probe_bad_target) echo '%s TLS target format is invalid: %s:%s' ;;
+        ru:core_tls_smoke_probe_bad_target) echo '%s: некорректный формат цели TLS: %s:%s' ;;
+        fa:core_tls_smoke_probe_bad_target) echo '%s: قالب مقصد TLS نامعتبر است: %s:%s' ;;
+        zh-tw:core_tls_smoke_probe_bad_target) echo '%s TLS 目標格式異常：%s:%s' ;;
+        ja:core_tls_smoke_probe_bad_target) echo '%s の TLS ターゲット形式が不正です：%s:%s' ;;
+        zh:core_tls_smoke_probe_no_response) echo '%s %s:%s 无 TLS 响应（数据面可能异常）。' ;;
+        en:core_tls_smoke_probe_no_response) echo '%s %s:%s returned no TLS response (the data plane may be malfunctioning).' ;;
+        ru:core_tls_smoke_probe_no_response) echo '%s: от %s:%s нет ответа TLS (возможен сбой плоскости данных).' ;;
+        fa:core_tls_smoke_probe_no_response) echo '%s از %s:%s هیچ پاسخ TLS دریافت نکرد (ممکن است بخش انتقال داده دچار اختلال باشد).' ;;
+        zh-tw:core_tls_smoke_probe_no_response) echo '%s %s:%s 未回應 TLS（資料平面可能異常）。' ;;
+        ja:core_tls_smoke_probe_no_response) echo '%s の %s:%s から TLS 応答がありません（データプレーンに異常がある可能性があります）。' ;;
+        zh:depend_hy2_hop_rules_restart) echo '官方 HY2 端口跳跃防火墙规则未在服务启动后出现；正在重新启动 Hysteria 以触发规则重建。' ;;
+        en:depend_hy2_hop_rules_restart) echo 'The official HY2 port-hopping firewall rules did not appear after the service started; restarting Hysteria to trigger rule recreation.' ;;
+        ru:depend_hy2_hop_rules_restart) echo 'Правила межсетевого экрана для переключения портов официального HY2 не появились после запуска службы; выполняется перезапуск Hysteria для их повторного создания.' ;;
+        fa:depend_hy2_hop_rules_restart) echo 'قواعد دیوار آتش برای پرش پورت HY2 رسمی پس از شروع سرویس ظاهر نشدند؛ در حال راه‌اندازی مجدد Hysteria برای ایجاد دوباره قواعد.' ;;
+        zh-tw:depend_hy2_hop_rules_restart) echo '官方 HY2 連接埠跳躍的防火牆規則未在服務啟動後出現；正在重新啟動 Hysteria 以觸發規則重建。' ;;
+        ja:depend_hy2_hop_rules_restart) echo 'サービス起動後に公式 HY2 のポートホッピング用ファイアウォールルールが生成されませんでした。ルールの再生成を促すため Hysteria を再起動しています。' ;;
+        zh:deploy_official_hy2_confd_write_failed) echo 'Hysteria OpenRC conf.d 原子写入失败。' ;;
+        en:deploy_official_hy2_confd_write_failed) echo 'Atomic write of the Hysteria OpenRC conf.d file failed.' ;;
+        ru:deploy_official_hy2_confd_write_failed) echo 'Атомарная запись файла conf.d для Hysteria в OpenRC не удалась.' ;;
+        fa:deploy_official_hy2_confd_write_failed) echo 'نوشتن اتمی فایل conf.d مربوط به Hysteria در OpenRC ناموفق بود.' ;;
+        zh-tw:deploy_official_hy2_confd_write_failed) echo 'Hysteria OpenRC conf.d 檔案原子寫入失敗。' ;;
+        ja:deploy_official_hy2_confd_write_failed) echo 'Hysteria の OpenRC conf.d ファイルのアトミック書き込みに失敗しました。' ;;
+        zh:deploy_official_hy2_openrc_write_failed) echo 'Hysteria OpenRC unit 原子写入失败。' ;;
+        en:deploy_official_hy2_openrc_write_failed) echo 'Atomic write of the Hysteria OpenRC unit failed.' ;;
+        ru:deploy_official_hy2_openrc_write_failed) echo 'Атомарная запись юнита OpenRC для Hysteria не удалась.' ;;
+        fa:deploy_official_hy2_openrc_write_failed) echo 'نوشتن اتمی واحد OpenRC مربوط به Hysteria ناموفق بود.' ;;
+        zh-tw:deploy_official_hy2_openrc_write_failed) echo 'Hysteria OpenRC 單元原子寫入失敗。' ;;
+        ja:deploy_official_hy2_openrc_write_failed) echo 'Hysteria の OpenRC ユニットのアトミック書き込みに失敗しました。' ;;
+        zh:deploy_official_hy2_systemd_write_failed) echo 'Hysteria systemd unit 原子写入失败。' ;;
+        en:deploy_official_hy2_systemd_write_failed) echo 'Atomic write of the Hysteria systemd unit failed.' ;;
+        ru:deploy_official_hy2_systemd_write_failed) echo 'Атомарная запись юнита systemd для Hysteria не удалась.' ;;
+        fa:deploy_official_hy2_systemd_write_failed) echo 'نوشتن اتمی واحد systemd مربوط به Hysteria ناموفق بود.' ;;
+        zh-tw:deploy_official_hy2_systemd_write_failed) echo 'Hysteria systemd 單元原子寫入失敗。' ;;
+        ja:deploy_official_hy2_systemd_write_failed) echo 'Hysteria の systemd ユニットのアトミック書き込みに失敗しました。' ;;
+        zh:deploy_official_hy2_title) echo '部署官方 Hysteria 2' ;;
+        en:deploy_official_hy2_title) echo 'Official Hysteria 2 deployment' ;;
+        ru:deploy_official_hy2_title) echo 'Развёртывание официальной версии Hysteria 2' ;;
+        fa:deploy_official_hy2_title) echo 'استقرار نسخه رسمی Hysteria 2' ;;
+        zh-tw:deploy_official_hy2_title) echo '官方 Hysteria 2 部署' ;;
+        ja:deploy_official_hy2_title) echo '公式 Hysteria 2 のデプロイ' ;;
+        zh:deploy_singbox_title) echo '部署 Sing-box 核心 [%s]' ;;
+        en:deploy_singbox_title) echo 'sing-box core deployment [%s]' ;;
+        ru:deploy_singbox_title) echo 'Развёртывание ядра sing-box [%s]' ;;
+        fa:deploy_singbox_title) echo 'استقرار هسته sing-box [%s]' ;;
+        zh-tw:deploy_singbox_title) echo 'sing-box 核心部署 [%s]' ;;
+        ja:deploy_singbox_title) echo 'sing-box コアのデプロイ [%s]' ;;
+        zh:deploy_xray_title) echo '部署 Xray-core [%s]' ;;
+        en:deploy_xray_title) echo 'Xray-core deployment [%s]' ;;
+        ru:deploy_xray_title) echo 'Развёртывание Xray-core [%s]' ;;
+        fa:deploy_xray_title) echo 'استقرار Xray-core [%s]' ;;
+        zh-tw:deploy_xray_title) echo 'Xray-core 部署 [%s]' ;;
+        ja:deploy_xray_title) echo 'Xray-core のデプロイ [%s]' ;;
+        zh:deploy_xray_trojan_landing_config_check_failed) echo 'Xray 配置校验失败，校验器输出:' ;;
+        en:deploy_xray_trojan_landing_config_check_failed) echo 'Xray configuration validation failed; validator output:' ;;
+        ru:deploy_xray_trojan_landing_config_check_failed) echo 'Проверка конфигурации Xray не удалась; вывод валидатора:' ;;
+        fa:deploy_xray_trojan_landing_config_check_failed) echo 'اعتبارسنجی پیکربندی Xray ناموفق بود؛ خروجی اعتبارسنج:' ;;
+        zh-tw:deploy_xray_trojan_landing_config_check_failed) echo 'Xray 設定驗證失敗，驗證器輸出:' ;;
+        ja:deploy_xray_trojan_landing_config_check_failed) echo 'Xray 設定の検証に失敗しました。検証ツールの出力:' ;;
+        zh:dns_menu_back) echo '返回' ;;
+        en:dns_menu_back) echo 'Back' ;;
+        ru:dns_menu_back) echo 'Назад' ;;
+        fa:dns_menu_back) echo 'بازگشت' ;;
+        zh-tw:dns_menu_back) echo '返回' ;;
+        ja:dns_menu_back) echo '戻る' ;;
+        zh:ensure_commands_installing_missing) echo '检测到缺失依赖包，正在补装...' ;;
+        en:ensure_commands_installing_missing) echo 'Missing dependency packages detected; installing them...' ;;
+        ru:ensure_commands_installing_missing) echo 'Обнаружены отсутствующие пакеты зависимостей; выполняется их установка...' ;;
+        fa:ensure_commands_installing_missing) echo 'بسته‌های وابستگی مفقود شناسایی شدند؛ در حال نصب آن‌ها...' ;;
+        zh-tw:ensure_commands_installing_missing) echo '檢測到缺少相依套件，正在補裝...' ;;
+        ja:ensure_commands_installing_missing) echo '不足している依存パッケージを検出しました。追加インストールしています...' ;;
+        zh:ensure_fail2ban_install_failed) echo 'Fail2Ban 自动安装失败, 主动防御 (日志封禁) 本次不生效; 节点本身不受影响。' ;;
+        en:ensure_fail2ban_install_failed) echo 'Automatic installation of Fail2Ban failed; active defence (log-based banning) will not take effect this time. The node itself is unaffected.' ;;
+        ru:ensure_fail2ban_install_failed) echo 'Автоматическая установка Fail2Ban не удалась; активная защита (блокировка по журналам) в этот раз не действует. Сам узел не затронут.' ;;
+        fa:ensure_fail2ban_install_failed) echo 'نصب خودکار Fail2Ban ناموفق بود؛ دفاع فعال (مسدودسازی بر اساس گزارش‌ها) این بار اعمال نمی‌شود. خود گره تحت تأثیر قرار نمی‌گیرد.' ;;
+        zh-tw:ensure_fail2ban_install_failed) echo 'Fail2Ban 自動安裝失敗，本次主動防禦（依日誌封鎖）不會生效；節點本身不受影響。' ;;
+        ja:ensure_fail2ban_install_failed) echo 'Fail2Ban の自動インストールに失敗しました。今回は能動防御（ログに基づく遮断）が適用されませんが、ノード自体には影響しません。' ;;
+        zh:ensure_fail2ban_installing) echo '未检测到 Fail2Ban, 正在自动安装 (主动防御需要)...' ;;
+        en:ensure_fail2ban_installing) echo 'Fail2Ban not detected; installing automatically (required for active defence)...' ;;
+        ru:ensure_fail2ban_installing) echo 'Fail2Ban не обнаружен; выполняется автоматическая установка (требуется для активной защиты)...' ;;
+        fa:ensure_fail2ban_installing) echo 'Fail2Ban شناسایی نشد؛ در حال نصب خودکار (برای دفاع فعال لازم است)...' ;;
+        zh-tw:ensure_fail2ban_installing) echo '未檢測到 Fail2Ban，正在自動安裝（主動防禦需要）...' ;;
+        ja:ensure_fail2ban_installing) echo 'Fail2Ban が検出されません。自動インストール中です（能動防御に必要）...' ;;
+        zh:enter_runtime_pipe_no_sudo) echo '非 root 管道/标准输入执行无法自动提权；请使用: curl -fsSL <URL> | sudo bash' ;;
+        en:enter_runtime_pipe_no_sudo) echo 'Cannot automatically elevate privileges when running as non-root through a pipe or standard input; use curl -fsSL <URL> with its output piped to sudo bash' ;;
+        ru:enter_runtime_pipe_no_sudo) echo 'Невозможно автоматически повысить привилегии при запуске не от root через канал или стандартный ввод; передайте вывод curl -fsSL <URL> через канал в sudo bash' ;;
+        fa:enter_runtime_pipe_no_sudo) echo 'هنگام اجرا از طریق لوله یا ورودی استاندارد بدون root، افزایش خودکار دسترسی ممکن نیست؛ خروجی curl -fsSL <URL> را با لوله به sudo bash بفرستید' ;;
+        zh-tw:enter_runtime_pipe_no_sudo) echo '以非 root 身分透過管線或標準輸入執行時，無法自動提升權限；請將 curl -fsSL <URL> 的輸出透過管線傳給 sudo bash' ;;
+        ja:enter_runtime_pipe_no_sudo) echo 'root 以外でパイプまたは標準入力から実行する場合、自動で権限を昇格できません；curl -fsSL <URL> の出力をパイプで sudo bash に渡してください' ;;
+        zh:enter_runtime_var_run_failed) echo '无法创建 /var/run。' ;;
+        en:enter_runtime_var_run_failed) echo 'Unable to create /var/run.' ;;
+        ru:enter_runtime_var_run_failed) echo 'Не удалось создать /var/run.' ;;
+        fa:enter_runtime_var_run_failed) echo 'ایجاد /var/run ممکن نیست.' ;;
+        zh-tw:enter_runtime_var_run_failed) echo '無法建立 /var/run。' ;;
+        ja:enter_runtime_var_run_failed) echo '/var/run を作成できません。' ;;
+        zh:export_diagnostic_bundle_chmod_failed) echo '诊断目录权限设置失败。' ;;
+        en:export_diagnostic_bundle_chmod_failed) echo 'Failed to set permissions on the diagnostic directory.' ;;
+        ru:export_diagnostic_bundle_chmod_failed) echo 'Не удалось установить права доступа для каталога диагностики.' ;;
+        fa:export_diagnostic_bundle_chmod_failed) echo 'تنظیم مجوزهای پوشهٔ تشخیصی ناموفق بود.' ;;
+        zh-tw:export_diagnostic_bundle_chmod_failed) echo '無法設定診斷目錄的權限。' ;;
+        ja:export_diagnostic_bundle_chmod_failed) echo '診断ディレクトリの権限を設定できませんでした。' ;;
+        zh:export_diagnostic_bundle_mkdir_failed) echo '诊断目录创建失败。' ;;
+        en:export_diagnostic_bundle_mkdir_failed) echo 'Failed to create the diagnostic directory.' ;;
+        ru:export_diagnostic_bundle_mkdir_failed) echo 'Не удалось создать каталог диагностики.' ;;
+        fa:export_diagnostic_bundle_mkdir_failed) echo 'ایجاد پوشهٔ تشخیصی ناموفق بود.' ;;
+        zh-tw:export_diagnostic_bundle_mkdir_failed) echo '無法建立診斷目錄。' ;;
+        ja:export_diagnostic_bundle_mkdir_failed) echo '診断ディレクトリを作成できませんでした。' ;;
+        zh:export_diagnostic_bundle_nonroot_refused) echo '诊断目录非 root 属主，拒绝生成诊断包。' ;;
+        en:export_diagnostic_bundle_nonroot_refused) echo 'The diagnostic directory is not owned by root; refusing to generate the diagnostic bundle.' ;;
+        ru:export_diagnostic_bundle_nonroot_refused) echo 'Каталог диагностики не принадлежит root; создание диагностического пакета отклонено.' ;;
+        fa:export_diagnostic_bundle_nonroot_refused) echo 'مالک پوشهٔ تشخیصی root نیست؛ ایجاد بستهٔ تشخیصی رد شد.' ;;
+        zh-tw:export_diagnostic_bundle_nonroot_refused) echo '診斷目錄的擁有者不是 root，拒絕產生診斷套件。' ;;
+        ja:export_diagnostic_bundle_nonroot_refused) echo '診断ディレクトリの所有者が root ではないため、診断パッケージの生成を拒否しました。' ;;
+        zh:export_diagnostic_bundle_symlink_refused) echo '诊断目录是符号链接，拒绝生成诊断包。' ;;
+        en:export_diagnostic_bundle_symlink_refused) echo 'The diagnostic directory is a symbolic link; refusing to generate the diagnostic bundle.' ;;
+        ru:export_diagnostic_bundle_symlink_refused) echo 'Каталог диагностики является символической ссылкой; создание диагностического пакета отклонено.' ;;
+        fa:export_diagnostic_bundle_symlink_refused) echo 'پوشهٔ تشخیصی یک پیوند نمادین است؛ ایجاد بستهٔ تشخیصی رد شد.' ;;
+        zh-tw:export_diagnostic_bundle_symlink_refused) echo '診斷目錄是符號連結，拒絕產生診斷套件。' ;;
+        ja:export_diagnostic_bundle_symlink_refused) echo '診断ディレクトリがシンボリックリンクのため、診断パッケージの生成を拒否しました。' ;;
+        zh:export_diagnostic_bundle_target_symlink_refused) echo '诊断目录或目标文件是符号链接，拒绝生成诊断包。' ;;
+        en:export_diagnostic_bundle_target_symlink_refused) echo 'Diagnostic directory or target file is a symbolic link; refusing to generate the diagnostic bundle.' ;;
+        ru:export_diagnostic_bundle_target_symlink_refused) echo 'Каталог диагностики или целевой файл является символической ссылкой; создание диагностического пакета запрещено.' ;;
+        fa:export_diagnostic_bundle_target_symlink_refused) echo 'پوشهٔ عیب‌یابی یا فایل مقصد پیوند نمادین است؛ از تولید بستهٔ عیب‌یابی خودداری می‌شود.' ;;
+        zh-tw:export_diagnostic_bundle_target_symlink_refused) echo '診斷目錄或目標檔案是符號連結，拒絕產生診斷套件。' ;;
+        ja:export_diagnostic_bundle_target_symlink_refused) echo '診断ディレクトリまたは出力先ファイルがシンボリックリンクのため、診断バンドルの生成を拒否します。' ;;
+        zh:fetch_one_downloading_geo) echo '下载 Geo 数据' ;;
+        en:fetch_one_downloading_geo) echo 'Geo data download' ;;
+        ru:fetch_one_downloading_geo) echo 'Загрузка данных Geo' ;;
+        fa:fetch_one_downloading_geo) echo 'دانلود داده‌های Geo' ;;
+        zh-tw:fetch_one_downloading_geo) echo 'Geo 資料下載' ;;
+        ja:fetch_one_downloading_geo) echo 'Geo データのダウンロード' ;;
+        zh:force_update_geo_done) echo 'Xray Geo 资源更新与校验成功。' ;;
+        en:force_update_geo_done) echo 'Xray Geo resources updated and verified successfully.' ;;
+        ru:force_update_geo_done) echo 'Ресурсы Geo для Xray успешно обновлены и проверены.' ;;
+        fa:force_update_geo_done) echo 'منابع Geo برای Xray با موفقیت به‌روزرسانی و بررسی شدند.' ;;
+        zh-tw:force_update_geo_done) echo 'Xray Geo 資源更新與驗證成功。' ;;
+        ja:force_update_geo_done) echo 'Xray Geo リソースの更新と検証に成功しました。' ;;
+        zh:force_update_geo_failed) echo 'Xray Geo 资源下载失败或校验未通过。' ;;
+        en:force_update_geo_failed) echo 'Xray Geo resource download failed or verification did not pass.' ;;
+        ru:force_update_geo_failed) echo 'Не удалось загрузить ресурсы Geo для Xray либо проверка не пройдена.' ;;
+        fa:force_update_geo_failed) echo 'بارگیری منابع Geo برای Xray ناموفق بود یا بررسی آن‌ها با شکست مواجه شد.' ;;
+        zh-tw:force_update_geo_failed) echo 'Xray Geo 資源下載失敗或驗證未通過。' ;;
+        ja:force_update_geo_failed) echo 'Xray Geo リソースのダウンロードに失敗したか、検証に合格しませんでした。' ;;
+        zh:force_update_geo_fetching) echo '正在拉取 Loyalsoldier Geo 资源并执行校验...' ;;
+        en:force_update_geo_fetching) echo 'Fetching Loyalsoldier Geo resources and verifying them...' ;;
+        ru:force_update_geo_fetching) echo 'Загружаются ресурсы Geo от Loyalsoldier и выполняется их проверка...' ;;
+        fa:force_update_geo_fetching) echo 'در حال دریافت منابع Geo از Loyalsoldier و بررسی آن‌ها...' ;;
+        zh-tw:force_update_geo_fetching) echo '正在拉取 Loyalsoldier Geo 資源並進行驗證...' ;;
+        ja:force_update_geo_fetching) echo 'Loyalsoldier Geo リソースを取得して検証しています...' ;;
+        zh:force_update_geo_no_xray) echo '未检测到 A-Box 托管的 Xray；不会创建或运行 Geo 更新任务。' ;;
+        en:force_update_geo_no_xray) echo 'No A-Box-managed Xray detected; no Geo update task will be created or run.' ;;
+        ru:force_update_geo_no_xray) echo 'Xray под управлением A-Box не обнаружен; задача обновления Geo не будет создана или запущена.' ;;
+        fa:force_update_geo_no_xray) echo 'Xray تحت مدیریت A-Box شناسایی نشد؛ هیچ وظیفهٔ به‌روزرسانی Geo ایجاد یا اجرا نخواهد شد.' ;;
+        zh-tw:force_update_geo_no_xray) echo '未檢測到由 A-Box 管理的 Xray；不會建立或執行 Geo 更新工作。' ;;
+        ja:force_update_geo_no_xray) echo 'A-Box が管理する Xray が検出されないため、Geo 更新タスクの作成や実行は行いません。' ;;
+        zh:generate_qr_qrencode_missing) echo '未检测到 qrencode，跳过二维码显示。安装后进 12 号菜单重看即有：' ;;
+        en:generate_qr_qrencode_missing) echo 'qrencode not detected; skipping QR code display. Install it, then reopen menu 12 to view the code:' ;;
+        ru:generate_qr_qrencode_missing) echo 'qrencode не обнаружен; показ QR-кода пропущен. Установите его и снова откройте меню 12 для просмотра кода:' ;;
+        fa:generate_qr_qrencode_missing) echo 'qrencode شناسایی نشد؛ نمایش کد QR رد می‌شود. پس از نصب آن، برای دیدن کد دوباره وارد منوی 12 شوید:' ;;
+        zh-tw:generate_qr_qrencode_missing) echo '未檢測到 qrencode，略過 QR 碼顯示。安裝後重新開啟選單 12 即可查看：' ;;
+        ja:generate_qr_qrencode_missing) echo 'qrencode が検出されないため、QRコードの表示をスキップします。インストール後にメニュー 12 を開き直すと表示されます：' ;;
+        zh:generate_qr_scan_banner) echo '================ 扫码导入 =================' ;;
+        en:generate_qr_scan_banner) echo '================ Scan QR Code =================' ;;
+        ru:generate_qr_scan_banner) echo '================ Импорт по QR-коду =================' ;;
+        fa:generate_qr_scan_banner) echo '================ ورود با اسکن کد QR =================' ;;
+        zh-tw:generate_qr_scan_banner) echo '================ 掃碼匯入 =================' ;;
+        ja:generate_qr_scan_banner) echo '================ QRコードをスキャンしてインポート =================' ;;
+        zh:init_system_environment_syncing_deps) echo '正在同步系统依赖环境 (OS: %s, Init: %s)...' ;;
+        en:init_system_environment_syncing_deps) echo 'Synchronising system dependencies (OS: %s, Init: %s)...' ;;
+        ru:init_system_environment_syncing_deps) echo 'Выполняется синхронизация системных зависимостей (OS: %s, Init: %s)...' ;;
+        fa:init_system_environment_syncing_deps) echo 'در حال همگام‌سازی وابستگی‌های سیستم (OS: %s, Init: %s)...' ;;
+        zh-tw:init_system_environment_syncing_deps) echo '正在同步系統相依環境 (OS: %s, Init: %s)...' ;;
+        ja:init_system_environment_syncing_deps) echo 'システムの依存環境を同期しています (OS: %s, Init: %s)...' ;;
+        zh:install_abox_cron_block_bad_format) echo '现有 crontab 中的 A-Box %s 区块格式异常；为避免破坏计划任务，已中止。' ;;
+        en:install_abox_cron_block_bad_format) echo 'The A-Box %s block in the existing crontab has an invalid format; aborted to avoid damaging scheduled tasks.' ;;
+        ru:install_abox_cron_block_bad_format) echo 'Неверный формат блока A-Box %s в существующем crontab; операция прервана, чтобы не повредить запланированные задачи.' ;;
+        fa:install_abox_cron_block_bad_format) echo 'قالب بلوک A-Box %s در crontab موجود نامعتبر است؛ برای جلوگیری از آسیب به وظایف زمان‌بندی‌شده، عملیات متوقف شد.' ;;
+        zh-tw:install_abox_cron_block_bad_format) echo '現有 crontab 中的 A-Box %s 區塊格式不正確；為避免損壞排程工作，已中止操作。' ;;
+        ja:install_abox_cron_block_bad_format) echo '既存の crontab にある A-Box %s ブロックの形式が不正です。スケジュール済みタスクの破損を防ぐため、処理を中止しました。' ;;
+        zh:install_abox_cron_block_commit_failed) echo 'crontab 写入失败；原有 crontab 未被覆盖。' ;;
+        en:install_abox_cron_block_commit_failed) echo 'Failed to write crontab; the original crontab was not overwritten.' ;;
+        ru:install_abox_cron_block_commit_failed) echo 'Не удалось записать crontab; исходный crontab не был перезаписан.' ;;
+        fa:install_abox_cron_block_commit_failed) echo 'نوشتن crontab ناموفق بود؛ crontab اصلی بازنویسی نشد.' ;;
+        zh-tw:install_abox_cron_block_commit_failed) echo '無法寫入 crontab；原有 crontab 未遭覆寫。' ;;
+        ja:install_abox_cron_block_commit_failed) echo 'crontab の書き込みに失敗しました。元の crontab は上書きされていません。' ;;
+        zh:install_abox_cron_block_concurrent_change) echo 'crontab 在提交前发生并发修改；已中止以保护外部任务。' ;;
+        en:install_abox_cron_block_concurrent_change) echo 'crontab was modified concurrently before commit; aborted to protect external tasks.' ;;
+        ru:install_abox_cron_block_concurrent_change) echo 'crontab был параллельно изменён до фиксации; операция прервана для защиты внешних задач.' ;;
+        fa:install_abox_cron_block_concurrent_change) echo 'crontab پیش از ثبت نهایی به‌طور هم‌زمان تغییر کرد؛ برای محافظت از وظایف خارجی، عملیات متوقف شد.' ;;
+        zh-tw:install_abox_cron_block_concurrent_change) echo 'crontab 在提交前遭到並行修改；為保護外部排程工作，已中止操作。' ;;
+        ja:install_abox_cron_block_concurrent_change) echo '確定前に crontab が別の処理で変更されました。外部タスクを保護するため、処理を中止しました。' ;;
+        zh:install_abox_cron_block_current_tmp_failed) echo 'crontab 当前内容临时文件创建失败。' ;;
+        en:install_abox_cron_block_current_tmp_failed) echo 'Failed to create a temporary file for the current crontab contents.' ;;
+        ru:install_abox_cron_block_current_tmp_failed) echo 'Не удалось создать временный файл для текущего содержимого crontab.' ;;
+        fa:install_abox_cron_block_current_tmp_failed) echo 'ایجاد فایل موقت برای محتوای فعلی crontab ناموفق بود.' ;;
+        zh-tw:install_abox_cron_block_current_tmp_failed) echo '無法建立用於儲存目前 crontab 內容的暫存檔。' ;;
+        ja:install_abox_cron_block_current_tmp_failed) echo '現在の crontab の内容を保存する一時ファイルを作成できませんでした。' ;;
+        zh:install_abox_cron_block_read_failed) echo '无法读取现有 crontab；为避免覆盖用户任务，已中止。' ;;
+        en:install_abox_cron_block_read_failed) echo 'Cannot read the existing crontab; aborted to avoid overwriting user tasks.' ;;
+        ru:install_abox_cron_block_read_failed) echo 'Не удалось прочитать существующий crontab; операция прервана, чтобы не перезаписать задачи пользователя.' ;;
+        fa:install_abox_cron_block_read_failed) echo 'خواندن crontab موجود ممکن نیست؛ برای جلوگیری از بازنویسی وظایف کاربر، عملیات متوقف شد.' ;;
+        zh-tw:install_abox_cron_block_read_failed) echo '無法讀取現有 crontab；為避免覆寫使用者的排程工作，已中止操作。' ;;
+        ja:install_abox_cron_block_read_failed) echo '既存の crontab を読み取れません。ユーザーのタスクを上書きしないよう、処理を中止しました。' ;;
+        zh:install_abox_cron_block_tmp_failed) echo 'crontab 临时文件创建失败。' ;;
+        en:install_abox_cron_block_tmp_failed) echo 'Failed to create a temporary crontab file.' ;;
+        ru:install_abox_cron_block_tmp_failed) echo 'Не удалось создать временный файл crontab.' ;;
+        fa:install_abox_cron_block_tmp_failed) echo 'ایجاد فایل موقت crontab ناموفق بود.' ;;
+        zh-tw:install_abox_cron_block_tmp_failed) echo '無法建立 crontab 暫存檔。' ;;
+        ja:install_abox_cron_block_tmp_failed) echo 'crontab の一時ファイルを作成できませんでした。' ;;
+        zh:install_abox_cron_block_tmp_write_failed) echo 'crontab 临时内容写入失败。' ;;
+        en:install_abox_cron_block_tmp_write_failed) echo 'Failed to write temporary crontab contents.' ;;
+        ru:install_abox_cron_block_tmp_write_failed) echo 'Не удалось записать временное содержимое crontab.' ;;
+        fa:install_abox_cron_block_tmp_write_failed) echo 'نوشتن محتوای موقت crontab ناموفق بود.' ;;
+        zh-tw:install_abox_cron_block_tmp_write_failed) echo '無法寫入 crontab 的暫存內容。' ;;
+        ja:install_abox_cron_block_tmp_write_failed) echo 'crontab の一時的な内容を書き込めませんでした。' ;;
+        zh:install_remote_abox_script_guarded_remote_script) echo '远端 A-Box 脚本' ;;
+        en:install_remote_abox_script_guarded_remote_script) echo 'Remote A-Box script' ;;
+        ru:install_remote_abox_script_guarded_remote_script) echo 'Удалённый скрипт A-Box' ;;
+        fa:install_remote_abox_script_guarded_remote_script) echo 'اسکریپت راه دور A-Box' ;;
+        zh-tw:install_remote_abox_script_guarded_remote_script) echo '遠端 A-Box 指令稿' ;;
+        ja:install_remote_abox_script_guarded_remote_script) echo 'リモートの A-Box スクリプト' ;;
+        zh:language_menu_back) echo '返回' ;;
+        en:language_menu_back) echo 'Back' ;;
+        ru:language_menu_back) echo 'Назад' ;;
+        fa:language_menu_back) echo 'بازگشت' ;;
+        zh-tw:language_menu_back) echo '返回' ;;
+        ja:language_menu_back) echo '戻る' ;;
+        zh:language_menu_japanese) echo '日本語' ;;
+        en:language_menu_japanese) echo '日本語' ;;
+        ru:language_menu_japanese) echo '日本語' ;;
+        fa:language_menu_japanese) echo '日本語' ;;
+        zh-tw:language_menu_japanese) echo '日本語' ;;
+        ja:language_menu_japanese) echo '日本語' ;;
+        zh:language_menu_simplified_chinese) echo '简体中文' ;;
+        en:language_menu_simplified_chinese) echo '简体中文' ;;
+        ru:language_menu_simplified_chinese) echo '简体中文' ;;
+        fa:language_menu_simplified_chinese) echo '简体中文' ;;
+        zh-tw:language_menu_simplified_chinese) echo '简体中文' ;;
+        ja:language_menu_simplified_chinese) echo '简体中文' ;;
+        zh:language_menu_traditional_chinese) echo '繁體中文' ;;
+        en:language_menu_traditional_chinese) echo '繁體中文' ;;
+        ru:language_menu_traditional_chinese) echo '繁體中文' ;;
+        fa:language_menu_traditional_chinese) echo '繁體中文' ;;
+        zh-tw:language_menu_traditional_chinese) echo '繁體中文' ;;
+        ja:language_menu_traditional_chinese) echo '繁體中文' ;;
+        zh:main_loop_relock_failed) echo '重新获取 A-Box 运行锁失败；可能另有实例已启动。' ;;
+        en:main_loop_relock_failed) echo 'Failed to reacquire the A-Box runtime lock; another instance may have started.' ;;
+        ru:main_loop_relock_failed) echo 'Не удалось повторно захватить блокировку выполнения A-Box; возможно, запущен другой экземпляр.' ;;
+        fa:main_loop_relock_failed) echo 'گرفتن دوبارهٔ قفل اجرای A-Box ناموفق بود؛ ممکن است نمونهٔ دیگری شروع شده باشد.' ;;
+        zh-tw:main_loop_relock_failed) echo '重新取得 A-Box 執行鎖定失敗；可能已有其他執行個體啟動。' ;;
+        ja:main_loop_relock_failed) echo 'A-Box の実行ロックの再取得に失敗しました；別のインスタンスが起動した可能性があります。' ;;
+        zh:one_click_reality_deploy_cancel_back) echo '返回' ;;
+        en:one_click_reality_deploy_cancel_back) echo 'Back' ;;
+        ru:one_click_reality_deploy_cancel_back) echo 'Назад' ;;
+        fa:one_click_reality_deploy_cancel_back) echo 'بازگشت' ;;
+        zh-tw:one_click_reality_deploy_cancel_back) echo '返回' ;;
+        ja:one_click_reality_deploy_cancel_back) echo '戻る' ;;
+        zh:prepare_backup_auth_for_manual_restore_import_prompt) echo '输入 IMPORT-RECOVERY-KEY 以导入并继续: ' ;;
+        en:prepare_backup_auth_for_manual_restore_import_prompt) echo 'Enter IMPORT-RECOVERY-KEY to import and continue: ' ;;
+        ru:prepare_backup_auth_for_manual_restore_import_prompt) echo 'Введите IMPORT-RECOVERY-KEY для импорта и продолжения: ' ;;
+        fa:prepare_backup_auth_for_manual_restore_import_prompt) echo 'برای وارد کردن و ادامه، IMPORT-RECOVERY-KEY را وارد کنید: ' ;;
+        zh-tw:prepare_backup_auth_for_manual_restore_import_prompt) echo '請輸入 IMPORT-RECOVERY-KEY 以匯入並繼續: ' ;;
+        ja:prepare_backup_auth_for_manual_restore_import_prompt) echo 'インポートして続行するには IMPORT-RECOVERY-KEY を入力してください: ' ;;
+        zh:prepare_backup_auth_for_manual_restore_key_needed) echo '此备份需要导入独立保存的恢复密钥。密钥指纹: %s' ;;
+        en:prepare_backup_auth_for_manual_restore_key_needed) echo 'This backup requires importing the recovery key stored separately. Key fingerprint: %s' ;;
+        ru:prepare_backup_auth_for_manual_restore_key_needed) echo 'Для этой резервной копии требуется импорт отдельно сохранённого ключа восстановления. Отпечаток ключа: %s' ;;
+        fa:prepare_backup_auth_for_manual_restore_key_needed) echo 'این نسخهٔ پشتیبان به وارد کردن کلید بازیابی که جداگانه نگهداری شده نیاز دارد. اثر انگشت کلید: %s' ;;
+        zh-tw:prepare_backup_auth_for_manual_restore_key_needed) echo '此備份需要匯入另外保管的復原金鑰。金鑰指紋: %s' ;;
+        ja:prepare_backup_auth_for_manual_restore_key_needed) echo 'このバックアップには、別途保管した復元キーのインポートが必要です。キーのフィンガープリント: %s' ;;
+        zh:prepare_backup_auth_for_manual_restore_key_warning) echo '持有归档、HMAC 与恢复密钥的人可以构造受该密钥认证的 root 恢复内容；只应导入你自己保管的密钥。' ;;
+        en:prepare_backup_auth_for_manual_restore_key_warning) echo 'Anyone with the archive, HMAC and recovery key can construct root restore content authenticated by that key; import only keys you personally safeguard.' ;;
+        ru:prepare_backup_auth_for_manual_restore_key_warning) echo 'Любой, у кого есть архив, HMAC и ключ восстановления, может создать данные для восстановления с правами root, аутентифицированные этим ключом; импортируйте только ключи, которые храните лично.' ;;
+        fa:prepare_backup_auth_for_manual_restore_key_warning) echo 'هرکس بایگانی، HMAC و کلید بازیابی را در اختیار داشته باشد می‌تواند محتوای بازیابی با دسترسی root بسازد که با آن کلید احراز اصالت شده است؛ فقط کلیدهایی را وارد کنید که خودتان نگهداری می‌کنید.' ;;
+        zh-tw:prepare_backup_auth_for_manual_restore_key_warning) echo '持有封存檔、HMAC 與復原金鑰的人，可製作經該金鑰驗證的 root 還原內容；請只匯入由您親自保管的金鑰。' ;;
+        ja:prepare_backup_auth_for_manual_restore_key_warning) echo 'アーカイブ、HMAC、復元キーを持つ人は、そのキーで認証される root 復元用の内容を作成できます。自分で保管しているキーだけをインポートしてください。' ;;
+        zh:prepare_noninteractive_file_operation_root_required) echo '该操作需要 root。' ;;
+        en:prepare_noninteractive_file_operation_root_required) echo 'This operation requires root privileges.' ;;
+        ru:prepare_noninteractive_file_operation_root_required) echo 'Для этой операции нужны права root.' ;;
+        fa:prepare_noninteractive_file_operation_root_required) echo 'این عملیات به دسترسی root نیاز دارد.' ;;
+        zh-tw:prepare_noninteractive_file_operation_root_required) echo '此操作需要 root 權限。' ;;
+        ja:prepare_noninteractive_file_operation_root_required) echo 'この操作には root 権限が必要です。' ;;
+        zh:prepare_noninteractive_file_operation_run_failed) echo '无法创建 /run。' ;;
+        en:prepare_noninteractive_file_operation_run_failed) echo 'Unable to create /run.' ;;
+        ru:prepare_noninteractive_file_operation_run_failed) echo 'Не удалось создать /run.' ;;
+        fa:prepare_noninteractive_file_operation_run_failed) echo 'ایجاد /run ممکن نیست.' ;;
+        zh-tw:prepare_noninteractive_file_operation_run_failed) echo '無法建立 /run。' ;;
+        ja:prepare_noninteractive_file_operation_run_failed) echo '/run を作成できません。' ;;
+        zh:prepare_noninteractive_service_control_no_init) echo '未检测到 systemd/OpenRC。' ;;
+        en:prepare_noninteractive_service_control_no_init) echo 'No systemd/OpenRC detected.' ;;
+        ru:prepare_noninteractive_service_control_no_init) echo 'systemd/OpenRC не обнаружен.' ;;
+        fa:prepare_noninteractive_service_control_no_init) echo 'systemd/OpenRC شناسایی نشد.' ;;
+        zh-tw:prepare_noninteractive_service_control_no_init) echo '未檢測到 systemd/OpenRC。' ;;
+        ja:prepare_noninteractive_service_control_no_init) echo 'systemd/OpenRC が検出されませんでした。' ;;
+        zh:prepare_noninteractive_service_control_root_required) echo '该操作需要 root。' ;;
+        en:prepare_noninteractive_service_control_root_required) echo 'This operation requires root privileges.' ;;
+        ru:prepare_noninteractive_service_control_root_required) echo 'Для этой операции нужны права root.' ;;
+        fa:prepare_noninteractive_service_control_root_required) echo 'این عملیات به دسترسی root نیاز دارد.' ;;
+        zh-tw:prepare_noninteractive_service_control_root_required) echo '此操作需要 root 權限。' ;;
+        ja:prepare_noninteractive_service_control_root_required) echo 'この操作には root 権限が必要です。' ;;
+        zh:prepare_noninteractive_service_control_var_run_failed) echo '无法创建 /var/run。' ;;
+        en:prepare_noninteractive_service_control_var_run_failed) echo 'Unable to create /var/run.' ;;
+        ru:prepare_noninteractive_service_control_var_run_failed) echo 'Не удалось создать /var/run.' ;;
+        fa:prepare_noninteractive_service_control_var_run_failed) echo 'ایجاد /var/run ممکن نیست.' ;;
+        zh-tw:prepare_noninteractive_service_control_var_run_failed) echo '無法建立 /var/run。' ;;
+        ja:prepare_noninteractive_service_control_var_run_failed) echo '/var/run を作成できません。' ;;
+        zh:release_ports_checking_configured) echo '正在检查已配置端口占用...' ;;
+        en:release_ports_checking_configured) echo 'Checking configured ports for occupancy...' ;;
+        ru:release_ports_checking_configured) echo 'Проверяется занятость настроенных портов...' ;;
+        fa:release_ports_checking_configured) echo 'در حال بررسی اشغال پورت‌های پیکربندی‌شده...' ;;
+        zh-tw:release_ports_checking_configured) echo '正在檢查已設定連接埠的占用情況...' ;;
+        ja:release_ports_checking_configured) echo '設定済みポートの使用状況を確認しています...' ;;
+        zh:release_ports_no_ports_selected) echo '当前尚未选定监听端口；端口占用检查将在参数向导完成后执行。' ;;
+        en:release_ports_no_ports_selected) echo 'No listening ports have been selected yet; port occupancy checks will run after the parameter wizard is complete.' ;;
+        ru:release_ports_no_ports_selected) echo 'Порты прослушивания ещё не выбраны; проверка их занятости будет выполнена после завершения мастера параметров.' ;;
+        fa:release_ports_no_ports_selected) echo 'هنوز پورت‌های گوش‌دهی انتخاب نشده‌اند؛ بررسی اشغال پورت‌ها پس از تکمیل راهنمای تنظیم پارامترها انجام می‌شود.' ;;
+        zh-tw:release_ports_no_ports_selected) echo '目前尚未選取監聽連接埠；連接埠占用檢查將在參數精靈完成後執行。' ;;
+        ja:release_ports_no_ports_selected) echo '待ち受けポートはまだ選択されていません。ポートの使用状況はパラメーター設定ウィザードの完了後に確認します。' ;;
+        zh:release_ports_old_port_occupied) echo '旧配置端口 %s/%s 当前被非 A-Box 进程占用；若向导中继续选择该端口需先手动释放，改选其它新端口则不受影响。' ;;
+        en:release_ports_old_port_occupied) echo 'Port %s/%s from the old configuration is currently occupied by a non-A-Box process; free it manually before selecting it again in the wizard. Choosing a different new port is unaffected.' ;;
+        ru:release_ports_old_port_occupied) echo 'Порт %s/%s из старой конфигурации сейчас занят процессом, не принадлежащим A-Box; перед повторным выбором этого порта в мастере освободите его вручную. Выбор другого нового порта не затронут.' ;;
+        fa:release_ports_old_port_occupied) echo 'پورت %s/%s از پیکربندی قبلی اکنون توسط فرایندی غیرمتعلق به A-Box اشغال شده است؛ پیش از انتخاب دوباره آن در راهنمای تنظیم، آن را دستی آزاد کنید. انتخاب یک پورت جدید دیگر تحت تأثیر نیست.' ;;
+        zh-tw:release_ports_old_port_occupied) echo '舊設定的連接埠 %s/%s 目前被非 A-Box 處理程序占用；若在精靈中再次選取此連接埠，請先手動釋放，改用其他新連接埠則不受影響。' ;;
+        ja:release_ports_old_port_occupied) echo '旧設定のポート %s/%s は現在 A-Box 以外のプロセスが使用しています。ウィザードで再び選択する場合は、先に手動で解放してください。別の新しいポートを選ぶ場合は影響ありません。' ;;
+        zh:release_ports_stopping_services) echo '正在停止 A-Box 托管服务...' ;;
+        en:release_ports_stopping_services) echo 'Stopping A-Box-managed services...' ;;
+        ru:release_ports_stopping_services) echo 'Останавливаются службы под управлением A-Box...' ;;
+        fa:release_ports_stopping_services) echo 'در حال توقف سرویس‌های تحت مدیریت A-Box...' ;;
+        zh-tw:release_ports_stopping_services) echo '正在停止由 A-Box 管理的服務...' ;;
+        ja:release_ports_stopping_services) echo 'A-Box 管理下のサービスを停止しています...' ;;
+        zh:remove_abox_cron_block_current_tmp_failed) echo 'crontab 当前内容临时文件创建失败。' ;;
+        en:remove_abox_cron_block_current_tmp_failed) echo 'Failed to create a temporary file for the current crontab contents.' ;;
+        ru:remove_abox_cron_block_current_tmp_failed) echo 'Не удалось создать временный файл для текущего содержимого crontab.' ;;
+        fa:remove_abox_cron_block_current_tmp_failed) echo 'ایجاد فایل موقت برای محتوای فعلی crontab ناموفق بود.' ;;
+        zh-tw:remove_abox_cron_block_current_tmp_failed) echo '無法建立用於儲存目前 crontab 內容的暫存檔。' ;;
+        ja:remove_abox_cron_block_current_tmp_failed) echo '現在の crontab の内容を保存する一時ファイルを作成できませんでした。' ;;
+        zh:remove_abox_cron_block_tmp_failed) echo 'crontab 临时文件创建失败。' ;;
+        en:remove_abox_cron_block_tmp_failed) echo 'Failed to create a temporary crontab file.' ;;
+        ru:remove_abox_cron_block_tmp_failed) echo 'Не удалось создать временный файл crontab.' ;;
+        fa:remove_abox_cron_block_tmp_failed) echo 'ایجاد فایل موقت crontab ناموفق بود.' ;;
+        zh-tw:remove_abox_cron_block_tmp_failed) echo '無法建立 crontab 暫存檔。' ;;
+        ja:remove_abox_cron_block_tmp_failed) echo 'crontab の一時ファイルを作成できませんでした。' ;;
+        zh:remove_abox_swap_delete_and_reactivate_failed) echo '/swapfile 删除失败，且重新激活亦失败；交换区目前未激活。' ;;
+        en:remove_abox_swap_delete_and_reactivate_failed) echo 'Failed to delete /swapfile, and reactivation also failed; swap is currently inactive.' ;;
+        ru:remove_abox_swap_delete_and_reactivate_failed) echo 'Не удалось удалить /swapfile; повторная активация также не удалась. Область подкачки сейчас неактивна.' ;;
+        fa:remove_abox_swap_delete_and_reactivate_failed) echo 'حذف /swapfile و فعال‌سازی مجدد هر دو ناموفق بودند؛ فضای مبادله اکنون غیرفعال است.' ;;
+        zh-tw:remove_abox_swap_delete_and_reactivate_failed) echo '無法刪除 /swapfile，重新啟用也失敗；交換空間目前未啟用。' ;;
+        ja:remove_abox_swap_delete_and_reactivate_failed) echo '/swapfile の削除に失敗し、再有効化にも失敗しました。スワップは現在無効です。' ;;
+        zh:remove_abox_swap_delete_and_restore_failed) echo '/swapfile 删除失败，且 /etc/fstab 恢复失败；已保留 fstab 备份：%s，请手动恢复。' ;;
+        en:remove_abox_swap_delete_and_restore_failed) echo 'Failed to delete /swapfile and restore /etc/fstab; the fstab backup has been kept: %s. Restore it manually.' ;;
+        ru:remove_abox_swap_delete_and_restore_failed) echo 'Не удалось удалить /swapfile и восстановить /etc/fstab; резервная копия fstab сохранена: %s. Восстановите вручную.' ;;
+        fa:remove_abox_swap_delete_and_restore_failed) echo 'حذف /swapfile و بازیابی /etc/fstab ناموفق بودند؛ نسخهٔ پشتیبان fstab حفظ شده است: %s. بازیابی را دستی انجام دهید.' ;;
+        zh-tw:remove_abox_swap_delete_and_restore_failed) echo '/swapfile 刪除失敗，且 /etc/fstab 還原失敗；已保留 fstab 備份：%s，請手動還原。' ;;
+        ja:remove_abox_swap_delete_and_restore_failed) echo '/swapfile の削除と /etc/fstab の復元に失敗しました。fstab のバックアップを保持しました：%s。手動で復元してください。' ;;
+        zh:remove_abox_swap_delete_failed_kept) echo '/swapfile 删除失败；已恢复 /etc/fstab，保留现有 Swap 文件与所有权标记。' ;;
+        en:remove_abox_swap_delete_failed_kept) echo 'Failed to delete /swapfile; /etc/fstab has been restored, and the existing Swap file and ownership marker have been retained.' ;;
+        ru:remove_abox_swap_delete_failed_kept) echo 'Не удалось удалить /swapfile; /etc/fstab восстановлен, существующий файл подкачки и метка принадлежности сохранены.' ;;
+        fa:remove_abox_swap_delete_failed_kept) echo 'حذف /swapfile ناموفق بود؛ /etc/fstab بازیابی شد و فایل مبادلهٔ موجود و نشانگر مالکیت حفظ شدند.' ;;
+        zh-tw:remove_abox_swap_delete_failed_kept) echo '無法刪除 /swapfile；已還原 /etc/fstab，並保留現有的 Swap 檔案及所有權標記。' ;;
+        ja:remove_abox_swap_delete_failed_kept) echo '/swapfile の削除に失敗しました。/etc/fstab を復元し、既存のスワップファイルと所有権マーカーを保持しました。' ;;
+        zh:remove_abox_swap_marker_remove_failed) echo 'Swap 所有权标记删除失败；/etc/fstab 托管区块已删、/swapfile 已删，保持标记以便下次卸载完成清理（也可手动删除标记）。' ;;
+        en:remove_abox_swap_marker_remove_failed) echo 'Failed to delete the Swap ownership marker; the managed block in /etc/fstab and /swapfile have been removed. The marker is retained so cleanup can finish on the next uninstall, or you can delete it manually.' ;;
+        ru:remove_abox_swap_marker_remove_failed) echo 'Не удалось удалить метку принадлежности файла подкачки; управляемый блок в /etc/fstab и /swapfile удалены. Метка сохранена для завершения очистки при следующем удалении программы; её также можно удалить вручную.' ;;
+        fa:remove_abox_swap_marker_remove_failed) echo 'حذف نشانگر مالکیت فضای مبادله ناموفق بود؛ بلوک مدیریت‌شده در /etc/fstab و /swapfile حذف شده‌اند. نشانگر حفظ می‌شود تا پاک‌سازی در حذف نصب بعدی تکمیل شود؛ می‌توانید آن را دستی نیز حذف کنید.' ;;
+        zh-tw:remove_abox_swap_marker_remove_failed) echo '無法刪除 Swap 所有權標記；/etc/fstab 的管理區塊與 /swapfile 已刪除。保留標記以便下次解除安裝時完成清理，也可手動刪除標記。' ;;
+        ja:remove_abox_swap_marker_remove_failed) echo 'スワップの所有権マーカーを削除できませんでした。/etc/fstab の管理ブロックと /swapfile は削除済みです。次回のアンインストールでクリーンアップを完了できるよう、マーカーを保持します。手動での削除も可能です。' ;;
+        zh:remove_all_abox_cron_blocks_current_tmp_failed) echo 'crontab 当前内容临时文件创建失败。' ;;
+        en:remove_all_abox_cron_blocks_current_tmp_failed) echo 'Failed to create a temporary file for the current crontab contents.' ;;
+        ru:remove_all_abox_cron_blocks_current_tmp_failed) echo 'Не удалось создать временный файл для текущего содержимого crontab.' ;;
+        fa:remove_all_abox_cron_blocks_current_tmp_failed) echo 'ایجاد فایل موقت برای محتوای فعلی crontab ناموفق بود.' ;;
+        zh-tw:remove_all_abox_cron_blocks_current_tmp_failed) echo '無法建立用於儲存目前 crontab 內容的暫存檔。' ;;
+        ja:remove_all_abox_cron_blocks_current_tmp_failed) echo '現在の crontab の内容を保存する一時ファイルを作成できませんでした。' ;;
+        zh:remove_all_abox_cron_blocks_tmp_failed) echo 'crontab 临时文件创建失败。' ;;
+        en:remove_all_abox_cron_blocks_tmp_failed) echo 'Failed to create a temporary crontab file.' ;;
+        ru:remove_all_abox_cron_blocks_tmp_failed) echo 'Не удалось создать временный файл crontab.' ;;
+        fa:remove_all_abox_cron_blocks_tmp_failed) echo 'ایجاد فایل موقت crontab ناموفق بود.' ;;
+        zh-tw:remove_all_abox_cron_blocks_tmp_failed) echo '無法建立 crontab 暫存檔。' ;;
+        ja:remove_all_abox_cron_blocks_tmp_failed) echo 'crontab の一時ファイルを作成できませんでした。' ;;
+        zh:remove_owned_core_family_manifest_failed) echo '%s 的归属清单校验未通过，配置残留已保留，未删除。' ;;
+        en:remove_owned_core_family_manifest_failed) echo 'Ownership manifest validation failed for %s; leftover configuration has been retained, not deleted.' ;;
+        ru:remove_owned_core_family_manifest_failed) echo 'Проверка манифеста принадлежности %s не пройдена; остатки конфигурации сохранены, удаление не выполнялось.' ;;
+        fa:remove_owned_core_family_manifest_failed) echo 'اعتبارسنجی فهرست مالکیت %s ناموفق بود؛ بقایای پیکربندی حفظ شده‌اند و حذف نشده‌اند.' ;;
+        zh-tw:remove_owned_core_family_manifest_failed) echo '%s 的歸屬清單未通過驗證；殘留設定已保留，未進行刪除。' ;;
+        ja:remove_owned_core_family_manifest_failed) echo '%s の所有権マニフェストの検証に失敗しました。残存設定は保持され、削除されていません。' ;;
+        zh:remove_owned_core_family_manifest_unusable) echo '%s 的归属清单存在但不可用（链接／权限／内容异常），拒绝删除配置残留；请先修复清单。' ;;
+        en:remove_owned_core_family_manifest_unusable) echo 'The ownership manifest for %s exists but is unusable (link, permission or content issues). Refusing to delete leftover configuration; repair the manifest first.' ;;
+        ru:remove_owned_core_family_manifest_unusable) echo 'Манифест принадлежности %s существует, но непригоден (проблемы со ссылкой, правами или содержимым). Удаление остатков конфигурации запрещено; сначала исправьте манифест.' ;;
+        fa:remove_owned_core_family_manifest_unusable) echo 'فهرست مالکیت %s موجود است اما قابل استفاده نیست (اشکال در پیوند، مجوزها یا محتوا). از حذف بقایای پیکربندی خودداری می‌شود؛ ابتدا فهرست را اصلاح کنید.' ;;
+        zh-tw:remove_owned_core_family_manifest_unusable) echo '%s 的歸屬清單存在但無法使用（連結、權限或內容異常），拒絕刪除殘留設定；請先修復清單。' ;;
+        ja:remove_owned_core_family_manifest_unusable) echo '%s の所有権マニフェストは存在しますが使用できません（リンク、権限、内容の異常）。残存設定の削除を拒否します。先にマニフェストを修復してください。' ;;
+        zh:remove_owned_core_family_no_manifest_legacy) echo '%s 无可用归属清单，残留预检通过（仅已知文件名，未核对内容是否被修改），按遗留兼容清理已知文件。' ;;
+        en:remove_owned_core_family_no_manifest_legacy) echo 'No usable ownership manifest for %s. Leftover checks passed (known filenames only; content changes were not checked); cleaning up known files for legacy compatibility.' ;;
+        ru:remove_owned_core_family_no_manifest_legacy) echo 'Для %s нет пригодного манифеста принадлежности. Предварительная проверка остатков пройдена (только известные имена файлов, изменения содержимого не проверялись); известные файлы удаляются в режиме совместимости со старыми установками.' ;;
+        fa:remove_owned_core_family_no_manifest_legacy) echo 'برای %s فهرست مالکیت قابل استفاده‌ای وجود ندارد. پیش‌بررسی بقایا موفق بود (فقط نام فایل‌های شناخته‌شده؛ تغییرات محتوا بررسی نشد)؛ در حال پاک‌سازی فایل‌های شناخته‌شده برای سازگاری با نصب‌های قدیمی.' ;;
+        zh-tw:remove_owned_core_family_no_manifest_legacy) echo '%s 沒有可用的歸屬清單，殘留項目預先檢查通過（僅檢查已知檔名，未確認內容是否遭修改），正依舊版相容流程清理已知檔案。' ;;
+        ja:remove_owned_core_family_no_manifest_legacy) echo '%s に使用可能な所有権マニフェストはありません。残存ファイルの事前チェックは合格しました（既知のファイル名のみ確認し、内容の変更は未確認）。旧版互換の手順で既知のファイルを削除しています。' ;;
+        zh:remove_owned_core_family_orphan_binary) echo '%s 仅剩无归属记录的二进制残留（旧版本安装、归属凭据已被先前清理删除），按显式清理流程强制移除。' ;;
+        en:remove_owned_core_family_orphan_binary) echo 'Only binary leftovers without ownership records remain for %s (installed by an older version; ownership evidence was removed during an earlier cleanup). Forcibly removing them through the explicit cleanup procedure.' ;;
+        ru:remove_owned_core_family_orphan_binary) echo 'От %s остались только двоичные файлы без записей о принадлежности (установка старой версии; подтверждения принадлежности удалены при предыдущей очистке). Выполняется принудительное удаление по явно запущенной процедуре очистки.' ;;
+        fa:remove_owned_core_family_orphan_binary) echo 'از %s فقط بقایای باینری بدون سابقه مالکیت مانده است (نصب نسخه قدیمی؛ شواهد مالکیت در پاک‌سازی قبلی حذف شده‌اند). در حال حذف اجباری آن‌ها طبق روال پاک‌سازی صریح.' ;;
+        zh-tw:remove_owned_core_family_orphan_binary) echo '%s 僅剩沒有歸屬紀錄的二進位檔案（由舊版安裝，歸屬憑據已在先前清理時刪除），正依明確要求的清理流程強制移除。' ;;
+        ja:remove_owned_core_family_orphan_binary) echo '%s には所有権記録のないバイナリだけが残っています（旧版でインストールされ、所有権の証拠は以前のクリーンアップで削除済み）。明示的に要求されたクリーンアップ手順で強制削除しています。' ;;
+        zh:remove_zram_swap_removed) echo 'zram 已移除（A-Box 创建的配置与自启已清理）。' ;;
+        en:remove_zram_swap_removed) echo 'zram removed (configuration and autostart created by A-Box have been cleaned up).' ;;
+        ru:remove_zram_swap_removed) echo 'zram удалён (созданные A-Box настройки и автозапуск очищены).' ;;
+        fa:remove_zram_swap_removed) echo 'zram حذف شد (پیکربندی و تنظیمات اجرای خودکار ایجادشده توسط A-Box پاک‌سازی شدند).' ;;
+        zh-tw:remove_zram_swap_removed) echo 'zram 已移除（A-Box 建立的設定與自動啟動設定已清理）。' ;;
+        ja:remove_zram_swap_removed) echo 'zram を削除しました（A-Box が作成した設定と自動起動設定はクリーンアップ済みです）。' ;;
+        zh:remove_zram_swap_stop_failed) echo 'zram 停止失败，交换区仍在运行；助手与配置已保留以便重试。' ;;
+        en:remove_zram_swap_stop_failed) echo 'Failed to stop zram; the swap area is still active. The helper and configuration have been kept for retry.' ;;
+        ru:remove_zram_swap_stop_failed) echo 'Не удалось остановить zram, область подкачки всё ещё активна; помощник и конфигурация сохранены для повторной попытки.' ;;
+        fa:remove_zram_swap_stop_failed) echo 'توقف zram ناموفق بود و فضای مبادله هنوز فعال است؛ ابزار کمکی و پیکربندی برای تلاش مجدد حفظ شده‌اند.' ;;
+        zh-tw:remove_zram_swap_stop_failed) echo 'zram 停止失敗，交換空間仍在運作；已保留輔助程式與設定以便重試。' ;;
+        ja:remove_zram_swap_stop_failed) echo 'zram の停止に失敗し、スワップ領域はまだ稼働しています。再試行できるよう、ヘルパーと設定を保持しました。' ;;
+        zh:report_unrecognized_abox_cron_lines_residual) echo 'A-Box cron residual (保留的已知／疑似管理路径引用): %s' ;;
+        en:report_unrecognized_abox_cron_lines_residual) echo 'Residual A-Box cron entry (retained reference to a known or suspected managed path): %s' ;;
+        ru:report_unrecognized_abox_cron_lines_residual) echo 'Остаточная запись cron A-Box (сохранённая ссылка на известный или предполагаемый управляемый путь): %s' ;;
+        fa:report_unrecognized_abox_cron_lines_residual) echo 'ورودی باقی‌ماندهٔ cron در A-Box (ارجاع حفظ‌شده به مسیر مدیریت‌شدهٔ شناخته‌شده یا مشکوک): %s' ;;
+        zh-tw:report_unrecognized_abox_cron_lines_residual) echo 'A-Box cron 殘留項目（保留的已知或疑似受管理路徑參照）: %s' ;;
+        ja:report_unrecognized_abox_cron_lines_residual) echo 'A-Box cron の残存項目（既知または管理対象と推定されるパスへの参照を保持）: %s' ;;
+        zh:resolve_core_release_target_metadata_unavailable) echo '上游与最新镜像元数据均不可用；拒绝安装。' ;;
+        en:resolve_core_release_target_metadata_unavailable) echo 'Upstream and latest mirror metadata are both unavailable; refusing installation.' ;;
+        ru:resolve_core_release_target_metadata_unavailable) echo 'Метаданные исходного источника и актуального зеркала недоступны; установка запрещена.' ;;
+        fa:resolve_core_release_target_metadata_unavailable) echo 'فراداده منبع بالادستی و جدیدترین آینه هر دو در دسترس نیستند؛ نصب رد می‌شود.' ;;
+        zh-tw:resolve_core_release_target_metadata_unavailable) echo '上游與最新鏡像站的中繼資料皆無法使用；拒絕安裝。' ;;
+        ja:resolve_core_release_target_metadata_unavailable) echo '上流と最新ミラーのメタデータがどちらも利用できません。インストールを拒否します。' ;;
+        zh:restore_vps_tune_mountpoint_refused) echo '调优快照目录或其子树存在挂载点，拒绝恢复后删除。' ;;
+        en:restore_vps_tune_mountpoint_refused) echo 'The tuning snapshot directory or its subtree contains a mount point; refusing deletion after restoration.' ;;
+        ru:restore_vps_tune_mountpoint_refused) echo 'Каталог снимка настроек оптимизации или его поддерево содержит точку монтирования; удаление после восстановления отклонено.' ;;
+        fa:restore_vps_tune_mountpoint_refused) echo 'در پوشهٔ تصویر لحظه‌ای تنظیمات بهینه‌سازی یا زیردرخت آن نقطهٔ اتصال وجود دارد؛ حذف پس از بازیابی رد شد.' ;;
+        zh-tw:restore_vps_tune_mountpoint_refused) echo '調校快照目錄或其子目錄樹中有掛載點，拒絕在還原後刪除。' ;;
+        ja:restore_vps_tune_mountpoint_refused) echo 'チューニングのスナップショットディレクトリまたはその配下にマウントポイントがあるため、復元後の削除を拒否します。' ;;
+        zh:restore_vps_tune_no_snapshot) echo '没有可恢复的 A-Box 调优快照。' ;;
+        en:restore_vps_tune_no_snapshot) echo 'No A-Box tuning snapshot is available to restore.' ;;
+        ru:restore_vps_tune_no_snapshot) echo 'Нет доступного для восстановления снимка настроек оптимизации A-Box.' ;;
+        fa:restore_vps_tune_no_snapshot) echo 'تصویر لحظه‌ای قابل بازیابی از تنظیمات بهینه‌سازی A-Box وجود ندارد.' ;;
+        zh-tw:restore_vps_tune_no_snapshot) echo '沒有可供還原的 A-Box 調校快照。' ;;
+        ja:restore_vps_tune_no_snapshot) echo '復元可能な A-Box チューニングのスナップショットがありません。' ;;
+        zh:restore_vps_tune_restored) echo 'A-Box VPS 调优已恢复。' ;;
+        en:restore_vps_tune_restored) echo 'A-Box VPS tuning has been restored.' ;;
+        ru:restore_vps_tune_restored) echo 'Настройки оптимизации VPS в A-Box восстановлены.' ;;
+        fa:restore_vps_tune_restored) echo 'تنظیمات بهینه‌سازی VPS در A-Box بازیابی شد.' ;;
+        zh-tw:restore_vps_tune_restored) echo 'A-Box VPS 調校設定已還原。' ;;
+        ja:restore_vps_tune_restored) echo 'A-Box の VPS チューニング設定を復元しました。' ;;
+        zh:rollback_abox_new_swap_fstab_unrecoverable) echo 'Swap 回滚无法恢复 /etc/fstab；保留现状以避免制造更严重的不一致。' ;;
+        en:rollback_abox_new_swap_fstab_unrecoverable) echo 'Swap rollback cannot restore /etc/fstab; leaving the current state unchanged to avoid a worse inconsistency.' ;;
+        ru:rollback_abox_new_swap_fstab_unrecoverable) echo 'При откате Swap не удалось восстановить /etc/fstab; текущее состояние сохранено, чтобы избежать более серьёзных несоответствий.' ;;
+        fa:rollback_abox_new_swap_fstab_unrecoverable) echo 'بازگردانی Swap نمی‌تواند /etc/fstab را بازیابی کند؛ وضعیت فعلی حفظ می‌شود تا ناسازگاری شدیدتری ایجاد نشود.' ;;
+        zh-tw:rollback_abox_new_swap_fstab_unrecoverable) echo 'Swap 回復無法還原 /etc/fstab；保留目前狀態，避免造成更嚴重的不一致。' ;;
+        ja:rollback_abox_new_swap_fstab_unrecoverable) echo 'Swap のロールバックで /etc/fstab を復元できません。より深刻な不整合を避けるため、現状を維持します。' ;;
+        zh:run_local_sni_benchmark_title) echo '本地 SNI 优选' ;;
+        en:run_local_sni_benchmark_title) echo 'Local SNI preference' ;;
+        ru:run_local_sni_benchmark_title) echo 'Локальный подбор SNI' ;;
+        fa:run_local_sni_benchmark_title) echo 'گزینش محلی SNI' ;;
+        zh-tw:run_local_sni_benchmark_title) echo '本機 SNI 優選' ;;
+        ja:run_local_sni_benchmark_title) echo 'ローカル SNI 最適選択' ;;
+        zh:run_local_sni_mini_benchmark_title) echo '微型主机本地 SNI 优选' ;;
+        en:run_local_sni_mini_benchmark_title) echo 'Mini host local SNI preference' ;;
+        ru:run_local_sni_mini_benchmark_title) echo 'Локальный подбор SNI для мини-хоста' ;;
+        fa:run_local_sni_mini_benchmark_title) echo 'گزینش محلی SNI برای میزبان کوچک' ;;
+        zh-tw:run_local_sni_mini_benchmark_title) echo '迷你主機本機 SNI 優選' ;;
+        ja:run_local_sni_mini_benchmark_title) echo 'ミニホストのローカル SNI 最適選択' ;;
+        zh:run_remote_bash_script_download_failed) echo '远程脚本下载失败: %s' ;;
+        en:run_remote_bash_script_download_failed) echo 'Remote script download failed: %s' ;;
+        ru:run_remote_bash_script_download_failed) echo 'Не удалось загрузить удалённый скрипт: %s' ;;
+        fa:run_remote_bash_script_download_failed) echo 'دانلود اسکریپت راه دور ناموفق بود: %s' ;;
+        zh-tw:run_remote_bash_script_download_failed) echo '遠端指令碼下載失敗: %s' ;;
+        ja:run_remote_bash_script_download_failed) echo 'リモートスクリプトのダウンロードに失敗しました: %s' ;;
+        zh:run_remote_bash_script_syntax_failed) echo '远程脚本语法校验失败: %s' ;;
+        en:run_remote_bash_script_syntax_failed) echo 'Remote script syntax check failed: %s' ;;
+        ru:run_remote_bash_script_syntax_failed) echo 'Проверка синтаксиса удалённого скрипта не пройдена: %s' ;;
+        fa:run_remote_bash_script_syntax_failed) echo 'بررسی نحو اسکریپت راه دور ناموفق بود: %s' ;;
+        zh-tw:run_remote_bash_script_syntax_failed) echo '遠端指令碼語法檢查失敗: %s' ;;
+        ja:run_remote_bash_script_syntax_failed) echo 'リモートスクリプトの構文チェックに失敗しました: %s' ;;
+        zh:run_remote_bash_script_tmpfile_failed) echo '远程脚本临时文件创建失败。' ;;
+        en:run_remote_bash_script_tmpfile_failed) echo 'Failed to create a temporary file for the remote script.' ;;
+        ru:run_remote_bash_script_tmpfile_failed) echo 'Не удалось создать временный файл для удалённого скрипта.' ;;
+        fa:run_remote_bash_script_tmpfile_failed) echo 'ایجاد فایل موقت برای اسکریپت راه دور ناموفق بود.' ;;
+        zh-tw:run_remote_bash_script_tmpfile_failed) echo '遠端指令碼的暫存檔建立失敗。' ;;
+        ja:run_remote_bash_script_tmpfile_failed) echo 'リモートスクリプト用の一時ファイルの作成に失敗しました。' ;;
+        zh:save_mirror_prefer_fixed_order) echo '核心下载顺序固定为：上游正式稳定版 → 固定 A-Box 容灾版本。' ;;
+        en:save_mirror_prefer_fixed_order) echo 'The core download order is fixed: official upstream stable release → pinned A-Box fallback release.' ;;
+        ru:save_mirror_prefer_fixed_order) echo 'Порядок загрузки ядер фиксирован: официальный стабильный выпуск разработчиков → закреплённый резервный выпуск A-Box.' ;;
+        fa:save_mirror_prefer_fixed_order) echo 'ترتیب دانلود هسته ثابت است: نسخه پایدار رسمی بالادستی → نسخه پشتیبان ثابت A-Box.' ;;
+        zh-tw:save_mirror_prefer_fixed_order) echo '核心下載順序固定為：上游正式穩定版 → 固定的 A-Box 備援版本。' ;;
+        ja:save_mirror_prefer_fixed_order) echo 'コアのダウンロード順序は固定です：上流の正式安定版 → 固定された A-Box のフォールバック版。' ;;
+        zh:setup_geo_cron_flock_missing) echo 'flock 命令不可用：Geo 更新脚本依赖 flock 锁，缺失时脚本会静默退出，拒绝安装。' ;;
+        en:setup_geo_cron_flock_missing) echo 'flock is unavailable: the Geo update script requires a flock lock and will exit silently without it. Installation refused.' ;;
+        ru:setup_geo_cron_flock_missing) echo 'Команда flock недоступна: скрипт обновления Geo требует блокировки flock и без неё завершится без сообщений. Установка отклонена.' ;;
+        fa:setup_geo_cron_flock_missing) echo 'فرمان flock در دسترس نیست: اسکریپت به‌روزرسانی Geo به قفل flock نیاز دارد و بدون آن بی‌پیام خارج می‌شود. نصب رد شد.' ;;
+        zh-tw:setup_geo_cron_flock_missing) echo 'flock 指令無法使用：Geo 更新指令碼需要 flock 鎖，缺少時會無聲結束，拒絕安裝。' ;;
+        ja:setup_geo_cron_flock_missing) echo 'flock コマンドを利用できません。Geo 更新スクリプトには flock ロックが必要で、ない場合はメッセージなしで終了します。インストールを拒否します。' ;;
+        zh:setup_geo_cron_script_write_failed) echo 'Geo 更新脚本原子写入失败。' ;;
+        en:setup_geo_cron_script_write_failed) echo 'Atomic write of the Geo update script failed.' ;;
+        ru:setup_geo_cron_script_write_failed) echo 'Атомарная запись скрипта обновления Geo не удалась.' ;;
+        fa:setup_geo_cron_script_write_failed) echo 'نوشتن اتمی اسکریپت به‌روزرسانی Geo ناموفق بود.' ;;
+        zh-tw:setup_geo_cron_script_write_failed) echo 'Geo 更新指令碼原子寫入失敗。' ;;
+        ja:setup_geo_cron_script_write_failed) echo 'Geo 更新スクリプトのアトミック書き込みに失敗しました。' ;;
+        zh:setup_health_monitor_flock_missing) echo 'flock 命令不可用：健康探针依赖 flock 锁，缺失时探针会静默退出、监控形同关闭，拒绝安装。' ;;
+        en:setup_health_monitor_flock_missing) echo 'flock is unavailable: the health probe requires a flock lock. Without it, the probe exits silently and monitoring is effectively disabled. Installation refused.' ;;
+        ru:setup_health_monitor_flock_missing) echo 'Команда flock недоступна: проверка работоспособности требует блокировки flock. Без неё проверка завершится без сообщений, а мониторинг фактически будет отключён. Установка отклонена.' ;;
+        fa:setup_health_monitor_flock_missing) echo 'فرمان flock در دسترس نیست: کاوشگر سلامت به قفل flock نیاز دارد. بدون آن، کاوشگر بی‌پیام خارج می‌شود و پایش عملاً غیرفعال خواهد بود. نصب رد شد.' ;;
+        zh-tw:setup_health_monitor_flock_missing) echo 'flock 指令無法使用：健康探針需要 flock 鎖，缺少時會無聲結束，監控等同停用，拒絕安裝。' ;;
+        ja:setup_health_monitor_flock_missing) echo 'flock コマンドを利用できません。ヘルスプローブには flock ロックが必要です。ない場合はプローブがメッセージなしで終了し、監視が実質的に無効になるため、インストールを拒否します。' ;;
+        zh:setup_health_monitor_injecting_probe) echo '正在注入带锁、连续失败阈值与退避的 L4 健康探针...' ;;
+        en:setup_health_monitor_injecting_probe) echo 'Injecting an L4 health probe with locking, a consecutive-failure threshold and backoff...' ;;
+        ru:setup_health_monitor_injecting_probe) echo 'Внедряется проверка работоспособности L4 с блокировкой, порогом последовательных сбоев и задержкой повторных попыток...' ;;
+        fa:setup_health_monitor_injecting_probe) echo 'در حال افزودن کاوشگر سلامت L4 با قفل، آستانه شکست‌های متوالی و وقفه بین تلاش‌ها...' ;;
+        zh-tw:setup_health_monitor_injecting_probe) echo '正在加入具備鎖定、連續失敗門檻與退避機制的 L4 健康探針...' ;;
+        ja:setup_health_monitor_injecting_probe) echo 'ロック、連続失敗のしきい値、バックオフを備えた L4 ヘルスプローブを組み込んでいます...' ;;
+        zh:setup_health_monitor_probe_write_failed) echo '健康探针原子写入失败。' ;;
+        en:setup_health_monitor_probe_write_failed) echo 'Atomic write of the health probe failed.' ;;
+        ru:setup_health_monitor_probe_write_failed) echo 'Атомарная запись проверки работоспособности не удалась.' ;;
+        fa:setup_health_monitor_probe_write_failed) echo 'نوشتن اتمی کاوشگر سلامت ناموفق بود.' ;;
+        zh-tw:setup_health_monitor_probe_write_failed) echo '健康探針原子寫入失敗。' ;;
+        ja:setup_health_monitor_probe_write_failed) echo 'ヘルスプローブのアトミック書き込みに失敗しました。' ;;
+        zh:setup_shortcut_keep_newer) echo '保留磁盘中较新的 A-Box 脚本版本 (%s)；拒绝从管道运行的旧版本覆盖。' ;;
+        en:setup_shortcut_keep_newer) echo 'Keeping the newer A-Box script version on disk (%s); refusing to overwrite it with the older version running from a pipe.' ;;
+        ru:setup_shortcut_keep_newer) echo 'Сохраняется более новая версия скрипта A-Box на диске (%s); перезапись старой версией, запущенной через канал, запрещена.' ;;
+        fa:setup_shortcut_keep_newer) echo 'نسخه جدیدتر اسکریپت A-Box روی دیسک (%s) حفظ می‌شود؛ بازنویسی آن با نسخه قدیمی در حال اجرا از طریق پایپ رد می‌شود.' ;;
+        zh-tw:setup_shortcut_keep_newer) echo '保留磁碟上較新的 A-Box 指令稿版本 (%s)；拒絕讓透過管線執行的舊版覆寫。' ;;
+        ja:setup_shortcut_keep_newer) echo 'ディスク上の新しい A-Box スクリプト (%s) を保持します。パイプ経由で実行中の古い版による上書きを拒否します。' ;;
+        zh:setup_traffic_monitor_flock_missing) echo 'flock 命令不可用：流量监控依赖 flock 锁，缺失时脚本会静默退出，拒绝安装。' ;;
+        en:setup_traffic_monitor_flock_missing) echo 'flock is unavailable: traffic monitoring requires a flock lock and the script will exit silently without it. Installation refused.' ;;
+        ru:setup_traffic_monitor_flock_missing) echo 'Команда flock недоступна: мониторинг трафика требует блокировки flock, без которой скрипт завершится без сообщений. Установка отклонена.' ;;
+        fa:setup_traffic_monitor_flock_missing) echo 'فرمان flock در دسترس نیست: پایش ترافیک به قفل flock نیاز دارد و بدون آن اسکریپت بی‌پیام خارج می‌شود. نصب رد شد.' ;;
+        zh-tw:setup_traffic_monitor_flock_missing) echo 'flock 指令無法使用：流量監控需要 flock 鎖，缺少時指令碼會無聲結束，拒絕安裝。' ;;
+        ja:setup_traffic_monitor_flock_missing) echo 'flock コマンドを利用できません。トラフィック監視には flock ロックが必要で、ない場合はスクリプトがメッセージなしで終了します。インストールを拒否します。' ;;
+        zh:setup_traffic_monitor_mkdir_failed) echo '无法创建流量监控目录。' ;;
+        en:setup_traffic_monitor_mkdir_failed) echo 'Cannot create the traffic monitoring directory.' ;;
+        ru:setup_traffic_monitor_mkdir_failed) echo 'Невозможно создать каталог мониторинга трафика.' ;;
+        fa:setup_traffic_monitor_mkdir_failed) echo 'ایجاد پوشه پایش ترافیک ممکن نیست.' ;;
+        zh-tw:setup_traffic_monitor_mkdir_failed) echo '無法建立流量監控目錄。' ;;
+        ja:setup_traffic_monitor_mkdir_failed) echo 'トラフィック監視ディレクトリを作成できません。' ;;
+        zh:setup_traffic_monitor_quota_snapshot_failed) echo '流量限制事务状态快照失败。' ;;
+        en:setup_traffic_monitor_quota_snapshot_failed) echo 'Failed to snapshot the traffic-limit transaction state.' ;;
+        ru:setup_traffic_monitor_quota_snapshot_failed) echo 'Не удалось создать снимок состояния транзакции ограничения трафика.' ;;
+        fa:setup_traffic_monitor_quota_snapshot_failed) echo 'تهیه تصویر لحظه‌ای از وضعیت تراکنش محدودیت ترافیک ناموفق بود.' ;;
+        zh-tw:setup_traffic_monitor_quota_snapshot_failed) echo '流量限制交易狀態快照建立失敗。' ;;
+        ja:setup_traffic_monitor_quota_snapshot_failed) echo 'トラフィック制限トランザクションの状態のスナップショット作成に失敗しました。' ;;
+        zh:setup_traffic_monitor_tmp_write_failed) echo '流量监控脚本临时写入失败。' ;;
+        en:setup_traffic_monitor_tmp_write_failed) echo 'Failed to write the traffic monitoring script to the temporary file.' ;;
+        ru:setup_traffic_monitor_tmp_write_failed) echo 'Не удалось записать скрипт мониторинга трафика во временный файл.' ;;
+        fa:setup_traffic_monitor_tmp_write_failed) echo 'نوشتن اسکریپت پایش ترافیک در فایل موقت ناموفق بود.' ;;
+        zh-tw:setup_traffic_monitor_tmp_write_failed) echo '流量監控指令碼寫入暫存檔失敗。' ;;
+        ja:setup_traffic_monitor_tmp_write_failed) echo 'トラフィック監視スクリプトの一時ファイルへの書き込みに失敗しました。' ;;
+        zh:setup_traffic_monitor_tmpfile_failed) echo '流量监控脚本临时文件创建失败。' ;;
+        en:setup_traffic_monitor_tmpfile_failed) echo 'Failed to create a temporary file for the traffic monitoring script.' ;;
+        ru:setup_traffic_monitor_tmpfile_failed) echo 'Не удалось создать временный файл для скрипта мониторинга трафика.' ;;
+        fa:setup_traffic_monitor_tmpfile_failed) echo 'ایجاد فایل موقت برای اسکریپت پایش ترافیک ناموفق بود.' ;;
+        zh-tw:setup_traffic_monitor_tmpfile_failed) echo '流量監控指令碼的暫存檔建立失敗。' ;;
+        ja:setup_traffic_monitor_tmpfile_failed) echo 'トラフィック監視スクリプトの一時ファイルの作成に失敗しました。' ;;
+        zh:show_core_pin_docs_title) echo '核心版本选择与容灾说明' ;;
+        en:show_core_pin_docs_title) echo 'Core release policy' ;;
+        ru:show_core_pin_docs_title) echo 'Выбор версии ядра и правила резервирования' ;;
+        fa:show_core_pin_docs_title) echo 'انتخاب نسخه هسته و سیاست استفاده از نسخه پشتیبان' ;;
+        zh-tw:show_core_pin_docs_title) echo '核心版本選擇與備援說明' ;;
+        ja:show_core_pin_docs_title) echo 'コアのバージョン選択とフォールバック方針' ;;
+        zh:show_sni_preference_records_unreadable) echo '无法读取该记录的分级结果。' ;;
+        en:show_sni_preference_records_unreadable) echo 'Cannot read the grading results for this record.' ;;
+        ru:show_sni_preference_records_unreadable) echo 'Не удалось прочитать результаты оценки этой записи.' ;;
+        fa:show_sni_preference_records_unreadable) echo 'خواندن نتایج رتبه‌بندی این سابقه ممکن نیست.' ;;
+        zh-tw:show_sni_preference_records_unreadable) echo '無法讀取這筆紀錄的分級結果。' ;;
+        ja:show_sni_preference_records_unreadable) echo 'この記録の評価結果を読み取れません。' ;;
+        zh:show_standalone_links_title) echo '独立协议节点' ;;
+        en:show_standalone_links_title) echo 'Standalone Protocols' ;;
+        ru:show_standalone_links_title) echo 'Узлы отдельных протоколов' ;;
+        fa:show_standalone_links_title) echo 'گره‌های پروتکل مستقل' ;;
+        zh-tw:show_standalone_links_title) echo '獨立協定節點' ;;
+        ja:show_standalone_links_title) echo '独立プロトコルのノード' ;;
+        zh:singbox_hy2_tls_json_pubkey_invalid) echo 'HY2_CERT_PUBKEY_SHA256_B64 格式无效，拒绝生成 sing-box TLS 配置。' ;;
+        en:singbox_hy2_tls_json_pubkey_invalid) echo 'Invalid HY2_CERT_PUBKEY_SHA256_B64 format; refusing to generate the sing-box TLS configuration.' ;;
+        ru:singbox_hy2_tls_json_pubkey_invalid) echo 'Недопустимый формат HY2_CERT_PUBKEY_SHA256_B64; создание конфигурации TLS для sing-box запрещено.' ;;
+        fa:singbox_hy2_tls_json_pubkey_invalid) echo 'قالب HY2_CERT_PUBKEY_SHA256_B64 نامعتبر است؛ از تولید پیکربندی TLS برای sing-box خودداری می‌شود.' ;;
+        zh-tw:singbox_hy2_tls_json_pubkey_invalid) echo 'HY2_CERT_PUBKEY_SHA256_B64 格式無效，拒絕產生 sing-box TLS 設定。' ;;
+        ja:singbox_hy2_tls_json_pubkey_invalid) echo 'HY2_CERT_PUBKEY_SHA256_B64 の形式が無効なため、sing-box TLS 設定の生成を拒否します。' ;;
+        zh:sni_auto_select_default_amazon_fallback) echo '未找到通过深度验证的候选；正在单独验证 Amazon 回退。' ;;
+        en:sni_auto_select_default_amazon_fallback) echo 'No candidate passed deep validation; validating the Amazon fallback separately.' ;;
+        ru:sni_auto_select_default_amazon_fallback) echo 'Ни один кандидат не прошёл углублённую проверку; выполняется отдельная проверка резервного варианта Amazon.' ;;
+        fa:sni_auto_select_default_amazon_fallback) echo 'هیچ گزینه‌ای تأیید عمیق را پشت سر نگذاشت؛ گزینهٔ جایگزین Amazon به‌صورت جداگانه در حال بررسی است.' ;;
+        zh-tw:sni_auto_select_default_amazon_fallback) echo '找不到通過深度驗證的候選項目；正在個別驗證 Amazon 備援選項。' ;;
+        ja:sni_auto_select_default_amazon_fallback) echo '詳細検証を通過した候補が見つかりませんでした。Amazon のフォールバックを個別に検証しています。' ;;
+        zh:sni_auto_select_default_chosen) echo '已按本机 TLS/SAN/ALPN 实测和 VPS ASN/地区评分选择 %s。' ;;
+        en:sni_auto_select_default_chosen) echo 'Selected %s based on local TLS/SAN/ALPN tests and VPS ASN/region scores.' ;;
+        ru:sni_auto_select_default_chosen) echo 'Выбран %s по результатам локальных тестов TLS/SAN/ALPN и оценок ASN/региона VPS.' ;;
+        fa:sni_auto_select_default_chosen) echo '%s بر اساس آزمون‌های محلی TLS/SAN/ALPN و امتیازهای ASN/منطقهٔ VPS انتخاب شد.' ;;
+        zh-tw:sni_auto_select_default_chosen) echo '已依本機 TLS/SAN/ALPN 實測結果及 VPS ASN/地區評分選擇 %s。' ;;
+        ja:sni_auto_select_default_chosen) echo 'このホストでの TLS/SAN/ALPN 実測と VPS の ASN/地域評価に基づき、%s を選択しました。' ;;
+        zh:sni_load_candidate_seed_cache_update_failed) echo 'SNI 数据已下载并通过格式校验，但无法安全更新本地缓存；本次测试将使用临时校验副本。' ;;
+        en:sni_load_candidate_seed_cache_update_failed) echo 'SNI data was downloaded and passed format validation, but the local cache could not be updated safely; this test will use a temporary validated copy.' ;;
+        ru:sni_load_candidate_seed_cache_update_failed) echo 'Данные SNI загружены и прошли проверку формата, но безопасно обновить локальный кеш не удалось; для этого теста будет использована проверенная временная копия.' ;;
+        fa:sni_load_candidate_seed_cache_update_failed) echo 'داده‌های SNI دانلود شدند و اعتبارسنجی قالب را گذراندند، اما به‌روزرسانی امن حافظه نهان محلی ممکن نبود؛ این آزمون از یک نسخه موقت تأییدشده استفاده خواهد کرد.' ;;
+        zh-tw:sni_load_candidate_seed_cache_update_failed) echo 'SNI 資料已下載並通過格式驗證，但無法安全更新本機快取；本次測試將使用已驗證的暫存副本。' ;;
+        ja:sni_load_candidate_seed_cache_update_failed) echo 'SNI データはダウンロード済みで形式検証にも合格しましたが、ローカルキャッシュを安全に更新できませんでした。今回のテストには検証済みの一時コピーを使用します。' ;;
+        zh:sni_load_candidate_seed_use_bundled) echo 'SNI 在线数据不可用；使用随脚本提供的本地候选文件。' ;;
+        en:sni_load_candidate_seed_use_bundled) echo 'Online SNI data is unavailable; using the local candidate file bundled with the script.' ;;
+        ru:sni_load_candidate_seed_use_bundled) echo 'Онлайн-данные SNI недоступны; используется локальный файл кандидатов, поставляемый со скриптом.' ;;
+        fa:sni_load_candidate_seed_use_bundled) echo 'داده‌های آنلاین SNI در دسترس نیستند؛ از فایل نامزدهای محلی همراه اسکریپت استفاده می‌شود.' ;;
+        zh-tw:sni_load_candidate_seed_use_bundled) echo 'SNI 線上資料無法使用；使用隨指令碼提供的本機候選檔案。' ;;
+        ja:sni_load_candidate_seed_use_bundled) echo 'SNI のオンラインデータは利用できません。スクリプトに同梱されたローカル候補ファイルを使用します。' ;;
+        zh:sni_load_candidate_seed_use_cached) echo 'SNI 数据下载失败或未通过校验；使用上次通过校验的本地缓存。' ;;
+        en:sni_load_candidate_seed_use_cached) echo 'SNI data download failed or validation did not pass; using the last validated local cache.' ;;
+        ru:sni_load_candidate_seed_use_cached) echo 'Загрузка данных SNI не удалась или проверка не пройдена; используется последний проверенный локальный кеш.' ;;
+        fa:sni_load_candidate_seed_use_cached) echo 'دانلود داده‌های SNI ناموفق بود یا اعتبارسنجی را نگذرانده‌اند؛ از آخرین حافظه نهان محلی تأییدشده استفاده می‌شود.' ;;
+        zh-tw:sni_load_candidate_seed_use_cached) echo 'SNI 資料下載失敗或未通過驗證；使用上次通過驗證的本機快取。' ;;
+        ja:sni_load_candidate_seed_use_cached) echo 'SNI データのダウンロードに失敗したか、検証に合格しませんでした。前回検証済みのローカルキャッシュを使用します。' ;;
+        zh:sni_render_ranked_report_no_records) echo '没有可显示的 SNI 测试记录。' ;;
+        en:sni_render_ranked_report_no_records) echo 'No SNI test records to display.' ;;
+        ru:sni_render_ranked_report_no_records) echo 'Нет записей тестирования SNI для отображения.' ;;
+        fa:sni_render_ranked_report_no_records) echo 'هیچ سابقهٔ آزمون SNI برای نمایش وجود ندارد.' ;;
+        zh-tw:sni_render_ranked_report_no_records) echo '沒有可顯示的 SNI 測試紀錄。' ;;
+        ja:sni_render_ranked_report_no_records) echo '表示できる SNI テスト記録がありません。' ;;
+        zh:swap_menu_disk_removed) echo '磁盘 Swap 文件已移除。' ;;
+        en:swap_menu_disk_removed) echo 'Disk Swap file removed.' ;;
+        ru:swap_menu_disk_removed) echo 'Дисковый файл Swap удалён.' ;;
+        fa:swap_menu_disk_removed) echo 'فایل Swap دیسک حذف شد.' ;;
+        zh-tw:swap_menu_disk_removed) echo '磁碟 Swap 檔案已移除。' ;;
+        ja:swap_menu_disk_removed) echo 'ディスクの Swap ファイルを削除しました。' ;;
+        zh:swap_menu_no_disk_swap) echo '没有 A-Box 创建的磁盘 Swap 文件。' ;;
+        en:swap_menu_no_disk_swap) echo 'No disk Swap file created by A-Box exists.' ;;
+        ru:swap_menu_no_disk_swap) echo 'Нет дискового файла Swap, созданного A-Box.' ;;
+        fa:swap_menu_no_disk_swap) echo 'هیچ فایل Swap دیسکی که توسط A-Box ساخته شده باشد وجود ندارد.' ;;
+        zh-tw:swap_menu_no_disk_swap) echo '沒有 A-Box 建立的磁碟 Swap 檔案。' ;;
+        ja:swap_menu_no_disk_swap) echo 'A-Box が作成したディスクの Swap ファイルはありません。' ;;
+        zh:swap_menu_remove_failed) echo '移除失败，请检查 /swapfile 与 /etc/fstab。' ;;
+        en:swap_menu_remove_failed) echo 'Removal failed. Check /swapfile and /etc/fstab.' ;;
+        ru:swap_menu_remove_failed) echo 'Удаление не удалось. Проверьте /swapfile и /etc/fstab.' ;;
+        fa:swap_menu_remove_failed) echo 'حذف ناموفق بود. /swapfile و /etc/fstab را بررسی کنید.' ;;
+        zh-tw:swap_menu_remove_failed) echo '移除失敗，請檢查 /swapfile 與 /etc/fstab。' ;;
+        ja:swap_menu_remove_failed) echo '削除に失敗しました。/swapfile と /etc/fstab を確認してください。' ;;
+        zh:swap_menu_title) echo '交换内存管理' ;;
+        en:swap_menu_title) echo 'Swap Manager' ;;
+        ru:swap_menu_title) echo 'Управление памятью подкачки' ;;
+        fa:swap_menu_title) echo 'مدیریت حافظهٔ مبادله' ;;
+        zh-tw:swap_menu_title) echo '交換記憶體管理' ;;
+        ja:swap_menu_title) echo 'スワップメモリ管理' ;;
+        zh:swap_status_show_title) echo '当前交换状态' ;;
+        en:swap_status_show_title) echo 'Swap Status' ;;
+        ru:swap_status_show_title) echo 'Текущее состояние подкачки' ;;
+        fa:swap_status_show_title) echo 'وضعیت فعلی حافظهٔ مبادله' ;;
+        zh-tw:swap_status_show_title) echo '目前交換記憶體狀態' ;;
+        ja:swap_status_show_title) echo '現在のスワップ状態' ;;
+        zh:timezone_choose_from_list_no_match) echo '没有匹配的时区。' ;;
+        en:timezone_choose_from_list_no_match) echo 'No matching time zones.' ;;
+        ru:timezone_choose_from_list_no_match) echo 'Подходящих часовых поясов нет.' ;;
+        fa:timezone_choose_from_list_no_match) echo 'هیچ منطقه زمانی مطابقی یافت نشد.' ;;
+        zh-tw:timezone_choose_from_list_no_match) echo '找不到符合的時區。' ;;
+        ja:timezone_choose_from_list_no_match) echo '一致するタイムゾーンがありません。' ;;
+        zh:traffic_management_menu_back) echo '返回主菜单' ;;
+        en:traffic_management_menu_back) echo 'Return to main menu' ;;
+        ru:traffic_management_menu_back) echo 'Возврат в главное меню' ;;
+        fa:traffic_management_menu_back) echo 'بازگشت به منوی اصلی' ;;
+        zh-tw:traffic_management_menu_back) echo '返回主選單' ;;
+        ja:traffic_management_menu_back) echo 'メインメニューへの復帰' ;;
+        zh:traffic_management_menu_limit_range) echo '流量上限必须是 1-8589934591 GB 的整数。' ;;
+        en:traffic_management_menu_limit_range) echo 'The traffic limit must be an integer between 1-8589934591 GB.' ;;
+        ru:traffic_management_menu_limit_range) echo 'Лимит трафика должен быть целым числом в диапазоне 1-8589934591 GB.' ;;
+        fa:traffic_management_menu_limit_range) echo 'سقف ترافیک باید عددی صحیح در بازهٔ 1-8589934591 GB باشد.' ;;
+        zh-tw:traffic_management_menu_limit_range) echo '流量上限必須是 1-8589934591 GB 範圍內的整數。' ;;
+        ja:traffic_management_menu_limit_range) echo '通信量上限は 1-8589934591 GB の範囲内の整数である必要があります。' ;;
+        zh:traffic_management_menu_limit_removed) echo '流量限制已解除。' ;;
+        en:traffic_management_menu_limit_removed) echo 'Traffic limit removed.' ;;
+        ru:traffic_management_menu_limit_removed) echo 'Ограничение трафика снято.' ;;
+        fa:traffic_management_menu_limit_removed) echo 'محدودیت ترافیک حذف شد.' ;;
+        zh-tw:traffic_management_menu_limit_removed) echo '流量限制已解除。' ;;
+        ja:traffic_management_menu_limit_removed) echo '通信量制限を解除しました。' ;;
+        zh:traffic_management_menu_limit_set) echo '流量限制已设定为 %s GB，模式 %s。' ;;
+        en:traffic_management_menu_limit_set) echo 'Traffic limit set to %s GB, mode %s.' ;;
+        ru:traffic_management_menu_limit_set) echo 'Лимит трафика установлен на %s GB, режим %s.' ;;
+        fa:traffic_management_menu_limit_set) echo 'سقف ترافیک روی %s GB با حالت %s تنظیم شد.' ;;
+        zh-tw:traffic_management_menu_limit_set) echo '流量限制已設為 %s GB，模式為 %s。' ;;
+        ja:traffic_management_menu_limit_set) echo '通信量制限を %s GB、モードを %s に設定しました。' ;;
+        zh:traffic_management_menu_mode_invalid) echo '计量模式无效。' ;;
+        en:traffic_management_menu_mode_invalid) echo 'Invalid metering mode.' ;;
+        ru:traffic_management_menu_mode_invalid) echo 'Недопустимый режим учёта.' ;;
+        fa:traffic_management_menu_mode_invalid) echo 'حالت اندازه‌گیری نامعتبر است.' ;;
+        zh-tw:traffic_management_menu_mode_invalid) echo '計量模式無效。' ;;
+        ja:traffic_management_menu_mode_invalid) echo '計測モードが無効です。' ;;
+        zh:traffic_management_menu_parse_failed) echo '流量数据解析失败。' ;;
+        en:traffic_management_menu_parse_failed) echo 'Failed to parse traffic data.' ;;
+        ru:traffic_management_menu_parse_failed) echo 'Не удалось разобрать данные о трафике.' ;;
+        fa:traffic_management_menu_parse_failed) echo 'تجزیهٔ داده‌های ترافیک ناموفق بود.' ;;
+        zh-tw:traffic_management_menu_parse_failed) echo '流量資料解析失敗。' ;;
+        ja:traffic_management_menu_parse_failed) echo '通信量データの解析に失敗しました。' ;;
+        zh:traffic_management_menu_remove_limit) echo '解除流量限制' ;;
+        en:traffic_management_menu_remove_limit) echo 'Traffic limit removal' ;;
+        ru:traffic_management_menu_remove_limit) echo 'Снятие ограничения трафика' ;;
+        fa:traffic_management_menu_remove_limit) echo 'حذف محدودیت ترافیک' ;;
+        zh-tw:traffic_management_menu_remove_limit) echo '流量限制解除' ;;
+        ja:traffic_management_menu_remove_limit) echo '通信量制限の解除' ;;
+        zh:traffic_management_menu_set_limit) echo '设定/修改每月流量上限' ;;
+        en:traffic_management_menu_set_limit) echo 'Monthly traffic limit setup/modification' ;;
+        ru:traffic_management_menu_set_limit) echo 'Установка/изменение месячного лимита трафика' ;;
+        fa:traffic_management_menu_set_limit) echo 'تنظیم/تغییر سقف ترافیک ماهانه' ;;
+        zh-tw:traffic_management_menu_set_limit) echo '每月流量上限設定/修改' ;;
+        ja:traffic_management_menu_set_limit) echo '月間通信量上限の設定/変更' ;;
+        zh:traffic_management_menu_vnstat_missing) echo 'vnStat 未安装或暂无数据；设定上限时会按需安装。' ;;
+        en:traffic_management_menu_vnstat_missing) echo 'vnStat is not installed or has no data yet; it will be installed as needed when setting a limit.' ;;
+        ru:traffic_management_menu_vnstat_missing) echo 'vnStat не установлен или пока не содержит данных; при настройке лимита он будет установлен по необходимости.' ;;
+        fa:traffic_management_menu_vnstat_missing) echo 'vnStat نصب نشده یا هنوز داده‌ای ندارد؛ هنگام تنظیم سقف، در صورت نیاز نصب خواهد شد.' ;;
+        zh-tw:traffic_management_menu_vnstat_missing) echo 'vnStat 尚未安裝或暫無資料；設定上限時會視需要安裝。' ;;
+        ja:traffic_management_menu_vnstat_missing) echo 'vnStat が未インストールか、まだデータがありません。上限設定時に必要に応じてインストールされます。' ;;
+        zh:try_latest_cores_danger_title) echo 'DANGER：尝试上游最新正式稳定版' ;;
+        en:try_latest_cores_danger_title) echo 'DANGER: Try latest upstream stable release' ;;
+        ru:try_latest_cores_danger_title) echo 'DANGER: Попробовать последний официальный стабильный выпуск разработчиков' ;;
+        fa:try_latest_cores_danger_title) echo 'DANGER: آزمایش آخرین نسخه پایدار رسمی بالادستی' ;;
+        zh-tw:try_latest_cores_danger_title) echo 'DANGER: 試用上游最新正式穩定版' ;;
+        ja:try_latest_cores_danger_title) echo 'DANGER: 上流の最新正式安定版を試す' ;;
+        zh:upgrade_current_cores_only_title) echo '仅升级当前已安装协议核心' ;;
+        en:upgrade_current_cores_only_title) echo 'Upgrade current installed proxy cores only' ;;
+        ru:upgrade_current_cores_only_title) echo 'Обновление только установленных ядер протоколов' ;;
+        fa:upgrade_current_cores_only_title) echo 'ارتقای صرفاً هسته‌های پروتکل نصب‌شدهٔ فعلی' ;;
+        zh-tw:upgrade_current_cores_only_title) echo '僅限目前已安裝協定核心的升級' ;;
+        ja:upgrade_current_cores_only_title) echo '現在インストール済みのプロトコルコアのみのアップグレード' ;;
+        zh:users_normalize_default_name_migrate_failed) echo '用户迁移同步失败，且注册表回滚写入失败：%s/%s 仍为迁移后状态（main），核心仍为 abox，下次重试将被跳过，请手动检查注册表。' ;;
+        en:users_normalize_default_name_migrate_failed) echo 'User migration synchronisation failed, and writing the registry rollback also failed: %s/%s is still in the migrated state (main), while the core is still abox. The next retry will be skipped; check the registry manually.' ;;
+        ru:users_normalize_default_name_migrate_failed) echo 'Синхронизация миграции пользователей и запись отката реестра не удались: %s/%s остаётся в состоянии после миграции (main), а ядро по-прежнему abox. Следующая повторная попытка будет пропущена; проверьте реестр вручную.' ;;
+        fa:users_normalize_default_name_migrate_failed) echo 'همگام‌سازی مهاجرت کاربران و نوشتن بازگردانی رجیستری ناموفق بود: %s/%s همچنان در وضعیت پس از مهاجرت (main) است و هسته همچنان abox است. تلاش مجدد بعدی رد خواهد شد؛ رجیستری را دستی بررسی کنید.' ;;
+        zh-tw:users_normalize_default_name_migrate_failed) echo '使用者移轉同步失敗，且登錄表回復寫入失敗：%s/%s 仍為移轉後狀態（main），核心仍為 abox，下次重試將略過，請手動檢查登錄表。' ;;
+        ja:users_normalize_default_name_migrate_failed) echo 'ユーザー移行の同期に失敗し、レジストリのロールバック書き込みにも失敗しました：%s/%s は移行後の状態（main）のままですが、コアは abox のままです。次回の再試行はスキップされます。レジストリを手動で確認してください。' ;;
+        zh:users_reg_write_identity_unreadable) echo '注册表拒绝写入：%s 身份无法读取（非注册表文件或已损坏），请手工处理。' ;;
+        en:users_reg_write_identity_unreadable) echo 'Registry write refused: cannot read the identity of %s (not a registry file or corrupted). Handle this manually.' ;;
+        ru:users_reg_write_identity_unreadable) echo 'Запись реестра отклонена: невозможно прочитать идентификационные данные %s (это не файл реестра или он повреждён). Устраните проблему вручную.' ;;
+        fa:users_reg_write_identity_unreadable) echo 'نوشتن رجیستری رد شد: هویت %s قابل خواندن نیست (فایل رجیستری نیست یا خراب شده است). مشکل را دستی برطرف کنید.' ;;
+        zh-tw:users_reg_write_identity_unreadable) echo '拒絕寫入登錄表：無法讀取 %s 的識別資料（不是登錄表檔案或已損毀），請手動處理。' ;;
+        ja:users_reg_write_identity_unreadable) echo 'レジストリへの書き込みを拒否しました：%s の識別情報を読み取れません（レジストリファイルではないか、破損しています）。手動で対処してください。' ;;
+        zh:users_reg_write_move_failed) echo '注册表归位失败：无法将 %s 移至 %s。' ;;
+        en:users_reg_write_move_failed) echo 'Registry relocation failed: unable to move %s to %s.' ;;
+        ru:users_reg_write_move_failed) echo 'Не удалось переместить реестр на штатное место: невозможно перенести %s в %s.' ;;
+        fa:users_reg_write_move_failed) echo 'انتقال رجیستری به محل تعیین‌شده ناموفق بود: نمی‌توان %s را به %s منتقل کرد.' ;;
+        zh-tw:users_reg_write_move_failed) echo '登錄表歸位失敗：無法將 %s 移至 %s。' ;;
+        ja:users_reg_write_move_failed) echo 'レジストリの再配置に失敗しました：%s を %s に移動できません。' ;;
+        zh:users_reg_write_moved) echo '注册表归位：%s/%s 的旧文件已从 %s 移至 %s。' ;;
+        en:users_reg_write_moved) echo 'Registry relocated: the old file for %s/%s has been moved from %s to %s.' ;;
+        ru:users_reg_write_moved) echo 'Реестр перемещён на штатное место: старый файл %s/%s перенесён из %s в %s.' ;;
+        fa:users_reg_write_moved) echo 'رجیستری به محل تعیین‌شده منتقل شد: فایل قدیمی %s/%s از %s به %s جابه‌جا شد.' ;;
+        zh-tw:users_reg_write_moved) echo '登錄表已歸位：%s/%s 的舊檔案已從 %s 移至 %s。' ;;
+        ja:users_reg_write_moved) echo 'レジストリを再配置しました：%s/%s の旧ファイルを %s から %s に移動しました。' ;;
+        zh:users_reg_write_owned_elsewhere) echo '注册表拒绝写入：%s 已属于 %s/%s，其归属位置 %s 已被占用，请手工处理。' ;;
+        en:users_reg_write_owned_elsewhere) echo 'Registry write refused: %s already belongs to %s/%s, and its assigned location %s is occupied. Resolve this manually.' ;;
+        ru:users_reg_write_owned_elsewhere) echo 'Запись реестра отклонена: %s уже принадлежит %s/%s, а назначенное ему расположение %s занято. Устраните проблему вручную.' ;;
+        fa:users_reg_write_owned_elsewhere) echo 'نوشتن رجیستری رد شد: %s از قبل متعلق به %s/%s است و محل اختصاص‌یافته آن %s اشغال شده است. مشکل را دستی برطرف کنید.' ;;
+        zh-tw:users_reg_write_owned_elsewhere) echo '拒絕寫入登錄表：%s 已屬於 %s/%s，其所屬位置 %s 已被占用，請手動處理。' ;;
+        ja:users_reg_write_owned_elsewhere) echo 'レジストリへの書き込みを拒否しました：%s はすでに %s/%s に属しており、その配置先 %s は使用中です。手動で対処してください。' ;;
+        zh:users_reg_write_symlink_refused) echo '注册表拒绝写入：%s 是符号链接。' ;;
+        en:users_reg_write_symlink_refused) echo 'Registry write refused: %s is a symbolic link.' ;;
+        ru:users_reg_write_symlink_refused) echo 'Запись реестра отклонена: %s является символической ссылкой.' ;;
+        fa:users_reg_write_symlink_refused) echo 'نوشتن رجیستری رد شد: %s یک پیوند نمادین است.' ;;
+        zh-tw:users_reg_write_symlink_refused) echo '拒絕寫入登錄表：%s 是符號連結。' ;;
+        ja:users_reg_write_symlink_refused) echo 'レジストリへの書き込みを拒否しました：%s はシンボリックリンクです。' ;;
+        zh:valid_hy2_bandwidth_mbps_chmod_failed) echo '流量监控脚本权限设置失败。' ;;
+        en:valid_hy2_bandwidth_mbps_chmod_failed) echo 'Failed to set permissions for the traffic monitoring script.' ;;
+        ru:valid_hy2_bandwidth_mbps_chmod_failed) echo 'Не удалось установить права доступа для скрипта мониторинга трафика.' ;;
+        fa:valid_hy2_bandwidth_mbps_chmod_failed) echo 'تنظیم مجوزهای اسکریپت پایش ترافیک ناموفق بود.' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_chmod_failed) echo '流量監控指令碼的權限設定失敗。' ;;
+        ja:valid_hy2_bandwidth_mbps_chmod_failed) echo '通信量監視スクリプトの権限設定に失敗しました。' ;;
+        zh:valid_hy2_bandwidth_mbps_cron_snapshot_failed) echo '流量限制 cron 事务快照失败。' ;;
+        en:valid_hy2_bandwidth_mbps_cron_snapshot_failed) echo 'Failed to create a transaction snapshot of the traffic limit cron entry.' ;;
+        ru:valid_hy2_bandwidth_mbps_cron_snapshot_failed) echo 'Не удалось создать транзакционный снимок задания cron для ограничения трафика.' ;;
+        fa:valid_hy2_bandwidth_mbps_cron_snapshot_failed) echo 'ایجاد تصویر لحظه‌ای تراکنش برای ورودی cron محدودیت ترافیک ناموفق بود.' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_cron_snapshot_failed) echo '流量限制 cron 項目的交易快照建立失敗。' ;;
+        ja:valid_hy2_bandwidth_mbps_cron_snapshot_failed) echo '通信量制限の cron エントリのトランザクションスナップショット作成に失敗しました。' ;;
+        zh:valid_hy2_bandwidth_mbps_cron_write_failed) echo '流量限制 cron 写入失败。' ;;
+        en:valid_hy2_bandwidth_mbps_cron_write_failed) echo 'Failed to write the traffic limit cron entry.' ;;
+        ru:valid_hy2_bandwidth_mbps_cron_write_failed) echo 'Не удалось записать задание cron для ограничения трафика.' ;;
+        fa:valid_hy2_bandwidth_mbps_cron_write_failed) echo 'نوشتن ورودی cron برای محدودیت ترافیک ناموفق بود.' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_cron_write_failed) echo '流量限制 cron 項目寫入失敗。' ;;
+        ja:valid_hy2_bandwidth_mbps_cron_write_failed) echo '通信量制限の cron エントリの書き込みに失敗しました。' ;;
+        zh:valid_hy2_bandwidth_mbps_marker_verify_failed) echo '流量监控脚本运行环境标记后置校验失败。' ;;
+        en:valid_hy2_bandwidth_mbps_marker_verify_failed) echo 'Post-verification of the traffic monitoring script'\''s runtime environment marker failed.' ;;
+        ru:valid_hy2_bandwidth_mbps_marker_verify_failed) echo 'Последующая проверка метки среды выполнения скрипта мониторинга трафика не удалась.' ;;
+        fa:valid_hy2_bandwidth_mbps_marker_verify_failed) echo 'بررسی نهایی نشانگر محیط اجرای اسکریپت پایش ترافیک ناموفق بود.' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_marker_verify_failed) echo '流量監控指令碼執行環境標記的後置驗證失敗。' ;;
+        ja:valid_hy2_bandwidth_mbps_marker_verify_failed) echo '通信量監視スクリプトの実行環境マーカーの事後検証に失敗しました。' ;;
+        zh:valid_hy2_bandwidth_mbps_marker_write_failed) echo '流量监控脚本运行环境标记写入失败。' ;;
+        en:valid_hy2_bandwidth_mbps_marker_write_failed) echo 'Failed to write the runtime environment marker for the traffic monitoring script.' ;;
+        ru:valid_hy2_bandwidth_mbps_marker_write_failed) echo 'Не удалось записать маркер среды выполнения скрипта мониторинга трафика.' ;;
+        fa:valid_hy2_bandwidth_mbps_marker_write_failed) echo 'نوشتن نشانگر محیط اجرای اسکریپت پایش ترافیک ناموفق بود.' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_marker_write_failed) echo '流量監控指令碼執行環境標記寫入失敗。' ;;
+        ja:valid_hy2_bandwidth_mbps_marker_write_failed) echo 'トラフィック監視スクリプトの実行環境マーカーの書き込みに失敗しました。' ;;
+        zh:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo '流量限制监控脚本事务快照失败。' ;;
+        en:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo 'Failed to create a transaction snapshot of the traffic limit monitoring script.' ;;
+        ru:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo 'Не удалось создать транзакционный снимок скрипта мониторинга лимита трафика.' ;;
+        fa:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo 'ایجاد تصویر لحظه‌ای تراکنش برای اسکریپت پایش محدودیت ترافیک ناموفق بود.' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo '流量限制監控指令碼的交易快照建立失敗。' ;;
+        ja:valid_hy2_bandwidth_mbps_quota_snapshot_failed) echo '通信量制限監視スクリプトのトランザクションスナップショット作成に失敗しました。' ;;
+        zh:valid_hy2_bandwidth_mbps_script_write_failed) echo '流量监控脚本原子写入失败。' ;;
+        en:valid_hy2_bandwidth_mbps_script_write_failed) echo 'Atomic write of the traffic monitoring script failed.' ;;
+        ru:valid_hy2_bandwidth_mbps_script_write_failed) echo 'Атомарная запись скрипта мониторинга трафика не удалась.' ;;
+        fa:valid_hy2_bandwidth_mbps_script_write_failed) echo 'نوشتن اتمی اسکریپت پایش ترافیک ناموفق بود.' ;;
+        zh-tw:valid_hy2_bandwidth_mbps_script_write_failed) echo '流量監控指令碼原子寫入失敗。' ;;
+        ja:valid_hy2_bandwidth_mbps_script_write_failed) echo 'トラフィック監視スクリプトのアトミック書き込みに失敗しました。' ;;
+        zh:validate_fail2ban_config_dump_failed) echo 'Fail2Ban 全局配置 dump 失败；可能由系统其它 jail 引起。' ;;
+        en:validate_fail2ban_config_dump_failed) echo 'Fail2Ban global configuration dump failed; other system jails may be responsible.' ;;
+        ru:validate_fail2ban_config_dump_failed) echo 'Не удалось получить дамп глобальной конфигурации Fail2Ban; причиной могут быть другие jail в системе.' ;;
+        fa:validate_fail2ban_config_dump_failed) echo 'تهیه دامپ پیکربندی سراسری Fail2Ban ناموفق بود؛ ممکن است jailهای دیگر سیستم علت آن باشند.' ;;
+        zh-tw:validate_fail2ban_config_dump_failed) echo 'Fail2Ban 全域設定傾印失敗；可能是系統中的其他 jail 所致。' ;;
+        ja:validate_fail2ban_config_dump_failed) echo 'Fail2Ban のグローバル設定のダンプに失敗しました。システム内の他の jail が原因の可能性があります。' ;;
+        zh:validate_fail2ban_config_global_failed) echo 'Fail2Ban 全局配置校验失败；可能由系统其它 jail 引起，A-Box 不会因此覆盖或删除其它 jail。' ;;
+        en:validate_fail2ban_config_global_failed) echo 'Fail2Ban global configuration validation failed; other system jails may be responsible. A-Box will not overwrite or delete other jails because of this.' ;;
+        ru:validate_fail2ban_config_global_failed) echo 'Проверка глобальной конфигурации Fail2Ban не пройдена; причиной могут быть другие jail в системе. A-Box не будет из-за этого перезаписывать или удалять другие jail.' ;;
+        fa:validate_fail2ban_config_global_failed) echo 'اعتبارسنجی پیکربندی سراسری Fail2Ban ناموفق بود؛ ممکن است jailهای دیگر سیستم علت آن باشند. A-Box به این دلیل jailهای دیگر را بازنویسی یا حذف نخواهد کرد.' ;;
+        zh-tw:validate_fail2ban_config_global_failed) echo 'Fail2Ban 全域設定驗證失敗；可能是系統中的其他 jail 所致，A-Box 不會因此覆寫或刪除其他 jail。' ;;
+        ja:validate_fail2ban_config_global_failed) echo 'Fail2Ban のグローバル設定の検証に失敗しました。システム内の他の jail が原因の可能性があります。A-Box はこの理由で他の jail を上書きしたり削除したりしません。' ;;
+        zh:validate_ota_version_direction_allowlist_required) echo '允许降级时必须同时设置 ABOX_OTA_SHA256_ALLOWLIST。' ;;
+        en:validate_ota_version_direction_allowlist_required) echo 'ABOX_OTA_SHA256_ALLOWLIST must also be set when downgrades are allowed.' ;;
+        ru:validate_ota_version_direction_allowlist_required) echo 'При разрешении понижения версии необходимо также задать ABOX_OTA_SHA256_ALLOWLIST.' ;;
+        fa:validate_ota_version_direction_allowlist_required) echo 'هنگام مجاز کردن کاهش نسخه، ABOX_OTA_SHA256_ALLOWLIST نیز باید تنظیم شود.' ;;
+        zh-tw:validate_ota_version_direction_allowlist_required) echo '允許降版時，必須同時設定 ABOX_OTA_SHA256_ALLOWLIST。' ;;
+        ja:validate_ota_version_direction_allowlist_required) echo 'ダウングレードを許可する場合は、ABOX_OTA_SHA256_ALLOWLIST も設定する必要があります。' ;;
+        zh:validate_ota_version_direction_bad_metadata) echo 'OTA 脚本元数据非法（build/epoch），已拒绝。' ;;
+        en:validate_ota_version_direction_bad_metadata) echo 'Invalid OTA script metadata (build/epoch); rejected.' ;;
+        ru:validate_ota_version_direction_bad_metadata) echo 'Некорректные метаданные скрипта OTA (build/epoch); скрипт отклонён.' ;;
+        fa:validate_ota_version_direction_bad_metadata) echo 'فرادادهٔ اسکریپت OTA نامعتبر است (build/epoch)؛ اسکریپت رد شد.' ;;
+        zh-tw:validate_ota_version_direction_bad_metadata) echo 'OTA 指令碼中繼資料無效（build/epoch），已拒絕。' ;;
+        ja:validate_ota_version_direction_bad_metadata) echo 'OTA スクリプトのメタデータ（build/epoch）が不正なため、拒否しました。' ;;
+        zh:validate_ota_version_direction_downgrade_refused) echo '拒绝 OTA 降级: local=%s(%s) remote=%s(%s)。如确需降级，显式设置 ABOX_ALLOW_DOWNGRADE=1 并配置 SHA256 allowlist。' ;;
+        en:validate_ota_version_direction_downgrade_refused) echo 'OTA downgrade refused: local=%s(%s) remote=%s(%s). If a downgrade is required, explicitly set ABOX_ALLOW_DOWNGRADE=1 and configure the SHA256 allowlist.' ;;
+        ru:validate_ota_version_direction_downgrade_refused) echo 'Понижение версии OTA запрещено: local=%s(%s) remote=%s(%s). Если понижение необходимо, явно задайте ABOX_ALLOW_DOWNGRADE=1 и настройте список разрешённых SHA256.' ;;
+        fa:validate_ota_version_direction_downgrade_refused) echo 'کاهش نسخهٔ OTA رد شد: local=%s(%s) remote=%s(%s). اگر کاهش نسخه ضروری است، ABOX_ALLOW_DOWNGRADE=1 را صریحاً تنظیم کنید و فهرست مجاز SHA256 را پیکربندی کنید.' ;;
+        zh-tw:validate_ota_version_direction_downgrade_refused) echo '拒絕 OTA 降版: local=%s(%s) remote=%s(%s)。若確實需要降版，請明確設定 ABOX_ALLOW_DOWNGRADE=1，並設定 SHA256 允許清單。' ;;
+        ja:validate_ota_version_direction_downgrade_refused) echo 'OTA ダウングレードを拒否しました: local=%s(%s) remote=%s(%s)。ダウングレードが必要な場合は、ABOX_ALLOW_DOWNGRADE=1 を明示的に設定し、SHA256 許可リストを構成してください。' ;;
+        zh:validate_ota_version_direction_missing_metadata) echo 'OTA 脚本缺少可信的 ABOX_BUILD/ABOX_BUILD_EPOCH 元数据。' ;;
+        en:validate_ota_version_direction_missing_metadata) echo 'The OTA script lacks trusted ABOX_BUILD/ABOX_BUILD_EPOCH metadata.' ;;
+        ru:validate_ota_version_direction_missing_metadata) echo 'В скрипте OTA отсутствуют доверенные метаданные ABOX_BUILD/ABOX_BUILD_EPOCH.' ;;
+        fa:validate_ota_version_direction_missing_metadata) echo 'اسکریپت OTA فاقد فرادادهٔ قابل اعتماد ABOX_BUILD/ABOX_BUILD_EPOCH است.' ;;
+        zh-tw:validate_ota_version_direction_missing_metadata) echo 'OTA 指令碼缺少可信的 ABOX_BUILD/ABOX_BUILD_EPOCH 中繼資料。' ;;
+        ja:validate_ota_version_direction_missing_metadata) echo 'OTA スクリプトに信頼できる ABOX_BUILD/ABOX_BUILD_EPOCH メタデータがありません。' ;;
+        zh:verify_domain_points_to_self_not_pointing_here) echo '域名已解析，但未发现解析到当前公网 IP: %s' ;;
+        en:verify_domain_points_to_self_not_pointing_here) echo 'The domain resolves, but does not appear to point to the current public IP: %s' ;;
+        ru:verify_domain_points_to_self_not_pointing_here) echo 'Домен разрешается, но среди результатов не найден текущий публичный IP: %s' ;;
+        fa:verify_domain_points_to_self_not_pointing_here) echo 'نام دامنه حل شده است، اما نتیجه‌ای با IP عمومی فعلی مطابقت ندارد: %s' ;;
+        zh-tw:verify_domain_points_to_self_not_pointing_here) echo '網域已完成解析，但未找到指向目前公用 IP 的結果: %s' ;;
+        ja:verify_domain_points_to_self_not_pointing_here) echo 'ドメインは名前解決されましたが、現在のパブリック IP を指す結果が見つかりません: %s' ;;
+        zh:wallos_install_or_update_token_save_failed) echo 'CF 隧道令牌保存失败。' ;;
+        en:wallos_install_or_update_token_save_failed) echo 'Failed to save the CF tunnel token.' ;;
+        ru:wallos_install_or_update_token_save_failed) echo 'Не удалось сохранить токен туннеля CF.' ;;
+        fa:wallos_install_or_update_token_save_failed) echo 'ذخیرهٔ توکن تونل CF ناموفق بود.' ;;
+        zh-tw:wallos_install_or_update_token_save_failed) echo 'CF 通道權杖儲存失敗。' ;;
+        ja:wallos_install_or_update_token_save_failed) echo 'CF トンネルトークンの保存に失敗しました。' ;;
+        zh:wallos_public_urls_vps_ip) echo '<VPS公网IP>' ;;
+        en:wallos_public_urls_vps_ip) echo '<VPS public IP>' ;;
+        ru:wallos_public_urls_vps_ip) echo '<Публичный IP VPS>' ;;
+        fa:wallos_public_urls_vps_ip) echo '<IP عمومی VPS>' ;;
+        zh-tw:wallos_public_urls_vps_ip) echo '<VPS公用IP>' ;;
+        ja:wallos_public_urls_vps_ip) echo '<VPSのパブリックIP>' ;;
+        zh:wallos_pull_or_restore_image_pulling) echo '拉取 Wallos 镜像' ;;
+        en:wallos_pull_or_restore_image_pulling) echo 'Wallos image pull' ;;
+        ru:wallos_pull_or_restore_image_pulling) echo 'Загрузка образа Wallos' ;;
+        fa:wallos_pull_or_restore_image_pulling) echo 'دریافت تصویر Wallos' ;;
+        zh-tw:wallos_pull_or_restore_image_pulling) echo '拉取 Wallos 映像' ;;
+        ja:wallos_pull_or_restore_image_pulling) echo 'Wallos イメージの取得' ;;
+        zh:write_clash_yaml_base_port_invalid) echo 'Hysteria 2 基础端口无效，拒绝生成 Clash/Mihomo 配置。' ;;
+        en:write_clash_yaml_base_port_invalid) echo 'Invalid Hysteria 2 base port; refusing to generate the Clash/Mihomo configuration.' ;;
+        ru:write_clash_yaml_base_port_invalid) echo 'Недопустимый базовый порт Hysteria 2; создание конфигурации Clash/Mihomo запрещено.' ;;
+        fa:write_clash_yaml_base_port_invalid) echo 'پورت پایهٔ Hysteria 2 نامعتبر است؛ از تولید پیکربندی Clash/Mihomo خودداری می‌شود.' ;;
+        zh-tw:write_clash_yaml_base_port_invalid) echo 'Hysteria 2 基礎連接埠無效，拒絕產生 Clash/Mihomo 設定。' ;;
+        ja:write_clash_yaml_base_port_invalid) echo 'Hysteria 2 のベースポートが無効なため、Clash/Mihomo 設定の生成を拒否します。' ;;
+        zh:write_clash_yaml_hy2_ports_invalid) echo 'Hysteria 2 端口跳跃状态无效：HY2_CLASH_PORTS 缺失或非法，拒绝生成 Clash/Mihomo 配置。' ;;
+        en:write_clash_yaml_hy2_ports_invalid) echo 'Invalid Hysteria 2 port-hopping state: HY2_CLASH_PORTS is missing or invalid; refusing to generate the Clash/Mihomo configuration.' ;;
+        ru:write_clash_yaml_hy2_ports_invalid) echo 'Недопустимое состояние переключения портов Hysteria 2: HY2_CLASH_PORTS отсутствует или некорректен; создание конфигурации Clash/Mihomo запрещено.' ;;
+        fa:write_clash_yaml_hy2_ports_invalid) echo 'وضعیت پرش پورت Hysteria 2 نامعتبر است: HY2_CLASH_PORTS موجود نیست یا نامعتبر است؛ از تولید پیکربندی Clash/Mihomo خودداری می‌شود.' ;;
+        zh-tw:write_clash_yaml_hy2_ports_invalid) echo 'Hysteria 2 連接埠跳躍狀態無效：HY2_CLASH_PORTS 缺少或不合法，拒絕產生 Clash/Mihomo 設定。' ;;
+        ja:write_clash_yaml_hy2_ports_invalid) echo 'Hysteria 2 のポートホッピング状態が無効です。HY2_CLASH_PORTS が未設定または不正なため、Clash/Mihomo 設定の生成を拒否します。' ;;
         zh:tp_tty_open) echo '当前环境无可交互 TTY，无法打开控制终端。' ;;
         zh-tw:tp_tty_open) echo '目前環境無可互動 TTY，無法打開控制終端。' ;;
         en:tp_tty_open) echo 'There is no interactive TTY in the current environment; cannot open the control terminal.' ;;
@@ -10338,13 +11466,13 @@ language_menu() {
     msg "${CYAN}======================================================================${NC}"
     msg "${BOLD}${GREEN}$(tr_msg lang_title)${NC}"
     msg "${CYAN}======================================================================${NC}"
-    msg "${CYAN}1.${NC} 简体中文"
-    msg "${CYAN}2.${NC} 繁體中文"
+    msg "${CYAN}1.${NC} $(tr_msg language_menu_simplified_chinese)"
+    msg "${CYAN}2.${NC} $(tr_msg language_menu_traditional_chinese)"
     msg "${CYAN}3.${NC} English"
-    msg "${CYAN}4.${NC} 日本語"
+    msg "${CYAN}4.${NC} $(tr_msg language_menu_japanese)"
     msg "${CYAN}5.${NC} Русский"
     msg "${CYAN}6.${NC} فارسی"
-    msg "${CYAN}0.${NC} 返回 / Back"
+    msg "${CYAN}0.${NC} $(tr_msg language_menu_back)"
     local c
     read -r -p 'Select [0-6]: ' c || return 0
     case "$c" in
@@ -11415,7 +12543,7 @@ verify_domain_points_to_self() {
     _norm_pub=$(normalize_ip_literal "$pub_ip")
     _norm_resolved=$(printf '%s\n' "$resolved" | while IFS= read -r _rl; do normalize_ip_literal "$_rl"; done)
     if [[ "$pub_ip" != 'N/A' ]] && ! grep -Fxq "$_norm_pub" <<< "$_norm_resolved"; then
-        msg "${YELLOW}[!] 域名已解析，但未发现解析到当前公网 IP: $pub_ip${NC}"
+        msg "${YELLOW}[!] $(tprintf verify_domain_points_to_self_not_pointing_here "$pub_ip")${NC}"
         printf '%s\n\n%s\n' "${YELLOW}$(tr_msg dom_resolved_label)${NC}" "$resolved"
         read -r -p "$(tr_msg dom_continue)" continue_domain
         is_yes "$continue_domain" || die "$(tr_msg dom_cancelled)"
@@ -11507,7 +12635,7 @@ init_system_environment() {
     fi
 
     if [[ ! -f "$DEPS_MARKER" ]]; then
-        msg "${YELLOW}[*] 正在同步系统依赖环境 (OS: ${release}, Init: ${INIT_SYS})...${NC}"
+        msg "${YELLOW}[*] $(tprintf init_system_environment_syncing_deps "${release}" "${INIT_SYS}")${NC}"
         case "$release" in
             debian|ubuntu) apt-get update -y -q >/dev/null 2>&1 ;;
             centos) if command -v dnf >/dev/null 2>&1; then dnf makecache -y -q >/dev/null 2>&1 || true; else yum makecache -y -q >/dev/null 2>&1 || true; fi; "${install_cmd[@]}" epel-release >/dev/null 2>&1 || true ;;
@@ -11660,7 +12788,7 @@ ensure_commands() {
     if (( ${#missing_pkgs[@]} > 0 )); then
         local -a unique_pkgs=()
         mapfile -t unique_pkgs < <(printf '%s\n' "${missing_pkgs[@]}" | awk 'NF && !seen[$0]++')
-        msg "${YELLOW}[*] 检测到缺失依赖包，正在补装...${NC}"
+        msg "${YELLOW}[*] $(tr_msg ensure_commands_installing_missing)${NC}"
         "${_ens_install_cmd[@]}" "${unique_pkgs[@]}" >/dev/null 2>&1 || die "$(tr_msg ec_reinstall)"
     fi
     local required=(curl jq openssl bc unzip tar iptables ss lsof crontab logrotate python3 flock cmp)
@@ -13458,23 +14586,23 @@ remove_owned_core_family() {
                         # Only an explicit force-heal may fall back to the
                         # whitelist; otherwise refuse.
                         if [[ "$force_heal" != 1 ]]; then
-                            msg "${RED}[!] ${srv} 的归属清单存在但不可用（链接／权限／内容异常），拒绝删除配置残留；请先修复清单。${NC}"
+                            msg "${RED}[!] $(tprintf remove_owned_core_family_manifest_unusable "${srv}")${NC}"
                             return 1
                         fi
                     fi
                     core_family_residue_known_only "$srv" || return 1
-                    msg "${YELLOW}[!] ${srv} 无可用归属清单，残留预检通过（仅已知文件名，未核对内容是否被修改），按遗留兼容清理已知文件。${NC}"
+                    msg "${YELLOW}[!] $(tprintf remove_owned_core_family_no_manifest_legacy "${srv}")${NC}"
                     remove_core_family_force "$srv" || return 1
                     return 0
                     ;;
                 *)
-                    msg "${RED}[!] ${srv} 的归属清单校验未通过，配置残留已保留，未删除。${NC}"
+                    msg "${RED}[!] $(tprintf remove_owned_core_family_manifest_failed "${srv}")${NC}"
                     return 1
                     ;;
             esac
         fi
         if [[ "$force_heal" == 1 ]] && core_family_binary_orphaned "$srv"; then
-            msg "${YELLOW}[!] ${srv} 仅剩无归属记录的二进制残留（旧版本安装、归属凭据已被先前清理删除），按显式清理流程强制移除。${NC}"
+            msg "${YELLOW}[!] $(tprintf remove_owned_core_family_orphan_binary "${srv}")${NC}"
             remove_core_family_force "$srv" || return 1
             return 0
         fi
@@ -17142,7 +18270,7 @@ allowPort() {
             else
                 ufw_rule_exists "$spec" "$type"; _rrc=$?
                 if (( _rrc == 0 )); then
-                    msg "${YELLOW}[!] ${spec}/${type} 已由非 A-Box UFW 全局规则放行；保留该规则且不声明所有权。${NC}"
+                    msg "${YELLOW}[!] $(tprintf allowport_ufw_global_rule "${spec}" "${type}")${NC}"
                 elif (( _rrc == 2 )); then
                     die "$(tprintf fw2_ufw_unknown "${spec}/${type}")"
                 else
@@ -18245,7 +19373,7 @@ ss_holder_is_abox_owned() {
 }
 
 check_selected_ports_free() {
-    msg "${YELLOW}[*] 正在检查新选择端口是否仍被任何进程占用...${NC}"
+    msg "${YELLOW}[*] $(tr_msg check_selected_ports_free_checking)${NC}"
     local pairs pair proto p holder dup line _foreign_holder
     pairs=$(selected_port_pairs | awk 'NF')
     dup=$(printf '%s\n' "$pairs" | awk 'NF { seen[$0]++ } END { for (k in seen) if (seen[k] > 1) { print k; break } }')
@@ -18288,10 +19416,10 @@ check_selected_ports_free() {
         # (still listening until release_ports runs after the wizard);
         # same-port reinstall must not die on it.
         if ss_holder_is_abox_owned "$holder"; then
-            msg "${YELLOW}[*] 端口 ${p}/${proto} 当前由 A-Box 自有进程占用（同端口重装容忍）。${NC}"
+            msg "${YELLOW}[*] $(tprintf check_selected_ports_free_owned_process "${p}" "${proto}")${NC}"
             continue
         fi
-        msg "${RED}[!] 新选择端口 ${p}/${proto} 仍被进程占用：${NC}"
+        msg "${RED}[!] $(tprintf check_selected_ports_free_occupied "${p}" "${proto}")${NC}"
         printf '%s\n' "$holder"
         die "$(tprintf pt_release_manual "${p}/${proto}")"
     done
@@ -18328,7 +19456,7 @@ check_selected_ports_free() {
             holder="$_foreign_holder"
         fi
         if [[ -n "$holder" ]]; then
-            msg "${RED}[!] HY2 UDP 跳跃区间 ${HY2_RANGE_START}-${HY2_RANGE_END} 仍被进程占用：${NC}"
+            msg "${RED}[!] $(tprintf check_selected_ports_free_hy2_range_occupied "${HY2_RANGE_START}" "${HY2_RANGE_END}")${NC}"
             printf '%s' "$holder"
             die "$(tr_msg pt_hy2_release)"
         fi
@@ -18336,7 +19464,7 @@ check_selected_ports_free() {
 }
 
 release_ports() {
-    msg "${YELLOW}[*] 正在停止 A-Box 托管服务...${NC}"
+    msg "${YELLOW}[*] $(tr_msg release_ports_stopping_services)${NC}"
     stop_all_managed_services || die "$(tr_msg pt_stop_all)"
     sleep 1
     local pairs pair proto p holder
@@ -18345,10 +19473,10 @@ release_ports() {
         # Fresh install / empty .env: ports are chosen in the wizard after this
         # step. Occupancy for the newly selected ports is enforced by
         # check_selected_ports_free at the end of pre_install_setup.
-        msg "${YELLOW}[*] 当前尚未选定监听端口；端口占用检查将在参数向导完成后执行。${NC}"
+        msg "${YELLOW}[*] $(tr_msg release_ports_no_ports_selected)${NC}"
         return 0
     fi
-    msg "${YELLOW}[*] 正在检查已配置端口占用...${NC}"
+    msg "${YELLOW}[*] $(tr_msg release_ports_checking_configured)${NC}"
     command -v ss >/dev/null 2>&1 || die "$(tr_msg pt_no_ss)"
     for pair in $pairs; do
         proto=${pair%/*}; p=${pair#*/}
@@ -18366,7 +19494,7 @@ release_ports() {
             }
         ' <<< "$holder" || true)
         [[ -z "$holder" ]] && continue
-        msg "${YELLOW}[!] 旧配置端口 ${p}/${proto} 当前被非 A-Box 进程占用；若向导中继续选择该端口需先手动释放，改选其它新端口则不受影响。${NC}"
+        msg "${YELLOW}[!] $(tprintf release_ports_old_port_occupied "${p}" "${proto}")${NC}"
     done
 }
 
@@ -18420,7 +19548,7 @@ install_remote_abox_script_guarded() {
     fi
     tmp=$(umask 077; mktemp /tmp/A-Box-script.XXXXXX) || die "$(tr_msg ir_tmp)"
     abox_run_wait "$(tr_msg ir_dl_label)" curl -fLs --connect-timeout 10 -m 60 "$url" -o "$tmp" || { rm -f -- "$tmp"; die "$(tr_msg ir_download)"; }
-    if ! ( validate_abox_script_file "$tmp" '远端 A-Box 脚本' && validate_ota_version_direction "$tmp" ); then
+    if ! ( validate_abox_script_file "$tmp" "$(tr_msg install_remote_abox_script_guarded_remote_script)" && validate_ota_version_direction "$tmp" ); then
         rm -f -- "$tmp"
         die "$(tr_msg ir_verify)"
     fi
@@ -18462,7 +19590,7 @@ setup_shortcut() {
             local installed_epoch=''
             installed_epoch=$(awk -F= '/^ABOX_BUILD_EPOCH=/{gsub(/[^0-9]/,"",$2); print $2; exit}' "$ABOX_DIR/A-Box.sh" 2>/dev/null || true)
             if [[ "$installed_epoch" =~ ^[0-9]+$ ]] && (( 10#$installed_epoch > 10#$ABOX_BUILD_EPOCH )); then
-                msg "${YELLOW}[!] 保留磁盘中较新的 A-Box 脚本版本 (${installed_epoch})；拒绝从管道运行的旧版本覆盖。${NC}"
+                msg "${YELLOW}[!] $(tprintf setup_shortcut_keep_newer "${installed_epoch}")${NC}"
             else
                 install_remote_abox_script_guarded "$SCRIPT_URL" "$ABOX_DIR/A-Box.sh"
             fi
@@ -19553,7 +20681,7 @@ resolve_core_release_target() {
                     # verified mirror version is adopted immediately.
                     target="$latest"; source='mirror-latest'
                     msg "${YELLOW}[!] No usable upstream candidate for $repo; using current mirror version ${target}.${NC}" >&2
-                else msg "${RED}[!] 上游与最新镜像元数据均不可用；拒绝安装。${NC}" >&2; return 1; fi
+                else msg "${RED}[!] $(tr_msg resolve_core_release_target_metadata_unavailable)${NC}" >&2; return 1; fi
             fi
         else core_release_ref_valid "$repo" "$default_ref" || return 1; target="$default_ref"; source='pinned'
         fi
@@ -19672,7 +20800,7 @@ core_fetch_upstream_release_asset() {
     if [[ -e "$dest_file" && -d "$dest_file" ]]; then msg "${YELLOW}[!] $(tprintf core_fetch_upstream_release_asset_dest_is_dir "${dest_file}")${NC}" >&2; return 1; fi
     for mirror in '' 'https://ghp.ci/' 'https://gh-proxy.com/'; do
         tmp_file=$(mktemp "${dest_file}.download.XXXXXX") || return 1
-        if abox_run_wait "下载 ${asset_name}" curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
+        if abox_run_wait "$(tprintf core_fetch_upstream_release_asset_downloading "${asset_name}")" curl -fLsS --retry 2 --retry-delay 2 --connect-timeout 10 -m 180 "${mirror}${download_url}" -o "$tmp_file"; then
             # S31 (GPT-11): digest first -- the digest is already in hand
             # from release metadata, so the cheap SHA-256 check must reject
             # a bad archive before the expensive full-archive parse runs.
@@ -20451,13 +21579,13 @@ validate_fail2ban_config() {
     local out sample
     if fail2ban-client -h 2>&1 | grep -E -- '(^|[[:space:]])-t([,[:space:]]|$)|--test' >/dev/null; then
         if ! out=$(fail2ban-client -t 2>&1); then
-            msg "${YELLOW}[!] Fail2Ban 全局配置校验失败；可能由系统其它 jail 引起，A-Box 不会因此覆盖或删除其它 jail。${NC}"
+            msg "${YELLOW}[!] $(tr_msg validate_fail2ban_config_global_failed)${NC}"
             printf '%s\n' "$out" >&2
             return 1
         fi
     else
         if ! out=$(fail2ban-client -d 2>&1); then
-            msg "${YELLOW}[!] Fail2Ban 全局配置 dump 失败；可能由系统其它 jail 引起。${NC}"
+            msg "${YELLOW}[!] $(tr_msg validate_fail2ban_config_dump_failed)${NC}"
             printf '%s\n' "$out" >&2
             return 1
         fi
@@ -20777,7 +21905,7 @@ ensure_fail2ban() {
     # R5C8-01: a pre-installed binary must not skip enablement;
     # only the install step is skippable, enablement is verified.
     if ! command -v fail2ban-client >/dev/null 2>&1; then
-    msg "${YELLOW}[*] 未检测到 Fail2Ban, 正在自动安装 (主动防御需要)...${NC}"
+    msg "${YELLOW}[*] $(tr_msg ensure_fail2ban_installing)${NC}"
     if command -v apt-get >/dev/null 2>&1; then
         apt-get update -y -q >/dev/null 2>&1 || true
         apt-get -y install fail2ban >/dev/null 2>&1 || true
@@ -20789,7 +21917,7 @@ ensure_fail2ban() {
         apk add --no-cache fail2ban >/dev/null 2>&1 || true
     fi
     if ! command -v fail2ban-client >/dev/null 2>&1; then
-        msg "${RED}[!] Fail2Ban 自动安装失败, 主动防御 (日志封禁) 本次不生效; 节点本身不受影响。${NC}"
+        msg "${RED}[!] $(tr_msg ensure_fail2ban_install_failed)${NC}"
         return 1
     fi
     fi
@@ -20874,7 +22002,7 @@ _f2b_restore_backups_or_keep() {
     if (( ok == 1 )); then
         rm -f -- "$filter_bak" "$jail_bak"
     else
-        msg "${YELLOW}[!] Fail2Ban 旧配置恢复失败；备份保留在 ${filter_bak} 与 ${jail_bak}，请手动恢复后重启 fail2ban。${NC}"
+        msg "${YELLOW}[!] $(tprintf _f2b_restore_backups_or_keep_restore_failed "${filter_bak}" "${jail_bak}")${NC}"
     fi
 }
 
@@ -21165,10 +22293,10 @@ hysteria_official_hop_firewall_ok() {
 
 
 setup_health_monitor() {
-    command -v flock >/dev/null 2>&1 || die 'flock 命令不可用：健康探针依赖 flock 锁，缺失时探针会静默退出、监控形同关闭，拒绝安装。'
-    msg "${YELLOW}[*] 正在注入带锁、连续失败阈值与退避的 L4 健康探针...${NC}"
+    command -v flock >/dev/null 2>&1 || die "$(tr_msg setup_health_monitor_flock_missing)"
+    msg "${YELLOW}[*] $(tr_msg setup_health_monitor_injecting_probe)${NC}"
     install -d -m 711 "$ABOX_DIR" || die "$(tr_msg hm_dir)"
-    write_file_atomically_from_stdin "$ABOX_DIR/socket_probe.sh" 700 <<'EOF_PROBE' || die '健康探针原子写入失败。'
+    write_file_atomically_from_stdin "$ABOX_DIR/socket_probe.sh" 700 <<'EOF_PROBE' || die "$(tr_msg setup_health_monitor_probe_write_failed)"
 #!/usr/bin/env bash
 # Managed by A-Box
 # A-06: umask 077 ensures lock/temp files are 0600 (not world-readable 0644).
@@ -21512,14 +22640,14 @@ EOF_PROBE
 }
 
 setup_geo_cron() {
-    command -v flock >/dev/null 2>&1 || die 'flock 命令不可用：Geo 更新脚本依赖 flock 锁，缺失时脚本会静默退出，拒绝安装。'
+    command -v flock >/dev/null 2>&1 || die "$(tr_msg setup_geo_cron_flock_missing)"
     if ! abox_owns_service xray; then
         remove_abox_cron_block GEO || die "$(tr_msg gc_rm_cron)"
         remove_owned_runtime_helper "$ABOX_DIR/geo_update.sh" || die "$(tr_msg gc_rm_script)"
         return 0
     fi
     install -d -m 711 "$ABOX_DIR" || die "$(tr_msg gc_dir)"
-    write_file_atomically_from_stdin "$ABOX_DIR/geo_update.sh" 700 <<'EOF_GEO' || die 'Geo 更新脚本原子写入失败。'
+    write_file_atomically_from_stdin "$ABOX_DIR/geo_update.sh" 700 <<'EOF_GEO' || die "$(tr_msg setup_geo_cron_script_write_failed)"
 #!/usr/bin/env bash
 # Managed by A-Box
 # A-06: umask 077 ensures lock/temp files are 0600 (not world-readable 0644).
@@ -21840,7 +22968,7 @@ fetch_one() {
     [[ -n "$GEO_RELEASE_TAG" && "$url" == "https://github.com/${GEO_REPO}/releases/download/${GEO_RELEASE_TAG}/${asset}" && "$digest" == sha256:* ]] || return 1
     expected="${digest#sha256:}"
     [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ ]] || return 1
-    abox_run_wait '下载 Geo 数据' curl -fLsS --connect-timeout 10 -m 90 "$url" -o "$out" || return 1
+    abox_run_wait "$(tr_msg fetch_one_downloading_geo)" curl -fLsS --connect-timeout 10 -m 90 "$url" -o "$out" || return 1
     actual=$(sha256sum "$out" | awk '{print $1}')
     [[ "${actual,,}" == "${expected,,}" ]] || return 1
     size=$(wc -c < "$out" 2>/dev/null | tr -d ' ')
@@ -23124,7 +24252,7 @@ EOF_XTABLES_GRANT
 deploy_official_hy2() {
     local IS_SILENT=${1:-NORMAL} TLS_CONFIG HY2_LISTEN cert_cn HY2_CAPS='CAP_NET_BIND_SERVICE' hy2_tmp hy2_bin domain_yaml token_yaml SKIP_REPLACE_AND_PRUNE=${2:-0} _hy2_url='' _hy2_port=''
     if [[ "$IS_SILENT" != 'SILENT' ]]; then
-        clear; msg "${BOLD}${GREEN}部署官方 Hysteria 2${NC}"
+        clear; msg "${BOLD}${GREEN}$(tr_msg deploy_official_hy2_title)${NC}"
         init_system_environment
         load_optional_abox_env_or_die
         light_preflight_check
@@ -23222,7 +24350,7 @@ deploy_official_hy2() {
     fi
 
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
-        write_file_atomically_from_stdin /etc/systemd/system/hysteria.service 644 <<EOF_SVC || die 'Hysteria systemd unit 原子写入失败。'
+        write_file_atomically_from_stdin /etc/systemd/system/hysteria.service 644 <<EOF_SVC || die "$(tr_msg deploy_official_hy2_systemd_write_failed)"
 # Managed by A-Box
 [Unit]
 Description=A-Box Hysteria 2 Service
@@ -23251,10 +24379,10 @@ EOF_SVC
         path_parent_chain_safe /etc/conf.d/hysteria || die "$(tr_msg dp_orc_parent)"
         [[ ! -L /etc/conf.d && (! -e /etc/conf.d || -d /etc/conf.d) ]] || die "$(tr_msg dp_orc_dir_unsafe)"
         mkdir -p /etc/conf.d || die "$(tr_msg dp_orc_dir)"
-        write_file_atomically_from_stdin /etc/conf.d/hysteria 644 <<'EOF_HY2_CONFD' || die 'Hysteria OpenRC conf.d 原子写入失败。'
+        write_file_atomically_from_stdin /etc/conf.d/hysteria 644 <<'EOF_HY2_CONFD' || die "$(tr_msg deploy_official_hy2_confd_write_failed)"
 rc_ulimit="-n 1048576"
 EOF_HY2_CONFD
-        write_file_atomically_from_stdin /etc/init.d/hysteria 755 <<EOF_SVC || die 'Hysteria OpenRC unit 原子写入失败。'
+        write_file_atomically_from_stdin /etc/init.d/hysteria 755 <<EOF_SVC || die "$(tr_msg deploy_official_hy2_openrc_write_failed)"
 #!/sbin/openrc-run
 # Managed by A-Box
 description="A-Box Hysteria 2 Service"
@@ -23279,7 +24407,7 @@ EOF_SVC
     service_manager start hysteria
     if [[ "${HY2_HOP:-false}" == true && "${HY2_HOP_IMPL:-none}" == official ]]; then
         if ! hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT"; then
-            msg "${YELLOW}[!] 官方 HY2 端口跳跃防火墙规则未在服务启动后出现；正在重新启动 Hysteria 以触发规则重建。${NC}"
+            msg "${YELLOW}[!] $(tr_msg depend_hy2_hop_rules_restart)${NC}"
             restart_service_soft hysteria >/dev/null 2>&1 || die "$(tr_msg hy2b_hop_restart)"
             sleep 1
             hysteria_official_hop_firewall_ok "$HY2_RANGE_START" "$HY2_RANGE_END" "$HY2_MONITOR_PORT" || die "$(tr_msg hy2b_hop_missing)"
@@ -24398,7 +25526,7 @@ deploy_xray_trojan_landing() {
         fi
         jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_json)"; }
         if ! XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" >/dev/null 2>&1; then
-            msg "${RED}Xray 配置校验失败，校验器输出:${NC}"
+            msg "${RED}$(tr_msg deploy_xray_trojan_landing_config_check_failed)${NC}"
             XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" 2>&1 | tail -5
             rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_check)"
         fi
@@ -28868,7 +29996,7 @@ deploy_xray() {
     # C2 (Q8): handle any retired xray-latest instance before any
     # backup or modification. Aborts the deploy until it is handled.
     xray_latest_legacy_retire || return 1
-    clear; msg "${BOLD}${GREEN}部署 Xray-core [$MODE_IN]${NC}"
+    clear; msg "${BOLD}${GREEN}$(tprintf deploy_xray_title "$MODE_IN")${NC}"
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
@@ -29005,7 +30133,7 @@ deploy_singbox() {
     local IPT_W_FLAG='' IPT6_W_FLAG=''
     $IPT -w --version >/dev/null 2>&1 && IPT_W_FLAG='-w'
     $IPT6 -w --version >/dev/null 2>&1 && IPT6_W_FLAG='-w'
-    clear; msg "${BOLD}${GREEN}部署 Sing-box 核心 [$MODE_IN]${NC}"
+    clear; msg "${BOLD}${GREEN}$(tprintf deploy_singbox_title "$MODE_IN")${NC}"
     init_system_environment
     load_optional_abox_env_or_die
     light_preflight_check
@@ -29210,7 +30338,7 @@ ensure_vnstat_runtime() {
 }
 
 setup_traffic_monitor() {
-    command -v flock >/dev/null 2>&1 || { msg "${RED}[!] flock 命令不可用：流量监控依赖 flock 锁，缺失时脚本会静默退出，拒绝安装。${NC}" >&2; return 1; }
+    command -v flock >/dev/null 2>&1 || { msg "${RED}[!] $(tr_msg setup_traffic_monitor_flock_missing)${NC}" >&2; return 1; }
     # R9-03: a retired xray-latest coexist instance is outside the managed
     # core set and would never be stopped by a quota block. Refuse to
     # install the monitor until it is retired (fail closed); do not
@@ -29218,12 +30346,12 @@ setup_traffic_monitor() {
     xray_latest_legacy_retire || return 1
     ensure_vnstat_runtime
     local ensure_rc=$?
-    [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] 流量限制事务状态快照失败。${NC}" >&2; return 1; }
+    [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] $(tr_msg setup_traffic_monitor_quota_snapshot_failed)${NC}" >&2; return 1; }
     (( ensure_rc == 0 )) || return 1
-    install -d -m 711 "$ABOX_DIR" || { msg "${RED}[!] 无法创建流量监控目录。${NC}" >&2; return 1; }
+    install -d -m 711 "$ABOX_DIR" || { msg "${RED}[!] $(tr_msg setup_traffic_monitor_mkdir_failed)${NC}" >&2; return 1; }
     local _tm_tmp='' _ab_esc=''
-    _tm_tmp=$(mktemp) || { msg "${RED}[!] 流量监控脚本临时文件创建失败。${NC}" >&2; return 1; }
-    cat > "$_tm_tmp" <<'EOF_TRAFFIC' || { rm -f -- "$_tm_tmp"; msg "${RED}[!] 流量监控脚本临时写入失败。${NC}" >&2; return 1; }
+    _tm_tmp=$(mktemp) || { msg "${RED}[!] $(tr_msg setup_traffic_monitor_tmpfile_failed)${NC}" >&2; return 1; }
+    cat > "$_tm_tmp" <<'EOF_TRAFFIC' || { rm -f -- "$_tm_tmp"; msg "${RED}[!] $(tr_msg setup_traffic_monitor_tmp_write_failed)${NC}" >&2; return 1; }
 #!/usr/bin/env bash
 # Managed by A-Box
 # A-06: umask 077 ensures lock/temp files are 0600 (not world-readable 0644).
@@ -29988,16 +31116,16 @@ EOF_TRAFFIC
     _ab_esc="${ABOX_DIR//\\/\\\\}"
     _ab_esc="${_ab_esc//&/\\&}"
     _ab_esc="${_ab_esc//#/\\#}"
-    sed -i -e "s#/etc/ddr#${_ab_esc}#g" -e "s#^INIT_SYS_EXPECTED=.*#INIT_SYS_EXPECTED='${INIT_SYS}'#" "$_tm_tmp" || { rm -f -- "$_tm_tmp"; msg "${RED}[!] 流量监控脚本运行环境标记写入失败。${NC}" >&2; return 1; }
-    write_file_atomically_from_stdin "$ABOX_DIR/traffic_monitor.sh" 700 < "$_tm_tmp" || { rm -f -- "$_tm_tmp"; msg "${RED}[!] 流量监控脚本原子写入失败。${NC}" >&2; return 1; }
+    sed -i -e "s#/etc/ddr#${_ab_esc}#g" -e "s#^INIT_SYS_EXPECTED=.*#INIT_SYS_EXPECTED='${INIT_SYS}'#" "$_tm_tmp" || { rm -f -- "$_tm_tmp"; msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_marker_write_failed)${NC}" >&2; return 1; }
+    write_file_atomically_from_stdin "$ABOX_DIR/traffic_monitor.sh" 700 < "$_tm_tmp" || { rm -f -- "$_tm_tmp"; msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_script_write_failed)${NC}" >&2; return 1; }
     rm -f -- "$_tm_tmp"
-    grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/traffic_monitor.sh" || { msg "${RED}[!] 流量监控脚本运行环境标记后置校验失败。${NC}" >&2; return 1; }
-    chmod 700 "$ABOX_DIR/traffic_monitor.sh" || { msg "${RED}[!] 流量监控脚本权限设置失败。${NC}" >&2; return 1; }
-    [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] 流量限制监控脚本事务快照失败。${NC}" >&2; return 1; }
+    grep -Fxq "INIT_SYS_EXPECTED='${INIT_SYS}'" "$ABOX_DIR/traffic_monitor.sh" || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_marker_verify_failed)${NC}" >&2; return 1; }
+    chmod 700 "$ABOX_DIR/traffic_monitor.sh" || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_chmod_failed)${NC}" >&2; return 1; }
+    [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_quota_snapshot_failed)${NC}" >&2; return 1; }
     local _tm_script="$ABOX_DIR/traffic_monitor.sh"
     if [[ "$_tm_script" == *[[:space:]]* ]]; then _tm_script=$(shell_quote "$_tm_script"); fi
-    ( ABOX_DIE_HOOK=''; install_abox_cron_block TRAFFIC "* * * * * /bin/bash $_tm_script >/dev/null 2>&1" ) || { msg "${RED}[!] 流量限制 cron 写入失败。${NC}" >&2; return 1; }
-    [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] 流量限制 cron 事务快照失败。${NC}" >&2; return 1; }
+    ( ABOX_DIE_HOOK=''; install_abox_cron_block TRAFFIC "* * * * * /bin/bash $_tm_script >/dev/null 2>&1" ) || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_cron_write_failed)${NC}" >&2; return 1; }
+    [[ -z "${ABOX_TRAFFIC_TX_DIR:-}" ]] || capture_traffic_quota_expected_state "$ABOX_TRAFFIC_TX_DIR" || { msg "${RED}[!] $(tr_msg valid_hy2_bandwidth_mbps_cron_snapshot_failed)${NC}" >&2; return 1; }
 }
 
 disable_traffic_monitor() {
@@ -30510,7 +31638,7 @@ traffic_management_menu() {
     )
     if [[ -n "$_tjson" ]]; then
         python3 -I - "$_tjson" "$INTERFACE" "$_tlimit" "${TRAFFIC_LIMIT_MODE:-total}" "${_tm_args[@]}" <<'PY_TRAFFIC_DASH' 2>/dev/null || \
-            msg "${YELLOW}[!] 流量数据解析失败。${NC}"
+            msg "${YELLOW}[!] $(tr_msg traffic_management_menu_parse_failed)${NC}"
 import datetime, json, sys, unicodedata
 
 def dw(s):
@@ -30628,20 +31756,20 @@ else:
 sys.stdout.write("\n".join(out) + "\n")
 PY_TRAFFIC_DASH
     else
-        msg "${YELLOW}[!] vnStat 未安装或暂无数据；设定上限时会按需安装。${NC}"
+        msg "${YELLOW}[!] $(tr_msg traffic_management_menu_vnstat_missing)${NC}"
     fi
     msg "${CYAN}────────────────────────────────────────────────────────────────────────────────${NC}"
-    msg "${CYAN}1.${NC}  设定/修改每月流量上限"
-    msg "${CYAN}2.${NC}  解除流量限制"
-    msg "${CYAN}0.${NC}  返回主菜单"
+    msg "${CYAN}1.${NC}  $(tr_msg traffic_management_menu_set_limit)"
+    msg "${CYAN}2.${NC}  $(tr_msg traffic_management_menu_remove_limit)"
+    msg "${CYAN}0.${NC}  $(tr_msg traffic_management_menu_back)"
     read -r -p "$(tr_msg tf_pick)" tr_choice || return 0
     case "$tr_choice" in
         1)
             read -r -p "$(tr_msg tf_limit_prompt)" limit_gb
-            valid_traffic_limit_gb "$limit_gb" || { msg "${RED}[!] 流量上限必须是 1-8589934591 GB 的整数。${NC}"; pause_return; return; }
+            valid_traffic_limit_gb "$limit_gb" || { msg "${RED}[!] $(tr_msg traffic_management_menu_limit_range)${NC}"; pause_return; return; }
             read -r -p "$(tr_msg tf_mode_prompt)" mode_choice
             mode_choice=${mode_choice:-total}
-            [[ "$mode_choice" =~ ^(total|rx|tx)$ ]] || { msg "${RED}[!] 计量模式无效。${NC}"; pause_return; return; }
+            [[ "$mode_choice" =~ ^(total|rx|tx)$ ]] || { msg "${RED}[!] $(tr_msg traffic_management_menu_mode_invalid)${NC}"; pause_return; return; }
             # R6C10-03: drop any stale rollback from a previous round
             # before reading state, so a read failure never invokes a
             # callback over locals this round has not bound.
@@ -30712,7 +31840,7 @@ PY_TRAFFIC_DASH
             ABOX_TRAFFIC_TX_DIR=''
             rm -rf -- "$traffic_tx_dir" || { _traffic_txn_fail traffic_quota_menu_die_rollback old_die_hook "$(tr_msg tf_tx_cleanup)"; continue; }
             unset -f traffic_quota_menu_die_rollback
-            msg "${GREEN}流量限制已设定为 ${limit_gb} GB，模式 ${mode_choice}。${NC}"
+            msg "${GREEN}$(tprintf traffic_management_menu_limit_set "${limit_gb}" "${mode_choice}")${NC}"
             pause_return
             ;;
         2)
@@ -30788,7 +31916,7 @@ PY_TRAFFIC_DASH
             ABOX_TRAFFIC_TX_DIR=''
             rm -rf -- "$unblock_tx_dir" || { _traffic_txn_fail traffic_unblock_menu_die_rollback unblock_old_die_hook "$(tr_msg tf_unblock_cleanup)"; continue; }
             unset -f traffic_unblock_menu_die_rollback
-            msg "${GREEN}流量限制已解除。${NC}"
+            msg "${GREEN}$(tr_msg traffic_management_menu_limit_removed)${NC}"
             pause_return
             ;;
         0) return 0 ;;
@@ -31548,7 +32676,7 @@ _remove_inbounds_from_config() {
         if [[ "$restore_ok" == 1 ]]; then
             rm -f "$bak"
         else
-            msg "${RED}[!] 旧配置恢复失败，备份保留在 $bak，请手工恢复。${NC}" >&2
+            msg "${RED}[!] $(tprintf _remove_inbounds_from_config_restore_failed "$bak")${NC}" >&2
         fi
         return 1
     fi
@@ -32015,7 +33143,7 @@ check_virgin_state() {
     fi
     [[ -n "$confirm_virgin" ]] || confirm_virgin='N'
     is_yes "$confirm_virgin" || { msg "${GREEN}$(tr_msg vg_cancelled)${NC}"; pause_return; return 0; }
-    : "${ABOX_DIR:?ABOX_DIR 未定义}"
+    : "${ABOX_DIR:?$(tr_msg check_virgin_state_abox_dir_undefined)}"
     begin_deployment_transaction 'environment reset' xray sing-box hysteria || die "$(tr_msg vg_tx_fail)"
     preflight_reset_ownership || die "$(tr_msg vg_preflight_fail)"
     stop_all_managed_services || die "$(tr_msg vg_stop)"
@@ -32070,8 +33198,8 @@ check_virgin_state() {
 restore_vps_tune() {
     local quiet="${1:-0}" dir="$ABOX_DIR/tune-backup" line key value path failed=0
     local bbr_module_file='/etc/modules-load.d/A-Box-bbr.conf'
-    [[ -d "$dir" ]] || { [[ "$quiet" == 1 ]] || msg "${YELLOW}[!] 没有可恢复的 A-Box 调优快照。${NC}"; return 1; }
-    path_tree_has_mountpoint "$dir" && { [[ "$quiet" == 1 ]] || msg "${RED}[!] 调优快照目录或其子树存在挂载点，拒绝恢复后删除。${NC}"; return 1; }
+    [[ -d "$dir" ]] || { [[ "$quiet" == 1 ]] || msg "${YELLOW}[!] $(tr_msg restore_vps_tune_no_snapshot)${NC}"; return 1; }
+    path_tree_has_mountpoint "$dir" && { [[ "$quiet" == 1 ]] || msg "${RED}[!] $(tr_msg restore_vps_tune_mountpoint_refused)${NC}"; return 1; }
     path_parent_chain_safe /etc/sysctl.d/99-A-Box-tune.conf || return 1
     path_parent_chain_safe /etc/security/limits.d/A-Box.conf || return 1
     path_parent_chain_safe "$bbr_module_file" || return 1
@@ -32099,7 +33227,7 @@ restore_vps_tune() {
     (( failed == 0 )) || return 1
     path_tree_has_mountpoint "$dir" && return 1
     rm -rf -- "$dir" || return 1
-    [[ "$quiet" == 1 ]] || msg "${GREEN}A-Box VPS 调优已恢复。${NC}"
+    [[ "$quiet" == 1 ]] || msg "${GREEN}$(tr_msg restore_vps_tune_restored)${NC}"
 }
 
 # Desired sysctl tune set, one "key value" per line. BBR/FQ keys are included
@@ -32139,19 +33267,19 @@ _tune_missing_items() {
         [[ -n "$key" ]] || continue
         sysctl -n "$key" >/dev/null 2>&1 || continue
         got=$(sysctl -n "$key" 2>/dev/null | tr -s ' \t' ' ')
-        [[ "$got" == "$want" ]] || missing_list+="${key}（当前 ${got:-<空>}，期望 $want）"$'\n'
+        [[ "$got" == "$want" ]] || missing_list+="$(tprintf _tune_missing_items_sysctl_detail "${key}" "${got:-$(tr_msg _tune_missing_items_empty)}" "$want")"$'\n'
     done < <(_tune_desired_sysctl)
     if ! grep -q '^# Managed by A-Box' /etc/security/limits.d/A-Box.conf 2>/dev/null \
         || ! grep -qx '\* soft nofile 1048576' /etc/security/limits.d/A-Box.conf 2>/dev/null \
         || ! grep -qx '\* hard nofile 1048576' /etc/security/limits.d/A-Box.conf 2>/dev/null \
         || ! grep -qx 'root soft nofile 1048576' /etc/security/limits.d/A-Box.conf 2>/dev/null \
         || ! grep -qx 'root hard nofile 1048576' /etc/security/limits.d/A-Box.conf 2>/dev/null; then
-        missing_list+='limits 配置（nofile 上限 1048576）'$'\n'
+        missing_list+="$(tr_msg _tune_missing_items_limits_nofile)"$'\n'
     fi
     # The persist file itself: a runtime value can be right while the
     # file that reapplies it at boot is missing or drifted.
     if [[ ! -f /etc/sysctl.d/99-A-Box-tune.conf ]]; then
-        missing_list+='sysctl 持久文件（/etc/sysctl.d/99-A-Box-tune.conf 缺失）'$'\n'
+        missing_list+="$(tr_msg _tune_missing_items_persist_missing)"$'\n'
     else
         while read -r key want; do
             [[ -n "$key" ]] || continue
@@ -32159,13 +33287,13 @@ _tune_missing_items() {
             # Exact, last-assignment-wins match: a commented line, a
             # longer value, or an earlier line overridden later must not pass.
             awk -v k="$key" -v w="$want" '{l=$0; sub(/^[ \t]+/,"",l); if(l==""||substr(l,1,1)=="#")next; e=index(l,"="); if(!e)next; kk=substr(l,1,e-1); vv=substr(l,e+1); sub(/[ \t]+$/,"",kk); sub(/^[ \t]+/,"",kk); sub(/^[ \t]+/,"",vv); sub(/[ \t]+$/,"",vv); sub(/[ \t]+#.*$/,"",vv); gsub(/[ \t]+/, " ", vv); if(kk==k){v=vv; f=1} } END{exit !(f&&v==w)}' /etc/sysctl.d/99-A-Box-tune.conf 2>/dev/null \
-                || missing_list+="sysctl 持久文件缺失/不符：${key}（期望 $want）"$'\n'
+                || missing_list+="$(tprintf _tune_missing_items_persist_mismatch "${key}" "$want")"$'\n'
         done < <(_tune_desired_sysctl)
     fi
     available=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
     if grep -qw bbr <<< "$available" && modprobe tcp_bbr >/dev/null 2>&1; then
         grep -qx 'tcp_bbr' /etc/modules-load.d/A-Box-bbr.conf 2>/dev/null \
-            || missing_list+='BBR 模块开机自动加载配置'$'\n'
+            || missing_list+="$(tr_msg _tune_missing_items_bbr_autoload)"$'\n'
     fi
     printf '%s' "$missing_list"
 }
@@ -32314,7 +33442,7 @@ abox_prefer_mirror() {
 }
 
 save_mirror_prefer() {
-    msg "${YELLOW}核心下载顺序固定为：上游正式稳定版 → 固定 A-Box 容灾版本。${NC}"
+    msg "${YELLOW}$(tr_msg save_mirror_prefer_fixed_order)${NC}"
     return 1
 }
 
@@ -32334,7 +33462,7 @@ confirm_soft() {
 show_core_pin_docs() {
     clear
     msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}核心版本选择与容灾说明 / Core release policy${NC}"
+    msg "${BOLD}${GREEN}$(tr_msg show_core_pin_docs_title)${NC}"
     msg "${CYAN}======================================================================${NC}"
     # C2 (latest-first): all three cores default to auto-stable; the
     # fallback constants are the explicit pinned-policy targets only.
@@ -32503,7 +33631,7 @@ one_click_reality_deploy() {
             msg "${CYAN}2.${NC} sing-box Vision REALITY"
             prompt='现在开始一键部署 Vision REALITY？[Y/N]: ' ;;
     esac
-    msg "${CYAN}0.${NC} Cancel / 返回"
+    msg "${CYAN}0.${NC} $(tr_msg one_click_reality_deploy_cancel_back)"
     read -r -p 'Select [0-2]: ' choice || return 0
     case "$choice" in 1|2) ;; *) return 0 ;; esac
     load_abox_env "$ABOX_ENV" >/dev/null 2>&1 || true
@@ -32791,7 +33919,7 @@ users_normalize_default_name() {
     users_reg_write "$core" "$tag" "$new" >/dev/null 2>&1 || return 0
     if ! users_sync "$core" "$tag" >/dev/null 2>&1; then
         if ! users_reg_write "$core" "$tag" "$old_reg" >/dev/null 2>&1; then
-            msg "${RED}[!] 用户迁移同步失败，且注册表回滚写入失败：${core}/${tag} 仍为迁移后状态（main），核心仍为 abox，下次重试将被跳过，请手动检查注册表。${NC}" >&2
+            msg "${RED}[!] $(tprintf users_normalize_default_name_migrate_failed "${core}" "${tag}")${NC}" >&2
             return 1
         fi
     fi
@@ -32871,7 +33999,7 @@ users_reg_write() {
     case "$core" in xray|sing-box|hy2) ;; *) return 1 ;; esac
     dest=$(users_reg_file "$core" "$tag") || return 1
     if [[ -L "$dest" ]]; then
-        msg "${RED}[!] 注册表拒绝写入：$dest 是符号链接。${NC}" >&2
+        msg "${RED}[!] $(tprintf users_reg_write_symlink_refused "$dest")${NC}" >&2
         return 1
     fi
     if [[ -f "$dest" ]]; then
@@ -32882,16 +34010,16 @@ users_reg_write() {
         elif [[ -n "$ec" && -n "$et" ]]; then
             home=$(users_reg_file "$ec" "$et") || return 1
             if [[ -e "$home" || -L "$home" ]]; then
-                msg "${RED}[!] 注册表拒绝写入：$dest 已属于 ${ec}/${et}，其归属位置 $home 已被占用，请手工处理。${NC}" >&2
+                msg "${RED}[!] $(tprintf users_reg_write_owned_elsewhere "$dest" "${ec}" "${et}" "$home")${NC}" >&2
                 return 1
             fi
             mv -n -- "$dest" "$home" 2>/dev/null && [[ ! -e "$dest" && -f "$home" ]] || {
-                msg "${RED}[!] 注册表归位失败：无法将 $dest 移至 $home。${NC}" >&2
+                msg "${RED}[!] $(tprintf users_reg_write_move_failed "$dest" "$home")${NC}" >&2
                 return 1
             }
-            msg "${YELLOW}[!] 注册表归位：${ec}/${et} 的旧文件已从 $dest 移至 $home。${NC}" >&2
+            msg "${YELLOW}[!] $(tprintf users_reg_write_moved "${ec}" "${et}" "$dest" "$home")${NC}" >&2
         else
-            msg "${RED}[!] 注册表拒绝写入：$dest 身份无法读取（非注册表文件或已损坏），请手工处理。${NC}" >&2
+            msg "${RED}[!] $(tprintf users_reg_write_identity_unreadable "$dest")${NC}" >&2
             return 1
         fi
     fi
@@ -35140,7 +36268,7 @@ user_guard_tick() {
 try_latest_cores_danger() {
     local answer targets=() t latest
     clear
-    msg "${RED}${BOLD}DANGER: 尝试上游最新正式稳定版 / Try latest upstream stable release${NC}"
+    msg "${RED}${BOLD}$(tr_msg try_latest_cores_danger_title)${NC}"
     msg "$(tprintf tl_body "${ABOX_XRAY_DEFAULT_VERSION}" "${ABOX_SINGBOX_DEFAULT_VERSION}" "${ABOX_HYSTERIA_DEFAULT_VERSION}")"
     msg "$(tr_msg tl_risk)"
     read -r -p "$(tr_msg tl_type_yes)" answer
@@ -35632,7 +36760,7 @@ timezone_choose_from_list() {
     for tz in "${all[@]}"; do
         [[ -z "$query" || "${tz,,}" == *"${query,,}"* ]] && filtered+=("$tz")
     done
-    (( ${#filtered[@]} > 0 )) || { msg "${YELLOW}No matching time zones / 没有匹配的时区。${NC}"; return 1; }
+    (( ${#filtered[@]} > 0 )) || { msg "${YELLOW}$(tr_msg timezone_choose_from_list_no_match)${NC}"; return 1; }
     while true; do
         clear
         msg "${CYAN}================ $title ================${NC}"
@@ -35647,7 +36775,7 @@ timezone_choose_from_list() {
                 read -r -p "$search_prompt" query || return 0
                 page=0; filtered=()
                 for tz in "${all[@]}"; do [[ -z "$query" || "${tz,,}" == *"${query,,}"* ]] && filtered+=("$tz"); done
-                (( ${#filtered[@]} > 0 )) || msg "${YELLOW}No matching time zones / 没有匹配的时区。${NC}"
+                (( ${#filtered[@]} > 0 )) || msg "${YELLOW}$(tr_msg timezone_choose_from_list_no_match)${NC}"
                 ;;
             0|'') return 0 ;;
             *[!0-9]*) msg "${YELLOW}$invalid_prompt${NC}"; sleep 1 ;;
@@ -36376,7 +37504,7 @@ apply_host_dns() {
     fi
     msg "${CYAN}DNS backend: ${backend} | IPv4: ${v4} | IPv6: ${v6:-none} | mode: ${mode}${tls_name:+ | TLS name: ${tls_name}}${NC}"
     read -r -p "$confirm_prompt" answer
-    is_yes "$answer" || { msg "${YELLOW}已取消。${NC}"; return 0; }
+    is_yes "$answer" || { msg "${YELLOW}$(tr_msg apply_host_dns_cancelled)${NC}"; return 0; }
     # Preserve the original immutable flag so rollback can restore it, too.
     if command -v lsattr >/dev/null 2>&1 && lsattr /etc/resolv.conf 2>/dev/null | grep -q 'i'; then
         immutable_before=1
@@ -36411,10 +37539,10 @@ apply_host_dns() {
     case "$backend" in
         resolved)
             mkdir -p /etc/systemd/resolved.conf.d || die "$(tr_msg hd_resolved_dir)"
-            resolved_strip_global_dns_sources || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die '清除既有全局 DNS 来源失败，未修改 DNS。'; }
+            resolved_strip_global_dns_sources || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_clear_sources_failed)"; }
             dropin=/etc/systemd/resolved.conf.d/99-abox-dns.conf
             if [[ "$mode" == 'dot' ]]; then
-                write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die 'DoT drop-in 写入失败。'; }
+                write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_dot_write_failed)"; }
 [Resolve]
 DNS=${dns_servers}
 FallbackDNS=
@@ -36422,7 +37550,7 @@ Domains=~.
 DNSOverTLS=yes
 EOF_DNS
             else
-                write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die 'DNS drop-in 写入失败。'; }
+                write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_dropin_write_failed)"; }
 [Resolve]
 DNS=${v4}${v6:+ $v6}
 FallbackDNS=
@@ -36431,7 +37559,7 @@ DNSOverTLS=no
 EOF_DNS
             fi
             systemctl restart systemd-resolved >/dev/null 2>&1 || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "systemd-resolved restart failed; rollback was attempted."; }
-            resolved_global_dns_check "$v4${v6:+ $v6}" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die '应用后全局 DNS 集合与预期不符，已回滚。'; }
+            resolved_global_dns_check "$v4${v6:+ $v6}" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_verify_mismatch)"; }
             ;;
         networkmanager)
             local iface connection
@@ -37620,15 +38748,15 @@ EOF_DOH
 _dns_provider_list() {
     printf '%s\n' \
         'cf-main|Cloudflare|1.1.1.1|2606:4700:4700::1111' \
-        'cf-alt|Cloudflare备|1.0.0.1|2606:4700:4700::1001' \
+        "cf-alt|$(tr_msg _dns_provider_list_cloudflare_alt)|1.0.0.1|2606:4700:4700::1001" \
         'google-main|Google|8.8.8.8|2001:4860:4860::8888' \
-        'google-alt|Google备|8.8.4.4|2001:4860:4860::8844' \
+        "google-alt|$(tr_msg _dns_provider_list_google_alt)|8.8.4.4|2001:4860:4860::8844" \
         'quad9|Quad9|9.9.9.9|2620:fe::fe' \
         'opendns|OpenDNS|208.67.222.222|2620:119:35::35' \
         'alidns|AliDNS|223.5.5.5|2400:3200::1' \
         'dnspod|DNSPod|119.29.29.29|2402:4e00::' \
         'cf-family|Cloudflare Family|1.1.1.2|2606:4700:4700::1112' \
-        'quad9-sec|Quad9安全|9.9.9.11|2620:fe::11'
+        "quad9-sec|$(tr_msg _dns_provider_list_quad9_sec)|9.9.9.11|2620:fe::11"
 }
 
 # Get current DNS from resolv.conf or state file
@@ -37986,7 +39114,7 @@ dns_menu() {
             msg "${CYAN}10.${NC} DNS 三模式设置（v4/v6/双栈）"
             ;;
     esac
-    msg "${CYAN}0.${NC} Back / 返回"
+    msg "${CYAN}0.${NC} $(tr_msg dns_menu_back)"
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-10]: ' ;; ru) prompt='Выберите [0–10]: ' ;; fa) prompt='انتخاب [۰ تا ۱۰]: ' ;; ja) prompt='選択してください [0-10]: ' ;; zh-tw) prompt='請選擇 [0-10]：' ;; *) prompt='请选择 [0-10]：' ;; esac
     read -r -p "$prompt" c || return 0
     case "$c" in
@@ -38260,17 +39388,17 @@ confirm_remote_script_hash() {
 run_remote_bash_script() {
     local label="$1" url="$2" tmp sha
     shift 2 || true
-    tmp=$(umask 077; mktemp /tmp/A-Box-remote.XXXXXX) || die '远程脚本临时文件创建失败。'
+    tmp=$(umask 077; mktemp /tmp/A-Box-remote.XXXXXX) || die "$(tr_msg run_remote_bash_script_tmpfile_failed)"
     if ! curl -fLsS --connect-timeout 10 -m 120 "$url" -o "$tmp"; then
         rm -f "$tmp"
-        die "远程脚本下载失败: $label"
+        die "$(tprintf run_remote_bash_script_download_failed "$label")"
     fi
     chmod 600 "$tmp"
     sha=$(sha256sum "$tmp" | awk '{print $1}')
     msg "${YELLOW}[*] Remote script: ${label}${NC}"
     msg "${YELLOW}[*] Source: ${url}${NC}"
     msg "${YELLOW}[*] SHA256: ${sha}${NC}"
-    bash -n "$tmp" || { rm -f "$tmp"; die "远程脚本语法校验失败: $label"; }
+    bash -n "$tmp" || { rm -f "$tmp"; die "$(tprintf run_remote_bash_script_syntax_failed "$label")"; }
     confirm_remote_script_hash "$label" "$url" "$sha" || { rm -f "$tmp"; msg "${YELLOW}[*] Remote script execution canceled: ${label}${NC}"; return 130; }
     # Third-party code is explicitly opt-in, but must not inherit any exported
     # controller credentials (including secrets unknown to this script). Start
@@ -38364,7 +39492,7 @@ sni_load_candidate_seed() {
         if cat -- "$normalized" > "$output"; then
             if [[ $EUID -eq 0 && -d "$ABOX_DIR" && ! -L "$ABOX_DIR" ]]; then
                 if ! sni_store_candidate_cache "$normalized"; then
-                    msg "${YELLOW}[!] SNI 数据已下载并通过格式校验，但无法安全更新本地缓存；本次测试将使用临时校验副本。${NC}"
+                    msg "${YELLOW}[!] $(tr_msg sni_load_candidate_seed_cache_update_failed)${NC}"
                 fi
             fi
             rm -f -- "$downloaded" "$normalized"
@@ -38377,7 +39505,7 @@ sni_load_candidate_seed() {
         { [[ $EUID -ne 0 ]] || { path_owned_by_root "$cache" && path_mode_has_no_group_other_write "$cache" && path_parent_chain_safe "$cache"; }; } && \
         sni_normalize_candidate_file "$cache" "$normalized"; then
         cat -- "$normalized" > "$output" || { rm -f -- "$downloaded" "$normalized"; return 1; }
-        msg "${YELLOW}[!] SNI 数据下载失败或未通过校验；使用上次通过校验的本地缓存。${NC}"
+        msg "${YELLOW}[!] $(tr_msg sni_load_candidate_seed_use_cached)${NC}"
         rm -f -- "$downloaded" "$normalized"
         return 0
     fi
@@ -38387,7 +39515,7 @@ sni_load_candidate_seed() {
     local_seed="${script_dir:+$script_dir/data/sni-candidates.txt}"
     if [[ -n "$local_seed" && -f "$local_seed" && ! -L "$local_seed" ]] && sni_normalize_candidate_file "$local_seed" "$normalized"; then
         cat -- "$normalized" > "$output" || { rm -f -- "$downloaded" "$normalized"; return 1; }
-        msg "${YELLOW}[!] SNI 在线数据不可用；使用随脚本提供的本地候选文件。${NC}"
+        msg "${YELLOW}[!] $(tr_msg sni_load_candidate_seed_use_bundled)${NC}"
         rm -f -- "$downloaded" "$normalized"
         return 0
     fi
@@ -38894,10 +40022,10 @@ sni_auto_select_default() {
 
     rm -rf -- "$workdir"
     if valid_sni "$selected"; then
-        printf '[SNI auto] 已按本机 TLS/SAN/ALPN 实测和 VPS ASN/地区评分选择 %s。\n' "$selected" >&2
+        printf '[SNI auto] %s\n' "$(tprintf sni_auto_select_default_chosen "$selected")" >&2
         printf '%s\n' "$selected"
     else
-        printf '[SNI auto] 未找到通过深度验证的候选；正在单独验证 Amazon 回退。\n' >&2
+        printf '[SNI auto] %s\n' "$(tr_msg sni_auto_select_default_amazon_fallback)" >&2
         sni_verified_amazon_fallback
     fi
 }
@@ -38921,7 +40049,7 @@ sni_render_ranked_report() {
     local report_file="${1:-}" requested_limit="${2:-100}" display_dir selected_file
     local row score domain app ttfb total http code ip tls13 alpn san asn country asnmatch samecountry org cdnpenalty tier
     local bucket count color heading rank local_bucket_file
-    [[ -s "$report_file" ]] || { msg "${YELLOW}[!] 没有可显示的 SNI 测试记录。${NC}"; return 1; }
+    [[ -s "$report_file" ]] || { msg "${YELLOW}[!] $(tr_msg sni_render_ranked_report_no_records)${NC}"; return 1; }
     valid_decimal_upto "$requested_limit" 200 || requested_limit=100
     (( 10#$requested_limit >= 1 )) || requested_limit=100
     display_dir=$(mktemp -d /tmp/A-Box-sni-display.XXXXXX) || return 1
@@ -39120,7 +40248,7 @@ show_sni_preference_records() {
                 msg "${YELLOW}$(tprintf sr_saved "$profile" "$f" "$mtime")${NC}"
                 ;;
         esac
-        sni_render_ranked_report "$f" "$topn" || msg "${YELLOW}[!] 无法读取该记录的分级结果。${NC}"
+        sni_render_ranked_report "$f" "$topn" || msg "${YELLOW}[!] $(tr_msg show_sni_preference_records_unreadable)${NC}"
         shown=1
     done
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
@@ -39132,13 +40260,13 @@ show_sni_preference_records() {
 
 run_local_sni_benchmark() {
     if confirm_yes_no "$(tr_msg confirm_local_sni_full)"; then
-        run_builtin_sni_radar 'full' 'Local SNI preference / 本地 SNI 优选'
+        run_builtin_sni_radar 'full' "$(tr_msg run_local_sni_benchmark_title)"
     fi
 }
 
 run_local_sni_mini_benchmark() {
     if confirm_yes_no "$(tr_msg confirm_local_sni_mini)"; then
-        run_builtin_sni_radar 'mini' 'Mini host local SNI preference / 微型主机本地 SNI 优选'
+        run_builtin_sni_radar 'mini' "$(tr_msg run_local_sni_mini_benchmark_title)"
     fi
 }
 
@@ -39200,7 +40328,7 @@ rollback_abox_new_swap() {
     local fstab_backup="${1:-}" rollback_tmp=''
     if [[ -n "$fstab_backup" && -f "$fstab_backup" && ! -L "$fstab_backup" ]]; then
         if ! cp -a "$fstab_backup" /etc/fstab; then
-            msg "${RED}[!] Swap 回滚无法恢复 /etc/fstab；保留现状以避免制造更严重的不一致。${NC}" >&2
+            msg "${RED}[!] $(tr_msg rollback_abox_new_swap_fstab_unrecoverable)${NC}" >&2
             return 1
         fi
     else
@@ -39597,7 +40725,7 @@ abox_zram_teardown() {
     # R5C13-04: a persistence failure must not be swallowed while
     # the helper is deleted (that orphans a still-enabled boot unit).
     if (( persist_rc != 0 )); then
-        msg "${YELLOW}[!] zram 开机持久化删除失败，已保留 abox-zram 助手与配置以便重试。${NC}" >&2
+        msg "${YELLOW}[!] $(tr_msg abox_zram_teardown_persist_remove_failed)${NC}" >&2
         return 1
     fi
     if (( stop_rc == 0 )); then
@@ -39605,13 +40733,13 @@ abox_zram_teardown() {
         rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state 2>/dev/null || _rm_rc=$?
         for _p in /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state; do
             if [[ -e "$_p" || -L "$_p" ]]; then
-                msg "${YELLOW}[!] zram 清理失败，路径仍存在：${_p}。请检查后重试。${NC}" >&2
+                msg "${YELLOW}[!] $(tprintf abox_zram_teardown_path_remains "${_p}")${NC}" >&2
                 _left=1
             fi
         done
         if (( _rm_rc != 0 || _left != 0 )); then
             if (( _left == 0 )); then
-                msg "${YELLOW}[!] zram 助手与配置删除命令失败，无法确认清理完成，请检查后重试。${NC}" >&2
+                msg "${YELLOW}[!] $(tr_msg abox_zram_teardown_helper_remove_failed)${NC}" >&2
             fi
             return 1
         fi
@@ -39634,20 +40762,20 @@ abox_zram_teardown() {
         rm -f /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state 2>/dev/null || _rm_rc=$?
         for _p in /usr/local/sbin/abox-zram /etc/ddr/zram.conf /etc/ddr/zram.state; do
             if [[ -e "$_p" || -L "$_p" ]]; then
-                msg "${YELLOW}[!] zram 清理失败，路径仍存在：${_p}。请检查后重试。${NC}" >&2
+                msg "${YELLOW}[!] $(tprintf abox_zram_teardown_path_remains "${_p}")${NC}" >&2
                 _left=1
             fi
         done
         if (( _rm_rc != 0 || _left != 0 )); then
             if (( _left == 0 )); then
-                msg "${YELLOW}[!] zram 助手与配置删除命令失败，无法确认清理完成，请检查后重试。${NC}" >&2
+                msg "${YELLOW}[!] $(tr_msg abox_zram_teardown_helper_remove_failed)${NC}" >&2
             fi
             return 1
         fi
-        msg "${YELLOW}[!] zram 停止时无活动设备（陈旧状态记录），已清理助手与配置。${NC}" >&2
+        msg "${YELLOW}[!] $(tr_msg abox_zram_teardown_stale_stopped)${NC}" >&2
         return 0
     fi
-    msg "${YELLOW}[!] zram 交换区未能停止，已保留 abox-zram 助手与配置以便重试。${NC}" >&2
+    msg "${YELLOW}[!] $(tr_msg abox_zram_teardown_stop_failed)${NC}" >&2
     return 1
 }
 
@@ -39782,16 +40910,16 @@ EOF_ZRAM_RC
 
 remove_zram_swap() {
     if abox_zram_teardown; then
-        msg "${GREEN}zram 已移除（A-Box 创建的配置与自启已清理）。${NC}"
+        msg "${GREEN}$(tr_msg remove_zram_swap_removed)${NC}"
     else
-        msg "${RED}zram 停止失败，交换区仍在运行；助手与配置已保留以便重试。${NC}"
+        msg "${RED}$(tr_msg remove_zram_swap_stop_failed)${NC}"
     fi
     swapon --show || true
     pause_return
 }
 
 swap_status_show() {
-    msg "${BOLD}${GREEN}当前交换状态 / Swap Status${NC}"
+    msg "${BOLD}${GREEN}$(tr_msg swap_status_show_title)${NC}"
     swapon --show || true
     if command -v zramctl >/dev/null 2>&1; then zramctl || true; fi
     free -m | grep -iE '^(Mem|Swap|内存|交换)' || free -m || true
@@ -39803,7 +40931,7 @@ swap_menu() {
     while true; do
         clear
         msg "${CYAN}======================================================================${NC}"
-        msg "${BOLD}${GREEN}交换内存管理 / Swap Manager${NC}"
+        msg "${BOLD}${GREEN}$(tr_msg swap_menu_title)${NC}"
         msg "${CYAN}======================================================================${NC}"
         msg " ${CYAN}1.${NC}  $(tr_msg swap_opt_1)"
         msg " ${CYAN}2.${NC}  $(tr_msg swap_opt_2)"
@@ -39819,9 +40947,9 @@ swap_menu() {
             4) remove_zram_swap ;;
             5)
                 if [[ -f "$ABOX_DIR/.swapfile.managed" ]]; then
-                    if remove_abox_swap; then msg "${GREEN}磁盘 Swap 文件已移除。${NC}"; else msg "${RED}移除失败，请检查 /swapfile 与 /etc/fstab。${NC}"; fi
+                    if remove_abox_swap; then msg "${GREEN}$(tr_msg swap_menu_disk_removed)${NC}"; else msg "${RED}$(tr_msg swap_menu_remove_failed)${NC}"; fi
                 else
-                    msg "${YELLOW}没有 A-Box 创建的磁盘 Swap 文件。${NC}"
+                    msg "${YELLOW}$(tr_msg swap_menu_no_disk_swap)${NC}"
                 fi
                 pause_return
                 ;;
@@ -39838,7 +40966,7 @@ __abox_restore_fstab_from_swap_backup() {
     if cp -a "$backup" /etc/fstab; then
         return 0
     fi
-    msg "${RED}[!] Swap 清理失败且 /etc/fstab 自动恢复也失败；保留恢复备份：${backup}${NC}" >&2
+    msg "${RED}[!] $(tprintf __abox_restore_fstab_from_swap_backup_failed "${backup}")${NC}" >&2
     return 1
 }
 remove_abox_swap() {
@@ -39902,15 +41030,15 @@ remove_abox_swap() {
             # R1-13-F2: a failed restore must not be swallowed
             # with the backup deleted and fstab claimed restored.
             if ! __abox_restore_fstab_from_swap_backup "$backup"; then
-                msg "${RED}[!] /swapfile 删除失败，且 /etc/fstab 恢复失败；已保留 fstab 备份：${backup}，请手动恢复。${NC}" >&2
+                msg "${RED}[!] $(tprintf remove_abox_swap_delete_and_restore_failed "${backup}")${NC}" >&2
                 return 1
             fi
             if (( swap_active == 1 )); then
                 # The swap was active before we turned it off: bring it
                 # back, or the failed removal leaves it inactive.
-                swapon /swapfile 2>/dev/null || msg "${RED}[!] /swapfile 删除失败，且重新激活亦失败；交换区目前未激活。${NC}" >&2
+                swapon /swapfile 2>/dev/null || msg "${RED}[!] $(tr_msg remove_abox_swap_delete_and_reactivate_failed)${NC}" >&2
             fi
-            msg "${YELLOW}[!] /swapfile 删除失败；已恢复 /etc/fstab，保留现有 Swap 文件与所有权标记。${NC}" >&2
+            msg "${YELLOW}[!] $(tr_msg remove_abox_swap_delete_failed_kept)${NC}" >&2
             rm -f "$backup" || true
             return 1
         fi
@@ -39920,7 +41048,7 @@ remove_abox_swap() {
         # and the managed block is already stripped, so restoring would
         # resurrect a reference to a deleted file. Keep the marker so a
         # later uninstall can finish the cleanup, and say so loudly.
-        msg "${YELLOW}[!] Swap 所有权标记删除失败；/etc/fstab 托管区块已删、/swapfile 已删，保持标记以便下次卸载完成清理（也可手动删除标记）。${NC}" >&2
+        msg "${YELLOW}[!] $(tr_msg remove_abox_swap_marker_remove_failed)${NC}" >&2
         rm -f "$backup" || true
         return 1
     fi
@@ -40684,27 +41812,27 @@ commit_crontab_if_unchanged() {
 install_abox_cron_block() {
     local name="$1" line="$2" current tmp
     [[ -n "$name" && -n "$line" ]] || return 1
-    current=$(mktemp) || die 'crontab 当前内容临时文件创建失败。'
-    tmp=$(mktemp) || { rm -f -- "$current"; die 'crontab 临时文件创建失败。'; }
+    current=$(mktemp) || die "$(tr_msg install_abox_cron_block_current_tmp_failed)"
+    tmp=$(mktemp) || { rm -f -- "$current"; die "$(tr_msg install_abox_cron_block_tmp_failed)"; }
     if ! read_crontab_to_file "$current"; then
         rm -f -- "$current" "$tmp"
-        die '无法读取现有 crontab；为避免覆盖用户任务，已中止。'
+        die "$(tr_msg install_abox_cron_block_read_failed)"
     fi
     if ! strip_abox_cron_blocks_from_file "$current" "$tmp" "$name"; then
         rm -f -- "$current" "$tmp"
-        die "现有 crontab 中的 A-Box ${name} 区块格式异常；为避免破坏计划任务，已中止。"
+        die "$(tprintf install_abox_cron_block_bad_format "${name}")"
     fi
     {
         printf '%s\n' "# A-Box ${name} BEGIN"
         printf '%s\n' "$line"
         printf '%s\n' "# A-Box ${name} END"
-    } >> "$tmp" || { rm -f -- "$current" "$tmp"; die 'crontab 临时内容写入失败。'; }
+    } >> "$tmp" || { rm -f -- "$current" "$tmp"; die "$(tr_msg install_abox_cron_block_tmp_write_failed)"; }
     local commit_rc=0
     commit_crontab_if_unchanged "$current" "$tmp" || commit_rc=$?
     if (( commit_rc != 0 )); then
         rm -f -- "$current" "$tmp"
-        if (( commit_rc == 2 )); then die 'crontab 在提交前发生并发修改；已中止以保护外部任务。'; fi
-        die 'crontab 写入失败；原有 crontab 未被覆盖。'
+        if (( commit_rc == 2 )); then die "$(tr_msg install_abox_cron_block_concurrent_change)"; fi
+        die "$(tr_msg install_abox_cron_block_commit_failed)"
     fi
     rm -f -- "$current" "$tmp"
 }
@@ -40712,8 +41840,8 @@ install_abox_cron_block() {
 remove_abox_cron_block() {
     local name="$1" current tmp rc=0
     [[ -n "$name" ]] || return 1
-    current=$(mktemp) || die 'crontab 当前内容临时文件创建失败。'
-    tmp=$(mktemp) || { rm -f -- "$current"; die 'crontab 临时文件创建失败。'; }
+    current=$(mktemp) || die "$(tr_msg remove_abox_cron_block_current_tmp_failed)"
+    tmp=$(mktemp) || { rm -f -- "$current"; die "$(tr_msg remove_abox_cron_block_tmp_failed)"; }
     if ! read_crontab_to_file "$current"; then
         rm -f -- "$current" "$tmp"
         return 1
@@ -40762,7 +41890,7 @@ report_unrecognized_abox_cron_lines() {
         # Never pin LC_ALL=C here: it would also narrow the entry
         # regex [[:space:]] match (under-match direction change).
         if [[ "$line" =~ $_abox_report_skip_re ]]; then continue; fi
-        printf '%s\n' "[!] A-Box cron residual (保留的已知／疑似管理路径引用): $line" >&2
+        printf '%s\n' "[!] $(tprintf report_unrecognized_abox_cron_lines_residual "$line")" >&2
     done < "$file"
     # D14: unknown A-Box blocks survive a full clear by design (never
     # deleted); report them so a kept block is never silent.
@@ -40778,8 +41906,8 @@ report_unrecognized_abox_cron_lines() {
 
 remove_all_abox_cron_blocks() {
     local current tmp rc=0
-    current=$(mktemp) || die 'crontab 当前内容临时文件创建失败。'
-    tmp=$(mktemp) || { rm -f -- "$current"; die 'crontab 临时文件创建失败。'; }
+    current=$(mktemp) || die "$(tr_msg remove_all_abox_cron_blocks_current_tmp_failed)"
+    tmp=$(mktemp) || { rm -f -- "$current"; die "$(tr_msg remove_all_abox_cron_blocks_tmp_failed)"; }
     if ! read_crontab_to_file "$current"; then
         rm -f -- "$current" "$tmp"
         return 1
@@ -41420,9 +42548,9 @@ prepare_backup_auth_for_manual_restore() {
         sha256_in_allowlist "$fingerprint" "$ABOX_BACKUP_KEY_SHA256_ALLOWLIST" || return 1
     else
         [[ -t 0 ]] || return 1
-        msg "${YELLOW}[!] 此备份需要导入独立保存的恢复密钥。密钥指纹: ${fingerprint}${NC}"
-        msg "${YELLOW}[!] 持有归档、HMAC 与恢复密钥的人可以构造受该密钥认证的 root 恢复内容；只应导入你自己保管的密钥。${NC}"
-        read -r -p '输入 IMPORT-RECOVERY-KEY 以导入并继续: ' answer
+        msg "${YELLOW}[!] $(tprintf prepare_backup_auth_for_manual_restore_key_needed "${fingerprint}")${NC}"
+        msg "${YELLOW}[!] $(tr_msg prepare_backup_auth_for_manual_restore_key_warning)${NC}"
+        read -r -p "$(tr_msg prepare_backup_auth_for_manual_restore_import_prompt)" answer
         [[ "$answer" == 'IMPORT-RECOVERY-KEY' ]] || return 130
     fi
     install_recovery_backup_key "$recovery" || return 1
@@ -42503,7 +43631,7 @@ __abox_backup_copy_path() {
 }
 backup_current_config() {
     local ts unique backup_dir work root tarball archive_tmp backup_failed=0 backup_fw_unsupported=0 backend srv path _abox_links
-    valid_backup_retention_count "$BACKUP_RETENTION_COUNT" || die 'BACKUP_RETENTION_COUNT 无效；必须是 0-1000 的整数。'
+    valid_backup_retention_count "$BACKUP_RETENTION_COUNT" || die "$(tr_msg backup_current_config_retention_invalid)"
     ts=$(date +%Y%m%d-%H%M%S); unique=$(openssl rand -hex 3 2>/dev/null || printf '%s' "$$")
     backup_dir="${1:-$ABOX_DIR/backups}"
     [[ "$backup_dir" == /* ]] || die 'Backup directory must be an absolute path.'
@@ -43108,7 +44236,7 @@ backup_restore_menu() {
     while true; do
     clear
     msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}Backup / Restore / 配置备份与恢复${NC}"
+    msg "${BOLD}${GREEN}$(tr_msg backup_restore_menu_title)${NC}"
     msg "${CYAN}======================================================================${NC}"
     case "${ABOX_LANG:-zh}" in
         en)
@@ -43204,12 +44332,12 @@ export_diagnostic_bundle() {
     ts=$(date +%Y%m%d-%H%M%S)
     diag_dir="$ABOX_DIR/diagnostics"
     work=$(mktemp -d /tmp/A-Box-diagnostic.XXXXXX) || die 'Diagnostic temp directory creation failed.'
-    if [[ -L "$diag_dir" ]]; then rm -rf -- "$work"; die '诊断目录是符号链接，拒绝生成诊断包。'; fi
-    mkdir -p "$diag_dir" "$work/logs" || { rm -rf -- "$work"; die '诊断目录创建失败。'; }
-    chmod 700 "$diag_dir" 2>/dev/null || { rm -rf -- "$work"; die '诊断目录权限设置失败。'; }
+    if [[ -L "$diag_dir" ]]; then rm -rf -- "$work"; die "$(tr_msg export_diagnostic_bundle_symlink_refused)"; fi
+    mkdir -p "$diag_dir" "$work/logs" || { rm -rf -- "$work"; die "$(tr_msg export_diagnostic_bundle_mkdir_failed)"; }
+    chmod 700 "$diag_dir" 2>/dev/null || { rm -rf -- "$work"; die "$(tr_msg export_diagnostic_bundle_chmod_failed)"; }
     # R5C14-01: refuse a diagnostic directory not owned by root;
     # an attacker-owned directory lets its owner swap symlinks in.
-    [[ "$(stat -c %u "$diag_dir" 2>/dev/null || echo -1)" == 0 ]] || { rm -rf -- "$work"; die '诊断目录非 root 属主，拒绝生成诊断包。'; }
+    [[ "$(stat -c %u "$diag_dir" 2>/dev/null || echo -1)" == 0 ]] || { rm -rf -- "$work"; die "$(tr_msg export_diagnostic_bundle_nonroot_refused)"; }
 
     msg "${YELLOW}[*] Collecting diagnostic information with secret redaction...${NC}"
     # D2: per-file redaction/omission manifest. Every file in the bundle
@@ -43313,7 +44441,7 @@ export_diagnostic_bundle() {
     # directory and renames it over the bundle, so even a swap
     # between this check and the rename cannot be followed:
     # rename replaces the symlink entry instead of its target.
-    if [[ -L "$diag_dir" || -L "$bundle" ]]; then rm -rf -- "$work"; die '诊断目录或目标文件是符号链接，拒绝生成诊断包。'; fi
+    if [[ -L "$diag_dir" || -L "$bundle" ]]; then rm -rf -- "$work"; die "$(tr_msg export_diagnostic_bundle_target_symlink_refused)"; fi
     tmp_bundle=$(mktemp "$diag_dir/.A-Box-diagnostic-${ts}.XXXXXX") || { rm -rf -- "$work"; die 'Diagnostic bundle temp file creation failed.'; }
     tar -C "$work" -czf "$tmp_bundle" . || { rm -rf -- "$work"; rm -f "$tmp_bundle"; die 'Diagnostic bundle creation failed.'; }
     chmod 600 "$tmp_bundle" 2>/dev/null || { rm -rf -- "$work"; rm -f "$tmp_bundle"; die 'Diagnostic bundle permission hardening failed.'; }
@@ -44512,7 +45640,7 @@ wallos_pull_or_restore_image() {
                 # for downstream checks (require ^bellamy/wallos:[A-Za-z0-9._-]+$).
                 # U115: the verified digest is the identity; the tag created
                 # alongside is a convenience alias only, never the run identity.
-                if abox_run_wait '拉取 Wallos 镜像' docker pull "$_mirror_digest" && docker tag "$_mirror_digest" "bellamy/wallos:$image_tag"; then
+                if abox_run_wait "$(tr_msg wallos_pull_or_restore_image_pulling)" docker pull "$_mirror_digest" && docker tag "$_mirror_digest" "bellamy/wallos:$image_tag"; then
                     wallos_record_image "bellamy/wallos:$image_tag"
                     WALLOS_IMAGE_RESULT="$_mirror_digest"
                     WALLOS_IMAGE_VERSION="$image_tag"
@@ -44528,7 +45656,7 @@ wallos_pull_or_restore_image() {
         # Skip it and fall through to the manifest-verified recovery path.
         if [[ "${ABOX_SIGNING_ENFORCE:-1}" == '1' ]]; then
             msg "${YELLOW}Wallos upstream digest-pinned path did not provide an image; signing enforcement is ON, so unsigned tag pull is skipped.${NC}"
-        elif abox_run_wait '拉取 Wallos 镜像' docker pull "bellamy/wallos:$image_tag"; then
+        elif abox_run_wait "$(tr_msg wallos_pull_or_restore_image_pulling)" docker pull "bellamy/wallos:$image_tag"; then
             wallos_record_image "bellamy/wallos:$image_tag"
             # P2-1: record RepoDigest for auditability (mutable tag alone is not identity).
             # G11 FIX: Use digest reference instead of mutable tag to prevent TOCTOU.
@@ -45733,7 +46861,7 @@ wallos_public_urls() {
     if [[ "$host_ip" == 127.0.0.1 ]]; then
         local _pub="${GLOBAL_PUBLIC_IP:-}"
         [[ -z "$_pub" ]] && _pub=$(curl -4fsS --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null || true)
-        [[ -z "$_pub" ]] && _pub='<VPS公网IP>'
+        [[ -z "$_pub" ]] && _pub="$(tr_msg wallos_public_urls_vps_ip)"
         local _who="${SUDO_USER:-$(whoami)}"
         msg "${GREEN}$(tprintf wl_pu_local_url "$port")${NC}"; msg "${YELLOW}$(tr_msg wl_pu_local_warn)${NC}"
         msg "${CYAN}$(tr_msg wl_pu_ssh_t)${NC}"; msg "  ssh -L $port:127.0.0.1:$port $_who@$_pub"; msg "${CYAN}$(tprintf wl_pu_ssh_then "$port")${NC}"
@@ -47665,7 +48793,7 @@ wallos_install_or_update() {
             cp -a "$WALLOS_CF_TOKEN_FILE" "$WALLOS_DIR/.upgrade-transaction.cftoken" || { msg "${RED}[!] Failed to back up the existing tunnel token; refusing to overwrite it.${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
             chmod 600 "$WALLOS_DIR/.upgrade-transaction.cftoken" || { msg "${RED}[!] Failed to secure the tunnel token backup; refusing to overwrite it.${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
         fi
-            write_file_atomically_from_stdin "$WALLOS_CF_TOKEN_FILE" 600 <<< "TUNNEL_TOKEN=${cftoken}" || { msg "${RED}CF 隧道令牌保存失败。${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+            write_file_atomically_from_stdin "$WALLOS_CF_TOKEN_FILE" 600 <<< "TUNNEL_TOKEN=${cftoken}" || { msg "${RED}$(tr_msg wallos_install_or_update_token_save_failed)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
             cftoken=''
         fi
         if ! wallos_cftunnel_setup "$cfhost"; then
@@ -48435,7 +49563,7 @@ EOF_TLS
         # N-18 fix: validate the base64 SHA-256 fingerprint before embedding.
         # Must be 44-char base64 (32 bytes) to prevent JSON injection via .env.
         if [[ -z "${HY2_CERT_PUBKEY_SHA256_B64:-}" || ! "${HY2_CERT_PUBKEY_SHA256_B64}" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
-            msg "${RED}[!] HY2_CERT_PUBKEY_SHA256_B64 格式无效，拒绝生成 sing-box TLS 配置。${NC}" >&2
+            msg "${RED}[!] $(tr_msg singbox_hy2_tls_json_pubkey_invalid)${NC}" >&2
             return 1
         fi
         cat <<EOF_TLS
@@ -48956,8 +50084,8 @@ write_clash_yaml() {
     fi
     [[ -n "$out" && "$out" == /* ]] || return 1
     if [[ "${HY2_HOP:-}" == true && ( "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ) ]]; then
-        valid_hy2_clash_ports "${HY2_CLASH_PORTS:-}" || { msg "${YELLOW}[!] Hysteria 2 端口跳跃状态无效：HY2_CLASH_PORTS 缺失或非法，拒绝生成 Clash/Mihomo 配置。${NC}"; return 1; }
-        valid_canonical_port "${HY2_BASE_PORT:-}" || { msg "${YELLOW}[!] Hysteria 2 基础端口无效，拒绝生成 Clash/Mihomo 配置。${NC}"; return 1; }
+        valid_hy2_clash_ports "${HY2_CLASH_PORTS:-}" || { msg "${YELLOW}[!] $(tr_msg write_clash_yaml_hy2_ports_invalid)${NC}"; return 1; }
+        valid_canonical_port "${HY2_BASE_PORT:-}" || { msg "${YELLOW}[!] $(tr_msg write_clash_yaml_base_port_invalid)${NC}"; return 1; }
     fi
     [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="$HY2_DOMAIN"
     clash_hop_port="${HY2_BASE_PORT:-443}"
@@ -49288,12 +50416,12 @@ generate_qr() {
     local url=$1
     ensure_qrencode || true
     if command -v qrencode >/dev/null 2>&1; then
-        printf '\n%s\n' "${CYAN}================ 扫码导入 / Scan QR Code =================${NC}"
+        printf '\n%s\n' "${CYAN}$(tr_msg generate_qr_scan_banner)${NC}"
         printf '%s' "$url" | qrencode -s 1 -m 2 -t UTF8
         printf '%s\n\n' "${CYAN}==========================================================${NC}"
     elif [[ -z "${_QR_MISSING_WARNED:-}" ]]; then
         _QR_MISSING_WARNED=1
-        msg "${YELLOW}[!] 未检测到 qrencode，跳过二维码显示。安装后进 12 号菜单重看即有：${NC}"
+        msg "${YELLOW}[!] $(tr_msg generate_qr_qrencode_missing)${NC}"
         msg "${YELLOW}    Debian/Ubuntu: sudo apt install -y qrencode${NC}"
         msg "${YELLOW}    Rocky/Alma/Fedora: sudo dnf install -y qrencode${NC}"
         msg "${YELLOW}    Alpine: sudo apk add libqrencode-tools (<=3.18: libqrencode)${NC}"
@@ -49363,7 +50491,7 @@ show_standalone_links() {
         for _lf in "${ABOX_DIR:-/etc/ddr}/standalone-links.d"/*.link; do
             [[ -f "$_lf" ]] || continue
             if (( ! _shown_sa )); then
-                msg "${YELLOW}[ 独立协议节点 / Standalone Protocols ]${NC}"
+                msg "${YELLOW}$(tr_msg show_standalone_links_title)${NC}"
                 _shown_sa=1
             fi
             _lt=$(sed -n '1p' "$_lf")
@@ -49826,18 +50954,18 @@ extract_abox_build_metadata() {
 
 validate_ota_version_direction() {
     local file="$1" metadata remote_build remote_epoch
-    metadata=$(extract_abox_build_metadata "$file") || { printf '%s\n' 'OTA 脚本缺少可信的 ABOX_BUILD/ABOX_BUILD_EPOCH 元数据。' >&2; return 1; }
+    metadata=$(extract_abox_build_metadata "$file") || { printf '%s\n' "$(tr_msg validate_ota_version_direction_missing_metadata)" >&2; return 1; }
     IFS='|' read -r remote_build remote_epoch <<< "$metadata"
     # The metadata travels as build|epoch; a '|' inside build would shift
     # the epoch field, so re-validate it here before any arithmetic use
     # (an invalid value must fail, never fall through as "not a downgrade").
     if [[ -z "$remote_build" || ! "$remote_epoch" =~ ^[0-9]+$ || ${#remote_epoch} -gt 18 ]]; then
-        printf '%s\n' 'OTA 脚本元数据非法（build/epoch），已拒绝。' >&2
+        printf '%s\n' "$(tr_msg validate_ota_version_direction_bad_metadata)" >&2
         return 1
     fi
     if (( 10#$remote_epoch < 10#$ABOX_BUILD_EPOCH )); then
-        [[ "${ABOX_ALLOW_DOWNGRADE:-0}" == 1 ]] || { printf '%s\n' "拒绝 OTA 降级: local=${ABOX_BUILD}(${ABOX_BUILD_EPOCH}) remote=${remote_build}(${remote_epoch})。如确需降级，显式设置 ABOX_ALLOW_DOWNGRADE=1 并配置 SHA256 allowlist。" >&2; return 1; }
-        [[ -n "${ABOX_OTA_SHA256_ALLOWLIST:-}" ]] || { printf '%s\n' '允许降级时必须同时设置 ABOX_OTA_SHA256_ALLOWLIST。' >&2; return 1; }
+        [[ "${ABOX_ALLOW_DOWNGRADE:-0}" == 1 ]] || { printf '%s\n' "$(tprintf validate_ota_version_direction_downgrade_refused "${ABOX_BUILD}" "${ABOX_BUILD_EPOCH}" "${remote_build}" "${remote_epoch}")" >&2; return 1; }
+        [[ -n "${ABOX_OTA_SHA256_ALLOWLIST:-}" ]] || { printf '%s\n' "$(tr_msg validate_ota_version_direction_allowlist_required)" >&2; return 1; }
     fi
     OTA_REMOTE_BUILD="$remote_build"
     OTA_REMOTE_EPOCH="$remote_epoch"
@@ -49854,7 +50982,7 @@ confirm_ota_script_hash() {
         return 1
     fi
     if [[ "${ABOX_ASSUME_YES_OTA:-}" == '1' ]]; then
-        printf '%s\n' 'ABOX_ASSUME_YES_OTA 已禁用；非交互更新必须使用 ABOX_OTA_SHA256_ALLOWLIST。' >&2
+        printf '%s\n' "$(tr_msg confirm_ota_script_hash_assume_yes_disabled)" >&2
         return 1
     fi
     case "${ABOX_LANG:-zh}" in
@@ -50017,16 +51145,16 @@ force_update_geo() {
     init_system_environment
     load_optional_abox_env_or_die
     if ! abox_owns_service xray; then
-        msg "${YELLOW}[!] 未检测到 A-Box 托管的 Xray；不会创建或运行 Geo 更新任务。${NC}"
+        msg "${YELLOW}[!] $(tr_msg force_update_geo_no_xray)${NC}"
         pause_return
         return 0
     fi
     [[ -x "$ABOX_DIR/geo_update.sh" ]] || setup_geo_cron
-    msg "${YELLOW}[*] 正在拉取 Loyalsoldier Geo 资源并执行校验...${NC}"
+    msg "${YELLOW}[*] $(tr_msg force_update_geo_fetching)${NC}"
     if bash "$ABOX_DIR/geo_update.sh"; then
-        msg "${GREEN}Xray Geo 资源更新与校验成功。${NC}"
+        msg "${GREEN}$(tr_msg force_update_geo_done)${NC}"
     else
-        msg "${RED}[!] Xray Geo 资源下载失败或校验未通过。${NC}"
+        msg "${RED}[!] $(tr_msg force_update_geo_failed)${NC}"
     fi
     pause_return
 }
@@ -50202,7 +51330,7 @@ core_ports_listening() {
     local lo hi p enum_out enum_rc
     enum_out=$(core_expected_listen_ports "$core" "$cfg" 2>/dev/null); enum_rc=$?
     if (( enum_rc != 0 )); then
-        msg "${RED}[!] ${core} 监听枚举失败（${cfg}）。${NC}"
+        msg "${RED}[!] $(tprintf core_ports_listening_enum_failed "${core}" "${cfg}")${NC}"
         return 1
     fi
     while IFS= read -r spec; do
@@ -50224,7 +51352,7 @@ core_ports_listening() {
             sockpath="${spec#unix/}"
             any=1
             if ! ss -H -lnx 2>/dev/null | awk -v p="$sockpath" '$5 == p {found=1} END{exit !found}'; then
-                msg "${RED}[!] ${core} Unix 套接字 ${sockpath} 未处于监听状态。${NC}"
+                msg "${RED}[!] $(tprintf core_ports_listening_unix_not_listening "${core}" "${sockpath}")${NC}"
                 return 1
             fi
             continue
@@ -50235,12 +51363,12 @@ core_ports_listening() {
         # Single-protocol ss omits the Netid column, so Local Address:Port is $4.
         # shellcheck disable=SC2086
         if ! ss $flags 2>/dev/null | awk -v p=":${port}" '$4 ~ p"$" {found=1} END{exit !found}'; then
-            msg "${RED}[!] ${core} 端口 ${port}/${proto} 未处于监听状态。${NC}"
+            msg "${RED}[!] $(tprintf core_ports_listening_port_not_listening "${core}" "${port}" "${proto}")${NC}"
             return 1
         fi
     done
     if (( any == 0 )); then
-        msg "${RED}[!] ${core} 无预期监听端口。${NC}"
+        msg "${RED}[!] $(tprintf core_ports_listening_no_expected "${core}")${NC}"
         return 1
     fi
     return 0
@@ -50280,7 +51408,7 @@ core_expected_tls_tcp_targets() {
     # inbound whose configured network is UDP-only.
     local core="$1" cfg="$2"
     local _stripped _strip_rc _doc _doc_rc _targets _enum_rc _line _diag
-    [[ -f "$cfg" && ! -L "$cfg" ]] || { msg "${RED}[!] TLS 目标枚举失败：配置文件缺失：${cfg}${NC}" >&2; return 1; }
+    [[ -f "$cfg" && ! -L "$cfg" ]] || { msg "${RED}[!] $(tprintf core_expected_tls_tcp_targets_config_missing "${cfg}")${NC}" >&2; return 1; }
     # R1-F16-1: only xray/singbox use the JSON(C) inbound schema below.
     # Hysteria config is YAML and its primary listener is QUIC/UDP;
     # other cores are not enumerated here. Return before parsing so an
@@ -50290,10 +51418,10 @@ core_expected_tls_tcp_targets() {
         *) return 0 ;;
     esac
     _stripped=$(jsonc_strip_comments "$cfg" 2>/dev/null); _strip_rc=$?
-    (( _strip_rc == 0 )) || { msg "${RED}[!] TLS 目标枚举失败：无法剥离注释：${cfg}${NC}" >&2; return 1; }
+    (( _strip_rc == 0 )) || { msg "${RED}[!] $(tprintf core_expected_tls_tcp_targets_strip_failed "${cfg}")${NC}" >&2; return 1; }
     _doc=$(printf '%s' "$_stripped" | jq -c '.' 2>/dev/null); _doc_rc=$?
-    (( _doc_rc == 0 )) || { msg "${RED}[!] TLS 目标枚举失败：无法解析配置：${cfg}${NC}" >&2; return 1; }
-    printf '%s' "$_doc" | jq -e 'type == "object" and ((.inbounds // null) == null or (.inbounds | type == "array"))' >/dev/null 2>&1 || { msg "${RED}[!] TLS 目标枚举失败：配置结构异常：${cfg}${NC}" >&2; return 1; }
+    (( _doc_rc == 0 )) || { msg "${RED}[!] $(tprintf core_expected_tls_tcp_targets_parse_failed "${cfg}")${NC}" >&2; return 1; }
+    printf '%s' "$_doc" | jq -e 'type == "object" and ((.inbounds // null) == null or (.inbounds | type == "array"))' >/dev/null 2>&1 || { msg "${RED}[!] $(tprintf core_expected_tls_tcp_targets_bad_shape "${cfg}")${NC}" >&2; return 1; }
     case "$core" in
         xray)
             # R7-F16-5: a string port is normalized before the scalar
@@ -50312,15 +51440,15 @@ core_expected_tls_tcp_targets() {
         # calls this probe for hysteria too -- it must not fail there.
         *) return 0 ;;
     esac
-    (( _enum_rc == 0 )) || { msg "${RED}[!] TLS 目标枚举失败：无法枚举入站：${cfg}${NC}" >&2; return 1; }
+    (( _enum_rc == 0 )) || { msg "${RED}[!] $(tprintf core_expected_tls_tcp_targets_enum_failed "${cfg}")${NC}" >&2; return 1; }
     while IFS= read -r _line || [[ -n "$_line" ]]; do
         [[ -n "$_line" ]] || continue
         _diag=$(printf '%s' "$_line" | jq -r 'if has("diag") then .diag else empty end' 2>/dev/null)
         if [[ -n "$_diag" ]]; then
-            msg "${RED}[!] TLS 目标枚举失败：${_diag}（${cfg}）${NC}" >&2
+            msg "${RED}[!] $(tprintf core_expected_tls_tcp_targets_diag "${_diag}" "${cfg}")${NC}" >&2
             return 1
         fi
-        printf '%s' "$_line" | jq -r '"\(.host)\t\(.port)"' 2>/dev/null || { msg "${RED}[!] TLS 目标枚举失败：目标格式异常：${cfg}${NC}" >&2; return 1; }
+        printf '%s' "$_line" | jq -r '"\(.host)\t\(.port)"' 2>/dev/null || { msg "${RED}[!] $(tprintf core_expected_tls_tcp_targets_bad_target "${cfg}")${NC}" >&2; return 1; }
     done <<< "$_targets"
     return 0
 }
@@ -50339,7 +51467,7 @@ core_tls_smoke_probe() {
     # Valid 50-byte TLS 1.2 ClientHello: Record len 0x002d (45), HandshakeType 0x01 (ClientHello), Handshake len 0x000029 (41).
     while IFS=$'\t' read -r host port || [[ -n "$host" ]]; do
         [[ -z "$host" && -z "$port" ]] && continue
-        [[ -n "$host" && "$port" =~ ^[0-9]+$ ]] || { msg "${RED}[!] ${core} TLS 目标格式异常：${host}:${port}${NC}" >&2; return 1; }
+        [[ -n "$host" && "$port" =~ ^[0-9]+$ ]] || { msg "${RED}[!] $(tprintf core_tls_smoke_probe_bad_target "${core}" "${host}" "${port}")${NC}" >&2; return 1; }
         # Open TCP, send ClientHello, read up to 7 bytes (TLS record header).
         # Only a TLS record proves the data plane is alive: first byte
         # 0x16 (ServerHello, incl. REALITY fallback to a TLS site) or
@@ -50357,7 +51485,7 @@ core_tls_smoke_probe() {
             # Plaintext (or any other record type) must fail.
             [[ "${resp:0:1}" == "$(printf "\x16")" || "${resp:0:1}" == "$(printf "\x15")" ]] || exit 1
         ' _ "$host" "$port" 2>/dev/null; then
-            msg "${RED}[!] ${core} ${host}:${port} 无 TLS 响应（数据面可能异常）。${NC}" >&2
+            msg "${RED}[!] $(tprintf core_tls_smoke_probe_no_response "${core}" "${host}" "${port}")${NC}" >&2
             return 1
         fi
     done < <(printf '%s\n' "$_targets" | awk '!seen[$0]++')
@@ -51336,7 +52464,7 @@ install_core_upgrade_transaction_traps() {
 begin_core_upgrade_transaction() {
     ABOX_LAST_BACKUP=''
     auto_backup_silent 'all-core atomic upgrade' "$ABOX_DIR/backups"
-    [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || die '核心升级前精确备份创建失败。'
+    [[ -n "$ABOX_LAST_BACKUP" && -f "$ABOX_LAST_BACKUP" ]] || die "$(tr_msg begin_core_upgrade_transaction_backup_failed)"
     ABOX_CORE_UPGRADE_ACTIVE=1
     ABOX_CORE_UPGRADE_BACKUP="$ABOX_LAST_BACKUP"
     ABOX_CORE_UPGRADE_TARGETS="$*"
@@ -51368,7 +52496,7 @@ upgrade_current_cores_only() {
         pause_return; return 0
     fi
     msg "${CYAN}======================================================================${NC}"
-    msg "${BOLD}${GREEN}Upgrade current installed proxy cores only / 仅升级当前已安装协议核心${NC}"
+    msg "${BOLD}${GREEN}$(tr_msg upgrade_current_cores_only_title)${NC}"
     msg "${CYAN}======================================================================${NC}"
     msg "Detected A-Box-owned cores: ${targets[*]}"
     msg 'Each staged binary is executed and checked against the current config where supported before atomic replacement.'
@@ -51802,14 +52930,14 @@ enter_runtime() {
         if [[ -f "$0" && -r "$0" && "$0" != 'bash' && "$0" != '-bash' ]] && command -v sudo >/dev/null 2>&1; then
             exec sudo bash "$0" "$@"
         fi
-        die '非 root 管道/标准输入执行无法自动提权；请使用: curl -fsSL <URL> | sudo bash'
+        die "$(tr_msg enter_runtime_pipe_no_sudo)"
     fi
     # Force-heal is call-stack only; never honor a caller-exported env toggle.
     unset ABOX_HEAL_MISSING_MANIFEST 2>/dev/null || true
     # Die-hooks are installed only by in-script transactions; ignore ambient export.
     unset ABOX_DIE_HOOK 2>/dev/null || true
     need_interactive_tty
-    mkdir -p /var/run || die '无法创建 /var/run。'
+    mkdir -p /var/run || die "$(tr_msg enter_runtime_var_run_failed)"
     ensure_abox_dir_owned "$ABOX_DIR"
     acquire_runtime_lock
     # Registry rewrites (default-name normalization) must run under
@@ -51856,18 +52984,18 @@ expected_managed_services() {
 }
 
 prepare_noninteractive_file_operation() {
-    [[ $EUID -eq 0 ]] || die '该操作需要 root。'
-    mkdir -p /run || die '无法创建 /run。'
+    [[ $EUID -eq 0 ]] || die "$(tr_msg prepare_noninteractive_file_operation_root_required)"
+    mkdir -p /run || die "$(tr_msg prepare_noninteractive_file_operation_run_failed)"
     ensure_abox_dir_owned "$ABOX_DIR"
     acquire_runtime_lock
 }
 
 prepare_noninteractive_service_control() {
-    [[ $EUID -eq 0 ]] || die '该操作需要 root。'
-    mkdir -p /var/run || die '无法创建 /var/run。'
+    [[ $EUID -eq 0 ]] || die "$(tr_msg prepare_noninteractive_service_control_root_required)"
+    mkdir -p /var/run || die "$(tr_msg prepare_noninteractive_service_control_var_run_failed)"
     ensure_abox_dir_owned "$ABOX_DIR"
     acquire_runtime_lock
-    if systemd_available; then INIT_SYS='systemd'; elif command -v rc-service >/dev/null 2>&1; then INIT_SYS='openrc'; else die '未检测到 systemd/OpenRC。'; fi
+    if systemd_available; then INIT_SYS='systemd'; elif command -v rc-service >/dev/null 2>&1; then INIT_SYS='openrc'; else die "$(tr_msg prepare_noninteractive_service_control_no_init)"; fi
 }
 
 # BUG-28: hoisted from manual_stop_managed_stack()/manual_start_managed_stack().
@@ -54768,7 +55896,7 @@ main_loop() {
         read -r -p "$(tr_msg main_command)" choice || exit 0
         if [[ "${_menu_lock_released:-0}" == 1 ]]; then
             # A-07: Wait up to 15s for lock (cron helpers hold it briefly); -n caused spurious menu exits.
-            flock -w 15 9 || die '重新获取 A-Box 运行锁失败；可能另有实例已启动。'
+            flock -w 15 9 || die "$(tr_msg main_loop_relock_failed)"
         fi
         unset _menu_lock_released
         case "$choice" in

@@ -38575,7 +38575,7 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)(\b(?:authorization|proxy-authorization)" + _COMMENT_GAP + r":" + _COMMENT_GAP + r")(?:bearer\s+(?:[^\s,;}]*[ \t]*:[ \t]+" + _AUTH_QUOTED_TAIL + _AUTH_EXTRA + r"|[^\s,;}]+" + _AUTH_EXTRA + r")|basic\s+(?:[^\s,;}]*[ \t]*:[ \t]+" + _AUTH_QUOTED_TAIL + _AUTH_EXTRA + r"|[^\s,;}]+" + _AUTH_EXTRA + r")|[^\s,;}]+" + _AUTH_EXTRA + r")",
+        r"(?i)(\b(?:authorization|proxy-authorization)" + _COMMENT_GAP + r":" + _COMMENT_GAP + r")(?:bearer\s+(?:[^\s,;}]*[ \t]*:[ \t]+" + _AUTH_QUOTED_TAIL + _AUTH_EXTRA + r"|[^\s,;}]+" + _AUTH_EXTRA + r")|basic\s+(?:[^\s,;}]*[ \t]*:[ \t]+" + _AUTH_QUOTED_TAIL + _AUTH_EXTRA + r"|[^\s,;}]+" + _AUTH_EXTRA + r")|(?:[^\s,;}]*[ \t]*:[ \t]+" + _AUTH_QUOTED_TAIL + _AUTH_EXTRA + r"|[^\s,;}]+" + _AUTH_EXTRA + r"))",
         r'\1***REDACTED***',
         text,
     )
@@ -38732,8 +38732,8 @@ PY_REDACT
         printf '%s\n' "$_redact_input" | sed -E \
             -e 's/(UUID|SS_PASS|HY2_PASS|HY2_OBFS|HY2_ACME_DNS_CF_API_TOKEN|PUBLIC_KEY|SHORT_ID)=.*/\1=***REDACTED***/Ig' \
             -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)(Bearer|Basic)[[:space:]]+([^,;[:space:]}]*[[:blank:]]*:[[:blank:]]+(("(\\.|[^"\\])*"|'"'"'(\\.|[^'"'"'\\])*'"'"')([[:blank:]]*$|[[:blank:]]*\b|[[:blank:]]*[^:=[:blank:][:alnum:]_])|("(\\.|[^"\\])*$|'"'"'(\\.|[^'"'"'\\])*$))|[^,;[:space:]}"]*("+[^,;[:space:]}"]+)+|[^,;[:space:]}"]+)/\1\3 ***REDACTED***\9/Ig' \
-            -e 's/(Authorization[[:space:]]*:[[:space:]]*|Authorization[[:space:]]*:[[:space:]]*Bearer[[:space:]]+|Authorization[[:space:]]*:[[:space:]]*Basic[[:space:]]+|Proxy-Authorization[[:space:]]*:[[:space:]]*|Proxy-Authorization[[:space:]]*:[[:space:]]*Bearer[[:space:]]+|Proxy-Authorization[[:space:]]*:[[:space:]]*Basic[[:space:]]+)[^,;[:space:]}"]+([[:blank:]]*,?[[:blank:]]*"(\\.|[^"\\])*"|[[:blank:]]*,?[[:blank:]]*"(\\.|[^"\\}])(\\.|[^"\\])*$|[[:blank:]]*,?[[:blank:]]*'"'"'(\\.|'"'"''"'"'|[^'"'"'\\])*'"'"'|[[:blank:]]*,?[[:blank:]]*'"'"'(\\.|'"'"''"'"'|[^'"'"'\\}])(\\.|'"'"''"'"'|[^'"'"'\\])*$)+([[:blank:]]*"?[[:blank:]]*[,;}]|[[:blank:]]*$|[[:blank:]]*"(\\.|[^"\\])*"[[:blank:]]*[:=]|[[:blank:]]+\b|[[:blank:]]+[^"\x27[:space:][:alnum:]_,;}:=])/\1***REDACTED***\9/Ig' \
-            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)([^,;[:space:]}"]+:[[:blank:]]+"(\\.|[^"\\])*"([[:blank:]]*([^[:space:]:]|$))|[^,;[:space:]}"]+)/\1***REDACTED***\5/Ig' \
+            -e 's/(Authorization[[:space:]]*:[[:space:]]*|Authorization[[:space:]]*:[[:space:]]*Bearer[[:space:]]+|Authorization[[:space:]]*:[[:space:]]*Basic[[:space:]]+|Proxy-Authorization[[:space:]]*:[[:space:]]*|Proxy-Authorization[[:space:]]*:[[:space:]]*Bearer[[:space:]]+|Proxy-Authorization[[:space:]]*:[[:space:]]*Basic[[:space:]]+)[^,;[:space:]}"]+[[:blank:]]*:?([[:blank:]]*,?[[:blank:]]*"(\\.|[^"\\])*"|[[:blank:]]*,?[[:blank:]]*"(\\.|[^"\\}])(\\.|[^"\\])*$|[[:blank:]]*,?[[:blank:]]*'"'"'(\\.|'"'"''"'"'|[^'"'"'\\])*'"'"'|[[:blank:]]*,?[[:blank:]]*'"'"'(\\.|'"'"''"'"'|[^'"'"'\\}])(\\.|'"'"''"'"'|[^'"'"'\\])*$)+([[:blank:]]*"?[[:blank:]]*[,;}]|[[:blank:]]*$|[[:blank:]]*"(\\.|[^"\\])*"[[:blank:]]*[:=]|[[:blank:]]+\b|[[:blank:]]+[^"\x27[:space:][:alnum:]_,;}:=])/\1***REDACTED***\9/Ig' \
+            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)([^,;[:space:]}"]+[[:blank:]]*:[[:blank:]]+"(\\.|[^"\\])*"([[:blank:]]*([^[:space:]:]|$))|[^,;[:space:]}"]+)/\1***REDACTED***\5/Ig' \
             -e 's/((Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*)[^,}[:cntrl:]"[:space:]][^,}[:cntrl:]"]*/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \
             -e 's/^([[:space:]]*(Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*).*/\1***REDACTED***/Ig' \

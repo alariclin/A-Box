@@ -38147,7 +38147,7 @@ _AUTH_QUOTED_TAIL = (
 # closing-quote + `}` must never be eaten as a fake segment). The guard `(?![ \t]*:)`
 # (applied at each use) keeps quoted KEYs such as `"safe":` out of the value.
 _AUTH_QUOTED_TAIL_REPEAT = (
-    r"""(?:"(?:\\[^\r\n]|[^"\\\r\n])*"|'(?:\\[^\r\n]|[^'\\\r\n])*'|"(?:\\[^\r\n]|[^"\\\r\n}])(?:\\[^\r\n]|[^"\\\r\n])*(?=\r?\n|\Z)|'(?:\\[^\r\n]|[^'\\\r\n}])(?:\\[^\r\n]|[^'\\\r\n])*(?=\r?\n|\Z))"""
+    r"""(?:"(?:\\[^\r\n]|[^"\\\r\n])*"|'(?:\\[^\r\n]|[^'\\\r\n])*'|"(?:\\[^\r\n]|[^"\\\r\n}])(?:\\[^\r\n]|[^"\\\r\n])*(?=\r?\n|\Z)|'(?:\\[^\r\n]|[^'\\\r\n}])(?:\\[^\r\n]|[^'\\\r\n])*(?=\r?\n|\Z)|"}[ \t]*(?:\\[^\r\n]|[^"\\\r\n \t])(?:\\[^\r\n]|[^"\\\r\n])*(?=\r?\n|\Z)|'}[ \t]*(?:\\[^\r\n]|[^'\\\r\n \t])(?:\\[^\r\n]|[^'\\\r\n])*(?=\r?\n|\Z))"""
 )
 
 # R16-A (N02): extra quoted segments after a value (bridge of bare chars, then one
@@ -38732,6 +38732,8 @@ PY_REDACT
         printf '%s\n' "$_redact_input" | sed -E \
             -e 's/(UUID|SS_PASS|HY2_PASS|HY2_OBFS|HY2_ACME_DNS_CF_API_TOKEN|PUBLIC_KEY|SHORT_ID)=.*/\1=***REDACTED***/Ig' \
             -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)(Bearer|Basic)[[:space:]]+([^,;[:space:]}]*[[:blank:]]*:[[:blank:]]+(("(\\.|[^"\\])*"|'"'"'(\\.|[^'"'"'\\])*'"'"')([[:blank:]]*$|[[:blank:]]*\b|[[:blank:]]*[^:=[:blank:][:alnum:]_])|("(\\.|[^"\\])*$|'"'"'(\\.|[^'"'"'\\])*$))|[^,;[:space:]}"]*("+[^,;[:space:]}"]+)+|[^,;[:space:]}"]+)/\1\3 ***REDACTED***\9/Ig' \
+            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*(Bearer[[:space:]]+|Basic[[:space:]]+)?)[^,;[:space:]}"]+([[:blank:]]*,?[[:blank:]]*"(\\[^\r\n]|[^"\\\r\n])*")*[[:blank:]]*,?[[:blank:]]*"}[ \t]*(\\[^\r\n]|[^"\\\r\n \t])(\\[^\r\n]|[^"\\\r\n])*(\r?)$/\1***REDACTED***\8/Ig' \
+            -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*(Bearer[[:space:]]+|Basic[[:space:]]+)?)[^,;[:space:]}"]+([[:blank:]]*,?[[:blank:]]*"(\\[^\r\n]|[^"\\\r\n])*")*[[:blank:]]*,?[[:blank:]]*'"'"'}[ \t]*(\\[^\r\n]|[^'"'"'\\\r\n \t])(\\[^\r\n]|[^'"'"'\\\r\n])*(\r?)$/\1***REDACTED***\8/Ig' \
             -e 's/(Authorization[[:space:]]*:[[:space:]]*|Authorization[[:space:]]*:[[:space:]]*Bearer[[:space:]]+|Authorization[[:space:]]*:[[:space:]]*Basic[[:space:]]+|Proxy-Authorization[[:space:]]*:[[:space:]]*|Proxy-Authorization[[:space:]]*:[[:space:]]*Bearer[[:space:]]+|Proxy-Authorization[[:space:]]*:[[:space:]]*Basic[[:space:]]+)[^,;[:space:]}"]+[[:blank:]]*:?([[:blank:]]*,?[[:blank:]]*"(\\.|[^"\\])*"|[[:blank:]]*,?[[:blank:]]*"(\\.|[^"\\}])(\\.|[^"\\])*$|[[:blank:]]*,?[[:blank:]]*'"'"'(\\.|'"'"''"'"'|[^'"'"'\\])*'"'"'|[[:blank:]]*,?[[:blank:]]*'"'"'(\\.|'"'"''"'"'|[^'"'"'\\}])(\\.|'"'"''"'"'|[^'"'"'\\])*$)+([[:blank:]]*"?[[:blank:]]*[,;}]|[[:blank:]]*$|[[:blank:]]*"(\\.|[^"\\])*"[[:blank:]]*[:=]|[[:blank:]]+\b|[[:blank:]]+[^"\x27[:space:][:alnum:]_,;}:=])/\1***REDACTED***\9/Ig' \
             -e 's/((Authorization|Proxy-Authorization)[[:space:]]*:[[:space:]]*)([^,;[:space:]}"]+[[:blank:]]*:[[:blank:]]+"(\\.|[^"\\])*"([[:blank:]]*([^[:space:]:]|$))|[^,;[:space:]}"]+)/\1***REDACTED***\5/Ig' \
             -e 's/((Cookie|Set-Cookie)[[:space:]]*:[[:space:]]*)[^,}[:cntrl:]"[:space:]][^,}[:cntrl:]"]*/\1***REDACTED***/Ig' \

@@ -90,7 +90,6 @@ Standalone deployments, independent of the combined bundles above. Each one asks
 | 4 | SOCKS5 / Mixed | Standalone SOCKS5 with authentication; choose the core |
 | 5 | ShadowTLS | ShadowTLS v3 on sing-box, detouring to an internal Shadowsocks-2022 inbound |
 | 6 | Argo (CDN) | VMess / VLESS over WebSocket through a Cloudflare Tunnel — no inbound port is opened on the server. Temporary quick tunnels get a random `*.trycloudflare.com` address that changes on restart; fixed tunnels use your own domain and tunnel token |
-| 7 | Latest Xray | Experimental: installs the newest upstream Xray core (take over the slot, or coexist as a separate xray-latest instance with port-conflict warnings). Deploys VLESS-Vision / XHTTP / Trojan-Reality / SS-2022 / SOCKS5 one by one, plus one-click trio and quad (+ official Hy2) combos and full-machine port-conflict warnings. Failures are reported and the attempt is removed; the stable pinned core is never reinstalled automatically. |
 
 ## Status panel
 
@@ -108,13 +107,13 @@ The top of the menu shows a 16-cell status matrix (running / not started / fault
 | 6 | Swap memory (zram / swap file) | 14 | Multi-user / subscription export |
 | 7 | VPS one-click optimization | 15 | Wallos install / upgrade / backup |
 | 8 | IP / DNS / timezone / source settings | 16 | SS-2022 access allowlist |
-| 0 | Back to main menu | | |
+| 0 | Back to main menu | 17 | Custom shortcut |
 
 The test scripts (items 2–3) run the latest upstream version by default after a structural sanity check. If the upstream fetch or check fails, they fall back to the pinned copies in the verified `test-tools-mirror` release (Ed25519 signature + SHA-256 verified); if both are unavailable, nothing is executed. A-Check (item 1) likewise fetches the latest version live and falls back first to the signed mirror pin, then to the last verified local cache.
 
 Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](https://github.com/alariclin/A-Check) project. The script fetches the latest version live from the A-Check repository, validates its structure (shebang, VERSION marker, size, py_compile) before running it, and caches it under `/etc/ddr/tools`; if the live fetch fails, it falls back to the signature-verified pinned mirror copy, then to the last verified local cache. It requires Python 3.8 or newer.
 
-**Multi-user management (toolbox item 14).** Every deployed node — combos and standalone protocols alike, on Xray, sing-box, the Latest Xray instance and the official Hysteria 2 — can carry multiple named users, each with an own credential and share link / QR code. Per user you can set a monthly traffic quota (GB), an expiry (in days) and an allowed time window. A background check runs every 5 minutes and enforces them: expired, over-quota or out-of-window users are revoked automatically (on Xray cores the revocation is hot, with no restart). Per-user traffic statistics and quota enforcement exist on the Xray family (StatsService); the official sing-box binary exposes no per-user statistics, so on sing-box only expiry and time-window rules apply. All user links can be exported at once as subscription files.
+**Multi-user management (toolbox item 14).** Every deployed node — combos and standalone protocols alike, on Xray, sing-box and the official Hysteria 2 — can carry multiple named users, each with an own credential and share link / QR code. Per user you can set a monthly traffic quota (GB), an expiry (in days) and an allowed time window. A background check runs every 5 minutes and enforces them: expired, over-quota or out-of-window users are revoked automatically (on Xray cores the revocation is hot, with no restart). Per-user traffic statistics and quota enforcement exist on the Xray family (StatsService); the official sing-box binary exposes no per-user statistics, so on sing-box only expiry and time-window rules apply. All user links can be exported at once as subscription files.
 
 **Multiple instances of one protocol.** When a standalone protocol already exists on a core, its deploy entry now offers "add another instance": the extra copy gets its own port, credentials and user list (tags suffixed -2, -3, ...) and is managed and deleted independently.
 

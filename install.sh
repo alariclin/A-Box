@@ -1321,7 +1321,7 @@ tr_msg() {
         zh:apply_vps_tune_snapshot_incomplete) echo '检测到未完成的调优快照；请先检查并恢复/清理该快照。' ;;
         en:apply_vps_tune_snapshot_incomplete) echo 'An incomplete tuning snapshot was detected; inspect it first, then restore or clean it up.' ;;
         ru:apply_vps_tune_snapshot_incomplete) echo 'Обнаружен незавершённый снимок настройки; сначала проверьте его, затем восстановите или очистите.' ;;
-        fa:apply_vps_tune_snapshot_incomplete) echo 'یک عکس ناتمام از تنظیمات شناسایی شد؛ ابتدا آن را بررسی و سپس بازیابی یا پاک‌سازی کنید.' ;;
+        fa:apply_vps_tune_snapshot_incomplete) echo 'یک اسنپ‌شات ناتمام از تنظیمات شناسایی شد؛ ابتدا آن را بررسی و سپس بازیابی یا پاک‌سازی کنید.' ;;
         zh-tw:apply_vps_tune_snapshot_incomplete) echo '偵測到未完成的調校快照；請先檢查並還原或清理該快照。' ;;
         ja:apply_vps_tune_snapshot_incomplete) echo '未完了のチューニングスナップショットが検出されました。先に確認し、復元またはクリーンアップしてください。' ;;
         zh:apply_vps_tune_already_applied) echo 'VPS 调优已全部应用，无需重复操作。' ;;
@@ -1339,7 +1339,7 @@ tr_msg() {
         zh:apply_vps_tune_keep_snapshot_fill_missing) echo '保留已有调优快照（恢复时仍回到最初状态），仅补齐缺失项。' ;;
         en:apply_vps_tune_keep_snapshot_fill_missing) echo 'The existing tuning snapshot is retained (restoration still returns to the original state); only missing items are applied.' ;;
         ru:apply_vps_tune_keep_snapshot_fill_missing) echo 'Существующий снимок настройки сохраняется (восстановление по-прежнему вернёт исходное состояние); применяются только недостающие пункты.' ;;
-        fa:apply_vps_tune_keep_snapshot_fill_missing) echo 'عکس موجود از تنظیمات حفظ می‌شود (بازیابی همچنان به حالت اولیه برمی‌گردد)؛ فقط موارد جاافتاده تکمیل می‌شوند.' ;;
+        fa:apply_vps_tune_keep_snapshot_fill_missing) echo 'اسنپ‌شات موجود از تنظیمات حفظ می‌شود (بازیابی همچنان به حالت اولیه برمی‌گردد)؛ فقط موارد جاافتاده تکمیل می‌شوند.' ;;
         zh-tw:apply_vps_tune_keep_snapshot_fill_missing) echo '保留既有調校快照（還原時仍會回到最初狀態），僅補齊缺少的項目。' ;;
         ja:apply_vps_tune_keep_snapshot_fill_missing) echo '既存のチューニングスナップショットを保持し（復元時は引き続き最初の状態に戻ります）、不足項目のみを適用します。' ;;
         zh:apply_vps_tune_limits_write_failed) echo 'limits 配置原子写入失败，已恢复原状态。' ;;
@@ -1603,7 +1603,7 @@ tr_msg() {
         zh:update_script_ota_snapshot_failed) echo '无法创建 OTA 脚本回滚快照。' ;;
         en:update_script_ota_snapshot_failed) echo 'Cannot create a rollback snapshot of the OTA script.' ;;
         ru:update_script_ota_snapshot_failed) echo 'Не удалось создать снимок скрипта OTA для отката.' ;;
-        fa:update_script_ota_snapshot_failed) echo 'نمی‌توان برای بازگشت از اسکریپت OTA عکس گرفت.' ;;
+        fa:update_script_ota_snapshot_failed) echo 'نمی‌توان برای بازگشت از اسکریپت OTA اسنپ‌شات گرفت.' ;;
         zh-tw:update_script_ota_snapshot_failed) echo '無法建立 OTA 腳本回滾快照。' ;;
         ja:update_script_ota_snapshot_failed) echo 'OTA スクリプトのロールバック用スナップショットを作成できません。' ;;
         zh:update_script_save_current_script_failed) echo '无法保存当前 A-Box 脚本；OTA 已取消。' ;;
@@ -1621,7 +1621,7 @@ tr_msg() {
         zh:update_script_sni_snapshot_failed) echo '无法创建 SNI 缓存回滚快照。' ;;
         en:update_script_sni_snapshot_failed) echo 'Cannot create a rollback snapshot of the SNI cache.' ;;
         ru:update_script_sni_snapshot_failed) echo 'Не удалось создать снимок кэша SNI для отката.' ;;
-        fa:update_script_sni_snapshot_failed) echo 'نمی‌توان برای بازگشت از حافظه نهان SNI عکس گرفت.' ;;
+        fa:update_script_sni_snapshot_failed) echo 'نمی‌توان برای بازگشت از حافظه نهان SNI اسنپ‌شات گرفت.' ;;
         zh-tw:update_script_sni_snapshot_failed) echo '無法建立 SNI 快取回滾快照。' ;;
         ja:update_script_sni_snapshot_failed) echo 'SNI キャッシュのロールバック用スナップショットを作成できません。' ;;
         zh:update_script_save_sni_cache_failed) echo '无法保存当前 SNI 缓存；OTA 已取消。' ;;
@@ -1645,7 +1645,7 @@ tr_msg() {
         zh:update_script_atomic_write_failed_rollback_incomplete) echo 'OTA 脚本原子写入失败，且 SNI 缓存回滚不完整；请勿重试，先检查 A-Box.sh 与 SNI 缓存。旧脚本快照与旧 SNI 缓存快照保留于 /tmp（A-Box-update-old-*）。' ;;
         en:update_script_atomic_write_failed_rollback_incomplete) echo 'Atomic writing of the OTA script failed, and the SNI cache rollback is incomplete; do not retry. Check A-Box.sh and the SNI cache first. Snapshots of the old script and old SNI cache are retained in /tmp (A-Box-update-old-*).' ;;
         ru:update_script_atomic_write_failed_rollback_incomplete) echo 'Атомарная запись скрипта OTA не удалась, а откат кэша SNI выполнен не полностью; не повторяйте попытку, сначала проверьте A-Box.sh и кэш SNI. Снимки старого скрипта и старого кэша SNI сохранены в /tmp (A-Box-update-old-*).' ;;
-        fa:update_script_atomic_write_failed_rollback_incomplete) echo 'نوشتن اتمی اسکریپت OTA ناموفق بود و بازگشت حافظه نهان SNI کامل نشده است؛ دوباره تلاش نکنید و ابتدا A-Box.sh و حافظه نهان SNI را بررسی کنید. عکس‌های اسکریپت قدیمی و حافظه نهان قدیمی SNI در /tmp (A-Box-update-old-*) نگه داشته شده‌اند.' ;;
+        fa:update_script_atomic_write_failed_rollback_incomplete) echo 'نوشتن اتمی اسکریپت OTA ناموفق بود و بازگشت حافظه نهان SNI کامل نشده است؛ دوباره تلاش نکنید و ابتدا A-Box.sh و حافظه نهان SNI را بررسی کنید. اسنپ‌شات‌های اسکریپت قدیمی و حافظه نهان قدیمی SNI در /tmp (A-Box-update-old-*) نگه داشته شده‌اند.' ;;
         zh-tw:update_script_atomic_write_failed_rollback_incomplete) echo 'OTA 腳本原子寫入失敗，且 SNI 快取回滾不完整；請勿重試，先檢查 A-Box.sh 與 SNI 快取。舊腳本快照與舊 SNI 快取快照保留於 /tmp（A-Box-update-old-*）。' ;;
         ja:update_script_atomic_write_failed_rollback_incomplete) echo 'OTA スクリプトのアトミック書き込みに失敗し、SNI キャッシュのロールバックも不完全です。再試行せず、まず A-Box.sh と SNI キャッシュを確認してください。旧スクリプトと旧 SNI キャッシュのスナップショットは /tmp（A-Box-update-old-*）に保持しています。' ;;
         zh:update_script_persist_verify_failed_restored) echo 'OTA 持久化校验失败；旧脚本和旧 SNI 缓存已恢复。' ;;
@@ -1657,7 +1657,7 @@ tr_msg() {
         zh:update_script_persist_verify_failed_rollback_incomplete) echo 'OTA 持久化校验失败且回滚不完整；请勿重试，先检查 A-Box.sh 与 SNI 缓存。旧脚本快照与旧 SNI 缓存快照保留于 /tmp（A-Box-update-old-*）。' ;;
         en:update_script_persist_verify_failed_rollback_incomplete) echo 'OTA persistence verification failed, and rollback is incomplete; do not retry. Check A-Box.sh and the SNI cache first. Snapshots of the old script and old SNI cache are retained in /tmp (A-Box-update-old-*).' ;;
         ru:update_script_persist_verify_failed_rollback_incomplete) echo 'Проверка сохранения результатов OTA не удалась, а откат выполнен не полностью; не повторяйте попытку, сначала проверьте A-Box.sh и кэш SNI. Снимки старого скрипта и старого кэша SNI сохранены в /tmp (A-Box-update-old-*).' ;;
-        fa:update_script_persist_verify_failed_rollback_incomplete) echo 'بررسی ماندگاری OTA ناموفق بود و بازگشت کامل نشده است؛ دوباره تلاش نکنید و ابتدا A-Box.sh و حافظه نهان SNI را بررسی کنید. عکس‌های اسکریپت قدیمی و حافظه نهان قدیمی SNI در /tmp (A-Box-update-old-*) نگه داشته شده‌اند.' ;;
+        fa:update_script_persist_verify_failed_rollback_incomplete) echo 'بررسی ماندگاری OTA ناموفق بود و بازگشت کامل نشده است؛ دوباره تلاش نکنید و ابتدا A-Box.sh و حافظه نهان SNI را بررسی کنید. اسنپ‌شات‌های اسکریپت قدیمی و حافظه نهان قدیمی SNI در /tmp (A-Box-update-old-*) نگه داشته شده‌اند.' ;;
         zh-tw:update_script_persist_verify_failed_rollback_incomplete) echo 'OTA 持久化校驗失敗且回滾不完整；請勿重試，先檢查 A-Box.sh 與 SNI 快取。舊腳本快照與舊 SNI 快取快照保留於 /tmp（A-Box-update-old-*）。' ;;
         ja:update_script_persist_verify_failed_rollback_incomplete) echo 'OTA の永続化の検証に失敗し、ロールバックも不完全です。再試行せず、まず A-Box.sh と SNI キャッシュを確認してください。旧スクリプトと旧 SNI キャッシュのスナップショットは /tmp（A-Box-update-old-*）に保持しています。' ;;
         zh:update_script_core_sni_synced) echo '核心代码与同 commit 的 SNI 候选数据库已同步。' ;;
@@ -1669,7 +1669,7 @@ tr_msg() {
         zh:manage_ss_whitelist_iptables_only_backend) echo 'SS-2022 源地址白名单仅支持原生 iptables/ip6tables 后端；当前是 %s。为避免 UFW/firewalld 与 A-Box 双重持久化或规则顺序错误，拒绝修改。' ;;
         en:manage_ss_whitelist_iptables_only_backend) echo 'The SS-2022 source whitelist only supports the native iptables/ip6tables backend; the current backend is %s. Refusing to modify it to avoid duplicate persistence by UFW/firewalld and A-Box or incorrect rule ordering.' ;;
         ru:manage_ss_whitelist_iptables_only_backend) echo 'Белый список источников SS-2022 поддерживает только нативный бэкенд iptables/ip6tables; сейчас используется %s. Изменения запрещены во избежание двойного сохранения правил средствами UFW/firewalld и A-Box или неверного порядка правил.' ;;
-        fa:manage_ss_whitelist_iptables_only_backend) echo 'فهرست سفید مبدأ SS-2022 فقط از پس‌زمینه بومی iptables/ip6tables پشتیبانی می‌کند؛ پس‌زمینه کنونی %s است. برای جلوگیری از ماندگاری دوگانه توسط UFW/firewalld و A-Box یا ترتیب نادرست قوانین، تغییر انجام نمی‌شود.' ;;
+        fa:manage_ss_whitelist_iptables_only_backend) echo 'فهرست سفید مبدأ SS-2022 فقط از بک‌اند بومی iptables/ip6tables پشتیبانی می‌کند؛ بک‌اند کنونی %s است. برای جلوگیری از ماندگاری دوگانه توسط UFW/firewalld و A-Box یا ترتیب نادرست قوانین، تغییر انجام نمی‌شود.' ;;
         zh-tw:manage_ss_whitelist_iptables_only_backend) echo 'SS-2022 來源白名單僅支援原生 iptables/ip6tables 後端；目前為 %s。為避免 UFW/firewalld 與 A-Box 雙重持久化或規則順序錯誤，拒絕修改。' ;;
         ja:manage_ss_whitelist_iptables_only_backend) echo 'SS-2022 の送信元ホワイトリストは、ネイティブ iptables/ip6tables バックエンドのみをサポートします。現在のバックエンドは %s です。UFW/firewalld と A-Box による二重の永続化やルール順序の誤りを避けるため、変更を拒否します。' ;;
         zh:manage_ss_whitelist_no_ss_port) echo '未检测到已部署的 SS-2022 服务端口。' ;;
@@ -1829,13 +1829,13 @@ tr_msg() {
         zh-tw:upgrade_xray_core_only_version_uncomparable) echo '目前或目標 Xray 版本格式無法比較。' ;;
         ja:upgrade_xray_core_only_version_uncomparable) echo '現在または対象の Xray バージョンの形式では比較できません。' ;;
         zh:upgrade_xray_core_only_current_higher_skip) echo '当前 Xray %s 高于本次目标版本 %s；为避免自动降级，本次跳过。' ;;
-        en:upgrade_xray_core_only_current_higher_skip) echo 'The current Xray version %s is newer than this run's target version %s; skipping this run to avoid an automatic fallback to an older version.' ;;
+        en:upgrade_xray_core_only_current_higher_skip) echo 'The current Xray version %s is newer than this run'\''s target version %s; skipping this run to avoid an automatic fallback to an older version.' ;;
         ru:upgrade_xray_core_only_current_higher_skip) echo 'Текущая версия Xray %s новее целевой версии %s для этого запуска; запуск пропущен во избежание автоматического перехода на более раннюю версию.' ;;
         fa:upgrade_xray_core_only_current_higher_skip) echo 'نسخهٔ فعلی Xray %s از نسخهٔ هدف %s در این اجرا بالاتر است؛ برای جلوگیری از بازگشت خودکار به نسخهٔ پایین‌تر، این اجرا رد می‌شود.' ;;
         zh-tw:upgrade_xray_core_only_current_higher_skip) echo '目前 Xray %s 高於本次目標版本 %s；為避免自動降級，本次跳過。' ;;
         ja:upgrade_xray_core_only_current_higher_skip) echo '現在の Xray %s は今回の対象バージョン %s より新しいため、旧バージョンへの自動フォールバックを避けて今回はスキップします。' ;;
         zh:upgrade_xray_core_only_already_target) echo '当前 Xray %s 已是本次目标版本 %s，无需替换。' ;;
-        en:upgrade_xray_core_only_already_target) echo 'The current Xray %s is already at this run's target version %s; no replacement is needed.' ;;
+        en:upgrade_xray_core_only_already_target) echo 'The current Xray %s is already at this run'\''s target version %s; no replacement is needed.' ;;
         ru:upgrade_xray_core_only_already_target) echo 'Текущая версия Xray %s уже соответствует целевой версии %s для этой операции; замена не требуется.' ;;
         fa:upgrade_xray_core_only_already_target) echo 'نسخهٔ کنونی Xray %s همان نسخهٔ هدف %s برای این عملیات است؛ نیازی به جایگزینی نیست.' ;;
         zh-tw:upgrade_xray_core_only_already_target) echo '目前 Xray %s 已是本次目標版本 %s，無需替換。' ;;
@@ -6027,7 +6027,7 @@ tr_msg() {
         ru:manual_stop_managed_stack_desired_state_unreadable) echo 'Не удалось прочитать текущее желаемое состояние A-Box.' ;;
         fa:manual_stop_managed_stack_desired_state_unreadable) echo 'خواندن وضعیت مطلوب فعلی A-Box ممکن نیست.' ;;
         zh-tw:manual_stop_managed_stack_desired_state_unreadable) echo '無法讀取目前 A-Box 的期望狀態。' ;;
-        ja:manual_stop_managed_stack_desired_state_unreadable) echo '現在の A-Box の目標状態を読み取れません。' ;;
+        ja:manual_stop_managed_stack_desired_state_unreadable) echo '現在の A-Box の望ましい状態を読み取れません。' ;;
         zh:manual_stop_managed_stack_tx_dir_fail) echo '无法创建服务状态事务目录。' ;;
         en:manual_stop_managed_stack_tx_dir_fail) echo 'Unable to create the service-state transaction directory.' ;;
         ru:manual_stop_managed_stack_tx_dir_fail) echo 'Не удалось создать каталог транзакции состояния служб.' ;;
@@ -10405,7 +10405,7 @@ tr_msg() {
         zh:generate_qr_scan_banner) echo '================ 扫码导入 =================' ;;
         en:generate_qr_scan_banner) echo '================ Scan QR Code =================' ;;
         ru:generate_qr_scan_banner) echo '================ Импорт по QR-коду =================' ;;
-        fa:generate_qr_scan_banner) echo '================ ورود با اسکن کد QR =================' ;;
+        fa:generate_qr_scan_banner) echo '================ وارد کردن با اسکن کد QR =================' ;;
         zh-tw:generate_qr_scan_banner) echo '================ 掃碼匯入 =================' ;;
         ja:generate_qr_scan_banner) echo '================ QRコードをスキャンしてインポート =================' ;;
         zh:init_system_environment_syncing_deps) echo '正在同步系统依赖环境 (OS: %s, Init: %s)...' ;;
@@ -10691,13 +10691,13 @@ tr_msg() {
         zh-tw:rollback_abox_new_swap_fstab_unrecoverable) echo 'Swap 回復無法還原 /etc/fstab；保留目前狀態，避免造成更嚴重的不一致。' ;;
         ja:rollback_abox_new_swap_fstab_unrecoverable) echo 'Swap のロールバックで /etc/fstab を復元できません。より深刻な不整合を避けるため、現状を維持します。' ;;
         zh:run_local_sni_benchmark_title) echo '本地 SNI 优选' ;;
-        en:run_local_sni_benchmark_title) echo 'Local SNI preference' ;;
+        en:run_local_sni_benchmark_title) echo 'Local SNI selection' ;;
         ru:run_local_sni_benchmark_title) echo 'Локальный подбор SNI' ;;
         fa:run_local_sni_benchmark_title) echo 'گزینش محلی SNI' ;;
         zh-tw:run_local_sni_benchmark_title) echo '本機 SNI 優選' ;;
         ja:run_local_sni_benchmark_title) echo 'ローカル SNI 最適選択' ;;
         zh:run_local_sni_mini_benchmark_title) echo '微型主机本地 SNI 优选' ;;
-        en:run_local_sni_mini_benchmark_title) echo 'Mini host local SNI preference' ;;
+        en:run_local_sni_mini_benchmark_title) echo 'Mini host local SNI selection' ;;
         ru:run_local_sni_mini_benchmark_title) echo 'Локальный подбор SNI для мини-хоста' ;;
         fa:run_local_sni_mini_benchmark_title) echo 'گزینش محلی SNI برای میزبان کوچک' ;;
         zh-tw:run_local_sni_mini_benchmark_title) echo '迷你主機本機 SNI 優選' ;;
@@ -47369,7 +47369,7 @@ _wallos_container_gone() {
         *) return 1 ;;
     esac
     _names=$(docker ps -a --format '{{.Names}}' 2>/dev/null) || return 1
-    printf '%s\n' "$_names" | grep -qx 'wallos' && return 1
+    [[ $'\n'"$_names"$'\n' == *$'\n'wallos$'\n'* ]] && return 1
     return 0
 }
 

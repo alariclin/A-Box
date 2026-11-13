@@ -1,0 +1,8 @@
+# CODEOWNERS — review owners for A-Box.
+# @alariclin is the maintainer; every path requires their review.
+* @alariclin
+/install.sh @alariclin
+/docs/ @alariclin
+/.github/workflows/ @alariclin
+/mirrors/ @alariclin
+/scripts/ @alariclin

@@ -34,21 +34,21 @@
 
 ## 这是什么
 
-A-Box 是一个单文件 Bash 脚本（`install.sh`，约 30,000 行），用于在 Linux VPS 上部署和维护代理与网络服务。它负责安装和配置 Xray、sing-box 与官方 Hysteria 2 服务端，生成客户端配置，并把日常运维——防火墙规则、Fail2Ban 防护、DNS 设置、备份、升级与诊断——收进一个六种语言的交互菜单。你在菜单里选定之前，脚本不会部署任何东西；破坏性操作都会先要求确认。
+A-Box 是一个单文件 Bash 脚本（`install.sh`，约 55,975 行），用于在 Linux VPS 上部署和维护代理与网络服务。它负责安装和配置 Xray、sing-box 与官方 Hysteria 2 服务端，生成客户端配置，并把日常运维——防火墙规则、Fail2Ban 防护、DNS 设置、备份、升级与诊断——收进一个六种语言的交互菜单。你在菜单里选定之前，脚本不会部署任何东西；破坏性操作都会先要求确认。
 
 ## 快速开始
 
 官方来源，命令已锁定到不可变的提交：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/6adf1913a7677b1173b817160c3630a4fdd187b6/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/508ceda815dd92384936cfd6d077887f90e09ec6/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 第三方镜像（与上面是同一个锁定文件，仅作传输通道，不是官方入口）。不要直接运行：先下载，再与官方来源逐字节比对，通过后才运行。仅在信任该代理时使用镜像；未经核对的镜像文件不得用于生产：
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/6adf1913a7677b1173b817160c3630a4fdd187b6/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/6adf1913a7677b1173b817160c3630a4fdd187b6/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/508ceda815dd92384936cfd6d077887f90e09ec6/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/508ceda815dd92384936cfd6d077887f90e09ec6/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
@@ -90,7 +90,6 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 | 4 | SOCKS5 / Mixed | 独立 SOCKS5，带账号密码认证，可选核心 |
 | 5 | ShadowTLS | sing-box 的 ShadowTLS v3，转接到内部 Shadowsocks-2022 入站 |
 | 6 | Argo (CDN) | VMess / VLESS 经 WebSocket 走 Cloudflare 隧道，服务器不开任何入站端口。临时隧道是随机 `*.trycloudflare.com` 地址，重启即变；固定隧道用你自己的域名和隧道令牌 |
-| 7 | 最新 Xray | 实验功能：安装上游最新版 Xray 核心（接管槽位，或以 xray-latest 实例并存并提示端口冲突），可逐个部署 VLESS-Vision / XHTTP / Trojan-Reality / SS-2022 / SOCKS5，也有一键三合一与一键四合一（+ 官方 Hy2），并提供整机端口冲突提醒。失败会告知原因并删除本次部署，绝不自动装回稳定版核心。 |
 
 ## 状态面板
 
@@ -108,13 +107,13 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 | 6 | 交换内存（zram / Swap）| 14 | 多用户 / 订阅链接导出 |
 | 7 | VPS 一键优化 | 15 | Wallos 安装 / 升级 / 备份 |
 | 8 | IP / DNS / 时区 / 下载源设置 | 16 | SS-2022 访问白名单 |
-| 0 | 返回主菜单 | | |
+| 0 | 返回主菜单 | 17 | 自定义快捷键 |
 
 第 2、3 项的测试脚本默认拉取上游最新版并做结构校验；拉取或校验失败时，回退到经校验的 `test-tools-mirror` 发布中的钉版备份（Ed25519 签名与 SHA-256 双重校验）；两者都不可用时不执行任何脚本。第 1 项 A-Check 同样实时拉取最新版，失败时依次回退签名镜像钉版与本机已验证缓存。
 
 第 1 项 **A-Check** 是配套项目 [A-Check](https://github.com/alariclin/A-Check) 的 IP 纯净度检测工具。脚本从 A-Check 仓库实时拉取最新版，运行前做结构校验（shebang、VERSION 标记、大小、py_compile），并缓存在 `/etc/ddr/tools`；实时拉取失败时，依次回退到签名校验的镜像钉版与本机已验证缓存。需要 Python 3.8 或更高版本。
 
-**多用户管理（工具箱 14)。** 每个已部署的节点——组合与独立协议均可，覆盖 Xray、sing-box、Latest Xray 实例与 Hy2 官方版——都能添加多个命名用户，每人独立凭据、独立分享链接与二维码。可按用户设置每月流量限额 (GB)、到期天数与可用时段；后台每 5 分钟检查一次并自动执行：到期、超限额或时段外的用户会被自动吊销（Xray 家族为热吊销、无需重启）。按用户流量统计与限额执行仅 Xray 家族可用 (StatsService)；sing-box 官方二进制无按用户统计，该核心上仅到期与时段规则生效。全部用户链接可一键导出为订阅文件。
+**多用户管理（工具箱 14)。** 每个已部署的节点——组合与独立协议均可，覆盖 Xray、sing-box 与 Hy2 官方版——都能添加多个命名用户，每人独立凭据、独立分享链接与二维码。可按用户设置每月流量限额 (GB)、到期天数与可用时段；后台每 5 分钟检查一次并自动执行：到期、超限额或时段外的用户会被自动吊销（Xray 家族为热吊销、无需重启）。按用户流量统计与限额执行仅 Xray 家族可用 (StatsService)；sing-box 官方二进制无按用户统计，该核心上仅到期与时段规则生效。全部用户链接可一键导出为订阅文件。
 
 **同协议多实例。** 某独立协议在某核心上已存在时，其部署入口会提供「新增一个实例」：新实例有独立的端口、凭据与用户名单（标签后缀 -2、-3……），可独立管理与删除。
 
@@ -134,9 +133,9 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 **备份、升级与 OTA。** 配置备份/恢复使用带版本号的清单格式与恢复密钥（`--export-backup-key`）。核心升级保留现有节点参数；脚本自身的 OTA 更新会显示 SHA-256 并要求明确确认。Xray Geo 数据可单独更新。
 
-**核心版本。** Xray 锁定在 `v26.7.28`：Xray ≥ v26.9.8 要求 X25519MLKEM768 密钥交换，sing-box 客户端目前无法完成该握手。sing-box 与 Hysteria 默认自动跟随官方最新稳定版（7 天冷却、验证通过后才采用），兼容钉版 `v1.14.3` / `app/v2.13.0` 仅作兜底；Argo 用的 cloudflared 锁定 `2026.10.2`，Wallos 的 HTTPS 前端 Caddy 锁定 `2.11.7`，均带 SHA-256 校验。核心二进制按发布清单做 SHA-256 校验，已发布签名的强制 Ed25519 验签（见 `docs/SIGNING.md`）。固定版本与各版本最新稳定版都保存在 `core-binaries` 发布中以便回滚。
+**核心版本。** Xray、sing-box 与 Hysteria 均默认跟随官方最新稳定版（`auto-stable`，排除草稿／预发布标签）。不设冷却期；采用前仍须通过 SHA-256 清单校验、二进制版本探测、配置检查与健康检查关卡。上游下载失败后，自动恢复先尝试同标签版本化镜像，再尝试当前经验证的镜像版本，后者可能较旧。上游与镜像均无可用候选时，安装程序拒绝安装；不会自动回落到固定兼容钉版。显式 `pinned` 策略选择 `install.sh` 中配置的默认兼容版本；显式版本覆盖则请求其指定标签，并优先于更新策略。两者通过镜像恢复时都必须匹配所选标签。Xray >= `v26.9.8` 对 REALITY ClientHello 有 ML-KEM 要求，可能破坏客户端互通，因此采用新版 Xray 时仍须验证客户端握手。Argo 使用的 cloudflared 锁定为 `2026.10.2`，Wallos 的 HTTPS 前端 Caddy 锁定为 `2.11.7`，两者均带 SHA-256 校验。已发布签名时强制执行 Ed25519 验签（见 `docs/SIGNING.md`）。`core-binaries` 中被取代的资产会在镜像刷新时删除；历史兼容钉版映射不保证对应版本仍然可用，因此该发布不是多版本回滚库。
 
-**SNI 候选。** 仓库自带 4,158 条候选域名种子列表（`data/sni-candidates.txt`）。工具箱可在目标 VPS 上实测优选（完整版或微型版）并保存记录。列表里的域名只是候选，不保证在你的网络可用、也不保证适合某个具体的 REALITY 部署。拿不到有效列表时该流程直接失败，不硬凑。
+**SNI 候选。** 仓库自带 4,154 条候选域名种子列表（`data/sni-candidates.txt`）。工具箱可在目标 VPS 上实测优选（完整版或微型版）并保存记录。列表里的域名只是候选，不保证在你的网络可用、也不保证适合某个具体的 REALITY 部署。拿不到有效列表时该流程直接失败，不硬凑。
 
 ## 命令行
 
@@ -156,7 +155,7 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 
 ## 系统要求
 
-已实测系统（14 个）：Debian 10 / 11 / 12 / 13、Ubuntu 20.04 / 22.04 / 24.04、Rocky Linux 8 / 9、AlmaLinux 8 / 9、Fedora 40、Alpine 3.18 / 3.19。
+已实测系统（14 个）：Debian 10 / 11 / 12 / 13、Ubuntu 20.04 / 22.04 / 24.04、Rocky Linux 8 / 9、AlmaLinux 8 / 9、Fedora 40、Alpine 3.18 / 3.19。14 系统矩阵由外部 VPS 测试脚本 `vps-all-systems-test.sh` 在真实 VPS 主机上运行，而非由 GitHub CI 运行；CI 执行 Bash 语法检查、ShellCheck、ubuntu-latest 上的内置自测，以及 Debian/Alpine 测试夹具兼容性矩阵。
 
 | 项目 | 要求 |
 |---|---|

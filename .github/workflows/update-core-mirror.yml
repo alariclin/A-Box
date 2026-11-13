@@ -9,7 +9,7 @@ on:
         type: boolean
         default: true
   schedule:
-    - cron: '43 6 * * 1'
+    - cron: '43 6 */3 * *'
   pull_request:
     paths:
       - '.github/workflows/update-core-mirror.yml'
@@ -71,7 +71,7 @@ jobs:
         # are executed here but cannot use it to write.
         run: bash scripts/update-core-mirror.sh
       - name: Upload verified artifacts
-        uses: actions/upload-artifact@b4b15b8c7c6ac21af51f82d3829fee7b13161676 # v4.4.3
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: verified-core-mirror
           path: ${{ runner.temp }}/core-mirror/new/
@@ -206,6 +206,18 @@ jobs:
             echo "ERROR: verified/SHA256SUMS.incoming missing; aborting"
             exit 1
           fi
+          # C2 (Q6): capture the pre-publish manifest BEFORE any upload.
+          # After the upload the Release serves the new manifest, so the
+          # prune step below needs this copy as its old-manifest input.
+          # A missing pre-publish manifest means a first publish: the
+          # prune step is then skipped (nothing superseded exists yet).
+          mkdir -p old-manifest
+          if gh release download core-binaries -p SHA256SUMS -D old-manifest 2>/dev/null; then
+            echo "Pre-publish manifest captured for the prune step."
+          else
+            echo "No pre-publish SHA256SUMS (first publish); prune step will be skipped."
+            rm -rf old-manifest
+          fi
           if [[ ! -f verified/CORE-VERSIONS ]]; then
             echo "ERROR: verified/CORE-VERSIONS missing; aborting"
             exit 1
@@ -226,7 +238,7 @@ jobs:
           # Exact set equality: actual files in verified/ must equal exactly
           # {files listed in SHA256SUMS.incoming} + {SHA256SUMS, SHA256SUMS.incoming, CORE-VERSIONS}
           # + {CORE-VERSIONS.sig, SHA256SUMS.sig} when F-05 signing is enabled.
-          # SHA256SUMS is the full merged Release manifest (historical + new);
+          # SHA256SUMS is the trimmed Release manifest (current + retained only, C2 Q6);
           # SHA256SUMS.incoming is verification-only and is NOT uploaded.
           # Reject any extra or missing file.
           set_diff="$(comm -3 \
@@ -382,6 +394,9 @@ jobs:
           done
           # Upload order is binaries -> CORE-VERSIONS -> SHA256SUMS (full) last.
           # SHA256SUMS.incoming is verification-only and is NOT uploaded.
+          # Versioned binaries stay no-clobber: an existing asset aborts the step.
+          # Only fixed-name metadata and signatures use --clobber after publish gates.
+          # Metadata replacement is not atomic; failures stop verification/pruning.
           for f in verified/*; do
             [[ -f "$f" ]] || continue
             name=$(basename "$f")
@@ -394,7 +409,7 @@ jobs:
               *) echo "ERROR: unknown file in artifact: $name; aborting"; exit 1 ;;
             esac
             echo "Uploading binary: $name"
-            gh release upload core-binaries "$f#$name" --clobber
+            gh release upload core-binaries "$f#$name"
           done
           if [[ -f verified/CORE-VERSIONS ]]; then
             echo "Uploading CORE-VERSIONS"
@@ -410,3 +425,36 @@ jobs:
             gh release upload core-binaries "verified/SHA256SUMS.sig#SHA256SUMS.sig" --clobber
           fi
           echo "Publish complete. Verified assets uploaded without execution."
+      # C2 (Q6, step 6 of the 9-step publish order): re-download the
+      # published metadata pair and confirm it is exactly the planned
+      # version before any pruning happens.
+      - name: Verify published metadata pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          verify_dir="$(mktemp -d)"; trap 'rm -rf "$verify_dir"' EXIT
+          gh release download core-binaries --pattern CORE-VERSIONS --pattern SHA256SUMS --pattern CORE-VERSIONS.sig --pattern SHA256SUMS.sig --dir "$verify_dir"
+          cmp verified/CORE-VERSIONS "$verify_dir/CORE-VERSIONS" || { echo "ERROR: published CORE-VERSIONS differs from the verified file"; exit 1; }
+          cmp verified/SHA256SUMS "$verify_dir/SHA256SUMS" || { echo "ERROR: published SHA256SUMS differs from the verified file"; exit 1; }
+          cmp verified/CORE-VERSIONS.sig "$verify_dir/CORE-VERSIONS.sig" || { echo "ERROR: published CORE-VERSIONS.sig differs"; exit 1; }
+          cmp verified/SHA256SUMS.sig "$verify_dir/SHA256SUMS.sig" || { echo "ERROR: published SHA256SUMS.sig differs"; exit 1; }
+          echo "Published metadata pair verified (exactly the planned version)."
+      # C2 (Q6, steps 7-9): delete superseded old-version assets, then
+      # verify the final set. A prune failure does NOT roll the manifest
+      # back: the new version stays published; re-run to finish cleanup.
+      # The workflow `concurrency` group serialises workflow runs; the
+      # prune script's pointer re-check guards against a concurrent
+      # local direct publish.
+      - name: Prune superseded assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f old-manifest/SHA256SUMS ]]; then
+            echo "No pre-publish manifest (first publish); nothing to prune."
+            exit 0
+          fi
+          bash scripts/prune-core-mirror.sh --repo "$GITHUB_REPOSITORY" --tag core-binaries \
+            --core-versions verified/CORE-VERSIONS --new-manifest verified/SHA256SUMS \
+            --old-manifest old-manifest/SHA256SUMS \
+            --expected-core-versions-digest "$(sha256sum verified/CORE-VERSIONS | awk '{print $1}')"
+          echo "Prune complete; final set verified."

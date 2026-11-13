@@ -24,12 +24,12 @@ jobs:
         run: |
           bash -n install.sh
           bash -n scripts/update-core-mirror.sh
-          bash -n scripts/upload-rollback-binaries.sh
+          bash -n scripts/prune-core-mirror.sh
       - name: ShellCheck installation critical errors
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
-          shellcheck --severity=error install.sh scripts/update-core-mirror.sh scripts/upload-rollback-binaries.sh
+          shellcheck --severity=error install.sh scripts/update-core-mirror.sh scripts/prune-core-mirror.sh
       - name: Lint GitHub Actions workflows
         uses: rhysd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca # v1.7.12, pinned to commit SHA
       - name: Built-in self-test (root-only fixtures enabled)
@@ -38,7 +38,7 @@ jobs:
         run: |
           grep -Eq "^ABOX_BUILD='[^']+'$" install.sh
           grep -Eq '^ABOX_BUILD_EPOCH=[0-9]+$' install.sh
-          grep -Fq "ABOX_XRAY_DEFAULT_VERSION='v26.7.28'" install.sh
+          grep -Fq "ABOX_XRAY_UPDATE_POLICY=\"\${ABOX_XRAY_UPDATE_POLICY:-auto-stable}\"" install.sh
           grep -Fq "ABOX_XRAY_REALITY_MLKEM_MIN_VERSION='v26.9.8'" install.sh
           grep -Fq "ABOX_HYSTERIA_DEFAULT_VERSION='app/v2.13.0'" install.sh
           grep -Fq "ABOX_SINGBOX_DEFAULT_VERSION='v1.14.3'" install.sh
@@ -151,21 +151,12 @@ jobs:
               sys.exit(1)
           print("OK: six-language i18n gate passed")
           PY
-      # P3-13 fix: renamed from "Alpine clean-shell bootstrap syntax".
-      # NOTE: This only checks syntax. Alpine runtime (BusyBox/musl/apk)
-      # is NOT tested here.
-      - name: Alpine syntax only
-        run: |
-          docker run --rm -v "$PWD:/src:ro" alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 sh -ec '
-            apk add --no-cache bash
-            bash -n /src/install.sh
-          '
-
   fixture-compat-matrix:
     # P1-06 (GPT A'): minimal cross-distro fixture-compatibility matrix.
     # NOT a real runtime matrix: --self-test is fixture/static assertions,
     # it never installs real cores or touches the network. Debian slim gives
-    # a clean GNU/glibc userland, Alpine a musl one.
+    # a clean GNU/glibc userland, Alpine a musl one; the old standalone
+    # Alpine syntax step is folded in here (it now runs the full self-test).
     # Job id is fixture-compat-matrix (not fixture-compat): a matrix job
     # reports checks as "<id> (matrix values)", which never exactly matches
     # the ruleset's required check "fixture-compat". The bare name belongs
@@ -209,6 +200,7 @@ jobs:
             grep -Fxq "SELF_TEST_OK" "$log"
             if grep -Fq "SELF_TEST_FAILED" "$log"; then exit 1; fi
           '
+
 
   fixture-compat:
     # Fixed-name summary gate for fixture-compat-matrix above.

@@ -34,21 +34,21 @@ More protocols (menu 18):
 
 ## What it is
 
-A-Box is a single-file Bash script (`install.sh`, about 30,000 lines) that deploys and maintains proxy and network services on a Linux VPS. It installs and configures Xray, sing-box and the official Hysteria 2 server, generates client configurations, and provides day-to-day operations — firewall rules, Fail2Ban protection, DNS settings, backups, upgrades and diagnostics — from one interactive menu in six languages. Nothing is deployed before you pick it in the menu, and destructive actions ask for confirmation.
+A-Box is a single-file Bash script (`install.sh`, about 55,975 lines) that deploys and maintains proxy and network services on a Linux VPS. It installs and configures Xray, sing-box and the official Hysteria 2 server, generates client configurations, and provides day-to-day operations — firewall rules, Fail2Ban protection, DNS settings, backups, upgrades and diagnostics — from one interactive menu in six languages. Nothing is deployed before you pick it in the menu, and destructive actions ask for confirmation.
 
 ## Quick start
 
 Official source, pinned to an immutable commit:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/6adf1913a7677b1173b817160c3630a4fdd187b6/install.sh -o A-Box.sh && sudo bash A-Box.sh
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/508ceda815dd92384936cfd6d077887f90e09ec6/install.sh -o A-Box.sh && sudo bash A-Box.sh
 ```
 
 Third-party mirror of the same pinned file (transport only, not an official endpoint). Do not run it directly: download it, verify it byte-for-byte against the official source, then run it. Only use the mirror when you trust the proxy; never run an unverified mirror file in production:
 
 ```bash
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/6adf1913a7677b1173b817160c3630a4fdd187b6/install.sh -o A-Box.sh &&
-curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/6adf1913a7677b1173b817160c3630a4fdd187b6/install.sh -o A-Box.official.sh &&
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/alariclin/A-Box/508ceda815dd92384936cfd6d077887f90e09ec6/install.sh -o A-Box.sh &&
+curl -fsSL https://raw.githubusercontent.com/alariclin/A-Box/508ceda815dd92384936cfd6d077887f90e09ec6/install.sh -o A-Box.official.sh &&
 cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 ```
 
@@ -90,7 +90,6 @@ Standalone deployments, independent of the combined bundles above. Each one asks
 | 4 | SOCKS5 / Mixed | Standalone SOCKS5 with authentication; choose the core |
 | 5 | ShadowTLS | ShadowTLS v3 on sing-box, detouring to an internal Shadowsocks-2022 inbound |
 | 6 | Argo (CDN) | VMess / VLESS over WebSocket through a Cloudflare Tunnel — no inbound port is opened on the server. Temporary quick tunnels get a random `*.trycloudflare.com` address that changes on restart; fixed tunnels use your own domain and tunnel token |
-| 7 | Latest Xray | Experimental: installs the newest upstream Xray core (take over the slot, or coexist as a separate xray-latest instance with port-conflict warnings). Deploys VLESS-Vision / XHTTP / Trojan-Reality / SS-2022 / SOCKS5 one by one, plus one-click trio and quad (+ official Hy2) combos and full-machine port-conflict warnings. Failures are reported and the attempt is removed; the stable pinned core is never reinstalled automatically. |
 
 ## Status panel
 
@@ -108,13 +107,13 @@ The top of the menu shows a 16-cell status matrix (running / not started / fault
 | 6 | Swap memory (zram / swap file) | 14 | Multi-user / subscription export |
 | 7 | VPS one-click optimization | 15 | Wallos install / upgrade / backup |
 | 8 | IP / DNS / timezone / source settings | 16 | SS-2022 access allowlist |
-| 0 | Back to main menu | | |
+| 0 | Back to main menu | 17 | Custom shortcut |
 
 The test scripts (items 2–3) run the latest upstream version by default after a structural sanity check. If the upstream fetch or check fails, they fall back to the pinned copies in the verified `test-tools-mirror` release (Ed25519 signature + SHA-256 verified); if both are unavailable, nothing is executed. A-Check (item 1) likewise fetches the latest version live and falls back first to the signed mirror pin, then to the last verified local cache.
 
 Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](https://github.com/alariclin/A-Check) project. The script fetches the latest version live from the A-Check repository, validates its structure (shebang, VERSION marker, size, py_compile) before running it, and caches it under `/etc/ddr/tools`; if the live fetch fails, it falls back to the signature-verified pinned mirror copy, then to the last verified local cache. It requires Python 3.8 or newer.
 
-**Multi-user management (toolbox item 14).** Every deployed node — combos and standalone protocols alike, on Xray, sing-box, the Latest Xray instance and the official Hysteria 2 — can carry multiple named users, each with an own credential and share link / QR code. Per user you can set a monthly traffic quota (GB), an expiry (in days) and an allowed time window. A background check runs every 5 minutes and enforces them: expired, over-quota or out-of-window users are revoked automatically (on Xray cores the revocation is hot, with no restart). Per-user traffic statistics and quota enforcement exist on the Xray family (StatsService); the official sing-box binary exposes no per-user statistics, so on sing-box only expiry and time-window rules apply. All user links can be exported at once as subscription files.
+**Multi-user management (toolbox item 14).** Every deployed node — combos and standalone protocols alike, on Xray, sing-box and the official Hysteria 2 — can carry multiple named users, each with an own credential and share link / QR code. Per user you can set a monthly traffic quota (GB), an expiry (in days) and an allowed time window. A background check runs every 5 minutes and enforces them: expired, over-quota or out-of-window users are revoked automatically (on Xray cores the revocation is hot, with no restart). Per-user traffic statistics and quota enforcement exist on the Xray family (StatsService); the official sing-box binary exposes no per-user statistics, so on sing-box only expiry and time-window rules apply. All user links can be exported at once as subscription files.
 
 **Multiple instances of one protocol.** When a standalone protocol already exists on a core, its deploy entry now offers "add another instance": the extra copy gets its own port, credentials and user list (tags suffixed -2, -3, ...) and is managed and deleted independently.
 
@@ -134,9 +133,9 @@ Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](h
 
 **Backup, upgrades, OTA.** Configuration backup/restore uses a versioned manifest with a recovery key (`--export-backup-key`). Core upgrades keep existing node parameters; the script's own OTA update shows the SHA-256 and asks for explicit confirmation. Xray Geo data can be updated separately.
 
-**Core versions.** Xray is pinned to `v26.7.28`: Xray ≥ v26.9.8 requires an X25519MLKEM768 key exchange that sing-box clients cannot yet complete. sing-box and Hysteria default to the latest official stable release (7-day cooldown, verified before adoption), with the compatibility pins `v1.14.3` / `app/v2.13.0` kept as fallback; Argo uses cloudflared `2026.10.2` and the Wallos HTTPS frontend uses Caddy `2.11.7`, both pinned with SHA-256 verification. Core binaries are checked against the release SHA-256 manifests, and Ed25519 signature verification is enforced where signatures are published (see `docs/SIGNING.md`). Fixed pins and versioned latest-stable builds are kept in the `core-binaries` release for rollback.
+**Core versions.** Xray, sing-box and Hysteria all default to the latest official stable release (`auto-stable`; draft/prerelease tags excluded). There is no cooling-off period; adoption still requires SHA-256 manifest verification, a binary version probe, a config check and a health gate. After an upstream download failure, automatic recovery tries the same-tag versioned mirror first, then the current verified mirror version, which may be older. If no usable upstream or mirror candidate exists, installation is refused; there is no automatic fixed-pin fallback. An explicit `pinned` policy selects the compatibility default configured in `install.sh`; an explicit version override instead requests its specified tag and takes precedence over policy. Mirror recovery for either must match the selected tag. Xray >= `v26.9.8` has a REALITY ML-KEM ClientHello requirement that can break client interoperability, so client handshakes must still be verified when adopting a new Xray release. Argo uses cloudflared `2026.10.2` and the Wallos HTTPS frontend uses Caddy `2.11.7`, both pinned with SHA-256 verification. Ed25519 signature verification is enforced where signatures are published (see `docs/SIGNING.md`). Superseded assets in `core-binaries` are pruned on mirror refresh; historical compatibility-pin mappings do not guarantee availability, so this release is not a multi-version rollback store.
 
-**SNI candidates.** The repository ships a seed list of 4,158 candidate hostnames (`data/sni-candidates.txt`). The toolbox can test them from the target VPS (full or mini test) and records the results. A listed hostname is only a candidate: it is not a guarantee that it works from your network or suits a specific REALITY deployment. The workflow fails closed when no valid list is available.
+**SNI candidates.** The repository ships a seed list of 4,154 candidate hostnames (`data/sni-candidates.txt`). The toolbox can test them from the target VPS (full or mini test) and records the results. A listed hostname is only a candidate: it is not a guarantee that it works from your network or suits a specific REALITY deployment. The workflow fails closed when no valid list is available.
 
 ## Command line
 
@@ -156,7 +155,7 @@ A passing self-test does not replace a real installation or a client connectivit
 
 ## System requirements
 
-Tested systems (14): Debian 10 / 11 / 12 / 13, Ubuntu 20.04 / 22.04 / 24.04, Rocky Linux 8 / 9, AlmaLinux 8 / 9, Fedora 40, Alpine 3.18 / 3.19.
+Tested systems (14): Debian 10 / 11 / 12 / 13, Ubuntu 20.04 / 22.04 / 24.04, Rocky Linux 8 / 9, AlmaLinux 8 / 9, Fedora 40, Alpine 3.18 / 3.19. The 14-system matrix is run by the external VPS test script `vps-all-systems-test.sh` on real VPS hosts, not by GitHub CI; CI runs Bash syntax, ShellCheck, the built-in self-test on ubuntu-latest, and a Debian/Alpine fixture-compatibility matrix.
 
 | Item | Requirement |
 |---|---|

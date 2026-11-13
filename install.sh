@@ -17794,8 +17794,15 @@ firewalld_zone_for_abox() {
     if [[ -n "${INGRESS_IF:-}" ]] && command -v firewall-cmd >/dev/null 2>&1; then
         # S28: daemon/transient error is not "no zone": the interface's
         # real zone is unknown; never fall back to the default zone.
-        if ! zone=$(firewall-cmd --get-zone-of-interface="$INGRESS_IF" 2>/dev/null); then
-            return 1
+        # R21-FWZONE: real firewalld prints "no zone" to STDERR (not
+        # stdout) with rc 2 for an interface bound to no zone (od-verified
+        # on firewalld 2.3.1), so the query must capture stderr (2>&1)
+        # for the check to see it. On success stderr is empty (bound case
+        # prints only the zone name to stdout), so the captured zone stays
+        # clean. Only that exact text falls back to the default zone; any
+        # other failure (empty or other output) still returns 1.
+        if ! zone=$(firewall-cmd --get-zone-of-interface="$INGRESS_IF" 2>&1); then
+            [[ "$zone" == 'no zone' ]] || return 1
         fi
         [[ -n "$zone" && "$zone" != 'no zone' ]] && { printf '%s\n' "$zone"; return 0; }
     fi

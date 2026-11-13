@@ -44891,8 +44891,10 @@ wallos_db_repair_poisoned() {
     (( EUID == 0 )) || { msg "${RED}$(tr_msg wl_iu_need_root)${NC}"; return 1; }
     # R7-F15-4: three states. Inspect success -> label gate (a foreign
     # same-name container is refused, never stopped/started); daemon
-    # confirms absence ("No such container/object") -> no-container path;
-    # any other inspect failure (daemon unreachable) -> refuse: the
+    # confirms absence ("No such container/object", matched
+    # case-insensitively by _wallos_container_gone -- Docker 29 reports
+    # it lowercase -- and confirmed by `docker ps -a`) -> no-container
+    # path; any other inspect failure (daemon unreachable) -> refuse: the
     # container state is unknown and a live replace would be unsafe.
     if _inspect_err=$(docker container inspect wallos 2>&1 >/dev/null); then
         _had_container=1
@@ -44903,10 +44905,11 @@ wallos_db_repair_poisoned() {
         [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)" == true ]] && _was_running=1
         _image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
         _image="${_image#docker.io/}"
-    elif [[ "$_inspect_err" == *'No such container'* || "$_inspect_err" == *'No such object'* ]]; then
+    elif _wallos_container_gone "$_inspect_err"; then
         _had_container=0
     else
         msg "${RED}$(tprintf wl_repair_abort 'container state unknown')${NC}"
+        _wallos_show_docker_err "$_inspect_err"
         return 1
     fi
     if [[ -z "$_image" ]]; then
@@ -46080,7 +46083,9 @@ wallos_backup_now() {
     local stamp backup was_running=0 _inspect_err _running _managed
     [[ -f "$WALLOS_DIR/.A-Box-managed" && ! -L "$WALLOS_DIR/.A-Box-managed" ]] || { msg "$(tr_msg wl_bn_none)"; return 1; }
     # R6C15-03: an inspect failure is NOT "stopped". Only a daemon-confirmed
-    # absence ("No such container/object") allows an offline backup; any other
+    # absence ("No such container/object", matched case-insensitively by
+    # _wallos_container_gone -- Docker 29 reports it lowercase -- and
+    # confirmed by `docker ps -a`) allows an offline backup; any other
     # failure (daemon unreachable, state query failure, unexpected state)
     # leaves the running state unknown, and a live tar of a WAL-mode database
     # can silently drop committed records at checkpoint timing while gzip/tar
@@ -46100,10 +46105,11 @@ wallos_backup_now() {
             msg "${RED}$(tr_msg wl_bn_docker_unknown)${NC}" >&2
             return 1
         fi
-    elif [[ "$_inspect_err" == *"No such container"* || "$_inspect_err" == *"No such object"* ]]; then
+    elif _wallos_container_gone "$_inspect_err"; then
         : # daemon confirmed the container is absent: offline backup is safe
     else
         msg "${RED}$(tr_msg wl_bn_docker_unknown)${NC}" >&2
+        _wallos_show_docker_err "$_inspect_err" >&2
         return 1
     fi
     stamp=$(date -u '+%Y%m%dT%H%M%SZ')

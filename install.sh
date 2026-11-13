@@ -14275,6 +14275,18 @@ prune_owned_core_families_except() {
         users_registries_remove_core "$srv" || die "$(tprintf pr_remove "$srv")"
         # SYD-B2 E18: a pruned stack must not leave orphaned panel links.
         _prune_standalone_links "$srv"
+        # R23 F-ARGO-ORPHAN: the sing-box stack owns the Argo tunnels
+        # (argo-vless/argo-vmess temp units and the shared fixed `argo`
+        # unit all serve its ws inbounds). Pruning the stack deletes
+        # those inbounds, so the tunnels must go too; otherwise their
+        # cloudflared processes keep running against dead origins.
+        # Best-effort: argo_remove_unit refuses foreign units, and a
+        # missing unit is not an error here.
+        if [[ "$srv" == 'sing-box' ]]; then
+            argo_remove_unit argo-vless || true
+            argo_remove_unit argo-vmess || true
+            argo_remove_unit argo || true
+        fi
     done
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         systemctl daemon-reload >/dev/null 2>&1 || die "$(tr_msg pr_reload)"

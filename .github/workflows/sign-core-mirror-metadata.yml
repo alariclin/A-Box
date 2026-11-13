@@ -1,0 +1,239 @@
+# Sign-only one-off (merged to main via PR, 2026-11-10; route 1 approved).
+# Signs the CURRENT core-binaries metadata pair (CORE-VERSIONS and
+# SHA256SUMS) with the release-2026 Ed25519 key and publishes
+# CORE-VERSIONS.sig + SHA256SUMS.sig. First-sign run: refuses if a .sig
+# asset already exists (a re-sign needs a human decision, not a silent
+# overwrite). The fixed snapshot pins below must match the release bytes
+# exactly; any drift fails closed, and a new snapshot needs a new approval.
+#
+# One-off: sign the CURRENT core-binaries metadata pair (CORE-VERSIONS and
+# SHA256SUMS) with the release-2026 Ed25519 key and publish
+# CORE-VERSIONS.sig + SHA256SUMS.sig.
+#
+# Background: DeepSeek P0-01 — the core-binaries Release has no .sig assets,
+# so installs fail closed under ABOX_SIGNING_ENFORCE=1 (default) when the
+# disaster-recovery mirror path is used. The metadata itself is already
+# current and complete (C3/C3b); this workflow signs exactly the bytes
+# currently on the release (no mirror regeneration, no asset add/remove).
+#
+# Design (modeled on .github/workflows/sign-wallos-sha256sums.yml):
+# sign-only, two .sig uploads, nothing else. Pre-sign integrity checks run
+# BEFORE any signing so a tampered manifest can never be laundered into a
+# trusted signature. The workflow does NOT reuse
+# scripts/verify-core-versions-gate.sh: that gate's forward check requires
+# every recorded asset file on disk, and downloading ~380 MB of binaries
+# just to re-prove bytes the Release already serves is out of scope here;
+# instead the per-record check below compares every SHA256SUMS record
+# against the Release asset digests GitHub computed at upload time (the
+# same trust root the publish job's F-12 historical branch uses).
+#
+# Run: Actions -> Sign core-binaries metadata -> Run workflow.
+# Afterwards verify: both .sig assets appear on the core-binaries release
+# and scripts/verify-core-mirror-live.sh passes.
+
+name: Sign core-binaries metadata
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stable-core-binaries
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    name: Sign and publish CORE-VERSIONS.sig + SHA256SUMS.sig
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      ABOX_SIGNING_PRIVKEY_B64: ${{ secrets.ABOX_SIGNING_PRIVKEY_B64 }}
+      # Must match the release-2026 entry in install.sh ABOX_SIGNING_PUBKEYS.
+      ABOX_SIGNING_PUBKEY_B64: 7V4PBUUVpnfYhKu5LBxACxywpYEtvnDpVpvFnSrOujQ=
+      # Must match install.sh ABOX_SIGNING_MIN_TIMESTAMP_UTC.
+      ABOX_SIGNING_MIN_TIMESTAMP_UTC: '20261015225900'
+      # Fixed approved first-sign snapshot (verified 2026-11-10 04:54 UTC):
+      # the workflow signs exactly these bytes, nothing newer. Any drift
+      # fails closed; a new snapshot needs a new approval.
+      EXPECTED_CORE_VERSIONS_SHA256: 6a78685409e83e3a77f56cc233aa5f5494bb4c95c6b6566cd2cc2f16ff7188ec
+      EXPECTED_SHA256SUMS_SHA256: 08c12b29f3b4e11f48d53436b5e35eb26997d612dd14fad90e17999b785759f3
+    steps:
+      - name: Record pre-sign asset set
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          gh api "repos/${{ github.repository }}/releases/tags/core-binaries" \
+            --jq '.assets[] | .name' | sort > /tmp/s1-assets-before.txt
+          echo "Pre-sign assets: $(wc -l < /tmp/s1-assets-before.txt)"
+          # Fail closed if .sig assets already exist: this is a first-sign
+          # run, not a re-sign; a re-sign needs a human decision, not a
+          # silent overwrite.
+          if grep -qx 'CORE-VERSIONS.sig' /tmp/s1-assets-before.txt \
+            || grep -qx 'SHA256SUMS.sig' /tmp/s1-assets-before.txt; then
+            echo "::error::a .sig asset already exists on core-binaries; refusing to overwrite."
+            exit 1
+          fi
+
+      - name: Fetch current metadata pair from core-binaries release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p current
+          curl -fLsS --connect-timeout 10 --max-time 60 \
+            "https://github.com/${{ github.repository }}/releases/download/core-binaries/CORE-VERSIONS" \
+            -o current/CORE-VERSIONS
+          curl -fLsS --connect-timeout 10 --max-time 60 \
+            "https://github.com/${{ github.repository }}/releases/download/core-binaries/SHA256SUMS" \
+            -o current/SHA256SUMS
+          echo "CORE-VERSIONS: $(wc -l < current/CORE-VERSIONS) lines"
+          echo "SHA256SUMS: $(wc -l < current/SHA256SUMS) lines"
+          # Fixed-snapshot pin: refuse to sign anything but the approved bytes.
+          [[ "$(sha256sum current/CORE-VERSIONS | awk '{print $1}')" == "$EXPECTED_CORE_VERSIONS_SHA256" ]] \
+            || { echo "::error::CORE-VERSIONS bytes drifted from the approved snapshot; refusing to sign."; exit 1; }
+          [[ "$(sha256sum current/SHA256SUMS | awk '{print $1}')" == "$EXPECTED_SHA256SUMS_SHA256" ]] \
+            || { echo "::error::SHA256SUMS bytes drifted from the approved snapshot; refusing to sign."; exit 1; }
+          echo "Snapshot pins match the approved first-sign snapshot." 
+
+      - name: Pre-sign integrity checks (fail closed, no signing on failure)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          # (1) SHA256SUMS format gate (publish-job F-12): no empty lines,
+          # no CRLF, exactly 2 fields, 64-hex hash, safe filename, no dupes.
+          awk 'NF==0 || /\r$/ || NF != 2 || $1 !~ /^[A-Fa-f0-9]{64}$/ || $2 !~ /^[A-Za-z0-9._-]+$/ || seen[$2]++ { exit 1 }' current/SHA256SUMS \
+            || { echo "::error::malformed SHA256SUMS"; exit 1; }
+          # (2) CORE-VERSIONS completeness: all 19 required keys present,
+          # non-empty, schema == 1.
+          required='schema updated_at_utc Xray Xray-amd64 Xray-arm64 sing-box sing-box-amd64-glibc sing-box-amd64-musl sing-box-arm64-glibc sing-box-arm64-musl Hysteria Hysteria-amd64 Hysteria-arm64 cloudflared cloudflared-amd64 cloudflared-arm64 wgcf wgcf-amd64 wgcf-arm64'
+          for key in $required; do
+            val="$(awk -F= -v k="$key" '$1 == k {sub(/^[^=]*=/, ""); print; exit}' current/CORE-VERSIONS)"
+            [[ -n "$val" ]] || { echo "::error::CORE-VERSIONS missing or empty: $key"; exit 1; }
+          done
+          [[ "$(awk -F= '$1 == "schema" {print $2; exit}' current/CORE-VERSIONS)" == "1" ]] \
+            || { echo "::error::CORE-VERSIONS schema != 1"; exit 1; }
+          # (3) Anti-replay floor: updated_at_utc must not predate the
+          # install.sh trust floor.
+          ts="$(awk -F= '$1 == "updated_at_utc" {print $2; exit}' current/CORE-VERSIONS)"
+          compact="$(printf '%s' "$ts" | tr -cd '0-9')"
+          [[ "$compact" =~ ^[0-9]{14}$ ]] || { echo "::error::bad updated_at_utc: $ts"; exit 1; }
+          [[ "$compact" > "$ABOX_SIGNING_MIN_TIMESTAMP_UTC" || "$compact" == "$ABOX_SIGNING_MIN_TIMESTAMP_UTC" ]] \
+            || { echo "::error::CORE-VERSIONS timestamp $ts is older than trust floor $ABOX_SIGNING_MIN_TIMESTAMP_UTC"; exit 1; }
+          echo "Timestamp OK: $ts"
+          # (4) Every SHA256SUMS record must match the Release asset digest
+          # GitHub computed at upload time; every non-metadata asset must
+          # have exactly one record (CORE-VERSIONS is the only record whose
+          # bytes are verified locally below).
+          gh api "repos/${{ github.repository }}/releases/tags/core-binaries" \
+            --jq '.assets[] | [.name, (.digest // "")] | @tsv' > /tmp/s1-release-digests.tsv
+          while read -r sum name extra || [[ -n "$sum" ]]; do
+            [[ -n "${sum:-}" ]] || continue
+            [[ -z "${extra:-}" ]] || { echo "::error::malformed SHA256SUMS line: $sum $name $extra"; exit 1; }
+            if [[ "$name" == "CORE-VERSIONS" ]]; then
+              actual="$(sha256sum current/CORE-VERSIONS | awk '{print $1}')"
+              [[ "${sum,,}" == "${actual,,}" ]] || { echo "::error::CORE-VERSIONS digest mismatch in SHA256SUMS"; exit 1; }
+            else
+              gh_digest="$(awk -F'\t' -v n="$name" '$1 == n {print $2; exit}' /tmp/s1-release-digests.tsv)"
+              [[ "${gh_digest#sha256:}" == "$sum" ]] || { echo "::error::SHA256SUMS record for $name does not match Release asset digest"; exit 1; }
+            fi
+          done < current/SHA256SUMS
+          # Reverse coverage: every non-metadata Release asset appears once.
+          while IFS=$'\t' read -r aname _adigest; do
+            case "$aname" in CORE-VERSIONS|SHA256SUMS|*.sig) continue ;; esac
+            count="$(awk -v n="$aname" '$2 == n' current/SHA256SUMS | wc -l)"
+            [[ "$count" -eq 1 ]] || { echo "::error::asset $aname has $count SHA256SUMS records (expected 1)"; exit 1; }
+          done < /tmp/s1-release-digests.tsv
+          echo "All SHA256SUMS records match Release asset digests (forward + reverse)."
+
+      - name: Sign metadata pair (F-05 detached Ed25519)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -z "${ABOX_SIGNING_PRIVKEY_B64:-}" ]]; then
+            echo "::error::ABOX_SIGNING_PRIVKEY_B64 secret is not set; cannot sign."
+            exit 1
+          fi
+          umask 077
+          python3 -c 'import base64,sys;raw=base64.b64decode(sys.argv[1],validate=True);assert len(raw)==32;der=bytes.fromhex("302e020100300506032b657004220420")+raw;sys.stdout.write("-----BEGIN PRIVATE KEY-----\n"+base64.encodebytes(der).decode().strip()+"\n-----END PRIVATE KEY-----\n")' \
+            "$ABOX_SIGNING_PRIVKEY_B64" > /tmp/abox-sign-priv.pem
+          # Rebuild the release-2026 public key PEM from its raw 32 bytes
+          # (same DER prefix as install.sh signature verification).
+          python3 -c 'import base64,sys;raw=base64.b64decode(sys.argv[1],validate=True);assert len(raw)==32;der=bytes.fromhex("302a300506032b6570032100")+raw;sys.stdout.write("-----BEGIN PUBLIC KEY-----\n"+base64.encodebytes(der).decode().strip()+"\n-----END PUBLIC KEY-----\n")' \
+            "$ABOX_SIGNING_PUBKEY_B64" > /tmp/abox-verify-pub.pem
+          for meta in current/CORE-VERSIONS current/SHA256SUMS; do
+            openssl pkeyutl -sign -inkey /tmp/abox-sign-priv.pem -rawin \
+              -in "$meta" | base64 > "$meta.sig"
+            # Self-check 1: .sig decodes to exactly 64 raw bytes.
+            [[ "$(base64 -d "$meta.sig" | wc -c)" -eq 64 ]] \
+              || { echo "::error::$meta.sig is not 64 raw bytes"; exit 1; }
+            # Self-check 2: verifies with the anchor public key.
+            openssl pkeyutl -verify -pubin -inkey /tmp/abox-verify-pub.pem \
+              -rawin -in "$meta" -sigfile <(base64 -d "$meta.sig") \
+              || { echo "::error::self-check failed for $meta"; exit 1; }
+            echo "Signed: $meta.sig"
+          done
+          # Self-check 3: the signing key's public half is the release-2026
+          # key clients trust.
+          derived_pub=$(openssl pkey -in /tmp/abox-sign-priv.pem -pubout 2>/dev/null | openssl pkey -pubin -outform DER 2>/dev/null | tail -c 32 | base64)
+          [[ "$derived_pub" == "$ABOX_SIGNING_PUBKEY_B64" ]] \
+            || { echo "::error::signing key does not match release-2026 pubkey"; exit 1; }
+          echo "Self-checks passed: valid 64-byte Ed25519 signatures from release-2026 key."
+          shred -u /tmp/abox-sign-priv.pem 2>/dev/null || rm -f /tmp/abox-sign-priv.pem
+
+      - name: Publish both .sig assets to core-binaries release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          gh release upload core-binaries current/CORE-VERSIONS.sig \
+            --repo "${{ github.repository }}"
+          gh release upload core-binaries current/SHA256SUMS.sig \
+            --repo "${{ github.repository }}"
+          echo "Published CORE-VERSIONS.sig + SHA256SUMS.sig to core-binaries."
+
+      - name: Post-publish verification (asset set + signatures)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          gh api "repos/${{ github.repository }}/releases/tags/core-binaries" \
+            --jq '.assets[] | .name' | sort > /tmp/s1-assets-after.txt
+          # Asset set must equal pre-sign set + exactly the two .sig files.
+          if ! diff <(sort /tmp/s1-assets-before.txt) <(grep -vx -e CORE-VERSIONS.sig -e SHA256SUMS.sig /tmp/s1-assets-after.txt) > /dev/null; then
+            echo "::error::post-publish asset set differs from pre-sign set (excluding the two new .sig files)"
+            diff <(sort /tmp/s1-assets-before.txt) <(grep -vx -e CORE-VERSIONS.sig -e SHA256SUMS.sig /tmp/s1-assets-after.txt) || true
+            exit 1
+          fi
+          grep -qx 'CORE-VERSIONS.sig' /tmp/s1-assets-after.txt || { echo "::error::CORE-VERSIONS.sig missing after publish"; exit 1; }
+          grep -qx 'SHA256SUMS.sig' /tmp/s1-assets-after.txt || { echo "::error::SHA256SUMS.sig missing after publish"; exit 1; }
+          echo "Asset set OK: $(wc -l < /tmp/s1-assets-after.txt) assets (pre-sign $(wc -l < /tmp/s1-assets-before.txt) + 2 .sig)"
+          # Re-download and verify both signatures against the anchor key.
+          verify_dir="$(mktemp -d)"; trap 'rm -rf "$verify_dir"' EXIT
+          curl -fLsS --connect-timeout 10 --max-time 60 \
+            "https://github.com/${{ github.repository }}/releases/download/core-binaries/CORE-VERSIONS" -o "$verify_dir/CORE-VERSIONS"
+          curl -fLsS --connect-timeout 10 --max-time 60 \
+            "https://github.com/${{ github.repository }}/releases/download/core-binaries/SHA256SUMS" -o "$verify_dir/SHA256SUMS"
+          curl -fLsS --connect-timeout 10 --max-time 60 \
+            "https://github.com/${{ github.repository }}/releases/download/core-binaries/CORE-VERSIONS.sig" -o "$verify_dir/CORE-VERSIONS.sig"
+          curl -fLsS --connect-timeout 10 --max-time 60 \
+            "https://github.com/${{ github.repository }}/releases/download/core-binaries/SHA256SUMS.sig" -o "$verify_dir/SHA256SUMS.sig"
+          cmp current/CORE-VERSIONS "$verify_dir/CORE-VERSIONS" || { echo "::error::published CORE-VERSIONS differs from signed bytes"; exit 1; }
+          cmp current/SHA256SUMS "$verify_dir/SHA256SUMS" || { echo "::error::published SHA256SUMS differs from signed bytes"; exit 1; }
+          cmp current/CORE-VERSIONS.sig "$verify_dir/CORE-VERSIONS.sig" || { echo "::error::published CORE-VERSIONS.sig differs"; exit 1; }
+          cmp current/SHA256SUMS.sig "$verify_dir/SHA256SUMS.sig" || { echo "::error::published SHA256SUMS.sig differs"; exit 1; }
+          for meta in CORE-VERSIONS SHA256SUMS; do
+            openssl pkeyutl -verify -pubin -inkey /tmp/abox-verify-pub.pem \
+              -rawin -in "$verify_dir/$meta" -sigfile <(base64 -d "$verify_dir/$meta.sig") \
+              || { echo "::error::published $meta.sig does not verify"; exit 1; }
+            echo "Verified: $meta.sig"
+          done
+          echo "Post-publish verification passed."

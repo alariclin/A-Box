@@ -201,6 +201,7 @@ jobs:
             if grep -Fq "SELF_TEST_FAILED" "$log"; then exit 1; fi
           '
 
+
   fixture-compat:
     # Fixed-name summary gate for fixture-compat-matrix above.
     # Required by the "Protect main" ruleset (exact-name match); reports

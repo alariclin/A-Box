@@ -1945,7 +1945,7 @@ tr_msg() {
         zh:pi_ss_backend) echo '当前防火墙后端不是原生 iptables；SS-2022 源地址白名单仅在 iptables/ip6tables 后端启用，拒绝静默写入不可持久化的白名单规则。' ;;
         en:pi_ss_backend) echo 'The current firewall backend is not native iptables; the SS-2022 source whitelist only works on the iptables/ip6tables backend, and non-persistable whitelist rules will not be written silently.' ;;
         ru:pi_ss_backend) echo 'Текущий бэкенд межсетевого экрана - не нативный iptables; белый список источников SS-2022 работает только на бэкенде iptables/ip6tables, и несохраняемые правила не будут записаны молча.' ;;
-        fa:pi_ss_backend) echo 'پس‌زمینه کنونی فایروال iptables بومی نیست؛ فهرست سفید مبدأ SS-2022 فقط روی پس‌زمینه iptables/ip6tables کار می‌کند و قوانین غیرقابل‌ماندگاری بی‌سروصدا نوشته نمی‌شوند.' ;;
+        fa:pi_ss_backend) echo 'بک‌اند کنونی فایروال iptables بومی نیست؛ فهرست سفید مبدأ SS-2022 فقط روی بک‌اند iptables/ip6tables کار می‌کند و قوانین غیرقابل‌ماندگاری بی‌سروصدا نوشته نمی‌شوند.' ;;
         zh-tw:pi_ss_backend) echo '目前防火牆後端不是原生 iptables；SS-2022 來源白名單僅在 iptables/ip6tables 後端啟用，拒絕靜默寫入不可持久化的白名單規則。' ;;
         ja:pi_ss_backend) echo '現在のファイアウォールバックエンドはネイティブ iptables ではありません。SS-2022 の送信元ホワイトリストは iptables/ip6tables バックエンドでのみ有効です。永続化できないルールを黙って書き込むことはしません。' ;;
         zh:pi_ss_v6_fw) echo '主机启用了 IPv6，但 IPv6 防火墙不可用；拒绝启用白名单模式以避免 IPv6 侧被静默放行。' ;;
@@ -1957,7 +1957,7 @@ tr_msg() {
         zh:pi_ss_snapshot) echo '无法快照当前 SS 防火墙规则；拒绝继续以避免回滚失败。' ;;
         en:pi_ss_snapshot) echo 'Cannot snapshot the current SS firewall rules; refusing to continue to avoid a failed rollback.' ;;
         ru:pi_ss_snapshot) echo 'Не удалось сделать снимок текущих правил SS; отказ от продолжения во избежание неудачного отката.' ;;
-        fa:pi_ss_snapshot) echo 'نمی‌توان از قوانین کنونی SS عکس گرفت؛ برای جلوگیری از بازگشت ناموفق، ادامه داده نمی‌شود.' ;;
+        fa:pi_ss_snapshot) echo 'نمی‌توان از قوانین کنونی SS اسنپ‌شات گرفت؛ برای جلوگیری از بازگشت ناموفق، ادامه داده نمی‌شود.' ;;
         zh-tw:pi_ss_snapshot) echo '無法快照目前 SS 防火牆規則；拒絕繼續，以免回滾失敗。' ;;
         ja:pi_ss_snapshot) echo '現在の SS ファイアウォールルールのスナップショットを取得できません。ロールバック失敗を避けるため続行しません。' ;;
         zh:pi_ss_old_accept) echo '旧的 SS 全网 ACCEPT 规则无法完整删除；拒绝启用白名单模式。' ;;
@@ -36956,7 +36956,7 @@ timezone_locale_ntp_menu() {
             case "${ABOX_LANG:-zh}" in
                 en) rb_ok='Previous timezone restored.'; rb_fail='Timezone rollback failed.'; rb_none='No timezone rollback snapshot available.' ;;
                 ru) rb_ok='Предыдущий часовой пояс восстановлен.'; rb_fail='Откат часового пояса не удался.'; rb_none='Снимок для отката часового пояса отсутствует.' ;;
-                fa) rb_ok='منطقه زمانی قبلی بازیابی شد.'; rb_fail='بازگشت منطقه زمانی ناموفق بود.'; rb_none='عکس فوری برای بازگشت منطقه زمانی موجود نیست.' ;;
+                fa) rb_ok='منطقه زمانی قبلی بازیابی شد.'; rb_fail='بازگشت منطقه زمانی ناموفق بود.'; rb_none='اسنپ‌شات فوری برای بازگشت منطقه زمانی موجود نیست.' ;;
                 zh-tw) rb_ok='已恢復修改前時區。'; rb_fail='時區回滾失敗。'; rb_none='沒有可用的時區回滾快照。' ;;
                 ja) rb_ok='変更前のタイムゾーンを復元しました。'; rb_fail='タイムゾーンのロールバックに失敗しました。'; rb_none='利用可能なタイムゾーンのロールバック用スナップショットがありません。' ;;
                 *) rb_ok='已恢复修改前时区。'; rb_fail='时区回滚失败。'; rb_none='没有可用的时区回滚快照。' ;;

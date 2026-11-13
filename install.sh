@@ -14282,6 +14282,22 @@ prune_owned_core_families_except() {
             argo_remove_unit argo-vless || true
             argo_remove_unit argo-vmess || true
             argo_remove_unit argo || true
+            # F-R23-01: remove Argo metadata only after confirmed teardown.
+            local _argo_prune_clean=1 _argo_name _argo_unit
+            for _argo_name in argo-vless argo-vmess argo; do
+                if [[ "${INIT_SYS:-}" == systemd ]]; then
+                    _argo_unit="/etc/systemd/system/${_argo_name}.service"
+                else
+                    _argo_unit="/etc/init.d/${_argo_name}"
+                fi
+                if [[ -e "$_argo_unit" || -L "$_argo_unit" ]] ||
+                   ! argo_unit_stopped_confirmed "$_argo_name"; then
+                    _argo_prune_clean=0
+                fi
+            done
+            if [[ "$_argo_prune_clean" == 1 ]]; then
+                rm -f -- "$ARGO_STATE_FILE" /etc/ddr/.argo-token || true
+            fi
         fi
         # SYD-B E3: a pruned stack must not leave ghost panel entries.
         users_registries_remove_core "$srv" || die "$(tprintf pr_remove "$srv")"

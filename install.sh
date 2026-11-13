@@ -14271,10 +14271,6 @@ prune_owned_core_families_except() {
         { abox_owns_service "$srv" || abox_owns_config_only_core_dir "$srv"; } || continue
         stop_abox_service "$srv" || die "$(tprintf pr_stop "$srv")"
         remove_owned_core_family "$srv" || die "$(tprintf pr_remove "$srv")"
-        # SYD-B E3: a pruned stack must not leave ghost panel entries.
-        users_registries_remove_core "$srv" || die "$(tprintf pr_remove "$srv")"
-        # SYD-B2 E18: a pruned stack must not leave orphaned panel links.
-        _prune_standalone_links "$srv"
         # R23 F-ARGO-ORPHAN: the sing-box stack owns the Argo tunnels
         # (argo-vless/argo-vmess temp units and the shared fixed `argo`
         # unit all serve its ws inbounds). Pruning the stack deletes
@@ -14287,6 +14283,10 @@ prune_owned_core_families_except() {
             argo_remove_unit argo-vmess || true
             argo_remove_unit argo || true
         fi
+        # SYD-B E3: a pruned stack must not leave ghost panel entries.
+        users_registries_remove_core "$srv" || die "$(tprintf pr_remove "$srv")"
+        # SYD-B2 E18: a pruned stack must not leave orphaned panel links.
+        _prune_standalone_links "$srv"
     done
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         systemctl daemon-reload >/dev/null 2>&1 || die "$(tr_msg pr_reload)"

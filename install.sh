@@ -3989,7 +3989,7 @@ tr_msg() {
         zh-tw:rb_done) echo '還原完成。' ;;
         ja:rb_done) echo '復元が完了しました。' ;;
         zh:sr_title) echo 'SNI 优选记录' ;;
-        en:sr_title) echo 'SNI Preference Records' ;;
+        en:sr_title) echo 'SNI Selection Records' ;;
         ru:sr_title) echo 'Записи подбора SNI' ;;
         fa:sr_title) echo 'سوابق بهینه‌سازی SNI' ;;
         zh-tw:sr_title) echo 'SNI 優選記錄' ;;
@@ -6503,13 +6503,13 @@ tr_msg() {
         zh-tw:confirm_remote) echo '即將下載第三方遠程腳本：%s。下載後會顯示 SHA256 並要求強確認。繼續下載？[Y/N]: ' ;;
         ja:confirm_remote) echo 'サードパーティのリモートスクリプトをダウンロードします：%s。ダウンロード後に SHA256 を表示し、強い確認を求めます。続行しますか？[Y/N]: ' ;;
         zh:confirm_local_sni_full) echo '即将运行本地内置全量 SNI 优选库（不执行远程脚本）。确认执行？[Y/N]: ' ;;
-        en:confirm_local_sni_full) echo 'About to run the local built-in full SNI preference library (no remote script execution). Continue? [Y/N]: ' ;;
+        en:confirm_local_sni_full) echo 'About to run the local built-in full SNI selection library (no remote script execution). Continue? [Y/N]: ' ;;
         ru:confirm_local_sni_full) echo 'Будет запущен встроенный полный подбор SNI; удалённый скрипт не выполняется. Продолжить? [Y/N]: ' ;;
         fa:confirm_local_sni_full) echo 'گزینش کامل SNI داخلی اجرا می‌شود و هیچ اسکریپت راه‌دور اجرا نمی‌شود. ادامه؟ [Y/N]: ' ;;
         zh-tw:confirm_local_sni_full) echo '即將運行本地內置全量 SNI 優選庫（不執行遠程腳本）。確認執行？[Y/N]: ' ;;
         ja:confirm_local_sni_full) echo 'ローカルの組み込みフル SNI 優先ライブラリを実行します（リモートスクリプトは実行しません）。続行しますか？[Y/N]: ' ;;
         zh:confirm_local_sni_mini) echo '即将运行本地内置微型主机 SNI 优选库（候选库与全量相同，不执行远程脚本）。确认执行？[Y/N]: ' ;;
-        en:confirm_local_sni_mini) echo 'About to run the local built-in mini-host SNI preference library (same candidate library as full, no remote script execution). Continue? [Y/N]: ' ;;
+        en:confirm_local_sni_mini) echo 'About to run the local built-in mini-host SNI selection library (same candidate library as full, no remote script execution). Continue? [Y/N]: ' ;;
         ru:confirm_local_sni_mini) echo 'Будет запущен облегчённый локальный подбор SNI с той же базой кандидатов; удалённый скрипт не выполняется. Продолжить? [Y/N]: ' ;;
         fa:confirm_local_sni_mini) echo 'گزینش سبک SNI داخلی با همان فهرست نامزدها اجرا می‌شود؛ هیچ اسکریپت راه‌دور اجرا نمی‌شود. ادامه؟ [Y/N]: ' ;;
         zh-tw:confirm_local_sni_mini) echo '即將運行本地內置微型主機 SNI 優選庫（候選庫與全量相同，不執行遠程腳本）。確認執行？[Y/N]: ' ;;
@@ -40110,7 +40110,7 @@ sni_render_ranked_report() {
 }
 
 run_builtin_sni_radar() {
-    local profile="${1:-full}" title="${2:-Local SNI preference}" workdir candidates raw raw_sorted report total concurrency timeout_s running=0 domain topn verify_limit processed=0 valid_count=0 progress_every
+    local profile="${1:-full}" title="${2:-Local SNI selection}" workdir candidates raw raw_sorted report total concurrency timeout_s running=0 domain topn verify_limit processed=0 valid_count=0 progress_every
     workdir=$(mktemp -d /tmp/A-Box-sni-radar.XXXXXX) || die "$(tr_msg sn_tmp_fail)"
     candidates="$workdir/candidates.txt"
     raw="$workdir/results.raw.tsv"
@@ -40236,7 +40236,7 @@ show_sni_preference_records() {
     if (( ${#files[@]} == 0 )); then
         case "${ABOX_LANG:-zh}" in
             en)
-            msg "${YELLOW}[!] No SNI preference record found. Run Toolbox option 9 or 10 first.${NC}"
+            msg "${YELLOW}[!] No SNI selection record found. Run Toolbox option 9 or 10 first.${NC}"
                 ;;
             ru)
             msg "${YELLOW}[!] Не найдена запись предпочтений SNI. Сначала запустите опцию 9 или 10 в Toolbox.${NC}"
@@ -49390,9 +49390,9 @@ vps_benchmark_menu() {
             msg " ${CYAN}4.${NC}  Export redacted diagnostics           ${CYAN}8.${NC}  IP / DNS / timezone / download-source"
             msg ""
             msg "${CYAN}[ SNI Optimization ]                      [ Config Management ]${NC}"
-            msg " ${CYAN}9.${NC}  Local SNI preference                 ${CYAN}13.${NC}  Backup / restore configuration"
-            msg "${CYAN}10.${NC}  Mini-host SNI preference             ${CYAN}14.${NC}  Multi-user / subscription link export"
-            msg "${CYAN}11.${NC}  SNI preference records               ${CYAN}15.${NC}  Wallos install / update / backup"
+            msg " ${CYAN}9.${NC}  Local SNI selection                  ${CYAN}13.${NC}  Backup / restore configuration"
+            msg "${CYAN}10.${NC}  Mini-host SNI selection              ${CYAN}14.${NC}  Multi-user / subscription link export"
+            msg "${CYAN}11.${NC}  SNI selection records                ${CYAN}15.${NC}  Wallos install / update / backup"
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                      ${CYAN}16.${NC}  SS-2022 IP whitelist"
             msg ""
             msg " ${CYAN}0.${NC}  Back                                 ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"

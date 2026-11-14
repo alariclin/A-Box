@@ -3827,18 +3827,18 @@ tr_msg() {
         fa:vg_init_fail) echo 'مقداردهی محیط سیستم ناموفق بود.' ;;
         zh-tw:vg_init_fail) echo '初始化系統環境失敗。' ;;
         ja:vg_init_fail) echo 'システム環境の初期化に失敗しました。' ;;
-        zh:vg_title) echo '删除全部节点与环境初始化' ;;
-        en:vg_title) echo 'Delete all nodes and perform environment initialization' ;;
-        ru:vg_title) echo 'Удалить все узлы и выполнить инициализацию окружения' ;;
-        fa:vg_title) echo 'حذف همه گره‌ها و مقداردهی محیط' ;;
-        zh-tw:vg_title) echo '刪除全部節點與環境初始化' ;;
-        ja:vg_title) echo '全ノードを削除して環境を初期化' ;;
-        zh:vg_confirm) echo '确定执行环境深度自愈吗？[Y/N]: ' ;;
-        en:vg_confirm) echo 'Run the deep environment self-heal? [Y/N]: ' ;;
-        ru:vg_confirm) echo 'Выполнить глубокое самовосстановление окружения? [Y/N]: ' ;;
-        fa:vg_confirm) echo 'خودترمیمی عمیق محیط اجرا شود؟ [Y/N]: ' ;;
-        zh-tw:vg_confirm) echo '確定執行環境深度自癒嗎？[Y/N]: ' ;;
-        ja:vg_confirm) echo '環境のディープセルフヒールを実行しますか？[Y/N]: ' ;;
+        zh:vg_title) echo '删除全部节点与环境初始化（可凭自动备份恢复）' ;;
+        en:vg_title) echo 'Delete all nodes and perform environment initialization (recoverable from auto-backup)' ;;
+        ru:vg_title) echo 'Удалить все узлы и выполнить инициализацию окружения (восстановление из автобэкапа)' ;;
+        fa:vg_title) echo 'حذف همه گره‌ها و مقداردهی محیط (بازیابی از پشتیبان خودکار ممکن است)' ;;
+        zh-tw:vg_title) echo '刪除全部節點與環境初始化（可憑自動備份恢復）' ;;
+        ja:vg_title) echo '全ノードを削除して環境を初期化（自動バックアップから復旧可）' ;;
+        zh:vg_confirm) echo '将删除全部节点并初始化环境（可凭自动备份恢复），确定执行吗？[Y/N]: ' ;;
+        en:vg_confirm) echo 'This deletes all nodes and reinitializes the environment (recoverable from the auto-backup). Proceed? [Y/N]: ' ;;
+        ru:vg_confirm) echo 'Будут удалены все узлы, окружение будет переинициализировано (можно восстановить из автобэкапа). Продолжить? [Y/N]: ' ;;
+        fa:vg_confirm) echo 'همهٔ گره‌ها حذف و محیط دوباره مقداردهی می‌شود (بازیابی از پشتیبان خودکار ممکن است). ادامه داده شود؟ [Y/N]: ' ;;
+        zh-tw:vg_confirm) echo '將刪除全部節點並初始化環境（可憑自動備份恢復），確定執行嗎？[Y/N]: ' ;;
+        ja:vg_confirm) echo '全ノードを削除し環境を初期化します（自動バックアップから復旧可）。実行しますか？[Y/N]: ' ;;
         zh:vg_cancelled) echo '操作已取消。' ;;
         en:vg_cancelled) echo 'Operation cancelled.' ;;
         ru:vg_cancelled) echo 'Операция отменена.' ;;
@@ -3941,6 +3941,12 @@ tr_msg() {
         fa:rb_auth_fail) echo 'احراز هویت HMAC/کلید بازیابی پشتیبان ناموفق بود یا مجاز نبود.' ;;
         zh-tw:rb_auth_fail) echo '備份 HMAC/還原金鑰認證失敗或未獲授權。' ;;
         ja:rb_auth_fail) echo 'バックアップの HMAC/復旧キー認証に失敗したか、承認されていません。' ;;
+        zh:rb_legacy_convert) echo '该备份是旧版格式（manifest v2），无 HMAC 认证信息，无法直接恢复。请先用备份菜单选项 4 将其转换为 manifest v3 后再恢复。' ;;
+        en:rb_legacy_convert) echo 'This backup is in the legacy format (manifest v2) and carries no HMAC authentication, so it cannot be restored directly. Convert it to manifest v3 with backup-menu option 4 first, then restore it.' ;;
+        ru:rb_legacy_convert) echo 'Эта резервная копия в старом формате (manifest v2) и не содержит HMAC-аутентификации, поэтому её нельзя восстановить напрямую. Сначала преобразуйте её в manifest v3 (пункт 4 меню резервного копирования), затем восстанавливайте.' ;;
+        fa:rb_legacy_convert) echo 'این نسخهٔ پشتیبان با قالب قدیمی (manifest v2) است و اطلاعات احراز هویت HMAC ندارد، پس نمی‌توان آن را مستقیم بازیابی کرد. نخست با گزینهٔ ۴ منوی پشتیبان‌گیری آن را به manifest v3 تبدیل کنید، سپس بازیابی کنید.' ;;
+        zh-tw:rb_legacy_convert) echo '此備份為舊版格式（manifest v2），無 HMAC 認證資訊，無法直接還原。請先用備份選單選項 4 將其轉換為 manifest v3 後再還原。' ;;
+        ja:rb_legacy_convert) echo 'このバックアップは旧形式（manifest v2）で、HMAC 認証情報がないため直接復元できません。先にバックアップメニューのオプション 4 で manifest v3 に変換してから復元してください。' ;;
         zh:rb_structure_fail) echo '备份归档结构/链接校验失败。' ;;
         en:rb_structure_fail) echo 'Backup archive structure/link validation failed.' ;;
         ru:rb_structure_fail) echo 'Проверка структуры/ссылок архива не пройдена.' ;;
@@ -6209,12 +6215,12 @@ tr_msg() {
         fa:cl_m_all) echo 'حذف همه پروتکل‌های نود (هسته‌ها و اسکریپت حفظ می‌شوند)' ;;
         zh-tw:cl_m_all) echo '清空全部節點協議（保留核心與腳本）' ;;
         ja:cl_m_all) echo '全ノードプロトコルを削除（コアとスクリプトは保持）' ;;
-        zh:cl_m_reset) echo '重置环境（原功能）' ;;
-        en:cl_m_reset) echo 'Reset environment (original function)' ;;
-        ru:cl_m_reset) echo 'Сброс окружения (исходная функция)' ;;
-        fa:cl_m_reset) echo 'بازنشانی محیط (عملکرد اصلی)' ;;
-        zh-tw:cl_m_reset) echo '重置環境（原功能）' ;;
-        ja:cl_m_reset) echo '環境リセット（従来機能）' ;;
+        zh:cl_m_reset) echo '重置环境（删除全部节点，可凭自动备份恢复）' ;;
+        en:cl_m_reset) echo 'Reset environment (deletes all nodes; recoverable from auto-backup)' ;;
+        ru:cl_m_reset) echo 'Сброс окружения (удаляет все узлы; восстановление из автобэкапа)' ;;
+        fa:cl_m_reset) echo 'بازنشانی محیط (همهٔ گره‌ها حذف می‌شوند؛ بازیابی از پشتیبان خودکار ممکن است)' ;;
+        zh-tw:cl_m_reset) echo '重置環境（刪除全部節點，可憑自動備份恢復）' ;;
+        ja:cl_m_reset) echo '環境リセット（全ノードを削除、自動バックアップから復旧可）' ;;
         zh:cl_none) echo '当前没有已部署的节点协议。' ;;
         en:cl_none) echo 'No node protocols are currently deployed.' ;;
         ru:cl_none) echo 'Сейчас нет развёрнутых протоколов узлов.' ;;
@@ -7733,6 +7739,12 @@ tr_msg() {
         fa:af_orphan_warn) echo 'همهٔ تداخل‌های زیر باینری‌های یتیم بدون مالک هستند (فقط باینری، بدون unit و بدون دایرکتوری پیکربندی)؛ می‌توان آن‌ها را همان‌جا پاک کرد تا ادامه یابد: %s' ;;
         zh-tw:af_orphan_warn) echo '下列衝突全部是無歸屬的孤兒二進位（僅剩二進位、無 unit、無設定目錄），可當場清理後繼續：%s' ;;
         ja:af_orphan_warn) echo '以下の競合はすべて所有者不明の孤立バイナリです（バイナリのみ、unit なし、設定ディレクトリなし）。その場で削除して続行できます：%s' ;;
+        zh:af_managed_orphan_warn) echo '下列冲突是 A-Box 托管残留（二进制为 A-Box 安装，登记 SHA256 一致；unit 与配置目录已被先前清理删除），可当场清理后继续：%s' ;;
+        en:af_managed_orphan_warn) echo 'Every conflict below is A-Box-managed residue (the binary was installed by A-Box and its registered SHA256 matches; the unit and config dir were removed by an earlier cleanup); it can be cleaned up inline to continue: %s' ;;
+        ru:af_managed_orphan_warn) echo 'Все конфликты ниже — остатки под управлением A-Box (бинарный файл установлен A-Box, зарегистрированный SHA256 совпадает; unit и каталог конфигурации удалены при предыдущей очистке); их можно удалить прямо здесь, чтобы продолжить: %s' ;;
+        fa:af_managed_orphan_warn) echo 'همهٔ تداخل‌های زیر بقایای مدیریت‌شدهٔ A-Box هستند (باینری را A-Box نصب کرده و SHA256 ثبت‌شده مطابقت دارد؛ unit و دایرکتوری پیکربندی در پاک‌سازی قبلی حذف شده‌اند)؛ می‌توان آن‌ها را همان‌جا پاک کرد تا ادامه یابد: %s' ;;
+        zh-tw:af_managed_orphan_warn) echo '下列衝突是 A-Box 託管殘留（二進位為 A-Box 安裝，登記 SHA256 一致；unit 與設定目錄已被先前清理刪除），可當場清理後繼續：%s' ;;
+        ja:af_managed_orphan_warn) echo '以下の競合はすべて A-Box 管理の残留物です（バイナリは A-Box がインストールしたもので、登録済み SHA256 が一致します。unit と設定ディレクトリは以前のクリーンアップで削除済み）。その場で削除して続行できます：%s' ;;
         zh:af_orphan_prompt) echo '清理上述孤儿二进制并继续？[Y/N]: ' ;;
         en:af_orphan_prompt) echo 'Remove the orphan binaries above and continue? [Y/N]: ' ;;
         ru:af_orphan_prompt) echo 'Удалить перечисленные выше осиротевшие бинарные файлы и продолжить? [Y/N]: ' ;;
@@ -14580,8 +14592,24 @@ residue_takeover_clear() {
     return 0
 }
 
+# R25-F-S1-01 (GPT-tightened option A): a binary the ownership manifest
+# registers (type F, service + path + matching SHA256) is A-Box-managed
+# residue, not a foreign install. A missing row, a hash mismatch, or an
+# unreadable manifest/file stays foreign (fail-closed); registration is
+# classification only, never a deletion authorization (the prompt stays).
+core_binary_managed_registered() {
+    local srv="$1" path="$2"
+    local _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}" _want='' _have=''
+    [[ -f "$_mf" && ! -L "$_mf" ]] || return 1
+    [[ -f "$path" && ! -L "$path" ]] || return 1
+    _want=$(awk -F'\t' -v s="$srv" -v p="$path" '$1=="F" && $2==s && $3==p {print $4; exit}' "$_mf" 2>/dev/null || true)
+    [[ -n "$_want" ]] || return 1
+    _have=$(sha256sum -- "$path" 2>/dev/null | awk '{print $1}') || return 1
+    [[ -n "$_have" && "${_have,,}" == "${_want,,}" ]]
+}
+
 assert_no_foreign_core_conflicts() {
-    local conflicts _kept='' _srv='' _path='' _bin='' _all_orphan=1 _ans=''
+    local conflicts _kept='' _srv='' _path='' _bin='' _all_orphan=1 _all_managed=1 _ans=''
     conflicts=$(list_foreign_core_conflicts "$@") || die "$(tr_msg af_enum)"
     [[ -z "$conflicts" ]] && return 0
     # SYD-B E11: paths the user already approved for residue
@@ -14605,9 +14633,17 @@ assert_no_foreign_core_conflicts() {
         if [[ "$_path" != "$_bin" ]] || ! core_family_binary_orphaned "$_srv"; then
             _all_orphan=0; break
         fi
+        # Orphan shape alone does not tell whose binary this is; only a
+        # manifest row with a matching SHA256 proves A-Box ownership.
+        # Anything else stays "unowned" (existing wording and refusal).
+        core_binary_managed_registered "$_srv" "$_path" || _all_managed=0
     done <<< "$conflicts"
     if (( _all_orphan == 1 )); then
-        msg "${YELLOW}$(tprintf af_orphan_warn "$conflicts")${NC}"
+        if (( _all_managed == 1 )); then
+            msg "${YELLOW}$(tprintf af_managed_orphan_warn "$conflicts")${NC}"
+        else
+            msg "${YELLOW}$(tprintf af_orphan_warn "$conflicts")${NC}"
+        fi
         read -r -p "$(tr_msg af_orphan_prompt)" _ans || die "$(tr_msg af_migrate)"
         if is_yes "$_ans"; then
             while IFS='|' read -r _srv _path; do
@@ -14615,6 +14651,14 @@ assert_no_foreign_core_conflicts() {
                 rm -f -- "$_path" || die "$(tr_msg af_migrate)"
             done <<< "$conflicts"
             return 0
+        fi
+        # A managed orphan declined for cleanup is still a refusal, but
+        # the reason must say so: it is A-Box's own binary, not a
+        # foreign install.
+        if (( _all_managed == 1 )); then
+            msg "${RED}[!] Cleanup declined; refusing to overwrite the A-Box-managed core binary:${NC}"
+            while IFS='|' read -r srv path; do [[ -n "$path" ]] && msg "${RED}    ${srv}: ${path}${NC}"; done <<< "$conflicts"
+            die "$(tr_msg af_migrate)"
         fi
     fi
     msg "${RED}[!] Refusing to overwrite non-A-Box core files/services:${NC}"
@@ -22457,6 +22501,187 @@ hysteria_official_hop_firewall_ok() {
 }
 
 
+# R25-F-S1-11 (GPT-arbitrated bounded option A, failure exit = C):
+# auto-recovery for a broken xray config, driven by the per-minute probe.
+# Invoked non-interactively as: install.sh --xray-config-autorecover
+# (the probe runs it under its own runtime guard; see socket_probe.sh).
+# Only a CONFIRMED config fault triggers a restore; ordinary crashes
+# (the offline test passes) are untouched, and an inconclusive test
+# (timeout / binary problem) never authorizes an overwrite.
+# One online attempt only: the first trusted backup whose config passes
+# the offline test is installed; if the service still does not come up,
+# no older backup is tried. A failed recovery latches: the service is
+# stopped explicitly (systemd Restart=always alone would keep spinning
+# it) and the probe must not restart it (rc 1 tells the probe to exit).
+# rc: 0 = restored from a trusted backup and the service is up again;
+# 1 = config fault with no recovery (latched; restore manually, see the
+# .status file); 2 = not applicable (no xray / config valid / test
+# inconclusive / desired state not RUNNING).
+# Marker records (one line per attempt: "<status> <sha> <epoch> <detail>"):
+# restored = this broken content was already auto-restored once (never
+# again); failed/attempt within 3600s = cool-down (covers an interrupted
+# attempt too); 3 restores in 86400s = rate limit. The attempt line is
+# written BEFORE any side effect, so a crash mid-restore cannot look
+# like "never tried".
+_xrc_marker_append() {
+    local marker="$1" _st="$2" _sha="$3" _detail="${4:-}"
+    local _tmp
+    _tmp=$(umask 077; mktemp "$(dirname "$marker")/.xray-cfg-autorecover.XXXXXX") || return 1
+    { [[ -f "$marker" && ! -L "$marker" ]] && cat -- "$marker"; printf '%s %s %s %s\n' "$_st" "$_sha" "$(date +%s)" "$_detail"; } > "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    chmod 600 -- "$_tmp" 2>/dev/null || true
+    mv -f -- "$_tmp" "$marker" || { rm -f -- "$_tmp"; return 1; }
+}
+
+# Write the human-readable stop record once (first failure wins) and stop
+# the managed xray service so the restart loop halts. Never touches the
+# desired state: the stack still WANTS to run, the config recovery failed.
+_xrc_stop_xray() {
+    local statusf="$1" _sha="$2" _reason="${3:-}"
+    local _tmp
+    if [[ ! -e "$statusf" && ! -L "$statusf" ]]; then
+        _tmp=$(umask 077; mktemp "$(dirname "$statusf")/.xray-cfg-autorecover.status.XXXXXX") 2>/dev/null || return 1
+        printf '%s xray config auto-recovery STOPPED: %s (broken config sha %s; restore manually from a backup)\n' "$(date -u +%FT%TZ)" "$_reason" "$_sha" > "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+        chmod 600 -- "$_tmp" 2>/dev/null || true
+        mv -f -- "$_tmp" "$statusf" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
+    fi
+    if [[ "$(effective_init_system 2>/dev/null || true)" == 'systemd' ]]; then
+        systemctl stop xray >/dev/null 2>&1 || true
+    else
+        rc-service xray stop >/dev/null 2>&1 9>&- 10>&- || true
+    fi
+    return 0
+}
+
+xray_config_autorecover() {
+    local cfg="${XRAY_CFG:-/usr/local/etc/xray/config.json}"
+    local bin="${XRAY_BIN:-/usr/local/bin/xray}"
+    local abox="${ABOX_DIR:-/etc/ddr}"
+    local marker="$abox/.xray-cfg-autorecover" statusf="$abox/.xray-cfg-autorecover.status"
+    local now test_rc bad_sha gate
+    [[ -x "$bin" ]] || return 2
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 2
+    # Desired state must still be RUNNING; a stopped stack is never pulled up.
+    if [[ -f "$abox/.desired_state" && ! -L "$abox/.desired_state" ]]; then
+        [[ "$(cat "$abox/.desired_state" 2>/dev/null || true)" == 'RUNNING' ]] || return 2
+    fi
+    # Offline config test (bounded). rc 124 = timeout, 127 = binary problem:
+    # inconclusive, never authorize an overwrite. Any other non-zero rc is a
+    # confirmed config fault (xray reports config decode errors this way).
+    if command -v timeout >/dev/null 2>&1; then
+        XRAY_LOCATION_ASSET=/usr/local/share/xray timeout 30 "$bin" run -test -config "$cfg" >/dev/null 2>&1; test_rc=$?
+    else
+        XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$cfg" >/dev/null 2>&1; test_rc=$?
+    fi
+    (( test_rc == 0 )) && return 2
+    (( test_rc == 124 || test_rc == 127 )) && return 2
+    bad_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || return 1
+    [[ -n "$bad_sha" ]] || return 1
+    now=$(date +%s)
+    if [[ -f "$marker" && ! -L "$marker" ]]; then
+        gate=$(awk -v s="$bad_sha" -v n="$now" '
+            $2 == s { st = $1; ep = $3 }
+            $1 == "restored" && (n - $3) < 86400 { rc24++ }
+            END {
+                if (st == "restored") print "restored"
+                else if ((st == "failed" || st == "attempt") && (n - ep) < 3600) print "cooldown"
+                else if (rc24 >= 3) print "rate"
+                else print "go"
+            }' "$marker" 2>/dev/null || true)
+        case "$gate" in
+            restored|cooldown|rate)
+                _xrc_stop_xray "$statusf" "$bad_sha" "auto-recovery already attempted ($gate); manual restore required"
+                return 1
+                ;;
+        esac
+    fi
+    # Record the attempt BEFORE any side effect.
+    _xrc_marker_append "$marker" attempt "$bad_sha" "" || return 1
+    local _cand _count=0 _good='' _good_src='' _work _sz _stage _restart_ok=0 _st_tmp
+    _work=$(mktemp -d /tmp/A-Box-xray-autorecover.XXXXXX) || return 1
+    chmod 700 "$_work" || { rm -rf "$_work"; return 1; }
+    local _list
+    _list=$(
+        for _dir in "$abox/backups" /root/A-Box-backups; do
+            [[ -d "$_dir" && ! -L "$_dir" ]] || continue
+            find "$_dir" -maxdepth 1 -type f -name 'A-Box-backup-*.tar.gz' -printf '%T@ %p\n'
+        done | sort -rn | cut -d' ' -f2-
+    ) || { rm -rf "$_work"; return 1; }
+    # Newest first; at most 5 candidates examined. A candidate must be
+    # TRUSTED (sha256 sidecar + HMAC verify with the live key, the same
+    # trust the manual restore path requires) and its config must pass
+    # the offline test; anything else is skipped, never installed. Only
+    # the single config member is extracted, never the whole archive.
+    for _cand in $_list; do
+        (( _count >= 5 )) && break
+        _count=$(( _count + 1 ))
+        backup_checksum_verify "$_cand" "${_cand}.sha256" 2>/dev/null || continue
+        backup_auth_verify "$_cand" "${_cand}.hmac" 2>/dev/null || continue
+        rm -rf "$_work/extract"; mkdir -p "$_work/extract" || continue
+        tar -xzf "$_cand" -C "$_work/extract" root/usr/local/etc/xray/config.json 2>/dev/null || continue
+        _good="$_work/extract/root/usr/local/etc/xray/config.json"
+        [[ -f "$_good" && ! -L "$_good" ]] || { _good=''; continue; }
+        _sz=$(stat -c %s -- "$_good" 2>/dev/null || echo 0)
+        [[ "$_sz" =~ ^[0-9]+$ && "$_sz" -le 1048576 && "$_sz" -gt 0 ]] || { _good=''; continue; }
+        if command -v timeout >/dev/null 2>&1; then
+            XRAY_LOCATION_ASSET=/usr/local/share/xray timeout 30 "$bin" run -test -config "$_good" >/dev/null 2>&1 || { _good=''; continue; }
+        else
+            XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$_good" >/dev/null 2>&1 || { _good=''; continue; }
+        fi
+        _good_src="$_cand"
+        break
+    done
+    if [[ -z "$_good" ]]; then
+        _xrc_marker_append "$marker" failed "$bad_sha" "no-trusted-good-backup" || true
+        _xrc_stop_xray "$statusf" "$bad_sha" "no trusted backup with a valid xray config"
+        rm -rf "$_work"
+        return 1
+    fi
+    # Re-verify: the live config must still be the same broken content and
+    # the desired state still RUNNING; anything else aborts this stale verdict.
+    if [[ "$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}')" != "$bad_sha" ]]; then
+        rm -rf "$_work"; return 1
+    fi
+    if [[ -f "$abox/.desired_state" && ! -L "$abox/.desired_state" ]]; then
+        [[ "$(cat "$abox/.desired_state" 2>/dev/null || true)" == 'RUNNING' ]] || { rm -rf "$_work"; return 1; }
+    fi
+    # Preserve the broken config aside (0600; keeps the failure evidence),
+    # then atomically install the good config next to the live one.
+    install -m 600 -- "$cfg" "$abox/xray-config.broken-${bad_sha:0:12}.json" 2>/dev/null || { rm -rf "$_work"; return 1; }
+    _stage=$(umask 077; mktemp "$(dirname "$cfg")/.xray-config.A-Box-new.XXXXXX") || { rm -rf "$_work"; return 1; }
+    cp -f -- "$_good" "$_stage" 2>/dev/null || { rm -f -- "$_stage"; rm -rf "$_work"; return 1; }
+    chmod 600 -- "$_stage" 2>/dev/null || true
+    [[ $EUID -eq 0 ]] && chown root:root -- "$_stage" 2>/dev/null || true
+    mv -f -- "$_stage" "$cfg" || { rm -f -- "$_stage"; rm -rf "$_work"; return 1; }
+    # One controlled restart; verify the service is actually up afterwards.
+    # A still-failing service is NOT followed by trying older backups.
+    if [[ "$(effective_init_system 2>/dev/null || true)" == 'systemd' ]]; then
+        if systemctl restart xray >/dev/null 2>&1; then
+            sleep 2
+            systemctl is-active --quiet xray >/dev/null 2>&1 && _restart_ok=1
+        fi
+    else
+        if rc-service xray restart >/dev/null 2>&1 9>&- 10>&-; then
+            sleep 2
+            rc-service xray status >/dev/null 2>&1 9>&- 10>&- && _restart_ok=1
+        fi
+    fi
+    if (( _restart_ok == 1 )); then
+        _xrc_marker_append "$marker" restored "$bad_sha" "$_good_src" || true
+        _st_tmp=$(umask 077; mktemp "$(dirname "$statusf")/.xray-cfg-autorecover.status.XXXXXX") 2>/dev/null || true
+        if [[ -n "$_st_tmp" ]]; then
+            printf '%s xray config auto-restored from %s; service up (broken config sha %s preserved aside)\n' "$(date -u +%FT%TZ)" "$_good_src" "$bad_sha" > "$_st_tmp" || true
+            chmod 600 -- "$_st_tmp" 2>/dev/null || true
+            mv -f -- "$_st_tmp" "$statusf" 2>/dev/null || rm -f -- "$_st_tmp"
+        fi
+        rm -rf "$_work"
+        return 0
+    fi
+    _xrc_marker_append "$marker" failed "$bad_sha" "restart-failed" || true
+    _xrc_stop_xray "$statusf" "$bad_sha" "restored config installed but the service did not come up"
+    rm -rf "$_work"
+    return 1
+}
+
 setup_health_monitor() {
     command -v flock >/dev/null 2>&1 || die "$(tr_msg setup_health_monitor_flock_missing)"
     msg "${YELLOW}[*] $(tr_msg setup_health_monitor_injecting_probe)${NC}"
@@ -22792,6 +23017,25 @@ count=0; last=0
 [[ "$count" =~ ^[0-9]+$ ]] || count=0
 [[ "$last" =~ ^[0-9]+$ ]] || last=0
 now=$(date +%s)
+# R25-F-S1-11: a failed xray may be a config fault, not an ordinary crash.
+# Offer the bounded auto-restore first (marker/latch-gated inside the
+# helper): 0 = restored, service up again (reset the failure count);
+# 1 = config fault with no recovery (service stopped + latched by the
+# helper; do not restart from here); 2 = not a config fault (fall
+# through to the restart gate below). Only runs when the installed
+# A-Box.sh actually supports the flag (version skew guard).
+# The child inherits this probe's runtime guard: fd 9 is the probe's own
+# lock, so dup the held runtime lock (fd 10) onto fd 9 for the child and
+# restore it afterwards.
+if [[ "$failed_srv" == xray && -f "$SCRIPT_DIR/A-Box.sh" && ! -L "$SCRIPT_DIR/A-Box.sh" ]] && grep -q -- '--xray-config-autorecover' "$SCRIPT_DIR/A-Box.sh" 2>/dev/null; then
+    if exec 12>&9 9>&10 2>/dev/null; then
+        ABOX_DIR="$SCRIPT_DIR" ABOX_INHERITED_LOCK_MODE=flock bash "$SCRIPT_DIR/A-Box.sh" --xray-config-autorecover
+        _xc_rc=$?
+        exec 9>&12 12>&- || true
+        if (( _xc_rc == 0 )); then printf '0 %s\n' "$now" > "$STATE"; exit 0; fi
+        if (( _xc_rc == 1 )); then rm -f "$STATE"; exit 0; fi
+    fi
+fi
 count=$((count+1))
 printf '%s %s\n' "$count" "$last" > "$STATE"
 (( count >= 3 )) || exit 0
@@ -44471,13 +44715,25 @@ PY_LATEST_BACKUP
     rm -rf "$work"; msg "${GREEN}[*] Rollback restored backup:${NC} $selected$preserved_note"
 }
 
+# R25-F-S1-05: legacy (pre-v3) backups carry no meta/manifest.version
+# member (validate_legacy_backup_archive rejects archives that HAVE one).
+# Returns 0 only when the archive lists successfully and has no such member;
+# a corrupt/unreadable archive returns 1 so later checks fail as before.
+backup_archive_is_legacy() {
+    local archive="$1" _members
+    _members=$(tar -tzf "$archive" 2>/dev/null) || return 1
+    grep -Fxq 'meta/manifest.version' <<< "$_members" && return 1
+    grep -Fxq './meta/manifest.version' <<< "$_members" && return 1
+    return 0
+}
+
 restore_from_backup() {
     local backup_dir="$ABOX_DIR/backups" backups i choice selected work root answer backend mode=all srv path targets='' backups_output='' _own_brc=0
     if ! backups_output=$(
         for _dir in "$ABOX_DIR/backups" /root/A-Box-backups; do
             [[ -d "$_dir" && ! -L "$_dir" ]] || continue
-            find "$_dir" -maxdepth 1 -type f -name 'A-Box-backup-*.tar.gz' -print
-        done | sort -ru
+            find "$_dir" -maxdepth 1 -type f -name 'A-Box-backup-*.tar.gz' -printf '%T@ %p\n'
+        done | sort -rn | cut -d' ' -f2-
     ); then
         msg "${RED}[!] $(tr_msg rb_enum_fail)${NC}"
         pause_return
@@ -44513,6 +44769,10 @@ restore_from_backup() {
         fi
     done
     backup_checksum_verify "$_rbc" "${_rbc}.sha256" || die "$(tr_msg rb_sha_bad)"
+    # R25-F-S1-05: a legacy (manifest v2) backup has no HMAC sidecar, so
+    # without this branch it dies below as rb_auth_fail; detect it here
+    # and point at the option-4 converter instead of a misleading auth error.
+    if backup_archive_is_legacy "$_rbc"; then rm -rf "$work"; die "$(tr_msg rb_legacy_convert)"; fi
     prepare_backup_auth_for_manual_restore "$_rbc" || die "$(tr_msg rb_auth_fail)"
     validate_backup_archive "$_rbc" || die "$(tr_msg rb_structure_fail)"
     tar -xzf "$_rbc" -C "$work" || { rm -rf "$work"; die "$(tr_msg rb_extract_fail)"; }
@@ -47812,6 +48072,26 @@ _wallos_show_docker_err() { # $1 = inspect/recheck stderr (may be empty)
     [[ -n "${1:-}" ]] && msg "${RED}$(tprintf wl_td_docker_err "$1")${NC}"
 }
 
+# R25-F-C-M20: "never installed" vs "state unknown" on a host without a
+# docker binary. A host that never had Wallos leaves no trace at all (no
+# data dir, no unit, no A-Box wallos state, no docker socket); only then
+# is the container state "gone". Any trace keeps the fail-closed unknown.
+_wallos_no_trace() {
+    [[ -e "$WALLOS_DIR" || -L "$WALLOS_DIR" ]] && return 1
+    local _u
+    _u=$(same_name_service_unit_path wallos 2>/dev/null || true)
+    [[ -n "$_u" && ( -e "$_u" || -L "$_u" ) ]] && return 1
+    local _g
+    for _g in /etc/systemd/system/wallos*.service /run/systemd/system/wallos*.service /etc/init.d/wallos; do
+        [[ -e "$_g" || -L "$_g" ]] && return 1
+    done
+    local _a="${ABOX_DIR:-/etc/ddr}"
+    [[ -e "$_a/.wallos-cf-token" || -L "$_a/.wallos-cf-token" ]] && return 1
+    [[ -e "$_a/wallos-images.txt" || -L "$_a/wallos-images.txt" ]] && return 1
+    [[ -e /var/run/docker.sock || -L /var/run/docker.sock ]] && return 1
+    return 0
+}
+
 wallos_stack_teardown() {
     local _purge="${1:-keep-data}" _rm_failed=0 _docker_ok=0 _gone=0 _unknown=0 _inspect_err='' _recheck_err=''
     if command -v docker >/dev/null 2>&1; then
@@ -47859,9 +48139,15 @@ wallos_stack_teardown() {
             _unknown=1
         fi
     else
-        # R7-F15-7: no docker binary at all: the container state is
-        # unknown, not "gone". Keep-data must not report success.
-        _unknown=1
+        # R25-F-C-M20: no docker binary at all. R7-F15-7 keeps the
+        # fail-closed rule (state unknown, not "gone") whenever any
+        # Wallos trace remains; only a host with no trace at all
+        # (never installed) counts as gone.
+        if _wallos_no_trace; then
+            _gone=1
+        else
+            _unknown=1
+        fi
     fi
     if [[ "$_purge" == 'purge-data' && -f "$WALLOS_DIR/.abox-state" && ! -L "$WALLOS_DIR/.abox-state" ]]; then
         # U121: never delete data under a container that may still be alive.
@@ -51123,14 +51409,18 @@ view_config() {
     # SNI=localhost dials through; SPKI base64 never matches).
     # Recompute from the live certificate; fall back to the stored
     # .env fingerprint (re-colonized) only when it is unreadable.
-    HY2_PIN_E=$(hy2_cert_pin_colon 2>/dev/null || true)
-    if [[ -z "$HY2_PIN_E" && "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
-        HY2_PIN_E=$(sed 's/\(..\)/\1:/g; s/:$//' <<< "${HY2_CERT_SHA256_FP}")
-        # A4: cached fingerprint in use — the live cert could not be read,
-        # so this pin was NOT verified against the current certificate.
-        msg "${YELLOW}[!] Hy2 pin from cached fingerprint; not verified against the current certificate.${NC}" >&2
+    # R25-F-S1-09: only a deployed Hy2 has a certificate to check; on a
+    # Vision-only (or any non-Hy2) node the unreadable-cert warning is noise.
+    if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
+        HY2_PIN_E=$(hy2_cert_pin_colon 2>/dev/null || true)
+        if [[ -z "$HY2_PIN_E" && "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+            HY2_PIN_E=$(sed 's/\(..\)/\1:/g; s/:$//' <<< "${HY2_CERT_SHA256_FP}")
+            # A4: cached fingerprint in use — the live cert could not be read,
+            # so this pin was NOT verified against the current certificate.
+            msg "${YELLOW}[!] Hy2 pin from cached fingerprint; not verified against the current certificate.${NC}" >&2
+        fi
+        [[ -n "$HY2_PIN_E" ]] || msg "${YELLOW}[!] Hy2 certificate unreadable; pinSHA256 left empty.${NC}" >&2
     fi
-    [[ -n "$HY2_PIN_E" ]] || msg "${YELLOW}[!] Hy2 certificate unreadable; pinSHA256 left empty.${NC}" >&2
     HY2_PIN_E=$(urlencode "$HY2_PIN_E")
     msg "${BLUE}======================================================================${NC}"
     msg "${BOLD}${CYAN}$(tprintf view_config_network_params_title "${MODE}")${NC}"
@@ -53861,6 +54151,8 @@ Usage:
                                       将恢复密钥导出到独立可信介质
   bash install.sh --convert-legacy-backup OLD.tar.gz [OUTPUT_DIR]
                                       安全转换旧版备份为 manifest v3
+  bash install.sh --xray-config-autorecover
+                                      xray 配置损坏时从可信备份自动恢复一次（探针调用）
   bash install.sh --help             显示命令行帮助 / Show help
 EOF_HELP
 }
@@ -56286,6 +56578,7 @@ main() {
         --version|-V) printf 'A-Box %s (%s)\n' "$ABOX_BUILD" "$ABOX_BUILD_EPOCH"; exit 0 ;;
         --export-backup-key) shift; prepare_noninteractive_file_operation; export_backup_recovery_key "${1:-}"; exit 0 ;;
         --convert-legacy-backup) shift; prepare_noninteractive_file_operation; convert_legacy_backup_archive "${1:-}" "${2:-$(dirname -- "${1:-.}")}"; exit $? ;;
+        --xray-config-autorecover) shift; prepare_noninteractive_file_operation; xray_config_autorecover; exit $? ;;
         --help|-h) show_cli_help; exit 0 ;;
         --self-test) run_self_tests; exit $? ;;
         --user-guard-tick) user_guard_tick; exit $? ;;

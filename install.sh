@@ -807,7 +807,7 @@ rebuild_standalone_links() {
         _pass=$(users_hy2_read_users /etc/hysteria/config.yaml 2>/dev/null | jq -r '.[0].secret // ""' 2>/dev/null || true)
         _obfs_raw=$(awk '/^obfs:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^obfs:/) exit} f{print}' /etc/hysteria/config.yaml 2>/dev/null | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
         if [[ -n "${_obfs_raw:-}" ]]; then
-            _obfs=$(users_hy2_yaml_scalar "$_obfs_raw")
+            _obfs=$(users_hy2_yaml_scalar "$_obfs_raw" 2>/dev/null) || _obfs=''
             _obfs=${_obfs%__ABOX_TRAILING_NL_KEEP__}
         fi
         if [[ -n "$_pass" && -n "${_obfs:-}" ]]; then
@@ -26561,7 +26561,12 @@ _argo_pick_port() {
             continue
         fi
         ss_out=$(ss -lnt 2>/dev/null) || return 1
-        if ! printf '%s\n' "$ss_out" | awk '{print $4}' | grep -q ":${p}\$"; then
+        # R14-F09-01: no `grep -q` here. Under global pipefail, grep -q
+        # exits on the first match; with a large listen table and an
+        # early match the upstream awk/printf die on SIGPIPE (rc 141),
+        # which `!` then reads as "port free" and returns an occupied
+        # port. A plain grep drains the whole stream, so no SIGPIPE.
+        if ! printf '%s\n' "$ss_out" | awk '{print $4}' | grep ":${p}\$" >/dev/null; then
             printf '%s' "$p"; return 0
         fi
         tries=$((tries + 1))
@@ -27170,7 +27175,9 @@ EOF_SVC
     argo_origin_probe "$d1" "/${ARGO_UUID}-vmess" || die 'Temp Argo VMess tunnel origin did not answer the WebSocket probe; fixed deployment kept.'
     argo_origin_probe "$d2" "/${ARGO_UUID}-vless" || die 'Temp Argo VLESS tunnel origin did not answer the WebSocket probe; fixed deployment kept.'
     # Switching to temp mode: tear down any fixed deployment.
-    argo_remove_unit argo
+    # R14-F09-02: a failed teardown must not be papered over: the token
+    # and the new mode are committed only after the old unit is gone.
+    argo_remove_unit argo || die 'Failed to remove the fixed Argo unit; fixed deployment kept.'
     rm -f /etc/ddr/.argo-token
     _argo_state_write "mode=temp
 uuid=${ARGO_UUID}
@@ -27382,8 +27389,10 @@ EOF_SVC
         restore_saved_trap EXIT "$_argo_prev_trap_exit"
         rm -f -- "$_argo_token_bak"
     fi
-    argo_remove_unit argo-vmess
-    argo_remove_unit argo-vless
+    # R14-F09-02: both temp units must be gone before the fixed mode is
+    # committed; a failed removal keeps the temp state, never a lie.
+    argo_remove_unit argo-vmess || die 'Failed to remove the temp Argo VMess unit; temp deployment kept.'
+    argo_remove_unit argo-vless || die 'Failed to remove the temp Argo VLESS unit; temp deployment kept.'
     _argo_state_write "mode=fixed
 uuid=${ARGO_UUID}
 vmess_port=${ARGO_VMESS_PORT}
@@ -27469,7 +27478,7 @@ argo_uninstall() {
             return 1
         fi
     done
-    local cfg='/etc/sing-box/config.json' tmp_cfg
+    local cfg='/etc/sing-box/config.json' tmp_cfg cfg_bak=''
     if [[ -f "$cfg" && ! -L "$cfg" ]]; then
         if ! command -v jq >/dev/null 2>&1; then
             msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
@@ -27518,15 +27527,23 @@ argo_uninstall() {
             | if (.route.rules | type) == "array" then .route.rules |= map(_fixrule) else . end
         ' "$cfg" > "$tmp_cfg" 2>/dev/null \
             && /usr/local/bin/sing-box check -c "$tmp_cfg" >/dev/null 2>&1; then
-            install_file_atomically "$tmp_cfg" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
-            prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
-            restart_service_soft sing-box || { msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"; return 1; }
+            # R14-F09-05: back up the shared config BEFORE the rewrite:
+            # the new config is installed before the permissions setup
+            # and the restart, and either step can fail after the old
+            # config is already gone (die / return 1, nothing to
+            # restore). The backup is consumed by restore on failure
+            # and removed on success.
+            cfg_bak=$(mktemp /tmp/A-Box-singbox-cfg-bak.XXXXXX) || die "$(tr_msg dp_tmpfile)"
+            cp -a -- "$cfg" "$cfg_bak" && chmod 600 -- "$cfg_bak" || { rm -f -- "$cfg_bak"; cfg_bak=''; die 'Config backup failed; refusing to rewrite the shared config without a backup.'; }
+            install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f -- "$cfg_bak"; die "$(tr_msg dp_sb_cfg)"; }
+            prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
+            restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"; return 1; }
         else
             rm -f "$tmp_cfg"
             msg "${YELLOW}[!] $(tr_msg dp_argo_uninstall_fail)${NC}"
             return 1
         fi
-        rm -f "$tmp_cfg"
+        rm -f "$tmp_cfg" "$cfg_bak"
     fi
     # R1-09-C05: verify the units actually stop BEFORE deleting
     # their files. Checking after deletion is vacuous: a deleted
@@ -29439,6 +29456,12 @@ deploy_socks5_landing() {
         /usr/local/bin/xray version >/dev/null 2>&1 || die "$(tr_msg dp_xray_exec)"
         prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
         rm -rf -- "$xray_tmp"
+        # R14-F09-03: check ownership BEFORE writing any unit below.
+        # ensure_xray_service_unit passes vacuously once our own marker
+        # is on disk, so the gate at the end of this function (R6-F09-7)
+        # can never fire for a unit written here: a foreign unit must
+        # be refused here, before it is overwritten.
+        ensure_xray_service_unit || die "$(tr_msg dp_xray_unit)"
         if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
             write_file_atomically_from_stdin /etc/systemd/system/xray.service 644 <<'EOF_SVC' || die "$(tr_msg dp_xray_unit)"
 # Managed by A-Box
@@ -29547,9 +29570,9 @@ EOF_SVC
     rm -f "$tmp_json"
 
     # Firewall: TCP + UDP.
-    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    allowPort "$port" udp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/udp")"; }
-    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
+    ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    ( allowPort "$port" udp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    save_firewall_rules || { if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft xray 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; die "$(tr_msg pi_fw_persist_fail)"; }
     # Ensure the service is running (minimal-install path or API-unavailable hosts).
     service_manager start xray 2>/dev/null || true
     # R2C10-02: verify liveness before claiming success. A swallowed start
@@ -34490,10 +34513,62 @@ users_hy2_yaml_scalar() {
             printf '%s__ABOX_TRAILING_NL_KEEP__' "$v"
             return 0
         fi
-        _dec=$(printf '%s' "$_tok" | jq -r '. + "__ABOX_TRAILING_NL_KEEP__"' 2>/dev/null) || {
-            printf '%s__ABOX_TRAILING_NL_KEEP__' "$v"
-            return 0
-        }
+        # R14-F11-02: translate YAML-only double-quoted escapes to
+        # their JSON equivalents before jq: \xHH -> \u00HH, \UHHHHHHHH
+        # -> a surrogate pair, and the single-letter YAML escapes
+        # \0 \a \v \e \N \_ \L \P -> \uXXXX. JSON cannot decode these,
+        # so without translation a legal YAML password such as
+        # "\x61\x62\x63" (real secret "abc") fell through to the raw
+        # token fallback and was adopted as the literal "\x61\x62\x63".
+        # The scan is escape-aware: a doubled backslash is consumed as
+        # one literal backslash, so "\\x61" stays literal "\x61".
+        # A still-undecodable token is a genuinely invalid escape: fail
+        # closed (rc 1, no output) instead of returning the raw token
+        # with rc 0, which callers adopted as a real credential.
+        local _j='' _k=0 _tlen=${#_tok} _ch='' _nx='' _hx='' _cp=0 _hi=0 _lo=0
+        while (( _k < _tlen )); do
+            _ch=${_tok:_k:1}
+            if [[ "$_ch" == '\' && $(( _k + 1 )) -lt _tlen ]]; then
+                _nx=${_tok:_k+1:1}
+                case "$_nx" in
+                    x)
+                        _hx=${_tok:_k+2:2}
+                        if [[ "${#_hx}" == 2 && "$_hx" =~ ^[0-9A-Fa-f]{2}$ ]]; then
+                            _j+="\\u00$_hx"; _k=$(( _k + 4 )); continue
+                        fi
+                        ;;
+                    U)
+                        _hx=${_tok:_k+2:8}
+                        if [[ "${#_hx}" == 8 && "$_hx" =~ ^[0-9A-Fa-f]{8}$ ]]; then
+                            _cp=$(( 16#$_hx ))
+                            if (( _cp <= 0x10FFFF )); then
+                                if (( _cp <= 0xFFFF )); then
+                                    printf -v _hx '%04x' "$_cp"; _j+="\\u$_hx"
+                                else
+                                    _hi=$(( 0xD800 + ((_cp - 0x10000) >> 10) ))
+                                    _lo=$(( 0xDC00 + ((_cp - 0x10000) & 0x3FF) ))
+                                    printf -v _hx '%04x' "$_hi"; _j+="\\u$_hx"
+                                    printf -v _hx '%04x' "$_lo"; _j+="\\u$_hx"
+                                fi
+                                _k=$(( _k + 10 )); continue
+                            fi
+                        fi
+                        ;;
+                    0) _j+='\u0000'; _k=$(( _k + 2 )); continue ;;
+                    a) _j+='\u0007'; _k=$(( _k + 2 )); continue ;;
+                    v) _j+='\u000B'; _k=$(( _k + 2 )); continue ;;
+                    e) _j+='\u001B'; _k=$(( _k + 2 )); continue ;;
+                    N) _j+='\u0085'; _k=$(( _k + 2 )); continue ;;
+                    _) _j+='\u00A0'; _k=$(( _k + 2 )); continue ;;
+                    L) _j+='\u2028'; _k=$(( _k + 2 )); continue ;;
+                    P) _j+='\u2029'; _k=$(( _k + 2 )); continue ;;
+                    '\') _j+='\\'; _k=$(( _k + 2 )); continue ;;
+                esac
+            fi
+            _j+="$_ch"; _k=$(( _k + 1 ))
+        done
+        _tok="$_j"
+        _dec=$(printf '%s' "$_tok" | jq -r '. + "__ABOX_TRAILING_NL_KEEP__"' 2>/dev/null) || return 1
         printf '%s' "$_dec"
         return 0
     fi
@@ -34591,9 +34666,9 @@ users_hy2_read_users() {
             n=${n#K}
             v=${v#V}
             [[ -n "$n" ]] || continue
-            v=$(users_hy2_yaml_scalar "$v")
+            v=$(users_hy2_yaml_scalar "$v") || return 1
             v=${v%__ABOX_TRAILING_NL_KEEP__}
-            n=$(users_hy2_yaml_scalar "$n")
+            n=$(users_hy2_yaml_scalar "$n") || return 1
             n=${n%__ABOX_TRAILING_NL_KEEP__}
             list=$(printf '%s' "$list" | jq -c --arg n "$n" --rawfile v <(printf '%s' "$v") '. + [{name: $n, secret: $v}]') || return 1
         done <<< "$out"
@@ -34606,7 +34681,7 @@ users_hy2_read_users() {
     fi
     pw=$(printf '%s\n' "$block" | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
     [[ -n "$pw" ]] || return 1
-    pw=$(users_hy2_yaml_scalar "$pw")
+    pw=$(users_hy2_yaml_scalar "$pw") || return 1
     pw=${pw%__ABOX_TRAILING_NL_KEEP__}
     # R3C11-04: a deny password is not a user; returning [] keeps the
     # registry's (disabled) users intact without resurrecting the deny
@@ -35625,6 +35700,14 @@ setup_user_guard() {
         chmod 700 "$tmp" || { rm -f -- "$tmp"; return 1; }
         mv -f -- "$tmp" "$runner" || { rm -f -- "$tmp"; return 1; }
     fi
+    # R14-F11-05: the sha256 comparison above cannot see a lost exec
+    # bit: a runner with identical content but mode 0600/0644 is left
+    # unrepaired while setup reports success, and every later policy
+    # save that requires user_guard_installed (-x) is refused — with no
+    # way for a reinstall to fix it. Repair the mode in place.
+    if [[ ! -x "$runner" && -f "$runner" && ! -L "$runner" ]]; then
+        chmod 700 "$runner" || return 1
+    fi
     # R10C11-03: quote the runner path only when it contains whitespace;
     # the default path must stay byte-identical (collect_abox_cron
     # matches the unquoted USERGUARD line exactly).
@@ -36216,7 +36299,7 @@ _nsni_apply() {
     esac
     cat "$tmp" > "$cfg" || { if [[ -f "$bak" && -r "$bak" ]] && cat "$bak" > "$cfg" 2>/dev/null; then rm -f "$tmp" "$bak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; rm -f "$tmp"; fi; return 1; }
     rm -f "$tmp"
-    local _kebak='' _crtbak='' _kemode='' _crtmode=''
+    local _kebak='' _crtbak='' _kemode='' _crtmode='' _tuic_cert_regen=0
     if [[ "$kind" == 'tuic' && -n "$key" && -n "$crt" ]]; then
         _kebak=$(mktemp /tmp/A-Box-nsni-keybak.XXXXXX 2>/dev/null || true)
         _crtbak=$(mktemp /tmp/A-Box-nsni-crtbak.XXXXXX 2>/dev/null || true)
@@ -36234,6 +36317,9 @@ _nsni_apply() {
             if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "" "" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
             return 1
         fi
+        # R14-F11-04: the regenerated certificate is self-signed by
+        # construction; the link must stop trusting it as a CA cert.
+        _tuic_cert_regen=1
     fi
     if is_service_running "$core" 2>/dev/null; then
         local _restart_ok=0
@@ -36282,6 +36368,23 @@ _nsni_apply() {
             if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
             return 1
         fi
+        # R14-F11-04: the SNI change regenerated the TUIC certificate as
+        # self-signed. A link kept from a CA-cert node carries no
+        # allow_insecure, so the client would still try to verify the
+        # new self-signed certificate and fail. Re-derive the trust
+        # parameter from the regenerated certificate: force
+        # allow_insecure=1 (adding it when absent).
+        if [[ "$kind" == 'tuic' && "$_tuic_cert_regen" == 1 ]]; then
+            if grep -q 'allow_insecure=' "$_ldir/$_lf" 2>/dev/null; then
+                if ! sed -i '/tuic:\/\// s|allow_insecure=[^&#]*|allow_insecure=1|g' "$_ldir/$_lf" 2>/dev/null; then
+                    if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+                    return 1
+                fi
+            elif ! sed -i '/tuic:\/\//{s|#|\&allow_insecure=1#|;t;s|$|\&allow_insecure=1|}' "$_ldir/$_lf" 2>/dev/null; then
+                if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+                return 1
+            fi
+        fi
         _shown=$(cat "$_ldir/$_lf" 2>/dev/null)
     fi
     local _envf="${ABOX_ENV:-/etc/ddr/.env}" _envvar='' _etmp='' _ebak=''
@@ -36293,6 +36396,18 @@ _nsni_apply() {
         _etmp=$(mktemp /tmp/A-Box-nsni-env.XXXXXX 2>/dev/null || true)
         if [[ -n "$_etmp" ]]; then
             if awk -v var="$_envvar" -v o="$old" -v n="$new" '{ v = $0; sub(/=.*/, "", v); if (v == var) { val = substr($0, length(v) + 2); q = ""; if (substr(val, 1, 1) == "\"" && substr(val, length(val), 1) == "\"") { q = "\""; val = substr(val, 2, length(val) - 2); } else if (substr(val, 1, 1) == "\047" && substr(val, length(val), 1) == "\047") { q = "\047"; val = substr(val, 2, length(val) - 2); } if (val == o) $0 = v "=" q n q; } print }' "$_envf" > "$_etmp" 2>/dev/null; then
+                # R14-F11-03: the awk above only rewrites a key that
+                # already exists with the old value. When the
+                # per-protocol key is missing entirely (only VLESS_SNI
+                # is set), append it: the link generator falls back to
+                # VLESS_SNI, so without this later links keep the old SNI.
+                if ! grep -q "^${_envvar}=" "$_etmp" 2>/dev/null; then
+                    if ! printf '%s=%s\n' "$_envvar" "$new" >> "$_etmp" 2>/dev/null; then
+                        rm -f "$_etmp"
+                        if _nsni_rollback "$cfg" "$bak" "$key" "$crt" "$_kebak" "$_crtbak" "$core" "$_was_running" "$_ldir/$_lf" "$_lbak" "$_kemode" "$_crtmode"; then rm -f "$bak" "$_kebak" "$_crtbak"; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $bak${NC}"; fi
+                        return 1
+                    fi
+                fi
                 _ebak=$(mktemp /tmp/A-Box-nsni-envbak.XXXXXX 2>/dev/null || true)
                 if [[ -n "$_ebak" ]] && cp -a "$_envf" "$_ebak" 2>/dev/null && chmod 600 "$_ebak" 2>/dev/null; then
                     if cat "$_etmp" > "$_envf" 2>/dev/null; then
@@ -36381,7 +36496,14 @@ node_sni_menu() {
 }
 
 user_guard_tick() {
-    exec 9>>/run/A-Box-user-guard.lock 2>/dev/null || return 0
+    # R14-F12-03: no `2>/dev/null` here. A bare `exec` with
+    # redirections applies them to the current shell permanently, so
+    # the stderr redirect used to swallow every later diagnostic in
+    # this tick — including the flock-failure error the comment below
+    # requires to stay visible. The open failure itself is still
+    # caught by `|| return 0` (a failed exec redirect does not exit
+    # the shell when it is part of an || list).
+    exec 9>>/run/A-Box-user-guard.lock || return 0
     flock -n 9; _flock_rc=$?
     if (( _flock_rc != 0 )); then
         # rc 1 is contention: another tick holds the lock, skip silently.
@@ -36773,6 +36895,15 @@ snapshot_timezone_state() {
     return 0
 }
 
+# R14-F12-05: timedatectl presence proves nothing on a host where systemd
+# is not PID 1: the binary exists but every call fails. A read-only
+# `show` query is the usability probe (the same query
+# snapshot_timezone_state already uses to learn the zone name).
+timedatectl_usable() {
+    command -v timedatectl >/dev/null 2>&1 || return 1
+    timedatectl show -p Timezone --value >/dev/null 2>&1
+}
+
 restore_timezone_snapshot() {
     local dir="$1" tz
     [[ -d "$dir" && -f "$dir/timezone" ]] || return 1
@@ -36802,15 +36933,31 @@ restore_timezone_snapshot() {
     # Only timedatectl may re-apply the zone name: without it the fallback
     # would rewrite /etc/localtime as a symlink and recreate /etc/timezone,
     # destroying the representation restored above.
-    if [[ -n "$tz" ]] && valid_timezone_name "$tz" && command -v timedatectl >/dev/null 2>&1; then
-        apply_timezone_name "$tz" || return 1
+    # R14-F12-05: "timedatectl exists" does not mean "timedatectl works":
+    # on a non-systemd host (container, systemd not PID 1) the binary is
+    # present but set-timezone fails, and the old guard still called
+    # apply_timezone_name, whose fallback then overwrote the files just
+    # restored. Probe usability with a read-only timedatectl query and
+    # pass timedatectl-only so a later set failure cannot fall through
+    # to the file rewrite either.
+    if [[ -n "$tz" ]] && valid_timezone_name "$tz" && timedatectl_usable; then
+        apply_timezone_name "$tz" timedatectl-only || return 1
     fi
     return 0
 }
 
 apply_timezone_name() {
-    local tz="$1"
+    local tz="$1" _mode="${2:-}"
     valid_timezone_name "$tz" || return 1
+    # R14-F12-05: timedatectl-only mode is for timezone restore, where the
+    # files are already correct: a failed set must never fall through to
+    # the zoneinfo file rewrite below. Normal callers (menu timezone
+    # change) keep the old fallback behaviour.
+    if [[ "$_mode" == 'timedatectl-only' ]]; then
+        command -v timedatectl >/dev/null 2>&1 || return 1
+        timedatectl set-timezone "$tz" 2>/dev/null || return 1
+        return 0
+    fi
     if command -v timedatectl >/dev/null 2>&1; then
         if timedatectl set-timezone "$tz" 2>/dev/null; then return 0; fi
         # timedatectl exists but cannot set (systemd not PID 1,
@@ -37240,7 +37387,7 @@ snapshot_dns_state() {
     if [[ "$backend" == networkmanager ]] && command -v nmcli >/dev/null 2>&1; then
         iface=$(nm_effective_device 2>/dev/null || true)
         [[ -n "$iface" ]] || return 1
-        connection=$(nmcli -g GENERAL.CONNECTION device show "$iface" 2>/dev/null) || return 1
+        connection=$(nmcli --escape no -g GENERAL.CONNECTION device show "$iface" 2>/dev/null) || return 1
         [[ -n "$connection" && "$connection" != '--' ]] || return 1
         printf '%s\n' "$connection" > "$dir/nm-connection" || return 1
         for key in ipv4.ignore-auto-dns ipv4.dns ipv6.ignore-auto-dns ipv6.dns; do
@@ -37756,7 +37903,7 @@ EOF_DNS
             local iface connection
             iface=$(nm_effective_device 2>/dev/null || true)
             [[ -n "$iface" ]] || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_no_iface)"; }
-            connection=$(nmcli -g GENERAL.CONNECTION device show "$iface" 2>/dev/null || true)
+            connection=$(nmcli --escape no -g GENERAL.CONNECTION device show "$iface" 2>/dev/null || true)
             [[ -n "$connection" && "$connection" != '--' ]] || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_no_conn)"; }
             nmcli connection modify "$connection" ipv4.ignore-auto-dns yes ipv4.dns "$v4" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_nm_v4)"; }
             nmcli connection modify "$connection" ipv6.ignore-auto-dns yes ipv6.dns "${v6:-}" || { restore_dns_snapshot "$dns_snap_tmp" && rm -rf -- "$dns_snap_tmp"; die "$(tr_msg hd_nm_v6)"; }
@@ -38333,8 +38480,26 @@ dns_enable_doh() {
     if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
         local _sock_listen=''
         _sock_listen=$(systemctl show --property=Listen --value dnscrypt-proxy.socket 2>/dev/null) || { msg "${RED}[!] Cannot query dnscrypt-proxy.socket endpoints; resolver configuration was not switched.${NC}"; return 1; }
-        if [[ -z "$_sock_listen" ]] || ! printf '%s\n' "$_sock_listen" | grep -qF '127.0.0.1:5353 (Stream)' 2>/dev/null || ! printf '%s\n' "$_sock_listen" | grep -qF '127.0.0.1:5353 (Datagram)' 2>/dev/null; then
-            msg "${RED}[!] dnscrypt-proxy.socket does not listen on 127.0.0.1:5353 (Stream and Datagram); resolver configuration was not switched. Effective Listen: ${_sock_listen:-none} -- correct the socket configuration or disable socket activation.${NC}"
+        # R14-F12-02: presence is not exclusivity. The socket hands the
+        # service every address it listens on (doh_listen='[]' below),
+        # so any extra endpoint (e.g. 0.0.0.0:5353) would make the
+        # resolver publicly reachable. Require the Listen list to be
+        # exactly the two loopback endpoints, in any order: one line per
+        # endpoint after normalising separators (systemctl prints one
+        # per line; tolerate a space-joined form as well).
+        local _listen_norm='' _ln='' _n_listen=0 _seen_stream=0 _seen_dgram=0 _bad_listen=0
+        _listen_norm=$(printf '%s' "$_sock_listen" | sed -e 's/)[[:space:]]*/)\n/g' -e 's/^[[:space:]]*//;s/[[:space:]]*$//' 2>/dev/null)
+        while IFS= read -r _ln; do
+            [[ -z "$_ln" ]] && continue
+            _n_listen=$(( _n_listen + 1 ))
+            case "$_ln" in
+                '127.0.0.1:5353 (Stream)') _seen_stream=1 ;;
+                '127.0.0.1:5353 (Datagram)') _seen_dgram=1 ;;
+                *) _bad_listen=1 ;;
+            esac
+        done <<< "$_listen_norm"
+        if (( _n_listen != 2 || _seen_stream != 1 || _seen_dgram != 1 || _bad_listen != 0 )); then
+            msg "${RED}[!] dnscrypt-proxy.socket must listen on exactly 127.0.0.1:5353 (Stream and Datagram); resolver configuration was not switched. Effective Listen: ${_sock_listen:-none} -- correct the socket configuration or disable socket activation.${NC}"
             return 1
         fi
     fi

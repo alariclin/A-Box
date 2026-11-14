@@ -31638,7 +31638,7 @@ traffic_optional_state_matches_expected() {
 }
 
 capture_vnstat_runtime_state() {
-    local name='' active enabled
+    local name='' active enabled _st='' _ufs='' _ufs_rc=0 _ru=''
     if [[ "${INIT_SYS:-}" == systemd ]]; then
         if systemctl list-unit-files --type=service --no-legend vnstat.service 2>/dev/null | awk -v wanted="vnstat.service" '$1 == wanted { found=1 } END { exit !found }' ; then
             name=vnstat
@@ -31648,20 +31648,60 @@ capture_vnstat_runtime_state() {
             printf '%s\n' 'absent'
             return 0
         fi
-        systemctl is-active --quiet "$name" && active=1 || active=0
+        # R14-F10-03: a query failure is not "stopped / disabled".
+        # is-active --quiet is non-zero both for a confirmed
+        # inactive service and for a query failure (e.g. D-Bus
+        # down); only a read-back of a known inactive state proves
+        # active=0, anything else is unknown ('?') so rollback
+        # leaves the service alone.
+        if systemctl is-active --quiet "$name" 2>/dev/null; then
+            active=1
+        else
+            _st=$(systemctl is-active "$name" 2>/dev/null) || true
+            case "$_st" in
+                inactive|failed|activating|deactivating|reloading|maintenance) active=0 ;;
+                *) active='?' ;;
+            esac
+        fi
         # R7C10-02: is-enabled --quiet is 0 for enabled-runtime
         # too, so it cannot distinguish runtime-only from
         # persistent enablement. Read the verbatim UnitFileState.
-        case "$(systemctl show -p UnitFileState --value "$name" 2>/dev/null)" in
-            enabled) enabled=1 ;;
-            enabled-runtime) enabled=2 ;;
-            *) enabled=0 ;;
-        esac
+        # R14-F10-03: a failed / empty read is unknown ('?'), not
+        # disabled; only a successful read of a non-enabled state is 0.
+        _ufs=$(systemctl show -p UnitFileState --value "$name" 2>/dev/null); _ufs_rc=$?
+        if (( _ufs_rc != 0 )) || [[ -z "$_ufs" ]]; then
+            enabled='?'
+        else
+            case "$_ufs" in
+                enabled) enabled=1 ;;
+                enabled-runtime) enabled=2 ;;
+                *) enabled=0 ;;
+            esac
+        fi
         printf 'systemd|%s|%s|%s\n' "$name" "$active" "$enabled"
     elif [[ "${INIT_SYS:-}" == openrc ]] && command -v rc-service >/dev/null 2>&1; then
         [[ -x /etc/init.d/vnstatd ]] || { printf '%s\n' 'absent'; return 0; }
-        rc-service vnstatd status >/dev/null 2>&1 && active=1 || active=0
-        rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])vnstatd([[:space:]]|$)' && enabled=1 || enabled=0
+        # R14-F10-03: same unknown-state rule as the systemd branch
+        # above: only a read-back of a known stopped state proves
+        # active=0; a failed / silent query is unknown ('?').
+        if rc-service vnstatd status >/dev/null 2>&1; then
+            active=1
+        else
+            _st=$(rc-service vnstatd status 2>/dev/null) || true
+            case "$_st" in
+                *'status: stopped'*|*'is stopped'*|*'not running'*) active=0 ;;
+                *) active='?' ;;
+            esac
+        fi
+        # R14-F10-03: a failed rc-update show is unknown ('?'), not
+        # "not enabled"; only a successful listing proves 0/1.
+        if ! _ru=$(rc-update show default 2>/dev/null); then
+            enabled='?'
+        elif grep -Eq '(^|[[:space:]])vnstatd([[:space:]]|$)' <<< "$_ru"; then
+            enabled=1
+        else
+            enabled=0
+        fi
         printf 'openrc|vnstatd|%s|%s\n' "$active" "$enabled"
     else
         return 1
@@ -31679,14 +31719,32 @@ restore_vnstat_runtime_state() {
     case "$kind" in
         absent) return 0 ;;
         systemd)
-            if [[ "$enabled" == 1 ]]; then systemctl enable "$name" >/dev/null 2>&1 || return 1;
-            elif [[ "$enabled" == 2 ]]; then systemctl disable "$name" >/dev/null 2>&1 || return 1; systemctl enable --runtime "$name" >/dev/null 2>&1 || return 1;
-            else systemctl disable "$name" >/dev/null 2>&1 || return 1; fi
-            if [[ "$active" == 1 ]]; then systemctl start "$name" >/dev/null 2>&1 || systemctl restart "$name" >/dev/null 2>&1 || return 1; else systemctl stop "$name" >/dev/null 2>&1 || return 1; fi
+            # R14-F10-03: an unknown ('?') field is left untouched;
+            # only a known pre-state is restored.
+            case "$enabled" in
+                1) systemctl enable "$name" >/dev/null 2>&1 || return 1 ;;
+                2) systemctl disable "$name" >/dev/null 2>&1 || return 1; systemctl enable --runtime "$name" >/dev/null 2>&1 || return 1 ;;
+                '?') : ;;
+                *) systemctl disable "$name" >/dev/null 2>&1 || return 1 ;;
+            esac
+            case "$active" in
+                1) systemctl start "$name" >/dev/null 2>&1 || systemctl restart "$name" >/dev/null 2>&1 || return 1 ;;
+                '?') : ;;
+                *) systemctl stop "$name" >/dev/null 2>&1 || return 1 ;;
+            esac
             ;;
         openrc)
-            if [[ "$enabled" == 1 ]]; then rc-update add "$name" default >/dev/null 2>&1 || return 1; elif rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${name}([[:space:]]|$)"; then rc-update del "$name" default >/dev/null 2>&1 || return 1; fi
-            if [[ "$active" == 1 ]]; then rc-service "$name" start >/dev/null 2>&1 9>&- 10>&- || rc-service "$name" restart >/dev/null 2>&1 9>&- 10>&- || return 1; else rc-service "$name" stop >/dev/null 2>&1 || return 1; fi
+            # R14-F10-03: an unknown ('?') field is left untouched.
+            case "$enabled" in
+                1) rc-update add "$name" default >/dev/null 2>&1 || return 1 ;;
+                '?') : ;;
+                *) if rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${name}([[:space:]]|$)"; then rc-update del "$name" default >/dev/null 2>&1 || return 1; fi ;;
+            esac
+            case "$active" in
+                1) rc-service "$name" start >/dev/null 2>&1 9>&- 10>&- || rc-service "$name" restart >/dev/null 2>&1 9>&- 10>&- || return 1 ;;
+                '?') : ;;
+                *) rc-service "$name" stop >/dev/null 2>&1 || return 1 ;;
+            esac
             ;;
         *) return 1 ;;
     esac
@@ -32158,7 +32216,18 @@ _traffic = (data.get("interfaces") or [{}])[0].get("traffic") or {}
 months = _traffic.get("month") or _traffic.get("months") or []
 if not _traffic.get("month") and _traffic.get("months"):
     # R6C10-02: vnStat 1.x months are KiB counts; normalize to bytes.
-    months = [{**m, "rx": int(m.get("rx", 0)) * 1024, "tx": int(m.get("tx", 0)) * 1024} for m in months]
+    # R14-F10-05: 1.x entries also carry the date as top-level
+    # year/month, while every read below uses .date.year/.date.month
+    # (month_bytes already accepts both shapes). Normalize the date
+    # here too, keeping an existing .date when one is present, so the
+    # sort key and the current-month check work on 1.x data.
+    def _norm_1x(m):
+        _d = m.get("date") or {}
+        return {**m, "rx": int(m.get("rx", 0)) * 1024,
+                "tx": int(m.get("tx", 0)) * 1024,
+                "date": {"year": _d.get("year") or m.get("year") or 0,
+                         "month": _d.get("month") or m.get("month") or 0}}
+    months = [_norm_1x(m) for m in months]
 months = sorted(months,
                 key=lambda m: (m.get("date", {}).get("year", 0),
                                m.get("date", {}).get("month", 0)),
@@ -33164,6 +33233,12 @@ users_registry_remove() { # $1 = core, $2 = tag
 # panel would keep listing ghost users from them.
 users_registries_wipe() {
     local _dir="${ABOX_USERS_DIR:-/etc/ddr/users.d}" _f=''
+    # R14-F10-02: refuse a symlinked registry dir before the glob can
+    # follow it into the link target (same guard as
+    # users_registries_remove_core, R8-F04-2). The leaf ! -L guard only
+    # covers the last component; a linked dir would delete ordinary
+    # files outside the registry. A missing dir stays a no-op success.
+    [[ ! -L "$_dir" ]] || return 1
     [[ -d "$_dir" ]] || return 0
     for _f in "$_dir"/*.json; do
         [[ -f "$_f" && ! -L "$_f" ]] || continue
@@ -33181,7 +33256,7 @@ sync_env_ports_after_removal() {
     # main combo and an independent node survives while any listener
     # remains. HY2 hop-range vars are not listener ports and are out
     # of scope here.
-    local envf="${ABOX_ENV:-/etc/ddr/.env}" var='' val='' cleared='' info='' cfg='' hy2p='' core='' p='' _ports='' _read_failed=0 _write_failed=0 _keep=0 _vp='' _lp='' _rlo='' _rhi='' _hy2line=''
+    local envf="${ABOX_ENV:-/etc/ddr/.env}" var='' val='' cleared='' info='' cfg='' hy2p='' core='' p='' _ports='' _read_failed=0 _write_failed=0 _keep=0 _vp='' _lp='' _rlo='' _rhi='' _vlo='' _vhi='' _lrlo='' _lrhi='' _hy2line=''
     local -a live_ports=()
     local -a _val_parts=()
     [[ -f "$envf" && ! -L "$envf" ]] || return 0
@@ -33248,9 +33323,25 @@ sync_env_ports_after_removal() {
                 if [[ "$_lp" == "$_vp" ]]; then _keep=1; break; fi
                 if [[ "$_lp" =~ ^([0-9]+)-([0-9]+)$ ]]; then
                     _rlo="${BASH_REMATCH[1]}"; _rhi="${BASH_REMATCH[2]}"
-                    if [[ "$_vp" =~ ^[0-9]+$ ]] && (( 10#$_rlo <= 10#$_vp && 10#$_vp <= 10#$_rhi )); then _keep=1; break; fi
+                    if (( 10#$_rlo > 10#$_rhi )); then _keep=1; break;
+                    elif [[ "$_vp" =~ ^[0-9]+$ ]] && (( 10#$_rlo <= 10#$_vp && 10#$_vp <= 10#$_rhi )); then _keep=1; break; fi
                 elif [[ ! "$_lp" =~ ^[0-9]+$ ]]; then
                     _keep=1; break
+                fi
+                # R14-F10-04: the reverse direction the loop above
+                # misses: the .env value itself is a range and a live
+                # entry is one of its members (or overlaps it). A
+                # malformed (reversed) range is unparseable: keep,
+                # fail-closed, like an unparseable live entry.
+                if [[ "$_vp" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+                    _vlo="${BASH_REMATCH[1]}"; _vhi="${BASH_REMATCH[2]}"
+                    if (( 10#$_vlo > 10#$_vhi )); then _keep=1; break;
+                    elif [[ "$_lp" =~ ^[0-9]+$ ]] && (( 10#$_vlo <= 10#$_lp && 10#$_lp <= 10#$_vhi )); then _keep=1; break;
+                    elif [[ "$_lp" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+                        _lrlo="${BASH_REMATCH[1]}"; _lrhi="${BASH_REMATCH[2]}"
+                        if (( 10#$_lrlo > 10#$_lrhi )); then _keep=1; break;
+                        elif (( 10#$_vlo <= 10#$_lrhi && 10#$_lrlo <= 10#$_vhi )); then _keep=1; break; fi
+                    fi
                 fi
             done
             (( _keep == 1 )) && break

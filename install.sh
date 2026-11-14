@@ -573,24 +573,31 @@ _tsv_unescape() {
 # it as missing so the next rebuild retries. Anything else that exists (a
 # valid link, unparseable content, a duplicate parameter) is left alone —
 # never deleted or rebuilt on suspicion.
+# R14-F01-02: an ss:// URI with an empty userinfo part (nothing
+# before '?') carrying a shadow-tls parameter is likewise
+# proven-bad: it is the "ss://?shadow-tls=<nonempty>" the old
+# unchecked _ub step published.
 _standalone_link_is_empty_shadowtls() {
-    local _f="$1" _uri='' _q='' _part='' _n=0 _empty=0
+    local _f="$1" _uri='' _q='' _part='' _n=0 _empty=0 _has_tls=0 _head=''
     [[ -f "$_f" && ! -L "$_f" ]] || return 1
     [[ "$(grep -c '^ss://' "$_f" 2>/dev/null || true)" == 1 ]] || return 1
     _uri=$(grep -m1 '^ss://' "$_f" 2>/dev/null) || return 1
     [[ "$_uri" == *'?'* ]] || return 1
     _q="${_uri#*\?}"
     _q="${_q%%#*}"
+    _head="${_uri#ss://}"
+    _head="${_head%%\?*}"
     while [[ -n "$_q" ]]; do
         _part="${_q%%&*}"
         case "$_part" in
-            'shadow-tls=') _n=$((_n + 1)); _empty=1 ;;
-            'shadow-tls='*) _n=$((_n + 1)) ;;
+            'shadow-tls=') _n=$((_n + 1)); _empty=1; _has_tls=1 ;;
+            'shadow-tls='*) _n=$((_n + 1)); _has_tls=1 ;;
         esac
         [[ "$_q" == *'&'* ]] || break
         _q="${_q#*&}"
     done
-    (( _n == 1 && _empty == 1 ))
+    (( _n == 1 && _empty == 1 )) && return 0
+    (( _has_tls == 1 )) && [[ -z "$_head" ]]
 }
 
 # Rebuild missing standalone registry entries from the live core configs
@@ -605,7 +612,7 @@ rebuild_standalone_links() {
     if [[ -f "$_xc" ]]; then
         if [[ ! -f "$_dir/trojan-xray.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _svc=''; _wspath=''; _wshost=''; _xpath=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != ""))) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // ""), (.streamSettings.wsSettings.path // ""), (.streamSettings.wsSettings.headers.Host // ""), (.streamSettings.xhttpSettings.path // "")] | @tsv' "$_xc" 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _svc _wspath _wshost _xpath
+            _tsv_split "$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.protocol=="trojan" and ((.streamSettings.realitySettings.privateKey // "") != ""))) | [(.port|tostring), (.settings.clients[0].password // ""), (.streamSettings.realitySettings.privateKey // ""), (.streamSettings.realitySettings.serverNames[0] // ""), (.streamSettings.realitySettings.shortIds[0] // ""), ((.settings.clients[0].password // "") | contains("\u0000")), (.streamSettings.network // "tcp"), (.streamSettings.grpcSettings.serviceName // ""), (.streamSettings.wsSettings.path // ""), (.streamSettings.wsSettings.headers.Host // ""), (.streamSettings.xhttpSettings.path // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _svc _wspath _wshost _xpath
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_svc" _svc; _tsv_unescape "$_wspath" _wspath; _tsv_unescape "$_wshost" _wshost; _tsv_unescape "$_xpath" _xpath
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (trojan-xray)${NC}" >&2
@@ -631,7 +638,7 @@ rebuild_standalone_links() {
         fi
         if [[ ! -f "$_dir/socks5-xray.link" ]]; then
             _port=''; _user=''; _pass=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' "$_xc" 2>/dev/null)" _port _user _pass
+            _tsv_split "$(jsonc_strip_comments "$_xc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.port|tostring), (.settings.accounts[0].user // ""), (.settings.accounts[0].pass // "")] | @tsv' 2>/dev/null)" _port _user _pass
             _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
                 register_standalone_link socks5-xray "$(tprintf sl_node_port 'SOCKS5 (Xray)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
@@ -643,7 +650,7 @@ rebuild_standalone_links() {
     if [[ -f "$_sc" ]]; then
         if [[ ! -f "$_dir/trojan-sb.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''; _net=''; _wspath=''; _wshost=''; _svc=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.password // .users[0].password // "") | contains("\u0000")), (.transport.type // "tcp"), (.transport.path // ""), (((.transport.headers.Host // "") | if type == "array" then .[0] else . end)), (.transport.service_name // "")] | @tsv' "$_sc" 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _wspath _wshost _svc
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="trojan-landing")) | [(.listen_port|tostring), (.password // .users[0].password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.password // .users[0].password // "") | contains("\u0000")), (.transport.type // "tcp"), (.transport.path // ""), (((.transport.headers.Host // "") | if type == "array" then .[0] else . end)), (.transport.service_name // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul _net _wspath _wshost _svc
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid; _tsv_unescape "$_net" _net; _tsv_unescape "$_wspath" _wspath; _tsv_unescape "$_wshost" _wshost; _tsv_unescape "$_svc" _svc
             if [[ "$_nul" == 'true' ]]; then
                 printf '%s\n' "${YELLOW}trojan password contains a NUL byte, link skipped (trojan-sb)${NC}" >&2
@@ -668,7 +675,7 @@ rebuild_standalone_links() {
         fi
         if [[ ! -f "$_dir/tuic.link" ]]; then
             _port=''; _uuid=''; _pass=''; _cc=''; _sni=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // "")] | @tsv' "$_sc" 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // "")] | @tsv' 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert
             _tsv_unescape "$_uuid" _uuid; _tsv_unescape "$_pass" _pass; _tsv_unescape "$_cc" _cc; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_alpn" _alpn; _tsv_unescape "$_cert" _cert
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_uuid" && ( -n "$_pass" || "$_has_pass" == 'true' ) ]]; then
                 # R8-F1-2: fail-closed default — allow_insecure=1 is
@@ -690,14 +697,14 @@ rebuild_standalone_links() {
                 # still registered, just without allow_insecure=1.
                 local _cert_inline_state='unknown' _cert_inline_present=''
                 _cert_inline=''
-                if _cert_inline_present=$(jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | .tls | if . == null then false elif type == "object" then (has("certificate") and (.certificate != null)) else error("invalid tls type") end' "$_sc" 2>/dev/null); then
+                if _cert_inline_present=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | .tls | if . == null then false elif type == "object" then (has("certificate") and (.certificate != null)) else error("invalid tls type") end' 2>/dev/null); then
                     case "$_cert_inline_present" in
                         true) _cert_inline_state='present' ;;
                         false) _cert_inline_state='absent' ;;
                     esac
                 fi
                 if [[ "$_cert_inline_state" == 'present' ]]; then
-                    _cert_inline=$(jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | .tls.certificate | if type == "string" then . elif type == "array" then if all(.[]; type == "string") then join("\n") else error("inline certificate array must contain only strings") end else error("unsupported inline certificate type") end' "$_sc" 2>/dev/null) || _cert_inline=''
+                    _cert_inline=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | .tls.certificate | if type == "string" then . elif type == "array" then if all(.[]; type == "string") then join("\n") else error("inline certificate array must contain only strings") end else error("unsupported inline certificate type") end' 2>/dev/null) || _cert_inline=''
                 fi
                 if [[ -n "$_cert_inline" ]]; then
                     _meta=$(printf '%s\n' "$_cert_inline" | openssl x509 -noout -issuer -subject 2>/dev/null) || _meta=''
@@ -717,7 +724,7 @@ rebuild_standalone_links() {
         fi
         if [[ ! -f "$_dir/anytls.link" ]]; then
             _port=''; _pass=''; _pk=''; _sni=''; _sid=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="anytls-in")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // "")] | @tsv' "$_sc" 2>/dev/null)" _port _pass _pk _sni _sid
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="anytls-in")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
@@ -733,19 +740,24 @@ rebuild_standalone_links() {
         # next rebuild must retry it instead of skipping forever.
         if [[ ! -f "$_dir/shadowtls.link" ]] || _standalone_link_is_empty_shadowtls "$_dir/shadowtls.link"; then
             _port=''; _pass=''; _sni=''; _inner=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-in")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // "")] | @tsv' "$_sc" 2>/dev/null)" _port _pass _sni _detour
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="shadowtls-in")) | [(.listen_port|tostring), (.users[0].password // ""), (.handshake.server // ""), (.detour // "")] | @tsv' 2>/dev/null)" _port _pass _sni _detour
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_detour" _detour
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" ]]; then
                 if [[ -z "$_detour" ]]; then
                     printf '%s\n' "${YELLOW}$(tprintf standalone_link_incomplete shadowtls)${NC}" >&2
                 else
-                    _tsv_split "$(jq -r --arg t "$_detour" 'first(.inbounds[]? | select(.tag == $t)) | [(.password // ""), (.method // ""), (.users[0].password // "")] | @tsv' "$_sc" 2>/dev/null)" _inner _inner_method _inner_user
+                    _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r --arg t "$_detour" 'first(.inbounds[]? | select(.tag == $t)) | [(.password // ""), (.method // ""), (.users[0].password // "")] | @tsv' 2>/dev/null)" _inner _inner_method _inner_user
                     _tsv_unescape "$_inner" _inner; _tsv_unescape "$_inner_method" _inner_method; _tsv_unescape "$_inner_user" _inner_user
                     [[ -n "$_inner_method" ]] || _inner_method='2022-blake3-aes-128-gcm'
                     if [[ -n "$_inner" ]]; then
                         local _ub _pb _pb_json _cred
                         if [[ -n "$_inner_user" ]]; then _cred="${_inner_method}:${_inner}:${_inner_user}"; else _cred="${_inner_method}:${_inner}"; fi
-                        _ub=$(printf '%s' "${_cred}@$(uri_host "$_ip"):${_port}" | base64 | tr -d '\n\r')
+                        # R14-F01-02: check this encoding step too
+                        # (same pipefail + non-empty discipline as
+                        # _pb below): a failed base64 must leave
+                        # _ub empty so the link is skipped, not
+                        # published as "ss://?shadow-tls=<nonempty>".
+                        _ub=$(set -o pipefail; printf '%s' "${_cred}@$(uri_host "$_ip"):${_port}" | base64 | tr -d '\n\r') || _ub=''
                     # R8-F1-3: check every encoding step before
                     # publishing. jq runs alone so its status is
                     # visible (the old pipeline's status was tr's);
@@ -755,7 +767,8 @@ rebuild_standalone_links() {
                     # failure warns and skips this registration only
                     # (no file is published, so the next rebuild
                     # retries); other protocols are unaffected.
-                    if _pb_json=$(jq -cn --arg h "$_sni" --rawfile p <(printf '%s' "$_pass") '{version:"3", host:$h, password:$p}') &&
+                    if [[ -n "$_ub" ]] &&
+                       _pb_json=$(jq -cn --arg h "$_sni" --rawfile p <(printf '%s' "$_pass") '{version:"3", host:$h, password:$p}') &&
                        [[ -n "$_pb_json" ]] &&
                        _pb=$(set -o pipefail; printf '%s' "$_pb_json" | base64 | tr -d '\n\r') &&
                        [[ -n "$_pb" ]]; then
@@ -773,7 +786,7 @@ rebuild_standalone_links() {
         fi
         if [[ ! -f "$_dir/socks5-sb.link" ]]; then
             _port=''; _user=''; _pass=''
-            _tsv_split "$(jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' "$_sc" 2>/dev/null)" _port _user _pass
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="socks5-landing")) | [(.listen_port|tostring), (.users[0].username // ""), (.users[0].password // "")] | @tsv' 2>/dev/null)" _port _user _pass
             _tsv_unescape "$_user" _user; _tsv_unescape "$_pass" _pass
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_user" ]]; then
                 register_standalone_link socks5-sb "$(tprintf sl_node_port 'SOCKS5 (sing-box)' "$_port")" "socks5://$(urlencode "$_user"):$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}"
@@ -3118,12 +3131,12 @@ tr_msg() {
         fa:init_soft_warn) echo 'سیستم init پشتیبانی‌شده (Systemd/OpenRC) شناسایی نشد؛ منو به‌صورت فقط‌خواندنی باز می‌شود و عملیات استقرار در دسترس نیست.' ;;
         zh-tw:init_soft_warn) echo '未偵測到受支援的初始化系統 (Systemd/OpenRC)，選單以唯讀方式開啟，部署類操作不可用。' ;;
         ja:init_soft_warn) echo 'サポートされる init システム (systemd/OpenRC) が検出されませんでした。メニューは読み取り専用で開き、デプロイ操作は利用できません。' ;;
-        zh:wl_menu_prompt) echo '请选择 [0-5]：' ;;
-        en:wl_menu_prompt) echo 'Select [0-5]: ' ;;
-        ru:wl_menu_prompt) echo 'Выберите [0–5]: ' ;;
-        fa:wl_menu_prompt) echo 'انتخاب [۰ تا ۵]: ' ;;
-        zh-tw:wl_menu_prompt) echo '請選擇 [0-5]：' ;;
-        ja:wl_menu_prompt) echo '選択してください [0-5]: ' ;;
+        zh:wl_menu_prompt) echo '请选择 [0-6]：' ;;
+        en:wl_menu_prompt) echo 'Select [0-6]: ' ;;
+        ru:wl_menu_prompt) echo 'Выберите [0–6]: ' ;;
+        fa:wl_menu_prompt) echo 'انتخاب [۰ تا ۶]: ' ;;
+        zh-tw:wl_menu_prompt) echo '請選擇 [0-6]：' ;;
+        ja:wl_menu_prompt) echo '選択してください [0-6]: ' ;;
         zh:wl_menu_title) echo 'Wallos 订阅管理' ;;
         en:wl_menu_title) echo 'Wallos subscription manager' ;;
         ru:wl_menu_title) echo 'Управление подписками Wallos' ;;
@@ -9034,6 +9047,12 @@ tr_msg() {
         ru:sv_unit_inactive) echo 'Системная служба %s не находится в состоянии active.' ;;
         fa:sv_unit_inactive) echo 'سرویس سیستم %s در وضعیت active نیست.' ;;
         ja:sv_unit_inactive) echo 'システムサービス %s が active 状態ではありません。' ;;
+        zh:sv_unit_list) echo '无法查询系统服务 %s 的状态。' ;;
+        zh-tw:sv_unit_list) echo '無法查詢系統服務 %s 的狀態。' ;;
+        en:sv_unit_list) echo 'Could not query the state of system service %s.' ;;
+        ru:sv_unit_list) echo 'Не удалось запросить состояние системной службы %s.' ;;
+        fa:sv_unit_list) echo 'نمی‌توان وضعیت سرویس سیستم %s را پرس‌وجو کرد.' ;;
+        ja:sv_unit_list) echo 'システムサービス %s の状態を照会できませんでした。' ;;
         zh:sv_unknown_action) echo '未知服务操作: %s' ;;
         zh-tw:sv_unknown_action) echo '未知服務操作: %s' ;;
         en:sv_unknown_action) echo 'Unknown service action: %s' ;;
@@ -11996,7 +12015,7 @@ normalize_ip_literal() {
     # to literal comparison instead of failing.
     local input="$1"
     if command -v python3 >/dev/null 2>&1; then
-        python3 -I - "$input" 2>/dev/null <<'PY' || printf '%s' "$input"
+        python3 -I - "$input" 2>/dev/null <<'PY' || printf '%s\n' "$input"
 import ipaddress, sys
 try:
     print(ipaddress.ip_address(sys.argv[1]).compressed)
@@ -12004,7 +12023,7 @@ except Exception:
     print(sys.argv[1])
 PY
     else
-        printf '%s' "$input"
+        printf '%s\n' "$input"
     fi
 }
 
@@ -12407,6 +12426,11 @@ read_cached_public_ip() {
     local ip now mtime age pref=''
     [[ -r "$PUBLIC_IP_CACHE" && -f "$PUBLIC_IP_CACHE" && ! -L "$PUBLIC_IP_CACHE" ]] || return 1
     [[ "$(stat -c %u:%g "$PUBLIC_IP_CACHE" 2>/dev/null || true)" == 0:0 ]] || return 1
+    # R14-F04-01: the owner gate alone is not enough: a root-owned
+    # but group/other-writable cache (e.g. 0666) can be rewritten
+    # by a non-root user, so the mode must be exactly 0600 (what
+    # the writer creates) or the entry is refused.
+    [[ "$(stat -c %a "$PUBLIC_IP_CACHE" 2>/dev/null || true)" =~ ^0?600$ ]] || return 1
     ip=$(head -n 1 "$PUBLIC_IP_CACHE" 2>/dev/null | tr -d '[:space:]')
     if ! valid_public_ip "$ip"; then
         return 1
@@ -12469,9 +12493,10 @@ get_public_ip_swr() {
     if ip=$(read_cached_public_ip 2>/dev/null) && [[ -n "$ip" ]]; then
         printf '%s\n' "$ip"; return 0
     fi
-    # Same owner gate as read_cached_public_ip: a non-root-owned cache
-    # must not be served through the SWR fallback either.
-    if [[ -r "$PUBLIC_IP_CACHE" && -f "$PUBLIC_IP_CACHE" && ! -L "$PUBLIC_IP_CACHE" && "$(stat -c %u:%g "$PUBLIC_IP_CACHE" 2>/dev/null || true)" == 0:0 ]]; then
+    # Same owner + mode gate as read_cached_public_ip: a
+    # non-root-owned or non-0600 cache must not be served through
+    # the SWR fallback either.
+    if [[ -r "$PUBLIC_IP_CACHE" && -f "$PUBLIC_IP_CACHE" && ! -L "$PUBLIC_IP_CACHE" && "$(stat -c %u:%g "$PUBLIC_IP_CACHE" 2>/dev/null || true)" == 0:0 && "$(stat -c %a "$PUBLIC_IP_CACHE" 2>/dev/null || true)" =~ ^0?600$ ]]; then
         local _ip='' _now=0 _mt=0 _pref='' _fam_ok=1
         _ip=$(head -n 1 "$PUBLIC_IP_CACHE" 2>/dev/null | tr -d '[:space:]')
         if valid_public_ip "$_ip"; then
@@ -12572,7 +12597,17 @@ openrc_cron_service_name() {
 # BUG-28: hoisted from init_system_environment().
 __abox_reconcile_systemd_unit() {
     local unit="$1"
-    systemctl list-unit-files --type=service --no-legend "${unit}.service" 2>/dev/null | awk -v wanted="${unit}.service" '$1 == wanted { found=1 } END { exit !found }' || return 0
+    local _list=''
+    # R14-F04-02: never conflate "query failed" with "unit
+    # absent": a named-pattern list-unit-files exits non-zero
+    # for a missing unit too, so the old pipeline (pipefail)
+    # returned 0 for both. List all units instead: a failed
+    # listing dies, a successful listing without the unit is
+    # the only "absent" path.
+    _list=$(systemctl list-unit-files --type=service --no-legend 2>/dev/null) || die "$(tprintf sv_unit_list "$unit")"
+    if ! printf '%s\n' "$_list" | awk -v wanted="${unit}.service" '$1 == wanted { found=1 } END { exit !found }'; then
+        return 0
+    fi
     systemctl enable --now "$unit" >/dev/null 2>&1 || die "$(tprintf sv_unit_enable "$unit")"
     systemctl is-active --quiet "$unit" || die "$(tprintf sv_unit_inactive "$unit")"
 }
@@ -13320,8 +13355,25 @@ if st is not None:
         if stat.S_ISREG(st.st_mode):
             if st.st_nlink != 1: raise SystemExit(1)
             h=hashlib.sha256()
-            with open(path,'rb') as f:
-                for chunk in iter(lambda:f.read(1024*1024), b''): h.update(chunk)
+            # R14-F05-01: open by descriptor, not by path: the
+            # lstat above proves nothing about the file open()
+            # will see, and a plain open() of a swapped-in FIFO
+            # blocks root forever. O_NOFOLLOW refuses a swapped-in
+            # symlink, O_NONBLOCK keeps a swapped-in FIFO from
+            # blocking, and the fstat below binds the opened
+            # inode to the one safe_stat validated.
+            _fd=os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            try:
+                _fst=os.fstat(_fd)
+                if not stat.S_ISREG(_fst.st_mode) or _fst.st_nlink != 1 or (_fst.st_dev, _fst.st_ino) != (st.st_dev, st.st_ino):
+                    raise SystemExit(1)
+                with os.fdopen(_fd,'rb') as f:
+                    for chunk in iter(lambda:f.read(1024*1024), b''): h.update(chunk)
+                _fd=None
+            finally:
+                if _fd is not None:
+                    try: os.close(_fd)
+                    except OSError: pass
             entries.append(['F',srv,path,h.hexdigest()])
         elif stat.S_ISDIR(st.st_mode):
             if is_mountpoint(path): raise SystemExit(1)
@@ -14863,6 +14915,10 @@ shortcut_write_state() {
     } > "$_tmp" || { rm -f -- "$_tmp"; SHORTCUT_ERR='write'; return 1; }
     chmod 600 -- "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; SHORTCUT_ERR='chmod'; return 1; }
     chown root:root -- "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; SHORTCUT_ERR='chown'; return 1; }
+    # R14-F05-03: refuse a directory target: `mv tmp dir` succeeds
+    # by moving the temp file inside the directory and returns 0,
+    # while the state path itself stays a (still corrupt) directory.
+    [[ ! -d "$_file" ]] || { rm -f -- "$_tmp"; SHORTCUT_ERR='target_is_dir'; return 1; }
     mv -f -- "$_tmp" "$_file" || { rm -f -- "$_tmp"; SHORTCUT_ERR='rename'; return 1; }
     return 0
 }
@@ -15063,6 +15119,10 @@ shortcut_migrate_write() {
     } > "$_tmp" || { rm -f -- "$_tmp"; return 1; }
     chmod 600 -- "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
     chown root:root -- "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
+    # R14-F05-03: refuse a directory target: `mv tmp dir` succeeds
+    # by moving the temp file inside the directory and returns 0,
+    # while the record path itself stays a directory.
+    [[ ! -d "$_file" ]] || { rm -f -- "$_tmp"; return 1; }
     mv -f -- "$_tmp" "$_file" || { rm -f -- "$_tmp"; return 1; }
     return 0
 }
@@ -15172,7 +15232,15 @@ shortcut_change_transaction() {
         _mcontent=$(cat -- "$_mfile" 2>/dev/null) || { rm -f -- "$_tmp"; shortcut_lock_release; SHORTCUT_ERR='migrate_read'; return 1; }
         _pending="$_pending "
         while IFS= read -r _mline || [[ -n "$_mline" ]]; do
-            case "$_mline" in pending=*) _mval="${_mline#pending=}" ;; *) continue ;; esac
+            # R14-F05-04: merge uncommitted new= names as well as
+            # pending= names. A previous transaction whose state
+            # commit failed leaves its new names installed but
+            # uncommitted; merging only pending= let the next
+            # noop/ensure transaction clear the record and orphan
+            # those wrappers. Merged names land in _pending, so
+            # step 9 either removes them (managed) or keeps them
+            # tracked as blocked (foreign) -- never forgotten.
+            case "$_mline" in pending=*) _mval="${_mline#pending=}" ;; new=*) _mval="${_mline#new=}" ;; *) continue ;; esac
             for _mn in $_mval; do
                 shortcut_validate_name "$_mn" 2>/dev/null || continue
                 case " $_new_names " in *" $_mn "*) continue ;; esac
@@ -15477,6 +15545,10 @@ shortcut_migrate_legacy_file() {
     } > "$_tmp" || { rm -f -- "$_tmp"; SHORTCUT_ERR='write'; return 1; }
     chmod 600 -- "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; SHORTCUT_ERR='chmod'; return 1; }
     chown root:root -- "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; SHORTCUT_ERR='chown'; return 1; }
+    # R14-F05-03: refuse a directory target: `mv tmp dir` succeeds
+    # by moving the temp file inside the directory and returns 0,
+    # while the state path itself stays a (still corrupt) directory.
+    [[ ! -d "$_file" ]] || { rm -f -- "$_tmp"; SHORTCUT_ERR='target_is_dir'; return 1; }
     mv -f -- "$_tmp" "$_file" || { rm -f -- "$_tmp"; SHORTCUT_ERR='rename'; return 1; }
     return 0
 }
@@ -15915,7 +15987,10 @@ confirm_deployment_replacement() {
     print_port_occupancy
     msg "$(tr_msg dp_choice_overwrite)"
     msg "$(tr_msg dp_choice_preserve)"
-    read -r -p "$(tr_msg dp_choice_prompt)" answer
+    # R14-F05-05: a failed read must refuse, even when it already
+    # stored a partial answer (e.g. '1' with no trailing newline,
+    # then EOF): only a successful read counts as confirmation.
+    read -r -p "$(tr_msg dp_choice_prompt)" answer || { die "$(tr_msg dp_cancelled)"; return 1; }
     case "$answer" in
         2)
             # SYD-B E3: preserve never covered the main stack itself.
@@ -15933,7 +16008,7 @@ confirm_deployment_replacement() {
             done
             if [[ -n "$_other_stacks" ]]; then
                 msg "${YELLOW}$(tprintf dp_prune_warn "${next_core}-${next_mode}" "${_other_stacks% }")${NC}"
-                read -r -p "$(tr_msg dp_prune_confirm)" _answer2
+                read -r -p "$(tr_msg dp_prune_confirm)" _answer2 || { die "$(tr_msg dp_cancelled)"; return 1; }
                 is_yes "$_answer2" || { die "$(tr_msg dp_cancelled)"; return 1; }
             fi
             ABOX_PRESERVE_STANDALONE=1; msg "${GREEN}$(tr_msg dp_preserve_on)${NC}"
@@ -16085,8 +16160,11 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
                    else ["tcp"] end)
               elif (.protocol // null) != null then
                 (if .protocol == "tuic" or .protocol == "hysteria" or .protocol == "hysteria2" or .protocol == "quic" then ["udp"] else ["tcp"] end)
+              # R14-F05-02: a sing-box shadowsocks inbound with no
+              # .network listens on tcp+udp by default; ["tcp"]
+              # would miss UDP conflicts.
               elif (.type // null) != null then
-                (if .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"] else ["tcp"] end)
+                (if .type == "shadowsocks" then ["tcp", "udp"] elif .type == "tuic" or .type == "hysteria2" or .type == "quic" then ["udp"] else ["tcp"] end)
               else ["tcp"] end;
             def binding:
               ((.listen_port // .port) as $ps

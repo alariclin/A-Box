@@ -41108,7 +41108,17 @@ abox_zram_teardown() {
     # keep the helper so it can still be stopped.
     local _any_active=0
     if [[ -r /proc/swaps ]]; then
-        grep -qE '^/dev/zram[0-9]+[[:space:]]' /proc/swaps 2>/dev/null && _any_active=1
+        # R14-F13-04: distinguish grep rc 1 (confirmed no active
+        # device) from any other failure (query error): an error must
+        # fail closed like the unreadable-/proc/swaps branch above,
+        # never drop into the stale-cleanup branch.
+        local _grep_rc=0
+        grep -qE '^/dev/zram[0-9]+[[:space:]]' /proc/swaps 2>/dev/null; _grep_rc=$?
+        case "$_grep_rc" in
+            0) _any_active=1 ;;
+            1) : ;; # confirmed stopped: stale cleanup may proceed
+            *) _any_active=1 ;; # query error: keep helper/config
+        esac
     else
         # Cannot verify: fail closed, keep helper/config.
         _any_active=1
@@ -41558,17 +41568,33 @@ def redact_text(value):
 
 _block_scalar_key = r"(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)"
 _block_scalar_re = re.compile(
-    r"(?i)^(\s*[\"']?" + _block_scalar_key + r"[\"']?\s*:\s*)[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(#.*)?$"
+    r"(?i)^(\s*[\"']?" + _block_scalar_key + r"[\"']?\s*:\s*(?:!{1,2}[A-Za-z0-9_-]+[ \t]*)?)[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(#.*)?$"
+)
+
+
+# R14-F13-02 (plain scalars): a sensitive key with an unquoted value
+# may continue on the following more-indented lines, which same-line
+# regexes never see. Those continuation lines are part of the value,
+# not a new key: a sibling key sits at the same or a lower indent, and
+# a nested mapping under the key has no value on the key line (so it
+# never matches: the value group below requires a first value char).
+_plain_scalar_re = re.compile(
+    r"(?i)^(\s*[\"']?" + _block_scalar_key + r"[\"']?\s*:\s*)([^\"'\[\]{|>&*!#\s][^\r\n]*)$"
 )
 
 
 def redact_block_scalars(text):
     # A sensitive key with | or > puts the secret on the following
     # more-indented lines, which same-line regexes never see (R12C13-01).
-    # Blank lines inside the block carry no secret and pass through.
+    # The same holds for an unquoted plain scalar (R14-F13-02): its
+    # continuation lines are redacted here; the value on the key line
+    # itself is redacted by the same-line regexes that run after this
+    # function. Blank lines inside a block carry no secret and pass
+    # through.
     lines = text.split("\n")
     out = []
     block_indent = None
+    plain_indent = None
     for line in lines:
         if block_indent is not None:
             stripped = line.strip()
@@ -41577,10 +41603,21 @@ def redact_block_scalars(text):
                 out.append(" " * indent + "***REDACTED***" if stripped != "" else line)
                 continue
             block_indent = None
+        if plain_indent is not None:
+            stripped = line.strip()
+            indent = len(line) - len(line.lstrip())
+            if stripped == "" or indent > plain_indent:
+                out.append(" " * indent + "***REDACTED***" if stripped != "" else line)
+                continue
+            plain_indent = None
         m = _block_scalar_re.match(line)
         if m:
             out.append(m.group(1) + "***REDACTED***")
             block_indent = len(line) - len(line.lstrip())
+            plain_indent = None
+        elif _plain_scalar_re.match(line):
+            out.append(line)
+            plain_indent = len(line) - len(line.lstrip())
         else:
             out.append(line)
     return "\n".join(out)
@@ -42906,7 +42943,11 @@ prepare_backup_auth_for_manual_restore() {
         [[ -t 0 ]] || return 1
         msg "${YELLOW}[!] $(tprintf prepare_backup_auth_for_manual_restore_key_needed "${fingerprint}")${NC}"
         msg "${YELLOW}[!] $(tr_msg prepare_backup_auth_for_manual_restore_key_warning)${NC}"
-        read -r -p "$(tr_msg prepare_backup_auth_for_manual_restore_import_prompt)" answer
+        # R14-F13-03: a failed read must refuse, even when it already
+        # stored the phrase (a phrase with no trailing newline, then
+        # EOF/Ctrl-D): only a successful read plus the exact phrase
+        # counts as confirmation (mirrors confirm_yes_no, R8-F3-1).
+        read -r -p "$(tr_msg prepare_backup_auth_for_manual_restore_import_prompt)" answer || return 130
         [[ "$answer" == 'IMPORT-RECOVERY-KEY' ]] || return 130
     fi
     install_recovery_backup_key "$recovery" || return 1
@@ -43186,7 +43227,6 @@ for m in tf:
     while raw.startswith('./'): raw=raw[2:]
     n=posixpath.normpath(raw)
     if n==REQ_ROOT: root_member=m
-    if raw in ('','.'): continue
     if n in ('','.'): raise SystemExit(1)
     if n=='..' or n.startswith('../') or n.split('/',1)[0] not in ('root','meta'): raise SystemExit(1)
     if n in seen and not m.isdir(): raise SystemExit(1)
@@ -44361,13 +44401,13 @@ PY_LATEST_BACKUP
             cp -- "$_rbs" "$work/$(basename "$_rbs")" || { rm -rf "$work"; msg "restore gate failed: private-copy" >&2; return 1; }
         fi
     done
-    backup_checksum_verify "$_rbc" "${_rbc}.sha256" || { msg "restore gate failed: checksum" >&2; return 1; }
+    backup_checksum_verify "$_rbc" "${_rbc}.sha256" || { msg "restore gate failed: checksum" >&2; rm -rf "$work"; return 1; }
     if [[ -n "$key_file" ]]; then
-        backup_auth_verify_with_key_file "$_rbc" "${_rbc}.hmac" "$key_file" || { msg "restore gate failed: hmac-key" >&2; return 1; }
+        backup_auth_verify_with_key_file "$_rbc" "${_rbc}.hmac" "$key_file" || { msg "restore gate failed: hmac-key" >&2; rm -rf "$work"; return 1; }
     else
-        backup_auth_verify "$_rbc" "${_rbc}.hmac" || { msg "restore gate failed: hmac" >&2; return 1; }
+        backup_auth_verify "$_rbc" "${_rbc}.hmac" || { msg "restore gate failed: hmac" >&2; rm -rf "$work"; return 1; }
     fi
-    validate_backup_archive "$_rbc" || { msg "restore gate failed: archive" >&2; return 1; }
+    validate_backup_archive "$_rbc" || { msg "restore gate failed: archive" >&2; rm -rf "$work"; return 1; }
     tar -xzf "$_rbc" -C "$work" || { msg "restore gate failed: unpack" >&2; rm -rf "$work"; return 1; }
     root="$work/root"; shortcut_migrate_legacy_file "$root/etc/ddr/.shortcut" || true; assert_restore_target_safe "$root" || { msg "restore gate failed: target-safe" >&2; rm -rf "$work"; return 1; }; assert_restore_shortcut_safe "$root" || { msg "restore gate failed: shortcut-safe" >&2; rm -rf "$work"; return 1; }; validate_backup_core_init_compatibility "$root" || { msg "restore gate failed: init-compat" >&2; rm -rf "$work"; return 1; }
     local _manifest_snapshot="$work/live-manifest.tsv"
@@ -45419,7 +45459,10 @@ _wallos_rollback_recover() {
     # U118: the caller reports "recovered" only if this returns 0, so verify
     # the old image and the old database are actually usable, and the
     # container answers healthily, instead of trusting a started container.
-    docker image inspect "$prev_image" >/dev/null 2>&1 || return 1
+    # R14-F14-02: verify the captured image is the exact immutable ID,
+    # not merely that some image answers to the name: after a retag, a
+    # tag lookup could confirm a different image.
+    [[ "$(docker image inspect -f '{{.Id}}' "$prev_image" 2>/dev/null || true)" == "$prev_image" ]] || return 1
     [[ -s "$WALLOS_DIR/db/wallos.db" && ! -L "$WALLOS_DIR/db/wallos.db" ]] || return 1
     wallos_wait_healthy "$port" || return 1
     # R13-09: commit the recovered deployment's state from the
@@ -45744,9 +45787,15 @@ wallos_rollback_to_version() {
     # N-11: capture the pre-rollback image BEFORE removing the container,
     # so the prune step can retain 2 images (new current + previous). (NEW-1)
     local prev_image
-    prev_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+    prev_image=$(docker inspect -f '{{.Image}}' wallos 2>/dev/null || true)
     # Normalize docker.io/ prefix (matches _installed_img and old_image handling).
     prev_image="${prev_image#docker.io/}"
+    # R14-F14-02: the captured reference is the immutable image ID
+    # (.Image), not the mutable creation-time reference (.Config.Image):
+    # after a retag, recovery must restart the exact image, never a
+    # different image that later took over the tag. Refuse before
+    # docker rm if the ID is not a well-formed digest.
+    [[ "$prev_image" =~ ^sha256:[0-9a-f]{64}$ ]] || { rm -rf -- "$_rb_stage_dir"; msg "${RED}Cannot determine the pre-rollback image ID; refusing rollback.${NC}"; return 1; }
     docker rm -f wallos >/dev/null 2>&1 || {
         # A-04: rm failed after stop succeeded; try to restart the original
         # container instead of leaving it in Exited state.
@@ -47004,7 +47053,12 @@ wallos_bruteforce_protection() {
         logpath="$WALLOS_CADDY_LOG"
         # fail2ban needs the log file to exist; Caddy creates it on
         # start, but make sure an idle system still gets a jail.
-        [[ -e "$logpath" ]] || : > "$logpath" 2>/dev/null || return 0
+        # R14-F15-01: create atomically (noclobber) and never through
+        # a symlink: the -e check and the truncate were not atomic, so
+        # a symlink swapped in (or pre-placed dangling) let root
+        # truncate the link target. noclobber refuses a symlink whose
+        # target exists, a dangling symlink, and an existing file.
+        [[ -e "$logpath" ]] || ( [[ ! -L "$logpath" ]] && set -o noclobber && : > "$logpath" ) 2>/dev/null || return 0
     else
         # 2hp: Docker 29 with the containerd snapshotter exposes no
         # GraphDriver, so the old inspect-only lookup always came back
@@ -47031,7 +47085,11 @@ wallos_bruteforce_protection() {
         # writable layer directly).
         if [[ ! -e "$logpath" ]]; then
             mkdir -p -- "$(dirname -- "$logpath")" 2>/dev/null || true
-            : > "$logpath" 2>/dev/null || {
+            # R14-F15-01: create atomically (noclobber) and never
+            # through a symlink: the -e check and the truncate were
+            # not atomic, so a symlink swapped in after the check (or
+            # pre-placed dangling) let root truncate the link target.
+            ( [[ ! -L "$logpath" ]] && set -o noclobber && : > "$logpath" ) 2>/dev/null || {
                 msg "${YELLOW}[!] Wallos fail2ban jail NOT created: cannot create $logpath. Login brute-force protection is OFF.${NC}"
                 return 1
             }
@@ -47337,13 +47395,27 @@ EOF_WCADDY_RC
     fi
 }
 
+# R14-F15-04: tri-state confirmed-stopped check for the Wallos front
+# teardowns. is_service_running returns 1 both when the service is
+# confirmed stopped and when the state query itself fails, so it cannot
+# gate a teardown: a failed query looked like a stopped front and the
+# unit (and, for the tunnel, the token) was deleted under a
+# still-listening service. Returns 0 only on a confirmed stopped state.
+_wallos_service_confirmed_stopped() {
+    local _state
+    _state=$(service_active_state_value "$1" 2>/dev/null) || return 1
+    [[ "$_state" == 0 ]]
+}
+
 wallos_https_teardown() { # stop the HTTPS front, drop its config/data; returns 1 if the front is still running or if disable/removal fails
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl stop abox-wallos-caddy.service >/dev/null 2>&1 || true
         # S148: verify the stop before removing the unit: deleting the
         # unit of a still-running front orphans it and leaves the
         # public entrance live while the caller reports it closed.
-        if is_service_running abox-wallos-caddy 2>/dev/null; then
+        # R14-F15-04: require a confirmed stopped state; a failed
+        # state query must not look like a stopped front.
+        if ! _wallos_service_confirmed_stopped abox-wallos-caddy; then
             return 1
         fi
         systemctl disable abox-wallos-caddy.service >/dev/null 2>&1 || {
@@ -47356,7 +47428,9 @@ wallos_https_teardown() { # stop the HTTPS front, drop its config/data; returns 
         systemctl daemon-reload >/dev/null 2>&1 || return 1
     else
         rc-service abox-wallos-caddy stop >/dev/null 2>&1 || true
-        if is_service_running abox-wallos-caddy 2>/dev/null; then
+        # R14-F15-04: require a confirmed stopped state; a failed
+        # state query must not look like a stopped front.
+        if ! _wallos_service_confirmed_stopped abox-wallos-caddy; then
             return 1
         fi
         rc-update del abox-wallos-caddy default >/dev/null 2>&1 || {
@@ -47674,7 +47748,9 @@ wallos_preserve_cftoken() {
 wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still running (see S148) or if disable/removal fails
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl stop abox-wallos-cftunnel.service >/dev/null 2>&1 || true
-        if is_service_running abox-wallos-cftunnel 2>/dev/null; then
+        # R14-F15-04: require a confirmed stopped state; a failed
+        # state query must not look like a stopped front.
+        if ! _wallos_service_confirmed_stopped abox-wallos-cftunnel; then
             return 1
         fi
         systemctl disable abox-wallos-cftunnel.service >/dev/null 2>&1 || {
@@ -47687,7 +47763,9 @@ wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still r
         systemctl daemon-reload >/dev/null 2>&1 || return 1
     else
         rc-service abox-wallos-cftunnel stop >/dev/null 2>&1 || true
-        if is_service_running abox-wallos-cftunnel 2>/dev/null; then
+        # R14-F15-04: require a confirmed stopped state; a failed
+        # state query must not look like a stopped front.
+        if ! _wallos_service_confirmed_stopped abox-wallos-cftunnel; then
             return 1
         fi
         rc-update del abox-wallos-cftunnel default >/dev/null 2>&1 || {
@@ -48189,7 +48267,17 @@ wallos_db_repair_poisoned() {
             msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}"
             return 1
         fi
-        [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)" == true ]] && _was_running=1
+        # R14-F15-02: a failed .State.Running query is "unknown",
+        # never "stopped": the old `|| true` swallowed the failure and
+        # the repair then skipped docker stop while a writer could
+        # still run. Refuse like the first inspect above.
+        local _running_out='' _running_rc=0
+        _running_out=$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null); _running_rc=$?
+        if (( _running_rc != 0 )); then
+            msg "${RED}$(tprintf wl_repair_abort 'container state unknown')${NC}"
+            return 1
+        fi
+        [[ "$_running_out" == true ]] && _was_running=1
         _image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
         _image="${_image#docker.io/}"
     elif _wallos_container_gone "$_inspect_err"; then
@@ -48428,6 +48516,94 @@ _fw_rollback_firewalld_scope() {
         msg "${RED}[!] Failed to remove the firewalld ${_scope} rule for ${_spec}/${_type} (zone ${_zone}); the port may still be open, but its ledger record is kept for later cleanup.${NC}" >&2
     fi
     return 1
+}
+
+# R14-F15-05 (Scheme B, ledger diff): print the native-firewall ledger
+# lines for one spec/proto, matched on exact fields, never substrings.
+# A missing ledger file is empty (rc 0); a symlink, a non-regular file,
+# an unreadable file, or a file holding a malformed line is an error
+# (rc 1, no output), so a caller never mistakes a blind read for
+# "nothing changed". Ownership/mode is deliberately NOT gated here (that
+# gate belongs to the mutating record/remove paths): a mode anomaly must
+# not abort an install whose attribution data is intact, and allowPort's
+# own record attempt still fails loudly on such a file. Lines are
+# buffered and only printed after every line validates.
+_wallos_fw_ledger_lines() {
+    local _spec _proto _line _f1 _f2 _f3 _rest _out=''
+    _spec=$(normalize_port_spec "${1:-}") || return 1
+    _proto="${2:-}"
+    [[ "$_proto" == tcp || "$_proto" == udp ]] || return 1
+    [[ ! -e "$ABOX_FW_STATE" && ! -L "$ABOX_FW_STATE" ]] && return 0
+    [[ -f "$ABOX_FW_STATE" && ! -L "$ABOX_FW_STATE" ]] || return 1
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        [[ -n "$_line" ]] || continue
+        native_firewall_record_valid "$_line" || return 1
+        IFS='|' read -r _f1 _f2 _f3 _rest <<< "$_line"
+        if [[ ( "$_f1" == ufw || "$_f1" == firewalld ) && "$_f2" == "$_spec" && "$_f3" == "$_proto" ]]; then
+            _out+="${_line}"$'\n'
+        fi
+    done < "$ABOX_FW_STATE"
+    printf '%s' "$_out"
+    return 0
+}
+
+# R14-F15-05: print the ledger lines present in $2 (after) but absent
+# from $1 (before), converted to _fw_added entry form: ufw 4-field
+# "ufw|spec|proto|rule" lines become 3-field "ufw|spec|proto";
+# firewalld 5-field lines pass through unchanged (scope and zone are
+# part of the identity). Duplicates are collapsed. A line that fails
+# ledger validation, or a firewalld line without a zone (no rollback
+# entry can be built from it without inventing one), is skipped, never
+# synthesised. A ufw partial-family completion adds no new ledger
+# identity and must NOT be compensated by enqueueing the pre-existing
+# identity: the before/after diff already excludes it.
+_wallos_fw_ledger_new_entries() {
+    local _before="$1" _after="$2" _line _pipes _seen=''
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        [[ -n "$_line" ]] || continue
+        grep -qxF -e "$_line" <<< "$_before" && continue
+        grep -qxF -e "$_line" <<< "$_seen" && continue
+        native_firewall_record_valid "$_line" || continue
+        _pipes=${_line//[^|]/}
+        case "$_line" in
+            ufw\|*)
+                if (( ${#_pipes} == 3 )) && [[ "$_line" == *'|rule' ]]; then
+                    printf '%s\n' "${_line%|rule}"
+                    _seen+="${_line}"$'\n'
+                fi
+                ;;
+            firewalld\|*)
+                if (( ${#_pipes} == 4 )); then
+                    printf '%s\n' "$_line"
+                    _seen+="${_line}"$'\n'
+                fi
+                ;;
+            *) continue ;;
+        esac
+    done <<< "$_after"
+    return 0
+}
+
+# R14-F15-05: open one post-deployment port through allowPort and print
+# any NEW ledger entries it created (one per line, _fw_added form) so
+# the caller can register them for rollback. Prints nothing when the
+# call added no new ledger identity (already-open port, foreign rule,
+# iptables backend, ufw partial-family completion). Returns the
+# allowPort status; a ledger-read failure returns 1 before opening
+# (before-snapshot) or after opening (after-snapshot) - the caller
+# must then roll back and refuse, because an opening whose ledger
+# delta cannot be read cannot be tracked. Known limits: iptables
+# openings have no ledger entry and stay untracked, and a ufw allow
+# that succeeds but dies in its own post-verify inside allowPort
+# leaves a live rule with no ledger identity.
+_wallos_fw_open_tracked() {
+    local _port="$1" _proto="${2:-tcp}" _before='' _after='' _new='' _rc=0
+    _before=$(_wallos_fw_ledger_lines "$_port" "$_proto") || return 1
+    ( allowPort "$_port" "$_proto" ) || _rc=$?
+    _after=$(_wallos_fw_ledger_lines "$_port" "$_proto") || return 1
+    _new=$(_wallos_fw_ledger_new_entries "$_before" "$_after")
+    [[ -n "$_new" ]] && printf '%s\n' "$_new"
+    return "$_rc"
 }
 
 wallos_fw_open_once() {
@@ -48893,6 +49069,7 @@ wallos_install_or_update() {
     local -a _fw_added=()
     local _fw_open_out=''
     local _fw_refused=0
+    local _fw_open_rc=0
     if [[ "$bind_address" == 0.0.0.0 ]] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
         if confirm_yes_no "$(tprintf wl_iu_ufw_q "$port")"; then
             _fw_open_out=$(wallos_fw_open_once "$port" tcp) || msg "${YELLOW}$(tr_msg wl_iu_ufw_fail)${NC}"
@@ -49202,11 +49379,17 @@ wallos_install_or_update() {
     # reboot) while the install reported success. On failure the
     # journal stays active, so the next run recovers.
     if (( _fw_refused == 0 )) && [[ "$wmode" == https ]]; then
-        ( allowPort "$pubport" tcp ) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
-        ( allowPort 80 tcp ) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        _fw_open_out=$(_wallos_fw_open_tracked "$pubport" tcp); _fw_open_rc=$?
+        [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
+        (( _fw_open_rc == 0 )) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        _fw_open_out=$(_wallos_fw_open_tracked 80 tcp); _fw_open_rc=$?
+        [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
+        (( _fw_open_rc == 0 )) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
         save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
     elif (( _fw_refused == 0 )) && [[ "$bind_address" == 0.0.0.0 ]]; then
-        ( allowPort "$port" tcp ) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
+        _fw_open_out=$(_wallos_fw_open_tracked "$port" tcp); _fw_open_rc=$?
+        [[ -n "$_fw_open_out" ]] && mapfile -t -O "${#_fw_added[@]}" _fw_added <<< "$_fw_open_out"
+        (( _fw_open_rc == 0 )) || { wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
         save_firewall_rules || { msg "${RED}$(tr_msg wl_iu_fw_save_fail)${NC}"; wallos_fw_rollback_added "${_fw_added[@]}" || true; return 1; }
     fi
     # S143: the upgrade journal is the rollback material. It must not be
@@ -50204,9 +50387,28 @@ def trojan_xray(inbound, inbounds):
 
 
 def tuic_cert_policy(tls):
-    path = text(tls.get("certificate_path"), "missing TUIC certificate path")
-    try:
+    # R14-F16-01: inline .tls.certificate takes priority over
+    # certificate_path (it is the certificate sing-box actually uses;
+    # mirrors the bash rebuild_standalone_links three-state logic).
+    # A string is used as-is; an array of strings is joined with
+    # "\n". Any other inline type fails closed without falling back
+    # to the path. Only a positively absent inline certificate
+    # authorises the certificate_path branch below.
+    inline = tls.get("certificate")
+    if inline is not None:
+        try:
+            if isinstance(inline, str):
+                cert = inline.encode("utf-8")
+            elif isinstance(inline, list) and all(isinstance(c, str) for c in inline):
+                cert = "\n".join(inline).encode("utf-8")
+            else:
+                raise Bad("unsupported inline TUIC certificate type")
+        except UnicodeEncodeError:
+            raise Bad("unsupported inline TUIC certificate")
+    else:
+        path = text(tls.get("certificate_path"), "missing TUIC certificate path")
         cert = trusted_read(path)
+    try:
         result = subprocess.run(
             ["openssl", "x509", "-noout", "-issuer", "-subject",
              "-nameopt", "RFC2253"],
@@ -51349,32 +51551,32 @@ confirm_ota_script_hash() {
         en)
         msg "${YELLOW}[!] OTA source is pinned to an immutable Git commit. Syntax/fingerprint and SHA256 display are not a cryptographic publisher signature.${NC}"
         msg "${YELLOW}[!] Source: ${url}${NC}"
-        read -r -p 'Install this downloaded A-Box script? [Y/N]: ' answer
+        read -r -p 'Install this downloaded A-Box script? [Y/N]: ' answer || return 1
             ;;
         ru)
         msg "${YELLOW}[!] Источник OTA привязан к неизменному Git-коммиту. Проверка синтаксиса/отпечатка и отображение SHA256 не являются криптографической подписью издателя.${NC}"
         msg "${YELLOW}[!] Источник: ${url}${NC}"
-        read -r -p 'Установить этот загруженный скрипт A-Box? [Y/N]: ' answer
+        read -r -p 'Установить этот загруженный скрипт A-Box? [Y/N]: ' answer || return 1
             ;;
         fa)
         msg "${YELLOW}[!] منبع OTA به یک کامیت Git تغییرناپذیر سنجاق شده است. نمایش نحو/اثرانگشت و SHA256 امضای رمزنگاری ناشر نیست.${NC}"
         msg "${YELLOW}[!] منبع: ${url}${NC}"
-        read -r -p 'این اسکریپت دانلود شده A-Box نصب شود؟ [Y/N]: ' answer
+        read -r -p 'این اسکریپت دانلود شده A-Box نصب شود؟ [Y/N]: ' answer || return 1
             ;;
         ja)
             msg "${YELLOW}[!] OTA のソースは変更不可能な Git commit に固定されています。構文 / フィンガープリントの確認と SHA256 の表示は、リリース発行者による暗号学的署名の代わりにはなりません。${NC}"
             msg "${YELLOW}[!] ソース: ${url}${NC}"
-            read -r -p 'ダウンロードした A-Box スクリプトをインストールしますか？[Y/N]: ' answer
+            read -r -p 'ダウンロードした A-Box スクリプトをインストールしますか？[Y/N]: ' answer || return 1
             ;;
         zh-tw)
         msg "${YELLOW}[!] OTA 已固定到不可變 Git commit。語法/指紋檢查與 SHA256 展示仍不是釋出者密碼學簽名。${NC}"
         msg "${YELLOW}[!] 來源：${url}${NC}"
-        read -r -p '是否安裝此下載的 A-Box 指令碼？[Y/N]: ' answer
+        read -r -p '是否安裝此下載的 A-Box 指令碼？[Y/N]: ' answer || return 1
             ;;
         *)
         msg "${YELLOW}[!] OTA 已固定到不可变 Git commit。语法/指纹检查与 SHA256 展示仍不是发布者密码学签名。${NC}"
         msg "${YELLOW}[!] 来源：${url}${NC}"
-        read -r -p '是否安装此下载的 A-Box 脚本？[Y/N]: ' answer
+        read -r -p '是否安装此下载的 A-Box 脚本？[Y/N]: ' answer || return 1
             ;;
     esac
     is_yes "$answer"
@@ -51656,10 +51858,10 @@ core_expected_listen_ports() {
             # U228: xray socks listens on UDP only when settings.udp
             # is true (absent/false means TCP-only); emitting udp/ for a
             # TCP-only socks inbound failed the health check outright.
-            jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '(.api.tag // "__no_api__") as $apit | ((.inbounds[]? | select(.port != null and .tag != $apit) | (if .protocol == "shadowsocks" then (if (.settings.network // "tcp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif .protocol == "socks" then (if .settings.udp == true then "tcp/\(.port)\nudp/\(.port)" else "tcp/\(.port)" end) elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp") == "tcp" then "tcp/\(.port)" elif (.settings.network // "tcp") == "udp" then "udp/\(.port)" else "tcp/\(.port)\nudp/\(.port)" end) elif (.streamSettings.network // "tcp") == "kcp" or (.streamSettings.network // "tcp") == "quic" then "udp/\(.port)" else "tcp/\(.port)" end)) , (.inbounds[]? | select(.port == null and (.listen | type == "string") and (.listen | contains("/")) and .tag != $apit) | "unix/\(.listen)"))' 2>/dev/null
+            jsonc_strip_comments "$cfg" 2>/dev/null | jq -r 'def norm: (if type == "number" then tostring elif type == "string" then (if test("^[0-9]+$") then (tonumber | tostring) elif test("^[0-9]+-[0-9]+$") then ((split("-") | map(tonumber)) as $r | "\($r[0])-\($r[1])") else . end) else tostring end); (.api.tag // "__no_api__") as $apit | ((.inbounds[]? | select(.port != null and .tag != $apit) | (if .protocol == "shadowsocks" then (if (.settings.network // "tcp") == "tcp" then "tcp/\(.port | norm)" elif (.settings.network // "tcp") == "udp" then "udp/\(.port | norm)" else "tcp/\(.port | norm)\nudp/\(.port | norm)" end) elif .protocol == "socks" then (if .settings.udp == true then "tcp/\(.port | norm)\nudp/\(.port | norm)" else "tcp/\(.port | norm)" end) elif .protocol == "dokodemo-door" then (if (.settings.network // "tcp") == "tcp" then "tcp/\(.port | norm)" elif (.settings.network // "tcp") == "udp" then "udp/\(.port | norm)" else "tcp/\(.port | norm)\nudp/\(.port | norm)" end) elif (.streamSettings.network // "tcp") == "kcp" or (.streamSettings.network // "tcp") == "quic" then "udp/\(.port | norm)" else "tcp/\(.port | norm)" end)) , (.inbounds[]? | select(.port == null and (.listen | type == "string") and ((.listen | contains("/")) or (.listen | startswith("@"))) and .tag != $apit) | "unix/\(.listen)"))' 2>/dev/null
             ;;
         singbox)
-            jsonc_strip_comments "$cfg" 2>/dev/null | jq -r '.inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" or .type == "tuic" then "udp/\(.listen_port)" elif .type == "shadowsocks" then (if .network == "tcp" then "tcp/\(.listen_port)" elif .network == "udp" then "udp/\(.listen_port)" else "tcp/\(.listen_port)", "udp/\(.listen_port)" end) elif .type == "socks" or .type == "mixed" then "tcp/\(.listen_port)" else "tcp/\(.listen_port)" end)' 2>/dev/null
+            jsonc_strip_comments "$cfg" 2>/dev/null | jq -r 'def norm: (if type == "number" then tostring elif type == "string" then (if test("^[0-9]+$") then (tonumber | tostring) elif test("^[0-9]+-[0-9]+$") then ((split("-") | map(tonumber)) as $r | "\($r[0])-\($r[1])") else . end) else tostring end); .inbounds[]? | select(.listen_port != null) | (if .type == "hysteria2" or .type == "tuic" then "udp/\(.listen_port | norm)" elif .type == "shadowsocks" then (if .network == "tcp" then "tcp/\(.listen_port | norm)" elif .network == "udp" then "udp/\(.listen_port | norm)" else "tcp/\(.listen_port | norm)", "udp/\(.listen_port | norm)" end) elif .type == "socks" or .type == "mixed" then "tcp/\(.listen_port | norm)" else "tcp/\(.listen_port | norm)" end)' 2>/dev/null
             ;;
         hysteria)
             # Hysteria 2 config uses listen: :PORT (or [::]:PORT).
@@ -52860,7 +53062,7 @@ upgrade_current_cores_only() {
     msg "${CYAN}======================================================================${NC}"
     msg "Detected A-Box-owned cores: ${targets[*]}"
     msg 'Each staged binary is executed and checked against the current config where supported before atomic replacement.'
-    read -r -p 'Continue core-only upgrade? [Y/N]: ' answer
+    read -r -p 'Continue core-only upgrade? [Y/N]: ' answer || { msg "${YELLOW}$(tr_msg tl_cancelled)${NC}"; pause_return; return 0; }
     is_yes "$answer" || { msg "${YELLOW}$(tr_msg tl_cancelled)${NC}"; pause_return; return 0; }
     # Each core gets an independent transaction (begin → upgrade → commit)
     # inside a subshell, so a failure rolls back only that core.
@@ -54669,6 +54871,13 @@ N11EOF
               wallos_validate_backup() { return 0; }
               wallos_restore_backup() { return 0; }
               _wallos_pull_versioned_image() { echo "$1" > "$_n1_log"; WALLOS_IMAGE_RESULT='sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; return 0; }
+              # R14-F15-04: the front teardowns now require a confirmed
+              # stopped state (a failed state query no longer reads as
+              # stopped). This sandbox's init system cannot answer the
+              # query, and the scenario has no fronts installed, so stub
+              # the state query to stopped; the N-1 tag assertion below
+              # is what this block actually tests.
+              service_active_state_value() { printf '0\n'; return 0; }
               wallos_recover_interrupted_upgrade || exit 1
               [[ "$(cat "$_n1_log")" == 'v9.9.0' ]] || exit 1
             ) || { echo 'FAIL: N-11 N-1 auto-select via production path'; failures=$((failures + 1)); }

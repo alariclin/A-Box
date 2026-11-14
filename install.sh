@@ -30402,6 +30402,11 @@ ROLLOVER_MARKER=/etc/ddr/.traffic-rollover-in-progress
 # R7C10-01: pre-block service-state snapshot prefix (see capture/restore below).
 PRE_BLOCK_STATES_PREFIX=/etc/ddr/.traffic-pre-block-states
 INIT_SYS_EXPECTED='unknown'
+# R14-F10-01: canonical is_systemd for this generated script (same
+# one-liner as geo_update.sh and the main script). The template calls
+# is_systemd 8 times; without this definition a systemd host took the
+# OpenRC branch, owned() failed, and quota protection failed open.
+is_systemd() { [[ "${INIT_SYS_EXPECTED:-${INIT_SYS:-}}" == systemd ]]; }
 exec 9>>/run/A-Box-traffic-monitor.lock || exit 1
 flock -n 9; _flock_rc=$?
 if (( _flock_rc != 0 )); then
@@ -34252,7 +34257,7 @@ users_adopt() {
                   elif .protocol == "shadowsocks" then
                       (if (($st.clients // null) | type) == "array"
                        then [$st.clients[] | {name: (if .email then (if .email == "" then "main" else (.email | split("/") | .[-1]) end) else "main" end), secret: .password}]
-                       else [{name: "main", secret: ($st.password // "")}] end)
+                       else [{name: "main", secret: ($st.password // ""), password_only: true}] end)
                   elif .protocol == "socks" then [$st.accounts[]? | {name: (.user // "main"), secret: (.pass // "")}]
                   elif .protocol == "vmess" then [$st.clients[]? | {name: (if .email then (if .email == "" then "main" else (.email | split("/") | .[-1]) end) else "main" end), secret: .id, uuid: .id, alterId: (.alterId // 0)}]
                   else [] end' "$cfg" 2>/dev/null) || return 1
@@ -34274,7 +34279,7 @@ users_adopt() {
                   elif .type == "shadowsocks" then
                       (if ((.users // null) | type) == "array" and ((.users // []) | length) > 0
                        then [.users[] | {name: (.name // "main"), secret: (.password // "")}]
-                       else [{name: "main", secret: (.password // "")}] end)
+                       else [{name: "main", secret: (.password // ""), password_only: true}] end)
                   elif .type == "mixed" or .type == "socks" then [.users[]? | {name: (.username // "main"), secret: (.password // "")}]
                   else [.users[]? | {name: (.name // "main"), secret: (.password // "")}] end' "$cfg" 2>/dev/null) || return 1
             if [[ "$proto" == 'shadowsocks' ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.users // []) | length) > 0' "$cfg" >/dev/null 2>&1; then
@@ -36332,7 +36337,7 @@ try_latest_cores_danger() {
                      latest=$(core_latest_stable_release_ref HyNetworks/hysteria 2>/dev/null || core_release_mirror_version HyNetworks/hysteria) || die "$(tr_msg tl_cand_hy)"
                      msg "${YELLOW}$(tprintf tl_try_hy "$latest")${NC}"
                      ABOX_TRY_LATEST_CORE_STABLE=1 upgrade_hysteria_core_only ;;
-             esac
+             esac || { core_upgrade_transaction_rollback; exit 1; }
              commit_core_upgrade_transaction ); then
             msg "${GREEN}$(tprintf tl_done_one "$t")${NC}"
         else
@@ -41104,7 +41109,7 @@ import sys
 
 text = os.fdopen(3, "r", encoding="utf-8", errors="replace").read()
 secret = re.compile(
-    r"(?:^|[_-])(uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)(?:$|[_-])",
+    r"(?:^|[_-])(uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs|key)(?:$|[_-])",
     re.I,
 )
 link = re.compile(r"(?i)\b(?:vless|hysteria2|hy2|ss|trojan|tuic|anytls|socks5|vmess)://\S+")
@@ -46243,7 +46248,11 @@ wallos_recover_interrupted_upgrade() {
         fi
         if [[ "$_n1_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && _wallos_pull_versioned_image "$_n1_tag"; then
             # N-03: verify the fetched image matches the journal's old_image.
-            if [[ "$WALLOS_IMAGE_RESULT" == "$old_image" || "$WALLOS_IMAGE_RESULT" == "bellamy/wallos:${_old_tag}" ]]; then
+            # R14-F15-03: since R11-C the pull helper returns the
+            # daemon-reported store-native .Id (sha256:...), not a tag;
+            # a well-formed ID is accepted because the helper binds it
+            # to the requested tag (manifest + load + daemon inspect).
+            if [[ "$WALLOS_IMAGE_RESULT" == "$old_image" || "$WALLOS_IMAGE_RESULT" == "bellamy/wallos:${_old_tag}" || "$WALLOS_IMAGE_RESULT" =~ ^sha256:[0-9a-f]{64}$ ]]; then
                 old_image="$WALLOS_IMAGE_RESULT"
                 msg "${YELLOW}$(tprintf wl_rc_fetched "$_n1_tag")${NC}"
             else
@@ -52716,7 +52725,7 @@ runtime_lock_parent_dir_safe() {
 }
 
 open_runtime_flock_fd() {
-    local uid gid mode fd_id path_id
+    local uid gid mode fd_id path_id _flock_fd_owner
     # R16-01: the lock parent must pass the shared sticky rule (see
     # runtime_lock_parent_dir_safe); fchmod(0600) on the file cannot
     # stop a parent-write holder from unlinking the pathname.
@@ -52748,6 +52757,13 @@ open_runtime_flock_fd() {
     # regular lock file with the caller's default umask (commonly
     # 0644); the fchmod below normalizes that exact safe legacy case,
     # and an active older process is still detected by flock.
+    # R14-F17-01: python3 may be absent before ensure_commands installs
+    # it (same caveat as the fallback lock); refusing here broke
+    # bootstrap on minimal systems that DO have flock. Without python3,
+    # keep the bash-side re-validation of the HELD fd and skip only the
+    # fchown/fchmod normalisation (a legacy 0644 lock file stays 0644
+    # until a later python-equipped run normalises it).
+    if command -v python3 >/dev/null 2>&1; then
     python3 -I - <<'PY_FLOCK_HARDEN' || { exec 9>&-; return 1; }
 import os, stat
 st = os.fstat(9)
@@ -52756,6 +52772,14 @@ if not stat.S_ISREG(st.st_mode) or st.st_uid != 0 or st.st_gid != 0:
 os.fchown(9, 0, 0)
 os.fchmod(9, 0o600)
 PY_FLOCK_HARDEN
+    else
+        # NOTE: do NOT use stat %F here: GNU stat reports an empty
+        # regular file as 'regular empty file', which would fail a
+        # 'regular file' comparison for this (always empty) lock file.
+        [[ -f /proc/$$/fd/9 ]] || { exec 9>&-; return 1; }
+        _flock_fd_owner=$(stat -Lc '%u:%g' /proc/$$/fd/9 2>/dev/null) || { exec 9>&-; return 1; }
+        [[ "$_flock_fd_owner" == '0:0' ]] || { exec 9>&-; return 1; }
+    fi
 }
 
 validate_inherited_flock_lock() {
@@ -54328,7 +54352,7 @@ N11EOF
               wallos_mirror_version_list() { echo 'v9.9.1'; echo 'v9.9.0'; echo 'v8.8.8'; }
               wallos_validate_backup() { return 0; }
               wallos_restore_backup() { return 0; }
-              _wallos_pull_versioned_image() { echo "$1" > "$_n1_log"; WALLOS_IMAGE_RESULT='bellamy/wallos:9.9.9'; return 0; }
+              _wallos_pull_versioned_image() { echo "$1" > "$_n1_log"; WALLOS_IMAGE_RESULT='sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; return 0; }
               wallos_recover_interrupted_upgrade || exit 1
               [[ "$(cat "$_n1_log")" == 'v9.9.0' ]] || exit 1
             ) || { echo 'FAIL: N-11 N-1 auto-select via production path'; failures=$((failures + 1)); }

@@ -16954,9 +16954,30 @@ reorder_one() {
 # unreachable, yet restore reports success. Move each such
 # ACCEPT before the first terminal rule.
 reorder_plain_accepts() {
-    local cmd="$1" line terminal_idx accept_idx i spec rule_no iter accept_line_idx max_moves _qout
+    local cmd="$1" line terminal_idx accept_idx i spec rule_no iter accept_line_idx max_moves _qout _rc=0
+    local _fresh='' _fline='' _frule_no=0
+    local lock_file=/run/A-Box-firewall-reorder.lock lock_fd=''
     local -a lines=() argv=()
     command -v "$cmd" >/dev/null 2>&1 || return 0
+    [[ -d /run && ! -L /run ]] || return 1
+    if [[ -e "$lock_file" || -L "$lock_file" ]]; then
+        [[ -f "$lock_file" && ! -L "$lock_file" ]] || return 1
+        [[ "$(stat -c %u:%g "$lock_file" 2>/dev/null || true)" == 0:0 ]] || return 1
+        local lock_mode
+        lock_mode=$(stat -c %a "$lock_file" 2>/dev/null) || return 1
+        if [[ "$lock_mode" =~ ^[0-7]{3,4}$ ]]; then
+            (( (8#$lock_mode & 8#077) == 0 )) || return 1
+        else
+            return 1
+        fi
+    else
+        (umask 077; set -o noclobber; : > "$lock_file") 2>/dev/null || return 1
+    fi
+    # Open+flock before chown/chmod so the critical section starts immediately.
+    exec {lock_fd}>>"$lock_file" || return 1
+    flock -n "$lock_fd" || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; return 1; }
+    chown root:root "$lock_file" 2>/dev/null || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; rm -f -- "$lock_file"; return 1; }
+    chmod 600 "$lock_file" 2>/dev/null || { [[ "$lock_fd" =~ ^[0-9]+$ ]] && eval "exec ${lock_fd}>&-"; rm -f -- "$lock_file"; return 1; }
     iter=0; max_moves=-1
     while :; do
         iter=$((iter + 1))
@@ -16967,18 +16988,18 @@ reorder_plain_accepts() {
         # yielded an empty snapshot and a success return. The non-empty
         # guard keeps zero-byte output as zero lines (no phantom empty
         # line inflating max_moves).
-        _qout=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || return 1
+        _qout=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { _rc=1; break; }
         if [[ -n "$_qout" ]]; then
             while IFS= read -r line; do
                 lines+=("$line")
-            done <<< "$_qout" || return 1
+            done <<< "$_qout" || { _rc=1; break; }
         fi
         # R5-08: bound the loop on the FIRST snapshot's size: each
         # pass moves one ACCEPT before the terminal rule, so more
         # passes than rules + 1 means no progress. A per-pass re-read
         # count would let a growing chain push the bound up forever.
         (( max_moves < 0 )) && max_moves=${#lines[@]}
-        (( iter <= max_moves + 1 )) || return 1
+        (( iter <= max_moves + 1 )) || { _rc=1; break; }
         terminal_idx=0; accept_idx=0; rule_no=0
         for (( i=0; i<${#lines[@]}; i++ )); do
             line="${lines[$i]}"
@@ -16994,17 +17015,37 @@ reorder_plain_accepts() {
                 accept_idx=$rule_no; accept_line_idx=$i; break
             fi
         done
-        [[ "$accept_idx" == 0 ]] && return 0
+        [[ "$accept_idx" == 0 ]] && { _rc=0; break; }
         # R5-08: accept_idx is a CHAIN rule number (for -D/-I), but
         # lines[] also holds the -P line, so index it by the raw line
         # number recorded alongside, not by accept_idx - 1.
         line="${lines[$accept_line_idx]}"
-        _iptables_do "$cmd" -D INPUT "$accept_idx" >/dev/null 2>&1 || return 1
+        # R25 (F06-01): re-read the chain immediately before deleting.
+        # The snapshot above may be stale: another writer may have
+        # inserted rules after it was taken, shifting every rule
+        # number. Delete only if the rule still at accept_idx is
+        # byte-identical to the snapshot line; otherwise re-snapshot
+        # (the iter bound still caps endless churn). The lock covers
+        # other A-Box writers; this check covers non-A-Box writers.
+        _fresh=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || { _rc=1; break; }
+        _fline=''; _frule_no=0
+        while IFS= read -r _fline; do
+            [[ "$_fline" =~ ^-A[[:space:]]+INPUT[[:space:]] ]] || continue
+            _frule_no=$((_frule_no + 1))
+            if [[ "$_frule_no" == "$accept_idx" ]]; then
+                [[ "$_fline" == "$line" ]] || continue 2
+                break
+            fi
+        done <<< "$_fresh"
+        [[ "$_frule_no" == "$accept_idx" ]] || continue
+        _iptables_do "$cmd" -D INPUT "$accept_idx" >/dev/null 2>&1 || { _rc=1; break; }
         spec="${line#-A INPUT }"
         spec=$(printf '%s' "$spec" | tr -d '"')
         read -r -a argv <<< "$spec"
-        _iptables_do "$cmd" -I INPUT "$terminal_idx" "${argv[@]}" >/dev/null 2>&1 || return 1
+        _iptables_do "$cmd" -I INPUT "$terminal_idx" "${argv[@]}" >/dev/null 2>&1 || { _rc=1; break; }
     done
+    __abox_firewall_unlock "$lock_fd"
+    return "$_rc"
 }
 reorder_policy() {
     local cmd="$1" wl_suffix="$2" drop_suffix="$3" line key port proto rules_output=''
@@ -17274,7 +17315,7 @@ __abox_firewall_persistence_rollback() {
                 elif rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])A-Box-firewall([[:space:]]|$)'; then
                     rc-update del A-Box-firewall default >/dev/null 2>&1 || true
                 fi
-                if [[ "$(service_enabled_state_value A-Box-firewall 2>/dev/null || printf '%s' unknown)" != "$old_unit_enabled" ]]; then
+                if [[ "$old_unit" == 1 ]] && [[ "$(service_enabled_state_value A-Box-firewall 2>/dev/null || printf '%s' unknown)" != "$old_unit_enabled" ]]; then
                     fail=1
                 fi
             else
@@ -17285,7 +17326,7 @@ __abox_firewall_persistence_rollback() {
     return "$fail"
 }
 install_abox_firewall_persistence_service() {
-    local tx_dir old_restore=0 old_unit=0 old_unit_path='' old_unit_enabled='' rollback_rc=0
+    local tx_dir old_restore=0 old_unit=0 old_unit_path='' old_unit_enabled='' rollback_rc=0 _same_unit=''
     tx_dir=$(mktemp -d "$ABOX_DIR/.firewall-persist-tx.XXXXXX") || return 1
 
     if [[ -e "$ABOX_DIR/firewall_restore.sh" || -L "$ABOX_DIR/firewall_restore.sh" ]]; then
@@ -17300,6 +17341,11 @@ install_abox_firewall_persistence_service() {
     case "${INIT_SYS:-}" in
         systemd)
             old_unit_path=/etc/systemd/system/A-Box-firewall.service
+            _same_unit=$(systemd_same_name_unit_path A-Box-firewall 2>/dev/null || true)
+            if [[ -n "$_same_unit" && "$_same_unit" != "$old_unit_path" ]]; then
+                rm -rf -- "$tx_dir"
+                return 1
+            fi
             if [[ -e "$old_unit_path" || -L "$old_unit_path" ]]; then
                 assert_abox_auxiliary_safe "$old_unit_path" || { rm -rf -- "$tx_dir"; return 1; }
                 cp -a -- "$old_unit_path" "$tx_dir/A-Box-firewall.service" || { rm -rf -- "$tx_dir"; return 1; }
@@ -19067,7 +19113,7 @@ _ss_wl_snapshot_rules() {
     local out rc
     out="$(_iptables_q "$IPT" -S INPUT 2>/dev/null)"; rc=$?
     (( rc == 0 )) || return 1
-    _SS_WL_SNAP_V4="$(printf '%s\n' "$out" | grep -E -- "--comment \"?A-Box-${port}-(tcp|udp)(-(WL6?|DROP6?))?\"?([[:space:]]|$)" | sed 's/^-A INPUT //')"
+    _SS_WL_SNAP_V4="$(printf '%s\n' "$out" | grep -E -- "--comment \"?A-Box-${port}-(tcp|udp)(-(WL6?|DROP6?))?(:A-Box-tmp-[0-9]+-[0-9]+)?\"?([[:space:]]|$)" | sed 's/^-A INPUT //')"
     _SS_WL_SNAP_V6=""
     _SS_WL_SNAP_V6_TAKEN=0
     # S34 (GPT-13): snapshot v6 gate is ip6tables_usable alone, aligned
@@ -19077,7 +19123,7 @@ _ss_wl_snapshot_rules() {
     if ip6tables_usable; then
         out="$(_iptables_q "$IPT6" -S INPUT 2>/dev/null)"; rc=$?
         (( rc == 0 )) || return 1
-        _SS_WL_SNAP_V6="$(printf '%s\n' "$out" | grep -E -- "--comment \"?A-Box-${port}-(tcp|udp)(-(WL6?|DROP6?))?\"?([[:space:]]|$)" | sed 's/^-A INPUT //')"
+        _SS_WL_SNAP_V6="$(printf '%s\n' "$out" | grep -E -- "--comment \"?A-Box-${port}-(tcp|udp)(-(WL6?|DROP6?))?(:A-Box-tmp-[0-9]+-[0-9]+)?\"?([[:space:]]|$)" | sed 's/^-A INPUT //')"
         _SS_WL_SNAP_V6_TAKEN=1
     fi
     _SS_WL_SNAP_TAKEN=1
@@ -19164,7 +19210,7 @@ _ss_wl_rollback_to_snapshot() {
         cur_out="$(_iptables_q "$ipt" -S INPUT 2>/dev/null)"; cur_rc=$?
         if (( cur_rc != 0 )); then failed=1; continue; fi
         local cur
-        cur="$(printf '%s\n' "$cur_out" | grep -E -- "--comment \"?A-Box-${_SS_WL_SNAP_PORT}-(tcp|udp)(-(WL6?|DROP6?))?\"?([[:space:]]|$)" | sed 's/^-A INPUT //')"
+        cur="$(printf '%s\n' "$cur_out" | grep -E -- "--comment \"?A-Box-${_SS_WL_SNAP_PORT}-(tcp|udp)(-(WL6?|DROP6?))?(:A-Box-tmp-[0-9]+-[0-9]+)?\"?([[:space:]]|$)" | sed 's/^-A INPUT //')"
         local restore_input="*filter"
         local line pos
         while IFS= read -r line; do
@@ -19256,7 +19302,7 @@ _ss_wl_rollback_to_snapshot() {
         # Compare normalized full sets (order-independent for this check,
         # as head-order was already verified above)
         local final normalized_final
-        final="$(printf '%s\n' "$final_out" | grep -E -- "--comment \"?A-Box-${_SS_WL_SNAP_PORT}-(tcp|udp)(-(WL6?|DROP6?))?\"?([[:space:]]|$)" | sed 's/^-A INPUT //')"
+        final="$(printf '%s\n' "$final_out" | grep -E -- "--comment \"?A-Box-${_SS_WL_SNAP_PORT}-(tcp|udp)(-(WL6?|DROP6?))?(:A-Box-tmp-[0-9]+-[0-9]+)?\"?([[:space:]]|$)" | sed 's/^-A INPUT //')"
         normalized_final=""
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
@@ -21524,7 +21570,13 @@ try:
     if (st_fd.st_dev, st_fd.st_ino) != (st_name.st_dev, st_name.st_ino) or not stat.S_ISREG(st_name.st_mode):
         sys.exit(1)
     os.rename(tmpname, basename, src_dir_fd=dfd, dst_dir_fd=dfd)
-    os.fsync(dfd)
+    # R25 (F07-01): the replacement is committed. A directory-fsync
+    # failure after rename must not fail the write (cf.
+    # install_file_atomically, R10-F08-5): warn and succeed.
+    try:
+        os.fsync(dfd)
+    except OSError:
+        sys.stderr.write('A-Box: WARNING: file replaced, but parent directory sync failed; crash durability is not guaranteed.\n')
 except OSError:
     try:
         if tmpname is not None and fd is not None:
@@ -22468,7 +22520,11 @@ acquire_abox_runtime_guard() {
         IFS= read -r fb_start < "$FALLBACK_DIR/starttime" || exit 0
         if [[ "$fb_pid" =~ ^[0-9]+$ && -d "/proc/$fb_pid" ]]; then
             # R6-F09-2: a failed/empty probe is UNKNOWN, never "no holder".
-            fb_actual=$(awk '{print $22}' "/proc/${fb_pid}/stat" 2>/dev/null) || exit 0
+            # R25 (F07-02): robust starttime: strip "pid (comm) " first, so a comm
+            # containing spaces cannot shift the field. proc_starttime() is not
+            # visible inside this generated script, so the parse is inlined
+            # (same text as runtime_lock_proc_starttime).
+            fb_actual=$(awk '{ if (sub(/^[^ ]+ \(.*\) /, "") == 0) exit 1; print $20 }' "/proc/${fb_pid}/stat" 2>/dev/null) || exit 0
             [[ -z "$fb_actual" ]] && exit 0
             [[ -n "$fb_actual" && "$fb_actual" == "$fb_start" ]] && exit 0
         fi
@@ -22603,6 +22659,8 @@ if [[ -e "$PAIR_STATE" || -L "$PAIR_STATE" ]]; then
     IFS= read -r _pair < "$PAIR_STATE" || exit 0
     [[ "$_pair" == *'|'* ]] || exit 0
     desired=${_pair%%|*}
+    _pair_period=${_pair#*|}
+    if [[ -n "$_pair_period" && ! "$_pair_period" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]]; then exit 0; fi
     case "$desired" in RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE) ;; *) exit 0 ;; esac
 elif [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
     [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] || exit 0
@@ -22830,7 +22888,11 @@ acquire_abox_runtime_guard() {
         IFS= read -r fb_start < "$FALLBACK_DIR/starttime" || exit 0
         if [[ "$fb_pid" =~ ^[0-9]+$ && -d "/proc/$fb_pid" ]]; then
             # R6-F09-2: a failed/empty probe is UNKNOWN, never "no holder".
-            fb_actual=$(awk '{print $22}' "/proc/${fb_pid}/stat" 2>/dev/null) || exit 0
+            # R25 (F07-02): robust starttime: strip "pid (comm) " first, so a comm
+            # containing spaces cannot shift the field. proc_starttime() is not
+            # visible inside this generated script, so the parse is inlined
+            # (same text as runtime_lock_proc_starttime).
+            fb_actual=$(awk '{ if (sub(/^[^ ]+ \(.*\) /, "") == 0) exit 1; print $20 }' "/proc/${fb_pid}/stat" 2>/dev/null) || exit 0
             [[ -z "$fb_actual" ]] && exit 0
             [[ -n "$fb_actual" && "$fb_actual" == "$fb_start" ]] && exit 0
         fi
@@ -23106,6 +23168,8 @@ if [[ -e "$GEO_TXN" || -L "$GEO_TXN" ]]; then
             mode=$(stat -c %a "$PAIR_STATE" 2>/dev/null) || mode=''
             if [[ "$mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 8#077) == 0 )) && IFS= read -r _pair < "$PAIR_STATE" && [[ "$_pair" == *'|'* ]]; then
                 desired=${_pair%%|*}
+                _pair_period=${_pair#*|}
+                if [[ -n "$_pair_period" && ! "$_pair_period" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]]; then desired=STOPPED; fi
                 case "$desired" in RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE) ;; *) desired=STOPPED ;; esac
             fi
         fi
@@ -23140,6 +23204,8 @@ if [[ -e "$PAIR_STATE" || -L "$PAIR_STATE" ]]; then
     IFS= read -r _pair < "$PAIR_STATE" || exit 0
     [[ "$_pair" == *'|'* ]] || exit 0
     desired=${_pair%%|*}
+    _pair_period=${_pair#*|}
+    if [[ -n "$_pair_period" && ! "$_pair_period" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]]; then exit 0; fi
     case "$desired" in RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE) ;; *) exit 0 ;; esac
 elif [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
     [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] || exit 0
@@ -23177,6 +23243,8 @@ if [[ -e "$PAIR_STATE" || -L "$PAIR_STATE" ]]; then
     IFS= read -r _pair < "$PAIR_STATE" || exit 0
     [[ "$_pair" == *'|'* ]] || exit 0
     desired=${_pair%%|*}
+    _pair_period=${_pair#*|}
+    if [[ -n "$_pair_period" && ! "$_pair_period" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]]; then exit 0; fi
     case "$desired" in RUNNING|TRAFFIC_BLOCKED|MANUAL_STOPPED|MAINTENANCE) ;; *) exit 0 ;; esac
 elif [[ -e "$DESIRED" || -L "$DESIRED" ]]; then
     [[ -r "$DESIRED" && -f "$DESIRED" && ! -L "$DESIRED" ]] || exit 0
@@ -24795,6 +24863,7 @@ _rollback_start_snapshot_services() {
         [[ -n "$_srv" ]] || continue
         [[ "$_active" == 1 ]] || continue
         case "$_srv" in xray|sing-box|hysteria|xray-latest) ;; *) continue ;; esac
+        abox_owns_service "$_srv" || { msg "[!] Rollback fallback: skipping ${_srv} from snapshot (not A-Box-owned)."; continue; }
         if [[ "${INIT_SYS:-}" == systemd ]]; then
             systemctl start "$_srv" >/dev/null 2>&1 || true
         elif command -v rc-service >/dev/null 2>&1; then
@@ -25408,8 +25477,8 @@ EOF_SVC
     restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_restart)"; }
 
     # Firewall: TCP + UDP.
-    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    allowPort "$port" udp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    ( allowPort "$port" udp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     # Recycle the replaced port's rules when no inbound still uses it.
@@ -25614,7 +25683,7 @@ deploy_xray_trojan_landing() {
             realitySettings:{target:($sni+":443"),serverNames:[$sni],privateKey:$pk,shortIds:[$sid],minClientVer:"1.8.2"}}}' \
         > "$tmp_json" || die "$(tr_msg dp_trojan_json)"
 
-    if [[ ! -f "$cfg" || -L "$cfg" ]]; then
+    if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
         local seed_json
         seed_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
         jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$seed_json" || { rm -f "$seed_json"; die "$(tr_msg dp_xray_seed)"; }
@@ -25652,8 +25721,8 @@ deploy_xray_trojan_landing() {
     fi
     rm -f "$tmp_json"
 
-    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
+    ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     service_manager start xray 2>/dev/null || true
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
@@ -25824,8 +25893,8 @@ EOF_SVC
     prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
     restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_restart)"; }
 
-    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
+    ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
@@ -26021,8 +26090,8 @@ EOF_SVC
     prepare_abox_runtime_permissions sing-box || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tr_msg dp_sb_runtime)"; }
     restart_service_soft sing-box || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tr_msg dp_sb_restart)"; }
 
-    allowPort "$port" udp || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tprintf dp_fw_allow "${port}/udp")"; }
-    save_firewall_rules || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; die "$(tr_msg pi_fw_persist_fail)"; }
+    ( allowPort "$port" udp ) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    save_firewall_rules || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak" "${_tuic_key}.A-Box-bak" "${_tuic_crt}.A-Box-bak"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
@@ -26195,8 +26264,8 @@ EOF_SVC
     prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
     restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_restart)"; }
 
-    allowPort "$port" tcp || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg pi_fw_persist_fail)"; }
+    ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
     service_manager start sing-box 2>/dev/null || true
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
@@ -26385,7 +26454,7 @@ EOF_SVC
     rm -f "$tmp_cfg" "$tmp_json"
 
     restart_service_soft sing-box || { if [[ -n "$cfg_bak" ]]; then restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; fi; die "$(tr_msg dp_sb_restart)"; }
-    allowPort "$port" tcp || { if [[ -n "$cfg_bak" ]]; then if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; fi; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    ( allowPort "$port" tcp ) || { if [[ -n "$cfg_bak" ]]; then if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; fi; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
     save_firewall_rules || { if [[ -n "$cfg_bak" ]]; then if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; fi; die "$(tr_msg pi_fw_persist_fail)"; }
     [[ -n "$cfg_bak" ]] && rm -f -- "$cfg_bak"
     service_manager start sing-box 2>/dev/null || true
@@ -30515,7 +30584,11 @@ acquire_abox_runtime_guard() {
         IFS= read -r fb_start < "$FALLBACK_DIR/starttime" || exit 0
         if [[ "$fb_pid" =~ ^[0-9]+$ && -d "/proc/$fb_pid" ]]; then
             # R6-F09-2: a failed/empty probe is UNKNOWN, never "no holder".
-            fb_actual=$(awk '{print $22}' "/proc/${fb_pid}/stat" 2>/dev/null) || exit 0
+            # R25 (F07-02): robust starttime: strip "pid (comm) " first, so a comm
+            # containing spaces cannot shift the field. proc_starttime() is not
+            # visible inside this generated script, so the parse is inlined
+            # (same text as runtime_lock_proc_starttime).
+            fb_actual=$(awk '{ if (sub(/^[^ ]+ \(.*\) /, "") == 0) exit 1; print $20 }' "/proc/${fb_pid}/stat" 2>/dev/null) || exit 0
             [[ -z "$fb_actual" ]] && exit 0
             [[ -n "$fb_actual" && "$fb_actual" == "$fb_start" ]] && exit 0
         fi

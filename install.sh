@@ -37367,7 +37367,11 @@ ip_preference_menu() {
             # the host can do, not the current preference -- has_ipv6()
             # is false in IPv4-preferred mode even with working global
             # IPv6, which made IPv6-only unreachable directly from IPv4.
-            if ! ip -6 addr show scope global 2>/dev/null | awk '/inet6/ { found=1 } END { exit !found }' && ! ip -6 route show default 2>/dev/null | awk '/^default/ { found=1 } END { exit !found }'; then
+            # R15-F12-01: BOTH conditions are required for usable global
+            # IPv6 -- an address without a default route has no exit,
+            # and a default route without a global address has no source.
+            # The old '!A && !B' rejected only when both were missing.
+            if ! ip -6 addr show scope global 2>/dev/null | awk '/inet6/ { found=1 } END { exit !found }' || ! ip -6 route show default 2>/dev/null | awk '/^default/ { found=1 } END { exit !found }'; then
                 case "${ABOX_LANG:-zh}" in
                     en) msg "${RED}No usable global IPv6 was detected; IPv6-only mode was not saved.${NC}" ;;
                     ru) msg "${RED}Рабочий глобальный IPv6 не обнаружен; режим IPv6-only не сохранён.${NC}" ;;
@@ -38352,6 +38356,59 @@ nm_effective_device() {
     LC_ALL=C nmcli -t -f DEVICE,STATE device 2>/dev/null | awk -F: '$2=="connected"{print $1; exit}'
 }
 
+# R15-F12-05: a loopback first nameserver is trusted ONLY when it is
+# provably NetworkManager-fed. A loopback resolver NM does not manage
+# (e.g. an independent Unbound under rc-manager=unmanaged) forwards
+# from unchanged upstreams, so trusting it unconditionally verifies
+# DNS that was never applied. Two tiers, both fail-closed:
+#   1. LIVE: ask the running daemon -- DnsManager Mode plus the
+#      backend's D-Bus owner. A concrete mode other than the expected
+#      backend is positive evidence against trust; "default" is
+#      inconclusive and falls through; any query failure falls through.
+#   2. CONFIG: the merged view from 'NetworkManager --print-config'
+#      (never a hand-rolled file scan: same-basename shadowing and
+#      intern.conf semantics make last-key-wins over files unreliable).
+#      rc-manager=unmanaged, or dns=none (man page: "implies rc-manager
+#      unmanaged"), means NOT managed. No value = managed (default).
+# GPT (astra, high) supplied the live-check design and caught the
+# rc-manager spelling (unmanaged, not unmanage); the print-config
+# fallback and the two-tier combination are this worker's.
+_nm_dns_loopback_trusted() {
+    local _first_ns="$1" _want='' _bus='' _mode='' _owned=''
+    case "$_first_ns" in
+        127.0.0.1) _want=dnsmasq; _bus=org.freedesktop.NetworkManager.dnsmasq ;;
+        127.0.0.53) _want=systemd-resolved; _bus=org.freedesktop.resolve1 ;;
+        *) return 1 ;;
+    esac
+    if command -v busctl >/dev/null 2>&1; then
+        _mode=$(busctl --system --auto-start=no --timeout=5s get-property org.freedesktop.NetworkManager /org/freedesktop/NetworkManager/DnsManager org.freedesktop.NetworkManager.DnsManager Mode 2>/dev/null || true)
+        case "$_mode" in
+            "s \"$_want\"")
+                _owned=$(busctl --system --auto-start=no --timeout=5s call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus NameHasOwner s "$_bus" 2>/dev/null || true)
+                [[ "$_owned" == 'b true' ]] && return 0
+                return 1 ;;
+            's "default"'|'')
+                : # inconclusive (or bus query failed): fall to config
+                ;;
+            *) return 1 ;; # concrete other backend: positively not NM-fed
+        esac
+    fi
+    _nm_dns_resolv_managed
+}
+
+# Merged-config view only: last uncommented rc-manager=/dns= in [main]
+# wins (commented lines are build defaults, not set values).
+# Returns 0 iff resolv.conf is NM-managed.
+_nm_dns_resolv_managed() {
+    local _out='' _rcm='' _dns=''
+    _out=$(NetworkManager --print-config 2>/dev/null || true)
+    [[ -n "$_out" ]] || return 1
+    _rcm=$(printf '%s\n' "$_out" | awk '/^\[main\]/{m=1;next} /^\[/{m=0} m && /^rc-manager=/{v=$0; sub(/^rc-manager=/,"",v); gsub(/[[:space:]]+$/,"",v); print v}' | tail -1)
+    _dns=$(printf '%s\n' "$_out" | awk '/^\[main\]/{m=1;next} /^\[/{m=0} m && /^dns=/{v=$0; sub(/^dns=/,"",v); gsub(/[[:space:]]+$/,"",v); print v}' | tail -1)
+    [[ "$_rcm" == unmanaged || "$_dns" == none ]] && return 1
+    return 0
+}
+
 nm_dns_verify_applied() {
     local connection="$1" v4="$2" v6="${3:-}" rc="${4:-/etc/resolv.conf}" v=''
     v=$(nmcli --escape no -g ipv4.dns connection show "$connection" 2>/dev/null || true)
@@ -38361,18 +38418,28 @@ nm_dns_verify_applied() {
         [[ "$(_nm_dns_norm_set "$v")" == "$(_nm_dns_norm_set "$v6")" ]] || return 1
     fi
     # R6C12-02: the EFFECTIVE resolver is the FIRST nameserver.
-    # A loopback first entry is trusted (it forwards from the
-    # connection profile verified above); any other first entry
-    # must be one of the requested servers, or an old
-    # higher-priority resolver is still winning and this FAILS.
+    # A loopback first entry is trusted only when provably
+    # NM-fed (_nm_dns_loopback_trusted, R15-F12-05); an unmanaged
+    # loopback resolver falls through to the requested-set compare
+    # below and FAILS unless it is one of the requested servers.
+    # Any other first entry must be one of the requested servers,
+    # or an old higher-priority resolver is still winning and this
+    # FAILS.
     local _first_ns='' _req_tok=''
     _first_ns=$(awk '/^nameserver[[:space:]]/{print $2; exit}' "$rc" 2>/dev/null || true)
     [[ -n "$_first_ns" ]] || return 1
-    if [[ "$_first_ns" =~ ^127\.0\.0\.(1|53)$ ]]; then return 0; fi
+    if [[ "$_first_ns" =~ ^127\.0\.0\.(1|53)$ ]]; then
+        _nm_dns_loopback_trusted "$_first_ns" && return 0
+    fi
     local -a _req_toks=()
     IFS=$', \t' read -ra _req_toks <<< "$v4${v6:+,$v6}" || true
+    # R15-F12-06: compare canonical forms, like the connection-config
+    # compare above (_nm_dns_norm_set): an expanded IPv6 literal and
+    # the compressed form resolv.conf carries are the same address.
+    local _first_ns_norm=''
+    _first_ns_norm=$(normalize_ip_literal "$_first_ns")
     for _req_tok in "${_req_toks[@]}"; do
-        [[ "$_req_tok" == "$_first_ns" ]] && return 0
+        [[ "$(normalize_ip_literal "$_req_tok")" == "$_first_ns_norm" ]] && return 0
     done
     return 1
 }
@@ -45172,11 +45239,37 @@ backup_archive_is_legacy() {
 
 restore_from_backup() {
     local backup_dir="$ABOX_DIR/backups" backups i choice selected work root answer backend mode=all srv path targets='' backups_output='' _own_brc=0
+    # D-07: BusyBox find (Alpine) lacks -printf; python3 is already a hard
+    # dependency, so enumerate by mtime in python (newest first). A missing
+    # directory is skipped (as before); an unreadable directory or a stat
+    # failure exits non-zero so the caller reports rb_enum_fail.
     if ! backups_output=$(
-        for _dir in "$ABOX_DIR/backups" /root/A-Box-backups; do
-            [[ -d "$_dir" && ! -L "$_dir" ]] || continue
-            find "$_dir" -maxdepth 1 -type f -name 'A-Box-backup-*.tar.gz' -printf '%T@ %p\n'
-        done | sort -rn | cut -d' ' -f2-
+        python3 -I - "$ABOX_DIR/backups" /root/A-Box-backups <<'PY_RB_ENUM' || exit 1
+import os, sys
+_ents = []
+for _d in sys.argv[1:]:
+    try:
+        _names = os.listdir(_d)
+    except FileNotFoundError:
+        continue
+    except NotADirectoryError:
+        continue
+    except OSError:
+        sys.exit(1)
+    for _n in _names:
+        if not (_n.startswith('A-Box-backup-') and _n.endswith('.tar.gz')):
+            continue
+        _p = os.path.join(_d, _n)
+        try:
+            if os.path.islink(_p) or not os.path.isfile(_p):
+                continue
+            _ents.append((os.stat(_p).st_mtime, _p))
+        except OSError:
+            sys.exit(1)
+_ents.sort(key=lambda e: (e[0], e[1]), reverse=True)
+for _, _p in _ents:
+    print(_p)
+PY_RB_ENUM
     ); then
         msg "${RED}[!] $(tr_msg rb_enum_fail)${NC}"
         pause_return
@@ -45225,7 +45318,10 @@ restore_from_backup() {
     assert_restore_shortcut_safe "$root" || { rm -rf "$work"; die "$(tr_msg rb_shortcut_fail)"; }
     validate_backup_core_init_compatibility "$root" || { rm -rf "$work"; die "$(tr_msg rb_init_incompat)"; }
     msg "${YELLOW}[!] $(tr_msg rb_replace_note)${NC}"
-    read -r -p "$(tr_msg rb_continue)" answer
+    # R15-F14-02: a partial read (input 'y' then EOF) returns non-zero
+    # with the content still stored; without checking $?, is_yes would
+    # accept an unconfirmed answer and proceed to destructive steps.
+    read -r -p "$(tr_msg rb_continue)" answer || { rm -rf "$work"; return; }
     is_yes "$answer" || { rm -rf "$work"; return; }
 
     ABOX_LAST_BACKUP=''
@@ -46345,13 +46441,25 @@ wallos_rollback_to_version() {
     [[ "$target_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { msg "${RED}$(tprintf wl_rb_invalid_ver "$target_tag")${NC}"; return 1; }
     # R11C14-01: refuse a foreign container squatting on the
     # 'wallos' name before any destructive step.
-    if docker inspect wallos >/dev/null 2>&1; then
+    # R15-F14-03: a failed first inspect is "state unknown", never a
+    # skipped gate: only a confirmed-absent container (see
+    # _wallos_container_gone) may pass without the label check; any
+    # other inspect failure refuses here, before the version/backup
+    # gates can pass a never-verified container on to stop/rm.
+    local _rb_inspect_err=''
+    if _rb_inspect_err=$(docker inspect wallos 2>&1 >/dev/null); then
         local _wallos_managed=''
         _wallos_managed=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)
         if [[ "$_wallos_managed" != "true" ]]; then
             msg "${RED}Refusing rollback: existing 'wallos' container is not A-Box-managed (missing com.alariclin.abox.managed label).${NC}"
             return 1
         fi
+    elif _wallos_container_gone "$_rb_inspect_err"; then
+        : # confirmed absent: nothing to protect; later gates still apply.
+    else
+        msg "${RED}Refusing rollback: cannot determine the state of the 'wallos' container; refusing to roll back without a verified ownership check.${NC}"
+        _wallos_show_docker_err "$_rb_inspect_err"
+        return 1
     fi
     # X-04: rollback's purpose IS downgrade; do not reuse the install-path
     # anti-downgrade gate (wallos_candidate_version_allowed) here. Instead
@@ -47322,6 +47430,11 @@ wallos_recover_interrupted_upgrade() {
             # to the requested tag (manifest + load + daemon inspect).
             if [[ "$WALLOS_IMAGE_RESULT" == "$old_image" || "$WALLOS_IMAGE_RESULT" == "bellamy/wallos:${_old_tag}" || "$WALLOS_IMAGE_RESULT" =~ ^sha256:[0-9a-f]{64}$ ]]; then
                 old_image="$WALLOS_IMAGE_RESULT"
+                # R15-F15-01: _run_image was frozen before the pull;
+                # the verified pulled image must become the run
+                # identity too, or recovery still runs the old tag
+                # (which may re-pull another version or fail).
+                _run_image="$WALLOS_IMAGE_RESULT"
                 msg "${YELLOW}$(tprintf wl_rc_fetched "$_n1_tag")${NC}"
             else
                 msg "${RED}$(tprintf wl_rc_mismatch "$WALLOS_IMAGE_RESULT" "$old_image")${NC}"
@@ -47347,8 +47460,15 @@ wallos_recover_interrupted_upgrade() {
         fi
         docker stop wallos >/dev/null 2>&1 || true
         docker rm -f wallos >/dev/null 2>&1 || {
-            # A-04: rm failed after stop; restart original instead of leaving Exited.
-            docker start wallos >/dev/null 2>&1 || true
+            # A-04: rm failed after stop; restart the original instead
+            # of leaving it Exited -- but only when the journal says
+            # it was running. R15-F15-03: with was_running==0 the
+            # normal path only docker-creates (never starts), so an
+            # unconditional start here would boot an instance that
+            # must stay stopped.
+            if (( was_running == 1 )); then
+                docker start wallos >/dev/null 2>&1 || true
+            fi
             msg "${RED}$(tr_msg wl_rc_rm_fail)${NC}"
             return 1
         }
@@ -49007,8 +49127,18 @@ wallos_db_repair_poisoned() {
             return 1
         fi
         [[ "$_running_out" == true ]] && _was_running=1
-        _image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
+        # R15-F15-05: take the immutable image ID (.Image), not the
+        # creation-time reference (.Config.Image): a tag retargeted
+        # after the container was created would otherwise make the
+        # repair seed another version's template over the live db.
+        # R14-F14-02 fixed the same confusion at the rollback
+        # capture point; this is the database-repair call site.
+        _image=$(docker inspect -f '{{.Image}}' wallos 2>/dev/null || true)
         _image="${_image#docker.io/}"
+        if [[ -n "$_image" && ! "$_image" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            msg "${RED}$(tprintf wl_repair_abort 'container image ID unknown')${NC}"
+            return 1
+        fi
     elif _wallos_container_gone "$_inspect_err"; then
         _had_container=0
     else
@@ -49535,7 +49665,8 @@ wallos_install_or_update() {
         return 0
     fi
 
-    if docker container inspect wallos >/dev/null 2>&1; then
+    local _wallos_inspect_err=''
+    if _wallos_inspect_err=$(docker container inspect wallos 2>&1 >/dev/null); then
         [[ -f "$WALLOS_DIR/.A-Box-managed" && ! -L "$WALLOS_DIR/.A-Box-managed" ]] || {
             msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}"
             return 1
@@ -49587,7 +49718,7 @@ wallos_install_or_update() {
             msg "${RED}$(tr_msg wl_iu_state_incomplete)${NC}"; return 1;
         }
         port="$old_port"
-    else
+    elif _wallos_container_gone "$_wallos_inspect_err"; then
         [[ ! -e "$WALLOS_DIR" || -f "$WALLOS_DIR/.A-Box-managed" ]] || {
             msg "${RED}$(tprintf wl_iu_no_marker "$WALLOS_DIR")${NC}"; return 1;
         }
@@ -49601,6 +49732,15 @@ wallos_install_or_update() {
         [[ "$port" =~ ^[0-9]+$ ]] || { msg "${RED}$(tr_msg wl_iu_no_free_port)${NC}"; return 1; }
         tz=$(current_timezone_name 2>/dev/null || printf 'UTC')
         valid_timezone_name "$tz" || tz='UTC'
+    else
+        # R15-F15-02: a failed inspect is "state unknown", not "fresh
+        # install": treating it as fresh skips the upgrade backup and
+        # journal, and a later name-conflict cleanup could delete the
+        # healthy instance. (GPT astra/high agreed with the 3-state
+        # entry; the refusal wording follows the db-repair path.)
+        msg "${RED}Wallos container state unknown; refusing installation.${NC}"
+        _wallos_show_docker_err "$_wallos_inspect_err"
+        return 1
     fi
     # C-03: Wallos container listens on IPv4 only. Require IPv4 (no CIDR suffix).
     # F-09 preserved bind (any valid IPv4, e.g. LAN/Tailscale) is allowed.
@@ -49905,12 +50045,32 @@ wallos_install_or_update() {
         wallos_fw_rollback_added "${_fw_added[@]}" || true
         return 1
     fi
-    docker run -d --name wallos --label com.alariclin.abox.managed=true \
+    # R15-F15-02: record the container ID THIS attempt creates
+    # (--cidfile), so failure cleanup can delete exactly that
+    # container instead of whatever now owns the 'wallos' name.
+    # GPT (astra, high) supplied the --cidfile design; a fresh
+    # docker run that creates a container and then fails to start
+    # it is still recorded (and cleaned up), while a name conflict
+    # writes no cidfile and is therefore never deleted.
+    local _wallos_cid_dir='' _wallos_created_id=''
+    if ! _wallos_cid_dir=$(mktemp -d "${TMPDIR:-/tmp}/abox-wallos-cid.XXXXXXXXXX"); then
+        msg "${RED}Cannot allocate Wallos container-ID file.${NC}"
+        if (( running == 1 )); then
+            wallos_recover_interrupted_upgrade >/dev/null 2>&1 || true
+        fi
+        return 1
+    fi
+    docker run -d --cidfile "$_wallos_cid_dir/id" --name wallos --label com.alariclin.abox.managed=true \
         "${WALLOS_DOCKER_HARDENING[@]}" \
         -v "$WALLOS_DIR/db:/var/www/html/db" \
         -v "$WALLOS_DIR/logos:/var/www/html/images/uploads/logos" \
         -e TZ="$tz" "${_pub_args[@]}" --restart unless-stopped "$image" >/dev/null
     code=$?
+    if [[ -f "$_wallos_cid_dir/id" ]]; then
+        IFS= read -r _wallos_created_id < "$_wallos_cid_dir/id" || true
+    fi
+    rm -f -- "$_wallos_cid_dir/id" 2>/dev/null || true
+    rmdir -- "$_wallos_cid_dir" 2>/dev/null || true
     if (( code != 0 )); then
         :
     elif (( ${#_pub_args[@]} == 0 )); then
@@ -49919,11 +50079,17 @@ wallos_install_or_update() {
         code=1
     fi
     if (( code != 0 )); then
-        # R10C15-01: only remove a container carrying the A-Box
-        # ownership label; a foreign name-conflict container must
-        # not be deleted by failure cleanup.
-        if [[ "$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null || true)" == "true" ]]; then
-            docker rm -f wallos >/dev/null 2>&1 || true
+        # R15-F15-02: delete only the container this attempt created,
+        # by the --cidfile ID recorded after docker run (plus the
+        # R10C15-01 ownership-label re-check). A name conflict writes
+        # no cidfile, so a pre-existing or concurrently appearing
+        # container (managed or foreign) is never deleted by name.
+        # No recorded ID means leave it and fail loudly (fail-closed).
+        if [[ "$_wallos_created_id" =~ ^[0-9a-f]{64}$ ]] &&
+            [[ "$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' "$_wallos_created_id" 2>/dev/null || true)" == "true" ]]; then
+            docker rm -f "$_wallos_created_id" >/dev/null 2>&1 || true
+        else
+            msg "${YELLOW}No verified container ID for this attempt; not deleting 'wallos' by name.${NC}" >&2
         fi
         if (( running == 1 )); then
             wallos_recover_interrupted_upgrade || msg "${RED}$(tprintf wl_iu_rb_incomplete "${WALLOS_DIR}/.upgrade-transaction" "${backup:-unavailable}")${NC}"

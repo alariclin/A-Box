@@ -24379,6 +24379,13 @@ build_xray_config() {
     if [[ -L "$ROUTING_STATE_FILE" ]]; then
         die 'Routing state file is a symbolic link; refusing to deploy without routing policy.'
     fi
+    # R15-F08-03: a path that exists but is not a regular file
+    # (directory / FIFO / socket) is damage, not absence: fail
+    # closed like a symlink or invalid content instead of
+    # silently deploying with an empty routing set.
+    if [[ -e "$ROUTING_STATE_FILE" && ! -f "$ROUTING_STATE_FILE" && ! -L "$ROUTING_STATE_FILE" ]]; then
+        die 'Routing state path exists but is not a regular file; refusing to deploy without routing policy.'
+    fi
     if [[ -f "$ROUTING_STATE_FILE" && ! -L "$ROUTING_STATE_FILE" ]]; then
         jq -e '.version == 1 and (.outbounds | type == "array") and (.rules | type == "array")' "$ROUTING_STATE_FILE" >/dev/null 2>&1 || die 'Routing state file is invalid; refusing to deploy without routing policy.'
         _rs_ob=$(jq -c '[.outbounds[]?.xray]' "$ROUTING_STATE_FILE" 2>/dev/null) || die 'Routing state outbound merge failed.'
@@ -24451,7 +24458,13 @@ xray_api_add_inbound() {
     # a bare object adds zero inbounds yet can exit 0, so wrap it.
     local doc
     doc=$(mktemp /tmp/A-Box-xray-adi.XXXXXX) || return 1
-    mv "$doc" "$doc.json" || { rm -f "$doc"; return 1; }; doc="$doc.json"
+    # R15-F08-01: reserve the .json target exclusively before the mv:
+    # mktemp only owns the bare path, so a watcher could pre-create
+    # "$doc.json" as a directory (mv installs the file inside it) and
+    # swap in a symlink before jq writes. Same noclobber pattern as
+    # the Trojan deploy path.
+    ( umask 077; set -o noclobber; : > "$doc.json" ) 2>/dev/null || { rm -f "$doc"; return 1; }
+    mv "$doc" "$doc.json" || { rm -f "$doc" "$doc.json"; return 1; }; doc="$doc.json"
     if ! jq -s '{inbounds: .}' "$json_file" > "$doc" 2>/dev/null; then rm -f "$doc"; return 1; fi
     if ! jq -e '.inbounds | length == 1' "$doc" >/dev/null 2>&1; then rm -f "$doc"; return 1; fi
     if ! /usr/local/bin/xray api adi --server="$XRAY_API_SERVER" "$doc" >/dev/null 2>&1; then rm -f "$doc"; return 1; fi
@@ -24756,6 +24769,13 @@ build_singbox_config() {
     local _rs_ob='[]' _rs_rules='[]'
     if [[ -L "$ROUTING_STATE_FILE" ]]; then
         die 'Routing state file is a symbolic link; refusing to deploy without routing policy.'
+    fi
+    # R15-F08-03: a path that exists but is not a regular file
+    # (directory / FIFO / socket) is damage, not absence: fail
+    # closed like a symlink or invalid content instead of
+    # silently deploying with an empty routing set.
+    if [[ -e "$ROUTING_STATE_FILE" && ! -f "$ROUTING_STATE_FILE" && ! -L "$ROUTING_STATE_FILE" ]]; then
+        die 'Routing state path exists but is not a regular file; refusing to deploy without routing policy.'
     fi
     if [[ -f "$ROUTING_STATE_FILE" && ! -L "$ROUTING_STATE_FILE" ]]; then
         jq -e '.version == 1 and (.outbounds | type == "array") and (.rules | type == "array")' "$ROUTING_STATE_FILE" >/dev/null 2>&1 || die 'Routing state file is invalid; refusing to deploy without routing policy.'
@@ -26330,7 +26350,7 @@ deploy_xray_trojan_landing() {
         install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_cfg)"; }
         rm -f "$tmp_cfg"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
-        restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_xray_restart)"; }
+        restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tr_msg dp_xray_restart)"; }
     fi
     rm -f "$tmp_json"
 
@@ -26504,7 +26524,7 @@ EOF_SVC
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
     prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
-    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_restart)"; }
+    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_restart)"; }
 
     ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
@@ -26875,7 +26895,7 @@ EOF_SVC
     install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_sb_cfg)"; }
     rm -f "$tmp_cfg" "$tmp_json"
     prepare_abox_runtime_permissions sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_runtime)"; }
-    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_sb_restart)"; }
+    restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_restart)"; }
 
     ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
@@ -27775,6 +27795,11 @@ EOF_SVC
         install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
     fi
+    # R15-F09-03: a present binary does not imply a service unit
+    # exists (interrupted install / deleted unit). Ensure it here,
+    # before argo_deploy_ws restarts sing-box (R7-13 precedent on
+    # the sing-box deploy path).
+    ensure_singbox_service_unit || die "$(tr_msg dp_sb_unit)"
     argo_deploy_ws
     argo_write_unit argo-vmess "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 --url http://127.0.0.1:${ARGO_VMESS_PORT}"
     argo_write_unit argo-vless "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 --url http://127.0.0.1:${ARGO_VLESS_PORT}"
@@ -27990,6 +28015,11 @@ EOF_SVC
         install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_sb_cfg)"
         rm -f "$tmp_json"
     fi
+    # R15-F09-03: a present binary does not imply a service unit
+    # exists (interrupted install / deleted unit). Ensure it here,
+    # before argo_deploy_ws restarts sing-box (R7-13 precedent on
+    # the sing-box deploy path).
+    ensure_singbox_service_unit || die "$(tr_msg dp_sb_unit)"
     argo_deploy_ws
     if argo_unit_active argo 2>/dev/null; then _argo_was_running=1; fi
     argo_write_unit argo "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 run"
@@ -28389,7 +28419,13 @@ _mi_port_listening() {
     # address. The 6? covers ss builds reporting tcp6/udp6.
     [[ -n "$1" && -n "$2" ]] || return 1
     [[ "$3" == tcp || "$3" == udp ]] || return 1
-    printf '%s\n' "$1" | grep -qE "^${3}6?[[:space:]]+.*[:.]$2[[:space:]]"
+    # R15-F09-04: no `grep -q` here. Under global pipefail, grep -q
+    # exits on the first match; with a large listen table and an
+    # early match the upstream printf dies on SIGPIPE (rc 141),
+    # which the callers read as "not listening". A plain grep drains
+    # the whole stream, so no SIGPIPE (R14-F09-01 precedent in
+    # _argo_pick_port).
+    printf '%s\n' "$1" | grep -E "^${3}6?[[:space:]]+.*[:.]$2[[:space:]]" >/dev/null
 }
 
 # Canonical panel order (scheme B): every panel section (nodes, SNI,
@@ -30183,15 +30219,15 @@ EOF_SVC
         install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_cfg)"; }
         rm -f "$tmp_cfg"
         prepare_abox_runtime_permissions xray 2>/dev/null || true
-        restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_xray_restart)"; }
+        restart_service_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tr_msg dp_xray_restart)"; }
     else
         xray_hot_add_inbound "$tmp_json" || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_socks5_add)"; }
     fi
     rm -f "$tmp_json"
 
     # Firewall: TCP + UDP.
-    ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
-    ( allowPort "$port" udp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tprintf dp_fw_allow "${port}/udp")"; }
+    ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
+    ( allowPort "$port" udp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
     save_firewall_rules || { if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft xray 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; die "$(tr_msg pi_fw_persist_fail)"; }
     # Ensure the service is running (minimal-install path or API-unavailable hosts).
     service_manager start xray 2>/dev/null || true

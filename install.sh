@@ -13581,6 +13581,14 @@ try:
     runtime_uid = pwd.getpwnam('abox-hysteria').pw_uid
 except (ImportError, KeyError):
     runtime_uid = None
+if runtime_uid is None:
+    # R26 (F05-1): without the runtime user there is nobody to
+    # hand write access to; silently leaving root ownership
+    # would re-create the renewal breakage below. Fail closed.
+    # (Unreachable via prepare_hysteria_acme_dir_ownership,
+    # which ensures the identity first; this guards direct
+    # callers.)
+    raise SystemExit(1)
 rows = []
 for line in f:
     p = line.rstrip('\n').split('\t')
@@ -13620,20 +13628,29 @@ for typ, _fam, rawpath, _h in rows:
             continue
         # R1-05-F02: leave check-compliant items alone. The manifest
         # check allows uid {0, runtime} and gid {0, runtime} with no
-        # other/group write; forcing those to root:gid + 0640/0750
-        # would strip a compliant runtime owner's write (and, for a
-        # 0700 dir, add group read). Normalize only violators.
+        # other/group write; a compliant runtime-owned entry already
+        # has its owner write, so it needs no change. Normalize
+        # only violators (handed to the runtime user below).
         uid_ok = st.st_uid in ({0, runtime_uid} if runtime_uid is not None else {0})
         gid_ok = st.st_gid in {0, gid}
         mode_ok = (st.st_mode & 0o022) == 0
         mode = stat.S_IMODE(st.st_mode)
-        need = 0o5 if stat.S_ISDIR(st.st_mode) else 0o4
+        # R26 (F05-1): renewal writes, it does not just read.
+        # need is writability (dir 0o7 / file 0o6), not the old
+        # readability (0o5 / 0o4): a root-owned 0750 dir with
+        # the runtime gid was previously skipped as compliant
+        # while the runtime user could not create/replace files.
+        need = 0o7 if stat.S_ISDIR(st.st_mode) else 0o6
         runtime_owns = (runtime_uid is not None and st.st_uid == runtime_uid)
         # R4-03: DAC selects ONE permission class by identity; it does
-        # not OR owner/group/other. A root-exclusive 0700/0600 entry is
-        # unreadable by the runtime user and must be normalized; a
-        # runtime-owned entry that only lacks read gets its owner bits
-        # topped up instead of losing its ownership (R1-05-F02).
+        # not OR owner/group/other. Renewal is done by the runtime
+        # user itself (no root-side renewer exists), so the entry
+        # must be WRITABLE by it, not merely readable: a root-owned
+        # 0750/0640 entry is readable but renewal-dead. Violators
+        # are handed to the runtime user (owner write, modes stay
+        # 0750/0640); a runtime-owned entry that only lacks write
+        # gets its owner bits topped up instead of losing its
+        # ownership (R1-05-F02).
         if runtime_owns:
             access_bits = (mode >> 6) & 0o7
         elif st.st_gid == gid:
@@ -13647,7 +13664,7 @@ for typ, _fam, rawpath, _h in rows:
             if runtime_owns:
                 os.fchmod(fd, mode | (need << 6))
                 continue
-        os.fchown(fd, 0, gid)
+        os.fchown(fd, runtime_uid, gid)
         os.fchmod(fd, want_mode)
     finally:
         os.close(fd)
@@ -14058,7 +14075,10 @@ def _rmtree_fd(path):
 for path in sorted(expected, key=os.fsencode):
     try: st=os.lstat(path)
     except FileNotFoundError: continue
-    if _repair_is_mountpoint(path):
+    # R26 (F05-3): check ancestors, not just the file itself. A
+    # bind mount on an ancestor dir (e.g. /usr/local/bin) leaves
+    # the recorded file a non-mountpoint with a matching hash.
+    if _path_or_ancestors_mounted(path):
         raise SystemExit(3)
     acme = srv == 'hysteria' and (path == '/etc/hysteria/acme' or path.startswith('/etc/hysteria/acme/'))
     uid_ok = st.st_uid in ({0} if not acme else {0, runtime_uid})
@@ -14107,27 +14127,13 @@ if _repair:
 for path in sorted(expected, key=os.fsencode):
     try: st=os.lstat(path)
     except FileNotFoundError: continue
-    def is_mountpoint(path):
-        path = os.path.abspath(os.path.normpath(path))
-        if os.path.islink(path):
-            return False
-        try:
-            with open('/proc/self/mountinfo', 'r', encoding='utf-8', errors='strict') as mf:
-                for line in mf:
-                    fields = line.rstrip('\n').split(' ')
-                    if len(fields) < 5:
-                        continue
-                    mp = re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), fields[4])
-                    mp = os.path.abspath(os.path.normpath(mp))
-                    if mp == path:
-                        return True
-        except (OSError, UnicodeError):
-            # mountinfo is authoritative for this destructive operation.
-            # If it cannot be read, the caller cannot prove the path is not
-            # mounted; fail closed instead of using the weaker ismount().
-            raise SystemExit(4)
-        return False
-    if is_mountpoint(path):
+    # R26 (F05-3): same ancestor check as the dirs preflight and
+    # the R1-05-F03 loop above; the old self-only is_mountpoint()
+    # missed a bind mount on an ancestor dir of a recorded file.
+    # mountinfo is authoritative for this destructive operation;
+    # on read failure _repair_is_mountpoint raises SystemExit(4),
+    # i.e. fail closed instead of using the weaker ismount().
+    if _path_or_ancestors_mounted(path):
         raise SystemExit(3)
     acme = srv == 'hysteria' and (path == '/etc/hysteria/acme' or path.startswith('/etc/hysteria/acme/'))
     uid_ok = st.st_uid in ({0} if not acme else {0, runtime_uid})
@@ -16258,7 +16264,7 @@ standalone_preserve_restore() { # $1 = core, $2 = config path; never dies
               ($r1[0] <= $r2[1]) and ($r2[0] <= $r1[1]);
             def bindings_conflict($x; $y):
               if $x.unparseable then true
-              elif $y.unparseable then false
+              elif $y.unparseable then true
               else
                 (addr_overlap($x.addr; $y.addr)
                  and ([$x.transports[], $y.transports[]] | unique | length) < (($x.transports | length) + ($y.transports | length))
@@ -16620,6 +16626,23 @@ reorder_one() {
         return 1
     fi
     if iptables_rule_check "$cmd" INPUT -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP; then check_rc=0; else check_rc=$?; fi
+    if (( check_rc == 1 )); then
+        # R26 (F06-2): the -C check above only recognises the
+        # canonical DROP. After an interrupted run only
+        # tmp-marked copies may remain (P4' deleted the
+        # canonical rules, P5' never ran); reorder_policy's
+        # scan still triggers on them, so a tmp-marked DROP is
+        # also a reason to proceed and rebuild the canonical
+        # rules. No DROP of either form means nothing to do.
+        # A failed scan query fails closed (return 1).
+        local _scan_out='' _scan_rc=0 _scan_line _found_tmp_drop=0
+        _scan_out=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || _scan_rc=$?
+        if (( _scan_rc != 0 )); then return 1; fi
+        while IFS= read -r _scan_line; do
+            if [[ "$_scan_line" =~ $drop_re ]]; then _found_tmp_drop=1; break; fi
+        done <<< "$_scan_out"
+        if (( _found_tmp_drop )); then check_rc=0; fi
+    fi
     case "$check_rc" in 0) ;; 1) return 0 ;; *) return 1 ;; esac
 
     [[ -d /run && ! -L /run ]] || return 1
@@ -16668,7 +16691,7 @@ reorder_one() {
     }
     firewall_rollback_inner() {
         local rollback_line
-        local -a rollback_lines=() rollback_argv_arr=()
+        local -a rollback_lines=()
         [[ -n "$recovery_snapshot" && -s "$recovery_snapshot" ]] || return 1
         capture_firewall_views || return 1
         [[ "$(printf '%s\n' "${current_target_lines[@]}")" == "$(printf '%s\n' "${expected_target_lines[@]}")" ]] || {
@@ -16684,21 +16707,96 @@ reorder_one() {
             return 2
         }
         rollback_lines=("${current_target_lines[@]}")
-        for rollback_line in "${rollback_lines[@]}"; do
-            rollback_line=${rollback_line//\"/}
-            read -r -a rollback_argv_arr <<< "$rollback_line"
-            [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
-            _iptables_do "$cmd" -D INPUT "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
+        # R26 (R15-F06-01): atomic single-transaction rollback. The old
+        # sequential delete-then-reinsert left a hole: after the target
+        # WL/DROP rules were deleted and before they were re-inserted, a
+        # pre-existing foreign ACCEPT for the same port (which sits below
+        # the deleted rules) took effect. Build one iptables-restore
+        # transaction instead: -D the current target lines, then -I the
+        # original target lines at their original 1-based positions.
+        # X-01/X-02 still apply: -I lines go in FORWARD order at absolute
+        # positions; reverse insertion would scramble the chain.
+        local _restore_bin="${cmd}-restore" _restore_input='*filter'
+        local _cmd_ver='' _restore_ver='' _rl='' _spec=''
+        # Backend matching (mirrors _ss_wl_rollback_to_snapshot): the
+        # restore binary must speak the same backend (nf_tables vs
+        # legacy) as the iptables binary, or the transaction would
+        # silently operate on a different table. On any mismatch or a
+        # missing restore binary, refuse and keep the recovery snapshot
+        # (never fall back to sequential delete+reinsert).
+        if ! command -v "$_restore_bin" >/dev/null 2>&1; then
+            printf '%s\n' 'A-Box firewall rollback: iptables-restore not found; inner rollback not started; recovery snapshot retained.' >&2
+            return 1
+        fi
+        _cmd_ver="$("$cmd" --version 2>/dev/null || true)"
+        _restore_ver="$("$_restore_bin" --version 2>/dev/null || true)"
+        if [[ "$_cmd_ver" == *'nf_tables'* && "$_restore_ver" != *'nf_tables'* ]]; then
+            command -v "${cmd}-nft-restore" >/dev/null 2>&1 && _restore_bin="${cmd}-nft-restore"
+        elif [[ "$_cmd_ver" != *'nf_tables'* && "$_restore_ver" == *'nf_tables'* ]]; then
+            command -v "${cmd}-legacy-restore" >/dev/null 2>&1 && _restore_bin="${cmd}-legacy-restore"
+        fi
+        _restore_ver="$("$_restore_bin" --version 2>/dev/null || true)"
+        if [[ "$_cmd_ver" == *'nf_tables'* && "$_restore_ver" != *'nf_tables'* ]] || [[ "$_cmd_ver" != *'nf_tables'* && "$_restore_ver" == *'nf_tables'* ]]; then
+            printf '%s\n' 'A-Box firewall rollback: iptables-restore backend mismatch; inner rollback not started; recovery snapshot retained.' >&2
+            return 1
+        fi
+        for _rl in "${rollback_lines[@]}"; do
+            [[ "$_rl" == '-A INPUT '* ]] || return 1
+            _spec="${_rl#-A INPUT }"
+            [[ -n "$_spec" ]] || return 1
+            _restore_input+=$'\n-D INPUT '"$_spec"
         done
-        # X-01/X-02: insert in FORWARD order at original 1-based positions.
-        # Reverse insertion shifts indices: each -I at an absolute position
-        # displaces later rules, so reverse order scrambles the chain.
         for ((i=0; i<${#original_target_lines[@]}; i++)); do
-            rollback_line=${original_target_lines[i]//\"/}
-            read -r -a rollback_argv_arr <<< "$rollback_line"
-            [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
-            _iptables_do "$cmd" -I INPUT "${original_target_positions[i]}" "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
+            [[ "${original_target_positions[i]:-}" =~ ^[0-9]+$ ]] || return 1
+            _rl="${original_target_lines[i]}"
+            [[ "$_rl" == '-A INPUT '* ]] || return 1
+            _spec="${_rl#-A INPUT }"
+            [[ -n "$_spec" ]] || return 1
+            _restore_input+=$'\n-I INPUT '"${original_target_positions[i]}"' '"$_spec"
         done
+        _restore_input+=$'\nCOMMIT'
+        # Strict payload guard (mirrors _ss_wl_rollback_to_snapshot):
+        # *filter header, COMMIT trailer, and every other line a -D/-I
+        # INPUT op; no :CHAIN/policy lines, no control characters.
+        if ! awk '
+            NR == 1 { if ($0 != "*filter") exit 1; next }
+            { lines[NR] = $0 }
+            END {
+                if (NR < 2 || lines[NR] != "COMMIT") exit 1
+                for (i = 2; i < NR; i++) {
+                    if (lines[i] !~ /^-(D|I) INPUT /) exit 1
+                }
+            }
+        ' <<< "$_restore_input" || [[ "${_restore_input//$'\n'/}" == *[[:cntrl:]]* ]]; then
+            printf '%s\n' 'A-Box firewall rollback: internal error: restore payload failed strict line guard; recovery snapshot retained.' >&2
+            return 1
+        fi
+        local _restore_rc=0 _w_probe_err=''
+        if "$_restore_bin" --help 2>&1 | grep -q -- '--test'; then
+            if ! printf '%s\n' "$_restore_input" | "$_restore_bin" --noflush -w 5 --test >/dev/null 2>&1 &&
+               ! printf '%s\n' "$_restore_input" | "$_restore_bin" --noflush --test >/dev/null 2>&1; then
+                printf '%s\n' 'A-Box firewall rollback: restore payload failed --test pre-check; recovery snapshot retained.' >&2
+                return 1
+            fi
+        fi
+        _w_probe_err="$(printf '*filter\nCOMMIT\n' | "$_restore_bin" --noflush -w 0 --test 2>&1 >/dev/null || true)"
+        if ! grep -qiE 'unrecognized option|unknown option|invalid option|bad argument' <<< "$_w_probe_err"; then
+            printf '%s\n' "$_restore_input" | "$_restore_bin" --noflush -w 5 >/dev/null 2>&1
+            _restore_rc=$?
+        elif command -v flock >/dev/null 2>&1 && [[ -e /run/xtables.lock || -e /var/run/xtables.lock ]]; then
+            local _xt_lock='/run/xtables.lock'
+            [[ -e "$_xt_lock" ]] || _xt_lock='/var/run/xtables.lock'
+            printf '%s\n' "$_restore_input" | flock -w 5 "$_xt_lock" "$_restore_bin" --noflush >/dev/null 2>&1
+            _restore_rc=$?
+        else
+            printf '%s\n' 'WARNING: pre-1.6.2 iptables has no file lock; running unlocked rollback (best effort).' >&2
+            printf '%s\n' "$_restore_input" | "$_restore_bin" --noflush >/dev/null 2>&1
+            _restore_rc=$?
+        fi
+        if (( _restore_rc != 0 )); then
+            printf '%s\n' 'A-Box firewall rollback: restore transaction failed; recovery snapshot retained.' >&2
+            return 1
+        fi
         capture_firewall_views || return 1
         # R5-06: compare rule lines only. `iptables -S` prints the -P
         # policy line first; the policy is clamped to DROP during
@@ -16722,7 +16820,7 @@ reorder_one() {
         # keep the recovery snapshot: deleting rules under an unclamped
         # ACCEPT policy would open the port with no fail-closed cover.
         local _saved_policy='' _clamped=0 _inner_rc=0
-        _saved_policy=$("$save_cmd" -t filter 2>/dev/null | awk '/^:INPUT /{print $2; exit}') || _saved_policy=''
+        _saved_policy=$("$save_cmd" -t filter 2>/dev/null | awk '/^:INPUT / && !seen {print $2; seen=1}') || _saved_policy=''
         if [[ "$_saved_policy" == ACCEPT ]]; then
             if _iptables_do "$cmd" -P INPUT DROP >/dev/null 2>&1; then
                 _clamped=1
@@ -18739,6 +18837,23 @@ reorder_ss_whitelist_rules_one() {
         return 1
     fi
     if iptables_rule_check "$cmd" INPUT -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP; then check_rc=0; else check_rc=$?; fi
+    if (( check_rc == 1 )); then
+        # R26 (F06-2): the -C check above only recognises the
+        # canonical DROP. After an interrupted run only
+        # tmp-marked copies may remain (P4' deleted the
+        # canonical rules, P5' never ran); reorder_policy's
+        # scan still triggers on them, so a tmp-marked DROP is
+        # also a reason to proceed and rebuild the canonical
+        # rules. No DROP of either form means nothing to do.
+        # A failed scan query fails closed (return 1).
+        local _scan_out='' _scan_rc=0 _scan_line _found_tmp_drop=0
+        _scan_out=$(_iptables_q "$cmd" -S INPUT 2>/dev/null) || _scan_rc=$?
+        if (( _scan_rc != 0 )); then return 1; fi
+        while IFS= read -r _scan_line; do
+            if [[ "$_scan_line" =~ $drop_re ]]; then _found_tmp_drop=1; break; fi
+        done <<< "$_scan_out"
+        if (( _found_tmp_drop )); then check_rc=0; fi
+    fi
     case "$check_rc" in 0) ;; 1) return 0 ;; *) return 1 ;; esac
 
     [[ -d /run && ! -L /run ]] || return 1
@@ -18787,7 +18902,7 @@ reorder_ss_whitelist_rules_one() {
     }
     firewall_rollback_inner() {
         local rollback_line
-        local -a rollback_lines=() rollback_argv_arr=()
+        local -a rollback_lines=()
         [[ -n "$recovery_snapshot" && -s "$recovery_snapshot" ]] || return 1
         capture_firewall_views || return 1
         [[ "$(printf '%s\n' "${current_target_lines[@]}")" == "$(printf '%s\n' "${expected_target_lines[@]}")" ]] || {
@@ -18803,21 +18918,96 @@ reorder_ss_whitelist_rules_one() {
             return 2
         }
         rollback_lines=("${current_target_lines[@]}")
-        for rollback_line in "${rollback_lines[@]}"; do
-            rollback_line=${rollback_line//\"/}
-            read -r -a rollback_argv_arr <<< "$rollback_line"
-            [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
-            _iptables_do "$cmd" -D INPUT "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
+        # R26 (R15-F06-01): atomic single-transaction rollback. The old
+        # sequential delete-then-reinsert left a hole: after the target
+        # WL/DROP rules were deleted and before they were re-inserted, a
+        # pre-existing foreign ACCEPT for the same port (which sits below
+        # the deleted rules) took effect. Build one iptables-restore
+        # transaction instead: -D the current target lines, then -I the
+        # original target lines at their original 1-based positions.
+        # X-01/X-02 still apply: -I lines go in FORWARD order at absolute
+        # positions; reverse insertion would scramble the chain.
+        local _restore_bin="${cmd}-restore" _restore_input='*filter'
+        local _cmd_ver='' _restore_ver='' _rl='' _spec=''
+        # Backend matching (mirrors _ss_wl_rollback_to_snapshot): the
+        # restore binary must speak the same backend (nf_tables vs
+        # legacy) as the iptables binary, or the transaction would
+        # silently operate on a different table. On any mismatch or a
+        # missing restore binary, refuse and keep the recovery snapshot
+        # (never fall back to sequential delete+reinsert).
+        if ! command -v "$_restore_bin" >/dev/null 2>&1; then
+            printf '%s\n' 'A-Box firewall rollback: iptables-restore not found; inner rollback not started; recovery snapshot retained.' >&2
+            return 1
+        fi
+        _cmd_ver="$("$cmd" --version 2>/dev/null || true)"
+        _restore_ver="$("$_restore_bin" --version 2>/dev/null || true)"
+        if [[ "$_cmd_ver" == *'nf_tables'* && "$_restore_ver" != *'nf_tables'* ]]; then
+            command -v "${cmd}-nft-restore" >/dev/null 2>&1 && _restore_bin="${cmd}-nft-restore"
+        elif [[ "$_cmd_ver" != *'nf_tables'* && "$_restore_ver" == *'nf_tables'* ]]; then
+            command -v "${cmd}-legacy-restore" >/dev/null 2>&1 && _restore_bin="${cmd}-legacy-restore"
+        fi
+        _restore_ver="$("$_restore_bin" --version 2>/dev/null || true)"
+        if [[ "$_cmd_ver" == *'nf_tables'* && "$_restore_ver" != *'nf_tables'* ]] || [[ "$_cmd_ver" != *'nf_tables'* && "$_restore_ver" == *'nf_tables'* ]]; then
+            printf '%s\n' 'A-Box firewall rollback: iptables-restore backend mismatch; inner rollback not started; recovery snapshot retained.' >&2
+            return 1
+        fi
+        for _rl in "${rollback_lines[@]}"; do
+            [[ "$_rl" == '-A INPUT '* ]] || return 1
+            _spec="${_rl#-A INPUT }"
+            [[ -n "$_spec" ]] || return 1
+            _restore_input+=$'\n-D INPUT '"$_spec"
         done
-        # X-01/X-02: insert in FORWARD order at original 1-based positions.
-        # Reverse insertion shifts indices: each -I at an absolute position
-        # displaces later rules, so reverse order scrambles the chain.
         for ((i=0; i<${#original_target_lines[@]}; i++)); do
-            rollback_line=${original_target_lines[i]//\"/}
-            read -r -a rollback_argv_arr <<< "$rollback_line"
-            [[ "${rollback_argv_arr[0]:-}" == -A && "${rollback_argv_arr[1]:-}" == INPUT ]] || return 1
-            _iptables_do "$cmd" -I INPUT "${original_target_positions[i]}" "${rollback_argv_arr[@]:2}" >/dev/null 2>&1 || return 1
+            [[ "${original_target_positions[i]:-}" =~ ^[0-9]+$ ]] || return 1
+            _rl="${original_target_lines[i]}"
+            [[ "$_rl" == '-A INPUT '* ]] || return 1
+            _spec="${_rl#-A INPUT }"
+            [[ -n "$_spec" ]] || return 1
+            _restore_input+=$'\n-I INPUT '"${original_target_positions[i]}"' '"$_spec"
         done
+        _restore_input+=$'\nCOMMIT'
+        # Strict payload guard (mirrors _ss_wl_rollback_to_snapshot):
+        # *filter header, COMMIT trailer, and every other line a -D/-I
+        # INPUT op; no :CHAIN/policy lines, no control characters.
+        if ! awk '
+            NR == 1 { if ($0 != "*filter") exit 1; next }
+            { lines[NR] = $0 }
+            END {
+                if (NR < 2 || lines[NR] != "COMMIT") exit 1
+                for (i = 2; i < NR; i++) {
+                    if (lines[i] !~ /^-(D|I) INPUT /) exit 1
+                }
+            }
+        ' <<< "$_restore_input" || [[ "${_restore_input//$'\n'/}" == *[[:cntrl:]]* ]]; then
+            printf '%s\n' 'A-Box firewall rollback: internal error: restore payload failed strict line guard; recovery snapshot retained.' >&2
+            return 1
+        fi
+        local _restore_rc=0 _w_probe_err=''
+        if "$_restore_bin" --help 2>&1 | grep -q -- '--test'; then
+            if ! printf '%s\n' "$_restore_input" | "$_restore_bin" --noflush -w 5 --test >/dev/null 2>&1 &&
+               ! printf '%s\n' "$_restore_input" | "$_restore_bin" --noflush --test >/dev/null 2>&1; then
+                printf '%s\n' 'A-Box firewall rollback: restore payload failed --test pre-check; recovery snapshot retained.' >&2
+                return 1
+            fi
+        fi
+        _w_probe_err="$(printf '*filter\nCOMMIT\n' | "$_restore_bin" --noflush -w 0 --test 2>&1 >/dev/null || true)"
+        if ! grep -qiE 'unrecognized option|unknown option|invalid option|bad argument' <<< "$_w_probe_err"; then
+            printf '%s\n' "$_restore_input" | "$_restore_bin" --noflush -w 5 >/dev/null 2>&1
+            _restore_rc=$?
+        elif command -v flock >/dev/null 2>&1 && [[ -e /run/xtables.lock || -e /var/run/xtables.lock ]]; then
+            local _xt_lock='/run/xtables.lock'
+            [[ -e "$_xt_lock" ]] || _xt_lock='/var/run/xtables.lock'
+            printf '%s\n' "$_restore_input" | flock -w 5 "$_xt_lock" "$_restore_bin" --noflush >/dev/null 2>&1
+            _restore_rc=$?
+        else
+            printf '%s\n' 'WARNING: pre-1.6.2 iptables has no file lock; running unlocked rollback (best effort).' >&2
+            printf '%s\n' "$_restore_input" | "$_restore_bin" --noflush >/dev/null 2>&1
+            _restore_rc=$?
+        fi
+        if (( _restore_rc != 0 )); then
+            printf '%s\n' 'A-Box firewall rollback: restore transaction failed; recovery snapshot retained.' >&2
+            return 1
+        fi
         capture_firewall_views || return 1
         # R5-06: compare rule lines only. `iptables -S` prints the -P
         # policy line first; the policy is clamped to DROP during
@@ -18841,7 +19031,7 @@ reorder_ss_whitelist_rules_one() {
         # keep the recovery snapshot: deleting rules under an unclamped
         # ACCEPT policy would open the port with no fail-closed cover.
         local _saved_policy='' _clamped=0 _inner_rc=0
-        _saved_policy=$("$save_cmd" -t filter 2>/dev/null | awk '/^:INPUT /{print $2; exit}') || _saved_policy=''
+        _saved_policy=$("$save_cmd" -t filter 2>/dev/null | awk '/^:INPUT / && !seen {print $2; seen=1}') || _saved_policy=''
         if [[ "$_saved_policy" == ACCEPT ]]; then
             if _iptables_do "$cmd" -P INPUT DROP >/dev/null 2>&1; then
                 _clamped=1
@@ -56104,7 +56294,8 @@ PY_SELFTEST_YAML
 
     grep -Fq 'firewall_rollback() {' <<< "$source_body" || { echo 'FAIL: firewall reorder rollback helper missing'; failures=$((failures + 1)); }
     grep -Fq 'recovery snapshot preserved at $recovery_snapshot' <<< "$source_body" || { echo 'FAIL: firewall rollback conflict must preserve recovery snapshot'; failures=$((failures + 1)); }
-    grep -Fq '_iptables_do "$cmd" -D INPUT "${rollback_argv_arr[@]:2}"' <<< "$source_body" || { echo 'FAIL: firewall rollback must remove exact owned rules'; failures=$((failures + 1)); }
+    grep -Fq "_restore_input+=$'\\n-D INPUT '" <<< "$source_body" || { echo 'FAIL: firewall rollback must remove exact owned rules'; failures=$((failures + 1)); }
+    grep -Fq 'iptables-restore backend mismatch' <<< "$source_body" || { echo 'FAIL: firewall rollback must match iptables-restore backend before atomic rollback'; failures=$((failures + 1)); }
     grep -Fq 'current_foreign_lines' <<< "$source_body" || { echo 'FAIL: firewall rollback must track foreign INPUT rules'; failures=$((failures + 1)); }
     grep -Fq 'path_parent_chain_safe "$ABOX_DIR" || return 1' <<< "$source_body" || { echo 'FAIL: rollback restore must validate A-Box parent chain'; failures=$((failures + 1)); }
     grep -Fq 'install -d -m 700 "$ABOX_DIR" || return 1' <<< "$source_body" || { echo 'FAIL: rollback restore must recreate a missing A-Box directory'; failures=$((failures + 1)); }

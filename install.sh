@@ -6337,6 +6337,12 @@ tr_msg() {
         fa:cl_all_done) echo 'همه پروتکل‌های نود حذف شدند (هسته‌ها و اسکریپت حفظ شدند).' ;;
         zh-tw:cl_all_done) echo '全部節點協議已清空（核心與腳本保留）。' ;;
         ja:cl_all_done) echo '全ノードプロトコルを削除しました（コアとスクリプトは保持）。' ;;
+        zh:cl_desired_commit_fail) echo '无法记录清空后的期望状态（MANUAL_STOPPED），已中止清空；请先手动修复状态文件。' ;;
+        en:cl_desired_commit_fail) echo 'Could not record the cleared desired state (MANUAL_STOPPED); clear aborted. Repair the state files manually first.' ;;
+        ru:cl_desired_commit_fail) echo 'Не удалось записать желаемое состояние после очистки (MANUAL_STOPPED); очистка прервана. Сначала исправьте файлы состояния вручную.' ;;
+        fa:cl_desired_commit_fail) echo 'ثبت وضعیت مطلوب پس از پاک‌سازی (MANUAL_STOPPED) ممکن نشد؛ پاک‌سازی متوقف شد. ابتدا فایل‌های وضعیت را به‌صورت دستی تعمیر کنید.' ;;
+        zh-tw:cl_desired_commit_fail) echo '無法記錄清空後的期望狀態（MANUAL_STOPPED），已中止清空；請先手動修復狀態檔案。' ;;
+        ja:cl_desired_commit_fail) echo 'クリア後の望ましい状態（MANUAL_STOPPED）を記録できませんでした。クリアを中止しました。まず状態ファイルを手動で修復してください。' ;;
         zh:back_main) echo '返回' ;;
         en:back_main) echo 'Back' ;;
         ru:back_main) echo 'Назад' ;;
@@ -7795,18 +7801,18 @@ tr_msg() {
         fa:af_managed_orphan_warn) echo 'همهٔ تداخل‌های زیر بقایای مدیریت‌شدهٔ A-Box هستند (باینری را A-Box نصب کرده و SHA256 ثبت‌شده مطابقت دارد؛ unit و دایرکتوری پیکربندی در پاک‌سازی قبلی حذف شده‌اند)؛ می‌توان آن‌ها را همان‌جا پاک کرد تا ادامه یابد: %s' ;;
         zh-tw:af_managed_orphan_warn) echo '下列衝突是 A-Box 託管殘留（二進位為 A-Box 安裝，登記 SHA256 一致；unit 與設定目錄已被先前清理刪除），可當場清理後繼續：%s' ;;
         ja:af_managed_orphan_warn) echo '以下の競合はすべて A-Box 管理の残留物です（バイナリは A-Box がインストールしたもので、登録済み SHA256 が一致します。unit と設定ディレクトリは以前のクリーンアップで削除済み）。その場で削除して続行できます：%s' ;;
-        zh:af_orphan_prompt) echo '清理上述孤儿二进制并继续？[Y/N]: ' ;;
-        en:af_orphan_prompt) echo 'Remove the orphan binaries above and continue? [Y/N]: ' ;;
-        ru:af_orphan_prompt) echo 'Удалить перечисленные выше осиротевшие бинарные файлы и продолжить? [Y/N]: ' ;;
-        fa:af_orphan_prompt) echo 'باینری‌های یتیم بالا حذف و ادامه داده شود؟ [Y/N]: ' ;;
-        zh-tw:af_orphan_prompt) echo '清理上述孤兒二進位並繼續？[Y/N]: ' ;;
-        ja:af_orphan_prompt) echo '上記の孤立バイナリを削除して続行しますか？[Y/N]: ' ;;
-        zh:rs_takeover_warn) echo '下列残留（脚本二进制＋配置目录俱在、无 unit、无所有权证明）可由本次部署接管，接管在备份完成后执行：%s' ;;
-        en:rs_takeover_warn) echo 'The residue below (script binary + config dir present, no unit, no ownership proof) can be taken over by this deployment; takeover runs after the backup is taken: %s' ;;
-        ru:rs_takeover_warn) echo 'Указанные ниже остатки (бинарный файл скрипта и каталог конфигурации присутствуют, unit отсутствует, доказательств владения нет) могут быть приняты этим развёртыванием; принятие выполняется после создания резервной копии: %s' ;;
-        fa:rs_takeover_warn) echo 'باقیمانده‌های زیر (باینری اسکریپت و دایرکتوری پیکربندی موجود، بدون unit و بدون مدرک مالکیت) می‌توانند توسط این استقرار تصاحب شوند؛ تصاحب پس از گرفتن پشتیبان انجام می‌شود: %s' ;;
-        zh-tw:rs_takeover_warn) echo '下列殘留（指令碼二進位＋設定目錄俱在、無 unit、無所有權證明）可由本次部署接管，接管在備份完成後執行：%s' ;;
-        ja:rs_takeover_warn) echo '以下の残留（スクリプトバイナリと設定ディレクトリが存在し、unit なし、所有権の証明なし）は今回のデプロイが引き継ぐことができます。引き継ぎはバックアップ取得後に実行されます：%s' ;;
+        zh:af_orphan_prompt) echo '清理上述二进制并继续？[Y/N]: ' ;;
+        en:af_orphan_prompt) echo 'Remove the binaries above and continue? [Y/N]: ' ;;
+        ru:af_orphan_prompt) echo 'Удалить перечисленные выше бинарные файлы и продолжить? [Y/N]: ' ;;
+        fa:af_orphan_prompt) echo 'باینری‌های بالا حذف و ادامه داده شود؟ [Y/N]: ' ;;
+        zh-tw:af_orphan_prompt) echo '清理上述二進位並繼續？[Y/N]: ' ;;
+        ja:af_orphan_prompt) echo '上記のバイナリを削除して続行しますか？[Y/N]: ' ;;
+        zh:rs_takeover_warn) echo '下列残留（无 unit、无所有权证明）可由本次部署接管，接管在备份完成后执行：%s' ;;
+        en:rs_takeover_warn) echo 'The residue below (no unit, no ownership proof) can be taken over by this deployment; takeover runs after the backup is taken: %s' ;;
+        ru:rs_takeover_warn) echo 'Указанные ниже остатки (без unit и доказательств владения) могут быть приняты этим развёртыванием; принятие выполняется после создания резервной копии: %s' ;;
+        fa:rs_takeover_warn) echo 'باقیمانده‌های زیر (بدون unit و بدون مدرک مالکیت) می‌توانند توسط این استقرار تصاحب شوند؛ تصاحب پس از گرفتن پشتیبان انجام می‌شود: %s' ;;
+        zh-tw:rs_takeover_warn) echo '下列殘留（無 unit、無所有權證明）可由本次部署接管，接管在備份完成後執行：%s' ;;
+        ja:rs_takeover_warn) echo '以下の残留（unit なし、所有権の証明なし）は今回のデプロイが引き継ぐことができます。引き継ぎはバックアップ取得後に実行されます：%s' ;;
         zh:rs_takeover_prompt) echo '确认接管上述残留并继续？[Y/N]: ' ;;
         en:rs_takeover_prompt) echo 'Confirm takeover of the residue above and continue? [Y/N]: ' ;;
         ru:rs_takeover_prompt) echo 'Подтвердить принятие указанных выше остатков и продолжить? [Y/N]: ' ;;
@@ -14641,24 +14647,57 @@ core_family_residue_paths() {
     esac
 }
 
+# R26-H-NF-S1-02: auxiliary residue paths a takeover may delete for one
+# family: only an EMPTY, non-symlink directory that is part of the
+# family's canonical tree but is neither its binary nor its config dir
+# (today: /usr/local/share/xray, the geoip/geosite dir). A non-empty
+# dir is never listed: its contents are user data until proven
+# otherwise, and the assert keeps hard-refusing it (fail-closed). A
+# mountpoint is never listed either. An absent path is not listed.
+core_family_residue_aux_paths() {
+    local _dir='' _first=''
+    case "$1" in
+        xray) _dir=/usr/local/share/xray ;;
+        *) return 0 ;;
+    esac
+    [[ -d "$_dir" && ! -L "$_dir" ]] || return 0
+    path_tree_has_mountpoint "$_dir" && return 0
+    _first=$(find "$_dir" -mindepth 1 -print -quit 2>/dev/null) || return 0
+    [[ -z "$_first" ]] || return 0
+    printf '%s\n' "$_dir"
+}
+
 # SYD-B E11: plan a residue takeover. Runs BEFORE the assert and
 # BEFORE begin (no backup yet): it only lists residue-shaped
 # stacks (binary + config dir present, no unit, not owned) and
 # records an explicit yes in ABOX_RESIDUE_TAKEOVER (space-
 # separated srv|path pairs). Decline / EOF / non-Y aborts.
 residue_takeover_plan() {
-    local _srv='' _bin='' _cfg='' _unit='' _paths='' _ans=''
+    local _srv='' _bin='' _cfg='' _unit='' _paths='' _ans='' _aux='' _ap=''
     ABOX_RESIDUE_TAKEOVER=''
     for _srv in "$@"; do
         { abox_owns_service "$_srv" || abox_owns_config_only_core_dir "$_srv"; } && continue
         _paths=$(core_family_residue_paths "$_srv") || continue
         _bin=$(printf '%s' "$_paths" | sed -n '1p')
         _cfg=$(printf '%s' "$_paths" | sed -n '2p')
-        [[ -e "$_bin" || -L "$_bin" ]] || continue
-        [[ -d "$_cfg" && ! -L "$_cfg" ]] || continue
         _unit=$(same_name_service_unit_path "$_srv" 2>/dev/null || true)
         [[ -z "$_unit" || ( ! -e "$_unit" && ! -L "$_unit" ) ]] || continue
-        ABOX_RESIDUE_TAKEOVER+="$_srv|$_bin $_srv|$_cfg "
+        _aux=$(core_family_residue_aux_paths "$_srv" 2>/dev/null || true)
+        # R26-H-NF-S1-02: an empty auxiliary dir (e.g.
+        # /usr/local/share/xray) belongs to the same residue stack;
+        # leaving it out of the plan makes the later assert hard-refuse
+        # it after the user already said yes. A stack with only an
+        # empty aux dir (binary + config dir already gone) is takeable
+        # on its own; a stack with neither is skipped.
+        if [[ -e "$_bin" || -L "$_bin" ]] && [[ -d "$_cfg" && ! -L "$_cfg" ]]; then
+            ABOX_RESIDUE_TAKEOVER+="$_srv|$_bin $_srv|$_cfg "
+        elif [[ -z "$_aux" ]]; then
+            continue
+        fi
+        while IFS= read -r _ap; do
+            [[ -n "$_ap" ]] || continue
+            ABOX_RESIDUE_TAKEOVER+="$_srv|$_ap "
+        done <<< "$_aux"
     done
     [[ -n "$ABOX_RESIDUE_TAKEOVER" ]] || return 0
     ABOX_RESIDUE_TAKEOVER="${ABOX_RESIDUE_TAKEOVER% }"
@@ -14677,7 +14716,10 @@ residue_takeover_clear() {
     [[ -n "${ABOX_RESIDUE_TAKEOVER:-}" ]] || return 0
     for _item in $ABOX_RESIDUE_TAKEOVER; do
         _srv="${_item%%|*}"; _path="${_item#*|}"
-        _rp=$(core_family_residue_paths "$_srv" 2>/dev/null || true)
+        # R26-H-NF-S1-02: aux paths are re-verified here too (the aux
+        # function only lists a dir while it is still empty), so a dir
+        # that gained files after the plan is left alone, never rm -rf'd.
+        _rp=$( { core_family_residue_paths "$_srv" 2>/dev/null; core_family_residue_aux_paths "$_srv" 2>/dev/null; } || true)
         printf '%s\n' "$_rp" | grep -Fxq -- "$_path" || continue
         _unit=$(same_name_service_unit_path "$_srv" 2>/dev/null || true)
         if [[ -n "$_unit" && ( -e "$_unit" || -L "$_unit" ) ]]; then continue; fi
@@ -14740,11 +14782,22 @@ assert_no_foreign_core_conflicts() {
         core_binary_managed_registered "$_srv" "$_path" || _all_managed=0
     done <<< "$conflicts"
     if (( _all_orphan == 1 )); then
+        # R26-H-F-S1-01: every conflict is a TSV-registered, SHA-matched
+        # A-Box binary left by an earlier clear (cores are kept by design,
+        # so this residue is expected, not foreign). Clean it up inline
+        # with no prompt: the redeploy is about to reinstall the same
+        # core family, and prompting here is what the S1 retest proved
+        # unachieved ("re-deploy must not be intercepted"). Unregistered
+        # or SHA-mismatched orphans still go through the prompt below.
         if (( _all_managed == 1 )); then
             msg "${YELLOW}$(tprintf af_managed_orphan_warn "$conflicts")${NC}"
-        else
-            msg "${YELLOW}$(tprintf af_orphan_warn "$conflicts")${NC}"
+            while IFS='|' read -r _srv _path; do
+                [[ -n "$_path" ]] || continue
+                rm -f -- "$_path" || die "$(tr_msg af_migrate)"
+            done <<< "$conflicts"
+            return 0
         fi
+        msg "${YELLOW}$(tprintf af_orphan_warn "$conflicts")${NC}"
         read -r -p "$(tr_msg af_orphan_prompt)" _ans || die "$(tr_msg af_migrate)"
         if is_yes "$_ans"; then
             while IFS='|' read -r _srv _path; do
@@ -14752,14 +14805,6 @@ assert_no_foreign_core_conflicts() {
                 rm -f -- "$_path" || die "$(tr_msg af_migrate)"
             done <<< "$conflicts"
             return 0
-        fi
-        # A managed orphan declined for cleanup is still a refusal, but
-        # the reason must say so: it is A-Box's own binary, not a
-        # foreign install.
-        if (( _all_managed == 1 )); then
-            msg "${RED}[!] Cleanup declined; refusing to overwrite the A-Box-managed core binary:${NC}"
-            while IFS='|' read -r srv path; do [[ -n "$path" ]] && msg "${RED}    ${srv}: ${path}${NC}"; done <<< "$conflicts"
-            die "$(tr_msg af_migrate)"
         fi
     fi
     msg "${RED}[!] Refusing to overwrite non-A-Box core files/services:${NC}"
@@ -27651,13 +27696,15 @@ argo_origin_probe() {
     local domain="$1" path="$2" tmpd='' hdr='' i http_code=''
     # B15-3 (observability only): record every attempt's HTTP status
     # plus curl's exit status, and print the bounded six-entry summary
-    # on exhaustion. The verdict is unchanged: 6 attempts, success
-    # only on HTTP 101 regardless of curl's exit status, rc 1 on
-    # exhaustion. A single first code cannot separate "no HTTP status"
+    # on exhaustion. A single first code cannot separate "no HTTP status"
     # (000) from a curl-level failure (e.g. rc 28 timeout) or show a
     # mixed 400/000/400 pattern; the summary can, without per-attempt
     # noise. msg goes to stderr so stdout stays empty as before.
-    local curl_rc=0 observations=''
+    # R26-H-NF-02: the verdict is now deadline-gated (below), not a
+    # fixed 6 attempts: a single rc 6 cannot separate "DNS not yet
+    # propagated" from "dead origin", and a transient resolver/edge
+    # fault can surface as a timeout or a non-101 status instead.
+    local curl_rc=0
     local url_cfg=''
     local -a probe_pipe_rc=()
     local _url_q='"'
@@ -27680,13 +27727,31 @@ argo_origin_probe() {
     url_cfg=${url_cfg//$'\v'/\\v}
     tmpd=$(mktemp -d /tmp/A-Box-argo-probe.XXXXXX) || return 1
     hdr="$tmpd/headers"
-    for i in 1 2 3 4 5 6; do
+    # R26-H-NF-02 (GPT-arbitrated): retry transient failures until a
+    # monotonic deadline (default 300s; ABOX_ARGO_PROBE_DEADLINE_SEC
+    # overrides it for tests). Each curl/sleep is capped to the
+    # remaining budget, so the probe never overruns the deadline by
+    # more than one attempt. Only a demonstrably permanent local error
+    # (curl rc 3, malformed URL) fails immediately.
+    local deadline_sec="${ABOX_ARGO_PROBE_DEADLINE_SEC:-300}"
+    [[ "$deadline_sec" =~ ^[0-9]+$ ]] && (( deadline_sec > 0 )) || deadline_sec=300
+    local start_sec=$SECONDS
+    i=0
+    local remaining=0 mt=0 ct=0 slp=0
+    local -a obs_arr=()
+    local _obs_show=() _obs_joined=''
+    while :; do
+        i=$((i + 1))
+        remaining=$(( deadline_sec - (SECONDS - start_sec) ))
+        (( remaining > 0 )) || break
+        mt=$(( remaining < 10 ? remaining : 10 ))
+        ct=$(( remaining < 5 ? remaining : 5 ))
         : > "$hdr"
         curl_rc=0
         http_code=$(
             builtin printf 'url = "%s"\n' "$url_cfg" 2>/dev/null |
                 curl -K - -s -D "$hdr" --http1.1 \
-                    --connect-timeout 5 --max-time 10 \
+                    --connect-timeout "$ct" --max-time "$mt" \
                     -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
                     -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
                     -H 'Sec-WebSocket-Version: 13' \
@@ -27698,12 +27763,41 @@ argo_origin_probe() {
             rm -rf -- "$tmpd"
             return 0
         fi
-        observations+="${observations:+; }HTTP=${http_code:-<empty>} curl_rc=$curl_rc"
-        [[ "$i" == 6 ]] || sleep 2
+        obs_arr+=("HTTP=${http_code:-<empty>} curl_rc=$curl_rc")
+        # Permanent local error: retrying cannot help.
+        if [[ "$curl_rc" == 3 ]]; then
+            _obs_show=("${obs_arr[@]}")
+            if (( ${#_obs_show[@]} > 6 )); then _obs_show=("${_obs_show[@]: -6}"); fi
+            _obs_joined=$(printf '%s; ' "${_obs_show[@]}"); _obs_joined=${_obs_joined%'; '}
+            msg "[!] Argo origin probe failed (malformed URL, curl rc 3); attempts: $_obs_joined" >&2 || :
+            rm -rf -- "$tmpd"
+            return 1
+        fi
+        remaining=$(( deadline_sec - (SECONDS - start_sec) ))
+        (( remaining > 0 )) || break
+        slp=$(( remaining < 2 ? remaining : 2 ))
+        sleep "$slp"
     done
-    msg "[!] Argo origin probe failed; attempts: $observations" >&2 || :
+    _obs_show=("${obs_arr[@]}")
+    if (( ${#_obs_show[@]} > 6 )); then _obs_show=("${_obs_show[@]: -6}"); fi
+    _obs_joined=$(printf '%s; ' "${_obs_show[@]}"); _obs_joined=${_obs_joined%'; '}
+    msg "[!] Argo origin probe failed after $i attempt(s) in ~${deadline_sec}s; attempts: $_obs_joined" >&2 || :
     rm -rf -- "$tmpd"
     return 1
+}
+
+# R26-H-NF-02: best-effort teardown of a just-started temp Argo
+# deployment after a probe/wait failure. The temp units + ws inbounds
+# are live at that point; dying without removing them leaks running
+# residue with no state and no links (S2 A-AG 2/2). Never fatal: the
+# caller's die carries the failure; a cleanup failure is reported,
+# not fatal. Callers run under the menu runtime lock, so no concurrent
+# deploy can own these fixed temp tags while this runs.
+argo_temp_cleanup_on_failure() {
+    argo_remove_unit argo-vmess 2>/dev/null || msg "${YELLOW}[!] Argo temp cleanup: the temp VMess unit could not be removed; check it manually.${NC}" >&2
+    argo_remove_unit argo-vless 2>/dev/null || msg "${YELLOW}[!] Argo temp cleanup: the temp VLESS unit could not be removed; check it manually.${NC}" >&2
+    _remove_inbounds_from_config sing-box vmess-ws-in vless-ws-in 2>/dev/null || msg "${YELLOW}[!] Argo temp cleanup: the temp ws inbounds could not be removed; check them manually.${NC}" >&2
+    return 0
 }
 
 deploy_argo_temp() {
@@ -27816,21 +27910,21 @@ EOF_SVC
     argo_write_unit argo-vmess "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 --url http://127.0.0.1:${ARGO_VMESS_PORT}"
     argo_write_unit argo-vless "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 --url http://127.0.0.1:${ARGO_VLESS_PORT}"
     local d1='' d2=''
-    d1=$(argo_capture_domain /etc/ddr/argo-vmess.log) || die "$(tr_msg ag_vmess_domain)"
-    d2=$(argo_capture_domain /etc/ddr/argo-vless.log) || die "$(tr_msg ag_vless_domain)"
+    d1=$(argo_capture_domain /etc/ddr/argo-vmess.log) || { argo_temp_cleanup_on_failure; die "$(tr_msg ag_vmess_domain)"; }
+    d2=$(argo_capture_domain /etc/ddr/argo-vless.log) || { argo_temp_cleanup_on_failure; die "$(tr_msg ag_vless_domain)"; }
     # R15C9-01: both temp tunnels must prove edge connections BEFORE
     # the fixed deployment is torn down. A domain in the log alone
     # does not prove usability; on failure die here so the fixed
     # unit, token and state stay intact (no dead links published).
-    argo_wait_temp_ready argo-vmess /etc/ddr/argo-vmess.log 60 || die 'Temp Argo VMess tunnel did not establish an edge connection; fixed deployment kept.'
-    argo_wait_temp_ready argo-vless /etc/ddr/argo-vless.log 60 || die 'Temp Argo VLESS tunnel did not establish an edge connection; fixed deployment kept.'
+    argo_wait_temp_ready argo-vmess /etc/ddr/argo-vmess.log 60 || { argo_temp_cleanup_on_failure; die 'Temp Argo VMess tunnel did not establish an edge connection; fixed deployment kept.'; }
+    argo_wait_temp_ready argo-vless /etc/ddr/argo-vless.log 60 || { argo_temp_cleanup_on_failure; die 'Temp Argo VLESS tunnel did not establish an edge connection; fixed deployment kept.'; }
     # 2qu: edge registration does not prove the origin answers. Probe
     # each temp tunnel's public WebSocket endpoint (expect HTTP 101
     # from the sing-box ws inbound) before tearing down the fixed
     # deployment; a dead origin dies here with the fixed unit, token
     # and state intact (no dead links published).
-    argo_origin_probe "$d1" "/${ARGO_UUID}-vmess" || die 'Temp Argo VMess tunnel origin did not answer the WebSocket probe; fixed deployment kept.'
-    argo_origin_probe "$d2" "/${ARGO_UUID}-vless" || die 'Temp Argo VLESS tunnel origin did not answer the WebSocket probe; fixed deployment kept.'
+    argo_origin_probe "$d1" "/${ARGO_UUID}-vmess" || { argo_temp_cleanup_on_failure; die 'Temp Argo VMess tunnel origin did not answer the WebSocket probe; fixed deployment kept.'; }
+    argo_origin_probe "$d2" "/${ARGO_UUID}-vless" || { argo_temp_cleanup_on_failure; die 'Temp Argo VLESS tunnel origin did not answer the WebSocket probe; fixed deployment kept.'; }
     # Switching to temp mode: tear down any fixed deployment.
     # R14-F09-02: a failed teardown must not be papered over: the token
     # and the new mode are committed only after the old unit is gone.
@@ -34086,11 +34180,43 @@ remove_single_protocol_menu() {
     return 0
 }
 
+# R26-H-NF-04: after a clear-all, a core config holding only the
+# internal "api" inbound (tag "api", dokodemo-door 127.0.0.1:10085) is
+# an empty stack that still listens. The api inbound is stats
+# infrastructure for live nodes; with no nodes left it serves nothing,
+# and the next deploy rebuilds it from scratch. Remove it when it is
+# the SOLE remaining inbound; a config with any other inbound is left
+# alone (the caller already failed to clear it). A missing config is a
+# no-op success; an unreadable config fails closed (returns 1).
+clear_all_remove_sole_api_inbound() {
+    local core="$1" info='' cfg='' tags=''
+    info=$(_protocol_cfg_of "$core") || return 1
+    IFS='|' read -r cfg _ _ <<< "$info"
+    [[ -f "$cfg" && ! -L "$cfg" ]] || return 0
+    # jq first (its failure must fail closed), paste second: a
+    # jq | paste pipeline would report paste's status and hide a
+    # corrupt config.
+    tags=$(jq -r '.inbounds[]? | .tag // empty' "$cfg" 2>/dev/null) || return 1
+    tags=$(printf '%s' "$tags" | paste -sd, -)
+    [[ "$tags" == 'api' ]] || return 0
+    _remove_inbounds_from_config "$core" api
+}
+
 clear_all_protocols() {
-    local answer='' core='' info='' cfg='' wipe_ok=1 _tags_tmp='' _tags_stripped=''
+    local answer='' core='' info='' cfg='' wipe_ok=1 _tags_tmp='' _tags_stripped='' _cmv=''
     local -a all_tags=()
     read -r -p "$(tr_msg cl_confirm_all) [Y/N]: " answer || return 0
     is_yes "$answer" || { msg "${GREEN}$(tr_msg remove_cancelled)${NC}"; return 0; }
+    # R26-H-NF-04: record the cleared desired state BEFORE removing
+    # anything, so the health probe cannot restart or self-heal a stack
+    # that is being cleared. If the suppression cannot be recorded
+    # (e.g. corrupt pair state), abort the clear instead of leaving a
+    # half-cleared stack under a stale RUNNING desired state.
+    # (Serialized against the probe by the menu runtime lock.)
+    if ! set_desired_state MANUAL_STOPPED; then
+        msg "${RED}[!] $(tr_msg cl_desired_commit_fail)${NC}" >&2
+        return 1
+    fi
     for core in xray sing-box; do
         info=$(_protocol_cfg_of "$core") || continue
         IFS='|' read -r cfg _ _ <<< "$info"
@@ -34137,6 +34263,16 @@ clear_all_protocols() {
             wipe_ok=0
         fi
     fi
+    # R26-H-NF-04: a lone api inbound left by the clear above is an
+    # empty stack that still listens (e.g. a self-heal-restored
+    # dokodemo-door:10085). Remove it; the next deploy rebuilds it.
+    # Anything else left means the clear itself failed, and wipe_ok
+    # already records that.
+    if (( wipe_ok == 1 )); then
+        for core in xray sing-box; do
+            clear_all_remove_sole_api_inbound "$core" || wipe_ok=0
+        done
+    fi
     # Wipe the user registries, standalone links and the shared Argo
     # tunnel only when every core was actually cleared; otherwise
     # surviving nodes would lose their user policies, links and tunnel.
@@ -34144,6 +34280,16 @@ clear_all_protocols() {
         argo_remove_unit argo || true
         users_registries_wipe || msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"
         rm -f -- /etc/ddr/standalone-links.d/*.link 2>/dev/null || true
+        # R26-H-NF-04: the cleared stack has no core/mode anymore.
+        # Both vars go together: validate_abox_env_semantics rejects a
+        # half-present pair (CORE set + MODE empty) as corrupt, while
+        # both-empty is the accepted pre-deployment state. The lines
+        # stay (set-but-empty) so `set -u` readers stay safe.
+        if [[ -f "${ABOX_ENV:-/etc/ddr/.env}" && ! -L "${ABOX_ENV:-/etc/ddr/.env}" ]]; then
+            for _cmv in CORE MODE; do
+                sed -i "s/^${_cmv}=.*/${_cmv}=\"\"/" "${ABOX_ENV:-/etc/ddr/.env}" 2>/dev/null || wipe_ok=0
+            done
+        fi
     else
         msg "${YELLOW}[!] $(tr_msg cl_wipe_partial)${NC}"
     fi
@@ -43413,6 +43559,12 @@ managed_service_state_value() {
         case "$active_state" in
             active) active=1 ;;
             inactive|failed|dead|exited) active=0 ;;
+            # R26-H-NF-05: transitional states are not "active": a
+            # crash-looping unit sits in activating for long stretches,
+            # and returning 1 here kills every auto-backup (and the
+            # redeploy it gates). Map them to 0; a genuinely unknown
+            # state still fails closed below.
+            activating|reloading|deactivating) active=0 ;;
             *) return 1 ;;
         esac
         enabled_state=$(service_enabled_state_value "$srv") || return 1
@@ -54823,7 +54975,12 @@ expected_managed_services() {
         xray) _svcs+=(xray); [[ "${MODE:-}" == *ALL* ]] && _svcs+=(hysteria) ;;
         singbox) _svcs+=(sing-box) ;;
         hysteria) _svcs+=(hysteria) ;;
-        *) return 1 ;;
+        # R26-H-NF-04: no main pair (both-empty after a clear-all) is a
+        # legitimate undeployed state, not unreadable state: fall through
+        # to the owned-services mirror below. The env has already passed
+        # validate_abox_env_semantics inside load_abox_env, so a
+        # half-present or corrupt pair cannot reach this branch.
+        *) : ;;
     esac
     # R16-04: the main .env CORE/MODE pair is not the whole managed
     # stack. A-Box-owned auxiliary cores deployed outside the main pair

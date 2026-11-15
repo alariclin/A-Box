@@ -463,7 +463,11 @@ abox_run_wait() {
         "$@"
         return $?
     fi
-    "$@" &
+    # R15-F01-01: duplicate the caller's stdin into the background
+    # job: without job control a background command inherits /dev/null
+    # as stdin unless redirected, so the TTY branch used to read
+    # different input from the foreground branch for the same command.
+    "$@" <&0 &
     local _pid=$! _i=0 _t0=$SECONDS _frames='|/-\\'
     while kill -0 "$_pid" 2>/dev/null; do
         printf '\r  [%s] %s ... %ds ' "${_frames:$((_i % 4)):1}" "$_label" "$((SECONDS - _t0))" >&2
@@ -604,6 +608,38 @@ _standalone_link_is_empty_shadowtls() {
 # (nodes deployed before the registry existed). Best-effort: a node with
 # no data at all for a link is skipped silently; partial data warns. Argo is registry-only - its
 # domains live in cloudflared logs, not in the core config.
+# _tuic_cert_self_signed <cert-file>
+# Returns 0 only when the certificate at <cert-file> is positively proven
+# self-signed. R15-F01-02: issuer==subject alone only proves the
+# certificate is self-issued (RFC 5280); a self-issued certificate may
+# still be signed by another key, so the signature must also verify
+# against the certificate's own public key. openssl verify -check_ss_sig
+# with the certificate as its own trust anchor checks exactly that; the
+# first certificate is isolated first (the file may carry a chain) and
+# trust is restricted to it (-no-CApath/-no-CAstore). Any other outcome
+# (not self-issued, signature failure, unreadable, OpenSSL without
+# -check_ss_sig) returns 1, "not proven" — never "proven otherwise", so
+# callers stay fail-closed. -no_check_time keeps the question purely "is
+# the signature self-made": expiry is moot once verification is skipped,
+# and it preserves the old behaviour for genuinely self-signed certs.
+_tuic_cert_self_signed() {
+    local _cert_file="$1" _iss='' _sub='' _meta='' _tmp=''
+    [[ -f "$_cert_file" && ! -L "$_cert_file" && -r "$_cert_file" ]] || return 1
+    command -v openssl >/dev/null 2>&1 || return 1
+    _meta=$(openssl x509 -noout -in "$_cert_file" -issuer -subject 2>/dev/null) || return 1
+    _iss=$(printf '%s\n' "$_meta" | sed -n 's/^issuer=//p')
+    _sub=$(printf '%s\n' "$_meta" | sed -n 's/^subject=//p')
+    [[ -n "$_iss" && -n "$_sub" && "$_iss" == "$_sub" ]] || return 1
+    _tmp=$(umask 077; mktemp /tmp/A-Box-tuic-cert.XXXXXX 2>/dev/null) || return 1
+    if ! openssl x509 -in "$_cert_file" -out "$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
+    if openssl verify -check_ss_sig -no-CApath -no-CAstore -no_check_time -CAfile "$_tmp" "$_tmp" >/dev/null 2>&1; then
+        rm -f -- "$_tmp"
+        return 0
+    fi
+    rm -f -- "$_tmp"
+    return 1
+}
+
 rebuild_standalone_links() {
     local _dir="${ABOX_DIR:-/etc/ddr}/standalone-links.d" _ip="${F_IP:-}"
     [[ -n "$_ip" && "$_ip" != 'N/A' ]] || return 0
@@ -680,7 +716,10 @@ rebuild_standalone_links() {
             if [[ "$_port" =~ ^[0-9]+$ && -n "$_uuid" && ( -n "$_pass" || "$_has_pass" == 'true' ) ]]; then
                 # R8-F1-2: fail-closed default — allow_insecure=1 is
                 # written only when the certificate is positively
-                # proven self-signed (issuer==subject). Unknown or
+                # proven self-signed: the signature must also verify
+                # against the certificate's own public key (R15-F01-02;
+                # issuer==subject alone only proves self-issued).
+                # Unknown or
                 # unverifiable material never authorises skipping
                 # verification. Inline .tls.certificate takes
                 # priority over certificate_path (it is the cert
@@ -695,7 +734,7 @@ rebuild_standalone_links() {
                 # unextractable inline value never falls back to
                 # the path for an insecure conclusion. The link is
                 # still registered, just without allow_insecure=1.
-                local _cert_inline_state='unknown' _cert_inline_present=''
+                local _cert_inline_state='unknown' _cert_inline_present='' _inline_tmp=''
                 _cert_inline=''
                 if _cert_inline_present=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | .tls | if . == null then false elif type == "object" then (has("certificate") and (.certificate != null)) else error("invalid tls type") end' 2>/dev/null); then
                     case "$_cert_inline_present" in
@@ -707,15 +746,14 @@ rebuild_standalone_links() {
                     _cert_inline=$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | .tls.certificate | if type == "string" then . elif type == "array" then if all(.[]; type == "string") then join("\n") else error("inline certificate array must contain only strings") end else error("unsupported inline certificate type") end' 2>/dev/null) || _cert_inline=''
                 fi
                 if [[ -n "$_cert_inline" ]]; then
-                    _meta=$(printf '%s\n' "$_cert_inline" | openssl x509 -noout -issuer -subject 2>/dev/null) || _meta=''
-                    _iss=$(printf '%s\n' "$_meta" | sed -n 's/^issuer=//p')
-                    _sub=$(printf '%s\n' "$_meta" | sed -n 's/^subject=//p')
-                    if [[ -n "$_iss" && -n "$_sub" && "$_iss" == "$_sub" ]]; then _insecure='allow_insecure=1'; fi
+                    # R15-F01-02: the inline PEM goes through the same
+                    # proof as a file certificate (see
+                    # _tuic_cert_self_signed) via a temp file.
+                    _inline_tmp=$(umask 077; mktemp /tmp/A-Box-tuic-cert.XXXXXX 2>/dev/null) || _inline_tmp=''
+                    if [[ -n "$_inline_tmp" ]] && printf '%s\n' "$_cert_inline" > "$_inline_tmp" 2>/dev/null && _tuic_cert_self_signed "$_inline_tmp"; then _insecure='allow_insecure=1'; fi
+                    [[ -n "$_inline_tmp" ]] && rm -f -- "$_inline_tmp"
                 elif [[ "$_cert_inline_state" == 'absent' && -n "$_cert" && -f "$_cert" && ! -L "$_cert" && -r "$_cert" ]]; then
-                    _meta=$(openssl x509 -noout -in "$_cert" -issuer -subject 2>/dev/null) || _meta=''
-                    _iss=$(printf '%s\n' "$_meta" | sed -n 's/^issuer=//p')
-                    _sub=$(printf '%s\n' "$_meta" | sed -n 's/^subject=//p')
-                    if [[ -n "$_iss" && -n "$_sub" && "$_iss" == "$_sub" ]]; then _insecure='allow_insecure=1'; fi
+                    if _tuic_cert_self_signed "$_cert"; then _insecure='allow_insecure=1'; fi
                 fi
                 register_standalone_link tuic "$(tprintf sl_node_port 'TUIC' "$_port")" "tuic://${_uuid}:$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?congestion_control=${_cc}&alpn=${_alpn}&sni=${_sni}${_insecure:+&${_insecure}}#TUIC"
             elif [[ -n "$_port$_uuid$_pass$_cc$_sni" ]]; then
@@ -12574,7 +12612,7 @@ resolve_domain_addresses() {
 }
 
 verify_domain_points_to_self() {
-    local domain="$1" pub_ip="$2" resolved continue_domain _norm_pub='' _norm_resolved=''
+    local domain="$1" pub_ip="$2" resolved _norm_pub='' _norm_resolved=''
     resolved=$(resolve_domain_addresses "$domain") || die "$(tprintf dom_unresolved "$domain")"
     # Compare normalized forms (expanded vs compressed IPv6 must match).
     _norm_pub=$(normalize_ip_literal "$pub_ip")
@@ -12582,8 +12620,12 @@ verify_domain_points_to_self() {
     if [[ "$pub_ip" != 'N/A' ]] && ! grep -Fxq "$_norm_pub" <<< "$_norm_resolved"; then
         msg "${YELLOW}[!] $(tprintf verify_domain_points_to_self_not_pointing_here "$pub_ip")${NC}"
         printf '%s\n\n%s\n' "${YELLOW}$(tr_msg dom_resolved_label)${NC}" "$resolved"
-        read -r -p "$(tr_msg dom_continue)" continue_domain
-        is_yes "$continue_domain" || die "$(tr_msg dom_cancelled)"
+        # R15-F04-03: use confirm_yes_no (R8-F3-1): only a successful
+        # read plus an answer of y counts as confirmation. A bare read
+        # stores a partial 'y' before EOF and returns non-zero, which
+        # the old is_yes check ignored, continuing a deployment the
+        # user never confirmed.
+        confirm_yes_no "$(tr_msg dom_continue)" || die "$(tr_msg dom_cancelled)"
     fi
 }
 
@@ -13252,8 +13294,28 @@ def add_path(path):
     if stat.S_ISREG(st.st_mode):
         if st.st_nlink != 1: raise SystemExit(1)
         h=hashlib.sha256()
-        with open(path,'rb') as f:
-            for chunk in iter(lambda:f.read(1024*1024),b''): h.update(chunk)
+        # R15-F04-01: open by descriptor, not by path (same pattern as
+        # R14-F05-01 in refresh_dynamic_core_subtree_ownership): the
+        # lstat above proves nothing about the file open() will see, and
+        # a plain open() of a swapped-in FIFO blocks root forever.
+        # O_NOFOLLOW refuses a swapped-in symlink, O_NONBLOCK keeps a
+        # swapped-in FIFO from blocking, and the fstat below binds the
+        # opened inode to the one lstat validated.
+        try:
+            _fd=os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except OSError:
+            raise SystemExit(1)
+        try:
+            _fst=os.fstat(_fd)
+            if not stat.S_ISREG(_fst.st_mode) or _fst.st_nlink != 1 or (_fst.st_dev, _fst.st_ino) != (st.st_dev, st.st_ino):
+                raise SystemExit(1)
+            with os.fdopen(_fd,'rb') as f:
+                for chunk in iter(lambda:f.read(1024*1024), b''): h.update(chunk)
+            _fd=None
+        finally:
+            if _fd is not None:
+                try: os.close(_fd)
+                except OSError: pass
         entries.append(['F',srv,path,h.hexdigest()])
     elif stat.S_ISDIR(st.st_mode):
         entries.append(['D',srv,path,'-'])
@@ -13308,11 +13370,11 @@ try:
 except KeyError:
     raise SystemExit(1)
 
-def safe_stat(path):
-    try:
-        st = os.lstat(path)
-    except FileNotFoundError:
-        return None
+def validate_stat(st, path):
+    # R15-F04-02: same ownership/mode rules safe_stat used to enforce,
+    # now enforced on the fstat of an already-opened object, so the
+    # checked inode is the one actually read — never a stale lstat
+    # result for a path that may since have been swapped.
     acme = srv == 'hysteria' and (path == target or path.startswith(target + '/'))
     uid_ok = st.st_uid in ({0, runtime_uid} if acme else {0})
     gid_ok = st.st_gid in ({0, runtime_gid})
@@ -13320,7 +13382,6 @@ def safe_stat(path):
     group_write_ok = acme and path == target and st.st_uid == 0 and st.st_gid == runtime_gid and stat.S_ISDIR(st.st_mode)
     if not uid_ok or not gid_ok or stat.S_ISLNK(st.st_mode) or (st.st_mode & 0o002) or ((st.st_mode & 0o020) and not group_write_ok) or (acme and path == target and not (group_write_ok or legacy_root_dir_ok)):
         raise SystemExit(1)
-    return st
 
 target = target.rstrip('/')
 rows=[]
@@ -13351,50 +13412,62 @@ except (OSError, UnicodeError):
 def is_mountpoint(path):
     return os.path.abspath(os.path.normpath(path)) in mountpoints
 
+# R15-F04-02: traverse by directory descriptor, not by path. The old
+# add() lstat'ed a subdirectory and then re-resolved the same path with
+# os.listdir(); the runtime user could swap a validated subdirectory
+# for a symlink in between, and the leaf O_NOFOLLOW+fstat only bound
+# the already-escaped lstat result. Every object below is now opened
+# relative to its parent's held fd (os.open with dir_fd, O_NOFOLLOW),
+# validated by fstat on that fd, and read through that fd; the logical
+# path is only the manifest identity, never re-resolved. Premise (same
+# trust model as the pre-existing parent checks): the ancestors above
+# the target are root-owned and not writable by the runtime user, so
+# opening the target itself with O_NOFOLLOW is sound.
+if os.open not in os.supports_dir_fd or os.listdir not in os.supports_fd:
+    raise SystemExit(1)
 try:
-    st=safe_stat(target)
+    _tfd = os.open(target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
 except FileNotFoundError:
-    st=None
-if st is not None:
-    if not stat.S_ISDIR(st.st_mode) or is_mountpoint(target):
+    _tfd = None
+except OSError:
+    raise SystemExit(1)
+if _tfd is not None:
+    _tst = os.fstat(_tfd)
+    validate_stat(_tst, target)
+    if not stat.S_ISDIR(_tst.st_mode) or is_mountpoint(target):
+        try: os.close(_tfd)
+        except OSError: pass
         raise SystemExit(1)
-    def add(path):
+    def add_fd(fd, path):
         # R5C5-02: same TSV separator refusal as add_path.
         if '\t' in path or '\n' in path or '\r' in path:
             raise SystemExit(1)
-        st=safe_stat(path)
-        if st is None: raise SystemExit(1)
-        if stat.S_ISREG(st.st_mode):
-            if st.st_nlink != 1: raise SystemExit(1)
-            h=hashlib.sha256()
-            # R14-F05-01: open by descriptor, not by path: the
-            # lstat above proves nothing about the file open()
-            # will see, and a plain open() of a swapped-in FIFO
-            # blocks root forever. O_NOFOLLOW refuses a swapped-in
-            # symlink, O_NONBLOCK keeps a swapped-in FIFO from
-            # blocking, and the fstat below binds the opened
-            # inode to the one safe_stat validated.
-            _fd=os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-            try:
-                _fst=os.fstat(_fd)
-                if not stat.S_ISREG(_fst.st_mode) or _fst.st_nlink != 1 or (_fst.st_dev, _fst.st_ino) != (st.st_dev, st.st_ino):
-                    raise SystemExit(1)
-                with os.fdopen(_fd,'rb') as f:
+        try:
+            st = os.fstat(fd)
+            validate_stat(st, path)
+            if stat.S_ISREG(st.st_mode):
+                if st.st_nlink != 1: raise SystemExit(1)
+                h=hashlib.sha256()
+                with os.fdopen(fd,'rb') as f:
                     for chunk in iter(lambda:f.read(1024*1024), b''): h.update(chunk)
-                _fd=None
-            finally:
-                if _fd is not None:
-                    try: os.close(_fd)
-                    except OSError: pass
-            entries.append(['F',srv,path,h.hexdigest()])
-        elif stat.S_ISDIR(st.st_mode):
-            if is_mountpoint(path): raise SystemExit(1)
-            entries.append(['D',srv,path,'-'])
-            for name in sorted(os.listdir(path), key=os.fsencode):
-                add(os.path.join(path,name))
-        else:
-            raise SystemExit(1)
-    add(target)
+                fd=None
+                entries.append(['F',srv,path,h.hexdigest()])
+            elif stat.S_ISDIR(st.st_mode):
+                if is_mountpoint(path): raise SystemExit(1)
+                entries.append(['D',srv,path,'-'])
+                for name in sorted(os.listdir(fd), key=os.fsencode):
+                    try:
+                        _cfd=os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+                    except OSError:
+                        raise SystemExit(1)
+                    add_fd(_cfd, os.path.join(path,name))
+            else:
+                raise SystemExit(1)
+        finally:
+            if fd is not None:
+                try: os.close(fd)
+                except OSError: pass
+    add_fd(_tfd, target)
 rows.extend(entries)
 seen=set()
 with open(out_name,'w',encoding='utf-8',newline='\n') as f:
@@ -13768,6 +13841,16 @@ prepare_hysteria_acme_dir_ownership() {
         # the manifest check and the migration refuses with a hint.
         if [[ -f "$ABOX_CORE_OWNERSHIP" && ! -L "$ABOX_CORE_OWNERSHIP" ]]; then
             hysteria_acme_repair_tree_ownership "$ABOX_CORE_OWNERSHIP" "$dir" "$group" 2>/dev/null || true
+            # R15-F05-02: repair the top level BEFORE the manifest check
+            # below: the subtree repair skips the top, and the check
+            # requires root:<group> with group write (or legacy
+            # root:root 0700). A drifted top used to fail the check and
+            # return before the top chown/chmod further down could run.
+            # The gate above already proved this tree is managed (valid
+            # marker or matching manifest), so normalising the top to
+            # its canonical state here is safe.
+            chown "root:$group" "$dir" || return 1
+            chmod 1770 "$dir" || return 1
             if ! hysteria_acme_current_tree_matches_manifest "$ABOX_CORE_OWNERSHIP" "$dir"; then
                 # R8: interrupted first setup leaves dir + valid marker
                 # but no D record; repair cannot add records, so retry
@@ -15006,20 +15089,35 @@ shortcut_managed_paths() {
         _seen="$_seen$_p "
         printf '%s\n' "$_p"
     done < <(shortcut_primary_paths)
-    local _mfile _line _val
+    local _mfile _line _stage='' _new_vals=''
     _mfile=$(shortcut_migrate_path)
     if [[ -f "$_mfile" && ! -L "$_mfile" ]]; then
+        # R15-F05-04: enumerate new= names as well as pending= names. A
+        # transaction whose state commit failed leaves its new wrappers
+        # installed but uncommitted (record stage 'committed', new=...);
+        # reading only pending= orphaned them from backup/cleanup scans.
+        # The record writes new= before stage=, so collect first and
+        # emit after the stage is known; a 'rolled-back' record's new
+        # names were removed again and must not be listed.
+        local _pending_vals=''
         while IFS= read -r _line || [[ -n "$_line" ]]; do
-            case "$_line" in pending=*) _val="${_line#pending=}" ;; *) continue ;; esac
-            local _n
-            for _n in $_val; do
-                shortcut_validate_name "$_n" 2>/dev/null || continue
-                _p="/usr/local/bin/$_n"
-                case "$_seen" in *" $_p "*) continue ;; esac
-                _seen="$_seen$_p "
-                printf '%s\n' "$_p"
-            done
+            case "$_line" in
+                pending=*) _pending_vals="$_pending_vals ${_line#pending=}" ;;
+                new=*) _new_vals="$_new_vals ${_line#new=}" ;;
+                stage=*) _stage="${_line#stage=}" ;;
+            esac
         done < "$_mfile"
+        if [[ "$_stage" != 'rolled-back' ]]; then
+            _pending_vals="$_pending_vals $_new_vals"
+        fi
+        local _n
+        for _n in $_pending_vals; do
+            shortcut_validate_name "$_n" 2>/dev/null || continue
+            _p="/usr/local/bin/$_n"
+            case "$_seen" in *" $_p "*) continue ;; esac
+            _seen="$_seen$_p "
+            printf '%s\n' "$_p"
+        done
     fi
     return 0
 }
@@ -16556,7 +16654,16 @@ clean_chain() {
             if [[ "$table" == nat ]]; then
                 local _nat_err
                 _nat_err=$(_iptables_q "$cmd" -t "$table" -S "$chain" 2>&1 >/dev/null || true)
-                if printf '%s\n' "$_nat_err" | grep -qiE "table .* does not exist|table does not exist|table nat is not supported|protocol not supported|can't initialize|cannot initialize"; then
+                # R15-F05-07: "can't/cannot initialize" is NOT a
+                # not-supported signal: iptables-legacy reports the same
+                # text for permission errors ("Permission denied (you
+                # must be root)"), which used to be misread as "no NAT
+                # table" and returned success without reading or
+                # cleaning any rule. A genuinely missing table says
+                # "Table does not exist", already matched above, so
+                # dropping the initialize alternatives only turns the
+                # permission case from false success into failure.
+                if printf '%s\n' "$_nat_err" | grep -qiE "table .* does not exist|table does not exist|table nat is not supported|protocol not supported"; then
                     return 0
                 fi
             fi

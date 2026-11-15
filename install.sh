@@ -33782,6 +33782,9 @@ sync_env_ports_after_removal() {
             [[ -n "$_vp" ]] || continue
             for _lp in "${live_ports[@]}"; do
                 if [[ "$_lp" == "$_vp" ]]; then _keep=1; break; fi
+                # R15-F10-04: same numeric value, different spelling
+                # ("00443" live vs "443" in .env): compare numerically.
+                if [[ "$_lp" =~ ^[0-9]+$ && "$_vp" =~ ^[0-9]+$ ]] && (( 10#$_lp == 10#$_vp )); then _keep=1; break; fi
                 if [[ "$_lp" =~ ^([0-9]+)-([0-9]+)$ ]]; then
                     _rlo="${BASH_REMATCH[1]}"; _rhi="${BASH_REMATCH[2]}"
                     if (( 10#$_rlo > 10#$_rhi )); then _keep=1; break;
@@ -33873,8 +33876,15 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
     local tag='' cfg=''
     for tag in "$@"; do
         case "$tag" in
-            vmess-ws-in) argo_remove_unit argo-vmess || true ;;
-            vless-ws-in) argo_remove_unit argo-vless || true ;;
+            # R15-F10-03: the Argo source inbounds live in sing-box;
+            # an Xray-side tag of the same name must not tear down
+            # the other core's tunnel (cf. the Hy2 cleanup below,
+            # which already guards on core == sing-box). Callers pass
+            # the tags removed from that core's own config, so for
+            # core == sing-box the named inbound is confirmed gone
+            # by the deletion that just ran.
+            vmess-ws-in) [[ "$core" == 'sing-box' ]] && argo_remove_unit argo-vmess || true ;;
+            vless-ws-in) [[ "$core" == 'sing-box' ]] && argo_remove_unit argo-vless || true ;;
             *trojan*) _standalone_link_prune_if_gone trojan-xray /etc/ddr/standalone-links.d/trojan-xray.link; _standalone_link_prune_if_gone trojan-sb /etc/ddr/standalone-links.d/trojan-sb.link ;;
             *tuic*) _standalone_link_prune_if_gone tuic /etc/ddr/standalone-links.d/tuic.link ;;
             *anytls*) _standalone_link_prune_if_gone anytls /etc/ddr/standalone-links.d/anytls.link ;;
@@ -34065,7 +34075,7 @@ remove_single_protocol_menu() {
 }
 
 clear_all_protocols() {
-    local answer='' core='' info='' cfg='' wipe_ok=1
+    local answer='' core='' info='' cfg='' wipe_ok=1 _tags_tmp='' _tags_stripped=''
     local -a all_tags=()
     read -r -p "$(tr_msg cl_confirm_all) [Y/N]: " answer || return 0
     is_yes "$answer" || { msg "${GREEN}$(tr_msg remove_cancelled)${NC}"; return 0; }
@@ -34081,7 +34091,24 @@ clear_all_protocols() {
             continue
         fi
         [[ -f "$cfg" ]] || continue
-        mapfile -t all_tags < <(jq -r '.inbounds[]? | .tag // empty' "$cfg" 2>/dev/null)
+        # R15-F11-01: enumerate through the JSONC-stripped view,
+        # like _remove_inbounds_from_config does: raw jq on a
+        # commented config fails and the process substitution hides
+        # it, leaving all_tags empty so the side effects below are
+        # silently skipped while the wipe still reports success. An
+        # enumeration failure is a wipe failure for this core: fail
+        # closed here instead of deleting inbounds whose follow-up
+        # cleanup cannot run.
+        _tags_tmp=$(mktemp /tmp/A-Box-cl-tags.XXXXXX) || { msg "${YELLOW}[!] ${core}: $(tr_msg cl_fail)${NC}"; wipe_ok=0; continue; }
+        _tags_stripped=$(mktemp /tmp/A-Box-cl-strip.XXXXXX) || { rm -f "$_tags_tmp"; msg "${YELLOW}[!] ${core}: $(tr_msg cl_fail)${NC}"; wipe_ok=0; continue; }
+        if ! jsonc_strip_comments "$cfg" > "$_tags_stripped" 2>/dev/null || ! jq -r '.inbounds[]? | .tag // empty' "$_tags_stripped" > "$_tags_tmp" 2>/dev/null; then
+            rm -f "$_tags_tmp" "$_tags_stripped"
+            msg "${YELLOW}[!] ${core}: $(tr_msg cl_fail)${NC}"
+            wipe_ok=0
+            continue
+        fi
+        mapfile -t all_tags < "$_tags_tmp"
+        rm -f "$_tags_tmp" "$_tags_stripped"
         if ! _remove_inbounds_from_config "$core" --all; then
             msg "${YELLOW}[!] ${core}: $(tr_msg cl_fail)${NC}"
             wipe_ok=0
@@ -35090,12 +35117,20 @@ users_commit_cfg() {
     if ! restart_service_soft "$svc"; then
         if [[ -n "$bak" && -f "$bak" ]]; then
             if install_file_atomically "$bak" "$cfg" 600 >/dev/null 2>&1 || cp -f -- "$bak" "$cfg"; then
+                # R15-F11-02: the file copy alone does not prove the
+                # rollback is usable. If the permission prep fails,
+                # the restored live config is unreadable by the
+                # runtime user and the service stays down; if the
+                # restart then fails, the rollback did not restore
+                # service either. Either failure is a failed restore
+                # (rc 2, callers keep $bak), never a plain failed
+                # commit (rc 1, callers delete $bak).
                 case "$core" in
-                    xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || true ;;
-                    sing-box) prepare_abox_runtime_permissions sing-box >/dev/null 2>&1 || true ;;
-                    hy2) prepare_abox_runtime_permissions hysteria >/dev/null 2>&1 || true ;;
+                    xray) prepare_abox_runtime_permissions xray >/dev/null 2>&1 || return 2 ;;
+                    sing-box) prepare_abox_runtime_permissions sing-box >/dev/null 2>&1 || return 2 ;;
+                    hy2) prepare_abox_runtime_permissions hysteria >/dev/null 2>&1 || return 2 ;;
                 esac
-                restart_service_soft "$svc" >/dev/null 2>&1 || true
+                restart_service_soft "$svc" >/dev/null 2>&1 || return 2
                 return 1
             fi
             # Restore failed: $cfg still holds the failed replacement and
@@ -35364,7 +35399,13 @@ users_hy2_yaml_scalar() {
             _j+="$_ch"; _k=$(( _k + 1 ))
         done
         _tok="$_j"
-        _dec=$(printf '%s' "$_tok" | jq -r '. + "__ABOX_TRAILING_NL_KEEP__"' 2>/dev/null) || return 1
+        # R15-F11-04: a NUL in the decoded value cannot survive
+        # Bash command substitution (it is silently deleted), so a
+        # password such as "ab\0cd" would be adopted as "abcd".
+        # Refuse it inside jq, before the value ever reaches the
+        # shell: a literal backslash-u0000 text decodes to plain
+        # characters and is unaffected.
+        _dec=$(printf '%s' "$_tok" | jq -r 'if contains("\u0000") then error("NUL in double-quoted scalar") else . + "__ABOX_TRAILING_NL_KEEP__" end' 2>/dev/null) || return 1
         printf '%s' "$_dec"
         return 0
     fi
@@ -36009,8 +36050,14 @@ users_link_combo() {
         xhttp)
             port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' "$cfg" 2>/dev/null | head -1)
             local sni="${XHTTP_SNI:-${VLESS_SNI:-}}"
-            printf 'vless://%s@%s:%s?encryption=none&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=xhttp&host=%s&path=%%2Fxhttp&mode=stream-one#%s-%s' \
-                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-${XHTTP_PORT:-8443}}" "$sni" "$pbk" "$sid" "$sni" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
+            # R15-F11-05: the path is not always /xhttp: read it from
+            # the live inbound (other readers, e.g. the TSV extract
+            # and the SNI check, already do), defaulting to /xhttp.
+            local xpath=''
+            xpath=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .streamSettings.xhttpSettings.path // "/xhttp"' "$cfg" 2>/dev/null | head -1)
+            [[ -n "$xpath" ]] || xpath='/xhttp'
+            printf 'vless://%s@%s:%s?encryption=none&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=xhttp&host=%s&path=%s&mode=stream-one#%s-%s' \
+                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-${XHTTP_PORT:-8443}}" "$sni" "$pbk" "$sid" "$sni" "$(urlencode "$xpath")" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
         ss)
             port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.port // .listen_port // "")' "$cfg" 2>/dev/null | head -1)
             local method='' eff=''
@@ -36904,7 +36951,7 @@ PYEOF
 _nsni_handshake_check() {
     local core="$1" tag="$2" cfg="$3" sni="$4"
     local bin='' port='' listen='' dial='' uuid='' flow='' net='' xpath='' xhost='' xmode='' grpc_service='' sid='' pbk=''
-    local lf='' sport='' cc='' tmpd='' pid='' code='' i=0 up=0 _try=0 _envf='' pbk_src='' logf='' cerr='' cerr_curl='' curl_rc=0 ready=0 _priv='' tport='443' _tgt='' _tport_cand='' _thost=''
+    local lf='' sport='' cc='' tmpd='' pid='' code='' i=0 up=0 _try=0 _envf='' pbk_src='' logf='' cerr='' cerr_curl='' curl_rc=0 ready=0 _priv='' tport='443' _tgt='' _tport_cand='' _thost='' _transport=''
     case "$core" in
         xray) bin='/usr/local/bin/xray' ;;
         sing-box) bin="${SB_PATH:-/usr/local/bin/sing-box}" ;;
@@ -36921,6 +36968,15 @@ _nsni_handshake_check() {
         uuid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .users[0].uuid // empty' "$cfg" 2>/dev/null | head -n 1)
         sid=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | if (.tls.reality.short_id | type) == "array" then (.tls.reality.short_id[0] // "") else (.tls.reality.short_id // "") end' "$cfg" 2>/dev/null | head -n 1)
         flow=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .users[0].flow // ""' "$cfg" 2>/dev/null | head -n 1)
+        # R15-F11-06: $net is Xray-shaped (.streamSettings), so it
+        # is always "tcp" for a sing-box inbound; the transport type
+        # lives in .transport. Copy the whole transport object into
+        # the temp client below: a gRPC/xhttp/ws inbound probed with
+        # a bare-TCP client fails the handshake and the caller rolls
+        # back a valid SNI change.
+        net=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.transport.type // "tcp")' "$cfg" 2>/dev/null | head -n 1)
+        _transport=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.transport // null)' "$cfg" 2>/dev/null | head -n 1)
+        [[ -n "$_transport" ]] || _transport='null'
     else
         port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .port // empty' "$cfg" 2>/dev/null | head -n 1)
         listen=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .listen // empty' "$cfg" 2>/dev/null | head -n 1)
@@ -37039,10 +37095,10 @@ _nsni_handshake_check() {
         return 2
     fi
     if [[ "$core" == 'sing-box' ]]; then
-        jq -n --arg dial "$dial" --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --arg sni "$sni" --arg pbk "$pbk" --rawfile sid <(printf '%s' "$sid") --arg flow "$flow" --argjson sport "$sport" '{
+        jq -n --arg dial "$dial" --argjson port "$port" --rawfile uuid <(printf '%s' "$uuid") --arg sni "$sni" --arg pbk "$pbk" --rawfile sid <(printf '%s' "$sid") --arg flow "$flow" --argjson transport "$_transport" --argjson sport "$sport" '{
             log: {level: "warning"},
             inbounds: [{type: "socks", tag: "socks-in", listen: "127.0.0.1", listen_port: $sport}],
-            outbounds: [({type: "vless", tag: "proxy", server: $dial, server_port: $port, uuid: $uuid} + (if $flow != "" then {flow: $flow} else {} end) + {
+            outbounds: [({type: "vless", tag: "proxy", server: $dial, server_port: $port, uuid: $uuid} + (if $flow != "" then {flow: $flow} else {} end) + (if $transport != null then {transport: $transport} else {} end) + {
                 tls: {enabled: true, server_name: $sni, reality: {enabled: true, public_key: $pbk, short_id: $sid}, utls: {enabled: true, fingerprint: "chrome"}}})]
         }' > "$cc" 2>/dev/null || { rm -f "$cerr" "$cerr_curl"; rm -rf "$tmpd"; return 2; }
         "$bin" run -c "$cc" >"$cerr" 2>&1 & pid=$!
@@ -37776,6 +37832,26 @@ restore_timezone_snapshot() {
     # to the file rewrite either.
     if [[ -n "$tz" ]] && valid_timezone_name "$tz" && timedatectl_usable; then
         apply_timezone_name "$tz" timedatectl-only || return 1
+        # R15-F12-02: timedatectl set-timezone always rebuilds
+        # /etc/localtime as a symlink, even when the snapshot held a
+        # regular file. The apply above still runs (its kernel/RTC
+        # side effects are wanted), but the filesystem
+        # representation must then be put back: re-copy the snapshot
+        # files over whatever set-timezone just wrote. A symlink
+        # snapshot needs no repair; a snapshot with no localtime or
+        # no /etc/timezone is left exactly as the first restore
+        # left it.
+        if [[ -e "$dir/localtime" || -L "$dir/localtime" ]] && [[ ! -L "$dir/localtime" ]]; then
+            rm -f /etc/localtime || return 1
+            cp -a "$dir/localtime" /etc/localtime || return 1
+            [[ ! -L /etc/localtime ]] || return 1
+        fi
+        if [[ -f "$dir/etc-timezone" ]]; then
+            rm -f /etc/timezone || return 1
+            cp -a "$dir/etc-timezone" /etc/timezone || return 1
+        elif [[ -f "$dir/etc-timezone.absent" ]]; then
+            rm -f /etc/timezone || return 1
+        fi
     fi
     return 0
 }
@@ -37800,7 +37876,12 @@ apply_timezone_name() {
     # Alpine / BusyBox path
     if [[ -f "/usr/share/zoneinfo/$tz" ]]; then
         ln -sf "/usr/share/zoneinfo/$tz" /etc/localtime || return 1
-        printf '%s\n' "$tz" > /etc/timezone || true
+        # R15-F12-03: a failed /etc/timezone write must fail the
+        # apply (the caller rolls back); swallowing it leaves
+        # /etc/localtime on the new zone while /etc/timezone still
+        # names the old one, and the next snapshot trusts the stale
+        # file.
+        printf '%s\n' "$tz" > /etc/timezone || return 1
         return 0
     fi
     return 1
@@ -38169,7 +38250,7 @@ systemd_major_version() {
 }
 
 snapshot_dns_state() {
-    local dir="$1" backend iface connection key value _ens
+    local dir="$1" backend iface connection key value _ens _link_target=''
     mkdir -p "$dir" || return 1
     chmod 700 "$dir" || return 1
     backend=$(dns_backend_detect) || return 1
@@ -38216,6 +38297,17 @@ snapshot_dns_state() {
     if command -v systemctl >/dev/null 2>&1; then
         _ens=$(systemctl is-enabled dnscrypt-proxy 2>/dev/null || true)
         printf '%s\n' "${_ens:-disabled}" > "$dir/dnscrypt-service-enabled" || return 1
+        # R15-F12-04: a `linked` enablement is a symlink created by
+        # `systemctl link`; record its target now, while it still
+        # exists, so rollback can re-create it. Without the target
+        # the restore cannot tell `linked` from `disabled`.
+        if [[ "$_ens" == linked ]]; then
+            _link_target=$(systemctl show -p FragmentPath --value dnscrypt-proxy 2>/dev/null || true)
+            [[ -n "$_link_target" ]] || _link_target=$(readlink /etc/systemd/system/dnscrypt-proxy.service 2>/dev/null || true)
+            if [[ -n "$_link_target" ]]; then
+                printf '%s\n' "$_link_target" > "$dir/dnscrypt-service-link-target" || return 1
+            fi
+        fi
     else printf disabled > "$dir/dnscrypt-service-enabled" || return 1; fi
     if [[ -f "$DNS_STATE_FILE" && ! -L "$DNS_STATE_FILE" ]]; then cp -a "$DNS_STATE_FILE" "$dir/dns-state" || return 1; else printf absent > "$dir/dns-state.absent"; fi
     if [[ "$backend" == networkmanager ]] && command -v nmcli >/dev/null 2>&1; then
@@ -38326,13 +38418,26 @@ restore_dns_snapshot_body() {
         _dnscrypt_units=$(systemctl list-unit-files --type=service --no-legend --no-pager dnscrypt-proxy.service 2>/dev/null) || return 1
         if awk -v wanted='dnscrypt-proxy.service' '$1 == wanted { found=1 } END { exit !found }' <<< "$_dnscrypt_units"; then
         state=$(tr -d '[:space:]' < "$dir/dnscrypt-service-state" 2>/dev/null || printf inactive)
-        local enabled_state _got_ens
+        local enabled_state _got_ens _link_target='' _cur_ens='' _got_link=''
         enabled_state=$(tr -d '[:space:]' < "$dir/dnscrypt-service-enabled" 2>/dev/null || printf disabled)
         # R13C12-03: enabled-runtime restores as runtime-only,
         # not as a persistent enablement that never existed.
         if [[ "$enabled_state" == enabled ]]; then systemctl enable dnscrypt-proxy >/dev/null 2>&1 || return 1
         elif [[ "$enabled_state" == enabled-runtime ]]; then systemctl disable dnscrypt-proxy >/dev/null 2>&1 || return 1; systemctl enable --runtime dnscrypt-proxy >/dev/null 2>&1 || return 1
         # R14C12-02: disable/stop failures propagate (no || true).
+        # R15-F12-04: `linked` is not a flavour of disabled: disable
+        # deletes the link, so re-create it with `systemctl link`
+        # to the target recorded at snapshot time. If the link is
+        # already in place there is nothing to re-create; if no
+        # target was recorded the link cannot be rebuilt, so fail
+        # closed instead of silently converting linked to disabled.
+        elif [[ "$enabled_state" == linked ]]; then
+            _link_target=$(tr -d '[:space:]' < "$dir/dnscrypt-service-link-target" 2>/dev/null || true)
+            _cur_ens=$(systemctl is-enabled dnscrypt-proxy 2>/dev/null || true)
+            if [[ "$_cur_ens" != linked ]]; then
+                [[ -n "$_link_target" ]] || return 1
+                systemctl link "$_link_target" >/dev/null 2>&1 || return 1
+            fi
         else systemctl disable dnscrypt-proxy >/dev/null 2>&1 || return 1; fi
         if [[ "$state" == active ]]; then systemctl restart dnscrypt-proxy >/dev/null 2>&1 || return 1; else systemctl stop dnscrypt-proxy >/dev/null 2>&1 || return 1; fi
         # R14C12-02: verify the requested states before success.
@@ -38345,6 +38450,17 @@ restore_dns_snapshot_body() {
         case "$enabled_state" in
             enabled) [[ "$_got_ens" == enabled ]] || return 1 ;;
             enabled-runtime) [[ "$_got_ens" == enabled-runtime ]] || return 1 ;;
+            linked)
+                [[ "$_got_ens" == linked ]] || return 1
+                # The link itself must point at the recorded target,
+                # not merely exist in some form.
+                if [[ -n "$_link_target" ]]; then
+                    _got_link=$(readlink /etc/systemd/system/dnscrypt-proxy.service 2>/dev/null || true)
+                    if [[ "$_got_link" != "$_link_target" ]]; then
+                        _got_link=$(readlink -f /etc/systemd/system/dnscrypt-proxy.service 2>/dev/null || true)
+                        [[ "$_got_link" == "$_link_target" ]] || return 1
+                    fi
+                fi ;;
             *) [[ "$_got_ens" != enabled && "$_got_ens" != enabled-runtime ]] || return 1 ;;
         esac
         fi

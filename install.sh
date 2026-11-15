@@ -6073,6 +6073,18 @@ tr_msg() {
         fa:acquire_runtime_lock_another_instance_after_fallback) echo 'نمونه دیگری از A-Box در حال اجرا شناسایی شد (پس از انتشار قفل جایگزین، قفل flock اشغال شده است).' ;;
         zh-tw:acquire_runtime_lock_another_instance_after_fallback) echo '偵測到另一個 A-Box 執行個體正在執行（回退鎖發布後 flock 已被占用）。' ;;
         ja:acquire_runtime_lock_another_instance_after_fallback) echo '別の A-Box インスタンスが実行中であることを検出しました（フォールバックロックの公開後に flock が占有されました）。' ;;
+        zh:acquire_runtime_lock_flock_holder) echo '检测到另一个 A-Box 实例持有 flock 运行锁，拒绝继续。' ;;
+        en:acquire_runtime_lock_flock_holder) echo 'Another A-Box instance holds the flock runtime lock; refusing to continue.' ;;
+        ru:acquire_runtime_lock_flock_holder) echo 'Обнаружен другой экземпляр A-Box, удерживающий flock-блокировку выполнения; продолжение запрещено.' ;;
+        fa:acquire_runtime_lock_flock_holder) echo 'نمونه دیگری از A-Box قفل اجرایی flock را در اختیار دارد؛ ادامه کار رد می‌شود.' ;;
+        zh-tw:acquire_runtime_lock_flock_holder) echo '偵測到另一個 A-Box 執行個體持有 flock 執行鎖，拒絕繼續。' ;;
+        ja:acquire_runtime_lock_flock_holder) echo '別の A-Box インスタンスが flock 実行ロックを保持しているため、続行を拒否します。' ;;
+        zh:acquire_runtime_lock_flock_unverifiable) echo '无法确认 flock 运行锁持有者状态（flock 与 python3 均不可用），拒绝继续。' ;;
+        en:acquire_runtime_lock_flock_unverifiable) echo 'Unable to verify the flock runtime lock holder state (neither flock nor python3 is available); refusing to continue.' ;;
+        ru:acquire_runtime_lock_flock_unverifiable) echo 'Невозможно проверить состояние владельца flock-блокировки выполнения (flock и python3 недоступны); продолжение запрещено.' ;;
+        fa:acquire_runtime_lock_flock_unverifiable) echo 'وضعیت دارنده قفل اجرایی flock قابل تأیید نیست (نه flock و نه python3 در دسترس است)؛ ادامه کار رد می‌شود.' ;;
+        zh-tw:acquire_runtime_lock_flock_unverifiable) echo '無法確認 flock 執行鎖持有者的狀態（flock 與 python3 均不可用），拒絕繼續。' ;;
+        ja:acquire_runtime_lock_flock_unverifiable) echo 'flock 実行ロックの保持者の状態を確認できません（flock と python3 のどちらも利用できません）。続行を拒否します。' ;;
         zh:manual_stop_managed_stack_state_unreadable) echo '无法读取有效的 A-Box 部署状态。' ;;
         en:manual_stop_managed_stack_state_unreadable) echo 'Unable to read a valid A-Box deployment state.' ;;
         ru:manual_stop_managed_stack_state_unreadable) echo 'Не удалось прочитать допустимое состояние развёртывания A-Box.' ;;
@@ -42558,7 +42570,7 @@ def _unquoted_value(head):
 
 
 inline_secret_assignment = re.compile(
-    r"(?i)(" + _INLINE_KEY_HEAD + _COMMENT_GAP + r")(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|"
+    r"(?i)(" + _INLINE_KEY_HEAD + _COMMENT_GAP + r")(?:(?:!{1,2}[A-Za-z0-9_-]+|&[A-Za-z0-9_-]+)[ \t]+)*(\"(?:\\[\s\S]|[^\"\\])*\"|'(?:[^']|'')*'|"
     + _unquoted_value(_INLINE_KEY_HEAD)
     + r")"
 )
@@ -42592,7 +42604,7 @@ _block_scalar_re = re.compile(
 # a nested mapping under the key has no value on the key line (so it
 # never matches: the value group below requires a first value char).
 _plain_scalar_re = re.compile(
-    r"(?i)^(\s*[\"']?" + _block_scalar_key + r"[\"']?\s*:\s*)([^\"'\[\]{|>&*!#\s][^\r\n]*)$"
+    r"(?i)^(\s*[\"']?" + _block_scalar_key + r"[\"']?\s*:\s*(?:(?:!{1,2}[A-Za-z0-9_-]+|&[A-Za-z0-9_-]+)[ \t]+)*)([^\"'\[\]{|>&*!#\s][^\r\n]*)$"
 )
 
 
@@ -42969,7 +42981,7 @@ except Exception:
         text,
     )
     text = re.sub(
-        r"(?i)(" + _TEXT_KEY_HEAD + _COMMENT_GAP + r")(\"(?:\\.|[^\"\\])*\"|'(?:[^']|'')*'|"
+        r"(?i)(" + _TEXT_KEY_HEAD + _COMMENT_GAP + r")(?:(?:!{1,2}[A-Za-z0-9_-]+|&[A-Za-z0-9_-]+)[ \t]+)*(\"(?:\\[\s\S]|[^\"\\])*\"|'(?:[^']|'')*'|"
         + _unquoted_value(_TEXT_KEY_HEAD)
         + r")",
         r'\1"***REDACTED***"',
@@ -48489,7 +48501,27 @@ _wallos_service_confirmed_stopped() {
     [[ "$_state" == 0 ]]
 }
 
+# R15-F15-04: ownership gate for the Wallos front teardowns. True iff the
+# named front unit is absent (nothing to tear down) or is a regular file
+# carrying the A-Box marker. A foreign unit sharing the name, a symlink, or
+# any non-regular path refuses: the caller must not stop or delete a service
+# an administrator replaced with an external deployment. Mirrors the
+# argo_remove_unit marker check; unlike it, an absent unit is OK here
+# (teardown returns 0 when the front is absent).
+_wallos_front_unit_owned_or_absent() {
+    local _unit
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        _unit="/etc/systemd/system/${1}.service"
+    else
+        _unit="/etc/init.d/${1}"
+    fi
+    [[ -e "$_unit" || -L "$_unit" ]] || return 0
+    [[ -f "$_unit" && ! -L "$_unit" ]] && grep -Fxq '# Managed by A-Box' "$_unit" 2>/dev/null
+}
+
 wallos_https_teardown() { # stop the HTTPS front, drop its config/data; returns 1 if the front is still running or if disable/removal fails
+    # R15-F15-04: refuse a foreign unit before stopping it (see helper above).
+    _wallos_front_unit_owned_or_absent abox-wallos-caddy || return 1
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl stop abox-wallos-caddy.service >/dev/null 2>&1 || true
         # S148: verify the stop before removing the unit: deleting the
@@ -48828,6 +48860,8 @@ wallos_preserve_cftoken() {
 }
 
 wallos_cftunnel_teardown() { # stop the tunnel front; returns 1 if it is still running (see S148) or if disable/removal fails
+    # R15-F15-04: refuse a foreign unit before stopping it (see helper above).
+    _wallos_front_unit_owned_or_absent abox-wallos-cftunnel || return 1
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         systemctl stop abox-wallos-cftunnel.service >/dev/null 2>&1 || true
         # R14-F15-04: require a confirmed stopped state; a failed
@@ -49653,14 +49687,25 @@ _wallos_fw_ledger_lines() {
     [[ "$_proto" == tcp || "$_proto" == udp ]] || return 1
     [[ ! -e "$ABOX_FW_STATE" && ! -L "$ABOX_FW_STATE" ]] && return 0
     [[ -f "$ABOX_FW_STATE" && ! -L "$ABOX_FW_STATE" ]] || return 1
+    # R15-F15-06: open the ledger on its own fd and check the open. The old
+    # `done < file` left a failed redirect unchecked: the while body never
+    # ran, the loop exited 0, and the caller got an empty ledger as a valid
+    # snapshot. An unreadable file (or one removed between the -f check and
+    # the open) must fail, never read as "nothing changed". The invalid-line
+    # path now flags and breaks (fd closed below) instead of returning from
+    # inside the loop; the observable outcome is unchanged (rc 1, no output).
+    local _fd _bad=0
+    exec {_fd}<"$ABOX_FW_STATE" || return 1
     while IFS= read -r _line || [[ -n "$_line" ]]; do
         [[ -n "$_line" ]] || continue
-        native_firewall_record_valid "$_line" || return 1
+        if ! native_firewall_record_valid "$_line"; then _bad=1; break; fi
         IFS='|' read -r _f1 _f2 _f3 _rest <<< "$_line"
         if [[ ( "$_f1" == ufw || "$_f1" == firewalld ) && "$_f2" == "$_spec" && "$_f3" == "$_proto" ]]; then
             _out+="${_line}"$'\n'
         fi
-    done < "$ABOX_FW_STATE"
+    done <&$_fd
+    exec {_fd}<&- 2>/dev/null || true
+    (( _bad == 0 )) || return 1
     printf '%s' "$_out"
     return 0
 }
@@ -50868,13 +50913,22 @@ wallos_menu() {
                 # label may be removed; a same-name foreign container is
                 # left alone (the marker alone is not ownership). An
                 # absent container keeps the existing failure outcome.
-                local _wl_label=''
+                local _wl_label='' _wl_names=''
                 if ! docker container inspect wallos >/dev/null 2>&1; then
                     msg "${RED}$(tr_msg wl_remove_fail)${NC}"
                 elif ! _wl_label=$(docker inspect -f '{{index .Config.Labels "com.alariclin.abox.managed"}}' wallos 2>/dev/null) || [[ "$_wl_label" != 'true' ]]; then
                     msg "${RED}$(tr_msg wl_iu_unmanaged)${NC}"
                 # B-06 fix: verify the container is actually gone before reporting success.
-                elif docker rm -f wallos >/dev/null 2>&1 && ! docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'wallos'; then
+                # R15-F15-07: verify the container is gone without a pipe.
+                # The old `! docker ps ... | grep -qx` read a `docker ps`
+                # failure (or a SIGPIPE 141 under pipefail) as "gone" and
+                # announced success. Capture the listing first: a failed
+                # enumeration refuses, and the exact-line test (same shape
+                # as _wallos_container_gone) only passes when the name is
+                # truly absent. _wl_names is assigned separately from its
+                # `local` declaration: `local x=$(...)` would mask the
+                # command's exit status.
+                elif docker rm -f wallos >/dev/null 2>&1 && _wl_names=$(docker ps -a --format '{{.Names}}' 2>/dev/null) && [[ $'\n'"$_wl_names"$'\n' != *$'\n'wallos$'\n'* ]]; then
                     msg "${GREEN}$(tr_msg wl_removed)${NC}"
                     wallos_https_teardown >/dev/null 2>&1 || true
                     wallos_cftunnel_teardown >/dev/null 2>&1 || true
@@ -52289,7 +52343,7 @@ view_config() {
         fi
         [[ -n "$HY2_PIN_E" ]] || msg "${YELLOW}[!] Hy2 certificate unreadable; pinSHA256 left empty.${NC}" >&2
     fi
-    HY2_PIN_E=$(urlencode "$HY2_PIN_E")
+    HY2_PIN_E=$(urlencode "${HY2_PIN_E:-}")
     msg "${BLUE}======================================================================${NC}"
     msg "${BOLD}${CYAN}$(tprintf view_config_network_params_title "${MODE}")${NC}"
     msg "${BLUE}======================================================================${NC}"
@@ -53502,20 +53556,24 @@ hy2_staged_pid_dead() {
 hy2_staged_kill_child() {
     local p="${_HY2_STAGED_PID:-}" waited=0
     [[ -n "$p" ]] || return 0
-    _HY2_STAGED_PID=''
+    # R15-F16-02: the PID registration is cleared only after the child is
+    # confirmed dead (or after the final KILL attempt below). Clearing it
+    # before the TERM let a signal landing in between make the trap handler
+    # see an empty registration and leave the child without any signal.
     kill -TERM "$p" 2>/dev/null || true
     while (( waited < 3 )); do
-        if hy2_staged_pid_dead "$p"; then wait "$p" 2>/dev/null || true; return 0; fi
+        if hy2_staged_pid_dead "$p"; then wait "$p" 2>/dev/null || true; _HY2_STAGED_PID=''; return 0; fi
         sleep 1; waited=$((waited + 1))
     done
-    if hy2_staged_pid_dead "$p"; then wait "$p" 2>/dev/null || true; return 0; fi
+    if hy2_staged_pid_dead "$p"; then wait "$p" 2>/dev/null || true; _HY2_STAGED_PID=''; return 0; fi
     kill -KILL "$p" 2>/dev/null || true
     waited=0
     while (( waited < 3 )); do
-        if hy2_staged_pid_dead "$p"; then wait "$p" 2>/dev/null || true; return 0; fi
+        if hy2_staged_pid_dead "$p"; then wait "$p" 2>/dev/null || true; _HY2_STAGED_PID=''; return 0; fi
         sleep 1; waited=$((waited + 1))
     done
-    if hy2_staged_pid_dead "$p"; then wait "$p" 2>/dev/null || true; return 0; fi
+    if hy2_staged_pid_dead "$p"; then wait "$p" 2>/dev/null || true; _HY2_STAGED_PID=''; return 0; fi
+    _HY2_STAGED_PID=''
     return 1
 }
 
@@ -53619,7 +53677,7 @@ hysteria_staged_binary_smoke_test() {
         attempt=$((attempt + 1))
         # Fresh recognition + rewrite each attempt (fresh ephemeral port).
         # The recogniser prints "OK <port> <tls|acme>" or "REJECT <reason>".
-        outcome=$(python3 - "$cfg" "$tmp_cfg" <<'PY_HY2_STAGED' 2>"$work/py.err"
+        outcome=$(python3 -I - "$cfg" "$tmp_cfg" <<'PY_HY2_STAGED' 2>"$work/py.err"
 import os
 import socket
 import sys
@@ -54598,7 +54656,63 @@ acquire_fallback_runtime_lock() {
 
 
 upgrade_runtime_lock_to_flock_if_possible() {
-    # After ensure_commands may have installed flock, promote a session that
+    # R15-F17-01: probe whether a flock holder exists on LOCK_FILE without
+# the flock binary, via python fcntl (same flock(2) lock the flock binary
+# takes). Tri-state by exit code, mirroring fallback_runtime_lock_held:
+# 0 = no holder (lock free), 10 = a live holder, 20 = unknown (fail closed).
+# Any other exit code (e.g. python startup failure, rc 1) is unknown too.
+# The file is opened O_RDONLY|O_NOFOLLOW and never created or truncated;
+# an absent file means no holder can exist on that path (a holder on an
+# unlinked inode is indistinguishable here, exactly as in the flock branch,
+# which creates the file when missing). The probe briefly takes the lock
+# itself and releases it by closing the fd.
+probe_runtime_flock_holder() {
+    python3 -I - "$LOCK_FILE" <<'PY_FLOCK_PROBE'
+import fcntl
+import os
+import stat
+import sys
+
+FREE, HELD, UNKNOWN = 0, 10, 20
+
+
+def probe(path):
+    try:
+        before = os.lstat(path)
+    except FileNotFoundError:
+        return FREE
+    if not stat.S_ISREG(before.st_mode):
+        return UNKNOWN
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    except OSError:
+        return UNKNOWN
+    try:
+        opened = os.fstat(fd)
+        if (not stat.S_ISREG(opened.st_mode)
+                or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)):
+            return UNKNOWN
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return HELD
+        after = os.lstat(path)
+        if (not stat.S_ISREG(after.st_mode)
+                or (after.st_dev, after.st_ino) != (opened.st_dev, opened.st_ino)):
+            return UNKNOWN
+        return FREE
+    finally:
+        os.close(fd)
+
+
+try:
+    sys.exit(probe(sys.argv[1]))
+except Exception:
+    sys.exit(UNKNOWN)
+PY_FLOCK_PROBE
+}
+
+# After ensure_commands may have installed flock, promote a session that
     # started on LOCK_FALLBACK_DIR onto LOCK_FILE so helpers and main share one object.
     [[ "${ABOX_RUNTIME_LOCK_MODE:-}" == fallback ]] || return 0
     command -v flock >/dev/null 2>&1 || return 0
@@ -54649,8 +54763,27 @@ acquire_runtime_lock() {
         # flock holder is live: release our fallback and refuse. (The
         # EXIT cleanup trap is only installed after this branch, so the
         # release here must be explicit.)
+        # R15-F17-01: the reverse check is unconditional now. When flock
+        # is unavailable the old code skipped the check entirely and ran on
+        # the fallback lock next to a live flock holder (flock binary
+        # removed/replaced after the holder took it, or two processes with
+        # different PATHs). Without the flock binary, probe the lock file
+        # with python fcntl instead; when neither verifier exists the
+        # holder state is unknown and this refuses (fail closed, same
+        # tri-state discipline as the flock branch above).
         if command -v flock >/dev/null 2>&1; then
             upgrade_runtime_lock_to_flock_if_possible || { runtime_lock_cleanup; die "$(tr_msg acquire_runtime_lock_another_instance_after_fallback)"; }
+        else
+            local _flock_probe_rc=0
+            if ! command -v python3 >/dev/null 2>&1; then
+                runtime_lock_cleanup; die "$(tr_msg acquire_runtime_lock_flock_unverifiable)"
+            fi
+            probe_runtime_flock_holder || _flock_probe_rc=$?
+            case "$_flock_probe_rc" in
+                0) : ;;
+                10) runtime_lock_cleanup; die "$(tr_msg acquire_runtime_lock_flock_holder)" ;;
+                *) runtime_lock_cleanup; die "$(tr_msg acquire_runtime_lock_flock_unverifiable)" ;;
+            esac
         fi
     fi
     unset ABOX_INHERITED_LOCK_MODE

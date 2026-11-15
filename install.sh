@@ -22440,7 +22440,7 @@ setup_active_defense() {
 EOF_LOGROTATE
     ensure_fail2ban || true
     if command -v fail2ban-client >/dev/null 2>&1; then
-        local tcp_ports='' udp_ports='' jail_tmp='' f2b_action='' f2b_backend='' f2b_tcp_action='' f2b_udp_action='' sb_harv='' xr_harv='' f2b_inc='' f2b_ver='' filter_bak='' jail_bak=''
+        local tcp_ports='' udp_ports='' jail_tmp='' f2b_action='' f2b_backend='' f2b_tcp_action='' f2b_udp_action='' sb_harv='' xr_harv='' f2b_inc='' f2b_ver='' filter_bak='' jail_bak='' f2b_harv_failed=0
         path_parent_chain_safe /etc/fail2ban/filter.d/A-Box.conf || die "$(tr_msg ad_filter_chain)"
         path_parent_chain_safe /etc/fail2ban/jail.d/A-Box.local || die "$(tr_msg ad_jail_chain)"
         mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d || die "$(tr_msg ad_dirs)"
@@ -22481,14 +22481,14 @@ EOF_F2B_FILTER
         # by the jails too. Loopback inbounds (Argo WS, detour targets) are
         # excluded: they have no public attack surface.
         if command -v jq >/dev/null 2>&1 && [[ -r /etc/sing-box/config.json ]]; then
-            sb_harv=$(jq -r '.inbounds[]? | select(.listen_port != null) | select(.listen != "127.0.0.1" and .listen != "::1") | (if .type == "tuic" or .type == "hysteria2" then "udp/\(.listen_port)" elif .type == "shadowsocks" or .type == "socks" or .type == "mixed" then "tcp/\(.listen_port),udp/\(.listen_port)" else "tcp/\(.listen_port)" end)' /etc/sing-box/config.json 2>/dev/null | paste -sd, -)
+            sb_harv=$(jsonc_strip_comments /etc/sing-box/config.json 2>/dev/null | jq -r '.inbounds[]? | select(.listen_port != null) | select(.listen != "127.0.0.1" and .listen != "::1") | (if .type == "tuic" or .type == "hysteria2" then "udp/\(.listen_port)" elif .type == "shadowsocks" or .type == "socks" or .type == "mixed" then "tcp/\(.listen_port),udp/\(.listen_port)" else "tcp/\(.listen_port)" end)' 2>/dev/null | paste -sd, -) || { sb_harv=''; f2b_harv_failed=1; }
             if [[ -n "$sb_harv" ]]; then
                 tcp_ports+=",$(printf '%s' "$sb_harv" | tr ',' '\n' | awk -F/ '$1=="tcp" {print $2}' | paste -sd, -)"
                 udp_ports+=",$(printf '%s' "$sb_harv" | tr ',' '\n' | awk -F/ '$1=="udp" {print $2}' | paste -sd, -)"
             fi
         fi
         if command -v jq >/dev/null 2>&1 && [[ -r /usr/local/etc/xray/config.json ]]; then
-            xr_harv=$(jq -r '.inbounds[]? | select(.port != null and .tag != "api") | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1")) | (.port | tostring | split(",")) as $ports | (if .protocol == "shadowsocks" or .protocol == "socks" then ($ports[] | "tcp/\(.)"), ($ports[] | "udp/\(.)") else ($ports[] | "tcp/\(.)") end)' /usr/local/etc/xray/config.json 2>/dev/null | paste -sd, -)
+            xr_harv=$(jsonc_strip_comments /usr/local/etc/xray/config.json 2>/dev/null | jq -r '.inbounds[]? | select(.port != null and .tag != "api") | select(.listen == null or (.listen != "127.0.0.1" and .listen != "::1")) | (.port | tostring | split(",")) as $ports | (if .protocol == "shadowsocks" or .protocol == "socks" then ($ports[] | "tcp/\(.)"), ($ports[] | "udp/\(.)") else ($ports[] | "tcp/\(.)") end)' 2>/dev/null | paste -sd, -) || { xr_harv=''; f2b_harv_failed=1; }
             if [[ -n "$xr_harv" ]]; then
                 tcp_ports+=",$(printf '%s' "$xr_harv" | tr ',' '\n' | awk -F/ '$1=="tcp" {print $2}' | paste -sd, -)"
                 udp_ports+=",$(printf '%s' "$xr_harv" | tr ',' '\n' | awk -F/ '$1=="udp" {print $2}' | paste -sd, -)"
@@ -22505,6 +22505,14 @@ bantime.factor = 2
 bantime.maxtime = 86400'
         fi
         tcp_ports="${tcp_ports%,}"; udp_ports="${udp_ports%,}"
+        # R15-F07-05: a harvest failure is not "no ports to protect".
+        # Deleting the jail on unparseable input would silently revoke
+        # the existing protection; keep the previous configuration.
+        if (( f2b_harv_failed == 1 )); then
+            _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"
+            rm -f -- "$jail_tmp"
+            die 'Fail2Ban port harvest failed (a live core config could not be parsed); previous configuration kept.'
+        fi
         if [[ -n "$tcp_ports" || -n "$udp_ports" ]]; then
             f2b_backend=$(firewall_backend) || { _f2b_restore_backups_or_keep "$filter_bak" "$jail_bak"; rm -f -- "$jail_tmp"; die "$(tr_msg ad_backend_unknown)"; }
             case "$f2b_backend" in
@@ -22722,23 +22730,58 @@ _xrc_marker_append() {
     mv -f -- "$_tmp" "$marker" || { rm -f -- "$_tmp"; return 1; }
 }
 
-# Write the human-readable stop record once (first failure wins) and stop
-# the managed xray service so the restart loop halts. Never touches the
-# desired state: the stack still WANTS to run, the config recovery failed.
+# Report the xray unit's activity state: ActiveState on systemd, or
+# stopped/running on OpenRC. A failed query is "unknown" (rc 1), never
+# "stopped": callers must not read a query failure as a stopped service.
+_xrc_xray_state() {
+    if [[ "$(effective_init_system 2>/dev/null || true)" == 'systemd' ]]; then
+        systemctl show -p ActiveState --value xray 2>/dev/null || return 1
+    else
+        rc-service xray status >/dev/null 2>&1 9>&- 10>&-; local _rc=$?
+        case "$_rc" in
+            0) printf 'active\n' ;;
+            3|16|32) printf 'inactive\n' ;;
+            *) return 1 ;;
+        esac
+    fi
+}
+
+# Stop the managed xray service so the restart loop halts, and record
+# the stop. Never touches the desired state: the stack still WANTS to
+# run, the config recovery failed.
+# Order matters (R15-F07-04): the service is stopped and verified stopped
+# BEFORE the latch file is written. rc: 0 = stopped and latched;
+# 1 = stopped but the latch write failed; 2 = stop not verified.
+# A return of 1 promises the probe "stopped + latched", so no path may
+# return 1 while the service is still (or unknown to be) running.
 _xrc_stop_xray() {
     local statusf="$1" _sha="$2" _reason="${3:-}"
-    local _tmp
-    if [[ ! -e "$statusf" && ! -L "$statusf" ]]; then
-        _tmp=$(umask 077; mktemp "$(dirname "$statusf")/.xray-cfg-autorecover.status.XXXXXX") 2>/dev/null || return 1
-        printf '%s xray config auto-recovery STOPPED: %s (broken config sha %s; restore manually from a backup)\n' "$(date -u +%FT%TZ)" "$_reason" "$_sha" > "$_tmp" || { rm -f -- "$_tmp"; return 1; }
-        chmod 600 -- "$_tmp" 2>/dev/null || true
-        mv -f -- "$_tmp" "$statusf" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
-    fi
+    local _tmp _i _state
     if [[ "$(effective_init_system 2>/dev/null || true)" == 'systemd' ]]; then
         systemctl stop xray >/dev/null 2>&1 || true
     else
         rc-service xray stop >/dev/null 2>&1 9>&- 10>&- || true
     fi
+    # Verify the stop, allowing a bounded wait for a deactivating unit.
+    # The first check runs immediately, so a stopped service costs no wait.
+    for _i in $(seq 1 10); do
+        _state=$(_xrc_xray_state 2>/dev/null) || _state='unknown'
+        case "$_state" in
+            inactive|failed) break ;;
+            *) sleep 1 ;;
+        esac
+    done
+    case "$_state" in
+        inactive|failed) : ;;
+        *) return 2 ;;
+    esac
+    # R15-F07-06: always (re)write the status with the latest outcome.
+    # A stale "service up" record from an earlier success must not mask
+    # a later failure; the .marker file keeps the full history.
+    _tmp=$(umask 077; mktemp "$(dirname "$statusf")/.xray-cfg-autorecover.status.XXXXXX") 2>/dev/null || return 1
+    printf '%s xray config auto-recovery STOPPED: %s (broken config sha %s; restore manually from a backup)\n' "$(date -u +%FT%TZ)" "$_reason" "$_sha" > "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    chmod 600 -- "$_tmp" 2>/dev/null || true
+    mv -f -- "$_tmp" "$statusf" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
     return 0
 }
 
@@ -22747,16 +22790,20 @@ xray_config_autorecover() {
     local bin="${XRAY_BIN:-/usr/local/bin/xray}"
     local abox="${ABOX_DIR:-/etc/ddr}"
     local marker="$abox/.xray-cfg-autorecover" statusf="$abox/.xray-cfg-autorecover.status"
-    local now test_rc bad_sha gate
+    local now test_rc bad_sha gate _desired _xrc_rc
     [[ -x "$bin" ]] || return 2
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 2
     # Desired state must still be RUNNING; a stopped stack is never pulled up.
-    if [[ -f "$abox/.desired_state" && ! -L "$abox/.desired_state" ]]; then
-        [[ "$(cat "$abox/.desired_state" 2>/dev/null || true)" == 'RUNNING' ]] || return 2
-    fi
-    # Offline config test (bounded). rc 124 = timeout, 127 = binary problem:
-    # inconclusive, never authorize an overwrite. Any other non-zero rc is a
-    # confirmed config fault (xray reports config decode errors this way).
+    # Read the authoritative pair state (R15-F07-03): a corrupt pair file
+    # is an error, never a cue to fall back to the legacy file.
+    _desired=$(get_desired_state 2>/dev/null) || return 2
+    [[ "$_desired" == 'RUNNING' ]] || return 2
+    # Offline config test (bounded). rc 23 = xray "Failed to start", the
+    # only confirmed config fault (measured on real xray v26.7.28 and
+    # v26.10.21: malformed JSON, unknown protocol, wrong type, empty and
+    # missing file all exit 23; a valid config exits 0). rc 124 = timeout,
+    # 127 = binary problem, anything else (126, signals, ...) is
+    # inconclusive and never authorizes an overwrite.
     if command -v timeout >/dev/null 2>&1; then
         XRAY_LOCATION_ASSET=/usr/local/share/xray timeout 30 "$bin" run -test -config "$cfg" >/dev/null 2>&1; test_rc=$?
     else
@@ -22764,6 +22811,7 @@ xray_config_autorecover() {
     fi
     (( test_rc == 0 )) && return 2
     (( test_rc == 124 || test_rc == 127 )) && return 2
+    (( test_rc == 23 )) || return 2
     bad_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || return 1
     [[ -n "$bad_sha" ]] || return 1
     now=$(date +%s)
@@ -22780,12 +22828,22 @@ xray_config_autorecover() {
         case "$gate" in
             restored|cooldown|rate)
                 _xrc_stop_xray "$statusf" "$bad_sha" "auto-recovery already attempted ($gate); manual restore required"
+                _xrc_rc=$?
+                (( _xrc_rc == 2 )) && return 2
                 return 1
                 ;;
         esac
     fi
-    # Record the attempt BEFORE any side effect.
-    _xrc_marker_append "$marker" attempt "$bad_sha" "" || return 1
+    # Record the attempt BEFORE any side effect. A failed record must
+    # still stop the service first (R15-F07-04): rc 1 promises the probe
+    # "stopped + latched", so it may never be returned while the service
+    # is still (or unknown to be) running.
+    _xrc_marker_append "$marker" attempt "$bad_sha" "" || {
+        _xrc_stop_xray "$statusf" "$bad_sha" "auto-recovery attempt could not be recorded"
+        _xrc_rc=$?
+        (( _xrc_rc == 2 )) && return 2
+        return 1
+    }
     local _cand _count=0 _good='' _good_src='' _work _sz _stage _restart_ok=0 _st_tmp
     _work=$(mktemp -d /tmp/A-Box-xray-autorecover.XXXXXX) || return 1
     chmod 700 "$_work" || { rm -rf "$_work"; return 1; }
@@ -22823,25 +22881,37 @@ xray_config_autorecover() {
     if [[ -z "$_good" ]]; then
         _xrc_marker_append "$marker" failed "$bad_sha" "no-trusted-good-backup" || true
         _xrc_stop_xray "$statusf" "$bad_sha" "no trusted backup with a valid xray config"
+        _xrc_rc=$?
         rm -rf "$_work"
+        (( _xrc_rc == 2 )) && return 2
         return 1
     fi
     # Re-verify: the live config must still be the same broken content and
     # the desired state still RUNNING; anything else aborts this stale verdict.
     if [[ "$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}')" != "$bad_sha" ]]; then
-        rm -rf "$_work"; return 1
+        rm -rf "$_work"; return 2
     fi
-    if [[ -f "$abox/.desired_state" && ! -L "$abox/.desired_state" ]]; then
-        [[ "$(cat "$abox/.desired_state" 2>/dev/null || true)" == 'RUNNING' ]] || { rm -rf "$_work"; return 1; }
-    fi
+    _desired=$(get_desired_state 2>/dev/null) || { rm -rf "$_work"; return 2; }
+    [[ "$_desired" == 'RUNNING' ]] || { rm -rf "$_work"; return 2; }
     # Preserve the broken config aside (0600; keeps the failure evidence),
     # then atomically install the good config next to the live one.
     install -m 600 -- "$cfg" "$abox/xray-config.broken-${bad_sha:0:12}.json" 2>/dev/null || { rm -rf "$_work"; return 1; }
     _stage=$(umask 077; mktemp "$(dirname "$cfg")/.xray-config.A-Box-new.XXXXXX") || { rm -rf "$_work"; return 1; }
     cp -f -- "$_good" "$_stage" 2>/dev/null || { rm -f -- "$_stage"; rm -rf "$_work"; return 1; }
-    chmod 600 -- "$_stage" 2>/dev/null || true
-    [[ $EUID -eq 0 ]] && chown root:root -- "$_stage" 2>/dev/null || true
     mv -f -- "$_stage" "$cfg" || { rm -f -- "$_stage"; rm -rf "$_work"; return 1; }
+    # R15-F07-01: the live config must be readable by the xray runtime
+    # user (the unit runs as User=abox-xray). The old 0600 root:root
+    # install made every restore fail at restart; use the same
+    # root:runtime-group 0640 the normal deploy path sets. A failure
+    # here is a failed restore, not a restored service.
+    prepare_abox_runtime_read_file "$cfg" xray || {
+        _xrc_marker_append "$marker" failed "$bad_sha" "restore-perm-failed" || true
+        _xrc_stop_xray "$statusf" "$bad_sha" "restored config installed but its runtime permissions could not be set"
+        _xrc_rc=$?
+        rm -rf "$_work"
+        (( _xrc_rc == 2 )) && return 2
+        return 1
+    }
     # One controlled restart; verify the service is actually up afterwards.
     # A still-failing service is NOT followed by trying older backups.
     if [[ "$(effective_init_system 2>/dev/null || true)" == 'systemd' ]]; then
@@ -22868,7 +22938,9 @@ xray_config_autorecover() {
     fi
     _xrc_marker_append "$marker" failed "$bad_sha" "restart-failed" || true
     _xrc_stop_xray "$statusf" "$bad_sha" "restored config installed but the service did not come up"
+    _xrc_rc=$?
     rm -rf "$_work"
+    (( _xrc_rc == 2 )) && return 2
     return 1
 }
 
@@ -27180,7 +27252,14 @@ argo_remove_unit() { # $1 = unit name; best-effort, refuses foreign units
     fi
     # Only A-Box-managed units (written by argo_write_unit with the
     # marker) may be removed; a foreign service sharing the name
-    # must survive, as must a service with no /etc unit at all.
+    # must survive.
+    # R15-F09-01: "no unit file" is not a removal failure (a first
+    # deploy has nothing to tear down) -- but only when the manager
+    # also confirms nothing of this unit survives. A loaded unit whose
+    # file was deleted, or a residue process, still blocks the removal.
+    if [[ ! -e "$unit" && ! -L "$unit" ]]; then
+        argo_unit_stopped_confirmed "$name" && return 0 || return 1
+    fi
     [[ -f "$unit" && ! -L "$unit" ]] || return 1
     grep -Fxq '# Managed by A-Box' "$unit" 2>/dev/null || return 1
     # R6-F08-6 (A'): verify each step's OUTCOME, not just its rc. A stop/disable
@@ -31322,7 +31401,7 @@ force_stop_owned_openrc() {
 }
 
 stop_owned() {
-    local srv="$1" u rc enabled_state rc_show
+    local srv="$1" u rc enabled_state rc_show _stop_state _stop_pid
     u=$(managed_unit_path "$srv") || return 1
     if ! owned "$srv"; then
         # An existing but unmarked unit is outside A-Box ownership and cannot be
@@ -31340,20 +31419,39 @@ stop_owned() {
     fi
     if is_systemd; then
         systemctl stop "$srv" >/dev/null 2>&1 || true
-        if systemctl is-active --quiet "$srv"; then
-            # Restart=always can race a failed stop. Disable first, then kill the
-            # unit cgroup and re-check actual activity before reporting success.
-            systemctl disable "$srv" >/dev/null 2>&1 || return 1
-            systemctl kill --kill-who=all --signal=SIGKILL "$srv" >/dev/null 2>&1 || true
-            systemctl stop "$srv" >/dev/null 2>&1 || true
-        fi
-        systemctl is-active --quiet "$srv" && return 1
+        # R15-F10-01: verify with ActiveState, not is-active. is-active
+        # returns non-zero for activating/deactivating/query-failure too,
+        # which is not "stopped"; only inactive|failed (+ MainPID 0) is.
+        _stop_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
+        case "$_stop_state" in
+            active|activating|deactivating|reloading)
+                # Restart=always can race a failed stop. Disable first, then kill the
+                # unit cgroup and re-check actual activity before reporting success.
+                systemctl disable "$srv" >/dev/null 2>&1 || return 1
+                systemctl kill --kill-who=all --signal=SIGKILL "$srv" >/dev/null 2>&1 || true
+                systemctl stop "$srv" >/dev/null 2>&1 || true
+                ;;
+            inactive|failed) : ;;
+            *) return 1 ;;
+        esac
+        # Final verification: confirmed stopped, not merely "not active".
+        _stop_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
+        case "$_stop_state" in
+            inactive|failed) : ;;
+            *) return 1 ;;
+        esac
+        _stop_pid=$(systemctl show -p MainPID --value "$srv" 2>/dev/null) || return 1
+        [[ "$_stop_pid" == 0 ]] || return 1
         systemctl disable "$srv" >/dev/null 2>&1 || return 1
         enabled_state=$(systemctl show -p UnitFileState --value "$srv" 2>/dev/null) || return 1
         [[ "$enabled_state" == disabled ]] || return 1
         # Hardening: a unit that was still activating may reach active
         # after the first check; re-verify before reporting success.
-        systemctl is-active --quiet "$srv" && return 1
+        _stop_state=$(systemctl show -p ActiveState --value "$srv" 2>/dev/null) || return 1
+        case "$_stop_state" in
+            inactive|failed) : ;;
+            *) return 1 ;;
+        esac
         return 0
     else
         rc-service "$srv" stop >/dev/null 2>&1 || true
@@ -33039,7 +33137,7 @@ abox_caddy_owned() {
 do_cleanup() {
     clear; msg "${RED}$(tr_msg cu_running)${NC}"
     init_system_environment
-    local uninstall_tx_dir='' uninstall_tx_key='' uninstall_tx_value=''
+    local uninstall_tx_dir='' uninstall_tx_key='' uninstall_tx_value='' _argo_rm_failed=0 _an='' _au=''
     if [[ "${1:-}" == full || "${1:-}" == wipe ]]; then
         uninstall_tx_dir=$(mktemp -d /run/A-Box-uninstall-tx.XXXXXX) || die "$(tr_msg cu_tx_dir)"
         chmod 700 "$uninstall_tx_dir" || { rm -rf -- "$uninstall_tx_dir"; die "$(tr_msg cu_tx_perm)"; }
@@ -33080,16 +33178,37 @@ do_cleanup() {
     remove_abox_created_service_users || true
     # Argo units/binary, WARP/Argo/traffic state and the Wallos fail2ban
     # pair are outside the managed-path lists; remove them best-effort.
-    argo_remove_unit argo || true
-    argo_remove_unit argo-vmess || true
-    argo_remove_unit argo-vless || true
-    # R1-10-F4: cloudflared is deleted only when A-Box ownership is recorded;
-    # a foreign binary is kept. (do_cleanup tears Wallos down below, so no
-    # remaining-consumer gate is needed here, unlike check_virgin_state.)
-    if [[ -f /etc/ddr/.abox-cloudflared-owned ]]; then
-        rm -f /usr/local/bin/cloudflared /etc/ddr/.abox-cloudflared-owned || true
+    # R15-F10-02: a removal failure must never be swallowed and then
+    # followed by destroying the binary, token and state: on any failure
+    # the Argo assets are kept for retry and the cleanup reports failure.
+    argo_remove_unit argo || _argo_rm_failed=1
+    argo_remove_unit argo-vmess || _argo_rm_failed=1
+    argo_remove_unit argo-vless || _argo_rm_failed=1
+    # Final verification before any Argo asset is destroyed: no unit
+    # file and no manager residue for any of the three units.
+    if (( _argo_rm_failed == 0 )); then
+        for _an in argo argo-vmess argo-vless; do
+            if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+                _au="/etc/systemd/system/${_an}.service"
+            else
+                _au="/etc/init.d/${_an}"
+            fi
+            if [[ -e "$_au" || -L "$_au" ]] || ! argo_unit_stopped_confirmed "$_an"; then
+                _argo_rm_failed=1
+            fi
+        done
     fi
-    rm -f "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true
+    if (( _argo_rm_failed == 1 )); then
+        msg "${YELLOW}[!] Argo unit removal incomplete; cloudflared binary, token and Argo state are kept for retry.${NC}"
+    else
+        # R1-10-F4: cloudflared is deleted only when A-Box ownership is recorded;
+        # a foreign binary is kept. (do_cleanup tears Wallos down below, so no
+        # remaining-consumer gate is needed here, unlike check_virgin_state.)
+        if [[ -f /etc/ddr/.abox-cloudflared-owned ]]; then
+            rm -f /usr/local/bin/cloudflared /etc/ddr/.abox-cloudflared-owned || true
+        fi
+        rm -f "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true
+    fi
     # R12C10-01: refuse a mountpoint at or under standalone-links.d before
     # deleting, and propagate deletion failures instead of suppressing them.
     path_tree_has_mountpoint /etc/ddr/standalone-links.d && die 'Refusing to delete /etc/ddr/standalone-links.d: mountpoint present in its tree.'
@@ -33179,6 +33298,10 @@ do_cleanup() {
             setup_shortcut || die "$(tr_msg cu_shortcut)"
         fi
         commit_deployment_transaction
+        if (( _argo_rm_failed == 1 )); then
+            msg "${YELLOW}[!] Cleanup finished with Argo removal incomplete; cloudflared binary, token and Argo state were kept for retry.${NC}"
+            exit 1
+        fi
         msg "${GREEN}$(tr_msg cu_full_done)${NC}"
         exit 0
     fi
@@ -33191,6 +33314,11 @@ do_cleanup() {
     setup_shortcut
     commit_deployment_transaction
     remove_abox_swap || msg "${YELLOW}[!] $(tr_msg cl_swap_keep)${NC}"
+    if (( _argo_rm_failed == 1 )); then
+        msg "${YELLOW}[!] Cleanup finished with Argo removal incomplete; cloudflared binary, token and Argo state were kept for retry.${NC}"
+        pause_return
+        return 1
+    fi
     msg "${GREEN}$(tr_msg cu_proxy_done)${NC}"
     pause_return
 }
@@ -35137,7 +35265,7 @@ users_hy2_yaml_scalar() {
 }
 
 users_hy2_read_users() {
-    local cfg="$1" block='' type='' pw='' out='[]'
+    local cfg="$1" block='' type='' pw='' out='[]' _bs_folded=0 _bs_body='' _bs_count=0 _bs_line='' _bs_re=''
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
     block=$(awk '/^auth:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^auth:/) exit} f{print}' "$cfg" 2>/dev/null) || return 1
     [[ -n "$block" ]] || return 1
@@ -35206,8 +35334,42 @@ users_hy2_read_users() {
     fi
     pw=$(printf '%s\n' "$block" | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
     [[ -n "$pw" ]] || return 1
-    pw=$(users_hy2_yaml_scalar "$pw") || return 1
-    pw=${pw%__ABOX_TRAILING_NL_KEEP__}
+    # R15-F11-03: a block-scalar password is read from the block body.
+    # The header marker itself ('|-', '|', '>-', ...) is not a password:
+    # adopting it would rewrite the server secret to a public constant.
+    _bs_re='^[|>]([+-][0-9]?|[0-9][+-]?)?[[:space:]]*(#.*)?$'
+    if [[ "$pw" =~ $_bs_re ]]; then
+        _bs_folded=0
+        [[ "$pw" == '>'* ]] && _bs_folded=1
+        _bs_body=$(printf '%s\n' "$block" | awk '
+            !found && /^[[:space:]]*password:/ { match($0, /^ */); pind = RLENGTH; found = 1; next }
+            found {
+                if ($0 ~ /^[[:space:]]*$/) { print ""; next }
+                match($0, /^ */); ind = RLENGTH
+                if (ind <= pind) exit
+                if (!started) { bind = ind; started = 1 }
+                line = substr($0, bind + 1)
+                sub(/\r$/, "", line)
+                print line
+            }') || return 1
+        _bs_count=0; pw=''
+        while IFS= read -r _bs_line; do
+            while [[ "$_bs_line" == *' ' || "$_bs_line" == *$'\t' ]]; do _bs_line=${_bs_line%?}; done
+            [[ -n "$_bs_line" ]] || continue
+            _bs_count=$(( _bs_count + 1 ))
+            if (( _bs_count == 1 )); then
+                pw="$_bs_line"
+            elif (( _bs_folded == 1 )); then
+                pw+=" $_bs_line"
+            else
+                return 1
+            fi
+        done <<< "$_bs_body"
+        (( _bs_count >= 1 )) || return 1
+    else
+        pw=$(users_hy2_yaml_scalar "$pw") || return 1
+        pw=${pw%__ABOX_TRAILING_NL_KEEP__}
+    fi
     # R3C11-04: a deny password is not a user; returning [] keeps the
     # registry's (disabled) users intact without resurrecting the deny
     # as an enabled user on the next menu visit.

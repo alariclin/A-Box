@@ -24776,14 +24776,11 @@ xray_api_add_inbound() {
     # adi loads a config document (inbounds array), not a bare object:
     # a bare object adds zero inbounds yet can exit 0, so wrap it.
     local doc
-    doc=$(mktemp /tmp/A-Box-xray-adi.XXXXXX) || return 1
-    # R15-F08-01: reserve the .json target exclusively before the mv:
-    # mktemp only owns the bare path, so a watcher could pre-create
-    # "$doc.json" as a directory (mv installs the file inside it) and
-    # swap in a symlink before jq writes. Same noclobber pattern as
-    # the Trojan deploy path.
-    ( umask 077; set -o noclobber; : > "$doc.json" ) 2>/dev/null || { rm -f "$doc"; return 1; }
-    mv "$doc" "$doc.json" || { rm -f "$doc" "$doc.json"; return 1; }; doc="$doc.json"
+    # R16-F08-02: create the .json target directly with mktemp
+    # (O_CREAT|O_EXCL, random suffix). The old reserve+mv derived a
+    # predictable "$doc.json" name from the bare mktemp path, and a
+    # pre-planted FIFO there blocked the noclobber redirect forever.
+    doc=$(mktemp /tmp/A-Box-xray-adi.XXXXXX.json) || return 1
     if ! jq -s '{inbounds: .}' "$json_file" > "$doc" 2>/dev/null; then rm -f "$doc"; return 1; fi
     if ! jq -e '.inbounds | length == 1' "$doc" >/dev/null 2>&1; then rm -f "$doc"; return 1; fi
     if ! /usr/local/bin/xray api adi --server="$XRAY_API_SERVER" "$doc" >/dev/null 2>&1; then rm -f "$doc"; return 1; fi
@@ -26575,7 +26572,7 @@ deploy_xray_trojan_landing() {
     light_preflight_check
 
     port=$(prompt_validated "$(tr_msg trojan_port_prompt)" port '443') || die 'Trojan port input failed.'
-    IFS= read -r -p "$(tr_msg trojan_pass_prompt)" pass || pass=''
+    IFS= read -r -p "$(tr_msg trojan_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'Trojan password generation failed.'
         [[ -n "$pass" ]] || die 'Trojan password generation failed.'
@@ -26648,9 +26645,10 @@ deploy_xray_trojan_landing() {
         if jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
             msg "${YELLOW}$(tr_msg trojan_exists)${NC}"
         fi
-        tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        ( umask 077; set -o noclobber; : > "$tmp_cfg.json" ) 2>/dev/null || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_tmpfile)"; }
-        mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$tmp_cfg.json"; die "$(tr_msg dp_tmpfile)"; }; tmp_cfg="$tmp_cfg.json"
+        # R16-F08-02: create the .json target directly with mktemp
+        # (O_CREAT|O_EXCL, random suffix); the old reserve+mv derived
+        # a predictable name a pre-planted FIFO could block forever.
+        tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX.json) || die "$(tr_msg dp_tmpfile)"
         if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
                 '.inbounds = (.inbounds // [])
                  | (.inbounds | map(select(.tag==$t))) as $old
@@ -26702,7 +26700,7 @@ deploy_singbox_trojan_landing() {
     light_preflight_check
 
     port=$(prompt_validated "$(tr_msg trojan_port_prompt)" port '443') || die 'Trojan port input failed.'
-    IFS= read -r -p "$(tr_msg trojan_pass_prompt)" pass || pass=''
+    IFS= read -r -p "$(tr_msg trojan_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'Trojan password generation failed.'
         [[ -n "$pass" ]] || die 'Trojan password generation failed.'
@@ -26789,6 +26787,11 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    # R16-F08-01: a pre-existing binary does not imply a service unit
+    # exists (same gap as R7-13 on the SOCKS5 path); ensure it here,
+    # before the config merge and restart.
+    ensure_singbox_service_unit || die "$(tr_msg dp_sb_unit)"
+
     # R1-09-C01/R10C9-01: function-level seed: the in-branch seed only
     # runs when the binary was missing; a present binary with a missing
     # config must also be seeded before the merge below reads it.
@@ -26874,7 +26877,7 @@ deploy_singbox_tuic() {
     light_preflight_check
 
     port=$(prompt_validated "$(tr_msg tuic_port_prompt)" port '443') || die 'TUIC port input failed.'
-    IFS= read -r -p "$(tr_msg tuic_pass_prompt)" pass || pass=''
+    IFS= read -r -p "$(tr_msg tuic_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'TUIC password generation failed.'
         [[ -n "$pass" ]] || die 'TUIC password generation failed.'
@@ -26969,6 +26972,11 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    # R16-F08-01: a pre-existing binary does not imply a service unit
+    # exists (same gap as R7-13 on the SOCKS5 path); ensure it here,
+    # before the config merge and restart.
+    ensure_singbox_service_unit || die "$(tr_msg dp_sb_unit)"
+
     # R1-09-C01/R10C9-01: function-level seed: the in-branch seed only
     # runs when the binary was missing; a present binary with a missing
     # config must also be seeded before the merge below reads it.
@@ -27073,7 +27081,7 @@ deploy_singbox_anytls() {
     light_preflight_check
 
     port=$(prompt_validated "$(tr_msg anytls_port_prompt)" port '443') || die 'AnyTLS port input failed.'
-    IFS= read -r -p "$(tr_msg anytls_pass_prompt)" pass || pass=''
+    IFS= read -r -p "$(tr_msg anytls_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'AnyTLS password generation failed.'
         [[ -n "$pass" ]] || die 'AnyTLS password generation failed.'
@@ -27160,6 +27168,11 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    # R16-F08-01: a pre-existing binary does not imply a service unit
+    # exists (same gap as R7-13 on the SOCKS5 path); ensure it here,
+    # before the config merge and restart.
+    ensure_singbox_service_unit || die "$(tr_msg dp_sb_unit)"
+
     # R1-09-C01/R10C9-01: function-level seed: the in-branch seed only
     # runs when the binary was missing; a present binary with a missing
     # config must also be seeded before the merge below reads it.
@@ -27246,7 +27259,7 @@ deploy_singbox_shadowtls() {
     light_preflight_check
 
     port=$(prompt_validated "$(tr_msg shadowtls_port_prompt)" port '443') || die 'ShadowTLS port input failed.'
-    IFS= read -r -p "$(tr_msg shadowtls_pass_prompt)" pass || pass=''
+    IFS= read -r -p "$(tr_msg shadowtls_pass_prompt)" pass || die "$(tr_msg pi_input_closed)"
     if [[ -z "$pass" ]]; then
         pass=$(rand_alnum 16) || die 'ShadowTLS password generation failed.'
         [[ -n "$pass" ]] || die 'ShadowTLS password generation failed.'
@@ -27335,6 +27348,11 @@ EOF_SVC
         fi
         prepare_abox_runtime_permissions sing-box || die "$(tr_msg dp_sb_runtime)"
     fi
+    # R16-F08-01: a pre-existing binary does not imply a service unit
+    # exists (same gap as R7-13 on the SOCKS5 path); ensure it here,
+    # before the config merge and restart.
+    ensure_singbox_service_unit || die "$(tr_msg dp_sb_unit)"
+
     # R1-09-C01/R10C9-01: function-level seed: the in-branch seed only
     # runs when the binary was missing; a present binary with a missing
     # config must also be seeded before the merge below reads it.
@@ -29619,6 +29637,23 @@ routing_outbound_has() {
         "$ROUTING_STATE_FILE" >/dev/null 2>&1
 }
 
+# R16-F09-02: the routing state file is not the whole truth about live
+# outbounds: a tag may exist in a core config without being registered
+# (hand-added, or state lost). Numbering that only consults the state
+# file would reuse such a tag and the next routing_apply_live would
+# silently replace the unmanaged outbound. Check both live configs
+# (JSONC-aware, like the 'direct' branch above). Callers that only
+# need managed-state membership keep using routing_outbound_has.
+routing_outbound_has_live() {
+    local tag="$1" cfg=''
+    [[ -n "$tag" ]] || return 1
+    for cfg in /usr/local/etc/xray/config.json /etc/sing-box/config.json; do
+        [[ -f "$cfg" && ! -L "$cfg" ]] || continue
+        jsonc_strip_comments "$cfg" 2>/dev/null | jq -e --arg t "$tag" '.outbounds[]? | select(.tag == $t)' >/dev/null 2>&1 && return 0
+    done
+    return 1
+}
+
 # $1=tag, $2=xray outbound JSON file, $3=singbox outbound JSON file (idempotent)
 routing_outbound_add() {
     local tag="$1" xf="$2" sf="$3" tmp rc
@@ -29787,7 +29822,13 @@ routing_apply_live() {
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
-            if jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "$applied_file" 2>/dev/null; then
+            # R16-F09-03: refuse a directory $applied_file target:
+            # `mv -f file dir/` succeeds by moving the record INTO the
+            # dir, so without this guard the code walks past the commit
+            # point with no record file and later rule deletions cannot
+            # retire the still-live rules. Failure routes to the
+            # existing rollback below.
+            if [[ ! -d "$applied_file" ]] && jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "$applied_file" 2>/dev/null; then
                 :
             else
                 rm -f "$atmp"
@@ -29893,7 +29934,13 @@ routing_apply_live() {
                 msg "${YELLOW}[!] $(tr_msg warp_applied_fail)${NC}"
                 return 1
             fi
-            if jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "$applied_file" 2>/dev/null; then
+            # R16-F09-03: refuse a directory $applied_file target:
+            # `mv -f file dir/` succeeds by moving the record INTO the
+            # dir, so without this guard the code walks past the commit
+            # point with no record file and later rule deletions cannot
+            # retire the still-live rules. Failure routes to the
+            # existing rollback below.
+            if [[ ! -d "$applied_file" ]] && jq -c '{outbounds:[.outbounds[].tag], rules_xray:[.rules[]? | (.xray_rule // empty)], rules_singbox:[.rules[]? | (.singbox_rule // empty) | (if has("geosite") then (.rule_set = (((.rule_set) // []) + (.geosite | map("geosite-" + .))) | del(.geosite)) else . end)]}' "$ROUTING_STATE_FILE" > "$atmp" 2>/dev/null && mv -f "$atmp" "$applied_file" 2>/dev/null; then
                 :
             else
                 rm -f "$atmp"
@@ -30277,7 +30324,11 @@ split_add_socks_outbound() {
     # non-integers and out-of-range ports before anything is persisted.
     [[ "$port" =~ ^[0-9]+$ && ${#port} -le 5 ]] && (( 10#$port >= 1 && 10#$port <= 65535 )) || return 1
     n=1
-    while routing_outbound_has "socks-land$n"; do n=$((n+1)); done
+    # R16-F09-02: also skip tags already present in a live core config
+    # but not registered in the routing state file (see
+    # routing_outbound_has_live); reusing one would silently replace
+    # the unmanaged outbound at the next apply.
+    while routing_outbound_has "socks-land$n" || routing_outbound_has_live "socks-land$n"; do n=$((n+1)); done
     tag="socks-land$n"
     workdir=$(mktemp -d) || return 1
     trap 'rm -rf -- "$workdir"' RETURN
@@ -30610,9 +30661,10 @@ EOF_SVC
     if [[ -f "$cfg" && ! -L "$cfg" ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag==$t)' "$cfg" >/dev/null 2>&1; then
         local tmp_cfg
         msg "${YELLOW}$(tr_msg socks5_exists)${NC}"
-        tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        ( umask 077; set -o noclobber; : > "$tmp_cfg.json" ) 2>/dev/null || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_tmpfile)"; }
-        mv "$tmp_cfg" "$tmp_cfg.json" || { rm -f "$tmp_cfg" "$tmp_json" "$tmp_cfg.json"; die "$(tr_msg dp_tmpfile)"; }; tmp_cfg="$tmp_cfg.json"
+        # R16-F08-02: create the .json target directly with mktemp
+        # (O_CREAT|O_EXCL, random suffix); the old reserve+mv derived
+        # a predictable name a pre-planted FIFO could block forever.
+        tmp_cfg=$(mktemp /tmp/A-Box-xray-cfg.XXXXXX.json) || die "$(tr_msg dp_tmpfile)"
         if ! jq --arg t "$tag" --slurpfile nb "$tmp_json" \
                 '.inbounds = (.inbounds // [])
                  | (.inbounds | map(select(.tag==$t))) as $old
@@ -32199,6 +32251,13 @@ restore_pre_block_states() {
         if [[ "$active" == 1 ]]; then
             if is_systemd; then systemctl restart "$srv" >/dev/null 2>&1 || _rc=1;
             else rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&- || _rc=1; fi
+            # R16-F10-03: a restart rc of 0 does not prove the service
+            # stayed up (Type=simple units report success once the main
+            # process is spawned). Verify liveness like start_owned
+            # does, or a dead core would be reported as resumed and its
+            # snapshot discarded.
+            if is_systemd; then systemctl is-active --quiet "$srv" || _rc=1;
+            else rc-service "$srv" status >/dev/null 2>&1 9>&- 10>&- || _rc=1; fi
         fi
     done < "$file"
     return "$_rc"
@@ -33995,8 +34054,10 @@ _remove_inbounds_from_config() {
     bak=$(mktemp /tmp/A-Box-rm-bak.XXXXXX) || return 1
     cp -f -- "$cfg" "$bak" || { rm -f "$bak"; return 1; }
     src_cfg=$(mktemp /tmp/A-Box-rm-cfg.XXXXXX) || { rm -f "$bak"; return 1; }
-    tmp_cfg="$src_cfg.json"
-    ( umask 077; set -o noclobber; : > "$tmp_cfg" ) 2>/dev/null || { rm -f "$src_cfg" "$bak"; return 1; }
+    # R16-F08-02: create the jq output directly with mktemp
+    # (O_CREAT|O_EXCL, random suffix); the old reserve derived a
+    # predictable "$src_cfg.json" name a pre-planted FIFO could block.
+    tmp_cfg=$(mktemp /tmp/A-Box-rm-cfg.XXXXXX.json) || { rm -f "$src_cfg" "$bak"; return 1; }
     if ! jsonc_strip_comments "$bak" > "$src_cfg" 2>/dev/null; then
         rm -f "$src_cfg" "$tmp_cfg" "$bak"
         return 1
@@ -34092,7 +34153,10 @@ users_registry_remove() { # $1 = core, $2 = tag
     # always a single filename component, so no guard is needed.
     local _f=''
     _f=$(users_reg_file "$1" "$2") || return 0
-    [[ -f "$_f" && ! -L "$_f" ]] && rm -f -- "$_f"
+    # R16-F10-02: propagate a failed rm like the adjacent
+    # users_registries_wipe does (`rm -f ... || return 1`); the old
+    # unconditional `return 0` reported a surviving registry as deleted.
+    if [[ -f "$_f" && ! -L "$_f" ]]; then rm -f -- "$_f" || return 1; fi
     return 0
 }
 
@@ -34298,7 +34362,14 @@ _protocol_removed_side_effects() { # $1 = core, rest = removed tags
             *shadowtls*) _standalone_link_prune_if_gone shadowtls /etc/ddr/standalone-links.d/shadowtls.link ;;
             *socks*|*mixed*) _standalone_link_prune_if_gone socks5-sb /etc/ddr/standalone-links.d/socks5-sb.link; _standalone_link_prune_if_gone socks5-xray /etc/ddr/standalone-links.d/socks5-xray.link ;;
         esac
-        [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true
+        # R16-F10-01: never let the generic delete undo a prune that
+        # just kept a link: when $tag is itself a prune key, the link
+        # is owned by _standalone_link_prune_if_gone (delete only on
+        # confirmed rc 1); the generic rm would delete it unconditionally.
+        case "$tag" in
+            trojan-xray|trojan-sb|tuic|anytls|shadowtls|socks5-sb|socks5-xray) ;;
+            *) [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && rm -f -- "/etc/ddr/standalone-links.d/${tag}.link" 2>/dev/null || true ;;
+        esac
         users_registry_remove "$core" "$tag"
     done
     # SYD-B E16: a removed sing-box Hy2 inbound owns its cert/key

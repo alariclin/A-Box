@@ -17591,6 +17591,7 @@ _fw_restore_leg() {
     local cmd="$1" save_cmd="$2" restore_cmd="$3"
     local snapshot="$4" wl_tag="$5" drop_tag="$6"
     local backup tmp='' src='' final_policy=''
+    local _rb_ok=0 _rb_clamped='' _rb_src=''
 
     backup=$(mktemp /run/A-Box-firewall-restore-backup.XXXXXX) || return 1
     "$save_cmd" > "$backup" 2>/dev/null || {
@@ -17680,10 +17681,39 @@ _fw_restore_leg() {
         return 0
     fi
 
+    # R16-F06-01: the clean above may already have deleted the A-Box
+    # rules; a bare DROP re-clamp does not bring them back, and foreign
+    # ACCEPT rules below them become effective at once. Restore the
+    # pre-delete backup first (flush-restore of a DROP-clamped copy, so
+    # partially restored snapshot rules are not duplicated and the policy
+    # cannot come back as ACCEPT), then re-clamp DROP. A failed rollback
+    # still reports failure and keeps the backup for manual recovery; the
+    # leg still returns 1 (its goal was not achieved).
+    if [[ -s "$backup" ]]; then
+        _rb_clamped=$(mktemp /run/A-Box-firewall-restore-rollback.XXXXXX 2>/dev/null) || _rb_clamped=''
+        if [[ -n "$_rb_clamped" ]] && awk '
+            /^\*/ { f=($0 ~ /^\*filter[ \t]*$/) }
+            /^COMMIT[ \t]*$/ { f=0 }
+            f && $1 == ":INPUT" { sub(/ACCEPT|DROP/, "DROP") }
+            { print }
+        ' "$backup" > "$_rb_clamped" 2>/dev/null && [[ -s "$_rb_clamped" ]]; then
+            _rb_src="$_rb_clamped"
+        else
+            _rb_src="$backup"
+        fi
+        if [[ -n "$_rb_src" ]] && { "$restore_cmd" -w < "$_rb_src" >/dev/null 2>&1 || "$restore_cmd" < "$_rb_src" >/dev/null 2>&1; }; then
+            _rb_ok=1
+        fi
+        if [[ -n "$_rb_clamped" ]]; then rm -f -- "$_rb_clamped"; fi
+    fi
     if ! _iptables_do "$cmd" -P INPUT DROP >/dev/null 2>&1; then
         echo "A-Box firewall restore: $cmd failed to enforce DROP; manual recovery required." >&2
     fi
-    echo "A-Box firewall restore FAILED; pre-delete backup preserved: $backup (restore manually)" >&2
+    if (( _rb_ok == 1 )); then
+        echo "A-Box firewall restore FAILED; pre-delete backup restored: $backup" >&2
+    else
+        echo "A-Box firewall restore FAILED; pre-delete backup preserved: $backup (restore manually)" >&2
+    fi
     if [[ -n "$tmp" ]]; then rm -f -- "$tmp"; fi
     return 1
 }
@@ -18978,7 +19008,7 @@ allowPort() {
                             firewalld_cmd_zone "$_zone" --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || _rrc=1
                             firewalld_port_state "$_sub" "$type" runtime "$_zone"; _sirc=$?
                             if (( _rrc == 0 && _sirc == 1 )); then
-                                forget_native_firewall_rule "$_sub" "$type" firewalld "$_zone" "runtime" >/dev/null 2>&1 || true
+                                forget_native_firewall_rule "$_sub" "$type" firewalld "$_zone" "runtime" >/dev/null 2>&1 || _rb_failed=1
                             else
                                 _rb_failed=1
                             fi
@@ -19025,7 +19055,7 @@ allowPort() {
                             firewalld_cmd_zone "$_zone" --remove-port="$(port_spec_for_firewalld "$_sub")/${type}" >/dev/null 2>&1 || _rrc=1
                             firewalld_port_state "$_sub" "$type" runtime "$_zone"; _sirc=$?
                             if (( _rrc == 0 && _sirc == 1 )); then
-                                forget_native_firewall_rule "$_sub" "$type" firewalld "$_zone" "runtime" >/dev/null 2>&1 || true
+                                forget_native_firewall_rule "$_sub" "$type" firewalld "$_zone" "runtime" >/dev/null 2>&1 || _rb_failed=1
                             else
                                 _rb_failed=1
                             fi
@@ -19057,7 +19087,12 @@ allowPort() {
         1) _iptables_do "$IPT" -I INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT >/dev/null 2>&1 || die "$(tprintf fw2_v4_allow "${spec}/${type}")" ;;
         *) die "$(tprintf fw2_v4_check "${spec}/${type}")" ;;
     esac
-    if has_ipv6 && command -v ip6tables >/dev/null 2>&1 && _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
+    # R16-F06-04: the second v6 query (after the IPv4 change) must fail
+    # the function, like the pre-check above -- never silently skip v6 and
+    # report success with the port still unreachable over v6.
+    if has_ipv6; then
+        command -v ip6tables >/dev/null 2>&1 || die "$(tprintf fw2_v6_missing "${spec}/${type}")"
+        _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1 || die "$(tprintf fw2_v6_check "${spec}/${type}")"
         if iptables_rule_check "$IPT6" INPUT -p "$type" --dport "$spec" -m comment --comment "A-Box-${spec}-${type}" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
         case "$check_rc" in
             0) ;;
@@ -19091,8 +19126,10 @@ remove_ss_open_accept_rules() {
         elif ! _iptables_q "$IPT6" -S INPUT >/dev/null 2>&1; then
             # S27: query failure (permission/lock/module) means v6 rules
             # may still be present; never report the cleanup as done.
-            # R4C6-03: excuse only when IPv6 is confirmed unusable.
-            if host_has_usable_ipv6; then failed=1; fi
+            # R16-F06-07: no address evidence can excuse this -- having
+            # no IPv6 address does not prove the kernel has no IPv6
+            # firewall or no leftover rules.
+            failed=1
         else
             while :; do
                 if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -m comment --comment "$comment" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
@@ -20006,7 +20043,9 @@ clean_input_rules() {
                 read -r -a argv <<< "$rule"
                 _iptables_do "$IPT6" "${argv[@]}" >/dev/null 2>&1 || { failed=1; break; }
             done
-        elif host_has_usable_ipv6; then
+        else
+            # R16-F06-07: a v6 query failure is a failure, never excused
+            # by address evidence (see remove_ss_open_accept_rules).
             failed=1
         fi
     elif host_has_usable_ipv6; then
@@ -20317,6 +20356,16 @@ setup_shortcut() {
     # and refuse a symlinked destination instead of chmod-following it.
     [[ -f "$ABOX_DIR/A-Box.sh" && ! -L "$ABOX_DIR/A-Box.sh" ]] || die "$(tr_msg ss2_persist_missing)"
     validate_abox_script_file "$ABOX_DIR/A-Box.sh" "$(tr_msg ss2_ctx_persisted)" || die "$(tr_msg ss2_persist_verify)"
+    # R16-F06-02: a content-identical install must not preserve a non-root
+    # owner on the persisted script (the atomic install that would have
+    # normalized it is skipped): repair the owner to 0:0; a failed lookup
+    # or repair is fatal. Owner only -- group write is handled by go-w
+    # below, and the group itself is harmless once go-w is stripped.
+    local _abox_owner_uid
+    _abox_owner_uid=$(stat -c %u "$ABOX_DIR/A-Box.sh" 2>/dev/null) || die "$(tr_msg ss2_chmod)"
+    if [[ "$_abox_owner_uid" != 0 ]]; then
+        chown 0:0 -- "$ABOX_DIR/A-Box.sh" || die "$(tr_msg ss2_chmod)"
+    fi
     if ! path_mode_has_no_group_other_write "$ABOX_DIR/A-Box.sh"; then
         chmod go-w -- "$ABOX_DIR/A-Box.sh" || die "$(tr_msg ss2_chmod)"
     fi
@@ -20881,7 +20930,7 @@ print(hashlib.sha256(raw).hexdigest())
             if [[ "${r,,}" == "${fp,,}" ]]; then revoked=1; break; fi
         done
         (( revoked == 0 )) || continue
-        python3 "$py" "$pubkey_b64" "$file" "$sigbin" >/dev/null 2>&1
+        python3 -I "$py" "$pubkey_b64" "$file" "$sigbin" >/dev/null 2>&1
         rc=$?
         if [[ "$rc" == "0" ]]; then rm -rf -- "$keydir"; return 0; fi
         if [[ "$rc" == "2" ]]; then rm -rf -- "$keydir"; return 2; fi
@@ -23110,7 +23159,7 @@ xray_config_autorecover() {
     local bin="${XRAY_BIN:-/usr/local/bin/xray}"
     local abox="${ABOX_DIR:-/etc/ddr}"
     local marker="$abox/.xray-cfg-autorecover" statusf="$abox/.xray-cfg-autorecover.status"
-    local now test_rc bad_sha gate _desired _xrc_rc
+    local now test_rc bad_sha gate _desired _xrc_rc _latched _cur_sha
     [[ -x "$bin" ]] || return 2
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 2
     # Desired state must still be RUNNING; a stopped stack is never pulled up.
@@ -23129,7 +23178,26 @@ xray_config_autorecover() {
     else
         XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$cfg" >/dev/null 2>&1; test_rc=$?
     fi
-    (( test_rc == 0 )) && return 2
+    if (( test_rc == 0 )); then
+        # R16-F07-03: a valid config does not clear a latch recorded
+        # against the earlier broken config (restart-failed): the marker
+        # gate below keys on the current config's sha, so a recent
+        # "failed" record under any sha must hold the latch here, or the
+        # probe restarts the service ~3 rounds later. The 3600s window
+        # matches the existing failed/attempt cooldown and is anchored to
+        # the original failure epoch: this path never appends a marker
+        # record, so it cannot refresh the latch.
+        now=$(date +%s)
+        if [[ -f "$marker" && ! -L "$marker" ]] && _latched=$(awk -v n="$now" '$1 == "failed" && (n - $3) < 3600 { print "latched"; exit }' "$marker" 2>/dev/null || true) && [[ "$_latched" == latched ]]; then
+            _cur_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || _cur_sha=''
+            [[ -n "$_cur_sha" ]] || return 2
+            _xrc_stop_xray "$statusf" "$_cur_sha" "auto-recovery latch still active (earlier restart failed); manual restore required"
+            _xrc_rc=$?
+            (( _xrc_rc == 2 )) && return 2
+            return 1
+        fi
+        return 2
+    fi
     (( test_rc == 124 || test_rc == 127 )) && return 2
     (( test_rc == 23 )) || return 2
     bad_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || return 1
@@ -23168,12 +23236,46 @@ xray_config_autorecover() {
     _work=$(mktemp -d /tmp/A-Box-xray-autorecover.XXXXXX) || return 1
     chmod 700 "$_work" || { rm -rf "$_work"; return 1; }
     local _list
+    # R16-F07-01: BusyBox find (Alpine) has no -printf; python3 is already
+    # a hard dependency, so enumerate by mtime in python (newest first),
+    # as restore_from_backup does (D-07). An enumeration failure is NOT a
+    # latched stop: stop the service and record the failure first, so rc 1
+    # keeps its "stopped + latched" promise to the probe.
     _list=$(
-        for _dir in "$abox/backups" /root/A-Box-backups; do
-            [[ -d "$_dir" && ! -L "$_dir" ]] || continue
-            find "$_dir" -maxdepth 1 -type f -name 'A-Box-backup-*.tar.gz' -printf '%T@ %p\n'
-        done | sort -rn | cut -d' ' -f2-
-    ) || { rm -rf "$_work"; return 1; }
+        python3 -I - "$abox/backups" /root/A-Box-backups <<'PY_XRC_ENUM' || exit 1
+import os, sys
+_ents = []
+for _d in sys.argv[1:]:
+    try:
+        _names = os.listdir(_d)
+    except FileNotFoundError:
+        continue
+    except NotADirectoryError:
+        continue
+    except OSError:
+        sys.exit(1)
+    for _n in _names:
+        if not (_n.startswith('A-Box-backup-') and _n.endswith('.tar.gz')):
+            continue
+        _p = os.path.join(_d, _n)
+        try:
+            if os.path.islink(_p) or not os.path.isfile(_p):
+                continue
+            _ents.append((os.stat(_p).st_mtime, _p))
+        except OSError:
+            sys.exit(1)
+_ents.sort(key=lambda e: (e[0], e[1]), reverse=True)
+for _, _p in _ents:
+    print(_p)
+PY_XRC_ENUM
+    ) || {
+        _xrc_marker_append "$marker" failed "$bad_sha" "backup-enumeration-failed" || true
+        _xrc_stop_xray "$statusf" "$bad_sha" "auto-recovery backup enumeration failed; manual restore required"
+        _xrc_rc=$?
+        rm -rf "$_work"
+        (( _xrc_rc == 2 )) && return 2
+        return 1
+    }
     # Newest first; at most 5 candidates examined. A candidate must be
     # TRUSTED (sha256 sidecar + HMAC verify with the live key, the same
     # trust the manual restore path requires) and its config must pass
@@ -23912,8 +24014,12 @@ restore_geo_transaction() {
         case "$had" in
             1)
                 [[ -f "$txn/$name.old" && ! -L "$txn/$name.old" ]] || return 1
+                # R16-F07-04: refuse a directory (or symlink) target before
+                # moving anything: without -T, mv would drop the staged
+                # file inside the directory and still report success.
+                [[ ( ! -e "$base/$name.dat" || -f "$base/$name.dat" ) && ! -L "$base/$name.dat" ]] || return 1
                 stage=$(mktemp "$base/.$name.A-Box-restore.XXXXXX") || return 1
-                if ! cp -p "$txn/$name.old" "$stage" || ! mv -f "$stage" "$base/$name.dat"; then
+                if ! cp -p "$txn/$name.old" "$stage" || ! mv -f -T -- "$stage" "$base/$name.dat"; then
                     rm -f -- "$stage"
                     return 1
                 fi
@@ -51446,7 +51552,7 @@ run_acheck_tool() {
     fi
     # R11C16-01: run the verified temp file, not the shared cache
     # path, so no install-to-execute window in /etc/ddr/tools exists.
-    python3 "$_md/acheck.py"
+    python3 -I "$_md/acheck.py"
     local _rc=$?
     rm -rf -- "$_md"
     return $_rc

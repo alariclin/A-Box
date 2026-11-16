@@ -34467,7 +34467,7 @@ _remove_hy2_official() {
 
 remove_single_protocol_menu() {
     local -a rows=() tags=()
-    local row='' core='' tag='' proto='' port='' label='' idx=0 choice='' answer='' info='' cfg='' deps='' d='' _detour_target='' _refs=''
+    local row='' core='' tag='' proto='' port='' label='' idx=0 choice='' answer='' info='' cfg='' deps='' d='' _detour_target='' _refs='' _cfg_stripped=''
     local _inv_tmp='' _inv_rc=0
     _inv_tmp=$(mktemp /tmp/A-Box-inventory.XXXXXX) || return 1
     protocol_inventory > "$_inv_tmp"; _inv_rc=$?
@@ -34508,7 +34508,18 @@ remove_single_protocol_menu() {
     if [[ "$core" != 'hy2' ]]; then
         info=$(_protocol_cfg_of "$core")
         IFS='|' read -r cfg _ _ <<< "$info"
-        deps=$(jq -r --arg t "$tag" '.inbounds[]? | select(.detour == $t) | .tag' "$cfg" 2>/dev/null || true)
+        # R16-F11-01: run the dependency queries against the same
+        # JSONC-stripped view _remove_inbounds_from_config deletes
+        # through: raw jq on a commented config fails and the
+        # `|| true` turns the failure into an empty dependency set,
+        # orphaning ShadowTLS detour targets/referrers. A strip
+        # failure fails closed instead of deleting with unknown deps.
+        _cfg_stripped=$(mktemp /tmp/A-Box-rm-deps.XXXXXX) || return 1
+        if ! jsonc_strip_comments "$cfg" > "$_cfg_stripped" 2>/dev/null; then
+            rm -f -- "$_cfg_stripped"
+            return 1
+        fi
+        deps=$(jq -r --arg t "$tag" '.inbounds[]? | select(.detour == $t) | .tag' "$_cfg_stripped" 2>/dev/null || true)
         # SYD-B E12: the reverse query above misses the case where
         # the deleted inbound IS the detour source (ShadowTLS:
         # shadowtls-in detours to shadowtls-ss; the ss inbound is
@@ -34516,10 +34527,10 @@ remove_single_protocol_menu() {
         # by the deleted tag itself and absorb it only when it is
         # an inbound of this config and no other surviving inbound
         # still detours to it.
-        _detour_target=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .detour // empty' "$cfg" 2>/dev/null || true)
+        _detour_target=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .detour // empty' "$_cfg_stripped" 2>/dev/null || true)
         if [[ -n "$_detour_target" ]]; then
-            if jq -e --arg dt "$_detour_target" '.inbounds[]? | select(.tag == $dt)' "$cfg" >/dev/null 2>&1; then
-                _refs=$(jq -r --arg dt "$_detour_target" --arg t "$tag" '.inbounds[]? | select(.detour == $dt and .tag != $t) | .tag' "$cfg" 2>/dev/null || true)
+            if jq -e --arg dt "$_detour_target" '.inbounds[]? | select(.tag == $dt)' "$_cfg_stripped" >/dev/null 2>&1; then
+                _refs=$(jq -r --arg dt "$_detour_target" --arg t "$tag" '.inbounds[]? | select(.detour == $dt and .tag != $t) | .tag' "$_cfg_stripped" 2>/dev/null || true)
                 if [[ -z "$_refs" ]] && ! grep -qx "$_detour_target" <<< "${deps:-}"; then
                     if [[ -n "$deps" ]]; then deps+=$'\n'"$_detour_target"; else deps="$_detour_target"; fi
                 fi
@@ -34529,6 +34540,7 @@ remove_single_protocol_menu() {
             while IFS= read -r d; do [[ -n "$d" ]] && tags+=("$d"); done <<< "$deps"
             msg "${YELLOW}$(tr_msg cl_dep_warn): ${deps//$'\n'/, }${NC}"
         fi
+        rm -f -- "$_cfg_stripped"
     fi
     read -r -p "$(tr_msg cl_confirm_one) ${label} [Y/N]: " answer || return 0
     is_yes "$answer" || { msg "${GREEN}$(tr_msg remove_cancelled)${NC}"; return 0; }
@@ -35778,12 +35790,23 @@ def mkusers($tag): map({
 }) | dedupe | map(.email = (if $tag != "" then ($tag + "/" + .name) else "" end))'
 
 users_adopt() {
-    local core="$1" tag="$2" outfile="${3:-}" cfg='' proto='' users='[]' ssecret='' raw=''
+    local core="$1" tag="$2" outfile="${3:-}" cfg='' proto='' users='[]' ssecret='' raw='' _jq_cfg=''
     cfg=$(users_cfg_of "$core") || return 1
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    # R16-F11-02: xray/sing-box jq reads go through the
+    # JSONC-stripped view: a commented config makes raw jq fail and
+    # the empty protocol below is misread as "no such protocol".
+    # Hy2 keeps the raw file (YAML, not JSONC).
+    if [[ "$core" == xray || "$core" == sing-box ]]; then
+        _jq_cfg=$(mktemp /tmp/A-Box-adopt-json.XXXXXX) || return 1
+        trap '[[ -n "${_jq_cfg:-}" ]] && rm -f -- "$_jq_cfg" 2>/dev/null' RETURN
+        jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || return 1
+    else
+        _jq_cfg="$cfg"
+    fi
     case "$core" in
         xray)
-            proto=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .protocol // ""' "$cfg" 2>/dev/null | head -1)
+            proto=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .protocol // ""' "$_jq_cfg" 2>/dev/null | head -1)
             [[ -n "$proto" ]] || return 1
             raw=$(jq -c --arg t "$tag" '
                 .inbounds[]? | select(.tag == $t) | .settings as $st
@@ -35795,16 +35818,16 @@ users_adopt() {
                        else [{name: "main", secret: ($st.password // ""), password_only: true}] end)
                   elif .protocol == "socks" then [$st.accounts[]? | {name: (.user // "main"), secret: (.pass // "")}]
                   elif .protocol == "vmess" then [$st.clients[]? | {name: (if .email then (if .email == "" then "main" else (.email | split("/") | .[-1]) end) else "main" end), secret: .id, uuid: .id, alterId: (.alterId // 0)}]
-                  else [] end' "$cfg" 2>/dev/null) || return 1
+                  else [] end' "$_jq_cfg" 2>/dev/null) || return 1
             if [[ "$proto" == 'shadowsocks' ]]; then
                 # clients-form SS keeps the server key separately.
-                if jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.settings.clients // null | type) == "array"' "$cfg" >/dev/null 2>&1; then
-                    ssecret=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.password // ""' "$cfg" 2>/dev/null | head -1)
+                if jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.settings.clients // null | type) == "array"' "$_jq_cfg" >/dev/null 2>&1; then
+                    ssecret=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.password // ""' "$_jq_cfg" 2>/dev/null | head -1)
                 fi
             fi
             ;;
         sing-box)
-            proto=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .type // ""' "$cfg" 2>/dev/null | head -1)
+            proto=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .type // ""' "$_jq_cfg" 2>/dev/null | head -1)
             [[ -n "$proto" ]] || return 1
             raw=$(jq -c --arg t "$tag" '
                 .inbounds[]? | select(.tag == $t)
@@ -35816,9 +35839,9 @@ users_adopt() {
                        then [.users[] | {name: (.name // "main"), secret: (.password // "")}]
                        else [{name: "main", secret: (.password // ""), password_only: true}] end)
                   elif .type == "mixed" or .type == "socks" then [.users[]? | {name: (.username // "main"), secret: (.password // "")}]
-                  else [.users[]? | {name: (.name // "main"), secret: (.password // "")}] end' "$cfg" 2>/dev/null) || return 1
-            if [[ "$proto" == 'shadowsocks' ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.users // []) | length) > 0' "$cfg" >/dev/null 2>&1; then
-                ssecret=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .password // ""' "$cfg" 2>/dev/null | head -1)
+                  else [.users[]? | {name: (.name // "main"), secret: (.password // "")}] end' "$_jq_cfg" 2>/dev/null) || return 1
+            if [[ "$proto" == 'shadowsocks' ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.users // []) | length) > 0' "$_jq_cfg" >/dev/null 2>&1; then
+                ssecret=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .password // ""' "$_jq_cfg" 2>/dev/null | head -1)
             fi
             ;;
         hy2)
@@ -35979,9 +36002,13 @@ users_hy2_yaml_scalar() {
 }
 
 users_hy2_read_users() {
-    local cfg="$1" block='' type='' pw='' out='[]' _bs_folded=0 _bs_body='' _bs_count=0 _bs_line='' _bs_re=''
+    local cfg="$1" block='' type='' pw='' out='[]' _bs_folded=0 _bs_chomp='' _bs_ind='' _bs_count=0 _bs_line='' _bs_re='' _bs_lines=()
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
-    block=$(awk '/^auth:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^auth:/) exit} f{print}' "$cfg" 2>/dev/null) || return 1
+    # R16-F11-03: the block carries a sentinel last line so blank
+    # lines at its end survive command substitution (a keep-chomped
+    # block scalar needs them); the sentinel ends parsing like a
+    # following top-level key would.
+    block=$(awk '/^auth:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^auth:/) exit} f{print} END { print "__ABOX_HY2_BLOCK_END__" }' "$cfg" 2>/dev/null) || return 1
     [[ -n "$block" ]] || return 1
         type=$(printf '%s\n' "$block" | sed -n 's/^[[:space:]]*type:[[:space:]]*//p' | head -1 | tr -d '"'"'"' \r')
     if [[ "$type" == 'userpass' ]]; then
@@ -36055,7 +36082,22 @@ users_hy2_read_users() {
     if [[ "$pw" =~ $_bs_re ]]; then
         _bs_folded=0
         [[ "$pw" == '>'* ]] && _bs_folded=1
-        _bs_body=$(printf '%s\n' "$block" | awk '
+        # R16-F11-03: the chomping indicator decides the final line
+        # break ('-' strips it, '+' keeps it plus trailing blank
+        # lines, default clip keeps exactly one). Trailing spaces
+        # and blank lines are part of the scalar value and must not
+        # be trimmed or skipped: a literal body keeps its lines
+        # verbatim, a folded body folds single breaks to a space and
+        # keeps one break per blank line (more-indented lines keep
+        # their break and indent).
+        _bs_chomp='clip'
+        _bs_ind="${BASH_REMATCH[1]:-}"
+        case "$_bs_ind" in *'-'*) _bs_chomp='strip' ;; *'+'*) _bs_chomp='keep' ;; esac
+        # Read the body lines verbatim via mapfile: command
+        # substitution would strip the trailing blank lines a
+        # keep-chomped scalar needs.
+        _bs_lines=()
+        mapfile -t _bs_lines < <(printf '%s\n' "$block" | awk '
             !found && /^[[:space:]]*password:/ { match($0, /^ */); pind = RLENGTH; found = 1; next }
             found {
                 if ($0 ~ /^[[:space:]]*$/) { print ""; next }
@@ -36065,20 +36107,57 @@ users_hy2_read_users() {
                 line = substr($0, bind + 1)
                 sub(/\r$/, "", line)
                 print line
-            }') || return 1
+            }')
         _bs_count=0; pw=''
-        while IFS= read -r _bs_line; do
-            while [[ "$_bs_line" == *' ' || "$_bs_line" == *$'\t' ]]; do _bs_line=${_bs_line%?}; done
-            [[ -n "$_bs_line" ]] || continue
-            _bs_count=$(( _bs_count + 1 ))
-            if (( _bs_count == 1 )); then
-                pw="$_bs_line"
-            elif (( _bs_folded == 1 )); then
-                pw+=" $_bs_line"
-            else
-                return 1
-            fi
-        done <<< "$_bs_body"
+        if (( _bs_folded == 1 )); then
+            local _bs_started=0 _bs_nl=''
+            for _bs_line in "${_bs_lines[@]}"; do
+                if [[ -z "$_bs_line" ]]; then
+                    _bs_nl+=$'\n'
+                    continue
+                fi
+                _bs_count=$(( _bs_count + 1 ))
+                if (( _bs_started == 0 )); then
+                    pw="$_bs_nl$_bs_line"
+                    _bs_started=1
+                elif [[ -n "$_bs_nl" ]]; then
+                    pw+="$_bs_nl$_bs_line"
+                elif [[ "$_bs_line" == ' '* || "$_bs_line" == $'\t'* ]]; then
+                    pw+=$'\n'"$_bs_line"
+                else
+                    pw+=" $_bs_line"
+                fi
+                _bs_nl=''
+            done
+            (( _bs_started == 1 )) || return 1
+            case "$_bs_chomp" in
+                strip) : ;;
+                clip) pw+=$'\n' ;;
+                keep) pw+="$_bs_nl"$'\n' ;;
+            esac
+        else
+            local _bs_started=0
+            for _bs_line in "${_bs_lines[@]}"; do
+                if [[ -n "$_bs_line" ]]; then
+                    _bs_count=$(( _bs_count + 1 ))
+                    if (( _bs_count > 1 )); then
+                        return 1
+                    fi
+                fi
+                if (( _bs_started == 0 )); then
+                    pw="$_bs_line"
+                    _bs_started=1
+                else
+                    pw+=$'\n'"$_bs_line"
+                fi
+            done
+            (( _bs_started == 1 )) || return 1
+            case "$_bs_chomp" in
+                strip) while [[ "$pw" == *$'\n' ]]; do pw=${pw%$'\n'}; done ;;
+                clip) while [[ "$pw" == *$'\n' ]]; do pw=${pw%$'\n'}; done; pw+=$'\n' ;;
+                keep) pw+=$'\n' ;;
+            esac
+        fi
         (( _bs_count >= 1 )) || return 1
     else
         pw=$(users_hy2_yaml_scalar "$pw") || return 1
@@ -36164,7 +36243,7 @@ users_reg_ensure() {
 
 # ---- sync: rewrite the core config's user list from the registry ----
 users_sync() {
-    local core="$1" tag="$2" cfg='' reg='' bak='' tmp='' tmpd='' enabled='' proto='' ssecret='' _commit_rc=''
+    local core="$1" tag="$2" cfg='' reg='' bak='' tmp='' tmpd='' enabled='' proto='' ssecret='' _commit_rc='' _jq_cfg=''
     cfg=$(users_cfg_of "$core") || { msg "users_sync stage SYNC-01: users_cfg_of failed" >&2; return 1; }
     reg=$(users_reg_file "$core" "$tag")
     [[ -f "$cfg" && ! -L "$cfg" && -f "$reg" ]] || { msg "users_sync stage SYNC-02: config or registry missing" >&2; return 1; }
@@ -36176,6 +36255,17 @@ users_sync() {
     cp -f -- "$cfg" "$bak" || { msg "users_sync stage SYNC-07: config backup copy failed" >&2; rm -f "$bak"; return 1; }
     tmpd=$(mktemp -d /tmp/A-Box-usync.XXXXXX) || { msg "users_sync stage SYNC-08: work temp creation failed" >&2; rm -f "$bak"; return 1; }
     tmp="$tmpd/config.json"
+    # R16-F11-02: xray/sing-box jq reads (server-key lookup, inbound
+    # snapshot reads, config rewrite) go through the JSONC-stripped
+    # view, like users_adopt: raw jq on a commented config fails and
+    # sync misreads the live state. Hy2 keeps the raw file (YAML).
+    if [[ "$core" == xray || "$core" == sing-box ]]; then
+        _jq_cfg=$(mktemp /tmp/A-Box-usync-json.XXXXXX) || { msg "users_sync stage SYNC-09: stripped-view temp creation failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
+        trap '[[ -n "${_jq_cfg:-}" ]] && rm -f -- "$_jq_cfg" 2>/dev/null' RETURN
+        jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || { msg "users_sync stage SYNC-09: JSONC strip failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
+    else
+        _jq_cfg="$cfg"
+    fi
     # SS multi-user promotion: with no stored server_secret and >1
     # enabled users, the CURRENT password becomes the server key and
     # each user's secret becomes their uPSK (their link changes; the
@@ -36184,8 +36274,8 @@ users_sync() {
     encount=$(printf '%s' "$enabled" | jq 'length' 2>/dev/null || echo 0)
     if [[ "$proto" == 'shadowsocks' && -z "$eff_ss" ]] && (( encount > 1 )); then
         case "$core" in
-            xray) eff_ss=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.password // ""' "$cfg" 2>/dev/null | head -1) ;;
-            sing-box) eff_ss=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .password // ""' "$cfg" 2>/dev/null | head -1) ;;
+            xray) eff_ss=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .settings.password // ""' "$_jq_cfg" 2>/dev/null | head -1) ;;
+            sing-box) eff_ss=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .password // ""' "$_jq_cfg" 2>/dev/null | head -1) ;;
             hy2) : ;;
         esac
         [[ -n "$eff_ss" ]] && promote=1
@@ -36213,13 +36303,13 @@ users_sync() {
     if (( sb_snap_eligible == 1 )); then
         sb_snap=$(jq -c '.inbound_snapshot // null' "$reg" 2>/dev/null || echo null)
         if (( encount == 0 )); then
-            if jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; then
+            if jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$_jq_cfg" >/dev/null 2>&1; then
                 sb_will_delete=1
-                sb_snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" 2>/dev/null) || { msg "users_sync stage SYNC-11: inbound snapshot read failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
+                sb_snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$_jq_cfg" 2>/dev/null) || { msg "users_sync stage SYNC-11: inbound snapshot read failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
             fi
         elif [[ "$sb_snap" != 'null' ]]; then
-            jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1 || sb_will_rebuild=1
-        elif ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" >/dev/null 2>&1; then
+            jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$_jq_cfg" >/dev/null 2>&1 || sb_will_rebuild=1
+        elif ! jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$_jq_cfg" >/dev/null 2>&1; then
             # U65: enabled users, inbound gone, no snapshot to rebuild from.
             # Syncing would silently do nothing; fail loudly instead.
             msg "users_sync stage SYNC-12: inbound missing with no snapshot" >&2; 
@@ -36262,7 +36352,7 @@ users_sync() {
                         .settings.clients = [$users[0][] | {id: .secret, email: .email} + (if (.alterId // 0) > 0 then {alterId: .alterId} else {} end)]
                      else . end)
                 else . end)
-            ' "$cfg" > "$tmp" 2>/dev/null; then
+            ' "$_jq_cfg" > "$tmp" 2>/dev/null; then
                 msg "users_sync stage SYNC-15: xray config rewrite failed" >&2; 
                 rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
             fi
@@ -36289,7 +36379,7 @@ users_sync() {
                      else
                         .users = [$users[0][] | {name: .name, password: .secret}] end)
                 else . end)
-            ' "$cfg" > "$tmp" 2>/dev/null; then
+            ' "$_jq_cfg" > "$tmp" 2>/dev/null; then
                 msg "users_sync stage SYNC-16: sing-box config rewrite failed" >&2; 
                 rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
             fi
@@ -36338,7 +36428,13 @@ users_hy2_write_users() {
     count=$(printf '%s' "$users_json" | jq 'length' 2>/dev/null || echo 0)
     if (( count == 1 )); then
         local sec=''
-        sec=$(printf '%s' "$users_json" | jq -r '.[0].secret' 2>/dev/null)
+        # R16-F11-04: keep a trailing newline in the secret through
+        # command substitution with the same sentinel the read side
+        # uses: bare `jq -r` output loses it (the capture strips all
+        # trailing LFs, including the value's own). Non-string values
+        # pass through unchanged, as before.
+        sec=$(printf '%s' "$users_json" | jq -r '.[0].secret | if type == "string" then . + "__ABOX_TRAILING_NL_KEEP__" else . end' 2>/dev/null)
+        sec=${sec%__ABOX_TRAILING_NL_KEEP__}
         auth_block=$(printf 'auth:\n  type: password\n  password: %s' "$(json_escape "$sec")")
     elif (( count == 0 )); then
         # R3C11-04: mark the deny credential persistently so adoption
@@ -37114,6 +37210,18 @@ setup_user_guard() {
     # way for a reinstall to fix it. Repair the mode in place.
     if [[ ! -x "$runner" && -f "$runner" && ! -L "$runner" ]]; then
         chmod 700 "$runner" || return 1
+    fi
+    # R16-F11-05: the repair above only covers a lost exec bit: a
+    # runner that is already executable but group/other-writable
+    # (e.g. 0777 after an external chmod) is left in place, and root
+    # cron executes it every 5 minutes. Repair dangerous write bits
+    # in place too; an unreadable mode leaves the file untouched.
+    if [[ -x "$runner" && -f "$runner" && ! -L "$runner" ]]; then
+        local _runner_mode=''
+        _runner_mode=$(stat -c %a "$runner" 2>/dev/null || true)
+        if [[ "$_runner_mode" =~ ^0?[0-7]{3,4}$ ]] && (( (8#$_runner_mode & 8#022) != 0 )); then
+            chmod 700 "$runner" || return 1
+        fi
     fi
     # R10C11-03: quote the runner path only when it contains whitespace;
     # the default path must stay byte-identical (collect_abox_cron
@@ -38368,13 +38476,20 @@ restore_timezone_snapshot() {
         # side effects are wanted), but the filesystem
         # representation must then be put back: re-copy the snapshot
         # files over whatever set-timezone just wrote. A symlink
-        # snapshot needs no repair; a snapshot with no localtime or
-        # no /etc/timezone is left exactly as the first restore
-        # left it.
+        # snapshot needs no repair; a snapshot with no localtime
+        # (R16-F12-04) or no /etc/timezone must be deleted again
+        # after the apply, or set-timezone recreates what the first
+        # restore removed.
         if [[ -e "$dir/localtime" || -L "$dir/localtime" ]] && [[ ! -L "$dir/localtime" ]]; then
             rm -f /etc/localtime || return 1
             cp -a "$dir/localtime" /etc/localtime || return 1
             [[ ! -L /etc/localtime ]] || return 1
+        elif [[ -f "$dir/localtime.absent" ]]; then
+            # R16-F12-04: the snapshot records no localtime at all,
+            # but the apply above rebuilt one: remove it again, or
+            # the restored system runs the snapshot zone instead of
+            # falling back to UTC as it did before.
+            rm -f /etc/localtime || return 1
         fi
         if [[ -f "$dir/etc-timezone" ]]; then
             rm -f /etc/timezone || return 1
@@ -38780,7 +38895,7 @@ systemd_major_version() {
 }
 
 snapshot_dns_state() {
-    local dir="$1" backend iface connection key value _ens _link_target=''
+    local dir="$1" backend iface connection key value _ens _link_target='' _dnscrypt_dir_mode=''
     mkdir -p "$dir" || return 1
     chmod 700 "$dir" || return 1
     backend=$(dns_backend_detect) || return 1
@@ -38821,6 +38936,13 @@ snapshot_dns_state() {
     if [[ -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml ]]; then
         mkdir -p "$dir/dnscrypt-proxy" || return 1
         cp -a /etc/dnscrypt-proxy/dnscrypt-proxy.toml "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" || return 1
+        # R16-F12-03: record the config directory's mode as well as
+        # the file: rollback must restore the directory it found, not
+        # force it to 0755 (GNU install -d -m re-modes an existing
+        # directory). An unreadable mode fails the snapshot.
+        _dnscrypt_dir_mode=$(stat -c %a /etc/dnscrypt-proxy 2>/dev/null || true)
+        [[ "$_dnscrypt_dir_mode" =~ ^0?[0-7]{3,4}$ ]] || return 1
+        printf '%s\n' "$_dnscrypt_dir_mode" > "$dir/dnscrypt-proxy-dir-mode" || return 1
         printf present > "$dir/dnscrypt-config-state"
     else printf absent > "$dir/dnscrypt-config-state"; fi
     if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then printf active > "$dir/dnscrypt-service-state"; else printf inactive > "$dir/dnscrypt-service-state"; fi
@@ -38868,7 +38990,7 @@ nm_reapply_connection() {
 }
 
 restore_dns_snapshot_body() {
-    local dir="$1" backend state key value connection iface dnscrypt_state
+    local dir="$1" backend state key value connection iface dnscrypt_state _dnscrypt_dir_mode=''
     [[ -f "$dir/COMPLETE" ]] || return 1
     backend=$(tr -d '[:space:]' < "$dir/backend" 2>/dev/null || true)
     if [[ -e "$dir/resolv.conf" || -L "$dir/resolv.conf" ]]; then
@@ -38925,7 +39047,23 @@ restore_dns_snapshot_body() {
     fi
     dnscrypt_state=$(tr -d '[:space:]' < "$dir/dnscrypt-config-state" 2>/dev/null || true)
     if [[ "$dnscrypt_state" == present && -f "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" ]]; then
-        install -d -m 755 /etc/dnscrypt-proxy || return 1
+        # R16-F12-03: never force the directory to 0755: restore the
+        # mode the snapshot recorded, and leave an existing directory
+        # alone when the snapshot predates the mode record. A missing
+        # directory is recreated with the recorded mode, else the
+        # legacy 0755. A present-but-malformed mode record fails
+        # closed instead of guessing.
+        if [[ -f "$dir/dnscrypt-proxy-dir-mode" ]]; then
+            _dnscrypt_dir_mode=$(tr -d '[:space:]' < "$dir/dnscrypt-proxy-dir-mode" 2>/dev/null || true)
+            [[ "$_dnscrypt_dir_mode" =~ ^0?[0-7]{3,4}$ ]] || return 1
+            if [[ -d /etc/dnscrypt-proxy ]]; then
+                chmod "$_dnscrypt_dir_mode" /etc/dnscrypt-proxy || return 1
+            else
+                install -d -m "$_dnscrypt_dir_mode" /etc/dnscrypt-proxy || return 1
+            fi
+        elif [[ ! -d /etc/dnscrypt-proxy ]]; then
+            install -d -m 755 /etc/dnscrypt-proxy || return 1
+        fi
         rm -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
         cp -a "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
     elif [[ "$dnscrypt_state" == absent ]]; then
@@ -38966,6 +39104,16 @@ restore_dns_snapshot_body() {
             _cur_ens=$(systemctl is-enabled dnscrypt-proxy 2>/dev/null || true)
             if [[ "$_cur_ens" != linked ]]; then
                 [[ -n "$_link_target" ]] || return 1
+                # R16-F12-02: `systemctl link` only re-creates the unit
+                # symlink; it does not remove the .wants/ enable links
+                # a rolled-back `enable` created, so a currently
+                # enabled/enabled-runtime unit would stay enabled
+                # after the link and fail the verification below.
+                # Disable first (which also drops the link, if any),
+                # then re-create it.
+                if [[ "$_cur_ens" == enabled || "$_cur_ens" == enabled-runtime ]]; then
+                    systemctl disable dnscrypt-proxy >/dev/null 2>&1 || return 1
+                fi
                 systemctl link "$_link_target" >/dev/null 2>&1 || return 1
             fi
         else systemctl disable dnscrypt-proxy >/dev/null 2>&1 || return 1; fi
@@ -39158,7 +39306,10 @@ nm_effective_device() {
 #      (never a hand-rolled file scan: same-basename shadowing and
 #      intern.conf semantics make last-key-wins over files unreliable).
 #      rc-manager=unmanaged, or dns=none (man page: "implies rc-manager
-#      unmanaged"), means NOT managed. No value = managed (default).
+#      unmanaged"), means NOT managed. dns= must name the expected
+#      backend (R16-F12-01): dns=default runs no loopback resolver,
+#      so "no value = managed" cannot prove a loopback nameserver is
+#      NM-fed.
 # GPT (astra, high) supplied the live-check design and caught the
 # rc-manager spelling (unmanaged, not unmanage); the print-config
 # fallback and the two-tier combination are this worker's.
@@ -39182,19 +39333,27 @@ _nm_dns_loopback_trusted() {
             *) return 1 ;; # concrete other backend: positively not NM-fed
         esac
     fi
-    _nm_dns_resolv_managed
+    _nm_dns_resolv_managed "$_want"
 }
 
 # Merged-config view only: last uncommented rc-manager=/dns= in [main]
 # wins (commented lines are build defaults, not set values).
-# Returns 0 iff resolv.conf is NM-managed.
+# $1 = the backend the loopback address needs (dnsmasq for 127.0.0.1,
+# systemd-resolved for 127.0.0.53). Returns 0 iff the merged view
+# proves NM itself runs that backend: dns= must name it. dns=default
+# (or unset) only proves NM writes the connection upstreams into
+# resolv.conf -- it runs no loopback resolver at all -- so it is not
+# evidence for a loopback first nameserver, and neither is a merely
+# managed rc-manager.
 _nm_dns_resolv_managed() {
-    local _out='' _rcm='' _dns=''
+    local _want="${1:-}" _out='' _rcm='' _dns=''
     _out=$(NetworkManager --print-config 2>/dev/null || true)
     [[ -n "$_out" ]] || return 1
     _rcm=$(printf '%s\n' "$_out" | awk '/^\[main\]/{m=1;next} /^\[/{m=0} m && /^rc-manager=/{v=$0; sub(/^rc-manager=/,"",v); gsub(/[[:space:]]+$/,"",v); print v}' | tail -1)
     _dns=$(printf '%s\n' "$_out" | awk '/^\[main\]/{m=1;next} /^\[/{m=0} m && /^dns=/{v=$0; sub(/^dns=/,"",v); gsub(/[[:space:]]+$/,"",v); print v}' | tail -1)
     [[ "$_rcm" == unmanaged || "$_dns" == none ]] && return 1
+    [[ -n "$_want" ]] || return 1
+    [[ "$_dns" == "$_want" ]] || return 1
     return 0
 }
 

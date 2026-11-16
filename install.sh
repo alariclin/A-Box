@@ -48369,6 +48369,13 @@ wallos_recover_interrupted_upgrade() {
     phase=$(wallos_txn_value "$journal" phase) || return 1
     [[ "$phase" == active || "$phase" == committed ]] || return 1
     old_image=$(wallos_txn_value "$journal" old_image) || return 1
+    # R16-F15-05: freeze the journal's old_image as the sidecar binding
+    # key. The N-11 pull below may rewrite old_image from a tag to an
+    # image ID, but the journal is never rewritten, so on retry the
+    # sidecar (ID) and the journal (tag) disagreed and the sidecar was
+    # dropped as stale, silently losing the target mode. The frozen tag
+    # is identical on every retry; the run identity stays _run_image.
+    local _journal_old_image="$old_image"
     old_port=$(wallos_txn_value "$journal" old_port) || return 1
     old_tz=$(wallos_txn_value "$journal" old_tz) || return 1
     old_bind=$(wallos_txn_value "$journal" old_bind) || return 1
@@ -48442,7 +48449,14 @@ wallos_recover_interrupted_upgrade() {
     # S137: validate backup content BEFORE deleting the container; a
     # corrupt backup must refuse while the old container still exists.
     wallos_validate_backup "$backup" || return 1
-    if docker container inspect wallos >/dev/null 2>&1; then
+    # R16-F15-03: tri-state the inspect (same rule as the install entry
+    # and wallos_stack_teardown): a failed query is "state unknown",
+    # not "container absent". Only Docker's own "No such container"
+    # (plus `docker ps -a` confirmation, via _wallos_container_gone)
+    # proves absence; anything else refuses instead of skipping the
+    # ownership gate and restoring data under a live foreign container.
+    local _rc_inspect_err=''
+    if _rc_inspect_err=$(docker container inspect wallos 2>&1 >/dev/null); then
         # R13C15-01: verify ownership before stop/rm: managed label
         # AND both expected Wallos bind mounts; refuse on mismatch.
         local _rc_lbl='' _rc_mounts=''
@@ -48466,6 +48480,12 @@ wallos_recover_interrupted_upgrade() {
             msg "${RED}$(tr_msg wl_rc_rm_fail)${NC}"
             return 1
         }
+    elif _wallos_container_gone "$_rc_inspect_err"; then
+        : # genuinely absent; proceed with the restore below
+    else
+        msg "${RED}Wallos container state unknown; refusing recovery.${NC}"
+        _wallos_show_docker_err "$_rc_inspect_err"
+        return 1
     fi
     # B15-1 (durable A): the backup restore below overwrites the live
     # .abox-state with the pre-upgrade mode, so a local->https (or
@@ -48483,7 +48503,7 @@ wallos_recover_interrupted_upgrade() {
         local _fs_backup='' _fs_old_image=''
         _fs_backup=$(wallos_txn_value "$_fs_sidecar" backup 2>/dev/null || true)
         _fs_old_image=$(wallos_txn_value "$_fs_sidecar" old_image 2>/dev/null || true)
-        if [[ "$_fs_backup" == "$backup" && "$_fs_old_image" == "$old_image" ]]; then
+        if [[ "$_fs_backup" == "$backup" && "$_fs_old_image" == "$_journal_old_image" ]]; then
             _fs_mode=$(wallos_txn_value "$_fs_sidecar" mode 2>/dev/null || true)
             _fs_pubport=$(wallos_txn_value "$_fs_sidecar" pubport 2>/dev/null || true)
             _fs_cfhost=$(wallos_txn_value "$_fs_sidecar" cfhost 2>/dev/null || true)
@@ -48506,7 +48526,7 @@ wallos_recover_interrupted_upgrade() {
         if [[ "$_fs_mode" == https || "$_fs_mode" == cftunnel ]]; then
             write_file_atomically_from_stdin "$_fs_sidecar" 600 <<EOF_B15_SIDECAR
 backup=$backup
-old_image=$old_image
+old_image=$_journal_old_image
 mode=$_fs_mode
 pubport=$_fs_pubport
 cfhost=$_fs_cfhost
@@ -49165,6 +49185,12 @@ install_wallos_caddy() {
 }
 
 wallos_https_write_unit() {
+    # R16-F15-04: refuse a foreign same-name unit/script before
+    # overwriting it (same ownership helper the teardowns use).
+    _wallos_front_unit_owned_or_absent abox-wallos-caddy || {
+        msg "${RED}Refusing to overwrite a foreign 'abox-wallos-caddy' service; it is not A-Box-managed.${NC}"
+        return 1
+    }
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         write_file_atomically_from_stdin "/etc/systemd/system/abox-wallos-caddy.service" 600 <<'EOF_WCADDY' || return 1
 # Managed by A-Box
@@ -49514,6 +49540,12 @@ wallos_https_setup() { # $1 = public port, $2 = internal container port
 
 
 wallos_cftunnel_write_unit() {
+    # R16-F15-04: refuse a foreign same-name unit/script before
+    # overwriting it (same ownership helper the teardowns use).
+    _wallos_front_unit_owned_or_absent abox-wallos-cftunnel || {
+        msg "${RED}Refusing to overwrite a foreign 'abox-wallos-cftunnel' service; it is not A-Box-managed.${NC}"
+        return 1
+    }
     if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
         write_file_atomically_from_stdin "/etc/systemd/system/abox-wallos-cftunnel.service" 600 <<'EOF_WCFT' || return 1
 # Managed by A-Box
@@ -50708,7 +50740,17 @@ wallos_install_or_update() {
             return 1
         fi
         running=1
-        [[ "$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null || true)" == true ]] && was_running=1
+        # R16-F15-02: a failed .State.Running query is "state unknown",
+        # never "stopped": the old `|| true` swallowed the failure into
+        # an empty string, leaving was_running=0 so the running instance
+        # was later left stopped (same pattern as R14-F15-02 at the
+        # db-repair entry). Refuse, like the first inspect above.
+        local _wl_running=''
+        if ! _wl_running=$(docker inspect -f '{{.State.Running}}' wallos 2>/dev/null); then
+            msg "${RED}Wallos container state unknown; refusing installation.${NC}"
+            return 1
+        fi
+        [[ "$_wl_running" == true ]] && was_running=1
         old_image=$(docker inspect -f '{{.Config.Image}}' wallos 2>/dev/null || true)
         # X-09: normalize docker.io/ prefix (containerd image store / Podman
         # return docker.io/bellamy/wallos:tag); D-05 fixed the prune path only.
@@ -50797,7 +50839,13 @@ wallos_install_or_update() {
         case "${ABOX_LANG:-zh}" in
             *) msg "$(tr_msg wl_mode_title)"; msg "$(tr_msg wl_mode_1)"; msg "$(tr_msg wl_mode_2)"; msg "$(tr_msg wl_mode_3)"; msg "$(tr_msg wl_mode_4)"; printf '%s' "$(tr_msg wl_choose)" ;;
         esac
-        read -r _ans || _ans=''
+        # R16-F15-01: EOF (Ctrl-D) is a cancel, never a choice. The old
+        # `|| _ans=''` fell through to `*) wmode='https'` with
+        # _bind_chosen=1, skipping the confirm gate below and treating
+        # EOF as a public-publish authorization.
+        if ! read -r _ans; then
+            return 0
+        fi
         _bind_chosen=1
         case "$_ans" in 2) wmode='local' ;; 3) wmode='cftunnel' ;; 4) wmode='http' ;; *) wmode='https' ;; esac
     elif [[ "$_old_mode" == https && "$_old_pubport" =~ ^[0-9]+$ ]]; then
@@ -51085,6 +51133,10 @@ wallos_install_or_update() {
         if (( running == 1 )); then
             wallos_recover_interrupted_upgrade >/dev/null 2>&1 || true
         fi
+        # R16-F15-06: roll back this attempt's firewall increments,
+        # like the adjacent preseed-failure exit; otherwise the opened
+        # ports (and their ledger) survive a failed install.
+        wallos_fw_rollback_added "${_fw_added[@]}" || true
         return 1
     fi
     docker run -d --cidfile "$_wallos_cid_dir/id" --name wallos --label com.alariclin.abox.managed=true \
@@ -51954,6 +52006,10 @@ vps_benchmark_menu() {
         15) wallos_menu ;;
         16) manage_ss_whitelist ;;
         17) shortcut_custom_menu ;;
+        # R16-F16-03: honor the header comment ("0/Enter goes back"):
+        # an empty input (Enter) returns to the main menu instead of
+        # falling into `*)` as "invalid input".
+        "") return 0 ;;
         0) return 0 ;;
         *) msg "${RED}$(tr_msg invalid_input): $bench_choice${NC}"; sleep 1 ;;
     esac
@@ -52301,7 +52357,12 @@ def trojan_sb(inbound, inbounds):
 def trojan_xray(inbound, inbounds):
     require(inbound.get("protocol") == "trojan", "unexpected inbound protocol")
     stream = obj(inbound.get("streamSettings"))
-    require(stream.get("network", "tcp") == "tcp",
+    # R16-F16-02: Xray's TransportProtocol.Build() accepts "raw" as TCP
+    # (case "raw", "tcp"), and `method` overrides `network` when set;
+    # read method first so `method: "ws"` without `network` is not
+    # mis-accepted as TCP (same function, reverse misjudgment).
+    _transport = stream.get("method") or stream.get("network", "tcp")
+    require(_transport in ("tcp", "raw"),
             "unsupported non-TCP transport")
     require(stream.get("security") == "reality", "Reality is not enabled")
     r = obj(stream.get("realitySettings"))
@@ -52338,7 +52399,14 @@ def tuic_cert_policy(tls):
             raise Bad("unsupported inline TUIC certificate")
     else:
         path = text(tls.get("certificate_path"), "missing TUIC certificate path")
-        cert = trusted_read(path)
+        # R16-F16-01: trusted_read() raises OSError (missing/unreadable
+        # file, O_NOFOLLOW symlink refusal), not Bad; without this the
+        # error escapes export()'s `except Bad` and kills the whole
+        # Clash export instead of omitting just the TUIC node.
+        try:
+            cert = trusted_read(path)
+        except OSError:
+            raise Bad("TUIC certificate unreadable, invalid, or untrusted")
     try:
         result = subprocess.run(
             ["openssl", "x509", "-noout", "-issuer", "-subject",
@@ -56891,7 +56959,11 @@ N11EOF
                 echo 'old_image_id='; } > "$WALLOS_DIR/.upgrade-transaction"
               chmod 600 "$WALLOS_DIR/.upgrade-transaction"
               _n1_log="$_n1_tmp/pulled"
-              docker() { case "$1" in image|container) return 1 ;; *) return 0 ;; esac; }
+              # R16-F15-03: the stub must emit the signal real Docker
+              # emits for a missing container; a bare rc=1 with empty
+              # stderr is "state unknown" under the tri-state rule,
+              # not proof of absence.
+              docker() { case "$1" in image) return 1 ;; container) printf 'Error: No such container: wallos\n' >&2; return 1 ;; *) return 0 ;; esac; }
               wallos_mirror_version_list() { echo 'v9.9.1'; echo 'v9.9.0'; echo 'v8.8.8'; }
               wallos_validate_backup() { return 0; }
               wallos_restore_backup() { return 0; }
@@ -56906,6 +56978,31 @@ N11EOF
               wallos_recover_interrupted_upgrade || exit 1
               [[ "$(cat "$_n1_log")" == 'v9.9.0' ]] || exit 1
             ) || { echo 'FAIL: N-11 N-1 auto-select via production path'; failures=$((failures + 1)); }
+        # R16-F15-03: an inspect failure WITHOUT Docker's "No such
+        # container" text is "state unknown", not "absent": the
+        # same journal must refuse instead of restoring data.
+        if (( EUID == 0 )); then
+            ( _n1u_tmp=$(mktemp -d /tmp/A-Box-n1u.XXXXXX) || exit 1
+              trap 'rm -rf -- "$_n1u_tmp"' EXIT
+              WALLOS_DIR="$_n1u_tmp"
+              mkdir -p "$WALLOS_DIR/backups"
+              echo 'backup' > "$WALLOS_DIR/backups/wallos-test.tar.gz"
+              { echo 'phase=active'
+                echo 'old_image=bellamy/wallos:9.9.9'
+                echo 'old_port=8080'
+                echo 'old_tz=UTC'
+                echo 'old_bind='
+                echo "backup=$WALLOS_DIR/backups/wallos-test.tar.gz"
+                echo 'was_running=0'
+                echo 'old_image_id='; } > "$WALLOS_DIR/.upgrade-transaction"
+              chmod 600 "$WALLOS_DIR/.upgrade-transaction"
+              docker() { case "$1" in image) return 1 ;; container) printf 'Cannot connect to the Docker daemon\n' >&2; return 1 ;; *) return 0 ;; esac; }
+              wallos_validate_backup() { return 0; }
+              wallos_restore_backup() { echo 'RESTORED' > "$_n1u_tmp/restored"; return 0; }
+              wallos_recover_interrupted_upgrade >/dev/null 2>&1 && exit 1
+              [[ ! -e "$_n1u_tmp/restored" ]] || exit 1
+            ) || { echo 'FAIL: N-11 recovery must refuse on unknown container state'; failures=$((failures + 1)); }
+        fi
         else
             selftest_note 'N-11 N-1 auto-select production-path test skipped for non-root execution'
         fi

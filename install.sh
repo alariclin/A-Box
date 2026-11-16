@@ -6460,6 +6460,12 @@ tr_msg() {
         fa:bk_retention_fail) echo 'شمارش نسخه‌های پشتیبان ناموفق بود؛ پشتیبان‌های موجود بدون تغییر باقی ماندند.' ;;
         zh-tw:bk_retention_fail) echo '備份保留列舉失敗；現有備份保持不變。' ;;
         ja:bk_retention_fail) echo 'バックアップ保持の列挙に失敗しました。既存のバックアップは変更されません。' ;;
+        zh:bk_postdeploy_fail) echo '部署后快照失败；部署已提交，本次部署不受影响。' ;;
+        en:bk_postdeploy_fail) echo 'Post-deployment snapshot failed; the deployment is already committed and unaffected.' ;;
+        ru:bk_postdeploy_fail) echo 'Не удалось создать снимок после развёртывания; развёртывание уже зафиксировано и не затронуто.' ;;
+        fa:bk_postdeploy_fail) echo 'گرفتن تصویر پس از استقرار ناموفق بود؛ استقرار از قبل ثبت شده و آسیبی ندیده است.' ;;
+        zh-tw:bk_postdeploy_fail) echo '部署後快照失敗；部署已提交，本次部署不受影響。' ;;
+        ja:bk_postdeploy_fail) echo 'デプロイ後のスナップショットに失敗しました。デプロイは既に確定済みで影響はありません。' ;;
         zh:bk_created) echo '备份已创建：' ;;
         en:bk_created) echo 'Backup created:' ;;
         ru:bk_created) echo 'Резервная копия создана:' ;;
@@ -23154,12 +23160,53 @@ _xrc_stop_xray() {
     return 0
 }
 
+# R27-H-NF-06 (GPT-arbitrated A): tri-state coverage check for an xray
+# config against the currently expected data inbounds (.env listener
+# ports). Existential, not complete, coverage: a multi-protocol deploy
+# may legitimately restore only a subset of its protocols.
+# rc 0 = verified match, or genuinely no expected ports defined
+#        (vacuous pass: fresh host / trojan-landing-only stack);
+# rc 1 = verification succeeded and NO expected data inbound matched
+#        (an empty config is a mismatch whenever expectations exist);
+# rc 2 = verification could not be completed (unreadable .env, jq
+#        missing or failed). Callers: a candidate is installed only on
+# rc 0; a valid live config enters recovery only on rc 1.
+# The dokodemo-door api inbound (tag "api", 127.0.0.1:10085) is
+# infrastructure, never an expected data inbound: it is excluded by
+# tag before ports are compared, so an api-only config never counts
+# as covering. .env is parsed, never sourced.
+_xrc_config_has_expected_data_inbound() {
+    local cfg="$1" envf="${ABOX_ENV:-/etc/ddr/.env}"
+    local _var _val _ports _p _e
+    local -a _expected=()
+    [[ -e "$envf" ]] || return 0
+    [[ -f "$envf" && ! -L "$envf" && -r "$envf" ]] || return 2
+    for _var in VLESS_PORT XHTTP_PORT SS_PORT SOCKS_PORT; do
+        _val=$(sed -n "s/^${_var}=//p" "$envf" 2>/dev/null | head -n 1 | sed -e "s/^'//" -e "s/'\$//" -e 's/^"//' -e 's/"$//')
+        [[ "$_val" =~ ^[0-9]+$ ]] || continue
+        [[ "${#_val}" -le 5 ]] || continue
+        (( 10#$_val >= 1 && 10#$_val <= 65535 )) || continue
+        _expected+=("$((10#$_val))")
+    done
+    (( ${#_expected[@]} )) || return 0
+    command -v jq >/dev/null 2>&1 || return 2
+    _ports=$(jq -r '.inbounds[]? | select(.tag != "api") | .port // empty' "$cfg" 2>/dev/null) || return 2
+    while IFS= read -r _p; do
+        [[ "$_p" =~ ^[0-9]+$ ]] || continue
+        [[ "${#_p}" -le 5 ]] || continue
+        for _e in "${_expected[@]}"; do
+            (( 10#$_p == _e )) && return 0
+        done
+    done <<< "$_ports"
+    return 1
+}
+
 xray_config_autorecover() {
     local cfg="${XRAY_CFG:-/usr/local/etc/xray/config.json}"
     local bin="${XRAY_BIN:-/usr/local/bin/xray}"
     local abox="${ABOX_DIR:-/etc/ddr}"
     local marker="$abox/.xray-cfg-autorecover" statusf="$abox/.xray-cfg-autorecover.status"
-    local now test_rc bad_sha gate _desired _xrc_rc _latched _cur_sha
+    local now test_rc bad_sha gate _desired _xrc_rc _latched _cur_sha _cov_rc
     [[ -x "$bin" ]] || return 2
     [[ -f "$cfg" && ! -L "$cfg" ]] || return 2
     # Desired state must still be RUNNING; a stopped stack is never pulled up.
@@ -23196,10 +23243,24 @@ xray_config_autorecover() {
             (( _xrc_rc == 2 )) && return 2
             return 1
         fi
+        # R27-H-NF-06 (GPT-arbitrated): test_rc 0 only proves xray accepts
+        # the config, not that it carries any currently expected data
+        # inbound. A valid-but-empty live config (restored pre-deployment
+        # backup) must enter recovery instead of returning 2 on every
+        # probe cycle. Only a VERIFIED mismatch (helper rc 1) enters
+        # recovery; a covered config (0) and an unverifiable one (2) keep
+        # the old return-2 behaviour. Timeouts / binary problems / other
+        # test results stay inconclusive exactly as before.
+        _xrc_config_has_expected_data_inbound "$cfg"; _cov_rc=$?
+        case "$_cov_rc" in
+            1) : ;;
+            *) return 2 ;;
+        esac
+    elif (( test_rc == 124 || test_rc == 127 )); then
+        return 2
+    elif (( test_rc != 23 )); then
         return 2
     fi
-    (( test_rc == 124 || test_rc == 127 )) && return 2
-    (( test_rc == 23 )) || return 2
     bad_sha=$(sha256sum -- "$cfg" 2>/dev/null | awk '{print $1}') || return 1
     [[ -n "$bad_sha" ]] || return 1
     now=$(date +%s)
@@ -23297,6 +23358,13 @@ PY_XRC_ENUM
         else
             XRAY_LOCATION_ASSET=/usr/local/share/xray "$bin" run -test -config "$_good" >/dev/null 2>&1 || { _good=''; continue; }
         fi
+        # R27-H-NF-06 (GPT-arbitrated A): a trusted candidate that
+        # passes the offline test but carries no expected data inbound
+        # is the pre-deployment empty backup, not a recovery: skip it
+        # and keep looking. Only a verified cover (helper rc 0) is
+        # installed; a verified mismatch (1) or an unverifiable
+        # candidate (2) is skipped, never installed.
+        _xrc_config_has_expected_data_inbound "$_good" || { _good=''; continue; }
         _good_src="$_cand"
         break
     done
@@ -31436,6 +31504,15 @@ EOF_SVC
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
     if [[ "$MODE_IN" == *ALL* ]]; then prune_owned_core_families_except xray hysteria; else prune_owned_core_families_except xray; fi
     commit_deployment_transaction
+    # R27-H-NF-06 (GPT-arbitrated B): snapshot the just-deployed config
+    # so the newest trusted backup is no longer the pre-deployment
+    # empty one; a later self-heal then restores nodes instead of an
+    # empty stack. Best-effort: the deploy already committed, so a
+    # snapshot failure warns but must not fail it. Committed-state
+    # snapshot, not a proven-healthy one: restore-time screening (A)
+    # still applies, and the gap (death between commit and snapshot)
+    # is exactly what A covers.
+    auto_backup_silent "post-deployment snapshot: xray ${MODE_IN}" || msg "${YELLOW}[!] $(tr_msg bk_postdeploy_fail)${NC}"
     # N1: deploy-time REALITY compatibility notice. Flags come from the
     # freshly rebuilt, committed config -- not MODE alone (GPT Q2 hybrid).
     local _n1_flags='' _n1_reality='0' _n1_xhttp='0'
@@ -34661,6 +34738,15 @@ clear_all_protocols() {
     # tunnel only when every core was actually cleared; otherwise
     # surviving nodes would lose their user policies, links and tunnel.
     if (( wipe_ok == 1 )); then
+        # R27-H-NF-04-variant: reconcile .env listener ports here, not
+        # only inside _protocol_removed_side_effects. When a core's
+        # config holds no inbounds at all (e.g. the self-heal-restored
+        # empty config), clear_all_protocols skips side effects for
+        # that core (empty tag list) and a stale VLESS_PORT survives
+        # the clear. Gated on wipe_ok so a partial wipe never clears
+        # ports of surviving nodes; best-effort (a failed sync keeps
+        # the ports, exactly like a skipped one did).
+        sync_env_ports_after_removal || true
         argo_remove_unit argo || true
         users_registries_wipe || msg "${YELLOW}[!] $(tprintf cu_users_note '/etc/ddr/users.d')${NC}"
         rm -f -- /etc/ddr/standalone-links.d/*.link 2>/dev/null || true

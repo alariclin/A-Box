@@ -1090,6 +1090,31 @@ PY_TREE_MOUNT
         *) return 0 ;;
     esac
 }
+# R16-F05-02: ancestor-aware mount check (bash mirror of
+# _path_or_ancestors_mounted in remove_recorded_core_family).
+# path_tree_has_mountpoint only sees the path itself and below it:
+# a bind mount on /usr/local/bin (an ancestor of the binary) is
+# invisible to it — proven by fixture (bind over /usr/local/bin,
+# rm -f still deleted the shared backend file). Walk from the path
+# up to (excluding) / and exact-check each level with
+# path_is_mountpoint (which realpaths internally, so lexical dirname
+# steps are safe). Self/subtree coverage is kept by also calling
+# path_tree_has_mountpoint first.
+# No trust allowlist: redeploy orphan cleanup defaults to deny
+# (unlike the uninstall flow's ABOX_TRUSTED_UNINSTALL_ANCESTORS);
+# a separately-mounted /usr must be cleaned up manually.
+path_tree_or_ancestors_mounted() {
+    local path="$1" cur
+    [[ -e "$path" || -L "$path" ]] || return 1
+    path_tree_has_mountpoint "$path" && return 0
+    cur="$path"
+    while [[ "$cur" != '/' && "$cur" == */ ]]; do cur="${cur%/}"; done
+    while [[ "$cur" != '/' ]]; do
+        if path_is_mountpoint "$cur"; then return 0; fi
+        cur=$(dirname "$cur")
+    done
+    return 1
+}
 
 assert_default_abox_parent_chain_trusted() {
     local dir="$1" parent uid gid mode
@@ -13320,58 +13345,72 @@ def path_is_mountpoint(path):
         raise SystemExit(1)
     return False
 
-def add_path(path):
-    # R5C5-02: a TSV separator in a path corrupts the manifest;
-    # refuse before commit (bash drops tmp, old manifest kept).
-    if '\t' in path or '\n' in path or '\r' in path:
-        raise SystemExit(1)
-    try: st=os.lstat(path)
-    except FileNotFoundError: return
-    if path_is_mountpoint(path):
-        raise SystemExit(1)
-    acme = srv == 'hysteria' and (path == '/etc/hysteria/acme' or path.startswith('/etc/hysteria/acme/'))
-    uid_ok = st.st_uid in ({0, runtime_uid} if acme else {0})
-    gid_ok = st.st_gid in ({0, runtime_gid})
-    group_write_ok = acme and path == '/etc/hysteria/acme' and st.st_uid == 0 and st.st_gid == runtime_gid and stat.S_ISDIR(st.st_mode)
-    if not uid_ok or not gid_ok or stat.S_ISLNK(st.st_mode) or (st.st_mode & 0o002) or ((st.st_mode & 0o020) and not group_write_ok):
-        raise SystemExit(1)
-    if stat.S_ISREG(st.st_mode):
-        if st.st_nlink != 1: raise SystemExit(1)
-        h=hashlib.sha256()
-        # R15-F04-01: open by descriptor, not by path (same pattern as
-        # R14-F05-01 in refresh_dynamic_core_subtree_ownership): the
-        # lstat above proves nothing about the file open() will see, and
-        # a plain open() of a swapped-in FIFO blocks root forever.
-        # O_NOFOLLOW refuses a swapped-in symlink, O_NONBLOCK keeps a
-        # swapped-in FIFO from blocking, and the fstat below binds the
-        # opened inode to the one lstat validated.
-        try:
-            _fd=os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        except OSError:
+# R16-F04-03: traverse by directory descriptor, not by path (same
+# pattern as add_fd in refresh_dynamic_core_subtree_ownership): the
+# old add_path() lstat'ed a subdirectory and then re-resolved the
+# same path with os.listdir(), so a validated subdirectory could be
+# swapped for a symlink before the listing and the walk escaped the
+# recorded tree. Every object below is now opened relative to its
+# parent's held fd (os.open with dir_fd, O_NOFOLLOW), validated by
+# fstat on that fd, and read through that fd; the logical path is
+# only the manifest identity, never re-resolved. Premise (same trust
+# model as add_fd): the ancestors above each root are root-owned
+# and not writable by the runtime user, so opening the root itself
+# with O_NOFOLLOW is sound. Mountpoint checks stay on the logical
+# path, as in add_fd.
+if os.open not in os.supports_dir_fd or os.listdir not in os.supports_fd:
+    raise SystemExit(1)
+def add_fd(fd, path):
+    try:
+        # R5C5-02: a TSV separator in a path corrupts the manifest;
+        # refuse before commit (bash drops tmp, old manifest kept).
+        if '\t' in path or '\n' in path or '\r' in path:
             raise SystemExit(1)
-        try:
-            _fst=os.fstat(_fd)
-            if not stat.S_ISREG(_fst.st_mode) or _fst.st_nlink != 1 or (_fst.st_dev, _fst.st_ino) != (st.st_dev, st.st_ino):
-                raise SystemExit(1)
-            with os.fdopen(_fd,'rb') as f:
+        st = os.fstat(fd)
+        if path_is_mountpoint(path):
+            raise SystemExit(1)
+        acme = srv == 'hysteria' and (path == '/etc/hysteria/acme' or path.startswith('/etc/hysteria/acme/'))
+        uid_ok = st.st_uid in ({0, runtime_uid} if acme else {0})
+        gid_ok = st.st_gid in ({0, runtime_gid})
+        group_write_ok = acme and path == '/etc/hysteria/acme' and st.st_uid == 0 and st.st_gid == runtime_gid and stat.S_ISDIR(st.st_mode)
+        if not uid_ok or not gid_ok or stat.S_ISLNK(st.st_mode) or (st.st_mode & 0o002) or ((st.st_mode & 0o020) and not group_write_ok):
+            raise SystemExit(1)
+        if stat.S_ISREG(st.st_mode):
+            if st.st_nlink != 1: raise SystemExit(1)
+            h=hashlib.sha256()
+            with os.fdopen(fd,'rb') as f:
                 for chunk in iter(lambda:f.read(1024*1024), b''): h.update(chunk)
-            _fd=None
-        finally:
-            if _fd is not None:
-                try: os.close(_fd)
-                except OSError: pass
-        entries.append(['F',srv,path,h.hexdigest()])
-    elif stat.S_ISDIR(st.st_mode):
-        entries.append(['D',srv,path,'-'])
-        try:
-            names=sorted(os.listdir(path), key=os.fsencode)
-        except OSError:
+            fd=None
+            entries.append(['F',srv,path,h.hexdigest()])
+        elif stat.S_ISDIR(st.st_mode):
+            entries.append(['D',srv,path,'-'])
+            try:
+                names=sorted(os.listdir(fd), key=os.fsencode)
+            except OSError:
+                raise SystemExit(1)
+            for name in names:
+                try:
+                    _cfd=os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+                except OSError:
+                    raise SystemExit(1)
+                add_fd(_cfd, os.path.join(path,name))
+        else:
             raise SystemExit(1)
-        for name in names:
-            add_path(os.path.join(path,name))
-    else:
+    finally:
+        if fd is not None:
+            try: os.close(fd)
+            except OSError: pass
+for root in roots:
+    # A missing root is skipped, as before (the old lstat
+    # FileNotFoundError returned). Any other open failure fails the
+    # whole recording instead of publishing a partial manifest.
+    try:
+        _rfd=os.open(root, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        continue
+    except OSError:
         raise SystemExit(1)
-for root in roots: add_path(root)
+    add_fd(_rfd, root)
 all_entries=old+entries
 seen=set()
 with open(out_name,'w',encoding='utf-8',newline='\n') as f:
@@ -13584,32 +13623,62 @@ with open(manifest,'r',encoding='utf-8') as f:
 recorded={r[2]:(r[0],r[3]) for r in rows if r[2]==target or r[2].startswith(target+'/')}
 if recorded.get(target,('', ''))[0] != 'D':
     raise SystemExit(1)
-def check(path):
-    try: st=os.lstat(path)
-    except FileNotFoundError: raise SystemExit(1)
-    acme = path == target or path.startswith(target + '/')
-    uid_ok = st.st_uid in ({0, runtime_uid} if acme else {0})
-    gid_ok = st.st_gid in ({0, runtime_gid})
-    legacy_root_dir_ok = acme and path == target and st.st_uid == 0 and st.st_gid == 0 and stat.S_ISDIR(st.st_mode) and (st.st_mode & 0o077) == 0
-    group_write_ok = acme and path == target and st.st_uid == 0 and st.st_gid == runtime_gid and stat.S_ISDIR(st.st_mode)
-    if not uid_ok or not gid_ok or stat.S_ISLNK(st.st_mode) or (st.st_mode & 0o002) or ((st.st_mode & 0o020) and not group_write_ok) or (acme and path == target and not (group_write_ok or legacy_root_dir_ok)):
-        raise SystemExit(1)
-    rec=recorded.get(path)
-    if rec is None: raise SystemExit(1)
-    typ,_=rec
-    if stat.S_ISDIR(st.st_mode):
-        if typ!='D': raise SystemExit(1)
-        for name in sorted(os.listdir(path), key=os.fsencode):
-            check(os.path.join(path,name))
-    elif stat.S_ISREG(st.st_mode):
-        if typ!='F' or st.st_nlink != 1: raise SystemExit(1)
-        h=hashlib.sha256()
-        with open(path,'rb') as f:
-            for chunk in iter(lambda:f.read(1024*1024), b''): h.update(chunk)
-        if h.hexdigest() != rec[1]: raise SystemExit(1)
-    else:
-        raise SystemExit(1)
-check(target)
+# R16-F04-02 / Q4: check by directory descriptor, not by path.
+# The old check() lstat'ed each object and then re-resolved it by
+# path (os.listdir()/open()), so a validated subdirectory could be
+# swapped for a symlink before the listing (same hole as R16-F04-03)
+# and a validated file for a FIFO before the open (root blocks
+# forever in open()). Hash comparison happens after the read, so it
+# cannot prevent the out-of-tree read. Every object is now opened
+# relative to its parent's held fd (os.open with dir_fd,
+# O_NOFOLLOW|O_NONBLOCK), validated by fstat on that fd, and read
+# through that fd; the logical path is only the manifest identity,
+# never re-resolved.
+def check_fd(fd, path):
+    try:
+        st=os.fstat(fd)
+        acme = path == target or path.startswith(target + '/')
+        uid_ok = st.st_uid in ({0, runtime_uid} if acme else {0})
+        gid_ok = st.st_gid in ({0, runtime_gid})
+        legacy_root_dir_ok = acme and path == target and st.st_uid == 0 and st.st_gid == 0 and stat.S_ISDIR(st.st_mode) and (st.st_mode & 0o077) == 0
+        group_write_ok = acme and path == target and st.st_uid == 0 and st.st_gid == runtime_gid and stat.S_ISDIR(st.st_mode)
+        if not uid_ok or not gid_ok or stat.S_ISLNK(st.st_mode) or (st.st_mode & 0o002) or ((st.st_mode & 0o020) and not group_write_ok) or (acme and path == target and not (group_write_ok or legacy_root_dir_ok)):
+            raise SystemExit(1)
+        rec=recorded.get(path)
+        if rec is None: raise SystemExit(1)
+        typ,_=rec
+        if stat.S_ISDIR(st.st_mode):
+            if typ!='D': raise SystemExit(1)
+            try:
+                names=sorted(os.listdir(fd), key=os.fsencode)
+            except OSError:
+                raise SystemExit(1)
+            for name in names:
+                try:
+                    _cfd=os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+                except OSError:
+                    raise SystemExit(1)
+                check_fd(_cfd, os.path.join(path,name))
+        elif stat.S_ISREG(st.st_mode):
+            if typ!='F' or st.st_nlink != 1: raise SystemExit(1)
+            h=hashlib.sha256()
+            with os.fdopen(fd,'rb') as f:
+                for chunk in iter(lambda:f.read(1024*1024), b''): h.update(chunk)
+            fd=None
+            if h.hexdigest() != rec[1]: raise SystemExit(1)
+        else:
+            raise SystemExit(1)
+    finally:
+        if fd is not None:
+            try: os.close(fd)
+            except OSError: pass
+if os.open not in os.supports_dir_fd or os.listdir not in os.supports_fd:
+    raise SystemExit(1)
+try:
+    _tfd=os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+except OSError:
+    raise SystemExit(1)
+check_fd(_tfd, target)
 # No recorded file below the subtree may disappear from the current tree.
 for path,(typ,_) in recorded.items():
     if path==target: continue
@@ -14770,6 +14839,12 @@ core_binary_managed_registered() {
     local srv="$1" path="$2"
     local _mf="${ABOX_CORE_OWNERSHIP:-/etc/ddr/.managed-core-files.tsv}" _want='' _have=''
     [[ -f "$_mf" && ! -L "$_mf" ]] || return 1
+    # R16-F05-01: the manifest is a trust anchor for the no-confirm
+    # deletion below; a drifted (non-root-owned or group/other-writable)
+    # manifest must not authorise it. Same 0:0/0600 gate as
+    # remove_recorded_core_family() applies to this manifest.
+    [[ "$(stat -c %u:%g "$_mf" 2>/dev/null || true)" == 0:0 ]] || return 1
+    [[ "$(stat -c %a "$_mf" 2>/dev/null || true)" =~ ^0?600$ ]] || return 1
     [[ -f "$path" && ! -L "$path" ]] || return 1
     _want=$(awk -F'\t' -v s="$srv" -v p="$path" '$1=="F" && $2==s && $3==p {print $4; exit}' "$_mf" 2>/dev/null || true)
     [[ -n "$_want" ]] || return 1
@@ -14819,6 +14894,18 @@ assert_no_foreign_core_conflicts() {
             msg "${YELLOW}$(tprintf af_managed_orphan_warn "$conflicts")${NC}"
             while IFS='|' read -r _srv _path; do
                 [[ -n "$_path" ]] || continue
+                # R16-F05-02: refuse mounted trees before rm; a bind
+                # mount on the file, below it, or on any ancestor
+                # would delete shared foreign data (same rule as
+                # residue_takeover_clear, R6C6-01, extended to
+                # ancestors: path_tree_has_mountpoint alone cannot
+                # see them). The orphan check above already refuses
+                # mounted binaries; this re-check closes the window
+                # between classification and delete.
+                if path_tree_or_ancestors_mounted "$_path"; then
+                    msg "${RED}[!] Refusing to delete mounted core binary: ${_path}${NC}"
+                    die "$(tr_msg af_migrate)"
+                fi
                 rm -f -- "$_path" || die "$(tr_msg af_migrate)"
             done <<< "$conflicts"
             return 0
@@ -14828,6 +14915,16 @@ assert_no_foreign_core_conflicts() {
         if is_yes "$_ans"; then
             while IFS='|' read -r _srv _path; do
                 [[ -n "$_path" ]] || continue
+                # R16-F05-02: same ancestor-aware mount guard as the
+                # no-confirm loop: confirming the orphan identity does
+                # not authorise deleting shared backend data (the
+                # prompt never shows mount state), and the window
+                # since classification is larger here because of the
+                # user interaction.
+                if path_tree_or_ancestors_mounted "$_path"; then
+                    msg "${RED}[!] Refusing to delete mounted core binary: ${_path}${NC}"
+                    die "$(tr_msg af_migrate)"
+                fi
                 rm -f -- "$_path" || die "$(tr_msg af_migrate)"
             done <<< "$conflicts"
             return 0
@@ -14852,6 +14949,12 @@ core_family_binary_orphaned() {
         *) return 1 ;;
     esac
     [[ -x "$bin" && ! -L "$bin" ]] || return 1
+    # R16-F05-02: a mounted binary is never an orphan: deleting it
+    # would delete shared backend data, not a local residue. The
+    # check covers the binary itself, below it, and every ancestor
+    # up to / (a bind mount on /usr/local/bin is the threat, and
+    # path_tree_has_mountpoint alone cannot see ancestor mounts).
+    path_tree_or_ancestors_mounted "$bin" && return 1
     [[ ! -e "$cfg_dir" && ! -L "$cfg_dir" ]] || return 1
     unit=$(same_name_service_unit_path "$srv" 2>/dev/null || true)
     [[ -z "$unit" || ( ! -e "$unit" && ! -L "$unit" ) ]]
@@ -14961,7 +15064,20 @@ remove_owned_core_families_for_restore() {
 
 
 shortcut_is_abox_managed() {
-    local path="${1:-/usr/local/bin/sb}"
+    local path="${1:-/usr/local/bin/sb}" _mode
+    [[ -f "$path" && ! -L "$path" ]] || return 1
+    # R16-F05-03: content alone must not bless a wrapper: a root:root
+    # 0777 or non-root-owned wrapper with the right marker would
+    # otherwise be committed as usable, and whoever can write it then
+    # gets root code execution. Gate (B): root:root, no group/other
+    # write, owner-executable. 0700/0750 history stays managed; only
+    # writability by non-root is refused. The content check itself
+    # stays in auxiliary_content_is_abox_managed().
+    path_owned_by_root "$path" || return 1
+    path_mode_has_no_group_other_write "$path" || return 1
+    _mode=$(stat -c %a "$path" 2>/dev/null) || return 1
+    [[ "$_mode" =~ ^[0-7]{3,4}$ ]] || return 1
+    (( (8#$_mode & 8#100) != 0 )) || return 1
     auxiliary_content_is_abox_managed "$path" "$path"
 }
 
@@ -15254,6 +15370,10 @@ shortcut_check_candidate() {
             ;;
         file)
             _p=$(command -v "$_name" 2>/dev/null || true)
+            # R16-F05-05: normalise equivalent spellings before
+            # comparing: command -v returns the spelling PATH used,
+            # so '/usr/local/bin//' yields a double-slash path.
+            while [[ "$_p" == *'//'* ]]; do _p="${_p//\/\//\/}"; done
             if [[ "$_p" != "$_target" ]]; then
                 SHORTCUT_ERR='cmd_shadow'; SHORTCUT_DETAIL="$_p"; return 1
             fi
@@ -15272,6 +15392,13 @@ shortcut_check_candidate() {
     for _dir in $_path; do
         IFS="$_old_ifs"
         [[ -n "$_dir" ]] || _dir='.'
+        # R16-F05-05: normalise the spelling before dedup/exclusion:
+        # '/usr/local/bin/' and '/usr/local/bin//' are the same
+        # directory as '/usr/local/bin'; without this the exclusion
+        # below misses and the managed wrapper is misreported as
+        # path_shadow (bash resolves // as / when testing -f).
+        while [[ "$_dir" == *'//'* ]]; do _dir="${_dir//\/\//\/}"; done
+        while [[ "$_dir" != '/' && "$_dir" == */ ]]; do _dir="${_dir%/}"; done
         case "$_seen_dirs" in *" $_dir "*) continue ;; esac
         _seen_dirs="$_seen_dirs$_dir "
         [[ "$_dir" == '/usr/local/bin' ]] && continue
@@ -16335,7 +16462,10 @@ standalone_preserve_snapshot() { # $1 = core, $2 = config path
     # (e.g. shadowtls-in -> shadowtls-ss); snapshotting only the outer
     # inbound makes full restore fail validation on the missing target
     # and the nost retry then drops the node.
-    if ! jq --arg pat "^(${pat})$" '([.inbounds[]? | select((.tag // "") | test($pat))] | map(.detour // empty)) as $detours | [.inbounds[]? | ((.tag // "") as $t | select(($t | test($pat)) or ($detours | index($t) != null)))]' "$cfg" > "$out" 2>/dev/null; then
+    # R16-F05-04: strip JSONC comments before jq: the live config may
+    # legally carry // or /* */ comments (the same R14-F01-01 class as
+    # the other live-config readers, which all strip first).
+    if ! jsonc_strip_comments "$cfg" 2>/dev/null | jq --arg pat "^(${pat})$" '([.inbounds[]? | select((.tag // "") | test($pat))] | map(.detour // empty)) as $detours | [.inbounds[]? | ((.tag // "") as $t | select(($t | test($pat)) or ($detours | index($t) != null)))]' > "$out" 2>/dev/null; then
         rm -f -- "$out"; rm -rf -- "$tmpd"
         msg "${YELLOW}[!] $(tr_msg dp_preserve_snapshot_fail)${NC}"
         return 1

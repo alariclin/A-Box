@@ -616,7 +616,8 @@ _standalone_link_is_empty_shadowtls() {
 # against the certificate's own public key. openssl verify -check_ss_sig
 # with the certificate as its own trust anchor checks exactly that; the
 # first certificate is isolated first (the file may carry a chain) and
-# trust is restricted to it (-no-CApath/-no-CAstore). Any other outcome
+# trust is restricted to it (-no-CApath, plus -no-CAstore on
+# OpenSSL 3.x; R16-F01-01). Any other outcome
 # (not self-issued, signature failure, unreadable, OpenSSL without
 # -check_ss_sig) returns 1, "not proven" — never "proven otherwise", so
 # callers stay fail-closed. -no_check_time keeps the question purely "is
@@ -632,7 +633,24 @@ _tuic_cert_self_signed() {
     [[ -n "$_iss" && -n "$_sub" && "$_iss" == "$_sub" ]] || return 1
     _tmp=$(umask 077; mktemp /tmp/A-Box-tuic-cert.XXXXXX 2>/dev/null) || return 1
     if ! openssl x509 -in "$_cert_file" -out "$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
-    if openssl verify -check_ss_sig -no-CApath -no-CAstore -no_check_time -CAfile "$_tmp" "$_tmp" >/dev/null 2>&1; then
+    # R16-F01-01: -no-CAstore is an OpenSSL 3.x option; 1.1.1
+    # (Debian 10/11, Ubuntu 20.04) rejects it as unknown, so the
+    # check always fails there. Probe for the option once and use
+    # the 3.x form only when it exists. The 1.1.1 fallback keeps
+    # trust isolated the same way: with -CAfile given, 1.1.1 loads
+    # no default store, and -no-CApath excludes the default dir.
+    # Dropping -no-CAstore on 3.x would NOT be equivalent: there
+    # the default store is still consulted alongside -CAfile, so a
+    # store-trusted CA could vouch for a self-issued certificate.
+    # The help text is captured first, not piped into grep -q:
+    # under pipefail an early grep exit can SIGPIPE openssl and
+    # flip this test to the 1.1.1 branch on a 3.x host.
+    local _verify_args=(-check_ss_sig -no-CApath -no_check_time) _verify_help=''
+    _verify_help=$(openssl verify -help 2>&1 || :)
+    if [[ "$_verify_help" == *'-no-CAstore'* ]]; then
+        _verify_args=(-check_ss_sig -no-CApath -no-CAstore -no_check_time)
+    fi
+    if openssl verify "${_verify_args[@]}" -CAfile "$_tmp" "$_tmp" >/dev/null 2>&1; then
         rm -f -- "$_tmp"
         return 0
     fi
@@ -710,10 +728,12 @@ rebuild_standalone_links() {
             fi
         fi
         if [[ ! -f "$_dir/tuic.link" ]]; then
-            _port=''; _uuid=''; _pass=''; _cc=''; _sni=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // "")] | @tsv' 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert
+            _port=''; _uuid=''; _pass=''; _cc=''; _sni=''; _nul=''
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="tuic-in")) | [(.listen_port|tostring), (.users[0].uuid // ""), (.users[0].password // ""), (.congestion_control // "bbr"), (.tls.server_name // ""), ((.tls.alpn | if type == "array" then .[0] else . end) // "h3"), (.users[0] | has("password")), (.tls.certificate_path // ""), ((.users[0].password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _uuid _pass _cc _sni _alpn _has_pass _cert _nul
             _tsv_unescape "$_uuid" _uuid; _tsv_unescape "$_pass" _pass; _tsv_unescape "$_cc" _cc; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_alpn" _alpn; _tsv_unescape "$_cert" _cert
-            if [[ "$_port" =~ ^[0-9]+$ && -n "$_uuid" && ( -n "$_pass" || "$_has_pass" == 'true' ) ]]; then
+            if [[ "$_nul" == 'true' ]]; then
+                printf '%s\n' "${YELLOW}tuic password contains a NUL byte, link skipped (tuic)${NC}" >&2
+            elif [[ "$_port" =~ ^[0-9]+$ && -n "$_uuid" && ( -n "$_pass" || "$_has_pass" == 'true' ) ]]; then
                 # R8-F1-2: fail-closed default — allow_insecure=1 is
                 # written only when the certificate is positively
                 # proven self-signed: the signature must also verify
@@ -761,10 +781,12 @@ rebuild_standalone_links() {
             fi
         fi
         if [[ ! -f "$_dir/anytls.link" ]]; then
-            _port=''; _pass=''; _pk=''; _sni=''; _sid=''
-            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="anytls-in")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // "")] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid
+            _port=''; _pass=''; _pk=''; _sni=''; _sid=''; _nul=''
+            _tsv_split "$(jsonc_strip_comments "$_sc" 2>/dev/null | jq -r 'first(.inbounds[]? | select(.tag=="anytls-in")) | [(.listen_port|tostring), (.users[0].password // .password // ""), (.tls.reality.private_key // ""), (.tls.server_name // ""), ((.tls.reality.short_id | if type == "array" then .[0] else . end) // ""), ((.users[0].password // .password // "") | contains("\u0000"))] | @tsv' 2>/dev/null)" _port _pass _pk _sni _sid _nul
             _tsv_unescape "$_pass" _pass; _tsv_unescape "$_pk" _pk; _tsv_unescape "$_sni" _sni; _tsv_unescape "$_sid" _sid
-            if [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
+            if [[ "$_nul" == 'true' ]]; then
+                printf '%s\n' "${YELLOW}anytls password contains a NUL byte, link skipped (anytls)${NC}" >&2
+            elif [[ "$_port" =~ ^[0-9]+$ && -n "$_pass" && -n "$_pk" ]]; then
                 _pub=$(x25519_pub_from_priv "$_pk") && [[ -n "$_pub" ]] && \
                 register_standalone_link anytls "$(tprintf sl_node_port 'AnyTLS-Reality' "$_port")" "anytls://$(urlencode "$_pass")@$(uri_host "$_ip"):${_port}?security=reality&sni=${_sni}&fp=chrome&pbk=${_pub}&sid=${_sid}#AnyTLS-Reality"
             elif [[ -n "$_port$_pass$_pk$_sni$_sid" ]]; then
@@ -842,7 +864,11 @@ rebuild_standalone_links() {
     # view_config uses); a missing/unusable pin refuses the link.
     if [[ ! -f "$_dir/hy2.link" && -f /etc/hysteria/config.yaml && ! -L /etc/hysteria/config.yaml ]]; then
         _pass=''; _obfs=''; _url=''; _port=''
-        _pass=$(users_hy2_read_users /etc/hysteria/config.yaml 2>/dev/null | jq -r '.[0].secret // ""' 2>/dev/null || true)
+        # R16-F01-02: same trailing-LF sentinel as the obfs branch
+        # below: jq -r + $() strips a trailing LF from the password,
+        # caching a wrong credential for a password that ends in LF.
+        _pass=$(users_hy2_read_users /etc/hysteria/config.yaml 2>/dev/null | jq -r '((.[0].secret // "") + "__ABOX_TRAILING_NL_KEEP__")' 2>/dev/null || true)
+        _pass=${_pass%__ABOX_TRAILING_NL_KEEP__}
         _obfs_raw=$(awk '/^obfs:/{f=1} f && /^[^[:space:]#]/{if ($0 !~ /^obfs:/) exit} f{print}' /etc/hysteria/config.yaml 2>/dev/null | sed -n 's/^[[:space:]]*password:[[:space:]]*//p' | head -1)
         if [[ -n "${_obfs_raw:-}" ]]; then
             _obfs=$(users_hy2_yaml_scalar "$_obfs_raw" 2>/dev/null) || _obfs=''
@@ -27793,10 +27819,39 @@ argo_origin_probe() {
 # caller's die carries the failure; a cleanup failure is reported,
 # not fatal. Callers run under the menu runtime lock, so no concurrent
 # deploy can own these fixed temp tags while this runs.
+# R16-F09-01: tri-state probe for the temp-cleanup decision.
+# _argo_ws_inbound_present <cfg> <tag>: 0 when the inbound tag is
+# present in the (JSONC) config, 1 when the config parses and the
+# tag is absent, 2 when the answer cannot be determined (missing,
+# unreadable or unparsable config, or no inbounds array). Callers
+# treat 2 as "keep": deleting on an unknown answer could destroy
+# a fixed deployment's origin inbound.
+_argo_ws_inbound_present() {
+    local _cfg="$1" _tag="$2" _has=''
+    [[ -f "$_cfg" && ! -L "$_cfg" && -r "$_cfg" ]] || return 2
+    _has=$(jsonc_strip_comments "$_cfg" 2>/dev/null | jq -r --arg t "$_tag" 'if (.inbounds | type) == "array" then (if any(.inbounds[]?; .tag == $t) then "yes" else "no" end) else "unknown" end' 2>/dev/null) || return 2
+    case "$_has" in
+        yes) return 0 ;;
+        no) return 1 ;;
+        *) return 2 ;;
+    esac
+}
+
 argo_temp_cleanup_on_failure() {
+    # R16-F09-01: the ws inbounds are SHARED with a fixed deployment
+    # (argo_deploy_ws merges them in place, preserving existing
+    # users), so they are deleted only when this temp deployment
+    # created them. $1/$2 (1 = pre-existing, keep; 0 = created here,
+    # delete) come from the deploy_argo_temp snapshot taken before
+    # argo_deploy_ws; with no arguments both are kept (fail-closed).
+    local _keep_vmess="${1:-1}" _keep_vless="${2:-1}" _del=()
     argo_remove_unit argo-vmess 2>/dev/null || msg "${YELLOW}[!] Argo temp cleanup: the temp VMess unit could not be removed; check it manually.${NC}" >&2
     argo_remove_unit argo-vless 2>/dev/null || msg "${YELLOW}[!] Argo temp cleanup: the temp VLESS unit could not be removed; check it manually.${NC}" >&2
-    _remove_inbounds_from_config sing-box vmess-ws-in vless-ws-in 2>/dev/null || msg "${YELLOW}[!] Argo temp cleanup: the temp ws inbounds could not be removed; check them manually.${NC}" >&2
+    [[ "$_keep_vmess" == 0 ]] && _del+=(vmess-ws-in)
+    [[ "$_keep_vless" == 0 ]] && _del+=(vless-ws-in)
+    if (( ${#_del[@]} > 0 )); then
+        _remove_inbounds_from_config sing-box "${_del[@]}" 2>/dev/null || msg "${YELLOW}[!] Argo temp cleanup: the temp ws inbounds could not be removed; check them manually.${NC}" >&2
+    fi
     return 0
 }
 
@@ -27906,25 +27961,35 @@ EOF_SVC
     # before argo_deploy_ws restarts sing-box (R7-13 precedent on
     # the sing-box deploy path).
     ensure_singbox_service_unit || die "$(tr_msg dp_sb_unit)"
+    # R16-F09-01: snapshot which ws inbounds already exist before
+    # argo_deploy_ws merges the temp ones in place: a pre-existing
+    # inbound belongs to the fixed deployment and the failure
+    # cleanup below must keep it; only a tag this deploy created
+    # may be deleted. An undeterminable answer (rc 2) keeps it.
+    local _argo_pre_vmess=1 _argo_pre_vless=1 _argo_pre_rc=0
+    _argo_ws_inbound_present "$cfg" vmess-ws-in; _argo_pre_rc=$?
+    [[ "$_argo_pre_rc" == 1 ]] && _argo_pre_vmess=0
+    _argo_ws_inbound_present "$cfg" vless-ws-in; _argo_pre_rc=$?
+    [[ "$_argo_pre_rc" == 1 ]] && _argo_pre_vless=0
     argo_deploy_ws
     argo_write_unit argo-vmess "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 --url http://127.0.0.1:${ARGO_VMESS_PORT}"
     argo_write_unit argo-vless "tunnel --no-autoupdate --edge-ip-version auto --protocol http2 --url http://127.0.0.1:${ARGO_VLESS_PORT}"
     local d1='' d2=''
-    d1=$(argo_capture_domain /etc/ddr/argo-vmess.log) || { argo_temp_cleanup_on_failure; die "$(tr_msg ag_vmess_domain)"; }
-    d2=$(argo_capture_domain /etc/ddr/argo-vless.log) || { argo_temp_cleanup_on_failure; die "$(tr_msg ag_vless_domain)"; }
+    d1=$(argo_capture_domain /etc/ddr/argo-vmess.log) || { argo_temp_cleanup_on_failure "$_argo_pre_vmess" "$_argo_pre_vless"; die "$(tr_msg ag_vmess_domain)"; }
+    d2=$(argo_capture_domain /etc/ddr/argo-vless.log) || { argo_temp_cleanup_on_failure "$_argo_pre_vmess" "$_argo_pre_vless"; die "$(tr_msg ag_vless_domain)"; }
     # R15C9-01: both temp tunnels must prove edge connections BEFORE
     # the fixed deployment is torn down. A domain in the log alone
     # does not prove usability; on failure die here so the fixed
     # unit, token and state stay intact (no dead links published).
-    argo_wait_temp_ready argo-vmess /etc/ddr/argo-vmess.log 60 || { argo_temp_cleanup_on_failure; die 'Temp Argo VMess tunnel did not establish an edge connection; fixed deployment kept.'; }
-    argo_wait_temp_ready argo-vless /etc/ddr/argo-vless.log 60 || { argo_temp_cleanup_on_failure; die 'Temp Argo VLESS tunnel did not establish an edge connection; fixed deployment kept.'; }
+    argo_wait_temp_ready argo-vmess /etc/ddr/argo-vmess.log 60 || { argo_temp_cleanup_on_failure "$_argo_pre_vmess" "$_argo_pre_vless"; die 'Temp Argo VMess tunnel did not establish an edge connection; fixed deployment kept.'; }
+    argo_wait_temp_ready argo-vless /etc/ddr/argo-vless.log 60 || { argo_temp_cleanup_on_failure "$_argo_pre_vmess" "$_argo_pre_vless"; die 'Temp Argo VLESS tunnel did not establish an edge connection; fixed deployment kept.'; }
     # 2qu: edge registration does not prove the origin answers. Probe
     # each temp tunnel's public WebSocket endpoint (expect HTTP 101
     # from the sing-box ws inbound) before tearing down the fixed
     # deployment; a dead origin dies here with the fixed unit, token
     # and state intact (no dead links published).
-    argo_origin_probe "$d1" "/${ARGO_UUID}-vmess" || { argo_temp_cleanup_on_failure; die 'Temp Argo VMess tunnel origin did not answer the WebSocket probe; fixed deployment kept.'; }
-    argo_origin_probe "$d2" "/${ARGO_UUID}-vless" || { argo_temp_cleanup_on_failure; die 'Temp Argo VLESS tunnel origin did not answer the WebSocket probe; fixed deployment kept.'; }
+    argo_origin_probe "$d1" "/${ARGO_UUID}-vmess" || { argo_temp_cleanup_on_failure "$_argo_pre_vmess" "$_argo_pre_vless"; die 'Temp Argo VMess tunnel origin did not answer the WebSocket probe; fixed deployment kept.'; }
+    argo_origin_probe "$d2" "/${ARGO_UUID}-vless" || { argo_temp_cleanup_on_failure "$_argo_pre_vmess" "$_argo_pre_vless"; die 'Temp Argo VLESS tunnel origin did not answer the WebSocket probe; fixed deployment kept.'; }
     # Switching to temp mode: tear down any fixed deployment.
     # R14-F09-02: a failed teardown must not be papered over: the token
     # and the new mode are committed only after the old unit is gone.
@@ -54807,8 +54872,7 @@ acquire_fallback_runtime_lock() {
 }
 
 
-upgrade_runtime_lock_to_flock_if_possible() {
-    # R15-F17-01: probe whether a flock holder exists on LOCK_FILE without
+# R15-F17-01: probe whether a flock holder exists on LOCK_FILE without
 # the flock binary, via python fcntl (same flock(2) lock the flock binary
 # takes). Tri-state by exit code, mirroring fallback_runtime_lock_held:
 # 0 = no holder (lock free), 10 = a live holder, 20 = unknown (fail closed).
@@ -54818,6 +54882,10 @@ upgrade_runtime_lock_to_flock_if_possible() {
 # unlinked inode is indistinguishable here, exactly as in the flock branch,
 # which creates the file when missing). The probe briefly takes the lock
 # itself and releases it by closing the fd.
+# R16-F17-01: top-level on purpose — acquire_runtime_lock calls
+# this probe from a fresh process that never ran the upgrade
+# function; a nested definition is only registered when the outer
+# function runs, so the no-flock fallback path always died 127.
 probe_runtime_flock_holder() {
     python3 -I - "$LOCK_FILE" <<'PY_FLOCK_PROBE'
 import fcntl
@@ -54864,6 +54932,7 @@ except Exception:
 PY_FLOCK_PROBE
 }
 
+upgrade_runtime_lock_to_flock_if_possible() {
 # After ensure_commands may have installed flock, promote a session that
     # started on LOCK_FALLBACK_DIR onto LOCK_FILE so helpers and main share one object.
     [[ "${ABOX_RUNTIME_LOCK_MODE:-}" == fallback ]] || return 0

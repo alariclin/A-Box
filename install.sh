@@ -43270,7 +43270,7 @@ def redact_text(value):
 
 _block_scalar_key = r"(?:uuid|private.?key|public.?key|short.?ids?|fingerprint|password|passwd|pass|pre[_-]?shared[_-]?key|token|secret|api.?key|authorization|cookie|ss_pass|hy2_pass|hy2_obfs)"
 _block_scalar_re = re.compile(
-    r"(?i)^(\s*[\"']?" + _block_scalar_key + r"[\"']?\s*:\s*(?:!{1,2}[A-Za-z0-9_-]+[ \t]*)?)[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(#.*)?$"
+    r"(?i)^(\s*[\"']?" + _block_scalar_key + r"[\"']?\s*:\s*(?:(?:!{1,2}[A-Za-z0-9_-]+|&[A-Za-z0-9_-]+)[ \t]+)*)[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(#.*)?$"
 )
 
 
@@ -43657,8 +43657,13 @@ except Exception:
         r'\1***REDACTED***',
         text,
     )
+    # R27-F13-02: the second double-quote alternative below redacts a
+    # value whose closing quote never arrives (truncated input); without
+    # it the value passes through verbatim with rc=0. It consumes to the
+    # next quote or end of text (fail-closed: once the quote is unclosed
+    # the value boundary is unknowable, so nothing after it is trusted).
     text = re.sub(
-        r"(?i)(" + _TEXT_KEY_HEAD + _COMMENT_GAP + r")(?:(?:!{1,2}[A-Za-z0-9_-]+|&[A-Za-z0-9_-]+)[ \t]+)*(\"(?:\\[\s\S]|[^\"\\])*\"|'(?:[^']|'')*'|"
+        r"(?i)(" + _TEXT_KEY_HEAD + _COMMENT_GAP + r")(?:(?:!{1,2}[A-Za-z0-9_-]+|&[A-Za-z0-9_-]+)[ \t]+)*(\"(?:\\[\s\S]|[^\"\\])*\"|\"(?:\\[\s\S]|[^\"\\])*|'(?:[^']|'')*'|"
         + _unquoted_value(_TEXT_KEY_HEAD)
         + r")",
         r'\1"***REDACTED***"',
@@ -44095,7 +44100,12 @@ managed_service_state_value() {
             # and returning 1 here kills every auto-backup (and the
             # redeploy it gates). Map them to 0; a genuinely unknown
             # state still fails closed below.
-            activating|reloading|deactivating) active=0 ;;
+            # R27-F13-03: reloading is not a stopped state: the unit is
+            # still running while it reloads, so it maps to 1. Only
+            # activating (not yet up) and deactivating (on its way down)
+            # map to 0.
+            reloading) active=1 ;;
+            activating|deactivating) active=0 ;;
             *) return 1 ;;
         esac
         enabled_state=$(service_enabled_state_value "$srv") || return 1
@@ -46904,12 +46914,24 @@ wallos_install_runtime() {
         return 1
     fi
     prompt=$(tr_msg wl_rt_install_prompt)
-    read -r -p "$prompt" answer
+    # R27-F14-04: a failed read (e.g. `y` then EOF with no newline) must
+    # not authorize the install; cf. the conflict prompt below, which
+    # already checks the read status.
+    read -r -p "$prompt" answer || return 1
     is_yes "$answer" || return 1
     case "$os_id" in
         debian|ubuntu|linuxmint|kali)
             apt-get update && apt-get install -y docker.io ca-certificates curl jq || return 1
-            if command -v systemctl >/dev/null 2>&1; then systemctl enable --now docker || return 1
+            # R27-F14-03: systemctl existing does not mean systemd is
+            # PID 1 (it can coexist with sysvinit/OpenRC); judge with
+            # systemd_available like the already-installed branch above.
+            # If systemctl then fails, fall back to service instead of
+            # reporting the install failed while the daemon is startable.
+            if systemd_available; then
+                systemctl enable --now docker || {
+                    command -v service >/dev/null 2>&1 || return 1
+                    service docker start 9>&- 10>&- || return 1
+                }
             elif command -v service >/dev/null 2>&1; then service docker start 9>&- 10>&- || return 1
             else return 1; fi
             ;;
@@ -46950,7 +46972,17 @@ wallos_install_runtime() {
                 msg "${RED}$(tr_msg wl_rt_ce_fail)${NC}"
                 return 1
             }
-            systemctl enable --now docker || return 1
+            # R27-F14-03 (sibling, same function): same systemd check and
+            # service fallback as the Debian branch above. RHEL-family
+            # hosts are systemd-native in practice, but the fallback
+            # costs nothing when systemctl is present yet failing.
+            if systemd_available; then
+                systemctl enable --now docker || {
+                    command -v service >/dev/null 2>&1 || return 1
+                    service docker start 9>&- 10>&- || return 1
+                }
+            elif command -v service >/dev/null 2>&1; then service docker start 9>&- 10>&- || return 1
+            else return 1; fi
             ;;
         *)
             msg "${RED}$(tprintf wl_rt_unsupported "$os_id")${NC}"
@@ -47560,7 +47592,10 @@ wallos_rollback_to_version() {
     # after a retag, recovery must restart the exact image, never a
     # different image that later took over the tag. Refuse before
     # docker rm if the ID is not a well-formed digest.
-    [[ "$prev_image" =~ ^sha256:[0-9a-f]{64}$ ]] || { rm -rf -- "$_rb_stage_dir"; msg "${RED}Cannot determine the pre-rollback image ID; refusing rollback.${NC}"; return 1; }
+    # R27-F14-01: the container was already stopped above; if the
+    # identity gate refuses, restart it (A-04 precedent at the rm branch
+    # below) instead of leaving a running service in Exited state.
+    [[ "$prev_image" =~ ^sha256:[0-9a-f]{64}$ ]] || { docker start wallos >/dev/null 2>&1 || true; rm -rf -- "$_rb_stage_dir"; msg "${RED}Cannot determine the pre-rollback image ID; refusing rollback.${NC}"; return 1; }
     docker rm -f wallos >/dev/null 2>&1 || {
         # A-04: rm failed after stop succeeded; try to restart the original
         # container instead of leaving it in Exited state.
@@ -48076,6 +48111,11 @@ wallos_create_backup() {
     # links must fail here, not at restore after rotation.
     wallos_validate_backup "$temp" || { rm -f -- "$temp"; return 1; }
     sync -f "$temp" || { rm -f -- "$temp"; return 1; }
+    # R27-F14-02: refuse a directory (or symlink-to-directory) backup
+    # target: mv without -T would move the archive INTO the directory
+    # and still return 0, reporting a "successful" backup path that can
+    # never be restored. A regular-file target is still overwritten.
+    [[ -d "$backup" ]] && { rm -f -- "$temp"; return 1; }
     mv -f "$temp" "$backup" || { rm -f -- "$temp"; return 1; }
     sync -f "$WALLOS_DIR/backups" || { rm -f -- "$backup"; return 1; }
     # D-07: BusyBox find (Alpine) lacks -printf; python3 is already a hard

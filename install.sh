@@ -25673,23 +25673,31 @@ EOF_SVC
     fi
     setup_active_defense
     setup_health_monitor
+    # E19: register the standalone Hy2 link at deploy time, like
+    # every other deployer does. Without this, hy2.link is never
+    # generated and menu 12 / export show no Hy2 node. A failure
+    # here is non-fatal (the link is best-effort at deploy; the
+    # rebuild branch in rebuild_standalone_links regenerates it
+    # on the next menu 12 visit).
+    # R31-AX5: moved out of the IS_SILENT gate (was below, inside the
+    # NORMAL-only tail). The SILENT sub-deploy in the four-in-one
+    # recasts HY2_PASS/HY2_OBFS but skipped registration, so the
+    # reprinted link kept the previous round's password while live
+    # config used the new one; rebuild_standalone_links only fills a
+    # missing file, so it never healed the stale one. This runs in
+    # both modes, after service start + hop check, before the
+    # NORMAL-only tail, so menu 4 keeps register-then-view order.
+    _hy2_url=$(hy2_standalone_url "${HY2_PASS:-}" "${HY2_OBFS:-}" "${LINK_IP:-}" 2>/dev/null || true)
+    if [[ -n "$_hy2_url" ]]; then
+        IFS=$'\t' read -r _hy2_port _ < <(build_hy2_uri_endpoint 2>/dev/null || true)
+        [[ -n "$_hy2_port" ]] && register_standalone_link "${ABOX_DEPLOY_STEM:-hy2}" "$(tprintf sl_node_port 'Hysteria 2' "$_hy2_port")" "$_hy2_url"
+    fi
     if [[ "$IS_SILENT" != 'SILENT' ]]; then
         write_env hysteria HY2
         set_desired_state RUNNING || die "$(tr_msg hy2b_desired)"
         [[ "$SKIP_REPLACE_AND_PRUNE" == '1' ]] || prune_owned_core_families_except hysteria
         setup_geo_cron
         commit_deployment_transaction
-        # E19: register the standalone Hy2 link at deploy time, like
-        # every other deployer does. Without this, hy2.link is never
-        # generated and menu 12 / export show no Hy2 node. A failure
-        # here is non-fatal (the link is best-effort at deploy; the
-        # rebuild branch in rebuild_standalone_links regenerates it
-        # on the next menu 12 visit).
-        _hy2_url=$(hy2_standalone_url "${HY2_PASS:-}" "${HY2_OBFS:-}" "${LINK_IP:-}" 2>/dev/null || true)
-        if [[ -n "$_hy2_url" ]]; then
-            IFS=$'\t' read -r _hy2_port _ < <(build_hy2_uri_endpoint 2>/dev/null || true)
-            [[ -n "$_hy2_port" ]] && register_standalone_link "${ABOX_DEPLOY_STEM:-hy2}" "$(tprintf sl_node_port 'Hysteria 2' "$_hy2_port")" "$_hy2_url"
-        fi
         view_config deploy
     fi
 }

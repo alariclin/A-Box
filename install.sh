@@ -7157,6 +7157,12 @@ tr_msg() {
         fa:warp_no_core) echo 'هسته قابل استفاده‌ای یافت نشد؛ مسیریابی WARP را نمی‌توان اعمال کرد، عملیات متوقف شد.' ;;
         zh-tw:warp_no_core) echo '未檢測到可用核心，無法應用 WARP 路由；本次操作已中止。' ;;
         ja:warp_no_core) echo '利用可能なコアが検出されませんでした。WARP ルーティングを適用できないため、操作を中止しました。' ;;
+        zh:warp_core_unsupported) echo '当前核心不支持路由注入（仅 Hysteria 在运行），WARP 路由需要 Xray 或 sing-box；本次操作已中止。' ;;
+        en:warp_core_unsupported) echo 'The current core cannot carry routing (only Hysteria is running); WARP routing needs Xray or sing-box. Operation aborted.' ;;
+        ru:warp_core_unsupported) echo 'Текущее ядро не поддерживает маршрутизацию (запущена только Hysteria); для маршрутизации WARP нужны Xray или sing-box. Операция прервана.' ;;
+        fa:warp_core_unsupported) echo 'هسته فعلی از مسیریابی پشتیبانی نمی‌کند (فقط Hysteria در حال اجراست)؛ مسیریابی WARP به Xray یا sing-box نیاز دارد. عملیات متوقف شد.' ;;
+        zh-tw:warp_core_unsupported) echo '目前核心不支援路由注入（僅 Hysteria 執行中），WARP 路由需要 Xray 或 sing-box；本次操作已中止。' ;;
+        ja:warp_core_unsupported) echo '現在のコアはルーティング注入に対応していません（Hysteria のみ実行中）。WARP ルーティングには Xray または sing-box が必要です。操作を中止しました。' ;;
         zh:warp_applied_fail) echo '路由应用记录（.applied）写入失败，本次应用结果不可靠。' ;;
         en:warp_applied_fail) echo 'Failed to write the routing applied record (.applied); this apply result is unreliable.' ;;
         ru:warp_applied_fail) echo 'Не удалось записать журнал применённой маршрутизации (.applied); результат этого применения ненадёжен.' ;;
@@ -14732,6 +14738,8 @@ managed_auxiliary_paths() {
         /etc/sysctl.d/99-A-Box-tune.conf \
         /etc/security/limits.d/A-Box.conf \
         /etc/modules-load.d/A-Box-bbr.conf \
+        /etc/systemd/resolved.conf.d/99-abox-dns.conf \
+        /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf \
         /etc/systemd/system/A-Box-firewall.service \
         /etc/init.d/A-Box-firewall \
         /usr/local/bin/abox-hy2-xtables-lock-grant \
@@ -14773,6 +14781,11 @@ auxiliary_content_is_abox_managed() {
             ;;
         /etc/security/limits.d/A-Box.conf)
             grep -Fxq '* soft nofile 1048576' "$file" && grep -Fxq 'root hard nofile 1048576' "$file"
+            ;;
+        /etc/systemd/resolved.conf.d/99-abox-dns.conf)
+            # Legacy fingerprint: files written before the marker line
+            # was added carry the exact A-Box drop-in shape.
+            grep -Fq '[Resolve]' "$file" && grep -Fq 'FallbackDNS=' "$file" && grep -Fq 'Domains=~.' "$file"
             ;;
         /etc/systemd/system/A-Box-firewall.service|/etc/init.d/A-Box-firewall)
             grep -Fxq '# Managed by A-Box' "$file" 2>/dev/null
@@ -24363,7 +24376,27 @@ restart_owned() {
     if is_systemd; then systemctl restart "$srv" >/dev/null 2>&1; else rc-service "$srv" restart >/dev/null 2>&1 9>&- 10>&-; fi
 }
 load_state || exit 0
-[[ -n "${CORE:-}" ]] || exit 0
+# M-20(3): a clear-all leaves CORE empty while an independently
+# deployed Argo (sing-box) stack keeps running; the probe used to
+# exit here before the desired-state gate, so the Argo stack was
+# never supervised. Fall back to the first A-Box-owned auxiliary
+# core (sing-box first: it carries the Argo WS inbounds) so the
+# desired gate and the service checks below still run. The tunnel
+# itself (cloudflared) is not probed here: only the core service
+# liveness is supervised.
+if [[ -z "${CORE:-}" ]]; then
+    for _aux_srv in sing-box xray hysteria; do
+        if service_is_abox_managed "$_aux_srv"; then
+            case "$_aux_srv" in
+                sing-box) CORE=singbox ;;
+                xray) CORE=xray ;;
+                hysteria) CORE=hysteria ;;
+            esac
+            break
+        fi
+    done
+    [[ -n "${CORE:-}" ]] || exit 0
+fi
 desired=RUNNING
 if [[ -e "$PAIR_STATE" || -L "$PAIR_STATE" ]]; then
     # S23: a pair file that exists but fails safety checks is an error:
@@ -29183,6 +29216,10 @@ vmess_port=${ARGO_VMESS_PORT}
 vless_port=${ARGO_VLESS_PORT}
 vmess_domain=${d1}
 vless_domain=${d2}"
+    # M-20(3): record the expected state like the other standalone
+    # deployers, so the health probe and the manual start/stop paths
+    # supervise this stack (without it the desired gate never runs).
+    set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
     msg "${GREEN}$(tr_msg argo_done)${NC}"
     argo_links_for "$d1" "$d2"
     msg "${YELLOW}$(tr_msg argo_temp_note)${NC}"
@@ -29425,6 +29462,10 @@ uuid=${ARGO_UUID}
 vmess_port=${ARGO_VMESS_PORT}
 vless_port=${ARGO_VLESS_PORT}
 domain=${domain}"
+    # M-20(3): record the expected state like the other standalone
+    # deployers, so the health probe and the manual start/stop paths
+    # supervise this stack (without it the desired gate never runs).
+    set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
     msg "${GREEN}$(tr_msg argo_done)${NC}"
     msg "${YELLOW}$(tr_msg argo_fixed_steps)${NC}"
     msg "  ${domain}  path /${ARGO_UUID}-vmess  ->  http://localhost:${ARGO_VMESS_PORT}"
@@ -30973,6 +31014,45 @@ routing_apply_live() {
     esac
 }
 
+# M-20: apply the current routing state to every managed core that can
+# carry it (xray / sing-box), not just the .env CORE. Enumeration is
+# the real managed set (expected_managed_services: main pair + owned
+# auxiliary services); each core is applied in isolation, so one
+# core's failure never blocks the next. Hysteria has no
+# routing_apply_live target and is skipped, not failed. Extra args
+# are forwarded to routing_apply_live (force-retire tags).
+# Return codes: 0 = every managed routable core applied;
+# 1 = no managed service at all (no core);
+# 2 = managed service(s) exist but none can carry routing
+#     (e.g. hysteria-only);
+# 3 = at least one core was attempted and failed (partial failure).
+routing_apply_all_managed() {
+    local -a _svcs=() _cores=()
+    local _svc _core _failed=0
+    while IFS= read -r _svc; do
+        [[ -n "$_svc" ]] && _svcs+=("$_svc")
+    done < <(expected_managed_services 2>/dev/null)
+    for _svc in "${_svcs[@]}"; do
+        case "$_svc" in
+            xray) _cores+=('xray') ;;
+            sing-box) _cores+=('singbox') ;;
+            *) : ;;
+        esac
+    done
+    if (( ${#_cores[@]} == 0 )); then
+        (( ${#_svcs[@]} == 0 )) && return 1
+        return 2
+    fi
+    for _core in "${_cores[@]}"; do
+        if ! routing_apply_live "$_core" "$@"; then
+            _failed=1
+            msg "${YELLOW}[!] $(tr_msg warp_apply_fail) (${_core})${NC}"
+        fi
+    done
+    (( _failed == 0 )) || return 3
+    return 0
+}
+
 # ---------------- WARP one-click ----------------
 
 # wgcf tracks the upstream latest release at runtime (no version pin).
@@ -31127,46 +31207,75 @@ warp_deploy() {
 }
 
 warp_deploy_inner() {
-    local workdir xray_json singbox_json core
+    local workdir xray_json singbox_json
     workdir=$(mktemp -d) || return 1
     _warp_deploy_workdir="$workdir"
     msg "$(tr_msg warp_deploying)"
     [[ "$(warp_register_profile "$workdir")" == 'OK' ]] || { msg "$(tr_msg warp_register_fail)"; return 1; }
     warp_build_outbound_json "$workdir/wgcf-profile.conf" "$workdir" || { msg "$(tr_msg warp_profile_fail)"; return 1; }
+    # M-20: snapshot the whole state file before mutating it (same
+    # pattern as warp_apply_preset): if the core check or the live
+    # apply fails below, the snapshot is written back so warp_status
+    # cannot misreport a failed deploy as deployed.
+    local _warp_snap='' _warp_rc=0
+    routing_state_init || return 1
+    _warp_snap=$(mktemp) || return 1
+    cp -- "$ROUTING_STATE_FILE" "$_warp_snap" 2>/dev/null || { rm -f "$_warp_snap"; return 1; }
     routing_outbound_add 'warp-out' "$workdir/warp-xray.json" "$workdir/warp-singbox.json" \
-        || { msg "$(tr_msg warp_state_fail)"; return 1; }
-    core="${CORE:-}"
-    if [[ -z "$core" ]]; then
-        load_optional_abox_env_or_die 2>/dev/null || true
-        core="${CORE:-}"
-    fi
-    if [[ -z "$core" ]]; then
-        msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
+        || { msg "$(tr_msg warp_state_fail)"; rm -f "$_warp_snap"; return 1; }
+    routing_apply_all_managed
+    _warp_rc=$?
+    if (( _warp_rc != 0 )); then
+        if routing_state_put < "$_warp_snap" > /dev/null 2>&1; then
+            rm -f "$_warp_snap"
+        else
+            # R6-F09-8: keep the failed rollback snapshot: it is the only copy
+            # of the pre-deploy state. Print its path so it can be retried
+            # manually; /tmp retention is a rescue window, not a durable backup.
+            msg "${YELLOW}[!] $(tr_msg warp_preset_rollback_fail)${NC}"
+            msg "${YELLOW}[!] ${_warp_snap}${NC}"
+        fi
+        case "$_warp_rc" in
+            1) msg "${RED}[!] $(tr_msg warp_no_core)${NC}" ;;
+            2) msg "${RED}[!] $(tr_msg warp_core_unsupported)${NC}" ;;
+            *) msg "$(tr_msg warp_apply_fail)" ;;
+        esac
         return 1
     fi
-    routing_apply_live "$core" || { msg "$(tr_msg warp_apply_fail)"; return 1; }
+    rm -f "$_warp_snap"
     msg "$(tr_msg warp_done)"
 }
 
 warp_undeploy() {
-    # H-15: snapshot the whole routing state before deleting the
-    # warp outbound, so a later apply failure can restore it.
-    local _warp_snap='' _warp_snap_ok=0
-    if [[ -f "${ROUTING_STATE_FILE:-}" && ! -L "${ROUTING_STATE_FILE:-}" ]]; then
-        _warp_snap=$(cat -- "$ROUTING_STATE_FILE" 2>/dev/null || true)
-        [[ -n "$_warp_snap" ]] && _warp_snap_ok=1
-    fi
-    routing_outbound_del 'warp-out' || return 1
-    local core="${CORE:-}"
-    if [[ -z "$core" ]]; then
-        load_optional_abox_env_or_die 2>/dev/null || true
-        core="${CORE:-}"
-    fi
-    if [[ -z "$core" ]]; then
-        msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
+    # M-20: snapshot the whole state file before mutating it (same
+    # pattern as warp_apply_preset / warp_deploy_inner): if the live
+    # apply fails, the snapshot is written back so the state and the
+    # live config cannot diverge in opposite directions.
+    local _warp_snap='' _warp_rc=0
+    routing_state_init || return 1
+    _warp_snap=$(mktemp) || return 1
+    cp -- "$ROUTING_STATE_FILE" "$_warp_snap" 2>/dev/null || { rm -f "$_warp_snap"; return 1; }
+    routing_outbound_del 'warp-out' || { rm -f "$_warp_snap"; return 1; }
+    routing_apply_all_managed 'warp-out'
+    _warp_rc=$?
+    if (( _warp_rc != 0 )); then
+        if routing_state_put < "$_warp_snap" > /dev/null 2>&1; then
+            rm -f "$_warp_snap"
+        else
+            # R6-F09-8: keep the failed rollback snapshot: it is the only copy
+            # of the pre-undeploy state. Print its path so it can be retried
+            # manually; /tmp retention is a rescue window, not a durable backup.
+            msg "${YELLOW}[!] $(tr_msg warp_preset_rollback_fail)${NC}"
+            msg "${YELLOW}[!] ${_warp_snap}${NC}"
+        fi
+        case "$_warp_rc" in
+            1) msg "${RED}[!] $(tr_msg warp_no_core)${NC}" ;;
+            2) msg "${RED}[!] $(tr_msg warp_core_unsupported)${NC}" ;;
+            *) msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}" ;;
+        esac
         return 1
     fi
-    routing_apply_live "$core" 'warp-out' || { msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}"; if (( _warp_snap_ok == 1 )); then printf '%s' "$_warp_snap" | routing_state_put 2>/dev/null || true; fi; return 1; }
+    rm -f "$_warp_snap"
     msg "$(tr_msg warp_removed)"
 }
 
@@ -31242,12 +31351,13 @@ warp_apply_preset() {
         fi
         return 1
     fi
-    local core="${CORE:-}"
-    if [[ -z "$core" ]]; then
-        load_optional_abox_env_or_die 2>/dev/null || true
-        core="${CORE:-}"
-    fi
-    if [[ -z "$core" ]]; then
+    # M-20: apply to every managed core that can carry routing, not
+    # just the .env CORE (routing_apply_all_managed). A failure rolls
+    # the preset's rules back to the entry snapshot, as before.
+    local _apply_rc=0
+    routing_apply_all_managed
+    _apply_rc=$?
+    if (( _apply_rc != 0 )); then
         if routing_state_put < "$snap" > /dev/null 2>&1; then
             rm -f "$snap"
         else
@@ -31257,19 +31367,10 @@ warp_apply_preset() {
             msg "${YELLOW}[!] $(tr_msg warp_preset_rollback_fail)${NC}"
             msg "${YELLOW}[!] ${snap}${NC}"
         fi
-        msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
-        return 1
-    fi
-    if ! routing_apply_live "$core"; then
-        if routing_state_put < "$snap" > /dev/null 2>&1; then
-            rm -f "$snap"
-        else
-            # R6-F09-8: keep the failed rollback snapshot: it is the only copy
-            # of the pre-preset state. Print its path so it can be retried
-            # manually; /tmp retention is a rescue window, not a durable backup.
-            msg "${YELLOW}[!] $(tr_msg warp_preset_rollback_fail)${NC}"
-            msg "${YELLOW}[!] ${snap}${NC}"
-        fi
+        case "$_apply_rc" in
+            1) msg "${RED}[!] $(tr_msg warp_no_core)${NC}" ;;
+            2) msg "${RED}[!] $(tr_msg warp_core_unsupported)${NC}" ;;
+        esac
         return 1
     fi
     rm -f "$snap"
@@ -31290,19 +31391,21 @@ split_apply_preset() {
         *) return 1 ;;
     esac
     routing_rule_add "$domains" "$outbound" || return 1
-    local n_rules=0
+    local n_rules=0 _apply_rc=0
     n_rules=$(jq '.rules | length' "$ROUTING_STATE_FILE" 2>/dev/null || echo 0)
-    local core="${CORE:-}"
-    if [[ -z "$core" ]]; then
-        load_optional_abox_env_or_die 2>/dev/null || true
-        core="${CORE:-}"
-    fi
-    if [[ -z "$core" ]]; then
-        msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
+    # M-20: apply to every managed core that can carry routing, not
+    # just the .env CORE (routing_apply_all_managed). A failure rolls
+    # the just-added rule back, as before.
+    routing_apply_all_managed
+    _apply_rc=$?
+    if (( _apply_rc != 0 )); then
         routing_rule_del "$((n_rules - 1))" >/dev/null 2>&1 || true
+        case "$_apply_rc" in
+            1) msg "${RED}[!] $(tr_msg warp_no_core)${NC}" ;;
+            2) msg "${RED}[!] $(tr_msg warp_core_unsupported)${NC}" ;;
+        esac
         return 1
     fi
-    routing_apply_live "$core" || { routing_rule_del "$((n_rules - 1))" >/dev/null 2>&1 || true; return 1; }
     msg "$(tr_msg warp_preset_done)"
 }
 
@@ -31404,16 +31507,23 @@ split_add_socks_interactive() {
     IFS= read -r -p "$(tr_msg split_user_prompt): " user || return 0
     IFS= read -r -s -p "$(tr_msg split_pass_prompt): " pass || return 0; echo
     tag=$(split_add_socks_outbound "$ip" "$port" "$user" "$pass") || { msg "${RED}$(tr_msg split_add_fail)${NC}"; pause_return; return 1; }
-    local core="${CORE:-}"; [[ -z "$core" ]] && { load_optional_abox_env_or_die 2>/dev/null || true; core="${CORE:-}"; }
-    if [[ -n "$core" ]]; then
-        if routing_apply_live "$core"; then
-            msg "$(tprintf split_add_done "$tag")"
-        else
-            routing_outbound_del "$tag" || true
-            msg "${RED}$(tr_msg split_add_fail)${NC}"; pause_return; return 1
-        fi
-    else
+    # M-20: apply to every managed core that can carry routing, not
+    # just the .env CORE (routing_apply_all_managed). With no usable
+    # core the add is rolled back instead of reporting a state-only
+    # success (unified no-core policy with the warp functions).
+    local _apply_rc=0
+    routing_apply_all_managed
+    _apply_rc=$?
+    if (( _apply_rc == 0 )); then
         msg "$(tprintf split_add_done "$tag")"
+    else
+        routing_outbound_del "$tag" || true
+        case "$_apply_rc" in
+            1) msg "${RED}[!] $(tr_msg warp_no_core)${NC}" ;;
+            2) msg "${RED}[!] $(tr_msg warp_core_unsupported)${NC}" ;;
+            *) msg "${RED}$(tr_msg split_add_fail)${NC}" ;;
+        esac
+        pause_return; return 1
     fi
     pause_return
 }
@@ -31460,14 +31570,24 @@ split_rule_add_interactive() {
     read -r -p "$(tr_msg split_outbound_prompt): " outbound || return 0
     [[ -n "$outbound" ]] || return 1
     if routing_rule_add "$domains" "$outbound"; then
-        local core="${CORE:-}"; [[ -z "$core" ]] && { load_optional_abox_env_or_die 2>/dev/null || true; core="${CORE:-}"; }
-        local n_rules=0
+        local n_rules=0 _apply_rc=0
         n_rules=$(jq '.rules | length' "$ROUTING_STATE_FILE" 2>/dev/null || echo 0)
-        if [[ -n "$core" ]] && ! routing_apply_live "$core"; then
+        # M-20: apply to every managed core that can carry routing, not
+        # just the .env CORE (routing_apply_all_managed). With no usable
+        # core the rule is rolled back instead of reporting a state-only
+        # success (unified no-core policy with the warp functions).
+        routing_apply_all_managed
+        _apply_rc=$?
+        if (( _apply_rc != 0 )); then
             # Roll back the just-appended rule (last index) so a retry
             # cannot duplicate it; the state stays the source of truth.
             routing_rule_del "$((n_rules - 1))" >/dev/null 2>&1 || true
-            msg "${RED}$(tr_msg warp_apply_fail)${NC}"; pause_return; return 1
+            case "$_apply_rc" in
+                1) msg "${RED}[!] $(tr_msg warp_no_core)${NC}" ;;
+                2) msg "${RED}[!] $(tr_msg warp_core_unsupported)${NC}" ;;
+                *) msg "${RED}$(tr_msg warp_apply_fail)${NC}" ;;
+            esac
+            pause_return; return 1
         fi
         msg "$(tr_msg split_rule_done)"
     else
@@ -31500,8 +31620,12 @@ split_rule_del_interactive() {
     local del_rule=''
     del_rule=$(jq -c --argjson i "$idx" '.rules[$i] // empty' "$ROUTING_STATE_FILE" 2>/dev/null || true)
     if routing_rule_del "$idx"; then
-        local core="${CORE:-}"; [[ -z "$core" ]] && { load_optional_abox_env_or_die 2>/dev/null || true; core="${CORE:-}"; }
-        if [[ -n "$core" ]] && ! routing_apply_live "$core"; then
+        local _apply_rc=0
+        # M-20: apply to every managed core that can carry routing, not
+        # just the .env CORE (routing_apply_all_managed).
+        routing_apply_all_managed
+        _apply_rc=$?
+        if (( _apply_rc != 0 )); then
             # Restore the deleted rule at its original index so a retry
             # deletes the same rule; order is preserved (first match wins).
             # If the restore itself fails, the state still holds the
@@ -31510,7 +31634,12 @@ split_rule_del_interactive() {
             if [[ -n "$del_rule" ]]; then
                 jq --argjson i "$idx" --argjson r "$del_rule" '.rules |= (.[0:$i] + [$r] + .[$i:])' "$ROUTING_STATE_FILE" 2>/dev/null | routing_state_put || true
             fi
-            msg "${RED}$(tr_msg warp_apply_fail)${NC}"; pause_return; return 1
+            case "$_apply_rc" in
+                1) msg "${RED}[!] $(tr_msg warp_no_core)${NC}" ;;
+                2) msg "${RED}[!] $(tr_msg warp_core_unsupported)${NC}" ;;
+                *) msg "${RED}$(tr_msg warp_apply_fail)${NC}" ;;
+            esac
+            pause_return; return 1
         fi
         msg "$(tr_msg split_rule_del_done)"
     else
@@ -34799,6 +34928,27 @@ abox_caddy_owned() {
     return 0
 }
 
+# L-07: runtime state files a protocol/environment reset must remove.
+# Shared by do_cleanup (outside the Argo failure gate) and
+# check_virgin_state so the two enumerations cannot drift apart.
+# Best-effort throughout (rm -f ... || true): a reset must not die
+# on a single stale file. The traffic quartet (.desired_state,
+# .traffic-block-state, .traffic-pre-block-states*,
+# .traffic-rollover-in-progress) is removed as one group on purpose:
+# H-05 needs the pre-block snapshot to unblock across months, so the
+# block state and its snapshot must never be separated.
+remove_ddr_runtime_state_files() {
+    rm -f "$ROUTING_STATE_FILE" "$ABOX_DIR/.extra-uuids" "$ABOX_DIR/.traffic-pair-state" \
+        "$ABOX_DIR/.desired_state" "$ABOX_DIR/.traffic-block-state" \
+        "$ABOX_DIR/user-guard-runner.sh" \
+        "${ROUTING_STATE_FILE}.applied" "${ROUTING_STATE_FILE}.applied-xray" "${ROUTING_STATE_FILE}.applied-singbox" \
+        "$ABOX_DIR"/.traffic-pre-block-states* \
+        "$ABOX_DIR/.traffic-rollover-in-progress" \
+        "$ABOX_DIR/.xray-cfg-autorecover" "$ABOX_DIR/.xray-cfg-autorecover.status" \
+        "$ABOX_DIR/argo.log" "$ABOX_DIR/argo-vmess.log" "$ABOX_DIR/argo-vless.log" \
+        2>/dev/null || true
+}
+
 do_cleanup() {
     clear; msg "${RED}$(tr_msg cu_running)${NC}"
     init_system_environment
@@ -34877,8 +35027,17 @@ do_cleanup() {
         if [[ -f /etc/ddr/.abox-cloudflared-owned ]]; then
             rm -f /usr/local/bin/cloudflared /etc/ddr/.abox-cloudflared-owned || true
         fi
-        rm -f "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true
+        # L-07: only Argo's own state stays gated on a successful unit
+        # removal (a retry needs its token and state). Everything else
+        # is removed unconditionally below, outside the gate.
+        rm -f "$ARGO_STATE_FILE" "$ABOX_DIR/.argo-token" 2>/dev/null || true
     fi
+    # L-07: the non-Argo runtime state leaves the Argo failure gate as
+    # one group (remove_ddr_runtime_state_files): a failed Argo removal
+    # must never keep routing/traffic state behind, and the traffic
+    # quartet must never be split, or a reset leaves "blocked, no
+    # snapshot" behind (H-05). Best-effort, like the old rm line.
+    remove_ddr_runtime_state_files
     # R12C10-01: refuse a mountpoint at or under standalone-links.d before
     # deleting, and propagate deletion failures instead of suppressing them.
     path_tree_has_mountpoint /etc/ddr/standalone-links.d && die 'Refusing to delete /etc/ddr/standalone-links.d: mountpoint present in its tree.'
@@ -34970,6 +35129,35 @@ do_cleanup() {
             die "$(tr_msg cu_swap_die)"
         fi
         wallos_stack_teardown purge-data || die 'Wallos stack teardown (purge-data) failed; aborting cleanup before ABOX_DIR is deleted.'
+        # M-21(2): restore the pre-A-Box DNS (and timezone) BEFORE
+        # $ABOX_DIR is destroyed: the rollback snapshots live inside
+        # it, and deleting them first would leave the A-Box DNS
+        # takeover in place permanently with no way back. A failed
+        # restore aborts the uninstall: the snapshot is destroyed by
+        # the rm below and cannot be retried afterwards.
+        if [[ -f "$DNS_BACKUP_DIR/COMPLETE" ]]; then
+            restore_dns_snapshot "$DNS_BACKUP_DIR" || die 'DNS rollback snapshot restore failed; aborting uninstall before the snapshot is destroyed.'
+        else
+            # No valid snapshot: remove A-Box's own DNS drop-ins so
+            # resolved falls back to the distribution default, and
+            # leave any proxy service alone (without a snapshot it
+            # cannot be told apart from a user-owned one). Check DNS
+            # manually after the uninstall, and stop/disable
+            # dnscrypt-proxy yourself if A-Box installed it.
+            remove_owned_auxiliary_path /etc/systemd/resolved.conf.d/99-abox-dns.conf || die 'Failed to remove the A-Box DNS drop-in.'
+            remove_owned_auxiliary_path /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf || die 'Failed to remove the A-Box dnscrypt-proxy socket drop-in.'
+            if command -v systemctl >/dev/null 2>&1; then
+                systemctl daemon-reload >/dev/null 2>&1 || msg "${YELLOW}[!] systemd daemon-reload failed during uninstall; DNS drop-in removal may not have taken effect.${NC}"
+                if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
+                    systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || true
+                fi
+                systemctl restart systemd-resolved >/dev/null 2>&1 || msg "${YELLOW}[!] systemd-resolved restart failed during uninstall; check DNS manually.${NC}"
+            fi
+            msg "${YELLOW}[!] No valid DNS rollback snapshot found; A-Box DNS drop-ins were removed and systemd-resolved was restarted with distribution defaults. Check DNS manually.${NC}"
+        fi
+        if [[ -d "$ABOX_DIR/.tz-rollback" ]]; then
+            restore_timezone_snapshot "$ABOX_DIR/.tz-rollback" || die 'Timezone rollback snapshot restore failed; aborting uninstall before the snapshot is destroyed.'
+        fi
         path_tree_has_mountpoint "$ABOX_DIR" && die "$(tr_msg cu_mount)"
         # M-12(3): when Argo removal failed, its token/state were kept
         # above for retry; move them into the transaction dir before
@@ -36141,6 +36329,10 @@ check_virgin_state() {
         rm -f /usr/local/bin/cloudflared /etc/ddr/.abox-cloudflared-owned || true
     fi
     rm -f "$ROUTING_STATE_FILE" "$ARGO_STATE_FILE" /etc/ddr/.argo-token /etc/ddr/.extra-uuids /etc/ddr/.traffic-pair-state /etc/ddr/.desired_state /etc/ddr/.traffic-block-state 2>/dev/null || true; path_tree_has_mountpoint /etc/ddr/standalone-links.d && die 'Refusing to delete /etc/ddr/standalone-links.d: mountpoint present in its tree.'; rm -rf -- /etc/ddr/standalone-links.d || die 'Failed to delete /etc/ddr/standalone-links.d.'
+    # L-07: the same runtime-state sweep as do_cleanup (shared helper):
+    # runner, .applied records, pre-block snapshots, rollover marker,
+    # autorecover marker, Argo logs.
+    remove_ddr_runtime_state_files
     users_registries_wipe || true
     abox_zram_teardown || die 'zram teardown failed; aborting environment reset.'
     # Wallos is a standalone addon, not a protocol/core: environment
@@ -40521,6 +40713,26 @@ snapshot_dns_state() {
         printf '%s\n' "$_dnscrypt_dir_mode" > "$dir/dnscrypt-proxy-dir-mode" || return 1
         printf present > "$dir/dnscrypt-config-state"
     else printf absent > "$dir/dnscrypt-config-state"; fi
+    # M-21(1)/M-09: the socket drop-in and the socket's Listen list are
+    # part of the DNS state. Without them a rollback cannot put back a
+    # removed abox-listen.conf, and a switch-out cannot tell what the
+    # socket listened on before A-Box.
+    local _abox_listen='/etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf'
+    local _sock_listen=''
+    if [[ -f "$_abox_listen" && ! -L "$_abox_listen" ]]; then
+        [[ -r "$_abox_listen" ]] || return 1
+        mkdir -p "$dir/dnscrypt-socket" || return 1
+        cp -a "$_abox_listen" "$dir/dnscrypt-socket/abox-listen.conf" || return 1
+        printf present > "$dir/dnscrypt-socket-state" || return 1
+    elif [[ ! -e "$_abox_listen" && ! -L "$_abox_listen" ]]; then
+        printf absent > "$dir/dnscrypt-socket-state" || return 1
+    else
+        return 1
+    fi
+    if command -v systemctl >/dev/null 2>&1; then
+        _sock_listen=$(systemctl show --property=Listen --value dnscrypt-proxy.socket 2>/dev/null || true)
+        printf '%s\n' "$_sock_listen" > "$dir/dnscrypt-socket-listen" || return 1
+    fi
     if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then printf active > "$dir/dnscrypt-service-state"; else printf inactive > "$dir/dnscrypt-service-state"; fi
     if command -v systemctl >/dev/null 2>&1; then
         _ens=$(systemctl is-enabled dnscrypt-proxy 2>/dev/null || true)
@@ -40675,6 +40887,40 @@ restore_dns_snapshot_body() {
         cp -a "$dir/dnscrypt-proxy/dnscrypt-proxy.toml" /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
     elif [[ "$dnscrypt_state" == absent ]]; then
         rm -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml || return 1
+    fi
+    # M-21(1)/M-09: restore the socket drop-in the snapshot recorded.
+    # A snapshot that predates this record leaves a live drop-in
+    # alone (no state file = no knowledge, not "absent").
+    if [[ -f "$dir/dnscrypt-socket-state" ]]; then
+        local _abox_listen='/etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf'
+        local _listen_state='' _socket_changed=0
+        _listen_state=$(tr -d '[:space:]' < "$dir/dnscrypt-socket-state" 2>/dev/null || true)
+        if [[ "$_listen_state" == present && -f "$dir/dnscrypt-socket/abox-listen.conf" ]]; then
+            mkdir -p /etc/systemd/system/dnscrypt-proxy.socket.d || return 1
+            if [[ ! -f "$_abox_listen" ]] || ! cmp -s "$dir/dnscrypt-socket/abox-listen.conf" "$_abox_listen" 2>/dev/null; then
+                _socket_changed=1
+            fi
+            rm -f -- "$_abox_listen" || return 1
+            cp -a "$dir/dnscrypt-socket/abox-listen.conf" "$_abox_listen" || return 1
+        elif [[ "$_listen_state" == absent ]]; then
+            if [[ -e "$_abox_listen" || -L "$_abox_listen" ]]; then
+                _socket_changed=1
+            fi
+            rm -f -- "$_abox_listen" 2>/dev/null || true
+            rmdir /etc/systemd/system/dnscrypt-proxy.socket.d 2>/dev/null || true
+        else
+            return 1
+        fi
+        # Only bounce the socket when the drop-in actually changed, and
+        # only when the socket unit is enabled or active: restarting an
+        # inactive socket would start listening on the packaged
+        # endpoints (and socket-activate the service on first query).
+        if (( _socket_changed == 1 )) && command -v systemctl >/dev/null 2>&1; then
+            systemctl daemon-reload >/dev/null 2>&1 || return 1
+            if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
+                systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || true
+            fi
+        fi
     fi
     if [[ "$backend" == networkmanager && -f "$dir/nm-connection" ]] && command -v nmcli >/dev/null 2>&1; then
         connection=$(cat "$dir/nm-connection")
@@ -41234,6 +41480,67 @@ resolved_dns_check_warn_message() {
     tprintf doh_link_search_domains_warn "$detail"
 }
 
+# M-21(1): tear down a DoH deployment when the host DNS moves away from
+# DoH (plain / DoT / NM / direct resolv.conf). The signal is
+# $DNS_STATE_FILE's mode=doh (written by dns_enable_doh). Layered by
+# ownership, so a proxy the user installed themselves is never stopped
+# or disabled:
+#   - A-Box-enabled proxy (the pre-DoH baseline snapshot records it
+#     inactive/disabled): stop + disable the service and the socket.
+#   - Any proxy (A-Box or foreign): remove only A-Box's own socket
+#     drop-in (marker-gated) and reload the socket unit, so a foreign
+#     proxy keeps its own Listen endpoints.
+# Returns 0 when there was nothing to tear down or the teardown
+# succeeded; 1 on failure (callers roll back).
+dns_disable_doh() {
+    local _dns_state='' _base_state='' _base_enabled='' _abox_owned=0
+    local _dropin='/etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf'
+    local _dropin_dir='/etc/systemd/system/dnscrypt-proxy.socket.d'
+    if [[ -f "$DNS_STATE_FILE" && ! -L "$DNS_STATE_FILE" ]]; then
+        _dns_state=$(tr -d '\r\n' < "$DNS_STATE_FILE" 2>/dev/null || true)
+    fi
+    case "$_dns_state" in
+        *';mode=doh;'*|*';mode=doh'|*'mode=doh;'*) ;;
+        *) return 0 ;;
+    esac
+    # The pre-DoH baseline is the only durable record of whether the
+    # proxy predates A-Box: A-Box installs it fresh (inactive/disabled
+    # in the baseline), a foreign one is active/enabled there. Without
+    # a baseline the service is left alone and only the drop-in goes.
+    if [[ -f "$DNS_BACKUP_DIR/dnscrypt-service-state" ]]; then
+        _base_state=$(tr -d '[:space:]' < "$DNS_BACKUP_DIR/dnscrypt-service-state" 2>/dev/null || true)
+    fi
+    if [[ -f "$DNS_BACKUP_DIR/dnscrypt-service-enabled" ]]; then
+        _base_enabled=$(tr -d '[:space:]' < "$DNS_BACKUP_DIR/dnscrypt-service-enabled" 2>/dev/null || true)
+    fi
+    if [[ "$_base_state" == inactive && "$_base_enabled" == disabled ]]; then
+        _abox_owned=1
+    fi
+    if (( _abox_owned == 1 )); then
+        command -v systemctl >/dev/null 2>&1 || return 1
+        systemctl stop dnscrypt-proxy >/dev/null 2>&1 || return 1
+        systemctl stop dnscrypt-proxy.socket >/dev/null 2>&1 || return 1
+        systemctl disable dnscrypt-proxy >/dev/null 2>&1 || return 1
+        systemctl disable dnscrypt-proxy.socket >/dev/null 2>&1 || return 1
+    fi
+    # Socket drop-in: only A-Box's own marker-carrying file is ever
+    # removed; a foreign override stays.
+    if [[ -f "$_dropin" ]] && grep -Fq '# Managed by A-Box' "$_dropin" 2>/dev/null; then
+        rm -f -- "$_dropin" || return 1
+        rmdir "$_dropin_dir" 2>/dev/null || true
+        command -v systemctl >/dev/null 2>&1 || return 1
+        systemctl daemon-reload >/dev/null 2>&1 || return 1
+        if (( _abox_owned == 0 )); then
+            # The socket is already stopped above for an A-Box-owned
+            # proxy; a foreign one rebinds to its packaged endpoints.
+            if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
+                systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || true
+            fi
+        fi
+    fi
+    return 0
+}
+
 apply_host_dns() {
     local mode="$1" v4="$2" v6="$3" tls_name="${4:-}" backend dropin answer confirm_prompt immutable_prompt dot_error dns_servers immutable_before=0 resolved_major=''
     local _ns='' _tok=''
@@ -41319,6 +41626,14 @@ apply_host_dns() {
     if (( immutable_before == 1 )); then
         chattr -i /etc/resolv.conf 2>/dev/null || die "Failed to clear immutable flag on /etc/resolv.conf."
     fi
+    # M-21(1): leaving DoH: stop/disable an A-Box-enabled dnscrypt-proxy
+    # and remove A-Box's abox-listen.conf socket drop-in (dns_disable_doh
+    # is layered by ownership; a foreign proxy is left running and only
+    # loses the drop-in). Runs before the new plain/DoT config is written
+    # so a failure here still rolls back to the pre-change snapshot.
+    if [[ "$mode" != doh ]]; then
+        dns_disable_doh || { dns_rollback_drop_staging "$dns_snap_tmp"; die "Failed to tear down the DoH proxy; the DNS change was rolled back."; }
+    fi
     case "$backend" in
         resolved)
             # H-09: install -d -m 755 creates the dir at 0755 and also
@@ -41329,6 +41644,7 @@ apply_host_dns() {
             dropin=/etc/systemd/resolved.conf.d/99-abox-dns.conf
             if [[ "$mode" == 'dot' ]]; then
                 write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_dot_write_failed)"; }
+# Managed by A-Box
 [Resolve]
 DNS=${dns_servers}
 FallbackDNS=
@@ -41337,6 +41653,7 @@ DNSOverTLS=yes
 EOF_DNS
             else
                 write_file_atomically_from_stdin "$dropin" 644 <<EOF_DNS || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_dropin_write_failed)"; }
+# Managed by A-Box
 [Resolve]
 DNS=${v4}${v6:+ $v6}
 FallbackDNS=
@@ -42675,6 +42992,7 @@ PY_DOH_CONFIG
     # old umask 077 leak; the atomic writer's mkdir -p cannot).
     install -d -m 755 /etc/systemd/resolved.conf.d || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_dropin_write)${NC}"; return 1; }
     write_file_atomically_from_stdin /etc/systemd/resolved.conf.d/99-abox-dns.conf 644 <<'EOF_DOH' || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_dropin_write)${NC}"; return 1; }
+# Managed by A-Box
 [Resolve]
 DNS=127.0.0.1:5353
 FallbackDNS=
@@ -42989,6 +43307,10 @@ dns_setup_tri_mode() {
 
 dns_menu() {
     # Submenu loop: sub-functions return here; 0/Enter goes back to the parent menu.
+    # M-21(1): switching away from DoH (plain/DoT items below) tears down
+    # dnscrypt-proxy and the abox-listen.conf socket drop-in inside
+    # apply_host_dns (dns_disable_doh); the menu itself does not stop the
+    # proxy, so every switch-out path shares the one teardown.
     while true; do
     # Recover from any interrupted DNS snapshot swap on menu entry.
     # Total loss must NOT be swallowed (see the recovery function's own

@@ -205,7 +205,16 @@ jq() {
     # Temp files created below hold secrets briefly; remove the whole
     # temp dir on every return path (including early return 2). The guard
     # only removes dirs this function created (basename abox-jq.*).
-    trap '[[ -n "${_jq_tmpdir:-}" && "${_jq_tmpdir##*/}" == abox-jq.* ]] && rm -rf -- "$_jq_tmpdir" 2>/dev/null; true' RETURN
+    # H-15: the RETURN trap is a single global slot: save the caller's
+    # trap before installing ours, and restore it from inside the trap
+    # action when this function returns, so a direct jq() call can no
+    # longer clobber the caller's cleanup (e.g. users_sync's _jq_cfg
+    # removal). Restoring inside the action (not before `return`) is
+    # deliberate: a restored caller trap must fire when the CALLER
+    # returns, not when this shim returns.
+    local _jq_caller_trap=''
+    _jq_caller_trap=$(trap -p RETURN 2>/dev/null || true)
+    trap '[[ -n "${_jq_tmpdir:-}" && "${_jq_tmpdir##*/}" == abox-jq.* ]] && rm -rf -- "$_jq_tmpdir" 2>/dev/null; if [[ -n "${_jq_caller_trap:-}" ]]; then eval "$_jq_caller_trap"; else trap - RETURN; fi; true' RETURN
     # Pass 2: rebuild argv, reading each --rawfile source exactly once.
     _i=0; _ri=0
     while (( _i < _n )); do
@@ -25253,6 +25262,9 @@ xray_hot_add_inbound() {
         rm -f "$tmp"; rm -rf "$tmpd"; return 1
     fi
     jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
+    # H-07: enforce the loopback guard on the merged config before
+    # validation; refuse to install an unguarded config.
+    xray_apply_loopback_guard "$tmp" || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
     if [[ -x /usr/local/bin/xray ]]; then
         XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; rm -rf "$tmpd"; return 1; }
     fi
@@ -25357,6 +25369,34 @@ singbox_apply_loopback_guard() {
         | if .route == null then .route = {} elif (.route | type) != "object" then error("sing-box route must be an object") else . end
         | if .route.rules == null then .route.rules = [] elif (.route.rules | type) != "array" then error("sing-box route.rules must be an array") else . end
         | if .route.rules[0:2] == $guard then . else .route.rules = ($guard + .route.rules) end
+    ' "$src" > "$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
+    jq empty "$_tmp" >/dev/null 2>&1 || { rm -f -- "$_tmp"; return 1; }
+    chmod 600 "$_tmp" || { rm -f -- "$_tmp"; return 1; }
+    mv -f -- "$_tmp" "$src" || { rm -f -- "$_tmp"; return 1; }
+}
+
+# H-07: enforce the loopback guard on an Xray config file in place.
+# Ensures .routing.rules carries {type:"field", ip:["127.0.0.0/8",
+# "::1/128"], outboundTag:"block"} and .outbounds carries a blackhole
+# outbound tagged "block" (idempotent: no-op when both already
+# present). Standalone configs have no api inbound, so the rule is a
+# pure IP block (unlike the main stack, whose first rule lets the api
+# inbound through). Refuses non-object configs and non-array
+# routing.rules/outbounds. The input file is never modified on failure.
+xray_apply_loopback_guard() {
+    local src="$1" _tmp _dir
+    [[ -f "$src" && ! -L "$src" ]] || return 1
+    _dir=$(dirname -- "$src") || return 1
+    _tmp=$(mktemp "$_dir/.A-Box-xray-guard.XXXXXX") || return 1
+    if ! jq '
+        {type: "field", ip: ["127.0.0.0/8", "::1/128"], outboundTag: "block"} as $rule
+        | {protocol: "blackhole", tag: "block"} as $blk
+        | if type != "object" then error("xray config must be an object") else . end
+        | if .routing == null then .routing = {} elif (.routing | type) != "object" then error("xray routing must be an object") else . end
+        | if .routing.rules == null then .routing.rules = [] elif (.routing.rules | type) != "array" then error("xray routing.rules must be an array") else . end
+        | if .outbounds == null then .outbounds = [] elif (.outbounds | type) != "array" then error("xray outbounds must be an array") else . end
+        | if (.routing.rules | index($rule)) == null then .routing.rules = ([$rule] + .routing.rules) else . end
+        | if (.outbounds | map(.tag) | index("block")) == null then .outbounds += [$blk] else . end
     ' "$src" > "$_tmp" 2>/dev/null; then rm -f -- "$_tmp"; return 1; fi
     jq empty "$_tmp" >/dev/null 2>&1 || { rm -f -- "$_tmp"; return 1; }
     chmod 600 "$_tmp" || { rm -f -- "$_tmp"; return 1; }
@@ -26939,7 +26979,7 @@ deploy_xray_trojan_landing() {
         prepare_abox_runtime_config_dir xray /usr/local/etc/xray || die 'Xray config directory creation failed.'
         rm -rf -- "$xray_tmp"
         tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
+        jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],routing:{rules:[{type:"field",ip:["127.0.0.0/8","::1/128"],outboundTag:"block"}]},outbounds:[{protocol:"freedom",tag:"direct"},{protocol:"blackhole",tag:"block"}]}' > "$tmp_json" \
             || die "$(tr_msg dp_xray_seed)"
         # U31: same guard as the sing-box landing seed above.
         # R2C9-01: do NOT treat jq-reject as "needs seed": Xray accepts
@@ -26977,7 +27017,7 @@ deploy_xray_trojan_landing() {
     if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
         local seed_json
         seed_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-        jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$seed_json" || { rm -f "$seed_json"; die "$(tr_msg dp_xray_seed)"; }
+        jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],routing:{rules:[{type:"field",ip:["127.0.0.0/8","::1/128"],outboundTag:"block"}]},outbounds:[{protocol:"freedom",tag:"direct"},{protocol:"blackhole",tag:"block"}]}' > "$seed_json" || { rm -f "$seed_json"; die "$(tr_msg dp_xray_seed)"; }
         prepare_abox_runtime_config_dir xray /usr/local/etc/xray || { rm -f "$seed_json"; die 'Xray config directory creation failed.'; }
         install_file_atomically "$seed_json" "$cfg" 600 || { rm -f "$seed_json"; die "$(tr_msg dp_xray_cfg)"; }
         rm -f "$seed_json"
@@ -26999,6 +27039,9 @@ deploy_xray_trojan_landing() {
             rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_trojan_update)"
         fi
         jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_json)"; }
+        # H-07: enforce the loopback guard on the merged config before
+        # validation; refuse to install an unguarded config.
+        xray_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray loopback guard enforcement failed; refusing to install the unguarded config.'; }
         if ! XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" >/dev/null 2>&1; then
             msg "${RED}$(tr_msg deploy_xray_trojan_landing_config_check_failed)${NC}"
             XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" 2>&1 | tail -5
@@ -30126,7 +30169,7 @@ routing_apply_live() {
     if [[ $# -gt 0 ]]; then core="$1"; shift; fi
     [[ -n "$core" ]] || core="${CORE:-}"
     if (( $# > 0 )); then
-        force_json=$(jq -nc --args '$ARGS.positional' -- "$@" 2>/dev/null) || return 1
+        force_json=$(printf '%s\n' "$@" | jq -R . | jq -sc . 2>/dev/null) || return 1
     fi
     # Per-core applied records (S57): xray and sing-box must not share
     # one retirement record, or the second core's apply reads a $prev
@@ -30549,6 +30592,13 @@ warp_deploy_inner() {
 }
 
 warp_undeploy() {
+    # H-15: snapshot the whole routing state before deleting the
+    # warp outbound, so a later apply failure can restore it.
+    local _warp_snap='' _warp_snap_ok=0
+    if [[ -f "${ROUTING_STATE_FILE:-}" && ! -L "${ROUTING_STATE_FILE:-}" ]]; then
+        _warp_snap=$(cat -- "$ROUTING_STATE_FILE" 2>/dev/null || true)
+        [[ -n "$_warp_snap" ]] && _warp_snap_ok=1
+    fi
     routing_outbound_del 'warp-out' || return 1
     local core="${CORE:-}"
     if [[ -z "$core" ]]; then
@@ -30559,7 +30609,7 @@ warp_undeploy() {
         msg "${RED}[!] $(tr_msg warp_no_core)${NC}"
         return 1
     fi
-    routing_apply_live "$core" 'warp-out' || { msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}"; return 1; }
+    routing_apply_live "$core" 'warp-out' || { msg "${YELLOW}[!] $(tr_msg warp_undeploy_fail)${NC}"; if (( _warp_snap_ok == 1 )); then printf '%s' "$_warp_snap" | routing_state_put 2>/dev/null || true; fi; return 1; }
     msg "$(tr_msg warp_removed)"
 }
 
@@ -31025,7 +31075,7 @@ EOF_SVC
     # or a symlink); an existing non-empty config is never overwritten,
     # even if jq rejects it (it may carry comments Xray accepts).
     tmp_json=$(mktemp /tmp/A-Box-xray-seed.XXXXXX) || die "$(tr_msg dp_tmpfile)"
-    jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],outbounds:[{protocol:"freedom",tag:"direct"}]}' > "$tmp_json" \
+    jq -n '{log:{loglevel:"warning",access:"/var/log/A-Box-xray-access.log",error:"/var/log/A-Box-xray-error.log"},inbounds:[],routing:{rules:[{type:"field",ip:["127.0.0.0/8","::1/128"],outboundTag:"block"}]},outbounds:[{protocol:"freedom",tag:"direct"},{protocol:"blackhole",tag:"block"}]}' > "$tmp_json" \
         || die "$(tr_msg dp_xray_seed)"
     if [[ ! -f "$cfg" || -L "$cfg" || ! -s "$cfg" ]]; then
         install_file_atomically "$tmp_json" "$cfg" 600 || die "$(tr_msg dp_xray_cfg)"
@@ -31060,6 +31110,9 @@ EOF_SVC
             rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_socks5_update)"
         fi
         jq empty "$tmp_cfg" >/dev/null 2>&1 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_json)"; }
+        # H-07: enforce the loopback guard on the merged config before
+        # validation; refuse to install an unguarded config.
+        xray_apply_loopback_guard "$tmp_cfg" || { rm -f "$tmp_cfg" "$tmp_json"; die 'Xray loopback guard enforcement failed; refusing to install the unguarded config.'; }
         XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp_cfg" >/dev/null 2>&1 \
             || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_check)"; }
         install_file_atomically "$tmp_cfg" "$cfg" 600 || { rm -f "$tmp_cfg" "$tmp_json"; die "$(tr_msg dp_xray_cfg)"; }
@@ -36236,24 +36289,24 @@ def mkusers($tag): map({
 }) | dedupe | map(.email = (if $tag != "" then ($tag + "/" + .name) else "" end))'
 
 users_adopt() {
-    local core="$1" tag="$2" outfile="${3:-}" cfg='' proto='' users='[]' ssecret='' raw='' _jq_cfg=''
-    cfg=$(users_cfg_of "$core") || return 1
-    [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+    local core="$1" tag="$2" outfile="${3:-}" cfg='' proto='' users='[]' ssecret='' raw='' _jq_cfg='' _jq_tmp=0
+    cfg=$(users_cfg_of "$core") || { (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
+    [[ -f "$cfg" && ! -L "$cfg" ]] || { (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
     # R16-F11-02: xray/sing-box jq reads go through the
     # JSONC-stripped view: a commented config makes raw jq fail and
     # the empty protocol below is misread as "no such protocol".
     # Hy2 keeps the raw file (YAML, not JSONC).
     if [[ "$core" == xray || "$core" == sing-box ]]; then
-        _jq_cfg=$(mktemp /tmp/A-Box-adopt-json.XXXXXX) || return 1
-        trap '[[ -n "${_jq_cfg:-}" ]] && rm -f -- "$_jq_cfg" 2>/dev/null' RETURN
-        jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || return 1
+        _jq_cfg=$(mktemp /tmp/A-Box-adopt-json.XXXXXX) || { (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
+        _jq_tmp=1
+        jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || { (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
     else
         _jq_cfg="$cfg"
     fi
     case "$core" in
         xray)
             proto=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .protocol // ""' "$_jq_cfg" 2>/dev/null | head -1)
-            [[ -n "$proto" ]] || return 1
+            [[ -n "$proto" ]] || { (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
             raw=$(jq -c --arg t "$tag" '
                 .inbounds[]? | select(.tag == $t) | .settings as $st
                 | if .protocol == "vless" then [$st.clients[]? | {name: (if .email then (if .email == "" then "main" else (.email | split("/") | .[-1]) end) else "main" end), secret: .id, flow: (.flow // "")}]
@@ -36264,7 +36317,7 @@ users_adopt() {
                        else [{name: "main", secret: ($st.password // ""), password_only: true}] end)
                   elif .protocol == "socks" then [$st.accounts[]? | {name: (.user // "main"), secret: (.pass // "")}]
                   elif .protocol == "vmess" then [$st.clients[]? | {name: (if .email then (if .email == "" then "main" else (.email | split("/") | .[-1]) end) else "main" end), secret: .id, uuid: .id, alterId: (.alterId // 0)}]
-                  else [] end' "$_jq_cfg" 2>/dev/null) || return 1
+                  else [] end' "$_jq_cfg" 2>/dev/null) || { (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
             if [[ "$proto" == 'shadowsocks' ]]; then
                 # clients-form SS keeps the server key separately.
                 if jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.settings.clients // null | type) == "array"' "$_jq_cfg" >/dev/null 2>&1; then
@@ -36274,7 +36327,7 @@ users_adopt() {
             ;;
         sing-box)
             proto=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .type // ""' "$_jq_cfg" 2>/dev/null | head -1)
-            [[ -n "$proto" ]] || return 1
+            [[ -n "$proto" ]] || { (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
             raw=$(jq -c --arg t "$tag" '
                 .inbounds[]? | select(.tag == $t)
                 | if .type == "vmess" then [.users[]? | {name: (.name // "main"), secret: (.uuid // .password // ""), uuid: (.uuid // .password // ""), flow: (.flow // ""), alterId: (.alterId // 0)}]
@@ -36285,26 +36338,29 @@ users_adopt() {
                        then [.users[] | {name: (.name // "main"), secret: (.password // "")}]
                        else [{name: "main", secret: (.password // ""), password_only: true}] end)
                   elif .type == "mixed" or .type == "socks" then [.users[]? | {name: (.username // "main"), secret: (.password // "")}]
-                  else [.users[]? | {name: (.name // "main"), secret: (.password // "")}] end' "$_jq_cfg" 2>/dev/null) || return 1
+                  else [.users[]? | {name: (.name // "main"), secret: (.password // "")}] end' "$_jq_cfg" 2>/dev/null) || { (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
             if [[ "$proto" == 'shadowsocks' ]] && jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t) | ((.users // []) | length) > 0' "$_jq_cfg" >/dev/null 2>&1; then
                 ssecret=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .password // ""' "$_jq_cfg" 2>/dev/null | head -1)
             fi
             ;;
         hy2)
             proto='hysteria2'
-            raw=$(users_hy2_read_users "$cfg") || return 1
+            raw=$(users_hy2_read_users "$cfg") || { (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
             ;;
-        *) return 1 ;;
+        *) (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1 ;;
     esac
     [[ -n "$raw" ]] || raw='[]'
-    users=$(printf '%s' "$raw" | jq -c --arg tag "$tag" "$USERS_JQ_DEDUPE; mkusers(\$tag)") || return 1
+    users=$(printf '%s' "$raw" | jq -c --arg tag "$tag" "$USERS_JQ_DEDUPE; mkusers(\$tag)") || { (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
     local now=''
     now=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo '')
-    users=$(printf '%s' "$users" | jq -c --arg now "$now" 'map(.created = (if .created == "" then $now else .created end))') || return 1
+    users=$(printf '%s' "$users" | jq -c --arg now "$now" 'map(.created = (if .created == "" then $now else .created end))') || { (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
     local reg=''
     reg=$(jq -cn --arg core "$core" --arg tag "$tag" --arg proto "$proto" --rawfile ss <(printf '%s' "$ssecret") --slurpfile users <(printf '%s' "$users") \
-        '{core: $core, tag: $tag, protocol: $proto, server_secret: $ss, users: $users[0]}') || return 1
+        '{core: $core, tag: $tag, protocol: $proto, server_secret: $ss, users: $users[0]}') || { (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
     if [[ -n "$outfile" ]]; then users_reg_write_path "$outfile" "$reg"; else users_reg_write "$core" "$tag" "$reg"; fi
+    local _adopt_rc=$?
+    (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }
+    return "$_adopt_rc"
 }
 
 # Read the official Hy2 auth block into a raw users list [{name,secret}].
@@ -36718,7 +36774,7 @@ users_reg_ensure() {
 
 # ---- sync: rewrite the core config's user list from the registry ----
 users_sync() {
-    local core="$1" tag="$2" cfg='' reg='' bak='' tmp='' tmpd='' enabled='' proto='' ssecret='' _commit_rc='' _jq_cfg=''
+    local core="$1" tag="$2" cfg='' reg='' bak='' tmp='' tmpd='' enabled='' proto='' ssecret='' _commit_rc='' _jq_cfg='' _jq_tmp=0
     cfg=$(users_cfg_of "$core") || { msg "users_sync stage SYNC-01: users_cfg_of failed" >&2; return 1; }
     reg=$(users_reg_file "$core" "$tag")
     [[ -f "$cfg" && ! -L "$cfg" && -f "$reg" ]] || { msg "users_sync stage SYNC-02: config or registry missing" >&2; return 1; }
@@ -36735,9 +36791,9 @@ users_sync() {
     # view, like users_adopt: raw jq on a commented config fails and
     # sync misreads the live state. Hy2 keeps the raw file (YAML).
     if [[ "$core" == xray || "$core" == sing-box ]]; then
-        _jq_cfg=$(mktemp /tmp/A-Box-usync-json.XXXXXX) || { msg "users_sync stage SYNC-09: stripped-view temp creation failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
-        trap '[[ -n "${_jq_cfg:-}" ]] && rm -f -- "$_jq_cfg" 2>/dev/null' RETURN
-        jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || { msg "users_sync stage SYNC-09: JSONC strip failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
+        _jq_cfg=$(mktemp /tmp/A-Box-usync-json.XXXXXX) || { msg "users_sync stage SYNC-09: stripped-view temp creation failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
+        _jq_tmp=1
+        jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || { msg "users_sync stage SYNC-09: JSONC strip failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
     else
         _jq_cfg="$cfg"
     fi
@@ -36758,7 +36814,7 @@ users_sync() {
     if [[ "$proto" == 'shadowsocks' ]] && (( encount > 1 )) && [[ -z "$eff_ss" ]]; then
         msg "users_sync stage SYNC-10: shadowsocks multi-user without server key" >&2; 
         msg "${RED}[!] $(tprintf users_ss_no_server_key "$tag")${NC}"
-        rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
+        rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1
     fi
     # sing-box socks/mixed inbounds treat an empty users list as "no
     # authentication required" (upstream docs), so syncing zero enabled
@@ -36780,7 +36836,7 @@ users_sync() {
         if (( encount == 0 )); then
             if jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$_jq_cfg" >/dev/null 2>&1; then
                 sb_will_delete=1
-                sb_snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$_jq_cfg" 2>/dev/null) || { msg "users_sync stage SYNC-11: inbound snapshot read failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
+                sb_snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$_jq_cfg" 2>/dev/null) || { msg "users_sync stage SYNC-11: inbound snapshot read failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
             fi
         elif [[ "$sb_snap" != 'null' ]]; then
             jq -e --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$_jq_cfg" >/dev/null 2>&1 || sb_will_rebuild=1
@@ -36789,7 +36845,7 @@ users_sync() {
             # Syncing would silently do nothing; fail loudly instead.
             msg "users_sync stage SYNC-12: inbound missing with no snapshot" >&2; 
             msg "${RED}[!] ${core} ${proto} inbound ${tag} is missing and no registry snapshot exists; cannot rebuild. Re-deploy the node, then re-run sync.${NC}"
-            rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
+            rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1
         fi
     fi
     # U65: persist the deletion snapshot BEFORE the commit, not after it.
@@ -36797,9 +36853,9 @@ users_sync() {
     # without a snapshot while the inbound was already gone, and a later
     # re-enable then silently succeeded without rebuilding.
     if (( sb_will_delete == 1 )); then
-        [[ -n "$sb_snap_obj" ]] || { msg "users_sync stage SYNC-13: deletion snapshot empty" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
+        [[ -n "$sb_snap_obj" ]] || { msg "users_sync stage SYNC-13: deletion snapshot empty" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
         local regj_pre=''
-        regj_pre=$(jq -c --slurpfile ib <(printf '%s' "$sb_snap_obj") '.inbound_snapshot = $ib[0]' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj_pre" || { msg "users_sync stage SYNC-14: deletion snapshot persist failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
+        regj_pre=$(jq -c --slurpfile ib <(printf '%s' "$sb_snap_obj") '.inbound_snapshot = $ib[0]' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj_pre" || { msg "users_sync stage SYNC-14: deletion snapshot persist failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
     fi
     case "$core" in
         xray)
@@ -36829,7 +36885,7 @@ users_sync() {
                 else . end)
             ' "$_jq_cfg" > "$tmp" 2>/dev/null; then
                 msg "users_sync stage SYNC-15: xray config rewrite failed" >&2; 
-                rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
+                rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1
             fi
             ;;
         sing-box)
@@ -36856,19 +36912,19 @@ users_sync() {
                 else . end)
             ' "$_jq_cfg" > "$tmp" 2>/dev/null; then
                 msg "users_sync stage SYNC-16: sing-box config rewrite failed" >&2; 
-                rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
+                rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1
             fi
             ;;
         hy2)
-            users_hy2_write_users "$cfg" "$enabled" "$tmp" || { msg "users_sync stage SYNC-17: hy2 users write failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
+            users_hy2_write_users "$cfg" "$enabled" "$tmp" || { msg "users_sync stage SYNC-17: hy2 users write failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
             ;;
-        *) msg "users_sync stage SYNC-18: unknown core" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1 ;;
+        *) msg "users_sync stage SYNC-18: unknown core" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1 ;;
     esac
     # SS promotion persistence BEFORE the commit (see U65 precedent above):
     # the config below already uses eff_ss as the server key.
     if (( promote == 1 )); then
         local regj=''
-        regj=$(jq -c --rawfile ss <(printf '%s' "$eff_ss") '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || { msg "users_sync stage SYNC-19: server-secret promotion persist failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1; }
+        regj=$(jq -c --rawfile ss <(printf '%s' "$eff_ss") '.server_secret = $ss' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj" || { msg "users_sync stage SYNC-19: server-secret promotion persist failed" >&2; rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1; }
     fi
     users_commit_cfg "$core" "$cfg" "$tmp" "$bak"; _commit_rc=$?
     if (( _commit_rc == 0 )); then
@@ -36886,14 +36942,15 @@ users_sync() {
             regj3=$(jq -c 'del(.inbound_snapshot)' "$reg" 2>/dev/null) && users_reg_write "$core" "$tag" "$regj3" || true
             msg "${GREEN}[+] ${core} ${proto} inbound ${tag} rebuilt from the registry snapshot.${NC}"
         fi
+        (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }
         return 0
     fi
     if (( _commit_rc == 2 )); then
         msg "users_sync stage SYNC-20: config commit failed and restore failed; backup kept at $bak for manual recovery" >&2
-        rm -f "$tmp"; rm -rf "$tmpd"; return 2
+        rm -f "$tmp"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 2
     fi
     msg "users_sync stage SYNC-20: config commit failed" >&2; 
-    rm -f "$tmp" "$bak"; rm -rf "$tmpd"; return 1
+    rm -f "$tmp" "$bak"; rm -rf "$tmpd"; (( _jq_tmp == 1 )) && { rm -f -- "$_jq_cfg" 2>/dev/null; trap - RETURN; }; return 1
 }
 
 # Write a new hysteria config with the auth block replaced by $enabled
@@ -37169,8 +37226,7 @@ users_link_combo() {
                 "$(urlencode "$method")" "$(urlencode "$eff")" \
                 "$(uri_host "$ip")" "${port:-${SS_PORT:-2053}}" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
         hy2)
-            port=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | (.listen_port // "")' "$cfg" 2>/dev/null | head -1)
-            local obfs='' obfs_type='' sni='' cert_path='' acme_domain='' insecure=1 q=''
+            local obfs='' obfs_type='' sni='' cert_path='' acme_domain='' insecure=1 q='' pin='' _hy2_ep='' _hy2_qp=''
             obfs=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .obfs.password // ""' "$cfg" 2>/dev/null | head -1)
             obfs_type=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .obfs.type // ""' "$cfg" 2>/dev/null | head -1)
             sni=$(jq -r --arg t "$tag" '.inbounds[]? | select(.tag == $t) | .tls.server_name // ""' "$cfg" 2>/dev/null | head -1)
@@ -37189,13 +37245,30 @@ users_link_combo() {
                     if [[ -n "$_iss" && -n "$_sub" && "$_iss" != "$_sub" ]]; then insecure=0; fi
                 fi
             fi
-            if (( insecure == 1 )); then q='insecure=1'; fi
+            # H-07: port-hop endpoint, like the standalone path; a bad
+            # endpoint refuses this user link only.
+            IFS=$'\t' read -r _hy2_ep _hy2_qp < <(build_hy2_uri_endpoint 2>/dev/null || true) || return 1
+            [[ -n "$_hy2_ep" ]] || return 1
+            # H-07 (SYD-B4 A3, standalone parity): insecure=1 requires a
+            # non-empty pinSHA256. Try the live certificate first, then
+            # the .env fingerprint; refuse the link when neither yields
+            # a pin. The trusted-certificate branch (insecure=0) never
+            # carries a pin and is unaffected.
+            if (( insecure == 1 )); then
+                pin=$(hy2_cert_pin_colon "$cert_path" 2>/dev/null || true)
+                if [[ -z "$pin" && "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+                    pin=$(sed 's/\(..\)/\1:/g; s/:$//' <<< "${HY2_CERT_SHA256_FP}")
+                fi
+                [[ -n "$pin" ]] || return 1
+            fi
+            [[ -n "$sni" ]] || sni='localhost'
+            if (( insecure == 1 )); then q="insecure=1&pinSHA256=$(urlencode "$pin")"; fi
             if [[ -n "$q" ]]; then q+="&sni=$sni"; else q="sni=$sni"; fi
             if [[ -n "$obfs_type" ]]; then q+="&obfs=$obfs_type&obfs-password=$(urlencode "$obfs")"; fi
             # R1-11-F05: sing-box Hy2 is password-only auth, even
             # multi-user; the name:secret form fails authentication.
             printf 'hysteria2://%s@%s:%s?%s#%s-%s' \
-                "$(urlencode "$secret")" "$(uri_host "$ip")" "${port:-443}" "$q" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
+                "$(urlencode "$secret")" "$(uri_host "$ip")" "$_hy2_ep" "$q" "$(urlencode "$tag")" "$(urlencode "$name")" ;;
         *) return 1 ;;
     esac
     return 0
@@ -37769,8 +37842,17 @@ users_hot_remove() {
     # own all-disabled path writes). Snapshot failure fails closed:
     # keep the inbound rather than delete it unsnapshotted.
     if [[ "$proto" == 'shadowsocks' ]]; then
-        local _snap_obj='' _snap_reg=''
-        _snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$cfg" 2>/dev/null) || return 1
+        local _snap_obj='' _snap_reg='' _snap_cfg="$cfg"
+        # L-01: Xray configs may carry // comments jq rejects; read
+        # this snapshot point through the JSONC-stripped view (the
+        # $_jq_cfg pattern of users_adopt/users_sync). sing-box
+        # configs are strict JSON, so they keep the raw file.
+        if [[ "$core" == xray ]]; then
+            _snap_cfg=$(mktemp /tmp/A-Box-uhot-json.XXXXXX) || return 1
+            jsonc_strip_comments "$cfg" > "$_snap_cfg" 2>/dev/null || { rm -f -- "$_snap_cfg"; return 1; }
+        fi
+        _snap_obj=$(jq -c --arg t "$tag" '.inbounds[]? | select(.tag == $t)' "$_snap_cfg" 2>/dev/null) || { [[ "$_snap_cfg" != "$cfg" ]] && rm -f -- "$_snap_cfg"; return 1; }
+        [[ "$_snap_cfg" != "$cfg" ]] && rm -f -- "$_snap_cfg"
         # R10C11-01: also snapshot when removing the last client: the
         # removal below deletes the whole inbound (an empty clients
         # array plus the retained password would fall back to

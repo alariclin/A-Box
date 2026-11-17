@@ -1106,19 +1106,29 @@ PY_TREE_MOUNT
 # invisible to it — proven by fixture (bind over /usr/local/bin,
 # rm -f still deleted the shared backend file). Walk from the path
 # up to (excluding) / and exact-check each level with
-# path_is_mountpoint (which realpaths internally, so lexical dirname
-# steps are safe). Self/subtree coverage is kept by also calling
+# path_is_mountpoint. Each level is canonicalised first: a symlink
+# ancestor is short-circuited to "not a mountpoint" by
+# path_is_mountpoint without resolving it, so lexical dirname steps
+# would miss a symlink that resolves under a mountpoint (M-13(3)).
+# Self/subtree coverage is kept by also calling
 # path_tree_has_mountpoint first.
 # No trust allowlist: redeploy orphan cleanup defaults to deny
 # (unlike the uninstall flow's ABOX_TRUSTED_UNINSTALL_ANCESTORS);
 # a separately-mounted /usr must be cleaned up manually.
 path_tree_or_ancestors_mounted() {
-    local path="$1" cur
+    local path="$1" cur _real
     [[ -e "$path" || -L "$path" ]] || return 1
     path_tree_has_mountpoint "$path" && return 0
     cur="$path"
     while [[ "$cur" != '/' && "$cur" == */ ]]; do cur="${cur%/}"; done
     while [[ "$cur" != '/' ]]; do
+        # M-13(3): judge this level by its target chain, not by the
+        # link itself: path_is_mountpoint short-circuits a symlink
+        # to "not a mountpoint" without resolving it. A failed
+        # canonicalisation keeps the lexical level (fail closed is
+        # handled by path_is_mountpoint's own rc mapping).
+        _real=$(realpath "$cur" 2>/dev/null || readlink -f "$cur" 2>/dev/null || true)
+        [[ -n "$_real" ]] && cur="$_real"
         if path_is_mountpoint "$cur"; then return 0; fi
         cur=$(dirname "$cur")
     done
@@ -15857,24 +15867,44 @@ shortcut_change_transaction() {
             SHORTCUT_ERR="install:$_n"; return 1
         fi
     done
-    rm -f -- "$_tmp"
     # Verify every new entry before touching the old ones: it must exist,
     # be executable, be a managed regular file, and match the wrapper we
     # just built. R9 (F05-4): the -x check closes the 0644 commit hole.
     local _vtmp
     _vtmp=$(umask 077; mktemp /tmp/A-Box-shortcut.XXXXXX 2>/dev/null) || { shortcut_lock_release; SHORTCUT_ERR='mktemp'; return 1; }
     if ! shortcut_build_wrapper "$_vtmp"; then
-        rm -f -- "$_vtmp"; shortcut_lock_release; SHORTCUT_ERR='wrapper'; return 1
+        # M-13(2): pre-commit failure must roll back like the
+        # install-failure exit above: remove only files this
+        # transaction created and can still confirm belong to it,
+        # and mark the migration record rolled-back.
+        local _c _cp
+        for _c in $_created; do
+            _cp="/usr/local/bin/$_c"
+            if [[ -f "$_cp" ]] && cmp -s "$_tmp" "$_cp"; then rm -f -- "$_cp" 2>/dev/null || true; fi
+        done
+        rm -f -- "$_tmp" "$_vtmp"
+        shortcut_migrate_write "$_old_names" "$_new_names" 'rolled-back' "$_pending" 2>/dev/null || true
+        shortcut_lock_release; SHORTCUT_ERR='wrapper'; return 1
     fi
     for _n in $_new_names; do
         _p="/usr/local/bin/$_n"
         if [[ ! -f "$_p" || ! -x "$_p" ]] || ! shortcut_is_abox_managed "$_p" || ! cmp -s "$_vtmp" "$_p"; then
-            rm -f -- "$_vtmp"
+            # M-13(2): pre-commit failure must roll back like the
+            # install-failure exit above: remove only files this
+            # transaction created and can still confirm belong to it,
+            # and mark the migration record rolled-back.
+            local _c _cp
+            for _c in $_created; do
+                _cp="/usr/local/bin/$_c"
+                if [[ -f "$_cp" ]] && cmp -s "$_tmp" "$_cp"; then rm -f -- "$_cp" 2>/dev/null || true; fi
+            done
+            rm -f -- "$_tmp" "$_vtmp"
+            shortcut_migrate_write "$_old_names" "$_new_names" 'rolled-back' "$_pending" 2>/dev/null || true
             shortcut_lock_release
             SHORTCUT_ERR="verify:$_n"; return 1
         fi
     done
-    rm -f -- "$_vtmp"
+    rm -f -- "$_tmp" "$_vtmp"
     # 8. Atomically commit the new state.
     shortcut_migrate_write "$_old_names" "$_new_names" 'committed' "$_pending" || { shortcut_lock_release; SHORTCUT_ERR='migrate_write'; return 1; }
     if ! shortcut_write_state "$_new_names"; then
@@ -16643,9 +16673,9 @@ print_port_occupancy() { # read-only: port -> protocol/owner map
             done
         fi
     fi
-    if [[ -n "${HY2_PORT:-}" ]]; then
-        msg "  ${HY2_PORT} -> hysteria2 [hy2-official] (hysteria)"
-        known+=" ${HY2_PORT}"; any=1
+    if [[ -n "${HY2_BASE_PORT:-}" ]]; then
+        msg "  ${HY2_BASE_PORT} -> hysteria2 [hy2-official] (hysteria)"
+        known+=" ${HY2_BASE_PORT}"; any=1
     fi
     if command -v ss >/dev/null 2>&1; then
         local -a _srows=()
@@ -18524,9 +18554,22 @@ ufw_rule_state() {
 
 ufw_rule_exists() { ufw_rule_state "$1" "$2"; }
 
+# M-13(1): whether UFW itself manages IPv6 rules. This is UFW's own
+# IPV6= switch in /etc/default/ufw, NOT the host's IPv6 preference
+# or address state (has_ipv6): a host with .ip-pref=ipv4 or no
+# global v6 address can still have UFW IPv6 rules enabled, and
+# gating the v6 family check on has_ipv6 let a half-owned rule pass
+# verification, then die on the second install/restore. UFW defaults
+# to IPV6=yes, so a missing file, a missing key, or a commented-out
+# key all count as enabled.
+ufw_ipv6_enabled() {
+    [[ -f /etc/default/ufw ]] || return 0
+    grep -Eq '^[[:space:]]*IPV6=yes' /etc/default/ufw
+}
+
 # R5C6-03: true when the A-Box-owned rule exists for every
-# applicable family (v4 always; v6 only when the host has
-# IPv6). A single surviving family must not count as fully
+# applicable family (v4 always; v6 only when UFW has IPv6
+# enabled). A single surviving family must not count as fully
 # owned, or restore would skip replenishing the deleted
 # counterpart. Parse mirrors ufw_global_rule_numbers
 # (owned_only=1) but tracks families instead of numbers.
@@ -18564,7 +18607,7 @@ _ufw_owned_families_complete() {
         if (( is6 )); then has6=1; else has4=1; fi
     done <<< "$output"
     (( has4 == 1 )) || return 1
-    if has_ipv6; then (( has6 == 1 )) || return 1; fi
+    if ufw_ipv6_enabled; then (( has6 == 1 )) || return 1; fi
     return 0
 }
 
@@ -18609,7 +18652,7 @@ _ufw_missing_family_has_foreign() {
         if (( is6 )); then has6_owned=1; else has4_owned=1; fi
     done <<< "$output"
     if (( has4_owned == 0 && has4_any == 1 )); then return 0; fi
-    if has_ipv6; then
+    if ufw_ipv6_enabled; then
         if (( has6_owned == 0 && has6_any == 1 )); then return 0; fi
     fi
     return 1
@@ -20220,7 +20263,18 @@ clean_nat_rules() {
     local -a argv=()
     owned_re='--comment "?A-Box-HY2-HOP"?([ \t\r]|$)'
     while :; do
-        output=$(_iptables_q "$IPT" -t nat -S PREROUTING 2>/dev/null) || { failed=1; break; }
+        output=$(_iptables_q "$IPT" -t nat -S PREROUTING 2>/dev/null) || {
+            # M-14(3): a missing nat table (container VPS without
+            # iptable_nat) means "no NAT rules to clean", not a
+            # failure -- same exemption as clean_chain. Any other
+            # probe failure still fails the cleanup.
+            local _nat_err
+            _nat_err=$(_iptables_q "$IPT" -t nat -S PREROUTING 2>&1 >/dev/null || true)
+            if printf '%s\n' "$_nat_err" | grep -qiE "table .* does not exist|table does not exist|table nat is not supported|protocol not supported"; then
+                break
+            fi
+            failed=1; break
+        }
         rule=$(awk -v re="$owned_re" '$0 ~ re { sub(/^-A /,"-D "); print; exit }' <<< "$output")
         [[ -n "$rule" ]] || break
         rule=${rule//\"/}
@@ -26128,7 +26182,16 @@ install_file_atomically() {
     fi
     [[ -d "$dir" ]] || install -d -m 755 "$dir" || return 1
     staged=$(mktemp "${dest}.A-Box-new.XXXXXX") || return 1
-    command install -m "$mode" "$src" "$staged" || { rm -f -- "$staged"; return 1; }
+    # M-14(2): on a setgid parent (Debian 10 /usr/local/bin is 2775
+    # root:staff) mktemp inherits gid=staff and plain `install -m`
+    # preserves it, so the installed file fails path_owned_by_root
+    # (uid==0 && gid==0). As root, pin owner/group explicitly; as
+    # non-root keep the old behaviour (`install -o/-g` would fail).
+    if (( EUID == 0 )); then
+        command install -o root -g root -m "$mode" "$src" "$staged" || { rm -f -- "$staged"; return 1; }
+    else
+        command install -m "$mode" "$src" "$staged" || { rm -f -- "$staged"; return 1; }
+    fi
     # R7C8-01: before commit, a real staged-file sync failure must
     # fail the install. Unsupported sync options remain best-effort.
     _abox_sync_file "$staged" || { rm -f -- "$staged"; return 1; }
@@ -39864,6 +39927,26 @@ snapshot_dns_state() {
             fi
         fi
     else printf disabled > "$dir/dnscrypt-service-enabled" || return 1; fi
+    # M-09: record dnscrypt-proxy.socket Listen endpoints and the
+    # A-Box socket drop-in. dns_enable_doh snapshots BEFORE normalize
+    # rebinds the socket; without these, a rollback restores the
+    # service state but leaves the rebound socket and a stale
+    # abox-listen.conf behind. Old snapshots without these records
+    # are skipped by the restore below.
+    local _sock_listen=''
+    if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files --type=socket --no-legend --no-pager dnscrypt-proxy.socket 2>/dev/null | grep -q '^dnscrypt-proxy\.socket'; then
+        _sock_listen=$(systemctl show --property=Listen --value dnscrypt-proxy.socket 2>/dev/null) || return 1
+        printf '%s\n' "$_sock_listen" > "$dir/dnscrypt-socket-listen" || return 1
+    else
+        printf absent > "$dir/dnscrypt-socket-listen.absent" || return 1
+    fi
+    if [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]]; then
+        mkdir -p "$dir/dnscrypt-socket-dropin" || return 1
+        cp -a /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf "$dir/dnscrypt-socket-dropin/abox-listen.conf" || return 1
+        printf present > "$dir/dnscrypt-socket-dropin-state" || return 1
+    else
+        printf absent > "$dir/dnscrypt-socket-dropin-state" || return 1
+    fi
     if [[ -f "$DNS_STATE_FILE" && ! -L "$DNS_STATE_FILE" ]]; then cp -a "$DNS_STATE_FILE" "$dir/dns-state" || return 1; else printf absent > "$dir/dns-state.absent"; fi
     if [[ "$backend" == networkmanager ]] && command -v nmcli >/dev/null 2>&1; then
         iface=$(nm_effective_device 2>/dev/null || true)
@@ -39984,6 +40067,34 @@ restore_dns_snapshot_body() {
     if [[ -f "$dir/dns-state" ]]; then rm -f -- "$DNS_STATE_FILE" || return 1; cp -a "$dir/dns-state" "$DNS_STATE_FILE" || return 1
     elif [[ -f "$dir/dns-state.absent" ]]; then rm -f "$DNS_STATE_FILE" || return 1; fi
     if [[ "$backend" == resolved ]] && command -v systemctl >/dev/null 2>&1; then systemctl restart systemd-resolved >/dev/null 2>&1 || return 1; fi
+    # M-09: restore the socket Listen state recorded at snapshot time,
+    # before the service state below is restored (under socket
+    # activation the service inherits the socket's own FDs). Rebuild
+    # the A-Box drop-in from the snapshot, or remove it when the
+    # snapshot had none (back to the distro default). A foreign
+    # abox-listen.conf (no A-Box marker) is never removed: fail
+    # closed instead of clobbering an admin-pinned override.
+    if [[ -f "$dir/dnscrypt-socket-dropin/abox-listen.conf" ]]; then
+        [[ -d /etc/systemd/system/dnscrypt-proxy.socket.d ]] || install -d -m 755 /etc/systemd/system/dnscrypt-proxy.socket.d || return 1
+        rm -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf || return 1
+        cp -a "$dir/dnscrypt-socket-dropin/abox-listen.conf" /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf || return 1
+    elif [[ -f "$dir/dnscrypt-socket-dropin-state" ]] && [[ "$(tr -d '[:space:]' < "$dir/dnscrypt-socket-dropin-state" 2>/dev/null || true)" == absent ]]; then
+        if [[ -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf ]]; then
+            grep -Fq '# Managed by A-Box' /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf 2>/dev/null || return 1
+            rm -f /etc/systemd/system/dnscrypt-proxy.socket.d/abox-listen.conf || return 1
+            rmdir /etc/systemd/system/dnscrypt-proxy.socket.d 2>/dev/null || true
+        fi
+    fi
+    if [[ -f "$dir/dnscrypt-socket-listen" ]] && command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files --type=socket --no-legend --no-pager dnscrypt-proxy.socket 2>/dev/null | grep -q '^dnscrypt-proxy\.socket'; then
+        local _sock_listen_now='' _sock_listen_want=''
+        systemctl daemon-reload >/dev/null 2>&1 || return 1
+        if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
+            systemctl restart dnscrypt-proxy.socket >/dev/null 2>&1 || return 1
+        fi
+        _sock_listen_now=$(systemctl show --property=Listen --value dnscrypt-proxy.socket 2>/dev/null || true)
+        _sock_listen_want=$(cat "$dir/dnscrypt-socket-listen" 2>/dev/null || true)
+        [[ "$_sock_listen_now" == "$_sock_listen_want" ]] || return 1
+    fi
     if command -v systemctl >/dev/null 2>&1; then
         local _dnscrypt_units=''
         _dnscrypt_units=$(systemctl list-unit-files --type=service --no-legend --no-pager dnscrypt-proxy.service 2>/dev/null) || return 1
@@ -41066,6 +41177,7 @@ dns_auto_prefer() {
 
 dns_install_dnscrypt_proxy() {
     local _cfg="${DNSCRYPT_CONFIG:-/etc/dnscrypt-proxy/dnscrypt-proxy.toml}"
+    local prompt answer
     # R11C12-02: ready requires BOTH binary and config; a binary
     # left behind by a config-deleting rollback is not ready.
     if command -v dnscrypt-proxy >/dev/null 2>&1 && [[ -f "$_cfg" && ! -L "$_cfg" ]]; then return 0; fi
@@ -41084,6 +41196,7 @@ dns_install_dnscrypt_proxy() {
         is_yes "$answer" || { msg "${YELLOW}dnscrypt-proxy config missing and reinstall declined; DNS was not changed.${NC}"; return 1; }
         if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y --reinstall -o Dpkg::Options::=--force-confmiss dnscrypt-proxy || return 1
         elif command -v apk >/dev/null 2>&1; then apk fix dnscrypt-proxy || return 1
+        elif command -v dnf >/dev/null 2>&1; then dnf reinstall -y dnscrypt-proxy || return 1
         else msg "${YELLOW}Automatic DoH setup is not enabled for this package manager; DNS was not changed.${NC}"; return 1; fi
         [[ -f "$_cfg" && ! -L "$_cfg" ]] || { msg "${YELLOW}dnscrypt-proxy config still missing after reinstall; DNS was not changed.${NC}"; return 1; }
         return 0
@@ -41101,6 +41214,7 @@ dns_install_dnscrypt_proxy() {
     is_yes "$answer" || return 1
     if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y dnscrypt-proxy || return 1
     elif command -v apk >/dev/null 2>&1; then apk add dnscrypt-proxy || return 1
+    elif command -v dnf >/dev/null 2>&1; then dnf install -y dnscrypt-proxy || return 1
     else msg "${YELLOW}Automatic DoH setup is not enabled for this package manager; DNS was not changed.${NC}"; return 1; fi
     command -v dnscrypt-proxy >/dev/null 2>&1 || return 1
     [[ -f "$_cfg" && ! -L "$_cfg" ]] || { msg "${YELLOW}dnscrypt-proxy config missing after install; DNS was not changed.${NC}"; return 1; }
@@ -41198,6 +41312,7 @@ dns_doh_cleanup_fresh_proxy() {
 
 dns_enable_doh() {
     local backend config answer temp rc prompt resolved_major
+    local _doh_fr_present _doh_fr_out
     local doh_server="${1:-cloudflare}" doh_label="${2:-Cloudflare}"
     backend=$(dns_backend_detect)
     [[ "$backend" == resolved ]] && command -v systemctl >/dev/null 2>&1 || {
@@ -41280,10 +41395,51 @@ dns_enable_doh() {
         else read -r -p "$prompt" answer; fi
         is_yes "$answer" || return 0
     fi
+    # M-09: snapshot BEFORE normalize rebinds the socket: the
+    # snapshot must capture the pre-change socket Listen list,
+    # drop-in, and service state (normalize stops the service and
+    # rewrites the socket). Install is already done above, so the
+    # snapshot can still restore the proxy itself.
+    # R11-11: capture owner/mode BEFORE any work touches the config.
+    local _cfg_meta='' _cfg_uid='' _cfg_gid='' _cfg_mode=''
+    _cfg_meta=$(stat -c '%u %g %a' "$config" 2>/dev/null) || { dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; msg "${RED}[!] Cannot read ownership/mode of $config; refusing to replace it.${NC}"; return 1; }
+    read -r _cfg_uid _cfg_gid _cfg_mode <<< "$_cfg_meta"
+    [[ "$_cfg_uid" =~ ^[0-9]+$ && "$_cfg_gid" =~ ^[0-9]+$ && "$_cfg_mode" =~ ^[0-7]{3,4}$ ]] || { dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; msg "${RED}[!] Cannot read ownership/mode of $config; refusing to replace it.${NC}"; return 1; }
+    # FINAL-AUDIT fix: stage the new snapshot in a temp dir and verify it
+    # is COMPLETE before replacing the old one. The old code ran
+    # `rm -rf $DNS_BACKUP_DIR` first, so a mkdir/snapshot failure destroyed
+    # the previous rollback snapshot with no way to recover it.
+    local _doh_snap_new=""
+    _doh_snap_new=$(mktemp -d "${DNS_BACKUP_DIR}.new.XXXXXX") || { dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; msg "${RED}$(tr_msg dh_snap_staging)${NC}"; return 1; }
+    chmod 700 "$_doh_snap_new" || { dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; rm -rf -- "$_doh_snap_new"; msg "${RED}$(tr_msg dh_snap_staging)${NC}"; return 1; }
+    if ! snapshot_dns_state "$_doh_snap_new" || [[ ! -f "$_doh_snap_new/COMPLETE" ]]; then
+        dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
+        rm -rf -- "$_doh_snap_new"
+        msg "${RED}$(tr_msg dh_snap_rollback)${NC}"
+        return 1
+    fi
+    # R11-09: retain a copy of THIS run's pre-change snapshot before
+    # the install primitive runs: when a COMPLETE baseline already
+    # exists it preserves the baseline and discards the staging dir,
+    # so restoring from $DNS_BACKUP_DIR on failure would undo the
+    # previous successful DNS change instead of this run's pre-state.
+    # Removed after a successful restore and on success; retained
+    # (and reported) only when a restore fails.
+    local _doh_snap_keep=''
+    _doh_snap_keep=$(mktemp -d /tmp/A-Box-doh-snap.XXXXXX) || { dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; rm -rf -- "$_doh_snap_new"; msg "${RED}$(tr_msg dh_snap_install)${NC}"; return 1; }
+    if ! chmod 700 "$_doh_snap_keep" 2>/dev/null || ! cp -a "$_doh_snap_new/." "$_doh_snap_keep/" 2>/dev/null || [[ ! -f "$_doh_snap_keep/COMPLETE" ]]; then dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; rm -rf -- "$_doh_snap_new" "$_doh_snap_keep"; msg "${RED}$(tr_msg dh_snap_install)${NC}"; return 1; fi
+    # TRAP-5: use the unified snapshot primitive (POSIX mv + pre-move-aside, idempotency,
+    # crash-safe pending-swap). Preserves an existing COMPLETE baseline.
+    if ! dns_snapshot_install_new "$_doh_snap_new"; then
+        dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
+        rm -rf -- "$_doh_snap_keep" 2>/dev/null || true
+        msg "${RED}$(tr_msg dh_snap_install)${NC}"
+        return 1
+    fi
     # OBS-S1-02: rebind the stock socket (127.0.2.1:53) to the
     # pinned 127.0.0.1:5353 before the guard validates it.
     if ! dns_normalize_dnscrypt_socket; then
-        dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
+        if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi
         msg "${RED}[!] Could not move dnscrypt-proxy.socket to 127.0.0.1:5353; resolver configuration was not switched.${NC}"
         return 1
     fi
@@ -41296,7 +41452,7 @@ dns_enable_doh() {
     # unparseable, or mismatched output fails closed.
     if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
         local _sock_listen=''
-        _sock_listen=$(systemctl show --property=Listen --value dnscrypt-proxy.socket 2>/dev/null) || { dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"; msg "${RED}[!] Cannot query dnscrypt-proxy.socket endpoints; resolver configuration was not switched.${NC}"; return 1; }
+        _sock_listen=$(systemctl show --property=Listen --value dnscrypt-proxy.socket 2>/dev/null) || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}[!] Cannot query dnscrypt-proxy.socket endpoints; resolver configuration was not switched.${NC}"; return 1; }
         # R14-F12-02: presence is not exclusivity. The socket hands the
         # service every address it listens on (doh_listen='[]' below),
         # so any extra endpoint (e.g. 0.0.0.0:5353) would make the
@@ -41316,46 +41472,12 @@ dns_enable_doh() {
             esac
         done <<< "$_listen_norm"
         if (( _n_listen != 2 || _seen_stream != 1 || _seen_dgram != 1 || _bad_listen != 0 )); then
-            dns_doh_cleanup_fresh_proxy "$_doh_pre_installed" "$_doh_dropin_written"
+            if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi
             msg "${RED}[!] dnscrypt-proxy.socket must listen on exactly 127.0.0.1:5353 (Stream and Datagram); resolver configuration was not switched. Effective Listen: ${_sock_listen:-none} -- correct the socket configuration or disable socket activation.${NC}"
             return 1
         fi
     fi
-    # R11-11: capture owner/mode BEFORE any work touches the config.
-    local _cfg_meta='' _cfg_uid='' _cfg_gid='' _cfg_mode=''
-    _cfg_meta=$(stat -c '%u %g %a' "$config" 2>/dev/null) || { msg "${RED}[!] Cannot read ownership/mode of $config; refusing to replace it.${NC}"; return 1; }
-    read -r _cfg_uid _cfg_gid _cfg_mode <<< "$_cfg_meta"
-    [[ "$_cfg_uid" =~ ^[0-9]+$ && "$_cfg_gid" =~ ^[0-9]+$ && "$_cfg_mode" =~ ^[0-7]{3,4}$ ]] || { msg "${RED}[!] Cannot read ownership/mode of $config; refusing to replace it.${NC}"; return 1; }
-    # FINAL-AUDIT fix: stage the new snapshot in a temp dir and verify it
-    # is COMPLETE before replacing the old one. The old code ran
-    # `rm -rf $DNS_BACKUP_DIR` first, so a mkdir/snapshot failure destroyed
-    # the previous rollback snapshot with no way to recover it.
-    local _doh_snap_new=""
-    _doh_snap_new=$(mktemp -d "${DNS_BACKUP_DIR}.new.XXXXXX") || { msg "${RED}$(tr_msg dh_snap_staging)${NC}"; return 1; }
-    chmod 700 "$_doh_snap_new" || { rm -rf -- "$_doh_snap_new"; msg "${RED}$(tr_msg dh_snap_staging)${NC}"; return 1; }
-    if ! snapshot_dns_state "$_doh_snap_new" || [[ ! -f "$_doh_snap_new/COMPLETE" ]]; then
-        rm -rf -- "$_doh_snap_new"
-        msg "${RED}$(tr_msg dh_snap_rollback)${NC}"
-        return 1
-    fi
-    # R11-09: retain a copy of THIS run's pre-change snapshot before
-    # the install primitive runs: when a COMPLETE baseline already
-    # exists it preserves the baseline and discards the staging dir,
-    # so restoring from $DNS_BACKUP_DIR on failure would undo the
-    # previous successful DNS change instead of this run's pre-state.
-    # Removed after a successful restore and on success; retained
-    # (and reported) only when a restore fails.
-    local _doh_snap_keep=''
-    _doh_snap_keep=$(mktemp -d /tmp/A-Box-doh-snap.XXXXXX) || { rm -rf -- "$_doh_snap_new"; msg "${RED}$(tr_msg dh_snap_install)${NC}"; return 1; }
-    if ! chmod 700 "$_doh_snap_keep" 2>/dev/null || ! cp -a "$_doh_snap_new/." "$_doh_snap_keep/" 2>/dev/null || [[ ! -f "$_doh_snap_keep/COMPLETE" ]]; then rm -rf -- "$_doh_snap_new" "$_doh_snap_keep"; msg "${RED}$(tr_msg dh_snap_install)${NC}"; return 1; fi
-    # TRAP-5: use the unified snapshot primitive (POSIX mv + pre-move-aside, idempotency,
-    # crash-safe pending-swap). Preserves an existing COMPLETE baseline.
-    if ! dns_snapshot_install_new "$_doh_snap_new"; then
-        rm -rf -- "$_doh_snap_keep" 2>/dev/null || true
-        msg "${RED}$(tr_msg dh_snap_install)${NC}"
-        return 1
-    fi
-    temp=$(umask 077; mktemp /tmp/A-Box-doh.XXXXXX) || { rm -rf -- "$_doh_snap_keep" 2>/dev/null || true; msg "${RED}$(tr_msg dh_cfg_temp)${NC}"; return 1; }
+    temp=$(umask 077; mktemp /tmp/A-Box-doh.XXXXXX) || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_cfg_temp)${NC}"; return 1; }
     # R8C12-N02: under socket activation the socket unit binds
     # the address; the service must inherit it (empty list).
     local doh_listen="['127.0.0.1:5353']"
@@ -41378,7 +41500,7 @@ dns_enable_doh() {
         _dcrypt_minor="${BASH_REMATCH[2]}"
     else
         msg "${RED}[!] Cannot determine dnscrypt-proxy version; DNS was not changed.${NC}"
-        rm -rf -- "$_doh_snap_keep" 2>/dev/null || true
+        if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi
         return 1
     fi
     if (( _dcrypt_major > 2 || (_dcrypt_major == 2 && _dcrypt_minor >= 1) )); then
@@ -41890,7 +42012,7 @@ else:
 with open(target, 'w', encoding='utf-8') as handle: handle.write(text)
 PY_DOH_CONFIG
     rc=$?
-    if (( rc != 0 )); then rm -f -- "$temp"; rm -rf -- "$_doh_snap_keep" 2>/dev/null || true; msg "${RED}$(tr_msg dh_cfg_rewrite)${NC}"; return 1; fi
+    if (( rc != 0 )); then rm -f -- "$temp"; if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_cfg_rewrite)${NC}"; return 1; fi
     # R1-12-F7: preserve the original mode (a 0640 credential
     # file must not be loosened to 0644 by the rewrite).
     install -o "$_cfg_uid" -g "$_cfg_gid" -m "$_cfg_mode" "$temp" "$config" || { rm -f -- "$temp"; if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_cfg_install)${NC}"; return 1; }
@@ -42345,9 +42467,9 @@ dns_menu() {
         3) dns_doh_prefer ;;
         4)
             read -r -p 'IPv4 DNS: ' v4
-            valid_ipv4_cidr "$v4" && [[ "$v4" != */* ]] || { msg "${RED}Invalid IPv4 DNS${NC}"; pause_return; return 1; }
+            valid_ipv4_cidr "$v4" && [[ "$v4" != */* ]] || { msg "${RED}Invalid IPv4 DNS${NC}"; pause_return; continue; }
             read -r -p 'IPv6 DNS (optional): ' v6
-            [[ -z "$v6" ]] || { valid_ipv6_cidr "$v6" && [[ "$v6" != */* ]]; } || { msg "${RED}Invalid IPv6 DNS${NC}"; pause_return; return 1; }
+            [[ -z "$v6" ]] || { valid_ipv6_cidr "$v6" && [[ "$v6" != */* ]]; } || { msg "${RED}Invalid IPv6 DNS${NC}"; pause_return; continue; }
             apply_host_dns plain "$v4" "$v6"; pause_return ;;
         5)
             local dot_preset dot_preset_prompt dot_custom_word
@@ -42380,11 +42502,11 @@ dns_menu() {
                 *) dot_ipv4_prompt='DoT 解析器 IPv4 地址：'; dot_ipv6_prompt='DoT 解析器 IPv6 地址（可选）：'; dot_host_prompt='TLS 认证主机名（例如 dns.google）：'; dot_host_error='DoT TLS 主机名无效。' ;;
             esac
             read -r -p "$dot_ipv4_prompt" v4
-            valid_ipv4_cidr "$v4" && [[ "$v4" != */* ]] || { msg "${RED}Invalid IPv4 DNS${NC}"; pause_return; return 1; }
+            valid_ipv4_cidr "$v4" && [[ "$v4" != */* ]] || { msg "${RED}Invalid IPv4 DNS${NC}"; pause_return; continue; }
             read -r -p "$dot_ipv6_prompt" v6
-            [[ -z "$v6" ]] || { valid_ipv6_cidr "$v6" && [[ "$v6" != */* ]]; } || { msg "${RED}Invalid IPv6 DNS${NC}"; pause_return; return 1; }
+            [[ -z "$v6" ]] || { valid_ipv6_cidr "$v6" && [[ "$v6" != */* ]]; } || { msg "${RED}Invalid IPv6 DNS${NC}"; pause_return; continue; }
             read -r -p "$dot_host_prompt" dot_name
-            valid_domain "$dot_name" || { msg "${RED}$dot_host_error${NC}"; pause_return; return 1; }
+            valid_domain "$dot_name" || { msg "${RED}$dot_host_error${NC}"; pause_return; continue; }
             apply_host_dns dot "$v4" "$v6" "$dot_name"; pause_return ;;
             esac ;;
         7) apply_host_dns plain '1.1.1.1' '2606:4700:4700::1111'; pause_return ;;

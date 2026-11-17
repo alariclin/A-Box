@@ -40523,11 +40523,39 @@ dns_enable_doh() {
     if systemctl is-enabled dnscrypt-proxy.socket >/dev/null 2>&1 || systemctl is-active --quiet dnscrypt-proxy.socket 2>/dev/null; then
         doh_listen='[]'
     fi
-    python3 -I - "$config" "$temp" "$doh_server" "$doh_listen" <<'PY_DOH_CONFIG'
+    # R29-OBS-S1-02: dnscrypt-proxy 2.0.x does not know the
+    # `bootstrap_resolvers` key (renamed from `fallback_resolvers`
+    # in 2.1.0); writing it makes `-check` fail with
+    # `[FATAL] Unsupported key in configuration file` (rc=255) on
+    # stock Ubuntu 24.04 (2.0.45). Probe the installed version and
+    # pass a flag to the rewriter below, which writes the key the
+    # binary understands. Unparseable output fails closed before
+    # any config is touched (the _doh_snap_keep staging copy is
+    # discarded; the installed snapshot stays a valid rollback).
+    local _dcrypt_ver='' _dcrypt_major='' _dcrypt_minor='' _dcrypt_bootstrap=0
+    _dcrypt_ver=$(dnscrypt-proxy --version 2>&1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n 1)
+    if [[ "$_dcrypt_ver" =~ ^([0-9]+)\.([0-9]+)(\.[0-9]+)?$ ]]; then
+        _dcrypt_major="${BASH_REMATCH[1]}"
+        _dcrypt_minor="${BASH_REMATCH[2]}"
+    else
+        msg "${RED}[!] Cannot determine dnscrypt-proxy version; DNS was not changed.${NC}"
+        rm -rf -- "$_doh_snap_keep" 2>/dev/null || true
+        return 1
+    fi
+    if (( _dcrypt_major > 2 || (_dcrypt_major == 2 && _dcrypt_minor >= 1) )); then
+        _dcrypt_bootstrap=1
+    fi
+    python3 -I - "$config" "$temp" "$doh_server" "$doh_listen" "$_dcrypt_bootstrap" <<'PY_DOH_CONFIG'
 import re, sys
 source, target = sys.argv[1:3]
 server = sys.argv[3] if len(sys.argv) > 3 else 'cloudflare'
 listen = sys.argv[4] if len(sys.argv) > 4 else "['127.0.0.1:5353']"
+bootstrap = sys.argv[5] if len(sys.argv) > 5 else '1'
+# R29-OBS-S1-02: `bootstrap_resolvers` exists only since 2.1.0
+# (renamed from `fallback_resolvers`); a 2.0.x binary rejects the
+# new key with [FATAL] Unsupported key (rc=255). Write the key the
+# installed version understands; the values are identical either way.
+_bootstrap_key = 'bootstrap_resolvers' if bootstrap == '1' else 'fallback_resolvers'
 
 with open(source, encoding='utf-8') as handle: text = handle.read()
 
@@ -40949,7 +40977,13 @@ set_option('dnscrypt_servers', 'false')
 set_option('doh_servers', 'true')
 set_option('ipv4_servers', 'true')
 set_option('ipv6_servers', 'false')
-set_option('bootstrap_resolvers', "['9.9.9.9:53', '1.1.1.1:53']")
+if bootstrap == '1':
+    set_option('bootstrap_resolvers', "['9.9.9.9:53', '1.1.1.1:53']")
+else:
+    # Drop a stale new-style key first: on 2.0.x it would break
+    # -check even if the old-style key is written alongside it.
+    remove_option('bootstrap_resolvers')
+    set_option('fallback_resolvers', "['9.9.9.9:53', '1.1.1.1:53']")
 set_option('ignore_system_dns', 'true')
 # R10-F12-4: a top-level forwarding_rules entry would keep matching
 # domains on plaintext forwarding after DoH is enabled. Remove the
@@ -40969,7 +41003,7 @@ _expected_values = {
     'doh_servers': 'true',
     'ipv4_servers': 'true',
     'ipv6_servers': 'false',
-    'bootstrap_resolvers': "['9.9.9.9:53', '1.1.1.1:53']",
+    _bootstrap_key: "['9.9.9.9:53', '1.1.1.1:53']",
     'ignore_system_dns': 'true',
 }
 try:
@@ -40992,13 +41026,16 @@ if tomllib is not None:
         'doh_servers': True,
         'ipv4_servers': True,
         'ipv6_servers': False,
-        'bootstrap_resolvers': ['9.9.9.9:53', '1.1.1.1:53'],
+        _bootstrap_key: ['9.9.9.9:53', '1.1.1.1:53'],
         'ignore_system_dns': True,
     }
     for _k, _want in _expected_doc.items():
         if _doc.get(_k) != _want:
             sys.stderr.write('option %s has unexpected value %r (want %r)\n' % (_k, _doc.get(_k), _want))
             sys.exit(1)
+    if bootstrap != '1' and 'bootstrap_resolvers' in _doc:
+        sys.stderr.write('bootstrap_resolvers must be absent on dnscrypt-proxy < 2.1\n')
+        sys.exit(1)
 else:
     if _top_level_has_option('forwarding_rules'):
         sys.stderr.write('forwarding_rules still present at top level after rewrite\n')
@@ -41008,6 +41045,9 @@ else:
         if _got is None or ''.join(_got.split()) != ''.join(_want.split()):
             sys.stderr.write('option %s has unexpected value %r (want %r)\n' % (_k, _got, _want))
             sys.exit(1)
+    if bootstrap != '1' and _top_level_has_option('bootstrap_resolvers'):
+        sys.stderr.write('bootstrap_resolvers must be absent on dnscrypt-proxy < 2.1\n')
+        sys.exit(1)
 with open(target, 'w', encoding='utf-8') as handle: handle.write(text)
 PY_DOH_CONFIG
     rc=$?

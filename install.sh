@@ -33614,7 +33614,7 @@ manage_ss_whitelist() {
                     if iptables_rule_check "$IPT6" INPUT -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_wl6_fail "$add_ip/$proto")"; } ;;
+                        1) _iptables_do "$IPT6" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL6" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_wl6_fail "$add_ip" "$proto")"; } ;;
                         *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
                     esac
                 done
@@ -33625,7 +33625,7 @@ manage_ss_whitelist() {
                     if iptables_rule_check "$IPT" INPUT -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT; then check_rc=0; else check_rc=$?; fi
                     case "$check_rc" in
                         0) ;;
-                        1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_wl4_fail "$add_ip/$proto")"; } ;;
+                        1) _iptables_do "$IPT" -I INPUT 1 -p "$proto" --dport "$SS_PORT" -s "$add_ip" -m comment --comment "A-Box-${SS_PORT}-${proto}-WL" -j ACCEPT >/dev/null 2>&1 || { _ss_wl_rollback_to_snapshot; die "$(tprintf pi_ss_wl4_fail "$add_ip" "$proto")"; } ;;
                         *) { _ss_wl_rollback_to_snapshot; die "$(tr_msg pi_ss_fw_check)"; } ;;
                     esac
                 done
@@ -35579,20 +35579,20 @@ export_lightweight_subscription() {
     fi
     # R9C11-03: a stale MODE (e.g. ALL after Vision deletion) with a
     # cleared VLESS_PORT must not emit vless://...@host:? malformed URLs.
-    if [[ -n "$VLESS_PORT" && "$VLESS_PORT" =~ ^[0-9]+$ ]] && [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
+    if [[ -n "${VLESS_PORT:-}" && "${VLESS_PORT:-}" =~ ^[0-9]+$ ]] && [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]]; then
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" ]] || continue
             if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='Vision'; else proxy_name="Vision-$client_uuid"; fi
-            url="vless://$client_uuid@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#$proxy_name"
+            url="vless://$client_uuid@$F_IP:${VLESS_PORT:-}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#$proxy_name"
             printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp" "$_uuid_list_tmp"; return 1; }
         done < "$_uuid_list_tmp"
     fi
     # R9C11-03 (same mechanism): skip XHTTP when its port is gone.
-    if [[ -n "$XHTTP_PORT" && "$XHTTP_PORT" =~ ^[0-9]+$ ]] && [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
+    if [[ -n "${XHTTP_PORT:-}" && "${XHTTP_PORT:-}" =~ ^[0-9]+$ ]] && [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]]; then
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" ]] || continue
             if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='XHTTP'; else proxy_name="XHTTP-$client_uuid"; fi
-            url="vless://$client_uuid@$F_IP:$XHTTP_PORT?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#$proxy_name"
+            url="vless://$client_uuid@$F_IP:${XHTTP_PORT:-}?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#$proxy_name"
             printf '%s\n' "$url" >> "$uri_tmp" || { rm -f -- "$uri_tmp" "$_uuid_list_tmp"; return 1; }
         done < "$_uuid_list_tmp"
     fi
@@ -35602,7 +35602,7 @@ export_lightweight_subscription() {
     # file and claim success — report clearly instead.
     if [[ ! -s "$uri_tmp" ]]; then
         rm -f -- "$uri_tmp"
-        msg "${YELLOW}[!] No subscription URIs generated: current MODE ($MODE) has no VLESS/VISION/XHTTP inbound. Subscription files were not written.${NC}" >&2
+        msg "${YELLOW}[!] No subscription URIs generated: current MODE (${MODE:-}) has no VLESS/VISION/XHTTP inbound. Subscription files were not written.${NC}" >&2
         return 1
     fi
     # A-05c-FIX: Atomic install of URI list (600). Temp file cleaned up.
@@ -52509,7 +52509,7 @@ clean_uninstall_menu() {
 }
 
 
-uri_host() { if [[ "$1" == *:* ]]; then printf '[%s]' "$1"; else printf '%s' "$1"; fi; }
+uri_host() { if [[ "$1" == *:* && "$1" != \[*\] ]]; then printf '[%s]' "$1"; else printf '%s' "$1"; fi; }
 
 urlencode() {
     local raw="${1:-}"
@@ -53185,11 +53185,11 @@ write_clash_yaml() {
         valid_hy2_clash_ports "${HY2_CLASH_PORTS:-}" || { msg "${YELLOW}[!] $(tr_msg write_clash_yaml_hy2_ports_invalid)${NC}"; return 1; }
         valid_canonical_port "${HY2_BASE_PORT:-}" || { msg "${YELLOW}[!] $(tr_msg write_clash_yaml_base_port_invalid)${NC}"; return 1; }
     fi
-    [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="$HY2_DOMAIN"
+    [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="${HY2_DOMAIN:-}"
     clash_hop_port="${HY2_BASE_PORT:-443}"
     if [[ "${CORE:-}" != singbox && "${HY2_HOP:-}" == true ]]; then
         if [[ "${HY2_RANGE_START:-}" =~ ^[0-9]+$ ]]; then
-            clash_hop_port="$HY2_RANGE_START"
+            clash_hop_port="${HY2_RANGE_START:-}"
         elif [[ "${HY2_CLASH_PORTS:-}" =~ ^([0-9]+)(-|$) ]]; then
             clash_hop_port="${BASH_REMATCH[1]}"
         fi
@@ -53235,15 +53235,15 @@ PY_CLASH_REALPATH
     if [[ -n "$hy2_pin_colon" ]]; then
         hy2_fp_yaml=$(tr -d ':' <<< "$hy2_pin_colon")
     elif [[ "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
-        hy2_fp_yaml="${HY2_CERT_SHA256_FP}"
+        hy2_fp_yaml="${HY2_CERT_SHA256_FP:-}"
         # A4: cached fingerprint in use — the live cert could not be read,
         # so this pin was NOT verified against the current certificate.
         msg "${YELLOW}[!] Hy2 pin from cached fingerprint; not verified against the current certificate.${NC}" >&2
     else
         hy2_fp_yaml=''
     fi
-    if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
-        if [[ -n "${HY2_DOMAIN:-}" && "$CORE" != 'singbox' ]]; then
+    if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]]; then
+        if [[ -n "${HY2_DOMAIN:-}" && "${CORE:-}" != 'singbox' ]]; then
             hy2_yaml_emit=true
         elif [[ -n "$hy2_fp_yaml" ]]; then
             hy2_yaml_emit=true
@@ -53308,7 +53308,7 @@ dns:
 
 proxies:
 EOF_CLASH
-        if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
+        if [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]]; then
             while IFS= read -r client_uuid; do
                 [[ -n "$client_uuid" ]] || continue
                 if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='Vision'; else proxy_name="Vision-$client_uuid"; fi
@@ -53335,7 +53335,7 @@ EOF_CLASH
 EOF_CLASH
             done < "$_clash_uuid_list_tmp"
         fi
-        if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
+        if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]]; then
             while IFS= read -r client_uuid; do
                 [[ -n "$client_uuid" ]] || continue
                 if [[ "$client_uuid" == "${UUID:-}" ]]; then proxy_name='XHTTP'; else proxy_name="XHTTP-$client_uuid"; fi
@@ -53366,20 +53366,20 @@ EOF_CLASH
 EOF_CLASH
             done < "$_clash_uuid_list_tmp"
         fi
-        if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
-            if [[ -n "${HY2_DOMAIN:-}" && "$CORE" != 'singbox' ]]; then
+        if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]]; then
+            if [[ -n "${HY2_DOMAIN:-}" && "${CORE:-}" != 'singbox' ]]; then
                 if [[ "${HY2_HOP:-}" == 'true' ]]; then
                     cat <<EOF_CLASH
   - name: "$hy2_name"
     type: hysteria2
-    server: "$HY2_DOMAIN"
+    server: "${HY2_DOMAIN:-}"
     port: $clash_hop_port
-    ports: ${HY2_CLASH_PORTS}
+    ports: ${HY2_CLASH_PORTS:-}
     hop-interval: 30
     password: ${hy2_pass_yaml}
     alpn:
       - h3
-    sni: "$HY2_DOMAIN"
+    sni: "${HY2_DOMAIN:-}"
     obfs: salamander
     obfs-password: ${hy2_obfs_yaml}
 EOF_CLASH
@@ -53387,12 +53387,12 @@ EOF_CLASH
                     cat <<EOF_CLASH
   - name: "$hy2_name"
     type: hysteria2
-    server: "$HY2_DOMAIN"
+    server: "${HY2_DOMAIN:-}"
     port: ${HY2_BASE_PORT:-443}
     password: ${hy2_pass_yaml}
     alpn:
       - h3
-    sni: "$HY2_DOMAIN"
+    sni: "${HY2_DOMAIN:-}"
     obfs: salamander
     obfs-password: ${hy2_obfs_yaml}
 EOF_CLASH
@@ -53404,7 +53404,7 @@ EOF_CLASH
     type: hysteria2
     server: "$S_IP"
     port: $clash_hop_port
-    ports: ${HY2_CLASH_PORTS}
+    ports: ${HY2_CLASH_PORTS:-}
     hop-interval: 30
     password: ${hy2_pass_yaml}
     alpn:
@@ -53433,7 +53433,7 @@ EOF_CLASH
                 echo '  # Hy2 omitted: certificate fingerprint unavailable; refusing to emit an insecure node.'
             fi
         fi
-        if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
+        if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]]; then
             cat <<EOF_CLASH
   - name: "SS"
     type: ss
@@ -53458,15 +53458,15 @@ proxy-groups:
     type: select
     proxies:
 EOF_CLASH
-        [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo '      - Vision'
-        [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo '      - XHTTP'
+        [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]] && echo '      - Vision'
+        [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]] && echo '      - XHTTP'
         while IFS= read -r client_uuid; do
             [[ -n "$client_uuid" && "$client_uuid" != "${UUID:-}" ]] || continue
-            [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo "      - Vision-$client_uuid"
-            [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]] && echo "      - XHTTP-$client_uuid"
+            [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]] && echo "      - Vision-$client_uuid"
+            [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]] && echo "      - XHTTP-$client_uuid"
         done < "$_clash_uuid_list_tmp"
         [[ "$hy2_yaml_emit" == true ]] && echo "      - $hy2_name"
-        [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]] && echo '      - SS'
+        [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]] && echo '      - SS'
         cat -- "$_clash_standalone_groups_tmp" || {
             rm -f -- "$tmp_out" "$_clash_uuid_list_tmp" \
                 "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
@@ -53487,7 +53487,8 @@ EOF_CLASH
         "$_clash_standalone_nodes_tmp" "$_clash_standalone_groups_tmp"
     chmod 600 "$tmp_out" || { rm -f -- "$tmp_out"; return 1; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
-    mv -f -T -- "$tmp_out" "$out" || { rm -f -- "$tmp_out"; return 1; }
+    [[ -d "$out" ]] && { rm -f -- "$tmp_out"; return 1; }
+    mv -f -- "$tmp_out" "$out" || { rm -f -- "$tmp_out"; return 1; }
     chmod 600 "$out" || return 1
     printf '%s\n' "$out"
 }
@@ -53630,6 +53631,7 @@ view_config() {
     clear
     [[ ! -f "$ABOX_ENV" ]] && { msg "${RED}$(tr_msg view_config_no_persisted_vars)${NC}"; show_standalone_links; pause_return; return 0; }
     load_abox_env "$ABOX_ENV" || die "$(tr_msg view_config_state_file_invalid)"
+    if [[ -z "${CORE:-}" || -z "${MODE:-}" ]]; then show_standalone_links; pause_return; return 0; fi
     local refreshed_ip
     refreshed_ip=$(refresh_public_ip || true)
     if [[ -n "$refreshed_ip" && "$refreshed_ip" != 'N/A' && "$refreshed_ip" != "${LINK_IP:-}" ]]; then
@@ -53645,8 +53647,8 @@ view_config() {
     local F_IP="${LINK_IP:-}" S_IP VLESS_URL XHTTP_URL HY2_URL SS_URL CLASH_FILE CLASH_SUB_URL CLASH_SCHEME
     local VISION_SNI_E XHTTP_SNI_E PUBLIC_KEY_E SHORT_ID_E HY2_PASS_E HY2_OBFS_E HY2_DOMAIN_E HY2_PIN_E HY2_URI_PORT HY2_QUERY_PREFIX _hy2_tls_json
     IFS=$'\t' read -r HY2_URI_PORT HY2_QUERY_PREFIX < <(build_hy2_uri_endpoint) || die "$(tr_msg view_config_hy2_uri_port_invalid)"
-    [[ "$LINK_IP" =~ : ]] && F_IP="[$LINK_IP]"
-    [[ -z "$LINK_IP" || "$LINK_IP" == 'N/A' ]] && msg "${YELLOW}[!] $(tr_msg view_config_public_ip_unavailable)${NC}"
+    [[ "${LINK_IP:-}" =~ : ]] && F_IP="[${LINK_IP:-}]"
+    [[ -z "${LINK_IP:-}" || "${LINK_IP:-}" == 'N/A' ]] && msg "${YELLOW}[!] $(tr_msg view_config_public_ip_unavailable)${NC}"
     VISION_SNI_E=$(urlencode "${VISION_SNI:-}")
     XHTTP_SNI_E=$(urlencode "${XHTTP_SNI:-}")
     PUBLIC_KEY_E=$(urlencode "${PUBLIC_KEY:-}")
@@ -53661,10 +53663,10 @@ view_config() {
     # .env fingerprint (re-colonized) only when it is unreadable.
     # R25-F-S1-09: only a deployed Hy2 has a certificate to check; on a
     # Vision-only (or any non-Hy2) node the unreadable-cert warning is noise.
-    if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
+    if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]]; then
         HY2_PIN_E=$(hy2_cert_pin_colon 2>/dev/null || true)
         if [[ -z "$HY2_PIN_E" && "${HY2_CERT_SHA256_FP:-}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
-            HY2_PIN_E=$(sed 's/\(..\)/\1:/g; s/:$//' <<< "${HY2_CERT_SHA256_FP}")
+            HY2_PIN_E=$(sed 's/\(..\)/\1:/g; s/:$//' <<< "${HY2_CERT_SHA256_FP:-}")
             # A4: cached fingerprint in use — the live cert could not be read,
             # so this pin was NOT verified against the current certificate.
             msg "${YELLOW}[!] Hy2 pin from cached fingerprint; not verified against the current certificate.${NC}" >&2
@@ -53673,37 +53675,37 @@ view_config() {
     fi
     HY2_PIN_E=$(urlencode "${HY2_PIN_E:-}")
     msg "${BLUE}======================================================================${NC}"
-    msg "${BOLD}${CYAN}$(tprintf view_config_network_params_title "${MODE}")${NC}"
+    msg "${BOLD}${CYAN}$(tprintf view_config_network_params_title "${MODE:-}")${NC}"
     msg "${BLUE}======================================================================${NC}"
-    msg "${BOLD}$(tr_msg view_config_engine_stack_label)${NC} $CORE | ${BOLD}$(tr_msg view_config_mode_label)${NC} $MODE"
+    msg "${BOLD}$(tr_msg view_config_engine_stack_label)${NC} ${CORE:-} | ${BOLD}$(tr_msg view_config_mode_label)${NC} ${MODE:-}"
     msg "${BLUE}--------------------------------------------------------------------------------${NC}"
     msg "${YELLOW}[ $(tr_msg view_config_single_node_uri_title) ]${NC}"
-    if [[ "$MODE" == *'VISION'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
-        VLESS_URL="vless://$UUID@$F_IP:$VLESS_PORT?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#Vision"
-        msg "${BOLD}${CYAN}── $(tprintf view_config_vless_vision_reality_port "${VLESS_PORT}")${NC}"
+    if [[ "${MODE:-}" == *'VISION'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]]; then
+        VLESS_URL="vless://${UUID:-}@$F_IP:${VLESS_PORT:-}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$VISION_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=tcp#Vision"
+        msg "${BOLD}${CYAN}── $(tprintf view_config_vless_vision_reality_port "${VLESS_PORT:-}")${NC}"
         msg "${GREEN}${VLESS_URL}${NC}"
-        if [[ "$CORE" == 'xray' ]] && [[ "$CALLER" != 'deploy' ]] && xray_reality_requires_mlkem; then
+        if [[ "${CORE:-}" == 'xray' ]] && [[ "$CALLER" != 'deploy' ]] && xray_reality_requires_mlkem; then
             msg "${YELLOW}$(tprintf vc_xray_mlkem_compat "$(effective_xray_version)")${NC}"
         fi
         generate_qr "$VLESS_URL"
     fi
-    if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
-        XHTTP_URL="vless://$UUID@$F_IP:$XHTTP_PORT?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#XHTTP"
-        msg "${BOLD}${CYAN}── $(tprintf view_config_vless_xhttp_reality_port "${XHTTP_PORT}")${NC}"
+    if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]]; then
+        XHTTP_URL="vless://${UUID:-}@$F_IP:${XHTTP_PORT:-}?encryption=none&security=reality&sni=$XHTTP_SNI_E&fp=chrome&pbk=$PUBLIC_KEY_E&sid=$SHORT_ID_E&type=xhttp&host=$XHTTP_SNI_E&path=%2Fxhttp&mode=stream-one#XHTTP"
+        msg "${BOLD}${CYAN}── $(tprintf view_config_vless_xhttp_reality_port "${XHTTP_PORT:-}")${NC}"
         msg "${GREEN}${XHTTP_URL}${NC}"
         generate_qr "$XHTTP_URL"
     fi
-    if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
+    if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]]; then
         # SYD-B4 A3: a pin branch with no usable pin refuses this link
         # only; the rest of view_config continues. Never emit an insecure
         # link with an empty pinSHA256.
-        if [[ -z "$HY2_PIN_E" ]] && [[ -z "${HY2_DOMAIN:-}" || "$CORE" == 'singbox' ]]; then
+        if [[ -z "$HY2_PIN_E" ]] && [[ -z "${HY2_DOMAIN:-}" || "${CORE:-}" == 'singbox' ]]; then
             msg "${RED}[!] $(tr_msg view_config_hy2_fingerprint_unavailable)${NC}"
         else
-        if [[ -n "${HY2_DOMAIN:-}" && "$CORE" != 'singbox' ]]; then
-            HY2_URL="hysteria2://$HY2_PASS_E@$HY2_DOMAIN:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}sni=$HY2_DOMAIN_E&obfs=salamander&obfs-password=$HY2_OBFS_E#Hy2"
+        if [[ -n "${HY2_DOMAIN:-}" && "${CORE:-}" != 'singbox' ]]; then
+            HY2_URL="hysteria2://$HY2_PASS_E@${HY2_DOMAIN:-}:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}sni=$HY2_DOMAIN_E&obfs=salamander&obfs-password=$HY2_OBFS_E#Hy2"
         elif [[ -n "${HY2_DOMAIN:-}" ]]; then
-            HY2_URL="hysteria2://$HY2_PASS_E@$HY2_DOMAIN:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}insecure=1&pinSHA256=$HY2_PIN_E&obfs=salamander&obfs-password=$HY2_OBFS_E#Hy2"
+            HY2_URL="hysteria2://$HY2_PASS_E@${HY2_DOMAIN:-}:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}insecure=1&pinSHA256=$HY2_PIN_E&obfs=salamander&obfs-password=$HY2_OBFS_E#Hy2"
         else
             HY2_URL="hysteria2://$HY2_PASS_E@$F_IP:$HY2_URI_PORT/?${HY2_QUERY_PREFIX}sni=localhost&insecure=1&pinSHA256=$HY2_PIN_E&obfs=salamander&obfs-password=$HY2_OBFS_E#Hy2"
         fi
@@ -53713,9 +53715,9 @@ view_config() {
         generate_qr "$HY2_URL"
         fi
     fi
-    if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
-        SS_URL=$(build_ss2022_uri "$F_IP" "$SS_PORT" "$(ss_effective_password 2>/dev/null || printf '%s' "${SS_PASS:-}")")
-        msg "${BOLD}${CYAN}── $(tprintf view_config_ss2022_port "${SS_PORT}")${NC}"
+    if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]]; then
+        SS_URL=$(build_ss2022_uri "$F_IP" "${SS_PORT:-}" "$(ss_effective_password 2>/dev/null || printf '%s' "${SS_PASS:-}")")
+        msg "${BOLD}${CYAN}── $(tprintf view_config_ss2022_port "${SS_PORT:-}")${NC}"
         msg "${GREEN}${SS_URL}${NC}"
         generate_qr "$SS_URL"
     fi
@@ -53745,9 +53747,9 @@ view_config() {
     sed -n '1,220p' "$CLASH_FILE" 2>/dev/null || true
 
     printf '\n%s\n' "${YELLOW}--- $(tr_msg view_config_singbox_outbound_example) ---${NC}"
-    if [[ "$MODE" == *'HY2'* || "$MODE" == *'ALL'* ]]; then
-        S_IP="$LINK_IP"
-        [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="$HY2_DOMAIN"
+    if [[ "${MODE:-}" == *'HY2'* || "${MODE:-}" == *'ALL'* ]]; then
+        S_IP="${LINK_IP:-}"
+        [[ -n "${HY2_DOMAIN:-}" ]] && S_IP="${HY2_DOMAIN:-}"
         if [[ "${HY2_HOP:-}" == 'true' ]]; then
             if valid_hy2_sb_ports "${HY2_SB_PORTS:-}"; then
                 # U223: check the TLS fragment BEFORE embedding it; the
@@ -53759,13 +53761,13 @@ view_config() {
     {
       "type": "hysteria2",
       "server": "$S_IP",
-      "server_ports": ["$HY2_SB_PORTS"],
+      "server_ports": ["${HY2_SB_PORTS:-}"],
       "hop_interval": "30s",
-      "password": $(json_escape "$HY2_PASS"),
+      "password": $(json_escape "${HY2_PASS:-}"),
 ${_hy2_tls_json},
       "obfs": {
         "type": "salamander",
-        "password": $(json_escape "$HY2_OBFS")
+        "password": $(json_escape "${HY2_OBFS:-}")
       }
     }
 EOF_SB
@@ -53781,46 +53783,46 @@ EOF_SB
       "type": "hysteria2",
       "server": "$S_IP",
       "server_port": ${HY2_BASE_PORT:-443},
-      "password": $(json_escape "$HY2_PASS"),
+      "password": $(json_escape "${HY2_PASS:-}"),
 ${_hy2_tls_json},
       "obfs": {
         "type": "salamander",
-        "password": $(json_escape "$HY2_OBFS")
+        "password": $(json_escape "${HY2_OBFS:-}")
       }
     }
 EOF_SB
             fi
         fi
     fi
-    if [[ "$MODE" == *'SS'* || "$MODE" == *'ALL'* || "$MODE" == 'VLESS_SS' ]]; then
+    if [[ "${MODE:-}" == *'SS'* || "${MODE:-}" == *'ALL'* || "${MODE:-}" == 'VLESS_SS' ]]; then
         cat <<EOF_SB
     {
       "type": "shadowsocks",
-      "server": "$LINK_IP",
-      "server_port": $SS_PORT,
+      "server": "${LINK_IP:-}",
+      "server_port": ${SS_PORT:-},
       "method": "2022-blake3-aes-128-gcm",
       "password": $(json_escape "$(ss_effective_password 2>/dev/null || printf '%s' "${SS_PASS:-}")")
     }
 EOF_SB
     fi
-    if [[ "$CORE" == 'xray' && ( "$MODE" == *'XHTTP'* || "$MODE" == *'ALL'* ) ]]; then
+    if [[ "${CORE:-}" == 'xray' && ( "${MODE:-}" == *'XHTTP'* || "${MODE:-}" == *'ALL'* ) ]]; then
         printf '\n%s\n' "${YELLOW}--- v2rayN / v2rayNG XHTTP JSON ---${NC}"
         cat <<EOF_V2N
 {
   "v": "2",
   "ps": "XHTTP",
-  "add": "$LINK_IP",
-  "port": "$XHTTP_PORT",
-  "id": "$UUID",
+  "add": "${LINK_IP:-}",
+  "port": "${XHTTP_PORT:-}",
+  "id": "${UUID:-}",
   "net": "xhttp",
   "type": "none",
   "path": "/xhttp",
   "mode": "stream-one",
   "tls": "reality",
-  "sni": "$XHTTP_SNI",
+  "sni": "${XHTTP_SNI:-}",
   "fp": "chrome",
-  "pbk": "$PUBLIC_KEY",
-  "sid": "$SHORT_ID"
+  "pbk": "${PUBLIC_KEY:-}",
+  "sid": "${SHORT_ID:-}"
 }
 EOF_V2N
     fi

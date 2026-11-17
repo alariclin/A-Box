@@ -16997,7 +16997,9 @@ __abox_firewall_unlock() {
 __abox_normalize_managed_rule_line() {
     local line="$1"
     line=${line//\"/}
-    line=$(printf '%s\n' "$line" | sed -E 's/(^|[[:space:]])(-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\2\4/')
+    # H-12: no backreferences in ERE (musl treats \3 as literal '3');
+    # one plain -e per protocol instead of a shared \3 group.
+    line=$(printf '%s\n' "$line" | sed -E -e 's/(^|[[:space:]])-p[[:space:]]+tcp[[:space:]]+-m[[:space:]]+tcp([[:space:]]|$)/\1-p tcp\2/' -e 's/(^|[[:space:]])-p[[:space:]]+udp[[:space:]]+-m[[:space:]]+udp([[:space:]]|$)/\1-p udp\2/')
     printf '%s\n' "$line"
 }
 reorder_one() {
@@ -17232,7 +17234,7 @@ reorder_one() {
         _inner_rc=$?
         if (( _clamped )); then
             if (( _inner_rc != 0 )); then
-                printf '%s\n' 'A-Box firewall rollback: inner rollback failed; leaving INPUT policy at DROP (fail-closed).' >&2
+                printf '%s\n' "A-Box firewall rollback: inner rollback failed; leaving INPUT policy at DROP (fail-closed). Recovery snapshot retained at $recovery_snapshot; restore it manually with: ${cmd}-restore < $recovery_snapshot" >&2
             elif ! _iptables_do "$cmd" -P INPUT "$_saved_policy" >/dev/null 2>&1; then
                 printf '%s\n' 'A-Box firewall rollback: could not restore INPUT policy; recovery snapshot retained.' >&2
                 _inner_rc=1
@@ -17362,7 +17364,15 @@ reorder_one() {
         expected_target_lines=("$expected_line" "${expected_target_lines[@]}")
         expected_interleave="T$expected_interleave"
     done
-    local expected_drop_line="-A INPUT -p ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
+    local expected_drop_line="-A INPUT -p ${proto} -m ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
+    # H-12 depth: build the canonical DROP in kernel form (-m tcp/-m udp,
+    # exactly as iptables -S prints it), then normalize it like every
+    # live line before it enters the expected state, so the comparison
+    # stays exact whether the normalizer strips -m tcp (glibc / fixed
+    # musl) or is a no-op (broken musl). A bad normalize result fails
+    # closed at _marked_line_for below (it requires ' -j ' and
+    # '-m comment').
+    expected_drop_line=$(__abox_normalize_managed_rule_line "$expected_drop_line")
     # R9 (F06-2, 加固) P2': the DROP is a duplicated spec too (old and new
     # DROP are textually identical), so it is marked exactly like the WL
     # copies. The marked DROP is recorded in _tmp_lines at position n.
@@ -17446,7 +17456,7 @@ reorder_one() {
         expected_interleave="T$expected_interleave"
     done
     firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-    if ! _iptables_do "$cmd" -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
+    if ! _iptables_do "$cmd" -I INPUT "$((n + 1))" -p "$proto" -m "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
         __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
@@ -19226,7 +19236,9 @@ remove_ss_open_accept_rules() {
 __abox_normalize_managed_rule_line() {
     local line="$1"
     line=${line//\"/}
-    line=$(printf '%s\n' "$line" | sed -E 's/(^|[[:space:]])(-p[[:space:]]+(tcp|udp))[[:space:]]+-m[[:space:]]+\3([[:space:]]|$)/\1\2\4/')
+    # H-12: no backreferences in ERE (musl treats \3 as literal '3');
+    # one plain -e per protocol instead of a shared \3 group.
+    line=$(printf '%s\n' "$line" | sed -E -e 's/(^|[[:space:]])-p[[:space:]]+tcp[[:space:]]+-m[[:space:]]+tcp([[:space:]]|$)/\1-p tcp\2/' -e 's/(^|[[:space:]])-p[[:space:]]+udp[[:space:]]+-m[[:space:]]+udp([[:space:]]|$)/\1-p udp\2/')
     printf '%s\n' "$line"
 }
 
@@ -19261,7 +19273,7 @@ reorder_ss_whitelist_rules_one() {
     # (RETURN trap fires once, when this function returns -- not on
     # nested calls -- and unset -f on an undefined name is harmless,
     # so early returns before the definitions below are safe).
-    trap 'unset -f capture_firewall_views firewall_state_matches_expected firewall_rollback _marked_line_for _expected_remove_first' RETURN
+    trap 'unset -f capture_firewall_views firewall_state_matches_expected firewall_rollback firewall_rollback_inner _marked_line_for _expected_remove_first' RETURN
 
     command -v "$cmd" >/dev/null 2>&1 || return 0
     command -v "$save_cmd" >/dev/null 2>&1 || return 1
@@ -19480,7 +19492,7 @@ reorder_ss_whitelist_rules_one() {
         _inner_rc=$?
         if (( _clamped )); then
             if (( _inner_rc != 0 )); then
-                printf '%s\n' 'A-Box firewall rollback: inner rollback failed; leaving INPUT policy at DROP (fail-closed).' >&2
+                printf '%s\n' "A-Box firewall rollback: inner rollback failed; leaving INPUT policy at DROP (fail-closed). Recovery snapshot retained at $recovery_snapshot; restore it manually with: ${cmd}-restore < $recovery_snapshot" >&2
             elif ! _iptables_do "$cmd" -P INPUT "$_saved_policy" >/dev/null 2>&1; then
                 printf '%s\n' 'A-Box firewall rollback: could not restore INPUT policy; recovery snapshot retained.' >&2
                 _inner_rc=1
@@ -19610,7 +19622,15 @@ reorder_ss_whitelist_rules_one() {
         expected_target_lines=("$expected_line" "${expected_target_lines[@]}")
         expected_interleave="T$expected_interleave"
     done
-    local expected_drop_line="-A INPUT -p ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
+    local expected_drop_line="-A INPUT -p ${proto} -m ${proto} --dport ${port} -m comment --comment ${drop_comment} -j DROP"
+    # H-12 depth: build the canonical DROP in kernel form (-m tcp/-m udp,
+    # exactly as iptables -S prints it), then normalize it like every
+    # live line before it enters the expected state, so the comparison
+    # stays exact whether the normalizer strips -m tcp (glibc / fixed
+    # musl) or is a no-op (broken musl). A bad normalize result fails
+    # closed at _marked_line_for below (it requires ' -j ' and
+    # '-m comment').
+    expected_drop_line=$(__abox_normalize_managed_rule_line "$expected_drop_line")
     # R9 (F06-2, 加固) P2': the DROP is a duplicated spec too (old and new
     # DROP are textually identical), so it is marked exactly like the WL
     # copies. The marked DROP is recorded in _tmp_lines at position n.
@@ -19694,7 +19714,7 @@ reorder_ss_whitelist_rules_one() {
         expected_interleave="T$expected_interleave"
     done
     firewall_state_matches_expected || { if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi; __abox_firewall_unlock "$lock_fd"; lock_fd=''; return 1; }
-    if ! _iptables_do "$cmd" -I INPUT "$((n + 1))" -p "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
+    if ! _iptables_do "$cmd" -I INPUT "$((n + 1))" -p "$proto" -m "$proto" --dport "$port" -m comment --comment "$drop_comment" -j DROP >/dev/null 2>&1; then
         if ! firewall_rollback >/dev/null 2>&1; then printf '%s\n' "A-Box firewall rollback incomplete; recovery snapshot: $recovery_snapshot" >&2; fi
         __abox_firewall_unlock "$lock_fd"; lock_fd=''
         return 1
@@ -22357,6 +22377,10 @@ PY_WRITE_ENV_OLD
             old_traffic_limit_mode=''
         fi
     fi
+    # H-09: save/restore the caller umask (a bare umask 077 here used to
+    # leak into the main shell and make later mkdir -p create 0700 dirs).
+    local _we_umask
+    _we_umask=$(umask)
     umask 077
     install -d -m 711 "$ABOX_DIR" || die "$(tr_msg we_dir_create)"
     tmp=$(mktemp "$ABOX_DIR/.env.A-Box-new.XXXXXX") || die "$(tr_msg we_tmp)"
@@ -22416,6 +22440,7 @@ PY_WRITE_ENV_OLD
     if (( _write_rc != 0 )); then rm -f -- "$tmp"; die "$(tr_msg we_write)"; fi
     chmod 600 "$tmp" || { rm -f -- "$tmp"; die "$(tr_msg we_chmod)"; }
     mv -f -- "$tmp" "$ABOX_ENV" || { rm -f -- "$tmp"; die "$(tr_msg we_commit)"; }
+    umask "$_we_umask"
 }
 
 validate_fail2ban_config() {
@@ -24826,6 +24851,9 @@ build_xray_config() {
     [[ ! -e "$out" || -f "$out" ]] || die "Refusing to install build_xray_config config: output path exists and is not a regular file: $out"
     [[ -d "$out_dir" ]] || install -d -m 755 -- "$out_dir" || die "$(tr_msg bx_dir)"
     tmp_out=$(mktemp "$out_dir/.A-Box-xray-config.XXXXXX") || die "$(tr_msg bx_tmp)"
+    # H-09: save/restore the caller umask (bare umask 077 leaked).
+    local _bx_umask
+    _bx_umask=$(umask)
     umask 077
     # XRAY-API (Version A experiment): gRPC control plane for hot-reload.
     # SECURITY: the API has NO authentication. listen is hardcoded to 127.0.0.1
@@ -24869,6 +24897,7 @@ build_xray_config() {
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bx_chmod)"; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
     mv -f -T "$tmp_out" "$out" || { rm -f "$tmp_out"; die "$(tr_msg bx_commit)"; }
+    umask "$_bx_umask"
 }
 
 # ============ Xray API hot-reload (Version A experiment, 233boy style) ============
@@ -25218,6 +25247,9 @@ build_singbox_config() {
         [[ -d "$out_dir" ]] || install -d -m 755 -- "$out_dir" || die "$(tr_msg bs2_dir)"
     fi
     tmp_out=$(mktemp "$out_dir/.A-Box-singbox-config.XXXXXX") || die "$(tr_msg bs2_tmp)"
+    # H-09: save/restore the caller umask (bare umask 077 leaked).
+    local _bs_umask
+    _bs_umask=$(umask)
     umask 077
     # Merge routing state (WARP / split-routing outbounds + rules); survives redeploys.
     local _rs_ob='[]' _rs_rules='[]'
@@ -25264,6 +25296,7 @@ build_singbox_config() {
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_chmod)"; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
     mv -f -T "$tmp_out" "$out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_commit)"; }
+    umask "$_bs_umask"
 }
 
 # Restore one file from backup and verify the result. $1=bak (may be
@@ -32438,6 +32471,9 @@ traffic_error() {
     # with fstat, and write through that descriptor only. O_CREAT
     # replaces the old install step (which itself could truncate a
     # swapped-in target); the path-stat block is subsumed by fstat.
+    # H-09: save/restore the caller umask (bare umask 077 leaked).
+    local _te_umask
+    _te_umask=$(umask)
     umask 077
     python3 -I - "$log" "$1" <<'PY_TRAFFIC' 2>/dev/null || true
 import os, stat as _stat, sys
@@ -32455,6 +32491,7 @@ try:
 finally:
     os.close(fd)
 PY_TRAFFIC
+    umask "$_te_umask"
 }
 current_period=$(date +%Y-%m)
 stop_all_owned_services() {
@@ -39915,7 +39952,10 @@ apply_host_dns() {
     fi
     case "$backend" in
         resolved)
-            mkdir -p /etc/systemd/resolved.conf.d || die "$(tr_msg hd_resolved_dir)"
+            # H-09: install -d -m 755 creates the dir at 0755 and also
+            # repairs an existing 0700 dir left by the old umask 077
+            # leak (mkdir -p never fixes an existing dir mode).
+            install -d -m 755 /etc/systemd/resolved.conf.d || die "$(tr_msg hd_resolved_dir)"
             resolved_strip_global_dns_sources || { dns_rollback_drop_staging "$dns_snap_tmp"; die "$(tr_msg apply_host_dns_clear_sources_failed)"; }
             dropin=/etc/systemd/resolved.conf.d/99-abox-dns.conf
             if [[ "$mode" == 'dot' ]]; then
@@ -40467,7 +40507,8 @@ dns_normalize_dnscrypt_socket() {
     if [[ -f "$_dropin_file" ]]; then
         grep -Fq '# Managed by A-Box' "$_dropin_file" 2>/dev/null || return 1
     fi
-    mkdir -p "$_dropin_dir" || return 1
+    # H-09: install -d -m 755 (same self-heal as apply_host_dns).
+    install -d -m 755 "$_dropin_dir" || return 1
     _dtmp=$(mktemp "$_dropin_dir/.abox-listen.XXXXXX") || return 1
     {
         printf '%s\n' '# Managed by A-Box'
@@ -41249,6 +41290,10 @@ PY_DOH_CONFIG
         return 1
     fi
     resolved_strip_global_dns_sources || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg apply_host_dns_clear_sources_failed)${NC}"; return 1; }
+    # H-09: ensure resolved.conf.d exists at 0755 before the drop-in
+    # write (install -d also repairs an existing 0700 dir left by the
+    # old umask 077 leak; the atomic writer's mkdir -p cannot).
+    install -d -m 755 /etc/systemd/resolved.conf.d || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_dropin_write)${NC}"; return 1; }
     write_file_atomically_from_stdin /etc/systemd/resolved.conf.d/99-abox-dns.conf 644 <<'EOF_DOH' || { if restore_dns_snapshot "$_doh_snap_keep"; then rm -rf -- "$_doh_snap_keep" || true; else msg "${RED}[!] $(tr_msg rollback_copy_fail): $_doh_snap_keep${NC}"; fi; msg "${RED}$(tr_msg dh_dropin_write)${NC}"; return 1; }
 [Resolve]
 DNS=127.0.0.1:5353
@@ -55993,7 +56038,7 @@ acquire_fallback_runtime_lock() {
     # refusing to run then would break bootstrap on minimal systems.
     # R16-01 parent rule (GPT-01(c)): the fallback dir's parent must
     # pass the same sticky check as the flock lock's parent.
-    local _self_start _held_rc _fb_id _fb_rc
+    local _self_start _held_rc _fb_id _fb_rc _fb_umask
     runtime_lock_parent_dir_safe "$(dirname "$LOCK_FALLBACK_DIR")" || return 1
     if ! mkdir -m 700 "$LOCK_FALLBACK_DIR" 2>/dev/null; then
         # Best-effort diagnostic only (read-only classification):
@@ -56009,11 +56054,15 @@ acquire_fallback_runtime_lock() {
         return 1
     fi
     chown root:root "$LOCK_FALLBACK_DIR" || { rmdir "$LOCK_FALLBACK_DIR" 2>/dev/null || true; return 1; }
+    # H-09: save/restore the caller umask (bare umask 077 leaked). No
+    # subshell wrapper: this function sets the global
+    # ABOX_RUNTIME_LOCK_MODE on the success path below.
+    _fb_umask=$(umask)
     umask 077
     # Identity pin: record the dir we just created; every later step
     # verifies it is still the same inode before touching it, and
     # cleanup below removes only our own dir.
-    _fb_id=$(stat -Lc '%d:%i' "$LOCK_FALLBACK_DIR" 2>/dev/null) || return 1
+    _fb_id=$(stat -Lc '%d:%i' "$LOCK_FALLBACK_DIR" 2>/dev/null) || { umask "$_fb_umask"; return 1; }
     _fb_rc=0
     # Noclobber metadata writes: a pre-existing pid/starttime file in
     # a dir we just created means the dir is not fresh; never
@@ -56048,8 +56097,10 @@ acquire_fallback_runtime_lock() {
             rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true
             rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true
         fi
+        umask "$_fb_umask"
         return 1
     fi
+    umask "$_fb_umask"
     ABOX_RUNTIME_LOCK_MODE='fallback'
 }
 

@@ -39040,8 +39040,19 @@ snapshot_dns_state() {
         # exists, so rollback can re-create it. Without the target
         # the restore cannot tell `linked` from `disabled`.
         if [[ "$_ens" == linked ]]; then
-            _link_target=$(systemctl show -p FragmentPath --value dnscrypt-proxy 2>/dev/null || true)
+            # R28-NF-08: record the REAL target of the link, not
+            # FragmentPath: for a linked unit FragmentPath is the
+            # symlink itself (/etc/systemd/system/...) and `systemctl
+            # link` on it fails once the restore-side disable has
+            # deleted the link. readlink -f canonicalises (also for
+            # a relative link target); fall back to the raw readlink
+            # and absolutise it against the link's directory.
+            _link_target=$(readlink -f /etc/systemd/system/dnscrypt-proxy.service 2>/dev/null || true)
             [[ -n "$_link_target" ]] || _link_target=$(readlink /etc/systemd/system/dnscrypt-proxy.service 2>/dev/null || true)
+            case "$_link_target" in
+                /*) ;;
+                ?*) _link_target="/etc/systemd/system/$_link_target" ;;
+            esac
             if [[ -n "$_link_target" ]]; then
                 printf '%s\n' "$_link_target" > "$dir/dnscrypt-service-link-target" || return 1
             fi
@@ -39188,6 +39199,18 @@ restore_dns_snapshot_body() {
         elif [[ "$enabled_state" == linked ]]; then
             _link_target=$(tr -d '[:space:]' < "$dir/dnscrypt-service-link-target" 2>/dev/null || true)
             _cur_ens=$(systemctl is-enabled dnscrypt-proxy 2>/dev/null || true)
+            # R28-NF-08: pre-fix snapshots recorded FragmentPath,
+            # i.e. the link itself
+            # (/etc/systemd/system/dnscrypt-proxy.service), not its
+            # real target. That path is deleted by the disable below,
+            # so `systemctl link` on it fails. Recover the real target
+            # from the live link before disabling; if the live link is
+            # already gone there is nothing to recover from, so fail
+            # closed instead of silently converting linked to disabled.
+            if [[ "$_link_target" == /etc/systemd/system/dnscrypt-proxy.service ]]; then
+                _link_target=$(readlink -f /etc/systemd/system/dnscrypt-proxy.service 2>/dev/null || true)
+                [[ -n "$_link_target" ]] || return 1
+            fi
             if [[ "$_cur_ens" != linked ]]; then
                 [[ -n "$_link_target" ]] || return 1
                 # R16-F12-02: `systemctl link` only re-creates the unit

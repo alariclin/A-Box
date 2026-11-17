@@ -16825,7 +16825,7 @@ remove_abox_firewall_persistence() {
         [[ -f /etc/init.d/A-Box-firewall && ! -L /etc/init.d/A-Box-firewall ]] || return 1
         grep -Fxq '# Managed by A-Box' /etc/init.d/A-Box-firewall 2>/dev/null || return 1
         command -v rc-service >/dev/null 2>&1 && command -v rc-update >/dev/null 2>&1 || return 1
-        rc-service A-Box-firewall stop >/dev/null 2>&1 || return 1
+        rc-service A-Box-firewall stop >/dev/null 2>&1 || true
         [[ "$(service_active_state_value A-Box-firewall 2>/dev/null || printf '%s' unknown)" == 0 ]] || return 1
         if rc-update show default 2>/dev/null | grep -Eq '(^|[[:space:]])A-Box-firewall([[:space:]]|$)'; then
             rc-update del A-Box-firewall default >/dev/null 2>&1 || return 1
@@ -20405,6 +20405,15 @@ install_remote_abox_script_guarded() {
     confirm_ota_script_hash "$sha" "$url" || { rm -f -- "$tmp"; die "$(tr_msg ir_cancelled)"; }
     write_if_changed "$dest" "$tmp" 700 || { rm -f -- "$tmp"; die "$(tr_msg ir_persist)"; }
     rm -f -- "$tmp"
+    # H-08: a successful OTA write must not leave a stale guard runner
+    # behind: rebuild it from the running script -- but only when $0
+    # is a real script file (under `curl | bash`, $0 is /bin/bash and
+    # must never be copied into the runner).
+    local _ota_zero_base
+    _ota_zero_base=$(basename -- "$0" 2>/dev/null || printf '%s' "$0")
+    if [[ "$_ota_zero_base" != 'bash' && "$_ota_zero_base" != '-bash' ]]; then
+        setup_user_guard >/dev/null 2>&1 || msg "${YELLOW}[!] User-guard runner was not refreshed after the script update; open the multi-user menu once to rebuild it.${NC}" >&2
+    fi
 }
 
 setup_shortcut() {
@@ -43146,7 +43155,16 @@ set -u
 CONF=/etc/ddr/zram.conf
 SIZE_MB=512
 ALGO=zstd
-if [[ -f "$CONF" ]]; then . "$CONF"; fi
+# H-08: never source the config file: only two whitelisted key=value
+# lines are accepted; anything else fails closed instead of running
+# as shell code (the helper runs as root, even for `status`).
+if [[ -f "$CONF" ]]; then
+    grep -qvE '^(SIZE_MB=[0-9]+|ALGO=(zstd|lz4|lzo-rle|lzo))$' "$CONF" && exit 1
+    _conf_size=$(grep -E '^SIZE_MB=[0-9]+$' "$CONF" 2>/dev/null | tail -1 | cut -d= -f2)
+    _conf_algo=$(grep -E '^ALGO=(zstd|lz4|lzo-rle|lzo)$' "$CONF" 2>/dev/null | tail -1 | cut -d= -f2)
+    [[ -n "$_conf_size" ]] && SIZE_MB="$_conf_size"
+    [[ -n "$_conf_algo" ]] && ALGO="$_conf_algo"
+fi
 # Boot-cycle identity: a recorded device number is only meaningful
 # within the boot that created it. Another manager may own the same
 # number after a reboot, so the state file is bound to the boot id.
@@ -43188,6 +43206,17 @@ case "${1:-}" in
         actual_algo="$ALGO"
         if command -v zramctl >/dev/null 2>&1; then
             dev=$(zramctl --find --size "${SIZE_MB}M" --algorithm "$ALGO" 2>/dev/null) || dev=''
+            if [[ -n "$dev" ]]; then
+                # L-05: verify the algorithm the kernel actually
+                # applied (same readback as the hot_add branch):
+                # never record the request as fact unverified.
+                _zctl_algo=$(sed -n 's/.*\[\([^]]*\)\].*/\1/p' "/sys/block/${dev#/dev/}/comp_algorithm" 2>/dev/null | head -1)
+                if [[ -z "$_zctl_algo" ]]; then
+                    _zctl_algo=$(tr -d '[:space:]' < "/sys/block/${dev#/dev/}/comp_algorithm" 2>/dev/null || true)
+                fi
+                if [[ "$_zctl_algo" != "$ALGO" ]]; then _reset_dev "$dev"; exit 1; fi
+                actual_algo="$_zctl_algo"
+            fi
         fi
         if [[ -z "$dev" ]]; then
             id=$(cat /sys/class/zram-control/hot_add 2>/dev/null) || exit 1
@@ -43287,24 +43316,42 @@ abox_zram_teardown() {
             fi
         fi
         if (( _zram_present != 0 )); then
-            systemctl disable abox-zram.service >/dev/null 2>&1 || persist_rc=1
-            rm -f /etc/systemd/system/abox-zram.service 2>/dev/null || persist_rc=1
+            # H-13 (systemd same-type): `systemctl disable` on a unit
+            # with no unit file exits 1 ("Unit file ... does not
+            # exist"), the same spurious-failure class as the OpenRC
+            # `del` above. Do not let its rc decide the outcome:
+            # remove the unit file and any enablement symlinks, then
+            # decide by what remains.
+            systemctl disable abox-zram.service >/dev/null 2>&1 || true
+            rm -f /etc/systemd/system/abox-zram.service /etc/systemd/system/*.{wants,requires,upholds}/abox-zram.service 2>/dev/null || persist_rc=1
+            for _zram_p in /etc/systemd/system/abox-zram.service /etc/systemd/system/*.{wants,requires,upholds}/abox-zram.service; do
+                if [[ -e "$_zram_p" || -L "$_zram_p" ]]; then
+                    persist_rc=1
+                    break
+                fi
+            done
             systemctl daemon-reload >/dev/null 2>&1 || persist_rc=1
         fi
     elif [[ "$_init" == 'openrc' ]]; then
         # R21 F-RESET-ZRAM: a missing script is harmless only without runlevel remnants.
         if [[ -e /etc/init.d/abox-zram || -L /etc/init.d/abox-zram ]]; then
-            rc-update del abox-zram default >/dev/null 2>&1 || persist_rc=1
+            if [[ -L /etc/runlevels/default/abox-zram ]]; then
+                rc-update del abox-zram default >/dev/null 2>&1 || persist_rc=1
+            fi
             rm -f /etc/init.d/abox-zram 2>/dev/null || persist_rc=1
-        else
-            local _zram_link
-            for _zram_link in /etc/runlevels/*/abox-zram; do
-                if [[ -e "$_zram_link" || -L "$_zram_link" ]]; then
-                    persist_rc=1
-                    break
-                fi
-            done
         fi
+        local _zram_link
+        for _zram_link in /etc/runlevels/*/abox-zram; do
+            if [[ -e "$_zram_link" || -L "$_zram_link" ]]; then
+                rm -f -- "$_zram_link" 2>/dev/null || persist_rc=1
+            fi
+        done
+        for _zram_link in /etc/runlevels/*/abox-zram; do
+            if [[ -e "$_zram_link" || -L "$_zram_link" ]]; then
+                persist_rc=1
+                break
+            fi
+        done
     fi
     # R5C13-04: a persistence failure must not be swallowed while
     # the helper is deleted (that orphans a still-enabled boot unit).
@@ -43402,12 +43449,39 @@ setup_zram_swap() {
         pause_return
         return 0
     fi
-    local algo='' supported='' cand=''
+    local algo='' supported='' cand='' _probe_id='' _probe_dev=''
     if [[ -r /sys/block/zram0/comp_algorithm ]]; then
         supported=$(tr -d '[]' < /sys/block/zram0/comp_algorithm)
         for cand in zstd lz4 lzo-rle lzo; do
             if [[ " $supported " == *" $cand "* ]]; then algo="$cand"; break; fi
         done
+    fi
+    if [[ -z "$algo" ]]; then
+        # L-05: no pre-built zram0 (module loaded with num_devices=0
+        # or zram0 hot-removed): probe the algorithm list on a freshly
+        # hot-added device instead of blindly falling back to lz4,
+        # which may not exist on a slim cloud kernel.
+        _probe_id=$(cat /sys/class/zram-control/hot_add 2>/dev/null || true)
+        if [[ "$_probe_id" =~ ^[0-9]+$ ]]; then
+            _probe_dev="/dev/zram${_probe_id}"
+            if [[ -r "/sys/block/zram${_probe_id}/comp_algorithm" ]]; then
+                supported=$(tr -d '[]' < "/sys/block/zram${_probe_id}/comp_algorithm")
+                for cand in zstd lz4 lzo-rle lzo; do
+                    if [[ " $supported " == *" $cand "* ]]; then algo="$cand"; break; fi
+                done
+            fi
+            # Release the probe device: reset it, then hot-remove it
+            # when the kernel offers that attribute, so setup leaves
+            # no claimed device behind.
+            if command -v zramctl >/dev/null 2>&1; then
+                zramctl --reset "$_probe_dev" >/dev/null 2>&1 || true
+            elif [[ -e "/sys/block/zram${_probe_id}/reset" ]]; then
+                echo 1 > "/sys/block/zram${_probe_id}/reset" 2>/dev/null || true
+            fi
+            if [[ -e /sys/class/zram-control/hot_remove ]]; then
+                echo "$_probe_id" > /sys/class/zram-control/hot_remove 2>/dev/null || true
+            fi
+        fi
     fi
     [[ -n "$algo" ]] || algo='lz4'
     local mem_kb=0 size_mb=512
@@ -45783,6 +45857,27 @@ validate_extracted_backup_content() {
         [[ -f "$root$ABOX_DIR/.shortcut" && ! -L "$root$ABOX_DIR/.shortcut" ]] || return 1
         shortcut_parse_state_file "$root$ABOX_DIR/.shortcut" || return 1
     fi
+    # H-08: an archived zram.conf is never sourced (the helper only
+    # whitelist-parses it); reject any archived copy whose lines do
+    # not match that same whitelist. A runner in the archive must be
+    # byte-identical to the script this backup records (meta
+    # metadata.txt) -- it is never copied back (preserved name), but
+    # a foreign runner must fail validation here.
+    if [[ -e "$root$ABOX_DIR/zram.conf" || -L "$root$ABOX_DIR/zram.conf" ]]; then
+        [[ -f "$root$ABOX_DIR/zram.conf" && ! -L "$root$ABOX_DIR/zram.conf" ]] || return 1
+        grep -qvE '^(SIZE_MB=[0-9]+|ALGO=(zstd|lz4|lzo-rle|lzo))$' "$root$ABOX_DIR/zram.conf" 2>/dev/null && return 1
+    fi
+    if [[ -e "$root$ABOX_DIR/user-guard-runner.sh" || -L "$root$ABOX_DIR/user-guard-runner.sh" ]]; then
+        [[ -f "$root$ABOX_DIR/user-guard-runner.sh" && ! -L "$root$ABOX_DIR/user-guard-runner.sh" ]] || return 1
+        local _rec_sha='' _run_sha=''
+        _rec_sha=$(sed -n 's/^Script SHA256: \([0-9a-fA-F]\{64\}\)$/\1/p' "$work/meta/metadata.txt" 2>/dev/null | head -1)
+        if [[ -z "$_rec_sha" && -f "$0" && ! -L "$0" ]]; then
+            _rec_sha=$(sha256sum -- "$0" 2>/dev/null | awk '{print $1}')
+        fi
+        [[ "$_rec_sha" =~ ^[0-9a-fA-F]{64}$ ]] || return 1
+        _run_sha=$(sha256sum -- "$root$ABOX_DIR/user-guard-runner.sh" 2>/dev/null | awk '{print $1}')
+        [[ "${_run_sha,,}" == "${_rec_sha,,}" ]] || return 1
+    fi
     for srv in xray sing-box hysteria xray-latest; do
         backup_root_contains_service "$root" "$srv" || continue
         if backup_root_service_is_config_only "$root" "$srv"; then
@@ -45849,7 +45944,7 @@ assert_restore_shortcut_safe() {
 
 abox_restore_preserved_name() {
     case "$1" in
-        backups|diagnostics|preflight|.tz-rollback|.dns-backup|A-Box.sh|.backup-hmac.key|.runtime.lock|.runtime.lock.d|socket_probe.sh|geo_update.sh|traffic_monitor.sh|firewall_restore.sh|iptables.v4|iptables.v6) return 0 ;;
+        backups|diagnostics|preflight|.tz-rollback|.dns-backup|A-Box.sh|.backup-hmac.key|.runtime.lock|.runtime.lock.d|socket_probe.sh|geo_update.sh|traffic_monitor.sh|firewall_restore.sh|iptables.v4|iptables.v6|user-guard-runner.sh|zram.conf|zram.state|.swapfile.managed|.wallos-cf-token|wallos-caddy*|.abox-caddy-owned|wallos-images.txt) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -46126,6 +46221,25 @@ normalize_restored_runtime_ownership() {
     esac
 }
 
+# H-08: a restored zram.state whose BOOT= belongs to another boot
+# strands the recorded device: `abox-zram stop` refuses to touch a
+# record it cannot prove is this boot's, while the device may still
+# be live. After a restore, drop a stale record (never fail the
+# restore) and tell the user how to stop a still-active device.
+validate_restored_zram_state() {
+    local _state='/etc/ddr/zram.state' _sboot='' _sdev='' _boot=''
+    [[ -f "$_state" && ! -L "$_state" ]] || return 0
+    _sboot=$(sed -n 's/^BOOT=//p' "$_state" 2>/dev/null | head -1)
+    _sdev=$(sed -n 's/^DEV=//p' "$_state" 2>/dev/null | head -1)
+    _boot=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
+    if [[ -n "$_sboot" && -n "$_boot" && "$_sboot" == "$_boot" ]]; then
+        return 0
+    fi
+    rm -f -- "$_state" || true
+    msg "${YELLOW}[!] Restored zram.state was stale (BOOT mismatch); removed it. If a zram swap is still active, stop it by hand: swapoff ${_sdev:-/dev/zramN} && zramctl --reset ${_sdev:-/dev/zramN}${NC}" >&2
+    return 0
+}
+
 regenerate_runtime_assets_after_restore() {
     local _restore_root="${1:-}" _brc=0
     [[ -n "$_restore_root" ]] || return 1
@@ -46150,6 +46264,10 @@ regenerate_runtime_assets_after_restore() {
     else
         disable_traffic_monitor || return 1
     fi
+    # H-08: the guard runner is a regenerable copy of $0, never a
+    # restored file; rebuild it (and the USERGUARD cron block) here
+    # so a restore can never silently drop enforcement.
+    setup_user_guard || return 1
 }
 
 
@@ -46322,6 +46440,9 @@ backup_current_config() {
                 --exclude='./socket_probe.sh' --exclude='./geo_update.sh' --exclude='./traffic_monitor.sh' \
                 --exclude='./firewall_restore.sh' --exclude='./iptables.v4' --exclude='./iptables.v6' \
                 --exclude='./.shortcut-migrate' --exclude='./.shortcut.lock' \
+                --exclude='./user-guard-runner.sh' --exclude='./zram.conf' --exclude='./zram.state' \
+                --exclude='./.swapfile.managed' --exclude='./.wallos-cf-token' --exclude='./wallos-caddy*' \
+                --exclude='./.abox-caddy-owned' --exclude='./wallos-images.txt' \
                 "${backup_extra_excludes[@]}" \
                 -cpf - . | tar -C "$root$ABOX_DIR" -xpf -) || backup_failed=1
         fi
@@ -46691,6 +46812,7 @@ PY_LATEST_BACKUP
         restore_auxiliary_path_from_backup "$root" "$path" || { msg "restore gate failed: restore-aux (work preserved at $work)" >&2; return 1; }
     done <<< "$aux_paths"
     regenerate_runtime_assets_after_restore "$root" >/dev/null 2>&1 || { msg "restore gate failed: regen-assets (work preserved at $work)" >&2; return 1; }
+    validate_restored_zram_state
     apply_native_firewall_rules_from_state >/dev/null 2>&1 || { msg "restore gate failed: native-fw (work preserved at $work)" >&2; return 1; }
     backend=$(cat "$work/meta/firewall.backend" 2>/dev/null || echo iptables); [[ "$backend" == iptables ]] || mode=special
     restore_abox_iptables_snapshot "$work/meta/iptables.snapshot" 4 "$mode" || { msg "restore gate failed: iptables4 (work preserved at $work)" >&2; return 1; }
@@ -46880,6 +47002,7 @@ PY_RB_ENUM
         chmod 600 "$ABOX_DIR/.shortcut" 2>/dev/null || die "$(tr_msg restore_from_backup_shortcut_perm_fail)"
     fi
     regenerate_runtime_assets_after_restore "$root" || die 'Regenerate trusted A-Box runtime helpers and cron blocks failed.'
+    validate_restored_zram_state
     apply_native_firewall_rules_from_state || die 'Restore native firewall rules failed.'
     backend=$(cat "$work/meta/firewall.backend" 2>/dev/null || echo iptables)
     [[ "$backend" == iptables ]] || mode=special

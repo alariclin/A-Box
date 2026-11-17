@@ -22319,11 +22319,42 @@ update_traffic_state_atomically() {
     fi
     validate_abox_env_file_for_write || return 1
     ensure_abox_dir_owned "$ABOX_DIR" >/dev/null 2>&1 || return 1
+    # H-05 (Carbon): a standalone quota must not leave INGRESS_IF unset —
+    # the per-minute monitor fail-closes to TRAFFIC_BLOCKED on a missing
+    # interface before any traffic query. When a non-empty limit is set
+    # and .env carries no valid INGRESS_IF, infer the active interface
+    # now and persist it alongside the limit. An empty or multi-value
+    # inference is a hard failure: never persist an empty value.
+    local _iface='' _inferred='' _write_iface=0
+    if [[ -n "$limit" ]]; then
+        _iface=$(awk -F= '$1=="INGRESS_IF" {print substr($0, length($1)+2); exit}' "$ABOX_ENV" 2>/dev/null || true)
+        # Strip one layer of shell quoting (%q/shell_quote output).
+        case "$_iface" in
+            \"*\") _iface="${_iface#\"}"; _iface="${_iface%\"}";;
+            \'*\') _iface="${_iface#\'}"; _iface="${_iface%\'}";;
+        esac
+        if valid_interface_name "$_iface" 2>/dev/null; then
+            _write_iface=0
+        else
+            _inferred=$(get_active_interface 2>/dev/null || true)
+            if [[ -z "$_inferred" || "$_inferred" == *$'\n'* ]] || ! valid_interface_name "$_inferred" 2>/dev/null; then
+                return 1
+            fi
+            _iface="$_inferred"; _write_iface=1
+        fi
+    fi
     tmp=$(mktemp "$ABOX_DIR/.env.A-Box-update.XXXXXX") || return 1
-    awk '!/^TRAFFIC_LIMIT_GB=/ && !/^TRAFFIC_LIMIT_MODE=/' "$ABOX_ENV" > "$tmp" || { rm -f "$tmp"; return 1; }
+    if (( _write_iface == 1 )); then
+        awk '!/^TRAFFIC_LIMIT_GB=/ && !/^TRAFFIC_LIMIT_MODE=/ && !/^INGRESS_IF=/' "$ABOX_ENV" > "$tmp" || { rm -f "$tmp"; return 1; }
+    else
+        awk '!/^TRAFFIC_LIMIT_GB=/ && !/^TRAFFIC_LIMIT_MODE=/' "$ABOX_ENV" > "$tmp" || { rm -f "$tmp"; return 1; }
+    fi
     if [[ -n "$limit" ]]; then
         valid_traffic_limit_gb "$limit" || { rm -f "$tmp"; return 1; }
         [[ "$mode" =~ ^(total|rx|tx)$ ]] || { rm -f "$tmp"; return 1; }
+        if (( _write_iface == 1 )); then
+            printf 'INGRESS_IF=%q\n' "$_iface" >> "$tmp" || { rm -f "$tmp"; return 1; }
+        fi
         printf 'TRAFFIC_LIMIT_GB=%q\nTRAFFIC_LIMIT_MODE=%q\n' "$limit" "$mode" >> "$tmp" || { rm -f "$tmp"; return 1; }
     fi
     chmod 600 "$tmp" || { rm -f "$tmp"; return 1; }
@@ -23883,6 +23914,121 @@ check_socket_or_fail() {
         *) exit 0 ;;
     esac
 }
+# H-04 (Carbon): users_sync removes an inbound from config.json when its
+# last user is disabled, so a silent SS/SOCKS port is expected then —
+# not a crashed core. Before treating a missing listen socket as a
+# fault, confirm the running config still carries an inbound on that
+# port (JSONC-strip + parse). Unknown (no readable config, unparsable
+# JSON, python3 missing) keeps the old behavior: check the socket.
+# Return 0 = inbound present (or unknown: check the socket);
+# 1 = config parsed and the inbound is gone (skip the socket check).
+config_has_inbound_port() {
+    local proto="$1" port="$2" cfg='' pid="${MAIN_PID:-}" _cfg_rc=0
+    [[ "$port" =~ ^[0-9]+$ ]] || return 0
+    # The config the live process actually runs, from its cmdline.
+    if [[ -n "$pid" && "$pid" =~ ^[0-9]+$ && -r "/proc/$pid/cmdline" ]]; then
+        # Gate the flag on argv[0]: a bare "-c" scan would misread an
+        # unrelated "-c" earlier in the argv (e.g. "python3 -c ...")
+        # and take the following field as the config path.
+        cfg=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | awk '
+            NR==1 { _exe=$0; sub(/.*\//, "", _exe); next }
+            _exe=="xray" && ($0=="-config" || $0=="--config") { getline _v; print _v; exit }
+            (_exe=="sing-box" || _exe=="hysteria") && $0=="-c" { getline _v; print _v; exit }')
+    fi
+    if [[ -z "$cfg" || "$cfg" != /* ]]; then
+        case "${CORE:-}" in
+            xray) cfg='/usr/local/etc/xray/config.json' ;;
+            singbox) cfg='/etc/sing-box/config.json' ;;
+            *) return 0 ;;
+        esac
+    fi
+    [[ -r "$cfg" && -f "$cfg" && ! -L "$cfg" ]] || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
+    python3 -I - "$cfg" "$proto" "$port" <<'PY_PROBE_CFG' 2>/dev/null
+import json, sys
+path, proto, port = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    raw = open(path, encoding='utf-8', errors='strict').read()
+except OSError:
+    raise SystemExit(2)
+out = []
+i, n = 0, len(raw)
+in_str = False
+esc = False
+while i < n:
+    c = raw[i]
+    if in_str:
+        out.append(c)
+        if esc:
+            esc = False
+        elif c == '\\':
+            esc = True
+        elif c == '"':
+            in_str = False
+        i += 1
+        continue
+    if c == '"':
+        in_str = True
+        out.append(c)
+        i += 1
+        continue
+    if c == '/' and i + 1 < n and raw[i+1] == '/':
+        j = raw.find('\n', i)
+        i = n if j < 0 else j
+        continue
+    if c == '/' and i + 1 < n and raw[i+1] == '*':
+        j = raw.find('*/', i + 2)
+        if j < 0:
+            raise SystemExit(2)
+        i = j + 2
+        continue
+    out.append(c)
+    i += 1
+try:
+    cfg = json.loads(''.join(out))
+except ValueError:
+    raise SystemExit(2)
+found = False
+for ib in cfg.get('inbounds', []) or []:
+    if not isinstance(ib, dict):
+        continue
+    p = ib.get('port', ib.get('listen_port'))
+    ports = []
+    if isinstance(p, int):
+        ports = [str(p)]
+    elif isinstance(p, str):
+        for part in p.split(','):
+            part = part.strip()
+            if not part:
+                continue
+            if '-' in part:
+                try:
+                    lo, hi = part.split('-', 1)
+                    if int(lo) <= int(port) <= int(hi):
+                        ports.append(str(port))
+                except ValueError:
+                    continue
+            else:
+                ports.append(part)
+    if str(port) not in ports:
+        continue
+    if proto == 'shadowsocks':
+        if ib.get('protocol') == 'shadowsocks' or ib.get('type') == 'shadowsocks':
+            found = True
+    elif proto == 'socks':
+        if ib.get('protocol') == 'socks' or ib.get('type') in ('socks', 'mixed'):
+            found = True
+    if found:
+        break
+raise SystemExit(0 if found else 1)
+PY_PROBE_CFG
+    _cfg_rc=$?
+    case "$_cfg_rc" in
+        0) return 0 ;;
+        1) return 1 ;;
+        *) return 0 ;;
+    esac
+}
 restart_owned() {
     local srv="$1"
     service_is_abox_managed "$srv" || return 1
@@ -24022,11 +24168,19 @@ fi
 [[ -n "$failed_srv" || -z "${XHTTP_PORT:-}" ]] || check_socket_or_fail tcp "$XHTTP_PORT" "$MAIN_PID" "$MAIN_SRV"
 [[ -n "$failed_srv" || -z "${HY2_MONITOR_PORT:-}" ]] || check_socket_or_fail udp "$HY2_MONITOR_PORT" "$HY2_PID" "$HY2_SRV"
 if [[ -z "$failed_srv" && -n "${SS_PORT:-}" ]]; then
-    check_socket_or_fail tcp "$SS_PORT" "$MAIN_PID" "$MAIN_SRV"
-    [[ -z "$failed_srv" ]] && check_socket_or_fail udp "$SS_PORT" "$MAIN_PID" "$MAIN_SRV"
+    # H-04: skip when the running config no longer carries this
+    # inbound (users_sync removed it); a silent port is expected then.
+    if config_has_inbound_port shadowsocks "$SS_PORT"; then
+        check_socket_or_fail tcp "$SS_PORT" "$MAIN_PID" "$MAIN_SRV"
+        [[ -z "$failed_srv" ]] && check_socket_or_fail udp "$SS_PORT" "$MAIN_PID" "$MAIN_SRV"
+    fi
 fi
 if [[ -z "$failed_srv" && -n "${SOCKS_PORT:-}" ]]; then
-    check_socket_or_fail tcp "$SOCKS_PORT" "$MAIN_PID" "$MAIN_SRV"
+    # H-04: skip when the running config no longer carries this
+    # inbound (users_sync removed it); a silent port is expected then.
+    if config_has_inbound_port socks "$SOCKS_PORT"; then
+        check_socket_or_fail tcp "$SOCKS_PORT" "$MAIN_PID" "$MAIN_SRV"
+    fi
 fi
 if [[ -z "$failed_srv" ]]; then rm -f "$STATE"; exit 0; fi
 count=0; last=0
@@ -32430,6 +32584,31 @@ owned() {
     u=$(managed_unit_path "$srv") || return 1
     [[ -f "$u" && ! -L "$u" ]] && grep -Fxq '# Managed by A-Box' "$u"
 }
+# H-05 (Carbon): interface inference for the no-owned-service case —
+# same single-interface selection as get_active_interface in the main
+# script (first default-route device, then first non-loopback up link).
+get_active_interface() {
+    local iface
+    iface=$(ip route get 8.8.8.8 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')
+    [[ -z "$iface" ]] && iface=$(ip -6 route get 2001:4860:4860::8888 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')
+    [[ -z "$iface" ]] && iface=$(ip -o route show to default 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')
+    [[ -z "$iface" ]] && iface=$(ip -6 -o route show to default 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')
+    [[ -z "$iface" ]] && iface=$(ip -o link show up 2>/dev/null | awk -F': ' '$2 !~ /^(lo|vir|wl)/ {sub(/@.*/,"",$2); print $2; exit}')
+    printf '%s\n' "$iface"
+}
+# H-05 (Carbon): same name rule as valid_interface_name in the main
+# script (Linux IFNAMSIZ: at most 15 characters).
+valid_monitor_interface_name() {
+    local iface="${1:-}"
+    [[ "$iface" =~ ^[a-zA-Z0-9_.:-]+$ && ${#iface} -le 15 ]]
+}
+any_owned_service() {
+    local srv
+    for srv in xray sing-box hysteria; do
+        owned "$srv" 2>/dev/null && return 0
+    done
+    return 1
+}
 force_stop_owned_openrc() {
     local srv="$1" pidfile exe pid owner proc_exe
     case "$srv" in
@@ -32559,7 +32738,11 @@ expected_service_list() {
             ;;
         singbox) svcs+=(sing-box) ;;
         hysteria) svcs+=(hysteria) ;;
-        *) return 1 ;;
+        # R26-H-NF-04 (main side): no main pair is a legitimate
+        # undeployed state, not unreadable state — fall through to the
+        # owned-services mirror below, exactly like
+        # expected_managed_services in the main script.
+        *) : ;;
     esac
     # Standalone cores outside the .env CORE/MODE pair (e.g. an official
     # HY2 deployed next to a sing-box main core) are enforced too, but
@@ -32877,8 +33060,24 @@ if [[ -z "${TRAFFIC_LIMIT_GB:-}" ]]; then
 fi
 iface="${INGRESS_IF:-}"
 if [[ -z "$iface" ]]; then
-    traffic_fail_closed 'INGRESS_IF missing; refusing to switch traffic accounting to a newly inferred interface' || traffic_error 'missing ingress interface could not be fail-closed enforced'
-    exit 1
+    # H-05 (Carbon) defense-in-depth: with no owned service there is
+    # nothing to block, so inferring the interface now is safe and
+    # keeps a fresh quota-only box from poisoning itself to
+    # TRAFFIC_BLOCKED before any service exists. With owned services
+    # present, keep the fail-closed behavior: never switch traffic
+    # accounting under a live stack.
+    if ! any_owned_service; then
+        iface=$(get_active_interface 2>/dev/null || true)
+        if [[ -n "$iface" && "$iface" != *$'\n'* ]] && valid_monitor_interface_name "$iface"; then
+            traffic_error "INGRESS_IF missing and no owned service exists; using inferred interface $iface for traffic accounting (not persisted)"
+        else
+            traffic_fail_closed 'INGRESS_IF missing; refusing to switch traffic accounting to a newly inferred interface' || traffic_error 'missing ingress interface could not be fail-closed enforced'
+            exit 1
+        fi
+    else
+        traffic_fail_closed 'INGRESS_IF missing; refusing to switch traffic accounting to a newly inferred interface' || traffic_error 'missing ingress interface could not be fail-closed enforced'
+        exit 1
+    fi
 fi
 # U49: enforce an already-blocked state before the usage query, so a
 # vnStat query failure can never leave restarted services running.

@@ -14086,7 +14086,7 @@ hysteria_acme_readopt_manifest() {
     [[ "$target" == /etc/hysteria/acme ]] || return 1
     [[ "$marker" == "$target/.A-Box-managed" ]] || return 1
     python3 -I - "$manifest" "$target" "$marker" <<'PY_ACME_READOPT'
-import hashlib, os, stat, sys
+import hashlib, os, stat, sys, tempfile
 manifest, target, marker = sys.argv[1:]
 try:
     st = os.lstat(manifest)
@@ -14132,14 +14132,24 @@ new.sort(key=lambda r: (r[1], os.fsencode(r[2])))
 text = ''.join('\t'.join(r) + '\n' for r in new)
 if len(text.encode('utf-8')) > 4 * 1024 * 1024:
     raise SystemExit(1)
-tmp = manifest + '.readopt.tmp'
-with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
-    f.write(text)
-    f.flush()
-    os.fsync(f.fileno())
-os.chmod(tmp, 0o600)
-os.chown(tmp, 0, 0)
-os.replace(tmp, manifest)
+# M-19 (supplement): mkstemp, not a fixed name: 0600 regardless of
+# the inherited umask (the old open(tmp,'w') created 0644 under
+# umask 022) and never reuses a pre-placed path. Same shape as the
+# manifest rewrite at the end of remove_recorded_core_family.
+_dirname = os.path.dirname(manifest)
+_fd, tmp = tempfile.mkstemp(prefix='.readopt.', dir=_dirname, text=True)
+try:
+    with os.fdopen(_fd, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, 0o600)
+    os.chown(tmp, 0, 0)
+    os.replace(tmp, manifest)
+except Exception:
+    try: os.unlink(tmp)
+    except OSError: pass
+    raise
 PY_ACME_READOPT
 }
 
@@ -14335,11 +14345,12 @@ def _artifact_mode_ok(st):
     return (not stat.S_ISLNK(st.st_mode)) and (not (st.st_mode & 0o002)) and (not (st.st_mode & 0o020))
 def _artifact_owner_ok(st):
     return st.st_uid == 0 and st.st_gid in (0, runtime_gid)
-def _is_artifact_file(path):
-    if _repair_is_mountpoint(path):
-        return False
+def _is_artifact_file_fd(fd, path):
+    # M-19 (supplement): same bar as _is_artifact_file, but validated
+    # by fstat on an already-opened fd and read through that fd, so a
+    # swap between check and read cannot redirect the read.
     try:
-        st = os.lstat(path)
+        st = os.fstat(fd)
     except OSError:
         return False
     if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or not _artifact_mode_ok(st) or not _artifact_owner_ok(st):
@@ -14349,17 +14360,42 @@ def _is_artifact_file(path):
         return False
     h = hashlib.sha256()
     try:
-        with open(path, 'rb') as f:
-            for chunk in iter(lambda: f.read(1024 * 1024), b''):
-                h.update(chunk)
+        while True:
+            _chunk = os.read(fd, 1024 * 1024)
+            if not _chunk:
+                break
+            h.update(_chunk)
     except OSError:
         return False
     return h.hexdigest() == files[tgt]
-def _is_artifact_tree(path):
+def _is_artifact_file(path):
     if _repair_is_mountpoint(path):
         return False
     try:
-        st = os.lstat(path)
+        _pfd, _leaf = _open_parent_fd(path)
+    except OSError:
+        return False
+    try:
+        try:
+            _fd = os.open(_leaf, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=_pfd)
+        except OSError:
+            return False
+        try:
+            return _is_artifact_file_fd(_fd, path)
+        finally:
+            try: os.close(_fd)
+            except OSError: pass
+    finally:
+        try: os.close(_pfd)
+        except OSError: pass
+def _is_artifact_tree_fd(fd, path):
+    # M-19 (supplement): fd-recursive twin of _is_artifact_tree. Every
+    # child is opened relative to its parent's held fd (O_NOFOLLOW |
+    # O_NONBLOCK) and validated by fstat on that fd; a swapped-in
+    # symlink is refused (ELOOP) and a FIFO is refused by fstat
+    # without ever blocking in open().
+    try:
+        st = os.fstat(fd)
     except OSError:
         return False
     if stat.S_ISDIR(st.st_mode):
@@ -14368,11 +14404,42 @@ def _is_artifact_tree(path):
         if _artifact_dir_target(path) is None:
             return False
         try:
-            names = os.listdir(path)
+            names = os.listdir(fd)
         except OSError:
             return False
-        return all(_is_artifact_tree(os.path.join(path, n)) for n in names)
-    return _is_artifact_file(path)
+        for n in names:
+            try:
+                _cfd = os.open(n, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+            except OSError:
+                return False
+            try:
+                if not _is_artifact_tree_fd(_cfd, os.path.join(path, n)):
+                    return False
+            finally:
+                try: os.close(_cfd)
+                except OSError: pass
+        return True
+    return _is_artifact_file_fd(fd, path)
+def _is_artifact_tree(path):
+    if _repair_is_mountpoint(path):
+        return False
+    try:
+        _pfd, _leaf = _open_parent_fd(path)
+    except OSError:
+        return False
+    try:
+        try:
+            _fd = os.open(_leaf, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=_pfd)
+        except OSError:
+            return False
+        try:
+            return _is_artifact_tree_fd(_fd, path)
+        finally:
+            try: os.close(_fd)
+            except OSError: pass
+    finally:
+        try: os.close(_pfd)
+        except OSError: pass
 # SYD-B7: a symlinked ABOX_DIR would let listdir walk an external tree;
 # per-dir islink checks cannot see an ancestor symlink. Fail closed here.
 # (TOCTOU swap after this check is a root-race window, accepted as-is.)
@@ -14488,13 +14555,34 @@ def _rmtree_fd(path):
 # preflight after artifact removal re-checks everything including
 # children.
 for path in sorted(expected, key=os.fsencode):
-    try: st=os.lstat(path)
-    except FileNotFoundError: continue
+    # (fd-model open follows the mount check below)
     # R26 (F05-3): check ancestors, not just the file itself. A
     # bind mount on an ancestor dir (e.g. /usr/local/bin) leaves
     # the recorded file a non-mountpoint with a matching hash.
     if _path_or_ancestors_mounted(path):
         raise SystemExit(3)
+    # M-19 (supplement): open once via the pinned parent fd and
+    # validate by fstat on that fd. Never lstat-then-re-resolve by
+    # path: the object can be swapped for a FIFO between the check
+    # and the open, and root then blocks forever in open() (no
+    # O_NONBLOCK, no timeout). O_NOFOLLOW refuses a swapped-in
+    # symlink ancestor (ELOOP); O_NONBLOCK lets the open succeed on
+    # a FIFO so fstat can refuse it without blocking.
+    try:
+        _pfd, _leaf = _open_parent_fd(path)
+    except FileNotFoundError:
+        continue
+    except OSError:
+        raise SystemExit(3)
+    try:
+        _fd = os.open(_leaf, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=_pfd)
+    except FileNotFoundError:
+        os.close(_pfd)
+        continue
+    except OSError:
+        os.close(_pfd)
+        raise SystemExit(3)
+    st = os.fstat(_fd)
     acme = srv == 'hysteria' and (path == '/etc/hysteria/acme' or path.startswith('/etc/hysteria/acme/'))
     uid_ok = st.st_uid in ({0} if not acme else {0, runtime_uid})
     gid_ok = st.st_gid in ({0, runtime_gid})
@@ -14505,12 +14593,18 @@ for path in sorted(expected, key=os.fsencode):
         if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1: raise SystemExit(3)
         h=hashlib.sha256()
         try:
-            with open(path,'rb') as f:
+            with os.fdopen(_fd,'rb') as f:
                 for chunk in iter(lambda:f.read(1024*1024),b''): h.update(chunk)
         except OSError: raise SystemExit(3)
+        _fd = None
         if h.hexdigest()!=files[path]: raise SystemExit(3)
     else:
         if not stat.S_ISDIR(st.st_mode): raise SystemExit(3)
+    if _fd is not None:
+        try: os.close(_fd)
+        except OSError: pass
+    try: os.close(_pfd)
+    except OSError: pass
 if _repair:
     if all(_is_artifact_tree(_p) for _p in _repair):
         # Block 5 F03: an unrecorded entry classified as a doubling
@@ -14540,8 +14634,7 @@ if _repair:
 # below a recorded directory must itself be recorded, correctly typed, root
 # owned, non-link, non-writable by group/other, and (for files) hash-identical.
 for path in sorted(expected, key=os.fsencode):
-    try: st=os.lstat(path)
-    except FileNotFoundError: continue
+    # (fd-model open follows the mount check below)
     # R26 (F05-3): same ancestor check as the dirs preflight and
     # the R1-05-F03 loop above; the old self-only is_mountpoint()
     # missed a bind mount on an ancestor dir of a recorded file.
@@ -14550,6 +14643,28 @@ for path in sorted(expected, key=os.fsencode):
     # i.e. fail closed instead of using the weaker ismount().
     if _path_or_ancestors_mounted(path):
         raise SystemExit(3)
+    # M-19 (supplement): open once via the pinned parent fd and
+    # validate by fstat on that fd. Never lstat-then-re-resolve by
+    # path: the object can be swapped for a FIFO between the check
+    # and the open, and root then blocks forever in open() (no
+    # O_NONBLOCK, no timeout). O_NOFOLLOW refuses a swapped-in
+    # symlink ancestor (ELOOP); O_NONBLOCK lets the open succeed on
+    # a FIFO so fstat can refuse it without blocking.
+    try:
+        _pfd, _leaf = _open_parent_fd(path)
+    except FileNotFoundError:
+        continue
+    except OSError:
+        raise SystemExit(3)
+    try:
+        _fd = os.open(_leaf, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=_pfd)
+    except FileNotFoundError:
+        os.close(_pfd)
+        continue
+    except OSError:
+        os.close(_pfd)
+        raise SystemExit(3)
+    st = os.fstat(_fd)
     acme = srv == 'hysteria' and (path == '/etc/hysteria/acme' or path.startswith('/etc/hysteria/acme/'))
     uid_ok = st.st_uid in ({0} if not acme else {0, runtime_uid})
     gid_ok = st.st_gid in ({0, runtime_gid})
@@ -14560,17 +14675,23 @@ for path in sorted(expected, key=os.fsencode):
         if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1: raise SystemExit(3)
         h=hashlib.sha256()
         try:
-            with open(path,'rb') as f:
+            with os.fdopen(_fd,'rb') as f:
                 for chunk in iter(lambda:f.read(1024*1024),b''): h.update(chunk)
         except OSError: raise SystemExit(3)
+        _fd = None
         if h.hexdigest()!=files[path]: raise SystemExit(3)
     else:
         if not stat.S_ISDIR(st.st_mode): raise SystemExit(3)
-        try: names=os.listdir(path)
+        try: names=os.listdir(_fd)
         except OSError: raise SystemExit(3)
         for name in names:
             child=os.path.join(path,name)
             if child not in expected: raise SystemExit(3)
+    if _fd is not None:
+        try: os.close(_fd)
+        except OSError: pass
+    try: os.close(_pfd)
+    except OSError: pass
 # R4C5-01: delete via dir_fd + O_NOFOLLOW relative operations, not
 # absolute paths. Walking down from a pinned '/' fd with O_NOFOLLOW at
 # each step pins every ancestor: a swap before the step is refused
@@ -14612,7 +14733,9 @@ managed_auxiliary_paths() {
         /etc/security/limits.d/A-Box.conf \
         /etc/modules-load.d/A-Box-bbr.conf \
         /etc/systemd/system/A-Box-firewall.service \
-        /etc/init.d/A-Box-firewall
+        /etc/init.d/A-Box-firewall \
+        /usr/local/bin/abox-hy2-xtables-lock-grant \
+        /etc/tmpfiles.d/abox-xtables-lock.conf
 }
 
 auxiliary_content_is_abox_managed() {
@@ -14771,6 +14894,12 @@ prune_owned_core_families_except() {
         { abox_owns_service "$srv" || abox_owns_config_only_core_dir "$srv"; } || continue
         stop_abox_service "$srv" || die "$(tprintf pr_stop "$srv")"
         remove_owned_core_family "$srv" || die "$(tprintf pr_remove "$srv")"
+        # M-18 (supplement): pruning hysteria leaves no consumer of
+        # the xtables-lock grant; revoke it (service already stopped,
+        # unit already deleted above).
+        if [[ "$srv" == 'hysteria' ]]; then
+            hy2_hop_xtables_lock_revoke || die "$(tprintf pr_remove "$srv")"
+        fi
         # R23 F-ARGO-ORPHAN: the sing-box stack owns the Argo tunnels
         # (argo-vless/argo-vmess temp units and the shared fixed `argo`
         # unit all serve its ws inbounds). Pruning the stack deletes
@@ -26059,6 +26188,7 @@ hy2_hop_xtables_lock_grant() {
     if is_systemd; then
         mkdir -p /etc/tmpfiles.d || return 1
         write_file_atomically_from_stdin /etc/tmpfiles.d/abox-xtables-lock.conf 644 <<'EOF_XTABLES_TMPFILES' || return 1
+# Managed by A-Box
 # A-Box: official HY2 port hopping (nft missing, iptables-legacy
 # fallback) needs the abox-hysteria service user to open the xtables
 # lock. Narrow: group access only, no world access. /run is tmpfs, so
@@ -26080,6 +26210,7 @@ EOF_XTABLES_TMPFILES
 write_hy2_xtables_lock_grant_script() {
     write_file_atomically_from_stdin /usr/local/bin/abox-hy2-xtables-lock-grant 755 <<'EOF_XTABLES_GRANT' || return 1
 #!/bin/sh
+# Managed by A-Box
 # A-Box: grant the abox-hysteria group access to the xtables lock.
 # Official HY2 port hopping runs as abox-hysteria with CAP_NET_ADMIN
 # only; when nft is missing, Hysteria falls back to iptables-legacy,
@@ -26104,6 +26235,45 @@ for lock in ${ABOX_XTABLES_LOCK_PATHS:-/run/xtables.lock /var/run/xtables.lock};
 done
 exit 0
 EOF_XTABLES_GRANT
+}
+
+# M-18 (supplement): revoke the xtables-lock grant created by
+# hy2_hop_xtables_lock_grant / write_hy2_xtables_lock_grant_script.
+# Deletes the two A-Box grant artifacts and resets the lock file
+# permissions to the iptables default (0600 root:root) — but only when
+# the lock is provably our own grant: a regular file (never a symlink)
+# whose group is abox-hysteria, or whose group GID is unnamed while we
+# are removing A-Box's own grant artifacts. A lock owned by any other
+# known group is left untouched. The lock file itself is never deleted
+# (deleting a locked inode does not release flock). Callers must have
+# stopped the hysteria service and deleted its unit first: the grant
+# script runs as ExecStartPre, so a live unit could re-apply the grant
+# after revoke. Returns non-zero on failure.
+hy2_hop_xtables_lock_revoke() {
+    local lock _first_inode='' _inode _gid _gname _reset
+    rm -f -- /usr/local/bin/abox-hy2-xtables-lock-grant /etc/tmpfiles.d/abox-xtables-lock.conf || return 1
+    for lock in /run/xtables.lock /var/run/xtables.lock; do
+        [[ -e "$lock" || -L "$lock" ]] || continue
+        [[ -f "$lock" && ! -L "$lock" ]] || continue
+        _inode=$(stat -c '%d:%i' "$lock" 2>/dev/null) || return 1
+        if [[ -n "$_first_inode" && "$_inode" == "$_first_inode" ]]; then continue; fi
+        _first_inode="$_inode"
+        _gid=$(stat -c %g "$lock" 2>/dev/null) || return 1
+        _gname=$(stat -c %G "$lock" 2>/dev/null) || return 1
+        _reset=0
+        if [[ "$_gname" == abox-hysteria ]]; then
+            _reset=1
+        elif ! getent group "$_gid" >/dev/null 2>&1; then
+            # Unnamed GID while removing A-Box's own grant artifacts:
+            # the group is gone (or never existed); reset to default.
+            _reset=1
+        fi
+        if (( _reset == 1 )); then
+            chown root:root "$lock" 2>/dev/null || return 1
+            chmod 0600 "$lock" 2>/dev/null || return 1
+        fi
+    done
+    return 0
 }
 
 deploy_official_hy2() {
@@ -34654,6 +34824,10 @@ do_cleanup() {
     save_firewall_rules || die "$(tr_msg pi_fw_persist_fail)"
     kill_managed_residual_pids || die "$(tr_msg cu_residual)"
     remove_all_owned_core_families 1 || die "$(tr_msg cl_cores_clean)"
+    # M-18 (supplement): all core families are gone (units deleted),
+    # so no service can re-apply the grant; revoke the xtables-lock
+    # grant before the service users are removed below.
+    hy2_hop_xtables_lock_revoke || die "$(tr_msg cl_cores_clean)"
     if [[ -d "$ABOX_DIR/tune-backup" ]]; then
         restore_vps_tune 1 >/dev/null 2>&1 || die "$(tr_msg cu_tune)"
     else
@@ -35621,8 +35795,11 @@ _remove_hy2_official() {
         rm -f -- /etc/init.d/hysteria /etc/conf.d/hysteria || return 1
     fi
     # 2fv: remove the grant script and the tmpfiles.d persistence
-    # entry (both are deploy artifacts of the official-hop grant).
-    rm -f -- /usr/local/bin/abox-hy2-xtables-lock-grant /etc/tmpfiles.d/abox-xtables-lock.conf
+    # entry (both are deploy artifacts of the official-hop grant),
+    # and reset the xtables lock permissions (M-18 supplement).
+    # Service is stopped and the unit deleted above, so the grant
+    # cannot be re-applied after revoke.
+    hy2_hop_xtables_lock_revoke || return 1
     rm -rf -- /etc/hysteria || return 1
     rm -f -- /etc/ddr/standalone-links.d/hy2.link /etc/ddr/standalone-links.d/hysteria.link 2>/dev/null || true
     users_registry_remove hy2 hy2-official
@@ -35939,6 +36116,10 @@ check_virgin_state() {
     remove_all_abox_cron_blocks || die "$(tr_msg cl_cron)"
     # Menu 17 deep self-heal: pass force_heal=1 explicitly (never via environment).
     remove_all_owned_core_families 1 || die "$(tr_msg cl_cores_reset)"
+    # M-18 (supplement): all core families are gone (units deleted),
+    # so no service can re-apply the grant; revoke the xtables-lock
+    # grant now that the hysteria service is stopped and removed.
+    hy2_hop_xtables_lock_revoke || die "$(tr_msg cl_cores_reset)"
     remove_abox_env_file || die "$(tr_msg cl_env_reset)"
     for runtime_file in "$ABOX_DIR/traffic_monitor.sh" "$ABOX_DIR/geo_update.sh" "$ABOX_DIR/socket_probe.sh"; do
         remove_owned_runtime_helper "$runtime_file" || die "$(tprintf cl_runtime_reset "$runtime_file")"
@@ -47162,7 +47343,7 @@ assert_restore_shortcut_safe() {
 
 abox_restore_preserved_name() {
     case "$1" in
-        backups|diagnostics|preflight|.tz-rollback|.dns-backup|A-Box.sh|.backup-hmac.key|.runtime.lock|.runtime.lock.d|socket_probe.sh|geo_update.sh|traffic_monitor.sh|firewall_restore.sh|iptables.v4|iptables.v6|user-guard-runner.sh|zram.conf|zram.state|.swapfile.managed|.wallos-cf-token|wallos-caddy*|.abox-caddy-owned|wallos-images.txt) return 0 ;;
+        backups|diagnostics|preflight|.tz-rollback|.dns-backup|A-Box.sh|.backup-hmac.key|.runtime.lock|.runtime.lock.d|socket_probe.sh|geo_update.sh|traffic_monitor.sh|firewall_restore.sh|iptables.v4|iptables.v6|user-guard-runner.sh|zram.conf|zram.state|.swapfile.managed|.wallos-cf-token|wallos-caddy*|.abox-caddy-owned|wallos-images.txt|*.log) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -47660,7 +47841,7 @@ backup_current_config() {
                 --exclude='./.shortcut-migrate' --exclude='./.shortcut.lock' \
                 --exclude='./user-guard-runner.sh' --exclude='./zram.conf' --exclude='./zram.state' \
                 --exclude='./.swapfile.managed' --exclude='./.wallos-cf-token' --exclude='./wallos-caddy*' \
-                --exclude='./.abox-caddy-owned' --exclude='./wallos-images.txt' \
+                --exclude='./.abox-caddy-owned' --exclude='./wallos-images.txt' --exclude='./*.log' \
                 "${backup_extra_excludes[@]}" \
                 -cpf - . | tar -C "$root$ABOX_DIR" -xpf -) || backup_failed=1
         fi
@@ -48236,6 +48417,14 @@ PY_RB_ENUM
     save_firewall_rules || die 'Restored A-Box firewall persistence failed.'
     if [[ "${INIT_SYS:-}" == systemd ]]; then systemctl daemon-reload >/dev/null 2>&1 || die 'systemd daemon-reload after restore failed.'; fi
     restore_managed_service_state "$work/meta/services.state" || die 'Restored service state failed validation/startup.'
+    # M-18 (supplement): a restored hopping hysteria on a host without
+    # nft needs the grant script, which old backups never contained;
+    # without it the service starts but the hop rules are never built,
+    # silently. Warn explicitly instead of leaving the degraded hop
+    # undiscovered; redeploying official Hy2 re-creates the grant.
+    if abox_owns_service hysteria && [[ "${HY2_HOP:-}" == 'true' && "${HY2_HOP_IMPL:-none}" == 'official' ]] && ! command -v nft >/dev/null 2>&1 && [[ ! -f /usr/local/bin/abox-hy2-xtables-lock-grant || -L /usr/local/bin/abox-hy2-xtables-lock-grant ]]; then
+        msg "${RED}[!] Restored Hysteria 2 port hopping is enabled but the xtables-lock grant script (/usr/local/bin/abox-hy2-xtables-lock-grant) is missing; on this host (no nft) the service user cannot open /run/xtables.lock, so hop rules will not be built. Redeploy official Hysteria 2 to restore the grant.${NC}"
+    fi
     for srv in xray sing-box hysteria; do
         if abox_owns_service "$srv"; then
             backup_root_contains_service "$root" "$srv"; _own_brc=$?

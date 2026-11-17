@@ -467,7 +467,7 @@ abox_run_wait() {
     # job: without job control a background command inherits /dev/null
     # as stdin unless redirected, so the TTY branch used to read
     # different input from the foreground branch for the same command.
-    "$@" <&0 &
+    "$@" <&0 9>&- 10>&- &
     local _pid=$! _i=0 _t0=$SECONDS _frames='|/-\\'
     while kill -0 "$_pid" 2>/dev/null; do
         printf '\r  [%s] %s ... %ds ' "${_frames:$((_i % 4)):1}" "$_label" "$((SECONDS - _t0))" >&2
@@ -5176,6 +5176,12 @@ tr_msg() {
         fa:mu_set_fail) echo 'تنظیم ناموفق بود.' ;;
         zh-tw:mu_set_fail) echo '設定失敗。' ;;
         ja:mu_set_fail) echo '設定に失敗しました。' ;;
+        zh:mu_guard_no_file) echo '设置失败：当前不是以常规脚本文件运行（一键命令），无法生成多用户守护。' ;;
+        en:mu_guard_no_file) echo 'Failed to apply: not running from a regular script file (one-liner install), so the multi-user guard runner cannot be built.' ;;
+        ru:mu_guard_no_file) echo 'Не удалось применить: запуск выполнен не из обычного файла скрипта (однострочная установка), поэтому runner многопользовательской защиты создать нельзя.' ;;
+        fa:mu_guard_no_file) echo 'تنظیم ناموفق بود: از یک فایل اسکریپت معمولی اجرا نشده است (نصب تک‌خطی)، بنابراین نمی‌توان runner محافظت چندکاربره را ساخت.' ;;
+        zh-tw:mu_guard_no_file) echo '設定失敗：目前不是以常規指令碼檔案執行（一鍵命令），無法產生多使用者守護。' ;;
+        ja:mu_guard_no_file) echo '設定に失敗しました：通常のスクリプトファイルから実行されていないため（ワンライナー）、マルチユーザーガードのランナーを作成できません。' ;;
         zh:mu_days_prompt) echo '有效天数 (0=永久): ' ;;
         en:mu_days_prompt) echo 'Valid days (0 = forever): ' ;;
         ru:mu_days_prompt) echo 'Срок в днях (0 = бессрочно): ' ;;
@@ -11609,7 +11615,11 @@ pause_return() {
         fi
         read -r -p "$(tr_msg press_return)" _ || true
         if (( released == 1 )); then
-            flock -w 15 9 || die "$(tr_msg tp_lock)"
+            # M-03: a failed re-lock must not kill the session; warn and
+            # return to the menu (the next prompt retries the lock).
+            if ! flock -w 15 9; then
+                msg "${YELLOW}[!] $(tr_msg tp_lock)${NC}"
+            fi
         fi
     fi
 }
@@ -12665,7 +12675,7 @@ get_public_ip() {
 
 # Background refresh of the public-IP cache (best effort, detached).
 refresh_public_ip_bg() {
-    ( refresh_public_ip >/dev/null 2>&1 || true ) >/dev/null 2>&1 &
+    ( refresh_public_ip >/dev/null 2>&1 || true ) >/dev/null 2>&1 9>&- 10>&- &
 }
 
 # Startup/menu path: stale-while-revalidate. A fresh cache (strict TTL)
@@ -26584,7 +26594,7 @@ EOF_SVC
     fi
 
     # Ensure the service is running (minimal-install path).
-    service_manager start sing-box 2>/dev/null || true
+    ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
@@ -26810,7 +26820,7 @@ deploy_xray_trojan_landing() {
     ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
-    service_manager start xray 2>/dev/null || true
+    ensure_service_running_soft xray || die "$(tr_msg dp_xray_restart)"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
 
     local pub_ip
@@ -26987,7 +26997,7 @@ EOF_SVC
     ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
-    service_manager start sing-box 2>/dev/null || true
+    ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
@@ -27189,7 +27199,7 @@ EOF_SVC
     ( allowPort "$port" udp ) || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
     save_firewall_rules || { restore_tuic_backups "$_tuic_key" "$_tuic_crt" "$cfg_bak" "$cfg"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak" "${_tuic_key}.A-Box-bak" "${_tuic_crt}.A-Box-bak"
-    service_manager start sing-box 2>/dev/null || true
+    ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
@@ -27368,7 +27378,7 @@ EOF_SVC
     ( allowPort "$port" tcp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
     save_firewall_rules || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg pi_fw_persist_fail)"; }
     rm -f -- "$cfg_bak"
-    service_manager start sing-box 2>/dev/null || true
+    ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
@@ -27563,7 +27573,7 @@ EOF_SVC
     ( allowPort "$port" tcp ) || { if [[ -n "$cfg_bak" ]]; then if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; fi; die "$(tprintf dp_fw_allow "${port}/tcp")"; }
     save_firewall_rules || { if [[ -n "$cfg_bak" ]]; then if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft sing-box 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; fi; die "$(tr_msg pi_fw_persist_fail)"; }
     [[ -n "$cfg_bak" ]] && rm -f -- "$cfg_bak"
-    service_manager start sing-box 2>/dev/null || true
+    ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_sb)"
 
     local pub_ip
@@ -27746,7 +27756,7 @@ argo_deploy_ws() {
     rm -f "$tmp_cfg" "$tmp_json"
     restart_service_soft sing-box || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft sing-box 2>/dev/null || true; die "$(tr_msg dp_sb_restart)"; }
     rm -f -- "$cfg_bak"
-    service_manager start sing-box 2>/dev/null || true
+    ensure_service_running_soft sing-box || die "$(tr_msg dp_sb_restart)"
 }
 
 # $1 = unit name (argo-vmess | argo-vless | argo), $2 = cloudflared args (no binary)
@@ -28937,14 +28947,14 @@ _ip_geo_refresh() {
             if (( _now - _mt < 86400 )); then return 0; fi
             # Stale but usable: the panel reads the file as-is; refresh
             # detached so the menu never blocks on the network.
-            ( _ip_geo_fetch_now "$ip" "$geo_lang" ) >/dev/null 2>&1 &
+            ( _ip_geo_fetch_now "$ip" "$geo_lang" ) >/dev/null 2>&1 9>&- 10>&- &
             return 0
         fi
     fi
     # A cache file exists but belongs to another IP/language: refresh
     # detached; the menu never blocks on the network for it.
     if [[ -f "$IP_GEO_FILE" ]]; then
-        ( _ip_geo_fetch_now "$ip" "$geo_lang" ) >/dev/null 2>&1 &
+        ( _ip_geo_fetch_now "$ip" "$geo_lang" ) >/dev/null 2>&1 9>&- 10>&- &
         return 0
     fi
     _ip_geo_fetch_now "$ip" "$geo_lang"
@@ -30825,21 +30835,7 @@ EOF_SVC
     ( allowPort "$port" udp ) || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; restart_service_soft xray 2>/dev/null || true; die "$(tprintf dp_fw_allow "${port}/udp")"; }
     save_firewall_rules || { if restore_cfg_backup "$cfg_bak" "$cfg"; then restart_service_soft xray 2>/dev/null || msg "${RED}[!] $(tr_msg rollback_restart_fail)${NC}"; else msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; fi; die "$(tr_msg pi_fw_persist_fail)"; }
     # Ensure the service is running (minimal-install path or API-unavailable hosts).
-    service_manager start xray 2>/dev/null || true
-    # R2C10-02: verify liveness before claiming success. A swallowed start
-    # failure must not yield a RUNNING state and a usable link; the backup
-    # is kept until liveness is proven so a failed start can roll back.
-    local _socks5_live_pid='' _socks5_live_tries=0
-    while (( _socks5_live_tries < 20 )); do
-        _socks5_live_pid=$(managed_service_pid xray 2>/dev/null || true)
-        if [[ "$_socks5_live_pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$_socks5_live_pid" 2>/dev/null; then break; fi
-        _socks5_live_pid=''
-        sleep 0.25; _socks5_live_tries=$((_socks5_live_tries + 1))
-    done
-    if [[ -z "$_socks5_live_pid" ]]; then
-        restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"
-        die "$(tr_msg dp_xray_restart)"
-    fi
+    ensure_service_running_soft xray || { restore_cfg_backup "$cfg_bak" "$cfg" || msg "${RED}[!] $(tr_msg rollback_copy_fail)${NC}"; die "$(tr_msg dp_xray_restart)"; }
     rm -f -- "$cfg_bak"
     set_desired_state RUNNING || die "$(tr_msg dp_desired_xray)"
 
@@ -37294,11 +37290,24 @@ multi_user_menu() {
     local slot_cfg="${XRAY_SLOT_CFG:-/usr/local/etc/xray/config.json}"
     [[ -f "$slot_cfg" && ! -L "$slot_cfg" ]] && users_xray_ensure_tags "$slot_cfg" >/dev/null 2>&1 || true
     [[ -f /etc/sing-box/config.json && ! -L /etc/sing-box/config.json ]] && users_sb_ensure_tags /etc/sing-box/config.json >/dev/null 2>&1 || true
+    local _mu_guard_fail='' _mu_guard_shown=0
     if ! setup_user_guard >/dev/null 2>&1; then
-        msg "${RED}$(tr_msg mu_set_fail)${NC}"
+        # M-06: name the cause instead of a bare "failed to apply": under
+        # bash <(curl ...) $0 is /dev/fd/N, so no regular script file is
+        # available to build the guard runner from.
+        if [[ ! -f "$0" || -L "$0" ]]; then
+            _mu_guard_fail="$(tr_msg mu_guard_no_file)"
+        else
+            _mu_guard_fail="$(tr_msg mu_set_fail)"
+        fi
     fi
     while true; do
         clear
+        if [[ -n "$_mu_guard_fail" && "$_mu_guard_shown" == 0 ]]; then
+            msg "${RED}${_mu_guard_fail}${NC}"
+            _mu_guard_shown=1
+            pause_return
+        fi
         msg "${CYAN}======================================================================${NC}"
         msg "${BOLD}${GREEN}$(tr_msg mu_title)${NC}"
         msg "${CYAN}======================================================================${NC}"
@@ -37389,15 +37398,26 @@ user_guard_installed() {
 
 setup_user_guard() {
     local runner="${ABOX_DIR:-/etc/ddr}/user-guard-runner.sh"
-    [[ -f "$0" && ! -L "$0" ]] || return 1
+    local _src="$0"
+    # M-06 (Carbon audit): under bash <(curl ...) $0 is /dev/fd/N, not a
+    # regular file. Fall back to the installed copy, but only when it is
+    # the same build: its ABOX_BUILD_EPOCH must match this running
+    # script, so a stale copy is never silently used to build the runner.
+    if [[ ! -f "$_src" || -L "$_src" ]]; then
+        local _fb="${ABOX_DIR:-/etc/ddr}/A-Box.sh" _fb_epoch=''
+        [[ -f "$_fb" && ! -L "$_fb" ]] || return 1
+        _fb_epoch=$(awk -F= '/^ABOX_BUILD_EPOCH=/{gsub(/[^0-9]/,"",$2); print $2; exit}' "$_fb" 2>/dev/null || true)
+        [[ -n "$_fb_epoch" && -n "${ABOX_BUILD_EPOCH:-}" && "$_fb_epoch" == "$ABOX_BUILD_EPOCH" ]] || return 1
+        _src="$_fb"
+    fi
     mkdir_private "$(dirname -- "$runner")" 2>/dev/null || return 1
     local sha_new='' sha_old=''
-    sha_new=$(sha256sum -- "$0" 2>/dev/null | awk '{print $1}')
+    sha_new=$(sha256sum -- "$_src" 2>/dev/null | awk '{print $1}')
     sha_old=$(sha256sum -- "$runner" 2>/dev/null | awk '{print $1}')
     if [[ -z "$sha_new" || "$sha_new" != "$sha_old" ]]; then
         local tmp=''
         tmp=$(mktemp "$(dirname -- "$runner")/.guard-runner.XXXXXX") || return 1
-        cp -f -- "$0" "$tmp" || { rm -f -- "$tmp"; return 1; }
+        cp -f -- "$_src" "$tmp" || { rm -f -- "$tmp"; return 1; }
         chmod 700 "$tmp" || { rm -f -- "$tmp"; return 1; }
         mv -f -- "$tmp" "$runner" || { rm -f -- "$tmp"; return 1; }
     fi
@@ -54328,6 +54348,49 @@ start_abox_service_soft() {
     fi
 }
 
+# M-04 (Carbon audit): ensure a managed service is running WITHOUT
+# restarting it. service_manager start unconditionally restarts (and its
+# die() exits the whole process on failure, so a caller's `|| true` never
+# runs); the deployers above already restarted via restart_service_soft,
+# so a second restart here only destroys zero-downtime hot-adds and hides
+# failures. Returns 1 (never dies) so the caller can roll back.
+# Liveness follows the R2C10-02 pattern (managed_service_pid + kill -0).
+ensure_service_running_soft() {
+    local srv="$1"
+    abox_owns_service "$srv" || return 1
+    if [[ "${INIT_SYS:-}" == 'systemd' ]]; then
+        systemctl enable "$srv" >/dev/null 2>&1 || return 1
+        if systemctl is-active --quiet "$srv"; then
+            :
+        else
+            systemctl start "$srv" >/dev/null 2>&1 || return 1
+            sleep 2
+            systemctl is-active --quiet "$srv" || return 1
+            record_core_family_ownership "$srv" || return 1
+        fi
+    else
+        rc-update add "$srv" default >/dev/null 2>&1 || return 1
+        if rc-service "$srv" status >/dev/null 2>&1; then
+            :
+        else
+            rc-service "$srv" start >/dev/null 2>&1 9>&- 10>&- || return 1
+            sleep 2
+            rc-service "$srv" status >/dev/null 2>&1 || return 1
+            record_core_family_ownership "$srv" || return 1
+        fi
+    fi
+    local _live_pid='' _tries=0
+    while (( _tries < 20 )); do
+        _live_pid=$(managed_service_pid "$srv" 2>/dev/null || true)
+        if [[ "$_live_pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$_live_pid" 2>/dev/null; then
+            return 0
+        fi
+        _live_pid=''
+        sleep 0.25; _tries=$((_tries + 1))
+    done
+    return 1
+}
+
 # P2: Soft-stop a managed service (stop only, do NOT disable).
 # Previously called at hysteria smoke test but never defined (command not
 # found was swallowed by || true, leaving a stopped service running).
@@ -55874,6 +55937,12 @@ validate_owned_fallback_runtime_lock() {
 }
 
 runtime_lock_cleanup() {
+    # M-03 (Carbon audit): explicitly release the flock as well. A plain
+    # close on process exit releases it, but an explicit unlock also
+    # covers children that inherited a copy of fd 9.
+    if [[ -e /proc/$$/fd/9 ]]; then
+        flock -u 9 2>/dev/null || true
+    fi
     if [[ "${ABOX_RUNTIME_LOCK_MODE:-}" == fallback ]] && validate_owned_fallback_runtime_lock; then
         rm -f -- "$LOCK_FALLBACK_DIR/pid" "$LOCK_FALLBACK_DIR/starttime" 2>/dev/null || true
         rmdir -- "$LOCK_FALLBACK_DIR" 2>/dev/null || true
@@ -56150,8 +56219,14 @@ enter_runtime() {
 }
 
 expected_managed_services() {
-    clear_abox_env_vars
-    load_abox_env "$ABOX_ENV" || return 1
+    # M-06: a missing .env is a legitimate empty stack (pure standalone
+    # deployments have none), not unreadable state. Only load when the
+    # file exists; a present-but-corrupt file must still fail (return 1).
+    if [[ -e "$ABOX_ENV" || -L "$ABOX_ENV" ]]; then
+        load_abox_env "$ABOX_ENV" || return 1
+    else
+        clear_abox_env_vars
+    fi
     local -a _svcs=()
     case "${CORE:-}" in
         xray) _svcs+=(xray); [[ "${MODE:-}" == *ALL* ]] && _svcs+=(hysteria) ;;
@@ -58956,7 +59031,7 @@ main() {
             # Hidden test hook: run SNI radar non-interactively for A/B testing.
             # Usage: sudo ABOX_SNI_TEST_PROFILE=mini ABOX_SNI_MINI_CONCURRENCY=16 \
             #          ABOX_SNI_MINI_MAX=500 bash install.sh --sni-test
-            [[ $EUID -eq 0 ]] || die 'SNI test requires root.'
+            prepare_noninteractive_file_operation
             run_builtin_sni_radar "${ABOX_SNI_TEST_PROFILE:-mini}" "SNI test (${ABOX_SNI_TEST_PROFILE:-mini})"
             exit 0
             ;;
@@ -59143,7 +59218,14 @@ main_loop() {
         read -r -p "$(tr_msg main_command)" choice || exit 0
         if [[ "${_menu_lock_released:-0}" == 1 ]]; then
             # A-07: Wait up to 15s for lock (cron helpers hold it briefly); -n caused spurious menu exits.
-            flock -w 15 9 || die "$(tr_msg main_loop_relock_failed)"
+            # M-03: a failed re-lock must not kill the session (die used to
+            # drop the first session while the second kept running); warn
+            # and redraw the menu instead, the next prompt retries.
+            if ! flock -w 15 9; then
+                msg "${YELLOW}[!] $(tr_msg main_loop_relock_failed)${NC}"
+                sleep 2
+                continue
+            fi
         fi
         unset _menu_lock_released
         case "$choice" in

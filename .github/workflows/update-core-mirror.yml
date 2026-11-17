@@ -394,9 +394,15 @@ jobs:
           done
           # Upload order is binaries -> CORE-VERSIONS -> SHA256SUMS (full) last.
           # SHA256SUMS.incoming is verification-only and is NOT uploaded.
-          # Versioned binaries stay no-clobber: an existing asset aborts the step.
+          # Versioned binaries stay no-clobber: a byte-identical existing
+          # asset is SKIPPED (run 43907145250 died on the first already
+          # published asset, Xray-v26.11.9-linux-64.zip, although the
+          # publish gate had already passed it as no-clobber OK); a
+          # same-name asset with a DIFFERENT digest still aborts the step.
           # Only fixed-name metadata and signatures use --clobber after publish gates.
           # Metadata replacement is not atomic; failures stop verification/pruning.
+          # Skip-if-identical needs the current Release asset list once.
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/core-binaries" 2>/dev/null || true)"
           for f in verified/*; do
             [[ -f "$f" ]] || continue
             name=$(basename "$f")
@@ -408,6 +414,18 @@ jobs:
               Xray-*.zip|sing-box-*.tar.gz|hysteria-*|cloudflared-*|wgcf_*) ;;
               *) echo "ERROR: unknown file in artifact: $name; aborting"; exit 1 ;;
             esac
+            if [[ -n "${release_json:-}" ]]; then
+              gh_digest="$(jq -r --arg n "$name" '[.assets[]? | select(.name == $n)] | if length == 1 then .[0].digest // empty else empty end' <<< "$release_json")"
+              if [[ -n "$gh_digest" ]]; then
+                actual="sha256:$(sha256sum "$f" | awk '{print $1}')"
+                if [[ "${actual,,}" == "${gh_digest,,}" ]]; then
+                  echo "Skipping existing asset (byte-identical): $name"
+                  continue
+                fi
+                echo "ERROR: existing Release asset $name digest differs from incoming file; refusing to clobber an immutable binary"
+                exit 1
+              fi
+            fi
             echo "Uploading binary: $name"
             gh release upload core-binaries "$f#$name"
           done

@@ -143,13 +143,17 @@ Xray 四合一包含 Vision（TCP 443）、XHTTP（TCP 8443）、Shadowsocks-202
 |---|---|
 | `sudo bash A-Box.sh` | 開啟互動選單 |
 | `sudo bash A-Box.sh --help` | 顯示命令行幫助 |
+| `sudo bash A-Box.sh -h` | 顯示命令行幫助（與 --help 相同） |
 | `sudo bash A-Box.sh --lang zh` / `zh-tw` / `en` / `ja` / `ru` / `fa` | 指定介面語言啟動 |
+| `sudo bash A-Box.sh --lang <code>` / `--lang=<code>` | 指定介面語言啟動（與 --lang 相同） |
 | `sudo bash A-Box.sh --self-test` | 執行內建自檢 |
 | `sudo bash A-Box.sh --status` | 顯示受管服務與配置狀態 |
 | `sudo bash A-Box.sh --start` / `--stop` | 啟動或停止受管服務 |
 | `sudo bash A-Box.sh --version` | 顯示腳本建置標識 |
+| `sudo bash A-Box.sh -V` | 顯示腳本建置標識（與 --version 相同） |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | 匯出備份還原金鑰 |
 | `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [目錄]` | 把舊格式備份轉換為現行格式 |
+| `sudo bash A-Box.sh --xray-config-autorecover` | Xray 設定損壞時從可信備份自動恢復一次（探針呼叫） |
 
 自檢通過不等於真實安裝或用戶端連通驗證都通過。
 

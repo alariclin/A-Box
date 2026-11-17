@@ -143,13 +143,17 @@ Item 1, **A-Check**, is the IP-reputation checker from the companion [A-Check](h
 |---|---|
 | `sudo bash A-Box.sh` | Open the interactive menu |
 | `sudo bash A-Box.sh --help` | Show command-line help |
+| `sudo bash A-Box.sh -h` | Show command-line help (same as --help) |
 | `sudo bash A-Box.sh --lang zh` / `zh-tw` / `en` / `ja` / `ru` / `fa` | Start with a given UI language |
+| `sudo bash A-Box.sh --lang <code>` / `--lang=<code>` | Start with a given UI language (same as --lang) |
 | `sudo bash A-Box.sh --self-test` | Run the built-in self-tests |
 | `sudo bash A-Box.sh --status` | Show managed services and configuration status |
 | `sudo bash A-Box.sh --start` / `--stop` | Start or stop the managed services |
 | `sudo bash A-Box.sh --version` | Show the script build identifier |
+| `sudo bash A-Box.sh -V` | Show the script build identifier (same as --version) |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | Export the backup recovery key |
 | `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [DIR]` | Convert a legacy backup to the current format |
+| `sudo bash A-Box.sh --xray-config-autorecover` | Auto-recover a damaged Xray config once from a trusted backup (probe call) |
 
 A passing self-test does not replace a real installation or a client connectivity test.
 

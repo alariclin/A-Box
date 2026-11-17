@@ -143,13 +143,17 @@ cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 |---|---|
 | `sudo bash A-Box.sh` | باز کردن منوی تعاملی |
 | `sudo bash A-Box.sh --help` | نمایش راهنمای خط فرمان |
+| `sudo bash A-Box.sh -h` | نمایش راهنمای خط فرمان (همان --help) |
 | `sudo bash A-Box.sh --lang zh` / `zh-tw` / `en` / `ja` / `ru` / `fa` | شروع با زبان رابط مشخص |
+| `sudo bash A-Box.sh --lang <code>` / `--lang=<code>` | شروع با زبان رابط مشخص (همان --lang) |
 | `sudo bash A-Box.sh --self-test` | اجرای خودآزمون‌های داخلی |
 | `sudo bash A-Box.sh --status` | نمایش وضعیت سرویس‌ها و پیکربندی مدیریت‌شده |
 | `sudo bash A-Box.sh --start` / `--stop` | شروع یا توقف سرویس‌های مدیریت‌شده |
 | `sudo bash A-Box.sh --version` | نمایش شناسه ساخت اسکریپت |
+| `sudo bash A-Box.sh -V` | نمایش شناسه ساخت اسکریپت (همان --version) |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | خروجی گرفتن از کلید بازیابی پشتیبان |
 | `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [DIR]` | تبدیل پشتیبان قالب قدیمی به قالب کنونی |
+| `sudo bash A-Box.sh --xray-config-autorecover` | بازیابی خودکار یک‌باره پیکربندی آسیب‌دیده Xray از پشتیبان مورد اعتماد (فراخوانی کاوشگر) |
 
 قبولی در خودآزمون جای نصب واقعی یا آزمون اتصال کلاینت را نمی‌گیرد.
 

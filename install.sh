@@ -11998,6 +11998,7 @@ prompt_validated() {
             return 1
         fi
         val="${val:-$default}"
+        val=$(normalize_fa_ar_digits "$val")
         if is_test "$type" "$val"; then
             printf '%s' "$val"
             return 0
@@ -13018,6 +13019,29 @@ __abox_missing_pkg_for() {
         alpine) printf '%s\n' "$apk" ;;
     esac
 }
+# M-15(2): presence is not capability. A BusyBox applet satisfies
+# `type -aP` but may lack the options this script relies on (flock -w,
+# mv -T, base64 -w), so probe the options, not just the binary.
+_abox_flock_w_ok() {
+    command -v flock >/dev/null 2>&1 || return 1
+    local _probe _rc
+    _probe=$(mktemp) || return 1
+    ( exec 9>"$_probe"; flock -w 0 9 ) >/dev/null 2>&1
+    _rc=$?
+    rm -f -- "$_probe"
+    return "$_rc"
+}
+
+_abox_mv_t_ok() {
+    command -v mv >/dev/null 2>&1 || return 1
+    mv --help 2>&1 | grep -q -- '-T'
+}
+
+_abox_base64_w_ok() {
+    command -v base64 >/dev/null 2>&1 || return 1
+    base64 -w0 </dev/null >/dev/null 2>&1
+}
+
 ensure_commands() {
     local missing_pkgs=()
     local -a _ens_install_cmd=()
@@ -13061,11 +13085,33 @@ ensure_commands() {
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
     _pkg=$(__abox_missing_pkg_for "$release" useradd passwd shadow-utils shadow)
     [[ -n "$_pkg" ]] && missing_pkgs+=("$_pkg")
+    # M-15(2): option-capability probes. A present-but-crippled applet
+    # (BusyBox) queues its GNU package for the best-effort install below;
+    # the install never dies here, so a host that cannot install keeps
+    # working via the fallbacks (base64 -w0 fallback at the vmess link
+    # site, plain mv, and the fallback runtime lock when flock -w stays
+    # broken -- see the acquire/upgrade gates on _abox_flock_w_ok).
+    local -a _cap_pkgs=()
+    if command -v flock >/dev/null 2>&1 && ! _abox_flock_w_ok; then
+        case "${release:-}" in debian|ubuntu|centos|alpine) _cap_pkgs+=("util-linux") ;; esac
+    fi
+    if command -v base64 >/dev/null 2>&1 && ! _abox_base64_w_ok; then
+        case "${release:-}" in debian|ubuntu|centos|alpine) _cap_pkgs+=("coreutils") ;; esac
+    fi
+    if command -v mv >/dev/null 2>&1 && ! _abox_mv_t_ok; then
+        case "${release:-}" in debian|ubuntu|centos|alpine) _cap_pkgs+=("coreutils") ;; esac
+    fi
     if (( ${#missing_pkgs[@]} > 0 )); then
         local -a unique_pkgs=()
         mapfile -t unique_pkgs < <(printf '%s\n' "${missing_pkgs[@]}" | awk 'NF && !seen[$0]++')
         msg "${YELLOW}[*] $(tr_msg ensure_commands_installing_missing)${NC}"
         "${_ens_install_cmd[@]}" "${unique_pkgs[@]}" >/dev/null 2>&1 || die "$(tr_msg ec_reinstall)"
+    fi
+    if (( ${#_cap_pkgs[@]} > 0 )) && (( ${#_ens_install_cmd[@]} > 0 )); then
+        local -a _cap_unique=()
+        mapfile -t _cap_unique < <(printf '%s\n' "${_cap_pkgs[@]}" | awk 'NF && !seen[$0]++')
+        msg "${YELLOW}[*] $(tr_msg ensure_commands_installing_missing)${NC}"
+        "${_ens_install_cmd[@]}" "${_cap_unique[@]}" >/dev/null 2>&1 || true
     fi
     local required=(curl jq openssl bc unzip tar iptables ss lsof crontab logrotate python3 flock cmp)
     local c
@@ -20547,6 +20593,30 @@ validate_downloaded_asset() {
 }
 
 
+# M-15(4): temp dir for executing a staged binary/script. /tmp is often
+# mounted noexec, and $TMPDIR is caller-controlled, so probe each candidate
+# by actually executing a trivial script inside it; fall back to /var/tmp,
+# then /etc/ddr, then /tmp. Prints the directory path. Returns 1 when no
+# candidate can both hold and execute a file, so callers keep their
+# fail-closed behaviour.
+abox_mktemp_exec_dir() {
+    local prefix="$1" base='' dir='' probe=''
+    local -a _bases=()
+    _bases=("${TMPDIR:-/tmp}" /var/tmp /etc/ddr /tmp)
+    for base in "${_bases[@]}"; do
+        [[ "$base" == /* && -d "$base" ]] || continue
+        dir=$(mktemp -d "$base/$prefix.XXXXXX" 2>/dev/null) || continue
+        probe="$dir/.abox-exec-probe"
+        if printf '#!/bin/sh\nexit 0\n' > "$probe" 2>/dev/null && chmod 700 "$probe" 2>/dev/null && "$probe" >/dev/null 2>&1; then
+            rm -f -- "$probe"
+            printf '%s\n' "$dir"
+            return 0
+        fi
+        rm -rf -- "$dir"
+    done
+    return 1
+}
+
 # Return codes: 0 = version matches the tag; 1 = version mismatch (or
 # a setup failure: bad input, extract/chmod failure, unknown asset);
 # 2 = the binary could not be executed (e.g. a noexec workdir) or
@@ -20555,7 +20625,7 @@ validate_downloaded_asset() {
 validate_core_asset_binary_version() {
     local asset_name="${1:-}" f="${2:-}" expected_ref="${3:-}" workdir='' binary='' output=''
     [[ -s "$f" && -n "$expected_ref" ]] || return 1
-    workdir=$(mktemp -d /tmp/A-Box-core-version.XXXXXX) || return 1
+    workdir=$(abox_mktemp_exec_dir A-Box-core-version) || return 1
     case "$asset_name" in
         xray_core.zip)
             binary="$workdir/xray"
@@ -21726,7 +21796,7 @@ core_fetch_upstream_release_asset() {
                 msg "${YELLOW}[!] $(tprintf core_fetch_upstream_release_asset_dest_is_dir "${dest_file}")${NC}" >&2
                 return 1
             fi
-            mv -f -T -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
+            mv -f -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
 
             # Best-effort post-commit check before updating resolved state.
             # This does not prevent a later concurrent replacement.
@@ -24233,7 +24303,7 @@ restore_geo_transaction() {
                 # file inside the directory and still report success.
                 [[ ( ! -e "$base/$name.dat" || -f "$base/$name.dat" ) && ! -L "$base/$name.dat" ]] || return 1
                 stage=$(mktemp "$base/.$name.A-Box-restore.XXXXXX") || return 1
-                if ! cp -p "$txn/$name.old" "$stage" || ! mv -f -T -- "$stage" "$base/$name.dat"; then
+                if ! cp -p "$txn/$name.old" "$stage" || ! mv -f -- "$stage" "$base/$name.dat"; then
                     rm -f -- "$stage"
                     return 1
                 fi
@@ -24947,7 +25017,8 @@ build_xray_config() {
     }' > "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bx_json)"; }
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bx_chmod)"; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
-    mv -f -T "$tmp_out" "$out" || { rm -f "$tmp_out"; die "$(tr_msg bx_commit)"; }
+    [[ -d "$out" ]] && { rm -f "$tmp_out"; die "$(tr_msg bx_commit)"; }
+    mv -f -- "$tmp_out" "$out" || { rm -f "$tmp_out"; die "$(tr_msg bx_commit)"; }
     umask "$_bx_umask"
 }
 
@@ -25346,7 +25417,8 @@ build_singbox_config() {
     } + (if ($eps | length) > 0 then {endpoints:$eps} else {} end)' > "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_json)"; }
     chmod 600 "$tmp_out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_chmod)"; }
     [[ $EUID -eq 0 ]] && chown root:root "$tmp_out" || true
-    mv -f -T "$tmp_out" "$out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_commit)"; }
+    [[ -d "$out" ]] && { rm -f "$tmp_out"; die "$(tr_msg bs2_commit)"; }
+    mv -f -- "$tmp_out" "$out" || { rm -f "$tmp_out"; die "$(tr_msg bs2_commit)"; }
     umask "$_bs_umask"
 }
 
@@ -25522,7 +25594,7 @@ EOF_HY2
         return 1
     }
 
-    mv -f -T -- "$tmp" "$out" || {
+    mv -f -- "$tmp" "$out" || {
         rm -f -- "$tmp"
         return 1
     }
@@ -25621,7 +25693,7 @@ deploy_official_hy2() {
         get_architecture
     fi
 
-    hy2_tmp=$(mktemp -d /tmp/A-Box-hysteria.XXXXXX) || die "$(tr_msg hy2b_tmp)"
+    hy2_tmp=$(abox_mktemp_exec_dir A-Box-hysteria) || die "$(tr_msg hy2b_tmp)"
     ABOX_DEPLOY_TX_TMP="$hy2_tmp"
     hy2_bin="$hy2_tmp/hysteria_core"
     clear_core_release_resolution HyNetworks/hysteria
@@ -26527,7 +26599,7 @@ deploy_singbox_socks5_landing() {
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
-        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-socks5.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
+        sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-socks5) || die "$(tr_msg dp_sb_tmpdir)"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -26812,7 +26884,7 @@ deploy_xray_trojan_landing() {
     if [[ ! -x /usr/local/bin/xray ]]; then
         local xray_tmp xray_zip xray_ext
         get_architecture
-        xray_tmp=$(mktemp -d /tmp/A-Box-xray-trojan.XXXXXX) || die "$(tr_msg dp_xray_tmpdir)"
+        xray_tmp=$(abox_mktemp_exec_dir A-Box-xray-trojan) || die "$(tr_msg dp_xray_tmpdir)"
         xray_zip="$xray_tmp/xray_core.zip"
         xray_ext="$xray_tmp/xray_ext"
         mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
@@ -26941,7 +27013,7 @@ deploy_singbox_trojan_landing() {
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
-        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-trojan.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
+        sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-trojan) || die "$(tr_msg dp_sb_tmpdir)"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -27126,7 +27198,7 @@ deploy_singbox_tuic() {
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
-        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-tuic.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
+        sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-tuic) || die "$(tr_msg dp_sb_tmpdir)"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -27322,7 +27394,7 @@ deploy_singbox_anytls() {
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
-        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-anytls.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
+        sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-anytls) || die "$(tr_msg dp_sb_tmpdir)"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -27502,7 +27574,7 @@ deploy_singbox_shadowtls() {
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
-        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-shadowtls.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
+        sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-shadowtls) || die "$(tr_msg dp_sb_tmpdir)"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -27720,7 +27792,7 @@ install_cloudflared() {
         *) die "$(tprintf cf_arch "$SB_ARCH")" ;;
     esac
     url="https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-${SB_ARCH}"
-    tmp=$(mktemp -d /tmp/A-Box-cloudflared.XXXXXX) || die "$(tr_msg cf_tmp)"
+    tmp=$(abox_mktemp_exec_dir A-Box-cloudflared) || die "$(tr_msg cf_tmp)"
     msg "$(tr_msg argo_cf_installing)"
     if ! fetch_util_mirror_asset "cloudflared-${CLOUDFLARED_VERSION}-linux-${SB_ARCH}" "$tmp/cloudflared" \
         || [[ "$(sha256sum "$tmp/cloudflared" 2>/dev/null | awk '{print $1}')" != "$want" ]]; then
@@ -28351,7 +28423,7 @@ deploy_argo_temp() {
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
-        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-argo.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
+        sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-argo) || die "$(tr_msg dp_sb_tmpdir)"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -28598,7 +28670,7 @@ deploy_argo_fixed() {
         singbox_vendor_takeover_gate || die 'Sing-box vendor takeover declined or backup failed.'
         local sb_tmp sb_tar sb_ext SB_PATH
         get_architecture
-        sb_tmp=$(mktemp -d /tmp/A-Box-singbox-argo.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
+        sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox-argo) || die "$(tr_msg dp_sb_tmpdir)"
         sb_tar="$sb_tmp/singbox_core.tar.gz"
         sb_ext="$sb_tmp/extract"
         mkdir -p "$sb_ext" || die "$(tr_msg dp_sb_extdir)"
@@ -28955,6 +29027,7 @@ argo_menu() {
         msg "${CYAN}4.${NC}  $(tr_msg argo_m_uninstall)"
         msg "${CYAN}0.${NC}  $(tr_msg argo_m_back)"
         read -r -p "$(tr_msg argo_prompt)" choice || choice=0
+        choice=$(normalize_fa_ar_digits "$choice")
         case "$choice" in
             1) deploy_argo_temp; pause_return ;;
             2) deploy_argo_fixed; pause_return ;;
@@ -29903,7 +29976,7 @@ routing_outbound_has_live() {
     [[ -n "$tag" ]] || return 1
     for cfg in /usr/local/etc/xray/config.json /etc/sing-box/config.json; do
         [[ -f "$cfg" && ! -L "$cfg" ]] || continue
-        jsonc_strip_comments "$cfg" 2>/dev/null | jq -e --arg t "$tag" '.outbounds[]? | select(.tag == $t)' >/dev/null 2>&1 && return 0
+        jsonc_strip_comments "$cfg" 2>/dev/null | jq -e --arg t "$tag" '(.outbounds[]?, .endpoints[]?) | select(.tag == $t)' >/dev/null 2>&1 && return 0
     done
     return 1
 }
@@ -30040,6 +30113,13 @@ routing_apply_live() {
         xray)
             cfg='/usr/local/etc/xray/config.json'
             [[ -f "$cfg" && ! -L "$cfg" ]] || return 1
+            # L-01: Xray configs are JSONC; read through the stripped view
+            # (same $_jq_cfg pattern as users_adopt/users_sync): raw jq on
+            # a commented live config fails and aborts the apply.
+            local _jq_cfg=''
+            _jq_cfg=$(mktemp /tmp/A-Box-routing-json.XXXXXX) || return 1
+            trap '[[ -n "${_jq_cfg:-}" ]] && rm -f -- "$_jq_cfg" 2>/dev/null' RETURN
+            jsonc_strip_comments "$cfg" > "$_jq_cfg" 2>/dev/null || { rm -f "$_jq_cfg"; return 1; }
             tmp=$(mktemp /tmp/A-Box-routing.XXXXXX.json) || return 1
             jq --slurpfile st "$ROUTING_STATE_FILE" --argjson prev "$prev_applied" --argjson force "$force_json" --argjson prevr "$prev_rules_xray" '
                 ($st[0].outbounds | map(.tag)) as $managed
@@ -30052,7 +30132,7 @@ routing_apply_live() {
                     | ($orig | map((.outboundTag as $t | $retired | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not)) | not) | index(true) // ($orig | length)) as $splice
                     | (($orig | map(select((.outboundTag as $t | $retired | index($t) | not) and (. as $r | ((($prevr + [$st[0].rules[]?.xray_rule]) | index($r)) | not))))) as $kept
                         | $kept[0:$splice] + [$st[0].rules[]?.xray_rule] + $kept[$splice:])))
-            ' "$cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+            ' "$_jq_cfg" > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
             jq empty "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
             if [[ -x /usr/local/bin/xray ]]; then
                 XRAY_LOCATION_ASSET=/usr/local/share/xray /usr/local/bin/xray run -test -config "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; return 1; }
@@ -30810,7 +30890,7 @@ deploy_socks5_landing() {
     if [[ ! -x /usr/local/bin/xray ]]; then
         local xray_tmp xray_zip xray_ext
         get_architecture
-        xray_tmp=$(mktemp -d /tmp/A-Box-xray-socks5.XXXXXX) || die "$(tr_msg dp_xray_tmpdir)"
+        xray_tmp=$(abox_mktemp_exec_dir A-Box-xray-socks5) || die "$(tr_msg dp_xray_tmpdir)"
         xray_zip="$xray_tmp/xray_core.zip"
         xray_ext="$xray_tmp/xray_ext"
         mkdir -p "$xray_ext" || die 'Xray extraction directory creation failed.'
@@ -31573,7 +31653,7 @@ deploy_xray() {
     get_architecture
 
     local xray_tmp xray_zip xray_ext geo_tmp
-    xray_tmp=$(mktemp -d /tmp/A-Box-xray.XXXXXX) || die "$(tr_msg dp_xray_tmpdir)"
+    xray_tmp=$(abox_mktemp_exec_dir A-Box-xray) || die "$(tr_msg dp_xray_tmpdir)"
     ABOX_DEPLOY_TX_TMP="$xray_tmp"
     xray_zip="$xray_tmp/xray_core.zip"
     xray_ext="$xray_tmp/xray_ext"
@@ -31728,7 +31808,7 @@ deploy_singbox() {
     get_architecture
 
     local sb_tmp sb_tar sb_ext
-    sb_tmp=$(mktemp -d /tmp/A-Box-singbox.XXXXXX) || die "$(tr_msg dp_sb_tmpdir)"
+    sb_tmp=$(abox_mktemp_exec_dir A-Box-singbox) || die "$(tr_msg dp_sb_tmpdir)"
     ABOX_DEPLOY_TX_TMP="$sb_tmp"
     sb_tar="$sb_tmp/singbox_core.tar.gz"
     sb_ext="$sb_tmp/extract"
@@ -35441,7 +35521,7 @@ fetch_abox_mirror_asset() {
     if (( _core_ver_rc == 2 )); then msg "${YELLOW}[!] recovery binary cannot be executed (not a version mismatch); check the workdir mount options (/tmp noexec is common) or TMPDIR${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
     if (( _core_ver_rc != 0 )); then msg "${YELLOW}[!] recovery binary version does not match requested version ${requested_version}${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
     if [[ -d "$dest_file" ]]; then msg "${YELLOW}[!] recovery destination is a directory, refusing to move asset into it${NC}" >&2; rm -f -- "$tmp_file"; return 1; fi
-    mv -f -T -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
+    mv -f -- "$tmp_file" "$dest_file" || { rm -f -- "$tmp_file"; return 1; }
     msg "${GREEN}   recovery SHA-256 and actual binary version verified: ${requested_version}${NC}"
     return 0
 }
@@ -35907,7 +35987,7 @@ users_reg_write_path() {
     # silently swallowed: without -T, mv renames the temp file
     # INTO the directory and reports success.
     if [[ -d "$dest" ]]; then rm -f "$tmp"; return 1; fi
-    mv -f -T -- "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
+    mv -f -- "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
     return 0
 }
 
@@ -36920,7 +37000,7 @@ users_link() {
         _aid=$(printf '%s' "$user" | jq -r '.alterId // 0' 2>/dev/null)
         [[ "$_aid" =~ ^[0-9]+$ ]] || _aid=0
         vnew=$(printf '%s' "$vjson" | jq -c --rawfile id <(printf '%s' "$use_uuid") --arg ps "$name" --arg aid "$_aid" '.id = $id | .ps = $ps | .aid = $aid' 2>/dev/null) || return 1
-        printf 'vmess://%s' "$(printf '%s' "$vnew" | base64 -w0 2>/dev/null | tr -d '\n')"
+        printf 'vmess://%s' "$(printf '%s' "$vnew" | (base64 -w0 2>/dev/null || base64) | tr -d '\n')"
         return 0
     fi
     # Generic userinfo substitution: scheme://userinfo@rest
@@ -38625,6 +38705,7 @@ host_network_menu() {
     local c
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-4]: ' ;; ru) prompt='Выберите [0–4]: ' ;; fa) prompt='انتخاب [۰ تا ۴]: ' ;; ja) prompt='選択してください [0-4]: ' ;; zh-tw) prompt='請選擇 [0-4]：' ;; *) prompt='请选择 [0-4]：' ;; esac
     read -r -p "$prompt" c || return 0
+    c=$(normalize_fa_ar_digits "$c")
     case "$c" in
         1) ip_preference_menu ;;
         2) dns_menu ;;
@@ -39153,6 +39234,7 @@ timezone_locale_ntp_menu() {
     msg "${CYAN}0.${NC} $back_word"
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-5]: ' ;; ru) prompt='Выберите [0–5]: ' ;; fa) prompt='انتخاب [۰ تا ۵]: ' ;; ja) prompt='選択してください [0-5]: ' ;; zh-tw) prompt='請選擇 [0-5]：' ;; *) prompt='请选择 [0-5]：' ;; esac
     read -r -p "$prompt" c
+    c=$(normalize_fa_ar_digits "$c")
     case "$c" in
         1) timezone_choose_from_list '' ;;
         2) local query search_prompt; case "${ABOX_LANG:-zh}" in en) search_prompt='Timezone search: ' ;; ru) search_prompt='Поиск часового пояса: ' ;; fa) search_prompt='جست‌وجوی منطقه زمانی: ' ;; zh-tw) search_prompt='時區關鍵詞: ' ;; ja) search_prompt='タイムゾーンを検索: ' ;; *) search_prompt='时区关键词: ' ;; esac; read -r -p "$search_prompt" query || return 0; timezone_choose_from_list "$query" ;;
@@ -41776,6 +41858,7 @@ dns_menu() {
     msg "${CYAN}0.${NC} $(tr_msg dns_menu_back)"
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-10]: ' ;; ru) prompt='Выберите [0–10]: ' ;; fa) prompt='انتخاب [۰ تا ۱۰]: ' ;; ja) prompt='選択してください [0-10]: ' ;; zh-tw) prompt='請選擇 [0-10]：' ;; *) prompt='请选择 [0-10]：' ;; esac
     read -r -p "$prompt" c || return 0
+    c=$(normalize_fa_ar_digits "$c")
     case "$c" in
         1) dns_auto_prefer ;;
         2) dns_dot_prefer ;;
@@ -41880,6 +41963,7 @@ tune_vps() {
     local c
     case "${ABOX_LANG:-zh}" in en) prompt='Select [0-2]: ' ;; ru) prompt='Выберите [0–2]: ' ;; fa) prompt='انتخاب [۰ تا ۲]: ' ;; ja) prompt='選択してください [0-2]: ' ;; zh-tw) prompt='請選擇 [0-2]：' ;; *) prompt='请选择 [0-2]：' ;; esac
     read -r -p "$prompt" c || return 0
+    c=$(normalize_fa_ar_digits "$c")
     case "$c" in
         1) apply_vps_tune; pause_return ;;
         2) restore_vps_tune; pause_return ;;
@@ -43674,6 +43758,7 @@ swap_menu() {
         msg " ${CYAN}5.${NC}  $(tr_msg swap_opt_5)"
         msg " ${CYAN}0.${NC}  $(tr_msg swap_opt_0)"
         read -r -p "$(tr_msg swap_select_0_5)" choice || return 0
+        choice=$(normalize_fa_ar_digits "$choice")
         case "$choice" in
             1) setup_zram_swap ;;
             2) setup_swap_2g ;;
@@ -46501,7 +46586,7 @@ backup_current_config() {
             mkdir -p "$root$ABOX_DIR" || backup_failed=1
             [[ "$backup_failed" == 0 ]] && (cd "$ABOX_DIR" && tar \
                 --exclude='./backups' --exclude='./diagnostics' --exclude='./preflight' \
-                --exclude='./.tz-rollback' --exclude='./.dns-backup' --exclude='./.dns-backup.new.*' \
+                --exclude='./.tz-rollback' --exclude='./.dns-backup' --exclude='./.dns-backup.new.*' --exclude='./.deps.v*' \
                 --exclude='./A-Box.sh' --exclude='./.backup-hmac.key' --exclude='./.runtime.lock' --exclude='./.runtime.lock.d' \
                 --exclude='./socket_probe.sh' --exclude='./geo_update.sh' --exclude='./traffic_monitor.sh' \
                 --exclude='./firewall_restore.sh' --exclude='./iptables.v4' --exclude='./iptables.v6' \
@@ -47163,6 +47248,7 @@ backup_restore_menu() {
     esac
     local c
     read -r -p "$(tr_msg bk_select_0_4)" c || return 0
+    c=$(normalize_fa_ar_digits "$c")
     case "$c" in
         1) backup_current_config; pause_return ;;
         2) restore_from_backup ;;
@@ -47403,7 +47489,7 @@ validate_test_script() {
 run_mirrored_test_script() {
     local label="$1" upstream_url="$2" asset="$3" selected='' source='' expected='' sha='' answer work run_prompt
     shift 3
-    work=$(umask 077; mktemp -d /tmp/A-Box-test-tool.XXXXXX) || return 1
+    work=$(abox_mktemp_exec_dir A-Box-test-tool) || return 1
     chmod 700 "$work" || { rm -rf -- "$work"; return 1; }
     local upstream="$work/upstream.sh" mirror="$work/mirror.sh" sums="$work/SHA256SUMS" manifest="$work/manifest.txt"
     # Policy: latest-first (user directive). The upstream script is
@@ -52534,6 +52620,7 @@ wallos_menu() {
     msg "${CYAN}0.${NC} $(tr_msg mu_back_word)"
     local c prompt_confirm
     read -r -p "$(tr_msg wl_menu_prompt)" c || return 0
+    c=$(normalize_fa_ar_digits "$c")
 
     case "${ABOX_LANG:-zh}" in
         en) prompt_confirm='Wallos stores personal subscription/financial data. HTTP has no TLS. Continue? [Y/N]: ' ;;
@@ -52668,6 +52755,7 @@ other_protocols_menu() {
     local op_choice select_prompt
     case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-6]: ' ;; ru) select_prompt='Выберите [0–6]: ' ;; fa) select_prompt='انتخاب [۰ تا ۶]: ' ;; ja) select_prompt='選択してください [0-6]: ' ;; zh-tw) select_prompt='請選擇 [0-6]：' ;; *) select_prompt='请选择 [0-6]：' ;; esac
     read -r -p "$select_prompt" op_choice || return 0
+    op_choice=$(normalize_fa_ar_digits "$op_choice")
     case "$op_choice" in
         1) trojan_toolbox_entry; pause_return ;;
         2) deploy_with_instance_choice sing-box tuic-in deploy_singbox_tuic; pause_return ;;
@@ -52711,7 +52799,7 @@ run_acheck_tool() {
     # Ed25519-signed SHA256SUMS entry before it is installed or executed;
     # an unsigned main/proxy download is never executed, and a stale cache
     # is never trusted without fresh verification.
-    _md=$(mktemp -d /tmp/acheck-mirror.XXXXXX 2>/dev/null) || { msg "${RED}$(tr_msg acheck_failed)${NC}"; return 1; }
+    _md=$(abox_mktemp_exec_dir acheck-mirror 2>/dev/null) || { msg "${RED}$(tr_msg acheck_failed)${NC}"; return 1; }
     if ! curl -fLsS --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS" -o "$_md/SHA256SUMS" \
        || ! curl -fLsS --connect-timeout 10 --max-time 45 "https://github.com/alariclin/A-Box/releases/download/$ABOX_TEST_MIRROR_RELEASE/SHA256SUMS.sig" -o "$_md/SHA256SUMS.sig" 2>/dev/null \
        || ! abox_verify_sig_gate "$_md/SHA256SUMS" "$_md/SHA256SUMS.sig" "A-Check SHA256SUMS" \
@@ -52780,12 +52868,12 @@ vps_benchmark_menu() {
             msg " ${CYAN}1.${NC}  A-Check: проверка IP                  ${CYAN}5.${NC}  WARP и разделение трафика"
             msg " ${CYAN}2.${NC}  Тест системы и скорости               ${CYAN}6.${NC}  Swap / zram"
             msg " ${CYAN}3.${NC}  Качество IP / стриминг / маршрут      ${CYAN}7.${NC}  Оптимизация VPS"
-            msg " ${CYAN}4.${NC}  Экспорт диагностики                   ${CYAN}8.${NC}  IP / DNS / часовой пояс / источники"
+            msg " ${CYAN}4.${NC}  Экспорт обезличенной диагностики      ${CYAN}8.${NC}  IP / DNS / часовой пояс / источники"
             msg ""
             msg "${CYAN}[ Подбор SNI ]                            [ Управление конфигурацией ]${NC}"
             msg " ${CYAN}9.${NC}  Подбор SNI                           ${CYAN}13.${NC}  Бэкап / восстановление"
             msg "${CYAN}10.${NC}  Подбор SNI (мини-хост)               ${CYAN}14.${NC}  Пользователи / экспорт подписки"
-            msg "${CYAN}11.${NC}  Записи подбора SNI                   ${CYAN}15.${NC}  Wallos: установка / обновление"
+            msg "${CYAN}11.${NC}  Записи подбора SNI                   ${CYAN}15.${NC}  Wallos: установка / обновление / резервная копия"
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                    ${CYAN}16.${NC}  Белый список IP (SS-2022)"
             msg ""
             msg " ${CYAN}0.${NC}  Назад                                ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
@@ -52796,12 +52884,12 @@ vps_benchmark_menu() {
             msg " ${CYAN}1.${NC}  بررسی IP با A-Check                   ${CYAN}5.${NC}  مدیریت WARP و تفکیک ترافیک"
             msg " ${CYAN}2.${NC}  تست سیستم و سرعت دانلود               ${CYAN}6.${NC}  Swap / zram"
             msg " ${CYAN}3.${NC}  کیفیت IP / استریم / مسیر              ${CYAN}7.${NC}  بهینه‌سازی تک‌کلیکی VPS"
-            msg " ${CYAN}4.${NC}  خروجی تشخیص عیب‌یابی                  ${CYAN}8.${NC}  تنظیمات IP / DNS / منطقه زمانی"
+            msg " ${CYAN}4.${NC}  خروجی تشخیص عیب‌یابی پالایش‌شده       ${CYAN}8.${NC}  تنظیمات IP / DNS / منطقه زمانی / منبع"
             msg ""
             msg "${CYAN}[ بهینه‌سازی SNI ]                        [ مدیریت پیکربندی ]${NC}"
             msg " ${CYAN}9.${NC}  بهینه‌سازی SNI محلی                  ${CYAN}13.${NC}  پشتیبان‌گیری / بازیابی"
             msg "${CYAN}10.${NC}  بهینه‌سازی SNI مینی‌هاست             ${CYAN}14.${NC}  کاربران / خروجی لینک اشتراک"
-            msg "${CYAN}11.${NC}  سوابق بهینه‌سازی SNI                 ${CYAN}15.${NC}  نصب / به‌روزرسانی Wallos"
+            msg "${CYAN}11.${NC}  سوابق بهینه‌سازی SNI                 ${CYAN}15.${NC}  نصب / به‌روزرسانی / پشتیبان Wallos"
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                        ${CYAN}16.${NC}  لیست سفید آی‌پی SS-2022"
             msg ""
             msg " ${CYAN}0.${NC}  بازگشت                               ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
@@ -52828,12 +52916,12 @@ vps_benchmark_menu() {
             msg " ${CYAN}1.${NC}  A-Check IP 品質チェック               ${CYAN}5.${NC}  WARP と振り分け管理"
             msg " ${CYAN}2.${NC}  システムベンチマークと速度測定        ${CYAN}6.${NC}  Swap / zram スワップ"
             msg " ${CYAN}3.${NC}  IP品質/ストリーミング/ルートテスト    ${CYAN}7.${NC}  VPS ワンクリック最適化"
-            msg " ${CYAN}4.${NC}  診断パッケージのエクスポート          ${CYAN}8.${NC}  IP / DNS / タイムゾーン設定"
+            msg " ${CYAN}4.${NC}  匿名化診断パッケージのエクスポート    ${CYAN}8.${NC}  IP / DNS / タイムゾーン / ダウンロードソース設定"
             msg ""
             msg "${CYAN}[ SNI 最適化 ]                            [ 構成管理 ]${NC}"
             msg " ${CYAN}9.${NC}  ローカル SNI 最適化                  ${CYAN}13.${NC}  設定のバックアップ/復元"
             msg "${CYAN}10.${NC}  ミニホスト SNI 最適化                ${CYAN}14.${NC}  複数ユーザー / サブスクリプション出力"
-            msg "${CYAN}11.${NC}  SNI 最適化記録                       ${CYAN}15.${NC}  Wallos インストール/更新"
+            msg "${CYAN}11.${NC}  SNI 最適化記録                       ${CYAN}15.${NC}  Wallos インストール/更新/バックアップ"
         msg "${CYAN}12.${NC}  $(tr_msg tb_nsni)                  ${CYAN}16.${NC}  SS-2022 IPホワイトリスト"
             msg ""
             msg " ${CYAN}0.${NC}  メインメニューに戻る                 ${CYAN}17.${NC}  $(tr_msg tb_shortcut)"
@@ -52858,6 +52946,7 @@ vps_benchmark_menu() {
     local bench_choice select_prompt
     case "${ABOX_LANG:-zh}" in en) select_prompt='Select [0-17]: ' ;; ru) select_prompt='Выберите [0–17]: ' ;; fa) select_prompt='انتخاب [۰ تا ۱۷]: ' ;; ja) select_prompt='選択してください [0-17]: ' ;; zh-tw) select_prompt='請選擇 [0-17]：' ;; *) select_prompt='请选择 [0-17]：' ;; esac
     read -r -p "$select_prompt" bench_choice || return 0
+    bench_choice=$(normalize_fa_ar_digits "$bench_choice")
     case "$bench_choice" in
         1) run_acheck_tool; pause_return ;;
         2) run_mirrored_test_script 'System benchmark and download speed' 'https://bench.sh' 'bench.sh'; pause_return ;;
@@ -55112,7 +55201,7 @@ upgrade_xray_core_only() {
         fi
         [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] && msg "${YELLOW}[!] ABOX_ALLOW_CORE_DOWNGRADE=1: Xray version-direction guard explicitly bypassed.${NC}"
     fi
-    tmp=$(mktemp -d /tmp/A-Box-core-xray.XXXXXX) || die 'Xray core upgrade temp directory failed.'
+    tmp=$(abox_mktemp_exec_dir A-Box-core-xray) || die 'Xray core upgrade temp directory failed.'
     ABOX_CORE_UPGRADE_TMP="$tmp"
     xray_zip="$tmp/xray_core.zip"; xray_ext="$tmp/xray_ext"; mkdir -p "$xray_ext"
     fetch_github_release XTLS/Xray-core xray_core.zip "$xray_zip"
@@ -55187,7 +55276,7 @@ upgrade_singbox_core_only() {
         fi
         [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] && msg "${YELLOW}[!] ABOX_ALLOW_CORE_DOWNGRADE=1: sing-box version-direction guard explicitly bypassed.${NC}"
     fi
-    tmp=$(mktemp -d /tmp/A-Box-core-singbox.XXXXXX) || die 'sing-box core upgrade temp directory failed.'
+    tmp=$(abox_mktemp_exec_dir A-Box-core-singbox) || die 'sing-box core upgrade temp directory failed.'
     ABOX_CORE_UPGRADE_TMP="$tmp"
     sb_tar="$tmp/singbox_core.tar.gz"; sb_ext="$tmp/extract"; mkdir -p "$sb_ext"
     fetch_github_release SagerNet/sing-box singbox_core.tar.gz "$sb_tar"
@@ -55263,7 +55352,7 @@ upgrade_hysteria_core_only() {
         fi
         [[ "${ABOX_ALLOW_CORE_DOWNGRADE:-0}" == 1 ]] && msg "${YELLOW}[!] ABOX_ALLOW_CORE_DOWNGRADE=1: Hysteria version-direction guard explicitly bypassed.${NC}"
     fi
-    tmp=$(mktemp -d /tmp/A-Box-core-hysteria.XXXXXX) || die 'Hysteria core upgrade temp directory failed.'
+    tmp=$(abox_mktemp_exec_dir A-Box-core-hysteria) || die 'Hysteria core upgrade temp directory failed.'
     ABOX_CORE_UPGRADE_TMP="$tmp"
     hy2_bin="$tmp/hysteria_core"
     fetch_github_release HyNetworks/hysteria hysteria_core "$hy2_bin"
@@ -56514,6 +56603,7 @@ upgrade_runtime_lock_to_flock_if_possible() {
     # started on LOCK_FALLBACK_DIR onto LOCK_FILE so helpers and main share one object.
     [[ "${ABOX_RUNTIME_LOCK_MODE:-}" == fallback ]] || return 0
     command -v flock >/dev/null 2>&1 || return 0
+    _abox_flock_w_ok || return 0
     open_runtime_flock_fd || return 1
     flock -n 9 || {
         # Another process already holds the flock; keep fallback ownership for cleanup.
@@ -56535,7 +56625,10 @@ acquire_runtime_lock() {
     elif [[ "${ABOX_INHERITED_LOCK_MODE:-}" == fallback ]]; then
         validate_owned_fallback_runtime_lock || die "$(tr_msg acquire_runtime_lock_inherited_fallback_invalid)"
         ABOX_RUNTIME_LOCK_MODE='fallback'
-    elif command -v flock >/dev/null 2>&1; then
+    elif command -v flock >/dev/null 2>&1 && _abox_flock_w_ok; then
+        # M-15(2): a flock without -w (BusyBox) cannot serve the
+        # flock -w 15 relock in pause_return/main_loop; fall through
+        # to the fallback lock instead of dying at the first pause.
         # U133: a live fallback lock means another instance is running even
         # though the flock is free; never hold two lock objects at once.
         # R16-02: fallback_runtime_lock_held is tri-state: 0 live holder,
@@ -56958,11 +57051,11 @@ Usage:
   bash install.sh --start            启动托管服务并恢复运行状态 / Start managed services
   bash install.sh --version          显示构建版本 / Show build version
   bash install.sh --export-backup-key /secure/path/A-Box-recovery.key
-                                      将恢复密钥导出到独立可信介质
+                                      将恢复密钥导出到独立可信介质 / Export the recovery key to separate trusted media
   bash install.sh --convert-legacy-backup OLD.tar.gz [OUTPUT_DIR]
-                                      安全转换旧版备份为 manifest v3
+                                      安全转换旧版备份为 manifest v3 / Safely convert a legacy backup to manifest v3
   bash install.sh --xray-config-autorecover
-                                      xray 配置损坏时从可信备份自动恢复一次（探针调用）
+                                      xray 配置损坏时从可信备份自动恢复一次（探针调用） / Auto-recover a damaged Xray config once from a trusted backup (probe call)
   bash install.sh --help             显示命令行帮助 / Show help
 EOF_HELP
 }
@@ -59570,7 +59663,7 @@ main_loop() {
                 ;;
             ja)
                 _menu_info_display
-                msg "${CYAN}[ Xray-core 部署します ]${NC}                ${CYAN}[ Sing-box 部署します ]${NC}"
+                msg "${CYAN}[ Xray-core 導入 ]${NC}                ${CYAN}[ Sing-box 導入 ]${NC}"
                 msg "${CYAN}1.${NC}  VLESS-Vision-Reality                ${CYAN}6.${NC}  VLESS-Vision-Reality"
                 msg "${CYAN}2.${NC}  VLESS-XHTTP-Reality                 ${CYAN}7.${NC}  VLESS + SS-2022"
                 msg "${CYAN}3.${NC}  Shadowsocks-2022                    ${CYAN}8.${NC}  Shadowsocks-2022"

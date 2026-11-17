@@ -143,13 +143,17 @@ cmp A-Box.sh A-Box.official.sh && sudo bash A-Box.sh
 |---|---|
 | `sudo bash A-Box.sh` | Открыть интерактивное меню |
 | `sudo bash A-Box.sh --help` | Показать справку по командной строке |
+| `sudo bash A-Box.sh -h` | Показать справку по командной строке (то же, что --help) |
 | `sudo bash A-Box.sh --lang zh` / `zh-tw` / `en` / `ja` / `ru` / `fa` | Запуск с заданным языком интерфейса |
+| `sudo bash A-Box.sh --lang <code>` / `--lang=<code>` | Запуск с заданным языком интерфейса (то же, что --lang) |
 | `sudo bash A-Box.sh --self-test` | Запустить встроенные самотесты |
 | `sudo bash A-Box.sh --status` | Показать состояние управляемых служб и конфигурации |
 | `sudo bash A-Box.sh --start` / `--stop` | Запустить или остановить управляемые службы |
 | `sudo bash A-Box.sh --version` | Показать идентификатор сборки скрипта |
+| `sudo bash A-Box.sh -V` | Показать идентификатор сборки скрипта (то же, что --version) |
 | `sudo bash A-Box.sh --export-backup-key /secure/path.key` | Экспортировать ключ восстановления резервных копий |
 | `sudo bash A-Box.sh --convert-legacy-backup OLD.tar.gz [DIR]` | Преобразовать резервную копию старого формата в текущий |
+| `sudo bash A-Box.sh --xray-config-autorecover` | Однократно автоматически восстановить повреждённую конфигурацию Xray из доверенной резервной копии (вызов probe) |
 
 Пройденный самотест не заменяет реальную установку или проверку связности клиентом.
 
